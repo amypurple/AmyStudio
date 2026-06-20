@@ -1,0 +1,352 @@
+; -----------------------------------------------------------------------------
+; ALEXIS fp5 shared 64-bit helpers
+; Depends on: coleco_math_fp5_core.asm
+; -----------------------------------------------------------------------------
+
+AMY_FP5_64_COPY:
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    ld (hl),a
+    ret
+
+AMY_FP5_64_ADD:
+    push hl
+    push de
+    ld a,(de)
+    add a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(de)
+    adc a,(hl)
+    ld (hl),a
+    pop de
+    pop hl
+    ret
+
+AMY_FP5_64_SUB:
+    push hl
+    push de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sub b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    inc de
+    inc hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    sbc a,b
+    ld (hl),a
+    pop de
+    pop hl
+    ret
+
+AMY_FP5_64_CMP:
+    push hl
+    push de
+    ld bc,7
+    add hl,bc
+    ex de,hl
+    add hl,bc
+    ex de,hl
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+    jr nz,AMY_FP5_64_CMP_DONE
+    dec hl
+    dec de
+    ld a,(hl)
+    ld c,a
+    ld a,(de)
+    ld b,a
+    ld a,c
+    cp b
+AMY_FP5_64_CMP_DONE:
+    pop de
+    pop hl
+    ret
+
+AMY_FP5_64_SHR1:
+    ld de,7
+    add hl,de
+    ld c,0
+    ld b,8
+AMY_FP5_64_SHR1_LOOP:
+    ld a,(hl)
+    ld e,a
+    srl a
+    or c
+    ld (hl),a
+    ld a,e
+    and 1
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld c,a
+    dec hl
+    djnz AMY_FP5_64_SHR1_LOOP
+    ret
+
+AMY_FP5_64_SHR2:
+    ld de,7
+    add hl,de
+    ld c,0
+    ld b,8
+AMY_FP5_64_SHR2_LOOP:
+    ld a,(hl)
+    ld e,a
+    srl a
+    srl a
+    or c
+    ld (hl),a
+    ld a,e
+    and 3
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld c,a
+    dec hl
+    djnz AMY_FP5_64_SHR2_LOOP
+    ret
+
+AMY_FP5_64_SHL1:
+    sla (hl)
+    inc hl
+    rl (hl)
+    inc hl
+    rl (hl)
+    inc hl
+    rl (hl)
+    inc hl
+    rl (hl)
+    inc hl
+    rl (hl)
+    inc hl
+    rl (hl)
+    inc hl
+    rl (hl)
+    ret
+
+AMY_FP5_64_INC:
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret nz
+    inc hl
+    inc (hl)
+    ret
+
+AMY_FP5_64_IS_ZERO:
+    ld a,(hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    inc hl
+    or (hl)
+    ret
