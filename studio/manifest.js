@@ -1,7 +1,7 @@
 export const manifest = {
   defaults: {
     projectName: "amy-project",
-    sourceLang: "pseudo_alexis",
+    sourceLang: "amy",
     memoryProfile: "colecovision_legacy_sdcc",
     selectedLibs: [],
     selectedBundles: [],

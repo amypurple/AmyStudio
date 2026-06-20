@@ -234,7 +234,6 @@ export function bindStudioRuntimeEvents(ctx) {
     getCompiledSymbols,
     getCompiledListing,
     copyText,
-    openAssembler,
     expandAsmIncludes,
     cvSampleRate,
     wavToDsound,
@@ -729,12 +728,6 @@ export function bindStudioRuntimeEvents(ctx) {
     } catch (e) {
       setStatus(`Copy failed: ${String(e)}`);
     }
-  });
-
-  els.btnOpenAssembler.addEventListener("click", () => {
-    openAssembler();
-    setStatus("Opened AmysCVAssembly in a new tab.");
-    closeTopbarMenu();
   });
 
   els.btnWavConverter.addEventListener("click", () => {

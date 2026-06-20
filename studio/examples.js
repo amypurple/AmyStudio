@@ -19,7 +19,7 @@ export const exampleCatalog = [
     "label": "Hello World Minimal",
     "detail": "Smallest useful Amy Mode 2 text hello world.",
     "projectName": "hello-world-minimal",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -33,7 +33,7 @@ export const exampleCatalog = [
     "label": "Sprite Minimal",
     "detail": "One sprite on a Mode 2 text bootstrap with minimal setup.",
     "projectName": "sprite-minimal",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -47,7 +47,7 @@ export const exampleCatalog = [
     "label": "Input Loop Minimal",
     "detail": "Moves a text cursor with canonical inline joypad input.",
     "projectName": "input-loop-minimal",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -57,11 +57,46 @@ export const exampleCatalog = [
     "sourceText": "const CursorTile = $40\nconst EmptyTile = $20\n\nu8 X = 15\nu8 Y = 11\nu8 OldX = 15\nu8 OldY = 11\n\n' Inline joypad input with a text-mode cursor.\n  text screen\n  print at 10,3, \"INLINE INPUT\"\n  put char CursorTile at X,Y\n  screen on\n  goto main_loop\n\nmain_loop:\n  wait 2 frames\n  OldX = X\n  OldY = Y\n  if joypad(1).left then\n    if X > 0 then X -= 1\n  elseif joypad(1).right then\n    if X \u003C 31 then X += 1\n  elseif joypad(1).up then\n    if Y > 0 then Y -= 1\n  elseif joypad(1).down then\n    if Y \u003C 23 then Y += 1\n  end if\n  put char EmptyTile at OldX,OldY\n  put char CursorTile at X,Y\n  goto main_loop"
   },
   {
+    "id": "collision-minimal",
+    "label": "Collision Minimal",
+    "detail": "Moves a sprite through another and shows the VDP coincidence bit state.",
+    "projectName": "collision-minimal",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "manual-canon",
+    "sourceText": "u8 X = 96\nu8 DX = 1\n\ndata DotSprite bytes\n  $18,$3C,$7E,$FF,$FF,$7E,$3C,$18\nend data\n\n' Move one sprite through another and watch the VDP collision bit.\n  text screen\n  sprites 8x8\n  sprites simple\n  copy DotSprite to vram $3800\n  clear sprites\n  set sprite count 2\n  print at 8,3, \"COLLISION TEST\"\n  print at 14,15, \"NO \"\n  set sprite 0 to 95,120,0,15\n  set sprite 1 to 95,X,0,6\n  update sprites\n  screen on\nMainLoop:\n  wait\n  bounce X by DX between 96 and 144\n  set sprite 1 to 95,X,0,6\n  update sprites\n  if any collision then\n    print at 14,15, \"HIT\"\n  else\n    print at 14,15, \"NO \"\n  end if\n  goto MainLoop"
+  },
+  {
+    "id": "dsound-voice-minimal",
+    "label": "DSound Voice Minimal",
+    "detail": "Inline DSOUND smoke test plus comments for replacing the stub with a Studio-generated voice clip.",
+    "projectName": "dsound-voice-minimal",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [
+      {
+        "path": "voice-stub.dsound",
+        "base64": "ESIzRFVmd4iZqrvM3e7/AAAA",
+        "kind": "dsound",
+        "source": "example"
+      }
+    ],
+    "editorialTrack": "manual-canon",
+    "sourceText": "' DSOUND workflow smoke test.\n' This example ships with a tiny embedded .dsound project file.\n' Replace it with your own recording from the WAV -> DSound tool when ready.\n\nasset VoiceStub from \"@project/voice-stub.dsound\" codec raw\n\n  text screen\n  print at 4,5, \"DSOUND VOICE TEST\"\n  print at 2,8, \"Embedded .dsound plays once.\"\n  print at 2,10, \"Replace it with your own voice.\"\n  screen on\n  wait 30 frames\n  play dsound VoiceStub\nMainLoop:\n  wait\n  goto MainLoop"
+  },
+  {
     "id": "tile-collision-maze",
     "label": "Tile Collision Maze",
     "detail": "Maze-like gameplay demo using tile types, pixel-to-tile collision, and collectible lookup.",
     "projectName": "tile-collision-maze",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -75,7 +110,7 @@ export const exampleCatalog = [
     "label": "Sprite Momentum Platformer",
     "detail": "16x16 sprite platformer test with momentum, gravity, wall collision, landing, and coin pickup.",
     "projectName": "sprite-momentum-platformer",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -89,7 +124,7 @@ export const exampleCatalog = [
     "label": "Snake Demo",
     "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
     "projectName": "snake-demo",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -99,11 +134,25 @@ export const exampleCatalog = [
     "sourceText": "cartridge \"SNAKE/AMY STUDIO/2026\"\n\nconst WallTile = $23\nconst HeadTile = $40\nconst BodyTile = $4F\nconst AppleTile = $2A\nconst EmptyTile = $20\nconst DirUp = 0\nconst DirRight = 1\nconst DirDown = 2\nconst DirLeft = 3\nconst MaxLength = 15\n\n' Player and apple state\nu8 Length = 2\nu8 Direction = DirRight\nu8 NextX = 12\nu8 NextY = 12\nu8 AppleX = 18\nu8 AppleY = 12\nu8 GrowFlag = 0\n\n' Working scratch\nu8 Scan = 0\nu8 CheckLimit = 0\nu8 DrawX = 0\nu8 DrawY = 0\nu8 OldHeadX = 0\nu8 OldHeadY = 0\nu8 TailX = 0\nu8 TailY = 0\n\n' Snake body buffers\nu8 SnakeX[15]\nu8 SnakeY[15]\n\n  text screen\n  set sound table SnakeSoundTable areas 6\n  print centered at 4, \"SNAKE\"\n  print centered at 7, \"EAT APPLES\"\n  print centered at 8, \"AVOID WALLS AND YOUR TAIL\"\n  print centered at 14, \"PRESS FIRE TO START\"\n  screen on\n  pause until press\n  wait no fire\n  reset_game\n  goto game_loop\n\nsub game_loop:\n  wait 8 frames\n  if joypad(1).up then\n    goto try_up\n  elseif joypad(1).right then\n    goto try_right\n  elseif joypad(1).down then\n    goto try_down\n  elseif joypad(1).left then\n    goto try_left\n  end if\n  goto move_snake\n\nsub try_up:\n  if Direction = DirDown then\n    goto move_snake\n  end if\n  Direction = DirUp\n  goto move_snake\n\nsub try_right:\n  if Direction = DirLeft then\n    goto move_snake\n  end if\n  Direction = DirRight\n  goto move_snake\n\nsub try_down:\n  if Direction = DirUp then\n    goto move_snake\n  end if\n  Direction = DirDown\n  goto move_snake\n\nsub try_left:\n  if Direction = DirRight then\n    goto move_snake\n  end if\n  Direction = DirLeft\n  goto move_snake\n\nsub move_snake:\n  NextX = SnakeX[0]\n  NextY = SnakeY[0]\n  if Direction = DirUp then\n    goto calc_up\n  elseif Direction = DirRight then\n    goto calc_right\n  elseif Direction = DirDown then\n    goto calc_down\n  else\n    goto calc_left\n  end if\n\nsub calc_up:\n  NextY -= 1\n  goto check_apple\n\nsub calc_right:\n  NextX += 1\n  goto check_apple\n\nsub calc_down:\n  NextY += 1\n  goto check_apple\n\nsub calc_left:\n  NextX -= 1\n\nsub check_apple:\n  GrowFlag = 0\n  if NextX = AppleX then\n    if NextY = AppleY then\n      GrowFlag = 1\n    end if\n  end if\n\nsub check_body:\n  CheckLimit = Length\n  CheckLimit -= 1\n  TailX = SnakeX[CheckLimit]\n  TailY = SnakeY[CheckLimit]\n  if GrowFlag = 0 then\n    if CheckLimit = 0 then\n      goto check_bounds\n    end if\n    CheckLimit -= 1\n  end if\n\nsub body_scan_start:\n  Scan = 1\n\nsub body_scan_loop:\n  if Scan > CheckLimit then\n    goto check_bounds\n  end if\n  if NextX = SnakeX[Scan] then\n    if NextY = SnakeY[Scan] then\n      goto game_over\n    end if\n  end if\n\nsub body_scan_next:\n  Scan += 1\n  goto body_scan_loop\n\nsub check_bounds:\n  if NextX \u003C 1 then\n    goto game_over\n  elseif NextX > 24 then\n    goto game_over\n  elseif NextY \u003C 5 then\n    goto game_over\n  elseif NextY > 22 then\n    goto game_over\n  end if\n  OldHeadX = SnakeX[0]\n  OldHeadY = SnakeY[0]\n  shift array SnakeX down 1\n  shift array SnakeY down 1\n  SnakeX[0] = NextX\n  SnakeY[0] = NextY\n  put char BodyTile at OldHeadX,OldHeadY\n  put char HeadTile at NextX,NextY\n  if GrowFlag then\n    if Length \u003C MaxLength then\n      Length += 1\n      play sound 3\n      spawn_apple\n      goto update_score\n    end if\n  end if\n  goto no_grow\n\nsub no_grow:\n  put char EmptyTile at TailX,TailY\n\nsub update_score:\n  print Length at 8,1 digits 2\n  goto game_loop\n\nsub spawn_apple:\nspawn_try:\n  AppleX = random(1, 24)\n  AppleY = random(5, 22)\n  Scan = 0\nspawn_scan_loop:\n  do while Scan \u003C Length\n    if AppleX = SnakeX[Scan] then\n      if AppleY = SnakeY[Scan] then\n        goto spawn_try\n      end if\n    end if\n    Scan += 1\n  loop\nspawn_ok:\n  put char AppleTile at AppleX,AppleY\n  return\n\nsub reset_game:\n  cls\n  print at 18,1, \"SNAKE\"\n  print at 1,1, \"LENGTH\"\n  print at 9,2, \"          \"\n  print at 5,3, \"               \"\n  draw_board\n  Length = 2\n  Direction = DirRight\n  SnakeX[0] = 12\n  SnakeY[0] = 12\n  SnakeX[1] = 11\n  SnakeY[1] = 12\n  put char HeadTile at 12,12\n  put char BodyTile at 11,12\n  print Length at 8,1 digits 2\n  spawn_apple\n  play song SnakeMusic\n  return\n\nsub draw_board:\n  for DrawX = 0 to 25\n    put char WallTile at DrawX,4\n    put char WallTile at DrawX,23\n  next\n  for DrawY = 5 to 22\n    put char WallTile at 0,DrawY\n    put char WallTile at 25,DrawY\n  next\n  return\n\nsub game_over:\n  stop song\n  play sound 4\n  print at 9,2, \"GAME OVER\"\n  print at 5,3, \"FIRE TO RESTART\"\n  pause until press\n  wait no fire\n  reset_game\n  goto game_loop\nend sub\n\nasm {\nSnakeMusic:\n    dw $0001\n    db $41,$02\n    dw $0000\n\nSnakeMusicNotes:\n    db $C0,$33,$F0,$0C\n    db $81,$43,$80,$02,$66,$FD\n    db $C0,$44,$F0,$0C\n    db $81,$50,$90,$02,$66,$FC\n    db $C0,$50,$F0,$0C\n    db $81,$32,$80,$02,$66,$FE\n    db $C0,$88,$F0,$0C\n    db $81,$50,$90,$02,$66,$FC\n    db $C0,$66,$F0,$0C\n    db $81,$43,$80,$02,$66,$FD\n    db $C0,$50,$F0,$0C\n    db $81,$50,$90,$02,$66,$FC\n    db $C0,$44,$F0,$0C\n    db $81,$20,$80,$02,$66,$06\n    db $81,$30,$80,$02,$66,$10\n    db $81,$4C,$90,$02,$66,$13\n    db $C0,$2D,$F0,$0C\n    db $81,$3C,$80,$02,$66,$FD\n    db $C0,$3C,$F0,$0C\n    db $81,$4C,$90,$02,$66,$FB\n    db $C0,$4C,$F0,$0C\n    db $81,$2D,$80,$02,$66,$FD\n    db $C0,$78,$F0,$0C\n    db $81,$4C,$90,$02,$66,$FB\n    db $C0,$5A,$F0,$0C\n    db $81,$3C,$80,$02,$66,$FD\n    db $C0,$3C,$F0,$0C\n    db $81,$4C,$90,$02,$66,$FB\n    db $C0,$44,$F0,$0C\n    db $81,$2A,$80,$02,$66,$08\n    db $81,$40,$70,$02,$66,$07\n    db $81,$55,$50,$02,$66,$10\n    db $98\n\nSnakeMusicBass:\n    db $02,$43,$18,$1A,$35\n    db $18\n\nSnakeGobbleSfx:\n    db $41,$90,$22,$05,$13,$93\n    db $50\n\nSnakeWrongSfx:\n    db $43,$6B,$00,$18,$11,$20,$4C,$22\n    db $50\n\nSnakeSoundTable:\n    dw SnakeMusicNotes,$702B\n    dw SnakeMusicBass,$7035\n    dw SnakeGobbleSfx,$7053\n    dw SnakeWrongSfx,$705D\n}"
   },
   {
+    "id": "rebound-demo",
+    "label": "Rebound Demo",
+    "detail": "Simple arcade-style motion demo for control and rendering comparison.",
+    "projectName": "rebound-demo",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "manual-canon",
+    "sourceText": "cartridge \"REBOUND/AMY STUDIO/2026\"\n\nconst EmptyTile = $20\nconst BallTile = $4F\nconst MaxX = 31\nconst MaxY = 23\n\n' Ball state\nu8 BallX = 10\nu8 BallY = 8\nu8 BallDX = 1\nu8 BallDY = 1\n\n' Tile under the ball\nu8 UnderBallTile = $20\n\n' A simple moving tile that bounces inside the text screen.\n  screen off\n  setup_screen\n  screen on\n  goto main_loop\n\nsub setup_screen:\n  text screen\n  print centered at 4, \"REBOUND\"\n  print centered at 7, \"BOUNCE KEEPS A TILE\"\n  print centered at 8, \"INSIDE THE SCREEN\"\n  print centered at 14, \"PRESS FIRE TO START\"\n  screen on\n  pause until press\n  wait no fire\n  cls\n  print centered at 2, \"REBOUND DEMO\"\n  print centered at 4, \"LETTER O BOUNCES\"\n  print centered at 6, \"5 VBLANKS PER STEP\"\n  put char BallTile at BallX,BallY\n  return\n\nsub main_loop:\n  put char UnderBallTile at BallX,BallY\n  bounce BallX by BallDX between 0 and MaxX\n  bounce BallY by BallDY between 0 and MaxY\n  UnderBallTile = get char at BallX,BallY\n  put char BallTile at BallX,BallY\n  wait 5 frames\n  goto main_loop\nend sub"
+  },
+  {
     "id": "warrior-barbarian-slideshow",
     "label": "Warrior + Barbarian Slideshow",
     "detail": "Two compressed Mode 2 bitmap pictures shown in sequence with a 250-frame delay.",
     "projectName": "warrior-barbarian-slideshow",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -142,11 +191,32 @@ export const exampleCatalog = [
     "sourceText": "picture WarriorPicture:\n  pattern from \"@project/warrior.pattern.zx0\" codec zx0\n  color from \"@project/warrior.color.zx0\" codec zx0\nend picture\n\npicture BarbarianPicture:\n  pattern from \"@project/barbarian.pattern.zx0\" codec zx0\n  color from \"@project/barbarian.color.zx0\" codec zx0\nend picture\n\n' Two-picture compressed bitmap slideshow.\nslideshow_loop:\n  show picture WarriorPicture\n  wait 250 frames\n  show picture BarbarianPicture\n  wait 250 frames\n  goto slideshow_loop"
   },
   {
+    "id": "africa-music-box",
+    "label": "Africa Music Box",
+    "detail": "Music-box demo for song-control workflow and source clarity comparison.",
+    "projectName": "africa-music-box",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [
+      {
+        "path": "africa-music-data.asm",
+        "base64": "OyBBRlJJQ0EgYnkgVG90bywgMTk4Mg0KOyBDb2xlY29WaXNpb24gbXVzaWMgY29tcG9zZWQgYnkgQW15IEJpZW52ZW51IGFrYSBOZXdDb2xlY28NCjsgQXByaWwgLSBNYXkgMjAxOA0KDQo7IEFmcmljYSBNdXNpY2JveA0KDQoJY3B1IHo4MA0KDQphZnJpY2FfY2gwOg0KCS5kYiAweDAyLDB4YjQsMHgwMiwweGQyLDB4MTEgOyB0c3QNCgkuZGIgMHgwMiwweDUzLDB4MTYsMHgxNiwweDExDQoJLmRiIDB4MDIsMHhjNCwweDAyLDB4ZTIsMHgxMSA7IHRzdCAtDQoJLmRiIDB4MDIsMHg1MywweDA2LDB4MTYsMHgxMQ0KCS5kYiAweDAyLDB4YjQsMHgwMiwweGQyLDB4MTEgOyB0c3QNCgkuZGIgMHgwMiwweDQ1LDB4MDYsMHgxYiwweDExIDsgRFJVTQ0KCS5kYiAweDAyLDB4NTMsMHgxOCwweDE2LDB4MTENCgk7DQoJLmRiIDB4MTgNCg0KYWZyaWNhX2NoM18wMToNCgkuZGIgMHhjMCwweDUxLDB4ZjAsMHgxOCA7IEYjMg0KCS5kYiAweGMwLDB4MzYsMHhmMCwweDA4IDsgQyMzDQoJLmRiIDB4YzAsMHgyOCwweGYwLDB4MjAgOyBGIzMNCgkuZGIgMHhjMCwweDY2LDB4ZjAsMHgxOCA7IEQyDQoJLmRiIDB4YzAsMHg0NCwweGYwLDB4MDggOyBBMg0KCS5kYiAweGMwLDB4MzMsMHhmMCwweDIwIDsgRDMNCgkuZGIgMHhjMCwweDQ0LDB4ZjAsMHgxOCA7IEEyDQoJLmRiIDB4YzAsMHgyRCwweGYwLDB4MDggOyBFMw0KCS5kYiAweGMwLDB4MjIsMHhmMCwweDIwIDsgQTMNCgkuZGIgMHhjMCwweDVBLDB4ZjAsMHgxOCA7IEUyDQoJLmRiIDB4YzAsMHgzQywweGYwLDB4MDggOyBCMg0KCS5kYiAweGMwLDB4MkQsMHhmMCwweDIwIDsgRTMNCgkuZGIgMHhkOA0KDQphZnJpY2FfY2gyXzAxOg0KCS5kYiAweDgyLDB4OTQsMHg4MSwweDEwLDB4MTcsMHg1MSA7IEMjNA0KCTsNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgwOCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgwOCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGJlLDB4NTAsMHgwOCwweDE4LDB4NTEgOyBENQ0KCS5kYiAweDgyLDB4YmUsMHg1MCwweDE4LDB4MTgsMHg1MSA7IEQ1IDs7DQoJLmRiIDB4ODIsMHhiZSwweDUwLDB4MDgsMHgxOCwweDUxIDsgRDUNCgkuZGIgMHg4MiwweGJlLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBENQ0KCS5kYiAweDgyLDB4YmUsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEQ1DQoJLmRiIDB4ODIsMHhiZSwweDUwLDB4MTAsMHgxOCwweDUxIDsgRDUNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgzMCwweDE4LDB4NTEgOyBDIzU7Ow0KCS5kYiAweDgyLDB4ZTIsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEI0DQoJLmRiIDB4ODIsMHhlMiwweDUwLDB4MjgsMHgxOCwweDUxIDsgQjQNCgkuZGIgMHg4MiwweDBkLDB4NzEsMHgwYSwweDE3LDB4NTEgOyBHIzQNCgkuZGIgMHg4MiwweGZlLDB4NzAsMHgwYiwweDE3LDB4NTEgOyBBNA0KCS5kYiAweDgyLDB4MGQsMHg3MSwweDBiLDB4MTcsMHg1MSA7IEcjNA0KCTs7DQoJLmRiIDB4ODIsMHg5NCwweDgxLDB4MTAsMHgxNywweDUxIDsgQyM0DQoJOw0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDEwLDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4YmUsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEQ1DQoJLmRiIDB4ODIsMHhiZSwweDUwLDB4MTAsMHgxOCwweDUxIDsgRDUNCgkuZGIgMHg4MiwweGJlLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBENQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDEwLDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDIwLDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4YWEsMHg1MCwweDEwLDB4MTgsMHg1MSA7IEU1DQoJLmRiIDB4ODIsMHhhYSwweDUwLDB4MjgsMHgxOCwweDUxIDsgRTUNCgkuZGIgMHg4MiwweDBkLDB4NzEsMHgwYSwweDE3LDB4NTEgOyBHIzQNCgkuZGIgMHg4MiwweGZlLDB4NzAsMHgwYiwweDE3LDB4NTEgOyBBNA0KCS5kYiAweDgyLDB4MGQsMHg3MSwweDBiLDB4MTcsMHg1MSA7IEcjNA0KCTs7DQphZnJpY2FfY2gyXzAxYjoNCgkuZGIgMHg4MiwweDk0LDB4ODEsMHgxMCwweDE3LDB4NTEgOyBDIzQNCgkuZGIgMHg4MiwweGZlLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBBNA0KCS5kYiAweDgyLDB4ZmUsMHg1MCwweDEwLDB4MTgsMHg1MSA7IEE0DQoJLmRiIDB4ODIsMHhmZSwweDUwLDB4MDgsMHgxOCwweDUxIDsgQTQNCgkuZGIgMHg4MywweGFhLDB4NTAsMHgwOCwweDExLDB4ZmUsMHgxOCwweDUxIDsgRTUNCgkuZGIgMHg4MywweDk3LDB4NjAsMHgwNywweDEyLDB4MDMsMHgxOCwweDUxIDsgRiM1DQoJLmRiIDB4ODIsMHhhYSwweDcwLDB4MTgsMHgxNiwweDUxIDsgRTUNCgkuZGIgMHg4MiwweDk3LDB4NTAsMHgxMCwweDE4LDB4NTEgOyBGIzUNCgkuZGIgMHg4MiwweGFhLDB4NTAsMHgwOCwweDE4LDB4NTEgOyBFNQ0KCS5kYiAweDgyLDB4YWEsMHg1MCwweDM4LDB4MTgsMHg1MSA7IEU1DQoJLmRiIDB4ODIsMHhjYSwweDUwLDB4MDgsMHgxOCwweDUxIDsgQyM1DQoJLmRiIDB4ODIsMHhFMiwweDUwLDB4MjgsMHgxOCwweDUxIDsgQjQNCgkuZGIgMHg4MiwweDBkLDB4NzEsMHgwYSwweDE3LDB4NTEgOyBHIzQNCgkuZGIgMHg4MiwweGZlLDB4NzAsMHgwYiwweDE3LDB4NTEgOyBBNA0KCS5kYiAweDgyLDB4MGQsMHg3MSwweDBiLDB4MTcsMHg1MSA7IEcjNA0KCS5kYiAweDk4DQoNCmFmcmljYV9jaDFfMDE6DQoJLmRiIDB4NDIsMHhGRSwweDgwLDB4MTAsMHgxNywweDUxIDsgQTQNCgk7DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MDgsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MDgsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgxOCwweDE3LDB4NTEgOyBBNSA7Ow0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDA4LDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MTAsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MzAsMHgxNywweDUxIDsgQTUgOzsNCgkuZGIgMHg0MiwweDg3LDB4NDAsMHgwOCwweDE3LDB4NTEgOyBHIzUNCgkuZGIgMHg0MiwweDg3LDB4NDAsMHg0OCwweDE3LDB4NTEgOyBHIzUNCgk7Ow0KCS5kYiAweDQyLDB4RkUsMHg4MCwweDEwLDB4MTcsMHg1MSA7IEE0DQoJOw0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MDgsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDA4LDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MDgsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MTAsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgxMCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDIwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MDgsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4ODcsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEcjNQ0KCS5kYiAweDQyLDB4ODcsMHg0MCwweDQ4LDB4MTcsMHg1MSA7IEcjNQ0KCTs7DQphZnJpY2FfY2gxXzAxYjoNCgkuZGIgMHg0MiwweEZFLDB4ODAsMHgxMCwweDE3LDB4NTEgOyBBNA0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MTAsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDI4LDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MTAsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDM4LDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg4NywweDQwLDB4MDgsMHgxNywweDUxIDsgRyM1DQoJLmRiIDB4NDIsMHg4NywweDQwLDB4NDgsMHgxNywweDUxIDsgRyM1DQoJLmRiIDB4NTgNCg0KYWZyaWNhX2NoM18wMjoNCgkuZGIgMHhjMCwweDUxLDB4ZjAsMHgxOCA7IEYjMg0KCS5kYiAweGMwLDB4MzYsMHhmMCwweDA4IDsgQyMzDQoJLmRiIDB4YzAsMHgyOCwweGYwLDB4MjAgOyBGIzMNCgkuZGIgMHhjMCwweDY2LDB4ZjAsMHgxOCA7IEQyDQoJLmRiIDB4YzAsMHg0NCwweGYwLDB4MDggOyBBMg0KCS5kYiAweGMwLDB4MzMsMHhmMCwweDIwIDsgRDMNCgkuZGIgMHhjMCwweDQ0LDB4ZjAsMHgxOCA7IEEyDQoJLmRiIDB4YzAsMHgyRCwweGYwLDB4MDggOyBFMw0KCS5kYiAweGMwLDB4MjIsMHhmMCwweDIwIDsgQTMNCgkuZGIgMHhjMCwweDZDLDB4ZjAsMHgxOCA7IEMjMg0KCS5kYiAweGMwLDB4NDgsMHhmMCwweDA4IDsgRyMyDQoJLmRiIDB4YzAsMHgzNiwweGYwLDB4MjAgOyBDIzMNCgkuZGIgMHhjMCwweDVBLDB4ZjAsMHgxOCA7IEUyDQoJLmRiIDB4YzAsMHgzQywweGYwLDB4MDggOyBCMg0KCS5kYiAweGMwLDB4MkQsMHhmMCwweDIwIDsgRTMNCgkuZGIgMHhjMCwweDUxLDB4ZjAsMHgxOCA7IEYjMg0KCS5kYiAweGMwLDB4MzYsMHhmMCwweDA4IDsgQyMzDQoJLmRiIDB4YzAsMHg0OCwweGYwLDB4MjAgOyBHIzINCgkuZGIgMHhkMA0KDQphZnJpY2FfY2gyXzAyOg0KCS5kYiAweDgyLDB4OTQsMHg4MSwweDEwLDB4MTcsMHg1MSA7IEMjNA0KCTsNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgwOCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgwOCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGNhLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBDIzUNCgkuZGIgMHg4MiwweGJlLDB4NTAsMHgxMCwweDE4LDB4NTEgOyBENQ0KCS5kYiAweDgyLDB4YmUsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEQ1DQoJLmRiIDB4ODIsMHhiZSwweDUwLDB4MTAsMHgxOCwweDUxIDsgRDUNCgkuZGIgMHg4MiwweGJlLDB4NTAsMHgxOCwweDE4LDB4NTEgOyBENQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDEwLDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDA4LDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4Y2EsMHg1MCwweDEwLDB4MTgsMHg1MSA7IEMjNQ0KCS5kYiAweDgyLDB4ZTIsMHg1MCwweDE4LDB4MTgsMHg1MSA7IEI0DQoJLmRiIDB4ODIsMHhlMiwweDUwLDB4MjgsMHgxOCwweDUxIDsgQjQNCgkuZGIgMHg4MiwweDJlLDB4NTEsMHgwOCwweDE4LDB4NTEgOyBGIzQNCgkuZGIgMHg4MiwweDUzLDB4NTEsMHgxMCwweDE4LDB4NTEgOyBFNA0KCS5kYiAweDgyLDB4ZTIsMHg1MCwweDI4LDB4MTgsMHg1MSA7IEI0DQoJLmRiIDB4ODIsMHhjYSwweDUwLDB4MDgsMHgxOCwweDUxIDsgQyM1DQoJLmRiIDB4ODIsMHhlMiwweDUwLDB4MTAsMHgxOCwweDUxIDsgQjQNCgkuZGIgMHg4MiwweGZlLDB4NTAsMHgyOCwweDE3LDB4NTEgOyBBNA0KCS5kYiAweDgyLDB4NTMsMHg1MSwweDE4LDB4MTgsMHg1MSA7IEU0DQoJLmRiIDB4OTANCg0KYWZyaWNhX2NoMV8wMjoNCgkuZGIgMHg0MiwweEZFLDB4ODAsMHgxMCwweDE3LDB4NTEgOyBBNA0KCTsNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDA4LDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MTAsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgxMCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MDgsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgxMCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDE4LDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg3RiwweDQwLDB4MTAsMHgxNywweDUxIDsgQTUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4N0YsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEE1DQoJLmRiIDB4NDIsMHg4NywweDQwLDB4MTgsMHgxNywweDUxIDsgRyM1DQoJLmRiIDB4NDIsMHg4NywweDQwLDB4MjgsMHgxNywweDUxIDsgRyM1DQoJLmRiIDB4NDIsMHg5NywweDQwLDB4MDgsMHgxNywweDUxIDsgRiM1DQoJLmRiIDB4NDIsMHhBQSwweDQwLDB4MTAsMHgxNywweDUxIDsgRTUNCgkuZGIgMHg0MiwweDg3LDB4NDAsMHgyOCwweDE3LDB4NTEgOyBHIzUNCgkuZGIgMHg0MiwweDdGLDB4NDAsMHgwOCwweDE3LDB4NTEgOyBBNQ0KCS5kYiAweDQyLDB4ODcsMHg0MCwweDEwLDB4MTcsMHg1MSA7IEcjNQ0KCS5kYiAweDQyLDB4OTcsMHg0MCwweDI4LDB4MTcsMHg1MSA7IEYjNQ0KCS5kYiAweDQyLDB4QUEsMHg0MCwweDE4LDB4MTcsMHg1MSA7IEU1DQoJLmRiIDB4NTANCgkNCjs7Ow0KDQo7IFdyaXRlIHlvdXIgQ1Ygc291bmRzIGhlcmUNCmFmcmljYV9jaDBfMDM6DQoJLmRiIDB4MDIsMHhiNCwweDAyLDB4ZDIsMHgxMSA7IHRzdA0KCS5kYiAweDAyLDB4NTMsMHgxNiwweDE2LDB4MTENCgkuZGIgMHgwMiwweGM0LDB4MDIsMHhlMiwweDExIDsgdHN0LQ0KCS5kYiAweDAyLDB4NTMsMHgwNiwweDE2LDB4MTENCgkuZGIgMHgwMiwweGI0LDB4MDIsMHhkMiwweDExIDsgdHN0DQoJLmRiIDB4MDIsMHg0NSwweDA2LDB4MWIsMHgxMSA7IERSVU0NCgkuZGIgMHgwMiwweDUzLDB4MDgsMHgxNiwweDEzDQoJLmRiIDB4MDAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHgwMiwweDUzLDB4MDgsMHgxNiwweDEzDQoJLmRiIDB4MDIsMHhiNCwweDAyLDB4ZDIsMHgxMSA7IHRzdA0KCS5kYiAweDAyLDB4NTMsMHgwZSwweDE2LDB4MTMNCgkuZGIgMHgwMiwweDUzLDB4MDgsMHgxNiwweDEzDQoJLmRiIDB4MDIsMHhjNCwweDAyLDB4ZTIsMHgxMSA7IHRzdC0NCgkuZGIgMHgwMiwweDUzLDB4MDYsMHgxNiwweDExDQoJLmRiIDB4MDIsMHhiNCwweDAyLDB4ZDIsMHgxMSA7IHRzdA0KCS5kYiAweDAyLDB4NDUsMHgwNiwweDFiLDB4MTEgOyBEUlVNDQoJLmRiIDB4MDIsMHg1MywweDE4LDB4MTYsMHgxMw0KCS5kYiAweDAyLDB4YjQsMHgwMiwweGQyLDB4MTEgOyB0c3QNCgkuZGIgMHgwMiwweDUzLDB4MTYsMHgxNiwweDExDQoJLmRiIDB4MDIsMHhjNCwweDAyLDB4ZTIsMHgxMSA7IHRzdC0NCgkuZGIgMHgwMiwweDUzLDB4MDYsMHgxNiwweDExDQoJLmRiIDB4MDIsMHhiNCwweDAyLDB4ZDIsMHgxMSA7IHRzdA0KCS5kYiAweDAyLDB4NDUsMHgwNiwweDFiLDB4MTEgOyBEUlVNDQoJLmRiIDB4MDIsMHg1MywweDE4LDB4MTYsMHgxMw0KCS5kYiAweDAyLDB4YjQsMHgwMiwweGQyLDB4MTEgOyB0c3QNCgkuZGIgMHgwMiwweDUzLDB4MTYsMHgxNiwweDExDQoJLmRiIDB4MDIsMHhjNCwweDAyLDB4ZTIsMHgxMSA7IHRzdC0NCgkuZGIgMHgwMiwweDUzLDB4MDYsMHgxNiwweDExDQoJLmRiIDB4MDIsMHhiNCwweDAyLDB4ZDIsMHgxMSA7IHRzdA0KCS5kYiAweDAyLDB4NDUsMHgwNiwweDFiLDB4MTEgOyBEUlVNDQoJLmRiIDB4MDIsMHg1MywweDE4LDB4MTYsMHgxMw0KCS5kYiAweDE4DQoNCmFmcmljYV9jaDNfMDM6DQoJLmRiIDB4YzAsMHg0NCwweGYwLDB4NTAgOyBBMg0KCS5kYiAweGMwLDB4NDgsMHhmMCwweDEwIDsgRyMyDQoJLmRiIDB4YzAsMHg2QywweGYwLDB4QTAgOyBDIzINCmFmcmljYV9jaDNfMDNpbnRybzoNCgkuZGIgMHhjMCwweDg4LDB4ZjAsMHg1MCA7IEExDQoJLmRiIDB4YzAsMHg5MCwweGYwLDB4MTAgOyBHIzENCgkuZGIgMHhjMCwweDZDLDB4ZjAsMHhBMCA7IEMjMg0KCS5kYiAweGQ4DQoNCmFmcmljYV9jaDJfMDM6DQoJLmRiIDB4ODIsMHg5NCwweDYxLDB4MTgsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4ODIsMHg5NCwweDYxLDB4MDgsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg4MiwweDk0LDB4NjEsMHgwOCwweDE3LDB4NTEgOyBDIzQNCgkuZGIgMHg4MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDgyLDB4OTQsMHg2MSwweDA4LDB4MTcsMHg1MSA7IEMjNA0KCS5kYiAweDgyLDB4OTQsMHg2MSwweDEwLDB4MTcsMHg1MSA7IEMjNA0KCS5kYiAweDgyLDB4YzUsMHg2MSwweDEwLDB4MTcsMHg1MSA7IEIzDQoJLmRiIDB4ODIsMHg1MywweDYxLDB4MTAsMHgxNywweDUxIDsgRTQNCgk7Ow0KCS5kYiAweDgyLDB4Y2EsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEMjNQ0KCS5kYiAweDgyLDB4ZTIsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEI0DQoJLmRiIDB4ODIsMHgwZCwweDcxLDB4MDgsMHgxNywweDEyIDsgRyM0DQoJLmRiIDB4ODIsMHhlMiwweDcwLDB4MDgsMHgxNywweDEyIDsgQjQNCgkuZGIgMHg4MiwweDBkLDB4NzEsMHgwOCwweDE3LDB4MTIgOyBHIzQNCgkuZGIgMHg4MCwweDAwLDB4ZjAsMHgxMA0KCS5kYiAweDgyLDB4ZTIsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEI0DQoJLmRiIDB4ODIsMHgwZCwweDcxLDB4MDgsMHgxNywweDEyIDsgRyM0DQoJLmRiIDB4ODIsMHhlMiwweDcwLDB4MDgsMHgxNywweDEyIDsgQjQNCgkuZGIgMHg4MiwweGNhLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBDIzUNCgkuZGIgMHg4MiwweGUyLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBCNA0KCS5kYiAweDgyLDB4MGQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEcjNA0KCTsuZGIgMHg4MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDgyLDB4ZTIsMHg4MCwweDA4LDB4MTcsMHgxMiA7IEI0CQ0KCS5kYiAweDgyLDB4MGQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEcjNA0KCTsuZGIgMHg4MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDgyLDB4OTcsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEYjNQ0KCS5kYiAweDgyLDB4ZTIsMHg3MCwweDEwLDB4MTcsMHgxMiA7IEI0DQoJLmRiIDB4OTgNCg0KYWZyaWNhX2NoMV8wMzoNCgkuZGIgMHg0MiwweGZjLDB4ODEsMHgxOCwweDE3LDB4NTEgOyBBMw0KCS5kYiAweDQyLDB4ZmMsMHg4MSwweDA4LDB4MTcsMHg1MSA7IEEzDQoJLmRiIDB4NDAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg0MiwweGZjLDB4ODEsMHgwOCwweDE3LDB4NTEgOyBBMw0KCS5kYiAweDQwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4NDIsMHhmYywweDgxLDB4MDgsMHgxNywweDUxIDsgQTMNCgkuZGIgMHg0MiwweGZjLDB4ODEsMHgxMCwweDE3LDB4NTEgOyBBMw0KCS5kYiAweDQyLDB4MWIsMHg4MiwweDEwLDB4MTcsMHg1MSA7IEcjMw0KCS5kYiAweDQyLDB4OTQsMHg4MSwweDEwLDB4MTcsMHg1MSA7IEMjNA0KCTs7DQoJLmRiIDB4NDIsMHg5NywweDcwLDB4MDgsMHgxNywweDEyIDsgRiM1DQoJLmRiIDB4NDIsMHhBQSwweDcwLDB4MDgsMHgxNywweDEyIDsgRTUNCgkuZGIgMHg0MiwweGNhLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBDIzUNCgkuZGIgMHg0MiwweEFBLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBFNQ0KCS5kYiAweDQyLDB4Y2EsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEMjNQ0KCS5kYiAweDQyLDB4OTcsMHg3MCwweDEwLDB4MTcsMHgxMiA7IEYjNSA7DQoJLmRiIDB4NDIsMHhBQSwweDcwLDB4MDgsMHgxNywweDEyIDsgRTUNCgkuZGIgMHg0MiwweGNhLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBDIzUNCgkuZGIgMHg0MiwweEFBLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBFNQ0KCS5kYiAweDQyLDB4OTcsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEYjNQ0KCS5kYiAweDQyLDB4QUEsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEU1DQoJLmRiIDB4NDIsMHhjYSwweDcwLDB4MDgsMHgxNywweDEyIDsgQyM1DQoJLmRiIDB4NDIsMHhlMiwweDgwLDB4MDgsMHgxNywweDEyIDsgQjQNCgkuZGIgMHg0MiwweGNhLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBDIzUNCgkuZGIgMHg0MiwweDk3LDB4NzAsMHgwOCwweDE3LDB4MTIgOyBGIzUNCgkuZGIgMHg0MiwweEFBLDB4NzAsMHgxMCwweDE3LDB4MTIgOyBFNQ0KCS5kYiAweDU4DQoNCmFmcmljYV9jaDJfMDNiOg0KCS5kYiAweDgyLDB4OTQsMHg2MSwweDE4LDB4MTcsMHg1MSA7IEMjNA0KCS5kYiAweDgyLDB4OTQsMHg2MSwweDA4LDB4MTcsMHg1MSA7IEMjNA0KCS5kYiAweDgwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4ODIsMHg5NCwweDYxLDB4MDgsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg4MiwweDk0LDB4NjEsMHgwOCwweDE3LDB4NTEgOyBDIzQNCgkuZGIgMHg4MiwweDk0LDB4NjEsMHgxMCwweDE3LDB4NTEgOyBDIzQNCgkuZGIgMHg4MiwweGM1LDB4NjEsMHgxMCwweDE3LDB4NTEgOyBCMw0KCS5kYiAweDgyLDB4NTMsMHg2MSwweDIwLDB4MTcsMHg1MSA7IEU0DQoJLmRiIDB4OTANCg0KYWZyaWNhX2NoMV8wM2I6DQoJLmRiIDB4NDIsMHhmYywweDgxLDB4MTgsMHgxNywweDUxIDsgQTMNCgkuZGIgMHg0MiwweGZjLDB4ODEsMHgwOCwweDE3LDB4NTEgOyBBMw0KCS5kYiAweDQwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4NDIsMHhmYywweDgxLDB4MDgsMHgxNywweDUxIDsgQTMNCgkuZGIgMHg0MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDQyLDB4ZmMsMHg4MSwweDA4LDB4MTcsMHg1MSA7IEEzDQoJLmRiIDB4NDIsMHhmYywweDgxLDB4MTAsMHgxNywweDUxIDsgQTMNCgkuZGIgMHg0MiwweDFiLDB4ODIsMHgxMCwweDE3LDB4NTEgOyBHIzMNCgkuZGIgMHg0MiwweDk0LDB4ODEsMHgyMCwweDE3LDB4NTEgOyBDIzQNCgkuZGIgMHg1MA0KDQphZnJpY2FfY2gzXzA0Og0KCS5kYiAweGMwLDB4NzksMHhmMCwweDIwIDsgQjENCgkuZGIgMHhjMCwweDNDLDB4ZjAsMHgyMCA7IEIyDQoJOw0KCS5kYiAweGMwLDB4NjAsMHhmMCwweDIwIDsgRCMyDQoJLmRiIDB4YzAsMHgzQywweGYwLDB4MjAgOyBCMg0KCTsNCgkuZGIgMHhjMCwweDkwLDB4ZjAsMHgyMCA7IEcjMQ0KCS5kYiAweGMwLDB4NDgsMHhmMCwweDIwIDsgRyMyDQoJOw0KCS5kYiAweGMwLDB4QTEsMHhmMCwweDIwIDsgRiMxDQoJLmRiIDB4YzAsMHg1MSwweGYwLDB4MjAgOyBGIzINCgk7DQoJLmRiIDB4YzAsMHg4OCwweGYwLDB4MjAgOyBBMQ0KCS5kYiAweGMwLDB4NDQsMHhmMCwweDIwIDsgQTINCgk7DQoJLmRiIDB4YzAsMHhBMSwweGYwLDB4MjAgOyBGIzENCgkuZGIgMHhjMCwweDUxLDB4ZjAsMHgyMCA7IEYjMg0KCTsNCgkuZGIgMHhjMCwweDkwLDB4ZjAsMHgyMCA7IEcjMQ0KCS5kYiAweGMwLDB4NDgsMHhmMCwweDIwIDsgRyMyDQoJOw0KCS5kYiAweGQ4DQoNCmFmcmljYV9jaDJfMDQ6DQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgwOCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgwOCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgwOCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgyMCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgwOCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgxOCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDFCLDB4NTIsMHgxMCwweDE2LDB4NTEgOyBHIzMNCgkuZGIgMHg4MiwweEUwLDB4NTEsMHgwOCwweDE2LDB4NTEgOyBBIzMNCgkuZGIgMHg4MiwweEM1LDB4NTEsMHgyOCwweDE2LDB4NTEgOyBCMw0KCS5kYiAweDgwLDB4MDAsMHhmMCwweDE4DQoJLmRiIDB4ODIsMHhDRiwweDUyLDB4MDgsMHgxNiwweDUxIDsgRCMzDQoJLmRiIDB4ODIsMHhDRiwweDUyLDB4MDgsMHgxNiwweDUxIDsgRCMzDQoJLmRiIDB4ODIsMHhDRiwweDUyLDB4MTgsMHgxNiwweDUxIDsgRCMzDQoJLmRiIDB4ODIsMHhBNywweDUyLDB4MTAsMHgxNiwweDUxIDsgRTMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgwOCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweDVELDB4NTIsMHgxMCwweDE2LDB4NTEgOyBGIzMNCgkuZGIgMHg4MiwweEE3LDB4NTIsMHgxOCwweDE2LDB4NTEgOyBFMw0KCS5kYiAweDgyLDB4QTcsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEUzDQoJLmRiIDB4ODIsMHhDRiwweDUyLDB4MTAsMHgxNiwweDUxIDsgRCMzDQoJLmRiIDB4ODIsMHgyNywweDUzLDB4MTgsMHgxNiwweDUxIDsgQyMzDQoJLmRiIDB4ODIsMHg4QSwweDUzLDB4MDgsMHgxNiwweDUxIDsgQjINCgkuZGIgMHg4MiwweDI3LDB4NTMsMHgxMCwweDE2LDB4NTEgOyBDIzMNCgkuZGIgMHg4MiwweDhBLDB4NTMsMHgwOCwweDE2LDB4NTEgOyBCMg0KCS5kYiAweDgyLDB4Q0YsMHg1MiwweDMwLDB4MTYsMHg1MSA7IEQjMw0KCS5kYiAweDgyLDB4MjcsMHg1MywweDA4LDB4MTYsMHg1MSA7IEMjMw0KCS5kYiAweDgyLDB4OEEsMHg1MywweDEwLDB4MTYsMHg1MSA7IEIyDQoJLmRiIDB4OTgNCg0KYWZyaWNhX2NoMV8wNDoNCgkuZGIgMHg0MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDA4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDA4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDA4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDIwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDA4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDE4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4MUEsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEcjMw0KCS5kYiAweDQyLDB4REYsMHg3MSwweDA4LDB4MTcsMHg1MSA7IEEjMw0KCS5kYiAweDQyLDB4QzQsMHg3MSwweDI4LDB4MTcsMHg1MSA7IEIzDQoJLmRiIDB4NDAsMHgwMCwweGYwLDB4MTgNCgkuZGIgMHg0MiwweENFLDB4NzIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg0MiwweENFLDB4NzIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg0MiwweENFLDB4NzIsMHgxOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg0MiwweEE2LDB4NzIsMHgxMCwweDE3LDB4NTEgOyBFMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDA4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4QTYsMHg3MiwweDE4LDB4MTcsMHg1MSA7IEUzDQoJLmRiIDB4NDIsMHhBNiwweDcyLDB4MTAsMHgxNywweDUxIDsgRTMNCgkuZGIgMHg0MiwweENFLDB4NzIsMHgxMCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg0MiwweDI2LDB4NzMsMHgxOCwweDE3LDB4NTEgOyBDIzMNCgkuZGIgMHg0MiwweDg5LDB4NzMsMHgwOCwweDE3LDB4NTEgOyBCMg0KCS5kYiAweDQyLDB4MjYsMHg3MywweDEwLDB4MTcsMHg1MSA7IEMjMw0KCS5kYiAweDQyLDB4ODksMHg3MywweDA4LDB4MTcsMHg1MSA7IEIyDQoJLmRiIDB4NDIsMHhDRSwweDcyLDB4MzAsMHgxNywweDUxIDsgRCMzDQoJLmRiIDB4NDIsMHgyNiwweDczLDB4MDgsMHgxNywweDUxIDsgQyMzDQoJLmRiIDB4NDIsMHg4OSwweDczLDB4MTAsMHgxNywweDUxIDsgQjINCgkuZGIgMHg0OA0KCQ0KYWZyaWNhX2NoMl8wNToNCgkuZGIgMHg4MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDgyLDB4NUQsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4MUIsMHg1MiwweDEwLDB4MTYsMHg1MSA7IEcjMw0KCS5kYiAweDgyLDB4RTAsMHg1MSwweDEwLDB4MTYsMHg1MSA7IEEjMw0KCS5kYiAweDgyLDB4QzUsMHg1MSwweDI4LDB4MTYsMHg1MSA7IEIzDQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MjANCgkuZGIgMHg4MiwweDY3LDB4NTEsMHgwOCwweDE2LDB4NTEgOyBEIzQNCgkuZGIgMHg4MiwweDY3LDB4NTEsMHgxMCwweDE2LDB4NTEgOyBEIzQNCgkuZGIgMHg4MiwweDUzLDB4NTEsMHgxOCwweDE2LDB4NTEgOyBFNA0KCS5kYiAweDgyLDB4MmUsMHg1MSwweDEwLDB4MTYsMHg1MSA7IEYjNA0KCS5kYiAweDkwDQoNCmFmcmljYV9jaDJfMDViOg0KCS5kYiAweDgyLDB4MmUsMHg2MSwweDA4LDB4MTcsMHg1MSA7IEYjNA0KCS5kYiAweDgyLDB4NTMsMHg2MSwweDEwLDB4MTcsMHg1MSA7IEU0DQoJLmRiIDB4ODIsMHg1MywweDYxLDB4MTAsMHgxNywweDUxIDsgRTQNCgkuZGIgMHg4MiwweDY3LDB4NjEsMHgwOCwweDE3LDB4NTEgOyBEIzQNCgkuZGIgMHg4MiwweDUzLDB4NjEsMHgxMCwweDE3LDB4NTEgOyBFNA0KDQoJLmRiIDB4ODIsMHg5NCwweDYxLDB4MTAsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4ODIsMHhjNSwweDYxLDB4MTAsMHgxNywweDUxIDsgQjMNCgkuZGIgMHg4MiwweDUzLDB4NjEsMHgyMCwweDE3LDB4NTEgOyBFNA0KDQoJLmRiIDB4OTANCg0KYWZyaWNhX2NoMV8wNToNCgkuZGIgMHg0MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4NUMsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDQyLDB4MUEsMHg3MiwweDEwLDB4MTcsMHg1MSA7IEcjMw0KCS5kYiAweDQyLDB4REYsMHg3MSwweDEwLDB4MTcsMHg1MSA7IEEjMw0KCS5kYiAweDQyLDB4QzQsMHg3MSwweDI4LDB4MTcsMHg1MSA7IEIzDQoJLmRiIDB4NDAsMHgwMCwweGYwLDB4MjANCgkuZGIgMHg0MiwweEM1LDB4NzEsMHgwOCwweDE3LDB4NTEgOyBCMw0KCS5kYiAweDQyLDB4QzUsMHg3MSwweDEwLDB4MTcsMHg1MSA7IEIzDQoJLmRiIDB4NDIsMHg5NCwweDcxLDB4MTgsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4NDIsMHg2NywweDcxLDB4MTAsMHgxNywweDUxIDsgRCM0DQoJLmRiIDB4NTANCg0KYWZyaWNhX2NoMV8wNWI6DQoJLmRiIDB4NDIsMHg2NywweDcxLDB4MDgsMHgxNywweDUxIDsgRCM0DQoJLmRiIDB4NDIsMHg5NCwweDcxLDB4MTAsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4NDIsMHg5NCwweDcxLDB4MTAsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4NDIsMHhDNSwweDcxLDB4MDgsMHgxNywweDUxIDsgQjMNCgkuZGIgMHg0MiwweDk0LDB4NzEsMHgxMCwweDE3LDB4NTEgOyBDIzQNCg0KCS5kYiAweDQyLDB4ZmMsMHg4MSwweDEwLDB4MTcsMHg1MSA7IEEzDQoJLmRiIDB4NDIsMHgxYiwweDgyLDB4MTAsMHgxNywweDUxIDsgRyMzDQoJLmRiIDB4NDIsMHg5NCwweDgxLDB4MjAsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4NTANCg0KOyBGTFVURQ0KYWZyaWNhX2NoMV8wNjoNCgkuZGIgMHg0MiwweEUyLDB4ZDAsMHg0MCwweGUzLDB4MjEgOyBCNA0KCS5kYiAweDQyLDB4RjAsMHhkMCwweDQwLDB4ZTMsMHgyMSA7IEEjNA0KCS5kYiAweDQyLDB4MGQsMHhkMSwweDQwLDB4ZTMsMHgyMSA7IEcjNA0KCS5kYiAweDQyLDB4MmUsMHhkMSwweDQwLDB4ZTMsMHgyMSA7IEYjNA0KCS5kYiAweDQyLDB4ZmUsMHhkMCwweDQwLDB4ZTMsMHgyMSA7IEE0DQoJLmRiIDB4NDIsMHgwZCwweGQxLDB4NDAsMHhlMywweDIxIDsgRyM0DQoJLmRiIDB4NDIsMHhFMiwweGQwLDB4MjgsMHhlMywweDIxIDsgQjQNCgkuZGIgMHg0MiwweGZlLDB4ZDAsMHgwOCwweGUzLDB4MjEgOyBBNA0KCS5kYiAweDQyLDB4MGQsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEcjNA0KCS5kYiAweDQyLDB4ZmUsMHhkMCwweDA4LDB4ZTMsMHgyMSA7IEE0DQoJLmRiIDB4NTANCg0KYWZyaWNhX2NoMl8wNjoNCgkuZGIgMHg4MCwweDAwLDB4ZjAsMHgxMA0KCS5kYiAweDgyLDB4NUQsMHg2MiwweDA4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg2MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg2MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4RTAsMHg2MSwweDEwLDB4MTcsMHg1MSA7IEEjMw0KCS5kYiAweDgyLDB4RTAsMHg2MSwweDEwLDB4MTcsMHg1MSA7IEEjMw0KCS5kYiAweDgyLDB4QzUsMHg2MSwweDEwLDB4MTcsMHg1MSA7IEIzDQoJLmRiIDB4ODIsMHg5NCwweDYxLDB4MTAsMHgxNywweDUxIDsgQyM0DQoJLmRiIDB4ODIsMHg2NywweDYxLDB4MTgsMHgxNywweDUxIDsgRCM0IDs7DQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgxMCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgxMCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweEE3LDB4NjIsMHgxMCwweDE3LDB4NTEgOyBFMw0KCS5kYiAweDgyLDB4NUQsMHg2MiwweDE4LDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4NUQsMHg2MiwweDEwLDB4MTcsMHg1MSA7IEYjMw0KCS5kYiAweDgyLDB4QTcsMHg2MiwweDEwLDB4MTcsMHg1MSA7IEUzDQoJLmRiIDB4ODIsMHhBNywweDYyLDB4MTAsMHgxNywweDUxIDsgRTMNCgkuZGIgMHg4MiwweENGLDB4NjIsMHgwOCwweDE3LDB4NTEgOyBEIzMNCgkuZGIgMHg4MiwweDI3LDB4NjMsMHgxMCwweDE3LDB4NTEgOyBDIzMNCgkuZGIgMHg4MiwweDI3LDB4NjMsMHgxMCwweDE3LDB4NTEgOyBDIzMNCgkuZGIgMHg4MiwweDhBLDB4NjMsMHgwOCwweDE3LDB4NTEgOyBCMg0KCS5kYiAweDgyLDB4MjcsMHg2MywweDEwLDB4MTcsMHg1MSA7IEMjMw0KCS5kYiAweDgyLDB4OEEsMHg2MywweDEwLDB4MTcsMHg1MSA7IEIyDQoJLmRiIDB4ODIsMHhDRiwweDYyLDB4MjgsMHgxNywweDUxIDsgRCMzDQoJLmRiIDB4ODIsMHgyNywweDYzLDB4MDgsMHgxNywweDUxIDsgQyMzDQoJLmRiIDB4ODIsMHg4QSwweDYzLDB4MDgsMHgxNywweDUxIDsgQjINCgkuZGIgMHg4MiwweDI3LDB4NjMsMHgwOCwweDE3LDB4NTEgOyBDIzMNCgkuZGIgMHg5MA0KDQo7OzsgU09MTw0KDQo7IEZMVVRFICsgWFlMTyAoU09MTyBQQVJUIDEpDQphZnJpY2FfY2gyXzA3Og0KCS5kYiAweDgwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4ODIsMHhlMiwweGQwLDB4MDgsMHhlMywweDIxIDsgQjQNCgkuZGIgMHg4MiwweDBkLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBHIzQNCgkuZGIgMHg4MiwweDJlLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg4MiwweDBkLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBHIzQNCgkuZGIgMHg4MiwweDJlLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg4MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg4MiwweDJlLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg4MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg4MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg4MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg4MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg4MiwweGM1LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBCMw0KCS5kYiAweDgyLDB4OTQsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEMjNA0KCS5kYiAweDgyLDB4YzUsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEIzDQoJLmRiIDB4ODIsMHgxYiwweGQyLDB4MDgsMHhlMywweDIxIDsgRyMzDQoJLmRiIDB4ODIsMHhjNSwweGQxLDB4MDgsMHhlMywweDIxIDsgQjMNCgkuZGIgMHg4MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg4MiwweDVkLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBGIzMNCgkuZGIgMHg4MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg4MiwweDVkLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBGIzMNCgkuZGIgMHg4MiwweGNmLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBEIzMNCgkuZGIgMHg4MiwweDVkLDB4ZDIsMHgyMCwweGUzLDB4MjEgOyBGIzMNCgkuZGIgMHg4MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg4MiwweGNmLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBEIzMNCgkuZGIgMHg4MCwweDAwLDB4ZjAsMHgyMA0KCS5kYiAweDgwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4ODIsMHg5NCwweDcxLDB4MDgsMHgxNywweDEyIDsgQyM0DQoJLmRiIDB4ODIsMHg1MywweDcxLDB4MDgsMHgxNywweDEyIDsgRTQNCgkuZGIgMHg4MiwweENBLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBDIzUNCgkuZGIgMHg4MiwweEUyLDB4NzAsMHgwOCwweDE3LDB4MTIgOyBCNA0KCS5kYiAweDgyLDB4RjAsMHg3MCwweDA4LDB4MTcsMHgxMiA7IEEjNA0KCS5kYiAweDgyLDB4MEQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEcjNA0KCS5kYiAweDgyLDB4MkUsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEYjNA0KCS5kYiAweDgyLDB4NTMsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEU0DQoJLmRiIDB4ODIsMHg2NywweDcxLDB4MDgsMHgxNywweDEyIDsgRCM0DQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg4MiwweDBELDB4NzEsMHgwOCwweDE3LDB4MTIgOyBHIzQNCgkuZGIgMHg4MCwweDAwLDB4ZjAsMHgwOA0KCS5kYiAweDgyLDB4MkUsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEYjNA0KCS5kYiAweDgwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4ODIsMHg1MywweDcxLDB4MDgsMHgxNywweDEyIDsgRTQNCgkuZGIgMHg4MiwweDY3LDB4NzEsMHgxMCwweDE3LDB4MTIgOyBEIzQNCgkuZGIgMHg4MiwweDk0LDB4NzEsMHgxMCwweDE3LDB4MTIgOyBDIzQNCgkuZGIgMHg4MiwweEM1LDB4NzEsMHgxMCwweDE3LDB4MTIgOyBCMw0KCS5kYiAweDgyLDB4MkUsMHg3MSwweDEwLDB4MTcsMHgxMiA7IEYjNA0KCS5kYiAweDgyLDB4NjcsMHg3MSwweDEwLDB4MTcsMHgxMiA7IEQjNA0KCS5kYiAweDgyLDB4OTQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEMjNA0KCS5kYiAweDgyLDB4QzUsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEIzDQoJLmRiIDB4OTANCg0KOyBGTFVURSAoU09MTyBQQVJUIDEpDQphZnJpY2FfY2gxXzA3Og0KLmRiIDB4NDAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg0MiwweGI0LDB4ZDAsMHgwOCwweGUzLDB4MjEgOyBEIzUNCgkuZGIgMHg0MiwweGNhLDB4ZDAsMHgwOCwweGUzLDB4MjEgOyBDIzUNCgkuZGIgMHg0MiwweGUyLDB4ZDAsMHgwOCwweGUzLDB4MjEgOyBCNA0KCS5kYiAweDQyLDB4Y2EsMHhkMCwweDA4LDB4ZTMsMHgyMSA7IEMjNA0KCS5kYiAweDQyLDB4ZTIsMHhkMCwweDA4LDB4ZTMsMHgyMSA7IEI0DQoJLmRiIDB4NDIsMHgwZCwweGQxLDB4MDgsMHhlMywweDIxIDsgRyM0DQoJLmRiIDB4NDIsMHhlMiwweGQwLDB4MDgsMHhlMywweDIxIDsgQjQNCgkuZGIgMHg0MiwweDBkLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBHIzQNCgkuZGIgMHg0MiwweDJlLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg0MiwweDBkLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBHIzQNCgkuZGIgMHg0MiwweDJlLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg0MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg0MiwweDJlLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg0MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg0MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg0MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg0MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg0MiwweGM1LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBCMw0KCS5kYiAweDQyLDB4OTQsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEMjNA0KCS5kYiAweDQyLDB4YzUsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEIzDQoJLmRiIDB4NDIsMHgxYiwweGQyLDB4MDgsMHhlMywweDIxIDsgRyMzDQoJLmRiIDB4NDIsMHhjNSwweGQxLDB4MjAsMHhlMywweDIxIDsgQjMNCgkuZGIgMHg0MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg0MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg0MCwweDAwLDB4ZjAsMHgyMA0KCS5kYiAweDQwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4NDIsMHhBNywweGQyLDB4MDgsMHhlMywweDIxIDsgRTMNCgkuZGIgMHg0MiwweEUwLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBBIzMNCgkuZGIgMHg0MiwweDUzLDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBFNA0KCS5kYiAweDQyLDB4NjcsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEQjNA0KCS5kYiAweDQyLDB4OTQsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEMjNA0KCS5kYiAweDQyLDB4YzUsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEIzDQoJLmRiIDB4NDIsMHhFMCwweGQxLDB4MDgsMHhlMywweDIxIDsgQSMzDQoJLmRiIDB4NDIsMHgxYiwweGQyLDB4MDgsMHhlMywweDIxIDsgRyMzDQoJLmRiIDB4NDIsMHg1ZCwweGQyLDB4MDgsMHhlMywweDIxIDsgRiMzDQoJLmRiIDB4NDAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg0MiwweGM1LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBCMw0KCS5kYiAweDQwLDB4MDAsMHhmMCwweDA4DQoJLmRiIDB4NDIsMHhFMCwweGQxLDB4MDgsMHhlMywweDIxIDsgQSMzDQoJLmRiIDB4NDAsMHgwMCwweGYwLDB4MDgNCgkuZGIgMHg0MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg0MiwweDVkLDB4ZDIsMHgxMCwweGUzLDB4MjEgOyBGIzMNCgkuZGIgMHg0MiwweEE3LDB4ZDIsMHgxMCwweGUzLDB4MjEgOyBFMw0KCS5kYiAweDQyLDB4Y2YsMHhkMiwweDEwLDB4ZTMsMHgyMSA7IEQjMw0KCS5kYiAweDQyLDB4YzUsMHhkMSwweDEwLDB4ZTMsMHgyMSA7IEIzDQoJLmRiIDB4NDIsMHg1ZCwweGQyLDB4MTAsMHhlMywweDIxIDsgRiMzDQoJLmRiIDB4NDIsMHhBNywweGQyLDB4MDgsMHhlMywweDIxIDsgRTMNCgkuZGIgMHg0MiwweGNmLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBEIzMNCgkuZGIgMHg1MA0KDQo7IFhZTE8gKFNPTE8gUEFSVCAyKQ0KYWZyaWNhX2NoMl8wODoNCgkuZGIgMHg4MiwweDk0LDB4NzEsMHgwOCwweDE3LDB4MTIgOyBDIzQNCgkuZGIgMHg4MiwweEM1LDB4NzEsMHgwOCwweDE3LDB4MTIgOyBCMw0KCS5kYiAweDgyLDB4OTQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEMjNA0KCS5kYiAweDgyLDB4NjcsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEQjNA0KCS5kYiAweDgyLDB4OTQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEMjNA0KCS5kYiAweDgyLDB4NjcsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEQjNA0KCS5kYiAweDgyLDB4MkUsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEYjNA0KCS5kYiAweDgyLDB4NjcsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEQjNA0KCS5kYiAweDgyLDB4MkUsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEYjNA0KCS5kYiAweDgyLDB4MEQsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEcjNA0KCS5kYiAweDgyLDB4MkUsMHg3MSwweDA4LDB4MTcsMHgxMiA7IEYjNA0KCS5kYiAweDgyLDB4Q0EsMHg3MCwweDAyLDB4MTcsMHgxMiA7IEMjNQ0KCS5kYiAweDgyLDB4QjQsMHg3MCwweDA2LDB4MTcsMHgxMiA7IEQjNQ0KCS5kYiAweGE4DQoJLmRiIDB4ODIsMHhFMiwweDcwLDB4MDIsMHgxNywweDEyIDsgQjQNCgkuZGIgMHg4MiwweENBLDB4NzAsMHgwNiwweDE3LDB4MTIgOyBDIzUNCgkuZGIgMHhhOA0KCS5kYiAweDgyLDB4RTIsMHg3MCwweDI4LDB4MTcsMHgxMiA7IEI0DQoJLmRiIDB4ODAsMHgwMCwweGYwLDB4MjANCgkuZGIgMHg4MiwweDY3LDB4NTEsMHgwOCwweDE2LDB4NTEgOyBEIzQNCgkuZGIgMHg4MiwweDY3LDB4NTEsMHgxMCwweDE2LDB4NTEgOyBEIzQNCgkuZGIgMHg4MiwweDUzLDB4NTEsMHgxOCwweDE2LDB4NTEgOyBFNA0KCS5kYiAweDgyLDB4MmUsMHg1MSwweDEwLDB4MTYsMHg1MSA7IEYjNA0KCS5kYiAweDkwDQoNCjsgRkxVVEUgKFNPTE8gUEFSVCAyKQ0KYWZyaWNhX2NoMV8wODoNCgkuZGIgMHg0MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg0MiwweDVkLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBGIzMNCgkuZGIgMHg0MiwweDFiLDB4ZDIsMHgwOCwweGUzLDB4MjEgOyBHIzMNCgkuZGIgMHg0MiwweGM1LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBCMw0KCS5kYiAweDQyLDB4MWIsMHhkMiwweDA4LDB4ZTMsMHgyMSA7IEcjMw0KCS5kYiAweDQyLDB4YzUsMHhkMSwweDA4LDB4ZTMsMHgyMSA7IEIzDQoJLmRiIDB4NDIsMHg5NCwweGQxLDB4MDgsMHhlMywweDIxIDsgQyM0DQoJLmRiIDB4NDIsMHhjNSwweGQxLDB4MDgsMHhlMywweDIxIDsgQjMNCgkuZGIgMHg0MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg0MiwweDY3LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBEIzQNCgkuZGIgMHg0MiwweDk0LDB4ZDEsMHgwOCwweGUzLDB4MjEgOyBDIzQNCgkuZGIgMHg0MiwweGYwLDB4ZDAsMHgwMiwweGUzLDB4MjEgOyBBIzQNCgkuZGIgMHg0MiwweGUyLDB4ZDAsMHgwNiwweGUzLDB4MjEgOyBCNA0KCS5kYiAweDY4DQoJLmRiIDB4NDIsMHgyZSwweGQxLDB4MDIsMHhlMywweDIxIDsgRiM0DQoJLmRiIDB4NDIsMHgwZCwweGQxLDB4MDYsMHhlMywweDIxIDsgRyM0DQoJLmRiIDB4NjgNCgkuZGIgMHg0MiwweDJlLDB4ZDEsMHgyOCwweGUzLDB4MjEgOyBGIzQNCgkuZGIgMHg0MCwweDAwLDB4ZjAsMHgyMA0KCS5kYiAweDQyLDB4QzUsMHg3MSwweDA4LDB4MTcsMHg1MSA7IEIzDQoJLmRiIDB4NDIsMHhDNSwweDcxLDB4MTAsMHgxNywweDUxIDsgQjMNCgkuZGIgMHg0MiwweDk0LDB4NzEsMHgxOCwweDE3LDB4NTEgOyBDIzQNCgkuZGIgMHg0MiwweDY3LDB4NzEsMHgxMCwweDE3LDB4NTEgOyBEIzQNCgkuZGIgMHg1MA0KDQo7OzsgRU5EIFNPTE8NCg0KX3NuZF90YWJsZToNCgkuZHcJYWZyaWNhX2NoMCwweDcwMmIgOyA9IDENCgkuZHcJYWZyaWNhX2NoMV8wMSwweDcwMmIrMTAgOyA9IDINCgkuZHcJYWZyaWNhX2NoMl8wMSwweDcwMmIrMjAgOyA9IDMNCgkuZHcJYWZyaWNhX2NoM18wMSwweDcwMmIrMzAgOyA9IDQNCgkuZHcJYWZyaWNhX2NoMV8wMiwweDcwMmIrMTAgOyA9IDUNCgkuZHcJYWZyaWNhX2NoMl8wMiwweDcwMmIrMjAgOyA9IDYNCgkuZHcJYWZyaWNhX2NoM18wMiwweDcwMmIrMzAgOyA9IDcNCgkuZHcJYWZyaWNhX2NoMF8wMywweDcwMmIgOyA9IDgNCgkuZHcJYWZyaWNhX2NoMV8wMywweDcwMmIrMTAgOyA9IDkNCgkuZHcJYWZyaWNhX2NoMl8wMywweDcwMmIrMjAgOyA9IEENCgkuZHcJYWZyaWNhX2NoM18wMywweDcwMmIrMzAgOyA9IEINCgkuZHcJYWZyaWNhX2NoM18wM2ludHJvLDB4NzAyYiszMCA7ID0gQw0KCS5kdwlhZnJpY2FfY2gxXzA0LDB4NzAyYisxMCA7ID0gRA0KCS5kdwlhZnJpY2FfY2gyXzA0LDB4NzAyYisyMCA7ID0gRQ0KCS5kdwlhZnJpY2FfY2gzXzA0LDB4NzAyYiszMCA7ID0gRg0KCS5kdwlhZnJpY2FfY2gxXzAzYiwweDcwMmIrMTAgOyA9IDEwDQoJLmR3CWFmcmljYV9jaDJfMDNiLDB4NzAyYisyMCA7ID0gMTENCgkuZHcJYWZyaWNhX2NoMV8wNSwweDcwMmIrMTAgOyA9IDEyDQoJLmR3CWFmcmljYV9jaDJfMDUsMHg3MDJiKzIwIDsgPSAxMw0KCS5kdwlhZnJpY2FfY2gxXzA1YiwweDcwMmIrMTAgOyA9IDE0DQoJLmR3CWFmcmljYV9jaDJfMDViLDB4NzAyYisyMCA7ID0gMTUNCgkuZHcJYWZyaWNhX2NoMV8wNiwweDcwMmIrMTAgOyA9IDE2DQoJLmR3CWFmcmljYV9jaDJfMDYsMHg3MDJiKzIwIDsgPSAxNw0KCS5kdwlhZnJpY2FfY2gxXzA3LDB4NzAyYisxMCA7ID0gMTgNCgkuZHcJYWZyaWNhX2NoMl8wNywweDcwMmIrMjAgOyA9IDE5DQoJLmR3CWFmcmljYV9jaDFfMDFiLDB4NzAyYisxMCA7ID0gMUENCgkuZHcJYWZyaWNhX2NoMl8wMWIsMHg3MDJiKzIwIDsgPSAxQg0KCS5kdwlhZnJpY2FfY2gxXzA4LDB4NzAyYisxMCA7ID0gMUMNCgkuZHcJYWZyaWNhX2NoMl8wOCwweDcwMmIrMjAgOyA9IDFEDQoNCmFmcmljYV9tdXNpYzoNCgk7IFJJRkYgOyBJTlRSTyA7IEJBU1MgT05MWSBMT1cgTk9URVMgVFdJQ0UNCgkuZHcgMHgwNDAwDQoJLmRiIDB4YzgsMHgwOSwweDBBLDB4MEMNCmFmcmljYV9tdXNpY19sb29wOg0KCTsgVkVSU0UgMQ0KCS5kdyAweDAxQzANCgkuZGIgMHhjMSwweDBELDB4MEUsMHgwRg0KCS5kdyAweDAwODANCgkuZGIgMHhjOCwweDEwLDB4MTEsMHgwQw0KCS5kdyAweDAxQzANCgkuZGIgMHhjMSwweDBELDB4MEUsMHgwRg0KCS5kdyAweDAwODANCgkuZGIgMHhjOCwweDEwLDB4MTEsMHgwQw0KCS5kdyAweDAxQzANCgkuZGIgMHhjMSwweDBELDB4MEUsMHgwRg0KCS5kdyAweDAwODANCgkuZGIgMHhjOCwweDEwLDB4MTEsMHgwQw0KCS5kdyAweDAxMDANCgkuZGIgMHhjMSwweDEyLDB4MTMsMHgwRg0KCS5kdyAweDAwODAgOzsNCgkuZGIgMHhjOCwweDE0LDB4MTUsMHgwQw0KCTsgQ0hPUlVTDQoJLmR3IDB4MDMwMA0KCS5kYiAweGMxLDB4MDIsMHgwMywweDA0DQoJLmR3IDB4MDE4MA0KCS5kYiAweGMxLDB4MDUsMHgwNiwweDA3DQoJOyBSSUZGDQoJLmR3IDB4MDIwMA0KCS5kYiAweGM4LDB4MDksMHgwQSwweDBCCQ0KCTsgVkVSU0UgMg0KCS5kdyAweDAxQzANCgkuZGIgMHhjMSwweDE2LDB4MEUsMHgwRg0KCS5kdyAweDAwODANCgkuZGIgMHhjOCwweDEwLDB4MTEsMHgwQw0KCS5kdyAweDAxQzANCgkuZGIgMHhjMSwweDE2LDB4MTcsMHgwRg0KCS5kdyAweDAwODANCgkuZGIgMHhjOCwweDEwLDB4MTEsMHgwQw0KCS5kdyAweDAxMDANCgkuZGIgMHhjMSwweDEyLDB4MTMsMHgwRg0KCS5kdyAweDAwODANCgkuZGIgMHhjOCwweDE0LDB4MTUsMHgwQw0KCTs7IE1JU1NJTkcgOiBEUlVNIFNPTE8NCgk7IENIT1JVUw0KCS5kdyAweDAzMDANCgkuZGIgMHhjMSwweDAyLDB4MDMsMHgwNA0KCS5kdyAweDAxODANCgkuZGIgMHhjMSwweDA1LDB4MDYsMHgwNw0KCTsgUklGRg0KCS5kdyAweDAyMDANCgkuZGIgMHhjOCwweDA5LDB4MEEsMHgwQgkJDQoJOyBGTFVURSArIFhZTE9QSE9ORSBTT0xPDQoJLmR3IDB4MDFDMA0KCS5kYiAweGMxLDB4MTgsMHgxOSwweDBGDQoJLmR3IDB4MDA4MA0KCS5kYiAweGM4LDB4MTAsMHgxMSwweDBDDQoJLmR3IDB4MDEwMA0KCS5kYiAweGMxLDB4MUMsMHgxRCwweDBGDQoJOyBWRVJTRSBUUkFOU0lUSU9ODQoJLmR3IDB4MDA4MA0KCS5kYiAweGM4LDB4MTQsMHgxNSwweDBDDQoJOyBDSE9SVVMgd2l0aCBBRlJJQ0EgeCA1DQoJLmR3IDB4MDMwMA0KCS5kYiAweGMxLDB4MDIsMHgwMywweDA0DQoJLmR3IDB4MDEwMA0KCS5kYiAweGMxLDB4MUEsMHgxQiwweDA0DQoJLmR3IDB4MDEwMA0KCS5kYiAweGMxLDB4MUEsMHgxQiwweDA0DQoJLmR3IDB4MDEwMA0KCS5kYiAweGMxLDB4MUEsMHgxQiwweDA0DQoJLmR3IDB4MDEwMA0KCS5kYiAweGMxLDB4MUEsMHgxQiwweDA0DQoJLmR3IDB4MDE4MA0KCS5kYiAweGMxLDB4MDUsMHgwNiwweDA3DQoJOyBSSUZGDQoJLmR3IDB4MDIwMA0KCS5kYiAweGM4LDB4MDksMHgwQSwweDBCCQkNCgkuZHcgYWZyaWNhX211c2ljX2xvb3AgOyBUaGlzIGxvb3AgdGhlIG11c2ljIG92ZXIgYW5kIG92ZXIgYWdhaW4=",
+        "kind": "asm",
+        "source": "example"
+      }
+    ],
+    "editorialTrack": "manual-canon",
+    "sourceText": "text screen\nprint at 7,4, \"AFRICA MUSIC BOX\"\nprint at 6,8, \"BUTTON1 = PLAY SONG\"\nprint at 6,10, \"BUTTON2 = STOP SONG\"\nset sound table _snd_table\nscreen on\ngoto main_loop\n\nmain_loop:\n  if joypad(1).button1 then\n    goto start_song\n  elseif joypad(1).button2 then\n    goto stop_song\n  end if\n  wait\n  goto main_loop\n\nstart_song:\n  play song africa_music\n\nwait_start_release:\n  if joypad(1).button1 then\n    goto wait_start_release\n  end if\n  goto main_loop\n\nstop_song:\n  stop song\n  mute all\n\nwait_stop_release:\n  if joypad(1).button2 then\n    goto wait_stop_release\n  end if\n  goto main_loop\n\ninclude \"@project/africa-music-data.asm\""
+  },
+  {
     "id": "commando-tiny-music-box",
     "label": "Commando Tiny Music",
     "detail": "Minimal SPECIAL-04 tiny-music playback sample to verify compact old-devkit music support.",
     "projectName": "commando-tiny-music-box",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -167,7 +237,7 @@ export const exampleCatalog = [
     "label": "30th Anniversary Cake",
     "detail": "1996-2026 ColecoVision anniversary version of the 2006 10-years cake demo with Happy Birthday sound playback.",
     "projectName": "amy-30th-anniversary",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -192,12 +262,110 @@ export const exampleCatalog = [
     "sourceText": "cartridge \"30TH ANNIVERSARY/AMY/2026\"\n\n' 1996-2026 ColecoVision anniversary demo.\n' The original 10 years anniversary cake demo was first published in 2006,\n' when the devkit already had mature VisualBASIC-era graphics and sound tools.\npicture CakePicture:\n  pattern from \"@project/cake.pattern.zx0\" codec zx0\n  color from \"@project/cake.color.zx0\" codec zx0\nend picture\n\nintro:\n  text screen\n  backdrop sky blue\n  print centered at 4, \"30 YEARS COLECOVISION\"\n  print centered at 6, \"1996 - 2026\"\n  print centered at 9, \"THIS DEMO HONORS\"\n  print centered at 10, \"THE DEVKIT, TOOLS,\"\n  print centered at 11, \"DOCS, MUSIC, AND HELP\"\n  print centered at 13, \"THAT BECAME AMY STUDIO\"\n  print centered at 18, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n\nagain:\n  show picture CakePicture\n  set sound table HappyBirthdaySoundTable\n  wait 5 frames\n  play sound 1\n  play sound 2\n  wait 800 frames or press\n  wipe bitmap up\n  goto again\n\nasm {\nHappyBirthdaySoundTable:\n    dw music_hb1,$702B\n    dw music_hb2,$7035\nmusic_hb1:\n    db $42,$1D,$01,$10,$18,$42,$42,$1D,$01,$10,$18,$42,$42,$FE,$00,$20\n    db $18,$42,$42,$1D,$01,$20,$18,$42,$42,$D5,$00,$20,$18,$42,$42,$E2\n    db $00,$20,$18,$42,$70,$70,$42,$1D,$01,$10,$18,$42,$42,$1D,$01,$10\n    db $18,$42,$42,$FE,$00,$20,$18,$42,$42,$1D,$01,$20,$18,$42,$42,$BE\n    db $00,$20,$18,$42,$42,$D5,$00,$20,$18,$42,$70,$70,$42,$1D,$01,$10\n    db $18,$42,$42,$1D,$01,$10,$18,$42,$42,$8E,$00,$20,$18,$42,$42,$A9\n    db $00,$20,$18,$42,$42,$D5,$00,$20,$18,$42,$42,$E2,$00,$20,$18,$42\n    db $42,$FE,$00,$20,$18,$42,$70,$70,$42,$A0,$00,$10,$18,$42,$42,$A0\n    db $00,$10,$18,$42,$42,$A9,$00,$20,$18,$42,$42,$D5,$00,$20,$18,$42\n    db $42,$BE,$00,$20,$18,$42,$42,$D5,$00,$20,$18,$42,$42,$D5,$00,$20\n    db $18,$42,$50\nmusic_hb2:\n    db $B0,$B0,$82,$56,$23,$10,$1C,$21,$82,$53,$21,$10,$1C,$21,$82,$AB\n    db $21,$10,$1C,$21,$82,$53,$21,$10,$1C,$21,$82,$56,$23,$10,$1C,$21\n    db $82,$A9,$20,$10,$1C,$21,$82,$3A,$22,$10,$1C,$21,$82,$BE,$20,$10\n    db $1C,$21,$82,$E2,$20,$10,$1C,$21,$82,$A0,$20,$10,$1C,$21,$B0,$B0\n    db $82,$F9,$22,$10,$1C,$21,$82,$40,$21,$10,$1C,$21,$82,$7C,$21,$10\n    db $1C,$21,$82,$40,$21,$10,$1C,$21,$82,$8E,$20,$10,$1C,$21,$82,$A0\n    db $20,$10,$1C,$21,$82,$A9,$20,$20,$1C,$21,$82,$8E,$20,$10,$1C,$21\n    db $82,$A0,$20,$10,$1C,$21,$82,$A9,$20,$10,$1C,$21,$82,$BE,$20,$10\n    db $1C,$21,$82,$56,$23,$10,$1C,$21,$82,$C4,$21,$10,$1C,$21,$82,$FC\n    db $21,$10,$1C,$21,$82,$40,$21,$10,$1C,$21,$82,$1D,$21,$10,$1C,$21\n    db $82,$A9,$20,$10,$1C,$21,$82,$A0,$20,$20,$1C,$21,$82,$D5,$20,$20\n    db $1C,$21,$B0,$B0,$82,$80,$22,$10,$1C,$21,$82,$40,$21,$10,$1C,$21\n    db $82,$AB,$21,$10,$1C,$21,$82,$C4,$21,$10,$1C,$21,$82,$FC,$21,$10\n    db $1C,$21,$82,$BE,$20,$10,$1C,$21,$82,$8E,$20,$10,$1C,$21,$82,$A0\n    db $20,$10,$1C,$21,$82,$A9,$20,$10,$1C,$21,$82,$1D,$21,$10,$1C,$21\n    db $82,$53,$21,$20,$1C,$21,$90\n}"
   },
   {
+    "id": "cvbasic-happy-face-port",
+    "label": "CVBasic Happy Face Port",
+    "detail": "Amy port of CVBasic happy_face.bas with the same core bouncing-face behavior.",
+    "projectName": "cvbasic-happy-face-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "u8 X = 50\nu8 Y = 100\n\ni8 DX = 1\ni8 DY = 1\n\nu8 SpriteY = 99\n\ndata HappyAlienBugFace sprite16\n  \"...XX.......XX..\"\n  \"..XX..X....X..X.\"\n  \"XX....XXXXX...XX\"\n  \"....XXXXXXXXX..X\"\n  \"...XX..XXX..XX..\"\n  \"...X....X....XX.\"\n  \"..XX.XX.X.XX.XX.\"\n  \".XXXXXXXXXXXXXXX\"\n  \".XXXXXXXXXXXXXXX\"\n  \".XXXXXXXXXXXXXXX\"\n  \".XXX.........XXX\"\n  \"..XX.........XX.\"\n  \"..XXX.......XXX.\"\n  \"...XXXX...XXXX..\"\n  \"....XXXXXXXXX...\"\n  \".......XXXX.....\"\nend data\n\n  text screen\n  sprites 16x16\n  sprites simple\n  copy HappyAlienBugFace to vram.spr_pat\n  clear sprites\n  set sprite count 1\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"BOUNCING ALIEN BUG\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  cls\n  print at 1,1, \"Alien bug face!\"\ngame_loop:\n  wait 2 frames\n  SpriteY = Y - 1\n  set sprite 0 to SpriteY,X,0,10\n  update sprites\n  bounce X by DX between 0 and 240\n  bounce Y by DY between 0 and 176\n  goto game_loop"
+  },
+  {
+    "id": "cvbasic-face-joystick-port",
+    "label": "CVBasic Face Joystick Port",
+    "detail": "Amy port of CVBasic face_joystick.bas using joypad input, VDP status display, and sprite color changes.",
+    "projectName": "cvbasic-face-joystick-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "u8 X = 50\nu8 Y = 100\n\nu8 FaceColor = 10\nu8 SpriteY = 99\n\ndata HappyAlienBugFace sprite16\n  \"...XX.......XX..\"\n  \"..XX..X....X..X.\"\n  \"XX....XXXXX...XX\"\n  \"....XXXXXXXXX..X\"\n  \"...XX..XXX..XX..\"\n  \"...X....X....XX.\"\n  \"..XX.XX.X.XX.XX.\"\n  \".XXXXXXXXXXXXXXX\"\n  \".XXXXXXXXXXXXXXX\"\n  \".XXXXXXXXXXXXXXX\"\n  \".XXX.........XXX\"\n  \"..XX.........XX.\"\n  \"..XXX.......XXX.\"\n  \"...XXXX...XXXX..\"\n  \"....XXXXXXXXX...\"\n  \".......XXXX.....\"\nend data\n\n  text screen\n  sprites 16x16\n  sprites simple\n  copy HappyAlienBugFace to vram.spr_pat\n  clear sprites\n  set sprite count 2\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"JOY CONTROLLED FACE\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  cls\n  print at 1,1, \"Alien bug face!\"\n  print at 0,0, \"VDP.STATUS =\"\n  set sprite 1 to 95,128,0,14\ngame_loop:\n  wait\n  print vdp.status at 13,0 digits 3\n  FaceColor = 10\n  if joypad(1).up then\n    if Y > 0 then Y -= 1\n  end if\n  if joypad(1).left then\n    if X > 0 then X -= 1\n  end if\n  if joypad(1).right then\n    if X \u003C 240 then X += 1\n  end if\n  if joypad(1).down then\n    if Y \u003C 176 then Y += 1\n  end if\n  if joypad(1).button1 then FaceColor = 5\n  if joypad(1).button2 then FaceColor = 6\n  SpriteY = Y - 1\n  set sprite 0 to SpriteY,X,0,FaceColor\n  update sprites\n  goto game_loop"
+  },
+  {
+    "id": "cvbasic-test3-port",
+    "label": "CVBasic Test3 Port",
+    "detail": "Amy port of CVBasic test3.bas showcasing select case and sprite-state movement.",
+    "projectName": "cvbasic-test3-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "u8 SpriteX = 148\nu8 SpriteY = 116\n\nu8 SpriteColor = 10\nu16 State = 0\nu8 Delay = 1\n\nu8 DrawY = 115\n\ndata SpriteBitmap sprite16\n  \"......XXXX......\"\n  \"......XXXX......\"\n  \"......XXXX......\"\n  \"......XXXX......\"\n  \".......XX.......\"\n  \"..X....XX.......\"\n  \".XXXXXXXXXXX....\"\n  \".XXXXXXXXXXXX...\"\n  \".......XX...XX..\"\n  \".......XX....XX.\"\n  \"......XXXX....XX\"\n  \".....XX..XX.....\"\n  \".....XX..XX.....\"\n  \".....XX..XX.....\"\n  \".....XX..XX.....\"\n  \"....XXX..XXX....\"\nend data\n\n  text screen\n  sprites 16x16\n  sprites simple\n  copy SpriteBitmap to vram.spr_pat\n  clear sprites\n  set sprite count 1\n  screen on\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"SELECT CASE MOVEMENT\"\n  print centered at 14, \"PRESS FIRE\"\n  pause until press\n  wait no fire\n  cls\ngame_loop:\n  DrawY = SpriteY - 1\n  set sprite 0 to DrawY,SpriteX,0,SpriteColor\n  update sprites\n  wait 2 frames\n  Delay -= 1\n  if Delay = 0 then\n    Delay = 40\n    State += 1\n    if State = 10 then State = 1\n  end if\n  select case State\n  case 1\n    SpriteColor = 10\n    SpriteX -= 1\n    SpriteX -= 1\n  case 2\n    SpriteY -= 1\n    SpriteY -= 1\n  case 3\n    SpriteX += 1\n    SpriteX += 1\n  case 4\n    SpriteY += 1\n    SpriteY += 1\n  case 5 to 6\n    SpriteX -= 1\n    SpriteY -= 1\n  case 7 to 8\n    SpriteX += 1\n    SpriteY += 1\n  case else\n    SpriteColor = random(2, 15)\n  end select\n  goto game_loop"
+  },
+  {
+    "id": "cvbasic-test1-port",
+    "label": "CVBasic Test1 Port",
+    "detail": "Amy port of CVBasic test1.bas using frame display and moving stars in VRAM.",
+    "projectName": "cvbasic-test1-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "u8 C = 0\nu16 Cursor = 0\nu16 FrameCount = 0\n\nu8 FrameHi = 0\nu8 FrameLo = 0\nu16 Stars[24]\n\n  text screen\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"FRAME COUNTER\"\n  print centered at 9, \"AND FALLING STARS\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  cls\n  init_stars\nmain_loop:\n  FrameCount = frame\n  FrameHi = highbyte FrameCount\n  FrameLo = lowbyte FrameCount\n  print at 2,0, str$(FrameCount)\n  print \".\" at 12,0\n  print at 13,0, digits$(FrameCount, 5)\n  print \".\" at 18,0\n  print \":\" at 22,0\n  print at 23,0, width$(FrameCount, 5)\n  print \":\" at 28,0\n  wait\n  for C = 0 to 23\n    Cursor = Stars[C]\n    vpoke vram.name + Cursor, $20\n    Cursor += 32\n    if Cursor >= 768 then\n      Cursor -= 736\n    end if\n    Stars[C] = Cursor\n    vpoke vram.name + Cursor, $2A\n  next\n  goto main_loop\n\nsub init_stars:\n  Stars[0] = 21\n  Stars[1] = 62\n  Stars[2] = 70\n  Stars[3] = 101\n  Stars[4] = 146\n  Stars[5] = 171\n  Stars[6] = 203\n  Stars[7] = 229\n  Stars[8] = 266\n  Stars[9] = 299\n  Stars[10] = 331\n  Stars[11] = 357\n  Stars[12] = 390\n  Stars[13] = 418\n  Stars[14] = 457\n  Stars[15] = 502\n  Stars[16] = 518\n  Stars[17] = 558\n  Stars[18] = 590\n  Stars[19] = 628\n  Stars[20] = 654\n  Stars[21] = 700\n  Stars[22] = 735\n  Stars[23] = 760\n  for C = 0 to 23\n    Cursor = Stars[C]\n    vpoke vram.name + Cursor, $2A\n  next\n  return"
+  },
+  {
+    "id": "cvbasic-controller-port",
+    "label": "CVBasic Controller Port",
+    "detail": "Amy port of CVBasic controller.bas with dual controller polling, live highlights, and keypad focus.",
+    "projectName": "cvbasic-controller-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "' CVBASIC controller test port\nu8 CurrentKey = 255\n\nu8 KeySpriteX = 0\nu8 KeySpriteY = 0\nu8 PanelX = 0\nu8 PanelY = 0\n\ndata HighlightSprites bytes\n  $18,$3C,$7E,$FF,$FF,$7E,$3C,$18\n  $00,$3C,$7E,$FF,$FF,$7E,$3C,$00\n  $FF,$81,$81,$81,$81,$81,$81,$FF\nend data\n\n  text screen\n  sprites 8x8\n  sprites simple\n  copy HighlightSprites to vram.spr_pat\n  clear sprites\n  set sprite count 14\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"DUAL CONTROLLERS\"\n  print centered at 9, \"LIVE KEYPAD TEST\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  cls\n  print at 4,1, \"CVBASIC CONTROLLER TEST\"\n  draw_panels\nmain_loop:\n  wait\n\n  if joypad(1).up then\n    set sprite 0 to 39,40,0,9\n  else\n    set sprite 0 to 209,0,0,0\n  end if\n  if joypad(1).left then\n    set sprite 1 to 47,16,0,9\n  else\n    set sprite 1 to 209,0,0,0\n  end if\n  if joypad(1).right then\n    set sprite 2 to 47,64,0,9\n  else\n    set sprite 2 to 209,0,0,0\n  end if\n  if joypad(1).down then\n    set sprite 3 to 55,40,0,9\n  else\n    set sprite 3 to 209,0,0,0\n  end if\n  if joypad(1).button1 then\n    set sprite 4 to 63,24,1,9\n  else\n    set sprite 4 to 209,0,0,0\n  end if\n  if joypad(1).button2 then\n    set sprite 5 to 63,56,1,9\n  else\n    set sprite 5 to 209,0,0,0\n  end if\n  if keypad(1) = 255 then\n    set sprite 6 to 209,0,0,0\n  else\n    CurrentKey = keypad(1)\n    PanelX = 16\n    PanelY = 40\n    place_key_highlight\n    set sprite 6 to KeySpriteY,KeySpriteX,2,9\n  end if\n\n  if joypad(2).up then\n    set sprite 7 to 39,176,0,9\n  else\n    set sprite 7 to 209,0,0,0\n  end if\n  if joypad(2).left then\n    set sprite 8 to 47,152,0,9\n  else\n    set sprite 8 to 209,0,0,0\n  end if\n  if joypad(2).right then\n    set sprite 9 to 47,200,0,9\n  else\n    set sprite 9 to 209,0,0,0\n  end if\n  if joypad(2).down then\n    set sprite 10 to 55,176,0,9\n  else\n    set sprite 10 to 209,0,0,0\n  end if\n  if joypad(2).button1 then\n    set sprite 11 to 63,160,1,9\n  else\n    set sprite 11 to 209,0,0,0\n  end if\n  if joypad(2).button2 then\n    set sprite 12 to 63,192,1,9\n  else\n    set sprite 12 to 209,0,0,0\n  end if\n  if keypad(2) = 255 then\n    set sprite 13 to 209,0,0,0\n  else\n    CurrentKey = keypad(2)\n    PanelX = 152\n    PanelY = 40\n    place_key_highlight\n    set sprite 13 to KeySpriteY,KeySpriteX,2,9\n  end if\n\n  update sprites\n  goto main_loop\n\nsub draw_panels:\n  print at 4,3, \"P1\"\n  print at 21,3, \"P2\"\n  print at 2,5, \"   ^   \"\n  print at 2,6, \"\u003C     >\"\n  print at 2,7, \"   v   \"\n  print at 2,8, \" L   R \"\n  print at 2,9, \" 1 2 3 \"\n  print at 2,10, \" 4 5 6 \"\n  print at 2,11, \" 7 8 9 \"\n  print at 2,12, \" * 0 # \"\n  print at 2,13, \" B   P \"\n  print at 19,5, \"   ^   \"\n  print at 19,6, \"\u003C     >\"\n  print at 19,7, \"   v   \"\n  print at 19,8, \" L   R \"\n  print at 19,9, \" 1 2 3 \"\n  print at 19,10, \" 4 5 6 \"\n  print at 19,11, \" 7 8 9 \"\n  print at 19,12, \" * 0 # \"\n  print at 19,13, \" B   P \"\n  return\n\nsub place_key_highlight:\n  select case CurrentKey\n  case 1\n    KeySpriteX = PanelX + 8\n    KeySpriteY = PanelY + 31\n  case 2\n    KeySpriteX = PanelX + 24\n    KeySpriteY = PanelY + 31\n  case 3\n    KeySpriteX = PanelX + 40\n    KeySpriteY = PanelY + 31\n  case 4\n    KeySpriteX = PanelX + 8\n    KeySpriteY = PanelY + 39\n  case 5\n    KeySpriteX = PanelX + 24\n    KeySpriteY = PanelY + 39\n  case 6\n    KeySpriteX = PanelX + 40\n    KeySpriteY = PanelY + 39\n  case 7\n    KeySpriteX = PanelX + 8\n    KeySpriteY = PanelY + 47\n  case 8\n    KeySpriteX = PanelX + 24\n    KeySpriteY = PanelY + 47\n  case 9\n    KeySpriteX = PanelX + 40\n    KeySpriteY = PanelY + 47\n  case 10\n    KeySpriteX = PanelX + 8\n    KeySpriteY = PanelY + 55\n  case 0\n    KeySpriteX = PanelX + 24\n    KeySpriteY = PanelY + 55\n  case 11\n    KeySpriteX = PanelX + 40\n    KeySpriteY = PanelY + 55\n  case 12\n    KeySpriteX = PanelX + 8\n    KeySpriteY = PanelY + 63\n  case 13\n    KeySpriteX = PanelX + 40\n    KeySpriteY = PanelY + 63\n  case else\n    KeySpriteX = 0\n    KeySpriteY = 209\n  end select\n  return"
+  },
+  {
+    "id": "cvbasic-vramcopy-port",
+    "label": "CVBasic Vramcopy Port",
+    "detail": "Amy port of CVBasic vramcopy.bas using define chars/colors, direct vpoke expressions, and bulk VRAM readback.",
+    "projectName": "cvbasic-vramcopy-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "u8 I = 0\nu8 Tile = 0\nu16 Offset = 0\nu8 Wall[64]\n\ndata WallPatterns bitmap8\n  \"XXX.XXXX\"\n  \"XXX.XXXX\"\n  \"XXX.XXXX\"\n  \"........\"\n  \"XXXXXXX.\"\n  \"XXXXXXX.\"\n  \"XXXXXXX.\"\n  \"........\"\n  \"XXXXXXX.\"\n  \"X..X..XX\"\n  \"X..X..XX\"\n  \"X..X..XX\"\n  \"X..X..XX\"\n  \"X..X..XX\"\n  \"XXXXXXXX\"\n  \".XXXXXXX\"\nend data\n\ndata WallColors bytes\n  $6E,$6E,$6E,$6E,$6E,$6E,$6E,$6E\n  $F1,$F5,$F5,$F4,$F4,$F4,$F1,$F1\nend data\n\n  text screen\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"VRAM COPY\"\n  print centered at 9, \"BULK READBACK\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  tile screen\n  define chars WallPatterns at 16 count 2\n  define colors WallColors at 16 count 2\n  cls\n  for I = 0 to 63\n    vpoke vram.name + I, random(2) + 16\n  next\n  copy vram.name count 64 to Wall\n  for Offset = 64 to 704 step 64\n    copy Wall count 64 to vram.name + Offset\n  next\n  screen on"
+  },
+  {
+    "id": "cvbasic-spinner-port",
+    "label": "CVBasic Spinner Port",
+    "detail": "Amy port of CVBasic spinner.bas using spinner deltas to steer a 16x16 happy-face sprite.",
+    "projectName": "cvbasic-spinner-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "u8 X = 120\nu8 Y = 88\n\ni8 SpinX = 0\ni8 SpinY = 0\n\nu8 SpriteY = 87\n\ndata HappyFace sprite16\n  \"......XXXX......\"\n  \"....XXXXXXXX....\"\n  \"...XXXXXXXXXX...\"\n  \"..XXXXXXXXXXXX..\"\n  \".XXXXXXXXXXXXXX.\"\n  \".XXXXXXXXXXXXXX.\"\n  \"XXXX..XXXX..XXXX\"\n  \"XXXX..XXXX..XXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \".XXXXXXXXXXXXXX.\"\n  \".XXX..XXXX..XXX.\"\n  \"..XXX......XXX..\"\n  \"...XXX....XXX...\"\n  \"....XXXXXXXX....\"\n  \"......XXXX......\"\nend data\n\n  text screen\n  sprites 16x16\n  sprites simple\n  copy HappyFace to vram.spr_pat\n  clear sprites\n  set sprite count 1\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"SPINNER CONTROL\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  cls\n  print at 4,1, \"Happy face!\"\n  ' Spinner deltas are available as direct expressions.\n  enable spinner\n  reset spinners\ngame_loop:\n  wait 2 frames\n  SpriteY = Y - 1\n  set sprite 0 to SpriteY,X,0,10\n  update sprites\n  SpinX = spinner(1)\n  SpinY = spinner(2)\n  X += SpinX\n  Y -= SpinY\n  goto game_loop"
+  },
+  {
     "id": "cvbasic-plot-port",
     "label": "CVBasic Plot Port",
     "detail": "Amy port of CVBasic plot.bas using native TMS9918A bitmap drawing primitives such as pset, line, and circle.",
     "funFact": "On AtariAge, Oscar Toledo posted the CVBasic pixel/line drawing utilities on Jan 23 2025. He noted the TMS9918A limit: no more than two colors in one 8x1 pixel slice; plot2.bas added circle support.",
     "projectName": "cvbasic-plot-port",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -207,12 +375,26 @@ export const exampleCatalog = [
     "sourceText": "u8 X = 0\nu8 Y = 0\nu8 Shade = 0\nu8 ColorIndex = 0\n\n  text screen\n  print centered at 5, \"CVBASIC PORT\"\n  print centered at 8, \"BITMAP PLOT DEMO\"\n  print centered at 9, \"PSET LINE CIRCLE\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  bitmap screen\n  cls\n  screen on\n\n  for X = 20 to 220\n    pset X,20\n  next\n\n  for Y = 20 to 170\n    pset 220,Y\n  next\n\n  for X = 220 to 20 step -1\n    pset X,170\n  next\n\n  for Y = 170 to 20 step -1\n    pset 20,Y\n  next\n\n  for Y = 40 to 150\n    for X = 32 to 55\n      Shade = Y\n      and Shade with $0F\n      pset X,Y color Shade\n    next\n  next\n\n  for X = 102 to 202 step 10\n    line X,40 to 202,150\n  next\n\n  for Y = 40 to 150 step 10\n    line 102,Y to 202,150\n  next\n\n  ColorIndex = 1\n  for X = 8 to 240 step 8\n    line 128,0 to X,16 color ColorIndex\n    ColorIndex += 1\n    if ColorIndex = 16 then ColorIndex = 0\n  next\n\n  circle 80,60 radius 15\n  circle 80,100 radius 20\n  circle 80,140 radius 25"
   },
   {
+    "id": "cvbasic-demo-port",
+    "label": "CVBasic Demo Port",
+    "detail": "Amy port of CVBasic demo.bas with bold text, portrait block animation, staged messages, and sprite scenes.",
+    "projectName": "cvbasic-demo-port",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "cvbasic-port",
+    "sourceText": "' CVBASIC kitchen-sink demo port\nu8 C = 0\nu8 D = 0\nu8 Row = 0\n\nu8 MsgX = 0\nu8 MsgY = 0\n\nu16 ColorOffset = 0\nu16 DestOffset = 0\nu16 SourceOffset = 0\n\nu8 XPos[32]\nu8 YPos[32]\nu8 Cols[32]\n\ndata Spaces bytes\n  $20,$20,$20,$20,$20,$20,$20,$20\nend data\n\ndata Message1 bytes\n  $48,$69,$21,$20,$54,$68,$69,$73,$20,$69,$73,$20,$61,$0D\n  $43,$56,$42,$61,$73,$69,$63,$20,$64,$65,$6D,$6F,$0D\n  $70,$72,$6F,$67,$72,$61,$6D,$2E,$00\nend data\n\ndata Message2 bytes\n  $59,$6F,$75,$20,$63,$61,$6E,$20,$64,$69,$73,$70,$6C,$61,$63,$65,$0D\n  $67,$72,$61,$70,$68,$69,$63,$73,$20,$6D,$6F,$76,$69,$6E,$67,$0D\n  $74,$69,$6C,$65,$73,$20,$6F,$6E,$20,$74,$68,$65,$0D\n  $73,$63,$72,$65,$65,$6E,$20,$69,$6E,$73,$74,$65,$61,$64,$20,$6F,$66,$0D\n  $67,$72,$61,$70,$68,$69,$63,$20,$64,$61,$74,$61,$2E,$00\nend data\n\ndata Message3 bytes\n  $53,$70,$72,$69,$74,$65,$73,$20,$63,$61,$6E,$0D\n  $6F,$76,$65,$72,$6C,$61,$79,$0D\n  $62,$61,$63,$6B,$67,$72,$6F,$75,$6E,$64,$0D\n  $67,$72,$61,$70,$68,$69,$63,$73,$2E,$00\nend data\n\ndata Message4 bytes\n  $49,$20,$68,$6F,$70,$65,$20,$79,$6F,$75,$0D\n  $65,$6E,$6A,$6F,$79,$65,$64,$20,$74,$68,$65,$0D\n  $64,$65,$6D,$6F,$2E,$00\nend data\n\ndata SpriteBitmap sprite16\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\nend data\n\ndata ImageChar bytes\n  $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff\n  $ff,$ff,$f8,$f0,$e0,$c0,$c0,$80\n  $ff,$fc,$ff,$ff,$f8,$fb,$f8,$f0\n  $ff,$07,$01,$07,$03,$c0,$3c,$ff\n  $ff,$ff,$ff,$ff,$3f,$1f,$0f,$07\n  $ff,$ff,$fe,$fe,$fc,$fc,$f8,$f8\n  $ff,$ff,$ff,$ff,$f8,$fb,$f0,$e0\n  $f7,$f0,$f0,$e0,$ff,$f0,$ff,$c0\n  $80,$79,$01,$01,$01,$01,$ff,$0f\n  $03,$01,$01,$ff,$ff,$ff,$ff,$7f\n  $ff,$ff,$ff,$ff,$ff,$7f,$7f,$3f\n  $f8,$f8,$f0,$f0,$f0,$f0,$f0,$f0\n  $c0,$80,$fe,$fe,$fc,$fc,$fc,$fc\n  $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff\n  $07,$03,$01,$01,$e0,$f0,$f8,$fc\n  $7f,$3f,$3f,$3f,$3f,$1f,$1f,$1f\n  $3f,$1f,$1f,$0f,$0f,$0f,$07,$07\n  $e0,$e0,$e0,$e0,$e0,$e0,$c0,$c0\n  $fc,$fc,$f0,$f0,$e0,$1a,$1c,$19\n  $ff,$ff,$7f,$0f,$87,$e7,$1b,$05\n  $fe,$ff,$f8,$e0,$c3,$ce,$f0,$c8\n  $1f,$0f,$0f,$0f,$7f,$3f,$3f,$3f\n  $07,$07,$07,$03,$03,$03,$01,$01\n  $80,$80,$80,$80,$fe,$fe,$fe,$fe\n  $1d,$1e,$1f,$1f,$1f,$e0,$e0,$e0\n  $4d,$1d,$fd,$fd,$fd,$fb,$fb,$f7\n  $ea,$f0,$ff,$ff,$ff,$ff,$ff,$ff\n  $3f,$37,$33,$33,$03,$03,$03,$03\n  $01,$01,$03,$03,$03,$03,$03,$03\n  $fe,$fe,$fe,$fe,$fe,$fe,$fe,$14\n  $e0,$e0,$e0,$f0,$f0,$f8,$07,$03\n  $f7,$f9,$fe,$ff,$f8,$e3,$e4,$f3\n  $ff,$7f,$ff,$ff,$3f,$8f,$4f,$9f\n  $03,$03,$03,$07,$0f,$1f,$1f,$3f\n  $03,$03,$03,$03,$03,$03,$03,$03\n  $fe,$fe,$fe,$fe,$fe,$fe,$fe,$ff\n  $14,$14,$14,$14,$14,$14,$14,$14\n  $f0,$fc,$ff,$ff,$7f,$7f,$7f,$7f\n  $f8,$0f,$00,$10,$08,$07,$00,$0f\n  $3f,$fe,$f8,$f0,$c0,$01,$01,$03\n  $7f,$7f,$09,$09,$09,$09,$09,$09\n  $03,$03,$03,$03,$03,$03,$03,$03\n  $ff,$f0,$c0,$01,$01,$03,$03,$03\n  $14,$14,$14,$22,$22,$22,$22,$22\n  $7f,$bf,$bf,$bf,$bf,$9f,$9f,$9f\n  $0f,$0f,$00,$ff,$ff,$ff,$ff,$ff\n  $03,$03,$03,$03,$07,$07,$07,$07\n  $13,$13,$13,$13,$13,$13,$23,$27\n  $03,$03,$fc,$fc,$fc,$fc,$fc,$fc\n  $ff,$ff,$ff,$1f,$03,$fc,$ff,$ff\nend data\n\ndata ImageColor bytes\n  $e1,$e1,$e1,$e1,$e1,$e1,$e1,$e1\n  $e1,$e1,$eb,$eb,$eb,$eb,$eb,$eb\n  $e1,$eb,$b1,$b1,$ba,$ba,$ba,$ba\n  $e1,$eb,$eb,$ba,$ba,$ba,$ba,$a1\n  $e1,$e1,$e1,$e1,$eb,$eb,$eb,$eb\n  $e1,$e1,$eb,$eb,$eb,$eb,$eb,$eb\n  $b1,$b1,$b1,$b1,$ba,$ba,$ba,$ba\n  $ba,$ba,$ba,$ba,$a1,$ba,$a1,$a8\n  $ba,$ba,$ba,$ba,$ba,$ba,$a1,$a8\n  $eb,$eb,$eb,$b1,$b1,$b1,$b1,$ba\n  $e1,$e1,$e1,$e1,$e1,$eb,$eb,$eb\n  $eb,$eb,$eb,$eb,$eb,$eb,$eb,$eb\n  $ba,$ba,$a8,$a9,$a9,$a9,$a9,$a9\n  $81,$81,$81,$91,$91,$91,$91,$91\n  $a8,$a8,$a8,$a8,$98,$98,$98,$98\n  $ba,$ba,$ba,$ba,$ba,$ba,$ba,$ba\n  $eb,$eb,$eb,$eb,$eb,$eb,$eb,$eb\n  $eb,$eb,$eb,$eb,$eb,$eb,$eb,$eb\n  $a9,$a9,$a1,$b1,$b9,$91,$91,$91\n  $91,$91,$91,$91,$91,$91,$91,$91\n  $98,$91,$91,$91,$91,$91,$91,$91\n  $ba,$ba,$ba,$ba,$a9,$a1,$a1,$a1\n  $eb,$eb,$eb,$eb,$eb,$eb,$eb,$eb\n  $eb,$eb,$eb,$eb,$a1,$a1,$a1,$a1\n  $91,$91,$91,$91,$91,$b9,$b9,$b9\n  $91,$91,$91,$91,$91,$91,$91,$91\n  $91,$91,$91,$91,$91,$91,$91,$91\n  $a8,$a8,$a8,$a8,$a8,$a8,$a8,$a8\n  $eb,$ea,$ea,$ea,$ea,$eb,$ea,$eb\n  $a1,$a1,$a1,$a1,$a1,$a1,$a1,$ba\n  $b9,$b9,$b9,$b9,$b9,$b9,$91,$91\n  $91,$91,$91,$91,$96,$98,$98,$96\n  $91,$91,$91,$91,$96,$98,$98,$96\n  $a8,$a8,$a8,$a8,$a8,$a8,$a8,$a8\n  $eb,$ea,$eb,$eb,$eb,$eb,$eb,$eb\n  $ea,$ea,$ea,$ea,$ea,$ea,$ea,$e1\n  $ba,$ba,$ba,$ba,$ba,$ba,$ba,$ba\n  $b1,$b1,$b1,$b1,$ba,$ba,$ba,$ba\n  $96,$91,$f1,$91,$91,$91,$f1,$91\n  $96,$98,$98,$98,$98,$a8,$a1,$a8\n  $a8,$a8,$ba,$ba,$ba,$ba,$ba,$ba\n  $eb,$eb,$eb,$eb,$eb,$eb,$eb,$eb\n  $e1,$e1,$e1,$a1,$a5,$a5,$a5,$a5\n  $ba,$ba,$ba,$ba,$ba,$ba,$ba,$ba\n  $ba,$ba,$ba,$ba,$ba,$ba,$ba,$ba\n  $91,$91,$f1,$71,$71,$71,$71,$71\n  $a8,$a8,$a1,$a7,$a7,$a7,$a7,$a7\n  $ba,$ba,$ba,$ba,$ba,$ba,$ba,$ba\n  $eb,$eb,$b1,$b5,$b5,$b5,$b5,$b5\n  $e1,$e1,$e1,$e1,$e1,$51,$51,$51\nend data\n\ndata ImagePattern bytes\n  $80,$80,$81,$82,$83,$84,$80,$80\n  $80,$85,$86,$87,$88,$89,$8a,$80\n  $80,$8b,$8c,$8d,$8e,$8f,$90,$80\n  $80,$91,$92,$93,$94,$95,$96,$80\n  $80,$97,$98,$99,$9a,$9b,$9c,$80\n  $80,$9d,$9e,$9f,$a0,$a1,$a2,$80\n  $a3,$a4,$a5,$a6,$a7,$a8,$a9,$80\n  $aa,$ab,$ac,$ad,$ae,$af,$b0,$b1\nend data\n\n  text screen\n  sprites 16x16\n  sprites simple\n  copy SpriteBitmap to vram.spr_pat\n  clear sprites\n  set sprite count 32\n  print centered at 4, \"CVBASIC PORT\"\n  print centered at 7, \"TILE GRAPHICS\"\n  print centered at 8, \"SPRITES AND MESSAGES\"\n  print centered at 14, \"PRESS FIRE\"\n  screen on\n  pause until press\n  wait no fire\n  tile screen\n  sprites 16x16\n  sprites simple\n  copy SpriteBitmap to vram.spr_pat\n  clear sprites\n  set sprite count 32\n  load default ascii bold\n  duplicate mode 2 text patterns\n  tint_message_font_band\n  define chars ImageChar at 128 count 50\n  define colors ImageColor at 128 count 50\nmain_loop:\n  cls\n  screen on\n  DestOffset = 260\n  draw_image_block\n  small_wait\n  restore Message1\n  show_message\n  small_wait\n  DestOffset = 260\n  for C = 0 to 7\n    wait 2 frames\n    clear_image_row\n    DestOffset += 32\n    draw_image_block\n  next\n  DestOffset = 516\n  for C = 0 to 7\n    wait 2 frames\n    clear_image_column\n    DestOffset += 1\n    draw_image_block\n  next\n  restore Message2\n  show_message\n  small_wait\n  for C = 0 to 144\n    wait\n    set sprite 0 to 160,C,0,15\n    update sprites\n  next\n  restore Message3\n  show_message\n  small_wait\n  for C = 0 to 31\n    XPos[C] = random(176)\n    YPos[C] = random(240)\n    Cols[C] = C + 2\n    if Cols[C] > 15 then Cols[C] -= 14\n    set sprite C to YPos[C],XPos[C],0,Cols[C]\n  next\n  update sprites\n  for C = 0 to 240\n    wait\n    for D = 0 to 15\n      set sprite D to YPos[D],XPos[D],0,Cols[D]\n      YPos[D] += 1\n      if YPos[D] = 192 then YPos[D] = 241\n    next\n    for D = 16 to 31\n      set sprite D to YPos[D],XPos[D],0,Cols[D]\n      XPos[D] += 1\n      if XPos[D] = 255 then XPos[D] = 0\n    next\n    update sprites\n  next\n  for C = 0 to 31\n    set sprite C to 209,0,0,0\n  next\n  update sprites\n  restore Message4\n  show_message\n  small_wait\n  goto main_loop\n\nsub tint_message_font_band:\n  for ColorOffset = 2304 to 3071\n    vpoke vram.color + ColorOffset, $71\n  next\n  return\n\nsub draw_image_block:\n  u16 WorkOffset = 0\n  SourceOffset = 0\n  WorkOffset = DestOffset\n  for Row = 0 to 7\n    copy ImagePattern + SourceOffset count 8 to vram.name + WorkOffset\n    SourceOffset += 8\n    WorkOffset += 32\n  next\n  return\n\nsub clear_image_row:\n  copy Spaces to vram.name + DestOffset\n  return\n\nsub clear_image_column:\n  u16 WorkOffset = 0\n  WorkOffset = DestOffset\n  for Row = 0 to 7\n    vpoke vram.name + WorkOffset, $20\n    WorkOffset += 32\n  next\n  return\n\nsub small_wait:\n  wait 61 frames\n  return\n\nsub show_message:\n  for Row = 8 to 15\n    fill row Row from 14 count 18 with $20\n  next\n  MsgX = 14\n  MsgY = 8\n  do\n    read D\n    if D = 0 then exit do\n    if D = 13 then\n      MsgX = 14\n      MsgY += 1\n    else\n      put char D at MsgX,MsgY\n      MsgX += 1\n    end if\n    wait\n  loop\n  return"
+  },
+  {
     "id": "cvbasic-viboritas-port",
     "label": "CVBasic Viboritas Port",
     "detail": "Amy port of Oscar Toledo's Viboritas demo: a 1990 Z80 assembler game revised for CVBasic in Feb 2024.",
     "funFact": "Oscar Toledo uses Viboritas as a featured CVBasic example: his Aug 26 2025 release notes show the standard ColecoVision build path as `cvbasic examples/viboritas.bas viboritas.asm` then `gasm80 viboritas.asm -o viboritas.rom`.",
     "projectName": "cvbasic-viboritas-port",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -226,7 +408,7 @@ export const exampleCatalog = [
     "label": "Three Sort Algorithms",
     "detail": "One visual listing comparing bubble, insertion, and selection sort.",
     "projectName": "three-sort-algorithms",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -240,7 +422,7 @@ export const exampleCatalog = [
     "label": "Meteor Dodge",
     "detail": "Dodge 3 falling space rocks with your ship. 3 lives, 16x16 sprites, software collision, and random meteor paths.",
     "projectName": "meteor-dodge",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -250,12 +432,26 @@ export const exampleCatalog = [
     "sourceText": "cartridge \"METEOR DODGE/AMY STUDIO/2026\"\n\n' METEOR DODGE\n' Guide your ship left and right to dodge falling space rocks.\n' Survive as long as you can. 3 lives. Good luck!\n\nrecord Position:\n  u8 X\n  u8 Y\nend record\n\nPosition Ship\nPosition Meteors[3]\nu8 Lives = 3\nbcd digits 5 Score\nu8 BlinkTick = 0\n\nhitbox ShipHitbox = 3,5 size 10,10\nhitbox MeteorHitbox = 2,2 size 12,12\n\ndata ShipSprite sprite16\n  \".......XX.......\"\n  \".......XX.......\"\n  \"......XXXX......\"\n  \"......XXXX......\"\n  \".....XX..XX.....\"\n  \"....XX....XX....\"\n  \"...XX..XX..XX...\"\n  \"..XX..XXXX..XX..\"\n  \".XX..XXXXXX..XX.\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XXXXXXXXXXXXXXXX\"\n  \"XX..XXXXXXXX..XX\"\n  \"X....XXXXXX....X\"\n  \"X....XXXXXX....X\"\n  \"....XX....XX....\"\n  \"....XX....XX....\"\nend data\n\ndata RockSprite sprite16\n  \"....XXXXXXXX....\"\n  \"..XXXXXXXXXXXX..\"\n  \".XXXXX.X.X.XXXX.\"\n  \"XXXX.X.X.X.X.XXX\"\n  \"XXX.X.X.X.X.X.XX\"\n  \"XXX.X.X.X.X.X.XX\"\n  \"XX.X.X.X.X.X.X.X\"\n  \"XX.X.X.X.X.X.X.X\"\n  \"XX.X.X.X.X.X.X.X\"\n  \"XX.X.X.X.X.X.X.X\"\n  \"XXX.X.X.X.X.X.XX\"\n  \"XXX.X.X.X.X.X.XX\"\n  \".XXXX.X.X.X.XXX.\"\n  \"..XXXXXXXXXXXX..\"\n  \"....XXXXXXXX....\"\n  \"................\"\nend data\n\ntext screen\nsprites 16x16\nsprites simple\ncopy ShipSprite to vram.spr_pat\ncopy RockSprite to vram $3820\nclear sprites\nset sprite count 4\nset sound table MeteorSoundTable areas 6\nscreen on\n\ntitle_screen:\n  print centered at 5, \"* METEOR DODGE *\"\n  print centered at 8, \"DODGE THE FALLING\"\n  print centered at 9, \"SPACE ROCKS!\"\n  print centered at 14, \"PRESS FIRE TO START\"\nwait_title:\n  wait\n  if not joypad(1).button1 then goto wait_title\nrelease_title:\n  wait\n  if joypad(1).button1 then goto release_title\n\nstart_game:\n  Ship.X = 112\n  Meteors[0].X = 48\n  Meteors[0].Y = 0\n  Meteors[1].X = 128\n  Meteors[1].Y = 64\n  Meteors[2].X = 192\n  Meteors[2].Y = 128\n  Lives = 3\n  Score = 0\n  cls\n  print at 0,0,  \"LIVES:   SCORE:\"\n  print Lives at 6,0 digits 1\n  print Score at 15,0\n  play song MeteorHumSong\n  play sound 5\n\ngame_loop:\n  wait 2 frames\n\n  if joypad(1).left then\n    if Ship.X > 4 then Ship.X -= 4\n  end if\n  if joypad(1).right then\n    if Ship.X \u003C 236 then Ship.X += 4\n  end if\n\n  Meteors[0].Y += 2\n  Meteors[1].Y += 3\n  Meteors[2].Y += 1\n\n  if Meteors[0].Y > 176 then\n    Score += 1\n    print Score at 15,0\n    Meteors[0].Y = 0\n    Meteors[0].X = random(0, 240)\n  end if\n  if Meteors[1].Y > 176 then\n    Score += 1\n    print Score at 15,0\n    Meteors[1].Y = 0\n    Meteors[1].X = random(0, 240)\n  end if\n  if Meteors[2].Y > 176 then\n    Score += 1\n    print Score at 15,0\n    Meteors[2].Y = 0\n    Meteors[2].X = random(0, 240)\n  end if\n\n  set sprite 0 to 159,Ship.X,0,15\n  set sprite 1 to Meteors[0].Y - 1,Meteors[0].X,4,8\n  set sprite 2 to Meteors[1].Y - 1,Meteors[1].X,4,9\n  set sprite 3 to Meteors[2].Y - 1,Meteors[2].X,4,7\n  update sprites\n\n  if sprite 0 hitbox ShipHitbox collides with sprite 1 hitbox MeteorHitbox then goto hit\n  if sprite 0 hitbox ShipHitbox collides with sprite 2 hitbox MeteorHitbox then goto hit\n  if sprite 0 hitbox ShipHitbox collides with sprite 3 hitbox MeteorHitbox then goto hit\n  goto game_loop\n\nhit:\n  stop song\n  play sound 6\n  Lives -= 1\n  print Lives at 6,0 digits 1\n  if Lives = 0 then goto game_over\n\n  BlinkTick = 16\nblink_loop:\n  wait 2 frames\n  set sprite 0 to 209,0,0,0\n  update sprites\n  wait 2 frames\n  set sprite 0 to 159,Ship.X,0,15\n  update sprites\n  BlinkTick -= 1\n  if BlinkTick > 0 then goto blink_loop\n\n  Meteors[0].Y = 0\n  Meteors[1].Y = 64\n  Meteors[2].Y = 128\n  play song MeteorHumSong\n  goto game_loop\n\ngame_over:\n  stop song\n  set sprite 0 to 209,0,0,0\n  set sprite 1 to 209,0,0,0\n  set sprite 2 to 209,0,0,0\n  set sprite 3 to 209,0,0,0\n  update sprites\n  print centered at 8, \"GAME OVER!\"\n  print at 10,11, \"SCORE:\"\n  print Score at 17,11\n  print centered at 15, \"PRESS FIRE TO RETRY\"\nwait_retry:\n  wait\n  if not joypad(1).button1 then goto wait_retry\nrelease_retry:\n  wait\n  if joypad(1).button1 then goto release_retry\n  cls\n  goto start_game\n\nasm {\nMeteorAlert:\n    db $81,$1D,$31,$1B,$11,$FD\n    db $81,$1D,$21,$1B,$11,$FD\n    db $81,$1D,$21,$1B,$11,$FD\n    db $10\n\nMeteorCrash:\n    db $02,$06,$3C,$1F,$44\n    db $10\n\nMeteorShipHumCh1:\n    db $42,$F8,$A3,$0F,$13,$71\n    db $42,$FB,$D3,$0F,$F3,$71\n    db $18\n\nMeteorShipHumCh2:\n    db $80,$A8,$D2,$96\n    db $18\n\nMeteorHumSong:\n    dw $0001\n    db $01,$02\n    dw $0000\n\nMeteorSoundTable:\n    dw MeteorShipHumCh1,$702B\n    dw MeteorShipHumCh2,$7035\n    dw MeteorShipHumCh1,$702B\n    dw MeteorShipHumCh2,$7035\n    dw MeteorAlert,$7053\n    dw MeteorCrash,$705D\n}\n"
   },
   {
+    "id": "checkers",
+    "label": "Checkers",
+    "detail": "Human vs human draughts with joypad cursor and move engine.",
+    "projectName": "checkers",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [],
+    "editorialTrack": "manual-canon",
+    "sourceText": "cartridge \"CHECKERS/AMY STUDIO/2026\"\n\n' Board geometry.\nconst BrdC = 12\nconst BrdR = 6\n\n' Piece identifiers.\nconst LIGHT = 0\nconst DARK = 1\nconst P1 = 2\nconst P2 = 3\nconst K1 = 4\nconst K2 = 5\n\n' Tile glyphs.\nconst LTile = $20\nconst DTile = $2E\nconst P1Tile = $4F\nconst P2Tile = $58\nconst K1Tile = $40\nconst K2Tile = $2A\nconst SelTile = $2B\nconst CurTile = $3E\n\n' Board and cursor state.\nu8 Board[64] = 0\nu8 CurX = 2, CurY = 5, SelX = 0, SelY = 0, SelActive = 0, CurPlayer = 1\n\n' Drawing scratch.\nu8 DrawX = 0, DrawY = 0, DrawRow = 0, DrawCol = 0\nu8 BoardIdx = 0, TempIdx = 0, TempCell = 0\n\n' Move-resolution scratch.\nu8 MoveDX = 0, MoveDY = 0, MidX = 0, MidY = 0\nu8 MovingPiece = 0, CapturedPiece = 0\nbool WasPromoted = false\n\ndata InitBoard bytes\n  0,3,0,3,0,3,0,3\n  3,0,3,0,3,0,3,0\n  0,3,0,3,0,3,0,3\n  1,0,1,0,1,0,1,0\n  0,1,0,1,0,1,0,1\n  2,0,2,0,2,0,2,0\n  0,2,0,2,0,2,0,2\n  2,0,2,0,2,0,2,0\nend data\n\ntext screen\nset sprite pattern table vram.pattern\nsprites 8x8\nsprites simple\nclear sprites\nset sprite count 2\nupdate sprites\nprint centered at 3, \"CHECKERS\"\nprint centered at 6, \"MOVE THE CURSOR\"\nprint centered at 7, \"SELECT AND MOVE PIECES\"\nprint centered at 13, \"PRESS FIRE TO START\"\nscreen on\npause until press\nwait no fire\ncls\ninit_board\ndraw_all\nscreen on\n\ndo\n  wait 4 frames\n  handle_input\nloop\n\nsub init_board:\n  restore InitBoard\n  for BoardIdx = 0 to 63\n    read Board[BoardIdx]\n  next\nend sub\n\nsub handle_input:\n  if joypad(1).left then\n    move_cursor_left\n  elseif joypad(1).right then\n    move_cursor_right\n  elseif joypad(1).up then\n    move_cursor_up\n  elseif joypad(1).down then\n    move_cursor_down\n  elseif joypad(1).button1 then\n    wait no fire\n    handle_fire\n  end if\nend sub\n\nsub move_cursor_left:\n  if CurX = 0 then return\n  CurX -= 1\n  update_markers\nend sub\n\nsub move_cursor_right:\n  if CurX = 7 then return\n  CurX += 1\n  update_markers\nend sub\n\nsub move_cursor_up:\n  if CurY = 0 then return\n  CurY -= 1\n  update_markers\nend sub\n\nsub move_cursor_down:\n  if CurY = 7 then return\n  CurY += 1\n  update_markers\nend sub\n\nsub handle_fire:\n  if SelActive = 0 then\n    try_select\n  else\n    try_move\n  end if\nend sub\n\nsub try_select:\n  TempCell = get_cell(CurX, CurY)\n\n  if owns_piece(TempCell) = false then return\n\n  if any_capture_for_current() then\n    if can_capture_at(CurX, CurY) = false then return\n  end if\n\n  SelX = CurX\n  SelY = CurY\n  SelActive = 1\n  update_markers\nend sub\n\nsub try_move:\n  if CurX = SelX then\n    if CurY = SelY then\n      if SelActive = 2 then return\n      deselect_piece\n      return\n    end if\n  end if\n\n  if valid_simple_move() then\n    execute_simple_move\n    return\n  end if\n\n  if valid_capture_move() then\n    execute_capture_move\n    return\n  end if\nend sub\n\nsub deselect_piece:\n  SelActive = 0\n  update_markers\nend sub\n\nfunction board_index(u8 X, u8 Y) as u8\n  u8 I = Y\n  I \u003C\u003C= 3\n  I += X\n  return I\n\nfunction get_cell(u8 X, u8 Y) as u8\n  return Board[board_index(X, Y)]\n\nsub set_cell(u8 X, u8 Y, u8 Value):\n  Board[board_index(X, Y)] = Value\nend sub\n\nfunction owns_piece(u8 Piece) as bool\n  if CurPlayer = 1 then\n    if Piece = P1 then return true\n    if Piece = K1 then return true\n  else\n    if Piece = P2 then return true\n    if Piece = K2 then return true\n  end if\n  return false\n\nfunction enemy_piece(u8 Piece) as bool\n  if CurPlayer = 1 then\n    if Piece = P2 then return true\n    if Piece = K2 then return true\n  else\n    if Piece = P1 then return true\n    if Piece = K1 then return true\n  end if\n  return false\n\nfunction abs_diff(u8 A, u8 B) as u8\n  if A >= B then\n    return A - B\n  end if\n  return B - A\n\nfunction valid_simple_move() as bool\n  MoveDX = abs_diff(CurX, SelX)\n  MoveDY = abs_diff(CurY, SelY)\n\n  if MoveDX \u003C> 1 then return false\n  if MoveDY \u003C> 1 then return false\n  if get_cell(CurX, CurY) \u003C> DARK then return false\n  if any_capture_for_current() then return false\n\n  MovingPiece = get_cell(SelX, SelY)\n\n  if MovingPiece = P1 then\n    if CurY >= SelY then return false\n  elseif MovingPiece = P2 then\n    if CurY \u003C= SelY then return false\n  end if\n\n  return true\n\nfunction valid_capture_move() as bool\n  MoveDX = abs_diff(CurX, SelX)\n  MoveDY = abs_diff(CurY, SelY)\n\n  if MoveDX \u003C> 2 then return false\n  if MoveDY \u003C> 2 then return false\n  if get_cell(CurX, CurY) \u003C> DARK then return false\n\n  MovingPiece = get_cell(SelX, SelY)\n\n  if MovingPiece = P1 then\n    if CurY >= SelY then return false\n  elseif MovingPiece = P2 then\n    if CurY \u003C= SelY then return false\n  end if\n\n  MidX = SelX\n  MidX += CurX\n  MidX >>= 1\n\n  MidY = SelY\n  MidY += CurY\n  MidY >>= 1\n\n  CapturedPiece = get_cell(MidX, MidY)\n  if enemy_piece(CapturedPiece) = false then return false\n\n  return true\n\nsub execute_simple_move:\n  WasPromoted = false\n  MovingPiece = get_cell(SelX, SelY)\n\n  set_cell(SelX, SelY, DARK)\n  promote_if_needed\n  set_cell(CurX, CurY, MovingPiece)\n\n  finish_turn\nend sub\n\nsub execute_capture_move:\n  WasPromoted = false\n  MovingPiece = get_cell(SelX, SelY)\n\n  MidX = SelX\n  MidX += CurX\n  MidX >>= 1\n\n  MidY = SelY\n  MidY += CurY\n  MidY >>= 1\n\n  set_cell(MidX, MidY, DARK)\n  set_cell(SelX, SelY, DARK)\n\n  promote_if_needed\n  set_cell(CurX, CurY, MovingPiece)\n\n  if WasPromoted then\n    finish_turn\n    return\n  end if\n\n  if can_capture_at(CurX, CurY) then\n    SelX = CurX\n    SelY = CurY\n    SelActive = 2\n    draw_all\n    return\n  end if\n\n  finish_turn\nend sub\n\nsub promote_if_needed:\n  if MovingPiece = P1 then\n    if CurY = 0 then\n      MovingPiece = K1\n      WasPromoted = true\n    end if\n  elseif MovingPiece = P2 then\n    if CurY = 7 then\n      MovingPiece = K2\n      WasPromoted = true\n    end if\n  end if\nend sub\n\nsub finish_turn:\n  SelActive = 0\n\n  if CurPlayer = 1 then\n    CurPlayer = 2\n  else\n    CurPlayer = 1\n  end if\n\n  draw_all\nend sub\n\nfunction any_capture_for_current() as bool\n  for DrawRow = 0 to 7\n    for DrawCol = 0 to 7\n      if can_capture_at(DrawCol, DrawRow) then return true\n    next\n  next\n\n  return false\n\nfunction can_capture_at(u8 X, u8 Y) as bool\n  MovingPiece = get_cell(X, Y)\n  if owns_piece(MovingPiece) = false then return false\n\n  if MovingPiece = P1 then\n    if can_capture_dir(X, Y, 255, 255) then return true\n    if can_capture_dir(X, Y, 1, 255) then return true\n  elseif MovingPiece = P2 then\n    if can_capture_dir(X, Y, 255, 1) then return true\n    if can_capture_dir(X, Y, 1, 1) then return true\n  else\n    if can_capture_dir(X, Y, 255, 255) then return true\n    if can_capture_dir(X, Y, 1, 255) then return true\n    if can_capture_dir(X, Y, 255, 1) then return true\n    if can_capture_dir(X, Y, 1, 1) then return true\n  end if\n\n  return false\n\nfunction can_capture_dir(u8 X, u8 Y, u8 DX, u8 DY) as bool\n  u8 EnemyX = X\n  u8 EnemyY = Y\n  u8 LandX = X\n  u8 LandY = Y\n\n  if DX = 255 then\n    if X \u003C 2 then return false\n    EnemyX -= 1\n    LandX -= 2\n  else\n    if X > 5 then return false\n    EnemyX += 1\n    LandX += 2\n  end if\n\n  if DY = 255 then\n    if Y \u003C 2 then return false\n    EnemyY -= 1\n    LandY -= 2\n  else\n    if Y > 5 then return false\n    EnemyY += 1\n    LandY += 2\n  end if\n\n  if enemy_piece(get_cell(EnemyX, EnemyY)) = false then return false\n  if get_cell(LandX, LandY) \u003C> DARK then return false\n\n  return true\n\nfunction board_pixel_x(u8 X) as u8\n  u8 P = BrdC\n  P \u003C\u003C= 3\n  TempIdx = X\n  TempIdx \u003C\u003C= 3\n  P += TempIdx\n  return P\n\nfunction board_pixel_y(u8 Y) as u8\n  u8 P = BrdR\n  P \u003C\u003C= 3\n  TempIdx = Y\n  TempIdx \u003C\u003C= 3\n  P += TempIdx\n  return P\n\nsub update_markers:\n  DrawX = board_pixel_x(CurX)\n  DrawY = board_pixel_y(CurY)\n  set sprite 0 to DrawY,DrawX,CurTile,15\n\n  if SelActive = 0 then\n    hide sprite 1\n    update sprites\n    return\n  end if\n\n  DrawX = board_pixel_x(SelX)\n  DrawY = board_pixel_y(SelY)\n  set sprite 1 to DrawY,DrawX,SelTile,6\n  update sprites\nend sub\n\nsub draw_all:\n  cls\n  print at 11,1, \"CHECKERS\"\n  print at 11,2, \"P1:O  P2:X\"\n  show_turn\n\n  print at 1,15, \"RULES:\"\n  print at 1,16, \"1.MOVE 1 DIAG\"\n  print at 1,17, \"2.FORCED JUMPS\"\n  print at 1,18, \"3.MULTI JUMPS\"\n  print at 1,19, \"4.KINGS BOTH\"\n  print at 1,20, \"5.BACK ROW=KING\"\n  print at 1,21, \"6.FIRE=SELECT/MOVE\"\n  print at 1,22, \"7.SPRITE CURSOR\"\n  print at 1,23, \"8.DPAD CURSOR\"\n\n  for DrawRow = 0 to 7\n    for DrawCol = 0 to 7\n      redraw_cell(DrawCol, DrawRow)\n    next\n  next\n\n  update_markers\nend sub\n\nsub show_turn:\n  if CurPlayer = 1 then\n    print at 11,3, \"TURN: O\"\n  else\n    print at 11,3, \"TURN: X\"\n  end if\nend sub\n\nsub redraw_cell(u8 X, u8 Y):\n  TempCell = get_cell(X, Y)\n\n  DrawX = BrdC\n  DrawX += X\n\n  DrawY = BrdR\n  DrawY += Y\n\n  draw_cell\nend sub\n\nsub draw_cell:\n  if TempCell = DARK then\n    put char DTile at DrawX,DrawY\n  elseif TempCell = P1 then\n    put char P1Tile at DrawX,DrawY\n  elseif TempCell = P2 then\n    put char P2Tile at DrawX,DrawY\n  elseif TempCell = K1 then\n    put char K1Tile at DrawX,DrawY\n  elseif TempCell = K2 then\n    put char K2Tile at DrawX,DrawY\n  else\n    put char LTile at DrawX,DrawY\n  end if\nend sub\n"
+  },
+  {
     "id": "brinquitos-game-demo",
     "label": "Brinquitos Game",
     "detail": "Amy port of Oscar Toledo's CVBasic Brinquitos jumping game, presented on AtariAge Oct 14 2024; Brinco means jump, Brinquitos means little jumps.",
     "funFact": "On AtariAge, Oscar Toledo explained that he built Brinquitos for an Oct 14 2024 university talk about programming 8-bit games with CVBasic. Brinco means jump; Brinquitos means little jumps.",
     "projectName": "brinquitos-game-demo",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -276,7 +472,7 @@ export const exampleCatalog = [
     "label": "Diamond Dash",
     "detail": "Amy port of Daniel Bienvenu's legacy devkit Diamond Dash game.",
     "projectName": "diamond-dash",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -318,7 +514,7 @@ export const exampleCatalog = [
     "label": "Chateau du Dragon",
     "detail": "AMY text-adventure remake inspired by Daniel Bienvenu's legacy Chateau du Dragon, with the original title picture extracted as modern picture assets.",
     "projectName": "chateau-du-dragon",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "selectedLibs": [],
     "selectedBundles": [],
     "selectedCompression": [],
@@ -356,11 +552,11 @@ export const exampleManifest = [
     "label": "Hello World Minimal",
     "detail": "Smallest useful Amy Mode 2 text hello world.",
     "projectName": "hello-world-minimal",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Minimal",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "minimal",
       "manual-canon"
     ]
@@ -370,11 +566,11 @@ export const exampleManifest = [
     "label": "Sprite Minimal",
     "detail": "One sprite on a Mode 2 text bootstrap with minimal setup.",
     "projectName": "sprite-minimal",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Minimal",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "minimal",
       "sprites",
       "manual-canon"
@@ -385,11 +581,40 @@ export const exampleManifest = [
     "label": "Input Loop Minimal",
     "detail": "Moves a text cursor with canonical inline joypad input.",
     "projectName": "input-loop-minimal",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Minimal",
     "tags": [
-      "pseudo_alexis",
+      "amy",
+      "minimal",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "collision-minimal",
+    "label": "Collision Minimal",
+    "detail": "Moves a sprite through another and shows the VDP coincidence bit state.",
+    "projectName": "collision-minimal",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Minimal",
+    "tags": [
+      "amy",
+      "minimal",
+      "collision",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "dsound-voice-minimal",
+    "label": "DSound Voice Minimal",
+    "detail": "Inline DSOUND smoke test plus comments for replacing the stub with a Studio-generated voice clip.",
+    "projectName": "dsound-voice-minimal",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Minimal",
+    "tags": [
+      "amy",
       "minimal",
       "manual-canon"
     ]
@@ -399,11 +624,11 @@ export const exampleManifest = [
     "label": "Tile Collision Maze",
     "detail": "Maze-like gameplay demo using tile types, pixel-to-tile collision, and collectible lookup.",
     "projectName": "tile-collision-maze",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "collision",
       "manual-canon"
     ]
@@ -413,11 +638,11 @@ export const exampleManifest = [
     "label": "Sprite Momentum Platformer",
     "detail": "16x16 sprite platformer test with momentum, gravity, wall collision, landing, and coin pickup.",
     "projectName": "sprite-momentum-platformer",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "sprites",
       "manual-canon"
     ]
@@ -427,12 +652,25 @@ export const exampleManifest = [
     "label": "Snake Demo",
     "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
     "projectName": "snake-demo",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "legacy-compat",
     "category": "Demos",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "legacy-compat"
+    ]
+  },
+  {
+    "id": "rebound-demo",
+    "label": "Rebound Demo",
+    "detail": "Simple arcade-style motion demo for control and rendering comparison.",
+    "projectName": "rebound-demo",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
     ]
   },
   {
@@ -440,11 +678,25 @@ export const exampleManifest = [
     "label": "Warrior + Barbarian Slideshow",
     "detail": "Two compressed Mode 2 bitmap pictures shown in sequence with a 250-frame delay.",
     "projectName": "warrior-barbarian-slideshow",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Demos",
     "tags": [
-      "pseudo_alexis",
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "africa-music-box",
+    "label": "Africa Music Box",
+    "detail": "Music-box demo for song-control workflow and source clarity comparison.",
+    "projectName": "africa-music-box",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Music",
+    "tags": [
+      "amy",
+      "audio",
       "manual-canon"
     ]
   },
@@ -453,11 +705,11 @@ export const exampleManifest = [
     "label": "Commando Tiny Music",
     "detail": "Minimal SPECIAL-04 tiny-music playback sample to verify compact old-devkit music support.",
     "projectName": "commando-tiny-music-box",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "legacy-compat",
     "category": "Music",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "audio",
       "legacy-compat"
     ]
@@ -467,12 +719,119 @@ export const exampleManifest = [
     "label": "30th Anniversary Cake",
     "detail": "1996-2026 ColecoVision anniversary version of the 2006 10-years cake demo with Happy Birthday sound playback.",
     "projectName": "amy-30th-anniversary",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "manual-canon"
+    ]
+  },
+  {
+    "id": "cvbasic-happy-face-port",
+    "label": "CVBasic Happy Face Port",
+    "detail": "Amy port of CVBasic happy_face.bas with the same core bouncing-face behavior.",
+    "projectName": "cvbasic-happy-face-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-face-joystick-port",
+    "label": "CVBasic Face Joystick Port",
+    "detail": "Amy port of CVBasic face_joystick.bas using joypad input, VDP status display, and sprite color changes.",
+    "projectName": "cvbasic-face-joystick-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-test3-port",
+    "label": "CVBasic Test3 Port",
+    "detail": "Amy port of CVBasic test3.bas showcasing select case and sprite-state movement.",
+    "projectName": "cvbasic-test3-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "selftest",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-test1-port",
+    "label": "CVBasic Test1 Port",
+    "detail": "Amy port of CVBasic test1.bas using frame display and moving stars in VRAM.",
+    "projectName": "cvbasic-test1-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "selftest",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-controller-port",
+    "label": "CVBasic Controller Port",
+    "detail": "Amy port of CVBasic controller.bas with dual controller polling, live highlights, and keypad focus.",
+    "projectName": "cvbasic-controller-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-vramcopy-port",
+    "label": "CVBasic Vramcopy Port",
+    "detail": "Amy port of CVBasic vramcopy.bas using define chars/colors, direct vpoke expressions, and bulk VRAM readback.",
+    "projectName": "cvbasic-vramcopy-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-spinner-port",
+    "label": "CVBasic Spinner Port",
+    "detail": "Amy port of CVBasic spinner.bas using spinner deltas to steer a 16x16 happy-face sprite.",
+    "projectName": "cvbasic-spinner-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
     ]
   },
   {
@@ -480,11 +839,26 @@ export const exampleManifest = [
     "label": "CVBasic Plot Port",
     "detail": "Amy port of CVBasic plot.bas using native TMS9918A bitmap drawing primitives such as pset, line, and circle.",
     "projectName": "cvbasic-plot-port",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "cvbasic-port",
     "category": "CVBasic Ports",
     "tags": [
-      "pseudo_alexis",
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
+    "id": "cvbasic-demo-port",
+    "label": "CVBasic Demo Port",
+    "detail": "Amy port of CVBasic demo.bas with bold text, portrait block animation, staged messages, and sprite scenes.",
+    "projectName": "cvbasic-demo-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
       "cvbasic",
       "port",
       "cvbasic-port"
@@ -495,11 +869,11 @@ export const exampleManifest = [
     "label": "CVBasic Viboritas Port",
     "detail": "Amy port of Oscar Toledo's Viboritas demo: a 1990 Z80 assembler game revised for CVBasic in Feb 2024.",
     "projectName": "cvbasic-viboritas-port",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "cvbasic-port",
     "category": "CVBasic Ports",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "cvbasic",
       "port",
       "cvbasic-port"
@@ -510,11 +884,11 @@ export const exampleManifest = [
     "label": "Three Sort Algorithms",
     "detail": "One visual listing comparing bubble, insertion, and selection sort.",
     "projectName": "three-sort-algorithms",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Algorithms",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "algorithms",
       "manual-canon"
     ]
@@ -524,11 +898,25 @@ export const exampleManifest = [
     "label": "Meteor Dodge",
     "detail": "Dodge 3 falling space rocks with your ship. 3 lives, 16x16 sprites, software collision, and random meteor paths.",
     "projectName": "meteor-dodge",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "checkers",
+    "label": "Checkers",
+    "detail": "Human vs human draughts with joypad cursor and move engine.",
+    "projectName": "checkers",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "gameplay",
       "manual-canon"
     ]
   },
@@ -537,11 +925,11 @@ export const exampleManifest = [
     "label": "Brinquitos Game",
     "detail": "Amy port of Oscar Toledo's CVBasic Brinquitos jumping game, presented on AtariAge Oct 14 2024; Brinco means jump, Brinquitos means little jumps.",
     "projectName": "brinquitos-game-demo",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "manual-canon"
     ]
   },
@@ -550,11 +938,11 @@ export const exampleManifest = [
     "label": "Diamond Dash",
     "detail": "Amy port of Daniel Bienvenu's legacy devkit Diamond Dash game.",
     "projectName": "diamond-dash",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "manual-canon"
     ]
   },
@@ -563,16 +951,16 @@ export const exampleManifest = [
     "label": "Chateau du Dragon",
     "detail": "AMY text-adventure remake inspired by Daniel Bienvenu's legacy Chateau du Dragon, with the original title picture extracted as modern picture assets.",
     "projectName": "chateau-du-dragon",
-    "sourceLang": "pseudo_alexis",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
-      "pseudo_alexis",
+      "amy",
       "manual-canon"
     ]
   }
 ];
 
 export const exampleSources = {
-  pseudo_alexis: exampleCatalog[0]?.sourceText || ""
+  amy: exampleCatalog[0]?.sourceText || ""
 };
