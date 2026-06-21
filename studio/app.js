@@ -25,7 +25,7 @@ import { createAddressHelpers } from "./core/compiler/addressHelpers.js";
 import { handleArrayBulkStatement } from "./core/compiler/arrayBulkStatementHelpers.js";
 import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentArithmeticHelpers.js";
 import { createFx16Helpers } from "./core/compiler/fx16Helpers.js";
-import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js";
+import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20260621-random-loop-shape";
 import { createCompareLiteralHelpers } from "./core/compiler/compareLiteralHelpers.js";
 import { createCompilerShellHelpers } from "./core/compiler/compilerShellHelpers.js";
 import { createDataHelpers } from "./core/compiler/dataHelpers.js";
@@ -33,7 +33,7 @@ import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelper
 import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHelpers.js";
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
 import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js";
-import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js";
+import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20260621-random-loop-shape";
 import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
 import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js";
 import { handleForStatement } from "./core/compiler/forStatementHelpers.js";
@@ -61,7 +61,7 @@ import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js";
 import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js";
 import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260609-text-colors1";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js";
-import { transpileAmySource } from "./core/amyCompiler.js";
+import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
 import { compileGeneratedAsm, expandAsmIncludes } from "./core/internalCompiler.js";
 import {
   getOptimizationProfile,
