@@ -55,8 +55,6 @@ export function bindStudioShellEvents({
     setExpandedAsm: runtime.setExpandedAsm,
     getAsmViewMode: runtime.getAsmViewMode,
     setAsmViewMode: runtime.setAsmViewMode,
-    createNewTileSetProjectFiles: helpers.createNewTileSetProjectFiles,
-    createNewBitmapProjectFiles: helpers.createNewBitmapProjectFiles,
     setExampleCategoryFilter: runtime.setExampleCategoryFilter,
     setExampleTagFilter: runtime.setExampleTagFilter,
     setExampleSearchFilter: runtime.setExampleSearchFilter

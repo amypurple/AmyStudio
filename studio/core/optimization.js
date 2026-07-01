@@ -93,7 +93,7 @@ export function getOptimizationProfile(level, sourceText = "") {
     deadCp0Removal: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     deadOrARemoval: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     aZeroToXor: normalized === "aggressive" || normalized === "experimental",
-    flagLivenessPeepholes: normalized === "aggressive" || normalized === "experimental",
+    flagLivenessPeepholes: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     rstVectors: normalized === "aggressive" || normalized === "experimental",
     speculativeValueReuse: normalized === "aggressive" || normalized === "experimental",
     hazardousValueReuse: normalized === "experimental",

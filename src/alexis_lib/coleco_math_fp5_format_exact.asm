@@ -36,6 +36,7 @@ AMY_FP5_TO_ASCII16_STORE_SIGN:
     ld a,(hl)
     and $7F
     ld (hl),a
+    ; Keep the full reload: low-byte-only reloads assembled but broke runtime formatting.
     ld hl,AMY_FP5_FPA2
     ld de,AMY_FP5_FPA1
     call AMY_FP5_TO_FX16_16

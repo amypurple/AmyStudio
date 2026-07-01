@@ -1139,8 +1139,8 @@ export function createPrintHelpers(ctx) {
     const loadDest = emitLoadInt8ArrayAddressIntoDE(bufferToken, 0);
     if (!loadDest) return null;
     const lines = [
-      ...loadHL,
       ...loadDest,
+      ...loadHL,
       `    call ${isSigned ? "AMY_SFX8_8_TO_ASCII7" : "AMY_FX8_8_TO_ASCII6"}`
     ];
     const postprocess = emitNumericPostprocessBuffer(bufferToken, width, false);
@@ -1280,8 +1280,8 @@ export function createPrintHelpers(ctx) {
     if (!loadDest) return null;
     const lines = [
       ...source.lines,
-      `    ld hl,${source.pointer}`,
       ...loadDest,
+      `    ld hl,${source.pointer}`,
       "    call AMY_U32_TO_ASCII10"
     ];
     const postprocess = emitNumericPostprocessBuffer(bufferToken, 10, widthMode);
@@ -1306,8 +1306,8 @@ export function createPrintHelpers(ctx) {
       if (!loadDest) return null;
       const lines = [
         ...source.lines,
-        `    ld hl,${source.pointer}`,
         ...loadDest,
+        `    ld hl,${source.pointer}`,
         "    call AMY_I32_TO_ASCII11"
       ];
       const postprocess = emitNumericPostprocessBuffer(bufferToken, digits, widthMode);

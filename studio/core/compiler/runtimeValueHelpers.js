@@ -42,8 +42,17 @@ export function createRuntimeValueHelpers({
   runtimeTypeSize,
   reserveRam,
   runtimeState,
-  formatHex16
+  formatHex16,
+  splitTopLevelArgs
 }) {
+  function parseRandomCallArgs(valueToken) {
+    const match = String(valueToken || "").trim().match(/^random\s*\((.*)\)$/i);
+    if (!match) return null;
+    const inner = match[1].trim();
+    if (!inner) return [];
+    return typeof splitTopLevelArgs === "function" ? splitTopLevelArgs(inner) : inner.split(",").map((part) => part.trim());
+  }
+
   function isFp5ZeroValue(token) {
     const normalized = normalizeExpression(String(token).trim());
     return /^-?0(?:\.0+)?$/i.test(normalized) || /^-?(?:\$0+|0x0+)$/i.test(normalized);
@@ -87,6 +96,76 @@ export function createRuntimeValueHelpers({
     return [
       `    ld hl,${scopedRuntimeName(name)}`,
       "    call AMY_FP5_STORE_FPA1_TO_MEM"
+    ];
+  }
+
+  function emitStoreFpa2ToFp5Target(name) {
+    const info = getRuntimeInfo(name);
+    if (!info) return null;
+    if (info.storage === "stack") {
+      return [
+        "    ld a,(AMY_FP5_FPA2+0)",
+        `    ld (ix${info.offset < 0 ? info.offset : `+${info.offset}`}),a`,
+        "    ld a,(AMY_FP5_FPA2+1)",
+        `    ld (ix${info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`}),a`,
+        "    ld a,(AMY_FP5_FPA2+2)",
+        `    ld (ix${info.offset + 2 < 0 ? info.offset + 2 : `+${info.offset + 2}`}),a`,
+        "    ld a,(AMY_FP5_FPA2+3)",
+        `    ld (ix${info.offset + 3 < 0 ? info.offset + 3 : `+${info.offset + 3}`}),a`,
+        "    ld a,(AMY_FP5_FPA2+4)",
+        `    ld (ix${info.offset + 4 < 0 ? info.offset + 4 : `+${info.offset + 4}`}),a`
+      ];
+    }
+    return [
+      `    ld hl,${scopedRuntimeName(name)}`,
+      "    call AMY_FP5_STORE_FPA2_TO_MEM"
+    ];
+  }
+
+  function emitLoadFp5SourceToFpa(valueToken, fpa) {
+    const info = getRuntimeInfo(valueToken);
+    const fpaLabel = fpa === 2 ? "AMY_FP5_FPA2" : "AMY_FP5_FPA1";
+    if (info && info.type === "fp5") {
+      if (info.storage === "stack") {
+        const lines = [];
+        for (let index = 0; index < 5; index += 1) {
+          const offset = info.offset + index;
+          lines.push(`    ld a,(ix${offset < 0 ? offset : `+${offset}`})`);
+          lines.push(`    ld (${fpaLabel}+${index}),a`);
+        }
+        return lines;
+      }
+      return [
+        `    ld hl,${scopedRuntimeName(valueToken)}`,
+        `    call ${fpa === 2 ? "AMY_FP5_LOAD_MEM_TO_FPA2" : "AMY_FP5_LOAD_MEM_TO_FPA1"}`
+      ];
+    }
+    const loadHL = emitLoadInt16IntoHL(valueToken);
+    if (!loadHL) return null;
+    const signed = isSignedDeclaredType(resolveDeclaredValueType(valueToken)) || String(valueToken || "").trim().startsWith("-");
+    const lines = [
+      ...loadHL,
+      `    call ${signed ? "AMY_FP5_I16_TO_FPA1" : "AMY_FP5_U16_TO_FPA1"}`
+    ];
+    if (fpa === 2) lines.push("    call AMY_FP5_COPY_FPA1_TO_FPA2");
+    return lines;
+  }
+
+  function emitRandomFp5BetweenStore(name, minToken, maxToken) {
+    const loadMax = emitLoadFp5SourceToFpa(maxToken, 2);
+    const loadMinForRange = emitLoadFp5SourceToFpa(minToken, 1);
+    const loadMinForOffset = emitLoadFp5SourceToFpa(minToken, 1);
+    const storeTarget = emitStoreFpa2ToFp5Target(name);
+    if (!loadMax || !loadMinForRange || !loadMinForOffset || !storeTarget) return null;
+    return [
+      ...loadMax,
+      ...loadMinForRange,
+      "    call AMY_FP5_SUB_FPA1_FROM_FPA2",
+      "    call AMY_FP5_RND",
+      "    call AMY_FP5_MUL_FPA1_FPA2",
+      ...loadMinForOffset,
+      "    call AMY_FP5_ADD_FPA1_TO_FPA2",
+      ...storeTarget
     ];
   }
 
@@ -357,10 +436,15 @@ export function createRuntimeValueHelpers({
       return ["    call AMY_FX16_16_RND", ...storeTarget];
     }
     if (targetType === "fp5") {
-      if (/^random\s*\(\s*\)$/i.test(String(value).trim())) {
+      const randomArgs = parseRandomCallArgs(value);
+      if (randomArgs && randomArgs.length === 0) {
         const storeTarget = emitStoreFpa1ToFp5Target(name);
         if (!storeTarget) return null;
         return ["    call AMY_FP5_RND", ...storeTarget];
+      }
+      if (randomArgs && randomArgs.length === 2) {
+        const randomStore = emitRandomFp5BetweenStore(name, randomArgs[0], randomArgs[1]);
+        if (randomStore) return randomStore;
       }
       if (isFp5ZeroValue(value)) return emitStoreZeroBytes(name, 5);
       if (compileTimeNumericValue !== null) {
@@ -506,20 +590,22 @@ export function createRuntimeValueHelpers({
 
   function emitStoreImmediate32(baseLabel, value) {
     const unsigned = value < 0 ? (0x100000000 + value) >>> 0 : value >>> 0;
-    const b0 = unsigned & 0xFF;
-    const b1 = (unsigned >>> 8) & 0xFF;
-    const b2 = (unsigned >>> 16) & 0xFF;
-    const b3 = (unsigned >>> 24) & 0xFF;
-    return [
-      `    ld a,${formatHex8(b0)}`,
-      `    ld (${baseLabel}+0),a`,
-      `    ld a,${formatHex8(b1)}`,
-      `    ld (${baseLabel}+1),a`,
-      `    ld a,${formatHex8(b2)}`,
-      `    ld (${baseLabel}+2),a`,
-      `    ld a,${formatHex8(b3)}`,
-      `    ld (${baseLabel}+3),a`
+    const bytes = [
+      unsigned & 0xFF,
+      (unsigned >>> 8) & 0xFF,
+      (unsigned >>> 16) & 0xFF,
+      (unsigned >>> 24) & 0xFF
     ];
+    const lines = [];
+    let lastA = null;
+    bytes.forEach((byte, index) => {
+      if (lastA !== byte) {
+        lines.push(`    ld a,${formatHex8(byte)}`);
+        lastA = byte;
+      }
+      lines.push(`    ld (${baseLabel}+${index}),a`);
+    });
+    return lines;
   }
 
     function emitPushArgument(token, paramInfo) {

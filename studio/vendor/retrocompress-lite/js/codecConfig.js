@@ -105,6 +105,17 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
+        aplib: {
+            name: "aPLib",
+            author: "Jørgen Ibsen",
+            year: "1998",
+            description: "Beam-search encoder with reuse seeding & near-match bias.",
+            extensions: [".apl", ".aplib"],
+            module: "./codecs/aplib.js",
+            className: "APLibCodec",
+            enabled: true,
+            category: "lzss"
+        },         
     },
     
     // Add new codec categories here for easy organization

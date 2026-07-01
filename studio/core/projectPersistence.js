@@ -2,7 +2,7 @@ export function exportProject(project, { normalizeProjectFiles, normalizeOptimiz
   return {
     version: project.version,
     projectName: project.projectName,
-    sourceLang: project.sourceLang || "amy",
+    sourceLang: project.sourceLang,
     memoryProfile: project.memoryProfile,
     selectedLibs: project.selectedLibs,
     selectedBundles: project.selectedBundles,
@@ -18,7 +18,6 @@ export function importProjectObject(obj, { newProject, normalizeProjectFiles, no
   const p = newProject();
   if (!obj || typeof obj !== "object") return p;
   p.projectName = typeof obj.projectName === "string" ? obj.projectName : p.projectName;
-  p.sourceLang = typeof obj.sourceLang === "string" ? obj.sourceLang : p.sourceLang;
   p.selectedLibs = Array.isArray(obj.selectedLibs) ? obj.selectedLibs : p.selectedLibs;
   p.selectedBundles = Array.isArray(obj.selectedBundles) ? obj.selectedBundles : p.selectedBundles;
   p.selectedCompression = Array.isArray(obj.selectedCompression) ? obj.selectedCompression : p.selectedCompression;

@@ -274,7 +274,9 @@ export function createCompilerShellHelpers({
     const optimized = [];
     const knownRegs = new Map();
     const immediateLoad = /^\s*ld\s+([abcdehl]),\s*([^\s;]+)\s*$/i;
+    const pairImmediateLoad = /^\s*ld\s+(bc|de|hl),\s*([^\s;]+)\s*$/i;
     const copyLoad = /^\s*ld\s+([abcdehl]),\s*([abcdehl])\s*$/i;
+    const aluImmediate = /^(\s*)(and|or|xor|cp)\s+([^\s;]+)\s*$/i;
     const memLoadA = /^\s*ld\s+a,\s*\([^)]+\)\s*$/i;
     const memStore = /^\s*ld\s+\([^)]+\),\s*([abcdehl])\s*$/i;
     const retOrCall = /^\s*(?:ret|reti|retn|call)\b/i;
@@ -283,11 +285,42 @@ export function createCompilerShellHelpers({
     const hlMutation = /^\s*(?:inc|dec)\s+hl\b/i;
     const deMutation = /^\s*(?:inc|dec)\s+de\b/i;
     const bcMutation = /^\s*(?:inc|dec)\s+bc\b/i;
-    const regMutation = /^\s*(?:inc|dec|add|adc|sub|sbc|and|or|xor|cp|cpl|neg|rl|rr|rlc|rrc|sla|sra|srl)\s+([abcdehl])\b/i;
+    const incDecRegMutation = /^\s*(?:inc|dec)\s+([abcdehl])\b/i;
+    const aluRegMutation = /^\s*(?:add\s+a|adc\s+a|sub|sbc\s+a|and|or|xor)\s*,?\s*([abcdehl])\b/i;
+    const cpReg = /^\s*cp\s+([abcdehl])\b/i;
+    const aOnlyMutation = /^\s*(?:cpl|neg)\b/i;
+    const rotateShiftMutation = /^\s*(?:rl|rr|rlc|rrc|sla|sra|srl)\s+([abcdehl])\b/i;
     const pushPop = /^\s*(?:push|pop)\s+(af|bc|de|hl)\b/i;
+
+    const normalizeKnownValue = (rawValue) => {
+      const value = String(rawValue || "").trim();
+      if (parseNumericLiteral) {
+        const numeric = parseNumericLiteral(value);
+        if (Number.isInteger(numeric)) return String(numeric & 0xFF);
+      }
+      return value.toLowerCase();
+    };
+
+    const findKnownRegisterForValue = (value) => {
+      for (const reg of ["a", "b", "c", "d", "e", "h", "l"]) {
+        if (knownRegs.get(reg) === value) return reg;
+      }
+      return null;
+    };
 
     const clearKnown = (...regs) => {
       for (const reg of regs) knownRegs.delete(reg);
+    };
+
+    const setKnownPairFromImmediate = (pair, rawValue) => {
+      const numeric = parseNumericLiteral ? parseNumericLiteral(String(rawValue || "").trim()) : null;
+      const regs = pair === "bc" ? ["b", "c"] : pair === "de" ? ["d", "e"] : ["h", "l"];
+      if (!Number.isInteger(numeric)) {
+        clearKnown(...regs);
+        return;
+      }
+      knownRegs.set(regs[0], String((numeric >> 8) & 0xFF));
+      knownRegs.set(regs[1], String(numeric & 0xFF));
     };
 
     for (const line of lines) {
@@ -301,19 +334,27 @@ export function createCompilerShellHelpers({
         optimized.push(line);
         continue;
       }
+      const pairImmMatch = trimmed.match(pairImmediateLoad);
+      if (pairImmMatch) {
+        setKnownPairFromImmediate(pairImmMatch[1].toLowerCase(), pairImmMatch[2]);
+        optimized.push(line);
+        continue;
+      }
       const immMatch = trimmed.match(immediateLoad);
       if (immMatch) {
         const reg = immMatch[1].toLowerCase();
-        const value = immMatch[2].toLowerCase();
-        if (/^[abcdehl]$/i.test(value)) {
-          if (reg === value) continue;
-          const srcKnown = knownRegs.get(value);
+        const rawValue = immMatch[2];
+        const value = normalizeKnownValue(rawValue);
+        const valueAsRegister = String(rawValue || "").trim().toLowerCase();
+        if (/^[abcdehl]$/i.test(valueAsRegister)) {
+          if (reg === valueAsRegister) continue;
+          const srcKnown = knownRegs.get(valueAsRegister);
           if (srcKnown !== undefined) knownRegs.set(reg, srcKnown);
           else knownRegs.delete(reg);
           optimized.push(line);
           continue;
         }
-        if (value.includes("(") || value.includes(")")) {
+        if (String(rawValue || "").includes("(") || String(rawValue || "").includes(")")) {
           clearKnown(reg);
           optimized.push(line);
           continue;
@@ -334,6 +375,19 @@ export function createCompilerShellHelpers({
         if (srcKnown !== undefined) knownRegs.set(dst, srcKnown);
         else knownRegs.delete(dst);
         optimized.push(line);
+        continue;
+      }
+      const aluImmediateMatch = trimmed.match(aluImmediate);
+      if (aluImmediateMatch) {
+        const op = aluImmediateMatch[2].toLowerCase();
+        const value = normalizeKnownValue(aluImmediateMatch[3]);
+        const knownReg = findKnownRegisterForValue(value);
+        if (knownReg) {
+          optimized.push(aluImmediateMatch[1] + op + " " + knownReg);
+        } else {
+          optimized.push(line);
+        }
+        if (op !== "cp") clearKnown("a");
         continue;
       }
       if (memStore.test(trimmed)) {
@@ -365,9 +419,30 @@ export function createCompilerShellHelpers({
         optimized.push(line);
         continue;
       }
-      const regMutationMatch = trimmed.match(regMutation);
-      if (regMutationMatch) {
-        clearKnown(regMutationMatch[1].toLowerCase());
+      const incDecRegMutationMatch = trimmed.match(incDecRegMutation);
+      if (incDecRegMutationMatch) {
+        clearKnown(incDecRegMutationMatch[1].toLowerCase());
+        optimized.push(line);
+        continue;
+      }
+      const aluRegMutationMatch = trimmed.match(aluRegMutation);
+      if (aluRegMutationMatch) {
+        clearKnown("a");
+        optimized.push(line);
+        continue;
+      }
+      if (cpReg.test(trimmed)) {
+        optimized.push(line);
+        continue;
+      }
+      if (aOnlyMutation.test(trimmed)) {
+        clearKnown("a");
+        optimized.push(line);
+        continue;
+      }
+      const rotateShiftMutationMatch = trimmed.match(rotateShiftMutation);
+      if (rotateShiftMutationMatch) {
+        clearKnown(rotateShiftMutationMatch[1].toLowerCase());
         optimized.push(line);
         continue;
       }

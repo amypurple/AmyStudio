@@ -83,7 +83,7 @@ export function createStatusAsmUiHelpers({
   }
 
   function buildRamSummary(projectState, transpileResult = null) {
-    const inferredCaps = studioSourceLang === "amy"
+    const inferredCaps = studioSourceLang === "pseudo_alexis"
       ? inferAmyMemoryCapabilities(projectState.sourceText || "", sourceHintsTinySound)
       : null;
     const ramLayout = getRamLayout(studioMemoryProfile, inferredCaps);
@@ -97,7 +97,7 @@ export function createStatusAsmUiHelpers({
     }
     const totalBytes = ramLayout.userRamEndExclusive - ramLayout.userRamStart;
     const windowText = `${formatHex16(ramLayout.userRamStart)}-${formatHex16(ramLayout.userRamEndExclusive - 1)}`;
-    if (studioSourceLang !== "amy") {
+    if (studioSourceLang !== "pseudo_alexis") {
       return {
         windowText,
         usedText: "manual",

@@ -168,17 +168,6 @@ export function createExpressionComputeHelpers({
     return false;
   }
 
-  function randomMaskForCount(count) {
-    if (!Number.isInteger(count) || count <= 0 || count > 256) return null;
-    let mask = 0;
-    let top = count - 1;
-    do {
-      mask = (mask << 1) | 1;
-      top >>= 1;
-    } while (top > 0);
-    return mask & 0xFF;
-  }
-
   function resolveAbsdiffDomains(leftNode, rightNode, leftType, rightType) {
     let leftSigned = isSignedDeclaredType(leftType?.declaredType);
     let rightSigned = isSignedDeclaredType(rightType?.declaredType);
@@ -221,19 +210,14 @@ export function createExpressionComputeHelpers({
           const fullRange = maxValue - minValue + 1;
           if (fullRange === 256) {
             return [
-              "    call GET_RANDOM",
-              "    ld a,r",
-              "    xor l",
+              "    call AMY_RANDOM_U8",
               ...(minValue ? [`    add a,${symbolOrValue(String(minValue & 0xFF))}`] : [])
             ];
           }
           const range = (fullRange & 0xFF);
-          const mask = randomMaskForCount(fullRange);
-          if (mask === null) return null;
           rangeLines.push(
             `    ld c,${symbolOrValue(String(minValue & 0xFF))}`,
-            `    ld b,${symbolOrValue(String(range))}`,
-            `    ld d,${symbolOrValue(String(mask))}`
+            `    ld b,${symbolOrValue(String(range))}`
           );
         } else {
           const loadMax = maxValue !== null
@@ -257,14 +241,7 @@ export function createExpressionComputeHelpers({
         return [
           ...rangeLines,
           `${retryLabel}:`,
-          "    push bc",
-          "    push de",
-          "    call GET_RANDOM",
-          "    ld a,r",
-          "    xor l",
-          "    pop de",
-          "    pop bc",
-          ...(minValue !== null && maxValue !== null ? ["    and d"] : []),
+          "    call AMY_RANDOM_U8",
           "    cp b",
           `    jr nc,${retryLabel}`,
           "    add a,c"

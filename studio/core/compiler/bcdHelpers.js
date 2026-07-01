@@ -268,22 +268,34 @@ export function createBcdHelpers(ctx) {
     const loadX = emitLoadInt8Into("e", xToken);
     if (!loadY || !loadX) return null;
     const offset = tileOffsetToken ? symbolOrValue(tileOffsetToken) : "$30";
+    const constY = tryEvaluateCompileTimeNumericExpression?.(yToken);
+    const constX = tryEvaluateCompileTimeNumericExpression?.(xToken);
+    const emitLoadCoordsForColumn = (col) => {
+      if (Number.isInteger(constY) && Number.isInteger(constX)) {
+        const adjustedX = constX + col;
+        if (adjustedX >= 0 && adjustedX <= 255) {
+          const packed = (((constY & 0xFF) << 8) | (adjustedX & 0xFF)) & 0xFFFF;
+          return [`    ld de,$${packed.toString(16).toUpperCase().padStart(4, "0")}`];
+        }
+      }
+      const coordLines = [...loadY, ...loadX];
+      for (let j = 0; j < col; j++) coordLines.push("    inc e");
+      return coordLines;
+    };
     const lines = [];
     let col = 0;
     for (let i = byteCount - 1; i >= 0; i--) {
       const loadSrc = emitLoadBcdInt8IntoA(varName, i);
       if (!loadSrc) return null;
       if (!(oddDigits && i === byteCount - 1)) {
-        lines.push(...loadY, ...loadX);
-        for (let j = 0; j < col; j++) lines.push("    inc e");
+        lines.push(...emitLoadCoordsForColumn(col));
         lines.push(...loadSrc);
         lines.push("    rrca", "    rrca", "    rrca", "    rrca", "    and $0F");
         lines.push(`    add a,${offset}`);
         lines.push("    call AMY_PUT_CHAR_AT");
         col += 1;
       }
-      lines.push(...loadY, ...loadX);
-      for (let j = 0; j < col; j++) lines.push("    inc e");
+      lines.push(...emitLoadCoordsForColumn(col));
       lines.push(...loadSrc);
       lines.push("    and $0F");
       lines.push(`    add a,${offset}`);

@@ -750,7 +750,7 @@ export function finalizeAmyTranspile({
               "    dec b",
               "AMY_NUMERIC_POSTPROCESS_WIDTH_LEADING:",
               "    ld a,b",
-              "    cp 1",
+              "    dec a",
               "    jr z,AMY_NUMERIC_POSTPROCESS_WIDTH_DONE_LEADING",
               "    ld a,(hl)",
               "    cp $30",

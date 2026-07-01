@@ -1,5 +1,5 @@
 export function transpileAmySource({ sourceLang, sourceText, transpileAmy, lexZ80Source, summarizeTokens }) {
-  if (sourceLang === "amy") {
+  if (sourceLang === "pseudo_alexis") {
     return transpileAmy(sourceText);
   }
 

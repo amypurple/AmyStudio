@@ -1,6 +1,6 @@
 import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
-import { exampleCatalog, exampleCategoryOrder, exampleManifest, exampleSources } from "./examples.js?v=20260620-source-lang-amy";
+import { exampleCatalog, exampleCategoryOrder, exampleManifest, exampleSources } from "./examples.js";
 import { lexZ80Source, summarizeTokens } from "./core/amyscvassembly.js";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
 import { createAutocompleteController } from "./core/editor/autocomplete.js";
@@ -25,7 +25,7 @@ import { createAddressHelpers } from "./core/compiler/addressHelpers.js";
 import { handleArrayBulkStatement } from "./core/compiler/arrayBulkStatementHelpers.js";
 import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentArithmeticHelpers.js";
 import { createFx16Helpers } from "./core/compiler/fx16Helpers.js";
-import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20260621-random-loop-shape";
+import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js";
 import { createCompareLiteralHelpers } from "./core/compiler/compareLiteralHelpers.js";
 import { createCompilerShellHelpers } from "./core/compiler/compilerShellHelpers.js";
 import { createDataHelpers } from "./core/compiler/dataHelpers.js";
@@ -33,7 +33,7 @@ import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelper
 import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHelpers.js";
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
 import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js";
-import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20260621-random-loop-shape";
+import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js";
 import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
 import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js";
 import { handleForStatement } from "./core/compiler/forStatementHelpers.js";
@@ -61,7 +61,7 @@ import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js";
 import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js";
 import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260609-text-colors1";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js";
-import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
+import { transpileAmySource } from "./core/amyCompiler.js";
 import { compileGeneratedAsm, expandAsmIncludes } from "./core/internalCompiler.js";
 import {
   getOptimizationProfile,
@@ -78,7 +78,29 @@ import {
 } from "./core/colecoBiosPreview.js";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260616-frame-runtime3";
 import { createProjectFileUiHelpers } from "./core/projectFileUi.js";
-import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js";
+import {
+  colecoBitmapTablesToImageData,
+  imageFileToColecoBitmapTables,
+  imageFileToPictureProjectFileEntries,
+  patternBytesToColecoBitmapTables,
+  colorBytesToColecoBitmapTables,
+  grpBytesToColecoBitmapTables,
+  sc2BytesToColecoBitmapTables,
+  isIcvGmDatText,
+  icvgmDatTextToColecoTileTables,
+  icvgmDatTextToColecoBitmapTables,
+  pcBytesToColecoBitmapTables,
+  pcFileToPictureProjectFileEntries,
+  powerPaintBytesToColecoBitmapTables,
+  powerPaintFileToPictureProjectFileEntries
+} from "./core/pictureConvert.js";
+import {
+  buildPictureProjectFileEntriesFromCandidate,
+  evaluatePictureCompressionCandidates,
+  PICTURE_QUICK_COMPRESSION_CODECS,
+  selectPictureCompressionCandidate
+} from "./core/pictureCompressionReport.js";
+import { isPictureProjectFile, pictureComponentFromPath, previewPictureProjectFile } from "./core/picturePreview.js";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
 import {
@@ -94,9 +116,9 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { createDocsUi } from "./core/docsUi.js?v=20260620-release-docs-cleanup";
+import { createDocsUi } from "./core/docsUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260609-picture-start1";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260620-tools-links";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js";
 import { wavToDsound, cvSampleRate, audioBufferToDsound, dsoundBytesToPreviewSamples } from "./core/wavToDsound.js";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
@@ -131,6 +153,7 @@ const els = {
   btnPreviewColecoTitle: document.getElementById("btnPreviewColecoTitle"),
   btnPreviewDinaTitle: document.getElementById("btnPreviewDinaTitle"),
   btnCopyAsm: document.getElementById("btnCopyAsm"),
+  btnOpenAssembler: document.getElementById("btnOpenAssembler"),
   btnViewGeneratedAsm: document.getElementById("btnViewGeneratedAsm"),
   btnViewExpandedAsm: document.getElementById("btnViewExpandedAsm"),
   btnViewOptimizedAsm: document.getElementById("btnViewOptimizedAsm"),
@@ -166,8 +189,6 @@ const els = {
   docsContent: document.getElementById("docsContent"),
   btnDocsRefresh: document.getElementById("btnDocsRefresh"),
   btnAddProjectFile: document.getElementById("btnAddProjectFile"),
-  btnNewTileSet: document.getElementById("btnNewTileSet"),
-  btnNewBitmap: document.getElementById("btnNewBitmap"),
   btnProjectAudio: document.getElementById("btnProjectAudio"),
   btnProjectPicture: document.getElementById("btnProjectPicture"),
   libResolution: document.getElementById("libResolution"),
@@ -221,9 +242,9 @@ const els = {
   btnWavSaveAndInsertPlay: document.getElementById("btnWavSaveAndInsertPlay"),
 };
 
-const STORAGE_KEY = "amy_studio_project_v1";
+const STORAGE_KEY = "alexis_studio_project_v1";
 const LEGACY_WARRIOR_TEMPLATE_MARKER = "project \"RLE Picture Demo\"";
-const STUDIO_SOURCE_LANG = "amy";
+const STUDIO_SOURCE_LANG = "pseudo_alexis";
 const STUDIO_MEMORY_PROFILE = manifest.defaults?.memoryProfile || "colecovision_legacy_sdcc";
 let compiledRom = null;
 let compiledMemoryMap = "";
@@ -574,15 +595,18 @@ async function copyText(text) {
   await navigator.clipboard.writeText(text);
 }
 
-let project = loadProject();
+function openAssembler() {
+  // If the user has the project laid out like on Amy's Desktop, this relative path works.
+  // Otherwise, the user can open their AmysCVAssembly HTML manually.
+  const p = manifest.assembler.amysCvAssemblyDefaultPath.replace(/\\/g, "/");
+  window.open(p, "_blank", "noopener,noreferrer");
+}
 
-const projectFileAddons = createProjectFileAddonBundle();
+let project = loadProject();
 
 const {
   insertProjectFileAssetSnippet,
   insertProjectFilePlaySnippet,
-  createNewTileSetProjectFiles,
-  createNewBitmapProjectFiles,
   upsertProjectFile,
   removeProjectFile,
   renderProjectFiles,
@@ -608,7 +632,27 @@ const {
   detectCodecFromName,
   decompressBytes,
   compressBytes,
-  ...projectFileAddons
+  evaluatePictureCompressionCandidates,
+  selectPictureCompressionCandidate,
+  buildPictureProjectFileEntriesFromCandidate,
+  pictureQuickCompressionCodecs: PICTURE_QUICK_COMPRESSION_CODECS,
+  imageFileToColecoBitmapTables,
+  colecoBitmapTablesToImageData,
+  imageFileToPictureProjectFileEntries,
+  patternBytesToColecoBitmapTables,
+  colorBytesToColecoBitmapTables,
+  grpBytesToColecoBitmapTables,
+  sc2BytesToColecoBitmapTables,
+  isIcvGmDatText,
+  icvgmDatTextToColecoTileTables,
+  icvgmDatTextToColecoBitmapTables,
+  pcBytesToColecoBitmapTables,
+  pcFileToPictureProjectFileEntries,
+  powerPaintBytesToColecoBitmapTables,
+  powerPaintFileToPictureProjectFileEntries,
+  isPictureProjectFile,
+  pictureComponentFromPath,
+  previewPictureProjectFile
 });
 
 const docsUi = createDocsUi({
@@ -718,6 +762,7 @@ function bindEvents() {
         resetEmbeddedEmulator,
         downloadBinary,
         copyText,
+        openAssembler,
         cvSampleRate,
         wavToDsound,
         audioBufferToDsound,
@@ -726,8 +771,6 @@ function bindEvents() {
         ensureProjectFilePathCandidate,
         upsertProjectFile,
         bytesToBase64,
-        createNewTileSetProjectFiles,
-        createNewBitmapProjectFiles,
         addImportedProjectFiles
       },
       runtime: {
@@ -771,7 +814,7 @@ bindEvents();
 
 (function setupAsmPanelToggle() {
   const layout = els.layoutEl;
-  const STORAGE_KEY = "amy_asm_panel_collapsed";
+  const STORAGE_KEY = "alexis_asm_panel_collapsed";
   function setCollapsed(collapsed) {
     layout.classList.toggle("layout--asm-collapsed", collapsed);
     try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch (_) {}

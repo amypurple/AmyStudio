@@ -143,6 +143,7 @@ export function transpileAmyCore(sourceText, deps) {
   let emitIntFp5Into = null;
   let emitRandomFx16Into = null;
   let emitRandomFp5Into = null;
+  let emitRandomFp5BetweenInto = null;
   let emitFp5ArithOp = null;
   let emitFp5MultiplyOp = null;
   let emitFp5DivideOp = null;
@@ -1401,9 +1402,7 @@ export function transpileAmyCore(sourceText, deps) {
     lines.push("    inc a");
     lines.push("    ld b,a");
     lines.push(`${retryLabel}:`);
-    lines.push("    call GET_RANDOM");
-    lines.push("    ld a,r");
-    lines.push("    xor l");
+    lines.push("    call AMY_RANDOM_U8");
     lines.push("    cp b");
     lines.push(`    jr nc,${retryLabel}`);
     lines.push("    add a,c");
@@ -1829,7 +1828,8 @@ export function transpileAmyCore(sourceText, deps) {
       getDataCursorName: () => dataCursorName,
       setDataCursorName: (value) => { dataCursorName = value; }
     },
-    formatHex16
+    formatHex16,
+    splitTopLevelArgs
   }));
   ({
     SIMPLE_BYTE_TOKEN_RE,
@@ -2071,6 +2071,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitIntFp5Into,
     emitRandomFx16Into,
     emitRandomFp5Into,
+    emitRandomFp5BetweenInto,
     emitFp5ArithOp,
     emitFp5MultiplyOp,
     emitFp5DivideOp
@@ -2169,6 +2170,8 @@ export function transpileAmyCore(sourceText, deps) {
     emitFx16DivideOp: (...args) => emitFx16DivideOp(...args),
     emitFp5MultiplyOp: (...args) => emitFp5MultiplyOp(...args),
     emitFp5DivideOp: (...args) => emitFp5DivideOp(...args),
+    emitRandomFp5BetweenInto: (...args) => emitRandomFp5BetweenInto(...args),
+    splitTopLevelArgs,
     emitRuntimeStore: (...args) => emitRuntimeStore(...args),
     emitLoadInt8Into,
     emitStoreInt8FromA,
@@ -2991,15 +2994,6 @@ export function transpileAmyCore(sourceText, deps) {
       if (arrayBulkStmt.handled) {
         if (!arrayBulkStmt.ok) return { ok: false, asmBody: "", log: arrayBulkStmt.log };
         body.push(...arrayBulkStmt.lines);
-        continue;
-      }
-    }
-
-    {
-      const includeStmt = line.match(/^include\s+"([^"]+)"\s*$/i);
-      if (includeStmt) {
-        const includePath = includeStmt[1].replace(/\\/g, "/");
-        body.push(`include "${includePath}"`);
         continue;
       }
     }

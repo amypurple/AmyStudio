@@ -204,6 +204,96 @@ export class Z80Optimizer {
                 return false;
             }
 
+
+            instructionUsesPriorCarryFlag(token) {
+                if (!(token instanceof Instruction)) return false;
+                const mnem = token.mnemonic.toLowerCase();
+                const ops = token.operands || [];
+                if ((mnem === 'jr' || mnem === 'jp' || mnem === 'call' || mnem === 'ret') &&
+                    ops.length > 0 &&
+                    ops[0].type === 'condition') {
+                    const cond = String(ops[0].value).toLowerCase();
+                    return cond === 'c' || cond === 'nc';
+                }
+                if (['adc', 'sbc', 'rla', 'rra', 'rl', 'rr', 'ccf', 'daa'].includes(mnem)) {
+                    return true;
+                }
+                if (mnem === 'push' &&
+                    ops.length === 1 &&
+                    ops[0].type === 'register_pair' &&
+                    String(ops[0].value).toLowerCase() === 'af') {
+                    return true;
+                }
+                if (mnem === 'ex' &&
+                    ops.length === 2 &&
+                    ops[0].type === 'register_pair' &&
+                    ops[1].type === 'register_pair' &&
+                    String(ops[0].value).toLowerCase() === 'af' &&
+                    String(ops[1].value).toLowerCase() === "af'") {
+                    return true;
+                }
+                return false;
+            }
+
+            instructionFullyClobbersCarryFlag(token) {
+                if (!(token instanceof Instruction)) return false;
+                const mnem = token.mnemonic.toLowerCase();
+                if (['add', 'sub', 'and', 'xor', 'or', 'cp', 'neg', 'scf'].includes(mnem)) {
+                    return true;
+                }
+                if (['rlca', 'rrca', 'rlc', 'rrc', 'sla', 'sra', 'srl'].includes(mnem)) {
+                    return true;
+                }
+                if (mnem === 'pop' &&
+                    token.operands.length === 1 &&
+                    token.operands[0].type === 'register_pair' &&
+                    String(token.operands[0].value).toLowerCase() === 'af') {
+                    return true;
+                }
+                if (mnem === 'ex' &&
+                    token.operands.length === 2 &&
+                    token.operands[0].type === 'register_pair' &&
+                    token.operands[1].type === 'register_pair' &&
+                    String(token.operands[0].value).toLowerCase() === 'af' &&
+                    String(token.operands[1].value).toLowerCase() === "af'") {
+                    return true;
+                }
+                return false;
+            }
+
+            isCarryDeadBeforeNextUse(tokens, startIdx) {
+                const startToken = tokens[startIdx];
+                if (startToken instanceof Instruction && startToken.label) {
+                    return false;
+                }
+                for (let lookahead = startIdx + 1; lookahead < tokens.length; lookahead++) {
+                    const candidate = tokens[lookahead];
+                    if (candidate instanceof Directive && candidate.name === 'ORG') {
+                        return false;
+                    }
+                    if (!(candidate instanceof Instruction)) {
+                        continue;
+                    }
+                    if (candidate.label) {
+                        return false;
+                    }
+                    if (this.instructionUsesPriorCarryFlag(candidate)) {
+                        return false;
+                    }
+                    if (this.instructionFullyClobbersCarryFlag(candidate)) {
+                        return true;
+                    }
+                    const mnem = candidate.mnemonic.toLowerCase();
+                    if ((mnem === 'ret' || mnem === 'reti' || mnem === 'retn') && candidate.operands.length === 0) {
+                        return true;
+                    }
+                    if ((mnem === 'jp' || mnem === 'jr') && candidate.operands.length === 1) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             getRegisterPairMembers(regName) {
                 const members = {
                     af: ['a'],
@@ -1408,6 +1498,16 @@ export class Z80Optimizer {
                     const m = inst.mnemonic.toLowerCase();
                     return ['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt'].includes(m);
                 };
+                const getBranchConditionName = (inst) => {
+                    if (!(inst instanceof Instruction)) return null;
+                    const m = inst.mnemonic.toLowerCase();
+                    if (!['jr', 'jp', 'call', 'ret'].includes(m)) return null;
+                    if (!inst.operands || inst.operands.length === 0) return null;
+                    const op = inst.operands[0];
+                    if (!op || !['condition', 'register'].includes(op.type)) return null;
+                    const cond = String(op.value || '').toLowerCase();
+                    return ['z', 'nz', 'c', 'nc', 'po', 'pe', 'p', 'm'].includes(cond) ? cond : null;
+                };
                 const isOverwrittenBeforeAnyReadInBlock = (tokens, startIdx, regName) => {
                     const startToken = tokens[startIdx];
                     const target = String(regName || '').toLowerCase();
@@ -1739,6 +1839,88 @@ export class Z80Optimizer {
                     }
                     return null;
                 };
+                const findKnownHLowAfterPageSafeIncs = (maxWindow = 32) => {
+                    let lowDelta = 0;
+                    for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= maxWindow; lookback--) {
+                        const prev = optimized[lookback];
+                        if (!(prev instanceof Instruction)) continue;
+                        const prevMnemonic = prev.mnemonic.toLowerCase();
+                        if (prev.label || isLocalAnalysisBarrier(prev) || ['ex', 'exx'].includes(prevMnemonic)) break;
+                        if (prevMnemonic === 'inc' &&
+                            prev.operands.length === 1 &&
+                            prev.operands[0].type === 'register_pair' &&
+                            String(prev.operands[0].value).toLowerCase() === 'hl') {
+                            lowDelta++;
+                            continue;
+                        }
+                        if (prevMnemonic === 'ld' && prev.operands.length === 2) {
+                            const dst = prev.operands[0];
+                            const src = prev.operands[1];
+                            if (dst.type === 'register' && String(dst.value).toLowerCase() === 'l' && src.type === 'immediate') {
+                                const base = this.resolve8BitImmediate(src);
+                                if (base === null || base + lowDelta > 0xFF) return null;
+                                return base + lowDelta;
+                            }
+                            if (dst.type === 'register_pair' && String(dst.value).toLowerCase() === 'hl' && src.type === 'immediate') {
+                                const base = Number(src.value) & 0xFF;
+                                if (base + lowDelta > 0xFF) return null;
+                                return base + lowDelta;
+                            }
+                        }
+                        if (this.instructionWritesRegister(prev, 'l') || this.instructionWritesRegister(prev, 'hl')) break;
+                    }
+                    return null;
+                };
+                const findKnown8BitRegisterImmediate = (regName, maxWindow = 32) => {
+                    const reg = String(regName || '').toLowerCase();
+                    if (!isPlain8BitRegisterName(reg)) return null;
+                    const containingPair = this.getContainingRegisterPair(reg);
+                    const layout = containingPair ? pairByteLayout[containingPair] : null;
+                    for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= maxWindow; lookback--) {
+                        const prev = optimized[lookback];
+                        if (!(prev instanceof Instruction)) continue;
+                        const prevMnemonic = prev.mnemonic.toLowerCase();
+                        if (prev.label || isLocalAnalysisBarrier(prev) || ['ex', 'exx'].includes(prevMnemonic)) break;
+                        if (prevMnemonic === 'ld' &&
+                            prev.operands.length === 2 &&
+                            prev.operands[0].type === 'register' &&
+                            String(prev.operands[0].value).toLowerCase() === reg &&
+                            prev.operands[1].type === 'immediate') {
+                            const value = this.resolve8BitImmediate(prev.operands[1]);
+                            return value === null ? null : value;
+                        }
+                        if (reg === 'a' &&
+                            prevMnemonic === 'xor' &&
+                            prev.operands.length === 1 &&
+                            prev.operands[0].type === 'register' &&
+                            String(prev.operands[0].value).toLowerCase() === 'a') {
+                            return 0;
+                        }
+                        if (layout &&
+                            prevMnemonic === 'ld' &&
+                            prev.operands.length === 2 &&
+                            prev.operands[0].type === 'register_pair' &&
+                            String(prev.operands[0].value).toLowerCase() === containingPair &&
+                            prev.operands[1].type === 'immediate') {
+                            const imm16 = Number(prev.operands[1].value) & 0xFFFF;
+                            return reg === layout.high ? (imm16 >> 8) & 0xFF : imm16 & 0xFF;
+                        }
+                        if (this.instructionWritesRegister(prev, reg)) break;
+                    }
+                    return null;
+                };
+                const findRegisterWithKnownImmediate = (value, excludedReg = null) => {
+                    const target = Number(value) & 0xFF;
+                    const excluded = String(excludedReg || '').toLowerCase();
+                    // Prefer non-A registers so the rewrite is visually less surprising in flag-heavy code.
+                    const candidates = ['b', 'c', 'd', 'e', 'h', 'l', 'a'];
+                    for (const reg of candidates) {
+                        if (reg === excluded) continue;
+                        const known = findKnown8BitRegisterImmediate(reg);
+                        if (known === target) return reg;
+                    }
+                    return null;
+                };
 
                 let liveDeImmediate = null;
                 let liveBImmediate = null;
@@ -1780,6 +1962,9 @@ export class Z80Optimizer {
                         i + 1 < tokens.length) {
                         const src = token.operands[1];
                         const nextToken = tokens[i + 1];
+                        const srcIsDirect8 =
+                            src.type === 'immediate' ||
+                            (src.type === 'symbol' && this.resolve8BitImmediate(src) !== null);
                         if (nextToken instanceof Instruction &&
                             !nextToken.label &&
                             nextToken.mnemonic.toLowerCase() === 'ld' &&
@@ -1790,7 +1975,7 @@ export class Z80Optimizer {
                             nextToken.operands[1].type === 'register' &&
                             String(nextToken.operands[1].value).toLowerCase() === 'a' &&
                             (
-                                src.type === 'immediate' ||
+                                srcIsDirect8 ||
                                 (src.type === 'register' &&
                                     isPlain8BitRegisterName(src.value) &&
                                     String(src.value).toLowerCase() !== 'a')
@@ -1860,6 +2045,33 @@ export class Z80Optimizer {
                                 optimizerLog(`  Narrowed LD ${pair.toUpperCase()},imm16 to LD ${replacementReg.toUpperCase()},imm8 using known half-register at line ${token.lineNumber}`, 'debug');
                                 continue;
                             }
+                        }
+                    }
+
+                    // === PHASE 1.5i4: Replace LD L,next with INC HL when page-safe ===
+                    // LD L,n and INC HL both preserve flags only if INC HL does not carry
+                    // into H. This recovers sequential RAM stores after page-local address
+                    // narrowing, while rejecting L=$FF -> $00 page crossing.
+                    if (this.config.localValueReuse &&
+                        isLdRegImm(token, 'l') &&
+                        !token.label) {
+                        const currentLow = findKnownHLowAfterPageSafeIncs();
+                        const nextLow = this.resolve8BitImmediate(token.operands[1]);
+                        if (currentLow !== null &&
+                            nextLow !== null &&
+                            currentLow < 0xFF &&
+                            nextLow === ((currentLow + 1) & 0xFF)) {
+                            optimized.push(new Instruction(
+                                token.label,
+                                'inc',
+                                [new Operand('register_pair', 'hl')],
+                                token.lineNumber,
+                                token.sourceLine
+                            ));
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Replaced LD L,${nextLow} with page-safe INC HL at line ${token.lineNumber}`, 'debug');
+                            continue;
                         }
                     }
 
@@ -2441,12 +2653,15 @@ export class Z80Optimizer {
 
                     // Remove redundant `ld d,0` when D is already known zero.
                     // This targets repeated byte-to-word setup and is safe because
-                    // LD r,n does not affect flags.
+                    // LD r,n does not affect flags. Keep the proof local, but allow
+                    // a wider window than the original 8 instructions: generated
+                    // address setup often preserves D=0 across several E-only
+                    // updates and HL arithmetic operations.
                     if (isLdRegImm(token, 'd') &&
                         Number(token.operands[1].value) === 0 &&
                         !token.label) {
                         let dKnownZero = false;
-                        for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= 8; lookback--) {
+                        for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= 32; lookback--) {
                             const prev = optimized[lookback];
                             if (!(prev instanceof Instruction) || prev.label || isLocalAnalysisBarrier(prev)) break;
                             if (isLdRegImm(prev, 'd') && Number(prev.operands[1].value) === 0) {
@@ -2472,10 +2687,63 @@ export class Z80Optimizer {
                         }
                     }
 
+                    // General local value reuse: LD dst,n -> LD dst,src when another
+                    // 8-bit register is locally proven to already hold n. Both forms leave
+                    // flags unchanged; keep this at Balanced+ because it is value tracking.
+                    if (this.config.localValueReuse &&
+                        mnem === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register' &&
+                        ['immediate', 'symbol'].includes(token.operands[1].type) &&
+                        !token.label) {
+                        const dstReg = String(token.operands[0].value).toLowerCase();
+                        const value = this.resolve8BitImmediate(token.operands[1]);
+                        if (isPlain8BitRegisterName(dstReg) && value !== null) {
+                            const srcReg = findRegisterWithKnownImmediate(value, dstReg);
+                            if (srcReg) {
+                                optimized.push(new Instruction(
+                                    token.label,
+                                    'ld',
+                                    [new Operand('register', dstReg), new Operand('register', srcReg)],
+                                    token.lineNumber,
+                                    token.sourceLine
+                                ));
+                                this.stats.peepholeOpts++;
+                                this.stats.bytesSaved += 1;
+                                optimizerLog('  Replaced LD ' + dstReg.toUpperCase() + ',n with LD ' + dstReg.toUpperCase() + ',' + srcReg.toUpperCase() + ' because ' + srcReg.toUpperCase() + ' already has ' + (value & 0xFF) + ' at line ' + token.lineNumber, 'debug');
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Replace a full HL reload with an L-only reload when H is already
+                    // locally proven to hold the same high byte. LD L,n is one byte
+                    // shorter than LD HL,nn and, like LD HL,nn, does not affect flags.
+                    if (isLdPairImm16(token, 'hl') && !token.label) {
+                        const imm16 = Number(token.operands[1].value) & 0xFFFF;
+                        const high = (imm16 >> 8) & 0xFF;
+                        const low = imm16 & 0xFF;
+                        const knownH = findKnownHalfRegisterImmediate('h', 'hl');
+                        if (knownH === high) {
+                            optimized.push(new Instruction(
+                                token.label,
+                                'ld',
+                                [new Operand('register', 'l'), new Operand('immediate', low)],
+                                token.lineNumber,
+                                token.sourceLine
+                            ));
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Replaced LD HL,nn with LD L,n because H already matches at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
                     // Fold `ld a,n; ld (hl),a` into `ld (hl),n` only when A is
                     // explicitly overwritten before any later read or flow barrier.
                     // The replacement is one byte shorter but does not preserve A.
-                    if (isLdRegImm(token, 'a') &&
+                    if (this.config.localValueReuse &&
+                        isLdRegImm(token, 'a') &&
                         !token.label &&
                         i + 1 < tokens.length) {
                         const next = tokens[i + 1];
@@ -2599,6 +2867,48 @@ export class Z80Optimizer {
                         }
                     }
 
+                    // Short-range duplicate register-to-register load elimination:
+                    //   ld dst,src
+                    //   [small run that does not rewrite dst or src]
+                    //   ld dst,src
+                    // -> second load is redundant. LD r,r does not affect flags.
+                    if (this.config.localValueReuse &&
+                        mnem === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register' &&
+                        token.operands[1].type === 'register' &&
+                        !token.label) {
+                        const dstReg = String(token.operands[0].value).toLowerCase();
+                        const srcReg = String(token.operands[1].value).toLowerCase();
+                        let removedDuplicateRegLoad = false;
+
+                        if (isPlain8BitRegisterName(dstReg) &&
+                            isPlain8BitRegisterName(srcReg) &&
+                            dstReg !== srcReg) {
+                            for (let back = optimized.length - 1, scanned = 0; back >= 0 && scanned < SHORT_LOCAL_REUSE_WINDOW; back--, scanned++) {
+                                const prev = optimized[back];
+                                if (!(prev instanceof Instruction)) continue;
+                                if (prev.label || isLocalAnalysisBarrier(prev)) break;
+                                if (prev.mnemonic.toLowerCase() === 'ld' &&
+                                    prev.operands.length === 2 &&
+                                    prev.operands[0].type === 'register' &&
+                                    prev.operands[1].type === 'register' &&
+                                    String(prev.operands[0].value).toLowerCase() === dstReg &&
+                                    String(prev.operands[1].value).toLowerCase() === srcReg) {
+                                    this.stats.peepholeOpts++;
+                                    this.stats.bytesSaved += getInstructionSize(token);
+                                    optimizerLog(`  Removed short-range duplicate LD ${dstReg.toUpperCase()},${srcReg.toUpperCase()} at line ${token.lineNumber}`, 'debug');
+                                    removedDuplicateRegLoad = true;
+                                    break;
+                                }
+                                if (this.instructionWritesRegister(prev, dstReg) || this.instructionWritesRegister(prev, srcReg)) break;
+                            }
+                        }
+
+                        if (removedDuplicateRegLoad) {
+                            continue;
+                        }
+                    }
                     // Fold:
                     //   ld rr,nn
                     //   ld a,rLow
@@ -2808,6 +3118,267 @@ export class Z80Optimizer {
                         }
                     }
 
+                    // === PHASE 1.3z: exact local byte-load cleanups ===
+                    if (mnem === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register' &&
+                        token.operands[1].type === 'immediate' &&
+                        i + 1 < tokens.length) {
+                        const next = tokens[i + 1];
+                        const destReg = String(token.operands[0].value).toLowerCase();
+                        const imm8 = Number(token.operands[1].value) & 0xFF;
+
+                        // LD B,0; XOR A -> XOR A; LD B,A. Same final A/B/flags, one byte shorter.
+                        if (!token.label && destReg === 'b' && imm8 === 0 &&
+                            next instanceof Instruction &&
+                            !next.label &&
+                            next.mnemonic.toLowerCase() === 'xor' &&
+                            next.operands.length === 1 &&
+                            next.operands[0].type === 'register' &&
+                            String(next.operands[0].value).toLowerCase() === 'a') {
+                            optimized.push(new Instruction(token.label, 'xor', [new Operand('register', 'a')], token.lineNumber, token.sourceLine));
+                            optimized.push(new Instruction(null, 'ld', [new Operand('register', 'b'), new Operand('register', 'a')], next.lineNumber, next.sourceLine));
+                            i++;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Reordered LD B,0/XOR A into XOR A/LD B,A at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+
+                        // LD high,n; LD low,m -> LD pair,nn. LDs do not affect flags.
+                        const pairParts = { b: ['bc', 'c'], d: ['de', 'e'], h: ['hl', 'l'] };
+                        const pairInfo = pairParts[destReg];
+                        if (pairInfo &&
+                            next instanceof Instruction &&
+                            !next.label &&
+                            next.mnemonic.toLowerCase() === 'ld' &&
+                            next.operands.length === 2 &&
+                            next.operands[0].type === 'register' &&
+                            next.operands[1].type === 'immediate' &&
+                            String(next.operands[0].value).toLowerCase() === pairInfo[1]) {
+                            const low8 = Number(next.operands[1].value) & 0xFF;
+                            optimized.push(new Instruction(
+                                token.label,
+                                'ld',
+                                [new Operand('register_pair', pairInfo[0]), new Operand('immediate', ((imm8 << 8) | low8) & 0xFFFF)],
+                                token.lineNumber,
+                                token.sourceLine
+                            ));
+                            i++;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Folded LD ${destReg.toUpperCase()},n / LD ${pairInfo[1].toUpperCase()},m into LD ${pairInfo[0].toUpperCase()},nn at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+
+                        // LD high,n; neutral LD A,...; LD low,m -> LD pair,nn; neutral LD A,...
+                        if (pairInfo && i + 2 < tokens.length) {
+                            const mid = tokens[i + 1];
+                            const after = tokens[i + 2];
+                            const midIsNeutralLoadA = mid instanceof Instruction &&
+                                !mid.label &&
+                                mid.mnemonic.toLowerCase() === 'ld' &&
+                                mid.operands.length === 2 &&
+                                mid.operands[0].type === 'register' &&
+                                String(mid.operands[0].value).toLowerCase() === 'a' &&
+                                !instructionCanClobberRegister(mid, pairInfo[0]);
+                            if (midIsNeutralLoadA &&
+                                after instanceof Instruction &&
+                                !after.label &&
+                                after.mnemonic.toLowerCase() === 'ld' &&
+                                after.operands.length === 2 &&
+                                after.operands[0].type === 'register' &&
+                                after.operands[1].type === 'immediate' &&
+                                String(after.operands[0].value).toLowerCase() === pairInfo[1]) {
+                                const low8 = Number(after.operands[1].value) & 0xFF;
+                                optimized.push(new Instruction(
+                                    token.label,
+                                    'ld',
+                                    [new Operand('register_pair', pairInfo[0]), new Operand('immediate', ((imm8 << 8) | low8) & 0xFFFF)],
+                                    token.lineNumber,
+                                    token.sourceLine
+                                ));
+                                optimized.push(mid);
+                                i += 2;
+                                this.stats.peepholeOpts++;
+                                this.stats.bytesSaved += 1;
+                                optimizerLog(`  Folded split LD ${destReg.toUpperCase()}/${pairInfo[1].toUpperCase()} into LD ${pairInfo[0].toUpperCase()},nn at line ${token.lineNumber}`, 'debug');
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Consecutive identical HL reloads are pure duplicates.
+                    if (mnem === 'ld' && i + 1 < tokens.length) {
+                        const next = tokens[i + 1];
+                        if (isSameHlReload(token, next) && !next.label) {
+                            optimized.push(token);
+                            i++;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += getInstructionSize(next);
+                            optimizerLog(`  Removed consecutive duplicate LD HL at line ${next.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
+                    // Delayed identical HL reloads are redundant when every instruction
+                    // in between uses (HL) without changing HL itself.
+                    if (mnem === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register_pair' &&
+                        String(token.operands[0].value).toLowerCase() === 'hl' &&
+                        !token.label) {
+                        const buffered = [];
+                        let duplicateIndex = -1;
+                        for (let j = i + 1; j < tokens.length && j <= i + SHORT_LOCAL_REUSE_WINDOW; j++) {
+                            const mid = tokens[j];
+                            if (!(mid instanceof Instruction) || mid.label) break;
+                            if (isSameHlReload(token, mid)) {
+                                duplicateIndex = j;
+                                break;
+                            }
+                            if (isLocalAnalysisBarrier(mid) || !usesHlMemoryWithoutChangingHl(mid)) break;
+                            buffered.push(mid);
+                        }
+                        if (duplicateIndex !== -1 && buffered.length > 0) {
+                            optimized.push(token);
+                            for (const mid of buffered) optimized.push(mid);
+                            i = duplicateIndex;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += getInstructionSize(tokens[duplicateIndex]);
+                            optimizerLog(`  Removed delayed duplicate LD HL at line ${tokens[duplicateIndex].lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+                    // Dead address setup in direct zero-store codegen:
+                    //   LD HL,sym; XOR A; LD (sym),A
+                    // The direct store does not read HL. Remove the setup only if HL is
+                    // overwritten by plain straight-line code before any later read.
+                    if (mnem === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register_pair' &&
+                        String(token.operands[0].value).toLowerCase() === 'hl' &&
+                        token.operands[1].type === 'symbol' &&
+                        !token.label &&
+                        i + 2 < tokens.length) {
+                        const t1 = tokens[i + 1];
+                        const t2 = tokens[i + 2];
+                        if (t1 instanceof Instruction && t2 instanceof Instruction &&
+                            !t1.label && !t2.label &&
+                            t1.mnemonic.toLowerCase() === 'xor' &&
+                            t1.operands.length === 1 &&
+                            t1.operands[0].type === 'register' &&
+                            String(t1.operands[0].value).toLowerCase() === 'a' &&
+                            isLdMemA(t2, token.operands[1].value)) {
+                            let hlOverwritten = false;
+                            for (let j = i + 3; j < tokens.length && j <= i + SHORT_LOCAL_REUSE_WINDOW; j++) {
+                                const look = tokens[j];
+                                if (!(look instanceof Instruction) || look.label || isLocalAnalysisBarrier(look)) break;
+                                if (this.instructionFullyOverwritesRegister(look, 'hl')) {
+                                    hlOverwritten = true;
+                                    break;
+                                }
+                                if (instructionTouchesRegister(look, 'hl')) break;
+                            }
+                            if (hlOverwritten) {
+                                this.stats.peepholeOpts++;
+                                this.stats.bytesSaved += getInstructionSize(token);
+                                optimizerLog(`  Removed unused direct-store LD HL at line ${token.lineNumber}`, 'debug');
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Exact absdiff constant compare staging. Preserve A from the left operand.
+                    if (isLdAFromMem(token) && i + 4 < tokens.length) {
+                        const t1 = tokens[i + 1];
+                        const t2 = tokens[i + 2];
+                        const t3 = tokens[i + 3];
+                        const t4 = tokens[i + 4];
+                        if ([t1, t2, t3, t4].every(t => t instanceof Instruction && !t.label) &&
+                            t1.mnemonic.toLowerCase() === 'push' && t1.operands.length === 1 &&
+                            t1.operands[0].type === 'register_pair' && String(t1.operands[0].value).toLowerCase() === 'af' &&
+                            t2.mnemonic.toLowerCase() === 'ld' && t2.operands.length === 2 &&
+                            t2.operands[0].type === 'register' && String(t2.operands[0].value).toLowerCase() === 'a' &&
+                            ['immediate', 'symbol'].includes(t2.operands[1].type) &&
+                            t3.mnemonic.toLowerCase() === 'ld' && t3.operands.length === 2 &&
+                            t3.operands[0].type === 'register' && String(t3.operands[0].value).toLowerCase() === 'b' &&
+                            t3.operands[1].type === 'register' && String(t3.operands[1].value).toLowerCase() === 'a' &&
+                            t4.mnemonic.toLowerCase() === 'pop' && t4.operands.length === 1 &&
+                            t4.operands[0].type === 'register_pair' && String(t4.operands[0].value).toLowerCase() === 'af') {
+                            const after = tokens[i + 5];
+                            if (after instanceof Instruction && !after.label &&
+                                after.mnemonic.toLowerCase() === 'cp' && after.operands.length === 1 &&
+                                after.operands[0].type === 'register' && String(after.operands[0].value).toLowerCase() === 'b') {
+                                optimized.push(token);
+                                optimized.push(new Instruction(t2.label, 'ld', [new Operand('register', 'b'), t2.operands[1]], t2.lineNumber, t2.sourceLine));
+                                optimized.push(after);
+                                i += 5;
+                                this.stats.peepholeOpts += 2;
+                                this.stats.bytesSaved += getInstructionSize(t1) + getInstructionSize(t4) + 1;
+                                optimizerLog(`  Folded absdiff constant compare staging at line ${t1.lineNumber}`, 'debug');
+                                continue;
+                            }
+                        }
+                    }
+
+                    // U8-to-16 staging: second LD H,0 is redundant if H is still known zero.
+                    if (isLdRegImm(token, 'h') &&
+                        !token.label &&
+                        (Number(token.operands[1].value) & 0xFF) === 0 &&
+                        i >= 4) {
+                        const p1 = tokens[i - 1];
+                        const p2 = tokens[i - 2];
+                        const p3 = tokens[i - 3];
+                        const p4 = tokens[i - 4];
+                        if (p1 instanceof Instruction && p2 instanceof Instruction && p3 instanceof Instruction && p4 instanceof Instruction &&
+                            !p1.label && !p2.label && !p3.label && !p4.label &&
+                            p1.mnemonic.toLowerCase() === 'ld' && p1.operands.length === 2 &&
+                            p1.operands[0].type === 'register' && String(p1.operands[0].value).toLowerCase() === 'l' &&
+                            p1.operands[1].type === 'register' && String(p1.operands[1].value).toLowerCase() === 'a' &&
+                            p2.mnemonic.toLowerCase() === 'ld' && p2.operands.length === 2 &&
+                            p2.operands[0].type === 'register' && String(p2.operands[0].value).toLowerCase() === 'a' &&
+                            p3.mnemonic.toLowerCase() === 'push' && p3.operands.length === 1 &&
+                            p3.operands[0].type === 'register_pair' && String(p3.operands[0].value).toLowerCase() === 'hl' &&
+                            isLdRegImm(p4, 'h') && (Number(p4.operands[1].value) & 0xFF) === 0) {
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += getInstructionSize(token);
+                            optimizerLog(`  Removed redundant second LD H,0 at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
+                    // Exact compare staging: LD A,(HL); LD D,A; LD E,n; LD A,D; CP E.
+                    // Remove the D round-trip only when D is dead after the compare.
+                    if (isLdAFromHlMemory(token) && i + 4 < tokens.length) {
+                        const t1 = tokens[i + 1];
+                        const t2 = tokens[i + 2];
+                        const t3 = tokens[i + 3];
+                        const t4 = tokens[i + 4];
+                        if ([t1, t2, t3, t4].every(t => t instanceof Instruction && !t.label) &&
+                            t1.mnemonic.toLowerCase() === 'ld' && t1.operands.length === 2 &&
+                            t1.operands[0].type === 'register' && String(t1.operands[0].value).toLowerCase() === 'd' &&
+                            t1.operands[1].type === 'register' && String(t1.operands[1].value).toLowerCase() === 'a' &&
+                            t2.mnemonic.toLowerCase() === 'ld' && t2.operands.length === 2 &&
+                            t2.operands[0].type === 'register' && String(t2.operands[0].value).toLowerCase() === 'e' &&
+                            t2.operands[1].type === 'immediate' &&
+                            t3.mnemonic.toLowerCase() === 'ld' && t3.operands.length === 2 &&
+                            t3.operands[0].type === 'register' && String(t3.operands[0].value).toLowerCase() === 'a' &&
+                            t3.operands[1].type === 'register' && String(t3.operands[1].value).toLowerCase() === 'd' &&
+                            t4.mnemonic.toLowerCase() === 'cp' && t4.operands.length === 1 &&
+                            t4.operands[0].type === 'register' && String(t4.operands[0].value).toLowerCase() === 'e' &&
+                            isDeadOrClobberedBeforeAnyReadInBlock(tokens, i + 4, 'd')) {
+                            optimized.push(token);
+                            optimized.push(t2);
+                            optimized.push(t4);
+                            i += 4;
+                            this.stats.peepholeOpts += 2;
+                            this.stats.bytesSaved += getInstructionSize(t1) + getInstructionSize(t3);
+                            optimizerLog(`  Removed dead D compare staging at line ${t1.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
                     // === PHASE 1.4: remove dead CP 0 when flags are provably dead ===
                     // CP 0 only affects flags. If no later instruction reads those flags
                     // before a full overwrite or block exit, the compare is dead.
@@ -2839,10 +3410,7 @@ export class Z80Optimizer {
                         const next = tokens[i + 1];
                         if (next instanceof Instruction &&
                             !next.label &&
-                            ['jr', 'jp', 'call', 'ret'].includes(next.mnemonic.toLowerCase()) &&
-                            next.operands.length > 0 &&
-                            next.operands[0].type === 'condition' &&
-                            ['z', 'nz', 'c', 'nc'].includes(String(next.operands[0].value).toLowerCase())) {
+                            ['z', 'nz', 'c', 'nc'].includes(getBranchConditionName(next))) {
                             optimized.push(new Instruction(
                                 token.label,
                                 'or',
@@ -2853,6 +3421,50 @@ export class Z80Optimizer {
                             this.stats.peepholeOpts++;
                             this.stats.bytesSaved += 1;
                             optimizerLog(`  Replaced CP 0 with OR A before ${next.mnemonic.toUpperCase()} ${next.operands[0].value.toUpperCase()} at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
+                    // === PHASE 1.4b: Replace +/- 1 arithmetic with INC/DEC when Carry is dead ===
+                    // SUB 1 and DEC A differ only in carry behavior; ADD A,1 and INC A
+                    // have the same caveat. Fold only when carry is provably overwritten
+                    // or unreachable before any carry consumer.
+                    if (this.config.flagLivenessPeepholes &&
+                        !token.label &&
+                        this.isCarryDeadBeforeNextUse(tokens, i)) {
+                        if (mnem === 'sub' &&
+                            token.operands.length === 1 &&
+                            token.operands[0].type === 'immediate' &&
+                            Number(token.operands[0].value) === 1) {
+                            optimized.push(new Instruction(
+                                token.label,
+                                'dec',
+                                [new Operand('register', 'a')],
+                                token.lineNumber,
+                                token.sourceLine
+                            ));
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Replaced SUB 1 with DEC A after proving carry dead at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+
+                        if (mnem === 'add' &&
+                            token.operands.length === 2 &&
+                            token.operands[0].type === 'register' &&
+                            token.operands[0].value.toLowerCase() === 'a' &&
+                            token.operands[1].type === 'immediate' &&
+                            Number(token.operands[1].value) === 1) {
+                            optimized.push(new Instruction(
+                                token.label,
+                                'inc',
+                                [new Operand('register', 'a')],
+                                token.lineNumber,
+                                token.sourceLine
+                            ));
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Replaced ADD A,1 with INC A after proving carry dead at line ${token.lineNumber}`, 'debug');
                             continue;
                         }
                     }
@@ -2986,7 +3598,8 @@ export class Z80Optimizer {
                         const addAB = tokens[i + 3];
                         const storeBack = tokens[i + 4];
 
-                        if (copyToB instanceof Instruction &&
+                        if (!parseIndexedDisplacement(token.operands[1].value) &&
+                            copyToB instanceof Instruction &&
                             loadOne instanceof Instruction &&
                             addAB instanceof Instruction &&
                             storeBack instanceof Instruction &&
@@ -3065,7 +3678,8 @@ export class Z80Optimizer {
                         const addAB = tokens[i + 3];
                         const storeBack = tokens[i + 4];
 
-                        if (copyToB instanceof Instruction &&
+                        if (!parseIndexedDisplacement(token.operands[1].value) &&
+                            copyToB instanceof Instruction &&
                             loadImm instanceof Instruction &&
                             addAB instanceof Instruction &&
                             storeBack instanceof Instruction &&
@@ -3151,7 +3765,8 @@ export class Z80Optimizer {
                         const incDecA = tokens[i + 1];
                         const storeBack = tokens[i + 2];
 
-                        if (incDecA instanceof Instruction &&
+                        if (!parseIndexedDisplacement(token.operands[1].value) &&
+                            incDecA instanceof Instruction &&
                             storeBack instanceof Instruction &&
                             !incDecA.label && !storeBack.label &&
                             (incDecA.mnemonic.toLowerCase() === 'inc' || incDecA.mnemonic.toLowerCase() === 'dec') &&
@@ -4074,6 +4689,60 @@ export class Z80Optimizer {
                         }
                     }
 
+                    // === PHASE 1.7a2: Remove AF preservation around indexed byte store ===
+                    //   push af / ld e,a / ld d,0 / ld hl,base / add hl,de / pop af / ld (hl),a
+                    // A is never modified in the address setup. Only remove POP AF when
+                    // the restored flags are dead before the next flag use.
+                    if (mnem === 'push' &&
+                        token.operands.length === 1 &&
+                        token.operands[0].type === 'register_pair' &&
+                        String(token.operands[0].value).toLowerCase() === 'af' &&
+                        i + 6 < tokens.length) {
+                        const t1 = tokens[i + 1];
+                        const t2 = tokens[i + 2];
+                        const t3 = tokens[i + 3];
+                        const t4 = tokens[i + 4];
+                        const t5 = tokens[i + 5];
+                        const t6 = tokens[i + 6];
+                        if ([t1, t2, t3, t4, t5, t6].every(t => t instanceof Instruction && !t.label) &&
+                            t1.mnemonic.toLowerCase() === 'ld' &&
+                            t1.operands.length === 2 &&
+                            t1.operands[0].type === 'register' &&
+                            String(t1.operands[0].value).toLowerCase() === 'e' &&
+                            t1.operands[1].type === 'register' &&
+                            String(t1.operands[1].value).toLowerCase() === 'a' &&
+                            isLdRegImm(t2, 'd') &&
+                            this.resolve8BitImmediate(t2.operands[1]) === 0 &&
+                            t3.mnemonic.toLowerCase() === 'ld' &&
+                            t3.operands.length === 2 &&
+                            t3.operands[0].type === 'register_pair' &&
+                            String(t3.operands[0].value).toLowerCase() === 'hl' &&
+                            ['immediate', 'symbol'].includes(t3.operands[1].type) &&
+                            t4.mnemonic.toLowerCase() === 'add' &&
+                            t4.operands.length === 2 &&
+                            t4.operands[0].type === 'register_pair' &&
+                            String(t4.operands[0].value).toLowerCase() === 'hl' &&
+                            t4.operands[1].type === 'register_pair' &&
+                            String(t4.operands[1].value).toLowerCase() === 'de' &&
+                            t5.mnemonic.toLowerCase() === 'pop' &&
+                            t5.operands.length === 1 &&
+                            t5.operands[0].type === 'register_pair' &&
+                            String(t5.operands[0].value).toLowerCase() === 'af' &&
+                            isLdMemA(t6) &&
+                            String(t6.operands[0].value).toLowerCase() === 'hl' &&
+                            this.areFlagsDeadBeforeNextUse(tokens, i + 5)) {
+                            optimized.push(cloneInstruction(t1, token.label));
+                            optimized.push(cloneInstruction(t2, null));
+                            optimized.push(cloneInstruction(t3, null));
+                            optimized.push(cloneInstruction(t4, null));
+                            optimized.push(cloneInstruction(t6, null));
+                            i += 6;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += getInstructionSize(token) + getInstructionSize(t5);
+                            optimizerLog(`  Removed redundant PUSH AF / POP AF around indexed byte store at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
                     // === PHASE 1.7b: Remove redundant PUSH/POP around short inert runs ===
                     if (mnem === 'push' &&
                         token.operands.length === 1 &&
@@ -4684,6 +5353,44 @@ export class Z80Optimizer {
                             this.stats.peepholeOpts++;
                             this.stats.bytesSaved += 1;
                             optimizerLog(`  Folded LD A,imm / LD ${String(next.operands[0].value).toUpperCase()},A into direct memory immediate store at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
+                    // Pattern 2d: LD A,n / LD HL|H|L,addrpart / LD (HL),A -> address setup / LD (HL),n
+                    // This recovers direct byte stores after source-level address setup
+                    // avoids PUSH/POP around A. Only allow a single LD address setup that
+                    // does not touch A, and only when A is dead after the store.
+                    if (isLdRegImm(token, 'a') &&
+                        i + 2 < tokens.length &&
+                        !token.label) {
+                        const addressSetup = tokens[i + 1];
+                        const store = tokens[i + 2];
+                        if (addressSetup instanceof Instruction &&
+                            store instanceof Instruction &&
+                            !addressSetup.label &&
+                            !store.label &&
+                            addressSetup.mnemonic.toLowerCase() === 'ld' &&
+                            addressSetup.operands.length === 2 &&
+                            ((addressSetup.operands[0].type === 'register_pair' && addressSetup.operands[0].value.toLowerCase() === 'hl') ||
+                             (addressSetup.operands[0].type === 'register' && ['h', 'l'].includes(addressSetup.operands[0].value.toLowerCase()))) &&
+                            !instructionTouchesRegister(addressSetup, 'a') &&
+                            isLdMemA(store) &&
+                            String(store.operands[0].value).toLowerCase() === 'hl' &&
+                            memorySupportsImmediateByteStore(store.operands[0].value) &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'a')) {
+                            optimized.push(addressSetup);
+                            optimized.push(new Instruction(
+                                store.label,
+                                'ld',
+                                [new Operand('memory', store.operands[0].value), new Operand('immediate', token.operands[1].value)],
+                                store.lineNumber,
+                                store.sourceLine
+                            ));
+                            i += 2;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 1;
+                            optimizerLog(`  Folded LD A,imm / address setup / LD (HL),A into direct memory immediate store at line ${token.lineNumber}`, 'debug');
                             continue;
                         }
                     }

@@ -34,9 +34,7 @@ export function bindTopUiEvents(ctx) {
     getExpandedAsm,
     setExpandedAsm,
     getAsmViewMode,
-    setAsmViewMode,
-    createNewTileSetProjectFiles,
-    createNewBitmapProjectFiles
+    setAsmViewMode
   } = ctx;
 
   els.projectName.addEventListener("input", () => {
@@ -173,14 +171,6 @@ export function bindTopUiEvents(ctx) {
     els.projectFileImport.click();
   });
 
-  els.btnNewTileSet?.addEventListener("click", () => {
-    createNewTileSetProjectFiles?.();
-  });
-
-  els.btnNewBitmap?.addEventListener("click", () => {
-    createNewBitmapProjectFiles?.();
-  });
-
   els.btnProjectPicture?.addEventListener("click", () => {
     els.projectFileImport.value = "";
     els.projectFileImport.click();
@@ -234,6 +224,7 @@ export function bindStudioRuntimeEvents(ctx) {
     getCompiledSymbols,
     getCompiledListing,
     copyText,
+    openAssembler,
     expandAsmIncludes,
     cvSampleRate,
     wavToDsound,
@@ -488,7 +479,7 @@ export function bindStudioRuntimeEvents(ctx) {
   els.btnSave.addEventListener("click", () => {
     const project = getProject();
     const out = exportProject(project);
-    downloadText(`${project.projectName}.amy.json`, JSON.stringify(out, null, 2));
+    downloadText(`${project.projectName}.alexis.json`, JSON.stringify(out, null, 2));
     setStatus("Exported project.");
     closeTopbarMenu();
   });
@@ -728,6 +719,12 @@ export function bindStudioRuntimeEvents(ctx) {
     } catch (e) {
       setStatus(`Copy failed: ${String(e)}`);
     }
+  });
+
+  els.btnOpenAssembler.addEventListener("click", () => {
+    openAssembler();
+    setStatus("Opened AmysCVAssembly in a new tab.");
+    closeTopbarMenu();
   });
 
   els.btnWavConverter.addEventListener("click", () => {

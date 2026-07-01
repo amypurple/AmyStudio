@@ -892,14 +892,17 @@ Pick = random(49) + 1
 Die = random(1, 6)
 Tile = random(2) + 16
 Noise = random()
+FloatNoise = random(10, 20)
 ```
 
 Preferred current direction:
 - use expression-style `random(N)` when you want a bounded integer in an assignment or formula
 - `random(N)` returns `0..N-1`
-- `random(A, B)` returns an inclusive byte value in `A..B`
+- `random(A, B)` returns an inclusive integer value in `A..B` for byte-style integer targets
+- integer random values use the Coleco BIOS random seed at `$73C8`, with an Amy zero-seed guard before calling the BIOS random routine
+- `Fp5Var = random(A, B)` returns an `fp5` value in `A..B` using `A + random() * (B-A)`
 - `random between A and B into Var` was removed; write `Var = random(A, B)`
-- use `Fp5Var = random()` for an `fp5` fractional sample
+- use `Fp5Var = random()` for an `fp5` fractional sample in `0.0 .. <1.0`
 - use `Fixed32Var = random()` for a `fixed32` fractional sample
 
 ### U32 helpers
@@ -1818,7 +1821,7 @@ Available memory profiles live in `tools/memory/*.json`.
 | `Var /= N` | Divide in place (`u8` only, truncating) |
 | `Var = abs(Value)` | Absolute value (`fp5`, `fixed32`, and integer expressions) |
 | `Var = sqrt(Value)` | Square-root assignment |
-| `Var = random(min, max)` | Preferred inclusive bounded random `u8` value |
+| `Var = random(min, max)` | Preferred bounded random form. Integer targets use inclusive integer range; `fp5` targets use an fp5 interval. |
 | `Var = random()` | Fractional `fp5` or `fixed32` sample in `0.0 .. <1.0`, based on target type |
 | `Var = random(N) + K` | `int8` expression with random range `0..N-1` |
 
@@ -2084,7 +2087,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | Arcade score (BCD) | `bcd digits 8 Score8` / `Score8 += 100` / `print at X,Y, Score8` |
 | 32-bit counter | `u32 Counter32` / `inc Counter32` / `print Counter32 at X,Y` |
 | Fixed-point value | `fixed Speed = 0.0` / `ufixed ScreenX = 40.75` |
-| Random value | `Die = random(1, 6)` / `Noise = random()` |
+| Random value | `Die = random(1, 6)` / `Noise = random()` / `Fp5Value = random(10, 20)` |
 | ROM lookup table | `data Name bytes ...` / `restore Name` / `read Var` |
 | Fill `u8` array | `fill array Arr with 0` |
 | Shift snake body | `shift array SnakeX down 1` |
@@ -2222,6 +2225,7 @@ This is the committed language-direction list for AMY fp5 work.
 Current partial implementation note:
 
 - `Var = random()` is the canonical fp5 fractional sample form
+- `Var = random(A, B)` is supported for fp5 targets and scales one fp5 random pull into the requested interval
 - `random fp5 into Var`, `random fixed32 into Var`, and `rnd fp5 into Var` were removed; write `Var = random()`
 - `Var = sqrt(Value)` is the canonical form for fp5/fixed32 square root
 - `Var = abs(Value)` works for `fp5`, `fixed32`, and integer expressions; for `u16`/`i16` targets, byte operands are widened before subtraction so `Distance = abs(X1 - X2)` avoids `u8` wraparound

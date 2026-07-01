@@ -63,6 +63,7 @@ AMY_FX16_16_DIV_CHECK_RIGHT:
     ld a,(hl)
     xor 1
     ld (hl),a
+    ; Keep the full reload: low-byte-only reloads assembled but broke runtime formatting.
     ld hl,AMY_FX16_WORK_B
     call AMY_FX16_16_NEG
 
@@ -258,7 +259,6 @@ AMY_FX16_16_DIV_NEXT:
     ld a,c
     or a
     jr z,AMY_FX16_16_DIV_ROUND_COMPARE
-    ld hl,AMY_FX16_WORK_B
     call AMY_U32_INC
 AMY_FX16_16_DIV_ROUND_COMPARE:
     ld hl,AMY_FX16_MUL64

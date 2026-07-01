@@ -30,7 +30,7 @@ export function buildProjectFromExample(example, { newProjectFn }) {
   return {
     ...base,
     projectName: example.projectName || base.projectName,
-    sourceLang: example.sourceLang || base.sourceLang,
+    sourceLang: base.sourceLang,
     memoryProfile: base.memoryProfile,
     selectedLibs: example.selectedLibs ? [...example.selectedLibs] : [...base.selectedLibs],
     selectedBundles: example.selectedBundles ? [...example.selectedBundles] : [...base.selectedBundles],
@@ -59,10 +59,10 @@ export function migrateProject(project, {
     return {
       ...project,
       projectName: "warrior-demo",
-      sourceLang: "amy",
+      sourceLang: "pseudo_alexis",
       selectedCompression: ["src/compression/zx0_vram.asm"],
       selectedAssets: ["assets/compressed/warrior/pattern.zx0", "assets/compressed/warrior/color.zx0"],
-      sourceText: exampleSources.amy,
+      sourceText: exampleSources.pseudo_alexis,
       generatedAsm: ""
     };
   }
@@ -78,10 +78,7 @@ export function migrateProject(project, {
     };
   }
 
-  return {
-    ...project,
-    sourceLang: project.sourceLang || "amy"
-  };
+  return project;
 }
 
 export function loadProject({ storageKey, localStorageObj, newProjectFn, migrateProjectFn }) {
@@ -112,11 +109,7 @@ export function ensureProjectFilePathCandidate(filename, { projectFiles, normali
 }
 
 export function saveProjectToStorage(project, { storageKey, localStorageObj }) {
-  const saved = {
-    ...project,
-    sourceLang: project.sourceLang || "amy"
-  };
-  localStorageObj.setItem(storageKey, JSON.stringify(saved, null, 2));
+  localStorageObj.setItem(storageKey, JSON.stringify(project, null, 2));
 }
 
 export function refreshProjectGraph() {

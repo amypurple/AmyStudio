@@ -23,6 +23,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   }
   // Granular math module detection — only include what the program actually uses.
   const usesSqrt    = /\bAMY_U16_SQRT\b/.test(asmBody);
+  const usesRandomU8 = /\bAMY_RANDOM_U8\b/.test(asmBody);
   const usesU32Zero = /\bAMY_U32_ZERO\b/.test(asmBody);
   const usesU32Copy = /\bAMY_U32_COPY\b/.test(asmBody);
   const usesU32Inc  = /\bAMY_U32_INC\b/.test(asmBody);
@@ -71,6 +72,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const needsU32Inc     = usesU32Inc || usesFormatI32;           // format_i32 calls AMY_U32_INC
   const needsU32Sub     = usesU32Sub || needsFormatU32;          // format_u32/i32/fp5 call AMY_U32_SUB
   // Emit in dependency order (u32/compare before format)
+  if (usesRandomU8)    resolved.add("src/alexis_lib/coleco_random.asm");
   if (usesSqrt)         resolved.add("src/alexis_lib/coleco_math_sqrt.asm");
   if (usesU32Zero || usesFx16Div || usesFx16Sqrt || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_u32_zero.asm");
   if (usesFx16Sqrt)         resolved.add("src/alexis_lib/coleco_math_sqrt.asm");
@@ -210,6 +212,10 @@ function buildLegacyInitInstructions(caps) {
       lines.push("        ld a,h");
       lines.push("        ld (de),a");
     }
+    if (caps.needsRandomSeed) {
+      lines.push("        ld hl,$0033");
+      lines.push("        ld ($73C8),hl");
+    }
     if (caps.needsSound) {
       lines.push("        ld a,6");
       lines.push("        ld hl,AMY_SOUND_AREA_COUNT");
@@ -223,12 +229,7 @@ function buildLegacyInitInstructions(caps) {
       lines.push("        ld (de),a");
     }
   }
-  if (caps.needsRandomSeed) {
-    lines.push("        ld hl,$0033");
-    lines.push("        ld ($73C8),hl");
-  }
   if (caps.needsSound) {
-    lines.push("        ld hl,AMY_SOUND_TABLE_DUMMY");
     lines.push("        ld b,6");
     lines.push("        call SET_SOUND_TABLE");
   }
@@ -309,7 +310,7 @@ function inferRuntimeCapabilities(project, asmBody) {
   const usesScreenOnNmi = /\bAMY_SCREEN_ON_NMI\b/.test(asmBody);
   const usesHalt = /^\s*halt\s*$/gim.test(asmBody);
   const usesVdpStatusShadow = /\b(?:VDP_STATUS|NMI_FLAG)\b/.test(asmBody) || /\bif\s+any\s+collision\s+(?:then\s+)?goto\b/i.test(sourceText);
-  const usesRandom = /\bGET_RANDOM\b/.test(asmBody) || /\brandom\b/i.test(sourceText);
+  const usesRandom = /\bGET_RANDOM\b/.test(asmBody) || /\bAMY_RANDOM_U8\b/.test(asmBody) || /\brandom\b/i.test(sourceText);
   const needsSprites = usesSprites;
   const needsControllers = usesJoypadVars;
   const needsSpinner = usesSpinner;
@@ -391,6 +392,8 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needsRandomSeed ||
     referencesSymbol("legacy_random_seed") ||
     referencesSymbol("AMY_FP5_RND") ||
+    referencesSymbol("AMY_RANDOM_U8") ||
+    /\brandom\b/i.test(symbolText) ||
     referencesSymbol("GET_RANDOM");
   const runtimeMap = buildColecoLegacyRuntimeMap({
     ...caps,
@@ -500,7 +503,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   lines.push("TURN_OFF_SOUND  EQU $1FD6");
   lines.push("INIT_SPR_ORDER  EQU $1FC1");
   lines.push("WR_SPR_NM_TBL   EQU $1FC4");
-  if (needsRandomSeed) lines.push("GET_RANDOM      EQU $1FFD");
+  if (referencesSymbol("GET_RANDOM") || referencesSymbol("AMY_RANDOM_U8")) lines.push("GET_RANDOM      EQU $1FFD");
   if (needsControllers) lines.push("UPDATE_CONTROLLERS EQU $1F76");
   if (caps.needsSound) {
     lines.push("PLAY_SOUNDS     EQU $1F61");
@@ -787,21 +790,21 @@ function emitLegacyRuntime(lines, caps) {
   lines.push("        push hl");
   if (caps.needsControllers) {
     lines.push("        call UPDATE_CONTROLLERS");
+    lines.push("        ld hl,JOYPAD_1");
     lines.push("        ld a,($73EE)");
     lines.push("        and $4F");
-    lines.push("        ld hl,JOYPAD_1");
     lines.push("        ld (hl),a");
-    lines.push("        ld a,($73EF)");
-    lines.push("        and $4F");
-    lines.push("        ld hl,JOYPAD_2");
-    lines.push("        ld (hl),a");
+    lines.push("        inc hl");
     lines.push("        ld a,($73F0)");
     lines.push("        and $4F");
-    lines.push("        ld hl,KEYPAD_1");
     lines.push("        ld (hl),a");
+    lines.push("        inc hl");
+    lines.push("        ld a,($73EF)");
+    lines.push("        and $4F");
+    lines.push("        ld (hl),a");
+    lines.push("        inc hl");
     lines.push("        ld a,($73F1)");
     lines.push("        and $4F");
-    lines.push("        ld hl,KEYPAD_2");
     lines.push("        ld (hl),a");
     lines.push("        call AMY_DECODE_CONTROLLERS");
   }

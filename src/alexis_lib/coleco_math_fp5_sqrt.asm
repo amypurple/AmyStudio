@@ -44,7 +44,6 @@ AMY_FP5_SQRT_MEM_CLEAR_ALL:
     add hl,de
     ld a,(hl)
     sub 129
-    ld b,a
     and 1
     ld c,a
     pop hl

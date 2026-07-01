@@ -1,5 +1,6 @@
 const splitLibraryCatalog = {
   "src/alexis_lib/coleco_math.asm": [
+    { path: "src/alexis_lib/coleco_random.asm", symbols: ["AMY_RANDOM_U8"] },
     { path: "src/alexis_lib/coleco_math_sqrt.asm", symbols: ["AMY_U16_SQRT"] },
     { path: "src/alexis_lib/coleco_math_u32_zero.asm", symbols: ["AMY_U32_ZERO"] },
     { path: "src/alexis_lib/coleco_math_u32_copy.asm", symbols: ["AMY_U32_COPY"] },

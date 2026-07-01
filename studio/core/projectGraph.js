@@ -94,7 +94,7 @@ export function buildProjectGraph(project, manifest, buildState = {}) {
   const sourceAssets = assetAliasesFromSource(project.sourceText);
   const nodes = [
     node("source", `${project.sourceLang || "source"} source`, "source", project.projectName || "unnamed"),
-    node("transpile", "Amy transpiler", "tool", "Amy source -> Z80 ASM body"),
+    node("transpile", "ALEXIS transpiler", "tool", "pseudo/code -> Z80 ASM body"),
     node("asm", "Generated Z80 ASM", "artifact", project.generatedAsm ? `${project.generatedAsm.length} chars` : "not generated"),
     node("assemble", "AmysCVAssembly core", "tool", "Z80 ASM -> ColecoVision binary"),
     node("rom", "ColecoVision ROM", buildState.romBytes ? "ok" : "artifact", buildState.romBytes ? `${buildState.romBytes} bytes` : "not compiled")
@@ -142,7 +142,7 @@ export function renderProjectGraph(container, graph) {
     class: "project-graph__svg",
     viewBox: `0 0 ${width} ${height}`,
     role: "img",
-    "aria-label": "Amy project build graph"
+    "aria-label": "ALEXIS project build graph"
   });
 
   const defs = svgEl("defs");

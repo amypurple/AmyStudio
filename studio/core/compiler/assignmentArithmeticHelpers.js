@@ -11,6 +11,8 @@ export function createAssignmentArithmeticHelpers({
   emitFx16DivideOp,
   emitFp5MultiplyOp,
   emitFp5DivideOp,
+  emitRandomFp5BetweenInto,
+  splitTopLevelArgs,
   emitRuntimeStore,
   emitLoadInt8Into,
   emitStoreInt8FromA,
@@ -34,6 +36,14 @@ export function createAssignmentArithmeticHelpers({
   emitBcdAdd,
   emitBcdSub
 }) {
+  function parseRandomCallArgs(valueToken) {
+    const match = String(valueToken || "").trim().match(/^random\s*\((.*)\)$/i);
+    if (!match) return null;
+    const inner = match[1].trim();
+    if (!inner) return [];
+    return typeof splitTopLevelArgs === "function" ? splitTopLevelArgs(inner) : inner.split(",").map((part) => part.trim());
+  }
+
   function emitLoadUnsignedInt16ValueIntoBC(token) {
     const valueType = resolveValueType(token);
     const declaredType = resolveDeclaredValueType(token);
@@ -538,9 +548,16 @@ export function createAssignmentArithmeticHelpers({
   }
 
   function emitFormulaAssignment(target, opToken, valueToken) {
-    if (opToken === "=") return emitRuntimeStore(target, valueToken);
-    if (opToken === "%=") return emitRuntimeStore(target, `${target} % (${valueToken})`);
     const targetType = resolveValueType(target);
+    if (opToken === "=") {
+      const randomArgs = parseRandomCallArgs(valueToken);
+      if (targetType === "fp5" && randomArgs && randomArgs.length === 2 && typeof emitRandomFp5BetweenInto === "function") {
+        const randomStore = emitRandomFp5BetweenInto(randomArgs[0], randomArgs[1], target);
+        if (randomStore) return randomStore;
+      }
+      return emitRuntimeStore(target, valueToken);
+    }
+    if (opToken === "%=") return emitRuntimeStore(target, `${target} % (${valueToken})`);
     const targetDeclaredType = normalizeDeclaredType(resolveDeclaredValueType(target));
     const constantNumeric =
       typeof tryEvaluateCompileTimeNumericExpression === "function"

@@ -61,6 +61,7 @@ AMY_FX16_16_MULT_CHECK_RIGHT:
     ld a,(hl)
     xor 1
     ld (hl),a
+    ; Keep the full reload: low-byte-only reloads assembled but broke runtime formatting.
     ld hl,AMY_FX16_WORK_B
     call AMY_FX16_16_NEG
 

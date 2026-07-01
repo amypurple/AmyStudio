@@ -249,8 +249,7 @@ AMY_FP5_MUL_FPA1_FPA2_SHIFT32_ROUND:
     inc hl
     ld (hl),a
     inc hl
-    ld a,1
-    ld (hl),a
+    ld (hl),1
     ld hl,AMY_FP5_MUL_EXP
     inc (hl)
 AMY_FP5_MUL_FPA1_FPA2_SHIFT32_PREP:

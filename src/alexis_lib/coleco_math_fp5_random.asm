@@ -61,10 +61,8 @@ AMY_FP5_RND_HAVE_SEED:
     ld l,a
     ld a,h
     xor d
-    ld h,a
 
     ; x ^= x << 8
-    ld a,h
     xor l
     ld h,a
 

@@ -297,6 +297,26 @@ export function createFx16Helpers({
     ];
   }
 
+  function emitRandomFp5BetweenInto(minToken, maxToken, targetToken) {
+    const targetInfo = getFp5Info(targetToken);
+    if (!targetInfo) return null;
+    const loadMax = emitLoadFp5SourceToFPA2(maxToken);
+    const loadMinForRange = emitLoadFp5SourceToFPA1(minToken);
+    const loadMinForOffset = emitLoadFp5SourceToFPA1(minToken);
+    const storeTarget = emitStoreFPA2ToFp5Target(targetToken);
+    if (!loadMax || !loadMinForRange || !loadMinForOffset || !storeTarget) return null;
+    return [
+      ...loadMax,
+      ...loadMinForRange,
+      "    call AMY_FP5_SUB_FPA1_FROM_FPA2",
+      "    call AMY_FP5_RND",
+      "    call AMY_FP5_MUL_FPA1_FPA2",
+      ...loadMinForOffset,
+      "    call AMY_FP5_ADD_FPA1_TO_FPA2",
+      ...storeTarget
+    ];
+  }
+
   function emitLoadFp5SourceToFPA1(valueToken) {
     const valueInfo = getFp5Info(valueToken);
     if (valueInfo) {
@@ -1277,6 +1297,7 @@ export function createFx16Helpers({
     emitRandomFx16Into,
     emitAbsFp5Into,
     emitRandomFp5Into,
+    emitRandomFp5BetweenInto,
     emitFp5ArithOp,
     emitFp5MultiplyOp,
     emitFp5DivideOp,

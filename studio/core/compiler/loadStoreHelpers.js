@@ -152,6 +152,10 @@ export function createLoadStoreHelpers(ctx) {
     return info;
   }
 
+  function addressLoadClobbersA(lines) {
+    const clobberRe = /^\s*(?:ld\s+a\s*,|pop\s+af\b|ex\s+af\b|xor\s+a\b|add\s+a\b|adc\s+a\b|sub\b|sbc\s+a\b|and\b|or\b|cp\b|inc\s+a\b|dec\s+a\b|neg\b)/i;
+    return (lines || []).some((line) => clobberRe.test(line));
+  }
   function emitStoreInt8FromA(target) {
     const recordField = parseRecordFieldRef(target);
     if (recordField) {
@@ -160,6 +164,7 @@ export function createLoadStoreHelpers(ctx) {
       if (directAddress) return [`    ld (${directAddress}),a`];
       const loadAddress = emitLoadRecordFieldAddressIntoHL(target);
       if (!loadAddress) return null;
+      if (!addressLoadClobbersA(loadAddress)) return [...loadAddress, "    ld (hl),a"];
       return ["    push af", ...loadAddress, "    pop af", "    ld (hl),a"];
     }
     const arrayRef = parseArrayRef(target);
@@ -168,6 +173,7 @@ export function createLoadStoreHelpers(ctx) {
       if (!info || info.kind !== "array" || info.elementType !== "int8") return null;
       const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
       if (!loadAddress) return null;
+      if (!addressLoadClobbersA(loadAddress)) return [...loadAddress, "    ld (hl),a"];
       return ["    push af", ...loadAddress, "    pop af", "    ld (hl),a"];
     }
     const resolvedTarget = scopedRuntimeName(target);
