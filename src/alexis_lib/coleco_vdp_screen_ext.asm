@@ -9,6 +9,7 @@ AMY_SCREEN_ON_NO_NMI:
     ld a,($73C4)
     or $40
     and $DF
+    ld ($73C4),a
     ld c,a
     ld b,1
     jp WRITE_REGISTER

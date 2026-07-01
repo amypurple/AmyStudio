@@ -552,9 +552,20 @@ export class Z80Optimizer {
 
                 // Preserve ColecoVision header (everything before Start label)
                 // This includes RST vectors, NMI handler, cartridge header, etc.
+                // Calls/jumps from this preserved area must also keep their targets alive:
+                // Amy's generated NMI can call user frame hooks that live after Start.
+                const headerReferencedLabels = new Set();
                 if (startLabelIdx !== -1) {
                     for (let i = 0; i < startLabelIdx; i++) {
+                        const token = tokens[i];
                         reachable.add(i);
+                        if (!(token instanceof Instruction)) continue;
+                        const mnem = token.mnemonic.toLowerCase();
+                        if (!['call', 'jp', 'jr'].includes(mnem)) continue;
+                        const lastOp = token.operands[token.operands.length - 1];
+                        if (lastOp?.type === 'symbol') {
+                            headerReferencedLabels.add(lastOp.value);
+                        }
                     }
                 }
 
@@ -576,11 +587,22 @@ export class Z80Optimizer {
                 const entryPoint = startLabelIdx !== -1 ? startLabelIdx : 0;
                 this.markReachableFrom(entryPoint, tokens, reachable, labels);
 
+                // Mark all labels referenced by preserved header/NMI code as reachable.
+                for (const labelName of headerReferencedLabels) {
+                    if (labels.has(labelName)) {
+                        this.markReachableFrom(labels.get(labelName), tokens, reachable, labels);
+                    }
+                }
+
                 // Mark all DW-referenced labels as reachable (jump tables, etc.)
                 for (const labelName of dwReferencedLabels) {
                     if (labels.has(labelName)) {
                         this.markReachableFrom(labels.get(labelName), tokens, reachable, labels);
                     }
+                }
+
+                if (headerReferencedLabels.size > 0) {
+                    optimizerLog('  Preserved ' + headerReferencedLabels.size + ' label(s) referenced by header/NMI code', 'debug');
                 }
 
                 if (dwReferencedLabels.size > 0) {
@@ -2618,10 +2640,11 @@ export class Z80Optimizer {
                         }
                     }
 
-                    // Remove redundant `ld h,0` when a short local lookback proves
-                    // that H is already zero. Keep this narrow because H often carries
-                    // the high byte of address/index calculations.
-                    if (isLdRegImm(token, 'h') &&
+                    // === PHASE 1.2h: Remove redundant LD H,0 by short lookback ===
+                    // Aggressive+: this relies on local H/HL dataflow. It is not Safe/Balanced
+                    // because high-byte clears are often part of argument setup code.
+                    if (this.config.speculativeValueReuse &&
+                        isLdRegImm(token, 'h') &&
                         Number(token.operands[1].value) === 0 &&
                         !token.label) {
                         let hKnownZero = false;
@@ -4522,13 +4545,14 @@ export class Z80Optimizer {
                     }
 
                     // === PHASE 1.5l: Fold LD H,0 into LD H,D when D is already zero ===
-                    if (isLdRegImm(token, 'h') &&
+                    // Aggressive+: one-byte fold. D must be a locally trustworthy zero source.
+                    if (this.config.speculativeValueReuse &&
+                        isLdRegImm(token, 'h') &&
                         Number(token.operands[1].value) === 0) {
                         let dKnownZero = false;
                         for (let lookback = optimized.length - 1; lookback >= 0; lookback--) {
                             const prev = optimized[lookback];
                             if (!(prev instanceof Instruction)) continue;
-                            if (instructionCanClobberRegister(prev, 'de')) break;
                             if (prev.mnemonic.toLowerCase() === 'ld' &&
                                 prev.operands.length === 2 &&
                                 prev.operands[0].type === 'register' &&
@@ -4538,6 +4562,7 @@ export class Z80Optimizer {
                                 dKnownZero = true;
                                 break;
                             }
+                            if (instructionCanClobberRegister(prev, 'de')) break;
                         }
                         if (dKnownZero) {
                             optimized.push(new Instruction(
@@ -5888,14 +5913,10 @@ export class Z80Optimizer {
                     }
 
                     // === PHASE 1.8e: Remove dead LD SP,HL before later frame restore ===
-                    // Example:
-                    //   ld hl,2
-                    //   add hl,sp
-                    //   ld sp,hl
-                    //   ... no stack use ...
-                    //   ld sp,ix
-                    // The intermediate SP assignment is dead if SP is not used before restore.
-                    if (mnem === 'ld' &&
+                    // Experimental only. This is unsafe for Amy stack-frame locals on
+                    // ColecoVision if an NMI can push into the unreserved frame window.
+                    if (this.config.hazardousValueReuse &&
+                        mnem === 'ld' &&
                         token.operands.length === 2 &&
                         token.operands[0].type === 'register_pair' &&
                         token.operands[1].type === 'register_pair' &&
@@ -6328,3 +6349,4 @@ export class Z80Optimizer {
                 return optimized;
             }
         }
+

@@ -6,6 +6,7 @@
 AMY_SCREEN_OFF_NO_NMI:
     ld a,($73C4)
     and $9F
+    ld ($73C4),a
     ld c,a
     ld b,1
     jp WRITE_REGISTER
@@ -13,6 +14,7 @@ AMY_SCREEN_OFF_NO_NMI:
 AMY_SCREEN_ON_NMI:
     ld a,($73C4)
     or $60
+    ld ($73C4),a
     ld c,a
     ld b,1
     call WRITE_REGISTER
