@@ -41,8 +41,11 @@ The `studio/bios/` folder is intentionally shipped without a BIOS ROM. Add your 
 
 Amy Bienvenu is the project owner, maintainer, designer, and historical source of the ColecoVision knowledge behind Amy Studio.
 
-OpenAI Codex was used as the primary implementation assistant for Amy Studio integration work: compiler/transpiler changes, JavaScript UI work, example cleanup, runtime wiring, optimizer integration, and repository preparation.
+Claude made significant development contributions to the technical foundations Amy Studio relies on, especially the Amy Z80 assembler work, ASM investigations, and JavaScript compression codec implementations.
 
-Claude was also used during development, mostly as an analysis and review assistant, and for selected ASM/codecs investigations and implementations. Where Claude materially contributed to a specific commit, that contribution may appear in commit metadata.
+OpenAI Codex was used as the primary Amy Studio integration assistant: compiler/transpiler changes, JavaScript UI work, example cleanup, runtime wiring, optimizer integration, documentation cleanup, and repository preparation.
+
+Where an AI assistant materially contributed to a specific commit, that contribution may appear in commit metadata.
 
 AI assistance does not replace authorship or maintainership: technical direction, acceptance, testing, and release decisions belong to Amy Bienvenu.
+
