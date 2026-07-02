@@ -79,6 +79,15 @@ function defaultColorOnlyPatternTable(length = 6144) {
   return out;
 }
 
+function expandTextModeColorTable32(color) {
+  // TMS9918 Graphics I/text mode stores one color byte per 8-character group.
+  const out = new Uint8Array(2048);
+  for (let tile = 0; tile < 256; tile += 1) {
+    out.fill(color[tile >> 3] ?? 0xF0, tile * 8, tile * 8 + 8);
+  }
+  return out;
+}
+
 async function decodeEntryBytes(entry, { projectFileBytes, decompressBytes, detectCodecFromName }) {
   const raw = projectFileBytes(entry);
   const codec = String(entry?.codec || detectCodecFromName?.(entry?.path || "") || "").toLowerCase();
@@ -136,18 +145,26 @@ async function loadPictureTables(entry, allFiles, helpers) {
   const colorEntry = byComponent.get("color");
   const nameEntry = byComponent.get("name");
   if (!patternEntry && !colorEntry) throw new Error(`Picture preview needs a .pattern/.pat/.chr, .color/.col/.clr, or .pc file for ${entry.path}.`);
-  const color = colorEntry ? await decodeEntryBytes(colorEntry, helpers) : defaultColorTable();
-  const pattern = patternEntry ? await decodeEntryBytes(patternEntry, helpers) : defaultColorOnlyPatternTable(color.length >= 2048 && color.length < 6144 ? 2048 : 6144);
-  if (pattern.length < 2048) throw new Error(`${patternEntry.path} must decode to at least 2048 pattern bytes.`);
+  const rawColor = colorEntry ? await decodeEntryBytes(colorEntry, helpers) : defaultColorTable();
+  const decodedPattern = patternEntry ? await decodeEntryBytes(patternEntry, helpers) : defaultColorOnlyPatternTable(rawColor.length >= 2048 && rawColor.length < 6144 ? 2048 : 6144);
   const name = nameEntry ? await decodeEntryBytes(nameEntry, helpers) : defaultNameTable();
-  if (color.length < 2048) throw new Error(`${colorEntry.path} must decode to at least 2048 color bytes.`);
   if (name.length < 768) throw new Error(`${nameEntry.path} must decode to at least 768 name-table bytes.`);
-  const isTileCharset = pattern.length < 6144 || color.length < 6144;
+  const maxTile = name.slice(0, 768).reduce((max, value) => Math.max(max, value & 0xFF), 0);
+  const requiredPatternBytes = (maxTile + 1) * 8;
+  if (decodedPattern.length < requiredPatternBytes) {
+    throw new Error(`${patternEntry.path} decodes to ${decodedPattern.length} pattern bytes, but the NAME table references tile $${maxTile.toString(16).toUpperCase().padStart(2, "0")} and needs ${requiredPatternBytes} bytes.`);
+  }
+  const pattern = decodedPattern.length < 2048 ? new Uint8Array(2048) : decodedPattern;
+  if (decodedPattern.length < 2048) pattern.set(decodedPattern);
+  const color = rawColor.length === 32 ? expandTextModeColorTable32(rawColor) : rawColor;
+  if (color.length < 2048) throw new Error(`${colorEntry.path} must decode to at least 2048 color bytes, or exactly 32 text-mode color bytes.`);
+  const isTileCharset = pattern.length < 6144 || color.length < 6144 || rawColor.length === 32 || decodedPattern.length < 2048;
   return {
     pattern: pattern.slice(0, isTileCharset ? 2048 : 6144),
     color: color.slice(0, isTileCharset ? 2048 : 6144),
     name: name.slice(0, 768),
     isTileCharset,
+    colorMode: rawColor.length === 32 ? "text32" : "row",
     group: first.group,
     sprites: await loadSpriteTablesForGroup(first.group, allFiles, helpers)
   };
@@ -267,9 +284,10 @@ export async function previewPictureProjectFile(entry, allFiles, helpers = {}) {
         showSprites,
         sprites: tables.sprites
       });
-      info.textContent = mode === "bitmapName"
+      const colorNote = tables.colorMode === "text32" ? " Text-mode 32-byte color table expanded for preview." : "";
+      info.textContent = (mode === "bitmapName"
         ? "Bitmap NAME view: default sequential NAME table."
-        : "Screen view: imported NAME table.";
+        : "Screen view: imported NAME table.") + colorNote;
     }
   };
   const addButton = (label, nextMode) => {
