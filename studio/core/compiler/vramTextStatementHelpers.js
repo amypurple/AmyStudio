@@ -26,6 +26,7 @@ const colecoColorNames = new Map([
 ]);
 
 import { checkVramCharReadDeprecation, checkVramPutReorderDeprecation } from "./deprecations.js";
+import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
 
 export function handleVramTextStatement({
   line,
@@ -50,7 +51,10 @@ export function handleVramTextStatement({
   emitDefineCharsToPattern,
   emitDefineColorsToPattern,
   emitLoadInt8ValueInto,
+  emitLoadInt8ValueIntoPreserving,
   emitLoadInt16IntoHL,
+  parseRecordFieldRef,
+  emitLoadRecordFieldAddressIntoHL,
   emitStoreExtended32,
   emitLoadCountIntoDE,
   parseArrayRef,
@@ -96,13 +100,16 @@ export function handleVramTextStatement({
       return { ok: false, log: `${errorLabel} requires a known byte source length from 1 to 255: ${rawLine}` };
     }
     const loadSource = emitLoadSourceAddressIntoHL(sourceName);
-    const loadCount = emitLoadInt8ValueInto("b", String(count));
-    const loadX = emitLoadInt8ValueInto("e", xToken);
-    const loadY = emitLoadInt8ValueInto("d", yToken);
-    if (!loadY || !loadX || !loadCount || !loadSource) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_PUT_AT",
+      values: { d: yToken, e: xToken, b: String(count) },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs || !loadSource) {
       return { ok: false, log: `${errorLabel} requires a byte source plus byte-sized coordinates: ${rawLine}` };
     }
-    return { ok: true, lines: [...loadSource, ...loadY, ...loadX, ...loadCount, "    call AMY_PUT_AT"] };
+    return { ok: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }
 
   function emitLoadPixelTileCoord(register, token) {
@@ -169,12 +176,12 @@ export function handleVramTextStatement({
     ];
   }
 
-  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name)$/i);
+  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
   if (decomp) {
     const codec = decomp[1].toLowerCase() === "rle" ? "mdkrle" : decomp[1].toLowerCase();
     const sourceName = decomp[2];
     const target = decomp[3].toLowerCase();
-    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME" }[target];
+    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[target];
     const declaredAsset = assets.find((asset) => asset.name === sourceName);
     return {
       ok: true,
@@ -249,24 +256,31 @@ export function handleVramTextStatement({
 
   const psetMode3 = line.match(/^pset\s+(?:mode\s*3|multicolor)\s+(.+?)\s*,\s*(.+?)\s+colou?r\s+(.+)$/i);
   if (psetMode3) {
-    const loadX = emitLoadInt8ValueInto("b", psetMode3[1]);
-    const loadY = emitLoadInt8ValueInto("c", psetMode3[2]);
-    const loadColor = emitLoadInt8ValueInto("a", psetMode3[3]);
-    if (!loadX || !loadY || !loadColor) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_MODE3_PSET",
+      values: { b: psetMode3[1], c: psetMode3[2], a: psetMode3[3] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs) {
       return { ok: false, handled: true, log: `pset multicolor requires byte-sized X, Y, and color: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadX, ...loadY, ...loadColor, "    call AMY_MODE3_PSET"] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_MODE3_PSET"] };
   }
 
   const pgetMode3 = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*pget\s+(?:mode\s*3|multicolor)\s+(.+?)\s*,\s*(.+)$/i);
   if (pgetMode3) {
     const targetInfo = getRuntimeInfo(pgetMode3[1]);
-    const loadX = emitLoadInt8ValueInto("b", pgetMode3[2]);
-    const loadY = emitLoadInt8ValueInto("c", pgetMode3[3]);
-    if (!targetInfo || targetInfo.type !== "int8" || !loadX || !loadY) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_MODE3_PGET",
+      values: { b: pgetMode3[2], c: pgetMode3[3] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!targetInfo || targetInfo.type !== "int8" || !loadInputs) {
       return { ok: false, handled: true, log: `Color = pget multicolor X,Y requires a byte target and byte-sized coordinates: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadX, ...loadY, "    call AMY_MODE3_PGET", ...emitStoreInt8FromA(pgetMode3[1])] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_MODE3_PGET", ...emitStoreInt8FromA(pgetMode3[1])] };
   }
 
   // Plain pget X,Y — dispatches to Mode 3 based on currentGraphicsMode.
@@ -276,12 +290,16 @@ export function handleVramTextStatement({
       return { ok: false, handled: true, log: `pget without qualifier requires 'graphics mode 3 multicolor' to be active (last graphics statement seen was '${currentGraphicsMode ?? "none"}'): ${rawLine}` };
     }
     const targetInfo = getRuntimeInfo(plainPget[1]);
-    const loadX = emitLoadInt8ValueInto("b", plainPget[2]);
-    const loadY = emitLoadInt8ValueInto("c", plainPget[3]);
-    if (!targetInfo || targetInfo.type !== "int8" || !loadX || !loadY) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_MODE3_PGET",
+      values: { b: plainPget[2], c: plainPget[3] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!targetInfo || targetInfo.type !== "int8" || !loadInputs) {
       return { ok: false, handled: true, log: `pget target must be a u8/i8 variable and X,Y must be byte-sized: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadX, ...loadY, "    call AMY_MODE3_PGET", ...emitStoreInt8FromA(plainPget[1])] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_MODE3_PGET", ...emitStoreInt8FromA(plainPget[1])] };
   }
 
   const reflectPattern = line.match(/^reflect\s+pattern\s+(.+?)\s+to\s+(.+?)\s+count\s+(.+?)\s+(vertical|horizontal)$/i);
@@ -706,13 +724,16 @@ export function handleVramTextStatement({
   const putCountAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putCountAt) {
     const loadSource = emitLoadSourceAddressIntoHL(putCountAt[1]);
-    const loadCount = emitLoadInt8ValueInto("b", putCountAt[2]);
-    const loadX = emitLoadInt8ValueInto("e", putCountAt[3]);
-    const loadY = emitLoadInt8ValueInto("d", putCountAt[4]);
-    if (!loadY || !loadX || !loadCount || !loadSource) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_PUT_AT",
+      values: { d: putCountAt[4], e: putCountAt[3], b: putCountAt[2] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs || !loadSource) {
       return { ok: false, handled: true, log: `put Buffer count N at X,Y requires a byte buffer, byte-sized coordinates, and a byte-sized count: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadSource, ...loadY, ...loadX, ...loadCount, "    call AMY_PUT_AT"] };
+    return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }
 
   const putImplicitCentered = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+centered\s+at\s+(.+)$/i);
@@ -738,13 +759,15 @@ export function handleVramTextStatement({
   const putFrameAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putFrameAt) {
     const loadSource = emitLoadSourceAddressIntoHL(putFrameAt[1]);
-    const loadWidth = emitLoadInt8ValueInto("c", putFrameAt[2]);
-    const loadHeight = emitLoadInt8ValueInto("b", putFrameAt[3]);
-    const loadX = emitLoadInt8ValueInto("e", putFrameAt[4]);
-    const loadY = emitLoadInt8ValueInto("d", putFrameAt[5]);
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "PUT_FRAME",
+      values: { b: putFrameAt[3], c: putFrameAt[2], d: putFrameAt[5], e: putFrameAt[4] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
     const sourceInfo = getByteArrayBufferInfo(putFrameAt[1], 1);
     const sourceIsData = isKnownDataSource(putFrameAt[1], 1);
-    if (!loadSource || !loadWidth || !loadHeight || !loadX || !loadY || (!sourceInfo && !sourceIsData)) {
+    if (!loadSource || !loadInputs || (!sourceInfo && !sourceIsData)) {
       return { ok: false, handled: true, log: `put Buffer frame size W,H at X,Y requires a u8 buffer or data block plus byte-sized width, height, and coordinates: ${rawLine}` };
     }
     return {
@@ -752,10 +775,7 @@ export function handleVramTextStatement({
       handled: true,
       lines: [
         ...loadSource,
-        ...loadY,
-        ...loadX,
-        ...loadWidth,
-        ...loadHeight,
+        ...loadInputs,
         "    push ix",
         "    push iy",
         "    call PUT_FRAME",
@@ -769,25 +789,30 @@ export function handleVramTextStatement({
   if (putAt) {
     addCompilerWarning?.(`Prefer "put ${putAt[3]} count ${putAt[4]} at ${putAt[1]},${putAt[2]}" instead of "${rawLine}".`);
     const loadSource = emitLoadSourceAddressIntoHL(putAt[3]);
-    const loadY = emitLoadInt8ValueInto("d", putAt[2]);
-    const loadX = emitLoadInt8ValueInto("e", putAt[1]);
-    const loadCount = emitLoadInt8ValueInto("b", putAt[4]);
-    if (!loadY || !loadX || !loadCount || !loadSource) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_PUT_AT",
+      values: { d: putAt[2], e: putAt[1], b: putAt[4] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs || !loadSource) {
       return { ok: false, handled: true, log: `put at requires byte-sized coordinates and count: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadSource, ...loadY, ...loadX, ...loadCount, "    call AMY_PUT_AT"] };
+    return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }
 
   const fillAt = line.match(/^fill\s+at\s+(.+?)\s*,\s*(.+?)\s+(.+?)\s+count\s+(.+)$/i);
   if (fillAt) {
-    const loadY = emitLoadInt8ValueInto("d", fillAt[2]);
-    const loadX = emitLoadInt8ValueInto("e", fillAt[1]);
-    const loadTile = emitLoadInt8ValueInto("a", fillAt[3]);
-    const loadCount = emitLoadInt8ValueInto("b", fillAt[4]);
-    if (!loadY || !loadX || !loadTile || !loadCount) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_FILL_AT",
+      values: { d: fillAt[2], e: fillAt[1], a: fillAt[3], b: fillAt[4] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs) {
       return { ok: false, handled: true, log: `fill at requires byte-sized coordinates, tile, and count: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadY, ...loadX, ...loadTile, ...loadCount, "    call AMY_FILL_AT"] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_FILL_AT"] };
   }
 
   const setTextColors = line.match(/^set\s+text\s+colou?rs?\s+(.+?)(?:\s+on\s+(.+?))?(?:\s+at\s+(.+?))?(?:\s+count\s+(.+))?$/i);
@@ -903,18 +928,49 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [`    ld d,${repeatValue}`, "    call AMY_LOAD_SEQUENTIAL_NAME_TABLE"] };
   }
 
+  function emitPutCharFromSameRecordArray(tileToken, xToken, yToken) {
+    if (typeof parseRecordFieldRef !== "function" || typeof emitLoadArrayAddressIntoHL !== "function") return null;
+    const refs = [
+      { reg: "a", ref: parseRecordFieldRef(tileToken) },
+      { reg: "e", ref: parseRecordFieldRef(xToken) },
+      { reg: "d", ref: parseRecordFieldRef(yToken) }
+    ];
+    if (refs.some(({ ref }) => !ref || ref.baseKind !== "array" || ref.fieldInfo?.type !== "int8")) return null;
+    const [first] = refs;
+    const sameElement = refs.every(({ ref }) =>
+      ref.name === first.ref.name && normalizeExpression(ref.index) === normalizeExpression(first.ref.index)
+    );
+    if (!sameElement) return null;
+    const loadBase = emitLoadArrayAddressIntoHL(first.ref.name, first.ref.index);
+    if (!loadBase) return null;
+    const reads = refs
+      .map(({ reg, ref }) => ({ reg, offset: ref.totalOffset }))
+      .sort((left, right) => left.offset - right.offset);
+    const lines = [...loadBase];
+    let cursorOffset = 0;
+    for (const { reg, offset } of reads) {
+      if (!Number.isInteger(offset) || offset < cursorOffset) return null;
+      for (let i = cursorOffset; i < offset; i += 1) lines.push("    inc hl");
+      cursorOffset = offset;
+      lines.push("    ld " + reg + ",(hl)");
+    }
+    return lines;
+  }
+
   const putChar = line.match(/^put\s+(?:char|tile)\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putChar) {
-    const loadY = emitLoadInt8ValueInto("d", putChar[3]);
-    const loadX = emitLoadInt8ValueInto("e", putChar[2]);
-    const loadTile = emitLoadInt8ValueInto("a", putChar[1]);
-    if (!loadY || !loadX || !loadTile) {
+    const sharedRecordLoad = emitPutCharFromSameRecordArray(putChar[1], putChar[2], putChar[3]);
+    if (sharedRecordLoad) return { ok: true, handled: true, lines: [...sharedRecordLoad, "    call AMY_PUT_CHAR_AT"] };
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_PUT_CHAR_AT",
+      values: { d: putChar[3], e: putChar[2], a: putChar[1] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs) {
       return { ok: false, handled: true, log: `put char requires byte-sized coordinates and tile value: ${rawLine}` };
     }
-    const lines = parseArrayRef(putChar[1])
-      ? [...loadTile, "    ld c,a", ...loadY, ...loadX, "    ld a,c"]
-      : [...loadY, ...loadX, ...loadTile];
-    return { ok: true, handled: true, lines: [...lines, "    call AMY_PUT_CHAR_AT"] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_PUT_CHAR_AT"] };
   }
 
   const getChar = line.match(/^get\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i)
@@ -925,12 +981,16 @@ export function handleVramTextStatement({
     if (!targetInfo || targetInfo.type !== "int8") {
       return { ok: false, handled: true, log: `get char target must be a byte RAM variable: ${rawLine}` };
     }
-    const loadX = emitLoadInt8ValueInto("e", getChar[1]);
-    const loadY = emitLoadInt8ValueInto("d", getChar[2]);
-    if (!loadX || !loadY) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_GET_CHAR_AT",
+      values: { e: getChar[1], d: getChar[2] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs) {
       return { ok: false, handled: true, log: `get char requires byte-sized screen coordinates: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadY, ...loadX, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getChar[3])] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getChar[3])] };
   }
 
   const getCharAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
@@ -939,12 +999,16 @@ export function handleVramTextStatement({
     if (!targetInfo || targetInfo.type !== "int8") {
       return { ok: false, handled: true, log: `get char assignment target must be a byte RAM variable: ${rawLine}` };
     }
-    const loadX = emitLoadInt8ValueInto("e", getCharAssign[2]);
-    const loadY = emitLoadInt8ValueInto("d", getCharAssign[3]);
-    if (!loadX || !loadY) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_GET_CHAR_AT",
+      values: { e: getCharAssign[2], d: getCharAssign[3] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs) {
       return { ok: false, handled: true, log: `get char assignment requires byte-sized screen coordinates: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadY, ...loadX, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getCharAssign[1])] };
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getCharAssign[1])] };
   }
 
   const getCountInto = line.match(/^(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
@@ -1009,13 +1073,15 @@ export function handleVramTextStatement({
   const getFrameInto = line.match(/^(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (getFrameInto) {
     addCompilerWarning?.(`Prefer "${getFrameInto[5]} = get frame size ${getFrameInto[1]},${getFrameInto[2]} at ${getFrameInto[3]},${getFrameInto[4]}" instead of "${rawLine}".`);
-    const loadWidth = emitLoadInt8ValueInto("c", getFrameInto[1]);
-    const loadHeight = emitLoadInt8ValueInto("b", getFrameInto[2]);
-    const loadX = emitLoadInt8ValueInto("e", getFrameInto[3]);
-    const loadY = emitLoadInt8ValueInto("d", getFrameInto[4]);
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "GET_BKGRND",
+      values: { b: getFrameInto[2], c: getFrameInto[1], d: getFrameInto[4], e: getFrameInto[3] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
     const loadTarget = emitLoadArrayAddressIntoHL(getFrameInto[5], "0");
     const targetInfo = getByteArrayBufferInfo(getFrameInto[5], 1);
-    if (!loadWidth || !loadHeight || !loadX || !loadY || !loadTarget || !targetInfo) {
+    if (!loadInputs || !loadTarget || !targetInfo) {
       return { ok: false, handled: true, log: `get frame size W,H at X,Y into Buffer requires a u8 buffer plus byte-sized width, height, and coordinates: ${rawLine}` };
     }
     return {
@@ -1023,10 +1089,7 @@ export function handleVramTextStatement({
       handled: true,
       lines: [
         ...loadTarget,
-        ...loadY,
-        ...loadX,
-        ...loadWidth,
-        ...loadHeight,
+        ...loadInputs,
         "    push ix",
         "    push iy",
         "    call GET_BKGRND",
@@ -1038,13 +1101,15 @@ export function handleVramTextStatement({
 
   const getFrameAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getFrameAssign) {
-    const loadWidth = emitLoadInt8ValueInto("c", getFrameAssign[2]);
-    const loadHeight = emitLoadInt8ValueInto("b", getFrameAssign[3]);
-    const loadX = emitLoadInt8ValueInto("e", getFrameAssign[4]);
-    const loadY = emitLoadInt8ValueInto("d", getFrameAssign[5]);
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "GET_BKGRND",
+      values: { b: getFrameAssign[3], c: getFrameAssign[2], d: getFrameAssign[5], e: getFrameAssign[4] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
     const loadTarget = emitLoadArrayAddressIntoHL(getFrameAssign[1], "0");
     const targetInfo = getByteArrayBufferInfo(getFrameAssign[1], 1);
-    if (!loadWidth || !loadHeight || !loadX || !loadY || !loadTarget || !targetInfo) {
+    if (!loadInputs || !loadTarget || !targetInfo) {
       return { ok: false, handled: true, log: `Buffer = get frame size W,H at X,Y requires a u8 buffer plus byte-sized width, height, and coordinates: ${rawLine}` };
     }
     return {
@@ -1052,10 +1117,7 @@ export function handleVramTextStatement({
       handled: true,
       lines: [
         ...loadTarget,
-        ...loadY,
-        ...loadX,
-        ...loadWidth,
-        ...loadHeight,
+        ...loadInputs,
         "    push ix",
         "    push iy",
         "    call GET_BKGRND",

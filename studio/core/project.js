@@ -269,7 +269,7 @@ function inferRequiredCompressionIncludes(sourceText) {
     bitbuster: "src/compression/bitbuster_vram.asm"
   };
   const found = new Set();
-  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name)\s*$/gim;
+  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
   let match;
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
@@ -309,24 +309,28 @@ function inferRuntimeCapabilities(project, asmBody) {
     /\bframe\b(?!\s+size)/i.test(codeText);
   const usesScreenOnNmi = /\bAMY_SCREEN_ON_NMI\b/.test(asmBody);
   const usesHalt = /^\s*halt\s*$/gim.test(asmBody);
-  const usesVdpStatusShadow = /\b(?:VDP_STATUS|NMI_FLAG)\b/.test(asmBody) || /\bif\s+any\s+collision\s+(?:then\s+)?goto\b/i.test(sourceText);
+  const usesWaitFrames = /\bAMY_WAIT_FRAMES_SAFE\b/.test(asmBody) || /^\s*wait\b/gim.test(sourceText);
+  const usesNmiFlagShadow = usesWaitFrames || /\bNMI_FLAG\b/.test(asmBody);
+  const usesVdpStatusShadow = /\bVDP_STATUS\b/.test(asmBody) || /\bif\s+any\s+collision\s+(?:then\s+)?goto\b/i.test(sourceText);
   const usesRandom = /\bGET_RANDOM\b/.test(asmBody) || /\bAMY_RANDOM_U8\b/.test(asmBody) || /\brandom\b/i.test(sourceText);
   const needsSprites = usesSprites;
   const needsControllers = usesJoypadVars;
   const needsSpinner = usesSpinner;
   const needsFrameCounter = usesFrameCounter || usesTinySound;
+  const needsNmiFlagShadow = usesNmiFlagShadow;
   const needsVdpStatusShadow = usesVdpStatusShadow;
   const needsSound = usesSoundApi || usesMusicApi;
   const needsMusic = usesMusicApi;
   const needsTinySound = usesTinySound;
   const needsRandomSeed = usesRandom;
-  const needsNmi = usesScreenOnNmi || usesHalt || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsVdpStatusShadow;
+  const needsNmi = usesScreenOnNmi || usesHalt || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
   const needsNmiAckOnly = needsNmi && !needsControllers && !needsSound;
   return {
     needsSprites,
     needsControllers,
     needsSpinner,
     needsFrameCounter,
+    needsNmiFlagShadow,
     needsVdpStatusShadow,
     needsSound,
     needsMusic,
@@ -353,7 +357,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needsSound ||
     caps.needsMusic ||
     caps.needsFrameCounter ||
+    caps.needsNmiFlagShadow ||
     caps.needsVdpStatusShadow ||
+    caps.needsUserFrameHook ||
+    caps.needsAmyTimers ||
     referencesSymbol("NO_NMI") ||
     referencesSymbol("VDP_STATUS") ||
     referencesSymbol("NMI_FLAG");
@@ -402,7 +409,9 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needsSprites,
     needsTinySound,
     needsFrameCounter,
-    needsSoundState
+    needsNmiFlagShadow: caps.needsNmiFlagShadow,
+    needsSoundState,
+    needsAmyTimers: caps.needsAmyTimers
   });
   const addr = runtimeMap.addresses;
   const hex16 = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
@@ -557,6 +566,47 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   return lines;
 }
 
+function emitAmyTimerUpdate(lines, timers) {
+  const entries = Array.isArray(timers) ? timers : [];
+  entries.forEach((timer, index) => {
+    const suffix = String(index).padStart(2, "0");
+    lines.push(`        ld a,(${timer.activeLabel})`);
+    lines.push("        or a");
+    lines.push(`        jr z,AMY_TIMER_DONE_${suffix}`);
+    lines.push(`        ld hl,${timer.countLabel}`);
+    lines.push("        ld e,(hl)");
+    lines.push("        inc hl");
+    lines.push("        ld d,(hl)");
+    lines.push("        ld a,d");
+    lines.push("        or e");
+    lines.push(`        jr z,AMY_TIMER_DONE_${suffix}`);
+    lines.push("        dec de");
+    lines.push("        dec hl");
+    lines.push("        ld (hl),e");
+    lines.push("        inc hl");
+    lines.push("        ld (hl),d");
+    lines.push("        ld a,d");
+    lines.push("        or e");
+    lines.push(`        jr nz,AMY_TIMER_DONE_${suffix}`);
+    lines.push("        ld a,1");
+    lines.push(`        ld (${timer.signalLabel}),a`);
+    if (timer.mode === "repeat") {
+      lines.push(`        ld hl,${timer.reloadLabel}`);
+      lines.push("        ld e,(hl)");
+      lines.push("        inc hl");
+      lines.push("        ld d,(hl)");
+      lines.push(`        ld hl,${timer.countLabel}`);
+      lines.push("        ld (hl),e");
+      lines.push("        inc hl");
+      lines.push("        ld (hl),d");
+    } else {
+      lines.push("        xor a");
+      lines.push(`        ld (${timer.activeLabel}),a`);
+    }
+    lines.push(`AMY_TIMER_DONE_${suffix}:`);
+  });
+}
+
 function emitLegacyRuntime(lines, caps) {
   if (!caps.needsNmi) {
     return;
@@ -570,7 +620,18 @@ function emitLegacyRuntime(lines, caps) {
     !caps.needsSound &&
     !caps.needsMusic &&
     !caps.needsSpinner &&
-    !caps.needsFrameCounter;
+    !caps.needsFrameCounter &&
+    !caps.needsUserFrameHook;
+
+  const needsOnlyUserHook =
+    caps.needsUserFrameHook &&
+    !!caps.userFrameHookLabel &&
+    !caps.needsControllers &&
+    !caps.needsSound &&
+    !caps.needsMusic &&
+    !caps.needsSpinner &&
+    !caps.needsFrameCounter &&
+    !caps.needsAmyTimers;
 
   lines.push("; --- Amy Coleco runtime init / NMI ---");
   lines.push("Nmi:");
@@ -583,8 +644,10 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ret");
     lines.push("AMY_NMI_ACK_ONLY_READ_STATUS:");
     lines.push("        in a,(VDP_CTRL_PORT)");
-    if (caps.needsVdpStatusShadow) {
+    if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
+    }
+    if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
     if (caps.needsSpinner) {
@@ -621,6 +684,47 @@ function emitLegacyRuntime(lines, caps) {
     return;
   }
 
+  if (needsOnlyUserHook) {
+    lines.push("        push af");
+    lines.push("        ld a,($701F)");
+    lines.push("        cp $A5");
+    lines.push("        jr nz,AMY_NMI_HOOK_READ_STATUS");
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push("AMY_NMI_HOOK_READ_STATUS:");
+    lines.push("        in a,(VDP_CTRL_PORT)");
+    if (caps.needsNmiFlagShadow) {
+      lines.push("        ld (NMI_FLAG),a");
+    }
+    if (caps.needsVdpStatusShadow) {
+      lines.push("        ld (VDP_STATUS),a");
+    }
+    lines.push("        push bc");
+    lines.push("        push de");
+    lines.push("        push hl");
+    lines.push("        push ix");
+    lines.push("        push iy");
+    lines.push("        ld a,(NO_NMI)");
+    lines.push("        or a");
+    lines.push("        jr nz,AMY_SKIP_USER_FRAME_HOOK");
+    lines.push("        ld a,1");
+    lines.push("        ld (NO_NMI),a");
+    lines.push(`        call ${caps.userFrameHookLabel}`);
+    lines.push("        xor a");
+    lines.push("        ld (NO_NMI),a");
+    lines.push("AMY_SKIP_USER_FRAME_HOOK:");
+    lines.push("        pop iy");
+    lines.push("        pop ix");
+    lines.push("        pop hl");
+    lines.push("        pop de");
+    lines.push("        pop bc");
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push("");
+    return;
+  }
+
+
   if (needsOnlyCompactControllers) {
     lines.push("        push af");
     lines.push("        ld a,($701F)");
@@ -630,8 +734,10 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ret");
     lines.push("AMY_NMI_COMPACT_READ_STATUS:");
     lines.push("        in a,(VDP_CTRL_PORT)");
-    if (caps.needsVdpStatusShadow) {
+    if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
+    }
+    if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
     lines.push("        push bc");
@@ -773,8 +879,10 @@ function emitLegacyRuntime(lines, caps) {
   lines.push("        ret");
   lines.push("AMY_NMI_READ_STATUS:");
   lines.push("        in a,(VDP_CTRL_PORT)");
-  if (caps.needsControllers || caps.needsVdpStatusShadow) {
+  if (caps.needsControllers || caps.needsNmiFlagShadow) {
     lines.push("        ld (NMI_FLAG),a");
+  }
+  if (caps.needsControllers || caps.needsVdpStatusShadow) {
     lines.push("        ld (VDP_STATUS),a");
   }
   lines.push("        push bc");
@@ -816,6 +924,26 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        inc (hl)");
     lines.push("AMY_FRAME_DONE:");
   }
+  if (caps.needsAmyTimers) {
+    emitAmyTimerUpdate(lines, caps.amyTimers);
+  }
+  lines.push("        pop hl");
+  lines.push("        pop de");
+  lines.push("        pop bc");
+  lines.push("        exx");
+  lines.push("        pop af");
+  lines.push("        ex af,af'");
+  if (caps.needsUserFrameHook && caps.userFrameHookLabel) {
+    lines.push("        ld a,(NO_NMI)");
+    lines.push("        or a");
+    lines.push("        jr nz,AMY_SKIP_USER_FRAME_HOOK");
+    lines.push("        ld a,1");
+    lines.push("        ld (NO_NMI),a");
+    lines.push(`        call ${caps.userFrameHookLabel}`);
+    lines.push("        xor a");
+    lines.push("        ld (NO_NMI),a");
+    lines.push("AMY_SKIP_USER_FRAME_HOOK:");
+  }
   if (caps.needsMusic) {
     lines.push("        ld a,(AMY_MUSIC_ENABLED)");
     lines.push("        or a");
@@ -831,12 +959,6 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        call UPDATE_SOUND_ADDR");
     lines.push("AMY_SKIP_SOUND_UPDATE:");
   }
-  lines.push("        pop hl");
-  lines.push("        pop de");
-  lines.push("        pop bc");
-  lines.push("        exx");
-  lines.push("        pop af");
-  lines.push("        ex af,af'");
   lines.push("        pop iy");
   lines.push("        pop ix");
   lines.push("        pop hl");
@@ -961,6 +1083,18 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     runtimeCaps.needsFrameCounter = true;
     runtimeCaps.needsNmi = true;
     runtimeCaps.needsNmiAckOnly = runtimeCaps.needsNmi && !runtimeCaps.needsControllers && !runtimeCaps.needsSound;
+  }
+  if (metadata?.onFrameHook?.asmLabel) {
+    runtimeCaps.needsUserFrameHook = true;
+    runtimeCaps.userFrameHookLabel = metadata.onFrameHook.asmLabel;
+    runtimeCaps.needsNmi = true;
+    runtimeCaps.needsNmiAckOnly = false;
+  }
+  if (Array.isArray(metadata?.amyTimers) && metadata.amyTimers.length) {
+    runtimeCaps.needsAmyTimers = true;
+    runtimeCaps.amyTimers = metadata.amyTimers;
+    runtimeCaps.needsNmi = true;
+    runtimeCaps.needsNmiAckOnly = false;
   }
   const asmBodyWithRuntimeInit = project.memoryProfile === "colecovision_legacy_sdcc"
     ? injectSystemInitInline(asmBodyBase, runtimeCaps)
