@@ -1542,6 +1542,19 @@ const allExampleManifest = [
     ]
   },
   {
+    "id": "dragon-castle",
+    "label": "Dragon Castle",
+    "detail": "English version of Chateau du Dragon translated by [zyzzle](https://forums.atariage.com/profile/64028-zyzzle/), who also alerted us to the clean repo include-file issue.",
+    "projectName": "dragon-castle",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "cosmo-trainer-port",
     "label": "Cosmo Trainer Inspired",
     "detail": "AMY training demo inspired by Marcel de Kogel's Cosmo Trainer, not a source-faithful port.",
@@ -1876,3 +1889,4 @@ const publicExampleIds = new Set([
 ]);
 
 export const exampleManifest = allExampleManifest.filter((item) => publicExampleIds.has(item.id));
+

@@ -1,6 +1,6 @@
 import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
-import { exampleCategoryOrder, exampleManifest } from "./examples-index.generated.js?v=20260703-lazy-examples";
+import { exampleCategoryOrder, exampleManifest } from "./examples-index.generated.js?v=20260704-dragon-castle-zyzzle";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
 import { createAutocompleteController } from "./core/editor/autocomplete.js";
 import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260622-conditionals";
@@ -828,6 +828,7 @@ syncUiFromProject();
 setView("studio");
 setStatus(`Ready. ${codecStatusLine()}\nTip: Generate ASM, then compile the ROM in Amy.`);
 tryAutoLoadBios();
+
 
 
 

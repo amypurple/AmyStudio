@@ -238,137 +238,43 @@ export const gameExamples = [
     ],
     "editorialTrack": "manual-canon",
     "sourceText": "cartridge \"CHATEAU DU DRAGON/AMY STUDIO/2026\"\n\npicture ChateauTitle:\n  pattern from \"@project/chateau-title.pattern.zx0\" codec zx0\n  color from \"@project/chateau-title.color.zx0\" codec zx0\nend picture\n\nu8 Choice = 0\nu8 HeroHp = 0\nu8 HeroDie = 0\nu8 HeroBonus = 0\nu8 HeroDef = 0\nu8 HeroRegen = 0\nu8 HeroClass = 0\n\nu8 MonsterId = 0\nu8 MonsterHp = 0\nu8 MonsterDie = 0\nu8 MonsterBonus = 0\nu8 MonsterDef = 0\nu8 MonsterRegen = 0\n\nu8 Encounters = 0\nu8 FirstReward = 0\nu8 Roll = 0\nu8 Hit = 0\nu8 Turn = 0\n\ndata ChateauContourSprites bytes\n  $00,$00,$00,$01,$02,$02,$02,$02,$04,$04,$04,$05,$05,$0A,$3A,$46\n  $39,$46,$BA,$41,$40,$80,$80,$87,$88,$96,$AA,$2D,$22,$4C,$48,$2E\n  $80,$40,$80,$00,$00,$00,$00,$00,$83,$84,$8B,$0A,$0A,$12,$12,$13\n  $00,$00,$02,$1D,$21,$19,$09,$E9,$19,$AA,$49,$0A,$12,$12,$93,$55\n  $00,$00,$00,$00,$00,$01,$02,$E1,$13,$94,$9B,$AA,$AA,$B2,$33,$32\n  $00,$00,$20,$50,$90,$48,$B0,$E0,$18,$90,$90,$98,$A8,$A8,$28,$B8\n  $81,$7C,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $E1,$3E,$0C,$C3,$30,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $08,$07,$00,$C0,$20,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $A5,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $01,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $88,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\nend data\n\nset sound table ChateauSoundTable areas 9\nshow picture ChateauTitle\nsprites 16x16\nsprites simple\ncopy ChateauContourSprites to vram.spr_pat\nclear sprites\nset sprite count 6\nset sprite 0 to 25,59,0,1\nset sprite 1 to 25,75,4,1\nset sprite 2 to 25,91,8,1\nset sprite 3 to 41,59,12,1\nset sprite 4 to 41,75,16,1\nset sprite 5 to 41,91,20,1\nupdate sprites\npause until press\n\nintro:\n  clear sprites\n  update sprites\n  text screen\n  cls\n  print centered at 1, \"CHATEAU DU DRAGON\"\n  print at 1,4, \"Depuis des siecles, le\"\n  print at 1,5, \"tresor du chateau attire\"\n  print at 1,6, \"les braves du village.\"\n  print at 1,9, \"La legende dit que les\"\n  print at 1,10, \"cris cesseront quand le\"\n  print at 1,11, \"tresor sera enfin repris.\"\n  print centered at 18, \"PRESS FIRE\"\n  screen on\n  pause until press\n  goto choose_hero\n\nchoose_hero:\n  cls\n  print centered at 1, \"CHOISIS TON HEROS\"\n  print at 3,5, \"1 GUERRIER   HP36 AT7\"\n  print at 3,7, \"2 FORGERON   HP42 AT6\"\n  print at 3,9, \"3 VOLEUR     HP50 AT5\"\n  print at 3,11, \"4 PAYSANNE   HP99 AT4\"\n  print centered at 18, \"KEYPAD 1-4\"\n  choose keypad 1 to 4 into Choice\n  wait key release\n  HeroClass = Choice\n  select case Choice\n  case 1\n    HeroHp = 36\n    HeroDie = 7\n    HeroBonus = 0\n    HeroDef = 6\n    HeroRegen = 0\n    Encounters = 6\n  case 2\n    HeroHp = 42\n    HeroDie = 6\n    HeroBonus = 0\n    HeroDef = 5\n    HeroRegen = 0\n    Encounters = 6\n  case 3\n    HeroHp = 50\n    HeroDie = 5\n    HeroBonus = 0\n    HeroDef = 4\n    HeroRegen = 0\n    Encounters = 5\n  case else\n    HeroHp = 99\n    HeroDie = 4\n    HeroBonus = 0\n    HeroDef = 3\n    HeroRegen = 0\n    Encounters = 5\n  end select\n  FirstReward = 1\n  cls\n  print centered at 3, \"BONNE CHANCE\"\n  print centered at 6, \"VOUS EN AUREZ BESOIN\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  goto road_loop\n\nroad_loop:\n  if HeroHp = 0 then goto game_over\n  if Encounters = 0 then goto fountain_scene\n  battle\n  if HeroHp = 0 then goto game_over\n  reward_before_castle\n  Encounters -= 1\n  goto road_loop\n\nfountain_scene:\n  cls\n  print centered at 2, \"LE CHATEAU\"\n  print at 1,5, \"Vous arrivez devant une\"\n  print at 1,6, \"fontaine froide.\"\n  print at 1,9, \"Boire de son eau?\"\n  print at 4,12, \"1 OUI\"\n  print at 4,14, \"2 NON\"\n  choose keypad 1 to 2 into Choice\n  wait key release\n  if Choice = 1 then\n    Roll = random(0,3)\n    if Roll > 0 then\n      print centered at 17, \"L'EAU VOUS FAIT DU BIEN\"\n      play sound 8\n      Hit = random(10,17)\n      HeroHp += Hit\n    else\n      print centered at 17, \"L'EAU ETAIT MAUVAISE\"\n      Hit = random(1,3)\n      if HeroHp > Hit then\n        HeroHp -= Hit\n      else\n        HeroHp = 1\n      end if\n    end if\n    pause until press\n  end if\n  Encounters = 4\n  goto castle_loop\n\ncastle_loop:\n  if HeroHp = 0 then goto game_over\n  if Encounters = 0 then goto victory\n  battle\n  if HeroHp = 0 then goto game_over\n  reward_inside_castle\n  Encounters -= 1\n  goto castle_loop\n\nsub reward_before_castle:\n  cls\n  if FirstReward = 1 then\n    FirstReward = 0\n    print centered at 4, \"AMULETTE DE FORCE\"\n    play sound 8\n    HeroBonus += 2\n  else\n    Roll = random(0,3)\n    if Roll = 3 then\n      print centered at 4, \"POTION MAGIQUE\"\n      play sound 8\n      Hit = random(4,7)\n      HeroHp += Hit\n    else\n      Roll = random(0,3)\n      if Roll = 3 then\n        if HeroBonus < 3 then\n          print centered at 4, \"AMULETTE DE FORCE\"\n          play sound 8\n          HeroBonus += 2\n        else\n          print centered at 4, \"RIEN TROUVE\"\n        end if\n      else\n        print centered at 4, \"RIEN TROUVE\"\n      end if\n    end if\n  end if\n  print at 7,10, \"VIE:\"\n  print HeroHp at 12,10 digits 3\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nsub reward_inside_castle:\n  cls\n  Roll = random(0,3)\n  if Roll = 3 then\n    print centered at 4, \"POTION MAGIQUE\"\n    play sound 8\n    Hit = random(5,8)\n    HeroHp += Hit\n  else\n    Roll = random(0,3)\n    if Roll = 3 then\n      if HeroDef < 6 then\n        print centered at 4, \"AMULETTE DE DEFENSE\"\n        play sound 8\n        HeroDef += 2\n      else\n        print centered at 4, \"RIEN TROUVE\"\n      end if\n    else\n      print centered at 4, \"RIEN TROUVE\"\n    end if\n  end if\n  print at 7,10, \"VIE:\"\n  print HeroHp at 12,10 digits 3\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nsub battle:\n  MonsterId = random(0,19)\n  load_monster\n  draw_combat_hud\n  print centered at 8, \"** COMBAT **\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  Turn = random(0,1)\n  if Turn = 0 then goto hero_turn\n  goto monster_turn\n\nhero_turn:\n  draw_combat_hud\n  print centered at 8, \"A VOUS\"\n  Roll = random(1,10)\n  if Roll < MonsterDef then\n    play sound 2\n    print centered at 11, \"MANQUE\"\n  else\n    play sound 1\n    play sound 7\n    Hit = random(1, HeroDie)\n    Hit += HeroBonus\n    print at 5,11, \"ATTAQUE:\"\n    print Hit at 14,11 digits 2\n    if MonsterHp > Hit then\n      MonsterHp -= Hit\n    else\n      MonsterHp = 0\n    end if\n    print at 5,13, \"MONSTRE:\"\n    print MonsterHp at 14,13 digits 3\n  end if\n  wait 35 frames\n  if MonsterHp = 0 then goto battle_won\n  goto monster_turn\n\nmonster_turn:\n  draw_combat_hud\n  print centered at 8, \"AU MONSTRE\"\n  Roll = random(1,10)\n  if Roll < HeroDef then\n    play sound 2\n    print centered at 11, \"MANQUE\"\n  else\n    if MonsterId = 6 then\n      play sound 3\n      play sound 4\n    else\n      play sound 1\n    end if\n    play sound 7\n    Hit = random(1, MonsterDie)\n    Hit += MonsterBonus\n    print at 5,11, \"ATTAQUE:\"\n    print Hit at 14,11 digits 2\n    if HeroHp > Hit then\n      HeroHp -= Hit\n    else\n      HeroHp = 0\n    end if\n    print at 5,13, \"HEROS:\"\n    print HeroHp at 14,13 digits 3\n  end if\n  if MonsterRegen > 0 then\n    MonsterHp += MonsterRegen\n    print centered at 15, \"LE MONSTRE REGENERE\"\n  end if\n  wait 35 frames\n  if HeroHp = 0 then goto battle_lost\n  goto hero_turn\n\nbattle_won:\n  cls\n  print centered at 5, \"MONSTRE VAINCU\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nbattle_lost:\n  cls\n  print centered at 5, \"VOUS ETES MORT\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nsub draw_combat_hud:\n  cls\n  print at 1,0, \"HEROS\"\n  print at 7,0, \"HP:\"\n  print HeroHp at 10,0 digits 3\n  print at 15,0, \"AT:\"\n  print HeroDie at 18,0 digits 2\n  print at 22,0, \"DF:\"\n  print HeroDef at 25,0 digits 2\n  print_monster_name\n  print at 7,4, \"HP:\"\n  print MonsterHp at 10,4 digits 3\n  print at 15,4, \"AT:\"\n  print MonsterDie at 18,4 digits 2\n  print at 22,4, \"DF:\"\n  print MonsterDef at 25,4 digits 2\n  print at 1,6, \"------------------------------\"\n  return\n\nsub print_monster_name:\n  select case MonsterId\n  case 0\n    print centered at 3, \"SQUELLETTE\"\n  case 1\n    print centered at 3, \"ZOMBIE\"\n  case 2\n    print centered at 3, \"GOULE\"\n  case 3\n    print centered at 3, \"FANTOME\"\n  case 4\n    print centered at 3, \"VAMPIRE\"\n  case 5\n    print centered at 3, \"TROLL\"\n  case 6\n    print centered at 3, \"DRAGON\"\n  case 7\n    print centered at 3, \"LOUP-GAROU\"\n  case 8\n    print centered at 3, \"GOBELIN\"\n  case 9\n    print centered at 3, \"ORQUE\"\n  case 10\n    print centered at 3, \"MOMIE\"\n  case 11\n    print centered at 3, \"BALROG\"\n  case 12\n    print centered at 3, \"GEANT\"\n  case 13\n    print centered at 3, \"DEMON\"\n  case 14\n    print centered at 3, \"MINOTAURE\"\n  case 15\n    print centered at 3, \"CHIMERE\"\n  case 16\n    print centered at 3, \"SPHYNX\"\n  case 17\n    print centered at 3, \"CENTAURE\"\n  case 18\n    print centered at 3, \"MEDUSE\"\n  case else\n    print centered at 3, \"SORCIER\"\n  end select\n  return\n\nsub load_monster:\n  select case MonsterId\n  case 0\n    MonsterHp = 4\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 1\n    MonsterHp = 5\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  case 2\n    MonsterHp = 5\n    MonsterDie = 3\n    MonsterBonus = 1\n    MonsterDef = 6\n    MonsterRegen = 0\n  case 3\n    MonsterHp = 4\n    MonsterDie = 3\n    MonsterBonus = 1\n    MonsterDef = 8\n    MonsterRegen = 0\n  case 4\n    MonsterHp = 5\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 8\n    MonsterRegen = 2\n  case 5\n    MonsterHp = 12\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 6\n    MonsterRegen = 0\n  case 6\n    MonsterHp = 15\n    MonsterDie = 6\n    MonsterBonus = 1\n    MonsterDef = 7\n    MonsterRegen = 0\n  case 7\n    MonsterHp = 5\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  case 8\n    MonsterHp = 2\n    MonsterDie = 3\n    MonsterBonus = 1\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 9\n    MonsterHp = 3\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  case 10\n    MonsterHp = 6\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 8\n    MonsterRegen = 0\n  case 11\n    MonsterHp = 10\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 9\n    MonsterRegen = 0\n  case 12\n    MonsterHp = 12\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 6\n    MonsterRegen = 0\n  case 13\n    MonsterHp = 9\n    MonsterDie = 6\n    MonsterBonus = 1\n    MonsterDef = 7\n    MonsterRegen = 1\n  case 14\n    MonsterHp = 6\n    MonsterDie = 5\n    MonsterBonus = 2\n    MonsterDef = 7\n    MonsterRegen = 0\n  case 15\n    MonsterHp = 6\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 16\n    MonsterHp = 6\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 17\n    MonsterHp = 6\n    MonsterDie = 9\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 18\n    MonsterHp = 6\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 6\n    MonsterRegen = 0\n  case else\n    MonsterHp = 4\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  end select\n  return\n\ngame_over:\n  mute all\n  play sound 5\n  play sound 6\n  cls\n  print centered at 5, \"ECHEC\"\n  print centered at 8, \"LE CHATEAU RESTE HANTE\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  goto intro\n\nvictory:\n  mute all\n  play sound 9\n  cls\n  print centered at 3, \"VICTOIRE\"\n  print at 1,6, \"Vous trouvez enfin le\"\n  print at 1,7, \"tresor du Chateau.\"\n  print at 1,10, \"Les cris cessent.\"\n  print at 1,13, \"Le village dormira.\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  goto intro\n\ninclude \"@project/chateau_sounds.inc\"\n"
+  },
+  {
+    "id": "dragon-castle",
+    "label": "Dragon Castle",
+    "detail": "English version of Chateau du Dragon translated by [zyzzle](https://forums.atariage.com/profile/64028-zyzzle/), who also alerted us to the clean repo include-file issue.",
+    "projectName": "dragon-castle",
+    "sourceLang": "amy",
+    "selectedLibs": [],
+    "selectedBundles": [],
+    "selectedCompression": [],
+    "selectedAssets": [],
+    "projectFiles": [
+      {
+        "path": "chateau-title.pattern.zx0",
+        "kind": "picture",
+        "codec": "zx0",
+        "source": "example",
+        "base64": "kP8QGgBj4PiY8JMEA/H/8I4QEOBIYvj378/f+D/3sCn8Jr8/PxnY+/PpBEJh/vD8GZH3h+cCAJL29s783Pzc3A8GEgwoGHAwKAEDWCJEQoyYIOAQaJwgiyM+yv7flp+enb28eQCKH98Kv3/+AGrjl39+qD8pI1Mzdy923wDjk3PvirMHvnY9PDlhGR7Z17d3gzEpOzv+zfHN/2i/P/wu8c3ducCSjkzc3J2Z6v/+ov3554aIbu7OzMlxs8ese2+S8R+cnZu7syYO3d2Im5OSGNXM3N3ZIN3PD8/P+zXwWCL5ufm/SP784MDAgJGmBx8CBAgYERnxIwABbzA+wJj47PB+7/Bltnn9PIfh+P6n4j/RfweYfm4cZ2bm4InwhmdXMXY5PRzwJublIxmGc3YRYT+/j5gzKZhmmbWMSOL5fLBhnEzFmfPy8SOyierw3jOzuDsjL/+5NNeJ8oCfn4dGQIj+/Pfm7u7+/nPGjAwZOHn9bnBfwAIFCBACgSLEixArH2ScPb93+/sAQCC4kND4aP5SgP9WIcH/VInd37m/twLn48KEnIkPHTQ4MGCAgJgwVy8bf38/DgEZOUdvL3556P8m0PCmAIDAt+AAKf8hIQ//DBwSGxFx8fE5/ARi+v4+/kYTM3P35u7svOSyAkAIqgACqAQ0BQkLDeYZjmHt9feAvZDQyMjk5uPx/irzCOPi8uLZABU4/6LP397+iv+4qHDwiMAAZaZAQR4/OxoVETH/Cn83Miv+hut9Px8fD+L/n/uq7v9kqL+f3//i5MStyJQAA9j/AaSevw3AgKBgIAFAAEMUmCBABAAgMbExETM3NyXuCv3/Jv/+xvtDYfAPA5uA7+/4yv4gm8iIyJAwZQAEyvnuJDEAIiNi5OjwwGAwDATVCZtdLS08WDW2Dwcyij+/S+fg7Pz+7yDx1YBAQGCvACCS0tYO/qYgnEBkAFWjz29T7/9GVqmAmIeAwB8MdIDFCwMDQQH5IO2ngwODcTwwMpSZvA+Hx4OBgZDY6PT2+vn9/qr+/KL9JvyAgADLfGQAFd4H/mjAZuDqAFmOggIG+IY3Px8NH9Cex/Cw4ML0/731ft0qzv+gf4+/+v6j9OaQBAYBuAH7cQgEAw2CkQQSie925/PkaHzwMDvd8ADcDV0D2TUt1HHh4CLKQvDw6Px0eno9BwcDAcZAGeJ79Oj/wNC9wJ9OzhwQCEFnvKu//39kBhW1+8VfqIEfGe/w8Ph8fv7+vcYQkg6ePl6cvIx4eILgCzweHh+C/wcAgECSIICQmH1/Cj+poODgYOCJyfwEYhvNYjwPAYcHE/kxuJ2RABLR+4BVqr/d3d/b7+vv9Qnj58/f1xVfEFZYHfFH/+FGedjE4uPx8Hl4PT05/zWQ0ED28vMy53u1/6EEboGYjINtPhYJxHEO/kFZou3n9/v9vfv3G2oWbCf8PPvB5WQVlmD4eLy0tC4EtP5igLydvt5ebA5C1sXjGq5+E7bNywaxSENh4PI3f5e7H+xw48zvVgRBWI/9936h+1aAv8+Siv4f4nAL/fnBwNX+Va790EaS/mSAe/uPf7/OefCkfJ3++fciJGUD7e3E1GAY2cnl96frx+8mnbuK/zz/FjCtnZtbwvv/TDt2InD/mBtA24pS/2JNYG3kKZGEsTWrp68TjsG00KgBzf092eVGpfuXx9c37oGJv7i2rW3t4Ck0hra2tiJo/MXVrZ29SGb39vf3+FjtWkNd3bsHkmBqVk5eJCPTGo4z2onhIiCqJt7kmhuBLD8Y8MUlxgbx35CY+7ePQPD+RDVVWA=="
+      },
+      {
+        "path": "chateau-title.color.zx0",
+        "kind": "picture",
+        "codec": "zx0",
+        "source": "example",
+        "base64": "kBIQGhce8ES/ev7u8fbACnpP0Pfwgf5oGvDQPP4UoRdWl3rg7fDx/vLg8xr+5D3weMAPzk/jhPB2AAF99YQONgBf8P3n8Pj/8A3eyvAFM9J80Dj+BaEXFdWBBFoaQV3QcNwyT/B4zg7+QU1hbFzX6tVwxZECV10AXdcy3+jWNgBRXTb6kRJ2QBfN2nAABP3+xALMwjmuMOl4FxdcBgV9/t00eYB2AFUMDPBT1ZzHBAAdhEA5xkxkAFDUJPgDxlUARQyT/Ezow+AA8aGUAlcclnRcUBzV/s3udgBEH/vpkBcA5Hzl8NkG9f5Vax7F0P/z/7BP8dfA17DR/loeT/A44A/wU+Xv8uVi8bD587BOMBTXbBA4KFe8sv4RDVVW"
+      },
+      {
+        "path": "chateau_sounds.inc",
+        "kind": "asm",
+        "source": "example",
+        "base64": "Q2hhdGVhdUF0dGFja1NmeDoKICAgIGRiICQwMiwkNzQsJDA0LCQwMCwkMDAKICAgIGRiICQyMgogICAgZGIgJDAyLCQ2NCwkMDQsJDAwLCQwMAogICAgZGIgJDIyCiAgICBkYiAkMDIsJDU0LCQwNCwkMDAsJDAwCiAgICBkYiAkMjIKICAgIGRiICQwMiwkNDQsJDA0LCQwMCwkMDAKICAgIGRiICQyMgogICAgZGIgJDEwCgpDaGF0ZWF1TWlzc1NmeDoKICAgIGRiICQwMiwkODQsJDA1LCRFNCwkMTEKICAgIGRiICQxMAoKQ2hhdGVhdURyYWdvbkZpcmVUb25lOgogICAgZGIgJEMwLCQxNCwkRjAsJDBBCiAgICBkYiAkQzEsJDE0LCRGMCwkMEYsJDY2LCQwMQogICAgZGIgJEQwCgpDaGF0ZWF1RHJhZ29uRmlyZU5vaXNlOgogICAgZGIgJDAyLCQ5NywkMEEsJEY5LCQxMQogICAgZGIgJDAyLCQwNywkNUEsJDFGLCQ1RgogICAgZGIgJDEwCgpDaGF0ZWF1R2FtZU92ZXJUb25lMToKICAgIGRiICQ0MCwkRDYsJDMwLCQwMQogICAgZGIgJDQxLCRENiwkMzAsJDAyLCRGRiwkMjgKICAgIGRiICQ0MCwkRkUsJDMwLCQwMQogICAgZGIgJDQwLCQxRCwkMzEsJDA0CiAgICBkYiAkNDEsJDFELCQzMSwkMDIsJEZGLCQyMwogICAgZGIgJDQwLCQ0MCwkMzEsJDA3CiAgICBkYiAkNDIsJDUzLCQzMSwkMjgsJDFDLCQzNAogICAgZGIgJDUwCgpDaGF0ZWF1R2FtZU92ZXJUb25lMjoKICAgIGRiICRCMAogICAgZGIgJDgyLCRBQywkMzEsJDEwLCQxQywkMTQKICAgIGRiICQ4MiwkQUMsJDMxLCQxMywkMUMsJDE3CiAgICBkYiAkODIsJEZDLCQzMSwkMTYsJDFDLCQxQQogICAgZGIgJDgyLCQzQiwkMzIsJDI4LCQxQywkMzQKICAgIGRiICQ5MAoKQ2hhdGVhdUhpdFNmeDoKICAgIGRiICQ4MiwkMjQsJDMwLCQxMCwkOEYsJDIyCiAgICBkYiAkODIsJDI0LCQzMCwkMEUsJDFDLCQxMgogICAgZGIgJDkwCgpDaGF0ZWF1Q29sbGVjdFNmeDoKICAgIGRiICQ0MywkMDAsJDcyLCQwNSwkMTEsJDkwLCRGMywkMTEKICAgIGRiICQ1MAoKQ2hhdGVhdVZpY3RvcnlNdXNpYzoKICAgIGRiICQ0MiwkQkUsJDIwLCQwQywkMTUsJDE2CiAgICBkYiAkNDIsJDdGLCQzMCwkMEMsJDgwLCQzMwogICAgZGIgJDQyLCQ5NywkMjAsJDBDLCQxNSwkMTYKICAgIGRiICQ0MiwkN0YsJDMwLCQwQywkODAsJDMzCiAgICBkYiAkNDIsJEJFLCQyMCwkMEMsJDE1LCQxNgogICAgZGIgJDQyLCQ3RiwkMzAsJDBDLCQ4MCwkMzMKICAgIGRiICQ0MiwkOTcsJDIwLCQwQywkMTUsJDE2CiAgICBkYiAkNDIsJEJFLCQyMCwkMEMsJDE1LCQxNgogICAgZGIgJDQyLCQ3RiwkMjAsJDBDLCQxNSwkMTYKICAgIGRiICQ0MiwkOEYsJDMwLCQwQywkODAsJDMzCiAgICBkYiAkNDIsJDk3LCQzMCwkMEMsJDgwLCQzMwogICAgZGIgJDQyLCRBQSwkMzAsJDBDLCQ4MCwkMzMKICAgIGRiICQ0MiwkQkUsJDIwLCQzMCwkMUMsJDZGCiAgICBkYiAkNTAKCkNoYXRlYXVTb3VuZFRhYmxlOgogICAgZHcgQ2hhdGVhdUF0dGFja1NmeCwkNzAyQgogICAgZHcgQ2hhdGVhdU1pc3NTZngsJDcwMzUKICAgIGR3IENoYXRlYXVEcmFnb25GaXJlVG9uZSwkNzAzRgogICAgZHcgQ2hhdGVhdURyYWdvbkZpcmVOb2lzZSwkNzA0OQogICAgZHcgQ2hhdGVhdUdhbWVPdmVyVG9uZTEsJDcwNTMKICAgIGR3IENoYXRlYXVHYW1lT3ZlclRvbmUyLCQ3MDVECiAgICBkdyBDaGF0ZWF1SGl0U2Z4LCQ3MDY3CiAgICBkdyBDaGF0ZWF1Q29sbGVjdFNmeCwkNzA3MQogICAgZHcgQ2hhdGVhdVZpY3RvcnlNdXNpYywkNzA3Qgo="
+      }
+    ],
+    "editorialTrack": "manual-canon",
+    "sourceText": "cartridge \"DRAGON CASTLE/AMY STUDIO/2026\"\n\n' English translation by zyzzle: https://forums.atariage.com/profile/64028-zyzzle/\n' Thanks to zyzzle for testing the clean repo, finding the include-file issue, and making this version possible.\npicture ChateauTitle:\n  pattern from \"@project/chateau-title.pattern.zx0\" codec zx0\n  color from \"@project/chateau-title.color.zx0\" codec zx0\nend picture\n\nu8 Choice = 0\nu8 HeroHp = 0\nu8 HeroDie = 0\nu8 HeroBonus = 0\nu8 HeroDef = 0\nu8 HeroRegen = 0\nu8 HeroClass = 0\n\nu8 MonsterId = 0\nu8 MonsterHp = 0\nu8 MonsterDie = 0\nu8 MonsterBonus = 0\nu8 MonsterDef = 0\nu8 MonsterRegen = 0\n\nu8 Encounters = 0\nu8 FirstReward = 0\nu8 Roll = 0\nu8 Hit = 0\nu8 Turn = 0\n\ndata ChateauContourSprites bytes\n  $00,$00,$00,$01,$02,$02,$02,$02,$04,$04,$04,$05,$05,$0A,$3A,$46\n  $39,$46,$BA,$41,$40,$80,$80,$87,$88,$96,$AA,$2D,$22,$4C,$48,$2E\n  $80,$40,$80,$00,$00,$00,$00,$00,$83,$84,$8B,$0A,$0A,$12,$12,$13\n  $00,$00,$02,$1D,$21,$19,$09,$E9,$19,$AA,$49,$0A,$12,$12,$93,$55\n  $00,$00,$00,$00,$00,$01,$02,$E1,$13,$94,$9B,$AA,$AA,$B2,$33,$32\n  $00,$00,$20,$50,$90,$48,$B0,$E0,$18,$90,$90,$98,$A8,$A8,$28,$B8\n  $81,$7C,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $E1,$3E,$0C,$C3,$30,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $08,$07,$00,$C0,$20,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $A5,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $01,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\n  $88,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00\nend data\n\nset sound table ChateauSoundTable areas 9\nshow picture ChateauTitle\nsprites 16x16\nsprites simple\ncopy ChateauContourSprites to vram.spr_pat\nclear sprites\nset sprite count 6\nset sprite 0 to 25,59,0,1\nset sprite 1 to 25,75,4,1\nset sprite 2 to 25,91,8,1\nset sprite 3 to 41,59,12,1\nset sprite 4 to 41,75,16,1\nset sprite 5 to 41,91,20,1\nupdate sprites\npause until press\n\nintro:\n  clear sprites\n  update sprites\n  text screen\n  cls\n  print centered at 1, \"DRAGON CASTLE\"\n  print at 1,4, \"For centuries, the\"\n  print at 1,5, \"castle treasure has\"\n  print at 1,6, \"attracted the brave.\"\n  print at 1,9, \"Legend says that the\"\n  print at 1,10, \"screams will cease when\"\n  print at 1,11, \"the treasure is taken.\"\n  print centered at 18, \"PRESS FIRE\"\n  screen on\n  pause until press\n  goto choose_hero\n\nchoose_hero:\n  cls\n  print centered at 1, \"CHOOSE YOUR HERO\"\n  print at 3,5, \"1 WARRIOR    HP36 AT7\"\n  print at 3,7, \"2 BLACKSMITH HP42 AT6\"\n  print at 3,9, \"3 THIEF      HP50 AT5\"\n  print at 3,11, \"4 PEASANT    HP99 AT4\"\n  print centered at 18, \"KEYPAD 1-4\"\n  choose keypad 1 to 4 into Choice\n  wait key release\n  HeroClass = Choice\n  select case Choice\n  case 1\n    HeroHp = 36\n    HeroDie = 7\n    HeroBonus = 0\n    HeroDef = 6\n    HeroRegen = 0\n    Encounters = 6\n  case 2\n    HeroHp = 42\n    HeroDie = 6\n    HeroBonus = 0\n    HeroDef = 5\n    HeroRegen = 0\n    Encounters = 6\n  case 3\n    HeroHp = 50\n    HeroDie = 5\n    HeroBonus = 0\n    HeroDef = 4\n    HeroRegen = 0\n    Encounters = 5\n  case else\n    HeroHp = 99\n    HeroDie = 4\n    HeroBonus = 0\n    HeroDef = 3\n    HeroRegen = 0\n    Encounters = 5\n  end select\n  FirstReward = 1\n  cls\n  print centered at 3, \"GOOD LUCK\"\n  print centered at 6, \"YOU WILL NEED IT\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  goto road_loop\n\nroad_loop:\n  if HeroHp = 0 then goto game_over\n  if Encounters = 0 then goto fountain_scene\n  battle\n  if HeroHp = 0 then goto game_over\n  reward_before_castle\n  Encounters -= 1\n  goto road_loop\n\nfountain_scene:\n  cls\n  print centered at 2, \"THE CASTLE\"\n  print at 1,5, \"You arrive in front of\"\n  print at 1,6, \"a cold fountain.\"\n  print at 1,9, \"Drink from its water?\"\n  print at 4,12, \"1 YES\"\n  print at 4,14, \"2 NO\"\n  choose keypad 1 to 2 into Choice\n  wait key release\n  if Choice = 1 then\n    Roll = random(0,3)\n    if Roll > 0 then\n      print centered at 17, \"THE WATER DOES YOU GOOD\"\n      play sound 8\n      Hit = random(10,17)\n      HeroHp += Hit\n    else\n      print centered at 17, \"THE WATER WAS BAD\"\n      Hit = random(1,3)\n      if HeroHp > Hit then\n        HeroHp -= Hit\n      else\n        HeroHp = 1\n      end if\n    end if\n    pause until press\n  end if\n  Encounters = 4\n  goto castle_loop\n\ncastle_loop:\n  if HeroHp = 0 then goto game_over\n  if Encounters = 0 then goto victory\n  battle\n  if HeroHp = 0 then goto game_over\n  reward_inside_castle\n  Encounters -= 1\n  goto castle_loop\n\nsub reward_before_castle:\n  cls\n  if FirstReward = 1 then\n    FirstReward = 0\n    print centered at 4, \"AMULET OF STRENGTH\"\n    play sound 8\n    HeroBonus += 2\n  else\n    Roll = random(0,3)\n    if Roll = 3 then\n      print centered at 4, \"MAGIC POTION\"\n      play sound 8\n      Hit = random(4,7)\n      HeroHp += Hit\n    else\n      Roll = random(0,3)\n      if Roll = 3 then\n        if HeroBonus < 3 then\n          print centered at 4, \"AMULET OF STRENGTH\"\n          play sound 8\n          HeroBonus += 2\n        else\n          print centered at 4, \"NOTHING FOUND\"\n        end if\n      else\n        print centered at 4, \"NOTHING FOUND\"\n      end if\n    end if\n  end if\n  print at 7,10, \"LIFE:\"\n  print HeroHp at 12,10 digits 3\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nsub reward_inside_castle:\n  cls\n  Roll = random(0,3)\n  if Roll = 3 then\n    print centered at 4, \"MAGIC POTION\"\n    play sound 8\n    Hit = random(5,8)\n    HeroHp += Hit\n  else\n    Roll = random(0,3)\n    if Roll = 3 then\n      if HeroDef < 6 then\n        print centered at 4, \"AMULET OF DEFENSE\"\n        play sound 8\n        HeroDef += 2\n      else\n        print centered at 4, \"NOTHING FOUND\"\n      end if\n    else\n      print centered at 4, \"NOTHING FOUND\"\n    end if\n  end if\n  print at 7,10, \"LIFE:\"\n  print HeroHp at 12,10 digits 3\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nsub battle:\n  MonsterId = random(0,19)\n  load_monster\n  draw_combat_hud\n  print centered at 8, \"** COMBAT **\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  Turn = random(0,1)\n  if Turn = 0 then goto hero_turn\n  goto monster_turn\n\nhero_turn:\n  draw_combat_hud\n  print centered at 8, \"YOUR TURN\"\n  Roll = random(1,10)\n  if Roll < MonsterDef then\n    play sound 2\n    print centered at 11, \"MISSED\"\n  else\n    play sound 1\n    play sound 7\n    Hit = random(1, HeroDie)\n    Hit += HeroBonus\n    print at 5,11, \"ATTACK:\"\n    print Hit at 14,11 digits 2\n    if MonsterHp > Hit then\n      MonsterHp -= Hit\n    else\n      MonsterHp = 0\n    end if\n    print at 5,13, \"MONSTER:\"\n    print MonsterHp at 14,13 digits 3\n  end if\n  wait 35 frames\n  if MonsterHp = 0 then goto battle_won\n  goto monster_turn\n\nmonster_turn:\n  draw_combat_hud\n  print centered at 8, \"MONSTER'S TURN\"\n  Roll = random(1,10)\n  if Roll < HeroDef then\n    play sound 2\n    print centered at 11, \"MISSED\"\n  else\n    if MonsterId = 6 then\n      play sound 3\n      play sound 4\n    else\n      play sound 1\n    end if\n    play sound 7\n    Hit = random(1, MonsterDie)\n    Hit += MonsterBonus\n    print at 5,11, \"ATTACK:\"\n    print Hit at 14,11 digits 2\n    if HeroHp > Hit then\n      HeroHp -= Hit\n    else\n      HeroHp = 0\n    end if\n    print at 5,13, \"HERO:\"\n    print HeroHp at 14,13 digits 3\n  end if\n  if MonsterRegen > 0 then\n    MonsterHp += MonsterRegen\n    print centered at 15, \"THE MONSTER REGENERATES\"\n  end if\n  wait 35 frames\n  if HeroHp = 0 then goto battle_lost\n  goto hero_turn\n\nbattle_won:\n  cls\n  print centered at 5, \"MONSTER DEFEATED\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nbattle_lost:\n  cls\n  print centered at 5, \"YOU ARE DEAD\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  return\n\nsub draw_combat_hud:\n  cls\n  print at 1,0, \"HERO\"\n  print at 7,0, \"HP:\"\n  print HeroHp at 10,0 digits 3\n  print at 15,0, \"AT:\"\n  print HeroDie at 18,0 digits 2\n  print at 22,0, \"DF:\"\n  print HeroDef at 25,0 digits 2\n  print_monster_name\n  print at 7,4, \"HP:\"\n  print MonsterHp at 10,4 digits 3\n  print at 15,4, \"AT:\"\n  print MonsterDie at 18,4 digits 2\n  print at 22,4, \"DF:\"\n  print MonsterDef at 25,4 digits 2\n  print at 1,6, \"------------------------------\"\n  return\n\nsub print_monster_name:\n  select case MonsterId\n  case 0\n    print centered at 3, \"SKELETON\"\n  case 1\n    print centered at 3, \"ZOMBIE\"\n  case 2\n    print centered at 3, \"GHOUL\"\n  case 3\n    print centered at 3, \"GHOST\"\n  case 4\n    print centered at 3, \"VAMPIRE\"\n  case 5\n    print centered at 3, \"TROLL\"\n  case 6\n    print centered at 3, \"DRAGON\"\n  case 7\n    print centered at 3, \"WEREWOLF\"\n  case 8\n    print centered at 3, \"GOBLIN\"\n  case 9\n    print centered at 3, \"ORC\"\n  case 10\n    print centered at 3, \"MUMMY\"\n  case 11\n    print centered at 3, \"BALROG\"\n  case 12\n    print centered at 3, \"GIANT\"\n  case 13\n    print centered at 3, \"DEMON\"\n  case 14\n    print centered at 3, \"MINOTAUR\"\n  case 15\n    print centered at 3, \"CHIMERA\"\n  case 16\n    print centered at 3, \"SPHINX\"\n  case 17\n    print centered at 3, \"CENTAUR\"\n  case 18\n    print centered at 3, \"MEDUSA\"\n  case else\n    print centered at 3, \"WIZARD\"\n  end select\n  return\n\nsub load_monster:\n  select case MonsterId\n  case 0\n    MonsterHp = 4\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 1\n    MonsterHp = 5\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  case 2\n    MonsterHp = 5\n    MonsterDie = 3\n    MonsterBonus = 1\n    MonsterDef = 6\n    MonsterRegen = 0\n  case 3\n    MonsterHp = 4\n    MonsterDie = 3\n    MonsterBonus = 1\n    MonsterDef = 8\n    MonsterRegen = 0\n  case 4\n    MonsterHp = 5\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 8\n    MonsterRegen = 2\n  case 5\n    MonsterHp = 12\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 6\n    MonsterRegen = 0\n  case 6\n    MonsterHp = 15\n    MonsterDie = 6\n    MonsterBonus = 1\n    MonsterDef = 7\n    MonsterRegen = 0\n  case 7\n    MonsterHp = 5\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  case 8\n    MonsterHp = 2\n    MonsterDie = 3\n    MonsterBonus = 1\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 9\n    MonsterHp = 3\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  case 10\n    MonsterHp = 6\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 8\n    MonsterRegen = 0\n  case 11\n    MonsterHp = 10\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 9\n    MonsterRegen = 0\n  case 12\n    MonsterHp = 12\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 6\n    MonsterRegen = 0\n  case 13\n    MonsterHp = 9\n    MonsterDie = 6\n    MonsterBonus = 1\n    MonsterDef = 7\n    MonsterRegen = 1\n  case 14\n    MonsterHp = 6\n    MonsterDie = 5\n    MonsterBonus = 2\n    MonsterDef = 7\n    MonsterRegen = 0\n  case 15\n    MonsterHp = 6\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 16\n    MonsterHp = 6\n    MonsterDie = 6\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 17\n    MonsterHp = 6\n    MonsterDie = 9\n    MonsterBonus = 0\n    MonsterDef = 4\n    MonsterRegen = 0\n  case 18\n    MonsterHp = 6\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 6\n    MonsterRegen = 0\n  case else\n    MonsterHp = 4\n    MonsterDie = 3\n    MonsterBonus = 0\n    MonsterDef = 5\n    MonsterRegen = 0\n  end select\n  return\n\ngame_over:\n  mute all\n  play sound 5\n  play sound 6\n  cls\n  print centered at 5, \"FAILURE\"\n  print centered at 8, \"THE CASTLE REMAINS HAUNTED\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  goto intro\n\nvictory:\n  mute all\n  play sound 9\n  cls\n  print centered at 3, \"VICTORY\"\n  print at 1,6, \"You finally find the\"\n  print at 1,7, \"treasure of the Castle.\"\n  print at 1,10, \"The screams cease.\"\n  print at 1,13, \"The village will sleep.\"\n  print centered at 18, \"PRESS FIRE\"\n  pause until press\n  goto intro\n\ninclude \"@project/chateau_sounds.inc\""
   }
 ];
 
-export const gameExampleManifest = [
-  {
-    "id": "snake-demo",
-    "label": "Snake Demo",
-    "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
-    "projectName": "snake-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "cvbasic-viboritas-port",
-    "label": "CVBasic Viboritas Port",
-    "detail": "Amy port of Oscar Toledo's Viboritas demo: a 1990 Z80 assembler game revised for CVBasic in Feb 2024.",
-    "projectName": "cvbasic-viboritas-port",
-    "sourceLang": "amy",
-    "editorialTrack": "cvbasic-port",
-    "category": "CVBasic Ports",
-    "tags": [
-      "amy",
-      "cvbasic",
-      "port",
-      "cvbasic-port"
-    ]
-  },
-  {
-    "id": "tile-collision-maze",
-    "label": "Tile Collision Maze",
-    "detail": "Maze-like gameplay demo using tile types, pixel-to-tile collision, and collectible lookup.",
-    "projectName": "tile-collision-maze",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "collision",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "sprite-momentum-platformer",
-    "label": "Sprite Momentum Platformer",
-    "detail": "16x16 sprite platformer test with momentum, gravity, wall collision, landing, and coin pickup.",
-    "projectName": "sprite-momentum-platformer",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "sprites",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "old-devkit-10years",
-    "label": "30th Anniversary Cake",
-    "detail": "1996-2026 ColecoVision anniversary version of the 2006 10-years cake demo with Happy Birthday sound playback.",
-    "projectName": "amy-30th-anniversary",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "meteor-dodge",
-    "label": "Meteor Dodge",
-    "detail": "Dodge 3 falling space rocks with your ship. 3 lives, 16x16 sprites, software collision, and random meteor paths.",
-    "projectName": "meteor-dodge",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "brinquitos-game-demo",
-    "label": "Brinquitos Game",
-    "detail": "Amy port of Oscar Toledo's CVBasic Brinquitos jumping game, presented on AtariAge Oct 14 2024; Brinco means jump, Brinquitos means little jumps.",
-    "projectName": "brinquitos-game-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "smooth-criminal-music",
-    "label": "Smooth Criminal Music",
-    "category": "Music",
-    "projectName": "smooth-criminal-music",
-    "description": "Legacy devkit Smooth Criminal music/equalizer effect port with ZX0 graphics assets and BIOS sound data.",
-    "fileCount": 4
-  },
-  {
-    "id": "diamond-dash",
-    "label": "Diamond Dash",
-    "detail": "Amy port of Daniel Bienvenu's legacy devkit Diamond Dash game.",
-    "projectName": "diamond-dash",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "chateau-du-dragon",
-    "label": "Chateau du Dragon",
-    "detail": "AMY text-adventure remake inspired by Daniel Bienvenu's legacy Chateau du Dragon, with the original title picture extracted as modern picture assets.",
-    "projectName": "chateau-du-dragon",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  }
-];
+export const gameExampleManifest = gameExamples.map(({ sourceText, projectFiles, ...rest }) => rest);
+

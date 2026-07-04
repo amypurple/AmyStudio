@@ -163,8 +163,8 @@ export function handleDisplayGraphicsSpriteStatement({
       return {
         ok: true, handled: true,
         lines: [
-          "    ld hl,VRAM_PATTERN", "    ld de,$0800", "    xor a", "    call FILL_VRAM",
-          "    ld hl,VRAM_COLOR", "    ld de,$0020", "    ld a,$F0", "    call FILL_VRAM"
+          "    ld hl,VRAM_PATTERN", "    ld de,$1800", "    xor a", "    call FILL_VRAM",
+          "    ld hl,VRAM_COLOR", "    ld de,$1800", "    ld a,$F0", "    call FILL_VRAM"
         ]
       };
     }
