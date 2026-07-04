@@ -1,6 +1,7 @@
 const PICTURE_CODEC_OPTIONS = [
   { codec: "raw", label: "Raw", description: "No decompressor, largest data, simplest runtime." },
   { codec: "mdkrle", label: "RLE", description: "Tiny 46-byte routine; often best total cost for simple pictures." },
+  { codec: "nibble", label: "Nibble", description: "DAN0nibble-derived fast RLE/data-stream codec; excellent quick-evaluation candidate." },
   { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine." },
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
   { codec: "dan2", label: "DAN2", description: "Daniel's LZ codec; good candidate for Coleco bitmap data." },
@@ -11,11 +12,12 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "lzf", label: "LZF", description: "Fast LZ family candidate." }
 ];
 
-export const PICTURE_QUICK_COMPRESSION_CODECS = ["raw", "mdkrle", "dan1", "lzf", "zx7"];
+export const PICTURE_QUICK_COMPRESSION_CODECS = ["raw", "mdkrle", "nibble", "bitbuster", "zx7", "dan1"];
 
 export const PICTURE_DECOMPRESSOR_ROUTINE_BYTES = {
   raw: 0,
   mdkrle: 46,
+  nibble: 115,
   zx0: 133,
   zx7: 136,
   dan1: 205,
@@ -24,6 +26,64 @@ export const PICTURE_DECOMPRESSOR_ROUTINE_BYTES = {
   pletter: 212,
   bitbuster: 166,
   lzf: 117
+};
+
+const PICTURE_Z80_RUNTIME_INFO = {
+  raw: {
+    rank: 0,
+    label: "direct VRAM upload",
+    note: "No decompressor; fastest runtime path but largest data."
+  },
+  mdkrle: {
+    rank: 1,
+    label: "fast RAM/ROM->VRAM stream",
+    note: "RLE writes literal/fill runs directly to VRAM."
+  },
+  nibble: {
+    rank: 1,
+    label: "fast RAM/ROM->VRAM stream",
+    note: "DAN0nibble-style stream writes values directly to VRAM."
+  },
+  lzf: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Browser timing is not representative; matches copy through VRAM."
+  },
+  zx0: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Strong compression, but runtime has VDP copy/read cost."
+  },
+  zx7: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Runtime can be slower than JavaScript timings imply."
+  },
+  dan1: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Runtime can be slower than JavaScript timings imply."
+  },
+  dan2: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Runtime can be slower than JavaScript timings imply."
+  },
+  dan3: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Runtime can be slower than JavaScript timings imply."
+  },
+  pletter: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Runtime can be slower than JavaScript timings imply."
+  },
+  bitbuster: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Runtime can be slower than JavaScript timings imply."
+  }
 };
 
 const RAW_PICTURE_BYTES = 6144 * 2;
@@ -95,8 +155,26 @@ async function evaluateComponent({ codec, bytes, compressBytes, decompressBytes 
 export function getPictureCompressionCodecOptions() {
   return PICTURE_CODEC_OPTIONS.map((option) => ({
     ...option,
-    routineBytes: PICTURE_DECOMPRESSOR_ROUTINE_BYTES[option.codec] ?? 0
+    routineBytes: PICTURE_DECOMPRESSOR_ROUTINE_BYTES[option.codec] ?? 0,
+    ...pictureZ80RuntimeFields(option.codec)
   }));
+}
+
+function pictureZ80RuntimeFields(codec) {
+  const info = getPictureZ80RuntimeInfo(codec);
+  return {
+    z80RuntimeRank: info.rank,
+    z80RuntimeLabel: info.label,
+    z80RuntimeNote: info.note
+  };
+}
+
+export function getPictureZ80RuntimeInfo(codec) {
+  return PICTURE_Z80_RUNTIME_INFO[String(codec || "").toLowerCase()] || {
+    rank: 9,
+    label: "unknown runtime",
+    note: "No Z80/VDP runtime class has been assigned for this codec."
+  };
 }
 
 export async function evaluatePictureCompressionCandidates(tables, options = {}) {
@@ -135,6 +213,7 @@ export async function evaluatePictureCompressionCandidates(tables, options = {})
         totalSavingsBytes: RAW_PICTURE_BYTES - dataBytes - routineBytes,
         compressionMs,
         decompressionMs,
+        ...pictureZ80RuntimeFields(codec),
         verified: pattern.verified && color.verified,
         components: {
           pattern: pattern.bytes,
@@ -146,6 +225,7 @@ export async function evaluatePictureCompressionCandidates(tables, options = {})
         ...option,
         extension: codecExtension(codec),
         routineBytes: PICTURE_DECOMPRESSOR_ROUTINE_BYTES[codec] ?? 0,
+        ...pictureZ80RuntimeFields(codec),
         error: error?.message || String(error)
       });
     }

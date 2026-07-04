@@ -53,8 +53,171 @@ export function transpileAmyCore(sourceText, deps) {
     stripAmyInlineComment
   } = deps;
 
-  const lines = rewriteImmediateByteTempCoordinateUsesCore(sourceText.split(/\r?\n/), normalizeExpression);
-  const inferredMemoryCaps = inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound);
+  function preprocessCompileTimeConditionals(rawLines) {
+    const result = [...rawLines];
+    const definedSymbols = new Set();
+    const stack = [];
+    const isActive = () => stack.every((entry) => entry.active);
+    const strippedLine = (index) => stripAmyInlineComment(rawLines[index]).trim();
+    const parseDefinedCondition = (line) => {
+      let match = line.match(/^(?:#ifdef|ifdef)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (match) return { handled: true, symbol: match[1], expected: true };
+      match = line.match(/^(?:#ifndef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (match) return { handled: true, symbol: match[1], expected: false };
+      match = line.match(/^if\s+defined\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (match) return { handled: true, symbol: match[1], expected: true };
+      match = line.match(/^if\s+not\s+defined\s+([A-Za-z_][A-Za-z0-9_]*)$/i) || line.match(/^if\s+not\s+define\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (match) return { handled: true, symbol: match[1], expected: false };
+      return { handled: false };
+    };
+
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const line = strippedLine(index);
+      if (!line) continue;
+
+      const defineFlag = line.match(/^(?:#define|define)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (defineFlag) {
+        result[index] = "";
+        if (isActive()) definedSymbols.add(defineFlag[1].toLowerCase());
+        continue;
+      }
+
+      const condition = parseDefinedCondition(line);
+      if (condition.handled) {
+        result[index] = "";
+        const parentActive = isActive();
+        const defined = definedSymbols.has(condition.symbol.toLowerCase());
+        const conditionActive = defined === condition.expected;
+        stack.push({ parentActive, conditionActive, active: parentActive && conditionActive, sawElse: false, line: index + 1 });
+        continue;
+      }
+
+      if (/^(?:#else|else\s+ifdef|else\s+ifndef)$/i.test(line)) {
+        result[index] = "";
+        if (!stack.length) return { ok: false, log: `else without matching ifdef/ifndef at line ${index + 1}` };
+        const current = stack[stack.length - 1];
+        if (current.sawElse) return { ok: false, log: `multiple else clauses for ifdef/ifndef started at line ${current.line}` };
+        current.sawElse = true;
+        current.active = current.parentActive && !current.conditionActive;
+        continue;
+      }
+
+      if (/^(?:#endif|end\s+ifdef|end\s+ifndef)$/i.test(line)) {
+        result[index] = "";
+        if (!stack.length) return { ok: false, log: `endif without matching ifdef/ifndef at line ${index + 1}` };
+        stack.pop();
+        continue;
+      }
+
+      if (!isActive()) result[index] = "";
+    }
+
+    if (stack.length) {
+      const current = stack[stack.length - 1];
+      return { ok: false, log: `missing endif for ifdef/ifndef started at line ${current.line}` };
+    }
+    return { ok: true, lines: result };
+  }
+  function pruneSourceUnreachableAfterRoutineTerminators(rawLines) {
+    const result = [...rawLines];
+    const topLevelGotoReferences = new Set();
+    let currentRoutineStart = -1;
+
+    const strippedLine = (index) => stripAmyInlineComment(rawLines[index]).trim();
+    const routineStart = (line) => /^(?:sub|function)\b/i.test(line);
+    const routineEnd = (line) => /^end\s+(?:sub|function)$/i.test(line);
+    const labelOf = (line) => {
+      const match = String(line || "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*):$/);
+      return match ? match[1].toLowerCase() : null;
+    };
+    const addGotoReferences = (set, line) => {
+      for (const match of String(line || "").matchAll(/\bgoto\s+([A-Za-z_][A-Za-z0-9_]*)\b/gi)) {
+        set.add(match[1].toLowerCase());
+      }
+    };
+
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const line = strippedLine(index);
+      if (!line) continue;
+      if (routineStart(line)) {
+        currentRoutineStart = index;
+        continue;
+      }
+      if (currentRoutineStart < 0) {
+        addGotoReferences(topLevelGotoReferences, line);
+        continue;
+      }
+      if (routineEnd(line)) currentRoutineStart = -1;
+    }
+
+    let inRoutine = false;
+    let routineKey = -1;
+    let dead = false;
+    let blockDepth = 0;
+    let reachableRoutineGotoReferences = new Set();
+    const isRootTerminator = (line) => /^(?:return(?:\s+.+)?|goto\s+[A-Za-z_][A-Za-z0-9_]*|loop\s+forever)$/i.test(line);
+    const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect)$/i.test(line);
+    const topLevelDirective = (line) => /^(?:include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
+    const opensBlock = (line) => {
+      if (/^if\b/i.test(line)) return /\bthen\s*$/i.test(line) && !/\bgoto\b/i.test(line);
+      return /^(?:while\b|for\b|do\b|select\s+case\b)/i.test(line);
+    };
+
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const line = strippedLine(index);
+      if (!line) continue;
+
+      if (routineStart(line)) {
+        inRoutine = true;
+        routineKey = index;
+        reachableRoutineGotoReferences = new Set();
+        dead = false;
+        blockDepth = 0;
+        continue;
+      }
+
+      if (!inRoutine) continue;
+
+      if (routineEnd(line)) {
+        inRoutine = false;
+        routineKey = -1;
+        dead = false;
+        blockDepth = 0;
+        continue;
+      }
+
+      if (dead) {
+        if (topLevelDirective(line)) {
+          inRoutine = false;
+          routineKey = -1;
+          dead = false;
+          blockDepth = 0;
+          continue;
+        }
+        const label = labelOf(line);
+        if (label && (reachableRoutineGotoReferences.has(label) || topLevelGotoReferences.has(label))) {
+          dead = false;
+        } else {
+          result[index] = "";
+          continue;
+        }
+      }
+
+      addGotoReferences(reachableRoutineGotoReferences, line);
+      if (closesBlock(line)) blockDepth = Math.max(0, blockDepth - 1);
+      if (blockDepth === 0 && isRootTerminator(line)) {
+        dead = true;
+        continue;
+      }
+      if (opensBlock(line)) blockDepth += 1;
+    }
+
+    return result;
+  }
+  const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
+  if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
+  const lines = rewriteImmediateByteTempCoordinateUsesCore(pruneSourceUnreachableAfterRoutineTerminators(conditionalPrepass.lines), normalizeExpression);
+  const inferredMemoryCaps = inferAmyMemoryCapabilities(lines.join("\n"), sourceHintsTinySound);
   const preferScreenOnNoNmi = !inferredMemoryCaps.needsNmi;
   const declarations = [];
   const symbols = new Set();
@@ -65,6 +228,7 @@ export function transpileAmyCore(sourceText, deps) {
   const dataBlocks = new Map();
   const tileTypes = new Map();
   const hitboxes = new Map();
+  const amyTimers = new Map();
   const precomputedSprite16Lengths = new Map();
   const procLocals = new Map();
   const procFrames = new Map();
@@ -148,6 +312,7 @@ export function transpileAmyCore(sourceText, deps) {
   let emitFp5MultiplyOp = null;
   let emitFp5DivideOp = null;
   let cartridgeMeta = null;
+  let onFrameHook = null;
   let sawExplicitRestore = false;
   let nextBoolBit = 8;
   let boolPackCount = 0;
@@ -541,6 +706,7 @@ export function transpileAmyCore(sourceText, deps) {
     if (mapHasInsensitive(recordTypes, name)) return "record type";
     if (mapHasInsensitive(tileTypes, name)) return "tile type";
     if (mapHasInsensitive(hitboxes, name)) return "hitbox";
+    if (mapHasInsensitive(amyTimers, name)) return "timer";
     if (setHasInsensitive(symbols, name)) return "constant";
     if (mapHasInsensitive(runtimeVars, name)) return "variable";
     if (mapHasInsensitive(dataBlocks, name) || mapHasInsensitive(dataLengths, name)) return "data block";
@@ -866,7 +1032,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parsePictureDefinitions() {
-    const codecRe = "(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle|raw)";
+    const codecRe = "(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
@@ -920,6 +1086,93 @@ export function transpileAmyCore(sourceText, deps) {
   const pictureDefinitionError = parsePictureDefinitions();
   if (pictureDefinitionError) {
     return { ok: false, asmBody: "", log: pictureDefinitionError };
+  }
+
+  function resolveTimerInterval(token, rawLine) {
+    const normalized = normalizeExpression(String(token || "").trim());
+    const evaluated = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(normalized)
+      : null;
+    const numeric = evaluated !== null ? evaluated : parseNumericLiteral(normalized);
+    if (!Number.isInteger(numeric) || numeric < 1 || numeric > 0xFFFF) {
+      return { ok: false, value: 0, log: `timer interval must be a constant from 1 to 65535 ticks: ${rawLine}` };
+    }
+    return { ok: true, value: numeric, log: "" };
+  }
+
+  function getTimerInfo(name) {
+    const probe = lowerName(name);
+    for (const [key, value] of amyTimers.entries()) {
+      if (lowerName(key) === probe) return value;
+    }
+    return null;
+  }
+
+  function emitSetTimerBytes(timer, activeValue) {
+    const low = `$${(timer.interval & 0xFF).toString(16).toUpperCase().padStart(2, "0")}`;
+    const high = `$${((timer.interval >> 8) & 0xFF).toString(16).toUpperCase().padStart(2, "0")}`;
+    const active = `$${(activeValue ? 1 : 0).toString(16).toUpperCase().padStart(2, "0")}`;
+    return [
+      `    ld hl,${timer.countLabel}`,
+      `    ld (hl),${low}`,
+      "    inc hl",
+      `    ld (hl),${high}`,
+      "    xor a",
+      `    ld (${timer.signalLabel}),a`,
+      `    ld a,${active}`,
+      `    ld (${timer.activeLabel}),a`
+    ];
+  }
+
+  function emitTimerTestAndConsume(name, falseLabel, rawLine) {
+    const timer = getTimerInfo(name);
+    if (!timer) return { ok: false, lines: [], log: `Unknown timer '${name}': ${rawLine}` };
+    return {
+      ok: true,
+      lines: [
+        `    ld a,(${timer.signalLabel})`,
+        "    or a",
+        `    jp z,${falseLabel}`,
+        "    xor a",
+        `    ld (${timer.signalLabel}),a`
+      ],
+      log: ""
+    };
+  }
+
+  function defineAmyTimer(name, mode, interval, initiallyActive, rawLine) {
+    const nameError = validateGlobalUserName(name, "Timer", rawLine);
+    if (nameError) return { ok: false, log: nameError };
+    const prefix = `${name}_timer`;
+    let countAddress;
+    let reloadAddress;
+    let signalAddress;
+    let activeAddress;
+    try {
+      countAddress = reserveRam(`${prefix}_count`, 2, rawLine.trim());
+      reloadAddress = reserveRam(`${prefix}_reload`, 2, rawLine.trim());
+      signalAddress = reserveRam(`${prefix}_signal`, 1, rawLine.trim());
+      activeAddress = reserveRam(`${prefix}_active`, 1, rawLine.trim());
+    } catch (error) {
+      return { ok: false, log: String(error.message || error) };
+    }
+    const countLabel = ensureUserVarAsmSymbol(`${prefix}_count`);
+    const reloadLabel = ensureUserVarAsmSymbol(`${prefix}_reload`);
+    const signalLabel = ensureUserVarAsmSymbol(`${prefix}_signal`);
+    const activeLabel = ensureUserVarAsmSymbol(`${prefix}_active`);
+    runtimeDeclarations.push(`${countLabel} EQU ${formatHex16(countAddress)}`);
+    runtimeDeclarations.push(`${reloadLabel} EQU ${formatHex16(reloadAddress)}`);
+    runtimeDeclarations.push(`${signalLabel} EQU ${formatHex16(signalAddress)}`);
+    runtimeDeclarations.push(`${activeLabel} EQU ${formatHex16(activeAddress)}`);
+    runtimeInitRecords.push({ address: countAddress, bytes: [interval & 0xFF, (interval >> 8) & 0xFF] });
+    runtimeInitRecords.push({ address: reloadAddress, bytes: [interval & 0xFF, (interval >> 8) & 0xFF] });
+    runtimeInitRecords.push({ address: signalAddress, bytes: [0] });
+    runtimeInitRecords.push({ address: activeAddress, bytes: [initiallyActive ? 1 : 0] });
+    hasRuntimeInit = true;
+    hasRuntimeRamDeclarations = true;
+    const timer = { name, mode, interval, initiallyActive, countLabel, reloadLabel, signalLabel, activeLabel };
+    amyTimers.set(name, timer);
+    return { ok: true, log: "" };
   }
 
   function precomputeSprite16DataLengths() {
@@ -2013,7 +2266,9 @@ export function transpileAmyCore(sourceText, deps) {
     resolveExpressionAstValueType,
     emitLoadInt8ValueInto,
     emitLoadInt16IntoHL,
-    symbolOrValue
+    symbolOrValue,
+    tryEvaluateConstantExpression,
+    tryEvaluateCompileTimeNumericExpression
   }));
   ({
     ensureCompareScratch32,
@@ -2238,6 +2493,20 @@ export function transpileAmyCore(sourceText, deps) {
       flushBufferedVdpR1PureModifiers();
     }
     {
+      const onFrameMatch = line.match(/^on\s+(?:vblank|frame)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (onFrameMatch) {
+        if (currentProc || currentFunction) {
+          return { ok: false, asmBody: "", log: `on vblank must be declared at top level: ${rawLine}` };
+        }
+        if (onFrameHook && lowerName(onFrameHook.name) !== lowerName(onFrameMatch[1])) {
+          return { ok: false, asmBody: "", log: `Only one on vblank hook is supported. Existing hook: ${onFrameHook.name}; offending line: ${rawLine}` };
+        }
+        const hookName = onFrameMatch[1];
+        onFrameHook = { name: hookName, asmLabel: ensureProcAsmSymbol(hookName) };
+        continue;
+      }
+    }
+    {
       const dataMetaStmt = handleDataMetaStatement({
         line,
         rawLine,
@@ -2348,6 +2617,32 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const timerDecl = line.match(/^timer\s+([A-Za-z_][A-Za-z0-9_]*)\s+(every|after)\s+(.+?)\s+ticks?(?:\s+(stopped|inactive))?$/i);
+      if (timerDecl) {
+        if (currentProc || currentFunction) {
+          return { ok: false, asmBody: "", log: `timer declarations must be top-level: ${rawLine}` };
+        }
+        const timerName = timerDecl[1];
+        const mode = timerDecl[2].toLowerCase() === "every" ? "repeat" : "once";
+        const intervalResult = resolveTimerInterval(timerDecl[3], rawLine);
+        if (!intervalResult.ok) return { ok: false, asmBody: "", log: intervalResult.log };
+        const initiallyActive = !timerDecl[4];
+        const defined = defineAmyTimer(timerName, mode, intervalResult.value, initiallyActive, rawLine);
+        if (!defined.ok) return { ok: false, asmBody: "", log: defined.log };
+        continue;
+      }
+
+      const startStopTimer = line.match(/^(start|stop)\s+timer\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (startStopTimer) {
+        const timer = getTimerInfo(startStopTimer[2]);
+        if (!timer) return { ok: false, asmBody: "", log: `Unknown timer '${startStopTimer[2]}': ${rawLine}` };
+        ensureImplicitStartForExecutable();
+        body.push(...emitSetTimerBytes(timer, startStopTimer[1].toLowerCase() === "start"));
+        continue;
+      }
+    }
+
+    {
       const declarationStmt = handleDeclarationStatement({
         line,
         rawLine,
@@ -2442,7 +2737,8 @@ export function transpileAmyCore(sourceText, deps) {
         functionReturnTypes,
         normalizeRuntimeType,
         normalizeDeclaredType,
-        openStartProc
+        openStartProc,
+        addCompilerWarning
       });
       if (procFunctionStmt.handled) {
         if (!procFunctionStmt.ok) return { ok: false, asmBody: "", log: procFunctionStmt.log };
@@ -2452,6 +2748,26 @@ export function transpileAmyCore(sourceText, deps) {
       }
     }
 
+    {
+      const includeStmt = line.match(/^include\s+"([^"]+)"\s*$/i);
+      if (includeStmt) {
+        const lastBodyLine = String(body[body.length - 1] || "").trim();
+        const bodyEndsWithTerminator = /^(?:ret|reti|retn|(?:jp|jr)\s+[A-Za-z_][A-Za-z0-9_]*)$/i.test(lastBodyLine);
+        if (currentProc && currentProc !== "Start" && bodyEndsWithTerminator) {
+          currentProc = null;
+          currentFunction = null;
+        }
+        if (currentProc === "Start" && openedImplicitStart) {
+          emitCurrentProcReturnLinesIfNeeded();
+          currentProc = null;
+          currentFunction = null;
+          openedImplicitStart = false;
+        }
+        const includePath = includeStmt[1].replace(/\\/g, "/");
+        body.push(`include "${includePath}"`);
+        continue;
+      }
+    }
     ensureImplicitStartForExecutable();
 
     {
@@ -2545,6 +2861,9 @@ export function transpileAmyCore(sourceText, deps) {
         emitDefineCharsToPattern,
         emitDefineColorsToPattern,
         emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving,
+        parseRecordFieldRef,
+        emitLoadRecordFieldAddressIntoHL,
         emitLoadInt16IntoHL,
         emitStoreExtended32,
         emitLoadCountIntoDE,
@@ -2737,6 +3056,31 @@ export function transpileAmyCore(sourceText, deps) {
       emitArithInt8Op,
       emitArithInt16Op
     });
+
+    {
+      const inlineTimerIf = line.match(/^if\s+timer\s+([A-Za-z_][A-Za-z0-9_]*)\s+then\s+(.+)$/i);
+      if (inlineTimerIf) {
+        const inlineTail = inlineTimerIf[2].trim();
+        const inlineResult = compileInlineStatement(inlineTail, rawLine);
+        if (!inlineResult.ok) return { ok: false, asmBody: "", log: inlineResult.log };
+        const falseLabel = makeGeneratedLabel("TimerFalse");
+        const code = emitTimerTestAndConsume(inlineTimerIf[1], falseLabel, rawLine);
+        if (!code.ok) return { ok: false, asmBody: "", log: code.log };
+        body.push(...code.lines, ...inlineResult.lines, `${falseLabel}:`);
+        continue;
+      }
+
+      const blockTimerIf = line.match(/^if\s+timer\s+([A-Za-z_][A-Za-z0-9_]*)\s+then$/i);
+      if (blockTimerIf) {
+        const falseLabel = makeGeneratedLabel("TimerFalse");
+        const endLabel = makeGeneratedLabel("TimerEnd");
+        const code = emitTimerTestAndConsume(blockTimerIf[1], falseLabel, rawLine);
+        if (!code.ok) return { ok: false, asmBody: "", log: code.log };
+        ifStack.push({ falseLabel, endLabel, hasElse: false, hasEndJump: false });
+        body.push(...code.lines);
+        continue;
+      }
+    }
 
     {
       const ifStmt = handleIfStatement({
@@ -2999,6 +3343,15 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const includeStmt = line.match(/^include\s+"([^"]+)"\s*$/i);
+      if (includeStmt) {
+        const includePath = includeStmt[1].replace(/\\/g, "/");
+        body.push(`include "${includePath}"`);
+        continue;
+      }
+    }
+
+    {
       const useLib = /^use\s+lib\s+"[^"]*"\s*$/i.test(line);
       if (useLib) {
         addCompilerWarning(`'${rawLine.trim()}' is deprecated and ignored; library inclusion is automatic.`);
@@ -3010,6 +3363,26 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   flushBufferedVdpR1PureModifiers();
+
+  if (onFrameHook) {
+    const hookLower = lowerName(onFrameHook.name);
+    const functionMatch = [...functionReturnTypes.keys()].some((name) => lowerName(name) === hookLower);
+    if (functionMatch) {
+      return { ok: false, asmBody: "", log: `on frame '${onFrameHook.name}' must target a subroutine, not a function.` };
+    }
+    const signatureEntry = [...procSignatures.entries()].find(([name]) => lowerName(name) === hookLower);
+    if (signatureEntry && signatureEntry[1]?.length) {
+      return { ok: false, asmBody: "", log: `on frame '${onFrameHook.name}' must target a subroutine without parameters.` };
+    }
+    const hasBareSub = lines.some((candidateRaw) => {
+      const candidate = stripAmyInlineComment(candidateRaw).trim();
+      const match = candidate.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
+      return match && lowerName(match[1]) === hookLower;
+    });
+    if (!hasBareSub) {
+      return { ok: false, asmBody: "", log: `on frame hook target '${onFrameHook.name}' was not found as a parameterless subroutine.` };
+    }
+  }
 
   return finalizeAmyTranspile({
     state: {
@@ -3040,6 +3413,8 @@ export function transpileAmyCore(sourceText, deps) {
       romData,
       assets,
       cartridgeMeta,
+      onFrameHook,
+      amyTimers,
       nextRamAddress,
       ramLayout,
       runtimeVars,

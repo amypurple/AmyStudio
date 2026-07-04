@@ -1,4 +1,5 @@
 import { checkDisplayGraphicsDeprecation } from "./deprecations.js";
+import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
 
 export function handleDisplayGraphicsSpriteStatement({
   line,
@@ -7,6 +8,7 @@ export function handleDisplayGraphicsSpriteStatement({
   currentGraphicsMode,
   emitLoadInt8Into,
   emitLoadInt8ValueInto,
+  emitLoadInt8ValueIntoPreserving,
   tryEvaluateConstantExpression,
   formatHex16,
   makeGeneratedLabel
@@ -22,7 +24,7 @@ export function handleDisplayGraphicsSpriteStatement({
     return {
       ok: true,
       handled: true,
-      lines: ["    ld a,($73C4)", "    and $BF", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
+      lines: ["    ld a,($73C4)", "    and $BF", "    ld ($73C4),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
     };
   }
 
@@ -30,7 +32,7 @@ export function handleDisplayGraphicsSpriteStatement({
     return {
       ok: true,
       handled: true,
-      lines: ["    ld a,($73C4)", "    or $40", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
+      lines: ["    ld a,($73C4)", "    or $40", "    ld ($73C4),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
     };
   }
 
@@ -76,8 +78,10 @@ export function handleDisplayGraphicsSpriteStatement({
         "    call AMY_SET_GRAPHICS_MODE2_TEXT",
         "    call LOAD_ASCII",
         "    call AMY_DUPLICATE_PATTERN_THIRDS",
+        "    ld hl,VRAM_COLOR",
+        "    ld de,$0800",
         "    ld a,$F0",
-        "    call AMY_FILL_MODE2_TEXT_COLOR",
+        "    call FILL_VRAM",
         "    ld hl,($73F6)",
         "    ld de,$0300",
         "    ld a,$20",
@@ -112,7 +116,7 @@ export function handleDisplayGraphicsSpriteStatement({
         "    ld a,$F0",
         "    ld hl,VRAM_COLOR",
         "    ld de,$0020",
-        "    call AMY_FILL_VRAM"
+        "    call FILL_VRAM"
       ]
     };
   }
@@ -421,38 +425,17 @@ export function handleDisplayGraphicsSpriteStatement({
     const offsetY = setSpriteTile[7] ? setSpriteTile[7].trim() : "0";
     const xExpr = offsetX === "0" ? `(${setSpriteTile[2]}) << 3` : `((${setSpriteTile[2]}) << 3) + (${offsetX})`;
     const yExpr = offsetY === "0" ? `((${setSpriteTile[3]}) << 3) - 1` : `(((${setSpriteTile[3]}) << 3) - 1) + (${offsetY})`;
-    const loadIndex = emitLoadInt8ValueInto("a", setSpriteTile[1]);
-    const loadY = emitLoadInt8ValueInto("a", yExpr);
-    const loadX = emitLoadInt8ValueInto("a", xExpr);
-    const loadPattern = emitLoadInt8ValueInto("a", setSpriteTile[4]);
-    const loadColor = emitLoadInt8ValueInto("a", setSpriteTile[5]);
-    if (!loadIndex || !loadY || !loadX || !loadPattern || !loadColor) {
+    const loadSprite = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_SET_SPRITE",
+      values: { a: setSpriteTile[1], b: yExpr, c: xExpr, d: setSpriteTile[4], e: setSpriteTile[5] },
+      emitLoadInt8Into,
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadSprite) {
       return { ok: false, handled: true, log: `set sprite tile requires byte-sized index/tile coordinates/pattern/color: ${rawLine}` };
     }
-    return {
-      ok: true,
-      handled: true,
-      lines: [
-        ...loadY,
-        "    push af",
-        ...loadX,
-        "    push af",
-        ...loadPattern,
-        "    push af",
-        ...loadColor,
-        "    push af",
-        ...loadIndex,
-        "    pop hl",
-        "    ld e,h",
-        "    pop hl",
-        "    ld d,h",
-        "    pop hl",
-        "    ld c,h",
-        "    pop hl",
-        "    ld b,h",
-        "    call AMY_SET_SPRITE"
-      ]
-    };
+    return { ok: true, handled: true, lines: [...loadSprite, "    call AMY_SET_SPRITE"] };
   }
 
   const setSprite = line.match(/^set\s+sprite\s+(.+?)\s+to\s+(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)$/i);
@@ -476,38 +459,17 @@ export function handleDisplayGraphicsSpriteStatement({
         ]
       };
     }
-    const loadIndex = emitLoadInt8ValueInto("a", setSprite[1]);
-    const loadY = emitLoadInt8ValueInto("a", setSprite[2]);
-    const loadX = emitLoadInt8ValueInto("a", setSprite[3]);
-    const loadPattern = emitLoadInt8ValueInto("a", setSprite[4]);
-    const loadColor = emitLoadInt8ValueInto("a", setSprite[5]);
-    if (!loadIndex || !loadY || !loadX || !loadPattern || !loadColor) {
+    const loadSprite = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_SET_SPRITE",
+      values: { a: setSprite[1], b: setSprite[2], c: setSprite[3], d: setSprite[4], e: setSprite[5] },
+      emitLoadInt8Into,
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadSprite) {
       return { ok: false, handled: true, log: `set sprite requires byte-sized index/values or constant expressions: ${rawLine}` };
     }
-    return {
-      ok: true,
-      handled: true,
-      lines: [
-        ...loadY,
-        "    push af",
-        ...loadX,
-        "    push af",
-        ...loadPattern,
-        "    push af",
-        ...loadColor,
-        "    push af",
-        ...loadIndex,
-        "    pop hl",
-        "    ld e,h",
-        "    pop hl",
-        "    ld d,h",
-        "    pop hl",
-        "    ld c,h",
-        "    pop hl",
-        "    ld b,h",
-        "    call AMY_SET_SPRITE"
-      ]
-    };
+    return { ok: true, handled: true, lines: [...loadSprite, "    call AMY_SET_SPRITE"] };
   }
 
   const hideSprite = line.match(/^hide\s+sprite\s+(.+)$/i);

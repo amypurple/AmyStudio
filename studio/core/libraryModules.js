@@ -233,7 +233,7 @@ const splitLibraryCatalog = {
     }
   ],
   "src/alexis_lib/coleco_vdp.asm": [
-    { path: "src/alexis_lib/coleco_vdp_core.asm", symbols: ["AMY_VDP_WRITE_REG", "AMY_FILL_VRAM", "AMY_LOAD_SEQUENTIAL_NAME_TABLE", "AMY_SET_DEFAULT_NAME_TABLE", "AMY_PUT_VRAM", "AMY_GET_VRAM"] },
+    { path: "src/alexis_lib/coleco_vdp_core.asm", symbols: ["AMY_VDP_WRITE_REG", "AMY_LOAD_SEQUENTIAL_NAME_TABLE", "AMY_SET_DEFAULT_NAME_TABLE", "AMY_PUT_VRAM", "AMY_GET_VRAM"] },
     {
       path: "src/alexis_lib/coleco_vdp_modes.asm",
       symbols: ["AMY_SET_BITMAP_GRAPHICS_MODE", "AMY_SET_GRAPHICS_MODE2_TEXT", "AMY_SET_GRAPHICS_MODE1_TEXT", "AMY_SET_GRAPHICS_MODE3_MULTICOLOR", "AMY_FILL_MODE2_TEXT_COLOR_FIRST_THIRD", "AMY_DUPLICATE_COLOR_THIRDS", "AMY_FILL_MODE2_TEXT_COLOR", "AMY_FILL_MODE2_TEXT_COLOR_FULL", "AMY_DUPLICATE_PATTERN_THIRDS"],

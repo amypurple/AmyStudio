@@ -1,3 +1,5 @@
+import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
+
 export function createInlineStatementCompiler(ctx) {
   const {
     currentFunctionRef,
@@ -13,6 +15,7 @@ export function createInlineStatementCompiler(ctx) {
     emitFormulaAssignment,
     emitTextLiteral,
     emitLoadInt8ValueInto,
+    emitLoadInt8ValueIntoPreserving,
     tryEvaluateByteConstantExpression,
     formatHex16,
     splitTopLevelArgs,
@@ -106,12 +109,17 @@ export function createInlineStatementCompiler(ctx) {
           const inlineGetCharAssign = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
           if (inlineGetCharAssign) {
             const targetInfo = getRuntimeInfo(inlineGetCharAssign[1]);
-            const loadX = emitLoadInt8ValueInto("e", inlineGetCharAssign[2]);
-            const loadY = emitLoadInt8ValueInto("d", inlineGetCharAssign[3]);
-            if (!targetInfo || targetInfo.type !== "int8" || !loadX || !loadY) {
+            const loadInputs = emitLoadRoutineByteInputsFromTokens({
+              routineName: "AMY_GET_CHAR_AT",
+              values: { e: inlineGetCharAssign[2], d: inlineGetCharAssign[3] },
+              emitLoadInt8Into,
+              emitLoadInt8ValueInto,
+              emitLoadInt8ValueIntoPreserving
+            });
+            if (!targetInfo || targetInfo.type !== "int8" || !loadInputs) {
               return { ok: false, lines: [], log: `Invalid inline get char assignment: ${rawLineText}` };
             }
-            inlineLines = [...loadY, ...loadX, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(inlineGetCharAssign[1])];
+            inlineLines = [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(inlineGetCharAssign[1])];
           } else {
             const inlineGetCountAssign = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
             if (inlineGetCountAssign) {
@@ -140,20 +148,20 @@ export function createInlineStatementCompiler(ctx) {
               const inlineGetFrameAssign = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
               if (inlineGetFrameAssign) {
                 const targetInfo = getByteArrayBufferInfo(inlineGetFrameAssign[1], 1);
-                const loadWidth = emitLoadInt8ValueInto("c", inlineGetFrameAssign[2]);
-                const loadHeight = emitLoadInt8ValueInto("b", inlineGetFrameAssign[3]);
-                const loadX = emitLoadInt8ValueInto("e", inlineGetFrameAssign[4]);
-                const loadY = emitLoadInt8ValueInto("d", inlineGetFrameAssign[5]);
+                const loadInputs = emitLoadRoutineByteInputsFromTokens({
+                  routineName: "GET_BKGRND",
+                  values: { b: inlineGetFrameAssign[3], c: inlineGetFrameAssign[2], d: inlineGetFrameAssign[5], e: inlineGetFrameAssign[4] },
+                  emitLoadInt8Into,
+                  emitLoadInt8ValueInto,
+                  emitLoadInt8ValueIntoPreserving
+                });
                 const loadTarget = emitLoadArrayAddressIntoHL(inlineGetFrameAssign[1], "0");
-                if (!targetInfo || !loadWidth || !loadHeight || !loadX || !loadY || !loadTarget) {
+                if (!targetInfo || !loadInputs || !loadTarget) {
                   return { ok: false, lines: [], log: `Invalid inline get frame assignment: ${rawLineText}` };
                 }
                 inlineLines = [
                   ...loadTarget,
-                  ...loadY,
-                  ...loadX,
-                  ...loadWidth,
-                  ...loadHeight,
+                  ...loadInputs,
                   "    push ix",
                   "    push iy",
                   "    call GET_BKGRND",
@@ -164,13 +172,17 @@ export function createInlineStatementCompiler(ctx) {
                 const inlinePutCountAt = inlineStmt.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
                 if (inlinePutCountAt) {
                   const loadSource = emitLoadSourceAddressIntoHL(inlinePutCountAt[1]);
-                  const loadCount = emitLoadInt8ValueInto("b", inlinePutCountAt[2]);
-                  const loadX = emitLoadInt8ValueInto("e", inlinePutCountAt[3]);
-                  const loadY = emitLoadInt8ValueInto("d", inlinePutCountAt[4]);
-                  if (!loadSource || !loadCount || !loadX || !loadY) {
+                  const loadInputs = emitLoadRoutineByteInputsFromTokens({
+                    routineName: "AMY_PUT_AT",
+                    values: { b: inlinePutCountAt[2], e: inlinePutCountAt[3], d: inlinePutCountAt[4] },
+                    emitLoadInt8Into,
+                    emitLoadInt8ValueInto,
+                    emitLoadInt8ValueIntoPreserving
+                  });
+                  if (!loadSource || !loadInputs) {
                     return { ok: false, lines: [], log: `Invalid inline put count statement: ${rawLineText}` };
                   }
-                  inlineLines = [...loadSource, ...loadY, ...loadX, ...loadCount, "    call AMY_PUT_AT"];
+                  inlineLines = [...loadSource, ...loadInputs, "    call AMY_PUT_AT"];
                 } else {
                   const inlinePutFrameAt = inlineStmt.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
                   if (inlinePutFrameAt) {
@@ -178,19 +190,19 @@ export function createInlineStatementCompiler(ctx) {
                     const sourceIsData = /^[A-Za-z_][A-Za-z0-9_]*$/.test(inlinePutFrameAt[1])
                       && typeof dataLengths?.get(inlinePutFrameAt[1]) === "number";
                     const loadSource = emitLoadSourceAddressIntoHL(inlinePutFrameAt[1]);
-                    const loadWidth = emitLoadInt8ValueInto("c", inlinePutFrameAt[2]);
-                    const loadHeight = emitLoadInt8ValueInto("b", inlinePutFrameAt[3]);
-                    const loadX = emitLoadInt8ValueInto("e", inlinePutFrameAt[4]);
-                    const loadY = emitLoadInt8ValueInto("d", inlinePutFrameAt[5]);
-                    if ((!sourceInfo && !sourceIsData) || !loadSource || !loadWidth || !loadHeight || !loadX || !loadY) {
+                    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+                      routineName: "PUT_FRAME",
+                      values: { b: inlinePutFrameAt[3], c: inlinePutFrameAt[2], d: inlinePutFrameAt[5], e: inlinePutFrameAt[4] },
+                      emitLoadInt8Into,
+                      emitLoadInt8ValueInto,
+                      emitLoadInt8ValueIntoPreserving
+                    });
+                    if ((!sourceInfo && !sourceIsData) || !loadSource || !loadInputs) {
                       return { ok: false, lines: [], log: `Invalid inline put frame statement: ${rawLineText}` };
                     }
                     inlineLines = [
                       ...loadSource,
-                      ...loadY,
-                      ...loadX,
-                      ...loadWidth,
-                      ...loadHeight,
+                      ...loadInputs,
                       "    push ix",
                       "    push iy",
                       "    call PUT_FRAME",

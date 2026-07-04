@@ -6,6 +6,7 @@
 AMY_SET_SPRITES8X8:
     ld a,($73C4)
     and $FD
+    ld ($73C4),a
     ld c,a
     ld b,1
     jp WRITE_REGISTER
@@ -14,6 +15,7 @@ AMY_SET_SPRITES8X8:
 AMY_SET_SPRITES16X16:
     ld a,($73C4)
     or $02
+    ld ($73C4),a
     ld c,a
     ld b,1
     jp WRITE_REGISTER
@@ -22,6 +24,7 @@ AMY_SET_SPRITES16X16:
 AMY_SET_SPRITES_SIMPLE:
     ld a,($73C4)
     and $FE
+    ld ($73C4),a
     ld c,a
     ld b,1
     jp WRITE_REGISTER
@@ -30,6 +33,7 @@ AMY_SET_SPRITES_SIMPLE:
 AMY_SET_SPRITES_DOUBLE:
     ld a,($73C4)
     or $01
+    ld ($73C4),a
     ld c,a
     ld b,1
     jp WRITE_REGISTER

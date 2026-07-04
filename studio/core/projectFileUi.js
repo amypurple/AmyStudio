@@ -44,6 +44,37 @@ export function createProjectFileUiHelpers({
   let activeDsoundPreviewUrl = "";
   let activeDsoundPreviewAudio = null;
 
+  const CODEC_Z80_RUNTIME = {
+    raw: { rank: 0, label: "direct VRAM upload", note: "No decompressor; fastest runtime path but largest data." },
+    mdkrle: { rank: 1, label: "fast RAM/ROM->VRAM", note: "RLE writes literal/fill runs directly to VRAM." },
+    nibble: { rank: 1, label: "fast RAM/ROM->VRAM", note: "DAN0nibble stream writes directly to VRAM." },
+    lzf: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    zx0: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    zx7: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    dan1: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    dan2: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    dan3: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    pletter: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    bitbuster: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." }
+  };
+
+  function z80RuntimeForCodec(codec) {
+    return CODEC_Z80_RUNTIME[String(codec || "").toLowerCase()] || {
+      rank: 9,
+      label: "unknown runtime",
+      note: "No Z80/VDP runtime class assigned."
+    };
+  }
+
+  function z80RuntimeForCandidate(candidate) {
+    const fallback = z80RuntimeForCodec(candidate?.codec);
+    return {
+      rank: candidate?.z80RuntimeRank ?? fallback.rank,
+      label: candidate?.z80RuntimeLabel || fallback.label,
+      note: candidate?.z80RuntimeNote || fallback.note
+    };
+  }
+
   function assetSnippetForEntry(entry, assetName) {
     const normalizedPath = normalizeProjectFilePath(entry.path);
     const codec = String(entry?.codec || ((entry.kind || fileKindFromPath(entry.path)) === "dsound" ? "raw" : "")).toLowerCase();
@@ -75,7 +106,7 @@ export function createProjectFileUiHelpers({
   function pictureGroupNameFromPath(path) {
     const bare = normalizeProjectFilePath(path).slice("@project/".length).replace(/\\/g, "/");
     const file = bare.split("/").pop() || "Picture";
-    const withoutCodec = file.replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster)$/i, "");
+    const withoutCodec = file.replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     const withoutComponent = withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return assetNameFromProjectPath(withoutComponent || file);
   }
@@ -84,12 +115,12 @@ export function createProjectFileUiHelpers({
     const project = getProject();
     const pictureName = pictureGroupNameFromPath(entry.path);
     const targetPrefix = normalizeProjectFilePath(entry.path)
-      .replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster)$/i, "")
+      .replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "")
       .toLowerCase();
     const group = (project.projectFiles || []).filter((candidate) => {
       const normalized = normalizeProjectFilePath(candidate.path).toLowerCase();
-      const withoutCodec = normalized.replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster)$/i, "");
+      const withoutCodec = normalized.replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
       return withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "") === targetPrefix;
     });
     const patternFile = group.find((candidate) => pictureComponentFromPath?.(candidate.path) === "pattern");
@@ -557,7 +588,7 @@ export function createProjectFileUiHelpers({
       const bestTotal = selectPictureCompressionCandidate?.(usable, "smallest-total");
       const bestData = selectPictureCompressionCandidate?.(usable, "smallest-data");
       const summary = document.createElement("p");
-      summary.textContent = `${rawLabel}. Pick a card, or use the quick buttons for the smallest first-use total or smallest data only.`;
+      summary.textContent = `${rawLabel}. Pick a card, or use the quick buttons for the smallest first-use total or smallest data only. Browser ms are verification timings; Z80/VDP runtime is ranked by codec family.`;
       summary.className = "picture-compression-modal__summary";
       panel.appendChild(summary);
 
@@ -590,7 +621,8 @@ export function createProjectFileUiHelpers({
         { mode: "total", label: "Total ROM" },
         { mode: "data", label: "Data only" },
         { mode: "compress", label: "Compress speed" },
-        { mode: "decompress", label: "Decompress speed" }
+        { mode: "decompress", label: "JS verify speed" },
+        { mode: "runtime", label: "Z80/VDP runtime" }
       ];
       panel.appendChild(sortBar);
 
@@ -604,6 +636,7 @@ export function createProjectFileUiHelpers({
           if (sortMode === "data") return candidate.dataBytes;
           if (sortMode === "compress") return candidate.compressionMs ?? Number.POSITIVE_INFINITY;
           if (sortMode === "decompress") return candidate.decompressionMs ?? Number.POSITIVE_INFINITY;
+          if (sortMode === "runtime") return z80RuntimeForCandidate(candidate).rank;
           return candidate.totalFirstUseBytes;
         };
         return sorted.sort((a, b) => valueFor(a) - valueFor(b) || (a.dataBytes ?? 0) - (b.dataBytes ?? 0));
@@ -620,6 +653,7 @@ export function createProjectFileUiHelpers({
           card.className = `picture-compression-card${candidate.error ? " picture-compression-card--error" : ""}`;
           card.disabled = !!candidate.error;
           const badge = candidate === bestTotal ? "BEST TOTAL" : (candidate === bestData ? "SMALLEST DATA" : "");
+          const runtime = z80RuntimeForCandidate(candidate);
           card.innerHTML = candidate.error
             ? `<strong>${escapeHtml(candidate.label)}</strong><br><small>${escapeHtml(candidate.error)}</small>`
             : `<strong>${escapeHtml(candidate.label)}</strong> ${badge ? `<small>${badge}</small>` : ""}<br>` +
@@ -630,7 +664,10 @@ export function createProjectFileUiHelpers({
               `Routine: ${formatByteSize(candidate.routineBytes)}<br>` +
               `<strong>Total: ${formatByteSize(candidate.totalFirstUseBytes)}</strong><br>` +
               `<small>Compress: ${(candidate.compressionMs || 0).toFixed(1)} ms</small><br>` +
-              `<small>Decompress: ${(candidate.decompressionMs || 0).toFixed(1)} ms</small><br>` +
+              `<small>JS verify: ${(candidate.decompressionMs || 0).toFixed(1)} ms</small><br>` +
+
+              `<small title="${escapeHtml(runtime.note)}">Z80/VDP: ${escapeHtml(runtime.label)}</small><br>` +
+
               `<small>${formatSignedBytes(candidate.totalSavingsBytes)} vs raw first use</small><br>` +
               `<small>${escapeHtml(candidate.description || "")}</small>`;
           card.addEventListener("click", () => closeWith(candidate));
@@ -724,7 +761,7 @@ export function createProjectFileUiHelpers({
     setStatus(`Evaluating picture compression candidates for ${file.name}...`);
     const quickCodecs = Array.isArray(pictureQuickCompressionCodecs) && pictureQuickCompressionCodecs.length
       ? pictureQuickCompressionCodecs
-      : ["raw", "mdkrle", "dan1", "lzf", "zx7"];
+      : ["raw", "mdkrle", "nibble", "bitbuster", "zx7", "dan1"];
     const candidates = await evaluatePictureCompressionCandidatesWithWorkers(tables, quickCodecs);
     let selected = await createPictureCompressionChooser(file, candidates, { allowCompareAll: true });
     if (selected?.action === "compareAll") {
@@ -815,6 +852,9 @@ export function createProjectFileUiHelpers({
           totalSavingsBytes: rawBytes - dataBytes - option.routineBytes,
           compressionMs,
           decompressionMs,
+          z80RuntimeRank: z80RuntimeForCodec(codec).rank,
+          z80RuntimeLabel: z80RuntimeForCodec(codec).label,
+          z80RuntimeNote: z80RuntimeForCodec(codec).note,
           verified: true,
           components: encoded
         });
@@ -832,7 +872,7 @@ export function createProjectFileUiHelpers({
     setStatus(`Evaluating charset/tile compression candidates for ${file.name}...`);
     const quickCodecs = Array.isArray(pictureQuickCompressionCodecs) && pictureQuickCompressionCodecs.length
       ? pictureQuickCompressionCodecs
-      : ["raw", "mdkrle", "dan1", "lzf", "zx7"];
+      : ["raw", "mdkrle", "nibble", "bitbuster", "zx7", "dan1"];
     const optionByCodec = new Map(tileTableCompressionOptions.map((option) => [option.codec, option]));
     const components = [
       ["pattern", tables.pattern],

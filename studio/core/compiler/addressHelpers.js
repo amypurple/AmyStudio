@@ -7,8 +7,22 @@ export function createAddressHelpers(ctx) {
     resolveExpressionAstValueType,
     emitLoadInt8ValueInto,
     emitLoadInt16IntoHL,
-    symbolOrValue
+    symbolOrValue,
+    tryEvaluateConstantExpression,
+    tryEvaluateCompileTimeNumericExpression
   } = ctx;
+
+  function constantVramOffsetExpression(offsetToken) {
+    const value = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(offsetToken)
+      : (typeof tryEvaluateConstantExpression === "function" ? tryEvaluateConstantExpression(offsetToken) : null);
+    if (!Number.isInteger(value) || value < 0 || value > 0xFFFF) return null;
+    const token = String(offsetToken).trim();
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(token) || /^\$[0-9A-Fa-f]+$/.test(token) || /^[0-9]+$/.test(token)) {
+      return symbolOrValue(token);
+    }
+    return String(value);
+  }
 
   function emitLoadSourceAddressIntoHL(sourceExpr) {
     const normalized = normalizeExpression(String(sourceExpr).trim());
@@ -59,6 +73,8 @@ export function createAddressHelpers(ctx) {
       const baseLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[baseOffset[1].toLowerCase()];
       const offsetToken = normalizeExpression(baseOffset[2].trim());
       if (!offsetToken) return null;
+      const constantOffset = constantVramOffsetExpression(offsetToken);
+      if (constantOffset !== null) return [`    ld de,${baseLabel} + ${constantOffset}`];
       const expressionAst = parseExpressionAst(offsetToken);
       const exprType = expressionAst ? resolveExpressionAstValueType(expressionAst) : null;
       if (exprType === "int8") {
@@ -99,16 +115,18 @@ export function createAddressHelpers(ctx) {
 
   function emitLoadVramAddressIntoHL(targetExpr) {
     const rawTarget = targetExpr.trim();
-    const baseOnly = rawTarget.match(/^vram\.(pattern|color|name)$/i);
+    const baseOnly = rawTarget.match(/^vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
     if (baseOnly) {
-      const baseLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME" }[baseOnly[1].toLowerCase()];
+      const baseLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[baseOnly[1].toLowerCase()];
       return [`    ld hl,${baseLabel}`];
     }
-    const baseOffset = rawTarget.match(/^vram\.(pattern|color|name)\s*\+\s*(.+)$/i);
+    const baseOffset = rawTarget.match(/^vram\.(pattern|color|name|spr_pat|spr_attr)\s*\+\s*(.+)$/i);
     if (baseOffset) {
-      const baseLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME" }[baseOffset[1].toLowerCase()];
+      const baseLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[baseOffset[1].toLowerCase()];
       const offsetToken = normalizeExpression(baseOffset[2].trim());
       if (!offsetToken) return null;
+      const constantOffset = constantVramOffsetExpression(offsetToken);
+      if (constantOffset !== null) return [`    ld hl,${baseLabel} + ${constantOffset}`];
       const expressionAst = parseExpressionAst(offsetToken);
       const exprType = expressionAst ? resolveExpressionAstValueType(expressionAst) : null;
       if (exprType === "int8") {

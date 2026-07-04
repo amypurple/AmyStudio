@@ -1,12 +1,14 @@
 import { compressBytes, decompressBytes } from "./compression.js";
 import {
   evaluatePictureCompressionCandidates,
+  getPictureZ80RuntimeInfo,
   PICTURE_DECOMPRESSOR_ROUTINE_BYTES
 } from "./pictureCompressionReport.js";
 
 const DEFAULT_ROUTINE_BYTES = {
   raw: 0,
   mdkrle: 46,
+  nibble: 115,
   zx0: 133,
   zx7: 136,
   dan1: 205,
@@ -33,6 +35,7 @@ function sameBytes(a, b) {
 async function evaluateGenericComponents({ codec, option = {}, components = [] }) {
   const routineBytes = option.routineBytes ?? PICTURE_DECOMPRESSOR_ROUTINE_BYTES[codec] ?? DEFAULT_ROUTINE_BYTES[codec] ?? 0;
   const rawBytes = components.reduce((sum, component) => sum + (component.bytes?.byteLength || 0), 0);
+  const z80Runtime = getPictureZ80RuntimeInfo(codec);
   const encoded = {};
   let dataBytes = 0;
   let compressionMs = 0;
@@ -66,6 +69,9 @@ async function evaluateGenericComponents({ codec, option = {}, components = [] }
     totalSavingsBytes: rawBytes - dataBytes - routineBytes,
     compressionMs,
     decompressionMs,
+    z80RuntimeRank: z80Runtime.rank,
+    z80RuntimeLabel: z80Runtime.label,
+    z80RuntimeNote: z80Runtime.note,
     verified: true,
     components: encoded
   };

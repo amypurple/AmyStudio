@@ -266,17 +266,36 @@ function inferRequiredCompressionIncludes(sourceText) {
     rle: "src/compression/mdkrle_vram.asm",
     pletter: "src/compression/pletter_vram.asm",
     lzf: "src/compression/lzf_vram.asm",
-    bitbuster: "src/compression/bitbuster_vram.asm"
+    bitbuster: "src/compression/bitbuster_vram.asm",
+    nibble: "src/compression/nibble_vram.asm"
   };
   const found = new Set();
-  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
+  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
   let match;
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
   }
-  const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s*$/gim;
+  const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s*$/gim;
   while ((match = pictureComponentPattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
+  }
+  const symbolToCodec = {
+    zx0_decompress: "zx0",
+    zx7_decompress: "zx7",
+    dan1_decompress: "dan1",
+    dan2_decompress: "dan2",
+    dan3_decompress: "dan3",
+    mdkrle_decompress: "mdkrle",
+    pletter_decompress: "pletter",
+    lzf_decompress: "lzf",
+    bitbuster_decompress: "bitbuster",
+    nibble_decompress: "nibble"
+  };
+  for (const [symbol, codec] of Object.entries(symbolToCodec)) {
+    const symbolPattern = new RegExp("\\b" + symbol + "\\b", "i");
+    if (symbolPattern.test(sourceText)) {
+      found.add(codecToInclude[codec]);
+    }
   }
   return [...found];
 }
@@ -637,12 +656,6 @@ function emitLegacyRuntime(lines, caps) {
   lines.push("Nmi:");
   if (caps.needsNmiAckOnly) {
     lines.push("        push af");
-    lines.push("        ld a,($701F)");
-    lines.push("        cp $A5");
-    lines.push("        jr nz,AMY_NMI_ACK_ONLY_READ_STATUS");
-    lines.push("        pop af");
-    lines.push("        ret");
-    lines.push("AMY_NMI_ACK_ONLY_READ_STATUS:");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -650,6 +663,12 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
+    lines.push("        ld a,($701F)");
+    lines.push("        cp $A5");
+    lines.push("        jr nz,AMY_NMI_ACK_ONLY_CONTINUE");
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push("AMY_NMI_ACK_ONLY_CONTINUE:");
     if (caps.needsSpinner) {
       lines.push("        ld a,(SPINNER_ENABLED)");
       lines.push("        or a");
@@ -686,12 +705,6 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyUserHook) {
     lines.push("        push af");
-    lines.push("        ld a,($701F)");
-    lines.push("        cp $A5");
-    lines.push("        jr nz,AMY_NMI_HOOK_READ_STATUS");
-    lines.push("        pop af");
-    lines.push("        ret");
-    lines.push("AMY_NMI_HOOK_READ_STATUS:");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -699,11 +712,23 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
+    lines.push("        ld a,($701F)");
+    lines.push("        cp $A5");
+    lines.push("        jr nz,AMY_NMI_COMPACT_CONTINUE");
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push("AMY_NMI_COMPACT_CONTINUE:");
     lines.push("        push bc");
     lines.push("        push de");
     lines.push("        push hl");
     lines.push("        push ix");
     lines.push("        push iy");
+    lines.push("        ex af,af'");
+    lines.push("        push af");
+    lines.push("        exx");
+    lines.push("        push bc");
+    lines.push("        push de");
+    lines.push("        push hl");
     lines.push("        ld a,(NO_NMI)");
     lines.push("        or a");
     lines.push("        jr nz,AMY_SKIP_USER_FRAME_HOOK");
@@ -713,6 +738,12 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        xor a");
     lines.push("        ld (NO_NMI),a");
     lines.push("AMY_SKIP_USER_FRAME_HOOK:");
+    lines.push("        pop hl");
+    lines.push("        pop de");
+    lines.push("        pop bc");
+    lines.push("        exx");
+    lines.push("        pop af");
+    lines.push("        ex af,af'");
     lines.push("        pop iy");
     lines.push("        pop ix");
     lines.push("        pop hl");
@@ -727,12 +758,6 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyCompactControllers) {
     lines.push("        push af");
-    lines.push("        ld a,($701F)");
-    lines.push("        cp $A5");
-    lines.push("        jr nz,AMY_NMI_COMPACT_READ_STATUS");
-    lines.push("        pop af");
-    lines.push("        ret");
-    lines.push("AMY_NMI_COMPACT_READ_STATUS:");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -740,6 +765,12 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
+    lines.push("        ld a,($701F)");
+    lines.push("        cp $A5");
+    lines.push("        jr nz,AMY_NMI_COMPACT_CONTROLLERS_CONTINUE");
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push("AMY_NMI_COMPACT_CONTROLLERS_CONTINUE:");
     lines.push("        push bc");
     lines.push("        push de");
     lines.push("        push hl");
@@ -872,12 +903,6 @@ function emitLegacyRuntime(lines, caps) {
   }
 
   lines.push("        push af");
-  lines.push("        ld a,($701F)");
-  lines.push("        cp $A5");
-  lines.push("        jr nz,AMY_NMI_READ_STATUS");
-  lines.push("        pop af");
-  lines.push("        ret");
-  lines.push("AMY_NMI_READ_STATUS:");
   lines.push("        in a,(VDP_CTRL_PORT)");
   if (caps.needsControllers || caps.needsNmiFlagShadow) {
     lines.push("        ld (NMI_FLAG),a");
@@ -885,6 +910,12 @@ function emitLegacyRuntime(lines, caps) {
   if (caps.needsControllers || caps.needsVdpStatusShadow) {
     lines.push("        ld (VDP_STATUS),a");
   }
+  lines.push("        ld a,($701F)");
+  lines.push("        cp $A5");
+  lines.push("        jr nz,AMY_NMI_CONTINUE");
+  lines.push("        pop af");
+  lines.push("        ret");
+  lines.push("AMY_NMI_CONTINUE:");
   lines.push("        push bc");
   lines.push("        push de");
   lines.push("        push hl");
@@ -927,12 +958,6 @@ function emitLegacyRuntime(lines, caps) {
   if (caps.needsAmyTimers) {
     emitAmyTimerUpdate(lines, caps.amyTimers);
   }
-  lines.push("        pop hl");
-  lines.push("        pop de");
-  lines.push("        pop bc");
-  lines.push("        exx");
-  lines.push("        pop af");
-  lines.push("        ex af,af'");
   if (caps.needsUserFrameHook && caps.userFrameHookLabel) {
     lines.push("        ld a,(NO_NMI)");
     lines.push("        or a");
@@ -944,6 +969,12 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ld (NO_NMI),a");
     lines.push("AMY_SKIP_USER_FRAME_HOOK:");
   }
+  lines.push("        pop hl");
+  lines.push("        pop de");
+  lines.push("        pop bc");
+  lines.push("        exx");
+  lines.push("        pop af");
+  lines.push("        ex af,af'");
   if (caps.needsMusic) {
     lines.push("        ld a,(AMY_MUSIC_ENABLED)");
     lines.push("        or a");

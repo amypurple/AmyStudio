@@ -9,10 +9,6 @@ AMY_BUFFER32    EQU $7000
 AMY_VDP_WRITE_REG:
     jp WRITE_REGISTER
 
-; Fill a VRAM range.
-; Input: HL = VRAM offset, DE = byte count, A = fill value
-AMY_FILL_VRAM:
-    jp FILL_VRAM
 
 ; Fill the 32x24 name table with tile numbers $00..$FF repeated D times.
 ; For Graphics II picture pages, call with D=3 for 768 entries.

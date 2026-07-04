@@ -1,3 +1,5 @@
+import { emitLoadRoutineInputFromAst } from "./routineRegisterLoadHelpers.js";
+
 export function createExpressionComputeHelpers({
   resolveExpressionAstComputationType,
   emitLoadInt8Into,
@@ -135,14 +137,24 @@ export function createExpressionComputeHelpers({
       return emitLoadInt16ValueIntoHL(String(remainder));
     }
     const loadLeft = emitLoadInt16AstIntoHL(node.left, signed ? "i16" : "u16");
-    const loadRight = emitLoadInt16AstIntoHL(node.right, signed ? "i16" : "u16");
+    const loadRight = emitLoadRoutineInputFromAst({
+      routineName: signed ? "AMY_I16_MOD" : "AMY_U16_DIV",
+      input: "bc",
+      node: node.right,
+      signed,
+      expressionType: rightType,
+      renderExpressionAst,
+      emitLoadInt8Into,
+      emitLoadInt16AstIntoHL,
+      tryEvaluateAstInteger,
+      symbolOrValue,
+      isSignedDeclaredType
+    });
     if (!loadLeft || !loadRight) return null;
     return [
       ...loadLeft,
       "    push hl",
       ...loadRight,
-      "    ld b,h",
-      "    ld c,l",
       "    pop hl",
       `    call ${signed ? "AMY_I16_MOD" : "AMY_U16_DIV"}`,
       ...(signed ? [] : ["    ld hl,(AMY_U16_DIV_REM)"])
@@ -166,6 +178,17 @@ export function createExpressionComputeHelpers({
     if (lowered === "u16") return value >= 0 && value <= 0xFFFF;
     if (lowered === "i16") return value >= -32768 && value <= 32767;
     return false;
+  }
+
+  function randomMaskForCount(count) {
+    if (!Number.isInteger(count) || count <= 0 || count > 256) return null;
+    let mask = 0;
+    let top = count - 1;
+    do {
+      mask = (mask << 1) | 1;
+      top >>= 1;
+    } while (top > 0);
+    return mask & 0xFF;
   }
 
   function resolveAbsdiffDomains(leftNode, rightNode, leftType, rightType) {
@@ -215,9 +238,12 @@ export function createExpressionComputeHelpers({
             ];
           }
           const range = (fullRange & 0xFF);
+          const mask = randomMaskForCount(fullRange);
+          if (mask === null) return null;
           rangeLines.push(
             `    ld c,${symbolOrValue(String(minValue & 0xFF))}`,
-            `    ld b,${symbolOrValue(String(range))}`
+            `    ld b,${symbolOrValue(String(range))}`,
+            `    ld d,${symbolOrValue(String(mask))}`
           );
         } else {
           const loadMax = maxValue !== null
@@ -241,7 +267,12 @@ export function createExpressionComputeHelpers({
         return [
           ...rangeLines,
           `${retryLabel}:`,
+          "    push bc",
+          "    push de",
           "    call AMY_RANDOM_U8",
+          "    pop de",
+          "    pop bc",
+          ...(minValue !== null && maxValue !== null ? ["    and d"] : []),
           "    cp b",
           `    jr nc,${retryLabel}`,
           "    add a,c"

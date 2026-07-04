@@ -111,7 +111,6 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_RANDOM_U8: abi({ outputs: { a: "random byte" }, clobbers: ["af", "de", "hl"], notes: "Amy xorshift16 byte random helper using legacy_random_seed with zero fallback." }),
 
   // VDP/text runtime wrappers.
-  AMY_FILL_VRAM: abi({ inputs: { hl: "VRAM destination", de: "byte count", a: "fill byte" }, clobbers: ["af", "bc", "de", "hl"], notes: "Tail-calls FILL_VRAM." }),
   AMY_COPY_BYTES_TO_VRAM: abi({ inputs: { hl: "RAM source", de: "VRAM destination", bc: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "WRITE_VRAM count-fix wrapper." }),
   AMY_GET_VRAM: abi({ inputs: { de: "VRAM source", hl: "RAM destination", bc: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "READ_VRAM count-fix wrapper." }),
   AMY_VPOKE: abi({ inputs: { hl: "VRAM address", a: "value" }, clobbers: ["af", "hl"] }),

@@ -33,7 +33,10 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsControllers = !!caps.needsControllers;
   const needsSpinner = !!caps.needsSpinner;
   const needsFrameCounter = !!caps.needsFrameCounter;
+  const needsNmiFlagShadow = !!caps.needsNmiFlagShadow;
   const needsVdpStatusShadow = !!caps.needsVdpStatusShadow;
+  const needsUserFrameHook = !!caps.needsUserFrameHook;
+  const needsAmyTimers = !!caps.needsAmyTimers;
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
   const needsRuntimeState =
     needsControllers ||
@@ -41,7 +44,10 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     needsSound ||
     needsMusic ||
     needsFrameCounter ||
-    needsVdpStatusShadow;
+    needsNmiFlagShadow ||
+    needsVdpStatusShadow ||
+    needsUserFrameHook ||
+    needsAmyTimers;
   const needsSoundState = !!caps.needsSoundState || needsSound || needsMusic;
 
   const reserved = [

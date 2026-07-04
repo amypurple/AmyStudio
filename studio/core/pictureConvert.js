@@ -28,6 +28,7 @@ const CODEC_FILE_EXTENSIONS = {
   dan3: "dan3",
   mdkrle: "rle",
   rle: "rle",
+  nibble: "nibble",
   pletter: "pletter",
   lzf: "lzf",
   bitbuster: "bitbuster"

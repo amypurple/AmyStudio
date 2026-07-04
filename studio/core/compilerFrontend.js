@@ -21,6 +21,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\b(joypad|keypad)\s*\(/i.test(text);
   const needsSpinner =
     /\b(read\s+spinner|spinner|AMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)|SPINNER_[12])\b/i.test(text);
+  const usesVblankHook = /^\s*on\s+(?:vblank|frame)\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:'.*)?$/im.test(codeText);
   const needsFrameCounter =
     usesTinySound ||
     /\b(read\s+frame|AMY_FRAME_COUNTER)\b/i.test(text) ||
@@ -38,7 +39,8 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsControllers ||
     needsSpinner ||
     needsVdpStatusShadow ||
-    needsFrameCounter;
+    needsFrameCounter ||
+    usesVblankHook;
   return {
     needsSound,
     needsMusic,
@@ -46,6 +48,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsControllers,
     needsSpinner,
     needsFrameCounter,
+    usesVblankHook,
     needsVdpStatusShadow,
     needsTinySound,
     usesTinySound,

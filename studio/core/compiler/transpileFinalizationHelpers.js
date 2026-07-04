@@ -282,6 +282,33 @@ function optimizeGeneratedControlFlow(lines) {
   return current;
 }
 
+
+function removeUnreachableAfterTerminators(lines) {
+  const optimized = [];
+  let skipping = false;
+  const labelLine = /^\s*[A-Za-z_][A-Za-z0-9_]*:\s*$/;
+  const unconditionalTerminator = /^\s*(?:ret|reti|retn|(?:jp|jr)\s+[A-Za-z_][A-Za-z0-9_]*)\s*$/i;
+  const directiveBarrier = /^\s*(?:include\b|(?:\.?d[bsw]|defb|defw|equ|org)\b)/i;
+
+  for (const line of lines) {
+    const text = String(line || "").trim();
+    if (skipping) {
+      if (labelLine.test(line) || directiveBarrier.test(line)) {
+        skipping = false;
+      } else {
+        continue;
+      }
+    }
+
+    optimized.push(line);
+    if (text && unconditionalTerminator.test(line)) {
+      skipping = true;
+    }
+  }
+
+  return optimized;
+}
+
 function optimizeGeneratedMemoryLoads(lines) {
   const directLoadA = /^\s*ld\s+a,\s*\(([A-Za-z_][A-Za-z0-9_]*)\)\s*$/i;
   const directLoadHL = /^\s*ld\s+hl,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
@@ -450,6 +477,8 @@ export function finalizeAmyTranspile({
     romData,
     assets,
     cartridgeMeta,
+    onFrameHook,
+    amyTimers,
     nextRamAddress,
     ramLayout,
     runtimeVars,
@@ -976,10 +1005,11 @@ export function finalizeAmyTranspile({
       )
     )
   );
+  const reachableBody = removeUnreachableAfterTerminators(generatedBody);
   const optimizedBody = optimizeGeneratedMemoryLoads(
     optimizeGeneratedControlFlow(
       optimizeGeneratedTailCalls(
-        optimizeGeneratedMemoryLoads(generatedBody)
+        optimizeGeneratedMemoryLoads(reachableBody)
       )
     )
   );
@@ -1000,6 +1030,8 @@ export function finalizeAmyTranspile({
     warnings: Array.isArray(compilerWarnings) ? [...compilerWarnings] : [],
     metadata: {
       cartridge: cartridgeMeta,
+      onFrameHook,
+      amyTimers: amyTimers ? [...amyTimers.values()] : [],
       needsFrameCounter
     },
     ramUsage: {
@@ -1010,3 +1042,5 @@ export function finalizeAmyTranspile({
     log: `${summaryLog}${warningLog}`
   };
 }
+
+

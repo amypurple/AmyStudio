@@ -20,20 +20,20 @@ export const OPTIMIZATION_LEVELS = {
   balanced: {
     label: "Balanced ▲",
     risk: "▲",
-    description: "Adds dead-code cleanup, JP→JR shortening, strictly local value-reuse folds, dead OR A / CP 0 removal, and proven LDIR/LDDR BC=0 reuse on top of safe-only peepholes.",
-    passes: ["peephole", "deadCode", "branchShortening"]
+    description: "Adds JP→JR shortening, strictly local value-reuse folds, dead OR A / CP 0 removal, proven LDIR/LDDR BC=0 reuse, and carry-proven INC/DEC arithmetic folds. Dead-code cleanup starts at Aggressive.",
+    passes: ["peephole", "branchShortening"]
   },
   aggressive: {
     label: "Aggressive ⚠",
     risk: "⚠",
-    description: "Adds speculative register/value reuse on top of balanced, plus LD A,0→XOR A and header RST reuse.",
-    passes: ["peephole", "deadCode", "branchShortening", "aZeroToXor", "rstVectors"]
+    description: "Adds dead-code cleanup, speculative register/value reuse, LD A,0→XOR A, and header RST reuse on top of balanced.",
+    passes: ["peephole", "branchShortening", "deadCode", "aZeroToXor", "rstVectors"]
   },
   experimental: {
     label: "Experimental ☢",
     risk: "☢",
     description: "Adds hazardous memory/register rewrites, routine inlining, and tiny-frame stripping on top of aggressive passes.",
-    passes: ["peephole", "deadCode", "branchShortening", "aZeroToXor", "rstVectors", "inlineRoutines", "stripIxFrames"]
+    passes: ["peephole", "branchShortening", "deadCode", "aZeroToXor", "rstVectors", "inlineRoutines", "stripIxFrames"]
   }
 };
 
@@ -86,7 +86,7 @@ export function getOptimizationProfile(level, sourceText = "") {
   }
   const optimizerConfig = {
     peephole: true,
-    deadCode: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
+    deadCode: normalized === "aggressive" || normalized === "experimental",
     branchShortening: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     localValueReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     blockCopyBcZeroReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
@@ -109,3 +109,4 @@ export function getOptimizationProfile(level, sourceText = "") {
     note: `${levelInfo.label}`
   };
 }
+

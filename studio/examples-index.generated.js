@@ -17,7 +17,7 @@ export const exampleEditorialTracks = {
   "CVBASIC_PORT": "cvbasic-port"
 };
 
-export const exampleManifest = [
+const allExampleManifest = [
   {
     "id": "amy-timer-lab",
     "label": "Amy Timer Lab",
@@ -1821,3 +1821,38 @@ export const exampleManifest = [
     ]
   }
 ];
+
+const publicExampleIds = new Set([
+  "hello-world-minimal",
+  "sprite-minimal",
+  "input-loop-minimal",
+  "collision-minimal",
+  "dsound-voice-minimal",
+  "rebound-demo",
+  "warrior-barbarian-slideshow",
+  "africa-music-box",
+  "commando-music-box",
+  "commando-tiny-music-box",
+  "cvbasic-happy-face-port",
+  "cvbasic-face-joystick-port",
+  "cvbasic-controller-port",
+  "cvbasic-vramcopy-port",
+  "cvbasic-spinner-port",
+  "cvbasic-plot-port",
+  "cvbasic-demo-port",
+  "cvbasic-viboritas-port",
+  "three-sort-algorithms",
+  "united-states-flag-mode3",
+  "canada-flag-mode3",
+  "snake-demo",
+  "tile-collision-maze",
+  "sprite-momentum-platformer",
+  "old-devkit-10years",
+  "meteor-dodge",
+  "brinquitos-game-demo",
+  "smooth-criminal-music",
+  "diamond-dash",
+  "chateau-du-dragon",
+]);
+
+export const exampleManifest = allExampleManifest.filter((item) => publicExampleIds.has(item.id));

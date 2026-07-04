@@ -1,4 +1,5 @@
 import { checkVramPixelDeprecation } from "./deprecations.js";
+import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
 
 export function handleVramPixelInputStatement({
   line,
@@ -47,29 +48,29 @@ export function handleVramPixelInputStatement({
     if (!currentGraphicsMode || currentGraphicsMode === "mode1_text" || currentGraphicsMode === "mode2_text") {
       return { handled: true, ok: false, log: `${opcode} requires a bitmap or multicolor graphics mode: ${rawLine}` };
     }
-    const loadY = emitLoadInt8ValueIntoPreserving("c", mode1Pixel[3], ["b"]);
-    const loadX = emitLoadInt8ValueInto("b", mode1Pixel[2]);
-    if (!loadX || !loadY) {
-      return { handled: true, ok: false, log: `${opcode} requires byte X,Y coordinates: ${rawLine}` };
-    }
     if (opcode === "preset" && mode1Pixel[4]) {
       return { handled: true, ok: false, log: `preset does not accept a color clause: ${rawLine}` };
     }
     if (mode1Pixel[4]) {
-      const loadColor = emitLoadInt8ValueIntoPreserving("a", mode1Pixel[4], ["bc"]);
-      if (!loadColor) {
-        return { handled: true, ok: false, log: `${opcode} color requires a byte expression: ${rawLine}` };
-      }
-      if (currentGraphicsMode === "multicolor") {
-        body.push(...loadX, ...loadY, ...loadColor, "    call AMY_MODE3_PSET");
-      } else {
-        // AMY_MODE2_PSET_COLOR is the shared pset routine for all non-multicolor bitmap modes (historical 'MODE1' name).
-        body.push(...loadX, ...loadY, ...loadColor, "    call AMY_MODE2_PSET_COLOR");
-      }
-    } else if (opcode === "preset") {
-      body.push(...loadX, ...loadY, "    call AMY_MODE2_PRESET");
+      const routine = currentGraphicsMode === "multicolor" ? "AMY_MODE3_PSET" : "AMY_MODE2_PSET_COLOR";
+      const loadPoint = emitLoadRoutineByteInputsFromTokens({
+        routineName: routine,
+        values: { b: mode1Pixel[2], c: mode1Pixel[3], a: mode1Pixel[4] },
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving
+      });
+      if (!loadPoint) return { handled: true, ok: false, log: `${opcode} requires byte X,Y,color values: ${rawLine}` };
+      body.push(...loadPoint, `    call ${routine}`);
     } else {
-      body.push(...loadX, ...loadY, "    call AMY_MODE2_PSET");
+      const routine = opcode === "preset" ? "AMY_MODE2_PRESET" : "AMY_MODE2_PSET";
+      const loadPoint = emitLoadRoutineByteInputsFromTokens({
+        routineName: routine,
+        values: { b: mode1Pixel[2], c: mode1Pixel[3] },
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving
+      });
+      if (!loadPoint) return { handled: true, ok: false, log: `${opcode} requires byte X,Y coordinates: ${rawLine}` };
+      body.push(...loadPoint, `    call ${routine}`);
     }
     return { handled: true, ok: true };
   }
@@ -79,42 +80,53 @@ export function handleVramPixelInputStatement({
     if (!currentGraphicsMode || currentGraphicsMode === "mode1_text" || currentGraphicsMode === "mode2_text") {
       return { handled: true, ok: false, log: `line requires a bitmap or multicolor graphics mode: ${rawLine}` };
     }
-    const loadY2 = emitLoadInt8ValueIntoPreserving("e", lineStmt[4], ["b", "c", "d"]);
-    const loadX2 = emitLoadInt8ValueIntoPreserving("d", lineStmt[3], ["b", "c"]);
-    const loadY1 = emitLoadInt8ValueIntoPreserving("c", lineStmt[2], ["b"]);
-    const loadX1 = emitLoadInt8ValueInto("b", lineStmt[1]);
-    if (!loadX1 || !loadY1 || !loadX2 || !loadY2) {
-      return { handled: true, ok: false, log: `line requires byte X1,Y1,X2,Y2 coordinates: ${rawLine}` };
-    }
     if (currentGraphicsMode === "multicolor") {
       if (!lineStmt[5]) return { handled: true, ok: false, log: `line in multicolor mode requires a color clause: ${rawLine}` };
-      const loadColor = emitLoadInt8ValueIntoPreserving("a", lineStmt[5], ["bc", "de"]);
-      if (!loadColor) return { handled: true, ok: false, log: `line color requires a byte expression: ${rawLine}` };
-      body.push(...loadX1, ...loadY1, ...loadX2, ...loadY2, ...loadColor, "    call AMY_MODE3_LINE");
+      const loadLine = emitLoadRoutineByteInputsFromTokens({
+        routineName: "AMY_MODE3_LINE",
+        values: { b: lineStmt[1], c: lineStmt[2], d: lineStmt[3], e: lineStmt[4], a: lineStmt[5] },
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving
+      });
+      if (!loadLine) return { handled: true, ok: false, log: `line requires byte X1,Y1,X2,Y2,color values: ${rawLine}` };
+      body.push(...loadLine, "    call AMY_MODE3_LINE");
     } else if (lineStmt[5]) {
-      const loadColor = emitLoadInt8ValueIntoPreserving("a", lineStmt[5], ["bc", "de"]);
-      if (!loadColor) return { handled: true, ok: false, log: `line color requires a byte expression: ${rawLine}` };
-      body.push(...loadX1, ...loadY1, ...loadX2, ...loadY2, ...loadColor, "    call AMY_MODE2_LINE_COLOR");
+      const loadLine = emitLoadRoutineByteInputsFromTokens({
+        routineName: "AMY_MODE2_LINE_COLOR",
+        values: { b: lineStmt[1], c: lineStmt[2], d: lineStmt[3], e: lineStmt[4], a: lineStmt[5] },
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving
+      });
+      if (!loadLine) return { handled: true, ok: false, log: `line requires byte X1,Y1,X2,Y2,color values: ${rawLine}` };
+      body.push(...loadLine, "    call AMY_MODE2_LINE_COLOR");
     } else {
-      body.push(...loadX1, ...loadY1, ...loadX2, ...loadY2, "    call AMY_MODE2_LINE");
+      const loadLine = emitLoadRoutineByteInputsFromTokens({
+        routineName: "AMY_MODE2_LINE",
+        values: { b: lineStmt[1], c: lineStmt[2], d: lineStmt[3], e: lineStmt[4] },
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving
+      });
+      if (!loadLine) return { handled: true, ok: false, log: `line requires byte X1,Y1,X2,Y2 coordinates: ${rawLine}` };
+      body.push(...loadLine, "    call AMY_MODE2_LINE");
     }
     return { handled: true, ok: true };
   }
 
   const boxStmt = line.match(/^box\s+(.+?)\s*,\s*(.+?)\s+to\s+(.+?)\s*,\s*(.+?)\s+color\s+(.+)$/i);
   if (boxStmt) {
-    if (currentGraphicsMode !== "multicolor") {
+    if (currentGraphicsMode && currentGraphicsMode !== "multicolor") {
       return { handled: true, ok: false, log: `box requires 'graphics mode 3 multicolor' to be active: ${rawLine}` };
     }
-    const loadY2 = emitLoadInt8ValueIntoPreserving("e", boxStmt[4], ["b", "c", "d"]);
-    const loadX2 = emitLoadInt8ValueIntoPreserving("d", boxStmt[3], ["b", "c"]);
-    const loadY1 = emitLoadInt8ValueIntoPreserving("c", boxStmt[2], ["b"]);
-    const loadX1 = emitLoadInt8ValueInto("b", boxStmt[1]);
-    const loadColor = emitLoadInt8ValueIntoPreserving("a", boxStmt[5], ["bc", "de"]);
-    if (!loadX1 || !loadY1 || !loadX2 || !loadY2 || !loadColor) {
+    const loadBox = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_MODE3_BOX",
+      values: { b: boxStmt[1], c: boxStmt[2], d: boxStmt[3], e: boxStmt[4], a: boxStmt[5] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadBox) {
       return { handled: true, ok: false, log: `box requires byte X1,Y1,X2,Y2 coordinates and a color: ${rawLine}` };
     }
-    body.push(...loadX1, ...loadY1, ...loadX2, ...loadY2, ...loadColor, "    call AMY_MODE3_BOX");
+    body.push(...loadBox, "    call AMY_MODE3_BOX");
     return { handled: true, ok: true };
   }
 
@@ -322,3 +334,4 @@ export function handleVramPixelInputStatement({
 
   return { handled: false };
 }
+

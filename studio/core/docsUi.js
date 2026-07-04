@@ -5,11 +5,6 @@ const DOCS = [
     path: "../docs/amy-language.md"
   },
   {
-    id: "version",
-    label: "Current Version",
-    path: "../docs/amy-current-version.md"
-  },
-  {
     id: "heritage",
     label: "Heritage",
     path: "../docs/amy-studio-heritage.md"
@@ -18,11 +13,6 @@ const DOCS = [
     id: "colecovision",
     label: "ColecoVision Essentials",
     path: "../docs/colecovision-essentials.md"
-  },
-  {
-    id: "removed",
-    label: "Removed Forms",
-    path: "../docs/amy-removed-forms.md"
   }
 ];
 
@@ -39,22 +29,39 @@ function inlineMarkdown(text) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
-      const cleanHref = normalizeDocHref(href);
-      return `<a href="${cleanHref}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
+      const link = normalizeDocHref(href);
+      const attrs = [`href="${link.href}"`];
+      if (link.internalAnchor) attrs.push(`data-doc-anchor="${link.internalAnchor}"`);
+      if (link.external) attrs.push('target="_blank"', 'rel="noreferrer"');
+      return `<a ${attrs.join(" ")}>${escapeHtml(label)}</a>`;
     });
 }
 
 function normalizeDocHref(href) {
   const raw = String(href || "").trim();
-  if (!raw) return "#";
-  if (/^https?:\/\//i.test(raw) || raw.startsWith("#")) return escapeHtml(raw);
-  if (/^[A-Za-z]:[\\/]/.test(raw)) return "#";
-  if (raw.startsWith("../") || raw.startsWith("./")) return escapeHtml(raw);
-  if (raw.startsWith("docs/")) return escapeHtml(`../${raw}`);
-  if (raw.endsWith(".md") || raw.startsWith("archive/") || raw.startsWith("audits/")) {
-    return escapeHtml(`../docs/${raw}`);
+  if (!raw) return { href: "#" };
+  if (raw.startsWith("#")) {
+    const anchor = slugifyHeading(raw.slice(1));
+    return { href: `#${escapeHtml(anchor)}`, internalAnchor: escapeHtml(anchor) };
   }
-  return escapeHtml(raw);
+  if (/^https?:\/\//i.test(raw)) return { href: escapeHtml(raw), external: true };
+  if (/^[A-Za-z]:[\\/]/.test(raw)) return { href: "#" };
+  if (raw.startsWith("../") || raw.startsWith("./")) return { href: escapeHtml(raw), external: true };
+  if (raw.startsWith("docs/")) return { href: escapeHtml(`../${raw}`), external: true };
+  if (raw.endsWith(".md") || raw.startsWith("archive/") || raw.startsWith("audits/")) {
+    return { href: escapeHtml(`../docs/${raw}`), external: true };
+  }
+  return { href: escapeHtml(raw), external: true };
+}
+
+function slugifyHeading(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/`/g, "")
+    .replace(/&amp;/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
 }
 
 function markdownToHtml(markdown) {
@@ -112,7 +119,8 @@ function markdownToHtml(markdown) {
       closeList();
       closeTable();
       const level = Math.min(heading[1].length + 1, 5);
-      out.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      const id = slugifyHeading(heading[2]);
+      out.push(`<h${level} id="${escapeHtml(id)}">${inlineMarkdown(heading[2])}</h${level}>`);
       continue;
     }
 
@@ -181,8 +189,16 @@ export function createDocsUi({ els, setStatus }) {
     if (cache.has(doc.id)) return cache.get(doc.id);
     const response = await fetch(doc.path, { cache: "no-cache" });
     if (!response.ok) throw new Error(`Cannot load ${doc.path}: HTTP ${response.status}`);
-    const text = await response.text();
+    const text = prepareReleaseDoc(await response.text(), doc);
     cache.set(doc.id, text);
+    return text;
+  }
+
+  function prepareReleaseDoc(markdown, doc) {
+    let text = String(markdown || "");
+    if (doc?.id === "language") {
+      text = text.replace(/\n## Removed Forms Reference[\s\S]*$/i, "\n");
+    }
     return text;
   }
 
@@ -194,6 +210,7 @@ export function createDocsUi({ els, setStatus }) {
       const markdown = await loadDoc(doc);
       const filtered = filterMarkdown(markdown, els.docsSearch?.value || "");
       els.docsContent.innerHTML = markdownToHtml(filtered);
+      bindRenderedDocLinks();
       els.docsStatus.textContent = `${doc.label} · live from ${doc.path}`;
     } catch (error) {
       els.docsContent.innerHTML = `<p>Documentation could not be loaded from the local repo server.</p><pre><code>${escapeHtml(error?.message || error)}</code></pre>`;
@@ -218,6 +235,23 @@ export function createDocsUi({ els, setStatus }) {
       renderDocs();
     });
     renderDocs();
+  }
+
+  function bindRenderedDocLinks() {
+    if (!els.docsContent) return;
+    for (const link of els.docsContent.querySelectorAll("a[data-doc-anchor]")) {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const id = link.getAttribute("data-doc-anchor");
+        if (!id) return;
+        const target = els.docsContent.querySelector(`#${CSS.escape(id)}`);
+        if (!target) {
+          els.docsStatus.textContent = `No section named #${id} in this filtered view.`;
+          return;
+        }
+        target.scrollIntoView({ block: "start", behavior: "smooth" });
+      });
+    }
   }
 
   return { bind, renderDocs };

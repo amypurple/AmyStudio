@@ -219,6 +219,33 @@ export function createByteLoadHelpers(ctx) {
   function emitRandomCountIntoA(countToken) {
     const normalized = normalizeExpression(String(countToken).trim());
     if (!normalized || /random\s*\(/i.test(normalized)) return null;
+    const constantCount = tryEvaluateConstantExpression(normalized);
+    if (Number.isInteger(constantCount)) {
+      if (constantCount <= 0) return ["    xor a"];
+      if (constantCount >= 256) {
+        return [
+          "    call AMY_RANDOM_U8"
+        ];
+      }
+      let mask = 0;
+      let top = constantCount - 1;
+      do {
+        mask = (mask << 1) | 1;
+        top >>= 1;
+      } while (top > 0);
+      const retryLabel = makeGeneratedLabel("RandomCountRetry");
+      return [
+        `    ld b,${symbolOrValue(String(constantCount & 0xFF))}`,
+        `    ld c,${symbolOrValue(String(mask & 0xFF))}`,
+        `${retryLabel}:`,
+        "    push bc",
+        "    call AMY_RANDOM_U8",
+        "    pop bc",
+        "    and c",
+        "    cp b",
+        `    jr nc,${retryLabel}`
+      ];
+    }
     const loadCount = emitLoadInt8ValueInto("b", normalized);
     if (!loadCount) return null;
     const nonZeroLabel = makeGeneratedLabel("RandomCountNonZero");
@@ -233,7 +260,9 @@ export function createByteLoadHelpers(ctx) {
       `    jr ${doneLabel}`,
       `${nonZeroLabel}:`,
       `${retryLabel}:`,
+      "    push bc",
       "    call AMY_RANDOM_U8",
+      "    pop bc",
       "    cp b",
       `    jr nc,${retryLabel}`,
       `${doneLabel}:`

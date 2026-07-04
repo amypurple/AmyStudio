@@ -1,3 +1,5 @@
+import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
+
 export function createControlFlowHelpers(ctx) {
   const {
     tryEvaluateConstantExpression,
@@ -26,6 +28,7 @@ export function createControlFlowHelpers(ctx) {
     symbolOrValue,
     makeGeneratedLabel,
     emitLoadInt8ValueInto,
+    emitLoadInt8ValueIntoPreserving,
     getRuntimeInfo,
     formatIxOffset,
     emitLoadInt8Into,
@@ -518,19 +521,19 @@ export function createControlFlowHelpers(ctx) {
         && heightValue > 0
         && widthValue * heightValue <= 32
       ) {
-        const loadX = emitLoadInt8ValueInto("e", xToken);
-        const loadY = emitLoadInt8ValueInto("d", yToken);
-        const loadWidth = emitLoadInt8ValueInto("c", widthToken);
-        const loadHeight = emitLoadInt8ValueInto("b", heightToken);
-        if (!loadX || !loadY || !loadWidth || !loadHeight) return null;
+        const loadInputs = emitLoadRoutineByteInputsFromTokens({
+          routineName: "GET_BKGRND",
+          values: { b: heightToken, c: widthToken, d: yToken, e: xToken },
+          emitLoadInt8Into,
+          emitLoadInt8ValueInto,
+          emitLoadInt8ValueIntoPreserving
+        });
+        if (!loadInputs) return null;
         const noMatch = makeGeneratedLabel("CharBoxNoMatch");
         const scanLoop = makeGeneratedLabel("CharBoxScan");
         const lines = [
           "    ld hl,AMY_BUFFER32",
-          ...loadY,
-          ...loadX,
-          ...loadWidth,
-          ...loadHeight,
+          ...loadInputs,
           "    push ix",
           "    push iy",
           "    call GET_BKGRND",

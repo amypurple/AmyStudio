@@ -23,7 +23,7 @@ export function projectFileBytes(entry) {
 
 export function assetNameFromProjectPath(path) {
   const base = normalizeProjectFilePath(path).slice(PROJECT_FILE_PREFIX.length).split("/").pop() || "Asset";
-  const withoutCodec = base.replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster)$/i, "");
+  const withoutCodec = base.replace(/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
   const stem = /\.(pattern|pat|chr|color|col|clr|name|nam|pc|sprpat|sprcolor|sprattr)$/i.test(withoutCodec)
     ? withoutCodec
     : withoutCodec.replace(/\.[^.]+$/, "");
@@ -39,9 +39,9 @@ export function assetNameFromProjectPath(path) {
 export function fileKindFromPath(path) {
   const lower = normalizeProjectFilePath(path).toLowerCase();
   if (lower.endsWith(".dsound")) return "dsound";
-  if (/\.(sprpat|sprcolor|sprattr)(?:\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster))?$/.test(lower)) return "sprite";
-  if (/\.(pc|pattern|pat|chr|color|col|clr|name|nam)(?:\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster))?$/.test(lower)) return "picture";
-  if (/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster)$/.test(lower)) return "compressed";
+  if (/\.(sprpat|sprcolor|sprattr)(?:\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "sprite";
+  if (/\.(pc|pattern|pat|chr|color|col|clr|name|nam)(?:\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "picture";
+  if (/\.(zx0|zx7|dan1|dan2|dan3|pletter|lzf|rle|mdkrle|bitbuster|nibble)$/.test(lower)) return "compressed";
   if (/\.(bin|dat|raw)$/.test(lower)) return "binary";
   return "asset";
 }

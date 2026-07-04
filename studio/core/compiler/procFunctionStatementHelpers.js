@@ -16,7 +16,8 @@ export function handleProcFunctionStatement({
   functionReturnTypes,
   normalizeRuntimeType,
   normalizeDeclaredType,
-  openStartProc
+  openStartProc,
+  addCompilerWarning
 }) {
   if (/^proc\b/i.test(line)) {
     return { handled: true, ok: false, log: `PROC syntax has been removed. Use 'sub' instead. Offending line: ${rawLine}` };
@@ -136,7 +137,13 @@ export function handleProcFunctionStatement({
   }
 
   if (/^end\s+sub$/i.test(line)) {
-    if (state.currentProc) emitCurrentProcReturnLinesIfNeeded();
+    if (!state.currentProc || (state.currentProc === "Start" && state.openedImplicitStart)) {
+      if (typeof addCompilerWarning === "function") {
+        addCompilerWarning(`Line with '${rawLine.trim()}' does not close an explicit subroutine and was ignored.`);
+      }
+      return { handled: true, ok: true };
+    }
+    emitCurrentProcReturnLinesIfNeeded();
     state.currentProc = null;
     state.currentFunction = null;
     return { handled: true, ok: true };
@@ -150,3 +157,6 @@ export function handleProcFunctionStatement({
 
   return { handled: false };
 }
+
+
+

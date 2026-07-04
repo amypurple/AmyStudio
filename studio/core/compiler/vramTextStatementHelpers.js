@@ -68,6 +68,7 @@ export function handleVramTextStatement({
   const _depVramRead = checkVramCharReadDeprecation(line, rawLine);
   if (_depVramRead.handled) return _depVramRead;
 
+
   function parseColecoColorNibble(token) {
     const normalized = String(token || "").trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
     if (colecoColorNames.has(normalized)) return colecoColorNames.get(normalized);
@@ -176,7 +177,35 @@ export function handleVramTextStatement({
     ];
   }
 
-  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
+  const decompInferred = line.match(/^decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
+  if (decompInferred) {
+    const sourceName = decompInferred[1];
+    const target = decompInferred[2].toLowerCase();
+    const declaredAsset = assets.find((asset) => asset.name === sourceName);
+    if (!declaredAsset?.codec) {
+      return {
+        ok: false,
+        handled: true,
+        log: `decompress ${sourceName} to vram.${target} needs a declared asset codec; use "decompress codec ${sourceName} to vram.${target}" for raw data labels.`
+      };
+    }
+    const codec = declaredAsset.codec.toLowerCase() === "rle" ? "mdkrle" : declaredAsset.codec.toLowerCase();
+    if (codec === "raw") {
+      return {
+        ok: false,
+        handled: true,
+        log: `decompress ${sourceName} to vram.${target} cannot use a raw asset; use copy ${sourceName} count N to vram.${target}.`
+      };
+    }
+    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[target];
+    return {
+      ok: true,
+      handled: true,
+      lines: [`    ld hl,Asset_${sourceName}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`]
+    };
+  }
+
+  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
   if (decomp) {
     const codec = decomp[1].toLowerCase() === "rle" ? "mdkrle" : decomp[1].toLowerCase();
     const sourceName = decomp[2];
@@ -539,17 +568,25 @@ export function handleVramTextStatement({
           return { ok: false, handled: true, log: `copy to VRAM needs an explicit count for non-data or offset source ${sourceExpr}: ${rawLine}` };
         }
         const useDirectWriteVram = isDefinitelyByteSizedCount(resolvedCountToken);
+        const targetIsDirectDeLoad = targetVram.length === 1 && /^\s*ld de,/.test(targetVram[0]);
         return {
           ok: true,
           handled: true,
-          lines: [
-            ...targetVram,
-            "    push de",
-            ...sourceCode,
-            "    pop de",
-            ...emitLoadCountIntoBC(resolvedCountToken),
-            `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
-          ]
+          lines: targetIsDirectDeLoad
+            ? [
+                ...sourceCode,
+                ...targetVram,
+                ...emitLoadCountIntoBC(resolvedCountToken),
+                `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
+              ]
+            : [
+                ...targetVram,
+                "    push de",
+                ...sourceCode,
+                "    pop de",
+                ...emitLoadCountIntoBC(resolvedCountToken),
+                `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
+              ]
         };
       }
     }
@@ -646,17 +683,25 @@ export function handleVramTextStatement({
       resolvedCountToken = knownLength.toString(10);
     }
     const useDirectWriteVram = isDefinitelyByteSizedCount(resolvedCountToken);
+    const targetIsDirectDeLoad = targetCode.length === 1 && /^\s*ld de,/.test(targetCode[0]);
     return {
       ok: true,
       handled: true,
-      lines: [
-        ...targetCode,
-        "    push de",
-        ...sourceCode,
-        "    pop de",
-        ...emitLoadCountIntoBC(resolvedCountToken),
-        `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
-      ]
+      lines: targetIsDirectDeLoad
+        ? [
+            ...sourceCode,
+            ...targetCode,
+            ...emitLoadCountIntoBC(resolvedCountToken),
+            `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
+          ]
+        : [
+            ...targetCode,
+            "    push de",
+            ...sourceCode,
+            "    pop de",
+            ...emitLoadCountIntoBC(resolvedCountToken),
+            `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
+          ]
     };
   }
 
@@ -801,6 +846,20 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }
 
+  const fillCountAt = line.match(/^fill\s+(.+?)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  if (fillCountAt) {
+    const loadInputs = emitLoadRoutineByteInputsFromTokens({
+      routineName: "AMY_FILL_AT",
+      values: { d: fillCountAt[4], e: fillCountAt[3], a: fillCountAt[1], b: fillCountAt[2] },
+      emitLoadInt8ValueInto,
+      emitLoadInt8ValueIntoPreserving
+    });
+    if (!loadInputs) {
+      return { ok: false, handled: true, log: `fill Value count N at X,Y requires byte-sized coordinates, tile, and count: ${rawLine}` };
+    }
+    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_FILL_AT"] };
+  }
+
   const fillAt = line.match(/^fill\s+at\s+(.+?)\s*,\s*(.+?)\s+(.+?)\s+count\s+(.+)$/i);
   if (fillAt) {
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
@@ -836,16 +895,27 @@ export function handleVramTextStatement({
     return {
       ok: true,
       handled: true,
-      lines: [...loadTarget, ...loadCount, `    ld a,$${colorByte.toString(16).toUpperCase().padStart(2, "0")}`, "    call AMY_FILL_VRAM"]
+      lines: [...loadTarget, ...loadCount, `    ld a,$${colorByte.toString(16).toUpperCase().padStart(2, "0")}`, "    call FILL_VRAM"]
     };
   }
 
-  const fill = line.match(/^fill\s+vram\.(pattern|color|name)\s+with\s+(.+?)\s+count\s+(.+)$/i);
+  const fillToVram = line.match(/^fill\s+(.+?)\s+count\s+(.+?)\s+to\s+(.+)$/i);
+  if (fillToVram) {
+    const targetCode = emitLoadVramAddressIntoHL(fillToVram[3].trim());
+    const countCode = emitLoadCountIntoDE(fillToVram[2].trim());
+    const loadValue = emitLoadInt8ValueInto("a", fillToVram[1].trim());
+    if (!targetCode) return { ok: false, handled: true, log: `fill to VRAM requires a valid VRAM target: ${rawLine}` };
+    if (!countCode) return { ok: false, handled: true, log: `fill to VRAM count must be a valid byte count: ${rawLine}` };
+    if (!loadValue) return { ok: false, handled: true, log: `fill to VRAM value must be a byte value: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"] };
+  }
+
+  const fill = line.match(/^fill\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s+with\s+(.+?)\s+count\s+(.+)$/i);
   if (fill) {
-    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME" }[fill[1].toLowerCase()];
+    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[fill[1].toLowerCase()];
     const loadValue = emitLoadInt8ValueInto("a", fill[2]);
     if (!loadValue) return { ok: false, handled: true, log: `VRAM fill value must be a byte value: ${rawLine}` };
-    return { ok: true, handled: true, lines: [`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call AMY_FILL_VRAM"] };
+    return { ok: true, handled: true, lines: [`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call FILL_VRAM"] };
   }
 
   const findTileBox = line.match(/^find\s+tile\s+([A-Za-z_][A-Za-z0-9_]*)\s+under\s+box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);

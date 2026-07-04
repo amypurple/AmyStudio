@@ -3,7 +3,7 @@ const TMS_PALETTE = [
   "#FC5554", "#FF7978", "#D4C154", "#E5CE80", "#21B03B", "#C95AA9", "#CCCCCC", "#FFFFFF"
 ];
 
-const CODEC_EXTENSIONS = new Set(["zx0", "zx7", "dan1", "dan2", "dan3", "pletter", "lzf", "rle", "mdkrle", "bitbuster"]);
+const CODEC_EXTENSIONS = new Set(["zx0", "zx7", "dan1", "dan2", "dan3", "pletter", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
 
 function stripProjectPrefix(path) {
   return String(path || "").replace(/\\/g, "/").replace(/^@project\//i, "");

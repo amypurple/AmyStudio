@@ -40,6 +40,8 @@ AMY_SET_BITMAP_GRAPHICS_MODE:
 AMY_SET_GRAPHICS_MODE2_TEXT:
     ld bc,$0182
     call WRITE_REGISTER
+    ld a,$82
+    ld ($73C4),a
     ld bc,$039F
     call WRITE_REGISTER
     ld bc,$0403
@@ -61,6 +63,8 @@ AMY_SET_GRAPHICS_MODE1_TEXT:
     call WRITE_REGISTER
     ld bc,$0182
     call WRITE_REGISTER
+    ld a,$82
+    ld ($73C4),a
     ld bc,$0380
     call WRITE_REGISTER
     ld bc,$0400
@@ -73,7 +77,7 @@ AMY_SET_GRAPHICS_MODE1_TEXT:
     call AMY_SET_DEFAULT_NAME_TABLE
     ld de,$0300
     ld a,$20
-    jp AMY_FILL_VRAM
+    jp FILL_VRAM
 
 ; Configure multicolor mode (Mode 3) and initialize the name table so each
 ; 4-row band points at the same 32 pattern entries.
@@ -83,6 +87,8 @@ AMY_SET_GRAPHICS_MODE3_MULTICOLOR:
     call WRITE_REGISTER
     ld bc,$018A
     call WRITE_REGISTER
+    ld a,$8A
+    ld ($73C4),a
     ld bc,$0380
     call WRITE_REGISTER
     ld bc,$0400
@@ -130,11 +136,11 @@ AMY_SET_GRAPHICS_MODE1_BITMAP:
     ld hl,$0000
     ld de,$1800
     xor a
-    call AMY_FILL_VRAM
+    call FILL_VRAM
     pop af
     ld hl,$2000
     ld de,$1800
-    call AMY_FILL_VRAM
+    call FILL_VRAM
     ld d,$03
     jp AMY_LOAD_SEQUENTIAL_NAME_TABLE
 
