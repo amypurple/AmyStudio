@@ -11,6 +11,7 @@ export function createProjectEditorUiHelpers({
   getExampleSearchFilter,
   exampleCategoryOrder,
   exampleManifest,
+  getActiveExampleId,
   clearCompiledArtifacts,
   refreshSourceCartridgeMeta,
   saveProjectToStorage,

@@ -34,7 +34,9 @@ export function bindTopUiEvents(ctx) {
     getExpandedAsm,
     setExpandedAsm,
     getAsmViewMode,
-    setAsmViewMode
+    setAsmViewMode,
+    createNewTileSetProjectFiles,
+    createNewBitmapProjectFiles
   } = ctx;
 
   els.projectName.addEventListener("input", () => {
@@ -73,13 +75,23 @@ export function bindTopUiEvents(ctx) {
   els.exampleSelect.addEventListener("change", () => {
     renderExampleMeta(els.exampleSelect.value);
   });
-  els.btnLoadExample.addEventListener("click", () => {
-    const example = getExampleById(els.exampleSelect.value);
+  els.btnLoadExample.addEventListener("click", async () => {
+    const exampleId = els.exampleSelect.value;
+    if (exampleId) setStatus("Loading example...");
+    let example = null;
+    try {
+      example = await getExampleById(exampleId);
+    } catch (error) {
+      setStatus(`Cannot load examples: ${error?.message || error}`);
+      return;
+    }
     if (!example) {
       setStatus("Choose an example first.");
       return;
     }
-    setProject(buildProjectFromExample(example));
+    const nextProject = buildProjectFromExample(example);
+    nextProject.exampleId = example.id;
+    setProject(nextProject);
     clearCompiledArtifacts();
     setLastLibResolution(null);
     setExpandedAsm("");
@@ -104,7 +116,37 @@ export function bindTopUiEvents(ctx) {
     scheduleEditorInsightsRefresh();
   });
 
+  function toggleSelectedSourceComments() {
+    const editor = els.sourceEditor;
+    const text = editor.value;
+    const selectionStart = editor.selectionStart ?? 0;
+    const selectionEnd = editor.selectionEnd ?? selectionStart;
+    const lineStart = text.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+    let lineEnd = text.indexOf("\n", selectionEnd);
+    if (lineEnd < 0) lineEnd = text.length;
+    const selectedBlock = text.slice(lineStart, lineEnd);
+    const lines = selectedBlock.split("\n");
+    const nonBlankLines = lines.filter((line) => line.trim().length);
+    const shouldUncomment = nonBlankLines.length > 0 && nonBlankLines.every((line) => /^\s*' ?/.test(line));
+    const nextLines = lines.map((line) => {
+      if (!line.trim()) return line;
+      if (shouldUncomment) return line.replace(/^(\s*)' ?/, "$1");
+      return line.replace(/^(\s*)/, "$1' ");
+    });
+    const replacement = nextLines.join("\n");
+    editor.value = text.slice(0, lineStart) + replacement + text.slice(lineEnd);
+    editor.selectionStart = lineStart;
+    editor.selectionEnd = lineStart + replacement.length;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   els.sourceEditor.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.code === "Slash") {
+      event.preventDefault();
+      closeAutocomplete();
+      toggleSelectedSourceComments();
+      return;
+    }
     if (event.ctrlKey && event.code === "Space") {
       event.preventDefault();
       updateAutocomplete({ force: true });
@@ -171,6 +213,14 @@ export function bindTopUiEvents(ctx) {
     els.projectFileImport.click();
   });
 
+  els.btnNewTileSet?.addEventListener("click", () => {
+    createNewTileSetProjectFiles?.();
+  });
+
+  els.btnNewBitmap?.addEventListener("click", () => {
+    createNewBitmapProjectFiles?.();
+  });
+
   els.btnProjectPicture?.addEventListener("click", () => {
     els.projectFileImport.value = "";
     els.projectFileImport.click();
@@ -224,7 +274,6 @@ export function bindStudioRuntimeEvents(ctx) {
     getCompiledSymbols,
     getCompiledListing,
     copyText,
-    openAssembler,
     expandAsmIncludes,
     cvSampleRate,
     wavToDsound,
@@ -312,7 +361,7 @@ export function bindStudioRuntimeEvents(ctx) {
   async function updateDsoundPreview(bytes, sampleRate) {
     clearDsoundPreview();
     if (!bytes?.length || !els.wavDsoundPreview) return;
-    const previewSamples = dsoundBytesToPreviewSamples(bytes);
+    const previewSamples = await dsoundBytesToPreviewSamples(bytes);
     const wavBlob = encodePreviewWav(previewSamples, sampleRate);
     wavDsoundPreviewObjectUrl = URL.createObjectURL(wavBlob);
     wavDsoundPreviewSampleRate = sampleRate;
@@ -394,7 +443,7 @@ export function bindStudioRuntimeEvents(ctx) {
       const step = parseInt(els.wavStep.value, 10);
       const ampPercent = parseInt(els.wavAmp.value, 10) || 125;
       const label = els.wavLabel.value.trim() || "SoundData";
-      return audioBufferToDsound(audioBuffer, { step, ampPercent, label });
+      return await audioBufferToDsound(audioBuffer, { step, ampPercent, label });
     } finally {
       await audioContext.close();
     }
@@ -409,7 +458,7 @@ export function bindStudioRuntimeEvents(ctx) {
     const looksLikeWav = name.endsWith(".wav") || file.type === "audio/wav" || file.type === "audio/x-wav";
     if (looksLikeWav) {
       try {
-        return wavToDsound(buffer, { step, ampPercent, label });
+        return await wavToDsound(buffer, { step, ampPercent, label });
       } catch {
         // Fall through to browser audio decoding for non-PCM or unusual WAV variants.
       }
@@ -421,7 +470,7 @@ export function bindStudioRuntimeEvents(ctx) {
     const audioContext = new AudioCtx();
     try {
       const audioBuffer = await audioContext.decodeAudioData(buffer.slice(0));
-      return audioBufferToDsound(audioBuffer, { step, ampPercent, label });
+      return await audioBufferToDsound(audioBuffer, { step, ampPercent, label });
     } finally {
       await audioContext.close();
     }
@@ -479,7 +528,7 @@ export function bindStudioRuntimeEvents(ctx) {
   els.btnSave.addEventListener("click", () => {
     const project = getProject();
     const out = exportProject(project);
-    downloadText(`${project.projectName}.alexis.json`, JSON.stringify(out, null, 2));
+    downloadText(`${project.projectName}.amy.json`, JSON.stringify(out, null, 2));
     setStatus("Exported project.");
     closeTopbarMenu();
   });
@@ -719,12 +768,6 @@ export function bindStudioRuntimeEvents(ctx) {
     } catch (e) {
       setStatus(`Copy failed: ${String(e)}`);
     }
-  });
-
-  els.btnOpenAssembler.addEventListener("click", () => {
-    openAssembler();
-    setStatus("Opened AmysCVAssembly in a new tab.");
-    closeTopbarMenu();
   });
 
   els.btnWavConverter.addEventListener("click", () => {

@@ -83,7 +83,7 @@ export function createStatusAsmUiHelpers({
   }
 
   function buildRamSummary(projectState, transpileResult = null) {
-    const inferredCaps = studioSourceLang === "pseudo_alexis"
+    const inferredCaps = studioSourceLang === "amy"
       ? inferAmyMemoryCapabilities(projectState.sourceText || "", sourceHintsTinySound)
       : null;
     const ramLayout = getRamLayout(studioMemoryProfile, inferredCaps);
@@ -97,7 +97,7 @@ export function createStatusAsmUiHelpers({
     }
     const totalBytes = ramLayout.userRamEndExclusive - ramLayout.userRamStart;
     const windowText = `${formatHex16(ramLayout.userRamStart)}-${formatHex16(ramLayout.userRamEndExclusive - 1)}`;
-    if (studioSourceLang !== "pseudo_alexis") {
+    if (studioSourceLang !== "amy") {
       return {
         windowText,
         usedText: "manual",
@@ -174,7 +174,7 @@ export function createStatusAsmUiHelpers({
   function codecStatusLine() {
     const catalog = getCompressionCatalog();
     const names = catalog.map((c) => c.name || c.codecId).join(", ");
-    return `RetroCompress engines loaded: ${names}`;
+    return `RetroCompress engines available on demand: ${names}`;
   }
 
   return {

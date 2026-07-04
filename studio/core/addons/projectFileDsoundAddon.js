@@ -54,7 +54,7 @@ export function createProjectFileDsoundAddon({
       activePreviewAudio = null;
     }
     const sampleRate = Number.isFinite(entry?.dsoundStep) ? Math.trunc(cvSampleRate(entry.dsoundStep)) : 20616;
-    const previewSamples = dsoundBytesToPreviewSamples(bytes);
+    const previewSamples = await dsoundBytesToPreviewSamples(bytes);
     const wavBlob = encodePreviewWav(previewSamples, sampleRate);
     activePreviewUrl = URL.createObjectURL(wavBlob);
     activePreviewAudio = new Audio(activePreviewUrl);

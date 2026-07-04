@@ -1,10 +1,9 @@
 export function createExamplePickerHelpers({
   els,
-  exampleCatalog,
   exampleManifest,
+  getActiveExampleId,
   getManifestLabels,
   getExampleManifestById,
-  getProjectSourceText,
   getExampleCategoryFilter,
   getExampleTagFilter,
   getExampleSearchFilter
@@ -54,7 +53,7 @@ export function createExamplePickerHelpers({
 
   function renderExamplePicker() {
     if (!els.exampleSelect) return;
-    const activeExample = exampleCatalog.find((item) => item.sourceText === getProjectSourceText());
+    const activeExampleId = typeof getActiveExampleId === "function" ? getActiveExampleId() : "";
     const filtered = getFilteredExampleManifest();
     els.exampleSelect.textContent = "";
     const placeholder = document.createElement("option");
@@ -65,10 +64,10 @@ export function createExamplePickerHelpers({
       const option = document.createElement("option");
       option.value = meta.id;
       option.textContent = meta.label;
-      if (activeExample?.id === meta.id) option.selected = true;
+      if (activeExampleId === meta.id) option.selected = true;
       els.exampleSelect.appendChild(option);
     }
-    renderExampleMeta(activeExample && filtered.some((item) => item.id === activeExample.id) ? activeExample.id : "");
+    renderExampleMeta(activeExampleId && filtered.some((item) => item.id === activeExampleId) ? activeExampleId : "");
   }
 
   return {

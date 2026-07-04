@@ -1,17 +1,25 @@
-export function transpileAmySource({ sourceLang, sourceText, transpileAmy, lexZ80Source, summarizeTokens }) {
-  if (sourceLang === "pseudo_alexis") {
+export function transpileAmySource({ sourceLang, sourceText, transpileAmy }) {
+  if (sourceLang === "amy") {
     return transpileAmy(sourceText);
   }
 
   if (sourceLang === "z80_asm") {
-    const summary = summarizeTokens(lexZ80Source(sourceText));
+    const instructions = String(sourceText || "")
+      .split(/\r?\n/)
+      .filter((line) => {
+        const trimmed = line.replace(/;.*/, "").trim();
+        return trimmed && !trimmed.endsWith(":") && !/^\.[A-Za-z]/.test(trimmed);
+      }).length;
+    const directives = String(sourceText || "")
+      .split(/\r?\n/)
+      .filter((line) => /^\s*\.[A-Za-z]/.test(line.replace(/;.*/, ""))).length;
     return {
       ok: true,
       asmBody: sourceText,
       assets: [],
       metadata: {},
       ramUsage: null,
-      log: `Source language is Z80 ASM; lexer found ${summary.instructions} instructions and ${summary.directives} directives.`
+      log: `Source language is Z80 ASM; quick scan found ${instructions} instructions and ${directives} directives.`
     };
   }
 
