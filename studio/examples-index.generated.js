@@ -1886,6 +1886,7 @@ const publicExampleIds = new Set([
   "smooth-criminal-music",
   "diamond-dash",
   "chateau-du-dragon",
+  "dragon-castle",
 ]);
 
 export const exampleManifest = allExampleManifest.filter((item) => publicExampleIds.has(item.id));
