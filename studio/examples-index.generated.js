@@ -1099,6 +1099,21 @@ const allExampleManifest = [
     ]
   },
   {
+    "id": "cvbasic-vector-cube-port",
+    "label": "CVBasic Vector Cube Port",
+    "detail": "Amy adaptation of Matthew Eggleston's CVBasic vector cube demo using native bitmap line drawing.",
+    "projectName": "cvbasic-vector-cube-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
     "id": "cvbasic-demo-port",
     "label": "CVBasic Demo Port",
     "detail": "Amy port of CVBasic demo.bas with bold text, portrait block animation, staged messages, and sprite scenes.",
@@ -1827,6 +1842,7 @@ const publicExampleIds = new Set([
   "sprite-minimal",
   "input-loop-minimal",
   "collision-minimal",
+  "collision-box-test",
   "dsound-voice-minimal",
   "rebound-demo",
   "warrior-barbarian-slideshow",
@@ -1835,12 +1851,16 @@ const publicExampleIds = new Set([
   "commando-tiny-music-box",
   "cvbasic-happy-face-port",
   "cvbasic-face-joystick-port",
+  "cvbasic-test3-port",
+  "cvbasic-test1-port",
   "cvbasic-controller-port",
   "cvbasic-vramcopy-port",
   "cvbasic-spinner-port",
   "cvbasic-plot-port",
+  "cvbasic-vector-cube-port",
   "cvbasic-demo-port",
   "cvbasic-viboritas-port",
+  "amy-float-ahl-benchmark",
   "three-sort-algorithms",
   "united-states-flag-mode3",
   "canada-flag-mode3",
