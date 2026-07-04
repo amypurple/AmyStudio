@@ -293,7 +293,7 @@ function setupProjectPanelTabs() {
 
 function loadExamplesModule() {
   if (!examplesModulePromise) {
-    examplesModulePromise = import("./examples.js?v=20260622-conditional-cstyle-lab");
+    examplesModulePromise = import("./examples.js?v=20260703-examples-35-cube");
   }
   return examplesModulePromise;
 }
