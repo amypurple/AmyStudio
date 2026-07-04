@@ -25,7 +25,6 @@ function resolveDependencies(initialSymbols) {
 
 const runtimeOrder = [
   "AMY_VDP_WRITE_REG",
-  "AMY_FILL_VRAM",
   "AMY_SET_BITMAP_GRAPHICS_MODE",
   "AMY_SET_GRAPHICS_MODE1_TEXT",
   "AMY_SET_GRAPHICS_MODE1_BITMAP",

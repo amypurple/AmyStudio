@@ -5,6 +5,17 @@
 
 export const CODEC_CONFIG = {
     formats: {
+        nibble: {
+            name: 'Nibble',
+            author: 'Amy Bienvenu (NewColeco)',
+            year: 'DAN0nibble legacy / 2026 Studio codec',
+            description: 'Fast ColecoVision VRAM codec derived from Amy/Daniel Bienvenu legacy DAN0nibble: RLE control stream plus 16-value data-stream references.',
+            extensions: ['.nibble'],
+            module: './codecs/nibble.js',
+            className: 'NibbleCodec',
+            enabled: true,
+            category: 'rle'
+        },
         mdkrle: {
             name: 'MDK-RLE',
             author: 'Marcel de Kogel',
@@ -105,17 +116,6 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
-        aplib: {
-            name: "aPLib",
-            author: "Jørgen Ibsen",
-            year: "1998",
-            description: "Beam-search encoder with reuse seeding & near-match bias.",
-            extensions: [".apl", ".aplib"],
-            module: "./codecs/aplib.js",
-            className: "APLibCodec",
-            enabled: true,
-            category: "lzss"
-        },         
     },
     
     // Add new codec categories here for easy organization
@@ -130,7 +130,7 @@ export const CODEC_CONFIG = {
     settings: {
         maxFileSize: 256 * 1024, // 256KB
         enableDebugMode: false,
-        defaultCompressionOrder: ['zx0', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'lzf', 'mdkrle']
+        defaultCompressionOrder: ['zx0', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
     }
 };
 

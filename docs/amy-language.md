@@ -515,7 +515,7 @@ function IsReady as u8
 ```basic
 Score = AddTwo(3, 4)
 if IsReady == 1 then
-  print "GO" at 10,8
+  print at 10,8, "GO"
 end if
 ```
 
@@ -557,11 +557,11 @@ function get_cell(u8 X, u8 Y) as u8
 
 ```basic
 if Score > 10 then
-  print "PASS" at 11,11
+  print at 11,11, "PASS"
 elseif Score > 5 then
-  print "OK" at 11,11
+  print at 11,11, "OK"
 else
-  print "FAIL" at 11,11
+  print at 11,11, "FAIL"
 end if
 ```
 
@@ -1131,17 +1131,18 @@ so `screen off` is normally redundant immediately before `text screen`,
 
 When using a styled default ASCII font in Mode 2 text, follow it with `duplicate mode 2 text patterns` if you want the styled glyphs copied to all three pattern thirds.
 
-`tile screen` expands to the old Mode 2 text-style tile surface:
+`tile screen` expands to the Mode 2 text-style tile surface:
 - `graphics mode 2 text`
 - `load default ascii`
 - `duplicate mode 2 text patterns`
-- `fill mode 2 text color with $F0`
+- fill the first 2KB color third with `$F0` (8 color bytes per tile/char)
 - `cls`
 
-Use `tile screen` when you deliberately want Graphics II pattern/color thirds
-while still writing tile/text-style code. It uses the 6144-byte Graphics II
-color table, not the 32-byte text color table. For normal tile text and ASCII
-color groups, use `text screen`.
+Use `tile screen` when you want Graphics II pattern thirds with tile-style
+8-byte-per-character colors. PATTERN data is duplicated across the three screen
+thirds; COLOR is initialized for the first 256-tile third ($0800 bytes). Use
+`picture screen` or `bitmap screen` when you deliberately need full Graphics II
+color-table data across all three thirds.
 
 `graphics mode 2 text` remains available as the explicit low-level setup for
 the same surface, but it does not load ASCII, duplicate thirds, fill colors, or
@@ -1156,14 +1157,32 @@ set screen pages vram.name and vram $1C00
 swap screens
 ```
 
+`set screen pages Display and Write` is the Amy form of the old devkit
+`screen(display, write)` helper. `Display` is the name table currently shown by
+the VDP; `Write` is the name table used by normal tile/text drawing commands.
+`swap screens` exchanges those two pages, which is the classic two-buffer name-table trick used by old getput/lib4ksa projects such as Santa's Gift Run.
+
+When screen pages are split, prefer current-page drawing commands (`print`,
+`put char`, `put frame`, `cls`, `fill row`) for the hidden/write page. Direct
+VRAM commands such as `fill V count N to vram.name + Offset` always target the physical
+address named in the command; they do not automatically follow the current write
+page.
+
+Legacy porting signal: old C code that alternates calls like
+`screen(name_table1, name_table2)` and `screen(name_table2, name_table1)` should
+be ported with `set screen pages ...` plus `swap screens`, not with direct redraw
+to `vram.name`.
+
 ### VRAM direct access
 
 ```basic
 vpoke vram.name + $0000, $41
 vpeek vram.name + $0000 into Value
-fill vram.pattern with Value count N
-fill vram.color with Value count N
-fill vram.name with Value count N
+fill Value count N to vram.name + Offset
+fill $20 count 8 to vram.name + $00EC
+fill Value count N to vram.pattern
+fill Value count N to vram.color
+fill Value count N to vram.name
 merge PatternBytes count 8 to vram.pattern mask $F0 xor $0F
 fill row 10 from 0 count 32 with $20
 fill vram.name with sequence $00..$FF repeat 3
@@ -1185,7 +1204,8 @@ copy Source count 32 to vram $0800
 copy vram.name count 64 to Buffer
 copy vram.name to Buffer count 64
 merge PatternBytes count 8 to vram.pattern mask $F0 xor $0F
-decompress zx0   Asset   to vram.pattern
+decompress Asset to vram.pattern        ' asset codec inferred when declared with codec metadata
+decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name
 decompress pletter Asset  to vram.name
@@ -1196,6 +1216,8 @@ decompress zx7   Asset   to vram.pattern
 decompress lzf   Asset   to vram.pattern
 decompress bitbuster Asset to vram.pattern
 ```
+
+For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old
 lib4ksa masked VRAM upload helper. Each byte written is `(source_byte & M) xor X`.
@@ -1299,7 +1321,7 @@ keeps the usual name-table clear behavior.
 ## Text Output
 
 ```basic
-print "TEXT" at X,Y
+print at X,Y, "TEXT"
 print Counter at X,Y digits 3      ' type inferred
 print Counter at X,Y width 3       ' right-aligned with pad tiles instead of leading zeroes
 print Score at X,Y digits 5
@@ -1410,7 +1432,7 @@ put TitleLine count 9 at 8,8
 put TitleLine at 8,8
 put TitleLine centered at 20
 Var = get char at X,Y
-fill at X,Y Char count N
+fill Char count N at X,Y
 ```
 
 For `put Name at X,Y` and `put Name centered at Y`, `Name` must be a known-length
@@ -1964,7 +1986,7 @@ Current expression engine notes:
 | `start timer Name` / `stop timer Name` | Enable/reset or disable a named timer |
 | `if timer Name then Statement` | Test and consume a timer signal in normal code |
 | `text screen` | Standard 32x24 text/tile bootstrap |
-| `tile screen` | Advanced Graphics II tile/text bootstrap with duplicated thirds |
+| `tile screen` | Mode 2 tile bootstrap with duplicated patterns and 8 color bytes per tile |
 | `bitmap screen` / `bitmap screen color $F0` | Drawable bitmap surface for `pset`, `line`, `circle`; default color is `$F0` |
 | `picture screen` | Raw full-screen picture/table surface |
 | `multicolor screen` | Multicolor mode surface |
@@ -1982,12 +2004,14 @@ Current expression engine notes:
 | `swap screens` | Swap double-buffer pages |
 | `vpoke vram_addr, Value` | Write one VRAM `u8` |
 | `vpeek vram_addr into Var` | Read one VRAM `u8` |
-| `fill vram.pattern with V count N` | Fill VRAM region |
+| `fill V count N to vram.* [+ Offset]` | Fill a VRAM region with one byte using the BIOS FILL_VRAM path |
+| `fill vram.pattern with V count N` | Older compatible VRAM fill form; prefer `fill V count N to vram.pattern` |
 | `fill row R from Col count N with V` | Fill name table row |
 | `fill vram.name with sequence $00..$FF repeat N` | Fill sequential tiles |
 | `copy Src [count N] to Dst` | Bulk copy (VRAM, arrays, buffers) |
 | `merge Src count N to vram.* mask M xor X` | Copy bytes to VRAM as `(byte & M) xor X` |
-| `decompress CODEC Name to vram.*` | Decompress asset to VRAM |
+| `decompress AssetName to vram.*` | Decompress a declared asset using its codec metadata |
+| `decompress CODEC Name to vram.*` | Explicit codec form for raw/data labels |
 | `show picture Name` | Display a grouped picture asset as an all-in-one bitmap screen |
 | `upload picture Name` | Upload/decompress a grouped picture asset without changing screen state |
 | `define chars Name at Pos [count N]` | Load chars to pattern thirds |
@@ -2006,7 +2030,7 @@ Current expression engine notes:
 
 | Statement | Meaning |
 |---|---|
-| `print "TEXT" at X,Y` | Print literal string |
+| `print at X,Y, "TEXT"` | Print literal string at a position |
 | `print centered at Y, "TEXT"` | Print literal centered on a 32-column text line |
 | `print Value at X,Y [digits N]` | Print variable (type inferred) |
 | `print Score at X,Y` | Print BCD score using its declared digit count |
@@ -2023,7 +2047,7 @@ Current expression engine notes:
 | `Buffer = get frame size W,H at X,Y` | Read a tile frame |
 | `replace TypeOrValue with Char in Buffer frame size W,H` | Replace tiles in a RAM frame buffer |
 | `replace TypeOrValue with Char in Buffer frame size W,H into Count` | Same, storing replacement count |
-| `fill at X,Y Char count N` | Fill repeated tile |
+| `fill Char count N at X,Y` | Fill repeated tile |
 
 ### Sprites
 
@@ -2139,7 +2163,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | Main entry point | top-level code (implicit `Start`) |
 | Infinite main loop | `loop forever` or `do ... loop` |
 | Timed game loop | `do` / `wait` / input / logic / `update sprites` / `loop` |
-| Draw text | `print "TEXT" at X,Y` |
+| Draw text | `print at X,Y, "TEXT"` |
 | Draw a number | `print Value at X,Y digits N` |
 | Draw a score | `print at X,Y, Score` |
 | Compose a HUD string | `format Value into Buffer` then `put Buffer count N at X,Y` |

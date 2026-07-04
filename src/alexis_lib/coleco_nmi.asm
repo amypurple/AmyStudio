@@ -7,6 +7,7 @@
 AMY_DISABLE_NMI:
     ld a,($73C4)
     and $DF
+    ld ($73C4),a
     ld c,a
     ld b,1
     call WRITE_REGISTER
@@ -16,6 +17,7 @@ AMY_DISABLE_NMI:
 AMY_ENABLE_NMI:
     ld a,($73C4)
     or $20
+    ld ($73C4),a
     ld c,a
     ld b,1
     call WRITE_REGISTER
