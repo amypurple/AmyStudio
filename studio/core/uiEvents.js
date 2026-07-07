@@ -11,6 +11,7 @@ export function bindTopUiEvents(ctx) {
     renderExamplePicker,
     renderExampleMeta,
     getExampleById,
+    ensureExamplesLoaded,
     buildProjectFromExample,
     clearCompiledArtifacts,
     closeTopbarMenu,
@@ -68,8 +69,17 @@ export function bindTopUiEvents(ctx) {
     ctx.setExampleSearchFilter(els.exampleSearchInput.value || "");
     renderExamplePicker();
   });
-  els.btnOpenExamples?.addEventListener("click", () => {
+  els.btnOpenExamples?.addEventListener("click", async () => {
     closeTopbarMenu();
+    if (typeof ensureExamplesLoaded === "function") {
+      try {
+        setStatus("Loading examples...");
+        await ensureExamplesLoaded();
+        setStatus("Examples ready.");
+      } catch (error) {
+        setStatus(`Cannot load examples: ${error?.message || error}`);
+      }
+    }
     els.examplesDialog?.showModal();
   });
   els.exampleSelect.addEventListener("change", () => {

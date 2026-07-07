@@ -1518,7 +1518,16 @@ export class Z80Optimizer {
                 const isLocalAnalysisBarrier = (inst) => {
                     if (!(inst instanceof Instruction)) return false;
                     const m = inst.mnemonic.toLowerCase();
-                    return ['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt'].includes(m);
+                    // Be conservative around implicit-register instructions. In particular,
+                    // EXX hides/restores BC/DE/HL through the shadow register set, so a
+                    // primary-register write before EXX may still be live after a later EXX.
+                    return [
+                        'call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt',
+                        'ex', 'exx',
+                        'ldi', 'ldir', 'ldd', 'lddr',
+                        'ini', 'inir', 'ind', 'indr',
+                        'outi', 'otir', 'outd', 'otdr'
+                    ].includes(m);
                 };
                 const getBranchConditionName = (inst) => {
                     if (!(inst instanceof Instruction)) return null;

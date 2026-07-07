@@ -1,4 +1,4 @@
-import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js";
+import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260707-async-example-index";
 import { alexisLibrarySources } from "./alexisLibrarySources.generated.js";
 
 const textEncoder = new TextEncoder();

@@ -1,6 +1,6 @@
 import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
-import { exampleCategoryOrder, exampleManifest } from "./examples-index.generated.js?v=20260704-dragon-castle-public";
+import { exampleCategoryOrder as generatedExampleCategoryOrder, exampleManifest as generatedExampleManifest } from "./examples-index.generated.js?v=20260707-async-example-index";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
 import { createAutocompleteController } from "./core/editor/autocomplete.js";
 import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260622-conditionals";
@@ -10,7 +10,7 @@ import {
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js";
-import { createExamplePickerHelpers } from "./core/examplePicker.js";
+import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-async-example-index";
 import {
   inferAmyMemoryCapabilities,
   parseCartridgeDirective as parseCartridgeDirectiveCore,
@@ -77,7 +77,7 @@ import {
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260616-frame-runtime3";
 import { createProjectFileUiHelpers } from "./core/projectFileUi.js";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js";
-import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js";
+import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260707-async-example-index";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
 import {
   buildProjectFromExample as buildProjectFromExampleCore,
@@ -94,8 +94,8 @@ import { exportProject as exportProjectCore, importProjectObject as importProjec
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { createDocsUi } from "./core/docsUi.js?v=20260620-release-docs-cleanup";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260622-end-sub-include-fix";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260622-comment-toggle";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260707-async-example-index";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260707-async-example-index";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bytesToDataUrl } from "./core/utils/dataUrls.js";
@@ -245,6 +245,9 @@ let emulatorWindow = null;
 let insightRefreshTimer = 0;
 let compiledColecoHeaderInfo = null;
 let sourceCartridgeMeta = null;
+const exampleCategoryOrder = [...generatedExampleCategoryOrder];
+const exampleManifest = [...generatedExampleManifest];
+let examplesIndexSynced = false;
 let examplesModulePromise = null;
 let wavToDsoundModulePromise = null;
 let internalCompilerModulePromise = null;
@@ -291,9 +294,31 @@ function setupProjectPanelTabs() {
 }
 
 
+function syncExampleIndexFromModule(examples) {
+  if (!examples || examplesIndexSynced) return;
+  if (Array.isArray(examples.exampleCategoryOrder)) {
+    exampleCategoryOrder.splice(0, exampleCategoryOrder.length, ...examples.exampleCategoryOrder);
+  }
+  if (Array.isArray(examples.exampleManifest)) {
+    exampleManifest.splice(0, exampleManifest.length, ...examples.exampleManifest);
+  }
+  examplesIndexSynced = true;
+}
+
+async function ensureExamplesLoaded() {
+  const examples = await loadExamplesModule();
+  syncExampleIndexFromModule(examples);
+  renderExamplePicker();
+  return examples;
+}
+
 function loadExamplesModule() {
   if (!examplesModulePromise) {
-    examplesModulePromise = import("./examples.js?v=20260703-examples-35-cube");
+    examplesModulePromise = import("./examples.js?v=20260707-async-example-index")
+      .then((examples) => {
+        syncExampleIndexFromModule(examples);
+        return examples;
+      });
   }
   return examplesModulePromise;
 }
@@ -328,7 +353,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompiler.js");
+    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260707-async-example-index");
   }
   return internalCompilerModulePromise;
 }
@@ -723,6 +748,7 @@ function bindEvents() {
         renderExamplePicker,
         renderExampleMeta,
         getExampleById,
+        ensureExamplesLoaded,
         buildProjectFromExample,
         clearCompiledArtifacts,
         closeTopbarMenu,
