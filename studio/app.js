@@ -834,6 +834,12 @@ function bindEvents() {
   });
 }
 
+function hideStudioLoading() {
+  const splash = document.getElementById("studioLoading");
+  if (!splash) return;
+  splash.classList.add("studio-loading--hidden");
+  window.setTimeout(() => splash.remove(), 360);
+}
 setupProjectPanelTabs();
 docsUi.bind();
 bindEvents();
@@ -854,7 +860,5 @@ syncUiFromProject();
 setView("studio");
 setStatus(`Ready. ${codecStatusLine()}\nTip: Generate ASM, then compile the ROM in Amy.`);
 tryAutoLoadBios();
-
-
-
+hideStudioLoading();
 
