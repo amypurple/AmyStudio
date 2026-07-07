@@ -446,6 +446,7 @@ export function transpileAmyCore(sourceText, deps) {
   function isBufferableVdpR1PureModifier(classification) {
     return classification?.kind === "modifier"
       && classification.label !== "nmi on"
+      && classification.label !== "nmi off"
       && (
         classification.category === "sprite_size"
         || classification.category === "sprite_zoom"
@@ -606,11 +607,11 @@ export function transpileAmyCore(sourceText, deps) {
           addCompilerWarning("display off only disables the display bit here; NMI remains enabled in the known VDP register 1 state. In normal Amy code, prefer screen off unless you intentionally want a blank display with interrupts still running.");
         }
         if (knownBefore !== null && knownAfter === knownBefore) {
-          suppressEmit = classification.label !== "nmi on";
+          suppressEmit = classification.label !== "nmi on" && classification.label !== "nmi off";
           if (suppressEmit) {
             addCompilerWarning(`${classification.label} has no effect here; current known VDP register 1 state already includes that setting, so this command is omitted from generated ASM.`);
           } else {
-            addCompilerWarning(`${classification.label} has no effect on the VDP register 1 bit state here, but it is still emitted because it acknowledges VDP status via READ_REGISTER.`);
+            addCompilerWarning(`${classification.label} has no effect on the known VDP register 1 bit state here, but it is still emitted as an explicit NMI ownership barrier.`);
           }
         }
         if (previousSameCategory && previousSameCategory.label !== classification.label) {
@@ -1196,6 +1197,49 @@ export function transpileAmyCore(sourceText, deps) {
 
   precomputeSprite16DataLengths();
 
+  function wrapVramUploadLines(lines) {
+    const clearLabel = makeGeneratedLabel("VramUploadClearNoNmi");
+    const doneLabel = makeGeneratedLabel("VramUploadDone");
+    return [
+      "    ld a,1",
+      "    ld (NO_NMI),a",
+      "    ld a,($73C4)",
+      "    push af",
+      "    and $DF",
+      "    ld ($73C4),a",
+      "    ld c,a",
+      "    ld b,1",
+      "    call WRITE_REGISTER",
+      ...lines,
+      "    pop af",
+      "    ld ($73C4),a",
+      "    push af",
+      "    ld c,a",
+      "    ld b,1",
+      "    call WRITE_REGISTER",
+      "    pop af",
+      "    and $20",
+      `    jp z,${clearLabel}`,
+      "    call READ_REGISTER",
+      "    xor a",
+      "    ld (NO_NMI),a",
+      "    ei",
+      `    jp ${doneLabel}`,
+      `${clearLabel}:`,
+      "    xor a",
+      "    ld (NO_NMI),a",
+      `${doneLabel}:`
+    ];
+  }
+  function wrapVramUploadLinesOwnedByMain(lines) {
+    return [
+      "    ld a,1",
+      "    ld (NO_NMI),a",
+      ...lines,
+      "    xor a",
+      "    ld (NO_NMI),a"
+    ];
+  }
   function emitPictureComponentToVram(component, target, byteCount) {
     const assetLabel = `Asset_${component.assetName}`;
     const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME" }[target];
@@ -1215,14 +1259,18 @@ export function transpileAmyCore(sourceText, deps) {
     ];
   }
 
-  function emitUploadPicture(name, rawLine) {
+  function emitUploadPicture(name, rawLine, options = {}) {
     const picture = pictureDefinitions.get(name);
+    const nmiKnownOff = knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0;
+    const wrapUpload = options.keepNmi
+      ? (lines) => lines
+      : (nmiKnownOff ? wrapVramUploadLinesOwnedByMain : wrapVramUploadLines);
     if (!picture) return { ok: false, lines: [], log: `Unknown picture '${name}': ${rawLine}` };
     const pc = picture.components.get("pattern_color");
     if (pc) {
       return {
         ok: true,
-        lines: [
+        lines: wrapUpload([
           `    ld hl,Asset_${pc.assetName}`,
           "    ld de,VRAM_PATTERN",
           "    ld bc,6144",
@@ -1233,7 +1281,7 @@ export function transpileAmyCore(sourceText, deps) {
           "    call AMY_COPY_BYTES_TO_VRAM",
           "    ld d,3",
           "    call AMY_LOAD_SEQUENTIAL_NAME_TABLE"
-        ]
+        ])
       };
     }
     const pattern = picture.components.get("pattern");
@@ -1245,7 +1293,7 @@ export function transpileAmyCore(sourceText, deps) {
     ];
     if (nameTable) lines.push(...emitPictureComponentToVram(nameTable, "name", 768));
     else lines.push("    ld d,3", "    call AMY_LOAD_SEQUENTIAL_NAME_TABLE");
-    return { ok: true, lines };
+    return { ok: true, lines: wrapUpload(lines) };
   }
 
   function emitShowPicture(name, rawLine) {
@@ -2548,9 +2596,9 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
-      const uploadPicture = line.match(/^upload\s+picture\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      const uploadPicture = line.match(/^upload\s+picture\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+with\s+nmi)?$/i);
       if (uploadPicture) {
-        const emitted = emitUploadPicture(uploadPicture[1], rawLine);
+        const emitted = emitUploadPicture(uploadPicture[1], rawLine, { keepNmi: /\s+with\s+nmi\s*$/i.test(line) });
         if (!emitted.ok) return { ok: false, asmBody: "", log: emitted.log };
         ensureImplicitStartForExecutable();
         body.push(...emitted.lines);

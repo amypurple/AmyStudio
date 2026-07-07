@@ -77,6 +77,31 @@ export function handleVramTextStatement({
     return null;
   }
 
+  function wrapVramUploadLines(lines) {
+    const doneLabel = makeGeneratedLabel("VramUploadDone");
+    return [
+      "    ld a,($73C4)",
+      "    push af",
+      "    and $DF",
+      "    ld ($73C4),a",
+      "    ld c,a",
+      "    ld b,1",
+      "    call WRITE_REGISTER",
+      ...lines,
+      "    pop af",
+      "    ld ($73C4),a",
+      "    push af",
+      "    ld c,a",
+      "    ld b,1",
+      "    call WRITE_REGISTER",
+      "    pop af",
+      "    and $20",
+      `    jp z,${doneLabel}`,
+      "    call READ_REGISTER",
+      "    ei",
+      `${doneLabel}:`
+    ];
+  }
   function isKnownDataSource(sourceExpr, minimumLength = 1) {
     const name = String(sourceExpr || "").trim();
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return false;
@@ -201,7 +226,7 @@ export function handleVramTextStatement({
     return {
       ok: true,
       handled: true,
-      lines: [`    ld hl,Asset_${sourceName}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`]
+      lines: wrapVramUploadLines([`    ld hl,Asset_${sourceName}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`])
     };
   }
 
@@ -215,7 +240,7 @@ export function handleVramTextStatement({
     return {
       ok: true,
       handled: true,
-      lines: [`    ld hl,${declaredAsset ? `Asset_${sourceName}` : resolveAddressSymbol(sourceName)}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`]
+      lines: wrapVramUploadLines([`    ld hl,${declaredAsset ? `Asset_${sourceName}` : resolveAddressSymbol(sourceName)}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`])
     };
   }
 
@@ -267,7 +292,7 @@ export function handleVramTextStatement({
     return {
       ok: true,
       handled: true,
-      lines: [
+      lines: wrapVramUploadLines([
         ...targetCode,
         "    ld a,e",
         "    out (VDP_CTRL_PORT),a",
@@ -279,7 +304,7 @@ export function handleVramTextStatement({
         ...maskCode,
         ...xorCode,
         "    call AMY_MERGE_BYTES_TO_VRAM"
-      ]
+      ])
     };
   }
 
@@ -395,7 +420,7 @@ export function handleVramTextStatement({
     return {
       ok: true,
       handled: true,
-      lines: [
+      lines: wrapVramUploadLines([
         "    ld bc,$0607",
         "    call WRITE_REGISTER",
         ...targetCode,
@@ -404,7 +429,7 @@ export function handleVramTextStatement({
         "    pop de",
         `    ld bc,${byteCount}`,
         `    call ${isDefinitelyByteSizedCount(String(byteCount)) ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
-      ]
+      ])
     };
   }
 
@@ -572,7 +597,7 @@ export function handleVramTextStatement({
         return {
           ok: true,
           handled: true,
-          lines: targetIsDirectDeLoad
+          lines: wrapVramUploadLines(targetIsDirectDeLoad
             ? [
                 ...sourceCode,
                 ...targetVram,
@@ -586,7 +611,7 @@ export function handleVramTextStatement({
                 "    pop de",
                 ...emitLoadCountIntoBC(resolvedCountToken),
                 `    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
-              ]
+              ])
         };
       }
     }
@@ -907,7 +932,7 @@ export function handleVramTextStatement({
     if (!targetCode) return { ok: false, handled: true, log: `fill to VRAM requires a valid VRAM target: ${rawLine}` };
     if (!countCode) return { ok: false, handled: true, log: `fill to VRAM count must be a valid byte count: ${rawLine}` };
     if (!loadValue) return { ok: false, handled: true, log: `fill to VRAM value must be a byte value: ${rawLine}` };
-    return { ok: true, handled: true, lines: [...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"] };
+    return { ok: true, handled: true, lines: wrapVramUploadLines([...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"]) };
   }
 
   const fill = line.match(/^fill\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s+with\s+(.+?)\s+count\s+(.+)$/i);
@@ -915,7 +940,7 @@ export function handleVramTextStatement({
     const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[fill[1].toLowerCase()];
     const loadValue = emitLoadInt8ValueInto("a", fill[2]);
     if (!loadValue) return { ok: false, handled: true, log: `VRAM fill value must be a byte value: ${rawLine}` };
-    return { ok: true, handled: true, lines: [`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call FILL_VRAM"] };
+    return { ok: true, handled: true, lines: wrapVramUploadLines([`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call FILL_VRAM"]) };
   }
 
   const findTileBox = line.match(/^find\s+tile\s+([A-Za-z_][A-Za-z0-9_]*)\s+under\s+box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);

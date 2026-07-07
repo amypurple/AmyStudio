@@ -57,7 +57,6 @@ export class DAN2Codec {
 
   _readByte() {
     if (this.index_src >= this.sourceLength) throw new Error("DAN2 decode error: unexpected end of input");
-    if (this.index_src >= this.sourceLength) return 0xFF; // Gracefully handle EOF boundary to terminate Elias Gamma safely
     return this.data_src[this.index_src++] & 0xFF;
   }
 
@@ -129,12 +128,20 @@ export class DAN2Codec {
   _writeEnd() {
     this._writeBit(0);
     this._writeBits(0, 16);
+    // DAN2 length 0 is detected after 17 zero bits in the decoder; this
+    // padding makes streams self-contained when the marker lands on EOF.
+    this._writeBit(0);
   }
 
-  _readBit() {
+  _readBit(allowEofPadding = false) {
     if (this.bit_mask === 0) {
       this.bit_mask = 128;
       this.bit_index = this.index_src;
+      if (this.index_src >= this.sourceLength) {
+        if (!allowEofPadding) throw new Error("DAN2 decode error: unexpected end of input");
+        this.bit_mask >>= 1;
+        return 0;
+      }
       this._readByte();
     }
     const bit = (this.data_src[this.bit_index] & this.bit_mask) ? 1 : 0;
@@ -152,7 +159,7 @@ export class DAN2Codec {
     let counter = 0;
     while (counter < 17) {
       counter += 1;
-      if (this._readBit() === 1) break;
+      if (this._readBit(true) === 1) break;
     }
     if (counter >= 17) return 0;
 
@@ -205,7 +212,8 @@ export class DAN2Codec {
 
   _writeLZStream() {
     this._resetWriter();
-    this._writeBits(0xFE, this.BIT_OFFSET4 - this.BIT_OFFSET4_MIN + 1);
+    for (let bits = this.BIT_OFFSET4_MIN; bits < this.BIT_OFFSET4; bits += 1) this._writeBit(1);
+    this._writeBit(0);
     this._writeByte(this.data_src[0]);
 
     for (let i = 1; i < this.index_src; i += 1) {
