@@ -1847,7 +1847,7 @@ export class Z80Optimizer {
                     const layout = pairByteLayout[pair];
                     for (let lookback = optimized.length - 1; lookback >= 0; lookback--) {
                         const prev = optimized[lookback];
-                        if (!(prev instanceof Instruction)) continue;
+                        if (!(prev instanceof Instruction)) break;
                         const prevMnemonic = prev.mnemonic.toLowerCase();
                         if (prev.label || ['call', 'jp', 'jr', 'djnz', 'ret', 'reti', 'retn'].includes(prevMnemonic)) break;
                         if (prevMnemonic === 'ld' &&
@@ -1874,7 +1874,7 @@ export class Z80Optimizer {
                     let lowDelta = 0;
                     for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= maxWindow; lookback--) {
                         const prev = optimized[lookback];
-                        if (!(prev instanceof Instruction)) continue;
+                        if (!(prev instanceof Instruction)) break;
                         const prevMnemonic = prev.mnemonic.toLowerCase();
                         if (prev.label || isLocalAnalysisBarrier(prev) || ['ex', 'exx'].includes(prevMnemonic)) break;
                         if (prevMnemonic === 'inc' &&
@@ -1909,7 +1909,7 @@ export class Z80Optimizer {
                     const layout = containingPair ? pairByteLayout[containingPair] : null;
                     for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= maxWindow; lookback--) {
                         const prev = optimized[lookback];
-                        if (!(prev instanceof Instruction)) continue;
+                        if (!(prev instanceof Instruction)) break;
                         const prevMnemonic = prev.mnemonic.toLowerCase();
                         if (prev.label || isLocalAnalysisBarrier(prev) || ['ex', 'exx'].includes(prevMnemonic)) break;
                         if (prevMnemonic === 'ld' &&
@@ -1935,6 +1935,10 @@ export class Z80Optimizer {
                             prev.operands[1].type === 'immediate') {
                             const imm16 = Number(prev.operands[1].value) & 0xFFFF;
                             return reg === layout.high ? (imm16 >> 8) & 0xFF : imm16 & 0xFF;
+                        }
+                        if (reg === 'a' &&
+                            ['add', 'adc', 'sbc', 'sub', 'and', 'or', 'xor', 'neg', 'cpl', 'daa', 'rla', 'rra', 'rlca', 'rrca'].some((name) => prevMnemonic === name || prevMnemonic.startsWith(name + ' '))) {
+                            break;
                         }
                         if (this.instructionWritesRegister(prev, reg)) break;
                     }
@@ -2877,7 +2881,7 @@ export class Z80Optimizer {
 
                         for (let back = optimized.length - 1, scanned = 0; back >= 0 && scanned < SHORT_LOCAL_REUSE_WINDOW; back--, scanned++) {
                             const prev = optimized[back];
-                            if (!(prev instanceof Instruction)) continue;
+                            if (!(prev instanceof Instruction)) break;
                             if (prev.label) break;
                             if (this.instructionWritesRegister(prev, targetValue)) break;
                             if (prev.mnemonic.toLowerCase() === 'ld' &&
@@ -2919,7 +2923,7 @@ export class Z80Optimizer {
                             dstReg !== srcReg) {
                             for (let back = optimized.length - 1, scanned = 0; back >= 0 && scanned < SHORT_LOCAL_REUSE_WINDOW; back--, scanned++) {
                                 const prev = optimized[back];
-                                if (!(prev instanceof Instruction)) continue;
+                                if (!(prev instanceof Instruction)) break;
                                 if (prev.label || isLocalAnalysisBarrier(prev)) break;
                                 if (prev.mnemonic.toLowerCase() === 'ld' &&
                                     prev.operands.length === 2 &&
@@ -4519,7 +4523,7 @@ export class Z80Optimizer {
                             let bKnownZero = false;
                             for (let lookback = optimized.length - 1; lookback >= 0; lookback--) {
                                 const prev = optimized[lookback];
-                                if (!(prev instanceof Instruction)) continue;
+                                if (!(prev instanceof Instruction)) break;
                                 const prevMnemonic = prev.mnemonic.toLowerCase();
                                 if (prev.label || ['call', 'jp', 'jr', 'djnz', 'ret', 'reti', 'retn'].includes(prevMnemonic)) break;
                                 if (prevMnemonic === 'ldir' || prevMnemonic === 'lddr') {
@@ -4561,7 +4565,7 @@ export class Z80Optimizer {
                         let dKnownZero = false;
                         for (let lookback = optimized.length - 1; lookback >= 0; lookback--) {
                             const prev = optimized[lookback];
-                            if (!(prev instanceof Instruction)) continue;
+                            if (!(prev instanceof Instruction)) break;
                             if (prev.mnemonic.toLowerCase() === 'ld' &&
                                 prev.operands.length === 2 &&
                                 prev.operands[0].type === 'register' &&
