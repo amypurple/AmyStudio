@@ -444,7 +444,7 @@ export const alexisRuntimeCatalog = {
       "AMY_FX8_8_FRAC_TO_HUNDREDTHS",
       "AMY_U8_TO_ASCII2"
     ],
-    "asm": "AMY_FX8_8_TO_ASCII6:\n    ld a,l\n    push af\n    ld a,h\n    call AMY_U8_TO_ASCII3\n    ld a,'.'\n    ld (de),a\n    inc de\n    pop af\n    push de\n    call AMY_FX8_8_FRAC_TO_HUNDREDTHS\n    pop de\n    jp AMY_U8_TO_ASCII2\n\n; Format a signed 8.8 fixed-point value as \"siii.ff\".\n; Input:  HL = fixed 8.8 value\n;         DE = destination buffer (7 bytes)\n; Output: writes exactly 7 ASCII chars, using leading space for non-negative values"
+    "asm": "AMY_FX8_8_TO_ASCII6:\n    ld a,l\n    push af\n    ld a,h\n    call AMY_U8_TO_ASCII3\n    inc de\n    ld a,'.'\n    ld (de),a\n    inc de\n    pop af\n    push de\n    call AMY_FX8_8_FRAC_TO_HUNDREDTHS\n    pop de\n    jp AMY_U8_TO_ASCII2\n\n; Format a signed 8.8 fixed-point value as \"siii.ff\".\n; Input:  HL = fixed 8.8 value\n;         DE = destination buffer (7 bytes)\n; Output: writes exactly 7 ASCII chars, using leading space for non-negative values"
   },
   "AMY_SFX8_8_TO_ASCII7": {
     "group": "math",
