@@ -47,6 +47,9 @@ export function createSimpleArithmeticHelpers({
         return [...loadValue, "    ld d,a", "    ld e,0"];
       }
       if (valueInfo.type === "int16") {
+        if (valueInfo.storage !== "stack" && valueInfo.asmName) {
+          return [`    ld de,(${valueInfo.asmName})`];
+        }
         const loadValue = emitLoadInt16IntoHL(valueToken, preferredDeclaredType);
         if (!loadValue) return null;
         return [...loadValue, "    ex de,hl"];
@@ -80,9 +83,13 @@ export function createSimpleArithmeticHelpers({
     const valueInfo = getRuntimeInfo(valueToken);
     let loadValue = null;
     if (valueInfo && valueInfo.kind !== "array" && valueInfo.type === "int16") {
-      const loadSource = emitLoadInt16IntoHL(valueToken, targetDeclared);
-      if (!loadSource) return null;
-      loadValue = ["    push hl", ...loadSource, "    ex de,hl", "    pop hl"];
+      if (valueInfo.storage !== "stack" && valueInfo.asmName) {
+        loadValue = [`    ld de,(${valueInfo.asmName})`];
+      } else {
+        const loadSource = emitLoadInt16IntoHL(valueToken, targetDeclared);
+        if (!loadSource) return null;
+        loadValue = ["    push hl", ...loadSource, "    ex de,hl", "    pop hl"];
+      }
     } else {
       loadValue = emitLoadInt16ArithSourceIntoDE(valueToken, targetDeclared);
       if (!loadValue) return null;
@@ -95,6 +102,14 @@ export function createSimpleArithmeticHelpers({
   function emitShiftVar(target, direction) {
     const info = getRuntimeInfo(target);
     if (!info || info.kind === "array") return null;
+    if (info.isRef && info.refTargetType === "int8") {
+      const instr = direction === "left" ? "sla" : "srl";
+      return [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        `    ${instr} (hl)`
+      ];
+    }
     if (info.type === "int8") {
       const instr = direction === "left" ? "sla" : "srl";
       if (info.storage === "stack") return [`    ${instr} (${formatIxOffset(info.offset)})`];
@@ -112,6 +127,14 @@ export function createSimpleArithmeticHelpers({
     if (n < 1 || n > 7) return null;
     const info = getRuntimeInfo(target);
     if (!info || info.kind === "array") return null;
+    if (info.isRef && info.refTargetType === "int8") {
+      const instr = direction === "left" ? "sla" : "srl";
+      return [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        ...Array.from({ length: n }, () => `    ${instr} (hl)`)
+      ];
+    }
     if (info.type === "int8") {
       const instr = direction === "left" ? "sla" : "srl";
       if (info.storage === "stack") {

@@ -18,6 +18,11 @@ export function createCompareLiteralHelpers({
     return { label, length: value.length };
   }
 
+  function isZeroLiteral(token) {
+    const raw = String(token || "").trim().toLowerCase();
+    return raw === "0" || raw === "+0" || raw === "-0" || raw === "$0" || raw === "$00" || raw === "$0000" || raw === "0x0" || raw === "0x00" || raw === "0x0000";
+  }
+
   function optimizeRepeatedBitTestLoads(lines) {
     const sameLoadPattern = /^\s*ld\s+a,\(([^)]+)\)\s*$/i;
     const bitTestPattern = /^\s*bit\s+[0-7],a\s*$/i;
@@ -52,6 +57,24 @@ export function createCompareLiteralHelpers({
     const rightType = resolveValueType(rightToken);
     const lines = [];
     const effectiveOp = operator;
+    if (!rightType && isZeroLiteral(rightToken)) {
+      lines.push(...loadLeft);
+      lines.push("    or a");
+      if (effectiveOp === "==") lines.push(`    jp z,${label}`);
+      else if (effectiveOp === "!=") lines.push(`    jp nz,${label}`);
+      else if (effectiveOp === "<") lines.push(`    jp m,${label}`);
+      else if (effectiveOp === ">=") lines.push(`    jp p,${label}`);
+      else if (effectiveOp === "<=") {
+        lines.push(`    jp z,${label}`);
+        lines.push(`    jp m,${label}`);
+      } else if (effectiveOp === ">") {
+        const doneLabel = makeGeneratedLabel("CompareDone");
+        lines.push(`    jp z,${doneLabel}`);
+        lines.push(`    jp p,${label}`);
+        lines.push(`${doneLabel}:`);
+      } else return null;
+      return lines;
+    }
     if (effectiveOp === "==" || effectiveOp === "!=") {
       if (rightType) {
         if (!isByteValueType(rightType)) return null;
@@ -116,6 +139,31 @@ export function createCompareLiteralHelpers({
     const rightType = resolveValueType(rightToken);
     const lines = [];
     const effectiveOp = operator;
+    if (!rightType && isZeroLiteral(rightToken)) {
+      lines.push(...loadLeft);
+      if (effectiveOp === "==" || effectiveOp === "!=") {
+        lines.push("    ld a,h");
+        lines.push("    or l");
+        lines.push(`    jp ${effectiveOp === "==" ? "z" : "nz"},${label}`);
+        return lines;
+      }
+      lines.push("    ld a,h");
+      lines.push("    or a");
+      if (effectiveOp === "<") lines.push(`    jp m,${label}`);
+      else if (effectiveOp === ">=") lines.push(`    jp p,${label}`);
+      else if (effectiveOp === "<=") {
+        lines.push(`    jp m,${label}`);
+        lines.push("    or l");
+        lines.push(`    jp z,${label}`);
+      } else if (effectiveOp === ">") {
+        const doneLabel = makeGeneratedLabel("CompareDone");
+        lines.push(`    jp m,${doneLabel}`);
+        lines.push("    or l");
+        lines.push(`    jp nz,${label}`);
+        lines.push(`${doneLabel}:`);
+      } else return null;
+      return lines;
+    }
     if (effectiveOp === "==" || effectiveOp === "!=") {
       if (rightType) {
         if (!isWordValueType(rightType)) return null;

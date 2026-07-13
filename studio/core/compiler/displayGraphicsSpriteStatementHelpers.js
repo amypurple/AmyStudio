@@ -274,19 +274,39 @@ export function handleDisplayGraphicsSpriteStatement({
     };
   }
 
-  const setSpritePattern = line.match(/^set\s+sprite\s+(.+?)\s+pattern\s+to\s+(.+)$/i);
-  if (setSpritePattern) {
-    const indexValue = tryEvaluateConstantExpression(setSpritePattern[1]);
-    const loadPattern = emitLoadInt8ValueInto("a", setSpritePattern[2]);
-    if (!Number.isInteger(indexValue) || indexValue < 0 || indexValue > 31 || !loadPattern) {
-      return { ok: false, handled: true, log: `set sprite pattern requires a constant sprite index 0..31 and byte pattern value: ${rawLine}` };
+  const setSpritesByteField = line.match(/^set\s+sprites\s+(.+?)\s+(y|x|pattern|color)\s+to\s+(.+)$/i);
+  if (setSpritesByteField) {
+    const indexes = setSpritesByteField[1].split(",").map((part) => tryEvaluateConstantExpression(part.trim()));
+    const fieldName = setSpritesByteField[2].toLowerCase();
+    const fieldOffset = { y: 0, x: 1, pattern: 2, color: 3 }[fieldName];
+    const loadValue = emitLoadInt8ValueInto("a", setSpritesByteField[3]);
+    if (!indexes.length || indexes.some((value) => !Number.isInteger(value) || value < 0 || value > 31) || !loadValue) {
+      return { ok: false, handled: true, log: `set sprites ${fieldName} requires constant sprite indexes 0..31 and a byte value: ${rawLine}` };
     }
     return {
       ok: true,
       handled: true,
       lines: [
-        ...loadPattern,
-        `    ld (AMY_SPRITE_TABLE+${indexValue * 4 + 2}),a`
+        ...loadValue,
+        ...indexes.map((indexValue) => `    ld (AMY_SPRITE_TABLE+${indexValue * 4 + fieldOffset}),a`)
+      ]
+    };
+  }
+  const setSpriteByteField = line.match(/^set\s+sprite\s+(.+?)\s+(y|x|pattern|color)\s+to\s+(.+)$/i);
+  if (setSpriteByteField) {
+    const indexValue = tryEvaluateConstantExpression(setSpriteByteField[1]);
+    const fieldName = setSpriteByteField[2].toLowerCase();
+    const fieldOffset = { y: 0, x: 1, pattern: 2, color: 3 }[fieldName];
+    const loadValue = emitLoadInt8ValueInto("a", setSpriteByteField[3]);
+    if (!Number.isInteger(indexValue) || indexValue < 0 || indexValue > 31 || !loadValue) {
+      return { ok: false, handled: true, log: `set sprite ${fieldName} requires a constant sprite index 0..31 and byte value: ${rawLine}` };
+    }
+    return {
+      ok: true,
+      handled: true,
+      lines: [
+        ...loadValue,
+        `    ld (AMY_SPRITE_TABLE+${indexValue * 4 + fieldOffset}),a`
       ]
     };
   }

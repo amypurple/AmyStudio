@@ -433,6 +433,30 @@ Expression codegen is intentionally partial. If a form fails to compile, split
 it into two assignment lines rather than hiding the machine cost in a complex
 expression.
 
+### Fixed 8.8 to Byte Casts
+
+Amy accepts the common sprite-position cast directly:
+
+```basic
+ufixed X8 = 96.5
+fixed  V8 = -2.25
+u8 ScreenX = X8   ' integer byte, same as highbyte X8
+i8 SpeedY  = V8   ' signed integer byte, same as highbyte V8
+```
+
+This is compiled as a high-byte load from the 8.8 value. It has no runtime helper.
+Amy keeps the rule narrow on purpose: unsigned 8.8 casts to `u8`, signed 8.8 casts to `i8`. Use `highbyte`, `whole`, or an explicit temporary when the signedness is intentionally different.
+
+Fixed 8.8 assignments use fixed-point meaning, not raw `u16` meaning:
+
+```basic
+ufixed X = 8      ' stores $0800
+ufixed Half = 1.5 ' stores $0180
+u8 ScreenX = X    ' reads the integer byte, 8
+```
+
+Comparisons keep full fixed-point precision. `if X > 8 then` compares `X` against `$0800`, so `8.5 > 8` is true. Use `if whole X > 8 then` only when you intentionally want to ignore the fractional byte.
+
 ### 8/16-bit Extraction Helpers
 
 ```basic
@@ -501,6 +525,70 @@ sub DrawTail:
 ```
 
 Removed procedure aliases and parser-level cleanup leftovers are summarized near the end of this document.
+
+### Ref parameters (by reference)
+
+`ref` passes the *address* of a variable instead of a copy, so the sub can
+mutate the caller's data — the Amy equivalent of a C pointer parameter
+(`void move(Actor *a)`). Records are always passed `ref`; scalars may be.
+
+```basic
+record Actor:
+  u8 X
+  u8 Y
+  u16 Score
+end record
+
+Actor Hero
+Actor Foes[3]
+u8 Lives = 3
+
+sub MoveActor(ref Actor A, u8 Dx):
+  A.X += Dx
+  A.Score += 10
+  return
+
+sub LoseLife(ref u8 V):
+  dec V
+  return
+```
+
+```basic
+MoveActor(Hero, 3)      ' pushes @Hero (a constant address)
+MoveActor(Foes[1], 2)   ' constant index folds to a constant address
+LoseLife(Lives)
+LoseLife(Hero.Y)        ' any addressable byte works
+```
+
+Rules:
+- allowed target types: `ref u8`, `ref i8`, `ref u16`, `ref i16`, and `ref RecordType`
+- a record parameter **must** be `ref` (records are never copied)
+- the argument must be an addressable variable of the exact same type:
+  a global, a record field, an array element, a local, or another `ref` parameter
+  (forwarding). Literals and expressions are compile errors.
+- `ref` is not supported for `u32`, `i32`, `fixed`, `fp5`, `bool`, `bcd`, or
+  whole arrays (yet) — declaring one is a compile error, never wrong code
+
+Generated code — no runtime helper, no copy; the slot holds a 2-byte address
+and every access dereferences through HL with constant offsets:
+
+```asm
+; caller: MoveActor(Hero, 3)
+    ld hl,$0003
+    push hl            ; Dx
+    ld hl,$7020        ; @Hero — folded to a constant
+    push hl
+    call AMY_UPROC_MoveActor
+
+; callee: A.Y += 1   (Y is at offset 1 in Actor)
+    ld l,(ix+4)        ; load the pointer from the stack slot
+    ld h,(ix+5)
+    inc hl             ; + field offset (inc hl for offsets 1-3, ld de,N above)
+    ld a,(hl)
+    add a,1
+    ...
+    ld (hl),a
+```
 
 ### Function (returns a value)
 
@@ -844,9 +932,8 @@ BCD current limits:
 - no general BCD expressions such as `Score = Score + 10`
 - indexed byte reads such as `Score[0]` are for debugging/inspection only
 
-Temporary cleanup note: old u32 prefix forms still compile (`u32 zero Counter32`,
-`u32 add Addend32 to Counter32`, etc.), but new code should use `clear`,
-assignment, `+=`, `-=`, `inc`, and `dec`.
+Temporary cleanup note: old u32 prefix add/sub/inc forms still compile for compatibility,
+but new code should use `clear`, assignment, `+=`, `-=`, `inc`, and `dec`.
 
 ### Shift
 
@@ -947,7 +1034,6 @@ Preferred current direction:
 ### U32 helpers
 
 ```basic
-u32 zero Counter32
 u32 copy Seed32 to Counter32
 u32 add Addend32 to Counter32
 u32 inc Counter32
@@ -1055,7 +1141,8 @@ VDP side-effect contract:
 | `graphics mode ...` | usually blanks | mode default | mode registers/table shadows | mode-specific setup |
 | `text screen` | blanks until `screen on` | mode default | standard 32x24 text setup | font, 32 color groups, cls |
 | `show picture Name` | blanks, then shows | unchanged unless mode helper changes it | bitmap setup | uploads picture |
-| `upload picture Name` | unchanged | unchanged | no display policy | uploads picture |
+| `upload picture Name` | unchanged | protected around VRAM upload | no display policy | uploads picture |
+| `upload picture Name with nmi` | unchanged | preserves NMI state | benchmark/special-case policy | uploads picture |
 
 Use `display off` / `display on` when you only want to hide VRAM changes from
 the player. Use `screen on` when you also want the normal NMI-enabled frame loop.
@@ -1455,6 +1542,15 @@ set sprite I to Y,X,Pattern,Color
 set sprite I + 1 to SpriteY - 1,SpriteX - 8,Pattern,Color
 set sprite I tile TileX,TileY pattern Pattern color Color
 set sprite I tile TileX,TileY pattern Pattern color Color offset DX,DY
+set sprite I y to Y
+set sprite I x to X
+set sprites 0,1,2,3 x to X
+set sprite I pattern to Pattern
+set sprite I color to Color
+Var = sprite I y
+Var = sprite I x
+Var = sprite I pattern
+Var = sprite I color
 hide sprite I
 clear sprites
 clear sprites from 4 count 4
@@ -1465,7 +1561,7 @@ update sprites from 4 count 4
 After changing shadow entries, call `update sprites`.  
 Sprite shadow writes are not visible until `update sprites`.
 This is an intentional machine contract:
-- `set sprite ...`, `hide sprite`, and `clear sprites` modify shadow state only
+- `set sprite ...`, `set sprite I y/x/pattern/color to ...`, `hide sprite`, and `clear sprites` modify shadow state only
 - `clear sprites from First count Count` hides a constant range without changing sprite count
 - `update sprites` uploads the active shadow entries to the VDP
 - `update sprites from First count Count` uploads only a constant range and writes the sprite terminator after that range
@@ -1481,6 +1577,11 @@ Add `offset DX,DY` when the gameplay point is not the sprite's top-left corner.
 Offsets are signed pixel adjustments after tile-to-pixel conversion. For
 example, `offset -4,-8` places an 8x8 sprite around a center/feet-style anchor
 instead of directly at the tile's top-left visual pixel.
+
+`sprite I y`, `sprite I x`, `sprite I pattern`, and `sprite I color` read from
+the Amy sprite shadow table, not directly from VRAM. In these partial setters and getters, `I` is currently a constant
+sprite index from 0 to 31; variable sprite indexes are not accepted yet. These getters are useful for animation routines that
+move or inspect shadow entries before the next `update sprites`. Sprite fields can also be used in byte expressions with ROM byte tables, for example `set sprite 4 x to sprite 0 x + StarDX[I]`.
 
 ---
 
@@ -1549,7 +1650,7 @@ wait 5 frames
 wait 180 frames or press
 wait 180 frames or press on joypad 1
 wait vblank
-wait vblank 5
+wait 5 frames
 wait key1
 wait key7 on keypad 2
 wait key release on keypad 2
@@ -1690,7 +1791,7 @@ wait 1 frame
 wait 5 frames
 wait 180 frames or press
 wait vblank
-wait vblank 5
+wait 5 frames
 halt
 ```
 
@@ -1774,6 +1875,56 @@ This is useful with `put MazeMap frame size W,H at X,Y` for visible tile maps.
 `sprite16` converts 16-row groups to 32 sprite bytes: 16 left-column bytes then 16 right-column bytes.
 Each visual row may be written either as `"...."` or `bitmap "...."`. The `bitmap` keyword is optional.
 
+### Word tables (indexable ROM address tables)
+
+`data Name words` builds a ROM table of 16-bit entries — typically addresses of
+other blocks via `@Label` — and `Name[Index]` picks one at runtime. This is the
+Amy equivalent of C's `const byte* levels[]`.
+
+```basic
+data Level1 bytes $01,$02,$03
+data Level2 bytes $04,$05
+
+data Levels words
+  @Level1, @Level2
+end data
+
+data Extras words = @Level2, $8000   ' inline form; raw word values allowed
+
+decompress mdkrle Levels[LevelNum] to vram.name
+put Frames[Type] frame size 4,4 at X,Y
+```
+
+Rules:
+- entries are `@Label` (a data block, asset, or label), `$xxxx`, or a decimal word
+- a **constant index folds to the entry label directly** (`Levels[1]` → `ld hl,Level2_label`, no table walk)
+- a variable index reads the `dw` entry at runtime with the minimal sequence
+  (`add a,a` / `add hl,de` / fetch low+high / `ex de,hl`) — no runtime helper
+- at most 128 entries (the byte-index doubling limit); out-of-range constant
+  indexes and non-`@` bare identifiers are compile errors
+- consumers taking a ROM source address accept `Table[Index]`: `decompress`,
+  `put ... frame`, and everything routed through the shared source-address path
+
+### Pointer reads: `P = Table[Index]` + `peek(P)`
+
+A word-table entry can also be stored into a `u16` variable and walked byte by
+byte — the Amy equivalent of C's `code = *p++` decoder loop:
+
+```basic
+u16 P = 0
+u8 Code = 0
+
+P = Levels[LevelNum]     ' dereferenced ROM address into a u16 "pointer"
+Code = peek(P)           ' ld hl,(P) / ld a,(hl)
+P += 1
+```
+
+`peek(Addr)` is a `u8` expression reading one byte from the address held in any
+`u16` expression (`peek(P + 1)` works). It composes in larger expressions and
+conditions (`if peek(P) == $FF then`). No runtime helper is emitted, and there
+is no bounds checking — it is the deliberate low-level escape hatch for ROM
+decoders and memory-mapped reads.
+
 ### Asset (compressed ROM)
 
 ```basic
@@ -1855,6 +2006,35 @@ Use inline ASM only after checking:
 1. Does a direct Amy statement already exist for this?
 2. Does a `print`, `format`, `u32`, `bcd`, sprite, text, VRAM, decompression, or input helper cover it?
 3. Is this genuinely hardware-timing-sensitive or a missing language feature?
+
+### External ASM Bridge
+
+Use `include asm` when an external project file contains Z80 labels, routines, or data that must be assembled with the program:
+
+```basic
+include asm "@project/my_engine.inc"
+```
+
+Use `call asm` to call a raw Z80 label without wrapping it in `asm { ... }`:
+
+```basic
+call asm Bunny_StartNearOriginal
+```
+
+For routines that expect register parameters, specify the register loads explicitly:
+
+```basic
+call asm AMY_PLAY_SOUND with b = 6
+call asm AMY_COPY_BYTES_TO_VRAM with hl = PictureData, de = vram.pattern, bc = 768
+call asm AMY_PUT_CHAR_AT with a = Tile, d = Y, e = X
+```
+
+Rules:
+- `call asm` targets a raw assembler label; it does not apply Amy `sub` name mangling.
+- Supported argument registers are `a`, `b`, `c`, `d`, `e`, `h`, `l`, `hl`, `de`, and `bc`.
+- Arguments are Z80 ABI registers, not typed Amy parameters; document what the routine destroys.
+- Do not set both a word register and one of its byte halves in the same call, for example `hl` and `h`.
+- `include asm` emits code at that source position. If the include contains executable routines, place it after a terminating jump/loop or call it through a forward `call asm` so normal program flow cannot fall into the included code accidentally.
 
 ---
 
@@ -2060,6 +2240,7 @@ Current expression engine notes:
 | `set sprite I tile X,Y pattern P color C` | Write shadow entry from tile-map coordinates |
 | `set sprite I tile X,Y pattern P color C offset DX,DY` | Same, with signed pixel offset |
 | `set sprite I pattern to P` | Change only the pattern byte in one shadow entry |
+| `set sprites 0,1,2,3 x to X` | Change one field on several constant shadow entries |
 | `set sprite I pattern bit B on/off` | Set or clear one pattern bit |
 | `toggle sprite I pattern bit B` | Toggle one pattern bit |
 | `move sprite I toward tile X,Y step S wait F frames` | Smoothly move a shadow entry toward tile coordinates |
@@ -2151,7 +2332,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | Statement | Meaning |
 |---|---|
 | `asm { ... }` | Inline Z80 assembly block |
-| `include "@project/file.inc"` | Include external ASM/data without an inline ASM block |
+| `include asm "@project/file.inc"` | Include external ASM/data without an inline ASM block |
+| `call asm Label [with reg = value, ...]` | Call a raw Z80 label, optionally loading ABI registers first |
 
 ---
 

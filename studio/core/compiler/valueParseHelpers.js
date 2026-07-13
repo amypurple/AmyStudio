@@ -231,7 +231,7 @@ export function createValueParseHelpers({
       const pushCode = emitPushArgument(args[i], sig[i]);
       if (!pushCode) return null;
       lines.push(...pushCode);
-      cleanupBytes += runtimeParamSlotSize(sig[i].type, sig[i].declaredType);
+      cleanupBytes += sig[i].isRef ? 2 : runtimeParamSlotSize(sig[i].type, sig[i].declaredType);
     }
     return { lines, cleanupBytes, invokeKeyword, name };
   }
@@ -467,6 +467,7 @@ export function createValueParseHelpers({
       if (info.kind === "array") return null;
       if (info.kind === "u32") return "u32";
       if (info.kind === "i32") return "i32";
+      if (info.isRef && info.refTargetType) return info.refTargetType;
       return info.type;
     }
     return null;

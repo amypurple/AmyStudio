@@ -18,7 +18,8 @@ export function createTypeInferenceHelpers({
   resolveValueType,
   isSafeExpression,
   tryEvaluateCompileTimeNumericExpression,
-  dataLengths
+  dataLengths,
+  dataWordTables
 }) {
   function resolveDeclaredValueType(token) {
     const builtinInput = parseBuiltinInputRef(token);
@@ -34,6 +35,7 @@ export function createTypeInferenceHelpers({
     const arrayRef = parseArrayRef(token);
     if (arrayRef) {
       if (dataLengths?.has(arrayRef.name)) return "u8";
+      if (dataWordTables?.has(arrayRef.name)) return "u16";
       const info = getRuntimeInfo(arrayRef.name);
       if (!info) return null;
       if (info.kind === "array") return normalizeDeclaredType(info.declaredType || info.elementType || info.type);
@@ -190,6 +192,9 @@ export function createTypeInferenceHelpers({
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
     }
     if (node.kind === "call") {
+      if (String(node.name || "").toLowerCase() === "peek" && node.args.length === 1) {
+        return { declaredType: "u8", runtimeType: "int8" };
+      }
       if (String(node.name || "").toLowerCase() === "random" && (node.args.length === 1 || node.args.length === 2)) {
         return { declaredType: "u8", runtimeType: "int8" };
       }

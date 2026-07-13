@@ -17,10 +17,23 @@ export function handleForStatement({
   emitLoadInt8Into,
   emitStoreInt8FromA,
   emitLoadInt16IntoHL,
-  emitStoreInt16FromHL
+  emitStoreInt16FromHL,
+  isAnyFixedDeclaredType
 }) {
   const _dep = checkForDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
+
+  const isFixedDeclared = (declared) => typeof isAnyFixedDeclaredType === 'function' && isAnyFixedDeclaredType(normalizeDeclaredType(declared));
+  const rejectFixedLoopVariable = (name) => ({
+    ok: false,
+    handled: true,
+    log: "for loop variable cannot be fixed/ufixed; use a u8/u16 counter or 'whole " + name + "': " + rawLine
+  });
+  const rejectFixedLoopBound = (token) => ({
+    ok: false,
+    handled: true,
+    log: "for loop bound cannot be fixed/ufixed; use 'whole " + token + "' as the loop bound: " + rawLine
+  });
 
   const forDownto = line.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|from)\s*(.+?)\s+downto\s+(.+?)(?:\s+step\s+(.+?))?\s*:?$/i);
   if (forDownto) {
@@ -28,6 +41,10 @@ export function handleForStatement({
     if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
       return { ok: false, handled: true, log: `for..downto loop variable must be a scalar byte/integer variable: ${rawLine}` };
     }
+    const declaredType = normalizeDeclaredType(info.declaredType || resolveDeclaredValueType(forDownto[1]) || info.type);
+    if (isFixedDeclared(declaredType)) return rejectFixedLoopVariable(forDownto[1]);
+    const endDeclaredType = resolveDeclaredValueType(normalizeExpression(forDownto[3]));
+    if (isFixedDeclared(endDeclaredType)) return rejectFixedLoopBound(forDownto[3]);
     const initCode = emitRuntimeStore(forDownto[1], normalizeExpression(forDownto[2]));
     if (!initCode) return { ok: false, handled: true, log: `Invalid for-loop start value: ${rawLine}` };
     const loopLabel = makeGeneratedLabel("ForLoop");
@@ -40,7 +57,7 @@ export function handleForStatement({
       endToken: normalizeExpression(forDownto[3]),
       stepToken: stepAnalysis.magnitudeToken,
       type: info.type,
-      declaredType: normalizeDeclaredType(info.declaredType || resolveDeclaredValueType(forDownto[1]) || info.type),
+      declaredType,
       loopLabel,
       continueLabel,
       exitLabel,
@@ -59,6 +76,10 @@ export function handleForStatement({
     if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
       return { ok: false, handled: true, log: `for loop variable must be a scalar byte/integer variable: ${rawLine}` };
     }
+    const declaredType = normalizeDeclaredType(info.declaredType || resolveDeclaredValueType(forDecl[1]) || info.type);
+    if (isFixedDeclared(declaredType)) return rejectFixedLoopVariable(forDecl[1]);
+    const endDeclaredType = resolveDeclaredValueType(normalizeExpression(forDecl[3]));
+    if (isFixedDeclared(endDeclaredType)) return rejectFixedLoopBound(forDecl[3]);
     const initCode = emitRuntimeStore(forDecl[1], normalizeExpression(forDecl[2]));
     if (!initCode) return { ok: false, handled: true, log: `Invalid for-loop start value: ${rawLine}` };
     const loopLabel = makeGeneratedLabel("ForLoop");
@@ -66,7 +87,6 @@ export function handleForStatement({
     const continueLabel = makeGeneratedLabel("ForContinue");
     const stepAnalysis = analyzeForStep(normalizeExpression(forDecl[4] || "1"), "up");
     if (stepAnalysis.error) return { ok: false, handled: true, log: `${stepAnalysis.error} ${rawLine}` };
-    const declaredType = normalizeDeclaredType(info.declaredType || resolveDeclaredValueType(forDecl[1]) || info.type);
     const startValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
       ? tryEvaluateCompileTimeNumericExpression(normalizeExpression(forDecl[2]))
       : null;

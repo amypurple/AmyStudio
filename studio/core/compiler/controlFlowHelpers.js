@@ -39,6 +39,7 @@ export function createControlFlowHelpers(ctx) {
     emitLoadInt8AstIntoA,
     emitLoadInt16AstIntoHL,
     parseBooleanConditionAst,
+    parseBuiltinInputRef,
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
     getTileTypeInfo,
@@ -146,6 +147,13 @@ export function createControlFlowHelpers(ctx) {
     };
   }
 
+  function isCompileTimeNumericLiteral(token) {
+    const numericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression
+      : tryEvaluateConstantExpression;
+    return Number.isFinite(numericEvaluator(token));
+  }
+
   function directByteImmediate(token) {
     const numericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
       ? tryEvaluateCompileTimeNumericExpression
@@ -165,10 +173,93 @@ export function createControlFlowHelpers(ctx) {
     return resolveValueType(exprToken) === "int8";
   }
 
+  function isFix8_8DeclaredTypeName(declared) {
+    const lowered = String(declared || "").toLowerCase();
+    return lowered === "fixed" || lowered === "ufixed" || lowered === "fix8_8" || lowered === "ufix8_8";
+  }
+  function isUnsignedFix8_8DeclaredTypeName(declared) {
+    const lowered = String(declared || "").toLowerCase();
+    return lowered === "ufixed" || lowered === "ufix8_8";
+  }
+  function isSignedFix8_8DeclaredTypeName(declared) {
+    const lowered = String(declared || "").toLowerCase();
+    return lowered === "fixed" || lowered === "fix8_8";
+  }
+
+  function isUnsignedByteDeclaredTypeName(declared) {
+    const lowered = String(declared || "").toLowerCase();
+    return lowered === "u8" || lowered === "boolean" || lowered === "bool";
+  }
+
+  function isSignedByteDeclaredTypeName(declared) {
+    return String(declared || "").toLowerCase() === "i8";
+  }
+
+  function isSignedByteLiteral(token) {
+    const numericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression
+      : tryEvaluateConstantExpression;
+    const value = numericEvaluator(token);
+    return Number.isInteger(value) && value >= -128 && value <= 127;
+  }
+
+  function loadLinesClobberB(lines) {
+    return Array.isArray(lines) && lines.some((line) => /\b(?:b|bc)\b/i.test(String(line || "").replace(/;.*/, "")));
+  }
+
+  function emitUnsignedFixedWholeByteCompareGoto(fixedToken, byteToken, operator, asmLabel, fixedOnLeft = true) {
+    const leftOperand = fixedOnLeft ? "whole " + fixedToken : byteToken;
+    const rightOperand = fixedOnLeft ? byteToken : "whole " + fixedToken;
+    const loadByte = emitLoadInt8ValueInto("a", byteToken);
+    const loadFixed = emitLoadInt8ValueInto("a", "whole " + fixedToken);
+    if (!loadByte || !loadFixed) return null;
+    const loadLeft = fixedOnLeft ? loadFixed : loadByte;
+    const loadRight = fixedOnLeft ? loadByte : loadFixed;
+    const lines = [
+      ...loadRight,
+      "    ld b,a",
+      ...loadLeft,
+      "    cp b"
+    ];
+    if (operator === "==") lines.push(`    jp z,${asmLabel}`);
+    else if (operator === "!=") lines.push(`    jp nz,${asmLabel}`);
+    else if (operator === "<") lines.push(`    jp c,${asmLabel}`);
+    else if (operator === ">=") lines.push(`    jp nc,${asmLabel}`);
+    else if (operator === "<=") {
+      lines.push(`    jp c,${asmLabel}`);
+      lines.push(`    jp z,${asmLabel}`);
+    } else if (operator === ">") {
+      const doneLabel = makeGeneratedLabel("CompareDone");
+      lines.push(`    jp z,${doneLabel}`);
+      lines.push(`    jp nc,${asmLabel}`);
+      lines.push(`${doneLabel}:`);
+    } else return null;
+    return lines;
+  }
+
+  function coerceSimpleLiteralForFixedCompare(token, peerDeclared) {
+    if (!isFix8_8DeclaredTypeName(peerDeclared)) return token;
+    const raw = String(token || "").trim();
+    if (!raw || /^raw\s+/i.test(raw)) return token;
+    const match = raw.match(/^(-?)(?:\$([0-9A-Fa-f]+)|0x([0-9A-Fa-f]+)|(\d+(?:\.\d+)?))$/);
+    if (!match) return token;
+    const sign = match[1] === "-" ? -1 : 1;
+    const value = match[2] || match[3]
+      ? Number.parseInt(match[2] || match[3], 16)
+      : Number.parseFloat(match[4]);
+    if (!Number.isFinite(value)) return token;
+    const encoded = Math.trunc(sign * value * 256);
+    return String(encoded);
+  }
+
   function emitCompareGoto(leftToken, operator, rightToken, label, branchWhenFalse = false, compareMode = "auto") {
     const asmLabel = resolveJumpTarget(label);
     const effectiveOperator = branchWhenFalse ? invertOperator(operator) : operator;
     if (!effectiveOperator) return null;
+    const initialLeftDeclared = resolveDeclaredValueType(leftToken);
+    const initialRightDeclared = resolveDeclaredValueType(rightToken);
+    leftToken = coerceSimpleLiteralForFixedCompare(leftToken, initialRightDeclared);
+    rightToken = coerceSimpleLiteralForFixedCompare(rightToken, initialLeftDeclared);
     const constantResult = evaluateConstantComparison(leftToken, effectiveOperator, rightToken);
     if (constantResult !== null) {
       return constantResult ? [`    jp ${asmLabel}`] : [];
@@ -207,6 +298,53 @@ export function createControlFlowHelpers(ctx) {
     const promotedCompareDeclared = preserveSignedMixedCompare
       ? null
       : declaredTypeForWidth(Math.max(computedWidth, 8), computedSigned);
+    const unsignedFixedVsByte = compareMode === "auto" && (
+      isUnsignedFix8_8DeclaredTypeName(leftDeclared) && isUnsignedByteDeclaredTypeName(rightDeclared)
+      || isUnsignedByteDeclaredTypeName(leftDeclared) && isUnsignedFix8_8DeclaredTypeName(rightDeclared)
+    );
+    if (unsignedFixedVsByte) {
+      const fixedOnLeft = isUnsignedFix8_8DeclaredTypeName(leftDeclared);
+      const fixedToken = fixedOnLeft ? leftToken : rightToken;
+      const byteToken = fixedOnLeft ? rightToken : leftToken;
+      const byteCompare = emitUnsignedFixedWholeByteCompareGoto(fixedToken, byteToken, effectiveOperator, asmLabel, fixedOnLeft);
+      if (byteCompare) return byteCompare;
+    }
+    const signedFixedLiteralOnLeft = compareMode === "auto"
+      && isSignedFix8_8DeclaredTypeName(leftDeclared)
+      && !rightType32
+      && isCompileTimeNumericLiteral(rightToken);
+    if (signedFixedLiteralOnLeft) {
+      const signedFixedCompare = emitSignedInt16CompareGoto(leftToken, effectiveOperator, rightToken, asmLabel);
+      if (signedFixedCompare) return signedFixedCompare;
+    }
+    const signedFixedLiteralOnRight = compareMode === "auto"
+      && isSignedFix8_8DeclaredTypeName(rightDeclared)
+      && !leftType32
+      && isCompileTimeNumericLiteral(leftToken);
+    if (signedFixedLiteralOnRight) {
+      const swappedOperator = invertOperator(effectiveOperator);
+      if (swappedOperator) {
+        const signedFixedCompare = emitSignedInt16CompareGoto(rightToken, swappedOperator, leftToken, asmLabel);
+        if (signedFixedCompare) return signedFixedCompare;
+      }
+    }
+    const signedByteLiteralOnLeft = (compareMode === "signed" || compareMode === "auto")
+      && isSignedByteDeclaredTypeName(leftDeclared)
+      && isSignedByteLiteral(rightToken);
+    if (signedByteLiteralOnLeft) {
+      const signedByteCompare = emitSignedInt8CompareGoto(leftToken, effectiveOperator, rightToken, asmLabel);
+      if (signedByteCompare) return signedByteCompare;
+    }
+    const signedByteLiteralOnRight = (compareMode === "signed" || compareMode === "auto")
+      && isSignedByteDeclaredTypeName(rightDeclared)
+      && isSignedByteLiteral(leftToken);
+    if (signedByteLiteralOnRight) {
+      const swappedOperator = invertOperator(effectiveOperator);
+      if (swappedOperator) {
+        const signedByteCompare = emitSignedInt8CompareGoto(rightToken, swappedOperator, leftToken, asmLabel);
+        if (signedByteCompare) return signedByteCompare;
+      }
+    }
     if (leftFp5 || rightFp5) {
       const fp5Compare = emitCompareFp5Goto(leftToken, effectiveOperator, rightToken, asmLabel);
       if (fp5Compare) return fp5Compare;
@@ -256,6 +394,16 @@ export function createControlFlowHelpers(ctx) {
       && effectiveOperator !== "!="
       && leftSigned !== rightSigned
       && (leftDeclared || rightDeclared);
+    if (compareMode === "signed" && !mixedWidth) {
+      if (isWordValueType(leftType) || isWordValueType(rightType)) {
+        if (rightType && !isWordValueType(rightType)) return null;
+        const signedWordCompare = emitSignedInt16CompareGoto(leftToken, effectiveOperator, rightToken, asmLabel);
+        if (signedWordCompare) return signedWordCompare;
+      } else {
+        const signedByteCompare = emitSignedInt8CompareGoto(leftToken, effectiveOperator, rightToken, asmLabel);
+        if (signedByteCompare) return signedByteCompare;
+      }
+    }
     if (forceExplicitCompare || mixedWidth || mixedSignedness) {
       return emitCompareScratch32Goto(leftToken, effectiveOperator, rightToken, asmLabel, compareMode === "signed" || mixedSignedness || signedCompare);
     }
@@ -310,19 +458,11 @@ export function createControlFlowHelpers(ctx) {
     const lines = [];
     if (rightType) {
       if (rightType !== "int8") return null;
-      const loadRight = emitLoadInt8ValueInto("a", rightToken);
-      if (!loadRight) return null;
-      lines.push(...loadLeft);
-      lines.push("    push af");
-      lines.push(...loadRight);
-      lines.push("    ld b,a");
-      lines.push("    pop af");
-      lines.push("    cp b");
-    } else {
-      const rightImmediate = directByteImmediate(rightToken);
-      if (rightImmediate !== null) {
+      const loadRightB = emitLoadInt8ValueInto("b", rightToken);
+      if (loadRightB && !loadLinesClobberB(loadLeft)) {
+        lines.push(...loadRightB);
         lines.push(...loadLeft);
-        lines.push(`    cp ${rightImmediate}`);
+        lines.push("    cp b");
       } else {
         const loadRight = emitLoadInt8ValueInto("a", rightToken);
         if (!loadRight) return null;
@@ -332,6 +472,33 @@ export function createControlFlowHelpers(ctx) {
         lines.push("    ld b,a");
         lines.push("    pop af");
         lines.push("    cp b");
+      }
+    } else {
+      const rightImmediate = directByteImmediate(rightToken);
+      if (rightImmediate !== null) {
+        lines.push(...loadLeft);
+        const immediateValue = Number.parseInt(String(rightImmediate).replace(/^\$/, "0x"), 0);
+        if ((effectiveOperator === "==" || effectiveOperator === "!=") && immediateValue === 0) {
+          lines.push("    or a");
+        } else {
+          lines.push(`    cp ${rightImmediate}`);
+        }
+      } else {
+      const loadRightB = emitLoadInt8ValueInto("b", rightToken);
+      if (loadRightB && !loadLinesClobberB(loadLeft)) {
+        lines.push(...loadRightB);
+        lines.push(...loadLeft);
+        lines.push("    cp b");
+      } else {
+        const loadRight = emitLoadInt8ValueInto("a", rightToken);
+        if (!loadRight) return null;
+        lines.push(...loadLeft);
+        lines.push("    push af");
+        lines.push(...loadRight);
+        lines.push("    ld b,a");
+        lines.push("    pop af");
+        lines.push("    cp b");
+      }
       }
     }
     if (effectiveOperator === "==") lines.push(`    jp z,${asmLabel}`);
@@ -358,6 +525,19 @@ export function createControlFlowHelpers(ctx) {
 
     const wantTrueBranch = !branchWhenFalse;
     const chooseBranch = (whenTrue, whenFalse) => (wantTrueBranch ? whenTrue : whenFalse);
+
+    const directInput = parseBuiltinInputRef?.(condition);
+    if (directInput?.source === "joypad_bit") {
+      return {
+        ok: true,
+        lines: [
+          `    ld a,(${directInput.runtimeName})`,
+          `    bit ${directInput.bit},a`,
+          `    jp ${chooseBranch("nz", "z")},${asmJumpTarget}`
+        ],
+        log: ""
+      };
+    }
 
     function emitLoadPixelTileCoord(register, token) {
       const load = emitLoadInt8ValueInto("a", token);

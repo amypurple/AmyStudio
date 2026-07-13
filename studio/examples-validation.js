@@ -83,65 +83,7 @@ export const validationExamples = [
   }
 ];
 
-export const validationExampleManifest = [
-  {
-    "id": "amy-timer-lab",
-    "label": "Amy Timer Lab",
-    "detail": "Regression lab for safe named timers: repeating every-N ticks and one-shot after-N ticks started explicitly by game state.",
-    "projectName": "amy-timer-lab",
-    "sourceLang": "amy",
-    "selectedLibs": [],
-    "selectedBundles": [],
-    "selectedCompression": [],
-    "selectedAssets": [],
-    "editorialTrack": "manual-canon"
-  },
-  {
-    "id": "amy-on-frame-lab",
-    "label": "Amy On Frame Lab",
-    "detail": "Regression lab for on frame SubName: generated NMI calls a parameterless Amy sub once per VBlank.",
-    "projectName": "amy-on-frame-lab",
-    "sourceLang": "amy",
-    "selectedLibs": [],
-    "selectedBundles": [],
-    "selectedCompression": [],
-    "selectedAssets": [],
-    "editorialTrack": "manual-canon"
-  },
-  {
-    "id": "amy-conditional-compile-lab",
-    "label": "Amy Conditional Compile Lab",
-    "detail": "Regression lab for define/ifdef/ifndef: active debug branch compiles, inactive duplicate sub names do not collide or emit code.",
-    "projectName": "amy-conditional-compile-lab",
-    "sourceLang": "amy",
-    "selectedLibs": [],
-    "selectedBundles": [],
-    "selectedCompression": [],
-    "selectedAssets": [],
-    "editorialTrack": "manual-canon"
-  },
-  {
-    "id": "amy-multicolor-pixel-lab",
-    "label": "Amy Multicolor Pixel Lab",
-    "detail": "Minimal Graphics Mode 3 example: clear pattern bytes, set multicolor pixels, read one pixel back.",
-    "projectName": "amy-multicolor-pixel-lab",
-    "sourceLang": "amy",
-    "selectedLibs": [],
-    "selectedBundles": [],
-    "selectedCompression": [],
-    "selectedAssets": [],
-    "editorialTrack": "manual-canon"
-  },
-  {
-    "id": "warrior-nibble",
-    "label": "Warrior Nibble",
-    "detail": "Warrior Mode 2 bitmap using the Nibble codec for preview and runtime decompression.",
-    "projectName": "warrior-nibble",
-    "sourceLang": "amy",
-    "selectedLibs": [],
-    "selectedBundles": [],
-    "selectedCompression": [],
-    "selectedAssets": [],
-    "editorialTrack": "manual-canon"
-  }
-];
+export const validationExampleManifest = validationExamples.map(({ sourceText, projectFiles, ...rest }) => ({
+  category: rest.id === "warrior-nibble" ? "Demos" : "Selftests",
+  ...rest
+}));

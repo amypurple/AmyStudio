@@ -20,7 +20,9 @@ export function createExpressionComputeHelpers({
   emitScaleAByConst,
   emitStoreInt8FromA,
   emitStoreInt16FromHL,
-  makeGeneratedLabel
+  makeGeneratedLabel,
+  getRuntimeInfo,
+  scopedRuntimeName
 }) {
   function emitComputeExpressionAst(node, preferredDeclaredType = null) {
     const computationType = resolveExpressionAstComputationType(node, preferredDeclaredType);
@@ -209,6 +211,26 @@ export function createExpressionComputeHelpers({
     return { leftSigned, rightSigned };
   }
 
+  function evaluateAstNumericByteConstant(node) {
+    if (!node) return null;
+    const rendered = renderExpressionAst(node);
+    const value = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(rendered)
+      : tryEvaluateConstantExpression(rendered);
+    return Number.isInteger(value) ? value : null;
+  }
+
+  function loadLinesClobberB(lines) {
+    return Array.isArray(lines) && lines.some((line) => /\b(?:b|bc)\b/i.test(String(line || "").replace(/;.*/, "")));
+  }
+
+  function isDirectByteLoadToken(token) {
+    const text = String(token || "").trim();
+    if (!text) return false;
+    if (/^(?:whole|fraction|highbyte|lowbyte)\s+[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?$/i.test(text)) return true;
+    if (/^sprite\s+.+?\s+(?:y|x|pattern|color)$/i.test(text)) return true;
+    return /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?$|^\$[0-9A-Fa-f]+$|^[0-9]+$/.test(text);
+  }
   function emitLoadInt8AstIntoA(node) {
     if (!node) return null;
     if (node.kind === "number") return emitLoadInt8Into("a", node.value);
@@ -356,8 +378,8 @@ export function createExpressionComputeHelpers({
     }
     if (node.kind === "binary") {
       if (node.op === "+" || node.op === "-" || node.op === "&" || node.op === "|" || node.op === "^") {
-        const leftValue = tryEvaluateConstantExpression(renderExpressionAst(node.left));
-        const rightValue = tryEvaluateConstantExpression(renderExpressionAst(node.right));
+        const leftValue = evaluateAstNumericByteConstant(node.left);
+        const rightValue = evaluateAstNumericByteConstant(node.right);
         const immediate = (value) => symbolOrValue(String(value & 0xFF));
         if (rightValue !== null) {
           const loadLeft = emitLoadInt8AstIntoA(node.left);
@@ -383,14 +405,21 @@ export function createExpressionComputeHelpers({
           if (!loadRight) return null;
           return [...loadRight, "    ld b,a", `    ld a,${immediate(leftValue)}`, "    sub b"];
         }
-        const loadLeft = emitLoadInt8AstIntoA(node.left);
-        const loadRight = emitLoadInt8AstIntoA(node.right);
-        if (!loadLeft || !loadRight) return null;
+        const leftToken = renderExpressionAst(node.left);
+        const rightToken = renderExpressionAst(node.right);
         const opInstr = node.op === "+" ? "add a,b"
           : node.op === "-" ? "sub b"
           : node.op === "&" ? "and b"
           : node.op === "|" ? "or b"
           : "xor b";
+        if (isDirectByteLoadToken(rightToken)) {
+          const loadRightB = emitLoadInt8Into("b", rightToken);
+          const loadLeftA = emitLoadInt8AstIntoA(node.left);
+          if (loadRightB && loadLeftA && !loadLinesClobberB(loadLeftA)) return [...loadRightB, ...loadLeftA, `    ${opInstr}`];
+        }
+        const loadLeft = emitLoadInt8AstIntoA(node.left);
+        const loadRight = emitLoadInt8AstIntoA(node.right);
+        if (!loadLeft || !loadRight) return null;
         return [...loadLeft, "    push af", ...loadRight, "    ld b,a", "    pop af", `    ${opInstr}`];
       }
       if (node.op === "*") {
@@ -691,6 +720,15 @@ export function createExpressionComputeHelpers({
         const constantValue = tryEvaluateConstantExpression(renderExpressionAst(node));
         if (constantValue !== null) return emitLoadInt16ValueIntoHL(String(constantValue));
         return null;
+      }
+      const leftZero = tryEvaluateConstantExpression(renderExpressionAst(node.left));
+      const rightToken = renderExpressionAst(node.right);
+      const rightInfo = getRuntimeInfo?.(rightToken);
+      if (node.op === "-" && leftZero === 0 && rightInfo && !rightInfo.isRef && /^[A-Za-z_][A-Za-z0-9_]*$/.test(rightToken)) {
+        const rightDeclared = resolveDeclaredValueType(rightToken);
+        if (rightDeclared === "u16" || rightDeclared === "i16" || isAnyFixedDeclaredType(rightDeclared)) {
+          return [`    ld de,(${scopedRuntimeName(rightToken)})`, "    ld hl,0", "    or a", "    sbc hl,de"];
+        }
       }
       const arithmeticContext = isAnyFixedDeclaredType(preferredDeclaredType)
         ? normalizeDeclaredType(preferredDeclaredType)

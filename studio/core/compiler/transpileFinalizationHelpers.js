@@ -205,6 +205,19 @@ function pruneDeadInitRecords(records, runtimeVars, body) {
   });
 }
 
+function coalesceAdjacentVramUploadGuards(lines) {
+  const output = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const current = String(lines[index] || "").trim().toLowerCase();
+    const next = String(lines[index + 1] || "").trim().toLowerCase();
+    if (current === "call amy_vram_end" && next === "call amy_vram_begin") {
+      index += 1;
+      continue;
+    }
+    output.push(lines[index]);
+  }
+  return output;
+}
 function optimizeGeneratedControlFlow(lines) {
   const invertCondition = {
     z: "nz",
@@ -309,6 +322,41 @@ function removeUnreachableAfterTerminators(lines) {
   return optimized;
 }
 
+function optimizeGeneratedDecAndBranch(lines) {
+  const label = /^[A-Za-z_][A-Za-z0-9_]*:\s*$/;
+  const loadHlDirect = /^\s*ld\s+hl\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
+  const decAtHl = /^\s*dec\s+\(hl\)\s*$/i;
+  const orA = /^\s*or\s+a\s*$/i;
+  const branchOnZero = /^\s*(jp|jr)\s+(z|nz)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
+
+  function escapeRegExp(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  const optimized = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const loadHL = String(lines[index] || "").trim().match(loadHlDirect);
+    const decLine = String(lines[index + 1] || "").trim();
+    const reloadLine = String(lines[index + 2] || "").trim();
+    const orLine = String(lines[index + 3] || "").trim();
+    const branchLine = String(lines[index + 4] || "").trim();
+
+    if (loadHL && decAtHl.test(decLine) && orA.test(orLine)) {
+      const symbol = loadHL[1];
+      const reload = reloadLine.match(new RegExp(`^ld\\s+a\\s*,\\s*\\(${escapeRegExp(symbol)}\\)\\s*$`, "i")) || /^ld\s+a\s*,\s*\(hl\)\s*$/i.test(reloadLine);
+      const branch = branchLine.match(branchOnZero);
+      const hasEmbeddedLabel = [decLine, reloadLine, orLine, branchLine].some((line) => label.test(line));
+      if (reload && branch && !hasEmbeddedLabel) {
+        optimized.push(lines[index], lines[index + 1], lines[index + 4]);
+        index += 4;
+        continue;
+      }
+    }
+
+    optimized.push(lines[index]);
+  }
+  return optimized;
+}
 function optimizeGeneratedMemoryLoads(lines) {
   const directLoadA = /^\s*ld\s+a,\s*\(([A-Za-z_][A-Za-z0-9_]*)\)\s*$/i;
   const directLoadHL = /^\s*ld\s+hl,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
@@ -479,6 +527,7 @@ export function finalizeAmyTranspile({
     cartridgeMeta,
     onFrameHook,
     amyTimers,
+    hasExternalAsmInclude,
     nextRamAddress,
     ramLayout,
     runtimeVars,
@@ -992,24 +1041,30 @@ export function finalizeAmyTranspile({
     emitCurrentProcReturnLinesIfNeeded();
   }
 
-  const generatedBody = inlineSingleCallUserProcedures(
-    simplifyStartTailForeverGoto(
-      removeDeadReturnsAfterJumps(
-        optimizeRedundantImmediateLoads(
-          optimizeSequentialAbsoluteByteStores(
-            optimizeSharedRecordPutCharLoads(
-              optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(body))
-            )
+  const preInlineBody = simplifyStartTailForeverGoto(
+    removeDeadReturnsAfterJumps(
+      optimizeRedundantImmediateLoads(
+        optimizeSequentialAbsoluteByteStores(
+          optimizeSharedRecordPutCharLoads(
+            optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(body))
           )
         )
       )
     )
   );
+  // External ASM includes can legally call AMY_UPROC_* labels. The compiler
+  // cannot see those references before assembly-time include expansion, so
+  // user-procedure inlining must stay off to preserve exported labels.
+  const generatedBody = hasExternalAsmInclude ? preInlineBody : inlineSingleCallUserProcedures(preInlineBody);
   const reachableBody = removeUnreachableAfterTerminators(generatedBody);
   const optimizedBody = optimizeGeneratedMemoryLoads(
-    optimizeGeneratedControlFlow(
-      optimizeGeneratedTailCalls(
-        optimizeGeneratedMemoryLoads(reachableBody)
+    coalesceAdjacentVramUploadGuards(
+      optimizeGeneratedControlFlow(
+        optimizeGeneratedTailCalls(
+          optimizeGeneratedDecAndBranch(
+            optimizeGeneratedMemoryLoads(reachableBody)
+          )
+        )
       )
     )
   );

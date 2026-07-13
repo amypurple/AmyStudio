@@ -38,6 +38,7 @@ export function handleVramTextStatement({
   emitLoadVramAddressIntoHL,
   emitLoadVramAddressIntoDE,
   emitLoadSourceAddressIntoHL,
+  getWordTableInfo,
   assets,
   getRuntimeInfo,
   getByteArrayBufferInfo,
@@ -78,29 +79,21 @@ export function handleVramTextStatement({
   }
 
   function wrapVramUploadLines(lines) {
-    const doneLabel = makeGeneratedLabel("VramUploadDone");
     return [
-      "    ld a,($73C4)",
-      "    push af",
-      "    and $DF",
-      "    ld ($73C4),a",
-      "    ld c,a",
-      "    ld b,1",
-      "    call WRITE_REGISTER",
+      "    call AMY_VRAM_BEGIN",
       ...lines,
-      "    pop af",
-      "    ld ($73C4),a",
-      "    push af",
-      "    ld c,a",
-      "    ld b,1",
-      "    call WRITE_REGISTER",
-      "    pop af",
-      "    and $20",
-      `    jp z,${doneLabel}`,
-      "    call READ_REGISTER",
-      "    ei",
-      `${doneLabel}:`
+      "    call AMY_VRAM_END"
     ];
+  }
+  function linesClobberDE(lines) {
+    return Array.isArray(lines) && lines.some((line) => {
+      const code = String(line || "").replace(/;.*/, "").trim().toLowerCase();
+      return /\b(?:ld|pop|inc|dec)\s+(?:de|d|e)\b/.test(code)
+        || /\bex\s+de\s*,\s*hl\b/.test(code)
+        || /\bex\s+hl\s*,\s*de\b/.test(code)
+        || /\badd\s+hl\s*,\s*de\b/.test(code)
+        || /\bcall\b|\brst\b|\bexx\b|\bldir\b|\botir\b/.test(code);
+    });
   }
   function isKnownDataSource(sourceExpr, minimumLength = 1) {
     const name = String(sourceExpr || "").trim();
@@ -230,12 +223,23 @@ export function handleVramTextStatement({
     };
   }
 
-  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
+  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
   if (decomp) {
     const codec = decomp[1].toLowerCase() === "rle" ? "mdkrle" : decomp[1].toLowerCase();
     const sourceName = decomp[2];
     const target = decomp[3].toLowerCase();
     const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[target];
+    if (sourceName.includes("[")) {
+      const loadSource = emitLoadSourceAddressIntoHL(sourceName);
+      if (!loadSource) {
+        return { ok: false, handled: true, log: `decompress ${sourceName}: unknown word table or invalid/out-of-range index: ${rawLine}` };
+      }
+      return {
+        ok: true,
+        handled: true,
+        lines: wrapVramUploadLines([...loadSource, `    ld de,${targetLabel}`, `    call ${codec}_decompress`])
+      };
+    }
     const declaredAsset = assets.find((asset) => asset.name === sourceName);
     return {
       ok: true,
@@ -424,9 +428,9 @@ export function handleVramTextStatement({
         "    ld bc,$0607",
         "    call WRITE_REGISTER",
         ...targetCode,
-        "    push de",
+        ...(linesClobberDE(sourceCode) ? ["    push de"] : []),
         ...sourceCode,
-        "    pop de",
+        ...(linesClobberDE(sourceCode) ? ["    pop de"] : []),
         `    ld bc,${byteCount}`,
         `    call ${isDefinitelyByteSizedCount(String(byteCount)) ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`
       ])
@@ -826,19 +830,22 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: emitted.lines };
   }
 
-  const putFrameAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const putFrameAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putFrameAt) {
-    const loadSource = emitLoadSourceAddressIntoHL(putFrameAt[1]);
+    const sourceToken = putFrameAt[1];
+    const sourceBaseName = sourceToken.replace(/\[.*$/, "");
+    const sourceIsWordTable = sourceToken.includes("[") && !!getWordTableInfo?.(sourceBaseName);
+    const loadSource = emitLoadSourceAddressIntoHL(sourceToken);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "PUT_FRAME",
       values: { b: putFrameAt[3], c: putFrameAt[2], d: putFrameAt[5], e: putFrameAt[4] },
       emitLoadInt8ValueInto,
       emitLoadInt8ValueIntoPreserving
     });
-    const sourceInfo = getByteArrayBufferInfo(putFrameAt[1], 1);
-    const sourceIsData = isKnownDataSource(putFrameAt[1], 1);
-    if (!loadSource || !loadInputs || (!sourceInfo && !sourceIsData)) {
-      return { ok: false, handled: true, log: `put Buffer frame size W,H at X,Y requires a u8 buffer or data block plus byte-sized width, height, and coordinates: ${rawLine}` };
+    const sourceInfo = sourceIsWordTable ? null : getByteArrayBufferInfo(sourceToken, 1);
+    const sourceIsData = sourceIsWordTable ? false : isKnownDataSource(sourceToken, 1);
+    if (!loadSource || !loadInputs || (!sourceInfo && !sourceIsData && !sourceIsWordTable)) {
+      return { ok: false, handled: true, log: `put Buffer frame size W,H at X,Y requires a u8 buffer, data block, or word table entry plus byte-sized width, height, and coordinates: ${rawLine}` };
     }
     return {
       ok: true,

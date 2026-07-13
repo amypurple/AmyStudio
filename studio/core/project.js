@@ -59,6 +59,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const usesFormatFx     = /\bAMY_(?:FX8_8_TO_ASCII6|SFX8_8_TO_ASCII7|FX8_8_FRAC_TO_HUNDREDTHS)\b/.test(asmBody);
   const usesFormatFx16   = /\bAMY_(?:FX16_16_TO_ASCII9|FX16_16_TO_ASCII11|FX16_16_FRAC_TO_HUNDREDTHS|FX16_16_FRAC_TO_TEN_THOUSANDTHS)\b/.test(asmBody);
   const usesFormatFp5    = /\bAMY_FP5_TO_ASCII16\b/.test(asmBody);
+  const usesVramUpload   = /\bAMY_VRAM_(?:BEGIN|END)\b/.test(asmBody);
   const usesCompareU32   = /\bAMY_CMP_U32_MEM\b/.test(asmBody);
   const usesCompareS32   = /\bAMY_CMP_S32_MEM\b/.test(asmBody);
   const usesCompareSmall = /\bAMY_(?:CMP_U8|CMP_S8|CMP_U16|CMP_S16)\b/.test(asmBody);
@@ -72,6 +73,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const needsU32Inc     = usesU32Inc || usesFormatI32;           // format_i32 calls AMY_U32_INC
   const needsU32Sub     = usesU32Sub || needsFormatU32;          // format_u32/i32/fp5 call AMY_U32_SUB
   // Emit in dependency order (u32/compare before format)
+  if (usesVramUpload) resolved.add("src/alexis_lib/coleco_vram_upload.asm");
   if (usesRandomU8)    resolved.add("src/alexis_lib/coleco_random.asm");
   if (usesSqrt)         resolved.add("src/alexis_lib/coleco_math_sqrt.asm");
   if (usesU32Zero || usesFx16Div || usesFx16Sqrt || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_u32_zero.asm");
@@ -172,6 +174,21 @@ function formatInlineDbLines(bytes) {
   }
   if (!lines.length) lines.push("    db $00");
   return lines;
+}
+
+function decodeProjectTextForDependencyScan(projectFile) {
+  const normalizedPath = normalizeAsmIncludePath(projectFile?.path || "");
+  if (!/\.(?:asm|inc)$/i.test(normalizedPath)) return "";
+  const bytes = decodeProjectFileBytes(projectFile);
+  if (!bytes.length) return "";
+  return Array.from(bytes, (value) => String.fromCharCode(value & 0xFF)).join("");
+}
+
+function collectProjectAsmTextForDependencyScan(project) {
+  return (project.projectFiles || [])
+    .map((file) => decodeProjectTextForDependencyScan(file))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildLegacyInitInstructions(caps) {
@@ -349,6 +366,7 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsControllers,
     needsSpinner,
     needsFrameCounter,
+    needsNmi,
     needsNmiFlagShadow,
     needsVdpStatusShadow,
     needsSound,
@@ -370,6 +388,11 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   const romTitleStart = options.romTitleStart ?? 0x8024;
   const romCodeStart = options.romCodeStart ?? 0x8024;
   const referencesSymbol = (name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(symbolText);
+  const needsNmi =
+    caps.needsNmi ||
+    referencesSymbol("NO_NMI") ||
+    referencesSymbol("VDP_STATUS") ||
+    referencesSymbol("NMI_FLAG");
   const needsRuntimeState =
     caps.needsControllers ||
     caps.needsSpinner ||
@@ -380,9 +403,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needsVdpStatusShadow ||
     caps.needsUserFrameHook ||
     caps.needsAmyTimers ||
-    referencesSymbol("NO_NMI") ||
-    referencesSymbol("VDP_STATUS") ||
-    referencesSymbol("NMI_FLAG");
+    needsNmi;
   const needsSoundState =
     caps.needsSound ||
     referencesSymbol("AMY_SOUND_ENABLED") ||
@@ -428,6 +449,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needsSprites,
     needsTinySound,
     needsFrameCounter,
+    needsNmi,
     needsNmiFlagShadow: caps.needsNmiFlagShadow,
     needsSoundState,
     needsAmyTimers: caps.needsAmyTimers
@@ -652,10 +674,26 @@ function emitLegacyRuntime(lines, caps) {
     !caps.needsFrameCounter &&
     !caps.needsAmyTimers;
 
+  const emitNoNmiEarlyReturn = (continueLabel) => {
+    lines.push("        ld a,(NO_NMI)");
+    lines.push("        or a");
+    lines.push(`        jr z,${continueLabel}`);
+    lines.push("        in a,(VDP_CTRL_PORT)");
+    if (caps.needsControllers || caps.needsNmiFlagShadow) {
+      lines.push("        ld (NMI_FLAG),a");
+    }
+    if (caps.needsControllers || caps.needsVdpStatusShadow) {
+      lines.push("        ld (VDP_STATUS),a");
+    }
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push(`${continueLabel}:`);
+  };
   lines.push("; --- Amy Coleco runtime init / NMI ---");
   lines.push("Nmi:");
   if (caps.needsNmiAckOnly) {
     lines.push("        push af");
+    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -705,6 +743,7 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyUserHook) {
     lines.push("        push af");
+    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -758,6 +797,7 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyCompactControllers) {
     lines.push("        push af");
+    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -903,7 +943,8 @@ function emitLegacyRuntime(lines, caps) {
   }
 
   lines.push("        push af");
-  lines.push("        in a,(VDP_CTRL_PORT)");
+    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
+    lines.push("        in a,(VDP_CTRL_PORT)");
   if (caps.needsControllers || caps.needsNmiFlagShadow) {
     lines.push("        ld (NMI_FLAG),a");
   }
@@ -1099,16 +1140,18 @@ function formatAsmByteList(bytes) {
 
 export function generateAsm(project, asmBody, assetDeclarations = [], metadata = {}) {
   const asmBodyBase = asmBody;
+  const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project);
+  const asmBodyForDependencyScan = `${asmBodyBase}\n${projectAsmDependencyText}`;
   const cartridge = metadata?.cartridge || null;
   const romTitleStart = 0x8024;
   const romCodeStart = cartridge ? romTitleStart + cartridge.bytes.length + 1 : romTitleStart;
   const forceTinySound = sourceHintsTinySound(project.sourceText || "");
-  const alexisRuntimeForCaps = renderAlexisRuntime(asmBodyBase, {
+  const alexisRuntimeForCaps = renderAlexisRuntime(asmBodyForDependencyScan, {
     forceTinySound
   });
   const runtimeCaps = inferRuntimeCapabilities(
     project,
-    `${asmBodyBase}\n${alexisRuntimeForCaps || ""}`
+    `${asmBodyForDependencyScan}\n${alexisRuntimeForCaps || ""}`
   );
   if (metadata?.needsFrameCounter) {
     runtimeCaps.needsFrameCounter = true;
@@ -1130,12 +1173,13 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const asmBodyWithRuntimeInit = project.memoryProfile === "colecovision_legacy_sdcc"
     ? injectSystemInitInline(asmBodyBase, runtimeCaps)
     : asmBodyBase;
-  const libResolution = resolveSelectedLibModulesDetailed(project.selectedLibs || [], asmBodyWithRuntimeInit);
+  const asmBodyWithRuntimeInitForDependencyScan = `${asmBodyWithRuntimeInit}\n${projectAsmDependencyText}`;
+  const libResolution = resolveSelectedLibModulesDetailed(project.selectedLibs || [], asmBodyWithRuntimeInitForDependencyScan);
   const selectedLibs = libResolution.paths;
   const libs = dedupeCoveredLibraryIncludes(
     resolveSelectedLibModulesDetailed(
-      withRequiredAlexisLibs(project, selectedLibs, asmBodyWithRuntimeInit),
-      asmBodyWithRuntimeInit
+      withRequiredAlexisLibs(project, selectedLibs, asmBodyWithRuntimeInitForDependencyScan),
+      asmBodyWithRuntimeInitForDependencyScan
     ).paths
   ).sort();
   const bundles = (project.selectedBundles || []).slice().sort();
@@ -1153,11 +1197,12 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const excludedRuntimeSourcePaths = expandCoveredLibrarySourcePaths(libCodeIncludes);
   // If a concrete .asm library file is already included, do not auto-emit runtime helpers
   // sourced from that same file. This avoids duplicate symbol bodies and silent address drift.
-  const alexisRuntime = renderAlexisRuntime(asmBodyBase, {
+  const alexisRuntime = renderAlexisRuntime(asmBodyForDependencyScan, {
     forceTinySound,
     excludedSourcePaths: excludedRuntimeSourcePaths
   });
-  const inferredCompression = inferRequiredCompressionIncludes(project.sourceText || "");
+  const dependencyScanText = `${project.sourceText || ""}\n${projectAsmDependencyText}`;
+  const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText);
   const compIncludes = [...new Set([...comps.map(normalizeAsmIncludePath), ...inferredCompression.map(normalizeAsmIncludePath)])];
 
   const lines = [];

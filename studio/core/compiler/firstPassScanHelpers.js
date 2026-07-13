@@ -10,6 +10,7 @@ export function scanAmyFirstPass({
   ensureUserVarAsmSymbol,
   isSupportedSourceTypeName,
   isSupportedRecordTypeName,
+  getRecordTypeInfo,
   validateGlobalUserName,
   ensureLabelAsmSymbol,
   ensureProcAsmSymbol,
@@ -27,6 +28,97 @@ export function scanAmyFirstPass({
 }) {
   let firstPassInAsm = false;
   let firstPassNameError = null;
+
+  const REF_SCALAR_DECLARED_TYPES = new Set(["u8", "i8", "u16", "i16"]);
+
+  function parseSignatureParam(rawParam, ownerName, seenParams, rawLine) {
+    const pm = rawParam.trim().match(/^(ref\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+    if (!pm) return { invalid: true };
+    const isRef = !!pm[1];
+    const typeName = pm[2];
+    const paramName = pm[3];
+    const isRecordType = typeof isSupportedRecordTypeName === "function" && isSupportedRecordTypeName(typeName);
+    if (!isRecordType && !isSupportedSourceTypeName(typeName)) {
+      if (isRef) return { error: `Unknown ref parameter type '${typeName}' in ${rawLine}` };
+      return { invalid: true };
+    }
+    if (isRecordType && !isRef) {
+      return { error: `Record parameter '${paramName}' must be passed by reference: use 'ref ${typeName} ${paramName}' in ${rawLine}` };
+    }
+    if (isRef && !isRecordType) {
+      const declared = normalizeDeclaredType(typeName.toLowerCase());
+      if (!REF_SCALAR_DECLARED_TYPES.has(declared)) {
+        return { error: `ref parameters support u8, i8, u16, i16 or record types (got '${typeName}') in ${rawLine}` };
+      }
+    }
+    const paramLower = lowerName(paramName);
+    if (seenParams.has(paramLower) || paramLower === lowerName(ownerName) || isReservedAmyIdentifier(paramName) || describeGlobalNameCollision(paramName)) {
+      return { error: `Parameter name '${paramName}' is invalid or collides with an existing symbol in ${rawLine}` };
+    }
+    seenParams.add(paramLower);
+    if (isRecordType) {
+      return { param: { type: "record", declaredType: "record", name: paramName, isRef: true, recordTypeName: typeName } };
+    }
+    if (isRef) {
+      const runtime = normalizeRuntimeType(typeName.toLowerCase());
+      return {
+        param: {
+          type: `ref_${runtime}`,
+          refTargetType: runtime,
+          declaredType: normalizeDeclaredType(typeName.toLowerCase()),
+          name: paramName,
+          isRef: true
+        }
+      };
+    }
+    return {
+      param: {
+        type: normalizeRuntimeType(typeName.toLowerCase()),
+        declaredType: normalizeDeclaredType(typeName.toLowerCase()),
+        name: paramName
+      }
+    };
+  }
+
+  function registerParamRuntimeVars(ownerName, params) {
+    const frame = ensureProcFrame(ownerName);
+    frame.usesIxFrame = true;
+    let nextParamOffset = 4;
+    for (const param of params) {
+      const paramLabel = `${ownerName}_${param.name}`;
+      if (!runtimeVars.has(paramLabel)) {
+        if (param.isRef && param.recordTypeName) {
+          const recordInfo = typeof getRecordTypeInfo === "function" ? getRecordTypeInfo(param.recordTypeName) : null;
+          runtimeVars.set(paramLabel, {
+            type: "record",
+            declaredType: param.recordTypeName,
+            kind: "record",
+            recordTypeName: param.recordTypeName,
+            recordInfo,
+            recordSize: recordInfo?.byteSize,
+            scope: ownerName,
+            isParam: true,
+            isRef: true,
+            storage: "stack",
+            offset: nextParamOffset
+          });
+        } else {
+          runtimeVars.set(paramLabel, {
+            type: param.type,
+            ...(param.refTargetType ? { refTargetType: param.refTargetType } : {}),
+            declaredType: param.declaredType,
+            kind: param.declaredType,
+            scope: ownerName,
+            isParam: true,
+            ...(param.isRef ? { isRef: true } : {}),
+            storage: "stack",
+            offset: nextParamOffset
+          });
+        }
+      }
+      nextParamOffset += param.isRef ? 2 : runtimeParamSlotSize(param.type, param.declaredType);
+    }
+  }
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     if (recordDefinitionLineNumbers?.has(lineIndex)) continue;
@@ -56,7 +148,7 @@ export function scanAmyFirstPass({
     const constMatch = trimmed.match(/^(?:let|var|const)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=/i);
     if (constMatch) ensureConstAsmSymbol(constMatch[1]);
 
-    const dataMatch = trimmed.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:bytes|bitmap8|sprite16|chars)(?:$|\s)/i);
+    const dataMatch = trimmed.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:bytes|bitmap8|sprite16|chars|words)(?:$|\s)/i);
     if (dataMatch) ensureDataAsmSymbol(dataMatch[1]);
 
     const assetMatch = trimmed.match(/^asset\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+"([^"]+)"(?:\s+codec\s+([A-Za-z0-9_]+))?/i);
@@ -159,44 +251,21 @@ export function scanAmyFirstPass({
     const seenParams = new Set();
     let valid = true;
     for (const rp of rawParams) {
-      const pm = rp.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (!pm || !isSupportedSourceTypeName(pm[1])) {
+      const parsed = parseSignatureParam(rp, procName, seenParams, rawLine);
+      if (parsed.error) {
+        firstPassNameError = parsed.error;
         valid = false;
         break;
       }
-      const paramName = pm[2];
-      const paramLower = lowerName(paramName);
-      if (seenParams.has(paramLower) || paramLower === lowerName(procName) || isReservedAmyIdentifier(paramName) || describeGlobalNameCollision(paramName)) {
-        firstPassNameError = `Parameter name '${paramName}' is invalid or collides with an existing symbol in ${rawLine}`;
+      if (parsed.invalid) {
         valid = false;
         break;
       }
-      seenParams.add(paramLower);
-      params.push({
-        type: normalizeRuntimeType(pm[1].toLowerCase()),
-        declaredType: normalizeDeclaredType(pm[1].toLowerCase()),
-        name: paramName
-      });
+      params.push(parsed.param);
     }
     if (!valid || !params.length) continue;
     procSignatures.set(procName, params);
-    const frame = ensureProcFrame(procName);
-    frame.usesIxFrame = true;
-    let nextParamOffset = 4;
-    for (const param of params) {
-      const paramLabel = `${procName}_${param.name}`;
-      if (runtimeVars.has(paramLabel)) continue;
-      runtimeVars.set(paramLabel, {
-        type: param.type,
-        declaredType: param.declaredType,
-        kind: param.declaredType,
-        scope: procName,
-        isParam: true,
-        storage: "stack",
-        offset: nextParamOffset
-      });
-      nextParamOffset += runtimeParamSlotSize(param.type, param.declaredType);
-    }
+    registerParamRuntimeVars(procName, params);
   }
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -218,24 +287,17 @@ export function scanAmyFirstPass({
     const seenParams = new Set();
     let valid = true;
     for (const rp of rawParams) {
-      const pm = rp.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (!pm || !isSupportedSourceTypeName(pm[1])) {
+      const parsed = parseSignatureParam(rp, functionName, seenParams, rawLine);
+      if (parsed.error) {
+        firstPassNameError = parsed.error;
         valid = false;
         break;
       }
-      const paramName = pm[2];
-      const paramLower = lowerName(paramName);
-      if (seenParams.has(paramLower) || paramLower === lowerName(functionName) || isReservedAmyIdentifier(paramName) || describeGlobalNameCollision(paramName)) {
-        firstPassNameError = `Parameter name '${paramName}' is invalid or collides with an existing symbol in ${rawLine}`;
+      if (parsed.invalid) {
         valid = false;
         break;
       }
-      seenParams.add(paramLower);
-      params.push({
-        type: normalizeRuntimeType(pm[1].toLowerCase()),
-        declaredType: normalizeDeclaredType(pm[1].toLowerCase()),
-        name: paramName
-      });
+      params.push(parsed.param);
     }
     if (!valid) continue;
     procSignatures.set(functionName, params);
@@ -243,23 +305,7 @@ export function scanAmyFirstPass({
       returnType: normalizeRuntimeType(m[3].toLowerCase()),
       declaredType: normalizeDeclaredType(m[3].toLowerCase())
     });
-    const frame = ensureProcFrame(functionName);
-    frame.usesIxFrame = true;
-    let nextParamOffset = 4;
-    for (const param of params) {
-      const paramLabel = `${functionName}_${param.name}`;
-      if (runtimeVars.has(paramLabel)) continue;
-      runtimeVars.set(paramLabel, {
-        type: param.type,
-        declaredType: param.declaredType,
-        kind: param.declaredType,
-        scope: functionName,
-        isParam: true,
-        storage: "stack",
-        offset: nextParamOffset
-      });
-      nextParamOffset += runtimeParamSlotSize(param.type, param.declaredType);
-    }
+    registerParamRuntimeVars(functionName, params);
   }
 
   return firstPassNameError;

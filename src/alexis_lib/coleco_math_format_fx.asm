@@ -36,6 +36,7 @@ AMY_FX8_8_TO_ASCII6:
     push af
     ld a,h
     call AMY_U8_TO_ASCII3
+    inc de
     ld a,'.'
     ld (de),a
     inc de

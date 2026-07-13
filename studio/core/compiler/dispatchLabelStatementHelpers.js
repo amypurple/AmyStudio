@@ -90,7 +90,7 @@ export function handleDispatchLabelStatement({
   }
 
   const removedCallDecl = line.match(/^(call|gosub)\s+/i);
-  if (removedCallDecl) {
+  if (removedCallDecl && !/^call\s+asm(?:\s|$)/i.test(line)) {
     return {
       ok: false,
       handled: true,

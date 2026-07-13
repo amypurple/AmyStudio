@@ -137,22 +137,28 @@ export function handleMathBitStatement({
   const setBit = line.match(/^set\s+bit\s+([0-7])\s+of\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (setBit) {
     const info = getRuntimeInfo(setBit[2]);
-    if (!info || info.kind === "array" || info.type !== "int8") return { ok: false, handled: true, log: `set bit requires a byte RAM variable: ${rawLine}` };
+    const setBitIsRef = !!(info?.isRef && info.refTargetType === "int8");
+    if (!info || info.kind === "array" || (!setBitIsRef && info.type !== "int8")) return { ok: false, handled: true, log: `set bit requires a byte RAM variable: ${rawLine}` };
     const n = setBit[1];
-    const lines = info.storage === "stack"
-      ? [`    set ${n},(${formatIxOffset(info.offset)})`]
-      : [`    ld hl,${scopedRuntimeName(setBit[2])}`, `    set ${n},(hl)`];
+    const lines = setBitIsRef
+      ? [`    ld l,(${formatIxOffset(info.offset)})`, `    ld h,(${formatIxOffset(info.offset + 1)})`, `    set ${n},(hl)`]
+      : info.storage === "stack"
+        ? [`    set ${n},(${formatIxOffset(info.offset)})`]
+        : [`    ld hl,${scopedRuntimeName(setBit[2])}`, `    set ${n},(hl)`];
     return { ok: true, handled: true, lines };
   }
 
   const clearBit = line.match(/^(?:clear|reset)\s+bit\s+([0-7])\s+of\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (clearBit) {
     const info = getRuntimeInfo(clearBit[2]);
-    if (!info || info.kind === "array" || info.type !== "int8") return { ok: false, handled: true, log: `clear bit requires a byte RAM variable: ${rawLine}` };
+    const clearBitIsRef = !!(info?.isRef && info.refTargetType === "int8");
+    if (!info || info.kind === "array" || (!clearBitIsRef && info.type !== "int8")) return { ok: false, handled: true, log: `clear bit requires a byte RAM variable: ${rawLine}` };
     const n = clearBit[1];
-    const lines = info.storage === "stack"
-      ? [`    res ${n},(${formatIxOffset(info.offset)})`]
-      : [`    ld hl,${scopedRuntimeName(clearBit[2])}`, `    res ${n},(hl)`];
+    const lines = clearBitIsRef
+      ? [`    ld l,(${formatIxOffset(info.offset)})`, `    ld h,(${formatIxOffset(info.offset + 1)})`, `    res ${n},(hl)`]
+      : info.storage === "stack"
+        ? [`    res ${n},(${formatIxOffset(info.offset)})`]
+        : [`    ld hl,${scopedRuntimeName(clearBit[2])}`, `    res ${n},(hl)`];
     return { ok: true, handled: true, lines };
   }
 

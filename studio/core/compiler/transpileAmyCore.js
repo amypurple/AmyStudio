@@ -157,7 +157,7 @@ export function transpileAmyCore(sourceText, deps) {
     let reachableRoutineGotoReferences = new Set();
     const isRootTerminator = (line) => /^(?:return(?:\s+.+)?|goto\s+[A-Za-z_][A-Za-z0-9_]*|loop\s+forever)$/i.test(line);
     const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect)$/i.test(line);
-    const topLevelDirective = (line) => /^(?:include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
+    const topLevelDirective = (line) => /^(?:include\s+asm\s+"|include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
     const opensBlock = (line) => {
       if (/^if\b/i.test(line)) return /\bthen\s*$/i.test(line) && !/\bgoto\b/i.test(line);
       return /^(?:while\b|for\b|do\b|select\s+case\b)/i.test(line);
@@ -218,6 +218,7 @@ export function transpileAmyCore(sourceText, deps) {
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(pruneSourceUnreachableAfterRoutineTerminators(conditionalPrepass.lines), normalizeExpression);
   const inferredMemoryCaps = inferAmyMemoryCapabilities(lines.join("\n"), sourceHintsTinySound);
+  const hasExternalAsmInclude = lines.some((candidateRaw) => /^include\s+asm\s+"/i.test(stripAmyInlineComment(candidateRaw).trim()));
   const preferScreenOnNoNmi = !inferredMemoryCaps.needsNmi;
   const declarations = [];
   const symbols = new Set();
@@ -226,6 +227,7 @@ export function transpileAmyCore(sourceText, deps) {
   const recordTypes = new Map();
   const recordDefinitionLineNumbers = new Set();
   const dataBlocks = new Map();
+  const dataWordTables = new Map();
   const tileTypes = new Map();
   const hitboxes = new Map();
   const amyTimers = new Map();
@@ -398,6 +400,8 @@ export function transpileAmyCore(sourceText, deps) {
   let getDirectRecordFieldAddress = null;
   let formatIxOffset = null;
   let normalizeDataToken = null;
+  let appendWordDataTokens = null;
+  let looksLikeWordDataTokens = null;
   let parseBitmapLine = null;
   let bitmapCharToBit = null;
   let encodeBitmap8Row = null;
@@ -1324,6 +1328,7 @@ export function transpileAmyCore(sourceText, deps) {
     const arrayRef = parseArrayRef(token);
     if (arrayRef) {
       if (dataLengths.has(arrayRef.name)) return "u8";
+      if (dataWordTables.has(arrayRef.name)) return "u16";
       const info = getRuntimeInfo(arrayRef.name);
       if (!info) return null;
       if (info.kind === "array") return normalizeDeclaredType(info.declaredType || info.elementType || info.type);
@@ -1477,6 +1482,9 @@ export function transpileAmyCore(sourceText, deps) {
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
     }
     if (node.kind === "call") {
+      if (String(node.name || "").toLowerCase() === "peek" && node.args.length === 1) {
+        return { declaredType: "u8", runtimeType: "int8" };
+      }
       if (String(node.name || "").toLowerCase() === "random" && (node.args.length === 1 || node.args.length === 2)) {
         return { declaredType: "u8", runtimeType: "int8" };
       }
@@ -1855,6 +1863,8 @@ export function transpileAmyCore(sourceText, deps) {
   let emitLoadCountIntoDE;
   let isDefinitelyByteSizedCount;
   let emitLoadSourceAddressIntoHL;
+  let emitLoadWordTableEntryIntoHL;
+  let getWordTableInfo;
   let emitLoadVramAddressIntoDE;
   let emitLoadVramAddressIntoHL;
 
@@ -1889,6 +1899,8 @@ export function transpileAmyCore(sourceText, deps) {
     appendCharRow,
     appendDataTokens,
     looksLikeDataTokens,
+    appendWordDataTokens,
+    looksLikeWordDataTokens,
     formatDataByteLiteral,
     expandDataValueToken,
     flushDataBlock
@@ -1898,6 +1910,7 @@ export function transpileAmyCore(sourceText, deps) {
     rewriteUserSymbolsInExpression,
     dataLengths,
     dataBlocks,
+    dataWordTables,
     romData,
     getInData: () => inData,
     setInData: (value) => { inData = value; }
@@ -2050,6 +2063,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadInt8AstIntoA: (...args) => emitLoadInt8AstIntoA(...args),
     emitLoadInt16AstIntoHL: (...args) => emitLoadInt16AstIntoHL(...args),
     parseBooleanConditionAst,
+    parseBuiltinInputRef,
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
     emitComputedCompareGoto: (...args) => emitComputedCompareGoto(...args),
@@ -2086,6 +2100,7 @@ export function transpileAmyCore(sourceText, deps) {
     ensureDataCursorVar
   } = createRuntimeValueHelpers({
     normalizeExpression,
+    normalizeDeclaredType,
     tryEvaluateCompileTimeNumericExpression,
     isAnyFixedDeclaredType,
     isFix16_16DeclaredType,
@@ -2117,6 +2132,8 @@ export function transpileAmyCore(sourceText, deps) {
     emitStoreComputedExpression: (...args) => emitStoreComputedExpression(...args),
     emitStoreInt8FromA: (...args) => emitStoreInt8FromA(...args),
     emitLoadInt8ValueInto: (...args) => emitLoadInt8ValueInto(...args),
+    emitLoadWordTableEntryIntoHL: (...args) => emitLoadWordTableEntryIntoHL(...args),
+    getWordTableInfo: (...args) => getWordTableInfo(...args),
     ensureCompareScratch32: (...args) => ensureCompareScratch32(...args),
     emitStoreExtended32: (...args) => emitStoreExtended32(...args),
     emitStoreMemory32ToTarget: (...args) => emitStoreMemory32ToTarget(...args),
@@ -2305,7 +2322,9 @@ export function transpileAmyCore(sourceText, deps) {
   ({
     emitLoadSourceAddressIntoHL,
     emitLoadVramAddressIntoDE,
-    emitLoadVramAddressIntoHL
+    emitLoadVramAddressIntoHL,
+    emitLoadWordTableEntryIntoHL,
+    getWordTableInfo
   } = createAddressHelpers({
     normalizeExpression,
     getRuntimeInfo,
@@ -2316,7 +2335,8 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadInt16IntoHL,
     symbolOrValue,
     tryEvaluateConstantExpression,
-    tryEvaluateCompileTimeNumericExpression
+    tryEvaluateCompileTimeNumericExpression,
+    dataWordTables
   }));
   ({
     ensureCompareScratch32,
@@ -2424,7 +2444,11 @@ export function transpileAmyCore(sourceText, deps) {
     emitScaleAByConst,
     emitStoreInt8FromA,
     emitStoreInt16FromHL,
-    makeGeneratedLabel
+    makeGeneratedLabel,
+    getRuntimeInfo,
+    scopedRuntimeName,
+    parseArrayRef,
+    dataLengths
   }));
   ({
     emitArithInt8Op,
@@ -2510,6 +2534,7 @@ export function transpileAmyCore(sourceText, deps) {
     ensureUserVarAsmSymbol,
     isSupportedSourceTypeName,
     isSupportedRecordTypeName,
+    getRecordTypeInfo,
     validateGlobalUserName,
     ensureLabelAsmSymbol,
     ensureProcAsmSymbol,
@@ -2583,6 +2608,8 @@ export function transpileAmyCore(sourceText, deps) {
         appendCharRow,
         looksLikeDataTokens,
         appendDataTokens,
+        looksLikeWordDataTokens,
+        appendWordDataTokens,
         flushDataBlock,
         ensureAssetAsmSymbol,
         validateGlobalUserName,
@@ -2797,6 +2824,90 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const includeAsmStmt = line.match(/^include\s+asm\s+"([^"]+)"\s*$/i);
+      if (includeAsmStmt) {
+        const includePath = includeAsmStmt[1].replace(/\\/g, "/");
+        body.push(`include "${includePath}"`);
+        continue;
+      }
+    }
+
+    {
+      const callAsmStmt = line.match(/^call\s+asm\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+with\s+(.+))?$/i);
+      if (callAsmStmt) {
+        const label = callAsmStmt[1];
+        const argsText = callAsmStmt[2]?.trim();
+        const lines = [];
+        const usedRegs = new Set();
+
+        function reserveAsmRegister(reg) {
+          const normalized = reg.toLowerCase();
+          const pairs = { h: "hl", l: "hl", d: "de", e: "de", b: "bc", c: "bc" };
+          if (["hl", "de", "bc"].includes(normalized)) {
+            for (const half of normalized) {
+              if (usedRegs.has(half)) return `call asm cannot set ${normalized} and ${half} in the same statement.`;
+            }
+          } else if (pairs[normalized] && usedRegs.has(pairs[normalized])) {
+            return `call asm cannot set ${normalized} and ${pairs[normalized]} in the same statement.`;
+          }
+          usedRegs.add(normalized);
+          return null;
+        }
+
+        function emitLoadAsmRegister(reg, valueToken) {
+          const normalized = reg.toLowerCase();
+          const value = valueToken.trim();
+          const conflict = reserveAsmRegister(normalized);
+          if (conflict) return { ok: false, log: conflict };
+          if (["a", "b", "c", "d", "e", "h", "l"].includes(normalized)) {
+            const load = emitLoadInt8Into(normalized, value);
+            if (!load) return { ok: false, log: `cannot load ${value} into ${normalized} for '${rawLine.trim()}'` };
+            return { ok: true, lines: load };
+          }
+          if (normalized === "hl") {
+            let load = null;
+            if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoHL(value);
+            if (!load) load = emitLoadSourceAddressIntoHL(value);
+            if (!load) load = emitLoadInt16IntoHL(value);
+            if (!load) return { ok: false, log: `cannot load ${value} into hl for '${rawLine.trim()}'` };
+            return { ok: true, lines: load };
+          }
+          if (normalized === "de") {
+            let load = null;
+            if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoDE(value);
+            if (!load) {
+              const hlLoad = emitLoadInt16IntoHL(value) || emitLoadSourceAddressIntoHL(value);
+              if (hlLoad) load = [...hlLoad, "    ex de,hl"];
+            }
+            if (!load) return { ok: false, log: `cannot load ${value} into de for '${rawLine.trim()}'` };
+            return { ok: true, lines: load };
+          }
+          if (normalized === "bc") {
+            const load = emitLoadCountIntoBC(value) || emitLoadUnsignedInt16ValueIntoBC(value);
+            if (!load) return { ok: false, log: `cannot load ${value} into bc for '${rawLine.trim()}'` };
+            return { ok: true, lines: load };
+          }
+          return { ok: false, log: `unsupported call asm register '${reg}' in '${rawLine.trim()}'` };
+        }
+
+        if (argsText) {
+          const assignments = argsText.split(/\s*,\s*/).filter(Boolean);
+          for (const assignment of assignments) {
+            const match = assignment.match(/^(a|b|c|d|e|h|l|hl|de|bc)\s*=\s*(.+)$/i);
+            if (!match) {
+              return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid call asm argument '${assignment}'` };
+            }
+            const loaded = emitLoadAsmRegister(match[1], match[2]);
+            if (!loaded.ok) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: ${loaded.log}` };
+            lines.push(...loaded.lines);
+          }
+        }
+        lines.push(`    call ${label}`);
+        body.push(...lines);
+        continue;
+      }
+    }
+    {
       const includeStmt = line.match(/^include\s+"([^"]+)"\s*$/i);
       if (includeStmt) {
         const lastBodyLine = String(body[body.length - 1] || "").trim();
@@ -2896,6 +3007,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadVramAddressIntoHL,
         emitLoadVramAddressIntoDE,
         emitLoadSourceAddressIntoHL,
+        getWordTableInfo,
         assets,
         getRuntimeInfo,
         getByteArrayBufferInfo,
@@ -3203,7 +3315,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadInt8Into,
         emitStoreInt8FromA,
         emitLoadInt16IntoHL,
-        emitStoreInt16FromHL
+        emitStoreInt16FromHL,
+        isAnyFixedDeclaredType
       });
       if (forStmt.handled) {
         if (!forStmt.ok) return { ok: false, asmBody: "", log: forStmt.log };
@@ -3463,6 +3576,7 @@ export function transpileAmyCore(sourceText, deps) {
       cartridgeMeta,
       onFrameHook,
       amyTimers,
+      hasExternalAsmInclude,
       nextRamAddress,
       ramLayout,
       runtimeVars,

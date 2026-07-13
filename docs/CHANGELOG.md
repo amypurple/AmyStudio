@@ -1,3 +1,118 @@
+## 2026-07-12 - Bunny v3 codegen tightening
+
+- Added `AMY_VRAM_BEGIN` / `AMY_VRAM_END` helpers and coalesced adjacent generated VRAM upload guards, preserving the legacy NMI/VDP restore contract while removing repeated inline boilerplate.
+- Optimized global 16-bit/fixed stores through `ld (nn),hl`, direct `0 - fixedVar`, byte compare against zero, and byte expressions that combine a direct byte with `data bytes[index]`.
+- Let sprite field byte expressions such as `set sprite 4 x to sprite 0 x + OffsetTable[I]` compile directly, and used that to remove temporary variables from Easter Bunny v3's invincibility star animation.
+- Current measured Easter Bunny v3 balanced size is 6165 bytes, versus 5538 bytes for the v2 legacy bridge.
+
+## 2026-07-12 - Fixed whole/fraction byte contexts
+
+- Fixed `whole X` / `fraction X` in byte-value contexts such as `print at`, partial sprite setters, pixel/tile helpers, and 8-bit comparisons by adding the missing fixed/word component paths to `emitLoadInt8ValueInto`.
+- Preserved full fixed-point comparison semantics: bare `fixed`/`ufixed` conditions still compare against scaled 8.8 values (`8` -> `$0800`); integer-only comparison remains explicit through `whole X`.
+- Rejected unsafe fixed-point counted loops: `for F = ...` where `F` is `fixed`/`ufixed`, and integer loops with fixed bounds such as `for I = 0 to X`; use `whole X` when truncation is intended.
+- Added `tools/test-fixed-byte-context-codegen.mjs` to lock the byte-context, comparison, signedness, and for-loop contracts under raw and balanced assembly.
+- Cleaned `docs/amy-language.md` examples around `wait 5 frames`, sprite shadow constant-index limits, `u32` zeroing, declared loop variables, and top-level `on vblank`.
+## 2026-07-11 - Fixed 8.8 natural assignments
+
+- Clarified and tested that `fixed`/`ufixed` assignments use 8.8 fixed-point meaning: `8` stores `$0800`, `1.5` stores `$0180`, and byte contexts read the integer high byte.
+- Added a direct `u8/i8 -> fixed/ufixed` store path that writes the source byte into the fixed high byte and zeros the fractional byte without building a temporary `HL` value.
+- Updated Easter Bunny v3 to remove explicit `<< 8` fixed initializers where a natural fixed assignment is enough.
+- Current balanced ROM size for v3 is 6769 bytes.
+## 2026-07-11 - Easter Bunny v3 loop and sprite-shadow getters
+
+- Added byte getters for sprite shadow fields: `sprite I y`, `sprite I x`, `sprite I pattern`, and `sprite I color`.
+- Ported Easter Bunny v3 title selection, level/session loop, player-update orchestration, and level-start slide/star animation into Amy code; horizontal physics remains on the verified legacy ASM path.
+- Removed additional legacy bridge bodies now replaced by Amy thunks while keeping the stable v2 sample intact.
+- Current balanced ROM size for v3 is 6761 bytes.
+## 2026-07-11 - Easter Bunny v3 smoke reset and fixed coordinates as bytes
+
+- Fixed Easter Bunny v3 level start smoke by initializing `Bunny_SmokeFrame` to 4 when the player starts a level; smoke now only activates through `Bunny_StartSmoke`.
+- Added implicit fixed/ufixed whole-byte loading when a command expects an 8-bit value, so sprite and coordinate commands can accept 8.8 positions without manual `highbyte`/`whole` casts.
+- Current balanced ROM size for v3 is 6562 bytes.
+## 2026-07-11 - Easter Bunny v3 bridge cleanup and title color port
+
+- Removed unused legacy bridge routines from Easter Bunny v3 after earlier Amy ports made them unreachable: CheckFloor, old byte-based input/physics, legacy test-sprite setup, and smoke hide helper.
+- Ported the title color animation table and repeated VRAM color-band upload into Amy code using copy Data + offset count 8 to vram.color + offset.
+- Current balanced ROM size for v3 is 6557 bytes; the title color port is slightly larger than the pruned bridge but keeps reducing the verified legacy boundary.
+## 2026-07-11 - Fixed 8.8 comparison literals
+
+- Fixed comparisons such as `fixedSpeed > 8` so simple numeric literals are encoded as raw 8.8 fixed-point values (for example `8` -> `$0800`) when compared against `fixed`/`ufixed` variables.
+- Corrected Easter Bunny v3 vertical gravity so the falling speed no longer clamps immediately to max velocity.
+
+## 2026-07-11 - Easter Bunny v3 horizontal physics kept on legacy path
+
+- Tested a native Amy rewrite of the horizontal player update, but restored the legacy ASM routine because the generated hot path was larger and made movement less smooth.
+- Kept the fixed 8.8 type conversion work in place for other routines; horizontal physics now marks a concrete optimization target for future Amy codegen.
+
+## 2026-07-11 - Easter Bunny v3 vertical physics in Amy
+
+- Moved the vertical player update into native Amy code using fixed 8.8 gravity, jump impulse, velocity clamp, and position accumulation.
+
+## 2026-07-10 - Easter Bunny v3 ground-state updater in Amy
+
+- Moved the active foot-tile ground/lava state updater into native Amy code, keeping v2 as the protected playable baseline.
+
+## 2026-07-10 - Easter Bunny v3 egg pickup in Amy
+
+- Moved the two-cell egg pickup test into native Amy code while preserving the legacy tile checks, egg counter decrement, and pickup sound.
+
+## 2026-07-10 - Easter Bunny v3 sprite selector and ground snap in Amy
+
+- Continued the Easter Bunny v3 rewrite by moving player sprite-frame selection and ground snapping into native Amy subs.
+- Kept legacy `Bunny_PlayerSprite` available for old ASM callers that still pass the frame base in register A.
+
+## 2026-07-10 - Fixed 8.8 byte casts
+
+- Added narrow implicit 8.8-to-byte assignment for smooth sprite code: `u8 = ufixed` and `i8 = fixed` now store the integer high byte directly, with no runtime helper.
+- Kept mixed-signedness casts explicit; use `highbyte` or `whole` when intentionally crossing signed/unsigned fixed-point forms.
+
+
+## 2026-07-10 - Easter Bunny v3 bird routines in Amy
+
+- Continued the Easter Bunny v3 rewrite by moving bird chase and bird/player collision checks into Amy subs backed by explicit bird position mirrors.
+- Kept Easter Bunny v2 on the verified bridge, while v3 now thunks `Bunny_UpdateBird` and `Bunny_CheckBird` to native Amy routines.
+## 2026-07-10 - ROM pointer reads for SDCC-style decoders
+
+- Extended word-table entries so `P = Levels[Index]` stores the selected ROM address into a `u16` variable without a runtime helper.
+- Added `peek(P)` as a byte expression that reads from the address held in a `u16` expression, enabling compact `Code = peek(P) / P += 1` decoders for ports such as Easter Bunny.
+- Expanded `tools/test-word-table-codegen.mjs` to assert the exact ASM for word-table-to-pointer, `peek(P)`, and `u16 = u8 << 8` codegen under raw and balanced assembly.
+- Applied those primitives to `Easter Bunny v3`: the level pointer lookup and RNC byte decoder now live in Amy, while v2 keeps the verified legacy ASM baseline.
+
+## 2026-07-09 - Easter Bunny v3 rewrite step and sprite field setters
+
+- Added native partial sprite shadow setters: `set sprite I y to Y`, `set sprite I x to X`, `set sprite I pattern to P`, and `set sprite I color to C`.
+- Converted Easter Bunny v2/v3 bridge labels for player colors, smoke start, and sprite-state updates to delegate into Amy subs instead of keeping those routines fully in ASM.
+- Kept the playable legacy engine boundary intact through `call asm Bunny_StartNearOriginal` and `include asm "@project/bunny_legacy_engine.inc"` while reducing the bridge surface one safe subsystem at a time.
+
+## 2026-07-09 - Indexable ROM word tables (data … words)
+
+**Summary:** `data Levels words / @Level0, @Level1 / end data` + `Levels[Index]` — the Amy replacement for C's `const byte* levels[]`. Second deliverable of the SDCC-porting language plan.
+
+- New `data Name words` block (and inline `data Name words = …`) emitting `dw` entries; entries are `@Label` (data/asset/label address), `$xxxx`, or decimal words. Max 128 entries; empty tables and bare identifiers without `@` are compile errors.
+- `Table[ConstIndex]` folds to the entry label directly (no table walk); out-of-range constant indexes are compile errors.
+- `Table[Var]` emits the minimal canonical dereference: `ld a,(Var) / add a,a / ld e,a / ld d,0 / ld hl,Table / add hl,de / ld e,(hl) / inc hl / ld d,(hl) / ex de,hl`. No runtime helper.
+- Consumers: `decompress CODEC Table[i] to vram.*`, `put Table[i] frame size W,H at X,Y`, and anything using the shared source-address resolver.
+- New `tools/test-word-table-codegen.mjs` (14 checks incl. raw + balanced-optimizer assembly; current pointer-read demo 243→235 bytes) and catalog example `amy-word-table-selftest`. `node tools/check-examples.mjs` 159/159.
+- Documented in `docs/amy-language.md` § "Word tables". Pairs with ref parameters for the Easter Bunny rewrite (level RLE tables + actor subs).
+
+## 2026-07-09 - Ref parameters (by reference)
+
+**Summary:** `sub Move(ref Actor A)` / `sub Bump(ref u8 V)` — parameters passed by address, the Amy equivalent of C's `T*` out-params. First deliverable of the SDCC-porting language plan.
+
+- Records can now be passed to subs/functions: always by reference (`ref Actor A`); a record parameter without `ref` is a compile error with a fix-it.
+- Scalar `ref` supported for `u8/i8/u16/i16`; arguments must be addressable lvalues of the exact type (global, record field, array element, local, or forwarded `ref`). Literals/expressions are compile errors.
+- Codegen: the stack slot holds a 2-byte address; caller pushes a constant address when foldable (`MoveActor(Hero, 3)` → `ld hl,$7020 / push hl`); callee dereferences with `ld l,(ix+n) / ld h,(ix+n+1)` + `inc hl` for field offsets 1–3. No runtime helper, no copy.
+- Safety: unsupported uses (`ref u32`, `ref fixed`, `ref bool`, arrays, and statements not yet ref-aware) fail loudly at compile time — the internal ref type never silently falls back to slot addressing.
+- Guarded direct-IX fast paths (`inc/dec`, `+=1`, shifts, `set/clear bit`, legacy `shl/shr`) with explicit ref branches that operate through `(hl)`.
+- New `tools/test-ref-param-codegen.mjs` (12 checks: codegen shape, error cases, raw + balanced-optimizer assembly, 219→218 bytes). `node tools/check-examples.mjs` 157/157.
+- Documented in `docs/amy-language.md` § "Ref parameters". Real-port validation planned on the Easter Bunny Amy rewrite (actor physics subs).
+
+## 2026-07-08 - ASM bridge calls
+
+- Added `call asm Label` so Amy code can call raw external Z80 labels without an inline `asm { call ... }` block.
+- Added explicit register arguments for external calls, for example `call asm Routine with hl = Source, de = vram.pattern, bc = 768`.
+- Updated Easter Bunny v2 to use `call asm` and `include asm` as the transition boundary for the remaining legacy engine.
+
 ## 2026-07-03 - Official Nibble Codec and Quick Compression Set
 
 - Officialized `nibble` as the Amy Studio codec name for the legacy `DAN0nibble`-derived RLE/data-stream format, including project-file preview, asset loading, and VRAM decompression support.

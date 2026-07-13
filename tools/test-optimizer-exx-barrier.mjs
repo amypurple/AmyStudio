@@ -76,4 +76,106 @@ for (const level of levels) {
   );
 }
 
+const adjacentReloadAsm = `
+    org $8000
+Start:
+    ld a,$42
+    ld (ByteCell),a
+    ld a,(ByteCell)
+    ld hl,$1234
+    ld (WordCell),hl
+    ld hl,(WordCell)
+    ret
+ByteCell:
+    db 0
+WordCell:
+    dw 0
+`;
+
+for (const level of levels) {
+  const profile = getOptimizationProfile(level, adjacentReloadAsm);
+  const result = await assembleAmysCVAssembly({ "main.asm": adjacentReloadAsm }, "main.asm", {
+    outputFilename: `optimizer-adjacent-reload-${level}.bin`,
+    outputMode: "binary",
+    targetPlatform: "raw",
+    optimizerEnabled: profile.optimizerEnabled,
+    optimizerConfig: profile.optimizerConfig
+  });
+
+  assert.equal(result.ok, true, result.log || `${level} adjacent reload optimizer fixture should assemble`);
+
+  const bytes = Array.from(result.binary || []);
+  const byteStoreIndex = bytes.findIndex((byte, index) => byte === 0x32 && bytes[index + 3] === 0x21);
+  assert.notEqual(byteStoreIndex, -1, `${level} fixture should contain LD (ByteCell),A followed by LD HL after reload removal`);
+  assert.notEqual(bytes[byteStoreIndex + 4], 0x3a, `${level} optimizer should remove adjacent LD A,(ByteCell) reload`);
+
+  const wordStoreIndex = bytes.findIndex((byte, index) => byte === 0x22 && bytes[index + 3] === 0xc9);
+  assert.notEqual(wordStoreIndex, -1, `${level} optimizer should leave LD (WordCell),HL directly before RET after reload removal`);
+}
+
+const unchangedHlReloadAsm = `
+    org $8000
+Start:
+    ld hl,(WordCell)
+    ld a,h
+    ld (ByteCell),a
+    ld hl,(WordCell)
+    ld a,h
+    ld (ByteCell2),a
+    ret
+ByteCell:
+    db 0
+ByteCell2:
+    db 0
+WordCell:
+    dw $1234
+`;
+
+for (const level of levels) {
+  const profile = getOptimizationProfile(level, unchangedHlReloadAsm);
+  const result = await assembleAmysCVAssembly({ "main.asm": unchangedHlReloadAsm }, "main.asm", {
+    outputFilename: `optimizer-unchanged-hl-reload-${level}.bin`,
+    outputMode: "binary",
+    targetPlatform: "raw",
+    optimizerEnabled: profile.optimizerEnabled,
+    optimizerConfig: profile.optimizerConfig
+  });
+
+  assert.equal(result.ok, true, result.log || `${level} unchanged-HL reload fixture should assemble`);
+  const bytes = Array.from(result.binary || []);
+  const hlReloadCount = bytes.filter((byte) => byte === 0x2a).length;
+  assert.equal(hlReloadCount, 1, `${level} optimizer should remove second LD HL,(WordCell) while HL is unchanged; listing:\n${result.listing}`);
+}
+
+const changedSourceHlReloadAsm = `
+    org $8000
+Start:
+    ld hl,(WordCell)
+    ld a,h
+    ld (WordCell),a
+    ld hl,(WordCell)
+    ld a,h
+    ld (ByteCell),a
+    ret
+ByteCell:
+    db 0
+WordCell:
+    dw $1234
+`;
+
+for (const level of levels) {
+  const profile = getOptimizationProfile(level, changedSourceHlReloadAsm);
+  const result = await assembleAmysCVAssembly({ "main.asm": changedSourceHlReloadAsm }, "main.asm", {
+    outputFilename: `optimizer-changed-source-hl-reload-${level}.bin`,
+    outputMode: "binary",
+    targetPlatform: "raw",
+    optimizerEnabled: profile.optimizerEnabled,
+    optimizerConfig: profile.optimizerConfig
+  });
+
+  assert.equal(result.ok, true, result.log || `${level} changed-source reload fixture should assemble`);
+  const bytes = Array.from(result.binary || []);
+  const hlReloadCount = bytes.filter((byte) => byte === 0x2a).length;
+  assert.equal(hlReloadCount, 2, `${level} optimizer must keep LD HL,(WordCell) after WordCell was written; listing:\n${result.listing}`);
+}
 console.log("Optimizer EXX barrier regression passed.");

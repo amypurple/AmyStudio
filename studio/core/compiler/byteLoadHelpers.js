@@ -50,14 +50,55 @@ export function createByteLoadHelpers(ctx) {
     return lines;
   }
 
+  function emitLoadSpriteFieldDataByteBinaryInto(register, normalized) {
+    const spriteFieldBinary = normalized.match(/^sprite\s+(.+?)\s+(y|x|pattern|color)\s*([+\-&|^])\s*(.+)$/i);
+    if (!spriteFieldBinary) return null;
+    const leftToken = `sprite ${spriteFieldBinary[1].trim()} ${spriteFieldBinary[2].toLowerCase()}`;
+    const operator = spriteFieldBinary[3];
+    const rightToken = spriteFieldBinary[4].trim();
+    const dataRight = parseArrayRef(rightToken);
+    if (!dataRight || !dataLengths?.has(dataRight.name)) return null;
+    const loadRight = emitLoadInt8Into("b", rightToken);
+    const loadLeft = emitLoadInt8Into("a", leftToken);
+    if (!loadRight || !loadLeft) return null;
+    const opInstr = operator === "+" ? "add a,b"
+      : operator === "-" ? "sub b"
+      : operator === "&" ? "and b"
+      : operator === "|" ? "or b"
+      : "xor b";
+    const result = [...loadRight, ...loadLeft, `    ${opInstr}`];
+    if (register.toLowerCase() !== "a") result.push(`    ld ${register},a`);
+    return result;
+  }
+
   function emitLoadInt8Into(register, token) {
     const normalized = normalizeExpression(String(token).trim());
+    const spriteBinaryLoad = emitLoadSpriteFieldDataByteBinaryInto(register, normalized);
+    if (spriteBinaryLoad) return spriteBinaryLoad;
     const expressionAst = parseExpressionAst(normalized);
+    const peekCall = normalized.match(/^peek\s*\((.+)\)$/i);
+    if (peekCall) {
+      const loadAddress = emitLoadInt16IntoHL(peekCall[1].trim());
+      if (!loadAddress) return null;
+      const lines = [...loadAddress, "    ld a,(hl)"];
+      if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+      return lines;
+    }
     if (expressionAst && (expressionAst.kind === "binary" || expressionAst.kind === "unary")) {
       const astCode = emitLoadInt8AstIntoA(expressionAst);
       if (astCode) {
         if (register.toLowerCase() !== "a") return [...astCode, `    ld ${register},a`];
         return astCode;
+      }
+    }
+    if (expressionAst?.kind === "call") {
+      const astBuiltin = String(expressionAst.name || "").toLowerCase();
+      if (["random", "min", "max", "absdiff", "abs"].includes(astBuiltin)) {
+        const astCode = emitLoadInt8AstIntoA(expressionAst);
+        if (astCode) {
+          if (register.toLowerCase() !== "a") return [...astCode, `    ld ${register},a`];
+          return astCode;
+        }
       }
     }
     const builtinInput = parseBuiltinInputRef(token);
@@ -85,6 +126,17 @@ export function createByteLoadHelpers(ctx) {
       if (!loadAddress) return null;
       if (register.toLowerCase() === "a") return [...loadAddress, "    ld a,(hl)"];
       return [...loadAddress, "    ld a,(hl)", `    ld ${register},a`];
+    }
+    const spriteField = normalized.match(/^sprite\s+(.+?)\s+(y|x|pattern|color)$/i);
+    if (spriteField) {
+      const indexValue = tryEvaluateConstantExpression(spriteField[1]);
+      const fieldOffsets = { y: 0, x: 1, pattern: 2, color: 3 };
+      const fieldOffset = fieldOffsets[String(spriteField[2]).toLowerCase()];
+      if (!Number.isInteger(indexValue) || indexValue < 0 || indexValue > 31 || fieldOffset === undefined) return null;
+      const offset = indexValue * 4 + fieldOffset;
+      const lines = [`    ld a,(AMY_SPRITE_TABLE+${offset})`];
+      if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+      return lines;
     }
     const functionCall = emitFunctionInvocation(token);
     if (functionCall) {
@@ -115,7 +167,26 @@ export function createByteLoadHelpers(ctx) {
     const resolvedToken = scopedRuntimeName(token);
     const info = getRuntimeInfo(token);
     if (!info) return [`    ld ${register},${symbolOrValue(token)}`];
-    if (info.type !== "int8") return null;
+    if (info.isRef && info.refTargetType === "int8") {
+      const lines = [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        "    ld a,(hl)"
+      ];
+      if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+      return lines;
+    }
+    if (info.type !== "int8") {
+      const declaredType = resolveDeclaredValueType(token);
+      if (isAnyFixedDeclaredType(declaredType)) {
+        const loadHL = emitLoadInt16IntoHL(token);
+        if (!loadHL) return null;
+        const lines = [...loadHL, "    ld a,h"];
+        if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+        return lines;
+      }
+      return null;
+    }
     if (info.kind === "packed_bool") {
       const trueLabel = makeGeneratedLabel("BoolTrue");
       const doneLabel = makeGeneratedLabel("BoolDone");
@@ -199,6 +270,8 @@ export function createByteLoadHelpers(ctx) {
   function emitLoadInt8ValueInto(register, token) {
     const normalized = normalizeExpression(String(token).trim());
     if (SIMPLE_BYTE_TOKEN_RE.test(normalized)) return emitLoadInt8Into(register, normalized);
+    const spriteBinaryLoad = emitLoadSpriteFieldDataByteBinaryInto(register, normalized);
+    if (spriteBinaryLoad) return spriteBinaryLoad;
     const expressionAst = parseExpressionAst(normalized);
     if (expressionAst) {
       const astCode = emitLoadInt8AstIntoA(expressionAst);
@@ -206,6 +279,26 @@ export function createByteLoadHelpers(ctx) {
         if (register.toLowerCase() !== "a") return [...astCode, `    ld ${register},a`];
         return astCode;
       }
+    }
+    const fixPart = parseFix8_8Component(normalized);
+    if (fixPart) {
+      const declaredType = resolveDeclaredValueType(fixPart.valueToken);
+      if (!isAnyFixedDeclaredType(declaredType)) return null;
+      const loadHL = emitLoadInt16IntoHL(fixPart.valueToken);
+      if (!loadHL) return null;
+      const lines = [...loadHL, fixPart.component === "whole" ? "    ld a,h" : "    ld a,l"];
+      if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+      return lines;
+    }
+    const wordBytePart = parseWordByteComponent(normalized);
+    if (wordBytePart) {
+      const declaredType = resolveDeclaredValueType(wordBytePart.valueToken);
+      if (declaredType !== "u16" && declaredType !== "i16" && !isAnyFixedDeclaredType(declaredType)) return null;
+      const loadHL = emitLoadInt16IntoHL(wordBytePart.valueToken);
+      if (!loadHL) return null;
+      const lines = [...loadHL, wordBytePart.component === "highbyte" ? "    ld a,h" : "    ld a,l"];
+      if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+      return lines;
     }
 
     if (!isSafeExpression(normalized) || normalized.includes("[")) return null;
@@ -320,10 +413,24 @@ export function createByteLoadHelpers(ctx) {
       if (lowered === "h" || lowered === "l" || lowered === "hl") return "hl";
       return lowered;
     };
+    const lineClobbersPair = (line, pair) => {
+      const code = String(line || "").replace(/;.*/, "").trim().toLowerCase();
+      if (!code) return false;
+      if (/\b(?:call|rst|exx|ldi|ldir|ldd|lddr|cpi|cpir|cpd|cpdr|ini|inir|ind|indr|outi|otir|outd|otdr)\b/.test(code)) return true;
+      if (pair === "af") return /\b(?:ld|pop|inc|dec|add|adc|sub|sbc|and|or|xor|cp|neg|cpl|daa|scf|ccf|rlca|rrca|rla|rra|rl|rr|sla|sra|srl|bit|set|res)\b/.test(code);
+      const parts = pair === "bc" ? ["b", "c", "bc"] : pair === "de" ? ["d", "e", "de"] : pair === "hl" ? ["h", "l", "hl"] : [pair];
+      const escaped = parts.join("|");
+      if (new RegExp(`^\\s*(?:ld|pop|inc|dec|ex)\\s+(?:${escaped})\\b`).test(code)) return true;
+      if (pair === "hl" && /\badd\s+hl\s*,/.test(code)) return true;
+      if (pair === "de" && /\bex\s+(?:de\s*,\s*hl|hl\s*,\s*de)\b/.test(code)) return true;
+      if (pair === "hl" && /\bex\s+(?:de\s*,\s*hl|hl\s*,\s*de|\(sp\)\s*,\s*hl|hl\s*,\s*\(sp\))\b/.test(code)) return true;
+      return false;
+    };
     const targetPair = pairForReg(normalizedRegister);
     const saves = liveRegs
       .map(pairForReg)
-      .filter((r, index, list) => r !== targetPair && list.indexOf(r) === index);
+      .filter((r, index, list) => r !== targetPair && list.indexOf(r) === index)
+      .filter((r) => load.some((line) => lineClobbersPair(line, r)));
     const pushes = saves.map((r) => `    push ${r}`);
     const pops = [...saves].reverse().map((r) => `    pop ${r}`);
     return [...pushes, ...load, ...pops];
@@ -350,6 +457,13 @@ export function createByteLoadHelpers(ctx) {
     const resolvedToken = scopedRuntimeName(token);
     const info = getRuntimeInfo(token);
     if (!info) return [`    ld a,(${symbolOrValue(token)})`];
+    if (info.isRef && info.refTargetType === "int8") {
+      return [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        "    ld a,(hl)"
+      ];
+    }
     if (info.type !== "int8") return null;
     if (info.storage === "stack") return [`    ld a,(${formatIxOffset(info.offset)})`];
     return [`    ld a,(${resolvedToken})`];

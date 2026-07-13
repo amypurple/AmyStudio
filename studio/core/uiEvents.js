@@ -74,7 +74,7 @@ export function bindTopUiEvents(ctx) {
     if (typeof ensureExamplesLoaded === "function") {
       try {
         setStatus("Loading examples...");
-        await ensureExamplesLoaded();
+        await ensureExamplesLoaded({ forceFresh: true });
         setStatus("Examples ready.");
       } catch (error) {
         setStatus(`Cannot load examples: ${error?.message || error}`);

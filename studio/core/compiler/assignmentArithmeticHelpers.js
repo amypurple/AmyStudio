@@ -415,6 +415,13 @@ export function createAssignmentArithmeticHelpers({
         return [...loadAddress, `    ${op} (hl)`];
       }
       if (info.kind === "packed_bool") return null;
+      if (info.isRef) {
+        return [
+          `    ld l,(ix${info.offset < 0 ? info.offset : `+${info.offset}`})`,
+          `    ld h,(ix${info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`})`,
+          `    ${op} (hl)`
+        ];
+      }
       if (info.storage === "stack") {
         return [`    ${op} (ix${info.offset < 0 ? info.offset : `+${info.offset}`})`];
       }
@@ -440,6 +447,33 @@ export function createAssignmentArithmeticHelpers({
         }
         return [
           ...loadAddress,
+          "    ld a,(hl)",
+          "    dec (hl)",
+          "    cp 0",
+          `    jr nz,${doneLabel}`,
+          "    inc hl",
+          "    dec (hl)",
+          `${doneLabel}:`
+        ];
+      }
+      if (info.isRef) {
+        const doneLabel = makeGeneratedLabel("WordDone");
+        const loadPointer = [
+          `    ld l,(ix${info.offset < 0 ? info.offset : `+${info.offset}`})`,
+          `    ld h,(ix${info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`})`
+        ];
+        if (op === "inc") {
+          return [
+            ...loadPointer,
+            "    inc (hl)",
+            `    jr nz,${doneLabel}`,
+            "    inc hl",
+            "    inc (hl)",
+            `${doneLabel}:`
+          ];
+        }
+        return [
+          ...loadPointer,
           "    ld a,(hl)",
           "    dec (hl)",
           "    cp 0",
@@ -508,6 +542,13 @@ export function createAssignmentArithmeticHelpers({
         return [...loadAddress, ...Array.from({ length: shiftCount }, () => "    sla (hl)")];
       }
       if (info.kind === "packed_bool") return null;
+      if (info.isRef) {
+        return [
+          `    ld l,(ix${info.offset < 0 ? info.offset : `+${info.offset}`})`,
+          `    ld h,(ix${info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`})`,
+          ...Array.from({ length: shiftCount }, () => "    sla (hl)")
+        ];
+      }
       if (info.storage === "stack") {
         return Array.from({ length: shiftCount }, () => `    sla (ix${info.offset < 0 ? info.offset : `+${info.offset}`})`);
       }
@@ -521,6 +562,16 @@ export function createAssignmentArithmeticHelpers({
         const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
         if (!loadAddress) return null;
         const lines = [...loadAddress];
+        for (let index = 0; index < shiftCount; index += 1) {
+          lines.push("    sla (hl)", "    inc hl", "    rl (hl)", "    dec hl");
+        }
+        return lines;
+      }
+      if (info.isRef) {
+        const lines = [
+          `    ld l,(ix${info.offset < 0 ? info.offset : `+${info.offset}`})`,
+          `    ld h,(ix${info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`})`
+        ];
         for (let index = 0; index < shiftCount; index += 1) {
           lines.push("    sla (hl)", "    inc hl", "    rl (hl)", "    dec hl");
         }
@@ -550,6 +601,25 @@ export function createAssignmentArithmeticHelpers({
   function emitFormulaAssignment(target, opToken, valueToken) {
     const targetType = resolveValueType(target);
     if (opToken === "=") {
+      const shiftHighByte = String(valueToken || "").trim().match(/^(.+)\s*<<\s*8$/);
+      if (targetType === "int16" && shiftHighByte) {
+        const targetInfo = getRuntimeInfo(target);
+        const sourceToken = shiftHighByte[1].trim();
+        const sourceDeclared = normalizeDeclaredType(resolveDeclaredValueType(sourceToken));
+        const targetAsm = targetInfo?.asmName || (targetInfo ? symbolOrValue(target) : null);
+        const sourceIsUnsignedByte = sourceDeclared === "u8" || sourceDeclared === "byte" || sourceDeclared === "bool" || sourceDeclared === "boolean";
+        if (targetAsm && targetInfo?.type === "int16" && targetInfo.storage !== "stack" && sourceIsUnsignedByte) {
+          const loadA = emitLoadInt8Into("a", sourceToken);
+          if (loadA) {
+            return [
+              ...loadA,
+              "    ld h,a",
+              "    ld l,0",
+              `    ld (${targetAsm}),hl`
+            ];
+          }
+        }
+      }
       const randomArgs = parseRandomCallArgs(valueToken);
       if (targetType === "fp5" && randomArgs && randomArgs.length === 2 && typeof emitRandomFp5BetweenInto === "function") {
         const randomStore = emitRandomFp5BetweenInto(randomArgs[0], randomArgs[1], target);

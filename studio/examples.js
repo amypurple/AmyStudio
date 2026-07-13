@@ -1,5 +1,5 @@
-import { gameExamples, gameExampleManifest } from "./examples-games.js";
-import { validationExamples, validationExampleManifest } from "./examples-validation.js";
+import { gameExamples, gameExampleManifest } from "./examples-games.js?v=20260713-easter-bunny-clean";
+import { validationExamples, validationExampleManifest } from "./examples-validation.js?v=20260707-live-examples-index2";
 
 export const exampleEditorialTracks = {
   "MANUAL_CANON": "manual-canon",
@@ -891,6 +891,21 @@ const baseExampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
+    ]
+  },
+  {
+    "id": "amy-float-ahl-benchmark",
+    "label": "Ahl Float Benchmark",
+    "detail": "Creative Computing / Ahl benchmark using current AMY fp5 surfaces.",
+    "projectName": "amy-float-ahl-benchmark",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Algorithms",
+    "tags": [
+      "amy",
+      "fp5",
+      "benchmark",
+      "manual-canon"
     ]
   },
   {

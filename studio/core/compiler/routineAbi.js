@@ -111,6 +111,8 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_RANDOM_U8: abi({ outputs: { a: "random byte" }, clobbers: ["af", "de", "hl"], notes: "Amy xorshift16 byte random helper using legacy_random_seed with zero fallback." }),
 
   // VDP/text runtime wrappers.
+  AMY_VRAM_BEGIN: abi({ clobbers: ["af", "bc", "hl"], notes: "Disables NMI for a VRAM critical section and saves original R1 shadow on the stack for AMY_VRAM_END." }),
+  AMY_VRAM_END: abi({ clobbers: ["af", "bc", "hl"], notes: "Restores the R1 shadow saved by AMY_VRAM_BEGIN and acknowledges VDP status when NMI was originally enabled." }),
   AMY_COPY_BYTES_TO_VRAM: abi({ inputs: { hl: "RAM source", de: "VRAM destination", bc: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "WRITE_VRAM count-fix wrapper." }),
   AMY_GET_VRAM: abi({ inputs: { de: "VRAM source", hl: "RAM destination", bc: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "READ_VRAM count-fix wrapper." }),
   AMY_VPOKE: abi({ inputs: { hl: "VRAM address", a: "value" }, clobbers: ["af", "hl"] }),

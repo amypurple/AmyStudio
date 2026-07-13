@@ -5,6 +5,7 @@ export function createDataHelpers(ctx) {
     rewriteUserSymbolsInExpression,
     dataLengths,
     dataBlocks,
+    dataWordTables,
     romData,
     getInData,
     setInData
@@ -112,6 +113,32 @@ export function createDataHelpers(ctx) {
     block.values.push(...encodeCharRow(rowText, rawLine));
   }
 
+  function normalizeWordDataToken(token) {
+    const trimmed = token.trim();
+    if (!trimmed) return null;
+    const addressOf = trimmed.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (addressOf) return { kind: "address", name: addressOf[1] };
+    if (/^\$[0-9A-Fa-f]+$/.test(trimmed)) return { kind: "value", text: trimmed.toUpperCase() };
+    if (/^0x[0-9A-Fa-f]+$/i.test(trimmed)) return { kind: "value", text: `$${trimmed.slice(2).toUpperCase()}` };
+    if (/^[0-9]+$/.test(trimmed)) return { kind: "value", text: trimmed };
+    return false;
+  }
+
+  function appendWordDataTokens(block, tokenText, rawLine) {
+    const tokens = String(tokenText).trim().split(",").map(normalizeWordDataToken);
+    if (tokens.some((token) => token === false)) {
+      throw new Error(`Invalid word table entry (use @Label, $xxxx, or a decimal word): ${rawLine}`);
+    }
+    block.values.push(...tokens.filter(Boolean));
+  }
+
+  function looksLikeWordDataTokens(tokenText) {
+    const trimmed = String(tokenText).trim();
+    if (!trimmed) return false;
+    const tokens = trimmed.split(",").map(normalizeWordDataToken);
+    return tokens.length > 0 && !tokens.some((token) => token === false);
+  }
+
   function appendDataTokens(block, tokenText, rawLine) {
     const normalizedText = String(tokenText).trim().replace(/^db\s+/i, "");
     const tokens = normalizedText.split(",").map(normalizeDataToken);
@@ -153,6 +180,24 @@ export function createDataHelpers(ctx) {
     const inData = getInData();
     if (!inData) return;
     const { name } = inData;
+    if (inData.layout === "words") {
+      const { values } = inData;
+      if (!values.length) {
+        throw new Error(`Word table ${name} is empty.`);
+      }
+      if (values.length > 128) {
+        throw new Error(`Word table ${name} has ${values.length} entries; variable indexing supports at most 128.`);
+      }
+      const asmName = ensureDataAsmSymbol(name);
+      const asmEntries = values.map((entry) => (entry.kind === "address" ? rewriteUserSymbolsInExpression(entry.name) : entry.text));
+      dataWordTables?.set(name, { length: values.length, entries: asmEntries });
+      romData.push(`${asmName}:`);
+      for (let index = 0; index < asmEntries.length; index += 4) {
+        romData.push(`    dw ${asmEntries.slice(index, index + 4).join(",")}`);
+      }
+      setInData(null);
+      return;
+    }
     if (inData.layout === "sprite16") {
       if (!inData.leftRows.length || !inData.rightRows.length) {
         throw new Error(`Data block ${name} is empty.`);
@@ -192,6 +237,8 @@ export function createDataHelpers(ctx) {
     appendCharRow,
     appendDataTokens,
     looksLikeDataTokens,
+    appendWordDataTokens,
+    looksLikeWordDataTokens,
     formatDataByteLiteral,
     expandDataValueToken,
     flushDataBlock

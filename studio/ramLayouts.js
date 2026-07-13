@@ -33,6 +33,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsControllers = !!caps.needsControllers;
   const needsSpinner = !!caps.needsSpinner;
   const needsFrameCounter = !!caps.needsFrameCounter;
+  const needsNmi = !!caps.needsNmi;
   const needsNmiFlagShadow = !!caps.needsNmiFlagShadow;
   const needsVdpStatusShadow = !!caps.needsVdpStatusShadow;
   const needsUserFrameHook = !!caps.needsUserFrameHook;
@@ -44,6 +45,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     needsSound ||
     needsMusic ||
     needsFrameCounter ||
+    needsNmi ||
     needsNmiFlagShadow ||
     needsVdpStatusShadow ||
     needsUserFrameHook ||

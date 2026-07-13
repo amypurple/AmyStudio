@@ -68,6 +68,28 @@ export function handleMutateStatement({
       lines.push(`${doneLabel}:`);
       return { ok: true, handled: true, lines };
     }
+    if (info.isRef && info.refTargetType === "int8") {
+      const lines = [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        `    ${op} (hl)`
+      ];
+      return { ok: true, handled: true, lines };
+    }
+    if (info.isRef && info.refTargetType === "int16") {
+      const doneLabel = makeGeneratedLabel("RefWordDone");
+      const lines = [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`
+      ];
+      if (op === "inc") {
+        lines.push("    inc (hl)", `    jr nz,${doneLabel}`, "    inc hl", "    inc (hl)");
+      } else {
+        lines.push("    ld a,(hl)", "    dec (hl)", "    cp 0", `    jr nz,${doneLabel}`, "    inc hl", "    dec (hl)");
+      }
+      lines.push(`${doneLabel}:`);
+      return { ok: true, handled: true, lines };
+    }
     if (info.type === "int8") {
       const lines = info.storage === "stack"
         ? [`    ${op} (${formatIxOffset(info.offset)})`]

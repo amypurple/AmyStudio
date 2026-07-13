@@ -351,6 +351,14 @@ export class Z80Optimizer {
             instructionTouchesRegister(token, regName) {
                 if (!(token instanceof Instruction)) return false;
                 const target = String(regName || '').toLowerCase();
+                const mnem = token.mnemonic.toLowerCase();
+                if (target === 'a' &&
+                    ['adc', 'add', 'and', 'cp', 'cpl', 'daa', 'neg', 'or', 'rla', 'rlca', 'rra', 'rrca', 'sbc', 'sub', 'xor'].includes(mnem)) {
+                    // Many Z80 ALU opcodes read A implicitly even when A is not
+                    // listed as an operand, for example "cp 30". Register
+                    // liveness must treat those as real A uses.
+                    return true;
+                }
                 for (const op of token.operands || []) {
                     if (op.type === 'register' || op.type === 'register_pair') {
                         const v = String(op.value).toLowerCase();
@@ -1094,14 +1102,32 @@ export class Z80Optimizer {
                                 // Header ($8000-$8020): Fixed 3-byte RST vector slots
                                 // NMI ($8021-$8023): 3-byte NMI handler (must stay 3 bytes)
                                 // Title ($8024+): Cartridge title - converting JP→JR here would shift title data
+                                // Use NEW symbol table if target has been processed, otherwise use old.
+                                // Compute this before policy checks so immediate-resolved operands can
+                                // still be mapped back to timing-sensitive labels.
+                                const targetAddr = lastOp.type === 'symbol' && newSymbolTable[lastOp.value] !== undefined
+                                    ? newSymbolTable[lastOp.value]
+                                    : this.resolveAddress(lastOp);
+                                const targetNamesForPolicy = [targetLabel, String(lastOp.value || ''), token.sourceLine || ''];
+                                if (targetAddr !== null && targetAddr !== undefined) {
+                                    for (const [name, addr] of Object.entries(newSymbolTable || {})) {
+                                        if (addr === targetAddr) targetNamesForPolicy.push(name);
+                                    }
+                                    for (const [name, addr] of Object.entries(this.symbolTable || {})) {
+                                        if (addr === targetAddr) targetNamesForPolicy.push(name);
+                                    }
+                                }
+                                const isVdpTimingSensitiveTarget = /(?:^|\s)(?:mdkrle_|pletter_|bitbuster|zx[07]_|dan[0-3]?_|nibble_|lzf_)\S*(?:loop|copy|write|vram)/i.test(targetNamesForPolicy.join(' '));
+
                                 if (pc >= 0x8000 && pc <= 0x8023) {
                                     // Skip optimization in header + NMI region
                                     optimizerLog(`  [JP→JR] Line ${token.lineNumber}: JP ${targetLabel} at $${pc.toString(16)} - SKIP (in ROM header region)`, 'debug');
+                                } else if (isVdpTimingSensitiveTarget) {
+                                    // ColecoVision VDP decompression/write loops are timing-sensitive.
+                                    // A JP->JR rewrite is logically equivalent but can shorten the gap
+                                    // between VDP data/control port accesses enough to corrupt VRAM.
+                                    optimizerLog(`  [JP→JR] Line ${token.lineNumber}: JP ${targetLabel} at $${pc.toString(16)} - SKIP (VDP timing-sensitive routine)`, 'debug');
                                 } else {
-                                    // Use NEW symbol table if target has been processed, otherwise use old
-                                    const targetAddr = lastOp.type === 'symbol' && newSymbolTable[lastOp.value] !== undefined
-                                        ? newSymbolTable[lastOp.value]
-                                        : this.resolveAddress(lastOp);
 
                                     // Calculate offset for JR (relative to PC after JR instruction)
                                     const pcAfterJr = pc + 2; // JR is 2 bytes
@@ -3286,6 +3312,75 @@ export class Z80Optimizer {
                             continue;
                         }
                     }
+                    const instructionWritesHl = (inst) => {
+                        if (!(inst instanceof Instruction)) return true;
+                        const m = inst.mnemonic.toLowerCase();
+                        const ops = inst.operands || [];
+                        if (isLocalAnalysisBarrier(inst)) return true;
+                        if (m === 'ld' || m === 'lea') {
+                            const dst = ops[0];
+                            return !!(dst && ((dst.type === 'register_pair' && String(dst.value).toLowerCase() === 'hl') ||
+                                (dst.type === 'register' && ['h', 'l'].includes(String(dst.value).toLowerCase()))));
+                        }
+                        if ((m === 'pop' || m === 'inc' || m === 'dec') && ops.length === 1) {
+                            const op = ops[0];
+                            return !!((op.type === 'register_pair' && String(op.value).toLowerCase() === 'hl') ||
+                                (op.type === 'register' && ['h', 'l'].includes(String(op.value).toLowerCase())));
+                        }
+                        if ((m === 'add' || m === 'adc' || m === 'sbc') && ops.length >= 1) {
+                            const dst = ops[0];
+                            return !!(dst.type === 'register_pair' && String(dst.value).toLowerCase() === 'hl');
+                        }
+                        if (m === 'ex' && ops.length === 2) {
+                            const left = String(ops[0].value).toLowerCase();
+                            const right = String(ops[1].value).toLowerCase();
+                            return left === 'hl' || right === 'hl';
+                        }
+                        return false;
+                    };
+                    // Delayed identical HL reloads are also redundant when the
+                    // straight-line instructions in between do not change HL and do not
+                    // write the memory source being reloaded. This catches repeated
+                    // fixed 8.8 whole-byte sprite setters:
+                    //   ld hl,(X)
+                    //   ld a,h
+                    //   ld (Y),a
+                    //   ld hl,(X)      ; redundant: HL still holds X
+                    if (mnem === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register_pair' &&
+                        String(token.operands[0].value).toLowerCase() === 'hl' &&
+                        !token.label) {
+                        const sourceOp = token.operands[1];
+                        const sourceSymbol = sourceOp && sourceOp.type === 'memory' && typeof sourceOp.value === 'string'
+                            ? String(sourceOp.value).toLowerCase()
+                            : null;
+                        const buffered = [];
+                        let duplicateIndex = -1;
+                        for (let j = i + 1; j < tokens.length && j <= i + SHORT_LOCAL_REUSE_WINDOW; j++) {
+                            const mid = tokens[j];
+                            if (!(mid instanceof Instruction) || mid.label) break;
+                            if (isSameHlReload(token, mid)) {
+                                duplicateIndex = j;
+                                break;
+                            }
+                            if (isLocalAnalysisBarrier(mid) || instructionWritesHl(mid)) break;
+                            if (sourceSymbol && mid.mnemonic.toLowerCase() === 'ld' &&
+                                mid.operands.length === 2 &&
+                                mid.operands[0].type === 'memory' &&
+                                String(mid.operands[0].value).toLowerCase() === sourceSymbol) break;
+                            buffered.push(mid);
+                        }
+                        if (duplicateIndex !== -1 && buffered.length > 0) {
+                            optimized.push(token);
+                            for (const mid of buffered) optimized.push(mid);
+                            i = duplicateIndex;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += getInstructionSize(tokens[duplicateIndex]);
+                            optimizerLog(`  Removed unchanged-HL duplicate reload at line ${tokens[duplicateIndex].lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
                     // Dead address setup in direct zero-store codegen:
                     //   LD HL,sym; XOR A; LD (sym),A
                     // The direct store does not read HL. Remove the setup only if HL is
@@ -3664,7 +3759,8 @@ export class Z80Optimizer {
                             typeof storeBack.operands[0].value === 'string' &&
                             storeBack.operands[1].type === 'register' &&
                             storeBack.operands[1].value.toLowerCase() === 'a' &&
-                            storeBack.operands[0].value === token.operands[1].value) {
+                            storeBack.operands[0].value === token.operands[1].value &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 4, 'a')) {
 
                             optimized.push(new Instruction(
                                 token.label,
@@ -3815,7 +3911,8 @@ export class Z80Optimizer {
                             typeof storeBack.operands[0].value === 'string' &&
                             storeBack.operands[1].type === 'register' &&
                             storeBack.operands[1].value.toLowerCase() === 'a' &&
-                            storeBack.operands[0].value === token.operands[1].value) {
+                            storeBack.operands[0].value === token.operands[1].value &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'a')) {
 
                             optimized.push(new Instruction(
                                 token.label,
@@ -4327,6 +4424,41 @@ export class Z80Optimizer {
                         }
                     }
 
+                    // === PHASE 1.5h3-direct: Remove adjacent reload after direct memory store ===
+                    // Patterns:
+                    //   ld (mem),a  / ld a,(mem)   -> drop reload (A is unchanged by the store)
+                    //   ld (mem),hl / ld hl,(mem)  -> drop reload (HL is unchanged by the store)
+                    // Safe only for immediately adjacent instructions with no labels/control-flow.
+                    if (token instanceof Instruction &&
+                        token.mnemonic.toLowerCase() === 'ld' &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'memory' &&
+                        !token.label &&
+                        i + 1 < tokens.length) {
+                        const nextToken = tokens[i + 1];
+                        if (nextToken instanceof Instruction &&
+                            !nextToken.label &&
+                            nextToken.mnemonic.toLowerCase() === 'ld' &&
+                            nextToken.operands.length === 2 &&
+                            nextToken.operands[1].type === 'memory' &&
+                            String(nextToken.operands[1].value).toLowerCase() === String(token.operands[0].value).toLowerCase()) {
+                            const storedReg = token.operands[1];
+                            const loadedReg = nextToken.operands[0];
+                            const storedRegName = String(storedReg.value).toLowerCase();
+                            const loadedRegName = String(loadedReg.value).toLowerCase();
+                            const sameRegister = storedRegName === loadedRegName;
+                            const supportedReload = (storedReg.type === 'register' && loadedReg.type === 'register' && storedRegName === 'a')
+                                || (storedReg.type === 'register_pair' && loadedReg.type === 'register_pair' && storedRegName === 'hl');
+                            if (sameRegister && supportedReload) {
+                                optimized.push(cloneInstruction(token));
+                                i += 1;
+                                this.stats.peepholeOpts++;
+                                this.stats.bytesSaved += getInstructionSize(nextToken);
+                                optimizerLog(`  Removed adjacent redundant LD ${String(loadedReg.value).toUpperCase()},(${token.operands[0].value}) after store at line ${token.lineNumber}`, 'debug');
+                                continue;
+                            }
+                        }
+                    }
                     // === PHASE 1.5h3a: Remove short delayed reload of A from the same IX/IY local ===
                     // Pattern:
                     //   ld (ix+d),a

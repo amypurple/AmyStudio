@@ -1,5 +1,5 @@
 import { Directive, Instruction, Lexer, NumberParser, Operand } from "./parserCore.js";
-import { Z80Optimizer } from "./optimizerCore.js?v=20260707-async-example-index";
+import { Z80Optimizer } from "./optimizerCore.js?v=20260712-optimizer-sync";
 
 let compiledBinary = null;
 let outputFilename = "build/output.col";

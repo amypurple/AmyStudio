@@ -108,6 +108,18 @@ export function createLoadStoreHelpers(ctx) {
     if (fieldRef.baseKind === "scalar") {
       const info = getRuntimeInfo(fieldRef.name);
       if (!info || info.kind !== "record") return null;
+      if (info.isRef) {
+        const lines = [
+          `    ld l,(${formatIxOffset(info.offset)})`,
+          `    ld h,(${formatIxOffset(info.offset + 1)})`
+        ];
+        if (fieldRef.totalOffset > 0 && fieldRef.totalOffset <= 3) {
+          for (let i = 0; i < fieldRef.totalOffset; i += 1) lines.push("    inc hl");
+        } else if (fieldRef.totalOffset) {
+          lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
+        }
+        return lines;
+      }
       if (info.storage === "stack") {
         const offset = info.offset + fieldRef.totalOffset;
         if (offset === 0) return ["    push ix", "    pop hl"];
@@ -178,6 +190,13 @@ export function createLoadStoreHelpers(ctx) {
     }
     const resolvedTarget = scopedRuntimeName(target);
     const info = getRuntimeInfo(target);
+    if (info?.isRef && info.refTargetType === "int8") {
+      return [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        "    ld (hl),a"
+      ];
+    }
     if (!info || info.type !== "int8") return null;
     if (info.kind === "packed_bool") {
       const clearLabel = makeGeneratedLabel("BoolClear");
@@ -203,12 +222,7 @@ export function createLoadStoreHelpers(ctx) {
       if (recordField.fieldInfo.type !== "int16") return null;
       const directAddress = getDirectRecordFieldAddress(target);
       if (directAddress) {
-        return [
-          "    ld a,l",
-          `    ld (${directAddress}+0),a`,
-          "    ld a,h",
-          `    ld (${directAddress}+1),a`
-        ];
+        return [`    ld (${directAddress}),hl`];
       }
       const loadAddress = emitLoadRecordFieldAddressIntoHL(target);
       if (!loadAddress) return null;
@@ -224,6 +238,16 @@ export function createLoadStoreHelpers(ctx) {
     }
     const resolvedTarget = scopedRuntimeName(target);
     const info = getRuntimeInfo(target);
+    if (info?.isRef && info.refTargetType === "int16") {
+      return [
+        "    ex de,hl",
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        "    ld (hl),e",
+        "    inc hl",
+        "    ld (hl),d"
+      ];
+    }
     if (!info || info.type !== "int16") return null;
     if (info.storage === "stack") {
       return [
@@ -233,12 +257,7 @@ export function createLoadStoreHelpers(ctx) {
         `    ld (${formatIxOffset(info.offset + 1)}),a`
       ];
     }
-    return [
-      "    ld a,l",
-      `    ld (${resolvedTarget}+0),a`,
-      "    ld a,h",
-      `    ld (${resolvedTarget}+1),a`
-    ];
+    return [`    ld (${resolvedTarget}),hl`];
   }
 
   return {

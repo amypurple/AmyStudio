@@ -10,6 +10,8 @@ export function handleDataMetaStatement({
   appendCharRow,
   looksLikeDataTokens,
   appendDataTokens,
+  looksLikeWordDataTokens,
+  appendWordDataTokens,
   flushDataBlock,
   ensureAssetAsmSymbol,
   validateGlobalUserName,
@@ -35,6 +37,24 @@ export function handleDataMetaStatement({
       }
       return { handled: true, ok: true };
     }
+    if (state.inData.layout === "words") {
+      if (looksLikeWordDataTokens(line)) {
+        try {
+          appendWordDataTokens(state.inData, line, rawLine.trim());
+        } catch (error) {
+          return { handled: true, ok: false, log: String(error.message || error) };
+        }
+        return { handled: true, ok: true };
+      }
+      try {
+        flushDataBlock();
+      } catch (error) {
+        return { handled: true, ok: false, log: String(error.message || error) };
+      }
+    }
+  }
+
+  if (state.inData) {
     const bitmapRow = parseBitmapLine(line);
     if (bitmapRow !== null) {
       try {
@@ -83,6 +103,20 @@ export function handleDataMetaStatement({
     return { handled: true, ok: true };
   }
 
+  const includeAsm = line.match(/^include\s+asm\s+"([^"]+)"$/i);
+  if (includeAsm) {
+    const includePath = includeAsm[1].replace(/\\/g, "/");
+    body.push(`include "${includePath}"`);
+    return { handled: true, ok: true };
+  }
+
+  const includeRawAsm = line.match(/^include\s+"([^"]+\.(?:asm|inc|s))"$/i);
+  if (includeRawAsm) {
+    const includePath = includeRawAsm[1].replace(/\\/g, "/");
+    body.push(`include "${includePath}"`);
+    return { handled: true, ok: true };
+  }
+
   const asset = line.match(/^asset\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+"([^"]+)"(?:\s+codec\s+([A-Za-z0-9_]+))?/i);
   if (asset) {
     ensureAssetAsmSymbol(asset[1]);
@@ -107,6 +141,30 @@ export function handleDataMetaStatement({
     const block = { name, values: [] };
     try {
       appendDataTokens(block, dataInline[2], rawLine.trim());
+    } catch (error) {
+      return { handled: true, ok: false, log: String(error.message || error) };
+    }
+    state.inData = block;
+    return { handled: true, ok: true };
+  }
+
+  const dataWordsStart = line.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+words$/i);
+  if (dataWordsStart) {
+    const name = dataWordsStart[1];
+    const nameError = validateGlobalUserName(name, "Word table", rawLine);
+    if (nameError) return { handled: true, ok: false, log: nameError };
+    state.inData = { name, values: [], layout: "words" };
+    return { handled: true, ok: true };
+  }
+
+  const dataWordsInline = line.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+words(?:\s*=\s*|\s+)(.+)$/i);
+  if (dataWordsInline) {
+    const name = dataWordsInline[1];
+    const nameError = validateGlobalUserName(name, "Word table", rawLine);
+    if (nameError) return { handled: true, ok: false, log: nameError };
+    const block = { name, values: [], layout: "words" };
+    try {
+      appendWordDataTokens(block, dataWordsInline[2], rawLine.trim());
     } catch (error) {
       return { handled: true, ok: false, log: String(error.message || error) };
     }

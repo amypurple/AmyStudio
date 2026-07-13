@@ -1,16 +1,15 @@
 import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
-import { exampleCategoryOrder as generatedExampleCategoryOrder, exampleManifest as generatedExampleManifest } from "./examples-index.generated.js?v=20260707-async-example-index";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
 import { createAutocompleteController } from "./core/editor/autocomplete.js";
-import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260622-conditionals";
+import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260710-rom-peek";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js";
-import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-async-example-index";
+import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
   parseCartridgeDirective as parseCartridgeDirectiveCore,
@@ -24,17 +23,17 @@ import { createAddressHelpers } from "./core/compiler/addressHelpers.js";
 import { handleArrayBulkStatement } from "./core/compiler/arrayBulkStatementHelpers.js";
 import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentArithmeticHelpers.js";
 import { createFx16Helpers } from "./core/compiler/fx16Helpers.js";
-import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20260621-random-loop-shape";
+import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20260712-preserve-loader";
 import { createCompareLiteralHelpers } from "./core/compiler/compareLiteralHelpers.js";
 import { createCompilerShellHelpers } from "./core/compiler/compilerShellHelpers.js";
 import { createDataHelpers } from "./core/compiler/dataHelpers.js";
 import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelpers.js?v=20260605-dsound-asset-fix";
 import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHelpers.js";
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
-import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js";
+import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260711-fixed-compare";
 import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20260621-random-loop-shape";
 import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
-import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js";
+import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js?v=20260712-multisprite";
 import { handleForStatement } from "./core/compiler/forStatementHelpers.js";
 import { handleIfStatement } from "./core/compiler/ifStatementHelpers.js";
 import { createInlineStatementCompiler } from "./core/compiler/inlineStatementHelpers.js";
@@ -50,15 +49,15 @@ import { handleDispatchLabelStatement } from "./core/compiler/dispatchLabelState
 import { handleRandomBounceStatement } from "./core/compiler/randomBounceStatementHelpers.js";
 import { handleRoutineStatement } from "./core/compiler/routineStatementHelpers.js";
 import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoStatementHelpers.js";
-import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js";
+import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20260710-word-ptr";
 import { handleSelectCaseStatement } from "./core/compiler/selectCaseStatementHelpers.js";
 import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js";
 import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260605-dsound-asset-fix";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
 import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js";
-import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20260622-end-sub-include-fix";
-import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260609-text-colors1";
+import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20260712-dec-branch";
+import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260712-preserve-loader";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js";
 import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
 import {
@@ -74,10 +73,10 @@ import {
   previewColecoBiosTitleFromMetadata,
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js";
-import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260616-frame-runtime3";
+import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260708-project-asm-deps";
 import { createProjectFileUiHelpers } from "./core/projectFileUi.js";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js";
-import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260707-async-example-index";
+import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
 import {
   buildProjectFromExample as buildProjectFromExampleCore,
@@ -93,9 +92,9 @@ import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { createDocsUi } from "./core/docsUi.js?v=20260620-release-docs-cleanup";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260622-end-sub-include-fix";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260707-async-example-index";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260707-async-example-index";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260711-asm-include-proc";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260707-live-examples-index";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260708-bunny-v2-aliases";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bytesToDataUrl } from "./core/utils/dataUrls.js";
@@ -245,11 +244,29 @@ let emulatorWindow = null;
 let insightRefreshTimer = 0;
 let compiledColecoHeaderInfo = null;
 let sourceCartridgeMeta = null;
-const exampleCategoryOrder = [...generatedExampleCategoryOrder];
-const exampleManifest = [...generatedExampleManifest];
+const exampleCategoryOrder = [];
+const exampleManifest = [];
 let examplesIndexSynced = false;
 let examplesModulePromise = null;
+let examplesModuleRevision = "";
 let wavToDsoundModulePromise = null;
+
+function debugExampleBrowser(stage, extra = {}) {
+  const payload = {
+    manifest: exampleManifest.length,
+    categories: exampleCategoryOrder.length,
+    synced: examplesIndexSynced,
+    revision: examplesModuleRevision,
+    selectOptions: els.exampleSelect?.options?.length ?? null,
+    categoryOptions: els.exampleCategorySelect?.options?.length ?? null,
+    ...extra
+  };
+  window.AMY_EXAMPLE_BROWSER_DEBUG = window.AMY_EXAMPLE_BROWSER_DEBUG || [];
+  window.AMY_EXAMPLE_BROWSER_DEBUG.push({ stage, payload });
+  if (window.AMY_EXAMPLE_BROWSER_DEBUG.length > 80) window.AMY_EXAMPLE_BROWSER_DEBUG.shift();
+  document.documentElement.dataset.exampleBrowserDebugCount = String(window.AMY_EXAMPLE_BROWSER_DEBUG.length);
+  document.documentElement.dataset.exampleBrowserDebugLast = stage;
+}
 let internalCompilerModulePromise = null;
 const {
   updateOptimizationHint,
@@ -294,8 +311,16 @@ function setupProjectPanelTabs() {
 }
 
 
-function syncExampleIndexFromModule(examples) {
-  if (!examples || examplesIndexSynced) return;
+function syncExampleIndexFromModule(examples, { force = false } = {}) {
+  debugExampleBrowser("sync:before", {
+    force,
+    incomingManifest: examples?.exampleManifest?.length ?? null,
+    incomingCategories: examples?.exampleCategoryOrder?.length ?? null
+  });
+  if (!examples || (examplesIndexSynced && !force)) {
+    debugExampleBrowser("sync:skipped", { force, hasExamples: !!examples });
+    return false;
+  }
   if (Array.isArray(examples.exampleCategoryOrder)) {
     exampleCategoryOrder.splice(0, exampleCategoryOrder.length, ...examples.exampleCategoryOrder);
   }
@@ -303,26 +328,94 @@ function syncExampleIndexFromModule(examples) {
     exampleManifest.splice(0, exampleManifest.length, ...examples.exampleManifest);
   }
   examplesIndexSynced = true;
+  debugExampleBrowser("sync:after");
+  return true;
 }
 
-async function ensureExamplesLoaded() {
-  const examples = await loadExamplesModule();
-  syncExampleIndexFromModule(examples);
-  renderExamplePicker();
+async function ensureExamplesLoaded(options = {}) {
+  debugExampleBrowser("ensure:before", { options });
+  const examples = await loadExamplesModule(options);
+  syncExampleIndexFromModule(examples, { force: !!options.forceFresh });
+  refreshExampleBrowserUi();
+  debugExampleBrowser("ensure:after", {
+    loadedManifest: examples?.exampleManifest?.length ?? null,
+    loadedCatalog: examples?.exampleCatalog?.length ?? null
+  });
   return examples;
 }
 
-function loadExamplesModule() {
-  if (!examplesModulePromise) {
-    examplesModulePromise = import("./examples.js?v=20260707-async-example-index")
-      .then((examples) => {
-        syncExampleIndexFromModule(examples);
-        return examples;
-      });
+function refreshExampleBrowserUi() {
+  debugExampleBrowser("refresh:before");
+  if (els.exampleCategorySelect) {
+    const categories = ["all", ...exampleCategoryOrder.filter((category) => exampleManifest.some((item) => item.category === category))];
+    els.exampleCategorySelect.textContent = "";
+    for (const category of categories) {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category === "all" ? `All examples (${exampleManifest.length})` : category;
+      if (category === exampleCategoryFilter) option.selected = true;
+      els.exampleCategorySelect.appendChild(option);
+    }
   }
-  return examplesModulePromise;
+  if (els.exampleTagSelect) {
+    const tags = ["all", ...getExampleTagOrder()];
+    els.exampleTagSelect.textContent = "";
+    for (const tag of tags) {
+      const option = document.createElement("option");
+      option.value = tag;
+      option.textContent = tag === "all" ? "All tags" : `Tag: ${tag}`;
+      if (tag === exampleTagFilter) option.selected = true;
+      els.exampleTagSelect.appendChild(option);
+    }
+  }
+  renderExamplePicker();
+  debugExampleBrowser("refresh:after");
 }
 
+
+function currentExamplesRevision() {
+  const pageVersion = new URLSearchParams(window.location.search || "").get("v") || "";
+  return pageVersion || "20260709-bunny-v3";
+}
+
+function preloadExamplesCatalog() {
+  debugExampleBrowser("preload:before");
+  loadExamplesModule({ forceFresh: true })
+    .then(() => {
+      refreshExampleBrowserUi();
+      debugExampleBrowser("preload:after");
+    })
+    .catch((error) => {
+      const message = error?.message || String(error);
+      debugExampleBrowser("preload:error", { message, stack: error?.stack || "" });
+      console.error(`[Amy Studio examples] preload:error ${message}`, error);
+      setStatus(`Examples catalog failed to load: ${message}`);
+    });
+}
+
+function loadExamplesModule({ forceFresh = false } = {}) {
+  if (!forceFresh && examplesModulePromise) {
+    debugExampleBrowser("load:reuse", { revision: examplesModuleRevision });
+    return examplesModulePromise;
+  }
+
+  const revision = forceFresh ? `${currentExamplesRevision()}-${Date.now()}` : currentExamplesRevision();
+  debugExampleBrowser("load:request", { forceFresh, requestedRevision: revision });
+  examplesModuleRevision = revision;
+  debugExampleBrowser("load:import:before", { revision });
+  examplesModulePromise = import(`./examples.js?v=${encodeURIComponent(revision)}`)
+    .then((examples) => {
+      debugExampleBrowser("load:import:after", {
+        revision,
+        importedCatalog: examples.exampleCatalog?.length ?? null,
+        importedManifest: examples.exampleManifest?.length ?? null,
+        importedCategories: examples.exampleCategoryOrder?.length ?? null
+      });
+      syncExampleIndexFromModule(examples, { force: forceFresh });
+      return examples;
+    });
+  return examplesModulePromise;
+}
 async function getExampleById(id) {
   const examples = await loadExamplesModule();
   return examples.exampleCatalog.find((item) => item.id === id) || null;
@@ -353,7 +446,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260707-async-example-index");
+    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260713-fx8-format");
   }
   return internalCompilerModulePromise;
 }
@@ -857,8 +950,8 @@ bindEvents();
 })();
 
 syncUiFromProject();
+preloadExamplesCatalog();
 setView("studio");
 setStatus(`Ready. ${codecStatusLine()}\nTip: Generate ASM, then compile the ROM in Amy.`);
 tryAutoLoadBios();
 hideStudioLoading();
-

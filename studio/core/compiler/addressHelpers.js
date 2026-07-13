@@ -9,8 +9,40 @@ export function createAddressHelpers(ctx) {
     emitLoadInt16IntoHL,
     symbolOrValue,
     tryEvaluateConstantExpression,
-    tryEvaluateCompileTimeNumericExpression
+    tryEvaluateCompileTimeNumericExpression,
+    dataWordTables
   } = ctx;
+
+  function getWordTableInfo(name) {
+    return dataWordTables?.get(name) || null;
+  }
+
+  function emitLoadWordTableEntryIntoHL(name, indexToken) {
+    const table = getWordTableInfo(name);
+    if (!table) return null;
+    const normalizedIndex = normalizeExpression(String(indexToken).trim());
+    const constantIndex = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(normalizedIndex)
+      : tryEvaluateConstantExpression(normalizedIndex);
+    if (Number.isInteger(constantIndex)) {
+      if (constantIndex < 0 || constantIndex >= table.length) return null;
+      return [`    ld hl,${table.entries[constantIndex]}`];
+    }
+    const loadIndex = emitLoadInt8ValueInto("a", normalizedIndex);
+    if (!loadIndex) return null;
+    return [
+      ...loadIndex,
+      "    add a,a",
+      "    ld e,a",
+      "    ld d,0",
+      `    ld hl,${resolveAddressSymbol(name)}`,
+      "    add hl,de",
+      "    ld e,(hl)",
+      "    inc hl",
+      "    ld d,(hl)",
+      "    ex de,hl"
+    ];
+  }
 
   function constantVramOffsetExpression(offsetToken) {
     const value = typeof tryEvaluateCompileTimeNumericExpression === "function"
@@ -29,12 +61,21 @@ export function createAddressHelpers(ctx) {
     function emitLoadAddressOfIdentifierIntoHL(name) {
       const info = getRuntimeInfo(name);
       if (!info) return [`    ld hl,${resolveAddressSymbol(name)}`];
+      if (info.isRef) {
+        const low = info.offset < 0 ? info.offset : `+${info.offset}`;
+        const high = info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`;
+        return [`    ld l,(ix${low})`, `    ld h,(ix${high})`];
+      }
       if (info.storage === "stack") {
         const lines = ["    push ix", "    pop hl"];
         if (info.offset) lines.push(`    ld de,${info.offset}`, "    add hl,de");
         return lines;
       }
       return [`    ld hl,${resolveAddressSymbol(name)}`];
+    }
+    const wordTableRef = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/);
+    if (wordTableRef && getWordTableInfo(wordTableRef[1])) {
+      return emitLoadWordTableEntryIntoHL(wordTableRef[1], wordTableRef[2]);
     }
     const offsetExpr = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\+\s*(.+)$/);
     if (!offsetExpr) {
@@ -165,6 +206,8 @@ export function createAddressHelpers(ctx) {
   return {
     emitLoadSourceAddressIntoHL,
     emitLoadVramAddressIntoDE,
-    emitLoadVramAddressIntoHL
+    emitLoadVramAddressIntoHL,
+    emitLoadWordTableEntryIntoHL,
+    getWordTableInfo
   };
 }

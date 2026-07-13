@@ -4,6 +4,7 @@ function formatHex8(value) {
 
 export function createRuntimeValueHelpers({
   normalizeExpression,
+  normalizeDeclaredType,
   tryEvaluateCompileTimeNumericExpression,
   isAnyFixedDeclaredType,
   isFix16_16DeclaredType,
@@ -35,6 +36,8 @@ export function createRuntimeValueHelpers({
   emitStoreComputedExpression,
   emitStoreInt8FromA,
   emitLoadInt8ValueInto,
+  emitLoadWordTableEntryIntoHL,
+  getWordTableInfo,
   ensureCompareScratch32,
   emitStoreExtended32,
   emitStoreMemory32ToTarget,
@@ -260,12 +263,39 @@ export function createRuntimeValueHelpers({
       });
     }
     const baseName = scopedRuntimeName(name);
+    if (bytes.length === 2) {
+      const wordValue = ((bytes[1] & 0xFF) << 8) | (bytes[0] & 0xFF);
+      return [
+        `    ld hl,$${wordValue.toString(16).toUpperCase().padStart(4, "0")}`,
+        `    ld (${baseName}),hl`
+      ];
+    }
     return bytes.flatMap((value, index) => [
       `    ld a,${formatHex8(value)}`,
       `    ld (${baseName}+${index}),a`
     ]);
   }
 
+
+  function emitStoreFixedIntegerByteFromA(name) {
+    const info = getRuntimeInfo(name);
+    if (!info || info.kind === "array") return null;
+    if (info.storage === "stack") {
+      const lowOffset = info.offset;
+      const highOffset = info.offset + 1;
+      return [
+        `    ld (ix${highOffset < 0 ? highOffset : `+${highOffset}`}),a`,
+        "    xor a",
+        `    ld (ix${lowOffset < 0 ? lowOffset : `+${lowOffset}`}),a`
+      ];
+    }
+    const baseName = scopedRuntimeName(name);
+    return [
+      "    ld h,a",
+      "    ld l,0",
+      `    ld (${baseName}),hl`
+    ];
+  }
   function emitCopyBytes(sourceToken, targetToken, byteCount) {
     const srcInfo = getRuntimeInfo(sourceToken);
     const dstInfo = getRuntimeInfo(targetToken);
@@ -305,6 +335,10 @@ export function createRuntimeValueHelpers({
     const numericLiteral = parseNumericLiteral(normalized);
     if (numericLiteral !== null && Number.isInteger(numericLiteral)) {
       return [`    ld hl,${symbolOrValue(normalized)}`];
+    }
+    const wordTableRef = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/);
+    if (wordTableRef && getWordTableInfo?.(wordTableRef[1])) {
+      return emitLoadWordTableEntryIntoHL?.(wordTableRef[1], wordTableRef[2]) || null;
     }
     const expressionAst = parseExpressionAst(normalized);
     if (expressionAst && (expressionAst.kind === "binary" || expressionAst.kind === "unary")) {
@@ -395,6 +429,16 @@ export function createRuntimeValueHelpers({
       const loadByte = emitLoadInt8Into("a", token);
       if (!loadByte) return null;
       return [...loadByte, "    ld h,a", "    ld l,0"];
+    }
+    if (info.isRef && info.refTargetType === "int16") {
+      return [
+        `    ld l,(ix${info.offset < 0 ? info.offset : `+${info.offset}`})`,
+        `    ld h,(ix${info.offset + 1 < 0 ? info.offset + 1 : `+${info.offset + 1}`})`,
+        "    ld e,(hl)",
+        "    inc hl",
+        "    ld d,(hl)",
+        "    ex de,hl"
+      ];
     }
     if (info.type !== "int16") return null;
     if (info.storage === "stack") {
@@ -496,7 +540,39 @@ export function createRuntimeValueHelpers({
         return emitStoreImmediateBytes(name, encodeSignedIntegerBytes(Math.round(compileTimeNumericValue * 256), 2));
       }
     }
+    const rawWordStore = String(value || "").trim().match(/^raw\s+(.+)$/i);
+    if (rawWordStore && targetType === "int16") {
+      const rawToken = normalizeExpression(rawWordStore[1].trim());
+      const loadRaw = emitLoadInt16IntoHL(rawToken, null);
+      const storeTarget = emitStoreInt16FromHL(name);
+      if (!loadRaw || !storeTarget) return null;
+      return [...loadRaw, ...storeTarget];
+    }
     if (sourceType === "fp5") return null;
+    if (targetType === "int8" && sourceType === "int16") {
+      const normalizedTargetDeclared = normalizeDeclaredType(targetDeclaredType);
+      const normalizedSourceDeclared = normalizeDeclaredType(sourceDeclaredType);
+      const isUnsignedFixedByteCast = normalizedTargetDeclared === "u8" && normalizedSourceDeclared === "ufix8_8";
+      const isSignedFixedByteCast = normalizedTargetDeclared === "i8" && normalizedSourceDeclared === "fix8_8";
+      if (isUnsignedFixedByteCast || isSignedFixedByteCast) {
+        const loadSource = emitLoadInt16IntoHL(value, sourceDeclaredType);
+        const storeTarget = emitStoreInt8FromA(name);
+        if (!loadSource || !storeTarget) return null;
+        return [...loadSource, "    ld a,h", ...storeTarget];
+      }
+      if (normalizedSourceDeclared === "fix8_8" || normalizedSourceDeclared === "ufix8_8") return null;
+    }
+    if (targetType === "int8" && !sourceType) {
+      const loadSpecialByte = emitLoadInt8Into("a", value);
+      const storeTarget = emitStoreInt8FromA(name);
+      if (loadSpecialByte && storeTarget) return [...loadSpecialByte, ...storeTarget];
+    }
+    if (targetType === "int16" && isAnyFixedDeclaredType(targetDeclaredType) && sourceType === "int8") {
+      const loadSource = emitLoadInt8Into("a", value);
+      const storeFixedByte = emitStoreFixedIntegerByteFromA(name);
+      if (!loadSource || !storeFixedByte) return null;
+      return [...loadSource, ...storeFixedByte];
+    }
     const valueAst = parseExpressionAst(value);
     if ((targetType === "int8" || targetType === "int16") && valueAst) {
       const computed = emitComputeExpressionAst(valueAst, targetDeclaredType);
@@ -558,7 +634,9 @@ export function createRuntimeValueHelpers({
       const storeTarget = emitStoreInt16FromHL(name);
       if (!loadSource || !storeTarget) return null;
       if (isAnyFixedDeclaredType(targetDeclaredType)) {
-        return [...loadSource, "    ld h,a", "    ld l,0", ...storeTarget];
+        const storeFixedByte = emitStoreFixedIntegerByteFromA(name);
+        if (!storeFixedByte) return null;
+        return [...loadSource, ...storeFixedByte];
       }
       if (isSignedDeclaredType(sourceDeclaredType)) {
         return [...loadSource, "    ld l,a", "    add a,a", "    sbc a,a", "    ld h,a", ...storeTarget];
@@ -608,9 +686,70 @@ export function createRuntimeValueHelpers({
     return lines;
   }
 
+    function emitRefArgumentAddressIntoHL(token, paramInfo) {
+      const normalized = normalizeExpression(String(token).trim());
+      const ixWord = (offset) => [
+        `    ld l,(ix${offset < 0 ? offset : `+${offset}`})`,
+        `    ld h,(ix${offset + 1 < 0 ? offset + 1 : `+${offset + 1}`})`
+      ];
+      const stackSlotAddress = (info) => {
+        const lines = ["    push ix", "    pop hl"];
+        if (info.offset) lines.push(`    ld de,${info.offset}`, "    add hl,de");
+        return lines;
+      };
+      if (paramInfo.recordTypeName) {
+        const wanted = String(paramInfo.recordTypeName).toLowerCase();
+        const arrayRef = parseArrayRef(normalized);
+        if (arrayRef) {
+          const info = getRuntimeInfo(arrayRef.name);
+          if (!info || info.kind !== "record_array") return null;
+          if (String(info.recordTypeName || "").toLowerCase() !== wanted) return null;
+          return emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+        }
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized)) return null;
+        const info = getRuntimeInfo(normalized);
+        if (!info || info.kind !== "record") return null;
+        if (String(info.recordTypeName || "").toLowerCase() !== wanted) return null;
+        if (info.isRef) return ixWord(info.offset);
+        if (info.storage === "stack") return stackSlotAddress(info);
+        return [`    ld hl,${formatHex16(info.address)}`];
+      }
+      const targetType = paramInfo.refTargetType;
+      if (!targetType) return null;
+      const recordField = parseRecordFieldRef(normalized);
+      if (recordField) {
+        if (recordField.fieldInfo.type !== targetType) return null;
+        const direct = getDirectRecordFieldAddress(normalized);
+        if (direct) return [`    ld hl,${direct}`];
+        return emitLoadRecordFieldAddressIntoHL(normalized);
+      }
+      const arrayRef = parseArrayRef(normalized);
+      if (arrayRef) {
+        const info = getRuntimeInfo(arrayRef.name);
+        if (!info || info.kind !== "array" || info.elementType !== targetType) return null;
+        return emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+      }
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized)) return null;
+      const info = getRuntimeInfo(normalized);
+      if (!info) return null;
+      if (info.isRef) {
+        if (info.refTargetType !== targetType) return null;
+        return ixWord(info.offset);
+      }
+      if (info.kind === "packed_bool" || info.kind === "array" || info.kind === "bcd" || info.kind === "record" || info.kind === "record_array") return null;
+      if (info.type !== targetType) return null;
+      if (info.storage === "stack") return stackSlotAddress(info);
+      return [`    ld hl,${scopedRuntimeName(normalized)}`];
+    }
+
     function emitPushArgument(token, paramInfo) {
       const type = paramInfo.type;
       const declaredType = paramInfo.declaredType || type;
+      if (paramInfo.isRef) {
+        const loadAddress = emitRefArgumentAddressIntoHL(token, paramInfo);
+        if (!loadAddress) return null;
+        return [...loadAddress, "    push hl"];
+      }
       if (type === "u32" || type === "i32") {
       ensureCompareScratch32();
       const storeArg = emitStoreExtended32(token, "AMY_CMP_LEFT32");

@@ -17,6 +17,7 @@ AMY_U16_DIV:
     or c
     jr nz,AMY_U16_DIV_NONZERO
     ld hl,0
+    ld (AMY_U16_DIV_REM),hl
     ret
 AMY_U16_DIV_NONZERO:
     ld (AMY_U16_DIV_DIVIDEND),hl

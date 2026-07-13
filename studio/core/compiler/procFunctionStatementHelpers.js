@@ -22,7 +22,7 @@ export function handleProcFunctionStatement({
   if (/^proc\b/i.test(line)) {
     return { handled: true, ok: false, log: `PROC syntax has been removed. Use 'sub' instead. Offending line: ${rawLine}` };
   }
-  if (/^call\b/i.test(line) || /^gosub\b/i.test(line)) {
+  if ((/^call\s+asm(?:\s|$)/i.test(line) ? false : /^call(?:\s|$)/i.test(line)) || /^gosub(?:\s|$)/i.test(line)) {
     return { handled: true, ok: false, log: `CALL/GOSUB syntax has been removed. Call subroutines directly by name instead. Offending line: ${rawLine}` };
   }
   if (/^end\s+proc$/i.test(line)) {
