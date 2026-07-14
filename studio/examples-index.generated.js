@@ -415,15 +415,6 @@ const allExampleManifest = [
     "category": "Selftests"
   },
   {
-    "id": "warrior-nibble",
-    "label": "Warrior Nibble",
-    "detail": "Warrior Mode 2 bitmap using the Nibble codec for preview and runtime decompression.",
-    "projectName": "warrior-nibble",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos"
-  },
-  {
     "id": "snake-demo",
     "label": "Snake Demo",
     "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
@@ -560,7 +551,6 @@ const publicExampleIds = new Set([
   "amy-on-frame-lab",
   "amy-conditional-compile-lab",
   "amy-multicolor-pixel-lab",
-  "warrior-nibble",
   "snake-demo",
   "cvbasic-viboritas-port",
   "tile-collision-maze",

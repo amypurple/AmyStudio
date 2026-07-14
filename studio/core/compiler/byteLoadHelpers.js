@@ -107,7 +107,15 @@ export function createByteLoadHelpers(ctx) {
     if (dataByteRef) return dataByteRef;
     const recordField = parseRecordFieldRef(token);
     if (recordField) {
-      if (recordField.fieldInfo.type !== "int8") return null;
+      if (recordField.fieldInfo.type !== "int8") {
+        const declaredType = resolveDeclaredValueType(token);
+        if (!isAnyFixedDeclaredType(declaredType)) return null;
+        const loadHL = emitLoadInt16IntoHL(token, declaredType);
+        if (!loadHL) return null;
+        const lines = [...loadHL, "    ld a,h"];
+        if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+        return lines;
+      }
       const directAddress = getDirectRecordFieldAddress?.(token);
       if (directAddress) {
         if (register.toLowerCase() === "a") return [`    ld a,(${directAddress})`];

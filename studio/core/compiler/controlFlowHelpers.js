@@ -241,14 +241,12 @@ export function createControlFlowHelpers(ctx) {
     if (!isFix8_8DeclaredTypeName(peerDeclared)) return token;
     const raw = String(token || "").trim();
     if (!raw || /^raw\s+/i.test(raw)) return token;
-    const match = raw.match(/^(-?)(?:\$([0-9A-Fa-f]+)|0x([0-9A-Fa-f]+)|(\d+(?:\.\d+)?))$/);
-    if (!match) return token;
-    const sign = match[1] === "-" ? -1 : 1;
-    const value = match[2] || match[3]
-      ? Number.parseInt(match[2] || match[3], 16)
-      : Number.parseFloat(match[4]);
+    const numericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression
+      : tryEvaluateConstantExpression;
+    const value = numericEvaluator(raw);
     if (!Number.isFinite(value)) return token;
-    const encoded = Math.trunc(sign * value * 256);
+    const encoded = Math.round(value * 256);
     return String(encoded);
   }
 

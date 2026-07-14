@@ -36,6 +36,11 @@ export function createSimpleArithmeticHelpers({
     return [...loadTarget, opInstr, ...storeTarget];
   }
 
+  function isDirectAsmMemorySymbol(symbol) {
+    if (!symbol) return false;
+    return !/[\[\]]/.test(String(symbol));
+  }
+
   function emitLoadInt16ArithSourceIntoDE(valueToken, preferredDeclaredType = null) {
     const valueInfo = getRuntimeInfo(valueToken);
     const declaredType = resolveDeclaredValueType(valueToken);
@@ -47,7 +52,7 @@ export function createSimpleArithmeticHelpers({
         return [...loadValue, "    ld d,a", "    ld e,0"];
       }
       if (valueInfo.type === "int16") {
-        if (valueInfo.storage !== "stack" && valueInfo.asmName) {
+        if (valueInfo.storage !== "stack" && isDirectAsmMemorySymbol(valueInfo.asmName)) {
           return [`    ld de,(${valueInfo.asmName})`];
         }
         const loadValue = emitLoadInt16IntoHL(valueToken, preferredDeclaredType);
@@ -72,7 +77,16 @@ export function createSimpleArithmeticHelpers({
     if (numeric !== null) {
       return [`    ld de,${numeric}`];
     }
+    const loadValue = emitLoadInt16IntoHL(valueToken, preferredDeclaredType);
+    if (loadValue) return [...loadValue, "    ex de,hl"];
     return [`    ld de,${symbolOrValue(valueToken)}`];
+  }
+
+  function int16SourceLoadClobbersHL(lines) {
+    return Array.isArray(lines) && lines.some((line) => {
+      const text = String(line || "").trim().toLowerCase();
+      return /^(ld\s+h\b|ld\s+l\b|ld\s+hl\b|add\s+hl\b|ex\s+de\s*,\s*hl\b)/.test(text);
+    });
   }
 
   function emitArithInt16Op(target, valueToken, op) {
@@ -83,7 +97,7 @@ export function createSimpleArithmeticHelpers({
     const valueInfo = getRuntimeInfo(valueToken);
     let loadValue = null;
     if (valueInfo && valueInfo.kind !== "array" && valueInfo.type === "int16") {
-      if (valueInfo.storage !== "stack" && valueInfo.asmName) {
+      if (valueInfo.storage !== "stack" && isDirectAsmMemorySymbol(valueInfo.asmName)) {
         loadValue = [`    ld de,(${valueInfo.asmName})`];
       } else {
         const loadSource = emitLoadInt16IntoHL(valueToken, targetDeclared);
@@ -93,6 +107,9 @@ export function createSimpleArithmeticHelpers({
     } else {
       loadValue = emitLoadInt16ArithSourceIntoDE(valueToken, targetDeclared);
       if (!loadValue) return null;
+      if (int16SourceLoadClobbersHL(loadValue)) {
+        loadValue = ["    push hl", ...loadValue, "    pop hl"];
+      }
     }
     if (op === "add") return [...loadTarget, ...loadValue, "    add hl,de", ...storeTarget];
     if (op === "sub") return [...loadTarget, ...loadValue, "    or a", "    sbc hl,de", ...storeTarget];

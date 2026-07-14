@@ -30,7 +30,7 @@ import { createDataHelpers } from "./core/compiler/dataHelpers.js";
 import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelpers.js?v=20260605-dsound-asset-fix";
 import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHelpers.js";
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
-import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260711-fixed-compare";
+import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260714-fixed-const-compare";
 import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20260621-random-loop-shape";
 import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
 import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js?v=20260712-multisprite";
@@ -51,7 +51,7 @@ import { handleRoutineStatement } from "./core/compiler/routineStatementHelpers.
 import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoStatementHelpers.js";
 import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20260710-word-ptr";
 import { handleSelectCaseStatement } from "./core/compiler/selectCaseStatementHelpers.js";
-import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js";
+import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js?v=20260714-record-fixed-source-preserve";
 import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260605-dsound-asset-fix";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";

@@ -1,4 +1,4 @@
-import { gameExamples, gameExampleManifest } from "./examples-games.js?v=20260713-easter-bunny-clean";
+import { gameExamples, gameExampleManifest } from "./examples-games.js?v=20260714-space-trainer-clean2";
 import { validationExamples, validationExampleManifest } from "./examples-validation.js?v=20260707-live-examples-index2";
 
 export const exampleEditorialTracks = {

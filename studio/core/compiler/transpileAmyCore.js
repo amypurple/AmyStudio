@@ -157,7 +157,7 @@ export function transpileAmyCore(sourceText, deps) {
     let reachableRoutineGotoReferences = new Set();
     const isRootTerminator = (line) => /^(?:return(?:\s+.+)?|goto\s+[A-Za-z_][A-Za-z0-9_]*|loop\s+forever)$/i.test(line);
     const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect)$/i.test(line);
-    const topLevelDirective = (line) => /^(?:include\s+asm\s+"|include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
+    const topLevelDirective = (line) => /^(?:asm\s*\{|include\s+asm\s+"|include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
     const opensBlock = (line) => {
       if (/^if\b/i.test(line)) return /\bthen\s*$/i.test(line) && !/\bgoto\b/i.test(line);
       return /^(?:while\b|for\b|do\b|select\s+case\b)/i.test(line);
@@ -947,8 +947,8 @@ export function transpileAmyCore(sourceText, deps) {
         }
         let fieldInfo = null;
         if (isSupportedSourceTypeName(declaredTypeToken)) {
-          if (!["u8", "i8", "u16", "i16", "boolean", "bool"].includes(declaredType)) {
-            return `Record fields currently support only u8, i8, u16, i16, bool, and previously defined record types: ${fieldRaw}`;
+          if (!["u8", "i8", "u16", "i16", "fix8_8", "ufix8_8", "boolean", "bool"].includes(declaredType)) {
+            return `Record fields currently support u8, i8, u16, i16, fixed, ufixed, bool, and previously defined record types: ${fieldRaw}`;
           }
           const runtimeType = normalizeRuntimeType(declaredType);
           const size = runtimeTypeSize(runtimeType);

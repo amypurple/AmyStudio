@@ -149,7 +149,9 @@ function check(name, fn) {
   }
 }
 
-const FIXED_DEMO = `ufixed XInit = 8
+const FIXED_DEMO = `const MaxWhole = 160
+const MinWhole = 16
+ufixed XInit = 8
 ufixed X = 0
 ufixed UfixedX = 2.25
 fixed V = -2.25
@@ -173,6 +175,8 @@ if whole X > 5 then Code = 1
 if X > S then Code = 3
 Frac = fraction X
 if X > 8 then Code = 2
+if X > MaxWhole then Code = 16
+if X < MinWhole then Code = 17
 if V < 0 then Code = 4
 if V > 0 then Code = 5
 if V <= 0 then Code = 10
@@ -262,6 +266,11 @@ check("full fixed comparison against integer stays 8.8", () => {
   assert.match(asm, /ld hl,\(AMY_UVAR_X\)\s*\n\s*ld de,2048\s*\n\s*or a\s*\n\s*sbc hl,de/, "if X > 8 should compare against $0800");
 });
 
+check("full fixed comparison against named constants stays 8.8", () => {
+  assert.match(asm, /ld hl,\(AMY_UVAR_X\)\s*\n\s*ld de,40960\s*\n\s*or a\s*\n\s*sbc hl,de/, "if X > MaxWhole should compare against 160.0/$A000, not raw 160");
+  assert.match(asm, /ld hl,\(AMY_UVAR_X\)\s*\n\s*ld de,4096\s*\n\s*or a\s*\n\s*sbc hl,de/, "if X < MinWhole should compare against 16.0/$1000, not raw 16");
+});
+
 check("fixed += fixed global source loads DE directly", () => {
   assert.match(asm, /ld hl,\(AMY_UVAR_Acc\)\s*\n\s*ld de,\(AMY_UVAR_V\)\s*\n\s*add hl,de/, "Acc += V should use ld de,(V), not push/ex/pop");
   assert.doesNotMatch(asm, /ld hl,\(AMY_UVAR_Acc\)\s*\n\s*push hl\s*\n\s*ld hl,\(AMY_UVAR_V\)/, "Acc += V should not spill the target through the stack");
@@ -327,6 +336,104 @@ check("whole fixed for-loop bound is accepted", () => {
   assert.equal(ok.ok, true, ok.log || "whole bound should compile");
 });
 
+const RECORD_FIXED_DEMO = `record Ship:
+  ufixed X
+  ufixed Y
+  fixed VX
+  fixed VY
+  u8 Orient
+end record
+
+const MaxShipY = 160
+const MinShipY = 16
+Ship Ships[2]
+u8 ScreenX = 0
+u8 Pattern = 0
+
+Ships[0].X = 16
+Ships[0].Y = 24
+Ships[0].VX = -1.5
+Ships[1].X = Ships[0].X
+Ships[1].Y += Ships[0].Y
+ScreenX = Ships[0].X
+set sprite 0 x to Ships[0].X
+set sprite 0 y to Ships[0].Y
+Pattern = Ships[0].Orient
+if Ships[0].Y > MaxShipY then Pattern = 1
+if Ships[0].Y < MinShipY then Pattern = 2
+loop forever
+`;
+
+const recordFixedResult = transpileAmy(RECORD_FIXED_DEMO);
+const recordFixedAsm = String(recordFixedResult?.asmBody || "");
+if (process.env.DUMP_RECORD_ASM) console.log(recordFixedAsm);
+
+check("record fixed-field demo transpiles", () => {
+  assert.equal(recordFixedResult.ok, true, recordFixedResult.log || "record fixed fields should compile");
+});
+
+check("record fixed-field literals store raw 8.8 words", () => {
+  assert.match(recordFixedAsm, /ld hl,\$1000\s*\n\s*ld \(\$[0-9A-F]{4}\),hl/i, "Ships[0].X = 16 should store $1000 directly");
+  assert.match(recordFixedAsm, /ld hl,\$FE80\s*\n\s*ld \(\$[0-9A-F]{4}\),hl/i, "Ships[0].VX = -1.5 should store $FE80 directly");
+});
+
+check("record fixed fields cast to byte contexts with the whole byte", () => {
+  assert.match(
+    recordFixedAsm,
+    /ld a,\(\$[0-9A-F]{4}\+0\)\s*\n\s*ld l,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+1\)\s*\n\s*ld h,a\s*\n\s*ld a,h\s*\n\s*ld \(AMY_UVAR_ScreenX\),a/i,
+    "ScreenX = Ships[0].X should use high byte"
+  );
+  assert.match(
+    recordFixedAsm,
+    /ld a,\(\$[0-9A-F]{4}\+0\)\s*\n\s*ld l,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+1\)\s*\n\s*ld h,a\s*\n\s*ld a,h\s*\n\s*ld \(AMY_SPRITE_TABLE\+1\),a/i,
+    "set sprite x to Ships[0].X should use high byte"
+  );
+});
+
+check("record fixed-field arithmetic does not emit fake indexed labels", () => {
+  assert.doesNotMatch(recordFixedAsm, /AMY_UVAR_Ships\[[^\]]+\]\./, "record fixed arithmetic must not emit impossible indexed ASM symbols");
+  assert.match(recordFixedAsm, /ex de,hl[\s\S]*?add hl,de/i, "record fixed += source should load through HL then move source to DE");
+});
+
+check("record fixed-field += preserves the target while loading an indexed source", () => {
+  assert.match(
+    recordFixedAsm,
+    /ld a,\(\$[0-9A-F]{4}\+0\)\s*\n\s*ld l,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+1\)\s*\n\s*ld h,a\s*\n\s*push hl\s*\n\s*ld a,\(\$[0-9A-F]{4}\+0\)\s*\n\s*ld l,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+1\)\s*\n\s*ld h,a\s*\n\s*ex de,hl\s*\n\s*pop hl\s*\n\s*add hl,de\s*\n\s*ld \(\$[0-9A-F]{4}\),hl/i,
+    "Ships[1].Y += Ships[0].Y must preserve target HL while loading the indexed source"
+  );
+  assert.doesNotMatch(
+    recordFixedAsm,
+    /ld a,\(\$[0-9A-F]{4}\+0\)\s*\n\s*ld l,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+1\)\s*\n\s*ld h,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+0\)\s*\n\s*ld l,a\s*\n\s*ld a,\(\$[0-9A-F]{4}\+1\)\s*\n\s*ld h,a\s*\n\s*ex de,hl\s*\n\s*add hl,de/i,
+    "record fixed += must not overwrite target HL with the source before add"
+  );
+});
+
+check("record fixed-field comparisons against named constants stay 8.8", () => {
+  assert.match(recordFixedAsm, /ld de,40960/i, "Ships[0].Y > MaxShipY should compare against 160.0/$A000");
+  assert.match(recordFixedAsm, /ld de,4096/i, "Ships[0].Y < MinShipY should compare against 16.0/$1000");
+  assert.doesNotMatch(recordFixedAsm, /ld hl,AMY_UCONST_MaxShipY/i, "fixed compare must not use raw const symbol MaxShipY as $00A0");
+  assert.doesNotMatch(recordFixedAsm, /ld hl,AMY_UCONST_MinShipY/i, "fixed compare must not use raw const symbol MinShipY as $0010");
+});
+const RAW_ASM_AFTER_SUB_DEMO = `sub start:
+  set sound table RawSoundTable areas 1
+  loop forever
+end sub
+
+asm {
+RawSoundTable:
+    dw RawSound,$702B
+RawSound:
+    db $50
+}
+`;
+const rawAsmAfterSubResult = transpileAmy(RAW_ASM_AFTER_SUB_DEMO);
+const rawAsmAfterSubAsm = String(rawAsmAfterSubResult?.asmBody || "");
+
+check("top-level asm block after end sub is preserved", () => {
+  assert.equal(rawAsmAfterSubResult.ok, true, rawAsmAfterSubResult.log || "raw asm after sub should compile");
+  assert.match(rawAsmAfterSubAsm, /^RawSoundTable:/m, "raw ASM sound table label should survive pruning");
+  assert.match(rawAsmAfterSubAsm, /ld hl,RawSoundTable/i, "set sound table should still refer to the raw ASM label");
+});
 const BIOS_STUBS = [
   "TURN_OFF_SOUND EQU $1FD6",
   "MODE_1 EQU $1F85",

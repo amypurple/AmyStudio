@@ -254,6 +254,22 @@ export function createRuntimeValueHelpers({
   }
 
   function emitStoreImmediateBytes(name, bytes) {
+    const recordField = parseRecordFieldRef(name);
+    if (recordField) {
+      if (recordField.fieldInfo.size !== bytes.length) return null;
+      if (bytes.length === 2) {
+        const wordValue = ((bytes[1] & 0xFF) << 8) | (bytes[0] & 0xFF);
+        const storeTarget = emitStoreInt16FromHL(name);
+        if (!storeTarget) return null;
+        return [`    ld hl,$${wordValue.toString(16).toUpperCase().padStart(4, "0")}`, ...storeTarget];
+      }
+      if (bytes.length === 1) {
+        const storeTarget = emitStoreInt8FromA(name);
+        if (!storeTarget) return null;
+        return [`    ld a,${formatHex8(bytes[0])}`, ...storeTarget];
+      }
+      return null;
+    }
     const info = getRuntimeInfo(name);
     if (!info || info.kind === "array") return null;
     if (info.storage === "stack") {
@@ -278,6 +294,30 @@ export function createRuntimeValueHelpers({
 
 
   function emitStoreFixedIntegerByteFromA(name) {
+    const recordField = parseRecordFieldRef(name);
+    if (recordField) {
+      if (recordField.fieldInfo.type !== "int16") return null;
+      const directAddress = getDirectRecordFieldAddress?.(name);
+      if (directAddress) {
+        return [
+          "    ld h,a",
+          "    ld l,0",
+          `    ld (${directAddress}),hl`
+        ];
+      }
+      const loadAddress = emitLoadRecordFieldAddressIntoHL(name);
+      if (!loadAddress) return null;
+      return [
+        "    push af",
+        ...loadAddress,
+        "    pop af",
+        "    ld e,a",
+        "    xor a",
+        "    ld (hl),a",
+        "    inc hl",
+        "    ld (hl),e"
+      ];
+    }
     const info = getRuntimeInfo(name);
     if (!info || info.kind === "array") return null;
     if (info.storage === "stack") {
@@ -880,3 +920,4 @@ export function createRuntimeValueHelpers({
     ensureDataCursorVar
   };
 }
+
