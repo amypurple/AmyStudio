@@ -3,7 +3,670 @@
 
 export const spaceTrainerSource = "project \"Space Trainer\"\r\ncartridge \"SPACE TRAINER/AMY STUDIO/2026\"\r\nmemory \"colecovision_legacy_sdcc\"\r\n\r\n' Amy port of Amy Bienvenu / NewColeco's old SDCC Space Trainer sample.\r\n' Original source: old-projects-sdcc-z80/sdcctest/spacetr/\r\n' Two-player inertia, bonus bubble, score race, original BIOS sound tables,\r\n' 24-orientation ship sprites, and keypad/fire thrust behavior.\r\n\r\nconst MinX = 16\r\nconst MinY = 16\r\nconst MaxX = 224\r\nconst MaxY = 160\r\nconst ReduceSpeed = 0.03125\r\nconst BubbleBasePattern = 96\r\nconst BubbleAltPattern = 112\r\nconst WinScore = 10000\r\n\r\nrecord Ship:\r\n  ufixed X\r\n  ufixed Y\r\n  fixed VX\r\n  fixed VY\r\n  u8 Orient\r\n  u16 Score\r\nend record\r\n\r\nu8 I = 0\r\nu8 Pad1 = 0\r\nu8 Pad2 = 0\r\nShip Ships[2]\r\n\r\nu8 BubbleX = 0\r\nu8 BubbleY = 0\r\nu8 BubbleFrame = 0\r\ni8 BubbleDir = 4\r\ni16 BubbleTimer = 0\r\nfixed StepX = 0\r\nfixed StepY = 0\r\nfixed TempFixed = 0\r\nu8 Tmp = 0\r\nu8 SpritePattern = 0\r\nu8 DeltaX = 0\r\nu8 DeltaY = 0\r\n\r\ndata SpaceTrainerSinX words\r\n  $0000,$0042,$007F,$00B5,$00DD,$00F7,$0100,$00F7\r\n  $00DD,$00B5,$007F,$0042,$0000,$FFBD,$FF80,$FF4A\r\n  $FF22,$FF08,$FF00,$FF08,$FF22,$FF4A,$FF80,$FFBD\r\nend data\r\n\r\ndata SpaceTrainerSinY words\r\n  $FF00,$FF08,$FF22,$FF4A,$FF80,$FFBD,$0000,$0042\r\n  $007F,$00B5,$00DD,$00F7,$0100,$00F7,$00DD,$00B5\r\n  $007F,$0042,$0000,$FFBD,$FF80,$FF4A,$FF22,$FF08\r\nend data\r\n\r\ndata SpaceTrainerSpritePatterns bytes\r\n  $01,$01,$03,$03,$07,$07,$0F,$0F,$1F,$1F,$0F,$27,$33,$19,$0C,$00\r\n  $80,$80,$C0,$C0,$E0,$E0,$F0,$F0,$F8,$F8,$F0,$E4,$CC,$98,$30,$00\r\n  $00,$00,$01,$03,$03,$07,$0F,$1F,$1F,$0F,$4F,$27,$27,$12,$00,$00\r\n  $60,$40,$E0,$E0,$E0,$E0,$E0,$F0,$F0,$F0,$F0,$E0,$88,$10,$60,$00\r\n  $00,$00,$00,$01,$07,$0F,$1F,$1F,$5F,$4F,$4F,$4F,$0E,$00,$03,$00\r\n  $00,$30,$70,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$F0,$E0,$00,$20,$E0,$00\r\n  $00,$00,$00,$00,$03,$1F,$5F,$DF,$DF,$5F,$5F,$1F,$0C,$00,$07,$00\r\n  $00,$00,$08,$BC,$F8,$F8,$F0,$F0,$F0,$F0,$E0,$E0,$80,$00,$80,$00\r\n  $00,$00,$00,$00,$01,$4F,$4F,$DF,$9F,$1F,$1F,$1F,$03,$10,$1E,$02\r\n  $00,$00,$00,$00,$7E,$FC,$FC,$F8,$F0,$F0,$E0,$C0,$C0,$00,$00,$00\r\n  $00,$00,$00,$00,$27,$4F,$CF,$1F,$1F,$3F,$1F,$07,$23,$38,$0C,$00\r\n  $00,$00,$00,$00,$A0,$FE,$FF,$FC,$FC,$F0,$E0,$C0,$80,$00,$00,$00\r\n  $00,$00,$18,$33,$67,$4F,$1F,$3F,$3F,$1F,$4F,$67,$33,$18,$00,$00\r\n  $00,$00,$00,$00,$C0,$F0,$FC,$FF,$FF,$FC,$F0,$C0,$00,$00,$00,$00\r\n  $00,$04,$18,$21,$07,$1F,$3F,$1F,$1F,$4F,$4F,$27,$10,$00,$00,$00\r\n  $00,$00,$00,$80,$C0,$E0,$F8,$FC,$FC,$FF,$FD,$80,$00,$00,$00,$00\r\n  $00,$0F,$00,$01,$1F,$1F,$5F,$4F,$4F,$4F,$6F,$05,$00,$00,$00,$00\r\n  $00,$00,$00,$C0,$E0,$F0,$F0,$F8,$F8,$FC,$FE,$FE,$00,$00,$00,$00\r\n  $01,$07,$00,$0F,$1F,$5F,$4F,$4F,$5F,$0F,$0F,$03,$00,$00,$00,$00\r\n  $80,$C0,$00,$E0,$E0,$E0,$F0,$F0,$F8,$F0,$F8,$F8,$3C,$08,$00,$00\r\n  $01,$00,$00,$6F,$4F,$4F,$DF,$1F,$1F,$1F,$07,$03,$00,$00,$00,$00\r\n  $80,$E0,$00,$80,$E0,$E0,$E0,$F0,$E0,$F0,$F0,$F0,$F0,$70,$10,$00\r\n  $00,$00,$32,$27,$67,$4F,$1F,$1F,$1F,$0F,$07,$03,$01,$01,$00,$00\r\n  $40,$60,$10,$80,$E0,$F0,$F0,$F0,$F0,$E0,$F0,$E0,$E0,$E0,$60,$40\r\n  $00,$0C,$19,$33,$27,$0F,$1F,$1F,$0F,$0F,$07,$07,$03,$03,$01,$01\r\n  $00,$30,$98,$CC,$E4,$F0,$F8,$F8,$F0,$F0,$E0,$E0,$C0,$C0,$80,$80\r\n  $00,$06,$08,$11,$07,$0F,$0F,$0F,$0F,$07,$07,$07,$07,$07,$02,$06\r\n  $00,$00,$48,$E4,$E4,$F2,$F0,$F8,$F8,$F0,$E0,$C0,$C0,$80,$00,$00\r\n  $00,$07,$04,$00,$07,$0F,$07,$0F,$0F,$0F,$0F,$0F,$0F,$0E,$0C,$00\r\n  $00,$C0,$00,$70,$F2,$F2,$F2,$FA,$F8,$F8,$F0,$E0,$80,$00,$00,$00\r\n  $00,$01,$00,$01,$07,$07,$0F,$0F,$0F,$0F,$1F,$1F,$3D,$10,$00,$00\r\n  $00,$E0,$00,$30,$F8,$FA,$FA,$FB,$FB,$FA,$F8,$C0,$00,$00,$00,$00\r\n  $00,$00,$00,$03,$03,$07,$0F,$0F,$1F,$3F,$3F,$7E,$00,$00,$00,$00\r\n  $40,$78,$08,$C0,$F8,$F8,$F8,$F9,$FB,$F2,$F2,$80,$00,$00,$00,$00\r\n  $00,$00,$00,$01,$03,$07,$0F,$3F,$3F,$FF,$7F,$05,$00,$00,$00,$00\r\n  $00,$30,$1C,$C4,$E0,$F8,$FC,$F8,$F8,$F3,$F2,$E4,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$03,$0F,$3F,$FF,$FF,$3F,$0F,$03,$00,$00,$00,$00\r\n  $00,$00,$18,$CC,$E6,$F2,$F8,$FC,$FC,$F8,$F2,$E6,$CC,$18,$00,$00\r\n  $00,$00,$00,$00,$01,$BF,$FF,$3F,$3F,$1F,$07,$03,$01,$00,$00,$00\r\n  $00,$00,$00,$08,$E4,$F2,$F2,$F8,$F8,$FC,$F8,$E0,$84,$18,$20,$00\r\n  $00,$00,$00,$00,$7F,$7F,$3F,$1F,$1F,$0F,$0F,$07,$03,$00,$00,$00\r\n  $00,$00,$00,$00,$A0,$F6,$F2,$F2,$F2,$FA,$F8,$F8,$80,$00,$F0,$00\r\n  $00,$00,$10,$3C,$1F,$1F,$0F,$1F,$0F,$0F,$07,$07,$07,$00,$03,$01\r\n  $00,$00,$00,$00,$C0,$F0,$F0,$FA,$F2,$F2,$FA,$F8,$F0,$00,$E0,$80\r\n  $00,$08,$0E,$0F,$0F,$0F,$0F,$07,$0F,$07,$07,$07,$01,$00,$07,$01\r\n  $00,$00,$00,$00,$C0,$E0,$F8,$F8,$F8,$FB,$F2,$F2,$F6,$00,$00,$80\r\n  $02,$06,$07,$07,$07,$0F,$07,$0F,$0F,$0F,$0F,$07,$01,$08,$06,$02\r\n  $00,$00,$80,$80,$C0,$E0,$F0,$F8,$F8,$F8,$F2,$E6,$E4,$4C,$00,$00\r\n  $00,$00,$00,$00,$01,$07,$06,$0D,$0D,$06,$07,$01,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$80,$E0,$60,$B0,$B0,$60,$E0,$80,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$01,$07,$07,$0F,$0F,$07,$07,$01,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$80,$E0,$80,$70,$70,$80,$E0,$80,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$01,$07,$07,$1F,$1F,$07,$07,$01,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$80,$E0,$F8,$DC,$DC,$F8,$E0,$80,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$01,$07,$1F,$3B,$3B,$1F,$07,$01,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$80,$E0,$E0,$F8,$F8,$E0,$E0,$80,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$01,$07,$01,$0E,$0E,$01,$07,$01,$00,$00,$00,$00\r\n  $00,$00,$00,$00,$80,$E0,$E0,$F0,$F0,$E0,$E0,$80,$00,$00,$00,$00\r\nend data\r\n\r\nsub start:\r\n  tile screen\r\n  sprites 16x16\r\n  sprites simple\r\n  define sprites SpaceTrainerSpritePatterns at 0\r\n  set sound table SpaceTrainerSoundTable areas 3\r\n  setup_title\r\n  setup_game\r\n  play sound 2\r\n  play sound 3\r\n  goto game_loop\r\nend sub\r\n\r\nsub setup_title:\r\n  cls\r\n  print centered at 3, \"SPACE TRAINER\"\r\n  print centered at 5, \"OLD SDCC DEVKIT PORT\"\r\n  print at 3,8, \"LEFT/RIGHT ROTATE SHIPS.\"\r\n  print at 3,10, \"FIRE OR KEYPAD THRUSTS.\"\r\n  print at 3,12, \"COLLECT THE MOVING BUBBLE.\"\r\n  print at 3,15, \"FIRST TO 10000 WINS.\"\r\n  print centered at 20, \"PRESS FIRE\"\r\n  screen on\r\n  pause until press\r\n  wait no fire\r\n  screen off\r\n  cls\r\n  return\r\nend sub\r\n\r\nsub setup_game:\r\n  clear sprites\r\n  set sprite count 4\r\n  Ships[0].Score = 0\r\n  Ships[1].Score = 0\r\n  Ships[0].X = 16\r\n  Ships[0].Y = 16\r\n  Ships[1].X = 224\r\n  Ships[1].Y = 160\r\n  Ships[0].VX = 0\r\n  Ships[0].VY = 0\r\n  Ships[1].VX = 0\r\n  Ships[1].VY = 0\r\n  Ships[0].Orient = random(0,23)\r\n  Ships[1].Orient = random(0,23)\r\n  init_stars\r\n  init_bubble\r\n  show_score\r\n  update_ships\r\n  update sprites\r\n  screen on\r\n  return\r\nend sub\r\n\r\nsub init_stars:\r\n  for I = 0 to 59\r\n    Tmp = random(2,29)\r\n    put char 46 at Tmp,random(2,21)\r\n  next\r\n  return\r\nend sub\r\n\r\nsub init_bubble:\r\n  BubbleDir = random(0,1)\r\n  if BubbleDir = 0 then\r\n    BubbleDir = -4\r\n  else\r\n    BubbleDir = 4\r\n  end if\r\n  BubbleX = random(16,224)\r\n  BubbleY = random(16,160)\r\n  BubbleFrame = BubbleBasePattern\r\n  BubbleTimer = 600\r\n  set sprite 2 to BubbleY,BubbleX,BubbleFrame,7\r\n  return\r\nend sub\r\n\r\nsub game_loop:\r\nSpaceTrainer_GameLoop:\r\n  wait 2 frames\r\n  update_ships\r\n  update_bubble\r\n  check_bubble\r\n  update sprites\r\n  update_player1\r\n  update_player2\r\n  if Ships[0].Score >= WinScore goto game_over\r\n  if Ships[1].Score >= WinScore goto game_over\r\n  goto SpaceTrainer_GameLoop\r\n  return\r\nend sub\r\n\r\nsub update_player1:\r\n  Pad1 = joypad(1)\r\n  if joypad(1).right then\r\n    Ships[0].Orient += 1\r\n    if Ships[0].Orient > 23 then Ships[0].Orient = 0\r\n  end if\r\n  if joypad(1).left then\r\n    if Ships[0].Orient = 0 then Ships[0].Orient = 23 else Ships[0].Orient -= 1\r\n  end if\r\n  if Pad1 & $F0 then thrust_p1\r\n  return\r\nend sub\r\n\r\nsub update_player2:\r\n  Pad2 = joypad(2)\r\n  if joypad(2).right then\r\n    Ships[1].Orient += 1\r\n    if Ships[1].Orient > 23 then Ships[1].Orient = 0\r\n  end if\r\n  if joypad(2).left then\r\n    if Ships[1].Orient = 0 then Ships[1].Orient = 23 else Ships[1].Orient -= 1\r\n  end if\r\n  if Pad2 & $F0 then thrust_p2\r\n  return\r\nend sub\r\n\r\nsub thrust_p1:\r\n  StepY = SpaceTrainerSinY[Ships[0].Orient]\r\n  StepX = SpaceTrainerSinX[Ships[0].Orient]\r\n  TempFixed = Ships[0].VY + StepY\r\n  if TempFixed > -8 then\r\n    if TempFixed < 8 then\r\n      Ships[0].VY = TempFixed\r\n      TempFixed = Ships[0].VX + StepX\r\n      if TempFixed > -8 then\r\n        if TempFixed < 8 then Ships[0].VX = TempFixed\r\n      end if\r\n    end if\r\n  end if\r\n  return\r\nend sub\r\n\r\nsub thrust_p2:\r\n  StepY = SpaceTrainerSinY[Ships[1].Orient]\r\n  StepX = SpaceTrainerSinX[Ships[1].Orient]\r\n  TempFixed = Ships[1].VY + StepY\r\n  if TempFixed > -8 then\r\n    if TempFixed < 8 then\r\n      Ships[1].VY = TempFixed\r\n      TempFixed = Ships[1].VX + StepX\r\n      if TempFixed > -8 then\r\n        if TempFixed < 8 then Ships[1].VX = TempFixed\r\n      end if\r\n    end if\r\n  end if\r\n  return\r\nend sub\r\n\r\nsub update_ships:\r\n  Ships[0].Y += Ships[0].VY\r\n  if Ships[0].Y < MinY then Ships[0].Y = MaxY\r\n  if Ships[0].Y > MaxY then Ships[0].Y = MinY\r\n  Ships[0].X += Ships[0].VX\r\n  if Ships[0].X < MinX then Ships[0].X = MaxX\r\n  if Ships[0].X > MaxX then Ships[0].X = MinX\r\n  SpritePattern = Ships[0].Orient << 2\r\n  set sprite 0 to Ships[0].Y,Ships[0].X,SpritePattern,5\r\n  reduce_speed_p1\r\n\r\n  Ships[1].Y += Ships[1].VY\r\n  if Ships[1].Y < MinY then Ships[1].Y = MaxY\r\n  if Ships[1].Y > MaxY then Ships[1].Y = MinY\r\n  Ships[1].X += Ships[1].VX\r\n  if Ships[1].X < MinX then Ships[1].X = MaxX\r\n  if Ships[1].X > MaxX then Ships[1].X = MinX\r\n  SpritePattern = Ships[1].Orient << 2\r\n  set sprite 1 to Ships[1].Y,Ships[1].X,SpritePattern,9\r\n  reduce_speed_p2\r\n  return\r\nend sub\r\n\r\nsub reduce_speed_p1:\r\n  if Ships[0].VY < 0 then\r\n    Ships[0].VY += ReduceSpeed\r\n    if Ships[0].VY > 0 then Ships[0].VY = 0\r\n  end if\r\n  if Ships[0].VY > 0 then\r\n    Ships[0].VY -= ReduceSpeed\r\n    if Ships[0].VY < 0 then Ships[0].VY = 0\r\n  end if\r\n  if Ships[0].VX < 0 then\r\n    Ships[0].VX += ReduceSpeed\r\n    if Ships[0].VX > 0 then Ships[0].VX = 0\r\n  end if\r\n  if Ships[0].VX > 0 then\r\n    Ships[0].VX -= ReduceSpeed\r\n    if Ships[0].VX < 0 then Ships[0].VX = 0\r\n  end if\r\n  return\r\nend sub\r\n\r\nsub reduce_speed_p2:\r\n  if Ships[1].VY < 0 then\r\n    Ships[1].VY += ReduceSpeed\r\n    if Ships[1].VY > 0 then Ships[1].VY = 0\r\n  end if\r\n  if Ships[1].VY > 0 then\r\n    Ships[1].VY -= ReduceSpeed\r\n    if Ships[1].VY < 0 then Ships[1].VY = 0\r\n  end if\r\n  if Ships[1].VX < 0 then\r\n    Ships[1].VX += ReduceSpeed\r\n    if Ships[1].VX > 0 then Ships[1].VX = 0\r\n  end if\r\n  if Ships[1].VX > 0 then\r\n    Ships[1].VX -= ReduceSpeed\r\n    if Ships[1].VX < 0 then Ships[1].VX = 0\r\n  end if\r\n  return\r\nend sub\r\n\r\nsub update_bubble:\r\n  BubbleFrame += BubbleDir\r\n  if BubbleFrame < BubbleBasePattern then BubbleFrame = BubbleAltPattern\r\n  if BubbleFrame > BubbleAltPattern then BubbleFrame = BubbleBasePattern\r\n  set sprite 2 pattern to BubbleFrame\r\n  BubbleTimer -= 10\r\n  if BubbleTimer <= 0 then init_bubble\r\n  return\r\nend sub\r\n\r\nsub check_bubble:\r\n  if Ships[0].X > BubbleX then\r\n    DeltaX = Ships[0].X - BubbleX\r\n  else\r\n    DeltaX = BubbleX - Ships[0].X\r\n  end if\r\n  if DeltaX < 15 then\r\n    if Ships[0].Y > BubbleY then\r\n      DeltaY = Ships[0].Y - BubbleY\r\n    else\r\n      DeltaY = BubbleY - Ships[0].Y\r\n    end if\r\n    if DeltaY < 15 then\r\n      Ships[0].Score += BubbleTimer\r\n      play sound 1\r\n      init_bubble\r\n      show_score\r\n    end if\r\n  end if\r\n\r\n  if Ships[1].X > BubbleX then\r\n    DeltaX = Ships[1].X - BubbleX\r\n  else\r\n    DeltaX = BubbleX - Ships[1].X\r\n  end if\r\n  if DeltaX < 15 then\r\n    if Ships[1].Y > BubbleY then\r\n      DeltaY = Ships[1].Y - BubbleY\r\n    else\r\n      DeltaY = BubbleY - Ships[1].Y\r\n    end if\r\n    if DeltaY < 15 then\r\n      Ships[1].Score += BubbleTimer\r\n      play sound 1\r\n      init_bubble\r\n      show_score\r\n    end if\r\n  end if\r\n  return\r\nend sub\r\n\r\nsub show_score:\r\n  print at 3,1, \"     \"\r\n  print Ships[0].Score at 3,1 digits 5\r\n  print at 24,1, \"     \"\r\n  print Ships[1].Score at 24,1 digits 5\r\n  return\r\nend sub\r\n\r\nsub game_over:\r\n  mute all\r\n  cls\r\n  clear sprites\r\n  update sprites\r\n  if Ships[0].Score >= WinScore then\r\n    print centered at 8, \"PLAYER 1 WINS\"\r\n  else\r\n    print centered at 8, \"PLAYER 2 WINS\"\r\n  end if\r\n  print centered at 12, \"PRESS FIRE\"\r\n  pause until press\r\n  wait no fire\r\n  setup_title\r\n  setup_game\r\n  play sound 2\r\n  play sound 3\r\n  goto game_loop\r\n  return\r\nend sub\r\n\r\nasm {\r\nSpaceTrainerSoundTable:\r\n    dw SpaceTrainerBeep,$702B\r\n    dw SpaceTrainerMusicA,$7035\r\n    dw SpaceTrainerMusicB,$703F\r\n\r\nSpaceTrainerBeep:\r\n    db $43,$00,$72,$05,$11,$90,$F3,$11\r\n    db $50\r\n\r\nSpaceTrainerMusicA:\r\n    db $80,$A6,$82,$15\r\n    db $A3\r\n    db $80,$A6,$92,$0C\r\n    db $83,$38,$42,$0C,$11,$40,$1A,$12\r\n    db $83,$38,$42,$0C,$11,$40,$1A,$12\r\n    db $80,$1A,$92,$18\r\n    db $83,$38,$42,$0C,$11,$40,$1A,$12\r\n    db $98\r\n\r\nSpaceTrainerMusicB:\r\n    db $FE,$FE,$FE,$FE,$FE,$FE,$EC\r\n    db $C1,$38,$C0,$02,$CC,$FA\r\n    db $C1,$38,$B0,$02,$CC,$FA\r\n    db $C1,$38,$A0,$02,$CC,$FA\r\n    db $C1,$38,$90,$02,$CC,$FA\r\n    db $C1,$38,$80,$02,$CC,$FA\r\n    db $C1,$38,$70,$02,$CC,$FA\r\n    db $C0,$38,$60,$24\r\n    db $C0,$32,$50,$18\r\n    db $C2,$43,$50,$54,$1A,$AC\r\n    db $FE,$FE,$FE,$E6\r\n    db $C1,$43,$C0,$02,$CC,$FC\r\n    db $C1,$43,$B0,$02,$CC,$FC\r\n    db $C1,$43,$A0,$02,$CC,$FC\r\n    db $C1,$43,$90,$02,$CC,$FC\r\n    db $C1,$43,$80,$02,$CC,$FC\r\n    db $C1,$43,$70,$02,$CC,$FC\r\n    db $C0,$38,$60,$24\r\n    db $C0,$32,$50,$18\r\n    db $C2,$38,$50,$54,$1A,$AC\r\n    db $FE,$FE,$FE,$E6\r\n    db $D8\r\n}\r\n";
 
+export const explosionSource = `project "Explosion"
+cartridge "EXPLOSION/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion sample.
+' Original source: old-projects-sdcc-z80/sdcctest/explosion/
+' Board cells are signed like the original C char arrays:
+'   positive = player, negative = CPU, zero = empty.
+' Keep units separate:
+'   Col/Row are board-cell coordinates, TileX/TileY are tile coordinates,
+'   SpriteX/SpriteY are pixel coordinates.
+
+const BoardTileX = 8
+const BoardTileY = 4
+const PlayerOwner = 1
+const CpuOwner = 2
+const MaxEval = 32000
+
+i8 Board[64]
+i8 SimBoard[64]
+u8 CursorX = 0
+u8 CursorY = 0
+u8 OldX = 0
+u8 OldY = 0
+u8 Row = 0
+u8 Col = 0
+u8 CellIndex = 0
+i8 CellValue = 0
+i8 FrameValue = 0
+u8 FrameIndex = 0
+u8 FrameOffset = 0
+u8 CellFrame[4]
+u8 CellCount = 0
+u8 Threshold = 0
+u8 CurrentOwner = 1
+u8 Exploded = 0
+u8 OpponentFound = 0
+u8 CpuTry = 0
+u8 BestIndex = 0
+u8 SimET = 0
+u8 EvalHit = 0
+i16 EvalScore = 0
+i16 BestScore = 0
+u8 Tmp = 0
+u8 TmpX = 0
+u8 TmpY = 0
+u8 SpriteX = 0
+u8 SpriteY = 0
+u8 WinFlag = 0
+
+' Original SDCC sprites: two layered arrow sprites plus one explosion sprite.
+data ExplosionSprites bytes
+  $03,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$03,$00,$00,$00
+  $00,$80,$40,$20,$10,$08,$04,$02,$01,$0E,$48,$A4,$24,$12,$12,$0C
+  $00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$F0,$B0,$18,$18,$0C,$0C,$00
+  $80,$20,$58,$36,$2D,$1F,$17,$0F,$0F,$17,$1F,$2D,$36,$58,$20,$80
+  $01,$04,$1A,$6C,$B4,$F8,$E8,$F0,$F0,$E8,$F8,$B4,$6C,$1A,$04,$01
+end data
+
+' Original board tile graphics, matching change_pattern(128,CASE_PATTERN,26).
+data ExplosionCasePattern bytes
+  $00,$00,$00,$00,$00,$00,$03,$03,$01,$01,$01,$01,$01,$01,$81,$81
+  $03,$00,$00,$00,$00,$00,$00,$FF,$81,$01,$01,$01,$01,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$01,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$03,$03,$01,$01,$01,$01,$01,$01,$81,$81
+  $03,$00,$00,$00,$00,$00,$00,$FF,$81,$01,$39,$39,$39,$01,$01,$FF
+  $01,$01,$39,$39,$39,$01,$01,$01,$00,$00,$38,$38,$38,$00,$00,$FF
+  $00,$00,$38,$38,$38,$00,$03,$03,$01,$01,$39,$39,$39,$01,$81,$81
+  $03,$00,$38,$38,$38,$00,$00,$FF,$81,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$38,$38,$01,$01,$39,$39,$39,$01,$39,$39
+  $38,$00,$38,$38,$38,$00,$00,$FF,$39,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$3B,$03,$3B,$38,$01,$01,$39,$39,$B9,$81,$B9,$39
+  $3B,$03,$3B,$38,$38,$00,$00,$FF,$B9,$81,$B9,$39,$39,$01,$01,$FF
+end data
+
+' Original empty tile graphics, matching change_pattern(154,EMPTY_PATTERN,4).
+data ExplosionEmptyPattern bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$01,$01,$01,$01,$01,$01,$01,$FF
+end data
+
+' Original color fills: fill_color(128,$19,26), fill_color(154,$1E,4), fill_color(158,$14,26).
+data ExplosionPlayerColors bytes
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+end data
+
+data ExplosionEmptyColors bytes
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+end data
+
+data ExplosionCpuColors bytes
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+end data
+
+' Original spaces[] frame table: 17 board-value frames, each a 2x2 tile frame.
+data ExplosionSpaces bytes
+  $96,$97,$98,$99,$96,$97,$94,$95,$92,$93,$94,$95,$8E,$8F,$90,$91
+  $84,$8C,$8D,$87,$88,$89,$8A,$8B,$84,$85,$86,$87,$80,$81,$82,$83
+  $9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9
+  $A2,$AA,$AB,$A5,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B2,$B3
+  $B4,$B5,$B6,$B7
+end data
+
+sub start:
+  tile screen
+  sprites 16x16
+  sprites simple
+  define chars ExplosionCasePattern at 128 count 26
+  define chars ExplosionEmptyPattern at 154 count 4
+  define chars ExplosionCasePattern at 158 count 26
+  define colors ExplosionPlayerColors at 128 count 26
+  define colors ExplosionEmptyColors at 154 count 4
+  define colors ExplosionCpuColors at 158 count 26
+  define sprites ExplosionSprites at 0
+  set sound table ExplosionSoundTable areas 1
+  cls
+  print centered at 1, "EXPLOSION"
+  print centered at 3, "NEWCOLECO SDCC PORT"
+  print at 3,6, "ADD TO YOUR CELLS."
+  print at 3,8, "OVERLOAD SENDS ENERGY"
+  print at 3,9, "TO NEIGHBOURS."
+  print at 3,12, "YOU: BLUE  CPU: ORANGE"
+  print centered at 20, "PRESS FIRE"
+  screen on
+  pause until press
+  wait no fire
+  setup_game
+  goto player_turn
+end sub
+
+sub setup_game:
+  cls
+  print centered at 1, "EXPLOSION"
+  print centered at 22, "D-PAD MOVE  FIRE SELECT"
+  for CellIndex = 0 to 63
+    Board[CellIndex] = 0
+  next
+  Board[0] = 1
+  Board[7] = 1
+  Board[56] = -1
+  Board[63] = -1
+  CursorX = 0
+  CursorY = 0
+  clear sprites
+  set sprite count 3
+  hide_explosion
+  draw_board
+  draw_cursor
+  return
+end sub
+
+sub player_turn:
+  CurrentOwner = PlayerOwner
+  print centered at 2, "TURN: PLAYER"
+  draw_cursor
+player_loop:
+  OldX = CursorX
+  OldY = CursorY
+  if joypad(1).left then
+    if CursorX > 0 then CursorX -= 1
+  end if
+  if joypad(1).right then
+    if CursorX < 7 then CursorX += 1
+  end if
+  if joypad(1).up then
+    if CursorY > 0 then CursorY -= 1
+  end if
+  if joypad(1).down then
+    if CursorY < 7 then CursorY += 1
+  end if
+  if OldX != CursorX goto player_cursor_changed
+  if OldY != CursorY goto player_cursor_changed
+  goto player_cursor_done
+player_cursor_changed:
+  draw_cursor
+player_cursor_done:
+  if joypad(1).button1 then goto player_fire
+  wait 4 frames
+  goto player_loop
+player_fire:
+  wait no fire
+  Col = CursorX
+  Row = CursorY
+  make_index
+  CellValue = Board[CellIndex]
+  if signed CellValue < 0 goto player_loop
+  hide_cursor
+  add_one_at_index
+  resolve_explosions
+  draw_board
+  if WinFlag = 1 goto player_wins
+  goto cpu_turn
+  return
+player_wins:
+  print centered at 20, "YOU WIN"
+  play sound 1
+  pause until press
+  wait no fire
+  setup_game
+  goto player_turn
+  return
+end sub
+
+sub cpu_turn:
+  CurrentOwner = CpuOwner
+  print centered at 2, "TURN: CPU   "
+  hide_cursor
+  BestScore = MaxEval
+  BestIndex = 0
+  CpuTry = 0
+cpu_scan_loop:
+  CellIndex = CpuTry
+  CellValue = Board[CellIndex]
+  if signed CellValue >= 0 goto cpu_scan_next
+  copy_board_to_sim
+  CellIndex = CpuTry
+  sim_add_one_at_index
+  sim_resolve_explosions
+  if SimET != 0 then
+    BestIndex = CpuTry
+    goto cpu_choice_ready
+  end if
+  evaluate_sim
+  if EvalScore < BestScore then
+    BestScore = EvalScore
+    BestIndex = CpuTry
+  end if
+cpu_scan_next:
+  CpuTry += 1
+  if CpuTry < 64 goto cpu_scan_loop
+cpu_choice_ready:
+  wait 20 frames
+  CellIndex = BestIndex
+  index_to_xy
+  Col = TmpX
+  Row = TmpY
+  CellIndex = BestIndex
+  add_one_at_index
+  resolve_explosions
+  draw_board
+  if WinFlag = 1 goto cpu_wins
+  goto player_turn
+  return
+cpu_wins:
+  print centered at 20, "CPU WIN"
+  play sound 1
+  pause until press
+  wait no fire
+  setup_game
+  goto player_turn
+  return
+end sub
+
+sub draw_board:
+  wait
+  nmi off
+  CellIndex = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      draw_cell
+      CellIndex += 1
+    next
+  next
+  nmi on
+  return
+end sub
+
+sub draw_cell:
+  if Col > 7 then return
+  if Row > 7 then return
+  CellValue = Board[CellIndex]
+  FrameValue = CellValue + 8
+  if signed FrameValue < 0 then FrameValue = 0
+  if signed FrameValue > 16 then FrameValue = 16
+  FrameIndex = FrameValue
+  FrameOffset = FrameIndex << 2
+  CellFrame[0] = ExplosionSpaces[FrameOffset]
+  Tmp = FrameOffset + 1
+  CellFrame[1] = ExplosionSpaces[Tmp]
+  Tmp = FrameOffset + 2
+  CellFrame[2] = ExplosionSpaces[Tmp]
+  Tmp = FrameOffset + 3
+  CellFrame[3] = ExplosionSpaces[Tmp]
+  TmpX = BoardTileX + Col * 2
+  TmpY = BoardTileY + Row * 2
+  put CellFrame frame size 2,2 at TmpX,TmpY
+  return
+end sub
+
+sub draw_cell_safe:
+  wait
+  nmi off
+  draw_cell
+  nmi on
+  return
+end sub
+
+sub draw_cursor:
+  wait
+  SpriteX = 66 + CursorX * 16
+  SpriteY = 40 + CursorY * 16
+  set sprite 0 to SpriteY,SpriteX,0,1
+  set sprite 1 to SpriteY,SpriteX,4,15
+  update sprites from 0 count 2
+  return
+end sub
+
+sub hide_cursor:
+  wait
+  set sprite 0 y to 204
+  set sprite 1 y to 204
+  update sprites from 0 count 2
+  return
+end sub
+
+sub show_explosion:
+  wait
+  SpriteX = 64 + Col * 16
+  SpriteY = 31 + Row * 16
+  set sprite 2 to SpriteY,SpriteX,8,11
+  update sprites from 2 count 1
+  return
+end sub
+
+sub hide_explosion:
+  wait
+  set sprite 2 y to 204
+  update sprites from 2 count 1
+  return
+end sub
+
+sub make_index:
+  CellIndex = Row * 8
+  CellIndex += Col
+  return
+end sub
+
+sub index_to_xy:
+  TmpY = CellIndex / 8
+  TmpX = CellIndex & 7
+  return
+end sub
+
+sub threshold_for_current:
+  Threshold = 4
+  if Col = 0 then Threshold -= 1
+  if Col = 7 then Threshold -= 1
+  if Row = 0 then Threshold -= 1
+  if Row = 7 then Threshold -= 1
+  return
+end sub
+
+sub load_abs_cell_count:
+  CellValue = Board[CellIndex]
+  if signed CellValue < 0 then
+    CellCount = 0 - CellValue
+  else
+    CellCount = CellValue
+  end if
+  return
+end sub
+
+sub store_count_for_owner:
+  if CellCount = 0 then
+    Board[CellIndex] = 0
+    return
+  end if
+  if CurrentOwner = PlayerOwner then
+    Board[CellIndex] = CellCount
+  else
+    Board[CellIndex] = 0 - CellCount
+  end if
+  return
+end sub
+
+sub add_one_at_index:
+  load_abs_cell_count
+  CellCount += 1
+  store_count_for_owner
+  return
+end sub
+
+sub copy_board_to_sim:
+  for CellIndex = 0 to 63
+    SimBoard[CellIndex] = Board[CellIndex]
+  next
+  return
+end sub
+
+sub sim_load_abs_cell_count:
+  CellValue = SimBoard[CellIndex]
+  if signed CellValue < 0 then
+    CellCount = 0 - CellValue
+  else
+    CellCount = CellValue
+  end if
+  return
+end sub
+
+sub sim_store_count_for_owner:
+  if CellCount = 0 then
+    SimBoard[CellIndex] = 0
+    return
+  end if
+  if CurrentOwner = PlayerOwner then
+    SimBoard[CellIndex] = CellCount
+  else
+    SimBoard[CellIndex] = 0 - CellCount
+  end if
+  return
+end sub
+
+sub sim_add_one_at_index:
+  sim_load_abs_cell_count
+  CellCount += 1
+  sim_store_count_for_owner
+  return
+end sub
+
+sub sim_add_neighbor:
+  if Col > 7 then return
+  if Row > 7 then return
+  make_index
+  sim_add_one_at_index
+  return
+end sub
+
+sub sim_resolve_explosions:
+sim_resolve_again:
+  Exploded = 0
+  OpponentFound = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      make_index
+      CellValue = SimBoard[CellIndex]
+      if CellValue = 0 goto sim_scan_next_cell
+      if CurrentOwner = PlayerOwner then
+        if signed CellValue < 0 then OpponentFound = 1
+      else
+        if signed CellValue > 0 then OpponentFound = 1
+      end if
+      sim_load_abs_cell_count
+      threshold_for_current
+      if CellCount <= Threshold goto sim_scan_next_cell
+      Exploded = 1
+      CellCount -= Threshold
+      sim_store_count_for_owner
+      TmpX = Col
+      TmpY = Row
+      if TmpY > 0 then
+        Row = TmpY - 1
+        Col = TmpX
+        sim_add_neighbor
+      end if
+      if TmpX > 0 then
+        Row = TmpY
+        Col = TmpX - 1
+        sim_add_neighbor
+      end if
+      if TmpX < 7 then
+        Row = TmpY
+        Col = TmpX + 1
+        sim_add_neighbor
+      end if
+      if TmpY < 7 then
+        Row = TmpY + 1
+        Col = TmpX
+        sim_add_neighbor
+      end if
+      Row = TmpY
+      Col = TmpX
+sim_scan_next_cell:
+    next
+  next
+  if Exploded != 0 then
+    if OpponentFound != 0 goto sim_resolve_again
+  end if
+  SimET = 0
+  if OpponentFound = 0 then SimET = 1
+  return
+end sub
+
+sub evaluate_sim:
+  EvalScore = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      make_index
+      CellValue = SimBoard[CellIndex]
+      EvalScore += CellValue
+      sim_load_abs_cell_count
+      threshold_for_current
+      if signed CellValue < 0 then
+        if CellCount >= Threshold then
+          EvalScore -= 2
+          TmpX = Col
+          TmpY = Row
+          if TmpY > 0 then
+            Row = TmpY - 1
+            Col = TmpX
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          if TmpX > 0 then
+            Row = TmpY
+            Col = TmpX - 1
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          if TmpX < 7 then
+            Row = TmpY
+            Col = TmpX + 1
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          if TmpY < 7 then
+            Row = TmpY + 1
+            Col = TmpX
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          Row = TmpY
+          Col = TmpX
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+sub eval_player_at_threshold:
+  EvalHit = 0
+  if Col > 7 then return
+  if Row > 7 then return
+  make_index
+  threshold_for_current
+  CellValue = SimBoard[CellIndex]
+  if signed CellValue < 0 then return
+  if CellValue = Threshold then EvalHit = 1
+  return
+end sub
+
+sub add_neighbor:
+  if Col > 7 then return
+  if Row > 7 then return
+  make_index
+  add_one_at_index
+  return
+end sub
+
+sub resolve_explosions:
+resolve_again:
+  Exploded = 0
+  OpponentFound = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      make_index
+      CellValue = Board[CellIndex]
+      if CellValue = 0 goto scan_next_cell
+      if CurrentOwner = PlayerOwner then
+        if signed CellValue < 0 then OpponentFound = 1
+      else
+        if signed CellValue > 0 then OpponentFound = 1
+      end if
+      load_abs_cell_count
+      threshold_for_current
+      if CellCount <= Threshold goto scan_next_cell
+      Exploded = 1
+      CellCount -= Threshold
+      store_count_for_owner
+      draw_cell_safe
+      show_explosion
+      play sound 1
+      wait 2 frames
+      TmpX = Col
+      TmpY = Row
+      if TmpY > 0 then
+        Row = TmpY - 1
+        Col = TmpX
+        add_neighbor
+      end if
+      if TmpX > 0 then
+        Row = TmpY
+        Col = TmpX - 1
+        add_neighbor
+      end if
+      if TmpX < 7 then
+        Row = TmpY
+        Col = TmpX + 1
+        add_neighbor
+      end if
+      if TmpY < 7 then
+        Row = TmpY + 1
+        Col = TmpX
+        add_neighbor
+      end if
+      Row = TmpY
+      Col = TmpX
+scan_next_cell:
+    next
+  next
+  if Exploded != 0 then
+    if OpponentFound != 0 goto resolve_again
+  end if
+  hide_explosion
+  WinFlag = 0
+  if OpponentFound = 0 then WinFlag = 1
+  return
+end sub
+
+asm {
+ExplosionSoundTable:
+    dw ExplosionPop,$702B
+
+ExplosionPop:
+    db $40,$A0,$11,$01
+    db $40,$1C,$61,$01
+    db $40,$2C,$B1,$01
+    db $40,$2E,$D1,$01
+    db $50
+}
+`;
+
 export const gameExamples = [
+  {
+    id: "explosion",
+    label: "Explosion",
+    detail: "Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion board game: overload cells, chain reactions, and legacy CPU move evaluation.",
+    projectName: "explosion",
+    sourceLang: "amy",
+    selectedLibs: [],
+    selectedBundles: [],
+    selectedCompression: [],
+    selectedAssets: [],
+    projectFiles: [],
+    editorialTrack: "legacy-compat",
+    sourceText: explosionSource
+  },
   {
     id: "space-trainer",
     label: "Space Trainer",

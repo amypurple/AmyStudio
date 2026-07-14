@@ -1,4 +1,4 @@
-import { gameExamples, gameExampleManifest } from "./examples-games.js?v=20260714-public-name-cleanup";
+import { gameExamples, gameExampleManifest } from "./examples-games.js?v=20260714-explosion-clean";
 import { validationExamples, validationExampleManifest } from "./examples-validation.js?v=20260707-live-examples-index2";
 
 export const exampleEditorialTracks = {

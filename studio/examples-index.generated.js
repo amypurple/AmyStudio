@@ -415,6 +415,15 @@ const allExampleManifest = [
     "category": "Selftests"
   },
   {
+    "id": "explosion",
+    "label": "Explosion",
+    "detail": "Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion board game: overload cells, chain reactions, and legacy CPU move evaluation.",
+    "projectName": "explosion",
+    "sourceLang": "amy",
+    "editorialTrack": "legacy-compat",
+    "category": "Games"
+  },
+  {
     "id": "snake-demo",
     "label": "Snake Demo",
     "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
@@ -551,6 +560,7 @@ const publicExampleIds = new Set([
   "amy-on-frame-lab",
   "amy-conditional-compile-lab",
   "amy-multicolor-pixel-lab",
+  "explosion",
   "snake-demo",
   "cvbasic-viboritas-port",
   "tile-collision-maze",
