@@ -4,7 +4,7 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "nibble", label: "Nibble", description: "DAN0nibble-derived fast RLE/data-stream codec; excellent quick-evaluation candidate." },
   { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine." },
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
-  { codec: "dan2", label: "DAN2", description: "Daniel's LZ codec; good candidate for Coleco bitmap data." },
+  { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco bitmap data." },
   { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline." },
   { codec: "dan3", label: "DAN3", description: "DAN family variant, sometimes wins on structured data." },
   { codec: "pletter", label: "Pletter", description: "Classic MSX/Coleco-friendly LZ compressor." },

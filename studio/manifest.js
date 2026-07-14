@@ -154,7 +154,7 @@ export const manifest = {
     { id: "src/compression/zx7_vram.asm", label: "ZX7 -> VRAM", detail: "HL=src, DE=vram dest, call zx7_decompress", codecId: "zx7" },
     { id: "src/compression/bitbuster_vram.asm", label: "BitBuster -> VRAM", detail: "Warrior routine", codecId: "bitbuster12" },
     { id: "src/compression/dan1_vram.asm", label: "DAN1 -> VRAM", detail: "Warrior routine", codecId: "dan1" },
-    { id: "src/compression/dan2_vram.asm", label: "DAN2 -> VRAM", detail: "Original Daniel Bienvenu routine", codecId: "dan2" },
+    { id: "src/compression/dan2_vram.asm", label: "DAN2 -> VRAM", detail: "Original Amy Bienvenu / NewColeco routine", codecId: "dan2" },
     { id: "src/compression/dan3_vram.asm", label: "DAN3 -> VRAM", detail: "Warrior routine", codecId: "dan3" },
     { id: "src/compression/lzf_vram.asm", label: "LZF -> VRAM", detail: "Warrior routine", codecId: "lzf" },
     { id: "src/compression/mdkrle_vram.asm", label: "MDK RLE -> VRAM", detail: "Warrior routine", codecId: "mdkrle" },

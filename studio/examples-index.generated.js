@@ -486,7 +486,7 @@ const allExampleManifest = [
   {
     "id": "diamond-dash",
     "label": "Diamond Dash",
-    "detail": "Amy port of Daniel Bienvenu's legacy devkit Diamond Dash game.",
+    "detail": "Amy port of Amy Bienvenu / NewColeco's legacy devkit Diamond Dash game.",
     "projectName": "diamond-dash",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -495,7 +495,7 @@ const allExampleManifest = [
   {
     "id": "chateau-du-dragon",
     "label": "Chateau du Dragon",
-    "detail": "AMY text-adventure remake inspired by Daniel Bienvenu's legacy Chateau du Dragon, with the original title picture extracted as modern picture assets.",
+    "detail": "AMY text-adventure remake inspired by Amy Bienvenu / NewColeco's legacy Chateau du Dragon, with the original title picture extracted as modern picture assets.",
     "projectName": "chateau-du-dragon",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -513,7 +513,7 @@ const allExampleManifest = [
   {
     "id": "easter-bunny",
     "label": "Easter Bunny",
-    "detail": "Playable Amy Studio port of Daniel Bienvenu's Minigame Compo 2007 Easter Bunny, now using the native Amy v3 rewrite path with only the required project assets.",
+    "detail": "Playable Amy Studio port of Amy Bienvenu / NewColeco's Minigame Compo 2007 Easter Bunny, now using the native Amy v3 rewrite path with only the required project assets.",
     "projectName": "easter-bunny",
     "sourceLang": "amy",
     "editorialTrack": "legacy-compat",

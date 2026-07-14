@@ -1,7 +1,7 @@
 /**
- * NibbleCodec - legacy Amy/Daniel Bienvenu DAN0nibble-derived codec.
+ * NibbleCodec - legacy Amy Bienvenu / NewColeco DAN0nibble-derived codec.
  *
- * Origin: DAN0nibble, Amy/Daniel Bienvenu legacy ColecoVision compressor/depacker.
+ * Origin: DAN0nibble, Amy Bienvenu / NewColeco legacy ColecoVision compressor/depacker.
  * The exact original source file is not currently present in this workspace;
  * this Studio codec preserves the documented DAN0nibble command semantics and
  * uses a relocatable 2026 stream header for Amy Studio project files.

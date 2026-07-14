@@ -9,7 +9,7 @@ export const CODEC_CONFIG = {
             name: 'Nibble',
             author: 'Amy Bienvenu (NewColeco)',
             year: 'DAN0nibble legacy / 2026 Studio codec',
-            description: 'Fast ColecoVision VRAM codec derived from Amy/Daniel Bienvenu legacy DAN0nibble: RLE control stream plus 16-value data-stream references.',
+            description: 'Fast ColecoVision VRAM codec derived from Amy Bienvenu / NewColeco legacy DAN0nibble: RLE control stream plus 16-value data-stream references.',
             extensions: ['.nibble'],
             module: './codecs/nibble.js',
             className: 'NibbleCodec',
@@ -63,7 +63,7 @@ export const CODEC_CONFIG = {
         },
         dan2: {
             name: 'DAN2',
-            author: 'Daniel Bienvenu aka NewColeco',
+            author: 'Amy Bienvenu / NewColeco',
             year: '2017',
             description: 'DAN1-derived LZ77 stream with a variable high-offset bit width header.',
             extensions: ['.dan2'],

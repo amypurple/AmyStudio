@@ -5,7 +5,7 @@
  * with a modern JS structure inspired by the DAN3 JavaScript template.
  *
  * Author (JS port): Amy Bienvenu (NewColeco)
- * Original C Author: Daniel Bienvenu aka NewColeco (2016)
+ * Original C author: Amy Bienvenu / NewColeco (2016)
  *
  * Notes:
  * - Keeps bitstream format identical to DAN1 C tool (BETA-20160710).

@@ -790,7 +790,7 @@ export function createProjectFileUiHelpers({
     { codec: "mdkrle", label: "RLE", description: "Tiny 46-byte routine; often good for maps and repeated tiles.", routineBytes: 46, extension: "rle" },
     { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine.", routineBytes: 133, extension: "zx0" },
     { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point.", routineBytes: 136, extension: "zx7" },
-    { codec: "dan2", label: "DAN2", description: "Daniel's LZ codec; good candidate for Coleco table data.", routineBytes: 212, extension: "dan2" },
+    { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco table data.", routineBytes: 212, extension: "dan2" },
     { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline.", routineBytes: 205, extension: "dan1" },
     { codec: "dan3", label: "DAN3", description: "DAN family variant, sometimes wins on structured data.", routineBytes: 205, extension: "dan3" },
     { codec: "pletter", label: "Pletter", description: "Classic MSX/Coleco-friendly LZ compressor.", routineBytes: 212, extension: "pletter" },
