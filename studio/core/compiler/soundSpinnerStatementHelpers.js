@@ -139,10 +139,44 @@ export function handleSoundSpinnerStatement({
   const playDSound = line.match(/^play\s+dsound\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+step\s+(\d+))?$/i);
   if (playDSound) {
     const step = playDSound[2] !== undefined ? parseInt(playDSound[2], 10) : 0;
+    const nmiOffLabel = makeGeneratedLabel("DsoundNmiWasOff");
+    const doneLabel = makeGeneratedLabel("DsoundDone");
     return {
       ok: true,
       handled: true,
-      lines: [`    ld hl,${resolveAddressSymbol(playDSound[1])}`, `    ld c,${step}`, "    call AMY_PLAY_DSOUND"]
+      lines: [
+        "    ld a,1",
+        "    ld (NO_NMI),a",
+        "    ld a,($73C4)",
+        "    push af",
+        "    and $DF",
+        "    ld ($73C4),a",
+        "    ld c,a",
+        "    ld b,1",
+        "    call WRITE_REGISTER",
+        "    call READ_REGISTER",
+        `    ld hl,${resolveAddressSymbol(playDSound[1])}`,
+        `    ld c,${step}`,
+        "    call AMY_PLAY_DSOUND",
+        "    pop af",
+        "    ld ($73C4),a",
+        "    push af",
+        "    ld c,a",
+        "    ld b,1",
+        "    call WRITE_REGISTER",
+        "    pop af",
+        "    and $20",
+        `    jp z,${nmiOffLabel}`,
+        "    call READ_REGISTER",
+        "    xor a",
+        "    ld (NO_NMI),a",
+        "    ei",
+        `    jp ${doneLabel}`,
+        `${nmiOffLabel}:`,
+        "    xor a",
+        "    ld (NO_NMI),a",
+        `${doneLabel}:`
+      ]
     };
   }
 

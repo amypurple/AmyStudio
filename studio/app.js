@@ -52,7 +52,7 @@ import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoState
 import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20260710-word-ptr";
 import { handleSelectCaseStatement } from "./core/compiler/selectCaseStatementHelpers.js";
 import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js?v=20260714-record-fixed-source-preserve";
-import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260605-dsound-asset-fix";
+import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260714-dsound-nmi";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
 import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js";
