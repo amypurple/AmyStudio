@@ -139,20 +139,62 @@ export function createDataHelpers(ctx) {
     return tokens.length > 0 && !tokens.some((token) => token === false);
   }
 
+  function splitDataTokens(tokenText) {
+    return String(tokenText)
+      .trim()
+      .replace(/^db\s+/i, "")
+      .replace(/,/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+  }
+
+  function parseDataRepeatCountToken(token) {
+    const raw = String(token || "").trim();
+    if (!raw) return null;
+    let value = null;
+    if (/^\$[0-9A-Fa-f]+$/.test(raw)) value = parseInt(raw.slice(1), 16);
+    else if (/^0x[0-9A-Fa-f]+$/i.test(raw)) value = parseInt(raw.slice(2), 16);
+    else if (/^[0-9]+$/.test(raw)) value = parseInt(raw, 10);
+    return Number.isInteger(value) && value >= 0 ? value : null;
+  }
+
   function appendDataTokens(block, tokenText, rawLine) {
-    const normalizedText = String(tokenText).trim().replace(/^db\s+/i, "");
-    const tokens = normalizedText.split(",").map(normalizeDataToken);
-    if (tokens.some((token) => token === false)) {
-      throw new Error(`Invalid data byte list: ${rawLine}`);
+    const tokens = splitDataTokens(tokenText);
+    const values = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = normalizeDataToken(tokens[index]);
+      if (!token || token === false) {
+        throw new Error(`Invalid data byte list: ${rawLine}`);
+      }
+      if (/^count$/i.test(tokens[index + 1] || "")) {
+        const repeat = parseDataRepeatCountToken(tokens[index + 2]);
+        if (repeat == null) {
+          throw new Error(`Invalid data repeat count: ${rawLine}`);
+        }
+        for (let j = 0; j < repeat; j += 1) values.push(token);
+        index += 2;
+      } else {
+        values.push(token);
+      }
     }
-    block.values.push(...tokens.filter(Boolean));
+    block.values.push(...values);
   }
 
   function looksLikeDataTokens(tokenText) {
-    const normalizedText = String(tokenText).trim().replace(/^db\s+/i, "");
-    if (!normalizedText || !normalizedText.includes(",")) return false;
-    const tokens = normalizedText.split(",").map(normalizeDataToken);
-    return tokens.length > 0 && !tokens.some((token) => token === false);
+    if (/^\s*data\s+/i.test(String(tokenText || ""))) return false;
+    const tokens = splitDataTokens(tokenText);
+    if (!tokens.length) return false;
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = normalizeDataToken(tokens[index]);
+      if (!token || token === false) return false;
+      if (/^count$/i.test(tokens[index + 1] || "")) {
+        const repeat = parseDataRepeatCountToken(tokens[index + 2]);
+        if (repeat == null) return false;
+        index += 2;
+      }
+    }
+    return true;
   }
 
   function formatDataByteLiteral(value) {

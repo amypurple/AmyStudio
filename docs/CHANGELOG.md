@@ -1,5 +1,7 @@
+## 2026-07-26 - Data byte repeat count parsing
 
-
+- Fixed `data ... bytes` parsing so `Value count N` works both inline and inside multi-line data blocks.
+- Added `tools/test-data-count-codegen.mjs` to compile the starter `UntitledNameTable` pattern and verify `$20 count 768` emits 768 ROM bytes.
 ## 2026-07-26 - Static locals for leaf subs
 
 - Added a conservative static-RAM local path for simple scalar locals in parameterless leaf `sub` routines.

@@ -1903,6 +1903,18 @@ end data
 `data Name bytes ...` and `data Name bytes = ...` are equivalent. Do not use
 `data Name bytes: ...`; `:` is reserved for labels.
 
+Byte data supports repeated literals with `Value count N`, either inline or inside a block:
+
+```basic
+data BlankNameTable bytes $20 count 768
+
+data BlankRows bytes
+  $20 count 32
+  `data Name bytes ...` and `data Name bytes = ...` are equivalent. Do not use
+`data Name bytes: ...`; `:` is reserved for labels. count 16
+end data
+```
+
 `chars` converts each quoted text row to byte character/tile codes in ROM.
 
 `data ... bytes` can also be used as a ROM lookup table:
