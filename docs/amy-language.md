@@ -124,23 +124,60 @@ Amy does not currently have a block-comment syntax. Use the editor shortcut for 
 
 ### Compile-Time Conditionals
 
-Amy supports a small C-inspired conditional-compilation pre-pass. Disabled blocks are removed before variables, DATA, assets, includes, and runtime helpers are scanned, so they do not increase ROM size and do not create missing-symbol errors.
+Amy supports a small conditional-compilation pre-pass. Disabled blocks are removed before variables, DATA, assets, includes, and runtime helpers are scanned, so they do not increase ROM size and do not create missing-symbol errors.
+
+Canonical modern form:
 
 ```basic
-define DEBUG_HOLES
+define DEBUG
+define TITLE_ONLY
 
+if defined DEBUG and TITLE_ONLY
+  asset DebugTitle from "@project/debug-title.pattern.zx0" codec zx0
+  print centered at 10, "DEBUG TITLE"
+else defined DEBUG
+  print centered at 10, "DEBUG GAME"
+else defined
+  print centered at 10, "NORMAL"
+end defined
+```
+
+Useful forms:
+
+```basic
+if defined DEBUG or TITLE_ONLY
+  ' compile this block when either flag exists
+end defined
+
+if defined DEBUG and not TITLE_ONLY
+  ' compile this block only for debug non-title builds
+end defined
+
+if not defined FULL_GAME
+  include asm "@project/test-engine.inc"
+end defined
+```
+
+Rules:
+- `define NAME` and `#define NAME` create compile-time flags only; they are not runtime variables and emit no code.
+- `if defined NAME` starts a compile-time block. After the first `defined`, bare symbols in the expression mean "is defined", so `if defined DEBUG and TITLE_ONLY` means `DEBUG` and `TITLE_ONLY` are both defined.
+- Supported expression words are `and`, `or`, and `not`; parentheses and `defined(NAME)` are also accepted for clarity.
+- `else defined CONDITION` starts another compile-time branch in the same block.
+- `else defined` is the compile-time fallback branch. Amy intentionally does not use plain `else` for this, so normal runtime `if ... else ... end if` code remains safe inside compile-time blocks.
+- `end defined` closes the modern compile-time block.
+- Flags are evaluated in source order. A `define NAME` only affects conditionals that appear after it, and only when the `define` itself is in an active compile-time branch.
+
+Legacy-compatible forms remain accepted:
+
+```basic
 ifdef DEBUG_HOLES
   print centered at 10, "DEBUG HOLES"
-end ifdef
-
-ifndef FULL_GAME
-  include "@project/test-levels.inc"
 else ifdef
-  include "@project/full-levels.inc"
+  print centered at 10, "NORMAL"
 end ifdef
 ```
 
-Also accepted for C-style familiarity:
+C-style forms remain accepted for familiarity:
 
 ```basic
 #define DEBUG_HOLES
@@ -150,14 +187,6 @@ Also accepted for C-style familiarity:
   print centered at 10, "NORMAL"
 #endif
 ```
-
-Rules:
-- `define NAME` and `#define NAME` create compile-time flags only; they are not runtime variables and emit no code.
-- `ifdef NAME` / `#ifdef NAME` keeps the block only when the flag is already defined.
-- `ifndef NAME` / `#ifndef NAME` keeps the block only when the flag is not defined.
-- `if defined NAME`, `if not defined NAME`, and `if not define NAME` are accepted aliases.
-- Prefer `else ifdef` plus `end ifdef` in Amy-style code because plain `else` is normal Amy control flow. `#else` and `#endif` are accepted for C-style conditional blocks.
-
 Statement conventions used throughout this document:
 
 - `Name` — source identifier
@@ -332,15 +361,11 @@ sub update_player:
 ```
 
 Current implementation status:
-- locals use an `IX`-based stack frame
-- locals are initialized at procedure entry and released on return
-- parameters and locals are stack-backed, so recursive calls get distinct
-  storage for each active invocation
-
-Design direction under discussion:
-- preserve stack-backed locals where recursion or re-entrancy is required
-- investigate whether the default local-storage model should become a faster static/overlay model for ordinary ColecoVision code
-- if that change ever ships, it should be explicit in the docs and should not silently change recursion behavior
+- locals are initialized at procedure entry and released logically on return
+- routines with parameters, functions, recursion-sensitive bodies, arrays, BCD, `bool` packs, and `fp5` locals use an `IX`-based stack frame
+- simple scalar locals in parameterless leaf `sub` routines may be placed in private static RAM (`AMY_LVAR_Sub_Name`) to avoid the IX prologue/epilogue
+- this static-local optimization is a codegen detail; the Amy source still sees procedure-local variables, not globals
+- recursive and re-entrant code keeps stack-backed locals where distinct active invocations are required
 
 Accepted local scalar declarations: `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `bool`, `fixed`, `ufixed`.
 Local `u8` and `u16` arrays are supported.
@@ -1152,6 +1177,7 @@ the player. Use `screen on` when you also want the normal NMI-enabled frame loop
 ```basic
 text screen
 tile screen
+mode 2 screen
 bitmap screen
 bitmap screen color $F0
 picture screen
@@ -1162,6 +1188,7 @@ backdrop sky blue
 Canonical forms:
 - `text screen`
 - `tile screen`
+- `mode 2 screen`
 - `bitmap screen` / `bitmap screen color $F0`
 - `picture screen`
 - `multicolor screen`
@@ -1171,6 +1198,7 @@ should not use them:
 - `graphics mode 1 text`
 - `graphics mode 1 color $F0`
 - `graphics mode 2 text`
+- `graphics mode 2 screen`
 - `graphics mode 2 bitmap`
 - `graphics multicolor` / `graphics mode 3 multicolor`
 
@@ -1180,6 +1208,14 @@ optional.
 
 `picture screen` is the raw Graphics II picture/table surface used before
 uploading or decompressing full-screen pattern/color assets.
+
+`mode 2 screen` is the raw Graphics II / TMS9918A Mode 2 table surface for
+hybrid screens driven by the NAME table while the program manages PATTERN and
+COLOR thirds itself. It only sets the VDP mode/table registers. It does not load
+ASCII, duplicate pattern thirds, duplicate color thirds, fill colors, or clear
+the name table. Use this for Dacman-style screens where tiles are placed through
+the NAME table, but different screen thirds may need independent color tables
+(for example bronze/silver/gold medal colors sharing the same patterns).
 
 `text 40 screen` is intentionally not enabled yet. The VDP has a real 40-column
 text mode, but Amy's current text I/O helpers calculate `y * 32 + x`; enabling
@@ -1208,7 +1244,7 @@ The expanded form is a compiler/library contract, not the style to write in
 new Amy code. Use `text screen` unless you are deliberately testing the low
 level VDP surface. Mode setup routines blank the display by default,
 so `screen off` is normally redundant immediately before `text screen`,
-`bitmap screen`, `picture screen`, or `multicolor screen`.
+`bitmap screen`, `picture screen`, `mode 2 screen`, or `multicolor screen`.
 
 `load default ascii` also accepts legacy style flags:
 - `load default ascii normal`
@@ -1216,25 +1252,37 @@ so `screen off` is normally redundant immediately before `text screen`,
 - `load default ascii italic`
 - `load default ascii bold italic`
 
-When using a styled default ASCII font in Mode 2 text, follow it with `duplicate mode 2 text patterns` if you want the styled glyphs copied to all three pattern thirds.
+When using a styled default ASCII font in Mode 2, follow it with
+`duplicate mode 2 patterns` if you want the styled glyphs copied to all three
+pattern thirds.
 
 `tile screen` expands to the Mode 2 text-style tile surface:
 - `graphics mode 2 text`
 - `load default ascii`
-- `duplicate mode 2 text patterns`
+- `duplicate mode 2 patterns`
 - fill the first 2KB color third with `$F0` (8 color bytes per tile/char)
 - `cls`
 
 Use `tile screen` when you want Graphics II pattern thirds with tile-style
-8-byte-per-character colors. PATTERN data is duplicated across the three screen
-thirds; COLOR is initialized for the first 256-tile third ($0800 bytes). Use
-`picture screen` or `bitmap screen` when you deliberately need full Graphics II
-color-table data across all three thirds.
+8-byte-per-character colors and ordinary text/tile setup. PATTERN data is
+duplicated across the three screen thirds; COLOR is initialized for the first
+256-tile third ($0800 bytes). Use `mode 2 screen` when the program must control
+which PATTERN and COLOR thirds are duplicated or left independent.
 
-`graphics mode 2 text` remains available as the explicit low-level setup for
-the same surface, but it does not load ASCII, duplicate thirds, fill colors, or
-clear the name table by itself.
+Explicit Mode 2 table helpers:
 
+```basic
+duplicate mode 2 patterns
+duplicate mode 2 colors
+```
+
+`duplicate mode 2 patterns` copies the first PATTERN third into the second and
+third thirds. `duplicate mode 2 colors` does the same for COLOR data. Do not use
+`duplicate mode 2 colors` when each third intentionally has distinct colors.
+
+`graphics mode 2 text` remains available as the explicit low-level setup alias
+for `mode 2 screen`, but new code should use `mode 2 screen` because it states
+the actual VDP surface instead of implying that text setup has already happened.
 ### Name table / screen pages
 
 ```basic
@@ -1275,12 +1323,14 @@ fill row 10 from 0 count 32 with $20
 fill vram.name with sequence $00..$FF repeat 3
 fill mode 2 text color with $F0
 fill full mode 2 text color with $F0
+load mode 2 text colors LegacyColorTable
 ByteVar = vdp.status
 ```
 
 `fill mode 2 text color with X` fills the first 2KB Mode 2 color third, then duplicates it into the second and third thirds.  
 `fill full mode 2 text color with X` fills the full 6144-byte color table directly as one contiguous reset.  
-Both produce the same final bytes on the standard Amy Mode 2 layout; the non-full form matches the historical duplicated-thirds text setup path, while `full` is the direct total-reset form.
+`load mode 2 text colors Source` uploads a legacy compact 32-byte color table by repeating each byte 64 times into the active 2KB Mode 2 text color table, matching old-devkit `load_color`. Use this for ports that have a 32-byte `COLOR` table instead of an already-expanded VRAM color table.  
+Both fill commands produce the same final bytes on the standard Amy Mode 2 layout; the non-full form matches the historical duplicated-thirds text setup path, while `full` is the direct total-reset form.
 
 ### Copy / Decompress / Show
 
@@ -2110,7 +2160,7 @@ Available memory profiles live in `tools/memory/*.json`.
 Current expression engine notes:
 
 - `int8` expressions now go through a shared parsed expression path instead of ad hoc string splitting
-- supported `int8` expression forms currently include literals, variables, array `u8` reads, function-like `random(N)` and `random(A, B)`, parentheses, unary `+`/`-`, and binary `+`/`-`/`%`/`mod`/constant-scaled `*`
+- supported `int8` expression forms currently include literals, variables, array `u8` reads, function-like `random(N)` and `random(A, B)`, parentheses, unary `+`/`-`, and binary `+`/`-`/`*`/`/`/`%`/`mod`; runtime `var * var` and `var / var` emit real Z80 helper code, not assembler-time address arithmetic
 - `vpoke vram.name + I, random(2) + 16` and `Tile = random(2) + 16` are both intended modern forms
 - `int16` expressions now share the same parser core, with current codegen focused on literals, variables, parentheses, and `+` / `-`
 - this is the intended foundation for future expression growth; new arithmetic forms should extend the shared parser/codegen path, not add one-off statement parsers
@@ -2179,6 +2229,7 @@ Current expression engine notes:
 | `wipe bitmap up` / `wipe bitmap down` | Scroll wipe (bitmap mode, pixel rows) |
 | `fill mode 2 text color with X` | Set all three Mode 2 color thirds |
 | `fill full mode 2 text color with X` | Fill full Mode 2 color table (6144 bytes) |
+| `load mode 2 text colors Source` | Expand/load old-devkit 32-byte Mode 2 text color table |
 | `set default name table Addr` | Change name table base |
 | `set screen pages A and B` | Double-buffer pages |
 | `swap screens` | Swap double-buffer pages |
@@ -2569,3 +2620,4 @@ Fast-code style:
   switch to explicit mode/upload commands when timing or visual transitions matter
 - keep every callable `sub` visibly terminated; future readers should see the
   Z80 control flow without reverse-engineering it
+

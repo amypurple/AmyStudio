@@ -16,6 +16,7 @@ export function handleDeclarationStatement({
   emitBcdClear,
   reserveRam,
   ensureUserVarAsmSymbol,
+  allocateUserAsmSymbol,
   formatHex16,
   emitRuntimeStore,
   parseRoutineInvocation,
@@ -318,6 +319,29 @@ export function handleDeclarationStatement({
         const initialInvocation = parseRoutineInvocation(initial);
         if (!state.isValidSymbolName(name) || state.isReservedAmyIdentifier(name) || state.describeGlobalNameCollision(name) || (!isSafeExpression(initial) && !initialInvocation) || state.mapHasInsensitive(procMap, name) || state.runtimeVars.has(mangledName) || lowerName(name) === lowerName(state.currentProc)) {
           return { handled: true, ok: false, log: `Invalid local variable declaration: ${rawLine}` };
+        }
+        const useStaticLocal = typeof state.isStaticLocalProcCandidate === "function"
+          && state.isStaticLocalProcCandidate(state.currentProc)
+          && !lengthToken
+          && declaredType !== "boolean"
+          && declaredType !== "fp5";
+        if (useStaticLocal) {
+          const size = runtimeTypeSize(type);
+          let address;
+          try {
+            address = reserveRam(`${state.currentProc}.${name}`, size, rawLine.trim());
+          } catch (error) {
+            return { handled: true, ok: false, log: String(error.message || error) };
+          }
+          const asmName = allocateUserAsmSymbol("LVAR", `${state.currentProc}_${name}`);
+          procMap.set(name, mangledName);
+          state.runtimeVars.set(mangledName, { type, declaredType, kind: declaredType, scope: state.currentProc, localName: name, storage: "static", address, asmName });
+          state.runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
+          state.hasRuntimeRamDeclarations = true;
+          const initCode = emitRuntimeStore(name, initial);
+          if (!initCode) return { handled: true, ok: false, log: `Invalid local initializer for ${name}: ${initial}` };
+          state.body.push(...initCode);
+          continue;
         }
         const frame = ensureProcFrame(state.currentProc);
         procMap.set(name, mangledName);

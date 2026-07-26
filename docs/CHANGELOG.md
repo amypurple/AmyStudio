@@ -1,3 +1,46 @@
+
+
+## 2026-07-26 - Static locals for leaf subs
+
+- Added a conservative static-RAM local path for simple scalar locals in parameterless leaf `sub` routines.
+- Eligible leaf subs now use private `AMY_LVAR_Sub_Name` RAM symbols and avoid the IX frame prologue/epilogue; functions, parameterized subs, `Start`, non-leaf routines, arrays, bool packs, BCD, and FP5 keep the existing stack-frame path.
+- Extended `tools/test-local-first-pass-scope.mjs` to assert static leaf locals and stack preservation for non-leaf locals.
+
+## 2026-07-26 - Local first-pass scope cleanup
+
+- Fixed the first-pass symbol scan so implicit declarations inside `sub`/`function` bodies are no longer predeclared as global `AMY_UVAR_*` symbols.
+- Added `tools/test-local-first-pass-scope.mjs` to lock down implicit local stack storage versus top-level globals.
+
+## 2026-07-26 - Runtime multiply/divide expression codegen
+
+- Fixed direct assignments such as `V = A * B` and `V = A / B` when both operands are runtime variables; they now emit real Z80 expression code instead of falling through to assembler immediate expressions based on RAM labels.
+- Fixed the same expression class for `call asm Label with a = A * B` / `A / B`, including local IX-frame operands.
+- Added `tools/test-mul-div-assign-codegen.mjs` to cover global and local `u8`/`u16` multiply/divide paths and reject leaked `AMY_UVAR_A * AMY_UVAR_B` forms.
+
+## 2026-07-24 - Legacy Mode 2 text color tables
+
+- Added `load mode 2 text colors Source` for old-devkit 32-byte color tables, expanding each byte across 64 Mode 2 color bytes during VRAM upload instead of storing an expanded 2KB table in ROM.
+- Updated Reversi to use the compact legacy color table while keeping correct Mode 2 text-style colors after the pattern-thirds duplicate.
+
+## 2026-07-24 - Modern compile-time defined expressions
+
+- Added modern Amy compile-time conditionals: `if defined A and B`, `if defined A or B`, `not`, parentheses, `else defined CONDITION`, fallback `else defined`, and `end defined`.
+- Kept legacy `ifdef`/`ifndef` and C-style `#ifdef/#else/#endif` forms compatible.
+- Preserved runtime `else` safety by not treating plain `else` as a compile-time fallback.
+
+## 2026-07-15 - BIOS sound area RAM layout
+
+- Fixed the Coleco legacy RAM map so `set sound table ... areas N` reserves the requested number of 10-byte BIOS SOUNDAREA slots before placing Amy runtime flags.
+- This prevents projects using more than 8 sound areas, such as Dacman, from letting BIOS sound playback overwrite `NO_NMI`, `AMY_SOUND_ENABLED`, or sound table state.
+- Added `tools/test-sound-area-layout.mjs` to lock the 8-area legacy default and the 16-area Dacman-style layout.
+
+## 2026-07-13 - Devkit porting language cleanup
+
+- Added Explosion and Space Trainer legacy-devkit ports as Amy examples, then simplified Explosion to use signed `i8 Board[64]` ownership instead of encoded byte offsets.
+- Extended record fields to support `fixed` and `ufixed`, allowing ports such as Space Trainer to model ship position and velocity as `record Ship` data instead of duplicated scalar globals.
+- Let fixed/ufixed record fields feed byte contexts such as `u8 = Ships[I].X` and `set sprite ... x to Ships[I].X` by taking the integer high byte, matching the existing scalar fixed-byte behavior.
+- Added codegen coverage for fixed/ufixed record fields in `tools/test-fixed-byte-context-codegen.mjs`.
+
 ## 2026-07-12 - Bunny v3 codegen tightening
 
 - Added `AMY_VRAM_BEGIN` / `AMY_VRAM_END` helpers and coalesced adjacent generated VRAM upload guards, preserving the legacy NMI/VDP restore contract while removing repeated inline boilerplate.
@@ -5378,3 +5421,7 @@ Why this is still `v2.1` and not `v2.2`:
   - `Project` keeps the project name, examples, RAM summary, Method 2 summary, and status
   - `Files` now owns embedded project files and the `Audio/Voice` shortcut
   - this prepares the UI for a future graphics asset quick-add workflow without crowding project metadata
+
+
+
+

@@ -28,8 +28,28 @@ export function scanAmyFirstPass({
 }) {
   let firstPassInAsm = false;
   let firstPassNameError = null;
+  let firstPassCurrentProc = null;
 
   const REF_SCALAR_DECLARED_TYPES = new Set(["u8", "i8", "u16", "i16"]);
+
+  function isFirstPassGlobalDeclaration(scopeKeyword) {
+    if (scopeKeyword === "ram" || scopeKeyword === "dim") return true;
+    if (scopeKeyword === "local") return false;
+    return !firstPassCurrentProc;
+  }
+
+  function enterFirstPassProc(name) {
+    firstPassCurrentProc = name || null;
+  }
+
+  function leaveFirstPassSubIfClosed(trimmed) {
+    if (!firstPassCurrentProc) return false;
+    if (/^end\s+sub$/i.test(trimmed)) {
+      firstPassCurrentProc = null;
+      return true;
+    }
+    return false;
+  }
 
   function parseSignatureParam(rawParam, ownerName, seenParams, rawLine) {
     const pm = rawParam.trim().match(/^(ref\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
@@ -134,6 +154,12 @@ export function scanAmyFirstPass({
       continue;
     }
     if (firstPassInAsm) continue;
+    if (leaveFirstPassSubIfClosed(trimmed)) continue;
+
+    const procScopeHeader = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\)|\s*:)?\s*$/i);
+    const functionScopeHeader = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\))?\s+as\s+[A-Za-z_][A-Za-z0-9_]*\s*:?\s*$/i);
+    if (procScopeHeader) enterFirstPassProc(procScopeHeader[1]);
+    else if (functionScopeHeader) enterFirstPassProc(functionScopeHeader[1]);
 
     const typeAliasMatch = trimmed.match(/^define\s+([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
     if (typeAliasMatch) {
@@ -161,26 +187,26 @@ export function scanAmyFirstPass({
       ensureAssetAsmSymbol(assetMatch[1]);
     }
 
-    const bcdPredecl = trimmed.match(/^(?:(?:ram|dim|local)\s+)?bcd\s+(?:(digits)\s+)?([1-9]|10|11|12)\s+(.+)$/i);
-    if (bcdPredecl) {
+    const bcdPredecl = trimmed.match(/^(?:(ram|dim|local)\s+)?bcd\s+(?:(digits)\s+)?([1-9]|10|11|12)\s+(.+)$/i);
+    if (bcdPredecl && isFirstPassGlobalDeclaration(bcdPredecl[1]?.toLowerCase() || null)) {
       try {
-        for (const declEntry of parseAmyDeclarationList(bcdPredecl[3], rawLine)) {
+        for (const declEntry of parseAmyDeclarationList(bcdPredecl[4], rawLine)) {
           ensureUserVarAsmSymbol(declEntry.name);
         }
       } catch (_error) {}
     }
 
-    const ramPredecl = trimmed.match(/^(?:(?:ram|dim|local)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
-    if (ramPredecl && isSupportedSourceTypeName(ramPredecl[1])) {
+    const ramPredecl = trimmed.match(/^(?:(ram|dim|local)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
+    if (ramPredecl && isFirstPassGlobalDeclaration(ramPredecl[1]?.toLowerCase() || null) && isSupportedSourceTypeName(ramPredecl[2])) {
       try {
-        for (const declEntry of parseAmyDeclarationList(ramPredecl[2], rawLine)) {
+        for (const declEntry of parseAmyDeclarationList(ramPredecl[3], rawLine)) {
           ensureUserVarAsmSymbol(declEntry.name);
         }
       } catch (_error) {}
     }
-    if (ramPredecl && isSupportedRecordTypeName?.(ramPredecl[1])) {
+    if (ramPredecl && isFirstPassGlobalDeclaration(ramPredecl[1]?.toLowerCase() || null) && isSupportedRecordTypeName?.(ramPredecl[2])) {
       try {
-        for (const declEntry of parseAmyDeclarationList(ramPredecl[2], rawLine)) {
+        for (const declEntry of parseAmyDeclarationList(ramPredecl[3], rawLine)) {
           ensureUserVarAsmSymbol(declEntry.name);
         }
       } catch (_error) {}
@@ -214,6 +240,7 @@ export function scanAmyFirstPass({
         break;
       }
       ensureProcAsmSymbol(procBare[1]);
+      enterFirstPassProc(procBare[1]);
     }
 
     const functionBare = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
@@ -235,6 +262,7 @@ export function scanAmyFirstPass({
         declaredType: normalizeDeclaredType(functionBare[2].toLowerCase())
       });
       ensureProcFrame(functionName);
+      enterFirstPassProc(functionName);
     }
 
     const m = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]+)\)\s*:?\s*$/i);
@@ -246,6 +274,7 @@ export function scanAmyFirstPass({
       break;
     }
     ensureProcAsmSymbol(procName);
+    enterFirstPassProc(procName);
     const rawParams = m[2].split(",");
     const params = [];
     const seenParams = new Set();

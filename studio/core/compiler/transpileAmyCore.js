@@ -59,15 +59,101 @@ export function transpileAmyCore(sourceText, deps) {
     const stack = [];
     const isActive = () => stack.every((entry) => entry.active);
     const strippedLine = (index) => stripAmyInlineComment(rawLines[index]).trim();
+    const symbolIsDefined = (name) => definedSymbols.has(String(name || "").toLowerCase());
+
+    const tokenizeDefinedExpression = (expr) => {
+      const source = String(expr || "").trim();
+      if (!source) return null;
+      const tokens = [];
+      let index = 0;
+      while (index < source.length) {
+        const rest = source.slice(index);
+        const space = rest.match(/^\s+/);
+        if (space) { index += space[0].length; continue; }
+        const word = rest.match(/^[A-Za-z_][A-Za-z0-9_]*/);
+        if (word) { tokens.push(word[0]); index += word[0].length; continue; }
+        const paren = rest.match(/^[()]/);
+        if (paren) { tokens.push(paren[0]); index += 1; continue; }
+        return null;
+      }
+      return tokens;
+    };
+
+    const evaluateDefinedExpression = (expr) => {
+      const tokens = tokenizeDefinedExpression(expr);
+      if (!tokens || !tokens.length) return { ok: false, log: "empty defined expression" };
+      const out = [];
+      for (let index = 0; index < tokens.length; index += 1) {
+        const token = tokens[index];
+        const lower = token.toLowerCase();
+        if (lower === "and") { out.push("&&"); continue; }
+        if (lower === "or") { out.push("||"); continue; }
+        if (lower === "not") { out.push("!"); continue; }
+        if (token === "(" || token === ")") { out.push(token); continue; }
+        if (lower === "defined") {
+          let symbol = tokens[index + 1];
+          if (symbol === "(") {
+            symbol = tokens[index + 2];
+            if (!symbol || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(symbol) || tokens[index + 3] !== ")") {
+              return { ok: false, log: "invalid defined(...) expression" };
+            }
+            out.push(symbolIsDefined(symbol) ? "true" : "false");
+            index += 3;
+          } else {
+            if (!symbol || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(symbol)) {
+              return { ok: false, log: "missing symbol after defined" };
+            }
+            out.push(symbolIsDefined(symbol) ? "true" : "false");
+            index += 1;
+          }
+          continue;
+        }
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return { ok: false, log: "invalid token '" + token + "'" };
+        out.push(symbolIsDefined(token) ? "true" : "false");
+      }
+      try {
+        return { ok: true, active: Boolean(Function("return (" + out.join(" ") + ");")()) };
+      } catch (error) {
+        return { ok: false, log: error.message || "invalid expression" };
+      }
+    };
+
     const parseDefinedCondition = (line) => {
       let match = line.match(/^(?:#ifdef|ifdef)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (match) return { handled: true, symbol: match[1], expected: true };
+      if (match) return { handled: true, active: symbolIsDefined(match[1]), modern: false };
       match = line.match(/^(?:#ifndef|ifndef)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (match) return { handled: true, symbol: match[1], expected: false };
-      match = line.match(/^if\s+defined\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (match) return { handled: true, symbol: match[1], expected: true };
-      match = line.match(/^if\s+not\s+defined\s+([A-Za-z_][A-Za-z0-9_]*)$/i) || line.match(/^if\s+not\s+define\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (match) return { handled: true, symbol: match[1], expected: false };
+      if (match) return { handled: true, active: !symbolIsDefined(match[1]), modern: false };
+      match = line.match(/^if\s+defined\s+(.+)$/i);
+      if (match) {
+        const evaluated = evaluateDefinedExpression(match[1]);
+        if (!evaluated.ok) return { handled: true, error: "invalid compile-time condition at line: " + evaluated.log };
+        return { handled: true, active: evaluated.active, modern: true };
+      }
+      match = line.match(/^if\s+not\s+defined\s+(.+)$/i) || line.match(/^if\s+not\s+define\s+(.+)$/i);
+      if (match) {
+        const evaluated = evaluateDefinedExpression(match[1]);
+        if (!evaluated.ok) return { handled: true, error: "invalid compile-time condition at line: " + evaluated.log };
+        return { handled: true, active: !evaluated.active, modern: true };
+      }
+      return { handled: false };
+    };
+
+    const parseElseDefinedCondition = (line) => {
+      if (/^else\s+defined$/i.test(line)) return { handled: true, fallback: true };
+      let match = line.match(/^else\s+(?:if\s+)?defined\s+(.+)$/i);
+      if (match) {
+        const expr = String(match[1] || "").trim();
+        if (!expr) return { handled: true, fallback: true };
+        const evaluated = evaluateDefinedExpression(expr);
+        if (!evaluated.ok) return { handled: true, error: "invalid compile-time else condition: " + evaluated.log };
+        return { handled: true, active: evaluated.active };
+      }
+      match = line.match(/^else\s+(?:if\s+)?not\s+defined\s+(.+)$/i);
+      if (match) {
+        const evaluated = evaluateDefinedExpression(match[1]);
+        if (!evaluated.ok) return { handled: true, error: "invalid compile-time else condition: " + evaluated.log };
+        return { handled: true, active: !evaluated.active };
+      }
       return { handled: false };
     };
 
@@ -85,10 +171,35 @@ export function transpileAmyCore(sourceText, deps) {
       const condition = parseDefinedCondition(line);
       if (condition.handled) {
         result[index] = "";
+        if (condition.error) return { ok: false, log: condition.error + ` at line ${index + 1}` };
         const parentActive = isActive();
-        const defined = definedSymbols.has(condition.symbol.toLowerCase());
-        const conditionActive = defined === condition.expected;
-        stack.push({ parentActive, conditionActive, active: parentActive && conditionActive, sawElse: false, line: index + 1 });
+        const conditionActive = Boolean(condition.active);
+        stack.push({
+          parentActive,
+          branchMatched: conditionActive,
+          active: parentActive && conditionActive,
+          sawFallback: false,
+          line: index + 1,
+          modern: Boolean(condition.modern)
+        });
+        continue;
+      }
+
+      const elseCondition = parseElseDefinedCondition(line);
+      if (elseCondition.handled) {
+        result[index] = "";
+        if (!stack.length) return { ok: false, log: `else defined without matching if defined at line ${index + 1}` };
+        const current = stack[stack.length - 1];
+        if (current.sawFallback) return { ok: false, log: `conditional branch after fallback for compile-time block started at line ${current.line}` };
+        if (elseCondition.error) return { ok: false, log: elseCondition.error + ` at line ${index + 1}` };
+        if (elseCondition.fallback) {
+          current.sawFallback = true;
+          current.active = current.parentActive && !current.branchMatched;
+        } else {
+          const branchActive = Boolean(elseCondition.active);
+          current.active = current.parentActive && !current.branchMatched && branchActive;
+          current.branchMatched = current.branchMatched || branchActive;
+        }
         continue;
       }
 
@@ -96,13 +207,13 @@ export function transpileAmyCore(sourceText, deps) {
         result[index] = "";
         if (!stack.length) return { ok: false, log: `else without matching ifdef/ifndef at line ${index + 1}` };
         const current = stack[stack.length - 1];
-        if (current.sawElse) return { ok: false, log: `multiple else clauses for ifdef/ifndef started at line ${current.line}` };
-        current.sawElse = true;
-        current.active = current.parentActive && !current.conditionActive;
+        if (current.sawFallback) return { ok: false, log: `multiple else clauses for ifdef/ifndef started at line ${current.line}` };
+        current.sawFallback = true;
+        current.active = current.parentActive && !current.branchMatched;
         continue;
       }
 
-      if (/^(?:#endif|end\s+ifdef|end\s+ifndef)$/i.test(line)) {
+      if (/^(?:#endif|end\s+ifdef|end\s+ifndef|end\s+defined)$/i.test(line)) {
         result[index] = "";
         if (!stack.length) return { ok: false, log: `endif without matching ifdef/ifndef at line ${index + 1}` };
         stack.pop();
@@ -114,7 +225,7 @@ export function transpileAmyCore(sourceText, deps) {
 
     if (stack.length) {
       const current = stack[stack.length - 1];
-      return { ok: false, log: `missing endif for ifdef/ifndef started at line ${current.line}` };
+      return { ok: false, log: `missing endif/end defined for compile-time block started at line ${current.line}` };
     }
     return { ok: true, lines: result };
   }
@@ -233,6 +344,7 @@ export function transpileAmyCore(sourceText, deps) {
   const amyTimers = new Map();
   const precomputedSprite16Lengths = new Map();
   const procLocals = new Map();
+  const staticLocalProcCandidates = new Set();
   const procFrames = new Map();
   const runtimeDeclarations = [];
   const runtimeInit = [];
@@ -512,8 +624,10 @@ export function transpileAmyCore(sourceText, deps) {
     if (/^graphics\s+mode\s+1\s+text$/i.test(line)) {
       return { kind: "authoritative", label: "graphics mode 1 text" };
     }
-    if (/^graphics\s+mode\s+2\s+text$/i.test(line)) {
-      return { kind: "authoritative", label: "graphics mode 2 text" };
+    if (/^graphics\s+mode\s+2\s+text$/i.test(line)
+      || /^mode\s+2\s+screen$/i.test(line)
+      || /^graphics\s+mode\s+2\s+screen$/i.test(line)) {
+      return { kind: "authoritative", label: "mode 2 screen" };
     }
     if (/^tile\s+screen$/i.test(line)) {
       return { kind: "authoritative", label: "tile screen" };
@@ -580,7 +694,7 @@ export function transpileAmyCore(sourceText, deps) {
         case "sprites double": return knownBefore | 0x01;
         case "screen off": return knownBefore & 0x9F;
         case "screen on no nmi": return (knownBefore | 0x40) & 0xDF;
-        case "screen on": return preferScreenOnNoNmi ? ((knownBefore | 0x40) & 0xDF) : (knownBefore | 0x60);
+        case "screen on": return knownBefore | 0x60;
         case "display off": return knownBefore & 0xBF;
         case "display on": return knownBefore | 0x40;
         case "nmi off": return knownBefore & 0xDF;
@@ -856,6 +970,83 @@ export function transpileAmyCore(sourceText, deps) {
   function formatHex16(value) {
     return `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
   }
+
+  function analyzeStaticLocalProcCandidates() {
+    const procBodies = new Map();
+    let scanInAsm = false;
+    let scanProc = null;
+    let scanProcHasParams = false;
+    let scanProcIsFunction = false;
+    let scanBody = [];
+
+    const finishProc = () => {
+      if (!scanProc) return;
+      procBodies.set(scanProc, {
+        hasParams: scanProcHasParams,
+        isFunction: scanProcIsFunction,
+        body: scanBody
+      });
+      scanProc = null;
+      scanProcHasParams = false;
+      scanProcIsFunction = false;
+      scanBody = [];
+    };
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      if (recordDefinitionLineNumbers?.has(lineIndex)) continue;
+      const rawLine = lines[lineIndex];
+      const trimmed = stripAmyInlineComment(rawLine).trim();
+      if (/^asm\s*\{$/i.test(trimmed)) { scanInAsm = true; continue; }
+      if (trimmed === "}" && scanInAsm) { scanInAsm = false; continue; }
+      if (scanInAsm) continue;
+
+      const subWithParams = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*:?\s*$/i);
+      const subBare = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
+      const functionHeader = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\))?\s+as\s+[A-Za-z_][A-Za-z0-9_]*\s*:?\s*$/i);
+      if (subWithParams || subBare || functionHeader) {
+        finishProc();
+        scanProc = (subWithParams || subBare || functionHeader)[1];
+        scanProcHasParams = !!subWithParams;
+        scanProcIsFunction = !!functionHeader;
+        continue;
+      }
+      if (/^end\s+sub$/i.test(trimmed)) {
+        finishProc();
+        continue;
+      }
+      if (scanProc) {
+        if (/^return\b/i.test(trimmed) && scanProcIsFunction) {
+          scanBody.push(trimmed);
+          finishProc();
+        } else {
+          scanBody.push(trimmed);
+        }
+      }
+    }
+    finishProc();
+
+    const procNames = new Set([...procBodies.keys()].map((name) => lowerName(name)));
+    const hasUserCall = (bodyLines) => bodyLines.some((bodyLine) => {
+      const t = String(bodyLine || "").trim();
+      if (!t || /^'/i.test(t)) return false;
+      const callAsm = t.match(/^call\s+asm\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (callAsm) return false;
+      const callLike = t.match(/^(?:call\s+|gosub\s+)?([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (!callLike) return false;
+      const name = callLike[1];
+      if (/^(?:if|for|while|do|loop|select|case|return|exit|print|put|set|copy|fill|read|write|play|stop|mute|wait|screen|display|nmi|cls|goto|else|elseif|next)$/i.test(name)) return false;
+      return procNames.has(lowerName(name));
+    });
+
+    for (const [name, info] of procBodies.entries()) {
+      if (lowerName(name) === "start") continue;
+      if (info.isFunction || info.hasParams) continue;
+      if (hasUserCall(info.body)) continue;
+      staticLocalProcCandidates.add(name);
+    }
+  }
+
+  analyzeStaticLocalProcCandidates();
 
   ({
     ensureProcLocalMap,
@@ -1309,7 +1500,7 @@ export function transpileAmyCore(sourceText, deps) {
         "    call AMY_SCREEN_OFF_NO_NMI",
         "    call AMY_SET_BITMAP_GRAPHICS_MODE",
         ...uploaded.lines,
-        `    call ${preferScreenOnNoNmi ? "AMY_SCREEN_ON_NO_NMI" : "AMY_SCREEN_ON_NMI"}`
+        "    call AMY_SCREEN_ON_NMI"
       ]
     };
   }
@@ -2601,7 +2792,8 @@ export function transpileAmyCore(sourceText, deps) {
           get assets() { return assets; },
           get cartridgeMeta() { return cartridgeMeta; },
           set cartridgeMeta(value) { cartridgeMeta = value; },
-          rewriteUserSymbolsInExpression
+          rewriteUserSymbolsInExpression,
+          describeGlobalNameCollision
         },
         parseBitmapLine,
         appendBitmapRow,
@@ -2746,6 +2938,7 @@ export function transpileAmyCore(sourceText, deps) {
           set currentBoolPackLabel(value) { currentBoolPackLabel = value; },
           get currentBoolPackAddress() { return currentBoolPackAddress; },
           set currentBoolPackAddress(value) { currentBoolPackAddress = value; },
+          isStaticLocalProcCandidate: (name) => staticLocalProcCandidates.has(name),
           get hasRuntimeRamDeclarations() { return hasRuntimeRamDeclarations; },
           set hasRuntimeRamDeclarations(value) { hasRuntimeRamDeclarations = value; },
           get hasRuntimeInit() { return hasRuntimeInit; },
@@ -2763,6 +2956,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitBcdClear,
         reserveRam,
         ensureUserVarAsmSymbol,
+        allocateUserAsmSymbol,
         formatHex16,
         emitRuntimeStore,
         parseRoutineInvocation,
@@ -2949,7 +3143,10 @@ export function transpileAmyCore(sourceText, deps) {
           currentGraphicsMode = "mode1_text";
         } else if (/^graphics\s+mode\s*1(?:\s+color\s+.+)?$/i.test(line) || /^bitmap\s+screen(?:\s+color\s+.+)?$/i.test(line)) {
           currentGraphicsMode = "mode1_bitmap";
-        } else if (/^graphics\s+mode\s+2\s+text$/i.test(line) || /^tile\s+screen$/i.test(line)) {
+        } else if (/^graphics\s+mode\s+2\s+text$/i.test(line)
+          || /^mode\s+2\s+screen$/i.test(line)
+          || /^graphics\s+mode\s+2\s+screen$/i.test(line)
+          || /^tile\s+screen$/i.test(line)) {
           currentGraphicsMode = "mode2_text";
         } else if (/^graphics\s+(?:mode\s+)?bitmap$/i.test(line) || /^graphics\s+mode\s+2\s+bitmap$/i.test(line) || /^picture\s+screen$/i.test(line)) {
           currentGraphicsMode = "mode2_bitmap";

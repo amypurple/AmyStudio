@@ -231,6 +231,126 @@ export function createExpressionComputeHelpers({
     if (/^sprite\s+.+?\s+(?:y|x|pattern|color)$/i.test(text)) return true;
     return /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?$|^\$[0-9A-Fa-f]+$|^[0-9]+$/.test(text);
   }
+
+  function emitLoadInt8RuntimeMultiplyAstIntoA(node) {
+    const leftType = resolveExpressionAstComputationType(node.left);
+    const rightType = resolveExpressionAstComputationType(node.right);
+    if (leftType?.runtimeType !== "int8" || rightType?.runtimeType !== "int8") return null;
+    const loadLeft = emitLoadInt8AstIntoA(node.left);
+    const loadRight = emitLoadInt8AstIntoA(node.right);
+    if (!loadLeft || !loadRight) return null;
+    const loopLabel = makeGeneratedLabel("Mul8ExprLoop");
+    const doneLabel = makeGeneratedLabel("Mul8ExprDone");
+    return [
+      ...loadLeft,
+      "    push af",
+      ...loadRight,
+      "    ld c,a",
+      "    pop af",
+      "    ld b,a",
+      "    ld a,c",
+      "    or a",
+      `    jr z,${doneLabel}`,
+      "    xor a",
+      `${loopLabel}:`,
+      "    add a,b",
+      "    dec c",
+      `    jr nz,${loopLabel}`,
+      `${doneLabel}:`
+    ];
+  }
+
+  function emitLoadInt8RuntimeDivideAstIntoA(node) {
+    const leftType = resolveExpressionAstComputationType(node.left);
+    const rightType = resolveExpressionAstComputationType(node.right);
+    if (leftType?.runtimeType !== "int8" || rightType?.runtimeType !== "int8") return null;
+    const loadLeft = emitLoadInt8AstIntoA(node.left);
+    const loadRight = emitLoadInt8AstIntoA(node.right);
+    if (!loadLeft || !loadRight) return null;
+    const nonZeroLabel = makeGeneratedLabel("Div8ExprNonZero");
+    const loopLabel = makeGeneratedLabel("Div8ExprLoop");
+    const doneLabel = makeGeneratedLabel("Div8ExprDone");
+    const finishLabel = makeGeneratedLabel("Div8ExprFinish");
+    return [
+      ...loadRight,
+      "    ld b,a",
+      "    or a",
+      `    jr nz,${nonZeroLabel}`,
+      "    xor a",
+      `    jr ${finishLabel}`,
+      `${nonZeroLabel}:`,
+      ...loadLeft,
+      "    ld c,0",
+      `${loopLabel}:`,
+      "    cp b",
+      `    jr c,${doneLabel}`,
+      "    sub b",
+      "    inc c",
+      `    jr ${loopLabel}`,
+      `${doneLabel}:`,
+      "    ld a,c",
+      `${finishLabel}:`
+    ];
+  }
+
+  function emitLoadInt16RuntimeMultiplyAstIntoHL(node, preferredDeclaredType = null) {
+    const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+    const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
+    if (leftType?.runtimeType !== "int16" || rightType?.runtimeType !== "int16") return null;
+    if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType) || isAnyFixedDeclaredType(preferredDeclaredType)) return null;
+    const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
+    const loadRight = emitLoadInt16AstIntoHL(node.right, preferredDeclaredType);
+    if (!loadLeft || !loadRight) return null;
+    const loopLabel = makeGeneratedLabel("Mul16ExprLoop");
+    const doneLabel = makeGeneratedLabel("Mul16ExprDone");
+    return [
+      ...loadLeft,
+      "    push hl",
+      ...loadRight,
+      "    ld b,h",
+      "    ld c,l",
+      "    pop de",
+      "    ld hl,0",
+      `${loopLabel}:`,
+      "    ld a,b",
+      "    or c",
+      `    jr z,${doneLabel}`,
+      "    add hl,de",
+      "    dec bc",
+      `    jr ${loopLabel}`,
+      `${doneLabel}:`
+    ];
+  }
+
+  function emitLoadInt16RuntimeDivideAstIntoHL(node, preferredDeclaredType = null) {
+    const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+    const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
+    if (leftType?.runtimeType !== "int16" || rightType?.runtimeType !== "int16") return null;
+    if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType) || isAnyFixedDeclaredType(preferredDeclaredType)) return null;
+    const signed = isSignedDeclaredType(leftType.declaredType) || isSignedDeclaredType(rightType.declaredType) || isSignedDeclaredType(preferredDeclaredType);
+    const loadLeft = emitLoadInt16AstIntoHL(node.left, signed ? "i16" : "u16");
+    const loadRight = emitLoadRoutineInputFromAst({
+      routineName: signed ? "AMY_I16_DIV" : "AMY_U16_DIV",
+      input: "bc",
+      node: node.right,
+      signed,
+      expressionType: rightType,
+      renderExpressionAst,
+      emitLoadInt8Into,
+      emitLoadInt16AstIntoHL,
+      tryEvaluateAstInteger,
+      symbolOrValue,
+      isSignedDeclaredType
+    });
+    if (!loadLeft || !loadRight) return null;
+    return [
+      ...loadLeft,
+      "    push hl",
+      ...loadRight,
+      "    pop hl",
+      `    call ${signed ? "AMY_I16_DIV" : "AMY_U16_DIV"}`
+    ];
+  }
   function emitLoadInt8AstIntoA(node) {
     if (!node) return null;
     if (node.kind === "number") return emitLoadInt8Into("a", node.value);
@@ -440,6 +560,15 @@ export function createExpressionComputeHelpers({
           if (!loadLeft || !scale) return null;
           return [...loadLeft, ...scale];
         }
+        return emitLoadInt8RuntimeMultiplyAstIntoA(node);
+      }
+      if (node.op === "/") {
+        const leftValue = tryEvaluateConstantExpression(renderExpressionAst(node.left));
+        const rightValue = tryEvaluateConstantExpression(renderExpressionAst(node.right));
+        if (leftValue !== null && rightValue !== null) {
+          return [`    ld a,${symbolOrValue(String(rightValue === 0 ? 0 : (Math.trunc(leftValue / rightValue) & 0xFF)))}`];
+        }
+        return emitLoadInt8RuntimeDivideAstIntoA(node);
       }
       if (node.op === "%") {
         const rightValue = tryEvaluateConstantExpression(renderExpressionAst(node.right));
@@ -709,9 +838,62 @@ export function createExpressionComputeHelpers({
         }
         return [...loadLeft, ...shiftLines];
       }
+      if (node.op === "*") {
+        const leftValue = tryEvaluateConstantExpression(renderExpressionAst(node.left));
+        const rightValue = tryEvaluateConstantExpression(renderExpressionAst(node.right));
+        if (leftValue !== null && rightValue !== null) {
+          return emitLoadInt16ValueIntoHL(String((leftValue * rightValue) & 0xFFFF));
+        }
+        const emitScaleHLByConst = (constantValue) => {
+          if (!Number.isInteger(constantValue) || constantValue < 0 || constantValue > 0xFFFF) return null;
+          if (constantValue === 0) return ["    ld hl,0"];
+          if (constantValue === 1) return [];
+          if ((constantValue & (constantValue - 1)) === 0) {
+            const lines = [];
+            for (let value = constantValue; value > 1; value >>= 1) lines.push("    add hl,hl");
+            return lines;
+          }
+          const bits = [];
+          for (let bit = 0; bit < 16; bit += 1) {
+            if (constantValue & (1 << bit)) bits.push(bit);
+          }
+          if (bits.length > 6) return null;
+          const lines = ["    ld de,hl", "    ld hl,0"];
+          let currentShift = 0;
+          for (const bit of bits) {
+            while (currentShift < bit) {
+              lines.push("    ex de,hl", "    add hl,hl", "    ex de,hl");
+              currentShift += 1;
+            }
+            lines.push("    add hl,de");
+          }
+          return lines;
+        };
+        if (leftValue !== null) {
+          const loadRight = emitLoadInt16AstIntoHL(node.right, preferredDeclaredType);
+          const scale = emitScaleHLByConst(leftValue);
+          if (!loadRight || !scale) return null;
+          return [...loadRight, ...scale];
+        }
+        if (rightValue !== null) {
+          const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
+          const scale = emitScaleHLByConst(rightValue);
+          if (!loadLeft || !scale) return null;
+          return [...loadLeft, ...scale];
+        }
+        return emitLoadInt16RuntimeMultiplyAstIntoHL(node, preferredDeclaredType);
+      }
       if (node.op !== "+" && node.op !== "-") {
         if (node.op === "%") {
           return emitLoadModulo16AstIntoHL(node, preferredDeclaredType);
+        }
+        if (node.op === "/") {
+          const leftValue = tryEvaluateConstantExpression(renderExpressionAst(node.left));
+          const rightValue = tryEvaluateConstantExpression(renderExpressionAst(node.right));
+          if (leftValue !== null && rightValue !== null) {
+            return emitLoadInt16ValueIntoHL(String(rightValue === 0 ? 0 : (Math.trunc(leftValue / rightValue) & 0xFFFF)));
+          }
+          return emitLoadInt16RuntimeDivideAstIntoHL(node, preferredDeclaredType);
         }
         if (isAnyFixedDeclaredType(preferredDeclaredType)) {
           const fixedLiteral = parseFixedPointLiteral(renderExpressionAst(node));
