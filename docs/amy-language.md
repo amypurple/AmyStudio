@@ -1936,6 +1936,7 @@ This is useful with `put MazeMap frame size W,H at X,Y` for visible tile maps.
 `bitmap8` converts each 8-pixel row to one byte (ROM order).  
 `sprite16` converts 16-row groups to 32 sprite bytes: 16 left-column bytes then 16 right-column bytes.
 Each visual row may be written either as `"...."` or `bitmap "...."`. The `bitmap` keyword is optional.
+Graphics Editors preserve inline `bitmap8` and `sprite16` blocks when saving edited graphics; plain `bytes` blocks are saved as hex byte rows.
 
 ### Word tables (indexable ROM address tables)
 

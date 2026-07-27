@@ -1,3 +1,8 @@
+## 2026-07-26 - Bitmap8 graphics editor round-trip
+
+- Graphics Editors now read inline `data ... bitmap8` pattern blocks and save edited data back as quoted 8-pixel rows instead of converting them to hex byte rows.
+- Added metadata tests covering `bitmap8` parse/replace behavior alongside `sprite16`.
+
 ## 2026-07-26 - Data byte repeat count parsing
 
 - Fixed `data ... bytes` parsing so `Value count N` works both inline and inside multi-line data blocks.
