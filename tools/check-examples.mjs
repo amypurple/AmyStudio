@@ -6,8 +6,9 @@
 //   --compare  [file]      run + diff against saved snapshot
 //   --compare-forms        compile legacy/canonical form pairs; report ASM differences
 //   --assemble             also assemble every passing example into a balanced ROM
+//   --rom-dir <directory>   write assembled ROM files to this directory
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -15,7 +16,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SNAPSHOT = resolve(__dir, "examples-baseline.json");
 
 const args = process.argv.slice(2);
-const options = { only: null, assemble: false };
+const options = { only: null, assemble: false, romDir: null };
 let mode = "run";
 let snapshotFile = DEFAULT_SNAPSHOT;
 for (let index = 0; index < args.length; index += 1) {
@@ -32,6 +33,9 @@ for (let index = 0; index < args.length; index += 1) {
     mode = "test-types";
   } else if (arg === "--assemble") {
     options.assemble = true;
+  } else if (arg === "--rom-dir") {
+    options.assemble = true;
+    options.romDir = resolve(args[++index] || "");
   } else if (arg === "--only") {
     const value = args[++index] || "";
     options.only = new Set(value.split(",").map((item) => item.trim()).filter(Boolean));
@@ -237,7 +241,7 @@ async function assembleExampleRom(ex, result) {
     return { ok: false, log: errors || assembled.log || "assembler failed" };
   }
   const rom = assembled.binary || assembled.bytes || new Uint8Array();
-  return { ok: true, size: rom.length };
+  return { ok: true, size: rom.length, rom, symbols: assembled.symbols || {} };
 }
 
 function validateExampleAsm(ex, result) {
@@ -473,6 +477,15 @@ for (const ex of amyExamples) {
         passed += 1;
         assembledCount += 1;
         assembledBytes += assembled.size;
+        if (options.romDir) {
+          mkdirSync(options.romDir, { recursive: true });
+          writeFileSync(join(options.romDir, `${ex.id}.rom`), Buffer.from(assembled.rom));
+          const symbolLines = Object.entries(assembled.symbols)
+            .filter(([, value]) => Number.isInteger(value) && value >= 0 && value <= 0xFFFF)
+            .map(([name, value]) => `00:${value.toString(16).toUpperCase().padStart(4, "0")} ${name}`)
+            .join("\n");
+          writeFileSync(join(options.romDir, `${ex.id}.sym`), `${symbolLines}\n`, "utf8");
+        }
         hashes[ex.id] = sha256(result.asmBody);
       }
     } else {
@@ -529,6 +542,7 @@ if (mode === "compare") {
 
 console.log(`\nResults: ${passed} passed, ${failed} failed out of ${amyExamples.length} examples.`);
 if (options.assemble) console.log(`ROMs: ${assembledCount} assembled, ${assembledBytes} total bytes (balanced).`);
+if (options.romDir) console.log(`ROM output: ${options.romDir}`);
 console.log();
 if (failures.length > 0) {
   console.log("FAILURES:");
