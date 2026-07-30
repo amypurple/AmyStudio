@@ -185,6 +185,10 @@ async function main() {
 
   const transpiled = transpileAmySource({ sourceLang: "amy", sourceText, transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude }), lexZ80Source, summarizeTokens });
   if (!transpiled?.ok) { console.error("Transpile failed: " + (transpiled?.log || "unknown error")); process.exit(1); }
+  const staticAbiRam = transpiled.ramUsage?.staticAbi;
+  if (staticAbiRam?.routineCount > 0) {
+    console.log(`ABI  ${staticAbiRam.totalBytes} RAM bytes (${staticAbiRam.parameterBytes} params + ${staticAbiRam.localBytes} locals) across ${staticAbiRam.routineCount} frameless routine(s)`);
+  }
   const generatedAsm = generateAsm(project, transpiled.asmBody, transpiled.assets || [], transpiled.metadata || {});
 
   if (opts.asm !== undefined) {

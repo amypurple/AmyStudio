@@ -3768,6 +3768,22 @@ export function transpileAmyCore(sourceText, deps) {
     }
   }
 
+  const staticAbiRoutineKeys = new Set([...staticAbiProcCandidates].map((name) => lowerName(name)));
+  const staticAbiParamBytes = [...staticAbiParams.values()]
+    .flat()
+    .reduce((total, param) => total + runtimeTypeSize(param.type), 0);
+  const staticAbiLocalBytes = [...runtimeVars.values()]
+    .filter((info) => info?.storage === "static"
+      && /^AMY_LVAR_/i.test(info.asmName || "")
+      && staticAbiRoutineKeys.has(lowerName(info.scope || "")))
+    .reduce((total, info) => total + runtimeTypeSize(info.type), 0);
+  const staticAbiRamUsage = {
+    routineCount: staticAbiProcCandidates.size,
+    parameterBytes: staticAbiParamBytes,
+    localBytes: staticAbiLocalBytes,
+    totalBytes: staticAbiParamBytes + staticAbiLocalBytes
+  };
+
   return finalizeAmyTranspile({
     state: {
       inAsm,
@@ -3804,6 +3820,7 @@ export function transpileAmyCore(sourceText, deps) {
       ramLayout,
       runtimeVars,
       boolPackCount,
+      staticAbiRamUsage,
       needsNumericPostprocessHelpers,
       needsNumericPostprocessWidthHelper,
       needsFp5FriendlyFormatHelper,

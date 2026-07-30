@@ -537,6 +537,7 @@ export function finalizeAmyTranspile({
     ramLayout,
     runtimeVars,
     boolPackCount,
+    staticAbiRamUsage,
     needsNumericPostprocessHelpers,
     needsNumericPostprocessWidthHelper,
     needsFp5FriendlyFormatHelper,
@@ -1097,7 +1098,13 @@ export function finalizeAmyTranspile({
     ramUsage: {
       usedBytes: Math.max(0, nextRamAddress - (ramLayout?.userRamStart ?? 0x7100)),
       variableCount: runtimeVars.size,
-      booleanPackCount: boolPackCount
+      booleanPackCount: boolPackCount,
+      staticAbi: staticAbiRamUsage || {
+        routineCount: 0,
+        parameterBytes: 0,
+        localBytes: 0,
+        totalBytes: 0
+      }
     },
     log: `${summaryLog}${warningLog}`
   };

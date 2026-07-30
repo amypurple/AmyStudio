@@ -18,6 +18,11 @@ for (const profile of profiles) {
   );
   assert.equal(result.status, 0, `frameless ${profile} compile failed:\n${result.stdout}\n${result.stderr}`);
   assert(fs.statSync(romPath).size > 0, `${profile} must emit a non-empty ROM`);
+  assert.match(
+    result.stdout,
+    /ABI\s+22 RAM bytes \(15 params \+ 7 locals\) across 7 frameless routine\(s\)/,
+    `${profile} must report the static ABI RAM budget`
+  );
 }
 
 const asmPath = path.join(temp, "frameless-safe.asm");

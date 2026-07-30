@@ -1,3 +1,8 @@
+## 2026-07-30 - Static ABI RAM accounting
+
+- Report frameless static-ABI parameter, local, total RAM bytes, and routine count through transpile results and `amyc`.
+- Lock the ROM self-test budget at 22 bytes and document Reversi v5 at 62 bytes across 28 frameless routines.
+
 ## 2026-07-30 - Static ABI v1.1 fail-closed safety
 
 - Recognize all eight conditional forms of inline-ASM `call`/`jp` plus `jr` and `djnz` edges to Amy routines, preventing hidden recursion from being classified frameless.
