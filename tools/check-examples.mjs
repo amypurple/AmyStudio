@@ -6,7 +6,10 @@
 //   --compare  [file]      run + diff against saved snapshot
 //   --compare-forms        compile legacy/canonical form pairs; report ASM differences
 //   --assemble             also assemble every passing example into a balanced ROM
-//   --rom-dir <directory>   write assembled ROM files to this directory
+//   --rom-dir <directory>   write assembled ROM and symbol files to this directory
+//   --optimization <level>  ROM assembly profile: off, safe, balanced, aggressive, experimental
+//   --disable-optimizer-option <name>  force one optimizer config option off; repeatable
+//   --audit-json <file>     write per-example ROM size and optimized-ASM hashes
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -16,7 +19,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SNAPSHOT = resolve(__dir, "examples-baseline.json");
 
 const args = process.argv.slice(2);
-const options = { only: null, assemble: false, romDir: null };
+const options = { only: null, assemble: false, romDir: null, optimization: "balanced", disabledOptimizerOptions: [], auditJson: null };
 let mode = "run";
 let snapshotFile = DEFAULT_SNAPSHOT;
 for (let index = 0; index < args.length; index += 1) {
@@ -36,6 +39,15 @@ for (let index = 0; index < args.length; index += 1) {
   } else if (arg === "--rom-dir") {
     options.assemble = true;
     options.romDir = resolve(args[++index] || "");
+  } else if (arg === "--optimization") {
+    options.assemble = true;
+    options.optimization = String(args[++index] || "").toLowerCase();
+  } else if (arg === "--disable-optimizer-option") {
+    options.assemble = true;
+    options.disabledOptimizerOptions.push(args[++index] || "");
+  } else if (arg === "--audit-json") {
+    options.assemble = true;
+    options.auditJson = resolve(args[++index] || "");
   } else if (arg === "--only") {
     const value = args[++index] || "";
     options.only = new Set(value.split(",").map((item) => item.trim()).filter(Boolean));
@@ -224,13 +236,18 @@ async function assembleExampleRom(ex, result) {
   project.projectName = ex.label || ex.id;
   project.projectFiles = ex.projectFiles || [];
   const generatedAsm = generateAsm(project, result.asmBody, result.assets || [], result.metadata || {});
-  const profile = getOptimizationProfile("balanced", generatedAsm);
+  const profile = getOptimizationProfile(options.optimization, generatedAsm);
+  const optimizerConfig = profile.optimizerConfig ? { ...profile.optimizerConfig } : null;
+  for (const name of options.disabledOptimizerOptions) {
+    if (!optimizerConfig || !(name in optimizerConfig)) throw new Error(`Unknown optimizer option for ${options.optimization}: ${name}`);
+    optimizerConfig[name] = false;
+  }
   const assembled = await assembleAmysCVAssembly(buildExampleAssemblyFiles(ex, generatedAsm), "main.asm", {
     outputFilename: `${ex.id}.rom`,
     outputMode: "binary",
     targetPlatform: "coleco",
     optimizerEnabled: profile.optimizerEnabled,
-    optimizerConfig: profile.optimizerConfig
+    optimizerConfig
   });
   if (!assembled.ok) {
     const errors = String(assembled.log || "")
@@ -241,7 +258,7 @@ async function assembleExampleRom(ex, result) {
     return { ok: false, log: errors || assembled.log || "assembler failed" };
   }
   const rom = assembled.binary || assembled.bytes || new Uint8Array();
-  return { ok: true, size: rom.length, rom, symbols: assembled.symbols || {} };
+  return { ok: true, size: rom.length, rom, symbols: assembled.symbols || {}, optimizedAsm: assembled.optimizedAsm || "", stats: assembled.stats || {} };
 }
 
 function validateExampleAsm(ex, result) {
@@ -458,6 +475,7 @@ let assembledCount = 0;
 let assembledBytes = 0;
 const failures = [];
 const hashes = {};
+const romAudit = [];
 
 for (const ex of amyExamples) {
   const result = transpileAmy(ex.sourceText, ex.projectFiles);
@@ -477,6 +495,7 @@ for (const ex of amyExamples) {
         passed += 1;
         assembledCount += 1;
         assembledBytes += assembled.size;
+        romAudit.push({ id: ex.id, ok: true, romBytes: assembled.size, optimizedAsmSha256: sha256(assembled.optimizedAsm), optimizerStats: assembled.stats });
         if (options.romDir) {
           mkdirSync(options.romDir, { recursive: true });
           writeFileSync(join(options.romDir, `${ex.id}.rom`), Buffer.from(assembled.rom));
@@ -541,8 +560,16 @@ if (mode === "compare") {
 }
 
 console.log(`\nResults: ${passed} passed, ${failed} failed out of ${amyExamples.length} examples.`);
-if (options.assemble) console.log(`ROMs: ${assembledCount} assembled, ${assembledBytes} total bytes (balanced).`);
+if (options.assemble) {
+  const disabled = options.disabledOptimizerOptions.length ? `; disabled: ${options.disabledOptimizerOptions.join(", ")}` : "";
+  console.log(`ROMs: ${assembledCount} assembled, ${assembledBytes} total bytes (${options.optimization}${disabled}).`);
+}
 if (options.romDir) console.log(`ROM output: ${options.romDir}`);
+if (options.auditJson) {
+  mkdirSync(dirname(options.auditJson), { recursive: true });
+  writeFileSync(options.auditJson, `${JSON.stringify({ version: 1, generated: new Date().toISOString(), optimization: options.optimization, disabledOptimizerOptions: options.disabledOptimizerOptions, examples: romAudit }, null, 2)}\n`, "utf8");
+  console.log(`ROM audit: ${options.auditJson}`);
+}
 console.log();
 if (failures.length > 0) {
   console.log("FAILURES:");
