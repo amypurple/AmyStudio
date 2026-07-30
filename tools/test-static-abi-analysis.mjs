@@ -65,6 +65,26 @@ end sub
 assert(asmEdge.nmiReachable.has("leaf"), "direct inline-ASM edge was not included");
 assert(!asmEdge.eligible.has("leaf"), "ASM-reachable NMI leaf must be excluded");
 
+const asmParameterizedEntry = analyze(`
+sub Caller:
+  asm {
+    call AMY_UPROC_Target
+  }
+end sub
+function Target(u8 Value) as u8
+  return Value
+function ParameterlessTarget() as u8
+  return 1
+sub SafeCaller:
+  asm {
+    call AMY_UPROC_ParameterlessTarget
+  }
+end sub
+`);
+assert(asmParameterizedEntry.asmEntryTargets.has("target"), "parameterized ASM entry was not recorded");
+assert(!asmParameterizedEntry.eligible.has("target"), "ASM-called parameterized routine must retain the stack ABI");
+assert(asmParameterizedEntry.eligible.has("parameterlesstarget"), "parameterless ASM target may remain frameless");
+
 const opaque = analyze(`
 sub Leaf(u8 A):
   u8 Value = 0

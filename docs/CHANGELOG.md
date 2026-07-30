@@ -1,3 +1,8 @@
+## 2026-07-30 - Inline-ASM static ABI boundary
+
+- Keep parameterized Amy routines on the IX stack ABI when inline ASM calls or jumps to them directly, preventing mixed caller/callee conventions.
+- Preserve frameless eligibility for safe parameterless ASM targets and add analyzer plus assembled-code regressions.
+
 ## 2026-07-30 - Static ABI RAM accounting
 
 - Report frameless static-ABI parameter, local, total RAM bytes, and routine count through transpile results and `amyc`.

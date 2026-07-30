@@ -58,4 +58,42 @@ for (const symbol of ramSymbols) {
   assert(!addresses.has(symbol.address), `${symbol.name} overlaps ${addresses.get(symbol.address)} at $${symbol.address}`);
   addresses.set(symbol.address, symbol.name);
 }
+const asmEntrySourcePath = path.join(temp, "asm-entry.alexis");
+const asmEntryAsmPath = path.join(temp, "asm-entry.asm");
+const asmEntryRomPath = path.join(temp, "asm-entry.rom");
+fs.writeFileSync(asmEntrySourcePath, `
+project "Static ABI ASM Entry Fence"
+memory "colecovision_legacy_sdcc"
+
+sub start:
+  loop forever
+end sub
+
+sub AsmCaller:
+  asm {
+    ld hl,1
+    push hl
+    call AMY_UPROC_AsmTarget
+    pop de
+  }
+  return
+end sub
+
+sub AsmTarget(u8 Value):
+  return
+end sub
+`);
+const asmEntryResult = spawnSync(
+  process.execPath,
+  [path.join(repo, "tools", "amyc.mjs"), asmEntrySourcePath, "--asm", asmEntryAsmPath, "--rom", asmEntryRomPath, "--opt", "balanced"],
+  { cwd: repo, encoding: "utf8" }
+);
+assert.equal(asmEntryResult.status, 0, `ASM-entry compile failed:\n${asmEntryResult.stdout}\n${asmEntryResult.stderr}`);
+const asmEntryAsm = fs.readFileSync(asmEntryAsmPath, "utf8");
+const asmTargetStart = asmEntryAsm.indexOf("AMY_UPROC_AsmTarget:");
+assert(asmTargetStart >= 0, "missing ASM-target routine");
+const asmTargetEnd = asmEntryAsm.indexOf("\nAMY_UPROC_", asmTargetStart + 1);
+const asmTargetBlock = asmEntryAsm.slice(asmTargetStart, asmTargetEnd >= 0 ? asmTargetEnd : asmEntryAsm.length);
+assert.match(asmTargetBlock, /push ix|\(ix\+4\)/i, "ASM-called parameterized routine must retain the IX stack ABI");
+
 console.log("test-static-frameless-abi-codegen: PASS");

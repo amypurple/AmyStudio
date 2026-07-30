@@ -148,6 +148,7 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
   }
 
   const graph = new Map([...routines.keys()].map((name) => [name, new Set()]));
+  const asmEntryTargets = new Set();
   for (const routine of routines.values()) {
     const allSource = routine.body.join("\n");
     for (const target of routines.values()) {
@@ -158,8 +159,12 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
       const transfer = parseAsmTransfer(asmLine);
       if (!transfer) continue;
       const target = asmTargetRoutine(transfer.target, routines);
-      if (target) graph.get(routine.key).add(target);
-      else opaqueAsm = true;
+      if (target) {
+        graph.get(routine.key).add(target);
+        asmEntryTargets.add(target);
+      } else {
+        opaqueAsm = true;
+      }
     }
   }
 
@@ -193,11 +198,12 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
       const scalarParams = routine.params.every((param) => !param.invalid && !param.isRef && STATIC_ABI_TYPES.has(param.type));
       const unsupportedLocal = hasUnsupportedLocal(routine, customTypes);
       const callsRefRoutine = [...(graph.get(routine.key) || [])].some((target) => routines.get(target)?.params.some((param) => param.isRef));
-      if (routine.key !== "start" && scalarParams && !unsupportedLocal && !callsRefRoutine && !recursive.has(routine.key) && !nmiReachable.has(routine.key)) {
+      const asmCallsParameterizedRoutine = routine.params.length > 0 && asmEntryTargets.has(routine.key);
+      if (routine.key !== "start" && scalarParams && !unsupportedLocal && !callsRefRoutine && !asmCallsParameterizedRoutine && !recursive.has(routine.key) && !nmiReachable.has(routine.key)) {
         eligible.add(routine.key);
       }
     }
   }
 
-  return { routines, graph, recursive, nmiRoots, nmiReachable, eligible, opaqueAsm };
+  return { routines, graph, recursive, nmiRoots, nmiReachable, asmEntryTargets, eligible, opaqueAsm };
 }
