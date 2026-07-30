@@ -157,6 +157,11 @@ export function handleDataMetaStatement({
       return { handled: true, ok: false, log: String(error.message || error) };
     }
     state.inData = block;
+    try {
+      flushDataBlock();
+    } catch (error) {
+      return { handled: true, ok: false, log: String(error.message || error) };
+    }
     return { handled: true, ok: true };
   }
 
@@ -181,6 +186,11 @@ export function handleDataMetaStatement({
       return { handled: true, ok: false, log: String(error.message || error) };
     }
     state.inData = block;
+    try {
+      flushDataBlock();
+    } catch (error) {
+      return { handled: true, ok: false, log: String(error.message || error) };
+    }
     return { handled: true, ok: true };
   }
 

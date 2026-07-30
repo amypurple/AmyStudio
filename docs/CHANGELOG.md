@@ -1,3 +1,9 @@
+## 2026-07-30 - Full example ROM assembly audit
+
+- Added `node tools/check-examples.mjs --assemble` to build every example through the complete Studio pipeline with embedded project files and balanced optimization.
+- Close inline `data ... bytes/words = ...` declarations immediately, preventing following Amy statements such as `text screen` from being consumed as ROM data.
+- Added a regression for inline data closure and assembled all 44 public examples into real ROMs.
+
 ## 2026-07-30 - Inline-ASM static ABI boundary
 
 - Keep parameterized Amy routines on the IX stack ABI when inline ASM calls or jumps to them directly, preventing mixed caller/callee conventions.

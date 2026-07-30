@@ -5,16 +5,17 @@
 //   --snapshot [file]      run + save asmBody hashes to JSON  (default: tools/examples-baseline.json)
 //   --compare  [file]      run + diff against saved snapshot
 //   --compare-forms        compile legacy/canonical form pairs; report ASM differences
+//   --assemble             also assemble every passing example into a balanced ROM
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SNAPSHOT = resolve(__dir, "examples-baseline.json");
 
 const args = process.argv.slice(2);
-const options = { only: null };
+const options = { only: null, assemble: false };
 let mode = "run";
 let snapshotFile = DEFAULT_SNAPSHOT;
 for (let index = 0; index < args.length; index += 1) {
@@ -29,6 +30,8 @@ for (let index = 0; index < args.length; index += 1) {
     mode = "compare-forms";
   } else if (arg === "--test-types") {
     mode = "test-types";
+  } else if (arg === "--assemble") {
+    options.assemble = true;
   } else if (arg === "--only") {
     const value = args[++index] || "";
     options.only = new Set(value.split(",").map((item) => item.trim()).filter(Boolean));
@@ -90,7 +93,12 @@ import { finalizeAmyTranspile } from "../studio/core/compiler/transpileFinalizat
 import { handleVramTextStatement } from "../studio/core/compiler/vramTextStatementHelpers.js";
 import { handleVramPixelInputStatement } from "../studio/core/compiler/vramPixelInputStatementHelpers.js";
 import { transpileAmyCore } from "../studio/core/compiler/transpileAmyCore.js";
-import { sourceHintsTinySound } from "../studio/core/optimization.js";
+import { getOptimizationProfile, sourceHintsTinySound } from "../studio/core/optimization.js";
+import { generateAsm } from "../studio/core/project.js";
+import { newProject, defaultSourceText } from "../studio/core/projectLifecycle.js";
+import { manifest } from "../studio/manifest.js";
+import { alexisLibrarySources } from "../studio/core/alexisLibrarySources.generated.js";
+import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compilerCore.js";
 
 function stripAmyInlineComment(rawLine) {
   const text = String(rawLine || "");
@@ -178,6 +186,58 @@ function transpileAmy(sourceText, projectFiles = []) {
     return file?.base64 ? Buffer.from(file.base64, "base64").toString("utf8") : null;
   };
   return transpileAmyCore(sourceText, { ...DEPS, resolveStaticAbiInclude });
+}
+
+function buildExampleAssemblyFiles(ex, generatedAsm) {
+  const files = { "main.asm": generatedAsm, ...alexisLibrarySources };
+  for (const file of ex.projectFiles || []) {
+    const normalizedPath = String(file?.path || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    if (!normalizedPath || !file?.base64) continue;
+    const barePath = normalizedPath.replace(/^@project\//i, "");
+    const bytes = new Uint8Array(Buffer.from(file.base64, "base64"));
+    files[barePath] = bytes;
+    files[`@project/${barePath}`] = bytes;
+  }
+  const includeRe = /include\s+"([^"]+)"/g;
+  let match;
+  while ((match = includeRe.exec(generatedAsm))) {
+    const includePath = match[1].replace(/\\/g, "/");
+    if (files[includePath] != null || includePath.startsWith("@project/")) continue;
+    const absolutePath = join(resolve(__dir, ".."), includePath);
+    if (existsSync(absolutePath)) files[includePath] = readFileSync(absolutePath, "utf8");
+  }
+  return files;
+}
+
+async function assembleExampleRom(ex, result) {
+  const project = newProject({
+    manifestDefaults: manifest.defaults,
+    sourceLang: "amy",
+    memoryProfile: manifest.defaults.memoryProfile,
+    defaultSourceTextValue: defaultSourceText()
+  });
+  project.sourceText = ex.sourceText;
+  project.projectName = ex.label || ex.id;
+  project.projectFiles = ex.projectFiles || [];
+  const generatedAsm = generateAsm(project, result.asmBody, result.assets || [], result.metadata || {});
+  const profile = getOptimizationProfile("balanced", generatedAsm);
+  const assembled = await assembleAmysCVAssembly(buildExampleAssemblyFiles(ex, generatedAsm), "main.asm", {
+    outputFilename: `${ex.id}.rom`,
+    outputMode: "binary",
+    targetPlatform: "coleco",
+    optimizerEnabled: profile.optimizerEnabled,
+    optimizerConfig: profile.optimizerConfig
+  });
+  if (!assembled.ok) {
+    const errors = String(assembled.log || "")
+      .split("\n")
+      .filter((line) => /error/i.test(line))
+      .slice(0, 4)
+      .join(" | ");
+    return { ok: false, log: errors || assembled.log || "assembler failed" };
+  }
+  const rom = assembled.binary || assembled.bytes || new Uint8Array();
+  return { ok: true, size: rom.length };
 }
 
 function validateExampleAsm(ex, result) {
@@ -390,6 +450,8 @@ if (mode === "test-types") {
 
 let passed = 0;
 let failed = 0;
+let assembledCount = 0;
+let assembledBytes = 0;
 const failures = [];
 const hashes = {};
 
@@ -401,6 +463,18 @@ for (const ex of amyExamples) {
       failed += 1;
       hashes[ex.id] = null;
       failures.push({ id: ex.id, log: validationIssues.join("; ") });
+    } else if (options.assemble) {
+      const assembled = await assembleExampleRom(ex, result);
+      if (!assembled.ok) {
+        failed += 1;
+        hashes[ex.id] = null;
+        failures.push({ id: ex.id, log: `ROM assembly failed: ${assembled.log}` });
+      } else {
+        passed += 1;
+        assembledCount += 1;
+        assembledBytes += assembled.size;
+        hashes[ex.id] = sha256(result.asmBody);
+      }
     } else {
       passed += 1;
       hashes[ex.id] = sha256(result.asmBody);
@@ -453,7 +527,9 @@ if (mode === "compare") {
   console.log(`\nBaseline: ${Object.keys(baseHashes).length} examples  |  New: ${newFails} broken, ${fixed} fixed, ${changed} ASM-changed\n`);
 }
 
-console.log(`\nResults: ${passed} passed, ${failed} failed out of ${amyExamples.length} examples.\n`);
+console.log(`\nResults: ${passed} passed, ${failed} failed out of ${amyExamples.length} examples.`);
+if (options.assemble) console.log(`ROMs: ${assembledCount} assembled, ${assembledBytes} total bytes (balanced).`);
+console.log();
 if (failures.length > 0) {
   console.log("FAILURES:");
   for (const { id, log } of failures) {

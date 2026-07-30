@@ -317,6 +317,22 @@ check("raw word table entry can be assigned to fixed without scaling", () => {
 check("fixed comparisons against plain numbers compare full 8.8 values", () => {
   assert.match(asm, /ld hl,\(AMY_UVAR_UAssign\)\s*\n\s*ld de,2048\s*\n\s*or a\s*\n\s*sbc hl,de/, "UAssign > 8 should compare against $0800, not raw byte 8");
 });
+const inlineDataClosure = transpileAmy(`data Bytes bytes = 1,2
+text screen
+data Payload bytes = 3
+data Pointers words = @Payload
+screen on
+loop forever
+`);
+
+check("inline byte and word data close before the next statement", () => {
+  assert.equal(inlineDataClosure.ok, true, inlineDataClosure.log || "transpile failed");
+  const inlineAsm = String(inlineDataClosure.asmBody || "");
+  assert.match(inlineAsm, /AMY_UDATA_Bytes:\s*\n\s*db \$01,\$02/, "inline byte data should contain only its declared values");
+  assert.match(inlineAsm, /AMY_UDATA_Pointers:\s*\n\s*dw AMY_UDATA_Payload/, "inline word data should contain only its declared entries");
+  assert.doesNotMatch(inlineAsm, /\bdb\s+[^\n]*(?:text|screen)/i, "the following Amy statement must not be swallowed as data");
+});
+
 check("mixed signedness fixed-byte cast is rejected", () => {
   const bad = transpileAmy("fixed SVel = -1.5\nu8 Pixel = 0\nPixel = SVel\nloop forever\n");
   assert.equal(bad.ok, false);
@@ -392,5 +408,3 @@ if (failures.length) {
   process.exit(1);
 }
 console.log("\nAll word table codegen tests passed");
-
-
