@@ -1,5 +1,5 @@
-import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260712-optimizer-sync";
-import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260713-fx8-format";
+import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260715-duplicate-label-guard";
+import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260715-duplicate-label-guard";
 
 const textEncoder = new TextEncoder();
 

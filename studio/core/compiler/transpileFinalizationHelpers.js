@@ -487,7 +487,12 @@ function optimizeGeneratedTailCalls(lines) {
   for (let index = 0; index < lines.length; index += 1) {
     const call = String(lines[index] || "").trim().match(/^call\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
     if (call && /^ret$/i.test(String(lines[index + 1] || "").trim())) {
-      optimized.push(`    jp ${call[1]}`);
+      const target = call[1];
+      if (/^AMY_VRAM_END$/i.test(target)) {
+        optimized.push(lines[index]);
+        continue;
+      }
+      optimized.push(`    jp ${target}`);
       index += 1;
       continue;
     }

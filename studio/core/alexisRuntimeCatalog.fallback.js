@@ -70,6 +70,11 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
     "asm": "AMY_FILL_MODE2_TEXT_COLOR_FULL:\n    ld hl,VRAM_COLOR\n    ld de,$1800\n    jp FILL_VRAM\n\n; Duplicate the first pattern third into the second and third thirds using the\n; original lib4ksa _duplicate_pattern approach and the 32-byte scratch buffer."
   },
+  "AMY_LOAD_MODE2_TEXT_COLORS_32": {
+    "group": "vdp",
+    "sourcePath": "src/alexis_lib/coleco_vdp.asm",
+    "asm": "AMY_LOAD_MODE2_TEXT_COLORS_32:\n    push hl\n    ld hl,($73FA)\n    ld a,l\n    out (VDP_CTRL_PORT),a\n    ld a,h\n    or $40\n    out (VDP_CTRL_PORT),a\n    pop hl\n    ld b,$20\nAMY_LOAD_MODE2_TEXT_COLORS_32_ROW:\n    ld d,(hl)\n    inc hl\n    push bc\n    ld b,$40\n    ld a,d\nAMY_LOAD_MODE2_TEXT_COLORS_32_REPEAT:\n    out (VDP_DATA_PORT),a\n    djnz AMY_LOAD_MODE2_TEXT_COLORS_32_REPEAT\n    pop bc\n    djnz AMY_LOAD_MODE2_TEXT_COLORS_32_ROW\n    ret\n\n; Duplicate the first pattern third into the second and third thirds using the\n; original lib4ksa _duplicate_pattern approach and the 32-byte scratch buffer."
+  },
   "AMY_DUPLICATE_PATTERN_THIRDS": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
@@ -444,7 +449,7 @@ export const alexisRuntimeCatalog = {
       "AMY_FX8_8_FRAC_TO_HUNDREDTHS",
       "AMY_U8_TO_ASCII2"
     ],
-    "asm": "AMY_FX8_8_TO_ASCII6:\n    ld a,l\n    push af\n    ld a,h\n    call AMY_U8_TO_ASCII3\n    inc de\n    ld a,'.'\n    ld (de),a\n    inc de\n    pop af\n    push de\n    call AMY_FX8_8_FRAC_TO_HUNDREDTHS\n    pop de\n    jp AMY_U8_TO_ASCII2\n\n; Format a signed 8.8 fixed-point value as \"siii.ff\".\n; Input:  HL = fixed 8.8 value\n;         DE = destination buffer (7 bytes)\n; Output: writes exactly 7 ASCII chars, using leading space for non-negative values"
+    "asm": "AMY_FX8_8_TO_ASCII6:\n    ld a,l\n    push af\n    ld a,h\n    call AMY_U8_TO_ASCII3\n    ld a,'.'\n    ld (de),a\n    inc de\n    pop af\n    push de\n    call AMY_FX8_8_FRAC_TO_HUNDREDTHS\n    pop de\n    jp AMY_U8_TO_ASCII2\n\n; Format a signed 8.8 fixed-point value as \"siii.ff\".\n; Input:  HL = fixed 8.8 value\n;         DE = destination buffer (7 bytes)\n; Output: writes exactly 7 ASCII chars, using leading space for non-negative values"
   },
   "AMY_SFX8_8_TO_ASCII7": {
     "group": "math",

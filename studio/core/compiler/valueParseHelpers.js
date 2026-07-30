@@ -11,6 +11,7 @@ export function createValueParseHelpers({
   resolveDeclaredValueType,
   isAnyFixedDeclaredType,
   emitPushArgument,
+  getStaticAbiParams,
   runtimeParamSlotSize,
   emitAdjustSpBy,
   resolveJumpTarget,
@@ -225,6 +226,44 @@ export function createValueParseHelpers({
 
   function emitRoutineArgumentPushes(name, args, sig, invokeKeyword = "call") {
     if (args.length !== sig.length) return null;
+    const staticParams = typeof getStaticAbiParams === "function" ? getStaticAbiParams(name) : null;
+    if (staticParams && staticParams.length === sig.length) {
+      const preparedArgs = args.map((arg, index) => emitPushArgument(arg, sig[index]));
+      if (preparedArgs.some((code) => !code || code[code.length - 1]?.trim().toLowerCase() !== "push hl")) return null;
+      const needsStaging = preparedArgs.some((code) => code.some((line) => /^\s*call\b/i.test(line)));
+      const lines = [];
+      const storeParam = (param) => param.type === "int16"
+        ? [`    ld (${param.asmName}),hl`]
+        : ["    ld a,l", `    ld (${param.asmName}),a`];
+      if (needsStaging) {
+        for (let index = preparedArgs.length - 1; index >= 0; index -= 1) lines.push(...preparedArgs[index]);
+        for (const param of staticParams) lines.push("    pop hl", ...storeParam(param));
+      } else {
+        for (let index = 0; index < preparedArgs.length; index += 1) {
+          const param = staticParams[index];
+          const code = preparedArgs[index].slice(0, -1);
+          if (param.type === "int8") {
+            const constant = tryEvaluateConstantExpression(args[index]);
+            if (Number.isInteger(constant)) {
+              lines.push(`    ld a,${constant & 0xFF}`, `    ld (${param.asmName}),a`);
+              continue;
+            }
+            const unsignedSuffix = ["ld l,a", "ld h,0"];
+            const signedSuffix = ["ld l,a", "add a,a", "sbc a,a", "ld h,a"];
+            const lowered = code.map((line) => line.trim().toLowerCase());
+            const suffix = lowered.slice(-signedSuffix.length).join("|") === signedSuffix.join("|")
+              ? signedSuffix.length
+              : lowered.slice(-unsignedSuffix.length).join("|") === unsignedSuffix.join("|")
+                ? unsignedSuffix.length
+                : 0;
+            lines.push(...code.slice(0, code.length - suffix), `    ld (${param.asmName}),a`);
+            continue;
+          }
+          lines.push(...code, ...storeParam(param));
+        }
+      }
+      return { lines, cleanupBytes: 0, invokeKeyword, name, staticAbi: true };
+    }
     const lines = [];
     let cleanupBytes = 0;
     for (let i = sig.length - 1; i >= 0; i -= 1) {

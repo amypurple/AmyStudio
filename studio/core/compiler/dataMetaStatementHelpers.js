@@ -93,7 +93,19 @@ export function handleDataMetaStatement({
       state.asmBuffer = [];
       state.inAsm = false;
     } else {
-      state.asmBuffer = [...state.asmBuffer, state.rewriteUserSymbolsInExpression(rawLine.replace(/^  /, ""))];
+      const asmLine = rawLine.replace(/^  /, "");
+      const asmLabel = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*):/);
+      const collision = asmLabel && typeof state.describeGlobalNameCollision === "function"
+        ? state.describeGlobalNameCollision(asmLabel[1])
+        : null;
+      if (collision) {
+        return {
+          handled: true,
+          ok: false,
+          log: `Inline ASM label '${asmLabel[1]}' collides with existing Amy ${collision}. Rename the ASM label, for example '${asmLabel[1]}Sound' or '${asmLabel[1]}Data'. Offending line: ${rawLine}`
+        };
+      }
+      state.asmBuffer = [...state.asmBuffer, state.rewriteUserSymbolsInExpression(asmLine)];
     }
     return { handled: true, ok: true };
   }

@@ -90,7 +90,18 @@ export function handlePrintFormatStatement({
 
   if (/^print\s+at\s+/i.test(line)) {
     const argText = line.replace(/^print\s+at\s+/i, "");
-    const parts = splitTopLevelArgs(argText).map((part) => part.trim()).filter(Boolean);
+    let parts = splitTopLevelArgs(argText).map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const relaxedItems = /^([\s\S]+?)\s+("[\s\S]*)$/.exec(parts[1]);
+      if (relaxedItems) {
+        parts = [
+          parts[0],
+          relaxedItems[1].trim(),
+          ...splitTopLevelArgs(relaxedItems[2]).map((part) => part.trim()).filter(Boolean),
+          ...parts.slice(2)
+        ];
+      }
+    }
     if (parts.length < 3) {
       return { handled: true, ok: false, log: `print at requires X, Y, and at least one item: ${rawLine}` };
     }

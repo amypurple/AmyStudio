@@ -31,7 +31,7 @@ export function handleProcFunctionStatement({
   if (/^exit\s+proc$/i.test(line)) {
     return { handled: true, ok: false, log: `EXIT PROC has been removed. Use 'return' or 'exit sub'. Offending line: ${rawLine}` };
   }
-  if (/^sub\s+start:/i.test(line)) {
+  if (/^sub\s+start(?:\s*\(\s*\))?\s*:/i.test(line)) {
     openStartProc();
     state.openedImplicitStart = false;
     return { handled: true, ok: true };
@@ -51,14 +51,14 @@ export function handleProcFunctionStatement({
       state.currentFunction = null;
       state.openedImplicitStart = false;
     }
-    const procWithParams = line.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*:?\s*$/i);
-    if (procWithParams) {
+    const procWithParams = line.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*:?\s*$/i);
+    if (procWithParams && procWithParams[2].trim().length > 0) {
       state.currentProc = procWithParams[1];
       state.currentFunction = null;
       body.push(`${ensureProcAsmSymbol(state.currentProc)}:`);
       const frame = ensureProcFrame(state.currentProc);
       frame.insertIndex = body.length;
-      frame.usesIxFrame = true;
+      frame.usesIxFrame = !(typeof state.isStaticAbiProcCandidate === "function" && state.isStaticAbiProcCandidate(state.currentProc));
       const sig = procSignatures.get(state.currentProc);
       if (sig) {
         const pmap = ensureProcLocalMap(state.currentProc);
@@ -66,7 +66,7 @@ export function handleProcFunctionStatement({
       }
       return { handled: true, ok: true };
     }
-    const procMatch = line.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*):?$/i);
+    const procMatch = line.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?\s*:?$/i);
     if (procMatch) {
       state.currentProc = procMatch[1];
       state.currentFunction = null;
@@ -100,7 +100,7 @@ export function handleProcFunctionStatement({
       body.push(`${ensureProcAsmSymbol(state.currentProc)}:`);
       const frame = ensureProcFrame(state.currentProc);
       frame.insertIndex = body.length;
-      frame.usesIxFrame = true;
+      frame.usesIxFrame = !(typeof state.isStaticAbiProcCandidate === "function" && state.isStaticAbiProcCandidate(state.currentProc));
       const sig = procSignatures.get(state.currentProc);
       if (sig) {
         const pmap = ensureProcLocalMap(state.currentProc);

@@ -61,14 +61,19 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   let current = 0x7020;
 
   if (needsSound) {
+    const soundAreaCount = Math.max(8, Math.min(32, Number.isInteger(caps.soundAreaCount) ? caps.soundAreaCount : 0));
+    const soundAreasEnd = 0x702B + (soundAreaCount * 10) + 1;
+    const alignedSoundEnd = (soundAreasEnd + 3) & ~3;
     addresses.snd_addr = 0x7020;
     addresses.snd_areas = 0x702B;
     reserved.push(
       { start: 0x7020, endExclusive: 0x702B, label: "snd_addr" },
-      { start: 0x702B, endExclusive: 0x707C, label: "snd_areas (8 x 10-byte slots + terminator)" },
-      { start: 0x707C, endExclusive: 0x7080, label: "reserved gap / alignment" }
+      { start: 0x702B, endExclusive: soundAreasEnd, label: `snd_areas (${soundAreaCount} x 10-byte slots + terminator)` }
     );
-    current = 0x7080;
+    if (alignedSoundEnd > soundAreasEnd) {
+      reserved.push({ start: soundAreasEnd, endExclusive: alignedSoundEnd, label: "reserved gap / alignment" });
+    }
+    current = alignedSoundEnd;
   }
 
   if (needsRuntimeState) {

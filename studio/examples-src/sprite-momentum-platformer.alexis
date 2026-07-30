@@ -1,0 +1,166 @@
+cartridge "SPRITE PLATFORMER/AMY/2026"
+
+const EmptyTile = $20
+const WallTile = $23
+const CoinTile = $2A
+const PlayerPattern = 0
+
+tile type solid = WallTile
+tile type coin = CoinTile
+
+u8 PlayerX = 32
+u8 PlayerY = 128
+u8 NextX = 32
+u8 NextY = 128
+i8 VX = 0
+i8 VY = 0
+u8 OnGround = 1
+u8 HitX = 255
+u8 HitY = 255
+u8 ProbeX = 0
+u8 ProbeY = 0
+u8 Coins = 0
+
+data PlayerSprite sprite16
+  ".....XXXXXX....."
+  "....XXXXXXXX...."
+  "...XXX.XX.XXX..."
+  "...XXXXXXXXXX..."
+  "....XX.XX.XX...."
+  "...XXXXXXXXXX..."
+  "..XXXX.XX.XXXX.."
+  ".XXXX..XX..XXXX."
+  "..XX...XX...XX.."
+  "..XX...XX...XX.."
+  "..XX...XX...XX.."
+  "..XX...XX...XX.."
+  "..XX..XXXX..XX.."
+  "..XX..X..X..XX.."
+  ".XXX..X..X..XXX."
+  ".XX...X..X...XX."
+end data
+
+' 16x16 sprite with momentum, gravity, wall checks, landing, and coin pickup.
+  text screen
+  sprites 16x16
+  sprites simple
+  copy PlayerSprite to vram.spr_pat
+  clear sprites
+  set sprite count 1
+  print centered at 5, "SPRITE PLATFORMER"
+  print centered at 8, "MOMENTUM AND GRAVITY"
+  print centered at 9, "TILE COLLISIONS"
+  print centered at 14, "PRESS FIRE TO START"
+  screen on
+  pause until press
+  wait no fire
+  cls
+  setup_level
+  print at 1,22, "LEFT/RIGHT/FIRE  COINS"
+  screen on
+  goto main_loop
+
+sub setup_level:
+  fill WallTile count 30 at 1,18
+  fill WallTile count 9 at 7,14
+  fill WallTile count 8 at 18,10
+  put char CoinTile at 11,13
+  put char CoinTile at 22,9
+  return
+
+sub update_input:
+  if joypad(1).left then
+    if signed VX > -4 then VX -= 1
+  elseif joypad(1).right then
+    if signed VX < 4 then VX += 1
+  else
+    if OnGround then
+      if signed VX > 0 then VX -= 1
+      if signed VX < 0 then VX += 1
+    end if
+  end if
+  if joypad(1).button1 then
+    if OnGround then
+      VY = -10
+      OnGround = 0
+    end if
+  end if
+  return
+
+sub apply_gravity:
+  if signed VY < 6 then VY += 1
+  return
+
+sub move_x:
+  NextX = PlayerX + VX
+  if signed VX > 0 then
+    if tile under NextX + 15,PlayerY + 4 is solid goto hit_wall_x
+    if tile under NextX + 15,PlayerY + 11 is solid goto hit_wall_x
+    PlayerX = NextX
+  elseif signed VX < 0 then
+    if tile under NextX,PlayerY + 4 is solid goto hit_wall_x
+    if tile under NextX,PlayerY + 11 is solid goto hit_wall_x
+    PlayerX = NextX
+  end if
+  return
+hit_wall_x:
+  VX = 0
+  return
+
+sub move_y:
+  NextY = PlayerY + VY
+  OnGround = 0
+  if signed VY > 0 then
+    if tile under PlayerX + 3,NextY + 15 is solid goto hit_floor
+    if tile under PlayerX + 12,NextY + 15 is solid goto hit_floor
+    PlayerY = NextY
+  elseif signed VY < 0 then
+    if tile under PlayerX + 3,NextY + 2 is solid goto hit_ceiling
+    if tile under PlayerX + 12,NextY + 2 is solid goto hit_ceiling
+    PlayerY = NextY
+  end if
+  return
+hit_floor:
+  NextY += 15
+  NextY >>= 3
+  PlayerY = NextY
+  PlayerY <<= 3
+  PlayerY -= 16
+  VY = 0
+  OnGround = 1
+  return
+hit_ceiling:
+  NextY += 2
+  NextY >>= 3
+  NextY += 1
+  PlayerY = NextY
+  PlayerY <<= 3
+  PlayerY -= 2
+  VY = 0
+  return
+
+sub collect_coin:
+  ProbeX = PlayerX + 8
+  ProbeY = PlayerY + 8
+  find tile coin under box ProbeX,ProbeY size 1,1 into HitX,HitY
+  if HitX != 255 then
+    Coins += 1
+    put char EmptyTile at HitX,HitY
+    print Coins at 24,22 digits 2
+  end if
+  return
+
+sub draw_player:
+  set sprite 0 to PlayerY,PlayerX,PlayerPattern,15
+  update sprites
+  return
+
+sub main_loop:
+  wait
+  update_input
+  apply_gravity
+  move_x
+  move_y
+  collect_coin
+  draw_player
+  goto main_loop

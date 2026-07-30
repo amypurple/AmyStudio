@@ -1,5 +1,5 @@
 ; dan2.s
-; Decompression in VRAM version by Daniel Bienvenu
+; Decompression in VRAM version by Amy Bienvenu / NewColeco
 ;
 ; HL = SOURCE
 ; DE = DESTINATION

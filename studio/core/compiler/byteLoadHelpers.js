@@ -435,6 +435,32 @@ export function createByteLoadHelpers(ctx) {
       return false;
     };
     const targetPair = pairForReg(normalizedRegister);
+    const counterpartForReg = (r) => {
+      const lowered = String(r).toLowerCase();
+      if (lowered === "b") return "c";
+      if (lowered === "c") return "b";
+      if (lowered === "d") return "e";
+      if (lowered === "e") return "d";
+      if (lowered === "h") return "l";
+      if (lowered === "l") return "h";
+      return null;
+    };
+    const counterpart = counterpartForReg(normalizedRegister);
+    const needsSamePairPreserve = counterpart && liveRegs.some((r) => {
+      const lowered = String(r).toLowerCase();
+      return lowered === counterpart || pairForReg(lowered) === targetPair;
+    });
+    if (needsSamePairPreserve) {
+      const loadA = emitLoadInt8ValueInto("a", token);
+      if (!loadA) return null;
+      const savePair = loadA.some((line) => lineClobbersPair(line, targetPair));
+      return [
+        ...(savePair ? [`    push ${targetPair}`] : []),
+        ...loadA,
+        ...(savePair ? [`    pop ${targetPair}`] : []),
+        `    ld ${normalizedRegister},a`
+      ];
+    }
     const saves = liveRegs
       .map(pairForReg)
       .filter((r, index, list) => r !== targetPair && list.indexOf(r) === index)

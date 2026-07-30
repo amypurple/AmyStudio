@@ -909,6 +909,11 @@ export function createExpressionComputeHelpers({
       if (node.op === "-" && leftZero === 0 && rightInfo && !rightInfo.isRef && /^[A-Za-z_][A-Za-z0-9_]*$/.test(rightToken)) {
         const rightDeclared = resolveDeclaredValueType(rightToken);
         if (rightDeclared === "u16" || rightDeclared === "i16" || isAnyFixedDeclaredType(rightDeclared)) {
+          if (rightInfo.storage === "stack") {
+            const loadRight = emitLoadInt16AstIntoHL(node.right, rightDeclared);
+            if (!loadRight) return null;
+            return [...loadRight, "    ex de,hl", "    ld hl,0", "    or a", "    sbc hl,de"];
+          }
           return [`    ld de,(${scopedRuntimeName(rightToken)})`, "    ld hl,0", "    or a", "    sbc hl,de"];
         }
       }

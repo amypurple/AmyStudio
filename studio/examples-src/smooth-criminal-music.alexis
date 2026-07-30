@@ -1,0 +1,561 @@
+project "Smooth Criminal Music"
+cartridge "SMOOTH CRIMINAL/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Amy port of old-projects-sdcc-z80/sdcctest/smoothc.
+' Music/equalizer demo using the original Smooth Criminal BIOS sound table.
+' Graphics are separate ZX0 project files so the Files preview can show them.
+
+asset SmoothCName from "@project/smoothc.name.zx0" codec zx0
+asset SmoothCPattern from "@project/smoothc.pattern.zx0" codec zx0
+asset SmoothCSpritePattern from "@project/smoothc.sprpat.zx0" codec zx0
+asset SmoothCColorFull from "@project/smoothc.color.zx0" codec zx0
+
+u16 MusicTimer = 0
+u8 MusicActive = 0
+
+on vblank SmoothCVblank
+
+sub start:
+  screen off
+  tile screen
+  sprites 16x16
+  sprites simple
+  set sound table SmoothCriminalSoundTable areas 4
+  decompress SmoothCPattern to vram.pattern
+  duplicate mode 2 text patterns
+  decompress SmoothCName to vram.name
+  decompress SmoothCColorFull to vram.color
+  decompress SmoothCSpritePattern to vram.spr_pat
+  set sprite pattern table vram.spr_pat
+  clear sprites
+  set sprite count 4
+  update sprites from 0 count 4
+  MusicTimer = 0
+  MusicActive = 1
+  screen on
+main_loop:
+  wait
+  goto main_loop
+
+sub SmoothCVblank:
+  if MusicActive = 0 then return
+  SmoothCUpdateEqualizer
+  if MusicTimer = 4800 then MusicTimer = 0
+  select case MusicTimer
+  case 0
+    mute all
+    play sound 1
+    play sound 2
+    play sound 4
+  case 960
+    play sound 3
+  case 1920, 3840
+    play sound 5
+    play sound 8
+    play sound 11
+    play sound 15
+  case 2160, 4080
+    play sound 12
+  case 2640
+    play sound 6
+    play sound 9
+    play sound 13
+    play sound 16
+  case 2880
+    mute all
+    play sound 20
+    play sound 2
+    play sound 18
+    play sound 19
+  case 4560
+    mute all
+    play sound 7
+    play sound 10
+    play sound 14
+    play sound 17
+  end select
+  MusicTimer += 1
+  return
+
+sub SmoothCUpdateEqualizer:
+  asm {
+SmoothC_Update_Equalizer:
+    ld hl,AMY_SPRITE_TABLE
+    ld de,$7035
+    ld b,3
+    ld c,80
+SmoothC_Equalizer_Loop:
+    ld (hl),159
+    inc hl
+    ld (hl),c
+    inc hl
+    ld a,(de)
+    cp $FF
+    ld a,60
+    jr z,SmoothC_Equalizer_Pattern_Ready
+    push de
+    inc de
+    inc de
+    inc de
+    inc de
+    ld a,(de)
+    pop de
+    srl a
+    srl a
+SmoothC_Equalizer_Pattern_Ready:
+    ld (hl),a
+    inc hl
+    ld (hl),6
+    inc hl
+    ld a,c
+    add a,32
+    ld c,a
+    ld a,e
+    add a,10
+    ld e,a
+    jr nc,SmoothC_Equalizer_Next
+    inc d
+SmoothC_Equalizer_Next:
+    djnz SmoothC_Equalizer_Loop
+    ld (hl),$D0
+    inc hl
+    xor a
+    ld (hl),a
+    inc hl
+    ld (hl),60
+    inc hl
+    xor a
+    ld (hl),a
+    ld hl,AMY_SPRITE_TABLE
+    ld de,$1B00
+    ld a,4
+    call AMY_UPDATE_SPRITES_PARTIAL
+  }
+  return
+
+
+asm {
+; music.s
+SmoothCriminalSoundTable:
+  dw SmoothC_bass1a,$702B
+  dw SmoothC_bass1b,$702B+10
+  dw SmoothC_lyrics1a,$702B+20
+  dw SmoothC_vocals1a,$702B+30
+  dw SmoothC_bass2a1,$702B
+  dw SmoothC_bass2a2,$702B
+  dw SmoothC_bass2a3,$702B
+  dw SmoothC_bass2b1,$702B+10
+  dw SmoothC_bass2b2,$702B+10
+  dw SmoothC_bass2b3,$702B+10
+  dw SmoothC_lyrics2a1,$702B+20
+  dw SmoothC_lyrics2a2,$702B+20
+  dw SmoothC_lyrics2a3,$702B+20
+  dw SmoothC_lyrics2a4,$702B+20
+  dw SmoothC_vocals2a1,$702B+30
+  dw SmoothC_vocals2a2,$702B+30
+  dw SmoothC_vocals2a4,$702B+30
+  dw SmoothC_lyrics3a,$702B+20
+  dw SmoothC_vocals3a,$702B+30
+  dw SmoothC_bass3a,$702B
+SmoothC_bass1a:
+  db $C0,$88,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$98,$F0,$07
+  db $C0,$88,$F0,$08
+  db $C0,$79,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $C0,$88,$F0,$07
+  db $C0,$79,$F0,$08
+  db $C0,$72,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $C0,$79,$F0,$07
+  db $C0,$72,$F0,$08
+  db $C0,$79,$F0,$0F
+  db $C0,$98,$F0,$0F
+  db $C0,$22,$F0,$0F
+  db $D8
+SmoothC_bass1b:
+  db $02,$03,$0F,$1F,$12
+  db $2F
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $02,$03,$07,$1F,$12
+  db $02,$03,$08,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $02,$03,$07,$1F,$12
+  db $02,$03,$08,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $02,$03,$07,$1F,$12
+  db $02,$03,$08,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $18
+SmoothC_lyrics1a:
+  db $7E
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$3B,$12,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$C5,$11,$0F,$1E,$11
+  db $42,$C5,$11,$1E,$1E,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$C5,$11,$08,$18,$11
+  db $42,$AB,$11,$0F,$1E,$11
+  db $42,$AB,$11,$1E,$1E,$11
+  db $42,$C5,$11,$07,$18,$11
+  db $42,$AB,$11,$08,$18,$11
+  db $42,$C5,$11,$0F,$1E,$11
+  db $42,$3B,$12,$0F,$1E,$11
+  db $6F
+  db $58
+SmoothC_vocals1a:
+  db $83,$A0,$30,$02,$21,$DF,$E2,$11
+  db $83,$7F,$10,$0B,$1A,$03,$19,$24
+  db $90
+	;.db $81,$A0,$10,$02,$21,$D8
+	;.db $81,$78,$50,$0C,$1A,$04
+	;.db $90
+SmoothC_bass2a1:
+  db $C0,$AB,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$AB,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$AB,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$98,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $D8
+SmoothC_bass2a2:
+  db $C0,$AB,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$AB,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$B5,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$B5,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $D0
+SmoothC_bass2a3:
+  db $C0,$B5,$F0,$4B
+  db $C0,$22,$F0,$A5
+  db $D0
+SmoothC_bass2b1:
+  db $02,$03,$0F,$1F,$12
+  db $2F
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $2F
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $2F
+  db $02,$03,$0F,$1F,$12
+  db $2F
+  db $02,$07,$0F,$1F,$12
+  db $18
+SmoothC_bass2b2:
+  db $02,$03,$0F,$1F,$12
+  db $2F
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $2F
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$03,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $10
+SmoothC_bass2b3:
+  db $02,$03,$0F,$1F,$12
+  db $3E
+  db $3E
+  db $02,$07,$0F,$1F,$12
+  db $02,$07,$0F,$1F,$12
+  db $3E
+  db $3E
+  db $02,$07,$0F,$1F,$12
+  db $3E
+  db $3E
+  db $10
+SmoothC_lyrics2a1:
+  db $6F
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$7D,$11,$0F,$1A,$11
+  db $42,$AB,$11,$1E,$1A,$11
+  db $42,$AB,$11,$0F,$1A,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$7D,$11,$0F,$1A,$11
+  db $42,$AB,$11,$1E,$1A,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$C5,$11,$0F,$1A,$11
+  db $42,$FC,$11,$0F,$1A,$11
+  db $42,$3B,$12,$0F,$1A,$11
+  db $50
+SmoothC_lyrics2a2:
+  db $42,$FC,$11,$0F,$1A,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$7D,$11,$0F,$1A,$11
+  db $42,$AB,$11,$1E,$1A,$11
+  db $42,$AB,$11,$0F,$1A,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$7D,$11,$0F,$1A,$11
+  db $42,$AB,$11,$1E,$1A,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$C5,$11,$0F,$1A,$11
+  db $42,$FC,$11,$0F,$1A,$11
+  db $42,$3B,$12,$0F,$1A,$11
+  db $58
+SmoothC_lyrics2a3:
+  db $42,$FC,$11,$0F,$1A,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$FC,$11,$08,$18,$11
+  db $42,$FC,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$7D,$11,$0F,$1A,$11
+  db $42,$AB,$11,$1E,$1A,$11
+  db $42,$AB,$11,$0F,$1A,$11
+  db $42,$53,$11,$0F,$1A,$11
+  db $42,$53,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$1D,$11,$0F,$1A,$11
+  db $42,$53,$11,$1E,$1A,$11
+  db $42,$53,$11,$07,$18,$11
+  db $42,$53,$11,$08,$18,$11
+  db $42,$1D,$11,$0F,$1A,$11
+  db $42,$53,$11,$0F,$1A,$11
+  db $42,$1D,$11,$0F,$1A,$11
+  db $50
+SmoothC_lyrics2a4:
+  db $6F
+  db $42,$AA,$10,$0F,$1C,$11
+  db $42,$D6,$10,$0F,$1C,$11
+  db $42,$BE,$10,$0F,$1C,$11
+  db $42,$BE,$10,$0F,$1C,$11
+  db $7E
+  db $42,$AA,$10,$0F,$1C,$11
+  db $42,$D6,$10,$0F,$1C,$11
+  db $42,$BE,$10,$0F,$1C,$11
+  db $42,$BE,$10,$0F,$1C,$11
+  db $6F
+  db $42,$D6,$10,$0F,$1C,$11
+  db $42,$AA,$10,$1E,$1C,$11
+  db $42,$BE,$10,$0F,$1C,$11
+  db $50
+SmoothC_vocals2a1:
+  db $82,$F9,$D3,$B4,$F4,$42
+  db $82,$8A,$D3,$3C,$F4,$42
+  db $98
+SmoothC_vocals2a2:
+  db $82,$F9,$D3,$78,$F4,$42
+  db $82,$8A,$D3,$78,$F4,$42
+  db $90
+SmoothC_vocals2a4:
+  db $AF
+  db $82,$53,$11,$0F,$1E,$11
+  db $82,$AB,$11,$0F,$1E,$11
+  db $82,$7D,$11,$0F,$1E,$11
+  db $82,$7D,$11,$0F,$1E,$11
+  db $BE
+  db $82,$53,$11,$0F,$1E,$11
+  db $82,$AB,$11,$0F,$1E,$11
+  db $82,$7D,$11,$0F,$1E,$11
+  db $82,$7D,$11,$0F,$1E,$11
+  db $AF
+  db $82,$AB,$11,$0F,$1E,$11
+  db $82,$53,$11,$1E,$1E,$11
+  db $82,$7D,$11,$0F,$1E,$11
+  db $90
+SmoothC_lyrics3a:
+  db $42,$FE,$10,$1E,$1C,$11
+  db $6F
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$1D,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$E2,$10,$08,$18,$11
+  db $42,$FE,$10,$0F,$1C,$11
+  db $42,$40,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$FE,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$1D,$11,$0F,$1C,$11
+  db $7E
+  db $7E
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$1D,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$E2,$10,$08,$18,$11
+  db $42,$FE,$10,$0F,$1C,$11
+  db $42,$40,$11,$1E,$1C,$11
+  db $42,$1D,$11,$07,$18,$11
+  db $42,$FE,$10,$08,$18,$11
+  db $42,$0D,$11,$0F,$1C,$11
+  db $42,$0D,$11,$0F,$1C,$11
+  db $42,$FE,$10,$0F,$1C,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $7E
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$1D,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$E2,$10,$08,$18,$11
+  db $42,$FE,$10,$0F,$1C,$11
+  db $42,$40,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$FE,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$1D,$11,$0F,$1C,$11
+  db $7E
+  db $7E
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$D6,$10,$07,$18,$11
+  db $42,$D6,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$1D,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$E2,$10,$08,$18,$11
+  db $42,$FE,$10,$0F,$1C,$11
+  db $42,$40,$11,$1E,$1C,$11
+  db $42,$FE,$10,$07,$18,$11
+  db $42,$FE,$10,$08,$18,$11
+  db $42,$E2,$10,$0F,$1C,$11
+  db $42,$0D,$11,$0F,$1C,$11
+  db $6F
+  db $50
+SmoothC_vocals3a:
+  db $82,$7F,$10,$1E,$1E,$11
+  db $AF
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$8F,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$71,$10,$08,$18,$11
+  db $82,$7F,$10,$0F,$1E,$11
+  db $82,$A0,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$7F,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$8F,$10,$0F,$1E,$11
+  db $BE
+  db $BE
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$8F,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$71,$10,$08,$18,$11
+  db $82,$7F,$10,$0F,$1E,$11
+  db $82,$A0,$10,$1E,$1E,$11
+  db $82,$8F,$10,$07,$18,$11
+  db $82,$7F,$10,$08,$18,$11
+  db $82,$87,$10,$0F,$1E,$11
+  db $82,$87,$10,$0F,$1E,$11
+  db $82,$7F,$10,$0F,$1E,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $BE
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$8F,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$71,$10,$08,$18,$11
+  db $82,$7F,$10,$0F,$1E,$11
+  db $82,$A0,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$7F,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$8F,$10,$0F,$1E,$11
+  db $BE
+  db $BE
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$6B,$10,$07,$18,$11
+  db $82,$6B,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$8F,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$71,$10,$08,$18,$11
+  db $82,$7F,$10,$0F,$1E,$11
+  db $82,$A0,$10,$1E,$1E,$11
+  db $82,$7F,$10,$07,$18,$11
+  db $82,$7F,$10,$08,$18,$11
+  db $82,$71,$10,$0F,$1E,$11
+  db $82,$87,$10,$0F,$1E,$11
+  db $AF
+  db $90
+SmoothC_bass3a:
+  db $C0,$88,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$88,$F0,$0F
+  db $C0,$98,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $C0,$98,$F0,$0F
+  db $C0,$AB,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $C0,$AB,$F0,$0F
+  db $C0,$98,$F0,$1E
+  db $C0,$22,$F0,$0F
+	;
+  db $C0,$88,$F0,$2D
+  db $C0,$22,$F0,$0F
+  db $C0,$88,$F0,$0F
+  db $C0,$98,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $C0,$98,$F0,$0F
+  db $C0,$AB,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $C0,$AB,$F0,$0F
+  db $C0,$B5,$F0,$1E
+  db $C0,$22,$F0,$0F
+  db $D8
+}

@@ -1,3 +1,5 @@
+import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js";
+
 export function transpileAmyCore(sourceText, deps) {
   const {
     rewriteImmediateByteTempCoordinateUsesCore,
@@ -345,6 +347,8 @@ export function transpileAmyCore(sourceText, deps) {
   const precomputedSprite16Lengths = new Map();
   const procLocals = new Map();
   const staticLocalProcCandidates = new Set();
+  const staticAbiProcCandidates = new Set();
+  const staticAbiParams = new Map();
   const procFrames = new Map();
   const runtimeDeclarations = [];
   const runtimeInit = [];
@@ -1000,13 +1004,13 @@ export function transpileAmyCore(sourceText, deps) {
       if (trimmed === "}" && scanInAsm) { scanInAsm = false; continue; }
       if (scanInAsm) continue;
 
-      const subWithParams = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*:?\s*$/i);
-      const subBare = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
+      const subWithParams = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*:?\s*$/i);
+      const subBare = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?\s*:?\s*$/i);
       const functionHeader = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\))?\s+as\s+[A-Za-z_][A-Za-z0-9_]*\s*:?\s*$/i);
       if (subWithParams || subBare || functionHeader) {
         finishProc();
         scanProc = (subWithParams || subBare || functionHeader)[1];
-        scanProcHasParams = !!subWithParams;
+        scanProcHasParams = !!subWithParams && subWithParams[2].trim().length > 0;
         scanProcIsFunction = !!functionHeader;
         continue;
       }
@@ -1025,28 +1029,30 @@ export function transpileAmyCore(sourceText, deps) {
     }
     finishProc();
 
-    const procNames = new Set([...procBodies.keys()].map((name) => lowerName(name)));
-    const hasUserCall = (bodyLines) => bodyLines.some((bodyLine) => {
-      const t = String(bodyLine || "").trim();
-      if (!t || /^'/i.test(t)) return false;
-      const callAsm = t.match(/^call\s+asm\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
-      if (callAsm) return false;
-      const callLike = t.match(/^(?:call\s+|gosub\s+)?([A-Za-z_][A-Za-z0-9_]*)\b/i);
-      if (!callLike) return false;
-      const name = callLike[1];
-      if (/^(?:if|for|while|do|loop|select|case|return|exit|print|put|set|copy|fill|read|write|play|stop|mute|wait|screen|display|nmi|cls|goto|else|elseif|next)$/i.test(name)) return false;
-      return procNames.has(lowerName(name));
-    });
-
-    for (const [name, info] of procBodies.entries()) {
-      if (lowerName(name) === "start") continue;
-      if (info.isFunction || info.hasParams) continue;
-      if (hasUserCall(info.body)) continue;
+    const eligibility = analyzeStaticAbiEligibility(lines);
+    for (const key of eligibility.eligible) {
+      const routine = eligibility.routines.get(key);
+      if (!routine) continue;
+      const name = routine.name;
+      staticAbiProcCandidates.add(name);
       staticLocalProcCandidates.add(name);
+      const sig = procSignatures.get(name) || [];
+      const params = [];
+      for (const param of sig) {
+        const mangledName = `${name}_${param.name}`;
+        const info = runtimeVars.get(mangledName);
+        if (!info) continue;
+        const asmName = allocateUserAsmSymbol("SPARM", mangledName);
+        Object.assign(info, { storage: "static", asmName });
+        delete info.address;
+        delete info.offset;
+        params.push({ ...param, asmName, mangledName });
+      }
+      staticAbiParams.set(name, params);
+      const frame = procFrames.get(name);
+      if (frame) frame.usesIxFrame = false;
     }
   }
-
-  analyzeStaticLocalProcCandidates();
 
   ({
     ensureProcLocalMap,
@@ -2193,6 +2199,7 @@ export function transpileAmyCore(sourceText, deps) {
     resolveDeclaredValueType,
     isAnyFixedDeclaredType,
     emitPushArgument: (...args) => emitPushArgument(...args),
+    getStaticAbiParams: (name) => staticAbiParams.get(name) || null,
     runtimeParamSlotSize,
     emitAdjustSpBy,
     resolveJumpTarget,
@@ -2744,6 +2751,10 @@ export function transpileAmyCore(sourceText, deps) {
   if (firstPassNameError) {
     return { ok: false, asmBody: "", log: firstPassNameError };
   }
+  const staticLocalProcScanError = analyzeStaticLocalProcCandidates();
+  if (staticLocalProcScanError) {
+    return { ok: false, asmBody: "", log: staticLocalProcScanError };
+  }
 
   for (let sourceLineNumber = 0; sourceLineNumber < lines.length; sourceLineNumber += 1) {
     if (recordDefinitionLineNumbers.has(sourceLineNumber)) continue;
@@ -2939,6 +2950,7 @@ export function transpileAmyCore(sourceText, deps) {
           get currentBoolPackAddress() { return currentBoolPackAddress; },
           set currentBoolPackAddress(value) { currentBoolPackAddress = value; },
           isStaticLocalProcCandidate: (name) => staticLocalProcCandidates.has(name),
+          isStaticAbiProcCandidate: (name) => staticAbiProcCandidates.has(name),
           get hasRuntimeRamDeclarations() { return hasRuntimeRamDeclarations; },
           set hasRuntimeRamDeclarations(value) { hasRuntimeRamDeclarations = value; },
           get hasRuntimeInit() { return hasRuntimeInit; },
@@ -2991,7 +3003,8 @@ export function transpileAmyCore(sourceText, deps) {
           get currentFunction() { return currentFunction; },
           set currentFunction(value) { currentFunction = value; },
           get openedImplicitStart() { return openedImplicitStart; },
-          set openedImplicitStart(value) { openedImplicitStart = value; }
+          set openedImplicitStart(value) { openedImplicitStart = value; },
+          isStaticAbiProcCandidate: (name) => staticAbiProcCandidates.has(name)
         },
         isSupportedSourceTypeName,
         isRemovedSourceTypeName,
@@ -3739,6 +3752,18 @@ export function transpileAmyCore(sourceText, deps) {
     });
     if (!hasBareSub) {
       return { ok: false, asmBody: "", log: `on frame hook target '${onFrameHook.name}' was not found as a parameterless subroutine.` };
+    }
+  }
+
+  for (const [name, params] of staticAbiParams) {
+    for (const param of params) {
+      const info = runtimeVars.get(param.mangledName);
+      if (!info || Number.isInteger(info.address)) continue;
+      const address = reserveRam(`${name}.${param.name}`, runtimeTypeSize(param.type), `static ABI parameter ${name}.${param.name}`);
+      info.address = address;
+      param.address = address;
+      runtimeDeclarations.push(`${param.asmName} EQU ${formatHex16(address)}`);
+      hasRuntimeRamDeclarations = true;
     }
   }
 

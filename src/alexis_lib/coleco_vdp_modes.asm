@@ -214,6 +214,33 @@ AMY_FILL_MODE2_TEXT_COLOR_FULL:
     ld de,$1800
     jp FILL_VRAM
 
+; Expand a legacy 32-byte Mode 2 text color table into the active 2KB
+; color table. This matches old-devkit load_color(): each source byte
+; covers 8 character patterns (64 color bytes).
+; Input: HL = source compact color table, 32 bytes.
+AMY_LOAD_MODE2_TEXT_COLORS_32:
+    push hl
+    ld hl,($73FA)
+    ld a,l
+    out (VDP_CTRL_PORT),a
+    ld a,h
+    or $40
+    out (VDP_CTRL_PORT),a
+    pop hl
+    ld b,$20
+AMY_LOAD_MODE2_TEXT_COLORS_32_ROW:
+    ld d,(hl)
+    inc hl
+    push bc
+    ld b,$40
+    ld a,d
+AMY_LOAD_MODE2_TEXT_COLORS_32_REPEAT:
+    out (VDP_DATA_PORT),a
+    djnz AMY_LOAD_MODE2_TEXT_COLORS_32_REPEAT
+    pop bc
+    djnz AMY_LOAD_MODE2_TEXT_COLORS_32_ROW
+    ret
+
 ; Duplicate the first pattern third into the second and third thirds using the
 ; original lib4ksa _duplicate_pattern approach and the 32-byte scratch buffer.
 AMY_DUPLICATE_PATTERN_THIRDS:

@@ -1,0 +1,647 @@
+project "Explosion"
+cartridge "EXPLOSION/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion sample.
+' Original source: old-projects-sdcc-z80/sdcctest/explosion/
+' Board cells are signed like the original C char arrays:
+'   positive = player, negative = CPU, zero = empty.
+' Keep units separate:
+'   Col/Row are board-cell coordinates, TileX/TileY are tile coordinates,
+'   SpriteX/SpriteY are pixel coordinates.
+
+const BoardTileX = 8
+const BoardTileY = 4
+const PlayerOwner = 1
+const CpuOwner = 2
+const MaxEval = 32000
+
+i8 Board[64]
+i8 SimBoard[64]
+u8 CursorX = 0
+u8 CursorY = 0
+u8 OldX = 0
+u8 OldY = 0
+u8 Row = 0
+u8 Col = 0
+u8 CellIndex = 0
+i8 CellValue = 0
+i8 FrameValue = 0
+u8 FrameIndex = 0
+u8 FrameOffset = 0
+u8 CellFrame[4]
+u8 CellCount = 0
+u8 Threshold = 0
+u8 CurrentOwner = 1
+u8 Exploded = 0
+u8 OpponentFound = 0
+u8 CpuTry = 0
+u8 BestIndex = 0
+u8 SimET = 0
+u8 EvalHit = 0
+i16 EvalScore = 0
+i16 BestScore = 0
+u8 Tmp = 0
+u8 TmpX = 0
+u8 TmpY = 0
+u8 SpriteX = 0
+u8 SpriteY = 0
+u8 WinFlag = 0
+
+' Original SDCC sprites: two layered arrow sprites plus one explosion sprite.
+data ExplosionSprites bytes
+  $03,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$03,$00,$00,$00
+  $00,$80,$40,$20,$10,$08,$04,$02,$01,$0E,$48,$A4,$24,$12,$12,$0C
+  $00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$F0,$B0,$18,$18,$0C,$0C,$00
+  $80,$20,$58,$36,$2D,$1F,$17,$0F,$0F,$17,$1F,$2D,$36,$58,$20,$80
+  $01,$04,$1A,$6C,$B4,$F8,$E8,$F0,$F0,$E8,$F8,$B4,$6C,$1A,$04,$01
+end data
+
+' Original board tile graphics, matching change_pattern(128,CASE_PATTERN,26).
+data ExplosionCasePattern bytes
+  $00,$00,$00,$00,$00,$00,$03,$03,$01,$01,$01,$01,$01,$01,$81,$81
+  $03,$00,$00,$00,$00,$00,$00,$FF,$81,$01,$01,$01,$01,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$01,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$03,$03,$01,$01,$01,$01,$01,$01,$81,$81
+  $03,$00,$00,$00,$00,$00,$00,$FF,$81,$01,$39,$39,$39,$01,$01,$FF
+  $01,$01,$39,$39,$39,$01,$01,$01,$00,$00,$38,$38,$38,$00,$00,$FF
+  $00,$00,$38,$38,$38,$00,$03,$03,$01,$01,$39,$39,$39,$01,$81,$81
+  $03,$00,$38,$38,$38,$00,$00,$FF,$81,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$38,$38,$01,$01,$39,$39,$39,$01,$39,$39
+  $38,$00,$38,$38,$38,$00,$00,$FF,$39,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$3B,$03,$3B,$38,$01,$01,$39,$39,$B9,$81,$B9,$39
+  $3B,$03,$3B,$38,$38,$00,$00,$FF,$B9,$81,$B9,$39,$39,$01,$01,$FF
+end data
+
+' Original empty tile graphics, matching change_pattern(154,EMPTY_PATTERN,4).
+data ExplosionEmptyPattern bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$01,$01,$01,$01,$01,$01,$01,$FF
+end data
+
+' Original color fills: fill_color(128,$19,26), fill_color(154,$1E,4), fill_color(158,$14,26).
+data ExplosionPlayerColors bytes
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+  $19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19
+end data
+
+data ExplosionEmptyColors bytes
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+end data
+
+data ExplosionCpuColors bytes
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+  $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14
+end data
+
+' Original spaces[] frame table: 17 board-value frames, each a 2x2 tile frame.
+data ExplosionSpaces bytes
+  $96,$97,$98,$99,$96,$97,$94,$95,$92,$93,$94,$95,$8E,$8F,$90,$91
+  $84,$8C,$8D,$87,$88,$89,$8A,$8B,$84,$85,$86,$87,$80,$81,$82,$83
+  $9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9
+  $A2,$AA,$AB,$A5,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B2,$B3
+  $B4,$B5,$B6,$B7
+end data
+
+sub start:
+  tile screen
+  sprites 16x16
+  sprites simple
+  define chars ExplosionCasePattern at 128 count 26
+  define chars ExplosionEmptyPattern at 154 count 4
+  define chars ExplosionCasePattern at 158 count 26
+  define colors ExplosionPlayerColors at 128 count 26
+  define colors ExplosionEmptyColors at 154 count 4
+  define colors ExplosionCpuColors at 158 count 26
+  define sprites ExplosionSprites at 0
+  set sound table ExplosionSoundTable areas 1
+  cls
+  print centered at 1, "EXPLOSION"
+  print centered at 3, "NEWCOLECO SDCC PORT"
+  print at 3,6, "ADD TO YOUR CELLS."
+  print at 3,8, "OVERLOAD SENDS ENERGY"
+  print at 3,9, "TO NEIGHBOURS."
+  print at 3,12, "YOU: BLUE  CPU: ORANGE"
+  print centered at 20, "PRESS FIRE"
+  screen on
+  pause until press
+  wait no fire
+  setup_game
+  goto player_turn
+end sub
+
+sub setup_game:
+  cls
+  print centered at 1, "EXPLOSION"
+  print centered at 22, "D-PAD MOVE  FIRE SELECT"
+  for CellIndex = 0 to 63
+    Board[CellIndex] = 0
+  next
+  Board[0] = 1
+  Board[7] = 1
+  Board[56] = -1
+  Board[63] = -1
+  CursorX = 0
+  CursorY = 0
+  clear sprites
+  set sprite count 3
+  hide_explosion
+  draw_board
+  draw_cursor
+  return
+end sub
+
+sub player_turn:
+  CurrentOwner = PlayerOwner
+  print centered at 2, "TURN: PLAYER"
+  draw_cursor
+player_loop:
+  OldX = CursorX
+  OldY = CursorY
+  if joypad(1).left then
+    if CursorX > 0 then CursorX -= 1
+  end if
+  if joypad(1).right then
+    if CursorX < 7 then CursorX += 1
+  end if
+  if joypad(1).up then
+    if CursorY > 0 then CursorY -= 1
+  end if
+  if joypad(1).down then
+    if CursorY < 7 then CursorY += 1
+  end if
+  if OldX != CursorX goto player_cursor_changed
+  if OldY != CursorY goto player_cursor_changed
+  goto player_cursor_done
+player_cursor_changed:
+  draw_cursor
+player_cursor_done:
+  if joypad(1).button1 then goto player_fire
+  wait 4 frames
+  goto player_loop
+player_fire:
+  wait no fire
+  Col = CursorX
+  Row = CursorY
+  make_index
+  CellValue = Board[CellIndex]
+  if signed CellValue < 0 goto player_loop
+  hide_cursor
+  add_one_at_index
+  resolve_explosions
+  draw_board
+  if WinFlag = 1 goto player_wins
+  goto cpu_turn
+  return
+player_wins:
+  print centered at 20, "YOU WIN"
+  play sound 1
+  pause until press
+  wait no fire
+  setup_game
+  goto player_turn
+  return
+end sub
+
+sub cpu_turn:
+  CurrentOwner = CpuOwner
+  print centered at 2, "TURN: CPU   "
+  hide_cursor
+  BestScore = MaxEval
+  BestIndex = 0
+  CpuTry = 0
+cpu_scan_loop:
+  CellIndex = CpuTry
+  CellValue = Board[CellIndex]
+  if signed CellValue >= 0 goto cpu_scan_next
+  copy_board_to_sim
+  CellIndex = CpuTry
+  sim_add_one_at_index
+  sim_resolve_explosions
+  if SimET != 0 then
+    BestIndex = CpuTry
+    goto cpu_choice_ready
+  end if
+  evaluate_sim
+  if EvalScore < BestScore then
+    BestScore = EvalScore
+    BestIndex = CpuTry
+  end if
+cpu_scan_next:
+  CpuTry += 1
+  if CpuTry < 64 goto cpu_scan_loop
+cpu_choice_ready:
+  wait 20 frames
+  CellIndex = BestIndex
+  index_to_xy
+  Col = TmpX
+  Row = TmpY
+  CellIndex = BestIndex
+  add_one_at_index
+  resolve_explosions
+  draw_board
+  if WinFlag = 1 goto cpu_wins
+  goto player_turn
+  return
+cpu_wins:
+  print centered at 20, "CPU WIN"
+  play sound 1
+  pause until press
+  wait no fire
+  setup_game
+  goto player_turn
+  return
+end sub
+
+sub draw_board:
+  wait
+  nmi off
+  CellIndex = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      draw_cell
+      CellIndex += 1
+    next
+  next
+  nmi on
+  return
+end sub
+
+sub draw_cell:
+  if Col > 7 then return
+  if Row > 7 then return
+  CellValue = Board[CellIndex]
+  FrameValue = CellValue + 8
+  if signed FrameValue < 0 then FrameValue = 0
+  if signed FrameValue > 16 then FrameValue = 16
+  FrameIndex = FrameValue
+  FrameOffset = FrameIndex << 2
+  CellFrame[0] = ExplosionSpaces[FrameOffset]
+  Tmp = FrameOffset + 1
+  CellFrame[1] = ExplosionSpaces[Tmp]
+  Tmp = FrameOffset + 2
+  CellFrame[2] = ExplosionSpaces[Tmp]
+  Tmp = FrameOffset + 3
+  CellFrame[3] = ExplosionSpaces[Tmp]
+  TmpX = BoardTileX + Col * 2
+  TmpY = BoardTileY + Row * 2
+  put CellFrame frame size 2,2 at TmpX,TmpY
+  return
+end sub
+
+sub draw_cell_safe:
+  wait
+  nmi off
+  draw_cell
+  nmi on
+  return
+end sub
+
+sub draw_cursor:
+  wait
+  SpriteX = 66 + CursorX * 16
+  SpriteY = 40 + CursorY * 16
+  set sprite 0 to SpriteY,SpriteX,0,1
+  set sprite 1 to SpriteY,SpriteX,4,15
+  update sprites from 0 count 2
+  return
+end sub
+
+sub hide_cursor:
+  wait
+  set sprite 0 y to 204
+  set sprite 1 y to 204
+  update sprites from 0 count 2
+  return
+end sub
+
+sub show_explosion:
+  wait
+  SpriteX = 64 + Col * 16
+  SpriteY = 31 + Row * 16
+  set sprite 2 to SpriteY,SpriteX,8,11
+  update sprites from 2 count 1
+  return
+end sub
+
+sub hide_explosion:
+  wait
+  set sprite 2 y to 204
+  update sprites from 2 count 1
+  return
+end sub
+
+sub make_index:
+  CellIndex = Row * 8
+  CellIndex += Col
+  return
+end sub
+
+sub index_to_xy:
+  TmpY = CellIndex / 8
+  TmpX = CellIndex & 7
+  return
+end sub
+
+sub threshold_for_current:
+  Threshold = 4
+  if Col = 0 then Threshold -= 1
+  if Col = 7 then Threshold -= 1
+  if Row = 0 then Threshold -= 1
+  if Row = 7 then Threshold -= 1
+  return
+end sub
+
+sub load_abs_cell_count:
+  CellValue = Board[CellIndex]
+  if signed CellValue < 0 then
+    CellCount = 0 - CellValue
+  else
+    CellCount = CellValue
+  end if
+  return
+end sub
+
+sub store_count_for_owner:
+  if CellCount = 0 then
+    Board[CellIndex] = 0
+    return
+  end if
+  if CurrentOwner = PlayerOwner then
+    Board[CellIndex] = CellCount
+  else
+    Board[CellIndex] = 0 - CellCount
+  end if
+  return
+end sub
+
+sub add_one_at_index:
+  load_abs_cell_count
+  CellCount += 1
+  store_count_for_owner
+  return
+end sub
+
+sub copy_board_to_sim:
+  for CellIndex = 0 to 63
+    SimBoard[CellIndex] = Board[CellIndex]
+  next
+  return
+end sub
+
+sub sim_load_abs_cell_count:
+  CellValue = SimBoard[CellIndex]
+  if signed CellValue < 0 then
+    CellCount = 0 - CellValue
+  else
+    CellCount = CellValue
+  end if
+  return
+end sub
+
+sub sim_store_count_for_owner:
+  if CellCount = 0 then
+    SimBoard[CellIndex] = 0
+    return
+  end if
+  if CurrentOwner = PlayerOwner then
+    SimBoard[CellIndex] = CellCount
+  else
+    SimBoard[CellIndex] = 0 - CellCount
+  end if
+  return
+end sub
+
+sub sim_add_one_at_index:
+  sim_load_abs_cell_count
+  CellCount += 1
+  sim_store_count_for_owner
+  return
+end sub
+
+sub sim_add_neighbor:
+  if Col > 7 then return
+  if Row > 7 then return
+  make_index
+  sim_add_one_at_index
+  return
+end sub
+
+sub sim_resolve_explosions:
+sim_resolve_again:
+  Exploded = 0
+  OpponentFound = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      make_index
+      CellValue = SimBoard[CellIndex]
+      if CellValue = 0 goto sim_scan_next_cell
+      if CurrentOwner = PlayerOwner then
+        if signed CellValue < 0 then OpponentFound = 1
+      else
+        if signed CellValue > 0 then OpponentFound = 1
+      end if
+      sim_load_abs_cell_count
+      threshold_for_current
+      if CellCount <= Threshold goto sim_scan_next_cell
+      Exploded = 1
+      CellCount -= Threshold
+      sim_store_count_for_owner
+      TmpX = Col
+      TmpY = Row
+      if TmpY > 0 then
+        Row = TmpY - 1
+        Col = TmpX
+        sim_add_neighbor
+      end if
+      if TmpX > 0 then
+        Row = TmpY
+        Col = TmpX - 1
+        sim_add_neighbor
+      end if
+      if TmpX < 7 then
+        Row = TmpY
+        Col = TmpX + 1
+        sim_add_neighbor
+      end if
+      if TmpY < 7 then
+        Row = TmpY + 1
+        Col = TmpX
+        sim_add_neighbor
+      end if
+      Row = TmpY
+      Col = TmpX
+sim_scan_next_cell:
+    next
+  next
+  if Exploded != 0 then
+    if OpponentFound != 0 goto sim_resolve_again
+  end if
+  SimET = 0
+  if OpponentFound = 0 then SimET = 1
+  return
+end sub
+
+sub evaluate_sim:
+  EvalScore = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      make_index
+      CellValue = SimBoard[CellIndex]
+      EvalScore += CellValue
+      sim_load_abs_cell_count
+      threshold_for_current
+      if signed CellValue < 0 then
+        if CellCount >= Threshold then
+          EvalScore -= 2
+          TmpX = Col
+          TmpY = Row
+          if TmpY > 0 then
+            Row = TmpY - 1
+            Col = TmpX
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          if TmpX > 0 then
+            Row = TmpY
+            Col = TmpX - 1
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          if TmpX < 7 then
+            Row = TmpY
+            Col = TmpX + 1
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          if TmpY < 7 then
+            Row = TmpY + 1
+            Col = TmpX
+            eval_player_at_threshold
+            if EvalHit != 0 then EvalScore += 10
+          end if
+          Row = TmpY
+          Col = TmpX
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+sub eval_player_at_threshold:
+  EvalHit = 0
+  if Col > 7 then return
+  if Row > 7 then return
+  make_index
+  threshold_for_current
+  CellValue = SimBoard[CellIndex]
+  if signed CellValue < 0 then return
+  if CellValue = Threshold then EvalHit = 1
+  return
+end sub
+
+sub add_neighbor:
+  if Col > 7 then return
+  if Row > 7 then return
+  make_index
+  add_one_at_index
+  return
+end sub
+
+sub resolve_explosions:
+resolve_again:
+  Exploded = 0
+  OpponentFound = 0
+  for Row = 0 to 7
+    for Col = 0 to 7
+      make_index
+      CellValue = Board[CellIndex]
+      if CellValue = 0 goto scan_next_cell
+      if CurrentOwner = PlayerOwner then
+        if signed CellValue < 0 then OpponentFound = 1
+      else
+        if signed CellValue > 0 then OpponentFound = 1
+      end if
+      load_abs_cell_count
+      threshold_for_current
+      if CellCount <= Threshold goto scan_next_cell
+      Exploded = 1
+      CellCount -= Threshold
+      store_count_for_owner
+      draw_cell_safe
+      show_explosion
+      play sound 1
+      wait 2 frames
+      TmpX = Col
+      TmpY = Row
+      if TmpY > 0 then
+        Row = TmpY - 1
+        Col = TmpX
+        add_neighbor
+      end if
+      if TmpX > 0 then
+        Row = TmpY
+        Col = TmpX - 1
+        add_neighbor
+      end if
+      if TmpX < 7 then
+        Row = TmpY
+        Col = TmpX + 1
+        add_neighbor
+      end if
+      if TmpY < 7 then
+        Row = TmpY + 1
+        Col = TmpX
+        add_neighbor
+      end if
+      Row = TmpY
+      Col = TmpX
+scan_next_cell:
+    next
+  next
+  if Exploded != 0 then
+    if OpponentFound != 0 goto resolve_again
+  end if
+  hide_explosion
+  WinFlag = 0
+  if OpponentFound = 0 then WinFlag = 1
+  return
+end sub
+
+asm {
+ExplosionSoundTable:
+    dw ExplosionPop,$702B
+
+ExplosionPop:
+    db $40,$A0,$11,$01
+    db $40,$1C,$61,$01
+    db $40,$2C,$B1,$01
+    db $40,$2E,$D1,$01
+    db $50
+}

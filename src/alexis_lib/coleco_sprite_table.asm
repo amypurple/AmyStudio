@@ -37,40 +37,30 @@ AMY_CLEAR_SPRITES_LOOP:
 ;   - AMY_SPRITE_COUNT = number of active entries
 ;   - AMY_SPRITE_TABLE = 32 * 4 byte shadow table
 AMY_UPDATE_SPRITES:
-    ld hl,AMY_SPRITE_COUNT
-    ld a,(hl)
-    or a
-    jr nz,AMY_UPDATE_SPRITES_BEGIN
-    ld a,$00
-    out (VDP_CTRL_PORT),a
-    ld a,$5B
-    out (VDP_CTRL_PORT),a
-    ld a,$D0
-    out (VDP_DATA_PORT),a
-    ret
-AMY_UPDATE_SPRITES_BEGIN:
+    ld a,(AMY_SPRITE_COUNT)
     ld e,a
-    ld a,$00
+    xor a
     out (VDP_CTRL_PORT),a
     ld a,$5B
     out (VDP_CTRL_PORT),a
+    ld a,e
+    or a
+    jr z,AMY_UPDATE_SPRITES_TERMINATOR
+    push bc
+    ld c,VDP_DATA_PORT
     ld hl,AMY_SPRITE_TABLE
 AMY_UPDATE_SPRITES_LOOP:
-    ld a,(hl)
-    out (VDP_DATA_PORT),a
-    inc hl
-    ld a,(hl)
-    out (VDP_DATA_PORT),a
-    inc hl
-    ld a,(hl)
-    out (VDP_DATA_PORT),a
-    inc hl
+    outi
+    outi
+    outi
     ld a,(hl)
     and $8F
-    out (VDP_DATA_PORT),a
+    out (c),a
     inc hl
     dec e
     jr nz,AMY_UPDATE_SPRITES_LOOP
+    pop bc
+AMY_UPDATE_SPRITES_TERMINATOR:
     ld a,$D0
     out (VDP_DATA_PORT),a
     ret

@@ -1,0 +1,455 @@
+project "Space Trainer"
+cartridge "SPACE TRAINER/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Amy port of Amy Bienvenu / NewColeco's old SDCC Space Trainer sample.
+' Original source: old-projects-sdcc-z80/sdcctest/spacetr/
+' Two-player inertia, bonus bubble, score race, original BIOS sound tables,
+' 24-orientation ship sprites, and keypad/fire thrust behavior.
+
+const MinX = 16
+const MinY = 16
+const MaxX = 224
+const MaxY = 160
+const ReduceSpeed = 0.03125
+const BubbleBasePattern = 96
+const BubbleAltPattern = 112
+const WinScore = 10000
+
+record Ship:
+  ufixed X
+  ufixed Y
+  fixed VX
+  fixed VY
+  u8 Orient
+  u16 Score
+end record
+
+u8 I = 0
+u8 Pad1 = 0
+u8 Pad2 = 0
+Ship Ships[2]
+
+u8 BubbleX = 0
+u8 BubbleY = 0
+u8 BubbleFrame = 0
+i8 BubbleDir = 4
+i16 BubbleTimer = 0
+fixed StepX = 0
+fixed StepY = 0
+fixed TempFixed = 0
+u8 Tmp = 0
+u8 SpritePattern = 0
+u8 DeltaX = 0
+u8 DeltaY = 0
+
+data SpaceTrainerSinX words
+  $0000,$0042,$007F,$00B5,$00DD,$00F7,$0100,$00F7
+  $00DD,$00B5,$007F,$0042,$0000,$FFBD,$FF80,$FF4A
+  $FF22,$FF08,$FF00,$FF08,$FF22,$FF4A,$FF80,$FFBD
+end data
+
+data SpaceTrainerSinY words
+  $FF00,$FF08,$FF22,$FF4A,$FF80,$FFBD,$0000,$0042
+  $007F,$00B5,$00DD,$00F7,$0100,$00F7,$00DD,$00B5
+  $007F,$0042,$0000,$FFBD,$FF80,$FF4A,$FF22,$FF08
+end data
+
+data SpaceTrainerSpritePatterns bytes
+  $01,$01,$03,$03,$07,$07,$0F,$0F,$1F,$1F,$0F,$27,$33,$19,$0C,$00
+  $80,$80,$C0,$C0,$E0,$E0,$F0,$F0,$F8,$F8,$F0,$E4,$CC,$98,$30,$00
+  $00,$00,$01,$03,$03,$07,$0F,$1F,$1F,$0F,$4F,$27,$27,$12,$00,$00
+  $60,$40,$E0,$E0,$E0,$E0,$E0,$F0,$F0,$F0,$F0,$E0,$88,$10,$60,$00
+  $00,$00,$00,$01,$07,$0F,$1F,$1F,$5F,$4F,$4F,$4F,$0E,$00,$03,$00
+  $00,$30,$70,$F0,$F0,$F0,$F0,$F0,$F0,$E0,$F0,$E0,$00,$20,$E0,$00
+  $00,$00,$00,$00,$03,$1F,$5F,$DF,$DF,$5F,$5F,$1F,$0C,$00,$07,$00
+  $00,$00,$08,$BC,$F8,$F8,$F0,$F0,$F0,$F0,$E0,$E0,$80,$00,$80,$00
+  $00,$00,$00,$00,$01,$4F,$4F,$DF,$9F,$1F,$1F,$1F,$03,$10,$1E,$02
+  $00,$00,$00,$00,$7E,$FC,$FC,$F8,$F0,$F0,$E0,$C0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$27,$4F,$CF,$1F,$1F,$3F,$1F,$07,$23,$38,$0C,$00
+  $00,$00,$00,$00,$A0,$FE,$FF,$FC,$FC,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$18,$33,$67,$4F,$1F,$3F,$3F,$1F,$4F,$67,$33,$18,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$FC,$FF,$FF,$FC,$F0,$C0,$00,$00,$00,$00
+  $00,$04,$18,$21,$07,$1F,$3F,$1F,$1F,$4F,$4F,$27,$10,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F8,$FC,$FC,$FF,$FD,$80,$00,$00,$00,$00
+  $00,$0F,$00,$01,$1F,$1F,$5F,$4F,$4F,$4F,$6F,$05,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F0,$F0,$F8,$F8,$FC,$FE,$FE,$00,$00,$00,$00
+  $01,$07,$00,$0F,$1F,$5F,$4F,$4F,$5F,$0F,$0F,$03,$00,$00,$00,$00
+  $80,$C0,$00,$E0,$E0,$E0,$F0,$F0,$F8,$F0,$F8,$F8,$3C,$08,$00,$00
+  $01,$00,$00,$6F,$4F,$4F,$DF,$1F,$1F,$1F,$07,$03,$00,$00,$00,$00
+  $80,$E0,$00,$80,$E0,$E0,$E0,$F0,$E0,$F0,$F0,$F0,$F0,$70,$10,$00
+  $00,$00,$32,$27,$67,$4F,$1F,$1F,$1F,$0F,$07,$03,$01,$01,$00,$00
+  $40,$60,$10,$80,$E0,$F0,$F0,$F0,$F0,$E0,$F0,$E0,$E0,$E0,$60,$40
+  $00,$0C,$19,$33,$27,$0F,$1F,$1F,$0F,$0F,$07,$07,$03,$03,$01,$01
+  $00,$30,$98,$CC,$E4,$F0,$F8,$F8,$F0,$F0,$E0,$E0,$C0,$C0,$80,$80
+  $00,$06,$08,$11,$07,$0F,$0F,$0F,$0F,$07,$07,$07,$07,$07,$02,$06
+  $00,$00,$48,$E4,$E4,$F2,$F0,$F8,$F8,$F0,$E0,$C0,$C0,$80,$00,$00
+  $00,$07,$04,$00,$07,$0F,$07,$0F,$0F,$0F,$0F,$0F,$0F,$0E,$0C,$00
+  $00,$C0,$00,$70,$F2,$F2,$F2,$FA,$F8,$F8,$F0,$E0,$80,$00,$00,$00
+  $00,$01,$00,$01,$07,$07,$0F,$0F,$0F,$0F,$1F,$1F,$3D,$10,$00,$00
+  $00,$E0,$00,$30,$F8,$FA,$FA,$FB,$FB,$FA,$F8,$C0,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$07,$0F,$0F,$1F,$3F,$3F,$7E,$00,$00,$00,$00
+  $40,$78,$08,$C0,$F8,$F8,$F8,$F9,$FB,$F2,$F2,$80,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$0F,$3F,$3F,$FF,$7F,$05,$00,$00,$00,$00
+  $00,$30,$1C,$C4,$E0,$F8,$FC,$F8,$F8,$F3,$F2,$E4,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$0F,$3F,$FF,$FF,$3F,$0F,$03,$00,$00,$00,$00
+  $00,$00,$18,$CC,$E6,$F2,$F8,$FC,$FC,$F8,$F2,$E6,$CC,$18,$00,$00
+  $00,$00,$00,$00,$01,$BF,$FF,$3F,$3F,$1F,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$08,$E4,$F2,$F2,$F8,$F8,$FC,$F8,$E0,$84,$18,$20,$00
+  $00,$00,$00,$00,$7F,$7F,$3F,$1F,$1F,$0F,$0F,$07,$03,$00,$00,$00
+  $00,$00,$00,$00,$A0,$F6,$F2,$F2,$F2,$FA,$F8,$F8,$80,$00,$F0,$00
+  $00,$00,$10,$3C,$1F,$1F,$0F,$1F,$0F,$0F,$07,$07,$07,$00,$03,$01
+  $00,$00,$00,$00,$C0,$F0,$F0,$FA,$F2,$F2,$FA,$F8,$F0,$00,$E0,$80
+  $00,$08,$0E,$0F,$0F,$0F,$0F,$07,$0F,$07,$07,$07,$01,$00,$07,$01
+  $00,$00,$00,$00,$C0,$E0,$F8,$F8,$F8,$FB,$F2,$F2,$F6,$00,$00,$80
+  $02,$06,$07,$07,$07,$0F,$07,$0F,$0F,$0F,$0F,$07,$01,$08,$06,$02
+  $00,$00,$80,$80,$C0,$E0,$F0,$F8,$F8,$F8,$F2,$E6,$E4,$4C,$00,$00
+  $00,$00,$00,$00,$01,$07,$06,$0D,$0D,$06,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$60,$B0,$B0,$60,$E0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$07,$0F,$0F,$07,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$80,$70,$70,$80,$E0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$07,$1F,$1F,$07,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$F8,$DC,$DC,$F8,$E0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$1F,$3B,$3B,$1F,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$E0,$F8,$F8,$E0,$E0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$07,$01,$0E,$0E,$01,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$E0,$E0,$F0,$F0,$E0,$E0,$80,$00,$00,$00,$00
+end data
+
+sub start:
+  tile screen
+  sprites 16x16
+  sprites simple
+  define sprites SpaceTrainerSpritePatterns at 0
+  set sound table SpaceTrainerSoundTable areas 3
+  setup_title
+  setup_game
+  play sound 2
+  play sound 3
+  goto game_loop
+end sub
+
+sub setup_title:
+  cls
+  print centered at 3, "SPACE TRAINER"
+  print centered at 5, "OLD SDCC DEVKIT PORT"
+  print at 3,8, "LEFT/RIGHT ROTATE SHIPS."
+  print at 3,10, "FIRE OR KEYPAD THRUSTS."
+  print at 3,12, "COLLECT THE MOVING BUBBLE."
+  print at 3,15, "FIRST TO 10000 WINS."
+  print centered at 20, "PRESS FIRE"
+  screen on
+  pause until press
+  wait no fire
+  screen off
+  cls
+  return
+end sub
+
+sub setup_game:
+  clear sprites
+  set sprite count 4
+  Ships[0].Score = 0
+  Ships[1].Score = 0
+  Ships[0].X = 16
+  Ships[0].Y = 16
+  Ships[1].X = 224
+  Ships[1].Y = 160
+  Ships[0].VX = 0
+  Ships[0].VY = 0
+  Ships[1].VX = 0
+  Ships[1].VY = 0
+  Ships[0].Orient = random(0,23)
+  Ships[1].Orient = random(0,23)
+  init_stars
+  init_bubble
+  show_score
+  update_ships
+  update sprites
+  screen on
+  return
+end sub
+
+sub init_stars:
+  for I = 0 to 59
+    Tmp = random(2,29)
+    put char 46 at Tmp,random(2,21)
+  next
+  return
+end sub
+
+sub init_bubble:
+  BubbleDir = random(0,1)
+  if BubbleDir = 0 then
+    BubbleDir = -4
+  else
+    BubbleDir = 4
+  end if
+  BubbleX = random(16,224)
+  BubbleY = random(16,160)
+  BubbleFrame = BubbleBasePattern
+  BubbleTimer = 600
+  set sprite 2 to BubbleY,BubbleX,BubbleFrame,7
+  return
+end sub
+
+sub game_loop:
+SpaceTrainer_GameLoop:
+  wait 2 frames
+  update_ships
+  update_bubble
+  check_bubble
+  update sprites
+  update_player1
+  update_player2
+  if Ships[0].Score >= WinScore goto game_over
+  if Ships[1].Score >= WinScore goto game_over
+  goto SpaceTrainer_GameLoop
+  return
+end sub
+
+sub update_player1:
+  Pad1 = joypad(1)
+  if joypad(1).right then
+    Ships[0].Orient += 1
+    if Ships[0].Orient > 23 then Ships[0].Orient = 0
+  end if
+  if joypad(1).left then
+    if Ships[0].Orient = 0 then Ships[0].Orient = 23 else Ships[0].Orient -= 1
+  end if
+  if Pad1 & $F0 then thrust_p1
+  return
+end sub
+
+sub update_player2:
+  Pad2 = joypad(2)
+  if joypad(2).right then
+    Ships[1].Orient += 1
+    if Ships[1].Orient > 23 then Ships[1].Orient = 0
+  end if
+  if joypad(2).left then
+    if Ships[1].Orient = 0 then Ships[1].Orient = 23 else Ships[1].Orient -= 1
+  end if
+  if Pad2 & $F0 then thrust_p2
+  return
+end sub
+
+sub thrust_p1:
+  StepY = SpaceTrainerSinY[Ships[0].Orient]
+  StepX = SpaceTrainerSinX[Ships[0].Orient]
+  TempFixed = Ships[0].VY + StepY
+  if TempFixed > -8 then
+    if TempFixed < 8 then
+      Ships[0].VY = TempFixed
+      TempFixed = Ships[0].VX + StepX
+      if TempFixed > -8 then
+        if TempFixed < 8 then Ships[0].VX = TempFixed
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub thrust_p2:
+  StepY = SpaceTrainerSinY[Ships[1].Orient]
+  StepX = SpaceTrainerSinX[Ships[1].Orient]
+  TempFixed = Ships[1].VY + StepY
+  if TempFixed > -8 then
+    if TempFixed < 8 then
+      Ships[1].VY = TempFixed
+      TempFixed = Ships[1].VX + StepX
+      if TempFixed > -8 then
+        if TempFixed < 8 then Ships[1].VX = TempFixed
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub update_ships:
+  Ships[0].Y += Ships[0].VY
+  if Ships[0].Y < MinY then Ships[0].Y = MaxY
+  if Ships[0].Y > MaxY then Ships[0].Y = MinY
+  Ships[0].X += Ships[0].VX
+  if Ships[0].X < MinX then Ships[0].X = MaxX
+  if Ships[0].X > MaxX then Ships[0].X = MinX
+  SpritePattern = Ships[0].Orient << 2
+  set sprite 0 to Ships[0].Y,Ships[0].X,SpritePattern,5
+  reduce_speed_p1
+
+  Ships[1].Y += Ships[1].VY
+  if Ships[1].Y < MinY then Ships[1].Y = MaxY
+  if Ships[1].Y > MaxY then Ships[1].Y = MinY
+  Ships[1].X += Ships[1].VX
+  if Ships[1].X < MinX then Ships[1].X = MaxX
+  if Ships[1].X > MaxX then Ships[1].X = MinX
+  SpritePattern = Ships[1].Orient << 2
+  set sprite 1 to Ships[1].Y,Ships[1].X,SpritePattern,9
+  reduce_speed_p2
+  return
+end sub
+
+sub reduce_speed_p1:
+  if Ships[0].VY < 0 then
+    Ships[0].VY += ReduceSpeed
+    if Ships[0].VY > 0 then Ships[0].VY = 0
+  end if
+  if Ships[0].VY > 0 then
+    Ships[0].VY -= ReduceSpeed
+    if Ships[0].VY < 0 then Ships[0].VY = 0
+  end if
+  if Ships[0].VX < 0 then
+    Ships[0].VX += ReduceSpeed
+    if Ships[0].VX > 0 then Ships[0].VX = 0
+  end if
+  if Ships[0].VX > 0 then
+    Ships[0].VX -= ReduceSpeed
+    if Ships[0].VX < 0 then Ships[0].VX = 0
+  end if
+  return
+end sub
+
+sub reduce_speed_p2:
+  if Ships[1].VY < 0 then
+    Ships[1].VY += ReduceSpeed
+    if Ships[1].VY > 0 then Ships[1].VY = 0
+  end if
+  if Ships[1].VY > 0 then
+    Ships[1].VY -= ReduceSpeed
+    if Ships[1].VY < 0 then Ships[1].VY = 0
+  end if
+  if Ships[1].VX < 0 then
+    Ships[1].VX += ReduceSpeed
+    if Ships[1].VX > 0 then Ships[1].VX = 0
+  end if
+  if Ships[1].VX > 0 then
+    Ships[1].VX -= ReduceSpeed
+    if Ships[1].VX < 0 then Ships[1].VX = 0
+  end if
+  return
+end sub
+
+sub update_bubble:
+  BubbleFrame += BubbleDir
+  if BubbleFrame < BubbleBasePattern then BubbleFrame = BubbleAltPattern
+  if BubbleFrame > BubbleAltPattern then BubbleFrame = BubbleBasePattern
+  set sprite 2 pattern to BubbleFrame
+  BubbleTimer -= 10
+  if BubbleTimer <= 0 then init_bubble
+  return
+end sub
+
+sub check_bubble:
+  if Ships[0].X > BubbleX then
+    DeltaX = Ships[0].X - BubbleX
+  else
+    DeltaX = BubbleX - Ships[0].X
+  end if
+  if DeltaX < 15 then
+    if Ships[0].Y > BubbleY then
+      DeltaY = Ships[0].Y - BubbleY
+    else
+      DeltaY = BubbleY - Ships[0].Y
+    end if
+    if DeltaY < 15 then
+      Ships[0].Score += BubbleTimer
+      play sound 1
+      init_bubble
+      show_score
+    end if
+  end if
+
+  if Ships[1].X > BubbleX then
+    DeltaX = Ships[1].X - BubbleX
+  else
+    DeltaX = BubbleX - Ships[1].X
+  end if
+  if DeltaX < 15 then
+    if Ships[1].Y > BubbleY then
+      DeltaY = Ships[1].Y - BubbleY
+    else
+      DeltaY = BubbleY - Ships[1].Y
+    end if
+    if DeltaY < 15 then
+      Ships[1].Score += BubbleTimer
+      play sound 1
+      init_bubble
+      show_score
+    end if
+  end if
+  return
+end sub
+
+sub show_score:
+  print at 3,1, "     "
+  print Ships[0].Score at 3,1 digits 5
+  print at 24,1, "     "
+  print Ships[1].Score at 24,1 digits 5
+  return
+end sub
+
+sub game_over:
+  mute all
+  cls
+  clear sprites
+  update sprites
+  if Ships[0].Score >= WinScore then
+    print centered at 8, "PLAYER 1 WINS"
+  else
+    print centered at 8, "PLAYER 2 WINS"
+  end if
+  print centered at 12, "PRESS FIRE"
+  pause until press
+  wait no fire
+  setup_title
+  setup_game
+  play sound 2
+  play sound 3
+  goto game_loop
+  return
+end sub
+
+asm {
+SpaceTrainerSoundTable:
+    dw SpaceTrainerBeep,$702B
+    dw SpaceTrainerMusicA,$7035
+    dw SpaceTrainerMusicB,$703F
+
+SpaceTrainerBeep:
+    db $43,$00,$72,$05,$11,$90,$F3,$11
+    db $50
+
+SpaceTrainerMusicA:
+    db $80,$A6,$82,$15
+    db $A3
+    db $80,$A6,$92,$0C
+    db $83,$38,$42,$0C,$11,$40,$1A,$12
+    db $83,$38,$42,$0C,$11,$40,$1A,$12
+    db $80,$1A,$92,$18
+    db $83,$38,$42,$0C,$11,$40,$1A,$12
+    db $98
+
+SpaceTrainerMusicB:
+    db $FE,$FE,$FE,$FE,$FE,$FE,$EC
+    db $C1,$38,$C0,$02,$CC,$FA
+    db $C1,$38,$B0,$02,$CC,$FA
+    db $C1,$38,$A0,$02,$CC,$FA
+    db $C1,$38,$90,$02,$CC,$FA
+    db $C1,$38,$80,$02,$CC,$FA
+    db $C1,$38,$70,$02,$CC,$FA
+    db $C0,$38,$60,$24
+    db $C0,$32,$50,$18
+    db $C2,$43,$50,$54,$1A,$AC
+    db $FE,$FE,$FE,$E6
+    db $C1,$43,$C0,$02,$CC,$FC
+    db $C1,$43,$B0,$02,$CC,$FC
+    db $C1,$43,$A0,$02,$CC,$FC
+    db $C1,$43,$90,$02,$CC,$FC
+    db $C1,$43,$80,$02,$CC,$FC
+    db $C1,$43,$70,$02,$CC,$FC
+    db $C0,$38,$60,$24
+    db $C0,$32,$50,$18
+    db $C2,$38,$50,$54,$1A,$AC
+    db $FE,$FE,$FE,$E6
+    db $D8
+}

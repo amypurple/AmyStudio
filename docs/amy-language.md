@@ -688,6 +688,13 @@ if Ready == 1 then Score = 42
 if Ready == 1 then StartRound
 ```
 
+One-line `elseif` / `else` chains are supported when each branch contains one inline statement:
+
+```basic
+if Cell = CpuPiece then Score += 5 elseif Cell = HumanPiece then Score -= 5
+if A = 1 then return 10 elseif A = 2 then return 20 else return 30
+if Key = 1 then goto Menu elseif Key = 2 then goto Game else goto Done
+```
 Legacy machine-style branch (still valid):
 
 ```basic
@@ -1459,6 +1466,7 @@ keeps the usual name-table clear behavior.
 
 ```basic
 print at X,Y, "TEXT"
+print at X,Y "TEXT"        ' BASIC shorthand: comma before the first string is optional
 print Counter at X,Y digits 3      ' type inferred
 print Counter at X,Y width 3       ' right-aligned with pad tiles instead of leading zeroes
 print Score at X,Y digits 5
@@ -1492,6 +1500,7 @@ Explicit-position `print` uses `X,Y`; centered `print` takes only `Y` because
 Amy computes `X`.
 
 Dense `print at X,Y, ...` note:
+- When the first printed item is a string, Amy also accepts the natural BASIC form `print at X,Y "TEXT"`; following items still use commas.
 - Amy treats mixed-item `print at` as a source-level convenience and lowering feature
 - it is not meant to imply a heavy runtime `printf` interpreter
 - the intended implementation model is compile-time expansion into the ordinary underlying text and numeric print helpers

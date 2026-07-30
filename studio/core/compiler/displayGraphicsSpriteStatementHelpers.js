@@ -66,7 +66,9 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE1_TEXT"] };
   }
 
-  if (/^graphics\s+mode\s+2\s+text$/i.test(line)) {
+  if (/^graphics\s+mode\s+2\s+text$/i.test(line)
+    || /^mode\s+2\s+screen$/i.test(line)
+    || /^graphics\s+mode\s+2\s+screen$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE2_TEXT"] };
   }
 
@@ -126,7 +128,7 @@ export function handleDisplayGraphicsSpriteStatement({
   }
 
   if (/^screen\s+on$/i.test(line)) {
-    return { ok: true, handled: true, lines: [`    call ${preferScreenOnNoNmi ? "AMY_SCREEN_ON_NO_NMI" : "AMY_SCREEN_ON_NMI"}`] };
+    return { ok: true, handled: true, lines: ["    call AMY_SCREEN_ON_NMI"] };
   }
 
   const setSpritePatternTable = line.match(/^set\s+sprite\s+pattern\s+table\s+vram\.(pattern|spr_pat)$/i);
@@ -205,8 +207,18 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: [...loadColor, "    call AMY_FILL_MODE2_TEXT_COLOR_FULL"] };
   }
 
-  if (/^duplicate\s+mode\s*2\s+text\s+pattern\s+thirds$/i.test(line) || /^duplicate\s+mode\s*2\s+text\s+patterns$/i.test(line)) {
+  if (/^duplicate\s+mode\s*2\s+patterns$/i.test(line)
+    || /^duplicate\s+mode\s*2\s+pattern\s+thirds$/i.test(line)
+    || /^duplicate\s+mode\s*2\s+text\s+pattern\s+thirds$/i.test(line)
+    || /^duplicate\s+mode\s*2\s+text\s+patterns$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_DUPLICATE_PATTERN_THIRDS"] };
+  }
+
+  if (/^duplicate\s+mode\s*2\s+colors$/i.test(line)
+    || /^duplicate\s+mode\s*2\s+color\s+thirds$/i.test(line)
+    || /^duplicate\s+mode\s*2\s+text\s+colors$/i.test(line)
+    || /^duplicate\s+mode\s*2\s+text\s+color\s+thirds$/i.test(line)) {
+    return { ok: true, handled: true, lines: ["    call AMY_DUPLICATE_COLOR_THIRDS"] };
   }
 
   if (/^sprites\s+8x8$/i.test(line)) {

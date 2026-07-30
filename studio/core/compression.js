@@ -28,8 +28,9 @@ const CODEC_EXTENSIONS = {
   ".raw": "raw"
 };
 
-let codecCache = null;
+let allCodecsPromise = null;
 let codecConfigModulePromise = null;
+const singleCodecPromises = new Map();
 
 function loadCodecConfigModule() {
   if (!codecConfigModulePromise) {
@@ -49,28 +50,38 @@ export function getCompressionCatalog() {
     .map((codecId) => ({ codecId, ...CODEC_CATALOG[codecId] }));
 }
 
-export async function getCodecs() {
-  if (!codecCache) {
-    codecCache = loadCodecConfigModule().then((module) => module.loadCodecs());
+async function getCodec(codecId) {
+  const runtimeCodecId = normalizeRuntimeCodecId(codecId);
+  if (runtimeCodecId === "raw") return null;
+  if (!CODEC_CATALOG[runtimeCodecId]) throw new Error(`Codec not available: ${codecId}`);
+  if (!singleCodecPromises.has(runtimeCodecId)) {
+    singleCodecPromises.set(runtimeCodecId, loadCodecConfigModule().then(async (module) => {
+      const codec = await module.loadCodec(runtimeCodecId);
+      if (!codec) throw new Error(`Codec not available: ${codecId}`);
+      return codec;
+    }));
   }
-  return codecCache;
+  return singleCodecPromises.get(runtimeCodecId);
+}
+
+export async function getCodecs() {
+  if (!allCodecsPromise) {
+    allCodecsPromise = loadCodecConfigModule().then((module) => module.loadCodecs());
+  }
+  return allCodecsPromise;
 }
 
 export async function compressBytes(codecId, bytes, options = {}) {
   const runtimeCodecId = normalizeRuntimeCodecId(codecId);
   if (runtimeCodecId === "raw") return bytes;
-  const codecs = await getCodecs();
-  const codec = codecs[runtimeCodecId];
-  if (!codec) throw new Error(`Codec not available: ${codecId}`);
+  const codec = await getCodec(runtimeCodecId);
   return codec.compress(bytes, options);
 }
 
 export async function decompressBytes(codecId, bytes, options = {}) {
   const runtimeCodecId = normalizeRuntimeCodecId(codecId);
   if (runtimeCodecId === "raw") return bytes;
-  const codecs = await getCodecs();
-  const codec = codecs[runtimeCodecId];
-  if (!codec) throw new Error(`Codec not available: ${codecId}`);
+  const codec = await getCodec(runtimeCodecId);
   return codec.decompress(bytes, options);
 }
 

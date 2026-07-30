@@ -245,6 +245,13 @@ function buildLegacyInitInstructions(caps) {
       lines.push("        ld a,h");
       lines.push("        ld (de),a");
     }
+    if (caps.needsNmi) {
+      // Keep the VBlank hook disabled until user RAM has been cleared and
+      // generated initializers have run. The NMI handler still reads VDP
+      // status, but it must not call user code against dirty RAM.
+      lines.push("        ld a,1");
+      lines.push("        ld (NO_NMI),a");
+    }
   }
   if (caps.needsSound) {
     lines.push("        ld b,6");
@@ -272,7 +279,7 @@ function splitHeaderAndCodeIncludes(paths) {
   return { headerIncludes, codeIncludes };
 }
 
-function inferRequiredCompressionIncludes(sourceText) {
+function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
   const codecToInclude = {
     zx0: "src/compression/zx0_vram.asm",
     zx7: "src/compression/zx7_vram.asm",
@@ -287,10 +294,21 @@ function inferRequiredCompressionIncludes(sourceText) {
     nibble: "src/compression/nibble_vram.asm"
   };
   const found = new Set();
+  const assetCodecByName = new Map((assetDeclarations || [])
+    .filter((asset) => asset?.name && asset?.codec)
+    .map((asset) => [
+      String(asset.name).toLowerCase(),
+      String(asset.codec).toLowerCase() === "rle" ? "mdkrle" : String(asset.codec).toLowerCase()
+    ]));
   const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
   let match;
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
+  }
+  const inferredAssetDecompressPattern = /^\s*decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
+  while ((match = inferredAssetDecompressPattern.exec(sourceText)) !== null) {
+    const codec = assetCodecByName.get(match[1].toLowerCase());
+    if (codec && codecToInclude[codec]) found.add(codecToInclude[codec]);
   }
   const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s*$/gim;
   while ((match = pictureComponentPattern.exec(sourceText)) !== null) {
@@ -324,6 +342,25 @@ function sourceHintsTinySound(sourceText) {
     || /include\s+"[^"]*(?:snddata_tiny|tinymusic|sndtiny|tiny_sound|tiny[-_ ]?music)[^"]*"/i.test(text);
 }
 
+function inferSoundAreaCount(sourceText) {
+  const codeText = String(sourceText || "").split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
+  const constants = new Map();
+  for (const match of codeText.matchAll(/^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\$[0-9A-Fa-f]+|[0-9]+)\s*$/gim)) {
+    const token = match[2];
+    const value = token.startsWith("$") ? parseInt(token.slice(1), 16) : parseInt(token, 10);
+    if (Number.isInteger(value)) constants.set(match[1].toLowerCase(), value);
+  }
+  let count = 0;
+  for (const match of codeText.matchAll(/\bset\s+sound\s+table\s+[A-Za-z_][A-Za-z0-9_]*\s+areas\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\b/gim)) {
+    const token = match[1];
+    let value = null;
+    if (/^\$[0-9A-Fa-f]+$/.test(token)) value = parseInt(token.slice(1), 16);
+    else if (/^[0-9]+$/.test(token)) value = parseInt(token, 10);
+    else value = constants.get(token.toLowerCase()) ?? null;
+    if (Number.isInteger(value) && value > count) count = value;
+  }
+  return count;
+}
 function inferRuntimeCapabilities(project, asmBody) {
   const sourceText = project.sourceText || "";
   const usesSoundApi = /\bAMY_(SET_SOUND_TABLE|PLAY_SOUND|STOP_SOUND|MUTE_ALL)\b/.test(asmBody);
@@ -359,6 +396,7 @@ function inferRuntimeCapabilities(project, asmBody) {
   const needsMusic = usesMusicApi;
   const needsTinySound = usesTinySound;
   const needsRandomSeed = usesRandom;
+  const soundAreaCount = inferSoundAreaCount(sourceText);
   const needsNmi = usesScreenOnNmi || usesHalt || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
   const needsNmiAckOnly = needsNmi && !needsControllers && !needsSound;
   return {
@@ -373,6 +411,7 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsMusic,
     needsTinySound,
     needsRandomSeed,
+    soundAreaCount,
     needsNmi,
     needsNmiAckOnly,
     usesJoypad1,
@@ -1201,8 +1240,8 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     forceTinySound,
     excludedSourcePaths: excludedRuntimeSourcePaths
   });
-  const dependencyScanText = `${project.sourceText || ""}\n${projectAsmDependencyText}`;
-  const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText);
+  const dependencyScanText = `${project.sourceText || ""}\n${asmBodyWithRuntimeInitForDependencyScan}`;
+  const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText, assetDeclarations);
   const compIncludes = [...new Set([...comps.map(normalizeAsmIncludePath), ...inferredCompression.map(normalizeAsmIncludePath)])];
 
   const lines = [];

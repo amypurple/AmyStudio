@@ -273,6 +273,10 @@ export function createProcHelpers({
     }
     startRuntimeInitInsertIndexRef.set(body.length);
     if (hasRuntimeInitRef.get()) body.push("    call AMY_INIT_RAM");
+    if (inferredMemoryCaps.needsNmi) {
+      body.push("    xor a");
+      body.push("    ld (NO_NMI),a");
+    }
     ensureProcFrame(currentProcRef.get()).insertIndex = body.length;
   }
 

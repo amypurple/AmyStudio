@@ -3,7 +3,7 @@
 ; Reads BIOS VDP register 1 shadow ($73C4) to preserve existing flags.
 ; -----------------------------------------------------------------------------
 
-; Turn screen on without changing NMI enable state.
+; Turn screen on while forcing NMI disabled.
 ; Sets VDP R1 bit 6 (screen enable), clears bit 5 (no-NMI-override).
 AMY_SCREEN_ON_NO_NMI:
     ld a,($73C4)

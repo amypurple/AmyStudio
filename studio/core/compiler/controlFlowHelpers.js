@@ -237,6 +237,79 @@ export function createControlFlowHelpers(ctx) {
     return lines;
   }
 
+  function emitUnsignedCompareBranch(lines, operator, asmLabel) {
+    if (operator === "<") lines.push(`    jp c,${asmLabel}`);
+    else if (operator === ">=") lines.push(`    jp nc,${asmLabel}`);
+    else if (operator === "<=") {
+      lines.push(`    jp c,${asmLabel}`);
+      lines.push(`    jp z,${asmLabel}`);
+    } else if (operator === ">") {
+      const doneLabel = makeGeneratedLabel("CompareDone");
+      lines.push(`    jp z,${doneLabel}`);
+      lines.push(`    jp nc,${asmLabel}`);
+      lines.push(`${doneLabel}:`);
+    } else return false;
+    return true;
+  }
+
+  function emitMixedSignedUnsignedCompareGoto(leftToken, operator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode) {
+    if (operator === "==" || operator === "!=") return null;
+    if (compareMode === "signed" || compareMode === "unsigned") return null;
+    const leftWidth = declaredTypeBitWidth(leftDeclared);
+    const rightWidth = declaredTypeBitWidth(rightDeclared);
+    if (leftWidth !== rightWidth || (leftWidth !== 8 && leftWidth !== 16)) return null;
+    const leftIsSigned = isSignedDeclaredType(leftDeclared);
+    const rightIsSigned = isSignedDeclaredType(rightDeclared);
+    if (leftIsSigned === rightIsSigned) return null;
+
+    const signedOnLeft = leftIsSigned;
+    const doneLabel = makeGeneratedLabel("MixedCompareDone");
+    const negativeIsTrue = signedOnLeft
+      ? (operator === "<" || operator === "<=")
+      : (operator === ">" || operator === ">=");
+
+    if (leftWidth === 8) {
+      const lines = [];
+      if (signedOnLeft) {
+        const loadRight = emitLoadInt8ValueInto("b", rightToken);
+        const loadLeft = emitLoadInt8ValueInto("a", leftToken);
+        if (!loadRight || !loadLeft || loadLinesClobberB(loadLeft)) return null;
+        lines.push(...loadRight, ...loadLeft, "    or a");
+        lines.push(`    jp m,${negativeIsTrue ? asmLabel : doneLabel}`);
+        lines.push("    cp b");
+      } else {
+        const loadRight = emitLoadInt8ValueInto("a", rightToken);
+        const loadLeft = emitLoadInt8ValueInto("a", leftToken);
+        if (!loadRight || !loadLeft) return null;
+        lines.push(...loadRight, "    ld b,a", "    or a");
+        lines.push(`    jp m,${negativeIsTrue ? asmLabel : doneLabel}`);
+        lines.push(...loadLeft, "    cp b");
+      }
+      if (!emitUnsignedCompareBranch(lines, operator, asmLabel)) return null;
+      lines.push(`${doneLabel}:`);
+      return lines;
+    }
+
+    const lines = [];
+    if (signedOnLeft) {
+      const loadLeft = emitLoadInt16IntoHL(leftToken);
+      const loadRight = emitLoadInt16IntoHL(rightToken);
+      if (!loadLeft || !loadRight) return null;
+      lines.push(...loadLeft, "    push hl", ...loadRight, "    ex de,hl", "    pop hl", "    ld a,h", "    or a");
+      lines.push(`    jp m,${negativeIsTrue ? asmLabel : doneLabel}`);
+      lines.push("    or a", "    sbc hl,de");
+    } else {
+      const loadRight = emitLoadInt16IntoHL(rightToken);
+      const loadLeft = emitLoadInt16IntoHL(leftToken);
+      if (!loadRight || !loadLeft) return null;
+      lines.push(...loadRight, "    push hl", ...loadLeft, "    pop de", "    ld a,d", "    or a");
+      lines.push(`    jp m,${negativeIsTrue ? asmLabel : doneLabel}`);
+      lines.push("    or a", "    sbc hl,de");
+    }
+    if (!emitUnsignedCompareBranch(lines, operator, asmLabel)) return null;
+    lines.push(`${doneLabel}:`);
+    return lines;
+  }
   function coerceSimpleLiteralForFixedCompare(token, peerDeclared) {
     if (!isFix8_8DeclaredTypeName(peerDeclared)) return token;
     const raw = String(token || "").trim();
@@ -293,10 +366,14 @@ export function createControlFlowHelpers(ctx) {
     const computedSigned = compareMode === "signed"
       || preserveSignedMixedCompare
       || (compareMode === "auto" && (isSignedDeclaredType(leftComputedDeclared) || isSignedDeclaredType(rightComputedDeclared)));
+    const promotedCompareWidth = computedMixedSignedness && compareMode === "auto"
+      ? Math.min(32, Math.max(16, computedWidth * 2))
+      : Math.max(computedWidth, 8);
     const promotedCompareDeclared = preserveSignedMixedCompare
       ? null
-      : declaredTypeForWidth(Math.max(computedWidth, 8), computedSigned);
-    const unsignedFixedVsByte = compareMode === "auto" && (
+      : declaredTypeForWidth(promotedCompareWidth, computedSigned);
+    const mixedSignedUnsignedCompare = emitMixedSignedUnsignedCompareGoto(leftToken, effectiveOperator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode);
+    if (mixedSignedUnsignedCompare) return mixedSignedUnsignedCompare;    const unsignedFixedVsByte = compareMode === "auto" && (
       isUnsignedFix8_8DeclaredTypeName(leftDeclared) && isUnsignedByteDeclaredTypeName(rightDeclared)
       || isUnsignedByteDeclaredTypeName(leftDeclared) && isUnsignedFix8_8DeclaredTypeName(rightDeclared)
     );

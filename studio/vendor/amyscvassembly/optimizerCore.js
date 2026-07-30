@@ -5185,13 +5185,19 @@ export class Z80Optimizer {
                             next2.mnemonic.toLowerCase() === 'ret' &&
                             next2.operands.length === 0;
                         if (isDirectRet || isLabelThenRet) {
-                            const jpToken = new Instruction(token.label, 'jp', token.operands, token.lineNumber);
-                            optimized.push(jpToken);
-                            i += isLabelThenRet ? 2 : 1; // consume label+RET or RET
-                            this.stats.callRetToJp++;
-                            this.stats.bytesSaved++;
-                            optimizerLog(`  CALL+RET → JP at line ${token.lineNumber}`, 'debug');
-                            continue;
+                            const callTarget = String(token.operands[0]?.value ?? token.operands[0] ?? '').toLowerCase();
+                            if (callTarget === 'amy_vram_end') {
+                                // AMY_VRAM_END consumes the CALL return address and a value saved by
+                                // AMY_VRAM_BEGIN from the stack. Tail-jumping into it corrupts the stack.
+                            } else {
+                                const jpToken = new Instruction(token.label, 'jp', token.operands, token.lineNumber);
+                                optimized.push(jpToken);
+                                i += isLabelThenRet ? 2 : 1; // consume label+RET or RET
+                                this.stats.callRetToJp++;
+                                this.stats.bytesSaved++;
+                                optimizerLog(`  CALL+RET → JP at line ${token.lineNumber}`, 'debug');
+                                continue;
+                            }
                         }
                     }
 

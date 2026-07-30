@@ -1,0 +1,264 @@
+project "Brinquitos Game"
+cartridge "BRINQUITOS/OSCAR TOLEDO/2024"
+memory "colecovision_legacy_sdcc"
+
+const MaxClouds = 4
+
+enum PlayerFrame:
+  Standing = 0
+  Jumping = 4
+  Falling = 8
+end enum
+
+const CloudPattern = 12
+
+record Cloud:
+  u8 X
+  u8 Y
+  i8 DX
+end record
+
+u8 PlayerX = 128
+u8 PlayerY = 160
+u8 PlayerFrame = 0
+u8 JumpState = 0
+u8 StandingOn = 3
+u8 WasOn = 255
+bcd digits 2 Score
+
+u8 C = 0
+u8 NextCloud = 0
+Cloud Clouds[MaxClouds]
+
+sub start:
+  screen off
+  text screen
+  backdrop sky blue
+  sprites 16x16
+  sprites simple
+  define sprites BrinquitosSprites at 0
+  set sprite count 5
+  set sound table brinquitos_snd_table areas 5
+  screen on
+  show_fun_fact
+  goto restart_game
+
+sub show_fun_fact:
+  cls
+  print centered at 1, "BRINQUITOS"
+  print at 1,4, "Oscar Toledo presented"
+  print at 1,5, "this tiny CVBasic game"
+  print at 1,6, "during an 8-bit game"
+  print at 1,7, "programming talk."
+  print at 1,10, "AtariAge, Oct 14 2024:"
+  print at 1,12, "Brinco means jump."
+  print at 1,13, "Brinquitos means"
+  print at 1,14, "little jumps."
+  print centered at 18, "PRESS FIRE"
+  pause until press
+  wait no fire
+  return
+
+sub restart_game:
+  cls
+  set text colors light green count 32
+  set text colors cyan at 6 count 2
+  clear sprites
+  set sprite count 5
+  Score = 0
+  Clouds[3].Y = 176
+  Clouds[2].Y = 126
+  Clouds[1].Y = 76
+  Clouds[0].Y = 26
+  Clouds[3].X = 128
+  Clouds[3].DX = 0
+  C = 2
+  setup_cloud
+  C = 1
+  setup_cloud
+  C = 0
+  setup_cloud
+  PlayerX = 128
+  PlayerY = 160
+  JumpState = 0
+  StandingOn = 3
+  WasOn = 255
+  play song brinquitos_music_gladiators_song
+  goto main_loop
+
+sub main_loop:
+  if JumpState >= 33 then
+    PlayerFrame = Jumping
+  elseif JumpState then
+    PlayerFrame = Falling
+  else
+    PlayerFrame = Standing
+  end if
+
+  set sprite 0 to PlayerY - 1, PlayerX - 8, PlayerFrame, 10
+
+  for C = 0 to MaxClouds - 1
+  set sprite C + 1 to Clouds[C].Y - 1, Clouds[C].X - 8, CloudPattern, 15
+  next C
+  update sprites
+
+  wait
+  print Score at 1,0
+
+  if PlayerY < 110 then
+    if JumpState = 0 then
+      PlayerY += 1
+      for C = 0 to MaxClouds - 1
+      Clouds[C].Y += 1
+      if Clouds[C].Y = 192 then
+        Clouds[C].Y = 248
+        setup_cloud
+      end if
+      next C
+    end if
+  end if
+
+  if JumpState <> 0 then
+    if JumpState < 33 then
+      if StandingOn = 255 then
+        for C = 0 to MaxClouds - 1
+        if abs(Clouds[C].X + 1 - PlayerX) < 8 then
+          if abs(Clouds[C].Y - 16 - PlayerY) < 3 then
+            JumpState = 0
+            PlayerY = Clouds[C].Y
+            PlayerY -= 16
+            StandingOn = C
+            stop sound 6
+            if WasOn <> StandingOn then
+              Score += 1
+            end if
+          end if
+        end if
+        next C
+      end if
+    end if
+  end if
+
+  for C = 0 to MaxClouds - 1
+  bounce Clouds[C].X by Clouds[C].DX between 16 and 240
+  if StandingOn = C then
+    PlayerX += Clouds[C].DX
+  end if
+  next C
+
+  if JumpState <> 0 then
+    if JumpState >= 33 then
+      JumpState -= 1
+      PlayerY -= 2
+    else
+      PlayerY += 2
+      if PlayerY = 200 then goto end_of_game
+      if PlayerY = 201 then goto end_of_game
+    end if
+  end if
+
+  if joypad(1).button1 then
+    if JumpState = 0 then
+      JumpState = 64
+      play sound 6
+      WasOn = StandingOn
+      StandingOn = 255
+    end if
+  end if
+  goto main_loop
+
+sub end_of_game:
+  play song brinquitos_music_end_song
+  print centered at 11, "G A M E  O V E R"
+  wait 240 frames
+  goto restart_game
+
+sub setup_cloud:
+  NextCloud = C
+  NextCloud += 1
+  if NextCloud = MaxClouds then
+    NextCloud = 0
+  end if
+  do
+  Clouds[C].X = random(96) * 2 + 32
+  loop while abs(Clouds[C].X + 1 - Clouds[NextCloud].X) < 64
+  Clouds[C].DX = random(2)
+  if Clouds[C].DX = 0 then
+    Clouds[C].DX = -2
+  else
+    Clouds[C].DX = 2
+  end if
+  return
+
+data BrinquitosSprites sprite16
+  ' player standing
+  "................"
+  "................"
+  "................"
+  "......XXXX......"
+  ".....XXXXXX....."
+  "....XXXXXXXXX..."
+  "...XX..XX..XX..."
+  "...XX..XX..XX..."
+  "..XXXXXXXXXXXX.."
+  ".XXXXX.XX.XXXXX."
+  "XX.X..XXXX..X.XX"
+  "XX.XX......XX.XX"
+  "XX.XXXXXXXXXX.XX"
+  "XXX..XX..XX..XXX"
+  "....XXX..XXX...."
+  "...XXXX..XXXX..."
+  ' player jumping
+  ".XX..........XX."
+  "XXX..........XXX"
+  "XXX...XXXX...XXX"
+  ".XX..XXXXXX..XX."
+  ".XX.X..XX..X.XX."
+  ".X.XX..XX..XX.X."
+  ".X.XXXXXXXXXX.X."
+  "..XXXX.XX.XXXX.."
+  "...X..XXXX..X..."
+  "...XX..XX..XX..."
+  "...XXX....XXX..."
+  "...XXXXXXXXXX..."
+  ".....XX..XX....."
+  ".....XX..XX....."
+  ".....XX..XX....."
+  "....XXX..XXX...."
+  ' player falling
+  ".XX..........XX."
+  "XXX...XXXX...XXX"
+  ".XX..XXXXXX..XX."
+  ".XX.X..XX..X.XX."
+  ".X.XX..XX..XX.X."
+  ".X.XXXXXXXXXX.X."
+  "..XXXX.XX.XXXX.."
+  "...XXXX..XXXX..."
+  "...XX......XX..."
+  "...XXX....XXX..."
+  "...XXXXXXXXXX..."
+  ".....XX..XX....."
+  ".....XX..XX....."
+  ".....XX..XX....."
+  ".....XX..XX....."
+  "....XXX..XXX...."
+  ' cloud
+  "..XXX.XXX.X....."
+  ".XXXXX.XXX.XX..."
+  ".XXXXXX.XXX.XX.."
+  "XXX..XX.XXX.XX.."
+  "XX.XXX..XXX..X.."
+  "..XXX.XX...XX..."
+  ".XXXX.XXX.XXXX.."
+  ".XXXX.XXX.XXXXX."
+  "..XXXX..XX..XX.."
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+include "@project/brinquitos-tiny-music.asm"

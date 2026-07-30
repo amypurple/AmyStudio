@@ -248,6 +248,20 @@ export function handleVramTextStatement({
     };
   }
 
+  const loadMode2TextColors = line.match(/^load\s+(?:mode\s*2|mode2)\s+text\s+colors\s+(.+)$/i);
+  if (loadMode2TextColors) {
+    const sourceName = loadMode2TextColors[1].trim();
+    const loadSource = emitLoadSourceAddressIntoHL(sourceName);
+    if (!loadSource) {
+      return { ok: false, handled: true, log: `load mode 2 text colors needs a byte source address: ${rawLine}` };
+    }
+    return {
+      ok: true,
+      handled: true,
+      lines: wrapVramUploadLines([...loadSource, "    call AMY_LOAD_MODE2_TEXT_COLORS_32"])
+    };
+  }
+
   const backdrop = line.match(/^backdrop(?:\s+color)?\s+(.+)$/i);
   if (backdrop) {
     const color = parseColecoColorNibble(backdrop[1]);

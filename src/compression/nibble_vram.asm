@@ -1,6 +1,6 @@
 ; -----------------------------------------------------------------------------
 ; Nibble decompressor to VRAM
-; Inspired by Amy/Daniel Bienvenu's legacy DAN0nibble depacker.
+; Inspired by Amy Bienvenu / NewColeco's legacy DAN0nibble depacker.
 ;
 ; Modern Studio stream layout:
 ;   u16 dataOffset   ; little-endian, relative to compressed stream start

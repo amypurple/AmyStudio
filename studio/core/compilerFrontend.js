@@ -1,6 +1,21 @@
 export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const text = sourceText || "";
   const codeText = text.split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
+  const constBytes = new Map();
+  for (const match of codeText.matchAll(/^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\$[0-9A-Fa-f]+|[0-9]+)\s*$/gim)) {
+    const valueText = match[2];
+    const value = valueText.startsWith("$") ? parseInt(valueText.slice(1), 16) : parseInt(valueText, 10);
+    if (Number.isInteger(value)) constBytes.set(match[1].toLowerCase(), value);
+  }
+  let soundAreaCount = 0;
+  for (const match of codeText.matchAll(/\bset\s+sound\s+table\s+[A-Za-z_][A-Za-z0-9_]*\s+areas\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\b/gim)) {
+    const token = match[1];
+    let value = null;
+    if (/^\$[0-9A-Fa-f]+$/.test(token)) value = parseInt(token.slice(1), 16);
+    else if (/^[0-9]+$/.test(token)) value = parseInt(token, 10);
+    else value = constBytes.get(token.toLowerCase()) ?? null;
+    if (Number.isInteger(value) && value > soundAreaCount) soundAreaCount = value;
+  }
   const usesTinySound = sourceHintsTinySound(text);
   const needsTinySound = usesTinySound;
   const usesHalt = /\bhalt\b/i.test(text);
@@ -57,6 +72,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     usesWipeWithHalt,
     usesTextScreen,
     usesGraphicsMode2Text,
+    soundAreaCount,
     needsNmi
   };
 }

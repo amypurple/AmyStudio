@@ -1,0 +1,307 @@
+cartridge "SNAKE/AMY STUDIO/2026"
+
+const WallTile = $23
+const HeadTile = $40
+const BodyTile = $4F
+const AppleTile = $2A
+const EmptyTile = $20
+const DirUp = 0
+const DirRight = 1
+const DirDown = 2
+const DirLeft = 3
+const MaxLength = 15
+
+' Player and apple state
+u8 Length = 2
+u8 Direction = DirRight
+u8 NextX = 12
+u8 NextY = 12
+u8 AppleX = 18
+u8 AppleY = 12
+u8 GrowFlag = 0
+
+' Working scratch
+u8 Scan = 0
+u8 CheckLimit = 0
+u8 DrawX = 0
+u8 DrawY = 0
+u8 OldHeadX = 0
+u8 OldHeadY = 0
+u8 TailX = 0
+u8 TailY = 0
+
+' Snake body buffers
+u8 SnakeX[15]
+u8 SnakeY[15]
+
+  text screen
+  set sound table SnakeSoundTable areas 6
+  print centered at 4, "SNAKE"
+  print centered at 7, "EAT APPLES"
+  print centered at 8, "AVOID WALLS AND YOUR TAIL"
+  print centered at 14, "PRESS FIRE TO START"
+  screen on
+  pause until press
+  wait no fire
+  reset_game
+  goto game_loop
+
+sub game_loop:
+  wait 8 frames
+  if joypad(1).up then
+    goto try_up
+  elseif joypad(1).right then
+    goto try_right
+  elseif joypad(1).down then
+    goto try_down
+  elseif joypad(1).left then
+    goto try_left
+  end if
+  goto move_snake
+
+sub try_up:
+  if Direction = DirDown then
+    goto move_snake
+  end if
+  Direction = DirUp
+  goto move_snake
+
+sub try_right:
+  if Direction = DirLeft then
+    goto move_snake
+  end if
+  Direction = DirRight
+  goto move_snake
+
+sub try_down:
+  if Direction = DirUp then
+    goto move_snake
+  end if
+  Direction = DirDown
+  goto move_snake
+
+sub try_left:
+  if Direction = DirRight then
+    goto move_snake
+  end if
+  Direction = DirLeft
+  goto move_snake
+
+sub move_snake:
+  NextX = SnakeX[0]
+  NextY = SnakeY[0]
+  if Direction = DirUp then
+    goto calc_up
+  elseif Direction = DirRight then
+    goto calc_right
+  elseif Direction = DirDown then
+    goto calc_down
+  else
+    goto calc_left
+  end if
+
+sub calc_up:
+  NextY -= 1
+  goto check_apple
+
+sub calc_right:
+  NextX += 1
+  goto check_apple
+
+sub calc_down:
+  NextY += 1
+  goto check_apple
+
+sub calc_left:
+  NextX -= 1
+
+sub check_apple:
+  GrowFlag = 0
+  if NextX = AppleX then
+    if NextY = AppleY then
+      GrowFlag = 1
+    end if
+  end if
+
+sub check_body:
+  CheckLimit = Length
+  CheckLimit -= 1
+  TailX = SnakeX[CheckLimit]
+  TailY = SnakeY[CheckLimit]
+  if GrowFlag = 0 then
+    if CheckLimit = 0 then
+      goto check_bounds
+    end if
+    CheckLimit -= 1
+  end if
+
+sub body_scan_start:
+  Scan = 1
+
+sub body_scan_loop:
+  if Scan > CheckLimit then
+    goto check_bounds
+  end if
+  if NextX = SnakeX[Scan] then
+    if NextY = SnakeY[Scan] then
+      goto game_over
+    end if
+  end if
+
+sub body_scan_next:
+  Scan += 1
+  goto body_scan_loop
+
+sub check_bounds:
+  if NextX < 1 then
+    goto game_over
+  elseif NextX > 24 then
+    goto game_over
+  elseif NextY < 5 then
+    goto game_over
+  elseif NextY > 22 then
+    goto game_over
+  end if
+  OldHeadX = SnakeX[0]
+  OldHeadY = SnakeY[0]
+  shift array SnakeX down 1
+  shift array SnakeY down 1
+  SnakeX[0] = NextX
+  SnakeY[0] = NextY
+  put char BodyTile at OldHeadX,OldHeadY
+  put char HeadTile at NextX,NextY
+  if GrowFlag then
+    if Length < MaxLength then
+      Length += 1
+      play sound 3
+      spawn_apple
+      goto update_score
+    end if
+  end if
+  goto no_grow
+
+sub no_grow:
+  put char EmptyTile at TailX,TailY
+
+sub update_score:
+  print Length at 8,1 digits 2
+  goto game_loop
+
+sub spawn_apple:
+spawn_try:
+  AppleX = random(1, 24)
+  AppleY = random(5, 22)
+  Scan = 0
+spawn_scan_loop:
+  do while Scan < Length
+    if AppleX = SnakeX[Scan] then
+      if AppleY = SnakeY[Scan] then
+        goto spawn_try
+      end if
+    end if
+    Scan += 1
+  loop
+spawn_ok:
+  put char AppleTile at AppleX,AppleY
+  return
+
+sub reset_game:
+  cls
+  print at 18,1, "SNAKE"
+  print at 1,1, "LENGTH"
+  print at 9,2, "          "
+  print at 5,3, "               "
+  draw_board
+  Length = 2
+  Direction = DirRight
+  SnakeX[0] = 12
+  SnakeY[0] = 12
+  SnakeX[1] = 11
+  SnakeY[1] = 12
+  put char HeadTile at 12,12
+  put char BodyTile at 11,12
+  print Length at 8,1 digits 2
+  spawn_apple
+  play song SnakeMusic
+  return
+
+sub draw_board:
+  for DrawX = 0 to 25
+    put char WallTile at DrawX,4
+    put char WallTile at DrawX,23
+  next
+  for DrawY = 5 to 22
+    put char WallTile at 0,DrawY
+    put char WallTile at 25,DrawY
+  next
+  return
+
+sub game_over:
+  stop song
+  play sound 4
+  print at 9,2, "GAME OVER"
+  print at 5,3, "FIRE TO RESTART"
+  pause until press
+  wait no fire
+  reset_game
+  goto game_loop
+
+asm {
+SnakeMusic:
+    dw $0001
+    db $41,$02
+    dw $0000
+
+SnakeMusicNotes:
+    db $C0,$33,$F0,$0C
+    db $81,$43,$80,$02,$66,$FD
+    db $C0,$44,$F0,$0C
+    db $81,$50,$90,$02,$66,$FC
+    db $C0,$50,$F0,$0C
+    db $81,$32,$80,$02,$66,$FE
+    db $C0,$88,$F0,$0C
+    db $81,$50,$90,$02,$66,$FC
+    db $C0,$66,$F0,$0C
+    db $81,$43,$80,$02,$66,$FD
+    db $C0,$50,$F0,$0C
+    db $81,$50,$90,$02,$66,$FC
+    db $C0,$44,$F0,$0C
+    db $81,$20,$80,$02,$66,$06
+    db $81,$30,$80,$02,$66,$10
+    db $81,$4C,$90,$02,$66,$13
+    db $C0,$2D,$F0,$0C
+    db $81,$3C,$80,$02,$66,$FD
+    db $C0,$3C,$F0,$0C
+    db $81,$4C,$90,$02,$66,$FB
+    db $C0,$4C,$F0,$0C
+    db $81,$2D,$80,$02,$66,$FD
+    db $C0,$78,$F0,$0C
+    db $81,$4C,$90,$02,$66,$FB
+    db $C0,$5A,$F0,$0C
+    db $81,$3C,$80,$02,$66,$FD
+    db $C0,$3C,$F0,$0C
+    db $81,$4C,$90,$02,$66,$FB
+    db $C0,$44,$F0,$0C
+    db $81,$2A,$80,$02,$66,$08
+    db $81,$40,$70,$02,$66,$07
+    db $81,$55,$50,$02,$66,$10
+    db $98
+
+SnakeMusicBass:
+    db $02,$43,$18,$1A,$35
+    db $18
+
+SnakeGobbleSfx:
+    db $41,$90,$22,$05,$13,$93
+    db $50
+
+SnakeWrongSfx:
+    db $43,$6B,$00,$18,$11,$20,$4C,$22
+    db $50
+
+SnakeSoundTable:
+    dw SnakeMusicNotes,$702B
+    dw SnakeMusicBass,$7035
+    dw SnakeGobbleSfx,$7053
+    dw SnakeWrongSfx,$705D
+}

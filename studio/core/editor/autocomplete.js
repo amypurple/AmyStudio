@@ -32,7 +32,12 @@ export function createAutocompleteController(ctx) {
     onScheduleInsightsRefresh
   } = ctx;
 
+  let cachedSymbolSource = null;
+  let cachedSymbolItems = [];
+
   function extractProjectAutocompleteItems(sourceText) {
+    const normalizedSource = String(sourceText || "");
+    if (normalizedSource === cachedSymbolSource) return cachedSymbolItems;
     const items = [];
     const seen = new Set();
     const pushItem = (snippet, detail) => {
@@ -40,7 +45,7 @@ export function createAutocompleteController(ctx) {
       seen.add(snippet);
       items.push({ snippet, detail });
     };
-    const lines = String(sourceText || "").split(/\r?\n/);
+    const lines = normalizedSource.split(/\r?\n/);
     for (const rawLine of lines) {
       let line = stripAmyInlineComment(rawLine).trim();
       if (!line) continue;
@@ -63,6 +68,8 @@ export function createAutocompleteController(ctx) {
         pushItem(match[1], "Label");
       }
     }
+    cachedSymbolSource = normalizedSource;
+    cachedSymbolItems = items;
     return items;
   }
 

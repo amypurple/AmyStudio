@@ -1,0 +1,219 @@
+cartridge "METEOR DODGE/AMY STUDIO/2026"
+
+' METEOR DODGE
+' Guide your ship left and right to dodge falling space rocks.
+' Survive as long as you can. 3 lives. Good luck!
+
+record Position:
+  u8 X
+  u8 Y
+end record
+
+Position Ship
+Position Meteors[3]
+u8 Lives = 3
+bcd digits 5 Score
+u8 BlinkTick = 0
+
+hitbox ShipHitbox = 3,5 size 10,10
+hitbox MeteorHitbox = 2,2 size 12,12
+
+data ShipSprite sprite16
+  ".......XX......."
+  ".......XX......."
+  "......XXXX......"
+  "......XXXX......"
+  ".....XX..XX....."
+  "....XX....XX...."
+  "...XX..XX..XX..."
+  "..XX..XXXX..XX.."
+  ".XX..XXXXXX..XX."
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXXX"
+  "XX..XXXXXXXX..XX"
+  "X....XXXXXX....X"
+  "X....XXXXXX....X"
+  "....XX....XX...."
+  "....XX....XX...."
+end data
+
+data RockSprite sprite16
+  "....XXXXXXXX...."
+  "..XXXXXXXXXXXX.."
+  ".XXXXX.X.X.XXXX."
+  "XXXX.X.X.X.X.XXX"
+  "XXX.X.X.X.X.X.XX"
+  "XXX.X.X.X.X.X.XX"
+  "XX.X.X.X.X.X.X.X"
+  "XX.X.X.X.X.X.X.X"
+  "XX.X.X.X.X.X.X.X"
+  "XX.X.X.X.X.X.X.X"
+  "XXX.X.X.X.X.X.XX"
+  "XXX.X.X.X.X.X.XX"
+  ".XXXX.X.X.X.XXX."
+  "..XXXXXXXXXXXX.."
+  "....XXXXXXXX...."
+  "................"
+end data
+
+text screen
+sprites 16x16
+sprites simple
+copy ShipSprite to vram.spr_pat
+copy RockSprite to vram $3820
+clear sprites
+set sprite count 4
+set sound table MeteorSoundTable areas 6
+screen on
+
+title_screen:
+  print centered at 5, "* METEOR DODGE *"
+  print centered at 8, "DODGE THE FALLING"
+  print centered at 9, "SPACE ROCKS!"
+  print centered at 14, "PRESS FIRE TO START"
+wait_title:
+  wait
+  if not joypad(1).button1 then goto wait_title
+release_title:
+  wait
+  if joypad(1).button1 then goto release_title
+
+start_game:
+  Ship.X = 112
+  Meteors[0].X = 48
+  Meteors[0].Y = 0
+  Meteors[1].X = 128
+  Meteors[1].Y = 64
+  Meteors[2].X = 192
+  Meteors[2].Y = 128
+  Lives = 3
+  Score = 0
+  cls
+  print at 1,0, "LIVES:"
+  print at 10,0, "SCORE:"
+  print Lives at 7,0 digits 1
+  print Score at 17,0
+  play song MeteorHumSong
+  play sound 5
+
+game_loop:
+  wait 2 frames
+
+  if joypad(1).left then
+    if Ship.X > 4 then Ship.X -= 4
+  end if
+  if joypad(1).right then
+    if Ship.X < 236 then Ship.X += 4
+  end if
+
+  Meteors[0].Y += 2
+  Meteors[1].Y += 3
+  Meteors[2].Y += 1
+
+  if Meteors[0].Y > 176 then
+    Score += 1
+    print Score at 17,0
+    Meteors[0].Y = 0
+    Meteors[0].X = random(0, 240)
+  end if
+  if Meteors[1].Y > 176 then
+    Score += 1
+    print Score at 17,0
+    Meteors[1].Y = 0
+    Meteors[1].X = random(0, 240)
+  end if
+  if Meteors[2].Y > 176 then
+    Score += 1
+    print Score at 17,0
+    Meteors[2].Y = 0
+    Meteors[2].X = random(0, 240)
+  end if
+
+  set sprite 0 to 159,Ship.X,0,15
+  set sprite 1 to Meteors[0].Y - 1,Meteors[0].X,4,8
+  set sprite 2 to Meteors[1].Y - 1,Meteors[1].X,4,9
+  set sprite 3 to Meteors[2].Y - 1,Meteors[2].X,4,7
+  update sprites
+
+  if sprite 0 hitbox ShipHitbox collides with sprite 1 hitbox MeteorHitbox then goto hit
+  if sprite 0 hitbox ShipHitbox collides with sprite 2 hitbox MeteorHitbox then goto hit
+  if sprite 0 hitbox ShipHitbox collides with sprite 3 hitbox MeteorHitbox then goto hit
+  goto game_loop
+
+hit:
+  stop song
+  play sound 6
+  Lives -= 1
+  print Lives at 7,0 digits 1
+  if Lives = 0 then goto game_over
+
+  BlinkTick = 16
+blink_loop:
+  wait 2 frames
+  set sprite 0 to 209,0,0,0
+  update sprites
+  wait 2 frames
+  set sprite 0 to 159,Ship.X,0,15
+  update sprites
+  BlinkTick -= 1
+  if BlinkTick > 0 then goto blink_loop
+
+  Meteors[0].Y = 0
+  Meteors[1].Y = 64
+  Meteors[2].Y = 128
+  play song MeteorHumSong
+  goto game_loop
+
+game_over:
+  stop song
+  set sprite 0 to 209,0,0,0
+  set sprite 1 to 209,0,0,0
+  set sprite 2 to 209,0,0,0
+  set sprite 3 to 209,0,0,0
+  update sprites
+  print centered at 8, "GAME OVER!"
+  print at 10,11, "SCORE:"
+  print Score at 17,11
+  print centered at 15, "PRESS FIRE TO RETRY"
+wait_retry:
+  wait
+  if not joypad(1).button1 then goto wait_retry
+release_retry:
+  wait
+  if joypad(1).button1 then goto release_retry
+  cls
+  goto start_game
+
+asm {
+MeteorAlert:
+    db $81,$1D,$31,$1B,$11,$FD
+    db $81,$1D,$21,$1B,$11,$FD
+    db $81,$1D,$21,$1B,$11,$FD
+    db $10
+
+MeteorCrash:
+    db $02,$06,$3C,$1F,$44
+    db $10
+
+MeteorShipHumCh1:
+    db $42,$F8,$A3,$0F,$13,$71
+    db $42,$FB,$D3,$0F,$F3,$71
+    db $18
+
+MeteorShipHumCh2:
+    db $80,$A8,$D2,$96
+    db $18
+
+MeteorHumSong:
+    dw $0001
+    db $01,$02
+    dw $0000
+
+MeteorSoundTable:
+    dw MeteorShipHumCh1,$702B
+    dw MeteorShipHumCh2,$7035
+    dw MeteorShipHumCh1,$702B
+    dw MeteorShipHumCh2,$7035
+    dw MeteorAlert,$7053
+    dw MeteorCrash,$705D
+}

@@ -5,6 +5,21 @@ function buildTranspileWarningNote(result) {
 }
 
 export function bindTopUiEvents(ctx) {
+  let sourceAutosaveTimer = 0;
+  let sourceAutosaveProject = null;
+  function flushSourceAutosave() {
+    if (!sourceAutosaveProject) return;
+    clearTimeout(sourceAutosaveTimer);
+    const project = sourceAutosaveProject;
+    sourceAutosaveProject = null;
+    saveProjectToStorage(project);
+  }
+  function scheduleSourceAutosave(project) {
+    sourceAutosaveProject = project;
+    clearTimeout(sourceAutosaveTimer);
+    sourceAutosaveTimer = setTimeout(flushSourceAutosave, 500);
+  }
+
   const {
     els,
     normalizeOptimizationLevel,
@@ -37,8 +52,11 @@ export function bindTopUiEvents(ctx) {
     getAsmViewMode,
     setAsmViewMode,
     createNewTileSetProjectFiles,
-    createNewBitmapProjectFiles
+    createNewBitmapProjectFiles,
   } = ctx;
+
+  window.addEventListener("beforeunload", flushSourceAutosave);
+
 
   els.projectName.addEventListener("input", () => {
     const project = getProject();
@@ -86,6 +104,7 @@ export function bindTopUiEvents(ctx) {
     renderExampleMeta(els.exampleSelect.value);
   });
   els.btnLoadExample.addEventListener("click", async () => {
+    flushSourceAutosave();
     const exampleId = els.exampleSelect.value;
     if (exampleId) setStatus("Loading example...");
     let example = null;
@@ -120,7 +139,7 @@ export function bindTopUiEvents(ctx) {
     setAsmViewMode("generated");
     clearCompiledArtifacts();
     refreshSourceCartridgeMeta(project.sourceText);
-    saveProjectToStorage(project);
+    scheduleSourceAutosave(project);
     updateAutocomplete();
     updateOptimizationHint();
     scheduleEditorInsightsRefresh();
@@ -783,6 +802,36 @@ export function bindStudioRuntimeEvents(ctx) {
   els.btnWavConverter.addEventListener("click", () => {
     closeTopbarMenu();
     els.wavConverterDialog.showModal();
+  });
+
+  els.btnOpenGraphicsEditors?.addEventListener("click", () => {
+    closeTopbarMenu();
+    const openEditors = ctx.openGraphicsEditorsFromProject || window.__amyStudioGraphicsEditors?.open;
+    if (typeof openEditors !== "function") {
+      setStatus("Graphics editor command is not wired in this Studio build.");
+      return;
+    }
+    openEditors();
+  });
+
+  els.btnCreateEditorsJson?.addEventListener("click", () => {
+    closeTopbarMenu();
+    const createEditors = ctx.createEditorsJsonProjectFile || window.__amyStudioGraphicsEditors?.create;
+    if (typeof createEditors !== "function") {
+      setStatus("Create editors.json command is not wired in this Studio build.");
+      return;
+    }
+    createEditors({ open: true });
+  });
+
+  els.btnScanEditorsJson?.addEventListener("click", () => {
+    closeTopbarMenu();
+    const scanEditors = ctx.scanEditorsJsonProjectFile || window.__amyStudioGraphicsEditors?.scan;
+    if (typeof scanEditors !== "function") {
+      setStatus("Scan editors.json command is not wired in this Studio build.");
+      return;
+    }
+    scanEditors({ open: true });
   });
 
   els.btnProjectAudio?.addEventListener("click", () => {

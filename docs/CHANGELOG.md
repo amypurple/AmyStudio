@@ -1,3 +1,52 @@
+## 2026-07-29 - Reversi preview-ready graphics assets
+
+- Added the historical NewColeco logo cue, originally labeled `DanielBienvenuLogoMusic`, to the Reversi v5 menu with a compact sound table and explicit mute before gameplay; its editable ASM file documents Amy Bienvenu's former legal-name attribution.
+- Added a dedicated second sound-table slot for the nine-byte disc-flip effect and trigger it once at the start of every animated piece conversion.
+
+- Added an editable Files action for embedded `.asm`, `.s`, and `.inc` project sources, including unsaved-change protection, `Ctrl+S`, and Tab insertion; saved text immediately replaces the corresponding `@project` include input.
+- Accepted `print at X,Y "TEXT"` as an unambiguous BASIC shorthand for `print at X,Y, "TEXT"`, including additional comma-separated items.
+- Added rectangular tilemap selection with `Shift+drag`, draggable selected content, floating click-to-place Copy/Cut/Paste, `Ctrl+C/X/V`, clipped edge pasting, and full undo/redo integration.
+- Added `node tools/convert-reversi-assets.mjs --project-json <export.amy.json>` to split a Reversi v5 Studio export into its canonical `.alexis` source and embedded project assets without later converter runs overwriting edited NAME tables.
+- Reworked every Reversi menu to use the original two-row `MENU` glyphs at character patterns `$08-$13`.
+- Stored the complete v1/v2, v3, v4, and v5 menu NAME tables as separate verified ZX0 project files; menu code now decompresses one screen and updates only selection parentheses.
+- Added a menu-screen tilemap editor to every Reversi project, sharing the common PATTERN and COLOR files through explicit `editors.json` references.
+- Made Files picture preview honor explicit tilemap references, so differently named NAME tables can reuse and preview a shared charset and color table.
+  - selection markers now use the available `$28/$29` parenthesis glyphs instead of missing `[` and `]` patterns
+- Converted the Reversi 768-byte NAME table, 2,048-byte PATTERN table, and 576-byte sprite-pattern table to verified ZX0 streams, while retaining the 32-byte text-mode COLOR table as raw data.
+- Standardized the project filenames as `reversi.name.zx0`, `reversi.pattern.zx0`, `reversi.color.raw`, and `reversi.sprpat.zx0`, allowing the Files browser to group the complete board and recognize its sprite patterns.
+- Updated all five Reversi versions and their graphics-editor metadata to use the same files, and added a reproducible conversion/round-trip tool.
+- Fixed picture-component detection so an explicit `.raw` codec suffix is recognized for PATTERN, COLOR, NAME, and PC files.
+- Added file-backed tilemap editing with transparent decode/recompress verification, then configured every Reversi version with a 32x24 board-screen editor alongside its `$80-$9F` charset and sprite-pattern editors.
+  - charset metadata now separates the visible `baseTile` from `sourceBaseTile`, so a focused range such as `$80-$9F` edits the correct offsets inside a full 256-character pattern file
+
+## 2026-07-29 - Conservative sprite upload optimization
+
+- `AMY_UPDATE_SPRITES` now uses `OUTI` for each sprite's Y, X, and pattern bytes while preserving `BC` and retaining the per-entry `$8F` color mask.
+- Hoisted the shared VDP write-address setup out of the empty/non-empty branches, reducing the runtime by about 17 bytes and the inner loop by roughly 23 Z80 cycles per sprite.
+- Explicitly avoided `OTIR`, so inline ASM that writes unmasked colors into `AMY_SPRITE_TABLE` remains compatible.
+- Extended the sprite codegen regression test to lock the mask, `BC` preservation, exactly three `OUTI` instructions, and absence of `OTIR`.
+
+## 2026-07-29 - Reversi legacy coin-flip animation
+
+- Restored the original two-layer 16x16 sprite animation when pieces change color in every Reversi example.
+- Runs seven two-frame sprite stages, writes the final name-table coin while the last sprite frame is still visible, and only then removes the temporary sprites; this prevents the end-of-turn blank flash.
+- Corrected cursor layers to patterns `$00/$04` and the explicit v3/v4 hourglass layers to `$08/$0C`, using black and white sprite colors.
+- Expanded every Reversi graphics-editor definition to expose all 18 sprite patterns from `$00` through `$44`.
+
+## 2026-07-29 - Frameless static ABI for proven non-reentrant routines
+
+- Added whole-program call-graph analysis for direct/mutual recursion, `on frame`/`on vblank` reachability, direct inline-ASM edges, and opaque ASM transfers.
+- Eligible scalar `u8`/`i8`/`u16`/`i16` parameters and locals now use private `AMY_SPARM_*`/`AMY_LVAR_*` RAM cells, removing IX frames and stack argument cleanup.
+- Nested argument calls are staged before static parameter stores; call-free scalar arguments use a direct no-stack fast path.
+- Added the `Amy Static Frameless ABI Selftest` ROM and five-profile CLI builds covering signed/unsigned parameters, local reset, nested arguments, recursive callers, and NMI exclusion.
+- Fixed call-graph analysis so an early conditional `return` no longer hides later calls or nested recursion; this prevents recursive routines from receiving static parameter cells.
+- Added static-ABI analysis and codegen safety tests. Reversi v5 balanced ROM changed from 11,232 to 10,870 bytes while recursive alpha-beta routines retain IX frames.
+
+## 2026-07-27 - Modern inline if/elseif chains
+
+- Added support for one-line `if ... then ... elseif ... then ... else ...` chains when each branch is a single inline statement.
+- Added `tools/test-inline-if-elseif-codegen.mjs` covering assignment, `return`, and `goto` branches.
+- Updated Reversi's minimax corner scoring to use the modern inline form.
 ## 2026-07-26 - Bitmap8 graphics editor round-trip
 
 - Graphics Editors now read inline `data ... bitmap8` pattern blocks and save edited data back as quoted 8-pixel rows instead of converting them to hex byte rows.

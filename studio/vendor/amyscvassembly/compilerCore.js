@@ -1663,6 +1663,10 @@ function isIxIyDisplacementOperandText(value) {
                         if (token.label) {
                             const processedLabel = this.processTemporarySymbol(token.label);
 
+                            const isConstantRedefinition = token instanceof Directive && ['EQU', 'EVAL', 'CONSTANT'].includes(token.name);
+                            if (this.symbolTable[processedLabel] !== undefined && !isConstantRedefinition) {
+                                throw new Error(`Duplicate label '${processedLabel}' at line ${this.currentLine}`);
+                            }
                             if (this.symbolTable[processedLabel] !== undefined) {
                                log(`Warning: Redefining label '${processedLabel}' at line ${this.currentLine}`, 'warn');
                             }

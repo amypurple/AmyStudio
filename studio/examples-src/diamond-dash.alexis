@@ -1,0 +1,452 @@
+cartridge "DIAMOND DASH/AMY STUDIO/2026"
+
+' Board-generation constants.
+const DiamondMinX = 1
+const DiamondMaxX = 30
+const DiamondMinY = 4
+const DiamondMaxY = 21
+const HoleMinX = 3
+const HoleMaxX = 28
+const HoleMinY = 8
+const HoleMaxY = 21
+const RockMinX = 0
+const RockMaxX = 31
+const RockMinY = 2
+const RockMaxY = 22
+const StartDynamite = 20
+const StartTimer = 1000
+const DynamiteFuse = 10
+
+' Session state.
+bcd digits 4 Score, Timer
+bcd digits 2 Dynamite
+u8 DiamondsNeeded = 0, SessionMountains = 5, MoveContinue = 1, GameOverFlag = 0
+
+' Player and dynamite position state.
+u8 PlayerX = 22, PlayerY = 2
+i8 PlayerDX = 0, PlayerDY = 0
+u8 OneDynamiteX = 0, OneDynamiteY = 0, DynamiteCountdown = 0, FireWasDown = 0
+
+' General scratch state for map edits and scans.
+u8 TmpX = 0, TmpY = 0, TmpType = 0, TmpCount = 0
+i8 TmpDX = 0, TmpDY = 0
+u8 DiamondDType = 0, HoleCount = 0, RockX = 0, RockY = 0, CS_CurCol = 0, CS_ColCount = 0, CS_BarrelX = 0, CS_BarrelY = 0
+u8 CS_StartX = 0, CS_StartY = 0, CS_FrameIndex = 0
+u8 BlastFrame[49]
+
+' Tile meanings.
+enum DiamondTiles:
+  RockTile = 1
+  WalkableTile = 2
+  EmeraldTile = 3
+  RubyTile = 4
+  DiamondTile = 5
+  ExitOpenTile = 6
+  PowderBarrelTile = 7
+  ExitClosedTile = 8
+  DynamiteLitTile1 = 29
+  DynamiteLitTile2 = 30
+  DynamitePackTile = 31
+  SkyTile = 32
+end enum
+
+' Sprite pattern indexes.
+enum DiamondSprite:
+  MinerPattern = 64
+end enum
+const MinerColor = 15
+
+tile type hole = WalkableTile
+tile type blastClears = RockTile,DynamiteLitTile1,DynamiteLitTile2,DynamitePackTile
+
+asset DiamondNameRle from "@project/diamond.name.mdkrle" codec mdkrle
+asset DiamondPatternRle from "@project/diamond.pattern.mdkrle" codec mdkrle
+asset DiamondColorRle from "@project/diamond.color.mdkrle" codec mdkrle
+
+data HolesShape1 bytes = -1,-2, 0,-2, 1,-2, -2,-1, -1,-1, 0,-1, 1,-1, 2,-1, -2,0, -1,0, 0,0, 1,0, 0,1
+data HolesShape2 bytes = -2,-2, -1,-2, 0,-2, -2,-1, -1,-1, 0,-1, 1,-1, -2,0, -1,0, 0,0, 1,0, 0,1, 1,1
+data minimum_diamants bytes = 85,75,60,45,35
+data GameOverText bytes = 33,34,35,36,37,38
+data TitleText bytes = 40,41,42,43,44,45,46,47
+
+text screen
+print centered at 6, "DIAMOND DASH"
+print centered at 9, "MINE WITH DYNAMITE"
+print centered at 10, "COLLECT ENOUGH GEMS"
+print centered at 11, "FIND PACKS AND EXIT"
+print centered at 14, "FIRE TO START"
+screen on
+pause until press
+
+tile screen
+  sprites 8x8
+  sprites simple
+  set sound table DiamondSoundTable areas 6
+  decompress DiamondPatternRle to vram.pattern
+  duplicate mode 2 text patterns
+  decompress DiamondColorRle to vram.color
+  set sprite pattern table vram.pattern
+  clear sprites
+  set sprite count 1
+  goto return_to_title
+
+sub start_session:
+  Score = 0
+  SessionMountains = 5
+  start_mountain
+  goto game_loop
+
+sub start_mountain:
+  SessionMountains -= 1
+  Diamond_StartMountain
+  show_score
+  wait no fire on joypad 1
+  return
+
+sub show_score:
+  print at 6,23, Score
+  print at 14,23, Timer
+  print at 23,23, Dynamite
+  return
+
+sub game_loop:
+  wait
+  Diamond_MovePlayer
+  if MoveContinue = 0 goto round_end
+  if Timer > 0 goto tick_timer
+  show_score
+  Diamond_UpdateDynamite
+  goto game_loop
+
+sub tick_timer:
+  Timer -= 1
+  show_score
+  Diamond_UpdateDynamite
+  goto game_loop
+
+sub round_end:
+  Diamond_EndRound
+  if GameOverFlag = 1 goto game_over_screen
+  if SessionMountains = 0 goto replay_last_mountain
+  start_mountain
+  goto game_loop
+
+sub game_over_screen:
+  mute all
+  put GameOverText at 13,11
+  play sound 3
+  pause until press
+  wait no fire
+  goto return_to_title
+
+sub replay_last_mountain:
+  SessionMountains += 1
+  start_mountain
+  goto game_loop
+
+sub return_to_title:
+  mute all
+  GameOverFlag = 0
+  DynamiteCountdown = 0
+  FireWasDown = 0
+  Diamond_BuildMountain
+  put TitleText at 12,11
+  screen on
+  pause until press
+  wait no fire
+  goto start_session
+
+sub Diamond_StartMountain:
+  GameOverFlag = 0
+  DynamiteCountdown = 0
+  FireWasDown = 0
+  MoveContinue = 1
+  DiamondsNeeded = minimum_diamants[SessionMountains]
+  Diamond_BuildMountain
+  Dynamite = StartDynamite
+  Timer = StartTimer
+  set sprite 0 tile PlayerX,PlayerY pattern MinerPattern color MinerColor
+  update sprites
+  return
+
+sub Diamond_BuildMountain:
+  mute all
+  screen off
+  decompress DiamondNameRle to vram.name
+  PlayerX = 22
+  PlayerY = 2
+  PlayerDX = 0
+  PlayerDY = 0
+  set sprite 0 to 15,176,MinerPattern,MinerColor
+  HoleCount = 5
+Diamond_BuildMountain_holes:
+  if Diamond_AddHoles() = false then goto Diamond_BuildMountain_holes
+  if HoleCount != 0 then goto Diamond_BuildMountain_holes
+  TmpCount = 51
+  DiamondDType = EmeraldTile
+Diamond_BuildMountain_green:
+  if Diamond_AddDiamond() = false then goto Diamond_BuildMountain_green
+  if TmpCount != 0 then goto Diamond_BuildMountain_green
+  TmpCount = 23
+  DiamondDType = RubyTile
+Diamond_BuildMountain_red:
+  if Diamond_AddDiamond() = false then goto Diamond_BuildMountain_red
+  if TmpCount != 0 then goto Diamond_BuildMountain_red
+  TmpCount = 11
+  DiamondDType = DiamondTile
+Diamond_BuildMountain_white:
+  if Diamond_AddDiamond() = false then goto Diamond_BuildMountain_white
+  if TmpCount != 0 then goto Diamond_BuildMountain_white
+  update sprites
+  screen on
+  return
+
+sub Diamond_MovePlayer:
+  MoveContinue = 1
+  PlayerDX = 0
+  PlayerDY = 0
+  move sprite 0 toward tile PlayerX,PlayerY step 4 wait 3 frames animate pattern xor 1
+  put char WalkableTile at PlayerX,PlayerY
+  if joypad(1).up then
+    PlayerDY = -1
+  end if
+  if joypad(1).down then
+    PlayerDY = 1
+  end if
+  if joypad(1).left then
+    PlayerDX = -1
+  end if
+  if joypad(1).right then
+    PlayerDX = 1
+  end if
+  if PlayerDX != 0 goto Diamond_MP_SetMoving
+  if PlayerDY != 0 goto Diamond_MP_SetMoving
+  set sprite 0 pattern bit 1 on
+  goto Diamond_MP_AfterIdle
+Diamond_MP_SetMoving:
+  set sprite 0 pattern bit 1 off
+Diamond_MP_AfterIdle:
+  if joypad(1).button1 then goto Diamond_MovePlayer_fire_pressed
+  FireWasDown = 0
+  goto Diamond_MovePlayer_target
+
+Diamond_MovePlayer_fire_pressed:
+  if FireWasDown != 0 then goto Diamond_MovePlayer_target
+  FireWasDown = 1
+  goto Diamond_MovePlayer_fire
+
+Diamond_MovePlayer_fire:
+  if DynamiteCountdown = 0 then
+    DynamiteCountdown = DynamiteFuse
+    OneDynamiteX = PlayerX
+    OneDynamiteY = PlayerY
+    if Dynamite = 0 then
+      GameOverFlag = 1
+      MoveContinue = 0
+      return
+    end if
+    Dynamite -= 1
+    play sound 4
+  end if
+  goto Diamond_MovePlayer_target
+
+Diamond_MovePlayer_target:
+  TmpX = PlayerX + PlayerDX
+  TmpY = PlayerY + PlayerDY
+  TmpType = get char at TmpX,TmpY
+  select case TmpType
+  case DynamitePackTile
+    goto Diamond_MovePlayer_pickPack
+  case ExitOpenTile
+    goto Diamond_MovePlayer_exitTile
+  case WalkableTile
+    goto Diamond_MovePlayer_walk
+  case EmeraldTile
+    goto Diamond_MovePlayer_green
+  case RubyTile
+    goto Diamond_MovePlayer_red
+  case DiamondTile
+    goto Diamond_MovePlayer_white
+  end select
+  return
+
+Diamond_MovePlayer_walk:
+  PlayerX = TmpX
+  PlayerY = TmpY
+  return
+
+Diamond_MovePlayer_green:
+  Score += 1
+  goto Diamond_MovePlayer_takeDiamond
+
+Diamond_MovePlayer_red:
+  Score += 3
+  goto Diamond_MovePlayer_takeDiamond
+
+Diamond_MovePlayer_white:
+  Score += 5
+
+Diamond_MovePlayer_takeDiamond:
+  play sound 1
+  PlayerX = TmpX
+  PlayerY = TmpY
+  DiamondsNeeded -= 1
+  if DiamondsNeeded != 0 then return
+  put char ExitOpenTile at 23,2
+  play sound 5
+  play sound 6
+  return
+
+Diamond_MovePlayer_pickPack:
+  Dynamite += 3
+  PlayerX = TmpX
+  PlayerY = TmpY
+  play sound 2
+  return
+
+Diamond_MovePlayer_exitTile:
+  PlayerX = TmpX
+  PlayerY = TmpY
+  move sprite 0 toward tile PlayerX,PlayerY step 4 wait 3 frames animate pattern xor 1
+  MoveContinue = 0
+  return
+
+sub Diamond_EndRound:
+  if GameOverFlag != 0 then return
+Diamond_EndRound_timerLoop:
+  if Timer < 10 then goto Diamond_EndRound_dynamite
+  Timer -= 10
+  Score += 1
+  play sound 1
+  show_score
+  wait 2 frames
+  goto Diamond_EndRound_timerLoop
+Diamond_EndRound_dynamite:
+  if Dynamite = 0 then goto Diamond_EndRound_music
+  Dynamite -= 1
+  Score += 5
+  play sound 2
+  show_score
+  wait 12 frames
+  goto Diamond_EndRound_dynamite
+Diamond_EndRound_music:
+  play sound 5
+  play sound 6
+  wait 75 frames
+  return
+
+sub Diamond_UpdateDynamite:
+  if DynamiteCountdown = 0 then return
+  DynamiteCountdown -= 1
+  TmpType = DynamiteLitTile2
+  if DynamiteCountdown mod 2 != 0 then
+    TmpType = DynamiteLitTile1
+  end if
+  put char TmpType at OneDynamiteX,OneDynamiteY
+  if DynamiteCountdown != 0 then return
+  wait
+  ' Guard the long VRAM carve burst from NMI status reads.
+  nmi off
+  TmpCount = 3
+  Diamond_CarveSquare
+  nmi on
+  return
+
+function Diamond_AddDiamond() as bool
+  TmpX = random(DiamondMinX, DiamondMaxX)
+  TmpY = random(DiamondMinY, DiamondMaxY)
+  TmpType = get char at TmpX,TmpY
+  if TmpType != RockTile then return false
+  if chars in box TmpX - 1,TmpY - 1 size 3,3 contain hole then return false
+  put char DiamondDType at TmpX,TmpY
+  TmpCount -= 1
+  return true
+
+function Diamond_AddHoles() as bool
+  TmpX = random(HoleMinX, HoleMaxX)
+  TmpY = random(HoleMinY, HoleMaxY)
+  TmpType = random(0, 1)
+  if TmpType = 0 then
+    restore HolesShape1
+  else
+    restore HolesShape2
+  end if
+  DiamondDType = 13
+Diamond_AddHoles_checkLoop:
+  read TmpDX, TmpDY
+  TmpCount = get char at TmpX + TmpDX,TmpY + TmpDY
+  if TmpCount != RockTile then return false
+  DiamondDType -= 1
+  if DiamondDType != 0 then goto Diamond_AddHoles_checkLoop
+  if TmpType = 0 then
+    restore HolesShape1
+  else
+    restore HolesShape2
+  end if
+  DiamondDType = 13
+Diamond_AddHoles_paintLoop:
+  read TmpDX, TmpDY
+  put char WalkableTile at TmpX + TmpDX,TmpY + TmpDY
+  DiamondDType -= 1
+  if DiamondDType != 0 then goto Diamond_AddHoles_paintLoop
+  HoleCount -= 1
+  select case HoleCount
+  case 2
+    put char PowderBarrelTile at TmpX,TmpY
+  case 1
+    put char DynamitePackTile at TmpX,TmpY
+  end select
+  return true
+
+sub Diamond_CarveSquare:
+  play sound 2
+  TmpX = 5
+Diamond_CS_rocks:
+  RockX = random(RockMinX, RockMaxX)
+  RockY = random(RockMinY, RockMaxY)
+  TmpType = get char at RockX,RockY
+  if TmpType != WalkableTile then goto Diamond_CS_rocks
+  put char RockTile at RockX,RockY
+  TmpX -= 1
+  if TmpX != 0 then goto Diamond_CS_rocks
+  CS_BarrelX = 0
+  CS_BarrelY = 0
+  TmpY = TmpCount
+  TmpY >>= 1
+  CS_StartX = OneDynamiteX
+  CS_StartX -= TmpY
+  CS_StartY = OneDynamiteY
+  CS_StartY -= TmpY
+  BlastFrame = get frame size TmpCount,TmpCount at CS_StartX,CS_StartY
+  replace blastClears with WalkableTile in BlastFrame frame size TmpCount,TmpCount
+  CS_FrameIndex = 0
+  HoleCount = CS_StartY
+  DiamondDType = TmpCount
+Diamond_CS_row:
+  CS_CurCol = CS_StartX
+  CS_ColCount = TmpCount
+Diamond_CS_col:
+  TmpType = BlastFrame[CS_FrameIndex]
+  select case TmpType
+  case PowderBarrelTile
+    CS_BarrelX = CS_CurCol
+    CS_BarrelY = HoleCount
+    BlastFrame[CS_FrameIndex] = WalkableTile
+  end select
+  CS_FrameIndex += 1
+  CS_CurCol += 1
+  CS_ColCount -= 1
+  if CS_ColCount != 0 then goto Diamond_CS_col
+  HoleCount += 1
+  DiamondDType -= 1
+  if DiamondDType != 0 then goto Diamond_CS_row
+  put BlastFrame frame size TmpCount,TmpCount at CS_StartX,CS_StartY
+  if CS_BarrelX = 0 then return
+  OneDynamiteX = CS_BarrelX
+  OneDynamiteY = CS_BarrelY
+  TmpCount = 7
+  Diamond_CarveSquare
+  return
+
+
+include "@project/diamond_sounds.inc"

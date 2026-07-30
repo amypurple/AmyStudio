@@ -232,7 +232,7 @@ export function scanAmyFirstPass({
       ensureLabelAsmSymbol(basicLabelMatch[1]);
     }
 
-    const procBare = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
+    const procBare = trimmed.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?\s*:?\s*$/i);
     if (procBare) {
       const nameError = validateGlobalUserName(procBare[1], "Subroutine", rawLine);
       if (nameError) {

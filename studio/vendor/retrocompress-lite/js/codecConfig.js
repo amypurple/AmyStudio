@@ -177,7 +177,7 @@ export async function loadCodecs() {
  * @param {Object} config - The codec configuration
  * @returns {Promise<Object|null>} The codec instance or null if failed
  */
-async function loadCodec(codecId, config) {
+export async function loadCodec(codecId, config = CODEC_CONFIG.formats[codecId]) {
     try {
         const module = await import(config.module);
         const CodecClass = module[config.className];

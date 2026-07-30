@@ -1,0 +1,788 @@
+project "Easter Bunny"
+memory "colecovision_legacy_sdcc"
+
+asset BunnyNameRle from "@project/bunny.name.mdkrle" codec mdkrle
+asset BunnyPatternRle from "@project/bunny.pattern.mdkrle" codec mdkrle
+asset BunnyColorRle from "@project/bunny.color.mdkrle" codec mdkrle
+
+' Player position and velocity.
+
+ufixed Bunny_PlayerXW = 0
+ufixed Bunny_PlayerYW = 0
+fixed Bunny_PlayerVXW = 0
+fixed Bunny_PlayerVYW = 0
+
+' Player animation and title-state timing.
+u8 Bunny_PlayerState = 0
+
+
+u8 Bunny_SmokeFrame = 0
+u8 Bunny_SmokeY = 240
+u8 Bunny_Speed = 2
+u8 Bunny_TitleColorOffset = 0
+u8 Bunny_TitleSrcOffset = 0
+u8 Bunny_TitleRepeat = 0
+u16 Bunny_TitleVramOffset = 0
+
+' Level/session state.
+u8 Bunny_LevelNum = 0
+u8 Bunny_EggsLeft = 0
+u8 Bunny_BirdKill = 0
+u8 Bunny_StartX = 96
+u8 Bunny_StartY = 112
+
+' Level decode and collision scratch.
+u8 Bunny_Item = 32
+u8 Bunny_DL_Count = 0
+u16 Bunny_DL_Ptr = 0
+u8 Bunny_DL_Y = 0
+u8 Bunny_DL_X = 0
+u8 Bunny_CF_CY = 0
+u8 Bunny_CE_Row = 0
+u8 Bunny_CE_Col = 0
+u8 Bunny_DL_Code = 0
+u8 Bunny_DL_Terrain = 0
+u8 Bunny_BirdX = 128
+u8 Bunny_BirdY = 0
+u8 Bunny_BirdDiff = 0
+u8 Bunny_CF_Col = 0
+u8 Bunny_CF_FirstCol = 0
+u8 Bunny_CF_Tile = 0
+i8 Bunny_PlayerVyInt = 0
+i8 Bunny_PlayerVxInt = 0
+u8 Bunny_PlayerVxFrac = 0
+u8 Bunny_PlayerSpriteBase = 0
+u8 Bunny_HInput = 0
+fixed Bunny_Friction = 0
+u8 Bunny_AnimFrame = 0
+u8 Bunny_StarIndex = 0
+u8 Bunny_SpriteX = 0
+u8 Bunny_SpriteY = 0
+u8 Bunny_LoopWait = 0
+u8 Bunny_Key = $FF
+
+data Bunny_LevelTable words = @level1, @level2, @level7, @level8, @level5, @level6, @level7, @level8
+data BunnyFrictionTable words = $0000, $0050, $0140, $00C8, $01F4, $0122, $019A, $012C, $0400
+
+' Easter Bunny playable Amy Studio port based on the v3 native rewrite path.
+' The visible listing now uses Amy language for the project setup and keeps
+' the remaining original sound/music/level data as project files.
+' Next real porting step: replace the helper calls below with Amy routines one subsystem at a time.
+
+sub start:
+  tile screen
+  sprites 8x8
+  sprites simple
+  set sound table BunnySoundTable areas 7
+  Bunny_InitGraphics
+  decompress mdkrle BunnyNameRle to vram.name
+  Bunny_ResetSprites
+  Bunny_PlayerColor
+  Bunny_SelectPlayerSprite
+  Bunny_InitTitleState
+  screen on
+  play sound 6
+  play sound 7
+  Bunny_TitleLoop
+  mute all
+  Bunny_GameEntry
+  loop forever
+end sub
+
+' Initial title/test sprite layout, expressed with Amy sprite commands.
+sub Bunny_InitTestSprites:
+  set sprite 0 to 120,96,2,14
+  set sprite 1 to 120,96,3,15
+  set sprite 2 to 112,96,0,14
+  set sprite 3 to 112,96,1,13
+  set sprite 4 to 208,0,38,15
+  set sprite 5 to 40,128,44,15
+  return
+
+' Bird starts offscreen-ish and then chases the player during gameplay.
+sub Bunny_InitBird:
+  Bunny_BirdX = 128
+  Bunny_BirdY = 0
+  set sprite 5 to Bunny_BirdY,Bunny_BirdX,44,15
+  return
+
+' Title state initialization now lives in Amy and calls the sprite setup sub above.
+sub Bunny_InitTitleState:
+  Bunny_PlayerXW = 96
+  Bunny_PlayerYW = 112
+
+  Bunny_PlayerVXW = 0
+  Bunny_PlayerVYW = 0
+  Bunny_PlayerXW = 96
+  Bunny_PlayerYW = 112
+  Bunny_PlayerState = 0
+  Bunny_SmokeFrame = 0
+  Bunny_Speed = 2
+  Bunny_TitleColorOffset = 0
+  Bunny_InitTestSprites
+  set sprite 4 to 208,0,38,15
+  set sprite 5 to 208,128,44,15
+  update sprites
+  return
+
+' Sprite reset is now native Amy code.
+sub Bunny_ResetSprites:
+  clear sprites
+  set sprite count 6
+  return
+
+' Keep the byte mirrors synchronized from the 8.8 fixed-position words.
+sub Bunny_SyncPlayerCoords:
+  return
+
+' First real Bunny rewrite slice: this helper is now Amy code, not bridge ASM.
+sub Bunny_InitPlayerFromStart:
+  Bunny_PlayerVXW = 0
+  Bunny_PlayerVYW = 0
+  Bunny_PlayerState = 0
+
+  Bunny_PlayerXW = Bunny_StartX
+  Bunny_PlayerYW = Bunny_StartY
+  Bunny_SmokeFrame = 4
+  return
+
+
+' Player colors, smoke start, and sprite-state update now live in Amy.
+sub Bunny_PlayerColor:
+  set sprite 0 color to 14
+  set sprite 2 color to 14
+  set sprite 1 color to 15
+  set sprite 3 color to 13
+  return
+
+sub Bunny_StartSmoke:
+  Bunny_SmokeFrame = 0
+  Bunny_SmokeY = Bunny_PlayerYW + 2
+  set sprite 4 x to Bunny_PlayerXW
+  set sprite 4 y to Bunny_SmokeY
+  set sprite 4 pattern to 38
+  set sprite 4 color to 15
+  return
+
+sub Bunny_UpdateSpritesFromState:
+  set sprites 0,1 y to Bunny_PlayerYW
+  set sprites 2,3 y to Bunny_PlayerYW - 8
+  set sprites 0,1,2,3 x to Bunny_PlayerXW
+  if Bunny_SmokeFrame < 4 then
+    Bunny_SmokeY -= 4
+    set sprite 4 y to Bunny_SmokeY
+    set sprite 4 x to Bunny_PlayerXW
+    set sprite 4 pattern to Bunny_SmokeFrame + 38
+    Bunny_SmokeFrame += 1
+  else
+    set sprite 4 y to 240
+  end if
+  return
+
+
+' Native Amy sound effect byte streams converted from bunny_sounds.inc.
+data egg_snd bytes
+  $43,$00,$72,5,$11,$90,$F3,$11,$50
+end data
+
+data jump_snd bytes
+  $83,$90,$11,$07,$13,$E1,$18,$11,$90
+end data
+
+data fire_snd bytes
+  $02,$64,$1F,$1E,$54,$10
+end data
+
+data inv_snd bytes
+  $C3,$56,$E3,$40,$11,$FA,$C0,$44,$C3,$56,$E3,$30
+  $11,$F5,$C0,$33,$C3,$56,$E3,$20,$11,$EA,$C0,$22
+  $C2,$97,$20,$4C,$1E,$5B,$D0
+end data
+
+data bird_snd bytes
+  $43,$A2,$E0,$10,$11,$FA,$90,$11,$43,$70,$E0,$08
+  $11,$FA,$A0,$12,$50
+end data
+
+' Native Amy music byte streams converted from bunny_music.inc.
+data music_ch1 bytes
+  $7F,$79,$42,$A9,$50,$1C,$14,$18,$42,$A9,$50,$15
+  $14,$16,$42,$A9,$50,$07,$14,$12,$42,$A9,$50,$1C
+  $14,$18,$42,$BE,$50,$15,$14,$16,$42,$D5,$50,$07
+  $14,$12,$42,$E2,$50,$1C,$14,$18,$42,$BE,$50,$0E
+  $14,$14,$42,$BE,$50,$46,$14,$1C,$42,$A0,$50,$1C
+  $14,$18,$42,$A0,$50,$15,$14,$16,$42,$A0,$50,$07
+  $14,$12,$42,$A0,$50,$1C,$14,$18,$42,$A9,$50,$15
+  $14,$16,$42,$BE,$50,$07,$14,$12,$42,$D5,$50,$1C
+  $14,$18,$42,$A9,$50,$0E,$14,$14,$42,$A9,$50,$46
+  $14,$1C,$42,$8E,$50,$1C,$14,$18,$42,$8E,$50,$15
+  $14,$16,$42,$8E,$50,$07,$14,$12,$42,$8E,$50,$1C
+  $14,$18,$42,$A0,$50,$15,$14,$16,$42,$A9,$50,$07
+  $14,$12,$42,$A0,$50,$1C,$14,$18,$42,$8E,$50,$0E
+  $14,$14,$42,$7F,$50,$23,$14,$16,$42,$7F,$50,$07
+  $14,$12,$42,$8E,$50,$15,$14,$16,$42,$A0,$50,$07
+  $14,$12,$42,$A9,$50,$15,$14,$16,$42,$8E,$50,$07
+  $14,$12,$42,$A0,$50,$15,$14,$16,$42,$A9,$50,$07
+  $14,$12,$42,$BE,$50,$15,$14,$16,$42,$A0,$50,$07
+  $14,$12,$42,$A9,$50,$15,$14,$16,$42,$BE,$50,$07
+  $14,$12,$42,$D5,$50,$38,$14,$18,$50
+end data
+
+data music_ch2 bytes
+  $80,$AB,$91,$0E,$80,$3A,$92,$0E,$80,$FC,$91,$0E
+  $80,$C4,$91,$0E,$80,$AB,$91,$1C,$80,$3A,$92,$1C
+  $80,$AB,$91,$1C,$80,$A6,$92,$1C,$80,$3A,$92,$1C
+  $80,$F9,$92,$1C,$80,$3A,$92,$1C,$80,$F9,$92,$1C
+  $80,$80,$92,$1C,$80,$56,$93,$1C,$80,$AB,$91,$0E
+  $80,$3A,$92,$0E,$80,$FC,$91,$0E,$80,$C4,$91,$0E
+  $80,$AB,$91,$1C,$80,$3A,$92,$1C,$80,$AB,$91,$1C
+  $80,$A6,$92,$1C,$80,$AB,$91,$1C,$80,$3A,$92,$1C
+  $80,$AB,$91,$1C,$80,$A6,$92,$1C,$80,$80,$92,$1C
+  $80,$56,$93,$1C,$80,$80,$92,$1C,$80,$56,$93,$1C
+  $80,$3A,$92,$1C,$80,$F9,$92,$1C,$80,$89,$93,$0E
+  $80,$3A,$92,$0E,$80,$FC,$91,$0E,$80,$C4,$91,$0E
+  $80,$AB,$91,$1C,$80,$56,$93,$38,$90
+end data
+
+' Native Amy BIOS sound dispatch table. The sound/music payloads stay in
+' included data files, but the table itself is no longer an ASM bridge.
+data BunnySoundTable words
+  @egg_snd, $702B
+  @jump_snd, $7035
+  @fire_snd, $703F
+  @inv_snd, $7049
+  @bird_snd, $7053
+  @music_ch1, $702B
+  @music_ch2, $7035
+end data
+
+' Native Amy level byte streams converted from bunny_levels.inc.
+data level2 bytes
+  1,$FF,50,0,20,$FF,4,$A8,$E0,45,$E1,$B9
+  47,$FF,2,$FF,30,$B4
+end data
+
+data level1 bytes
+  1,$FF,2,$FF,2,$FF,2,$FF,2,$FF,2,$FF
+  32,$8C,$CC,55,$82,83,$FF,$82,17,$FF,64,$FF
+  $CE,56,0,2,$DC
+end data
+
+data level5 bytes
+  87,$FF,7,$FF,8,$FF,53,$85,10,$85,10,$85
+  58,$00,25,$C2
+end data
+
+data level7 bytes
+  38,$FF,2,$FF,9,$A1,31,$FF,32,$A1,$E2,$A1
+  4,$FF,7,$C2,42,$82,37,$A2,36,$FF,9,$FF
+  7,$FF,42,$FF,9,$81,2,$C2,29,$FF,9,$FF
+  2,$E1,20,$00,11,$FF,2,$A2,6,$A2,19,$FF
+  16,$82,18,$FF,13,$E2,28,$FF,6,$A2,7,$FF
+  $C2,6,$FF,10,$E3,8,$E2,27,$C1,1
+end data
+
+data level6 bytes
+  56,$FF,2,$FF,15,$FF,2,$FF,11,$FF,3,$FF
+  11,$C0,2,$C0,15,$C0,2,$C0,3,$FF,2,$FF
+  11,$FF,2,$FF,14,$C3,11,0,26,$A8,9,$A8
+  55,$FF,2,$FF,2,$FF,9,$FF,2,$FF,2,$FF
+  10,$A1,$E1,$A1,38,$A9,7,$A9
+end data
+
+data level8 bytes
+  40,$FF,$FF,45,$FF,2,$FF,2,$81,2,$FF,2
+  $FF,68,$82,5,$82,36,$82,19,$82,61,$82,11
+  $82,6,$FF,21,$FF,12,$FF,3,$FF,14,$84,9
+  $84,16,$81,13,$FF,23,$FF,10,$FF,5,$FF,9
+  $83,19,$83,11,$83,67,0,26,$8B,3,$8B
+end data
+
+' Native Amy graphics bootstrap. It loads the original title/game tiles,
+' installs the legacy floor tile variants, duplicates pattern thirds, and
+' uses the character pattern table as the sprite pattern table like the old devkit.
+data BunnyFloorPattern bytes
+  $99,$66,$DD,$77,$DD,$77,$99,$66
+end data
+
+sub Bunny_InitGraphics:
+  decompress mdkrle BunnyPatternRle to vram.pattern
+  copy BunnyFloorPattern count 8 to vram.pattern + $0060
+  copy BunnyFloorPattern count 8 to vram.pattern + $0068
+  copy BunnyFloorPattern count 8 to vram.pattern + $0070
+  copy BunnyFloorPattern count 8 to vram.pattern + $0078
+  copy BunnyFloorPattern count 8 to vram.pattern + $0080
+  copy BunnyFloorPattern count 8 to vram.pattern + $0088
+  copy BunnyFloorPattern count 8 to vram.pattern + $0090
+  duplicate mode 2 text patterns
+  decompress mdkrle BunnyColorRle to vram.color
+  set sprite pattern table vram.pattern
+  return
+
+' Native Amy level decoder for v3. It reads the original level table
+' data through Bunny_LevelTable and peek().
+sub Bunny_DecodeLevel:
+  Bunny_DL_Code = Bunny_LevelNum & 7
+  Bunny_DL_Ptr = Bunny_LevelTable[Bunny_DL_Code]
+  Bunny_EggsLeft = 0
+  Bunny_DL_Y = 0
+  Bunny_DL_Code = peek(Bunny_DL_Ptr)
+  Bunny_DL_Ptr += 1
+  Bunny_ReadNextCode
+  wait
+  screen on
+Bunny_DL_RowLoop:
+  wait
+  put char $24 at 0,Bunny_DL_Y
+  put char $23 at 1,Bunny_DL_Y
+  Bunny_DL_X = 2
+Bunny_DL_ColLoop:
+  if Bunny_Item = $22 then
+    if Bunny_DL_Y != 0 then
+      Bunny_DL_Code = Bunny_DL_Y
+      Bunny_DL_Code -= 1
+      put char $21 at Bunny_DL_X,Bunny_DL_Code
+      Bunny_EggsLeft += 1
+    end if
+    put char $22 at Bunny_DL_X,Bunny_DL_Y
+    Bunny_DL_Count -= 1
+    if Bunny_DL_Count != 0 goto Bunny_DL_NoNewCode
+    Bunny_DL_Code = peek(Bunny_DL_Ptr)
+    Bunny_DL_Ptr += 1
+    Bunny_ReadNextCode
+    goto Bunny_DL_NoNewCode
+  end if
+  if Bunny_Item = 0 then
+    Bunny_StartX = Bunny_DL_X << 3
+    Bunny_StartY = Bunny_DL_Y << 3
+    Bunny_StartY -= 1
+    Bunny_Item = $20
+    goto Bunny_DL_PutTile
+  end if
+  if Bunny_Item = $20 then
+    if Bunny_DL_Y = 23 then Bunny_Item = $0F
+  end if
+Bunny_DL_PutTile:
+  put char Bunny_Item at Bunny_DL_X,Bunny_DL_Y
+  Bunny_DL_Count -= 1
+  if Bunny_DL_Count != 0 goto Bunny_DL_NoNewCode
+  Bunny_DL_Code = peek(Bunny_DL_Ptr)
+  Bunny_DL_Ptr += 1
+  Bunny_ReadNextCode
+Bunny_DL_NoNewCode:
+  Bunny_DL_X += 1
+  if Bunny_DL_X < 30 goto Bunny_DL_ColLoop
+  put char $25 at 30,Bunny_DL_Y
+  put char $26 at 31,Bunny_DL_Y
+  Bunny_DL_Y += 1
+  if Bunny_DL_Y < 24 goto Bunny_DL_RowLoop
+  return
+
+sub Bunny_ReadNextCode:
+  if Bunny_DL_Code >= 128 then
+    if Bunny_DL_Code = 255 then
+      Bunny_Item = $22
+      Bunny_DL_Count = 1
+      return
+    end if
+    Bunny_DL_Terrain = Bunny_DL_Code >> 5
+    if Bunny_DL_Terrain = 7 then
+      Bunny_Item = 16
+    else
+      Bunny_Item = Bunny_DL_Terrain + 8
+    end if
+    Bunny_DL_Count = Bunny_DL_Code & 31
+    Bunny_DL_Count += 1
+    return
+  end if
+  if Bunny_DL_Code = 0 then
+    Bunny_Item = 0
+    Bunny_DL_Count = 1
+    return
+  end if
+  Bunny_Item = $20
+  if Bunny_DL_Code = 1 then
+    Bunny_DL_Count = 0
+  else
+    Bunny_DL_Count = Bunny_DL_Code + 1
+  end if
+  return
+
+' Native Amy title picker. It keeps the original keypad difficulty selection
+' but uses wait/read keypad instead of hidden Z80 loops.
+sub Bunny_TitleLoop:
+Bunny_TitleLoop_loop:
+  wait
+  Bunny_AnimateTitleColors
+  read keypad 1 into Bunny_Key
+  if Bunny_Key >= 1 then
+    if Bunny_Key < 4 goto Bunny_TitlePick
+  end if
+  read keypad 2 into Bunny_Key
+  if Bunny_Key < 1 goto Bunny_TitleLoop_loop
+  if Bunny_Key >= 4 goto Bunny_TitleLoop_loop
+Bunny_TitlePick:
+  Bunny_Speed = 5
+  Bunny_Speed -= Bunny_Key
+Bunny_TitleRelease:
+  wait
+  Bunny_AnimateTitleColors
+  read keypad 1 into Bunny_Key
+  if Bunny_Key != $FF goto Bunny_TitleRelease
+  read keypad 2 into Bunny_Key
+  if Bunny_Key != $FF goto Bunny_TitleRelease
+  return
+
+' Native Amy game entry and main loop. The remaining original content is
+' sound/music/level data; gameplay flow and player updates are Amy code.
+sub Bunny_GameEntry:
+  Bunny_LevelNum = 0
+Bunny_GameEntry_Level:
+  Bunny_BirdKill = 0
+  Bunny_SmokeFrame = 4
+  nmi on
+  cls
+  Bunny_ResetSprites
+  update sprites
+  Bunny_DecodeLevel
+  Bunny_InitPlayerFromStart
+  Bunny_PlayerColor
+  set sprites 0,1 y to 96
+  set sprites 2,3 y to 88
+  set sprites 0,1,2,3 x to 128
+  set sprite 4 y to $D0
+  set sprite 5 y to $D0
+  play sound 4
+  Bunny_AnimGetReady
+  Bunny_InitBird
+  Bunny_UpdateSpritesFromState
+  update sprites
+  Bunny_GameLoop
+  if Bunny_BirdKill != 0 goto Bunny_GameEntry_Level
+  Bunny_LevelNum += 1
+  Bunny_LevelNum = Bunny_LevelNum & 7
+  goto Bunny_GameEntry_Level
+end sub
+
+sub Bunny_GameLoop:
+Bunny_GameLoop_Start:
+  Bunny_LoopWait = Bunny_Speed
+Bunny_GameLoop_Wait:
+  wait
+  Bunny_LoopWait -= 1
+  if Bunny_LoopWait != 0 goto Bunny_GameLoop_Wait
+  Bunny_UpdatePlayerNearOriginal
+  if Bunny_EggsLeft = 0 then
+    Bunny_BirdKill = 0
+    return
+  end if
+  Bunny_CheckBird
+  if Bunny_BirdKill != 0 then return
+  update sprites
+  goto Bunny_GameLoop_Start
+end sub
+
+sub Bunny_UpdatePlayerNearOriginal:
+  Bunny_UpdatePlayerXNearOriginal
+  Bunny_UpdatePlayerYNearOriginal
+  Bunny_SyncPlayerCoords
+  Bunny_UpdateStateNearOriginal
+  Bunny_SyncPlayerCoords
+  Bunny_CheckEgg
+  Bunny_UpdateBird
+  Bunny_SelectPlayerSprite
+  Bunny_UpdateSpritesFromState
+  return
+
+' Native Amy level-start animation. It slides the player sprites from the
+' center toward the decoded start position and animates the star/smoke sprite.
+data Bunny_StarsDX bytes
+  $00,$05,$08,$0B,$0C,$0B,$08,$05
+  $00,$FA,$F7,$F4,$F3,$F4,$F7,$FA
+end data
+data Bunny_StarsDY bytes
+  $EC,$EE,$F1,$F6,$FB,$02,$07,$0B
+  $0C,$0B,$07,$02,$FB,$F6,$F1,$EE
+end data
+
+sub Bunny_AnimGetReady:
+  set sprite 0 pattern to 2
+  set sprite 1 pattern to 3
+  set sprite 2 pattern to 0
+  set sprite 3 pattern to 1
+  for Bunny_AnimFrame = 0 to 223
+    wait
+    Bunny_SlideSprite
+    Bunny_Invincible
+    update sprites
+  next
+  wait
+  set sprite 4 y to $D0
+  set sprite 5 y to $D0
+  update sprites
+  return
+
+sub Bunny_SlideSprite:
+  Bunny_SpriteX = sprite 0 x
+  if Bunny_PlayerXW != Bunny_SpriteX then
+    if Bunny_PlayerXW > Bunny_SpriteX then
+      Bunny_SpriteX += 1
+    else
+      Bunny_SpriteX -= 1
+    end if
+    set sprites 0,1,2,3 x to Bunny_SpriteX
+  end if
+  Bunny_SpriteY = sprite 0 y
+  if Bunny_PlayerYW != Bunny_SpriteY then
+    if Bunny_PlayerYW > Bunny_SpriteY then
+      Bunny_SpriteY += 1
+    else
+      Bunny_SpriteY -= 1
+    end if
+    set sprites 0,1 y to Bunny_SpriteY
+    set sprites 2,3 y to Bunny_SpriteY - 8
+  end if
+  return
+
+sub Bunny_Invincible:
+  Bunny_StarIndex = Bunny_AnimFrame & 15
+  set sprite 4 x to sprite 0 x + Bunny_StarsDX[Bunny_StarIndex]
+  set sprite 4 y to sprite 0 y + Bunny_StarsDY[Bunny_StarIndex]
+  set sprite 4 pattern to $27
+  set sprite 4 color to 5
+  set sprite 5 y to $D0
+  return
+
+' Native Amy title color animation. It repeats one 8-byte color stripe
+' across two title bands, matching the legacy BunnyTitleColors table.
+data BunnyTitleColors bytes
+  $D1,$D1,$D1,$51,$D1,$51,$51,$51
+  $C1,$51,$C1,$C1,$C1,$21,$C1,$21
+  $21,$21,$31,$21,$31,$31,$31,$A1
+  $31,$A1,$A1,$A1,$91,$A1,$91,$91
+  $91,$81,$91,$81,$81,$81,$D1,$81
+  $D1,$D1,$D1,$51,$D1,$51,$51,$51
+  $C1,$51,$C1,$C1,$C1,$21,$C1,$21
+end data
+
+sub Bunny_AnimateTitleColors:
+  Bunny_TitleColorOffset += 1
+  if Bunny_TitleColorOffset >= 40 then Bunny_TitleColorOffset = 0
+  Bunny_TitleSrcOffset = Bunny_TitleColorOffset
+  Bunny_TitleVramOffset = $0400
+  Bunny_WriteRepeatedColorBlock
+  Bunny_TitleSrcOffset = Bunny_TitleColorOffset + 8
+  Bunny_TitleVramOffset = $0460
+  Bunny_WriteRepeatedColorBlock
+  return
+
+sub Bunny_WriteRepeatedColorBlock:
+  for Bunny_TitleRepeat = 0 to 11
+    copy BunnyTitleColors + Bunny_TitleSrcOffset count 8 to vram.color + Bunny_TitleVramOffset
+    Bunny_TitleVramOffset += 8
+  next
+  return
+
+' Native Amy horizontal player update. It preserves the legacy 8.8 acceleration,
+' friction table, velocity clamp, position accumulation, and wall bounce.
+sub Bunny_UpdatePlayerXNearOriginal:
+  Bunny_HInput = 0
+  if joypad(1).left then
+    Bunny_PlayerVXW -= 0.5
+    Bunny_HInput = 1
+  end if
+  if joypad(1).right then
+    Bunny_PlayerVXW += 0.5
+    Bunny_HInput = 1
+  end if
+  if Bunny_HInput = 0 then
+    if Bunny_PlayerState & 8 then goto Bunny_UPX_AfterFriction
+    Bunny_Friction = BunnyFrictionTable[Bunny_PlayerState]
+    if Bunny_PlayerVXW < 0 then
+      Bunny_PlayerVXW += Bunny_Friction
+      if Bunny_PlayerVXW > 0 then Bunny_PlayerVXW = 0
+    else
+      if Bunny_PlayerVXW > 0 then
+        Bunny_PlayerVXW -= Bunny_Friction
+        if Bunny_PlayerVXW < 0 then Bunny_PlayerVXW = 0
+      end if
+    end if
+  end if
+Bunny_UPX_AfterFriction:
+  if Bunny_PlayerVXW < -4 then Bunny_PlayerVXW = -4
+  if Bunny_PlayerVXW > 4 then Bunny_PlayerVXW = 4
+  Bunny_PlayerXW += Bunny_PlayerVXW
+  if Bunny_PlayerXW < 16 goto Bunny_UPX_Bounce
+  if Bunny_PlayerXW < 233 then return
+Bunny_UPX_Bounce:
+  Bunny_PlayerVXW = 0 - Bunny_PlayerVXW
+  Bunny_PlayerXW += Bunny_PlayerVXW
+  return
+
+' Native Amy vertical player update. It keeps the legacy 8.8 gravity,
+' jump impulse, velocity clamp, and fixed-position accumulation.
+sub Bunny_UpdatePlayerYNearOriginal:
+  if Bunny_PlayerState & 8 then
+    Bunny_PlayerVYW += 1.5
+    if Bunny_PlayerVYW > 8 then Bunny_PlayerVYW = 8
+  else
+    Bunny_PlayerVYW = 0
+    if joypad(1).button1 then
+      Bunny_PlayerVYW = -8
+      Bunny_PlayerState = 8
+      play sound 2
+    end if
+  end if
+  Bunny_PlayerYW += Bunny_PlayerVYW
+  return
+
+' Bird chase and player collision now use Amy-side bird mirrors instead of
+' reading sprite 5 fields from the legacy ASM bridge.
+sub Bunny_UpdateBird:
+  if Bunny_BirdX != Bunny_PlayerXW then
+    if Bunny_PlayerXW > Bunny_BirdX then
+      Bunny_BirdX += 1
+      set sprite 5 pattern to (Bunny_BirdX & 1) + 44
+    else
+      Bunny_BirdX -= 1
+      set sprite 5 pattern to (Bunny_BirdX & 1) + 46
+    end if
+    set sprite 5 x to Bunny_BirdX
+  end if
+  if Bunny_BirdY != Bunny_PlayerYW then
+    if Bunny_PlayerYW > Bunny_BirdY then
+      Bunny_BirdY += 1
+    else
+      Bunny_BirdY -= 1
+    end if
+    set sprite 5 y to Bunny_BirdY
+  end if
+  return
+
+sub Bunny_CheckBird:
+  if Bunny_PlayerXW > Bunny_BirdX then
+    Bunny_BirdDiff = Bunny_PlayerXW - Bunny_BirdX
+  else
+    Bunny_BirdDiff = Bunny_BirdX - Bunny_PlayerXW
+  end if
+  if Bunny_BirdDiff >= 3 then return
+  if Bunny_PlayerYW > Bunny_BirdY then
+    Bunny_BirdDiff = Bunny_PlayerYW - Bunny_BirdY
+  else
+    Bunny_BirdDiff = Bunny_BirdY - Bunny_PlayerYW
+  end if
+  if Bunny_BirdDiff >= 5 then return
+  Bunny_BirdKill = 1
+  play sound 5
+  return
+
+' Native Amy ground-state updater. It checks the two player foot columns
+' against the current tile row and preserves the legacy AIR/state-bit behavior.
+sub Bunny_UpdateStateNearOriginal:
+  Bunny_PlayerState = 8
+  Bunny_CF_CY = Bunny_PlayerYW
+  Bunny_CF_CY += 9
+  Bunny_CF_CY >>= 3
+  Bunny_CF_Col = Bunny_PlayerXW
+  Bunny_CF_Col += 2
+  Bunny_CF_Col >>= 3
+  Bunny_CF_FirstCol = Bunny_CF_Col
+  Bunny_CheckGroundTileAtCurrent
+  Bunny_CF_Col = Bunny_PlayerXW
+  Bunny_CF_Col += 5
+  Bunny_CF_Col >>= 3
+  if Bunny_CF_Col = Bunny_CF_FirstCol then return
+  Bunny_CheckGroundTileAtCurrent
+  return
+
+sub Bunny_CheckGroundTileAtCurrent:
+  Bunny_CF_Tile = get char at Bunny_CF_Col,Bunny_CF_CY
+  if Bunny_CF_Tile >= $10 then
+    if Bunny_CF_Tile >= $20 then return
+    Bunny_CF_Tile += 1
+    put char Bunny_CF_Tile at Bunny_CF_Col,Bunny_CF_CY
+    Bunny_PlayerVyInt = Bunny_PlayerVYW
+    if signed Bunny_PlayerVyInt < 0 then return
+    Bunny_SnapPlayerToGround
+    Bunny_PlayerState = Bunny_PlayerState & $F7
+    Bunny_PlayerState = Bunny_PlayerState | 2
+    return
+  end if
+  if Bunny_CF_Tile < $0C then return
+  if Bunny_CF_Tile = $0F then
+    Bunny_PlayerVYW = -16
+    Bunny_PlayerState = 8
+    Bunny_StartSmoke
+    play sound 3
+    return
+  end if
+  Bunny_PlayerVyInt = Bunny_PlayerVYW
+  if signed Bunny_PlayerVyInt < 0 then return
+  Bunny_SnapPlayerToGround
+  Bunny_PlayerState = Bunny_PlayerState & $F7
+  if Bunny_CF_Tile = $0C then
+    Bunny_PlayerState = Bunny_PlayerState | 1
+  else
+    if Bunny_CF_Tile = $0D then
+      Bunny_PlayerState = Bunny_PlayerState | 2
+    else
+      Bunny_PlayerState = Bunny_PlayerState | 4
+    end if
+  end if
+  return
+
+' Native Amy egg pickup. It checks the egg cap at player head height
+' and the tile below it, matching the original two-cell pickup test.
+sub Bunny_CheckEgg:
+  if Bunny_PlayerYW < 6 then return
+  Bunny_CE_Row = Bunny_PlayerYW - 6
+  Bunny_CE_Row >>= 3
+  Bunny_CE_Col = Bunny_PlayerXW + 3
+  Bunny_CE_Col >>= 3
+  Bunny_Item = get char at Bunny_CE_Col,Bunny_CE_Row
+  if Bunny_Item = $21 then
+    put char $20 at Bunny_CE_Col,Bunny_CE_Row
+    Bunny_EggsLeft -= 1
+    play sound 1
+  end if
+  Bunny_CE_Row += 1
+  if Bunny_CE_Row >= 24 then return
+  Bunny_Item = get char at Bunny_CE_Col,Bunny_CE_Row
+  if Bunny_Item != $21 then return
+  put char $20 at Bunny_CE_Col,Bunny_CE_Row
+  Bunny_EggsLeft -= 1
+  play sound 1
+  return
+
+' Native Amy ground snap. Mirrors the original: Y = tile row * 8 - 9,
+' YW gets the same integer byte and VYW is reset to zero.
+sub Bunny_SnapPlayerToGround:
+  Bunny_PlayerYW = Bunny_CF_CY << 3
+  Bunny_PlayerYW -= 9
+  Bunny_PlayerYW = Bunny_PlayerYW
+  Bunny_PlayerVYW = 0
+  return
+
+' Native Amy player sprite selector. It mirrors the original 8.8 velocity test
+' and writes the four player sprite pattern bytes directly.
+sub Bunny_SelectPlayerSprite:
+  Bunny_PlayerVxInt = Bunny_PlayerVXW
+  if signed Bunny_PlayerVxInt < 0 then
+    Bunny_PlayerSpriteBase = 8
+  else
+    if signed Bunny_PlayerVxInt > 0 then
+      Bunny_PlayerSpriteBase = 4
+    else
+      Bunny_PlayerVxFrac = lowbyte Bunny_PlayerVXW
+      if Bunny_PlayerVxFrac >= 128 then
+        Bunny_PlayerSpriteBase = 4
+      else
+        Bunny_PlayerSpriteBase = 0
+      end if
+    end if
+  end if
+  set sprite 0 pattern to Bunny_PlayerSpriteBase + 2
+  set sprite 1 pattern to Bunny_PlayerSpriteBase + 3
+  set sprite 2 pattern to Bunny_PlayerSpriteBase
+  set sprite 3 pattern to Bunny_PlayerSpriteBase + 1
+  return

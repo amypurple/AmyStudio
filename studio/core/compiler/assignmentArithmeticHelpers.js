@@ -643,6 +643,7 @@ export function createAssignmentArithmeticHelpers({
       return emitFormulaAssignment(target, normalizedOp, String(Math.abs(constantNumeric)));
     }
     const valueTokenReferencesRuntimeValue = (() => {
+      if (parseArrayRef(valueToken)) return true;
       if (resolveValueType(valueToken)) return false;
       const identifiers = String(valueToken || "").match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
       return identifiers.some((identifier) => !!getRuntimeInfo(identifier));

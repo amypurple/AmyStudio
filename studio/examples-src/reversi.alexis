@@ -1,0 +1,1038 @@
+project "Reversi"
+cartridge "REVERSI/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Amy port of the old NewColeco SDCC Reversi sample.
+' Original source: old-projects-sdcc-z80/sdccold/reversi/
+' The original readme says the old version had no sounds and was buggy.
+' This port keeps the original board graphics and adds NewColeco's historical
+' logo cue to the menu.
+
+asset ReversiBoardZx0 from "@project/reversi.name.zx0" codec zx0
+asset ReversiPatternZx0 from "@project/reversi.pattern.zx0" codec zx0
+asset ReversiColorRaw from "@project/reversi.color.raw" codec raw
+asset ReversiSpritesZx0 from "@project/reversi.sprpat.zx0" codec zx0
+asset ReversiMenuNameZx0 from "@project/reversi-menu-v5.name.zx0" codec zx0
+
+const Empty = 0
+const BlackPiece = 1
+const WhitePiece = 2
+const HintPiece = 3
+const BoardLeft = 5
+const BoardTop = 5
+const HumanPiece = BlackPiece
+const CpuPiece = WhitePiece
+const ControllerHuman = 0
+const ControllerSimple = 1
+const ControllerTuned = 2
+const ReversiNodeBudget = 400
+u8 Board[64]
+u8 Hints[64]
+u8 DirFlips[8]
+u8 CursorX = 2
+u8 CursorY = 3
+u8 SelectedIndex = 0
+u8 CellIndex = 0
+u8 ProbeIndex = 0
+u8 CellValue = 0
+u8 Piece = 0
+u8 BaseTile = 0
+u8 TileX = 0
+u8 TileY = 0
+u8 ScanX = 0
+u8 ScanY = 0
+u8 MoveX = 0
+u8 MoveY = 0
+u8 Dir = 0
+u8 MoveCount = 0
+u8 FlipCount = 0
+u8 TotalFlips = 0
+u8 BestIndex = 0
+u8 BestX = 0
+u8 BestY = 0
+u8 BestScore = 0
+i16 BestValue = 0
+i16 ThinkScore = 0
+u16 ReversiNodes = 0
+
+u8 ReversiSearchAborted = 0
+u8 ReversiEnforceBudget = 0
+u8 ReversiCompletedDepth = 0
+u8 ReversiDepthBestIndex = 255
+i16 ReversiDepthBestValue = -30000
+u8 PassCount = 0
+u8 BlackScore = 0
+u8 WhiteScore = 0
+u8 CurrentPiece = BlackPiece
+u8 OpponentPiece = WhitePiece
+u8 Pad = 0
+u8 Key = 0
+u8 SpriteX = 0
+u8 SpriteY = 0
+u8 SpritePattern = 0
+u8 Tmp = 0
+u8 FlipStep = 0
+u8 BoardParity = 0
+u8 LastPad = 0
+u8 MenuPlayer = 0
+u8 TurnPiece = BlackPiece
+u8 ActiveController = ControllerHuman
+u8 BlackController = ControllerHuman
+u8 WhiteController = ControllerSimple
+u8 TieBreak = 0
+i8 StepX = 0
+i8 StepY = 0
+i8 Tx = 0
+i8 Ty = 0
+
+data ReversiDirX bytes
+  1,1,0,-1,-1,-1,0,1
+end data
+
+data ReversiDirY bytes
+  0,1,1,1,0,-1,-1,-1
+end data
+
+data ReversiPositionWeights bytes
+  20,-3,11,8,8,11,-3,20,
+  -3,-7,-4,1,1,-4,-7,-3,
+  11,-4,2,2,2,2,-4,11,
+  8,1,2,-3,-3,2,1,8,
+  8,1,2,-3,-3,2,1,8,
+  11,-4,2,2,2,2,-4,11,
+  -3,-7,-4,1,1,-4,-7,-3,
+  20,-3,11,8,8,11,-3,20
+end data
+
+data ReversiMoveOrder bytes
+  0,7,56,63,2,5,16,23,40,47,58,61,3,4,24,31,
+  32,39,59,60,18,19,20,21,26,29,34,37,42,43,44,45,
+  11,12,25,30,33,38,51,52,1,6,8,15,27,28,35,36,
+  48,55,57,62,10,13,17,22,41,46,50,53,9,14,49,54
+end data
+
+sub start:
+  tile screen
+  sprites 16x16
+  sprites simple
+  decompress zx0 ReversiPatternZx0 to vram.pattern
+  duplicate mode 2 text patterns
+  load mode 2 text colors ReversiColorRaw
+  decompress zx0 ReversiSpritesZx0 to vram.spr_pat
+  clear sprites
+  set sprite count 2
+  set sound table ReversiSoundTable areas 2
+  screen on
+  ReversiShowMenu
+  ReversiNewGame
+  goto ReversiNextTurn
+end sub
+
+sub ReversiShowMenu:
+  MenuPlayer = 0
+  BlackController = ControllerHuman
+  WhiteController = ControllerTuned
+  LastPad = 0
+  decompress zx0 ReversiMenuNameZx0 to vram.name
+  ReversiDrawPlayerMenu
+  play sound 1
+ReversiMenuInput:
+  wait
+  Pad = joypad(1)
+  if joypad(1).left then
+    if LastPad = 0 then
+      MenuPlayer = 0
+      LastPad = 1
+      ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).right then
+    if LastPad = 0 then
+      MenuPlayer = 1
+      LastPad = 1
+      ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).up then
+    if LastPad = 0 then
+      if MenuPlayer = 0 then
+        if BlackController = 0 then BlackController = 2 else BlackController -= 1
+      else
+        if WhiteController = 0 then WhiteController = 2 else WhiteController -= 1
+      end if
+      LastPad = 1
+      ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).down then
+    if LastPad = 0 then
+      if MenuPlayer = 0 then
+        if BlackController = 2 then BlackController = 0 else BlackController += 1
+      else
+        if WhiteController = 2 then WhiteController = 0 else WhiteController += 1
+      end if
+      LastPad = 1
+      ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).button1 then
+    wait no fire
+    mute all
+    return
+  end if
+  if Pad = 0 then LastPad = 0 else LastPad = 1
+  goto ReversiMenuInput
+
+sub ReversiDrawPlayerMenu:
+  if MenuPlayer = 0 then
+    put char $2A at 3,8
+    put char $20 at 18,8
+  else
+    put char $20 at 3,8
+    put char $2A at 18,8
+  end if
+  select case BlackController
+  case ControllerHuman
+    put char $2A at 2,11
+    put char $20 at 2,13
+    put char $20 at 2,15
+  case ControllerSimple
+    put char $20 at 2,11
+    put char $2A at 2,13
+    put char $20 at 2,15
+  case ControllerTuned
+    put char $20 at 2,11
+    put char $20 at 2,13
+    put char $2A at 2,15
+  end select
+  select case WhiteController
+  case ControllerHuman
+    put char $2A at 17,11
+    put char $20 at 17,13
+    put char $20 at 17,15
+  case ControllerSimple
+    put char $20 at 17,11
+    put char $2A at 17,13
+    put char $20 at 17,15
+  case ControllerTuned
+    put char $20 at 17,11
+    put char $20 at 17,13
+    put char $2A at 17,15
+  end select
+  return
+sub ReversiNewGame:
+  decompress zx0 ReversiBoardZx0 to vram.name
+  for CellIndex = 0 to 63
+    Board[CellIndex] = Empty
+    Hints[CellIndex] = Empty
+  next
+  CursorX = 2
+  CursorY = 3
+  PassCount = 0
+  Piece = WhitePiece
+  ScanX = 3
+  ScanY = 3
+  ReversiPutPiece
+  ScanX = 4
+  ScanY = 4
+  ReversiPutPiece
+  Piece = BlackPiece
+  ScanX = 4
+  ScanY = 3
+  ReversiPutPiece
+  ScanX = 3
+  ScanY = 4
+  ReversiPutPiece
+  CurrentPiece = HumanPiece
+  ReversiMarkLegalMoves
+  ReversiDrawHints
+  ReversiDrawScores
+  ReversiDrawCursor
+  return
+
+sub ReversiNextTurn:
+  CurrentPiece = TurnPiece
+  ReversiMarkLegalMoves
+  if MoveCount = 0 then
+    PassCount += 1
+    if PassCount >= 2 then goto ReversiGameOver
+    ReversiSwitchTurn
+    goto ReversiNextTurn
+  end if
+  PassCount = 0
+  if TurnPiece = BlackPiece then
+    ActiveController = BlackController
+  else
+    ActiveController = WhiteController
+  end if
+  if ActiveController = ControllerHuman then goto ReversiHumanTurn
+  goto ReversiCpuTurn
+
+sub ReversiSwitchTurn:
+  if TurnPiece = BlackPiece then
+    TurnPiece = WhitePiece
+  else
+    TurnPiece = BlackPiece
+  end if
+  return
+
+sub ReversiHumanTurn:
+  nmi on
+  LastPad = 0
+  wait
+  ReversiDrawHints
+  if TurnPiece = BlackPiece then
+    PrintBlackTurn
+  else
+    PrintWhiteTurn
+  end if
+ReversiPlayerLoop:
+  wait
+  ReversiDrawCursor
+  Pad = joypad(1)
+  if joypad(1).left then
+    if LastPad = 0 then
+      if CursorX > 0 then CursorX -= 1
+    end if
+  elseif joypad(1).right then
+    if LastPad = 0 then
+      if CursorX < 7 then CursorX += 1
+    end if
+  elseif joypad(1).up then
+    if LastPad = 0 then
+      if CursorY > 0 then CursorY -= 1
+    end if
+  elseif joypad(1).down then
+    if LastPad = 0 then
+      if CursorY < 7 then CursorY += 1
+    end if
+  elseif joypad(1).button1 then
+    SelectedIndex = (CursorY << 3) + CursorX
+    CellValue = Hints[SelectedIndex]
+    if CellValue > 0 then
+      ReversiEraseHints
+      ScanX = CursorX
+      ScanY = CursorY
+      Piece = TurnPiece
+      ReversiApplyMove
+      ReversiDrawScores
+      wait no fire
+      ReversiSwitchTurn
+      goto ReversiNextTurn
+    end if
+  end if
+  if Pad = 0 then LastPad = 0 else LastPad = 1
+  goto ReversiPlayerLoop
+
+sub PrintWhiteTurn:
+  print at 23,17, "WHITE"
+  print at 23,18, "TURN "
+end sub
+
+sub PrintBlackTurn:
+  print at 23,17, "BLACK"
+  print at 23,18, "TURN "
+end sub
+
+sub ReversiCpuTurn:
+  nmi on
+  wait
+  if TurnPiece = BlackPiece then
+    PrintBlackTurn
+  else
+    PrintWhiteTurn
+  end if
+
+  ReversiDrawHints
+  nmi off
+  OpponentPiece = 3 - TurnPiece
+  BestValue = -30000
+  BestIndex = 255
+
+  if ActiveController = ControllerTuned then
+    ReversiFindTunedMove
+    if BestIndex <> 255 then
+      BestX = BestIndex & 7
+      BestY = BestIndex >> 3
+      goto ReversiCpuMoveReady
+    end if
+  end if
+
+  ' A rare depth-2 budget abort falls back to the bounded simple evaluator.
+  BestValue = -30000
+  CellIndex = 0
+    for ScanY = 0 to 7
+      for ScanX = 0 to 7
+        if Board[CellIndex] = Empty then
+          TotalFlips = 0
+          for Dir = 0 to 7
+            ReversiCountDirection
+            TotalFlips += FlipCount
+          next
+          if TotalFlips > 0 then
+            ThinkScore = ReversiScoreSimpleMove(CellIndex,TotalFlips,TurnPiece)
+            if ThinkScore > BestValue then
+              BestValue = ThinkScore
+              BestIndex = CellIndex
+              BestX = ScanX
+              BestY = ScanY
+            elseif ThinkScore = BestValue then
+              TieBreak = random(0,1)
+              if TieBreak = 1 then
+                BestIndex = CellIndex
+                BestX = ScanX
+                BestY = ScanY
+              end if
+            end if
+          end if
+        end if
+        CellIndex += 1
+    next
+  next
+
+ReversiCpuMoveReady:
+  nmi on
+  if BestIndex = 255 then goto ReversiGameOver
+  CurrentPiece = TurnPiece
+  ReversiMarkLegalMoves
+  CellValue = Hints[BestIndex]
+  if CellValue = 0 then
+    BestIndex = 255
+    for CellIndex = 0 to 63
+      if BestIndex = 255 then
+        if Hints[CellIndex] > 0 then BestIndex = CellIndex
+      end if
+    next
+    if BestIndex = 255 then goto ReversiGameOver
+    BestX = BestIndex & 7
+    BestY = BestIndex >> 3
+  end if
+  wait
+  ReversiEraseHints
+  ScanX = BestX
+  ScanY = BestY
+  TotalFlips = 0
+  for Dir = 0 to 7
+    ReversiCountDirection
+    TotalFlips += FlipCount
+  next
+  if TotalFlips = 0 then goto ReversiGameOver
+  Piece = TurnPiece
+  wait 20 frames
+  ReversiApplyMove
+  ReversiDrawScores
+  ReversiSwitchTurn
+  goto ReversiNextTurn
+
+' Iterative search: depth 2 is authoritative. Depth 3 replaces it only when
+' every node finishes inside the shared ColecoVision-friendly budget.
+sub ReversiFindTunedMove:
+  ReversiNodes = 0
+  ReversiCompletedDepth = 0
+  ReversiSearchAborted = 0
+  ReversiEnforceBudget = 0
+  BestIndex = 255
+  BestValue = -30000
+
+  Tmp = ReversiSearchDepth(2,TurnPiece)
+  if Tmp = 1 then
+    BestIndex = ReversiDepthBestIndex
+    BestValue = ReversiDepthBestValue
+    ReversiCompletedDepth = 2
+  end if
+
+  if ReversiNodes < ReversiNodeBudget then
+    ReversiSearchAborted = 0
+    ReversiEnforceBudget = 1
+    Tmp = ReversiSearchDepth(3,TurnPiece)
+    if Tmp = 1 then
+      BestIndex = ReversiDepthBestIndex
+      BestValue = ReversiDepthBestValue
+      ReversiCompletedDepth = 3
+    end if
+  end if
+  ReversiEnforceBudget = 0
+  return
+
+' Root candidates come from the gameplay engine's authoritative legal-move map.
+' Static ordering gives alpha-beta useful depth within the 400-node budget.
+function ReversiSearchDepth(u8 Depth, u8 Side) as u8
+  u8 SavedBoard[64] = 0
+  u8 Slot = 0
+  u8 Move = 0
+  u8 MoveTotal = 0
+  u8 OtherSide = 0
+  i16 Score = 0
+  i16 RootAlpha = -30000
+
+  ReversiDepthBestIndex = 255
+  ReversiDepthBestValue = -30000
+  OtherSide = 3 - Side
+
+  do while Slot < 64
+    Move = ReversiMoveOrder[Slot]
+    if Hints[Move] > 0 then
+      MoveTotal += 1
+      copy Board to SavedBoard count 64
+      ReversiApplyMoveFast(Move,Side)
+      Score = 0 - ReversiAlphaBeta(Depth - 1,OtherSide,-30000,0 - RootAlpha)
+      copy SavedBoard to Board count 64
+      if ReversiSearchAborted <> 0 then return 0
+      if Score > ReversiDepthBestValue then
+        ReversiDepthBestValue = Score
+        ReversiDepthBestIndex = Move
+      elseif Score = ReversiDepthBestValue then
+        TieBreak = random(0,1)
+        if TieBreak = 1 then ReversiDepthBestIndex = Move
+      end if
+      if Score > RootAlpha then RootAlpha = Score
+    end if
+    Slot += 1
+  loop
+  if MoveTotal = 0 then return 0
+  return 1
+function ReversiAlphaBeta(u8 Depth, u8 Side, i16 Alpha, i16 Beta) as i16
+  u8 SavedBoard[64] = 0
+  u8 Slot = 0
+  u8 Move = 0
+  u8 MoveTotal = 0
+  u8 OtherSide = 0
+  i16 Score = 0
+  i16 Best = -30000
+
+  if ReversiEnforceBudget <> 0 then
+    if ReversiNodes >= ReversiNodeBudget then
+      ReversiSearchAborted = 1
+      return ReversiEvaluateTuned(Side)
+    end if
+  end if
+  ReversiNodes += 1
+  if Depth = 0 then return ReversiEvaluateTuned(Side)
+
+  OtherSide = 3 - Side
+  do while Slot < 64
+    Move = ReversiMoveOrder[Slot]
+    if ReversiCountMoveFast(Move,Side) > 0 then
+      MoveTotal += 1
+      copy Board to SavedBoard count 64
+      ReversiApplyMoveFast(Move,Side)
+      if Depth = 1 then
+        if ReversiEnforceBudget <> 0 and ReversiNodes >= ReversiNodeBudget then
+          ReversiSearchAborted = 1
+          Score = 0 - ReversiEvaluateTuned(OtherSide)
+        else
+          ReversiNodes += 1
+          Score = 0 - ReversiEvaluateTuned(OtherSide)
+        end if
+      else
+        Score = 0 - ReversiAlphaBeta(Depth - 1,OtherSide,0 - Beta,0 - Alpha)
+      end if
+      copy SavedBoard to Board count 64
+      if ReversiSearchAborted <> 0 then return Score
+      if Score > Best then Best = Score
+      if Score > Alpha then Alpha = Score
+      if Alpha >= Beta then return Best
+    end if
+    Slot += 1
+  loop
+
+  if MoveTotal = 0 then
+    if ReversiHasAnyMove(OtherSide) > 0 then
+      if Depth = 1 then
+        if ReversiEnforceBudget <> 0 and ReversiNodes >= ReversiNodeBudget then
+          ReversiSearchAborted = 1
+          return 0 - ReversiEvaluateTuned(OtherSide)
+        end if
+        ReversiNodes += 1
+        return 0 - ReversiEvaluateTuned(OtherSide)
+      end if
+      return 0 - ReversiAlphaBeta(Depth - 1,OtherSide,0 - Beta,0 - Alpha)
+    end if
+    return ReversiEvaluateTuned(Side)
+  end if
+  return Best
+' Integer heuristic tuned for shallow Z80 searches: stable corners,
+' frontier exposure, corner danger, positional value, and late material.
+function ReversiEvaluateTuned(u8 Side) as i16
+  u8 I = 0
+  u8 Opp = 0
+  u8 SideCount = 0
+  u8 OppCount = 0
+  u8 EmptyCount = 0
+  u8 SideCorners = 0
+  u8 OppCorners = 0
+  u8 SideClose = 0
+  u8 OppClose = 0
+  u8 SideFrontier = 0
+  u8 OppFrontier = 0
+  u8 SideMoves = 0
+  u8 OppMoves = 0
+  i8 Weight = 0
+  i16 Score = 0
+
+  Opp = 3 - Side
+  for I = 0 to 63
+    Weight = ReversiPositionWeights[I]
+    if Board[I] = Side then
+      SideCount += 1
+      Score += Weight
+      if ReversiHasEmptyNeighbour(I) > 0 then SideFrontier += 1
+    elseif Board[I] = Opp then
+      OppCount += 1
+      Score -= Weight
+      if ReversiHasEmptyNeighbour(I) > 0 then OppFrontier += 1
+    else
+      EmptyCount += 1
+    end if
+  next
+
+  if Board[0] = Side then SideCorners += 1
+  if Board[7] = Side then SideCorners += 1
+  if Board[56] = Side then SideCorners += 1
+  if Board[63] = Side then SideCorners += 1
+  if Board[0] = Opp then OppCorners += 1
+  if Board[7] = Opp then OppCorners += 1
+  if Board[56] = Opp then OppCorners += 1
+  if Board[63] = Opp then OppCorners += 1
+
+  if Board[0] = Empty then
+    if Board[1] = Side then SideClose += 1
+    if Board[8] = Side then SideClose += 1
+    if Board[9] = Side then SideClose += 1
+    if Board[1] = Opp then OppClose += 1
+    if Board[8] = Opp then OppClose += 1
+    if Board[9] = Opp then OppClose += 1
+  end if
+  if Board[7] = Empty then
+    if Board[6] = Side then SideClose += 1
+    if Board[14] = Side then SideClose += 1
+    if Board[15] = Side then SideClose += 1
+    if Board[6] = Opp then OppClose += 1
+    if Board[14] = Opp then OppClose += 1
+    if Board[15] = Opp then OppClose += 1
+  end if
+  if Board[56] = Empty then
+    if Board[48] = Side then SideClose += 1
+    if Board[49] = Side then SideClose += 1
+    if Board[57] = Side then SideClose += 1
+    if Board[48] = Opp then OppClose += 1
+    if Board[49] = Opp then OppClose += 1
+    if Board[57] = Opp then OppClose += 1
+  end if
+  if Board[63] = Empty then
+    if Board[54] = Side then SideClose += 1
+    if Board[55] = Side then SideClose += 1
+    if Board[62] = Side then SideClose += 1
+    if Board[54] = Opp then OppClose += 1
+    if Board[55] = Opp then OppClose += 1
+    if Board[62] = Opp then OppClose += 1
+  end if
+
+  SideMoves = ReversiCountMovesFast(Side)
+  OppMoves = ReversiCountMovesFast(Opp)
+
+  Score += SideCorners * 64
+  Score -= OppCorners * 64
+  Score += OppClose * 8
+  Score += OppClose * 4
+  Score -= SideClose * 8
+  Score -= SideClose * 4
+  Score += OppFrontier * 16
+  Score -= SideFrontier * 16
+  Score += SideMoves * 4
+  Score -= OppMoves * 4
+  if EmptyCount <= 12 then
+    Score += SideCount * 4
+    Score -= OppCount * 4
+  else
+    Score += SideCount
+    Score -= OppCount
+  end if
+  return Score
+
+function ReversiHasEmptyNeighbour(u8 Cell) as u8
+  u8 X = 0
+  u8 Y = 0
+  u8 Neighbour = 0
+
+  X = Cell & 7
+  Y = Cell >> 3
+  if X > 0 then
+    Neighbour = Cell - 1
+    if Board[Neighbour] = Empty then return 1
+  end if
+  if X < 7 then
+    Neighbour = Cell + 1
+    if Board[Neighbour] = Empty then return 1
+  end if
+  if Y > 0 then
+    Neighbour = Cell - 8
+    if Board[Neighbour] = Empty then return 1
+    if X > 0 then
+      Neighbour = Cell - 9
+      if Board[Neighbour] = Empty then return 1
+    end if
+    if X < 7 then
+      Neighbour = Cell - 7
+      if Board[Neighbour] = Empty then return 1
+    end if
+  end if
+  if Y < 7 then
+    Neighbour = Cell + 8
+    if Board[Neighbour] = Empty then return 1
+    if X > 0 then
+      Neighbour = Cell + 7
+      if Board[Neighbour] = Empty then return 1
+    end if
+    if X < 7 then
+      Neighbour = Cell + 9
+      if Board[Neighbour] = Empty then return 1
+    end if
+  end if
+  return 0
+function ReversiScoreSimpleMove(u8 Move, u8 Flips, u8 Side) as i16
+  i16 Score = 0
+  u8 MX = 0
+  u8 MY = 0
+
+  if Flips = 0 then return -30000
+  Score = Flips
+  MX = Move & 7
+  MY = Move >> 3
+  if Move = 0 or Move = 7 or Move = 56 or Move = 63 then Score += 40
+  if MX = 0 or MX = 7 or MY = 0 or MY = 7 then Score += 6
+  if Move = 1 or Move = 8 or Move = 9 then Score -= 12
+  if Move = 6 or Move = 14 or Move = 15 then Score -= 12
+  if Move = 48 or Move = 49 or Move = 57 then Score -= 12
+  if Move = 54 or Move = 55 or Move = 62 then Score -= 12
+  return Score
+
+function ReversiCountMovesFast(u8 Side) as u8
+  u8 Move = 0
+  u8 Count = 0
+  for Move = 0 to 63
+    if ReversiCountMoveFast(Move,Side) > 0 then Count += 1
+  next
+  return Count
+
+function ReversiHasAnyMove(u8 Side) as u8
+  u8 Move = 0
+  for Move = 0 to 63
+    if ReversiCountMoveFast(Move,Side) > 0 then return 1
+  next
+  return 0
+
+function ReversiCountMoveFast(u8 Move, u8 Side) as u8
+  u8 D = 0
+  u8 Total = 0
+  if Board[Move] <> Empty then return 0
+  for D = 0 to 7
+    Total += ReversiCountDirFast(Move,Side,D)
+  next
+  return Total
+
+function ReversiCountDirFast(u8 Move, u8 Side, u8 D) as u8
+  u8 FX = 0
+  u8 FY = 0
+  i8 FStepX = 0
+  i8 FStepY = 0
+  u8 FIndex = 0
+  u8 Count = 0
+  u8 Opponent = 0
+
+  Opponent = 3 - Side
+  FX = Move & 7
+  FY = Move >> 3
+  FStepX = ReversiDirX[D]
+  FStepY = ReversiDirY[D]
+
+ReversiCountDirFastLoop:
+  FX += FStepX
+  FY += FStepY
+  if FX > 7 then return 0
+  if FY > 7 then return 0
+  FIndex = (FY << 3) + FX
+  if Board[FIndex] = Opponent then
+    Count += 1
+    goto ReversiCountDirFastLoop
+  elseif Board[FIndex] = Side then
+    return Count
+  end if
+  return 0
+
+sub ReversiApplyMoveFast(u8 Move, u8 Side):
+  u8 D = 0
+  u8 LocalFlips = 0
+  u8 LocalStep = 0
+  u8 FX = 0
+  u8 FY = 0
+  i8 FStepX = 0
+  i8 FStepY = 0
+  u8 FIndex = 0
+
+  for D = 0 to 7
+    LocalFlips = ReversiCountDirFast(Move,Side,D)
+    if LocalFlips > 0 then
+      FX = Move & 7
+      FY = Move >> 3
+      FStepX = ReversiDirX[D]
+      FStepY = ReversiDirY[D]
+      for LocalStep = 1 to LocalFlips
+        FX += FStepX
+        FY += FStepY
+        FIndex = (FY << 3) + FX
+        Board[FIndex] = Side
+      next
+    end if
+  next
+  Board[Move] = Side
+  return
+sub ReversiGameOver:
+  clear sprites
+  update sprites
+  ReversiDrawScores
+  if BlackScore > WhiteScore then
+    print centered at 22, "  BLACK WINS  "
+  elseif WhiteScore > BlackScore then
+    print centered at 22, "  WHITE WINS  "
+  else
+    print centered at 22, "  DRAW GAME   "
+  end if
+  print centered at 23, "PRESS FIRE"
+  pause until press
+  wait no fire
+  ReversiNewGame
+  goto ReversiNextTurn
+sub ReversiMarkLegalMoves:
+  ReversiCleanHints
+  MoveCount = 0
+  OpponentPiece = 3 - CurrentPiece
+  CellIndex = 0
+  for ScanY = 0 to 7
+    for ScanX = 0 to 7
+      if Board[CellIndex] = Empty then
+        TotalFlips = 0
+        for Dir = 0 to 7
+          ReversiCountDirection
+          TotalFlips += FlipCount
+        next
+        if TotalFlips > 0 then
+          Hints[CellIndex] = TotalFlips
+          MoveCount += 1
+        end if
+      end if
+      CellIndex += 1
+    next
+  next
+  return
+
+sub ReversiCleanHints:
+  for CellIndex = 0 to 63
+    Hints[CellIndex] = Empty
+  next
+  return
+
+sub ReversiDrawHints:
+  CellIndex = 0
+  for ScanY = 0 to 7
+    for ScanX = 0 to 7
+      if Hints[CellIndex] > 0 then
+        Piece = HintPiece
+        ReversiDrawPieceOnly
+      end if
+      CellIndex += 1
+    next
+  next
+  return
+
+sub ReversiEraseHints:
+  CellIndex = 0
+  for ScanY = 0 to 7
+    for ScanX = 0 to 7
+      if Hints[CellIndex] > 0 then
+        Hints[CellIndex] = Empty
+        Piece = Empty
+        ReversiDrawPieceOnly
+      end if
+      CellIndex += 1
+    next
+  next
+  return
+
+sub ReversiCountDirection:
+  FlipCount = 0
+  StepX = 0
+  StepY = 0
+  if Dir = 0 then
+    StepX = 1
+  elseif Dir = 1 then
+    StepX = 1
+    StepY = 1
+  elseif Dir = 2 then
+    StepY = 1
+  elseif Dir = 3 then
+    StepX = -1
+    StepY = 1
+  elseif Dir = 4 then
+    StepX = -1
+  elseif Dir = 5 then
+    StepX = -1
+    StepY = -1
+  elseif Dir = 6 then
+    StepY = -1
+  else
+    StepX = 1
+    StepY = -1
+  end if
+  Tx = ScanX
+  Ty = ScanY
+ReversiCountLoop:
+  Tx += StepX
+  Ty += StepY
+  if Tx < 0 or Tx > 7 or Ty < 0 or Ty > 7 then
+    FlipCount = 0
+    return
+  end if
+  ProbeIndex = (Ty << 3) + Tx
+  CellValue = Board[ProbeIndex]
+  if CellValue = OpponentPiece then
+    FlipCount += 1
+    goto ReversiCountLoop
+  end if
+  if CellValue = CurrentPiece then
+    return
+  end if
+  FlipCount = 0
+  return
+
+sub ReversiApplyMove:
+  CurrentPiece = Piece
+  OpponentPiece = 3 - CurrentPiece
+  MoveX = ScanX
+  MoveY = ScanY
+  ReversiPutPiece
+  CursorX = MoveX
+  CursorY = MoveY
+  ReversiDrawCursor
+
+  ' Freeze all directional results before animating flips. Otherwise an earlier
+  ' direction can modify Board[] and make a later direction look legal.
+  for Dir = 0 to 7
+    ScanX = MoveX
+    ScanY = MoveY
+    ReversiCountDirection
+    DirFlips[Dir] = FlipCount
+  next
+
+  for Dir = 0 to 7
+    FlipCount = DirFlips[Dir]
+    if FlipCount > 0 then
+      StepX = ReversiDirX[Dir]
+      StepY = ReversiDirY[Dir]
+      Tx = MoveX
+      Ty = MoveY
+      for FlipStep = 1 to FlipCount
+        Tx += StepX
+        Ty += StepY
+        ScanX = Tx
+        ScanY = Ty
+        ReversiAnimateFlip
+      next
+    end if
+  next
+  ScanX = MoveX
+  ScanY = MoveY
+  return
+
+sub ReversiAnimateFlip:
+  u8 OldColor = 0
+  u8 NewColor = 0
+  u8 OldPattern = $2C
+  u8 NewPattern = $10
+  u8 AnimationFrame = 0
+
+  CellIndex = (ScanY << 3) + ScanX
+  CellValue = Board[CellIndex]
+  if CellValue = BlackPiece then OldColor = 1 else OldColor = 15
+  if CurrentPiece = BlackPiece then NewColor = 1 else NewColor = 15
+  play sound 2
+  wait
+  Piece = Empty
+  ReversiDrawPieceOnly
+  SpriteX = (ScanX << 4) + (BoardLeft << 3)
+  SpriteY = (ScanY << 4) + (BoardTop << 3) - 1
+  set sprite count 4
+
+  for AnimationFrame = 0 to 6
+    set sprite 2 to SpriteY,SpriteX,NewPattern,NewColor
+    set sprite 3 to SpriteY,SpriteX,OldPattern,OldColor
+    update sprites
+    wait 2 frames
+    NewPattern += 4
+    OldPattern += 4
+  next
+
+  Piece = CurrentPiece
+  ReversiPutPiece
+  set sprite 2 y to 207
+  set sprite 3 y to 207
+  set sprite count 2
+  update sprites
+  wait 2 frames
+  return
+
+sub ReversiPutPiece:
+  if ScanX > 7 or ScanY > 7 then return
+  CellIndex = (ScanY << 3) + ScanX
+  Board[CellIndex] = Piece
+  ReversiDrawPieceOnly
+  return
+
+sub ReversiDrawPieceOnly:
+  BaseTile = 128
+  BoardParity = (ScanX + ScanY) & 1
+  if BoardParity = 1 then BaseTile = 144
+  if Piece = BlackPiece then
+    BaseTile += 4
+  elseif Piece = WhitePiece then
+    BaseTile += 8
+  elseif Piece = HintPiece then
+    BaseTile += 12
+  end if
+  TileX = BoardLeft + (ScanX << 1)
+  TileY = BoardTop + (ScanY << 1)
+  put char BaseTile at TileX,TileY
+  put char BaseTile + 1 at TileX,TileY + 1
+  put char BaseTile + 2 at TileX + 1,TileY
+  put char BaseTile + 3 at TileX + 1,TileY + 1
+  return
+
+sub ReversiDrawHourglass:
+  SpritePattern = 8
+  goto ReversiDrawPointer
+
+sub ReversiDrawCursor:
+  SpritePattern = 0
+  goto ReversiDrawPointer
+
+sub ReversiDrawPointer:
+  SpriteX = (CursorX << 4) + (BoardLeft << 3)
+  SpriteY = (CursorY << 4) + (BoardTop << 3) + 7
+  set sprite 0 to SpriteY,SpriteX,SpritePattern,1
+  set sprite 1 to SpriteY,SpriteX,SpritePattern + 4,15
+  set sprite count 2
+  update sprites
+  return
+
+sub ReversiDrawScores:
+  BlackScore = 0
+  WhiteScore = 0
+  for CellIndex = 0 to 63
+    if Board[CellIndex] = BlackPiece then
+      BlackScore += 1
+    elseif Board[CellIndex] = WhitePiece then
+      WhiteScore += 1
+    end if
+  next
+  print BlackScore at 24,8
+  print WhiteScore at 24,13
+  return
+
+
+include "@project/reversi-logo-sound.asm"

@@ -134,6 +134,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_SET_GRAPHICS_MODE3_MULTICOLOR: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR_FULL: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_LOAD_MODE2_TEXT_COLORS_32: abi({ inputs: { hl: "32-byte compact Mode 2 text color table" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_DUPLICATE_PATTERN_THIRDS: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_DUPLICATE_COLOR_THIRDS: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SCREEN_OFF_NO_NMI: abi({ clobbers: ["af", "bc"] }),

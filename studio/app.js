@@ -1,8 +1,8 @@
 import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
-import { createAutocompleteController } from "./core/editor/autocomplete.js";
-import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260710-rom-peek";
+import { createAutocompleteController } from "./core/editor/autocomplete.js?v=20260719-editor-input-debounce";
+import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260724-reversi-port";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
@@ -27,7 +27,7 @@ import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=2026
 import { createCompareLiteralHelpers } from "./core/compiler/compareLiteralHelpers.js";
 import { createCompilerShellHelpers } from "./core/compiler/compilerShellHelpers.js";
 import { createDataHelpers } from "./core/compiler/dataHelpers.js";
-import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelpers.js?v=20260605-dsound-asset-fix";
+import { handleDataMetaStatement } from "./core/compiler/dataMetaStatementHelpers.js?v=20260715-asm-label-collision";
 import { handleDataCursorStatement } from "./core/compiler/dataCursorStatementHelpers.js";
 import { handleDeclarationStatement } from "./core/compiler/declarationStatementHelpers.js";
 import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260714-fixed-const-compare";
@@ -42,8 +42,8 @@ import { handleDoStatement, handleWhileStatement } from "./core/compiler/loopSta
 import { handleMathBitStatement } from "./core/compiler/mathBitStatementHelpers.js";
 import { handleMutateStatement } from "./core/compiler/mutateStatementHelpers.js";
 import { createPrintHelpers } from "./core/compiler/printHelpers.js";
-import { handlePrintFormatStatement } from "./core/compiler/printFormatStatementHelpers.js";
-import { createProcHelpers } from "./core/compiler/procHelpers.js";
+import { handlePrintFormatStatement } from "./core/compiler/printFormatStatementHelpers.js?v=20260729-print-at-short-form";
+import { createProcHelpers } from "./core/compiler/procHelpers.js?v=20260715-asm-label-collision";
 import { handleProcFunctionStatement } from "./core/compiler/procFunctionStatementHelpers.js";
 import { handleDispatchLabelStatement } from "./core/compiler/dispatchLabelStatementHelpers.js";
 import { handleRandomBounceStatement } from "./core/compiler/randomBounceStatementHelpers.js";
@@ -52,12 +52,12 @@ import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoState
 import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20260710-word-ptr";
 import { handleSelectCaseStatement } from "./core/compiler/selectCaseStatementHelpers.js";
 import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js?v=20260714-record-fixed-source-preserve";
-import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260714-dsound-nmi";
+import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260605-dsound-asset-fix";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
 import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js";
 import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20260712-dec-branch";
-import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260712-preserve-loader";
+import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260724-mode2-color-loader";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js";
 import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
 import {
@@ -72,10 +72,10 @@ import {
   previewDinaBiosTitleScreen,
   previewColecoBiosTitleFromMetadata,
   previewDinaBiosTitleFromMetadata
-} from "./core/colecoBiosPreview.js";
-import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260708-project-asm-deps";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js";
-import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js";
+} from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
+import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260715-asm-label-collision";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260729-project-asm-editor";
+import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
 import {
@@ -91,10 +91,9 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { createDocsUi } from "./core/docsUi.js?v=20260620-release-docs-cleanup";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260711-asm-include-proc";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260707-live-examples-index";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260708-bunny-v2-aliases";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260724-reversi-port";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260724-reversi-port";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260724-reversi-port";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bytesToDataUrl } from "./core/utils/dataUrls.js";
@@ -190,6 +189,9 @@ const els = {
   biosImport: document.getElementById("biosImport"),
   studioView: document.getElementById("studioView"),
   btnWavConverter: document.getElementById("btnWavConverter"),
+  btnOpenGraphicsEditors: document.getElementById("btnOpenGraphicsEditors"),
+  btnCreateEditorsJson: document.getElementById("btnCreateEditorsJson"),
+  btnScanEditorsJson: document.getElementById("btnScanEditorsJson"),
   wavConverterDialog: document.getElementById("wavConverterDialog"),
   wavFile: document.getElementById("wavFile"),
   btnWavQuickAddFile: document.getElementById("btnWavQuickAddFile"),
@@ -303,6 +305,7 @@ function setupProjectPanelTabs() {
       tab.button.setAttribute("aria-selected", active ? "true" : "false");
       tab.panel.classList.toggle("hidden", !active);
     }
+    if (targetButton === els.projectPanelTabDocs) void ensureDocsUi();
   }
 
   for (const tab of tabs) {
@@ -375,7 +378,7 @@ function refreshExampleBrowserUi() {
 
 function currentExamplesRevision() {
   const pageVersion = new URLSearchParams(window.location.search || "").get("v") || "";
-  return pageVersion || "20260709-bunny-v3";
+  return pageVersion || "20260729-reversi-menu-zx0";
 }
 
 function preloadExamplesCatalog() {
@@ -418,7 +421,12 @@ function loadExamplesModule({ forceFresh = false } = {}) {
 }
 async function getExampleById(id) {
   const examples = await loadExamplesModule();
-  return examples.exampleCatalog.find((item) => item.id === id) || null;
+  const example = examples.exampleCatalog.find((item) => item.id === id) || null;
+  // Listings are not preloaded in the browser: fetch this one on demand.
+  if (example && !example.sourceText && typeof examples.loadExampleSourceById === "function") {
+    try { await examples.loadExampleSourceById(id); } catch (error) { setStatus(`Cannot load example source: ${error?.message || error}`); }
+  }
+  return example;
 }
 
 function loadWavToDsoundModule() {
@@ -446,7 +454,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260713-fx8-format");
+    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260715-asm-label-collision");
   }
   return internalCompilerModulePromise;
 }
@@ -743,6 +751,9 @@ const {
   insertProjectFilePlaySnippet,
   createNewTileSetProjectFiles,
   createNewBitmapProjectFiles,
+  openGraphicsEditorsFromProject,
+  createEditorsJsonProjectFile,
+  scanEditorsJsonProjectFile,
   upsertProjectFile,
   removeProjectFile,
   renderProjectFiles,
@@ -754,6 +765,7 @@ const {
   clearCompiledArtifacts,
   saveProjectToStorage,
   insertTextIntoSource: (...args) => insertTextIntoSource(...args),
+  commitProjectSourceText: (...args) => commitProjectSourceText(...args),
   setStatus: (...args) => setStatus(...args),
   ensureProjectFilePathCandidate,
   assetNameFromProjectPath,
@@ -771,10 +783,26 @@ const {
   ...projectFileAddons
 });
 
-const docsUi = createDocsUi({
-  els,
-  setStatus: (...args) => setStatus(...args)
-});
+window.__amyStudioGraphicsEditors = {
+  open: openGraphicsEditorsFromProject,
+  create: createEditorsJsonProjectFile,
+  scan: scanEditorsJsonProjectFile
+};
+
+let docsUiPromise = null;
+function ensureDocsUi() {
+  if (!docsUiPromise) {
+    docsUiPromise = import("./core/docsUi.js?v=20260723-lazy-docs").then((module) => {
+      const docsUi = module.createDocsUi({
+        els,
+        setStatus: (...args) => setStatus(...args)
+      });
+      docsUi.bind();
+      return docsUi;
+    });
+  }
+  return docsUiPromise;
+}
 
 const {
   commitProjectSourceText,
@@ -890,6 +918,9 @@ function bindEvents() {
         bytesToBase64,
         createNewTileSetProjectFiles,
         createNewBitmapProjectFiles,
+        openGraphicsEditorsFromProject,
+        createEditorsJsonProjectFile,
+        scanEditorsJsonProjectFile,
         addImportedProjectFiles
       },
       runtime: {
@@ -934,7 +965,6 @@ function hideStudioLoading() {
   window.setTimeout(() => splash.remove(), 360);
 }
 setupProjectPanelTabs();
-docsUi.bind();
 bindEvents();
 
 (function setupAsmPanelToggle() {
