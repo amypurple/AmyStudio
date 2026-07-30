@@ -1,0 +1,149 @@
+project "Amy Static Frameless ABI Selftest"
+memory "colecovision_legacy_sdcc"
+
+' Runtime regression test for the compiler's static frameless calling convention.
+' The same source is also compiled under every optimizer profile by
+' tools/test-static-frameless-abi-codegen.mjs.
+
+u8 Passes = 0
+u8 Failures = 0
+u8 U8Result = 0
+i8 I8Result = 0
+u16 U16Result = 0
+i16 I16Result = 0
+u8 FrameTicks = 0
+
+on frame AbiFrame
+
+sub start:
+  text screen
+  backdrop black
+  print centered at 1, "FRAMELESS ABI SELFTEST"
+
+  U8Result = AddU8(17,25)
+  if U8Result = 42 then
+    Passes += 1
+    print at 1,4, "U8 PARAMS       PASS"
+  else
+    Failures += 1
+    print at 1,4, "U8 PARAMS       FAIL"
+  end if
+
+  I8Result = AddI8(-12,5)
+  if I8Result = -7 then
+    Passes += 1
+    print at 1,6, "I8 PARAMS       PASS"
+  else
+    Failures += 1
+    print at 1,6, "I8 PARAMS       FAIL"
+  end if
+
+  U16Result = AddU16(1000,234)
+  if U16Result = 1234 then
+    Passes += 1
+    print at 1,8, "U16 PARAMS      PASS"
+  else
+    Failures += 1
+    print at 1,8, "U16 PARAMS      FAIL"
+  end if
+
+  I16Result = AddI16(-1000,234)
+  if I16Result = -766 then
+    Passes += 1
+    print at 1,10, "I16 PARAMS      PASS"
+  else
+    Failures += 1
+    print at 1,10, "I16 PARAMS      FAIL"
+  end if
+
+  ' A local initializer must execute on every invocation.
+  U8Result = FreshLocal(1)
+  U8Result += FreshLocal(2)
+  if U8Result = 17 then
+    Passes += 1
+    print at 1,12, "LOCAL RESET     PASS"
+  else
+    Failures += 1
+    print at 1,12, "LOCAL RESET     FAIL"
+  end if
+
+  ' Inner() must finish before Outer writes the static parameter cells of AddU8.
+  U8Result = Outer(10,Inner())
+  if U8Result = 15 then
+    Passes += 1
+    print at 1,14, "NESTED ARGS     PASS"
+  else
+    Failures += 1
+    print at 1,14, "NESTED ARGS     FAIL"
+  end if
+
+  ' RecursiveAcc keeps the IX ABI while its AddU16 leaf remains frameless.
+  U16Result = RecursiveAcc(4,100)
+  if U16Result = 105 then
+    Passes += 1
+    print at 1,16, "RECURSIVE CALL  PASS"
+  else
+    Failures += 1
+    print at 1,16, "RECURSIVE CALL  FAIL"
+  end if
+
+  print at 1,19, "PASSES"
+  print Passes at 10,19 digits 2
+  print at 16,19, "FAILURES"
+  print Failures at 26,19 digits 2
+
+  if Failures = 0 then
+    print centered at 22, "PASS"
+  else
+    print centered at 22, "FAIL"
+  end if
+
+  screen on
+  loop forever
+end sub
+
+function AddU8(u8 A, u8 B) as u8
+  u8 Total = 0
+  Total = A + B
+  return Total
+
+function AddI8(i8 A, i8 B) as i8
+  i8 Total = 0
+  Total = A + B
+  return Total
+
+function AddU16(u16 A, u16 B) as u16
+  u16 Total = 0
+  Total = A + B
+  return Total
+
+function AddI16(i16 A, i16 B) as i16
+  i16 Total = 0
+  Total = A + B
+  return Total
+
+function FreshLocal(u8 Seed) as u8
+  u8 Marker = 7
+  Marker += Seed
+  return Marker
+
+function Inner() as u8
+  return AddU8(2,3)
+
+function Outer(u8 A, u8 B) as u8
+  return AddU8(A,B)
+
+function RecursiveAcc(u8 Depth, u16 Value) as u16
+  if Depth = 0 then
+    return AddU16(Value,1)
+  end if
+  return AddU16(RecursiveAcc(Depth - 1,Value),1)
+
+' NMI-reachable routines must never receive the static frameless ABI.
+sub AbiFrame:
+  AbiNmiAdd(1)
+  return
+
+sub AbiNmiAdd(u8 Delta):
+  FrameTicks += Delta
+  return

@@ -1,7 +1,8 @@
-import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js";
+import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js?v=20260730-static-abi-v11";
 
 export function transpileAmyCore(sourceText, deps) {
   const {
+    resolveStaticAbiInclude,
     rewriteImmediateByteTempCoordinateUsesCore,
     inferAmyMemoryCapabilities,
     sourceHintsTinySound,
@@ -1029,7 +1030,7 @@ export function transpileAmyCore(sourceText, deps) {
     }
     finishProc();
 
-    const eligibility = analyzeStaticAbiEligibility(lines);
+    const eligibility = analyzeStaticAbiEligibility(lines, { resolveInclude: resolveStaticAbiInclude });
     for (const key of eligibility.eligible) {
       const routine = eligibility.routines.get(key);
       if (!routine) continue;

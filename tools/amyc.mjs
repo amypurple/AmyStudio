@@ -165,6 +165,13 @@ async function main() {
   const srcPath = path.resolve(opts.file);
   if (!existsSync(srcPath)) { console.error("File not found: " + srcPath); process.exit(2); }
   const sourceText = readFileSync(srcPath, "utf8");
+  const resolveStaticAbiInclude = (includePath) => {
+    const normalized = String(includePath || "").replace(/\\/g, "/");
+    const abs = normalized.toLowerCase().startsWith("@project/")
+      ? (opts.projectDir ? path.join(opts.projectDir, normalized.slice("@project/".length)) : null)
+      : path.join(REPO, normalized);
+    return abs && existsSync(abs) ? readFileSync(abs, "utf8") : null;
+  };
   const base = srcPath.replace(/\.(alexis|amy|txt)$/i, "");
 
   const project = newProject({
@@ -176,7 +183,7 @@ async function main() {
   project.sourceText = sourceText;
   project.projectName = path.basename(base);
 
-  const transpiled = transpileAmySource({ sourceLang: "amy", sourceText, transpileAmy: (s) => transpileAmyCore(s, DEPS), lexZ80Source, summarizeTokens });
+  const transpiled = transpileAmySource({ sourceLang: "amy", sourceText, transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude }), lexZ80Source, summarizeTokens });
   if (!transpiled?.ok) { console.error("Transpile failed: " + (transpiled?.log || "unknown error")); process.exit(1); }
   const generatedAsm = generateAsm(project, transpiled.asmBody, transpiled.assets || [], transpiled.metadata || {});
 

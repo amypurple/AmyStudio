@@ -91,7 +91,7 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260724-reversi-port";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260730-static-abi-v11";
 import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260724-reversi-port";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260724-reversi-port";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
@@ -684,6 +684,11 @@ const transpileSource = (sourceLang, sourceText) => transpileAmySource({
 });
 function transpileAmy(sourceText) {
   return transpileAmyCore(sourceText, {
+    resolveStaticAbiInclude: (includePath) => {
+      const normalized = normalizeProjectFilePath(includePath);
+      const entry = (project?.projectFiles || []).find((file) => normalizeProjectFilePath(file?.path).toLowerCase() === normalized.toLowerCase());
+      return entry ? new TextDecoder().decode(projectFileBytes(entry)) : null;
+    },
     rewriteImmediateByteTempCoordinateUsesCore,
     inferAmyMemoryCapabilities,
     sourceHintsTinySound,

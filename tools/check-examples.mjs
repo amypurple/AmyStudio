@@ -167,8 +167,17 @@ const DEPS = {
   stripAmyInlineComment
 };
 
-function transpileAmy(sourceText) {
-  return transpileAmyCore(sourceText, DEPS);
+function transpileAmy(sourceText, projectFiles = []) {
+  const files = new Map(projectFiles.map((file) => [
+    String(file?.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase(),
+    file
+  ]));
+  const resolveStaticAbiInclude = (includePath) => {
+    const key = String(includePath || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase();
+    const file = files.get(key);
+    return file?.base64 ? Buffer.from(file.base64, "base64").toString("utf8") : null;
+  };
+  return transpileAmyCore(sourceText, { ...DEPS, resolveStaticAbiInclude });
 }
 
 function validateExampleAsm(ex, result) {
@@ -385,7 +394,7 @@ const failures = [];
 const hashes = {};
 
 for (const ex of amyExamples) {
-  const result = transpileAmy(ex.sourceText);
+  const result = transpileAmy(ex.sourceText, ex.projectFiles);
   if (result.ok) {
     const validationIssues = validateExampleAsm(ex, result);
     if (validationIssues.length) {

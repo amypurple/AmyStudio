@@ -366,6 +366,9 @@ Current implementation status:
 - simple scalar locals in parameterless leaf `sub` routines may be placed in private static RAM (`AMY_LVAR_Sub_Name`) to avoid the IX prologue/epilogue
 - this static-local optimization is a codegen detail; the Amy source still sees procedure-local variables, not globals
 - recursive and re-entrant code keeps stack-backed locals where distinct active invocations are required
+- proven non-reentrant routines whose parameters and locals are scalar `u8`/`i8`/`u16`/`i16` may use the frameless static ABI: callers write private `AMY_SPARM_*` cells and the callee uses private `AMY_LVAR_*` cells
+- direct or mutual recursion, NMI reachability, `ref`, aggregate/unsupported locals, unresolved ASM transfers, and non-data project includes conservatively retain the IX stack ABI
+- readable ASM project includes preserve frameless optimization only when every substantive line is provably a label, constant, or data directive; unknown syntax fails closed
 
 Accepted local scalar declarations: `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `bool`, `fixed`, `ufixed`.
 Local `u8` and `u16` arrays are supported.
@@ -2642,4 +2645,3 @@ Fast-code style:
   switch to explicit mode/upload commands when timing or visual transitions matter
 - keep every callable `sub` visibly terminated; future readers should see the
   Z80 control flow without reverse-engineering it
-

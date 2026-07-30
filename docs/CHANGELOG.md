@@ -1,3 +1,10 @@
+## 2026-07-30 - Static ABI v1.1 fail-closed safety
+
+- Recognize all eight conditional forms of inline-ASM `call`/`jp` plus `jr` and `djnz` edges to Amy routines, preventing hidden recursion from being classified frameless.
+- Treat unresolved, indirect, or otherwise unknown ASM transfers as opaque and conservatively retain the IX stack ABI.
+- Resolve plain project ASM includes consistently in the browser, CLI, and example checker; only an explicit allowlist of labels, constants, and data directives is considered provably data-only.
+- Replace the local-type denylist with a scalar `u8`/`i8`/`u16`/`i16` allowlist, excluding arrays, records, enums, aliases, and unsupported future types by default.
+- Added adversarial analysis regressions, retained the five-profile ABI codegen suite, transpiled 176/176 examples, and rebuilt the ABI ROM self-test under every optimizer profile.
 ## 2026-07-29 - Reversi preview-ready graphics assets
 
 - Added the historical NewColeco logo cue, originally labeled `DanielBienvenuLogoMusic`, to the Reversi v5 menu with a compact sound table and explicit mute before gameplay; its editable ASM file documents Amy Bienvenu's former legal-name attribution.
@@ -5477,7 +5484,3 @@ Why this is still `v2.1` and not `v2.2`:
   - `Project` keeps the project name, examples, RAM summary, Method 2 summary, and status
   - `Files` now owns embedded project files and the `Audio/Voice` shortcut
   - this prepares the UI for a future graphics asset quick-add workflow without crowding project metadata
-
-
-
-
