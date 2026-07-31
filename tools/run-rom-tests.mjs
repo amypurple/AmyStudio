@@ -27,6 +27,7 @@ for (const test of selected) {
   const args = ["tools/test-rom-gearcoleco.mjs", "--rom", rom, "--symbols", symbols, "--frames", String(test.frames ?? 120)];
   for (const [symbol, value] of Object.entries(test.expectBytes || {})) args.push("--expect-byte", `${symbol}=${value}`);
   for (const input of test.inputs || []) args.push("--input", `${input.frame}:${input.player || 1}:${input.button}:${input.action || "press_and_release"}`);
+  if (test.checkpoint) args.push("--checkpoint", test.checkpoint);
   if (test.screenshot) args.push("--screenshot", resolve(outputDir, test.screenshot));
   if (test.visualBaseline) args.push("--visual-baseline", resolve(repoRoot, test.visualBaseline));
   run(args);

@@ -177,6 +177,21 @@ else ifdef
 end ifdef
 ```
 
+### Symbolic ROM-Test Checkpoints
+
+A debug-only build can expose stable execution points to the GearColeco test runner:
+
+```basic
+define ROM_TEST_CHECKPOINTS
+
+if defined ROM_TEST_CHECKPOINTS
+  test checkpoint "player_over_cat"
+end defined
+```
+
+`test checkpoint` accepts a quoted identifier containing letters, digits, and underscores, beginning with a letter. It emits the symbol `AMY_ULBL_TEST_player_over_cat` plus one `NOP`, giving the emulator a unique executable breakpoint address. Keep checkpoints inside a compile-time block so release builds contain neither the symbol nor the marker byte.
+
+The checkpoint does not perform an assertion itself. The ROM test suite resolves it through the generated `.sym` file, stops before the marker executes, then may inspect RAM, VRAM, VDP state, sprites, or a screenshot. A finite frame budget remains mandatory and becomes the timeout if the checkpoint is never reached.
 C-style forms remain accepted for familiarity:
 
 ```basic

@@ -1,3 +1,10 @@
+## 2026-07-30 - Symbolic GearColeco ROM-test checkpoints
+
+- Added `test checkpoint "name"` for compile-time guarded, symbol-resolved emulator checkpoints with a unique one-byte NOP marker.
+- Extended the GearColeco runner and suite configuration with `--checkpoint`, exact `.sym` lookup, execute breakpoints, finite frame timeouts, and recorded hit/address metadata.
+- Migrated the Warrior DAN2 prompt and post-FIRE image tests from arbitrary observation frames to `warrior_prompt` and `warrior_image` checkpoints.
+- Verified checkpoint symbols under all five optimization profiles, retained deterministic controller input, and continued enforcing PNG, VDP, full VRAM, PATTERN, COLOR, and NAME-table baselines.
+
 ## 2026-07-30 - Full example ROM assembly audit
 
 - Added `node tools/check-examples.mjs --assemble` to build every example through the complete Studio pipeline with embedded project files and balanced optimization.

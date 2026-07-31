@@ -72,6 +72,17 @@ export function handleDispatchLabelStatement({
     return { ok: true, handled: true, lines: code };
   }
 
+  const checkpoint = line.match(/^test\s+checkpoint\s+"([A-Za-z][A-Za-z0-9_]*)"$/i);
+  if (checkpoint) {
+    return { ok: true, handled: true, lines: [`AMY_ULBL_TEST_${checkpoint[1]}:`, "    nop"] };
+  }
+  if (/^test\s+checkpoint\b/i.test(line)) {
+    return {
+      ok: false,
+      handled: true,
+      log: `test checkpoint requires a quoted identifier using letters, digits, and underscores: ${rawLine}`
+    };
+  }
   const labelDecl = line.match(/^label\s+([A-Za-z_][A-Za-z0-9_]*):?$/i);
   if (labelDecl) {
     return { ok: true, handled: true, lines: [`${ensureLabelAsmSymbol(labelDecl[1])}:`] };

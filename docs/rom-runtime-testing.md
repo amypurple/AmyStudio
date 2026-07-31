@@ -32,6 +32,23 @@ A direct runner invocation is also available:
 node tools/test-rom-gearcoleco.mjs --rom build/rom-tests/test.rom --symbols build/rom-tests/test.sym --frames 180 --expect-byte AMY_UVAR_Failures=00 --screenshot build/rom-tests/test.png
 ```
 
+## Symbolic checkpoints
+
+Prefer a named Amy checkpoint over an arbitrary final frame when the program has a meaningful state transition:
+
+```basic
+if defined ROM_TEST_CHECKPOINTS
+  test checkpoint "warrior_image"
+end defined
+```
+
+Configure the scenario with `"checkpoint": "warrior_image"`, or invoke the direct runner with `--checkpoint warrior_image`. The runner loads the generated `.sym`, resolves `AMY_ULBL_TEST_warrior_image`, installs an execute breakpoint, and frame-steps until it is hit. `frames` is then a maximum timeout rather than the observation instant.
+
+```powershell
+node tools/test-rom-gearcoleco.mjs --rom test.rom --symbols test.sym --frames 240 --checkpoint warrior_image
+```
+
+A missing, duplicate, or unreachable checkpoint fails loudly. The result records the resolved symbol, address, hit status, and actual number of frames executed.
 ## What this catches
 
 - ROMs that transpile but fail during final assembly.
@@ -76,12 +93,12 @@ The diagnostic rebuilds the failing example while disabling each enabled optimiz
 
 ## Deterministic controller input
 
-Runtime scenarios may schedule controller actions before their visual checkpoint. The Warrior DAN2 test validates both sides of an interaction: at frame 120 without input it must still show the explanatory prompt; in a separate run GearColeco injects `fire1` at frame 120 and frame 240 must show the decompressed Warrior image.
+Runtime scenarios may schedule controller actions before a symbolic visual checkpoint. The Warrior DAN2 test validates both sides of an interaction: the prompt scenario stops on `warrior_prompt`; in a separate run GearColeco injects `fire1` at frame 120 and stops on `warrior_image` after DAN2 decompression completes.
 
 Direct form:
 
 ```powershell
-node tools/test-rom-gearcoleco.mjs --rom test.rom --frames 240 --input 120:1:fire1:press_and_release --visual-baseline tools/rom-baselines/warrior-dan2-fire-image.json
+node tools/test-rom-gearcoleco.mjs --rom test.rom --frames 240 --input 120:1:fire1:press_and_release --checkpoint warrior_image --symbols test.sym --visual-baseline tools/rom-baselines/warrior-dan2-fire-image.json
 ```
 
 The Warrior baseline also enforces an independent comparison against the original picture data on every run: VRAM `$0000-$17FF` must equal the 6144-byte PATTERN table, VRAM `$2000-$37FF` must equal the 6144-byte COLOR table, and the NAME table must be sequential. This ensures the baseline cannot merely approve a consistently corrupted DAN2 result.

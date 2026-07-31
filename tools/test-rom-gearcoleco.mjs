@@ -18,6 +18,7 @@ const options = {
   traceLastFrames: 0,
   traceOutput: null,
   inputs: [],
+  checkpoint: null,
   listTools: false
 };
 const args = process.argv.slice(2);
@@ -34,6 +35,7 @@ for (let index = 0; index < args.length; index += 1) {
   else if (arg === "--trace-last-frames") options.traceLastFrames = Number.parseInt(args[++index] || "", 10);
   else if (arg === "--trace-output") options.traceOutput = resolve(args[++index] || "");
   else if (arg === "--input") options.inputs.push(args[++index] || "");
+  else if (arg === "--checkpoint") options.checkpoint = args[++index] || "";
   else if (arg === "--list-tools") options.listTools = true;
   else throw new Error(`Unknown argument: ${arg}`);
 }
@@ -41,7 +43,8 @@ if (!existsSync(options.executable)) throw new Error(`GearColeco not found: ${op
 if (!options.listTools && (!options.rom || !existsSync(options.rom))) throw new Error("Use --rom <file> with an existing ROM.");
 if (!Number.isInteger(options.frames) || options.frames < 0) throw new Error("--frames must be a non-negative integer.");
 if (options.symbols && !existsSync(options.symbols)) throw new Error(`Symbol file not found: ${options.symbols}`);
-if (options.expectBytes.length && !options.symbols) throw new Error("--expect-byte requires --symbols.");
+if ((options.expectBytes.length || options.checkpoint) && !options.symbols) throw new Error("--expect-byte and --checkpoint require --symbols.");
+if (options.checkpoint && !/^[A-Za-z][A-Za-z0-9_]*$/.test(options.checkpoint)) throw new Error("--checkpoint requires an Amy checkpoint identifier.");
 if (options.updateBaseline && !options.visualBaseline) throw new Error("--update-baseline requires --visual-baseline.");
 if (options.visualBaseline && !options.updateBaseline && !existsSync(options.visualBaseline)) throw new Error(`Visual baseline not found: ${options.visualBaseline}`);
 if (!Number.isInteger(options.traceLastFrames) || options.traceLastFrames < 0 || options.traceLastFrames > options.frames) throw new Error("--trace-last-frames must be between 0 and --frames.");
@@ -113,7 +116,7 @@ function diffByteRanges(expected, actual, limit = 12) {
   return ranges;
 }
 
-async function captureVisualState(client, screenshotBase64) {
+async function captureVisualState(client, screenshotBase64, frames = options.frames) {
   const memory = await client.callTool("read_memory", { area: 3, offset: "0000", size: 16384 });
   const vram = parseHexMemory(memory?.data);
   if (vram.length !== 16384) throw new Error(`Expected 16384 VRAM bytes, got ${vram.length}`);
@@ -121,7 +124,7 @@ async function captureVisualState(client, screenshotBase64) {
   const screenshot = Buffer.from(screenshotBase64, "base64");
   return {
     version: 1,
-    frames: options.frames,
+    frames,
     screenshotSha256: sha256(screenshot),
     vramSha256: sha256(vram),
     vramBase64: vram.toString("base64"),
@@ -184,6 +187,17 @@ try {
     const media = await client.callTool("get_media_info");
     let trace = null;
     const scheduledInputs = options.inputs.map(parseInput);
+    let framesRun = 0;
+    let checkpoint = null;
+    if (options.checkpoint) {
+      const symbol = `AMY_ULBL_TEST_${options.checkpoint}`;
+      const lookup = await client.callTool("lookup_symbol_by_name", { name: symbol });
+      if (lookup?.count !== 1 || !lookup.matches?.[0]?.address) {
+        throw new Error(`Checkpoint symbol ${symbol} was not found exactly once.`);
+      }
+      checkpoint = { symbol, address: String(lookup.matches[0].address).toUpperCase(), hit: false };
+      await client.callTool("set_breakpoint", { address: checkpoint.address, memory_area: "rom_ram", execute: true });
+    }
     for (let frame = 0; frame < options.frames; frame += 1) {
       for (const input of scheduledInputs.filter((entry) => entry.frame === frame)) {
         await client.callTool("controller_button", { player: input.player, button: input.button, action: input.action });
@@ -192,6 +206,18 @@ try {
         await client.callTool("set_trace_log", { enabled: true, flags: 68 });
       }
       await client.callTool("debug_step_frame");
+      framesRun = frame + 1;
+      if (checkpoint) {
+        const status = await client.callTool("debug_get_status");
+        const pc = String(status?.pc ?? status?.PC ?? "").replace(/^0x/i, "").padStart(4, "0").toUpperCase();
+        if (status?.at_breakpoint && pc === checkpoint.address.padStart(4, "0")) {
+          checkpoint.hit = true;
+          break;
+        }
+      }
+    }
+    if (checkpoint && !checkpoint.hit) {
+      throw new Error(`Checkpoint ${checkpoint.symbol} was not reached within ${options.frames} frames.`);
     }
     if (options.traceLastFrames) {
       trace = await client.callTool("get_trace_log", { start: 0, count: 1000 });
@@ -218,10 +244,12 @@ try {
         screenshotPath = options.screenshot;
       }
       if (options.visualBaseline) {
-        visual = await captureVisualState(client, base64);
+        visual = await captureVisualState(client, base64, framesRun);
         if (options.updateBaseline) {
           mkdirSync(dirname(options.visualBaseline), { recursive: true });
-          writeFileSync(options.visualBaseline, `${JSON.stringify(visual, null, 2)}\n`, "utf8");
+          const previous = existsSync(options.visualBaseline) ? JSON.parse(readFileSync(options.visualBaseline, "utf8")) : {};
+          const updated = previous.sourceValidation ? { ...visual, sourceValidation: previous.sourceValidation } : visual;
+          writeFileSync(options.visualBaseline, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
         } else {
           const expected = JSON.parse(readFileSync(options.visualBaseline, "utf8"));
           const problems = compareVisualState(expected, visual);
@@ -237,7 +265,7 @@ try {
     console.log(JSON.stringify({
       ok: true,
       rom: basename(options.rom),
-      frames: options.frames,
+      frames: framesRun,
       media,
       cpu,
       vdp,
@@ -247,6 +275,7 @@ try {
       trace: trace ? { output: options.traceOutput, entries: trace?.entries?.length ?? trace?.count ?? null } : null,
       assertions,
       inputs: scheduledInputs,
+      checkpoint,
       emulatorLogs: client.logs.slice(-12)
     }, null, 2));
   }
