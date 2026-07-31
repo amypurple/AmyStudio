@@ -17,6 +17,7 @@ const options = {
   updateBaseline: false,
   traceLastFrames: 0,
   traceOutput: null,
+  inputs: [],
   listTools: false
 };
 const args = process.argv.slice(2);
@@ -32,6 +33,7 @@ for (let index = 0; index < args.length; index += 1) {
   else if (arg === "--update-baseline") options.updateBaseline = true;
   else if (arg === "--trace-last-frames") options.traceLastFrames = Number.parseInt(args[++index] || "", 10);
   else if (arg === "--trace-output") options.traceOutput = resolve(args[++index] || "");
+  else if (arg === "--input") options.inputs.push(args[++index] || "");
   else if (arg === "--list-tools") options.listTools = true;
   else throw new Error(`Unknown argument: ${arg}`);
 }
@@ -43,6 +45,19 @@ if (options.expectBytes.length && !options.symbols) throw new Error("--expect-by
 if (options.updateBaseline && !options.visualBaseline) throw new Error("--update-baseline requires --visual-baseline.");
 if (options.visualBaseline && !options.updateBaseline && !existsSync(options.visualBaseline)) throw new Error(`Visual baseline not found: ${options.visualBaseline}`);
 if (!Number.isInteger(options.traceLastFrames) || options.traceLastFrames < 0 || options.traceLastFrames > options.frames) throw new Error("--trace-last-frames must be between 0 and --frames.");
+
+function parseInput(spec) {
+  const parts = String(spec).split(":");
+  if (parts.length !== 4) throw new Error(`Invalid --input ${spec}; use FRAME:PLAYER:BUTTON:ACTION.`);
+  const frame = Number.parseInt(parts[0], 10);
+  const player = Number.parseInt(parts[1], 10);
+  const button = parts[2];
+  const action = parts[3];
+  if (!Number.isInteger(frame) || frame < 0 || frame >= options.frames) throw new Error(`Input frame out of range: ${spec}`);
+  if (player !== 1 && player !== 2) throw new Error(`Input player must be 1 or 2: ${spec}`);
+  if (!["press", "release", "press_and_release"].includes(action)) throw new Error(`Invalid input action: ${spec}`);
+  return { frame, player, button, action };
+}
 
 function parseExpectedByte(spec) {
   const match = /^([A-Za-z_][A-Za-z0-9_]*)=(?:\$|0x)?([0-9A-Fa-f]+)$/.exec(spec);
@@ -125,6 +140,30 @@ function compareVisualState(expected, actual) {
     problems.push(`VRAM hash differs; ranges ${JSON.stringify(diffByteRanges(before, after))}`);
   }
   if (JSON.stringify(expected.vdpRegisters) !== JSON.stringify(actual.vdpRegisters)) problems.push("VDP registers differ");
+  const source = expected.sourceValidation;
+  if (source) {
+    const vram = Buffer.from(actual.vramBase64 || "", "base64");
+    const validateSlice = (label, offsetText, length, expectedHash) => {
+      const offset = Number.parseInt(String(offsetText), 16);
+      const slice = vram.subarray(offset, offset + length);
+      if (slice.length !== length) {
+        problems.push(`${label} source validation is outside VRAM`);
+      } else if (sha256(slice) !== expectedHash) {
+        problems.push(`${label} source hash differs at VRAM ${offset.toString(16).padStart(4, "0").toUpperCase()}`);
+      }
+    };
+    validateSlice("PATTERN", source.patternVramOffset, source.patternLength, source.patternSha256);
+    validateSlice("COLOR", source.colorVramOffset, source.colorLength, source.colorSha256);
+    if (source.nameTable === "sequential 0..255 repeated") {
+      const offset = Number.parseInt(String(source.nameVramOffset), 16);
+      const length = source.nameLength;
+      const name = vram.subarray(offset, offset + length);
+      const mismatch = name.findIndex((value, index) => value !== (index & 0xFF));
+      if (name.length !== length || mismatch >= 0) {
+        problems.push(`NAME source validation differs at VRAM ${(offset + Math.max(mismatch, 0)).toString(16).padStart(4, "0").toUpperCase()}`);
+      }
+    }
+  }
   return problems;
 }
 
@@ -144,7 +183,11 @@ try {
     await client.callTool("debug_pause");
     const media = await client.callTool("get_media_info");
     let trace = null;
+    const scheduledInputs = options.inputs.map(parseInput);
     for (let frame = 0; frame < options.frames; frame += 1) {
+      for (const input of scheduledInputs.filter((entry) => entry.frame === frame)) {
+        await client.callTool("controller_button", { player: input.player, button: input.button, action: input.action });
+      }
       if (options.traceLastFrames && frame === options.frames - options.traceLastFrames) {
         await client.callTool("set_trace_log", { enabled: true, flags: 68 });
       }
@@ -203,6 +246,7 @@ try {
       visual: visual ? { screenshotSha256: visual.screenshotSha256, vramSha256: visual.vramSha256, baseline: options.visualBaseline, updated: options.updateBaseline } : null,
       trace: trace ? { output: options.traceOutput, entries: trace?.entries?.length ?? trace?.count ?? null } : null,
       assertions,
+      inputs: scheduledInputs,
       emulatorLogs: client.logs.slice(-12)
     }, null, 2));
   }

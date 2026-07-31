@@ -73,3 +73,15 @@ node tools/diagnose-optimizer-visual.mjs --test amy-static-frameless-abi-selftes
 ```
 
 The diagnostic rebuilds the failing example while disabling each enabled optimizer option independently and reports which option restores the approved display. Historical safe peepholes still share the broad `peephole` switch. Every new peephole must therefore receive a dedicated boolean optimizer-config key; otherwise it cannot be isolated more precisely than the whole peephole pass.
+
+## Deterministic controller input
+
+Runtime scenarios may schedule controller actions before their visual checkpoint. The Warrior DAN2 test validates both sides of an interaction: at frame 120 without input it must still show the explanatory prompt; in a separate run GearColeco injects `fire1` at frame 120 and frame 240 must show the decompressed Warrior image.
+
+Direct form:
+
+```powershell
+node tools/test-rom-gearcoleco.mjs --rom test.rom --frames 240 --input 120:1:fire1:press_and_release --visual-baseline tools/rom-baselines/warrior-dan2-fire-image.json
+```
+
+The Warrior baseline also enforces an independent comparison against the original picture data on every run: VRAM `$0000-$17FF` must equal the 6144-byte PATTERN table, VRAM `$2000-$37FF` must equal the 6144-byte COLOR table, and the NAME table must be sequential. This ensures the baseline cannot merely approve a consistently corrupted DAN2 result.

@@ -1,4 +1,5 @@
 import { reversiPublicProjectFiles } from "./examples-reversi-assets.js";
+import { warriorDan2FireTestProjectFiles } from "./examples-picture-assets.js?v=20260730-warrior-dan2-fire-test";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -571,5 +572,7 @@ replaceEditorsProjectFile("dragon-castle", [
   { name: "Dragon Castle Title Tiles", kind: "charset", pattern: { from: "file", name: "chateau-title.pattern.zx0" }, color: { from: "file", name: "chateau-title.color.zx0" }, baseTile: 0, tileCount: 256, screenMode: "mode2", notes: "Compressed title-picture pattern/color tiles shared with Chateau du Dragon." },
   { name: "Dragon Castle Contour Sprites", kind: "sprite-patterns", pattern: { from: "inline", name: "ChateauContourSprites" }, spriteSize: [16, 16], spriteCount: 6, basePattern: 0, sourceBasePattern: 0, patternTable: "vram.spr_pat", spriteColor: 1, notes: "Contour sprites overlaid on the title picture." }
 ]);
+
+derivedProjectFilesById["warrior-dan2-fire-visual-test"] = warriorDan2FireTestProjectFiles;
 
 export const projectFilesById = derivedProjectFilesById;
