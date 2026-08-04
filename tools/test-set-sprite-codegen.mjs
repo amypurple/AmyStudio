@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
 import { handleDisplayGraphicsSpriteStatement } from "../studio/core/compiler/displayGraphicsSpriteStatementHelpers.js";
 
@@ -40,6 +42,19 @@ assert.match(asm, /call AMY_SET_SPRITE/);
 assert.doesNotMatch(asm, /ld [bcde],l/);
 
 
+const outOfRangeResult = handleDisplayGraphicsSpriteStatement({
+  line: "set sprite 40 to 10,20,4,15",
+  rawLine: "set sprite 40 to 10,20,4,15",
+  preferScreenOnNoNmi: false,
+  currentGraphicsMode: null,
+  emitLoadInt8Into: (register, token) => [`    ld ${register},${token}`],
+  emitLoadInt8ValueInto: (register, token) => [`    ld ${register},${token}`],
+  emitLoadInt8ValueIntoPreserving: loadBytePreserving,
+  tryEvaluateConstantExpression: (expr) => /^\d+$/.test(String(expr).trim()) ? Number(String(expr).trim()) : null,
+  formatHex16: (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`
+});
+assert.equal(outOfRangeResult.ok, false);
+assert.match(outOfRangeResult.log, /between 0 and 31/);
 const multiFieldResult = handleDisplayGraphicsSpriteStatement({
   line: "set sprites 0,1,2,3 x to PlayerX",
   rawLine: "set sprites 0,1,2,3 x to PlayerX",
@@ -61,5 +76,15 @@ assert.deepEqual(multiFieldResult.lines, [
   "    ld (AMY_SPRITE_TABLE+9),a",
   "    ld (AMY_SPRITE_TABLE+13),a"
 ]);
+
+const spriteRuntime = fs.readFileSync(
+  path.resolve(import.meta.dirname, "..", "src", "alexis_lib", "coleco_sprite_table.asm"),
+  "utf8"
+);
+const updateRoutine = spriteRuntime.slice(spriteRuntime.indexOf("AMY_UPDATE_SPRITES:"));
+assert.equal((updateRoutine.match(/^\s*outi\s*$/gmi) || []).length, 3, "sprite upload should use OUTI only for Y/X/pattern");
+assert.match(updateRoutine, /and \$8F\s+out \(c\),a/i, "sprite color must remain masked during upload");
+assert.match(updateRoutine, /push bc[\s\S]*pop bc/i, "conservative OUTI upload must preserve BC");
+assert.doesNotMatch(updateRoutine, /\botir\b/i, "full OTIR is intentionally forbidden while inline ASM may bypass color setters");
 
 console.log("set sprite dynamic argument codegen: PASS");

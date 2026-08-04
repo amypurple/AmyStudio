@@ -177,6 +177,25 @@ else ifdef
 end ifdef
 ```
 
+### Source Debug Breakpoints
+
+Amy code can ask the development emulator to stop automatically at a named source location:
+
+```basic
+define DEBUG
+
+if defined DEBUG
+  debug breakpoint "game_loop"
+end defined
+```
+
+`debug breakpoint` accepts a quoted identifier beginning with a letter and containing only letters, digits, and underscores. In the current implementation it emits `AMY_ULBL_BREAK_game_loop` plus one unique `NOP`. Those symbol and marker spellings are non-normative codegen details. After compilation, the local development emulator discovers every such symbol and arms it automatically on Run and Reset. The Breakpoints panel shows it as `source: game_loop`.
+
+In Amy Studio, the preferred workflow is to click an executable line's gutter. A red marker creates a normal breakpoint; Shift-click or right-click opens a condition editor for forms such as `Score >= 10`, `Lives = 0`, or `$712F <> 3`. Conditions support `u8`, `i8`, `u16`, and `i16` values. They are stored as project metadata, injected only into the source copy sent to the compiler, and never alter the visible Amy listing.
+
+When a condition is false, the recorder continues automatically. When it is true, execution pauses and Amy Studio selects and highlights the corresponding source line. Gutter breakpoints are intended for development and remain absent from a project that does not define them.
+
+Keep source breakpoints inside a compile-time debug block. Removing `define DEBUG` removes both the symbol and marker byte from the release ROM. Use `test checkpoint` instead when the location identifies a repeatable automated-test assertion rather than an interactive debugging stop.
 ### Symbolic ROM-Test Checkpoints
 
 A debug-only build can expose stable execution points to the GearColeco test runner:
@@ -189,7 +208,7 @@ if defined ROM_TEST_CHECKPOINTS
 end defined
 ```
 
-`test checkpoint` accepts a quoted identifier containing letters, digits, and underscores, beginning with a letter. It emits the symbol `AMY_ULBL_TEST_player_over_cat` plus one `NOP`, giving the emulator a unique executable breakpoint address. Keep checkpoints inside a compile-time block so release builds contain neither the symbol nor the marker byte.
+`test checkpoint` accepts a quoted identifier containing letters, digits, and underscores, beginning with a letter. The current implementation emits the symbol `AMY_ULBL_TEST_player_over_cat` plus one `NOP`, giving the emulator a unique executable breakpoint address. Those exact symbol and marker spellings are non-normative codegen details. Keep checkpoints inside a compile-time block so release builds contain neither the symbol nor the marker byte.
 
 The checkpoint does not perform an assertion itself. The ROM test suite resolves it through the generated `.sym` file, stops before the marker executes, then may inspect RAM, VRAM, VDP state, sprites, or a screenshot. A finite frame budget remains mandatory and becomes the timeout if the checkpoint is never reached.
 C-style forms remain accepted for familiarity:
@@ -205,6 +224,7 @@ C-style forms remain accepted for familiarity:
 Statement conventions used throughout this document:
 
 - `Name` — source identifier
+- identifiers are case-insensitive and cannot collide with Amy keywords or builtins; for example, use `UpdateGame` rather than `Update`
 - `X,Y` — name-table column, row (`u8`)
 - `W,H` — width, height (`u8`)
 - `N`, `Count`, `Digits` — numeric literal or `u8` variable
@@ -378,10 +398,10 @@ sub update_player:
 Current implementation status:
 - locals are initialized at procedure entry and released logically on return
 - routines with parameters, functions, recursion-sensitive bodies, arrays, BCD, `bool` packs, and `fp5` locals use an `IX`-based stack frame
-- simple scalar locals in parameterless leaf `sub` routines may be placed in private static RAM (`AMY_LVAR_Sub_Name`) to avoid the IX prologue/epilogue
+- simple scalar locals in parameterless leaf `sub` routines may be placed in private static RAM (the exact internal symbol name is non-normative) to avoid the IX prologue/epilogue
 - this static-local optimization is a codegen detail; the Amy source still sees procedure-local variables, not globals
 - recursive and re-entrant code keeps stack-backed locals where distinct active invocations are required
-- proven non-reentrant routines whose parameters and locals are scalar `u8`/`i8`/`u16`/`i16` may use the frameless static ABI: callers write private `AMY_SPARM_*` cells and the callee uses private `AMY_LVAR_*` cells
+- proven non-reentrant routines whose parameters and locals are scalar `u8`/`i8`/`u16`/`i16` may use the frameless static ABI: callers and callees use private static cells whose exact internal symbols are non-normative
 - direct or mutual recursion, NMI reachability, `ref`, aggregate/unsupported locals, unresolved ASM transfers, and non-data project includes conservatively retain the IX stack ABI
 - readable ASM project includes preserve frameless optimization only when every substantive line is provably a label, constant, or data directive; unknown syntax fails closed
 
@@ -612,7 +632,7 @@ Rules:
 - `ref` is not supported for `u32`, `i32`, `fixed`, `fp5`, `bool`, `bcd`, or
   whole arrays (yet) — declaring one is a compile error, never wrong code
 
-Generated code — no runtime helper, no copy; the slot holds a 2-byte address
+Representative generated code (non-normative) — no runtime helper, no copy; the slot holds a 2-byte address
 and every access dereferences through HL with constant offsets:
 
 ```asm
@@ -760,31 +780,39 @@ were removed; use `end select` and `case else`.
 
 ### For / Next
 
+The loop variable must already be declared as a scalar integer variable. It is not
+created implicitly by the `for` statement.
+
 ```basic
+u8 I = 0
 for I = 0 to 31
   put char Tiles[I] at I,10
 next
 ```
 
 ```basic
+u8 I = 0
 for I = 0 to MaxClouds - 1
   set sprite I + 1 to Clouds[I].Y - 1, Clouds[I].X - 8, CloudPattern, 15
 next I
 ```
 
 ```basic
+u8 I = 0
 for I = 7 downto 0
   hide sprite I
 next
 ```
 
 ```basic
+i8 File = 0
 for File = 8 to 0 step -2
   print File at 0,4 digits 2
 next
 ```
 
 ```basic
+u8 Depth = 0
 for Depth = 0 to MaxDepth()
   continue for        ' skip to next iteration
   exit for            ' break out
@@ -913,7 +941,6 @@ PlayerX = StartX
 Flag = true
 Flag = false
 Stars[I] = 1
-inc Score
 dec Lives
 clear Score
 clear Counter32
@@ -928,6 +955,8 @@ toggle Ready
 Lives -= 1
 Score += 10
 Score -= 5
+inc Score
+dec Score
 Coins += Bonus
 Coins -= Delta
 ```
@@ -962,8 +991,6 @@ Score = StartScore
 Score = OtherScore
 Score += 100
 Score -= 5
-inc Score
-dec Score
 
 if Score > 0 goto HasScore
 if Score >= StartScore goto Bonus
@@ -975,6 +1002,7 @@ format Score into ScoreText
 ```
 
 BCD current limits:
+- `inc` and `dec` adjust BCD values by decimal one and preserve packed-decimal normalization
 - no `bcd *=`, `bcd /=`, or `bcd %=`
 - no BCD arrays or record fields yet
 - no local BCD non-zero initializer
@@ -982,8 +1010,9 @@ BCD current limits:
 - no general BCD expressions such as `Score = Score + 10`
 - indexed byte reads such as `Score[0]` are for debugging/inspection only
 
-Temporary cleanup note: old u32 prefix add/sub/inc forms still compile for compatibility,
-but new code should use `clear`, assignment, `+=`, `-=`, `inc`, and `dec`.
+
+Legacy `u32 zero/copy/add/inc/sub` prefix commands remain accepted for source migration.
+New code should use `clear`, assignment, `+=`, `-=`, `inc`, and `dec` instead.
 
 ### Shift
 
@@ -1075,7 +1104,8 @@ Preferred current direction:
 - use expression-style `random(N)` when you want a bounded integer in an assignment or formula
 - `random(N)` returns `0..N-1`
 - `random(A, B)` returns an inclusive integer value in `A..B` for byte-style integer targets
-- integer random values use the Coleco BIOS random seed at `$73C8`, with an Amy zero-seed guard before calling the BIOS random routine
+- zero-argument `random()` is valid only for `fp5` and `fixed32` targets; integer code must supply one or two arguments
+- integer random values use the Coleco BIOS random service, with an Amy zero-seed guard before calling it; the exact BIOS RAM address is a non-normative implementation detail
 - `Fp5Var = random(A, B)` returns an `fp5` value in `A..B` using `A + random() * (B-A)`
 - `random between A and B into Var` was removed; write `Var = random(A, B)`
 - use `Fp5Var = random()` for an `fp5` fractional sample in `0.0 .. <1.0`
@@ -1242,6 +1272,40 @@ the name table. Use this for Dacman-style screens where tiles are placed through
 the NAME table, but different screen thirds may need independent color tables
 (for example bronze/silver/gold medal colors sharing the same patterns).
 
+### Temporal 120-color pictures
+
+```basic
+picture screen
+' Upload the two prepared 6 KB banks before enabling the effect.
+120 colors on
+screen on
+
+' Later, before displaying an ordinary Graphics II picture:
+120 colors off
+```
+
+`120 colors on` enables the historical 120C temporal display technique. Once per
+VBlank, Amy alternates the TMS9918A table registers between these two phases:
+
+| Phase | R3 COLOR table | R4 PATTERN table |
+|---|---:|---:|
+| A | `$7F` (`$0000`) | `$04` (`$2000`) |
+| B | `$FF` (`$2000`) | `$00` (`$0000`) |
+
+The two 6 KB VRAM banks are therefore dual-purpose: each bank is interpreted as
+pattern bytes in one frame and color bytes in the other. This is frame-temporal
+alternation, not a scanline raster effect. On NTSC each phase is visible at 30
+Hz; on PAL each phase is visible at 25 Hz.
+
+`120 colors off` stops the alternation and restores standard Graphics II tables
+(R3=`$FF`, R4=`$03`). The generated NMI preserves registers and remains compatible
+with `on frame`, controllers, music, and sound. Projects that never use either
+command include no 120C runtime and reserve no 120C RAM.
+
+The commands do not convert an ordinary picture into 120C data. The uploaded
+banks must have been authored or converted specifically for the dual pattern/color
+interpretation; enabling the effect over unrelated VRAM data produces an invalid
+image.
 `text 40 screen` is intentionally not enabled yet. The VDP has a real 40-column
 text mode, but Amy's current text I/O helpers calculate `y * 32 + x`; enabling
 the screen setup before 40-column `print at` / `put` address math exists would
@@ -1635,6 +1699,8 @@ update sprites
 update sprites from 4 count 4
 ```
 
+Literal sprite indexes must be in `0..31`; an out-of-range literal is a compile error.
+
 After changing shadow entries, call `update sprites`.  
 Sprite shadow writes are not visible until `update sprites`.
 This is an intentional machine contract:
@@ -1684,10 +1750,22 @@ Preferred modern forms:
 ```basic
 Pad1 = joypad(1)
 Key1 = keypad(1)
-Spin1 = spinner(1)
+X += spinner(1)
+Y += spinner(2)
 FrameVar = frame
 print vdp.status at 0,0
 ```
+
+`spinner(N)` is a signed, consumable movement delta. Each read atomically returns
+and clears the ticks accumulated since the previous read. No movement therefore returns
+zero and cannot create residual acceleration. Positive `spinner(1)` moves right; positive
+`spinner(2)` moves down. Use `reset spinner N` only to discard queued movement without
+using it.
+
+The controller selector may be an `int8` expression for `joypad`, `keypad`, and
+`spinner`, for example `Port = 1`, `Spin = spinner(Port)`, or
+`OtherSpin = spinner(3 - Port)`. At runtime selector `1` chooses port 1; every
+other value chooses port 2. A dynamic spinner read remains atomic and consumable.
 
 Old staged reads still compile during cleanup, but code should use expressions
 when an expression exists. Keep these only for older source migration or
@@ -1717,6 +1795,9 @@ if down  on Pad1 goto Label
 ```basic
 pause until press
 pause until press on joypad 1
+pause until press and release
+pause until press and release blank after 5 seconds
+pause until press and release on joypad 1 blank after 5 seconds
 wait fire
 wait no fire
 wait fire on joypad 2
@@ -1734,27 +1815,49 @@ wait key release on keypad 2
 halt
 ```
 
-`pause until press` waits for fire-button release, then waits for a new
-fire-button press. Without `on joypad N`, either controller can resume.
-Use it for menu pauses and "press to continue" screens. `wait fire` and
-`wait no fire` still compile for low-level button waits, but new examples
-should prefer `pause until press`.
+`pause until press` waits until all action buttons are released, then waits for a new
+action-button press. Both side buttons of a standard controller are accepted; all four
+Super Action Controller buttons are accepted. Without `on joypad N`, either controller
+can resume.
+Use it for menu pauses and "press to continue" screens. `pause until press and release`
+adds a final release wait, preventing the accepted button from becoming an immediate
+gameplay action. `wait fire` and `wait no fire` are lower-level action waits;
+unqualified forms watch both controllers, while `on joypad N` limits them to one port.
+`pause until press and release blank after N seconds` adds CRT-safe timed blanking.
+`N` must be a literal from 1 to 1092. Amy precomputes `N*60` and `N*50` and
+selects the count at runtime from the official BIOS `AMERICA` byte (`60` NTSC,
+`50` PAL; unknown values fall back to NTSC). The timeout starts on command entry,
+even while an old action remains held. On expiry, Amy clears only VDP R1 display
+bit 6: NMI, controller scanning, sound, music, timers, and `on vblank` continue.
+After a fresh action is pressed and released, the original display-enable bit is
+restored without overwriting current NMI or sprite-size bits. This form requires
+NMI enabled; compilation fails when Amy can prove NMI is off at that point.
 `wait` is the canonical one-frame wait. It uses the safe frame-delay runtime:
 when NMI is enabled it waits through `NMI_FLAG`, and when NMI is disabled it
 polls the VDP status register directly instead of hanging on `halt`.
 `wait N frame(s)` is the same safe wait for explicit 16-bit frame counts;
 constant `0` waits are ignored.
 `wait N frame(s) or press` waits up to a 16-bit frame count but exits early
-when fire is pressed. Without `on joypad N`, either controller can interrupt.
+when any action button is pressed. Without `on joypad N`, either controller can interrupt.
 `wait vblank [N]` remains accepted as the lower-level spelling.
 
 ### Choose (menu selection)
 
 ```basic
 choose keypad 1 to 3 into Speed
+choose keypad KeyReplay to KeyMenu into Choice blank after 5 seconds
 ```
 
 Waits for a keypad digit in the given range and stores it.
+
+Computed bounds are also accepted. An optional `on keypad N` restricts input to one controller. `blank after N seconds` uses the same PAL/NTSC-aware, NMI-preserving CRT protection as `pause until press and release`, consumes the selected key release, and requires NMI enabled:
+
+```basic
+const KeyReplay = 10  ' *
+const KeyMenu = 11    ' #
+u8 Choice = 0
+choose keypad KeyReplay to KeyMenu into Choice blank after 5 seconds
+```
 
 Computed bounds are also accepted:
 
@@ -1779,9 +1882,9 @@ tile type hazard = $40,$41
 if tile under PlayerX + 4,PlayerY + 15 is solid goto OnGround
 if tiles under box PlayerX,PlayerY size 16,16 contain hazard goto Hurt
 find tile coin under box PlayerX,PlayerY size 16,16 into HitTileX,HitTileY
-
 if chars in box TileX - 1,TileY - 1 size 3,3 contain solid goto Blocked
 if chars in box TileX - 1,TileY - 1 size 3,3 contain $20 goto Blocked
+
 ```
 
 `if any collision` checks the VDP coincidence bit.  
@@ -1804,12 +1907,9 @@ Tile gameplay collision uses pixel coordinates, not name-table coordinates:
 - `find tile Type under box PixelX,PixelY size W,H into TileX,TileY` searches
   the touched tiles and stores the first matching tile coordinates, or
   `255,255` when no match is found.
-- `chars in box TileX,TileY size W,H contain TypeOrValue` scans a rectangle
-  directly in name-table tile coordinates. Use it for map logic that is already
-  tile-based, such as checking whether a 3x3 area around a candidate tile
-  touches a hole. When `W` and `H` are constants and the box fits in
-  `AMY_BUFFER32` (up to 32 bytes), Amy reads the whole rectangle once with the
-  BIOS frame read path and scans RAM instead of doing one VDP read per tile.
+- `chars in box TileX,TileY size W,H contain TypeOrValue` scans directly in
+  name-table tile coordinates. Constant rectangles up to 32 cells are fetched once
+  with `GET_BKGRND` and scanned in RAM; larger or dynamic rectangles use tile reads.
 
 `tile type` is compile-time only. It creates named property groups for existing
 tile values and may reuse earlier groups:
@@ -1957,6 +2057,7 @@ DiamondsNeeded = MinimumDiamonds[Mountain]
 The indexed form reads one byte from ROM. The table name must be a known
 `data ... bytes` block, the index is evaluated as an 8-bit expression, and the
 result is `u8`.
+Constant indexes are checked; calculated indexes deliberately have no runtime bounds check.
 Use `{Name}`, `{$16}`, `{200}`, or `{byte:$16}` inside a row to insert a
 single non-printable/custom tile byte. Use `{{` or `}}` for literal braces.
 This is useful with `put MazeMap frame size W,H at X,Y` for visible tile maps.
@@ -1986,12 +2087,14 @@ put Frames[Type] frame size 4,4 at X,Y
 ```
 
 Rules:
+- the instruction sequences shown here are representative codegen details, not stable language contracts
 - entries are `@Label` (a data block, asset, or label), `$xxxx`, or a decimal word
 - a **constant index folds to the entry label directly** (`Levels[1]` → `ld hl,Level2_label`, no table walk)
 - a variable index reads the `dw` entry at runtime with the minimal sequence
   (`add a,a` / `add hl,de` / fetch low+high / `ex de,hl`) — no runtime helper
 - at most 128 entries (the byte-index doubling limit); out-of-range constant
-  indexes and non-`@` bare identifiers are compile errors
+  indexes and non-`@` bare identifiers are compile errors, including assignments
+  such as `P = Levels[9]`; variable indexes deliberately have no runtime bounds check
 - consumers taking a ROM source address accept `Table[Index]`: `decompress`,
   `put ... frame`, and everything routed through the shared source-address path
 
@@ -2355,12 +2458,12 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `joypad(N).up/.right/.down/.left` | Canonical inline direction tests |
 | `joypad(N).button1/.button2/.button3/.button4` | Canonical inline button tests |
 | `keypad(N)` | Inline decoded keypad byte |
-| `spinner(N)` | Inline spinner byte |
+| `spinner(N)` | Signed movement delta since the previous read; reading consumes it (`1`: right positive, `2`: down positive) |
 | `frame` | Inline 16-bit frame counter; byte targets receive the low byte |
 | `vdp.status` | Inline VDP status byte |
 | `read joypad N into Var` | Old staged joypad read |
 | `read keypad N into Var` | Old staged keypad read |
-| `read spinner N into Var` | Old staged spinner read; prefer `Var = spinner(N)` |
+| `read spinner N into Var` | Old staged signed-delta read; it also consumes the movement; prefer `Var = spinner(N)` |
 | `read frame into Var` | Old staged frame read; prefer `Var = frame` |
 | `if button N on Pad goto Label` | Supported staged joypad button branch |
 | `if left/right/up/down on Pad goto Label` | Supported staged direction branch |
@@ -2372,18 +2475,18 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `tile type solid = $20,$21` | Named tile property group |
 | `if tile under X,Y is solid goto Label` | Pixel-to-tile point collision |
 | `if tiles under box X,Y size W,H contain solid goto Label` | Pixel box-to-tile collision |
-| `if chars in box X,Y size W,H contain solid goto Label` | Tile-coordinate box scan |
 | `find tile coin under box X,Y size W,H into TX,TY` | Find first matching tile |
-| `pause until press [on joypad N]` | Recommended pause/menu wait: release, then new fire press |
-| `wait fire [on joypad N]` | Low-level wait for fire |
-| `wait no fire [on joypad N]` | Wait for release |
+| `if chars in box X,Y size W,H contain solid goto Label` | Tile-coordinate box scan |
+| `pause until press [and release] [on joypad N] [blank after N seconds]` | Debounced action pause; optional region-aware CRT-safe display blanking requires NMI |
+| `wait fire [on joypad N]` | Low-level wait for any action button |
+| `wait no fire [on joypad N]` | Wait until all action buttons are released |
 | `wait` | Safe one-frame wait; works with NMI on or off |
 | `wait N frame(s)` | Safe 16-bit frame wait; constant 0 is ignored |
-| `wait N frame(s) or press [on joypad N]` | Wait up to N frames, but exit early if fire is pressed |
+| `wait N frame(s) or press [on joypad N]` | Wait up to N frames, but exit early on any action button |
 | `wait vblank [N]` | Low-level alias for frame waits |
 | `wait key N [on keypad N]` | Wait for keypad digit |
 | `wait key release [on keypad N]` | Wait for keypad release |
-| `choose keypad min to max into Var` | Menu selection |
+| `choose keypad min to max into Var [on keypad N] [blank after N seconds]` | Debounced menu selection with optional CRT-safe blanking |
 | `halt` | Halt until NMI |
 
 ### Sound

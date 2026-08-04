@@ -48,10 +48,8 @@ export function createProcHelpers({
     const currentProc = currentProcRef.get();
     const frame = currentProc ? procFrames.get(currentProc) : null;
     if (currentProc === "Start") {
-      return [
-        "AMY_START_FOREVER:",
-        "    jr AMY_START_FOREVER"
-      ];
+      // A Start return branches to one shared sink emitted when Start closes.
+      return ["    jp AMY_START_FOREVER"];
     }
     const lines = [];
     if (frame && (frame.usesIxFrame || frame.size > 0)) {
@@ -71,6 +69,15 @@ export function createProcHelpers({
   }
 
   function emitCurrentProcReturnLinesIfNeeded() {
+    if (currentProcRef.get() === "Start") {
+      const jump = "    jp AMY_START_FOREVER";
+      const hasEarlyReturn = body.includes(jump);
+      if (hasEarlyReturn && body[body.length - 1] !== jump) body.push(jump);
+      if (!body.includes("AMY_START_FOREVER:")) {
+        body.push("AMY_START_FOREVER:", "    jr AMY_START_FOREVER");
+      }
+      return;
+    }
     const lines = emitCurrentProcReturnLines();
     if (!bodyAlreadyEndsWith(lines)) body.push(...lines);
   }

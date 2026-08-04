@@ -72,6 +72,27 @@ export function handleDispatchLabelStatement({
     return { ok: true, handled: true, lines: code };
   }
 
+  const debugBreakpoint = line.match(/^debug\s+breakpoint\s+"([A-Za-z][A-Za-z0-9_]*)"$/i);
+  const debugSourceMarker = line.match(/^debug\s+source\s+marker\s+(\d+)$/i);
+  if (debugSourceMarker) {
+    const sourceLine = Number(debugSourceMarker[1]);
+    if (!Number.isInteger(sourceLine) || sourceLine < 1) {
+      return { ok: false, handled: true, log: `Invalid internal source marker: ${rawLine}` };
+    }
+    return { ok: true, handled: true, lines: [`; @amy-source-line ${sourceLine}`] };
+  }
+
+  if (debugBreakpoint) {
+    return { ok: true, handled: true, lines: [`AMY_ULBL_BREAK_${debugBreakpoint[1]}:`, "    nop"] };
+  }
+  if (/^debug\s+breakpoint\b/i.test(line)) {
+    return {
+      ok: false,
+      handled: true,
+      log: `debug breakpoint requires a quoted identifier using letters, digits, and underscores: ${rawLine}`
+    };
+  }
+
   const checkpoint = line.match(/^test\s+checkpoint\s+"([A-Za-z][A-Za-z0-9_]*)"$/i);
   if (checkpoint) {
     return { ok: true, handled: true, lines: [`AMY_ULBL_TEST_${checkpoint[1]}:`, "    nop"] };

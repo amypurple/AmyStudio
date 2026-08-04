@@ -1,3 +1,56 @@
+## 2026-08-04 - Fail-closed expressions and dynamic input selectors
+
+- `joypad(Expr)`, `keypad(Expr)`, and `spinner(Expr)` accept runtime `int8` port selectors; dynamic spinner reads preserve atomic consume-and-clear behavior.
+- Invalid integer `random()`, unknown symbols/calls, out-of-range constant word-table assignments, and out-of-range literal sprite indexes now fail in the Amy transpiler instead of leaking malformed assembly.
+- Runtime catalog dependencies are audited transitively, with missing VRAM, formatting, music-stop, and sound dependencies restored.
+- Added five-profile codegen checks plus a real GearColeco ROM self-test for dynamic spinner selection.
+- Fixed implicit-Start early returns to branch to one shared forever sink, removing duplicate labels without changing normal Start tails; added 30 real ASM/ROM builds across all optimizer profiles.
+- Byte and record-array indexes now accept full `int8` expressions such as `Board[3 - I]` while wider indexes fail cleanly.
+- Scalar `u8` and `i8` values widen predictably when a 16-bit operand is required, making `wait Delay frames` consistent with byte expressions; verified in ten ASM/ROM builds.
+- Canonical `inc` and `dec` now support packed BCD values in normal and inline statements; a five-profile GearColeco ROM test verifies the decimal result.
+- Restored direct `if chars in box ... contain ... goto` routing to the existing optimized tile-coordinate scanner; five-profile GearColeco tests verify tile-type and raw-value VRAM matches.
+- Reconnected legacy `u32 zero/copy/add/inc/sub` commands to their existing compatibility codegen instead of misparsing them as declarations; a five-profile GearColeco test verifies all five operations.
+- Added `node tools/amy-feature-matrix.mjs` as the single targeted compiler gate and `--full` to append assembly of every Studio example; the targeted matrix currently passes all ten suites in about one minute.
+
+## 2026-08-03 - Temporal 120-color display
+
+- Added `120 colors on` / `120 colors off` for the historical 120C VBlank technique.
+- The generated NMI alternates VDP R3/R4 between the two dual-purpose 6 KB VRAM banks and preserves the normal frame-hook, input, music, and sound paths.
+- Turning the effect off restores standard Graphics II R3=`$FF`, R4=`$03`; projects not using 120C reserve no runtime code or RAM.
+- Added a full-project codegen regression and assembled a real balanced ColecoVision ROM exercising both commands.
+## 2026-08-02 - Coleco keypad choice and Z80 explorer
+
+- `choose keypad min to max into Var` now accepts `on keypad N` and PAL/NTSC-aware `blank after N seconds`.
+- The CRT-safe variant consumes the chosen key release and returns decoded `*`/`#` values 10/11 without assigning game-specific meaning.
+- ROM TEST & DEBUG adds a native GearColeco Z80 view around PC with CPU registers, SP, stack words, symbols, and complete opcode decoding.
+- RAM and VRAM inspectors default to 384 bytes; the two-column debugger layout gives the inspector a 520-pixel minimum.
+- `cvbasic-spinner-port` now sends `Y - 1` directly to the sprite command and removes its redundant `SpriteY` mirror.
+## 2026-08-02 - Any-action press helpers
+
+- `pause until press` now accepts both side buttons on standard controllers and all four Super Action Controller buttons.
+- `wait N frames or press` uses the same any-action-button semantics.
+- Unqualified forms accept either controller; `on joypad N` limits the same complete action-button mask to one controller.
+- `wait fire` and `wait no fire` now test the complete action-button nibble instead of only the primary button.
+- `pause until press and release` waits for a new action press and consumes its release before returning.
+- `pause until press and release [on joypad N] blank after N seconds` performs region-aware CRT-safe blanking while preserving NMI, sound, controller updates, and the current non-display R1 bits.
+
+## 2026-08-02 - Consumable natural-direction spinner input
+
+- `spinner(1)` and `spinner(2)` now return signed movement since the previous read and atomically clear the consumed counter.
+- Spinner directions are normalized for screen coordinates: right/down are positive and left/up are negative.
+- `read spinner N into Var` follows the same consume-and-clear semantics.
+- `cvbasic-spinner-port` now demonstrates direct `X += spinner(1)` / `Y += spinner(2)` movement without redundant mirror variables or manual resets.
+- The GearColeco ROM integration test verifies both axes, both directions, counter clearing, and absence of residual movement.
+
+## 2026-07-31 - Local development emulator and source breakpoints
+
+- Made the deterministic self-hosted GearColeco core the primary Run target while retaining the CDN emulator as an explicit compatibility fallback.
+- Added a compact two-column emulator/debugger with frame transport, two-controller input, CPU memory, VRAM, decoded VDP state, searchable symbols, raw linker map, and execute breakpoints.
+- Added `debug breakpoint "name"`; compiled source markers are discovered and armed automatically on Run and Reset.
+- Added clickable source-editor gutter breakpoints, with red normal markers and compact conditional breakpoint editing.
+- Added signed/unsigned 8/16-bit breakpoint conditions, false-condition auto-continue, persistent project metadata, and source-line reveal on a hit.
+- Made memory-map symbols open their CPU-memory address directly, with a separate `BP` action for manual execute breakpoints.
+- Accepted both CLI `00:8000 Label` and web `Label: equ $8000` symbol formats for debugger navigation and ROM-test checkpoints.
 ## 2026-07-30 - Symbolic GearColeco ROM-test checkpoints
 
 - Added `test checkpoint "name"` for compile-time guarded, symbol-resolved emulator checkpoints with a unique one-byte NOP marker.
@@ -9,17 +62,7 @@
 
 - Added `node tools/check-examples.mjs --assemble` to build every example through the complete Studio pipeline with embedded project files and balanced optimization.
 - Close inline `data ... bytes/words = ...` declarations immediately, preventing following Amy statements such as `text screen` from being consumed as ROM data.
-- Added a regression for inline data closure and assembled all 44 public examples into real ROMs.
-
-## 2026-07-30 - Inline-ASM static ABI boundary
-
-- Keep parameterized Amy routines on the IX stack ABI when inline ASM calls or jumps to them directly, preventing mixed caller/callee conventions.
-- Preserve frameless eligibility for safe parameterless ASM targets and add analyzer plus assembled-code regressions.
-
-## 2026-07-30 - Static ABI RAM accounting
-
-- Report frameless static-ABI parameter, local, total RAM bytes, and routine count through transpile results and `amyc`.
-- Lock the ROM self-test budget at 22 bytes and document Reversi v5 at 62 bytes across 28 frameless routines.
+- Added a regression for inline data closure and assembled all 176 experimental examples into real ROMs.
 
 ## 2026-07-30 - Static ABI v1.1 fail-closed safety
 

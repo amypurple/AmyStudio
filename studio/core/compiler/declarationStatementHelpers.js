@@ -34,6 +34,9 @@ export function handleDeclarationStatement({
   isSupportedRecordTypeName,
   getRecordTypeInfo
 }) {
+  // Legacy u32 verbs are operations, not declarations; let their compatibility handler process them.
+  if (/^u32\s+(?:zero|copy|add|inc|sub)\b/i.test(line)) return { handled: false };
+
   function encodeImmediateBytes(value, byteCount) {
     const unsigned = BigInt.asUintN(byteCount * 8, BigInt(value));
     const bytes = [];

@@ -172,9 +172,18 @@ export function createByteLoadHelpers(ctx) {
       if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
       return lines;
     }
+    if (expressionAst?.kind === "call") return null;
     const resolvedToken = scopedRuntimeName(token);
     const info = getRuntimeInfo(token);
-    if (!info) return [`    ld ${register},${symbolOrValue(token)}`];
+    if (!info) {
+      const constantValue = tryEvaluateConstantExpression(normalized);
+      const numericLiteral = parseNumericLiteral(normalized);
+      const resolvedNumeric = Number.isInteger(constantValue) ? constantValue : numericLiteral;
+      const resolvedConstant = symbolOrValue(token);
+      const isNamedConstant = resolvedConstant !== normalized && /AMY_UCONST_/i.test(resolvedConstant);
+      if ((!Number.isInteger(resolvedNumeric) || resolvedNumeric < -128 || resolvedNumeric > 0xFF) && !isNamedConstant) return null;
+      return [`    ld ${register},${resolvedConstant}`];
+    }
     if (info.isRef && info.refTargetType === "int8") {
       const lines = [
         `    ld l,(${formatIxOffset(info.offset)})`,
@@ -288,6 +297,9 @@ export function createByteLoadHelpers(ctx) {
         return astCode;
       }
     }
+    const delegatedCall = expressionAst?.kind === "call" ? emitLoadInt8Into(register, normalized) : null;
+    if (delegatedCall) return delegatedCall;
+    if (expressionAst?.kind === "call") return null;
     const fixPart = parseFix8_8Component(normalized);
     if (fixPart) {
       const declaredType = resolveDeclaredValueType(fixPart.valueToken);
@@ -309,6 +321,7 @@ export function createByteLoadHelpers(ctx) {
       return lines;
     }
 
+    if (expressionAst) return null;
     if (!isSafeExpression(normalized) || normalized.includes("[")) return null;
     const identifiers = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
     for (const ident of identifiers) {

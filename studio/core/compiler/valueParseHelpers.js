@@ -16,7 +16,10 @@ export function createValueParseHelpers({
   emitAdjustSpBy,
   resolveJumpTarget,
   makeGeneratedLabel,
-  resolveExpressionAstComputationType
+  resolveExpressionAstComputationType,
+  scopedRuntimeName,
+  formatIxOffset,
+  emitLoadInt8ValueInto
 }) {
   function splitTopLevelArgs(text) {
     const source = String(text || "").trim();
@@ -383,14 +386,27 @@ export function createValueParseHelpers({
     if (node.kind === "call") {
       const name = String(node.name || "").toLowerCase();
       if ((name === "joypad" || name === "keypad" || name === "spinner") && node.args.length === 1) {
-        const padNumber = tryEvaluateConstantExpression(renderExpressionAst(node.args[0]));
-        if (padNumber !== 1 && padNumber !== 2) return null;
+        const padToken = normalizeExpression(renderExpressionAst(node.args[0]));
+        const padNumber = tryEvaluateConstantExpression(padToken);
+        if (padNumber === 1 || padNumber === 2) {
+          return {
+            source: name,
+            pad: padNumber,
+            runtimeName: `${name.toUpperCase()}_${padNumber}`,
+            valueType: "int8",
+            declaredType: name === "spinner" ? "i8" : "u8"
+          };
+        }
+        const padInfo = getRuntimeInfo(padToken);
+        const selectorType = resolveExpressionAstComputationType(node.args[0]);
+        if ((!padInfo || padInfo.type !== "int8") && selectorType?.runtimeType !== "int8") return null;
         return {
           source: name,
-          pad: padNumber,
-          runtimeName: `${name.toUpperCase()}_${padNumber}`,
+          pad: null,
+          padToken,
+          runtimeName: null,
           valueType: "int8",
-          declaredType: "u8"
+          declaredType: name === "spinner" ? "i8" : "u8"
         };
       }
       return null;
@@ -420,6 +436,7 @@ export function createValueParseHelpers({
       return {
         source: "joypad_bit",
         pad: joypadSource.pad,
+        padToken: joypadSource.padToken,
         runtimeName: joypadSource.runtimeName,
         property,
         bit: bits[property],
@@ -430,17 +447,77 @@ export function createValueParseHelpers({
     return null;
   }
 
+  function emitLoadSelectedInputValue(builtinInput) {
+    const inputSource = builtinInput.source === "joypad_bit" ? "joypad" : builtinInput.source;
+    if (builtinInput.runtimeName) return [`    ld a,(${builtinInput.runtimeName})`];
+    const padInfo = getRuntimeInfo(builtinInput.padToken);
+    const selectorLoad = typeof emitLoadInt8ValueInto === "function" ? emitLoadInt8ValueInto("a", builtinInput.padToken) : null;
+    if (!selectorLoad) return null;
+    const lines = [];
+    lines.push(...selectorLoad);
+    const padOneLabel = makeGeneratedLabel("InputPadOne");
+    const doneLabel = makeGeneratedLabel("InputPadDone");
+    lines.push(
+      "    cp 1",
+      `    jr z,${padOneLabel}`,
+      `    ld a,(${inputSource.toUpperCase()}_2)`,
+      `    jr ${doneLabel}`,
+      `${padOneLabel}:`,
+      `    ld a,(${inputSource.toUpperCase()}_1)`,
+      `${doneLabel}:`
+    );
+    return lines;
+  }
+
   function emitLoadBuiltinInputInto(register, builtinInput) {
     if (!builtinInput) return null;
     const lowerRegister = String(register || "").toLowerCase();
     let lines = null;
-    if (builtinInput.source === "joypad" || builtinInput.source === "keypad" || builtinInput.source === "spinner" || builtinInput.source === "vdp_status" || builtinInput.source === "frame") {
+    if (builtinInput.source === "spinner") {
+      if (builtinInput.runtimeName) {
+        lines = [
+          "    di",
+          `    ld hl,${builtinInput.runtimeName}`,
+          "    ld a,(hl)",
+          "    ld (hl),0",
+          "    ei"
+        ];
+        if (builtinInput.pad === 1) lines.push("    neg");
+      } else {
+        const selectorLoad = typeof emitLoadInt8ValueInto === "function" ? emitLoadInt8ValueInto("a", builtinInput.padToken) : null;
+        if (!selectorLoad) return null;
+        const portOneLabel = makeGeneratedLabel("SpinnerPortOne");
+        const doneLabel = makeGeneratedLabel("SpinnerReadDone");
+        lines = [
+          ...selectorLoad,
+          "    cp 1",
+          "    di",
+          `    jr z,${portOneLabel}`,
+          "    ld hl,SPINNER_2",
+          "    ld a,(hl)",
+          "    ld (hl),0",
+          "    ei",
+          `    jr ${doneLabel}`,
+          `${portOneLabel}:`,
+          "    ld hl,SPINNER_1",
+          "    ld a,(hl)",
+          "    ld (hl),0",
+          "    ei",
+          "    neg",
+          `${doneLabel}:`
+        ];
+      }
+    } else if (builtinInput.source === "joypad" || builtinInput.source === "keypad") {
+      lines = emitLoadSelectedInputValue(builtinInput);
+    } else if (builtinInput.source === "vdp_status" || builtinInput.source === "frame") {
       lines = [`    ld a,(${builtinInput.runtimeName})`];
     } else if (builtinInput.source === "joypad_bit") {
       const falseLabel = makeGeneratedLabel("InputFalse");
       const doneLabel = makeGeneratedLabel("InputDone");
+      const loadJoypad = emitLoadSelectedInputValue(builtinInput);
+      if (!loadJoypad) return null;
       lines = [
-        `    ld a,(${builtinInput.runtimeName})`,
+        ...loadJoypad,
         `    bit ${builtinInput.bit},a`,
         `    jr z,${falseLabel}`,
         "    ld a,1",

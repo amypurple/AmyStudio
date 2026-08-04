@@ -57,6 +57,7 @@ function MakeValue() as u8
 
 sub start:
   Result = MakeValue()
+  Result = MakeValue()
   print at 1,1, Result
   loop forever
 end sub
@@ -73,6 +74,7 @@ function AddOne(u8 N) as u8
 
 sub start:
   Result = AddOne(4)
+  Result = AddOne(Result)
   print at 1,1, Result
   loop forever
 end sub
@@ -125,7 +127,7 @@ end sub
 `);
 assert(/AMY_LVAR_Callee_Temp\b/.test(nonLeafAsm), "callee leaf local should use static storage");
 const callerBlock = nonLeafAsm.slice(nonLeafAsm.indexOf("AMY_UPROC_Caller:"), nonLeafAsm.indexOf("AMY_UPROC_Start:"));
-assert(/push ix/.test(callerBlock) && /\(ix-/.test(callerBlock), "non-leaf caller local should remain stack-framed");
-assert(!/AMY_LVAR_Caller_Scratch\b/.test(nonLeafAsm), "non-leaf caller local must not use static storage");
+assert(!/push ix|\(ix-/i.test(callerBlock), "non-recursive non-leaf caller should use the static ABI");
+assert(/AMY_LVAR_Caller_Scratch\b/.test(nonLeafAsm), "non-recursive non-leaf caller local should use static storage");
 
 console.log("test-local-first-pass-scope: PASS");

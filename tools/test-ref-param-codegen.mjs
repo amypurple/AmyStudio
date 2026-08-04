@@ -214,6 +214,65 @@ check("no hidden runtime call in ref codegen", () => {
   assert.doesNotMatch(bumpByte, /call\s+AMY_/, "ref scalar codegen must not call runtime helpers");
 });
 
+const REF_LOCAL_ROUNDTRIP = `record Triple:
+  u8 A
+  u8 B
+  u8 C
+end record
+
+Triple Value
+
+sub Rewrite(ref Triple P):
+  u8 X = 0
+  u8 Y = 0
+  u8 Z = 0
+  X = P.A
+  Y = P.B
+  Z = P.C
+  P.A = X
+  P.B = Y
+  P.C = Z
+end sub
+
+Rewrite(Value)
+loop forever
+`;
+
+const refLocalResult = transpileAmy(REF_LOCAL_ROUNDTRIP);
+const refLocalAsm = String(refLocalResult?.asmBody || "");
+
+check("ref record fields round-trip through distinct locals", () => {
+  assert.equal(refLocalResult.ok, true, refLocalResult.log || "transpile failed");
+  assert.match(refLocalAsm, /ld a,\(ix-1\)/, "expected first local X");
+  assert.match(refLocalAsm, /ld a,\(ix-2\)/, "expected second local Y");
+  assert.match(refLocalAsm, /ld a,\(ix-3\)/, "expected third local Z");
+  assert.ok(refLocalAsm.split("ld a,(hl)").length - 1 >= 3, "expected three distinct indirect field reads");
+  assert.match(refLocalAsm, /ld l,\(ix\+4\)\s*\n\s*ld h,\(ix\+5\)\s*\n\s*ld \(hl\),a/, "expected P.A store");
+  assert.match(refLocalAsm, /ld l,\(ix\+4\)\s*\n\s*ld h,\(ix\+5\)\s*\n\s*inc hl\s*\n\s*ld \(hl\),a/, "expected P.B store");
+  assert.match(refLocalAsm, /ld l,\(ix\+4\)\s*\n\s*ld h,\(ix\+5\)\s*\n\s*inc hl\s*\n\s*inc hl\s*\n\s*ld \(hl\),a/, "expected P.C store");
+});
+
+const DYNAMIC_INPUT_DEMO = `u8 Port = 1
+u8 Key = 0
+u8 Pressed = 0
+
+Key = keypad(Port)
+if joypad(Port).button1 then Pressed = 1
+loop forever
+`;
+
+const dynamicInputResult = transpileAmy(DYNAMIC_INPUT_DEMO);
+const dynamicInputAsm = String(dynamicInputResult?.asmBody || "");
+
+check("keypad and joypad accept a runtime port expression", () => {
+  assert.equal(dynamicInputResult.ok, true, dynamicInputResult.log || "transpile failed");
+  assert.match(dynamicInputAsm, /cp 1\s*\n\s*jr z,/i, "expected runtime port selection");
+  assert.match(dynamicInputAsm, /ld a,\(KEYPAD_2\)/i, "expected keypad port 2 path");
+  assert.match(dynamicInputAsm, /ld a,\(KEYPAD_1\)/i, "expected keypad port 1 path");
+  assert.match(dynamicInputAsm, /ld a,\(JOYPAD_2\)/i, "expected joypad port 2 path");
+  assert.match(dynamicInputAsm, /ld a,\(JOYPAD_1\)/i, "expected joypad port 1 path");
+  assert.match(dynamicInputAsm, /bit 7,a/i, "expected button1 bit test");
+});
 check("record parameter without ref is a clear error", () => {
   const bad = transpileAmy("record P:\n  u8 X\nend record\n\nP Thing\n\nsub Move(P A):\n  inc A.X\nend sub\n\nMove(Thing)\nloop forever\n");
   assert.equal(bad.ok, false);
@@ -273,3 +332,4 @@ if (failures.length) {
   process.exit(1);
 }
 console.log("\nAll ref param codegen tests passed");
+

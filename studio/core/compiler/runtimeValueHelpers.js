@@ -465,10 +465,16 @@ export function createRuntimeValueHelpers({
     const resolvedToken = scopedRuntimeName(token);
     const info = getRuntimeInfo(token);
     if (!info) return [`    ld hl,${symbolOrValue(token)}`];
-    if (isAnyFixedDeclaredType(preferredDeclaredType) && info.type === "int8") {
+    if (info.type === "int8") {
       const loadByte = emitLoadInt8Into("a", token);
       if (!loadByte) return null;
-      return [...loadByte, "    ld h,a", "    ld l,0"];
+      if (isAnyFixedDeclaredType(preferredDeclaredType)) {
+        return [...loadByte, "    ld h,a", "    ld l,0"];
+      }
+      if (isSignedDeclaredType(info.declaredType)) {
+        return [...loadByte, "    ld l,a", "    add a,a", "    sbc a,a", "    ld h,a"];
+      }
+      return [...loadByte, "    ld l,a", "    ld h,0"];
     }
     if (info.isRef && info.refTargetType === "int16") {
       return [
@@ -697,6 +703,7 @@ export function createRuntimeValueHelpers({
       if (!storeValue || !storeTarget) return null;
       return [...storeValue, ...storeTarget];
     }
+    if (valueAst) return null;
     const storeTarget = emitStoreInt16FromHL(name);
     if (!storeTarget) return null;
     if (isAnyFixedDeclaredType(targetDeclaredType)) {

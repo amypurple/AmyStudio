@@ -2205,7 +2205,10 @@ export function transpileAmyCore(sourceText, deps) {
     emitAdjustSpBy,
     resolveJumpTarget,
     makeGeneratedLabel,
-    resolveExpressionAstComputationType
+    resolveExpressionAstComputationType,
+    scopedRuntimeName,
+    formatIxOffset,
+    emitLoadInt8ValueInto: (...args) => emitLoadInt8ValueInto(...args)
   }));
 
   let invertOperator;
@@ -2263,6 +2266,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadInt16AstIntoHL: (...args) => emitLoadInt16AstIntoHL(...args),
     parseBooleanConditionAst,
     parseBuiltinInputRef,
+    emitLoadBuiltinInputInto,
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
     emitComputedCompareGoto: (...args) => emitComputedCompareGoto(...args),
@@ -2672,7 +2676,8 @@ export function transpileAmyCore(sourceText, deps) {
     parseArrayRef,
     normalizeDeclaredType,
     scopedRuntimeName,
-    formatIxOffset
+    formatIxOffset,
+    emitLoadInt8ValueInto: (...args) => emitLoadInt8ValueInto(...args)
   }));
   ({
     emitLoadUnsignedInt16ValueIntoBC,
@@ -2764,6 +2769,12 @@ export function transpileAmyCore(sourceText, deps) {
       addCompilerWarning(`Line ${sourceLineNumber + 1}: 'rem' was removed; use a single-quote comment (')`);
     }
     let line = stripAmyInlineComment(rawLine).trim();
+    const internalSourceMarker = line.match(/^debug\s+source\s+marker\s+(\d+)$/i);
+    if (internalSourceMarker) {
+      body.push(`; @amy-source-line ${internalSourceMarker[1]}`);
+      continue;
+    }
+
     const currentVdpR1Classification = classifyVdpR1SemanticStatement(line);
     if (!currentVdpR1Classification) {
       flushBufferedVdpR1PureModifiers();
@@ -3310,6 +3321,14 @@ export function transpileAmyCore(sourceText, deps) {
 
     const formulaAssignment = parseFormulaAssignment(line);
     if (formulaAssignment) {
+      const wordTableAssignment = String(formulaAssignment.value || "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/);
+      if (wordTableAssignment) {
+        const table = getWordTableInfo(wordTableAssignment[1]);
+        const indexValue = table ? tryEvaluateCompileTimeNumericExpression(wordTableAssignment[2]) : null;
+        if (table && Number.isInteger(indexValue) && (indexValue < 0 || indexValue >= table.length)) {
+          return { ok: false, asmBody: "", log: `Word table ${wordTableAssignment[1]} index ${indexValue} is out-of-range (0..${table.length - 1}): ${rawLine}` };
+        }
+      }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
       if (!assignmentCode) return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };
       body.push(...assignmentCode);
@@ -3330,7 +3349,8 @@ export function transpileAmyCore(sourceText, deps) {
         getRuntimeInfo,
         emitStoreInt16FromHL,
         makeGeneratedLabel,
-        currentGraphicsMode
+        currentGraphicsMode,
+        nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0
       });
       if (vramPixelInputStmt.handled) {
         if (!vramPixelInputStmt.ok) return { ok: false, asmBody: "", log: vramPixelInputStmt.log };

@@ -42,6 +42,11 @@ export function handleMutateStatement({
     if (!info) return { ok: false, handled: true, log: `Unknown runtime variable: ${name}` };
     const valueType = resolveValueType(name);
     const resolvedName = scopedRuntimeName(name);
+    if (info.kind === "bcd") {
+      const code = op === "inc" ? emitBcdAdd(name, "1") : emitBcdSub(name, "1");
+      if (!code) return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
+      return { ok: true, handled: true, lines: code };
+    }
     if (arrayRef) {
       const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
       if (!loadAddress) return { ok: false, handled: true, log: `Invalid array index expression: ${rawLine}` };

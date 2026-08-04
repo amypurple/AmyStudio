@@ -289,6 +289,9 @@ export function createInlineStatementCompiler(ctx) {
                         const op = inlineIncDec[1].toLowerCase();
                         const name = inlineIncDec[2];
                         const valueType = resolveValueType(name);
+                        const targetInfo = getRuntimeInfo(name);
+                        if (targetInfo?.kind === "bcd") inlineLines = op === "inc" ? emitBcdAdd(name, "1") : emitBcdSub(name, "1");
+                        else
                         if (valueType === "u32" || valueType === "i32") inlineLines = op === "inc" ? emitU32Inc(name) : emitArith32Op(name, "1", "sub");
                         else if (valueType === "int8") {
                           const load = emitLoadInt8Into("a", name);

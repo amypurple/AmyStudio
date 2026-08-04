@@ -81,6 +81,14 @@ sub start:
 end sub
 `, [/MUL16_EXPR_LOOP/i, /call AMY_U16_DIV/, /\(ix-/]);
 
+check("local-i16-negation", `
+sub start:
+  i16 T = 5
+  i16 S = 0
+  S = 0 - T
+  loop forever
+end sub
+`, [/sbc hl,de/i, /\(ix-/]);
 check("call-asm-byte-expr", `
 u8 A = 6
 u8 B = 7

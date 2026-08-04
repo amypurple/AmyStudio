@@ -40,6 +40,7 @@ export function createControlFlowHelpers(ctx) {
     emitLoadInt16AstIntoHL,
     parseBooleanConditionAst,
     parseBuiltinInputRef,
+    emitLoadBuiltinInputInto,
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
     getTileTypeInfo,
@@ -603,11 +604,26 @@ export function createControlFlowHelpers(ctx) {
 
     const directInput = parseBuiltinInputRef?.(condition);
     if (directInput?.source === "joypad_bit") {
+      if (directInput.runtimeName) {
+        return {
+          ok: true,
+          lines: [
+            `    ld a,(${directInput.runtimeName})`,
+            `    bit ${directInput.bit},a`,
+            `    jp ${chooseBranch("nz", "z")},${asmJumpTarget}`
+          ],
+          log: ""
+        };
+      }
+      const loadInput = emitLoadBuiltinInputInto?.("a", directInput);
+      if (!loadInput) {
+        return { ok: false, lines: [], log: `Unsupported controller selector in '${condition}'.` };
+      }
       return {
         ok: true,
         lines: [
-          `    ld a,(${directInput.runtimeName})`,
-          `    bit ${directInput.bit},a`,
+          ...loadInput,
+          "    or a",
           `    jp ${chooseBranch("nz", "z")},${asmJumpTarget}`
         ],
         log: ""

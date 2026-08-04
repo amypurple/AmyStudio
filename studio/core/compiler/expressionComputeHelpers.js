@@ -485,6 +485,7 @@ export function createExpressionComputeHelpers({
           `${positiveLabel}:`
         ];
       }
+      if (["random", "min", "max", "absdiff", "abs"].includes(callName)) return null;
       return emitLoadInt8Into("a", renderExpressionAst(node));
     }
     if (node.kind === "index") return emitLoadInt8Into("a", `${node.name}[${renderExpressionAst(node.index)}]`);

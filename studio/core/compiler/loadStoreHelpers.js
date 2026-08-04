@@ -64,7 +64,7 @@ export function createLoadStoreHelpers(ctx) {
         return [`    ld hl,${formatHex16(base + numericIndex * stride)}`];
       }
       const indexType = resolveValueType(normalizedIndex);
-      if (indexType !== "int8") return null;
+      if (indexType && indexType !== "int8") return null;
       const lines = emitLoadInt8Into("a", normalizedIndex);
       if (!lines) return null;
       const scaleLines = emitScaleUnsignedByteAIntoDE(stride);

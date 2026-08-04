@@ -361,6 +361,7 @@ function optimizeGeneratedMemoryLoads(lines) {
   const directLoadA = /^\s*ld\s+a,\s*\(([A-Za-z_][A-Za-z0-9_]*)\)\s*$/i;
   const directLoadHL = /^\s*ld\s+hl,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
   const anyLoadHL = /^\s*ld\s+hl\s*,/i;
+  const partialLoadHL = /^\s*ld\s+[hl]\s*,/i;
   const loadAFromHL = /^\s*ld\s+a,\s*\(hl\)\s*$/i;
   const directStore = /^\s*ld\s+\(([A-Za-z_][A-Za-z0-9_]*)\)\s*,/i;
   const label = /^[A-Za-z_][A-Za-z0-9_]*:\s*$/;
@@ -430,6 +431,18 @@ function optimizeGeneratedMemoryLoads(lines) {
       continue;
     }
 
+    if (partialLoadHL.test(text)) {
+      knownHL = null;
+      optimized.push(line);
+      continue;
+    }
+
+    if (loadAFromHL.test(text)) {
+      knownA = knownHL;
+      optimized.push(line);
+      continue;
+    }
+
     const loadA = text.match(directLoadA);
     if (loadA) {
       const symbol = loadA[1].toLowerCase();
@@ -442,12 +455,6 @@ function optimizeGeneratedMemoryLoads(lines) {
         continue;
       }
       knownA = symbol;
-      optimized.push(line);
-      continue;
-    }
-
-    if (loadAFromHL.test(text)) {
-      knownA = knownHL;
       optimized.push(line);
       continue;
     }
@@ -1047,12 +1054,119 @@ export function finalizeAmyTranspile({
     emitCurrentProcReturnLinesIfNeeded();
   }
 
+  function extractSourceMarkerPlan(lines) {
+    const clean = [];
+    const blocks = [];
+    let current = null;
+    for (const rawLine of lines) {
+      const line = String(rawLine || "");
+      const marker = line.match(/^\s*;\s*@amy-source-line\s+(\d+)\s*$/i);
+      if (marker) {
+        current = { sourceLine: Number(marker[1]), candidateIndexes: [] };
+        blocks.push(current);
+        continue;
+      }
+      clean.push(rawLine);
+      if (current && line.trim() && !line.trimStart().startsWith(";") && !/^\s*[A-Za-z_][A-Za-z0-9_]*:\s*$/.test(line)) {
+        current.candidateIndexes.push(clean.length - 1);
+      }
+    }
+    return { clean, blocks };
+  }
+
+  function alignRetainedSourceLines(sourceLines, outputLines) {
+    const outputPositions = new Map();
+    for (let index = 0; index < outputLines.length; index += 1) {
+      const line = String(outputLines[index] || "");
+      if (!line.trim() || line.trimStart().startsWith(";")) continue;
+      const positions = outputPositions.get(line) || [];
+      positions.push(index);
+      outputPositions.set(line, positions);
+    }
+
+    // Hunt-Szymanski LCS alignment avoids greedy jumps to a later duplicate
+    // when a generated instruction was removed by a compiler transform.
+    const nodes = [];
+    const tails = [];
+    const tailNodes = [];
+    for (let sourceIndex = 0; sourceIndex < sourceLines.length; sourceIndex += 1) {
+      const sourceLine = String(sourceLines[sourceIndex] || "");
+      if (!sourceLine.trim() || sourceLine.trimStart().startsWith(";")) continue;
+      const positions = outputPositions.get(sourceLine);
+      if (!positions) continue;
+      for (let positionIndex = positions.length - 1; positionIndex >= 0; positionIndex -= 1) {
+        const outputIndex = positions[positionIndex];
+        let low = 0;
+        let high = tails.length;
+        while (low < high) {
+          const middle = (low + high) >> 1;
+          if (tails[middle] < outputIndex) low = middle + 1;
+          else high = middle;
+        }
+        const nodeIndex = nodes.length;
+        nodes.push({
+          sourceIndex,
+          outputIndex,
+          previous: low > 0 ? tailNodes[low - 1] : -1
+        });
+        tails[low] = outputIndex;
+        tailNodes[low] = nodeIndex;
+      }
+    }
+
+    const aligned = new Map();
+    let nodeIndex = tailNodes[tails.length - 1] ?? -1;
+    while (nodeIndex >= 0) {
+      const node = nodes[nodeIndex];
+      aligned.set(node.sourceIndex, node.outputIndex);
+      nodeIndex = node.previous;
+    }
+    return aligned;
+  }
+
+  function restoreSourceMarkers(lines, plan) {
+    const { clean, blocks } = plan;
+    if (!blocks.length) return lines;
+    const aligned = alignRetainedSourceLines(clean, lines);
+    const blockAddresses = blocks.map((block) => {
+      let best;
+      for (const candidateIndex of block.candidateIndexes) {
+        const found = aligned.get(candidateIndex);
+        if (found !== undefined && (best === undefined || found < best)) best = found;
+      }
+      return best;
+    });
+    const markersAt = new Map();
+    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex += 1) {
+      const block = blocks[blockIndex];
+      let best = blockAddresses[blockIndex];
+      if (best === undefined && block.candidateIndexes.length === 0) {
+        for (let next = blockIndex + 1; next < blocks.length; next += 1) {
+          if (blockAddresses[next] === undefined) continue;
+          best = blockAddresses[next];
+          break;
+        }
+      }
+      if (best === undefined) continue;
+      const markers = markersAt.get(best) || [];
+      markers.push(`; @amy-source-line ${block.sourceLine}`);
+      markersAt.set(best, markers);
+    }
+    const restored = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      restored.push(...(markersAt.get(index) || []), lines[index]);
+    }
+    return restored;
+  }
+
+  const sourceMarkerPlan = extractSourceMarkerPlan(body);
+
   const preInlineBody = simplifyStartTailForeverGoto(
     removeDeadReturnsAfterJumps(
       optimizeRedundantImmediateLoads(
         optimizeSequentialAbsoluteByteStores(
           optimizeSharedRecordPutCharLoads(
-            optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(body))
+            optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(sourceMarkerPlan.clean))
           )
         )
       )
@@ -1075,10 +1189,11 @@ export function finalizeAmyTranspile({
     )
   );
   const needsFrameCounter = optimizedBody.some((line) => /\bAMY_FRAME_COUNTER\b/.test(String(line || "")));
+  const mappedOptimizedBody = restoreSourceMarkers(optimizedBody, sourceMarkerPlan);
   const runtimeMarkers = needsFrameCounter
     ? ["; AMY runtime requirement: AMY_FRAME_COUNTER"]
     : [];
-  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), optimizedBody.join("\n"), initRoutine, numericHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
+  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), initRoutine, numericHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`
@@ -1109,5 +1224,9 @@ export function finalizeAmyTranspile({
     log: `${summaryLog}${warningLog}`
   };
 }
+
+
+
+
 
 

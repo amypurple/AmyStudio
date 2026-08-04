@@ -14,7 +14,8 @@ export function handleVramPixelInputStatement({
   getRuntimeInfo,
   emitStoreInt16FromHL,
   makeGeneratedLabel,
-  currentGraphicsMode
+  currentGraphicsMode,
+  nmiKnownOff = false
 }) {
   const _dep = checkVramPixelDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -173,7 +174,12 @@ export function handleVramPixelInputStatement({
   if (readSpinner) {
     const info = getRuntimeInfo(readSpinner[2]);
     if (!info || info.type !== "int8") return { handled: true, ok: false, log: `read spinner target must be a byte RAM variable: ${rawLine}` };
-    body.push(`    ld a,(${readSpinner[1] === "1" ? "SPINNER_1" : "SPINNER_2"})`);
+    body.push("    di");
+    body.push(`    ld hl,${readSpinner[1] === "1" ? "SPINNER_1" : "SPINNER_2"}`);
+    body.push("    ld a,(hl)");
+    body.push("    ld (hl),0");
+    body.push("    ei");
+    if (readSpinner[1] === "1") body.push("    neg");
     body.push(...emitStoreInt8FromA(readSpinner[2]));
     return { handled: true, ok: true };
   }
@@ -210,15 +216,23 @@ export function handleVramPixelInputStatement({
   const waitFire = line.match(/^wait\s+(no\s+)?fire(?:\s+on\s+joypad\s+([12]))?$/i);
   if (waitFire) {
     const waitLabel = makeGeneratedLabel("WaitFire");
-    const pad = waitFire[2] || "1";
+    const pad = waitFire[2] || null;
     body.push(`${waitLabel}:`);
     body.push("    halt");
-    body.push(`    ld a,(JOYPAD_${pad})`);
-    body.push("    bit 7,a");
+    if (pad) {
+      body.push(`    ld a,(JOYPAD_${pad})`);
+      body.push("    and $F0");
+    } else {
+      body.push("    ld a,(JOYPAD_1)");
+      body.push("    and $F0");
+      body.push("    ld d,a");
+      body.push("    ld a,(JOYPAD_2)");
+      body.push("    and $F0");
+      body.push("    or d");
+    }
     body.push(`    jr ${waitFire[1] ? "nz" : "z"},${waitLabel}`);
     return { handled: true, ok: true };
   }
-
   const waitFramesOrPress = line.match(/^wait\s+(.+?)\s+frames?\s+or\s+press(?:\s+on\s+joypad\s+([12]))?$/i);
   if (waitFramesOrPress) {
     const loadCount = emitLoadInt16IntoHL(waitFramesOrPress[1]);
@@ -236,14 +250,14 @@ export function handleVramPixelInputStatement({
     body.push("    halt");
     if (pad) {
       body.push(`    ld a,(JOYPAD_${pad})`);
-      body.push("    bit 7,a");
+      body.push("    and $F0");
       body.push(`    jr nz,${doneLabel}`);
     } else {
       body.push("    ld a,(JOYPAD_1)");
-      body.push("    and $80");
+      body.push("    and $F0");
       body.push("    ld d,a");
       body.push("    ld a,(JOYPAD_2)");
-      body.push("    and $80");
+      body.push("    and $F0");
       body.push("    or d");
       body.push(`    jr nz,${doneLabel}`);
     }
@@ -255,43 +269,76 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const pauseUntilPress = line.match(/^pause\s+until\s+press(?:\s+on\s+joypad\s+([12]))?$/i);
+  const crtSafePause = line.match(/^pause\s+until\s+press\s+and\s+release(?:\s+on\s+joypad\s+([12]))?\s+blank\s+after\s+([0-9]+)\s+seconds?$/i);
+  if (crtSafePause) {
+    const seconds = Number.parseInt(crtSafePause[2], 10);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
+      return { handled: true, ok: false, log: `CRT-safe pause requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
+    }
+    if (nmiKnownOff) {
+      return { handled: true, ok: false, log: `CRT-safe pause requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
+    }
+    body.push(
+      `    ld hl,${seconds * 60}`,
+      `    ld de,${seconds * 50}`,
+      `    ld a,${crtSafePause[1] || 0}`,
+      "    call AMY_PAUSE_PRESS_RELEASE_BLANK"
+    );
+    return { handled: true, ok: true };
+  }
+  const pauseUntilPress = line.match(/^pause\s+until\s+press(\s+and\s+release)?(?:\s+on\s+joypad\s+([12]))?$/i);
   if (pauseUntilPress) {
     const releaseLabel = makeGeneratedLabel("PauseRelease");
     const pressLabel = makeGeneratedLabel("PausePress");
-    const pad = pauseUntilPress[1] || null;
+    const finalReleaseLabel = pauseUntilPress[1] ? makeGeneratedLabel("PauseFinalRelease") : null;
+    const pad = pauseUntilPress[2] || null;
     body.push(`${releaseLabel}:`);
     body.push("    halt");
     if (pad) {
       body.push(`    ld a,(JOYPAD_${pad})`);
-      body.push("    bit 7,a");
+      body.push("    and $F0");
       body.push(`    jr nz,${releaseLabel}`);
       body.push(`${pressLabel}:`);
       body.push("    halt");
       body.push(`    ld a,(JOYPAD_${pad})`);
-      body.push("    bit 7,a");
+      body.push("    and $F0");
       body.push(`    jr z,${pressLabel}`);
     } else {
       body.push("    ld a,(JOYPAD_1)");
-      body.push("    and $80");
+      body.push("    and $F0");
       body.push("    ld d,a");
       body.push("    ld a,(JOYPAD_2)");
-      body.push("    and $80");
+      body.push("    and $F0");
       body.push("    or d");
       body.push(`    jr nz,${releaseLabel}`);
       body.push(`${pressLabel}:`);
       body.push("    halt");
       body.push("    ld a,(JOYPAD_1)");
-      body.push("    and $80");
+      body.push("    and $F0");
       body.push("    ld d,a");
       body.push("    ld a,(JOYPAD_2)");
-      body.push("    and $80");
+      body.push("    and $F0");
       body.push("    or d");
       body.push(`    jr z,${pressLabel}`);
     }
+    if (finalReleaseLabel) {
+      body.push(`${finalReleaseLabel}:`);
+      body.push("    halt");
+      if (pad) {
+        body.push(`    ld a,(JOYPAD_${pad})`);
+        body.push("    and $F0");
+      } else {
+        body.push("    ld a,(JOYPAD_1)");
+        body.push("    and $F0");
+        body.push("    ld d,a");
+        body.push("    ld a,(JOYPAD_2)");
+        body.push("    and $F0");
+        body.push("    or d");
+      }
+      body.push(`    jr nz,${finalReleaseLabel}`);
+    }
     return { handled: true, ok: true };
   }
-
   const waitKey = line.match(/^wait\s+key\s*([0-9])(?:\s+on\s+keypad\s+([12]))?$/i)
     || line.match(/^wait\s+key\s+([0-9])(?:\s+on\s+keypad\s+([12]))?$/i);
   if (waitKey) {
@@ -317,7 +364,7 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const chooseKeypad = line.match(/^choose\s+keypad\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const chooseKeypad = line.match(/^choose\s+keypad\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+on\s+keypad\s+([12]))?(?:\s+blank\s+after\s+([0-9]+)\s+seconds?)?$/i);
   if (chooseKeypad) {
     const targetInfo = getRuntimeInfo(chooseKeypad[3]);
     const loadMin = emitLoadInt8ValueInto("b", chooseKeypad[1]);
@@ -327,7 +374,23 @@ export function handleVramPixelInputStatement({
     }
     body.push(...loadMin);
     body.push(...loadMax);
-    body.push("    call AMY_CHOICE_KEYPAD_RANGE");
+    if (chooseKeypad[5]) {
+      const seconds = Number.parseInt(chooseKeypad[5], 10);
+      if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
+        return { handled: true, ok: false, log: `CRT-safe keypad choice requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
+      }
+      if (nmiKnownOff) {
+        return { handled: true, ok: false, log: `CRT-safe keypad choice requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
+      }
+      body.push(
+        `    ld hl,${seconds * 60}`,
+        `    ld de,${seconds * 50}`,
+        `    ld a,${chooseKeypad[4] || 0}`,
+        "    call AMY_CHOICE_KEYPAD_RANGE_BLANK"
+      );
+    } else {
+      body.push("    call AMY_CHOICE_KEYPAD_RANGE");
+    }
     body.push(...emitStoreInt8FromA(chooseKeypad[3]));
     return { handled: true, ok: true };
   }

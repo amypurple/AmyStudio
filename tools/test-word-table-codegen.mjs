@@ -345,6 +345,11 @@ check("constant index out of range is a clear error", () => {
   assert.match(String(bad.log || ""), /word table|out-of-range/i);
 });
 
+check("word table assignment constant index out of range is a clear error", () => {
+  const bad = transpileAmy("data L0 bytes $01\n\ndata Levels words = @L0\n\nu16 Address = 0\nAddress = Levels[9]\nloop forever\n");
+  assert.equal(bad.ok, false);
+  assert.match(String(bad.log || ""), /Word table Levels index 9 is out-of-range/);
+});
 check("bare identifier entry without @ is rejected", () => {
   const bad = transpileAmy("data L0 bytes $01\n\ndata Levels words = L0\n\nloop forever\n");
   assert.equal(bad.ok, false);

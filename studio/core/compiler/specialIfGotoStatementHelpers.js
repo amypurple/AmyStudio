@@ -80,6 +80,15 @@ export function handleSpecialIfGotoStatement({
     return { ok: true, handled: true, lines: code.lines };
   }
 
+  const ifCharsInBoxGoto = line.match(/^if\s+(chars?\s+in\s+box\s+.+?\s*,\s*.+?\s+size\s+.+?\s*,\s*.+?\s+contain(?:s)?\s+.+?)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  if (ifCharsInBoxGoto) {
+    const jumpTarget = resolveSourceJumpTarget(ifCharsInBoxGoto[2]);
+    if (!jumpTarget) return { ok: false, handled: true, log: formatUnknownJumpTargetLog(ifCharsInBoxGoto[2], rawLine) };
+    const code = emitConditionalJump(ifCharsInBoxGoto[1], jumpTarget);
+    if (!code.ok) return { ok: false, handled: true, log: code.log };
+    return { ok: true, handled: true, lines: code.lines };
+  }
+
   const ifCompareGoto = line.match(/^if\s+(?:(signed|unsigned)\s+)?(.+?)\s*(==|=|!=|<>|<=|>=|<|>)\s*(.+?)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (ifCompareGoto) {
     const jumpTarget = resolveSourceJumpTarget(ifCompareGoto[5]);

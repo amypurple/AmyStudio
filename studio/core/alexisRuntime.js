@@ -1,4 +1,4 @@
-import { alexisRuntimeCatalog } from "./alexisRuntimeCatalog.generated.js";
+import { alexisRuntimeCatalog } from "./alexisRuntimeCatalog.generated.js?v=20260803-120-colors";
 
 function collectUsedAlexisSymbols(asmBody, options = {}) {
   const used = new Set();
@@ -80,6 +80,9 @@ const runtimeOrder = [
   "AMY_SCREEN_ON_NMI",
   "AMY_SCREEN_ON_NO_NMI",
   "AMY_ENABLE_NMI",
+  "AMY_120C_ON",
+  "AMY_120C_OFF",
+  "AMY_120C_UPDATE",
   "AMY_SET_SPRITES8X8",
   "AMY_SET_SPRITES16X16",
   "AMY_SET_SPRITES_SIMPLE",
@@ -106,6 +109,8 @@ const runtimeOrder = [
   "AMY_RESET_SPINNER2",
   "AMY_RESET_SPINNERS",
   "AMY_WAIT_FRAMES_SAFE",
+  "AMY_PAUSE_PRESS_RELEASE_BLANK",
+  "AMY_CHOICE_KEYPAD_RANGE_BLANK",
   "AMY_TINY_SOUND",
   "AMY_SET_SOUND_TABLE",
   "AMY_PLAY_SOUND",

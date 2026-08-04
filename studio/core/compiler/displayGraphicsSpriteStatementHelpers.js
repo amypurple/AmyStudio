@@ -16,6 +16,14 @@ export function handleDisplayGraphicsSpriteStatement({
   const _dep = checkDisplayGraphicsDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
+  if (/^120\s+colors\s+on$/i.test(line)) {
+    return { ok: true, handled: true, lines: ["    call AMY_120C_ON"] };
+  }
+
+  if (/^120\s+colors\s+off$/i.test(line)) {
+    return { ok: true, handled: true, lines: ["    call AMY_120C_OFF"] };
+  }
+
   if (/^screen\s+off(\s+no\s+nmi)?$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SCREEN_OFF_NO_NMI"] };
   }
@@ -473,6 +481,9 @@ export function handleDisplayGraphicsSpriteStatement({
   const setSprite = line.match(/^set\s+sprite\s+(.+?)\s+to\s+(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)$/i);
   if (setSprite) {
     const indexValue = tryEvaluateConstantExpression(setSprite[1]);
+    if (Number.isInteger(indexValue) && (indexValue < 0 || indexValue > 31)) {
+      return { ok: false, handled: true, log: `set sprite index must be between 0 and 31: ${rawLine}` };
+    }
     const yValue = tryEvaluateConstantExpression(setSprite[2]);
     const xValue = tryEvaluateConstantExpression(setSprite[3]);
     const patternValue = tryEvaluateConstantExpression(setSprite[4]);

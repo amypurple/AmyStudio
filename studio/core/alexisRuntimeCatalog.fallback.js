@@ -265,6 +265,9 @@ export const alexisRuntimeCatalog = {
   },
   "AMY_PUT_VRAM": {
     "group": "vdp",
+    "deps": [
+      "AMY_COPY_BYTES_TO_VRAM"
+    ],
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
     "asm": "AMY_PUT_VRAM:\n    ld a,c\n    or a\n    jp z,$1FDF\n    inc b\n    jp $1FDF\n\n; Read BC bytes from VRAM source DE into RAM destination HL.\n; This mirrors the patched lib4ksa _get_vram behavior."
   },
@@ -423,6 +426,9 @@ export const alexisRuntimeCatalog = {
   },
   "AMY_I16_TO_ASCII6": {
     "group": "math",
+    "deps": [
+      "AMY_U16_TO_ASCII5"
+    ],
     "sourcePath": "src/alexis_lib/coleco_math_format_i16.asm",
     "asm": "AMY_I16_TO_ASCII6:\n    bit 7,h\n    jr nz,AMY_I16_TO_ASCII6_NEG\n    ld a,$20\n    ld (de),a\n    inc de\n    jp AMY_U16_TO_ASCII5\nAMY_I16_TO_ASCII6_NEG:\n    ld a,$2D\n    ld (de),a\n    inc de\n    ld a,l\n    cpl\n    ld l,a\n    ld a,h\n    cpl\n    ld h,a\n    inc hl\n    jp AMY_U16_TO_ASCII5"
   },
@@ -562,6 +568,7 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/alexis_lib/coleco_music.asm",
     "deps": [
       "AMY_STOP_SONG",
+      "AMY_STOP_SONG_AREAS",
       "AMY_PLAY_SOUND"
     ],
     "asm": "AMY_UPDATE_MUSIC:\n    ld hl,AMY_MUSIC_COUNTER+1\n    ld a,(hl)\n    dec hl\n    or a\n    jr nz,AMY_UPDATE_MUSIC_COUNTER\n    ld a,(hl)\n    or a\n    jp z,AMY_TRIGGER_SOUNDS\nAMY_UPDATE_MUSIC_COUNTER:\n    ld a,(hl)\n    sub $01\n    ld (hl),a\n    inc hl\n    ld a,(hl)\n    sbc a,$00\n    ld (hl),a\n    ret\n\nAMY_TRIGGER_SOUNDS:\n    ld hl,AMY_MUSIC_POINTER\n    ld e,(hl)\n    inc hl\n    ld d,(hl)\n    ex de,hl\n    ld e,(hl)\n    inc hl\n    ld d,(hl)\n    xor a\n    sub d\n    jr nz,AMY_TRIGGER_SOUNDS_NOT_END\n    sub e\n    ret z\nAMY_TRIGGER_SOUNDS_NOT_END:\n    bit 7,d\n    jr z,AMY_TRIGGER_SOUNDS_DURATION\n    ld hl,AMY_MUSIC_POINTER\n    ld (hl),e\n    inc hl\n    ld (hl),d\n    jr AMY_TRIGGER_SOUNDS\nAMY_TRIGGER_SOUNDS_DURATION:\n    dec de\n    ld hl,AMY_MUSIC_COUNTER\n    ld (hl),e\n    inc hl\n    ld (hl),d\n    ld hl,AMY_MUSIC_POINTER\n    ld e,(hl)\n    inc hl\n    ld d,(hl)\n    call AMY_STOP_SONG_AREAS\n    ex de,hl\n    inc hl\n    inc hl\n    ld a,(hl)\n    rlca\n    rlca\n    and $03\n    inc a\n    ld b,a\nAMY_TRIGGER_SOUNDS_LOOP:\n    ld a,(hl)\n    inc hl\n    and $3F\n    push bc\n    push de\n    push hl\n    ld b,a\n    call AMY_PLAY_SOUND\n    pop hl\n    pop de\n    pop bc\n    djnz AMY_TRIGGER_SOUNDS_LOOP\n    ex de,hl\n    ld hl,AMY_MUSIC_POINTER\n    ld (hl),e\n    inc hl\n    ld (hl),d\n    jp $0295\n\n; Stop music-table playback and clear the reserved first 4 sound areas."
@@ -633,7 +640,8 @@ export const alexisRuntimeCatalog = {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
     "deps": [
-      "AMY_TEXT_CALC_NAME_ADDRESS"
+      "AMY_TEXT_CALC_NAME_ADDRESS",
+      "AMY_GET_VRAM"
     ],
     "clobbers": [
       "af",
@@ -790,5 +798,33 @@ export const alexisRuntimeCatalog = {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_pattern_transform.asm",
     "asm": "AMY_ROTATE_PATTERN_90:\n    push ix\n    ld a,3\n    call ROTATE_90\n    pop ix\n    ret"
+  },
+  "AMY_PAUSE_PRESS_RELEASE_BLANK": {
+    "group": "input",
+    "sourcePath": "src/alexis_lib/coleco_pause.asm",
+    "asm": "AMY_PAUSE_PRESS_RELEASE_BLANK:"
+  },
+  "AMY_CHOICE_KEYPAD_RANGE_BLANK": {
+    "group": "input",
+    "sourcePath": "src/alexis_lib/coleco_pause.asm",
+    "asm": "AMY_CHOICE_KEYPAD_RANGE_BLANK:"
+  },
+  "AMY_120C_ON": {
+    "group": "display",
+    "sourcePath": "src/alexis_lib/coleco_120c.asm",
+    "deps": [
+      "AMY_120C_UPDATE"
+    ],
+    "asm": "AMY_120C_ON:"
+  },
+  "AMY_120C_OFF": {
+    "group": "display",
+    "sourcePath": "src/alexis_lib/coleco_120c.asm",
+    "asm": "AMY_120C_OFF:"
+  },
+  "AMY_120C_UPDATE": {
+    "group": "display",
+    "sourcePath": "src/alexis_lib/coleco_120c.asm",
+    "asm": "AMY_120C_UPDATE:"
   }
 };
