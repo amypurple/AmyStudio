@@ -1,5 +1,7 @@
 ## 2026-08-04 - Fail-closed expressions and dynamic input selectors
 
+- Rebuilt `amy-current-version.md` as a concise public status page with relative links, current compiler capabilities, explicit non-normative codegen boundaries, the ROM regression workflow, and accurately deferred features.
+
 - `joypad(Expr)`, `keypad(Expr)`, and `spinner(Expr)` accept runtime `int8` port selectors; dynamic spinner reads preserve atomic consume-and-clear behavior.
 - Invalid integer `random()`, unknown symbols/calls, out-of-range constant word-table assignments, and out-of-range literal sprite indexes now fail in the Amy transpiler instead of leaking malformed assembly.
 - Runtime catalog dependencies are audited transitively, with missing VRAM, formatting, music-stop, and sound dependencies restored.
