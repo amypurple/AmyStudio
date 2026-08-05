@@ -14,7 +14,7 @@ import {
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260804-public-rom-debugger";
-import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260804-public-rom-debugger";
+import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260804-ui-consistency";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
@@ -80,7 +80,7 @@ import {
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260715-asm-label-collision";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260729-project-asm-editor";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260804-ui-consistency";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";

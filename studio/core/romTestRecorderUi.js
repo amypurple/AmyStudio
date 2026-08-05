@@ -221,7 +221,7 @@ function buildDialog() {
         </div>
         <div class="rom-recorder__controller" aria-label="ColecoVision controller">
           <button data-input="UP" title="Up" aria-label="Up">↑</button><button data-input="FIRE_LEFT" title="Left fire" aria-label="Left fire">L</button><button data-input="FIRE_RIGHT" title="Right fire" aria-label="Right fire">R</button><button data-input="KEYPAD_1">1</button><button data-input="KEYPAD_2">2</button><button data-input="KEYPAD_3">3</button>
-          <button data-input="LEFT">←</button><button data-input="DOWN">↓</button><button data-input="RIGHT">→</button><button data-input="KEYPAD_4">4</button><button data-input="KEYPAD_5">5</button><button data-input="KEYPAD_6">6</button>
+          <button data-input="LEFT" title="Left" aria-label="Left">←</button><button data-input="DOWN" title="Down" aria-label="Down">↓</button><button data-input="RIGHT" title="Right" aria-label="Right">→</button><button data-input="KEYPAD_4">4</button><button data-input="KEYPAD_5">5</button><button data-input="KEYPAD_6">6</button>
           <span></span><span></span><span></span><button data-input="KEYPAD_7">7</button><button data-input="KEYPAD_8">8</button><button data-input="KEYPAD_9">9</button>
           <span></span><span></span><span></span><button data-input="KEYPAD_ASTERISK">*</button><button data-input="KEYPAD_0">0</button><button data-input="KEYPAD_HASH">#</button>
         </div>
@@ -236,7 +236,7 @@ function buildDialog() {
           <button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button>
         </div>
         <label>Target<select data-field="checkpoint"><option value="">Current frame</option></select></label>
-        <div class="rom-recorder__tools"><button class="rom-recorder__compact-action" type="button" data-action="loadRom" title="Open external ROM" aria-label="Open external ROM">&#x21E7;</button><button class="rom-recorder__compact-action" type="button" data-action="useCompiledRom" title="Return to compiled Amy ROM" aria-label="Return to compiled Amy ROM">A</button><button class="rom-recorder__compact-action" type="button" data-action="arm" title="Run to checkpoint" aria-label="Run to checkpoint">&#x2691;</button><button class="rom-recorder__compact-action" type="button" data-action="create" title="Save test JSON" aria-label="Save test JSON">&#x21E9;</button><button class="rom-recorder__compact-action" type="button" data-action="replay" title="Load and replay test" aria-label="Load and replay test">&#x21BB;</button></div>
+        <div class="rom-recorder__tools"><button class="rom-recorder__compact-action" type="button" data-action="loadRom" title="Open external ROM" aria-label="Open external ROM">&#x21E7;</button><button class="rom-recorder__compact-action" type="button" data-action="useCompiledRom" title="Return to compiled Amy ROM" aria-label="Return to compiled Amy ROM">&#x21A9;</button><button class="rom-recorder__compact-action" type="button" data-action="arm" title="Run to checkpoint" aria-label="Run to checkpoint">&#x25B6;</button><button class="rom-recorder__compact-action" type="button" data-action="create" title="Save test JSON" aria-label="Save test JSON">&#x21E9;</button><button class="rom-recorder__compact-action" type="button" data-action="replay" title="Open and replay test" aria-label="Open and replay test">&#x21BB;</button></div>
         <label title="Allow a recompiled ROM with a different hash"><span>ROM &#x0394;</span><input data-field="allowRebuilt" type="checkbox" aria-label="Allow ROM hash change"></label>
         <input data-field="romFile" type="file" accept=".rom,.col,.bin,application/octet-stream" hidden>
         <input data-field="testFile" type="file" accept=".amy-rom-test.json,application/json" hidden>
@@ -446,7 +446,7 @@ export function createRomTestRecorderUi({
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "rom-recorder__compact-action";
-      remove.textContent = "×";
+      remove.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 10v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       remove.title = "Remove breakpoint at " + formatHex(address);
       remove.setAttribute("aria-label", "Remove breakpoint at " + formatHex(address));
       remove.addEventListener("click", () => {
@@ -474,7 +474,7 @@ export function createRomTestRecorderUi({
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "rom-recorder__compact-action";
-      remove.textContent = "×";
+      remove.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 10v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       remove.title = "Remove RAM watch " + watch.condition;
       remove.setAttribute("aria-label", "Remove RAM watch " + watch.condition);
       remove.addEventListener("click", () => {

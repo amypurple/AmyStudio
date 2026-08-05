@@ -1,3 +1,8 @@
+## 2026-08-04 - UI icon and accessibility consistency
+
+- Added missing hover and screen-reader labels to editor arrows, graphics palettes, controller directions, panel controls, and dialog close buttons.
+- Reserved the purple eye for visual previews; DSound files now use a play icon, debugger removals use a trash icon, and compact ROM actions use return/run symbols instead of a letter or flag.
+- Standardized ICVGM export and test-file terminology without changing behavior or layout.
 ## 2026-08-04 - Public ROM TEST & DEBUG workspace
 
 - Shipped the self-hosted GearColeco debugger UI in the clean release, including external ROM loading, audio, controller setup, NTSC/PAL selection, frame rewind/replay, instruction step/step-over, and deterministic test-case recording.

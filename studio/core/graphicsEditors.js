@@ -246,6 +246,7 @@ export function createGraphicsEditorUi({
       button.className = "graphics-editor-color-swatch";
       button.style.background = TMS_PALETTE[color];
       button.title = "$" + color.toString(16).toUpperCase();
+      button.setAttribute("aria-label", "Color $" + color.toString(16).toUpperCase());
       button.addEventListener("click", () => {
         activeColor = color;
         renderActiveTile();
@@ -638,6 +639,7 @@ export function createGraphicsEditorUi({
       button.className = "graphics-editor-sprite-color-swatch";
       button.dataset.color = String(color);
       button.title = ((attributeColorBinding || inferredAttributeColorMatches.length) ? "Bound attribute color $" : "Preview attribute color $") + color.toString(16).toUpperCase();
+      button.setAttribute("aria-label", button.title);
       button.style.background = TMS_PALETTE[color] || "#000000";
       button.addEventListener("click", () => {
         spriteColor = color & 0x0F;
@@ -1541,6 +1543,7 @@ export function createGraphicsEditorUi({
         button.type = "button";
         button.className = "graphics-editor-palette__tile";
         button.title = "$" + value.toString(16).toUpperCase().padStart(2, "0");
+        button.setAttribute("aria-label", "Tile " + button.title);
         const tileCanvas = document.createElement("canvas");
         tileCanvas.width = 8 * paletteScale;
         tileCanvas.height = 8 * paletteScale;

@@ -521,6 +521,7 @@ export function createProjectFileUiHelpers({
         button.textContent = label;
         button.className = `tile-editor-arrow ${className}`;
         button.title = title;
+        button.setAttribute("aria-label", title);
         return button;
       };
 
@@ -640,7 +641,7 @@ export function createProjectFileUiHelpers({
       exportDat.textContent = "Export ICVGM .dat";
       const exportPc = document.createElement("button");
       exportPc.type = "button";
-      exportPc.textContent = "Export .pc";
+      exportPc.textContent = "Export ICVGM .pc";
       const insert = document.createElement("button");
       insert.type = "button";
       insert.textContent = "Use in source";
@@ -2144,7 +2145,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260729-tilemap-move-paste").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260804-ui-consistency").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,
@@ -2541,6 +2542,9 @@ export function createProjectFileUiHelpers({
         playButton.addEventListener("click", () => {
           void previewProjectFileDsound(entry);
         });
+        playButton.title = `Play ${entry.path}`;
+        playButton.setAttribute("aria-label", `Play ${entry.path}`);
+        playButton.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7Z" fill="currentColor"/></svg>`;
         actions.appendChild(playButton);
       }
 
@@ -2564,7 +2568,7 @@ export function createProjectFileUiHelpers({
 
           const exportDatButton = document.createElement("button");
           exportDatButton.type = "button";
-          exportDatButton.textContent = "Export DAT";
+          exportDatButton.textContent = "Export ICVGM .dat";
           exportDatButton.addEventListener("click", () => {
             void exportProjectTileGroupAsDat(entry);
           });
@@ -2574,7 +2578,7 @@ export function createProjectFileUiHelpers({
         if (canExportPc(entry)) {
           const exportPcButton = document.createElement("button");
           exportPcButton.type = "button";
-          exportPcButton.textContent = "Export PC";
+          exportPcButton.textContent = "Export ICVGM .pc";
           exportPcButton.addEventListener("click", () => {
             void exportProjectGroupAsPc(entry);
           });
