@@ -57,5 +57,7 @@ assert.match(recorderUi, /ColecoVision BIOS missing/);
 assert.match(recorderUi, /data-action="loadBios"/);
 assert.match(recorderUi, /requestEmulatorBios/);
 assert.match(recorderUi, /async function biosChanged/);
+assert.doesNotMatch(recorderUi, /screen-wrap[^\n]*width:min\(100%,512px\)/);
+assert.match(recorderUi, /screenWrap\.style\.width = scale === "fit" \? "100%"/);
 assert.doesNotMatch(appUi, /if \(!emulatorBios\) \{[\s\S]{0,300}biosImport\?\.click/);
 console.log("Emulator BIOS prompt UI PASS");

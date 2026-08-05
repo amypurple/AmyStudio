@@ -156,7 +156,7 @@ function ensureStyles() {
     .rom-recorder .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .rom-recorder__body { display:grid; grid-template-columns:minmax(480px,2fr) minmax(520px,1fr); grid-template-rows:auto minmax(0,1fr); gap:10px 12px; padding:10px 12px; height:calc(96vh - 52px); overflow:hidden; box-sizing:border-box; }
     .rom-recorder__stage { grid-row:1 / span 2; display:grid; align-content:start; justify-items:center; gap:6px; min-width:0; min-height:0; }
-    .rom-recorder__screen-wrap { position:relative; width:min(100%,512px); aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; border:1px solid #31424c; overflow:hidden; }
+    .rom-recorder__screen-wrap { position:relative; width:auto; max-width:100%; aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; border:1px solid #31424c; overflow:hidden; }
     .rom-recorder__screen { max-width:100%; image-rendering:pixelated; background:#000; border:1px solid #31424c; outline:none; }
     .rom-recorder__screen-wrap .rom-recorder__screen { border:0; }
     .rom-recorder__bios-missing { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:12px; padding:24px; box-sizing:border-box; text-align:center; color:#e8edf0; background:radial-gradient(circle at 50% 38%,#17242b 0,#090e12 58%,#030405 100%); }
@@ -794,9 +794,11 @@ export function createRomTestRecorderUi({
 
   function applyScale() {
     const canvas = dialog.querySelector("canvas");
+    const screenWrap = dialog.querySelector(".rom-recorder__screen-wrap");
     const scale = field("scale").value;
-    canvas.style.width = scale === "fit" ? "100%" : `${256 * Number(scale)}px`;
-    canvas.style.height = scale === "fit" ? "auto" : `${192 * Number(scale)}px`;
+    screenWrap.style.width = scale === "fit" ? "100%" : `${256 * Number(scale)}px`;
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
   }
 
   function render({ forceInspector = false } = {}) {
