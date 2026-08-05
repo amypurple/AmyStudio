@@ -1136,7 +1136,9 @@ export class Z80Optimizer {
                                         : null;
 
                                     // Use size 2 (JR size) for range check
-                                    if (targetAddr !== null && targetAddr !== undefined && this.canUseRelativeJump(pc, targetAddr, 2)) {
+                                    if (targetAddr !== null && targetAddr !== undefined
+                                        && this.canUseRelativeJump(pc, targetAddr, 2)
+                                        && offset >= -120 && offset <= 119) {
                                         // Convert JP to JR
                                         const jrToken = new Instruction(
                                             token.label,

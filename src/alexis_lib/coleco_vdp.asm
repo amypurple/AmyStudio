@@ -7,3 +7,4 @@
     include "src/alexis_lib/coleco_vdp_core.asm"
     include "src/alexis_lib/coleco_vdp_modes.asm"
     include "src/alexis_lib/coleco_vdp_screen.asm"
+    include "src/alexis_lib/coleco_pause.asm"

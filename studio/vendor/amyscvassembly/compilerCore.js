@@ -2988,6 +2988,45 @@ function isIxIyDisplacementOperandText(value) {
                 return output;
             }
 
+            buildSourceDebugMap() {
+                const markerPattern = /^\s*;\s*@amy-source-line\s+(\d+)\s*$/i;
+                const markers = [];
+                for (let index = 0; index < this.sourceLines.length; index += 1) {
+                    const match = String(this.sourceLines[index] || '').match(markerPattern);
+                    if (match) markers.push({ sourceLine: Number(match[1]), asmIndex: index });
+                }
+                const bySourceLine = new Map();
+                for (let index = 0; index < markers.length; index += 1) {
+                    const marker = markers[index];
+                    let address;
+                    let asmLine;
+                    for (let candidate = marker.asmIndex + 1; candidate < this.sourceLines.length; candidate += 1) {
+                        const mapped = this.lineToAddressMap.get(candidate + 1);
+                        if (mapped === undefined) continue;
+                        address = mapped & 0xFFFF;
+                        asmLine = candidate + 1;
+                        break;
+                    }
+                    const entry = bySourceLine.get(marker.sourceLine) || {
+                        sourceLine: marker.sourceLine,
+                        addresses: [],
+                        asmLines: [],
+                        optimizedAway: true
+                    };
+                    if (address !== undefined && !entry.addresses.includes(address)) {
+                        entry.addresses.push(address);
+                        entry.asmLines.push(asmLine);
+                        entry.optimizedAway = false;
+                    }
+                    bySourceLine.set(marker.sourceLine, entry);
+                }
+                return {
+                    version: 1,
+                    optimizerEnabled: !!compilerUiState.optimizerEnabled,
+                    entries: [...bySourceLine.values()].sort((a, b) => a.sourceLine - b.sourceLine)
+                };
+            }
+
             generateDebuggerSymbolFile() {
                 const symbols = [];
                 const seen = new Set();
@@ -3015,6 +3054,15 @@ function isIxIyDisplacementOperandText(value) {
                     if (byAddress !== 0) return byAddress;
                     return a[0].toLowerCase().localeCompare(b[0].toLowerCase());
                 });
+
+                const sourceDebugMap = this.buildSourceDebugMap();
+                for (const entry of sourceDebugMap.entries) {
+                    for (let index = 0; index < entry.addresses.length; index += 1) {
+                        const suffix = entry.addresses.length > 1 ? `_${index + 1}` : '';
+                        symbols.push([`AMY_SOURCE_LINE_${entry.sourceLine}${suffix}`, entry.addresses[index]]);
+                    }
+                }
+                symbols.sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
 
                 return symbols
                     .map(([name, value]) => `${name}: equ $${value.toString(16).toUpperCase().padStart(4, '0')}`)
@@ -3775,6 +3823,7 @@ export async function assembleAmysCVAssembly(files, mainFile = "main.asm", optio
     memoryMap: assembler.buildMemoryMapReport(),
     listing: assembler.generateListingFile(),
     symbolsText: assembler.generateDebuggerSymbolFile(),
+    sourceDebugMap: assembler.buildSourceDebugMap(),
     optimizedAsm: assembler.optimizedSource || "",
     log: compileLog.map((entry) => `[${entry.level}] ${entry.message}`).join("\n")
   };

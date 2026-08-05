@@ -1,3 +1,9 @@
+## 2026-08-04 - Public compiler and Studio technology parity
+
+- Synchronized the clean release with the current Amy compiler environment, including complete 120-colors runtime/RAM support, CRT-safe press-and-release pauses, and the generated browser library catalog.
+- Added zero-byte Amy-to-ASM source maps for debugger breakpoints and restored the conservative JP-to-JR optimizer margin used by the experimental Studio.
+- Synchronized graphics-editor selection/clipboard behavior, compressed asset access, picture and BIOS previews, project-file editing, optimization wiring, and emulator shell integration without importing experimental game catalogs.
+- Added focused compiler, graphics, project-file, preview, and debugger regression coverage.
 ## 2026-08-04 - Complete public source editor and Studio shell
 
 - Synchronized the public Studio shell and splash screen with the experimental IDE instead of retaining a partial gutter-only editor integration.

@@ -1,4 +1,4 @@
-import { renderAlexisRuntime } from "./alexisRuntime.js";
+import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
 
@@ -381,6 +381,7 @@ function inferRuntimeCapabilities(project, asmBody) {
     /\bAMY_FRAME_COUNTER\b/.test(asmBody) ||
     /\bframe\b(?!\s+size)/i.test(codeText);
   const usesScreenOnNmi = /\bAMY_SCREEN_ON_NMI\b/.test(asmBody);
+  const uses120c = /\bAMY_120C_(?:ON|OFF)\b/.test(asmBody);
   const usesHalt = /^\s*halt\s*$/gim.test(asmBody);
   const usesWaitFrames = /\bAMY_WAIT_FRAMES_SAFE\b/.test(asmBody) || /^\s*wait\b/gim.test(sourceText);
   const usesNmiFlagShadow = usesWaitFrames || /\bNMI_FLAG\b/.test(asmBody);
@@ -396,9 +397,10 @@ function inferRuntimeCapabilities(project, asmBody) {
   const needsMusic = usesMusicApi;
   const needsTinySound = usesTinySound;
   const needsRandomSeed = usesRandom;
+  const needs120c = uses120c;
   const soundAreaCount = inferSoundAreaCount(sourceText);
-  const needsNmi = usesScreenOnNmi || usesHalt || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
-  const needsNmiAckOnly = needsNmi && !needsControllers && !needsSound;
+  const needsNmi = usesScreenOnNmi || usesHalt || needs120c || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
+  const needsNmiAckOnly = needsNmi && !needs120c && !needsControllers && !needsSound;
   return {
     needsSprites,
     needsControllers,
@@ -411,8 +413,8 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsMusic,
     needsTinySound,
     needsRandomSeed,
+    needs120c,
     soundAreaCount,
-    needsNmi,
     needsNmiAckOnly,
     usesJoypad1,
     usesKeypad1,
@@ -442,6 +444,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needsVdpStatusShadow ||
     caps.needsUserFrameHook ||
     caps.needsAmyTimers ||
+    caps.needs120c ||
     needsNmi;
   const needsSoundState =
     caps.needsSound ||
@@ -491,14 +494,15 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needsNmi,
     needsNmiFlagShadow: caps.needsNmiFlagShadow,
     needsSoundState,
-    needsAmyTimers: caps.needsAmyTimers
+    needsAmyTimers: caps.needsAmyTimers,
+    needs120c: caps.needs120c
   });
   const addr = runtimeMap.addresses;
   const hex16 = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
 
-  lines.push("; === GENERATED LEGACY MEMORY HEADER ===");
-  lines.push("; Amy canonical ColecoVision memory constants");
-  lines.push("; Project-specific runtime symbols based on inferred capabilities");
+  lines.push("; === LEGACY MEMORY ===");
+
+  lines.push("; ColecoVision constants and inferred runtime symbols");
   lines.push("");
   lines.push("ROM_BASE            EQU $8000");
   lines.push("ROM_HEADER_START    EQU $8000");
@@ -521,6 +525,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     lines.push(`_no_nmi             EQU ${hex16(addr.no_nmi)}`);
     lines.push(`_vdp_status         EQU ${hex16(addr.vdp_status)}`);
     lines.push(`_nmi_flag           EQU ${hex16(addr.nmi_flag)}`);
+  }
+  if (caps.needs120c) {
+    lines.push(`AMY_120C_ENABLED EQU ${hex16(addr.effect_120c_enabled)}`);
+    lines.push(`AMY_120C_PHASE   EQU ${hex16(addr.effect_120c_phase)}`);
   }
   if (needsControllers) {
     lines.push(`_joypad_1           EQU ${hex16(addr.joypad_1)}`);
@@ -600,7 +608,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     lines.push("SET_SOUND_TABLE EQU $1FEE");
     lines.push("PLAY_SOUND_SLOT EQU $1FF1");
   }
-  if (needsRuntimeState || needsSpinner || needsFrameCounter || needsSprites || needsTinySound || needsSoundState) {
+  if (needsRuntimeState || needsSpinner || needsFrameCounter || needsSprites || needsTinySound || needsSoundState || caps.needs120c) {
     lines.push("");
     lines.push("; Amy runtime state");
     if (needsRuntimeState) {
@@ -642,7 +650,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   }
   lines.push("");
   lines.push(`; User RAM window: $${ramLayout.userRamStart.toString(16).toUpperCase().padStart(4, "0")}-$${(ramLayout.userRamEndExclusive - 1).toString(16).toUpperCase().padStart(4, "0")}`);
-  lines.push("; === END OF GENERATED LEGACY MEMORY HEADER ===");
+  lines.push("; === END LEGACY MEMORY ===");
   return lines;
 }
 
@@ -701,7 +709,8 @@ function emitLegacyRuntime(lines, caps) {
     !caps.needsMusic &&
     !caps.needsSpinner &&
     !caps.needsFrameCounter &&
-    !caps.needsUserFrameHook;
+    !caps.needsUserFrameHook &&
+    !caps.needs120c;
 
   const needsOnlyUserHook =
     caps.needsUserFrameHook &&
@@ -711,7 +720,8 @@ function emitLegacyRuntime(lines, caps) {
     !caps.needsMusic &&
     !caps.needsSpinner &&
     !caps.needsFrameCounter &&
-    !caps.needsAmyTimers;
+    !caps.needsAmyTimers &&
+    !caps.needs120c;
 
   const emitNoNmiEarlyReturn = (continueLabel) => {
     lines.push("        ld a,(NO_NMI)");
@@ -728,7 +738,7 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ret");
     lines.push(`${continueLabel}:`);
   };
-  lines.push("; --- Amy Coleco runtime init / NMI ---");
+  lines.push("; --- Runtime init / NMI ---");
   lines.push("Nmi:");
   if (caps.needsNmiAckOnly) {
     lines.push("        push af");
@@ -1007,6 +1017,9 @@ function emitLegacyRuntime(lines, caps) {
   lines.push("        push bc");
   lines.push("        push de");
   lines.push("        push hl");
+  if (caps.needs120c) {
+    lines.push("        call AMY_120C_UPDATE");
+  }
   if (caps.needsControllers) {
     lines.push("        call UPDATE_CONTROLLERS");
     lines.push("        ld hl,JOYPAD_1");
@@ -1178,9 +1191,13 @@ function formatAsmByteList(bytes) {
 }
 
 export function generateAsm(project, asmBody, assetDeclarations = [], metadata = {}) {
+  const stripSourceMarkersForScan = (text) => String(text || "").split(/\r?\n/)
+    .filter((line) => !/^\s*;\s*@amy-source-line\s+\d+\s*$/i.test(line))
+    .join("\n");
+
   const asmBodyBase = asmBody;
   const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project);
-  const asmBodyForDependencyScan = `${asmBodyBase}\n${projectAsmDependencyText}`;
+  const asmBodyForDependencyScan = `${stripSourceMarkersForScan(asmBodyBase)}\n${projectAsmDependencyText}`;
   const cartridge = metadata?.cartridge || null;
   const romTitleStart = 0x8024;
   const romCodeStart = cartridge ? romTitleStart + cartridge.bytes.length + 1 : romTitleStart;
@@ -1212,7 +1229,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const asmBodyWithRuntimeInit = project.memoryProfile === "colecovision_legacy_sdcc"
     ? injectSystemInitInline(asmBodyBase, runtimeCaps)
     : asmBodyBase;
-  const asmBodyWithRuntimeInitForDependencyScan = `${asmBodyWithRuntimeInit}\n${projectAsmDependencyText}`;
+  const asmBodyWithRuntimeInitForDependencyScan = `${stripSourceMarkersForScan(asmBodyWithRuntimeInit)}\n${projectAsmDependencyText}`;
   const libResolution = resolveSelectedLibModulesDetailed(project.selectedLibs || [], asmBodyWithRuntimeInitForDependencyScan);
   const selectedLibs = libResolution.paths;
   const libs = dedupeCoveredLibraryIncludes(
@@ -1245,7 +1262,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const compIncludes = [...new Set([...comps.map(normalizeAsmIncludePath), ...inferredCompression.map(normalizeAsmIncludePath)])];
 
   const lines = [];
-  lines.push("; ------------------------------------------------------------");
+  lines.push("; ----------------------------------------------");
   lines.push(`; Amy Studio build: ${project.projectName}`);
   lines.push("; Generated by the offline web studio.");
   lines.push("; Compile with AmysCVAssembly.");
@@ -1256,7 +1273,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
       : "(omitted; no referenced symbols)";
     lines.push(`; Method 2 lib resolution: ${replacement.umbrella} -> ${resolvedText}`);
   }
-  lines.push("; ------------------------------------------------------------");
+  lines.push("; ----------------------------------------------");
   lines.push("");
 
   if (project.memoryProfile === "colecovision_legacy_sdcc") {
@@ -1275,7 +1292,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   if (headerIncludes.length) lines.push("");
 
   if (project.memoryProfile === "colecovision_legacy_sdcc") {
-    lines.push("; --- ColecoVision cartridge header ---");
+    lines.push("; --- ColecoVision header ---");
     lines.push("        org     $8000");
     lines.push("");
     if (cartridge) lines.push("        db $AA,$55        ; use default ColecoVision title screen");
@@ -1297,7 +1314,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     else lines.push("        db $C9,0,0        ; NMI vector inactive");
     lines.push("");
     if (cartridge) {
-      lines.push("; --- Coleco BIOS title metadata at $8024 ---");
+      lines.push("; --- BIOS title metadata ($8024) ---");
       lines.push("AMY_CARTRIDGE_TITLE:");
       lines.push(`        db ${formatAsmByteList(cartridge.bytes)},$00`);
       lines.push("");
@@ -1306,7 +1323,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   }
 
   if (libCodeIncludes.length || compIncludes.length) {
-    lines.push("; --- Runtime/library code includes ---");
+    lines.push("; --- Runtime includes ---");
     for (const inc of libCodeIncludes) lines.push(`include "${inc}"`);
     for (const inc of compIncludes) lines.push(`include "${inc}"`);
     lines.push("");
@@ -1318,9 +1335,9 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   }
 
   if (bundles.length) {
-    lines.push("; --- Historical SDCC bundles selected for project catalog ---");
+    lines.push("; --- Selected SDCC bundles ---");
     for (const bundle of bundles) lines.push(`; bundle: ${bundle}`);
-    lines.push("; Port selected routines before direct AmysCVAssembly compilation.");
+    lines.push("; Port selected routines before direct assembly.");
     lines.push("");
   }
 

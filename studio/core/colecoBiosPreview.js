@@ -1,3 +1,5 @@
+import { PREVIEW_FILTERS, applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260721-preview-filters";
+
 const TMS_PALETTE = [
   "#00000000", "#000000", "#21C842", "#5EDC78", "#5455ED", "#7D76FC", "#D4524D", "#42EBF5",
   "#FC5554", "#FF7978", "#D4C154", "#E5CE80", "#21B03B", "#C95AA9", "#CCCCCC", "#FFFFFF"
@@ -116,7 +118,24 @@ function createTmsOverlay(label, scale = 3) {
   canvas.width = 256 * scale;
   canvas.height = 192 * scale;
   canvas.style.imageRendering = "pixelated";
+
+  const toolbar = document.createElement("label");
+  toolbar.style.cssText = "position:absolute;right:14px;top:14px;display:flex;align-items:center;gap:6px;color:#fff;font:12px monospace;background:rgba(0,0,0,.58);border:1px solid rgba(255,255,255,.35);padding:6px 8px";
+  toolbar.textContent = "Filter";
+  const filterSelect = document.createElement("select");
+  filterSelect.style.cssText = "background:#111;color:#fff;border:1px solid rgba(255,255,255,.6);padding:3px 6px";
+  for (const value of PREVIEW_FILTERS) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "clean" ? "Clean" : value.toUpperCase();
+    filterSelect.appendChild(option);
+  }
+  toolbar.appendChild(filterSelect);
+  toolbar.addEventListener("click", (event) => event.stopPropagation());
+  filterSelect.addEventListener("click", (event) => event.stopPropagation());
+
   overlay.appendChild(canvas);
+  overlay.appendChild(toolbar);
   document.body.appendChild(overlay);
   const close = () => {
     if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -127,7 +146,7 @@ function createTmsOverlay(label, scale = 3) {
     document.addEventListener("keydown", close);
     overlay.addEventListener("click", close);
   }, 0);
-  return { ctx: canvas.getContext("2d"), scale, close };
+  return { ctx: canvas.getContext("2d"), canvas, filterSelect, scale, close };
 }
 
 function blankName() {
@@ -261,7 +280,18 @@ function previewBootFromTitleInfo(title, kind) {
   const patterns = hexToBytes(isDina ? DINA_PATTERN_DATA : CV_PATTERN_DATA);
   const colors = hexToBytes(isDina ? DINA_COLOR_DATA : CV_COLOR_DATA);
   const name = isDina ? buildDinaName(title) : buildColecoName(title);
-  drawScreen(overlay.ctx, overlay.scale, name, patterns, colors, isDina ? 2 : 1);
+  const render = () => {
+    drawScreen(overlay.ctx, overlay.scale, name, patterns, colors, isDina ? 2 : 1);
+    applyGraphicsPreviewFilter(overlay.ctx, overlay.canvas.width, overlay.canvas.height, {
+      filter: normalizePreviewFilter(overlay.filterSelect.value),
+      scale: overlay.scale
+    });
+  };
+  overlay.filterSelect.addEventListener("change", (event) => {
+    event.stopPropagation();
+    render();
+  });
+  render();
   setTimeout(overlay.close, isDina ? 4000 : 8000);
   return true;
 }

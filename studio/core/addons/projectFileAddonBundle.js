@@ -16,7 +16,7 @@ function loadPictureCompression() {
 }
 
 function loadPicturePreview() {
-  if (!picturePreviewPromise) picturePreviewPromise = import("../picturePreview.js?v=20260721-preview-filters");
+  if (!picturePreviewPromise) picturePreviewPromise = import("../picturePreview.js?v=20260729-editor-picture-groups");
   return picturePreviewPromise;
 }
 

@@ -1,5 +1,5 @@
-import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260715-duplicate-label-guard";
-import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260715-duplicate-label-guard";
+import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260731-source-marker-alignment";
+import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260802-crt-safe-pause";
 
 const textEncoder = new TextEncoder();
 

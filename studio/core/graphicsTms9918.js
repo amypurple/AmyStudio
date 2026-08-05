@@ -34,6 +34,10 @@ export function tileColorOffsetForValue(colorBytes, tileValue, baseTile, screenT
 }
 
 export function tileColorRowsForValue(colorBytes, patternBytes, tileValue, baseTile, screenTileY = 0) {
+  if (colorBytes?.length === 32) {
+    const colorByte = colorBytes[(Number(tileValue) & 0xFF) >> 3];
+    return colorByte == null ? null : new Uint8Array(8).fill(colorByte);
+  }
   const offset = tileColorOffsetForValue(colorBytes, tileValue, baseTile, screenTileY);
   return offset < 0 ? null : colorBytes.slice(offset, offset + 8);
 }

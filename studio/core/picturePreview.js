@@ -1,9 +1,16 @@
+import { PREVIEW_FILTERS, applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260721-preview-filters";
+
 const TMS_PALETTE = [
   "#000000", "#000000", "#21C842", "#5EDC78", "#5455ED", "#7D76FC", "#D4524D", "#42EBF5",
   "#FC5554", "#FF7978", "#D4C154", "#E5CE80", "#21B03B", "#C95AA9", "#CCCCCC", "#FFFFFF"
 ];
 
-const CODEC_EXTENSIONS = new Set(["zx0", "zx7", "dan1", "dan2", "dan3", "pletter", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
+const CODEC_EXTENSIONS = new Set(["raw", "zx0", "zx7", "dan1", "dan2", "dan3", "pletter", "plet5", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
+
+function normalizePreviewCodec(codec) {
+  const normalized = String(codec || "").toLowerCase();
+  return normalized === "plet5" ? "pletter" : normalized;
+}
 
 function stripProjectPrefix(path) {
   return String(path || "").replace(/\\/g, "/").replace(/^@project\//i, "");
@@ -15,7 +22,7 @@ function splitPicturePath(path) {
   const file = parts.pop() || "";
   const fileParts = file.split(".");
   const codec = fileParts.length > 1 && CODEC_EXTENSIONS.has(fileParts[fileParts.length - 1].toLowerCase())
-    ? fileParts.pop().toLowerCase()
+    ? normalizePreviewCodec(fileParts.pop())
     : "";
   const component = fileParts.length > 1 ? fileParts[fileParts.length - 1].toLowerCase() : "";
   if (component === "pc") {
@@ -43,7 +50,7 @@ function splitSpritePath(path) {
   const file = parts.pop() || "";
   const fileParts = file.split(".");
   const codec = fileParts.length > 1 && CODEC_EXTENSIONS.has(fileParts[fileParts.length - 1].toLowerCase())
-    ? fileParts.pop().toLowerCase()
+    ? normalizePreviewCodec(fileParts.pop())
     : "";
   const component = fileParts.length > 1 ? fileParts[fileParts.length - 1].toLowerCase() : "";
   if (component === "sprpat" || component === "sprattr" || component === "sprcolor") {
@@ -59,6 +66,10 @@ export function pictureComponentFromPath(path) {
 
 export function isPictureProjectFile(entry) {
   return !!pictureComponentFromPath(entry?.path);
+}
+
+export function spriteComponentFromPath(path) {
+  return splitSpritePath(path).component;
 }
 
 function defaultNameTable() {
@@ -90,7 +101,7 @@ function expandTextModeColorTable32(color) {
 
 async function decodeEntryBytes(entry, { projectFileBytes, decompressBytes, detectCodecFromName }) {
   const raw = projectFileBytes(entry);
-  const codec = String(entry?.codec || detectCodecFromName?.(entry?.path || "") || "").toLowerCase();
+  const codec = normalizePreviewCodec(entry?.codec || detectCodecFromName?.(entry?.path || "") || "");
   if (!codec || codec === "raw") return raw;
   if (!decompressBytes) throw new Error(`No decompressor available for ${entry.path}.`);
   return await decompressBytes(codec, raw);
@@ -119,14 +130,22 @@ async function loadSpriteTablesForGroup(group, allFiles, helpers) {
 async function loadPictureTables(entry, allFiles, helpers) {
   const first = splitPicturePath(entry.path);
   if (!first.component) throw new Error(`Not a picture file: ${entry.path}`);
-  const groupFiles = (allFiles || []).filter((candidate) => {
-    const parsed = splitPicturePath(candidate.path);
-    return parsed.group && parsed.group.toLowerCase() === first.group.toLowerCase();
-  });
   const byComponent = new Map();
-  for (const file of groupFiles) {
-    const parsed = splitPicturePath(file.path);
-    if (parsed.component && !byComponent.has(parsed.component)) byComponent.set(parsed.component, file);
+  const explicit = helpers.resolvePictureFiles?.(entry, allFiles) || null;
+  if (explicit) {
+    if (explicit.pcFile) byComponent.set("pc", explicit.pcFile);
+    if (explicit.patternFile) byComponent.set("pattern", explicit.patternFile);
+    if (explicit.colorFile) byComponent.set("color", explicit.colorFile);
+    if (explicit.nameFile) byComponent.set("name", explicit.nameFile);
+  } else {
+    const groupFiles = (allFiles || []).filter((candidate) => {
+      const parsed = splitPicturePath(candidate.path);
+      return parsed.group && parsed.group.toLowerCase() === first.group.toLowerCase();
+    });
+    for (const file of groupFiles) {
+      const parsed = splitPicturePath(file.path);
+      if (parsed.component && !byComponent.has(parsed.component)) byComponent.set(parsed.component, file);
+    }
   }
 
   if (byComponent.has("pc")) {
@@ -260,6 +279,7 @@ export async function previewPictureProjectFile(entry, allFiles, helpers = {}) {
   const scale = 3;
   let mode = "screen";
   let showSprites = !!(tables.sprites?.attributes && tables.sprites?.pattern);
+  let previewFilter = "clean";
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:1000";
   overlay.setAttribute("role", "dialog");
@@ -289,6 +309,10 @@ export async function previewPictureProjectFile(entry, allFiles, helpers = {}) {
         ? "Bitmap NAME view: default sequential NAME table."
         : "Screen view: imported NAME table.") + colorNote;
     }
+    applyGraphicsPreviewFilter(canvas.getContext("2d"), canvas.width, canvas.height, {
+      filter: previewFilter,
+      scale
+    });
   };
   const addButton = (label, nextMode) => {
     const control = document.createElement("button");
@@ -305,6 +329,26 @@ export async function previewPictureProjectFile(entry, allFiles, helpers = {}) {
   addButton("Screen", "screen");
   addButton("Bitmap NAME", "bitmapName");
   addButton("Tileset", "tileset");
+  const filterLabel = document.createElement("label");
+  filterLabel.style.cssText = "display:flex;align-items:center;gap:6px;color:#fff";
+  filterLabel.textContent = "Filter";
+  const filterSelect = document.createElement("select");
+  filterSelect.style.cssText = "padding:5px 8px;border:1px solid #fff;background:#111;color:#fff";
+  for (const value of PREVIEW_FILTERS) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "clean" ? "Clean" : value.toUpperCase();
+    filterSelect.appendChild(option);
+  }
+  filterSelect.addEventListener("click", (event) => event.stopPropagation());
+  filterSelect.addEventListener("change", (event) => {
+    event.stopPropagation();
+    previewFilter = normalizePreviewFilter(filterSelect.value);
+    render();
+  });
+  filterLabel.addEventListener("click", (event) => event.stopPropagation());
+  filterLabel.appendChild(filterSelect);
+  toolbar.appendChild(filterLabel);
   if (tables.sprites?.attributes && tables.sprites?.pattern) {
     const spriteToggle = document.createElement("button");
     spriteToggle.type = "button";

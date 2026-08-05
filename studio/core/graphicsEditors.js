@@ -2,9 +2,10 @@ import { createGraphicsEditorModal } from "./editorShell.js?v=20260719-graphics-
 import { addGraphicsEntryToConfig, nextGraphicsEntryName, validateNewGraphicsEntryName } from "./graphicsEditorEntryOps.js?v=20260719-graphics-entry-ops";
 import { appendAmyByteDataBlock, appendAmyWordTableEntry, describeGraphicsEditor, parseAmyByteDataBlocks, parseGraphicsEditorsConfig, replaceAmyByteDataBlock } from "./graphicsEditorMetadata.js?v=20260721-sprite16-editors";
 import { computeTilesetImpact } from "./graphicsImpact.js?v=20260718-graphics-impact";
-import { createGraphicsProjectAssetAccess } from "./projectAssetAccess.js?v=20260719-graphics-crt-overlay";
-import { drawTileGridEditorOverlay, drawTilePattern, renderTileGrid, tileColorOffsetForValue, tileColorRowsForValue, tilePatternBytesForValue } from "./graphicsTms9918.js?v=20260719-graphics-overlay-split";
-import { applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260719-graphics-preview-phosphor";
+import { createGraphicsProjectAssetAccess } from "./projectAssetAccess.js?v=20260729-file-backed-tilemap";
+import { drawTileGridEditorOverlay, drawTilePattern, renderTileGrid, tileColorOffsetForValue, tileColorRowsForValue, tilePatternBytesForValue } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
+import { applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260721-preview-filters";
+import { copyTilemapSelection, fillTilemapSelection, normalizeTilemapSelection, pasteTilemapSelection } from "./graphicsTilemapSelection.js?v=20260729-tilemap-clipboard";
 
 export function createGraphicsEditorUi({
   TMS_PALETTE,
@@ -20,6 +21,8 @@ export function createGraphicsEditorUi({
   upsertProjectFile,
   setStatus
 }) {
+  let tilemapClipboard = null;
+
   function dispatchGraphicsTileSelected(value) {
     window.dispatchEvent(new CustomEvent("amy-graphics-tile-selected", { detail: { value: Number(value) & 0xFF } }));
   }
@@ -123,6 +126,7 @@ export function createGraphicsEditorUi({
     decodedProjectFileBytes,
     findEditorTilesetFile,
     findEditorColorFile,
+    findEditorDataFile,
     patternFileForCharsetEditor
   } = assetAccess;
   function tilePaletteValues(editor, patternBytes) {
@@ -188,7 +192,14 @@ export function createGraphicsEditorUi({
     }
 
     const baseTile = Number(editor.baseTile || 0) & 0xFF;
-    const tileCount = Math.min(Number(editor.tileCount || Math.floor(patternBytes.length / 8)) || 0, Math.floor(patternBytes.length / 8));
+    const sourceBaseTile = Number(editor.sourceBaseTile ?? baseTile) & 0xFF;
+    const sourceStartIndex = baseTile - sourceBaseTile;
+    const availableTileCount = Math.max(0, Math.floor(patternBytes.length / 8) - sourceStartIndex);
+    const tileCount = Math.min(Number(editor.tileCount || availableTileCount) || 0, availableTileCount);
+    if (sourceStartIndex < 0) {
+      setStatus("Cannot open " + editor.name + ": baseTile precedes sourceBaseTile.");
+      return;
+    }
     if (tileCount <= 0) {
       setStatus("Cannot open " + editor.name + ": no tiles found.");
       return;
@@ -269,7 +280,8 @@ export function createGraphicsEditorUi({
     }
 
     function tilePatternForIndex(index) {
-      return patternBytes.slice(index * 8, index * 8 + 8);
+      const offset = (sourceStartIndex + index) * 8;
+      return patternBytes.slice(offset, offset + 8);
     }
 
     function colorRowsForIndex(index) {
@@ -363,7 +375,7 @@ export function createGraphicsEditorUi({
     }
 
     function setPixel(col, row, enabled) {
-      const offset = activeIndex * 8 + row;
+      const offset = (sourceStartIndex + activeIndex) * 8 + row;
       const mask = 0x80 >> col;
       patternBytes[offset] = enabled ? (patternBytes[offset] | mask) : (patternBytes[offset] & (~mask & 0xFF));
       dirty = true;
@@ -376,7 +388,7 @@ export function createGraphicsEditorUi({
         setPixel(col, row, true);
         return;
       }
-      const patternOffset = activeIndex * 8 + row;
+      const patternOffset = (sourceStartIndex + activeIndex) * 8 + row;
       const mask = 0x80 >> col;
       const bitIsSet = (patternBytes[patternOffset] & mask) !== 0;
       const tileValue = tileValueForIndex(activeIndex);
@@ -1319,7 +1331,13 @@ export function createGraphicsEditorUi({
       setStatus("Cannot open " + editor.name + ": missing tileset file " + (editor.tilesetFile || editor.tileset || "") + ".");
       return;
     }
-    let patternBytes = projectFileBytes(tilesetFile);
+    let patternBytes;
+    try {
+      patternBytes = await decodedProjectFileBytes(tilesetFile);
+    } catch (error) {
+      setStatus(error.message || ("Cannot decode " + tilesetFile.path + " for tilemap patterns."));
+      return;
+    }
     let colorFile = findEditorColorFile(editor);
     let colorBytes = null;
     if (colorFile) {
@@ -1332,9 +1350,21 @@ export function createGraphicsEditorUi({
     const width = editor.canvas[0];
     const height = editor.canvas[1];
     const expectedBytes = width * height;
-    let entries = Array.isArray(editor.entries) ? [...editor.entries] : [];
+    let tilemapFile = findEditorDataFile(editor);
+    const fileBacked = !!tilemapFile;
+    let entries = fileBacked
+      ? [String(editor.source?.name || editor.sourceRef?.name || editor.sourceFile || editor.dataFile || tilemapFile.path || "Tilemap")]
+      : (Array.isArray(editor.entries) ? [...editor.entries] : []);
     let activeName = entries[0] || "";
-    let activeBytes = Uint8Array.from(sourceBlocks.get(activeName) || []);
+    let activeBytes;
+    try {
+      activeBytes = fileBacked
+        ? Uint8Array.from(await decodedProjectFileBytes(tilemapFile))
+        : Uint8Array.from(sourceBlocks.get(activeName) || []);
+    } catch (error) {
+      setStatus(error.message || ("Cannot decode " + (tilemapFile?.path || activeName) + " for tilemap data."));
+      return;
+    }
     if (activeBytes.length !== expectedBytes) {
       setStatus("Cannot open " + activeName + ": expected " + expectedBytes + " bytes, got " + activeBytes.length + ".");
       return;
@@ -1345,6 +1375,14 @@ export function createGraphicsEditorUi({
     const undoStack = [];
     const redoStack = [];
     let dragSnapshotCaptured = false;
+    let selection = null;
+    let selectionAnchor = null;
+    let selectingPointerId = null;
+    let movingSelectionPointerId = null;
+    let moveStartCell = null;
+    let moveStartSelection = null;
+    let moveClipboard = null;
+    let pastePlacement = false;
     let showOverscanOverlay = false;
     let previewFilter = "clean";
     const scale = 3;
@@ -1353,6 +1391,7 @@ export function createGraphicsEditorUi({
     const cleanupTilemapEditor = () => {
       window.removeEventListener("amy-project-file-updated", refreshAfterProjectFileUpdate);
       window.removeEventListener("amy-graphics-tile-selected", syncSelectedTileFromExternal);
+      window.removeEventListener("keydown", handleTilemapClipboardKeydown);
     };
     const modal = createGraphicsEditorModal({
       title: editor.name,
@@ -1386,7 +1425,7 @@ export function createGraphicsEditorUi({
     hoverLabel.textContent = "Hover: --";
     const saveButton = document.createElement("button");
     saveButton.type = "button";
-    saveButton.textContent = "Save to Source";
+    saveButton.textContent = fileBacked ? "Save Tilemap File" : "Save to Source";
     const addBlankButton = document.createElement("button");
     addBlankButton.type = "button";
     addBlankButton.textContent = "Add Blank";
@@ -1402,6 +1441,20 @@ export function createGraphicsEditorUi({
     const redoButton = document.createElement("button");
     redoButton.type = "button";
     redoButton.textContent = "Redo";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.textContent = "Copy";
+    const cutButton = document.createElement("button");
+    cutButton.type = "button";
+    cutButton.textContent = "Cut";
+    const pasteButton = document.createElement("button");
+    pasteButton.type = "button";
+    pasteButton.textContent = "Paste";
+    if (fileBacked) {
+      boardSelect.disabled = true;
+      addBlankButton.hidden = true;
+      duplicateButton.hidden = true;
+    }
     const overscanLabel = document.createElement("label");
     overscanLabel.className = "graphics-editor-toggle";
     overscanLabel.title = "Show the first 8 screen pixels hidden by many CRT-TV sets.";
@@ -1421,7 +1474,7 @@ export function createGraphicsEditorUi({
     filterLabel.append(document.createTextNode("Filter "), filterSelect);
     boardGroup.append(boardSelect);
     actionGroup.append(saveButton, addBlankButton, duplicateButton, clearButton);
-    historyGroup.append(undoButton, redoButton);
+    historyGroup.append(undoButton, redoButton, copyButton, cutButton, pasteButton);
     viewGroup.append(overscanLabel, filterLabel);
     toolbar.append(boardGroup, actionGroup, historyGroup, viewGroup);
     dialog.appendChild(toolbar);
@@ -1444,7 +1497,7 @@ export function createGraphicsEditorUi({
     statusInfo.append(selectedLabel, hoverLabel);
     const helpLabel = document.createElement("span");
     helpLabel.className = "graphics-editor-statusbar__help";
-    helpLabel.textContent = "Left drag paints · Right click picks · Clear uses blank tile $" + (Number(editor.blankTile || 0) & 0xFF).toString(16).toUpperCase().padStart(2, "0");
+    helpLabel.textContent = "Left drag paints · Shift+drag selects · Drag selection moves · Paste then click · Right click picks · Ctrl+C/X/V";
     const warning = document.createElement("span");
     warning.className = "graphics-editor-statusbar__warning";
     warning.textContent = "CRT: board X=" + editor.screenAt[0] + ", outside hidden left 8px.";
@@ -1474,13 +1527,23 @@ export function createGraphicsEditorUi({
     }
 
     function updateSelectedLabel() {
-      selectedLabel.textContent = "Selected $" + selectedTile.toString(16).toUpperCase().padStart(2, "0") + " · used " + usageCountForTile(selectedTile) + "x" + (dirty ? " · modified" : "");
+      const selectionText = selection ? " · area " + selection.width + "x" + selection.height + " at " + selection.x + "," + selection.y : "";
+      selectedLabel.textContent = "Selected $" + selectedTile.toString(16).toUpperCase().padStart(2, "0") + " · used " + usageCountForTile(selectedTile) + "x" + selectionText + (dirty ? " · modified" : "");
     }
 
     function renderMap(options = {}) {
       const ctx = canvas.getContext("2d");
+      let renderedBytes = activeBytes;
+      if (movingSelectionPointerId != null && moveStartSelection && moveClipboard && selection) {
+        renderedBytes = Uint8Array.from(activeBytes);
+        fillTilemapSelection(renderedBytes, width, moveStartSelection, Number(editor.blankTile || 0));
+        pasteTilemapSelection(renderedBytes, width, height, selection.x, selection.y, moveClipboard);
+      } else if (pastePlacement && tilemapClipboard && selection) {
+        renderedBytes = Uint8Array.from(activeBytes);
+        pasteTilemapSelection(renderedBytes, width, height, selection.x, selection.y, tilemapClipboard);
+      }
       renderTileGrid(ctx, {
-        bytes: activeBytes,
+        bytes: renderedBytes,
         width,
         height,
         patternBytes,
@@ -1505,7 +1568,7 @@ export function createGraphicsEditorUi({
         });
       }
       drawTileGridEditorOverlay(ctx, {
-        bytes: activeBytes,
+        bytes: renderedBytes,
         width,
         height,
         screenX: editor.screenAt?.[0] || 0,
@@ -1513,12 +1576,34 @@ export function createGraphicsEditorUi({
         scale,
         selectedTile
       });
+      if (selection) {
+        ctx.save();
+        ctx.strokeStyle = "#5cff72";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeRect(
+          selection.x * 8 * scale + 1,
+          selection.y * 8 * scale + 1,
+          selection.width * 8 * scale - 2,
+          selection.height * 8 * scale - 2
+        );
+        ctx.restore();
+      }
       updateSelectedLabel();
+      updateSelectionButtons();
     }
 
     function updateHistoryButtons() {
       undoButton.disabled = undoStack.length === 0;
       redoButton.disabled = redoStack.length === 0;
+    }
+
+    function updateSelectionButtons() {
+      copyButton.disabled = !selection;
+      cutButton.disabled = !selection;
+      pasteButton.disabled = !tilemapClipboard;
+      pasteButton.textContent = pastePlacement ? "Cancel Paste" : "Paste";
+      pasteButton.title = tilemapClipboard ? "Place the copied " + tilemapClipboard.width + "x" + tilemapClipboard.height + " block with the next canvas click" : "Copy a tilemap area first";
     }
 
     function pushUndoSnapshot() {
@@ -1570,7 +1655,7 @@ export function createGraphicsEditorUi({
       const nextTilesetFile = findEditorTilesetFile(editor);
       if (nextTilesetFile) {
         tilesetFile = nextTilesetFile;
-        patternBytes = projectFileBytes(tilesetFile);
+        patternBytes = await decodedProjectFileBytes(tilesetFile);
       }
       colorFile = findEditorColorFile(editor);
       colorBytes = null;
@@ -1583,6 +1668,7 @@ export function createGraphicsEditorUi({
       }
     }
     function loadActiveBoard(nextName) {
+      if (fileBacked) return;
       if (dirty && !confirm("Discard unsaved tilemap changes?")) {
         boardSelect.value = activeName;
         return;
@@ -1593,6 +1679,14 @@ export function createGraphicsEditorUi({
       undoStack.length = 0;
       redoStack.length = 0;
       dragSnapshotCaptured = false;
+      selection = null;
+      selectionAnchor = null;
+      selectingPointerId = null;
+      movingSelectionPointerId = null;
+      moveStartCell = null;
+      moveStartSelection = null;
+      moveClipboard = null;
+      pastePlacement = false;
       updateHistoryButtons();
       if (activeBytes.length !== expectedBytes) {
         setStatus(activeName + " has " + activeBytes.length + " bytes; expected " + expectedBytes + ".");
@@ -1635,6 +1729,95 @@ export function createGraphicsEditorUi({
       renderMap({ fast: true });
     }
 
+    function copySelectionToClipboard() {
+      if (!selection) {
+        setStatus("Shift-drag a tilemap area before copying.");
+        return false;
+      }
+      tilemapClipboard = copyTilemapSelection(activeBytes, width, selection);
+      updateSelectionButtons();
+      setStatus("Copied " + selection.width + "x" + selection.height + " tiles from " + activeName + ".");
+      return true;
+    }
+
+    function cutSelectionToClipboard() {
+      if (!copySelectionToClipboard()) return;
+      pushUndoSnapshot();
+      fillTilemapSelection(activeBytes, width, selection, Number(editor.blankTile || 0));
+      dirty = true;
+      renderMap();
+      setStatus("Cut " + selection.width + "x" + selection.height + " tiles from " + activeName + ".");
+    }
+
+    function selectionForClipboardAt(cell) {
+      const selectionWidth = Math.min(tilemapClipboard.width, width);
+      const selectionHeight = Math.min(tilemapClipboard.height, height);
+      return {
+        x: Math.max(0, Math.min(cell.col, width - selectionWidth)),
+        y: Math.max(0, Math.min(cell.row, height - selectionHeight)),
+        width: selectionWidth,
+        height: selectionHeight
+      };
+    }
+
+    function beginPastePlacement() {
+      if (!tilemapClipboard) {
+        setStatus("Copy or cut a tilemap area before pasting.");
+        return;
+      }
+      pastePlacement = !pastePlacement;
+      if (pastePlacement) {
+        const anchor = selection ? { col: selection.x, row: selection.y } : { col: 0, row: 0 };
+        selection = selectionForClipboardAt(anchor);
+        setStatus("Paste ready: move over the tilemap and click the destination.");
+      } else {
+        setStatus("Paste cancelled.");
+      }
+      renderMap();
+    }
+
+    function placeClipboardAt(cell) {
+      selection = selectionForClipboardAt(cell);
+      pushUndoSnapshot();
+      selection = pasteTilemapSelection(activeBytes, width, height, selection.x, selection.y, tilemapClipboard);
+      dirty = true;
+      pastePlacement = false;
+      renderMap();
+      setStatus("Pasted " + selection.width + "x" + selection.height + " tiles into " + activeName + ".");
+    }
+
+    function cellInsideSelection(cell, targetSelection = selection) {
+      return !!targetSelection
+        && cell.col >= targetSelection.x
+        && cell.col < targetSelection.x + targetSelection.width
+        && cell.row >= targetSelection.y
+        && cell.row < targetSelection.y + targetSelection.height;
+    }
+
+    function handleTilemapClipboardKeydown(event) {
+      const target = event.target;
+      if (target?.matches?.("input, textarea, select, [contenteditable=true]")) return;
+      const key = String(event.key || "").toLowerCase();
+      if (key === "escape") {
+        event.preventDefault();
+        pastePlacement = false;
+        selection = null;
+        renderMap();
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      if (key === "c") {
+        event.preventDefault();
+        copySelectionToClipboard();
+      } else if (key === "x") {
+        event.preventDefault();
+        cutSelectionToClipboard();
+      } else if (key === "v") {
+        event.preventDefault();
+        beginPastePlacement();
+      }
+    }
+
     let paintingPointerId = null;
 
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -1651,10 +1834,38 @@ export function createGraphicsEditorUi({
       if (!cell) return;
       updateHoverLabel(cell);
       if (event.button === 2) {
+        if (pastePlacement) {
+          pastePlacement = false;
+          renderMap();
+          setStatus("Paste cancelled.");
+          return;
+        }
         pickTileAtCell(cell);
         return;
       }
       if (event.button !== 0) return;
+      if (pastePlacement) {
+        placeClipboardAt(cell);
+        return;
+      }
+      if (event.shiftKey) {
+        selectingPointerId = event.pointerId;
+        selectionAnchor = cell;
+        selection = normalizeTilemapSelection(cell, cell, width, height);
+        canvas.setPointerCapture?.(event.pointerId);
+        renderMap();
+        return;
+      }
+      if (cellInsideSelection(cell)) {
+        movingSelectionPointerId = event.pointerId;
+        moveStartCell = cell;
+        moveStartSelection = { ...selection };
+        moveClipboard = copyTilemapSelection(activeBytes, width, selection);
+        canvas.setPointerCapture?.(event.pointerId);
+        canvas.style.cursor = "move";
+        return;
+      }
+      selection = null;
       paintingPointerId = event.pointerId;
       dragSnapshotCaptured = false;
       canvas.setPointerCapture?.(event.pointerId);
@@ -1664,11 +1875,58 @@ export function createGraphicsEditorUi({
     canvas.addEventListener("pointermove", (event) => {
       const cell = cellFromPointerEvent(event);
       updateHoverLabel(cell);
+      if (pastePlacement && cell) {
+        selection = selectionForClipboardAt(cell);
+        renderMap();
+        return;
+      }
+      if (movingSelectionPointerId === event.pointerId && cell) {
+        const maxX = width - moveStartSelection.width;
+        const maxY = height - moveStartSelection.height;
+        selection = {
+          ...moveStartSelection,
+          x: Math.max(0, Math.min(maxX, moveStartSelection.x + cell.col - moveStartCell.col)),
+          y: Math.max(0, Math.min(maxY, moveStartSelection.y + cell.row - moveStartCell.row))
+        };
+        renderMap();
+        return;
+      }
+      if (selectingPointerId === event.pointerId && cell) {
+        selection = normalizeTilemapSelection(selectionAnchor, cell, width, height);
+        renderMap();
+        return;
+      }
       if (paintingPointerId !== event.pointerId || !cell || (event.buttons & 1) === 0) return;
       paintTileAtCell(cell);
     });
 
     function stopPainting(event) {
+      if (movingSelectionPointerId === event.pointerId) {
+        canvas.releasePointerCapture?.(event.pointerId);
+        movingSelectionPointerId = null;
+        canvas.style.cursor = "";
+        const moved = selection.x !== moveStartSelection.x || selection.y !== moveStartSelection.y;
+        if (moved) {
+          pushUndoSnapshot();
+          fillTilemapSelection(activeBytes, width, moveStartSelection, Number(editor.blankTile || 0));
+          pasteTilemapSelection(activeBytes, width, height, selection.x, selection.y, moveClipboard);
+          dirty = true;
+          setStatus("Moved " + selection.width + "x" + selection.height + " tiles in " + activeName + ".");
+        }
+        moveStartCell = null;
+        moveStartSelection = null;
+        moveClipboard = null;
+        renderMap();
+        return;
+      }
+      if (selectingPointerId === event.pointerId) {
+        canvas.releasePointerCapture?.(event.pointerId);
+        selectingPointerId = null;
+        selectionAnchor = null;
+        renderMap();
+        setStatus("Selected " + selection.width + "x" + selection.height + " tiles in " + activeName + ".");
+        return;
+      }
       if (paintingPointerId !== event.pointerId) return;
       const hadPainted = dragSnapshotCaptured;
       canvas.releasePointerCapture?.(event.pointerId);
@@ -1696,6 +1954,7 @@ export function createGraphicsEditorUi({
     };
     window.addEventListener("amy-project-file-updated", refreshAfterProjectFileUpdate);
     window.addEventListener("amy-graphics-tile-selected", syncSelectedTileFromExternal);
+    window.addEventListener("keydown", handleTilemapClipboardKeydown);
 
 
     function nextTilemapEntryName() {
@@ -1804,6 +2063,10 @@ export function createGraphicsEditorUi({
       setStatus("Redo " + activeName + ".");
     });
 
+    copyButton.addEventListener("click", copySelectionToClipboard);
+    cutButton.addEventListener("click", cutSelectionToClipboard);
+    pasteButton.addEventListener("click", beginPastePlacement);
+
     overscanToggle.addEventListener("change", () => {
       showOverscanOverlay = overscanToggle.checked;
       renderMap();
@@ -1814,12 +2077,22 @@ export function createGraphicsEditorUi({
     });
 
     boardSelect.addEventListener("change", () => loadActiveBoard(boardSelect.value));
-    saveButton.addEventListener("click", () => {
+    saveButton.addEventListener("click", async () => {
       try {
-        const project = getProject();
-        const nextSource = replaceAmyByteDataBlock(project.sourceText || "", activeName, activeBytes, width);
-        commitProjectSourceText(nextSource);
-        sourceBlocks.set(activeName, Uint8Array.from(activeBytes));
+        if (fileBacked) {
+          const codec = String(tilemapFile.codec || detectCodecFromName(tilemapFile.path) || "raw").toLowerCase();
+          const encoded = !codec || codec === "raw" ? activeBytes : await compressBytes(codec, activeBytes);
+          const verified = !codec || codec === "raw" ? encoded : await decompressBytes(codec, encoded);
+          if (verified.length !== activeBytes.length || verified.some((value, index) => value !== activeBytes[index])) {
+            throw new Error("Tilemap recompression verification failed for " + tilemapFile.path + ".");
+          }
+          tilemapFile = upsertProjectFile({ ...tilemapFile, codec, base64: bytesToBase64(encoded) }) || tilemapFile;
+        } else {
+          const project = getProject();
+          const nextSource = replaceAmyByteDataBlock(project.sourceText || "", activeName, activeBytes, width);
+          commitProjectSourceText(nextSource);
+          sourceBlocks.set(activeName, Uint8Array.from(activeBytes));
+        }
         dirty = false;
         undoStack.length = 0;
         redoStack.length = 0;

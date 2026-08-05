@@ -33,7 +33,12 @@ export function createEmulatorShellHelpers({
     const hasRom = !!getCompiledRom();
     const hasBios = !!getEmulatorBios();
     if (els.btnDownloadRom) els.btnDownloadRom.disabled = !hasRom;
-    if (els.btnRunEmulator) els.btnRunEmulator.disabled = !hasBios;
+    if (els.btnRunEmulator) {
+      els.btnRunEmulator.disabled = !hasBios;
+      const label = hasRom ? "Run compiled ROM in debugger" : "Open ROM / Debugger";
+      els.btnRunEmulator.title = label;
+      els.btnRunEmulator.setAttribute("aria-label", label);
+    }
     if (els.btnRomTestRecorder) els.btnRomTestRecorder.disabled = !hasBios;
     if (els.btnResetEmulator) {
       const popupVisible = getEmulatorWindow() && !getEmulatorWindow().closed;

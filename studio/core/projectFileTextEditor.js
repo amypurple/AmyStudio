@@ -29,7 +29,10 @@ export function openProjectTextEditor({ entry, text, onSave, setStatus }) {
   title.textContent = entry?.path || "Project ASM";
   const closeButton = document.createElement("button");
   closeButton.type = "button";
-  closeButton.textContent = "Close";
+  closeButton.className = "graphics-editor-modal__close";
+  closeButton.textContent = "✕";
+  closeButton.title = "Close";
+  closeButton.setAttribute("aria-label", "Close");
   header.append(title, closeButton);
 
   const hint = document.createElement("p");

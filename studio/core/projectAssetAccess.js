@@ -59,6 +59,15 @@ export function createGraphicsProjectAssetAccess({
     return files.find((file) => /\.color\./i.test(file.path || "") || /\.color$/i.test(file.path || "")) || null;
   }
 
+  function findEditorDataFile(editor) {
+    const project = getProject();
+    const files = project.projectFiles || [];
+    const sourceRef = editor.sourceRef || editor.source || editor.dataRef || editor.data;
+    const byRef = findFileByRef(files, sourceRef);
+    if (byRef) return byRef;
+    return findFileByProjectName(files, editor.sourceFile || editor.dataFile);
+  }
+
   function patternFileForCharsetEditor(editor) {
     const project = getProject();
     const files = project.projectFiles || [];
@@ -73,6 +82,7 @@ export function createGraphicsProjectAssetAccess({
     decodedProjectFileBytes,
     findEditorTilesetFile,
     findEditorColorFile,
+    findEditorDataFile,
     patternFileForCharsetEditor
   };
 }

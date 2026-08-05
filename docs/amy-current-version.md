@@ -67,8 +67,21 @@ possible; calculated indexes intentionally have no implicit runtime bounds check
 
 ### Development and testing
 
-Amy Studio supports source breakpoints, symbolic ROM-test checkpoints, generated source
-maps, GearColeco-backed ROM assertions, and full example assembly.
+Amy Studio supports colorized Amy source with native textarea editing semantics, source
+breakpoints, symbolic ROM-test checkpoints, generated source maps, GearColeco-backed ROM
+assertions, and full example assembly. Syntax coloring is presentation-only: compilation,
+selection, autocomplete, breakpoints, and source text continue to use the underlying editor.
+The highlighting convention is semantic and deliberately uses the TMS9918A palette:
+
+- control-flow and general Amy grammar use cyan
+- VDP/display vocabulary uses TMS blue
+- numeric types use yellow/orange; built-ins use green; compile-time directives use magenta
+- frame units use light green; literals, strings, comments, and operators have stable supporting colors
+- user identifiers remain neutral; contextual words such as project, pattern, color, name, and frames are colored only where Amy grammar gives them that role
+- parentheses, brackets, and expression punctuation share the operator color rather than pretending to be commands
+- `project`, `cartridge`, and `memory` share the metadata/directive color only in valid quoted declarations
+- the compact black switch in the SOURCE bar enables syntax colors when desired; its tooltip uses `color` for US browsers and `colour` elsewhere, new browsers start with legacy monochrome source, and the disabled state performs no tokenization
+
 
 Run the targeted language gate with:
 

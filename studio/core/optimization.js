@@ -26,8 +26,8 @@ export const OPTIMIZATION_LEVELS = {
   aggressive: {
     label: "Aggressive ⚠",
     risk: "⚠",
-    description: "Adds dead-code cleanup, speculative register/value reuse, LD A,0→XOR A, and header RST reuse on top of balanced.",
-    passes: ["peephole", "branchShortening", "deadCode", "aZeroToXor", "rstVectors"]
+    description: "Adds speculative register/value reuse, LD A,0→XOR A, and header RST reuse on top of balanced. Whole-program dead-code cleanup is kept for Experimental.",
+    passes: ["peephole", "branchShortening", "aZeroToXor", "rstVectors"]
   },
   experimental: {
     label: "Experimental ☢",
@@ -86,7 +86,7 @@ export function getOptimizationProfile(level, sourceText = "") {
   }
   const optimizerConfig = {
     peephole: true,
-    deadCode: normalized === "aggressive" || normalized === "experimental",
+    deadCode: normalized === "experimental",
     branchShortening: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     localValueReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     blockCopyBcZeroReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",

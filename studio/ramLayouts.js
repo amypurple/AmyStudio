@@ -38,6 +38,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsVdpStatusShadow = !!caps.needsVdpStatusShadow;
   const needsUserFrameHook = !!caps.needsUserFrameHook;
   const needsAmyTimers = !!caps.needsAmyTimers;
+  const needs120c = !!caps.needs120c;
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
   const needsRuntimeState =
     needsControllers ||
@@ -82,6 +83,13 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     addresses.nmi_flag = current + 2;
     reserved.push({ start: current, endExclusive: current + 3, label: "Amy runtime state" });
     current += 3;
+  }
+
+  if (needs120c) {
+    addresses.effect_120c_enabled = current;
+    addresses.effect_120c_phase = current + 1;
+    reserved.push({ start: current, endExclusive: current + 2, label: "Amy 120-color effect state" });
+    current += 2;
   }
 
   if (needsControllers) {

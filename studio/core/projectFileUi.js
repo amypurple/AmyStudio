@@ -481,7 +481,10 @@ export function createProjectFileUiHelpers({
       title.textContent = "ICVGM Tile Editor";
       const close = document.createElement("button");
       close.type = "button";
-      close.textContent = "Close";
+      close.className = "graphics-editor-modal__close";
+      close.textContent = "✕";
+      close.title = "Close";
+      close.setAttribute("aria-label", "Close");
       header.appendChild(title);
       header.appendChild(close);
       panel.appendChild(header);
@@ -648,12 +651,11 @@ export function createProjectFileUiHelpers({
       insert.title = "Insert Amy code that loads these project tables into VRAM.";
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Close";
+      cancel.textContent = "Cancel";
       actions.appendChild(save);
       actions.appendChild(exportDat);
       actions.appendChild(exportPc);
       actions.appendChild(insert);
-      actions.appendChild(cancel);
 
       body.appendChild(left);
       body.appendChild(right);
@@ -2048,7 +2050,10 @@ export function createProjectFileUiHelpers({
     title.textContent = entry.path || "editors.json";
     const closeButton = document.createElement("button");
     closeButton.type = "button";
-    closeButton.textContent = "Close";
+    closeButton.className = "graphics-editor-modal__close";
+    closeButton.textContent = "✕";
+    closeButton.title = "Close";
+    closeButton.setAttribute("aria-label", "Close");
     header.append(title, closeButton);
 
     const hint = document.createElement("p");
@@ -2475,6 +2480,16 @@ export function createProjectFileUiHelpers({
   }
 
 
+  function makeProjectFilePreviewButton(entry, onPreview) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "icon-button--preview project-file__preview";
+    button.title = `Preview ${entry.path}`;
+    button.setAttribute("aria-label", `Preview ${entry.path}`);
+    button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`;
+    button.addEventListener("click", onPreview);
+    return button;
+  }
   function renderProjectFiles() {
     syncGraphicsEditorsMenuState();
     if (!els.projectFilesList || !els.projectFilesSummary) return;
@@ -2536,10 +2551,7 @@ export function createProjectFileUiHelpers({
       }
 
       if (kind === "dsound") {
-        const playButton = document.createElement("button");
-        playButton.type = "button";
-        playButton.textContent = "Preview";
-        playButton.addEventListener("click", () => {
+        const playButton = makeProjectFilePreviewButton(entry, () => {
           void previewProjectFileDsound(entry);
         });
         playButton.title = `Play ${entry.path}`;
@@ -2549,10 +2561,7 @@ export function createProjectFileUiHelpers({
       }
 
       if (isPictureProjectFile?.(entry)) {
-        const previewButton = document.createElement("button");
-        previewButton.type = "button";
-        previewButton.textContent = "Preview";
-        previewButton.addEventListener("click", () => {
+        const previewButton = makeProjectFilePreviewButton(entry, () => {
           void previewProjectFilePicture(entry);
         });
         actions.appendChild(previewButton);
