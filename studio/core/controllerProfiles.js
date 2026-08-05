@@ -115,6 +115,24 @@ export function createDefaultControllerConfig() {
   };
 }
 
+export function setControllerDeviceType(config, portIndex, type) {
+  const next = normalizeControllerConfig(config);
+  if (type === "wheel") {
+    // The Expansion Module #2 wheel occupies P1; its companion controller is P2.
+    next.ports[0].type = "wheel";
+    next.ports[1].type = "standard";
+    return next;
+  }
+  if (type === "roller-x") {
+    next.ports[0].type = "roller-x";
+    next.ports[1].type = "roller-y";
+    return next;
+  }
+  const target = portIndex === 1 ? 1 : 0;
+  next.ports[target].type = DEVICE_IDS.has(type) ? type : "standard";
+  return next;
+}
+
 function normalizeBinding(value) {
   if (!value || typeof value !== "object") return null;
   if (value.kind === "key" && typeof value.code === "string") {

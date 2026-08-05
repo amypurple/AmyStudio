@@ -8,8 +8,9 @@ import {
   isControllerActionVisible,
   loadControllerConfig,
   saveControllerConfig,
-  setControllerBinding
-} from "./controllerProfiles.js?v=20260802-roller-modes";
+  setControllerBinding,
+  setControllerDeviceType
+} from "./controllerProfiles.js?v=20260805-steering-pair";
 
 function ensureStyles() {
   if (document.querySelector("#controllerSetupStyles")) return;
@@ -134,6 +135,19 @@ function deviceMarkup(port, { hideFire = false } = {}) {
     </div>`;
 }
 
+function wheelDeviceMarkup(port) {
+  const pedal = buttonMarkup("FIRE_RIGHT", "GAS<br>PEDAL", port)
+    .replace("<button ", '<button class="controller-setup__fire controller-setup__fire--right" ');
+  const spinner = '<div class="controller-setup__spinner">' +
+    buttonMarkup("SPINNER_NEG", "&#x21BA;", port) +
+    '<div class="controller-setup__spinner-core" aria-hidden="true"></div>' +
+    buttonMarkup("SPINNER_POS", "&#x21BB;", port) +
+    "</div>";
+  return '<div class="controller-setup__shell">' + pedal +
+    '<div class="controller-setup__note">STEERING WHEEL · PORT 1<br>Use PORT 2 for gear selection and keypad.</div>' +
+    spinner + "</div>";
+}
+
 function connectedGamepads(gamepads = navigator.getGamepads?.() || []) {
   return [...gamepads].filter(Boolean);
 }
@@ -212,6 +226,8 @@ export function createControllerSetupUi({
     }
     typeSelect.value = port.type === "roller-y" ? "roller-x" : port.type;
     const roller = port.type === "roller-x" || port.type === "roller-y";
+    const wheelCompanion = portIndex === 1 && config.ports[0].type === "wheel";
+    typeSelect.disabled = wheelCompanion;
     field("rollerMode").value = config.rollerMode || "trackball";
     dialog.querySelector("[data-roller-mode]").hidden = !roller;
     field("sensitivity").value = String(port.sensitivity);
@@ -221,13 +237,17 @@ export function createControllerSetupUi({
         ? "Joystick mode converts Roller movement into Port 1 digital directions for games such as Centipede and Jeepers Creepers. No spinner ticks are sent."
         : "Trackball mode sends native P1 horizontal and P2 vertical spinner ticks for Slither and Victory. All four fire inputs remain independent."
       : port.type === "wheel"
-        ? "The wheel feeds the spinner channel. Map the gas pedal to Right Fire; a regular controller may remain available for keypad input."
+        ? "Steering and the gas pedal use Port 1. Port 2 supplies the joystick, UP/DOWN gear selection, keypad, and menu input."
+        : wheelCompanion
+          ? "Steering Wheel companion controller: UP/DOWN commonly select gears; its keypad handles game and menu options."
         : port.type === "super-action"
           ? "Yellow, red, purple, and blue fire buttons share one row. The speed roller is available below them."
           : "Standard joystick, two side fire buttons, and the 12-key keypad.";
-    field("device").innerHTML = roller
-      ? `${rollerFireMarkup(config)}${deviceMarkup(port, { hideFire: true })}`
-      : deviceMarkup(port);
+    field("device").innerHTML = port.type === "wheel"
+      ? wheelDeviceMarkup(port)
+      : roller
+        ? rollerFireMarkup(config) + deviceMarkup(port, { hideFire: true })
+        : deviceMarkup(port);
     refreshGamepads();
   }
 
@@ -297,12 +317,9 @@ export function createControllerSetupUi({
   });
   typeSelect.addEventListener("change", () => {
     const type = typeSelect.value;
-    if (type === "roller-x") {
-      config.ports[0].type = "roller-x";
-      config.ports[1].type = "roller-y";
+    config = setControllerDeviceType(config, portIndex, type);
+    if (type === "roller-x" || type === "wheel") {
       portIndex = 0;
-    } else {
-      config.ports[portIndex].type = type;
     }
     persist();
     render();

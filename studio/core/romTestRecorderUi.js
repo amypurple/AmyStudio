@@ -33,7 +33,7 @@ import {
   NTSC_CYCLES_PER_FRAME,
   resolveProfileTarget
 } from "./routineCycleProfiler.js?v=20260801-profile-readable";
-import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260802-roller-modes7";
+import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260805-steering-pair";
 
 const SEED = 0x19770527;
 
@@ -54,6 +54,9 @@ export function mouseButtonToFireMask(button, inputBits) {
 
 export function resolveMouseFireTarget(button, config, selectedPort, inputBits) {
   const ports = config?.ports || [];
+  if (ports[0]?.type === "wheel") {
+    return { portIndex: 0, mask: button === 0 ? inputBits?.FIRE_RIGHT || 0 : 0 };
+  }
   const roller = ports[0]?.type === "roller-x" || ports[1]?.type === "roller-y";
   if (roller && config?.rollerMode !== "joystick") {
     if (button === 0) return { portIndex: 1, mask: inputBits?.FIRE_RIGHT || 0 };
@@ -573,8 +576,11 @@ export function createRomTestRecorderUi({
     const port = (Number(field("controller").value) || 0) + 1;
     const config = controllerSetup?.getConfig();
     const roller = config?.ports?.[0]?.type === "roller-x" || config?.ports?.[1]?.type === "roller-y";
+    const wheel = config?.ports?.[0]?.type === "wheel";
     const rollerMode = config?.rollerMode === "joystick" ? "joystick" : "trackball";
-    button.title = roller
+    button.title = wheel
+      ? (mouseSpinnerEnabled ? "Disable" : "Enable") + " mouse Steering Wheel (horizontal movement steers P1; left click is the P1 gas pedal)"
+      : roller
       ? rollerMode === "joystick"
         ? `${mouseSpinnerEnabled ? "Disable" : "Enable"} mouse Roller joystick mode (movement becomes P1 directions)`
         : `${mouseSpinnerEnabled ? "Disable" : "Enable"} mouse Roller trackball mode (P1 horizontal / P2 vertical; left click Fire, right click Thrust on P2)`
