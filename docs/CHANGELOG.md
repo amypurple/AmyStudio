@@ -1,3 +1,8 @@
+## 2026-08-04 - Public ROM TEST & DEBUG workspace
+
+- Shipped the self-hosted GearColeco debugger UI in the clean release, including external ROM loading, audio, controller setup, NTSC/PAL selection, frame rewind/replay, instruction step/step-over, and deterministic test-case recording.
+- Added zero-byte Amy source markers, persistent gutter and conditional breakpoints, optimized-build source mapping, symbol navigation, Z80/stack/RAM/VRAM/VDP inspection, and routine cycle profiling.
+- Added the standalone debugger models and regression suites without bundling a proprietary ColecoVision BIOS or the large upstream GearColeco source tree.
 ## 2026-08-04 - Fail-closed expressions and dynamic input selectors
 
 - Rebuilt `amy-current-version.md` as a concise public status page with relative links, current compiler capabilities, explicit non-normative codegen boundaries, the ROM regression workflow, and accurately deferred features.

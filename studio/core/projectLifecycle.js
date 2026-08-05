@@ -19,6 +19,7 @@ export function newProject({ manifestDefaults, sourceLang, memoryProfile, defaul
     selectedCompression: [...d.selectedCompression],
     selectedAssets: [...d.selectedAssets],
     projectFiles: [],
+    sourceBreakpoints: [],
     optimizationLevel: "auto",
     sourceText: defaultSourceTextValue,
     generatedAsm: ""
@@ -37,6 +38,7 @@ export function buildProjectFromExample(example, { newProjectFn }) {
     selectedCompression: example.selectedCompression ? [...example.selectedCompression] : [...base.selectedCompression],
     selectedAssets: example.selectedAssets ? [...example.selectedAssets] : [...base.selectedAssets],
     projectFiles: example.projectFiles ? example.projectFiles.map((entry) => ({ ...entry })) : [...base.projectFiles],
+    sourceBreakpoints: [],
     optimizationLevel: "auto",
     sourceText: example.sourceText || base.sourceText,
     generatedAsm: ""
@@ -49,6 +51,7 @@ export function migrateProject(project, {
   exampleSources
 }) {
   project.projectFiles = normalizeProjectFiles(project.projectFiles || []);
+  project.sourceBreakpoints = Array.isArray(project.sourceBreakpoints) ? project.sourceBreakpoints.map((entry) => ({ ...entry })) : [];
   const source = project.sourceText || "";
   const isOldWarriorDemo =
     source.includes(legacyWarriorTemplateMarker) &&

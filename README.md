@@ -31,11 +31,13 @@ Then open:
 http://localhost:8080/studio/
 ```
 
-## Emulator
+## ROM Test And Debug
 
-The clean build uses the EmulatorJS CDN backend. Local emulator source trees and cores are not included.
+The clean build includes a self-hosted GearColeco WebAssembly test core and the ROM TEST & DEBUG workspace. It supports external or compiled ROMs, frame rewind and replay, instruction stepping and step-over, Amy source and conditional breakpoints, CPU/VDP/stack/RAM/VRAM inspection, symbols, controller profiles, audio, and routine cycle profiling.
 
-The `studio/bios/` folder is intentionally shipped without a BIOS ROM. Add your own ColecoVision BIOS locally if your run workflow requires it.
+The `studio/bios/` folder is intentionally shipped without a BIOS ROM. Add your own legally obtained ColecoVision BIOS locally. BIOS-dependent integration tests can use the `AMY_COLECO_BIOS` environment variable.
+
+The CDN emulator remains available as a compatibility backend; the large upstream emulator source tree is not part of this clean release.
 
 ## Credits And AI Assistance
 
@@ -48,4 +50,3 @@ OpenAI Codex was used as the primary Amy Studio integration assistant: compiler/
 Where an AI assistant materially contributed to a specific commit, that contribution may appear in commit metadata.
 
 AI assistance does not replace authorship or maintainership: technical direction, acceptance, testing, and release decisions belong to Amy Bienvenu.
-

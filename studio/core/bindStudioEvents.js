@@ -86,6 +86,7 @@ export function bindStudioShellEvents({
     setSourceCartridgeMeta: runtime.setSourceCartridgeMeta,
     updatePreviewActions: helpers.updatePreviewActions,
     generateAsm: helpers.generateAsm,
+    buildSourceMarkedAsm: helpers.buildSourceMarkedAsm,
     renderLibraryResolution: helpers.renderLibraryResolution,
     saveProjectToStorage: helpers.saveProjectToStorage,
     refreshProjectGraph: helpers.refreshProjectGraph,

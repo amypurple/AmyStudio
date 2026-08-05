@@ -4,11 +4,17 @@ import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCata
 import { createAutocompleteController } from "./core/editor/autocomplete.js?v=20260719-editor-input-debounce";
 import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260724-reversi-port";
 import {
+  createSourceBreakpointController,
+  instrumentAmySourceWithSourceMarkers,
+  stripGeneratedSourceMarkers
+} from "./core/editor/sourceBreakpoints.js?v=20260804-public-rom-debugger";
+import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
-import { createEmulatorShellHelpers } from "./core/emulatorShell.js";
+import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260804-public-rom-debugger";
+import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260804-public-rom-debugger";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
@@ -175,12 +181,21 @@ const els = {
   projectGraph: document.getElementById("projectGraph"),
   sourceEditor: document.getElementById("sourceEditor"),
   sourceAutocomplete: document.getElementById("sourceAutocomplete"),
+  sourceBreakpointGutter: document.getElementById("sourceBreakpointGutter"),
+  sourceBreakpointLines: document.getElementById("sourceBreakpointLines"),
+  sourceBreakpointPopover: document.getElementById("sourceBreakpointPopover"),
+  sourceBreakpointCondition: document.getElementById("sourceBreakpointCondition"),
+  sourceBreakpointValueType: document.getElementById("sourceBreakpointValueType"),
+  btnSaveSourceBreakpoint: document.getElementById("btnSaveSourceBreakpoint"),
+  btnRemoveSourceBreakpoint: document.getElementById("btnRemoveSourceBreakpoint"),
+  btnCloseSourceBreakpoint: document.getElementById("btnCloseSourceBreakpoint"),
   asmEditor: document.getElementById("asmEditor"),
   asmViewHint: document.getElementById("asmViewHint"),
   emulatorMeta: document.getElementById("emulatorMeta"),
   emulatorHost: document.getElementById("emulatorHost"),
   emulatorPlaceholder: document.getElementById("emulatorPlaceholder"),
   emulatorFrame: document.getElementById("emulatorFrame"),
+  btnRomTestRecorder: document.getElementById("btnRomTestRecorder"),
   statusSummary: document.getElementById("statusSummary"),
   statusDetails: document.getElementById("statusDetails"),
   status: document.getElementById("status"),
@@ -677,13 +692,28 @@ const {
   defaultBiosCandidates: DEFAULT_BIOS_CANDIDATES
 });
 
+const { open: openRomTestRecorder, syncSourceBreakpoints: syncRecorderSourceBreakpoints } = createRomTestRecorderUi({
+  getCompiledRom: () => compiledRom,
+  getCompiledMemoryMap: () => compiledMemoryMap,
+  getCompiledSymbols: () => compiledSymbols,
+  getEmulatorBios: () => emulatorBios,
+  getProject: () => project,
+  setStatus,
+  onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
+});
+els.btnRomTestRecorder?.addEventListener("click", () => {
+  els.btnRomTestRecorder.closest("details")?.removeAttribute("open");
+  openRomTestRecorder();
+});
+
 const transpileSource = (sourceLang, sourceText) => transpileAmySource({
   sourceLang,
   sourceText,
   transpileAmy
 });
-function transpileAmy(sourceText) {
-  return transpileAmyCore(sourceText, {
+function transpileAmy(sourceText, options = {}) {
+  const effectiveSource = options.sourceMarkers ? instrumentAmySourceWithSourceMarkers(sourceText) : sourceText;
+  return transpileAmyCore(effectiveSource, {
     resolveStaticAbiInclude: (includePath) => {
       const normalized = normalizeProjectFilePath(includePath);
       const entry = (project?.projectFiles || []).find((file) => normalizeProjectFilePath(file?.path).toLowerCase() === normalized.toLowerCase());
@@ -741,6 +771,19 @@ function transpileAmy(sourceText) {
     finalizeAmyTranspile,
     stripAmyInlineComment
   });
+}
+
+function buildSourceMarkedAsm(projectToBuild, normalAsm, normalTranspile) {
+  const marked = transpileAmy(projectToBuild.sourceText || "", { sourceMarkers: true });
+  if (!marked.ok) return { ok: false, reason: marked.log || "Source-marker transpilation failed." };
+  const markedAsm = generateAsm(projectToBuild, marked.asmBody, marked.assets || [], marked.metadata || {});
+  if (stripGeneratedSourceMarkers(marked.asmBody) !== normalTranspile.asmBody) {
+    return { ok: false, reason: "Source markers changed transpiler output." };
+  }
+  if (stripGeneratedSourceMarkers(markedAsm).trimEnd() !== normalAsm) {
+    return { ok: false, reason: "Source markers changed generated ASM." };
+  }
+  return { ok: true, asm: markedAsm };
 }
 
 async function copyText(text) {
@@ -812,7 +855,7 @@ function ensureDocsUi() {
 const {
   commitProjectSourceText,
   insertTextIntoSource,
-  syncUiFromProject
+  syncUiFromProject: syncProjectEditorUi
 } = createProjectEditorUiHelpers({
   els,
   getProject: () => project,
@@ -830,6 +873,7 @@ const {
   clearCompiledArtifacts,
   refreshSourceCartridgeMeta,
   saveProjectToStorage,
+  sourceBreakpointsChanged: () => sourceBreakpointController.sourceChanged(),
   updateAutocomplete,
   updateOptimizationHint,
   scheduleEditorInsightsRefresh,
@@ -843,6 +887,28 @@ const {
   refreshProjectGraph,
   updateEmulatorUi
 });
+
+const sourceBreakpointController = createSourceBreakpointController({
+  editor: els.sourceEditor,
+  gutterLines: els.sourceBreakpointLines,
+  popover: els.sourceBreakpointPopover,
+  conditionInput: els.sourceBreakpointCondition,
+  valueTypeSelect: els.sourceBreakpointValueType,
+  saveButton: els.btnSaveSourceBreakpoint,
+  removeButton: els.btnRemoveSourceBreakpoint,
+  closeButton: els.btnCloseSourceBreakpoint,
+  getProject: () => project,
+  onBreakpointsChanged: () => {
+    saveProjectToStorage(project);
+    syncRecorderSourceBreakpoints();
+    setStatus(compiledRom ? "Source breakpoints updated without recompiling." : "Source breakpoint saved. Compile to activate it.");
+  }
+});
+
+function syncUiFromProject() {
+  syncProjectEditorUi();
+  sourceBreakpointController.sync();
+}
 
 function bindEvents() {
   bindStudioShellEvents({
@@ -899,6 +965,7 @@ function bindEvents() {
         analyzeLibraryResolution,
         updatePreviewActions,
         generateAsm,
+        buildSourceMarkedAsm,
         renderLibraryResolution,
         appendCartridgeNormalizationWarning,
         compileGeneratedAsm,
@@ -909,7 +976,7 @@ function bindEvents() {
         previewColecoBiosTitleFromMetadata,
         previewDinaBiosTitleScreen,
         previewDinaBiosTitleFromMetadata,
-        runEmbeddedEmulator,
+        runEmbeddedEmulator: openRomTestRecorder,
         resetEmbeddedEmulator,
         downloadBinary,
         copyText,

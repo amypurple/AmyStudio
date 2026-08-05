@@ -10,6 +10,7 @@ export function exportProject(project, { normalizeProjectFiles, normalizeOptimiz
     selectedAssets: project.selectedAssets,
     projectFiles: normalizeProjectFiles(project.projectFiles || []),
     optimizationLevel: normalizeOptimizationLevel(project.optimizationLevel || project.optimizerMode || "auto"),
+    sourceBreakpoints: Array.isArray(project.sourceBreakpoints) ? project.sourceBreakpoints.map((entry) => ({ ...entry })) : [],
     sourceText: project.sourceText
   };
 }
@@ -25,6 +26,7 @@ export function importProjectObject(obj, { newProject, normalizeProjectFiles, no
   p.selectedAssets = Array.isArray(obj.selectedAssets) ? obj.selectedAssets : p.selectedAssets;
   p.projectFiles = normalizeProjectFiles(Array.isArray(obj.projectFiles) ? obj.projectFiles : p.projectFiles);
   p.optimizationLevel = normalizeOptimizationLevel(obj.optimizationLevel || obj.optimizerMode || "auto");
+  p.sourceBreakpoints = Array.isArray(obj.sourceBreakpoints) ? obj.sourceBreakpoints.map((entry) => ({ ...entry })) : [];
   p.sourceText = typeof obj.sourceText === "string" ? obj.sourceText : p.sourceText;
   return p;
 }

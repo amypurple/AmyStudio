@@ -15,6 +15,7 @@ export function createProjectEditorUiHelpers({
   clearCompiledArtifacts,
   refreshSourceCartridgeMeta,
   saveProjectToStorage,
+  sourceBreakpointsChanged,
   updateAutocomplete,
   updateOptimizationHint,
   scheduleEditorInsightsRefresh,
@@ -32,6 +33,7 @@ export function createProjectEditorUiHelpers({
     const project = getProject();
     project.sourceText = nextText;
     els.sourceEditor.value = nextText;
+    sourceBreakpointsChanged?.();
     setExpandedAsm("");
     setAsmViewMode("generated");
     clearCompiledArtifacts();

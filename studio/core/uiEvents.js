@@ -277,6 +277,7 @@ export function bindStudioRuntimeEvents(ctx) {
     setSourceCartridgeMeta,
     updatePreviewActions,
     generateAsm,
+    buildSourceMarkedAsm,
     renderLibraryResolution,
     saveProjectToStorage,
     refreshProjectGraph,
@@ -609,8 +610,13 @@ export function bindStudioRuntimeEvents(ctx) {
 
     try {
       const optimizationProfile = getOptimizationProfile(project.optimizationLevel || "auto", project.sourceText || "");
+      let asmForCompile = asm;
+      let sourceMapNote = "";
+      const markedBuild = buildSourceMarkedAsm(project, asm, built.res);
+      if (markedBuild.ok) asmForCompile = markedBuild.asm.trimEnd();
+      else sourceMapNote = ` Source debugging unavailable: ${markedBuild.reason}`;
       const result = await compileGeneratedAsm(
-        asm,
+        asmForCompile,
         `${project.projectName || "main"}.asm`,
         {
           optimizerEnabled: optimizationProfile.optimizerEnabled,
@@ -656,7 +662,7 @@ export function bindStudioRuntimeEvents(ctx) {
       const previewNote = compiledColecoHeaderInfo?.valid && compiledColecoHeaderInfo?.usesDefaultScreen
         ? " BIOS previews available."
         : "";
-      setStatus(appendCartridgeNormalizationWarning(`Compile OK: ${compiledRom.length} bytes, ${symbols} symbols${optimizationNote}.${previewNote}${buildTranspileWarningNote(built.res)}`, getSourceCartridgeMeta()));
+      setStatus(appendCartridgeNormalizationWarning(`Compile OK: ${compiledRom.length} bytes, ${symbols} symbols${optimizationNote}.${previewNote}${sourceMapNote}${buildTranspileWarningNote(built.res)}`, getSourceCartridgeMeta()));
       closeTopbarMenu();
     } catch (e) {
       setStatus(`Compile failed: ${String(e.message || e)}`);

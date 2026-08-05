@@ -33,7 +33,8 @@ export function createEmulatorShellHelpers({
     const hasRom = !!getCompiledRom();
     const hasBios = !!getEmulatorBios();
     if (els.btnDownloadRom) els.btnDownloadRom.disabled = !hasRom;
-    if (els.btnRunEmulator) els.btnRunEmulator.disabled = !(hasRom && hasBios);
+    if (els.btnRunEmulator) els.btnRunEmulator.disabled = !hasBios;
+    if (els.btnRomTestRecorder) els.btnRomTestRecorder.disabled = !hasBios;
     if (els.btnResetEmulator) {
       const popupVisible = getEmulatorWindow() && !getEmulatorWindow().closed;
       els.btnResetEmulator.disabled = !(popupVisible || hasBios);
