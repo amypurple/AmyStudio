@@ -1,3 +1,5 @@
+import { getEditorAdapter } from "./editorAdapter.js";
+
 export function currentLineInfo(text, caret) {
   const lineStart = text.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
   const lineEndRaw = text.indexOf("\n", caret);
@@ -31,6 +33,7 @@ export function createAutocompleteController(ctx) {
     onAutocompleteApplied,
     onScheduleInsightsRefresh
   } = ctx;
+  const sourceEditor = getEditorAdapter(els.sourceEditor);
 
   let cachedSymbolSource = null;
   let cachedSymbolItems = [];
@@ -85,24 +88,26 @@ export function createAutocompleteController(ctx) {
   }
 
   function applyAutocomplete(item) {
-    const editor = els.sourceEditor;
-    const caretPos = editor.selectionStart;
+    const caretPos = sourceEditor.getSelection().start;
+    const editorText = sourceEditor.getText();
     const state = getState();
     if (item.mode === "symbol") {
-      editor.value = `${editor.value.slice(0, state.autocompleteWordStart)}${item.snippet}${editor.value.slice(state.autocompleteWordEnd)}`;
       const caret = state.autocompleteWordStart + item.snippet.length;
-      editor.selectionStart = caret;
-      editor.selectionEnd = caret;
+      sourceEditor.replaceRange(item.snippet, state.autocompleteWordStart, state.autocompleteWordEnd, {
+        selection: { start: caret, end: caret },
+        notify: false
+      });
     } else {
-      const { lineStart, lineEnd } = currentLineInfo(editor.value, caretPos);
-      const indent = (/^\s*/.exec(editor.value.slice(lineStart, lineEnd)) || [""])[0];
-      const replacement = `${indent}${item.snippet}`;
-      editor.value = `${editor.value.slice(0, lineStart)}${replacement}${editor.value.slice(lineEnd)}`;
+      const { lineStart, lineEnd } = currentLineInfo(editorText, caretPos);
+      const indent = (/^\s*/.exec(editorText.slice(lineStart, lineEnd)) || [""])[0];
+      const replacement = indent + item.snippet;
       const caret = lineStart + replacement.length;
-      editor.selectionStart = caret;
-      editor.selectionEnd = caret;
+      sourceEditor.replaceRange(replacement, lineStart, lineEnd, {
+        selection: { start: caret, end: caret },
+        notify: false
+      });
     }
-    onSourceMutated(editor.value);
+    onSourceMutated(sourceEditor.getText());
     closeAutocomplete();
     onScheduleInsightsRefresh();
     if (onAutocompleteApplied) onAutocompleteApplied(item);
@@ -141,10 +146,10 @@ export function createAutocompleteController(ctx) {
   }
 
   function updateAutocomplete({ force = false } = {}) {
-    const editor = els.sourceEditor;
-    const caret = editor.selectionStart;
-    const { line } = currentLineInfo(editor.value, caret);
-    const wordInfo = currentWordInfo(editor.value, caret);
+    const editorText = sourceEditor.getText();
+    const caret = sourceEditor.getSelection().start;
+    const { line } = currentLineInfo(editorText, caret);
+    const wordInfo = currentWordInfo(editorText, caret);
     setState({
       autocompleteWordStart: wordInfo.start,
       autocompleteWordEnd: wordInfo.end
@@ -167,7 +172,7 @@ export function createAutocompleteController(ctx) {
         mode: "command",
         score: (linePrefix ? 0 : 2) + autocompleteCommandBias(item.snippet) + Math.min(item.snippet.length / 120, 0.9)
       }));
-    const symbolMatches = extractProjectAutocompleteItems(editor.value)
+    const symbolMatches = extractProjectAutocompleteItems(editorText)
       .filter((item) => {
         if (!wordPrefix) return force;
         return item.snippet.toLowerCase().startsWith(wordPrefix) && item.snippet.toLowerCase() !== wordPrefix;

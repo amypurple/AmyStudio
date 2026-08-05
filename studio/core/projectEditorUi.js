@@ -1,3 +1,5 @@
+import { getEditorAdapter } from "./editor/editorAdapter.js";
+
 export function createProjectEditorUiHelpers({
   els,
   getProject,
@@ -29,10 +31,12 @@ export function createProjectEditorUiHelpers({
   refreshProjectGraph,
   updateEmulatorUi
 }) {
+  const sourceEditor = getEditorAdapter(els.sourceEditor);
+
   function commitProjectSourceText(nextText) {
     const project = getProject();
     project.sourceText = nextText;
-    els.sourceEditor.value = nextText;
+    sourceEditor.setText(nextText);
     sourceBreakpointsChanged?.();
     setExpandedAsm("");
     setAsmViewMode("generated");
@@ -45,7 +49,7 @@ export function createProjectEditorUiHelpers({
   }
 
   function insertTextIntoSource(block, { beforeProcedures = false } = {}) {
-    const existing = els.sourceEditor.value;
+    const existing = sourceEditor.getText();
     const insertAt = beforeProcedures ? existing.search(/^(?:sub|function)\b/m) : -1;
     const target = beforeProcedures && insertAt >= 0 ? insertAt : existing.length;
     const before = existing.slice(0, target);
@@ -85,7 +89,7 @@ export function createProjectEditorUiHelpers({
     renderExamplePicker();
     renderProjectFiles();
     renderLibraryResolution();
-    els.sourceEditor.value = project.sourceText;
+    sourceEditor.setText(project.sourceText);
     closeAutocomplete();
     syncAsmEditor();
     refreshSourceCartridgeMeta(project.sourceText);

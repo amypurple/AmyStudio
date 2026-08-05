@@ -1,3 +1,5 @@
+import { getEditorAdapter } from "./editor/editorAdapter.js";
+
 function buildTranspileWarningNote(result) {
   const warnings = Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [];
   if (!warnings.length) return "";
@@ -5,6 +7,7 @@ function buildTranspileWarningNote(result) {
 }
 
 export function bindTopUiEvents(ctx) {
+  const sourceEditor = getEditorAdapter(ctx.els.sourceEditor);
   let sourceAutosaveTimer = 0;
   let sourceAutosaveProject = null;
   function flushSourceAutosave() {
@@ -134,7 +137,7 @@ export function bindTopUiEvents(ctx) {
 
   els.sourceEditor.addEventListener("input", () => {
     const project = getProject();
-    project.sourceText = els.sourceEditor.value;
+    project.sourceText = sourceEditor.getText();
     setExpandedAsm("");
     setAsmViewMode("generated");
     clearCompiledArtifacts();
@@ -146,10 +149,10 @@ export function bindTopUiEvents(ctx) {
   });
 
   function toggleSelectedSourceComments() {
-    const editor = els.sourceEditor;
-    const text = editor.value;
-    const selectionStart = editor.selectionStart ?? 0;
-    const selectionEnd = editor.selectionEnd ?? selectionStart;
+    const text = sourceEditor.getText();
+    const selection = sourceEditor.getSelection();
+    const selectionStart = selection.start;
+    const selectionEnd = selection.end;
     const lineStart = text.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
     let lineEnd = text.indexOf("\n", selectionEnd);
     if (lineEnd < 0) lineEnd = text.length;
@@ -163,10 +166,9 @@ export function bindTopUiEvents(ctx) {
       return line.replace(/^(\s*)/, "$1' ");
     });
     const replacement = nextLines.join("\n");
-    editor.value = text.slice(0, lineStart) + replacement + text.slice(lineEnd);
-    editor.selectionStart = lineStart;
-    editor.selectionEnd = lineStart + replacement.length;
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    sourceEditor.replaceRange(replacement, lineStart, lineEnd, {
+      selection: { start: lineStart, end: lineStart + replacement.length }
+    });
   }
 
   els.sourceEditor.addEventListener("keydown", (event) => {
@@ -612,9 +614,13 @@ export function bindStudioRuntimeEvents(ctx) {
       const optimizationProfile = getOptimizationProfile(project.optimizationLevel || "auto", project.sourceText || "");
       let asmForCompile = asm;
       let sourceMapNote = "";
-      const markedBuild = buildSourceMarkedAsm(project, asm, built.res);
-      if (markedBuild.ok) asmForCompile = markedBuild.asm.trimEnd();
-      else sourceMapNote = ` Source debugging unavailable: ${markedBuild.reason}`;
+      if (["off", "safe", "balanced", "aggressive", "experimental"].includes(optimizationProfile.effectiveLevel)) {
+        const markedBuild = buildSourceMarkedAsm(project, asm, built.res);
+        if (markedBuild.ok) asmForCompile = markedBuild.asm.trimEnd();
+        else sourceMapNote = ` Source debugging unavailable: ${markedBuild.reason}`;
+      } else {
+        sourceMapNote = " Source debugging is unavailable for this unknown optimization profile.";
+      }
       const result = await compileGeneratedAsm(
         asmForCompile,
         `${project.projectName || "main"}.asm`,

@@ -1,3 +1,8 @@
+## 2026-08-04 - Complete public source editor and Studio shell
+
+- Synchronized the public Studio shell and splash screen with the experimental IDE instead of retaining a partial gutter-only editor integration.
+- Restored the Amy source listing beside the breakpoint gutter and added the optional, default-off TMS9918-inspired syntax color toggle with synchronized scrolling.
+- Added the editor adapter, syntax tokenizer, visible-line overlay, and focused regression tests while preserving autocomplete, comments, breakpoints, and responsive typing.
 ## 2026-08-04 - UI icon and accessibility consistency
 
 - Added missing hover and screen-reader labels to editor arrows, graphics palettes, controller directions, panel controls, and dialog close buttons.

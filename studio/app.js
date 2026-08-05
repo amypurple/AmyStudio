@@ -2,18 +2,24 @@ import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
 import { createAutocompleteController } from "./core/editor/autocomplete.js?v=20260719-editor-input-debounce";
-import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260724-reversi-port";
+import {
+  amySyntaxColorWord,
+  createAmySyntaxOverlay,
+  loadAmySyntaxColorsPreference,
+  saveAmySyntaxColorsPreference
+} from "./core/editor/sourceSyntaxOverlay.js?v=20260804-vdp-toggle-colors";
+import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260803-120-colors";
 import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
   stripGeneratedSourceMarkers
-} from "./core/editor/sourceBreakpoints.js?v=20260804-public-rom-debugger";
+} from "./core/editor/sourceBreakpoints.js?v=20260731-source-step-structural";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
-import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260804-public-rom-debugger";
+import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260802-open-rom-no-compile11";
 import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260804-ui-consistency";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
@@ -39,7 +45,7 @@ import { handleDeclarationStatement } from "./core/compiler/declarationStatement
 import { createControlFlowHelpers } from "./core/compiler/controlFlowHelpers.js?v=20260714-fixed-const-compare";
 import { createExpressionComputeHelpers } from "./core/compiler/expressionComputeHelpers.js?v=20260621-random-loop-shape";
 import { scanAmyFirstPass } from "./core/compiler/firstPassScanHelpers.js?v=20260605-dsound-asset-fix";
-import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js?v=20260712-multisprite";
+import { handleDisplayGraphicsSpriteStatement } from "./core/compiler/displayGraphicsSpriteStatementHelpers.js?v=20260803-120-colors";
 import { handleForStatement } from "./core/compiler/forStatementHelpers.js";
 import { handleIfStatement } from "./core/compiler/ifStatementHelpers.js";
 import { createInlineStatementCompiler } from "./core/compiler/inlineStatementHelpers.js";
@@ -51,7 +57,7 @@ import { createPrintHelpers } from "./core/compiler/printHelpers.js";
 import { handlePrintFormatStatement } from "./core/compiler/printFormatStatementHelpers.js?v=20260729-print-at-short-form";
 import { createProcHelpers } from "./core/compiler/procHelpers.js?v=20260715-asm-label-collision";
 import { handleProcFunctionStatement } from "./core/compiler/procFunctionStatementHelpers.js";
-import { handleDispatchLabelStatement } from "./core/compiler/dispatchLabelStatementHelpers.js";
+import { handleDispatchLabelStatement } from "./core/compiler/dispatchLabelStatementHelpers.js?v=20260731-source-marker-alignment";
 import { handleRandomBounceStatement } from "./core/compiler/randomBounceStatementHelpers.js";
 import { handleRoutineStatement } from "./core/compiler/routineStatementHelpers.js";
 import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoStatementHelpers.js";
@@ -61,10 +67,10 @@ import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticH
 import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260605-dsound-asset-fix";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
-import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js";
-import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20260712-dec-branch";
+import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js?v=20260802-spinner-consume";
+import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20260731-source-marker-alignment";
 import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20260724-mode2-color-loader";
-import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js";
+import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js?v=20260802-keypad-blank";
 import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
 import {
   getOptimizationProfile,
@@ -79,7 +85,7 @@ import {
   previewColecoBiosTitleFromMetadata,
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
-import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260715-asm-label-collision";
+import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
 import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260804-ui-consistency";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
@@ -97,9 +103,9 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260730-static-abi-v11";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260724-reversi-port";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260724-reversi-port";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260802-keypad-blank";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260731-all-optimizer-source-debug";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260731-source-marker-alignment";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bytesToDataUrl } from "./core/utils/dataUrls.js";
@@ -180,6 +186,7 @@ const els = {
   optimizationHint: document.getElementById("optimizationHint"),
   projectGraph: document.getElementById("projectGraph"),
   sourceEditor: document.getElementById("sourceEditor"),
+  btnToggleSyntaxColors: document.getElementById("btnToggleSyntaxColors"),
   sourceAutocomplete: document.getElementById("sourceAutocomplete"),
   sourceBreakpointGutter: document.getElementById("sourceBreakpointGutter"),
   sourceBreakpointLines: document.getElementById("sourceBreakpointLines"),
@@ -233,6 +240,26 @@ const els = {
   btnWavSaveProjectFile: document.getElementById("btnWavSaveProjectFile"),
   btnWavSaveAndInsertPlay: document.getElementById("btnWavSaveAndInsertPlay"),
 };
+
+const sourceSyntaxOverlay = createAmySyntaxOverlay(els.sourceEditor, {
+  enabled: loadAmySyntaxColorsPreference()
+});
+function syncSyntaxColorsButton() {
+  const enabled = sourceSyntaxOverlay.isEnabled();
+  const colorWord = amySyntaxColorWord();
+  els.btnToggleSyntaxColors?.setAttribute("aria-checked", String(enabled));
+  if (els.btnToggleSyntaxColors) {
+    els.btnToggleSyntaxColors.setAttribute("aria-label", `Amy syntax ${colorWord}`);
+    els.btnToggleSyntaxColors.title = `${enabled ? "Disable" : "Enable"} Amy syntax ${colorWord}`;
+  }
+}
+els.btnToggleSyntaxColors?.addEventListener("click", () => {
+  const enabled = !sourceSyntaxOverlay.isEnabled();
+  sourceSyntaxOverlay.setEnabled(enabled);
+  saveAmySyntaxColorsPreference(enabled);
+  syncSyntaxColorsButton();
+});
+syncSyntaxColorsButton();
 
 const STORAGE_KEY = "amy_studio_project_v1";
 const LEGACY_WARRIOR_TEMPLATE_MARKER = "project \"RLE Picture Demo\"";
@@ -393,7 +420,7 @@ function refreshExampleBrowserUi() {
 
 function currentExamplesRevision() {
   const pageVersion = new URLSearchParams(window.location.search || "").get("v") || "";
-  return pageVersion || "20260729-reversi-menu-zx0";
+  return pageVersion || "20260802-spinner-consume";
 }
 
 function preloadExamplesCatalog() {
@@ -469,7 +496,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260715-asm-label-collision");
+    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260802-keypad-blank");
   }
   return internalCompilerModulePromise;
 }
@@ -553,6 +580,7 @@ const autocompleteController = createAutocompleteController({
     if (Object.prototype.hasOwnProperty.call(next, "autocompleteWordEnd")) autocompleteWordEnd = next.autocompleteWordEnd;
   },
   onSourceMutated: (nextText) => {
+    sourceBreakpointController.sourceChanged();
     project.sourceText = nextText;
     expandedAsm = "";
     asmViewMode = "generated";
@@ -701,11 +729,10 @@ const { open: openRomTestRecorder, syncSourceBreakpoints: syncRecorderSourceBrea
   setStatus,
   onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
 });
-els.btnRomTestRecorder?.addEventListener("click", () => {
+els.btnRomTestRecorder?.addEventListener("click", async () => {
   els.btnRomTestRecorder.closest("details")?.removeAttribute("open");
   openRomTestRecorder();
 });
-
 const transpileSource = (sourceLang, sourceText) => transpileAmySource({
   sourceLang,
   sourceText,
@@ -775,13 +802,33 @@ function transpileAmy(sourceText, options = {}) {
 
 function buildSourceMarkedAsm(projectToBuild, normalAsm, normalTranspile) {
   const marked = transpileAmy(projectToBuild.sourceText || "", { sourceMarkers: true });
-  if (!marked.ok) return { ok: false, reason: marked.log || "Source-marker transpilation failed." };
-  const markedAsm = generateAsm(projectToBuild, marked.asmBody, marked.assets || [], marked.metadata || {});
-  if (stripGeneratedSourceMarkers(marked.asmBody) !== normalTranspile.asmBody) {
-    return { ok: false, reason: "Source markers changed transpiler output." };
+  if (!marked.ok) {
+    return { ok: false, reason: marked.log || "Source-marker transpilation failed." };
   }
-  if (stripGeneratedSourceMarkers(markedAsm).trimEnd() !== normalAsm) {
-    return { ok: false, reason: "Source markers changed generated ASM." };
+  const markedAsm = generateAsm(projectToBuild, marked.asmBody, marked.assets || [], marked.metadata || {});
+  const strippedAsm = stripGeneratedSourceMarkers(markedAsm).trimEnd();
+  const strippedBody = stripGeneratedSourceMarkers(marked.asmBody);
+  if (strippedBody !== normalTranspile.asmBody) {
+    const normalLines = normalTranspile.asmBody.split(/\r?\n/);
+    const strippedLines = strippedBody.split(/\r?\n/);
+    const mismatch = normalLines.findIndex((line, index) => line !== strippedLines[index]);
+    return {
+      ok: false,
+      reason: `Source markers changed transpiler output at body line ${mismatch + 1}: "${normalLines[mismatch] || "<none>"}" vs "${strippedLines[mismatch] || "<none>"}".`
+    };
+  }
+
+  if (strippedAsm !== normalAsm) {
+    const normalLines = normalAsm.split(/\r?\n/);
+    const strippedLines = strippedAsm.split(/\r?\n/);
+    const mismatch = normalLines.findIndex((line, index) => line !== strippedLines[index]);
+    const detail = mismatch >= 0
+      ? ` First mismatch at generated ASM line ${mismatch + 1}: "${normalLines[mismatch] || "<none>"}" vs "${strippedLines[mismatch] || "<none>"}".`
+      : "";
+    return {
+      ok: false,
+      reason: `Source markers changed generated ASM; source debugging was disabled for this build.${detail}`
+    };
   }
   return { ok: true, asm: markedAsm };
 }

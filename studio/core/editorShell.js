@@ -11,7 +11,10 @@ export function createGraphicsEditorModal({ title, className = "", onCloseReques
   titleElement.textContent = title || "Graphics editor";
   const closeButton = document.createElement("button");
   closeButton.type = "button";
-  closeButton.textContent = "Close";
+  closeButton.className = "graphics-editor-modal__close";
+  closeButton.textContent = "✕";
+  closeButton.title = "Close";
+  closeButton.setAttribute("aria-label", "Close");
   header.append(titleElement, closeButton);
   dialog.appendChild(header);
 
