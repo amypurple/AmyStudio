@@ -84,4 +84,24 @@ for (const state of ["on", "off"]) {
 assert.equal(tokenizeAmyLine("u8 Off = 0").tokens.find((token) => token.text === "Off").type, "identifier");
 assert.equal(tokenizeAmyLine("On = 1").tokens.find((token) => token.text === "On").type, "identifier");
 
+for (const [source, words, type] of [
+  ["tile screen", ["tile", "screen"], "vdp"],
+  ["sprites simple", ["sprites", "simple"], "vdp"],
+  ["pause until press and release", ["pause", "until", "press", "and", "release"], "keyword"],
+  ["end picture", ["end", "picture"], "keyword"],
+  ["end sub", ["end", "sub"], "keyword"]
+]) {
+  const tokens = tokenizeAmyLine(source).tokens;
+  for (const word of words) assert.equal(tokens.find((token) => token.text === word)?.type, type, source + ": " + word);
+}
+for (const mode of ["8x8", "16x16"]) {
+  const tokens = tokenizeAmyLine("sprites " + mode).tokens;
+  assert.equal(tokens.find((token) => token.text === "sprites")?.type, "vdp");
+  assert.equal(tokens.find((token) => token.text === mode)?.type, "number");
+  assert.equal(tokens.some((token) => token.text.toLowerCase() === "x" + mode.split("x")[1]), false);
+}
+for (const name of ["Frames", "To", "Count", "Line", "Color", "Pattern", "Press", "Release", "Simple", "Double"]) {
+  const tokens = tokenizeAmyLine("u8 " + name + " = 0").tokens;
+  assert.equal(tokens.find((token) => token.text === name)?.type, "identifier", name + " must stay neutral");
+}
 console.log("Amy syntax tokenizer: PASS");

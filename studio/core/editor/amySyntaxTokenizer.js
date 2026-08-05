@@ -1,3 +1,5 @@
+import { matchAmyPhraseRanges } from "./amyGrammar.js";
+
 const KEYWORDS = new Set([
   "and", "as", "asm", "asset", "at", "between", "bitmap", "by", "call", "cartridge",
   "case", "choose", "clear", "cls", "codec", "const", "continue", "copy", "data",
@@ -85,6 +87,8 @@ function push(tokens, type, text) {
 export function tokenizeAmyLine(sourceLine, previousState = {}) {
   const line = String(sourceLine ?? "");
   const tokens = [];
+  const phraseRanges = matchAmyPhraseRanges(line);
+  const phraseRangeAt = (position) => phraseRanges.find(({ start }) => start === position);
   let index = 0;
   let inAsmBlock = Boolean(previousState.inAsmBlock);
   let inPictureBlock = Boolean(previousState.inPictureBlock);
@@ -134,6 +138,13 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
     if (whitespace) {
       push(tokens, "plain", whitespace[0]);
       index += whitespace[0].length;
+      continue;
+    }
+
+    const phraseRange = phraseRangeAt(index);
+    if (phraseRange) {
+      push(tokens, phraseRange.type, line.slice(phraseRange.start, phraseRange.end));
+      index = phraseRange.end;
       continue;
     }
 

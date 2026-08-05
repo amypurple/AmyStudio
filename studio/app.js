@@ -7,7 +7,7 @@ import {
   createAmySyntaxOverlay,
   loadAmySyntaxColorsPreference,
   saveAmySyntaxColorsPreference
-} from "./core/editor/sourceSyntaxOverlay.js?v=20260804-vdp-toggle-colors";
+} from "./core/editor/sourceSyntaxOverlay.js?v=20260805-overlay-native-pitch";
 import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260803-120-colors";
 import {
   createSourceBreakpointController,

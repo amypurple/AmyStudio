@@ -1,3 +1,8 @@
+## 2026-08-05 - Context-aware Amy syntax and exact overlay alignment
+
+- Added a presentation grammar for fixed multi-word Amy commands and sprite mode literals while keeping legal identifier names neutral.
+- Calibrated the syntax overlay against the textarea native line pitch so long source listings remain aligned at deep scroll positions.
+
 ## 2026-08-04 - Public compiler and Studio technology parity
 
 - Synchronized the clean release with the current Amy compiler environment, including complete 120-colors runtime/RAM support, CRT-safe press-and-release pauses, and the generated browser library catalog.

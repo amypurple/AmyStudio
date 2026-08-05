@@ -1,5 +1,5 @@
 import { getEditorAdapter } from "./editorAdapter.js";
-import { tokenizeAmySource } from "./amySyntaxTokenizer.js?v=20260804-vdp-toggle-colors";
+import { tokenizeAmySource } from "./amySyntaxTokenizer.js?v=20260805-phrase-grammar";
 
 export const AMY_SYNTAX_COLORS_STORAGE_KEY = "amy_studio_syntax_colors_v1";
 
@@ -65,10 +65,29 @@ export function createAmySyntaxOverlay(editorElement, { enabled: initiallyEnable
   let enabled = Boolean(initiallyEnabled);
 
   function syncGeometry() {
+    const style = documentRef.defaultView?.getComputedStyle(editorElement);
     overlay.style.left = editorElement.offsetLeft + "px";
     overlay.style.top = editorElement.offsetTop + "px";
     overlay.style.width = editorElement.offsetWidth + "px";
     overlay.style.height = editorElement.offsetHeight + "px";
+    if (!style) return;
+    content.style.top = style.paddingTop;
+    content.style.left = style.paddingLeft;
+    content.style.fontFamily = style.fontFamily;
+    content.style.fontSize = style.fontSize;
+    content.style.fontWeight = style.fontWeight;
+    content.style.fontStyle = style.fontStyle;
+    const lineCount = Math.max(1, adapter.getText().split("\n").length);
+    const paddingY = (Number.parseFloat(style.paddingTop) || 0)
+      + (Number.parseFloat(style.paddingBottom) || 0);
+    const declaredLineHeight = Number.parseFloat(style.lineHeight) || 22.4;
+    const measuredLineHeight = (editorElement.scrollHeight - paddingY) / lineCount;
+    content.style.lineHeight = lineCount > 1
+      && Math.abs(measuredLineHeight - declaredLineHeight) < 1
+      ? measuredLineHeight + "px"
+      : style.lineHeight;
+    content.style.letterSpacing = style.letterSpacing;
+    content.style.tabSize = style.tabSize;
   }
   function renderViewport() {
     if (!enabled) return;
@@ -78,13 +97,17 @@ export function createAmySyntaxOverlay(editorElement, { enabled: initiallyEnable
     const startLine = Math.max(0, Math.floor(top / lineHeight) - 6);
     const visibleLines = Math.ceil(editorElement.clientHeight / lineHeight) + 12;
     const endLine = Math.min(tokenLines.length, startLine + visibleLines);
-    content.innerHTML = renderTokenLines(tokenLines.slice(startLine, endLine)) + "\n";
-    content.style.transform = "translate(" + (-left) + "px," + (startLine * lineHeight - top) + "px)";
+    // Let the browser lay out preceding blank lines. Multiplying a fractional
+    // computed line-height accumulates visible drift in long source files.
+    content.innerHTML = "\n".repeat(startLine)
+      + renderTokenLines(tokenLines.slice(startLine, endLine)) + "\n";
+    content.style.transform = "translate(" + (-left) + "px," + (-top) + "px)";
   }
 
   function renderNow() {
     renderFrame = 0;
     if (!enabled) return;
+    syncGeometry();
     const text = adapter.getText();
     if (text !== lastText) {
       lastText = text;
@@ -143,7 +166,10 @@ export function createAmySyntaxOverlay(editorElement, { enabled: initiallyEnable
 
   overlay.hidden = !enabled;
   editorElement.classList.toggle("source-editor--syntax-disabled", !enabled);
-  if (enabled) renderNow();
+  if (enabled) {
+    syncGeometry();
+    renderNow();
+  }
 
   return {
     element: overlay,
