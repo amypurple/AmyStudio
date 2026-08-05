@@ -154,7 +154,7 @@ function ensureStyles() {
     .rom-recorder__head-actions { display:flex; gap:7px; align-items:center; }
     .rom-recorder__icon-button { width:34px; min-width:34px; height:32px; padding:0; display:grid; place-items:center; font-size:17px; line-height:1; }
     .rom-recorder .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-    .rom-recorder__body { display:grid; grid-template-columns:minmax(480px,2fr) minmax(520px,1fr); grid-template-rows:auto minmax(0,1fr); gap:10px 12px; padding:10px 12px; height:calc(96vh - 52px); overflow:hidden; box-sizing:border-box; }
+    .rom-recorder__body { display:grid; grid-template-columns:minmax(530px,2fr) minmax(510px,1fr); grid-template-rows:auto minmax(0,1fr); gap:8px 10px; padding:4px; height:calc(95vh - 44px); overflow:hidden; box-sizing:border-box; }
     .rom-recorder__stage { grid-row:1 / span 2; display:grid; align-content:start; justify-items:center; gap:6px; min-width:0; min-height:0; }
     .rom-recorder__screen-wrap { position:relative; width:auto; max-width:100%; aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; border:1px solid #31424c; overflow:hidden; }
     .rom-recorder__screen { max-width:100%; image-rendering:pixelated; background:#000; border:1px solid #31424c; outline:none; }
@@ -191,7 +191,7 @@ function ensureStyles() {
     .rom-recorder__memory-controls--asm { grid-template-columns:34px 34px minmax(0,1fr); align-items:center; }
     .rom-recorder__memory-controls--breakpoint { grid-template-columns:minmax(120px,1fr) minmax(150px,1.4fr) 70px 34px; }
     .rom-recorder__memory-controls--watch { grid-template-columns:minmax(180px,1fr) 70px 34px; }
-    .rom-recorder__dump,.rom-recorder__raw-map { overflow:auto; margin:0; padding:8px; color:#d5e2e7; background:#070b0e; border:1px solid #26343c; font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; }
+    .rom-recorder__dump,.rom-recorder__raw-map { overflow:auto; margin:0; padding:0; color:#d5e2e7; background:#070b0e; border:1px solid #26343c; font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; }
     .rom-recorder__dump { flex:1 1 auto; min-height:0; max-height:none; }
     .rom-recorder__symbol-list { flex:1 1 auto; min-height:0; max-height:none; overflow-y:auto; overflow-x:hidden; border:1px solid #26343c; }
     .rom-recorder__symbol-row { display:grid; grid-template-columns:minmax(0,1fr) 36px; min-width:0; border-bottom:1px solid #172229; }
@@ -216,7 +216,7 @@ function ensureStyles() {
     .rom-recorder__frame { min-width:72px; color:#65dbef; }
     .rom-recorder__status { min-height:1.5em; color:#a7b4bb; }
     .rom-recorder__compact-action { display:inline-grid; place-items:center; width:34px; min-width:34px; height:34px; padding:0; font-size:15px; line-height:1; }
-    @media(max-width:820px) { .rom-recorder__body { display:block; height:auto; max-height:calc(96vh - 52px); overflow:auto; } .rom-recorder__stage,.rom-recorder__side,.rom-recorder__debug { margin-bottom:10px; } .rom-recorder__transport { grid-template-columns:repeat(6,auto); } .rom-recorder__transport input[type=range] { grid-column:1 / -1; } }
+    @media(max-width:1080px) { .rom-recorder__body { display:block; height:auto; max-height:calc(96vh - 52px); overflow:auto; } .rom-recorder__stage,.rom-recorder__side,.rom-recorder__debug { margin-bottom:10px; } .rom-recorder__transport { grid-template-columns:repeat(6,auto); } .rom-recorder__transport input[type=range] { grid-column:1 / -1; } }
   `;
   document.head.append(style);
 }
