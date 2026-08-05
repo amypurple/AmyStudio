@@ -146,12 +146,12 @@ const wheelConfig = setControllerDeviceType(createDefaultControllerConfig(), 1, 
 assert.equal(wheelConfig.ports[0].type, "wheel", "Steering Wheel must always occupy Port 1");
 assert.equal(wheelConfig.ports[1].type, "standard", "Steering Wheel must preserve a standard companion controller on Port 2");
 frame = buildControllerFrame(wheelConfig, {
-  pressedKeys: new Set(["BracketRight", "KeyX", "KeyW", "Numpad3"]),
+  pressedKeys: new Set(["BracketRight", "KeyZ", "KeyW", "Numpad3"]),
   inputBits: INPUT
 });
 assert.equal(frame.spinnerDeltas[0], 6, "Steering Wheel ticks must use the Port 1 spinner channel");
 assert.equal(frame.spinnerDeltas[1], 0);
-assert.equal(frame.controllerMasks[0], INPUT.FIRE_RIGHT, "The gas pedal must use Port 1 fire");
+assert.equal(frame.controllerMasks[0], INPUT.FIRE_LEFT, "The gas pedal must use Port 1 Left Fire (hardware pin 6)");
 assert.equal(frame.controllerMasks[1], INPUT.UP | INPUT.KEYPAD_3, "Port 2 must retain gear and keypad input");
 
 console.log("Controller profiles PASS");

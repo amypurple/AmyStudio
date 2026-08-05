@@ -55,7 +55,7 @@ export function mouseButtonToFireMask(button, inputBits) {
 export function resolveMouseFireTarget(button, config, selectedPort, inputBits) {
   const ports = config?.ports || [];
   if (ports[0]?.type === "wheel") {
-    return { portIndex: 0, mask: button === 0 ? inputBits?.FIRE_RIGHT || 0 : 0 };
+    return { portIndex: 0, mask: mouseButtonToFireMask(button, inputBits) };
   }
   const roller = ports[0]?.type === "roller-x" || ports[1]?.type === "roller-y";
   if (roller && config?.rollerMode !== "joystick") {
@@ -579,7 +579,7 @@ export function createRomTestRecorderUi({
     const wheel = config?.ports?.[0]?.type === "wheel";
     const rollerMode = config?.rollerMode === "joystick" ? "joystick" : "trackball";
     button.title = wheel
-      ? (mouseSpinnerEnabled ? "Disable" : "Enable") + " mouse Steering Wheel (horizontal movement steers P1; left click is the P1 gas pedal)"
+      ? (mouseSpinnerEnabled ? "Disable" : "Enable") + " mouse Steering Wheel (horizontal movement steers P1; left click is the physical pedal, right click is optional P1 Right Fire)"
       : roller
       ? rollerMode === "joystick"
         ? `${mouseSpinnerEnabled ? "Disable" : "Enable"} mouse Roller joystick mode (movement becomes P1 directions)`

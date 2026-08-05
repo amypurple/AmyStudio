@@ -136,7 +136,7 @@ function deviceMarkup(port, { hideFire = false } = {}) {
 }
 
 function wheelDeviceMarkup(port) {
-  const pedal = buttonMarkup("FIRE_RIGHT", "GAS<br>PEDAL", port)
+  const pedal = buttonMarkup("FIRE_LEFT", "GAS<br>PEDAL", port)
     .replace("<button ", '<button class="controller-setup__fire controller-setup__fire--right" ');
   const spinner = '<div class="controller-setup__spinner">' +
     buttonMarkup("SPINNER_NEG", "&#x21BA;", port) +
@@ -144,7 +144,7 @@ function wheelDeviceMarkup(port) {
     buttonMarkup("SPINNER_POS", "&#x21BB;", port) +
     "</div>";
   return '<div class="controller-setup__shell">' + pedal +
-    '<div class="controller-setup__note">STEERING WHEEL · PORT 1<br>Use PORT 2 for gear selection and keypad.</div>' +
+    '<div class="controller-setup__note">STEERING WHEEL · PORT 1<br>Pedal = Left Fire. Use PORT 2 for gears and keypad.</div>' +
     spinner + "</div>";
 }
 

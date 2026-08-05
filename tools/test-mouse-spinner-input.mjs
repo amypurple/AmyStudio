@@ -31,13 +31,13 @@ assert.equal(mouseButtonToFireMask(1, fireBits), 0);
 const wheel = { ports: [{ type: "wheel", sensitivity: 6 }, { type: "standard", sensitivity: 6 }] };
 assert.deepEqual(
   resolveMouseFireTarget(0, wheel, 1, fireBits),
-  { portIndex: 0, mask: fireBits.FIRE_RIGHT },
-  "Steering Wheel left mouse must drive the Port 1 gas pedal"
+  { portIndex: 0, mask: fireBits.FIRE_LEFT },
+  "Steering Wheel left mouse must drive the physical Port 1 pedal"
 );
 assert.deepEqual(
   resolveMouseFireTarget(2, wheel, 0, fireBits),
-  { portIndex: 0, mask: 0 },
-  "Steering Wheel must not invent a second mouse pedal"
+  { portIndex: 0, mask: fireBits.FIRE_RIGHT },
+  "Steering Wheel right mouse may expose the independent Port 1 Right Fire for testing"
 );
 assert.deepEqual(
   resolveMouseFireTarget(0, roller, 0, fireBits),
