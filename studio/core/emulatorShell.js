@@ -34,12 +34,12 @@ export function createEmulatorShellHelpers({
     const hasBios = !!getEmulatorBios();
     if (els.btnDownloadRom) els.btnDownloadRom.disabled = !hasRom;
     if (els.btnRunEmulator) {
-      els.btnRunEmulator.disabled = !hasBios;
+      els.btnRunEmulator.disabled = false;
       const label = hasRom ? "Run compiled ROM in debugger" : "Open ROM / Debugger";
       els.btnRunEmulator.title = label;
       els.btnRunEmulator.setAttribute("aria-label", label);
     }
-    if (els.btnRomTestRecorder) els.btnRomTestRecorder.disabled = !hasBios;
+    if (els.btnRomTestRecorder) els.btnRomTestRecorder.disabled = false;
     if (els.btnResetEmulator) {
       const popupVisible = getEmulatorWindow() && !getEmulatorWindow().closed;
       els.btnResetEmulator.disabled = !(popupVisible || hasBios);
@@ -48,7 +48,7 @@ export function createEmulatorShellHelpers({
       const project = getProject();
       const biosText = hasBios
         ? `BIOS loaded: ${getEmulatorBiosName()}`
-        : "No BIOS loaded. Place colecovision.rom or os7.rom in studio/bios/ or load a BIOS manually.";
+        : "No BIOS loaded. Open ROM / Debugger to choose your own 8 KiB ColecoVision BIOS.";
       const rom = getCompiledRom();
       const romText = hasRom ? `ROM ready: ${project.projectName || "amy"}.col (${rom.length} bytes).` : "No compiled ROM yet.";
       els.emulatorMeta.textContent = `${biosText} ${romText}`;

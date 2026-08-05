@@ -703,13 +703,22 @@ export function bindStudioRuntimeEvents(ctx) {
   els.biosImport.addEventListener("change", async () => {
     const file = els.biosImport.files && els.biosImport.files[0];
     if (!file) return;
-    setEmulatorBios({
-      bytes: new Uint8Array(await file.arrayBuffer()),
-      name: file.name || "colecovision.rom",
-      sourceUrl: ""
-    });
-    updateEmulatorUi();
-    setStatus(`Loaded BIOS ${file.name || "colecovision.rom"}. Compile a ROM, then click Run Emulator.`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length !== 8192) {
+      setStatus(`Invalid ColecoVision BIOS: expected 8192 bytes, got ${bytes.length}.`);
+      return;
+    }
+    try {
+      setEmulatorBios({
+        bytes,
+        name: file.name || "colecovision.rom",
+        sourceUrl: ""
+      });
+      updateEmulatorUi();
+      setStatus(`Loaded BIOS ${file.name || "colecovision.rom"}. It is stored only in this browser.`);
+    } catch (error) {
+      setStatus(`Could not store BIOS locally: ${String(error?.message || error)}`);
+    }
   });
 
   els.btnResetEmulator.addEventListener("click", () => {

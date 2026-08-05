@@ -20,7 +20,8 @@ import {
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260802-open-rom-no-compile11";
-import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260805-steering-combined";
+import { loadColecoBiosFromBrowser, saveColecoBiosToBrowser } from "./core/colecoBiosStorage.js?v=20260805-local-bios";
+import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260805-bios-missing-screen";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
@@ -104,7 +105,7 @@ import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260802-keypad-blank";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260731-all-optimizer-source-debug";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260805-bios-import-fix";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260731-source-marker-alignment";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
@@ -720,19 +721,24 @@ const {
   defaultBiosCandidates: DEFAULT_BIOS_CANDIDATES
 });
 
-const { open: openRomTestRecorder, syncSourceBreakpoints: syncRecorderSourceBreakpoints } = createRomTestRecorderUi({
+const { open: openRomTestRecorder, syncSourceBreakpoints: syncRecorderSourceBreakpoints, biosChanged: notifyRecorderBiosChanged } = createRomTestRecorderUi({
   getCompiledRom: () => compiledRom,
   getCompiledMemoryMap: () => compiledMemoryMap,
   getCompiledSymbols: () => compiledSymbols,
   getEmulatorBios: () => emulatorBios,
+  requestEmulatorBios: () => {
+    if (els.biosImport) els.biosImport.value = "";
+    els.biosImport?.click();
+  },
   getProject: () => project,
   setStatus,
   onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
 });
-els.btnRomTestRecorder?.addEventListener("click", async () => {
-  els.btnRomTestRecorder.closest("details")?.removeAttribute("open");
+function openDebuggerWithBiosPrompt() {
+  els.btnRomTestRecorder?.closest("details")?.removeAttribute("open");
   openRomTestRecorder();
-});
+}
+els.btnRomTestRecorder?.addEventListener("click", openDebuggerWithBiosPrompt);
 const transpileSource = (sourceLang, sourceText) => transpileAmySource({
   sourceLang,
   sourceText,
@@ -1023,7 +1029,7 @@ function bindEvents() {
         previewColecoBiosTitleFromMetadata,
         previewDinaBiosTitleScreen,
         previewDinaBiosTitleFromMetadata,
-        runEmbeddedEmulator: openRomTestRecorder,
+        runEmbeddedEmulator: openDebuggerWithBiosPrompt,
         resetEmbeddedEmulator,
         downloadBinary,
         copyText,
@@ -1062,9 +1068,10 @@ function bindEvents() {
         },
         getCompiledRom: () => compiledRom,
         setEmulatorBios: ({ bytes, name, sourceUrl }) => {
-          emulatorBios = bytes;
+          emulatorBios = saveColecoBiosToBrowser(bytes, name);
           emulatorBiosName = name;
           emulatorBiosSourceUrl = sourceUrl;
+          queueMicrotask(notifyRecorderBiosChanged);
         },
         getCompiledMemoryMap: () => compiledMemoryMap,
         getCompiledSymbols: () => compiledSymbols,
@@ -1102,5 +1109,13 @@ syncUiFromProject();
 preloadExamplesCatalog();
 setView("studio");
 setStatus(`Ready. ${codecStatusLine()}\nTip: Generate ASM, then compile the ROM in Amy.`);
-tryAutoLoadBios();
+const savedColecoBios = loadColecoBiosFromBrowser();
+if (savedColecoBios) {
+  emulatorBios = savedColecoBios.bytes;
+  emulatorBiosName = savedColecoBios.name;
+  emulatorBiosSourceUrl = "";
+  updateEmulatorUi();
+} else {
+  tryAutoLoadBios();
+}
 hideStudioLoading();

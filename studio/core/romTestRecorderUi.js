@@ -46,6 +46,10 @@ export function consumeMouseSpinnerTicks(accumulated, limit = 127) {
   };
 }
 
+export function preferredControllerUiPort(config, selectedPort = 0) {
+  return config?.ports?.[0]?.type === "wheel" ? 1 : selectedPort === 1 ? 1 : 0;
+}
+
 export function mouseButtonToFireMask(button, inputBits) {
   if (button === 0) return inputBits?.FIRE_LEFT || 0;
   if (button === 2) return inputBits?.FIRE_RIGHT || 0;
@@ -152,7 +156,16 @@ function ensureStyles() {
     .rom-recorder .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .rom-recorder__body { display:grid; grid-template-columns:minmax(480px,2fr) minmax(520px,1fr); grid-template-rows:auto minmax(0,1fr); gap:10px 12px; padding:10px 12px; height:calc(96vh - 52px); overflow:hidden; box-sizing:border-box; }
     .rom-recorder__stage { grid-row:1 / span 2; display:grid; align-content:start; justify-items:center; gap:6px; min-width:0; min-height:0; }
+    .rom-recorder__screen-wrap { position:relative; width:min(100%,512px); aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; border:1px solid #31424c; overflow:hidden; }
     .rom-recorder__screen { max-width:100%; image-rendering:pixelated; background:#000; border:1px solid #31424c; outline:none; }
+    .rom-recorder__screen-wrap .rom-recorder__screen { border:0; }
+    .rom-recorder__bios-missing { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:12px; padding:24px; box-sizing:border-box; text-align:center; color:#e8edf0; background:radial-gradient(circle at 50% 38%,#17242b 0,#090e12 58%,#030405 100%); }
+    .rom-recorder__bios-missing[hidden] { display:none; }
+    .rom-recorder__bios-wordmark { font-weight:700; font-size:clamp(17px,3vw,28px); letter-spacing:.12em; text-shadow:0 2px #000; }
+    .rom-recorder__bios-wordmark span:nth-child(1) { color:#58d6c7; } .rom-recorder__bios-wordmark span:nth-child(2) { color:#65dbef; } .rom-recorder__bios-wordmark span:nth-child(3) { color:#6487dd; } .rom-recorder__bios-wordmark span:nth-child(4) { color:#b46bc7; } .rom-recorder__bios-wordmark span:nth-child(5) { color:#d66378; } .rom-recorder__bios-wordmark span:nth-child(6) { color:#d98a58; } .rom-recorder__bios-wordmark span:nth-child(7) { color:#d6c85c; } .rom-recorder__bios-wordmark span:nth-child(8) { color:#78c86a; }
+    .rom-recorder__bios-missing strong { color:#fff; font-size:15px; letter-spacing:.05em; }
+    .rom-recorder__bios-missing p { max-width:360px; margin:0; color:#a7b4bb; font-size:12px; line-height:1.5; }
+    .rom-recorder__bios-missing button { color:#081014; background:#65dbef; border-color:#8ee7f5; }
     .rom-recorder__side { grid-column:2; grid-row:1; display:grid; align-content:start; gap:6px; min-width:0; }
     .rom-recorder__side label { display:grid; gap:4px; color:#99aab4; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
     .rom-recorder__side select,.rom-recorder__side input { width:100%; box-sizing:border-box; }
@@ -219,7 +232,15 @@ function buildDialog() {
     </div>
     <div class="rom-recorder__body">
       <div class="rom-recorder__stage">
-        <canvas class="rom-recorder__screen" width="256" height="192" tabindex="0"></canvas>
+        <div class="rom-recorder__screen-wrap">
+          <canvas class="rom-recorder__screen" width="256" height="192" tabindex="0"></canvas>
+          <div class="rom-recorder__bios-missing" data-field="biosMissing" hidden>
+            <div class="rom-recorder__bios-wordmark" aria-hidden="true"><span>C</span><span>O</span><span>L</span><span>E</span><span>C</span><span>O</span><span>V</span><span>ISION</span></div>
+            <strong>ColecoVision BIOS missing</strong>
+            <p>Amy Studio cannot distribute the system BIOS. Add your own 8 KiB BIOS; it remains stored only in this browser.</p>
+            <button type="button" data-action="loadBios">Add ColecoVision BIOS...</button>
+          </div>
+        </div>
         <div class="rom-recorder__transport" aria-label="Video controls">
           <button type="button" data-action="back10" title="Back 10 frames" aria-label="Back 10 frames">&#x23EA;</button><button type="button" data-action="back1" title="Back 1 frame" aria-label="Back 1 frame">&#x23F4;</button><button type="button" data-action="play" title="Pause" aria-label="Pause">&#x23F8;</button><button type="button" data-action="sourceStep" title="Step one Amy source line" aria-label="Step one Amy source line">&#x21E5;</button><button type="button" data-action="forward1" title="Forward 1 frame" aria-label="Forward 1 frame">&#x23F5;</button><button type="button" data-action="forward10" title="Forward 10 frames" aria-label="Forward 10 frames">&#x23E9;</button>
           <label title="Playback speed"><span class="sr-only">Speed</span><select data-field="speed" aria-label="Playback speed"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
@@ -270,6 +291,7 @@ export function createRomTestRecorderUi({
   getCompiledMemoryMap = () => "",
   getCompiledSymbols,
   getEmulatorBios,
+  requestEmulatorBios = () => {},
   getProject,
   setStatus,
   onSourceBreakpointHit = () => {}
@@ -1172,6 +1194,7 @@ export function createRomTestRecorderUi({
 
   function bindDialog() {
     action("close").addEventListener("click", () => dialog.close());
+    action("loadBios").addEventListener("click", requestEmulatorBios);
     action("fullscreen").addEventListener("click", async () => {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await dialog.requestFullscreen();
@@ -1444,10 +1467,12 @@ export function createRomTestRecorderUi({
           mouseSpinnerAccum[1] = 0;
           mouseJoystickMask = 0;
           clearMouseFireButtons();
+          field("controller").value = String(preferredControllerUiPort(controllerSetup?.getConfig(), field("controller").value));
           renderMouseSpinnerButton();
           dialog?.querySelector("canvas")?.focus();
         }
       });
+      field("controller").value = String(preferredControllerUiPort(controllerSetup.getConfig(), field("controller").value));
       bindDialog();
     }
     symbols = externalRom ? [] : parseAmySymbols(getCompiledSymbols());
@@ -1473,6 +1498,14 @@ export function createRomTestRecorderUi({
     applyScale();
     action("useCompiledRom").disabled = !getCompiledRom();
     dialog.showModal();
+    field("biosMissing").hidden = Boolean(getEmulatorBios());
+    if (!getEmulatorBios()) {
+      playing = false;
+      playbackAccumulator = 0;
+      setRecorderStatus("ColecoVision BIOS missing. Add your own 8 KiB BIOS to start emulation.");
+      action("loadBios").focus();
+      return;
+    }
     const canResume = Boolean(core && recorder && (loadedRom === getCompiledRom() || loadedRom === externalRom));
     if (canResume) {
       playing = false;
@@ -1506,5 +1539,14 @@ export function createRomTestRecorderUi({
     setRecorderStatus("Source breakpoints updated without recompiling the ROM.");
   }
 
-  return { open, syncSourceBreakpoints };
+  async function biosChanged() {
+    if (!dialog || !dialog.open) return;
+    field("biosMissing").hidden = Boolean(getEmulatorBios());
+    if (!getEmulatorBios()) return;
+    setRecorderStatus("Loading deterministic GearColeco core...");
+    try { await startCore(); setRecorderStatus("Running."); }
+    catch (error) { stopCore(); setRecorderStatus(error.message || String(error)); }
+  }
+
+  return { open, syncSourceBreakpoints, biosChanged };
 }
