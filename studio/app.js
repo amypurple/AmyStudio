@@ -20,7 +20,7 @@ import {
   resolveEmulatorBackendUrls
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260802-open-rom-no-compile11";
-import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260805-steering-pair";
+import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260805-steering-combined";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,

@@ -17,9 +17,12 @@ const roller = {
 assert.deepEqual(mapMouseSpinnerMovement(roller, 0, 5, -3), [5, -6]);
 assert.deepEqual(mapMouseSpinnerMovement(roller, 1, 5, -3), [5, -6],
   "Roller mouse input must drive both ports regardless of the selected setup tab.");
-assert.deepEqual(mapMouseSpinnerMovement({
+const wheelMovement = {
   ports: [{ type: "wheel", sensitivity: 3 }, { type: "standard", sensitivity: 6 }]
-}, 0, 8, 20), [4, 0]);
+};
+assert.deepEqual(mapMouseSpinnerMovement(wheelMovement, 0, 8, 20), [4, 0]);
+assert.deepEqual(mapMouseSpinnerMovement(wheelMovement, 1, 8, 20), [4, 0],
+  "Steering Wheel mouse movement must always target Port 1.");
 assert.deepEqual(mapMouseSpinnerMovement({
   ports: [{ type: "standard", sensitivity: 6 }, { type: "super-action", sensitivity: 6 }]
 }, 1, -7, 20), [0, -7]);

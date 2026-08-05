@@ -60,6 +60,11 @@ function ensureStyles() {
     .controller-setup__roller-fire-bank { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-bottom:10px; }
     .controller-setup__roller-fire-bank button { min-width:0; padding:7px 4px; color:#eef4f5; background:#18232a; }
     .controller-setup__roller-fire-bank strong { display:block; color:#65dbef; font-size:10px; }
+    .controller-setup__wheel-pair { display:grid; gap:12px; }
+    .controller-setup__pair-panel { min-width:0; padding:10px 50px; border:1px solid #344751; background:#0c1318; }
+    .controller-setup__pair-panel h3 { margin:0 0 8px; color:#65dbef; font:700 11px/1.2 ui-monospace,Consolas,monospace; letter-spacing:.06em; }
+    .controller-setup__pair-panel .controller-setup__shell { min-height:260px; }
+    .controller-setup__pair-panel--wheel .controller-setup__shell { min-height:170px; grid-template-columns:1fr; }
     .controller-setup__binding { display:block; margin-top:3px; color:#377485; font:9px/1.1 ui-monospace,Consolas,monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .controller-setup button.is-capturing { outline:3px solid #ffd36a; box-shadow:0 0 14px #ffd36a99; }
     .controller-setup__capture { margin-top:9px; min-height:38px; padding:8px; border:1px solid #3d505a; color:#ffd36a; background:#101820; font:12px/1.4 ui-monospace,Consolas,monospace; }
@@ -104,30 +109,31 @@ function rollerFireMarkup(config) {
   ).join("")}</div>`;
 }
 
-function deviceMarkup(port, { hideFire = false } = {}) {
+function deviceMarkup(port, { hideFire = false, targetPort = null } = {}) {
+  const mappedButton = (actionId, label, sourcePort = port) => buttonMarkup(actionId, label, sourcePort, targetPort);
   const arrows = [
     ["UP", "&#x2191;", "up"],
     ["LEFT", "&#x2190;", "left"],
     ["RIGHT", "&#x2192;", "right"],
     ["DOWN", "&#x2193;", "down"]
   ].map(([id, label, className]) => {
-    return buttonMarkup(id, label, port).replace("<button ", `<button class="${className}" `);
+    return mappedButton(id, label, port).replace("<button ", `<button class="${className}" `);
   }).join("");
   const keypad = ["1","2","3","4","5","6","7","8","9","ASTERISK","0","HASH"]
-    .map((key) => buttonMarkup(`KEYPAD_${key}`, key === "ASTERISK" ? "*" : key === "HASH" ? "#" : key, port))
+    .map((key) => mappedButton(`KEYPAD_${key}`, key === "ASTERISK" ? "*" : key === "HASH" ? "#" : key, port))
     .join("");
   const superButtons = port.type === "super-action"
     ? `<div class="controller-setup__super">${SUPER_ACTION_FIRE_ROW.map(({ action, label, className }) => {
-        return buttonMarkup(action, label, port).replace("<button ", `<button class="${className}" `);
+        return mappedButton(action, label, port).replace("<button ", `<button class="${className}" `);
       }).join("")}</div>`
     : "";
   const spinner = port.type !== "standard"
-    ? `<div class="controller-setup__spinner">${buttonMarkup("SPINNER_NEG", "&#x21BA;", port)}<div class="controller-setup__spinner-core" aria-hidden="true"></div>${buttonMarkup("SPINNER_POS", "&#x21BB;", port)}</div>`
+    ? `<div class="controller-setup__spinner">${mappedButton("SPINNER_NEG", "&#x21BA;", port)}<div class="controller-setup__spinner-core" aria-hidden="true"></div>${mappedButton("SPINNER_POS", "&#x21BB;", port)}</div>`
     : "";
   return `
     <div class="controller-setup__shell">
-      ${port.type === "super-action" || hideFire ? "" : buttonMarkup("FIRE_LEFT", "LEFT<br>FIRE", port).replace("<button ", '<button class="controller-setup__fire controller-setup__fire--left" ')}
-      ${port.type === "super-action" || hideFire ? "" : buttonMarkup("FIRE_RIGHT", port.type === "wheel" ? "GAS<br>PEDAL" : "RIGHT<br>FIRE", port).replace("<button ", '<button class="controller-setup__fire controller-setup__fire--right" ')}
+      ${port.type === "super-action" || hideFire ? "" : mappedButton("FIRE_LEFT", "LEFT<br>FIRE", port).replace("<button ", '<button class="controller-setup__fire controller-setup__fire--left" ')}
+      ${port.type === "super-action" || hideFire ? "" : mappedButton("FIRE_RIGHT", port.type === "wheel" ? "GAS<br>PEDAL" : "RIGHT<br>FIRE", port).replace("<button ", '<button class="controller-setup__fire controller-setup__fire--right" ')}
       <div class="controller-setup__stick">${arrows}<div class="disc" aria-hidden="true"></div></div>
       <div class="controller-setup__keypad">${keypad}</div>
       ${superButtons}
@@ -135,17 +141,20 @@ function deviceMarkup(port, { hideFire = false } = {}) {
     </div>`;
 }
 
-function wheelDeviceMarkup(port) {
-  const pedal = buttonMarkup("FIRE_LEFT", "GAS<br>PEDAL", port)
+export function buildWheelDeviceMarkup(config) {
+  const wheel = config.ports[0];
+  const pedal = buttonMarkup("FIRE_LEFT", "GAS<br>PEDAL", wheel, 0)
     .replace("<button ", '<button class="controller-setup__fire controller-setup__fire--right" ');
   const spinner = '<div class="controller-setup__spinner">' +
-    buttonMarkup("SPINNER_NEG", "&#x21BA;", port) +
+    buttonMarkup("SPINNER_NEG", "&#x21BA;", wheel, 0) +
     '<div class="controller-setup__spinner-core" aria-hidden="true"></div>' +
-    buttonMarkup("SPINNER_POS", "&#x21BB;", port) +
+    buttonMarkup("SPINNER_POS", "&#x21BB;", wheel, 0) +
     "</div>";
-  return '<div class="controller-setup__shell">' + pedal +
-    '<div class="controller-setup__note">STEERING WHEEL · PORT 1<br>Pedal = Left Fire. Use PORT 2 for gears and keypad.</div>' +
-    spinner + "</div>";
+  const wheelPanel = '<section class="controller-setup__pair-panel controller-setup__pair-panel--wheel"><h3>PORT 1 · STEERING + PEDAL</h3>' +
+    '<div class="controller-setup__shell">' + pedal + spinner + "</div></section>";
+  const companionPanel = '<section class="controller-setup__pair-panel"><h3>PORT 2 · GEAR + KEYPAD</h3>' +
+    deviceMarkup(config.ports[1], { targetPort: 1 }) + "</section>";
+  return '<div class="controller-setup__wheel-pair">' + wheelPanel + companionPanel + "</div>";
 }
 
 function connectedGamepads(gamepads = navigator.getGamepads?.() || []) {
@@ -175,7 +184,7 @@ export function createControllerSetupUi({
         <div class="controller-setup__ports"><button type="button" data-port="0">PORT 1</button><button type="button" data-port="1">PORT 2</button></div>
         <label>Controller type<select data-field="type"></select></label>
         <label data-roller-mode>Roller mode<select data-field="rollerMode"><option value="trackball">Trackball</option><option value="joystick">Joystick</option></select></label>
-        <label>Gamepad<select data-field="gamepad"></select></label>
+        <label data-gamepad-setting>Gamepad<select data-field="gamepad"></select></label>
         <label data-spinner-setting>Wheel / roller sensitivity<input data-field="sensitivity" type="range" min="1" max="32"></label>
         <div class="controller-setup__saved">Saved automatically in this browser.</div>
         <div class="controller-setup__note" data-field="note"></div>
@@ -220,6 +229,8 @@ export function createControllerSetupUi({
   }
 
   function render() {
+    const wheelActive = config.ports[0].type === "wheel";
+    if (wheelActive) portIndex = 0;
     const port = config.ports[portIndex];
     for (const button of dialog.querySelectorAll("[data-port]")) {
       button.setAttribute("aria-selected", String(Number(button.dataset.port) === portIndex));
@@ -227,6 +238,8 @@ export function createControllerSetupUi({
     typeSelect.value = port.type === "roller-y" ? "roller-x" : port.type;
     const roller = port.type === "roller-x" || port.type === "roller-y";
     const wheelCompanion = portIndex === 1 && config.ports[0].type === "wheel";
+    dialog.querySelector(".controller-setup__ports").hidden = wheelActive;
+    dialog.querySelector("[data-gamepad-setting]").hidden = wheelActive;
     typeSelect.disabled = wheelCompanion;
     field("rollerMode").value = config.rollerMode || "trackball";
     dialog.querySelector("[data-roller-mode]").hidden = !roller;
@@ -243,8 +256,8 @@ export function createControllerSetupUi({
         : port.type === "super-action"
           ? "Yellow, red, purple, and blue fire buttons share one row. The speed roller is available below them."
           : "Standard joystick, two side fire buttons, and the 12-key keypad.";
-    field("device").innerHTML = port.type === "wheel"
-      ? wheelDeviceMarkup(port)
+    field("device").innerHTML = wheelActive
+      ? buildWheelDeviceMarkup(config)
       : roller
         ? rollerFireMarkup(config) + deviceMarkup(port, { hideFire: true })
         : deviceMarkup(port);
@@ -352,7 +365,13 @@ export function createControllerSetupUi({
   });
   dialog.querySelector("[data-reset]").addEventListener("click", () => {
     const defaults = createDefaultControllerConfig();
-    config.ports[portIndex] = defaults.ports[portIndex];
+    if (config.ports[0].type === "wheel") {
+      config.ports[0] = defaults.ports[0];
+      config.ports[1] = defaults.ports[1];
+      portIndex = 0;
+    } else {
+      config.ports[portIndex] = defaults.ports[portIndex];
+    }
     persist();
     cancelCapture("Port reset to defaults.");
     render();

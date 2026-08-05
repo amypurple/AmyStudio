@@ -33,7 +33,7 @@ import {
   NTSC_CYCLES_PER_FRAME,
   resolveProfileTarget
 } from "./routineCycleProfiler.js?v=20260801-profile-readable";
-import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260805-steering-pair";
+import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260805-steering-combined";
 
 const SEED = 0x19770527;
 
@@ -92,6 +92,9 @@ export function mapMouseSpinnerMovement(config, selectedPort, movementX, movemen
   const scale = (index) => Math.max(1, Math.min(32, Number(ports[index]?.sensitivity) || 6)) / 6;
   const x = Number.isFinite(movementX) ? movementX : 0;
   const y = Number.isFinite(movementY) ? movementY : 0;
+  if (ports[0]?.type === "wheel") {
+    return [x ? x * scale(0) : 0, 0];
+  }
   const isRoller = ports[0]?.type === "roller-x" || ports[1]?.type === "roller-y";
   if (isRoller && config?.rollerMode === "joystick") return [0, 0];
   if (isRoller) {

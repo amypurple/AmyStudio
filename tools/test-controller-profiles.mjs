@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { buildWheelDeviceMarkup } from "../studio/core/controllerSetupUi.js";
 import {
   CONTROLLER_STORAGE_KEY,
   SUPER_ACTION_FIRE_ROW,
@@ -143,6 +144,11 @@ assert.equal(
 assert.deepEqual(frame.spinnerDeltas, [0, 0], "Roller joystick mode must not emit spinner ticks");
 
 const wheelConfig = setControllerDeviceType(createDefaultControllerConfig(), 1, "wheel");
+const wheelMarkup = buildWheelDeviceMarkup(wheelConfig);
+assert.match(wheelMarkup, /PORT 1 · STEERING \+ PEDAL/);
+assert.match(wheelMarkup, /PORT 2 · GEAR \+ KEYPAD/);
+assert.match(wheelMarkup, /data-map-port="0"/, "Wheel controls must target Port 1");
+assert.match(wheelMarkup, /data-map-port="1"/, "Companion joystick and keypad must target Port 2");
 assert.equal(wheelConfig.ports[0].type, "wheel", "Steering Wheel must always occupy Port 1");
 assert.equal(wheelConfig.ports[1].type, "standard", "Steering Wheel must preserve a standard companion controller on Port 2");
 frame = buildControllerFrame(wheelConfig, {
