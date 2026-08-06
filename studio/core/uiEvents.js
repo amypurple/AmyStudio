@@ -241,6 +241,8 @@ export function bindTopUiEvents(ctx) {
 
   els.btnAddProjectFile?.addEventListener("click", () => {
     els.projectFileImport.value = "";
+    els.projectFileImport.accept = "";
+    els.projectFileImport.multiple = true;
     els.projectFileImport.click();
   });
 
@@ -254,6 +256,8 @@ export function bindTopUiEvents(ctx) {
 
   els.btnProjectPicture?.addEventListener("click", () => {
     els.projectFileImport.value = "";
+    els.projectFileImport.accept = ".png,.bmp,.gif,.jpg,.jpeg,.webp,.pc,.sc2,image/*";
+    els.projectFileImport.multiple = false;
     els.projectFileImport.click();
   });
 }

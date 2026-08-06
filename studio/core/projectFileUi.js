@@ -1301,48 +1301,47 @@ export function createProjectFileUiHelpers({
     }
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
-      overlay.style.position = "fixed";
-      overlay.style.inset = "0";
-      overlay.style.zIndex = "9999";
-      overlay.style.background = "rgba(8, 13, 18, 0.72)";
-      overlay.style.display = "grid";
-      overlay.style.placeItems = "center";
-      overlay.style.padding = "24px";
+      overlay.className = "picture-import-modal";
 
       const panel = document.createElement("div");
-      panel.style.width = "min(980px, 96vw)";
-      panel.style.maxHeight = "90vh";
-      panel.style.overflow = "auto";
-      panel.style.background = "#eef5ef";
-      panel.style.color = "#18202a";
-      panel.style.border = "3px solid #18202a";
-      panel.style.boxShadow = "10px 10px 0 rgba(0,0,0,0.35)";
-      panel.style.padding = "18px";
-      panel.style.fontFamily = "Georgia, 'Times New Roman', serif";
+      panel.className = "picture-import-modal__panel";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-labelledby", "picture-import-title");
 
+      const header = document.createElement("header");
+      header.className = "picture-import-modal__header";
+      const heading = document.createElement("div");
       const title = document.createElement("h2");
-      title.textContent = `Prepare picture import for ${file.name}`;
-      title.style.margin = "0 0 8px";
-      panel.appendChild(title);
+      title.id = "picture-import-title";
+      title.textContent = "PICTURE / GRAPHICS IMPORT";
+      const filename = document.createElement("div");
+      filename.className = "picture-import-modal__filename";
+      filename.textContent = file.name;
+      heading.append(title, filename);
+      const closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "picture-import-modal__close";
+      closeButton.textContent = "✕";
+      closeButton.title = "Close";
+      closeButton.setAttribute("aria-label", "Close picture import");
+      header.append(heading, closeButton);
+      panel.appendChild(header);
 
       const help = document.createElement("p");
+      help.className = "picture-import-modal__help";
       help.textContent = "Choose fit and CV Paint-style color conversion before Coleco/TMS9918 compression. The preview is the final pattern/color result.";
-      help.style.margin = "0 0 14px";
       panel.appendChild(help);
 
       const body = document.createElement("div");
-      body.style.display = "grid";
-      body.style.gridTemplateColumns = "minmax(260px, 340px) minmax(320px, 1fr)";
-      body.style.gap = "16px";
+      body.className = "picture-import-modal__body";
 
       const form = document.createElement("div");
-      form.style.display = "grid";
-      form.style.gap = "12px";
+      form.className = "picture-import-modal__controls";
 
       const makeLabel = (text) => {
         const label = document.createElement("label");
-        label.style.display = "grid";
-        label.style.gap = "4px";
+        label.className = "picture-import-modal__field";
         label.textContent = text;
         return label;
       };
@@ -1406,9 +1405,7 @@ export function createProjectFileUiHelpers({
       form.appendChild(ditherAmount.label);
 
       const smoothingLabel = document.createElement("label");
-      smoothingLabel.style.display = "flex";
-      smoothingLabel.style.alignItems = "center";
-      smoothingLabel.style.gap = "8px";
+      smoothingLabel.className = "picture-import-modal__check";
       const smoothing = document.createElement("input");
       smoothing.type = "checkbox";
       smoothing.checked = true;
@@ -1417,17 +1414,13 @@ export function createProjectFileUiHelpers({
       form.appendChild(smoothingLabel);
 
       const previewWrap = document.createElement("div");
-      previewWrap.style.display = "grid";
-      previewWrap.style.gap = "8px";
+      previewWrap.className = "picture-import-modal__preview";
       const previewTitle = document.createElement("strong");
       previewTitle.textContent = "ColecoVision preview";
       const previewCanvas = document.createElement("canvas");
+      previewCanvas.className = "picture-import-modal__canvas";
       previewCanvas.width = 512;
       previewCanvas.height = 384;
-      previewCanvas.style.width = "min(512px, 100%)";
-      previewCanvas.style.border = "2px solid #18202a";
-      previewCanvas.style.background = "#000";
-      previewCanvas.style.imageRendering = "pixelated";
       const previewStatus = document.createElement("small");
       previewStatus.textContent = "Rendering preview...";
       previewWrap.appendChild(previewTitle);
@@ -1476,21 +1469,25 @@ export function createProjectFileUiHelpers({
       };
 
       const actions = document.createElement("div");
-      actions.style.display = "flex";
-      actions.style.gap = "8px";
-      actions.style.flexWrap = "wrap";
-      actions.style.marginTop = "16px";
+      actions.className = "picture-import-modal__actions";
 
       const closeWith = (value) => {
+        document.removeEventListener("keydown", onKeyDown);
         overlay.remove();
         resolve(value);
       };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") closeWith(null);
+      };
+      closeButton.addEventListener("click", () => closeWith(null));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) closeWith(null);
+      });
+      document.addEventListener("keydown", onKeyDown);
       const convert = document.createElement("button");
       convert.type = "button";
+      convert.className = "picture-import-modal__convert";
       convert.textContent = "Convert and compare compression";
-      convert.style.padding = "8px 10px";
-      convert.style.border = "2px solid #18202a";
-      convert.style.background = "#ffd15c";
       convert.addEventListener("click", () => closeWith({
         ...currentOptions()
       }));
@@ -1498,10 +1495,8 @@ export function createProjectFileUiHelpers({
 
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Cancel import";
-      cancel.style.padding = "8px 10px";
-      cancel.style.border = "2px solid #18202a";
-      cancel.style.background = "#f2b0a2";
+      cancel.className = "picture-import-modal__cancel";
+      cancel.textContent = "Cancel";
       cancel.addEventListener("click", () => closeWith(null));
       actions.appendChild(cancel);
       panel.appendChild(actions);
@@ -1608,24 +1603,56 @@ export function createProjectFileUiHelpers({
 
       const panel = document.createElement("div");
       panel.className = "picture-compression-modal__panel";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-labelledby", "picture-compression-title");
 
+      const header = document.createElement("header");
+      header.className = "picture-compression-modal__header";
+      const heading = document.createElement("div");
       const title = document.createElement("h2");
-      title.textContent = `Choose ${titleLabel} for ${file.name}`;
-      panel.appendChild(title);
+      title.id = "picture-compression-title";
+      title.textContent = "PICTURE / GRAPHICS IMPORT";
+      const filename = document.createElement("div");
+      filename.className = "picture-compression-modal__filename";
+      filename.textContent = `${file.name} · ${titleLabel}`;
+      heading.append(title, filename);
+      const closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "picture-compression-modal__close";
+      closeButton.textContent = "✕";
+      closeButton.title = "Close";
+      closeButton.setAttribute("aria-label", "Close picture import");
+      header.append(heading, closeButton);
+      panel.appendChild(header);
+
+      const content = document.createElement("div");
+      content.className = "picture-compression-modal__content";
+      panel.appendChild(content);
 
       const bestTotal = selectPictureCompressionCandidate?.(usable, "smallest-total");
       const bestData = selectPictureCompressionCandidate?.(usable, "smallest-data");
       const summary = document.createElement("p");
       summary.textContent = `${rawLabel}. Pick a card, or use the quick buttons for the smallest first-use total or smallest data only. Browser ms are verification timings; Z80/VDP runtime is ranked by codec family.`;
       summary.className = "picture-compression-modal__summary";
-      panel.appendChild(summary);
+      content.appendChild(summary);
 
-      const quick = document.createElement("div");
-      quick.className = "picture-compression-modal__quick";
       const closeWith = (candidate) => {
+        document.removeEventListener("keydown", onKeyDown);
         overlay.remove();
         resolve(candidate || null);
       };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") closeWith(null);
+      };
+      closeButton.addEventListener("click", () => closeWith(null));
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) closeWith(null);
+      });
+      document.addEventListener("keydown", onKeyDown);
+
+      const quick = document.createElement("div");
+      quick.className = "picture-compression-modal__quick";
       for (const item of [
         { label: `Best total: ${bestTotal?.label || "n/a"}`, candidate: bestTotal },
         { label: `Smallest data: ${bestData?.label || "n/a"}`, candidate: bestData },
@@ -1638,7 +1665,7 @@ export function createProjectFileUiHelpers({
         button.addEventListener("click", () => closeWith(item.candidate));
         quick.appendChild(button);
       }
-      panel.appendChild(quick);
+      content.appendChild(quick);
 
       const sortBar = document.createElement("div");
       sortBar.className = "picture-compression-modal__sort";
@@ -1651,11 +1678,10 @@ export function createProjectFileUiHelpers({
         { mode: "compress", label: "Compress speed" },
         { mode: "runtime", label: "Z80/VDP runtime" }
       ];
-      panel.appendChild(sortBar);
+      content.appendChild(sortBar);
 
       const grid = document.createElement("div");
       grid.className = "picture-compression-modal__grid";
-
       const sortedCandidates = () => {
         const sorted = [...candidates];
         const valueFor = (candidate) => {
@@ -1667,7 +1693,6 @@ export function createProjectFileUiHelpers({
         };
         return sorted.sort((a, b) => valueFor(a) - valueFor(b) || (a.dataBytes ?? 0) - (b.dataBytes ?? 0));
       };
-
       const renderGrid = () => {
         grid.textContent = "";
         for (const button of sortBar.querySelectorAll("button")) {
@@ -1698,7 +1723,6 @@ export function createProjectFileUiHelpers({
           grid.appendChild(card);
         }
       };
-
       for (const item of sortButtons) {
         const button = document.createElement("button");
         button.type = "button";
@@ -1711,23 +1735,25 @@ export function createProjectFileUiHelpers({
         sortBar.appendChild(button);
       }
       renderGrid();
-      panel.appendChild(grid);
+      content.appendChild(grid);
 
+      const footer = document.createElement("footer");
+      footer.className = "picture-compression-modal__footer";
       if (options.allowCompareAll) {
         const compareAll = document.createElement("button");
         compareAll.type = "button";
         compareAll.textContent = "Compare all codecs";
         compareAll.className = "picture-compression-modal__secondary";
         compareAll.addEventListener("click", () => closeWith({ action: "compareAll" }));
-        panel.appendChild(compareAll);
+        footer.appendChild(compareAll);
       }
-
       const cancel = document.createElement("button");
       cancel.type = "button";
-      cancel.textContent = "Cancel import";
+      cancel.textContent = "Cancel";
       cancel.className = "picture-compression-modal__cancel";
       cancel.addEventListener("click", () => closeWith(null));
-      panel.appendChild(cancel);
+      footer.appendChild(cancel);
+      panel.appendChild(footer);
 
       overlay.appendChild(panel);
       document.body.appendChild(overlay);
@@ -1737,43 +1763,35 @@ export function createProjectFileUiHelpers({
   function createPictureCompressionProgressDialog(file, message) {
     if (typeof document === "undefined") return { close() {} };
     const overlay = document.createElement("div");
-    overlay.style.position = "fixed";
-    overlay.style.inset = "0";
-    overlay.style.zIndex = "9999";
-    overlay.style.background = "rgba(8, 13, 18, 0.72)";
-    overlay.style.display = "grid";
-    overlay.style.placeItems = "center";
-    overlay.style.padding = "24px";
-
+    overlay.className = "picture-compression-modal";
     const panel = document.createElement("div");
-    panel.style.width = "min(560px, 94vw)";
-    panel.style.background = "#f6efe2";
-    panel.style.color = "#18202a";
-    panel.style.border = "3px solid #18202a";
-    panel.style.boxShadow = "10px 10px 0 rgba(0,0,0,0.35)";
-    panel.style.padding = "18px";
-    panel.style.fontFamily = "Georgia, 'Times New Roman', serif";
-
+    panel.className = "picture-compression-modal__panel picture-compression-modal__panel--progress";
+    panel.setAttribute("role", "status");
+    panel.setAttribute("aria-live", "polite");
+    const header = document.createElement("header");
+    header.className = "picture-compression-modal__header";
+    const heading = document.createElement("div");
     const title = document.createElement("h2");
-    title.textContent = `Comparing all codecs for ${file.name}`;
-    title.style.margin = "0 0 8px";
+    title.textContent = "ANALYZING COMPRESSION";
+    const filename = document.createElement("div");
+    filename.className = "picture-compression-modal__filename";
+    filename.textContent = file.name;
+    heading.append(title, filename);
+    header.appendChild(heading);
     const body = document.createElement("p");
+    body.className = "picture-compression-modal__progress-message";
     body.textContent = message || "Compression workers are running. This can take a few seconds for slower codecs.";
-    body.style.margin = "0";
-    panel.appendChild(title);
-    panel.appendChild(body);
+    const activity = document.createElement("div");
+    activity.className = "picture-compression-modal__activity";
+    activity.setAttribute("aria-hidden", "true");
+    panel.append(header, body, activity);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
     return {
-      close() {
-        overlay.remove();
-      },
-      setMessage(nextMessage) {
-        body.textContent = nextMessage;
-      }
+      close() { overlay.remove(); },
+      setMessage(nextMessage) { body.textContent = nextMessage; }
     };
   }
-
   async function buildPictureEntriesFromTablesWithChoice(file, tables, source) {
     const includeNameTable = !!tables.includeNameTable || !isDefaultPictureNameTable(tables.name);
     if (typeof evaluatePictureCompressionCandidates !== "function" || typeof buildPictureProjectFileEntriesFromCandidate !== "function") {
