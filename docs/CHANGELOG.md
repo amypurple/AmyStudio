@@ -1,3 +1,10 @@
+## 2026-08-06 - Commercial BIOS TIMER audit and atomic named timers
+
+- Audited 163 unique commercial-era ColecoVision ROM images for direct OS-7 TIMER calls; 30 contain a high-confidence `Init/Start/Test/Run` lifecycle and eight reached TIMER vectors during generic GearColeco execution.
+- Documented the BIOS three-byte timer records, `$73D3/$73D5` pointer state, direct and parameter-block entry points, commercial usage evidence, and why Amy keeps a static named-timer model instead of exposing dynamic BIOS allocation.
+- Made `start timer` and `stop timer` NMI-safe by disabling the timer before rewriting its 16-bit count and signal, preventing torn restarts and stopped timers with ghost expirations.
+- Added codegen and GearColeco ROM regressions, including a 17-assertion safety self-test; repeating and one-shot timers pass under off, safe, balanced, aggressive, and experimental optimization.
+
 ## 2026-08-05 - Context-aware Amy syntax and exact overlay alignment
 
 - Added a presentation grammar for fixed multi-word Amy commands and sprite mode literals while keeping legal identifier names neutral.

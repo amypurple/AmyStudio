@@ -1312,19 +1312,22 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function emitSetTimerBytes(timer, activeValue) {
-    const low = `$${(timer.interval & 0xFF).toString(16).toUpperCase().padStart(2, "0")}`;
-    const high = `$${((timer.interval >> 8) & 0xFF).toString(16).toUpperCase().padStart(2, "0")}`;
-    const active = `$${(activeValue ? 1 : 0).toString(16).toUpperCase().padStart(2, "0")}`;
-    return [
+    const low = "$" + (timer.interval & 0xFF).toString(16).toUpperCase().padStart(2, "0");
+    const high = "$" + ((timer.interval >> 8) & 0xFF).toString(16).toUpperCase().padStart(2, "0");
+    const lines = [
+      "    xor a",
+      `    ld (${timer.activeLabel}),a`,
       `    ld hl,${timer.countLabel}`,
       `    ld (hl),${low}`,
       "    inc hl",
       `    ld (hl),${high}`,
       "    xor a",
-      `    ld (${timer.signalLabel}),a`,
-      `    ld a,${active}`,
-      `    ld (${timer.activeLabel}),a`
+      `    ld (${timer.signalLabel}),a`
     ];
+    if (activeValue) {
+      lines.push("    inc a", `    ld (${timer.activeLabel}),a`);
+    }
+    return lines;
   }
 
   function emitTimerTestAndConsume(name, falseLabel, rawLine) {

@@ -1,0 +1,163 @@
+cartridge "TIMER SAFETY/AMY STUDIO/2026"
+
+timer Fast every 2 ticks stopped
+timer OneShot after 5 ticks stopped
+timer EveryFrame every 1 tick stopped
+
+u8 PassCount = 0
+u8 FailCount = 0
+
+text screen
+print centered at 2, "TIMER SAFETY SELFTEST"
+print at 3,5, "REPEAT / ONE-SHOT"
+print at 3,6, "STOP / RESTART"
+print at 3,7, "MULTIPLE / NMI PAUSE"
+print at 3,10, "RUNNING..."
+screen on
+
+' Repeating timer: not early, then expires and reloads.
+start timer Fast
+wait 1 frame
+if timer Fast then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+wait 1 frame
+if timer Fast then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+wait 2 frames
+if timer Fast then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+
+' A stopped timer cannot generate another signal.
+stop timer Fast
+wait 3 frames
+if timer Fast then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+
+' One-shot fires once, becomes inactive, and stays consumed.
+start timer OneShot
+wait 4 frames
+if timer OneShot then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+wait 1 frame
+if timer OneShot then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+wait 5 frames
+if timer OneShot then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+
+' Stop must clear an expiration that is already pending.
+start timer OneShot
+wait 5 frames
+stop timer OneShot
+if timer OneShot then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+
+' Restarting an active timer resets its full interval atomically.
+start timer Fast
+wait 1 frame
+start timer Fast
+wait 1 frame
+if timer Fast then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+wait 1 frame
+if timer Fast then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+
+' Independent timers retain separate counts and pending state.
+start timer Fast
+start timer OneShot
+wait 2 frames
+if timer Fast then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+if timer OneShot then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+stop timer Fast
+wait 3 frames
+if timer OneShot then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+
+' NMI-off polling waits for VBlank but must not advance named timers.
+start timer Fast
+wait 1 frame
+nmi off
+wait 4 frames
+nmi on
+if timer Fast then
+  FailCount += 1
+else
+  PassCount += 1
+end if
+wait 1 frame
+if timer Fast then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+stop timer Fast
+
+' The shortest legal interval fires on every processed VBlank.
+start timer EveryFrame
+wait 1 frame
+if timer EveryFrame then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+wait 1 frame
+if timer EveryFrame then
+  PassCount += 1
+else
+  FailCount += 1
+end if
+stop timer EveryFrame
+
+print PassCount at 9,13 digits 2
+print FailCount at 9,14 digits 2
+if PassCount = 17 and FailCount = 0 then
+  print centered at 18, "PASS - TIMERS SAFE"
+else
+  print centered at 18, "FAIL - CHECK COUNTS"
+end if
+
+timer_safety_done:
+loop forever
+

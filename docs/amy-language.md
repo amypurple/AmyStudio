@@ -1202,6 +1202,13 @@ not call game code from NMI and do not create a hidden scheduler. This keeps gam
 state decisions in the main loop and avoids the dangerous dynamic allocation and
 `FREE_SIGNAL` timing issues of the ColecoVision BIOS timer routines.
 
+A `tick` is one processed VBlank update: normally 60 per second on NTSC and 50
+per second on PAL. Timers pause while NMI is disabled or while Amy deliberately
+guards a critical section, just as BIOS timers stop advancing when a cartridge
+does not call `RunTimers`. `start timer Name` safely resets an active timer before
+rearming it; `stop timer Name` first makes it inactive and then clears its count
+and pending signal, so an NMI cannot leave a partial count or ghost expiration.
+
 Additional forms:
 
 ```basic

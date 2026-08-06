@@ -388,6 +388,13 @@ const allExampleManifest = [
     "category": "Selftests"
   },
   {
+    "id": "amy-timer-safety-selftest",
+    "label": "Amy Timer Safety Self-Test",
+    "detail": "Executable safety regression for repeating, one-shot, stop, restart, independent timers, one-tick intervals, and NMI-off pause semantics.",
+    "projectName": "amy-timer-safety-selftest",
+    "sourcePath": "./examples-src/amy-timer-safety-selftest.alexis"
+  },
+  {
     "id": "amy-on-frame-lab",
     "label": "Amy On Frame Lab",
     "detail": "Regression lab for on frame SubName: generated NMI calls a parameterless Amy sub once per VBlank.",
