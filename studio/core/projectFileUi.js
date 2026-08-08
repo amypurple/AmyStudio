@@ -1,6 +1,6 @@
 import { createProjectFileCreationAddon } from "./addons/projectFileCreationAddon.js";
 import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js";
-import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260721-editors-json-ui";
+import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 
@@ -2168,7 +2168,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260804-ui-consistency").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260808-frame-entry-sizes").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,

@@ -41,6 +41,23 @@ assert.equal(config.editors[0].blankTile, 32);
 assert.deepEqual(config.editors[0].tilesetRef, { from: "asset", name: "GameTiles" });
 assert.deepEqual(config.editors[0].colorRef, { from: "file", name: "game.color.zx0" });
 assert.equal(config.editors[1].blankTile, 0);
+const multiSourceConfig = parseGraphicsEditorsConfig({ path: "editors.json" }, jsonBytes({
+  editors: [{
+    name: "Animated",
+    kind: "sprite-patterns",
+    patterns: [{ from: "inline", name: "FrameA" }, { from: "file", name: "frame-b.zx0" }],
+    colors: [{ from: "inline", name: "ColorsA" }, { from: "file", name: "colors-b.raw" }],
+    animation: { frameMs: 120, frames: [0, { layers: [{ pattern: 1, color: 6, offset: [1, -1] }] }] }
+  }]
+}));
+assert.deepEqual(multiSourceConfig.editors[0].patternRefs.map(({ from, name }) => ({ from, name })), [
+  { from: "inline", name: "FrameA" },
+  { from: "file", name: "frame-b.zx0" }
+]);
+assert.deepEqual(multiSourceConfig.editors[0].colorRefs.map(({ from, name }) => ({ from, name })), [
+  { from: "inline", name: "ColorsA" },
+  { from: "file", name: "colors-b.raw" }
+]);
 assert.match(describeGraphicsEditor(config.editors[0]), /tilemap .* 19x21 .* screen 6,2 .* 1 entry/);
 
 assert.equal(parseGraphicsEditorsConfig({ path: "not-editors.json.bin" }, jsonBytes({ editors: [] })), null);
@@ -152,5 +169,16 @@ const legacyConfig = parseGraphicsEditorsConfig({ path: "editors.json" }, jsonBy
 assert.deepEqual(legacyConfig.editors[0].patternRef, { from: "file", name: "tiles.bin" });
 assert.deepEqual(legacyConfig.editors[0].colorRef, { from: "asset", name: "TileColors" });
 assert.deepEqual(legacyConfig.editors[0].tilesetRef, { from: "asset", name: "TileAsset" });
-assertThrowsMessage(() => parseGraphicsEditorsConfig({ path: "editors.json" }, jsonBytes({ editors: [{ name: "BadRef", kind: "tilemap", tileset: { from: "cloud", name: "x" } }] })), /tileset\.from must be inline, file, or asset/);
+assertThrowsMessage(() => parseGraphicsEditorsConfig({ path: "editors.json" }, jsonBytes({ editors: [{ name: "BadRef", kind: "tilemap", tileset: { from: "cloud", name: "x" } }] })), /tileset\.from must be inline, file, asset, or builtin/);
+const inlineBytes = parseAmyByteDataBlocks("data BossFrame bytes = 32,$3C,111", ["BossFrame"]);
+assert.deepEqual(Array.from(inlineBytes.get("BossFrame")), [32, 0x3C, 111]);
+const inlineBytesReplaced = replaceAmyByteDataBlock("data BossFrame bytes = 32,$3C,111", "BossFrame", Uint8Array.from([1, 2, 255]));
+assert.match(inlineBytesReplaced, /^data BossFrame bytes = \$01,\$02,\$FF$/);
+assert.deepEqual(Array.from(parseAmyByteDataBlocks(inlineBytesReplaced, ["BossFrame"]).get("BossFrame")), [1, 2, 255]);
+
+const builtinPatternConfig = parseGraphicsEditorsConfig({ path: "editors.json" }, jsonBytes({
+  editors: [{ name: "Builtin", kind: "metatiles", pattern: { from: "builtin", name: "amy-default-ascii" }, entries: ["Frame"] }]
+}));
+assert.equal(builtinPatternConfig.editors[0].patternRef.from, "builtin");
+
 console.log("graphics metadata tests passed");

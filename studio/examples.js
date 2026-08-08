@@ -1,5 +1,5 @@
 import { loadExampleSource, loadExampleSources, loadExamplesIndex } from "./core/exampleSourceLoader.js";
-import { projectFilesById } from "./examples-project-files.js?v=20260730-warrior-dan2-fire-test";
+import { projectFilesById } from "./examples-project-files.js?v=20260808-fly-swatter-editors";
 
 // DATA-DRIVEN CATALOG. The ordered list + text metadata lives in
 // studio/examples-src/index.json (loaded here); each Amy listing lives in its own

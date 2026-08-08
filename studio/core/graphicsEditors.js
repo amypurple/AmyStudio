@@ -1,6 +1,6 @@
 import { createGraphicsEditorModal } from "./editorShell.js?v=20260719-graphics-crt-overlay";
 import { addGraphicsEntryToConfig, nextGraphicsEntryName, validateNewGraphicsEntryName } from "./graphicsEditorEntryOps.js?v=20260719-graphics-entry-ops";
-import { appendAmyByteDataBlock, appendAmyWordTableEntry, describeGraphicsEditor, parseAmyByteDataBlocks, parseGraphicsEditorsConfig, replaceAmyByteDataBlock } from "./graphicsEditorMetadata.js?v=20260721-sprite16-editors";
+import { appendAmyByteDataBlock, appendAmyWordTableEntry, describeGraphicsEditor, parseAmyByteDataBlocks, parseGraphicsEditorsConfig, replaceAmyByteDataBlock } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { computeTilesetImpact } from "./graphicsImpact.js?v=20260718-graphics-impact";
 import { createGraphicsProjectAssetAccess } from "./projectAssetAccess.js?v=20260729-file-backed-tilemap";
 import { drawTileGridEditorOverlay, drawTilePattern, renderTileGrid, tileColorOffsetForValue, tileColorRowsForValue, tilePatternBytesForValue } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
@@ -536,26 +536,36 @@ export function createGraphicsEditorUi({
 
 
   async function openSpritePatternGraphicsEditor(editor) {
-    const inlinePatternName = editor.patternRef?.from === "inline" ? editor.patternRef.name : "";
-    const spriteFile = inlinePatternName ? null : patternFileForCharsetEditor(editor);
-    if (!spriteFile && !inlinePatternName) {
-      setStatus("Cannot open " + editor.name + ": missing sprite pattern source " + (editor.patternFile || editor.pattern?.name || "") + ".");
+    const patternRefs = Array.isArray(editor.patternRefs) && editor.patternRefs.length
+      ? editor.patternRefs
+      : (editor.patternRef ? [editor.patternRef] : []);
+    if (!patternRefs.length) {
+      setStatus("Cannot open " + editor.name + ": missing sprite pattern source.");
       return;
     }
-    let decoded;
+    const patternSegments = [];
     try {
-      if (inlinePatternName) {
-        const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", [inlinePatternName]);
-        decoded = blocks.get(inlinePatternName);
-        if (!decoded) throw new Error("Cannot find data " + inlinePatternName + " bytes block.");
-      } else {
-        decoded = await decodedProjectFileBytes(spriteFile);
+      for (const ref of patternRefs) {
+        if (ref.from === "inline") {
+          const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", [ref.name]);
+          const bytes = blocks.get(ref.name);
+          if (!bytes) throw new Error("Cannot find data " + ref.name + " bytes block.");
+          patternSegments.push({ ref, bytes: Uint8Array.from(bytes), file: null });
+        } else {
+          const file = patternFileForCharsetEditor({ patternRef: ref, pattern: ref });
+          if (!file) throw new Error("Cannot find sprite pattern file " + ref.name + ".");
+          patternSegments.push({ ref, bytes: Uint8Array.from(await decodedProjectFileBytes(file)), file });
+        }
       }
     } catch (error) {
       setStatus(error.message || ("Cannot decode sprite data for " + editor.name + "."));
       return;
     }
-    const patternBytes = Uint8Array.from(decoded);
+    const inlinePatternName = patternSegments.length === 1 && patternSegments[0].ref.from === "inline"
+      ? patternSegments[0].ref.name
+      : "";
+    const spriteFile = patternSegments.length === 1 ? patternSegments[0].file : null;
+    const patternBytes = Uint8Array.from(patternSegments.flatMap((segment) => [...segment.bytes]));
     let backgroundPatternBytes = null;
     let backgroundColorBytes = null;
     let backgroundTile = Number(editor.backgroundTile ?? editor.blankTile ?? 0) & 0xFF;
@@ -608,11 +618,26 @@ export function createGraphicsEditorUi({
     let dragSnapshotCaptured = false;
     const editScale = spriteWidth >= 16 ? 16 : 24;
     const paletteScale = spriteWidth >= 16 ? 1 : 2;
+    const rawAnimationFrames = Array.isArray(editor.animation?.frames) && editor.animation.frames.length
+      ? editor.animation.frames
+      : Array.from({ length: spriteCount }, (_, index) => index);
+    const animationFrames = rawAnimationFrames.map((frame) => {
+      if (Number.isInteger(Number(frame))) return [{ pattern: Number(frame), color: spriteColorDefault, x: 0, y: 0 }];
+      const layers = Array.isArray(frame) ? frame : (Array.isArray(frame?.layers) ? frame.layers : []);
+      return layers.map((layer) => ({
+        pattern: Number(layer.pattern ?? layer.frame ?? 0),
+        color: Number(layer.color ?? spriteColorDefault) & 0x0F,
+        x: Number(layer.x ?? layer.offset?.[0] ?? 0) || 0,
+        y: Number(layer.y ?? layer.offset?.[1] ?? 0) || 0
+      })).filter((layer) => Number.isInteger(layer.pattern) && layer.pattern >= 0 && layer.pattern < spriteCount);
+    }).filter((layers) => layers.length);
+    let animationTimer = null;
+    let animationPosition = 0;
 
     const modal = createGraphicsEditorModal({
       title: editor.name,
       className: "graphics-editor-modal--charset graphics-editor-modal--sprites",
-      onCloseRequest: () => (dirty || dirtyAttributeColor) ? confirm("Close without saving sprite editor changes?") : true
+      onCloseRequest: () => { if (animationTimer) clearInterval(animationTimer); return (dirty || dirtyAttributeColor) ? confirm("Close without saving sprite editor changes?") : true; }
     });
     const { dialog } = modal;
 
@@ -632,6 +657,13 @@ export function createGraphicsEditorUi({
     const redoButton = document.createElement("button");
     redoButton.type = "button";
     redoButton.textContent = "Redo";
+    const animationToggle = document.createElement("button");
+    animationToggle.type = "button";
+    animationToggle.className = "graphics-editor-animation-toggle";
+    animationToggle.textContent = "Animate";
+    animationToggle.setAttribute("aria-pressed", "false");
+    animationToggle.disabled = animationFrames.length < 2;
+    animationToggle.title = animationFrames.length < 2 ? "Declare at least two animation frames in editors.json." : "Toggle animation preview.";
     const colorControl = document.createElement("div");
     colorControl.className = "graphics-editor-sprite-color-control";
     colorControl.title = (attributeColorBinding || inferredAttributeColorMatches.length) ? "Source-bound TMS9918 sprite attribute color." : "Preview only: TMS9918 sprite color is an attribute, not pattern data.";
@@ -665,7 +697,7 @@ export function createGraphicsEditorUi({
     }
     updateSpriteColorButtons();
     colorControl.append(colorText, colorChoices);
-    toolbar.append(selectedLabel, modeLabel, colorControl, saveButton, undoButton, redoButton);
+    toolbar.append(selectedLabel, modeLabel, colorControl, animationToggle, saveButton, undoButton, redoButton);
     dialog.appendChild(toolbar);
 
     const body = document.createElement("div");
@@ -677,6 +709,12 @@ export function createGraphicsEditorUi({
     editCanvas.height = spriteHeight * editScale;
     editCanvas.className = "graphics-editor-charset-canvas";
     editorPane.appendChild(editCanvas);
+    const animationCanvas = document.createElement("canvas");
+    animationCanvas.width = spriteWidth * 8;
+    animationCanvas.height = spriteHeight * 8;
+    animationCanvas.className = "graphics-editor-animation-preview";
+    animationCanvas.title = "Runtime-style animation preview. Editing remains in the pixel grid above.";
+    editorPane.appendChild(animationCanvas);
     const spriteList = document.createElement("div");
     spriteList.className = "graphics-editor-palette graphics-editor-charset-list";
     body.append(editorPane, spriteList);
@@ -845,6 +883,37 @@ export function createGraphicsEditorUi({
       }
     }
 
+    function renderAnimationPreview() {
+      const ctx = animationCanvas.getContext("2d");
+      const scale = 8;
+      ctx.imageSmoothingEnabled = false;
+      drawSpriteBackground(ctx, scale);
+      const layers = animationFrames[animationPosition] || [];
+      for (const layer of layers) {
+        ctx.fillStyle = TMS_PALETTE[layer.color] || "#ffffff";
+        for (let row = 0; row < spriteHeight; row += 1) {
+          for (let col = 0; col < spriteWidth; col += 1) {
+            if (!spritePixel(layer.pattern, col, row)) continue;
+            ctx.fillRect((col + layer.x) * scale, (row + layer.y) * scale, scale, scale);
+          }
+        }
+      }
+    }
+
+    function setAnimationPlaying(playing) {
+      if (animationTimer) {
+        clearInterval(animationTimer);
+        animationTimer = null;
+      }
+      animationToggle.setAttribute("aria-pressed", String(playing));
+      animationToggle.textContent = playing ? "Pause" : "Animate";
+      if (!playing || animationFrames.length < 2) return;
+      animationTimer = setInterval(() => {
+        animationPosition = (animationPosition + 1) % animationFrames.length;
+        renderAnimationPreview();
+      }, Math.max(40, Number(editor.animation?.frameMs) || 160));
+    }
+
     function renderActiveSprite() {
       const ctx = editCanvas.getContext("2d");
       drawSpritePatternToCanvas(ctx, activeIndex, editScale);
@@ -873,6 +942,7 @@ export function createGraphicsEditorUi({
         ctx.stroke();
       }
       updateSpriteLabel();
+      renderAnimationPreview();
     }
 
     function renderSpriteList() {
@@ -947,23 +1017,34 @@ export function createGraphicsEditorUi({
     editCanvas.addEventListener("pointerup", stopSpritePainting);
     editCanvas.addEventListener("pointercancel", stopSpritePainting);
 
+    animationToggle.addEventListener("click", () => {
+      setAnimationPlaying(!animationTimer);
+    });
+
     saveButton.addEventListener("click", async () => {
       try {
         if (dirty) {
-          if (inlinePatternName) {
-            const nextSource = replaceAmyByteDataBlock(getProject().sourceText || "", inlinePatternName, patternBytes, Number(editor.rowWidth || 16));
-            commitProjectSourceText(nextSource);
-          } else {
-            const codec = String(spriteFile.codec || detectCodecFromName(spriteFile.path) || "raw").toLowerCase();
-            const encoded = !codec || codec === "raw" ? patternBytes : await compressBytes(codec, patternBytes);
-            const verified = !codec || codec === "raw" ? encoded : await decompressBytes(codec, encoded);
-            if (verified.length !== patternBytes.length || verified.some((value, index) => value !== patternBytes[index])) {
-              throw new Error("Sprite recompression verification failed for " + spriteFile.path + ".");
+          let sourceText = getProject().sourceText || "";
+          let offset = 0;
+          let sourceChanged = false;
+          for (const segment of patternSegments) {
+            const editedBytes = patternBytes.slice(offset, offset + segment.bytes.length);
+            offset += segment.bytes.length;
+            if (segment.ref.from === "inline") {
+              sourceText = replaceAmyByteDataBlock(sourceText, segment.ref.name, editedBytes, Number(editor.rowWidth || 16));
+              sourceChanged = true;
+              continue;
             }
-            upsertProjectFile({ ...spriteFile, codec, base64: bytesToBase64(encoded) });
+            const codec = String(segment.file.codec || detectCodecFromName(segment.file.path) || "raw").toLowerCase();
+            const encoded = !codec || codec === "raw" ? editedBytes : await compressBytes(codec, editedBytes);
+            const verified = !codec || codec === "raw" ? encoded : await decompressBytes(codec, encoded);
+            if (verified.length !== editedBytes.length || verified.some((value, index) => value !== editedBytes[index])) {
+              throw new Error("Sprite recompression verification failed for " + segment.file.path + ".");
+            }
+            upsertProjectFile({ ...segment.file, codec, base64: bytesToBase64(encoded) });
           }
-        }
-        if (dirtyAttributeColor) {
+          if (sourceChanged) commitProjectSourceText(sourceText);
+        }        if (dirtyAttributeColor) {
           if (attributeColorBinding) writeBoundSpriteAttributeColor(attributeColorBinding, spriteColor);
           else writeInferredSpriteAttributeColors(editor, basePattern, spriteColor);
         }
@@ -973,7 +1054,7 @@ export function createGraphicsEditorUi({
         redoStack.length = 0;
         updateSpriteHistoryButtons();
         updateSpriteLabel();
-        setStatus("Saved " + (inlinePatternName || spriteFile.path) + ((attributeColorBinding || inferredAttributeColorMatches.length) ? " and bound sprite attribute color" : "") + " from sprite editor.");
+        setStatus("Saved " + patternSegments.map((segment) => segment.ref.name).join(", ") + ((attributeColorBinding || inferredAttributeColorMatches.length) ? " and bound sprite attribute color" : "") + " from sprite editor.");
       } catch (error) {
         setStatus(error.message || "Cannot save sprite patterns.");
       }
@@ -995,32 +1076,54 @@ export function createGraphicsEditorUi({
     updateSpriteHistoryButtons();
     renderSpriteList();
     renderActiveSprite();
+    renderAnimationPreview();
+    setAnimationPlaying(animationFrames.length > 1);
     modal.mount();
     setStatus("Opened sprite pattern editor for " + editor.name + ".");
   }
 
 
+  function amyDefaultAsciiPreviewBytes() {
+    const bytes = new Uint8Array(256 * 8);
+    const glyphs = {
+      32: [0, 0, 0, 0, 0, 0, 0, 0],
+      35: [36, 36, 126, 36, 126, 36, 36, 0],
+      47: [2, 4, 8, 16, 32, 64, 128, 0],
+      60: [4, 8, 16, 32, 16, 8, 4, 0],
+      62: [32, 16, 8, 4, 8, 16, 32, 0],
+      88: [66, 36, 24, 24, 24, 36, 66, 0],
+      92: [64, 32, 16, 8, 4, 2, 1, 0],
+      94: [16, 40, 68, 0, 0, 0, 0, 0],
+      95: [0, 0, 0, 0, 0, 0, 255, 0],
+      111: [0, 0, 60, 66, 66, 66, 60, 0],
+      118: [0, 0, 66, 66, 66, 36, 24, 0]
+    };
+    for (const [code, rows] of Object.entries(glyphs)) bytes.set(rows, Number(code) * 8);
+    return bytes;
+  }
   async function openMetatileGraphicsEditor(editor, sourceBlocks) {
-    const entryName = editor.entries?.[0] || editor.source?.name || editor.data?.name || "";
-    if (!entryName) {
+    const entryNames = Array.isArray(editor.entries) && editor.entries.length
+      ? editor.entries
+      : [editor.source?.name || editor.data?.name || ""].filter(Boolean);
+    if (!entryNames.length) {
       setStatus("Cannot open " + editor.name + ": missing metatile data entry.");
       return;
     }
-    let frameBytes = Uint8Array.from(sourceBlocks.get(entryName) || []);
-    if (!frameBytes.length) {
-      try {
-        const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", [entryName]);
-        frameBytes = Uint8Array.from(blocks.get(entryName) || []);
-      } catch (error) {
-        setStatus(error.message || ("Cannot parse " + entryName + " for metatile editor."));
-        return;
+    const entrySegments = [];
+    try {
+      const missingNames = entryNames.filter((name) => !sourceBlocks.get(name)?.length);
+      const parsed = missingNames.length ? parseAmyByteDataBlocks(getProject().sourceText || "", missingNames) : new Map();
+      for (const name of entryNames) {
+        const bytes = Uint8Array.from(sourceBlocks.get(name) || parsed.get(name) || []);
+        if (!bytes.length) throw new Error("Cannot find data " + name + " for metatile editor.");
+        entrySegments.push({ name, bytes });
       }
-    }
-    if (!frameBytes.length) {
-      setStatus("Cannot open " + editor.name + ": missing data " + entryName + ".");
+    } catch (error) {
+      setStatus(error.message || ("Cannot parse frame data for " + editor.name + "."));
       return;
     }
-
+    const entryName = entryNames.join(", ");
+    let frameBytes = Uint8Array.from(entrySegments.flatMap((segment) => [...segment.bytes]));
     const frameSize = Array.isArray(editor.frameSize || editor.metatileSize) ? (editor.frameSize || editor.metatileSize) : [2, 2];
     const frameWidth = Math.max(1, Number(frameSize[0]) || 2);
     const frameHeight = Math.max(1, Number(frameSize[1]) || 2);
@@ -1034,6 +1137,9 @@ export function createGraphicsEditorUi({
     async function bytesForEditorRef(ref) {
       const normalized = ref && typeof ref === "object" ? ref : null;
       if (!normalized?.name) return null;
+      if (String(normalized.from || "").toLowerCase() === "builtin" && normalized.name === "amy-default-ascii") {
+        return amyDefaultAsciiPreviewBytes();
+      }
       if (String(normalized.from || "").toLowerCase() === "inline") {
         const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", [normalized.name]);
         return Uint8Array.from(blocks.get(normalized.name) || []);
@@ -1043,13 +1149,21 @@ export function createGraphicsEditorUi({
     }
 
     const sourceSets = [];
-    const rawSets = Array.isArray(editor.patternSets) && editor.patternSets.length ? editor.patternSets : [{
-      pattern: editor.patternRef || editor.pattern,
-      color: editor.colorRef || editor.color,
-      baseTile: editor.baseTile || 0,
-      tileCount: editor.tileCount || 0
-    }];
-    for (const set of rawSets) {
+    const rawSets = Array.isArray(editor.patternSets) && editor.patternSets.length
+      ? editor.patternSets
+      : (Array.isArray(editor.patternRefs) && editor.patternRefs.length
+        ? editor.patternRefs.map((pattern, index) => ({
+            pattern,
+            color: editor.colorRefs?.[index] || editor.colorRef || editor.color,
+            baseTile: Array.isArray(editor.baseTiles) ? editor.baseTiles[index] : (editor.baseTile || 0),
+            tileCount: Array.isArray(editor.tileCounts) ? editor.tileCounts[index] : (editor.tileCount || 0)
+          }))
+        : [{
+            pattern: editor.patternRef || editor.pattern,
+            color: editor.colorRef || editor.color,
+            baseTile: editor.baseTile || 0,
+            tileCount: editor.tileCount || 0
+          }]);    for (const set of rawSets) {
       const pattern = await bytesForEditorRef(set.patternRef || set.pattern || editor.patternRef || editor.pattern);
       if (!pattern) continue;
       let color = null;
@@ -1107,13 +1221,20 @@ export function createGraphicsEditorUi({
     let dirty = false;
     const undoStack = [];
     const redoStack = [];
-    const editScale = 12;
-    const paletteScale = 2;
+    const editScale = Math.max(2, Math.min(12, Math.floor(512 / Math.max(frameWidth, frameHeight) / 8)));
+    const paletteScale = Math.max(1, Math.min(2, Math.floor(160 / Math.max(frameWidth, frameHeight) / 8)));
+    const animationOrder = (Array.isArray(editor.animation?.frames) && editor.animation.frames.length
+      ? editor.animation.frames
+      : Array.from({ length: frameCount }, (_, index) => index))
+      .map(Number)
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < frameCount);
+    let animationPosition = 0;
+    let animationTimer = null;
 
     const modal = createGraphicsEditorModal({
       title: editor.name,
       className: "graphics-editor-modal--charset graphics-editor-modal--metatiles",
-      onCloseRequest: () => dirty ? confirm("Close without saving metatile changes?") : true
+      onCloseRequest: () => { if (animationTimer) clearInterval(animationTimer); return dirty ? confirm("Close without saving metatile changes?") : true; }
     });
     const { dialog } = modal;
 
@@ -1124,6 +1245,13 @@ export function createGraphicsEditorUi({
     const modeLabel = document.createElement("span");
     modeLabel.className = "graphics-editor-hover-tile";
     modeLabel.textContent = frameWidth + "x" + frameHeight + " chars metatile. Pick a char, click a quadrant.";
+    const animationToggle = document.createElement("button");
+    animationToggle.type = "button";
+    animationToggle.className = "graphics-editor-animation-toggle";
+    animationToggle.textContent = "Animate";
+    animationToggle.setAttribute("aria-pressed", "false");
+    animationToggle.disabled = animationOrder.length < 2;
+    animationToggle.title = animationOrder.length < 2 ? "Declare at least two animation frames in editors.json." : "Toggle frame animation preview.";
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.textContent = "Save Source Data";
@@ -1133,7 +1261,7 @@ export function createGraphicsEditorUi({
     const redoButton = document.createElement("button");
     redoButton.type = "button";
     redoButton.textContent = "Redo";
-    toolbar.append(selectedLabel, modeLabel, saveButton, undoButton, redoButton);
+    toolbar.append(selectedLabel, modeLabel, animationToggle, saveButton, undoButton, redoButton);
     dialog.appendChild(toolbar);
 
     const body = document.createElement("div");
@@ -1145,6 +1273,13 @@ export function createGraphicsEditorUi({
     editCanvas.height = frameHeight * 8 * editScale;
     editCanvas.className = "graphics-editor-charset-canvas";
     editorPane.appendChild(editCanvas);
+    const animationCanvas = document.createElement("canvas");
+    animationCanvas.width = frameWidth * 8 * Math.min(4, editScale);
+    animationCanvas.height = frameHeight * 8 * Math.min(4, editScale);
+    animationCanvas.className = "graphics-editor-animation-preview";
+    animationCanvas.title = "Animation preview without editor grid.";
+    editorPane.appendChild(animationCanvas);
+
     const frameList = document.createElement("div");
     frameList.className = "graphics-editor-palette graphics-editor-charset-list";
     const tileList = document.createElement("div");
@@ -1199,6 +1334,25 @@ export function createGraphicsEditorUi({
           drawTilePattern(ctx, patternForTile(tile), col * 8 * scale, row * 8 * scale, scale, "#66a6ff", "#000000", colorsForTile(tile, row), TMS_PALETTE);
         }
       }
+    }
+
+    function renderAnimationPreview() {
+      const scale = Math.min(4, editScale);
+      drawMetatileFrame(animationCanvas.getContext("2d"), animationOrder[animationPosition] ?? activeFrame, scale);
+    }
+
+    function setAnimationPlaying(playing) {
+      if (animationTimer) {
+        clearInterval(animationTimer);
+        animationTimer = null;
+      }
+      animationToggle.setAttribute("aria-pressed", String(playing));
+      animationToggle.textContent = playing ? "Pause" : "Animate";
+      if (!playing || animationOrder.length < 2) return;
+      animationTimer = setInterval(() => {
+        animationPosition = (animationPosition + 1) % animationOrder.length;
+        renderAnimationPreview();
+      }, Math.max(40, Number(editor.animation?.frameMs) || 160));
     }
 
     function drawGrid(ctx, widthPx, heightPx, scale) {
@@ -1291,9 +1445,18 @@ export function createGraphicsEditorUi({
       renderAll();
     });
 
+    animationToggle.addEventListener("click", () => {
+      setAnimationPlaying(!animationTimer);
+    });
+
     saveButton.addEventListener("click", () => {
       try {
-        const nextSource = replaceAmyByteDataBlock(getProject().sourceText || "", entryName, frameBytes, Number(editor.rowWidth || bytesPerFrame));
+        let nextSource = getProject().sourceText || "";
+        let offset = 0;
+        for (const segment of entrySegments) {
+          nextSource = replaceAmyByteDataBlock(nextSource, segment.name, frameBytes.slice(offset, offset + segment.bytes.length), Number(editor.rowWidth || bytesPerFrame));
+          offset += segment.bytes.length;
+        }
         commitProjectSourceText(nextSource);
         dirty = false;
         undoStack.length = 0;
@@ -1317,6 +1480,8 @@ export function createGraphicsEditorUi({
     });
 
     renderAll();
+    renderAnimationPreview();
+    setAnimationPlaying(animationOrder.length > 1);
     modal.mount();
     setStatus("Opened metatile editor for " + editor.name + ".");
   }
@@ -2262,8 +2427,11 @@ export function createGraphicsEditorUi({
       if (editor.entries.length) {
         const frameSize = Array.isArray(editor.frameSize || editor.metatileSize) ? (editor.frameSize || editor.metatileSize) : null;
         const frameBytes = frameSize ? Math.max(1, Number(frameSize[0]) || 1) * Math.max(1, Number(frameSize[1]) || 1) : 0;
+        const frameCount = Number(editor.frameCount || 0);
+        const entriesAreFrames = (editor.kind === "metatiles" || editor.kind === "frames")
+          && frameBytes && frameCount === editor.entries.length;
         const expectedBytes = (editor.kind === "metatiles" || editor.kind === "frames") && frameBytes
-          ? (Number(editor.frameCount || 0) ? frameBytes * Number(editor.frameCount || 0) : null)
+          ? (entriesAreFrames ? frameBytes : (frameCount ? frameBytes * frameCount : null))
           : editor.canvas[0] * editor.canvas[1];
         const blockSummary = document.createElement("span");
         blockSummary.textContent = "Source data: " + editor.entries.map((name) => {

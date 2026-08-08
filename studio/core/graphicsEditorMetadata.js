@@ -36,7 +36,7 @@ function normalizeEditorRef(value, fallback = {}, label = "ref", editorName = "E
     const from = String(value.from || fallback.from || "file").trim().toLowerCase();
     const name = String(value.name || value.path || value.asset || fallback.name || "").trim();
     if (!from || !name) throw new Error(editorName + ": " + label + " must include { from, name }.");
-    if (!["inline", "file", "asset"].includes(from)) throw new Error(editorName + ": " + label + ".from must be inline, file, or asset.");
+    if (!["inline", "file", "asset", "builtin"].includes(from)) throw new Error(editorName + ": " + label + ".from must be inline, file, asset, or builtin.");
     return { ...value, from, name };
   }
   throw new Error(editorName + ": " + label + " must be a string or { from, name }.");
@@ -63,6 +63,12 @@ function normalizeEditor(editor, index) {
     from: editor.colorFile ? "file" : (editor.colorAsset ? "asset" : ""),
     name: editor.colorFile || editor.colorAsset || ""
   }, "color", name);
+  const patternRefs = Array.isArray(editor.patterns)
+    ? editor.patterns.map((value, sourceIndex) => normalizeEditorRef(value, {}, "patterns[" + sourceIndex + "]", name)).filter(Boolean)
+    : (patternRef ? [patternRef] : []);
+  const colorRefs = Array.isArray(editor.colors)
+    ? editor.colors.map((value, sourceIndex) => normalizeEditorRef(value, {}, "colors[" + sourceIndex + "]", name)).filter(Boolean)
+    : (colorRef ? [colorRef] : []);
   return {
     ...editor,
     name,
@@ -73,6 +79,8 @@ function normalizeEditor(editor, index) {
     tilesetRef,
     patternRef,
     colorRef,
+    patternRefs,
+    colorRefs,
     blankTile: Number.isInteger(Number(editor.blankTile)) ? Number(editor.blankTile) : 0
   };
 }
@@ -257,7 +265,13 @@ export function parseAmyByteDataBlocks(sourceText, requestedNames = null) {
       const match = /^\s*data\s+([A-Za-z_][A-Za-z0-9_]*)\s+(bytes|bitmap8|sprite16)\b/i.exec(clean);
       if (!match) continue;
       const name = match[1];
-      current = { name, layout: String(match[2] || "bytes").toLowerCase(), lines: [] };
+      const layout = String(match[2] || "bytes").toLowerCase();
+      const inlineMatch = layout === "bytes" ? /\bbytes\s*=\s*(.*)$/i.exec(clean) : null;
+      if (inlineMatch) {
+        if (!wanted || wanted.has(name.toLowerCase())) blocks.set(name, parseByteDataBody(inlineMatch[1], name));
+        continue;
+      }
+      current = { name, layout, lines: [] };
       continue;
     }
     if (/^\s*end\s+data\b/i.test(clean)) {
@@ -302,7 +316,17 @@ export function replaceAmyByteDataBlock(sourceText, blockName, bytes, rowWidth =
   let end = -1;
   for (let index = 0; index < lines.length; index += 1) {
     if (start < 0) {
-      if (headerRe.test(stripAmyComment(lines[index]))) start = index;
+      const clean = stripAmyComment(lines[index]);
+      if (headerRe.test(clean)) {
+        if (/\bbytes\s*=/i.test(clean)) {
+          const indent = /^\s*/.exec(lines[index])?.[0] || "";
+          const comment = /(\s*'.*)$/.exec(lines[index])?.[1] || "";
+          const values = Array.from(Uint8Array.from(bytes || []), (value) => "$" + (value & 0xFF).toString(16).toUpperCase().padStart(2, "0"));
+          lines[index] = indent + "data " + name + " bytes = " + values.join(",") + comment;
+          return lines.join(newline);
+        }
+        start = index;
+      }
     } else if (/^\s*end\s+data\b/i.test(stripAmyComment(lines[index]))) {
       end = index;
       break;
