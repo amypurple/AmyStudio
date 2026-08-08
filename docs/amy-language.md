@@ -920,8 +920,29 @@ on Action gosub Init, Update, Draw
 
 Selector is 1-based. Out-of-range or `0` falls through.
 
-These remain intentional low-level dispatch tools for 8-bit game state code.
-Unlike plain `gosub`, indexed `on Expr gosub` is still part of the supported language surface.
+Amy compiles the target list into a fixed ROM address table and performs one bounded indexed dispatch. `goto` ends in `jp (hl)`; `gosub` uses a small indirect-call trampoline so the selected routine returns normally. There is no writable function pointer, target lookup runtime, or bounds-check helper.
+
+For a state machine shared with `on vblank`, prefer a `u8` selector. An 8-bit state change is atomic on Z80, unlike replacing a writable 16-bit routine address while NMI may read it:
+
+```basic
+u8 VBlankState = 1
+on vblank DispatchVBlank
+
+sub DispatchVBlank:
+  on VBlankState goto TitleVBlank, GameVBlank, GameOverVBlank
+  return
+
+TitleVBlank:
+  ' Keep every NMI state short and non-blocking.
+  return
+GameVBlank:
+  return
+GameOverVBlank:
+  return
+end sub
+```
+
+These remain intentional low-level dispatch tools for predictable 8-bit game-state code. Unlike plain `gosub`, indexed `on Expr gosub` is part of the supported language surface.
 
 ### Loop Forever
 

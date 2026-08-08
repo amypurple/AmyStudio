@@ -76,6 +76,7 @@ assert.equal(tokenizeAmyLine("copy Data count 8 to vram.name").tokens.find((toke
 assert.equal(tokenizeAmyLine("backdrop sky blue").tokens[0].type, "keyword");
 assert.equal(tokenizeAmyLine("timer Blink every 5 ticks").tokens[0].type, "keyword");
 assert.equal(tokenizeAmyLine("timer Blink every 5 ticks").tokens.at(-1).type, "unit");
+assert.equal(tokenizeAmyLine("timer Blink every 1 tick").tokens.at(-1).type, "unit");
 assert.equal(tokenizeAmyLine("Sprites = Color + 1").tokens.find((token) => token.text === "Color").type, "identifier");
 assert.equal(tokenizeAmyLine("set sprite 0 color 15").tokens.find((token) => token.text === "color").type, "vdp");
 for (const state of ["on", "off"]) {

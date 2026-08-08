@@ -4,6 +4,7 @@ import {
   mapMouseRollerJoystickMask,
   mapMouseSpinnerMovement,
   mouseButtonToFireMask,
+  preferredControllerUiPort,
   resolveMouseFireTarget
 } from "../studio/core/romTestRecorderUi.js";
 
@@ -32,6 +33,9 @@ assert.equal(mouseButtonToFireMask(0, fireBits), 0x20);
 assert.equal(mouseButtonToFireMask(2, fireBits), 0x10);
 assert.equal(mouseButtonToFireMask(1, fireBits), 0);
 const wheel = { ports: [{ type: "wheel", sensitivity: 6 }, { type: "standard", sensitivity: 6 }] };
+assert.equal(preferredControllerUiPort(wheel, 0), 1, "Steering Wheel UI must select the Port 2 companion controller.");
+assert.equal(preferredControllerUiPort(wheel, 1), 1);
+assert.equal(preferredControllerUiPort({ ports: [{ type: "standard" }] }, 0), 0);
 assert.deepEqual(
   resolveMouseFireTarget(0, wheel, 1, fireBits),
   { portIndex: 0, mask: fireBits.FIRE_LEFT },

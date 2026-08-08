@@ -1183,42 +1183,49 @@ export function createControlFlowHelpers(ctx) {
       }
       resolvedTargets.push(target);
     }
+    const tableLabel = makeGeneratedLabel("OnDispatchTable");
     const doneLabel = makeGeneratedLabel("OnDispatchDone");
+    const trampolineLabel = mode === "gosub" ? makeGeneratedLabel("OnDispatchCall") : "";
     const lines = [];
     if (valueType === "int8") {
       const loadValue = emitLoadInt8Into("a", valueToken);
       if (!loadValue) return null;
       lines.push(...loadValue);
-      resolvedTargets.forEach((target, index) => {
-        const nextLabel = makeGeneratedLabel("OnDispatchNext");
-        lines.push(`    cp ${index + 1}`);
-        lines.push(`    jp nz,${nextLabel}`);
-        lines.push(mode === "goto" ? `    jp ${target}` : `    call ${target}`);
-        if (mode !== "goto") lines.push(`    jp ${doneLabel}`);
-        lines.push(`${nextLabel}:`);
-      });
-      if (mode !== "goto") lines.push(`${doneLabel}:`);
-      return lines;
-    }
-    const loadValue = emitLoadInt16IntoHL(valueToken);
-    if (!loadValue) return null;
-    lines.push(...loadValue);
-    resolvedTargets.forEach((target, index) => {
-      const nextLabel = makeGeneratedLabel("OnDispatchNext");
+    } else {
+      const loadValue = emitLoadInt16IntoHL(valueToken);
+      if (!loadValue) return null;
+      lines.push(...loadValue);
       lines.push("    ld a,h");
       lines.push("    or a");
-      lines.push(`    jp nz,${nextLabel}`);
+      lines.push(`    jp nz,${doneLabel}`);
       lines.push("    ld a,l");
-      lines.push(`    cp ${index + 1}`);
-      lines.push(`    jp nz,${nextLabel}`);
-      lines.push(mode === "goto" ? `    jp ${target}` : `    call ${target}`);
-      if (mode !== "goto") lines.push(`    jp ${doneLabel}`);
-      lines.push(`${nextLabel}:`);
-    });
-    if (mode !== "goto") lines.push(`${doneLabel}:`);
+    }
+    lines.push("    dec a");
+    lines.push(`    cp ${resolvedTargets.length}`);
+    lines.push(`    jp nc,${doneLabel}`);
+    // Widen before doubling so tables with more than 128 entries cannot wrap.
+    lines.push("    ld l,a");
+    lines.push("    ld h,0");
+    lines.push("    add hl,hl");
+    lines.push(`    ld de,${tableLabel}`);
+    lines.push("    add hl,de");
+    lines.push("    ld e,(hl)");
+    lines.push("    inc hl");
+    lines.push("    ld d,(hl)");
+    lines.push("    ex de,hl");
+    if (mode === "goto") {
+      lines.push("    jp (hl)");
+    } else {
+      lines.push(`    call ${trampolineLabel}`);
+      lines.push(`    jp ${doneLabel}`);
+      lines.push(`${trampolineLabel}:`);
+      lines.push("    jp (hl)");
+    }
+    lines.push(`${tableLabel}:`);
+    lines.push(`    dw ${resolvedTargets.join(",")}`);
+    lines.push(`${doneLabel}:`);
     return lines;
   }
-
   function emitSelectCaseEqGoto(exprToken, valueToken, label, skipExprLoad, invertCondition = false) {
     const asmLabel = resolveJumpTarget(label);
     if (skipExprLoad && selectCaseExprCanReuseA(exprToken)) {

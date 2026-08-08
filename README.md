@@ -4,6 +4,15 @@ Amy Studio is a browser-based ColecoVision development environment built around 
 
 The project is maintained by Amy Bienvenu and carries forward a long ColecoVision toolchain heritage: graphics tools, sound tools, compression codecs, runtime routines, and practical game-development conventions refined over decades of homebrew work.
 
+## Repository And Documentation
+
+- [Amy Studio on GitHub](https://github.com/amypurple/AmyStudio)
+- [Amy Language Reference](docs/amy-language.md)
+- [Amy Studio Heritage](docs/amy-studio-heritage.md)
+- [ColecoVision Essentials](docs/colecovision-essentials.md)
+
+The same documentation is available directly inside Studio from the **Docs** tab.
+
 ## What Is Included
 
 This public repository is the runnable Amy Studio release. It intentionally contains only the files needed to use Studio in a browser:

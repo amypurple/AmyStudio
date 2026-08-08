@@ -1,0 +1,662 @@
+project "Fly Swatter Timer Quest"
+cartridge "FLY SWATTER/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Three timer roles: movement cadence, round clock, and boss phases.
+timer FlyStep every 8 ticks
+timer RoundSecond every 60 ticks stopped
+timer BossPhase after 24 ticks stopped
+timer BossStep every 4 ticks stopped
+timer SwatterLock after 15 ticks stopped
+
+const FlyFlying = 1
+const FlySplat = 2
+const FlyDefeated = 3
+const BossSleeping = 1
+const BossHunting = 2
+const BossCharging = 3
+const BossRecovering = 4
+const BossDefeated = 5
+
+record Actor:
+  u8 X
+  u8 Y
+  i8 DX
+  i8 DY
+  u8 State
+end record
+
+Actor Swatter
+Actor Flies[3]
+Actor BigFly
+u8 ActiveFly = 0
+u8 Level = 1
+u8 PendingStage = 0
+u8 FliesLeft = 3
+u8 EnemiesLeft = 9
+u8 BossHealth = 0
+u8 BossActive = 0
+u8 FireWasDown = 0
+u8 SwatterLocked = 0
+u8 RoundTime = 30
+u8 PhaseExpired = 0
+u8 WingFrame = 0
+u8 SplatTicks[3]
+u8 BossOldX = 13, BossOldY = 8, BossPixelX = 104, BossPixelY = 64
+u16 Score = 0
+
+hitbox SwatterHit = 2,2 size 12,12
+hitbox FlyHit = 2,2 size 12,12
+
+data SwatterSprite sprite16
+  "......XXXX......"
+  "....XXXXXXXX...."
+  "...XX......XX..."
+  "..XX.X.X.X..XX.."
+  "..X.X.X.X.X..X.."
+  ".XX..X.X.X.X.XX."
+  ".X..X.X.X.X.X.X."
+  ".XX..X.X.X.X.XX."
+  "..X.X.X.X.X..X.."
+  "..XX.X.X.X..XX.."
+  "...XX......XX..."
+  "....XXXXXXXX...."
+  "......XXXX......"
+  ".......XX......."
+  ".......XX......."
+  ".......XX......."
+end data
+
+data FlySprite sprite16
+  "XXX...X..X...XXX"
+  ".XXX.XXXXXX.XXX."
+  "..XXX.XXXX.XXX.."
+  "....XXXXXXXX...."
+  "..XX..XXXX..XX.."
+  ".XX..XXXXXX..XX."
+  "XX....XXXX....XX"
+  "......XXXX......"
+  "......XXXX......"
+  ".......XX......."
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+data FlySpriteB sprite16
+  "......X..X......"
+  ".....XXXXXX....."
+  "......XXXX......"
+  "....X.XXXX.X...."
+  ".XXX..XXXX..XXX."
+  "XXX..XXXXXX..XXX"
+  "XX....XXXX....XX"
+  "X.....XXXX.....X"
+  "......XXXX......"
+  ".......XX......."
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+data FlySplatSprite sprite16
+  "................"
+  ".....X...X......"
+  "..X.XXX.XXX..X.."
+  "....XXXXXXXX...."
+  "..XXXXXXXXXXX..."
+  ".XXXXXXXXXXXXX.."
+  "XXXXXXXXXXXXXXX."
+  ".XXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXX.."
+  ".XXXXXXXXXXXXX.."
+  "..XXXXXXXXXXX..."
+  "....XXXXXXX.X..."
+  "..X..XXXXX......"
+  ".....X..X..X...."
+  "................"
+  "................"
+end data
+
+data FlySplatSpriteB sprite16
+  "..X.......X....."
+  "................"
+  ".X...XX.XX....X."
+  "...XXXXXXXXX...."
+  ".XXXXXXXXXXXX..."
+  "XXXXXXXXXXXXXXX."
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXX."
+  ".XXXXXXXXXXXXX.."
+  "...XXXXXXXXX...."
+  ".X....XXXX....X."
+  "..............X."
+  "....X.....X....."
+  "................"
+end data
+
+data BossTileFrame bytes = 32,60,111,32,111,62,32, 60,35,35,35,35,35,62, 32,47,32,118,32,92,32
+
+data BossTileFrameB bytes = 92,32,111,32,111,32,47, 32,60,35,35,35,62,32, 47,32,94,32,94,32,92
+data BossDeadFrame bytes = 32,60,88,32,88,62,32, 60,35,35,35,35,35,62, 32,92,95,95,95,47,32
+
+data BossBlankFrame bytes = $20 count 21
+
+sub start:
+  tile screen
+  backdrop dark blue
+  sprites 16x16
+  sprites simple
+  copy SwatterSprite to vram.spr_pat
+  copy FlySprite to vram.spr_pat + 32
+  copy FlySpriteB to vram.spr_pat + 64
+  copy FlySplatSprite to vram.spr_pat + 96
+  copy FlySplatSpriteB to vram.spr_pat + 128
+  set sound table FlySoundTable areas 5
+  clear sprites
+  set sprite count 4
+  screen on
+  goto TitleScreen
+
+sub TitleScreen:
+  mute all
+  cls
+  print centered at 3, "FLY SWATTER"
+  print centered at 5, "TIMER QUEST"
+  print centered at 9, "MOVE THE SWATTER"
+  print centered at 10, "FIRE TO SWAT"
+  print centered at 13, "TWO FLIES THEN THE BOSS"
+  print centered at 17, "TIMERS DRIVE EVERY PHASE"
+  print centered at 21, "PRESS FIRE"
+  pause until press
+  wait no fire
+  NewGame
+  goto GameLoop
+
+sub NewGame:
+  cls
+  print at 1,0, "TIME"
+  print at 12,0, "FLIES"
+  print at 22,0, "SCORE"
+  print at 1,1, "LEVEL"
+  print at 1,2, "+----------------------------+"
+  print at 1,21, "+----------------------------+"
+  print centered at 22, "SWAT THEM BEFORE TIME ENDS"
+  Swatter.X = 120
+  Swatter.Y = 152
+  Flies[0].X = 48
+  Flies[0].Y = 56
+  Flies[0].DX = 5
+  Flies[0].DY = 3
+  Flies[0].State = FlyFlying
+  Flies[1].X = 192
+  Flies[1].Y = 104
+  Flies[1].DX = -4
+  Flies[1].DY = 5
+  Flies[1].State = FlyFlying
+  Flies[2].X = 120
+  Flies[2].Y = 136
+  Flies[2].DX = 3
+  Flies[2].DY = -5
+  Flies[2].State = FlyDefeated
+  BigFly.X = 13
+  BigFly.Y = 8
+  BigFly.DX = 1
+  BigFly.DY = 1
+  BossOldX = 13
+  BossOldY = 8
+  BigFly.State = BossSleeping
+  Level = 1
+  PendingStage = 0
+  EnemiesLeft = 9
+  FliesLeft = 2
+  BossHealth = 0
+  BossActive = 0
+  RoundTime = 30
+  Score = 0
+  FireWasDown = 0
+  SwatterLocked = 0
+  WingFrame = 0
+  SplatTicks[0] = 0
+  SplatTicks[1] = 0
+  SplatTicks[2] = 0
+  clear sprites
+  set sprite count 4
+  start timer FlyStep
+  start timer RoundSecond
+  play sound 1
+  stop timer BossPhase
+  stop timer BossStep
+  stop timer SwatterLock
+  DrawStatus
+  DrawActors
+  return
+
+sub GameLoop:
+  wait
+  if timer SwatterLock then SwatterLocked = 0
+  ReadSwatter
+  if timer FlyStep then GameplayTick
+  if timer RoundSecond then SecondTick
+  if timer BossStep then BossGameplayTick
+  if BossActive = 1 then
+    PhaseExpired = 0
+    if timer BossPhase then PhaseExpired = 1
+    on BigFly.State gosub BossSleep, BossHunt, BossCharge, BossRecover, BossDone
+  end if
+  CheckSwat
+  DrawActors
+  if RoundTime = 0 then goto GameOver
+  if BigFly.State = BossDefeated then goto Victory
+  goto GameLoop
+
+sub GameplayTick:
+  if WingFrame = 0 then
+    WingFrame = 1
+  else
+    WingFrame = 0
+  end if
+  ActiveFly = 0
+  on Flies[0].State gosub MoveFly, AnimateSplat, DeadFly
+  ActiveFly = 1
+  on Flies[1].State gosub MoveFly, AnimateSplat, DeadFly
+  ActiveFly = 2
+  on Flies[2].State gosub MoveFly, AnimateSplat, DeadFly
+  if PendingStage = 1 then
+    if Flies[0].State = FlyDefeated then
+      if Flies[1].State = FlyDefeated then
+        if Flies[2].State = FlyDefeated then
+          PendingStage = 0
+          if Level = 1 then
+            StartLevelTwo
+          elseif Level = 2 then
+            StartLevelThree
+          else
+            StartBoss
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+
+sub BossGameplayTick:
+  if BossActive = 0 then return
+  if BigFly.State = BossHunting then MoveBoss
+  if BigFly.State = BossCharging then MoveBoss
+  DrawBoss
+  return
+
+sub MoveFly:
+  Flies[ActiveFly].X += Flies[ActiveFly].DX
+  Flies[ActiveFly].Y += Flies[ActiveFly].DY
+  if Flies[ActiveFly].X < 18 then Flies[ActiveFly].DX = 0 - Flies[ActiveFly].DX
+  if Flies[ActiveFly].X > 222 then Flies[ActiveFly].DX = 0 - Flies[ActiveFly].DX
+  if Flies[ActiveFly].Y < 30 then Flies[ActiveFly].DY = 0 - Flies[ActiveFly].DY
+  if Flies[ActiveFly].Y > 154 then Flies[ActiveFly].DY = 0 - Flies[ActiveFly].DY
+  return
+
+sub AnimateSplat:
+  if SplatTicks[ActiveFly] > 0 then SplatTicks[ActiveFly] -= 1
+  if SplatTicks[ActiveFly] = 0 then Flies[ActiveFly].State = FlyDefeated
+  return
+
+sub DeadFly:
+  return
+
+sub BossSleep:
+  if PhaseExpired = 0 then return
+  BigFly.State = BossHunting
+  start timer BossPhase
+  return
+
+sub BossHunt:
+  if PhaseExpired = 0 then return
+  BigFly.State = BossCharging
+  start timer BossPhase
+  return
+
+sub BossCharge:
+  if PhaseExpired = 0 then return
+  BigFly.State = BossRecovering
+  start timer BossPhase
+  return
+
+sub BossRecover:
+  if PhaseExpired = 0 then return
+  BigFly.State = BossHunting
+  start timer BossPhase
+  return
+
+sub BossDone:
+  return
+
+sub MoveBoss:
+  BigFly.X += BigFly.DX
+  BigFly.Y += BigFly.DY
+  if BigFly.X < 3 then
+    BigFly.X = 3
+    BigFly.DX = 1
+  end if
+  if BigFly.X > 22 then
+    BigFly.X = 22
+    BigFly.DX = -1
+  end if
+  if BigFly.Y < 4 then
+    BigFly.Y = 4
+    BigFly.DY = 1
+  end if
+  if BigFly.Y > 17 then
+    BigFly.Y = 17
+    BigFly.DY = -1
+  end if
+  return
+
+sub ReadSwatter:
+  if SwatterLocked = 1 then return
+  if joypad(1).left then
+    if Swatter.X > 10 then Swatter.X -= 3
+  end if
+  if joypad(1).right then
+    if Swatter.X < 230 then Swatter.X += 3
+  end if
+  if joypad(1).up then
+    if Swatter.Y > 24 then Swatter.Y -= 3
+  end if
+  if joypad(1).down then
+    if Swatter.Y < 164 then Swatter.Y += 3
+  end if
+  return
+
+sub CheckSwat:
+  if not joypad(1).button1 then
+    FireWasDown = 0
+    return
+  end if
+  if FireWasDown = 1 then return
+  if SwatterLocked = 1 then return
+  FireWasDown = 1
+  SwatterLocked = 1
+  start timer SwatterLock
+  play sound 2
+  if Flies[0].State = FlyFlying then
+    if sprite 0 hitbox SwatterHit collides with sprite 1 hitbox FlyHit then
+      ActiveFly = 0
+      SwatFly
+      return
+    end if
+  end if
+  if Flies[1].State = FlyFlying then
+    if sprite 0 hitbox SwatterHit collides with sprite 2 hitbox FlyHit then
+      ActiveFly = 1
+      SwatFly
+      return
+    end if
+  end if
+  if Flies[2].State = FlyFlying then
+    if sprite 0 hitbox SwatterHit collides with sprite 3 hitbox FlyHit then
+      ActiveFly = 2
+      SwatFly
+      return
+    end if
+  end if
+  if BossActive = 1 then
+    BossPixelX = BigFly.X << 3
+    BossPixelY = BigFly.Y << 3
+    if Swatter.X + 14 >= BossPixelX then
+      if Swatter.X <= BossPixelX + 55 then
+        if Swatter.Y + 14 >= BossPixelY then
+          if Swatter.Y <= BossPixelY + 23 then
+            BossHealth -= 1
+            Score += 50
+            play sound 3
+            if BossHealth = 0 then
+              BigFly.State = BossDefeated
+              EnemiesLeft -= 1
+              DrawStatus
+              stop sound 5
+              play sound 4
+              DrawBoss
+              wait 120 frames
+            end if
+            DrawStatus
+            return
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+
+sub SwatFly:
+  Flies[ActiveFly].State = FlySplat
+  SplatTicks[ActiveFly] = 4
+  FliesLeft -= 1
+  EnemiesLeft -= 1
+  Score += 100
+  if FliesLeft = 0 then PendingStage = 1
+  DrawStatus
+  return
+
+sub StartLevelTwo:
+  Level = 2
+  FliesLeft = 3
+  RoundTime = 30
+  Flies[0].X = 40
+  Flies[0].Y = 48
+  Flies[0].DX = 6
+  Flies[0].DY = 5
+  Flies[0].State = FlyFlying
+  Flies[1].X = 200
+  Flies[1].Y = 88
+  Flies[1].DX = -6
+  Flies[1].DY = 4
+  Flies[1].State = FlyFlying
+  Flies[2].X = 120
+  Flies[2].Y = 144
+  Flies[2].DX = 5
+  Flies[2].DY = -6
+  Flies[2].State = FlyFlying
+  SplatTicks[0] = 0
+  SplatTicks[1] = 0
+  SplatTicks[2] = 0
+  start timer RoundSecond
+  print centered at 22, "LEVEL 2 - THREE FLIES"
+  DrawStatus
+  DrawActors
+  return
+
+sub StartLevelThree:
+  Level = 3
+  FliesLeft = 3
+  RoundTime = 30
+  Flies[0].X = 32
+  Flies[0].Y = 40
+  Flies[0].DX = 7
+  Flies[0].DY = 6
+  Flies[0].State = FlyFlying
+  Flies[1].X = 208
+  Flies[1].Y = 96
+  Flies[1].DX = -7
+  Flies[1].DY = 5
+  Flies[1].State = FlyFlying
+  Flies[2].X = 112
+  Flies[2].Y = 152
+  Flies[2].DX = 6
+  Flies[2].DY = -7
+  Flies[2].State = FlyFlying
+  SplatTicks[0] = 0
+  SplatTicks[1] = 0
+  SplatTicks[2] = 0
+  start timer RoundSecond
+  print centered at 22, "LEVEL 3 - FAST FLIES"
+  DrawStatus
+  DrawActors
+  return
+
+sub StartBoss:
+  stop sound 1
+  BossActive = 1
+  BossHealth = 10
+  BigFly.State = BossSleeping
+  start timer BossPhase
+  start timer BossStep
+  play sound 5
+  print centered at 22, "BIG FLY INCOMING!"
+  DrawBoss
+  return
+
+sub SecondTick:
+  if RoundTime > 0 then RoundTime -= 1
+  DrawStatus
+  return
+
+sub DrawStatus:
+  print Level at 7,1 digits 1
+  print RoundTime at 6,0 digits 2
+  print EnemiesLeft at 18,0 digits 1
+  print Score at 28,0 digits 4
+  return
+
+sub DrawActors:
+  if SwatterLocked = 1 then
+    set sprite 0 to Swatter.Y,Swatter.X,0,8
+  else
+    set sprite 0 to Swatter.Y,Swatter.X,0,15
+  end if
+  if Flies[0].State = FlyDefeated then
+    set sprite 1 y to 207
+  elseif Flies[0].State = FlySplat then
+    if WingFrame = 0 then
+      set sprite 1 to Flies[0].Y,Flies[0].X,12,8
+    else
+      set sprite 1 to Flies[0].Y,Flies[0].X,16,8
+    end if
+  else
+    if WingFrame = 0 then
+      set sprite 1 to Flies[0].Y,Flies[0].X,4,10
+    else
+      set sprite 1 to Flies[0].Y,Flies[0].X,8,10
+    end if
+  end if
+  if Flies[1].State = FlyDefeated then
+    set sprite 2 y to 207
+  elseif Flies[1].State = FlySplat then
+    if WingFrame = 0 then
+      set sprite 2 to Flies[1].Y,Flies[1].X,12,8
+    else
+      set sprite 2 to Flies[1].Y,Flies[1].X,16,8
+    end if
+  else
+    if WingFrame = 0 then
+      set sprite 2 to Flies[1].Y,Flies[1].X,4,6
+    else
+      set sprite 2 to Flies[1].Y,Flies[1].X,8,6
+    end if
+  end if
+  if Flies[2].State = FlyDefeated then
+    set sprite 3 y to 207
+  elseif Flies[2].State = FlySplat then
+    if WingFrame = 0 then
+      set sprite 3 to Flies[2].Y,Flies[2].X,12,8
+    else
+      set sprite 3 to Flies[2].Y,Flies[2].X,16,8
+    end if
+  else
+    if WingFrame = 0 then
+      set sprite 3 to Flies[2].Y,Flies[2].X,4,14
+    else
+      set sprite 3 to Flies[2].Y,Flies[2].X,8,14
+    end if
+  end if
+  update sprites
+  return
+
+sub DrawBoss:
+  put BossBlankFrame frame size 7,3 at BossOldX,BossOldY
+  if BossActive = 1 then
+    if BigFly.State = BossDefeated then
+      put BossDeadFrame frame size 7,3 at BigFly.X,BigFly.Y
+    elseif WingFrame = 0 then
+      put BossTileFrame frame size 7,3 at BigFly.X,BigFly.Y
+    else
+      put BossTileFrameB frame size 7,3 at BigFly.X,BigFly.Y
+    end if
+  end if
+  BossOldX = BigFly.X
+  BossOldY = BigFly.Y
+  return
+
+sub GameOver:
+  stop timer RoundSecond
+  stop timer BossPhase
+  stop timer BossStep
+  stop timer SwatterLock
+  mute all
+  clear sprites
+  update sprites
+  print centered at 10, "TIME IS UP"
+  print centered at 13, "PRESS FIRE TO TRY AGAIN"
+  pause until press
+  wait no fire
+  goto TitleScreen
+
+sub Victory:
+  stop timer RoundSecond
+  stop timer BossPhase
+  stop timer BossStep
+  stop timer SwatterLock
+  clear sprites
+  update sprites
+  BossActive = 0
+  DrawBoss
+  print centered at 9, "THE BIG FLY IS DOWN!"
+  print centered at 12, "TIMER QUEST COMPLETE"
+  print centered at 16, "PRESS FIRE"
+  pause until press
+  wait no fire
+  goto TitleScreen
+
+asm {
+FlyBuzzSound:
+    db $80,$19,$93,$01
+    db $80,$15,$A3,$03
+    db $80,$21,$93,$02
+    db $80,$0C,$93,$02
+    db $80,$13,$93,$01
+    db $80,$0C,$A3,$03
+    db $80,$21,$93,$02
+    db $80,$15,$93,$02
+    db $98
+SwatterSound:
+    db $40,$25,$62,$01,$40,$74,$51,$01,$40,$86,$00,$02,$50
+BossSplatSound:
+    db $02,$15,$20,$1B,$32,$10
+FlyVictorySound:
+    db $40,$1D,$51,$06,$40,$D5,$50,$06,$40,$A9,$50,$06
+    db $40,$8E,$50,$06,$40,$6A,$50,$18,$50
+BossBuzzSound:
+    db $80,$49,$73,$01
+    db $80,$45,$63,$03
+    db $80,$51,$73,$02
+    db $80,$1C,$63,$02
+    db $80,$33,$73,$01
+    db $80,$1C,$63,$03
+    db $80,$41,$73,$02
+    db $80,$45,$63,$02
+    db $98
+FlySoundTable:
+    dw FlyBuzzSound,$702B
+    dw SwatterSound,$7035
+    dw BossSplatSound,$703F
+    dw FlyVictorySound,$7049
+    dw BossBuzzSound,$7053
+}

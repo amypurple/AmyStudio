@@ -362,6 +362,55 @@ check("empty word table is rejected", () => {
   assert.match(String(bad.log || ""), /empty/i);
 });
 
+const DISPATCH_DEMO = `u8 State = 0
+u16 WideState = 0
+
+sub start:
+  on State goto StateOne, StateTwo, StateThree
+  on WideState gosub StateOne, StateTwo, StateThree
+  loop forever
+end sub
+
+sub StateOne:
+  return
+end sub
+sub StateTwo:
+  return
+end sub
+sub StateThree:
+  return
+end sub
+`;
+const dispatchResult = transpileAmy(DISPATCH_DEMO);
+const dispatchAsm = String(dispatchResult?.asmBody || "");
+
+check("indexed dispatch demo transpiles", () => {
+  assert.equal(dispatchResult.ok, true, dispatchResult.log || "transpile failed");
+});
+
+check("on goto emits a bounded ROM address table", () => {
+  assert.match(dispatchAsm, /dec a\s*\n\s*cp 3\s*\n\s*jp nc,[^\n]+\s*\n\s*ld l,a\s*\n\s*ld h,0\s*\n\s*add hl,hl/);
+  assert.match(dispatchAsm, /dw AMY_UPROC_StateOne,AMY_UPROC_StateTwo,AMY_UPROC_StateThree/);
+  assert.match(dispatchAsm, /jp \(hl\)/);
+  assert.doesNotMatch(dispatchAsm, /cp 1\s*\n\s*jp nz/);
+});
+
+check("on gosub uses an indirect-call trampoline", () => {
+  assert.match(dispatchAsm, /call AMY_ON_DISPATCH_CALL_[^\n]+\s*\n\s*jp AMY_ON_DISPATCH_DONE_[^\n]+\s*\nAMY_ON_DISPATCH_CALL_[^:]+:\s*\n\s*jp \(hl\)/);
+});
+
+check("word selector rejects a nonzero high byte before table indexing", () => {
+  assert.match(dispatchAsm, /ld hl,\(AMY_UVAR_WideState\)\s*\n\s*ld a,h\s*\n\s*or a\s*\n\s*jp nz,AMY_ON_DISPATCH_DONE_/);
+});
+
+const MANY_TARGETS = Array.from({ length: 130 }, (_, index) => `S${index + 1}`);
+const manyDispatch = transpileAmy(`u8 State = 0\non State goto ${MANY_TARGETS.join(", ")}\nloop forever\n${MANY_TARGETS.map((name) => `${name}:\n  loop forever`).join("\n")}\n`);
+const manyDispatchAsm = String(manyDispatch?.asmBody || "");
+check("large dispatch tables widen the selector before doubling", () => {
+  assert.equal(manyDispatch.ok, true, manyDispatch.log || "transpile failed");
+  assert.match(manyDispatchAsm, /cp 130\s*\n\s*jp nc,[^\n]+\s*\n\s*ld l,a\s*\n\s*ld h,0\s*\n\s*add hl,hl/);
+  assert.doesNotMatch(manyDispatchAsm, /add a,a/);
+});
 const BIOS_STUBS = [
   "TURN_OFF_SOUND EQU $1FD6",
   "MODE_1 EQU $1F85",

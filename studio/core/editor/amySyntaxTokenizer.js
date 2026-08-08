@@ -36,7 +36,7 @@ const QUALIFIER_KEYWORDS = new Set([
   "from", "mask", "mode", "raw", "ref", "repeat", "step", "to", "width", "with"
 ]);
 
-const TIME_UNITS = new Set(["cycles", "frame", "frames", "seconds", "ticks"]);
+const TIME_UNITS = new Set(["frame", "frames", "seconds", "tick", "ticks"]);
 
 const CONTEXTUAL_IDENTIFIERS = new Set([
   "at", "between", "by", "circle", "count", "forever", "from", "line", "pause",
