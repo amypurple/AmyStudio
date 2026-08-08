@@ -432,14 +432,16 @@ export function createValueParseHelpers({
       const joypadSource = parseBuiltinInputRef(node.object);
       if (joypadSource?.source !== "joypad") return null;
       const bits = { up: 0, right: 1, down: 2, left: 3, button4: 4, button3: 5, button2: 6, button1: 7 };
-      if (!(property in bits)) return null;
+      const masks = { fire: 0xC0, action: 0xF0 };
+      if (!(property in bits) && !(property in masks)) return null;
       return {
-        source: "joypad_bit",
+        source: property in bits ? "joypad_bit" : "joypad_mask",
         pad: joypadSource.pad,
         padToken: joypadSource.padToken,
         runtimeName: joypadSource.runtimeName,
         property,
         bit: bits[property],
+        mask: masks[property],
         valueType: "int8",
         declaredType: "boolean"
       };
@@ -448,7 +450,7 @@ export function createValueParseHelpers({
   }
 
   function emitLoadSelectedInputValue(builtinInput) {
-    const inputSource = builtinInput.source === "joypad_bit" ? "joypad" : builtinInput.source;
+    const inputSource = builtinInput.source === "joypad_bit" || builtinInput.source === "joypad_mask" ? "joypad" : builtinInput.source;
     if (builtinInput.runtimeName) return [`    ld a,(${builtinInput.runtimeName})`];
     const padInfo = getRuntimeInfo(builtinInput.padToken);
     const selectorLoad = typeof emitLoadInt8ValueInto === "function" ? emitLoadInt8ValueInto("a", builtinInput.padToken) : null;
@@ -511,14 +513,14 @@ export function createValueParseHelpers({
       lines = emitLoadSelectedInputValue(builtinInput);
     } else if (builtinInput.source === "vdp_status" || builtinInput.source === "frame") {
       lines = [`    ld a,(${builtinInput.runtimeName})`];
-    } else if (builtinInput.source === "joypad_bit") {
+    } else if (builtinInput.source === "joypad_bit" || builtinInput.source === "joypad_mask") {
       const falseLabel = makeGeneratedLabel("InputFalse");
       const doneLabel = makeGeneratedLabel("InputDone");
       const loadJoypad = emitLoadSelectedInputValue(builtinInput);
       if (!loadJoypad) return null;
       lines = [
         ...loadJoypad,
-        `    bit ${builtinInput.bit},a`,
+        builtinInput.source === "joypad_bit" ? `    bit ${builtinInput.bit},a` : `    and $${builtinInput.mask.toString(16).toUpperCase()}`,
         `    jr z,${falseLabel}`,
         "    ld a,1",
         `    jr ${doneLabel}`,

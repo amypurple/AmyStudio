@@ -39,6 +39,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsUserFrameHook = !!caps.needsUserFrameHook;
   const needsAmyTimers = !!caps.needsAmyTimers;
   const needs120c = !!caps.needs120c;
+  const needsBackdropShadow = !!caps.needsBackdropShadow;
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
   const needsRuntimeState =
     needsControllers ||
@@ -50,7 +51,8 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     needsNmiFlagShadow ||
     needsVdpStatusShadow ||
     needsUserFrameHook ||
-    needsAmyTimers;
+    needsAmyTimers ||
+    needsBackdropShadow;
   const needsSoundState = !!caps.needsSoundState || needsSound || needsMusic;
 
   const reserved = [
@@ -83,6 +85,12 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     addresses.nmi_flag = current + 2;
     reserved.push({ start: current, endExclusive: current + 3, label: "Amy runtime state" });
     current += 3;
+  }
+
+  if (needsBackdropShadow) {
+    addresses.vdp_r7_shadow = current;
+    reserved.push({ start: current, endExclusive: current + 1, label: "Amy VDP R7 backdrop shadow" });
+    current += 1;
   }
 
   if (needs120c) {

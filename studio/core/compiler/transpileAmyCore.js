@@ -328,9 +328,101 @@ export function transpileAmyCore(sourceText, deps) {
 
     return result;
   }
+  function lowerForEachLoops(rawLines) {
+    const arrayLengths = new Map();
+    let routineDepth = 0;
+    for (const rawLine of rawLines) {
+      const line = stripAmyInlineComment(rawLine).trim();
+      if (/^(?:sub|function)\b/i.test(line)) routineDepth += 1;
+      if (/^end\s+(?:sub|function)$/i.test(line)) { routineDepth = Math.max(0, routineDepth - 1); continue; }
+      if (routineDepth !== 0) continue;
+      const declaration = line.match(/^[A-Za-z_][A-Za-z0-9_]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
+      if (declaration) arrayLengths.set(declaration[1].toLowerCase(), Number(declaration[2]));
+    }
+
+    const replaceIdentifier = (rawLine, name, replacement) => {
+      let result = "";
+      let index = 0;
+      let inString = false;
+      while (index < rawLine.length) {
+        const ch = rawLine[index];
+        if (ch === '"') { inString = !inString; result += ch; index += 1; continue; }
+        if (!inString && ch === "'") { result += rawLine.slice(index); break; }
+        if (!inString && /[A-Za-z_]/.test(ch)) {
+          let end = index + 1;
+          while (end < rawLine.length && /[A-Za-z0-9_]/.test(rawLine[end])) end += 1;
+          const token = rawLine.slice(index, end);
+          result += token.toLowerCase() === name.toLowerCase() ? replacement : token;
+          index = end;
+          continue;
+        }
+        result += ch;
+        index += 1;
+      }
+      return result;
+    };
+
+    const result = [];
+    const aliasStack = [];
+    const controlStack = [];
+    const lowerAliases = (rawLine) => {
+      let loweredLine = rawLine;
+      for (let aliasIndex = aliasStack.length - 1; aliasIndex >= 0; aliasIndex -= 1) {
+        const alias = aliasStack[aliasIndex];
+        loweredLine = replaceIdentifier(loweredLine, alias.elementName, `${alias.arrayName}[${alias.indexName}]`);
+      }
+      return loweredLine;
+    };
+    for (const rawLine of rawLines) {
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      const open = stripped.match(/^for\s+each\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (open) {
+        const elementName = open[1];
+        const arrayName = open[3];
+        const length = arrayLengths.get(arrayName.toLowerCase());
+        if (!Number.isInteger(length) || length < 1) {
+          return { ok: false, log: `for each requires a global fixed array with a literal nonzero length: ${stripped}` };
+        }
+        if (!open[2]) {
+          return { ok: false, log: `for each currently requires an explicit u8 index: for each ${elementName}, Index in ${arrayName}` };
+        }
+        const indexName = open[2];
+        const indent = rawLine.slice(0, rawLine.search(/\S|$/));
+        result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
+        const alias = { elementName, indexName, arrayName };
+        aliasStack.push(alias);
+        controlStack.push({ kind: "each", alias });
+        continue;
+      }
+      const close = stripped.match(/^next(?:\s+([A-Za-z_][A-Za-z0-9_]*))?$/i);
+      if (close && controlStack.length) {
+        const control = controlStack.pop();
+        if (control.kind === "each") {
+          const current = aliasStack.pop();
+          const requested = close[1];
+          if (requested && requested.toLowerCase() !== current.elementName.toLowerCase() && requested.toLowerCase() !== current.indexName.toLowerCase()) {
+            return { ok: false, log: `next ${requested} does not match for each ${current.elementName}` };
+          }
+          const indent = rawLine.slice(0, rawLine.search(/\S|$/));
+          result.push(`${indent}next ${current.indexName}`);
+        } else {
+          result.push(lowerAliases(rawLine));
+        }
+        continue;
+      }
+      const loweredLine = lowerAliases(rawLine);
+      result.push(loweredLine);
+      if (/^for\s+(?!each\b)/i.test(stripped)) controlStack.push({ kind: "counted" });
+    }
+    if (aliasStack.length) return { ok: false, log: `for each ${aliasStack[aliasStack.length - 1].elementName} is missing next` };
+    return { ok: true, lines: result };
+  }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
-  const lines = rewriteImmediateByteTempCoordinateUsesCore(pruneSourceUnreachableAfterRoutineTerminators(conditionalPrepass.lines), normalizeExpression);
+  const prunedLines = pruneSourceUnreachableAfterRoutineTerminators(conditionalPrepass.lines);
+  const forEachLowering = lowerForEachLoops(prunedLines);
+  if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
+  const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);
   const inferredMemoryCaps = inferAmyMemoryCapabilities(lines.join("\n"), sourceHintsTinySound);
   const hasExternalAsmInclude = lines.some((candidateRaw) => /^include\s+asm\s+"/i.test(stripAmyInlineComment(candidateRaw).trim()));
   const preferScreenOnNoNmi = !inferredMemoryCaps.needsNmi;
@@ -342,6 +434,7 @@ export function transpileAmyCore(sourceText, deps) {
   const recordDefinitionLineNumbers = new Set();
   const dataBlocks = new Map();
   const dataWordTables = new Map();
+  const dataRecordTables = new Map();
   const tileTypes = new Map();
   const hitboxes = new Map();
   const amyTimers = new Map();
@@ -1232,6 +1325,92 @@ export function transpileAmyCore(sourceText, deps) {
   const enumDefinitionError = parseEnumDefinitions();
   if (enumDefinitionError) {
     return { ok: false, asmBody: "", log: enumDefinitionError };
+  }
+
+  function splitRecordDataRow(text) {
+    const values = [];
+    let current = "";
+    let depth = 0;
+    let quoted = false;
+    for (const ch of String(text)) {
+      if (ch === '"') quoted = !quoted;
+      if (!quoted) {
+        if (ch === "(" || ch === "[") depth += 1;
+        else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+        else if (ch === "," && depth === 0) {
+          values.push(current.trim());
+          current = "";
+          continue;
+        }
+      }
+      current += ch;
+    }
+    values.push(current.trim());
+    return values;
+  }
+
+  function lowerRecordDataTables() {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const rawLine = lines[lineIndex];
+      const start = stripAmyInlineComment(rawLine).trim().match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+records\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (!start) continue;
+      const [, tableName, recordTypeName] = start;
+      const recordInfo = getRecordTypeInfo(recordTypeName);
+      if (!recordInfo) return `Unknown record type '${recordTypeName}' for data table '${tableName}'.`;
+      if (recordInfo.orderedFields.some((field) => field.type !== "int8" || field.size !== 1)) {
+        return `Record data tables v1 require only u8, i8, or bool fields; '${recordTypeName}' contains a wider or nested field.`;
+      }
+      let rowCount = 0;
+      let cursor = lineIndex + 1;
+      let sawEnd = false;
+      for (; cursor < lines.length; cursor += 1) {
+        const rowRaw = lines[cursor];
+        const row = stripAmyInlineComment(rowRaw).trim();
+        if (!row) continue;
+        if (/^end\s+data$/i.test(row)) {
+          sawEnd = true;
+          break;
+        }
+        const values = splitRecordDataRow(row);
+        if (values.length !== recordInfo.orderedFields.length) {
+          return `Record data row for '${tableName}' needs ${recordInfo.orderedFields.length} fields, got ${values.length}: ${rowRaw}`;
+        }
+        for (let fieldIndex = 0; fieldIndex < values.length; fieldIndex += 1) {
+          const value = normalizeExpression(values[fieldIndex]);
+          const numeric = tryEvaluateConstantExpression(value);
+          const field = recordInfo.orderedFields[fieldIndex];
+          if (Number.isInteger(numeric)) {
+            const signed = field.declaredType === "i8";
+            const booleanField = field.declaredType === "bool" || field.declaredType === "boolean";
+            const valid = signed
+              ? numeric >= -128 && numeric <= 127
+              : booleanField
+                ? numeric === 0 || numeric === 1
+                : numeric >= 0 && numeric <= 255;
+            if (!valid) return `Value '${values[fieldIndex]}' does not fit ${field.declaredType} field ${recordTypeName}.${field.name}: ${rowRaw}`;
+          }
+        }
+        lines[cursor] = values.map((value) => normalizeExpression(value)).join(",");
+        rowCount += 1;
+      }
+      if (!sawEnd) return `Record data table '${tableName}' is missing 'end data'.`;
+      if (!rowCount) return `Record data table '${tableName}' is empty.`;
+      lines[lineIndex] = `data ${tableName} bytes`;
+      dataRecordTables.set(tableName, {
+        name: tableName,
+        recordTypeName: recordInfo.name,
+        recordSize: recordInfo.byteSize,
+        rowCount,
+        byteCount: rowCount * recordInfo.byteSize
+      });
+      lineIndex = cursor;
+    }
+    return null;
+  }
+
+  const recordDataTableError = lowerRecordDataTables();
+  if (recordDataTableError) {
+    return { ok: false, asmBody: "", log: recordDataTableError };
   }
 
   function parsePictureDefinitions() {
@@ -3242,6 +3421,7 @@ export function transpileAmyCore(sourceText, deps) {
         runtimeTypeSize,
         symbolOrValue,
         dataLengths,
+        dataRecordTables,
         precomputedSprite16Lengths,
         emitDefineCharsToPattern,
         emitDefineColorsToPattern,

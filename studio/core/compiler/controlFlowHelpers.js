@@ -603,13 +603,13 @@ export function createControlFlowHelpers(ctx) {
     const chooseBranch = (whenTrue, whenFalse) => (wantTrueBranch ? whenTrue : whenFalse);
 
     const directInput = parseBuiltinInputRef?.(condition);
-    if (directInput?.source === "joypad_bit") {
+    if (directInput?.source === "joypad_bit" || directInput?.source === "joypad_mask") {
       if (directInput.runtimeName) {
         return {
           ok: true,
           lines: [
             `    ld a,(${directInput.runtimeName})`,
-            `    bit ${directInput.bit},a`,
+            directInput.source === "joypad_bit" ? `    bit ${directInput.bit},a` : `    and $${directInput.mask.toString(16).toUpperCase()}`,
             `    jp ${chooseBranch("nz", "z")},${asmJumpTarget}`
           ],
           log: ""
@@ -944,7 +944,7 @@ export function createControlFlowHelpers(ctx) {
       };
     }
 
-    const ifSpriteHitboxCollision = condition.match(/^sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+collides\s+with\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+    const ifSpriteHitboxCollision = condition.match(/^sprite\s+(.+?)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+collides\s+with\s+sprite\s+(.+?)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
     if (ifSpriteHitboxCollision) {
       return emitNamedSpriteHitboxCollision(
         ifSpriteHitboxCollision[1],
@@ -1008,6 +1008,36 @@ export function createControlFlowHelpers(ctx) {
       };
     }
 
+    const ifBoxCollision = condition.match(/^box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+?)\s+collides\s+with\s+box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+)$/i);
+    if (ifBoxCollision) {
+      const [, x1, y1, width1, height1, x2, y2, width2, height2] = ifBoxCollision;
+      const atom = (text) => ({ kind: "atom", text });
+      const upperEdge = (origin, size) => {
+        const constantSize = tryEvaluateConstantExpression(size);
+        if (Number.isInteger(constantSize) && constantSize > 0) {
+          return constantSize === 1 ? `(${origin})` : `(${origin}) + ${constantSize - 1}`;
+        }
+        return `(${origin}) + (${size}) - 1`;
+      };
+      const overlapAst = {
+        kind: "and",
+        left: {
+          kind: "and",
+          left: atom(`${upperEdge(x1, width1)} >= (${x2})`),
+          right: atom(`(${x1}) <= ${upperEdge(x2, width2)}`)
+        },
+        right: {
+          kind: "and",
+          left: atom(`${upperEdge(y1, height1)} >= (${y2})`),
+          right: atom(`(${y1}) <= ${upperEdge(y2, height2)}`)
+        }
+      };
+      const result = emitConditionAstJump(overlapAst, asmJumpTarget, branchWhenFalse);
+      if (!result.ok) {
+        return { ok: false, lines: [], log: `box collision requires integer pixel coordinates and sizes: ${condition}` };
+      }
+      return result;
+    }
     const ifCompare = condition.match(/^(?:(signed|unsigned)\s+)?(.+?)\s*(==|=|!=|<>|<=|>=|<|>)\s*(.+)$/i);
     if (ifCompare) {
       const leftToken = normalizeExpression(ifCompare[2]);

@@ -5,6 +5,16 @@ const DOCS = [
     path: "../docs/amy-language.md"
   },
   {
+    id: "optimization",
+    label: "Optimization Cookbook",
+    path: "../docs/amy-optimization-cookbook.md"
+  },
+  {
+    id: "graphics-editors",
+    label: "Graphics Editors Guide",
+    path: "../docs/amy-graphics-editors-guide.md"
+  },
+  {
     id: "heritage",
     label: "Heritage",
     path: "../docs/amy-studio-heritage.md"

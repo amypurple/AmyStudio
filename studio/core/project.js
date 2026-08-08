@@ -398,6 +398,7 @@ function inferRuntimeCapabilities(project, asmBody) {
   const needsTinySound = usesTinySound;
   const needsRandomSeed = usesRandom;
   const needs120c = uses120c;
+  const needsBackdropShadow = /\bAMY_VDP_R7_SHADOW\b/.test(asmBody);
   const soundAreaCount = inferSoundAreaCount(sourceText);
   const needsNmi = usesScreenOnNmi || usesHalt || needs120c || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
   const needsNmiAckOnly = needsNmi && !needs120c && !needsControllers && !needsSound;
@@ -414,6 +415,7 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsTinySound,
     needsRandomSeed,
     needs120c,
+    needsBackdropShadow,
     soundAreaCount,
     needsNmiAckOnly,
     usesJoypad1,
@@ -445,6 +447,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needsUserFrameHook ||
     caps.needsAmyTimers ||
     caps.needs120c ||
+    caps.needsBackdropShadow ||
     needsNmi;
   const needsSoundState =
     caps.needsSound ||
@@ -495,7 +498,8 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needsNmiFlagShadow: caps.needsNmiFlagShadow,
     needsSoundState,
     needsAmyTimers: caps.needsAmyTimers,
-    needs120c: caps.needs120c
+    needs120c: caps.needs120c,
+    needsBackdropShadow: caps.needsBackdropShadow
   });
   const addr = runtimeMap.addresses;
   const hex16 = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
@@ -608,9 +612,12 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     lines.push("SET_SOUND_TABLE EQU $1FEE");
     lines.push("PLAY_SOUND_SLOT EQU $1FF1");
   }
-  if (needsRuntimeState || needsSpinner || needsFrameCounter || needsSprites || needsTinySound || needsSoundState || caps.needs120c) {
+  if (needsRuntimeState || needsSpinner || needsFrameCounter || needsSprites || needsTinySound || needsSoundState || caps.needs120c || caps.needsBackdropShadow) {
     lines.push("");
     lines.push("; Amy runtime state");
+    if (caps.needsBackdropShadow) {
+      lines.push(`AMY_VDP_R7_SHADOW EQU ${hex16(addr.vdp_r7_shadow)}`);
+    }
     if (needsRuntimeState) {
       lines.push(`NO_NMI          EQU ${hex16(addr.no_nmi)}`);
       lines.push(`VDP_STATUS      EQU ${hex16(addr.vdp_status)}`);

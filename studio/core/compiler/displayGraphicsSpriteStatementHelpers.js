@@ -314,19 +314,36 @@ export function handleDisplayGraphicsSpriteStatement({
   }
   const setSpriteByteField = line.match(/^set\s+sprite\s+(.+?)\s+(y|x|pattern|color)\s+to\s+(.+)$/i);
   if (setSpriteByteField) {
-    const indexValue = tryEvaluateConstantExpression(setSpriteByteField[1]);
+    const indexToken = setSpriteByteField[1].trim();
+    const indexValue = tryEvaluateConstantExpression(indexToken);
     const fieldName = setSpriteByteField[2].toLowerCase();
     const fieldOffset = { y: 0, x: 1, pattern: 2, color: 3 }[fieldName];
     const loadValue = emitLoadInt8ValueInto("a", setSpriteByteField[3]);
-    if (!Number.isInteger(indexValue) || indexValue < 0 || indexValue > 31 || !loadValue) {
-      return { ok: false, handled: true, log: `set sprite ${fieldName} requires a constant sprite index 0..31 and byte value: ${rawLine}` };
+    if (Number.isInteger(indexValue)) {
+      if (indexValue < 0 || indexValue > 31 || !loadValue) {
+        return { ok: false, handled: true, log: `set sprite ${fieldName} requires a sprite index 0..31 and byte value: ${rawLine}` };
+      }
+      return { ok: true, handled: true, lines: [...loadValue, `    ld (AMY_SPRITE_TABLE+${indexValue * 4 + fieldOffset}),a`] };
+    }
+    const loadIndex = emitLoadInt8ValueInto("a", indexToken);
+    if (!loadIndex || !loadValue) {
+      return { ok: false, handled: true, log: `set sprite ${fieldName} requires a byte-sized sprite index and byte value: ${rawLine}` };
     }
     return {
       ok: true,
       handled: true,
       lines: [
+        ...loadIndex,
+        "    ld l,a",
+        "    ld h,0",
+        "    add hl,hl",
+        "    add hl,hl",
+        `    ld de,AMY_SPRITE_TABLE+${fieldOffset}`,
+        "    add hl,de",
+        "    push hl",
         ...loadValue,
-        `    ld (AMY_SPRITE_TABLE+${indexValue * 4 + fieldOffset}),a`
+        "    pop hl",
+        "    ld (hl),a"
       ]
     };
   }

@@ -53,6 +53,10 @@ AMY_PAUSE_FINAL_RELEASE:
     ld ($73C4),a
     ld c,a
     ld b,1
+    call WRITE_REGISTER
+    ld a,(AMY_VDP_R7_SHADOW)
+    ld c,a
+    ld b,7
     jp WRITE_REGISTER
 
 ; Wait for one real VBlank NMI, decrement the timeout, and blank exactly once.
@@ -81,6 +85,9 @@ AMY_PAUSE_VBLANK_WAIT:
     ld ($73C4),a
     ld c,a
     ld b,1
+    call WRITE_REGISTER
+    ld c,$01
+    ld b,7             ; Uniform black while the display is blanked.
     call WRITE_REGISTER
     pop de
     pop hl
@@ -161,6 +168,10 @@ AMY_CHOICE_KEYPAD_FINAL_RELEASE:
     ld c,a
     ld b,1
     call WRITE_REGISTER
+    ld a,(AMY_VDP_R7_SHADOW)
+    ld c,a
+    ld b,7
+    call WRITE_REGISTER
 AMY_CHOICE_KEYPAD_RETURN:
     pop af
     ret
@@ -188,6 +199,9 @@ AMY_CHOICE_KEYPAD_VBLANK_WAIT:
     ld ($73C4),a
     ld c,a
     ld b,1
+    call WRITE_REGISTER
+    ld c,$01
+    ld b,7
     call WRITE_REGISTER
     pop hl
     pop de

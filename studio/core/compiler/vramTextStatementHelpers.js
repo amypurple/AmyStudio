@@ -48,6 +48,7 @@ export function handleVramTextStatement({
   runtimeTypeSize,
   symbolOrValue,
   dataLengths,
+  dataRecordTables,
   precomputedSprite16Lengths,
   emitDefineCharsToPattern,
   emitDefineColorsToPattern,
@@ -268,7 +269,8 @@ export function handleVramTextStatement({
     if (color === null) {
       return { ok: false, handled: true, log: `backdrop expects a Coleco color name or value 0..15: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [`    ld bc,$07${color.toString(16).toUpperCase().padStart(2, "0")}`, "    call WRITE_REGISTER"] };
+    const value = `$${color.toString(16).toUpperCase().padStart(2, "0")}`;
+    return { ok: true, handled: true, lines: [`    ld a,${value}`, "    ld (AMY_VDP_R7_SHADOW),a", "    ld c,a", "    ld b,7", "    call WRITE_REGISTER"] };
   }
 
   const setScreenPages = line.match(/^set\s+screen\s+pages\s+(.+)\s+and\s+(.+)$/i);
@@ -663,6 +665,41 @@ export function handleVramTextStatement({
       }
     }
 
+    const recordSourceMatch = sourceExpr.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\+\s*(.+))?$/);
+    const recordTable = recordSourceMatch
+      ? [...(dataRecordTables?.values?.() || [])].find((entry) => entry.name.toLowerCase() === recordSourceMatch[1].toLowerCase())
+      : null;
+    if (recordTable && targetInfo?.kind === "record_array") {
+      if (String(targetInfo.recordTypeName).toLowerCase() !== String(recordTable.recordTypeName).toLowerCase()) {
+        return { ok: false, handled: true, log: `Record copy type mismatch: ${recordTable.recordTypeName} cannot initialize ${targetInfo.recordTypeName}: ${rawLine}` };
+      }
+      const targetByteCount = targetInfo.length * (recordTable.byteCount / recordTable.rowCount);
+      const isWholeTable = !recordSourceMatch[2];
+      if (isWholeTable) {
+        if (countToken) {
+          return { ok: false, handled: true, log: `Typed record copies use the complete table and do not accept count: ${rawLine}` };
+        }
+        if (targetInfo.length !== recordTable.rowCount) {
+          return { ok: false, handled: true, log: `Record copy size mismatch: ${recordTable.rowCount} rows cannot initialize ${targetInfo.length} elements: ${rawLine}` };
+        }
+      } else {
+        const countValue = countToken ? tryEvaluateConstantExpression(countToken) : null;
+        if (!Number.isInteger(countValue) || countValue !== targetByteCount) {
+          return { ok: false, handled: true, log: `Record slice copy requires count ${targetByteCount} to fill ${targetInfo.length} ${targetInfo.recordTypeName} elements: ${rawLine}` };
+        }
+      }
+      const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);
+      const targetCode = emitLoadArrayAddressIntoHL(targetExpr, "0");
+      if (!sourceCode || !targetCode) {
+        return { ok: false, handled: true, log: `Record copy could not resolve source or destination: ${rawLine}` };
+      }
+      return {
+        ok: true,
+        handled: true,
+        lines: [...sourceCode, "    push hl", ...targetCode, "    ex de,hl", "    pop hl", `    ld bc,${targetByteCount}`, "    ldir"]
+      };
+    }
+
     if (targetInfo?.kind === "array") {
       if (sourceInfo?.kind === "array") {
         if (targetInfo.elementType !== sourceInfo.elementType) {
@@ -809,7 +846,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const putCountAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const putCountAt = line.match(/^put\s+(.+?)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putCountAt) {
     const loadSource = emitLoadSourceAddressIntoHL(putCountAt[1]);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
@@ -819,7 +856,7 @@ export function handleVramTextStatement({
       emitLoadInt8ValueIntoPreserving
     });
     if (!loadInputs || !loadSource) {
-      return { ok: false, handled: true, log: `put Buffer count N at X,Y requires a byte buffer, byte-sized coordinates, and a byte-sized count: ${rawLine}` };
+      return { ok: false, handled: true, log: `put Source count N at X,Y requires an addressable byte source, byte-sized coordinates, and a byte-sized count: ${rawLine}` };
     }
     return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }

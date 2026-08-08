@@ -258,6 +258,9 @@ u8 Pressed = 0
 
 Key = keypad(Port)
 if joypad(Port).button1 then Pressed = 1
+if joypad(1).fire then Pressed = 1
+if joypad(Port).action then Pressed = 1
+Pressed = joypad(2).action
 loop forever
 `;
 
@@ -272,6 +275,9 @@ check("keypad and joypad accept a runtime port expression", () => {
   assert.match(dynamicInputAsm, /ld a,\(JOYPAD_2\)/i, "expected joypad port 2 path");
   assert.match(dynamicInputAsm, /ld a,\(JOYPAD_1\)/i, "expected joypad port 1 path");
   assert.match(dynamicInputAsm, /bit 7,a/i, "expected button1 bit test");
+  assert.match(dynamicInputAsm, /ld a,\(JOYPAD_1\)\s*\n\s*and \$C0/i, "expected one-read standard fire mask");
+  assert.match(dynamicInputAsm, /and \$F0/i, "expected four-button action mask");
+  assert.match(dynamicInputAsm, /and \$F0[\s\S]*jr z,[^\n]+[\s\S]*ld a,1/i, "expected boolean normalization for action assignment");
 });
 check("record parameter without ref is a clear error", () => {
   const bad = transpileAmy("record P:\n  u8 X\nend record\n\nP Thing\n\nsub Move(P A):\n  inc A.X\nend sub\n\nMove(Thing)\nloop forever\n");

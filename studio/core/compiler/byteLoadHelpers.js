@@ -137,12 +137,29 @@ export function createByteLoadHelpers(ctx) {
     }
     const spriteField = normalized.match(/^sprite\s+(.+?)\s+(y|x|pattern|color)$/i);
     if (spriteField) {
-      const indexValue = tryEvaluateConstantExpression(spriteField[1]);
+      const indexToken = spriteField[1].trim();
+      const indexValue = tryEvaluateConstantExpression(indexToken);
       const fieldOffsets = { y: 0, x: 1, pattern: 2, color: 3 };
       const fieldOffset = fieldOffsets[String(spriteField[2]).toLowerCase()];
-      if (!Number.isInteger(indexValue) || indexValue < 0 || indexValue > 31 || fieldOffset === undefined) return null;
-      const offset = indexValue * 4 + fieldOffset;
-      const lines = [`    ld a,(AMY_SPRITE_TABLE+${offset})`];
+      if (fieldOffset === undefined) return null;
+      if (Number.isInteger(indexValue)) {
+        if (indexValue < 0 || indexValue > 31) return null;
+        const lines = [`    ld a,(AMY_SPRITE_TABLE+${indexValue * 4 + fieldOffset})`];
+        if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
+        return lines;
+      }
+      const loadIndex = emitLoadInt8ValueInto("a", indexToken);
+      if (!loadIndex) return null;
+      const lines = [
+        ...loadIndex,
+        "    ld l,a",
+        "    ld h,0",
+        "    add hl,hl",
+        "    add hl,hl",
+        `    ld de,AMY_SPRITE_TABLE+${fieldOffset}`,
+        "    add hl,de",
+        "    ld a,(hl)"
+      ];
       if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
       return lines;
     }

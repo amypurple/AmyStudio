@@ -293,6 +293,39 @@ Current implemented record scope:
 - field access such as `PieceVar.X` and `Pieces[I].Tile`
 - nested record fields such as `PieceVar.Pos.X` and `Pieces[I].Pos.Y`
 
+Typed ROM templates can initialize a complete record array with one checked block copy:
+
+```basic
+data LevelTwoFlies records Actor
+  40,48,6,5,FlyFlying
+  200,88,-6,4,FlyFlying
+  120,144,5,-6,FlyFlying
+end data
+
+Actor Flies[3]
+copy LevelTwoFlies to Flies
+```
+
+`data Name records Type` follows the record field order. Each row must provide exactly one value per field. `copy Template to Array` requires the same record type and exactly the same number of rows/elements, then emits a direct ROM-to-RAM `LDIR`; it has no runtime helper.
+
+A larger typed table can also hold several fixed-size templates. Select a byte offset at runtime and provide a constant `count` that exactly fills the destination:
+
+```basic
+data LevelOffsets bytes = 0,20,40,60
+data LevelFlies records Actor
+  ' Four consecutive 20-byte level templates.
+end data
+
+Actor Flies[4]
+u8 LevelOffset = 0
+LevelOffset = LevelOffsets[Level - 1]
+copy LevelFlies + LevelOffset count 20 to Flies
+```
+
+This checked slice form still requires matching record types. Its `count` must be a compile-time constant exactly equal to the destination array size; partial initialization is rejected. Offsets are byte offsets, so an explicit offset table is often clearer and cheaper than runtime multiplication on Z80.
+
+The first implementation intentionally supports records made only of `u8`, `i8`, and `bool` fields. Wider and nested fields are rejected clearly rather than silently changing their byte representation.
+
 Current record limits:
 - no local record variables yet
 - no arrays inside a record yet
@@ -820,6 +853,19 @@ next
 ```
 
 `next I` is preferred when the loop variable is useful documentation. The opening `for` line may end with `:` if desired.
+
+Fixed global arrays also support an element alias with an explicit byte index:
+
+```basic
+Actor Flies[3]
+u8 I = 0
+
+for each Fly, I in Flies
+  Fly.X += Fly.DX
+next
+```
+
+`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. Amy lowers this form to the same counted loop as `for I = 0 to 2`; it allocates no hidden RAM and adds no iterator runtime. The index must currently be declared explicitly as `u8`, and the source must be a global fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
 
 `end for` and `for I from ...` were removed; use `next` and `for I = ...`.
 
@@ -1609,6 +1655,8 @@ so 31-character titles start at column 1 instead of the CRT-riskier column 0.
 Explicit-position `print` uses `X,Y`; centered `print` takes only `Y` because
 Amy computes `X`.
 
+`put Source + Offset count N at X,Y` writes a runtime-selected slice of a ROM DATA block or byte array. Use fixed-width `data ... chars` rows plus an offset table for compact menus, status messages, and tilemap rows without one print routine per choice.
+
 Dense `print at X,Y, ...` note:
 - When the first printed item is a string, Amy also accepts the natural BASIC form `print at X,Y "TEXT"`; following items still use commas.
 - Amy treats mixed-item `print at` as a source-level convenience and lowering feature
@@ -1727,7 +1775,7 @@ update sprites
 update sprites from 4 count 4
 ```
 
-Literal sprite indexes must be in `0..31`; an out-of-range literal is a compile error.
+Literal sprite indexes must be in `0..31`; an out-of-range literal is a compile error. The full setter, single-field setters/getters, `hide sprite`, and named-hitbox collision operands accept byte-sized runtime index expressions. Constant forms still fold to direct shadow-table addresses. Multi-sprite field lists and partial clear/update ranges remain constant-only compile-time operations.
 
 After changing shadow entries, call `update sprites`.  
 Sprite shadow writes are not visible until `update sprites`.
@@ -1765,8 +1813,10 @@ if joypad(1).up then
   dec PlayerY
 end if
 
-if joypad(1).button1 then goto Fire
+if joypad(1).fire then goto Fire
 RawPad = joypad(1)
+AnyStandardFire = joypad(1).fire
+AnyActionButton = joypad(1).action
 Key = keypad(1)
 Spin = spinner(1)
 FrameCount = frame
@@ -1855,11 +1905,13 @@ unqualified forms watch both controllers, while `on joypad N` limits them to one
 `N` must be a literal from 1 to 1092. Amy precomputes `N*60` and `N*50` and
 selects the count at runtime from the official BIOS `AMERICA` byte (`60` NTSC,
 `50` PAL; unknown values fall back to NTSC). The timeout starts on command entry,
-even while an old action remains held. On expiry, Amy clears only VDP R1 display
-bit 6: NMI, controller scanning, sound, music, timers, and `on vblank` continue.
-After a fresh action is pressed and released, the original display-enable bit is
-restored without overwriting current NMI or sprite-size bits. This form requires
-NMI enabled; compilation fails when Amy can prove NMI is off at that point.
+even while an old action remains held. The current screen and backdrop remain visible
+until the timeout expires. On expiry, Amy sets VDP R7 to black and clears only VDP R1
+display bit 6: NMI, controller scanning, sound, music, timers, and `on vblank` continue.
+After a fresh action is pressed and released, Amy restores the tracked backdrop and the
+original display-enable bit without overwriting current NMI or sprite-size bits. Every
+`backdrop COLOR` command updates that tracked R7 value. This form requires NMI enabled;
+compilation fails when Amy can prove NMI is off at that point.
 `wait` is the canonical one-frame wait. It uses the safe frame-delay runtime:
 when NMI is enabled it waits through `NMI_FLAG`, and when NMI is disabled it
 polls the VDP status register directly instead of hanging on `halt`.
@@ -1901,7 +1953,8 @@ if not any collision goto Safe
 
 hitbox PlayerHitbox = 3,5 size 10,9
 hitbox EnemyHitbox = 2,2 size 12,12
-if sprite 0 hitbox PlayerHitbox collides with sprite 1 hitbox EnemyHitbox goto Hit
+if sprite 0 hitbox PlayerHitbox collides with sprite I + 1 hitbox EnemyHitbox goto Hit
+if box PlayerX,PlayerY size 16,16 collides with box BossX,BossY size 56,24 goto Hit
 
 tile type solid = $20,$21,$22
 tile type coin = $30
@@ -1923,6 +1976,7 @@ The older `if sprite A collides with sprite B box W,H` and
 `box X,Y size W,H` forms still work as shortcuts when both sprites intentionally
 share the same local box. All sprite collision forms operate on shadow sprite
 state, not VDP-filtered visible sprites.
+`if box X1,Y1 size W1,H1 collides with box X2,Y2 size W2,H2` tests two logical pixel-space rectangles directly from Amy values. It performs a short-circuited AABB test without reading VRAM or consuming a sprite slot, making it appropriate for tile-rendered bosses, doors, platforms, and other logical objects.
 
 Tile gameplay collision uses pixel coordinates, not name-table coordinates:
 - `get char at TileX,TileY` reads the visible name table at tile coordinates
@@ -2348,6 +2402,7 @@ Current expression engine notes:
 | `case N` / `case N to M` / `case else` | Case arms |
 | `for I = start to end` ... `next` | Counted loop |
 | `for I = start downto end` | Descending counted loop |
+| `for each Item, I in Array` ... `next` | Alias each global fixed-array element through an explicit u8 index |
 | `for ... step N` / `for ... step -N` | Stepped loop |
 | `continue for` / `exit for` | Loop control |
 | `while cond` ... `end while` | Conditional loop |
@@ -2440,7 +2495,7 @@ Current expression engine notes:
 | `format Value into Buffer [digits N]` | Format variable into buffer |
 | `format Score into Buffer` | Format BCD into a same-length byte buffer |
 | `put char V at X,Y` | Write one tile |
-| `put Name count N at X,Y` | Write a tile row |
+| `put Source [ + Offset] count N at X,Y` | Write a tile row or a runtime-selected source slice |
 | `put Name at X,Y` | Write a known-length tile row |
 | `put Name centered at Y` | Write a known-length tile row centered |
 | `put Buffer frame size W,H at X,Y` | Write a tile frame |
@@ -2485,6 +2540,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `joypad(N)` | Inline decoded joypad byte |
 | `joypad(N).up/.right/.down/.left` | Canonical inline direction tests |
 | `joypad(N).button1/.button2/.button3/.button4` | Canonical inline button tests |
+| `joypad(N).fire` | Either standard fire button (`button1` or `button2`), emitted as one `$C0` mask test |
+| `joypad(N).action` | Any of the four Super Action buttons, emitted as one `$F0` mask test; keypad keys are excluded |
 | `keypad(N)` | Inline decoded keypad byte |
 | `spinner(N)` | Signed movement delta since the previous read; reading consumes it (`1`: right positive, `2`: down positive) |
 | `frame` | Inline 16-bit frame counter; byte targets receive the low byte |
@@ -2498,6 +2555,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `if any collision goto Label` | VDP coincidence branch |
 | `hitbox Name = X,Y size W,H` | Named local sprite hitbox |
 | `if sprite A hitbox HitA collides with sprite B hitbox HitB goto Label` | Preferred sprite gameplay collision |
+| `if box X1,Y1 size W1,H1 collides with box X2,Y2 size W2,H2 goto Label` | Logical pixel-box collision without VRAM reads |
 | `if sprite A collides with sprite B box W,H goto Label` | Shortcut for same box on both sprites |
 | `if sprite A collides with sprite B box X,Y size W,H goto Label` | Shortcut for same offset box on both sprites |
 | `tile type solid = $20,$21` | Named tile property group |
@@ -2766,8 +2824,6 @@ These ideas have come up and may still prove worthwhile, but they are not commit
 - compact flag-group syntax beyond ordinary packed `bool` globals/locals
 - bitwise operators for explicit flag work, with clear rules for byte/word width
   and flag preservation in generated ASM
-- `for each` loops over arrays/record arrays, likely after `length(Array)` or
-  equivalent compile-time array introspection exists
 - richer chess / AI-oriented helpers beyond what recursion and local stack arrays already make possible
 - higher-level sprite animation DSLs on top of the existing machine-friendly primitives
 

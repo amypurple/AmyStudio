@@ -411,6 +411,142 @@ check("large dispatch tables widen the selector before doubling", () => {
   assert.match(manyDispatchAsm, /cp 130\s*\n\s*jp nc,[^\n]+\s*\n\s*ld l,a\s*\n\s*ld h,0\s*\n\s*add hl,hl/);
   assert.doesNotMatch(manyDispatchAsm, /add a,a/);
 });
+const FOR_EACH_DEMO = `record Actor:
+  u8 X
+  i8 DX
+end record
+Actor Actors[3]
+u8 I = 0
+u8 J = 0
+u8 Sum = 0
+sub start:
+  for each Actor, I in Actors
+    for J = 0 to 1
+      Sum += Actor.X
+    next J
+    Actor.X += 1
+    Sum += Actor.X
+  next
+  loop forever
+end sub
+`;
+const forEachResult = transpileAmy(FOR_EACH_DEMO);
+const forEachAsm = String(forEachResult?.asmBody || "");
+check("for each aliases a global record-array element through an explicit index", () => {
+  assert.equal(forEachResult.ok, true, forEachResult.log || "transpile failed");
+  assert.match(forEachAsm, /AMY_UVAR_Actors[\s\S]*AMY_UVAR_I/);
+  assert.doesNotMatch(forEachAsm, /Actor\.X/);
+});
+const forEachMissingIndex = transpileAmy(`u8 Values[2]\nfor each Value in Values\n  Value += 1\nnext\nloop forever\n`);
+check("for each survives a nested counted loop without losing its alias", () => {
+  const actorAddressLoads = forEachAsm.match(/ld hl,\$7020/g) || [];
+  assert.ok(actorAddressLoads.length >= 2, `expected repeated Actors[I] accesses, got ${actorAddressLoads.length}`);
+});
+check("for each rejects an omitted index without allocating hidden RAM", () => {
+  assert.equal(forEachMissingIndex.ok, false);
+  assert.match(String(forEachMissingIndex.log || ""), /requires an explicit u8 index/i);
+});
+const RECORD_DATA_COPY_DEMO = `record Actor:
+  u8 X
+  u8 Y
+  i8 DX
+  i8 DY
+  u8 State
+end record
+Actor Actors[3]
+const Flying = 1
+data Wave records Actor
+  40,48,6,5,Flying
+  200,88,-6,4,Flying
+  120,144,5,-6,Flying
+end data
+copy Wave to Actors
+loop forever
+`;
+const recordDataCopyResult = transpileAmy(RECORD_DATA_COPY_DEMO);
+const recordDataCopyAsm = String(recordDataCopyResult?.asmBody || "");
+check("typed record data copies an exact ROM template into a RAM record array", () => {
+  assert.equal(recordDataCopyResult.ok, true, recordDataCopyResult.log || "transpile failed");
+  assert.match(recordDataCopyAsm, /AMY_UDATA_Wave:[\s\S]*db \$28,\$30,\$06,\$05,AMY_UCONST_Flying/i);
+  assert.match(recordDataCopyAsm, /ld hl,AMY_UDATA_Wave[\s\S]*ld bc,15\s*\n\s*ldir/i);
+});
+const RECORD_DATA_STREAM_DEMO = `record Actor:
+  u8 X
+  u8 Y
+  i8 DX
+  i8 DY
+  u8 State
+end record
+Actor Flies[3]
+u8 I = 0
+data WaveStream bytes
+  3
+  40,48,6,5,1
+  200,88,-6,4,1
+  120,144,5,-6,1
+end data
+restore WaveStream
+read I
+for I = 0 to 2
+  read Flies[I].X, Flies[I].Y, Flies[I].DX, Flies[I].DY, Flies[I].State
+next
+loop forever
+`;
+const recordDataStreamResult = transpileAmy(RECORD_DATA_STREAM_DEMO);
+check("DATA cursor reads can initialize indexed record fields", () => {
+  assert.equal(recordDataStreamResult.ok, true, recordDataStreamResult.log || "transpile failed");
+});
+
+const recordDataSizeMismatch = transpileAmy(`record P:\n  u8 X\nend record\nP Items[2]\ndata One records P\n  1\nend data\ncopy One to Items\nloop forever\n`);
+check("typed record data rejects a destination with a different element count", () => {
+  assert.equal(recordDataSizeMismatch.ok, false);
+  assert.match(String(recordDataSizeMismatch.log || ""), /record copy size mismatch/i);
+});
+
+const SPRITE_INDEX_EXPRESSION_DEMO = `u8 I = 0
+u8 V = 0
+hitbox H = 0,0 size 8,8
+sub start:
+  set sprite I + 1 y to 40
+  V = sprite I + 1 x
+  if sprite I hitbox H collides with sprite I + 1 hitbox H then V = 1
+  loop forever
+end sub
+`;
+const spriteIndexExpressionResult = transpileAmy(SPRITE_INDEX_EXPRESSION_DEMO);
+const spriteIndexExpressionAsm = String(spriteIndexExpressionResult?.asmBody || "");
+check("sprite field setters/getters accept runtime index expressions", () => {
+  assert.equal(spriteIndexExpressionResult.ok, true, spriteIndexExpressionResult.log || "transpile failed");
+  assert.match(spriteIndexExpressionAsm, /add a,1[\s\S]*ld de,AMY_SPRITE_TABLE\+0[\s\S]*ld \(hl\),a/);
+  assert.match(spriteIndexExpressionAsm, /add a,1[\s\S]*ld de,AMY_SPRITE_TABLE\+1[\s\S]*ld a,\(hl\)/);
+});
+check("named hitbox collisions accept runtime sprite index expressions", () => {
+  assert.match(spriteIndexExpressionAsm, /add a,1\s*\n\s*ld b,a[\s\S]*call AMY_CHECK_COLLISION_RAW/);
+});
+const LOGICAL_BOX_COLLISION_DEMO = `u8 PlayerX = 40
+u8 PlayerY = 50
+u8 BossX = 96
+u8 BossY = 64
+u8 Hit = 0
+
+sub start:
+  if box PlayerX,PlayerY size 15,15 collides with box BossX,BossY size 56,24 then
+    Hit = 1
+  end if
+  if not box PlayerX,PlayerY size 1,1 collides with box BossX,BossY size 1,1 then
+    Hit = 2
+  end if
+  loop forever
+end sub
+`;
+const logicalBoxCollisionResult = transpileAmy(LOGICAL_BOX_COLLISION_DEMO);
+const logicalBoxCollisionAsm = String(logicalBoxCollisionResult?.asmBody || "");
+check("logical pixel-box collision transpiles", () => {
+  assert.equal(logicalBoxCollisionResult.ok, true, logicalBoxCollisionResult.log || "transpile failed");
+  assert.match(logicalBoxCollisionAsm, /add a,14/i, "15-pixel constant width should fold to an inclusive +14 edge");
+  assert.match(logicalBoxCollisionAsm, /add a,55/i, "56-pixel constant width should fold to an inclusive +55 edge");
+  assert.doesNotMatch(logicalBoxCollisionAsm, /GET_BKGRND|GET_VRAM|AMY_CHECK_COLLISION_RAW/i, "logical boxes must not read VRAM or require sprite collision helpers");
+});
 const BIOS_STUBS = [
   "TURN_OFF_SOUND EQU $1FD6",
   "MODE_1 EQU $1F85",
