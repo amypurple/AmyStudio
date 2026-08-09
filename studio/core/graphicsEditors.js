@@ -1281,7 +1281,7 @@ export function createGraphicsEditorUi({
     editorPane.appendChild(animationCanvas);
 
     const frameList = document.createElement("div");
-    frameList.className = "graphics-editor-palette graphics-editor-charset-list";
+    frameList.className = "graphics-editor-palette graphics-editor-charset-list graphics-editor-metatile-frame-list";
     const tileList = document.createElement("div");
     tileList.className = "graphics-editor-palette graphics-editor-charset-list";
     const side = document.createElement("div");
