@@ -159,7 +159,11 @@ export function handleDeclarationStatement({
     state.symbols.add(name);
     state.compileTimeConstants?.set(name, expr);
     const asmName = ensureConstAsmSymbol(name);
-    state.declarations.push(`${asmName} EQU ${state.rewriteUserSymbolsInExpression(expr)}`);
+    const fixedValue = /^-?[0-9]+\.[0-9]+$/.test(expr) ? parseFixedPointLiteral(expr) : null;
+    const asmExpr = fixedValue === null
+      ? state.rewriteUserSymbolsInExpression(expr)
+      : `$${(fixedValue & 0xFFFF).toString(16).toUpperCase().padStart(4, "0")}`;
+    state.declarations.push(`${asmName} EQU ${asmExpr}`);
     return { handled: true, ok: true };
   }
 

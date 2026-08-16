@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { handleVramTextStatement } from "../studio/core/compiler/vramTextStatementHelpers.js";
+import { inferAmyMemoryCapabilities } from "../studio/core/compilerFrontend.js";
+import { buildColecoLegacyRuntimeMap } from "../studio/ramLayouts.js";
 
 const result = handleVramTextStatement({
   line: "backdrop sky blue",
@@ -27,5 +29,17 @@ assert.equal((runtime.match(/ld a,\(AMY_VDP_R7_SHADOW\)\s+ld c,a\s+ld b,7/g) ?? 
   "both wake paths must restore the tracked R7 backdrop");
 assert.ok(runtime.indexOf("ld c,$01") > runtime.indexOf("AMY_PAUSE_VBLANK_TICK:"),
   "the pause path must not set black before entering its timeout handler");
+
+const backdropCaps = inferAmyMemoryCapabilities("backdrop black\nu8 Sentinel = 0", () => false);
+assert.equal(backdropCaps.needsBackdropShadow, true,
+  "backdrop must reserve the VDP R7 shadow in the transpiler RAM layout");
+const backdropLayout = buildColecoLegacyRuntimeMap(backdropCaps);
+assert.equal(backdropLayout.addresses.vdp_r7_shadow, 0x7023);
+assert.equal(backdropLayout.userRamStart, 0x7024,
+  "user RAM must start after the VDP R7 shadow");
+
+const explicitShadowCaps = inferAmyMemoryCapabilities("asm {\n  ld (AMY_VDP_R7_SHADOW),a\n}", () => false);
+assert.equal(explicitShadowCaps.needsBackdropShadow, true,
+  "explicit ASM shadow references must reserve the VDP R7 shadow");
 
 console.log("CRT-safe pause backdrop: PASS");

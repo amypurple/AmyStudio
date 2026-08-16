@@ -208,6 +208,17 @@ check("fixed byte-context demo transpiles", () => {
 });
 
 const asm = String(result?.asmBody || "");
+
+const fixedConstResult = transpileAmy(`const Decel = 0.03125
+fixed Speed = 0
+Speed += Decel
+loop forever
+`);
+check("fractional constants are encoded as fixed 8.8 words", () => {
+  assert.equal(fixedConstResult.ok, true, fixedConstResult.log || "transpile failed");
+  assert.match(String(fixedConstResult.asmBody || ""), /AMY_UCONST_Decel EQU \$0008/,
+    "0.03125 must compile to fixed 8.8 value $0008");
+});
 if (process.env.DUMP_ASM) console.log(asm);
 
 check("fixed declaration literals are encoded as 8.8 values", () => {

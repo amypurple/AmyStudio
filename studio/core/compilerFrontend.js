@@ -25,6 +25,9 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const usesWipeWithHalt = /\bwipe\s+(?:screen|bitmap)\s+(?:up|down)\b/i.test(text);
   const usesTextScreen = /\btext\s+screen\b/i.test(text);
   const usesGraphicsMode2Text = /\bgraphics\s+mode\s+2\s+text\b/i.test(text);
+  const needsBackdropShadow =
+    /^\s*backdrop\s+/im.test(codeText) ||
+    /\bAMY_VDP_R7_SHADOW\b/i.test(codeText);
   const needsMusic = /\b(play\s+song|stop\s+song|AMY_(PLAY_SONG|UPDATE_MUSIC|STOP_SONG|NEXT_SONG)|AMY_MUSIC_ENABLED|AMY_MUSIC_POINTER|AMY_MUSIC_COUNTER)\b/i.test(text);
   const needsSound =
     needsMusic ||
@@ -72,6 +75,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     usesWipeWithHalt,
     usesTextScreen,
     usesGraphicsMode2Text,
+    needsBackdropShadow,
     soundAreaCount,
     needsNmi
   };
