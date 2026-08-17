@@ -10,6 +10,7 @@
 //   --optimization <level>  ROM assembly profile: off, safe, balanced, aggressive, experimental
 //   --disable-optimizer-option <name>  force one optimizer config option off; repeatable
 //   --audit-json <file>     write per-example ROM size and optimized-ASM hashes
+//   --project-files-overlay <file>  replace project files by example id for variant audits
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SNAPSHOT = resolve(__dir, "examples-baseline.json");
 
 const args = process.argv.slice(2);
-const options = { only: null, assemble: false, romDir: null, optimization: "balanced", disabledOptimizerOptions: [], auditJson: null };
+const options = { only: null, assemble: false, romDir: null, optimization: "balanced", disabledOptimizerOptions: [], auditJson: null, projectFilesOverlay: null };
 let mode = "run";
 let snapshotFile = DEFAULT_SNAPSHOT;
 for (let index = 0; index < args.length; index += 1) {
@@ -48,6 +49,8 @@ for (let index = 0; index < args.length; index += 1) {
   } else if (arg === "--audit-json") {
     options.assemble = true;
     options.auditJson = resolve(args[++index] || "");
+  } else if (arg === "--project-files-overlay") {
+    options.projectFilesOverlay = resolve(args[++index] || "");
   } else if (arg === "--only") {
     const value = args[++index] || "";
     options.only = new Set(value.split(",").map((item) => item.trim()).filter(Boolean));
@@ -449,7 +452,12 @@ function runTestTypes() {
 
 // ── mode: run / snapshot / compare ──────────────────────────────────────────
 
-const amyExamples = exampleCatalog.filter((ex) => ex.sourceLang === "amy" && (!options.only || options.only.has(ex.id)));
+const projectFilesOverlay = options.projectFilesOverlay
+  ? JSON.parse(readFileSync(options.projectFilesOverlay, "utf8"))
+  : {};
+const amyExamples = exampleCatalog
+  .filter((ex) => ex.sourceLang === "amy" && (!options.only || options.only.has(ex.id)))
+  .map((ex) => ({ ...ex, projectFiles: projectFilesOverlay[ex.id] || ex.projectFiles }));
 if (options.only) {
   const found = new Set(amyExamples.map((example) => example.id));
   const missing = [...options.only].filter((id) => !found.has(id));
@@ -495,10 +503,11 @@ for (const ex of amyExamples) {
         passed += 1;
         assembledCount += 1;
         assembledBytes += assembled.size;
-        romAudit.push({ id: ex.id, ok: true, romBytes: assembled.size, optimizedAsmSha256: sha256(assembled.optimizedAsm), optimizerStats: assembled.stats });
+        romAudit.push({ id: ex.id, ok: true, romBytes: assembled.size, ramUsage: result.ramUsage || null, optimizedAsmSha256: sha256(assembled.optimizedAsm), optimizerStats: assembled.stats });
         if (options.romDir) {
           mkdirSync(options.romDir, { recursive: true });
           writeFileSync(join(options.romDir, `${ex.id}.rom`), Buffer.from(assembled.rom));
+          writeFileSync(join(options.romDir, `${ex.id}.optimized.asm`), assembled.optimizedAsm, "utf8");
           const symbolLines = Object.entries(assembled.symbols)
             .filter(([, value]) => Number.isInteger(value) && value >= 0 && value <= 0xFFFF)
             .map(([name, value]) => `00:${value.toString(16).toUpperCase().padStart(4, "0")} ${name}`)

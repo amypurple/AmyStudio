@@ -1,6 +1,9 @@
-// Generated lightweight public examples directory. Do not add sourceText or projectFiles here.
+// Generated lightweight examples directory. Do not add sourceText or projectFiles here.
+// Run: node tools/generate-examples-index.mjs
 export const exampleCategoryOrder = [
   "Minimal",
+  "Language",
+  "Numeric",
   "CVBasic Ports",
   "Demos",
   "Music",
@@ -15,7 +18,7 @@ export const exampleEditorialTracks = {
   "CVBASIC_PORT": "cvbasic-port"
 };
 
-const allExampleManifest = [
+export const exampleManifest = [
   {
     "id": "hello-world-minimal",
     "label": "Hello World Minimal",
@@ -330,11 +333,9 @@ const allExampleManifest = [
     "projectName": "amy-float-ahl-benchmark",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Algorithms",
+    "category": "Numeric",
     "tags": [
       "amy",
-      "fp5",
-      "benchmark",
       "manual-canon"
     ]
   },
@@ -385,14 +386,25 @@ const allExampleManifest = [
     "projectName": "amy-timer-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Selftests"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "amy-timer-safety-selftest",
     "label": "Amy Timer Safety Self-Test",
     "detail": "Executable safety regression for repeating, one-shot, stop, restart, independent timers, one-tick intervals, and NMI-off pause semantics.",
     "projectName": "amy-timer-safety-selftest",
-    "sourcePath": "./examples-src/amy-timer-safety-selftest.alexis"
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
   },
   {
     "id": "amy-on-frame-lab",
@@ -401,7 +413,11 @@ const allExampleManifest = [
     "projectName": "amy-on-frame-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Selftests"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "amy-conditional-compile-lab",
@@ -410,7 +426,11 @@ const allExampleManifest = [
     "projectName": "amy-conditional-compile-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Selftests"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "amy-multicolor-pixel-lab",
@@ -419,7 +439,11 @@ const allExampleManifest = [
     "projectName": "amy-multicolor-pixel-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Selftests"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "explosion",
@@ -427,8 +451,25 @@ const allExampleManifest = [
     "detail": "Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion board game: overload cells, chain reactions, and legacy CPU move evaluation.",
     "projectName": "explosion",
     "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Games"
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "space-trainer",
+    "label": "Space Trainer",
+    "detail": "Amy port of Amy Bienvenu / NewColeco's small SDCC Space Trainer sample: two-player inertia, bonus bubble, score race, and original BIOS sound tables.",
+    "projectName": "space-trainer",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "snake-demo",
@@ -437,7 +478,11 @@ const allExampleManifest = [
     "projectName": "snake-demo",
     "sourceLang": "amy",
     "editorialTrack": "legacy-compat",
-    "category": "Games"
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "legacy-compat"
+    ]
   },
   {
     "id": "cvbasic-viboritas-port",
@@ -446,7 +491,13 @@ const allExampleManifest = [
     "projectName": "cvbasic-viboritas-port",
     "sourceLang": "amy",
     "editorialTrack": "cvbasic-port",
-    "category": "Games"
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
   },
   {
     "id": "tile-collision-maze",
@@ -455,7 +506,12 @@ const allExampleManifest = [
     "projectName": "tile-collision-maze",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "collision",
+      "manual-canon"
+    ]
   },
   {
     "id": "sprite-momentum-platformer",
@@ -464,7 +520,12 @@ const allExampleManifest = [
     "projectName": "sprite-momentum-platformer",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "sprites",
+      "manual-canon"
+    ]
   },
   {
     "id": "old-devkit-10years",
@@ -473,7 +534,11 @@ const allExampleManifest = [
     "projectName": "amy-30th-anniversary",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "meteor-dodge",
@@ -482,7 +547,11 @@ const allExampleManifest = [
     "projectName": "meteor-dodge",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "brinquitos-game-demo",
@@ -491,13 +560,25 @@ const allExampleManifest = [
     "projectName": "brinquitos-game-demo",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "smooth-criminal-music",
     "label": "Smooth Criminal Music",
+    "detail": "",
     "projectName": "smooth-criminal-music",
-    "category": "Music"
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Music",
+    "tags": [
+      "amy",
+      "audio",
+      "manual-canon"
+    ]
   },
   {
     "id": "diamond-dash",
@@ -506,7 +587,11 @@ const allExampleManifest = [
     "projectName": "diamond-dash",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "chateau-du-dragon",
@@ -515,7 +600,11 @@ const allExampleManifest = [
     "projectName": "chateau-du-dragon",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "dragon-castle",
@@ -524,7 +613,11 @@ const allExampleManifest = [
     "projectName": "dragon-castle",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games"
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   },
   {
     "id": "easter-bunny",
@@ -532,54 +625,118 @@ const allExampleManifest = [
     "detail": "Playable Amy Studio port of Amy Bienvenu / NewColeco's Minigame Compo 2007 Easter Bunny, now using the native Amy v3 rewrite path with only the required project assets.",
     "projectName": "easter-bunny",
     "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Games"
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "reversi",
+    "label": "Reversi",
+    "detail": "Complete Amy Studio port of Amy Bienvenu / NewColeco's legacy Reversi, with human, simple, and bounded-negamax tuned players, original graphics, animated flips, and the historical NewColeco logo cue.",
+    "projectName": "reversi",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-static-frameless-abi-selftest",
+    "label": "Amy Static Frameless ABI Selftest",
+    "detail": "Runtime ROM test for frameless scalar calls, signed and unsigned parameters, local reset, nested arguments, recursion boundaries, and NMI exclusion.",
+    "projectName": "amy-static-frameless-abi-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "warrior-dan2-fire-visual-test",
+    "label": "Warrior DAN2 Fire Visual Test",
+    "detail": "Interactive GearColeco regression test: wait on an explanatory page, press FIRE, decompress Warrior with DAN2, and verify the rendered image.",
+    "projectName": "warrior-dan2-fire-visual-test",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "fly-swatter-timer-quest",
+    "label": "Fly Swatter: Timer Quest",
+    "detail": "A playful Amy timer and state-machine tutorial with five increasingly fast fly waves and a multi-phase boss.",
+    "projectName": "fly-swatter-timer-quest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "dacman-2",
+    "label": "DacMan 2",
+    "detail": "Puzzle-focused DacMan sequel foundation with four skill levels, ZX0 level assets, and support for community-created levels.",
+    "projectName": "dacman-2",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-record-array-safety-selftest",
+    "label": "Amy Record Array Safety Self-Test",
+    "detail": "Executable regression for typed record copies, dynamic indexing, ref-record mutation, for-each aliases, and expression indexes.",
+    "projectName": "amy-record-array-safety-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-record-array-cost-record",
+    "label": "Amy Record Array Cost Lab",
+    "detail": "Size fixture using a 13-byte actor record array; compare with the equivalent parallel-array fixture.",
+    "projectName": "amy-record-array-cost-record",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-record-array-cost-parallel",
+    "label": "Amy Parallel Array Cost Lab",
+    "detail": "Size fixture using thirteen parallel byte arrays; baseline for the equivalent record-array fixture.",
+    "projectName": "amy-record-array-cost-parallel",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];
-
-const publicExampleIds = new Set([
-  "hello-world-minimal",
-  "sprite-minimal",
-  "input-loop-minimal",
-  "collision-minimal",
-  "collision-box-test",
-  "dsound-voice-minimal",
-  "rebound-demo",
-  "warrior-barbarian-slideshow",
-  "africa-music-box",
-  "commando-music-box",
-  "commando-tiny-music-box",
-  "cvbasic-happy-face-port",
-  "cvbasic-face-joystick-port",
-  "cvbasic-test3-port",
-  "cvbasic-test1-port",
-  "cvbasic-controller-port",
-  "cvbasic-vramcopy-port",
-  "cvbasic-spinner-port",
-  "cvbasic-plot-port",
-  "cvbasic-vector-cube-port",
-  "cvbasic-demo-port",
-  "amy-float-ahl-benchmark",
-  "three-sort-algorithms",
-  "united-states-flag-mode3",
-  "canada-flag-mode3",
-  "amy-timer-lab",
-  "amy-on-frame-lab",
-  "amy-conditional-compile-lab",
-  "amy-multicolor-pixel-lab",
-  "explosion",
-  "snake-demo",
-  "cvbasic-viboritas-port",
-  "tile-collision-maze",
-  "sprite-momentum-platformer",
-  "old-devkit-10years",
-  "meteor-dodge",
-  "brinquitos-game-demo",
-  "smooth-criminal-music",
-  "diamond-dash",
-  "chateau-du-dragon",
-  "dragon-castle",
-  "easter-bunny"
-]);
-
-export const exampleManifest = allExampleManifest.filter((item) => publicExampleIds.has(item.id));

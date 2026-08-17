@@ -2,9 +2,9 @@ import {
   GearcolecoTestCore,
   GEARCOLECO_TEST_INPUT,
   GEARCOLECO_TEST_REGION
-} from "./gearcolecoTestCore.js?v=20260802-z80-explorer";
+} from "./gearcolecoTestCore.js?v=20260817-framebuffer-view";
 import { RomTestRecorder } from "./romTestRecorder.js";
-import { RomTestAudioSink } from "./romTestAudioSink.js";
+import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
 import {
   createRomTestCase,
   listAmyCheckpoints,
@@ -36,6 +36,12 @@ import {
 import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260805-steering-combined";
 
 const SEED = 0x19770527;
+const PLAYBACK_MAX_CATCHUP_FRAMES = 4;
+const PLAYBACK_MAX_ELAPSED_MS = 100;
+const INSPECTOR_REFRESH_MS = 250;
+const framebufferRenderCache = new WeakMap();
+const rgb5To8 = Uint8Array.from({ length: 32 }, (_, value) => value * 255 / 31);
+const rgb6To8 = Uint8Array.from({ length: 64 }, (_, value) => value * 255 / 63);
 
 export function consumeMouseSpinnerTicks(accumulated, limit = 127) {
   const value = Number.isFinite(accumulated) ? accumulated : 0;
@@ -129,13 +135,17 @@ function renderRgb565(canvas, framebuffer) {
   if (canvas.width !== framebuffer.width) canvas.width = framebuffer.width;
   if (canvas.height !== framebuffer.height) canvas.height = framebuffer.height;
   const context = canvas.getContext("2d", { alpha: false });
-  const image = context.createImageData(framebuffer.width, framebuffer.height);
+  let image = framebufferRenderCache.get(canvas);
+  if (!image || image.width !== framebuffer.width || image.height !== framebuffer.height) {
+    image = context.createImageData(framebuffer.width, framebuffer.height);
+    framebufferRenderCache.set(canvas, image);
+  }
   for (let index = 0; index < framebuffer.pixels.length; ++index) {
     const pixel = framebuffer.pixels[index];
     const offset = index * 4;
-    image.data[offset] = ((pixel >>> 11) & 0x1F) * 255 / 31;
-    image.data[offset + 1] = ((pixel >>> 5) & 0x3F) * 255 / 63;
-    image.data[offset + 2] = (pixel & 0x1F) * 255 / 31;
+    image.data[offset] = rgb5To8[(pixel >>> 11) & 0x1F];
+    image.data[offset + 1] = rgb6To8[(pixel >>> 5) & 0x3F];
+    image.data[offset + 2] = rgb5To8[pixel & 0x1F];
     image.data[offset + 3] = 255;
   }
   context.putImageData(image, 0, 0);
@@ -300,6 +310,7 @@ export function createRomTestRecorderUi({
   let core = null;
   let recorder = null;
   let timer = 0;
+  let playbackTimestamp = 0;
   let playing = true;
   const controllerMasks = [0, 0];
   const pressedKeys = new Set();
@@ -310,7 +321,7 @@ export function createRomTestRecorderUi({
   let loadedRom = null;
   let externalRom = null;
   let externalRomName = "";
-  let renderCounter = 0;
+  let lastInspectorRefresh = 0;
   let symbols = [];
   const activeBreakpoints = new Map();
   const activeWatches = new Map();
@@ -784,9 +795,11 @@ export function createRomTestRecorderUi({
 
   function refreshActiveInspector(force = false) {
     if (!core) return;
-    if (!force && playing && ++renderCounter % 10 !== 0) return;
-    refreshMachineState();
+    const now = performance.now();
+    if (!force && playing && now - lastInspectorRefresh < INSPECTOR_REFRESH_MS) return;
+    lastInspectorRefresh = now;
     const active = dialog.querySelector("[data-pane].is-active")?.dataset.pane;
+    if (active === "state") refreshMachineState();
     if (active === "asm") refreshAssembly();
     if (active === "ram") refreshMemory("ram");
     if (active === "vram") refreshMemory("vram");
@@ -803,7 +816,7 @@ export function createRomTestRecorderUi({
 
   function render({ forceInspector = false } = {}) {
     const screenCanvas = dialog.querySelector("canvas");
-    renderRgb565(screenCanvas, core.getFramebuffer());
+    renderRgb565(screenCanvas, core.getFramebufferView());
     const timeline = recorder.getTimeline();
     const slider = field("timeline");
     slider.min = String(timeline.firstAvailableFrame);
@@ -838,7 +851,7 @@ export function createRomTestRecorderUi({
       ? recorder.replayFrame()
       : recorder.runFrame({ controllerMasks: effectiveMasks, spinnerDeltas });
     if (!replaying) mouseJoystickMask = 0;
-    audioSink.push(core.getAudioFrame());
+    if (audioSink.acceptsFrames()) audioSink.push(core.getAudioFrame());
     if (result.breakpointHit) {
       if (profileRequest?.waiting && result.pc === profileRequest.target.start) {
         beginRoutineProfile();
@@ -1070,8 +1083,9 @@ export function createRomTestRecorderUi({
 
 
   function stopCore() {
-    clearInterval(timer);
+    cancelAnimationFrame(timer);
     timer = 0;
+    playbackTimestamp = 0;
     core?.destroy();
     core = null;
     recorder = null;
@@ -1085,19 +1099,36 @@ export function createRomTestRecorderUi({
   }
 
   function startPlaybackTimer() {
-    clearInterval(timer);
-    timer = setInterval(() => {
-      if (!playing || !core || !recorder) return;
-      playbackAccumulator += playbackRate;
+    cancelAnimationFrame(timer);
+    playbackTimestamp = 0;
+    const tick = (timestamp) => {
+      if (!core || !recorder) return;
+      if (!playbackTimestamp) playbackTimestamp = timestamp;
+      const elapsed = Math.min(PLAYBACK_MAX_ELAPSED_MS, Math.max(0, timestamp - playbackTimestamp));
+      playbackTimestamp = timestamp;
+      if (!playing) {
+        playbackAccumulator = 0;
+        timer = requestAnimationFrame(tick);
+        return;
+      }
+      const framesPerSecond = core.getFramesPerSecond() || 60;
+      playbackAccumulator += elapsed * framesPerSecond * playbackRate / 1000;
       let advanced = false;
-      while (playbackAccumulator >= 1 && playing) {
+      let catchupFrames = 0;
+      while (playbackAccumulator >= 1 && playing && catchupFrames < PLAYBACK_MAX_CATCHUP_FRAMES) {
         const result = runOneFrame({ renderNow: false });
         playbackAccumulator -= 1;
+        catchupFrames += 1;
         advanced = true;
         if (result.breakpointHit) break;
       }
+      if (catchupFrames === PLAYBACK_MAX_CATCHUP_FRAMES && playbackAccumulator > 1) {
+        playbackAccumulator = 1;
+      }
       if (advanced) render();
-    }, 1000 / (core?.getFramesPerSecond() || 60));
+      timer = requestAnimationFrame(tick);
+    };
+    timer = requestAnimationFrame(tick);
   }
   function removeInstalledSourceBreakpoints() {
     if (!core) return;
@@ -1146,7 +1177,7 @@ export function createRomTestRecorderUi({
     loadedRom = rom;
     core.loadBios(bios);
     core.loadRom(rom, { region: Number(field("region").value) });
-    recorder = new RomTestRecorder(core, { keyframeInterval: 12, maxKeyframes: 300 });
+    recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
     recorder.start();
     if (!externalRom) installSourceBreakpoints();
     playing = true;
@@ -1155,7 +1186,7 @@ export function createRomTestRecorderUi({
     pressedKeys.clear();
     stoppedCheckpoint = null;
     playbackAccumulator = 0;
-    renderCounter = 0;
+    lastInspectorRefresh = 0;
     audioSink.setPlaybackRate(playbackRate);
     await audioSink.resume();
     startPlaybackTimer();
@@ -1424,7 +1455,7 @@ export function createRomTestRecorderUi({
         field("region").value = String(replayRegion);
         core.loadRom(rom, { region: replayRegion });
         const result = await replayRomTestCase(core, testCase, { biosBytes: bios, romBytes: rom, symbolsText: getCompiledSymbols(), allowRebuiltRom: field("allowRebuilt").checked });
-        recorder = new RomTestRecorder(core, { keyframeInterval: 12, maxKeyframes: 300 });
+        recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
         recorder.start();
     if (!externalRom) installSourceBreakpoints();
         playing = false;

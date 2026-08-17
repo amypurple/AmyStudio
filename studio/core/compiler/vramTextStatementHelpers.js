@@ -196,16 +196,16 @@ export function handleVramTextStatement({
     ];
   }
 
-  const decompInferred = line.match(/^decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
+  const decompInferred = line.match(/^decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
   if (decompInferred) {
     const sourceName = decompInferred[1];
-    const target = decompInferred[2].toLowerCase();
+    const targetExpr = decompInferred[2].trim();
     const declaredAsset = assets.find((asset) => asset.name === sourceName);
     if (!declaredAsset?.codec) {
       return {
         ok: false,
         handled: true,
-        log: `decompress ${sourceName} to vram.${target} needs a declared asset codec; use "decompress codec ${sourceName} to vram.${target}" for raw data labels.`
+        log: `decompress ${sourceName} to ${targetExpr} needs a declared asset codec; use "decompress codec ${sourceName} to ${targetExpr}" for raw data labels.`
       };
     }
     const codec = declaredAsset.codec.toLowerCase() === "rle" ? "mdkrle" : declaredAsset.codec.toLowerCase();
@@ -213,23 +213,25 @@ export function handleVramTextStatement({
       return {
         ok: false,
         handled: true,
-        log: `decompress ${sourceName} to vram.${target} cannot use a raw asset; use copy ${sourceName} count N to vram.${target}.`
+        log: `decompress ${sourceName} to ${targetExpr} cannot use a raw asset; use copy ${sourceName} count N to ${targetExpr}.`
       };
     }
-    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[target];
+    const targetCode = emitLoadVramAddressIntoDE(targetExpr);
+    if (!targetCode) return { ok: false, handled: true, log: `Invalid VRAM decompression destination: ${rawLine}` };
     return {
       ok: true,
       handled: true,
-      lines: wrapVramUploadLines([`    ld hl,Asset_${sourceName}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`])
+      lines: wrapVramUploadLines([...targetCode, "    push de", `    ld hl,Asset_${sourceName}`, "    pop de", `    call ${codec}_decompress`])
     };
   }
 
-  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)$/i);
+  const decomp = line.match(/^decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
   if (decomp) {
     const codec = decomp[1].toLowerCase() === "rle" ? "mdkrle" : decomp[1].toLowerCase();
     const sourceName = decomp[2];
-    const target = decomp[3].toLowerCase();
-    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[target];
+    const targetExpr = decomp[3].trim();
+    const targetCode = emitLoadVramAddressIntoDE(targetExpr);
+    if (!targetCode) return { ok: false, handled: true, log: `Invalid VRAM decompression destination: ${rawLine}` };
     if (sourceName.includes("[")) {
       const loadSource = emitLoadSourceAddressIntoHL(sourceName);
       if (!loadSource) {
@@ -238,17 +240,16 @@ export function handleVramTextStatement({
       return {
         ok: true,
         handled: true,
-        lines: wrapVramUploadLines([...loadSource, `    ld de,${targetLabel}`, `    call ${codec}_decompress`])
+        lines: wrapVramUploadLines([...targetCode, "    push de", ...loadSource, "    pop de", `    call ${codec}_decompress`])
       };
     }
     const declaredAsset = assets.find((asset) => asset.name === sourceName);
     return {
       ok: true,
       handled: true,
-      lines: wrapVramUploadLines([`    ld hl,${declaredAsset ? `Asset_${sourceName}` : resolveAddressSymbol(sourceName)}`, `    ld de,${targetLabel}`, `    call ${codec}_decompress`])
+      lines: wrapVramUploadLines([...targetCode, "    push de", `    ld hl,${declaredAsset ? `Asset_${sourceName}` : resolveAddressSymbol(sourceName)}`, "    pop de", `    call ${codec}_decompress`])
     };
   }
-
   const loadMode2TextColors = line.match(/^load\s+(?:mode\s*2|mode2)\s+text\s+colors\s+(.+)$/i);
   if (loadMode2TextColors) {
     const sourceName = loadMode2TextColors[1].trim();
@@ -583,7 +584,31 @@ export function handleVramTextStatement({
     return { ok: false, handled: true, log: `copy bytes of does not yet support this source type: ${rawLine}` };
   }
 
-  const copyTransfer = line.match(/^copy\s+(.+?)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?\s+to\s+(.+?)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
+  const copyVramToVram = line.match(/^copy\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))\s*$/i);
+  if (copyVramToVram) {
+    const sourceVram = emitLoadVramAddressIntoDE(copyVramToVram[1]);
+    const targetVram = emitLoadVramAddressIntoDE(copyVramToVram[3]);
+    const countValue = tryEvaluateConstantExpression(copyVramToVram[2]);
+    if (!sourceVram || !targetVram) return { ok: false, handled: true, log: `Invalid VRAM-to-VRAM address: ${rawLine}` };
+    if (!Number.isInteger(countValue) || countValue < 1 || countValue > 32) {
+      return { ok: false, handled: true, log: `VRAM-to-VRAM copy requires a constant count from 1 to 32: ${rawLine}` };
+    }
+    return {
+      ok: true,
+      handled: true,
+      lines: wrapVramUploadLines([
+        ...sourceVram,
+        "    ld hl,AMY_BUFFER32",
+        `    ld bc,${countValue}`,
+        "    call READ_VRAM",
+        ...targetVram,
+        "    ld hl,AMY_BUFFER32",
+        `    ld bc,${countValue}`,
+        "    call WRITE_VRAM"
+      ])
+    };
+  }
+  const copyTransfer = line.match(/^copy\s+(.+?)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?\s+to\s+(.+?)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?\s*$/i);
   if (copyTransfer && !/^copy\s+(?:bytes|bcd)\b/i.test(line)) {
     const sourceExpr = normalizeExpression(copyTransfer[1].trim());
     const countBeforeTo = copyTransfer[2];
@@ -636,6 +661,26 @@ export function handleVramTextStatement({
       }
     }
 
+    if (sourceVram && targetVram) {
+      const countValue = countToken ? tryEvaluateConstantExpression(countToken) : null;
+      if (!Number.isInteger(countValue) || countValue < 1 || countValue > 32) {
+        return { ok: false, handled: true, log: `VRAM-to-VRAM copy requires a constant count from 1 to 32: ${rawLine}` };
+      }
+      return {
+        ok: true,
+        handled: true,
+        lines: [
+          ...sourceVram,
+          "    ld hl,AMY_BUFFER32",
+          `    ld bc,${countValue}`,
+          "    call READ_VRAM",
+          ...targetVram,
+          "    ld hl,AMY_BUFFER32",
+          `    ld bc,${countValue}`,
+          "    call WRITE_VRAM"
+        ]
+      };
+    }
     if (sourceVram) {
       const targetBufferInfo = getByteArrayBufferInfo(targetExpr, 1);
       const targetCode = targetBufferInfo ? emitLoadArrayAddressIntoHL(targetExpr, "0") : null;
@@ -802,14 +847,14 @@ export function handleVramTextStatement({
     };
   }
 
-  const defineChars = line.match(/^define\s+chars?\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+(.+?)(?:\s+count\s+(.+))?$/i);
+  const defineChars = line.match(/^define\s+chars?\s+(.+?)\s+at\s+(.+?)(?:\s+count\s+(.+))?$/i);
   if (defineChars) {
     const expanded = emitDefineCharsToPattern(defineChars[1], defineChars[2], defineChars[3], rawLine);
     if (!expanded.ok) return { ok: false, handled: true, log: expanded.log };
     return { ok: true, handled: true, lines: expanded.asmLines };
   }
 
-  const defineColors = line.match(/^define\s+colors?\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+(.+?)(?:\s+count\s+(.+))?$/i);
+  const defineColors = line.match(/^define\s+colors?\s+(.+?)\s+at\s+(.+?)(?:\s+count\s+(.+))?$/i);
   if (defineColors) {
     const expanded = emitDefineColorsToPattern(defineColors[1], defineColors[2], defineColors[3], rawLine);
     if (!expanded.ok) return { ok: false, handled: true, log: expanded.log };
@@ -980,6 +1025,17 @@ export function handleVramTextStatement({
       handled: true,
       lines: [...loadTarget, ...loadCount, `    ld a,$${colorByte.toString(16).toUpperCase().padStart(2, "0")}`, "    call FILL_VRAM"]
     };
+  }
+
+  const fillMode2ColorThirds = line.match(/^fill\s+mode\s*2\s+color\s+thirds\s+at\s+(.+?)\s+count\s+(.+?)\s+with\s+(.+)$/i);
+  if (fillMode2ColorThirds) {
+    const targetCode = emitLoadVramAddressIntoHL("vram.color + ((" + fillMode2ColorThirds[1].trim() + ") * 8)");
+    const countCode = emitLoadCountIntoDE("((" + fillMode2ColorThirds[2].trim() + ") * 8)");
+    const loadValue = emitLoadInt8ValueInto("a", fillMode2ColorThirds[3].trim());
+    if (!targetCode || !countCode || !loadValue) {
+      return { ok: false, handled: true, log: "fill mode 2 color thirds requires valid start, count, and color: " + rawLine };
+    }
+    return { ok: true, handled: true, lines: wrapVramUploadLines([...targetCode, ...countCode, ...loadValue, "    call AMY_FILL_MODE2_COLOR_THIRDS"]) };
   }
 
   const fillToVram = line.match(/^fill\s+(.+?)\s+count\s+(.+?)\s+to\s+(.+)$/i);

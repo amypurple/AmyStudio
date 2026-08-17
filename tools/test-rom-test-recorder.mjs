@@ -11,7 +11,7 @@ import { RomTestRecorder } from "../studio/core/romTestRecorder.js";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const [bios, rom] = await Promise.all([
-  readFile(process.env.AMY_COLECO_BIOS || resolve(repoRoot, "studio/bios/colecovision.rom")),
+  readFile(resolve(repoRoot, "studio/bios/colecovision.rom")),
   readFile(resolve(
     repoRoot,
     "build/rom-tests/warrior-dan2-fire-visual-test.rom"
@@ -78,4 +78,3 @@ try {
 } finally {
   core.destroy();
 }
-

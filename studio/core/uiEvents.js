@@ -1,5 +1,18 @@
 import { getEditorAdapter } from "./editor/editorAdapter.js";
 
+export const PROJECT_FILE_PATTERN = /(?:\.amy)?\.json(?:\.gz)?$/i;
+
+export async function readProjectFileText(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (!isGzip) return new TextDecoder().decode(bytes);
+  if (typeof DecompressionStream !== "function") {
+    throw new Error("This browser cannot decompress gzip project files.");
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
+
 function buildTranspileWarningNote(result) {
   const warnings = Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [];
   if (!warnings.length) return "";
@@ -533,11 +546,14 @@ export function bindStudioRuntimeEvents(ctx) {
     setStatus(`Saved ${saved.path} and inserted play dsound snippet.`);
   }
 
-  els.fileImport.addEventListener("change", async () => {
-    const file = els.fileImport.files && els.fileImport.files[0];
+  async function importProjectFile(file) {
     if (!file) return;
-    const text = await file.text();
+    if (!PROJECT_FILE_PATTERN.test(file.name || "")) {
+      setStatus("Import failed: choose an .amy.json, .json, or gzip-compressed JSON project.");
+      return;
+    }
     try {
+      const text = await readProjectFileText(file);
       const obj = JSON.parse(text);
       setProject(importProjectObject(obj));
       clearCompiledArtifacts();
@@ -547,8 +563,41 @@ export function bindStudioRuntimeEvents(ctx) {
       syncUiFromProject();
       closeTopbarMenu();
     } catch (e) {
-      setStatus(`Import failed: ${String(e)}`);
+      setStatus(`Import failed: ${String(e.message || e)}`);
     }
+  }
+
+  els.fileImport.addEventListener("change", async () => {
+    const file = els.fileImport.files && els.fileImport.files[0];
+    await importProjectFile(file);
+    els.fileImport.value = "";
+  });
+
+  const studioDropTarget = document.getElementById("studioView");
+  let projectDragDepth = 0;
+  studioDropTarget?.addEventListener("dragenter", (event) => {
+    if (!event.dataTransfer?.types?.includes("Files")) return;
+    event.preventDefault();
+    projectDragDepth += 1;
+    studioDropTarget.classList.add("is-project-dragover");
+  });
+  studioDropTarget?.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer?.types?.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+  studioDropTarget?.addEventListener("dragleave", () => {
+    projectDragDepth = Math.max(0, projectDragDepth - 1);
+    if (!projectDragDepth) studioDropTarget.classList.remove("is-project-dragover");
+  });
+  studioDropTarget?.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    projectDragDepth = 0;
+    studioDropTarget.classList.remove("is-project-dragover");
+    const files = [...(event.dataTransfer?.files || [])];
+    const projectFile = files.find((file) => PROJECT_FILE_PATTERN.test(file.name || ""));
+    if (projectFile) await importProjectFile(projectFile);
+    else setStatus("Drop an .amy.json, .json, or gzip-compressed JSON project here.");
   });
 
   els.projectFileImport?.addEventListener("change", async () => {

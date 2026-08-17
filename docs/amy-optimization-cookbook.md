@@ -164,3 +164,24 @@ The Balanced ROM changed from **6125 bytes to 5852 bytes**, a reduction of **273
 - Group consecutive VRAM transfers when the display update can safely be performed as one operation.
 
 Always inspect generated ASM and measure the complete game. Amy Studio's goal is not to force one style, but to make the tradeoff visible and offer a concise form when the hardware has a better idiom.
+## Replacing repeated decisions with lookup tables
+
+A chain that selects constants from a small, fixed mapping often costs more ROM than its data:
+
+```basic
+if Direction = 0 then Mask = 1
+if Direction = 1 then Mask = 2
+if Direction = 2 then Mask = 4
+if Direction = 3 then Mask = 8
+```
+
+Prefer a table when every branch only maps an index to data:
+
+```basic
+data DirectionMasks bytes = 1,2,4,8
+Mask = DirectionMasks[Direction]
+```
+
+DacMan 2 also flattened five 16-byte direction tables into one 80-byte table plus a nine-byte offset table. This removed five repeated `if` tests while preserving the same data. Measure the result: a lookup is not automatically smaller when branches perform different actions or when calculating the index costs more than the tests.
+
+For repeated clearing, use `fill array Values with 0 count N`. For one byte field across records, use `fill record array Actors field State with 0`; the compiler advances by the record stride instead of recalculating every indexed field address.

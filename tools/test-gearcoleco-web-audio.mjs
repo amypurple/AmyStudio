@@ -9,7 +9,7 @@ import {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const [bios, rom] = await Promise.all([
-  readFile(process.env.AMY_COLECO_BIOS || resolve(repoRoot, "studio/bios/colecovision.rom")),
+  readFile(resolve(repoRoot, "studio/bios/colecovision.rom")),
   readFile(resolve(repoRoot, "build/rom-tests/commando-tiny-music-box.rom"))
 ]);
 
@@ -90,4 +90,3 @@ assert.ok(first.minFrameCount >= 540 && first.maxFrameCount <= 740);
 
 console.log("GearColeco web audio PASS");
 console.log(JSON.stringify({ ...first, replayHash }, null, 2));
-

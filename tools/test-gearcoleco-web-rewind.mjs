@@ -14,7 +14,7 @@ if (romArg < 0 || !process.argv[romArg + 1]) {
   throw new Error("Usage: node tools/test-gearcoleco-web-rewind.mjs --rom path/to/test.rom");
 }
 
-const biosPath = process.env.AMY_COLECO_BIOS || resolve(repoRoot, "studio/bios/colecovision.rom");
+const biosPath = resolve(repoRoot, "studio/bios/colecovision.rom");
 const romPath = resolve(process.argv[romArg + 1]);
 const [bios, rom] = await Promise.all([readFile(biosPath), readFile(romPath)]);
 
@@ -71,4 +71,3 @@ try {
 } finally {
   core.destroy();
 }
-

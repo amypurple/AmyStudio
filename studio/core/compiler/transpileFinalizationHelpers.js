@@ -640,13 +640,13 @@ export function finalizeAmyTranspile({
   const safeInitRecords = pruneDeadInitRecords(runtimeInitRecords, runtimeVars, body);
   const effectiveHasRuntimeInit = hasRuntimeInit && (safeInitRecords.length > 0 || runtimeInit.length > 0);
 
-  if (effectiveHasRuntimeInit && startRuntimeInitInsertIndex >= 0 && body[startRuntimeInitInsertIndex] !== "    call AMY_INIT_RAM") {
-    body.splice(startRuntimeInitInsertIndex, 0, "    call AMY_INIT_RAM");
-    for (const [, frame] of procFrames.entries()) {
-      if (frame.insertIndex >= startRuntimeInitInsertIndex) frame.insertIndex += 1;
-    }
-  } else if (!effectiveHasRuntimeInit && startRuntimeInitInsertIndex >= 0 && body[startRuntimeInitInsertIndex] === "    call AMY_INIT_RAM") {
-    body.splice(startRuntimeInitInsertIndex, 1);
+  const runtimeInitMarker = "; AMY_RUNTIME_INIT_INSERT";
+  const runtimeInitMarkerIndex = body.indexOf(runtimeInitMarker);
+  if (runtimeInitMarkerIndex >= 0) {
+    if (effectiveHasRuntimeInit) body[runtimeInitMarkerIndex] = "    call AMY_INIT_RAM";
+    else body.splice(runtimeInitMarkerIndex, 1);
+  } else if (effectiveHasRuntimeInit && startRuntimeInitInsertIndex >= 0) {
+    throw new Error("Internal compiler error: missing Start runtime-init marker");
   }
 
   function buildRuntimeInitBlocks(records) {
@@ -1189,11 +1189,55 @@ export function finalizeAmyTranspile({
     )
   );
   const needsFrameCounter = optimizedBody.some((line) => /\bAMY_FRAME_COUNTER\b/.test(String(line || "")));
+  const needsMode2ThirdsHelper = optimizedBody.some((line) => /\bAMY_DEFINE_MODE2_THIRDS\b/.test(String(line || "")));
+  const mode2ThirdsHelperBlock = needsMode2ThirdsHelper ? [
+    "AMY_DEFINE_MODE2_THIRDS:",
+    "    ld a,3",
+    "AMY_DEFINE_MODE2_THIRDS_LOOP:",
+    "    push af",
+    "    push bc",
+    "    push de",
+    "    push hl",
+    "    call WRITE_VRAM",
+    "    pop hl",
+    "    pop de",
+    "    pop bc",
+    "    ld a,d",
+    "    add a,8",
+    "    ld d,a",
+    "    pop af",
+    "    dec a",
+    "    jr nz,AMY_DEFINE_MODE2_THIRDS_LOOP",
+    "    ret"
+  ].join("\n") : "";
+  const needsMode2ColorFillHelper = optimizedBody.some((line) => /\bAMY_FILL_MODE2_COLOR_THIRDS\b/.test(String(line || "")));
+  const mode2ColorFillHelperBlock = needsMode2ColorFillHelper ? [
+    "AMY_FILL_MODE2_COLOR_THIRDS:",
+    "    ld c,3",
+    "AMY_FILL_MODE2_COLOR_THIRDS_LOOP:",
+    "    push bc",
+    "    push hl",
+    "    push de",
+    "    push af",
+    "    call FILL_VRAM",
+    "    pop af",
+    "    pop de",
+    "    pop hl",
+    "    push af",
+    "    ld a,h",
+    "    add a,8",
+    "    ld h,a",
+    "    pop af",
+    "    pop bc",
+    "    dec c",
+    "    jr nz,AMY_FILL_MODE2_COLOR_THIRDS_LOOP",
+    "    ret"
+  ].join("\n") : "";
   const mappedOptimizedBody = restoreSourceMarkers(optimizedBody, sourceMarkerPlan);
   const runtimeMarkers = needsFrameCounter
     ? ["; AMY runtime requirement: AMY_FRAME_COUNTER"]
     : [];
-  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), initRoutine, numericHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
+  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), initRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`

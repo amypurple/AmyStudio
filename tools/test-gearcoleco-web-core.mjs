@@ -11,7 +11,7 @@ const repoRoot = resolve(import.meta.dirname, "..");
 
 function parseArguments(argv) {
   const options = {
-    bios: process.env.AMY_COLECO_BIOS || resolve(repoRoot, "studio/bios/colecovision.rom"),
+    bios: resolve(repoRoot, "studio/bios/colecovision.rom"),
     rom: "",
     frames: 10,
     symbols: "",
@@ -137,4 +137,3 @@ if (JSON.stringify(first) !== JSON.stringify(second)) {
 
 console.log("GearColeco web core smoke test PASS");
 console.log(JSON.stringify(first, null, 2));
-

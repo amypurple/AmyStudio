@@ -10,6 +10,53 @@ export function tmsColor(palette, nibble) {
   return colors[Number(nibble) & 0x0F] || colors[0] || "#000000";
 }
 
+export function applyTmsPixelColor(patternByte, colorByte, col, selectedColor) {
+  const bit = 0x80 >> (Number(col) & 7);
+  const pattern = Number(patternByte) & 0xFF;
+  const packed = Number(colorByte) & 0xFF;
+  const selected = Number(selectedColor) & 0x0F;
+  const fg = (packed >> 4) & 0x0F;
+  const bg = packed & 0x0F;
+  if (selected === fg) return { patternByte: pattern | bit, colorByte: packed };
+  if (selected === bg) return { patternByte: pattern & (~bit & 0xFF), colorByte: packed };
+  // A visually single-color row still has two encoded color roles. Introduce
+  // the selected color through the unused role so only the clicked pixel changes.
+  if (pattern === 0x00) return { patternByte: bit, colorByte: (selected << 4) | bg };
+  if (pattern === 0xFF) return { patternByte: pattern & (~bit & 0xFF), colorByte: (fg << 4) | selected };
+  if (pattern & bit) return { patternByte: pattern, colorByte: (selected << 4) | bg };
+  return { patternByte: pattern, colorByte: (fg << 4) | selected };
+}
+
+function drawTransparentEditorPixel(ctx, x, y, scale) {
+  const half = Math.max(1, Math.floor(scale / 2));
+  ctx.fillStyle = "#5d6670";
+  ctx.fillRect(x, y, scale, scale);
+  ctx.fillStyle = "#252b31";
+  ctx.fillRect(x, y, half, half);
+  ctx.fillRect(x + half, y + half, scale - half, scale - half);
+}
+
+export function drawEditorTilePattern(ctx, pattern, x, y, scale, fg, bg, colorRows = null, palette = TMS9918_PALETTE) {
+  if (!pattern) return;
+  for (let row = 0; row < 8; row += 1) {
+    const colorByte = colorRows ? colorRows[row] : null;
+    const fgIndex = colorByte == null ? null : ((colorByte >> 4) & 0x0F);
+    const bgIndex = colorByte == null ? null : (colorByte & 0x0F);
+    const bits = pattern[row] || 0;
+    for (let col = 0; col < 8; col += 1) {
+      const set = (bits & (0x80 >> col)) !== 0;
+      const colorIndex = colorByte == null ? null : (set ? fgIndex : bgIndex);
+      const px = x + col * scale;
+      const py = y + row * scale;
+      if (colorIndex === 0) {
+        drawTransparentEditorPixel(ctx, px, py, scale);
+      } else {
+        ctx.fillStyle = colorIndex == null ? (set ? fg : bg) : tmsColor(palette, colorIndex);
+        ctx.fillRect(px, py, scale, scale);
+      }
+    }
+  }
+}
 export function tilePatternBytesForValue(patternBytes, tileValue, baseTile) {
   const index = (Number(tileValue) & 0xFF) - (Number(baseTile) & 0xFF);
   if (index < 0) return null;

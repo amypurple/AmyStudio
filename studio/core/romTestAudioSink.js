@@ -29,6 +29,9 @@ export class RomTestAudioSink {
       : 1;
     this.flush();
   }
+  acceptsFrames() {
+    return !this.muted && this.context?.state === "running";
+  }
   push(frame) {
     const context = this.context;
     if (this.muted || !context || context.state !== "running" || !frame.frameCount) return;

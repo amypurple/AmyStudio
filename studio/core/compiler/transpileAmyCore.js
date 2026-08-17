@@ -270,11 +270,11 @@ export function transpileAmyCore(sourceText, deps) {
     let blockDepth = 0;
     let reachableRoutineGotoReferences = new Set();
     const isRootTerminator = (line) => /^(?:return(?:\s+.+)?|goto\s+[A-Za-z_][A-Za-z0-9_]*|loop\s+forever)$/i.test(line);
-    const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect)$/i.test(line);
+    const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect|end\s+with)$/i.test(line);
     const topLevelDirective = (line) => /^(?:asm\s*\{|include\s+asm\s+"|include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
     const opensBlock = (line) => {
       if (/^if\b/i.test(line)) return /\bthen\s*$/i.test(line) && !/\bgoto\b/i.test(line);
-      return /^(?:while\b|for\b|do\b|select\s+case\b)/i.test(line);
+      return /^(?:while\b|for\b|do\b|select\s+case\b|with\b)/i.test(line);
     };
 
     for (let index = 0; index < rawLines.length; index += 1) {
@@ -336,8 +336,11 @@ export function transpileAmyCore(sourceText, deps) {
       if (/^(?:sub|function)\b/i.test(line)) routineDepth += 1;
       if (/^end\s+(?:sub|function)$/i.test(line)) { routineDepth = Math.max(0, routineDepth - 1); continue; }
       if (routineDepth !== 0) continue;
-      const declaration = line.match(/^[A-Za-z_][A-Za-z0-9_]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
-      if (declaration) arrayLengths.set(declaration[1].toLowerCase(), Number(declaration[2]));
+      const declaration = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
+      if (declaration) {
+        const primitive = /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)$/i.test(declaration[1]);
+        arrayLengths.set(declaration[2].toLowerCase(), { length: Number(declaration[3]), recordLike: !primitive });
+      }
     }
 
     const replaceIdentifier = (rawLine, name, replacement) => {
@@ -369,7 +372,7 @@ export function transpileAmyCore(sourceText, deps) {
       let loweredLine = rawLine;
       for (let aliasIndex = aliasStack.length - 1; aliasIndex >= 0; aliasIndex -= 1) {
         const alias = aliasStack[aliasIndex];
-        loweredLine = replaceIdentifier(loweredLine, alias.elementName, `${alias.arrayName}[${alias.indexName}]`);
+        if (!alias.native) loweredLine = replaceIdentifier(loweredLine, alias.elementName, `${alias.arrayName}[${alias.indexName}]`);
       }
       return loweredLine;
     };
@@ -379,7 +382,8 @@ export function transpileAmyCore(sourceText, deps) {
       if (open) {
         const elementName = open[1];
         const arrayName = open[3];
-        const length = arrayLengths.get(arrayName.toLowerCase());
+        const arrayEntry = arrayLengths.get(arrayName.toLowerCase());
+        const length = arrayEntry?.length;
         if (!Number.isInteger(length) || length < 1) {
           return { ok: false, log: `for each requires a global fixed array with a literal nonzero length: ${stripped}` };
         }
@@ -389,7 +393,8 @@ export function transpileAmyCore(sourceText, deps) {
         const indexName = open[2];
         const indent = rawLine.slice(0, rawLine.search(/\S|$/));
         result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
-        const alias = { elementName, indexName, arrayName };
+        if (arrayEntry.recordLike) result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
+        const alias = { elementName, indexName, arrayName, native: arrayEntry.recordLike };
         aliasStack.push(alias);
         controlStack.push({ kind: "each", alias });
         continue;
@@ -404,6 +409,7 @@ export function transpileAmyCore(sourceText, deps) {
             return { ok: false, log: `next ${requested} does not match for each ${current.elementName}` };
           }
           const indent = rawLine.slice(0, rawLine.search(/\S|$/));
+          if (current.native) result.push(`${indent}  end with`);
           result.push(`${indent}next ${current.indexName}`);
         } else {
           result.push(lowerAliases(rawLine));
@@ -486,6 +492,7 @@ export function transpileAmyCore(sourceText, deps) {
   const doStack = [];
   const selectStack = [];
   const ifStack = [];
+  const recordAliasStack = [];
   let dataCursorName = null;
   let compareScratch32 = null;
   let ensureCompareScratch32 = null;
@@ -2175,11 +2182,24 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function emitDefineMode2Thirds(sourceLabel, startToken, countToken, rawLine, kind) {
-    const knownLength = dataLengths.get(sourceLabel);
-    if (!knownLength) {
-      return { ok: false, asmLines: [], log: `define ${kind} currently requires a data block source: ${rawLine}` };
+    const sourceMatch = /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\+\s*(.+))?$/.exec(String(sourceLabel).trim());
+    if (!sourceMatch) {
+      return { ok: false, asmLines: [], log: "define " + kind + " requires a data source with an optional constant byte offset: " + rawLine };
     }
-    if ((knownLength % 8) !== 0) {
+    const sourceBase = sourceMatch[1];
+    const sourceOffsetToken = sourceMatch[2] ? sourceMatch[2].trim() : "";
+    if (sourceOffsetToken && !countToken) {
+      return { ok: false, asmLines: [], log: "define " + kind + " with a source offset requires count: " + rawLine };
+    }
+    const normalizedSourceOffset = sourceOffsetToken ? normalizeExpression(sourceOffsetToken) : "0";
+    if (!isSafeExpression(normalizedSourceOffset) || normalizedSourceOffset.includes("[") || (normalizedSourceOffset.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []).some((ident) => getRuntimeInfo(ident))) {
+      return { ok: false, asmLines: [], log: "define " + kind + " source offset must be a constant expression: " + rawLine };
+    }
+    const knownLength = dataLengths.get(sourceBase);
+    if (!knownLength && !countToken) {
+      return { ok: false, asmLines: [], log: "define " + kind + " requires count when the source length is external: " + rawLine };
+    }
+    if (knownLength && (knownLength % 8) !== 0) {
       return { ok: false, asmLines: [], log: `define ${kind} source length must be a multiple of 8 bytes: ${rawLine}` };
     }
     const normalizedStart = normalizeExpression(String(startToken).trim());
@@ -2199,22 +2219,10 @@ export function transpileAmyCore(sourceText, deps) {
     }
     const byteCountExpr = `((${resolvedCharCount}) * 8)`;
     const useDirectWriteVram = isDefinitelyByteSizedCount(byteCountExpr);
-    const sourceAddress = resolveAddressSymbol(sourceLabel);
+    const sourceAddress = resolveAddressSymbol(sourceBase) + (sourceOffsetToken ? " + (" + normalizedSourceOffset + ")" : "");
     const startOffsetExpr = `((${normalizedStart}) * 8)`;
     const baseSymbol = kind === "colors" ? "VRAM_COLOR" : "VRAM_PATTERN";
-    const targetBases = [
-      `${baseSymbol} + ${startOffsetExpr}`,
-      `${baseSymbol} + $0800 + ${startOffsetExpr}`,
-      `${baseSymbol} + $1000 + ${startOffsetExpr}`
-    ];
-    const asmLines = [];
-    for (const targetBase of targetBases) {
-      asmLines.push(`    ld de,${symbolOrValue(targetBase)}`);
-      asmLines.push(`    ld hl,${sourceAddress}`);
-      asmLines.push(...loadByteCount);
-      asmLines.push(`    call ${useDirectWriteVram ? "WRITE_VRAM" : "AMY_COPY_BYTES_TO_VRAM"}`);
-    }
-    return { ok: true, asmLines, log: "" };
+    const targetBase = `${baseSymbol} + ${startOffsetExpr}`;     const asmLines = [       `    ld de,${symbolOrValue(targetBase)}`,       `    ld hl,${sourceAddress}`,       ...loadByteCount,       "    call AMY_DEFINE_MODE2_THIRDS"     ];     return { ok: true, asmLines, log: "" };
   }
 
   function emitDefineCharsToPattern(sourceLabel, startToken, countToken, rawLine) {
@@ -3331,6 +3339,55 @@ export function transpileAmyCore(sourceText, deps) {
     ensureImplicitStartForExecutable();
 
     {
+      if (/^end\s+with$/i.test(line)) {
+        const alias = recordAliasStack.pop();
+        if (!alias) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: end with without a matching with` };
+        runtimeVars.delete(alias.name);
+        continue;
+      }
+
+      const openRecordAlias = line.match(/^with(\s+each)?\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(.+)\s*\]\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (openRecordAlias) {
+        const generatedForEach = !!openRecordAlias[1];
+        const arrayName = openRecordAlias[2];
+        const indexToken = openRecordAlias[3].trim();
+        const aliasName = openRecordAlias[4];
+        const arrayInfo = getRuntimeInfo(arrayName);
+        if (!arrayInfo || arrayInfo.kind !== "record_array") {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: with requires a fixed record array: ${rawLine.trim()}` };
+        }
+        if (getRuntimeInfo(aliasName) || recordAliasStack.some((entry) => lowerName(entry.name) === lowerName(aliasName))) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: record alias '${aliasName}' conflicts with an existing name` };
+        }
+        const staticAliasSafe = currentProc === "Start" || staticLocalProcCandidates.has(currentProc);
+        if (!staticAliasSafe && !generatedForEach) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: with record aliases currently require Start or a proven non-reentrant subroutine` };
+        }
+        const loadAddress = emitLoadArrayAddressIntoHL(arrayName, indexToken);
+        if (!loadAddress) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid record-array index in ${rawLine.trim()}` };
+        }
+        const pointerAddress = staticAliasSafe ? reserveRam(`record alias ${aliasName}`, 2, rawLine.trim()) : null;
+        if (staticAliasSafe) body.push(...loadAddress, `    ld (${formatHex16(pointerAddress)}),hl`);
+        runtimeVars.set(aliasName, {
+          kind: "record",
+          type: "record",
+          declaredType: arrayInfo.recordTypeName,
+          recordTypeName: arrayInfo.recordTypeName,
+          recordSize: arrayInfo.recordSize,
+          storage: staticAliasSafe ? "alias_pointer" : "dynamic_record_alias",
+          isAliasPointer: staticAliasSafe,
+          isDynamicRecordAlias: !staticAliasSafe,
+          aliasArrayName: arrayName,
+          aliasIndexToken: indexToken,
+          pointerAddress
+        });
+        recordAliasStack.push({ name: aliasName, pointerAddress });
+        continue;
+      }
+    }
+
+    {
       const displayGraphicsSpriteStmt = handleDisplayGraphicsSpriteStatement({
         line,
         rawLine,
@@ -3908,7 +3965,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadArrayAddressIntoHL,
         emitStoreInt8FromA,
         makeGeneratedLabel,
-        getTileTypeInfo
+        getTileTypeInfo,
+        getRecordTypeInfo
       });
       if (arrayBulkStmt.handled) {
         if (!arrayBulkStmt.ok) return { ok: false, asmBody: "", log: arrayBulkStmt.log };
@@ -3935,6 +3993,10 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: unknown statement: ${rawLine}` };
+  }
+
+  if (recordAliasStack.length) {
+    return { ok: false, asmBody: "", log: `with ${recordAliasStack[recordAliasStack.length - 1].name} is missing end with` };
   }
 
   flushBufferedVdpR1PureModifiers();

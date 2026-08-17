@@ -279,7 +279,7 @@ export function createProcHelpers({
       body.push("    ldir");
     }
     startRuntimeInitInsertIndexRef.set(body.length);
-    if (hasRuntimeInitRef.get()) body.push("    call AMY_INIT_RAM");
+    body.push("; AMY_RUNTIME_INIT_INSERT");
     if (inferredMemoryCaps.needsNmi) {
       body.push("    xor a");
       body.push("    ld (NO_NMI),a");

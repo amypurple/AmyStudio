@@ -1,3 +1,4 @@
+import { dacman2ProjectFiles } from "./examples-dacman2-assets.js";
 import { reversiPublicProjectFiles } from "./examples-reversi-assets.js";
 import { warriorDan2FireTestProjectFiles } from "./examples-picture-assets.js?v=20260730-warrior-dan2-fire-test";
 
@@ -597,5 +598,7 @@ replaceEditorsProjectFile("fly-swatter-timer-quest", [
 ]);
 
 derivedProjectFilesById["warrior-dan2-fire-visual-test"] = warriorDan2FireTestProjectFiles;
+
+derivedProjectFilesById["dacman-2"] = dacman2ProjectFiles;
 
 export const projectFilesById = derivedProjectFilesById;

@@ -265,6 +265,43 @@ export function createProjectFileUiHelpers({
     return !!(group.pcFile || (group.patternFile && group.colorFile));
   }
 
+  function canOpenBitmapEditor(entry) {
+    const group = pictureTableGroupForEntry(entry);
+    return !!(group.patternFile && group.colorFile);
+  }
+
+  function isLinearMode2NameTable(bytes) {
+    if (!bytes) return true;
+    if (bytes.length < 768) return false;
+    for (let index = 0; index < 768; index += 1) {
+      if (bytes[index] !== (index & 0xFF)) return false;
+    }
+    return true;
+  }
+
+  async function openProjectBitmapEditor(entry) {
+    const group = pictureTableGroupForEntry(entry);
+    if (!group.patternFile || !group.colorFile) {
+      setStatus("Bitmap editing requires matching pattern and color files.");
+      return;
+    }
+    try {
+      const pattern = await decodedProjectBytes(group.patternFile);
+      const color = await decodedProjectBytes(group.colorFile);
+      const name = group.nameFile ? await decodedProjectBytes(group.nameFile) : null;
+      if (pattern.length !== 6144 || color.length !== 6144) {
+        throw new Error("direct bitmap editing requires 6144-byte pattern and color tables");
+      }
+      if (!isLinearMode2NameTable(name)) {
+        throw new Error("the NAME table is not the default $00-$FF sequence repeated three times");
+      }
+      const title = pcFilenameForTableGroup(group).replace(/\.pc$/i, "");
+      await graphicsEditors.openBitmapScreenFiles({ name: title || "Bitmap Screen", patternFile: group.patternFile, colorFile: group.colorFile });
+    } catch (error) {
+      setStatus("Cannot edit bitmap: " + (error.message || error) + ". Preview remains available.");
+    }
+  }
+
   async function decodedProjectBytes(entry) {
     const bytes = projectFileBytes(entry);
     const codec = String(entry?.codec || detectCodecFromName?.(entry?.path || "") || "raw").toLowerCase();
@@ -2168,7 +2205,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260808-frame-entry-sizes").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260812-sprite-tile-preview").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,
@@ -2199,6 +2236,13 @@ export function createProjectFileUiHelpers({
         return (await loadGraphicsEditorUi()).openGraphicsEditorFromConfig(...args);
       } catch (error) {
         setStatus(error.message || "Cannot open graphics editor.");
+      }
+    },
+    async openBitmapScreenFiles(...args) {
+      try {
+        return (await loadGraphicsEditorUi()).openBitmapScreenFiles(...args);
+      } catch (error) {
+        setStatus(error.message || "Cannot open bitmap editor.");
       }
     }
   };
@@ -2508,6 +2552,16 @@ export function createProjectFileUiHelpers({
     button.addEventListener("click", onPreview);
     return button;
   }
+  function setProjectFileActionIcon(button, icon, label) {
+    const paths = {
+      edit: '<path d="M4 20l4-1 11-11-3-3L5 16zM14 7l3 3"/>',
+      remove: '<path d="M5 7h14M9 7V4h6v3M8 7l1 13h6l1-13M10 10v7M14 10v7"/>'
+    };
+    button.classList.add("project-file__icon-action");
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+  }
   function renderProjectFiles() {
     syncGraphicsEditorsMenuState();
     if (!els.projectFilesList || !els.projectFilesSummary) return;
@@ -2555,7 +2609,7 @@ export function createProjectFileUiHelpers({
       if (isGraphicsEditorsProjectFile(entry)) {
         const editJsonButton = document.createElement("button");
         editJsonButton.type = "button";
-        editJsonButton.textContent = "Edit JSON";
+        setProjectFileActionIcon(editJsonButton, "edit", `Edit JSON ${entry.path}`);
         editJsonButton.addEventListener("click", () => openProjectFileJsonEditor(entry));
         actions.appendChild(editJsonButton);
       }
@@ -2563,7 +2617,7 @@ export function createProjectFileUiHelpers({
       if (isEditableProjectTextPath(entry.path)) {
         const editTextButton = document.createElement("button");
         editTextButton.type = "button";
-        editTextButton.textContent = "Edit";
+        setProjectFileActionIcon(editTextButton, "edit", `Edit ${entry.path}`);
         editTextButton.addEventListener("click", () => openProjectFileTextEditor(entry));
         actions.appendChild(editTextButton);
       }
@@ -2583,6 +2637,14 @@ export function createProjectFileUiHelpers({
           void previewProjectFilePicture(entry);
         });
         actions.appendChild(previewButton);
+
+        if (canOpenBitmapEditor(entry)) {
+          const editBitmapButton = document.createElement("button");
+          editBitmapButton.type = "button";
+          setProjectFileActionIcon(editBitmapButton, "edit", `Edit bitmap ${entry.path}`);
+          editBitmapButton.addEventListener("click", () => void openProjectBitmapEditor(entry));
+          actions.appendChild(editBitmapButton);
+        }
 
         if (canOpenTileEditor(entry)) {
           const tileButton = document.createElement("button");
@@ -2615,7 +2677,7 @@ export function createProjectFileUiHelpers({
 
       const removeButton = document.createElement("button");
       removeButton.type = "button";
-      removeButton.textContent = "Remove";
+      setProjectFileActionIcon(removeButton, "remove", `Remove ${entry.path}`);
       removeButton.addEventListener("click", () => removeProjectFile(entry.path));
       actions.appendChild(removeButton);
 

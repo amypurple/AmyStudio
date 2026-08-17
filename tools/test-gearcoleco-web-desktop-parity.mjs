@@ -13,7 +13,7 @@ const baselinePath = resolve(
   "tools/rom-baselines/warrior-dan2-fire-prompt.json"
 );
 const [bios, rom, symbols, baseline] = await Promise.all([
-  readFile(process.env.AMY_COLECO_BIOS || resolve(repoRoot, "studio/bios/colecovision.rom")),
+  readFile(resolve(repoRoot, "studio/bios/colecovision.rom")),
   readFile(resolve(
     repoRoot,
     "build/rom-tests/warrior-dan2-fire-visual-test.rom"
@@ -62,4 +62,3 @@ try {
 } finally {
   core.destroy();
 }
-

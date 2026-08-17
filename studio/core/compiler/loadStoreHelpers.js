@@ -19,14 +19,14 @@ export function createLoadStoreHelpers(ctx) {
     if (!Number.isInteger(scale) || scale < 1) return null;
     if (scale === 1) return ["    ld e,a", "    ld d,0"];
     if (scale === 2) return ["    add a,a", "    ld e,a", "    ld d,0"];
-    return [
-      "    ld e,a",
-      "    ld d,0",
-      "    ld l,d",
-      "    ld h,d",
-      ...Array.from({ length: scale }, () => "    add hl,de"),
-      "    ex de,hl"
-    ];
+    const bits = scale.toString(2).slice(1);
+    const lines = ["    ld e,a", "    ld d,0", "    ld l,e", "    ld h,d"];
+    for (const bit of bits) {
+      lines.push("    add hl,hl");
+      if (bit === "1") lines.push("    add hl,de");
+    }
+    lines.push("    ex de,hl");
+    return lines;
   }
 
   function emitLoadArrayAddressIntoHL(name, indexToken) {
@@ -108,6 +108,25 @@ export function createLoadStoreHelpers(ctx) {
     if (fieldRef.baseKind === "scalar") {
       const info = getRuntimeInfo(fieldRef.name);
       if (!info || info.kind !== "record") return null;
+      if (info.isDynamicRecordAlias) {
+        const lines = emitLoadArrayAddressIntoHL(info.aliasArrayName, info.aliasIndexToken);
+        if (!lines) return null;
+        if (fieldRef.totalOffset > 0 && fieldRef.totalOffset <= 3) {
+          for (let i = 0; i < fieldRef.totalOffset; i += 1) lines.push("    inc hl");
+        } else if (fieldRef.totalOffset) {
+          lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
+        }
+        return lines;
+      }
+      if (info.isAliasPointer) {
+        const lines = [`    ld hl,(${formatHex16(info.pointerAddress)})`];
+        if (fieldRef.totalOffset > 0 && fieldRef.totalOffset <= 3) {
+          for (let i = 0; i < fieldRef.totalOffset; i += 1) lines.push("    inc hl");
+        } else if (fieldRef.totalOffset) {
+          lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
+        }
+        return lines;
+      }
       if (info.isRef) {
         const lines = [
           `    ld l,(${formatIxOffset(info.offset)})`,
@@ -139,7 +158,7 @@ export function createLoadStoreHelpers(ctx) {
     const fieldRef = parseRecordFieldRef(token);
     if (!fieldRef) return null;
     const info = getRuntimeInfo(fieldRef.name);
-    if (!info || info.storage === "stack") return null;
+    if (!info || info.storage === "stack" || info.isAliasPointer || info.isDynamicRecordAlias) return null;
     if (fieldRef.baseKind === "scalar") {
       if (info.kind !== "record") return null;
       return formatHex16(info.address + fieldRef.totalOffset);

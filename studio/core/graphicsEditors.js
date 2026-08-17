@@ -3,9 +3,10 @@ import { addGraphicsEntryToConfig, nextGraphicsEntryName, validateNewGraphicsEnt
 import { appendAmyByteDataBlock, appendAmyWordTableEntry, describeGraphicsEditor, parseAmyByteDataBlocks, parseGraphicsEditorsConfig, replaceAmyByteDataBlock } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { computeTilesetImpact } from "./graphicsImpact.js?v=20260718-graphics-impact";
 import { createGraphicsProjectAssetAccess } from "./projectAssetAccess.js?v=20260729-file-backed-tilemap";
-import { drawTileGridEditorOverlay, drawTilePattern, renderTileGrid, tileColorOffsetForValue, tileColorRowsForValue, tilePatternBytesForValue } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
+import { applyTmsPixelColor, drawEditorTilePattern, drawTileGridEditorOverlay, drawTilePattern, renderTileGrid, tileColorOffsetForValue, tileColorRowsForValue, tilePatternBytesForValue } from "./graphicsTms9918.js?v=20260811-smart-tile-colors";
 import { applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260721-preview-filters";
 import { copyTilemapSelection, fillTilemapSelection, normalizeTilemapSelection, pasteTilemapSelection } from "./graphicsTilemapSelection.js?v=20260729-tilemap-clipboard";
+import { openBitmapScreenGraphicsEditor } from "./graphicsBitmapEditor.js?v=20260811-bitmap-zoom-memory";
 
 export function createGraphicsEditorUi({
   TMS_PALETTE,
@@ -212,6 +213,7 @@ export function createGraphicsEditorUi({
     const redoStack = [];
     let paintingPointerId = null;
     let dragSnapshotCaptured = false;
+    let charsetClipboard = null;
     const editScale = 24;
     const paletteScale = 2;
 
@@ -232,13 +234,22 @@ export function createGraphicsEditorUi({
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.textContent = inlinePatternName ? "Save Source Data" : "Save Pattern File";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.textContent = "Copy";
+    copyButton.title = "Copy the selected tile pattern and editable colors";
+    const pasteButton = document.createElement("button");
+    pasteButton.type = "button";
+    pasteButton.textContent = "Paste";
+    pasteButton.title = "Paste over the selected tile";
+    pasteButton.disabled = true;
     const undoButton = document.createElement("button");
     undoButton.type = "button";
     undoButton.textContent = "Undo";
     const redoButton = document.createElement("button");
     redoButton.type = "button";
     redoButton.textContent = "Redo";
-    toolbar.append(selectedLabel, modeLabel, saveButton, undoButton, redoButton);
+    toolbar.append(selectedLabel, modeLabel, copyButton, pasteButton, saveButton, undoButton, redoButton);
     dialog.appendChild(toolbar);
 
     const body = document.createElement("div");
@@ -251,17 +262,22 @@ export function createGraphicsEditorUi({
     editCanvas.className = "graphics-editor-charset-canvas";
     const colorRow = document.createElement("div");
     colorRow.className = "graphics-editor-color-row";
+    const colorButtons = [];
     for (let color = 0; color < 16; color += 1) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "graphics-editor-color-swatch";
-      button.style.background = TMS_PALETTE[color];
-      button.title = "$" + color.toString(16).toUpperCase();
-      button.setAttribute("aria-label", "Color $" + color.toString(16).toUpperCase());
+      button.dataset.color = String(color);
+      if (color === 0) button.classList.add("graphics-editor-color-swatch--transparent");
+      else button.style.background = TMS_PALETTE[color];
+      const colorName = color === 0 ? "Transparent" : (color === 1 ? "Black" : "TMS color");
+      button.title = colorName + " $" + color.toString(16).toUpperCase();
+      button.setAttribute("aria-label", colorName + " $" + color.toString(16).toUpperCase());
       button.addEventListener("click", () => {
         activeColor = color;
         renderActiveTile();
       });
+      colorButtons.push(button);
       colorRow.appendChild(button);
     }
     editorPane.append(editCanvas, colorRow);
@@ -325,12 +341,21 @@ export function createGraphicsEditorUi({
       updateCharsetHistoryButtons();
     }
 
+    function updateActiveColorUi() {
+      const name = activeColor === 0 ? "Transparent" : (activeColor === 1 ? "Black" : "Color");
+      modeLabel.textContent = "Paint: " + name + " $" + activeColor.toString(16).toUpperCase()
+        + " · click paints selected color · right click uses row background";
+      for (const button of colorButtons) {
+        button.classList.toggle("selected", Number(button.dataset.color) === activeColor);
+      }
+    }
+
     function renderActiveTile() {
       const ctx = editCanvas.getContext("2d");
       ctx.imageSmoothingEnabled = false;
       const pattern = tilePatternForIndex(activeIndex);
       const colors = colorRowsForIndex(activeIndex);
-      drawTilePattern(ctx, pattern, 0, 0, editScale, TMS_PALETTE[activeColor], "#000000", colors);
+      drawEditorTilePattern(ctx, pattern, 0, 0, editScale, TMS_PALETTE[activeColor], "#000000", colors, TMS_PALETTE);
       ctx.strokeStyle = "rgba(255,255,255,0.22)";
       ctx.lineWidth = 1;
       for (let pos = 0; pos <= 8; pos += 1) {
@@ -344,6 +369,7 @@ export function createGraphicsEditorUi({
         ctx.stroke();
       }
       updateSelectedLabel();
+      updateActiveColorUi();
     }
 
     function renderTileList() {
@@ -360,7 +386,7 @@ export function createGraphicsEditorUi({
         tileCanvas.height = 8 * paletteScale;
         const tileCtx = tileCanvas.getContext("2d");
         tileCtx.imageSmoothingEnabled = false;
-        drawTilePattern(tileCtx, tilePatternForIndex(index), 0, 0, paletteScale, "#66a6ff", "#000000", colorRowsForIndex(index));
+        drawEditorTilePattern(tileCtx, tilePatternForIndex(index), 0, 0, paletteScale, "#66a6ff", "#000000", colorRowsForIndex(index), TMS_PALETTE);
         const label = document.createElement("span");
         label.textContent = "$" + value.toString(16).toUpperCase().padStart(2, "0");
         button.append(tileCanvas, label);
@@ -389,8 +415,6 @@ export function createGraphicsEditorUi({
         return;
       }
       const patternOffset = (sourceStartIndex + activeIndex) * 8 + row;
-      const mask = 0x80 >> col;
-      const bitIsSet = (patternBytes[patternOffset] & mask) !== 0;
       const tileValue = tileValueForIndex(activeIndex);
       const colorOffset = tileColorOffsetForValue(writableColorBytes, tileValue, baseTile, editor.previewScreenAt?.[1] || 0);
       if (colorOffset < 0) {
@@ -399,19 +423,13 @@ export function createGraphicsEditorUi({
       }
       const rowOffset = colorOffset + row;
       const colorByte = writableColorBytes[rowOffset] || 0;
-      const fg = (colorByte >> 4) & 0x0F;
-      const bg = colorByte & 0x0F;
-      if (activeColor === fg) {
-        patternBytes[patternOffset] |= mask;
+      const next = applyTmsPixelColor(patternBytes[patternOffset], colorByte, col, activeColor);
+      if (next.patternByte !== patternBytes[patternOffset]) {
+        patternBytes[patternOffset] = next.patternByte;
         dirty = true;
-      } else if (activeColor === bg) {
-        patternBytes[patternOffset] &= (~mask & 0xFF);
-        dirty = true;
-      } else if (bitIsSet) {
-        writableColorBytes[rowOffset] = ((activeColor & 0x0F) << 4) | bg;
-        dirtyColor = true;
-      } else {
-        writableColorBytes[rowOffset] = (fg << 4) | (activeColor & 0x0F);
+      }
+      if (next.colorByte !== colorByte) {
+        writableColorBytes[rowOffset] = next.colorByte;
         dirtyColor = true;
       }
       renderActiveTile();
@@ -465,6 +483,37 @@ export function createGraphicsEditorUi({
     editCanvas.addEventListener("pointercancel", stopCharsetPainting);
     editCanvas.addEventListener("pointerleave", (event) => {
       if (paintingPointerId === event.pointerId && (event.buttons & 3) === 0) stopCharsetPainting();
+    });
+
+    copyButton.addEventListener("click", () => {
+      const sourceTile = tileValueForIndex(activeIndex);
+      const colorOffset = tileColorOffsetForValue(writableColorBytes, sourceTile, baseTile, editor.previewScreenAt?.[1] || 0);
+      charsetClipboard = {
+        sourceTile,
+        pattern: Uint8Array.from(tilePatternForIndex(activeIndex)),
+        color: colorOffset < 0 ? null : Uint8Array.from(writableColorBytes.slice(colorOffset, colorOffset + 8))
+      };
+      pasteButton.disabled = false;
+      setStatus("Copied tile $" + sourceTile.toString(16).toUpperCase().padStart(2, "0") + ". Select another tile and choose Paste.");
+    });
+
+    pasteButton.addEventListener("click", () => {
+      if (!charsetClipboard) return;
+      pushCharsetUndoSnapshot();
+      const destinationTile = tileValueForIndex(activeIndex);
+      const patternOffset = (sourceStartIndex + activeIndex) * 8;
+      patternBytes.set(charsetClipboard.pattern, patternOffset);
+      dirty = true;
+      const colorOffset = tileColorOffsetForValue(writableColorBytes, destinationTile, baseTile, editor.previewScreenAt?.[1] || 0);
+      if (charsetClipboard.color && colorOffset >= 0) {
+        writableColorBytes.set(charsetClipboard.color, colorOffset);
+        dirtyColor = true;
+      }
+      renderTileList();
+      renderActiveTile();
+      updateCharsetHistoryButtons();
+      setStatus("Pasted tile $" + charsetClipboard.sourceTile.toString(16).toUpperCase().padStart(2, "0")
+        + " over tile $" + destinationTile.toString(16).toUpperCase().padStart(2, "0") + ".");
     });
 
     saveButton.addEventListener("click", async () => {
@@ -622,15 +671,22 @@ export function createGraphicsEditorUi({
       ? editor.animation.frames
       : Array.from({ length: spriteCount }, (_, index) => index);
     const animationFrames = rawAnimationFrames.map((frame) => {
-      if (Number.isInteger(Number(frame))) return [{ pattern: Number(frame), color: spriteColorDefault, x: 0, y: 0 }];
+      if (Number.isInteger(Number(frame))) {
+        return { layers: [{ pattern: Number(frame), color: spriteColorDefault, x: 0, y: 0 }], backgroundTile: null };
+      }
       const layers = Array.isArray(frame) ? frame : (Array.isArray(frame?.layers) ? frame.layers : []);
-      return layers.map((layer) => ({
-        pattern: Number(layer.pattern ?? layer.frame ?? 0),
-        color: Number(layer.color ?? spriteColorDefault) & 0x0F,
-        x: Number(layer.x ?? layer.offset?.[0] ?? 0) || 0,
-        y: Number(layer.y ?? layer.offset?.[1] ?? 0) || 0
-      })).filter((layer) => Number.isInteger(layer.pattern) && layer.pattern >= 0 && layer.pattern < spriteCount);
-    }).filter((layers) => layers.length);
+      return {
+        layers: layers.map((layer) => ({
+          pattern: Number(layer.pattern ?? layer.frame ?? 0),
+          color: Number(layer.color ?? spriteColorDefault) & 0x0F,
+          x: Number(layer.x ?? layer.offset?.[0] ?? 0) || 0,
+          y: Number(layer.y ?? layer.offset?.[1] ?? 0) || 0
+        })).filter((layer) => Number.isInteger(layer.pattern) && layer.pattern >= 0 && layer.pattern < spriteCount),
+        backgroundTile: frame && !Array.isArray(frame) && frame.backgroundTile != null
+          ? Number(frame.backgroundTile) & 0xFF
+          : null
+      };
+    }).filter((frame) => frame.layers.length);
     let animationTimer = null;
     let animationPosition = 0;
 
@@ -841,7 +897,14 @@ export function createGraphicsEditorUi({
       updateSpriteHistoryButtons();
     }
 
-    function drawSpriteBackground(ctx, scale) {
+    function backgroundTileForSprite(index) {
+      const configured = editor.backgroundTiles;
+      if (Array.isArray(configured) && configured[index] != null) return Number(configured[index]) & 0xFF;
+      if (configured && typeof configured === "object" && configured[index] != null) return Number(configured[index]) & 0xFF;
+      return backgroundTile;
+    }
+
+    function drawSpriteBackground(ctx, scale, tileValue = backgroundTile) {
       ctx.fillStyle = "#050509";
       ctx.fillRect(0, 0, spriteWidth * scale, spriteHeight * scale);
       if (!backgroundPatternBytes) {
@@ -858,8 +921,8 @@ export function createGraphicsEditorUi({
       const tilesY = Math.ceil(spriteHeight / 8);
       for (let ty = 0; ty < tilesY; ty += 1) {
         for (let tx = 0; tx < tilesX; tx += 1) {
-          const pattern = tilePatternBytesForValue(backgroundPatternBytes, backgroundTile, backgroundBaseTile);
-          const colors = tileColorRowsForValue(backgroundColorBytes, backgroundPatternBytes, backgroundTile, backgroundBaseTile, backgroundScreenY + ty);
+          const pattern = tilePatternBytesForValue(backgroundPatternBytes, tileValue, backgroundBaseTile);
+          const colors = tileColorRowsForValue(backgroundColorBytes, backgroundPatternBytes, tileValue, backgroundBaseTile, backgroundScreenY + ty);
           drawTilePattern(ctx, pattern, tx * 8 * scale, ty * 8 * scale, scale, "#333333", "#000000", colors, TMS_PALETTE);
         }
       }
@@ -867,7 +930,7 @@ export function createGraphicsEditorUi({
 
     function drawSpritePatternToCanvas(ctx, index, scale) {
       ctx.imageSmoothingEnabled = false;
-      drawSpriteBackground(ctx, scale);
+      drawSpriteBackground(ctx, scale, backgroundTileForSprite(index));
       ctx.fillStyle = TMS_PALETTE[spriteColor] || "#ffffff";
       for (let row = 0; row < spriteHeight; row += 1) {
         for (let col = 0; col < spriteWidth; col += 1) {
@@ -887,9 +950,9 @@ export function createGraphicsEditorUi({
       const ctx = animationCanvas.getContext("2d");
       const scale = 8;
       ctx.imageSmoothingEnabled = false;
-      drawSpriteBackground(ctx, scale);
-      const layers = animationFrames[animationPosition] || [];
-      for (const layer of layers) {
+      const frame = animationFrames[animationPosition] || { layers: [], backgroundTile: null };
+      drawSpriteBackground(ctx, scale, frame.backgroundTile ?? backgroundTile);
+      for (const layer of frame.layers) {
         ctx.fillStyle = TMS_PALETTE[layer.color] || "#ffffff";
         for (let row = 0; row < spriteHeight; row += 1) {
           for (let col = 0; col < spriteWidth; col += 1) {
@@ -2366,6 +2429,12 @@ export function createGraphicsEditorUi({
 
   function openGraphicsEditorDefinition(entry, editor, config) {
     const sourceBlocks = sourceBlocksForGraphicsConfig(config);
+    if (editor.kind === "bitmap-screen" || editor.kind === "bitmap") {
+      return void openBitmapScreenGraphicsEditor(editor, {
+        palette: TMS_PALETTE, patternFile: patternFileForCharsetEditor(editor), colorFile: findEditorColorFile(editor),
+        decodedProjectFileBytes, detectCodecFromName, compressBytes, decompressBytes, bytesToBase64, upsertProjectFile, setStatus
+      });
+    }
     if (editor.kind === "charset") return void openCharsetGraphicsEditor(editor);
     if (editor.kind === "sprite-patterns" || editor.kind === "sprites") return void openSpritePatternGraphicsEditor(editor);
     if (editor.kind === "metatiles" || editor.kind === "frames") return void openMetatileGraphicsEditor(editor, sourceBlocks);
@@ -2387,6 +2456,13 @@ export function createGraphicsEditorUi({
       return;
     }
     openGraphicsEditorDefinition(entry, editor, config);
+  }
+
+  function openBitmapScreenFiles({ name, patternFile, colorFile }) {
+    return openBitmapScreenGraphicsEditor({ name: name || "Bitmap Screen", kind: "bitmap-screen" }, {
+      palette: TMS_PALETTE, patternFile, colorFile, decodedProjectFileBytes, detectCodecFromName,
+      compressBytes, decompressBytes, bytesToBase64, upsertProjectFile, setStatus
+    });
   }
 
   function openGraphicsEditorsConfig(entry) {
@@ -2456,6 +2532,7 @@ export function createGraphicsEditorUi({
 
   return {
     openGraphicsEditorsConfig,
-    openGraphicsEditorFromConfig
+    openGraphicsEditorFromConfig,
+    openBitmapScreenFiles
   };
 }

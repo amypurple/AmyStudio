@@ -253,7 +253,10 @@ try {
         } else {
           const expected = JSON.parse(readFileSync(options.visualBaseline, "utf8"));
           const problems = compareVisualState(expected, visual);
-          if (problems.length) throw new Error(`Visual regression: ${problems.join("; ")}`);
+          if (problems.length) {
+            const hashes = `screenshot ${expected.screenshotSha256} -> ${visual.screenshotSha256}; VRAM ${expected.vramSha256} -> ${visual.vramSha256}`;
+            throw new Error(`Visual regression: ${problems.join("; ")} (${hashes})`);
+          }
         }
       }
     }

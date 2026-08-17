@@ -326,6 +326,18 @@ This checked slice form still requires matching record types. Its `count` must b
 
 The first implementation intentionally supports records made only of `u8`, `i8`, and `bool` fields. Wider and nested fields are rejected clearly rather than silently changing their byte representation.
 
+Repeated accesses to one record-array element should use a lexical alias:
+
+```basic
+with Ghosts[G] as Ghost
+  Ghost.X += 1
+  Ghost.HiddenTile = Tile
+  Ghost.MoveTimer -= 1
+end with
+```
+
+`Ghosts[G]` is evaluated once when entering the block. `Ghost` is a reference to the original element, never a copy, so writes immediately affect `Ghosts[G]`. Amy stores one hidden two-byte pointer and addresses fields with constant offsets. Nested aliases are allowed when their names differ, and an alias can be passed to a compatible `ref RecordType` parameter. The current safe implementation accepts `with` in `Start` and in routines proven non-reentrant; recursive and NMI-reachable routines are rejected until activation-local alias pointers are implemented.
+
 Current record limits:
 - no local record variables yet
 - no arrays inside a record yet
@@ -865,7 +877,7 @@ for each Fly, I in Flies
 next
 ```
 
-`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. Amy lowers this form to the same counted loop as `for I = 0 to 2`; it allocates no hidden RAM and adds no iterator runtime. The index must currently be declared explicitly as `u8`, and the source must be a global fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
+`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a global fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
 
 `end for` and `for I from ...` were removed; use `next` and `for I = ...`.
 
@@ -1122,6 +1134,7 @@ during cleanup, but code should use expression assignment.
 
 ```basic
 fill array Board with 0
+fill record array Ghosts field Vulnerable with 0
 fill array Tiles repeating Pattern
 fill array Tiles repeating Pattern count 32
 copy Board to Backup
@@ -1132,7 +1145,7 @@ reverse array Board
 reverse array Board from 2 count 6
 ```
 
-Current limits: `u8` arrays. `count` and slice values are safest as compile-time constants.
+Current limits: `u8` arrays. `count` and slice values are safest as compile-time constants. A fixed `fill array` count from 1 to 255 uses a compact Z80 `DJNZ` loop. `fill record array ... field ...` fills one byte-sized `u8`, `i8`, or `bool` field across a fixed record array with a constant or byte value, advancing directly by the record size.
 The old `copy array Dst from Src` spelling was removed; use `copy Src to Dst`.
 
 ### Multiply / Divide / Sqrt
@@ -1515,7 +1528,11 @@ decompress dan3  Asset   to vram.pattern
 decompress zx7   Asset   to vram.pattern
 decompress lzf   Asset   to vram.pattern
 decompress bitbuster Asset to vram.pattern
+decompress Level to vram.spr_attr + 128  ' unpack at $1B80
+copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 ```
+
+`decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
 
@@ -1562,8 +1579,10 @@ such as `title.pattern.zx0`) using the same codec metadata.
 ```basic
 define chars Name at Pos
 define chars Digits at 48 count 10
+define chars Charset + 128 at 128 count 16
 define colors NameColors at Pos
 define colors NameColors at 48 count 10
+fill mode 2 color thirds at 175 count 1 with $41
 set sprite pattern table vram.pattern
 set sprite pattern table vram.spr_pat
 reflect pattern 0 to 16 count 1 vertical
@@ -1571,8 +1590,8 @@ reflect pattern 16 to 17 count 1 horizontal
 rotate pattern 17 to 18 count 1 90
 ```
 
-`define chars ... at N` copies 8-byte character patterns into all three Mode 2 pattern thirds automatically.
-`define colors ... at N` copies 8-byte color rows into all three Mode 2 color thirds automatically.
+`define chars ... at N` copies 8-byte character patterns into all three Mode 2 pattern thirds automatically. A source may use a constant byte offset (`Source + Offset`) when an explicit `count` is supplied.
+`define colors ... at N` copies 8-byte color rows into all three Mode 2 color thirds automatically. `fill mode 2 color thirds` fills the same tile range in all three COLOR thirds without repeating three VRAM commands.
 
 `reflect pattern` and `rotate pattern` use Coleco BIOS pattern transforms.
 Source and destination are pattern indexes, not byte addresses. `vertical`

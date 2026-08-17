@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 
 import {
+  applyTmsPixelColor,
+  drawEditorTilePattern,
   drawTileGridEditorOverlay,
   renderTileGrid,
   tileColorOffsetForValue,
@@ -30,6 +32,13 @@ function makeContext() {
   return ctx;
 }
 
+assert.deepEqual(applyTmsPixelColor(0x00, 0xF1, 0, 0xF), { patternByte: 0x80, colorByte: 0xF1 });
+assert.deepEqual(applyTmsPixelColor(0x80, 0xF1, 0, 0x1), { patternByte: 0x00, colorByte: 0xF1 });
+assert.deepEqual(applyTmsPixelColor(0x80, 0xF1, 0, 0x6), { patternByte: 0x80, colorByte: 0x61 });
+assert.deepEqual(applyTmsPixelColor(0x00, 0xF1, 0, 0x6), { patternByte: 0x80, colorByte: 0x61 });
+assert.deepEqual(applyTmsPixelColor(0x00, 0xF1, 0, 0x0), { patternByte: 0x80, colorByte: 0x01 });
+assert.deepEqual(applyTmsPixelColor(0xFF, 0xF1, 7, 0x6), { patternByte: 0xFE, colorByte: 0xF6 });
+
 const pattern = Uint8Array.from([
   0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01,
   0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00
@@ -50,6 +59,16 @@ assert.equal(tileColorRowsForValue(color, pattern, 0x80, 0x80, 8)[0], 0xE2);
 const compactMode2Color = new Uint8Array(32);
 compactMode2Color[0x80 >> 3] = 0x51;
 assert.deepEqual(Array.from(tileColorRowsForValue(compactMode2Color, pattern, 0x80, 0x80, 0)), [0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51]);
+
+const transparentEditorCtx = makeContext();
+drawEditorTilePattern(transparentEditorCtx, new Uint8Array(8), 0, 0, 4, "#fff", "#000", new Uint8Array(8).fill(0x10));
+assert.ok(transparentEditorCtx.calls.some((call) => call.kind === "fill" && call.style === "#5d6670"));
+assert.ok(transparentEditorCtx.calls.some((call) => call.kind === "fill" && call.style === "#252b31"));
+
+const blackEditorCtx = makeContext();
+drawEditorTilePattern(blackEditorCtx, new Uint8Array(8), 0, 0, 4, "#fff", "#000", new Uint8Array(8).fill(0x11));
+assert.ok(blackEditorCtx.calls.some((call) => call.kind === "fill" && call.style === "#000000"));
+assert.equal(blackEditorCtx.calls.some((call) => call.kind === "fill" && call.style === "#5d6670"), false);
 
 const ctx = makeContext();
 renderTileGrid(ctx, {

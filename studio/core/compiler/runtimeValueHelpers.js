@@ -757,6 +757,8 @@ export function createRuntimeValueHelpers({
         const info = getRuntimeInfo(normalized);
         if (!info || info.kind !== "record") return null;
         if (String(info.recordTypeName || "").toLowerCase() !== wanted) return null;
+        if (info.isDynamicRecordAlias) return emitLoadArrayAddressIntoHL(info.aliasArrayName, info.aliasIndexToken);
+        if (info.isAliasPointer) return [`    ld hl,(${formatHex16(info.pointerAddress)})`];
         if (info.isRef) return ixWord(info.offset);
         if (info.storage === "stack") return stackSlotAddress(info);
         return [`    ld hl,${formatHex16(info.address)}`];

@@ -266,11 +266,16 @@ export class GearcolecoTestCore {
   }
 
   getFramebuffer() {
+    const framebuffer = this.getFramebufferView();
+    return { ...framebuffer, pixels: framebuffer.pixels.slice() };
+  }
+
+  getFramebufferView() {
     this.assertAlive();
     const width = this.module._gcw_get_framebuffer_width() | 0;
     const height = this.module._gcw_get_framebuffer_height() | 0;
     const pointer = this.module._gcw_get_framebuffer() >>> 0;
-    const pixels = this.module.HEAPU16.slice(
+    const pixels = this.module.HEAPU16.subarray(
       pointer >>> 1,
       (pointer >>> 1) + width * height
     );

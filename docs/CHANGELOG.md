@@ -1,3 +1,34 @@
+## 2026-08-17 - DacMan 2, bitmap editing, record aliases, and faster ROM debugging
+
+### Amy language and compiler
+
+- Added lexical record aliases with `with Records[Index] as Item ... end with`; the indexed address is computed once and repeated field access uses one checked pointer-backed alias.
+- Optimized record-array iteration and added `fill record array Actors field State with Value`, while fixed byte-array fills now use compact `DJNZ` loops.
+- Added offset destinations for decompression, bounded VRAM-to-VRAM copies through Amy's 32-byte workspace, source offsets for `define chars/colors`, and `fill mode 2 color thirds`.
+- Hardened runtime initialization placement, record alias safety, scalar load/store handling, backdrop RAM allocation, and fractional constant parsing.
+- Expanded the language reference, autocomplete, syntax grammar, and optimization cookbook with the new forms and measured data-driven alternatives.
+
+### Studio and graphics
+
+- Added a Mode 2 bitmap editor for compatible 6144-byte PATTERN/COLOR pairs, with pixel-aware TMS9918 color editing, drawing tools, selection, clipboard operations, zoom, pan, grid, undo, and redo.
+- Improved charset and sprite editors with visible transparency, smart single-pixel color changes, tile copy/paste, layered sprite animation frames, and configurable background-tile previews.
+- Added compact FILES actions for editing JSON, text, and compatible bitmap assets without leaving the project.
+- Added drag-and-drop project import for `.amy.json` and legacy `.json` files, plus native gzip import for `.amy.json.gz` and `.json.gz`.
+- Added a future integration plan for optional Google Drive project storage and a user-supplied OpenAI programming assistant without making either service mandatory.
+
+### ROM Test & Debug
+
+- Reduced playback overhead by rendering directly from the emulator framebuffer view, avoiding muted audio copies, limiting catch-up work, and refreshing heavy inspectors at a controlled interval.
+- Preserved deterministic rewind, audio replay, source breakpoints, cycle profiling, and VRAM/VDP checkpoint verification with updated GearColeco tests.
+
+### Examples and validation
+
+- Added the public DacMan 2 work-in-progress example and project assets.
+- Added executable record-array safety and size fixtures; the Balanced ROM self-test passes 25 runtime assertions, and the record layout is 42 bytes smaller than the equivalent parallel-array fixture in this test.
+- Added CLI audit pipelines for all-example optimizer comparisons, MDL/COPT cross-checks, peephole impact analysis, and post-optimizer oracle validation.
+- Regenerated the public catalog and assembled all 52 examples successfully with Balanced optimization.
+- Verified GearColeco execution, deterministic rewind, audio output, and Warrior checkpoint parity for framebuffer-independent VRAM and VDP state.
+
 ## 2026-08-08 - Array aliases and runtime sprite indices
 
 - Added `for each Element, Index in GlobalArray` as zero-runtime sugar over a counted loop; the element is a mutable alias and the explicit u8 index prevents hidden RAM allocation.

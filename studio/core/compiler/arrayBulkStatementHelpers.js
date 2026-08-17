@@ -11,7 +11,8 @@ export function handleArrayBulkStatement({
   emitLoadArrayAddressIntoHL,
   emitStoreInt8FromA,
   makeGeneratedLabel,
-  getTileTypeInfo
+  getTileTypeInfo,
+  getRecordTypeInfo
 }) {
   const _dep = checkArrayBulkDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -99,6 +100,41 @@ export function handleArrayBulkStatement({
     };
   }
 
+  const fillRecordField = line.match(/^fill\s+record\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+field\s+([A-Za-z_][A-Za-z0-9_]*)\s+with\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
+  if (fillRecordField) {
+    const [, arrayName, fieldName, valueToken] = fillRecordField;
+    const arrayInfo = getRuntimeInfo(arrayName);
+    if (!arrayInfo || arrayInfo.kind !== "record_array" || !Number.isInteger(arrayInfo.length) || arrayInfo.length < 1 || arrayInfo.length > 255) {
+      return { ok: false, handled: true, log: `fill record array requires a fixed record array of 1..255 elements: ${rawLine}` };
+    }
+    const recordInfo = getRecordTypeInfo?.(arrayInfo.recordTypeName);
+    const fieldInfo = recordInfo?.orderedFields?.find((field) => field.name.toLowerCase() === fieldName.toLowerCase());
+    if (!fieldInfo || fieldInfo.type !== "int8" || fieldInfo.size !== 1) {
+      return { ok: false, handled: true, log: `fill record array currently requires a u8, i8, or bool field: ${rawLine}` };
+    }
+    const loadValue = emitLoadInt8Into("a", valueToken);
+    const loadAddress = Number.isInteger(arrayInfo.address)
+      ? [`    ld hl,${arrayInfo.address + fieldInfo.offset}`]
+      : null;
+    if (!loadValue || !loadAddress) {
+      return { ok: false, handled: true, log: `fill record array cannot resolve its value or base address: ${rawLine}` };
+    }
+    const loop = makeGeneratedLabel("FillRecordFieldLoop");
+    return {
+      ok: true,
+      handled: true,
+      lines: [
+        ...loadValue,
+        ...loadAddress,
+        `    ld de,${arrayInfo.recordSize}`,
+        `    ld b,${arrayInfo.length}`,
+        `${loop}:`,
+        "    ld (hl),a",
+        "    add hl,de",
+        `    djnz ${loop}`
+      ]
+    };
+  }
   const fillArray = line.match(/^fill\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+with\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
   if (fillArray) {
     const arrName = fillArray[1];
@@ -114,6 +150,31 @@ export function handleArrayBulkStatement({
     const fillLoop = makeGeneratedLabel("FillArrayLoop");
     const fillDone = makeGeneratedLabel("FillArrayDone");
     const countVal = countToken ? symbolOrValue(countToken) : arrInfo.length;
+    const fixedCountText = String(countVal).trim();
+    const fixedCount = /^\$[0-9A-Fa-f]+$/.test(fixedCountText)
+      ? parseInt(fixedCountText.slice(1), 16)
+      : (/^[0-9]+$/.test(fixedCountText) ? parseInt(fixedCountText, 10) : null);
+    if (Number.isInteger(fixedCount) && fixedCount >= 1 && fixedCount <= 255) {
+      const byteLoop = makeGeneratedLabel("FillArrayByteLoop");
+      const fixedValueText = String(fillArray[2]).trim();
+      const fixedValue = /^\$[0-9A-Fa-f]+$/.test(fixedValueText) || /^[0-9]+$/.test(fixedValueText);
+      const loadFillValue = fixedValue
+        ? ["    ld d," + symbolOrValue(fixedValueText)]
+        : [...loadValue, "    ld d,a"];
+      return {
+        ok: true,
+        handled: true,
+        lines: [
+          ...loadFillValue,
+          ...baseAddress,
+          "    ld b," + symbolOrValue(fixedCount),
+          byteLoop + ":",
+          "    ld (hl),d",
+          "    inc hl",
+          "    djnz " + byteLoop
+        ]
+      };
+    }
     return {
       ok: true,
       handled: true,

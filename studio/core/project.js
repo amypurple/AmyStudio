@@ -300,12 +300,12 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
       String(asset.name).toLowerCase(),
       String(asset.codec).toLowerCase() === "rle" ? "mdkrle" : String(asset.codec).toLowerCase()
     ]));
-  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
+  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
   let match;
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
   }
-  const inferredAssetDecompressPattern = /^\s*decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s*$/gim;
+  const inferredAssetDecompressPattern = /^\s*decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
   while ((match = inferredAssetDecompressPattern.exec(sourceText)) !== null) {
     const codec = assetCodecByName.get(match[1].toLowerCase());
     if (codec && codecToInclude[codec]) found.add(codecToInclude[codec]);
