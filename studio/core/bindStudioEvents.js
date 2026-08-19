@@ -31,6 +31,7 @@ export function bindStudioShellEvents({
     renderExamplePicker: helpers.renderExamplePicker,
     renderExampleMeta: helpers.renderExampleMeta,
     getExampleById: helpers.getExampleById,
+    ensureExamplesLoaded: helpers.ensureExamplesLoaded,
     buildProjectFromExample: helpers.buildProjectFromExample,
     clearCompiledArtifacts: helpers.clearCompiledArtifacts,
     closeTopbarMenu: helpers.closeTopbarMenu,
@@ -48,6 +49,7 @@ export function bindStudioShellEvents({
     syncUiFromProject: helpers.syncUiFromProject,
     setStatus: helpers.setStatus,
     newProject: helpers.newProject,
+    openProjectInTab: helpers.openProjectInTab,
     getProject: projectState.getProject,
     setProject: projectState.setProject,
     setLastLibResolution: runtime.setLastLibResolution,
@@ -122,6 +124,8 @@ export function bindStudioShellEvents({
     ensureProjectFilePathCandidate: helpers.ensureProjectFilePathCandidate,
     upsertProjectFile: helpers.upsertProjectFile,
     bytesToBase64: helpers.bytesToBase64,
-    addImportedProjectFiles: helpers.addImportedProjectFiles
+    addImportedProjectFiles: helpers.addImportedProjectFiles,
+    openProjectInTab: helpers.openProjectInTab,
+    markActiveProjectClean: helpers.markActiveProjectClean
   });
 }

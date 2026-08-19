@@ -60,6 +60,7 @@ export function bindTopUiEvents(ctx) {
     syncUiFromProject,
     setStatus,
     newProject,
+    openProjectInTab,
     getProject,
     setProject,
     setLastLibResolution,
@@ -136,11 +137,7 @@ export function bindTopUiEvents(ctx) {
     }
     const nextProject = buildProjectFromExample(example);
     nextProject.exampleId = example.id;
-    setProject(nextProject);
-    clearCompiledArtifacts();
-    setLastLibResolution(null);
-    setExpandedAsm("");
-    setAsmViewMode("generated");
+    openProjectInTab(nextProject, { clean: true });
     setStatus(`Loaded: ${example.label}`);
     syncUiFromProject();
     els.examplesDialog?.close();
@@ -236,10 +233,7 @@ export function bindTopUiEvents(ctx) {
   });
 
   els.btnNew.addEventListener("click", () => {
-    setProject(newProject());
-    clearCompiledArtifacts();
-    setExpandedAsm("");
-    setAsmViewMode("generated");
+    openProjectInTab(newProject(), { clean: true });
     refreshSourceCartridgeMeta(getProject().sourceText);
     setStatus("New project.");
     syncUiFromProject();
@@ -332,7 +326,9 @@ export function bindStudioRuntimeEvents(ctx) {
     ensureProjectFilePathCandidate,
     upsertProjectFile,
     bytesToBase64,
-    addImportedProjectFiles
+    addImportedProjectFiles,
+    openProjectInTab,
+    markActiveProjectClean
   } = ctx;
 
   let wavRecordStream = null;
@@ -555,10 +551,7 @@ export function bindStudioRuntimeEvents(ctx) {
     try {
       const text = await readProjectFileText(file);
       const obj = JSON.parse(text);
-      setProject(importProjectObject(obj));
-      clearCompiledArtifacts();
-      setExpandedAsm("");
-      setAsmViewMode("generated");
+      openProjectInTab(importProjectObject(obj), { clean: true });
       setStatus(`Imported: ${getProject().projectName}`);
       syncUiFromProject();
       closeTopbarMenu();
@@ -614,6 +607,7 @@ export function bindStudioRuntimeEvents(ctx) {
     const project = getProject();
     const out = exportProject(project);
     downloadText(`${project.projectName}.amy.json`, JSON.stringify(out, null, 2));
+    markActiveProjectClean?.();
     setStatus("Exported project.");
     closeTopbarMenu();
   });

@@ -687,19 +687,6 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "dacman-2",
-    "label": "DacMan 2",
-    "detail": "Puzzle-focused DacMan sequel foundation with four skill levels, ZX0 level assets, and support for community-created levels.",
-    "projectName": "dacman-2",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
     "id": "amy-record-array-safety-selftest",
     "label": "Amy Record Array Safety Self-Test",
     "detail": "Executable regression for typed record copies, dynamic indexing, ref-record mutation, for-each aliases, and expression indexes.",

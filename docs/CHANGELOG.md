@@ -1,4 +1,19 @@
-## 2026-08-17 - DacMan 2, bitmap editing, record aliases, and faster ROM debugging
+## 2026-08-19 - Project tabs and focused public examples
+
+### Studio workflow
+
+- Added persistent project tabs so opening a new project, imported project, or built-in example no longer replaces the programmer's current work.
+- Preserved each tab's source cursor, selection, scroll position, breakpoints, files, settings, and unsaved session changes; modified tabs require confirmation before closing.
+- Kept compiled ROMs, generated ASM, memory maps, symbols, listings, and debugger inputs attached to their project tab for immediate download or ROM Test & Debug reuse after switching.
+- Restored open project tabs after a page reload while keeping large compiled artifacts session-only to avoid exhausting browser storage.
+
+### Documentation and examples
+
+- Fixed documentation search excerpts so overlapping matches are merged and fenced code examples remain complete instead of appearing duplicated or empty.
+- Removed the unfinished DacMan 2 prototype and its embedded assets from the public example catalog; DacMan 2 remains experimental work outside the published Studio examples.
+- Regenerated and validated the focused public catalog with 51 examples.
+
+## 2026-08-17 - Bitmap editing, record aliases, and faster ROM debugging
 
 ### Amy language and compiler
 
@@ -23,10 +38,9 @@
 
 ### Examples and validation
 
-- Added the public DacMan 2 work-in-progress example and project assets.
 - Added executable record-array safety and size fixtures; the Balanced ROM self-test passes 25 runtime assertions, and the record layout is 42 bytes smaller than the equivalent parallel-array fixture in this test.
 - Added CLI audit pipelines for all-example optimizer comparisons, MDL/COPT cross-checks, peephole impact analysis, and post-optimizer oracle validation.
-- Regenerated the public catalog and assembled all 52 examples successfully with Balanced optimization.
+- Regenerated the public catalog and assembled all 51 examples successfully with Balanced optimization.
 - Verified GearColeco execution, deterministic rewind, audio output, and Warrior checkpoint parity for framebuffer-independent VRAM and VDP state.
 
 ## 2026-08-08 - Array aliases and runtime sprite indices

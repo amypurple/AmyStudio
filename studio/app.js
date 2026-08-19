@@ -91,6 +91,7 @@ import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260808-f
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
+import { createProjectTabs } from "./core/projectTabs.js";
 import {
   buildProjectFromExample as buildProjectFromExampleCore,
   defaultSourceText as defaultSourceTextCore,
@@ -123,6 +124,7 @@ import {
 
 const els = {
   btnNew: document.getElementById("btnNew"),
+  projectTabs: document.getElementById("projectTabs"),
   btnOpen: document.getElementById("btnOpen"),
   btnSave: document.getElementById("btnSave"),
   btnTranspile: document.getElementById("btnTranspile"),
@@ -651,7 +653,7 @@ const {
   migrateProject,
   loadProject,
   ensureProjectFilePathCandidate,
-  saveProjectToStorage,
+  saveProjectToStorage: saveSingleProjectToStorage,
   refreshProjectGraph,
   exportProject,
   importProjectObject
@@ -678,6 +680,12 @@ const {
   normalizeOptimizationLevel,
   getProject: () => project
 });
+
+let projectTabsController = null;
+function saveProjectToStorage(projectToSave) {
+  saveSingleProjectToStorage(projectToSave);
+  projectTabsController?.projectChanged();
+}
 
 const {
   updateEmulatorUi,
@@ -963,6 +971,67 @@ function syncUiFromProject() {
   sourceBreakpointController.sync();
 }
 
+function captureProjectTabView() {
+  return {
+    selectionStart: els.sourceEditor.selectionStart || 0,
+    selectionEnd: els.sourceEditor.selectionEnd || 0,
+    scrollTop: els.sourceEditor.scrollTop || 0,
+    scrollLeft: els.sourceEditor.scrollLeft || 0
+  };
+}
+
+function captureProjectTabRuntime() {
+  return {
+    compiledRom,
+    compiledMemoryMap,
+    compiledSymbols,
+    compiledListing,
+    compiledColecoHeaderInfo,
+    expandedAsm,
+    asmViewMode,
+    lastLibResolution,
+    sourceCartridgeMeta
+  };
+}
+
+function activateProjectTab(nextProject, viewState = {}, runtimeState = {}) {
+  project = nextProject;
+  clearCompiledArtifacts();
+  compiledRom = runtimeState.compiledRom || null;
+  compiledMemoryMap = runtimeState.compiledMemoryMap || "";
+  compiledSymbols = runtimeState.compiledSymbols || "";
+  compiledListing = runtimeState.compiledListing || "";
+  compiledColecoHeaderInfo = runtimeState.compiledColecoHeaderInfo || null;
+  lastLibResolution = runtimeState.lastLibResolution || null;
+  expandedAsm = runtimeState.expandedAsm || "";
+  asmViewMode = runtimeState.asmViewMode || "generated";
+  sourceCartridgeMeta = runtimeState.sourceCartridgeMeta || null;
+  syncUiFromProject();
+  requestAnimationFrame(() => {
+    const length = els.sourceEditor.value.length;
+    const start = Math.min(length, Math.max(0, viewState.selectionStart || 0));
+    const end = Math.min(length, Math.max(start, viewState.selectionEnd || start));
+    els.sourceEditor.setSelectionRange(start, end);
+    els.sourceEditor.scrollTop = viewState.scrollTop || 0;
+    els.sourceEditor.scrollLeft = viewState.scrollLeft || 0;
+  });
+  setStatus(`Active project: ${project.projectName}`);
+}
+
+projectTabsController = createProjectTabs({
+  container: els.projectTabs,
+  initialProject: project,
+  migrateProject,
+  onBeforeActivate: captureProjectTabView,
+  captureTransientState: captureProjectTabRuntime,
+  onActivate: activateProjectTab
+});
+project = projectTabsController.getActiveProject();
+
+function openProjectInTab(nextProject, options) {
+  projectTabsController.openProject(nextProject, options);
+}
+
 function bindEvents() {
   bindStudioShellEvents({
     bindAsmViewEvents,
@@ -1007,6 +1076,8 @@ function bindEvents() {
         updateOptimizationHint,
         scheduleEditorInsightsRefresh,
         syncUiFromProject,
+        openProjectInTab,
+        markActiveProjectClean: () => projectTabsController.markActiveClean(),
         setStatus: (...args) => setStatus(...args),
         newProject,
         expandAsmIncludes,

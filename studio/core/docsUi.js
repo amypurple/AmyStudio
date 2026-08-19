@@ -74,7 +74,7 @@ function slugifyHeading(value) {
     .replace(/^-+|-+$/g, "") || "section";
 }
 
-function markdownToHtml(markdown) {
+export function markdownToHtml(markdown) {
   const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
   const out = [];
   let inCode = false;
@@ -171,20 +171,45 @@ function markdownToHtml(markdown) {
   return out.join("\n");
 }
 
-function filterMarkdown(markdown, query) {
+export function filterMarkdown(markdown, query) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return markdown;
   const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
-  const matches = [];
+  const codeBlocks = [];
+  let codeStart = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^```/.test(lines[index])) continue;
+    if (codeStart < 0) codeStart = index;
+    else {
+      codeBlocks.push({ start: codeStart, end: index + 1 });
+      codeStart = -1;
+    }
+  }
+  if (codeStart >= 0) codeBlocks.push({ start: codeStart, end: lines.length });
+
+  const ranges = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (!line.toLowerCase().includes(q)) continue;
-    const start = Math.max(0, index - 2);
-    const end = Math.min(lines.length, index + 3);
-    if (matches.length) matches.push("");
-    matches.push(...lines.slice(start, end));
+    let start = Math.max(0, index - 2);
+    let end = Math.min(lines.length, index + 3);
+    for (const block of codeBlocks) {
+      if (block.end <= start || block.start >= end) continue;
+      start = Math.min(start, block.start);
+      end = Math.max(end, block.end);
+    }
+    ranges.push({ start, end });
   }
-  return matches.length ? matches.join("\n") : `No matches for "${query}".`;
+  if (!ranges.length) return `No matches for "${query}".`;
+
+  ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [];
+  for (const range of ranges) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.start <= previous.end + 1) previous.end = Math.max(previous.end, range.end);
+    else merged.push({ ...range });
+  }
+  return merged.map((range) => lines.slice(range.start, range.end).join("\n")).join("\n\n");
 }
 
 export function createDocsUi({ els, setStatus }) {
