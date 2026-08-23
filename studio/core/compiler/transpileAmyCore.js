@@ -1343,7 +1343,7 @@ export function transpileAmyCore(sourceText, deps) {
   }));
 
   function parseRecordDefinitions() {
-    const simpleRecordFieldRe = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i;
+    const simpleRecordFieldRe = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[\s*(\d+)\s*\])?$/i;
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
@@ -1380,8 +1380,12 @@ export function transpileAmyCore(sourceText, deps) {
         const declaredTypeToken = fieldMatch[1];
         const declaredType = normalizeDeclaredType(declaredTypeToken.toLowerCase());
         const fieldName = fieldMatch[2];
+        const arrayLength = fieldMatch[3] === undefined ? null : Number.parseInt(fieldMatch[3], 10);
         if (!isValidSymbolName(fieldName) || isReservedAmyIdentifier(fieldName) || fields.has(fieldName)) {
           return `Invalid or duplicate record field '${fieldName}': ${fieldRaw}`;
+        }
+        if (arrayLength !== null && (!Number.isInteger(arrayLength) || arrayLength < 1 || arrayLength > 255)) {
+          return `Record array fields require a literal length from 1 to 255: ${fieldRaw}`;
         }
         let fieldInfo = null;
         if (isSupportedSourceTypeName(declaredTypeToken)) {
@@ -1389,12 +1393,25 @@ export function transpileAmyCore(sourceText, deps) {
             return `Record fields currently support u8, i8, u16, i16, fixed, ufixed, bool, and previously defined record types: ${fieldRaw}`;
           }
           const runtimeType = normalizeRuntimeType(declaredType);
-          const size = runtimeTypeSize(runtimeType);
-          fieldInfo = { name: fieldName, declaredType, type: runtimeType, offset, size };
+          const elementSize = runtimeTypeSize(runtimeType);
+          const size = elementSize * (arrayLength || 1);
+          fieldInfo = {
+            name: fieldName,
+            declaredType,
+            type: runtimeType,
+            offset,
+            size,
+            isArray: arrayLength !== null,
+            length: arrayLength,
+            elementSize
+          };
         } else {
           const nestedRecordInfo = getRecordTypeInfo(declaredTypeToken);
           if (!nestedRecordInfo) {
             return `Unknown record field type '${declaredTypeToken}': ${fieldRaw}`;
+          }
+          if (arrayLength !== null) {
+            return `Record-array fields are not supported yet; use a fixed scalar array field or a top-level record array: ${fieldRaw}`;
           }
           fieldInfo = {
             name: fieldName,
@@ -2044,6 +2061,10 @@ export function transpileAmyCore(sourceText, deps) {
       const declaredType = mergeDeclaredTypes(resolveDeclaredValueType(`${node.name}[${renderExpressionAst(node.index)}]`), null, preferredDeclaredType);
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
     }
+    if (node.kind === "subscript") {
+      const declaredType = mergeDeclaredTypes(resolveDeclaredValueType(renderExpressionAst(node)), null, preferredDeclaredType);
+      return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
+    }
     if (node.kind === "member") {
       const declaredType = mergeDeclaredTypes(resolveDeclaredValueType(renderExpressionAst(node)), null, preferredDeclaredType);
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
@@ -2140,7 +2161,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parseFormulaAssignment(text) {
-    const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*)*`;
+    const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*`;
     const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(\\+=|-=|\\*=|/=|%=|\\^=|=)\\s*(.+)$`));
     if (!match) return null;
     if (match[2] === "=" && /^(?:get|read)\s+(?:char|tile|count|frame)\b/i.test(match[3].trim())) return null;

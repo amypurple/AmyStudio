@@ -277,6 +277,8 @@ record Piece:
   u8 Y
   u8 Tile
   u8 Flags
+  u8 HistoryX[8]
+  u16 Bonuses[3]
 end record
 
 Piece Pieces[4]
@@ -292,6 +294,13 @@ Current implemented record scope:
 - top-level arrays of record, including compile-time constant lengths
 - field access such as `PieceVar.X` and `Pieces[I].Tile`
 - nested record fields such as `PieceVar.Pos.X` and `Pieces[I].Pos.Y`
+- fixed scalar array fields such as `PieceVar.HistoryX[I]` and `Pieces[P].Bonuses[2]`
+
+Scalar array fields are byte-packed with no pointer, descriptor, or alignment padding.
+`u8 Values[8]` occupies exactly 8 bytes and `u16 Values[3]` exactly 6 bytes. Literal
+indexes are folded into direct addresses; runtime indexes use compact address arithmetic
+and are not unrolled. Field lengths must be literal values from 1 through 255 in this
+first implementation.
 
 Typed ROM templates can initialize a complete record array with one checked block copy:
 
@@ -324,7 +333,10 @@ copy LevelFlies + LevelOffset count 20 to Flies
 
 This checked slice form still requires matching record types. Its `count` must be a compile-time constant exactly equal to the destination array size; partial initialization is rejected. Offsets are byte offsets, so an explicit offset table is often clearer and cheaper than runtime multiplication on Z80.
 
-The first implementation intentionally supports records made only of `u8`, `i8`, and `bool` fields. Wider and nested fields are rejected clearly rather than silently changing their byte representation.
+Records support scalar and fixed-array fields using `u8`, `i8`, `u16`, `i16`, `fixed`,
+`ufixed`, and `bool`, plus scalar nested-record fields. Arrays of nested records inside a
+record remain intentionally rejected; use a top-level record array until that separate
+feature has its own layout and codegen tests.
 
 Repeated accesses to one record-array element should use a lexical alias:
 
@@ -340,8 +352,8 @@ end with
 
 Current record limits:
 - no local record variables yet
-- no arrays inside a record yet
-- no record fields wider than the current byte/word/bool subset
+- no arrays of nested records inside another record yet
+- record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
 
 Same-type declarations can share one line:
 

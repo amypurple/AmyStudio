@@ -1,0 +1,115 @@
+' DESIGN EXAMPLE ONLY - scene and overlay syntax is not implemented yet.
+' This file is intentionally absent from the executable examples catalog.
+
+project "AMY SCENE OVERLAY DESIGN"
+memory "colecovision"
+
+' Permanent RAM survives every transition.
+u16 TotalScore = 0
+u8 Difficulty = 2
+u8 ActiveScene = 0
+u8 RequestedScene = 0
+u8 EnemyIndex = 0
+
+record MenuMemory:
+  u8 Selection
+  u8 BlinkTicks
+end record
+
+record GameMemory:
+  u8 PlayerX
+  u8 PlayerY
+  u8 EnemyX[8]
+  u8 EnemyY[8]
+  u8 DotsLeft
+end record
+
+record EndingMemory:
+  u8 Winner
+  u8 WaitTicks
+end record
+
+' Proposed: reserves only max(2, 19, 2) = 19 bytes.
+overlay SceneRam
+  Menu as MenuMemory
+  Game as GameMemory
+  Ending as EndingMemory
+end overlay
+
+scene Menu uses SceneRam.Menu
+  on enter MenuEnter
+  on frame MenuFrame
+end scene
+
+scene Game uses SceneRam.Game
+  on enter GameEnter
+  on frame GameFrame
+end scene
+
+scene Ending uses SceneRam.Ending
+  on enter EndingEnter
+  on frame EndingFrame
+end scene
+
+sub MainFrame:
+  ' Scenes is the proposed compiler-generated typed machine.
+  dispatch ActiveScene using Scenes
+  return
+end sub
+
+on vblank MainFrame
+
+' Scene transitions happen in mainline, never inside the VBlank handler.
+enter Menu
+loop forever
+  if RequestedScene = Scenes.Menu then
+    RequestedScene = 0
+    enter Menu
+  elseif RequestedScene = Scenes.Game then
+    RequestedScene = 0
+    enter Game
+  elseif RequestedScene = Scenes.Ending then
+    RequestedScene = 0
+    enter Ending
+  end if
+end loop
+
+sub MenuEnter:
+  SceneRam.Menu.Selection = 0
+  SceneRam.Menu.BlinkTicks = 0
+  return
+end sub
+
+sub MenuFrame:
+  SceneRam.Menu.BlinkTicks += 1
+  if joypad(1).fire then RequestedScene = Scenes.Game
+  return
+end sub
+
+sub GameEnter:
+  SceneRam.Game.PlayerX = 120
+  SceneRam.Game.PlayerY = 88
+  SceneRam.Game.DotsLeft = 40
+  for EnemyIndex = 0 to 7
+    SceneRam.Game.EnemyX[EnemyIndex] = 32 + (EnemyIndex << 3)
+    SceneRam.Game.EnemyY[EnemyIndex] = 48
+  next
+  return
+end sub
+
+sub GameFrame:
+  if SceneRam.Game.DotsLeft = 0 then RequestedScene = Scenes.Ending
+  return
+end sub
+
+sub EndingEnter:
+  SceneRam.Ending.Winner = 1
+  SceneRam.Ending.WaitTicks = 0
+  return
+end sub
+
+sub EndingFrame:
+  SceneRam.Ending.WaitTicks += 1
+  if joypad(1).fire then RequestedScene = Scenes.Menu
+  return
+end sub

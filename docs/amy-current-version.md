@@ -23,7 +23,7 @@ otherwise.
 - lexical local variables and local arrays, including recursion-safe stack frames
 - compiler-selected frameless static ABI for proven non-reentrant scalar routines
 - `ref` parameters for addressable scalar values and records
-- records, nested records, arrays, and arrays of records within the documented limits
+- records, nested records, fixed scalar array fields, and arrays of records within the documented limits
 - byte data, visual `bitmap8`/`sprite16` data, assets, and indexable ROM word tables
 - compile-time `define` plus `if defined`, `else defined`, and `end defined`
 

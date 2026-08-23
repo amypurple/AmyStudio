@@ -105,6 +105,16 @@ export function createLoadStoreHelpers(ctx) {
   function emitLoadRecordFieldAddressIntoHL(token) {
     const fieldRef = parseRecordFieldRef(token);
     if (!fieldRef) return null;
+    const appendArrayFieldOffset = (lines) => {
+      if (!fieldRef.arrayFieldIndex) return lines;
+      const indexType = resolveValueType(fieldRef.arrayFieldIndex);
+      if (indexType && indexType !== "int8") return null;
+      const loadIndex = emitLoadInt8Into("a", fieldRef.arrayFieldIndex);
+      if (!loadIndex) return null;
+      const scale = emitScaleUnsignedByteAIntoDE(fieldRef.fieldInfo.elementSize || 1);
+      if (!scale) return null;
+      return [...lines, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
+    };
     if (fieldRef.baseKind === "scalar") {
       const info = getRuntimeInfo(fieldRef.name);
       if (!info || info.kind !== "record") return null;
@@ -116,7 +126,7 @@ export function createLoadStoreHelpers(ctx) {
         } else if (fieldRef.totalOffset) {
           lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
         }
-        return lines;
+        return appendArrayFieldOffset(lines);
       }
       if (info.isAliasPointer) {
         const lines = [`    ld hl,(${formatHex16(info.pointerAddress)})`];
@@ -125,7 +135,7 @@ export function createLoadStoreHelpers(ctx) {
         } else if (fieldRef.totalOffset) {
           lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
         }
-        return lines;
+        return appendArrayFieldOffset(lines);
       }
       if (info.isRef) {
         const lines = [
@@ -137,21 +147,23 @@ export function createLoadStoreHelpers(ctx) {
         } else if (fieldRef.totalOffset) {
           lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
         }
-        return lines;
+        return appendArrayFieldOffset(lines);
       }
       if (info.storage === "stack") {
         const offset = info.offset + fieldRef.totalOffset;
-        if (offset === 0) return ["    push ix", "    pop hl"];
-        return ["    push ix", "    pop hl", `    ld de,${offset}`, "    add hl,de"];
+        if (offset === 0) return appendArrayFieldOffset(["    push ix", "    pop hl"]);
+        return appendArrayFieldOffset(["    push ix", "    pop hl", `    ld de,${offset}`, "    add hl,de"]);
       }
-      return [`    ld hl,${formatHex16(info.address + fieldRef.totalOffset)}`];
+      return appendArrayFieldOffset([`    ld hl,${formatHex16(info.address + fieldRef.totalOffset)}`]);
     }
     const info = getRuntimeInfo(fieldRef.name);
     if (!info || info.kind !== "record_array") return null;
     const loadElementAddress = emitLoadArrayAddressIntoHL(fieldRef.name, fieldRef.index);
     if (!loadElementAddress) return null;
-    if (!fieldRef.totalOffset) return loadElementAddress;
-    return [...loadElementAddress, `    ld de,${fieldRef.totalOffset}`, "    add hl,de"];
+    const lines = !fieldRef.totalOffset
+      ? loadElementAddress
+      : [...loadElementAddress, `    ld de,${fieldRef.totalOffset}`, "    add hl,de"];
+    return appendArrayFieldOffset(lines);
   }
 
   function getDirectRecordFieldAddress(token) {
@@ -161,6 +173,7 @@ export function createLoadStoreHelpers(ctx) {
     if (!info || info.storage === "stack" || info.isAliasPointer || info.isDynamicRecordAlias) return null;
     if (fieldRef.baseKind === "scalar") {
       if (info.kind !== "record") return null;
+      if (fieldRef.arrayFieldIndex) return null;
       return formatHex16(info.address + fieldRef.totalOffset);
     }
     if (info.kind !== "record_array") return null;
@@ -173,6 +186,7 @@ export function createLoadStoreHelpers(ctx) {
     }
     if (!Number.isInteger(numericIndex) || numericIndex < 0) return null;
     if (typeof info.length === "number" && numericIndex >= info.length) return null;
+    if (fieldRef.arrayFieldIndex) return null;
     return formatHex16(info.address + numericIndex * info.recordSize + fieldRef.totalOffset);
   }
 

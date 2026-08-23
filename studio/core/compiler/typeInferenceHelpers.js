@@ -233,6 +233,10 @@ export function createTypeInferenceHelpers({
       const declaredType = mergeDeclaredTypes(resolveDeclaredValueType(`${node.name}[${renderExpressionAst(node.index)}]`), null, preferredDeclaredType);
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
     }
+    if (node.kind === "subscript") {
+      const declaredType = mergeDeclaredTypes(resolveDeclaredValueType(renderExpressionAst(node)), null, preferredDeclaredType);
+      return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
+    }
     if (node.kind === "member") {
       const declaredType = mergeDeclaredTypes(resolveDeclaredValueType(renderExpressionAst(node)), null, preferredDeclaredType);
       return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };

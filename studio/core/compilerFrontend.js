@@ -289,8 +289,9 @@ export function parseExpressionAst(expr, normalizeExpression) {
         consume("[");
         const subscript = parseBitwiseOr();
         if (!subscript || !consume("]")) return null;
-        if (node.kind !== "identifier") return null;
-        node = { kind: "index", name: node.name, index: subscript };
+        node = node.kind === "identifier"
+          ? { kind: "index", name: node.name, index: subscript }
+          : { kind: "subscript", object: node, index: subscript };
         continue;
       }
       if (peek()?.type === ".") {
@@ -404,6 +405,7 @@ export function renderExpressionAst(node) {
   if (node.kind === "identifier") return node.name;
   if (node.kind === "call") return `${node.name}(${node.args.map(renderExpressionAst).join(", ")})`;
   if (node.kind === "index") return `${node.name}[${renderExpressionAst(node.index)}]`;
+  if (node.kind === "subscript") return `${renderExpressionAst(node.object)}[${renderExpressionAst(node.index)}]`;
   if (node.kind === "member") return `${renderExpressionAst(node.object)}.${node.property}`;
   if (node.kind === "unary") return `${node.op}${renderExpressionAst(node.expr)}`;
   if (node.kind === "binary") return `(${renderExpressionAst(node.left)} ${node.op} ${renderExpressionAst(node.right)})`;

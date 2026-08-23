@@ -313,6 +313,66 @@ export function createValueParseHelpers({
   }
 
   function parseRecordFieldRef(nodeOrText) {
+    const sourceText = typeof nodeOrText === "string" ? normalizeExpression(String(nodeOrText).trim()) : null;
+    if (sourceText && sourceText.includes(".")) {
+      const direct = sourceText.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\[([^\]]+)\])?((?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)+)$/);
+      if (direct) {
+        const info = getRuntimeInfo(direct[1]);
+        const baseKind = direct[2] === undefined ? "scalar" : "array";
+        if (!info || (baseKind === "scalar" ? info.kind !== "record" : info.kind !== "record_array")) return null;
+        let recordInfo = getRecordTypeInfo?.(info.recordTypeName || info.declaredType);
+        if (!recordInfo) return null;
+        const segments = [...direct[3].matchAll(/\.([A-Za-z_][A-Za-z0-9_]*)(?:\[([^\]]+)\])?/g)];
+        let totalOffset = 0;
+        let fieldInfo = null;
+        let arrayFieldIndex = null;
+        const fieldPath = [];
+        for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+          const fieldName = segments[segmentIndex][1];
+          fieldInfo = recordInfo?.fields?.get(fieldName)
+            || [...(recordInfo?.fields?.values?.() || [])].find((field) => field.name.toLowerCase() === fieldName.toLowerCase());
+          if (!fieldInfo) return null;
+          totalOffset += fieldInfo.offset;
+          fieldPath.push(fieldName);
+          const indexToken = segments[segmentIndex][2];
+          if (fieldInfo.isArray) {
+            if (indexToken === undefined || segmentIndex !== segments.length - 1) return null;
+            const normalizedIndex = normalizeExpression(indexToken);
+            const constantIndex = tryEvaluateConstantExpression(normalizedIndex);
+            if (Number.isInteger(constantIndex)) {
+              if (constantIndex < 0 || constantIndex >= fieldInfo.length) return null;
+              totalOffset += constantIndex * fieldInfo.elementSize;
+            } else {
+              arrayFieldIndex = normalizedIndex;
+            }
+            fieldInfo = {
+              ...fieldInfo,
+              size: fieldInfo.elementSize,
+              isArrayElement: true
+            };
+          } else if (indexToken !== undefined) {
+            return null;
+          }
+          if (segmentIndex < segments.length - 1) {
+            if (fieldInfo.type !== "record") return null;
+            recordInfo = getRecordTypeInfo?.(fieldInfo.recordTypeName || fieldInfo.declaredType);
+            if (!recordInfo) return null;
+          }
+        }
+        return {
+          kind: "record_field",
+          baseKind,
+          name: direct[1],
+          index: direct[2] === undefined ? null : normalizeExpression(direct[2]),
+          fieldName: segments[segments.length - 1][1],
+          fieldPath,
+          fieldInfo,
+          recordInfo,
+          totalOffset,
+          arrayFieldIndex
+        };
+      }
+    }
     const node = typeof nodeOrText === "string"
       ? parseExpressionAst(normalizeExpression(String(nodeOrText).trim()))
       : nodeOrText;

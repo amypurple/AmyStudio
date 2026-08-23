@@ -489,7 +489,7 @@ export function createExpressionComputeHelpers({
       return emitLoadInt8Into("a", renderExpressionAst(node));
     }
     if (node.kind === "index") return emitLoadInt8Into("a", `${node.name}[${renderExpressionAst(node.index)}]`);
-    if (node.kind === "member") return emitLoadInt8Into("a", renderExpressionAst(node));
+    if (node.kind === "member" || node.kind === "subscript") return emitLoadInt8Into("a", renderExpressionAst(node));
     if (node.kind === "unary") {
       if (node.op === "+") return emitLoadInt8AstIntoA(node.expr);
       const loadExpr = emitLoadInt8AstIntoA(node.expr);
@@ -771,7 +771,7 @@ export function createExpressionComputeHelpers({
       }
       return emitLoadInt16ValueIntoHL(rendered);
     }
-    if (node.kind === "member") {
+    if (node.kind === "member" || node.kind === "subscript") {
       const rendered = renderExpressionAst(node);
       const memberType = resolveValueType(rendered);
       const declaredType = resolveDeclaredValueType(rendered);
