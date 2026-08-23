@@ -1215,6 +1215,7 @@ export function createControlFlowHelpers(ctx) {
     }
     const tableLabel = makeGeneratedLabel("OnDispatchTable");
     const doneLabel = makeGeneratedLabel("OnDispatchDone");
+    const linearStateDispatch = mode === "state-gosub" && resolvedTargets.length <= 8;
     const trampolineLabel = mode === "gosub" ? makeGeneratedLabel("OnDispatchCall") : "";
     const lines = [];
     if (valueType === "int8") {
@@ -1230,6 +1231,18 @@ export function createControlFlowHelpers(ctx) {
       lines.push(`    jp nz,${doneLabel}`);
       lines.push("    ld a,l");
     }
+    if (linearStateDispatch) {
+      // State values are one-based; zero and out-of-range values fall through.
+      lines.push(`    ld hl,${doneLabel}`);
+      lines.push("    push hl");
+      for (const target of resolvedTargets) {
+        lines.push("    dec a");
+        lines.push(`    jp z,${target}`);
+      }
+      lines.push("    pop hl");
+      lines.push(`${doneLabel}:`);
+      return lines;
+    }
     lines.push("    dec a");
     lines.push(`    cp ${resolvedTargets.length}`);
     lines.push(`    jp nc,${doneLabel}`);
@@ -1244,6 +1257,10 @@ export function createControlFlowHelpers(ctx) {
     lines.push("    ld d,(hl)");
     lines.push("    ex de,hl");
     if (mode === "goto") {
+      lines.push("    jp (hl)");
+    } else if (mode === "state-gosub") {
+      lines.push(`    ld de,${doneLabel}`);
+      lines.push("    push de");
       lines.push("    jp (hl)");
     } else {
       lines.push(`    call ${trampolineLabel}`);

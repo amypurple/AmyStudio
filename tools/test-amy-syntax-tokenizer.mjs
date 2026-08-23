@@ -93,11 +93,16 @@ for (const [source, words, type] of [
   ["sprites simple", ["sprites", "simple"], "vdp"],
   ["pause until press and release", ["pause", "until", "press", "and", "release"], "keyword"],
   ["end picture", ["end", "picture"], "keyword"],
-  ["end sub", ["end", "sub"], "keyword"]
+  ["end sub", ["end", "sub"], "keyword"],
+  ["state machine BossBehavior:", ["state", "machine"], "keyword"],
+  ["end state machine", ["end", "state", "machine"], "keyword"]
 ]) {
   const tokens = tokenizeAmyLine(source).tokens;
   for (const word of words) assert.equal(tokens.find((token) => token.text === word)?.type, type, source + ": " + word);
 }
+assert.equal(tokenizeAmyLine("dispatch BossState using BossBehavior").tokens.find((token) => token.text === "dispatch")?.type, "keyword");
+assert.equal(tokenizeAmyLine("dispatch BossState using BossBehavior").tokens.find((token) => token.text === "using")?.type, "keyword");
+assert.equal(tokenizeAmyLine("Sleeping calls BossSleep").tokens.find((token) => token.text === "calls")?.type, "keyword");
 for (const mode of ["8x8", "16x16"]) {
   const tokens = tokenizeAmyLine("sprites " + mode).tokens;
   assert.equal(tokens.find((token) => token.text === "sprites")?.type, "vdp");

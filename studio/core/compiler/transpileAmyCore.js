@@ -232,6 +232,144 @@ export function transpileAmyCore(sourceText, deps) {
     }
     return { ok: true, lines: result };
   }
+  function lowerStateMachines(rawLines) {
+    const result = [...rawLines];
+    const machines = new Map();
+    const subNames = new Set();
+    let current = null;
+    let routineDepth = 0;
+
+    for (const rawLine of rawLines) {
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      const declaration = stripped.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\)|\s*:)?\s*$/i);
+      if (declaration) subNames.add(declaration[1].toLowerCase());
+    }
+
+    const replaceQualifiedStates = (rawLine) => {
+      let output = "";
+      let index = 0;
+      let inString = false;
+      while (index < rawLine.length) {
+        const ch = rawLine[index];
+        if (ch === '"') {
+          inString = !inString;
+          output += ch;
+          index += 1;
+          continue;
+        }
+        if (!inString && ch === "'") {
+          output += rawLine.slice(index);
+          break;
+        }
+        if (!inString && /[A-Za-z_]/.test(ch)) {
+          const match = rawLine.slice(index).match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)/);
+          if (match) {
+            const machine = machines.get(match[1].toLowerCase());
+            if (machine) {
+              const state = machine.states.get(match[2].toLowerCase());
+              if (!state) {
+                return { ok: false, log: `Unknown state '${match[1]}.${match[2]}'` };
+              }
+              output += state.constantName;
+              index += match[0].length;
+              continue;
+            }
+          }
+        }
+        output += ch;
+        index += 1;
+      }
+      return { ok: true, line: output };
+    };
+
+    for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
+      const rawLine = rawLines[lineIndex];
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      if (!current && /^(?:sub|function)\b/i.test(stripped)) routineDepth += 1;
+      if (!current && /^end\s+(?:sub|function)$/i.test(stripped)) routineDepth = Math.max(0, routineDepth - 1);
+
+      if (!current) {
+        const open = stripped.match(/^state\s+machine\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+        if (!open) continue;
+        if (routineDepth !== 0) {
+          return { ok: false, log: `state machine declarations must be global at line ${lineIndex + 1}` };
+        }
+        const name = open[1];
+        const key = name.toLowerCase();
+        if (machines.has(key)) {
+          return { ok: false, log: `Duplicate state machine '${name}' at line ${lineIndex + 1}` };
+        }
+        current = { name, key, states: new Map(), entries: [], line: lineIndex + 1 };
+        result[lineIndex] = "";
+        continue;
+      }
+
+      if (/^end\s+state\s+machine$/i.test(stripped)) {
+        if (!current.entries.length) {
+          return { ok: false, log: `State machine '${current.name}' must declare at least one state` };
+        }
+        machines.set(current.key, current);
+        current = null;
+        result[lineIndex] = "";
+        continue;
+      }
+
+      if (!stripped) {
+        result[lineIndex] = "";
+        continue;
+      }
+      const entry = stripped.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+calls\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (!entry) {
+        return { ok: false, log: `Invalid state in machine '${current.name}' at line ${lineIndex + 1}: ${stripped}` };
+      }
+      const stateName = entry[1];
+      const stateKey = stateName.toLowerCase();
+      if (current.states.has(stateKey)) {
+        return { ok: false, log: `Duplicate state '${stateName}' in machine '${current.name}' at line ${lineIndex + 1}` };
+      }
+      const state = {
+        name: stateName,
+        routine: entry[2],
+        constantName: `${current.name}_${stateName}`,
+        value: current.entries.length + 1
+      };
+      current.states.set(stateKey, state);
+      current.entries.push(state);
+      const indent = rawLine.slice(0, rawLine.search(/\S|$/));
+      result[lineIndex] = `${indent}const ${state.constantName} = ${state.value}`;
+    }
+
+    if (current) {
+      return { ok: false, log: `State machine '${current.name}' opened at line ${current.line} is missing end state machine` };
+    }
+
+    for (const machine of machines.values()) {
+      for (const entry of machine.entries) {
+        if (!subNames.has(entry.routine.toLowerCase())) {
+          return { ok: false, log: `State '${machine.name}.${entry.name}' calls unknown subroutine '${entry.routine}'` };
+        }
+      }
+    }
+
+    for (let lineIndex = 0; lineIndex < result.length; lineIndex += 1) {
+      const rawLine = result[lineIndex];
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      const dispatch = stripped.match(/^dispatch\s+(.+?)\s+using\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (dispatch) {
+        const machine = machines.get(dispatch[2].toLowerCase());
+        if (!machine) {
+          return { ok: false, log: `Unknown state machine '${dispatch[2]}' at line ${lineIndex + 1}` };
+        }
+        const indent = rawLine.slice(0, rawLine.search(/\S|$/));
+        result[lineIndex] = `${indent}dispatch ${dispatch[1]} gosub ${machine.entries.map((entry) => entry.routine).join(", ")}`;
+      }
+      const replaced = replaceQualifiedStates(result[lineIndex]);
+      if (!replaced.ok) return { ok: false, log: `${replaced.log} at line ${lineIndex + 1}` };
+      result[lineIndex] = replaced.line;
+    }
+
+    return { ok: true, lines: result };
+  }
   function pruneSourceUnreachableAfterRoutineTerminators(rawLines) {
     const result = [...rawLines];
     const topLevelGotoReferences = new Set();
@@ -425,7 +563,9 @@ export function transpileAmyCore(sourceText, deps) {
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
-  const prunedLines = pruneSourceUnreachableAfterRoutineTerminators(conditionalPrepass.lines);
+  const stateMachineLowering = lowerStateMachines(conditionalPrepass.lines);
+  if (!stateMachineLowering.ok) return { ok: false, asmBody: "", log: stateMachineLowering.log };
+  const prunedLines = pruneSourceUnreachableAfterRoutineTerminators(stateMachineLowering.lines);
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);

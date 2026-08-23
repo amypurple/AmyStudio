@@ -687,6 +687,20 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "amy-state-machine-selftest",
+    "label": "Amy State Machine Self-Test",
+    "detail": "Typed four-state machine self-test using qualified one-based state constants and bounded dispatch.",
+    "projectName": "amy-state-machine-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-record-array-safety-selftest",
     "label": "Amy Record Array Safety Self-Test",
     "detail": "Executable regression for typed record copies, dynamic indexing, ref-record mutation, for-each aliases, and expression indexes.",

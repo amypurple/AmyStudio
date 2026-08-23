@@ -50,6 +50,7 @@ The canonical types are `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `fixed`,
 - block and one-line `if`/`elseif`/`else`
 - `select case`, `for`/`next`, `while`, `do`/`loop`, and `loop forever`
 - `on Expr goto` and `on Expr gosub` indexed dispatch
+- typed `state machine` declarations and bounded `dispatch State using Machine`
 - calculated byte-array and ROM-table indexes using byte-sized expressions
 - gameplay verbs such as `bounce`, `clamp`, collision tests, timed waits, and input waits
 

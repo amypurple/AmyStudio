@@ -1002,6 +1002,50 @@ end sub
 
 These remain intentional low-level dispatch tools for predictable 8-bit game-state code. Unlike plain `gosub`, indexed `on Expr gosub` is part of the supported language surface.
 
+### Typed State Machines
+
+A typed state machine gives names to state constants and binds each state to
+an existing subroutine:
+
+```basic
+state machine BossBehavior:
+  Sleeping calls BossSleep
+  Walking calls BossWalk
+  Charging calls BossCharge
+  Attacking calls BossAttack
+end state machine
+
+u8 BossState = BossBehavior.Sleeping
+
+dispatch BossState using BossBehavior
+```
+
+`BossBehavior.Sleeping` through `BossBehavior.Attacking` are compile-time constants
+numbered `1` through `4`. This matches Amy's established one-based indexed dispatch;
+value `0` means no active state. The machine consumes no RAM. `dispatch` compiles through the
+same bounded ROM-table mechanism as `on ... gosub`: an out-of-range selector performs
+no call and execution continues after the dispatch.
+
+Every `calls` target must name an existing subroutine. Handlers change the state by
+assigning another qualified constant, for example:
+
+```basic
+sub BossSleep:
+  BossState = BossBehavior.Walking
+  return
+end sub
+```
+
+State-machine declarations are global, must contain at least one uniquely named state,
+and do not create timers, NMI hooks, mutable function pointers, or hidden state RAM.
+Use ordinary Amy variables and named timers when those are required. This deliberately
+small surface keeps state dispatch predictable on Z80.
+
+For one through eight states, Amy emits a linear `DEC A` / `JP Z` dispatch and pushes
+one synthetic return address so the selected handler returns normally. Larger machines
+use a word-address table and the same pushed-return technique with `JP (HL)`. The older
+general-purpose `on ... goto/gosub` codegen remains unchanged for compatibility.
+
 ### Loop Forever
 
 ```basic
@@ -2435,6 +2479,8 @@ Current expression engine notes:
 | `Name:` | Label definition |
 | `on Var goto L1,L2,...` | 1-based indexed dispatch |
 | `on Var gosub L1,L2,...` | 1-based indexed call |
+| `state machine Name:` ... `State calls Sub` ... `end state machine` | Declare one-based typed state constants and their handlers; zero means inactive |
+| `dispatch StateVar using Name` | Bounded call through the named machine's shared ROM table |
 
 ### Sub / function
 

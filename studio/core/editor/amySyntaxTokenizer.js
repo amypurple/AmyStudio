@@ -28,12 +28,12 @@ const BUILTINS = new Set([
 const METADATA = new Set(["project", "cartridge", "memory"]);
 
 const STATEMENT_KEYWORDS = new Set([
-  "backdrop", "duplicate", "load", "merge", "timer"
+  "backdrop", "dispatch", "duplicate", "load", "merge", "timer"
 ]);
 
 const QUALIFIER_KEYWORDS = new Set([
-  "after", "areas", "at", "between", "by", "count", "digits", "downto", "every",
-  "from", "mask", "mode", "raw", "ref", "repeat", "step", "to", "width", "with"
+  "after", "areas", "at", "between", "by", "calls", "count", "digits", "downto", "every",
+  "from", "mask", "mode", "raw", "ref", "repeat", "step", "to", "using", "width", "with"
 ]);
 
 const TIME_UNITS = new Set(["frame", "frames", "seconds", "tick", "ticks"]);

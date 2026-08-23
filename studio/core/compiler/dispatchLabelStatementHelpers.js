@@ -60,6 +60,18 @@ export function handleDispatchLabelStatement({
     return { ok: true, handled: true, lines: code };
   }
 
+  const stateDispatch = line.match(/^dispatch\s+(.+?)\s+gosub\s+(.+)$/i);
+  if (stateDispatch) {
+    const labels = splitTopLevelArgs(stateDispatch[2]).map((part) => part.trim()).filter(Boolean);
+    if (!labels.length || labels.some((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))) {
+      return { ok: false, handled: true, log: `dispatch ... gosub requires a comma-separated subroutine list: ${rawLine}` };
+    }
+    const code = emitOnIndexedJump(normalizeExpression(stateDispatch[1]), labels, "state-gosub");
+    if (!code) return { ok: false, handled: true, log: `dispatch requires a byte/word state selector: ${rawLine}` };
+    if (code.error) return { ok: false, handled: true, log: code.error };
+    return { ok: true, handled: true, lines: code };
+  }
+
   const onGosub = line.match(/^on\s+(.+?)\s+gosub\s+(.+)$/i);
   if (onGosub) {
     const labels = splitTopLevelArgs(onGosub[2]).map((part) => part.trim()).filter(Boolean);
