@@ -978,6 +978,21 @@ next I
 
 This is a `for each` source restriction, not an overlay-layout limitation.
 
+Qualified fields can also be loop counters and mutation targets:
+
+```basic
+inc SceneRam.Game.Enemies[I].X
+add SceneRam.Game.Enemies[I].X by 2
+for SceneRam.Game.Counter = 0 to 3
+  SceneRam.Game.Sum += SceneRam.Game.Counter
+next SceneRam.Game.Counter
+```
+
+This capability does not mean every temporary should move into an overlay. A frequently
+accessed qualified counter may require repeated address calculations. Measure ROM size
+and cycles: keeping one hot counter permanent can be preferable when saving one RAM byte
+would add code and execution time.
+
 `end for` and `for I from ...` were removed; use `next` and `for I = ...`.
 
 Current behavior notes:

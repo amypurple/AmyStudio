@@ -4,6 +4,7 @@ export function handleMutateStatement({
   line,
   rawLine,
   parseArrayRef,
+  parseRecordFieldRef,
   getRuntimeInfo,
   resolveValueType,
   scopedRuntimeName,
@@ -33,12 +34,16 @@ export function handleMutateStatement({
   const _depShift = checkShiftDeprecation(line, rawLine);
   if (_depShift.handled) return _depShift;
 
-  const incDecVar = line.match(/^(inc|dec)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)$/i);
+  const qualifiedTargetPattern = String.raw`([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)`;
+  const incDecVar = line.match(new RegExp(`^(inc|dec)\\s+${qualifiedTargetPattern}$`, "i"));
   if (incDecVar) {
     const op = incDecVar[1].toLowerCase();
     const name = incDecVar[2];
     const arrayRef = parseArrayRef(name);
-    const info = arrayRef ? getRuntimeInfo(arrayRef.name) : getRuntimeInfo(name);
+    const recordField = parseRecordFieldRef(name);
+    const info = recordField
+      ? { kind: "record_field", type: recordField.fieldInfo.type, declaredType: recordField.fieldInfo.declaredType }
+      : arrayRef ? getRuntimeInfo(arrayRef.name) : getRuntimeInfo(name);
     if (!info) return { ok: false, handled: true, log: `Unknown runtime variable: ${name}` };
     const valueType = resolveValueType(name);
     const resolvedName = scopedRuntimeName(name);
@@ -46,6 +51,21 @@ export function handleMutateStatement({
       const code = op === "inc" ? emitBcdAdd(name, "1") : emitBcdSub(name, "1");
       if (!code) return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
       return { ok: true, handled: true, lines: code };
+    }
+    if (recordField) {
+      if (valueType === "int8") {
+        const load = emitLoadInt8Into("a", name);
+        const store = emitStoreInt8FromA(name);
+        if (!load || !store) return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
+        return { ok: true, handled: true, lines: [...load, `    ${op} a`, ...store] };
+      }
+      if (valueType === "int16") {
+        const load = emitLoadInt16IntoHL(name);
+        const store = emitStoreInt16FromHL(name);
+        if (!load || !store) return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
+        return { ok: true, handled: true, lines: [...load, `    ${op} hl`, ...store] };
+      }
+      return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
     }
     if (arrayRef) {
       const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
@@ -119,8 +139,8 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: [...loadWord, `    ${op} hl`, ...storeWord] };
   }
 
-  const addByVar = line.match(/^add\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+by\s+(.+)$/i);
-  const addToVar = !addByVar && line.match(/^add\s+(.+)\s+to\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)$/i);
+  const addByVar = line.match(new RegExp(`^add\\s+${qualifiedTargetPattern}\\s+by\\s+(.+)$`, "i"));
+  const addToVar = !addByVar && line.match(new RegExp(`^add\\s+(.+)\\s+to\\s+${qualifiedTargetPattern}$`, "i"));
   if (addByVar || addToVar) {
     const target = addByVar ? addByVar[1] : addToVar[2];
     const valueToken = normalizeExpression(addByVar ? addByVar[2] : addToVar[1]);
@@ -134,8 +154,8 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const subByVar = line.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+by\s+(.+)$/i);
-  const subFromVar = !subByVar && line.match(/^subtract\s+(.+)\s+from\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)$/i);
+  const subByVar = line.match(new RegExp(`^sub\\s+${qualifiedTargetPattern}\\s+by\\s+(.+)$`, "i"));
+  const subFromVar = !subByVar && line.match(new RegExp(`^subtract\\s+(.+)\\s+from\\s+${qualifiedTargetPattern}$`, "i"));
   if (subByVar || subFromVar) {
     const target = subByVar ? subByVar[1] : subFromVar[2];
     const valueToken = normalizeExpression(subByVar ? subByVar[2] : subFromVar[1]);
@@ -149,7 +169,7 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const andWithVar = line.match(/^and\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+with\s+(.+)$/i);
+  const andWithVar = line.match(new RegExp(`^and\\s+${qualifiedTargetPattern}\\s+with\\s+(.+)$`, "i"));
   if (andWithVar) {
     if (resolveValueType(andWithVar[1]) !== "int8") return { ok: false, handled: true, log: `and with requires a byte RAM variable: ${rawLine}` };
     const code = emitArithInt8Op(andWithVar[1], normalizeExpression(andWithVar[2]), "and");
@@ -157,7 +177,7 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const orWithVar = line.match(/^or\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+with\s+(.+)$/i);
+  const orWithVar = line.match(new RegExp(`^or\\s+${qualifiedTargetPattern}\\s+with\\s+(.+)$`, "i"));
   if (orWithVar) {
     if (resolveValueType(orWithVar[1]) !== "int8") return { ok: false, handled: true, log: `or with requires a byte RAM variable: ${rawLine}` };
     const code = emitArithInt8Op(orWithVar[1], normalizeExpression(orWithVar[2]), "or");
@@ -165,7 +185,7 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const xorWithVar = line.match(/^xor\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+with\s+(.+)$/i);
+  const xorWithVar = line.match(new RegExp(`^xor\\s+${qualifiedTargetPattern}\\s+with\\s+(.+)$`, "i"));
   if (xorWithVar) {
     if (resolveValueType(xorWithVar[1]) !== "int8") return { ok: false, handled: true, log: `xor with requires a byte RAM variable: ${rawLine}` };
     const code = emitArithInt8Op(xorWithVar[1], normalizeExpression(xorWithVar[2]), "xor");
@@ -209,29 +229,30 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const negateVar = line.match(/^negate\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const negateVar = line.match(new RegExp(`^negate\\s+${qualifiedTargetPattern}$`, "i"));
   if (negateVar) {
-    const info = getRuntimeInfo(negateVar[1]);
-    if (!info || info.kind === "array" || info.type !== "int8") return { ok: false, handled: true, log: `negate requires a byte RAM variable: ${rawLine}` };
+    if (resolveValueType(negateVar[1]) !== "int8") return { ok: false, handled: true, log: `negate requires a byte RAM variable: ${rawLine}` };
     const loadTarget = emitLoadInt8Into("a", negateVar[1]);
     const storeTarget = emitStoreInt8FromA(negateVar[1]);
     if (!loadTarget || !storeTarget) return { ok: false, handled: true, log: `negate: cannot load/store variable: ${rawLine}` };
     return { ok: true, handled: true, lines: [...loadTarget, "    neg", ...storeTarget] };
   }
 
-  const notVar = line.match(/^not\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const notVar = line.match(new RegExp(`^not\\s+${qualifiedTargetPattern}$`, "i"));
   if (notVar) {
-    const info = getRuntimeInfo(notVar[1]);
-    if (!info || info.kind === "array" || info.type !== "int8") return { ok: false, handled: true, log: `not requires a byte RAM variable: ${rawLine}` };
+    if (resolveValueType(notVar[1]) !== "int8") return { ok: false, handled: true, log: `not requires a byte RAM variable: ${rawLine}` };
     const loadTarget = emitLoadInt8Into("a", notVar[1]);
     const storeTarget = emitStoreInt8FromA(notVar[1]);
     if (!loadTarget || !storeTarget) return { ok: false, handled: true, log: `not: cannot load/store variable: ${rawLine}` };
     return { ok: true, handled: true, lines: [...loadTarget, "    cpl", ...storeTarget] };
   }
 
-  const toggleVar = line.match(/^toggle\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const toggleVar = line.match(new RegExp(`^toggle\\s+${qualifiedTargetPattern}$`, "i"));
   if (toggleVar) {
-    const info = getRuntimeInfo(toggleVar[1]);
+    const recordField = parseRecordFieldRef(toggleVar[1]);
+    const info = recordField
+      ? { kind: "record_field", type: recordField.fieldInfo.type }
+      : getRuntimeInfo(toggleVar[1]);
     if (!info || info.kind === "array") return { ok: false, handled: true, log: `toggle requires a scalar RAM variable: ${rawLine}` };
     if (info.kind === "packed_bool") {
       const maskHex = `$${(1 << info.bit).toString(16).toUpperCase().padStart(2, "0")}`;

@@ -5,6 +5,7 @@ export function handleForStatement({
   rawLine,
   forStack,
   getRuntimeInfo,
+  parseRecordFieldRef,
   emitRuntimeStore,
   normalizeExpression,
   makeGeneratedLabel,
@@ -34,10 +35,17 @@ export function handleForStatement({
     handled: true,
     log: "for loop bound cannot be fixed/ufixed; use 'whole " + token + "' as the loop bound: " + rawLine
   });
+  const qualifiedCounterPattern = String.raw`([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)`;
+  const resolveCounterInfo = (name) => {
+    const field = parseRecordFieldRef(name);
+    return field
+      ? { kind: "record_field", type: field.fieldInfo.type, declaredType: field.fieldInfo.declaredType }
+      : getRuntimeInfo(name);
+  };
 
-  const forDownto = line.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|from)\s*(.+?)\s+downto\s+(.+?)(?:\s+step\s+(.+?))?\s*:?$/i);
+  const forDownto = line.match(new RegExp(`^for\\s+${qualifiedCounterPattern}\\s*(?:=|from)\\s*(.+?)\\s+downto\\s+(.+?)(?:\\s+step\\s+(.+?))?\\s*:?$`, "i"));
   if (forDownto) {
-    const info = getRuntimeInfo(forDownto[1]);
+    const info = resolveCounterInfo(forDownto[1]);
     if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
       return { ok: false, handled: true, log: `for..downto loop variable must be a scalar byte/integer variable: ${rawLine}` };
     }
@@ -70,9 +78,9 @@ export function handleForStatement({
     return { ok: true, handled: true, lines };
   }
 
-  const forDecl = line.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|from)\s*(.+?)\s+to\s+(.+?)(?:\s+step\s+(.+?))?\s*:?$/i);
+  const forDecl = line.match(new RegExp(`^for\\s+${qualifiedCounterPattern}\\s*(?:=|from)\\s*(.+?)\\s+to\\s+(.+?)(?:\\s+step\\s+(.+?))?\\s*:?$`, "i"));
   if (forDecl) {
-    const info = getRuntimeInfo(forDecl[1]);
+    const info = resolveCounterInfo(forDecl[1]);
     if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
       return { ok: false, handled: true, log: `for loop variable must be a scalar byte/integer variable: ${rawLine}` };
     }
@@ -136,7 +144,7 @@ export function handleForStatement({
     return { ok: true, handled: true, lines };
   }
 
-  const nextDecl = line.match(/^(?:next(?:\s+([A-Za-z_][A-Za-z0-9_]*))?|end\s+for)$/i);
+  const nextDecl = line.match(new RegExp(`^(?:next(?:\\s+${qualifiedCounterPattern})?|end\\s+for)$`, "i"));
   if (nextDecl) {
     const loop = forStack.pop();
     if (!loop) return { ok: false, handled: true, log: `for closer without matching for: ${rawLine}` };
