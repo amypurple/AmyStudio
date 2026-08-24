@@ -189,6 +189,9 @@ async function main() {
   if (staticAbiRam?.routineCount > 0) {
     console.log(`ABI  ${staticAbiRam.totalBytes} RAM bytes (${staticAbiRam.parameterBytes} params + ${staticAbiRam.localBytes} locals) across ${staticAbiRam.routineCount} frameless routine(s)`);
   }
+  if (transpiled.ramUsage?.overlays?.length) {
+    console.log(`RAM  ${transpiled.ramUsage.usedBytes} physical bytes; overlays save ${transpiled.ramUsage.overlaySavedBytes} bytes (${transpiled.ramUsage.overlayLogicalBytes} logical in ${transpiled.ramUsage.overlayPhysicalBytes} physical)`);
+  }
   const generatedAsm = generateAsm(project, transpiled.asmBody, transpiled.assets || [], transpiled.metadata || {});
 
   if (opts.asm !== undefined) {

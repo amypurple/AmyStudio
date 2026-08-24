@@ -1,19 +1,20 @@
-## 2026-08-19 - Project tabs and focused public examples
+## 2026-08-24 - RAM overlay record arrays and qualified operands
 
-### Studio workflow
+### Amy language and compiler
 
-- Added persistent project tabs so opening a new project, imported project, or built-in example no longer replaces the programmer's current work.
-- Preserved each tab's source cursor, selection, scroll position, breakpoints, files, settings, and unsaved session changes; modified tabs require confirmation before closing.
-- Kept compiled ROMs, generated ASM, memory maps, symbols, listings, and debugger inputs attached to their project tab for immediate download or ROM Test & Debug reuse after switching.
-- Restored open project tabs after a page reload while keeping large compiled artifacts session-only to avoid exhausting browser storage.
+- Added one-level arrays of fixed-size records inside records and overlays, including `Overlay.Part.Items[Index].Field` access with packed record stride and member offsets.
+- Extended typed record-table copies to initialize qualified record-array fields with one `LDIR`.
+- Fixed unresolved 16-bit qualified operands so they fail as Amy source errors instead of leaking malformed dotted expressions into generated ASM; valid 16-bit constants remain supported.
+- Corrected overlay debug aliases for record-array fields so symbols identify the array base rather than publishing misleading unindexed member aliases.
+- Clarified that canonical `for each Element, Index in GlobalArray` requires an explicit declared `u8` index; overlay record-array fields currently use counted loops.
 
-### Documentation and examples
+### Validation
 
-- Fixed documentation search excerpts so overlapping matches are merged and fenced code examples remain complete instead of appearing duplicated or empty.
-- Removed the unfinished DacMan 2 prototype and its embedded assets from the public example catalog; DacMan 2 remains experimental work outside the published Studio examples.
-- Regenerated and validated the focused public catalog with 51 examples.
+- Expanded the GearColeco overlay self-test from three to seven runtime assertions, covering a 7-byte record stride, constant and variable indices, `u16`, signed `i8`, and the field immediately following a record array in all five optimization profiles.
+- Assembled all 198 examples successfully with Balanced optimization.
+- Moved Fly Swatter's four actors into the Arcade Trio overlay: permanent RAM fell from 145 to 125 bytes, total physical RAM from 297 to 277 bytes, and Experimental ROM size from 15,803 to 15,798 bytes.
 
-## 2026-08-17 - Bitmap editing, record aliases, and faster ROM debugging
+## 2026-08-17 - DacMan 2, bitmap editing, record aliases, and faster ROM debugging
 
 ### Amy language and compiler
 
@@ -38,9 +39,10 @@
 
 ### Examples and validation
 
+- Added the public DacMan 2 work-in-progress example and project assets.
 - Added executable record-array safety and size fixtures; the Balanced ROM self-test passes 25 runtime assertions, and the record layout is 42 bytes smaller than the equivalent parallel-array fixture in this test.
 - Added CLI audit pipelines for all-example optimizer comparisons, MDL/COPT cross-checks, peephole impact analysis, and post-optimizer oracle validation.
-- Regenerated the public catalog and assembled all 51 examples successfully with Balanced optimization.
+- Regenerated the public catalog and assembled all 52 examples successfully with Balanced optimization.
 - Verified GearColeco execution, deterministic rewind, audio output, and Warrior checkpoint parity for framebuffer-independent VRAM and VDP state.
 
 ## 2026-08-08 - Array aliases and runtime sprite indices

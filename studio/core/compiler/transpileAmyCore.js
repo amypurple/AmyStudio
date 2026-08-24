@@ -578,6 +578,8 @@ export function transpileAmyCore(sourceText, deps) {
   const runtimeVars = new Map();
   const recordTypes = new Map();
   const recordDefinitionLineNumbers = new Set();
+  const overlayDefinitions = new Map();
+  const overlayLayouts = [];
   const dataBlocks = new Map();
   const dataWordTables = new Map();
   const dataRecordTables = new Map();
@@ -1028,7 +1030,7 @@ export function transpileAmyCore(sourceText, deps) {
     "goto", "return", "exit", "continue",
     "sub", "function",
     "let", "var", "const", "dim", "ram", "local",
-    "data", "restore", "read", "memory", "asset", "codec", "picture", "bitmap", "sprite16", "cartridge",
+    "data", "restore", "read", "memory", "asset", "codec", "picture", "bitmap", "sprite16", "cartridge", "overlay",
     "screen", "display", "nmi", "graphics", "text", "cls", "print", "put", "fill",
     "vpoke", "vpeek", "vram", "decompress", "copy", "define", "show",
     "sprites", "sprite", "hitbox", "hide", "clear", "update", "swap", "wipe",
@@ -1410,15 +1412,16 @@ export function transpileAmyCore(sourceText, deps) {
           if (!nestedRecordInfo) {
             return `Unknown record field type '${declaredTypeToken}': ${fieldRaw}`;
           }
-          if (arrayLength !== null) {
-            return `Record-array fields are not supported yet; use a fixed scalar array field or a top-level record array: ${fieldRaw}`;
-          }
+          const elementSize = nestedRecordInfo.byteSize;
           fieldInfo = {
             name: fieldName,
             declaredType: declaredTypeToken,
             type: "record",
             offset,
-            size: nestedRecordInfo.byteSize,
+            size: elementSize * (arrayLength || 1),
+            isArray: arrayLength !== null,
+            length: arrayLength,
+            elementSize,
             recordTypeName: nestedRecordInfo.name,
             recordInfo: nestedRecordInfo
           };
@@ -1442,6 +1445,63 @@ export function transpileAmyCore(sourceText, deps) {
   const recordDefinitionError = parseRecordDefinitions();
   if (recordDefinitionError) {
     return { ok: false, asmBody: "", log: recordDefinitionError };
+  }
+
+  function parseOverlayDefinitions() {
+    let overlayCount = 0;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const rawLine = lines[lineIndex];
+      const trimmed = stripAmyInlineComment(rawLine).trim();
+      const start = trimmed.match(/^overlay\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
+      if (!start) continue;
+      overlayCount += 1;
+      if (overlayCount > 1) return `Amy overlay v1 supports one overlay group per program: ${rawLine}`;
+      const name = start[1];
+      if (lines.slice(lineIndex + 1).some((candidate) => /^memory\s+"[^"]+"$/i.test(stripAmyInlineComment(candidate).trim()))) {
+        return `memory must be declared before overlay '${name}' so its physical RAM address cannot be reset later.`;
+      }
+      if (isReservedAmyIdentifier(name) || mapHasInsensitive(recordTypes, name)) {
+        return `Invalid or duplicate overlay name '${name}': ${rawLine}`;
+      }
+      const parts = [];
+      const partNames = new Set();
+      let cursor = lineIndex + 1;
+      let sawEnd = false;
+      for (; cursor < lines.length; cursor += 1) {
+        const partRaw = lines[cursor];
+        const partLine = stripAmyInlineComment(partRaw).trim();
+        recordDefinitionLineNumbers.add(cursor);
+        if (!partLine) continue;
+        if (/^end\s+overlay$/i.test(partLine)) {
+          sawEnd = true;
+          break;
+        }
+        const partMatch = partLine.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        if (!partMatch) return `Invalid overlay part declaration: ${partRaw}`;
+        const partName = partMatch[1];
+        const partKey = lowerName(partName);
+        if (partNames.has(partKey) || isReservedAmyIdentifier(partName)) {
+          return `Invalid or duplicate overlay part '${partName}': ${partRaw}`;
+        }
+        const recordInfo = getRecordTypeInfo(partMatch[2]);
+        if (!recordInfo) return `Overlay part '${partName}' requires a previously defined record type: ${partRaw}`;
+        if (!Number.isInteger(recordInfo.byteSize) || recordInfo.byteSize < 1) {
+          return `Overlay part '${partName}' requires a non-empty, fixed-size record type: ${partRaw}`;
+        }
+        partNames.add(partKey);
+        parts.push({ name: partName, recordTypeName: recordInfo.name, recordInfo, byteSize: recordInfo.byteSize });
+      }
+      if (!sawEnd) return `Overlay '${name}' is missing 'end overlay'.`;
+      if (parts.length < 2) return `Overlay '${name}' requires at least two mutually exclusive parts.`;
+      overlayDefinitions.set(lineIndex, { name, parts });
+      lineIndex = cursor;
+    }
+    return null;
+  }
+
+  const overlayDefinitionError = parseOverlayDefinitions();
+  if (overlayDefinitionError) {
+    return { ok: false, asmBody: "", log: overlayDefinitionError };
   }
 
   function parseEnumDefinitions() {
@@ -2438,6 +2498,83 @@ export function transpileAmyCore(sourceText, deps) {
     parseNumericLiteral: (...args) => parseNumericLiteral(...args),
     parseFixedPointLiteral32: (...args) => parseFixedPointLiteral32(...args)
   }));
+
+  function emitOverlayFieldAliases(partName, recordInfo, baseAddress, path = [], baseOffset = 0) {
+    for (const field of recordInfo.orderedFields) {
+      const fieldPath = [...path, field.name];
+      const fieldOffset = baseOffset + field.offset;
+      if (field.type === "record") {
+        if (field.isArray) {
+          const alias = `AMY_SCENE_${partName}_${fieldPath.join("_")}`;
+          runtimeDeclarations.push(`${alias} EQU ${formatHex16(baseAddress + fieldOffset)}`);
+          continue;
+        }
+        const nested = getRecordTypeInfo(field.recordTypeName || field.declaredType);
+        if (nested) emitOverlayFieldAliases(partName, nested, baseAddress, fieldPath, fieldOffset);
+        continue;
+      }
+      const alias = `AMY_SCENE_${partName}_${fieldPath.join("_")}`;
+      runtimeDeclarations.push(`${alias} EQU ${formatHex16(baseAddress + fieldOffset)}`);
+    }
+  }
+
+  function allocateOverlay(definition, rawLine) {
+    const nameError = validateGlobalUserName(definition.name, "Overlay", rawLine);
+    if (nameError) return nameError;
+    const reservedBytes = Math.max(...definition.parts.map((part) => part.byteSize));
+    const logicalBytes = definition.parts.reduce((sum, part) => sum + part.byteSize, 0);
+    let address;
+    try {
+      address = reserveRam(definition.name, reservedBytes, rawLine.trim());
+    } catch (error) {
+      return String(error.message || error);
+    }
+    const syntheticTypeName = `__overlay_${definition.name}`;
+    const fields = new Map();
+    const orderedFields = definition.parts.map((part) => {
+      const field = {
+        name: part.name,
+        declaredType: part.recordTypeName,
+        type: "record",
+        offset: 0,
+        size: part.byteSize,
+        recordTypeName: part.recordTypeName,
+        recordInfo: part.recordInfo,
+        overlayPart: true
+      };
+      fields.set(part.name, field);
+      return field;
+    });
+    recordTypes.set(syntheticTypeName, { name: syntheticTypeName, fields, orderedFields, byteSize: reservedBytes, syntheticOverlay: true });
+    const asmName = `AMY_OVERLAY_${definition.name}`;
+    runtimeVars.set(definition.name, {
+      kind: "record",
+      type: "record",
+      declaredType: syntheticTypeName,
+      recordTypeName: syntheticTypeName,
+      recordInfo: getRecordTypeInfo(syntheticTypeName),
+      recordSize: reservedBytes,
+      address,
+      scope: "global",
+      storage: "overlay",
+      asmName,
+      overlayName: definition.name
+    });
+    userVarAsmSymbols.set(definition.name, asmName);
+    runtimeDeclarations.push(`; --- Amy RAM overlay ${definition.name}: ${reservedBytes} physical, ${logicalBytes} logical ---`);
+    runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
+    for (const part of definition.parts) emitOverlayFieldAliases(part.name, part.recordInfo, address);
+    overlayLayouts.push({
+      name: definition.name,
+      address,
+      reservedBytes,
+      logicalBytes,
+      savedBytes: logicalBytes - reservedBytes,
+      parts: definition.parts.map((part) => ({ name: part.name, recordTypeName: part.recordTypeName, byteSize: part.byteSize }))
+    });
+    hasRuntimeRamDeclarations = true;
+    return null;
+  }
   ({
     normalizeDataToken,
     parseBitmapLine,
@@ -3114,6 +3251,15 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   for (let sourceLineNumber = 0; sourceLineNumber < lines.length; sourceLineNumber += 1) {
+    const overlayDefinition = overlayDefinitions.get(sourceLineNumber);
+    if (overlayDefinition) {
+      if (currentProc || currentFunction) {
+        return { ok: false, asmBody: "", log: `Overlay '${overlayDefinition.name}' must be declared at top level: ${lines[sourceLineNumber]}` };
+      }
+      const overlayError = allocateOverlay(overlayDefinition, lines[sourceLineNumber]);
+      if (overlayError) return { ok: false, asmBody: "", log: overlayError };
+      continue;
+    }
     if (recordDefinitionLineNumbers.has(sourceLineNumber)) continue;
     const rawLine = lines[sourceLineNumber];
     if (/^rem(?:\s|$)/i.test(rawLine.trim())) {
@@ -4243,6 +4389,7 @@ export function transpileAmyCore(sourceText, deps) {
       amyTimers,
       hasExternalAsmInclude,
       nextRamAddress,
+      overlayLayouts,
       ramLayout,
       runtimeVars,
       boolPackCount,

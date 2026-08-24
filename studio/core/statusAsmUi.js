@@ -119,12 +119,14 @@ export function createStatusAsmUiHelpers({
     const freeBytes = Math.max(0, totalBytes - usedBytes);
     const vars = transpileResult.ramUsage.variableCount;
     const packs = transpileResult.ramUsage.booleanPackCount;
+    const overlaySaved = transpileResult.ramUsage.overlaySavedBytes || 0;
+    const overlayCount = transpileResult.ramUsage.overlays?.length || 0;
     const percent = totalBytes ? Math.round((usedBytes / totalBytes) * 100) : 0;
     return {
       windowText,
       usedText: `${formatRamBytes(usedBytes)} (${percent}%)`,
       freeText: formatRamBytes(freeBytes),
-      detailText: `${vars} RAM symbol${vars === 1 ? "" : "s"} allocated${packs ? `, including ${packs} packed boolean byte${packs === 1 ? "" : "s"}` : ""}.`
+      detailText: `${vars} RAM symbol${vars === 1 ? "" : "s"} allocated${packs ? `, including ${packs} packed boolean byte${packs === 1 ? "" : "s"}` : ""}${overlayCount ? `; ${overlayCount} overlay${overlayCount === 1 ? "" : "s"} saves ${formatRamBytes(overlaySaved)} (${formatRamBytes(transpileResult.ramUsage.overlayLogicalBytes)} logical stored in ${formatRamBytes(transpileResult.ramUsage.overlayPhysicalBytes)} physical)` : ""}.`
     };
   }
 

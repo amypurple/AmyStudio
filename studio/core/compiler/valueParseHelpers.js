@@ -326,6 +326,8 @@ export function createValueParseHelpers({
         let totalOffset = 0;
         let fieldInfo = null;
         let arrayFieldIndex = null;
+        let arrayFieldElementSize = null;
+        let isWholeRecordArray = false;
         const fieldPath = [];
         for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
           const fieldName = segments[segmentIndex][1];
@@ -336,7 +338,12 @@ export function createValueParseHelpers({
           fieldPath.push(fieldName);
           const indexToken = segments[segmentIndex][2];
           if (fieldInfo.isArray) {
-            if (indexToken === undefined || segmentIndex !== segments.length - 1) return null;
+            if (indexToken === undefined) {
+              if (fieldInfo.type !== "record" || segmentIndex !== segments.length - 1) return null;
+              isWholeRecordArray = true;
+              continue;
+            }
+            if (arrayFieldIndex !== null) return null;
             const normalizedIndex = normalizeExpression(indexToken);
             const constantIndex = tryEvaluateConstantExpression(normalizedIndex);
             if (Number.isInteger(constantIndex)) {
@@ -344,12 +351,16 @@ export function createValueParseHelpers({
               totalOffset += constantIndex * fieldInfo.elementSize;
             } else {
               arrayFieldIndex = normalizedIndex;
+              arrayFieldElementSize = fieldInfo.elementSize;
             }
-            fieldInfo = {
-              ...fieldInfo,
-              size: fieldInfo.elementSize,
-              isArrayElement: true
-            };
+            if (fieldInfo.type === "record") {
+              if (segmentIndex === segments.length - 1) return null;
+              recordInfo = getRecordTypeInfo?.(fieldInfo.recordTypeName || fieldInfo.declaredType);
+              if (!recordInfo) return null;
+              continue;
+            }
+            if (segmentIndex !== segments.length - 1) return null;
+            fieldInfo = { ...fieldInfo, size: fieldInfo.elementSize, isArrayElement: true };
           } else if (indexToken !== undefined) {
             return null;
           }
@@ -369,7 +380,9 @@ export function createValueParseHelpers({
           fieldInfo,
           recordInfo,
           totalOffset,
-          arrayFieldIndex
+          arrayFieldIndex,
+          arrayFieldElementSize,
+          isWholeRecordArray
         };
       }
     }

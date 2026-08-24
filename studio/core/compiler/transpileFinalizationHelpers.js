@@ -541,6 +541,7 @@ export function finalizeAmyTranspile({
     amyTimers,
     hasExternalAsmInclude,
     nextRamAddress,
+    overlayLayouts,
     ramLayout,
     runtimeVars,
     boolPackCount,
@@ -1243,6 +1244,12 @@ export function finalizeAmyTranspile({
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`
     : "";
 
+  const normalizedOverlayLayouts = Array.isArray(overlayLayouts) ? overlayLayouts : [];
+  const overlayPhysicalBytes = normalizedOverlayLayouts.reduce((sum, overlay) => sum + overlay.reservedBytes, 0);
+  const overlayLogicalBytes = normalizedOverlayLayouts.reduce((sum, overlay) => sum + overlay.logicalBytes, 0);
+  const overlaySavedBytes = normalizedOverlayLayouts.reduce((sum, overlay) => sum + overlay.savedBytes, 0);
+  const totalPhysicalBytes = Math.max(0, nextRamAddress - (ramLayout?.userRamStart ?? 0x7100));
+
   return {
     ok: true,
     asmBody,
@@ -1252,10 +1259,21 @@ export function finalizeAmyTranspile({
       cartridge: cartridgeMeta,
       onFrameHook,
       amyTimers: amyTimers ? [...amyTimers.values()] : [],
+      ...(normalizedOverlayLayouts.length
+        ? { ramOverlays: normalizedOverlayLayouts.map((overlay) => ({ ...overlay })) }
+        : {}),
       needsFrameCounter
     },
     ramUsage: {
-      usedBytes: Math.max(0, nextRamAddress - (ramLayout?.userRamStart ?? 0x7100)),
+      usedBytes: totalPhysicalBytes,
+      ...(normalizedOverlayLayouts.length ? {
+        permanentBytes: totalPhysicalBytes - overlayPhysicalBytes,
+        logicalBytes: totalPhysicalBytes - overlayPhysicalBytes + overlayLogicalBytes,
+        overlayPhysicalBytes,
+        overlayLogicalBytes,
+        overlaySavedBytes,
+        overlays: normalizedOverlayLayouts.map((overlay) => ({ ...overlay }))
+      } : {}),
       variableCount: runtimeVars.size,
       booleanPackCount: boolPackCount,
       staticAbi: staticAbiRamUsage || {

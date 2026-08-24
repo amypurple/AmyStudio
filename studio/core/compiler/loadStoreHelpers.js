@@ -111,7 +111,7 @@ export function createLoadStoreHelpers(ctx) {
       if (indexType && indexType !== "int8") return null;
       const loadIndex = emitLoadInt8Into("a", fieldRef.arrayFieldIndex);
       if (!loadIndex) return null;
-      const scale = emitScaleUnsignedByteAIntoDE(fieldRef.fieldInfo.elementSize || 1);
+      const scale = emitScaleUnsignedByteAIntoDE(fieldRef.arrayFieldElementSize || fieldRef.fieldInfo.elementSize || 1);
       if (!scale) return null;
       return [...lines, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
     };

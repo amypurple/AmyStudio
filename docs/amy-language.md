@@ -334,9 +334,27 @@ copy LevelFlies + LevelOffset count 20 to Flies
 This checked slice form still requires matching record types. Its `count` must be a compile-time constant exactly equal to the destination array size; partial initialization is rejected. Offsets are byte offsets, so an explicit offset table is often clearer and cheaper than runtime multiplication on Z80.
 
 Records support scalar and fixed-array fields using `u8`, `i8`, `u16`, `i16`, `fixed`,
-`ufixed`, and `bool`, plus scalar nested-record fields. Arrays of nested records inside a
-record remain intentionally rejected; use a top-level record array until that separate
-feature has its own layout and codegen tests.
+`ufixed`, and `bool`, plus nested-record fields and one-level arrays of fixed-size records:
+
+```basic
+record Actor:
+  u8 X
+  u8 Y
+  i8 DX
+  i8 DY
+end record
+
+record GameMemory:
+  Actor Enemies[4]
+end record
+
+GameMemory GameRam
+GameRam.Enemies[I].X += 1
+```
+
+The supported indexed shape is `Container.Items[I].Field`. Double-index paths such as
+`Items[I].Flags[J]` and recursive arrays of records remain deferred. Constant indices
+are range-checked; runtime indices have no implicit bounds check.
 
 Repeated accesses to one record-array element should use a lexical alias:
 
@@ -352,8 +370,53 @@ end with
 
 Current record limits:
 - no local record variables yet
-- no arrays of nested records inside another record yet
+- no recursive or multidimensional record-array fields yet
+- no double-index field path such as `Items[I].Flags[J]` yet
 - record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
+
+### RAM overlays (experimental Phase A)
+
+An overlay reuses one physical RAM region for two or more mutually exclusive record
+layouts:
+
+```basic
+record MenuMemory:
+  u8 Selection
+  u8 Blink
+end record
+
+record GameMemory:
+  u8 PlayerX
+  u8 PlayerY
+  u8 EnemyX[8]
+end record
+
+overlay SceneRam
+  Menu as MenuMemory
+  Game as GameMemory
+end overlay
+
+SceneRam.Menu.Selection = 1
+SceneRam.Game.PlayerX = 96
+```
+
+Every access must use the complete `Overlay.Part.Field` name. All parts begin at the
+same address, so `SceneRam.Menu.Selection` and `SceneRam.Game.PlayerX` deliberately
+refer to the same byte. The physical reservation is the size of the largest part;
+the Studio RAM report also shows the sum of logical part sizes and the bytes saved.
+Nested scalar records, fixed scalar arrays, and one-level record-array fields use their
+normal packed record layout. A record-array element address is `field base + index *
+record size`; its members retain their constant record offsets. The compiler emits
+distinct `AMY_SCENE_*` aliases even where addresses match. A complete typed record data
+table can initialize a qualified record-array field with `copy ... to Overlay.Part.Items`.
+
+Phase A intentionally supports one overlay group per program. It provides allocation,
+qualified access, aliases, and accurate RAM accounting. It does not yet provide scene
+lifecycle syntax, active-part debugger state, automatic initialization, or lifetime
+proof. Until those later gates are implemented, the program is responsible for using
+only the part that its current game state owns and initializing that part before reading
+it. Overlay addresses must not be passed by `ref`, stored in address tables, or accessed
+from opaque ASM in portable Phase-A code.
 
 Same-type declarations can share one line:
 
@@ -890,6 +953,30 @@ next
 ```
 
 `Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a global fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
+
+The canonical Amy syntax always includes the comma and explicit index:
+
+```basic
+for each Element, Index in GlobalArray   ' valid
+```
+
+The shorter form used by some other languages is not currently Amy syntax:
+
+```basic
+for each Element in GlobalArray          ' rejected: explicit u8 index required
+```
+
+An array-of-record field inside an overlay is addressable, but it is not yet a global
+array accepted by `for each`. Use a counted loop for that case:
+
+```basic
+u8 I = 0
+for I = 0 to 3
+  SceneRam.Game.Enemies[I].X += 1
+next I
+```
+
+This is a `for each` source restriction, not an overlay-layout limitation.
 
 `end for` and `for I from ...` were removed; use `next` and `for I = ...`.
 

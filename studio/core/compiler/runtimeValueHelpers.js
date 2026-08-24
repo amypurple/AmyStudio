@@ -464,7 +464,13 @@ export function createRuntimeValueHelpers({
     }
     const resolvedToken = scopedRuntimeName(token);
     const info = getRuntimeInfo(token);
-    if (!info) return [`    ld hl,${symbolOrValue(token)}`];
+    if (!info) {
+      const constantValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
+        ? tryEvaluateCompileTimeNumericExpression(normalized)
+        : null;
+      if (!Number.isInteger(constantValue)) return null;
+      return [`    ld hl,${symbolOrValue(token)}`];
+    }
     if (info.type === "int8") {
       const loadByte = emitLoadInt8Into("a", token);
       if (!loadByte) return null;

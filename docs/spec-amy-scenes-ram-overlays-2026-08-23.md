@@ -1,10 +1,27 @@
 # Amy Scenes and RAM Overlays
 
-Status: design contract, not implemented
+Status: Phase A allocation/layout implemented; safety and scene lifecycle gates remain
 
-The fixed scalar array-field prerequisite is implemented and regression-tested. Arrays
-of nested records remain outside Phase A; overlay parts can already express packed scalar
-tables such as `u8 EnemyX[8]` and `u16 Scores[3]`.
+Implemented Phase A subset:
+
+- one record-backed overlay group per program;
+- all parts share one base and reserve `max(part sizes)` physical RAM;
+- qualified `Overlay.Part.Field` access, including nested scalar records and fixed
+  scalar array fields;
+- one-level record-array fields addressed as `Overlay.Part.Items[Index].Field`;
+- distinct `AMY_OVERLAY_*` and `AMY_SCENE_*` aliases;
+- physical, logical, permanent, and saved-byte RAM reporting;
+- parser/layout/codegen regression across all five optimization profiles.
+
+Not yet implemented: lifetime/ref/ASM escape enforcement, active-part debugger metadata,
+scene lifecycle syntax, and NMI-safe transitions. Those remain mandatory gates before
+the feature can be promoted from experimental Phase A.
+
+Fixed scalar arrays and one-level arrays of fixed-size records are implemented and
+regression-tested. Overlay parts can therefore contain packed scalar tables such as
+`u8 EnemyX[8]`, `u16 Scores[3]`, and actor tables such as `Actor Enemies[4]`.
+Double-index paths such as `Enemies[I].Flags[J]` and recursive arrays of records remain
+outside Phase A.
 
 This specification separates two features:
 
@@ -32,8 +49,8 @@ saved RAM    = sum(S1...Sn) - max(S1...Sn)
 
 ## Phase A: Overlay Primitive
 
-Records remain the single layout engine. Fixed scalar array fields, and preferably
-record-array fields, are a prerequisite rather than part of overlay codegen:
+Records remain the single layout engine. Fixed scalar arrays and one-level arrays of
+records are layout features reused by overlay codegen:
 
 ```amy
 record MenuMemory:
@@ -46,6 +63,7 @@ record GameMemory:
   u8 PlayerY
   u8 EnemiesX[8]
   u8 EnemiesY[8]
+  Actor Enemies[4]
 end record
 
 overlay SceneRam

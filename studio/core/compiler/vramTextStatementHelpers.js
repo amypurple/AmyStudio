@@ -621,7 +621,16 @@ export function handleVramTextStatement({
     const sourceVram = emitLoadVramAddressIntoDE(sourceExpr);
     const targetVram = emitLoadVramAddressIntoDE(targetExpr);
     const sourceInfo = getRuntimeInfo(sourceExpr);
-    const targetInfo = getRuntimeInfo(targetExpr);
+    const targetFieldRef = parseRecordFieldRef(targetExpr);
+    const targetInfo = targetFieldRef?.isWholeRecordArray
+      ? {
+          kind: "record_array",
+          recordTypeName: targetFieldRef.fieldInfo.recordTypeName,
+          length: targetFieldRef.fieldInfo.length,
+          recordSize: targetFieldRef.fieldInfo.elementSize,
+          qualifiedField: true
+        }
+      : getRuntimeInfo(targetExpr);
 
     if (targetVram) {
       const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);
@@ -734,7 +743,9 @@ export function handleVramTextStatement({
         }
       }
       const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);
-      const targetCode = emitLoadArrayAddressIntoHL(targetExpr, "0");
+      const targetCode = targetInfo.qualifiedField
+        ? emitLoadRecordFieldAddressIntoHL(targetExpr)
+        : emitLoadArrayAddressIntoHL(targetExpr, "0");
       if (!sourceCode || !targetCode) {
         return { ok: false, handled: true, log: `Record copy could not resolve source or destination: ${rawLine}` };
       }

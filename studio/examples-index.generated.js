@@ -739,5 +739,19 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-overlay-layout-selftest",
+    "label": "Amy RAM Overlay Layout Self-Test",
+    "detail": "Runtime test for shared overlay aliases, packed record-array fields, physical RAM reuse, and indexed actor access.",
+    "projectName": "amy-overlay-layout-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
   }
 ];
