@@ -822,6 +822,7 @@ export function createRomTestRecorderUi({
     lastInspectorRefresh = now;
     const active = dialog.querySelector("[data-pane].is-active")?.dataset.pane;
     if (active === "state") refreshMachineState();
+    if (active === "map" && force) renderSymbolList();
     if (active === "asm") refreshAssembly();
     if (active === "ram") refreshMemory("ram");
     if (active === "vram") refreshMemory("vram");
@@ -1223,6 +1224,7 @@ export function createRomTestRecorderUi({
     if (name === "ram") refreshMemory("ram");
     if (name === "vram") refreshMemory("vram");
     if (name === "state") refreshMachineState();
+    if (name === "map") renderSymbolList();
     if (name === "profiler") renderProfileResults();
   }
 
