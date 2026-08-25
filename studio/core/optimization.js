@@ -2,37 +2,37 @@ export const OPTIMIZATION_LEVELS = {
   auto: {
     label: "Auto",
     risk: "◇",
-    description: "Uses a safe default. Tiny sound stays on the safer path automatically.",
+    description: "Recommended automatic profile.",
     passes: []
   },
   off: {
     label: "Off",
     risk: "·",
-    description: "No optimizer passes. Best for exact ASM debugging.",
+    description: "No optimization. Best for ASM debugging.",
     passes: []
   },
   safe: {
     label: "Safe ◇",
     risk: "◇",
-    description: "Only the most conservative local peepholes. No branch rewriting, no A=0 rewrite, no speculative register tracking.",
+    description: "Conservative local optimization.",
     passes: ["peephole"]
   },
   balanced: {
     label: "Balanced ▲",
     risk: "▲",
-    description: "Adds JP→JR shortening, strictly local value-reuse folds, dead OR A / CP 0 removal, proven LDIR/LDDR BC=0 reuse, and carry-proven INC/DEC arithmetic folds. Dead-code cleanup starts at Aggressive.",
+    description: "Recommended size and safety balance.",
     passes: ["peephole", "branchShortening"]
   },
   aggressive: {
     label: "Aggressive ⚠",
     risk: "⚠",
-    description: "Adds speculative register/value reuse, LD A,0→XOR A, and header RST reuse on top of balanced. Whole-program dead-code cleanup is kept for Experimental.",
+    description: "More optimization. Verify the ROM.",
     passes: ["peephole", "branchShortening", "aZeroToXor", "rstVectors"]
   },
   experimental: {
     label: "Experimental ☢",
     risk: "☢",
-    description: "Adds hazardous memory/register rewrites, routine inlining, and tiny-frame stripping on top of aggressive passes.",
+    description: "Maximum optimization. Test carefully.",
     passes: ["peephole", "branchShortening", "deadCode", "aZeroToXor", "rstVectors", "inlineRoutines", "stripIxFrames"]
   }
 };

@@ -4,6 +4,31 @@ Amy encourages readable game code, but the same result can often be expressed wi
 
 The generated Z80 and exact byte count can change with context and optimizer level. Compile the real project and use ROM TEST & DEBUG when timing matters.
 
+## Optimization profiles
+
+- **Off:** no optimization; best for exact ASM debugging.
+- **Safe:** conservative local peepholes only.
+- **Balanced:** recommended; local folds and branch shortening without speculative reuse.
+- **Aggressive:** adds speculative register reuse and header RST reuse; verify the ROM.
+- **Experimental:** adds hazardous reuse, dead-code removal, inlining, and eligible IX-frame stripping; test carefully.
+
+A higher profile does not guarantee a smaller ROM. Global initializers are preserved because ASM, indirect access, symbols, and debugger watches may observe them even without a direct Amy read.
+
+New optimizer rules are introduced in Aggressive and promoted only after ROM,
+output, and debugger-map validation. Balanced remains the recommended default.
+
+Register-pair shortening is conservative: writing either half of a pair invalidates
+knowledge about the full pair. For example, changing `H` prevents reuse of an older
+known `HL` address when compiling an indexed array access.
+
+Aggressive also removes locally proven redundant low-byte zero reloads. Calls,
+labels, control transfers, ASM barriers, and writes to the register cancel the
+optimization.
+
+Aggressive can remove a short register-pair save/restore when enclosed
+instructions only read that pair. Writes, stack access, calls, branches, labels,
+exchanges, and block instructions preserve the original `PUSH`/`POP`.
+
 ## Initializing an array of records
 
 Assume this actor layout:

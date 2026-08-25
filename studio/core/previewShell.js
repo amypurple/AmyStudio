@@ -21,8 +21,7 @@ export function createPreviewShellHelpers({
     const suffix = profile.requestedLevel === profile.effectiveLevel
       ? ""
       : ` Using: ${effectiveInfo.label}.`;
-    const passText = effectiveInfo.passes?.length ? ` Active: ${effectiveInfo.passes.join(", ")}.` : "";
-    els.optimizationHint.textContent = `${levelInfo.description}${suffix}${passText}`;
+    els.optimizationHint.textContent = `${levelInfo.description}${suffix}`;
     if (els.optimizationSummary) {
       els.optimizationSummary.textContent = `Optimize: ${effectiveInfo.label}`;
       els.optimizationSummary.title = els.optimizationHint.textContent;

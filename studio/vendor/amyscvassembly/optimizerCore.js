@@ -1528,13 +1528,17 @@ export class Z80Optimizer {
                     if (inst.label) return true;
                     return instructionCanClobberRegister(inst, regName);
                 };
-                const instructionSafeBetweenPushPop = (inst, savedPair) => {
+                const instructionSafeBetweenPushPop = (inst, savedPair, allowReadOnlyPairUse = false) => {
                     if (!(inst instanceof Instruction) || inst.label) return false;
                     const m = inst.mnemonic.toLowerCase();
                     if (['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt', 'push', 'pop', 'ex', 'exx'].includes(m)) {
                         return false;
                     }
-                    return !instructionCanClobberRegister(inst, savedPair);
+                    if (instructionTouchesRegister(inst, 'sp')) return false;
+                    if (!allowReadOnlyPairUse) return !instructionCanClobberRegister(inst, savedPair);
+                    const savedMembers = this.getRegisterPairMembers(savedPair);
+                    return !this.instructionWritesRegister(inst, savedPair) &&
+                        !savedMembers.some((member) => this.instructionWritesRegister(inst, member));
                 };
                 const isUnconditionalFlowStop = (inst) => {
                     if (!(inst instanceof Instruction)) return false;
@@ -1894,7 +1898,8 @@ export class Z80Optimizer {
                             const imm16 = Number(prev.operands[1].value) & 0xFFFF;
                             return half === layout.high ? (imm16 >> 8) & 0xFF : imm16 & 0xFF;
                         }
-                        if (this.instructionWritesRegister(prev, pair)) break;
+                        if (this.instructionWritesRegister(prev, pair) ||
+                            this.instructionWritesRegister(prev, half)) break;
                     }
                     return null;
                 };
@@ -2711,6 +2716,39 @@ export class Z80Optimizer {
                             this.stats.peepholeOpts++;
                             this.stats.bytesSaved += 2;
                             optimizerLog(`  Removed redundant LD H,0 with H already zero at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
+                    // Aggressive+: remove LD L,0 only while a bounded local
+                    // proof shows L is already zero. Barriers and writes stop it.
+                    if (this.config.speculativeValueReuse &&
+                        isLdRegImm(token, 'l') &&
+                        Number(token.operands[1].value) === 0 &&
+                        !token.label) {
+                        let lKnownZero = false;
+                        for (let lookback = optimized.length - 1; lookback >= 0 && optimized.length - lookback <= 8; lookback--) {
+                            const prev = optimized[lookback];
+                            if (!(prev instanceof Instruction) || prev.label || isLocalAnalysisBarrier(prev)) break;
+                            if (isLdRegImm(prev, 'l') && Number(prev.operands[1].value) === 0) {
+                                lKnownZero = true;
+                                break;
+                            }
+                            if (prev.mnemonic.toLowerCase() === 'ld' &&
+                                prev.operands.length === 2 &&
+                                prev.operands[0].type === 'register_pair' &&
+                                String(prev.operands[0].value).toLowerCase() === 'hl' &&
+                                prev.operands[1].type === 'immediate' &&
+                                (Number(prev.operands[1].value) & 0xFF) === 0) {
+                                lKnownZero = true;
+                                break;
+                            }
+                            if (this.instructionWritesRegister(prev, 'l')) break;
+                        }
+                        if (lKnownZero) {
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += 2;
+                            optimizerLog(`  Removed redundant LD L,0 with L already zero at line ${token.lineNumber}`, 'debug');
                             continue;
                         }
                     }
@@ -4920,6 +4958,27 @@ export class Z80Optimizer {
                         token.operands.length === 1 &&
                         token.operands[0].type === 'register_pair') {
                         const savedPair = token.operands[0].value.toLowerCase();
+                        const savedLayout = pairByteLayout[savedPair];
+                        let savedImmediate = null;
+                        if (this.config.speculativeValueReuse && savedLayout) {
+                            for (let lookback = optimized.length - 1;
+                                lookback >= 0 && optimized.length - lookback <= 4;
+                                lookback--) {
+                                const prior = optimized[lookback];
+                                if (!(prior instanceof Instruction) || prior.label || isLocalAnalysisBarrier(prior)) break;
+                                if (prior.mnemonic.toLowerCase() === 'ld' &&
+                                    prior.operands.length === 2 &&
+                                    prior.operands[0].type === 'register_pair' &&
+                                    String(prior.operands[0].value).toLowerCase() === savedPair &&
+                                    prior.operands[1].type === 'immediate') {
+                                    savedImmediate = Number(prior.operands[1].value) & 0xFFFF;
+                                    break;
+                                }
+                                if (this.instructionWritesRegister(prior, savedPair) ||
+                                    this.instructionWritesRegister(prior, savedLayout.high) ||
+                                    this.instructionWritesRegister(prior, savedLayout.low)) break;
+                            }
+                        }
                         const buffered = [];
                         let popIndex = -1;
 
@@ -4935,7 +4994,22 @@ export class Z80Optimizer {
                                 break;
                             }
 
-                            if (!instructionSafeBetweenPushPop(midTok, savedPair)) break;
+                            let safe = instructionSafeBetweenPushPop(midTok, savedPair, this.config.speculativeValueReuse);
+                            if (!safe && savedImmediate !== null && savedLayout &&
+                                midTok.mnemonic.toLowerCase() === 'ld' &&
+                                midTok.operands.length === 2 &&
+                                midTok.operands[0].type === 'register' &&
+                                midTok.operands[1].type === 'immediate') {
+                                const target = String(midTok.operands[0].value).toLowerCase();
+                                const expected = target === savedLayout.high
+                                    ? (savedImmediate >> 8) & 0xFF
+                                    : target === savedLayout.low
+                                        ? savedImmediate & 0xFF
+                                        : null;
+                                safe = expected !== null &&
+                                    (Number(midTok.operands[1].value) & 0xFF) === expected;
+                            }
+                            if (!safe) break;
                             buffered.push(midTok);
                         }
 

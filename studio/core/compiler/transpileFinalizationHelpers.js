@@ -638,7 +638,11 @@ export function finalizeAmyTranspile({
     runtimeInit.unshift(`    ld (${packLabel}),a`);
     runtimeInit.unshift(`    ld a,$${bitmask.toString(16).toUpperCase().padStart(2, "0")}`);
   }
-  const safeInitRecords = pruneDeadInitRecords(runtimeInitRecords, runtimeVars, body);
+  // Global initialization is observable through inline ASM, indirect accesses,
+  // symbols, and the debugger even when generated Amy code has no direct read.
+  // Keep every declared initializer unless a future whole-program analysis can
+  // prove those external observation paths impossible.
+  const safeInitRecords = runtimeInitRecords;
   const effectiveHasRuntimeInit = hasRuntimeInit && (safeInitRecords.length > 0 || runtimeInit.length > 0);
 
   const runtimeInitMarker = "; AMY_RUNTIME_INIT_INSERT";
