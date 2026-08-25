@@ -355,9 +355,11 @@ GameMemory GameRam
 GameRam.Enemies[I].X += 1
 ```
 
-The supported indexed shape is `Container.Items[I].Field`. Double-index paths such as
-`Items[I].Flags[J]` and recursive arrays of records remain deferred. Constant indices
-are range-checked; runtime indices have no implicit bounds check.
+Indexed paths may combine a record-array index with a scalar array-field index, as in
+`Container.Items[I].Flags[J]`. Each index contributes its own checked byte stride to the
+address calculation. Constant indices are range-checked; runtime indices must be byte
+expressions and have no implicit bounds check. Recursive or multidimensional arrays remain
+deferred.
 
 Repeated accesses to one record-array element should use a lexical alias:
 
@@ -374,7 +376,6 @@ end with
 Current record limits:
 - no local record variables yet
 - no recursive or multidimensional record-array fields yet
-- no double-index field path such as `Items[I].Flags[J]` yet
 - no arrays of BCD fields yet; BCD fields are scalar
 - record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
 

@@ -327,6 +327,7 @@ export function createValueParseHelpers({
         let fieldInfo = null;
         let arrayFieldIndex = null;
         let arrayFieldElementSize = null;
+        const arrayFieldOffsets = [];
         let isWholeArray = false;
         let isWholeRecordArray = false;
         const fieldPath = [];
@@ -345,15 +346,17 @@ export function createValueParseHelpers({
               isWholeRecordArray = fieldInfo.type === "record";
               continue;
             }
-            if (arrayFieldIndex !== null) return null;
             const normalizedIndex = normalizeExpression(indexToken);
             const constantIndex = tryEvaluateConstantExpression(normalizedIndex);
             if (Number.isInteger(constantIndex)) {
               if (constantIndex < 0 || constantIndex >= fieldInfo.length) return null;
               totalOffset += constantIndex * fieldInfo.elementSize;
             } else {
-              arrayFieldIndex = normalizedIndex;
-              arrayFieldElementSize = fieldInfo.elementSize;
+              arrayFieldOffsets.push({ index: normalizedIndex, elementSize: fieldInfo.elementSize });
+              if (arrayFieldIndex === null) {
+                arrayFieldIndex = normalizedIndex;
+                arrayFieldElementSize = fieldInfo.elementSize;
+              }
             }
             if (fieldInfo.type === "record") {
               if (segmentIndex === segments.length - 1) return null;
@@ -384,6 +387,7 @@ export function createValueParseHelpers({
           totalOffset,
           arrayFieldIndex,
           arrayFieldElementSize,
+          arrayFieldOffsets,
           isWholeArray,
           isWholeRecordArray
         };

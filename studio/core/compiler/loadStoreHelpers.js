@@ -129,14 +129,20 @@ export function createLoadStoreHelpers(ctx) {
     const fieldRef = parseRecordFieldRef(token);
     if (!fieldRef) return null;
     const appendArrayFieldOffset = (lines) => {
-      if (!fieldRef.arrayFieldIndex) return lines;
-      const indexType = resolveValueType(fieldRef.arrayFieldIndex);
-      if (indexType && indexType !== "int8") return null;
-      const loadIndex = emitLoadInt8Into("a", fieldRef.arrayFieldIndex);
-      if (!loadIndex) return null;
-      const scale = emitScaleUnsignedByteAIntoDE(fieldRef.arrayFieldElementSize || fieldRef.fieldInfo.elementSize || 1);
-      if (!scale) return null;
-      return [...lines, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
+      const offsets = fieldRef.arrayFieldOffsets?.length
+        ? fieldRef.arrayFieldOffsets
+        : (fieldRef.arrayFieldIndex ? [{ index: fieldRef.arrayFieldIndex, elementSize: fieldRef.arrayFieldElementSize || fieldRef.fieldInfo.elementSize || 1 }] : []);
+      let result = lines;
+      for (const offset of offsets) {
+        const indexType = resolveValueType(offset.index);
+        if (indexType && indexType !== "int8") return null;
+        const loadIndex = emitLoadInt8Into("a", offset.index);
+        if (!loadIndex) return null;
+        const scale = emitScaleUnsignedByteAIntoDE(offset.elementSize || 1);
+        if (!scale) return null;
+        result = [...result, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
+      }
+      return result;
     };
     if (fieldRef.baseKind === "scalar") {
       const info = getRuntimeInfo(fieldRef.name);
@@ -196,7 +202,7 @@ export function createLoadStoreHelpers(ctx) {
     if (!info || info.storage === "stack" || info.isAliasPointer || info.isDynamicRecordAlias) return null;
     if (fieldRef.baseKind === "scalar") {
       if (info.kind !== "record") return null;
-      if (fieldRef.arrayFieldIndex) return null;
+      if (fieldRef.arrayFieldOffsets?.length || fieldRef.arrayFieldIndex) return null;
       return formatHex16(info.address + fieldRef.totalOffset);
     }
     if (info.kind !== "record_array") return null;
@@ -209,7 +215,7 @@ export function createLoadStoreHelpers(ctx) {
     }
     if (!Number.isInteger(numericIndex) || numericIndex < 0) return null;
     if (typeof info.length === "number" && numericIndex >= info.length) return null;
-    if (fieldRef.arrayFieldIndex) return null;
+    if (fieldRef.arrayFieldOffsets?.length || fieldRef.arrayFieldIndex) return null;
     return formatHex16(info.address + numericIndex * info.recordSize + fieldRef.totalOffset);
   }
 

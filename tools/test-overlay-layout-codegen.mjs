@@ -108,10 +108,14 @@ overlay Shared
   Other as OtherMemory
 end overlay
 u8 I = 1
+u8 J = 1
 Shared.Game.Items[0].Score = 1000
 Shared.Game.Items[1].X = 17
 Shared.Game.Items[2].DX = -3
 Shared.Game.Items[I].X = 29
+Shared.Game.Items[I].Flags[J] = 77
+Shared.Game.Items[I + 1].Flags[J + 1] = 88
+Shared.Game.Items[1].Flags[2] = Shared.Game.Items[I].Flags[J]
 Shared.Game.After = 99
 Shared.Game.Items[0].X = get char at 0,0
 get tile at 1,1 into Shared.Game.Items[1].X
@@ -222,6 +226,35 @@ overlay Shared
 end overlay
 get frame size 2,2 at 0,0 into Shared.First.Buffer
 `, false).output, /requires a u8 buffer/i);
+
+  assert.match(compile("overlay-double-index-oob", `
+record Actor:
+  u8 Flags[3]
+end record
+record GameMemory:
+  Actor Items[2]
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+Shared.Game.Items[1].Flags[3] = 1
+`, false).output, /invalid runtime assignment/i);
+
+  assert.match(compile("overlay-double-index-wrong-width", `
+record Actor:
+  u8 Flags[3]
+end record
+record GameMemory:
+  Actor Items[2]
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+u16 WideIndex = 1
+Shared.Game.Items[1].Flags[WideIndex] = 1
+`, false).output, /invalid runtime assignment/i);
 
   for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
     const bcd = compile("overlay-bcd-field", `
