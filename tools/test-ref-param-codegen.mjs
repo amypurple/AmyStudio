@@ -380,6 +380,109 @@ end sub
   assert.equal(bad.ok, false);
   assert.match(bad.log, /must be a global u8 variable/i);
 });
+const sceneDeclarationSource = `memory "colecovision_legacy_sdcc"
+record MenuMemory:
+  u8 Selection
+end record
+record GameMemory:
+  u8 PlayerX
+end record
+overlay SceneRam
+  Menu as MenuMemory
+  Game as GameMemory
+end overlay
+scene Menu uses SceneRam.Menu
+  on enter MenuEnter
+  on frame MenuFrame
+end scene
+scene Game uses SceneRam.Game
+  on enter GameEnter
+  on frame GameFrame
+end scene
+u8 Initial = Scenes.Menu
+enter Menu
+loop forever
+sub MenuEnter:
+  SceneRam.Menu.Selection = 3
+  return
+end sub
+sub MenuFrame:
+  return
+end sub
+sub GameEnter:
+  return
+end sub
+sub GameFrame:
+  return
+end sub
+`;
+const sceneDeclarationResult = transpileAmy(sceneDeclarationSource);
+check("scene declarations create typed IDs and active-part metadata", () => {
+  assert.equal(sceneDeclarationResult.ok, true, sceneDeclarationResult.log || "scene declaration transpile failed");
+  assert.match(sceneDeclarationResult.asmBody, /AMY_ACTIVE_SCENE EQU \$[0-9A-F]{4}/i);
+  assert.match(sceneDeclarationResult.asmBody, /call AMY_VRAM_BEGIN[\s\S]*ld \(AMY_ACTIVE_SCENE\),a[\s\S]*ld \((?:AMY_SCENE_Menu_Selection|\$7020)\),a[\s\S]*ld a,1[\s\S]*call AMY_VRAM_END/i);
+  assert.match(sceneDeclarationResult.asmBody, /ld \(AMY_UVAR_Initial\),a/i);
+  assert.equal(sceneDeclarationResult.metadata.onFrameHook.asmLabel, "AMY_SCENE_FRAME_DISPATCH");
+  assert.match(sceneDeclarationResult.asmBody, /AMY_SCENE_FRAME_DISPATCH:[\s\S]*ld a,\(AMY_ACTIVE_SCENE\)[\s\S]*jp z,AMY_SCENE_FRAME_1[\s\S]*jp z,AMY_SCENE_FRAME_2/i);
+  assert.match(sceneDeclarationResult.asmBody, /AMY_SCENE_FRAME_1:\s*jp AMY_UPROC_MenuFrame/i);
+  assert.match(sceneDeclarationResult.asmBody, /AMY_SCENE_FRAME_2:\s*jp AMY_UPROC_GameFrame/i);
+  const overlay = sceneDeclarationResult.metadata.ramOverlays[0];
+  assert.equal(overlay.activeBinding.symbol, "AMY_ACTIVE_SCENE");
+  assert.deepEqual(overlay.parts.map((part) => part.activeWhen.equals), [1, 2]);
+  assert.deepEqual(overlay.scenes.map((scene) => scene.enterRoutine), ["MenuEnter", "GameEnter"]);
+});
+check("scene enter rejects a reachable wait", () => {
+  const bad = transpileAmy(`memory "colecovision_legacy_sdcc"
+record Mem:
+  u8 Value
+end record
+overlay SceneRam
+  Menu as Mem
+  Game as Mem
+end overlay
+scene Menu uses SceneRam.Menu
+  on enter MenuEnter
+  on frame MenuFrame
+end scene
+scene Game uses SceneRam.Game
+  on enter GameEnter
+  on frame GameFrame
+end scene
+enter Menu
+loop forever
+sub MenuEnter:
+  wait 1 frames
+  return
+end sub
+sub MenuFrame:
+  return
+end sub
+sub GameEnter:
+  return
+end sub
+sub GameFrame:
+  return
+end sub
+`);
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /on enter path is not NMI-safe/i);
+});
+check("scene frame rejects a reachable blocking statement", () => {
+  const source = sceneDeclarationSource.replace("sub MenuFrame:\n  return", "sub MenuFrame:\n  wait 1 frames\n  return");
+  const bad = transpileAmy(source);
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /on frame path is not NMI-safe/i);
+});
+check("scenes reject a separate top-level on frame hook", () => {
+  const bad = transpileAmy(sceneDeclarationSource.replace("u8 Initial = Scenes.Menu", "on frame MenuFrame\nu8 Initial = Scenes.Menu"));
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /scenes own the single on frame hook/i);
+});
+check("scene handlers reject parameters", () => {
+  const bad = transpileAmy(sceneDeclarationSource.replace("sub GameFrame:", "sub GameFrame(u8 Value):"));
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /on frame target 'GameFrame' must not have parameters/i);
+});
 
 const BIOS_STUBS = "TURN_OFF_SOUND EQU $1FD6\nMODE_1 EQU $1F85\n";
 const assembled = await assembleAmysCVAssembly({ "main.asm": BIOS_STUBS + asm }, "main.asm", {

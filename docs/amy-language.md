@@ -379,7 +379,7 @@ Current record limits:
 - no arrays of BCD fields yet; BCD fields are scalar
 - record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
 
-### RAM overlays (experimental Phase A)
+### RAM overlays and scenes (experimental)
 
 An overlay reuses one physical RAM region for two or more mutually exclusive record
 layouts:
@@ -414,7 +414,7 @@ normal packed record layout. A record-array element address is `field base + ind
 record size`; its members retain their constant record offsets. The compiler emits
 distinct `AMY_SCENE_*` aliases even where addresses match. ROM TEST & DEBUG receives
 structured metadata for those aliases and displays the qualified Amy name, type, width,
-and shared-overlay status. Until scene-state binding exists, the debugger reports the
+and shared-overlay status. Without an active-part binding, the debugger reports the
 active part as unknown instead of guessing which alias owns the live byte. A complete typed record data
 table can initialize a qualified record-array field with `copy ... to Overlay.Part.Items`.
 Packed BCD fields retain their declared digit count inside an overlay and occupy
@@ -426,13 +426,11 @@ including canonical `Field = get char at X,Y`, `play sound Field`, `stop sound F
 and canonical typed printing such as `print Field at X,Y`. Legacy `get ... into Field`
 is accepted for migration but still reports the canonical assignment form.
 
-Phase A intentionally supports one overlay group per program. It provides allocation,
-qualified access, aliases, and accurate RAM accounting. It does not yet provide scene
-lifecycle syntax, automatic initialization, or lifetime
-proof. Until those later gates are implemented, the program is responsible for using
-only the part that its current game state owns and initializing that part before reading
-it. Overlay addresses must not be passed by `ref`, stored in address tables, or accessed
-from opaque ASM in portable Phase-A code.
+Amy currently supports one overlay group per program. Raw overlays provide allocation,
+qualified access, aliases, and accurate RAM accounting. The program must use only the
+part owned by its current state and initialize that part before reading it. Overlay
+addresses must not be passed by `ref`, stored in address tables, or accessed from opaque
+ASM in portable code.
 
 An optional debugger binding connects overlay parts to a typed state machine without
 changing program execution:
@@ -446,6 +444,47 @@ Every overlay part name must match a state name in `Scenes`, and the selector mu
 global `u8`. The compiler adds an `activeWhen` predicate to every qualified field. ROM
 TEST & DEBUG then suppresses watches for inactive aliases sharing the same physical byte.
 The program remains responsible for assigning `ActiveScene`; zero means no part is active.
+
+For compiler-managed lifecycle and dispatch, declare scenes whose names match the overlay
+parts:
+
+```amy
+scene Menu uses SceneRam.Menu
+  on enter MenuEnter
+  on frame MenuFrame
+end scene
+
+scene Game uses SceneRam.Game
+  on enter GameEnter
+  on frame GameFrame
+end scene
+
+text screen
+enter Menu
+screen on
+MainLoop:
+  if RequestedScene = Scenes.Game then
+    RequestedScene = 0
+    enter Game
+  end if
+goto MainLoop
+```
+
+`Scenes.Menu` and `Scenes.Game` are compiler-generated one-based `u8` constants; zero
+means that no scene owns the overlay. `enter SceneName` is mainline-only. It preserves
+the previous VDP R1/display state, disables NMI, marks every overlay part inactive,
+calls the parameterless `on enter` subroutine, activates the new part, and restores the
+previous VDP state. This guarantees that the NMI never observes a half-initialized part.
+
+The compiler also owns the program's single `on frame` hook and dispatches it to the
+active scene's parameterless frame subroutine. A project using scenes therefore cannot
+declare a separate top-level `on frame`/`on vblank` hook. Frame handlers run in NMI:
+keep them short and nonblocking. Their reachable call paths reject `wait`, `pause`, NMI,
+screen/display changes, scene transitions, and inline ASM. Enter paths reject blocking
+waits and attempts to enable NMI/display before initialization finishes. Request a scene
+change through a permanent global such as `RequestedScene`; mainline performs `enter`.
+
+See `Amy Scenes and Overlays Lab` for an executable three-scene example and ROM test.
 
 Same-type declarations can share one line:
 

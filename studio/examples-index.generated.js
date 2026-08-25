@@ -753,5 +753,18 @@ export const exampleManifest = [
       "selftest",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-scenes-overlays-design",
+    "label": "Amy Scenes and Overlays Lab",
+    "detail": "Executable lifecycle lab with three scene-local RAM layouts, compiler-generated frame dispatch, and NMI-safe mainline transitions.",
+    "projectName": "amy-scenes-overlays-design",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];

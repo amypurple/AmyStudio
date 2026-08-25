@@ -433,3 +433,9 @@ Follow-up improvements worth considering:
 - Arrays of records should support whole-array clone once record byte size is stable.
 
 For now, avoid adding a separate `clone` keyword. `copy` is already part of the Amy vocabulary, already maps to the Z80 operation programmers expect, and keeps the language smaller.
+# Historical syntax note
+
+This planning document predates the removal of `end function`. Current Amy functions end
+with their terminal `return Value`; examples below that still show `end function` are
+historical design material, not valid current syntax. See `docs/amy-language.md` for the
+authoritative language reference.

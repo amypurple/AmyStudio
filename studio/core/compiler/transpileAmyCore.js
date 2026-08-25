@@ -232,10 +232,78 @@ export function transpileAmyCore(sourceText, deps) {
     }
     return { ok: true, lines: result };
   }
-  function lowerStateMachines(rawLines) {
+  function parseSceneDeclarations(rawLines) {
+    const lines = [...rawLines];
+    const scenes = [];
+    const names = new Set();
+    let overlayName = "";
+    for (let index = 0; index < lines.length; index += 1) {
+      const start = stripAmyInlineComment(lines[index]).trim().match(/^scene\s+([A-Za-z_][A-Za-z0-9_]*)\s+uses\s+([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (!start) continue;
+      const name = start[1];
+      if (names.has(name.toLowerCase())) return { ok: false, log: `Duplicate scene '${name}' at line ${index + 1}` };
+      if (name.toLowerCase() !== start[3].toLowerCase()) return { ok: false, log: `Scene '${name}' must use the matching overlay part '${start[2]}.${name}' at line ${index + 1}` };
+      if (overlayName && overlayName.toLowerCase() !== start[2].toLowerCase()) return { ok: false, log: "Amy scene v1 supports one overlay group per program." };
+      overlayName = start[2];
+      let enterRoutine = "";
+      let frameRoutine = "";
+      let end = index + 1;
+      for (; end < lines.length; end += 1) {
+        const text = stripAmyInlineComment(lines[end]).trim();
+        if (!text) continue;
+        if (/^end\s+scene$/i.test(text)) break;
+        const enter = text.match(/^on\s+enter\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        const frame = text.match(/^on\s+frame\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        if (enter && !enterRoutine) enterRoutine = enter[1];
+        else if (frame && !frameRoutine) frameRoutine = frame[1];
+        else return { ok: false, log: `Invalid or duplicate scene binding at line ${end + 1}: ${text}` };
+      }
+      if (end >= lines.length) return { ok: false, log: `Scene '${name}' is missing 'end scene'.` };
+      if (!enterRoutine || !frameRoutine) return { ok: false, log: `Scene '${name}' requires exactly one 'on enter' and one 'on frame' binding.` };
+      names.add(name.toLowerCase());
+      scenes.push({ name, overlayName, partName: start[3], enterRoutine, frameRoutine, value: scenes.length + 1, line: index + 1 });
+      lines[index] = `const Scenes_${name} = ${scenes.length}`;
+      for (let clear = index + 1; clear <= end; clear += 1) lines[clear] = "";
+      index = end;
+    }
+    for (const scene of scenes) {
+      for (const [role, routineName] of [["on enter", scene.enterRoutine], ["on frame", scene.frameRoutine]]) {
+        const declaration = rawLines
+          .map((raw) => stripAmyInlineComment(raw).trim())
+          .map((text) => ({
+            text,
+            match: text.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s*:?\s*$/i)
+          }))
+          .find((entry) => entry.match && entry.match[1].toLowerCase() === routineName.toLowerCase());
+        if (!declaration) return { ok: false, log: `Scene '${scene.name}' ${role} target '${routineName}' must be a subroutine.` };
+        if (declaration.match[2]?.trim()) return { ok: false, log: `Scene '${scene.name}' ${role} target '${routineName}' must not have parameters.` };
+      }
+    }
+    return { ok: true, lines, scenes, overlayName };
+  }
+
+  function lowerStateMachines(rawLines, sceneInfo = null) {
     const result = [...rawLines];
     const machines = new Map();
     const overlayBindings = new Map();
+    if (sceneInfo?.scenes?.length) {
+      const entries = sceneInfo.scenes.map((scene) => ({
+        name: scene.name,
+        routine: scene.frameRoutine,
+        constantName: `Scenes_${scene.name}`,
+        value: scene.value
+      }));
+      const states = new Map(entries.map((entry) => [entry.name.toLowerCase(), entry]));
+      const machine = { name: "Scenes", key: "scenes", states, entries, implicitScenes: true };
+      machines.set("scenes", machine);
+      overlayBindings.set(sceneInfo.overlayName.toLowerCase(), {
+        overlayName: sceneInfo.overlayName,
+        selectorName: "__AMY_ACTIVE_SCENE",
+        machine,
+        line: sceneInfo.scenes[0].line,
+        internalSelector: true
+      });
+    }
     const subNames = new Set();
     let current = null;
     let routineDepth = 0;
@@ -349,6 +417,11 @@ export function transpileAmyCore(sourceText, deps) {
         if (!subNames.has(entry.routine.toLowerCase())) {
           return { ok: false, log: `State '${machine.name}.${entry.name}' calls unknown subroutine '${entry.routine}'` };
         }
+      }
+    }
+    for (const scene of sceneInfo?.scenes || []) {
+      if (!subNames.has(scene.enterRoutine.toLowerCase())) {
+        return { ok: false, log: `Scene '${scene.name}' calls unknown enter subroutine '${scene.enterRoutine}'` };
       }
     }
 
@@ -614,7 +687,9 @@ export function transpileAmyCore(sourceText, deps) {
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
-  const stateMachineLowering = lowerStateMachines(conditionalPrepass.lines);
+  const sceneParsing = parseSceneDeclarations(conditionalPrepass.lines);
+  if (!sceneParsing.ok) return { ok: false, asmBody: "", log: sceneParsing.log };
+  const stateMachineLowering = lowerStateMachines(sceneParsing.lines, sceneParsing);
   if (!stateMachineLowering.ok) return { ok: false, asmBody: "", log: stateMachineLowering.log };
   const prunedLines = pruneSourceUnreachableAfterRoutineTerminators(stateMachineLowering.lines);
   const forEachLowering = lowerForEachLoops(prunedLines);
@@ -3395,6 +3470,25 @@ export function transpileAmyCore(sourceText, deps) {
       }
     }
     {
+      const enterMatch = line.match(/^enter\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (enterMatch) {
+        const scene = sceneParsing.scenes.find((entry) => lowerName(entry.name) === lowerName(enterMatch[1]));
+        if (!scene) return { ok: false, asmBody: "", log: `Unknown scene '${enterMatch[1]}' at line ${sourceLineNumber + 1}` };
+        if (currentProc && lowerName(currentProc) !== "start") {
+          return { ok: false, asmBody: "", log: `enter ${scene.name} is only valid from mainline in Amy scene v1.` };
+        }
+        ensureImplicitStartForExecutable();
+        body.push("    call AMY_VRAM_BEGIN");
+        body.push("    xor a");
+        body.push("    ld (AMY_ACTIVE_SCENE),a");
+        body.push(`    call ${ensureProcAsmSymbol(scene.enterRoutine)}`);
+        body.push(`    ld a,${scene.value}`);
+        body.push("    ld (AMY_ACTIVE_SCENE),a");
+        body.push("    call AMY_VRAM_END");
+        continue;
+      }
+    }
+    {
       const dataMetaStmt = handleDataMetaStatement({
         line,
         rawLine,
@@ -4416,6 +4510,31 @@ export function transpileAmyCore(sourceText, deps) {
 
   flushBufferedVdpR1PureModifiers();
 
+  if (sceneParsing.scenes.length && onFrameHook) {
+    return { ok: false, asmBody: "", log: "Amy scenes own the single on frame hook; remove the separate top-level on frame declaration." };
+  }
+
+  for (const scene of sceneParsing.scenes) {
+    for (const [role, routineName] of [["on enter", scene.enterRoutine], ["on frame", scene.frameRoutine]]) {
+      const routineLower = lowerName(routineName);
+      if ([...functionReturnTypes.keys()].some((name) => lowerName(name) === routineLower)) {
+        return { ok: false, asmBody: "", log: `Scene '${scene.name}' ${role} must target a subroutine, not a function.` };
+      }
+      const signatureEntry = [...procSignatures.entries()].find(([name]) => lowerName(name) === routineLower);
+      const hasSub = lines.some((candidateRaw) => {
+        const candidate = stripAmyInlineComment(candidateRaw).trim();
+        const match = candidate.match(/^sub\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\)|\s*:)?\s*$/i);
+        return match && lowerName(match[1]) === routineLower;
+      });
+      if (!hasSub) {
+        return { ok: false, asmBody: "", log: `Scene '${scene.name}' ${role} target '${routineName}' was not found.` };
+      }
+      if (signatureEntry?.[1]?.length) {
+        return { ok: false, asmBody: "", log: `Scene '${scene.name}' ${role} target '${routineName}' must not have parameters.` };
+      }
+    }
+  }
+
   if (onFrameHook) {
     const hookLower = lowerName(onFrameHook.name);
     const functionMatch = [...functionReturnTypes.keys()].some((name) => lowerName(name) === hookLower);
@@ -4464,12 +4583,63 @@ export function transpileAmyCore(sourceText, deps) {
     totalBytes: staticAbiParamBytes + staticAbiLocalBytes
   };
 
+  if (sceneParsing.scenes.length) {
+    const analysis = analyzeStaticAbiEligibility(lines, { resolveInclude: resolveStaticAbiInclude });
+    const enterUnsafe = /^(?:wait\b|pause\b|nmi\s+on\b|screen\s+on\b)/i;
+    const frameUnsafe = /^(?:wait\b|pause\b|nmi\b|screen\b|display\b|enter\b)/i;
+    for (const scene of sceneParsing.scenes) {
+      const inspectPath = (rootName, unsafePattern) => {
+        const visited = new Set();
+        const inspect = (key) => {
+          if (visited.has(key)) return null;
+          visited.add(key);
+          const routine = analysis.routines.get(key);
+          if (!routine) return `unknown routine '${key}'`;
+          if (routine.asm.length) return `inline ASM in '${routine.name}'`;
+          const blockedLine = routine.body.find((candidate) => unsafePattern.test(candidate));
+          if (blockedLine) return `'${blockedLine}' in '${routine.name}'`;
+          for (const next of analysis.graph.get(key) || []) {
+            const reason = inspect(next);
+            if (reason) return reason;
+          }
+          return null;
+        };
+        return inspect(lowerName(rootName));
+      };
+      const enterReason = inspectPath(scene.enterRoutine, enterUnsafe);
+      if (enterReason) return { ok: false, asmBody: "", log: `Scene '${scene.name}' on enter path is not NMI-safe: ${enterReason}.` };
+      const frameReason = inspectPath(scene.frameRoutine, frameUnsafe);
+      if (frameReason) return { ok: false, asmBody: "", log: `Scene '${scene.name}' on frame path is not NMI-safe: ${frameReason}.` };
+    }
+
+    const dispatcherLabel = "AMY_SCENE_FRAME_DISPATCH";
+    body.push(`${dispatcherLabel}:`);
+    body.push("    ld a,(AMY_ACTIVE_SCENE)");
+    for (const scene of sceneParsing.scenes) {
+      body.push("    dec a");
+      body.push(`    jp z,AMY_SCENE_FRAME_${scene.value}`);
+    }
+    body.push("    ret");
+    for (const scene of sceneParsing.scenes) {
+      body.push(`AMY_SCENE_FRAME_${scene.value}:`);
+      body.push(`    jp ${ensureProcAsmSymbol(scene.frameRoutine)}`);
+    }
+    onFrameHook = { name: "Scenes", asmLabel: dispatcherLabel, generated: true };
+  }
+
   for (const binding of stateMachineLowering.overlayBindings.values()) {
     const layout = overlayLayouts.find((entry) => lowerName(entry.name) === lowerName(binding.overlayName));
     if (!layout) {
       return { ok: false, asmBody: "", log: `Active-part binding at line ${binding.line} references unknown overlay '${binding.overlayName}'.` };
     }
-    const selector = getRuntimeInfo(binding.selectorName);
+    let selector = getRuntimeInfo(binding.selectorName);
+    if (!selector && binding.internalSelector) {
+      const address = reserveRam("active scene", 1, "implicit scene active selector");
+      selector = { type: "int8", declaredType: "u8", kind: "int8", address, scope: "global", asmName: "AMY_ACTIVE_SCENE", internal: true };
+      runtimeVars.set(binding.selectorName, selector);
+      runtimeDeclarations.push(`AMY_ACTIVE_SCENE EQU ${formatHex16(address)}`);
+      hasRuntimeRamDeclarations = true;
+    }
     if (!selector || selector.declaredType !== "u8" || selector.scope !== "global" || !Number.isInteger(selector.address)) {
       return { ok: false, asmBody: "", log: `Overlay '${layout.name}' active-part selector '${binding.selectorName}' must be a global u8 variable.` };
     }
@@ -4486,6 +4656,7 @@ export function transpileAmyCore(sourceText, deps) {
       symbol: selector.asmName,
       machineName: binding.machine.name
     };
+    if (binding.internalSelector) layout.scenes = sceneParsing.scenes.map((scene) => ({ ...scene }));
   }
 
   return finalizeAmyTranspile({
