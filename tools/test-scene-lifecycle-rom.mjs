@@ -50,17 +50,22 @@ try {
 
   const symbols = parseSymbols(symbolText);
   const activeScene = symbols.get("AMY_ACTIVE_SCENE");
+  const overlayBase = symbols.get("AMY_OVERLAY_SceneRam");
+  const guardBefore = symbols.get("AMY_UVAR_OverlayGuardBefore");
   const menuBlink = symbols.get("AMY_SCENE_Menu_BlinkTicks");
   const gamePlayerX = symbols.get("AMY_SCENE_Game_PlayerX");
   assert.ok(Number.isInteger(activeScene), "Missing active-scene symbol.");
+  assert.equal(guardBefore + 1, overlayBase, "The lower sentinel must immediately precede SceneRam.");
+  assert.equal(activeScene, overlayBase + 19, "The active-scene selector must immediately follow the 19-byte overlay.");
   assert.ok(Number.isInteger(menuBlink), "Missing menu overlay symbol.");
-  assert.equal(gamePlayerX, symbols.get("AMY_OVERLAY_SceneRam"), "Game and Menu must share the overlay base.");
+  assert.equal(gamePlayerX, overlayBase, "Game and Menu must share the overlay base.");
 
   const core = await GearcolecoTestCore.create({ seed: 0x53434E45 });
   try {
     core.loadBios(bios);
     core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
     for (let frame = 0; frame < 12; frame += 1) core.runFrame();
+    assert.equal(core.readRam(guardBefore, 1)[0], 0x5A, "Menu initialization/frame dispatch crossed the lower overlay boundary.");
     assert.equal(core.readRam(activeScene, 1)[0], 1, "Menu scene must be active after startup.");
     assert.ok(core.readRam(menuBlink, 1)[0] > 0, "Menu frame handler must run from NMI.");
 
@@ -68,6 +73,7 @@ try {
     for (let frame = 0; frame < 3; frame += 1) core.runFrame();
     core.setControllerMask(0, 0);
     for (let frame = 0; frame < 3; frame += 1) core.runFrame();
+    assert.equal(core.readRam(guardBefore, 1)[0], 0x5A, "Game transition crossed the lower overlay boundary.");
     assert.equal(core.readRam(activeScene, 1)[0], 2, "FIRE must request and enter the Game scene.");
     assert.equal(core.readRam(gamePlayerX, 1)[0], 120, "Game enter handler must initialize its overlay.");
   } finally {

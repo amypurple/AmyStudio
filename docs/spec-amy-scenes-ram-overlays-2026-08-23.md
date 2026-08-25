@@ -212,8 +212,9 @@ Overflow is checked against physical RAM. Logical totals are informational.
 3. RAM estimator tests with unequal, equal, nested-record, and array layouts.
 4. Access/lifetime rejection tests, including `ref`, ASM, recursion, and NMI paths.
 5. Debug-sidecar and conditional-breakpoint active-scene tests.
-6. Transition ROM self-test with debug poison, sentinel guards around the overlay, and
-   explicit expected values after every enter routine.
+6. Transition ROM self-test with boundary sentinels and explicit expected values after
+   every enter routine. The lower permanent-RAM sentinel and upper active-scene selector
+   are implemented; optional debug poison remains future work.
 7. Off/Safe/Balanced/Aggressive/Experimental ROM parity and optimizer-label audit.
 8. Full public example compilation before enabling syntax by default.
 

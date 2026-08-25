@@ -5687,7 +5687,8 @@ Why this is still `v2.1` and not `v2.2`:
 ### Validation and documentation
 
 - Added the executable Amy Scenes and Overlays Lab and a GearColeco ROM test covering frame dispatch, FIRE-driven transition, shared RAM, and enter initialization.
-- Verified all 54 public examples with Balanced optimization; the same lifecycle ROM also passed all four optimization profiles in the Alexis development repository.
+- Verified all 54 public examples with Balanced optimization; the same lifecycle ROM also passed all five optimization profiles in the Alexis development repository.
 - Updated the Amy reference, autocomplete, syntax highlighting, and historical local-variable notes.
 - Fixed comparisons containing computed array indexes so `<<`/`>>` inside brackets are no longer mistaken for relational operators; the same computed element now works directly as a routine argument.
 - Added scene call-graph ownership checks: cross-part accesses and scene-storage helpers shared by multiple scenes now fail closed, while permanent-only shared helpers remain valid.
+- Strengthened the GearColeco scene ROM test with exact lower/upper overlay-boundary assertions and a permanent sentinel checked before and after the Menu-to-Game transition across all five optimization profiles.
