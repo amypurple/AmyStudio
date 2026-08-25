@@ -435,6 +435,16 @@ export function createRomTestRecorderUi({
       const displayName = sourceMarker
         ? `Line ${sourceMarker[1]}${sourceMarker[2] ? ` · instance ${sourceMarker[2]}` : ""}`
         : symbol.overlay?.qualifiedName || symbol.name;
+      const activeWhen = symbol.overlay?.activeWhen;
+      const activeSymbol = activeWhen && symbols.find((entry) => entry.name.toLowerCase() === activeWhen.symbol.toLowerCase());
+      const activeValue = activeSymbol && core ? core.readRam(activeSymbol.address, 1)[0] : null;
+      const overlayState = !symbol.overlay
+        ? ""
+        : !activeWhen
+          ? "active part unknown"
+          : activeValue === activeWhen.equals
+            ? "active part"
+            : `inactive part (selector ${activeValue ?? "?"}, requires ${activeWhen.equals})`;
       const navigate = document.createElement("button");
       navigate.type = "button";
       navigate.className = "rom-recorder__symbol";
@@ -444,7 +454,7 @@ export function createRomTestRecorderUi({
       navigate.title = sourceMarker
         ? `${displayName} at ${formatHex(symbol.address)}. Reveal Amy source.`
         : symbol.overlay
-          ? `${displayName} (${symbol.overlay.type}, ${symbol.overlay.width} byte${symbol.overlay.width === 1 ? "" : "s"}) at ${formatHex(symbol.address)}. RAM is shared by overlay ${symbol.overlay.overlayName}; active part is unknown.`
+          ? `${displayName} (${symbol.overlay.type}, ${symbol.overlay.width} byte${symbol.overlay.width === 1 ? "" : "s"}) at ${formatHex(symbol.address)}. RAM is shared by overlay ${symbol.overlay.overlayName}; ${overlayState}.`
           : `${symbol.name} at ${formatHex(symbol.address)}. Open CPU memory.`;
       navigate.addEventListener("click", () => {
         if (sourceMarker) {
@@ -455,7 +465,7 @@ export function createRomTestRecorderUi({
         field("ramAddress").value = formatHex(symbol.address);
         selectTab("ram");
         setRecorderStatus(symbol.overlay
-          ? `Memory at ${displayName} (${formatHex(symbol.address)}). Shared overlay address; active part is unknown.`
+          ? `Memory at ${displayName} (${formatHex(symbol.address)}). Shared overlay address; ${overlayState}.`
           : `Memory at ${symbol.name} (${formatHex(symbol.address)}).`);
       });
       const breakpoint = document.createElement("button");

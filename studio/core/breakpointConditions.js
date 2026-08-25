@@ -14,7 +14,7 @@ function parseConditionNumber(value) {
 export function parseBreakpointCondition(value) {
   const source = String(value || "").trim();
   if (!source) return null;
-  const match = source.match(/^([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]{1,4}|0x[0-9A-Fa-f]{1,4})\s*(<=|>=|<>|!=|=|<|>)\s*(-?(?:\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|\d+))$/);
+  const match = source.match(/^([A-Za-z_][A-Za-z0-9_.]*|\$[0-9A-Fa-f]{1,4}|0x[0-9A-Fa-f]{1,4})\s*(<=|>=|<>|!=|=|<|>)\s*(-?(?:\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|\d+))$/);
   if (!match) throw new Error('Use Score >= 10, Lives = 0, or $712F <> 3.');
   return { operand: match[1], operator: match[2], expected: parseConditionNumber(match[3]) };
 }
@@ -29,13 +29,14 @@ export function inferAmyScalarTypes(sourceText) {
 }
 
 function resolveOperand(operand, symbols) {
-  if (/^(?:\$|0x)/i.test(operand)) return parseConditionNumber(operand) & 0xFFFF;
+  if (/^(?:\$|0x)/i.test(operand)) return { address: parseConditionNumber(operand) & 0xFFFF };
   const needle = operand.toLowerCase();
   const exactNames = new Set([needle, `amy_uvar_${needle}`]);
-  const exact = symbols.find((entry) => exactNames.has(entry.name.toLowerCase()));
-  if (exact) return exact.address;
+  const exact = symbols.find((entry) => exactNames.has(entry.name.toLowerCase())
+    || entry.overlay?.qualifiedName?.toLowerCase() === needle);
+  if (exact) return exact;
   const suffixMatches = symbols.filter((entry) => entry.name.toLowerCase().endsWith(`_${needle}`));
-  if (suffixMatches.length === 1) return suffixMatches[0].address;
+  if (suffixMatches.length === 1) return suffixMatches[0];
   if (suffixMatches.length > 1) throw new Error(`Variable "${operand}" is ambiguous; use its full memory-map symbol.`);
   throw new Error(`Variable "${operand}" has no addressable RAM symbol.`);
 }
@@ -57,7 +58,18 @@ export function evaluateBreakpointCondition({ condition, valueType = "auto", sym
   const resolvedType = valueType === "auto" ? (inferAmyScalarTypes(sourceText).get(operandName) || "u8") : valueType;
   if (!/^[ui](?:8|16)$/.test(resolvedType)) throw new Error(`Unsupported breakpoint type "${resolvedType}".`);
   const width = resolvedType.endsWith("16") ? 2 : 1;
-  const address = resolveOperand(parsed.operand, symbols);
+  const resolved = resolveOperand(parsed.operand, symbols);
+  const address = resolved.address;
+  const activeWhen = resolved.overlay?.activeWhen;
+  if (activeWhen) {
+    const activeSymbol = symbols.find((entry) => entry.name.toLowerCase() === activeWhen.symbol.toLowerCase());
+    if (!activeSymbol) throw new Error(`Overlay active-part symbol "${activeWhen.symbol}" is unavailable.`);
+    const activeBytes = readMemory(activeSymbol.address, 1);
+    if (!(activeBytes instanceof Uint8Array) || activeBytes.length < 1) throw new Error(`Cannot read ${formatHex(activeSymbol.address)}.`);
+    if (activeBytes[0] !== activeWhen.equals) {
+      return { matched: false, inactive: true, address, activeValue: activeBytes[0], expectedActiveValue: activeWhen.equals };
+    }
+  }
   const bytes = readMemory(address, width);
   if (!(bytes instanceof Uint8Array) || bytes.length < width) throw new Error(`Cannot read ${formatHex(address)}.`);
   let actual = width === 2 ? bytes[0] | (bytes[1] << 8) : bytes[0];

@@ -33,6 +33,7 @@ assert.deepEqual(symbols.map((entry) => entry.name), [
   "AMY_UPROC_Main",
   "AMY_ULBL_BREAK_game_loop"
 ]);
+
 const overlaySymbols = annotateOverlaySymbols(parseAmySymbols(`
 AMY_SCENE_Menu_Selection: equ $7000
 AMY_SCENE_Game_PlayerX: equ $7000
@@ -40,7 +41,7 @@ AMY_UVAR_Global: equ $7001
 `), [{
   name: "ArcadeRam",
   parts: [
-    { name: "Menu", fields: [{ asmName: "AMY_SCENE_Menu_Selection", qualifiedName: "ArcadeRam.Menu.Selection", type: "u8", width: 1, offset: 0 }] },
+    { name: "Menu", fields: [{ asmName: "AMY_SCENE_Menu_Selection", qualifiedName: "ArcadeRam.Menu.Selection", type: "u8", width: 1, offset: 0, activeWhen: { symbol: "AMY_UVAR_ActiveScene", equals: 1 } }] },
     { name: "Game", fields: [{ asmName: "AMY_SCENE_Game_PlayerX", qualifiedName: "ArcadeRam.Game.PlayerX", type: "u8", width: 1, offset: 0 }] }
   ]
 }]);

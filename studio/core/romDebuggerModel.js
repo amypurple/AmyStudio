@@ -22,29 +22,6 @@ export function parseAmySymbols(text) {
   return symbols.sort((left, right) => left.address - right.address || left.name.localeCompare(right.name));
 }
 
-export function annotateOverlaySymbols(symbols, ramOverlays) {
-  const fieldsByAsmName = new Map();
-  for (const overlay of Array.isArray(ramOverlays) ? ramOverlays : []) {
-    for (const part of Array.isArray(overlay?.parts) ? overlay.parts : []) {
-      for (const field of Array.isArray(part?.fields) ? part.fields : []) {
-        fieldsByAsmName.set(String(field.asmName || "").toLowerCase(), {
-          overlayName: overlay.name,
-          partName: part.name,
-          qualifiedName: field.qualifiedName,
-          type: field.type,
-          declaredType: field.declaredType,
-          width: field.width,
-          offset: field.offset
-        });
-      }
-    }
-  }
-  return (symbols || []).map((symbol) => {
-    const overlay = fieldsByAsmName.get(String(symbol.name || "").toLowerCase());
-    return overlay ? { ...symbol, overlay } : symbol;
-  });
-}
-
 export function resolveSymbolOrAddress(value, symbols) {
   const source = String(value || "").trim();
   if (!source) throw new Error("Enter a symbol or address.");
@@ -161,6 +138,30 @@ export function listAmyProcedureSourceMarkers(symbols, sourceText) {
     if (!match) return [];
     const sourceLine = procedures.get(match[1].toLowerCase());
     return sourceLine ? [{ ...symbol, sourceLine, instance: 0, procedureEntry: true, label: `Line ${sourceLine}` }] : [];
+  });
+}
+
+export function annotateOverlaySymbols(symbols, ramOverlays) {
+  const fieldsByAsmName = new Map();
+  for (const overlay of Array.isArray(ramOverlays) ? ramOverlays : []) {
+    for (const part of Array.isArray(overlay?.parts) ? overlay.parts : []) {
+      for (const field of Array.isArray(part?.fields) ? part.fields : []) {
+        fieldsByAsmName.set(String(field.asmName || "").toLowerCase(), {
+          overlayName: overlay.name,
+          partName: part.name,
+          qualifiedName: field.qualifiedName,
+          type: field.type,
+          declaredType: field.declaredType,
+          width: field.width,
+          offset: field.offset,
+          activeWhen: field.activeWhen
+        });
+      }
+    }
+  }
+  return (symbols || []).map((symbol) => {
+    const overlay = fieldsByAsmName.get(String(symbol.name || "").toLowerCase());
+    return overlay ? { ...symbol, overlay } : symbol;
   });
 }
 

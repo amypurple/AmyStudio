@@ -235,6 +235,7 @@ export function transpileAmyCore(sourceText, deps) {
   function lowerStateMachines(rawLines) {
     const result = [...rawLines];
     const machines = new Map();
+    const overlayBindings = new Map();
     const subNames = new Set();
     let current = null;
     let routineDepth = 0;
@@ -354,6 +355,16 @@ export function transpileAmyCore(sourceText, deps) {
     for (let lineIndex = 0; lineIndex < result.length; lineIndex += 1) {
       const rawLine = result[lineIndex];
       const stripped = stripAmyInlineComment(rawLine).trim();
+      const binding = stripped.match(/^bind\s+overlay\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)\s+using\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (binding) {
+        const overlayKey = binding[1].toLowerCase();
+        const machine = machines.get(binding[3].toLowerCase());
+        if (!machine) return { ok: false, log: `Unknown state machine '${binding[3]}' at line ${lineIndex + 1}` };
+        if (overlayBindings.has(overlayKey)) return { ok: false, log: `Duplicate active-part binding for overlay '${binding[1]}' at line ${lineIndex + 1}` };
+        overlayBindings.set(overlayKey, { overlayName: binding[1], selectorName: binding[2], machine, line: lineIndex + 1 });
+        result[lineIndex] = "";
+        continue;
+      }
       const dispatch = stripped.match(/^dispatch\s+(.+?)\s+using\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
       if (dispatch) {
         const machine = machines.get(dispatch[2].toLowerCase());
@@ -368,7 +379,7 @@ export function transpileAmyCore(sourceText, deps) {
       result[lineIndex] = replaced.line;
     }
 
-    return { ok: true, lines: result };
+    return { ok: true, lines: result, machines, overlayBindings };
   }
   function pruneSourceUnreachableAfterRoutineTerminators(rawLines) {
     const result = [...rawLines];
@@ -4452,6 +4463,30 @@ export function transpileAmyCore(sourceText, deps) {
     localBytes: staticAbiLocalBytes,
     totalBytes: staticAbiParamBytes + staticAbiLocalBytes
   };
+
+  for (const binding of stateMachineLowering.overlayBindings.values()) {
+    const layout = overlayLayouts.find((entry) => lowerName(entry.name) === lowerName(binding.overlayName));
+    if (!layout) {
+      return { ok: false, asmBody: "", log: `Active-part binding at line ${binding.line} references unknown overlay '${binding.overlayName}'.` };
+    }
+    const selector = getRuntimeInfo(binding.selectorName);
+    if (!selector || selector.declaredType !== "u8" || selector.scope !== "global" || !Number.isInteger(selector.address)) {
+      return { ok: false, asmBody: "", log: `Overlay '${layout.name}' active-part selector '${binding.selectorName}' must be a global u8 variable.` };
+    }
+    for (const part of layout.parts) {
+      const state = binding.machine.states.get(lowerName(part.name));
+      if (!state) {
+        return { ok: false, asmBody: "", log: `Overlay part '${layout.name}.${part.name}' has no matching state '${binding.machine.name}.${part.name}'.` };
+      }
+      part.activeWhen = { symbol: selector.asmName, equals: state.value };
+      for (const field of part.fields) field.activeWhen = { ...part.activeWhen };
+    }
+    layout.activeBinding = {
+      selectorName: binding.selectorName,
+      symbol: selector.asmName,
+      machineName: binding.machine.name
+    };
+  }
 
   return finalizeAmyTranspile({
     state: {

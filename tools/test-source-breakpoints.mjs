@@ -83,6 +83,15 @@ assert.equal(evaluateBreakpointCondition({ condition: "Velocity < 0", symbols, s
 memory[0x7122] = 0x2C;
 memory[0x7123] = 0x01;
 assert.equal(evaluateBreakpointCondition({ condition: "$7122 >= 300", valueType: "u16", symbols, sourceText: source, readMemory }).matched, true);
+symbols.push(
+  { name: "AMY_UVAR_ActiveScene", address: 0x7124 },
+  { name: "AMY_SCENE_Menu_Selection", address: 0x7130, overlay: { qualifiedName: "SceneRam.Menu.Selection", activeWhen: { symbol: "AMY_UVAR_ActiveScene", equals: 1 } } }
+);
+memory[0x7124] = 2;
+memory[0x7130] = 7;
+assert.equal(evaluateBreakpointCondition({ condition: "SceneRam.Menu.Selection = 7", symbols, sourceText: source, readMemory }).inactive, true);
+memory[0x7124] = 1;
+assert.equal(evaluateBreakpointCondition({ condition: "SceneRam.Menu.Selection = 7", symbols, sourceText: source, readMemory }).matched, true);
 assert.throws(() => parseBreakpointCondition("Score plus 1"), /Use Score/);
 
 const studioHtml = fs.readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");

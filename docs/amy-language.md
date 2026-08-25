@@ -428,11 +428,24 @@ is accepted for migration but still reports the canonical assignment form.
 
 Phase A intentionally supports one overlay group per program. It provides allocation,
 qualified access, aliases, and accurate RAM accounting. It does not yet provide scene
-lifecycle syntax, active-part debugger state, automatic initialization, or lifetime
+lifecycle syntax, automatic initialization, or lifetime
 proof. Until those later gates are implemented, the program is responsible for using
 only the part that its current game state owns and initializing that part before reading
 it. Overlay addresses must not be passed by `ref`, stored in address tables, or accessed
 from opaque ASM in portable Phase-A code.
+
+An optional debugger binding connects overlay parts to a typed state machine without
+changing program execution:
+
+```amy
+u8 ActiveScene = Scenes.Menu
+bind overlay SceneRam to ActiveScene using Scenes
+```
+
+Every overlay part name must match a state name in `Scenes`, and the selector must be a
+global `u8`. The compiler adds an `activeWhen` predicate to every qualified field. ROM
+TEST & DEBUG then suppresses watches for inactive aliases sharing the same physical byte.
+The program remains responsible for assigning `ActiveScene`; zero means no part is active.
 
 Same-type declarations can share one line:
 

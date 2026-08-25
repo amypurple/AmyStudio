@@ -302,6 +302,10 @@ check("type mismatch u8 arg to ref u16 parameter is rejected", () => {
 });
 
 const overlayMetadataResult = transpileAmy(`memory "colecovision_legacy_sdcc"
+state machine Scenes:
+  Menu calls MenuFrame
+  Game calls GameFrame
+end state machine
 record Actor:
   u8 X
   u8 Flags[3]
@@ -317,7 +321,15 @@ overlay SceneRam
   Menu as MenuMemory
   Game as GameMemory
 end overlay
+u8 ActiveScene = Scenes.Menu
+bind overlay SceneRam to ActiveScene using Scenes
 loop forever
+sub MenuFrame:
+  return
+end sub
+sub GameFrame:
+  return
+end sub
 `);
 
 check("overlay metadata preserves logical fields and shared addresses", () => {
@@ -329,6 +341,7 @@ check("overlay metadata preserves logical fields and shared addresses", () => {
   assert.equal(menu.fields[0].qualifiedName, "SceneRam.Menu.Selection");
   assert.equal(menu.fields[0].asmName, "AMY_SCENE_Menu_Selection");
   assert.equal(menu.fields[0].address, overlay.address);
+  assert.deepEqual(menu.fields[0].activeWhen, { symbol: "AMY_UVAR_ActiveScene", equals: 1 });
   const actors = game.fields.find((field) => field.qualifiedName === "SceneRam.Game.Actors");
   assert.deepEqual(
     { type: actors.type, length: actors.length, elementSize: actors.elementSize, address: actors.address },
@@ -339,6 +352,33 @@ check("overlay metadata preserves logical fields and shared addresses", () => {
     { type: score.type, width: score.width, digitCount: score.digitCount, byteCount: score.byteCount },
     { type: "bcd", width: 2, digitCount: 3, byteCount: 2 }
   );
+  assert.deepEqual(game.fields[0].activeWhen, { symbol: "AMY_UVAR_ActiveScene", equals: 2 });
+});
+check("overlay binding rejects a non-u8 selector", () => {
+  const bad = transpileAmy(`memory "colecovision_legacy_sdcc"
+state machine Scenes:
+  Menu calls MenuFrame
+  Game calls GameFrame
+end state machine
+record Mem:
+  u8 Value
+end record
+overlay SceneRam
+  Menu as Mem
+  Game as Mem
+end overlay
+i16 ActiveScene = 1
+bind overlay SceneRam to ActiveScene using Scenes
+loop forever
+sub MenuFrame:
+  return
+end sub
+sub GameFrame:
+  return
+end sub
+`);
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /must be a global u8 variable/i);
 });
 
 const BIOS_STUBS = "TURN_OFF_SOUND EQU $1FD6\nMODE_1 EQU $1F85\n";

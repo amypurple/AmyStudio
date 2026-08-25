@@ -1,13 +1,13 @@
 import { matchAmyPhraseRanges } from "./amyGrammar.js";
 
 const KEYWORDS = new Set([
-  "and", "as", "asm", "asset", "at", "between", "bitmap", "by", "call", "cartridge",
+  "and", "as", "asm", "asset", "at", "between", "bind", "bitmap", "by", "call", "cartridge",
   "case", "choose", "clear", "cls", "codec", "const", "continue", "copy", "data",
   "decompress", "default", "define", "dim", "disable", "display", "do", "downto",
   "each", "else", "elseif", "enable", "end", "endif", "exit", "false", "fill", "fire",
   "for", "forever", "frame", "from", "function", "goto", "graphics", "hide",
   "hitbox", "if", "in", "include", "label", "let", "local", "loop", "memory", "mute",
-  "next", "nmi", "not", "on", "or", "pause", "picture", "play", "print", "put",
+  "next", "nmi", "not", "on", "or", "overlay", "pause", "picture", "play", "print", "put",
   "ram", "raw", "read", "record", "ref", "repeat", "reset", "restore", "return",
   "screen", "select", "set", "show", "song", "sound", "sprite", "sprite16",
   "sprites", "spinners", "status", "step", "stop", "sub", "swap", "text", "then",

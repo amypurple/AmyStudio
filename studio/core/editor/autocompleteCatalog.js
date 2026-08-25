@@ -245,6 +245,7 @@ export const AMY_AUTOCOMPLETE = [
   ["overlay SceneRam", "Begin one RAM overlay whose record-backed parts share the same physical addresses"],
   ["Menu as MenuMemory", "Bind a named overlay part to a previously defined record layout"],
   ["end overlay", "Close a RAM-overlay declaration"],
+  ["bind overlay SceneRam to ActiveScene using Scenes", "Let ROM TEST & DEBUG identify the active overlay part through an existing global u8 state selector"],
   ["bcd digits 6 Score", "Declare a packed scalar BCD field inside a record or a packed BCD global"],
   ["dispatch BossState using BossBehavior", "Run the handler selected by a typed state value through one bounded ROM table"],
   ["for I = 8 to 0 step -2", "Counted loop using a negative step to move downward naturally"],
