@@ -992,6 +992,11 @@ The overlay form lowers to a counted loop whose element references remain fully
 qualified. It therefore allocates no hidden alias pointer, but repeated field accesses
 may recompute the indexed address. Use `for each` for clarity and measure very hot loops.
 
+Qualified primitive `u8` array fields can also act as buffers for VRAM reads, including
+`Buffer = get count N at X,Y`, `get frame ... into Buffer`, and `read vram ... into Buffer`.
+For constant frame dimensions, the compiler verifies that the buffer contains at least
+`width * height` bytes and rejects undersized destinations before assembly.
+
 Qualified fields can also be loop counters and mutation targets:
 
 ```basic

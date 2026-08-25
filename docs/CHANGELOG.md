@@ -9,12 +9,13 @@
 - Extended verb-style mutations (`inc`, `dec`, `add`, `sub`, bitwise mutation, `negate`, `not`, and `toggle`) and counted `for` loop counters to qualified record and overlay fields.
 - Extended qualified byte operands to canonical `get char` destinations, `play sound`, `stop sound`, and canonical typed printing.
 - Extended canonical `for each Element, Index in Array` to qualified overlay record-array fields using pointer-free counted lowering.
+- Added qualified primitive overlay arrays as VRAM read/frame buffers and fixed constant-size frame reads to reject undersized buffers.
 - Clarified that canonical `for each` requires an explicit declared `u8` index.
 
 ### Validation
 
 - Expanded overlay code-generation coverage across all five profiles with qualified VRAM reads, sound indexes, typed printing, and fail-closed wrong-width tests.
-- Expanded the GearColeco overlay self-test to 21 runtime assertions, covering a 7-byte record stride, constant and variable indices, `u16`, signed `i8`, the field immediately following a record array, qualified mutations, qualified ascending/descending loop counters, and qualified `for each` in all five optimization profiles.
+- Expanded the GearColeco overlay self-test to 23 runtime assertions, covering record stride, mixed scalar types, qualified mutations and loops, plus VRAM reads into qualified primitive array fields in all five optimization profiles.
 - Assembled all 198 examples successfully with Balanced optimization.
 - Moved Fly Swatter's four actors into the Arcade Trio overlay: permanent RAM fell from 145 to 125 bytes, total physical RAM from 297 to 277 bytes, and Experimental ROM size from 15,803 to 15,798 bytes.
 

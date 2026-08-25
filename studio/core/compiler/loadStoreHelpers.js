@@ -30,6 +30,29 @@ export function createLoadStoreHelpers(ctx) {
   }
 
   function emitLoadArrayAddressIntoHL(name, indexToken) {
+    const qualifiedField = parseRecordFieldRef(name);
+    if (qualifiedField?.isWholeArray) {
+      const fieldInfo = qualifiedField.fieldInfo;
+      const normalizedIndex = normalizeExpression(indexToken);
+      let numericIndex = null;
+      if (/^[0-9]+$/.test(normalizedIndex)) numericIndex = Number.parseInt(normalizedIndex, 10);
+      else if (/^\$[0-9A-F]+$/i.test(normalizedIndex)) numericIndex = Number.parseInt(normalizedIndex.slice(1), 16);
+      if (Number.isInteger(numericIndex)) {
+        if (numericIndex < 0 || numericIndex >= fieldInfo.length) return null;
+        const lines = emitLoadRecordFieldAddressIntoHL(name);
+        const offset = numericIndex * fieldInfo.elementSize;
+        if (offset > 0 && offset <= 3) for (let i = 0; i < offset; i += 1) lines.push("    inc hl");
+        else if (offset) lines.push(`    ld de,${offset}`, "    add hl,de");
+        return lines;
+      }
+      const indexType = resolveValueType(normalizedIndex);
+      if (indexType && indexType !== "int8") return null;
+      const loadIndex = emitLoadInt8Into("a", normalizedIndex);
+      const scale = emitScaleUnsignedByteAIntoDE(fieldInfo.elementSize);
+      const lines = emitLoadRecordFieldAddressIntoHL(name);
+      if (!loadIndex || !scale || !lines) return null;
+      return [...lines, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
+    }
     const info = getRuntimeInfo(name);
     if (!info || (!isIndexedByteReadable(info) && info.kind !== "array" && info.kind !== "record_array")) return null;
     const normalizedIndex = normalizeExpression(indexToken);
@@ -191,6 +214,16 @@ export function createLoadStoreHelpers(ctx) {
   }
 
   function getByteArrayBufferInfo(bufferToken, minimumLength) {
+    const fieldRef = parseRecordFieldRef(bufferToken);
+    if (fieldRef?.isWholeArray && fieldRef.fieldInfo.type === "int8") {
+      if (fieldRef.fieldInfo.length < minimumLength) return null;
+      return {
+        kind: "array_field",
+        elementType: "int8",
+        length: fieldRef.fieldInfo.length,
+        fieldRef
+      };
+    }
     const info = getRuntimeInfo(bufferToken);
     if (!info || info.kind !== "array" || info.elementType !== "int8") return null;
     if (typeof info.length === "number" && info.length < minimumLength) return null;

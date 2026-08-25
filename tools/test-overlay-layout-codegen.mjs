@@ -98,6 +98,7 @@ record GameMemory:
   u8 Prefix
   Actor Items[3]
   u8 After
+  u8 Buffer[8]
 end record
 record OtherMemory:
   u8 Bytes[23]
@@ -121,6 +122,9 @@ u8 EachIndex = 0
 for each Item, EachIndex in Shared.Game.Items
   Item.X += 1
 next Item
+read vram vram.name count 4 into Shared.Game.Buffer
+Shared.Game.Buffer = get count 4 at 0,0
+get frame size 2,2 at 0,0 into Shared.Game.Buffer
 `, true, profile);
     const base = equAddress(nestedArray.asm, "AMY_OVERLAY_Shared");
     assert.equal(equAddress(nestedArray.asm, "AMY_SCENE_Game_Items"), base + 1);
@@ -207,6 +211,17 @@ overlay Shared
 end overlay
 play sound Shared.First.Word
 `, false).output, /play sound requires a byte sound index/i);
+
+  assert.match(compile("overlay-buffer-too-small", `
+record A:
+  u8 Buffer[3]
+end record
+overlay Shared
+  First as A
+  Second as A
+end overlay
+get frame size 2,2 at 0,0 into Shared.First.Buffer
+`, false).output, /requires a u8 buffer/i);
 
   const lateMemorySource = join(temp, "overlay-late-memory.alexis");
   writeFileSync(lateMemorySource, `project "late memory"

@@ -86,6 +86,14 @@ export function handleVramTextStatement({
       "    call AMY_VRAM_END"
     ];
   }
+
+  function getConstantFrameByteCount(widthToken, heightToken) {
+    const width = tryEvaluateConstantExpression?.(normalizeExpression(widthToken));
+    const height = tryEvaluateConstantExpression?.(normalizeExpression(heightToken));
+    return Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0
+      ? width * height
+      : 1;
+  }
   function linesClobberDE(lines) {
     return Array.isArray(lines) && lines.some((line) => {
       const code = String(line || "").replace(/;.*/, "").trim().toLowerCase();
@@ -841,7 +849,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const readVram = line.match(/^read\s+vram\s+(.+?)\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const readVram = line.match(/^read\s+vram\s+(.+?)\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+into\s+(.+)$/i);
   if (readVram) {
     const sourceCode = emitLoadVramAddressIntoDE(readVram[1]);
     const targetInfo = getByteArrayBufferInfo(readVram[3], 1);
@@ -1233,7 +1241,7 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getCharAssign[1])] };
   }
 
-  const getCountInto = line.match(/^(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const getCountInto = line.match(/^(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i);
   if (getCountInto) {
     addCompilerWarning?.(`Prefer "${getCountInto[4]} = get count ${getCountInto[1]} at ${getCountInto[2]},${getCountInto[3]}" instead of "${rawLine}".`);
     const targetInfo = getByteArrayBufferInfo(getCountInto[4], 1);
@@ -1263,7 +1271,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const getCountAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getCountAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getCountAssign) {
     const targetInfo = getByteArrayBufferInfo(getCountAssign[1], 1);
     const loadCount = emitLoadCountIntoBC(getCountAssign[2]);
@@ -1292,7 +1300,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const getFrameInto = line.match(/^(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const getFrameInto = line.match(/^(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i);
   if (getFrameInto) {
     addCompilerWarning?.(`Prefer "${getFrameInto[5]} = get frame size ${getFrameInto[1]},${getFrameInto[2]} at ${getFrameInto[3]},${getFrameInto[4]}" instead of "${rawLine}".`);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
@@ -1302,7 +1310,7 @@ export function handleVramTextStatement({
       emitLoadInt8ValueIntoPreserving
     });
     const loadTarget = emitLoadArrayAddressIntoHL(getFrameInto[5], "0");
-    const targetInfo = getByteArrayBufferInfo(getFrameInto[5], 1);
+    const targetInfo = getByteArrayBufferInfo(getFrameInto[5], getConstantFrameByteCount(getFrameInto[1], getFrameInto[2]));
     if (!loadInputs || !loadTarget || !targetInfo) {
       return { ok: false, handled: true, log: `get frame size W,H at X,Y into Buffer requires a u8 buffer plus byte-sized width, height, and coordinates: ${rawLine}` };
     }
@@ -1321,7 +1329,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const getFrameAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getFrameAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getFrameAssign) {
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "GET_BKGRND",
@@ -1330,7 +1338,7 @@ export function handleVramTextStatement({
       emitLoadInt8ValueIntoPreserving
     });
     const loadTarget = emitLoadArrayAddressIntoHL(getFrameAssign[1], "0");
-    const targetInfo = getByteArrayBufferInfo(getFrameAssign[1], 1);
+    const targetInfo = getByteArrayBufferInfo(getFrameAssign[1], getConstantFrameByteCount(getFrameAssign[2], getFrameAssign[3]));
     if (!loadInputs || !loadTarget || !targetInfo) {
       return { ok: false, handled: true, log: `Buffer = get frame size W,H at X,Y requires a u8 buffer plus byte-sized width, height, and coordinates: ${rawLine}` };
     }
