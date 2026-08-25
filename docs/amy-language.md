@@ -954,7 +954,8 @@ next
 
 `next I` is preferred when the loop variable is useful documentation. The opening `for` line may end with `:` if desired.
 
-Fixed global arrays also support an element alias with an explicit byte index:
+Fixed global arrays and qualified overlay record-array fields support element iteration
+with an explicit byte index:
 
 ```basic
 Actor Flies[3]
@@ -965,28 +966,19 @@ for each Fly, I in Flies
 next
 ```
 
-`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a global fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
+`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
 
 The canonical Amy syntax always includes the comma and explicit index:
 
 ```basic
-for each Element, Index in GlobalArray   ' valid
+for each Element, Index in GlobalArray              ' valid
+for each Element, Index in Overlay.Part.RecordArray ' valid
 ```
 
 The shorter form used by some other languages is not currently Amy syntax:
 
 ```basic
 for each Element in GlobalArray          ' rejected: explicit u8 index required
-```
-
-An array-of-record field inside an overlay is addressable, but it is not yet a global
-array accepted by `for each`. Use a counted loop for that case:
-
-```basic
-u8 I = 0
-for I = 0 to 3
-  SceneRam.Game.Enemies[I].X += 1
-next I
 ```
 
 Overlay record-array fields support the same canonical form:

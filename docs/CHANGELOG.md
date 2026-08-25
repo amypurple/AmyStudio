@@ -13,6 +13,7 @@
 - Added packed scalar `bcd digits N` fields to records and overlays, including canonical assignment, mutation, comparison, copy, clear, formatting, and printing while rejecting BCD arrays and mismatched digit-count copies.
 - Added combined record-array and scalar-field indexing such as `Overlay.Part.Items[I].Flags[J]`, including independent expression indexes and fail-closed bounds/type checks.
 - Clarified that canonical `for each` requires an explicit declared `u8` index.
+- Updated Studio autocomplete and the language reference for overlay `for each`, double-index qualified fields, and packed BCD record fields; removed an obsolete contradictory limitation.
 
 ### Validation
 
