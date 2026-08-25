@@ -5675,3 +5675,17 @@ Why this is still `v2.1` and not `v2.2`:
   - `Project` keeps the project name, examples, RAM summary, Method 2 summary, and status
   - `Files` now owns embedded project files and the `Audio/Voice` shortcut
   - this prepares the UI for a future graphics asset quick-add workflow without crowding project metadata
+## 2026-08-25 - Safe scene lifecycle
+
+### Amy language and compiler
+
+- Added `scene Name uses Overlay.Part`, `on enter`, `on frame`, `end scene`, and mainline-only `enter Name`.
+- Added a compiler-owned single NMI dispatcher for the active scene and NMI-safe transitions that initialize the new overlay part before publishing it as active.
+- Added fail-closed validation for missing or parameterized handlers, blocking frame paths, unsafe enter paths, inline ASM, and conflicting top-level frame hooks.
+- Removed obsolete `end function` highlighting; functions end with their terminal `return Value`.
+
+### Validation and documentation
+
+- Added the executable Amy Scenes and Overlays Lab and a GearColeco ROM test covering frame dispatch, FIRE-driven transition, shared RAM, and enter initialization.
+- Verified all 54 public examples with Balanced optimization; the same lifecycle ROM also passed all four optimization profiles in the Alexis development repository.
+- Updated the Amy reference, autocomplete, syntax highlighting, and historical local-variable notes.
