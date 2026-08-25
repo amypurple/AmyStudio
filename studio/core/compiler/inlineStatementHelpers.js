@@ -279,7 +279,7 @@ export function createInlineStatementCompiler(ctx) {
                     if (!jumpTarget) return { ok: false, lines: [], log: formatUnknownJumpTargetLog(inlineGoto[1], rawLineText) };
                     inlineLines = [`    jp ${jumpTarget}`];
                   } else {
-                    const inlineClear = inlineStmt.match(/^clear\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+                    const inlineClear = inlineStmt.match(/^clear\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)$/i);
                     if (inlineClear) {
                       inlineLines = emitClearValue(inlineClear[1]);
                       if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline clear statement: ${rawLineText}` };

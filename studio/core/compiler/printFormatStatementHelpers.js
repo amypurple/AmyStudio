@@ -498,7 +498,8 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const addBcd = line.match(/^add\s+bcd\s+([A-Za-z_][A-Za-z0-9_]*)\s+by\s+([A-Za-z_][A-Za-z0-9_]*|[0-9]+)$/i);
+  const qualifiedValue = String.raw`([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)`;
+  const addBcd = line.match(new RegExp(`^add\\s+bcd\\s+${qualifiedValue}\\s+by\\s+(.+)$`, "i"));
   if (addBcd) {
     const code = emitBcdAdd(addBcd[1], addBcd[2]);
     if (!code) return { handled: true, ok: false, log: `add bcd requires a BCD variable and a decimal literal, u8/i8 variable, or same-size BCD variable: ${rawLine}` };
@@ -506,7 +507,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const subBcd = line.match(/^sub\s+bcd\s+([A-Za-z_][A-Za-z0-9_]*)\s+by\s+([A-Za-z_][A-Za-z0-9_]*|[0-9]+)$/i);
+  const subBcd = line.match(new RegExp(`^sub\\s+bcd\\s+${qualifiedValue}\\s+by\\s+(.+)$`, "i"));
   if (subBcd) {
     const code = emitBcdSub(subBcd[1], subBcd[2]);
     if (!code) return { handled: true, ok: false, log: `sub bcd requires a BCD variable and a decimal literal, u8/i8 variable, or same-size BCD variable: ${rawLine}` };
@@ -514,7 +515,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const clearValue = line.match(/^clear\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const clearValue = line.match(new RegExp(`^clear\\s+${qualifiedValue}$`, "i"));
   if (clearValue) {
     const code = emitClearValue(clearValue[1]);
     if (!code) return { handled: true, ok: false, log: `clear requires a scalar numeric or BCD RAM/local variable: ${rawLine}` };
@@ -522,7 +523,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const clearBcd = line.match(/^clear\s+bcd\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const clearBcd = line.match(new RegExp(`^clear\\s+bcd\\s+${qualifiedValue}$`, "i"));
   if (clearBcd) {
     const code = emitBcdClear(clearBcd[1]);
     if (!code) return { handled: true, ok: false, log: `legacy clear bcd requires a BCD variable. Prefer 'clear Value': ${rawLine}` };
@@ -530,7 +531,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const copyBcd = line.match(/^copy\s+bcd\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const copyBcd = line.match(new RegExp(`^copy\\s+bcd\\s+${qualifiedValue}\\s+to\\s+${qualifiedValue}$`, "i"));
   if (copyBcd) {
     const code = emitBcdCopy(copyBcd[1], copyBcd[2]);
     if (!code) return { handled: true, ok: false, log: `legacy copy bcd requires two same-size BCD variables. Prefer 'Target = Source': ${rawLine}` };
@@ -538,7 +539,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const printBcd = line.match(/^print\s+bcd\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+tiles\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
+  const printBcd = line.match(new RegExp(`^print\\s+bcd\\s+${qualifiedValue}\\s+at\\s+(.+?)\\s*,\\s*(.+?)(?:\\s+tiles\\s+(.+))?$`, "i"));
   if (printBcd) {
     const code = emitBcdPrint(printBcd[1], printBcd[2], printBcd[3], printBcd[4] || null);
     if (!code) return { handled: true, ok: false, log: `print bcd requires a BCD variable and byte coordinates: ${rawLine}` };

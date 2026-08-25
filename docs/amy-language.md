@@ -295,6 +295,7 @@ Current implemented record scope:
 - field access such as `PieceVar.X` and `Pieces[I].Tile`
 - nested record fields such as `PieceVar.Pos.X` and `Pieces[I].Pos.Y`
 - fixed scalar array fields such as `PieceVar.HistoryX[I]` and `Pieces[P].Bonuses[2]`
+- packed scalar BCD fields such as `bcd digits 6 Score`
 
 Scalar array fields are byte-packed with no pointer, descriptor, or alignment padding.
 `u8 Values[8]` occupies exactly 8 bytes and `u16 Values[3]` exactly 6 bytes. Literal
@@ -334,7 +335,8 @@ copy LevelFlies + LevelOffset count 20 to Flies
 This checked slice form still requires matching record types. Its `count` must be a compile-time constant exactly equal to the destination array size; partial initialization is rejected. Offsets are byte offsets, so an explicit offset table is often clearer and cheaper than runtime multiplication on Z80.
 
 Records support scalar and fixed-array fields using `u8`, `i8`, `u16`, `i16`, `fixed`,
-`ufixed`, and `bool`, plus nested-record fields and one-level arrays of fixed-size records:
+`ufixed`, and `bool`, packed scalar `bcd digits N` fields, plus nested-record fields
+and one-level arrays of fixed-size records:
 
 ```basic
 record Actor:
@@ -346,6 +348,7 @@ end record
 
 record GameMemory:
   Actor Enemies[4]
+  bcd digits 6 Score
 end record
 
 GameMemory GameRam
@@ -372,6 +375,7 @@ Current record limits:
 - no local record variables yet
 - no recursive or multidimensional record-array fields yet
 - no double-index field path such as `Items[I].Flags[J]` yet
+- no arrays of BCD fields yet; BCD fields are scalar
 - record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
 
 ### RAM overlays (experimental Phase A)
@@ -409,6 +413,10 @@ normal packed record layout. A record-array element address is `field base + ind
 record size`; its members retain their constant record offsets. The compiler emits
 distinct `AMY_SCENE_*` aliases even where addresses match. A complete typed record data
 table can initialize a qualified record-array field with `copy ... to Overlay.Part.Items`.
+Packed BCD fields retain their declared digit count inside an overlay and occupy
+`ceil(digits / 2)` bytes without alignment padding. Assignment, `inc`, `dec`, `+=`,
+`-=`, comparisons, `clear`, same-digit-count copies, formatting, and canonical typed
+printing accept complete names such as `SceneRam.Game.Score`.
 Qualified byte fields are also valid where the regular typed operand pipeline is used,
 including canonical `Field = get char at X,Y`, `play sound Field`, `stop sound Field`,
 and canonical typed printing such as `print Field at X,Y`. Legacy `get ... into Field`
@@ -1260,7 +1268,8 @@ format Score into ScoreText
 BCD current limits:
 - `inc` and `dec` adjust BCD values by decimal one and preserve packed-decimal normalization
 - no `bcd *=`, `bcd /=`, or `bcd %=`
-- no BCD arrays or record fields yet
+- scalar BCD fields are supported in records and overlays; arrays of BCD remain unsupported
+- BCD-to-BCD assignment and copy require identical declared digit counts
 - no local BCD non-zero initializer
 - no implicit assignment from `u16`, `u32`, fixed, or fp5 runtime values
 - no general BCD expressions such as `Score = Score + 10`

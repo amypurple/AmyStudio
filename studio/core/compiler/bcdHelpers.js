@@ -1,6 +1,8 @@
 export function createBcdHelpers(ctx) {
   const {
     getRuntimeInfo,
+    parseRecordFieldRef,
+    emitLoadRecordFieldAddressIntoHL,
     formatIxOffset,
     scopedRuntimeName,
     parseNumericLiteral,
@@ -13,6 +15,19 @@ export function createBcdHelpers(ctx) {
     symbolOrValue,
     tryEvaluateCompileTimeNumericExpression
   } = ctx;
+
+  function getBcdInfo(varName) {
+    const info = getRuntimeInfo(varName);
+    if (info?.kind === "bcd") return info;
+    const fieldRef = parseRecordFieldRef?.(varName);
+    if (fieldRef?.fieldInfo?.type !== "bcd") return null;
+    return {
+      ...fieldRef.fieldInfo,
+      kind: "bcd",
+      storage: "record_field",
+      fieldRef
+    };
+  }
 
   function decimalToBcdBytes(n, byteCount) {
     const bytes = [];
@@ -37,8 +52,14 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitLoadBcdInt8IntoA(varName, byteIndex) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
+    if (info.storage === "record_field") {
+      const loadAddress = emitLoadRecordFieldAddressIntoHL?.(varName);
+      if (!loadAddress) return null;
+      for (let i = 0; i < byteIndex; i += 1) loadAddress.push("    inc hl");
+      return [...loadAddress, "    ld a,(hl)"];
+    }
     if (info.storage === "stack") return [`    ld a,(${formatIxOffset(info.offset + byteIndex)})`];
     const resolvedName = scopedRuntimeName(varName);
     const src = byteIndex === 0 ? resolvedName : `${resolvedName}+${byteIndex}`;
@@ -46,8 +67,14 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitStoreAToBcdInt8(varName, byteIndex) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
+    if (info.storage === "record_field") {
+      const loadAddress = emitLoadRecordFieldAddressIntoHL?.(varName);
+      if (!loadAddress) return null;
+      for (let i = 0; i < byteIndex; i += 1) loadAddress.push("    inc hl");
+      return ["    push af", ...loadAddress, "    pop af", "    ld (hl),a"];
+    }
     if (info.storage === "stack") return [`    ld (${formatIxOffset(info.offset + byteIndex)}),a`];
     const resolvedName = scopedRuntimeName(varName);
     const dst = byteIndex === 0 ? resolvedName : `${resolvedName}+${byteIndex}`;
@@ -55,8 +82,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdNormalize(varName) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const digitCount = getBcdDigitCount(info);
     if (digitCount % 2 === 0) return [];
     const msbIndex = info.byteCount - 1;
@@ -67,8 +94,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdAddOne(varName) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const lines = ["    or a"];
     for (let i = 0; i < info.byteCount; i++) {
       const loadDst = emitLoadBcdInt8IntoA(varName, i);
@@ -86,8 +113,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdSubOne(varName) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const lines = ["    or a"];
     for (let i = 0; i < info.byteCount; i++) {
       const loadDst = emitLoadBcdInt8IntoA(varName, i);
@@ -114,7 +141,7 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdAdjustByInt8(varName, valueToken, op) {
-    const valueInfo = getRuntimeInfo(valueToken);
+    const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
     if (!valueInfo || valueInfo.kind === "array" || valueInfo.type !== "int8") return null;
     const loadCount = emitLoadInt8Into("a", valueToken);
     if (!loadCount) return null;
@@ -137,11 +164,11 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdAdd(varName, valueToken) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const { byteCount } = info;
     const digitCount = getBcdDigitCount(info);
-    const valueInfo = getRuntimeInfo(valueToken);
+    const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
     if (valueInfo) {
       if (valueInfo.kind !== "array" && valueInfo.type === "int8") {
         return emitBcdAdjustByInt8(varName, valueToken, "add");
@@ -188,11 +215,11 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdSub(varName, valueToken) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const { byteCount } = info;
     const digitCount = getBcdDigitCount(info);
-    const valueInfo = getRuntimeInfo(valueToken);
+    const valueInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
     let lines = null;
     if (valueInfo) {
       if (valueInfo.kind !== "array" && valueInfo.type === "int8") {
@@ -246,8 +273,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdClear(varName) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const { byteCount } = info;
     const lines = ["    xor a"];
     for (let i = 0; i < byteCount; i++) {
@@ -259,8 +286,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdPrint(varName, xToken, yToken, tileOffsetToken) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const { byteCount } = info;
     const digitCount = getBcdDigitCount(info);
     const oddDigits = digitCount % 2 === 1;
@@ -306,8 +333,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitFormatBcdIntoBuffer(varName, bufferToken) {
-    const info = getRuntimeInfo(varName);
-    if (!info || info.kind !== "bcd") return null;
+    const info = getBcdInfo(varName);
+    if (!info) return null;
     const digits = getBcdDigitCount(info);
     const oddDigits = digits % 2 === 1;
     const bufferInfo = ctx.getByteArrayBufferInfo(bufferToken, digits);
@@ -335,8 +362,8 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdCopy(sourceName, targetName) {
-    const sourceInfo = getRuntimeInfo(sourceName);
-    const targetInfo = getRuntimeInfo(targetName);
+    const sourceInfo = getBcdInfo(sourceName);
+    const targetInfo = getBcdInfo(targetName);
     if (!sourceInfo || !targetInfo || sourceInfo.kind !== "bcd" || targetInfo.kind !== "bcd") return null;
     if (getBcdDigitCount(sourceInfo) !== getBcdDigitCount(targetInfo)) return null;
     const lines = [];
@@ -353,10 +380,10 @@ export function createBcdHelpers(ctx) {
   }
 
   function emitBcdStore(targetName, valueToken) {
-    const targetInfo = getRuntimeInfo(targetName);
-    if (!targetInfo || targetInfo.kind !== "bcd") return null;
+    const targetInfo = getBcdInfo(targetName);
+    if (!targetInfo) return null;
 
-    const sourceInfo = getRuntimeInfo(valueToken);
+    const sourceInfo = getBcdInfo(valueToken) || getRuntimeInfo(valueToken);
     if (sourceInfo?.kind === "bcd") {
       if (getBcdDigitCount(sourceInfo) !== getBcdDigitCount(targetInfo)) return null;
       return emitBcdCopy(valueToken, targetName);
@@ -399,8 +426,8 @@ export function createBcdHelpers(ctx) {
         default: return op;
       }
     };
-    const leftInfo = getRuntimeInfo(leftToken);
-    const rightInfo = getRuntimeInfo(rightToken);
+    const leftInfo = getBcdInfo(leftToken) || getRuntimeInfo(leftToken);
+    const rightInfo = getBcdInfo(rightToken) || getRuntimeInfo(rightToken);
     if (leftInfo?.kind !== "bcd" && rightInfo?.kind !== "bcd") return null;
     if (leftInfo?.kind !== "bcd" && rightInfo?.kind === "bcd" && /^[0-9]+$/.test(leftToken)) {
       return emitBcdCompareGoto(rightToken, flipOperator(operator), leftToken, asmLabel);

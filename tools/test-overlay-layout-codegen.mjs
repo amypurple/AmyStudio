@@ -223,6 +223,53 @@ end overlay
 get frame size 2,2 at 0,0 into Shared.First.Buffer
 `, false).output, /requires a u8 buffer/i);
 
+  for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
+    const bcd = compile("overlay-bcd-field", `
+record ScoreMemory:
+  u8 Prefix
+  bcd digits 3 Score
+  u8 Marker
+  bcd digits 3 Best
+end record
+record OtherMemory:
+  u8 Bytes[6]
+end record
+overlay Shared
+  Scores as ScoreMemory
+  Other as OtherMemory
+end overlay
+Shared.Scores.Score = 123
+inc Shared.Scores.Score
+Shared.Scores.Score += 5
+copy bcd Shared.Scores.Score to Shared.Scores.Best
+if Shared.Scores.Best = 129 then Shared.Scores.Marker = 1
+print Shared.Scores.Best at 0,0
+clear bcd Shared.Scores.Score
+`, true, profile);
+    const base = equAddress(bcd.asm, "AMY_OVERLAY_Shared");
+    assert.equal(equAddress(bcd.asm, "AMY_SCENE_Scores_Score"), base + 1);
+    assert.equal(equAddress(bcd.asm, "AMY_SCENE_Scores_Marker"), base + 3);
+    assert.equal(equAddress(bcd.asm, "AMY_SCENE_Scores_Best"), base + 4);
+  }
+
+  assert.match(compile("overlay-bcd-array-rejected", `
+record BadScoreMemory:
+  bcd digits 3 Scores[2]
+end record
+`, false).output, /invalid record field declaration/i);
+
+  assert.match(compile("overlay-bcd-copy-size-rejected", `
+record MixedScoreMemory:
+  bcd digits 3 Score
+  bcd digits 4 Best
+end record
+overlay Shared
+  Scores as MixedScoreMemory
+  Other as MixedScoreMemory
+end overlay
+copy bcd Shared.Scores.Score to Shared.Scores.Best
+`, false).output, /same-size BCD variables/i);
+
   const lateMemorySource = join(temp, "overlay-late-memory.alexis");
   writeFileSync(lateMemorySource, `project "late memory"
 record A:

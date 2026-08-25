@@ -1415,14 +1415,15 @@ export function transpileAmyCore(sourceText, deps) {
           sawEnd = true;
           break;
         }
-        const fieldMatch = fieldLine.match(simpleRecordFieldRe);
+        const bcdFieldMatch = fieldLine.match(/^bcd\s+digits\s+([1-9]|10|11|12)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        const fieldMatch = bcdFieldMatch || fieldLine.match(simpleRecordFieldRe);
         if (!fieldMatch) {
           return `Invalid record field declaration: ${fieldRaw}`;
         }
-        const declaredTypeToken = fieldMatch[1];
+        const declaredTypeToken = bcdFieldMatch ? "bcd" : fieldMatch[1];
         const declaredType = normalizeDeclaredType(declaredTypeToken.toLowerCase());
         const fieldName = fieldMatch[2];
-        const arrayLength = fieldMatch[3] === undefined ? null : Number.parseInt(fieldMatch[3], 10);
+        const arrayLength = bcdFieldMatch || fieldMatch[3] === undefined ? null : Number.parseInt(fieldMatch[3], 10);
         if (!isValidSymbolName(fieldName) || isReservedAmyIdentifier(fieldName) || fields.has(fieldName)) {
           return `Invalid or duplicate record field '${fieldName}': ${fieldRaw}`;
         }
@@ -1430,7 +1431,23 @@ export function transpileAmyCore(sourceText, deps) {
           return `Record array fields require a literal length from 1 to 255: ${fieldRaw}`;
         }
         let fieldInfo = null;
-        if (isSupportedSourceTypeName(declaredTypeToken)) {
+        if (bcdFieldMatch) {
+          const digitCount = Number.parseInt(bcdFieldMatch[1], 10);
+          const byteCount = Math.ceil(digitCount / 2);
+          fieldInfo = {
+            name: fieldName,
+            declaredType: "bcd",
+            type: "bcd",
+            kind: "bcd",
+            digitCount,
+            byteCount,
+            offset,
+            size: byteCount,
+            isArray: false,
+            length: null,
+            elementSize: byteCount
+          };
+        } else if (isSupportedSourceTypeName(declaredTypeToken)) {
           if (!["u8", "i8", "u16", "i16", "fix8_8", "ufix8_8", "boolean", "bool"].includes(declaredType)) {
             return `Record fields currently support u8, i8, u16, i16, fixed, ufixed, bool, and previously defined record types: ${fieldRaw}`;
           }
@@ -2406,6 +2423,9 @@ export function transpileAmyCore(sourceText, deps) {
 
   function emitClearValue(name) {
     const info = getRuntimeInfo(name);
+    const fieldRef = parseRecordFieldRef(name);
+    if (!info && !fieldRef) return null;
+    if (fieldRef?.fieldInfo?.type === "bcd") return emitBcdClear(name);
     if (!info) return null;
     if (info.kind === "array") return null;
     if (info.kind === "bcd") return emitBcdClear(name);
@@ -2679,6 +2699,8 @@ export function transpileAmyCore(sourceText, deps) {
     emitBcdCompareGoto
   } = createBcdHelpers({
     getRuntimeInfo,
+    parseRecordFieldRef: (...args) => parseRecordFieldRef(...args),
+    emitLoadRecordFieldAddressIntoHL: (...args) => emitLoadRecordFieldAddressIntoHL(...args),
     formatIxOffset,
     scopedRuntimeName,
     parseNumericLiteral,
