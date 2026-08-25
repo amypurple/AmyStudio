@@ -19,7 +19,8 @@ inactive-watch gating, mainline-only `enter`, NMI-safe transitions, and one comp
 active-scene frame dispatcher. Scene routine call graphs are ownership-checked: a routine
 touching one overlay part must be reachable from exactly that scene. Shared helpers may use
 permanent RAM but not scene storage. The feature remains experimental while broader
-whole-program ownership and debug-poison/sentinel coverage are evaluated.
+whole-program ownership remains conservative. Boundary sentinels and opt-in debug poison
+are implemented and ROM-tested across all optimization profiles.
 
 Fixed scalar arrays and one-level arrays of fixed-size records are implemented and
 regression-tested. Overlay parts can therefore contain packed scalar tables such as
@@ -186,7 +187,9 @@ example:
 
 The memory map may group aliases at one address. Watches and conditional breakpoints on
 inactive scene variables show `inactive`, never the live value under another name. Source
-breakpoints remain address-based and are unaffected.
+breakpoints remain address-based and are unaffected. With
+`define AMY_DEBUG_SCENE_POISON`, overlay metadata also exports `debugPoison: 205`; a
+watch retaining `$CD` after `on enter` identifies a field that the initializer omitted.
 
 ## RAM Report
 
@@ -213,8 +216,9 @@ Overflow is checked against physical RAM. Logical totals are informational.
 4. Access/lifetime rejection tests, including `ref`, ASM, recursion, and NMI paths.
 5. Debug-sidecar and conditional-breakpoint active-scene tests.
 6. Transition ROM self-test with boundary sentinels and explicit expected values after
-   every enter routine. The lower permanent-RAM sentinel and upper active-scene selector
-   are implemented; optional debug poison remains future work.
+   every enter routine. Lower/upper permanent-RAM sentinels and optional `$CD` debug
+   poison are implemented. The poison self-test proves that initialized fields overwrite
+   the marker while omitted fields retain it without crossing overlay boundaries.
 7. Off/Safe/Balanced/Aggressive/Experimental ROM parity and optimizer-label audit.
 8. Full public example compilation before enabling syntax by default.
 

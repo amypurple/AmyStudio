@@ -766,5 +766,19 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-scene-poison-selftest",
+    "label": "Amy Scene Poison Self-Test",
+    "detail": "Debug-only overlay initialization test: initialized bytes replace $CD poison while untouched bytes expose missing scene setup.",
+    "projectName": "amy-scene-poison-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
   }
 ];

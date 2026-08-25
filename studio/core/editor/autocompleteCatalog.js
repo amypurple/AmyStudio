@@ -49,6 +49,7 @@ const AMY_AUTOCOMPLETE_V21_ADDITIONS = [
   ["' Comment", "Preferred AMY comment form on its own line or after code"],
   ["rem Comment", "Alternative BASIC-style comment form on its own line or after code"],
   ["define DEBUG", "Compile-time flag for ifdef/ifndef blocks; emits no code"],
+  ["define AMY_DEBUG_SCENE_POISON", "Debug builds only: fill scene-overlay RAM with $CD before each enter initializer"],
   ["ifdef DEBUG", "Compile this block only when DEBUG was defined earlier"],
   ["ifndef FULL_GAME", "Compile this block only when FULL_GAME was not defined earlier"],
   ["else ifdef", "Compile-time else branch for ifdef/ifndef blocks"],

@@ -431,6 +431,22 @@ check("scene declarations create typed IDs and active-part metadata", () => {
   assert.deepEqual(overlay.parts.map((part) => part.activeWhen.equals), [1, 2]);
   assert.deepEqual(overlay.scenes.map((scene) => scene.enterRoutine), ["MenuEnter", "GameEnter"]);
 });
+check("scene poison is opt-in and runs before enter initialization", () => {
+  const releaseResult = transpileAmy(sceneDeclarationSource);
+  assert.equal(releaseResult.ok, true, releaseResult.log);
+  assert.doesNotMatch(releaseResult.asmBody, /AMY_SCENE_DEBUG_POISON/i);
+  assert.equal(releaseResult.metadata.ramOverlays[0].debugPoison, undefined);
+
+  const debugResult = transpileAmy(`define AMY_DEBUG_SCENE_POISON\n${sceneDeclarationSource}`);
+  assert.equal(debugResult.ok, true, debugResult.log);
+  assert.equal(debugResult.metadata.ramOverlays[0].debugPoison, 0xCD);
+  assert.match(debugResult.asmBody, /call AMY_VRAM_BEGIN[\s\S]*ld \(AMY_ACTIVE_SCENE\),a[\s\S]*call AMY_SCENE_DEBUG_POISON[\s\S]*ld a,3[\s\S]*ld \((?:AMY_SCENE_Menu_Selection|\$7020)\),a[\s\S]*ld \(AMY_ACTIVE_SCENE\),a[\s\S]*call AMY_VRAM_END/i);
+  assert.match(debugResult.asmBody, /AMY_SCENE_DEBUG_POISON:\s*ld hl,\$[0-9A-F]{4}\s*ld \(hl\),\$CD\s*ret/i);
+
+  const inactiveDefineResult = transpileAmy(`ifdef NEVER\ndefine AMY_DEBUG_SCENE_POISON\nend ifdef\n${sceneDeclarationSource}`);
+  assert.equal(inactiveDefineResult.ok, true, inactiveDefineResult.log);
+  assert.doesNotMatch(inactiveDefineResult.asmBody, /AMY_SCENE_DEBUG_POISON/i);
+});
 check("scene enter rejects a reachable wait", () => {
   const bad = transpileAmy(`memory "colecovision_legacy_sdcc"
 record Mem:

@@ -108,7 +108,8 @@ The following are not current language promises:
 - `chr$()`, `left$()`, `right$()`, `mid$()`, string slicing, and general runtime string concatenation
 - typed general-purpose pointers and function pointers
 - local record variables, arrays of nested records inside records, and unrestricted aggregate record layouts
-- scene lifecycle syntax, overlay lifetime enforcement, and active-part debugger watches
+- scene lifecycle syntax, overlay lifetime enforcement, active-part debugger watches,
+  and optional `$CD` poison-fill diagnostics for missing scene initialization
 - unrestricted `ref` support for every numeric and aggregate type
 - automatic runtime bounds checks for calculated indexes
 - register-parameter ABI as a stable calling convention

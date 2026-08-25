@@ -5692,3 +5692,5 @@ Why this is still `v2.1` and not `v2.2`:
 - Fixed comparisons containing computed array indexes so `<<`/`>>` inside brackets are no longer mistaken for relational operators; the same computed element now works directly as a routine argument.
 - Added scene call-graph ownership checks: cross-part accesses and scene-storage helpers shared by multiple scenes now fail closed, while permanent-only shared helpers remain valid.
 - Strengthened the GearColeco scene ROM test with exact lower/upper overlay-boundary assertions and a permanent sentinel checked before and after the Menu-to-Game transition across all five optimization profiles.
+- Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
+- Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.

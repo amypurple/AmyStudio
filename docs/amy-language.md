@@ -490,7 +490,21 @@ scene or access `SceneRam.Game.*`. Helpers shared by several scenes remain valid
 they use only parameters, locals, constants, or permanent RAM. This fail-closed rule
 prevents one scene from silently interpreting another part's bytes at the shared address.
 
-See `Amy Scenes and Overlays Lab` for an executable three-scene example and ROM test.
+During development, opt in to deterministic missing-initialization diagnostics:
+
+```amy
+define AMY_DEBUG_SCENE_POISON
+```
+
+Before every `enter`, the compiler marks the physical overlay bytes with `$CD` while the
+active-scene selector is zero and NMI is disabled. The target initializer must overwrite
+every field it needs; a field left at `$CD` is immediately recognizable in ROM TEST &
+DEBUG or by a conditional breakpoint. Compiler metadata identifies `$CD` as the active
+debug poison. Remove the define for release builds: no poison helper, call, or runtime
+cost is emitted when the mode is absent.
+
+See `Amy Scenes and Overlays Lab` for an executable three-scene example. See `Amy Scene
+Poison Self-Test` for a ROM-tested field intentionally left uninitialized.
 
 Same-type declarations can share one line:
 

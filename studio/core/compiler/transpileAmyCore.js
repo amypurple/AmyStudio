@@ -230,7 +230,7 @@ export function transpileAmyCore(sourceText, deps) {
       const current = stack[stack.length - 1];
       return { ok: false, log: `missing endif/end defined for compile-time block started at line ${current.line}` };
     }
-    return { ok: true, lines: result };
+    return { ok: true, lines: result, definedSymbols };
   }
   function parseSceneDeclarations(rawLines) {
     const lines = [...rawLines];
@@ -687,6 +687,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
+  const debugScenePoison = conditionalPrepass.definedSymbols.has("amy_debug_scene_poison");
   const sceneParsing = parseSceneDeclarations(conditionalPrepass.lines);
   if (!sceneParsing.ok) return { ok: false, asmBody: "", log: sceneParsing.log };
   const stateMachineLowering = lowerStateMachines(sceneParsing.lines, sceneParsing);
@@ -2747,6 +2748,7 @@ export function transpileAmyCore(sourceText, deps) {
       reservedBytes,
       logicalBytes,
       savedBytes: logicalBytes - reservedBytes,
+      ...(debugScenePoison ? { debugPoison: 0xCD } : {}),
       parts
     });
     hasRuntimeRamDeclarations = true;
@@ -3481,6 +3483,7 @@ export function transpileAmyCore(sourceText, deps) {
         body.push("    call AMY_VRAM_BEGIN");
         body.push("    xor a");
         body.push("    ld (AMY_ACTIVE_SCENE),a");
+        if (debugScenePoison) body.push("    call AMY_SCENE_DEBUG_POISON");
         body.push(`    call ${ensureProcAsmSymbol(scene.enterRoutine)}`);
         body.push(`    ld a,${scene.value}`);
         body.push("    ld (AMY_ACTIVE_SCENE),a");
@@ -4670,6 +4673,20 @@ export function transpileAmyCore(sourceText, deps) {
       body.push(`    jp ${ensureProcAsmSymbol(scene.frameRoutine)}`);
     }
     onFrameHook = { name: "Scenes", asmLabel: dispatcherLabel, generated: true };
+
+    if (debugScenePoison) {
+      const layout = overlayLayouts.find((entry) => lowerName(entry.name) === lowerName(sceneParsing.overlayName));
+      if (!layout) return { ok: false, asmBody: "", log: `Scene debug poison cannot resolve overlay '${sceneParsing.overlayName}'.` };
+      body.push("AMY_SCENE_DEBUG_POISON:");
+      body.push(`    ld hl,${formatHex16(layout.address)}`);
+      body.push("    ld (hl),$CD");
+      if (layout.reservedBytes > 1) {
+        body.push(`    ld de,${formatHex16(layout.address + 1)}`);
+        body.push(`    ld bc,${layout.reservedBytes - 1}`);
+        body.push("    ldir");
+      }
+      body.push("    ret");
+    }
   }
 
   for (const binding of stateMachineLowering.overlayBindings.values()) {
