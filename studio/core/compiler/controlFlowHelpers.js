@@ -593,6 +593,47 @@ export function createControlFlowHelpers(ctx) {
     return lines;
   }
 
+  function parseTopLevelComparison(condition) {
+    let parenDepth = 0;
+    let bracketDepth = 0;
+    let quote = "";
+    for (let index = 0; index < condition.length; index += 1) {
+      const char = condition[index];
+      if (quote) {
+        if (char === quote && condition[index - 1] !== "\\") quote = "";
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === "(") { parenDepth += 1; continue; }
+      if (char === ")") { parenDepth = Math.max(0, parenDepth - 1); continue; }
+      if (char === "[") { bracketDepth += 1; continue; }
+      if (char === "]") { bracketDepth = Math.max(0, bracketDepth - 1); continue; }
+      if (parenDepth || bracketDepth) continue;
+      const pair = condition.slice(index, index + 2);
+      if (pair === "<<" || pair === ">>") { index += 1; continue; }
+      const operator = ["==", "!=", "<>", "<=", ">="].includes(pair)
+        ? pair
+        : ["=", "<", ">"].includes(char)
+          ? char
+          : "";
+      if (!operator) continue;
+      const left = condition.slice(0, index).trim();
+      const right = condition.slice(index + operator.length).trim();
+      if (!left || !right) return null;
+      const modeMatch = left.match(/^(signed|unsigned)\s+(.+)$/i);
+      return {
+        mode: modeMatch ? modeMatch[1].toLowerCase() : "auto",
+        left: modeMatch ? modeMatch[2].trim() : left,
+        operator,
+        right
+      };
+    }
+    return null;
+  }
+
   function emitSimpleConditionalJump(conditionText, asmJumpTarget, branchWhenFalse = false) {
     const condition = String(conditionText || "").trim();
     if (!condition) {
@@ -1038,17 +1079,17 @@ export function createControlFlowHelpers(ctx) {
       }
       return result;
     }
-    const ifCompare = condition.match(/^(?:(signed|unsigned)\s+)?(.+?)\s*(==|=|!=|<>|<=|>=|<|>)\s*(.+)$/i);
+    const ifCompare = parseTopLevelComparison(condition);
     if (ifCompare) {
-      const leftToken = normalizeExpression(ifCompare[2]);
-      const rightToken = normalizeExpression(ifCompare[4]);
+      const leftToken = normalizeExpression(ifCompare.left);
+      const rightToken = normalizeExpression(ifCompare.right);
       const lines = emitCompareGoto(
         leftToken,
-        ifCompare[3] === "<>" ? "!=" : (ifCompare[3] === "=" ? "==" : ifCompare[3]),
+        ifCompare.operator === "<>" ? "!=" : (ifCompare.operator === "=" ? "==" : ifCompare.operator),
         rightToken,
         asmJumpTarget,
         branchWhenFalse,
-        (ifCompare[1] || "auto").toLowerCase()
+        ifCompare.mode
       );
       if (!lines) {
         return { ok: false, lines: [], log: `Unsupported comparison: ${condition}` };
@@ -1232,7 +1273,8 @@ export function createControlFlowHelpers(ctx) {
       lines.push("    ld a,l");
     }
     if (linearStateDispatch) {
-      // State values are one-based; zero and out-of-range values fall through.
+      // A state value is one-based; zero and values above the final state fall through.
+      // Push the continuation once so the selected subroutine's RET behaves like CALL.
       lines.push(`    ld hl,${doneLabel}`);
       lines.push("    push hl");
       for (const target of resolvedTargets) {
@@ -1259,6 +1301,7 @@ export function createControlFlowHelpers(ctx) {
     if (mode === "goto") {
       lines.push("    jp (hl)");
     } else if (mode === "state-gosub") {
+      // Z80 has no CALL (HL): push the continuation and let the handler RET to it.
       lines.push(`    ld de,${doneLabel}`);
       lines.push("    push de");
       lines.push("    jp (hl)");

@@ -484,6 +484,23 @@ check("scene handlers reject parameters", () => {
   assert.match(bad.log, /on frame target 'GameFrame' must not have parameters/i);
 });
 
+const computedArrayOperandResult = transpileAmy(`memory "colecovision_legacy_sdcc"
+u8 Board[64]
+u8 X = 1
+u8 Y = 2
+u8 Result = 0
+if Board[(Y << 3) + X] = 0 then Result = 1
+Result = IsEnemy(2, Board[(Y << 3) + X])
+loop forever
+function IsEnemy(u8 Side, u8 Cell) as u8
+  return Cell
+`);
+check("computed array indexes work in comparisons and function arguments", () => {
+  assert.equal(computedArrayOperandResult.ok, true, computedArrayOperandResult.log || "computed array operand transpile failed");
+  const indexedLoads = computedArrayOperandResult.asmBody.match(/ld hl,(?:AMY_UVAR_Board|\$7020)\s*\n\s*add hl,de\s*\n\s*ld a,\(hl\)/gi) || [];
+  assert.ok(indexedLoads.length >= 2, "comparison and function argument must each load the computed array element");
+});
+
 const BIOS_STUBS = "TURN_OFF_SOUND EQU $1FD6\nMODE_1 EQU $1F85\n";
 const assembled = await assembleAmysCVAssembly({ "main.asm": BIOS_STUBS + asm }, "main.asm", {
   outputFilename: "ref-demo.bin",

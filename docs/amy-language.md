@@ -584,6 +584,7 @@ sub update_player:
 ```
 
 Current implementation status:
+- names are case-insensitive across visible scopes; a local such as `dx` cannot reuse a visible global/data name such as `DX`
 - locals are initialized at procedure entry and released logically on return
 - routines with parameters, functions, recursion-sensitive bodies, arrays, BCD, `bool` packs, and `fp5` locals use an `IX`-based stack frame
 - simple scalar locals in parameterless leaf `sub` routines may be placed in private static RAM (the exact internal symbol name is non-normative) to avoid the IX prologue/epilogue
@@ -2849,6 +2850,12 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `play dsound Name [step N]` | Play 4-bit PCM DSOUND |
 
 ### Arrays
+
+Byte-sized index expressions are accepted consistently in reads, comparisons, and
+routine arguments. For example, both `if Board[(Y << 3) + X] = 0 then` and
+`IsEnemy(Side, Board[(Y << 3) + X])` are valid; a temporary index is optional, not a
+required workaround. Runtime indexes remain the programmer's responsibility and are not
+implicitly bounds-checked.
 
 | Statement | Meaning |
 |---|---|
