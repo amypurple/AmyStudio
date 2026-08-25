@@ -774,6 +774,8 @@ export function createRuntimeValueHelpers({
       if (!targetType) return null;
       const recordField = parseRecordFieldRef(normalized);
       if (recordField) {
+        const baseInfo = getRuntimeInfo(recordField.name);
+        if (baseInfo?.storage === "overlay") return null;
         if (recordField.fieldInfo.type !== targetType) return null;
         const direct = getDirectRecordFieldAddress(normalized);
         if (direct) return [`    ld hl,${direct}`];

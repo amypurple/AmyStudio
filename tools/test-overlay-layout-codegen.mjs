@@ -256,6 +256,110 @@ u16 WideIndex = 1
 Shared.Game.Items[1].Flags[WideIndex] = 1
 `, false).output, /invalid runtime assignment/i);
 
+  assert.match(compile("overlay-ref-escape", `
+record GameMemory:
+  u8 ByteValue
+  i16 WordValue
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+sub Mutate(ref u8 Value):
+  Value = 1
+end sub
+Mutate(Shared.Game.ByteValue)
+`, false).output, /cannot prepare arguments/i);
+
+  for (const type of ["i8", "u16", "i16"]) {
+    assert.match(compile(`overlay-ref-escape-${type}`, `
+record GameMemory:
+  ${type} Value
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+sub Mutate(ref ${type} Value):
+  return
+end sub
+Mutate(Shared.Game.Value)
+`, false).output, /cannot prepare arguments/i);
+  }
+
+  compile("overlay-ref-controls", `
+record GameMemory:
+  u8 Value
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+u8 Ordinary = 0
+sub ByRef(ref u8 Value):
+  Value = 1
+end sub
+sub ByValue(u8 Value):
+  return
+end sub
+ByRef(Ordinary)
+ByValue(Shared.Game.Value)
+`);
+
+  assert.match(compile("overlay-inline-asm-scene-alias", `
+record GameMemory:
+  u8 Value
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+asm {
+  ld hl,AMY_SCENE_Game_Value
+}
+`, false).output, /cannot reference reserved RAM-overlay alias/i);
+
+  assert.match(compile("overlay-inline-asm-base-alias", `
+record GameMemory:
+  u8 Value
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+asm {
+  ld hl,AMY_OVERLAY_Shared
+}
+`, false).output, /cannot reference reserved RAM-overlay alias/i);
+
+  const includeOverlayPrefix = `project "overlay include safety"
+memory "colecovision_legacy_sdcc"
+record GameMemory:
+  u8 Value
+end record
+overlay Shared
+  Game as GameMemory
+  Other as GameMemory
+end overlay
+`;
+  writeFileSync(join(temp, "overlay-bad.asm"), "    ld hl,AMY_SCENE_Game_Value\n");
+  writeFileSync(join(temp, "overlay-safe.asm"), "; data-only include\nSafeByte: db $00\n");
+  const compileOverlayInclude = (name, includePath, projectDir = true) => {
+    const source = join(temp, `${name}.alexis`);
+    writeFileSync(source, `${includeOverlayPrefix}include asm "${includePath}"\n`);
+    const args = [amyc, source, "--opt", "balanced"];
+    if (projectDir) args.push("--project-dir", temp);
+    return spawnSync(process.execPath, args, { cwd: root, encoding: "utf8" });
+  };
+  const badInclude = compileOverlayInclude("overlay-bad-include", "@project/overlay-bad.asm");
+  assert.notEqual(badInclude.status, 0);
+  assert.match(`${badInclude.stdout || ""}${badInclude.stderr || ""}`, /cannot reference reserved RAM-overlay alias/i);
+  const safeInclude = compileOverlayInclude("overlay-safe-include", "@project/overlay-safe.asm");
+  assert.equal(safeInclude.status, 0, `${safeInclude.stdout || ""}${safeInclude.stderr || ""}`);
+  const opaqueInclude = compileOverlayInclude("overlay-opaque-include", "@project/missing.asm", false);
+  assert.notEqual(opaqueInclude.status, 0);
+  assert.match(`${opaqueInclude.stdout || ""}${opaqueInclude.stderr || ""}`, /cannot verify ASM include/i);
+
   for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
     const bcd = compile("overlay-bcd-field", `
 record ScoreMemory:

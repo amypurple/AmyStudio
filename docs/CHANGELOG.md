@@ -14,6 +14,7 @@
 - Added combined record-array and scalar-field indexing such as `Overlay.Part.Items[I].Flags[J]`, including independent expression indexes and fail-closed bounds/type checks.
 - Clarified that canonical `for each` requires an explicit declared `u8` index.
 - Updated Studio autocomplete and the language reference for overlay `for each`, double-index qualified fields, and packed BCD record fields; removed an obsolete contradictory limitation.
+- Closed overlay lifetime escapes by rejecting qualified overlay fields passed through scalar `ref` parameters and rejecting reserved `AMY_SCENE_*`/`AMY_OVERLAY_*` references in inline, included, or unverifiable opaque ASM.
 
 ### Validation
 

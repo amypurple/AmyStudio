@@ -762,6 +762,8 @@ Rules:
 - the argument must be an addressable variable of the exact same type:
   a global, a record field, an array element, a local, or another `ref` parameter
   (forwarding). Literals and expressions are compile errors.
+- overlay-qualified fields cannot be passed by `ref`; their address has part-scoped
+  lifetime and must not cross a routine boundary. Pass a copied value instead.
 - `ref` is not supported for `u32`, `i32`, `fixed`, `fp5`, `bool`, `bcd`, or
   whole arrays (yet) — declaring one is a compile error, never wrong code
 
@@ -2466,6 +2468,9 @@ end sub
 Rules:
 - Inline ASM is copied into generated output after labels are namespaced.
 - May reference generated labels, ColecoVision BIOS symbols, and Amy runtime symbols visible in the expanded ASM view.
+- Must not reference reserved `AMY_SCENE_*` or `AMY_OVERLAY_*` aliases. Inline ASM and
+  resolvable ASM includes containing those names are rejected because they could retain
+  an address after another overlay part takes ownership of the same RAM.
 - User variable names are rewritten through `rewriteUserSymbolsInExpression`.
 - Document register and RAM side effects when used inside reusable procedures.
 - Preserve `IX` inside routines that use locals or parameters.

@@ -18,6 +18,11 @@ export function handleDataMetaStatement({
   getRamLayout,
   parseCartridgeDirective
 }) {
+  const overlayAsmAliasRe = /\bAMY_(?:SCENE|OVERLAY)_[A-Za-z_][A-Za-z0-9_]*\b/i;
+  const validateOverlayAsmText = (text, context) => {
+    const alias = String(text || "").match(overlayAsmAliasRe)?.[0];
+    return alias ? `${context} cannot reference reserved RAM-overlay alias '${alias}'.` : null;
+  };
   const typeAliasMatch = line.match(/^define\s+([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (typeAliasMatch) {
     return { handled: true, ok: true };
@@ -94,6 +99,8 @@ export function handleDataMetaStatement({
       state.inAsm = false;
     } else {
       const asmLine = rawLine.replace(/^  /, "");
+      const overlayAliasError = validateOverlayAsmText(asmLine, "Inline ASM");
+      if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
       const asmLabel = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*):/);
       const collision = asmLabel && typeof state.describeGlobalNameCollision === "function"
         ? state.describeGlobalNameCollision(asmLabel[1])
@@ -118,6 +125,12 @@ export function handleDataMetaStatement({
   const includeAsm = line.match(/^include\s+asm\s+"([^"]+)"$/i);
   if (includeAsm) {
     const includePath = includeAsm[1].replace(/\\/g, "/");
+    const includeText = state.resolveAsmInclude?.(includePath);
+    if (includeText == null && state.hasRamOverlay) {
+      return { handled: true, ok: false, log: `Cannot verify ASM include '${includePath}' for reserved RAM-overlay aliases.` };
+    }
+    const overlayAliasError = validateOverlayAsmText(includeText, `ASM include '${includePath}'`);
+    if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
     body.push(`include "${includePath}"`);
     return { handled: true, ok: true };
   }
@@ -125,6 +138,12 @@ export function handleDataMetaStatement({
   const includeRawAsm = line.match(/^include\s+"([^"]+\.(?:asm|inc|s))"$/i);
   if (includeRawAsm) {
     const includePath = includeRawAsm[1].replace(/\\/g, "/");
+    const includeText = state.resolveAsmInclude?.(includePath);
+    if (includeText == null && state.hasRamOverlay) {
+      return { handled: true, ok: false, log: `Cannot verify ASM include '${includePath}' for reserved RAM-overlay aliases.` };
+    }
+    const overlayAliasError = validateOverlayAsmText(includeText, `ASM include '${includePath}'`);
+    if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
     body.push(`include "${includePath}"`);
     return { handled: true, ok: true };
   }

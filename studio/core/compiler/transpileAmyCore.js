@@ -3374,6 +3374,8 @@ export function transpileAmyCore(sourceText, deps) {
           get assets() { return assets; },
           get cartridgeMeta() { return cartridgeMeta; },
           set cartridgeMeta(value) { cartridgeMeta = value; },
+          get hasRamOverlay() { return overlayDefinitions.size > 0; },
+          resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,
           describeGlobalNameCollision
         },
