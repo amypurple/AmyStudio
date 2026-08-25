@@ -412,7 +412,10 @@ the Studio RAM report also shows the sum of logical part sizes and the bytes sav
 Nested scalar records, fixed scalar arrays, and one-level record-array fields use their
 normal packed record layout. A record-array element address is `field base + index *
 record size`; its members retain their constant record offsets. The compiler emits
-distinct `AMY_SCENE_*` aliases even where addresses match. A complete typed record data
+distinct `AMY_SCENE_*` aliases even where addresses match. ROM TEST & DEBUG receives
+structured metadata for those aliases and displays the qualified Amy name, type, width,
+and shared-overlay status. Until scene-state binding exists, the debugger reports the
+active part as unknown instead of guessing which alias owns the live byte. A complete typed record data
 table can initialize a qualified record-array field with `copy ... to Overlay.Part.Items`.
 Packed BCD fields retain their declared digit count inside an overlay and occupy
 `ceil(digits / 2)` bytes without alignment padding. Assignment, `inc`, `dec`, `+=`,

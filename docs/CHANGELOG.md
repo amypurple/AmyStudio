@@ -15,6 +15,7 @@
 - Clarified that canonical `for each` requires an explicit declared `u8` index.
 - Updated Studio autocomplete and the language reference for overlay `for each`, double-index qualified fields, and packed BCD record fields; removed an obsolete contradictory limitation.
 - Closed overlay lifetime escapes by rejecting qualified overlay fields passed through scalar `ref` parameters and rejecting reserved `AMY_SCENE_*`/`AMY_OVERLAY_*` references in inline, included, or unverifiable opaque ASM.
+- Added structured overlay-field metadata to ROM TEST & DEBUG. Co-located aliases keep their qualified Amy names and are visibly marked as shared with an unknown active part.
 
 ### Validation
 

@@ -21,7 +21,7 @@ import {
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260802-open-rom-no-compile11";
 import { loadColecoBiosFromBrowser, saveColecoBiosToBrowser } from "./core/colecoBiosStorage.js?v=20260805-local-bios";
-import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260805-compact-debugger-layout";
+import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260825-overlay-symbol-metadata";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
@@ -272,6 +272,7 @@ let compiledRom = null;
 let compiledMemoryMap = "";
 let compiledSymbols = "";
 let compiledListing = "";
+let compiledMetadata = {};
 let expandedAsm = "";
 let asmViewMode = "generated";
 let exampleCategoryFilter = "all";
@@ -707,6 +708,7 @@ const {
   setCompiledSymbols: (next) => { compiledSymbols = next; },
   getCompiledListing: () => compiledListing,
   setCompiledListing: (next) => { compiledListing = next; },
+  setCompiledMetadata: (next) => { compiledMetadata = next || {}; },
   getCompiledColecoHeaderInfo: () => compiledColecoHeaderInfo,
   setCompiledColecoHeaderInfo: (next) => { compiledColecoHeaderInfo = next; },
   getEmulatorBios: () => emulatorBios,
@@ -733,6 +735,7 @@ const { open: openRomTestRecorder, syncSourceBreakpoints: syncRecorderSourceBrea
   getCompiledRom: () => compiledRom,
   getCompiledMemoryMap: () => compiledMemoryMap,
   getCompiledSymbols: () => compiledSymbols,
+  getCompiledMetadata: () => compiledMetadata,
   getEmulatorBios: () => emulatorBios,
   requestEmulatorBios: () => {
     if (els.biosImport) els.biosImport.value = "";
@@ -986,6 +989,7 @@ function captureProjectTabRuntime() {
     compiledMemoryMap,
     compiledSymbols,
     compiledListing,
+    compiledMetadata,
     compiledColecoHeaderInfo,
     expandedAsm,
     asmViewMode,
@@ -1001,6 +1005,7 @@ function activateProjectTab(nextProject, viewState = {}, runtimeState = {}) {
   compiledMemoryMap = runtimeState.compiledMemoryMap || "";
   compiledSymbols = runtimeState.compiledSymbols || "";
   compiledListing = runtimeState.compiledListing || "";
+  compiledMetadata = runtimeState.compiledMetadata || {};
   compiledColecoHeaderInfo = runtimeState.compiledColecoHeaderInfo || null;
   lastLibResolution = runtimeState.lastLibResolution || null;
   expandedAsm = runtimeState.expandedAsm || "";
@@ -1130,12 +1135,13 @@ function bindEvents() {
         setExampleSearchFilter: (next) => { exampleSearchFilter = next; },
         setSourceCartridgeMeta: (next) => { sourceCartridgeMeta = next; },
         getSourceCartridgeMeta: () => sourceCartridgeMeta,
-        setCompiledOutputs: ({ compiledRom: nextRom, compiledMemoryMap: nextMap, compiledSymbols: nextSymbols, compiledListing: nextListing, compiledColecoHeaderInfo: nextHeader }) => {
+        setCompiledOutputs: ({ compiledRom: nextRom, compiledMemoryMap: nextMap, compiledSymbols: nextSymbols, compiledListing: nextListing, compiledColecoHeaderInfo: nextHeader, compiledMetadata: nextMetadata }) => {
           compiledRom = nextRom;
           compiledMemoryMap = nextMap;
           compiledSymbols = nextSymbols;
           compiledListing = nextListing;
           compiledColecoHeaderInfo = nextHeader;
+          compiledMetadata = nextMetadata || {};
         },
         getCompiledRom: () => compiledRom,
         setEmulatorBios: ({ bytes, name, sourceUrl }) => {

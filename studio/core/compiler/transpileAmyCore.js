@@ -2559,7 +2559,7 @@ export function transpileAmyCore(sourceText, deps) {
     parseFixedPointLiteral32: (...args) => parseFixedPointLiteral32(...args)
   }));
 
-  function emitOverlayFieldAliases(partName, recordInfo, baseAddress, path = [], baseOffset = 0) {
+  function emitOverlayFieldAliases(overlayName, partName, recordInfo, baseAddress, metadataFields, path = [], baseOffset = 0) {
     for (const field of recordInfo.orderedFields) {
       const fieldPath = [...path, field.name];
       const fieldOffset = baseOffset + field.offset;
@@ -2567,14 +2567,36 @@ export function transpileAmyCore(sourceText, deps) {
         if (field.isArray) {
           const alias = `AMY_SCENE_${partName}_${fieldPath.join("_")}`;
           runtimeDeclarations.push(`${alias} EQU ${formatHex16(baseAddress + fieldOffset)}`);
+          metadataFields.push({
+            qualifiedName: `${overlayName}.${partName}.${fieldPath.join(".")}`,
+            asmName: alias,
+            address: baseAddress + fieldOffset,
+            offset: fieldOffset,
+            type: "record_array",
+            declaredType: field.recordTypeName || field.declaredType,
+            width: field.size,
+            length: field.length,
+            elementSize: field.elementSize
+          });
           continue;
         }
         const nested = getRecordTypeInfo(field.recordTypeName || field.declaredType);
-        if (nested) emitOverlayFieldAliases(partName, nested, baseAddress, fieldPath, fieldOffset);
+        if (nested) emitOverlayFieldAliases(overlayName, partName, nested, baseAddress, metadataFields, fieldPath, fieldOffset);
         continue;
       }
       const alias = `AMY_SCENE_${partName}_${fieldPath.join("_")}`;
       runtimeDeclarations.push(`${alias} EQU ${formatHex16(baseAddress + fieldOffset)}`);
+      metadataFields.push({
+        qualifiedName: `${overlayName}.${partName}.${fieldPath.join(".")}`,
+        asmName: alias,
+        address: baseAddress + fieldOffset,
+        offset: fieldOffset,
+        type: field.isArray ? "array" : (field.type || field.declaredType),
+        declaredType: field.declaredType,
+        width: field.size,
+        ...(field.isArray ? { length: field.length, elementSize: field.elementSize } : {}),
+        ...(field.type === "bcd" ? { digitCount: field.digitCount, byteCount: field.byteCount } : {})
+      });
     }
   }
 
@@ -2623,14 +2645,23 @@ export function transpileAmyCore(sourceText, deps) {
     userVarAsmSymbols.set(definition.name, asmName);
     runtimeDeclarations.push(`; --- Amy RAM overlay ${definition.name}: ${reservedBytes} physical, ${logicalBytes} logical ---`);
     runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
-    for (const part of definition.parts) emitOverlayFieldAliases(part.name, part.recordInfo, address);
+    const parts = definition.parts.map((part) => {
+      const metadataFields = [];
+      emitOverlayFieldAliases(definition.name, part.name, part.recordInfo, address, metadataFields);
+      return {
+        name: part.name,
+        recordTypeName: part.recordTypeName,
+        byteSize: part.byteSize,
+        fields: metadataFields
+      };
+    });
     overlayLayouts.push({
       name: definition.name,
       address,
       reservedBytes,
       logicalBytes,
       savedBytes: logicalBytes - reservedBytes,
-      parts: definition.parts.map((part) => ({ name: part.name, recordTypeName: part.recordTypeName, byteSize: part.byteSize }))
+      parts
     });
     hasRuntimeRamDeclarations = true;
     return null;

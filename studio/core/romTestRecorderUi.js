@@ -12,6 +12,7 @@ import {
 } from "./romTestCase.js";
 import { replayRomTestCase } from "./romTestCaseRunner.js";
 import {
+  annotateOverlaySymbols,
   chooseAmySourceMarker,
   classifyAddress,
   decodeVdpRegisters,
@@ -300,6 +301,7 @@ export function createRomTestRecorderUi({
   getCompiledRom,
   getCompiledMemoryMap = () => "",
   getCompiledSymbols,
+  getCompiledMetadata = () => ({}),
   getEmulatorBios,
   requestEmulatorBios = () => {},
   getProject,
@@ -432,15 +434,18 @@ export function createRomTestRecorderUi({
       const sourceMarker = symbol.name.match(/^AMY_SOURCE_LINE_(\d+)(?:_(\d+))?$/);
       const displayName = sourceMarker
         ? `Line ${sourceMarker[1]}${sourceMarker[2] ? ` · instance ${sourceMarker[2]}` : ""}`
-        : symbol.name;
+        : symbol.overlay?.qualifiedName || symbol.name;
       const navigate = document.createElement("button");
       navigate.type = "button";
       navigate.className = "rom-recorder__symbol";
-      navigate.innerHTML = `<code>${formatHex(symbol.address)}</code><span>${sourceMarker ? "SOURCE" : classifyAddress(symbol.address)}</span><span class="rom-recorder__symbol-name"></span>`;
+      const addressClass = symbol.overlay ? "OVERLAY" : sourceMarker ? "SOURCE" : classifyAddress(symbol.address);
+      navigate.innerHTML = `<code>${formatHex(symbol.address)}</code><span>${addressClass}</span><span class="rom-recorder__symbol-name"></span>`;
       navigate.lastElementChild.textContent = displayName;
       navigate.title = sourceMarker
         ? `${displayName} at ${formatHex(symbol.address)}. Reveal Amy source.`
-        : `${symbol.name} at ${formatHex(symbol.address)}. Open CPU memory.`;
+        : symbol.overlay
+          ? `${displayName} (${symbol.overlay.type}, ${symbol.overlay.width} byte${symbol.overlay.width === 1 ? "" : "s"}) at ${formatHex(symbol.address)}. RAM is shared by overlay ${symbol.overlay.overlayName}; active part is unknown.`
+          : `${symbol.name} at ${formatHex(symbol.address)}. Open CPU memory.`;
       navigate.addEventListener("click", () => {
         if (sourceMarker) {
           onSourceBreakpointHit(Number(sourceMarker[1]));
@@ -449,7 +454,9 @@ export function createRomTestRecorderUi({
         }
         field("ramAddress").value = formatHex(symbol.address);
         selectTab("ram");
-        setRecorderStatus(`Memory at ${symbol.name} (${formatHex(symbol.address)}).`);
+        setRecorderStatus(symbol.overlay
+          ? `Memory at ${displayName} (${formatHex(symbol.address)}). Shared overlay address; active part is unknown.`
+          : `Memory at ${symbol.name} (${formatHex(symbol.address)}).`);
       });
       const breakpoint = document.createElement("button");
       breakpoint.type = "button";
@@ -1429,7 +1436,7 @@ export function createRomTestRecorderUi({
       }
       externalRom = null;
       externalRomName = "";
-      symbols = parseAmySymbols(getCompiledSymbols());
+      symbols = annotateOverlaySymbols(parseAmySymbols(getCompiledSymbols()), getCompiledMetadata()?.ramOverlays);
       setRecorderStatus("Loading compiled Amy ROM...");
       try {
         await startCore(compiledRom);
@@ -1508,7 +1515,7 @@ export function createRomTestRecorderUi({
       field("controller").value = String(preferredControllerUiPort(controllerSetup.getConfig(), field("controller").value));
       bindDialog();
     }
-    symbols = externalRom ? [] : parseAmySymbols(getCompiledSymbols());
+    symbols = externalRom ? [] : annotateOverlaySymbols(parseAmySymbols(getCompiledSymbols()), getCompiledMetadata()?.ramOverlays);
     if (loadedRom && loadedRom !== getCompiledRom()) profileStats.clear();
     const checkpoints = listAmyCheckpoints(getCompiledSymbols());
     const select = field("checkpoint");

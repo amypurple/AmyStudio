@@ -22,6 +22,29 @@ export function parseAmySymbols(text) {
   return symbols.sort((left, right) => left.address - right.address || left.name.localeCompare(right.name));
 }
 
+export function annotateOverlaySymbols(symbols, ramOverlays) {
+  const fieldsByAsmName = new Map();
+  for (const overlay of Array.isArray(ramOverlays) ? ramOverlays : []) {
+    for (const part of Array.isArray(overlay?.parts) ? overlay.parts : []) {
+      for (const field of Array.isArray(part?.fields) ? part.fields : []) {
+        fieldsByAsmName.set(String(field.asmName || "").toLowerCase(), {
+          overlayName: overlay.name,
+          partName: part.name,
+          qualifiedName: field.qualifiedName,
+          type: field.type,
+          declaredType: field.declaredType,
+          width: field.width,
+          offset: field.offset
+        });
+      }
+    }
+  }
+  return (symbols || []).map((symbol) => {
+    const overlay = fieldsByAsmName.get(String(symbol.name || "").toLowerCase());
+    return overlay ? { ...symbol, overlay } : symbol;
+  });
+}
+
 export function resolveSymbolOrAddress(value, symbols) {
   const source = String(value || "").trim();
   if (!source) throw new Error("Enter a symbol or address.");
@@ -29,7 +52,8 @@ export function resolveSymbolOrAddress(value, symbols) {
     || source.match(/^0x([0-9a-f]+)$/i)
     || source.match(/^([0-9a-f]{1,4})$/i);
   if (numeric) return Number.parseInt(numeric[1], 16) & 0xFFFF;
-  const symbol = symbols.find((entry) => entry.name.toLowerCase() === source.toLowerCase());
+  const symbol = symbols.find((entry) => entry.name.toLowerCase() === source.toLowerCase()
+    || entry.overlay?.qualifiedName?.toLowerCase() === source.toLowerCase());
   if (!symbol) throw new Error(`Unknown symbol "${source}".`);
   return symbol.address;
 }
@@ -219,6 +243,7 @@ export function filterSymbols(symbols, query, limit = 300) {
   const needle = String(query || "").trim().toLowerCase();
   const filtered = needle
     ? symbols.filter((entry) => entry.name.toLowerCase().includes(needle)
+      || entry.overlay?.qualifiedName?.toLowerCase().includes(needle)
       || formatHex(entry.address).toLowerCase().includes(needle))
     : symbols;
   return filtered.slice(0, limit);

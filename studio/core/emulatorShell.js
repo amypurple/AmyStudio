@@ -8,6 +8,7 @@ export function createEmulatorShellHelpers({
   setCompiledSymbols,
   getCompiledListing,
   setCompiledListing,
+  setCompiledMetadata,
   getCompiledColecoHeaderInfo,
   setCompiledColecoHeaderInfo,
   getEmulatorBios,
@@ -96,6 +97,7 @@ export function createEmulatorShellHelpers({
     setCompiledMemoryMap("");
     setCompiledSymbols?.("");
     setCompiledListing("");
+    setCompiledMetadata?.({});
     setCompiledColecoHeaderInfo(null);
     if (resetEmulator) resetEmbeddedEmulator({ preserveBios: true });
     else updateEmulatorUi();

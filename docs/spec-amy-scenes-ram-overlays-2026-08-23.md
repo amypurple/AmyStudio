@@ -160,6 +160,13 @@ routines, is included in the Permanent RAM line until that later optimization ex
 
 ## Debugger Contract
 
+The compiler now emits structured metadata for every overlay field: qualified Amy name,
+assembler alias, address, offset, type, and width, with array and BCD details where
+applicable. ROM TEST & DEBUG preserves every alias at a shared address and labels it as
+overlay storage. Phase A has no active-scene binding, so fully qualified names may be
+used for navigation but the UI reports `active part unknown`; it never chooses an alias
+heuristically.
+
 The assembler-side debug exporter must explicitly walk `constantTable`, not only label
 symbols, and prove that every `EQU` alias survives. The debug sidecar identifies variables
 by `(qualified name, address, activeWhen)`, for

@@ -691,7 +691,8 @@ export function bindStudioRuntimeEvents(ctx) {
         compiledMemoryMap,
         compiledSymbols,
         compiledListing,
-        compiledColecoHeaderInfo
+        compiledColecoHeaderInfo,
+        compiledMetadata: built.res.metadata || {}
       });
       window.alexisLastMemoryMap = compiledMemoryMap;
       window.alexisLastSymbols = compiledSymbols;

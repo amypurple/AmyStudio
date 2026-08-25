@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  annotateOverlaySymbols,
   chooseAmySourceMarker,
   classifyAddress,
   decodeVdpRegisters,
@@ -32,6 +33,23 @@ assert.deepEqual(symbols.map((entry) => entry.name), [
   "AMY_UPROC_Main",
   "AMY_ULBL_BREAK_game_loop"
 ]);
+const overlaySymbols = annotateOverlaySymbols(parseAmySymbols(`
+AMY_SCENE_Menu_Selection: equ $7000
+AMY_SCENE_Game_PlayerX: equ $7000
+AMY_UVAR_Global: equ $7001
+`), [{
+  name: "ArcadeRam",
+  parts: [
+    { name: "Menu", fields: [{ asmName: "AMY_SCENE_Menu_Selection", qualifiedName: "ArcadeRam.Menu.Selection", type: "u8", width: 1, offset: 0 }] },
+    { name: "Game", fields: [{ asmName: "AMY_SCENE_Game_PlayerX", qualifiedName: "ArcadeRam.Game.PlayerX", type: "u8", width: 1, offset: 0 }] }
+  ]
+}]);
+assert.equal(overlaySymbols[0].address, overlaySymbols[1].address);
+assert.equal(overlaySymbols[0].overlay.qualifiedName, "ArcadeRam.Game.PlayerX");
+assert.equal(overlaySymbols[1].overlay.qualifiedName, "ArcadeRam.Menu.Selection");
+assert.equal(overlaySymbols[2].overlay, undefined, "ordinary symbols must remain unannotated");
+assert.equal(resolveSymbolOrAddress("ArcadeRam.Menu.Selection", overlaySymbols), 0x7000);
+assert.equal(filterSymbols(overlaySymbols, "PlayerX").length, 1);
 assert.equal(resolveSymbolOrAddress("Nmi", symbols), 0x8021);
 const sourceMarkers = listAmySourceMarkers(parseAmySymbols(`
 AMY_SOURCE_LINE_10: equ $8123

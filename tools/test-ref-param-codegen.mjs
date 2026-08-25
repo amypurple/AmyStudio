@@ -301,6 +301,46 @@ check("type mismatch u8 arg to ref u16 parameter is rejected", () => {
   assert.equal(bad.ok, false, "u8 variable must not bind to ref u16");
 });
 
+const overlayMetadataResult = transpileAmy(`memory "colecovision_legacy_sdcc"
+record Actor:
+  u8 X
+  u8 Flags[3]
+end record
+record GameMemory:
+  Actor Actors[2]
+  bcd digits 3 Score
+end record
+record MenuMemory:
+  u8 Selection
+end record
+overlay SceneRam
+  Menu as MenuMemory
+  Game as GameMemory
+end overlay
+loop forever
+`);
+
+check("overlay metadata preserves logical fields and shared addresses", () => {
+  assert.equal(overlayMetadataResult.ok, true, overlayMetadataResult.log || "overlay metadata transpile failed");
+  const overlay = overlayMetadataResult.metadata?.ramOverlays?.[0];
+  assert.equal(overlay?.name, "SceneRam");
+  const menu = overlay.parts.find((part) => part.name === "Menu");
+  const game = overlay.parts.find((part) => part.name === "Game");
+  assert.equal(menu.fields[0].qualifiedName, "SceneRam.Menu.Selection");
+  assert.equal(menu.fields[0].asmName, "AMY_SCENE_Menu_Selection");
+  assert.equal(menu.fields[0].address, overlay.address);
+  const actors = game.fields.find((field) => field.qualifiedName === "SceneRam.Game.Actors");
+  assert.deepEqual(
+    { type: actors.type, length: actors.length, elementSize: actors.elementSize, address: actors.address },
+    { type: "record_array", length: 2, elementSize: 4, address: overlay.address }
+  );
+  const score = game.fields.find((field) => field.qualifiedName === "SceneRam.Game.Score");
+  assert.deepEqual(
+    { type: score.type, width: score.width, digitCount: score.digitCount, byteCount: score.byteCount },
+    { type: "bcd", width: 2, digitCount: 3, byteCount: 2 }
+  );
+});
+
 const BIOS_STUBS = "TURN_OFF_SOUND EQU $1FD6\nMODE_1 EQU $1F85\n";
 const assembled = await assembleAmysCVAssembly({ "main.asm": BIOS_STUBS + asm }, "main.asm", {
   outputFilename: "ref-demo.bin",
