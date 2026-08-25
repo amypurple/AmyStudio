@@ -24,6 +24,7 @@ otherwise.
 - compiler-selected frameless static ABI for proven non-reentrant scalar routines
 - `ref` parameters for addressable scalar values and records
 - records, nested records, fixed scalar array fields, and arrays of records within the documented limits
+- experimental Phase-A record-backed RAM overlays with qualified arithmetic, loops, selected I/O operands, and physical/logical RAM accounting
 - byte data, visual `bitmap8`/`sprite16` data, assets, and indexable ROM word tables
 - compile-time `define` plus `if defined`, `else defined`, and `end defined`
 
@@ -106,7 +107,8 @@ The following are not current language promises:
 - heap-allocated or dynamically-lived strings
 - `chr$()`, `left$()`, `right$()`, `mid$()`, string slicing, and general runtime string concatenation
 - typed general-purpose pointers and function pointers
-- local record variables, arrays inside records, and unrestricted aggregate record layouts
+- local record variables, arrays of nested records inside records, and unrestricted aggregate record layouts
+- scene lifecycle syntax, overlay lifetime enforcement, and active-part debugger watches
 - unrestricted `ref` support for every numeric and aggregate type
 - automatic runtime bounds checks for calculated indexes
 - register-parameter ABI as a stable calling convention

@@ -112,6 +112,11 @@ Shared.Game.Items[1].X = 17
 Shared.Game.Items[2].DX = -3
 Shared.Game.Items[I].X = 29
 Shared.Game.After = 99
+Shared.Game.Items[0].X = get char at 0,0
+get tile at 1,1 into Shared.Game.Items[1].X
+play sound Shared.Game.Items[2].X
+stop sound Shared.Game.Items[2].X
+print Shared.Game.Items[2].DX at 0,0 digits 3
 `, true, profile);
     const base = equAddress(nestedArray.asm, "AMY_OVERLAY_Shared");
     assert.equal(equAddress(nestedArray.asm, "AMY_SCENE_Game_Items"), base + 1);
@@ -177,6 +182,28 @@ Result = Shared.First.Missing + 1
   assert.doesNotMatch(invalidWordField, /Invalid expression.*ld HL/i);
   assert.match(invalidWordField, /cannot compile|unsupported|invalid|unknown/i);
 
+  assert.match(compile("overlay-get-char-word-target", `
+record A:
+  u16 Word
+end record
+overlay Shared
+  First as A
+  Second as A
+end overlay
+Shared.First.Word = get char at 0,0
+`, false).output, /get char assignment target must be a byte RAM variable/i);
+
+  assert.match(compile("overlay-play-sound-word", `
+record A:
+  u16 Word
+end record
+overlay Shared
+  First as A
+  Second as A
+end overlay
+play sound Shared.First.Word
+`, false).output, /play sound requires a byte sound index/i);
+
   const lateMemorySource = join(temp, "overlay-late-memory.alexis");
   writeFileSync(lateMemorySource, `project "late memory"
 record A:
@@ -192,7 +219,7 @@ memory "colecovision_legacy_sdcc"
   assert.notEqual(lateMemory.status, 0, "memory after overlay must be rejected");
   assert.match(`${lateMemory.stdout || ""}${lateMemory.stderr || ""}`, /memory must be declared before overlay/i);
 
-  console.log("Amy overlay layout: PASS (record-backed aliases, physical/logical RAM, nested/array fields, five optimizer profiles)");
+  console.log("Amy overlay layout: PASS (record-backed aliases, RAM accounting, qualified I/O, five optimizer profiles)");
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

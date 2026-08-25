@@ -7,10 +7,12 @@
 - Fixed unresolved 16-bit qualified operands so they fail as Amy source errors instead of leaking malformed dotted expressions into generated ASM; valid 16-bit constants remain supported.
 - Corrected overlay debug aliases for record-array fields so symbols identify the array base rather than publishing misleading unindexed member aliases.
 - Extended verb-style mutations (`inc`, `dec`, `add`, `sub`, bitwise mutation, `negate`, `not`, and `toggle`) and counted `for` loop counters to qualified record and overlay fields.
+- Extended qualified byte operands to canonical `get char` destinations, `play sound`, `stop sound`, and canonical typed printing.
 - Clarified that canonical `for each Element, Index in GlobalArray` requires an explicit declared `u8` index; overlay record-array fields currently use counted loops.
 
 ### Validation
 
+- Expanded overlay code-generation coverage across all five profiles with qualified VRAM reads, sound indexes, typed printing, and fail-closed wrong-width tests.
 - Expanded the GearColeco overlay self-test to 19 runtime assertions, covering a 7-byte record stride, constant and variable indices, `u16`, signed `i8`, the field immediately following a record array, qualified mutations, and qualified ascending/descending loop counters in all five optimization profiles.
 - Assembled all 198 examples successfully with Balanced optimization.
 - Moved Fly Swatter's four actors into the Arcade Trio overlay: permanent RAM fell from 145 to 125 bytes, total physical RAM from 297 to 277 bytes, and Experimental ROM size from 15,803 to 15,798 bytes.

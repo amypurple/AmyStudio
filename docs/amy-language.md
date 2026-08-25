@@ -409,6 +409,10 @@ normal packed record layout. A record-array element address is `field base + ind
 record size`; its members retain their constant record offsets. The compiler emits
 distinct `AMY_SCENE_*` aliases even where addresses match. A complete typed record data
 table can initialize a qualified record-array field with `copy ... to Overlay.Part.Items`.
+Qualified byte fields are also valid where the regular typed operand pipeline is used,
+including canonical `Field = get char at X,Y`, `play sound Field`, `stop sound Field`,
+and canonical typed printing such as `print Field at X,Y`. Legacy `get ... into Field`
+is accepted for migration but still reports the canonical assignment form.
 
 Phase A intentionally supports one overlay group per program. It provides allocation,
 qualified access, aliases, and accurate RAM accounting. It does not yet provide scene

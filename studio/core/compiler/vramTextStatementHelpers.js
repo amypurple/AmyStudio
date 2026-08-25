@@ -1193,11 +1193,12 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_PUT_CHAR_AT"] };
   }
 
-  const getChar = line.match(/^get\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i)
-    || line.match(/^read\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const getChar = line.match(/^get\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i)
+    || line.match(/^read\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i);
   if (getChar) {
     addCompilerWarning?.(`Prefer "${getChar[3]} = get char at ${getChar[1]},${getChar[2]}" instead of "${rawLine}".`);
-    const targetInfo = getRuntimeInfo(getChar[3]);
+    const targetField = parseRecordFieldRef?.(getChar[3]);
+    const targetInfo = targetField?.fieldInfo || getRuntimeInfo(getChar[3]);
     if (!targetInfo || targetInfo.type !== "int8") {
       return { ok: false, handled: true, log: `get char target must be a byte RAM variable: ${rawLine}` };
     }
@@ -1213,9 +1214,10 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getChar[3])] };
   }
 
-  const getCharAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getCharAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getCharAssign) {
-    const targetInfo = getRuntimeInfo(getCharAssign[1]);
+    const targetField = parseRecordFieldRef?.(getCharAssign[1]);
+    const targetInfo = targetField?.fieldInfo || getRuntimeInfo(getCharAssign[1]);
     if (!targetInfo || targetInfo.type !== "int8") {
       return { ok: false, handled: true, log: `get char assignment target must be a byte RAM variable: ${rawLine}` };
     }

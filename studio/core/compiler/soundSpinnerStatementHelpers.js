@@ -76,7 +76,7 @@ export function handleSoundSpinnerStatement({
     return { ok: true, handled: true, lines: ["    call AMY_RESET_SPINNERS"] };
   }
 
-  const playSound = line.match(/^play\s+sound\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
+  const playSound = line.match(/^play\s+sound\s+(.+)$/i);
   if (playSound) {
     const loadSound = emitLoadInt8Into("b", playSound[1]);
     if (!loadSound) return { ok: false, handled: true, log: `play sound requires a byte sound index: ${rawLine}` };
@@ -87,7 +87,7 @@ export function handleSoundSpinnerStatement({
     };
   }
 
-  const stopSound = line.match(/^stop\s+sound\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
+  const stopSound = line.match(/^stop\s+sound\s+(.+)$/i);
   if (stopSound) {
     const loadSound = emitLoadInt8Into("b", stopSound[1]);
     if (!loadSound) return { ok: false, handled: true, log: `stop sound requires a byte sound index: ${rawLine}` };
