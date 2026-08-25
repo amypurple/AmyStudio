@@ -1,6 +1,6 @@
 # Amy Scenes and RAM Overlays
 
-Status: Phase A allocation/layout implemented; safety and scene lifecycle gates remain
+Status: experimental lifecycle implemented and ROM-tested; ownership enforcement remains conservative
 
 Implemented Phase A subset:
 
@@ -13,15 +13,19 @@ Implemented Phase A subset:
 - physical, logical, permanent, and saved-byte RAM reporting;
 - parser/layout/codegen regression across all five optimization profiles.
 
-Not yet implemented: lifetime/ref/ASM escape enforcement, active-part debugger metadata,
-scene lifecycle syntax, and NMI-safe transitions. Those remain mandatory gates before
-the feature can be promoted from experimental Phase A.
+Implemented safety includes scalar overlay `ref` escape rejection, reserved overlay alias
+rejection in inline/resolvable included ASM, per-field active-part debugger metadata,
+inactive-watch gating, mainline-only `enter`, NMI-safe transitions, and one compiler-owned
+active-scene frame dispatcher. Scene routine call graphs are ownership-checked: a routine
+touching one overlay part must be reachable from exactly that scene. Shared helpers may use
+permanent RAM but not scene storage. The feature remains experimental while broader
+whole-program ownership and debug-poison/sentinel coverage are evaluated.
 
 Fixed scalar arrays and one-level arrays of fixed-size records are implemented and
 regression-tested. Overlay parts can therefore contain packed scalar tables such as
 `u8 EnemyX[8]`, `u16 Scores[3]`, and actor tables such as `Actor Enemies[4]`.
-Double-index paths such as `Enemies[I].Flags[J]` and recursive arrays of records remain
-outside Phase A.
+Double-index paths such as `Enemies[I].Flags[J]` are implemented. Recursive and
+multidimensional arrays remain outside Phase A.
 
 This specification separates two features:
 
@@ -135,14 +139,14 @@ not an acceptable workaround.
 - duplicate overlay, part, scene, field, or binding names;
 - unsupported or unsized part type;
 - unqualified or cross-scene access outside the owning scene routines;
-- address or `ref` escape from overlay storage;
+- address or `ref` escape from overlay storage (scalar `ref` arguments are rejected);
 - overlay addresses stored in ROM word/address tables;
 - overlay `ref` arguments reaching a routine not proven scene-local;
 - scene transition from NMI in v1;
 - VBlank-blocking operations reachable from a scene enter routine;
 - NMI-reachable access to a part other than the active scene's frame handler;
 - opaque ASM that may access overlay aliases or transfer into scene routines;
-- user ASM symbols using reserved `AMY_SCENE_` or `AMY_OVERLAY_` prefixes;
+- user ASM references or symbols using reserved `AMY_SCENE_` or `AMY_OVERLAY_` prefixes;
 - scene enter routine that is also bound to an incompatible scene;
 - unsupported multiple-overlay interaction in v1.
 

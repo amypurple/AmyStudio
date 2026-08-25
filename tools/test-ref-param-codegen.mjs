@@ -483,6 +483,27 @@ check("scene handlers reject parameters", () => {
   assert.equal(bad.ok, false);
   assert.match(bad.log, /on frame target 'GameFrame' must not have parameters/i);
 });
+check("scene handlers reject cross-part overlay access", () => {
+  const bad = transpileAmy(sceneDeclarationSource.replace("sub MenuFrame:\n  return", "sub MenuFrame:\n  SceneRam.Game.PlayerX = 9\n  return"));
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /belongs to scene 'menu'.*overlay part 'game'/i);
+});
+check("overlay-touching helpers reject ambiguous scene ownership", () => {
+  const source = sceneDeclarationSource
+    .replace("sub MenuFrame:\n  return", "sub MenuFrame:\n  SharedSceneHelper\n  return")
+    .replace("sub GameFrame:\n  return", "sub GameFrame:\n  SharedSceneHelper\n  return\nend sub\nsub SharedSceneHelper:\n  SceneRam.Menu.Selection = 4\n  return");
+  const bad = transpileAmy(source);
+  assert.equal(bad.ok, false);
+  assert.match(bad.log, /SharedSceneHelper.*reachable from .*menu.*game|SharedSceneHelper.*reachable from .*game.*menu/i);
+});
+check("shared helpers remain valid when they use only permanent RAM", () => {
+  const source = sceneDeclarationSource
+    .replace("u8 Initial = Scenes.Menu", "u8 SharedTicks = 0\nu8 Initial = Scenes.Menu")
+    .replace("sub MenuFrame:\n  return", "sub MenuFrame:\n  SharedPermanentHelper\n  return")
+    .replace("sub GameFrame:\n  return", "sub GameFrame:\n  SharedPermanentHelper\n  return\nend sub\nsub SharedPermanentHelper:\n  SharedTicks += 1\n  return");
+  const good = transpileAmy(source);
+  assert.equal(good.ok, true, good.log || "permanent-only shared helper should compile");
+});
 
 const computedArrayOperandResult = transpileAmy(`memory "colecovision_legacy_sdcc"
 u8 Board[64]

@@ -4587,6 +4587,22 @@ export function transpileAmyCore(sourceText, deps) {
     const analysis = analyzeStaticAbiEligibility(lines, { resolveInclude: resolveStaticAbiInclude });
     const enterUnsafe = /^(?:wait\b|pause\b|nmi\s+on\b|screen\s+on\b)/i;
     const frameUnsafe = /^(?:wait\b|pause\b|nmi\b|screen\b|display\b|enter\b)/i;
+    const routineSceneOwners = new Map();
+    const markSceneOwnership = (rootName, scene) => {
+      const visited = new Set();
+      const visit = (key) => {
+        if (visited.has(key)) return;
+        visited.add(key);
+        if (!routineSceneOwners.has(key)) routineSceneOwners.set(key, new Set());
+        routineSceneOwners.get(key).add(lowerName(scene.partName));
+        for (const next of analysis.graph.get(key) || []) visit(next);
+      };
+      visit(lowerName(rootName));
+    };
+    for (const scene of sceneParsing.scenes) {
+      markSceneOwnership(scene.enterRoutine, scene);
+      markSceneOwnership(scene.frameRoutine, scene);
+    }
     for (const scene of sceneParsing.scenes) {
       const inspectPath = (rootName, unsafePattern) => {
         const visited = new Set();
@@ -4610,6 +4626,35 @@ export function transpileAmyCore(sourceText, deps) {
       if (enterReason) return { ok: false, asmBody: "", log: `Scene '${scene.name}' on enter path is not NMI-safe: ${enterReason}.` };
       const frameReason = inspectPath(scene.frameRoutine, frameUnsafe);
       if (frameReason) return { ok: false, asmBody: "", log: `Scene '${scene.name}' on frame path is not NMI-safe: ${frameReason}.` };
+    }
+
+    const overlayAccess = new RegExp(`\\b${sceneParsing.overlayName}\\.([A-Za-z_][A-Za-z0-9_]*)\\.`, "ig");
+    for (const routine of analysis.routines.values()) {
+      const referencedParts = new Set();
+      for (const statement of routine.body) {
+        overlayAccess.lastIndex = 0;
+        for (const match of statement.matchAll(overlayAccess)) referencedParts.add(lowerName(match[1]));
+      }
+      if (!referencedParts.size) continue;
+      const owners = routineSceneOwners.get(routine.key) || new Set();
+      if (owners.size !== 1) {
+        const ownership = owners.size ? [...owners].join(", ") : "no scene";
+        return {
+          ok: false,
+          asmBody: "",
+          log: `Routine '${routine.name}' accesses scene overlay storage but is reachable from ${ownership}; scene-owned overlay access requires exactly one owning scene.`
+        };
+      }
+      const [owner] = owners;
+      for (const referencedPart of referencedParts) {
+        if (referencedPart !== owner) {
+          return {
+            ok: false,
+            asmBody: "",
+            log: `Routine '${routine.name}' belongs to scene '${owner}' but accesses overlay part '${referencedPart}'.`
+          };
+        }
+      }
     }
 
     const dispatcherLabel = "AMY_SCENE_FRAME_DISPATCH";

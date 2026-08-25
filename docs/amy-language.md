@@ -484,6 +484,12 @@ screen/display changes, scene transitions, and inline ASM. Enter paths reject bl
 waits and attempts to enable NMI/display before initialization finishes. Request a scene
 change through a permanent global such as `RequestedScene`; mainline performs `enter`.
 
+Scene ownership follows the static call graph. A routine that accesses
+`SceneRam.Menu.*` must be reachable from Menu only; it cannot be shared with another
+scene or access `SceneRam.Game.*`. Helpers shared by several scenes remain valid when
+they use only parameters, locals, constants, or permanent RAM. This fail-closed rule
+prevents one scene from silently interpreting another part's bytes at the shared address.
+
 See `Amy Scenes and Overlays Lab` for an executable three-scene example and ROM test.
 
 Same-type declarations can share one line:
