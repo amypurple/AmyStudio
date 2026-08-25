@@ -117,6 +117,10 @@ get tile at 1,1 into Shared.Game.Items[1].X
 play sound Shared.Game.Items[2].X
 stop sound Shared.Game.Items[2].X
 print Shared.Game.Items[2].DX at 0,0 digits 3
+u8 EachIndex = 0
+for each Item, EachIndex in Shared.Game.Items
+  Item.X += 1
+next Item
 `, true, profile);
     const base = equAddress(nestedArray.asm, "AMY_OVERLAY_Shared");
     assert.equal(equAddress(nestedArray.asm, "AMY_SCENE_Game_Items"), base + 1);

@@ -58,11 +58,11 @@ try {
     core.loadBios(bios);
     core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
     for (let frame = 0; frame < 30; frame += 1) core.runFrame();
-    assert.equal(core.readRam(passedAddress, 1)[0], 19, "Overlay runtime assertions did not all pass.");
+    assert.equal(core.readRam(passedAddress, 1)[0], 21, "Overlay runtime assertions did not all pass.");
   } finally {
     core.destroy();
   }
-  console.log(`Amy overlay ROM self-test PASS (${optimization}: aliases, record arrays, mutations, and loop counters retained, 19 assertions)`);
+  console.log(`Amy overlay ROM self-test PASS (${optimization}: aliases, record arrays, mutations, and loops retained, 21 assertions)`);
 } finally {
   await rm(outputDir, { recursive: true, force: true });
 }

@@ -980,7 +980,17 @@ for I = 0 to 3
 next I
 ```
 
-This is a `for each` source restriction, not an overlay-layout limitation.
+Overlay record-array fields support the same canonical form:
+
+```basic
+for each Actor, I in SceneRam.Game.Actors
+  Actor.X += 1
+next Actor
+```
+
+The overlay form lowers to a counted loop whose element references remain fully
+qualified. It therefore allocates no hidden alias pointer, but repeated field accesses
+may recompute the indexed address. Use `for each` for clarity and measure very hot loops.
 
 Qualified fields can also be loop counters and mutation targets:
 

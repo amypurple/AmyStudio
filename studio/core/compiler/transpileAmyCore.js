@@ -468,16 +468,55 @@ export function transpileAmyCore(sourceText, deps) {
   }
   function lowerForEachLoops(rawLines) {
     const arrayLengths = new Map();
+    const recordArrayFields = new Map();
+    const overlayParts = [];
     let routineDepth = 0;
+    let currentRecord = null;
+    let currentOverlay = null;
     for (const rawLine of rawLines) {
       const line = stripAmyInlineComment(rawLine).trim();
       if (/^(?:sub|function)\b/i.test(line)) routineDepth += 1;
       if (/^end\s+(?:sub|function)$/i.test(line)) { routineDepth = Math.max(0, routineDepth - 1); continue; }
       if (routineDepth !== 0) continue;
+      const recordStart = line.match(/^record\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (recordStart) {
+        currentRecord = recordStart[1];
+        recordArrayFields.set(currentRecord.toLowerCase(), new Map());
+        continue;
+      }
+      if (/^end\s+record$/i.test(line)) { currentRecord = null; continue; }
+      if (currentRecord) {
+        const field = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
+        if (field) {
+          const primitive = /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)$/i.test(field[1]);
+          recordArrayFields.get(currentRecord.toLowerCase()).set(field[2].toLowerCase(), {
+            name: field[2],
+            length: Number(field[3]),
+            recordLike: !primitive
+          });
+        }
+        continue;
+      }
+      const overlayStart = line.match(/^overlay\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (overlayStart) { currentOverlay = overlayStart[1]; continue; }
+      if (/^end\s+overlay$/i.test(line)) { currentOverlay = null; continue; }
+      if (currentOverlay) {
+        const part = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        if (part) overlayParts.push({ overlay: currentOverlay, part: part[1], recordType: part[2] });
+        continue;
+      }
       const declaration = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
       if (declaration) {
         const primitive = /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)$/i.test(declaration[1]);
         arrayLengths.set(declaration[2].toLowerCase(), { length: Number(declaration[3]), recordLike: !primitive });
+      }
+    }
+    for (const part of overlayParts) {
+      const fields = recordArrayFields.get(part.recordType.toLowerCase());
+      if (!fields) continue;
+      for (const field of fields.values()) {
+        const qualifiedName = `${part.overlay}.${part.part}.${field.name}`;
+        arrayLengths.set(qualifiedName.toLowerCase(), { ...field, qualified: true });
       }
     }
 
@@ -516,7 +555,7 @@ export function transpileAmyCore(sourceText, deps) {
     };
     for (const rawLine of rawLines) {
       const stripped = stripAmyInlineComment(rawLine).trim();
-      const open = stripped.match(/^for\s+each\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      const open = stripped.match(/^for\s+each\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s+in\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*:?$/i);
       if (open) {
         const elementName = open[1];
         const arrayName = open[3];
@@ -531,8 +570,9 @@ export function transpileAmyCore(sourceText, deps) {
         const indexName = open[2];
         const indent = rawLine.slice(0, rawLine.search(/\S|$/));
         result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
-        if (arrayEntry.recordLike) result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
-        const alias = { elementName, indexName, arrayName, native: arrayEntry.recordLike };
+        const nativeAlias = arrayEntry.recordLike && !arrayEntry.qualified;
+        if (nativeAlias) result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
+        const alias = { elementName, indexName, arrayName, native: nativeAlias };
         aliasStack.push(alias);
         controlStack.push({ kind: "each", alias });
         continue;
