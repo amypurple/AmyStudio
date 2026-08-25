@@ -7,6 +7,7 @@ import {
   filterSymbols,
   findNearestSymbol,
   formatHexDump,
+  inspectOverlaySymbolDebugState,
   listAmyDebugBreakpoints,
   listAmyProcedureSourceMarkers,
   listAmySourceMarkers,
@@ -40,17 +41,26 @@ AMY_SCENE_Game_PlayerX: equ $7000
 AMY_UVAR_Global: equ $7001
 `), [{
   name: "ArcadeRam",
+  debugPoison: 0xCD,
   parts: [
     { name: "Menu", fields: [{ asmName: "AMY_SCENE_Menu_Selection", qualifiedName: "ArcadeRam.Menu.Selection", type: "u8", width: 1, offset: 0, activeWhen: { symbol: "AMY_UVAR_ActiveScene", equals: 1 } }] },
     { name: "Game", fields: [{ asmName: "AMY_SCENE_Game_PlayerX", qualifiedName: "ArcadeRam.Game.PlayerX", type: "u8", width: 1, offset: 0 }] }
   ]
 }]);
 assert.equal(overlaySymbols[0].address, overlaySymbols[1].address);
+assert.equal(overlaySymbols[0].overlay.debugPoison, 0xCD);
 assert.equal(overlaySymbols[0].overlay.qualifiedName, "ArcadeRam.Game.PlayerX");
 assert.equal(overlaySymbols[1].overlay.qualifiedName, "ArcadeRam.Menu.Selection");
 assert.equal(overlaySymbols[2].overlay, undefined, "ordinary symbols must remain unannotated");
 assert.equal(resolveSymbolOrAddress("ArcadeRam.Menu.Selection", overlaySymbols), 0x7000);
 assert.equal(filterSymbols(overlaySymbols, "PlayerX").length, 1);
+const poisonState = inspectOverlaySymbolDebugState(
+  overlaySymbols[1],
+  [...overlaySymbols, { name: "AMY_UVAR_ActiveScene", address: 0x7002 }],
+  (address, length) => Uint8Array.from(address === 0x7002 ? [1] : Array(length).fill(0xCD))
+);
+assert.equal(poisonState.active, true);
+assert.equal(poisonState.poisoned, true);
 assert.equal(resolveSymbolOrAddress("Nmi", symbols), 0x8021);
 const sourceMarkers = listAmySourceMarkers(parseAmySymbols(`
 AMY_SOURCE_LINE_10: equ $8123

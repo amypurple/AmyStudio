@@ -5694,3 +5694,4 @@ Why this is still `v2.1` and not `v2.2`:
 - Strengthened the GearColeco scene ROM test with exact lower/upper overlay-boundary assertions and a permanent sentinel checked before and after the Menu-to-Game transition across all five optimization profiles.
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
+- ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.

@@ -23,10 +23,11 @@ import {
   resolveAmySourceBreakpoints,
   formatHex,
   formatHexDump,
+  inspectOverlaySymbolDebugState,
   listAmyDebugBreakpoints,
   parseAmySymbols,
   resolveSymbolOrAddress
-} from "./romDebuggerModel.js?v=20260801-source-step-procedure-entry";
+} from "./romDebuggerModel.js?v=20260825-scene-poison-diagnostics";
 import { evaluateBreakpointCondition, parseBreakpointCondition } from "./breakpointConditions.js?v=20260803-asm-step-conditional-breakpoints";
 import {
   appendRoutineProfileSample,
@@ -209,6 +210,8 @@ function ensureStyles() {
     .rom-recorder__symbol { display:grid; grid-template-columns:66px 68px minmax(0,1fr); min-width:0; width:100%; padding:5px 7px; border:0; text-align:left; background:transparent; color:#d5e2e7; overflow:hidden; }
     .rom-recorder__symbol > * { min-width:0; }
     .rom-recorder__symbol-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rom-recorder__symbol-row--poison .rom-recorder__symbol { background:rgba(255,202,76,.09); }
+    .rom-recorder__symbol-row--poison .rom-recorder__symbol > span:nth-child(2) { color:#ffca4c; }
     .rom-recorder__symbol-breakpoint { width:26px; min-width:26px; height:26px; align-self:center; justify-self:center; padding:0; color:#ff7777; font-size:16px; line-height:1; }
     .rom-recorder__symbol:hover { background:#17252d; }
     .rom-recorder__breakpoints { display:grid; gap:5px; margin-top:8px; }
@@ -438,23 +441,25 @@ export function createRomTestRecorderUi({
       const activeWhen = symbol.overlay?.activeWhen;
       const activeSymbol = activeWhen && symbols.find((entry) => entry.name.toLowerCase() === activeWhen.symbol.toLowerCase());
       const activeValue = activeSymbol && core ? core.readRam(activeSymbol.address, 1)[0] : null;
+      const debugState = inspectOverlaySymbolDebugState(symbol, symbols, (address, length) => core?.readRam(address, length));
       const overlayState = !symbol.overlay
         ? ""
         : !activeWhen
           ? "active part unknown"
-          : activeValue === activeWhen.equals
+          : debugState.active
             ? "active part"
             : `inactive part (selector ${activeValue ?? "?"}, requires ${activeWhen.equals})`;
+      if (debugState.poisoned) row.classList.add("rom-recorder__symbol-row--poison");
       const navigate = document.createElement("button");
       navigate.type = "button";
       navigate.className = "rom-recorder__symbol";
-      const addressClass = symbol.overlay ? "OVERLAY" : sourceMarker ? "SOURCE" : classifyAddress(symbol.address);
+      const addressClass = debugState.poisoned ? "POISON" : symbol.overlay ? "OVERLAY" : sourceMarker ? "SOURCE" : classifyAddress(symbol.address);
       navigate.innerHTML = `<code>${formatHex(symbol.address)}</code><span>${addressClass}</span><span class="rom-recorder__symbol-name"></span>`;
       navigate.lastElementChild.textContent = displayName;
       navigate.title = sourceMarker
         ? `${displayName} at ${formatHex(symbol.address)}. Reveal Amy source.`
         : symbol.overlay
-          ? `${displayName} (${symbol.overlay.type}, ${symbol.overlay.width} byte${symbol.overlay.width === 1 ? "" : "s"}) at ${formatHex(symbol.address)}. RAM is shared by overlay ${symbol.overlay.overlayName}; ${overlayState}.`
+          ? `${displayName} (${symbol.overlay.type}, ${symbol.overlay.width} byte${symbol.overlay.width === 1 ? "" : "s"}) at ${formatHex(symbol.address)}. RAM is shared by overlay ${symbol.overlay.overlayName}; ${overlayState}.${debugState.poisoned ? " Value still matches debug poison $CD; initialization may be missing." : ""}`
           : `${symbol.name} at ${formatHex(symbol.address)}. Open CPU memory.`;
       navigate.addEventListener("click", () => {
         if (sourceMarker) {
@@ -465,7 +470,7 @@ export function createRomTestRecorderUi({
         field("ramAddress").value = formatHex(symbol.address);
         selectTab("ram");
         setRecorderStatus(symbol.overlay
-          ? `Memory at ${displayName} (${formatHex(symbol.address)}). Shared overlay address; ${overlayState}.`
+          ? `Memory at ${displayName} (${formatHex(symbol.address)}). Shared overlay address; ${overlayState}.${debugState.poisoned ? " WARNING: value still matches debug poison $CD." : ""}`
           : `Memory at ${symbol.name} (${formatHex(symbol.address)}).`);
       });
       const breakpoint = document.createElement("button");

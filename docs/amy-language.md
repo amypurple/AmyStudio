@@ -498,10 +498,10 @@ define AMY_DEBUG_SCENE_POISON
 
 Before every `enter`, the compiler marks the physical overlay bytes with `$CD` while the
 active-scene selector is zero and NMI is disabled. The target initializer must overwrite
-every field it needs; a field left at `$CD` is immediately recognizable in ROM TEST &
-DEBUG or by a conditional breakpoint. Compiler metadata identifies `$CD` as the active
-debug poison. Remove the define for release builds: no poison helper, call, or runtime
-cost is emitted when the mode is absent.
+every field it needs; ROM TEST & DEBUG marks an active field still filled with `$CD` as
+`POISON`, and the same value can drive a conditional breakpoint. Compiler metadata
+identifies `$CD` as the active debug poison. Remove the define for release builds: no
+poison helper, call, or runtime cost is emitted when the mode is absent.
 
 See `Amy Scenes and Overlays Lab` for an executable three-scene example. See `Amy Scene
 Poison Self-Test` for a ROM-tested field intentionally left uninitialized.

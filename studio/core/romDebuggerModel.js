@@ -154,7 +154,8 @@ export function annotateOverlaySymbols(symbols, ramOverlays) {
           declaredType: field.declaredType,
           width: field.width,
           offset: field.offset,
-          activeWhen: field.activeWhen
+          activeWhen: field.activeWhen,
+          debugPoison: overlay.debugPoison
         });
       }
     }
@@ -163,6 +164,25 @@ export function annotateOverlaySymbols(symbols, ramOverlays) {
     const overlay = fieldsByAsmName.get(String(symbol.name || "").toLowerCase());
     return overlay ? { ...symbol, overlay } : symbol;
   });
+}
+
+export function inspectOverlaySymbolDebugState(symbol, symbols, readMemory) {
+  if (!symbol?.overlay) return { active: null, poisoned: false };
+  const activeWhen = symbol.overlay.activeWhen;
+  if (!activeWhen) return { active: null, poisoned: false };
+  const activeSymbol = (symbols || []).find((entry) => entry.name.toLowerCase() === String(activeWhen.symbol || "").toLowerCase());
+  if (!activeSymbol || typeof readMemory !== "function") return { active: null, poisoned: false };
+  const activeValue = readMemory(activeSymbol.address, 1)?.[0];
+  const active = activeValue === activeWhen.equals;
+  if (!active || !Number.isInteger(symbol.overlay.debugPoison)) {
+    return { active, activeValue, expectedActiveValue: activeWhen.equals, poisoned: false };
+  }
+  const width = Math.max(1, Number(symbol.overlay.width) || 1);
+  const bytes = readMemory(symbol.address, width);
+  const poisoned = bytes instanceof Uint8Array
+    && bytes.length >= width
+    && bytes.every((value) => value === symbol.overlay.debugPoison);
+  return { active, activeValue, expectedActiveValue: activeWhen.equals, poisoned };
 }
 
 function findAmyProcedureSourceRange(sourceText, procedureName) {
