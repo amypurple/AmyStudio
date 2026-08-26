@@ -300,6 +300,7 @@ export const AMY_AUTOCOMPLETE = [
   ["stop song", "Stop current music-table playback"],
   ["stop all", "Stop music and mute all sound slots"],
   ["play sound 1", "Trigger a sound slot"],
+  ["play sounds 1, 2", "Trigger multiple sound slots together"],
   ["stop sound 1", "Terminate a single sound slot"],
   ["mute all", "Mute active sound slots"],
   ["enable spinner", "Enable roller/spinner interrupt support"],

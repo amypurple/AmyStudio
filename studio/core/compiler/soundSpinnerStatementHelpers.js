@@ -1,5 +1,24 @@
 import { checkSoundDeprecation } from "./deprecations.js";
 
+function splitTopLevelCommaExpressions(text) {
+  const expressions = [];
+  let start = 0;
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "(" || char === "[") depth += 1;
+    else if (char === ")" || char === "]") depth -= 1;
+    else if (char === "," && depth === 0) {
+      expressions.push(text.slice(start, index).trim());
+      start = index + 1;
+    }
+    if (depth < 0) return null;
+  }
+  if (depth !== 0) return null;
+  expressions.push(text.slice(start).trim());
+  return expressions.every(Boolean) ? expressions : null;
+}
+
 export function handleSoundSpinnerStatement({
   line,
   rawLine,
@@ -76,8 +95,27 @@ export function handleSoundSpinnerStatement({
     return { ok: true, handled: true, lines: ["    call AMY_RESET_SPINNERS"] };
   }
 
+  const playSounds = line.match(/^play\s+sounds\s+(.+)$/i);
+  if (playSounds) {
+    const soundExpressions = splitTopLevelCommaExpressions(playSounds[1]);
+    if (!soundExpressions || soundExpressions.length < 2) {
+      return { ok: false, handled: true, log: `play sounds requires at least two comma-separated byte sound indexes: ${rawLine}` };
+    }
+    const lines = ["    ld a,1", "    ld (AMY_SOUND_ENABLED),a"];
+    for (const expression of soundExpressions) {
+      const loadSound = emitLoadInt8Into("b", expression);
+      if (!loadSound) return { ok: false, handled: true, log: `play sounds requires byte sound indexes: ${rawLine}` };
+      lines.push(...loadSound, "    call AMY_PLAY_SOUND");
+    }
+    return { ok: true, handled: true, lines };
+  }
+
   const playSound = line.match(/^play\s+sound\s+(.+)$/i);
   if (playSound) {
+    const soundExpressions = splitTopLevelCommaExpressions(playSound[1]);
+    if (soundExpressions?.length > 1) {
+      return { ok: false, handled: true, log: `play sound accepts one index; use play sounds for a comma-separated list: ${rawLine}` };
+    }
     const loadSound = emitLoadInt8Into("b", playSound[1]);
     if (!loadSound) return { ok: false, handled: true, log: `play sound requires a byte sound index: ${rawLine}` };
     return {

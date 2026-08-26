@@ -2301,6 +2301,7 @@ when replacements happened.
 ```basic
 set sound table SoundTable
 play sound 1
+play sounds 5, 6, 7
 play song SongTable
 stop song
 mute all
@@ -2863,6 +2864,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 |---|---|
 | `set sound table Name [areas N]` | Install sound table |
 | `play sound N` | Trigger sound slot |
+| `play sounds A, B [, ...]` | Trigger two or more sound slots together |
 | `play song Name` | Start music table |
 | `stop song` | Stop music |
 | `mute all` | Silence output |

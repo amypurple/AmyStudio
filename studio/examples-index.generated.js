@@ -49,6 +49,19 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "train-track-puzzle",
+    "label": "Train Track Puzzle",
+    "detail": "ColecoVision railway logic game with nine prevalidated 7x7 puzzles, immutable clues, row and column counts, animated water, and a smoke-trailing victory train.",
+    "projectName": "train-track-puzzle",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "input-loop-minimal",
     "label": "Input Loop Minimal",
     "detail": "Moves a text cursor with canonical inline joypad input.",
