@@ -1779,6 +1779,7 @@ decompress Asset to vram.pattern        ' asset codec inferred when declared wit
 decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name
+decompress splitrle Table to vram.name
 decompress pletter Asset  to vram.name
 decompress dan1  Asset   to vram.pattern
 decompress dan2  Asset   to vram.pattern
@@ -1793,6 +1794,12 @@ copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
+
+`splitrle` is a fast RLE format recovered from Ken Uston's Blackjack/Poker. It
+stores packet controls separately from literal/repeated payload bytes. Amy files
+add a two-byte relative payload offset so compressed assets remain relocatable.
+Use `.splitrle` files or `asset ... codec splitrle`; unlike `rle`, this is not an
+alias for `mdkrle`.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old
 lib4ksa masked VRAM upload helper. Each byte written is `(source_byte & M) xor X`.
@@ -2063,6 +2070,17 @@ This is an intentional machine contract:
 - `update sprites from First count Count` uploads only a constant range and writes the sprite terminator after that range
 - AMY keeps that boundary explicit to protect predictable ColecoVision rendering behavior
 
+The TMS9918 resolves overlapping opaque sprite pixels by sprite-table order:
+the lower sprite index appears in front of every higher index. For example,
+smoke in sprites 0-2 is drawn in front of a train in sprite 3. This priority
+does not bypass the hardware limit of four visible sprites on one scanline;
+the fifth and later sprites on that line are not rendered.
+
+In Graphics I/II, sprite Y value `$D0` is not merely off-screen: it terminates
+the sprite attribute list, so every following sprite is ignored. When an
+inactive lower-index sprite must precede active higher-index sprites, use a
+transparent pattern at an off-screen non-terminator Y such as `$CF` (207).
+
 `set sprite I to Y,X,Pattern,Color` is the native pixel-coordinate form and
 keeps the ColecoVision sprite Y convention visible. `set sprite I tile X,Y
 pattern P color C` is the tile-map convenience form: it lowers to pixel
@@ -2185,8 +2203,11 @@ selects the count at runtime from the official BIOS `AMERICA` byte (`60` NTSC,
 even while an old action remains held. The current screen and backdrop remain visible
 until the timeout expires. On expiry, Amy sets VDP R7 to black and clears only VDP R1
 display bit 6: NMI, controller scanning, sound, music, timers, and `on vblank` continue.
-After a fresh action is pressed and released, Amy restores the tracked backdrop and the
-original display-enable bit without overwriting current NMI or sprite-size bits. Every
+After blanking, the first fresh action immediately restores the tracked backdrop and the
+original display-enable bit without overwriting current NMI or sprite-size bits. That
+wake action must be released and is consumed; a second fresh press and release is
+required to complete the pause. An action pressed before blanking still completes the
+pause normally after its release. Every
 `backdrop COLOR` command updates that tracked R7 value. This form requires NMI enabled;
 compilation fails when Amy can prove NMI is off at that point.
 `wait` is the canonical one-frame wait. It uses the safe frame-delay runtime:

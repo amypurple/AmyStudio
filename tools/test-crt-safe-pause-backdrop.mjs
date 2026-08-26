@@ -29,6 +29,10 @@ assert.equal((runtime.match(/ld a,\(AMY_VDP_R7_SHADOW\)\s+ld c,a\s+ld b,7/g) ?? 
   "both wake paths must restore the tracked R7 backdrop");
 assert.ok(runtime.indexOf("ld c,$01") > runtime.indexOf("AMY_PAUSE_VBLANK_TICK:"),
   "the pause path must not set black before entering its timeout handler");
+assert.match(runtime, /AMY_PAUSE_WAKE_RELEASE:[\s\S]*?jr nz,AMY_PAUSE_WAKE_RELEASE[\s\S]*?jr AMY_PAUSE_FRESH_PRESS/,
+  "a wake press must be released and consumed before waiting for confirmation");
+assert.match(runtime, /call AMY_PAUSE_RESTORE_DISPLAY\s+AMY_PAUSE_WAKE_RELEASE:/,
+  "the display must be restored immediately when the wake press is detected");
 
 const backdropCaps = inferAmyMemoryCapabilities("backdrop black\nu8 Sentinel = 0", () => false);
 assert.equal(backdropCaps.needsBackdropShadow, true,

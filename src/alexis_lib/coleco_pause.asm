@@ -4,7 +4,8 @@
 
 ; Wait for every selected action button to be released, then for a fresh press,
 ; then consume its release. If the timeout expires, clear only VDP R1 display
-; bit 6 while leaving NMI bit 5 and sprite configuration untouched.
+; bit 6 while leaving NMI bit 5 and sprite configuration untouched. The first
+; post-blank press only wakes the display; a second fresh press confirms.
 ;
 ; Inputs:
 ;   HL = NTSC timeout in VBlank ticks
@@ -37,6 +38,17 @@ AMY_PAUSE_FRESH_PRESS:
     call AMY_PAUSE_READ_ACTIONS
     or a
     jr z,AMY_PAUSE_FRESH_PRESS
+    ld a,b
+    or a
+    jr z,AMY_PAUSE_FINAL_RELEASE
+
+    call AMY_PAUSE_RESTORE_DISPLAY
+AMY_PAUSE_WAKE_RELEASE:
+    call AMY_PAUSE_VBLANK_TICK
+    call AMY_PAUSE_READ_ACTIONS
+    or a
+    jr nz,AMY_PAUSE_WAKE_RELEASE
+    jr AMY_PAUSE_FRESH_PRESS
 
 AMY_PAUSE_FINAL_RELEASE:
     call AMY_PAUSE_VBLANK_TICK
@@ -47,6 +59,10 @@ AMY_PAUSE_FINAL_RELEASE:
     ld a,b
     or a
     ret z
+    call AMY_PAUSE_RESTORE_DISPLAY
+    ret
+
+AMY_PAUSE_RESTORE_DISPLAY:
     ld a,($73C4)
     and $BF
     or d                     ; Restore only the entry display bit.
@@ -57,7 +73,9 @@ AMY_PAUSE_FINAL_RELEASE:
     ld a,(AMY_VDP_R7_SHADOW)
     ld c,a
     ld b,7
-    jp WRITE_REGISTER
+    call WRITE_REGISTER
+    ld b,0
+    ret
 
 ; Wait for one real VBlank NMI, decrement the timeout, and blank exactly once.
 AMY_PAUSE_VBLANK_TICK:

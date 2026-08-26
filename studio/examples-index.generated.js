@@ -49,8 +49,21 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "pause-until-press-demo",
+    "label": "Pause Until Press",
+    "detail": "Demonstrates CRT-safe blanking with separate wake and confirmation actions.",
+    "projectName": "pause-until-press-demo",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "train-track-puzzle",
-    "label": "Train Track Puzzle",
+    "label": "Rails Puzzles",
     "detail": "ColecoVision railway logic game with nine prevalidated 7x7 puzzles, immutable clues, row and column counts, animated water, and a smoke-trailing victory train.",
     "projectName": "train-track-puzzle",
     "sourceLang": "amy",

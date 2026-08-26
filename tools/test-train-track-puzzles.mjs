@@ -12,11 +12,20 @@ function bytes(name) {
   return [...body.matchAll(/(?<![A-Za-z_$])\d+/g)].map((match) => Number(match[0]));
 }
 
-const solutions = bytes("PuzzleSolutions");
+const solutions = Array.from({ length: puzzleCount }, (_, index) => bytes(`PuzzleSolution${index + 1}`)).flat();
 const fixedCells = bytes("PuzzleFixedCells");
 const rowCounts = bytes("PuzzleRowCounts");
 const columnCounts = bytes("PuzzleColumnCounts");
 const routes = bytes("PuzzleRoutes");
+assert.match(source, /u16\s+PuzzleDataPointer\s*=\s*0/i, "solution-bank pointer must be 16-bit");
+assert.match(source, /data\s+PuzzleSolutionTable\s+words\s*=\s*@PuzzleSolution1[\s\S]*?@PuzzleSolution9/i,
+  "all nine solution blocks must be addressable through the ROM word table");
+assert.match(source, /PuzzleDataPointer\s*=\s*PuzzleSolutionTable\[Puzzle\][\s\S]*?Solution\[I\]\s*=\s*peek\(PuzzleDataPointer\)[\s\S]*?PuzzleDataPointer \+= 1/i,
+  "runtime loading must walk the selected 49-byte solution through a 16-bit pointer");
+assert.match(source, /copy\s+Solution\s+count\s+49\s+to\s+Board[\s\S]*?DrawBoard[\s\S]*?CheckPuzzleComplete/i,
+  "controller-2 solve path must copy the loaded solution before validating it");
+assert.match(source, /clear sprites\s*[\r\n]+\s*update sprites[\s\S]*?WaterUpdating\s*=\s*0[\s\S]*?WaterTicks\s*=\s*0[\s\S]*?wait 1 frame[\s\S]*?Puzzle \+= 1/i,
+  "puzzle transition must include one silent, animation-free frame before advancing");
 assert.equal(solutions.length, puzzleCount * 49, "solution bank size");
 assert.equal(fixedCells.length, puzzleCount * 8, "fixed-clue bank size");
 assert.equal(rowCounts.length, puzzleCount * 7, "row-count bank size");
@@ -81,4 +90,4 @@ for (let puzzle = 0; puzzle < puzzleCount; puzzle += 1) {
   }
 }
 
-console.log(`train track puzzles: PASS (${puzzleCount} valid puzzles)`);
+console.log(`Rails Puzzles: PASS (${puzzleCount} valid puzzles)`);

@@ -157,7 +157,7 @@
 - Unqualified forms accept either controller; `on joypad N` limits the same complete action-button mask to one controller.
 - `wait fire` and `wait no fire` now test the complete action-button nibble instead of only the primary button.
 - `pause until press and release` waits for a new action press and consumes its release before returning.
-- `pause until press and release [on joypad N] blank after N seconds` performs region-aware CRT-safe blanking while preserving NMI, sound, controller updates, and the current non-display R1 bits.
+- `pause until press and release [on joypad N] blank after N seconds` performs region-aware CRT-safe blanking while preserving NMI, sound, controller updates, and the current non-display R1 bits. After blanking, one debounced action wakes the display and a separate action confirms.
 
 ## 2026-08-02 - Consumable natural-direction spinner input
 
@@ -5687,7 +5687,7 @@ Why this is still `v2.1` and not `v2.2`:
 ### Validation and documentation
 
 - Added the executable Amy Scenes and Overlays Lab and a GearColeco ROM test covering frame dispatch, FIRE-driven transition, shared RAM, and enter initialization.
-- Verified all 54 public examples with Balanced optimization; the same lifecycle ROM also passed all five optimization profiles in the Alexis development repository.
+- Verified the lifecycle ROM under Off, Balanced, Aggressive, and Experimental optimization, then assembled all 200 Alexis examples with Balanced optimization.
 - Updated the Amy reference, autocomplete, syntax highlighting, and historical local-variable notes.
 - Fixed comparisons containing computed array indexes so `<<`/`>>` inside brackets are no longer mistaken for relational operators; the same computed element now works directly as a routine argument.
 - Added scene call-graph ownership checks: cross-part accesses and scene-storage helpers shared by multiple scenes now fail closed, while permanent-only shared helpers remain valid.
@@ -5695,3 +5695,8 @@ Why this is still `v2.1` and not `v2.2`:
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
 - ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.
+# 2026-08-25 - Split RLE recovered from Blackjack/Poker
+
+- Recovered the distinct two-stream RLE algorithm used by Ken Uston's Blackjack/Poker at ROM routine `$BA53`.
+- Added the relocatable `splitrle` JavaScript codec, 50-byte Z80 VRAM decompressor, compiler syntax, asset handling, autocomplete, previews, and picture/tile compression comparisons.
+- Added codec roundtrip/codegen tests and extended the Warrior benchmark. Split RLE is an optional measured alternative, not a replacement for MDKRLE.
