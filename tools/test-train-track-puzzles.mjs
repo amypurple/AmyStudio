@@ -28,6 +28,15 @@ const direction = (from, to) => {
   return delta === 1 ? "E" : delta === -1 ? "W" : delta === 7 ? "S" : delta === -7 ? "N" : null;
 };
 const pieceForDirections = { EW: 1, NS: 2, EN: 3, ES: 4, SW: 5, NW: 6 };
+const exitsBoard = (inside, edge) => {
+  const x = edge % 7;
+  const y = Math.floor(edge / 7);
+  const delta = edge - inside;
+  return (y === 0 && delta === -7)
+    || (y === 6 && delta === 7)
+    || (x === 0 && delta === -1)
+    || (x === 6 && delta === 1);
+};
 
 for (let puzzle = 0; puzzle < puzzleCount; puzzle += 1) {
   const solution = solutions.slice(puzzle * 49, puzzle * 49 + 49);
@@ -37,6 +46,8 @@ for (let puzzle = 0; puzzle < puzzleCount; puzzle += 1) {
   const route = routeData.slice(1, routeData[0] + 1);
   assert.ok(route.length >= 2 && route.length <= 20, `puzzle ${puzzle + 1}: route length`);
   assert.equal(new Set(route).size, route.length, `puzzle ${puzzle + 1}: route repeats a cell`);
+  assert.ok(exitsBoard(route[1], route[0]), `puzzle ${puzzle + 1}: start does not exit at the border`);
+  assert.ok(exitsBoard(route.at(-2), route.at(-1)), `puzzle ${puzzle + 1}: end does not exit at the border`);
 
   const expected = Array(49).fill(0);
   for (let index = 0; index < route.length; index += 1) {
@@ -64,6 +75,10 @@ for (let puzzle = 0; puzzle < puzzleCount; puzzle += 1) {
   }
   assert.deepEqual(rowCounts.slice(puzzle * 7, puzzle * 7 + 7), expectedRows, `puzzle ${puzzle + 1}: row hints`);
   assert.deepEqual(columnCounts.slice(puzzle * 7, puzzle * 7 + 7), expectedColumns, `puzzle ${puzzle + 1}: column hints`);
+  if (puzzle >= 3) {
+    assert.ok(expectedRows.every((count) => count > 0 && count < 7), `puzzle ${puzzle + 1}: empty or full row`);
+    assert.ok(expectedColumns.every((count) => count > 0 && count < 7), `puzzle ${puzzle + 1}: empty or full column`);
+  }
 }
 
 console.log(`train track puzzles: PASS (${puzzleCount} valid puzzles)`);
