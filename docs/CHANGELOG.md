@@ -5695,8 +5695,3 @@ Why this is still `v2.1` and not `v2.2`:
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
 - ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.
-# 2026-08-25 - Split RLE recovered from Blackjack/Poker
-
-- Recovered the distinct two-stream RLE algorithm used by Ken Uston's Blackjack/Poker at ROM routine `$BA53`.
-- Added the relocatable `splitrle` JavaScript codec, 50-byte Z80 VRAM decompressor, compiler syntax, asset handling, autocomplete, previews, and picture/tile compression comparisons.
-- Added codec roundtrip/codegen tests and extended the Warrior benchmark. Split RLE is an optional measured alternative, not a replacement for MDKRLE.

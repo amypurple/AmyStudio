@@ -1779,7 +1779,6 @@ decompress Asset to vram.pattern        ' asset codec inferred when declared wit
 decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name
-decompress splitrle Table to vram.name
 decompress pletter Asset  to vram.name
 decompress dan1  Asset   to vram.pattern
 decompress dan2  Asset   to vram.pattern
@@ -1794,12 +1793,6 @@ copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
-
-`splitrle` is a fast RLE format recovered from Ken Uston's Blackjack/Poker. It
-stores packet controls separately from literal/repeated payload bytes. Amy files
-add a two-byte relative payload offset so compressed assets remain relocatable.
-Use `.splitrle` files or `asset ... codec splitrle`; unlike `rle`, this is not an
-alias for `mdkrle`.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old
 lib4ksa masked VRAM upload helper. Each byte written is `(source_byte & M) xor X`.
