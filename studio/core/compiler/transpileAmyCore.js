@@ -233,7 +233,7 @@ export function transpileAmyCore(sourceText, deps) {
     return { ok: true, lines: result, definedSymbols };
   }
 
-  function lowerOverlayScopeAliases(rawLines) {
+  function lowerRecordScopeAliases(rawLines) {
     const result = [];
     const blockStack = [];
     const aliases = [];
@@ -273,13 +273,13 @@ export function transpileAmyCore(sourceText, deps) {
     for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
       const rawLine = rawLines[lineIndex];
       const stripped = stripAmyInlineComment(rawLine).trim();
-      const lexical = stripped.match(/^with\s+([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      const lexical = stripped.match(/^with\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
       if (lexical) {
-        const name = lexical[3];
+        const name = lexical[2];
         if (aliases.some((entry) => entry.name.toLowerCase() === name.toLowerCase())) {
           return { ok: false, log: `Duplicate with alias '${name}' at line ${lineIndex + 1}` };
         }
-        const entry = { kind: "overlay", name, prefix: `${lexical[1]}.${lexical[2]}` };
+        const entry = { kind: "lexical", name, prefix: lexical[1] };
         aliases.push(entry);
         blockStack.push(entry);
         result.push("");
@@ -292,7 +292,7 @@ export function transpileAmyCore(sourceText, deps) {
       }
       if (/^end\s+with$/i.test(stripped)) {
         const entry = blockStack.pop();
-        if (entry?.kind === "overlay") {
+        if (entry?.kind === "lexical") {
           aliases.pop();
           result.push("");
         } else {
@@ -302,7 +302,7 @@ export function transpileAmyCore(sourceText, deps) {
       }
       result.push(rewriteAliases(rawLine));
     }
-    const unclosed = [...blockStack].reverse().find((entry) => entry.kind === "overlay");
+    const unclosed = [...blockStack].reverse().find((entry) => entry.kind === "lexical");
     if (unclosed) return { ok: false, log: `with ${unclosed.name} is missing end with` };
     return { ok: true, lines: result };
   }
@@ -761,10 +761,10 @@ export function transpileAmyCore(sourceText, deps) {
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
-  const overlayAliasLowering = lowerOverlayScopeAliases(conditionalPrepass.lines);
-  if (!overlayAliasLowering.ok) return { ok: false, asmBody: "", log: overlayAliasLowering.log };
+  const recordAliasLowering = lowerRecordScopeAliases(conditionalPrepass.lines);
+  if (!recordAliasLowering.ok) return { ok: false, asmBody: "", log: recordAliasLowering.log };
   const debugScenePoison = conditionalPrepass.definedSymbols.has("amy_debug_scene_poison");
-  const sceneParsing = parseSceneDeclarations(overlayAliasLowering.lines);
+  const sceneParsing = parseSceneDeclarations(recordAliasLowering.lines);
   if (!sceneParsing.ok) return { ok: false, asmBody: "", log: sceneParsing.log };
   const stateMachineLowering = lowerStateMachines(sceneParsing.lines, sceneParsing);
   if (!stateMachineLowering.ok) return { ok: false, asmBody: "", log: stateMachineLowering.log };

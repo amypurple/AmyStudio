@@ -390,6 +390,7 @@ export const AMY_AUTOCOMPLETE = [
   ["choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds", "Circular cursor menu with keypad, directions, FIRE, debounce, and CRT sleep"],
   ["choose menu 1 to 4 into Choice cursor sprite 0 at 48,71 step 16", "Circular menu using an already configured sprite cursor"],
   ["with ArcadeRam.Game as G", "Begin a pointer-free lexical alias for one RAM-overlay part"],
+  ["with Player as P", "Begin a pointer-free lexical alias for one global record"],
   ["end with", "Close a record or RAM-overlay alias block"],
   ["wait key release", "Wait until keypad 1 is released"],
   ["sub MyRoutine", "Define a subroutine label"],

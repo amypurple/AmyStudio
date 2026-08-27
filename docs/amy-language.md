@@ -386,6 +386,20 @@ source line numbers, strings, and comments. Fully qualified and aliased versions
 produce byte-identical ROMs. Alias names must be distinct while nested, and an unknown
 overlay or part is rejected by the normal qualified-operand resolver.
 
+A global record can use the same zero-cost form:
+
+```basic
+PlayerState Player
+with Player as P
+  P.X = 12
+  P.Score += 100
+end with
+```
+
+This is also lexical expansion: it reserves no alias pointer and produces the same ROM as
+writing `Player.X` and `Player.Score`. A scalar or unknown root cannot become a record through
+an alias; its qualified fields are rejected normally.
+
 Current record limits:
 - no local record variables yet
 - no recursive or multidimensional record-array fields yet
