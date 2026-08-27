@@ -705,7 +705,7 @@ export function createAssignmentArithmeticHelpers({
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=" && isOne) return [];
       if (opToken === "+=") return emitArith32Op(target, valueToken, "add");
       if (opToken === "-=") return emitArith32Op(target, valueToken, "sub");
-      if (getRuntimeInfo(target)?.kind !== "fix16_16" && targetType === "u32" && opToken === "*=") return emitArith32Op(target, valueToken, "mul");
+      if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "*=") return emitArith32Op(target, valueToken, "mul");
       if (getRuntimeInfo(target)?.kind !== "fix16_16" && targetType === "u32" && opToken === "/=") return emitArith32Op(target, valueToken, "div");
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=") return emitFx16MultiplyOp(target, valueToken);
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=") return emitFx16DivideOp(target, valueToken);

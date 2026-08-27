@@ -77,7 +77,10 @@ u32 ZeroQuotient = 99
 i32 SignedProductLeft = -12345
 i32 SignedProductRight = 321
 i32 SignedProduct = 0
+i32 SignedCompound = -2000
+i32 SignedCompoundFactor = 17
 u32 Values[2]
+i32 SignedValues[2]
 u32 ArrayResult = 0
 WideState State
 u8 GuardAfter = 88
@@ -91,8 +94,12 @@ Product = ProductLeft * ProductRight
 Quotient = Dividend / Divisor
 ZeroQuotient = Dividend / ZeroDivisor
 SignedProduct = SignedProductLeft * SignedProductRight
+SignedCompound *= SignedCompoundFactor
 Values[0] = 100000
 Values[1] = 234567
+SignedValues[0] = -25
+SignedValues[1] = 24
+SignedValues[0] *= SignedValues[1]
 ArrayResult = Values[0] + Values[1]
 State.Left = 300000
 State.Right = 456789
@@ -121,6 +128,8 @@ loop forever
       assert.equal(readU32(core, addressOf(asm, "Quotient")), 1333333333, `${profile}: unsigned quotient`);
       assert.equal(readU32(core, addressOf(asm, "ZeroQuotient")), 0, `${profile}: zero divisor`);
       assert.equal(readU32(core, addressOf(asm, "SignedProduct")), (-3962745) >>> 0, `${profile}: signed product`);
+      assert.equal(readU32(core, addressOf(asm, "SignedCompound")), (-34000) >>> 0, `${profile}: signed compound product`);
+      assert.equal(readU32(core, addressOf(asm, "SignedValues")), (-600) >>> 0, `${profile}: signed array compound product`);
       assert.equal(readU32(core, addressOf(asm, "ArrayResult")), 334567, `${profile}: array operands`);
       assert.equal(readU32(core, addressOf(asm, "State") + 8), 756789, `${profile}: record operands`);
     } finally {

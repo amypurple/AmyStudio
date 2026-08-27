@@ -1522,6 +1522,7 @@ implicitly widened into this arithmetic. Multiplication keeps the low 32 bits;
 overflow wraps modulo 2^32 for both signed and unsigned values.
 Binary `/` is available for `u32` only and stores `0` when the divisor is zero.
 Signed `i32` division remains invalid until a signed runtime helper is provided.
+Both `u32` and `i32` also support the equivalent in-place multiplication `*=`.
 
 Fixed-size `u32` and `i32` arrays use four little-endian bytes per element and accept
 constant, `u8` variable, and supported `u8` expression indexes:
