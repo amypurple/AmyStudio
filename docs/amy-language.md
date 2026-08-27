@@ -371,6 +371,21 @@ end with
 
 `Ghosts[G]` is evaluated once when entering the block. `Ghost` is a reference to the original element, never a copy, so writes immediately affect `Ghosts[G]`. Amy stores one hidden two-byte pointer and addresses fields with constant offsets. Nested aliases are allowed when their names differ, and an alias can be passed to a compatible `ref RecordType` parameter. The current safe implementation accepts `with` in `Start` and in routines proven non-reentrant; recursive and NMI-reachable routines are rejected until activation-local alias pointers are implemented.
 
+An overlay part can use the same readable block form as a pointer-free lexical alias:
+
+```basic
+with ArcadeRam.Reversi as R
+  R.CursorX = 4
+  R.Board[R.Cell] = R.CurrentPiece
+end with
+```
+
+Unlike a record-array alias, an overlay alias stores no pointer and reserves no RAM. The
+compiler expands `R.` to `ArcadeRam.Reversi.` before semantic analysis, while preserving
+source line numbers, strings, and comments. Fully qualified and aliased versions therefore
+produce byte-identical ROMs. Alias names must be distinct while nested, and an unknown
+overlay or part is rejected by the normal qualified-operand resolver.
+
 Current record limits:
 - no local record variables yet
 - no recursive or multidimensional record-array fields yet

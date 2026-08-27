@@ -232,6 +232,80 @@ export function transpileAmyCore(sourceText, deps) {
     }
     return { ok: true, lines: result, definedSymbols };
   }
+
+  function lowerOverlayScopeAliases(rawLines) {
+    const result = [];
+    const blockStack = [];
+    const aliases = [];
+
+    const rewriteAliases = (rawLine) => {
+      if (!aliases.length) return rawLine;
+      let quoted = false;
+      let codeEnd = rawLine.length;
+      for (let index = 0; index < rawLine.length; index += 1) {
+        const char = rawLine[index];
+        if (char === '"') quoted = !quoted;
+        else if (char === "'" && !quoted) { codeEnd = index; break; }
+      }
+      let code = rawLine.slice(0, codeEnd);
+      for (let index = aliases.length - 1; index >= 0; index -= 1) {
+        const alias = aliases[index];
+        const escaped = alias.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = new RegExp(`\\b${escaped}(?=\\s*\\.)`, "gi");
+        let output = "";
+        let start = 0;
+        let inString = false;
+        for (let cursor = 0; cursor < code.length; cursor += 1) {
+          if (code[cursor] !== '"') continue;
+          const segment = code.slice(start, cursor);
+          output += inString ? segment : segment.replace(pattern, alias.prefix);
+          output += '"';
+          inString = !inString;
+          start = cursor + 1;
+        }
+        const tail = code.slice(start);
+        output += inString ? tail : tail.replace(pattern, alias.prefix);
+        code = output;
+      }
+      return `${code}${rawLine.slice(codeEnd)}`;
+    };
+
+    for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
+      const rawLine = rawLines[lineIndex];
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      const lexical = stripped.match(/^with\s+([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (lexical) {
+        const name = lexical[3];
+        if (aliases.some((entry) => entry.name.toLowerCase() === name.toLowerCase())) {
+          return { ok: false, log: `Duplicate with alias '${name}' at line ${lineIndex + 1}` };
+        }
+        const entry = { kind: "overlay", name, prefix: `${lexical[1]}.${lexical[2]}` };
+        aliases.push(entry);
+        blockStack.push(entry);
+        result.push("");
+        continue;
+      }
+      if (/^with\b/i.test(stripped)) {
+        blockStack.push({ kind: "runtime" });
+        result.push(rewriteAliases(rawLine));
+        continue;
+      }
+      if (/^end\s+with$/i.test(stripped)) {
+        const entry = blockStack.pop();
+        if (entry?.kind === "overlay") {
+          aliases.pop();
+          result.push("");
+        } else {
+          result.push(rewriteAliases(rawLine));
+        }
+        continue;
+      }
+      result.push(rewriteAliases(rawLine));
+    }
+    const unclosed = [...blockStack].reverse().find((entry) => entry.kind === "overlay");
+    if (unclosed) return { ok: false, log: `with ${unclosed.name} is missing end with` };
+    return { ok: true, lines: result };
+  }
   function parseSceneDeclarations(rawLines) {
     const lines = [...rawLines];
     const scenes = [];
@@ -687,8 +761,10 @@ export function transpileAmyCore(sourceText, deps) {
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
+  const overlayAliasLowering = lowerOverlayScopeAliases(conditionalPrepass.lines);
+  if (!overlayAliasLowering.ok) return { ok: false, asmBody: "", log: overlayAliasLowering.log };
   const debugScenePoison = conditionalPrepass.definedSymbols.has("amy_debug_scene_poison");
-  const sceneParsing = parseSceneDeclarations(conditionalPrepass.lines);
+  const sceneParsing = parseSceneDeclarations(overlayAliasLowering.lines);
   if (!sceneParsing.ok) return { ok: false, asmBody: "", log: sceneParsing.log };
   const stateMachineLowering = lowerStateMachines(sceneParsing.lines, sceneParsing);
   if (!stateMachineLowering.ok) return { ok: false, asmBody: "", log: stateMachineLowering.log };

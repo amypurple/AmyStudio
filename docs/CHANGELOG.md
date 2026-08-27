@@ -1,5 +1,6 @@
 ## 2026-08-27 - Faster compilation and compact cursor menus
 
+- Added pointer-free `with Overlay.Part as Alias` blocks that produce byte-identical ROMs while removing repeated qualified prefixes.
 - Added `choose menu`: compact circular tile or sprite cursor navigation with keypad, FIRE, input release handling, and optional CRT-safe sleep.
 - Quatro Puzzles now uses the menu primitive, removing duplicated menu code and three temporary RAM bytes.
 - Accelerated assembler evaluation of simple literals and symbols without changing generated ROM output.
