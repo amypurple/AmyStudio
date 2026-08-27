@@ -160,6 +160,7 @@ const els = {
   exampleTagSelect: document.getElementById("exampleTagSelect"),
   exampleSelect: document.getElementById("exampleSelect"),
   btnLoadExample: document.getElementById("btnLoadExample"),
+  btnReloadExample: document.getElementById("btnReloadExample"),
   exampleDetail: document.getElementById("exampleDetail"),
   exampleMeta: document.getElementById("exampleMeta"),
   projectPanelTabProject: document.getElementById("projectPanelTabProject"),
@@ -1029,12 +1030,17 @@ projectTabsController = createProjectTabs({
   migrateProject,
   onBeforeActivate: captureProjectTabView,
   captureTransientState: captureProjectTabRuntime,
+  snapshotProject: exportProject,
   onActivate: activateProjectTab
 });
 project = projectTabsController.getActiveProject();
 
 function openProjectInTab(nextProject, options) {
   projectTabsController.openProject(nextProject, options);
+}
+
+function openExampleInTab(nextProject, options) {
+  return projectTabsController.openExampleProject(nextProject, options);
 }
 
 function bindEvents() {
@@ -1082,6 +1088,7 @@ function bindEvents() {
         scheduleEditorInsightsRefresh,
         syncUiFromProject,
         openProjectInTab,
+        openExampleInTab,
         markActiveProjectClean: () => projectTabsController.markActiveClean(),
         setStatus: (...args) => setStatus(...args),
         newProject,

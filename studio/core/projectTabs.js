@@ -8,6 +8,8 @@ function fingerprint(project) {
   try { return JSON.stringify(project); } catch (_) { return ""; }
 }
 
+const FINGERPRINT_VERSION = 2;
+
 export function createProjectTabs({
   container,
   initialProject,
@@ -17,6 +19,7 @@ export function createProjectTabs({
   confirmClose = (message) => globalThis.confirm?.(message) !== false,
   onBeforeActivate = () => ({}),
   captureTransientState = () => ({}),
+  snapshotProject = (project) => project,
   onActivate = () => {}
 }) {
   let tabs = [];
@@ -28,18 +31,24 @@ export function createProjectTabs({
       if (saved?.version === SESSION_VERSION && Array.isArray(saved.tabs) && saved.tabs.length) {
         tabs = saved.tabs
           .filter((tab) => tab?.project && typeof tab.project === "object")
-          .map((tab) => ({
-            id: String(tab.id || makeId()),
-            project: migrateProject(tab.project),
-            cleanFingerprint: String(tab.cleanFingerprint || ""),
-            viewState: tab.viewState && typeof tab.viewState === "object" ? tab.viewState : {}
-          }));
+          .map((tab) => {
+            const project = migrateProject(tab.project);
+            return {
+              id: String(tab.id || makeId()),
+              project,
+              cleanFingerprint: tab.cleanFingerprintVersion === FINGERPRINT_VERSION
+                ? String(tab.cleanFingerprint || "")
+                : fingerprint(snapshotProject(project)),
+              cleanFingerprintVersion: FINGERPRINT_VERSION,
+              viewState: tab.viewState && typeof tab.viewState === "object" ? tab.viewState : {}
+            };
+          });
         activeId = tabs.some((tab) => tab.id === saved.activeId) ? saved.activeId : tabs[0]?.id;
       }
     } catch (_) {}
     if (!tabs.length) {
       const project = initialProject;
-      tabs = [{ id: makeId(), project, cleanFingerprint: fingerprint(project), viewState: {} }];
+      tabs = [{ id: makeId(), project, cleanFingerprint: fingerprint(snapshotProject(project)), cleanFingerprintVersion: FINGERPRINT_VERSION, viewState: {} }];
       activeId = tabs[0].id;
     }
   }
@@ -49,7 +58,7 @@ export function createProjectTabs({
   }
 
   function isDirty(tab) {
-    return fingerprint(tab.project) !== tab.cleanFingerprint;
+    return fingerprint(snapshotProject(tab.project)) !== tab.cleanFingerprint;
   }
 
   function persist() {
@@ -72,7 +81,7 @@ export function createProjectTabs({
       const activate = document.createElement("button");
       activate.type = "button";
       activate.className = "project-tab__activate";
-      activate.title = tab.project.projectName || "Untitled project";
+      activate.title = `${tab.project.projectName || "Untitled project"}${isDirty(tab) ? " (modified)" : ""}`;
       activate.setAttribute("aria-label", `Open ${tab.project.projectName || "Untitled project"}`);
       activate.textContent = `${isDirty(tab) ? "● " : ""}${tab.project.projectName || "Untitled"}`;
       activate.addEventListener("click", () => activateTab(tab.id));
@@ -109,7 +118,8 @@ export function createProjectTabs({
     const tab = {
       id: makeId(),
       project,
-      cleanFingerprint: clean ? fingerprint(project) : "",
+      cleanFingerprint: clean ? fingerprint(snapshotProject(project)) : "",
+      cleanFingerprintVersion: FINGERPRINT_VERSION,
       viewState: {},
       transientState: {}
     };
@@ -119,6 +129,33 @@ export function createProjectTabs({
     render();
     onActivate(project, tab.viewState, tab.transientState);
     return tab.id;
+  }
+
+  function openExampleProject(project, { clean = true, reload = false } = {}) {
+    const exampleId = String(project?.exampleId || "").trim();
+    if (exampleId) {
+      const existing = tabs.find((tab) => String(tab.project?.exampleId || "") === exampleId);
+      if (existing) {
+        if (reload) {
+          if (isDirty(existing) && !confirmClose(`Reload “${existing.project.projectName || "example"}” and discard its changes?`)) {
+            return { id: existing.id, reused: true, reloaded: false, cancelled: true };
+          }
+          existing.project = project;
+          existing.cleanFingerprint = clean ? fingerprint(snapshotProject(project)) : "";
+          existing.cleanFingerprintVersion = FINGERPRINT_VERSION;
+          existing.viewState = {};
+          existing.transientState = {};
+          activeId = existing.id;
+          persist();
+          render();
+          onActivate(project, existing.viewState, existing.transientState);
+          return { id: existing.id, reused: true, reloaded: true };
+        }
+        if (existing.id !== activeId) activateTab(existing.id);
+        return { id: existing.id, reused: true, dirty: isDirty(existing) };
+      }
+    }
+    return { id: openProject(project, { clean }), reused: false };
   }
 
   function closeTab(id) {
@@ -131,7 +168,7 @@ export function createProjectTabs({
     tabs.splice(index, 1);
     if (!tabs.length) {
       const project = initialProject;
-      tabs.push({ id: makeId(), project, cleanFingerprint: fingerprint(project), viewState: {} });
+      tabs.push({ id: makeId(), project, cleanFingerprint: fingerprint(snapshotProject(project)), cleanFingerprintVersion: FINGERPRINT_VERSION, viewState: {} });
     }
     if (activeId === id) {
       activeId = tabs[Math.min(index, tabs.length - 1)].id;
@@ -149,7 +186,8 @@ export function createProjectTabs({
 
   function markActiveClean() {
     const tab = activeTab();
-    tab.cleanFingerprint = fingerprint(tab.project);
+    tab.cleanFingerprint = fingerprint(snapshotProject(tab.project));
+    tab.cleanFingerprintVersion = FINGERPRINT_VERSION;
     persist();
     render();
   }
@@ -159,6 +197,7 @@ export function createProjectTabs({
   return {
     getActiveProject: () => activeTab().project,
     openProject,
+    openExampleProject,
     activateTab,
     closeTab,
     projectChanged,

@@ -26,6 +26,8 @@ assert.match(source, /copy\s+Solution\s+count\s+49\s+to\s+Board[\s\S]*?DrawBoard
   "controller-2 solve path must copy the loaded solution before validating it");
 assert.match(source, /clear sprites\s*[\r\n]+\s*update sprites[\s\S]*?WaterUpdating\s*=\s*0[\s\S]*?WaterTicks\s*=\s*0[\s\S]*?wait 1 frame[\s\S]*?Puzzle \+= 1/i,
   "puzzle transition must include one silent, animation-free frame before advancing");
+assert.match(source, /sub\s+GameLoop:\s*[\r\n]+\s*'[\s\S]*?wait\s*[\r\n]+\s*BoardRedrawn\s*=\s*0[\s\S]*?if\s+BoardRedrawn\s*=\s*0\s+then\s+AnimateWater/i,
+  "interactive VRAM writes must start after VBlank and skip water animation on board-redraw frames");
 assert.equal(solutions.length, puzzleCount * 49, "solution bank size");
 assert.equal(fixedCells.length, puzzleCount * 8, "fixed-clue bank size");
 assert.equal(rowCounts.length, puzzleCount * 7, "row-count bank size");

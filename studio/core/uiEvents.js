@@ -61,6 +61,7 @@ export function bindTopUiEvents(ctx) {
     setStatus,
     newProject,
     openProjectInTab,
+    openExampleInTab,
     getProject,
     setProject,
     setLastLibResolution,
@@ -137,8 +138,8 @@ export function bindTopUiEvents(ctx) {
     }
     const nextProject = buildProjectFromExample(example);
     nextProject.exampleId = example.id;
-    openProjectInTab(nextProject, { clean: true });
-    setStatus(`Loaded: ${example.label}`);
+    const result = openExampleInTab(nextProject, { clean: true });
+    setStatus(result.reused ? `Already open: ${example.label}` : `Loaded: ${example.label}`);
     syncUiFromProject();
     els.examplesDialog?.close();
     closeAutocomplete();
@@ -564,6 +565,24 @@ export function bindStudioRuntimeEvents(ctx) {
     const file = els.fileImport.files && els.fileImport.files[0];
     await importProjectFile(file);
     els.fileImport.value = "";
+  });
+
+  els.btnReloadExample?.addEventListener("click", async () => {
+    flushSourceAutosave();
+    const example = await getExampleById(els.exampleSelect.value);
+    if (!example) {
+      setStatus("Choose an example first.");
+      return;
+    }
+    const nextProject = buildProjectFromExample(example);
+    nextProject.exampleId = example.id;
+    const result = openExampleInTab(nextProject, { clean: true, reload: true });
+    if (result.cancelled) return;
+    setStatus(result.reloaded ? `Reloaded: ${example.label}` : `Loaded: ${example.label}`);
+    syncUiFromProject();
+    els.examplesDialog?.close();
+    closeAutocomplete();
+    closeTopbarMenu();
   });
 
   const studioDropTarget = document.getElementById("studioView");

@@ -50,6 +50,7 @@ export function bindStudioShellEvents({
     setStatus: helpers.setStatus,
     newProject: helpers.newProject,
     openProjectInTab: helpers.openProjectInTab,
+    openExampleInTab: helpers.openExampleInTab,
     getProject: projectState.getProject,
     setProject: projectState.setProject,
     setLastLibResolution: runtime.setLastLibResolution,
