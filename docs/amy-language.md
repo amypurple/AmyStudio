@@ -1507,16 +1507,18 @@ inc Counter32
 Counter32 -= Addend32
 Total32 = Counter32 + Addend32
 Difference32 = Counter32 - Addend32
+Product32 = Counter32 * Addend32
 Next32 = Counter32 + 5
 ```
 
-Simple `+` and `-` binary expressions are supported for operands and destinations
+Simple `+`, `-`, and `*` binary expressions are supported for operands and destinations
 of the same `u32` or `i32` type. A fitting integer literal is also accepted as
 either operand. The compiler stages both operands, so destination
 aliasing such as `Counter32 = Counter32 + Addend32` is safe. Operands may be
 `u32`/`i32` variables or elements of matching wide arrays. Legacy operations also
 accept compatible 4-byte little-endian `u8` arrays. Scalar `u16` values are not
-implicitly widened into this arithmetic.
+implicitly widened into this arithmetic. Multiplication keeps the low 32 bits;
+overflow wraps modulo 2^32 for both signed and unsigned values.
 
 Fixed-size `u32` and `i32` arrays use four little-endian bytes per element and accept
 constant, `u8` variable, and supported `u8` expression indexes:

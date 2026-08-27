@@ -618,7 +618,7 @@ export function createAssignmentArithmeticHelpers({
             ? numeric >= 0 && numeric <= 0xFFFFFFFF
             : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
         };
-        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+-])\s*(.+)$/);
+        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*-])\s*(.+)$/);
         if (binary) {
           const left = binary[1].trim();
           const right = binary[3].trim();
@@ -633,7 +633,7 @@ export function createAssignmentArithmeticHelpers({
               ...storeRight,
               `    ld hl,${scratch.leftLabel}`,
               `    ld de,${scratch.rightLabel}`,
-              `    call ${binary[2] === "+" ? "AMY_U32_ADD" : "AMY_U32_SUB"}`,
+              `    call ${binary[2] === "+" ? "AMY_U32_ADD" : binary[2] === "-" ? "AMY_U32_SUB" : "AMY_U32_MUL"}`,
               ...storeTarget
             ];
           }
