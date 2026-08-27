@@ -3370,6 +3370,27 @@ function isIxIyDisplacementOperandText(value) {
                     // Handle temporary symbol references
                     expr = this.resolveTemporarySymbolReference(expr);
 
+                    const directTableValue = (table, name) => {
+                        if (!table) return undefined;
+                        if (Object.prototype.hasOwnProperty.call(table, name)) return table[name];
+                        const upper = name.toUpperCase();
+                        if (Object.prototype.hasOwnProperty.call(table, upper)) return table[upper];
+                        const lower = name.toLowerCase();
+                        if (Object.prototype.hasOwnProperty.call(table, lower)) return table[lower];
+                        return undefined;
+                    };
+
+                    // Most generated operands are a single literal or symbol. Resolve these
+                    // without sorting every symbol and constructing thousands of regexes.
+                    const directNumber = this.numberParser.parseNumber(expr);
+                    if (directNumber !== null) return directNumber;
+                    const directVariable = directTableValue(this.variableTable, expr);
+                    if (directVariable !== undefined) return preserveFloat ? directVariable : Math.floor(directVariable);
+                    const directConstant = directTableValue(this.constantTable, expr);
+                    if (directConstant !== undefined) return preserveFloat ? directConstant : Math.floor(directConstant);
+                    const directSymbol = directTableValue(this.symbolTable, expr);
+                    if (directSymbol !== undefined) return directSymbol;
+
                     // Check if it's a direct opcode reference
                     const opcode = Z80_OPCODES[expr.toLowerCase()];
                     if (opcode) {
