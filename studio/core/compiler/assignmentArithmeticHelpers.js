@@ -618,11 +618,11 @@ export function createAssignmentArithmeticHelpers({
             ? numeric >= 0 && numeric <= 0xFFFFFFFF
             : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
         };
-        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*-])\s*(.+)$/);
+        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*\/-])\s*(.+)$/);
         if (binary) {
           const left = binary[1].trim();
           const right = binary[3].trim();
-          if (isCompatibleWideOperand(left) && isCompatibleWideOperand(right)) {
+          if ((binary[2] !== "/" || targetType === "u32") && isCompatibleWideOperand(left) && isCompatibleWideOperand(right)) {
             const scratch = ensureCompareScratch32();
             const storeLeft = emitStoreExtended32(left, scratch.leftLabel);
             const storeRight = emitStoreExtended32(right, scratch.rightLabel);
@@ -633,7 +633,7 @@ export function createAssignmentArithmeticHelpers({
               ...storeRight,
               `    ld hl,${scratch.leftLabel}`,
               `    ld de,${scratch.rightLabel}`,
-              `    call ${binary[2] === "+" ? "AMY_U32_ADD" : binary[2] === "-" ? "AMY_U32_SUB" : "AMY_U32_MUL"}`,
+              `    call ${binary[2] === "+" ? "AMY_U32_ADD" : binary[2] === "-" ? "AMY_U32_SUB" : binary[2] === "*" ? "AMY_U32_MUL" : "AMY_U32_DIV"}`,
               ...storeTarget
             ];
           }

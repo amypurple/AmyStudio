@@ -69,6 +69,11 @@ u32 AliasAdd = 20
 u32 ProductLeft = 70000
 u32 ProductRight = 70000
 u32 Product = 0
+u32 Dividend = 4000000000
+u32 Divisor = 3
+u32 Quotient = 0
+u32 ZeroDivisor = 0
+u32 ZeroQuotient = 99
 i32 SignedProductLeft = -12345
 i32 SignedProductRight = 321
 i32 SignedProduct = 0
@@ -83,6 +88,8 @@ SignedDifference = Negative - Positive
 Alias = Alias + AliasAdd
 Alias = Alias - 1
 Product = ProductLeft * ProductRight
+Quotient = Dividend / Divisor
+ZeroQuotient = Dividend / ZeroDivisor
 SignedProduct = SignedProductLeft * SignedProductRight
 Values[0] = 100000
 Values[1] = 234567
@@ -111,6 +118,8 @@ loop forever
       assert.equal(readU32(core, addressOf(asm, "SignedDifference")), (-140) >>> 0, `${profile}: signed difference`);
       assert.equal(readU32(core, addressOf(asm, "Alias")), 29, `${profile}: aliased destination`);
       assert.equal(readU32(core, addressOf(asm, "Product")), 605032704, `${profile}: wrapped product`);
+      assert.equal(readU32(core, addressOf(asm, "Quotient")), 1333333333, `${profile}: unsigned quotient`);
+      assert.equal(readU32(core, addressOf(asm, "ZeroQuotient")), 0, `${profile}: zero divisor`);
       assert.equal(readU32(core, addressOf(asm, "SignedProduct")), (-3962745) >>> 0, `${profile}: signed product`);
       assert.equal(readU32(core, addressOf(asm, "ArrayResult")), 334567, `${profile}: array operands`);
       assert.equal(readU32(core, addressOf(asm, "State") + 8), 756789, `${profile}: record operands`);
@@ -119,9 +128,8 @@ loop forever
     }
   }
   await assertCompileFails("mixed-signedness", "u32 Left = 1\ni32 Right = -1\nu32 Result = 0\nResult = Left + Right");
-  await assertCompileFails("binary-division", "u32 Left = 8\nu32 Right = 2\nu32 Result = 0\nResult = Left / Right");
+  await assertCompileFails("signed-binary-division", "i32 Left = -8\ni32 Right = 2\ni32 Result = 0\nResult = Left / Right");
   console.log(`wide binary expression ROM: PASS (${profiles.length} profiles)`);
 } finally {
   await rm(temp, { recursive: true, force: true });
 }
-
