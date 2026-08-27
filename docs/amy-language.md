@@ -674,6 +674,10 @@ Legacy scalar aliases such as `byte`, `word`, `integer`, `char`, `int`, `long`, 
 FP5 note:
 - `fp5` is the canonical source spelling for the historical 5-byte real type
 - `float` was removed; use `fp5`
+- direct assignments between scalar `fp5` and `fixed32` values perform a numeric
+  conversion; they do not copy the incompatible raw representations
+- mixed `fp5`/`fixed32` arithmetic expressions remain invalid; convert through an
+  assignment before doing arithmetic in the chosen type
 
 Current implemented comparison rule:
 

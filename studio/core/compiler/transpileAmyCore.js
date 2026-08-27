@@ -780,6 +780,7 @@ export function transpileAmyCore(sourceText, deps) {
   let emitU32ArrayCompareGoto = null;
   let getFx16Info = null;
   let emitStoreFx16Source = null;
+  let emitStoreFx16MemoryAsFp5 = null;
   let emitFx16ArithOp = null;
   let emitFx16MultiplyOp = null;
   let emitFx16DivideOp = null;
@@ -2993,6 +2994,7 @@ export function transpileAmyCore(sourceText, deps) {
     parseFixedPointLiteral32,
     parseNumericLiteral,
     emitStoreFx16Source: (...args) => emitStoreFx16Source(...args),
+    emitStoreFx16MemoryAsFp5: (...args) => emitStoreFx16MemoryAsFp5(...args),
     parseExpressionAst,
     emitLoadInt16AstIntoHL: (...args) => emitLoadInt16AstIntoHL(...args),
     parseBuiltinInputRef,
@@ -3265,6 +3267,7 @@ export function transpileAmyCore(sourceText, deps) {
   ({
     getFx16Info,
     emitStoreFx16Source,
+    emitStoreFx16MemoryAsFp5,
     emitCompareFp5Goto,
     emitFx16ArithOp,
     emitFx16MultiplyOp,

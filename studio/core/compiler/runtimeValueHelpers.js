@@ -13,6 +13,7 @@ export function createRuntimeValueHelpers({
   parseFixedPointLiteral32,
   parseNumericLiteral,
   emitStoreFx16Source,
+  emitStoreFx16MemoryAsFp5,
   parseExpressionAst,
   emitLoadInt16AstIntoHL,
   parseBuiltinInputRef,
@@ -571,6 +572,14 @@ export function createRuntimeValueHelpers({
         if (encoded) return emitStoreImmediateFp5Bytes(name, encoded);
       }
       if (sourceType === "fp5") return emitCopyBytes(value, name, 5);
+      if (sourceType === "i32" && isFix16_16DeclaredType(sourceDeclaredType)) {
+        const scratch = ensureCompareScratch32();
+        const storeSource = emitStoreFx16Source(value, scratch.leftLabel);
+        if (!storeSource) return null;
+        const storeTarget = emitStoreFx16MemoryAsFp5(scratch.leftLabel, name);
+        if (!storeTarget) return null;
+        return [...storeSource, ...storeTarget];
+      }
       if (sourceType === "int8" || sourceType === "int16") {
         const targetInfo = getRuntimeInfo(name);
         const sourceInfo = getRuntimeInfo(value);
@@ -623,7 +632,7 @@ export function createRuntimeValueHelpers({
       if (!loadRaw || !storeTarget) return null;
       return [...loadRaw, ...storeTarget];
     }
-    if (sourceType === "fp5") return null;
+    if (sourceType === "fp5" && !(targetType === "i32" && isFix16_16DeclaredType(targetDeclaredType))) return null;
     if (targetType === "int8" && sourceType === "int16") {
       const normalizedTargetDeclared = normalizeDeclaredType(targetDeclaredType);
       const normalizedSourceDeclared = normalizeDeclaredType(sourceDeclaredType);

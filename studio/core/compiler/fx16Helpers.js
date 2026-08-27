@@ -56,6 +56,9 @@ export function createFx16Helpers({
   function emitStoreFx16Source(valueToken, baseLabel) {
     const valueInfo = getRuntimeInfo(valueToken);
     if (valueInfo) {
+      if (valueInfo.kind === "fp5" || valueInfo.type === "fp5") {
+        return emitStoreFp5SourceAsFx16(valueToken, baseLabel);
+      }
       if (valueInfo.kind === "fix16_16") {
         return emitStoreExtended32(valueToken, baseLabel);
       }
@@ -1288,6 +1291,7 @@ export function createFx16Helpers({
     getFx16Info,
     getFp5Info,
     emitStoreFx16Source,
+    emitStoreFx16MemoryAsFp5,
     emitCompareFp5Goto,
     emitFx16ArithOp,
     emitFx16MultiplyOp,
