@@ -500,7 +500,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompiler.js?v=20260802-keypad-blank");
+    internalCompilerModulePromise = import("./core/internalCompilerClient.js?v=20260827-compile-worker");
   }
   return internalCompilerModulePromise;
 }

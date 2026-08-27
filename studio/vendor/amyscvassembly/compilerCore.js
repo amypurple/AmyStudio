@@ -564,11 +564,13 @@ function isIxIyDisplacementOperandText(value) {
                         log(`  Estimated local wins: ${s.bytesSaved} bytes before final layout`, 'success');
 
                         // Update bytes saved display
-                        const bytesSavedDisplay = document.getElementById('bytes-saved-display');
-                        if (s.bytesSaved > 0) {
+                        const bytesSavedDisplay = typeof document !== 'undefined'
+                            ? document.getElementById('bytes-saved-display')
+                            : null;
+                        if (bytesSavedDisplay && s.bytesSaved > 0) {
                             bytesSavedDisplay.textContent = `~${s.bytesSaved}B local`;
                             bytesSavedDisplay.classList.remove('hidden');
-                        } else {
+                        } else if (bytesSavedDisplay) {
                             bytesSavedDisplay.classList.add('hidden');
                         }
                     } else {
@@ -587,8 +589,10 @@ function isIxIyDisplacementOperandText(value) {
                             bytesSaved: 0
                         };
                         // Optimizer disabled - hide bytes saved display
-                        const bytesSavedDisplay = document.getElementById('bytes-saved-display');
-                        bytesSavedDisplay.classList.add('hidden');
+                        const bytesSavedDisplay = typeof document !== 'undefined'
+                            ? document.getElementById('bytes-saved-display')
+                            : null;
+                        bytesSavedDisplay?.classList.add('hidden');
                     }
 
                     this.currentPass = 3;
