@@ -538,7 +538,82 @@ check("computed array indexes work in comparisons and function arguments", () =>
   assert.ok(indexedLoads.length >= 2, "comparison and function argument must each load the computed array element");
 });
 
+const qualifiedMutatorsResult = transpileAmy(`memory "colecovision_legacy_sdcc"
+record Flags:
+  u8 ByteValue
+  u16 WordValue
+end record
+
+Flags Direct
+overlay StateRam
+  Menu as Flags
+  Game as Flags
+end overlay
+
+Direct.ByteValue = $F3
+Direct.ByteValue &= $0F
+Direct.ByteValue |= $80
+Direct.ByteValue <<= 2
+Direct.ByteValue >>= 1
+StateRam.Menu.WordValue = $1234
+StateRam.Menu.WordValue <<= 2
+StateRam.Menu.WordValue >>= 2
+loop forever
+`);
+check("qualified record and overlay mutators compile", () => {
+  assert.equal(qualifiedMutatorsResult.ok, true, qualifiedMutatorsResult.log || "qualified mutators transpile failed");
+  assert.match(qualifiedMutatorsResult.asmBody, /and \$0F/i);
+  assert.match(qualifiedMutatorsResult.asmBody, /or \$80/i);
+  assert.match(qualifiedMutatorsResult.asmBody, /sla a/i);
+  assert.match(qualifiedMutatorsResult.asmBody, /srl a/i);
+  assert.match(qualifiedMutatorsResult.asmBody, /add hl,hl/i);
+  assert.match(qualifiedMutatorsResult.asmBody, /srl h\s+rr l/i);
+});
+
+const incompleteBcdDeclaration = transpileAmy("bcd Score = 0\nloop forever\n");
+check("incomplete BCD declaration has a typed diagnostic", () => {
+  assert.equal(incompleteBcdDeclaration.ok, false);
+  assert.match(incompleteBcdDeclaration.log, /BCD declarations require a size.*bcd digits N Name/i);
+});
+
+const wideArrayOutOfBounds = transpileAmy("u32 Values[4] = 0\nu32 Result = 0\nResult = Values[4]\nloop forever\n");
+check("wide array constant indexes are bounds-checked", () => {
+  assert.equal(wideArrayOutOfBounds.ok, false);
+  assert.match(wideArrayOutOfBounds.log, /Invalid runtime assignment/i);
+});
+
+const wideArrayRuntimeLength = transpileAmy("u8 Count = 4\nu32 Values[Count] = 0\nloop forever\n");
+check("wide array lengths remain compile-time constants", () => {
+  assert.equal(wideArrayRuntimeLength.ok, false);
+  assert.match(wideArrayRuntimeLength.log, /Array length must be a constant integer/i);
+});
+
+const fixedArrayElementStore = transpileAmy("fixed Values[4] = 1.5\nValues[1] = 1.5\nloop forever\n");
+check("fixed array element stores have a typed rejection", () => {
+  assert.equal(fixedArrayElementStore.ok, false);
+  assert.match(fixedArrayElementStore.log, /fixed array element assignment is not supported yet/i);
+});
+
 const BIOS_STUBS = "TURN_OFF_SOUND EQU $1FD6\nMODE_1 EQU $1F85\n";
+const qualifiedMutatorsAsm = BIOS_STUBS + qualifiedMutatorsResult.asmBody;
+for (const profileName of ["off", "safe", "balanced", "aggressive", "experimental"]) {
+  const profile = getOptimizationProfile(profileName, qualifiedMutatorsAsm);
+  const binary = await assembleAmysCVAssembly(
+    { "main.asm": qualifiedMutatorsAsm },
+    "main.asm",
+    {
+      outputFilename: `qualified-mutators-${profileName}.bin`,
+      outputMode: "binary",
+      targetPlatform: "raw",
+      optimizerEnabled: profile.optimizerEnabled,
+      optimizerConfig: profile.optimizerConfig
+    }
+  );
+  check(`qualified mutators assemble under ${profileName}`, () => {
+    assert.equal(binary.ok, true, binary.log || `qualified mutator ${profileName} assembly failed`);
+  });
+}
+
 const assembled = await assembleAmysCVAssembly({ "main.asm": BIOS_STUBS + asm }, "main.asm", {
   outputFilename: "ref-demo.bin",
   outputMode: "binary",

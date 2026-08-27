@@ -1,7 +1,9 @@
 export function createU32Helpers({
   parseArrayRef,
+  parseRecordFieldRef,
   getRuntimeInfo,
   emitLoadArrayAddressIntoHL,
+  emitLoadRecordFieldAddressIntoHL,
   formatIxOffset,
   emitFunctionInvocation,
   resolveValueType,
@@ -57,6 +59,27 @@ export function createU32Helpers({
   }
 
   function emitStoreMemory32ToTarget(baseLabel, targetToken) {
+    const targetFieldRef = parseRecordFieldRef(targetToken);
+    if (targetFieldRef) {
+      const targetType = resolveValueType(targetToken);
+      if (targetType !== "u32" && targetType !== "i32") return null;
+      const loadAddress = emitLoadRecordFieldAddressIntoHL(targetToken);
+      if (!loadAddress) return null;
+      return [
+        ...loadAddress,
+        `    ld a,(${baseLabel}+0)`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    ld a,(${baseLabel}+1)`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    ld a,(${baseLabel}+2)`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    ld a,(${baseLabel}+3)`,
+        "    ld (hl),a"
+      ];
+    }
     const targetArrayRef = parseArrayRef(targetToken);
     if (targetArrayRef) {
       const arrayInfo = getRuntimeInfo(targetArrayRef.name);
@@ -104,6 +127,13 @@ export function createU32Helpers({
   }
 
   function emitPrepareU32Source(valueToken, scratchLabel) {
+    const fieldRef = parseRecordFieldRef(valueToken);
+    if (fieldRef) {
+      if (resolveValueType(valueToken) !== "u32") return null;
+      const copyToScratch = emitStoreExtended32(valueToken, scratchLabel);
+      if (!copyToScratch) return null;
+      return { lines: copyToScratch, pointer: scratchLabel };
+    }
     const arrayRef = parseArrayRef(valueToken);
     if (arrayRef) {
       const info = getRuntimeInfo(arrayRef.name);
@@ -123,6 +153,13 @@ export function createU32Helpers({
   }
 
   function emitPrepareI32Source(valueToken, scratchLabel) {
+    const fieldRef = parseRecordFieldRef(valueToken);
+    if (fieldRef) {
+      if (resolveValueType(valueToken) !== "i32") return null;
+      const copyToScratch = emitStoreExtended32(valueToken, scratchLabel);
+      if (!copyToScratch) return null;
+      return { lines: copyToScratch, pointer: scratchLabel };
+    }
     const arrayRef = parseArrayRef(valueToken);
     if (arrayRef) {
       const info = getRuntimeInfo(arrayRef.name);
@@ -142,6 +179,27 @@ export function createU32Helpers({
   }
 
   function emitStoreExtended32(token, baseLabel, allowSignExtend = true) {
+    const fieldRef = parseRecordFieldRef(token);
+    if (fieldRef) {
+      const fieldType = resolveValueType(token);
+      if (fieldType !== "u32" && fieldType !== "i32") return null;
+      const loadAddress = emitLoadRecordFieldAddressIntoHL(token);
+      if (!loadAddress) return null;
+      return [
+        ...loadAddress,
+        "    ld a,(hl)",
+        `    ld (${baseLabel}+0),a`,
+        "    inc hl",
+        "    ld a,(hl)",
+        `    ld (${baseLabel}+1),a`,
+        "    inc hl",
+        "    ld a,(hl)",
+        `    ld (${baseLabel}+2),a`,
+        "    inc hl",
+        "    ld a,(hl)",
+        `    ld (${baseLabel}+3),a`
+      ];
+    }
     const arrayRef = parseArrayRef(token);
     if (arrayRef) {
       const arrayInfo = getRuntimeInfo(arrayRef.name);
@@ -266,6 +324,14 @@ export function createU32Helpers({
   }
 
   function emitU32Inc(name) {
+    const fieldRef = parseRecordFieldRef(name);
+    if (fieldRef) {
+      const fieldType = resolveValueType(name);
+      if (fieldType !== "u32" && fieldType !== "i32") return null;
+      const loadAddress = emitLoadRecordFieldAddressIntoHL(name);
+      if (!loadAddress) return null;
+      return [...loadAddress, "    call AMY_U32_INC"];
+    }
     const arrayRef = parseArrayRef(name);
     if (arrayRef) {
       const info = getRuntimeInfo(arrayRef.name);
@@ -287,6 +353,22 @@ export function createU32Helpers({
   }
 
   function emitU32Dec(name) {
+    const fieldRef = parseRecordFieldRef(name);
+    if (fieldRef) {
+      const fieldType = resolveValueType(name);
+      if (fieldType !== "u32" && fieldType !== "i32") return null;
+      const scratch = ensureCompareScratch32();
+      const loadAddress = emitLoadRecordFieldAddressIntoHL(name);
+      if (!loadAddress) return null;
+      return [
+        ...loadAddress,
+        `    ld de,${scratch.rightLabel}`,
+        "    call AMY_U32_ZERO",
+        "    ld a,$01",
+        `    ld (${scratch.rightLabel}+0),a`,
+        "    call AMY_U32_SUB"
+      ];
+    }
     const arrayRef = parseArrayRef(name);
     if (arrayRef) {
       const info = getRuntimeInfo(arrayRef.name);

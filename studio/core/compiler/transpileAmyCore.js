@@ -1535,8 +1535,8 @@ export function transpileAmyCore(sourceText, deps) {
             elementSize: byteCount
           };
         } else if (isSupportedSourceTypeName(declaredTypeToken)) {
-          if (!["u8", "i8", "u16", "i16", "fix8_8", "ufix8_8", "boolean", "bool"].includes(declaredType)) {
-            return `Record fields currently support u8, i8, u16, i16, fixed, ufixed, bool, and previously defined record types: ${fieldRaw}`;
+          if (!["u8", "i8", "u16", "i16", "u32", "i32", "fix8_8", "ufix8_8", "boolean", "bool"].includes(declaredType)) {
+            return `Record fields currently support u8, i8, u16, i16, u32, i32, fixed, ufixed, bool, and previously defined record types: ${fieldRaw}`;
           }
           const runtimeType = normalizeRuntimeType(declaredType);
           const elementSize = runtimeTypeSize(runtimeType);
@@ -1782,7 +1782,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parsePictureDefinitions() {
-    const codecRe = "(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
+    const codecRe = "(zx0|zx7|dan1|dan2|dan3|mdkrle|splitrle|pletter|lzf|bitbuster|nibble|rle|raw)";
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
@@ -2366,7 +2366,7 @@ export function transpileAmyCore(sourceText, deps) {
 
   function parseFormulaAssignment(text) {
     const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*`;
-    const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(\\+=|-=|\\*=|/=|%=|\\^=|=)\\s*(.+)$`));
+    const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|=)\\s*(.+)$`));
     if (!match) return null;
     if (match[2] === "=" && /^(?:get|read)\s+(?:char|tile|count|frame)\b/i.test(match[3].trim())) return null;
     return {
@@ -3226,8 +3226,10 @@ export function transpileAmyCore(sourceText, deps) {
     emitU32ArrayCompareGoto
   } = createU32Helpers({
     parseArrayRef,
+    parseRecordFieldRef,
     getRuntimeInfo,
     emitLoadArrayAddressIntoHL,
+    emitLoadRecordFieldAddressIntoHL,
     formatIxOffset,
     emitFunctionInvocation,
     resolveValueType,
@@ -3343,6 +3345,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadInt16IntoHL,
     emitStoreInt16FromHL,
     parseArrayRef,
+    parseRecordFieldRef,
     normalizeDeclaredType,
     scopedRuntimeName,
     formatIxOffset,
@@ -3386,6 +3389,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitArithInt8Op,
     emitArithInt16Op,
     parseArrayRef,
+    parseRecordFieldRef,
     emitLoadArrayAddressIntoHL: (...args) => emitLoadArrayAddressIntoHL(...args),
     emitU32Inc,
     emitU32Dec,
@@ -4080,7 +4084,14 @@ export function transpileAmyCore(sourceText, deps) {
         }
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
-      if (!assignmentCode) return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };
+      if (!assignmentCode) {
+        const targetArrayRef = parseArrayRef(formulaAssignment.target);
+        const targetArrayInfo = targetArrayRef ? getRuntimeInfo(targetArrayRef.name) : null;
+        if (targetArrayInfo?.kind === "array" && ["fix8_8", "ufix8_8"].includes(targetArrayInfo.declaredType)) {
+          return { ok: false, asmBody: "", log: `fixed array element assignment is not supported yet: ${rawLine}` };
+        }
+        return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };
+      }
       body.push(...assignmentCode);
       continue;
     }
@@ -4492,14 +4503,6 @@ export function transpileAmyCore(sourceText, deps) {
       if (includeStmt) {
         const includePath = includeStmt[1].replace(/\\/g, "/");
         body.push(`include "${includePath}"`);
-        continue;
-      }
-    }
-
-    {
-      const useLib = /^use\s+lib\s+"[^"]*"\s*$/i.test(line);
-      if (useLib) {
-        addCompilerWarning(`'${rawLine.trim()}' is deprecated and ignored; library inclusion is automatic.`);
         continue;
       }
     }

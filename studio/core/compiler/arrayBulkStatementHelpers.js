@@ -143,6 +143,9 @@ export function handleArrayBulkStatement({
       return { ok: false, handled: true, log: `fill array requires a byte array variable: ${rawLine}` };
     }
     const countToken = fillArray[3];
+    if (countToken && getRuntimeInfo(countToken)) {
+      return { ok: false, handled: true, log: `fill array count must be a constant, not a RAM variable: ${rawLine}` };
+    }
     const loadValue = emitLoadInt8Into("a", fillArray[2]);
     if (!loadValue) return { ok: false, handled: true, log: `fill array: invalid fill value: ${rawLine}` };
     const baseAddress = emitLoadArrayAddressIntoHL(arrName, "0");

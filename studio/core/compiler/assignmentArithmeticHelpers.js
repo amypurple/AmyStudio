@@ -27,6 +27,7 @@ export function createAssignmentArithmeticHelpers({
   emitArithInt8Op,
   emitArithInt16Op,
   parseArrayRef,
+  parseRecordFieldRef,
   emitLoadArrayAddressIntoHL,
   emitU32Inc,
   emitU32Dec,
@@ -164,14 +165,19 @@ export function createAssignmentArithmeticHelpers({
 
   function emitArith32Op(target, valueToken, op) {
     const targetArrayRef = parseArrayRef(target);
-    const info = targetArrayRef ? getRuntimeInfo(targetArrayRef.name) : getRuntimeInfo(target);
+    const targetFieldRef = parseRecordFieldRef(target);
+    const info = targetArrayRef
+      ? getRuntimeInfo(targetArrayRef.name)
+      : targetFieldRef
+        ? { kind: targetFieldRef.fieldInfo.type, type: targetFieldRef.fieldInfo.type, storage: "qualified" }
+        : getRuntimeInfo(target);
     if (!info) return null;
-    if (!targetArrayRef && info.kind === "fix16_16") {
+    if (!targetArrayRef && !targetFieldRef && info.kind === "fix16_16") {
       return emitFx16ArithOp(target, valueToken, op);
     }
     if (targetArrayRef) {
       if (info.kind !== "array" || (info.elementType !== "u32" && info.elementType !== "i32")) return null;
-    } else if (info.kind === "array" || (info.kind !== "u32" && info.kind !== "i32")) {
+    } else if (!targetFieldRef && (info.kind === "array" || (info.kind !== "u32" && info.kind !== "i32"))) {
       return null;
     }
     const valueInfo = getRuntimeInfo(valueToken);
@@ -180,6 +186,7 @@ export function createAssignmentArithmeticHelpers({
       valueInfo.storage !== "stack" &&
       info.storage !== "stack" &&
       !targetArrayRef &&
+      !targetFieldRef &&
       (valueInfo.kind === "u32" || valueInfo.kind === "i32")
     ) {
       if (op === "add") return emitU32Add(valueToken, target);
@@ -601,6 +608,37 @@ export function createAssignmentArithmeticHelpers({
   function emitFormulaAssignment(target, opToken, valueToken) {
     const targetType = resolveValueType(target);
     if (opToken === "=") {
+      if (targetType === "u32" || targetType === "i32") {
+        const isCompatibleWideOperand = (token) => {
+          if (resolveValueType(token) === targetType) return true;
+          if (resolveValueType(token)) return false;
+          const numeric = parseNumericLiteral(token);
+          if (!Number.isInteger(numeric)) return false;
+          return targetType === "u32"
+            ? numeric >= 0 && numeric <= 0xFFFFFFFF
+            : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
+        };
+        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+-])\s*(.+)$/);
+        if (binary) {
+          const left = binary[1].trim();
+          const right = binary[3].trim();
+          if (isCompatibleWideOperand(left) && isCompatibleWideOperand(right)) {
+            const scratch = ensureCompareScratch32();
+            const storeLeft = emitStoreExtended32(left, scratch.leftLabel);
+            const storeRight = emitStoreExtended32(right, scratch.rightLabel);
+            const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
+            if (!storeLeft || !storeRight || !storeTarget) return null;
+            return [
+              ...storeLeft,
+              ...storeRight,
+              `    ld hl,${scratch.leftLabel}`,
+              `    ld de,${scratch.rightLabel}`,
+              `    call ${binary[2] === "+" ? "AMY_U32_ADD" : "AMY_U32_SUB"}`,
+              ...storeTarget
+            ];
+          }
+        }
+      }
       const shiftHighByte = String(valueToken || "").trim().match(/^(.+)\s*<<\s*8$/);
       if (targetType === "int16" && shiftHighByte) {
         const targetInfo = getRuntimeInfo(target);
@@ -650,6 +688,10 @@ export function createAssignmentArithmeticHelpers({
     })();
     const emitCompoundExpressionStore = (operator) => emitRuntimeStore(target, `${target} ${operator} (${valueToken})`);
     if (!targetType) return null;
+    if (opToken === "&=" || opToken === "|=") {
+      if (targetType !== "int8") return null;
+      return emitArithInt8Op(target, valueToken, opToken === "&=" ? "and" : "or");
+    }
     if (targetType === "bcd") {
       if (opToken === "+=") return emitBcdAdd(target, valueToken);
       if (opToken === "-=") return emitBcdSub(target, valueToken);
@@ -658,7 +700,6 @@ export function createAssignmentArithmeticHelpers({
     if (targetType === "u32" || targetType === "i32") {
       if ((opToken === "+=" || opToken === "-=") && isZero) return [];
       if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "+=" && isOne) return emitU32Inc(target);
-      if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "-=" && isOne) return emitU32Dec(target);
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=" && isOne) return [];
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=" && isZero) return emitRuntimeStore(target, "0");
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=" && isOne) return [];

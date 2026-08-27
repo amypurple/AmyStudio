@@ -806,5 +806,19 @@ export const exampleManifest = [
       "selftest",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-wide-array-selftest",
+    "label": "Amy Wide Array Self-Test",
+    "detail": "Runtime check for u32 and i32 arrays with variable and expression indexes.",
+    "projectName": "amy-wide-array-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
   }
 ];

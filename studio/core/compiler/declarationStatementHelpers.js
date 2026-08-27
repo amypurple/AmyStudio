@@ -224,6 +224,14 @@ export function handleDeclarationStatement({
     return { handled: true, ok: true };
   }
 
+  if (/^(?:(?:ram|dim|local)\s+)?bcd\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*=|\s*$)/i.test(line)) {
+    return {
+      handled: true,
+      ok: false,
+      log: `BCD declarations require a size; use 'bcd digits N Name = value': ${rawLine}`
+    };
+  }
+
   const scopedDecl = line.match(/^(?:(ram|dim|local)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
   if (scopedDecl && isSupportedRecordTypeName?.(scopedDecl[2])) {
     const scopeKeyword = scopedDecl[1] ? scopedDecl[1].toLowerCase() : null;
@@ -537,7 +545,37 @@ export function handleDeclarationStatement({
       }
       if (declaredType === "u32" || declaredType === "i32") {
         if (lengthToken) {
-          return { handled: true, ok: false, log: `${declaredType} arrays are not supported yet: ${rawLine}` };
+          const length = resolveArrayLength(lengthToken);
+          if (!length) {
+            return { handled: true, ok: false, log: `Array length must be a constant integer >= 1: ${rawLine}` };
+          }
+          let address;
+          try {
+            address = reserveRam(name, 4 * length, rawLine.trim());
+          } catch (error) {
+            return { handled: true, ok: false, log: String(error.message || error) };
+          }
+          const asmName = ensureUserVarAsmSymbol(name);
+          state.runtimeVars.set(name, { kind: "array", type, declaredType, elementType: type, address, length, scope: "global", asmName });
+          state.runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
+          state.hasRuntimeRamDeclarations = true;
+          if (!isCompileTimeZeroInitializer(declaredType, initial)) {
+            const numeric = parseNumericLiteral(initial);
+            if (numeric !== null) {
+              const elementBytes = encodeImmediateBytes(numeric, 4);
+              const bytes = [];
+              for (let index = 0; index < length; index += 1) bytes.push(...elementBytes);
+              queueImmediateRuntimeInit(address, bytes);
+            } else {
+              for (let index = 0; index < length; index += 1) {
+                const initCode = emitRuntimeStore(`${name}[${index}]`, initial);
+                if (!initCode) return { handled: true, ok: false, log: `Invalid array initializer for ${name}: ${initial}` };
+                state.runtimeInit.push(...initCode);
+              }
+              state.hasRuntimeInit = true;
+            }
+          }
+          continue;
         }
         let address;
         try {

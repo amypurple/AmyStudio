@@ -1,3 +1,20 @@
+## 2026-08-26 - Safer operands and wide integer arrays
+
+### Amy language and compiler
+
+- Rejected runtime-variable counts in `fill array ... with ... count ...` instead of silently treating a RAM address as the count and corrupting memory.
+- Added qualified record and overlay support for `&=`, `|=`, `<<=`, and `>>=`.
+- Added safe same-type `u32`/`i32` binary addition and subtraction, including fitting integer literals and destination aliasing.
+- Added fixed global `u32`/`i32` arrays and verified the existing local-array path, with four-byte elements, compile-time bounds checks for constant indexes, and byte-sized runtime indexes.
+- Added packed scalar and fixed-array `u32`/`i32` fields to records and overlays, including qualified assignment, binary `+`/`-`, and `inc`/`dec`.
+- Improved incomplete BCD declarations with a direct typed diagnostic.
+- Replaced the generic failure for unsupported `fixed[]` element stores with a precise typed diagnostic.
+
+### Validation
+
+- Added GearColeco RAM assertions for initializers, declaration-order layouts, qualified mutations, wide integer aliases, literals, locals, and wide arrays across all five optimization profiles.
+- Added the Amy Wide Array Self-Test and assembled the complete example catalog with Balanced optimization.
+
 ## 2026-08-24 - RAM overlay record arrays and qualified operands
 
 ### Amy language and compiler
@@ -145,7 +162,7 @@
 - Added a full-project codegen regression and assembled a real balanced ColecoVision ROM exercising both commands.
 ## 2026-08-02 - Coleco keypad choice and Z80 explorer
 
-- `choose keypad min to max into Var` now accepts `on keypad N` and PAL/NTSC-aware `blank after N seconds`.
+- `choose keypad min to max into Var` now accepts `on keypad N` and PAL/NTSC-aware `sleep after N seconds`.
 - The CRT-safe variant consumes the chosen key release and returns decoded `*`/`#` values 10/11 without assigning game-specific meaning.
 - ROM TEST & DEBUG adds a native GearColeco Z80 view around PC with CPU registers, SP, stack words, symbols, and complete opcode decoding.
 - RAM and VRAM inspectors default to 384 bytes; the two-column debugger layout gives the inspector a 520-pixel minimum.
@@ -157,7 +174,7 @@
 - Unqualified forms accept either controller; `on joypad N` limits the same complete action-button mask to one controller.
 - `wait fire` and `wait no fire` now test the complete action-button nibble instead of only the primary button.
 - `pause until press and release` waits for a new action press and consumes its release before returning.
-- `pause until press and release [on joypad N] blank after N seconds` performs region-aware CRT-safe blanking while preserving NMI, sound, controller updates, and the current non-display R1 bits. After blanking, one debounced action wakes the display and a separate action confirms.
+- `pause until press and release [on joypad N] sleep after N seconds` performs region-aware CRT-safe sleep while preserving NMI, sound, controller updates, and the current non-display R1 bits. After sleeping, one debounced action wakes the display and a separate action confirms.
 
 ## 2026-08-02 - Consumable natural-direction spinner input
 
@@ -4968,7 +4985,7 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `function ... as ...`
   - `end sub`
   - `end function`
-  - `end` / `project` / `use lib` no-op lines
+  - `end` / `project` no-op lines
 - removed the buried local proc / function declaration cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
 - `studio/app.js` is now down to about `4013` lines after this extraction
 - wired [studio/core/compiler/routineStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/routineStatementHelpers.js) for the routine / return / set / implicit-call cluster:
@@ -5695,3 +5712,8 @@ Why this is still `v2.1` and not `v2.2`:
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
 - ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.
+# 2026-08-25 - Split RLE recovered from Blackjack/Poker
+
+- Recovered the distinct two-stream RLE algorithm used by Ken Uston's Blackjack/Poker at ROM routine `$BA53`.
+- Added the relocatable `splitrle` JavaScript codec, 50-byte Z80 VRAM decompressor, compiler syntax, asset handling, autocomplete, previews, and picture/tile compression comparisons.
+- Added codec roundtrip/codegen tests and extended the Warrior benchmark. Split RLE is an optional measured alternative, not a replacement for MDKRLE.

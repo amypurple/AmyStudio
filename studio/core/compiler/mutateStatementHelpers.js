@@ -65,6 +65,11 @@ export function handleMutateStatement({
         if (!load || !store) return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
         return { ok: true, handled: true, lines: [...load, `    ${op} hl`, ...store] };
       }
+      if (valueType === "u32" || valueType === "i32") {
+        const code = op === "inc" ? emitU32Inc(name) : emitArith32Op(name, "1", "sub");
+        if (!code) return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
+        return { ok: true, handled: true, lines: code };
+      }
       return { ok: false, handled: true, log: `Invalid ${op} target: ${rawLine}` };
     }
     if (arrayRef) {
@@ -221,7 +226,7 @@ export function handleMutateStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const shiftAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(<<=|>>=)\s*([1-7])$/);
+  const shiftAssign = line.match(new RegExp(`^${qualifiedTargetPattern}\\s*(<<=|>>=)\\s*([1-7])$`));
   if (shiftAssign) {
     const direction = shiftAssign[2] === "<<=" ? "left" : "right";
     const code = emitShiftVarByN(shiftAssign[1], direction, parseInt(shiftAssign[3], 10));

@@ -23,7 +23,7 @@ otherwise.
 - lexical local variables and local arrays, including recursion-safe stack frames
 - compiler-selected frameless static ABI for proven non-reentrant scalar routines
 - `ref` parameters for addressable scalar values and records
-- records, nested records, fixed scalar array fields, and arrays of records within the documented limits
+- records, nested records, fixed scalar array fields including `u32`/`i32`, and arrays of records within the documented limits
 - experimental Phase-A record-backed RAM overlays with qualified arithmetic, loops, selected I/O operands, and physical/logical RAM accounting
 - byte data, visual `bitmap8`/`sprite16` data, assets, and indexable ROM word tables
 - compile-time `define` plus `if defined`, `else defined`, and `end defined`
@@ -40,6 +40,8 @@ The canonical types are `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `fixed`,
 - Byte-only destinations consume the whole-number part of fixed values where documented,
   including screen and sprite coordinates.
 - Byte values widen predictably in 16-bit contexts: `u8` zero-extends and `i8` sign-extends.
+- `u32` and `i32` support fixed global and local arrays, same-type binary `+`/`-`,
+  fitting integer literals, and constant or byte-sized runtime indexes.
 - `inc` and `dec` support packed BCD values.
 - Legacy `u32 zero/copy/add/inc/sub` forms remain migration-only compatibility syntax;
   modern code uses assignment and compound operators.

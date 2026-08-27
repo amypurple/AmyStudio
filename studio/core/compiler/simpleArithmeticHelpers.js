@@ -13,6 +13,7 @@ export function createSimpleArithmeticHelpers({
   emitLoadInt16IntoHL,
   emitStoreInt16FromHL,
   parseArrayRef,
+  parseRecordFieldRef,
   normalizeDeclaredType,
   scopedRuntimeName,
   formatIxOffset
@@ -117,8 +118,25 @@ export function createSimpleArithmeticHelpers({
   }
 
   function emitShiftVar(target, direction) {
-    const info = getRuntimeInfo(target);
+    const recordField = parseRecordFieldRef?.(target);
+    const info = recordField
+      ? { kind: "record_field", type: resolveValueType(target) }
+      : getRuntimeInfo(target);
     if (!info || info.kind === "array") return null;
+    if (recordField) {
+      if (info.type === "int8") {
+        const load = emitLoadInt8Into("a", target);
+        const store = emitStoreInt8FromA(target);
+        if (!load || !store) return null;
+        return [...load, `    ${direction === "left" ? "sla" : "srl"} a`, ...store];
+      }
+      const load = emitLoadInt16IntoHL(target);
+      const store = emitStoreInt16FromHL(target);
+      if (!load || !store) return null;
+      return direction === "left"
+        ? [...load, "    add hl,hl", ...store]
+        : [...load, "    srl h", "    rr l", ...store];
+    }
     if (info.isRef && info.refTargetType === "int8") {
       const instr = direction === "left" ? "sla" : "srl";
       return [
@@ -142,8 +160,27 @@ export function createSimpleArithmeticHelpers({
 
   function emitShiftVarByN(target, direction, n) {
     if (n < 1 || n > 7) return null;
-    const info = getRuntimeInfo(target);
+    const recordField = parseRecordFieldRef?.(target);
+    const info = recordField
+      ? { kind: "record_field", type: resolveValueType(target) }
+      : getRuntimeInfo(target);
     if (!info || info.kind === "array") return null;
+    if (recordField) {
+      if (info.type === "int8") {
+        const load = emitLoadInt8Into("a", target);
+        const store = emitStoreInt8FromA(target);
+        if (!load || !store) return null;
+        const instruction = direction === "left" ? "    sla a" : "    srl a";
+        return [...load, ...Array.from({ length: n }, () => instruction), ...store];
+      }
+      const load = emitLoadInt16IntoHL(target);
+      const store = emitStoreInt16FromHL(target);
+      if (!load || !store) return null;
+      const instructions = direction === "left"
+        ? Array.from({ length: n }, () => "    add hl,hl")
+        : Array.from({ length: n }, () => ["    srl h", "    rr l"]).flat();
+      return [...load, ...instructions, ...store];
+    }
     if (info.isRef && info.refTargetType === "int8") {
       const instr = direction === "left" ? "sla" : "srl";
       return [

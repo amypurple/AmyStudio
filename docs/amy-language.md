@@ -70,9 +70,6 @@ screen on
 ```basic
 cartridge "NAME/AMY/1986"
 
-use lib "coleco.bios"
-use lib "coleco.vdp"
-
 asset WarriorPattern from "assets/warrior/pattern.zx0" codec zx0
 
 const TileBase = $00
@@ -298,7 +295,8 @@ Current implemented record scope:
 - packed scalar BCD fields such as `bcd digits 6 Score`
 
 Scalar array fields are byte-packed with no pointer, descriptor, or alignment padding.
-`u8 Values[8]` occupies exactly 8 bytes and `u16 Values[3]` exactly 6 bytes. Literal
+`u8 Values[8]` occupies exactly 8 bytes, `u16 Values[3]` exactly 6 bytes, and
+`u32 Values[3]` exactly 12 bytes. Literal
 indexes are folded into direct addresses; runtime indexes use compact address arithmetic
 and are not unrolled. Field lengths must be literal values from 1 through 255 in this
 first implementation.
@@ -334,8 +332,8 @@ copy LevelFlies + LevelOffset count 20 to Flies
 
 This checked slice form still requires matching record types. Its `count` must be a compile-time constant exactly equal to the destination array size; partial initialization is rejected. Offsets are byte offsets, so an explicit offset table is often clearer and cheaper than runtime multiplication on Z80.
 
-Records support scalar and fixed-array fields using `u8`, `i8`, `u16`, `i16`, `fixed`,
-`ufixed`, and `bool`, packed scalar `bcd digits N` fields, plus nested-record fields
+Records support scalar and fixed-array fields using `u8`, `i8`, `u16`, `i16`, `u32`,
+`i32`, `fixed`, `ufixed`, and `bool`, packed scalar `bcd digits N` fields, plus nested-record fields
 and one-level arrays of fixed-size records:
 
 ```basic
@@ -417,10 +415,15 @@ structured metadata for those aliases and displays the qualified Amy name, type,
 and shared-overlay status. Without an active-part binding, the debugger reports the
 active part as unknown instead of guessing which alias owns the live byte. A complete typed record data
 table can initialize a qualified record-array field with `copy ... to Overlay.Part.Items`.
+Fixed scalar arrays can be copied in either direction between local/global storage and
+qualified overlay fields, for example `copy SceneRam.Game.Lookup to SavedLookup count 8`.
 Packed BCD fields retain their declared digit count inside an overlay and occupy
 `ceil(digits / 2)` bytes without alignment padding. Assignment, `inc`, `dec`, `+=`,
 `-=`, comparisons, `clear`, same-digit-count copies, formatting, and canonical typed
 printing accept complete names such as `SceneRam.Game.Score`.
+Wide `u32` and `i32` scalar and array fields likewise support assignment, same-type
+binary `+`/`-`, fitting integer literals, and `inc`/`dec` through complete record or
+overlay-qualified names.
 Qualified byte fields are also valid where the regular typed operand pipeline is used,
 including canonical `Field = get char at X,Y`, `play sound Field`, `stop sound Field`,
 and canonical typed printing such as `print Field at X,Y`. Legacy `get ... into Field`
@@ -1358,7 +1361,16 @@ Value <<= 3
 Score >>= 2
 ```
 
-Intended for `u8`/`i8` and `u16`/`i16` variables, fixed shift counts.
+Valid for `u8`/`i8` and `u16`/`i16` variables with fixed shift counts from 1 to 7.
+Targets may be plain variables, record fields, indexed record fields, or
+overlay-qualified fields.
+
+Byte targets also accept compound masks:
+
+```basic
+Actor.Flags &= $0F
+SceneRam.Game.Flags |= $80
+```
 
 Legacy shift aliases are removed from the active language surface. Use `<<=` and `>>=`.
 
@@ -1403,7 +1415,7 @@ reverse array Board
 reverse array Board from 2 count 6
 ```
 
-Current limits: `u8` arrays. `count` and slice values are safest as compile-time constants. A fixed `fill array` count from 1 to 255 uses a compact Z80 `DJNZ` loop. `fill record array ... field ...` fills one byte-sized `u8`, `i8`, or `bool` field across a fixed record array with a constant or byte value, advancing directly by the record size.
+Current limits: `u8` arrays. `count` and slice values must be compile-time constants. A fixed `fill array` count from 1 to 255 uses a compact Z80 `DJNZ` loop. `fill record array ... field ...` fills one byte-sized `u8`, `i8`, or `bool` field across a fixed record array with a constant or byte value, advancing directly by the record size.
 The old `copy array Dst from Src` spelling was removed; use `copy Src to Dst`.
 
 ### Multiply / Divide / Sqrt
@@ -1467,9 +1479,35 @@ Counter32 = Seed32
 Counter32 += Addend32
 inc Counter32
 Counter32 -= Addend32
+Total32 = Counter32 + Addend32
+Difference32 = Counter32 - Addend32
+Next32 = Counter32 + 5
 ```
 
-Operands are `u32` variables or compatible 4-byte little-endian `u8` arrays, not scalar `u16` values.
+Simple `+` and `-` binary expressions are supported for operands and destinations
+of the same `u32` or `i32` type. A fitting integer literal is also accepted as
+either operand. The compiler stages both operands, so destination
+aliasing such as `Counter32 = Counter32 + Addend32` is safe. Operands may be
+`u32`/`i32` variables or elements of matching wide arrays. Legacy operations also
+accept compatible 4-byte little-endian `u8` arrays. Scalar `u16` values are not
+implicitly widened into this arithmetic.
+
+Fixed-size `u32` and `i32` arrays use four little-endian bytes per element and accept
+constant, `u8` variable, and supported `u8` expression indexes:
+
+```basic
+u32 Scores[4] = 0
+u8 Player = 1
+Scores[Player] = Scores[0] + 50000
+Scores[Player + 1] = Scores[Player] - 10
+```
+
+Constant indexes are bounds-checked while transpiling. Runtime indexes remain the
+programmer's responsibility and must stay within the declared array.
+
+`fixed`/`ufixed` arrays currently support declaration, whole-array initialization, and
+element reads. Element assignment remains intentionally rejected with a typed diagnostic;
+use scalar fixed variables or replace the whole initialized table when mutation is required.
 
 Open caution:
 - `Amy Math Demo` still has an open `u32` regression in its validation chain
@@ -1779,6 +1817,7 @@ decompress Asset to vram.pattern        ' asset codec inferred when declared wit
 decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name
+decompress splitrle Table to vram.name
 decompress pletter Asset  to vram.name
 decompress dan1  Asset   to vram.pattern
 decompress dan2  Asset   to vram.pattern
@@ -1793,6 +1832,12 @@ copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
+
+`splitrle` is a fast RLE format recovered from Ken Uston's Blackjack/Poker. It
+stores packet controls separately from literal/repeated payload bytes. Amy files
+add a two-byte relative payload offset so compressed assets remain relocatable.
+Use `.splitrle` files or `asset ... codec splitrle`; unlike `rle`, this is not an
+alias for `mdkrle`.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old
 lib4ksa masked VRAM upload helper. Each byte written is `(source_byte & M) xor X`.
@@ -2162,8 +2207,10 @@ if down  on Pad1 goto Label
 pause until press
 pause until press on joypad 1
 pause until press and release
-pause until press and release blank after 5 seconds
-pause until press and release on joypad 1 blank after 5 seconds
+sleep after 5 seconds
+sleep after 5 seconds on joypad 1
+pause until press and release sleep after 5 seconds
+pause until press and release on joypad 1 sleep after 5 seconds
 wait fire
 wait no fire
 wait fire on joypad 2
@@ -2189,17 +2236,30 @@ Use it for menu pauses and "press to continue" screens. `pause until press and r
 adds a final release wait, preventing the accepted button from becoming an immediate
 gameplay action. `wait fire` and `wait no fire` are lower-level action waits;
 unqualified forms watch both controllers, while `on joypad N` limits them to one port.
-`pause until press and release blank after N seconds` adds CRT-safe timed blanking.
+`sleep after N seconds` is a nonblocking menu inactivity service. Call it once per
+frame: it returns immediately while the screen is awake. Directions, keypad keys,
+and action buttons reset its timer. After the timeout it blanks the screen, waits
+for any selected control, restores the display, consumes that control's release,
+resets its timer, and returns without selecting a menu item. It reserves two bytes
+of runtime RAM. Combine the timeout with `pause until press and release` when a
+blocking confirmation screen must require a second, fresh press after waking:
+
+```basic
+pause until press and release sleep after 10 seconds
+```
+
 `N` must be a literal from 1 to 1092. Amy precomputes `N*60` and `N*50` and
 selects the count at runtime from the official BIOS `AMERICA` byte (`60` NTSC,
-`50` PAL; unknown values fall back to NTSC). The timeout starts on command entry,
-even while an old action remains held. The current screen and backdrop remain visible
+`50` PAL; unknown values fall back to NTSC). For the nonblocking service, the timeout
+counts calls made with no selected input. The current screen and backdrop remain visible
 until the timeout expires. On expiry, Amy sets VDP R7 to black and clears only VDP R1
 display bit 6: NMI, controller scanning, sound, music, timers, and `on vblank` continue.
 After blanking, the first fresh action immediately restores the tracked backdrop and the
-original display-enable bit without overwriting current NMI or sprite-size bits. That
-wake action must be released and is consumed; a second fresh press and release is
-required to complete the pause. An action pressed before blanking still completes the
+original display-enable bit without overwriting current NMI or sprite-size bits.
+For `sleep after`, any wake control restores the display, its release is consumed,
+and execution returns so menu control resumes. In the combined pause
+form, the wake action is consumed and a second fresh press and release is required
+to complete the pause. An action pressed before blanking still completes the combined
 pause normally after its release. Every
 `backdrop COLOR` command updates that tracked R7 value. This form requires NMI enabled;
 compilation fails when Amy can prove NMI is off at that point.
@@ -2216,18 +2276,18 @@ when any action button is pressed. Without `on joypad N`, either controller can 
 
 ```basic
 choose keypad 1 to 3 into Speed
-choose keypad KeyReplay to KeyMenu into Choice blank after 5 seconds
+choose keypad KeyReplay to KeyMenu into Choice sleep after 5 seconds
 ```
 
 Waits for a keypad digit in the given range and stores it.
 
-Computed bounds are also accepted. An optional `on keypad N` restricts input to one controller. `blank after N seconds` uses the same PAL/NTSC-aware, NMI-preserving CRT protection as `pause until press and release`, consumes the selected key release, and requires NMI enabled:
+Computed bounds are also accepted. An optional `on keypad N` restricts input to one controller. `sleep after N seconds` uses the same PAL/NTSC-aware, NMI-preserving CRT protection, consumes the selected key release, and requires NMI enabled:
 
 ```basic
 const KeyReplay = 10  ' *
 const KeyMenu = 11    ' #
 u8 Choice = 0
-choose keypad KeyReplay to KeyMenu into Choice blank after 5 seconds
+choose keypad KeyReplay to KeyMenu into Choice sleep after 5 seconds
 ```
 
 Computed bounds are also accepted:
@@ -2529,19 +2589,6 @@ Multiple comma-separated targets on one `read` line are supported.
 
 ---
 
-## Libraries
-
-```basic
-use lib "coleco.bios"
-use lib "coleco.vdp"
-use lib "cvdevkit.rle"
-```
-
-`use lib` is a deprecated no-op. Amy links required runtime modules
-automatically from the statements used by the program.
-
----
-
 ## Inline ASM
 
 ```basic
@@ -2627,7 +2674,6 @@ Available memory profiles live in `tools/memory/*.json`.
 |---|---|
 | `project "Name"` | Project header |
 | `memory "profile"` | Select memory profile |
-| `use lib "name"` | Include library bundle |
 | `const Name = value` | Compile-time constant |
 | `enum Name:` ... `end enum` | Group compile-time constants |
 | `u8 Name = value` | Global 8-bit unsigned RAM variable |
@@ -2860,7 +2906,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `if tiles under box X,Y size W,H contain solid goto Label` | Pixel box-to-tile collision |
 | `find tile coin under box X,Y size W,H into TX,TY` | Find first matching tile |
 | `if chars in box X,Y size W,H contain solid goto Label` | Tile-coordinate box scan |
-| `pause until press [and release] [on joypad N] [blank after N seconds]` | Debounced action pause; optional region-aware CRT-safe display blanking requires NMI |
+| `sleep after N seconds [on joypad N]` | Nonblocking menu idle service; call once per frame; any selected control wakes |
+| `pause until press and release [on joypad N] [sleep after N seconds]` | Debounced confirmation pause with optional CRT sleep |
 | `wait fire [on joypad N]` | Low-level wait for any action button |
 | `wait no fire [on joypad N]` | Wait until all action buttons are released |
 | `wait` | Safe one-frame wait; works with NMI on or off |
@@ -2869,7 +2916,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `wait vblank [N]` | Low-level alias for frame waits |
 | `wait key N [on keypad N]` | Wait for keypad digit |
 | `wait key release [on keypad N]` | Wait for keypad release |
-| `choose keypad min to max into Var [on keypad N] [blank after N seconds]` | Debounced menu selection with optional CRT-safe blanking |
+| `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
 | `halt` | Halt until NMI |
 
 ### Sound
@@ -2896,7 +2943,7 @@ implicitly bounds-checked.
 
 | Statement | Meaning |
 |---|---|
-| `fill array Arr with Value` | Fill with constant |
+| `fill array Arr with Value [count N]` | Fill all or a constant-sized prefix |
 | `fill array Arr repeating Pattern [count N]` | Fill with repeated pattern |
 | `copy Src to Dst [count N]` | Bulk copy array/buffer/VRAM blocks |
 | `shift array Arr down N` | Shift toward higher indices |
@@ -3030,15 +3077,15 @@ These features do not yet exist at source level:
 The table below is empirical — compiled and confirmed against the full example catalog.
 `pass` = compiles and emits code. `—` = not implemented (compile error).
 
-| Type | `+=` | `-=` | `*=` | `/=` | `%=` |
-| --- | --- | --- | --- | --- | --- |
-| `u8` / `i8` | pass | pass | pass | pass | pass |
-| `u16` / `i16` | pass | pass | pass | pass | pass |
-| `bcd` | pass | pass | — | — | — |
-| `u32` | pass | pass | pass | pass | — |
-| `fixed32` (fix16_16) | pass | pass | pass | pass | — |
-| `fp5` | pass | pass | pass | pass | — |
-| `fixed` (fix8_8) | pass | pass | pass | pass | — |
+| Type | `+=` | `-=` | `*=` | `/=` | `%=` | `&=` / `\|=` | `<<=` / `>>=` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `u8` / `i8` | pass | pass | pass | pass | pass | pass | pass |
+| `u16` / `i16` | pass | pass | pass | pass | pass | — | pass |
+| `bcd` | pass | pass | — | — | — | — | — |
+| `u32` | pass | pass | pass | pass | — | — | — |
+| `fixed32` (fix16_16) | pass | pass | pass | pass | — | — | — |
+| `fp5` | pass | pass | pass | pass | — | — | — |
+| `fixed` (fix8_8) | pass | pass | pass | pass | — | — | — |
 
 Notes:
 - `bcd` `*=` and `/=` are intentionally not implemented.
