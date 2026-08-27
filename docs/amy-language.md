@@ -678,6 +678,10 @@ FP5 note:
   conversion; they do not copy the incompatible raw representations
 - mixed `fp5`/`fixed32` arithmetic expressions remain invalid; convert through an
   assignment before doing arithmetic in the chosen type
+- direct `fixed` or `ufixed` to `fixed32` assignment widens 8.8 to 16.16 without
+  losing precision; `fixed32` to signed `fixed` drops the lowest 8 fractional bits
+- `fixed32` to `ufixed` remains invalid because negative-value handling requires an
+  explicit saturation or rejection policy
 
 Current implemented comparison rule:
 

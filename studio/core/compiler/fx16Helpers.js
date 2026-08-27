@@ -103,6 +103,24 @@ export function createFx16Helpers({
       if (valueInfo.type === "int16") {
         const loadHL = emitLoadInt16IntoHL(valueToken);
         if (!loadHL) return null;
+        const declaredType = normalizeDeclaredType(resolveDeclaredValueType(valueToken));
+        if (declaredType === "fix8_8" || declaredType === "ufix8_8") {
+          const lines = [
+            ...loadHL,
+            "    xor a",
+            `    ld (${baseLabel}+0),a`,
+            "    ld a,l",
+            `    ld (${baseLabel}+1),a`,
+            "    ld a,h",
+            `    ld (${baseLabel}+2),a`
+          ];
+          if (declaredType === "fix8_8") {
+            lines.push("    add a,a", "    sbc a,a", `    ld (${baseLabel}+3),a`);
+          } else {
+            lines.push("    xor a", `    ld (${baseLabel}+3),a`);
+          }
+          return lines;
+        }
         const lines = [
           ...loadHL,
           "    xor a",

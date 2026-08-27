@@ -682,6 +682,25 @@ export function createRuntimeValueHelpers({
       if (loadExpr && storeTarget) return [...loadExpr, ...storeTarget];
     }
     if (sourceType) {
+      if (
+        targetType === "int16"
+        && normalizeDeclaredType(targetDeclaredType) === "fix8_8"
+        && sourceType === "i32"
+        && isFix16_16DeclaredType(sourceDeclaredType)
+      ) {
+        const scratch = ensureCompareScratch32();
+        const storeSource = emitStoreFx16Source(value, scratch.leftLabel);
+        const storeTarget = emitStoreInt16FromHL(name);
+        if (!storeSource || !storeTarget) return null;
+        return [
+          ...storeSource,
+          `    ld a,(${scratch.leftLabel}+1)`,
+          "    ld l,a",
+          `    ld a,(${scratch.leftLabel}+2)`,
+          "    ld h,a",
+          ...storeTarget
+        ];
+      }
       if (targetType === "i32" && isFix16_16DeclaredType(targetDeclaredType)) {
         const scratch = ensureCompareScratch32();
         const storeSrc = emitStoreFx16Source(value, scratch.leftLabel);
