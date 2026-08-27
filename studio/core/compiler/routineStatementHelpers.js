@@ -93,6 +93,8 @@ export function handleRoutineStatement({
   emitLoadInt16IntoHL,
   emitStoreExtended32,
   ensureCompareScratch32,
+  ensureFp5ReturnScratch,
+  emitLoadFp5SourceToFpa,
   makeGeneratedLabel,
   isKnownProcedureStatementName,
   procSignatures,
@@ -138,6 +140,12 @@ export function handleRoutineStatement({
     } else if (returnType === "u32" || returnType === "i32") {
       ensureCompareScratch32();
       returnLines = emitStoreExtended32(valueToken, "AMY_CMP_LEFT32");
+    } else if (returnType === "fp5") {
+      const returnLabel = ensureFp5ReturnScratch();
+      const loadValue = emitLoadFp5SourceToFpa(valueToken, 1);
+      if (loadValue) {
+        returnLines = [...loadValue, `    ld hl,${returnLabel}`, "    call AMY_FP5_STORE_FPA1_TO_MEM"];
+      }
     }
     if (!returnLines) {
       return { handled: true, ok: false, log: `Invalid function return value: ${rawLine}` };

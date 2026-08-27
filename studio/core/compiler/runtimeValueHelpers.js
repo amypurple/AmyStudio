@@ -39,6 +39,7 @@ export function createRuntimeValueHelpers({
   emitLoadWordTableEntryIntoHL,
   getWordTableInfo,
   ensureCompareScratch32,
+  ensureFp5ReturnScratch,
   emitStoreExtended32,
   emitStoreMemory32ToTarget,
   emitStoreInt16FromHL,
@@ -126,6 +127,15 @@ export function createRuntimeValueHelpers({
   }
 
   function emitLoadFp5SourceToFpa(valueToken, fpa) {
+    const functionCall = emitFunctionInvocation(valueToken);
+    if (functionCall?.returnType === "fp5") {
+      const returnLabel = ensureFp5ReturnScratch();
+      return [
+        ...functionCall.lines,
+        `    ld hl,${returnLabel}`,
+        `    call ${fpa === 2 ? "AMY_FP5_LOAD_MEM_TO_FPA2" : "AMY_FP5_LOAD_MEM_TO_FPA1"}`
+      ];
+    }
     const info = getRuntimeInfo(valueToken);
     const fpaLabel = fpa === 2 ? "AMY_FP5_FPA2" : "AMY_FP5_FPA1";
     if (info && info.type === "fp5") {
@@ -533,6 +543,18 @@ export function createRuntimeValueHelpers({
       return ["    call AMY_FX16_16_RND", ...storeTarget];
     }
     if (targetType === "fp5") {
+      const functionCall = emitFunctionInvocation(value);
+      if (functionCall?.returnType === "fp5") {
+        const returnLabel = ensureFp5ReturnScratch();
+        const storeTarget = emitStoreFpa1ToFp5Target(name);
+        if (!storeTarget) return null;
+        return [
+          ...functionCall.lines,
+          `    ld hl,${returnLabel}`,
+          "    call AMY_FP5_LOAD_MEM_TO_FPA1",
+          ...storeTarget
+        ];
+      }
       const randomArgs = parseRandomCallArgs(value);
       if (randomArgs && randomArgs.length === 0) {
         const storeTarget = emitStoreFpa1ToFp5Target(name);
@@ -935,7 +957,8 @@ export function createRuntimeValueHelpers({
     emitRuntimeStore,
     emitStoreImmediate32,
     emitPushArgument,
-    ensureDataCursorVar
+    ensureDataCursorVar,
+    emitLoadFp5SourceToFpa
   };
 }
 

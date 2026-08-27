@@ -764,6 +764,7 @@ export function transpileAmyCore(sourceText, deps) {
   const recordAliasStack = [];
   let dataCursorName = null;
   let compareScratch32 = null;
+  let fp5ReturnScratch = null;
   let ensureCompareScratch32 = null;
   let emitStoreMemory32ToTarget = null;
   let emitPrepareU32Source = null;
@@ -799,6 +800,7 @@ export function transpileAmyCore(sourceText, deps) {
   let emitFp5ArithOp = null;
   let emitFp5MultiplyOp = null;
   let emitFp5DivideOp = null;
+  let emitLoadFp5SourceToFpa = null;
   let cartridgeMeta = null;
   let onFrameHook = null;
   let sawExplicitRestore = false;
@@ -2646,6 +2648,15 @@ export function transpileAmyCore(sourceText, deps) {
     parseFixedPointLiteral32: (...args) => parseFixedPointLiteral32(...args)
   }));
 
+  function ensureFp5ReturnScratch() {
+    if (fp5ReturnScratch) return fp5ReturnScratch;
+    const label = "AMY_FP5_RET";
+    const address = reserveRam(label, 5, "internal fp5 function return");
+    runtimeDeclarations.push(`${label} EQU ${formatHex16(address)}`);
+    fp5ReturnScratch = label;
+    return label;
+  }
+
   function emitOverlayFieldAliases(overlayName, partName, recordInfo, baseAddress, metadataFields, path = [], baseOffset = 0) {
     for (const field of recordInfo.orderedFields) {
       const fieldPath = [...path, field.name];
@@ -2969,7 +2980,8 @@ export function transpileAmyCore(sourceText, deps) {
     emitRuntimeStore,
     emitStoreImmediate32,
     emitPushArgument,
-    ensureDataCursorVar
+    ensureDataCursorVar,
+    emitLoadFp5SourceToFpa
   } = createRuntimeValueHelpers({
     normalizeExpression,
     normalizeDeclaredType,
@@ -3007,6 +3019,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadWordTableEntryIntoHL: (...args) => emitLoadWordTableEntryIntoHL(...args),
     getWordTableInfo: (...args) => getWordTableInfo(...args),
     ensureCompareScratch32: (...args) => ensureCompareScratch32(...args),
+    ensureFp5ReturnScratch,
     emitStoreExtended32: (...args) => emitStoreExtended32(...args),
     emitStoreMemory32ToTarget: (...args) => emitStoreMemory32ToTarget(...args),
     emitStoreInt16FromHL: (...args) => emitStoreInt16FromHL(...args),
@@ -4203,6 +4216,8 @@ export function transpileAmyCore(sourceText, deps) {
       emitLoadCountIntoBC,
       isDefinitelyByteSizedCount,
       ensureCompareScratch32,
+      ensureFp5ReturnScratch,
+      emitLoadFp5SourceToFpa,
       emitBcdAdd,
       emitBcdSub,
       emitArithInt8Op,
@@ -4399,6 +4414,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadInt16IntoHL,
         emitStoreExtended32,
         ensureCompareScratch32,
+        ensureFp5ReturnScratch,
+        emitLoadFp5SourceToFpa,
         makeGeneratedLabel,
         isKnownProcedureStatementName,
         procSignatures,

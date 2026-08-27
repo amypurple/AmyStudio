@@ -19,6 +19,7 @@ const tests = [
   { file: "test-bcd-inc-dec-rom.mjs", area: "bcd", evidence: "rom" },
   { file: "test-chars-in-box-rom.mjs", area: "tile-collision", evidence: "rom" },
   { file: "test-legacy-u32-rom.mjs", area: "legacy-wide-integers", evidence: "rom" },
+  { file: "test-fp5-function-return-rom.mjs", area: "fp5-function-return", evidence: "rom" },
   { file: "test-global-initializers-rom.mjs", area: "layout-and-wide-integers", evidence: "rom" },
   { file: "test-array-store-layout-rom.mjs", area: "array-index-layout", evidence: "rom" },
   { file: "test-spinner-rom.mjs", area: "spinner-input", evidence: "rom" }

@@ -42,6 +42,8 @@ export function createInlineStatementCompiler(ctx) {
     emitLoadCountIntoBC,
     isDefinitelyByteSizedCount,
     ensureCompareScratch32,
+    ensureFp5ReturnScratch,
+    emitLoadFp5SourceToFpa,
     emitBcdAdd,
     emitBcdSub,
     emitArithInt8Op,
@@ -65,6 +67,10 @@ export function createInlineStatementCompiler(ctx) {
         else if (returnType === "u32" || returnType === "i32") {
           ensureCompareScratch32();
           inlineLines = emitStoreExtended32(valueToken, "AMY_CMP_LEFT32");
+        } else if (returnType === "fp5") {
+          const returnLabel = ensureFp5ReturnScratch();
+          const loadValue = emitLoadFp5SourceToFpa(valueToken, 1);
+          if (loadValue) inlineLines = [...loadValue, `    ld hl,${returnLabel}`, "    call AMY_FP5_STORE_FPA1_TO_MEM"];
         }
         if (!inlineLines) return { ok: false, lines: [], log: `Invalid function return value: ${rawLineText}` };
         inlineLines = [...inlineLines, ...emitCurrentProcReturnLines()];

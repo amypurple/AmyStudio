@@ -245,10 +245,6 @@ export function scanAmyFirstPass({
 
     const functionBare = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
     if (functionBare && isSupportedSourceTypeName(functionBare[2])) {
-      if (normalizeDeclaredType(functionBare[2].toLowerCase()) === "fp5") {
-        firstPassNameError = `fp5 function returns are not supported yet: ${rawLine}`;
-        break;
-      }
       const functionName = functionBare[1];
       const nameError = validateGlobalUserName(functionName, "Function", rawLine);
       if (nameError) {
@@ -304,10 +300,6 @@ export function scanAmyFirstPass({
     const trimmed = stripAmyInlineComment(rawLine).trim();
     const m = trimmed.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$/i);
     if (!m || !isSupportedSourceTypeName(m[3])) continue;
-    if (normalizeDeclaredType(m[3].toLowerCase()) === "fp5") {
-      firstPassNameError = `fp5 function returns are not supported yet: ${rawLine}`;
-      break;
-    }
     const functionName = m[1];
     ensureProcAsmSymbol(functionName);
     const rawParamsText = m[2].trim();

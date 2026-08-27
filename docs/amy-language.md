@@ -907,6 +907,24 @@ Current style rule:
 
 `return` accepts a full expression, not only a plain variable or literal. This includes nested function calls and array indexing when the expression type matches the function return type.
 
+`fp5` functions use a dedicated five-byte return cell that is allocated only when
+the project declares an `fp5` return. The caller copies the result immediately, so
+later floating-point operations cannot overwrite it through the shared fp5
+accumulators. A return may use an fp5 variable, a compatible numeric value, or
+another fp5 function call. For a compound fp5 calculation, assign the expression
+to an fp5 variable first and return that variable.
+
+```basic
+function MakeScale(fp5 Base) as fp5
+  fp5 Result = 0
+  Result = Base
+  Result *= 1.5
+  return Result
+
+function RelayScale(fp5 Base) as fp5
+  return MakeScale(Base)
+```
+
 ```basic
 function board_index(u8 X, u8 Y) as u8
   return (Y << 3) + X
