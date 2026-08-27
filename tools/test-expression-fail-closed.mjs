@@ -1,27 +1,35 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
 const amyc = join(root, "tools", "amyc.mjs");
-const temp = mkdtempSync(join(tmpdir(), "amy-expression-matrix-"));
+const temp = await mkdtemp(join(tmpdir(), "amy-expression-matrix-"));
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 
-function runCase(name, body, profile = "off", rom = false) {
+async function runCase(name, body, profile = "off", rom = false) {
   const source = join(temp, `${name}-${profile}.alexis`);
   const output = join(temp, `${name}-${profile}.${rom ? "rom" : "asm"}`);
-  writeFileSync(source, `project "${name}"\nmemory "colecovision_legacy_sdcc"\n${body}\n`);
+  await writeFile(source, `project "${name}"\nmemory "colecovision_legacy_sdcc"\n${body}\n`);
   const mode = rom ? "--rom" : "--asm";
-  const result = spawnSync(process.execPath, [amyc, source, mode, output, "--opt", profile], {
-    cwd: root,
-    encoding: "utf8"
+  return new Promise((resolveRun, rejectRun) => {
+    let stdout = "";
+    let stderr = "";
+    const child = spawn(process.execPath, [amyc, source, mode, output, "--opt", profile], {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", rejectRun);
+    child.on("exit", (status) => resolveRun({ status, stdout, stderr, output: `${stdout}${stderr}` }));
   });
-  return { ...result, output: `${result.stdout || ""}${result.stderr || ""}` };
 }
 
+try {
 const validBody = `
 const Limit = 10
 u8 X = 0
@@ -38,7 +46,7 @@ sub start:
   loop forever
 end sub`;
 for (const profile of profiles) {
-  const result = runCase("valid-expression", validBody, profile, true);
+  const result = await runCase("valid-expression", validBody, profile, true);
   assert.equal(result.status, 0, `${profile}: ${result.output}`);
 }
 
@@ -51,7 +59,7 @@ sub start:
   loop forever
 end sub`;
 for (const profile of profiles) {
-  const result = runCase("dynamic-spinner", dynamicSpinnerBody, profile, true);
+  const result = await runCase("dynamic-spinner", dynamicSpinnerBody, profile, true);
   assert.equal(result.status, 0, `${profile} dynamic spinner: ${result.output}`);
 }
 const invalidCases = [
@@ -62,10 +70,13 @@ const invalidCases = [
   ["word-table-oob", `data L0 bytes $01\ndata Levels words = @L0\nu16 Address = 0\nsub start:\n  Address = Levels[9]\n  loop forever\nend sub`, /Word table Levels index 9 is out-of-range/]
 ];
 for (const [name, body, expected] of invalidCases) {
-  const result = runCase(name, body);
+  const result = await runCase(name, body);
   assert.notEqual(result.status, 0, `${name} unexpectedly compiled`);
   assert.match(result.output, expected, `${name}: ${result.output}`);
   assert.doesNotMatch(result.output, /Maximum call stack|Invalid expression.*instruction|Assemble failed/, `${name} leaked past Amy diagnostics`);
 }
 
 console.log(`expression fail-closed matrix: PASS (${profiles.length * 2} valid ROM builds, ${invalidCases.length} clean errors)`);
+} finally {
+  await rm(temp, { recursive: true, force: true });
+}

@@ -210,7 +210,7 @@ check("inline word table with a raw word value", () => {
 });
 
 check("constant index folds to the entry label", () => {
-  assert.match(asm, /ld hl,AMY_UDATA_Level1\s*\n(?:.*\n)?\s*ld de,VRAM_NAME\s*\n\s*call mdkrle_decompress/, "Levels[1] should load Level1 directly, no table walk");
+  assert.match(asm, /ld de,VRAM_NAME\s*\n\s*push de\s*\n\s*ld hl,AMY_UDATA_Level1\s*\n\s*pop de\s*\n\s*call mdkrle_decompress/, "Levels[1] should load Level1 directly, no table walk");
 });
 
 check("variable index emits the minimal dereference sequence", () => {
@@ -438,9 +438,11 @@ check("for each aliases a global record-array element through an explicit index"
   assert.doesNotMatch(forEachAsm, /Actor\.X/);
 });
 const forEachMissingIndex = transpileAmy(`u8 Values[2]\nfor each Value in Values\n  Value += 1\nnext\nloop forever\n`);
-check("for each survives a nested counted loop without losing its alias", () => {
-  const actorAddressLoads = forEachAsm.match(/ld hl,\$7020/g) || [];
-  assert.ok(actorAddressLoads.length >= 2, `expected repeated Actors[I] accesses, got ${actorAddressLoads.length}`);
+check("for each computes a record element once and survives a nested loop", () => {
+  const actorBaseLoads = forEachAsm.match(/ld hl,\$7020/g) || [];
+  const aliasPointerLoads = forEachAsm.match(/ld hl,\(\$[0-9A-F]{4}\)/gi) || [];
+  assert.equal(actorBaseLoads.length, 1, `expected one Actors[I] address computation, got ${actorBaseLoads.length}`);
+  assert.ok(aliasPointerLoads.length >= 2, `expected repeated cheap alias-pointer loads, got ${aliasPointerLoads.length}`);
 });
 check("for each rejects an omitted index without allocating hidden RAM", () => {
   assert.equal(forEachMissingIndex.ok, false);
