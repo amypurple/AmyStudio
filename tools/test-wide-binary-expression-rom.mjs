@@ -74,6 +74,9 @@ u32 Divisor = 3
 u32 Quotient = 0
 u32 ZeroDivisor = 0
 u32 ZeroQuotient = 99
+u32 Remainder = 99
+u32 ZeroRemainder = 99
+u32 CompoundRemainder = 4000000000
 i32 SignedProductLeft = -12345
 i32 SignedProductRight = 321
 i32 SignedProduct = 0
@@ -88,6 +91,11 @@ i32 SignedQuotientNP = 0
 i32 SignedQuotientPN = 0
 i32 SignedZeroQuotient = 99
 i32 SignedCompoundQuotient = -100
+i32 SignedRemainderNP = 99
+i32 SignedRemainderPN = 99
+i32 SignedRemainderNN = 99
+i32 SignedZeroRemainder = 99
+i32 SignedCompoundRemainder = -100
 i32 SignedMin = -2147483648
 i32 SignedMinusOne = -1
 i32 SignedOverflowQuotient = 0
@@ -105,6 +113,9 @@ Alias = Alias - 1
 Product = ProductLeft * ProductRight
 Quotient = Dividend / Divisor
 ZeroQuotient = Dividend / ZeroDivisor
+Remainder = Dividend % Divisor
+ZeroRemainder = Dividend % ZeroDivisor
+CompoundRemainder %= Divisor
 SignedProduct = SignedProductLeft * SignedProductRight
 SignedCompound *= SignedCompoundFactor
 SignedQuotientNN = SignedDividendA / SignedDivisorNegative
@@ -112,6 +123,11 @@ SignedQuotientNP = SignedDividendA / SignedDivisorPositive
 SignedQuotientPN = SignedDividendB / SignedDivisorNegative
 SignedZeroQuotient = SignedDividendA / 0
 SignedCompoundQuotient /= SignedDivisorPositive
+SignedRemainderNP = SignedDividendA % SignedDivisorPositive
+SignedRemainderPN = SignedDividendB % SignedDivisorNegative
+SignedRemainderNN = SignedDividendA % SignedDivisorNegative
+SignedZeroRemainder = SignedDividendA % 0
+SignedCompoundRemainder %= SignedDivisorPositive
 SignedOverflowQuotient = SignedMin / SignedMinusOne
 Values[0] = 100000
 Values[1] = 234567
@@ -120,6 +136,7 @@ SignedValues[1] = 24
 SignedValues[0] *= SignedValues[1]
 SignedValues[1] = -25
 SignedValues[1] /= 4
+Values[1] %= 10
 ArrayResult = Values[0] + Values[1]
 State.Left = 300000
 State.Right = 456789
@@ -147,6 +164,9 @@ loop forever
       assert.equal(readU32(core, addressOf(asm, "Product")), 605032704, `${profile}: wrapped product`);
       assert.equal(readU32(core, addressOf(asm, "Quotient")), 1333333333, `${profile}: unsigned quotient`);
       assert.equal(readU32(core, addressOf(asm, "ZeroQuotient")), 0, `${profile}: zero divisor`);
+      assert.equal(readU32(core, addressOf(asm, "Remainder")), 1, `${profile}: unsigned remainder`);
+      assert.equal(readU32(core, addressOf(asm, "ZeroRemainder")), 0, `${profile}: unsigned zero-divisor remainder`);
+      assert.equal(readU32(core, addressOf(asm, "CompoundRemainder")), 1, `${profile}: unsigned compound remainder`);
       assert.equal(readU32(core, addressOf(asm, "SignedProduct")), (-3962745) >>> 0, `${profile}: signed product`);
       assert.equal(readU32(core, addressOf(asm, "SignedCompound")), (-34000) >>> 0, `${profile}: signed compound product`);
       assert.equal(readU32(core, addressOf(asm, "SignedQuotientNN")), 14, `${profile}: negative divided by negative`);
@@ -154,10 +174,16 @@ loop forever
       assert.equal(readU32(core, addressOf(asm, "SignedQuotientPN")), (-14) >>> 0, `${profile}: positive divided by negative`);
       assert.equal(readU32(core, addressOf(asm, "SignedZeroQuotient")), 0, `${profile}: signed zero divisor`);
       assert.equal(readU32(core, addressOf(asm, "SignedCompoundQuotient")), (-14) >>> 0, `${profile}: signed compound quotient`);
+      assert.equal(readU32(core, addressOf(asm, "SignedRemainderNP")), (-2) >>> 0, `${profile}: negative signed remainder`);
+      assert.equal(readU32(core, addressOf(asm, "SignedRemainderPN")), 2, `${profile}: positive signed remainder with negative divisor`);
+      assert.equal(readU32(core, addressOf(asm, "SignedRemainderNN")), (-2) >>> 0, `${profile}: negative signed remainder with negative divisor`);
+      assert.equal(readU32(core, addressOf(asm, "SignedZeroRemainder")), 0, `${profile}: signed zero-divisor remainder`);
+      assert.equal(readU32(core, addressOf(asm, "SignedCompoundRemainder")), (-2) >>> 0, `${profile}: signed compound remainder`);
       assert.equal(readU32(core, addressOf(asm, "SignedOverflowQuotient")), 0x80000000, `${profile}: signed overflow wraps`);
       assert.equal(readU32(core, addressOf(asm, "SignedValues")), (-600) >>> 0, `${profile}: signed array compound product`);
       assert.equal(readU32(core, addressOf(asm, "SignedValues") + 4), (-6) >>> 0, `${profile}: signed array compound quotient`);
-      assert.equal(readU32(core, addressOf(asm, "ArrayResult")), 334567, `${profile}: array operands`);
+      assert.equal(readU32(core, addressOf(asm, "Values") + 4), 7, `${profile}: unsigned array compound remainder`);
+      assert.equal(readU32(core, addressOf(asm, "ArrayResult")), 100007, `${profile}: array operands`);
       assert.equal(readU32(core, addressOf(asm, "State") + 8), 756789, `${profile}: record operands`);
     } finally {
       core.destroy();

@@ -1509,6 +1509,7 @@ Total32 = Counter32 + Addend32
 Difference32 = Counter32 - Addend32
 Product32 = Counter32 * Addend32
 Quotient32 = Counter32 / Addend32
+Remainder32 = Counter32 % Addend32
 Next32 = Counter32 + 5
 ```
 
@@ -1524,6 +1525,9 @@ Binary `/` and in-place `/=` are available for both `u32` and `i32` and store `0
 when the divisor is zero. Signed division truncates toward zero. The overflow case
 `-2147483648 / -1` wraps to `-2147483648`, matching 32-bit two's-complement arithmetic.
 Both `u32` and `i32` also support the equivalent in-place multiplication `*=`.
+Binary `%` and in-place `%=` are available for both types and also store `0` when
+the divisor is zero. Signed remainder follows the dividend sign, consistent with
+division that truncates toward zero (`-100 % 7` is `-2`).
 
 Fixed-size `u32` and `i32` arrays use four little-endian bytes per element and accept
 constant, `u8` variable, and supported `u8` expression indexes:
@@ -3115,14 +3119,14 @@ The table below is empirical — compiled and confirmed against the full example
 | `u8` / `i8` | pass | pass | pass | pass | pass | pass | pass |
 | `u16` / `i16` | pass | pass | pass | pass | pass | — | pass |
 | `bcd` | pass | pass | — | — | — | — | — |
-| `u32` | pass | pass | pass | pass | — | — | — |
+| `u32` / `i32` | pass | pass | pass | pass | pass | — | — |
 | `fixed32` (fix16_16) | pass | pass | pass | pass | — | — | — |
 | `fp5` | pass | pass | pass | pass | — | — | — |
 | `fixed` (fix8_8) | pass | pass | pass | pass | — | — | — |
 
 Notes:
 - `bcd` `*=` and `/=` are intentionally not implemented.
-- `%=` is intentionally integer-only for byte/word types at this stage.
+- `%=` is available for byte, word, `u32`, and `i32` integer types.
 - signed integer division truncates toward zero; `int()` on fp5 remains floor-style.
 - fixed/fixed32/fp5 operators use dedicated runtime helpers and may cost more
   ROM than byte/word arithmetic.

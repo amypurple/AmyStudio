@@ -188,19 +188,69 @@ export function createAssignmentArithmeticHelpers({
     ];
   }
 
-  function emitSignedDivStaged(storeLeft, storeRight, storeTarget) {
+  function emitCopyU32RemainderToScratch(baseLabel) {
+    return [
+      "    ld hl,AMY_U32_DIV_REM",
+      `    ld de,${baseLabel}`,
+      "    ld bc,4",
+      "    ldir"
+    ];
+  }
+
+  function emitZeroMemory32(baseLabel) {
+    return [
+      "    xor a",
+      `    ld (${baseLabel}+0),a`,
+      `    ld (${baseLabel}+1),a`,
+      `    ld (${baseLabel}+2),a`,
+      `    ld (${baseLabel}+3),a`
+    ];
+  }
+
+  function emitUnsignedModStaged(storeLeft, storeRight, storeTarget) {
+    const divide = makeGeneratedLabel("U32ModDivide");
+    const done = makeGeneratedLabel("U32ModDone");
+    const scratch = ensureCompareScratch32();
+    return [
+      ...storeLeft,
+      ...storeRight,
+      `    ld a,(${scratch.rightLabel}+0)`,
+      "    ld b,a",
+      `    ld a,(${scratch.rightLabel}+1)`,
+      "    or b",
+      "    ld b,a",
+      `    ld a,(${scratch.rightLabel}+2)`,
+      "    or b",
+      "    ld b,a",
+      `    ld a,(${scratch.rightLabel}+3)`,
+      "    or b",
+      `    jp nz,${divide}`,
+      ...emitZeroMemory32(scratch.leftLabel),
+      `    jp ${done}`,
+      `${divide}:`,
+      `    ld hl,${scratch.leftLabel}`,
+      `    ld de,${scratch.rightLabel}`,
+      "    call AMY_U32_DIV",
+      ...emitCopyU32RemainderToScratch(scratch.leftLabel),
+      `${done}:`,
+      ...storeTarget
+    ];
+  }
+
+  function emitSignedDivStaged(storeLeft, storeRight, storeTarget, resultKind = "quotient") {
     const leftReady = makeGeneratedLabel("I32DivLeftReady");
     const rightReady = makeGeneratedLabel("I32DivRightReady");
     const done = makeGeneratedLabel("I32DivDone");
+    const divide = makeGeneratedLabel("I32DivRun");
+    const divided = makeGeneratedLabel("I32DivRan");
     const scratch = ensureCompareScratch32();
     return [
       ...storeLeft,
       ...storeRight,
       `    ld a,(${scratch.leftLabel}+3)`,
-      "    ld b,a",
-      `    ld a,(${scratch.rightLabel}+3)`,
-      "    xor b",
-      "    and $80",
+      ...(resultKind === "remainder"
+        ? ["    and $80"]
+        : ["    ld b,a", `    ld a,(${scratch.rightLabel}+3)`, "    xor b", "    and $80"]),
       "    push af",
       `    ld a,(${scratch.leftLabel}+3)`,
       "    or a",
@@ -212,9 +262,27 @@ export function createAssignmentArithmeticHelpers({
       `    jp p,${rightReady}`,
       ...emitNegateMemory32(scratch.rightLabel),
       `${rightReady}:`,
+      ...(resultKind === "remainder" ? [
+        `    ld a,(${scratch.rightLabel}+0)`,
+        "    ld b,a",
+        `    ld a,(${scratch.rightLabel}+1)`,
+        "    or b",
+        "    ld b,a",
+        `    ld a,(${scratch.rightLabel}+2)`,
+        "    or b",
+        "    ld b,a",
+        `    ld a,(${scratch.rightLabel}+3)`,
+        "    or b",
+        `    jp nz,${divide}`,
+        ...emitZeroMemory32(scratch.leftLabel),
+        `    jp ${divided}`,
+        `${divide}:`
+      ] : []),
       `    ld hl,${scratch.leftLabel}`,
       `    ld de,${scratch.rightLabel}`,
       "    call AMY_U32_DIV",
+      ...(resultKind === "remainder" ? emitCopyU32RemainderToScratch(scratch.leftLabel) : []),
+      ...(resultKind === "remainder" ? [`${divided}:`] : []),
       "    pop af",
       "    or a",
       `    jp z,${done}`,
@@ -301,6 +369,11 @@ export function createAssignmentArithmeticHelpers({
         "    call AMY_U32_DIV",
         ...storeTarget
       ];
+    }
+    if (op === "mod") {
+      const wideType = targetArrayRef ? info.elementType : targetFieldRef ? targetFieldRef.fieldInfo.type : info.kind;
+      if (wideType === "i32") return emitSignedDivStaged(storeDst, storeSrc, storeTarget, "remainder");
+      return emitUnsignedModStaged(storeDst, storeSrc, storeTarget);
     }
     return null;
   }
@@ -681,7 +754,7 @@ export function createAssignmentArithmeticHelpers({
             ? numeric >= 0 && numeric <= 0xFFFFFFFF
             : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
         };
-        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*\/-])\s*(.+)$/);
+        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*\/%-])\s*(.+)$/);
         if (binary) {
           const left = binary[1].trim();
           const right = binary[3].trim();
@@ -693,6 +766,10 @@ export function createAssignmentArithmeticHelpers({
             if (!storeLeft || !storeRight || !storeTarget) return null;
             if (binary[2] === "/" && targetType === "i32") {
               return emitSignedDivStaged(storeLeft, storeRight, storeTarget);
+            }
+            if (binary[2] === "%") {
+              if (targetType === "i32") return emitSignedDivStaged(storeLeft, storeRight, storeTarget, "remainder");
+              return emitUnsignedModStaged(storeLeft, storeRight, storeTarget);
             }
             return [
               ...storeLeft,
@@ -731,7 +808,10 @@ export function createAssignmentArithmeticHelpers({
       }
       return emitRuntimeStore(target, valueToken);
     }
-    if (opToken === "%=") return emitRuntimeStore(target, `${target} % (${valueToken})`);
+    if (opToken === "%=") {
+      if (targetType === "u32" || targetType === "i32") return emitArith32Op(target, valueToken, "mod");
+      return emitRuntimeStore(target, `${target} % (${valueToken})`);
+    }
     const targetDeclaredType = normalizeDeclaredType(resolveDeclaredValueType(target));
     const constantNumeric =
       typeof tryEvaluateCompileTimeNumericExpression === "function"
