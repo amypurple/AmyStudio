@@ -79,6 +79,18 @@ i32 SignedProductRight = 321
 i32 SignedProduct = 0
 i32 SignedCompound = -2000
 i32 SignedCompoundFactor = 17
+i32 SignedDividendA = -100
+i32 SignedDividendB = 100
+i32 SignedDivisorPositive = 7
+i32 SignedDivisorNegative = -7
+i32 SignedQuotientNN = 0
+i32 SignedQuotientNP = 0
+i32 SignedQuotientPN = 0
+i32 SignedZeroQuotient = 99
+i32 SignedCompoundQuotient = -100
+i32 SignedMin = -2147483648
+i32 SignedMinusOne = -1
+i32 SignedOverflowQuotient = 0
 u32 Values[2]
 i32 SignedValues[2]
 u32 ArrayResult = 0
@@ -95,11 +107,19 @@ Quotient = Dividend / Divisor
 ZeroQuotient = Dividend / ZeroDivisor
 SignedProduct = SignedProductLeft * SignedProductRight
 SignedCompound *= SignedCompoundFactor
+SignedQuotientNN = SignedDividendA / SignedDivisorNegative
+SignedQuotientNP = SignedDividendA / SignedDivisorPositive
+SignedQuotientPN = SignedDividendB / SignedDivisorNegative
+SignedZeroQuotient = SignedDividendA / 0
+SignedCompoundQuotient /= SignedDivisorPositive
+SignedOverflowQuotient = SignedMin / SignedMinusOne
 Values[0] = 100000
 Values[1] = 234567
 SignedValues[0] = -25
 SignedValues[1] = 24
 SignedValues[0] *= SignedValues[1]
+SignedValues[1] = -25
+SignedValues[1] /= 4
 ArrayResult = Values[0] + Values[1]
 State.Left = 300000
 State.Right = 456789
@@ -116,7 +136,7 @@ loop forever
     try {
       core.loadBios(bios);
       core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
-      for (let frame = 0; frame < 4; frame += 1) core.runFrame();
+      for (let frame = 0; frame < 60; frame += 1) core.runFrame();
       assert.equal(core.readRam(addressOf(asm, "GuardBefore"), 1)[0], 77, `${profile}: guard before`);
       assert.equal(core.readRam(addressOf(asm, "GuardAfter"), 1)[0], 88, `${profile}: guard after`);
       assert.equal(readU32(core, addressOf(asm, "CarryResult")), 65537, `${profile}: carry`);
@@ -129,7 +149,14 @@ loop forever
       assert.equal(readU32(core, addressOf(asm, "ZeroQuotient")), 0, `${profile}: zero divisor`);
       assert.equal(readU32(core, addressOf(asm, "SignedProduct")), (-3962745) >>> 0, `${profile}: signed product`);
       assert.equal(readU32(core, addressOf(asm, "SignedCompound")), (-34000) >>> 0, `${profile}: signed compound product`);
+      assert.equal(readU32(core, addressOf(asm, "SignedQuotientNN")), 14, `${profile}: negative divided by negative`);
+      assert.equal(readU32(core, addressOf(asm, "SignedQuotientNP")), (-14) >>> 0, `${profile}: negative divided by positive`);
+      assert.equal(readU32(core, addressOf(asm, "SignedQuotientPN")), (-14) >>> 0, `${profile}: positive divided by negative`);
+      assert.equal(readU32(core, addressOf(asm, "SignedZeroQuotient")), 0, `${profile}: signed zero divisor`);
+      assert.equal(readU32(core, addressOf(asm, "SignedCompoundQuotient")), (-14) >>> 0, `${profile}: signed compound quotient`);
+      assert.equal(readU32(core, addressOf(asm, "SignedOverflowQuotient")), 0x80000000, `${profile}: signed overflow wraps`);
       assert.equal(readU32(core, addressOf(asm, "SignedValues")), (-600) >>> 0, `${profile}: signed array compound product`);
+      assert.equal(readU32(core, addressOf(asm, "SignedValues") + 4), (-6) >>> 0, `${profile}: signed array compound quotient`);
       assert.equal(readU32(core, addressOf(asm, "ArrayResult")), 334567, `${profile}: array operands`);
       assert.equal(readU32(core, addressOf(asm, "State") + 8), 756789, `${profile}: record operands`);
     } finally {
@@ -137,7 +164,6 @@ loop forever
     }
   }
   await assertCompileFails("mixed-signedness", "u32 Left = 1\ni32 Right = -1\nu32 Result = 0\nResult = Left + Right");
-  await assertCompileFails("signed-binary-division", "i32 Left = -8\ni32 Right = 2\ni32 Result = 0\nResult = Left / Right");
   console.log(`wide binary expression ROM: PASS (${profiles.length} profiles)`);
 } finally {
   await rm(temp, { recursive: true, force: true });

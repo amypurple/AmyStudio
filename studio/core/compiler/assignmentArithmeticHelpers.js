@@ -163,6 +163,67 @@ export function createAssignmentArithmeticHelpers({
     ];
   }
 
+  function emitNegateMemory32(baseLabel) {
+    return [
+      `    ld hl,${baseLabel}`,
+      "    ld a,(hl)",
+      "    cpl",
+      "    add a,1",
+      "    ld (hl),a",
+      "    inc hl",
+      "    ld a,(hl)",
+      "    cpl",
+      "    adc a,0",
+      "    ld (hl),a",
+      "    inc hl",
+      "    ld a,(hl)",
+      "    cpl",
+      "    adc a,0",
+      "    ld (hl),a",
+      "    inc hl",
+      "    ld a,(hl)",
+      "    cpl",
+      "    adc a,0",
+      "    ld (hl),a"
+    ];
+  }
+
+  function emitSignedDivStaged(storeLeft, storeRight, storeTarget) {
+    const leftReady = makeGeneratedLabel("I32DivLeftReady");
+    const rightReady = makeGeneratedLabel("I32DivRightReady");
+    const done = makeGeneratedLabel("I32DivDone");
+    const scratch = ensureCompareScratch32();
+    return [
+      ...storeLeft,
+      ...storeRight,
+      `    ld a,(${scratch.leftLabel}+3)`,
+      "    ld b,a",
+      `    ld a,(${scratch.rightLabel}+3)`,
+      "    xor b",
+      "    and $80",
+      "    push af",
+      `    ld a,(${scratch.leftLabel}+3)`,
+      "    or a",
+      `    jp p,${leftReady}`,
+      ...emitNegateMemory32(scratch.leftLabel),
+      `${leftReady}:`,
+      `    ld a,(${scratch.rightLabel}+3)`,
+      "    or a",
+      `    jp p,${rightReady}`,
+      ...emitNegateMemory32(scratch.rightLabel),
+      `${rightReady}:`,
+      `    ld hl,${scratch.leftLabel}`,
+      `    ld de,${scratch.rightLabel}`,
+      "    call AMY_U32_DIV",
+      "    pop af",
+      "    or a",
+      `    jp z,${done}`,
+      ...emitNegateMemory32(scratch.leftLabel),
+      `${done}:`,
+      ...storeTarget
+    ];
+  }
+
   function emitArith32Op(target, valueToken, op) {
     const targetArrayRef = parseArrayRef(target);
     const targetFieldRef = parseRecordFieldRef(target);
@@ -192,7 +253,7 @@ export function createAssignmentArithmeticHelpers({
       if (op === "add") return emitU32Add(valueToken, target);
       if (op === "sub") return emitU32Sub(valueToken, target);
       if (op === "mul") return emitU32Mul(valueToken, target);
-      if (op === "div") return emitU32Div(valueToken, target);
+      if (op === "div" && info.kind === "u32") return emitU32Div(valueToken, target);
     }
     const scratch = ensureCompareScratch32();
     const storeDst = emitStoreExtended32(target, scratch.leftLabel);
@@ -230,6 +291,8 @@ export function createAssignmentArithmeticHelpers({
       ];
     }
     if (op === "div") {
+      const wideType = targetArrayRef ? info.elementType : targetFieldRef ? targetFieldRef.fieldInfo.type : info.kind;
+      if (wideType === "i32") return emitSignedDivStaged(storeDst, storeSrc, storeTarget);
       return [
         ...storeDst,
         ...storeSrc,
@@ -622,12 +685,15 @@ export function createAssignmentArithmeticHelpers({
         if (binary) {
           const left = binary[1].trim();
           const right = binary[3].trim();
-          if ((binary[2] !== "/" || targetType === "u32") && isCompatibleWideOperand(left) && isCompatibleWideOperand(right)) {
+          if (isCompatibleWideOperand(left) && isCompatibleWideOperand(right)) {
             const scratch = ensureCompareScratch32();
             const storeLeft = emitStoreExtended32(left, scratch.leftLabel);
             const storeRight = emitStoreExtended32(right, scratch.rightLabel);
             const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
             if (!storeLeft || !storeRight || !storeTarget) return null;
+            if (binary[2] === "/" && targetType === "i32") {
+              return emitSignedDivStaged(storeLeft, storeRight, storeTarget);
+            }
             return [
               ...storeLeft,
               ...storeRight,
@@ -706,7 +772,7 @@ export function createAssignmentArithmeticHelpers({
       if (opToken === "+=") return emitArith32Op(target, valueToken, "add");
       if (opToken === "-=") return emitArith32Op(target, valueToken, "sub");
       if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "*=") return emitArith32Op(target, valueToken, "mul");
-      if (getRuntimeInfo(target)?.kind !== "fix16_16" && targetType === "u32" && opToken === "/=") return emitArith32Op(target, valueToken, "div");
+      if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "/=") return emitArith32Op(target, valueToken, "div");
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=") return emitFx16MultiplyOp(target, valueToken);
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=") return emitFx16DivideOp(target, valueToken);
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "^=") {

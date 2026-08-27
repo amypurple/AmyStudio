@@ -1520,8 +1520,9 @@ aliasing such as `Counter32 = Counter32 + Addend32` is safe. Operands may be
 accept compatible 4-byte little-endian `u8` arrays. Scalar `u16` values are not
 implicitly widened into this arithmetic. Multiplication keeps the low 32 bits;
 overflow wraps modulo 2^32 for both signed and unsigned values.
-Binary `/` is available for `u32` only and stores `0` when the divisor is zero.
-Signed `i32` division remains invalid until a signed runtime helper is provided.
+Binary `/` and in-place `/=` are available for both `u32` and `i32` and store `0`
+when the divisor is zero. Signed division truncates toward zero. The overflow case
+`-2147483648 / -1` wraps to `-2147483648`, matching 32-bit two's-complement arithmetic.
 Both `u32` and `i32` also support the equivalent in-place multiplication `*=`.
 
 Fixed-size `u32` and `i32` arrays use four little-endian bytes per element and accept
