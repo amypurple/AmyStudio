@@ -625,7 +625,7 @@ export function bindStudioRuntimeEvents(ctx) {
     project.generatedAsm = generateAsm(project, res.asmBody, res.assets || [], res.metadata || {});
     setExpandedAsm("");
     setAsmViewMode("generated");
-    syncAsmEditor();
+    if (!els.layoutEl?.classList.contains("layout--asm-collapsed")) syncAsmEditor();
     renderLibraryResolution();
     saveProjectToStorage(project);
     return { project, res };
@@ -702,17 +702,7 @@ export function bindStudioRuntimeEvents(ctx) {
       updateEmulatorUi();
       refreshProjectGraph();
       const symbols = result.stats?.symbolCount ?? Object.keys(result.symbols || {}).length;
-      const netOptimizerDelta = Number.isFinite(result.netOptimizerDelta) ? result.netOptimizerDelta : null;
-      const estimatedBytesSaved = result.stats?.optimizer?.bytesSaved ?? 0;
-      const optimizationNote = optimizationProfile.optimizerEnabled
-        ? netOptimizerDelta === null
-          ? `, ${optimizationProfile.note}`
-          : netOptimizerDelta > 0
-            ? `, ${optimizationProfile.note}, net -${netOptimizerDelta} bytes vs raw`
-            : netOptimizerDelta < 0
-              ? `, ${optimizationProfile.note}, net +${Math.abs(netOptimizerDelta)} bytes vs raw`
-              : `, ${optimizationProfile.note}, net unchanged vs raw`
-        : `, ${optimizationProfile.note}`;
+      const optimizationNote = `, ${optimizationProfile.note}`;
       const previewNote = compiledColecoHeaderInfo?.valid && compiledColecoHeaderInfo?.usesDefaultScreen
         ? " BIOS previews available."
         : "";
@@ -1106,6 +1096,8 @@ export function bindAsmViewEvents(ctx) {
     setAsmViewMode("generated");
     syncAsmEditor();
   });
+
+  els.btnShowAsm?.addEventListener("click", syncAsmEditor);
 
   els.btnViewExpandedAsm.addEventListener("click", async () => {
     const asm = (getProject().generatedAsm || "").trimEnd();

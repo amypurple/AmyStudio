@@ -136,7 +136,9 @@ export async function compileGeneratedAsm(asmText, mainFile = "main.asm", option
   const optimizerConfig = options.optimizerConfig || null;
   let baseline = null;
 
-  if (optimizerEnabled && options.measureOptimizerDelta !== false) {
+  // Comparing against an unoptimized ROM requires a complete second assembly.
+  // Keep it available for explicit audits, but never charge normal Studio builds for it.
+  if (optimizerEnabled && options.measureOptimizerDelta === true) {
     baseline = await assembleAmysCVAssembly(files, mainFile, {
       ...assembleOptions,
       optimizerEnabled: false
