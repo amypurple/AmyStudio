@@ -125,6 +125,7 @@ export function handleForStatement({
       continueLabel,
       exitLabel,
       direction: stepAnalysis.direction,
+      constantStep: Number.isInteger(stepValue) ? stepValue : null,
       smallU8: canUseSmallU8Loop ? {
         asmName: info.asmName,
         exclusiveEnd: endValue + 1
@@ -189,11 +190,15 @@ export function handleForStatement({
       }
     } else if (loop.type === "int8") {
       lines.push(...emitLoadInt8Into("a", loop.name));
-      lines.push("    ld b,a");
-      const loadStep = emitLoadInt8Into("a", loop.stepToken);
-      if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
-      lines.push(...loadStep);
-      lines.push("    add a,b");
+      if (loop.constantStep === 1) {
+        lines.push("    inc a");
+      } else {
+        lines.push("    ld b,a");
+        const loadStep = emitLoadInt8Into("a", loop.stepToken);
+        if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
+        lines.push(...loadStep);
+        lines.push("    add a,b");
+      }
       lines.push(...emitStoreInt8FromA(loop.name));
     } else {
       lines.push(...emitLoadInt16IntoHL(loop.name));

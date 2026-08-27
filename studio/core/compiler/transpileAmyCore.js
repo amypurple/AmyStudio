@@ -2369,7 +2369,7 @@ export function transpileAmyCore(sourceText, deps) {
 
   function parseFormulaAssignment(text) {
     const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*`;
-    const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|=)\\s*(.+)$`));
+    const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(<<=|>>=|\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|=)\\s*(.+)$`));
     if (!match) return null;
     if (match[2] === "=" && /^(?:get|read)\s+(?:char|tile|count|frame)\b/i.test(match[3].trim())) return null;
     return {
@@ -4090,7 +4090,10 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     const formulaAssignment = parseFormulaAssignment(line);
-    if (formulaAssignment) {
+    const formulaShiftHandledLater = formulaAssignment
+      && (formulaAssignment.op === "<<=" || formulaAssignment.op === ">>=")
+      && !["int16", "u32", "i32"].includes(resolveValueType(formulaAssignment.target));
+    if (formulaAssignment && !formulaShiftHandledLater) {
       const wordTableAssignment = String(formulaAssignment.value || "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/);
       if (wordTableAssignment) {
         const table = getWordTableInfo(wordTableAssignment[1]);
@@ -4127,6 +4130,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitStoreInt16FromHL,
         makeGeneratedLabel,
         currentGraphicsMode,
+        tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
         nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0
       });
       if (vramPixelInputStmt.handled) {

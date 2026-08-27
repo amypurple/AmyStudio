@@ -820,5 +820,19 @@ export const exampleManifest = [
       "selftest",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-wide-integer-selftest",
+    "label": "Amy Wide Integer Self-Test",
+    "detail": "Runtime bitwise and shift checks for u16, i16, u32, i32, arrays, records, and overlays.",
+    "projectName": "amy-wide-integer-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
   }
 ];

@@ -1387,7 +1387,33 @@ Value <<= 3
 Score >>= 2
 ```
 
-Valid for `u8`/`i8` and `u16`/`i16` variables with fixed shift counts from 1 to 7.
+`u8`/`i8` shifts accept fixed counts from 1 to 7. `u16`/`i16` expressions
+and compound assignments accept fixed or unsigned byte counts; counts of 16 or
+more produce zero for left/logical-right shifts or all sign bits for arithmetic
+right shift.
+`u32`/`i32` expressions and compound assignments accept fixed or unsigned byte
+shift counts. Counts of 32 or more produce zero for left/logical-right shifts;
+arithmetic `i32 >>` produces all sign bits. Right shift is logical for unsigned
+types and arithmetic for signed types.
+
+Wide integer bitwise forms are supported consistently:
+
+```basic
+u16 WordFlags = $FF0F
+WordFlags &= $0F0F
+u32 Flags = 4278255360
+u32 Mask = 252645135
+u32 Result = Flags & Mask
+Result |= $00FF0000
+Result ^= $0000FFFF
+Result = ~Flags
+Result <<= 4
+Result = Flags >> ShiftCount
+```
+
+The same operations accept `u32`/`i32` globals, array elements, record fields,
+and qualified overlay fields. Bitwise operations preserve raw two's-complement
+bits; only signed right shift treats the high bit specially.
 Targets may be plain variables, record fields, indexed record fields, or
 overlay-qualified fields.
 
@@ -2314,6 +2340,8 @@ when any action button is pressed. Without `on joypad N`, either controller can 
 ```basic
 choose keypad 1 to 3 into Speed
 choose keypad KeyReplay to KeyMenu into Choice sleep after 5 seconds
+choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds
+choose menu 1 to 4 into Choice cursor sprite 0 at 48,71 step 16
 ```
 
 Waits for a keypad digit in the given range and stores it.
@@ -2331,6 +2359,23 @@ Computed bounds are also accepted:
 
 ```basic
 choose keypad MinChoice() to MaxChoice() into Speed
+```
+
+`choose menu` handles a complete vertical menu: it draws the cursor, wraps UP/DOWN,
+accepts FIRE or a keypad value in range, consumes the release, and returns the
+selection in the target. `at X,Y` is the first cursor position and `step` is the
+vertical distance between entries. The default erased tile is `$20` and the
+default controller is 1; use `clear Tile` or `on joypad 2` to override them.
+The optional `sleep after` timeout provides the same PAL/NTSC-aware CRT protection.
+
+The sprite form moves an already configured sprite in pixel coordinates. Set its
+pattern, color, active sprite count, and initial position before `choose menu`.
+The menu changes only X/Y and uploads the sprite table when the selection moves;
+it does not animate the sprite or allocate background animation state.
+
+```basic
+choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2
+on Choice goto GameOne, GameTwo, GameThree, GameFour
 ```
 
 ### Collision
@@ -2954,6 +2999,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `wait key N [on keypad N]` | Wait for keypad digit |
 | `wait key release [on keypad N]` | Wait for keypad release |
 | `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
+| `choose menu min to max into Var cursor Tile at X,Y step N [clear Tile] [on joypad N] [sleep after N seconds]` | Complete vertical cursor menu |
+| `choose menu min to max into Var cursor sprite I at X,Y step Pixels [on joypad N] [sleep after N seconds]` | Vertical menu using a configured sprite cursor |
 | `halt` | Halt until NMI |
 
 ### Sound
@@ -3026,7 +3073,7 @@ implicitly bounds-checked.
 | Hide all sprites | `clear sprites` → `update sprites` |
 | Poll controller | `if joypad(1).button1 then ...` |
 | Wait for input | `pause until press` / `wait key1` / `wait key release` |
-| Menu selection | `choose keypad 1 to N into Var` |
+| Menu selection | `choose menu 1 to N into Var cursor Tile at X,Y step Rows` |
 | Hardware collision | `if any collision goto Label` |
 | Gameplay collision | `if sprite A hitbox PlayerHitbox collides with sprite B hitbox EnemyHitbox goto Label` |
 | Tile feet collision | `if tile under PlayerX + 4,PlayerY + 15 is solid goto OnGround` |
@@ -3109,7 +3156,7 @@ These features do not yet exist at source level:
 - Automatic mixed-type arithmetic dispatch across every operation
 - Routine-level dead-code elimination
 
-### Compound-assignment operator coverage (verified 2026-06-10)
+### Compound-assignment operator coverage (verified 2026-08-27)
 
 The table below is empirical — compiled and confirmed against the full example catalog.
 `pass` = compiles and emits code. `—` = not implemented (compile error).
@@ -3117,9 +3164,9 @@ The table below is empirical — compiled and confirmed against the full example
 | Type | `+=` | `-=` | `*=` | `/=` | `%=` | `&=` / `\|=` | `<<=` / `>>=` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `u8` / `i8` | pass | pass | pass | pass | pass | pass | pass |
-| `u16` / `i16` | pass | pass | pass | pass | pass | — | pass |
+| `u16` / `i16` | pass | pass | pass | pass | pass | pass | pass |
 | `bcd` | pass | pass | — | — | — | — | — |
-| `u32` / `i32` | pass | pass | pass | pass | pass | — | — |
+| `u32` / `i32` | pass | pass | pass | pass | pass | pass | pass |
 | `fixed32` (fix16_16) | pass | pass | pass | pass | — | — | — |
 | `fp5` | pass | pass | pass | pass | — | — | — |
 | `fixed` (fix8_8) | pass | pass | pass | pass | — | — | — |
@@ -3137,8 +3184,8 @@ These are the most plausible next language extensions. They are not implemented 
 
 ### Priority candidates
 
-- first-class local `u32` / `i32` scalar variables, not only array-backed temporary storage
-- broader `u32` / `i32` arithmetic and comparison coverage beyond the current helper paths
+- broader local-array support for wide integer element types
+- richer mixed-width conversions where signedness and overflow behavior can remain explicit
 - pass-by-reference or explicit out-parameter support for routines that need to mutate caller-owned data naturally
 - richer fixed-point helpers for smoother movement and gameplay math beyond `whole`, `fraction`, `highbyte`, and `lowbyte`
 - stronger optimizer awareness of Amy-generated flow so language improvements do not regress into fragile branch layouts
@@ -3210,8 +3257,6 @@ All `... into Var` statement forms (`sqrt Value into Var`, `abs Value into Var`,
 These ideas have come up and may still prove worthwhile, but they are not committed language direction yet:
 
 - compact flag-group syntax beyond ordinary packed `bool` globals/locals
-- bitwise operators for explicit flag work, with clear rules for byte/word width
-  and flag preservation in generated ASM
 - richer chess / AI-oriented helpers beyond what recursion and local stack arrays already make possible
 - higher-level sprite animation DSLs on top of the existing machine-friendly primitives
 

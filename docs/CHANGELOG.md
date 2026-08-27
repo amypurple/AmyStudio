@@ -1,3 +1,13 @@
+## 2026-08-27 - Faster compilation and compact cursor menus
+
+- Added `choose menu`: compact circular tile or sprite cursor navigation with keypad, FIRE, input release handling, and optional CRT-safe sleep.
+- Quatro Puzzles now uses the menu primitive, removing duplicated menu code and three temporary RAM bytes.
+- Accelerated assembler evaluation of simple literals and symbols without changing generated ROM output.
+- Replaced the oversized example reload control with a compact restore icon and persistent status feedback.
+- Reduced ascending `u8` loop-counter updates to load/inc/store, including qualified record and overlay counters.
+- Completed bitwise and shift expressions/compound assignments for `u32`/`i32`, plus compound bitwise operations for `u16`/`i16`.
+- Added a five-profile GearColeco wide-integer self-test covering globals, arrays, records, and overlays.
+
 ## 2026-08-26 - Safer operands and wide integer arrays
 
 ### Amy language and compiler

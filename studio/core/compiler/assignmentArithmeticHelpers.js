@@ -375,7 +375,145 @@ export function createAssignmentArithmeticHelpers({
       if (wideType === "i32") return emitSignedDivStaged(storeDst, storeSrc, storeTarget, "remainder");
       return emitUnsignedModStaged(storeDst, storeSrc, storeTarget);
     }
+    if (op === "and" || op === "or" || op === "xor") {
+      const instruction = op;
+      const lines = [...storeDst, ...storeSrc];
+      for (let offset = 0; offset < 4; offset += 1) {
+        lines.push(
+          `    ld a,(${scratch.rightLabel}+${offset})`,
+          "    ld b,a",
+          `    ld a,(${scratch.leftLabel}+${offset})`,
+          `    ${instruction} b`,
+          `    ld (${scratch.leftLabel}+${offset}),a`
+        );
+      }
+      return [...lines, ...storeTarget];
+    }
     return null;
+  }
+
+  function emitNot32(target, valueToken) {
+    const scratch = ensureCompareScratch32();
+    const storeValue = emitStoreExtended32(valueToken, scratch.leftLabel);
+    const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
+    if (!storeValue || !storeTarget) return null;
+    const lines = [...storeValue];
+    for (let offset = 0; offset < 4; offset += 1) {
+      lines.push(
+        `    ld a,(${scratch.leftLabel}+${offset})`,
+        "    cpl",
+        `    ld (${scratch.leftLabel}+${offset}),a`
+      );
+    }
+    return [...lines, ...storeTarget];
+  }
+
+  function emitShift32(target, valueToken, countToken, direction, signedRight = false) {
+    const countValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(countToken)
+      : null;
+    if (Number.isInteger(countValue) && (countValue < 0 || countValue > 255)) return null;
+    if (countValue === null) {
+      const countType = resolveValueType(countToken);
+      const countDeclared = normalizeDeclaredType(resolveDeclaredValueType(countToken));
+      if (countType !== "int8" || isSignedDeclaredType(countDeclared)) return null;
+    }
+    const scratch = ensureCompareScratch32();
+    const storeValue = emitStoreExtended32(valueToken, scratch.leftLabel);
+    const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
+    if (!storeValue || !storeTarget) return null;
+    const shiftLoop = makeGeneratedLabel("Shift32Loop");
+    const countReady = makeGeneratedLabel("Shift32CountReady");
+    const done = makeGeneratedLabel("Shift32Done");
+    const loadCount = Number.isInteger(countValue)
+      ? [`    ld a,${Math.min(countValue, 32)}`]
+      : [
+          ...emitLoadInt8Into("a", countToken),
+          "    cp 33",
+          `    jr c,${countReady}`,
+          "    ld a,32",
+          `${countReady}:`
+        ];
+    const oneShift = direction === "left"
+      ? [
+          `    ld hl,${scratch.leftLabel}`,
+          "    sla (hl)",
+          "    inc hl",
+          "    rl (hl)",
+          "    inc hl",
+          "    rl (hl)",
+          "    inc hl",
+          "    rl (hl)"
+        ]
+      : [
+          `    ld hl,${scratch.leftLabel}+3`,
+          `    ${signedRight ? "sra" : "srl"} (hl)`,
+          "    dec hl",
+          "    rr (hl)",
+          "    dec hl",
+          "    rr (hl)",
+          "    dec hl",
+          "    rr (hl)"
+        ];
+    return [
+      ...storeValue,
+      ...loadCount,
+      "    or a",
+      `    jr z,${done}`,
+      "    ld b,a",
+      `${shiftLoop}:`,
+      ...oneShift,
+      `    djnz ${shiftLoop}`,
+      `${done}:`,
+      ...storeTarget
+    ];
+  }
+
+  function emitShift16(target, valueToken, countToken, direction, signedRight = false) {
+    const countValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(countToken)
+      : null;
+    if (Number.isInteger(countValue)) {
+      if (countValue < 0 || countValue > 255) return null;
+    } else {
+      const countType = resolveValueType(countToken);
+      const countDeclared = normalizeDeclaredType(resolveDeclaredValueType(countToken));
+      if (countType !== "int8" || isSignedDeclaredType(countDeclared)) return null;
+    }
+    const loadValue = emitLoadInt16IntoHL(valueToken);
+    const storeTarget = emitStoreInt16FromHL(target);
+    if (!loadValue || !storeTarget) return null;
+    const shiftLoop = makeGeneratedLabel("Shift16Loop");
+    const countReady = makeGeneratedLabel("Shift16CountReady");
+    const done = makeGeneratedLabel("Shift16Done");
+    const loadCount = Number.isInteger(countValue)
+      ? [`    ld a,${Math.min(countValue, 16)}`]
+      : [
+          ...emitLoadInt8Into("a", countToken),
+          "    cp 17",
+          `    jr c,${countReady}`,
+          "    ld a,16",
+          `${countReady}:`
+        ];
+    const oneShift = direction === "left"
+      ? ["    add hl,hl"]
+      : signedRight
+        ? ["    sra h", "    rr l"]
+        : ["    srl h", "    rr l"];
+    return [
+      ...loadValue,
+      "    push hl",
+      ...loadCount,
+      "    ld b,a",
+      "    pop hl",
+      "    or a",
+      `    jr z,${done}`,
+      `${shiftLoop}:`,
+      ...oneShift,
+      `    djnz ${shiftLoop}`,
+      `${done}:`,
+      ...storeTarget
+    ];
   }
 
   function emitMultiplyInt8Op(target, valueToken) {
@@ -744,6 +882,24 @@ export function createAssignmentArithmeticHelpers({
   function emitFormulaAssignment(target, opToken, valueToken) {
     const targetType = resolveValueType(target);
     if (opToken === "=") {
+      if (targetType === "int16") {
+        const shift = String(valueToken || "").trim().match(/^(.+?)\s*(<<|>>)\s*(.+)$/);
+        if (shift) {
+          const targetDeclared = normalizeDeclaredType(resolveDeclaredValueType(target));
+          const sourceDeclared = normalizeDeclaredType(resolveDeclaredValueType(shift[1].trim()));
+          const sourceType = resolveValueType(shift[1].trim());
+          const numeric = sourceType ? null : parseNumericLiteral(shift[1].trim());
+          const targetSigned = isSignedDeclaredType(targetDeclared);
+          const sourceCompatible = sourceType === "int16"
+            ? isSignedDeclaredType(sourceDeclared) === targetSigned
+            : Number.isInteger(numeric) && (targetSigned
+              ? numeric >= -0x8000 && numeric <= 0x7FFF
+              : numeric >= 0 && numeric <= 0xFFFF);
+          if (sourceCompatible) {
+            return emitShift16(target, shift[1].trim(), shift[3].trim(), shift[2] === "<<" ? "left" : "right", targetSigned && shift[2] === ">>");
+          }
+        }
+      }
       if (targetType === "u32" || targetType === "i32") {
         const isCompatibleWideOperand = (token) => {
           if (resolveValueType(token) === targetType) return true;
@@ -754,7 +910,36 @@ export function createAssignmentArithmeticHelpers({
             ? numeric >= 0 && numeric <= 0xFFFFFFFF
             : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
         };
-        const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*\/%-])\s*(.+)$/);
+        const wideText = String(valueToken || "").trim();
+        const unaryNot = wideText.match(/^~\s*(.+)$/);
+        if (unaryNot && isCompatibleWideOperand(unaryNot[1].trim())) {
+          return emitNot32(target, unaryNot[1].trim());
+        }
+        const shift = wideText.match(/^(.+?)\s*(<<|>>)\s*(.+)$/);
+        if (shift && isCompatibleWideOperand(shift[1].trim())) {
+          return emitShift32(target, shift[1].trim(), shift[3].trim(), shift[2] === "<<" ? "left" : "right", targetType === "i32" && shift[2] === ">>");
+        }
+        const bitwise = wideText.match(/^(.+?)\s*(&|\||\^)\s*(.+)$/);
+        if (bitwise && isCompatibleWideOperand(bitwise[1].trim()) && isCompatibleWideOperand(bitwise[3].trim())) {
+          const scratch = ensureCompareScratch32();
+          const storeLeft = emitStoreExtended32(bitwise[1].trim(), scratch.leftLabel);
+          const storeRight = emitStoreExtended32(bitwise[3].trim(), scratch.rightLabel);
+          const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
+          if (!storeLeft || !storeRight || !storeTarget) return null;
+          const instruction = bitwise[2] === "&" ? "and" : bitwise[2] === "|" ? "or" : "xor";
+          const lines = [...storeLeft, ...storeRight];
+          for (let offset = 0; offset < 4; offset += 1) {
+            lines.push(
+              `    ld a,(${scratch.rightLabel}+${offset})`,
+              "    ld b,a",
+              `    ld a,(${scratch.leftLabel}+${offset})`,
+              `    ${instruction} b`,
+              `    ld (${scratch.leftLabel}+${offset}),a`
+            );
+          }
+          return [...lines, ...storeTarget];
+        }
+        const binary = wideText.match(/^(.+?)\s*([+*\/%-])\s*(.+)$/);
         if (binary) {
           const left = binary[1].trim();
           const right = binary[3].trim();
@@ -834,9 +1019,16 @@ export function createAssignmentArithmeticHelpers({
     })();
     const emitCompoundExpressionStore = (operator) => emitRuntimeStore(target, `${target} ${operator} (${valueToken})`);
     if (!targetType) return null;
-    if (opToken === "&=" || opToken === "|=") {
-      if (targetType !== "int8") return null;
-      return emitArithInt8Op(target, valueToken, opToken === "&=" ? "and" : "or");
+    if ((opToken === "&=" || opToken === "|=" || opToken === "^=")
+      && (targetType === "int8" || targetType === "int16" || targetType === "u32" || targetType === "i32")) {
+      const operator = opToken === "&=" ? "and" : opToken === "|=" ? "or" : "xor";
+      if (targetType === "int8") return emitArithInt8Op(target, valueToken, operator);
+      if (targetType === "int16") return emitRuntimeStore(target, `${target} ${opToken[0]} (${valueToken})`);
+      if (targetType === "u32" || targetType === "i32") return emitArith32Op(target, valueToken, operator);
+    }
+    if (targetType === "int16" && (opToken === "<<=" || opToken === ">>=")) {
+      const targetDeclared = normalizeDeclaredType(resolveDeclaredValueType(target));
+      return emitShift16(target, target, valueToken, opToken === "<<=" ? "left" : "right", isSignedDeclaredType(targetDeclared) && opToken === ">>=");
     }
     if (targetType === "bcd") {
       if (opToken === "+=") return emitBcdAdd(target, valueToken);
@@ -851,6 +1043,7 @@ export function createAssignmentArithmeticHelpers({
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=" && isOne) return [];
       if (opToken === "+=") return emitArith32Op(target, valueToken, "add");
       if (opToken === "-=") return emitArith32Op(target, valueToken, "sub");
+      if (opToken === "<<=" || opToken === ">>=") return emitShift32(target, target, valueToken, opToken === "<<=" ? "left" : "right", targetType === "i32" && opToken === ">>=");
       if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "*=") return emitArith32Op(target, valueToken, "mul");
       if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "/=") return emitArith32Op(target, valueToken, "div");
       if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=") return emitFx16MultiplyOp(target, valueToken);
