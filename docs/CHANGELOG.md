@@ -4,6 +4,7 @@
 - Reduced constant-bound `u8` loops over static record and overlay fields to the same compact counter path as global variables.
 - Reduced `u16` loop increments with `step 1` to a direct `inc hl` sequence.
 - Rejects provable constant division or modulo by zero while preserving the zero-cost runtime fail-soft result for variable divisors.
+- Added same-type whole-record assignment for static records, nested record fields, and overlay parts using one inline `LDIR` with no helper RAM.
 - Added `choose menu`: compact circular tile or sprite cursor navigation with keypad, FIRE, input release handling, and optional CRT-safe sleep.
 - Quatro Puzzles now uses the menu primitive, removing duplicated menu code and three temporary RAM bytes.
 - Accelerated assembler evaluation of simple literals and symbols without changing generated ROM output.

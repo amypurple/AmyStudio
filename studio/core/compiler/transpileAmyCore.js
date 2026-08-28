@@ -2752,6 +2752,35 @@ export function transpileAmyCore(sourceText, deps) {
     return visit(ast);
   }
 
+  function resolveStaticWholeRecord(token) {
+    const normalized = normalizeExpression(String(token || "").trim());
+    if (!normalized) return null;
+    const directInfo = getRuntimeInfo(normalized);
+    if (directInfo?.kind === "record") {
+      if (!directInfo.asmName || directInfo.storage === "alias_pointer" || directInfo.storage === "dynamic_record_alias") return null;
+      const recordInfo = getRecordTypeInfo(directInfo.recordTypeName || directInfo.declaredType);
+      if (!recordInfo) return null;
+      return {
+        address: directInfo.asmName,
+        recordTypeName: recordInfo.name,
+        byteSize: recordInfo.byteSize
+      };
+    }
+    const field = parseRecordFieldRef?.(normalized);
+    if (!field || field.baseKind !== "scalar" || field.index !== null || field.isWholeArray
+      || field.arrayFieldIndex !== null || (field.arrayFieldOffsets?.length || 0) !== 0
+      || field.fieldInfo?.type !== "record" || field.fieldInfo?.isArray) return null;
+    const baseInfo = getRuntimeInfo(field.name);
+    if (!baseInfo?.asmName || baseInfo.storage === "alias_pointer" || baseInfo.storage === "dynamic_record_alias") return null;
+    const recordInfo = getRecordTypeInfo(field.fieldInfo.recordTypeName || field.fieldInfo.declaredType);
+    if (!recordInfo) return null;
+    return {
+      address: `${baseInfo.asmName}${field.totalOffset ? ` + ${field.totalOffset}` : ""}`,
+      recordTypeName: recordInfo.name,
+      byteSize: recordInfo.byteSize
+    };
+  }
+
   function emitOverlayFieldAliases(overlayName, partName, recordInfo, baseAddress, metadataFields, path = [], baseOffset = 0) {
     for (const field of recordInfo.orderedFields) {
       const fieldPath = [...path, field.name];
@@ -4201,6 +4230,32 @@ export function transpileAmyCore(sourceText, deps) {
         const indexValue = table ? tryEvaluateCompileTimeNumericExpression(wordTableAssignment[2]) : null;
         if (table && Number.isInteger(indexValue) && (indexValue < 0 || indexValue >= table.length)) {
           return { ok: false, asmBody: "", log: `Word table ${wordTableAssignment[1]} index ${indexValue} is out-of-range (0..${table.length - 1}): ${rawLine}` };
+        }
+      }
+      if (formulaAssignment.op === "=") {
+        const targetRecord = resolveStaticWholeRecord(formulaAssignment.target);
+        const sourceRecord = resolveStaticWholeRecord(formulaAssignment.value);
+        if (targetRecord || sourceRecord) {
+          if (!targetRecord || !sourceRecord) {
+            return { ok: false, asmBody: "", log: `Whole-record assignment requires two statically addressed records: ${rawLine}` };
+          }
+          if (lowerName(targetRecord.recordTypeName) !== lowerName(sourceRecord.recordTypeName)
+            || targetRecord.byteSize !== sourceRecord.byteSize) {
+            return {
+              ok: false,
+              asmBody: "",
+              log: `Whole-record assignment type mismatch: ${sourceRecord.recordTypeName} cannot initialize ${targetRecord.recordTypeName}: ${rawLine}`
+            };
+          }
+          if (targetRecord.address !== sourceRecord.address) {
+            body.push(
+              `    ld hl,${sourceRecord.address}`,
+              `    ld de,${targetRecord.address}`,
+              `    ld bc,${targetRecord.byteSize}`,
+              "    ldir"
+            );
+          }
+          continue;
         }
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
