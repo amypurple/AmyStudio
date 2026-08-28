@@ -21,16 +21,20 @@ end record
 record Other:
   u8 Bytes[6]
 end record
+record SceneState:
+  Actor Actors[2]
+end record
 Actor Source
 Actor Destination
 Actor Snapshot
 Actor Items[2]
 Other WrongType
 overlay SceneRam
-  Game as Actor
-  Menu as Actor
+  Game as SceneState
+  Menu as SceneState
 end overlay
 u8 Index = 1
+u16 WideIndex = 1
 u8 XOut = 0
 i8 DXOut = 0
 u16 ScoreOut = 0
@@ -42,14 +46,16 @@ Source.DX = -3
 Source.Values.Score = $3456
 Source.Values.Flags[0] = 9
 Source.Values.Flags[1] = 27
-Destination = Source
-SceneRam.Game.Values = Source.Values
-Snapshot = SceneRam.Game
+Items[Index] = Source
+Destination = Items[Index]
+Destination.Values = Source.Values
+SceneRam.Game.Actors[Index] = Source
+Snapshot = SceneRam.Game.Actors[Index]
 XOut = Destination.X
 DXOut = Destination.DX
 ScoreOut = Destination.Values.Score
 FlagOut = Destination.Values.Flags[1]
-NestedOut = SceneRam.Game.Values.Score
+NestedOut = SceneRam.Game.Actors[Index].Values.Score
 OverlayOut = Snapshot.Values.Flags[0]
 loop forever
 `;
@@ -82,8 +88,8 @@ try {
   for (const profile of profiles) {
     const stem = join(outputDir, `copy-${profile}`);
     await writeFile(`${stem}.alexis`, source);
-    const result = await compile(`${stem}.alexis`, `${stem}.asm`, `${stem}.rom`, profile);
-    assert.equal(result.code, 0, `${profile} compilation failed`);
+    const result = await compile(`${stem}.alexis`, `${stem}.asm`, `${stem}.rom`, profile, true);
+    assert.equal(result.code, 0, `${profile} compilation failed: ${result.output}`);
     const [asm, rom] = await Promise.all([readFile(`${stem}.asm`, "utf8"), readFile(`${stem}.rom`)]);
     assert.match(asm, /\n\s+ldir\s*\n/i, `${profile} did not emit LDIR`);
     rom[0] = 0x55;
@@ -111,10 +117,10 @@ try {
 
   for (const [name, statement, expectedMessage] of [
     ["mismatch", "WrongType = Source", "type mismatch"],
-    ["dynamic", "Destination = Items[Index]", "statically addressed records"]
+    ["bad-index", "Destination = Items[WideIndex]", "record operands"]
   ]) {
     const stem = join(outputDir, name);
-    await writeFile(`${stem}.alexis`, source.replace("Destination = Source", statement));
+    await writeFile(`${stem}.alexis`, source.replace("Items[Index] = Source", statement));
     const result = await compile(`${stem}.alexis`, `${stem}.asm`, `${stem}.rom`, "balanced", true);
     assert.notEqual(result.code, 0, `${name} unexpectedly compiled`);
     assert.match(result.output, new RegExp(expectedMessage, "i"), `${name} diagnostic`);

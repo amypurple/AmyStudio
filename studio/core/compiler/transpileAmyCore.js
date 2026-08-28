@@ -2766,6 +2766,33 @@ export function transpileAmyCore(sourceText, deps) {
         byteSize: recordInfo.byteSize
       };
     }
+    const arrayElement = normalized.match(/^(.+)\[([^\]]+)\]$/);
+    if (arrayElement) {
+      const arrayToken = arrayElement[1].trim();
+      const indexToken = arrayElement[2].trim();
+      const arrayInfo = getRuntimeInfo(arrayToken);
+      if (arrayInfo?.kind === "record_array") {
+        const recordInfo = getRecordTypeInfo(arrayInfo.recordTypeName || arrayInfo.declaredType);
+        const loadLines = emitLoadArrayAddressIntoHL(arrayToken, indexToken);
+        if (!recordInfo || !loadLines) return null;
+        return {
+          loadLines,
+          recordTypeName: recordInfo.name,
+          byteSize: recordInfo.byteSize
+        };
+      }
+      const qualifiedArray = parseRecordFieldRef?.(arrayToken);
+      if (qualifiedArray?.isWholeRecordArray && qualifiedArray.fieldInfo?.type === "record") {
+        const recordInfo = getRecordTypeInfo(qualifiedArray.fieldInfo.recordTypeName || qualifiedArray.fieldInfo.declaredType);
+        const loadLines = emitLoadArrayAddressIntoHL(arrayToken, indexToken);
+        if (!recordInfo || !loadLines) return null;
+        return {
+          loadLines,
+          recordTypeName: recordInfo.name,
+          byteSize: recordInfo.byteSize
+        };
+      }
+    }
     const field = parseRecordFieldRef?.(normalized);
     if (!field || field.baseKind !== "scalar" || field.index !== null || field.isWholeArray
       || field.arrayFieldIndex !== null || (field.arrayFieldOffsets?.length || 0) !== 0
@@ -4237,7 +4264,7 @@ export function transpileAmyCore(sourceText, deps) {
         const sourceRecord = resolveStaticWholeRecord(formulaAssignment.value);
         if (targetRecord || sourceRecord) {
           if (!targetRecord || !sourceRecord) {
-            return { ok: false, asmBody: "", log: `Whole-record assignment requires two statically addressed records: ${rawLine}` };
+            return { ok: false, asmBody: "", log: `Whole-record assignment requires two compatible record operands: ${rawLine}` };
           }
           if (lowerName(targetRecord.recordTypeName) !== lowerName(sourceRecord.recordTypeName)
             || targetRecord.byteSize !== sourceRecord.byteSize) {
@@ -4247,13 +4274,21 @@ export function transpileAmyCore(sourceText, deps) {
               log: `Whole-record assignment type mismatch: ${sourceRecord.recordTypeName} cannot initialize ${targetRecord.recordTypeName}: ${rawLine}`
             };
           }
-          if (targetRecord.address !== sourceRecord.address) {
-            body.push(
-              `    ld hl,${sourceRecord.address}`,
-              `    ld de,${targetRecord.address}`,
-              `    ld bc,${targetRecord.byteSize}`,
-              "    ldir"
-            );
+          const sameStaticAddress = targetRecord.address && sourceRecord.address
+            && targetRecord.address === sourceRecord.address;
+          if (!sameStaticAddress) {
+            if (targetRecord.address && sourceRecord.address) {
+              body.push(
+                `    ld hl,${sourceRecord.address}`,
+                `    ld de,${targetRecord.address}`,
+                `    ld bc,${targetRecord.byteSize}`,
+                "    ldir"
+              );
+            } else {
+              const sourceLoad = sourceRecord.loadLines || [`    ld hl,${sourceRecord.address}`];
+              const targetLoad = targetRecord.loadLines || [`    ld hl,${targetRecord.address}`];
+              body.push(...sourceLoad, "    push hl", ...targetLoad, "    ex de,hl", "    pop hl", `    ld bc,${targetRecord.byteSize}`, "    ldir");
+            }
           }
           continue;
         }

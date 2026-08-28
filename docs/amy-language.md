@@ -363,10 +363,12 @@ SceneRam.Game.Player = Source
 ```
 
 Whole-record assignment emits one inline Z80 `LDIR`; it allocates no pointer or helper
-RAM. It accepts global records, nested scalar record fields, and overlay parts. A copy
-between two aliases of the same overlay address is removed as a no-op. Different record
-types, record-array elements with runtime indexes, and pointer-backed `with` aliases are
-rejected rather than guessed. Assign individual fields when the address is dynamic.
+RAM. It accepts global records, nested scalar record fields, overlay parts, top-level
+record-array elements, and qualified overlay record-array elements. Runtime indexes are
+evaluated once per operand using the normal checked record-array address lowering. A copy
+between two aliases of the same static overlay address is removed as a no-op. Different
+record types, invalid or wider indexes, and pointer-backed `with` aliases are rejected
+rather than guessed.
 
 Indexed paths may combine a record-array index with a scalar array-field index, as in
 `Container.Items[I].Flags[J]`. Each index contributes its own checked byte stride to the
@@ -418,7 +420,7 @@ an alias; its qualified fields are rejected normally.
 Current record limits:
 - no local record variables yet
 - no recursive or multidimensional record-array fields yet
-- no whole-record assignment through dynamically indexed record arrays or pointer-backed aliases
+- no whole-record assignment through pointer-backed aliases
 - no arrays of BCD fields yet; BCD fields are scalar
 - record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
 
