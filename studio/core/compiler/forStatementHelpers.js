@@ -38,9 +38,21 @@ export function handleForStatement({
   const qualifiedCounterPattern = String.raw`([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)`;
   const resolveCounterInfo = (name) => {
     const field = parseRecordFieldRef(name);
-    return field
-      ? { kind: "record_field", type: field.fieldInfo.type, declaredType: field.fieldInfo.declaredType }
-      : getRuntimeInfo(name);
+    if (!field) return getRuntimeInfo(name);
+    const baseInfo = getRuntimeInfo(field.name);
+    const staticAddressable = field.baseKind === "scalar"
+      && !field.index
+      && !(field.arrayFieldOffsets || []).length
+      && baseInfo?.asmName;
+    return {
+      kind: "record_field",
+      type: field.fieldInfo.type,
+      declaredType: field.fieldInfo.declaredType,
+      scope: baseInfo?.scope,
+      asmName: staticAddressable
+        ? `${baseInfo.asmName}${field.totalOffset ? ` + ${field.totalOffset}` : ""}`
+        : null
+    };
   };
 
   const forDownto = line.match(new RegExp(`^for\\s+${qualifiedCounterPattern}\\s*(?:=|from)\\s*(.+?)\\s+downto\\s+(.+?)(?:\\s+step\\s+(.+?))?\\s*:?$`, "i"));

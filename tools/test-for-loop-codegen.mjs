@@ -11,6 +11,7 @@ const temp = mkdtempSync(join(tmpdir(), "amy-for-loop-"));
 const sourceText = `project "FOR LOOP CODEGEN"
 memory "colecovision_legacy_sdcc"
 record LoopMemory:
+  u16 Padding
   u8 Counter
 end record
 overlay SceneRam
@@ -42,8 +43,10 @@ try {
     });
     assert.equal(result.status, 0, `${profile} should compile:\n${result.stdout || ""}${result.stderr || ""}${result.error?.stack || ""}`);
     const generated = readFileSync(asm, "utf8");
-    assert.match(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld a,\([^\n]+\)\s*\n\s*inc a\s*\n\s*ld \([^\n]+\),a/i,
-      `${profile} should use load/inc/store for the qualified u8 counter`);
+    assert.match(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld hl,AMY_OVERLAY_SCENERAM \+ 2\s*\n\s*inc \(hl\)\s*\n\s*ld a,\(hl\)\s*\n\s*cp 8/i,
+      `${profile} should use the compact static-address loop for the qualified u8 counter`);
+    assert.doesNotMatch(generated, /AMY_FOR_LOOP_[0-9]+:\s*\n\s*ld a,\(AMY_OVERLAY_SCENERAM\)/i,
+      `${profile} should not reload the qualified counter for a separate entry guard`);
     assert.doesNotMatch(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld a,\([^\n]+\)\s*\n\s*ld b,a\s*\n\s*ld a,1\s*\n\s*add a,b/i,
       `${profile} should not use the old five-instruction increment`);
   }
