@@ -62,6 +62,112 @@ AMY_PAUSE_FINAL_RELEASE:
     call AMY_PAUSE_RESTORE_DISPLAY
     ret
 
+; Nonblocking menu inactivity service. Call once per frame. Any direction,
+; keypad key, or action button resets the counter. At the timeout it blanks and
+; waits for any selected control, restores the display, consumes its release,
+; resets the counter, and returns to the menu without selecting anything.
+AMY_SLEEP_SERVICE:
+    ld b,a
+    ld a,($0069)
+    cp 50
+    jr nz,AMY_SLEEP_REGION_SELECTED
+    ex de,hl
+AMY_SLEEP_REGION_SELECTED:
+    ld e,b
+    push hl
+    call AMY_SLEEP_READ_INPUTS
+    or a
+    jr nz,AMY_SLEEP_ACTIVITY
+
+    pop bc
+    ld hl,(AMY_SLEEP_IDLE_TICKS)
+    inc hl
+    ld (AMY_SLEEP_IDLE_TICKS),hl
+    or a
+    sbc hl,bc
+    ret c
+
+    ld a,($73C4)
+    and $40
+    ld d,a
+    push de
+    ld a,($73C4)
+    and $BF
+    ld ($73C4),a
+    ld c,a
+    ld b,1
+    call WRITE_REGISTER
+    ld c,$01
+    ld b,7
+    call WRITE_REGISTER
+    pop de
+
+AMY_SLEEP_WAIT_INPUT:
+    call AMY_SLEEP_WAIT_VBLANK
+    call AMY_SLEEP_READ_INPUTS
+    or a
+    jr z,AMY_SLEEP_WAIT_INPUT
+    push de
+    call AMY_PAUSE_RESTORE_DISPLAY
+    pop de
+AMY_SLEEP_WAIT_RELEASE:
+    call AMY_SLEEP_WAIT_VBLANK
+    call AMY_SLEEP_READ_INPUTS
+    or a
+    jr nz,AMY_SLEEP_WAIT_RELEASE
+    jr AMY_SLEEP_RESET
+
+AMY_SLEEP_ACTIVITY:
+    pop hl
+AMY_SLEEP_RESET:
+    xor a
+    ld (AMY_SLEEP_IDLE_TICKS),a
+    ld (AMY_SLEEP_IDLE_TICKS+1),a
+    ret
+
+AMY_SLEEP_WAIT_VBLANK:
+    xor a
+    ld (NMI_FLAG),a
+AMY_SLEEP_WAIT_VBLANK_LOOP:
+    halt
+    ld a,(NMI_FLAG)
+    or a
+    jr z,AMY_SLEEP_WAIT_VBLANK_LOOP
+    ret
+
+; Return nonzero for direction, keypad, or action input on selected controllers.
+AMY_SLEEP_READ_INPUTS:
+    ld a,e
+    or a
+    jr z,AMY_SLEEP_READ_BOTH
+    dec a
+    jr z,AMY_SLEEP_READ_ONE
+    ld a,(JOYPAD_2)
+    or a
+    ret nz
+    ld a,(KEYPAD_2)
+    inc a
+    ret
+AMY_SLEEP_READ_ONE:
+    ld a,(JOYPAD_1)
+    or a
+    ret nz
+    ld a,(KEYPAD_1)
+    inc a
+    ret
+AMY_SLEEP_READ_BOTH:
+    ld a,(JOYPAD_1)
+    ld c,a
+    ld a,(JOYPAD_2)
+    or c
+    ret nz
+    ld a,(KEYPAD_1)
+    inc a
+    ret nz
+    ld a,(KEYPAD_2)
+    inc a
+    ret
+
 AMY_PAUSE_RESTORE_DISPLAY:
     ld a,($73C4)
     and $BF

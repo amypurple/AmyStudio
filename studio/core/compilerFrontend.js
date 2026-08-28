@@ -1,3 +1,81 @@
+export function inferControllerBackendFromSource(sourceText) {
+  const codeText = String(sourceText || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/'.*$/, ""))
+    .join("\n");
+  if (/\bspinner\s*\(/i.test(codeText) || /\bread\s+(?:joypad|keypad|spinner)\b/i.test(codeText)) return null;
+  const ports = {
+    1: { segment0: false, segment1: false, joypad: false, keypad: false },
+    2: { segment0: false, segment1: false, joypad: false, keypad: false }
+  };
+  const add = (port, segment, target) => {
+    ports[port][segment] = true;
+    ports[port][target] = true;
+  };
+  const addStandardFire = (port) => {
+    add(port, "segment0", "joypad");
+    add(port, "segment1", "joypad");
+  };
+  let unsupported = false;
+  for (const match of codeText.matchAll(/\bjoypad\s*\(\s*([^)]*?)\s*\)\s*(?:\.\s*([A-Za-z][A-Za-z0-9]*)(?:\s*\.\s*pressed)?)?/gi)) {
+    const port = Number(match[1]);
+    const property = String(match[2] || "").toLowerCase();
+    if ((port !== 1 && port !== 2) || !property || /^(?:action|button3|button4)$/.test(property)) {
+      unsupported = true;
+      continue;
+    }
+    if (/^(?:up|right|down|left|button1)$/.test(property)) add(port, "segment0", "joypad");
+    else if (property === "button2") add(port, "segment1", "joypad");
+    else if (property === "fire") addStandardFire(port);
+    else unsupported = true;
+  }
+  for (const match of codeText.matchAll(/\bkeypad\s*\(\s*([^)]*?)\s*\)/gi)) {
+    const port = Number(match[1]);
+    if (port !== 1 && port !== 2) unsupported = true;
+    else add(port, "segment1", "keypad");
+  }
+  const addImplicitPorts = (line, defaultBoth, needsSegment0, needsSegment1, needsKeypad = false) => {
+    const explicit = line.match(/\bon\s+(?:joypad|keypad)\s+([12])\b/i);
+    const selected = explicit ? [Number(explicit[1])] : (defaultBoth ? [1, 2] : [1]);
+    for (const port of selected) {
+      if (needsSegment0) add(port, "segment0", "joypad");
+      if (needsSegment1) add(port, "segment1", needsKeypad ? "keypad" : "joypad");
+    }
+  };
+  for (const rawLine of codeText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (/^wait\s+(?:no\s+)?fire\b/i.test(line) || /^wait\s+.+?\s+frames?\s+or\s+press\b/i.test(line) || /^pause\s+until\s+press\b/i.test(line)) {
+      addImplicitPorts(line, true, true, true);
+    } else if (/^sleep\s+after\b/i.test(line)) {
+      addImplicitPorts(line, true, true, true, true);
+    } else if (/^wait\s+key(?:\s*[0-9]|\s+release)\b/i.test(line) || /^choose\s+keypad\b/i.test(line)) {
+      addImplicitPorts(line, /^choose\s+keypad\b/i.test(line), false, true, true);
+    } else if (/^choose\s+menu\b/i.test(line)) {
+      addImplicitPorts(line, false, true, true, true);
+      const explicit = line.match(/\bon\s+joypad\s+([12])\b/i);
+      addStandardFire(explicit ? Number(explicit[1]) : 1);
+    }
+  }
+  if (unsupported) return null;
+  const active = Object.values(ports).some((port) => port.segment0 || port.segment1);
+  if (!active) return null;
+  const segmentCallCount = Object.values(ports).reduce(
+    (count, port) => count + (port.segment0 ? 1 : 0) + (port.segment1 ? 1 : 0),
+    0
+  );
+  const controllerBackend = segmentCallCount === 1 ? "bios_decoder" : "bios_cont_scan_compact";
+  if (controllerBackend === "bios_cont_scan_compact" && /\b(?:play\s+sound|play\s+song|set\s+sound\s+table|on\s+(?:vblank|frame)|spinner|read\s+frame|120c)\b/i.test(codeText)) return null;
+  return {
+    controllerBackend,
+    decoderSegmentMask1: (ports[1].segment0 ? 1 : 0) | (ports[1].segment1 ? 2 : 0),
+    decoderSegmentMask2: (ports[2].segment0 ? 1 : 0) | (ports[2].segment1 ? 2 : 0),
+    decoderNeedsJoypad1: ports[1].joypad,
+    decoderNeedsKeypad1: ports[1].keypad,
+    decoderNeedsJoypad2: ports[2].joypad,
+    decoderNeedsKeypad2: ports[2].keypad
+  };
+}
+
 export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const text = sourceText || "";
   const codeText = text.split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
@@ -25,8 +103,10 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const usesWipeWithHalt = /\bwipe\s+(?:screen|bitmap)\s+(?:up|down)\b/i.test(text);
   const usesTextScreen = /\btext\s+screen\b/i.test(text);
   const usesGraphicsMode2Text = /\bgraphics\s+mode\s+2\s+text\b/i.test(text);
+  const needsSleepState = /^\s*sleep\s+after\s+[0-9]+\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(codeText);
   const needsBackdropShadow =
     /^\s*backdrop\s+/im.test(codeText) ||
+    needsSleepState ||
     /\bAMY_VDP_R7_SHADOW\b/i.test(codeText);
   const needsMusic = /\b(play\s+song|stop\s+song|AMY_(PLAY_SONG|UPDATE_MUSIC|STOP_SONG|NEXT_SONG)|AMY_MUSIC_ENABLED|AMY_MUSIC_POINTER|AMY_MUSIC_COUNTER)\b/i.test(text);
   const needsSound =
@@ -35,8 +115,15 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const needsSprites =
     /\b(sprite|sprites|AMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)|AMY_SPRITE_(COUNT|TABLE))\b/i.test(text);
   const needsControllers =
-    /\b(read\s+(joypad|keypad)|wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
+    /\b(read\s+(joypad|keypad)|wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|sleep\s+after|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
     /\b(joypad|keypad)\s*\(/i.test(text);
+  const usesDynamicJoypadPressed = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText);
+  const usesJoypadPressed1 =
+    usesDynamicJoypadPressed ||
+    /\bjoypad\s*\(\s*1\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText);
+  const usesJoypadPressed2 =
+    /\bjoypad\s*\(\s*2\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText) ||
+    usesDynamicJoypadPressed;
   const needsSpinner =
     /\b(read\s+spinner|spinner|AMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)|SPINNER_[12])\b/i.test(text);
   const usesVblankHook = /^\s*on\s+(?:vblank|frame)\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:'.*)?$/im.test(codeText);
@@ -59,11 +146,14 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsVdpStatusShadow ||
     needsFrameCounter ||
     usesVblankHook;
+  const controllerBackend = inferControllerBackendFromSource(codeText);
   return {
     needsSound,
     needsMusic,
     needsSprites,
     needsControllers,
+    usesJoypadPressed1,
+    usesJoypadPressed2,
     needsSpinner,
     needsFrameCounter,
     usesVblankHook,
@@ -75,9 +165,11 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     usesWipeWithHalt,
     usesTextScreen,
     usesGraphicsMode2Text,
+    needsSleepState,
     needsBackdropShadow,
     soundAreaCount,
-    needsNmi
+    needsNmi,
+    ...(controllerBackend || {})
   };
 }
 

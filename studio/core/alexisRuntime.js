@@ -6,6 +6,7 @@ function collectUsedAlexisSymbols(asmBody, options = {}) {
   for (const symbol of matches) {
     if (alexisRuntimeCatalog[symbol]) used.add(symbol);
   }
+  if (/\bAMY_SLEEP_SERVICE\b/.test(asmBody)) used.add("AMY_PAUSE_PRESS_RELEASE_BLANK");
   if (/\bsndtiny_[12]\b/.test(asmBody) || options.forceTinySound) used.add("AMY_TINY_SOUND");
   return used;
 }

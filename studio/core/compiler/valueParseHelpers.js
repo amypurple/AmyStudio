@@ -509,6 +509,25 @@ export function createValueParseHelpers({
           declaredType: "u8"
         };
       }
+      if (property === "pressed" && node.object?.kind === "member") {
+        const edgeProperty = String(node.object.property || "").toLowerCase();
+        const joypadSource = parseBuiltinInputRef(node.object.object);
+        if (joypadSource?.source !== "joypad") return null;
+        const bits = { up: 0, right: 1, down: 2, left: 3, button4: 4, button3: 5, button2: 6, button1: 7 };
+        const masks = { fire: 0xC0, action: 0xF0 };
+        if (!(edgeProperty in bits) && !(edgeProperty in masks)) return null;
+        return {
+          source: edgeProperty in bits ? "joypad_pressed_bit" : "joypad_pressed_mask",
+          pad: joypadSource.pad,
+          padToken: joypadSource.padToken,
+          runtimeName: joypadSource.pad ? `JOYPAD_PRESSED_${joypadSource.pad}` : null,
+          property: edgeProperty,
+          bit: bits[edgeProperty],
+          mask: masks[edgeProperty],
+          valueType: "int8",
+          declaredType: "boolean"
+        };
+      }
       const joypadSource = parseBuiltinInputRef(node.object);
       if (joypadSource?.source !== "joypad") return null;
       const bits = { up: 0, right: 1, down: 2, left: 3, button4: 4, button3: 5, button2: 6, button1: 7 };
@@ -530,7 +549,11 @@ export function createValueParseHelpers({
   }
 
   function emitLoadSelectedInputValue(builtinInput) {
-    const inputSource = builtinInput.source === "joypad_bit" || builtinInput.source === "joypad_mask" ? "joypad" : builtinInput.source;
+    const inputSource = builtinInput.source === "joypad_bit" || builtinInput.source === "joypad_mask"
+      ? "joypad"
+      : builtinInput.source === "joypad_pressed_bit" || builtinInput.source === "joypad_pressed_mask"
+        ? "joypad_pressed"
+        : builtinInput.source;
     if (builtinInput.runtimeName) return [`    ld a,(${builtinInput.runtimeName})`];
     const padInfo = getRuntimeInfo(builtinInput.padToken);
     const selectorLoad = typeof emitLoadInt8ValueInto === "function" ? emitLoadInt8ValueInto("a", builtinInput.padToken) : null;
@@ -593,14 +616,14 @@ export function createValueParseHelpers({
       lines = emitLoadSelectedInputValue(builtinInput);
     } else if (builtinInput.source === "vdp_status" || builtinInput.source === "frame") {
       lines = [`    ld a,(${builtinInput.runtimeName})`];
-    } else if (builtinInput.source === "joypad_bit" || builtinInput.source === "joypad_mask") {
+    } else if (["joypad_bit", "joypad_mask", "joypad_pressed_bit", "joypad_pressed_mask"].includes(builtinInput.source)) {
       const falseLabel = makeGeneratedLabel("InputFalse");
       const doneLabel = makeGeneratedLabel("InputDone");
       const loadJoypad = emitLoadSelectedInputValue(builtinInput);
       if (!loadJoypad) return null;
       lines = [
         ...loadJoypad,
-        builtinInput.source === "joypad_bit" ? `    bit ${builtinInput.bit},a` : `    and $${builtinInput.mask.toString(16).toUpperCase()}`,
+        builtinInput.source.endsWith("_bit") ? `    bit ${builtinInput.bit},a` : `    and $${builtinInput.mask.toString(16).toUpperCase()}`,
         `    jr z,${falseLabel}`,
         "    ld a,1",
         `    jr ${doneLabel}`,

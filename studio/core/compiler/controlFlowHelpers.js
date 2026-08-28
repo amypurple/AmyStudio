@@ -678,13 +678,13 @@ export function createControlFlowHelpers(ctx) {
     const chooseBranch = (whenTrue, whenFalse) => (wantTrueBranch ? whenTrue : whenFalse);
 
     const directInput = parseBuiltinInputRef?.(condition);
-    if (directInput?.source === "joypad_bit" || directInput?.source === "joypad_mask") {
+    if (["joypad_bit", "joypad_mask", "joypad_pressed_bit", "joypad_pressed_mask"].includes(directInput?.source)) {
       if (directInput.runtimeName) {
         return {
           ok: true,
           lines: [
             `    ld a,(${directInput.runtimeName})`,
-            directInput.source === "joypad_bit" ? `    bit ${directInput.bit},a` : `    and $${directInput.mask.toString(16).toUpperCase()}`,
+            directInput.source.endsWith("_bit") ? `    bit ${directInput.bit},a` : `    and $${directInput.mask.toString(16).toUpperCase()}`,
             `    jp ${chooseBranch("nz", "z")},${asmJumpTarget}`
           ],
           log: ""

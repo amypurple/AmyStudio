@@ -58,6 +58,61 @@ const DIRECTIVES = new Set([
   "defined", "elsedef", "ifdef", "ifndef"
 ]);
 
+function amyLineContextTypes(line) {
+  const source = String(line ?? "");
+  const types = new Map();
+  const add = (words, type = "keyword") => {
+    for (const word of words) types.set(word, type);
+  };
+  const when = (pattern, words, type = "keyword") => {
+    if (pattern.test(source)) add(words, type);
+  };
+
+  when(/^\s*(?:fill|copy|shift|reverse)\s+array\b/i, ["array"]);
+  when(/^\s*fill\s+array\b.*\brepeating\b/i, ["repeating"]);
+  when(/^\s*fill\s+record\s+array\b.*\bfield\b/i, ["record", "array", "field"]);
+  when(/^\s*shift\s+array\b.*\b(?:up|down)\b/i, ["up", "down"]);
+  when(/^\s*reverse\s+array\b.*\bfrom\b/i, ["from"]);
+  when(/^\s*data\s+\w+\s+(?:bytes|words|records|chars)\b/i, ["bytes", "words", "records", "chars"]);
+
+  when(/^\s*(?:put|get)\s+char\b/i, ["char"], "vdp");
+  when(/^\s*(?:vpeek|read\s+vram)\b.*\binto\b/i, ["into"]);
+  when(/^\s*fill\s+row\b.*\bfrom\b/i, ["from"]);
+  when(/^\s*copy\b.*\boffset\b/i, ["offset"]);
+  when(/^\s*\w+\s*=\s*get\s+(?:char|count|frame)\b/i, ["get", "char", "frame"]);
+  when(/^\s*put\b.*\bcentered\s+at\b/i, ["centered"]);
+  when(/^\s*(?:(?:\w+\s*=\s*)?get|put|replace)\b.*\bframe\s+size\b/i, ["frame", "size"]);
+  when(/^\s*(?:if|find)\b.*\b(?:tile|tiles|chars)\b.*\b(?:under|in)\b/i, ["tile", "tiles", "chars", "under"], "vdp");
+  when(/^\s*if\b.*\bbox\b.*\bcollides\s+with\s+box\b/i, ["box", "collides"], "vdp");
+  when(/^\s*hitbox\b.*\bsize\b/i, ["size"]);
+  when(/^\s*if\b.*\bhitbox\b.*\bcollides\s+with\b/i, ["collides"], "vdp");
+  when(/^\s*if\b.*\b(?:contain|is)\b/i, ["contain", "is"]);
+  when(/^\s*find\s+tile\b/i, ["find", "tile", "under", "size", "into"], "vdp");
+  when(/^\s*replace\b.*\bwith\b.*\bin\b/i, ["replace"]);
+
+  when(/^\s*(?:define|reflect|rotate)\b.*\b(?:pattern|chars|colors|sprites)\b/i,
+    ["pattern", "chars", "colors", "sprites"], "vdp");
+  when(/^\s*reflect\s+pattern\b.*\b(?:vertical|horizontal)\b/i, ["reflect", "vertical", "horizontal"], "vdp");
+  when(/^\s*rotate\s+pattern\b/i, ["rotate"], "vdp");
+  when(/^\s*set\b.*\b(?:pattern|color|table|offset|bit)\b/i, ["pattern", "color", "table", "offset", "bit"], "vdp");
+  when(/^\s*toggle\s+sprite\b.*\bpattern\s+bit\b/i, ["pattern", "bit"], "vdp");
+  when(/^\s*(?:clear|reset|toggle|if(?:\s+not)?)\s+bit\b/i, ["bit", "of"]);
+  when(/^\s*set\s+text\s+colors\b/i, ["colors"], "vdp");
+  when(/^\s*load\s+mode\s+2\s+text\s+colors\b/i, ["colors"], "vdp");
+  when(/^\s*120\s+colors\s+(?:on|off)\b/i, ["colors"], "vdp");
+  when(/^\s*wipe\s+(?:screen|bitmap)\s+(?:up|down)\b/i, ["up", "down"]);
+
+  when(/^\s*debug\s+breakpoint\b/i, ["debug", "breakpoint"]);
+  when(/^\s*test\s+checkpoint\b/i, ["test", "checkpoint"]);
+  when(/^\s*on\s+vblank\b/i, ["vblank"]);
+  when(/^\s*scene\b.*\buses\b/i, ["uses"]);
+  when(/^\s*load\s+default\s+ascii\b/i, ["ascii", "bold", "italic"]);
+  when(/^\s*(?:start|stop)\s+timer\b/i, ["start", "timer"]);
+  when(/^\s*if\s+timer\b/i, ["timer"]);
+  when(/^\s*play\s+sounds\b/i, ["sounds"]);
+  return types;
+}
+
 function classifyWord(word, context = {}) {
   const lower = word.toLowerCase();
   if (context.identifierRole) return "identifier";
@@ -90,6 +145,7 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
   const line = String(sourceLine ?? "");
   const tokens = [];
   const phraseRanges = matchAmyPhraseRanges(line);
+  const contextualTypes = amyLineContextTypes(line);
   const phraseRangeAt = (position) => phraseRanges.find(({ start }) => start === position);
   let index = 0;
   let inAsmBlock = Boolean(previousState.inAsmBlock);
@@ -221,7 +277,7 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
         statementPosition,
         contextualKeyword
       });
-      push(tokens, type, word[0]);
+      push(tokens, contextualTypes.get(lowerWord) || type, word[0]);
       index += word[0].length;
       if (word[0].toLowerCase() === "asm") {
         const after = line.slice(index);

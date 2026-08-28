@@ -1,6 +1,7 @@
 import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
+import { inferControllerBackendFromSource } from "./compilerFrontend.js";
 
 export function pathToLabel(path) {
   const base = path.split("/").pop() || "asset";
@@ -272,6 +273,14 @@ function injectSystemInitInline(asmBody, caps) {
   return lines.join("\n");
 }
 
+function routeWaitsThroughJoypadEdgeCapture(asmBody, caps) {
+  if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2) return asmBody;
+  return String(asmBody || "").replace(
+    /^(\s*)call\s+AMY_WAIT_FRAMES_SAFE\s*$/gim,
+    "$1call AMY_WAIT_FRAMES_WITH_PRESSED"
+  );
+}
+
 function splitHeaderAndCodeIncludes(paths) {
   const headerIncludes = [];
   const codeIncludes = [];
@@ -365,20 +374,41 @@ function inferSoundAreaCount(sourceText) {
   }
   return count;
 }
+
+function inferControllerBackend(sourceText, asmBody, { usesKeypad1, usesKeypad2, usesSpinner, usesSleepService }) {
+  if (usesSpinner) return null;
+  const backend = inferControllerBackendFromSource(sourceText);
+  if (!backend) return null;
+  for (const port of [1, 2]) {
+    if (new RegExp(`\\bJOYPAD_${port}\\b`).test(asmBody) && !backend[`decoderNeedsJoypad${port}`]) return null;
+    if (new RegExp(`\\bKEYPAD_${port}\\b`).test(asmBody) && !backend[`decoderNeedsKeypad${port}`]) return null;
+  }
+  return backend;
+}
+
 function inferRuntimeCapabilities(project, asmBody) {
   const sourceText = project.sourceText || "";
+  const usesSleepService = /^\s*sleep\s+after\s+[0-9]+\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(sourceText);
+  const usesJoypadPressed1 = /\bJOYPAD_PRESSED_1\b/.test(asmBody);
+  const usesJoypadPressed2 = /\bJOYPAD_PRESSED_2\b/.test(asmBody);
   const usesSoundApi = /\bAMY_(SET_SOUND_TABLE|PLAY_SOUND|STOP_SOUND|MUTE_ALL)\b/.test(asmBody);
   const usesMusicApi = /\bAMY_(PLAY_SONG|UPDATE_MUSIC|STOP_SONG|NEXT_SONG)\b/.test(asmBody);
   const usesTinySound = /\bsndtiny_[12]\b/.test(asmBody) || sourceHintsTinySound(sourceText);
   const usesSprites = /\bAMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)\b/.test(asmBody)
     || /\bsprites?\b/i.test(sourceText);
-  const usesJoypad1 = /\bJOYPAD_1\b/.test(asmBody);
-  const usesKeypad1 = /\bKEYPAD_1\b/.test(asmBody);
-  const usesJoypad2 = /\bJOYPAD_2\b/.test(asmBody);
-  const usesKeypad2 = /\bKEYPAD_2\b/.test(asmBody);
+  const usesJoypad1 = /\bJOYPAD_1\b/.test(asmBody) || usesJoypadPressed1 || usesSleepService;
+  const usesKeypad1 = /\bKEYPAD_1\b/.test(asmBody) || usesSleepService;
+  const usesJoypad2 = /\bJOYPAD_2\b/.test(asmBody) || usesJoypadPressed2 || usesSleepService;
+  const usesKeypad2 = /\bKEYPAD_2\b/.test(asmBody) || usesSleepService;
   const usesJoypadVars = usesJoypad1 || usesKeypad1 || usesJoypad2 || usesKeypad2;
   const usesSpinner = /\bAMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)\b/.test(asmBody)
     || /\bspinner\b/i.test(sourceText);
+  let controllerBackend = inferControllerBackend(sourceText, asmBody, {
+    usesKeypad1,
+    usesKeypad2,
+    usesSpinner,
+    usesSleepService
+  });
   const codeText = sourceText.split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
   const usesFrameCounter =
     /\bread\s+frame\s+into\s+[A-Za-z_][A-Za-z0-9_]*\b/i.test(sourceText) ||
@@ -403,8 +433,13 @@ function inferRuntimeCapabilities(project, asmBody) {
   const needsRandomSeed = usesRandom;
   const needs120c = uses120c;
   const needsBackdropShadow = /\bAMY_VDP_R7_SHADOW\b/.test(asmBody);
+  const needsSleepState = /\bAMY_SLEEP_IDLE_TICKS\b/.test(asmBody);
   const soundAreaCount = inferSoundAreaCount(sourceText);
   const needsNmi = usesScreenOnNmi || usesHalt || needs120c || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
+  if (controllerBackend?.controllerBackend === "bios_cont_scan_compact" &&
+      (needsSound || needsSpinner || needsFrameCounter || needs120c)) {
+    controllerBackend = null;
+  }
   const needsNmiAckOnly = needsNmi && !needs120c && !needsControllers && !needsSound;
   return {
     needsSprites,
@@ -420,12 +455,16 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsRandomSeed,
     needs120c,
     needsBackdropShadow,
+    needsSleepState,
     soundAreaCount,
     needsNmiAckOnly,
     usesJoypad1,
+    usesJoypadPressed1,
     usesKeypad1,
     usesJoypad2,
-    usesKeypad2
+    usesJoypadPressed2,
+    usesKeypad2,
+    ...(controllerBackend || {})
   };
 }
 
@@ -452,6 +491,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needsAmyTimers ||
     caps.needs120c ||
     caps.needsBackdropShadow ||
+    caps.needsSleepState ||
     needsNmi;
   const needsSoundState =
     caps.needsSound ||
@@ -468,6 +508,8 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     referencesSymbol("KEYPAD_1") ||
     referencesSymbol("JOYPAD_2") ||
     referencesSymbol("KEYPAD_2");
+  const usesJoypadPressed1 = caps.usesJoypadPressed1 || referencesSymbol("JOYPAD_PRESSED_1");
+  const usesJoypadPressed2 = caps.usesJoypadPressed2 || referencesSymbol("JOYPAD_PRESSED_2");
   const needsSpinner =
     caps.needsSpinner ||
     referencesSymbol("SPINNER_ENABLED") ||
@@ -503,7 +545,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needsSoundState,
     needsAmyTimers: caps.needsAmyTimers,
     needs120c: caps.needs120c,
-    needsBackdropShadow: caps.needsBackdropShadow
+    needsBackdropShadow: caps.needsBackdropShadow,
+    needsSleepState: caps.needsSleepState,
+    usesJoypadPressed1,
+    usesJoypadPressed2
   });
   const addr = runtimeMap.addresses;
   const hex16 = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
@@ -539,10 +584,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     lines.push(`AMY_120C_PHASE   EQU ${hex16(addr.effect_120c_phase)}`);
   }
   if (needsControllers) {
-    lines.push(`_joypad_1           EQU ${hex16(addr.joypad_1)}`);
-    lines.push(`_keypad_1           EQU ${hex16(addr.keypad_1)}`);
-    lines.push(`_joypad_2           EQU ${hex16(addr.joypad_2)}`);
-    lines.push(`_keypad_2           EQU ${hex16(addr.keypad_2)}`);
+    if (addr.joypad_1 !== undefined) lines.push(`_joypad_1           EQU ${hex16(addr.joypad_1)}`);
+    if (addr.keypad_1 !== undefined) lines.push(`_keypad_1           EQU ${hex16(addr.keypad_1)}`);
+    if (addr.joypad_2 !== undefined) lines.push(`_joypad_2           EQU ${hex16(addr.joypad_2)}`);
+    if (addr.keypad_2 !== undefined) lines.push(`_keypad_2           EQU ${hex16(addr.keypad_2)}`);
   }
   if (needsSpinner) {
     lines.push(`spinner_enabled     EQU ${hex16(addr.spinner_enabled)}`);
@@ -610,6 +655,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   lines.push("WR_SPR_NM_TBL   EQU $1FC4");
   if (referencesSymbol("GET_RANDOM") || referencesSymbol("AMY_RANDOM_U8")) lines.push("GET_RANDOM      EQU $1FFD");
   if (needsControllers) lines.push("UPDATE_CONTROLLERS EQU $1F76");
+  if (caps.controllerBackend === "bios_decoder") lines.push("DECODE_CONTROLLER EQU $1F79");
   if (caps.needsSound) {
     lines.push("PLAY_SOUNDS     EQU $1F61");
     lines.push("UPDATE_SOUND_ADDR EQU $1FF4");
@@ -622,16 +668,27 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     if (caps.needsBackdropShadow) {
       lines.push(`AMY_VDP_R7_SHADOW EQU ${hex16(addr.vdp_r7_shadow)}`);
     }
+    if (caps.needsSleepState) {
+      lines.push(`AMY_SLEEP_IDLE_TICKS EQU ${hex16(addr.sleep_idle_ticks)}`);
+    }
     if (needsRuntimeState) {
       lines.push(`NO_NMI          EQU ${hex16(addr.no_nmi)}`);
       lines.push(`VDP_STATUS      EQU ${hex16(addr.vdp_status)}`);
       lines.push(`NMI_FLAG        EQU ${hex16(addr.nmi_flag)}`);
     }
     if (needsControllers) {
-      lines.push(`JOYPAD_1        EQU ${hex16(addr.joypad_1)}`);
-      lines.push(`KEYPAD_1        EQU ${hex16(addr.keypad_1)}`);
-      lines.push(`JOYPAD_2        EQU ${hex16(addr.joypad_2)}`);
-      lines.push(`KEYPAD_2        EQU ${hex16(addr.keypad_2)}`);
+      if (addr.joypad_1 !== undefined) lines.push(`JOYPAD_1        EQU ${hex16(addr.joypad_1)}`);
+      if (addr.keypad_1 !== undefined) lines.push(`KEYPAD_1        EQU ${hex16(addr.keypad_1)}`);
+      if (addr.joypad_2 !== undefined) lines.push(`JOYPAD_2        EQU ${hex16(addr.joypad_2)}`);
+      if (addr.keypad_2 !== undefined) lines.push(`KEYPAD_2        EQU ${hex16(addr.keypad_2)}`);
+      if (usesJoypadPressed1) {
+        lines.push(`JOYPAD_PREVIOUS_1 EQU ${hex16(addr.joypad_previous_1)}`);
+        lines.push(`JOYPAD_PRESSED_1 EQU ${hex16(addr.joypad_pressed_1)}`);
+      }
+      if (usesJoypadPressed2) {
+        lines.push(`JOYPAD_PREVIOUS_2 EQU ${hex16(addr.joypad_previous_2)}`);
+        lines.push(`JOYPAD_PRESSED_2 EQU ${hex16(addr.joypad_pressed_2)}`);
+      }
     }
     if (needsSpinner) {
       lines.push(`SPINNER_ENABLED EQU ${hex16(addr.spinner_enabled)}`);
@@ -748,6 +805,64 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        pop af");
     lines.push("        ret");
     lines.push(`${continueLabel}:`);
+  };
+  const emitJoypadPressedWaitWrapper = () => {
+    if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2) return;
+    lines.push("AMY_WAIT_FRAMES_WITH_PRESSED:");
+    lines.push("        call AMY_WAIT_FRAMES_SAFE");
+    for (const pad of [1, 2]) {
+      if (!caps[`usesJoypadPressed${pad}`]) continue;
+      lines.push(`        ld a,(JOYPAD_${pad})`);
+      lines.push("        ld b,a");
+      lines.push(`        ld a,(JOYPAD_PREVIOUS_${pad})`);
+      lines.push("        cpl");
+      lines.push("        and b");
+      lines.push(`        ld (JOYPAD_PRESSED_${pad}),a`);
+      lines.push("        ld a,b");
+      lines.push(`        ld (JOYPAD_PREVIOUS_${pad}),a`);
+    }
+    lines.push("        ret");
+    lines.push("");
+  };
+  const emitBiosDecoderUpdate = () => {
+    for (const pad of [1, 2]) {
+      const mask = Number(caps[`decoderSegmentMask${pad}`] || 0);
+      if (mask & 1) {
+        lines.push("        out ($C0),a");
+        lines.push(`        ld h,${pad - 1}`);
+        lines.push("        ld l,0");
+        lines.push("        call DECODE_CONTROLLER");
+        if (caps[`decoderNeedsJoypad${pad}`]) {
+          lines.push("        ld a,h");
+          lines.push("        add a,a");
+          lines.push("        or l");
+          lines.push(`        ld (JOYPAD_${pad}),a`);
+        }
+      }
+      if (mask & 2) {
+        lines.push("        out ($80),a");
+        lines.push(`        ld h,${pad - 1}`);
+        lines.push("        ld l,1");
+        lines.push("        call DECODE_CONTROLLER");
+        lines.push("        ld d,h");
+        lines.push("        ld e,l");
+        if (caps[`decoderNeedsJoypad${pad}`]) {
+          if (mask & 1) lines.push(`        ld a,(JOYPAD_${pad})`);
+          else lines.push("        xor a");
+          lines.push("        or d");
+          lines.push(`        ld (JOYPAD_${pad}),a`);
+        }
+        if (caps[`decoderNeedsKeypad${pad}`]) {
+          const validLabel = `AMY_DECODER_KEYPAD_VALID_${pad}`;
+          lines.push("        ld a,e");
+          lines.push("        cp $0F");
+          lines.push(`        jr nz,${validLabel}`);
+          lines.push("        ld a,$FF");
+          lines.push(`${validLabel}:`);
+          lines.push(`        ld (KEYPAD_${pad}),a`);
+        }
+      }
+    }
   };
   lines.push("; --- Runtime init / NMI ---");
   lines.push("Nmi:");
@@ -874,9 +989,12 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        push bc");
     lines.push("        push de");
     lines.push("        push hl");
-    lines.push("        call UPDATE_CONTROLLERS");
+    if (caps.controllerBackend === "bios_decoder") {
+      emitBiosDecoderUpdate();
+    } else {
+      lines.push("        call UPDATE_CONTROLLERS");
 
-    if (usesJoypad1) {
+      if (usesJoypad1) {
       lines.push("        ld a,($73EE)");
       lines.push("        and $4F");
       lines.push("        ld b,a");
@@ -920,7 +1038,7 @@ function emitLegacyRuntime(lines, caps) {
         lines.push("        ld a,(hl)");
         lines.push("        ld (KEYPAD_1),a");
       }
-    } else if (usesKeypad1) {
+      } else if (usesKeypad1) {
       lines.push("        ld a,($73F0)");
       lines.push("        cpl");
       lines.push("        and $0F");
@@ -932,7 +1050,7 @@ function emitLegacyRuntime(lines, caps) {
       lines.push("        ld (KEYPAD_1),a");
     }
 
-    if (usesJoypad2) {
+      if (usesJoypad2) {
       lines.push("        ld a,($73EF)");
       lines.push("        and $4F");
       lines.push("        ld b,a");
@@ -976,7 +1094,7 @@ function emitLegacyRuntime(lines, caps) {
         lines.push("        ld a,(hl)");
         lines.push("        ld (KEYPAD_2),a");
       }
-    } else if (usesKeypad2) {
+      } else if (usesKeypad2) {
       lines.push("        ld a,($73F1)");
       lines.push("        cpl");
       lines.push("        and $0F");
@@ -986,6 +1104,7 @@ function emitLegacyRuntime(lines, caps) {
       lines.push("        add hl,de");
       lines.push("        ld a,(hl)");
       lines.push("        ld (KEYPAD_2),a");
+      }
     }
 
     lines.push("        pop hl");
@@ -999,6 +1118,7 @@ function emitLegacyRuntime(lines, caps) {
       lines.push("        db $FF,8,4,5,$FF,7,11,2,$FF,10,0,9,3,1,6,$FF");
       lines.push("");
     }
+    emitJoypadPressedWaitWrapper();
     return;
   }
 
@@ -1032,24 +1152,31 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        call AMY_120C_UPDATE");
   }
   if (caps.needsControllers) {
-    lines.push("        call UPDATE_CONTROLLERS");
-    lines.push("        ld hl,JOYPAD_1");
-    lines.push("        ld a,($73EE)");
-    lines.push("        and $4F");
-    lines.push("        ld (hl),a");
-    lines.push("        inc hl");
-    lines.push("        ld a,($73F0)");
-    lines.push("        and $4F");
-    lines.push("        ld (hl),a");
-    lines.push("        inc hl");
-    lines.push("        ld a,($73EF)");
-    lines.push("        and $4F");
-    lines.push("        ld (hl),a");
-    lines.push("        inc hl");
-    lines.push("        ld a,($73F1)");
-    lines.push("        and $4F");
-    lines.push("        ld (hl),a");
-    lines.push("        call AMY_DECODE_CONTROLLERS");
+    if (caps.controllerBackend === "bios_decoder") {
+      emitBiosDecoderUpdate();
+    } else if (caps.controllerBackend === "bios_cont_scan_compact") {
+      lines.push("        call UPDATE_CONTROLLERS");
+      lines.push("        call AMY_DECODE_CONTROLLERS");
+    } else {
+      lines.push("        call UPDATE_CONTROLLERS");
+      lines.push("        ld hl,JOYPAD_1");
+      lines.push("        ld a,($73EE)");
+      lines.push("        and $4F");
+      lines.push("        ld (hl),a");
+      lines.push("        inc hl");
+      lines.push("        ld a,($73F0)");
+      lines.push("        and $4F");
+      lines.push("        ld (hl),a");
+      lines.push("        inc hl");
+      lines.push("        ld a,($73EF)");
+      lines.push("        and $4F");
+      lines.push("        ld (hl),a");
+      lines.push("        inc hl");
+      lines.push("        ld a,($73F1)");
+      lines.push("        and $4F");
+      lines.push("        ld (hl),a");
+      lines.push("        call AMY_DECODE_CONTROLLERS");
+    }
   }
   if (caps.needsFrameCounter) {
     lines.push("        ld hl,AMY_FRAME_COUNTER");
@@ -1122,7 +1249,9 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("");
   }
 
-  if (caps.needsControllers) {
+  emitJoypadPressedWaitWrapper();
+
+  if (caps.needsControllers && caps.controllerBackend !== "bios_decoder" && caps.controllerBackend !== "bios_cont_scan_compact") {
     lines.push("AMY_DECODE_CONTROLLERS:");
     lines.push("        ld ix,JOYPAD_1");
     lines.push("        call AMY_DECODE_CONTROLLER");
@@ -1237,9 +1366,10 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     runtimeCaps.needsNmi = true;
     runtimeCaps.needsNmiAckOnly = false;
   }
-  const asmBodyWithRuntimeInit = project.memoryProfile === "colecovision_legacy_sdcc"
+  const asmBodyWithRuntimeInitBase = project.memoryProfile === "colecovision_legacy_sdcc"
     ? injectSystemInitInline(asmBodyBase, runtimeCaps)
     : asmBodyBase;
+  const asmBodyWithRuntimeInit = routeWaitsThroughJoypadEdgeCapture(asmBodyWithRuntimeInitBase, runtimeCaps);
   const asmBodyWithRuntimeInitForDependencyScan = `${stripSourceMarkersForScan(asmBodyWithRuntimeInit)}\n${projectAsmDependencyText}`;
   const libResolution = resolveSelectedLibModulesDetailed(project.selectedLibs || [], asmBodyWithRuntimeInitForDependencyScan);
   const selectedLibs = libResolution.paths;

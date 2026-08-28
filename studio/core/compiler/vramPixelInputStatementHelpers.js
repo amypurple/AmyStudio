@@ -15,6 +15,7 @@ export function handleVramPixelInputStatement({
   emitStoreInt16FromHL,
   makeGeneratedLabel,
   currentGraphicsMode,
+  tryEvaluateConstantExpression,
   nmiKnownOff = false
 }) {
   const _dep = checkVramPixelDeprecation(line, rawLine);
@@ -269,9 +270,14 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const crtSafePause = line.match(/^pause\s+until\s+press\s+and\s+release(?:\s+on\s+joypad\s+([12]))?\s+blank\s+after\s+([0-9]+)\s+seconds?$/i);
-  if (crtSafePause) {
-    const seconds = Number.parseInt(crtSafePause[2], 10);
+  const sleepAfter = line.match(/^sleep\s+after\s+([0-9]+)\s+seconds?(?:\s+on\s+joypad\s+([12]))?$/i);
+  const crtSafePause = line.match(/^pause\s+until\s+press\s+and\s+release(?:\s+on\s+joypad\s+([12]))?\s+sleep\s+after\s+([0-9]+)\s+seconds?$/i);
+  if (sleepAfter || crtSafePause) {
+    const seconds = Number.parseInt(sleepAfter ? sleepAfter[1] : crtSafePause[2], 10);
+    const pad = sleepAfter ? sleepAfter[2] : crtSafePause[1];
+    const routine = sleepAfter
+      ? "AMY_SLEEP_SERVICE"
+      : "AMY_PAUSE_PRESS_RELEASE_BLANK";
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
       return { handled: true, ok: false, log: `CRT-safe pause requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
     }
@@ -281,8 +287,8 @@ export function handleVramPixelInputStatement({
     body.push(
       `    ld hl,${seconds * 60}`,
       `    ld de,${seconds * 50}`,
-      `    ld a,${crtSafePause[1] || 0}`,
-      "    call AMY_PAUSE_PRESS_RELEASE_BLANK"
+      `    ld a,${pad || 0}`,
+      `    call ${routine}`
     );
     return { handled: true, ok: true };
   }
@@ -364,7 +370,174 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const chooseKeypad = line.match(/^choose\s+keypad\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+on\s+keypad\s+([12]))?(?:\s+blank\s+after\s+([0-9]+)\s+seconds?)?$/i);
+  const chooseSpriteMenu = line.match(/^choose\s+menu\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+cursor\s+sprite\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+step\s+(.+?)(?:\s+on\s+joypad\s+([12]))?(?:\s+sleep\s+after\s+([0-9]+)\s+seconds?)?$/i);
+  const chooseTileMenu = line.match(/^choose\s+menu\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+cursor\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+step\s+(.+?)(?:\s+clear\s+(.+?))?(?:\s+on\s+joypad\s+([12]))?(?:\s+sleep\s+after\s+([0-9]+)\s+seconds?)?$/i);
+  const chooseMenu = chooseSpriteMenu || chooseTileMenu;
+  if (chooseMenu) {
+    const spriteCursor = Boolean(chooseSpriteMenu);
+    const [, minToken, maxToken, target, cursorToken, xToken, yToken, stepToken] = chooseMenu;
+    const clearToken = spriteCursor ? null : (chooseMenu[8] || "$20");
+    const padToken = (spriteCursor ? chooseMenu[8] : chooseMenu[9]) || "1";
+    const secondsToken = spriteCursor ? chooseMenu[9] : chooseMenu[10];
+    const targetInfo = getRuntimeInfo(target);
+    const byteLoads = [minToken, maxToken, cursorToken, xToken, yToken, stepToken, ...(clearToken ? [clearToken] : [])]
+      .map((token) => emitLoadInt8ValueInto("a", token));
+    if (!targetInfo || targetInfo.type !== "int8" || byteLoads.some((lines) => !lines)) {
+      return { handled: true, ok: false, log: `choose menu requires byte-sized bounds, target, cursor, coordinates, and step: ${rawLine}` };
+    }
+    const spriteIndex = spriteCursor ? tryEvaluateConstantExpression?.(cursorToken) : null;
+    if (spriteCursor && (!Number.isInteger(spriteIndex) || spriteIndex < 0 || spriteIndex > 31)) {
+      return { handled: true, ok: false, log: `choose menu sprite cursor requires a constant sprite index from 0 to 31: ${rawLine}` };
+    }
+    let seconds = 0;
+    if (secondsToken) {
+      seconds = Number.parseInt(secondsToken, 10);
+      if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
+        return { handled: true, ok: false, log: `CRT-safe menu choice requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
+      }
+      if (nmiKnownOff) {
+        return { handled: true, ok: false, log: `CRT-safe menu choice requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
+      }
+    }
+
+    const drawLabel = makeGeneratedLabel("ChooseMenuDraw");
+    const initialReleaseLabel = makeGeneratedLabel("ChooseMenuInitialRelease");
+    const waitLabel = makeGeneratedLabel("ChooseMenuWait");
+    const keypadDoneLabel = makeGeneratedLabel("ChooseMenuKeypadDone");
+    const keypadConfirmLabel = makeGeneratedLabel("ChooseMenuKeypadConfirm");
+    const upLabel = makeGeneratedLabel("ChooseMenuUp");
+    const upStoreLabel = makeGeneratedLabel("ChooseMenuUpStore");
+    const upCommitLabel = makeGeneratedLabel("ChooseMenuUpCommit");
+    const downLabel = makeGeneratedLabel("ChooseMenuDown");
+    const downStoreLabel = makeGeneratedLabel("ChooseMenuDownStore");
+    const downCommitLabel = makeGeneratedLabel("ChooseMenuDownCommit");
+    const confirmLabel = makeGeneratedLabel("ChooseMenuConfirm");
+    const drawRoutineLabel = makeGeneratedLabel("ChooseMenuDrawCursor");
+    const waitReleaseRoutineLabel = makeGeneratedLabel("ChooseMenuWaitRelease");
+    const doneLabel = makeGeneratedLabel("ChooseMenuDone");
+    const cursorY = `(${yToken}) + ((${target}) - (${minToken})) * (${stepToken})`;
+    const emitDrawCall = (tile) => spriteCursor
+      ? [`    call ${drawRoutineLabel}`]
+      : [...(emitLoadInt8ValueInto("a", tile) || []), `    call ${drawRoutineLabel}`];
+    const emitDrawRoutine = () => {
+      if (spriteCursor) {
+        const loadInputs = [
+          ...(emitLoadInt8ValueInto("e", xToken) || []),
+          ...(emitLoadInt8ValueIntoPreserving("d", cursorY, ["e"]) || [])
+        ];
+        return [
+          ...loadInputs,
+          "    ld a,e",
+          `    ld (AMY_SPRITE_TABLE+${spriteIndex * 4 + 1}),a`,
+          "    ld a,d",
+          `    ld (AMY_SPRITE_TABLE+${spriteIndex * 4}),a`,
+          "    call AMY_UPDATE_SPRITES",
+          "    ret"
+        ];
+      }
+      const loadInputs = [
+        ...(emitLoadInt8ValueInto("e", xToken) || []),
+        ...(emitLoadInt8ValueIntoPreserving("d", cursorY, ["e"]) || [])
+      ];
+      return ["    push af", ...loadInputs, "    pop af", "    call AMY_PUT_CHAR_AT", "    ret"];
+    };
+    const eraseLines = spriteCursor ? [] : emitDrawCall(clearToken);
+    const drawLines = emitDrawCall(cursorToken);
+    const drawRoutineLines = emitDrawRoutine();
+    if ((!spriteCursor && !eraseLines.length) || !drawLines.length || !drawRoutineLines.length) {
+      return { handled: true, ok: false, log: `choose menu could not compute its cursor position: ${rawLine}` };
+    }
+
+    body.push(
+      ...drawLines,
+      `    call ${waitReleaseRoutineLabel}`,
+      `    jp ${waitLabel}`,
+      `${drawLabel}:`,
+      ...drawLines,
+      `${waitLabel}:`,
+      "    halt"
+    );
+    if (seconds) {
+      body.push(
+        `    ld hl,${seconds * 60}`,
+        `    ld de,${seconds * 50}`,
+        `    ld a,${padToken}`,
+        "    call AMY_SLEEP_SERVICE"
+      );
+    }
+    body.push(
+      `    ld a,(KEYPAD_${padToken})`,
+      "    cp $FF",
+      `    jr z,${keypadDoneLabel}`,
+      ...emitLoadInt8ValueInto("b", minToken),
+      "    cp b",
+      `    jr c,${keypadDoneLabel}`,
+      ...emitLoadInt8ValueInto("b", maxToken),
+      "    cp b",
+      `    jr z,${keypadConfirmLabel}`,
+      `    jr c,${keypadConfirmLabel}`,
+      `${keypadDoneLabel}:`,
+      `    ld a,(JOYPAD_${padToken})`,
+      "    bit 0,a",
+      `    jr nz,${upLabel}`,
+      "    bit 2,a",
+      `    jr nz,${downLabel}`,
+      "    and $C0",
+      `    jr nz,${confirmLabel}`,
+      `    jr ${waitLabel}`,
+      `${upLabel}:`,
+      ...eraseLines,
+      ...emitLoadInt8ValueInto("a", target),
+      ...emitLoadInt8ValueInto("b", minToken),
+      "    cp b",
+      `    jr nz,${upStoreLabel}`,
+      ...emitLoadInt8ValueInto("a", maxToken),
+      `    jr ${upCommitLabel}`,
+      `${upStoreLabel}:`,
+      "    dec a",
+      `${upCommitLabel}:`,
+      ...emitStoreInt8FromA(target),
+      `    call ${waitReleaseRoutineLabel}`,
+      `    jp ${drawLabel}`,
+      `${downLabel}:`,
+      ...eraseLines,
+      ...emitLoadInt8ValueInto("a", target),
+      ...emitLoadInt8ValueInto("b", maxToken),
+      "    cp b",
+      `    jr nz,${downStoreLabel}`,
+      ...emitLoadInt8ValueInto("a", minToken),
+      `    jr ${downCommitLabel}`,
+      `${downStoreLabel}:`,
+      "    inc a",
+      `${downCommitLabel}:`,
+      ...emitStoreInt8FromA(target),
+      `    call ${waitReleaseRoutineLabel}`,
+      `    jp ${drawLabel}`,
+      `${keypadConfirmLabel}:`,
+      "    and $0F",
+      ...emitStoreInt8FromA(target),
+      `    jr ${confirmLabel}`,
+      `${confirmLabel}:`,
+      `    call ${waitReleaseRoutineLabel}`,
+      `    jp ${doneLabel}`,
+      `${drawRoutineLabel}:`,
+      ...drawRoutineLines,
+      `${waitReleaseRoutineLabel}:`,
+      `${initialReleaseLabel}:`,
+      "    halt",
+      `    ld a,(JOYPAD_${padToken})`,
+      "    or a",
+      `    jr nz,${initialReleaseLabel}`,
+      `    ld a,(KEYPAD_${padToken})`,
+      "    cp $FF",
+      `    jr nz,${initialReleaseLabel}`,
+      "    ret",
+      `${doneLabel}:`
+    );
+    return { handled: true, ok: true };
+  }
+
+  const chooseKeypad = line.match(/^choose\s+keypad\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+on\s+keypad\s+([12]))?(?:\s+sleep\s+after\s+([0-9]+)\s+seconds?)?$/i);
   if (chooseKeypad) {
     const targetInfo = getRuntimeInfo(chooseKeypad[3]);
     const loadMin = emitLoadInt8ValueInto("b", chooseKeypad[1]);
@@ -397,4 +570,3 @@ export function handleVramPixelInputStatement({
 
   return { handled: false };
 }
-

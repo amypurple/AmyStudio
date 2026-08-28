@@ -144,4 +144,46 @@ for (const name of ["Frames", "To", "Count", "Line", "Color", "Pattern", "Press"
   const tokens = tokenizeAmyLine("u8 " + name + " = 0").tokens;
   assert.equal(tokens.find((token) => token.text === name)?.type, "identifier", name + " must stay neutral");
 }
+
+for (const [source, expected] of [
+  ["fill array Tiles repeating Pattern count 32", ["array", "repeating"]],
+  ["fill record array Actors field State with 0", ["record", "array", "field"]],
+  ["shift array SnakeX down 1", ["array", "down"]],
+  ["reverse array Board from 2 count 6", ["array", "from"]],
+  ["data Lookup bytes 1,2,3", ["bytes"]],
+  ["data Levels words = @Level0", ["words"]],
+  ["put char $41 at 8,8", ["char"]],
+  ["FrameBuffer = get frame size 8,8 at 0,0", ["get", "frame", "size"]],
+  ["put FrameBuf centered at 20", ["centered"]],
+  ["if tiles under box X,Y size 2,2 contain hazard goto Hurt", ["tiles", "under", "contain"]],
+  ["if box X,Y size 2,2 collides with box A,B size 2,2 goto Hit", ["box", "collides"]],
+  ["reflect pattern 0 to 16 count 1 vertical", ["reflect", "pattern", "vertical"]],
+  ["rotate pattern 17 to 18 count 1 90", ["rotate", "pattern"]],
+  ["set sprite 0 pattern bit 1 on", ["pattern", "bit"]],
+  ["debug breakpoint \"loop\"", ["debug", "breakpoint"]],
+  ["test checkpoint \"ready\"", ["test", "checkpoint"]],
+  ["on vblank GameTick", ["vblank"]],
+  ["scene Menu uses SceneRam.Menu", ["uses"]],
+  ["load default ascii bold italic", ["ascii", "bold", "italic"]],
+  ["start timer DoorTimer", ["start", "timer"]],
+  ["play sounds 1,2", ["sounds"]],
+  ["vpeek vram.name into Value", ["into"]],
+  ["read vram vram.name count 64 into Buffer", ["into"]],
+  ["fill row 12 from 0 count 32 with $2D", ["from"]],
+  ["copy Charset + Offset count 8 to vram.pattern + 128", ["offset"]],
+  ["hitbox PlayerHitbox = 3,5 size 10,9", ["size"]],
+  ["if sprite 0 hitbox A collides with sprite 1 hitbox B goto Hit", ["collides"]],
+  ["find tile coin under box X,Y size 16,16 into HitX,HitY", ["tile", "under", "size", "into"]],
+  ["toggle sprite 0 pattern bit 0", ["pattern", "bit"]],
+  ["if not bit 0 of Flags goto Label", ["bit", "of"]],
+  ["load mode 2 text colors ColorTable", ["colors"]],
+  ["120 colors on", ["colors"]],
+  ["wipe screen down", ["down"]],
+  ["if timer EnemyTimer then MoveEnemy", ["timer"]]
+]) {
+  const tokens = tokenizeAmyLine(source).tokens;
+  for (const word of expected) {
+    assert.notEqual(tokens.find((token) => token.text.toLowerCase() === word)?.type, "identifier", `${source}: ${word}`);
+  }
+}
 console.log("Amy syntax tokenizer: PASS");

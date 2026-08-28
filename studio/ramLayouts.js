@@ -31,6 +31,9 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsMusic = !!caps.needsMusic;
   const needsSprites = !!caps.needsSprites;
   const needsControllers = !!caps.needsControllers;
+  const controllerBackend = String(caps.controllerBackend || "amy");
+  const usesJoypadPressed1 = !!caps.usesJoypadPressed1;
+  const usesJoypadPressed2 = !!caps.usesJoypadPressed2;
   const needsSpinner = !!caps.needsSpinner;
   const needsFrameCounter = !!caps.needsFrameCounter;
   const needsNmi = !!caps.needsNmi;
@@ -40,6 +43,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsAmyTimers = !!caps.needsAmyTimers;
   const needs120c = !!caps.needs120c;
   const needsBackdropShadow = !!caps.needsBackdropShadow;
+  const needsSleepState = !!caps.needsSleepState;
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
   const needsRuntimeState =
     needsControllers ||
@@ -52,6 +56,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     needsVdpStatusShadow ||
     needsUserFrameHook ||
     needsAmyTimers ||
+    needsSleepState ||
     needsBackdropShadow;
   const needsSoundState = !!caps.needsSoundState || needsSound || needsMusic;
 
@@ -101,12 +106,40 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   }
 
   if (needsControllers) {
-    addresses.joypad_1 = current;
-    addresses.keypad_1 = current + 1;
-    addresses.joypad_2 = current + 2;
-    addresses.keypad_2 = current + 3;
-    reserved.push({ start: current, endExclusive: current + 4, label: "Amy controller state" });
-    current += 4;
+    if (controllerBackend === "bios_decoder" || controllerBackend === "bios_cont_scan_compact") {
+      const start = current;
+      for (const port of [1, 2]) {
+        if (caps[`decoderNeedsJoypad${port}`]) addresses[`joypad_${port}`] = current++;
+        if (caps[`decoderNeedsKeypad${port}`]) addresses[`keypad_${port}`] = current++;
+      }
+      reserved.push({ start, endExclusive: current, label: "Amy controller state (BIOS DECODER)" });
+    } else {
+      addresses.joypad_1 = current;
+      addresses.keypad_1 = current + 1;
+      addresses.joypad_2 = current + 2;
+      addresses.keypad_2 = current + 3;
+      reserved.push({ start: current, endExclusive: current + 4, label: "Amy controller state" });
+      current += 4;
+    }
+  }
+
+  if (usesJoypadPressed1) {
+    addresses.joypad_previous_1 = current;
+    addresses.joypad_pressed_1 = current + 1;
+    reserved.push({ start: current, endExclusive: current + 2, label: "Amy joypad 1 edge state" });
+    current += 2;
+  }
+  if (usesJoypadPressed2) {
+    addresses.joypad_previous_2 = current;
+    addresses.joypad_pressed_2 = current + 1;
+    reserved.push({ start: current, endExclusive: current + 2, label: "Amy joypad 2 edge state" });
+    current += 2;
+  }
+
+  if (needsSleepState) {
+    addresses.sleep_idle_ticks = current;
+    reserved.push({ start: current, endExclusive: current + 2, label: "Amy menu sleep inactivity counter" });
+    current += 2;
   }
 
   if (needsSpinner) {
