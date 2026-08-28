@@ -616,6 +616,16 @@ export function transpileAmyCore(sourceText, deps) {
       addGotoReferences(reachableRoutineGotoReferences, line);
       if (closesBlock(line)) blockDepth = Math.max(0, blockDepth - 1);
       if (blockDepth === 0 && isRootTerminator(line)) {
+        // A top-level value return is both the terminator and the implicit end
+        // of an Amy function. Following lines are mainline, not dead function code.
+        if (/^return\s+.+$/i.test(line)
+          && /^function\b/i.test(strippedLine(routineKey))) {
+          inRoutine = false;
+          routineKey = -1;
+          dead = false;
+          blockDepth = 0;
+          continue;
+        }
         dead = true;
         continue;
       }
@@ -4624,6 +4634,11 @@ export function transpileAmyCore(sourceText, deps) {
       });
       if (routineStmt.handled) {
         if (!routineStmt.ok) return { ok: false, asmBody: "", log: routineStmt.log };
+        if (currentFunction && /^return\s+.+$/i.test(line)
+          && !ifStack.length && !whileStack.length && !doStack.length && !forStack.length && !selectStack.length) {
+          currentProc = null;
+          currentFunction = null;
+        }
         resetVdpR1SemanticTracking();
         continue;
       }

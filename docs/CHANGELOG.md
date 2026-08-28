@@ -1,5 +1,7 @@
 ## 2026-08-27 - Faster compilation and compact cursor menus
 
+- Fixed function-first projects so executable mainline code after a terminal `return Value` is preserved and global initializers are installed before finalization.
+- Added five-profile ROM coverage for signed and unsigned 8.8 boundaries, fixed arithmetic, mutual `u16` recursion, recursive `u32` parameters, and RAM guard bytes.
 - Added pointer-free `with Record as Alias` and `with Overlay.Part as Alias` blocks that produce byte-identical ROMs while removing repeated qualified prefixes.
 - Reduced constant-bound `u8` loops over static record and overlay fields to the same compact counter path as global variables.
 - Reduced `u16` loop increments with `step 1` to a direct `inc hl` sequence.

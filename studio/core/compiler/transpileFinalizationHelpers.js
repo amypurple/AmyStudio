@@ -615,6 +615,12 @@ export function finalizeAmyTranspile({
     runtimeInit.unshift(`    ld hl,${resolveAddressSymbol(firstBlock)}`, `    ld (${dataCursorName}),hl`);
   }
 
+  // A function-only prefix may leave Start creation until finalization. Open it
+  // before resolving the initializer marker so global initializers cannot be lost.
+  if (!body.includes("Start:")) {
+    openStartProc();
+  }
+
   const stackFrames = [...procFrames.entries()]
     .filter(([, frame]) => frame.usesIxFrame || frame.size > 0)
     .sort((a, b) => b[1].insertIndex - a[1].insertIndex);
@@ -1052,9 +1058,6 @@ export function finalizeAmyTranspile({
     headerBlocks.push(layoutLines.join("\n"));
   }
 
-  if (!body.includes("Start:")) {
-    openStartProc();
-  }
   if (state.currentProc === "Start") {
     emitCurrentProcReturnLinesIfNeeded();
   }

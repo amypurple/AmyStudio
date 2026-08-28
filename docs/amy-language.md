@@ -711,6 +711,10 @@ const TileBase = $00
 | `bcd digits N` | packed BCD with N decimal digits | `ceil(N/2)` bytes |
 | `Type[N]` | fixed-size array | N × element size |
 
+`fixed` ranges from `-128.0` through `127.99609375`; `ufixed` ranges from
+`0.0` through `255.99609375`. Arithmetic wraps in the underlying 16-bit 8.8
+representation, just like integer arithmetic on the Z80.
+
 Array lengths may be numeric literals or compile-time constant integer expressions,
 for example `const MaxClouds = 4` followed by `u8 CloudX[MaxClouds]`.
 
@@ -957,6 +961,8 @@ Current style rule:
 - do not use a procedure-style call when you actually need the return value
 - the preferred function terminator is `return Value`; do not write
   `end function` immediately after a terminal return
+- a top-level terminal `return Value` closes the function immediately; declarations
+  and executable mainline code may follow it
 - a function that reaches the next routine or the end of file without a terminal
   `return Value` is a compile error
 
