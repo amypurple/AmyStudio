@@ -214,13 +214,17 @@ export function handleForStatement({
       lines.push(...emitStoreInt8FromA(loop.name));
     } else {
       lines.push(...emitLoadInt16IntoHL(loop.name));
-      lines.push("    push hl");
-      const loadStep = emitLoadInt16IntoHL(loop.stepToken);
-      if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
-      lines.push(...loadStep);
-      lines.push("    ex de,hl");
-      lines.push("    pop hl");
-      lines.push("    add hl,de");
+      if (loop.constantStep === 1) {
+        lines.push("    inc hl");
+      } else {
+        lines.push("    push hl");
+        const loadStep = emitLoadInt16IntoHL(loop.stepToken);
+        if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
+        lines.push(...loadStep);
+        lines.push("    ex de,hl");
+        lines.push("    pop hl");
+        lines.push("    add hl,de");
+      }
       lines.push(...emitStoreInt16FromHL(loop.name));
     }
     lines.push(`    jp ${loop.loopLabel}`);

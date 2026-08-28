@@ -2,6 +2,7 @@
 
 - Added pointer-free `with Record as Alias` and `with Overlay.Part as Alias` blocks that produce byte-identical ROMs while removing repeated qualified prefixes.
 - Reduced constant-bound `u8` loops over static record and overlay fields to the same compact counter path as global variables.
+- Reduced `u16` loop increments with `step 1` to a direct `inc hl` sequence.
 - Added `choose menu`: compact circular tile or sprite cursor navigation with keypad, FIRE, input release handling, and optional CRT-safe sleep.
 - Quatro Puzzles now uses the menu primitive, removing duplicated menu code and three temporary RAM bytes.
 - Accelerated assembler evaluation of simple literals and symbols without changing generated ROM output.

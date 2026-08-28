@@ -19,9 +19,14 @@ overlay SceneRam
   Menu as LoopMemory
 end overlay
 u8 Sum = 0
+u16 WideCounter = 0
+u16 WideSum = 0
 for SceneRam.Game.Counter = 0 to 7
   Sum += SceneRam.Game.Counter
 next SceneRam.Game.Counter
+for WideCounter = 300 to 307
+  WideSum += WideCounter
+next WideCounter
 if Sum = 28 then
   print at 0,0,"PASS"
 else
@@ -49,6 +54,10 @@ try {
       `${profile} should not reload the qualified counter for a separate entry guard`);
     assert.doesNotMatch(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld a,\([^\n]+\)\s*\n\s*ld b,a\s*\n\s*ld a,1\s*\n\s*add a,b/i,
       `${profile} should not use the old five-instruction increment`);
+    assert.match(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld hl,\(AMY_UVAR_WideCounter\)\s*\n\s*inc hl\s*\n\s*ld \(AMY_UVAR_WideCounter\),hl/i,
+      `${profile} should increment a step-1 u16 counter directly in HL`);
+    assert.doesNotMatch(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld hl,\(AMY_UVAR_WideCounter\)\s*\n\s*push hl/i,
+      `${profile} should not stage a literal step-1 u16 increment through DE`);
   }
   console.log("qualified u8 for-loop codegen PASS");
 } finally {
