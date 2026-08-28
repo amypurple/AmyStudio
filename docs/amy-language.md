@@ -1511,9 +1511,12 @@ Root32 = sqrt(Position32)
 ```
 
 `Counter *= N`: supported by the destination type table below.
-`Counter /= N`: integer division truncates toward zero for signed targets; zero divisor stores `0`.
+`Counter /= N`: integer division truncates toward zero for signed targets. A divisor that is
+provably zero is rejected at compile time. A runtime divisor whose value becomes zero stores
+`0`, without adding a trap or diagnostic code to the ROM.
 `A % B` / `A mod B`: integer remainder for `u8`, `i8`, `u16`, and `i16`.
-`Var %= B` is the in-place form. Division by zero stores `0`. Signed modulo uses
+`Var %= B` is the in-place form. A provably-zero divisor is rejected; a runtime zero divisor
+stores `0`. Signed modulo uses
 truncation-toward-zero division and keeps the sign of the dividend:
 `-7 % 3 = -1`, `7 % -3 = 1`, `-7 % -3 = -1`.
 `sqrt`: either unsigned `u16`-sized input with `u16` result, or `fixed32` / `fp5`-capable source into a matching target. `A = sqrt(B)` is the canonical form.
@@ -1576,12 +1579,13 @@ aliasing such as `Counter32 = Counter32 + Addend32` is safe. Operands may be
 accept compatible 4-byte little-endian `u8` arrays. Scalar `u16` values are not
 implicitly widened into this arithmetic. Multiplication keeps the low 32 bits;
 overflow wraps modulo 2^32 for both signed and unsigned values.
-Binary `/` and in-place `/=` are available for both `u32` and `i32` and store `0`
-when the divisor is zero. Signed division truncates toward zero. The overflow case
+Binary `/` and in-place `/=` are available for both `u32` and `i32`. A constant zero divisor
+is rejected at compile time; a runtime divisor whose value is zero stores `0`. Signed division
+truncates toward zero. The overflow case
 `-2147483648 / -1` wraps to `-2147483648`, matching 32-bit two's-complement arithmetic.
 Both `u32` and `i32` also support the equivalent in-place multiplication `*=`.
-Binary `%` and in-place `%=` are available for both types and also store `0` when
-the divisor is zero. Signed remainder follows the dividend sign, consistent with
+Binary `%` and in-place `%=` are available for both types with the same constant/runtime-zero
+policy. Signed remainder follows the dividend sign, consistent with
 division that truncates toward zero (`-100 % 7` is `-2`).
 
 Fixed-size `u32` and `i32` arrays use four little-endian bytes per element and accept

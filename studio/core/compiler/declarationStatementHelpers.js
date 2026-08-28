@@ -32,7 +32,8 @@ export function handleDeclarationStatement({
   parseFixedPointLiteral,
   parseFixedPointLiteral32,
   isSupportedRecordTypeName,
-  getRecordTypeInfo
+  getRecordTypeInfo,
+  findConstantZeroDivisor
 }) {
   // Legacy u32 verbs are operations, not declarations; let their compatibility handler process them.
   if (/^u32\s+(?:zero|copy|add|inc|sub)\b/i.test(line)) return { handled: false };
@@ -153,6 +154,8 @@ export function handleDeclarationStatement({
   if (decl) {
     const name = decl[1];
     const expr = normalizeExpression(decl[2].trim());
+    const zeroDivisorOp = findConstantZeroDivisor?.(expr);
+    if (zeroDivisorOp) return { handled: true, ok: false, log: `Constant ${zeroDivisorOp === "%" ? "modulo" : "division"} by zero: ${rawLine}` };
     const nameError = validateGlobalUserName(name, "Constant", rawLine);
     if (nameError) return { handled: true, ok: false, log: nameError };
     if (!isSafeExpression(expr)) return { handled: true, ok: false, log: `Invalid constant declaration: ${rawLine}` };
@@ -184,6 +187,8 @@ export function handleDeclarationStatement({
     const isLocalDecl = scopeKeyword === "local" || inferredLocal;
     for (const declEntry of declarationsForLine) {
       const name = declEntry.name;
+      const zeroDivisorOp = findConstantZeroDivisor?.(declEntry.initial);
+      if (zeroDivisorOp) return { handled: true, ok: false, log: `Constant ${zeroDivisorOp === "%" ? "modulo" : "division"} by zero: ${rawLine}` };
       if (declEntry.lengthToken) {
         return { handled: true, ok: false, log: `BCD variables do not support array lengths: ${rawLine}` };
       }
@@ -253,6 +258,8 @@ export function handleDeclarationStatement({
       const name = declEntry.name;
       const lengthToken = declEntry.lengthToken;
       const initial = declEntry.initial;
+      const zeroDivisorOp = findConstantZeroDivisor?.(initial);
+      if (zeroDivisorOp) return { handled: true, ok: false, log: `Constant ${zeroDivisorOp === "%" ? "modulo" : "division"} by zero: ${rawLine}` };
       const globalVarNameError = validateGlobalUserName(name, "Variable", rawLine);
       if (globalVarNameError) return { handled: true, ok: false, log: globalVarNameError };
       if (!isZeroInitializer(initial)) {
@@ -325,6 +332,8 @@ export function handleDeclarationStatement({
       const name = declEntry.name;
       const lengthToken = declEntry.lengthToken;
       const initial = declEntry.initial;
+      const zeroDivisorOp = findConstantZeroDivisor?.(initial);
+      if (zeroDivisorOp) return { handled: true, ok: false, log: `Constant ${zeroDivisorOp === "%" ? "modulo" : "division"} by zero: ${rawLine}` };
       if (isLocalDecl) {
         if (!state.currentProc) {
           return { handled: true, ok: false, log: `local declaration requires a sub or function scope: ${rawLine}` };

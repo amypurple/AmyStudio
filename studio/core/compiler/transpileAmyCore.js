@@ -2734,6 +2734,24 @@ export function transpileAmyCore(sourceText, deps) {
     return label;
   }
 
+  function findConstantZeroDivisor(expr) {
+    const ast = parseExpressionAst(normalizeExpression(String(expr || "").trim()));
+    if (!ast) return null;
+    const visit = (node) => {
+      if (!node || typeof node !== "object") return null;
+      if (node.kind === "binary" && (node.op === "/" || node.op === "%")) {
+        const divisor = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.right));
+        if (divisor === 0) return node.op;
+      }
+      return visit(node.left)
+        || visit(node.right)
+        || (Array.isArray(node.args) ? node.args.map(visit).find(Boolean) : null)
+        || visit(node.index)
+        || visit(node.object);
+    };
+    return visit(ast);
+  }
+
   function emitOverlayFieldAliases(overlayName, partName, recordInfo, baseAddress, metadataFields, path = [], baseOffset = 0) {
     for (const field of recordInfo.orderedFields) {
       const fieldPath = [...path, field.name];
@@ -3792,7 +3810,8 @@ export function transpileAmyCore(sourceText, deps) {
         parseFixedPointLiteral,
         parseFixedPointLiteral32,
         isSupportedRecordTypeName,
-        getRecordTypeInfo
+        getRecordTypeInfo,
+        findConstantZeroDivisor
       });
       if (declarationStmt.handled) {
         if (!declarationStmt.ok) return { ok: false, asmBody: "", log: declarationStmt.log };
@@ -4170,6 +4189,12 @@ export function transpileAmyCore(sourceText, deps) {
       && (formulaAssignment.op === "<<=" || formulaAssignment.op === ">>=")
       && !["int16", "u32", "i32"].includes(resolveValueType(formulaAssignment.target));
     if (formulaAssignment && !formulaShiftHandledLater) {
+      const zeroDivisorOp = (formulaAssignment.op === "/=" || formulaAssignment.op === "%=")
+        ? (tryEvaluateCompileTimeNumericExpression(formulaAssignment.value) === 0 ? formulaAssignment.op[0] : null)
+        : findConstantZeroDivisor(formulaAssignment.value);
+      if (zeroDivisorOp) {
+        return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: constant ${zeroDivisorOp === "%" ? "modulo" : "division"} by zero: ${rawLine}` };
+      }
       const wordTableAssignment = String(formulaAssignment.value || "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/);
       if (wordTableAssignment) {
         const table = getWordTableInfo(wordTableAssignment[1]);
