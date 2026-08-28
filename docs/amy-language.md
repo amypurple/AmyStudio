@@ -370,6 +370,18 @@ between two aliases of the same static overlay address is removed as a no-op. Di
 record types, invalid or wider indexes, and pointer-backed `with` aliases are rejected
 rather than guessed.
 
+Whole records of the same declared type can also be compared for byte-for-byte equality:
+
+```basic
+if Current = Saved then Match = 1
+if Actors[I] <> Template then Changed += 1
+```
+
+`=` and `<>` emit an inline counted byte comparison with no helper RAM. The same static,
+nested, overlay, and indexed operands accepted by whole-record assignment are supported,
+and each runtime index is evaluated once. Ordering comparisons such as `<` or `>` and
+different record types are rejected because records have no implicit ordering semantics.
+
 Indexed paths may combine a record-array index with a scalar array-field index, as in
 `Container.Items[I].Flags[J]`. Each index contributes its own checked byte stride to the
 address calculation. Constant indices are range-checked; runtime indices must be byte
@@ -421,6 +433,7 @@ Current record limits:
 - no local record variables yet
 - no recursive or multidimensional record-array fields yet
 - no whole-record assignment through pointer-backed aliases
+- no whole-record comparison through pointer-backed aliases
 - no arrays of BCD fields yet; BCD fields are scalar
 - record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
 

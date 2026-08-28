@@ -3112,7 +3112,8 @@ export function transpileAmyCore(sourceText, deps) {
     formatUnknownJumpTargetLog,
     emitComputedCompareGoto: (...args) => emitComputedCompareGoto(...args),
     getTileTypeInfo,
-    getHitboxInfo
+    getHitboxInfo,
+    resolveWholeRecord: resolveStaticWholeRecord
   }));
   ({
     emitLoadArrayAddressIntoHL,

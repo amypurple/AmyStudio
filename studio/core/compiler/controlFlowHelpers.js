@@ -44,7 +44,8 @@ export function createControlFlowHelpers(ctx) {
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
     getTileTypeInfo,
-    getHitboxInfo
+    getHitboxInfo,
+    resolveWholeRecord
   } = ctx;
 
   function invertOperator(operator) {
@@ -328,6 +329,39 @@ export function createControlFlowHelpers(ctx) {
     const asmLabel = resolveJumpTarget(label);
     const effectiveOperator = branchWhenFalse ? invertOperator(operator) : operator;
     if (!effectiveOperator) return null;
+    const leftRecord = resolveWholeRecord?.(leftToken);
+    const rightRecord = resolveWholeRecord?.(rightToken);
+    if (leftRecord || rightRecord) {
+      if (!leftRecord || !rightRecord || (effectiveOperator !== "==" && effectiveOperator !== "!=")
+        || String(leftRecord.recordTypeName).toLowerCase() !== String(rightRecord.recordTypeName).toLowerCase()
+        || leftRecord.byteSize !== rightRecord.byteSize) return null;
+      const loadLeft = leftRecord.loadLines || [`    ld hl,${leftRecord.address}`];
+      const loadRight = rightRecord.loadLines || [`    ld hl,${rightRecord.address}`];
+      const loopLabel = makeGeneratedLabel("RecordCompareLoop");
+      const mismatchLabel = makeGeneratedLabel("RecordCompareMismatch");
+      const doneLabel = makeGeneratedLabel("RecordCompareDone");
+      const lines = [
+        ...loadLeft,
+        "    push hl",
+        ...loadRight,
+        "    ex de,hl",
+        "    pop hl",
+        `    ld bc,${leftRecord.byteSize}`,
+        `${loopLabel}:`,
+        "    ld a,(de)",
+        "    cp (hl)",
+        `    jp nz,${mismatchLabel}`,
+        "    inc hl",
+        "    inc de",
+        "    dec bc",
+        "    ld a,b",
+        "    or c",
+        `    jp nz,${loopLabel}`
+      ];
+      if (effectiveOperator === "==") lines.push(`    jp ${asmLabel}`, `${mismatchLabel}:`);
+      else lines.push(`    jp ${doneLabel}`, `${mismatchLabel}:`, `    jp ${asmLabel}`, `${doneLabel}:`);
+      return lines;
+    }
     const initialLeftDeclared = resolveDeclaredValueType(leftToken);
     const initialRightDeclared = resolveDeclaredValueType(rightToken);
     leftToken = coerceSimpleLiteralForFixedCompare(leftToken, initialRightDeclared);
