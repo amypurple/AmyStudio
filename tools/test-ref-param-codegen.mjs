@@ -589,9 +589,10 @@ check("wide array lengths remain compile-time constants", () => {
 });
 
 const fixedArrayElementStore = transpileAmy("fixed Values[4] = 1.5\nValues[1] = 1.5\nloop forever\n");
-check("fixed array element stores have a typed rejection", () => {
-  assert.equal(fixedArrayElementStore.ok, false);
-  assert.match(fixedArrayElementStore.log, /fixed array element assignment is not supported yet/i);
+check("fixed array element stores compile", () => {
+  assert.equal(fixedArrayElementStore.ok, true, fixedArrayElementStore.log || "fixed array element store transpile failed");
+  assert.match(fixedArrayElementStore.asmBody, /ld hl,\$0180/i);
+  assert.match(fixedArrayElementStore.asmBody, /ld hl,\$7022\s+pop de\s+ld \(hl\),e\s+inc hl\s+ld \(hl\),d/i);
 });
 
 const BIOS_STUBS = "TURN_OFF_SOUND EQU $1FD6\nMODE_1 EQU $1F85\n";

@@ -59,7 +59,8 @@ assert.equal(tokenizeAmyLine("Player.Color = 1").tokens.find((token) => token.te
 
 const identifierLegalWords = [
   "Count", "Str", "Whole", "Peek", "Line", "Circle", "Plot", "Pset", "Set", "From",
-  "By", "At", "With", "Between", "Pause", "Repeat", "Ref", "Raw", "Forever"
+  "By", "At", "With", "Between", "Pause", "Repeat", "Ref", "Raw", "Forever", "Into",
+  "Cursor", "Sleep"
 ];
 for (const name of identifierLegalWords) {
   const declaration = tokenizeAmyLine(`u8 ${name} = 0`).tokens.find((token) => token.text === name);
@@ -95,7 +96,8 @@ for (const [source, words, type] of [
   ["end picture", ["end", "picture"], "keyword"],
   ["end sub", ["end", "sub"], "keyword"],
   ["state machine BossBehavior:", ["state", "machine"], "keyword"],
-  ["end state machine", ["end", "state", "machine"], "keyword"]
+  ["end state machine", ["end", "state", "machine"], "keyword"],
+  ["end overlay", ["end", "overlay"], "keyword"]
 ]) {
   const tokens = tokenizeAmyLine(source).tokens;
   for (const word of words) assert.equal(tokens.find((token) => token.text === word)?.type, type, source + ": " + word);
@@ -103,6 +105,16 @@ for (const [source, words, type] of [
 assert.equal(tokenizeAmyLine("dispatch BossState using BossBehavior").tokens.find((token) => token.text === "dispatch")?.type, "keyword");
 assert.equal(tokenizeAmyLine("dispatch BossState using BossBehavior").tokens.find((token) => token.text === "using")?.type, "keyword");
 assert.equal(tokenizeAmyLine("Sleeping calls BossSleep").tokens.find((token) => token.text === "calls")?.type, "keyword");
+assert.equal(tokenizeAmyLine("overlay SceneRam").tokens.find((token) => token.text === "overlay")?.type, "keyword");
+const menuTokens = tokenizeAmyLine("choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds").tokens;
+for (const word of ["choose", "menu", "into", "cursor", "at", "step", "sleep", "after"]) {
+  assert.equal(menuTokens.find((token) => token.text === word)?.type, "keyword", `choose menu: ${word}`);
+}
+assert.equal(menuTokens.find((token) => token.text === "seconds")?.type, "unit", "choose menu: seconds");
+const spriteMenuTokens = tokenizeAmyLine("choose menu 1 to 4 into Choice cursor sprite 0 at 48,71 step 16").tokens;
+for (const word of ["into", "cursor", "at", "step"]) {
+  assert.equal(spriteMenuTokens.find((token) => token.text === word)?.type, "keyword", `sprite menu: ${word}`);
+}
 for (const mode of ["8x8", "16x16"]) {
   const tokens = tokenizeAmyLine("sprites " + mode).tokens;
   assert.equal(tokens.find((token) => token.text === "sprites")?.type, "vdp");

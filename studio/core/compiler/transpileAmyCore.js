@@ -306,6 +306,59 @@ export function transpileAmyCore(sourceText, deps) {
     if (unclosed) return { ok: false, log: `with ${unclosed.name} is missing end with` };
     return { ok: true, lines: result };
   }
+
+  function validateRecordAliasControlFlow(rawLines) {
+    const blockStack = [];
+    const labels = new Map();
+    const transfers = [];
+    let nextRuntimeBlockId = 1;
+    const activeRuntimePath = () => blockStack.filter((entry) => entry.kind === "runtime").map((entry) => entry.id);
+    const addTransfer = (target, line) => transfers.push({ target: target.toLowerCase(), line, path: activeRuntimePath() });
+
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const stripped = stripAmyInlineComment(rawLines[index]).trim();
+      if (!stripped) continue;
+      if (/^end\s+with$/i.test(stripped)) {
+        blockStack.pop();
+        continue;
+      }
+
+      const label = stripped.match(/^(?:label\s+([A-Za-z_][A-Za-z0-9_]*):?|([A-Za-z_][A-Za-z0-9_]*):)$/i);
+      const labelName = label?.[1] || label?.[2];
+      if (labelName) labels.set(labelName.toLowerCase(), { line: index + 1, path: activeRuntimePath() });
+
+      for (const match of stripped.matchAll(/\b(?:goto|gosub)\s+([A-Za-z_][A-Za-z0-9_]*)/gi)) {
+        addTransfer(match[1], index + 1);
+      }
+      const indexedDispatch = stripped.match(/^on\s+.+?\s+go(?:to|sub)\s+(.+)$/i);
+      if (indexedDispatch) {
+        for (const target of indexedDispatch[1].split(",")) {
+          const name = target.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)$/)?.[1];
+          if (name) addTransfer(name, index + 1);
+        }
+      }
+
+      if (/^with\b/i.test(stripped)) {
+        const runtime = /^with(?:\s+each)?\s+[A-Za-z_][A-Za-z0-9_]*\s*\[/i.test(stripped);
+        blockStack.push(runtime
+          ? { kind: "runtime", id: nextRuntimeBlockId++, line: index + 1 }
+          : { kind: "lexical" });
+      }
+    }
+
+    for (const transfer of transfers) {
+      const target = labels.get(transfer.target);
+      if (!target || target.path.length === 0) continue;
+      const entersInactiveAlias = target.path.some((id, index) => transfer.path[index] !== id);
+      if (entersInactiveAlias) {
+        return {
+          ok: false,
+          log: `Line ${transfer.line}: jump to '${transfer.target}' enters a record alias block before its pointer is initialized (target line ${target.line})`
+        };
+      }
+    }
+    return { ok: true };
+  }
   function parseSceneDeclarations(rawLines) {
     const lines = [...rawLines];
     const scenes = [];
@@ -771,6 +824,8 @@ export function transpileAmyCore(sourceText, deps) {
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
+  const recordAliasControlFlow = validateRecordAliasControlFlow(conditionalPrepass.lines);
+  if (!recordAliasControlFlow.ok) return { ok: false, asmBody: "", log: recordAliasControlFlow.log };
   const recordAliasLowering = lowerRecordScopeAliases(conditionalPrepass.lines);
   if (!recordAliasLowering.ok) return { ok: false, asmBody: "", log: recordAliasLowering.log };
   const debugScenePoison = conditionalPrepass.definedSymbols.has("amy_debug_scene_poison");
@@ -1872,7 +1927,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parsePictureDefinitions() {
-    const codecRe = "(zx0|zx7|dan1|dan2|dan3|mdkrle|splitrle|pletter|lzf|bitbuster|nibble|rle|raw)";
+    const codecRe = "(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
@@ -4310,11 +4365,6 @@ export function transpileAmyCore(sourceText, deps) {
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
       if (!assignmentCode) {
-        const targetArrayRef = parseArrayRef(formulaAssignment.target);
-        const targetArrayInfo = targetArrayRef ? getRuntimeInfo(targetArrayRef.name) : null;
-        if (targetArrayInfo?.kind === "array" && ["fix8_8", "ufix8_8"].includes(targetArrayInfo.declaredType)) {
-          return { ok: false, asmBody: "", log: `fixed array element assignment is not supported yet: ${rawLine}` };
-        }
         return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };
       }
       body.push(...assignmentCode);

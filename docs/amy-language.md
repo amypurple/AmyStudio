@@ -400,6 +400,10 @@ end with
 
 `Ghosts[G]` is evaluated once when entering the block. `Ghost` is a reference to the original element, never a copy, so writes immediately affect `Ghosts[G]`. Amy stores one hidden two-byte pointer and addresses fields with constant offsets. Nested aliases are allowed when their names differ, and an alias can be passed to a compatible `ref RecordType` parameter. The current safe implementation accepts `with` in `Start` and in routines proven non-reentrant; recursive and NMI-reachable routines are rejected until activation-local alias pointers are implemented.
 
+Labels and jumps inside the same record-array alias block are valid, and code may jump out of
+the block. A jump from outside into the block is rejected because it would bypass initialization
+of the hidden alias pointer.
+
 An overlay part can use the same readable block form as a pointer-free lexical alias:
 
 ```basic
@@ -677,6 +681,8 @@ Current implementation status:
 - proven non-reentrant routines whose parameters and locals are scalar `u8`/`i8`/`u16`/`i16` may use the frameless static ABI: callers and callees use private static cells whose exact internal symbols are non-normative
 - direct or mutual recursion, NMI reachability, `ref`, aggregate/unsupported locals, unresolved ASM transfers, and non-data project includes conservatively retain the IX stack ABI
 - readable ASM project includes preserve frameless optimization only when every substantive line is provably a label, constant, or data directive; unknown syntax fails closed
+- handwritten ASM transfers to parameterized Amy routines force those targets to retain the
+  stack ABI; conditional byte and direct word calls are covered by five-profile ROM tests
 
 Accepted local scalar declarations: `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `bool`, `fixed`, `ufixed`.
 Local `u8` and `u16` arrays are supported.
@@ -686,8 +692,15 @@ Local `u32`/`i32` arrays are supported.
 Important current nuance:
 - stack-friendly routine parameters are implemented
 - recursion is now a valid design target
-- local `u32` / `i32` scalar operations are not yet as broad as local byte/word/fixed-point operations
-- local `u32` / `i32` arrays are the current practical stack-based path for temporary 32-bit storage
+- local `u32` / `i32` scalars and arrays support arithmetic, bitwise operations, shifts,
+  assignments, arguments, and returns using stack-backed storage when required
+- `ref u32` / `ref i32` parameters remain unsupported
+
+Global and local `fixed`/`ufixed` arrays support indexed assignment and compound arithmetic.
+The same indexed operations work for fixed-array fields in records and RAM overlays.
+Natural `fixed`/`ufixed` multiplication and division expressions are also valid, for
+example `Result = Left * Right` and `Result = Left / Right`. Unsigned 8.8 expressions
+retain the full `0.0 .. 255.99609375` domain instead of using signed arithmetic.
 
 Local-frame contract for inline ASM:
 - inside a routine with locals or parameters, treat `IX` as the frame pointer
@@ -847,6 +860,11 @@ end sub
 exit sub
 ```
 
+Parameters are passed by value unless prefixed with `ref`. Value parameters support
+`u8`, `i8`, `u16`, `i16`, `fixed`, and `ufixed`; literal and computed arguments are copied into
+the routine's ABI storage before the call. Both frameless static and IX-stack calls are
+five-profile ROM-tested.
+
 Behavior:
 - `end sub` closes the current subroutine explicitly
 - if a `sub` reaches another `sub` before `end sub`, execution falls through into the next subroutine body
@@ -982,6 +1000,17 @@ Current style rule:
 `return` accepts an expression, not only a plain variable or literal. Matching `u32` and `i32`
 binary expressions are supported in function returns and function arguments, including recursive
 calls; their intermediate values are preserved across nested calls.
+
+`fixed` and `ufixed` functions preserve their declared 8.8 domain in both normal and inline
+returns. Multiplication and division expressions may be returned directly, for example
+`return Value / 2.0`; callers may immediately use that result in another fixed expression.
+Computed fixed-point arguments use the declared parameter domain as well, including recursive
+calls. Literal arguments are scaled as 8.8 values, so `Move(1.5)` passes raw `$0180`, not
+the unscaled integer `$0001`.
+
+Recursion uses the ColecoVision RAM stack and has no runtime overflow guard. Wide parameters and
+locals consume more stack per call, so keep recursion shallow or use an iterative loop when the
+maximum depth is not tightly bounded.
 
 `fp5` functions use a dedicated five-byte return cell that is allocated only when
 the project declares an `fp5` return. The caller copies the result immediately, so
@@ -1641,13 +1670,12 @@ Scores[Player + 1] = Scores[Player] - 10
 Constant indexes are bounds-checked while transpiling. Runtime indexes remain the
 programmer's responsibility and must stay within the declared array.
 
-`fixed`/`ufixed` arrays currently support declaration, whole-array initialization, and
-element reads. Element assignment remains intentionally rejected with a typed diagnostic;
-use scalar fixed variables or replace the whole initialized table when mutation is required.
+`fixed`/`ufixed` arrays support declaration, whole-array initialization, element reads,
+indexed assignment, and compound arithmetic. This includes global and local arrays plus
+fixed-array fields in records and RAM overlays.
 
-Open caution:
-- `Amy Math Demo` still has an open `u32` regression in its validation chain
-- do not treat that demo as the final authority on `u32` correctness until that issue is closed
+`Amy Math Demo` is ROM-tested under all five optimization profiles. Its `u32` chain,
+integer square roots, and packed-BCD result are verified directly in emulated RAM.
 
 ---
 
@@ -1953,7 +1981,6 @@ decompress Asset to vram.pattern        ' asset codec inferred when declared wit
 decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name
-decompress splitrle Table to vram.name
 decompress pletter Asset  to vram.name
 decompress dan1  Asset   to vram.pattern
 decompress dan2  Asset   to vram.pattern
@@ -1968,12 +1995,6 @@ copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
-
-`splitrle` is a fast RLE format recovered from Ken Uston's Blackjack/Poker. It
-stores packet controls separately from literal/repeated payload bytes. Amy files
-add a two-byte relative payload offset so compressed assets remain relocatable.
-Use `.splitrle` files or `asset ... codec splitrle`; unlike `rle`, this is not an
-alias for `mdkrle`.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old
 lib4ksa masked VRAM upload helper. Each byte written is `(source_byte & M) xor X`.

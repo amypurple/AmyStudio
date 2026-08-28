@@ -107,7 +107,33 @@ with Actors[I] as Actor
 loop forever`, false);
   assert.match(missing, /missing end with/i, "unclosed alias should identify the missing terminator");
 
-  console.log("Record alias codegen safety: PASS (valid, return, recursive, NMI, unclosed)");
+  const unsafeEntry = compile("record-alias-unsafe-entry", `${declarations}
+goto AliasBody
+with Actors[I] as Actor
+AliasBody:
+  Actor.X = 7
+end with
+loop forever`, false);
+  assert.match(unsafeEntry, /enters a record alias block before its pointer is initialized/i,
+    "jumping into an alias block must fail closed");
+
+  compile("record-alias-internal-jump", `${declarations}
+with Actors[I] as Actor
+  goto AliasBody
+AliasBody:
+  Actor.X = 7
+end with
+loop forever`);
+
+  compile("record-alias-exit-jump", `${declarations}
+with Actors[I] as Actor
+  goto AliasDone
+  Actor.X = 7
+end with
+AliasDone:
+loop forever`);
+
+  console.log("Record alias codegen safety: PASS (valid, return, recursion, NMI, lexical control flow)");
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

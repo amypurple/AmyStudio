@@ -137,7 +137,7 @@ export function handleRoutineStatement({
     if (returnType === "int8") {
       returnLines = emitLoadInt8Into("a", valueToken);
     } else if (returnType === "int16") {
-      returnLines = emitLoadInt16IntoHL(valueToken);
+      returnLines = emitLoadInt16IntoHL(valueToken, currentFunction.declaredType);
     } else if (returnType === "u32" || returnType === "i32") {
       ensureCompareScratch32();
       returnLines = emitStoreWideExpression(valueToken, "AMY_CMP_LEFT32", returnType)

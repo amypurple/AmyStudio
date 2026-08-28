@@ -297,7 +297,23 @@ export function createExpressionComputeHelpers({
     const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
     const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
     if (leftType?.runtimeType !== "int16" || rightType?.runtimeType !== "int16") return null;
-    if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType) || isAnyFixedDeclaredType(preferredDeclaredType)) return null;
+    const fixedType = isAnyFixedDeclaredType(preferredDeclaredType)
+      ? normalizeDeclaredType(preferredDeclaredType)
+      : null;
+    if (fixedType) {
+      const loadLeft = emitLoadInt16AstIntoHL(node.left, fixedType);
+      const loadRight = emitLoadInt16AstIntoHL(node.right, fixedType);
+      if (!loadLeft || !loadRight) return null;
+      return [
+        ...loadLeft,
+        "    push hl",
+        ...loadRight,
+        "    ex de,hl",
+        "    pop hl",
+        `    call ${fixedType === "ufix8_8" ? "AMY_UFX8_8_MUL" : "AMY_FX8_8_MUL"}`
+      ];
+    }
+    if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType)) return null;
     const loadLeft = emitLoadInt16AstIntoHL(node.left, preferredDeclaredType);
     const loadRight = emitLoadInt16AstIntoHL(node.right, preferredDeclaredType);
     if (!loadLeft || !loadRight) return null;
@@ -326,7 +342,23 @@ export function createExpressionComputeHelpers({
     const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
     const rightType = resolveExpressionAstComputationType(node.right, preferredDeclaredType);
     if (leftType?.runtimeType !== "int16" || rightType?.runtimeType !== "int16") return null;
-    if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType) || isAnyFixedDeclaredType(preferredDeclaredType)) return null;
+    const fixedType = isAnyFixedDeclaredType(preferredDeclaredType)
+      ? normalizeDeclaredType(preferredDeclaredType)
+      : null;
+    if (fixedType) {
+      const loadLeft = emitLoadInt16AstIntoHL(node.left, fixedType);
+      const loadRight = emitLoadInt16AstIntoHL(node.right, fixedType);
+      if (!loadLeft || !loadRight) return null;
+      return [
+        ...loadLeft,
+        "    push hl",
+        ...loadRight,
+        "    ex de,hl",
+        "    pop hl",
+        `    call ${fixedType === "ufix8_8" ? "AMY_UFX8_8_DIV" : "AMY_FX8_8_DIV"}`
+      ];
+    }
+    if (isAnyFixedDeclaredType(leftType.declaredType) || isAnyFixedDeclaredType(rightType.declaredType)) return null;
     const signed = isSignedDeclaredType(leftType.declaredType) || isSignedDeclaredType(rightType.declaredType) || isSignedDeclaredType(preferredDeclaredType);
     const loadLeft = emitLoadInt16AstIntoHL(node.left, signed ? "i16" : "u16");
     const loadRight = emitLoadRoutineInputFromAst({
@@ -859,7 +891,7 @@ export function createExpressionComputeHelpers({
             if (constantValue & (1 << bit)) bits.push(bit);
           }
           if (bits.length > 6) return null;
-          const lines = ["    ld de,hl", "    ld hl,0"];
+          const lines = ["    ld d,h", "    ld e,l", "    ld hl,0"];
           let currentShift = 0;
           for (const bit of bits) {
             while (currentShift < bit) {

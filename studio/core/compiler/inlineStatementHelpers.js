@@ -64,7 +64,7 @@ export function createInlineStatementCompiler(ctx) {
         const valueToken = normalizeExpression(inlineReturnValue[1].trim());
         const returnType = currentFunction.returnType;
         if (returnType === "int8") inlineLines = emitLoadInt8Into("a", valueToken);
-        else if (returnType === "int16") inlineLines = emitLoadInt16IntoHL(valueToken);
+        else if (returnType === "int16") inlineLines = emitLoadInt16IntoHL(valueToken, currentFunction.declaredType);
         else if (returnType === "u32" || returnType === "i32") {
           ensureCompareScratch32();
           inlineLines = emitStoreWideExpression(valueToken, "AMY_CMP_LEFT32", returnType)

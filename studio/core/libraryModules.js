@@ -16,6 +16,8 @@ const splitLibraryCatalog = {
     { path: "src/alexis_lib/coleco_math_fx.asm", symbols: ["AMY_FX8_8_ADD", "AMY_FX8_8_SUB"] },
     { path: "src/alexis_lib/coleco_math_fx_mul.asm", symbols: ["AMY_FX8_8_MUL"], deps: ["src/alexis_lib/coleco_math_fx16_mul_helpers.asm"] },
     { path: "src/alexis_lib/coleco_math_fx_div.asm", symbols: ["AMY_FX8_8_DIV"], deps: ["src/alexis_lib/coleco_math_u32_div.asm"] },
+    { path: "src/alexis_lib/coleco_math_ufx_mul.asm", symbols: ["AMY_UFX8_8_MUL"], deps: ["src/alexis_lib/coleco_math_fx16_mul_helpers.asm"] },
+    { path: "src/alexis_lib/coleco_math_ufx_div.asm", symbols: ["AMY_UFX8_8_DIV"], deps: ["src/alexis_lib/coleco_math_u32_div.asm"] },
     {
       path: "src/alexis_lib/coleco_math_fx16_core.asm",
       symbols: ["AMY_FX16_16_ADD", "AMY_FX16_16_SUB", "AMY_FX16_16_NEG", "AMY_FX16_16_ABS"],

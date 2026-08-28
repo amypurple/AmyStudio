@@ -1,3 +1,21 @@
+## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
+
+- Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
+- Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.
+- Added indexed assignment and compound arithmetic for global, local, record, and overlay `fixed`/`ufixed` arrays.
+- Fixed `ufixed` multiplication and division above the signed 8.8 range by using dedicated unsigned runtime paths.
+- Added natural `fixed`/`ufixed` multiplication and division expressions such as `Result = Left * Right`, verified for signed and unsigned boundaries under all optimization profiles.
+- Corrected the fixed 8.8 helper ABI metadata so optimized builds preserve the right operand in `DE`.
+- Preserved `fixed`/`ufixed` semantics in normal and inline function-return expressions, including nested calls and array operands.
+- Converted the historical `Amy Math Demo` warning into a five-profile ROM self-test covering its `u32` chain, square roots, and packed-BCD result.
+- Verified full local `u32`/`i32` arithmetic, modulo, bitwise, shift, assignment, argument, and return coverage across all optimization profiles; removed an obsolete documentation warning.
+- Preserved declared `fixed`/`ufixed` semantics for computed function arguments, including recursive calls.
+- Added five-profile ROM coverage for literal `fixed`/`ufixed` arguments to functions and subs, including values above the signed range.
+- Fixed multiplication by non-power-of-two constants emitting the invalid Z80 instruction `ld de,hl`; fixed returns such as `return Value * 3.0` and `* 10.0` now assemble and execute correctly.
+- Added five-profile runtime verification for handwritten ASM entering parameterized Amy `u8` and `u16` functions while the conservative IX-stack ABI fence remains active.
+- Added fail-closed control-flow validation for pointer-backed `with` aliases: internal branches and exits remain valid, while jumps entering an uninitialized alias block are rejected.
+- Added five-profile runtime coverage for value-parameter `sub` calls using `u8`, `i8`, `u16`, `i16`, `fixed`, and `ufixed`, under both static and IX-stack ABIs and from an explicit `sub start`.
+
 ## 2026-08-27 - Faster compilation and compact cursor menus
 
 - Added computed `u32`/`i32` function arguments and return values, including inline returns and recursive calls, with five-profile ROM verification.
@@ -5733,8 +5751,3 @@ Why this is still `v2.1` and not `v2.2`:
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
 - ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.
-# 2026-08-25 - Split RLE recovered from Blackjack/Poker
-
-- Recovered the distinct two-stream RLE algorithm used by Ken Uston's Blackjack/Poker at ROM routine `$BA53`.
-- Added the relocatable `splitrle` JavaScript codec, 50-byte Z80 VRAM decompressor, compiler syntax, asset handling, autocomplete, previews, and picture/tile compression comparisons.
-- Added codec roundtrip/codegen tests and extended the Warrior benchmark. Split RLE is an optional measured alternative, not a replacement for MDKRLE.

@@ -266,6 +266,23 @@ export function createRuntimeValueHelpers({
   }
 
   function emitStoreImmediateBytes(name, bytes) {
+    const arrayRef = parseArrayRef(name);
+    if (arrayRef) {
+      const info = getRuntimeInfo(arrayRef.name);
+      if (!info || info.kind !== "array" || runtimeTypeSize(info.elementType) !== bytes.length) return null;
+      if (bytes.length === 2) {
+        const wordValue = ((bytes[1] & 0xFF) << 8) | (bytes[0] & 0xFF);
+        const storeTarget = emitStoreInt16FromHL(name);
+        if (!storeTarget) return null;
+        return [`    ld hl,$${wordValue.toString(16).toUpperCase().padStart(4, "0")}`, ...storeTarget];
+      }
+      if (bytes.length === 1) {
+        const storeTarget = emitStoreInt8FromA(name);
+        if (!storeTarget) return null;
+        return [`    ld a,${formatHex8(bytes[0])}`, ...storeTarget];
+      }
+      return null;
+    }
     const recordField = parseRecordFieldRef(name);
     if (recordField) {
       if (recordField.fieldInfo.size !== bytes.length) return null;
@@ -873,7 +890,7 @@ export function createRuntimeValueHelpers({
       ];
     }
     if (type === "int16") {
-      const loadArg = emitLoadInt16IntoHL(token);
+      const loadArg = emitLoadInt16IntoHL(token, declaredType);
       if (!loadArg) return null;
       return [...loadArg, "    push hl"];
     }

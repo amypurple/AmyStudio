@@ -35,6 +35,8 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const usesFx      = /\bAMY_(?:FX8_8_ADD|FX8_8_SUB)\b/.test(asmBody);
   const usesFxMul   = /\bAMY_FX8_8_MUL\b/.test(asmBody);
   const usesFxDiv   = /\bAMY_FX8_8_DIV\b/.test(asmBody);
+  const usesUfxMul  = /\bAMY_UFX8_8_MUL\b/.test(asmBody);
+  const usesUfxDiv  = /\bAMY_UFX8_8_DIV\b/.test(asmBody);
   const usesFx16Core = /\bAMY_FX16_16_(?:ADD|SUB|NEG|ABS)\b/.test(asmBody);
   const usesFx16MulHelpers = /\b(?:AMY_U_MULT32|AMY_U64_ADD|AMY_U8_MUL16|AMY_U16_MUL32_TO_TMP)\b/.test(asmBody);
   const usesFx16Mult = /\bAMY_FX16_16_MULT\b/.test(asmBody);
@@ -83,7 +85,7 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   if (usesU32Add || usesFx16Core || usesFx16Mult || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_u32_add.asm");
   if (usesU32Mul) resolved.add("src/alexis_lib/coleco_math_u32_mul.asm");
   if (needsU32Sub || usesFx16Core || usesFormatFx16 || usesU32Div) resolved.add("src/alexis_lib/coleco_math_u32_sub.asm");
-  if (usesU32Div || usesFxDiv) resolved.add("src/alexis_lib/coleco_math_u32_div.asm");
+  if (usesU32Div || usesFxDiv || usesUfxDiv) resolved.add("src/alexis_lib/coleco_math_u32_div.asm");
   if (usesU16Div) resolved.add("src/alexis_lib/coleco_math_u16_div.asm");
   if (usesCompareSmall) resolved.add("src/alexis_lib/coleco_math_compare_small.asm");
   if (needsCompareU32 || usesFx16Div || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_compare_u32.asm");
@@ -91,6 +93,8 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   if (usesFx)           resolved.add("src/alexis_lib/coleco_math_fx.asm");
   if (usesFxMul)        resolved.add("src/alexis_lib/coleco_math_fx_mul.asm");
   if (usesFxDiv)        resolved.add("src/alexis_lib/coleco_math_fx_div.asm");
+  if (usesUfxMul)       resolved.add("src/alexis_lib/coleco_math_ufx_mul.asm");
+  if (usesUfxDiv)       resolved.add("src/alexis_lib/coleco_math_ufx_div.asm");
   if (usesFx16Core || usesFx16Mult || usesFx16Div || usesFx16Sqrt || usesFx16Random || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_fx16_core.asm");
   if (usesFx16MulHelpers || usesFx16Mult || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_fx16_mul_helpers.asm");
   if (usesFx16Mult) resolved.add("src/alexis_lib/coleco_math_fx16_mult.asm");

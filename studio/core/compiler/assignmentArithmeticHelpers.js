@@ -163,6 +163,51 @@ export function createAssignmentArithmeticHelpers({
     ];
   }
 
+  function stripBalancedOuterParentheses(token) {
+    let text = String(token || "").trim();
+    while (text.startsWith("(") && text.endsWith(")")) {
+      let depth = 0;
+      let wrapsWholeExpression = true;
+      for (let index = 0; index < text.length; index += 1) {
+        if (text[index] === "(") depth += 1;
+        else if (text[index] === ")") depth -= 1;
+        if (depth === 0 && index < text.length - 1) {
+          wrapsWholeExpression = false;
+          break;
+        }
+      }
+      if (!wrapsWholeExpression || depth !== 0) break;
+      text = text.slice(1, -1).trim();
+    }
+    return text;
+  }
+
+  function splitWideBinaryExpression(valueToken) {
+    const text = stripBalancedOuterParentheses(valueToken);
+    const candidates = [];
+    let depth = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === "(") {
+        depth += 1;
+        continue;
+      }
+      if (char === ")") {
+        depth -= 1;
+        continue;
+      }
+      if (depth !== 0 || !"+-*/%".includes(char)) continue;
+      if ((char === "+" || char === "-") && (index === 0 || "+-*/%(".includes(text[index - 1]))) continue;
+      candidates.push({ index, operator: char, precedence: char === "+" || char === "-" ? 1 : 2 });
+    }
+    if (!candidates.length || depth !== 0) return null;
+    const minimumPrecedence = Math.min(...candidates.map((candidate) => candidate.precedence));
+    const selected = candidates.filter((candidate) => candidate.precedence === minimumPrecedence).at(-1);
+    const left = text.slice(0, selected.index).trim();
+    const right = text.slice(selected.index + 1).trim();
+    return left && right ? { left, right, operator: selected.operator } : null;
+  }
+
   function emitNegateMemory32(baseLabel) {
     return [
       `    ld hl,${baseLabel}`,
@@ -660,7 +705,7 @@ export function createAssignmentArithmeticHelpers({
       "    ld d,b",
       "    ld e,c",
       "    pop hl",
-      "    call AMY_FX8_8_MUL",
+      `    call ${targetDeclared === "ufix8_8" ? "AMY_UFX8_8_MUL" : "AMY_FX8_8_MUL"}`,
       ...storeTarget
     ];
   }
@@ -678,7 +723,7 @@ export function createAssignmentArithmeticHelpers({
       "    ld d,b",
       "    ld e,c",
       "    pop hl",
-      "    call AMY_FX8_8_DIV",
+      `    call ${targetDeclared === "ufix8_8" ? "AMY_UFX8_8_DIV" : "AMY_FX8_8_DIV"}`,
       ...storeTarget
     ];
   }
@@ -890,14 +935,20 @@ export function createAssignmentArithmeticHelpers({
         ? numeric >= 0 && numeric <= 0xFFFFFFFF
         : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
     };
-    const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*\/%-])\s*(.+)$/);
+    const binary = splitWideBinaryExpression(valueToken);
     if (!binary) return null;
-    const left = binary[1].trim();
-    const right = binary[3].trim();
-    if (!isCompatibleOperand(left) || !isCompatibleOperand(right)) return null;
+    const left = stripBalancedOuterParentheses(binary.left);
+    const right = stripBalancedOuterParentheses(binary.right);
+    const leftIsExpression = !!splitWideBinaryExpression(left);
+    const rightIsExpression = !!splitWideBinaryExpression(right);
+    if ((!leftIsExpression && !isCompatibleOperand(left)) || (!rightIsExpression && !isCompatibleOperand(right))) return null;
     const scratch = ensureCompareScratch32();
-    const storeLeft = emitStoreExtended32(left, scratch.leftLabel);
-    const storeRight = emitStoreExtended32(right, scratch.rightLabel);
+    const storeLeft = leftIsExpression
+      ? emitStoreWideExpression(left, scratch.leftLabel, targetType)
+      : emitStoreExtended32(left, scratch.leftLabel, true, targetType);
+    const storeRight = rightIsExpression
+      ? emitStoreWideExpression(right, scratch.rightLabel, targetType)
+      : emitStoreExtended32(right, scratch.rightLabel, true, targetType);
     if (!storeLeft || !storeRight) return null;
     const rightClobbersLeft = storeRight.some((line) => String(line).includes(scratch.leftLabel));
     const preserveLeft = rightClobbersLeft ? [
@@ -922,10 +973,10 @@ export function createAssignmentArithmeticHelpers({
         ];
     const stagedLeft = [...storeLeft, ...preserveLeft];
     const stagedRight = [...storeRight, ...restoreLeft];
-    if (binary[2] === "/" && targetType === "i32") {
+    if (binary.operator === "/" && targetType === "i32") {
       return emitSignedDivStaged(stagedLeft, stagedRight, storeResult);
     }
-    if (binary[2] === "%") {
+    if (binary.operator === "%") {
       if (targetType === "i32") return emitSignedDivStaged(stagedLeft, stagedRight, storeResult, "remainder");
       return emitUnsignedModStaged(stagedLeft, stagedRight, storeResult);
     }
@@ -934,7 +985,7 @@ export function createAssignmentArithmeticHelpers({
       ...stagedRight,
       `    ld hl,${scratch.leftLabel}`,
       `    ld de,${scratch.rightLabel}`,
-      `    call ${binary[2] === "+" ? "AMY_U32_ADD" : binary[2] === "-" ? "AMY_U32_SUB" : binary[2] === "*" ? "AMY_U32_MUL" : "AMY_U32_DIV"}`,
+      `    call ${binary.operator === "+" ? "AMY_U32_ADD" : binary.operator === "-" ? "AMY_U32_SUB" : binary.operator === "*" ? "AMY_U32_MUL" : "AMY_U32_DIV"}`,
       ...storeResult
     ];
   }

@@ -33,14 +33,16 @@ const STATEMENT_KEYWORDS = new Set([
 
 const QUALIFIER_KEYWORDS = new Set([
   "after", "areas", "at", "between", "by", "calls", "count", "digits", "downto", "every",
-  "from", "mask", "mode", "raw", "ref", "repeat", "step", "to", "using", "width", "with"
+  "cursor", "from", "into", "mask", "mode", "raw", "ref", "repeat", "sleep", "step", "to",
+  "using", "width", "with"
 ]);
 
 const TIME_UNITS = new Set(["frame", "frames", "seconds", "tick", "ticks"]);
 
 const CONTEXTUAL_IDENTIFIERS = new Set([
-  "at", "between", "by", "circle", "count", "forever", "from", "line", "pause",
-  "peek", "plot", "pset", "raw", "ref", "repeat", "set", "str", "whole", "with"
+  "at", "between", "by", "circle", "count", "cursor", "forever", "from", "into", "line",
+  "pause", "peek", "plot", "pset", "raw", "ref", "repeat", "set", "sleep", "str", "whole",
+  "with"
 ]);
 
 const VDP_KEYWORDS = new Set([
@@ -181,10 +183,16 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
         || (lowerWord === "whole" && /^\s+[A-Za-z_(.$]/.test(nextSource));
       const qualifierPosition = !statementPosition && !declarationTarget && !assignmentTarget
         && significant.length > 0;
+      const chooseMenu = firstWord === "choose"
+        && significant.some((token) => token.text.toLowerCase() === "menu");
       const contextualQualifier = (
         (lowerWord === "count" && ["copy", "data", "fill", "merge", "put"].includes(firstWord))
         || (lowerWord === "at" && ["print", "put", "set"].includes(firstWord))
+        || (lowerWord === "at" && chooseMenu)
         || (lowerWord === "from" && ["asset", "copy", "load"].includes(firstWord))
+        || (lowerWord === "into" && firstWord === "choose")
+        || (lowerWord === "cursor" && chooseMenu)
+        || (lowerWord === "sleep" && ["choose", "pause"].includes(firstWord))
         || (lowerWord === "by" && ["bounce", "decay", "move"].includes(firstWord))
         || (lowerWord === "with" && ["call", "fill", "set"].includes(firstWord))
         || (lowerWord === "between" && ["bounce", "clamp"].includes(firstWord))
