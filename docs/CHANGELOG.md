@@ -1,5 +1,6 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Completed contextual highlighting for `count` across sprite, text-color, VRAM, array, pattern-transform, tile-row, and data commands.
 - Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
 - Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.
 - Added indexed assignment and compound arithmetic for global, local, record, and overlay `fixed`/`ufixed` arrays.

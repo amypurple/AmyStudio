@@ -73,7 +73,26 @@ for (const name of identifierLegalWords) {
 
 assert.equal(tokenizeAmyLine("peek(Address)").tokens[0].type, "builtin");
 assert.equal(tokenizeAmyLine("count(Actors)").tokens[0].type, "builtin");
-assert.equal(tokenizeAmyLine("copy Data count 8 to vram.name").tokens.find((token) => token.text === "count").type, "keyword");
+for (const source of [
+  "copy Data count 8 to vram.name",
+  "data Blank bytes $20 count 32",
+  "$20 count 32",
+  "define chars Digits at 48 count 10",
+  "fill $20 count 8 to vram.name",
+  "merge Pattern count 8 to vram.pattern mask $F0 xor $0F",
+  "put Row count 8 at 0,10",
+  "read vram vram.name count 64 into Buffer",
+  "reflect pattern 0 to 16 count 1 vertical",
+  "reverse array Board from 2 count 6",
+  "rotate pattern 17 to 18 count 1 90",
+  "set sprite count 1",
+  "set text colors cyan at 6 count 2",
+  "clear sprites from 4 count 4",
+  "update sprites from 0 count 4",
+  "RowBuffer = get count 8 at 0,10"
+]) {
+  assert.equal(tokenizeAmyLine(source).tokens.find((token) => token.text === "count")?.type, "keyword", source);
+}
 assert.equal(tokenizeAmyLine("backdrop sky blue").tokens[0].type, "keyword");
 assert.equal(tokenizeAmyLine("timer Blink every 5 ticks").tokens[0].type, "keyword");
 assert.equal(tokenizeAmyLine("timer Blink every 5 ticks").tokens.at(-1).type, "unit");

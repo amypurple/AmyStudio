@@ -185,8 +185,13 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
         && significant.length > 0;
       const chooseMenu = firstWord === "choose"
         && significant.some((token) => token.text.toLowerCase() === "menu");
+      const countQualifier = lowerWord === "count" && (
+        /^\s*(?:copy|data|define|fill|merge|put|read|reflect|reverse|rotate|set|clear|update)\b/i.test(line)
+        || /^\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*get\s+count\b/i.test(line)
+        || /^\s*(?:\$[0-9A-Fa-f]+|%[01]+|\d+|[A-Za-z_][A-Za-z0-9_]*)\s+count\s+/i.test(line)
+      );
       const contextualQualifier = (
-        (lowerWord === "count" && ["copy", "data", "fill", "merge", "put"].includes(firstWord))
+        countQualifier
         || (lowerWord === "at" && ["print", "put", "set"].includes(firstWord))
         || (lowerWord === "at" && chooseMenu)
         || (lowerWord === "from" && ["asset", "copy", "load"].includes(firstWord))
