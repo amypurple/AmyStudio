@@ -1397,6 +1397,7 @@ BCD notes:
 - BCD is a packed decimal score/timer type, not a general integer expression type
 - BCD subtraction underflow clamps to zero
 - BCD addition overflow is currently stored modulo the declared packed byte count; treat this as wrap/truncate behavior and choose enough digits for the maximum score
+- storage and ASCII formatting are ROM-tested for odd and even widths from 1 through 12 digits, including zero, maximum values, underflow, and overflow, in all five optimization profiles
 
 BCD canonical surface:
 
@@ -3305,6 +3306,7 @@ Current partial implementation note:
 - `Var = log(Value)` is a first-pass fp5 helper (production-grade)
 - `Var = exp(Value)` exists as an experimental path only — not release-grade
 - exact fp5 decimal print formatting currently requires `digits 16`; other fp5 `digits` widths are invalid
+- friendly `str$()` formatting of zero, positive fractions, and negative fractions is ROM-tested identically in all five optimization profiles
 - full fp5 expression-call forms such as `sin(x)` or general `a ^ b` are still not implemented
 
 All `... into Var` statement forms (`sqrt Value into Var`, `abs Value into Var`, etc.) were removed; use the expression-assignment forms above. See [amy-removed-forms.md](amy-removed-forms.md).
