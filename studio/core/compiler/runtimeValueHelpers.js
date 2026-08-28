@@ -42,6 +42,7 @@ export function createRuntimeValueHelpers({
   ensureCompareScratch32,
   ensureFp5ReturnScratch,
   emitStoreExtended32,
+  emitStoreWideExpression,
   emitStoreMemory32ToTarget,
   emitStoreInt16FromHL,
   runtimeTypeSize,
@@ -859,8 +860,9 @@ export function createRuntimeValueHelpers({
         return [...loadAddress, "    push hl"];
       }
       if (type === "u32" || type === "i32") {
-      ensureCompareScratch32();
-      const storeArg = emitStoreExtended32(token, "AMY_CMP_LEFT32");
+        ensureCompareScratch32();
+        const storeArg = emitStoreWideExpression(token, "AMY_CMP_LEFT32", type)
+          || emitStoreExtended32(token, "AMY_CMP_LEFT32", true, type);
         if (!storeArg) return null;
         return [
           ...storeArg,

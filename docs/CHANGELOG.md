@@ -1,5 +1,7 @@
 ## 2026-08-27 - Faster compilation and compact cursor menus
 
+- Added computed `u32`/`i32` function arguments and return values, including inline returns and recursive calls, with five-profile ROM verification.
+- Preserved wide-expression operands across nested function calls so shared 32-bit scratch storage cannot silently corrupt a result.
 - Fixed function-first projects so executable mainline code after a terminal `return Value` is preserved and global initializers are installed before finalization.
 - Added five-profile ROM coverage for signed and unsigned 8.8 boundaries, fixed arithmetic, mutual `u16` recursion, recursive `u32` parameters, and RAM guard bytes.
 - Added five-profile ROM coverage for packed BCD boundaries and ASCII formatting plus stable friendly `fp5` formatting of zero, positive, and negative values.

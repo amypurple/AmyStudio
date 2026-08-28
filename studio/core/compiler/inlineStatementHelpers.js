@@ -11,6 +11,7 @@ export function createInlineStatementCompiler(ctx) {
     emitLoadInt8Into,
     emitLoadInt16IntoHL,
     emitStoreExtended32,
+    emitStoreWideExpression,
     parseFormulaAssignment,
     emitFormulaAssignment,
     emitTextLiteral,
@@ -66,7 +67,8 @@ export function createInlineStatementCompiler(ctx) {
         else if (returnType === "int16") inlineLines = emitLoadInt16IntoHL(valueToken);
         else if (returnType === "u32" || returnType === "i32") {
           ensureCompareScratch32();
-          inlineLines = emitStoreExtended32(valueToken, "AMY_CMP_LEFT32");
+          inlineLines = emitStoreWideExpression(valueToken, "AMY_CMP_LEFT32", returnType)
+            || emitStoreExtended32(valueToken, "AMY_CMP_LEFT32", true, returnType);
         } else if (returnType === "fp5") {
           const returnLabel = ensureFp5ReturnScratch();
           const loadValue = emitLoadFp5SourceToFpa(valueToken, 1);

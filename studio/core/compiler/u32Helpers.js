@@ -13,6 +13,7 @@ export function createU32Helpers({
   emitStoreImmediate32,
   emitLoadInt8Into,
   emitLoadInt16IntoHL,
+  emitStoreWideExpression,
   emitStoreComputedToScratch32,
   makeGeneratedLabel,
   reserveRam,
@@ -178,7 +179,7 @@ export function createU32Helpers({
     return { lines: [], pointer: valueInfo.asmName };
   }
 
-  function emitStoreExtended32(token, baseLabel, allowSignExtend = true) {
+  function emitStoreExtended32(token, baseLabel, allowSignExtend = true, expectedType = null) {
     const fieldRef = parseRecordFieldRef(token);
     if (fieldRef) {
       const fieldType = resolveValueType(token);
@@ -239,7 +240,7 @@ export function createU32Helpers({
     if (!valueType) {
       const raw = parseRawIntegerLiteral(token);
       const numeric = raw !== null ? raw : parseNumericLiteral(token);
-      if (numeric === null) return null;
+      if (numeric === null) return emitStoreWideExpression(token, baseLabel, expectedType);
       return emitStoreImmediate32(baseLabel, numeric);
     }
     if (valueType === "int8") {

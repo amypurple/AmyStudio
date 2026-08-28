@@ -92,6 +92,7 @@ export function handleRoutineStatement({
   emitLoadInt8Into,
   emitLoadInt16IntoHL,
   emitStoreExtended32,
+  emitStoreWideExpression,
   ensureCompareScratch32,
   ensureFp5ReturnScratch,
   emitLoadFp5SourceToFpa,
@@ -139,7 +140,8 @@ export function handleRoutineStatement({
       returnLines = emitLoadInt16IntoHL(valueToken);
     } else if (returnType === "u32" || returnType === "i32") {
       ensureCompareScratch32();
-      returnLines = emitStoreExtended32(valueToken, "AMY_CMP_LEFT32");
+      returnLines = emitStoreWideExpression(valueToken, "AMY_CMP_LEFT32", returnType)
+        || emitStoreExtended32(valueToken, "AMY_CMP_LEFT32", true, returnType);
     } else if (returnType === "fp5") {
       const returnLabel = ensureFp5ReturnScratch();
       const loadValue = emitLoadFp5SourceToFpa(valueToken, 1);

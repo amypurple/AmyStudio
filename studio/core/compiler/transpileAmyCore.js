@@ -958,6 +958,7 @@ export function transpileAmyCore(sourceText, deps) {
   let emitU32Add = null;
   let emitU32Sub = null;
   let emitArith32Op = null;
+  let emitStoreWideExpression = null;
   let emitFormulaAssignment = null;
   let emitMultiplyInt8Op = null;
   let emitMultiplyInt16Op = null;
@@ -3184,6 +3185,7 @@ export function transpileAmyCore(sourceText, deps) {
     ensureCompareScratch32: (...args) => ensureCompareScratch32(...args),
     ensureFp5ReturnScratch,
     emitStoreExtended32: (...args) => emitStoreExtended32(...args),
+    emitStoreWideExpression: (...args) => emitStoreWideExpression?.(...args) ?? null,
     emitStoreMemory32ToTarget: (...args) => emitStoreMemory32ToTarget(...args),
     emitStoreInt16FromHL: (...args) => emitStoreInt16FromHL(...args),
     runtimeTypeSize,
@@ -3415,6 +3417,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitStoreImmediate32,
     emitLoadInt8Into,
     emitLoadInt16IntoHL,
+    emitStoreWideExpression: (...args) => emitStoreWideExpression?.(...args) ?? null,
       emitStoreComputedToScratch32: (...args) => emitStoreComputedToScratch32(...args),
     makeGeneratedLabel,
     reserveRam,
@@ -3533,6 +3536,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitU32Add,
     emitU32Sub,
     emitArith32Op,
+    emitStoreWideExpression,
     emitFormulaAssignment,
     emitMultiplyInt8Op,
     emitMultiplyInt16Op,
@@ -4395,6 +4399,7 @@ export function transpileAmyCore(sourceText, deps) {
       emitLoadInt8Into,
       emitLoadInt16IntoHL,
       emitStoreExtended32,
+      emitStoreWideExpression,
       parseFormulaAssignment,
       emitFormulaAssignment,
       emitTextLiteral,
@@ -4622,6 +4627,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadInt8Into,
         emitLoadInt16IntoHL,
         emitStoreExtended32,
+        emitStoreWideExpression,
         ensureCompareScratch32,
         ensureFp5ReturnScratch,
         emitLoadFp5SourceToFpa,

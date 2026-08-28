@@ -979,7 +979,9 @@ Current style rule:
 - a function that reaches the next routine or the end of file without a terminal
   `return Value` is a compile error
 
-`return` accepts a full expression, not only a plain variable or literal. This includes nested function calls and array indexing when the expression type matches the function return type.
+`return` accepts an expression, not only a plain variable or literal. Matching `u32` and `i32`
+binary expressions are supported in function returns and function arguments, including recursive
+calls; their intermediate values are preserved across nested calls.
 
 `fp5` functions use a dedicated five-byte return cell that is allocated only when
 the project declares an `fp5` return. The caller copies the result immediately, so

@@ -879,6 +879,66 @@ export function createAssignmentArithmeticHelpers({
     return null;
   }
 
+  function emitStoreWideExpression(valueToken, destinationLabel, targetType) {
+    if (targetType !== "u32" && targetType !== "i32") return null;
+    const isCompatibleOperand = (token) => {
+      if (resolveValueType(token) === targetType) return true;
+      if (resolveValueType(token)) return false;
+      const numeric = parseNumericLiteral(token);
+      if (!Number.isInteger(numeric)) return false;
+      return targetType === "u32"
+        ? numeric >= 0 && numeric <= 0xFFFFFFFF
+        : numeric >= -0x80000000 && numeric <= 0x7FFFFFFF;
+    };
+    const binary = String(valueToken || "").trim().match(/^(.+?)\s*([+*\/%-])\s*(.+)$/);
+    if (!binary) return null;
+    const left = binary[1].trim();
+    const right = binary[3].trim();
+    if (!isCompatibleOperand(left) || !isCompatibleOperand(right)) return null;
+    const scratch = ensureCompareScratch32();
+    const storeLeft = emitStoreExtended32(left, scratch.leftLabel);
+    const storeRight = emitStoreExtended32(right, scratch.rightLabel);
+    if (!storeLeft || !storeRight) return null;
+    const rightClobbersLeft = storeRight.some((line) => String(line).includes(scratch.leftLabel));
+    const preserveLeft = rightClobbersLeft ? [
+      `    ld hl,(${scratch.leftLabel}+0)`,
+      "    push hl",
+      `    ld hl,(${scratch.leftLabel}+2)`,
+      "    push hl"
+    ] : [];
+    const restoreLeft = rightClobbersLeft ? [
+      "    pop hl",
+      `    ld (${scratch.leftLabel}+2),hl`,
+      "    pop hl",
+      `    ld (${scratch.leftLabel}+0),hl`
+    ] : [];
+    const storeResult = destinationLabel === scratch.leftLabel
+      ? []
+      : [
+          `    ld hl,${scratch.leftLabel}`,
+          `    ld de,${destinationLabel}`,
+          "    ld bc,4",
+          "    ldir"
+        ];
+    const stagedLeft = [...storeLeft, ...preserveLeft];
+    const stagedRight = [...storeRight, ...restoreLeft];
+    if (binary[2] === "/" && targetType === "i32") {
+      return emitSignedDivStaged(stagedLeft, stagedRight, storeResult);
+    }
+    if (binary[2] === "%") {
+      if (targetType === "i32") return emitSignedDivStaged(stagedLeft, stagedRight, storeResult, "remainder");
+      return emitUnsignedModStaged(stagedLeft, stagedRight, storeResult);
+    }
+    return [
+      ...stagedLeft,
+      ...stagedRight,
+      `    ld hl,${scratch.leftLabel}`,
+      `    ld de,${scratch.rightLabel}`,
+      `    call ${binary[2] === "+" ? "AMY_U32_ADD" : binary[2] === "-" ? "AMY_U32_SUB" : binary[2] === "*" ? "AMY_U32_MUL" : "AMY_U32_DIV"}`,
+      ...storeResult
+    ];
+  }
+
   function emitFormulaAssignment(target, opToken, valueToken) {
     const targetType = resolveValueType(target);
     if (opToken === "=") {
@@ -901,6 +961,10 @@ export function createAssignmentArithmeticHelpers({
         }
       }
       if (targetType === "u32" || targetType === "i32") {
+        const scratch = ensureCompareScratch32();
+        const storeExpression = emitStoreWideExpression(valueToken, scratch.leftLabel, targetType);
+        const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
+        if (storeExpression && storeTarget) return [...storeExpression, ...storeTarget];
         const isCompatibleWideOperand = (token) => {
           if (resolveValueType(token) === targetType) return true;
           if (resolveValueType(token)) return false;
@@ -1124,6 +1188,7 @@ export function createAssignmentArithmeticHelpers({
     emitU32Mul,
     emitU32Div,
     emitArith32Op,
+    emitStoreWideExpression,
     emitFormulaAssignment,
     emitMultiplyInt8Op,
     emitMultiplyInt16Op,
