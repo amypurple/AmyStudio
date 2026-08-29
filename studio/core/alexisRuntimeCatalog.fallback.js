@@ -364,6 +364,25 @@ export const alexisRuntimeCatalog = {
     ],
     "asm": "AMY_UPDATE_SPRITES:\n    ld hl,AMY_SPRITE_COUNT\n    ld a,(hl)\n    or a\n    jr nz,AMY_UPDATE_SPRITES_BEGIN\n    ld a,$00\n    out (VDP_CTRL_PORT),a\n    ld a,$5B\n    out (VDP_CTRL_PORT),a\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret\nAMY_UPDATE_SPRITES_BEGIN:\n    ld e,a\n    ld a,$00\n    out (VDP_CTRL_PORT),a\n    ld a,$5B\n    out (VDP_CTRL_PORT),a\n    ld hl,AMY_SPRITE_TABLE\nAMY_UPDATE_SPRITES_LOOP:\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    inc hl\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    inc hl\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    inc hl\n    ld a,(hl)\n    and $8F\n    out (VDP_DATA_PORT),a\n    inc hl\n    dec e\n    jr nz,AMY_UPDATE_SPRITES_LOOP\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret"
   },
+  "AMY_SPRITE_FLICKER_ON": {
+    "group": "sprites",
+    "sourcePath": "src/alexis_lib/coleco_sprite_table.asm",
+    "clobbers": ["af"],
+    "asm": "AMY_SPRITE_FLICKER_ON:\n    ret"
+  },
+  "AMY_SPRITE_FLICKER_OFF": {
+    "group": "sprites",
+    "sourcePath": "src/alexis_lib/coleco_sprite_table.asm",
+    "clobbers": ["af"],
+    "asm": "AMY_SPRITE_FLICKER_OFF:\n    ret"
+  },
+  "AMY_UPDATE_SPRITES_FLICKER": {
+    "group": "sprites",
+    "sourcePath": "src/alexis_lib/coleco_sprite_table.asm",
+    "deps": ["AMY_UPDATE_SPRITES"],
+    "clobbers": ["af", "bc", "de", "hl"],
+    "asm": "AMY_UPDATE_SPRITES_FLICKER:\n    jp AMY_UPDATE_SPRITES"
+  },
   "AMY_UPDATE_SPRITES_PARTIAL": {
     "group": "sprites",
     "sourcePath": "src/vendor/cvdevkit_sdcc/lib4ksa",

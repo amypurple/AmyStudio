@@ -837,10 +837,44 @@ export function transpileAmyCore(sourceText, deps) {
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);
+  const spriteStableRanges = [];
+  let usesSpriteFlicker = false;
+  let usesPartialSpriteUpdate = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const candidate = stripAmyInlineComment(lines[index]).trim();
+    if (/^sprites\s+flicker\s+(?:on|off)$/i.test(candidate)) usesSpriteFlicker = true;
+    if (/^update\s+sprites\s+from\b/i.test(candidate)) usesPartialSpriteUpdate = true;
+    const stable = candidate.match(/^sprites\s+stable\s+(.+?)\s+to\s+(.+)$/i);
+    if (!stable) continue;
+    const first = Number(stable[1].trim().replace(/^\$/, "0x"));
+    const last = Number(stable[2].trim().replace(/^\$/, "0x"));
+    if (!Number.isInteger(first) || !Number.isInteger(last)) {
+      return { ok: false, asmBody: "", log: `sprites stable requires constant indexes: ${lines[index]}` };
+    }
+    if (first < 0 || last > 31 || first > last) {
+      return { ok: false, asmBody: "", log: `sprites stable range must be ordered within 0..31: ${lines[index]}` };
+    }
+    spriteStableRanges.push({ first, last });
+  }
+  if (spriteStableRanges.length > 1) {
+    return { ok: false, asmBody: "", log: "Amy sprite flicker v1 accepts one stable sprite range" };
+  }
+  if (usesSpriteFlicker && usesPartialSpriteUpdate) {
+    return { ok: false, asmBody: "", log: "partial sprite upload is not allowed in a project using sprites flicker" };
+  }
   const inferredMemoryCaps = inferAmyMemoryCapabilities(lines.join("\n"), sourceHintsTinySound);
+  if ((inferredMemoryCaps.usesJoypadPressed1 || inferredMemoryCaps.usesJoypadPressed2)
+      && !inferredMemoryCaps.usesWaitVblank) {
+    return { ok: false, asmBody: "", log: "joypad(...).pressed requires wait in the frame loop" };
+  }
   const hasExternalAsmInclude = lines.some((candidateRaw) => /^include\s+asm\s+"/i.test(stripAmyInlineComment(candidateRaw).trim()));
   const preferScreenOnNoNmi = !inferredMemoryCaps.needsNmi;
   const declarations = [];
+  if (usesSpriteFlicker) {
+    const stableRange = spriteStableRanges[0] || { first: 32, last: 31 };
+    declarations.push(`AMY_SPRITE_STABLE_FIRST EQU ${stableRange.first}`);
+    declarations.push(`AMY_SPRITE_STABLE_LAST EQU ${stableRange.last}`);
+  }
   const symbols = new Set();
   const compileTimeConstants = new Map();
   const runtimeVars = new Map();
@@ -4148,7 +4182,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadInt8ValueInto,
         tryEvaluateConstantExpression,
         formatHex16,
-        makeGeneratedLabel
+        makeGeneratedLabel,
+        usesSpriteFlicker
       });
       if (displayGraphicsSpriteStmt.handled) {
         if (!displayGraphicsSpriteStmt.ok) return { ok: false, asmBody: "", log: displayGraphicsSpriteStmt.log };

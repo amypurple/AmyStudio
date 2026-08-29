@@ -160,6 +160,8 @@ for (const [source, expected] of [
   ["reflect pattern 0 to 16 count 1 vertical", ["reflect", "pattern", "vertical"]],
   ["rotate pattern 17 to 18 count 1 90", ["rotate", "pattern"]],
   ["set sprite 0 pattern bit 1 on", ["pattern", "bit"]],
+  ["sprites flicker on", ["sprites", "flicker", "on"]],
+  ["sprites stable 0 to 2", ["sprites", "stable"]],
   ["debug breakpoint \"loop\"", ["debug", "breakpoint"]],
   ["test checkpoint \"ready\"", ["test", "checkpoint"]],
   ["on vblank GameTick", ["vblank"]],

@@ -81,7 +81,9 @@ const spriteRuntime = fs.readFileSync(
   path.resolve(import.meta.dirname, "..", "src", "alexis_lib", "coleco_sprite_table.asm"),
   "utf8"
 );
-const updateRoutine = spriteRuntime.slice(spriteRuntime.indexOf("AMY_UPDATE_SPRITES:"));
+const updateStart = spriteRuntime.indexOf("AMY_UPDATE_SPRITES:");
+const updateEnd = spriteRuntime.indexOf("AMY_SPRITE_FLICKER_ON:", updateStart);
+const updateRoutine = spriteRuntime.slice(updateStart, updateEnd);
 assert.equal((updateRoutine.match(/^\s*outi\s*$/gmi) || []).length, 3, "sprite upload should use OUTI only for Y/X/pattern");
 assert.match(updateRoutine, /and \$8F\s+out \(c\),a/i, "sprite color must remain masked during upload");
 assert.match(updateRoutine, /push bc[\s\S]*pop bc/i, "conservative OUTI upload must preserve BC");

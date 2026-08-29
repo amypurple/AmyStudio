@@ -30,6 +30,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsSound = !!caps.needsSound;
   const needsMusic = !!caps.needsMusic;
   const needsSprites = !!caps.needsSprites;
+  const needsSpriteFlicker = !!caps.needsSpriteFlicker;
   const needsControllers = !!caps.needsControllers;
   const controllerBackend = String(caps.controllerBackend || "amy");
   const usesJoypadPressed1 = !!caps.usesJoypadPressed1;
@@ -158,6 +159,13 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     addresses.screen_view_pointer = current + 9;
     reserved.push({ start: current, endExclusive: current + 11, label: "Amy sound/music runtime state" });
     current += 11;
+  }
+
+  if (needsSpriteFlicker) {
+    addresses.sprite_flicker_enabled = current;
+    addresses.sprite_flicker_phase = current + 1;
+    reserved.push({ start: current, endExclusive: current + 2, label: "Amy sprite flicker state" });
+    current += 2;
   }
 
   const lowRuntimeEnd = current;

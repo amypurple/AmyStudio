@@ -114,6 +114,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\b(set\s+sound\s+table|play\s+sound|stop\s+sound|mute\s+all|sound\s+runtime|AMY_(SET_SOUND_TABLE|PLAY_SOUND|STOP_SOUND|MUTE_ALL)|AMY_SOUND_ENABLED|AMY_SOUND_AREA_COUNT|AMY_SOUND_TABLE_POINTER)\b/i.test(text);
   const needsSprites =
     /\b(sprite|sprites|AMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)|AMY_SPRITE_(COUNT|TABLE))\b/i.test(text);
+  const needsSpriteFlicker = /^\s*sprites\s+(?:flicker\s+(?:on|off)|stable\s+.+?\s+to\s+.+?)\s*(?:'.*)?$/im.test(codeText);
   const needsControllers =
     /\b(read\s+(joypad|keypad)|wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|sleep\s+after|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
     /\b(joypad|keypad)\s*\(/i.test(text);
@@ -133,6 +134,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\bframe\b(?!\s+size)/i.test(codeText);
   const needsVdpStatusShadow =
     usesWaitVblank ||
+    needsSpriteFlicker ||
     /\b(VDP_STATUS|NMI_FLAG)\b/i.test(text) ||
     /\bvdp\.status\b/i.test(text) ||
     /\bif\s+(?:not\s+)?any\s+collision\b/i.test(text);
@@ -151,6 +153,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsSound,
     needsMusic,
     needsSprites,
+    needsSpriteFlicker,
     needsControllers,
     usesJoypadPressed1,
     usesJoypadPressed2,

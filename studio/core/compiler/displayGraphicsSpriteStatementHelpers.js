@@ -11,7 +11,8 @@ export function handleDisplayGraphicsSpriteStatement({
   emitLoadInt8ValueIntoPreserving,
   tryEvaluateConstantExpression,
   formatHex16,
-  makeGeneratedLabel
+  makeGeneratedLabel,
+  usesSpriteFlicker = false
 }) {
   const _dep = checkDisplayGraphicsDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -241,6 +242,15 @@ export function handleDisplayGraphicsSpriteStatement({
   if (/^sprites\s+double$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SET_SPRITES_DOUBLE"] };
   }
+  if (/^sprites\s+flicker\s+on$/i.test(line)) {
+    return { ok: true, handled: true, lines: ["    call AMY_SPRITE_FLICKER_ON"] };
+  }
+  if (/^sprites\s+flicker\s+off$/i.test(line)) {
+    return { ok: true, handled: true, lines: ["    call AMY_SPRITE_FLICKER_OFF"] };
+  }
+  if (/^sprites\s+stable\s+.+?\s+to\s+.+$/i.test(line)) {
+    return { ok: true, handled: true, lines: [] };
+  }
 
   const setSpriteCount = line.match(/^set\s+sprite\s+count\s+(?:to\s+)?(.+)$/i);
   if (setSpriteCount) {
@@ -270,7 +280,7 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines };
   }
   if (/^update\s+sprites$/i.test(line)) {
-    return { ok: true, handled: true, lines: ["    call AMY_UPDATE_SPRITES"] };
+    return { ok: true, handled: true, lines: [`    call ${usesSpriteFlicker ? "AMY_UPDATE_SPRITES_FLICKER" : "AMY_UPDATE_SPRITES"}`] };
   }
   const updateSpritesRange = line.match(/^update\s+sprites\s+from\s+(.+?)\s+count\s+(.+)$/i);
   if (updateSpritesRange) {

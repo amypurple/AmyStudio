@@ -396,6 +396,7 @@ function inferRuntimeCapabilities(project, asmBody) {
   const usesTinySound = /\bsndtiny_[12]\b/.test(asmBody) || sourceHintsTinySound(sourceText);
   const usesSprites = /\bAMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)\b/.test(asmBody)
     || /\bsprites?\b/i.test(sourceText);
+  const needsSpriteFlicker = /\bAMY_(?:SPRITE_FLICKER_(?:ON|OFF)|UPDATE_SPRITES_FLICKER)\b/.test(asmBody);
   const usesJoypad1 = /\bJOYPAD_1\b/.test(asmBody) || usesJoypadPressed1 || usesSleepService;
   const usesKeypad1 = /\bKEYPAD_1\b/.test(asmBody) || usesSleepService;
   const usesJoypad2 = /\bJOYPAD_2\b/.test(asmBody) || usesJoypadPressed2 || usesSleepService;
@@ -443,6 +444,7 @@ function inferRuntimeCapabilities(project, asmBody) {
   const needsNmiAckOnly = needsNmi && !needs120c && !needsControllers && !needsSound;
   return {
     needsSprites,
+    needsSpriteFlicker,
     needsControllers,
     needsSpinner,
     needsFrameCounter,
@@ -595,6 +597,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   if (needsSprites) {
     lines.push(`AMY_SPRITE_COUNT EQU ${hex16(addr.sprite_count)}`);
     lines.push(`AMY_SPRITE_TABLE EQU ${hex16(addr.sprite_table)}`);
+    if (caps.needsSpriteFlicker) {
+      lines.push(`AMY_SPRITE_FLICKER_ENABLED EQU ${hex16(addr.sprite_flicker_enabled)}`);
+      lines.push(`AMY_SPRITE_FLICKER_PHASE EQU ${hex16(addr.sprite_flicker_phase)}`);
+    }
   }
   if (needsTinySound) {
     lines.push(`AMY_TINYSOUND_SLOT_1 EQU ${hex16(addr.tinysound_slot_1)}`);
@@ -707,6 +713,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     if (needsSprites) {
       lines.push(`AMY_SPRITE_COUNT EQU ${hex16(addr.sprite_count)}`);
       lines.push(`AMY_SPRITE_TABLE EQU ${hex16(addr.sprite_table)}`);
+      if (caps.needsSpriteFlicker) {
+        lines.push(`AMY_SPRITE_FLICKER_ENABLED EQU ${hex16(addr.sprite_flicker_enabled)}`);
+        lines.push(`AMY_SPRITE_FLICKER_PHASE EQU ${hex16(addr.sprite_flicker_phase)}`);
+      }
     }
     if (needsTinySound) {
       lines.push(`AMY_TINYSOUND_SLOT_1 EQU ${hex16(addr.tinysound_slot_1)}`);

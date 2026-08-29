@@ -49,6 +49,21 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "amy-sprite-flicker-selftest",
+    "label": "Sprite Flicker and Stable Layers",
+    "detail": "Eight-sprite scanline stress test with a stable three-layer character and five fairly reordered sprites.",
+    "projectName": "amy-sprite-flicker-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "sprites",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "pause-until-press-demo",
     "label": "Pause Until Press",
     "detail": "Demonstrates CRT-safe blanking with separate wake and confirmation actions.",

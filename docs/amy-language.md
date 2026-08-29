@@ -2233,6 +2233,9 @@ sprites 8x8
 sprites 16x16
 sprites simple
 sprites double
+sprites stable 0 to 2
+sprites flicker on
+sprites flicker off
 set sprite count N
 set sprite I to Y,X,Pattern,Color
 set sprite I + 1 to SpriteY - 1,SpriteX - 8,Pattern,Color
@@ -2264,6 +2267,33 @@ This is an intentional machine contract:
 - `update sprites` uploads the active shadow entries to the VDP
 - `update sprites from First count Count` uploads only a constant range and writes the sprite terminator after that range
 - AMY keeps that boundary explicit to protect predictable ColecoVision rendering behavior
+
+The optional `sprites flicker on` mode prevents the same fifth sprite from
+remaining invisible whenever more than four sprites occupy one scanline. Amy
+uses the VDP overflow flag captured by the NMI and changes only the physical SAT
+upload order for the following frame. When no overflow is reported, the current
+order stays unchanged. Logical sprite numbers used by setters, collision tests,
+symbols, and the debugger never change.
+
+Declare one constant stable range when a player or another object is composed of
+layered sprites:
+
+```basic
+sprites stable 0 to 2
+sprites flicker on
+```
+
+The stable range is uploaded first in its original relative order. Other active
+sprites rotate fairly after overflow. Version 1 accepts one stable range in
+`0..31`; omit it when every active sprite may rotate. `sprites flicker off`
+returns the next full update to ordinary logical-index order. A project using
+flicker cannot use `update sprites from ... count ...`, because a partial upload
+cannot preserve the complete priority order and terminator safely.
+
+Flicker is the visible compromise, not the objective: alternating priority lets
+all conflicting objects appear over successive frames. Stable layered sprites
+remain intact while less important enemies or objects share the remaining four-
+sprites-per-scanline capacity.
 
 The TMS9918 resolves overlapping opaque sprite pixels by sprite-table order:
 the lower sprite index appears in front of every higher index. For example,
@@ -2304,6 +2334,7 @@ if joypad(1).up then
 end if
 
 if joypad(1).fire then goto Fire
+if joypad(1).fire.pressed then goto FireOnce
 RawPad = joypad(1)
 AnyStandardFire = joypad(1).fire
 AnyActionButton = joypad(1).action
@@ -2323,6 +2354,21 @@ Y += spinner(2)
 FrameVar = frame
 print vdp.status at 0,0
 ```
+
+Append `.pressed` to a joypad direction or button property to detect only the
+new press. It stays true for repeated reads during the same program frame, does
+not repeat while held, and becomes true again after release and another press:
+
+```basic
+if joypad(1).button1.pressed then Jump
+if joypad(1).fire.pressed then Confirm
+if joypad(Port).action.pressed then AnyAction
+```
+
+The edge state is allocated only when this syntax is used. A constant port costs
+two runtime RAM bytes; a variable port reserves two bytes for each port. A
+frame loop using `.pressed` must contain `wait`; Amy rejects unsynchronized busy
+polling instead of emitting an unreliable edge test.
 
 `spinner(N)` is a signed, consumable movement delta. Each read atomically returns
 and clears the ticks accumulated since the previous read. No movement therefore returns
@@ -3061,6 +3107,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `joypad(N).button1/.button2/.button3/.button4` | Canonical inline button tests |
 | `joypad(N).fire` | Either standard fire button (`button1` or `button2`), emitted as one `$C0` mask test |
 | `joypad(N).action` | Any of the four Super Action buttons, emitted as one `$F0` mask test; keypad keys are excluded |
+| `joypad(N).property.pressed` | One-frame edge test for a direction, button, `fire`, or `action`; repeated reads are stable and held input does not repeat |
 | `keypad(N)` | Inline decoded keypad byte |
 | `spinner(N)` | Signed movement delta since the previous read; reading consumes it (`1`: right positive, `2`: down positive) |
 | `frame` | Inline 16-bit frame counter; byte targets receive the low byte |
