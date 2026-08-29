@@ -299,6 +299,8 @@ Current implemented record scope:
 Local scalar records use the routine stack frame, so nested calls receive independent
 storage and do not increase permanent global RAM. They currently require zero
 initialization; local arrays of records remain unsupported.
+Qualified byte and word fields can be used directly as the right operand of `+=` and
+`-=`, including fields reached through local records, global records, arrays, or overlays.
 
 ```basic
 sub MoveTemporary:

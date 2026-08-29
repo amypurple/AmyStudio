@@ -70,6 +70,20 @@ export function createSimpleArithmeticHelpers({
       }
       return null;
     }
+    const resolvedType = resolveValueType(valueToken);
+    if (resolvedType === "int8") {
+      const loadValue = emitLoadInt8Into("a", valueToken);
+      if (!loadValue) return null;
+      if (isSignedDeclaredType(declaredType)) {
+        return [...loadValue, "    ld e,a", "    add a,a", "    sbc a,a", "    ld d,a"];
+      }
+      return [...loadValue, "    ld e,a", "    ld d,0"];
+    }
+    if (resolvedType === "int16") {
+      const loadValue = emitLoadInt16IntoHL(valueToken, preferredDeclaredType);
+      if (!loadValue) return null;
+      return [...loadValue, "    ex de,hl"];
+    }
     if (isAnyFixedDeclaredType(preferredDeclaredType)) {
       const fixedLiteral = parseFixedPointLiteral(valueToken);
       if (fixedLiteral !== null) return [`    ld de,${formatFixedPointLiteral16(fixedLiteral)}`];

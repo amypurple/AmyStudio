@@ -37,17 +37,13 @@ end sub
 
 sub Outer:
   Actor Temp = 0
-  u8 XValue = 0
-  u8 TrailValue = 0
   Temp.X = 9
   Temp.Score = 500
   Temp.Trail[1] = 4
   Inner
-  XValue = Temp.X
-  TrailValue = Temp.Trail[1]
   Result = Temp.Score
-  Result += XValue
-  Result += TrailValue
+  Result += Temp.X
+  Result += Temp.Trail[1]
   return
 end sub
 
