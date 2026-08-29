@@ -22,6 +22,7 @@ u8 Passed = 0
 u8 Formatted[4]
 
 sub start:
+  text screen
   if Scores[0] = 12 then Passed += 1
   if Scores[1] = 12 then Passed += 1
   if Scores[2] = 12 then Passed += 1
@@ -36,6 +37,7 @@ sub start:
   Scores[I + 1] = Scores[I]
   if Scores[2] = 1234 then Passed += 1
   format Scores[2] into Formatted
+  print Scores[2] at 4,3
   clear Scores[I]
   if Scores[1] = 0 then Passed += 1
   VerifyLocal()
@@ -82,6 +84,7 @@ try {
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_GuardBefore"), 1)[0], 0xA5, `${profile}: leading guard changed`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_GuardAfter"), 1)[0], 0x5A, `${profile}: trailing guard changed`);
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Formatted"), 4)], [0x31, 0x32, 0x33, 0x34], `${profile}: BCD array formatting failed`);
+      assert.deepEqual([...core.readVram(0x1800 + 3 * 32 + 4, 4)], [0x31, 0x32, 0x33, 0x34], `${profile}: direct BCD array print failed`);
     } finally {
       core.destroy();
     }
