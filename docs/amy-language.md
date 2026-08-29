@@ -291,14 +291,17 @@ Current implemented record scope:
 - top-level record variables
 - top-level arrays of record, including compile-time constant lengths
 - zero-initialized scalar record variables inside a sub or function
+- zero-initialized arrays of records inside a sub or function
 - field access such as `PieceVar.X` and `Pieces[I].Tile`
 - nested record fields such as `PieceVar.Pos.X` and `Pieces[I].Pos.Y`
 - fixed scalar array fields such as `PieceVar.HistoryX[I]` and `Pieces[P].Bonuses[2]`
 - packed scalar BCD fields such as `bcd digits 6 Score`
 
-Local scalar records use the routine stack frame, so nested calls receive independent
-storage and do not increase permanent global RAM. They currently require zero
-initialization; local arrays of records remain unsupported.
+Local records and local arrays of records use the routine stack frame, so nested calls
+receive independent storage and do not increase permanent global RAM. They currently
+require zero initialization. Local record arrays accept the same compile-time constant
+lengths, indexed field access, and `for each Element, Index in Array` syntax as global
+record arrays.
 Qualified byte and word fields can be used directly as the right operand of `+=` and
 `-=`, including fields reached through local records, global records, arrays, or overlays.
 

@@ -267,9 +267,6 @@ export function handleDeclarationStatement({
       const frame = ensureProcFrame(state.currentProc);
       for (const declEntry of localDeclarations) {
         const name = declEntry.name;
-        if (declEntry.lengthToken) {
-          return { handled: true, ok: false, log: `Local record arrays are not supported yet: ${rawLine}` };
-        }
         if (!isZeroInitializer(declEntry.initial)) {
           return { handled: true, ok: false, log: `Local record declarations currently support only zero initialization: ${rawLine}` };
         }
@@ -277,23 +274,29 @@ export function handleDeclarationStatement({
         if (!state.isValidSymbolName(name) || state.isReservedAmyIdentifier(name) || state.describeGlobalNameCollision(name) || state.mapHasInsensitive(procMap, name) || state.runtimeVars.has(mangledName) || lowerName(name) === lowerName(state.currentProc)) {
           return { handled: true, ok: false, log: `Invalid local record declaration: ${rawLine}` };
         }
-        frame.size += recordInfo.byteSize;
+        const length = declEntry.lengthToken ? resolveArrayLength(declEntry.lengthToken) : null;
+        if (declEntry.lengthToken && (!Number.isInteger(length) || length < 1)) {
+          return { handled: true, ok: false, log: `Local record array length must be a compile-time constant >= 1: ${rawLine}` };
+        }
+        const byteSize = recordInfo.byteSize * (length || 1);
+        frame.size += byteSize;
         const offset = -frame.size;
         procMap.set(name, mangledName);
         state.runtimeVars.set(mangledName, {
-          kind: "record",
+          kind: length ? "record_array" : "record",
           type: "record",
           declaredType: recordTypeName,
           recordTypeName,
           recordInfo,
           recordSize: recordInfo.byteSize,
+          ...(length ? { length } : {}),
           scope: state.currentProc,
           localName: name,
           storage: "stack",
           offset
         });
         frame.init.push("    xor a");
-        for (let byteIndex = 0; byteIndex < recordInfo.byteSize; byteIndex += 1) {
+        for (let byteIndex = 0; byteIndex < byteSize; byteIndex += 1) {
           frame.init.push(`    ld (${state.formatIxOffset(offset + byteIndex)}),a`);
         }
       }

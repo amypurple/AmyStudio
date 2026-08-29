@@ -37,19 +37,27 @@ end sub
 
 sub Outer:
   Actor Temp = 0
+  Actor Group[2] = 0
+  u8 Index = 0
   Temp.X = 9
   Temp.Score = 500
   Temp.Trail[1] = 4
+  if Group[1].Trail[0] = 0 then Passed += 1
+  for each Item, Index in Group
+    Item.X = Index + 3
+  next Item
   Inner
   Result = Temp.Score
   Result += Temp.X
   Result += Temp.Trail[1]
+  Result += Group[0].X
+  Result += Group[1].X
   return
 end sub
 
 sub start:
   Outer
-  if Result = 513 then Passed += 1
+  if Result = 520 then Passed += 1
   loop forever
 end sub
 `);
@@ -73,6 +81,9 @@ try {
     assert.equal(result.status, 0, `${profile}: ${result.error?.stack || ""}${result.stdout || ""}${result.stderr || ""}`);
 
     const asm = readFileSync(asmPath, "utf8");
+    assert.doesNotMatch(asm, /AMY_LVAR_(?:Outer|Inner)_(?:Temp|Group)/i,
+      `${profile}: local records must not consume permanent static RAM`);
+    assert.match(asm, /\(ix-\d+\)/i, `${profile}: local records must use stack-relative storage`);
     const core = await GearcolecoTestCore.create({ seed: 0x52454344 });
     try {
       core.loadBios(bios);
@@ -80,8 +91,8 @@ try {
       for (let frame = 0; frame < 3; frame += 1) core.runFrame();
       const resultAddress = addressOf(asm, "AMY_UVAR_Result");
       const resultValue = core.readRam(resultAddress, 2);
-      assert.deepEqual([...resultValue], [0x01, 0x02], `${profile}: caller local record was corrupted by nested call`);
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 4, `${profile}: local record initialization or fields failed`);
+      assert.deepEqual([...resultValue], [0x08, 0x02], `${profile}: caller local record data was corrupted`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 5, `${profile}: local record or record-array checks failed`);
     } finally {
       core.destroy();
     }

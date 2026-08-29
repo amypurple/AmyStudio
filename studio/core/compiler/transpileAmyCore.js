@@ -755,14 +755,16 @@ export function transpileAmyCore(sourceText, deps) {
       if (/^end\s+(?:sub|function)$/i.test(line)) { currentRoutine = null; continue; }
       if (currentRoutine) {
         const localDeclaration = line.match(new RegExp(`^(?:(?:ram|dim|local)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s+(.+)$`, "i"));
-        if (localDeclaration && /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32)$/i.test(localDeclaration[1])) {
+        const localPrimitive = localDeclaration && /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32)$/i.test(localDeclaration[1]);
+        const localRecord = localDeclaration && recordArrayFields.has(localDeclaration[1].toLowerCase());
+        if (localDeclaration && (localPrimitive || localRecord)) {
           const declarations = localDeclaration[2].split(",");
           for (const rawDeclaration of declarations) {
             const localArray = rawDeclaration.trim().match(new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*\\]`, "i"));
             if (!localArray) continue;
             localArrayLengths.get(currentRoutine).set(localArray[1].toLowerCase(), {
               length: resolveEarlyNumericConstant(localArray[2], constants),
-              recordLike: false
+              recordLike: !!localRecord
             });
           }
         }
