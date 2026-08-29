@@ -822,11 +822,131 @@ export function transpileAmyCore(sourceText, deps) {
     if (aliasStack.length) return { ok: false, log: `for each ${aliasStack[aliasStack.length - 1].elementName} is missing next` };
     return { ok: true, lines: result };
   }
+  function lowerTwoDimensionalArrays(rawLines) {
+    const arrays = new Map();
+    const declarationPattern = /^(\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*,\s*(\d+)\s*\](.*)$/i;
+    let aggregateDepth = 0;
+    let routineDepth = 0;
+    const declarationsLowered = rawLines.map((rawLine, lineIndex) => {
+      const code = stripAmyInlineComment(rawLine);
+      const stripped = code.trim();
+      if (/^(?:record|overlay)\b/i.test(stripped)) aggregateDepth += 1;
+      if (/^(?:sub|function)\b/i.test(stripped)) routineDepth += 1;
+      const declaration = code.match(declarationPattern);
+      if (declaration) {
+        if (aggregateDepth || routineDepth) {
+          throw new Error(`2D arrays currently require a global primitive declaration at line ${lineIndex + 1}`);
+        }
+        const rows = Number(declaration[4]);
+        const columns = Number(declaration[5]);
+        const length = rows * columns;
+        if (rows < 1 || columns < 1 || length > 255) {
+          throw new Error(`2D array '${declaration[3]}' dimensions must contain 1..255 elements at line ${lineIndex + 1}`);
+        }
+        const key = declaration[3].toLowerCase();
+        if (arrays.has(key)) throw new Error(`Duplicate 2D array declaration '${declaration[3]}' at line ${lineIndex + 1}`);
+        arrays.set(key, { name: declaration[3], rows, columns });
+        const comment = rawLine.slice(code.length);
+        return `${declaration[1]}${declaration[2]} ${declaration[3]}[${length}]${declaration[6]}${comment}`;
+      }
+      if (/^end\s+(?:record|overlay)$/i.test(stripped)) aggregateDepth = Math.max(0, aggregateDepth - 1);
+      if (/^end\s+(?:sub|function)$/i.test(stripped)) routineDepth = Math.max(0, routineDepth - 1);
+      return rawLine;
+    });
+
+    const splitIndexes = (content) => {
+      let depth = 0;
+      let comma = -1;
+      for (let index = 0; index < content.length; index += 1) {
+        const ch = content[index];
+        if (ch === "(" || ch === "[") depth += 1;
+        else if (ch === ")" || ch === "]") depth -= 1;
+        else if (ch === "," && depth === 0) {
+          if (comma >= 0) return null;
+          comma = index;
+        }
+      }
+      if (comma < 0) return null;
+      const row = content.slice(0, comma).trim();
+      const column = content.slice(comma + 1).trim();
+      return row && column ? { row, column } : null;
+    };
+    const constantIndex = (text) => {
+      const token = String(text).trim();
+      if (/^-?\d+$/.test(token)) return Number(token);
+      if (/^\$[0-9A-F]+$/i.test(token)) return Number.parseInt(token.slice(1), 16);
+      return null;
+    };
+    const commentIndex = (line) => {
+      let inString = false;
+      for (let index = 0; index < line.length; index += 1) {
+        if (line[index] === '"') inString = !inString;
+        else if (line[index] === "'" && !inString) return index;
+      }
+      return -1;
+    };
+    const rewriteLine = (rawLine, lineIndex) => {
+      const commentAt = commentIndex(rawLine);
+      const code = commentAt >= 0 ? rawLine.slice(0, commentAt) : rawLine;
+      const comment = commentAt >= 0 ? rawLine.slice(commentAt) : "";
+      let result = "";
+      let cursor = 0;
+      let inString = false;
+      while (cursor < code.length) {
+        const ch = code[cursor];
+        if (ch === '"') { inString = !inString; result += ch; cursor += 1; continue; }
+        if (!inString && /[A-Za-z_]/.test(ch)) {
+          let nameEnd = cursor + 1;
+          while (nameEnd < code.length && /[A-Za-z0-9_]/.test(code[nameEnd])) nameEnd += 1;
+          const name = code.slice(cursor, nameEnd);
+          let bracket = nameEnd;
+          while (/\s/.test(code[bracket] || "")) bracket += 1;
+          if (code[bracket] === "[") {
+            let depth = 1;
+            let end = bracket + 1;
+            for (; end < code.length && depth; end += 1) {
+              if (code[end] === "[") depth += 1;
+              else if (code[end] === "]") depth -= 1;
+            }
+            if (depth !== 0) throw new Error(`Unclosed array index at line ${lineIndex + 1}`);
+            const content = code.slice(bracket + 1, end - 1);
+            const indexes = splitIndexes(content);
+            if (indexes) {
+              const array = arrays.get(name.toLowerCase());
+              if (!array) throw new Error(`2D access '${name}[...]' has no matching global 2D array declaration at line ${lineIndex + 1}`);
+              const row = constantIndex(indexes.row);
+              const column = constantIndex(indexes.column);
+              if ((row !== null && (row < 0 || row >= array.rows))
+                  || (column !== null && (column < 0 || column >= array.columns))) {
+                throw new Error(`2D access '${name}[${indexes.row},${indexes.column}]' is outside ${array.rows}x${array.columns} at line ${lineIndex + 1}`);
+              }
+              result += `${name}[(((${indexes.row}) * ${array.columns}) + (${indexes.column}))]`;
+              cursor = end;
+              continue;
+            }
+          }
+          result += name;
+          cursor = nameEnd;
+          continue;
+        }
+        result += ch;
+        cursor += 1;
+      }
+      return result + comment;
+    };
+    return { ok: true, lines: declarationsLowered.map(rewriteLine), arrays };
+  }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
-  const recordAliasControlFlow = validateRecordAliasControlFlow(conditionalPrepass.lines);
+  let twoDimensionalLowering;
+  try {
+    twoDimensionalLowering = lowerTwoDimensionalArrays(conditionalPrepass.lines);
+  } catch (error) {
+    return { ok: false, asmBody: "", log: error instanceof Error ? error.message : String(error) };
+  }
+  const recordAliasControlFlow = validateRecordAliasControlFlow(twoDimensionalLowering.lines);
   if (!recordAliasControlFlow.ok) return { ok: false, asmBody: "", log: recordAliasControlFlow.log };
-  const recordAliasLowering = lowerRecordScopeAliases(conditionalPrepass.lines);
+  const recordAliasLowering = lowerRecordScopeAliases(twoDimensionalLowering.lines);
   if (!recordAliasLowering.ok) return { ok: false, asmBody: "", log: recordAliasLowering.log };
   const debugScenePoison = conditionalPrepass.definedSymbols.has("amy_debug_scene_poison");
   const sceneParsing = parseSceneDeclarations(recordAliasLowering.lines);

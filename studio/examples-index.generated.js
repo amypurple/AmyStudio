@@ -20,6 +20,20 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "amy-2d-array-selftest",
+    "label": "Amy 2D Array Self-Test",
+    "detail": "Row-major byte and word grids with constant and expression indexes, verified across optimizer profiles.",
+    "projectName": "amy-2d-array-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "hello-world-minimal",
     "label": "Hello World Minimal",
     "detail": "Smallest useful Amy Mode 2 text hello world.",

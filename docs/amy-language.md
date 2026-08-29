@@ -250,6 +250,7 @@ bcd digits 4 Timer = StartTimer
 bcd digits 8 Score8, Best8
 u8 Pattern[32]
 u16 HighScores[10]
+u8 Board[8,8]
 ```
 
 Compile-time constants may also be grouped as enums:
@@ -2905,6 +2906,7 @@ Available memory profiles live in `tools/memory/*.json`.
 | `u8 Name = value` | Global 8-bit unsigned RAM variable |
 | `i8 Name = value` | Global 8-bit signed RAM variable |
 | `u8 Name[N]` | Global 8-bit RAM array |
+| `u8 Name[Rows,Columns]` | Row-major global primitive 2D array (1..255 total elements) |
 | `u16 Name = value` | Global 16-bit unsigned RAM variable |
 | `i16 Name = value` | Global 16-bit signed RAM variable |
 | `bool Name = false` | Global boolean (bit-packed) |
@@ -3170,6 +3172,23 @@ routine arguments. For example, both `if Board[(Y << 3) + X] = 0 then` and
 `IsEnemy(Side, Board[(Y << 3) + X])` are valid; a temporary index is optional, not a
 required workaround. Runtime indexes remain the programmer's responsibility and are not
 implicitly bounds-checked.
+
+Global primitive arrays may declare two literal dimensions and use row/column
+indexing. Storage is row-major, so `Board[Y,X]` is equivalent to
+`Board[(Y * Columns) + X]` without a descriptor or runtime helper:
+
+```basic
+u8 Board[8,8]
+u16 Distances[4,6]
+
+Board[Row,Column] = Tile
+if Board[Row,Column] = Wall then StopPlayer
+```
+
+The total element count must be 1 through 255. Constant out-of-range indexes are
+rejected; variable indexes have no implicit bounds check. This first version is
+limited to global primitive arrays. Record fields, record arrays, overlays, and
+local 2D arrays fail closed rather than using an ambiguous layout.
 
 | Statement | Meaning |
 |---|---|
