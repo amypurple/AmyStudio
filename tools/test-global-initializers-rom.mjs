@@ -45,6 +45,38 @@ const cases = [
     }
   },
   {
+    name: "wide-local-operator-coverage",
+    source: `u32 LocalMathOut = 0
+u32 LocalBitsOut = 0
+i32 LocalSignedOut = 0
+sub ComputeWideOperators:
+  u32 MathValue = 100000
+  u32 BitsValue = 4278255360
+  u32 MaskValue = 252645135
+  i32 SignedValue = -32
+  MathValue *= 3
+  MathValue /= 4
+  MathValue %= 256
+  MathValue <<= 8
+  MathValue >>= 4
+  BitsValue = BitsValue & MaskValue
+  BitsValue |= 15728640
+  BitsValue ^= 61440
+  SignedValue >>= 3
+  LocalMathOut = MathValue
+  LocalBitsOut = BitsValue
+  LocalSignedOut = SignedValue
+end sub
+ComputeWideOperators
+loop forever
+`,
+    expected: {
+      LocalMathOut: [0x80, 0x0F, 0x00, 0x00],
+      LocalBitsOut: [0x00, 0xFF, 0xF0, 0x0F],
+      LocalSignedOut: [0xFC, 0xFF, 0xFF, 0xFF]
+    }
+  },
+  {
     name: "wide-array-indexes",
     source: `u32 Wide[5] = 100000\ni32 SignedWide[3] = -100\nu8 Index = 1\nu32 ConstantOut = 0\nu32 VariableOut = 0\nu32 ExpressionOut = 0\ni32 SignedOut = 0\nWide[0] = Wide[0] + 5\nWide[Index] = Wide[0] + 10\nWide[Index + 1] = Wide[Index] - 20\nSignedWide[Index] = SignedWide[0] - 5\ninc Wide[3]\ndec Wide[3]\nConstantOut = Wide[0]\nVariableOut = Wide[Index]\nExpressionOut = Wide[Index + 1]\nSignedOut = SignedWide[Index]\nloop forever\n`,
     expected: {

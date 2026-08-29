@@ -1551,7 +1551,7 @@ export function createGraphicsEditorUi({
 
   async function openTilemapGraphicsEditor(editor, sourceBlocks, configEntry = null, config = null) {
     if (editor.kind !== "tilemap") {
-      setStatus(editor.kind + " editors are planned after the Dacman tilemap MVP.");
+      setStatus("Unsupported graphics editor kind: " + editor.kind + ".");
       return;
     }
     let tilesetFile = findEditorTilesetFile(editor);

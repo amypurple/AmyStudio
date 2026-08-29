@@ -20,6 +20,7 @@ const writesPairImplicitly = `push hl\nldi\npop hl\nret`;
 const readsStack = `push hl\nld de,0\nadd hl,sp\npop hl\nret`;
 const callBarrier = `push hl\ncall Helper\npop hl\nret\nHelper:\nret`;
 const branchBarrier = `push hl\njr nz,Else\npop hl\nElse:\nret`;
+const nestedStack = `push hl\npush de\npop de\npop hl\nret`;
 const idempotentHalfWrite = `ld hl,128\nld (Value),hl\npush hl\nld l,128\nld d,h\nld e,l\npop hl\nret\nValue: dw 0`;
 const changedHalfWrite = `ld hl,128\npush hl\nld l,129\nld d,h\nld e,l\npop hl\nret`;
 const clobberedBeforePush = `ld hl,128\ninc h\npush hl\nld l,128\nld d,h\nld e,l\npop hl\nret`;
@@ -32,6 +33,7 @@ assert.match(await assemble(writesPairImplicitly, "aggressive"), /push hl[\s\S]*
 assert.match(await assemble(readsStack, "aggressive"), /push hl[\s\S]*pop hl/, "SP access keeps preservation");
 assert.match(await assemble(callBarrier, "aggressive"), /push hl[\s\S]*pop hl/, "CALL keeps preservation");
 assert.match(await assemble(branchBarrier, "aggressive"), /push hl[\s\S]*pop hl/, "branch keeps preservation");
+assert.doesNotMatch(await assemble(nestedStack, "aggressive"), /push|pop/, "a fully neutral nested save/restore may collapse");
 assert.match(await assemble(idempotentHalfWrite, "balanced"), /push hl[\s\S]*pop hl/, "Balanced does not use value-reuse proof");
 assert.doesNotMatch(await assemble(idempotentHalfWrite, "aggressive"), /push hl|pop hl/, "Aggressive accepts an idempotent half write");
 assert.doesNotMatch(await assemble(idempotentHalfWrite, "experimental"), /push hl|pop hl/, "Experimental inherits idempotent value reuse");

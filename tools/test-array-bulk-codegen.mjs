@@ -5,6 +5,7 @@ import { handleArrayBulkStatement } from "../studio/core/compiler/arrayBulkState
 let labelId = 0;
 const runtime = new Map([
   ["Bytes", { kind: "array", elementType: "int8", length: 4, address: 0x7100 }],
+  ["Count", { kind: "scalar", type: "int8", address: 0x7104 }],
   ["Ghosts", { kind: "record_array", recordTypeName: "Ghost", recordSize: 13, length: 4, address: 0x7200 }]
 ]);
 const ghostRecord = {
@@ -33,6 +34,11 @@ assert(bytes.lines.includes("    ld b,4"));
 assert(bytes.lines.some((line) => line.startsWith("    djnz TEST_FILLARRAYBYTELOOP_")));
 assert(!bytes.lines.some((line) => line.startsWith("    ld bc,")));
 assert(!bytes.lines.includes("    dec bc"));
+
+const variableCount = handleArrayBulkStatement({ ...base, line: "fill array Bytes with 9 count Count" });
+assert.equal(variableCount.handled, true);
+assert.equal(variableCount.ok, false);
+assert.match(variableCount.log, /count must be a constant, not a RAM variable/i);
 
 const field = handleArrayBulkStatement({ ...base, line: "fill record array Ghosts field Vulnerable with 0" });
 assert.equal(field.ok, true);

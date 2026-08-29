@@ -51,6 +51,12 @@ for (const profile of profiles) {
 
   const initAsm = build("static-abi-runtime-init", runtimeInit, profile);
   assert.match(initAsm, /call AMY_INIT_RAM/, `${profile}: Start must call RAM init`);
+  assert.match(
+    initAsm,
+    /xor a\s*\r?\n\s*ld hl,AMY_RAM_BASE\s*\r?\n\s*ld de,AMY_RAM_BASE\+1\s*\r?\n\s*ld bc,AMY_RAM_LIMIT-AMY_RAM_BASE-1\s*\r?\n\s*ld \(hl\),a\s*\r?\n\s*ldir\s*\r?\n\s*call AMY_INIT_RAM/,
+    `${profile}: RAM must be zeroed completely before runtime initializers run`
+  );
+  assert.doesNotMatch(initAsm, /AMY_RUNTIME_INIT_INSERT/, `${profile}: runtime-init marker must not leak into generated ASM`);
   assert.equal((initAsm.match(/^AMY_INIT_RAM:$/gm) || []).length, 1, `${profile}: RAM init routine must be linked once`);
   assert.match(initAsm, /AMY_SPARM_Add_Value/, `${profile}: probe must exercise static ABI RAM`);
 
