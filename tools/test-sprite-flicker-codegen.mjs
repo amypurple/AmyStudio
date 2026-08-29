@@ -107,6 +107,24 @@ try {
     }
   }
 
+  const ordinarySourcePath = join(output, "ordinary.alexis");
+  const ordinaryAsmPath = join(output, "ordinary.asm");
+  await writeFile(ordinarySourcePath, `project "ORDINARY SPRITES"
+u8 X = 32
+set sprite count 1
+set sprite 0 to 80,X,0,15
+update sprites
+screen on
+loop forever
+`);
+  const ordinary = await compileSource(ordinarySourcePath, ordinaryAsmPath, join(output, "ordinary.rom"));
+  assert.equal(ordinary.code, 0, "ordinary sprite project must compile");
+  const ordinaryAsm = await readFile(ordinaryAsmPath, "utf8");
+  assert.doesNotMatch(ordinaryAsm, /AMY_SPRITE_FLICKER_(?:ENABLED|PHASE|ON|OFF)/,
+    "ordinary sprite projects must not reserve flicker state or include flicker controls");
+  assert.doesNotMatch(ordinaryAsm, /AMY_UPDATE_SPRITES_FLICKER/,
+    "ordinary sprite projects must not include the flicker uploader");
+
   const invalidCases = [
     {
       id: "partial",
