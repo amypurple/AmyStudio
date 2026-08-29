@@ -960,15 +960,18 @@ Stack-local records and indexed elements of stack-local record arrays are also v
 they do not require a global or static RAM alias.
 
 Rules:
-- allowed target types: `ref u8`, `ref i8`, `ref u16`, `ref i16`, `ref u32`, `ref i32`, and `ref RecordType`
+- allowed target types: `ref u8`, `ref i8`, `ref u16`, `ref i16`, `ref u32`, `ref i32`,
+  `ref fixed`, `ref ufixed`, `ref fixed32`, and `ref RecordType`
 - a record parameter **must** be `ref` (records are never copied)
 - the argument must be an addressable variable of the exact same type:
   a global, a record field, an array element, a local, or another `ref` parameter
   (forwarding). Literals and expressions are compile errors.
 - overlay-qualified fields cannot be passed by `ref`; their address has part-scoped
   lifetime and must not cross a routine boundary. Pass a copied value instead.
-- `ref` is not supported for `fixed`, `ufixed`, `fp5`, `bool`, `bcd`, or whole arrays
-  (yet) — declaring one is a compile error, never wrong code
+- reference arguments require the exact declared type, not merely the same byte width;
+  `u16` cannot bind to `ref fixed`, and `i16` cannot bind to `ref u16`
+- `ref` is not supported for `fp5`, `bool`, `bcd`, or whole arrays (yet) — declaring
+  one is a compile error, never wrong code
 
 Representative generated code (non-normative) — no runtime helper, no copy; the slot holds a 2-byte address
 and every access dereferences through HL with constant offsets:

@@ -301,6 +301,13 @@ check("type mismatch u8 arg to ref u16 parameter is rejected", () => {
   assert.equal(bad.ok, false, "u8 variable must not bind to ref u16");
 });
 
+check("same-width ref types still require an exact declared type", () => {
+  const signedMismatch = transpileAmy("i16 N = 0\n\nsub Grow(ref u16 W):\n  inc W\nend sub\n\nGrow(N)\nloop forever\n");
+  assert.equal(signedMismatch.ok, false, "i16 must not bind to ref u16");
+  const fixedMismatch = transpileAmy("u16 N = 0\n\nsub Move(ref fixed W):\n  W += 1.0\nend sub\n\nMove(N)\nloop forever\n");
+  assert.equal(fixedMismatch.ok, false, "u16 must not bind to ref fixed");
+});
+
 const overlayMetadataResult = transpileAmy(`memory "colecovision_legacy_sdcc"
 state machine Scenes:
   Menu calls MenuFrame

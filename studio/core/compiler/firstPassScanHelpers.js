@@ -30,7 +30,7 @@ export function scanAmyFirstPass({
   let firstPassNameError = null;
   let firstPassCurrentProc = null;
 
-  const REF_SCALAR_DECLARED_TYPES = new Set(["u8", "i8", "u16", "i16", "u32", "i32"]);
+  const REF_SCALAR_DECLARED_TYPES = new Set(["u8", "i8", "u16", "i16", "u32", "i32", "fix8_8", "ufix8_8", "fix16_16"]);
 
   function isFirstPassGlobalDeclaration(scopeKeyword) {
     if (scopeKeyword === "ram" || scopeKeyword === "dim") return true;
@@ -68,7 +68,7 @@ export function scanAmyFirstPass({
     if (isRef && !isRecordType) {
       const declared = normalizeDeclaredType(typeName.toLowerCase());
       if (!REF_SCALAR_DECLARED_TYPES.has(declared)) {
-        return { error: `ref parameters support u8, i8, u16, i16, u32, i32 or record types (got '${typeName}') in ${rawLine}` };
+        return { error: `ref parameters support integer types, fixed, ufixed, fixed32, or record types (got '${typeName}') in ${rawLine}` };
       }
     }
     const paramLower = lowerName(paramName);

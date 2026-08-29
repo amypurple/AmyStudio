@@ -810,6 +810,8 @@ export function createRuntimeValueHelpers({
 
     function emitRefArgumentAddressIntoHL(token, paramInfo) {
       const normalized = normalizeExpression(String(token).trim());
+      const wantedDeclaredType = normalizeDeclaredType(paramInfo.declaredType || paramInfo.refTargetType);
+      const declaredTypeMatches = (declaredType) => normalizeDeclaredType(declaredType) === wantedDeclaredType;
       const ixWord = (offset) => [
         `    ld l,(ix${offset < 0 ? offset : `+${offset}`})`,
         `    ld h,(ix${offset + 1 < 0 ? offset + 1 : `+${offset + 1}`})`
@@ -844,7 +846,7 @@ export function createRuntimeValueHelpers({
       if (recordField) {
         const baseInfo = getRuntimeInfo(recordField.name);
         if (baseInfo?.storage === "overlay") return null;
-        if (recordField.fieldInfo.type !== targetType) return null;
+        if (recordField.fieldInfo.type !== targetType || !declaredTypeMatches(recordField.fieldInfo.declaredType)) return null;
         const direct = getDirectRecordFieldAddress(normalized);
         if (direct) return [`    ld hl,${direct}`];
         return emitLoadRecordFieldAddressIntoHL(normalized);
@@ -852,18 +854,18 @@ export function createRuntimeValueHelpers({
       const arrayRef = parseArrayRef(normalized);
       if (arrayRef) {
         const info = getRuntimeInfo(arrayRef.name);
-        if (!info || info.kind !== "array" || info.elementType !== targetType) return null;
+        if (!info || info.kind !== "array" || info.elementType !== targetType || !declaredTypeMatches(info.declaredType)) return null;
         return emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
       }
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized)) return null;
       const info = getRuntimeInfo(normalized);
       if (!info) return null;
       if (info.isRef) {
-        if (info.refTargetType !== targetType) return null;
+        if (info.refTargetType !== targetType || !declaredTypeMatches(info.declaredType)) return null;
         return ixWord(info.offset);
       }
       if (info.kind === "packed_bool" || info.kind === "array" || info.kind === "bcd" || info.kind === "record" || info.kind === "record_array") return null;
-      if (info.type !== targetType) return null;
+      if (info.type !== targetType || !declaredTypeMatches(info.declaredType)) return null;
       if (info.storage === "stack") return stackSlotAddress(info);
       return [`    ld hl,${scopedRuntimeName(normalized)}`];
     }
