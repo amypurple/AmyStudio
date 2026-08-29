@@ -2298,6 +2298,9 @@ returns the next full update to ordinary logical-index order. A project using
 flicker cannot use `update sprites from ... count ...`, because a partial upload
 cannot preserve the complete priority order and terminator safely.
 
+The two stable endpoints may be literals or named numeric constants. Both must
+resolve at compile time to an ordered range within `0..31`.
+
 Flicker is the visible compromise, not the objective: alternating priority lets
 all conflicting objects appear over successive frames. Stable layered sprites
 remain intact while less important enemies or objects share the remaining four-

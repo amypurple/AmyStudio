@@ -7,6 +7,8 @@
   steps, while rejecting unknown or out-of-range values before assembly.
 - Accepted named compile-time constants for canonical `print` and `format`
   `digits/width` clauses without changing their type-specific bounds or generated ROM.
+- Accepted named compile-time constants in `sprites stable First to Last`; constants
+  remain byte-identical to literal stable-priority ranges.
 - Completed contextual highlighting for `count` across sprite, text-color, VRAM, array, pattern-transform, tile-row, and data commands.
 - Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
 - Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.

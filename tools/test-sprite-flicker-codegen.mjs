@@ -107,6 +107,17 @@ try {
     }
   }
 
+  const literalSource = await readFile(source, "utf8");
+  const constantSourcePath = join(output, "constant-range.alexis");
+  await writeFile(constantSourcePath, literalSource
+    .replace('project "SPRITE FLICKER SELFTEST"', 'project "SPRITE FLICKER SELFTEST"\nconst StableFirst = 0\nconst StableLast = 2')
+    .replace("sprites stable 0 to 2", "sprites stable StableFirst to StableLast"));
+  const constantRomPath = join(output, "constant-range.rom");
+  const constantResult = await compileSource(constantSourcePath, join(output, "constant-range.asm"), constantRomPath);
+  assert.equal(constantResult.code, 0, "constant stable range must compile");
+  assert.deepEqual(await readFile(constantRomPath), await readFile(join(output, "balanced.rom")),
+    "constant and literal stable ranges must produce byte-identical ROMs");
+
   const ordinarySourcePath = join(output, "ordinary.alexis");
   const ordinaryAsmPath = join(output, "ordinary.asm");
   await writeFile(ordinarySourcePath, `project "ORDINARY SPRITES"

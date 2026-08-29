@@ -999,8 +999,8 @@ export function transpileAmyCore(sourceText, deps) {
     if (/^update\s+sprites\s+from\b/i.test(candidate)) usesPartialSpriteUpdate = true;
     const stable = candidate.match(/^sprites\s+stable\s+(.+?)\s+to\s+(.+)$/i);
     if (!stable) continue;
-    const first = Number(stable[1].trim().replace(/^\$/, "0x"));
-    const last = Number(stable[2].trim().replace(/^\$/, "0x"));
+    const first = resolveEarlyNumericConstant(stable[1], earlyCompileTimeConstants);
+    const last = resolveEarlyNumericConstant(stable[2], earlyCompileTimeConstants);
     if (!Number.isInteger(first) || !Number.isInteger(last)) {
       return { ok: false, asmBody: "", log: `sprites stable requires constant indexes: ${lines[index]}` };
     }
