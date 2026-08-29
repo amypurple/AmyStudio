@@ -18,6 +18,7 @@ export function handleMathBitStatement({
   runtimeTypeSize,
   tryEvaluateCompileTimeNumericExpression
 }) {
+  const byteWordTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
   const _dep = checkArithmeticDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
@@ -40,13 +41,13 @@ export function handleMathBitStatement({
     return { ok: true, handled: true, lines: code };
   }
 
-  const clampVar = line.match(/^clamp\s+([A-Za-z_][A-Za-z0-9_]*)\s+between\s+(.+?)\s+and\s+(.+)$/i);
+  const clampVar = line.match(new RegExp(`^clamp\\s+${byteWordTargetPattern}\\s+between\\s+(.+?)\\s+and\\s+(.+)$`, "i"));
   if (clampVar) {
-    const info = getRuntimeInfo(clampVar[1]);
-    if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) return { ok: false, handled: true, log: `clamp requires a scalar byte/word RAM variable: ${rawLine}` };
+    const targetType = resolveValueType(clampVar[1]);
+    if (targetType !== "int8" && targetType !== "int16") return { ok: false, handled: true, log: `clamp requires a scalar byte/word RAM variable: ${rawLine}` };
     const clampNotLow = makeGeneratedLabel("ClampNotLow");
     const clampStore = makeGeneratedLabel("ClampStore");
-    if (info.type === "int8") {
+    if (targetType === "int8") {
       const loadTarget = emitLoadInt8Into("a", clampVar[1]);
       const storeTarget = emitStoreInt8FromA(clampVar[1]);
       if (!loadTarget || !storeTarget) return { ok: false, handled: true, log: `clamp: cannot load/store variable: ${rawLine}` };
@@ -135,31 +136,47 @@ export function handleMathBitStatement({
     return { ok: true, handled: true, lines: [...loadA, "    push hl", ...loadB, ...storeA, "    pop hl", ...storeB] };
   }
 
-  const setBit = line.match(/^set\s+bit\s+([0-7])\s+of\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const setBit = line.match(new RegExp(`^set\\s+bit\\s+([0-7])\\s+of\\s+${byteWordTargetPattern}$`, "i"));
   if (setBit) {
     const info = getRuntimeInfo(setBit[2]);
     const setBitIsRef = !!(info?.isRef && info.refTargetType === "int8");
-    if (!info || info.kind === "array" || (!setBitIsRef && info.type !== "int8")) return { ok: false, handled: true, log: `set bit requires a byte RAM variable: ${rawLine}` };
+    if (!setBitIsRef && resolveValueType(setBit[2]) !== "int8") return { ok: false, handled: true, log: `set bit requires a byte RAM variable: ${rawLine}` };
     const n = setBit[1];
-    const lines = setBitIsRef
+    let lines = setBitIsRef
       ? [`    ld l,(${formatIxOffset(info.offset)})`, `    ld h,(${formatIxOffset(info.offset + 1)})`, `    set ${n},(hl)`]
-      : info.storage === "stack"
+      : info?.storage === "stack"
         ? [`    set ${n},(${formatIxOffset(info.offset)})`]
-        : [`    ld hl,${scopedRuntimeName(setBit[2])}`, `    set ${n},(hl)`];
+        : info && info.kind !== "array"
+          ? [`    ld hl,${scopedRuntimeName(setBit[2])}`, `    set ${n},(hl)`]
+          : null;
+    if (!lines) {
+      const load = emitLoadInt8Into("a", setBit[2]);
+      const store = emitStoreInt8FromA(setBit[2]);
+      if (!load || !store) return { ok: false, handled: true, log: `set bit cannot address target: ${rawLine}` };
+      lines = [...load, `    set ${n},a`, ...store];
+    }
     return { ok: true, handled: true, lines };
   }
 
-  const clearBit = line.match(/^(?:clear|reset)\s+bit\s+([0-7])\s+of\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const clearBit = line.match(new RegExp(`^(?:clear|reset)\\s+bit\\s+([0-7])\\s+of\\s+${byteWordTargetPattern}$`, "i"));
   if (clearBit) {
     const info = getRuntimeInfo(clearBit[2]);
     const clearBitIsRef = !!(info?.isRef && info.refTargetType === "int8");
-    if (!info || info.kind === "array" || (!clearBitIsRef && info.type !== "int8")) return { ok: false, handled: true, log: `clear bit requires a byte RAM variable: ${rawLine}` };
+    if (!clearBitIsRef && resolveValueType(clearBit[2]) !== "int8") return { ok: false, handled: true, log: `clear bit requires a byte RAM variable: ${rawLine}` };
     const n = clearBit[1];
-    const lines = clearBitIsRef
+    let lines = clearBitIsRef
       ? [`    ld l,(${formatIxOffset(info.offset)})`, `    ld h,(${formatIxOffset(info.offset + 1)})`, `    res ${n},(hl)`]
-      : info.storage === "stack"
+      : info?.storage === "stack"
         ? [`    res ${n},(${formatIxOffset(info.offset)})`]
-        : [`    ld hl,${scopedRuntimeName(clearBit[2])}`, `    res ${n},(hl)`];
+        : info && info.kind !== "array"
+          ? [`    ld hl,${scopedRuntimeName(clearBit[2])}`, `    res ${n},(hl)`]
+          : null;
+    if (!lines) {
+      const load = emitLoadInt8Into("a", clearBit[2]);
+      const store = emitStoreInt8FromA(clearBit[2]);
+      if (!load || !store) return { ok: false, handled: true, log: `clear bit cannot address target: ${rawLine}` };
+      lines = [...load, `    res ${n},a`, ...store];
+    }
     return { ok: true, handled: true, lines };
   }
 

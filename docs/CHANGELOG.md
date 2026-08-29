@@ -14,6 +14,8 @@
 - Added timers, timer safety, CRT-safe pause, scene lifecycle/poison, and record arrays
   to the permanent feature matrix after a 50/50 five-profile runtime
   optimizer audit.
+- Extended `clamp`, `set bit`, and `clear bit` to record, overlay, local-record, and
+  indexed byte-field targets while preserving compact direct-scalar code generation.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and

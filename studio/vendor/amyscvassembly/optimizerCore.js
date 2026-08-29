@@ -2191,7 +2191,17 @@ export class Z80Optimizer {
 
                     if (isLdPairImm16(token, 'de') && !token.label) {
                         const immValue = Number(token.operands[1].value);
-                        if (liveDeImmediate === 1 && immValue === 2) {
+                        let priorDeImmediate = null;
+                        for (let lookback = optimized.length - 1, steps = 0; lookback >= 0 && steps < 24; lookback--, steps++) {
+                            const prior = optimized[lookback];
+                            if (!(prior instanceof Instruction) || prior.label || isLocalAnalysisBarrier(prior)) break;
+                            if (isLdPairImm16(prior, 'de')) {
+                                priorDeImmediate = Number(prior.operands[1].value);
+                                break;
+                            }
+                            if (instructionWritesDe(prior)) break;
+                        }
+                        if (priorDeImmediate === 1 && immValue === 2) {
                             optimized.push(new Instruction(
                                 token.label,
                                 'inc',
@@ -2205,7 +2215,7 @@ export class Z80Optimizer {
                             optimizerLog(`  Folded LD DE,2 into INC DE with DE already 1 at line ${token.lineNumber}`, 'debug');
                             continue;
                         }
-                        if (liveDeImmediate !== null && liveDeImmediate === immValue) {
+                        if (priorDeImmediate !== null && priorDeImmediate === immValue) {
                             this.stats.peepholeOpts++;
                             this.stats.bytesSaved += getInstructionSize(token);
                             optimizerLog(`  Removed duplicate LD DE,imm16 at line ${token.lineNumber}`, 'debug');
@@ -5669,7 +5679,8 @@ export class Z80Optimizer {
                             next.mnemonic.toLowerCase() === 'cp' &&
                             next.operands.length === 1 &&
                             next.operands[0].type === 'register' &&
-                            next.operands[0].value.toLowerCase() === 'b') {
+                            next.operands[0].value.toLowerCase() === 'b' &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 1, 'b')) {
                             optimized.push(new Instruction(
                                 next.label,
                                 'cp',
@@ -5713,7 +5724,8 @@ export class Z80Optimizer {
                             if ((aluMnem === 'sub' || aluMnem === 'and' || aluMnem === 'or' || aluMnem === 'xor' || aluMnem === 'cp') &&
                                 alu.operands.length === 1 &&
                                 alu.operands[0].type === 'register' &&
-                                alu.operands[0].value.toLowerCase() === 'b') {
+                                alu.operands[0].value.toLowerCase() === 'b' &&
+                                this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'b')) {
                                 replacement = new Instruction(alu.label, aluMnem, [immOperand], alu.lineNumber, alu.sourceLine);
                             } else if ((aluMnem === 'add' || aluMnem === 'adc' || aluMnem === 'sbc') &&
                                 alu.operands.length === 2 &&

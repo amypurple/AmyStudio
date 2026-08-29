@@ -1598,6 +1598,10 @@ Counter = max(Counter, 255)
 clamp PlayerX between 0 and 31
 ```
 
+`clamp`, `set bit`, and `clear bit` accept scalar variables, record fields, overlay-qualified
+fields, and indexed byte-array fields. Direct scalar forms retain compact in-place bit code;
+qualified or indexed forms use the normal typed address resolver.
+
 `min(A, B)` returns the smaller value. `max(A, B)` returns the larger value.
 The older `min Var with Value` / `max Var with Value` statements still compile
 during cleanup, but code should use expression assignment.

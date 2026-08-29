@@ -16,6 +16,7 @@ const tests = [
   { file: "test-int16-byte-widening-codegen.mjs", area: "integer-widening", evidence: "compile+assemble" },
   { file: "test-array-bulk-codegen.mjs", area: "bulk-arrays", evidence: "compile+assemble" },
   { file: "test-ref-param-codegen.mjs", area: "qualified-operands", evidence: "compile+assemble" },
+  { file: "test-qualified-math-bit-rom.mjs", area: "qualified-math-bit", evidence: "rom" },
   { file: "test-overlay-layout-rom.mjs", area: "overlay-qualified-runtime", evidence: "rom" },
   { file: "test-amy-timer-rom.mjs", area: "named-timers", evidence: "rom" },
   { file: "test-amy-timer-safety-rom.mjs", area: "timer-safety", evidence: "rom" },

@@ -4,6 +4,7 @@
 //   node tools/amyc.mjs path/to/program.alexis            # transpile + assemble, report size
 //   node tools/amyc.mjs prog.alexis --asm [out.asm]       # also write the generated ASM
 //   node tools/amyc.mjs prog.alexis --rom [out.rom]       # also write the ROM binary
+//   node tools/amyc.mjs prog.alexis --optimized-asm out   # write post-optimizer ASM
 //   node tools/amyc.mjs prog.alexis --opt balanced        # optimization level (default: balanced)
 //   node tools/amyc.mjs prog.alexis --project-dir dir     # resolve @project/... includes from dir
 //
@@ -108,10 +109,11 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, asm: undefined, rom: undefined, opt: "balanced", projectDir: null };
+  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, opt: "balanced", projectDir: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--asm") opts.asm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
+    else if (a === "--optimized-asm") opts.optimizedAsm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--rom") opts.rom = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--opt") opts.opt = argv[++i] || "balanced";
     else if (a === "--project-dir") opts.projectDir = argv[++i] || null;
@@ -212,6 +214,11 @@ async function main() {
     process.exit(1);
   }
   const rom = assembled.binary || assembled.bytes || new Uint8Array();
+  if (opts.optimizedAsm !== undefined) {
+    const optimizedAsmPath = typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm";
+    writeFileSync(optimizedAsmPath, assembled.optimizedAsm || generatedAsm, "utf8");
+    console.log("OPT  -> " + optimizedAsmPath + " (" + (assembled.optimizedAsm || generatedAsm).length + " chars)");
+  }
   console.log("ROM  " + rom.length + " bytes  (" + opts.opt + " optimizer)");
   if (opts.rom !== undefined) {
     const romPath = typeof opts.rom === "string" ? path.resolve(opts.rom) : base + ".rom";
