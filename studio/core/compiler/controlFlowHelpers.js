@@ -313,7 +313,9 @@ export function createControlFlowHelpers(ctx) {
     return lines;
   }
   function coerceSimpleLiteralForFixedCompare(token, peerDeclared) {
-    if (!isFix8_8DeclaredTypeName(peerDeclared)) return token;
+    const isFix8_8 = isFix8_8DeclaredTypeName(peerDeclared);
+    const isFix16_16 = String(peerDeclared || "").toLowerCase() === "fix16_16";
+    if (!isFix8_8 && !isFix16_16) return token;
     const raw = String(token || "").trim();
     if (!raw || /^raw\s+/i.test(raw)) return token;
     const numericEvaluator = typeof tryEvaluateCompileTimeNumericExpression === "function"
@@ -321,7 +323,7 @@ export function createControlFlowHelpers(ctx) {
       : tryEvaluateConstantExpression;
     const value = numericEvaluator(raw);
     if (!Number.isFinite(value)) return token;
-    const encoded = Math.round(value * 256);
+    const encoded = Math.round(value * (isFix16_16 ? 65536 : 256));
     return String(encoded);
   }
 

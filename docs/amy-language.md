@@ -757,6 +757,7 @@ const TileBase = $00
 | `i16` | 16-bit signed value | 2 bytes |
 | `fixed` | signed 8.8 fixed-point | 2 bytes |
 | `ufixed` | unsigned 8.8 fixed-point | 2 bytes |
+| `fixed32` | signed 16.16 fixed-point | 4 bytes, little-endian |
 | `u32` | 32-bit unsigned integer | 4 bytes, little-endian |
 | `i32` | 32-bit signed integer | 4 bytes, little-endian |
 | `fp5` | historical 5-byte floating-point real | 5 bytes |
@@ -766,6 +767,10 @@ const TileBase = $00
 `fixed` ranges from `-128.0` through `127.99609375`; `ufixed` ranges from
 `0.0` through `255.99609375`. Arithmetic wraps in the underlying 16-bit 8.8
 representation, just like integer arithmetic on the Z80.
+
+`fixed32` comparisons preserve all 16 fractional bits. Decimal value literals are
+scaled automatically, so `if Distance >= 1001.5 then` compares against the 16.16
+value; use `raw $03E98000` only when exact storage bits are intended.
 
 Array lengths may be numeric literals or compile-time constant integer expressions,
 for example `const MaxClouds = 4` followed by `u8 CloudX[MaxClouds]`.

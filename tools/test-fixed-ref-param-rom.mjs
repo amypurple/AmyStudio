@@ -36,6 +36,12 @@ sub start:
   if Speed = 100.0 then Passed += 1
   if FixedValues[0] = 4.0 then Passed += 1
   if State.Rate = 4.0 then Passed += 1
+  if Distance = 1001.0 then Passed += 1
+  if Distance <> 1000.0 then Passed += 1
+  if Distance < 1001.5 then Passed += 1
+  if Distance <= 1001.0 then Passed += 1
+  if Distance > 1000.5 then Passed += 1
+  if Distance >= 1001.0 then Passed += 1
   loop forever
 end sub
 
@@ -78,7 +84,7 @@ try {
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Position"), 2)], [0x00, 0x02], `${profile}: ref fixed update failed`);
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Speed"), 2)], [0x00, 0x64], `${profile}: ref ufixed update failed`);
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Distance"), 4)], [0x00, 0x00, 0xE9, 0x03], `${profile}: ref fixed32 update failed`);
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 4, `${profile}: fixed ref checks failed`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 10, `${profile}: fixed ref/comparison checks failed`);
     } finally {
       core.destroy();
     }
