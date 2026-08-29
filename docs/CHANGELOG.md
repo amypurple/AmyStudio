@@ -8,6 +8,9 @@
 - Added direct decimal-literal comparisons for scalar and indexed `fp5` values.
 - Added permanent five-profile runtime coverage for dynamic sprite-field getters and
   existing stack-local records; removed contradictory stale limits from the reference.
+- Promoted the 36-assertion overlay layout example to permanent five-profile runtime
+  coverage, including qualified VRAM reads, graphics coordinates, collisions, records,
+  loops, arrays, aliases, and packed BCD fields.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and
