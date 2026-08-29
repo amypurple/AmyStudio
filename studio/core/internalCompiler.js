@@ -1,5 +1,5 @@
 import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260731-source-marker-alignment";
-import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260802-crt-safe-pause";
+import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260828-sleep-service";
 
 const textEncoder = new TextEncoder();
 

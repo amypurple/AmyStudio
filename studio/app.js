@@ -501,7 +501,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompilerClient.js?v=20260827-compile-worker");
+    internalCompilerModulePromise = import("./core/internalCompilerClient.js?v=20260828-library-bundle");
   }
   return internalCompilerModulePromise;
 }
