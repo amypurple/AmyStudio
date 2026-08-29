@@ -11,6 +11,9 @@
 - Promoted the 36-assertion overlay layout example to permanent five-profile runtime
   coverage, including qualified VRAM reads, graphics coordinates, collisions, records,
   loops, arrays, aliases, and packed BCD fields.
+- Added timers, timer safety, CRT-safe pause, scene lifecycle/poison, and record arrays
+  to the permanent feature matrix after a 50/50 five-profile runtime
+  optimizer audit.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and
