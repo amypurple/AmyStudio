@@ -103,7 +103,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const usesWipeWithHalt = /\bwipe\s+(?:screen|bitmap)\s+(?:up|down)\b/i.test(text);
   const usesTextScreen = /\btext\s+screen\b/i.test(text);
   const usesGraphicsMode2Text = /\bgraphics\s+mode\s+2\s+text\b/i.test(text);
-  const needsSleepState = /^\s*sleep\s+after\s+[0-9]+\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(codeText);
+  const needsSleepState = /^\s*sleep\s+after\s+(?:[0-9]+|\$[0-9A-F]+|[A-Za-z_][A-Za-z0-9_]*)\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(codeText);
   const needsBackdropShadow =
     /^\s*backdrop\s+/im.test(codeText) ||
     needsSleepState ||

@@ -1,7 +1,8 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
-- Reduced controller ROM and RAM use by automatically selecting the Coleco BIOS decoder, compact scanner, or full Amy input backend according to each project.
-- Expanded contextual syntax highlighting across array, data, graphics, debugger, scene, timer, and sound commands without reserving valid identifier names.
+- Accepted named compile-time constants for record array-field lengths, `for each`
+  array discovery, and every CRT-safe `sleep after` timeout form, with byte-identical
+  ROM output versus literals and fail-closed validation.
 - Completed contextual highlighting for `count` across sprite, text-color, VRAM, array, pattern-transform, tile-row, and data commands.
 - Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
 - Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.

@@ -346,13 +346,16 @@ record Actor:
 end record
 
 record GameMemory:
-  Actor Enemies[4]
+  Actor Enemies[MaxEnemies]
   bcd digits 6 Score
 end record
 
 GameMemory GameRam
 GameRam.Enemies[I].X += 1
 ```
+
+Fixed array lengths may be decimal or hexadecimal literals, or named numeric constants
+known at compile time. Named constants produce the same ROM layout and code as literals.
 
 Two statically addressed records of the same declared type can be copied directly:
 
@@ -1172,7 +1175,7 @@ for each Fly, I in Flies
 next
 ```
 
-`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a fixed array with a literal nonzero length. Local/ref arrays and an omitted index are rejected clearly.
+`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a fixed array with a compile-time constant nonzero length. Local/ref arrays and an omitted index are rejected clearly.
 
 The canonical Amy syntax always includes the comma and explicit index:
 
@@ -2451,6 +2454,9 @@ for any selected control, restores the display, consumes that control's release,
 resets its timer, and returns without selecting a menu item. It reserves two bytes
 of runtime RAM. Combine the timeout with `pause until press and release` when a
 blocking confirmation screen must require a second, fresh press after waking:
+
+`N` may be a numeric literal or named numeric constant from 1 to 1092. The timeout is
+folded at compile time, so a named constant has no ROM or runtime cost.
 
 ```basic
 pause until press and release sleep after 10 seconds

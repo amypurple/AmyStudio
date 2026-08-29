@@ -388,7 +388,7 @@ function inferControllerBackend(sourceText, asmBody, { usesKeypad1, usesKeypad2,
 
 function inferRuntimeCapabilities(project, asmBody) {
   const sourceText = project.sourceText || "";
-  const usesSleepService = /^\s*sleep\s+after\s+[0-9]+\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(sourceText);
+  const usesSleepService = /^\s*sleep\s+after\s+(?:[0-9]+|\$[0-9A-F]+|[A-Za-z_][A-Za-z0-9_]*)\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(sourceText);
   const usesJoypadPressed1 = /\bJOYPAD_PRESSED_1\b/.test(asmBody);
   const usesJoypadPressed2 = /\bJOYPAD_PRESSED_2\b/.test(asmBody);
   const usesJoypadReleased1 = /\bJOYPAD_RELEASED_1\b/.test(asmBody);

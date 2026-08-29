@@ -237,7 +237,7 @@ export const AMY_AUTOCOMPLETE = [
   ["continue do", "Skip to the next iteration of the innermost do/loop block"],
   ["exit do", "Leave the innermost do/loop block immediately"],
   ["for I = 0 to 31", "Structured counting loop"],
-  ["for each Actor, I in Actors", "Iterate a fixed array through an explicit u8 index and mutable element alias"],
+  ["for each Actor, I in Actors", "Iterate a constant-sized array through an explicit u8 index and mutable element alias"],
   ["for each Actor, I in SceneRam.Game.Actors", "Iterate a qualified overlay record-array field without hidden pointer RAM"],
   ["SceneRam.Game.Actors[I].Flags[J]", "Access a scalar array field through independent record and field indexes"],
   ["with Actors[I] as Actor", "Compute one record-element address and reuse it until end with"],

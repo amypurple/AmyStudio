@@ -687,10 +687,31 @@ export function transpileAmyCore(sourceText, deps) {
 
     return result;
   }
+  function collectEarlyNumericConstants(rawLines) {
+    const constants = new Map();
+    for (const rawLine of rawLines) {
+      const declaration = stripAmyInlineComment(rawLine).trim().match(/^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+|\$[0-9A-Fa-f]+)\s*$/i);
+      if (!declaration) continue;
+      constants.set(declaration[1].toLowerCase(), declaration[2].startsWith("$")
+        ? Number.parseInt(declaration[2].slice(1), 16)
+        : Number(declaration[2]));
+    }
+    return constants;
+  }
+
+  function resolveEarlyNumericConstant(token, constants) {
+    const normalized = String(token || "").trim();
+    if (/^\d+$/.test(normalized)) return Number(normalized);
+    if (/^\$[0-9A-F]+$/i.test(normalized)) return Number.parseInt(normalized.slice(1), 16);
+    return constants.get(normalized.toLowerCase()) ?? null;
+  }
+
   function lowerForEachLoops(rawLines) {
     const arrayLengths = new Map();
     const recordArrayFields = new Map();
     const overlayParts = [];
+    const constants = collectEarlyNumericConstants(rawLines);
+    const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
     let routineDepth = 0;
     let currentRecord = null;
     let currentOverlay = null;
@@ -707,12 +728,13 @@ export function transpileAmyCore(sourceText, deps) {
       }
       if (/^end\s+record$/i.test(line)) { currentRecord = null; continue; }
       if (currentRecord) {
-        const field = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
+        const field = line.match(new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*\\]`, "i"));
         if (field) {
           const primitive = /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)$/i.test(field[1]);
+          const length = resolveEarlyNumericConstant(field[3], constants);
           recordArrayFields.get(currentRecord.toLowerCase()).set(field[2].toLowerCase(), {
             name: field[2],
-            length: Number(field[3]),
+            length,
             recordLike: !primitive
           });
         }
@@ -726,10 +748,13 @@ export function transpileAmyCore(sourceText, deps) {
         if (part) overlayParts.push({ overlay: currentOverlay, part: part[1], recordType: part[2] });
         continue;
       }
-      const declaration = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]/);
+      const declaration = line.match(new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*\\]`, "i"));
       if (declaration) {
         const primitive = /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)$/i.test(declaration[1]);
-        arrayLengths.set(declaration[2].toLowerCase(), { length: Number(declaration[3]), recordLike: !primitive });
+        arrayLengths.set(declaration[2].toLowerCase(), {
+          length: resolveEarlyNumericConstant(declaration[3], constants),
+          recordLike: !primitive
+        });
       }
     }
     for (const part of overlayParts) {
@@ -783,7 +808,7 @@ export function transpileAmyCore(sourceText, deps) {
         const arrayEntry = arrayLengths.get(arrayName.toLowerCase());
         const length = arrayEntry?.length;
         if (!Number.isInteger(length) || length < 1) {
-          return { ok: false, log: `for each requires a global fixed array with a literal nonzero length: ${stripped}` };
+          return { ok: false, log: `for each requires a global fixed array with a compile-time constant nonzero length: ${stripped}` };
         }
         if (!open[2]) {
           return { ok: false, log: `for each currently requires an explicit u8 index: for each ${elementName}, Index in ${arrayName}` };
@@ -824,22 +849,12 @@ export function transpileAmyCore(sourceText, deps) {
   }
   function lowerTwoDimensionalArrays(rawLines) {
     const arrays = new Map();
-    const constants = new Map();
+    const constants = collectEarlyNumericConstants(rawLines);
     const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
     const declarationPattern = new RegExp(`^(\\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*,\\s*(${dimensionToken})\\s*\\](.*)$`, "i");
-    for (const rawLine of rawLines) {
-      const declaration = stripAmyInlineComment(rawLine).trim().match(/^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+|\$[0-9A-Fa-f]+)\s*$/i);
-      if (!declaration) continue;
-      const value = declaration[2].startsWith("$")
-        ? Number.parseInt(declaration[2].slice(1), 16)
-        : Number(declaration[2]);
-      constants.set(declaration[1].toLowerCase(), value);
-    }
     const resolveDimension = (token, lineIndex) => {
-      if (/^\d+$/.test(token)) return Number(token);
-      if (/^\$[0-9A-F]+$/i.test(token)) return Number.parseInt(token.slice(1), 16);
-      const value = constants.get(token.toLowerCase());
-      if (value === undefined) throw new Error(`Unknown 2D array dimension constant '${token}' at line ${lineIndex + 1}`);
+      const value = resolveEarlyNumericConstant(token, constants);
+      if (value === null) throw new Error(`Unknown 2D array dimension constant '${token}' at line ${lineIndex + 1}`);
       return value;
     };
     let aggregateDepth = 0;
@@ -974,6 +989,7 @@ export function transpileAmyCore(sourceText, deps) {
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);
+  const earlyCompileTimeConstants = collectEarlyNumericConstants(lines);
   const spriteStableRanges = [];
   let usesSpriteFlicker = false;
   let usesPartialSpriteUpdate = false;
@@ -1789,7 +1805,7 @@ export function transpileAmyCore(sourceText, deps) {
   }));
 
   function parseRecordDefinitions() {
-    const simpleRecordFieldRe = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[\s*(\d+)\s*\])?$/i;
+    const simpleRecordFieldRe = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[\s*(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s*\])?$/i;
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
@@ -1827,12 +1843,15 @@ export function transpileAmyCore(sourceText, deps) {
         const declaredTypeToken = bcdFieldMatch ? "bcd" : fieldMatch[1];
         const declaredType = normalizeDeclaredType(declaredTypeToken.toLowerCase());
         const fieldName = fieldMatch[2];
-        const arrayLength = bcdFieldMatch || fieldMatch[3] === undefined ? null : Number.parseInt(fieldMatch[3], 10);
+        const hasArrayLength = !bcdFieldMatch && fieldMatch[3] !== undefined;
+        const arrayLength = hasArrayLength
+          ? resolveEarlyNumericConstant(fieldMatch[3], earlyCompileTimeConstants)
+          : null;
         if (!isValidSymbolName(fieldName) || isReservedAmyIdentifier(fieldName) || fields.has(fieldName)) {
           return `Invalid or duplicate record field '${fieldName}': ${fieldRaw}`;
         }
-        if (arrayLength !== null && (!Number.isInteger(arrayLength) || arrayLength < 1 || arrayLength > 255)) {
-          return `Record array fields require a literal length from 1 to 255: ${fieldRaw}`;
+        if (hasArrayLength && (!Number.isInteger(arrayLength) || arrayLength < 1 || arrayLength > 255)) {
+          return `Record array fields require a compile-time constant length from 1 to 255: ${fieldRaw}`;
         }
         let fieldInfo = null;
         if (bcdFieldMatch) {

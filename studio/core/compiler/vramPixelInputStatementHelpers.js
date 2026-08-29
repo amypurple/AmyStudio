@@ -270,16 +270,17 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const sleepAfter = line.match(/^sleep\s+after\s+([0-9]+)\s+seconds?(?:\s+on\s+joypad\s+([12]))?$/i);
-  const crtSafePause = line.match(/^pause\s+until\s+press\s+and\s+release(?:\s+on\s+joypad\s+([12]))?\s+sleep\s+after\s+([0-9]+)\s+seconds?$/i);
+  const constantToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
+  const sleepAfter = line.match(new RegExp(`^sleep\\s+after\\s+(${constantToken})\\s+seconds?(?:\\s+on\\s+joypad\\s+([12]))?$`, "i"));
+  const crtSafePause = line.match(new RegExp(`^pause\\s+until\\s+press\\s+and\\s+release(?:\\s+on\\s+joypad\\s+([12]))?\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?$`, "i"));
   if (sleepAfter || crtSafePause) {
-    const seconds = Number.parseInt(sleepAfter ? sleepAfter[1] : crtSafePause[2], 10);
+    const seconds = tryEvaluateConstantExpression?.(sleepAfter ? sleepAfter[1] : crtSafePause[2]);
     const pad = sleepAfter ? sleepAfter[2] : crtSafePause[1];
     const routine = sleepAfter
       ? "AMY_SLEEP_SERVICE"
       : "AMY_PAUSE_PRESS_RELEASE_BLANK";
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
-      return { handled: true, ok: false, log: `CRT-safe pause requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
+      return { handled: true, ok: false, log: `CRT-safe pause requires a compile-time constant timeout from 1 to 1092 seconds: ${rawLine}` };
     }
     if (nmiKnownOff) {
       return { handled: true, ok: false, log: `CRT-safe pause requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
@@ -370,8 +371,8 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const chooseSpriteMenu = line.match(/^choose\s+menu\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+cursor\s+sprite\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+step\s+(.+?)(?:\s+on\s+joypad\s+([12]))?(?:\s+sleep\s+after\s+([0-9]+)\s+seconds?)?$/i);
-  const chooseTileMenu = line.match(/^choose\s+menu\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+cursor\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)\s+step\s+(.+?)(?:\s+clear\s+(.+?))?(?:\s+on\s+joypad\s+([12]))?(?:\s+sleep\s+after\s+([0-9]+)\s+seconds?)?$/i);
+  const chooseSpriteMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const chooseTileMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+cursor\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   const chooseMenu = chooseSpriteMenu || chooseTileMenu;
   if (chooseMenu) {
     const spriteCursor = Boolean(chooseSpriteMenu);
@@ -391,9 +392,9 @@ export function handleVramPixelInputStatement({
     }
     let seconds = 0;
     if (secondsToken) {
-      seconds = Number.parseInt(secondsToken, 10);
+      seconds = tryEvaluateConstantExpression?.(secondsToken);
       if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
-        return { handled: true, ok: false, log: `CRT-safe menu choice requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
+        return { handled: true, ok: false, log: `CRT-safe menu choice requires a compile-time constant timeout from 1 to 1092 seconds: ${rawLine}` };
       }
       if (nmiKnownOff) {
         return { handled: true, ok: false, log: `CRT-safe menu choice requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
@@ -537,7 +538,7 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const chooseKeypad = line.match(/^choose\s+keypad\s+(.+?)\s+to\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+on\s+keypad\s+([12]))?(?:\s+sleep\s+after\s+([0-9]+)\s+seconds?)?$/i);
+  const chooseKeypad = line.match(new RegExp(`^choose\\s+keypad\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+on\\s+keypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   if (chooseKeypad) {
     const targetInfo = getRuntimeInfo(chooseKeypad[3]);
     const loadMin = emitLoadInt8ValueInto("b", chooseKeypad[1]);
@@ -548,9 +549,9 @@ export function handleVramPixelInputStatement({
     body.push(...loadMin);
     body.push(...loadMax);
     if (chooseKeypad[5]) {
-      const seconds = Number.parseInt(chooseKeypad[5], 10);
+      const seconds = tryEvaluateConstantExpression?.(chooseKeypad[5]);
       if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
-        return { handled: true, ok: false, log: `CRT-safe keypad choice requires a literal timeout from 1 to 1092 seconds: ${rawLine}` };
+        return { handled: true, ok: false, log: `CRT-safe keypad choice requires a compile-time constant timeout from 1 to 1092 seconds: ${rawLine}` };
       }
       if (nmiKnownOff) {
         return { handled: true, ok: false, log: `CRT-safe keypad choice requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
