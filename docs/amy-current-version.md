@@ -43,7 +43,8 @@ The canonical types are `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `fixed`,
 - `u32` and `i32` support fixed global and local arrays, same-type binary `+`/`-`,
   fitting integer literals, and constant or byte-sized runtime indexes.
 - `fp5` supports fixed global and local arrays with indexed assignment, arithmetic,
-  comparison, clear, format, and print operations.
+  comparison, clear, format, print, math builtins, random values, and `fixed32`
+  conversions.
 - `inc` and `dec` support packed BCD values, including indexed global and local BCD arrays.
 - Legacy `u32 zero/copy/add/inc/sub` forms remain migration-only compatibility syntax;
   modern code uses assignment and compound operators.

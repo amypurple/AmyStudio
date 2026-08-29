@@ -11,6 +11,7 @@ export function createAssignmentArithmeticHelpers({
   emitFx16DivideOp,
   emitFp5MultiplyOp,
   emitFp5DivideOp,
+  emitRandomFp5Into,
   emitRandomFp5BetweenInto,
   splitTopLevelArgs,
   emitRuntimeStore,
@@ -1102,6 +1103,10 @@ export function createAssignmentArithmeticHelpers({
         }
       }
       const randomArgs = parseRandomCallArgs(valueToken);
+      if (targetType === "fp5" && randomArgs?.length === 0 && typeof emitRandomFp5Into === "function") {
+        const randomStore = emitRandomFp5Into(target);
+        if (randomStore) return randomStore;
+      }
       if (targetType === "fp5" && randomArgs && randomArgs.length === 2 && typeof emitRandomFp5BetweenInto === "function") {
         const randomStore = emitRandomFp5BetweenInto(randomArgs[0], randomArgs[1], target);
         if (randomStore) return randomStore;

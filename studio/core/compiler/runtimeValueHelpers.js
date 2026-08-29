@@ -710,7 +710,13 @@ export function createRuntimeValueHelpers({
       if (!loadRaw || !storeTarget) return null;
       return [...loadRaw, ...storeTarget];
     }
-    if (sourceType === "fp5" && !(targetType === "i32" && isFix16_16DeclaredType(targetDeclaredType))) return null;
+    if (sourceType === "fp5" && targetType === "i32" && isFix16_16DeclaredType(targetDeclaredType)) {
+      const scratch = ensureCompareScratch32();
+      const storeSource = emitStoreFx16Source(value, scratch.leftLabel);
+      const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, name);
+      return storeSource && storeTarget ? [...storeSource, ...storeTarget] : null;
+    }
+    if (sourceType === "fp5") return null;
     if (targetType === "int8" && sourceType === "int16") {
       const normalizedTargetDeclared = normalizeDeclaredType(targetDeclaredType);
       const normalizedSourceDeclared = normalizeDeclaredType(sourceDeclaredType);

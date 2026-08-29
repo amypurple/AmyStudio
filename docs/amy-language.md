@@ -460,7 +460,6 @@ writing `Player.X` and `Player.Score`. A scalar or unknown root cannot become a 
 an alias; its qualified fields are rejected normally.
 
 Current record limits:
-- no local record variables yet
 - no recursive or multidimensional record-array fields yet
 - no whole-record assignment through pointer-backed aliases
 - no whole-record comparison through pointer-backed aliases
@@ -788,7 +787,8 @@ FP5 note:
 - fixed-length global and local arrays use `fp5 Values[Count]`; each element occupies
   five bytes and accepts constant, byte-variable, or byte-expression indexes
 - indexed FP5 values support assignment, copy, comparison, `+=`, `-=`, `*=`, `/=`,
-  `clear`, `format`, and direct `print`; constant indexes are bounds-checked
+  `clear`, `format`, direct `print`, `abs`, `sqrt`, `log`, `exp`, `random`, and two-way
+  `fixed32` conversion; constant indexes are bounds-checked
 - FP5 fields inside records and overlays are not part of this array support
 - direct assignments between scalar `fp5` and `fixed32` values perform a numeric
   conversion; they do not copy the incompatible raw representations
@@ -2376,8 +2376,8 @@ example, `offset -4,-8` places an 8x8 sprite around a center/feet-style anchor
 instead of directly at the tile's top-left visual pixel.
 
 `sprite I y`, `sprite I x`, `sprite I pattern`, and `sprite I color` read from
-the Amy sprite shadow table, not directly from VRAM. In these partial setters and getters, `I` is currently a constant
-sprite index from 0 to 31; variable sprite indexes are not accepted yet. These getters are useful for animation routines that
+the Amy sprite shadow table, not directly from VRAM. `I` accepts a constant, byte variable, or byte expression;
+constant indexes are checked in `0..31`. These getters are useful for animation routines that
 move or inspect shadow entries before the next `update sprites`. Sprite fields can also be used in byte expressions with ROM byte tables, for example `set sprite 4 x to sprite 0 x + StarDX[I]`.
 
 ---
@@ -3429,7 +3429,7 @@ These are the most plausible next language extensions. They are not implemented 
 - BCD multiplication/division/modulo only if a game proves they are worth the extra runtime/compiler surface
 - first-class `fp5` expressions with BASIC-style real math builtins
 - broader local-array support across more element types and bulk operations
-- local records, richer record field types, and broader array-of-record support once the current global-first record model proves itself
+- richer record field types and broader aggregate-array support
 - more dead-code elimination and print/format helper sharing to reduce ROM overhead in small demos
 
 ### Planned BASIC-equivalent fp5 builtins

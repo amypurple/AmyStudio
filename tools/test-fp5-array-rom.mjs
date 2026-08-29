@@ -15,11 +15,12 @@ const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 writeFileSync(source, `project "FP5 ARRAY ROM TEST"
 memory "colecovision_legacy_sdcc"
 u8 GuardBefore = $A5
-fp5 Values[3] = 1.5
+fp5 Values[6] = 1.5
 u8 GuardAfter = $5A
 u8 I = 1
 u8 Passed = 0
 u8 OutputText[16]
+fixed32 FixedValue = 0.0
 
 sub start:
   text screen
@@ -32,6 +33,24 @@ sub start:
   Values[I + 1] = Values[I]
   Values[I + 1] *= 2.0
   if Values[2] = 6.0 then Passed += 1
+  Values[3] = -4.0
+  Values[3] = abs(Values[3])
+  if Values[3] = 4.0 then Passed += 1
+  Values[4] = sqrt(9.0)
+  if Values[4] = 3.0 then Passed += 1
+  Values[3] = exp(0.0)
+  if Values[3] = 1.0 then Passed += 1
+  Values[4] = log(1.0)
+  if Values[4] = 0.0 then Passed += 1
+  Values[5] = random()
+  if Values[5] >= 0.0 then Passed += 1
+  if Values[5] < 1.0 then Passed += 1
+  Values[3] = 2.5
+  FixedValue = Values[3]
+  Values[4] = FixedValue
+  if Values[4] = 2.5 then Passed += 1
+  Values[5] = abs(-7.0)
+  if Values[5] = 7.0 then Passed += 1
   format Values[2] into OutputText
   print Values[2] at 3,4
   clear Values[0]
@@ -75,7 +94,7 @@ try {
       core.loadBios(bios);
       core.loadRom(readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 8; frame += 1) core.runFrame();
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 8, `${profile}: FP5 array assertions failed`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 16, `${profile}: FP5 array assertions failed`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_GuardBefore"), 1)[0], 0xA5, `${profile}: leading guard changed`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_GuardAfter"), 1)[0], 0x5A, `${profile}: trailing guard changed`);
       const text = String.fromCharCode(...core.readRam(addressOf(asm, "AMY_UVAR_OutputText"), 16));

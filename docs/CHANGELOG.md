@@ -2,7 +2,12 @@
 
 - Added global and local `fp5` arrays with indexed assignment, copy, arithmetic,
   comparison, clear, format, and direct print support under all optimization profiles.
+- Completed indexed `fp5` support for `abs`, `sqrt`, `log`, `exp`, `random`, constant
+  results, and two-way `fixed32` conversions; nonzero indexes are runtime-tested under
+  every optimization profile.
 - Added direct decimal-literal comparisons for scalar and indexed `fp5` values.
+- Added permanent five-profile runtime coverage for dynamic sprite-field getters and
+  existing stack-local records; removed contradictory stale limits from the reference.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and

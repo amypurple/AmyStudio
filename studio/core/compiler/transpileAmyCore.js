@@ -3899,6 +3899,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitFx16DivideOp: (...args) => emitFx16DivideOp(...args),
     emitFp5MultiplyOp: (...args) => emitFp5MultiplyOp(...args),
     emitFp5DivideOp: (...args) => emitFp5DivideOp(...args),
+    emitRandomFp5Into: (...args) => emitRandomFp5Into(...args),
     emitRandomFp5BetweenInto: (...args) => emitRandomFp5BetweenInto(...args),
     splitTopLevelArgs,
     emitRuntimeStore: (...args) => emitRuntimeStore(...args),

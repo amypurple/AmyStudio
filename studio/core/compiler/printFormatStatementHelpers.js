@@ -51,6 +51,7 @@ export function handlePrintFormatStatement({
   emitBcdPrint,
   tryEvaluateCompileTimeNumericExpression
 }) {
+  const numericTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
   const _depMath = checkMathIntoDeprecation(line, rawLine);
   if (_depMath.handled) return _depMath;
 
@@ -324,7 +325,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: false, log: `Legacy 'sqrt word' is no longer supported. Use 'sqrt Value into Var' with canonical types. Offending line: ${rawLine}` };
   }
 
-  const sqrtAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*sqrt\s*\(\s*(.+?)\s*\)$/i);
+  const sqrtAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*sqrt\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (sqrtAssign) {
     const sqrtValue = normalizeExpression(sqrtAssign[2]);
     const code = emitSqrtInt16Into(sqrtValue, sqrtAssign[1]) || emitSqrtFx16Into(sqrtValue, sqrtAssign[1]) || emitSqrtFp5Into(sqrtValue, sqrtAssign[1]);
@@ -343,7 +344,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const sqrAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*sqr\s*\(\s*(.+?)\s*\)$/i);
+  const sqrAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*sqr\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (sqrAssign) {
     const sqrtValue = normalizeExpression(sqrAssign[2]);
     const code = emitSqrtInt16Into(sqrtValue, sqrAssign[1]) || emitSqrtFx16Into(sqrtValue, sqrAssign[1]) || emitSqrtFp5Into(sqrtValue, sqrAssign[1]);
@@ -362,7 +363,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const logAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*log\s*\(\s*(.+?)\s*\)$/i);
+  const logAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*log\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (logAssign) {
     const logValue = normalizeExpression(logAssign[2]);
     const code = emitLogFp5Into(logValue, logAssign[1]);
@@ -381,7 +382,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const expAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*exp\s*\(\s*(.+?)\s*\)$/i);
+  const expAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*exp\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (expAssign) {
     const expValue = normalizeExpression(expAssign[2]);
     const code = emitExpFp5Into(expValue, expAssign[1]);
@@ -400,7 +401,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const absAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*abs\s*\(\s*(.+?)\s*\)$/i);
+  const absAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*abs\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (absAssign) {
     const absValue = normalizeExpression(absAssign[2]);
     const code = emitAbsFx16Into(absValue, absAssign[1]) || emitAbsFp5Into(absValue, absAssign[1]);

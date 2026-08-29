@@ -66,11 +66,9 @@ export function createFx16Helpers({
   //   - int8 variables promoted to integer part (sign-extended)
   //   - int16 variables promoted to integer part (sign-extended)
   function emitStoreFx16Source(valueToken, baseLabel) {
+    if (getFp5Info(valueToken)) return emitStoreFp5SourceAsFx16(valueToken, baseLabel);
     const valueInfo = getRuntimeInfo(valueToken);
     if (valueInfo) {
-      if (valueInfo.kind === "fp5" || valueInfo.type === "fp5") {
-        return emitStoreFp5SourceAsFx16(valueToken, baseLabel);
-      }
       if (valueInfo.kind === "fix16_16") {
         return emitStoreExtended32(valueToken, baseLabel);
       }
@@ -298,6 +296,10 @@ export function createFx16Helpers({
         `    ld (ix${signOffset < 0 ? signOffset : `+${signOffset}`}),a`
       ];
     }
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...storeSource, ...address, "    call AMY_FP5_ABS_MEM"] : null;
+    }
     return [
       ...storeSource,
       `    ld hl,${targetInfo.asmName}`,
@@ -322,6 +324,10 @@ export function createFx16Helpers({
         "    ld a,(AMY_FP5_FPA1+4)",
         `    ld (ix${targetInfo.offset + 4 < 0 ? targetInfo.offset + 4 : `+${targetInfo.offset + 4}`}),a`
       ];
+    }
+    if (targetInfo.storage === "fp5_array_element") {
+      const storeTarget = emitStoreFPA1ToFp5Target(targetToken);
+      return storeTarget ? ["    call AMY_FP5_RND", ...storeTarget] : null;
     }
     return [
       "    call AMY_FP5_RND",
@@ -590,6 +596,10 @@ export function createFx16Helpers({
           "    call AMY_FP5_TO_FX16_16"
         ];
       }
+      if (valueInfo.storage === "fp5_array_element") {
+        const address = emitLoadFp5ArrayElementAddress(valueInfo);
+        return address ? [...address, `    ld de,${baseLabel}`, "    call AMY_FP5_TO_FX16_16"] : null;
+      }
       return [
         `    ld hl,${valueInfo.asmName}`,
         `    ld de,${baseLabel}`,
@@ -618,6 +628,12 @@ export function createFx16Helpers({
         "    ld a,(AMY_FP5_FPA1+4)",
         `    ld (ix${targetInfo.offset + 4 < 0 ? targetInfo.offset + 4 : `+${targetInfo.offset + 4}`}),a`
       ];
+    }
+    if (targetInfo.storage === "fp5_array_element") {
+      const storeTarget = emitStoreFPA1ToFp5Target(targetToken);
+      return storeTarget
+        ? [`    ld hl,${sourceLabel}`, `    call ${bridgeRoutine}`, ...storeTarget]
+        : null;
     }
     return [
       `    ld hl,${sourceLabel}`,
@@ -685,6 +701,10 @@ export function createFx16Helpers({
         "    add hl,de",
         "    call AMY_FP5_SQRT_MEM"
       ];
+    }
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...storeSource, ...address, "    call AMY_FP5_SQRT_MEM"] : null;
     }
     return [
       ...storeSource,
@@ -754,6 +774,15 @@ export function createFx16Helpers({
     if (!targetInfo || !Array.isArray(bytes) || bytes.length !== 5) return null;
     if (targetInfo.storage === "stack") {
       return emitStoreImmediateBytesToOffset(targetInfo.offset, bytes);
+    }
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      if (!address) return null;
+      const stores = bytes.flatMap((value, index) => [
+        `    ld (hl),${formatByteHex(value)}`,
+        ...(index < bytes.length - 1 ? ["    inc hl"] : [])
+      ]);
+      return [...address, ...stores];
     }
     return emitStoreImmediateBytesToLabel(targetInfo.asmName, bytes);
   }
@@ -832,6 +861,10 @@ export function createFx16Helpers({
         "    call AMY_FP5_LOG_MEM"
       ];
     }
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...storeSource, ...address, "    call AMY_FP5_LOG_MEM"] : null;
+    }
     return [
       ...storeSource,
       `    ld hl,${targetInfo.asmName}`,
@@ -858,6 +891,10 @@ export function createFx16Helpers({
         "    add hl,de",
         "    call AMY_FP5_EXP_MEM"
       ];
+    }
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...storeSource, ...address, "    call AMY_FP5_EXP_MEM"] : null;
     }
     return [
       ...storeSource,
