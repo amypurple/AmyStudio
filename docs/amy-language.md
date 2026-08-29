@@ -378,7 +378,7 @@ Fixed array lengths may be decimal or hexadecimal literals, or named integer con
 expressions known at compile time. Constants may reference other constants, including
 forward references, and produce the same ROM layout and code as literals.
 
-Two statically addressed records of the same declared type can be copied directly:
+Two records of the same declared type can be copied directly:
 
 ```basic
 Actor Source
@@ -388,12 +388,12 @@ SceneRam.Game.Player = Source
 ```
 
 Whole-record assignment emits one inline Z80 `LDIR`; it allocates no pointer or helper
-RAM. It accepts global records, nested scalar record fields, overlay parts, top-level
-record-array elements, and qualified overlay record-array elements. Runtime indexes are
-evaluated once per operand using the normal checked record-array address lowering. A copy
-between two aliases of the same static overlay address is removed as a no-op. Different
-record types, invalid or wider indexes, and pointer-backed `with` aliases are rejected
-rather than guessed.
+RAM. It accepts global and stack-local records, nested scalar record fields, overlay
+parts, global or local record-array elements, and qualified overlay record-array
+elements. Runtime indexes are evaluated once per operand using the normal checked
+record-array address lowering. A copy between two aliases of the same static overlay
+address is removed as a no-op. Different record types, invalid or wider indexes, and
+pointer-backed `with` aliases are rejected rather than guessed.
 
 Whole records of the same declared type can also be compared for byte-for-byte equality:
 
@@ -402,10 +402,11 @@ if Current = Saved then Match = 1
 if Actors[I] <> Template then Changed += 1
 ```
 
-`=` and `<>` emit an inline counted byte comparison with no helper RAM. The same static,
-nested, overlay, and indexed operands accepted by whole-record assignment are supported,
-and each runtime index is evaluated once. Ordering comparisons such as `<` or `>` and
-different record types are rejected because records have no implicit ordering semantics.
+`=` and `<>` emit an inline counted byte comparison with no helper RAM. The same global,
+local, nested, overlay, and indexed operands accepted by whole-record assignment are
+supported, and each runtime index is evaluated once. Ordering comparisons such as `<`
+or `>` and different record types are rejected because records have no implicit ordering
+semantics.
 
 Indexed paths may combine a record-array index with a scalar array-field index, as in
 `Container.Items[I].Flags[J]`. Each index contributes its own checked byte stride to the

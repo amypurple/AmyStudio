@@ -3072,9 +3072,18 @@ export function transpileAmyCore(sourceText, deps) {
     if (!normalized) return null;
     const directInfo = getRuntimeInfo(normalized);
     if (directInfo?.kind === "record") {
-      if (!directInfo.asmName || directInfo.storage === "alias_pointer" || directInfo.storage === "dynamic_record_alias") return null;
       const recordInfo = getRecordTypeInfo(directInfo.recordTypeName || directInfo.declaredType);
       if (!recordInfo) return null;
+      if (directInfo.storage === "stack") {
+        const loadLines = ["    push ix", "    pop hl"];
+        if (directInfo.offset) loadLines.push(`    ld de,${directInfo.offset}`, "    add hl,de");
+        return {
+          loadLines,
+          recordTypeName: recordInfo.name,
+          byteSize: recordInfo.byteSize
+        };
+      }
+      if (!directInfo.asmName || directInfo.storage === "alias_pointer" || directInfo.storage === "dynamic_record_alias") return null;
       return {
         address: directInfo.asmName,
         recordTypeName: recordInfo.name,
@@ -3113,9 +3122,18 @@ export function transpileAmyCore(sourceText, deps) {
       || field.arrayFieldIndex !== null || (field.arrayFieldOffsets?.length || 0) !== 0
       || field.fieldInfo?.type !== "record" || field.fieldInfo?.isArray) return null;
     const baseInfo = getRuntimeInfo(field.name);
-    if (!baseInfo?.asmName || baseInfo.storage === "alias_pointer" || baseInfo.storage === "dynamic_record_alias") return null;
     const recordInfo = getRecordTypeInfo(field.fieldInfo.recordTypeName || field.fieldInfo.declaredType);
     if (!recordInfo) return null;
+    if (baseInfo?.storage === "stack") {
+      const loadLines = emitLoadRecordFieldAddressIntoHL(normalized);
+      if (!loadLines) return null;
+      return {
+        loadLines,
+        recordTypeName: recordInfo.name,
+        byteSize: recordInfo.byteSize
+      };
+    }
+    if (!baseInfo?.asmName || baseInfo.storage === "alias_pointer" || baseInfo.storage === "dynamic_record_alias") return null;
     return {
       address: `${baseInfo.asmName}${field.totalOffset ? ` + ${field.totalOffset}` : ""}`,
       recordTypeName: recordInfo.name,

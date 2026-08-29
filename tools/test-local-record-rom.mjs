@@ -42,6 +42,7 @@ end sub
 
 sub Outer:
   Actor Temp = 0
+  Actor Saved = 0
   Actor Group[2] = 0
   u8 Index = 0
   Temp.X = 9
@@ -53,6 +54,14 @@ sub Outer:
   next Item
   Advance(Temp)
   Advance(Group[1])
+  Saved = Temp
+  if Saved = Temp then Passed += 1
+  Temp.X += 1
+  if Saved <> Temp then Passed += 1
+  Saved = Group[1]
+  if Saved = Group[1] then Passed += 1
+  Group[0] = Saved
+  if Group[0] = Saved then Passed += 1
   Inner
   Result = Temp.Score
   Result += Temp.X
@@ -64,7 +73,7 @@ end sub
 
 sub start:
   Outer
-  if Result = 522 then Passed += 1
+  if Result = 525 then Passed += 1
   loop forever
 end sub
 `);
@@ -98,8 +107,8 @@ try {
       for (let frame = 0; frame < 3; frame += 1) core.runFrame();
       const resultAddress = addressOf(asm, "AMY_UVAR_Result");
       const resultValue = core.readRam(resultAddress, 2);
-      assert.deepEqual([...resultValue], [0x0A, 0x02], `${profile}: caller local record data was corrupted`);
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 5, `${profile}: local record or record-array checks failed`);
+      assert.deepEqual([...resultValue], [0x0D, 0x02], `${profile}: caller local record data was corrupted`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 9, `${profile}: local record or record-array checks failed`);
     } finally {
       core.destroy();
     }
