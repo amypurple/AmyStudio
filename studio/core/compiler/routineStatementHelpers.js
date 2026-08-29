@@ -209,6 +209,7 @@ export function handleRoutineStatement({
     }
     const prepared = emitRoutineArgumentPushes(procName, argTokens, sig, "call");
     if (!prepared) return { handled: true, ok: false, log: `call ${procName}: cannot prepare arguments: ${rawLine}` };
+    if (prepared.error) return { handled: true, ok: false, log: `call ${procName}: ${prepared.error}: ${rawLine}` };
     body.push(...prepared.lines);
     body.push(`    call ${resolveJumpTarget(procName)}`);
     body.push(...emitAdjustSpBy(prepared.cleanupBytes));

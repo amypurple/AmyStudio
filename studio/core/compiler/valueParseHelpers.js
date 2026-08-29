@@ -232,7 +232,9 @@ export function createValueParseHelpers({
     const staticParams = typeof getStaticAbiParams === "function" ? getStaticAbiParams(name) : null;
     if (staticParams && staticParams.length === sig.length) {
       const preparedArgs = args.map((arg, index) => emitPushArgument(arg, sig[index]));
-      if (preparedArgs.some((code) => !code || code[code.length - 1]?.trim().toLowerCase() !== "push hl")) return null;
+      const argumentError = preparedArgs.find((code) => code?.error)?.error;
+      if (argumentError) return { error: argumentError };
+      if (preparedArgs.some((code) => !Array.isArray(code) || code[code.length - 1]?.trim().toLowerCase() !== "push hl")) return null;
       const needsStaging = preparedArgs.some((code) => code.some((line) => /^\s*call\b/i.test(line)));
       const lines = [];
       const storeParam = (param) => param.type === "int16"
@@ -271,6 +273,7 @@ export function createValueParseHelpers({
     let cleanupBytes = 0;
     for (let i = sig.length - 1; i >= 0; i -= 1) {
       const pushCode = emitPushArgument(args[i], sig[i]);
+      if (pushCode?.error) return { error: pushCode.error };
       if (!pushCode) return null;
       lines.push(...pushCode);
       cleanupBytes += sig[i].isRef ? 2 : runtimeParamSlotSize(sig[i].type, sig[i].declaredType);
@@ -287,7 +290,7 @@ export function createValueParseHelpers({
     if (!retInfo) return null;
     const sig = procSignatures.get(effectiveInvocation.name) || [];
     const prepared = emitRoutineArgumentPushes(effectiveInvocation.name, effectiveInvocation.args, sig, "call");
-    if (!prepared) return null;
+    if (!prepared || prepared.error) return null;
     let cleanupLines = emitAdjustSpBy(prepared.cleanupBytes);
     if (prepared.cleanupBytes && retInfo.returnType === "int16") {
       cleanupLines = ["    ex de,hl", ...cleanupLines, "    ex de,hl"];

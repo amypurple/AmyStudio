@@ -2,6 +2,7 @@
 
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
+- Improved rejected overlay-field `ref` calls with a direct part-scoped lifetime diagnostic.
 - Accepted named compile-time constants for record array-field lengths, `for each`
   array discovery, and every CRT-safe `sleep after` timeout form, with byte-identical
   ROM output versus literals and fail-closed validation.

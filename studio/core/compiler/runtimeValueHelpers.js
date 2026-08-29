@@ -845,7 +845,9 @@ export function createRuntimeValueHelpers({
       const recordField = parseRecordFieldRef(normalized);
       if (recordField) {
         const baseInfo = getRuntimeInfo(recordField.name);
-        if (baseInfo?.storage === "overlay") return null;
+        if (baseInfo?.storage === "overlay") {
+          return { error: `overlay-qualified field '${normalized}' cannot be passed by ref because overlay storage has part-scoped lifetime` };
+        }
         if (recordField.fieldInfo.type !== targetType || !declaredTypeMatches(recordField.fieldInfo.declaredType)) return null;
         const direct = getDirectRecordFieldAddress(normalized);
         if (direct) return [`    ld hl,${direct}`];
@@ -875,6 +877,7 @@ export function createRuntimeValueHelpers({
       const declaredType = paramInfo.declaredType || type;
       if (paramInfo.isRef) {
         const loadAddress = emitRefArgumentAddressIntoHL(token, paramInfo);
+        if (loadAddress?.error) return loadAddress;
         if (!loadAddress) return null;
         return [...loadAddress, "    push hl"];
       }

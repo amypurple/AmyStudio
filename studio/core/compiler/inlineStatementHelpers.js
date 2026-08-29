@@ -275,6 +275,7 @@ export function createInlineStatementCompiler(ctx) {
                 const argTokens = argsStr ? splitTopLevelArgs(argsStr).map((s) => normalizeExpression(s.trim())) : [];
                 const prepared = emitRoutineArgumentPushes(procName, argTokens, sig, "call");
                 if (!prepared) return { ok: false, lines: [], log: `Invalid call arguments for ${procName}: ${rawLineText}` };
+                if (prepared.error) return { ok: false, lines: [], log: `Invalid call arguments for ${procName}: ${prepared.error}: ${rawLineText}` };
                 inlineLines = [...prepared.lines, `    call ${resolveJumpTarget(procName)}`, ...emitAdjustSpBy(prepared.cleanupBytes)];
               } else {
                 const inlineImplicitCallBare = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)$/);

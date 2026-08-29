@@ -387,6 +387,30 @@ end sub
   assert.equal(bad.ok, false);
   assert.match(bad.log, /must be a global u8 variable/i);
 });
+check("overlay ref rejection explains part-scoped lifetime", () => {
+  const source = (callLine) => `memory "colecovision_legacy_sdcc"
+record MenuMemory:
+  u8 Selection
+end record
+overlay SceneRam
+  Menu as MenuMemory
+  Game as MenuMemory
+end overlay
+sub start:
+  ${callLine}
+  loop forever
+end sub
+sub Bump(ref u8 Value):
+  Value += 1
+  return
+end sub
+`;
+  for (const callLine of ["Bump(SceneRam.Menu.Selection)", "if 1 then Bump(SceneRam.Menu.Selection)"]) {
+    const bad = transpileAmy(source(callLine));
+    assert.equal(bad.ok, false, `${callLine} must reject overlay ref escape`);
+    assert.match(bad.log, /overlay-qualified field 'SceneRam\.Menu\.Selection'.*part-scoped lifetime/i);
+  }
+});
 const sceneDeclarationSource = `memory "colecovision_legacy_sdcc"
 record MenuMemory:
   u8 Selection
