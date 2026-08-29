@@ -35,6 +35,8 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const controllerBackend = String(caps.controllerBackend || "amy");
   const usesJoypadPressed1 = !!caps.usesJoypadPressed1;
   const usesJoypadPressed2 = !!caps.usesJoypadPressed2;
+  const usesJoypadReleased1 = !!caps.usesJoypadReleased1;
+  const usesJoypadReleased2 = !!caps.usesJoypadReleased2;
   const needsSpinner = !!caps.needsSpinner;
   const needsFrameCounter = !!caps.needsFrameCounter;
   const needsNmi = !!caps.needsNmi;
@@ -124,17 +126,21 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     }
   }
 
-  if (usesJoypadPressed1) {
+  if (usesJoypadPressed1 || usesJoypadReleased1) {
+    const start = current;
     addresses.joypad_previous_1 = current;
-    addresses.joypad_pressed_1 = current + 1;
-    reserved.push({ start: current, endExclusive: current + 2, label: "Amy joypad 1 edge state" });
-    current += 2;
+    current += 1;
+    if (usesJoypadPressed1) addresses.joypad_pressed_1 = current++;
+    if (usesJoypadReleased1) addresses.joypad_released_1 = current++;
+    reserved.push({ start, endExclusive: current, label: "Amy joypad 1 edge state" });
   }
-  if (usesJoypadPressed2) {
+  if (usesJoypadPressed2 || usesJoypadReleased2) {
+    const start = current;
     addresses.joypad_previous_2 = current;
-    addresses.joypad_pressed_2 = current + 1;
-    reserved.push({ start: current, endExclusive: current + 2, label: "Amy joypad 2 edge state" });
-    current += 2;
+    current += 1;
+    if (usesJoypadPressed2) addresses.joypad_pressed_2 = current++;
+    if (usesJoypadReleased2) addresses.joypad_released_2 = current++;
+    reserved.push({ start, endExclusive: current, label: "Amy joypad 2 edge state" });
   }
 
   if (needsSleepState) {

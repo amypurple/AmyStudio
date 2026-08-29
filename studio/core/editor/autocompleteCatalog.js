@@ -62,6 +62,8 @@ const AMY_AUTOCOMPLETE_V21_ADDITIONS = [
   ["if joypad(1).button1 then", "Preferred inline input branch for fire/actions"],
   ["if joypad(1).fire.pressed then", "True once for each new standard fire press"],
   ["if joypad(1).action.pressed then", "True once for each new action-button press"],
+  ["if joypad(1).fire.released then", "True once when standard fire is released"],
+  ["if joypad(1).action.released then", "True once when all action buttons are released"],
   ["if joypad(1).left then PlayerX -= 1", "Short inline movement branch"],
   ["if joypad(1).right then PlayerX += 1", "Short inline movement branch"],
   ["Pad1 = joypad(1)", "Read the raw decoded joypad byte as an expression"],

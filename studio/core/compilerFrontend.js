@@ -17,7 +17,7 @@ export function inferControllerBackendFromSource(sourceText) {
     add(port, "segment1", "joypad");
   };
   let unsupported = false;
-  for (const match of codeText.matchAll(/\bjoypad\s*\(\s*([^)]*?)\s*\)\s*(?:\.\s*([A-Za-z][A-Za-z0-9]*)(?:\s*\.\s*pressed)?)?/gi)) {
+  for (const match of codeText.matchAll(/\bjoypad\s*\(\s*([^)]*?)\s*\)\s*(?:\.\s*([A-Za-z][A-Za-z0-9]*)(?:\s*\.\s*(?:pressed|released))?)?/gi)) {
     const port = Number(match[1]);
     const property = String(match[2] || "").toLowerCase();
     if ((port !== 1 && port !== 2) || !property || /^(?:action|button3|button4)$/.test(property)) {
@@ -119,12 +119,19 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\b(read\s+(joypad|keypad)|wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|sleep\s+after|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
     /\b(joypad|keypad)\s*\(/i.test(text);
   const usesDynamicJoypadPressed = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText);
+  const usesDynamicJoypadReleased = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*released\b/i.test(codeText);
   const usesJoypadPressed1 =
     usesDynamicJoypadPressed ||
     /\bjoypad\s*\(\s*1\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText);
   const usesJoypadPressed2 =
     /\bjoypad\s*\(\s*2\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText) ||
     usesDynamicJoypadPressed;
+  const usesJoypadReleased1 =
+    usesDynamicJoypadReleased ||
+    /\bjoypad\s*\(\s*1\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*released\b/i.test(codeText);
+  const usesJoypadReleased2 =
+    /\bjoypad\s*\(\s*2\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*released\b/i.test(codeText) ||
+    usesDynamicJoypadReleased;
   const needsSpinner =
     /\b(read\s+spinner|spinner|AMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)|SPINNER_[12])\b/i.test(text);
   const usesVblankHook = /^\s*on\s+(?:vblank|frame)\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:'.*)?$/im.test(codeText);
@@ -157,6 +164,8 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsControllers,
     usesJoypadPressed1,
     usesJoypadPressed2,
+    usesJoypadReleased1,
+    usesJoypadReleased2,
     needsSpinner,
     needsFrameCounter,
     usesVblankHook,

@@ -274,7 +274,7 @@ function injectSystemInitInline(asmBody, caps) {
 }
 
 function routeWaitsThroughJoypadEdgeCapture(asmBody, caps) {
-  if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2) return asmBody;
+  if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2 && !caps.usesJoypadReleased1 && !caps.usesJoypadReleased2) return asmBody;
   return String(asmBody || "").replace(
     /^(\s*)call\s+AMY_WAIT_FRAMES_SAFE\s*$/gim,
     "$1call AMY_WAIT_FRAMES_WITH_PRESSED"
@@ -391,15 +391,17 @@ function inferRuntimeCapabilities(project, asmBody) {
   const usesSleepService = /^\s*sleep\s+after\s+[0-9]+\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(sourceText);
   const usesJoypadPressed1 = /\bJOYPAD_PRESSED_1\b/.test(asmBody);
   const usesJoypadPressed2 = /\bJOYPAD_PRESSED_2\b/.test(asmBody);
+  const usesJoypadReleased1 = /\bJOYPAD_RELEASED_1\b/.test(asmBody);
+  const usesJoypadReleased2 = /\bJOYPAD_RELEASED_2\b/.test(asmBody);
   const usesSoundApi = /\bAMY_(SET_SOUND_TABLE|PLAY_SOUND|STOP_SOUND|MUTE_ALL)\b/.test(asmBody);
   const usesMusicApi = /\bAMY_(PLAY_SONG|UPDATE_MUSIC|STOP_SONG|NEXT_SONG)\b/.test(asmBody);
   const usesTinySound = /\bsndtiny_[12]\b/.test(asmBody) || sourceHintsTinySound(sourceText);
   const usesSprites = /\bAMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)\b/.test(asmBody)
     || /\bsprites?\b/i.test(sourceText);
   const needsSpriteFlicker = /\bAMY_(?:SPRITE_FLICKER_(?:ON|OFF)|UPDATE_SPRITES_FLICKER)\b/.test(asmBody);
-  const usesJoypad1 = /\bJOYPAD_1\b/.test(asmBody) || usesJoypadPressed1 || usesSleepService;
+  const usesJoypad1 = /\bJOYPAD_1\b/.test(asmBody) || usesJoypadPressed1 || usesJoypadReleased1 || usesSleepService;
   const usesKeypad1 = /\bKEYPAD_1\b/.test(asmBody) || usesSleepService;
-  const usesJoypad2 = /\bJOYPAD_2\b/.test(asmBody) || usesJoypadPressed2 || usesSleepService;
+  const usesJoypad2 = /\bJOYPAD_2\b/.test(asmBody) || usesJoypadPressed2 || usesJoypadReleased2 || usesSleepService;
   const usesKeypad2 = /\bKEYPAD_2\b/.test(asmBody) || usesSleepService;
   const usesJoypadVars = usesJoypad1 || usesKeypad1 || usesJoypad2 || usesKeypad2;
   const usesSpinner = /\bAMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)\b/.test(asmBody)
@@ -462,9 +464,11 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsNmiAckOnly,
     usesJoypad1,
     usesJoypadPressed1,
+    usesJoypadReleased1,
     usesKeypad1,
     usesJoypad2,
     usesJoypadPressed2,
+    usesJoypadReleased2,
     usesKeypad2,
     ...(controllerBackend || {})
   };
@@ -512,6 +516,8 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     referencesSymbol("KEYPAD_2");
   const usesJoypadPressed1 = caps.usesJoypadPressed1 || referencesSymbol("JOYPAD_PRESSED_1");
   const usesJoypadPressed2 = caps.usesJoypadPressed2 || referencesSymbol("JOYPAD_PRESSED_2");
+  const usesJoypadReleased1 = caps.usesJoypadReleased1 || referencesSymbol("JOYPAD_RELEASED_1");
+  const usesJoypadReleased2 = caps.usesJoypadReleased2 || referencesSymbol("JOYPAD_RELEASED_2");
   const needsSpinner =
     caps.needsSpinner ||
     referencesSymbol("SPINNER_ENABLED") ||
@@ -550,7 +556,9 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needsBackdropShadow: caps.needsBackdropShadow,
     needsSleepState: caps.needsSleepState,
     usesJoypadPressed1,
-    usesJoypadPressed2
+    usesJoypadPressed2,
+    usesJoypadReleased1,
+    usesJoypadReleased2
   });
   const addr = runtimeMap.addresses;
   const hex16 = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
@@ -687,13 +695,15 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
       if (addr.keypad_1 !== undefined) lines.push(`KEYPAD_1        EQU ${hex16(addr.keypad_1)}`);
       if (addr.joypad_2 !== undefined) lines.push(`JOYPAD_2        EQU ${hex16(addr.joypad_2)}`);
       if (addr.keypad_2 !== undefined) lines.push(`KEYPAD_2        EQU ${hex16(addr.keypad_2)}`);
-      if (usesJoypadPressed1) {
+      if (usesJoypadPressed1 || usesJoypadReleased1) {
         lines.push(`JOYPAD_PREVIOUS_1 EQU ${hex16(addr.joypad_previous_1)}`);
-        lines.push(`JOYPAD_PRESSED_1 EQU ${hex16(addr.joypad_pressed_1)}`);
+        if (usesJoypadPressed1) lines.push(`JOYPAD_PRESSED_1 EQU ${hex16(addr.joypad_pressed_1)}`);
+        if (usesJoypadReleased1) lines.push(`JOYPAD_RELEASED_1 EQU ${hex16(addr.joypad_released_1)}`);
       }
-      if (usesJoypadPressed2) {
+      if (usesJoypadPressed2 || usesJoypadReleased2) {
         lines.push(`JOYPAD_PREVIOUS_2 EQU ${hex16(addr.joypad_previous_2)}`);
-        lines.push(`JOYPAD_PRESSED_2 EQU ${hex16(addr.joypad_pressed_2)}`);
+        if (usesJoypadPressed2) lines.push(`JOYPAD_PRESSED_2 EQU ${hex16(addr.joypad_pressed_2)}`);
+        if (usesJoypadReleased2) lines.push(`JOYPAD_RELEASED_2 EQU ${hex16(addr.joypad_released_2)}`);
       }
     }
     if (needsSpinner) {
@@ -817,17 +827,27 @@ function emitLegacyRuntime(lines, caps) {
     lines.push(`${continueLabel}:`);
   };
   const emitJoypadPressedWaitWrapper = () => {
-    if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2) return;
+    if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2 && !caps.usesJoypadReleased1 && !caps.usesJoypadReleased2) return;
     lines.push("AMY_WAIT_FRAMES_WITH_PRESSED:");
     lines.push("        call AMY_WAIT_FRAMES_SAFE");
     for (const pad of [1, 2]) {
-      if (!caps[`usesJoypadPressed${pad}`]) continue;
+      if (!caps[`usesJoypadPressed${pad}`] && !caps[`usesJoypadReleased${pad}`]) continue;
       lines.push(`        ld a,(JOYPAD_${pad})`);
       lines.push("        ld b,a");
       lines.push(`        ld a,(JOYPAD_PREVIOUS_${pad})`);
-      lines.push("        cpl");
-      lines.push("        and b");
-      lines.push(`        ld (JOYPAD_PRESSED_${pad}),a`);
+      if (caps[`usesJoypadReleased${pad}`]) {
+        lines.push("        ld c,a");
+        lines.push("        ld a,b");
+        lines.push("        cpl");
+        lines.push("        and c");
+        lines.push(`        ld (JOYPAD_RELEASED_${pad}),a`);
+        lines.push("        ld a,c");
+      }
+      if (caps[`usesJoypadPressed${pad}`]) {
+        lines.push("        cpl");
+        lines.push("        and b");
+        lines.push(`        ld (JOYPAD_PRESSED_${pad}),a`);
+      }
       lines.push("        ld a,b");
       lines.push(`        ld (JOYPAD_PREVIOUS_${pad}),a`);
     }

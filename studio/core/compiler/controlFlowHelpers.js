@@ -678,7 +678,7 @@ export function createControlFlowHelpers(ctx) {
     const chooseBranch = (whenTrue, whenFalse) => (wantTrueBranch ? whenTrue : whenFalse);
 
     const directInput = parseBuiltinInputRef?.(condition);
-    if (["joypad_bit", "joypad_mask", "joypad_pressed_bit", "joypad_pressed_mask"].includes(directInput?.source)) {
+    if (["joypad_bit", "joypad_mask", "joypad_pressed_bit", "joypad_pressed_mask", "joypad_released_bit", "joypad_released_mask"].includes(directInput?.source)) {
       if (directInput.runtimeName) {
         return {
           ok: true,

@@ -2335,6 +2335,7 @@ end if
 
 if joypad(1).fire then goto Fire
 if joypad(1).fire.pressed then goto FireOnce
+if joypad(1).fire.released then goto FireReleased
 RawPad = joypad(1)
 AnyStandardFire = joypad(1).fire
 AnyActionButton = joypad(1).action
@@ -2355,20 +2356,23 @@ FrameVar = frame
 print vdp.status at 0,0
 ```
 
-Append `.pressed` to a joypad direction or button property to detect only the
-new press. It stays true for repeated reads during the same program frame, does
-not repeat while held, and becomes true again after release and another press:
+Append `.pressed` or `.released` to a joypad direction or button property to
+detect one edge. The result stays stable for repeated reads during the same
+program frame and does not repeat while the input remains unchanged:
 
 ```basic
 if joypad(1).button1.pressed then Jump
 if joypad(1).fire.pressed then Confirm
 if joypad(Port).action.pressed then AnyAction
+if joypad(1).button1.released then Land
+if joypad(Port).action.released then ActionsReleased
 ```
 
-The edge state is allocated only when this syntax is used. A constant port costs
-two runtime RAM bytes; a variable port reserves two bytes for each port. A
-frame loop using `.pressed` must contain `wait`; Amy rejects unsynchronized busy
-polling instead of emitting an unreliable edge test.
+Edge state is allocated only when this syntax is used. One edge kind on a
+constant port costs two runtime RAM bytes; using both kinds costs three because
+they share the previous-input byte. A variable port reserves the corresponding
+state for both ports. A frame loop using either suffix must contain `wait`; Amy
+rejects unsynchronized busy polling instead of emitting an unreliable edge test.
 
 `spinner(N)` is a signed, consumable movement delta. Each read atomically returns
 and clears the ticks accumulated since the previous read. No movement therefore returns
@@ -3108,6 +3112,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `joypad(N).fire` | Either standard fire button (`button1` or `button2`), emitted as one `$C0` mask test |
 | `joypad(N).action` | Any of the four Super Action buttons, emitted as one `$F0` mask test; keypad keys are excluded |
 | `joypad(N).property.pressed` | One-frame edge test for a direction, button, `fire`, or `action`; repeated reads are stable and held input does not repeat |
+| `joypad(N).property.released` | One-frame release test for a direction, button, `fire`, or `action`; repeated reads are stable |
 | `keypad(N)` | Inline decoded keypad byte |
 | `spinner(N)` | Signed movement delta since the previous read; reading consumes it (`1`: right positive, `2`: down positive) |
 | `frame` | Inline 16-bit frame counter; byte targets receive the low byte |

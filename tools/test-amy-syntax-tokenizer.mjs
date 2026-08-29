@@ -162,6 +162,8 @@ for (const [source, expected] of [
   ["set sprite 0 pattern bit 1 on", ["pattern", "bit"]],
   ["sprites flicker on", ["sprites", "flicker", "on"]],
   ["sprites stable 0 to 2", ["sprites", "stable"]],
+  ["if joypad(1).fire.pressed then", ["pressed"]],
+  ["if joypad(1).fire.released then", ["released"]],
   ["debug breakpoint \"loop\"", ["debug", "breakpoint"]],
   ["test checkpoint \"ready\"", ["test", "checkpoint"]],
   ["on vblank GameTick", ["vblank"]],

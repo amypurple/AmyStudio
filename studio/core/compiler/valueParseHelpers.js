@@ -509,7 +509,7 @@ export function createValueParseHelpers({
           declaredType: "u8"
         };
       }
-      if (property === "pressed" && node.object?.kind === "member") {
+      if ((property === "pressed" || property === "released") && node.object?.kind === "member") {
         const edgeProperty = String(node.object.property || "").toLowerCase();
         const joypadSource = parseBuiltinInputRef(node.object.object);
         if (joypadSource?.source !== "joypad") return null;
@@ -517,10 +517,10 @@ export function createValueParseHelpers({
         const masks = { fire: 0xC0, action: 0xF0 };
         if (!(edgeProperty in bits) && !(edgeProperty in masks)) return null;
         return {
-          source: edgeProperty in bits ? "joypad_pressed_bit" : "joypad_pressed_mask",
+          source: edgeProperty in bits ? `joypad_${property}_bit` : `joypad_${property}_mask`,
           pad: joypadSource.pad,
           padToken: joypadSource.padToken,
-          runtimeName: joypadSource.pad ? `JOYPAD_PRESSED_${joypadSource.pad}` : null,
+          runtimeName: joypadSource.pad ? `JOYPAD_${property.toUpperCase()}_${joypadSource.pad}` : null,
           property: edgeProperty,
           bit: bits[edgeProperty],
           mask: masks[edgeProperty],
@@ -553,6 +553,8 @@ export function createValueParseHelpers({
       ? "joypad"
       : builtinInput.source === "joypad_pressed_bit" || builtinInput.source === "joypad_pressed_mask"
         ? "joypad_pressed"
+        : builtinInput.source === "joypad_released_bit" || builtinInput.source === "joypad_released_mask"
+          ? "joypad_released"
         : builtinInput.source;
     if (builtinInput.runtimeName) return [`    ld a,(${builtinInput.runtimeName})`];
     const padInfo = getRuntimeInfo(builtinInput.padToken);
@@ -616,7 +618,7 @@ export function createValueParseHelpers({
       lines = emitLoadSelectedInputValue(builtinInput);
     } else if (builtinInput.source === "vdp_status" || builtinInput.source === "frame") {
       lines = [`    ld a,(${builtinInput.runtimeName})`];
-    } else if (["joypad_bit", "joypad_mask", "joypad_pressed_bit", "joypad_pressed_mask"].includes(builtinInput.source)) {
+    } else if (["joypad_bit", "joypad_mask", "joypad_pressed_bit", "joypad_pressed_mask", "joypad_released_bit", "joypad_released_mask"].includes(builtinInput.source)) {
       const falseLabel = makeGeneratedLabel("InputFalse");
       const doneLabel = makeGeneratedLabel("InputDone");
       const loadJoypad = emitLoadSelectedInputValue(builtinInput);

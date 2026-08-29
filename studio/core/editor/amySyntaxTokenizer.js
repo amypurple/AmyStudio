@@ -42,7 +42,7 @@ const TIME_UNITS = new Set(["frame", "frames", "seconds", "tick", "ticks"]);
 const CONTEXTUAL_IDENTIFIERS = new Set([
   "at", "between", "by", "circle", "count", "cursor", "forever", "from", "into", "line",
   "pause", "peek", "plot", "pset", "raw", "ref", "repeat", "set", "sleep", "str", "whole",
-  "with"
+  "with", "pressed", "released"
 ]);
 
 const VDP_KEYWORDS = new Set([
@@ -254,6 +254,7 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
         || (lowerWord === "into" && firstWord === "choose")
         || (lowerWord === "cursor" && chooseMenu)
         || (lowerWord === "sleep" && ["choose", "pause"].includes(firstWord))
+        || ((lowerWord === "pressed" || lowerWord === "released") && fieldName && /\bjoypad\s*\(/i.test(line))
         || (lowerWord === "by" && ["bounce", "decay", "move"].includes(firstWord))
         || (lowerWord === "with" && ["call", "fill", "set"].includes(firstWord))
         || (lowerWord === "between" && ["bounce", "clamp"].includes(firstWord))
@@ -266,7 +267,7 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
         || contextualQualifier
         || (lowerWord === "forever" && firstWord === "loop");
       const type = classifyWord(word[0], {
-        identifierRole: declarationTarget || assignmentTarget || (fieldName && !dottedVdpProperty),
+        identifierRole: declarationTarget || assignmentTarget || (fieldName && !dottedVdpProperty && !contextualQualifier),
         metadata: isFirstWord && metadataDirective,
         timeUnit: TIME_UNITS.has(lowerWord)
           && significant.some((token) => ["wait", "pause", "every", "after"].includes(token.text.toLowerCase())),

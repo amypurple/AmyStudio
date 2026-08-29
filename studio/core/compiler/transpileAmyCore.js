@@ -863,9 +863,10 @@ export function transpileAmyCore(sourceText, deps) {
     return { ok: false, asmBody: "", log: "partial sprite upload is not allowed in a project using sprites flicker" };
   }
   const inferredMemoryCaps = inferAmyMemoryCapabilities(lines.join("\n"), sourceHintsTinySound);
-  if ((inferredMemoryCaps.usesJoypadPressed1 || inferredMemoryCaps.usesJoypadPressed2)
+  if ((inferredMemoryCaps.usesJoypadPressed1 || inferredMemoryCaps.usesJoypadPressed2
+      || inferredMemoryCaps.usesJoypadReleased1 || inferredMemoryCaps.usesJoypadReleased2)
       && !inferredMemoryCaps.usesWaitVblank) {
-    return { ok: false, asmBody: "", log: "joypad(...).pressed requires wait in the frame loop" };
+    return { ok: false, asmBody: "", log: "joypad edge input requires wait in the frame loop" };
   }
   const hasExternalAsmInclude = lines.some((candidateRaw) => /^include\s+asm\s+"/i.test(stripAmyInlineComment(candidateRaw).trim()));
   const preferScreenOnNoNmi = !inferredMemoryCaps.needsNmi;
