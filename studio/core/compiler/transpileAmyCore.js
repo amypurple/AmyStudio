@@ -824,7 +824,24 @@ export function transpileAmyCore(sourceText, deps) {
   }
   function lowerTwoDimensionalArrays(rawLines) {
     const arrays = new Map();
-    const declarationPattern = /^(\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*,\s*(\d+)\s*\](.*)$/i;
+    const constants = new Map();
+    const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
+    const declarationPattern = new RegExp(`^(\\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*,\\s*(${dimensionToken})\\s*\\](.*)$`, "i");
+    for (const rawLine of rawLines) {
+      const declaration = stripAmyInlineComment(rawLine).trim().match(/^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+|\$[0-9A-Fa-f]+)\s*$/i);
+      if (!declaration) continue;
+      const value = declaration[2].startsWith("$")
+        ? Number.parseInt(declaration[2].slice(1), 16)
+        : Number(declaration[2]);
+      constants.set(declaration[1].toLowerCase(), value);
+    }
+    const resolveDimension = (token, lineIndex) => {
+      if (/^\d+$/.test(token)) return Number(token);
+      if (/^\$[0-9A-F]+$/i.test(token)) return Number.parseInt(token.slice(1), 16);
+      const value = constants.get(token.toLowerCase());
+      if (value === undefined) throw new Error(`Unknown 2D array dimension constant '${token}' at line ${lineIndex + 1}`);
+      return value;
+    };
     let aggregateDepth = 0;
     let routineDepth = 0;
     const declarationsLowered = rawLines.map((rawLine, lineIndex) => {
@@ -837,8 +854,8 @@ export function transpileAmyCore(sourceText, deps) {
         if (aggregateDepth || routineDepth) {
           throw new Error(`2D arrays currently require a global primitive declaration at line ${lineIndex + 1}`);
         }
-        const rows = Number(declaration[4]);
-        const columns = Number(declaration[5]);
+        const rows = resolveDimension(declaration[4], lineIndex);
+        const columns = resolveDimension(declaration[5], lineIndex);
         const length = rows * columns;
         if (rows < 1 || columns < 1 || length > 255) {
           throw new Error(`2D array '${declaration[3]}' dimensions must contain 1..255 elements at line ${lineIndex + 1}`);

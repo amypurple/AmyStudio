@@ -315,6 +315,7 @@ export const AMY_AUTOCOMPLETE = [
   ["u8 Counter = 0, Limit = 10", "Declare one or more same-type variables; top-level becomes global, inside a sub/function it becomes local"],
   ["u8 Stars[32]", "Declare a global u8 array at top level"],
   ["u8 Board[8,8]", "Declare a row-major global 2D byte array"],
+  ["u8 Board[Rows,Columns]", "Declare a 2D array using numeric compile-time constants"],
   ["Board[Row,Column] = Tile", "Write a row-major 2D array cell"],
   ["record Piece:", "Define a named record type; this is the canonical Amy spelling"],
   ["u32 ScoreHistory[4]", "Declare a packed four-byte integer array field inside a record"],

@@ -3180,12 +3180,17 @@ indexing. Storage is row-major, so `Board[Y,X]` is equivalent to
 ```basic
 u8 Board[8,8]
 u16 Distances[4,6]
+const MapWidth = 16
+const MapHeight = 12
+u8 Map[MapHeight,MapWidth]
 
 Board[Row,Column] = Tile
 if Board[Row,Column] = Wall then StopPlayer
 ```
 
-The total element count must be 1 through 255. Constant out-of-range indexes are
+Dimensions may be decimal or hexadecimal literals or numeric compile-time
+constants; all forms generate the same flattened RAM layout and ASM. The total
+element count must be 1 through 255. Constant out-of-range indexes are
 rejected; variable indexes have no implicit bounds check. This first version is
 limited to global primitive arrays. Record fields, record arrays, overlays, and
 local 2D arrays fail closed rather than using an ambiguous layout.

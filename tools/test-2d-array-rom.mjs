@@ -9,8 +9,12 @@ import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearc
 const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const source = `project "2D ARRAY SELFTEST"
-u8 Board[4,5]
-u16 Words[2,3]
+const BoardRows = 4
+const BoardColumns = 5
+const WordRows = 2
+const WordColumns = $03
+u8 Board[BoardRows,BoardColumns]
+u16 Words[WordRows,WordColumns]
 u8 Row = 2
 u8 Column = 3
 u8 Passed = 0
@@ -82,6 +86,7 @@ try {
     ["too-large", "u8 Board[16,16]\nloop forever\n", /1\.\.255 elements/i],
     ["unknown", "u8 Board[16]\nBoard[1,2] = 3\nloop forever\n", /no matching global 2D array/i],
     ["bounds", "u8 Board[3,4]\nBoard[3,0] = 1\nloop forever\n", /outside 3x4/i],
+    ["unknown-constant", "const Rows = 3\nu8 Board[Rows,MissingColumns]\nloop forever\n", /unknown 2D array dimension constant/i],
     ["record-field", "record Grid:\n  u8 Cells[4,4]\nend record\nloop forever\n", /global primitive declaration/i]
   ];
   for (const [name, text] of invalid) {
