@@ -102,6 +102,20 @@ export function createProjectTabs({
     }
   }
 
+  function revealActiveTab() {
+    if (!container) return;
+    const activeElement = container.querySelector(`[data-project-tab-id="${activeId}"]`);
+    globalThis.requestAnimationFrame?.(() => {
+      activeElement?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    });
+  }
+
+  container?.addEventListener("wheel", (event) => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || container.scrollWidth <= container.clientWidth) return;
+    event.preventDefault();
+    container.scrollLeft += event.deltaY;
+  }, { passive: false });
+
   function activateTab(id) {
     if (id === activeId || !tabs.some((tab) => tab.id === id)) return;
     activeTab().viewState = onBeforeActivate(activeTab().project) || {};
@@ -109,6 +123,7 @@ export function createProjectTabs({
     activeId = id;
     persist();
     render();
+    revealActiveTab();
     onActivate(activeTab().project, activeTab().viewState, activeTab().transientState || {});
   }
 
@@ -127,6 +142,7 @@ export function createProjectTabs({
     activeId = tab.id;
     persist();
     render();
+    revealActiveTab();
     onActivate(project, tab.viewState, tab.transientState);
     return tab.id;
   }
@@ -148,6 +164,7 @@ export function createProjectTabs({
           activeId = existing.id;
           persist();
           render();
+          revealActiveTab();
           onActivate(project, existing.viewState, existing.transientState);
           return { id: existing.id, reused: true, reloaded: true };
         }
@@ -176,6 +193,7 @@ export function createProjectTabs({
     }
     persist();
     render();
+    revealActiveTab();
     return true;
   }
 
@@ -194,6 +212,7 @@ export function createProjectTabs({
 
   load();
   render();
+  revealActiveTab();
   return {
     getActiveProject: () => activeTab().project,
     openProject,

@@ -578,8 +578,8 @@ export function bindStudioRuntimeEvents(ctx) {
     nextProject.exampleId = example.id;
     const result = openExampleInTab(nextProject, { clean: true, reload: true });
     if (result.cancelled) return;
-    setStatus(result.reloaded ? `Reloaded: ${example.label}` : `Loaded: ${example.label}`);
     syncUiFromProject();
+    setStatus(result.reloaded ? `Restored: ${example.label}` : `Loaded: ${example.label}`);
     els.examplesDialog?.close();
     closeAutocomplete();
     closeTopbarMenu();
