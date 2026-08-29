@@ -23,6 +23,9 @@ end record
 fixed Position = 1.5
 ufixed Speed = 200.0
 fixed32 Distance = 1000.25
+fixed32 Negative = -1.5
+fixed32 Minimum = -32768.0
+fixed32 Maximum = 32767.5
 fixed FixedValues[1] = 3.5
 Motion State
 u8 Passed = 0
@@ -42,6 +45,14 @@ sub start:
   if Distance <= 1001.0 then Passed += 1
   if Distance > 1000.5 then Passed += 1
   if Distance >= 1001.0 then Passed += 1
+  if Negative = -1.5 then Passed += 1
+  if Negative < 0.0 then Passed += 1
+  if -2.0 < Negative then Passed += 1
+  if Negative > -2.0 then Passed += 1
+  if Minimum = -32768.0 then Passed += 1
+  if Maximum > 32767.0 then Passed += 1
+  if Distance = raw $03E90000 then Passed += 1
+  if Distance = 1000.0 + 1.0 then Passed += 1
   loop forever
 end sub
 
@@ -84,11 +95,26 @@ try {
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Position"), 2)], [0x00, 0x02], `${profile}: ref fixed update failed`);
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Speed"), 2)], [0x00, 0x64], `${profile}: ref ufixed update failed`);
       assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Distance"), 4)], [0x00, 0x00, 0xE9, 0x03], `${profile}: ref fixed32 update failed`);
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 10, `${profile}: fixed ref/comparison checks failed`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 18, `${profile}: fixed ref/comparison checks failed`);
     } finally {
       core.destroy();
     }
   }
+  const invalidSource = join(temp, "fixed-compare-out-of-range.alexis");
+  writeFileSync(invalidSource, `project "FIXED COMPARE OUT OF RANGE"
+memory "colecovision_legacy_sdcc"
+fixed32 Value = 0.0
+sub start:
+  if Value = 32768.0 then Value = 1.0
+  loop forever
+end sub
+`);
+  const invalidResult = spawnSync(process.execPath, [amyc, invalidSource, "--opt", "balanced"], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024
+  });
+  assert.notEqual(invalidResult.status, 0, "out-of-range fixed32 comparison must fail closed");
   console.log(`Fixed reference parameter ROM: PASS (${profiles.length} profiles)`);
 } finally {
   rmSync(temp, { recursive: true, force: true });

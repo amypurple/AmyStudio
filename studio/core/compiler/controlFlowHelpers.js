@@ -324,6 +324,7 @@ export function createControlFlowHelpers(ctx) {
     const value = numericEvaluator(raw);
     if (!Number.isFinite(value)) return token;
     const encoded = Math.round(value * (isFix16_16 ? 65536 : 256));
+    if (isFix16_16 && (encoded < -0x80000000 || encoded > 0x7FFFFFFF)) return token;
     return String(encoded);
   }
 
