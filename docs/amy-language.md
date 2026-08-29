@@ -355,8 +355,9 @@ GameMemory GameRam
 GameRam.Enemies[I].X += 1
 ```
 
-Fixed array lengths may be decimal or hexadecimal literals, or named numeric constants
-known at compile time. Named constants produce the same ROM layout and code as literals.
+Fixed array lengths may be decimal or hexadecimal literals, or named integer constant
+expressions known at compile time. Constants may reference other constants, including
+forward references, and produce the same ROM layout and code as literals.
 
 Two statically addressed records of the same declared type can be copied directly:
 

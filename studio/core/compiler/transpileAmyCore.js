@@ -688,13 +688,41 @@ export function transpileAmyCore(sourceText, deps) {
     return result;
   }
   function collectEarlyNumericConstants(rawLines) {
-    const constants = new Map();
+    const expressions = new Map();
     for (const rawLine of rawLines) {
-      const declaration = stripAmyInlineComment(rawLine).trim().match(/^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+|\$[0-9A-Fa-f]+)\s*$/i);
+      const declaration = stripAmyInlineComment(rawLine).trim().match(/^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/i);
       if (!declaration) continue;
-      constants.set(declaration[1].toLowerCase(), declaration[2].startsWith("$")
-        ? Number.parseInt(declaration[2].slice(1), 16)
-        : Number(declaration[2]));
+      expressions.set(declaration[1].toLowerCase(), declaration[2].trim());
+    }
+    const constants = new Map();
+    const resolve = (expression, seen = new Set()) => {
+      const normalized = normalizeExpression(String(expression || "").trim());
+      if (!normalized || !isSafeExpression(normalized) || normalized.includes("[") || normalized.includes('"')) return null;
+      const direct = parseNumericLiteral(normalized);
+      if (direct !== null) return Number.isInteger(direct) ? direct : null;
+      let expanded = normalized;
+      const identifiers = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+      for (const identifier of identifiers) {
+        const key = identifier.toLowerCase();
+        if (!expressions.has(key) || seen.has(key)) return null;
+        const nestedSeen = new Set(seen);
+        nestedSeen.add(key);
+        const value = resolve(expressions.get(key), nestedSeen);
+        if (!Number.isInteger(value)) return null;
+        const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        expanded = expanded.replace(new RegExp(`\\b${escaped}\\b`, "gi"), String(value));
+      }
+      if (!isSafeExpression(expanded) || /[A-Za-z_\[\]"]/.test(expanded)) return null;
+      try {
+        const value = Function(`"use strict"; return (${expanded.replace(/\$([0-9A-Fa-f]+)/g, "0x$1")});`)();
+        return Number.isFinite(value) && Number.isInteger(value) ? value : null;
+      } catch {
+        return null;
+      }
+    };
+    for (const [name, expression] of expressions) {
+      const value = resolve(expression, new Set([name]));
+      if (Number.isInteger(value)) constants.set(name, value);
     }
     return constants;
   }

@@ -11,6 +11,8 @@
   remain byte-identical to literal stable-priority ranges.
 - Accepted named compile-time constants for global, local, and record
   `bcd digits N` declarations while preserving the `1..12` limit and packed RAM layout.
+- Unified early constant evaluation for arrays, records, `for each`, BCD, and sprite
+  ranges, including integer arithmetic, forward references, and cycle rejection.
 - Completed contextual highlighting for `count` across sprite, text-color, VRAM, array, pattern-transform, tile-row, and data commands.
 - Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
 - Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.

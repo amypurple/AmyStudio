@@ -27,7 +27,7 @@ try {
   const roms = [];
   for (const [name, count, timeout, shiftCount, soundStep, formatDigits, scoreDigits] of variants) {
     const constants = name === "constant"
-      ? "const ItemCount = 4\nconst SleepSeconds = 10\nconst ShiftCount = 1\nconst SoundStep = 3\nconst FormatDigits = 3\nconst ScoreDigits = 6\n"
+      ? "const ItemCount = ItemBase + 1\nconst SleepSeconds = 5 * 2\nconst ShiftCount = ItemCount - 3\nconst SoundStep = 1 + 2\nconst FormatDigits = ItemBase\nconst ScoreDigits = ItemCount + 2\nconst ItemBase = 3\n"
       : "";
     const source = `project "CONSTANT CONTEXTS"
 ${constants}record Bucket:
@@ -119,6 +119,17 @@ loop forever
   await writeFile(invalidBcdPath, invalidBcd);
   assert.notEqual(await compile(invalidBcdPath, join(output, "invalid-bcd.asm"), join(output, "invalid-bcd.rom")), 0,
     "an out-of-range BCD digit constant must fail closed");
+
+  const cyclic = `project "CYCLIC CONSTANTS"
+const Width = Height
+const Height = Width
+u8 Values[Width]
+loop forever
+`;
+  const cyclicPath = join(output, "cyclic.alexis");
+  await writeFile(cyclicPath, cyclic);
+  assert.notEqual(await compile(cyclicPath, join(output, "cyclic.asm"), join(output, "cyclic.rom")), 0,
+    "cyclic dimension constants must fail closed");
 } finally {
   await rm(output, { recursive: true, force: true });
 }

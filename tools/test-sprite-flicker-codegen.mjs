@@ -110,7 +110,7 @@ try {
   const literalSource = await readFile(source, "utf8");
   const constantSourcePath = join(output, "constant-range.alexis");
   await writeFile(constantSourcePath, literalSource
-    .replace('project "SPRITE FLICKER SELFTEST"', 'project "SPRITE FLICKER SELFTEST"\nconst StableFirst = 0\nconst StableLast = 2')
+    .replace('project "SPRITE FLICKER SELFTEST"', 'project "SPRITE FLICKER SELFTEST"\nconst StableFirst = 1 - 1\nconst StableLast = StableFirst + 2')
     .replace("sprites stable 0 to 2", "sprites stable StableFirst to StableLast"));
   const constantRomPath = join(output, "constant-range.rom");
   const constantResult = await compileSource(constantSourcePath, join(output, "constant-range.asm"), constantRomPath);
