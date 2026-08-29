@@ -35,6 +35,11 @@ sub Inner:
   return
 end sub
 
+sub Advance(ref Actor Value):
+  Value.X += 1
+  return
+end sub
+
 sub Outer:
   Actor Temp = 0
   Actor Group[2] = 0
@@ -46,6 +51,8 @@ sub Outer:
   for each Item, Index in Group
     Item.X = Index + 3
   next Item
+  Advance(Temp)
+  Advance(Group[1])
   Inner
   Result = Temp.Score
   Result += Temp.X
@@ -57,7 +64,7 @@ end sub
 
 sub start:
   Outer
-  if Result = 520 then Passed += 1
+  if Result = 522 then Passed += 1
   loop forever
 end sub
 `);
@@ -91,7 +98,7 @@ try {
       for (let frame = 0; frame < 3; frame += 1) core.runFrame();
       const resultAddress = addressOf(asm, "AMY_UVAR_Result");
       const resultValue = core.readRam(resultAddress, 2);
-      assert.deepEqual([...resultValue], [0x08, 0x02], `${profile}: caller local record data was corrupted`);
+      assert.deepEqual([...resultValue], [0x0A, 0x02], `${profile}: caller local record data was corrupted`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 5, `${profile}: local record or record-array checks failed`);
     } finally {
       core.destroy();
