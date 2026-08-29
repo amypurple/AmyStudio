@@ -15,7 +15,8 @@ export function handleMathBitStatement({
   emitStoreInt16FromHL,
   formatIxOffset,
   scopedRuntimeName,
-  runtimeTypeSize
+  runtimeTypeSize,
+  tryEvaluateCompileTimeNumericExpression
 }) {
   const _dep = checkArithmeticDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -245,11 +246,11 @@ export function handleMathBitStatement({
     };
   }
 
-  const shiftArray = line.match(/^shift\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+(down|up)\s+([0-9]+)$/i);
+  const shiftArray = line.match(/^shift\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+(down|up)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)$/i);
   if (shiftArray) {
     const arrName = shiftArray[1];
     const direction = shiftArray[2].toLowerCase();
-    const count = Number.parseInt(shiftArray[3], 10);
+    const count = tryEvaluateCompileTimeNumericExpression(shiftArray[3]);
     const info = getRuntimeInfo(arrName);
     if (!info || info.kind !== "array") {
       return { ok: false, handled: true, log: `shift array requires an array variable: ${rawLine}` };

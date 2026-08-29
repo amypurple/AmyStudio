@@ -174,9 +174,14 @@ export function handleSoundSpinnerStatement({
     };
   }
 
-  const playDSound = line.match(/^play\s+dsound\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+step\s+(\d+))?$/i);
+  const playDSound = line.match(/^play\s+dsound\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+step\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
   if (playDSound) {
-    const step = playDSound[2] !== undefined ? parseInt(playDSound[2], 10) : 0;
+    const step = playDSound[2] !== undefined
+      ? tryEvaluateCompileTimeNumericExpression(playDSound[2])
+      : 0;
+    if (!Number.isInteger(step) || step < 0 || step > 255) {
+      return { ok: false, handled: true, log: `play dsound step requires a compile-time byte constant: ${rawLine}` };
+    }
     const nmiOffLabel = makeGeneratedLabel("DsoundNmiWasOff");
     const doneLabel = makeGeneratedLabel("DsoundDone");
     return {

@@ -21,13 +21,13 @@ function compile(sourcePath, asmPath, romPath) {
 const output = await mkdtemp(join(tmpdir(), "amy-constant-contexts-"));
 try {
   const variants = [
-    ["literal", "4", "10"],
-    ["constant", "ItemCount", "SleepSeconds"]
+    ["literal", "4", "10", "1", "3"],
+    ["constant", "ItemCount", "SleepSeconds", "ShiftCount", "SoundStep"]
   ];
   const roms = [];
-  for (const [name, count, timeout] of variants) {
+  for (const [name, count, timeout, shiftCount, soundStep] of variants) {
     const constants = name === "constant"
-      ? "const ItemCount = 4\nconst SleepSeconds = 10\n"
+      ? "const ItemCount = 4\nconst SleepSeconds = 10\nconst ShiftCount = 1\nconst SoundStep = 3\n"
       : "";
     const source = `project "CONSTANT CONTEXTS"
 ${constants}record Bucket:
@@ -46,9 +46,12 @@ sub start:
   for each Item, Index in Values
     Sum += Item
   next Item
+  shift array Values down ${shiftCount}
+  play dsound TestVoice step ${soundStep}
   sleep after ${timeout} seconds
   loop forever
 end sub
+data TestVoice bytes = $00,$00
 `;
     const sourcePath = join(output, `${name}.alexis`);
     const asmPath = join(output, `${name}.asm`);
@@ -72,6 +75,19 @@ loop forever
   await writeFile(invalidPath, invalid);
   assert.notEqual(await compile(invalidPath, join(output, "invalid.asm"), join(output, "invalid.rom")), 0,
     "an unknown record dimension constant must fail closed");
+
+  const invalidStep = `project "BAD DSOUND STEP"
+const SoundStep = 256
+sub start:
+  play dsound TestVoice step SoundStep
+  loop forever
+end sub
+data TestVoice bytes = $00,$00
+`;
+  const invalidStepPath = join(output, "invalid-step.alexis");
+  await writeFile(invalidStepPath, invalidStep);
+  assert.notEqual(await compile(invalidStepPath, join(output, "invalid-step.asm"), join(output, "invalid-step.rom")), 0,
+    "an out-of-range dsound step must fail closed");
 } finally {
   await rm(output, { recursive: true, force: true });
 }

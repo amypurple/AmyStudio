@@ -3,6 +3,8 @@
 - Accepted named compile-time constants for record array-field lengths, `for each`
   array discovery, and every CRT-safe `sleep after` timeout form, with byte-identical
   ROM output versus literals and fail-closed validation.
+- Accepted named compile-time constants for `shift array` counts and `play dsound`
+  steps, while rejecting unknown or out-of-range values before assembly.
 - Completed contextual highlighting for `count` across sprite, text-color, VRAM, array, pattern-transform, tile-row, and data commands.
 - Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
 - Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.

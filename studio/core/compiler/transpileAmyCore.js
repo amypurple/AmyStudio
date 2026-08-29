@@ -4946,7 +4946,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitStoreInt16FromHL,
         formatIxOffset,
         scopedRuntimeName,
-        runtimeTypeSize
+        runtimeTypeSize,
+        tryEvaluateCompileTimeNumericExpression
       });
       if (mathBitStmt.handled) {
         if (!mathBitStmt.ok) return { ok: false, asmBody: "", log: mathBitStmt.log };

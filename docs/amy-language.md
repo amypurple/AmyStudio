@@ -299,8 +299,7 @@ Scalar array fields are byte-packed with no pointer, descriptor, or alignment pa
 `u8 Values[8]` occupies exactly 8 bytes, `u16 Values[3]` exactly 6 bytes, and
 `u32 Values[3]` exactly 12 bytes. Literal
 indexes are folded into direct addresses; runtime indexes use compact address arithmetic
-and are not unrolled. Field lengths must be literal values from 1 through 255 in this
-first implementation.
+and are not unrolled. Field lengths must be compile-time constants from 1 through 255.
 
 Typed ROM templates can initialize a complete record array with one checked block copy:
 
@@ -443,7 +442,7 @@ Current record limits:
 - no whole-record assignment through pointer-backed aliases
 - no whole-record comparison through pointer-backed aliases
 - no arrays of BCD fields yet; BCD fields are scalar
-- record array-field lengths are literal `1..255`; runtime indexes have no implicit bounds check
+- record array-field lengths are compile-time constants in `1..255`; runtime indexes have no implicit bounds check
 
 ### RAM overlays and scenes (experimental)
 
