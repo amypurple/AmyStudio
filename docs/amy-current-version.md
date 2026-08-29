@@ -20,7 +20,7 @@ otherwise.
 ### Procedures and data
 
 - `sub` and typed `function` declarations with scalar parameters and return values
-- lexical local variables and local arrays, including recursion-safe stack frames
+- lexical local variables and local arrays, including primitive 2D arrays and recursion-safe stack frames
 - compiler-selected frameless static ABI for proven non-reentrant scalar routines
 - `ref` parameters for addressable scalar values and records
 - records, nested records, fixed scalar array fields including `u32`/`i32`, and arrays of records within the documented limits
@@ -109,7 +109,7 @@ The following are not current language promises:
 - heap-allocated or dynamically-lived strings
 - `chr$()`, `left$()`, `right$()`, `mid$()`, string slicing, and general runtime string concatenation
 - typed general-purpose pointers and function pointers
-- local record variables, arrays of nested records inside records, and unrestricted aggregate record layouts
+- recursively nested arrays inside records and unrestricted aggregate record layouts
 - scene lifecycle syntax, overlay lifetime enforcement, active-part debugger watches,
   and optional `$CD` poison-fill diagnostics for missing scene initialization
 - unrestricted `ref` support for every numeric and aggregate type

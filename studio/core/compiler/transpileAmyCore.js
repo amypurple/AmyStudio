@@ -904,6 +904,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
   function lowerTwoDimensionalArrays(rawLines) {
     const arrays = new Map();
+    const localArrays = new Map();
     const constants = collectEarlyNumericConstants(rawLines);
     const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
     const declarationPattern = new RegExp(`^(\\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*,\\s*(${dimensionToken})\\s*\\](.*)$`, "i");
@@ -913,16 +914,17 @@ export function transpileAmyCore(sourceText, deps) {
       return value;
     };
     let aggregateDepth = 0;
-    let routineDepth = 0;
+    let currentRoutine = null;
     const declarationsLowered = rawLines.map((rawLine, lineIndex) => {
       const code = stripAmyInlineComment(rawLine);
       const stripped = code.trim();
       if (/^(?:record|overlay)\b/i.test(stripped)) aggregateDepth += 1;
-      if (/^(?:sub|function)\b/i.test(stripped)) routineDepth += 1;
+      const routineStart = stripped.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (routineStart) currentRoutine = routineStart[1].toLowerCase();
       const declaration = code.match(declarationPattern);
       if (declaration) {
-        if (aggregateDepth || routineDepth) {
-          throw new Error(`2D arrays currently require a global primitive declaration at line ${lineIndex + 1}`);
+        if (aggregateDepth) {
+          throw new Error(`2D arrays in records and overlays are not supported at line ${lineIndex + 1}`);
         }
         const rows = resolveDimension(declaration[4], lineIndex);
         const columns = resolveDimension(declaration[5], lineIndex);
@@ -931,13 +933,16 @@ export function transpileAmyCore(sourceText, deps) {
           throw new Error(`2D array '${declaration[3]}' dimensions must contain 1..255 elements at line ${lineIndex + 1}`);
         }
         const key = declaration[3].toLowerCase();
-        if (arrays.has(key)) throw new Error(`Duplicate 2D array declaration '${declaration[3]}' at line ${lineIndex + 1}`);
-        arrays.set(key, { name: declaration[3], rows, columns });
+        const scopeArrays = currentRoutine
+          ? (localArrays.get(currentRoutine) || (localArrays.set(currentRoutine, new Map()), localArrays.get(currentRoutine)))
+          : arrays;
+        if (scopeArrays.has(key)) throw new Error(`Duplicate 2D array declaration '${declaration[3]}' at line ${lineIndex + 1}`);
+        scopeArrays.set(key, { name: declaration[3], rows, columns });
         const comment = rawLine.slice(code.length);
         return `${declaration[1]}${declaration[2]} ${declaration[3]}[${length}]${declaration[6]}${comment}`;
       }
       if (/^end\s+(?:record|overlay)$/i.test(stripped)) aggregateDepth = Math.max(0, aggregateDepth - 1);
-      if (/^end\s+(?:sub|function)$/i.test(stripped)) routineDepth = Math.max(0, routineDepth - 1);
+      if (/^end\s+(?:sub|function)$/i.test(stripped)) currentRoutine = null;
       return rawLine;
     });
 
@@ -972,7 +977,7 @@ export function transpileAmyCore(sourceText, deps) {
       }
       return -1;
     };
-    const rewriteLine = (rawLine, lineIndex) => {
+    const rewriteLine = (rawLine, lineIndex, routineName) => {
       const commentAt = commentIndex(rawLine);
       const code = commentAt >= 0 ? rawLine.slice(0, commentAt) : rawLine;
       const comment = commentAt >= 0 ? rawLine.slice(commentAt) : "";
@@ -999,8 +1004,8 @@ export function transpileAmyCore(sourceText, deps) {
             const content = code.slice(bracket + 1, end - 1);
             const indexes = splitIndexes(content);
             if (indexes) {
-              const array = arrays.get(name.toLowerCase());
-              if (!array) throw new Error(`2D access '${name}[...]' has no matching global 2D array declaration at line ${lineIndex + 1}`);
+              const array = localArrays.get(routineName)?.get(name.toLowerCase()) || arrays.get(name.toLowerCase());
+              if (!array) throw new Error(`2D access '${name}[...]' has no matching 2D array declaration at line ${lineIndex + 1}`);
               const row = constantIndex(indexes.row);
               const column = constantIndex(indexes.column);
               if ((row !== null && (row < 0 || row >= array.rows))
@@ -1021,7 +1026,16 @@ export function transpileAmyCore(sourceText, deps) {
       }
       return result + comment;
     };
-    return { ok: true, lines: declarationsLowered.map(rewriteLine), arrays };
+    let rewriteRoutine = null;
+    const lines = declarationsLowered.map((rawLine, lineIndex) => {
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      const routineStart = stripped.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (routineStart) rewriteRoutine = routineStart[1].toLowerCase();
+      const lowered = rewriteLine(rawLine, lineIndex, rewriteRoutine);
+      if (/^end\s+(?:sub|function)$/i.test(stripped)) rewriteRoutine = null;
+      return lowered;
+    });
+    return { ok: true, lines, arrays, localArrays };
   }
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };

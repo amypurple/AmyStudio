@@ -411,8 +411,8 @@ semantics.
 Indexed paths may combine a record-array index with a scalar array-field index, as in
 `Container.Items[I].Flags[J]`. Each index contributes its own checked byte stride to the
 address calculation. Constant indices are range-checked; runtime indices must be byte
-expressions and have no implicit bounds check. Recursive or multidimensional arrays remain
-deferred.
+expressions and have no implicit bounds check. Recursive or multidimensional record fields
+remain deferred; primitive 2D arrays are documented below.
 
 Repeated accesses to one record-array element should use a lexical alias:
 
@@ -2956,7 +2956,7 @@ Available memory profiles live in `tools/memory/*.json`.
 | `u8 Name = value` | Global 8-bit unsigned RAM variable |
 | `i8 Name = value` | Global 8-bit signed RAM variable |
 | `u8 Name[N]` | Global 8-bit RAM array |
-| `u8 Name[Rows,Columns]` | Row-major global primitive 2D array (1..255 total elements) |
+| `u8 Name[Rows,Columns]` | Row-major global or local primitive 2D array (1..255 total elements) |
 | `u16 Name = value` | Global 16-bit unsigned RAM variable |
 | `i16 Name = value` | Global 16-bit signed RAM variable |
 | `bool Name = false` | Global boolean (bit-packed) |
@@ -3241,9 +3241,10 @@ if Board[Row,Column] = Wall then StopPlayer
 Dimensions may be decimal or hexadecimal literals or numeric compile-time
 constants; all forms generate the same flattened RAM layout and ASM. The total
 element count must be 1 through 255. Constant out-of-range indexes are
-rejected; variable indexes have no implicit bounds check. This first version is
-limited to global primitive arrays. Record fields, record arrays, overlays, and
-local 2D arrays fail closed rather than using an ambiguous layout.
+rejected; variable indexes have no implicit bounds check. Primitive arrays may
+be global or local to a sub/function; local storage remains stack-relative.
+Multidimensional record fields and overlays fail closed rather than using an
+ambiguous layout.
 
 | Statement | Meaning |
 |---|---|

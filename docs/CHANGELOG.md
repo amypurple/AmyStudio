@@ -1,5 +1,7 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
+  stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Accepted named compile-time constants for record array-field lengths, `for each`
   array discovery, and every CRT-safe `sleep after` timeout form, with byte-identical
   ROM output versus literals and fail-closed validation.

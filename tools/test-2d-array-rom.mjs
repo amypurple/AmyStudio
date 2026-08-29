@@ -18,6 +18,7 @@ u16 Words[WordRows,WordColumns]
 u8 Row = 2
 u8 Column = 3
 u8 Passed = 0
+u16 LocalResult = 0
 sub start:
   Board[0,0] = 11
   Board[Row,Column] = 42
@@ -27,7 +28,31 @@ sub start:
   if Board[Row,Column] = 42 then Passed += 1
   if Board[Row-1,Column+1] = 77 then Passed += 1
   if Words[1,2] = $1234 then Passed += 1
+  CheckLocalGrid(1)
+  CheckLocalGrid(2)
+  CheckOtherGrid
+  if Board[Row,Column] = 42 then Passed += 1
   loop forever
+end sub
+
+sub CheckLocalGrid(u8 Seed):
+  u8 LocalBoard[WordRows,WordColumns] = 0
+  u16 LocalWords[2,2] = 0
+  u8 LocalRow = 1
+  LocalBoard[LocalRow,Seed] = Seed + 20
+  LocalWords[LocalRow,Seed-1] = $1200 + Seed
+  LocalResult += LocalBoard[LocalRow,Seed]
+  LocalResult += LocalWords[LocalRow,Seed-1]
+  if LocalBoard[LocalRow,Seed] = Seed + 20 then Passed += 1
+  return
+end sub
+
+sub CheckOtherGrid:
+  u8 LocalBoard[1,2] = 0
+  LocalBoard[0,1] = 5
+  LocalResult += LocalBoard[0,1]
+  if LocalBoard[0,1] = 5 then Passed += 1
+  return
 end sub
 `;
 
@@ -62,6 +87,7 @@ try {
     const words = equ(asm, "AMY_UVAR_Words");
     const row = equ(asm, "AMY_UVAR_Row");
     const passed = equ(asm, "AMY_UVAR_Passed");
+    const localResult = equ(asm, "AMY_UVAR_LocalResult");
     assert.equal(words - board, 20, `${profile}: byte declaration was not lowered to 20 elements`);
     assert.equal(row - words, 12, `${profile}: word declaration was not lowered to 6 elements`);
     rom[0] = 0x55;
@@ -71,12 +97,15 @@ try {
       core.loadBios(bios);
       core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 8; frame += 1) core.runFrame();
-      assert.equal(core.readRam(passed, 1)[0], 4, `${profile}: 2D reads failed`);
+      assert.equal(core.readRam(passed, 1)[0], 8, `${profile}: global/local 2D reads failed`);
+      assert.deepEqual([...core.readRam(localResult, 2)], [0x33, 0x24], `${profile}: local 2D values or calls failed`);
       const bytes = core.readRam(board, 20);
       assert.equal(bytes[0], 11, `${profile}: Board[0,0] address`);
       assert.equal(bytes[2 * 5 + 3], 42, `${profile}: Board[2,3] row-major address`);
       assert.equal(bytes[1 * 5 + 4], 77, `${profile}: expression indexes`);
       assert.deepEqual([...core.readRam(words + (1 * 3 + 2) * 2, 2)], [0x34, 0x12], `${profile}: word row-major address`);
+      assert.doesNotMatch(asm, /AMY_LVAR_CheckLocalGrid_(?:LocalBoard|LocalWords)/i,
+        `${profile}: local 2D arrays must remain stack-relative`);
     } finally {
       core.destroy();
     }
@@ -84,10 +113,10 @@ try {
 
   const invalid = [
     ["too-large", "u8 Board[16,16]\nloop forever\n", /1\.\.255 elements/i],
-    ["unknown", "u8 Board[16]\nBoard[1,2] = 3\nloop forever\n", /no matching global 2D array/i],
+    ["unknown", "u8 Board[16]\nBoard[1,2] = 3\nloop forever\n", /no matching 2D array/i],
     ["bounds", "u8 Board[3,4]\nBoard[3,0] = 1\nloop forever\n", /outside 3x4/i],
     ["unknown-constant", "const Rows = 3\nu8 Board[Rows,MissingColumns]\nloop forever\n", /unknown 2D array dimension constant/i],
-    ["record-field", "record Grid:\n  u8 Cells[4,4]\nend record\nloop forever\n", /global primitive declaration/i]
+    ["record-field", "record Grid:\n  u8 Cells[4,4]\nend record\nloop forever\n", /records and overlays are not supported/i]
   ];
   for (const [name, text] of invalid) {
     const badSource = join(output, `${name}.alexis`);
