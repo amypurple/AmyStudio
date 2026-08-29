@@ -2459,6 +2459,10 @@ read keypad 2 into Key2
 read vdp status into VdpByte
 ```
 
+The `into` destination may be a byte variable, array element, record field, or
+overlay-qualified field. `read frame` also accepts word destinations. Indexed and
+qualified forms use the same typed address resolver as assignment.
+
 ### Joypad conditions
 
 ```basic

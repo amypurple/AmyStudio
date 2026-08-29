@@ -18,6 +18,7 @@ export function handleVramPixelInputStatement({
   tryEvaluateConstantExpression,
   nmiKnownOff = false
 }) {
+  const qualifiedTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
   const _dep = checkVramPixelDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
@@ -153,45 +154,45 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const readJoypad = line.match(/^read\s+joypad\s+([12])\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const readJoypad = line.match(new RegExp(`^read\\s+joypad\\s+([12])\\s+into\\s+${qualifiedTargetPattern}$`, "i"));
   if (readJoypad) {
-    const info = getRuntimeInfo(readJoypad[2]);
-    if (!info || info.type !== "int8") return { handled: true, ok: false, log: `read joypad target must be a byte RAM variable: ${rawLine}` };
+    const store = emitStoreInt8FromA(readJoypad[2]);
+    if (resolveValueType(readJoypad[2]) !== "int8" || !store) return { handled: true, ok: false, log: `read joypad target must be a byte RAM variable: ${rawLine}` };
     body.push(`    ld a,(${readJoypad[1] === "1" ? "JOYPAD_1" : "JOYPAD_2"})`);
-    body.push(...emitStoreInt8FromA(readJoypad[2]));
+    body.push(...store);
     return { handled: true, ok: true };
   }
 
-  const readKeypad = line.match(/^read\s+keypad\s+([12])\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const readKeypad = line.match(new RegExp(`^read\\s+keypad\\s+([12])\\s+into\\s+${qualifiedTargetPattern}$`, "i"));
   if (readKeypad) {
-    const info = getRuntimeInfo(readKeypad[2]);
-    if (!info || info.type !== "int8") return { handled: true, ok: false, log: `read keypad target must be a byte RAM variable: ${rawLine}` };
+    const store = emitStoreInt8FromA(readKeypad[2]);
+    if (resolveValueType(readKeypad[2]) !== "int8" || !store) return { handled: true, ok: false, log: `read keypad target must be a byte RAM variable: ${rawLine}` };
     body.push(`    ld a,(${readKeypad[1] === "1" ? "KEYPAD_1" : "KEYPAD_2"})`);
-    body.push(...emitStoreInt8FromA(readKeypad[2]));
+    body.push(...store);
     return { handled: true, ok: true };
   }
 
-  const readSpinner = line.match(/^read\s+spinner\s+([12])\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const readSpinner = line.match(new RegExp(`^read\\s+spinner\\s+([12])\\s+into\\s+${qualifiedTargetPattern}$`, "i"));
   if (readSpinner) {
-    const info = getRuntimeInfo(readSpinner[2]);
-    if (!info || info.type !== "int8") return { handled: true, ok: false, log: `read spinner target must be a byte RAM variable: ${rawLine}` };
+    const store = emitStoreInt8FromA(readSpinner[2]);
+    if (resolveValueType(readSpinner[2]) !== "int8" || !store) return { handled: true, ok: false, log: `read spinner target must be a byte RAM variable: ${rawLine}` };
     body.push("    di");
     body.push(`    ld hl,${readSpinner[1] === "1" ? "SPINNER_1" : "SPINNER_2"}`);
     body.push("    ld a,(hl)");
     body.push("    ld (hl),0");
     body.push("    ei");
     if (readSpinner[1] === "1") body.push("    neg");
-    body.push(...emitStoreInt8FromA(readSpinner[2]));
+    body.push(...store);
     return { handled: true, ok: true };
   }
 
-  const readFrame = line.match(/^read\s+frame\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const readFrame = line.match(new RegExp(`^read\\s+frame\\s+into\\s+${qualifiedTargetPattern}$`, "i"));
   if (readFrame) {
-    const info = getRuntimeInfo(readFrame[1]);
-    if (!info || info.kind === "array" || (info.type !== "int8" && info.type !== "int16")) {
+    const targetType = resolveValueType(readFrame[1]);
+    if (targetType !== "int8" && targetType !== "int16") {
       return { handled: true, ok: false, log: `read frame target must be a byte or word RAM variable: ${rawLine}` };
     }
-    if (info.type === "int8") {
+    if (targetType === "int8") {
       body.push("    ld a,(AMY_FRAME_COUNTER)");
       body.push(...emitStoreInt8FromA(readFrame[1]));
     } else {
@@ -205,12 +206,12 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const readVdpStatus = line.match(/^read\s+vdp\s+status\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const readVdpStatus = line.match(new RegExp(`^read\\s+vdp\\s+status\\s+into\\s+${qualifiedTargetPattern}$`, "i"));
   if (readVdpStatus) {
-    const info = getRuntimeInfo(readVdpStatus[1]);
-    if (!info || info.type !== "int8") return { handled: true, ok: false, log: `read vdp status target must be a byte RAM variable: ${rawLine}` };
+    const store = emitStoreInt8FromA(readVdpStatus[1]);
+    if (resolveValueType(readVdpStatus[1]) !== "int8" || !store) return { handled: true, ok: false, log: `read vdp status target must be a byte RAM variable: ${rawLine}` };
     body.push("    ld a,(VDP_STATUS)");
-    body.push(...emitStoreInt8FromA(readVdpStatus[1]));
+    body.push(...store);
     return { handled: true, ok: true };
   }
 
