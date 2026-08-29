@@ -787,7 +787,7 @@ FP5 note:
 - fixed-length global and local arrays use `fp5 Values[Count]`; each element occupies
   five bytes and accepts constant, byte-variable, or byte-expression indexes
 - indexed FP5 values support assignment, copy, comparison, `+=`, `-=`, `*=`, `/=`,
-  `clear`, `format`, direct `print`, `abs`, `sqrt`, `log`, `exp`, `random`, and two-way
+  `clear`, `format`, direct `print`, `abs`, `sqrt`, `log`, `exp`, `sgn`, `int`, `random`, and two-way
   `fixed32` conversion; constant indexes are bounds-checked
 - FP5 fields inside records and overlays are not part of this array support
 - direct assignments between scalar `fp5` and `fixed32` values perform a numeric

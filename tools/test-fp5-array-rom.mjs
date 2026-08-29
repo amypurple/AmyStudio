@@ -51,6 +51,11 @@ sub start:
   if Values[4] = 2.5 then Passed += 1
   Values[5] = abs(-7.0)
   if Values[5] = 7.0 then Passed += 1
+  Values[3] = -2.0
+  Values[4] = sgn(Values[3])
+  if Values[4] = -1.0 then Passed += 1
+  Values[5] = int(2.75)
+  if Values[5] = 2.0 then Passed += 1
   format Values[2] into OutputText
   print Values[2] at 3,4
   clear Values[0]
@@ -94,7 +99,7 @@ try {
       core.loadBios(bios);
       core.loadRom(readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 8; frame += 1) core.runFrame();
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 16, `${profile}: FP5 array assertions failed`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 18, `${profile}: FP5 array assertions failed`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_GuardBefore"), 1)[0], 0xA5, `${profile}: leading guard changed`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_GuardAfter"), 1)[0], 0x5A, `${profile}: trailing guard changed`);
       const text = String.fromCharCode(...core.readRam(addressOf(asm, "AMY_UVAR_OutputText"), 16));

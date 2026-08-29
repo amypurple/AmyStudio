@@ -420,7 +420,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const sgnAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*sgn\s*\(\s*(.+?)\s*\)$/i);
+  const sgnAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*sgn\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (sgnAssign) {
     const sgnValue = normalizeExpression(sgnAssign[2]);
     const code = emitSgnInt16LikeInto(sgnValue, sgnAssign[1]) || emitSgnFx16Into(sgnValue, sgnAssign[1]) || emitSgnFp5Into(sgnValue, sgnAssign[1]);
@@ -439,7 +439,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const intAssign = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*int\s*\(\s*(.+?)\s*\)$/i);
+  const intAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*int\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (intAssign) {
     const intValue = normalizeExpression(intAssign[2]);
     const code = emitIntFp5Into(intValue, intAssign[1]);

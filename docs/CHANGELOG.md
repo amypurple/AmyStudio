@@ -2,7 +2,7 @@
 
 - Added global and local `fp5` arrays with indexed assignment, copy, arithmetic,
   comparison, clear, format, and direct print support under all optimization profiles.
-- Completed indexed `fp5` support for `abs`, `sqrt`, `log`, `exp`, `random`, constant
+- Completed indexed `fp5` support for `abs`, `sqrt`, `log`, `exp`, `sgn`, `int`, `random`, constant
   results, and two-way `fixed32` conversions; nonzero indexes are runtime-tested under
   every optimization profile.
 - Added direct decimal-literal comparisons for scalar and indexed `fp5` values.
