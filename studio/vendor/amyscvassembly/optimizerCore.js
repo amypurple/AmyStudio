@@ -1534,6 +1534,8 @@ export class Z80Optimizer {
                     if (['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt', 'push', 'pop', 'ex', 'exx'].includes(m)) {
                         return false;
                     }
+                    // Reading the saved pair is harmless. Reject only writes to the
+                    // pair and any explicit stack access while its saved value is live.
                     if (instructionTouchesRegister(inst, 'sp')) return false;
                     if (!allowReadOnlyPairUse) return !instructionCanClobberRegister(inst, savedPair);
                     const savedMembers = this.getRegisterPairMembers(savedPair);
@@ -2720,8 +2722,10 @@ export class Z80Optimizer {
                         }
                     }
 
-                    // Aggressive+: remove LD L,0 only while a bounded local
-                    // proof shows L is already zero. Barriers and writes stop it.
+                    // === PHASE 1.2h2: Remove redundant LD L,0 by short lookback ===
+                    // Aggressive+: mirror the H proof above. Any write to L/HL,
+                    // local-analysis barrier, or source label stops the proof.
+                    // LD L,0 and removing it both preserve every flag.
                     if (this.config.speculativeValueReuse &&
                         isLdRegImm(token, 'l') &&
                         Number(token.operands[1].value) === 0 &&
@@ -4163,7 +4167,8 @@ export class Z80Optimizer {
                             typeof nextToken.operands[0].value === 'string' &&
                             parseIndexedDisplacement(nextToken.operands[0].value) &&
                             nextToken.operands[1].type === 'register' &&
-                            nextToken.operands[1].value.toLowerCase() === 'a') {
+                            nextToken.operands[1].value.toLowerCase() === 'a' &&
+                            isOverwrittenBeforeAnyReadInBlock(tokens, i + 1, 'a')) {
                             optimized.push(new Instruction(
                                 token.label,
                                 'ld',
