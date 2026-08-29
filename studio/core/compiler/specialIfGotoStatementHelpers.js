@@ -26,7 +26,7 @@ export function handleSpecialIfGotoStatement({
     return { ok: true, handled: true, lines: code.lines };
   }
 
-  const ifSpriteHitboxCollisionGoto = line.match(/^if\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+collides\s+with\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const ifSpriteHitboxCollisionGoto = line.match(/^if\s+sprite\s+(.+?)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+collides\s+with\s+sprite\s+(.+?)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (ifSpriteHitboxCollisionGoto) {
     const jumpTarget = resolveSourceJumpTarget(ifSpriteHitboxCollisionGoto[5]);
     if (!jumpTarget) return { ok: false, handled: true, log: formatUnknownJumpTargetLog(ifSpriteHitboxCollisionGoto[5], rawLine) };
@@ -38,7 +38,7 @@ export function handleSpecialIfGotoStatement({
     return { ok: true, handled: true, lines: code.lines };
   }
 
-  const ifSpriteCollisionGoto = line.match(/^if\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+collides\s+with\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+box\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const ifSpriteCollisionGoto = line.match(/^if\s+(?!.*\s+size\s+)sprite\s+(.+?)\s+collides\s+with\s+sprite\s+(.+?)\s+box\s+(.+?)\s*,\s*(.+?)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (ifSpriteCollisionGoto) {
     const jumpTarget = resolveSourceJumpTarget(ifSpriteCollisionGoto[5]);
     if (!jumpTarget) return { ok: false, handled: true, log: formatUnknownJumpTargetLog(ifSpriteCollisionGoto[5], rawLine) };
@@ -50,7 +50,7 @@ export function handleSpecialIfGotoStatement({
     return { ok: true, handled: true, lines: code.lines };
   }
 
-  const ifSpriteCollisionRectGoto = line.match(/^if\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+collides\s+with\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+box\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+size\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const ifSpriteCollisionRectGoto = line.match(/^if\s+sprite\s+(.+?)\s+collides\s+with\s+sprite\s+(.+?)\s+box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+?)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (ifSpriteCollisionRectGoto) {
     const jumpTarget = resolveSourceJumpTarget(ifSpriteCollisionRectGoto[7]);
     if (!jumpTarget) return { ok: false, handled: true, log: formatUnknownJumpTargetLog(ifSpriteCollisionRectGoto[7], rawLine) };

@@ -88,6 +88,7 @@ Shared.Second.Bytes[1] = 2
 
   for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
     const nestedArray = compile("overlay-record-array-field", `
+hitbox TinyHitbox = 0,0 size 8,8
 record Actor:
   u8 X
   u16 Score
@@ -129,6 +130,19 @@ next Item
 read vram vram.name count 4 into Shared.Game.Buffer
 Shared.Game.Buffer = get count 4 at 0,0
 get frame size 2,2 at 0,0 into Shared.Game.Buffer
+if sprite Shared.Game.Items[0].X hitbox TinyHitbox collides with sprite Shared.Game.Items[1].X hitbox TinyHitbox goto SpriteHit
+if sprite Shared.Game.Items[0].X collides with sprite Shared.Game.Items[1].X box Shared.Game.Items[0].Flags[0],Shared.Game.Items[1].Flags[0] goto SpriteHit
+if sprite Shared.Game.Items[0].X collides with sprite Shared.Game.Items[1].X box Shared.Game.Items[0].Flags[0],Shared.Game.Items[1].Flags[0] size Shared.Game.Items[0].Flags[1],Shared.Game.Items[1].Flags[1] goto SpriteHit
+if sprite Shared.Game.Items[0].X collides with sprite Shared.Game.Items[1].X box Shared.Game.Items[0].Flags[0],Shared.Game.Items[1].Flags[0] then
+  Shared.Game.After = 2
+end if
+if sprite Shared.Game.Items[0].X collides with sprite Shared.Game.Items[1].X box Shared.Game.Items[0].Flags[0],Shared.Game.Items[1].Flags[0] size Shared.Game.Items[0].Flags[1],Shared.Game.Items[1].Flags[1] then
+  Shared.Game.After = 3
+end if
+goto SpriteDone
+SpriteHit:
+Shared.Game.After = 1
+SpriteDone:
 `, true, profile);
     const base = equAddress(nestedArray.asm, "AMY_OVERLAY_Shared");
     assert.equal(equAddress(nestedArray.asm, "AMY_SCENE_Game_Items"), base + 1);
@@ -269,7 +283,7 @@ sub Mutate(ref u8 Value):
   Value = 1
 end sub
 Mutate(Shared.Game.ByteValue)
-`, false).output, /cannot prepare arguments/i);
+`, false).output, /overlay-qualified field .* cannot be passed by ref because overlay storage has part-scoped lifetime/i);
 
   for (const type of ["i8", "u16", "i16"]) {
     assert.match(compile(`overlay-ref-escape-${type}`, `
@@ -284,7 +298,7 @@ sub Mutate(ref ${type} Value):
   return
 end sub
 Mutate(Shared.Game.Value)
-`, false).output, /cannot prepare arguments/i);
+`, false).output, /overlay-qualified field .* cannot be passed by ref because overlay storage has part-scoped lifetime/i);
   }
 
   compile("overlay-ref-controls", `

@@ -1034,7 +1034,7 @@ export function createControlFlowHelpers(ctx) {
       );
     }
 
-    const ifSpriteCollision = condition.match(/^sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+collides\s+with\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+box\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
+    const ifSpriteCollision = condition.match(/^(?!.*\s+size\s+)sprite\s+(.+?)\s+collides\s+with\s+sprite\s+(.+?)\s+box\s+(.+?)\s*,\s*(.+?)$/i);
     if (ifSpriteCollision) {
       const loadSprite1 = emitLoadInt8Into("a", ifSpriteCollision[1]);
       const loadSprite2 = emitLoadInt8Into("b", ifSpriteCollision[2]);
@@ -1058,7 +1058,7 @@ export function createControlFlowHelpers(ctx) {
       };
     }
 
-    const ifSpriteCollisionRect = condition.match(/^sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+collides\s+with\s+sprite\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+box\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+size\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
+    const ifSpriteCollisionRect = condition.match(/^sprite\s+(.+?)\s+collides\s+with\s+sprite\s+(.+?)\s+box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+?)$/i);
     if (ifSpriteCollisionRect) {
       const loadSprite1 = emitLoadInt8Into("a", ifSpriteCollisionRect[1]);
       const loadSprite2 = emitLoadInt8Into("b", ifSpriteCollisionRect[2]);

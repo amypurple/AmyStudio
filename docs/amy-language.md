@@ -2603,7 +2603,8 @@ gameplay collision form because each object can have its own logical hitbox.
 The older `if sprite A collides with sprite B box W,H` and
 `box X,Y size W,H` forms still work as shortcuts when both sprites intentionally
 share the same local box. All sprite collision forms operate on shadow sprite
-state, not VDP-filtered visible sprites.
+state, not VDP-filtered visible sprites. Sprite indexes, offsets, and dimensions
+accept byte-sized runtime expressions, including record and overlay-qualified fields.
 `if box X1,Y1 size W1,H1 collides with box X2,Y2 size W2,H2` tests two logical pixel-space rectangles directly from Amy values. It performs a short-circuited AABB test without reading VRAM or consuming a sprite slot, making it appropriate for tile-rendered bosses, doors, platforms, and other logical objects.
 
 Tile gameplay collision uses pixel coordinates, not name-table coordinates:
