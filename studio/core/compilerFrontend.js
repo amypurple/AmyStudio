@@ -3,7 +3,7 @@ export function inferControllerBackendFromSource(sourceText) {
     .split(/\r?\n/)
     .map((line) => line.replace(/'.*$/, ""))
     .join("\n");
-  if (/\bspinner\s*\(/i.test(codeText) || /\bread\s+(?:joypad|keypad|spinner)\b/i.test(codeText)) return null;
+  if (/\bspinner\s*\(/i.test(codeText)) return null;
   const ports = {
     1: { segment0: false, segment1: false, joypad: false, keypad: false },
     2: { segment0: false, segment1: false, joypad: false, keypad: false }
@@ -64,7 +64,7 @@ export function inferControllerBackendFromSource(sourceText) {
     0
   );
   const controllerBackend = segmentCallCount === 1 ? "bios_decoder" : "bios_cont_scan_compact";
-  if (controllerBackend === "bios_cont_scan_compact" && /\b(?:play\s+sound|play\s+song|set\s+sound\s+table|on\s+(?:vblank|frame)|spinner|read\s+frame|120c)\b/i.test(codeText)) return null;
+  if (controllerBackend === "bios_cont_scan_compact" && /\b(?:play\s+sound|play\s+song|set\s+sound\s+table|on\s+(?:vblank|frame)|spinner|120c)\b/i.test(codeText)) return null;
   return {
     controllerBackend,
     decoderSegmentMask1: (ports[1].segment0 ? 1 : 0) | (ports[1].segment1 ? 2 : 0),
@@ -116,7 +116,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\b(sprite|sprites|AMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)|AMY_SPRITE_(COUNT|TABLE))\b/i.test(text);
   const needsSpriteFlicker = /^\s*sprites\s+(?:flicker\s+(?:on|off)|stable\s+.+?\s+to\s+.+?)\s*(?:'.*)?$/im.test(codeText);
   const needsControllers =
-    /\b(read\s+(joypad|keypad)|wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|sleep\s+after|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
+    /\b(wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|sleep\s+after|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
     /\b(joypad|keypad)\s*\(/i.test(text);
   const usesDynamicJoypadPressed = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText);
   const usesDynamicJoypadReleased = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*released\b/i.test(codeText);
@@ -133,11 +133,11 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\bjoypad\s*\(\s*2\s*\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*released\b/i.test(codeText) ||
     usesDynamicJoypadReleased;
   const needsSpinner =
-    /\b(read\s+spinner|spinner|AMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)|SPINNER_[12])\b/i.test(text);
+    /\b(spinner|AMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)|SPINNER_[12])\b/i.test(text);
   const usesVblankHook = /^\s*on\s+(?:vblank|frame)\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:'.*)?$/im.test(codeText);
   const needsFrameCounter =
     usesTinySound ||
-    /\b(read\s+frame|AMY_FRAME_COUNTER)\b/i.test(text) ||
+    /\bAMY_FRAME_COUNTER\b/i.test(text) ||
     /\bframe\b(?!\s+size)/i.test(codeText);
   const needsVdpStatusShadow =
     usesWaitVblank ||

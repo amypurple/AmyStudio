@@ -16,8 +16,8 @@
   optimizer audit.
 - Extended `clamp`, `set bit`, and `clear bit` to record, overlay, local-record, and
   indexed byte-field targets while preserving compact direct-scalar code generation.
-- Extended legacy `read joypad/keypad/spinner/frame/vdp status ... into ...` commands
-  to typed record, overlay, and indexed destinations with five-profile ROM coverage.
+- Removed ambiguous staged input reads; controller, spinner, frame, and VDP values now
+  use the clearer expression forms exclusively.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and

@@ -9,8 +9,6 @@ const AMY_AUTOCOMPLETE_LEGACY_BLOCKLIST = new Set([
   "MainLoop:",
   "on Choice gosub Init, Update, Draw",
   "initialize mode 2 text color with $F0",
-  "read joypad 1 into Pad1",
-  "read vdp status into Status",
   "if button 1 on Pad1 goto FirePressed",
   "if button 1 on Pad1 then goto FirePressed",
   "dim u16 Score = 0",
@@ -28,9 +26,6 @@ const AMY_AUTOCOMPLETE_LEGACY_BLOCKLIST = new Set([
   "put chars TitleLine at 8,8 count 9",
   "put tile $41 at 8,8",
   "print \"HELLO\" at 8,8",
-  "read frame into FrameCount",
-  "read spinner 1 into SpinX",
-  "read spinner 2 into SpinY",
   "endif",
   "end do",
   "end for",
@@ -271,8 +266,6 @@ export const AMY_AUTOCOMPLETE = [
   ["case 1 to 3", "Branch body for an inclusive select case range"],
   ["case else", "Fallback branch for select case"],
   ["end select", "Close a select case block"],
-  ["read joypad 1 into Pad1", "Hardware read: copy decoded controller state into a u8 variable"],
-  ["read vdp status into Status", "Hardware read: copy the BIOS-shadowed VDP status u8 into a RAM variable"],
   ["if any collision goto Hit", "Branch when the VDP sprite coincidence bit is set"],
   ["hitbox PlayerHitbox = 3,5 size 10,9", "Declare a named local sprite hitbox rectangle"],
   ["if sprite 0 hitbox PlayerHitbox collides with sprite I + 1 hitbox EnemyHitbox goto Hit", "Branch using named hitboxes and byte-sized sprite index expressions"],
@@ -520,7 +513,6 @@ export function autocompleteCommandBias(snippet) {
   if (lower.startsWith("put at ")) score += 8;
   if (lower.startsWith("put chars ")) score += 8;
   if (/^(sqrt|sqr|abs|sgn|int|log|exp)\s+.+\s+into\s+/.test(lower)) score += 8;
-  if (lower.startsWith("read joypad ") || lower.startsWith("read vdp status")) score += 7;
   if (lower.startsWith("copy bytes ") || lower.startsWith("copy bcd ")) score += 4;
   if (lower.startsWith("label ") || /:$/.test(lower)) score += 10;
   return score;

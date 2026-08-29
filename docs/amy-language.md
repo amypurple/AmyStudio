@@ -1315,7 +1315,7 @@ exit while
 ```basic
 do
   wait
-  read joypad 1 into Pad1
+  Pad1 = joypad(1)
 loop
 
 do while Ready
@@ -2447,21 +2447,21 @@ The controller selector may be an `int8` expression for `joypad`, `keypad`, and
 `OtherSpin = spinner(3 - Port)`. At runtime selector `1` chooses port 1; every
 other value chooses port 2. A dynamic spinner read remains atomic and consumable.
 
-Old staged reads still compile during cleanup, but code should use expressions
-when an expression exists. Keep these only for older source migration or
-low-level debugging of the decoded controller bytes:
+Controller and keypad state is refreshed by the NMI handler. Read the latest stable
+decoded value with an expression:
 
 ```basic
-read joypad 1 into Pad1
-read joypad 2 into Pad2
-read keypad 1 into Key1
-read keypad 2 into Key2
-read vdp status into VdpByte
+Pad1 = joypad(1)
+Pad2 = joypad(2)
+Key1 = keypad(1)
+Key2 = keypad(2)
+VdpByte = vdp.status
+FrameCount = frame
 ```
 
-The `into` destination may be a byte variable, array element, record field, or
-overlay-qualified field. `read frame` also accepts word destinations. Indexed and
-qualified forms use the same typed address resolver as assignment.
+These expressions may be assigned to variables, array elements, record fields, or
+overlay-qualified fields. The `read` statement is reserved for `DATA` cursor reads
+and explicit transfers such as `read vram`.
 
 ### Joypad conditions
 
@@ -3189,10 +3189,6 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `spinner(N)` | Signed movement delta since the previous read; reading consumes it (`1`: right positive, `2`: down positive) |
 | `frame` | Inline 16-bit frame counter; byte targets receive the low byte |
 | `vdp.status` | Inline VDP status byte |
-| `read joypad N into Var` | Old staged joypad read |
-| `read keypad N into Var` | Old staged keypad read |
-| `read spinner N into Var` | Old staged signed-delta read; it also consumes the movement; prefer `Var = spinner(N)` |
-| `read frame into Var` | Old staged frame read; prefer `Var = frame` |
 | `if button N on Pad goto Label` | Supported staged joypad button branch |
 | `if left/right/up/down on Pad goto Label` | Supported staged direction branch |
 | `if any collision goto Label` | VDP coincidence branch |

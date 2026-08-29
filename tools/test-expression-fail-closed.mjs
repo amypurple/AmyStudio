@@ -63,6 +63,11 @@ for (const profile of profiles) {
   assert.equal(result.status, 0, `${profile} dynamic spinner: ${result.output}`);
 }
 const invalidCases = [
+  ["removed-read-joypad", `u8 X = 0\nsub start:\n  read joypad 1 into X\n  loop forever\nend sub`, /read target must be/],
+  ["removed-read-keypad", `u8 X = 0\nsub start:\n  read keypad 1 into X\n  loop forever\nend sub`, /read target must be/],
+  ["removed-read-spinner", `i8 X = 0\nsub start:\n  read spinner 1 into X\n  loop forever\nend sub`, /read target must be/],
+  ["removed-read-frame", `u16 X = 0\nsub start:\n  read frame into X\n  loop forever\nend sub`, /read target must be/],
+  ["removed-read-vdp-status", `u8 X = 0\nsub start:\n  read vdp status into X\n  loop forever\nend sub`, /read target must be/],
   ["wide-array-index", `u8 Values[4]\nu16 Wide = 1\nu8 X = 0\nsub start:\n  X = Values[Wide]\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["random-no-arg-u8", `u8 X = 0\nsub start:\n  X = random()\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["unknown-symbol", `u8 X = 0\nsub start:\n  X = mysteryVar + 1\n  loop forever\nend sub`, /Invalid runtime assignment/],
