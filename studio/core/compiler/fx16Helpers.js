@@ -15,7 +15,9 @@ export function createFx16Helpers({
   resolveDeclaredValueType,
   normalizeDeclaredType,
   formatIxOffset,
-  scopedRuntimeName
+  scopedRuntimeName,
+  parseArrayRef,
+  emitLoadArrayAddressIntoHL
 }) {
   let fp5HelperLabelCounter = 0;
   function nextFp5HelperLabel(prefix) {
@@ -40,9 +42,19 @@ export function createFx16Helpers({
 
   function getFp5Info(name) {
     const info = getRuntimeInfo(name);
-    if (!info) return null;
-    if (info.kind === "fp5" || info.type === "fp5") return info;
+    if (info && (info.kind === "fp5" || info.type === "fp5") && info.kind !== "array") return info;
+    const arrayRef = parseArrayRef?.(name);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (arrayInfo?.kind === "array" && arrayInfo.elementType === "fp5") {
+      return { ...arrayInfo, kind: "fp5", storage: "fp5_array_element", arrayName: arrayRef.name, indexToken: arrayRef.index };
+    }
     return null;
+  }
+
+  function emitLoadFp5ArrayElementAddress(info) {
+    return info?.storage === "fp5_array_element"
+      ? emitLoadArrayAddressIntoHL?.(info.arrayName, info.indexToken)
+      : null;
   }
 
   // Store a fix16_16-typed source value into a 4-byte scratch area.
@@ -341,6 +353,10 @@ export function createFx16Helpers({
   function emitLoadFp5SourceToFPA1(valueToken) {
     const valueInfo = getFp5Info(valueToken);
     if (valueInfo) {
+      if (valueInfo.storage === "fp5_array_element") {
+        const address = emitLoadFp5ArrayElementAddress(valueInfo);
+        return address ? [...address, "    call AMY_FP5_LOAD_MEM_TO_FPA1"] : null;
+      }
       if (valueInfo.storage === "stack") {
         return [
           `    ld a,(ix${valueInfo.offset < 0 ? valueInfo.offset : `+${valueInfo.offset}`})`,
@@ -359,6 +375,11 @@ export function createFx16Helpers({
         `    ld hl,${valueInfo.asmName}`,
         "    call AMY_FP5_LOAD_MEM_TO_FPA1"
       ];
+    }
+    const literalValue = parseCompileTimeNumericLiteral(valueToken);
+    if (literalValue !== null && String(valueToken).includes(".")) {
+      const encoded = encodeFp5Number(literalValue);
+      if (encoded) return emitStoreImmediateBytesToLabel("AMY_FP5_FPA1", encoded);
     }
     const sourceInfo = getRuntimeInfo(valueToken);
     const valueType = normalizeDeclaredType(resolveDeclaredValueType(valueToken));
@@ -381,6 +402,10 @@ export function createFx16Helpers({
   function emitLoadFp5SourceToFPA2(valueToken) {
     const valueInfo = getFp5Info(valueToken);
     if (valueInfo) {
+      if (valueInfo.storage === "fp5_array_element") {
+        const address = emitLoadFp5ArrayElementAddress(valueInfo);
+        return address ? [...address, "    call AMY_FP5_LOAD_MEM_TO_FPA2"] : null;
+      }
       if (valueInfo.storage === "stack") {
         return [
           `    ld a,(ix${valueInfo.offset < 0 ? valueInfo.offset : `+${valueInfo.offset}`})`,
@@ -399,6 +424,11 @@ export function createFx16Helpers({
         `    ld hl,${valueInfo.asmName}`,
         "    call AMY_FP5_LOAD_MEM_TO_FPA2"
       ];
+    }
+    const literalValue = parseCompileTimeNumericLiteral(valueToken);
+    if (literalValue !== null && String(valueToken).includes(".")) {
+      const encoded = encodeFp5Number(literalValue);
+      if (encoded) return emitStoreImmediateBytesToLabel("AMY_FP5_FPA2", encoded);
     }
     const sourceInfo = getRuntimeInfo(valueToken);
     const valueType = normalizeDeclaredType(resolveDeclaredValueType(valueToken));
@@ -422,6 +452,10 @@ export function createFx16Helpers({
   function emitLoadFp5TargetToFPA2(targetToken) {
     const targetInfo = getFp5Info(targetToken);
     if (!targetInfo) return null;
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...address, "    call AMY_FP5_LOAD_MEM_TO_FPA2"] : null;
+    }
     if (targetInfo.storage === "stack") {
       return [
         `    ld a,(ix${targetInfo.offset < 0 ? targetInfo.offset : `+${targetInfo.offset}`})`,
@@ -445,6 +479,10 @@ export function createFx16Helpers({
   function emitStoreFPA2ToFp5Target(targetToken) {
     const targetInfo = getFp5Info(targetToken);
     if (!targetInfo) return null;
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...address, "    call AMY_FP5_STORE_FPA2_TO_MEM"] : null;
+    }
     if (targetInfo.storage === "stack") {
       return [
         "    ld a,(AMY_FP5_FPA2+0)",
@@ -468,6 +506,10 @@ export function createFx16Helpers({
   function emitStoreFPA1ToFp5Target(targetToken) {
     const targetInfo = getFp5Info(targetToken);
     if (!targetInfo) return null;
+    if (targetInfo.storage === "fp5_array_element") {
+      const address = emitLoadFp5ArrayElementAddress(targetInfo);
+      return address ? [...address, "    call AMY_FP5_STORE_FPA1_TO_MEM"] : null;
+    }
     if (targetInfo.storage === "stack") {
       return [
         "    ld a,(AMY_FP5_FPA1+0)",

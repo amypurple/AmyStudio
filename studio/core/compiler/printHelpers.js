@@ -29,10 +29,30 @@ export function createPrintHelpers(ctx) {
     tryEvaluateByteConstantExpression,
     normalizeExpression,
     getRuntimeInfo,
+    parseArrayRef,
     emitBcdPrint,
     getBcdDigitCount,
     emitFormatBcdIntoBuffer
   } = ctx;
+
+  function getFp5ValueInfo(valueToken) {
+    const info = getRuntimeInfo(valueToken);
+    if (info && info.type === "fp5" && info.kind !== "array") return info;
+    const arrayRef = parseArrayRef?.(valueToken);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (arrayInfo?.kind === "array" && arrayInfo.elementType === "fp5") {
+      return { ...arrayInfo, storage: "fp5_array_element", arrayName: arrayRef.name, indexToken: arrayRef.index };
+    }
+    return null;
+  }
+
+  function emitLoadFp5PointerIntoHL(valueToken, info) {
+    if (info?.storage === "fp5_array_element") {
+      return emitLoadArrayAddressIntoHL(info.arrayName, info.indexToken);
+    }
+    const asmName = getRuntimeAsmName(valueToken);
+    return asmName ? [`    ld hl,${asmName}`] : null;
+  }
 
   function ensureNumericFormatVars() {
     if (state.numericDigitBaseName && state.numericPadCharName) {
@@ -353,7 +373,7 @@ export function createPrintHelpers(ctx) {
     const declaredType = resolveDeclaredValueType(valueToken)
       || resolveExpressionAstComputationType(parseExpressionAst(valueToken))?.declaredType;
     if (!isFp5DeclaredType(declaredType) && resolveValueType(valueToken) !== "fp5") return null;
-    const info = getRuntimeInfo(valueToken);
+    const info = getFp5ValueInfo(valueToken);
     if (!info) return null;
     if (info.storage === "stack") {
       return [
@@ -389,7 +409,7 @@ export function createPrintHelpers(ctx) {
     if (!Number.isInteger(digits) || digits !== 16) return null;
     const loadCoords = emitLoadTextCoordsIntoDE(xToken, yToken);
     if (!loadCoords) return null;
-    const info = getRuntimeInfo(valueToken);
+    const info = getFp5ValueInfo(valueToken);
     if (!info) return null;
     const textBuffer = ensureFp5TextBuffer();
     const loadSource = info.storage === "stack"
@@ -406,7 +426,8 @@ export function createPrintHelpers(ctx) {
           "    ld (AMY_FP5_FPA2+4),a",
           "    ld hl,AMY_FP5_FPA2"
         ]
-      : [`    ld hl,${getRuntimeAsmName(valueToken)}`];
+      : emitLoadFp5PointerIntoHL(valueToken, info);
+    if (!loadSource) return null;
     return [
       ...loadSource,
       ...loadCoords,
@@ -1188,7 +1209,7 @@ export function createPrintHelpers(ctx) {
     if (!Number.isInteger(digits) || digits !== 16) return null;
     const bufferInfo = getByteArrayBufferInfoLocal(bufferToken, 16);
     if (!bufferInfo) return null;
-    const info = getRuntimeInfo(valueToken);
+    const info = getFp5ValueInfo(valueToken);
     if (!info) return null;
     const loadDest = emitLoadInt8ArrayAddressIntoDE(bufferToken, 0);
     if (!loadDest) return null;
@@ -1210,7 +1231,7 @@ export function createPrintHelpers(ctx) {
           "    call AMY_FP5_TO_ASCII16"
         ]
       : [
-          `    ld hl,${getRuntimeAsmName(valueToken)}`,
+          ...emitLoadFp5PointerIntoHL(valueToken, info),
           `    ld de,${textBuffer}`,
           "    call AMY_FP5_TO_ASCII16"
         ];
@@ -1230,7 +1251,7 @@ export function createPrintHelpers(ctx) {
     if (!Number.isInteger(digits) || digits !== 16) return null;
     const bufferInfo = getByteArrayBufferInfoLocal(bufferToken, 16);
     if (!bufferInfo) return null;
-    const info = getRuntimeInfo(valueToken);
+    const info = getFp5ValueInfo(valueToken);
     if (!info) return null;
     const loadDest = emitLoadInt8ArrayAddressIntoDE(bufferToken, 0);
     if (!loadDest) return null;
@@ -1254,7 +1275,7 @@ export function createPrintHelpers(ctx) {
           "    call AMY_FP5_TO_ASCII16"
         ]
       : [
-          `    ld hl,${getRuntimeAsmName(valueToken)}`,
+          ...emitLoadFp5PointerIntoHL(valueToken, info),
           `    ld de,${textBuffer}`,
           "    call AMY_FP5_TO_ASCII16"
         ];

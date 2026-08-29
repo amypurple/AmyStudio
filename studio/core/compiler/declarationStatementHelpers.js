@@ -470,10 +470,7 @@ export function handleDeclarationStatement({
           state.body.push(...initCode);
           continue;
         }
-        if (declaredType === "fp5") {
-          if (lengthToken) {
-            return { handled: true, ok: false, log: `fp5 arrays are not supported yet: ${rawLine}` };
-          }
+        if (declaredType === "fp5" && !lengthToken) {
           const size = runtimeTypeSize(type);
           frame.size += size;
           const offset = -frame.size;
@@ -597,10 +594,7 @@ export function handleDeclarationStatement({
         }
         continue;
       }
-      if (declaredType === "fp5") {
-        if (lengthToken) {
-          return { handled: true, ok: false, log: `fp5 arrays are not supported yet: ${rawLine}` };
-        }
+      if (declaredType === "fp5" && !lengthToken) {
         let address;
         try {
           address = reserveRam(name, 5, rawLine.trim());
@@ -704,14 +698,18 @@ export function handleDeclarationStatement({
         state.hasRuntimeRamDeclarations = true;
         if (!isCompileTimeZeroInitializer(declaredType, initial)) {
           const isFix8_8Array = declaredType === "fix8_8" || declaredType === "ufix8_8";
-          const numeric = isFix8_8Array
+          const isFp5Array = declaredType === "fp5";
+          const numeric = (isFix8_8Array || isFp5Array)
             ? null
             : parseNumericLiteral(initial);
           const fixedBytes = isFix8_8Array
             ? encodeFixed8_8ImmediateBytes(initial, runtimeTypeSize(type))
             : null;
-          if (fixedBytes || numeric !== null) {
-            const elementBytes = fixedBytes || encodeImmediateBytes(numeric, runtimeTypeSize(type));
+          const fp5Bytes = isFp5Array
+            ? encodeFp5ImmediateBytes(tryEvaluateCompileTimeNumericExpression(initial))
+            : null;
+          if (fixedBytes || fp5Bytes || numeric !== null) {
+            const elementBytes = fixedBytes || fp5Bytes || encodeImmediateBytes(numeric, runtimeTypeSize(type));
             const bytes = [];
             for (let index = 0; index < length; index += 1) bytes.push(...elementBytes);
             queueImmediateRuntimeInit(address, bytes);

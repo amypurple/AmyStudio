@@ -286,6 +286,7 @@ export const AMY_AUTOCOMPLETE = [
   ["if button 1 on Pad1 then goto FirePressed", "Branch on controller input (optional then)"],
   ["Tile = random(2) + 16", "Assign an int8 expression using RANDOM(count)"],
   ["FloatNoise = random(10, 20)", "Assign an fp5 random value inside a numeric interval"],
+  ["fp5 Values[4] = 0.0", "Declare a fixed-length global or local array of five-byte floating-point values"],
   ["Score = 12345", "Canonical Amy assignment"],
   ["set number digits to $30", "Set the tile index for digit '0' (for example $30 = ASCII '0', $00 for a custom charset)"],
   ["set number pad to $20", "Set the tile index used for numeric left-padding (for example $20 = space tile)"],

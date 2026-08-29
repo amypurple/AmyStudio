@@ -64,9 +64,36 @@ export function createRuntimeValueHelpers({
     return /^-?0(?:\.0+)?$/i.test(normalized) || /^-?(?:\$0+|0x0+)$/i.test(normalized);
   }
 
-  function emitStoreZeroBytes(name, byteCount) {
+  function getFp5RuntimeInfo(name) {
     const info = getRuntimeInfo(name);
+    if (info && info.type === "fp5" && info.kind !== "array") return info;
+    const arrayRef = parseArrayRef(name);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (arrayInfo?.kind === "array" && arrayInfo.elementType === "fp5") {
+      return { ...arrayInfo, kind: "fp5", storage: "fp5_array_element", arrayName: arrayRef.name, indexToken: arrayRef.index };
+    }
+    return null;
+  }
+
+  function emitLoadFp5RuntimeAddress(info) {
+    return info?.storage === "fp5_array_element"
+      ? emitLoadArrayAddressIntoHL(info.arrayName, info.indexToken)
+      : null;
+  }
+
+  function emitStoreZeroBytes(name, byteCount) {
+    const info = byteCount === 5 ? (getFp5RuntimeInfo(name) || getRuntimeInfo(name)) : getRuntimeInfo(name);
     if (!info) return null;
+    if (info.storage === "fp5_array_element") {
+      const address = emitLoadFp5RuntimeAddress(info);
+      if (!address) return null;
+      const lines = [...address, "    xor a"];
+      for (let index = 0; index < byteCount; index += 1) {
+        lines.push("    ld (hl),a");
+        if (index + 1 < byteCount) lines.push("    inc hl");
+      }
+      return lines;
+    }
     const lines = ["    xor a"];
     if (info.storage === "stack") {
       for (let index = 0; index < byteCount; index += 1) {
@@ -83,8 +110,12 @@ export function createRuntimeValueHelpers({
   }
 
   function emitStoreFpa1ToFp5Target(name) {
-    const info = getRuntimeInfo(name);
+    const info = getFp5RuntimeInfo(name);
     if (!info) return null;
+    if (info.storage === "fp5_array_element") {
+      const address = emitLoadFp5RuntimeAddress(info);
+      return address ? [...address, "    call AMY_FP5_STORE_FPA1_TO_MEM"] : null;
+    }
     if (info.storage === "stack") {
       return [
         "    ld a,(AMY_FP5_FPA1+0)",
@@ -106,8 +137,12 @@ export function createRuntimeValueHelpers({
   }
 
   function emitStoreFpa2ToFp5Target(name) {
-    const info = getRuntimeInfo(name);
+    const info = getFp5RuntimeInfo(name);
     if (!info) return null;
+    if (info.storage === "fp5_array_element") {
+      const address = emitLoadFp5RuntimeAddress(info);
+      return address ? [...address, "    call AMY_FP5_STORE_FPA2_TO_MEM"] : null;
+    }
     if (info.storage === "stack") {
       return [
         "    ld a,(AMY_FP5_FPA2+0)",
@@ -138,9 +173,13 @@ export function createRuntimeValueHelpers({
         `    call ${fpa === 2 ? "AMY_FP5_LOAD_MEM_TO_FPA2" : "AMY_FP5_LOAD_MEM_TO_FPA1"}`
       ];
     }
-    const info = getRuntimeInfo(valueToken);
+    const info = getFp5RuntimeInfo(valueToken);
     const fpaLabel = fpa === 2 ? "AMY_FP5_FPA2" : "AMY_FP5_FPA1";
     if (info && info.type === "fp5") {
+      if (info.storage === "fp5_array_element") {
+        const address = emitLoadFp5RuntimeAddress(info);
+        return address ? [...address, `    call ${fpa === 2 ? "AMY_FP5_LOAD_MEM_TO_FPA2" : "AMY_FP5_LOAD_MEM_TO_FPA1"}`] : null;
+      }
       if (info.storage === "stack") {
         const lines = [];
         for (let index = 0; index < 5; index += 1) {
@@ -209,8 +248,18 @@ export function createRuntimeValueHelpers({
   }
 
   function emitStoreImmediateFp5Bytes(name, bytes) {
-    const info = getRuntimeInfo(name);
+    const info = getFp5RuntimeInfo(name);
     if (!info || info.type !== "fp5" || !Array.isArray(bytes) || bytes.length !== 5) return null;
+    if (info.storage === "fp5_array_element") {
+      const address = emitLoadFp5RuntimeAddress(info);
+      if (!address) return null;
+      const lines = [...address];
+      for (let index = 0; index < bytes.length; index += 1) {
+        lines.push(`    ld (hl),${formatHex8(bytes[index])}`);
+        if (index + 1 < bytes.length) lines.push("    inc hl");
+      }
+      return lines;
+    }
     if (info.storage === "stack") {
       return bytes.map((value, index) => {
         const offset = info.offset + index;
@@ -591,7 +640,16 @@ export function createRuntimeValueHelpers({
         const encoded = encodeFp5Number(compileTimeNumericValue);
         if (encoded) return emitStoreImmediateFp5Bytes(name, encoded);
       }
-      if (sourceType === "fp5") return emitCopyBytes(value, name, 5);
+      if (sourceType === "fp5") {
+        const sourceArray = getFp5RuntimeInfo(value)?.storage === "fp5_array_element";
+        const targetArray = getFp5RuntimeInfo(name)?.storage === "fp5_array_element";
+        if (sourceArray || targetArray) {
+          const loadSource = emitLoadFp5SourceToFpa(value, 1);
+          const storeTarget = emitStoreFpa1ToFp5Target(name);
+          return loadSource && storeTarget ? [...loadSource, ...storeTarget] : null;
+        }
+        return emitCopyBytes(value, name, 5);
+      }
       if (sourceType === "i32" && isFix16_16DeclaredType(sourceDeclaredType)) {
         const scratch = ensureCompareScratch32();
         const storeSource = emitStoreFx16Source(value, scratch.leftLabel);
@@ -601,7 +659,7 @@ export function createRuntimeValueHelpers({
         return [...storeSource, ...storeTarget];
       }
       if (sourceType === "int8" || sourceType === "int16") {
-        const targetInfo = getRuntimeInfo(name);
+        const targetInfo = getFp5RuntimeInfo(name);
         const sourceInfo = getRuntimeInfo(value);
         if (!targetInfo) return null;
         const convertCall = isSignedDeclaredType(sourceDeclaredType)
@@ -626,7 +684,7 @@ export function createRuntimeValueHelpers({
       if (numericLiteral) {
         const loadSource = emitLoadInt16IntoHL(value);
         if (!loadSource) return null;
-        const targetInfo = getRuntimeInfo(name);
+        const targetInfo = getFp5RuntimeInfo(name);
         if (!targetInfo) return null;
         const signedLiteral = String(value).trim().startsWith("-");
         const convertCall = signedLiteral ? "    call AMY_FP5_I16_TO_FPA1" : "    call AMY_FP5_U16_TO_FPA1";

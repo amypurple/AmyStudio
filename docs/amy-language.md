@@ -785,6 +785,11 @@ Legacy scalar aliases such as `byte`, `word`, `integer`, `char`, `int`, `long`, 
 FP5 note:
 - `fp5` is the canonical source spelling for the historical 5-byte real type
 - `float` was removed; use `fp5`
+- fixed-length global and local arrays use `fp5 Values[Count]`; each element occupies
+  five bytes and accepts constant, byte-variable, or byte-expression indexes
+- indexed FP5 values support assignment, copy, comparison, `+=`, `-=`, `*=`, `/=`,
+  `clear`, `format`, and direct `print`; constant indexes are bounds-checked
+- FP5 fields inside records and overlays are not part of this array support
 - direct assignments between scalar `fp5` and `fixed32` values perform a numeric
   conversion; they do not copy the incompatible raw representations
 - mixed `fp5`/`fixed32` arithmetic expressions remain invalid; convert through an

@@ -2924,6 +2924,7 @@ export function transpileAmyCore(sourceText, deps) {
     const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
     if (!info && !fieldRef && !arrayInfo) return null;
     if (arrayInfo?.kind === "bcd_array") return emitBcdClear(name);
+    if (arrayInfo?.kind === "array" && arrayInfo.elementType === "fp5") return emitRuntimeStore(name, "0");
     if (fieldRef?.fieldInfo?.type === "bcd") return emitBcdClear(name);
     if (!info) return null;
     if (info.kind === "array") return null;
@@ -3706,6 +3707,7 @@ export function transpileAmyCore(sourceText, deps) {
     tryEvaluateByteConstantExpression,
     normalizeExpression,
     getRuntimeInfo,
+    parseArrayRef,
     emitBcdPrint,
     getBcdDigitCount,
     emitFormatBcdIntoBuffer
@@ -3810,7 +3812,9 @@ export function transpileAmyCore(sourceText, deps) {
     resolveDeclaredValueType,
     normalizeDeclaredType,
     formatIxOffset,
-    scopedRuntimeName
+    scopedRuntimeName,
+    parseArrayRef,
+    emitLoadArrayAddressIntoHL: (...args) => emitLoadArrayAddressIntoHL(...args)
   }));
   ({
     emitComputeExpressionAst,

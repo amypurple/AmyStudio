@@ -21,6 +21,7 @@ const tests = [
   { file: "test-chars-in-box-rom.mjs", area: "tile-collision", evidence: "rom" },
   { file: "test-legacy-u32-rom.mjs", area: "legacy-wide-integers", evidence: "rom" },
   { file: "test-fp5-function-return-rom.mjs", area: "fp5-function-return", evidence: "rom" },
+  { file: "test-fp5-array-rom.mjs", area: "fp5-arrays", evidence: "rom" },
   { file: "test-fp5-fixed32-conversion-rom.mjs", area: "fp5-fixed32-conversion", evidence: "rom" },
   { file: "test-fixed-fixed32-conversion-rom.mjs", area: "fixed-fixed32-conversion", evidence: "rom" },
   { file: "test-wide-binary-expression-rom.mjs", area: "wide-binary-expressions", evidence: "rom" },

@@ -1,5 +1,8 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added global and local `fp5` arrays with indexed assignment, copy, arithmetic,
+  comparison, clear, format, and direct print support under all optimization profiles.
+- Added direct decimal-literal comparisons for scalar and indexed `fp5` values.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and
