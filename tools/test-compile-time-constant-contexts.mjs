@@ -21,25 +21,31 @@ function compile(sourcePath, asmPath, romPath) {
 const output = await mkdtemp(join(tmpdir(), "amy-constant-contexts-"));
 try {
   const variants = [
-    ["literal", "4", "10", "1", "3", "3"],
-    ["constant", "ItemCount", "SleepSeconds", "ShiftCount", "SoundStep", "FormatDigits"]
+    ["literal", "4", "10", "1", "3", "3", "6"],
+    ["constant", "ItemCount", "SleepSeconds", "ShiftCount", "SoundStep", "FormatDigits", "ScoreDigits"]
   ];
   const roms = [];
-  for (const [name, count, timeout, shiftCount, soundStep, formatDigits] of variants) {
+  for (const [name, count, timeout, shiftCount, soundStep, formatDigits, scoreDigits] of variants) {
     const constants = name === "constant"
-      ? "const ItemCount = 4\nconst SleepSeconds = 10\nconst ShiftCount = 1\nconst SoundStep = 3\nconst FormatDigits = 3\n"
+      ? "const ItemCount = 4\nconst SleepSeconds = 10\nconst ShiftCount = 1\nconst SoundStep = 3\nconst FormatDigits = 3\nconst ScoreDigits = 6\n"
       : "";
     const source = `project "CONSTANT CONTEXTS"
 ${constants}record Bucket:
   u8 Items[${count}]
+  bcd digits ${scoreDigits} RecordScore
 end record
 Bucket Value
+bcd digits ${scoreDigits} PackedScore = 1234
 u8 Values[${count}]
 u8 Index = 0
 u8 Sum = 0
 u8 NumberBuffer[4]
 sub start:
+  bcd digits ${scoreDigits} LocalScore
   Value.Items[3] = 7
+  Value.RecordScore = 1234
+  inc PackedScore
+  inc LocalScore
   Values[0] = 1
   Values[1] = 2
   Values[2] = 3
@@ -103,6 +109,16 @@ end sub
   await writeFile(invalidFormatPath, invalidFormat);
   assert.notEqual(await compile(invalidFormatPath, join(output, "invalid-format.asm"), join(output, "invalid-format.rom")), 0,
     "an unknown formatting constant must fail closed");
+
+  const invalidBcd = `project "BAD BCD SIZE"
+const ScoreDigits = 13
+bcd digits ScoreDigits Score
+loop forever
+`;
+  const invalidBcdPath = join(output, "invalid-bcd.alexis");
+  await writeFile(invalidBcdPath, invalidBcd);
+  assert.notEqual(await compile(invalidBcdPath, join(output, "invalid-bcd.asm"), join(output, "invalid-bcd.rom")), 0,
+    "an out-of-range BCD digit constant must fail closed");
 } finally {
   await rm(output, { recursive: true, force: true });
 }

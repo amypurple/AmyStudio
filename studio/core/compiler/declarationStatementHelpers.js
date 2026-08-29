@@ -170,12 +170,13 @@ export function handleDeclarationStatement({
     return { handled: true, ok: true };
   }
 
-  const bcdDecl = line.match(/^(?:(ram|dim|local)\s+)?bcd\s+(?:(digits)\s+)?([1-9]|10|11|12)\s+(.+)$/i);
+  const bcdDecl = line.match(/^(?:(ram|dim|local)\s+)?bcd\s+(digits)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
   if (bcdDecl) {
     const scopeKeyword = bcdDecl[1] ? bcdDecl[1].toLowerCase() : null;
-    const explicitDigits = !!bcdDecl[2];
-    const rawBcdCount = Number.parseInt(bcdDecl[3], 10);
-    const digitCount = explicitDigits ? rawBcdCount : rawBcdCount * 2;
+    const digitCount = tryEvaluateCompileTimeNumericExpression(bcdDecl[3]);
+    if (!Number.isInteger(digitCount) || digitCount < 1 || digitCount > 12) {
+      return { handled: true, ok: false, log: `BCD digit count must be a compile-time constant from 1 to 12: ${rawLine}` };
+    }
     const byteCount = Math.ceil(digitCount / 2);
     let declarationsForLine = [];
     try {

@@ -9,6 +9,8 @@
   `digits/width` clauses without changing their type-specific bounds or generated ROM.
 - Accepted named compile-time constants in `sprites stable First to Last`; constants
   remain byte-identical to literal stable-priority ranges.
+- Accepted named compile-time constants for global, local, and record
+  `bcd digits N` declarations while preserving the `1..12` limit and packed RAM layout.
 - Completed contextual highlighting for `count` across sprite, text-color, VRAM, array, pattern-transform, tile-row, and data commands.
 - Completed contextual highlighting for `choose menu`, including `into`, `cursor`, `at`, and `sleep`, without reserving those words as variable names.
 - Completed nested `u32`/`i32` return expressions with parenthesized operands, calls on either side, and double recursion; documented the unguarded hardware-stack depth limit.

@@ -1835,7 +1835,7 @@ export function transpileAmyCore(sourceText, deps) {
           sawEnd = true;
           break;
         }
-        const bcdFieldMatch = fieldLine.match(/^bcd\s+digits\s+([1-9]|10|11|12)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        const bcdFieldMatch = fieldLine.match(/^bcd\s+digits\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
         const fieldMatch = bcdFieldMatch || fieldLine.match(simpleRecordFieldRe);
         if (!fieldMatch) {
           return `Invalid record field declaration: ${fieldRaw}`;
@@ -1855,7 +1855,10 @@ export function transpileAmyCore(sourceText, deps) {
         }
         let fieldInfo = null;
         if (bcdFieldMatch) {
-          const digitCount = Number.parseInt(bcdFieldMatch[1], 10);
+          const digitCount = resolveEarlyNumericConstant(bcdFieldMatch[1], earlyCompileTimeConstants);
+          if (!Number.isInteger(digitCount) || digitCount < 1 || digitCount > 12) {
+            return `BCD record fields require a compile-time digit count from 1 to 12: ${fieldRaw}`;
+          }
           const byteCount = Math.ceil(digitCount / 2);
           fieldInfo = {
             name: fieldName,

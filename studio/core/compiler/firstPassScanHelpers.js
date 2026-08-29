@@ -187,7 +187,7 @@ export function scanAmyFirstPass({
       ensureAssetAsmSymbol(assetMatch[1]);
     }
 
-    const bcdPredecl = trimmed.match(/^(?:(ram|dim|local)\s+)?bcd\s+(?:(digits)\s+)?([1-9]|10|11|12)\s+(.+)$/i);
+    const bcdPredecl = trimmed.match(/^(?:(ram|dim|local)\s+)?bcd\s+(digits)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/i);
     if (bcdPredecl && isFirstPassGlobalDeclaration(bcdPredecl[1]?.toLowerCase() || null)) {
       try {
         for (const declEntry of parseAmyDeclarationList(bcdPredecl[4], rawLine)) {

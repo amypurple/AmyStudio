@@ -739,7 +739,7 @@ const TileBase = $00
 | `u32` | 32-bit unsigned integer | 4 bytes, little-endian |
 | `i32` | 32-bit signed integer | 4 bytes, little-endian |
 | `fp5` | historical 5-byte floating-point real | 5 bytes |
-| `bcd digits N` | packed BCD with N decimal digits | `ceil(N/2)` bytes |
+| `bcd digits N` | packed BCD with 1..12 decimal digits | `ceil(N/2)` bytes |
 | `Type[N]` | fixed-size array | N × element size |
 
 `fixed` ranges from `-128.0` through `127.99609375`; `ufixed` ranges from
@@ -748,6 +748,9 @@ representation, just like integer arithmetic on the Z80.
 
 Array lengths may be numeric literals or compile-time constant integer expressions,
 for example `const MaxClouds = 4` followed by `u8 CloudX[MaxClouds]`.
+
+The `N` in `bcd digits N` may likewise be a literal or named numeric constant from
+1 to 12. It determines RAM layout at compile time and therefore cannot be a variable.
 
 Global `bool` variables are bit-packed: up to 8 globals share one byte. Source code uses them as normal named flags.
 
