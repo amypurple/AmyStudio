@@ -628,7 +628,15 @@ export function handleVramTextStatement({
     const countToken = countBeforeTo || countAfterTo;
     const sourceVram = emitLoadVramAddressIntoDE(sourceExpr);
     const targetVram = emitLoadVramAddressIntoDE(targetExpr);
-    const sourceInfo = getRuntimeInfo(sourceExpr);
+    const sourceFieldRef = parseRecordFieldRef(sourceExpr);
+    const sourceInfo = sourceFieldRef?.isWholeArray
+      ? {
+          kind: "array",
+          elementType: sourceFieldRef.fieldInfo.type,
+          length: sourceFieldRef.fieldInfo.length,
+          qualifiedField: true
+        }
+      : getRuntimeInfo(sourceExpr);
     const targetFieldRef = parseRecordFieldRef(targetExpr);
     const targetInfo = targetFieldRef?.isWholeRecordArray
       ? {
@@ -638,7 +646,14 @@ export function handleVramTextStatement({
           recordSize: targetFieldRef.fieldInfo.elementSize,
           qualifiedField: true
         }
-      : getRuntimeInfo(targetExpr);
+      : targetFieldRef?.isWholeArray
+        ? {
+            kind: "array",
+            elementType: targetFieldRef.fieldInfo.type,
+            length: targetFieldRef.fieldInfo.length,
+            qualifiedField: true
+          }
+        : getRuntimeInfo(targetExpr);
 
     if (targetVram) {
       const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);
@@ -776,8 +791,12 @@ export function handleVramTextStatement({
         const byteCount = countToken
           ? (elemSize === 1 ? symbolOrValue(countToken) : `${symbolOrValue(countToken)}*${elemSize}`)
           : targetInfo.length * elemSize;
-        const loadSrc = emitLoadArrayAddressIntoHL(sourceExpr, "0");
-        const loadDst = emitLoadArrayAddressIntoHL(targetExpr, "0");
+        const loadSrc = sourceInfo.qualifiedField
+          ? emitLoadRecordFieldAddressIntoHL(sourceExpr)
+          : emitLoadArrayAddressIntoHL(sourceExpr, "0");
+        const loadDst = targetInfo.qualifiedField
+          ? emitLoadRecordFieldAddressIntoHL(targetExpr)
+          : emitLoadArrayAddressIntoHL(targetExpr, "0");
         if (!loadSrc || !loadDst) {
           return { ok: false, handled: true, log: `copy array: cannot resolve array base: ${rawLine}` };
         }

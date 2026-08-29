@@ -212,6 +212,8 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_PLAY_DSOUND: abi({ inputs: { hl: "dsound data", c: "step" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_WAIT_FRAMES_SAFE: abi({ inputs: { hl: "frame count" }, clobbers: ["af", "de"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_PAUSE_PRESS_RELEASE_BLANK_RESUME: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_SLEEP_SERVICE: abi({ inputs: { a: "controller selector", hl: "NTSC idle timeout", de: "PAL idle timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_CHOICE_KEYPAD_RANGE: abi({ outputs: { a: "choice" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_CHOICE_KEYPAD_RANGE_BLANK: abi({ inputs: { a: "keypad selector", b: "minimum key", c: "maximum key", hl: "NTSC timeout", de: "PAL timeout" }, outputs: { a: "choice" }, clobbers: ["af", "bc", "de", "hl"] }),
 

@@ -13,18 +13,19 @@ function compile(line, { nmiKnownOff = false } = {}) {
     emitLoadInt16IntoHL: () => null,
     emitStoreInt8FromA: (name) => ["    ld (" + name + "),a"],
     resolveValueType: () => null,
-    emitLoadInt8ValueIntoPreserving: () => null,
+    emitLoadInt8ValueIntoPreserving: (register, token) => ["    ld " + register + "," + token],
     getRuntimeInfo: (name) => name === "Choice" ? { type: "int8" } : null,
     emitStoreInt16FromHL: () => null,
     makeGeneratedLabel: () => "unused",
     currentGraphicsMode: null,
+    tryEvaluateConstantExpression: (token) => /^\d+$/.test(token) ? Number.parseInt(token, 10) : null,
     nmiKnownOff
   });
   return { ...result, body };
 }
 
 assert.deepEqual(compile(
-  "choose keypad KeyReplay to KeyMenu into Choice on keypad 2 blank after 5 seconds"
+  "choose keypad KeyReplay to KeyMenu into Choice on keypad 2 sleep after 5 seconds"
 ), {
   handled: true,
   ok: true,
@@ -39,7 +40,7 @@ assert.deepEqual(compile(
   ]
 });
 
-assert.deepEqual(compile("choose keypad 10 to 11 into Choice blank after 3 seconds").body, [
+assert.deepEqual(compile("choose keypad 10 to 11 into Choice sleep after 3 seconds").body, [
   "    ld b,10",
   "    ld c,11",
   "    ld hl,180",
@@ -50,11 +51,11 @@ assert.deepEqual(compile("choose keypad 10 to 11 into Choice blank after 3 secon
 ]);
 
 assert.match(
-  compile("choose keypad 10 to 11 into Choice blank after 5 seconds", { nmiKnownOff: true }).log,
+  compile("choose keypad 10 to 11 into Choice sleep after 5 seconds", { nmiKnownOff: true }).log,
   /requires NMI enabled/
 );
 assert.match(
-  compile("choose keypad 10 to 11 into Choice blank after 0 seconds").log,
+  compile("choose keypad 10 to 11 into Choice sleep after 0 seconds").log,
   /1 to 1092 seconds/
 );
 assert.deepEqual(compile("choose keypad 1 to 3 into Choice").body, [
@@ -64,4 +65,27 @@ assert.deepEqual(compile("choose keypad 1 to 3 into Choice").body, [
   "    ld (Choice),a"
 ]);
 
-console.log("CRT-safe keypad choice codegen PASS");
+const menuChoice = compile("choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds");
+assert.equal(menuChoice.ok, true);
+assert.match(menuChoice.body.join("\n"), /call AMY_PUT_CHAR_AT/);
+assert.match(menuChoice.body.join("\n"), /call AMY_SLEEP_SERVICE/);
+assert.match(menuChoice.body.join("\n"), /ld a,\(KEYPAD_1\)/);
+assert.match(menuChoice.body.join("\n"), /ld a,\(JOYPAD_1\)/);
+assert.match(menuChoice.body.join("\n"), /and \$C0/);
+assert.match(
+  compile("choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds", { nmiKnownOff: true }).log,
+  /requires NMI enabled/
+);
+
+const spriteMenuChoice = compile("choose menu 1 to 4 into Choice cursor sprite 2 at 48,71 step 16 sleep after 10 seconds");
+assert.equal(spriteMenuChoice.ok, true);
+assert.match(spriteMenuChoice.body.join("\n"), /ld \(AMY_SPRITE_TABLE\+9\),a/);
+assert.match(spriteMenuChoice.body.join("\n"), /ld \(AMY_SPRITE_TABLE\+8\),a/);
+assert.match(spriteMenuChoice.body.join("\n"), /call AMY_UPDATE_SPRITES/);
+assert.doesNotMatch(spriteMenuChoice.body.join("\n"), /call AMY_PUT_CHAR_AT/);
+assert.match(
+  compile("choose menu 1 to 4 into Choice cursor sprite CursorIndex at 48,71 step 16").log,
+  /constant sprite index from 0 to 31/
+);
+
+console.log("CRT-safe keypad and cursor menu choice codegen PASS");

@@ -22,6 +22,7 @@ function compile(line, { nmiKnownOff = false } = {}) {
     emitStoreInt16FromHL: () => null,
     makeGeneratedLabel: (prefix) => `AMY_${prefix}_${++labelId}`,
     currentGraphicsMode: null,
+    tryEvaluateConstantExpression: (token) => /^\d+$/.test(token) ? Number.parseInt(token, 10) : null,
     nmiKnownOff
   });
   assert.equal(result.ok, true);
@@ -138,29 +139,49 @@ assert.deepEqual(compile("pause until press and release on joypad 1"), [
   "    and $F0",
   "    jr nz,AMY_PauseFinalRelease_3"
 ]);
-assert.deepEqual(compile("pause until press and release blank after 5 seconds"), [
+assert.deepEqual(compile("pause until press and release sleep after 5 seconds"), [
   "    ld hl,300",
   "    ld de,250",
   "    ld a,0",
   "    call AMY_PAUSE_PRESS_RELEASE_BLANK"
 ]);
 
-assert.deepEqual(compile("pause until press and release on joypad 2 blank after 30 seconds"), [
+assert.deepEqual(compile("pause until press and release on joypad 2 sleep after 30 seconds"), [
   "    ld hl,1800",
   "    ld de,1500",
   "    ld a,2",
   "    call AMY_PAUSE_PRESS_RELEASE_BLANK"
 ]);
 
+assert.deepEqual(compile("sleep after 5 seconds"), [
+  "    ld hl,300",
+  "    ld de,250",
+  "    ld a,0",
+  "    call AMY_SLEEP_SERVICE"
+]);
+assert.deepEqual(compile("sleep after 1 second"), [
+  "    ld hl,60",
+  "    ld de,50",
+  "    ld a,0",
+  "    call AMY_SLEEP_SERVICE"
+]);
+assert.deepEqual(compile("sleep after 100 seconds on joypad 1"), [
+  "    ld hl,6000",
+  "    ld de,5000",
+  "    ld a,1",
+  "    call AMY_SLEEP_SERVICE"
+]);
+
 {
   const body = [];
-  const line = "pause until press and release blank after 5 seconds";
+  const line = "pause until press and release sleep after 5 seconds";
   const result = handleVramPixelInputStatement({
     line,
     rawLine: line,
     body,
     makeGeneratedLabel: () => "unused",
     currentGraphicsMode: null,
+    tryEvaluateConstantExpression: (token) => /^\d+$/.test(token) ? Number.parseInt(token, 10) : null,
     nmiKnownOff: true
   });
   assert.equal(result.handled, true);
