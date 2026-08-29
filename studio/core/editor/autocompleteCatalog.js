@@ -475,6 +475,8 @@ export const AMY_AUTOCOMPLETE = [
   ["Actor.Flags |= $80", "Set bits in a byte variable, record field, or overlay field"],
   ["bcd digits 5 Credits", "Declare a 5-digit packed BCD value (stored in 3 bytes, printed as 5 digits)"],
   ["bcd digits 8 Score8", "Declare an 8-digit packed BCD score value"],
+  ["bcd digits 6 PlayerScores[4]", "Declare a fixed global or local array of packed BCD values"],
+  ["PlayerScores[Player] += 100", "Update one indexed packed BCD value"],
   ["Score += 100", "Add a decimal value or byte variable to a BCD score"],
   ["Score += Delta", "Add a u8 or i8 variable to a BCD score"],
   ["Score -= 50", "Subtract a decimal value or byte variable from a BCD score (clamps to 0)"],

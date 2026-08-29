@@ -17,6 +17,7 @@ const tests = [
   { file: "test-array-bulk-codegen.mjs", area: "bulk-arrays", evidence: "compile+assemble" },
   { file: "test-ref-param-codegen.mjs", area: "qualified-operands", evidence: "compile+assemble" },
   { file: "test-bcd-inc-dec-rom.mjs", area: "bcd", evidence: "rom" },
+  { file: "test-bcd-array-rom.mjs", area: "bcd-arrays", evidence: "rom" },
   { file: "test-chars-in-box-rom.mjs", area: "tile-collision", evidence: "rom" },
   { file: "test-legacy-u32-rom.mjs", area: "legacy-wide-integers", evidence: "rom" },
   { file: "test-fp5-function-return-rom.mjs", area: "fp5-function-return", evidence: "rom" },

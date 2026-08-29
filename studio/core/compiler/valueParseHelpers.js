@@ -667,6 +667,7 @@ export function createValueParseHelpers({
       const info = getRuntimeInfo(arrayRef.name);
       if (!info) return null;
       if (info.kind === "array") return info.elementType;
+      if (info.kind === "bcd_array") return "bcd";
       if (info.kind === "bcd") return "int8";
       if (info.kind === "u32" || info.kind === "i32") return "int8";
       return null;

@@ -10,6 +10,9 @@ const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const source = `project "BCD FP5 FORMAT ROM TEST"
 memory "colecovision_legacy_sdcc"
+record HudMemory:
+  bcd digits 4 Score
+end record
 u8 GuardBefore = 77
 bcd digits 1 Digit = 9
 bcd digits 4 Wrapped = 9999
@@ -21,6 +24,8 @@ u8 WrappedText[4]
 u8 ClampedText[4]
 u8 OddText[5]
 u8 MaximumText[12]
+HudMemory Hud
+u8 HudText[4]
 fp5 Zero = 0
 fp5 Positive = 1.5
 fp5 Negative = -2.25
@@ -36,6 +41,8 @@ format Wrapped into WrappedText
 format Clamped into ClampedText
 format Odd into OddText
 format Maximum into MaximumText
+Hud.Score = 6789
+format Hud.Score into HudText
 ZeroText = str$(Zero)
 PositiveText = str$(Positive)
 NegativeText = str$(Negative)
@@ -78,6 +85,7 @@ const expected = {
   ClampedText: ascii("0000"),
   OddText: ascii("12345"),
   MaximumText: ascii("999999999999"),
+  HudText: ascii("6789"),
   GuardAfter: [88]
 };
 

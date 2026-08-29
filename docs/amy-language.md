@@ -1490,6 +1490,7 @@ BCD canonical surface:
 ```basic
 bcd digits 4 Score = 0
 bcd digits 4 Timer = StartTimer
+bcd digits 6 PlayerScores[4] = 0
 
 Score = 0
 Score = StartScore
@@ -1504,12 +1505,16 @@ if Score > BestScore goto NewBest
 print Score at 0,0
 print at 0,0, "SCORE:", Score
 format Score into ScoreText
+PlayerScores[Player] += 100
+format PlayerScores[Player] into ScoreText
 ```
 
 BCD current limits:
 - `inc` and `dec` adjust BCD values by decimal one and preserve packed-decimal normalization
 - no `bcd *=`, `bcd /=`, or `bcd %=`
-- scalar BCD fields are supported in records and overlays; arrays of BCD remain unsupported
+- fixed-length BCD arrays are supported globally and locally; each element uses
+  `ceil(digits/2)` packed bytes and accepts constant, variable, or expression indexes
+- scalar BCD fields are supported in records and overlays; BCD array fields inside records remain unsupported
 - BCD-to-BCD assignment and copy require identical declared digit counts
 - local BCD declarations accept non-negative compile-time initializers that fit their declared digit count
 - no implicit assignment from `u16`, `u32`, fixed, or fp5 runtime values
@@ -2962,6 +2967,7 @@ Available memory profiles live in `tools/memory/*.json`.
 | `i16 Name = value` | Global 16-bit signed RAM variable |
 | `bool Name = false` | Global boolean (bit-packed) |
 | `bcd digits N Name = value` | Global packed BCD variable with N displayed digits |
+| `bcd digits N Name[Count] = value` | Global or local packed BCD array; initializer repeats for every element |
 | `fixed Name = 0.0` | Global signed 8.8 fixed-point variable |
 | `ufixed Name = 0.0` | Global unsigned 8.8 fixed-point variable |
 | `u32 Name` | Global 32-bit unsigned variable |

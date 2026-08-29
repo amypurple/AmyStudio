@@ -2,6 +2,9 @@
 
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
+- Added fixed-length global and local packed-BCD arrays with constant, variable, and
+  expression indexes across assignment, copy, arithmetic, comparison, clear, and format.
+- Fixed formatting record-field and indexed BCD values clobbering the destination pointer.
 - Accepted record and overlay-qualified byte expressions in every sprite-collision form,
   and fixed the long `box X,Y size W,H` form being mistaken for the short form.
 - Extended the overlay ROM self-test with qualified VRAM reads, coordinates, logical

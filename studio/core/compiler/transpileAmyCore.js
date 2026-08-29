@@ -2488,6 +2488,7 @@ export function transpileAmyCore(sourceText, deps) {
       const info = getRuntimeInfo(arrayRef.name);
       if (!info) return null;
       if (info.kind === "array") return normalizeDeclaredType(info.declaredType || info.elementType || info.type);
+      if (info.kind === "bcd_array") return "bcd";
       if (info.kind === "bcd") return "u8";
       return null;
     }
@@ -2919,7 +2920,10 @@ export function transpileAmyCore(sourceText, deps) {
   function emitClearValue(name) {
     const info = getRuntimeInfo(name);
     const fieldRef = parseRecordFieldRef(name);
-    if (!info && !fieldRef) return null;
+    const arrayRef = parseArrayRef(name);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (!info && !fieldRef && !arrayInfo) return null;
+    if (arrayInfo?.kind === "bcd_array") return emitBcdClear(name);
     if (fieldRef?.fieldInfo?.type === "bcd") return emitBcdClear(name);
     if (!info) return null;
     if (info.kind === "array") return null;
@@ -3327,6 +3331,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitBcdCompareGoto
   } = createBcdHelpers({
     getRuntimeInfo,
+    parseArrayRef: (...args) => parseArrayRef(...args),
     parseRecordFieldRef: (...args) => parseRecordFieldRef(...args),
     emitLoadRecordFieldAddressIntoHL: (...args) => emitLoadRecordFieldAddressIntoHL(...args),
     formatIxOffset,

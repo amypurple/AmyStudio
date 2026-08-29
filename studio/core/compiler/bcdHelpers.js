@@ -1,6 +1,7 @@
 export function createBcdHelpers(ctx) {
   const {
     getRuntimeInfo,
+    parseArrayRef,
     parseRecordFieldRef,
     emitLoadRecordFieldAddressIntoHL,
     formatIxOffset,
@@ -19,6 +20,17 @@ export function createBcdHelpers(ctx) {
   function getBcdInfo(varName) {
     const info = getRuntimeInfo(varName);
     if (info?.kind === "bcd") return info;
+    const arrayRef = parseArrayRef?.(varName);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (arrayInfo?.kind === "bcd_array") {
+      return {
+        ...arrayInfo,
+        kind: "bcd",
+        storage: "bcd_array_element",
+        arrayName: arrayRef.name,
+        indexToken: arrayRef.index
+      };
+    }
     const fieldRef = parseRecordFieldRef?.(varName);
     if (fieldRef?.fieldInfo?.type !== "bcd") return null;
     return {
@@ -54,6 +66,12 @@ export function createBcdHelpers(ctx) {
   function emitLoadBcdInt8IntoA(varName, byteIndex) {
     const info = getBcdInfo(varName);
     if (!info) return null;
+    if (info.storage === "bcd_array_element") {
+      const loadAddress = emitLoadArrayAddressIntoHL?.(info.arrayName, info.indexToken);
+      if (!loadAddress) return null;
+      for (let i = 0; i < byteIndex; i += 1) loadAddress.push("    inc hl");
+      return [...loadAddress, "    ld a,(hl)"];
+    }
     if (info.storage === "record_field") {
       const loadAddress = emitLoadRecordFieldAddressIntoHL?.(varName);
       if (!loadAddress) return null;
@@ -69,6 +87,12 @@ export function createBcdHelpers(ctx) {
   function emitStoreAToBcdInt8(varName, byteIndex) {
     const info = getBcdInfo(varName);
     if (!info) return null;
+    if (info.storage === "bcd_array_element") {
+      const loadAddress = emitLoadArrayAddressIntoHL?.(info.arrayName, info.indexToken);
+      if (!loadAddress) return null;
+      for (let i = 0; i < byteIndex; i += 1) loadAddress.push("    inc hl");
+      return ["    push af", ...loadAddress, "    pop af", "    ld (hl),a"];
+    }
     if (info.storage === "record_field") {
       const loadAddress = emitLoadRecordFieldAddressIntoHL?.(varName);
       if (!loadAddress) return null;
@@ -341,18 +365,22 @@ export function createBcdHelpers(ctx) {
     if (!bufferInfo) return null;
     const loadDest = emitLoadArrayAddressIntoHL(bufferToken, "0");
     if (!loadDest) return null;
+    const sourceClobbersHL = info.storage === "record_field" || info.storage === "bcd_array_element";
+    const preserveDestination = (loadSource) => sourceClobbersHL
+      ? ["    push hl", ...loadSource, "    pop hl"]
+      : loadSource;
     const lines = [...loadDest];
     for (let i = info.byteCount - 1; i >= 0; i--) {
       const loadSrc = emitLoadBcdInt8IntoA(varName, i);
       if (!loadSrc) return null;
       if (!(oddDigits && i === info.byteCount - 1)) {
-        lines.push(...loadSrc);
+        lines.push(...preserveDestination(loadSrc));
         lines.push("    rrca", "    rrca", "    rrca", "    rrca", "    and $0F");
         lines.push("    add a,$30");
         lines.push("    ld (hl),a");
         lines.push("    inc hl");
       }
-      lines.push(...loadSrc);
+      lines.push(...preserveDestination(loadSrc));
       lines.push("    and $0F");
       lines.push("    add a,$30");
       lines.push("    ld (hl),a");

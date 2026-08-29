@@ -191,9 +191,14 @@ export function handleDeclarationStatement({
       const name = declEntry.name;
       const zeroDivisorOp = findConstantZeroDivisor?.(declEntry.initial);
       if (zeroDivisorOp) return { handled: true, ok: false, log: `Constant ${zeroDivisorOp === "%" ? "modulo" : "division"} by zero: ${rawLine}` };
-      if (declEntry.lengthToken) {
-        return { handled: true, ok: false, log: `BCD variables do not support array lengths: ${rawLine}` };
+      const arrayLength = declEntry.lengthToken
+        ? tryEvaluateCompileTimeNumericExpression(declEntry.lengthToken)
+        : null;
+      if (declEntry.lengthToken && (!Number.isInteger(arrayLength) || arrayLength < 1 || arrayLength > 255)) {
+        return { handled: true, ok: false, log: `BCD array length must be a compile-time constant from 1 to 255: ${rawLine}` };
       }
+      const elementCount = arrayLength || 1;
+      const totalByteCount = byteCount * elementCount;
       const initialBcdBytes = resolveBcdInitializer(declEntry.initial, digitCount, byteCount);
       if (initialBcdBytes === undefined) return { handled: true, ok: false, log: `BCD initializer must be a non-negative constant that fits ${digitCount} digits: ${rawLine}` };
       if (isLocalDecl) {
@@ -207,16 +212,26 @@ export function handleDeclarationStatement({
         }
         const frame = ensureProcFrame(state.currentProc);
         procMap.set(name, mangledName);
-        frame.size += byteCount;
+        frame.size += totalByteCount;
         const offset = -frame.size;
-        state.runtimeVars.set(mangledName, { type: "bcd", kind: "bcd", byteCount, digitCount, scope: state.currentProc, localName: name, storage: "stack", offset });
-        if (initialBcdBytes) {
-          for (let index = 0; index < initialBcdBytes.length; index += 1) {
-            frame.init.push(`    ld a,$${initialBcdBytes[index].toString(16).toUpperCase().padStart(2, "0")}`);
-            frame.init.push(...emitStoreAToBcdInt8(name, index));
+        state.runtimeVars.set(mangledName, {
+          type: "bcd",
+          kind: arrayLength ? "bcd_array" : "bcd",
+          byteCount,
+          digitCount,
+          ...(arrayLength ? { length: arrayLength, elementSize: byteCount } : {}),
+          scope: state.currentProc,
+          localName: name,
+          storage: "stack",
+          offset
+        });
+        const initBytes = initialBcdBytes || new Array(byteCount).fill(0);
+        for (let element = 0; element < elementCount; element += 1) {
+          for (let index = 0; index < initBytes.length; index += 1) {
+            frame.init.push(`    ld a,$${initBytes[index].toString(16).toUpperCase().padStart(2, "0")}`);
+            const initOffset = offset + element * byteCount + index;
+            frame.init.push(`    ld (ix${initOffset < 0 ? initOffset : `+${initOffset}`}),a`);
           }
-        } else {
-          frame.init.push(...emitBcdClear(name));
         }
         continue;
       }
@@ -224,15 +239,24 @@ export function handleDeclarationStatement({
       if (globalBcdNameError) return { handled: true, ok: false, log: globalBcdNameError };
       let address;
       try {
-        address = reserveRam(name, byteCount, rawLine.trim());
+        address = reserveRam(name, totalByteCount, rawLine.trim());
       } catch (error) {
         return { handled: true, ok: false, log: String(error.message || error) };
       }
       const asmName = ensureUserVarAsmSymbol(name);
-      state.runtimeVars.set(name, { type: "bcd", kind: "bcd", byteCount, digitCount, address, scope: "global", asmName });
+      state.runtimeVars.set(name, {
+        type: "bcd",
+        kind: arrayLength ? "bcd_array" : "bcd",
+        byteCount,
+        digitCount,
+        ...(arrayLength ? { length: arrayLength, elementSize: byteCount } : {}),
+        address,
+        scope: "global",
+        asmName
+      });
       state.runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
       state.hasRuntimeRamDeclarations = true;
-      if (initialBcdBytes) queueImmediateRuntimeInit(address, initialBcdBytes);
+      if (initialBcdBytes) queueImmediateRuntimeInit(address, Array.from({ length: elementCount }, () => initialBcdBytes).flat());
     }
     return { handled: true, ok: true };
   }

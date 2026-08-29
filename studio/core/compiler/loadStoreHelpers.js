@@ -54,10 +54,12 @@ export function createLoadStoreHelpers(ctx) {
       return [...lines, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
     }
     const info = getRuntimeInfo(name);
-    if (!info || (!isIndexedByteReadable(info) && info.kind !== "array" && info.kind !== "record_array")) return null;
+    if (!info || (!isIndexedByteReadable(info) && info.kind !== "array" && info.kind !== "record_array" && info.kind !== "bcd_array")) return null;
     const normalizedIndex = normalizeExpression(indexToken);
     const indexInfo = getRuntimeInfo(normalizedIndex);
-    const stride = info.kind === "array"
+    const stride = info.kind === "bcd_array"
+      ? info.elementSize
+      : info.kind === "array"
       ? runtimeTypeSize(info.elementType)
       : info.kind === "record_array"
         ? info.recordSize

@@ -42,7 +42,7 @@ The canonical types are `bool`, `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `fixed`,
 - Byte values widen predictably in 16-bit contexts: `u8` zero-extends and `i8` sign-extends.
 - `u32` and `i32` support fixed global and local arrays, same-type binary `+`/`-`,
   fitting integer literals, and constant or byte-sized runtime indexes.
-- `inc` and `dec` support packed BCD values.
+- `inc` and `dec` support packed BCD values, including indexed global and local BCD arrays.
 - Legacy `u32 zero/copy/add/inc/sub` forms remain migration-only compatibility syntax;
   modern code uses assignment and compound operators.
 - `random(Max)` and `random(Min, Max)` produce integer values; zero-argument `random()` is

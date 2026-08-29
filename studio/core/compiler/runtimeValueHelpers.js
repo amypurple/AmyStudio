@@ -534,6 +534,8 @@ export function createRuntimeValueHelpers({
   function emitRuntimeStore(name, value) {
     const targetInfo = getRuntimeInfo(name);
     const targetField = parseRecordFieldRef(name);
+    const targetArrayRef = parseArrayRef(name);
+    const targetArrayInfo = targetArrayRef ? getRuntimeInfo(targetArrayRef.name) : null;
     if (targetInfo && targetInfo.kind === "packed_bool") {
       const normVal = normalizeExpression(value);
       if (normVal === "0") {
@@ -545,7 +547,7 @@ export function createRuntimeValueHelpers({
         return [`    ld hl,${targetInfo.packLabel}`, `    set ${targetInfo.bit},(hl)`];
       }
     }
-    if (targetInfo?.kind === "bcd" || targetField?.fieldInfo?.type === "bcd") {
+    if (targetInfo?.kind === "bcd" || targetField?.fieldInfo?.type === "bcd" || targetArrayInfo?.kind === "bcd_array") {
       return emitBcdStore(name, value);
     }
     const targetType = resolveValueType(name);
