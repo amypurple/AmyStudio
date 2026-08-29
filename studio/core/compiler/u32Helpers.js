@@ -104,6 +104,23 @@ export function createU32Helpers({
     }
     const info = getRuntimeInfo(targetToken);
     if (!info) return null;
+    if (info.isRef && (info.refTargetType === "u32" || info.refTargetType === "i32")) {
+      return [
+        `    ld l,(${formatIxOffset(info.offset)})`,
+        `    ld h,(${formatIxOffset(info.offset + 1)})`,
+        `    ld a,(${baseLabel}+0)`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    ld a,(${baseLabel}+1)`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    ld a,(${baseLabel}+2)`,
+        "    ld (hl),a",
+        "    inc hl",
+        `    ld a,(${baseLabel}+3)`,
+        "    ld (hl),a"
+      ];
+    }
     if (info.storage === "stack") {
       if (info.kind !== "u32" && info.kind !== "i32" && info.kind !== "fix16_16") return null;
       return [
@@ -286,6 +303,23 @@ export function createU32Helpers({
     if (valueType === "u32" || valueType === "i32") {
       const info = getRuntimeInfo(token);
       if (!info || (info.kind !== "u32" && info.kind !== "i32" && info.kind !== "fix16_16")) return null;
+      if (info.isRef && (info.refTargetType === "u32" || info.refTargetType === "i32")) {
+        return [
+          `    ld l,(${formatIxOffset(info.offset)})`,
+          `    ld h,(${formatIxOffset(info.offset + 1)})`,
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+0),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+1),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+2),a`,
+          "    inc hl",
+          "    ld a,(hl)",
+          `    ld (${baseLabel}+3),a`
+        ];
+      }
       if (info.storage === "stack") {
         return [
           `    ld a,(${formatIxOffset(info.offset + 0)})`,

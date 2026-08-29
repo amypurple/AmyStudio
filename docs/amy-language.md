@@ -720,7 +720,7 @@ Important current nuance:
 - recursion is now a valid design target
 - local `u32` / `i32` scalars and arrays support arithmetic, bitwise operations, shifts,
   assignments, arguments, and returns using stack-backed storage when required
-- `ref u32` / `ref i32` parameters remain unsupported
+- `ref u32` / `ref i32` parameters mutate addressable wide variables without copying
 
 Global and local `fixed`/`ufixed` arrays support indexed assignment and compound arithmetic.
 The same indexed operations work for fixed-array fields in records and RAM overlays.
@@ -960,15 +960,15 @@ Stack-local records and indexed elements of stack-local record arrays are also v
 they do not require a global or static RAM alias.
 
 Rules:
-- allowed target types: `ref u8`, `ref i8`, `ref u16`, `ref i16`, and `ref RecordType`
+- allowed target types: `ref u8`, `ref i8`, `ref u16`, `ref i16`, `ref u32`, `ref i32`, and `ref RecordType`
 - a record parameter **must** be `ref` (records are never copied)
 - the argument must be an addressable variable of the exact same type:
   a global, a record field, an array element, a local, or another `ref` parameter
   (forwarding). Literals and expressions are compile errors.
 - overlay-qualified fields cannot be passed by `ref`; their address has part-scoped
   lifetime and must not cross a routine boundary. Pass a copied value instead.
-- `ref` is not supported for `u32`, `i32`, `fixed`, `fp5`, `bool`, `bcd`, or
-  whole arrays (yet) — declaring one is a compile error, never wrong code
+- `ref` is not supported for `fixed`, `ufixed`, `fp5`, `bool`, `bcd`, or whole arrays
+  (yet) — declaring one is a compile error, never wrong code
 
 Representative generated code (non-normative) — no runtime helper, no copy; the slot holds a 2-byte address
 and every access dereferences through HL with constant offsets:

@@ -285,10 +285,10 @@ check("record parameter without ref is a clear error", () => {
   assert.match(String(bad.log || ""), /ref/i, "error should suggest ref");
 });
 
-check("ref u32 parameter is rejected at declaration", () => {
-  const bad = transpileAmy("u32 Big = 0\n\nsub Grow(ref u32 V):\n  inc V\nend sub\n\nGrow(Big)\nloop forever\n");
-  assert.equal(bad.ok, false);
-  assert.match(String(bad.log || ""), /ref parameters support/i);
+check("ref u32 parameter dereferences its pointer slot", () => {
+  const result = transpileAmy("u32 Big = 0\n\nsub Grow(ref u32 V):\n  inc V\nend sub\n\nGrow(Big)\nloop forever\n");
+  assert.equal(result.ok, true, result.log || "transpile failed");
+  assert.match(result.asmBody, /ld l,\(ix\+4\)\s*\n\s*ld h,\(ix\+5\)/i);
 });
 
 check("literal argument to a ref parameter is rejected", () => {
