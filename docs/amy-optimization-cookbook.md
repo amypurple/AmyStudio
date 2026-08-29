@@ -189,6 +189,76 @@ The Balanced ROM changed from **6125 bytes to 5852 bytes**, a reduction of **273
 - Group consecutive VRAM transfers when the display update can safely be performed as one operation.
 
 Always inspect generated ASM and measure the complete game. Amy Studio's goal is not to force one style, but to make the tradeoff visible and offer a concise form when the hardware has a better idiom.
+
+## Measure before and after
+
+Use the same project, source metadata, and optimization profile for both measurements. A useful optimization report states:
+
+- linked ROM bytes before and after;
+- RAM used before and after;
+- optimization level;
+- whether cartridge metadata was enabled;
+- whether assets or only code changed;
+- focused test results;
+- runtime or visual verification when behavior can change.
+
+Use the ASM panel to compare generated, expanded, and optimized forms. Use **Open ROM / Debugger** to profile a routine when execution time matters. Source line count, generated ASM line count, compressed asset bytes, and final ROM bytes are different measurements.
+
+For repository-wide maintenance:
+
+```powershell
+node tools/check-examples.mjs
+powershell -ExecutionPolicy Bypass -File tools/audit-full-amy-optimizer.ps1
+node tools/run-rom-tests.mjs
+```
+
+These are CLI workflows, not buttons in Amy Studio.
+
+## Prefer data only when the operation is data
+
+A lookup table is a good replacement when branches merely map a bounded index to constants. It is not a good replacement when branches perform different side effects, require expensive index construction, or make invalid indexes possible.
+
+Likewise, a complete typed record template is ideal for a fixed RAM snapshot. A DATA cursor is better for variable-length command streams. Explicit assignments remain clearer for calculated or exceptional initialization.
+
+Measure all three forms in the real routine when the difference matters.
+
+## Preserve positional tables
+
+Some tables are APIs, not merely collections of independent values. The Coleco BIOS sound table is positional: `play sound 14` means entry 14. Removing entry 11 silently changes what 12 and every later number mean.
+
+When an unused positional entry must disappear logically but later numbers must remain stable, keep a small compatible alias or update every reference and test the result. The same care applies to indexed routine tables, level-reference tables, animation frame order, and any data where source code stores numeric indexes.
+
+## Batch transfers around VDP ownership
+
+Grouping consecutive RAM or VRAM work can save setup and address calculations, but VDP access also depends on screen mode, table addresses, NMI state, and frame timing.
+
+- Use one verified block copy for fixed consecutive data.
+- Avoid repeatedly toggling NMI or display state when the compiler already proves the requested state.
+- Do not remove apparently redundant `nmi off`, `nmi on`, `display off`, or `screen on` across calls or inline ASM unless state tracking remains valid.
+- Perform long VRAM updates with an explicit safe ownership plan.
+- Test both NTSC and PAL when work approaches a frame budget.
+
+The transpiler can remove some redundant state commands when control flow and inline ASM are understood. Do not rely on an optimization that has not been proven for the relevant control-flow path.
+
+## Compression is a size and time tradeoff
+
+For a compressed asset, compare:
+
+- compressed payload;
+- decompressor code linked on first use;
+- total ROM cost;
+- decompression cycles and whether they occur during visible gameplay;
+- temporary RAM/VRAM workspace;
+- visual fidelity for controlled lossy bitmap candidates.
+
+The smallest file is not always the smallest ROM, and the smallest ROM is not always the smoothest game. Amy Studio's picture importer can compare codecs in the browser. Deeper bitmap optimization and whole-catalog audits are CLI tools.
+
+## Optimize hot paths differently from setup
+
+Code that runs once at level load should favor correctness and compactness. Code that runs for every actor every frame may justify tables, byte-sized arithmetic, cheaper indexing, a bulk operation, or a specialized routine.
+
+Use the routine cycle profiler to identify the hot path before rewriting it. Its result is inclusive of nested calls; separate main execution from NMI/IRQ time and compare the total against both NTSC and PAL frame budgets.
+
 ## Replacing repeated decisions with lookup tables
 
 A chain that selects constants from a small, fixed mapping often costs more ROM than its data:
