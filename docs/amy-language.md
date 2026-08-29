@@ -267,7 +267,7 @@ Enums emit the same kind of constants as `const`. Omitted enum values
 auto-increment from the previous value, starting at `0`. Enums are not strict
 runtime types yet, and bitwise flag operators are deferred to a later phase.
 
-Records are now available for grouped global data:
+Records are available for grouped global data and stack-local scalar values:
 
 ```basic
 record Piece:
@@ -290,10 +290,24 @@ Current implemented record scope:
 - top-level record definitions
 - top-level record variables
 - top-level arrays of record, including compile-time constant lengths
+- zero-initialized scalar record variables inside a sub or function
 - field access such as `PieceVar.X` and `Pieces[I].Tile`
 - nested record fields such as `PieceVar.Pos.X` and `Pieces[I].Pos.Y`
 - fixed scalar array fields such as `PieceVar.HistoryX[I]` and `Pieces[P].Bonuses[2]`
 - packed scalar BCD fields such as `bcd digits 6 Score`
+
+Local scalar records use the routine stack frame, so nested calls receive independent
+storage and do not increase permanent global RAM. They currently require zero
+initialization; local arrays of records remain unsupported.
+
+```basic
+sub MoveTemporary:
+  Piece Work = 0
+  Work.X = 12
+  Work.HistoryX[0] = Work.X
+  return
+end sub
+```
 
 Scalar array fields are byte-packed with no pointer, descriptor, or alignment padding.
 `u8 Values[8]` occupies exactly 8 bytes, `u16 Values[3]` exactly 6 bytes, and

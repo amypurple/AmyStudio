@@ -254,7 +254,50 @@ export function handleDeclarationStatement({
     const inferredLocal = !scopeKeyword && !!state.currentProc;
     const isLocalDecl = scopeKeyword === "local" || inferredLocal;
     if (isLocalDecl) {
-      return { handled: true, ok: false, log: `Local record variables are not supported yet: ${rawLine}` };
+      if (!state.currentProc) {
+        return { handled: true, ok: false, log: `local declaration requires a sub or function scope: ${rawLine}` };
+      }
+      let localDeclarations = [];
+      try {
+        localDeclarations = parseAmyDeclarationList(scopedDecl[3], rawLine);
+      } catch (error) {
+        return { handled: true, ok: false, log: String(error.message || error) };
+      }
+      const procMap = ensureProcLocalMap(state.currentProc);
+      const frame = ensureProcFrame(state.currentProc);
+      for (const declEntry of localDeclarations) {
+        const name = declEntry.name;
+        if (declEntry.lengthToken) {
+          return { handled: true, ok: false, log: `Local record arrays are not supported yet: ${rawLine}` };
+        }
+        if (!isZeroInitializer(declEntry.initial)) {
+          return { handled: true, ok: false, log: `Local record declarations currently support only zero initialization: ${rawLine}` };
+        }
+        const mangledName = `${state.currentProc}_${name}`;
+        if (!state.isValidSymbolName(name) || state.isReservedAmyIdentifier(name) || state.describeGlobalNameCollision(name) || state.mapHasInsensitive(procMap, name) || state.runtimeVars.has(mangledName) || lowerName(name) === lowerName(state.currentProc)) {
+          return { handled: true, ok: false, log: `Invalid local record declaration: ${rawLine}` };
+        }
+        frame.size += recordInfo.byteSize;
+        const offset = -frame.size;
+        procMap.set(name, mangledName);
+        state.runtimeVars.set(mangledName, {
+          kind: "record",
+          type: "record",
+          declaredType: recordTypeName,
+          recordTypeName,
+          recordInfo,
+          recordSize: recordInfo.byteSize,
+          scope: state.currentProc,
+          localName: name,
+          storage: "stack",
+          offset
+        });
+        frame.init.push("    xor a");
+        for (let byteIndex = 0; byteIndex < recordInfo.byteSize; byteIndex += 1) {
+          frame.init.push(`    ld (${state.formatIxOffset(offset + byteIndex)}),a`);
+        }
+      }
+      return { handled: true, ok: true };
     }
     let declarationsForLine = [];
     try {

@@ -71,9 +71,9 @@ record Bad:
 end record
 Bad Value
 loop forever`, false);
-  assert.match(badLength, /literal length from 1 to 255/i);
+  assert.match(badLength, /compile-time constant length from 1 to 255/i);
 
-  const nestedArray = compile("record-array-field-record", `
+  compile("record-array-field-record", `
 record Point:
   u8 X
 end record
@@ -81,8 +81,8 @@ record Bad:
   Point Points[4]
 end record
 Bad Value
-loop forever`, false);
-  assert.match(nestedArray, /record-array fields are not supported yet/i);
+Value.Points[2].X = 7
+loop forever`);
 
   const outOfRange = compile("record-array-field-bounds", `
 record Bad:
