@@ -48,7 +48,8 @@ export function handlePrintFormatStatement({
   emitClearValue,
   emitBcdClear,
   emitBcdCopy,
-  emitBcdPrint
+  emitBcdPrint,
+  tryEvaluateCompileTimeNumericExpression
 }) {
   const _depMath = checkMathIntoDeprecation(line, rawLine);
   if (_depMath.handled) return _depMath;
@@ -66,6 +67,15 @@ export function handlePrintFormatStatement({
     const declaredType = resolveDeclaredValueType(valueToken);
     if (!isFp5DeclaredType(declaredType)) return null;
     return `fp5 formatting currently supports only digits 16. Offending line: ${context}`;
+  }
+
+  function resolveFormatSize(token, context) {
+    if (token == null) return { ok: true, token: null };
+    const value = tryEvaluateCompileTimeNumericExpression(token);
+    if (!Number.isInteger(value) || value < 1 || value > 255) {
+      return { ok: false, log: `digits/width requires a compile-time constant from 1 to 255: ${context}` };
+    }
+    return { ok: true, token: String(value) };
   }
 
   function warnLegacyInto(preferred) {
@@ -150,14 +160,16 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const printAutoAt = line.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+([0-9]+))?$/i);
+  const printAutoAt = line.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
   if (printAutoAt) {
-    const floatDigitsError = getFloatDigitsError(normalizeExpression(printAutoAt[1]), printAutoAt[4], printAutoAt[5], rawLine);
+    const size = resolveFormatSize(printAutoAt[5], rawLine);
+    if (!size.ok) return { handled: true, ok: false, log: size.log };
+    const floatDigitsError = getFloatDigitsError(normalizeExpression(printAutoAt[1]), printAutoAt[4], size.token, rawLine);
     if (floatDigitsError) {
       return { handled: true, ok: false, log: floatDigitsError };
     }
     const mode = (printAutoAt[4] || "").toLowerCase();
-    const code = emitPrintAutoAt(normalizeExpression(printAutoAt[1]), printAutoAt[2], printAutoAt[3], printAutoAt[5] || null, mode === "width");
+    const code = emitPrintAutoAt(normalizeExpression(printAutoAt[1]), printAutoAt[2], printAutoAt[3], size.token, mode === "width");
     if (!code) {
       return {
         handled: true,
@@ -201,14 +213,16 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const formatAuto = line.match(/^format\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(digits|width)\s+([0-9]+))?$/i);
+  const formatAuto = line.match(/^format\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
   if (formatAuto) {
-    const floatDigitsError = getFloatDigitsError(normalizeExpression(formatAuto[1]), formatAuto[3], formatAuto[4], rawLine);
+    const size = resolveFormatSize(formatAuto[4], rawLine);
+    if (!size.ok) return { handled: true, ok: false, log: size.log };
+    const floatDigitsError = getFloatDigitsError(normalizeExpression(formatAuto[1]), formatAuto[3], size.token, rawLine);
     if (floatDigitsError) {
       return { handled: true, ok: false, log: floatDigitsError };
     }
     const mode = (formatAuto[3] || "").toLowerCase();
-    const code = emitFormatAutoIntoBuffer(normalizeExpression(formatAuto[1]), formatAuto[2], formatAuto[4] || null, mode === "width");
+    const code = emitFormatAutoIntoBuffer(normalizeExpression(formatAuto[1]), formatAuto[2], size.token, mode === "width");
     if (!code) {
       return {
         handled: true,

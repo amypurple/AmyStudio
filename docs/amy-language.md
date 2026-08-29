@@ -344,6 +344,8 @@ record Actor:
   i8 DY
 end record
 
+const MaxEnemies = 4
+
 record GameMemory:
   Actor Enemies[MaxEnemies]
   bcd digits 6 Score
@@ -2129,6 +2131,9 @@ print ufixed ScreenX at X,Y
 ```
 
 Legacy prefixed forms like `print byte ...` and `print word ...` are retired from the active AMY surface.
+
+Canonical `digits N` and `width N` clauses accept numeric literals or named numeric
+constants. They are folded at compile time and retain the bounds required by the value type.
 
 `print centered at Y, "TEXT"` is a compile-time convenience for string literals.
 It centers on the 32-column ColecoVision text line and rejects literals longer

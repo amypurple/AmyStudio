@@ -4494,7 +4494,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitClearValue,
         emitBcdClear,
         emitBcdCopy,
-        emitBcdPrint
+        emitBcdPrint,
+        tryEvaluateCompileTimeNumericExpression
       });
       if (printFormatStmt.handled) {
         if (!printFormatStmt.ok) return { ok: false, asmBody: "", log: printFormatStmt.log };

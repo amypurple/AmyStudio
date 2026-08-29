@@ -21,13 +21,13 @@ function compile(sourcePath, asmPath, romPath) {
 const output = await mkdtemp(join(tmpdir(), "amy-constant-contexts-"));
 try {
   const variants = [
-    ["literal", "4", "10", "1", "3"],
-    ["constant", "ItemCount", "SleepSeconds", "ShiftCount", "SoundStep"]
+    ["literal", "4", "10", "1", "3", "3"],
+    ["constant", "ItemCount", "SleepSeconds", "ShiftCount", "SoundStep", "FormatDigits"]
   ];
   const roms = [];
-  for (const [name, count, timeout, shiftCount, soundStep] of variants) {
+  for (const [name, count, timeout, shiftCount, soundStep, formatDigits] of variants) {
     const constants = name === "constant"
-      ? "const ItemCount = 4\nconst SleepSeconds = 10\nconst ShiftCount = 1\nconst SoundStep = 3\n"
+      ? "const ItemCount = 4\nconst SleepSeconds = 10\nconst ShiftCount = 1\nconst SoundStep = 3\nconst FormatDigits = 3\n"
       : "";
     const source = `project "CONSTANT CONTEXTS"
 ${constants}record Bucket:
@@ -37,6 +37,7 @@ Bucket Value
 u8 Values[${count}]
 u8 Index = 0
 u8 Sum = 0
+u8 NumberBuffer[4]
 sub start:
   Value.Items[3] = 7
   Values[0] = 1
@@ -47,6 +48,8 @@ sub start:
     Sum += Item
   next Item
   shift array Values down ${shiftCount}
+  print Sum at 0,0 digits ${formatDigits}
+  format Sum into NumberBuffer width ${formatDigits}
   play dsound TestVoice step ${soundStep}
   sleep after ${timeout} seconds
   loop forever
@@ -88,6 +91,18 @@ data TestVoice bytes = $00,$00
   await writeFile(invalidStepPath, invalidStep);
   assert.notEqual(await compile(invalidStepPath, join(output, "invalid-step.asm"), join(output, "invalid-step.rom")), 0,
     "an out-of-range dsound step must fail closed");
+
+  const invalidFormat = `project "BAD FORMAT SIZE"
+u8 Value = 7
+sub start:
+  print Value at 0,0 digits MissingDigits
+  loop forever
+end sub
+`;
+  const invalidFormatPath = join(output, "invalid-format.alexis");
+  await writeFile(invalidFormatPath, invalidFormat);
+  assert.notEqual(await compile(invalidFormatPath, join(output, "invalid-format.asm"), join(output, "invalid-format.rom")), 0,
+    "an unknown formatting constant must fail closed");
 } finally {
   await rm(output, { recursive: true, force: true });
 }
