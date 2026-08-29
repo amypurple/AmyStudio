@@ -14,6 +14,7 @@ export function handleDeclarationStatement({
   lowerName,
   ensureProcFrame,
   emitBcdClear,
+  emitStoreAToBcdInt8,
   reserveRam,
   ensureUserVarAsmSymbol,
   allocateUserAsmSymbol,
@@ -199,7 +200,6 @@ export function handleDeclarationStatement({
         if (!state.currentProc) {
           return { handled: true, ok: false, log: `local declaration requires a sub or function scope: ${rawLine}` };
         }
-        if (initialBcdBytes) return { handled: true, ok: false, log: `Local BCD variables currently support only zero initialization: ${rawLine}` };
         const procMap = ensureProcLocalMap(state.currentProc);
         const mangledName = `${state.currentProc}_${name}`;
         if (!state.isValidSymbolName(name) || state.isReservedAmyIdentifier(name) || state.describeGlobalNameCollision(name) || state.mapHasInsensitive(procMap, name) || state.runtimeVars.has(mangledName) || lowerName(name) === lowerName(state.currentProc)) {
@@ -210,7 +210,14 @@ export function handleDeclarationStatement({
         frame.size += byteCount;
         const offset = -frame.size;
         state.runtimeVars.set(mangledName, { type: "bcd", kind: "bcd", byteCount, digitCount, scope: state.currentProc, localName: name, storage: "stack", offset });
-        frame.init.push(...emitBcdClear(name));
+        if (initialBcdBytes) {
+          for (let index = 0; index < initialBcdBytes.length; index += 1) {
+            frame.init.push(`    ld a,$${initialBcdBytes[index].toString(16).toUpperCase().padStart(2, "0")}`);
+            frame.init.push(...emitStoreAToBcdInt8(name, index));
+          }
+        } else {
+          frame.init.push(...emitBcdClear(name));
+        }
         continue;
       }
       const globalBcdNameError = validateGlobalUserName(name, "BCD variable", rawLine);

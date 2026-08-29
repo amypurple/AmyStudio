@@ -1168,8 +1168,8 @@ next
 
 `next I` is preferred when the loop variable is useful documentation. The opening `for` line may end with `:` if desired.
 
-Fixed global arrays and qualified overlay record-array fields support element iteration
-with an explicit byte index:
+Fixed global and local primitive arrays, plus qualified overlay record-array fields,
+support element iteration with an explicit byte index:
 
 ```basic
 Actor Flies[3]
@@ -1180,12 +1180,13 @@ for each Fly, I in Flies
 next
 ```
 
-`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays retain direct indexed lowering. The index must currently be declared explicitly as `u8`, and the source must be a fixed array with a compile-time constant nonzero length. Local/ref arrays and an omitted index are rejected clearly.
+`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays, including stack-local arrays, retain direct indexed lowering. Local arrays are resolved within their declaring routine, so unrelated routines may safely reuse the same array name with different lengths. The index must currently be declared explicitly as `u8`, and the source must be a fixed array with a compile-time constant nonzero length. Ref arrays and an omitted index are rejected clearly.
 
 The canonical Amy syntax always includes the comma and explicit index:
 
 ```basic
 for each Element, Index in GlobalArray              ' valid
+for each Element, Index in LocalArray               ' valid inside its routine
 for each Element, Index in Overlay.Part.RecordArray ' valid
 ```
 
@@ -1478,7 +1479,7 @@ BCD current limits:
 - no `bcd *=`, `bcd /=`, or `bcd %=`
 - scalar BCD fields are supported in records and overlays; arrays of BCD remain unsupported
 - BCD-to-BCD assignment and copy require identical declared digit counts
-- no local BCD non-zero initializer
+- local BCD declarations accept non-negative compile-time initializers that fit their declared digit count
 - no implicit assignment from `u16`, `u32`, fixed, or fp5 runtime values
 - no general BCD expressions such as `Score = Score + 10`
 - indexed byte reads such as `Score[0]` are for debugging/inspection only

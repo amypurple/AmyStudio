@@ -736,18 +736,38 @@ export function transpileAmyCore(sourceText, deps) {
 
   function lowerForEachLoops(rawLines) {
     const arrayLengths = new Map();
+    const localArrayLengths = new Map();
     const recordArrayFields = new Map();
     const overlayParts = [];
     const constants = collectEarlyNumericConstants(rawLines);
     const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
-    let routineDepth = 0;
+    let currentRoutine = null;
     let currentRecord = null;
     let currentOverlay = null;
     for (const rawLine of rawLines) {
       const line = stripAmyInlineComment(rawLine).trim();
-      if (/^(?:sub|function)\b/i.test(line)) routineDepth += 1;
-      if (/^end\s+(?:sub|function)$/i.test(line)) { routineDepth = Math.max(0, routineDepth - 1); continue; }
-      if (routineDepth !== 0) continue;
+      const routineStart = line.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (routineStart) {
+        currentRoutine = routineStart[1].toLowerCase();
+        if (!localArrayLengths.has(currentRoutine)) localArrayLengths.set(currentRoutine, new Map());
+        continue;
+      }
+      if (/^end\s+(?:sub|function)$/i.test(line)) { currentRoutine = null; continue; }
+      if (currentRoutine) {
+        const localDeclaration = line.match(new RegExp(`^(?:(?:ram|dim|local)\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s+(.+)$`, "i"));
+        if (localDeclaration && /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32)$/i.test(localDeclaration[1])) {
+          const declarations = localDeclaration[2].split(",");
+          for (const rawDeclaration of declarations) {
+            const localArray = rawDeclaration.trim().match(new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*\\]`, "i"));
+            if (!localArray) continue;
+            localArrayLengths.get(currentRoutine).set(localArray[1].toLowerCase(), {
+              length: resolveEarlyNumericConstant(localArray[2], constants),
+              recordLike: false
+            });
+          }
+        }
+        continue;
+      }
       const recordStart = line.match(/^record\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
       if (recordStart) {
         currentRecord = recordStart[1];
@@ -819,6 +839,7 @@ export function transpileAmyCore(sourceText, deps) {
     const result = [];
     const aliasStack = [];
     const controlStack = [];
+    let activeRoutine = null;
     const lowerAliases = (rawLine) => {
       let loweredLine = rawLine;
       for (let aliasIndex = aliasStack.length - 1; aliasIndex >= 0; aliasIndex -= 1) {
@@ -829,14 +850,18 @@ export function transpileAmyCore(sourceText, deps) {
     };
     for (const rawLine of rawLines) {
       const stripped = stripAmyInlineComment(rawLine).trim();
+      const routineStart = stripped.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (routineStart) activeRoutine = routineStart[1].toLowerCase();
+      else if (/^end\s+(?:sub|function)$/i.test(stripped)) activeRoutine = null;
       const open = stripped.match(/^for\s+each\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s+in\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*:?$/i);
       if (open) {
         const elementName = open[1];
         const arrayName = open[3];
-        const arrayEntry = arrayLengths.get(arrayName.toLowerCase());
+        const arrayEntry = localArrayLengths.get(activeRoutine)?.get(arrayName.toLowerCase())
+          || arrayLengths.get(arrayName.toLowerCase());
         const length = arrayEntry?.length;
         if (!Number.isInteger(length) || length < 1) {
-          return { ok: false, log: `for each requires a global fixed array with a compile-time constant nonzero length: ${stripped}` };
+          return { ok: false, log: `for each requires a fixed array with a compile-time constant nonzero length: ${stripped}` };
         }
         if (!open[2]) {
           return { ok: false, log: `for each currently requires an explicit u8 index: for each ${elementName}, Index in ${arrayName}` };
@@ -4140,6 +4165,7 @@ export function transpileAmyCore(sourceText, deps) {
         lowerName,
         ensureProcFrame,
         emitBcdClear,
+        emitStoreAToBcdInt8,
         reserveRam,
         ensureUserVarAsmSymbol,
         allocateUserAsmSymbol,
