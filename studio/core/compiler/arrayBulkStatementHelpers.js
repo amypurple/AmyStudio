@@ -138,11 +138,11 @@ export function handleArrayBulkStatement({
       ]
     };
   }
-  const fillArray = line.match(/^fill\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+with\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
+  const fillArray = line.match(new RegExp(`^fill\\s+array\\s+(${qualifiedByteTarget})\\s+with\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+)(?:\\s+count\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+))?$`, "i"));
   if (fillArray) {
     const arrName = fillArray[1];
-    const arrInfo = getRuntimeInfo(arrName);
-    if (!arrInfo || arrInfo.kind !== "array" || arrInfo.elementType !== "int8") {
+    const arrInfo = getByteArrayBufferInfo?.(arrName, 1) || getRuntimeInfo(arrName);
+    if (!arrInfo || !["array", "array_field"].includes(arrInfo.kind) || arrInfo.elementType !== "int8") {
       return { ok: false, handled: true, log: `fill array requires a byte array variable: ${rawLine}` };
     }
     const countToken = fillArray[3];
