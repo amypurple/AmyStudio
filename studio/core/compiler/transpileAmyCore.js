@@ -4626,6 +4626,15 @@ export function transpileAmyCore(sourceText, deps) {
         }
       }
       if (formulaAssignment.op === "=") {
+        const targetAliasInfo = getRuntimeInfo(formulaAssignment.target);
+        const sourceAliasInfo = getRuntimeInfo(formulaAssignment.value);
+        if ([targetAliasInfo, sourceAliasInfo].some((info) => info?.storage === "alias_pointer" || info?.storage === "dynamic_record_alias")) {
+          return {
+            ok: false,
+            asmBody: "",
+            log: `Whole-record assignment through a pointer-backed with alias is not supported; assign its fields or use the full record operand: ${rawLine}`
+          };
+        }
         const targetRecord = resolveStaticWholeRecord(formulaAssignment.target);
         const sourceRecord = resolveStaticWholeRecord(formulaAssignment.value);
         if (targetRecord || sourceRecord) {

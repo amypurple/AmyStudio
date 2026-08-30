@@ -1120,6 +1120,12 @@ export function createControlFlowHelpers(ctx) {
     if (ifCompare) {
       const leftToken = normalizeExpression(ifCompare.left);
       const rightToken = normalizeExpression(ifCompare.right);
+      const leftInfo = getRuntimeInfo(leftToken);
+      const rightInfo = getRuntimeInfo(rightToken);
+      const pointerAlias = [leftInfo, rightInfo].find((info) => info?.storage === "alias_pointer" || info?.storage === "dynamic_record_alias");
+      if (pointerAlias) {
+        return { ok: false, lines: [], log: `Whole-record comparison through a pointer-backed with alias is not supported; compare its fields or use the full record operand: ${condition}` };
+      }
       const leftRecord = resolveWholeRecord?.(leftToken);
       const rightRecord = resolveWholeRecord?.(rightToken);
       if (leftRecord || rightRecord) {

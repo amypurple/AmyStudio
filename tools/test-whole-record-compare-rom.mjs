@@ -111,6 +111,18 @@ try {
     assert.notEqual(result.code, 0, `${name} unexpectedly compiled`);
     assert.match(result.output, expectedMessage, `${name}: typed diagnostic`);
   }
+
+  {
+    const stem = join(temp, "pointer-alias");
+    const aliasSource = source.replace("loop forever", `with Items[Index] as Item
+  if Item = Source then Passed += 1
+end with
+loop forever`);
+    await writeFile(`${stem}.alexis`, aliasSource);
+    const result = await compile(`${stem}.alexis`, `${stem}.asm`, `${stem}.rom`, "balanced");
+    assert.notEqual(result.code, 0, "pointer-backed record alias comparison unexpectedly compiled");
+    assert.match(result.output, /whole-record comparison through a pointer-backed with alias is not supported/i);
+  }
   console.log(`Whole-record compare ROM self-test PASS (${profiles.length} profiles)`);
 } finally {
   await rm(temp, { recursive: true, force: true });

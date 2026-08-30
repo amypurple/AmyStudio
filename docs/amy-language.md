@@ -466,6 +466,10 @@ Current record limits:
 - no arrays of BCD fields yet; BCD fields are scalar
 - record array-field lengths are compile-time constants in `1..255`; runtime indexes have no implicit bounds check
 
+For a pointer-backed `with Items[I] as Item` alias, assign or compare individual fields,
+or use the original complete record operand (`Items[I]`) for a whole-record operation.
+Amy rejects a whole-record alias operation explicitly rather than treating the alias as a scalar.
+
 ### RAM overlays and scenes (experimental)
 
 An overlay reuses one physical RAM region for two or more mutually exclusive record

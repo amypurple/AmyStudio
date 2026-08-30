@@ -125,6 +125,16 @@ try {
     assert.notEqual(result.code, 0, `${name} unexpectedly compiled`);
     assert.match(result.output, new RegExp(expectedMessage, "i"), `${name} diagnostic`);
   }
+  {
+    const stem = join(outputDir, "pointer-alias");
+    const aliasSource = source.replace("Items[Index] = Source", `with Items[Index] as Item
+  Item = Source
+end with`);
+    await writeFile(`${stem}.alexis`, aliasSource);
+    const result = await compile(`${stem}.alexis`, `${stem}.asm`, `${stem}.rom`, "balanced", true);
+    assert.notEqual(result.code, 0, "pointer-backed record alias assignment unexpectedly compiled");
+    assert.match(result.output, /whole-record assignment through a pointer-backed with alias is not supported/i);
+  }
   console.log(`Whole-record copy ROM self-test PASS (${profiles.length} profiles)`);
 } finally {
   await rm(outputDir, { recursive: true, force: true });
