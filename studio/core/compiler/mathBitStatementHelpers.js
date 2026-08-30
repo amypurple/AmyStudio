@@ -84,13 +84,15 @@ export function handleMathBitStatement({
     if (!minLoad) return { ok: false, handled: true, log: `clamp min must be a word value: ${rawLine}` };
     if (!maxLoad) return { ok: false, handled: true, log: `clamp max must be a word value: ${rawLine}` };
     const clampKeep = makeGeneratedLabel("ClampKeep");
+    const targetUsesIndex = clampVar[1].includes("[");
+    const loadTargetWithBoundInDe = (boundLoad) => targetUsesIndex
+      ? [...boundLoad, "    push hl", ...emitLoadInt16IntoHL(clampVar[1]), "    pop de"]
+      : [...boundLoad, "    ex de,hl", ...emitLoadInt16IntoHL(clampVar[1])];
     return {
       ok: true,
       handled: true,
       lines: [
-        ...minLoad,
-        "    ex de,hl",
-        ...emitLoadInt16IntoHL(clampVar[1]),
+        ...loadTargetWithBoundInDe(minLoad),
         "    or a",
         "    sbc hl,de",
         `    jr nc,${clampNotLow}`,
@@ -98,9 +100,7 @@ export function handleMathBitStatement({
         "    ld l,e",
         `    jr ${clampStore}`,
         `${clampNotLow}:`,
-        ...maxLoad,
-        "    ex de,hl",
-        ...emitLoadInt16IntoHL(clampVar[1]),
+        ...loadTargetWithBoundInDe(maxLoad),
         "    or a",
         "    sbc hl,de",
         `    jr c,${clampKeep}`,

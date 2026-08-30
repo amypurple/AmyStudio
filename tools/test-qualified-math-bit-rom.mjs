@@ -19,6 +19,8 @@ record MathMemory:
   u8 ByteValue
   u16 WordValue
   u8 Flags[3]
+  u8 ByteValues[3]
+  u16 WordValues[3]
 end record
 
 overlay WorkRam
@@ -31,6 +33,10 @@ u8 I = 1
 u8 ClampLowResult = 0
 u8 ClampHighResult = 0
 u8 LocalBitResult = 0
+u8 DynamicByteResult = 0
+u16 DynamicWordLowResult = 0
+u16 DynamicWordMidResult = 0
+u16 DynamicWordResult = 0
 
 sub start:
   WorkRam.Game.ByteValue = 1
@@ -52,6 +58,18 @@ sub start:
   if WorkRam.Game.Flags[I] = 9 then Passed |= $10
   clear bit 0 of WorkRam.Game.Flags[I]
   if WorkRam.Game.Flags[I] = 8 then Passed |= $20
+  WorkRam.Game.ByteValues[I] = 1
+  clamp WorkRam.Game.ByteValues[I] between 3 and 8
+  DynamicByteResult = WorkRam.Game.ByteValues[I]
+  WorkRam.Game.WordValues[I] = 100
+  clamp WorkRam.Game.WordValues[I] between 200 and 900
+  DynamicWordLowResult = WorkRam.Game.WordValues[I]
+  WorkRam.Game.WordValues[I] = 500
+  clamp WorkRam.Game.WordValues[I] between 200 and 900
+  DynamicWordMidResult = WorkRam.Game.WordValues[I]
+  WorkRam.Game.WordValues[I] = 1200
+  clamp WorkRam.Game.WordValues[I] between 200 and 900
+  DynamicWordResult = WorkRam.Game.WordValues[I]
   CheckLocal()
   loop forever
 end sub
@@ -99,6 +117,10 @@ try {
         localBit: core.readRam(addressOf(asm, "AMY_UVAR_LocalBitResult"), 1)[0]
       };
       assert.deepEqual(actual, { passed: 0xFF, clampLow: 3, clampHigh: 8, localBit: 64 }, `${profile}: qualified math/bit assertions failed`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_DynamicByteResult"), 1)[0], 3, `${profile}: dynamic byte clamp`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_DynamicWordLowResult"), 2)], [0xC8, 0x00], `${profile}: dynamic word low clamp`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_DynamicWordMidResult"), 2)], [0xF4, 0x01], `${profile}: dynamic word in-range clamp`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_DynamicWordResult"), 2)], [0x84, 0x03], `${profile}: dynamic word clamp`);
     } finally {
       core.destroy();
     }

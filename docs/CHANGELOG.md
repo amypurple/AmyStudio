@@ -1,5 +1,7 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Fixed indexed qualified `u16 clamp` losing its bounds when dynamic address calculation
+  reused `DE`; low, in-range, and high cases now pass under all optimizer profiles.
 - Extended `swap A with B` to qualified byte and word fields and made dynamic indexed
   swaps preserve their temporary value across address calculations.
 - Reworked the published Three Sort Algorithms example to use `swap`; its five optimizer
