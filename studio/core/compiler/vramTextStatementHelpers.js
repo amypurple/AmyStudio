@@ -966,20 +966,22 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: emitted.lines };
   }
 
-  const putFrameAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const putFrameAt = line.match(new RegExp(`^put\\s+${qualifiedByteTarget}\\s+frame\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
   if (putFrameAt) {
     const sourceToken = putFrameAt[1];
     const sourceBaseName = sourceToken.replace(/\[.*$/, "");
     const sourceIsWordTable = sourceToken.includes("[") && !!getWordTableInfo?.(sourceBaseName);
-    const loadSource = emitLoadSourceAddressIntoHL(sourceToken);
+    const sourceInfo = sourceIsWordTable ? null : getByteArrayBufferInfo(sourceToken, 1);
+    const sourceIsData = sourceIsWordTable ? false : isKnownDataSource(sourceToken, 1);
+    const loadSource = sourceInfo
+      ? emitLoadArrayAddressIntoHL(sourceToken, "0")
+      : emitLoadSourceAddressIntoHL(sourceToken);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "PUT_FRAME",
       values: { b: putFrameAt[3], c: putFrameAt[2], d: putFrameAt[5], e: putFrameAt[4] },
       emitLoadInt8ValueInto,
       emitLoadInt8ValueIntoPreserving
     });
-    const sourceInfo = sourceIsWordTable ? null : getByteArrayBufferInfo(sourceToken, 1);
-    const sourceIsData = sourceIsWordTable ? false : isKnownDataSource(sourceToken, 1);
     if (!loadSource || !loadInputs || (!sourceInfo && !sourceIsData && !sourceIsWordTable)) {
       return { ok: false, handled: true, log: `put Buffer frame size W,H at X,Y requires a u8 buffer, data block, or word table entry plus byte-sized width, height, and coordinates: ${rawLine}` };
     }

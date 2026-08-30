@@ -4,6 +4,7 @@
 - Fixed an Experimental optimizer miscompile where folding a memory increment through
   `HL` could destroy a still-live frame-buffer pointer.
 - Added indexed global/local arrays and overlay-qualified byte destinations to `get char`.
+- Added overlay-qualified byte-array sources to `put Buffer frame size W,H at X,Y`.
 
 - Added global and local `fp5` arrays with indexed assignment, copy, arithmetic,
   comparison, clear, format, and direct print support under all optimization profiles.

@@ -2669,6 +2669,8 @@ replace solid with EmptyTile in Area frame size 5,5 into Replaced
 put Area frame size 5,5 at TileX,TileY
 ```
 
+Frame writes accept byte arrays from global, local, record, and overlay-qualified storage.
+
 The left side of `replace` may be a single tile value or a declared `tile type`.
 This is useful for explosions, destructible terrain, and temporary map edits:
 read one rectangle, rewrite the buffer in RAM, then put the frame back once.
