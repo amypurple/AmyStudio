@@ -5050,7 +5050,9 @@ export function transpileAmyCore(sourceText, deps) {
         formatIxOffset,
         scopedRuntimeName,
         runtimeTypeSize,
-        tryEvaluateCompileTimeNumericExpression
+        tryEvaluateCompileTimeNumericExpression,
+        parseRecordFieldRef,
+        emitLoadArrayAddressIntoHL
       });
       if (mathBitStmt.handled) {
         if (!mathBitStmt.ok) return { ok: false, asmBody: "", log: mathBitStmt.log };

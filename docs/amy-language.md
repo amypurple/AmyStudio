@@ -2680,6 +2680,8 @@ byte-array forms.
 overlay-qualified byte arrays.
 The source and destination of `fill array ... repeating ...`, and the target of
 `reverse array`, accept the same qualified byte-array forms.
+`shift array Buffer up|down Count` accepts global, local, record, and
+overlay-qualified primitive arrays while preserving their element stride.
 
 The left side of `replace` may be a single tile value or a declared `tile type`.
 This is useful for explosions, destructible terrain, and temporary map edits:

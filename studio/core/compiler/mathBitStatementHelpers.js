@@ -16,7 +16,9 @@ export function handleMathBitStatement({
   formatIxOffset,
   scopedRuntimeName,
   runtimeTypeSize,
-  tryEvaluateCompileTimeNumericExpression
+  tryEvaluateCompileTimeNumericExpression,
+  parseRecordFieldRef,
+  emitLoadArrayAddressIntoHL
 }) {
   const byteWordTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
   const _dep = checkArithmeticDeprecation(line, rawLine);
@@ -263,13 +265,20 @@ export function handleMathBitStatement({
     };
   }
 
-  const shiftArray = line.match(/^shift\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+(down|up)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)$/i);
+  const shiftArray = line.match(new RegExp(`^shift\\s+array\\s+${byteWordTargetPattern}\\s+(down|up)\\s+(\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)$`, "i"));
   if (shiftArray) {
     const arrName = shiftArray[1];
     const direction = shiftArray[2].toLowerCase();
     const count = tryEvaluateCompileTimeNumericExpression(shiftArray[3]);
-    const info = getRuntimeInfo(arrName);
-    if (!info || info.kind !== "array") {
+    const directInfo = getRuntimeInfo(arrName);
+    const qualifiedArray = parseRecordFieldRef?.(arrName);
+    const qualifiedInfo = qualifiedArray?.isWholeArray && !qualifiedArray.isWholeRecordArray ? {
+      kind: "array_field",
+      length: qualifiedArray.fieldInfo.length,
+      elementType: qualifiedArray.fieldInfo.type
+    } : null;
+    const info = directInfo?.kind === "array" ? directInfo : qualifiedInfo;
+    if (!info) {
       return { ok: false, handled: true, log: `shift array requires an array variable: ${rawLine}` };
     }
     if (!Number.isInteger(count) || count < 1 || count >= info.length) {
@@ -279,7 +288,7 @@ export function handleMathBitStatement({
     const byteCount = (info.length - count) * elemSize;
     const byteShift = count * elemSize;
     const arrAsmName = info.asmName;
-    const lines = direction === "down"
+    const directLines = direction === "down"
       ? [
           `    ld hl,${arrAsmName} + ${byteCount - 1}`,
           `    ld de,${arrAsmName} + ${byteCount + byteShift - 1}`,
@@ -292,6 +301,19 @@ export function handleMathBitStatement({
           `    ld bc,${byteCount}`,
           "    ldir"
         ];
+    const qualifiedLines = direction === "down"
+      ? (() => {
+          const source = emitLoadArrayAddressIntoHL?.(arrName, String(info.length - count - 1));
+          const target = emitLoadArrayAddressIntoHL?.(arrName, String(info.length - 1));
+          return source && target ? [...source, "    push hl", ...target, "    ex de,hl", "    pop hl", `    ld bc,${byteCount}`, "    lddr"] : null;
+        })()
+      : (() => {
+          const source = emitLoadArrayAddressIntoHL?.(arrName, String(count));
+          const target = emitLoadArrayAddressIntoHL?.(arrName, "0");
+          return source && target ? [...source, "    push hl", ...target, "    ex de,hl", "    pop hl", `    ld bc,${byteCount}`, "    ldir"] : null;
+        })();
+    const lines = qualifiedInfo ? qualifiedLines : directLines;
+    if (!lines) return { ok: false, handled: true, log: `shift array cannot resolve its qualified array address: ${rawLine}` };
     return { ok: true, handled: true, lines };
   }
 
