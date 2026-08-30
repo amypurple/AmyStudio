@@ -20,6 +20,20 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "amy-inline-qualified-mutations-selftest",
+    "label": "Amy Inline Qualified Mutations Self-Test",
+    "detail": "Visible self-test for single-line conditional inc, dec, and toggle on overlay fields, packed BCD, and neighboring packed booleans.",
+    "projectName": "amy-inline-qualified-mutations-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-2d-array-selftest",
     "label": "Amy 2D Array Self-Test",
     "detail": "Row-major byte and word grids with constant and expression indexes, verified across optimizer profiles.",

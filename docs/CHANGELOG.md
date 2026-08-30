@@ -1,5 +1,6 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added the visible `Amy Inline Qualified Mutations Self-Test` Studio example.
 - Added qualified byte fields and packed booleans to single-line `if ... then toggle`,
   preserving neighboring values and packed bits.
 - Added qualified scalar, indexed, overlay, record, and BCD targets to single-line
