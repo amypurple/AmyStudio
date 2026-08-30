@@ -222,6 +222,24 @@ Likewise, a complete typed record template is ideal for a fixed RAM snapshot. A 
 
 Measure all three forms in the real routine when the difference matters.
 
+## Use `swap` for real exchanges
+
+Do not keep two temporary bytes merely to exchange two byte or word values:
+
+```basic
+swap Values[Left] with Values[Right]
+```
+
+This is safer than a handwritten exchange when either index is dynamic, because Amy
+preserves the first value across both address calculations. In the five sorting examples,
+replacing manual exchanges saved 64 Balanced ROM bytes in total. Four standalone examples
+also removed one permanent RAM byte each. The original five ROMs and all 25 optimized
+replacements were executed in GearColeco and produced the same sorted values.
+
+Do not replace a temporary that represents an insertion key, pivot, pending write, or
+other value that must survive beyond the exchange. `swap` is for exchanging storage,
+not for every assignment that happens to mention a variable named `Temp`.
+
 ## Preserve positional tables
 
 Some tables are APIs, not merely collections of independent values. The Coleco BIOS sound table is positional: `play sound 14` means entry 14. Removing entry 11 silently changes what 12 and every later number mean.
