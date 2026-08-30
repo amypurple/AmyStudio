@@ -300,8 +300,8 @@ Current implemented record scope:
 Local records and local arrays of records use the routine stack frame, so nested calls
 receive independent storage and do not increase permanent global RAM. They currently
 require zero initialization. Local record arrays accept the same compile-time constant
-lengths, indexed field access, and `for each Element, Index in Array` syntax as global
-record arrays.
+lengths, indexed field access, and both `for each Element in Array` and
+`for each Element, Index in Array` syntax as global record arrays.
 Qualified byte and word fields can be used directly as the right operand of `+=` and
 `-=`, including fields reached through local records, global records, arrays, or overlays.
 
@@ -1210,31 +1210,24 @@ next
 `next I` is preferred when the loop variable is useful documentation. The opening `for` line may end with `:` if desired.
 
 Fixed global and local primitive arrays, plus qualified overlay record-array fields,
-support element iteration with an explicit byte index:
+support element iteration. Omit the index when the body does not need it:
 
 ```basic
 Actor Flies[3]
-u8 I = 0
 
-for each Fly, I in Flies
+for each Fly in Flies
   Fly.X += Fly.DX
 next
 ```
 
-`Fly` is an alias for `Flies[I]`, not a copied record, so field assignments mutate the original array element. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays, including stack-local arrays, retain direct indexed lowering. Local arrays are resolved within their declaring routine, so unrelated routines may safely reuse the same array name with different lengths. The index must currently be declared explicitly as `u8`, and the source must be a fixed array with a compile-time constant nonzero length. Ref arrays and an omitted index are rejected clearly.
+`Fly` is an alias for the current array element, not a copied record, so field assignments mutate the original array element. Amy supplies an internal byte index for the short form. For global record arrays, Amy lowers this form to a counted loop containing the same pointer-backed alias as `with Flies[I] as Fly`: the element address is computed once per iteration and one hidden two-byte pointer is reused by every field access. Qualified overlay record arrays use pointer-free qualified lowering. Primitive arrays, including stack-local arrays, retain direct indexed lowering. Local arrays are resolved within their declaring routine, so unrelated routines may safely reuse the same array name with different lengths. The source must be a fixed array with a compile-time constant nonzero length. Ref arrays are rejected clearly.
 
-The canonical Amy syntax always includes the comma and explicit index:
+Use an explicit declared `u8` index when the loop body needs the position:
 
 ```basic
-for each Element, Index in GlobalArray              ' valid
+for each Element in GlobalArray                     ' preferred when Index is unused
 for each Element, Index in LocalArray               ' valid inside its routine
-for each Element, Index in Overlay.Part.RecordArray ' valid
-```
-
-The shorter form used by some other languages is not currently Amy syntax:
-
-```basic
-for each Element in GlobalArray          ' rejected: explicit u8 index required
+for each Element in Overlay.Part.RecordArray        ' valid
 ```
 
 Overlay record-array fields support the same canonical form:

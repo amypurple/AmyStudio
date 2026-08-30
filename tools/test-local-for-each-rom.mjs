@@ -22,10 +22,9 @@ u8 Passed = 0
 sub SumShort:
   u8 Values[ShortCount] = 0
   u8 Value = 0
-  u8 Index = 0
   Values[0] = 7
   Values[1] = 9
-  for each Value, Index in Values
+  for each Value in Values
     Result += Value
   next
   return

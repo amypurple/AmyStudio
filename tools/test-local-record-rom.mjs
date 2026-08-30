@@ -44,13 +44,13 @@ sub Outer:
   Actor Temp = 0
   Actor Saved = 0
   Actor Group[2] = 0
-  u8 Index = 0
   Temp.X = 9
   Temp.Score = 500
   Temp.Trail[1] = 4
   if Group[1].Trail[0] = 0 then Passed += 1
-  for each Item, Index in Group
-    Item.X = Index + 3
+  Group[1].X = 1
+  for each Item in Group
+    Item.X += 3
   next Item
   Advance(Temp)
   Advance(Group[1])

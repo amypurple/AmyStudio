@@ -740,6 +740,15 @@ export function transpileAmyCore(sourceText, deps) {
     const recordArrayFields = new Map();
     const overlayParts = [];
     const constants = collectEarlyNumericConstants(rawLines);
+    const usedNames = new Set(rawLines.flatMap((rawLine) => String(rawLine).match(/[A-Za-z_][A-Za-z0-9_]*/g) || []).map((name) => name.toLowerCase()));
+    let hiddenIndexSerial = 0;
+    const makeHiddenIndexName = () => {
+      let name;
+      do name = `_EachIndex${++hiddenIndexSerial}`;
+      while (usedNames.has(name.toLowerCase()));
+      usedNames.add(name.toLowerCase());
+      return name;
+    };
     const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
     let currentRoutine = null;
     let currentRecord = null;
@@ -865,11 +874,9 @@ export function transpileAmyCore(sourceText, deps) {
         if (!Number.isInteger(length) || length < 1) {
           return { ok: false, log: `for each requires a fixed array with a compile-time constant nonzero length: ${stripped}` };
         }
-        if (!open[2]) {
-          return { ok: false, log: `for each currently requires an explicit u8 index: for each ${elementName}, Index in ${arrayName}` };
-        }
-        const indexName = open[2];
+        const indexName = open[2] || makeHiddenIndexName();
         const indent = rawLine.slice(0, rawLine.search(/\S|$/));
+        if (!open[2]) result.push(`${indent}u8 ${indexName} = 0`);
         result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
         const nativeAlias = arrayEntry.recordLike && !arrayEntry.qualified;
         if (nativeAlias) result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
