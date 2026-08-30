@@ -9,6 +9,7 @@ export function handleArrayBulkStatement({
   emitLoadInt8Into,
   emitLoadInt8ValueInto,
   emitLoadArrayAddressIntoHL,
+  getByteArrayBufferInfo,
   emitStoreInt8FromA,
   resolveValueType,
   makeGeneratedLabel,
@@ -39,12 +40,13 @@ export function handleArrayBulkStatement({
     ];
   }
 
-  const replaceInFrame = line.match(/^replace\s+(.+?)\s+with\s+(.+?)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)(?:\s+into\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*))?$/i);
+  const qualifiedByteTarget = "[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*";
+  const replaceInFrame = line.match(new RegExp(`^replace\\s+(.+?)\\s+with\\s+(.+?)\\s+in\\s+(${qualifiedByteTarget})\\s+frame\\s+size\\s+(.+?)\\s*,\\s*(.+?)(?:\\s+into\\s+(${qualifiedByteTarget}))?$`, "i"));
   if (replaceInFrame) {
     const [, matchTokenRaw, replacementToken, bufferName, widthToken, heightToken, countTarget] = replaceInFrame;
     const matchToken = matchTokenRaw.trim();
-    const bufferInfo = getRuntimeInfo(bufferName);
-    if (!bufferInfo || bufferInfo.kind !== "array" || bufferInfo.elementType !== "int8") {
+    const bufferInfo = getByteArrayBufferInfo?.(bufferName, 1) || getRuntimeInfo(bufferName);
+    if (!bufferInfo || !["array", "array_field"].includes(bufferInfo.kind) || bufferInfo.elementType !== "int8") {
       return { ok: false, handled: true, log: `replace ... in Buffer frame requires a byte array buffer: ${rawLine}` };
     }
     const countType = countTarget ? resolveValueType?.(countTarget) : null;

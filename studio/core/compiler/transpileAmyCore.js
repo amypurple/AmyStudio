@@ -5069,6 +5069,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitLoadInt8Into,
         emitLoadInt8ValueInto,
         emitLoadArrayAddressIntoHL,
+        getByteArrayBufferInfo,
         emitStoreInt8FromA,
         resolveValueType,
         makeGeneratedLabel,

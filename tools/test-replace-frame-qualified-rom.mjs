@@ -16,24 +16,24 @@ writeFileSync(source, `project "QUALIFIED REPLACE FRAME ROM TEST"
 memory "colecovision_legacy_sdcc"
 
 record Results:
+  u8 Tiles[6]
   u8 Changed[2]
 end record
 overlay WorkRam
   Game as Results
   Menu as Results
 end overlay
-u8 Area[6]
 u8 Index = 1
 u8 Done = 0
 
 sub start:
-  Area[0] = 1
-  Area[1] = 2
-  Area[2] = 1
-  Area[3] = 3
-  Area[4] = 1
-  Area[5] = 4
-  replace 1 with 0 in Area frame size 3,2 into WorkRam.Game.Changed[Index]
+  WorkRam.Game.Tiles[0] = 1
+  WorkRam.Game.Tiles[1] = 2
+  WorkRam.Game.Tiles[2] = 1
+  WorkRam.Game.Tiles[3] = 3
+  WorkRam.Game.Tiles[4] = 1
+  WorkRam.Game.Tiles[5] = 4
+  replace 1 with 0 in WorkRam.Game.Tiles frame size 3,2 into WorkRam.Game.Changed[Index]
   Done = 1
   loop forever
 end sub
@@ -65,7 +65,7 @@ try {
       for (let frame = 0; frame < 60 && core.readRam(doneAddress, 1)[0] !== 1; frame += 1) core.runFrame();
       assert.equal(core.readRam(doneAddress, 1)[0], 1, `${profile}: completion marker`);
       assert.equal(core.readRam(addressOf(asm, "AMY_SCENE_Game_Changed") + 1, 1)[0], 3, `${profile}: replacement count`);
-      assert.deepEqual([...core.readRam(addressOf(asm, "AMY_UVAR_Area"), 6)], [0, 2, 0, 3, 0, 4], `${profile}: replaced bytes`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "AMY_SCENE_Game_Tiles"), 6)], [0, 2, 0, 3, 0, 4], `${profile}: replaced bytes`);
     } finally {
       core.destroy();
     }
@@ -75,4 +75,3 @@ try {
   if (process.env.AMY_KEEP_TEST_TEMP) console.log(`Kept test files: ${temp}`);
   else rmSync(temp, { recursive: true, force: true });
 }
-
