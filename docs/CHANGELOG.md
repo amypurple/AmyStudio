@@ -1,5 +1,7 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added a public Amy Studio home page, styled documentation reader, ColecoVision
+  toolchain comparison dashboard, and verified links to Amy's ColecoVision repositories.
 - Accepted record and overlay-qualified `u8` array buffers as destinations for
   decimal and hexadecimal `format ... into` commands.
 - Fixed indexed qualified `u16 clamp` losing its bounds when dynamic address calculation
