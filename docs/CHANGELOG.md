@@ -1,5 +1,9 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added indexed and overlay-qualified byte destinations to `replace ... frame ... into Count`.
+- Fixed an Experimental optimizer miscompile where folding a memory increment through
+  `HL` could destroy a still-live frame-buffer pointer.
+
 - Added global and local `fp5` arrays with indexed assignment, copy, arithmetic,
   comparison, clear, format, and direct print support under all optimization profiles.
 - Completed indexed `fp5` support for `abs`, `sqrt`, `log`, `exp`, `sgn`, `int`, `random`, constant

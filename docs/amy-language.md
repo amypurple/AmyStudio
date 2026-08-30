@@ -2673,7 +2673,8 @@ This is useful for explosions, destructible terrain, and temporary map edits:
 read one rectangle, rewrite the buffer in RAM, then put the frame back once.
 The optional `into Count` stores how many bytes were changed, useful for scoring
 collected tiles, detecting whether anything changed, or triggering effects only
-when replacements happened.
+when replacements happened. `Count` may be any byte destination, including an
+indexed field or an overlay-qualified field.
 
 ---
 

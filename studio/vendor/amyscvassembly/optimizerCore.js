@@ -1884,6 +1884,10 @@ export class Z80Optimizer {
                         if (!(prev instanceof Instruction)) break;
                         const prevMnemonic = prev.mnemonic.toLowerCase();
                         if (prev.label || ['call', 'jp', 'jr', 'djnz', 'ret', 'reti', 'retn'].includes(prevMnemonic)) break;
+                        // Block transfer/search and block I/O instructions update HL
+                        // implicitly. Never carry a known H/L value across them.
+                        if (['ldi', 'ldir', 'ldd', 'lddr', 'cpi', 'cpir', 'cpd', 'cpdr',
+                            'ini', 'inir', 'ind', 'indr', 'outi', 'otir', 'outd', 'otdr'].includes(prevMnemonic)) break;
                         if (prevMnemonic === 'ld' &&
                             prev.operands.length === 2 &&
                             prev.operands[0].type === 'register' &&
@@ -3893,7 +3897,8 @@ export class Z80Optimizer {
                             typeof storeBack.operands[0].value === 'string' &&
                             storeBack.operands[1].type === 'register' &&
                             storeBack.operands[1].value.toLowerCase() === 'a' &&
-                            storeBack.operands[0].value === token.operands[1].value) {
+                            storeBack.operands[0].value === token.operands[1].value &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 4, 'hl')) {
 
                             optimized.push(new Instruction(
                                 token.label,
@@ -3966,7 +3971,8 @@ export class Z80Optimizer {
                             storeBack.operands[1].type === 'register' &&
                             storeBack.operands[1].value.toLowerCase() === 'a' &&
                             storeBack.operands[0].value === token.operands[1].value &&
-                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'a')) {
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'a') &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'hl')) {
 
                             optimized.push(new Instruction(
                                 token.label,

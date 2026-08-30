@@ -10,6 +10,7 @@ export function handleArrayBulkStatement({
   emitLoadInt8ValueInto,
   emitLoadArrayAddressIntoHL,
   emitStoreInt8FromA,
+  resolveValueType,
   makeGeneratedLabel,
   getTileTypeInfo,
   getRecordTypeInfo
@@ -38,7 +39,7 @@ export function handleArrayBulkStatement({
     ];
   }
 
-  const replaceInFrame = line.match(/^replace\s+(.+?)\s+with\s+(.+?)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)(?:\s+into\s+([A-Za-z_][A-Za-z0-9_]*))?$/i);
+  const replaceInFrame = line.match(/^replace\s+(.+?)\s+with\s+(.+?)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)(?:\s+into\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*))?$/i);
   if (replaceInFrame) {
     const [, matchTokenRaw, replacementToken, bufferName, widthToken, heightToken, countTarget] = replaceInFrame;
     const matchToken = matchTokenRaw.trim();
@@ -46,9 +47,9 @@ export function handleArrayBulkStatement({
     if (!bufferInfo || bufferInfo.kind !== "array" || bufferInfo.elementType !== "int8") {
       return { ok: false, handled: true, log: `replace ... in Buffer frame requires a byte array buffer: ${rawLine}` };
     }
-    const countInfo = countTarget ? getRuntimeInfo(countTarget) : null;
+    const countType = countTarget ? resolveValueType?.(countTarget) : null;
     const storeCount = countTarget ? emitStoreInt8FromA(countTarget) : null;
-    if (countTarget && (!countInfo || countInfo.type !== "int8" || !storeCount)) {
+    if (countTarget && (countType !== "int8" || !storeCount)) {
       return { ok: false, handled: true, log: `replace ... frame into Count requires a byte variable: ${rawLine}` };
     }
     const loadBuffer = emitLoadArrayAddressIntoHL(bufferName, "0");

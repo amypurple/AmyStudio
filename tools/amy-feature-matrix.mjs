@@ -19,6 +19,7 @@ const tests = [
   { file: "test-qualified-math-bit-rom.mjs", area: "qualified-math-bit", evidence: "rom" },
   { file: "test-vpeek-qualified-rom.mjs", area: "qualified-vram-read", evidence: "rom" },
   { file: "test-pget-qualified-rom.mjs", area: "qualified-pixel-read", evidence: "rom" },
+  { file: "test-replace-frame-qualified-rom.mjs", area: "qualified-replacement-count", evidence: "rom" },
   { file: "test-choose-qualified-rom.mjs", area: "qualified-menu-choice", evidence: "rom" },
   { file: "test-controller-ram-safety.mjs", area: "controller-ram-layout", evidence: "compile+assemble" },
   { file: "test-overlay-layout-rom.mjs", area: "overlay-qualified-runtime", evidence: "rom" },
