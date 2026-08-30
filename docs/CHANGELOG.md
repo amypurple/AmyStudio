@@ -1,5 +1,7 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Documented the DEV-to-clean quality pipeline covering targeted repros, five-profile
+  runtime tests, self-tests, corpus size audits, emulation QA, documentation, and release gates.
 - Added a public Amy Studio home page, styled documentation reader, ColecoVision
   toolchain comparison dashboard, and verified links to Amy's ColecoVision repositories.
 - Accepted record and overlay-qualified `u8` array buffers as destinations for

@@ -10,6 +10,7 @@ The project is maintained by Amy Bienvenu and carries forward a long ColecoVisio
 - [Open Amy Studio](https://amypurple.github.io/AmyStudio/studio/)
 - [Public Documentation](https://amypurple.github.io/AmyStudio/docs/)
 - [ColecoVision Toolchain Comparison](https://amypurple.github.io/AmyStudio/comparison.html)
+- [Development Quality Pipeline](docs/development-quality-pipeline.md)
 - [Amy Studio on GitHub](https://github.com/amypurple/AmyStudio)
 - [Amy Language Reference](docs/amy-language.md)
 - [Amy Studio Heritage](docs/amy-studio-heritage.md)

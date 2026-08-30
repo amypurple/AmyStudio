@@ -6,6 +6,7 @@ const documents = [
   ["optimization", "Optimization Cookbook", "amy-optimization-cookbook.md"],
   ["graphics", "Graphics Editors Guide", "amy-graphics-editors-guide.md"],
   ["workflow", "Studio Workflow", "studio-workflow.md"],
+  ["quality", "Development Quality Pipeline", "development-quality-pipeline.md"],
   ["colecovision", "ColecoVision Essentials", "colecovision-essentials.md"],
   ["controllers", "Official Controller Routines", "colecovision-official-controller-routines.md"],
   ["compression", "Compression Suite", "compression-suite.md"],
