@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
 
 const root = resolve(import.meta.dirname, "..");
 const amyc = join(root, "tools", "amyc.mjs");
@@ -21,6 +22,7 @@ end overlay
 u8 Sum = 0
 u16 WideCounter = 0
 u16 WideSum = 0
+u8 Guard = 99
 for SceneRam.Game.Counter = 0 to 7
   Sum += SceneRam.Game.Counter
 next SceneRam.Game.Counter
@@ -34,6 +36,12 @@ else
 end if
 loop forever
 `;
+
+function addressOf(asm, name) {
+  const match = asm.match(new RegExp(`^AMY_UVAR_${name}\\s+EQU\\s+\\$([0-9A-Fa-f]{4})$`, "m"));
+  assert.ok(match, `missing RAM symbol ${name}`);
+  return Number.parseInt(match[1], 16);
+}
 
 try {
   for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
@@ -58,8 +66,19 @@ try {
       `${profile} should increment a step-1 u16 counter directly in HL`);
     assert.doesNotMatch(generated, /AMY_FOR_CONTINUE_[0-9]+:\s*\n\s*ld hl,\(AMY_UVAR_WideCounter\)\s*\n\s*push hl/i,
       `${profile} should not stage a literal step-1 u16 increment through DE`);
+    const core = await GearcolecoTestCore.create({ seed: 0x464F524C });
+    try {
+      core.loadBios(readFileSync(join(root, "studio", "bios", "colecovision.rom")));
+      core.loadRom(readFileSync(rom), { region: GEARCOLECO_TEST_REGION.NTSC });
+      for (let frame = 0; frame < 4; frame += 1) core.runFrame();
+      assert.equal(core.readRam(addressOf(generated, "Sum"), 1)[0], 28, `${profile}: qualified u8 loop sum`);
+      assert.deepEqual([...core.readRam(addressOf(generated, "WideSum"), 2)], [0x7C, 0x09], `${profile}: u16 loop sum`);
+      assert.equal(core.readRam(addressOf(generated, "Guard"), 1)[0], 99, `${profile}: RAM guard`);
+    } finally {
+      core.destroy();
+    }
   }
-  console.log("qualified u8 for-loop codegen PASS");
+  console.log("qualified u8/u16 for-loop codegen and ROM runtime PASS (5 profiles)");
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

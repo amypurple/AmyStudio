@@ -1810,7 +1810,9 @@ start_game:
   goto main_loop
 ```
 
-Amy timers are static and named. Each timer reserves fixed RAM and is updated by
+Amy timers are static and named. `N` is a compile-time constant from 1 to 65535;
+use `start timer Name` to restart a timer at runtime rather than trying to change
+its declared interval. Each timer reserves fixed RAM and is updated by
 the generated NMI only when the program declares at least one timer. `every N`
 repeats after each timeout; `after N` fires once and then becomes inactive.
 Adding `stopped` or `inactive` keeps the timer reserved but disabled until
@@ -3129,8 +3131,8 @@ Current expression engine notes:
 | `display off` / `display on` | Display bit only |
 | `nmi off` / `nmi on` | Interrupt bit only |
 | `on vblank SubName` | Register one parameterless Amy sub called by the generated VBlank NMI wrapper |
-| `timer Name every N ticks` | Declare a repeating named timer |
-| `timer Name after N ticks [stopped]` | Declare a one-shot named timer |
+| `timer Name every N ticks` | Declare a repeating named timer; N is a constant from 1 to 65535 |
+| `timer Name after N ticks [stopped]` | Declare a one-shot named timer; N is a constant from 1 to 65535 |
 | `start timer Name` / `stop timer Name` | Enable/reset or disable a named timer |
 | `if timer Name then Statement` | Test and consume a timer signal in normal code |
 | `text screen` | Standard 32x24 text/tile bootstrap |

@@ -100,15 +100,16 @@ try {
     }
   }
 
-  for (const [name, condition] of [
-    ["type-mismatch", "Source = WrongType"],
-    ["ordering", "Source < Destination"]
+  for (const [name, condition, expectedMessage] of [
+    ["type-mismatch", "Source = WrongType", /whole-record comparison type mismatch.*Actor.*Other/i],
+    ["scalar-mismatch", "Source = Passed", /requires two compatible record operands/i],
+    ["ordering", "Source < Destination", /supports only = and <>/i]
   ]) {
     const stem = join(temp, name);
     await writeFile(`${stem}.alexis`, source.replace("if Source = Destination then Passed += 1", `if ${condition} then Passed += 1`));
     const result = await compile(`${stem}.alexis`, `${stem}.asm`, `${stem}.rom`, "balanced");
     assert.notEqual(result.code, 0, `${name} unexpectedly compiled`);
-    assert.match(result.output, /invalid|unsupported|compatible|record/i, `${name}: typed diagnostic`);
+    assert.match(result.output, expectedMessage, `${name}: typed diagnostic`);
   }
   console.log(`Whole-record compare ROM self-test PASS (${profiles.length} profiles)`);
 } finally {

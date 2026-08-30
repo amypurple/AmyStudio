@@ -1120,6 +1120,24 @@ export function createControlFlowHelpers(ctx) {
     if (ifCompare) {
       const leftToken = normalizeExpression(ifCompare.left);
       const rightToken = normalizeExpression(ifCompare.right);
+      const leftRecord = resolveWholeRecord?.(leftToken);
+      const rightRecord = resolveWholeRecord?.(rightToken);
+      if (leftRecord || rightRecord) {
+        if (!leftRecord || !rightRecord) {
+          return { ok: false, lines: [], log: `Whole-record comparison requires two compatible record operands: ${condition}` };
+        }
+        if (String(leftRecord.recordTypeName).toLowerCase() !== String(rightRecord.recordTypeName).toLowerCase()
+          || leftRecord.byteSize !== rightRecord.byteSize) {
+          return {
+            ok: false,
+            lines: [],
+            log: `Whole-record comparison type mismatch: ${leftRecord.recordTypeName} cannot be compared with ${rightRecord.recordTypeName}: ${condition}`
+          };
+        }
+        if (ifCompare.operator !== "=" && ifCompare.operator !== "<>") {
+          return { ok: false, lines: [], log: `Whole-record comparison supports only = and <>: ${condition}` };
+        }
+      }
       const lines = emitCompareGoto(
         leftToken,
         ifCompare.operator === "<>" ? "!=" : (ifCompare.operator === "=" ? "==" : ifCompare.operator),
