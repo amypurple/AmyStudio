@@ -296,13 +296,13 @@ export function createInlineStatementCompiler(ctx) {
                       inlineLines = emitClearValue(inlineClear[1]);
                       if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline clear statement: ${rawLineText}` };
                     } else {
-                      const inlineIncDec = inlineStmt.match(/^(inc|dec)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)$/i);
+                      const inlineIncDec = inlineStmt.match(new RegExp(`^(inc|dec)\\s+(${qualifiedOperand})$`, "i"));
                       if (inlineIncDec) {
                         const op = inlineIncDec[1].toLowerCase();
                         const name = inlineIncDec[2];
                         const valueType = resolveValueType(name);
                         const targetInfo = getRuntimeInfo(name);
-                        if (targetInfo?.kind === "bcd") inlineLines = op === "inc" ? emitBcdAdd(name, "1") : emitBcdSub(name, "1");
+                        if (targetInfo?.kind === "bcd" || valueType === "bcd") inlineLines = op === "inc" ? emitBcdAdd(name, "1") : emitBcdSub(name, "1");
                         else
                         if (valueType === "u32" || valueType === "i32") inlineLines = op === "inc" ? emitU32Inc(name) : emitArith32Op(name, "1", "sub");
                         else if (valueType === "int8") {
