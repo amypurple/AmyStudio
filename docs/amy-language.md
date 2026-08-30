@@ -2252,7 +2252,10 @@ format Score   into Buffer              ' BCD: buffer length must match digit co
 `format fixed` destination buffer: 7 bytes.  
 `format ufixed` destination buffer: 6 bytes.  
 BCD destination buffer: matches BCD digit count.
-`format ... into Buffer` can target a local `u8` buffer on the stack.
+`format ... into Buffer` can target a global or local `u8` buffer, including a
+fixed-array field qualified through a record or RAM overlay. The destination must be
+large enough for the selected numeric format; `format hex` separates multi-byte values
+with spaces and preserves their little-endian memory order.
 
 Numeric text expressions are the lightweight runtime string surface for current Amy:
 

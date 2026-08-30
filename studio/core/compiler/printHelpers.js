@@ -29,6 +29,7 @@ export function createPrintHelpers(ctx) {
     tryEvaluateByteConstantExpression,
     normalizeExpression,
     getRuntimeInfo,
+    getByteArrayBufferInfo: resolveByteArrayBufferInfo,
     parseArrayRef,
     emitBcdPrint,
     getBcdDigitCount,
@@ -846,10 +847,7 @@ export function createPrintHelpers(ctx) {
   }
 
   function getByteArrayBufferInfoLocal(bufferToken, minimumLength) {
-    const info = getRuntimeInfo(bufferToken);
-    if (!info || info.kind !== "array" || info.elementType !== "int8") return null;
-    if (typeof info.length === "number" && info.length < minimumLength) return null;
-    return info;
+    return resolveByteArrayBufferInfo(bufferToken, minimumLength);
   }
 
   function emitLoadInt8ArrayAddressIntoDE(bufferToken, offset = 0) {

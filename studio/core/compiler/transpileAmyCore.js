@@ -3707,6 +3707,7 @@ export function transpileAmyCore(sourceText, deps) {
     tryEvaluateByteConstantExpression,
     normalizeExpression,
     getRuntimeInfo,
+    getByteArrayBufferInfo,
     parseArrayRef,
     emitBcdPrint,
     getBcdDigitCount,

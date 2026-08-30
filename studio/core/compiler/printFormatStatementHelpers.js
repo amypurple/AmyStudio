@@ -200,7 +200,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const formatHex = line.match(/^format\s+hex\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const formatHex = line.match(new RegExp(`^format\\s+hex\\s+(.+?)\\s+into\\s+${numericTargetPattern}$`, "i"));
   if (formatHex) {
     const code = emitFormatHexIntoBuffer(normalizeExpression(formatHex[1]), formatHex[2]);
     if (!code) {
@@ -214,7 +214,7 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const formatAuto = line.match(/^format\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
+  const formatAuto = line.match(new RegExp(`^format\\s+(.+?)\\s+into\\s+${numericTargetPattern}(?:\\s+(digits|width)\\s+(\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$`, "i"));
   if (formatAuto) {
     const size = resolveFormatSize(formatAuto[4], rawLine);
     if (!size.ok) return { handled: true, ok: false, log: size.log };
