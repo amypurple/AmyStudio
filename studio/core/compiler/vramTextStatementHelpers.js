@@ -70,6 +70,7 @@ export function handleVramTextStatement({
   if (_depVramPut.handled) return _depVramPut;
   const _depVramRead = checkVramCharReadDeprecation(line, rawLine);
   if (_depVramRead.handled) return _depVramRead;
+  const qualifiedByteTarget = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
 
 
   function parseColecoColorNibble(token) {
@@ -352,35 +353,35 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_MODE3_PSET"] };
   }
 
-  const pgetMode3 = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*pget\s+(?:mode\s*3|multicolor)\s+(.+?)\s*,\s*(.+)$/i);
+  const pgetMode3 = line.match(new RegExp(`^${qualifiedByteTarget}\\s*=\\s*pget\\s+(?:mode\\s*3|multicolor)\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
   if (pgetMode3) {
-    const targetInfo = getRuntimeInfo(pgetMode3[1]);
+    const targetType = resolveValueType(pgetMode3[1]);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_MODE3_PGET",
       values: { b: pgetMode3[2], c: pgetMode3[3] },
       emitLoadInt8ValueInto,
       emitLoadInt8ValueIntoPreserving
     });
-    if (!targetInfo || targetInfo.type !== "int8" || !loadInputs) {
+    if (targetType !== "int8" || !loadInputs) {
       return { ok: false, handled: true, log: `Color = pget multicolor X,Y requires a byte target and byte-sized coordinates: ${rawLine}` };
     }
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_MODE3_PGET", ...emitStoreInt8FromA(pgetMode3[1])] };
   }
 
   // Plain pget X,Y — dispatches to Mode 3 based on currentGraphicsMode.
-  const plainPget = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*pget\s+(.+?)\s*,\s*(.+)$/i);
+  const plainPget = line.match(new RegExp(`^${qualifiedByteTarget}\\s*=\\s*pget\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
   if (plainPget) {
     if (currentGraphicsMode !== "multicolor") {
       return { ok: false, handled: true, log: `pget without qualifier requires 'graphics mode 3 multicolor' to be active (last graphics statement seen was '${currentGraphicsMode ?? "none"}'): ${rawLine}` };
     }
-    const targetInfo = getRuntimeInfo(plainPget[1]);
+    const targetType = resolveValueType(plainPget[1]);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_MODE3_PGET",
       values: { b: plainPget[2], c: plainPget[3] },
       emitLoadInt8ValueInto,
       emitLoadInt8ValueIntoPreserving
     });
-    if (!targetInfo || targetInfo.type !== "int8" || !loadInputs) {
+    if (targetType !== "int8" || !loadInputs) {
       return { ok: false, handled: true, log: `pget target must be a u8/i8 variable and X,Y must be byte-sized: ${rawLine}` };
     }
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_MODE3_PGET", ...emitStoreInt8FromA(plainPget[1])] };
@@ -1096,7 +1097,6 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: wrapVramUploadLines([`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call FILL_VRAM"]) };
   }
 
-  const qualifiedByteTarget = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
   const findTileBox = line.match(new RegExp(`^find\\s+tile\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+under\\s+box\\s+(.+?)\\s*,\\s*(.+?)\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+into\\s+${qualifiedByteTarget}\\s*,\\s*${qualifiedByteTarget}$`, "i"));
   if (findTileBox) {
     const [, typeName, xToken, yToken, widthToken, heightToken, outX, outY] = findTileBox;

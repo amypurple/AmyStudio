@@ -2022,6 +2022,9 @@ ByteVar = vdp.status
 The `vpeek` destination may be a byte variable, array element, record field,
 local-record field, or overlay-qualified byte field. Wider destinations are rejected.
 
+In multicolor mode, `Target = pget X,Y` and `Target = pget multicolor X,Y`
+accept the same byte destinations, including indexed and overlay-qualified fields.
+
 `fill mode 2 text color with X` fills the first 2KB Mode 2 color third, then duplicates it into the second and third thirds.  
 `fill full mode 2 text color with X` fills the full 6144-byte color table directly as one contiguous reset.  
 `load mode 2 text colors Source` uploads a legacy compact 32-byte color table by repeating each byte 64 times into the active 2KB Mode 2 text color table, matching old-devkit `load_color`. Use this for ports that have a 32-byte `COLOR` table instead of an already-expanded VRAM color table.  

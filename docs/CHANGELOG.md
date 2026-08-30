@@ -23,6 +23,8 @@
 - Extended `choose menu`, `choose keypad`, and `find tile` to qualified byte targets.
 - Fixed controller-only `choose`/`wait key` programs allocating globals over the
   controller and VDP-status runtime cells.
+- Extended both multicolor `pget` forms to indexed record, local-record, and
+  overlay-qualified byte targets without changing existing ROM output.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and

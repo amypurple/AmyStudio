@@ -69,6 +69,7 @@ const invalidCases = [
   ["removed-read-frame", `u16 X = 0\nsub start:\n  read frame into X\n  loop forever\nend sub`, /read target must be/],
   ["removed-read-vdp-status", `u8 X = 0\nsub start:\n  read vdp status into X\n  loop forever\nend sub`, /read target must be/],
   ["vpeek-word-target", `u16 X = 0\nsub start:\n  vpeek vram.name into X\n  loop forever\nend sub`, /vpeek requires a valid VRAM source and byte target/],
+  ["pget-word-target", `u16 X = 0\nsub start:\n  graphics mode 3 multicolor\n  X = pget 2,2\n  loop forever\nend sub`, /pget target must be a u8\/i8 variable/],
   ["wide-array-index", `u8 Values[4]\nu16 Wide = 1\nu8 X = 0\nsub start:\n  X = Values[Wide]\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["random-no-arg-u8", `u8 X = 0\nsub start:\n  X = random()\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["unknown-symbol", `u8 X = 0\nsub start:\n  X = mysteryVar + 1\n  loop forever\nend sub`, /Invalid runtime assignment/],
