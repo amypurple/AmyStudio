@@ -933,7 +933,10 @@ export function handleVramTextStatement({
 
   const putCountAt = line.match(/^put\s+(.+?)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putCountAt) {
-    const loadSource = emitLoadSourceAddressIntoHL(putCountAt[1]);
+    const sourceInfo = getByteArrayBufferInfo(putCountAt[1], 1);
+    const loadSource = sourceInfo
+      ? emitLoadArrayAddressIntoHL(putCountAt[1], "0")
+      : emitLoadSourceAddressIntoHL(putCountAt[1]);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_PUT_AT",
       values: { d: putCountAt[4], e: putCountAt[3], b: putCountAt[2] },
