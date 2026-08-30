@@ -32,7 +32,7 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const vpeek = line.match(/^vpeek\s+(.+)\s+into\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)$/i);
+  const vpeek = line.match(/^vpeek\s+(.+)\s+into\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)$/i);
   if (vpeek) {
     const loadAddress = emitLoadVramAddressIntoHL(vpeek[1]);
     const targetInfo = resolveValueType(vpeek[2]);

@@ -18,6 +18,8 @@
   indexed byte-field targets while preserving compact direct-scalar code generation.
 - Removed ambiguous staged input reads; controller, spinner, frame, and VDP values now
   use the clearer expression forms exclusively.
+- Extended `vpeek` to indexed record, local-record, and overlay-qualified byte targets
+  without changing existing ROM output.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and
