@@ -1226,9 +1226,7 @@ export function handleVramTextStatement({
     || line.match(/^read\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i);
   if (getChar) {
     addCompilerWarning?.(`Prefer "${getChar[3]} = get char at ${getChar[1]},${getChar[2]}" instead of "${rawLine}".`);
-    const targetField = parseRecordFieldRef?.(getChar[3]);
-    const targetInfo = targetField?.fieldInfo || getRuntimeInfo(getChar[3]);
-    if (!targetInfo || targetInfo.type !== "int8") {
+    if (resolveValueType(getChar[3]) !== "int8" || !emitStoreInt8FromA(getChar[3])) {
       return { ok: false, handled: true, log: `get char target must be a byte RAM variable: ${rawLine}` };
     }
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
@@ -1245,9 +1243,7 @@ export function handleVramTextStatement({
 
   const getCharAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getCharAssign) {
-    const targetField = parseRecordFieldRef?.(getCharAssign[1]);
-    const targetInfo = targetField?.fieldInfo || getRuntimeInfo(getCharAssign[1]);
-    if (!targetInfo || targetInfo.type !== "int8") {
+    if (resolveValueType(getCharAssign[1]) !== "int8" || !emitStoreInt8FromA(getCharAssign[1])) {
       return { ok: false, handled: true, log: `get char assignment target must be a byte RAM variable: ${rawLine}` };
     }
     const loadInputs = emitLoadRoutineByteInputsFromTokens({

@@ -3,6 +3,7 @@
 - Added indexed and overlay-qualified byte destinations to `replace ... frame ... into Count`.
 - Fixed an Experimental optimizer miscompile where folding a memory increment through
   `HL` could destroy a still-live frame-buffer pointer.
+- Added indexed global/local arrays and overlay-qualified byte destinations to `get char`.
 
 - Added global and local `fp5` arrays with indexed assignment, copy, arithmetic,
   comparison, clear, format, and direct print support under all optimization profiles.

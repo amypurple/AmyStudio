@@ -2637,7 +2637,8 @@ accept byte-sized runtime expressions, including record and overlay-qualified fi
 
 Tile gameplay collision uses pixel coordinates, not name-table coordinates:
 - `get char at TileX,TileY` reads the visible name table at tile coordinates
-  `0..31,0..23`.
+  `0..31,0..23` into any byte destination, including indexed arrays, local
+  arrays, and overlay-qualified fields.
 - `tile under PixelX,PixelY` converts visible pixel coordinates to tile
   coordinates with `>> 3`, reads the tile there, and tests it against a
   declared `tile type`.
