@@ -2,6 +2,8 @@
 
 - Extended `swap A with B` to qualified byte and word fields and made dynamic indexed
   swaps preserve their temporary value across address calculations.
+- Reworked the published Three Sort Algorithms example to use `swap`; its five optimizer
+  profiles remain runtime-verified and its Balanced ROM is 7 bytes smaller.
 - Accepted named compile-time constants for `digits/width` in single-line conditional prints.
 - Added the visible `Amy Inline Qualified Mutations Self-Test` Studio example.
 - Added qualified byte fields and packed booleans to single-line `if ... then toggle`,
