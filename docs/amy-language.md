@@ -2589,6 +2589,10 @@ pattern, color, active sprite count, and initial position before `choose menu`.
 The menu changes only X/Y and uploads the sprite table when the selection moves;
 it does not animate the sprite or allocate background animation state.
 
+The choice destination may be a byte variable, array element, record field,
+local-record field, or overlay-qualified byte field. The same rule applies to
+`choose keypad`.
+
 ```basic
 choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2
 on Choice goto GameOne, GameTwo, GameThree, GameFour
@@ -2638,7 +2642,8 @@ Tile gameplay collision uses pixel coordinates, not name-table coordinates:
   tile touched by the pixel-space box and branches on the first match.
 - `find tile Type under box PixelX,PixelY size W,H into TileX,TileY` searches
   the touched tiles and stores the first matching tile coordinates, or
-  `255,255` when no match is found.
+  `255,255` when no match is found. Both outputs accept byte variables, indexed
+  elements, record fields, local-record fields, and overlay-qualified byte fields.
 - `chars in box TileX,TileY size W,H contain TypeOrValue` scans directly in
   name-table tile coordinates. Constant rectangles up to 32 cells are fetched once
   with `GET_BKGRND` and scanned in RAM; larger or dynamic rectangles use tile reads.

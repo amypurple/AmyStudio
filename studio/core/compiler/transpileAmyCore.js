@@ -4515,6 +4515,7 @@ export function transpileAmyCore(sourceText, deps) {
         getWordTableInfo,
         assets,
         getRuntimeInfo,
+        resolveValueType,
         getByteArrayBufferInfo,
         emitLoadArrayAddressIntoHL,
         emitLoadCountIntoBC,

@@ -15,6 +15,14 @@ const source = join(temp, "char-box.alexis");
 writeFileSync(source, `project "chars in box ROM test"
 memory "colecovision_legacy_sdcc"
 tile type solid = $21
+record TilePosition:
+  u8 X
+  u8 Y
+end record
+overlay Results
+  Game as TilePosition
+  Menu as TilePosition
+end overlay
 u8 Passed = 0
 sub start:
   text screen
@@ -29,6 +37,9 @@ TypeHit:
   goto Done
 RawHit:
   Passed += 1
+  find tile solid under box 40,40 size 24,24 into Results.Game.X,Results.Game.Y
+  if Results.Game.X = 6 then Passed += 1
+  if Results.Game.Y = 6 then Passed += 1
 Done:
   loop forever
 end sub
@@ -57,12 +68,12 @@ try {
       core.loadBios(bios);
       core.loadRom(readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 3; frame += 1) core.runFrame();
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 2, `${profile}: tile-type and raw-value scans must both branch`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 4, `${profile}: scans and qualified find outputs must pass`);
     } finally {
       core.destroy();
     }
   }
-  console.log(`chars-in-box ROM: PASS (${profiles.length} profiles)`);
+  console.log(`chars-in-box/find-tile ROM: PASS (${profiles.length} profiles)`);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

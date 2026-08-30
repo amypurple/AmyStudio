@@ -310,8 +310,9 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const chooseSpriteMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
-  const chooseTileMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+cursor\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const qualifiedByteTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
+  const chooseSpriteMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const chooseTileMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   const chooseMenu = chooseSpriteMenu || chooseTileMenu;
   if (chooseMenu) {
     const spriteCursor = Boolean(chooseSpriteMenu);
@@ -319,10 +320,10 @@ export function handleVramPixelInputStatement({
     const clearToken = spriteCursor ? null : (chooseMenu[8] || "$20");
     const padToken = (spriteCursor ? chooseMenu[8] : chooseMenu[9]) || "1";
     const secondsToken = spriteCursor ? chooseMenu[9] : chooseMenu[10];
-    const targetInfo = getRuntimeInfo(target);
+    const targetType = resolveValueType(target);
     const byteLoads = [minToken, maxToken, cursorToken, xToken, yToken, stepToken, ...(clearToken ? [clearToken] : [])]
       .map((token) => emitLoadInt8ValueInto("a", token));
-    if (!targetInfo || targetInfo.type !== "int8" || byteLoads.some((lines) => !lines)) {
+    if (targetType !== "int8" || byteLoads.some((lines) => !lines)) {
       return { handled: true, ok: false, log: `choose menu requires byte-sized bounds, target, cursor, coordinates, and step: ${rawLine}` };
     }
     const spriteIndex = spriteCursor ? tryEvaluateConstantExpression?.(cursorToken) : null;
@@ -477,12 +478,12 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const chooseKeypad = line.match(new RegExp(`^choose\\s+keypad\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+on\\s+keypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const chooseKeypad = line.match(new RegExp(`^choose\\s+keypad\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}(?:\\s+on\\s+keypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   if (chooseKeypad) {
-    const targetInfo = getRuntimeInfo(chooseKeypad[3]);
+    const targetType = resolveValueType(chooseKeypad[3]);
     const loadMin = emitLoadInt8ValueInto("b", chooseKeypad[1]);
     const loadMax = emitLoadInt8ValueInto("c", chooseKeypad[2]);
-    if (!targetInfo || targetInfo.type !== "int8" || !loadMin || !loadMax) {
+    if (targetType !== "int8" || !loadMin || !loadMax) {
       return { handled: true, ok: false, log: `choose keypad requires byte-sized min, max, and target: ${rawLine}` };
     }
     body.push(...loadMin);

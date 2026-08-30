@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { buildColecoLegacyRuntimeMap } from "../studio/ramLayouts.js";
+import { inferAmyMemoryCapabilities } from "../studio/core/compilerFrontend.js";
 
 const BIOS_CONTROLLER_REGIONS = [
   { start: 0x73d7, endExclusive: 0x73eb, name: "POLLER debounce state" },
@@ -53,5 +54,15 @@ for (const capabilities of capabilityCases) {
   }
 }
 
-console.log("Controller RAM safety: PASS");
+for (const source of [
+  "choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2",
+  "choose keypad 1 to 4 into Choice",
+  "wait key 1",
+  "wait key release"
+]) {
+  const capabilities = inferAmyMemoryCapabilities(source, () => false);
+  assert.equal(capabilities.needsControllers, true, `${source}: controller RAM was not reserved`);
+  assert.ok(buildColecoLegacyRuntimeMap(capabilities).userRamStart > 0x7020, `${source}: user RAM overlaps runtime state`);
+}
 
+console.log("Controller RAM safety: PASS");

@@ -20,6 +20,9 @@
   use the clearer expression forms exclusively.
 - Extended `vpeek` to indexed record, local-record, and overlay-qualified byte targets
   without changing existing ROM output.
+- Extended `choose menu`, `choose keypad`, and `find tile` to qualified byte targets.
+- Fixed controller-only `choose`/`wait key` programs allocating globals over the
+  controller and VDP-status runtime cells.
 - Added row-major primitive 2D arrays inside subs and functions, with scoped dimensions,
   stack-relative storage, constant bounds diagnostics, and five-profile ROM verification.
 - Added fixed-length global and local packed-BCD arrays with constant, variable, and

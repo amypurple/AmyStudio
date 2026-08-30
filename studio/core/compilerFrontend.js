@@ -116,7 +116,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /\b(sprite|sprites|AMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)|AMY_SPRITE_(COUNT|TABLE))\b/i.test(text);
   const needsSpriteFlicker = /^\s*sprites\s+(?:flicker\s+(?:on|off)|stable\s+.+?\s+to\s+.+?)\s*(?:'.*)?$/im.test(codeText);
   const needsControllers =
-    /\b(wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|pause\s+until\s+press|sleep\s+after|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
+    /\b(wait\s+no?\s*fire|wait\s+.+?\s+frames?\s+or\s+press|wait\s+key|pause\s+until\s+press|sleep\s+after|choose\s+(?:menu|keypad)|JOYPAD_[12]|KEYPAD_[12])\b/i.test(text) ||
     /\b(joypad|keypad)\s*\(/i.test(text);
   const usesDynamicJoypadPressed = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*pressed\b/i.test(codeText);
   const usesDynamicJoypadReleased = /\bjoypad\s*\(\s*(?![12]\s*\))[^)]+\)\s*\.\s*(?:up|right|down|left|button[1-4]|fire|action)\s*\.\s*released\b/i.test(codeText);

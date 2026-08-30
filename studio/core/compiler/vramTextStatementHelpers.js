@@ -41,6 +41,7 @@ export function handleVramTextStatement({
   getWordTableInfo,
   assets,
   getRuntimeInfo,
+  resolveValueType,
   getByteArrayBufferInfo,
   emitLoadArrayAddressIntoHL,
   emitLoadCountIntoBC,
@@ -1095,11 +1096,12 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: wrapVramUploadLines([`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call FILL_VRAM"]) };
   }
 
-  const findTileBox = line.match(/^find\s+tile\s+([A-Za-z_][A-Za-z0-9_]*)\s+under\s+box\s+(.+?)\s*,\s*(.+?)\s+size\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const qualifiedByteTarget = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
+  const findTileBox = line.match(new RegExp(`^find\\s+tile\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+under\\s+box\\s+(.+?)\\s*,\\s*(.+?)\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+into\\s+${qualifiedByteTarget}\\s*,\\s*${qualifiedByteTarget}$`, "i"));
   if (findTileBox) {
     const [, typeName, xToken, yToken, widthToken, heightToken, outX, outY] = findTileBox;
-    const outXInfo = getRuntimeInfo(outX);
-    const outYInfo = getRuntimeInfo(outY);
+    const outXType = resolveValueType(outX);
+    const outYType = resolveValueType(outY);
     const typeInfo = getTileTypeInfo?.(typeName);
     const storeOutX = emitStoreInt8FromA(outX);
     const storeOutY = emitStoreInt8FromA(outY);
@@ -1111,7 +1113,7 @@ export function handleVramTextStatement({
     const typeTest = emitJumpOnTileTypeInA(typeName, found);
     const boundsX = emitLoadPixelTileBoxBounds(xToken, widthToken, 0, 1, done);
     const boundsY = emitLoadPixelTileBoxBounds(yToken, heightToken, 2, 3, done);
-    if (!typeInfo || !typeInfo.values?.length || !outXInfo || outXInfo.type !== "int8" || !outYInfo || outYInfo.type !== "int8" || !boundsX || !boundsY || !storeOutX || !storeOutY) {
+    if (!typeInfo || !typeInfo.values?.length || outXType !== "int8" || outYType !== "int8" || !boundsX || !boundsY || !storeOutX || !storeOutY) {
       return { ok: false, handled: true, log: `find tile requires a declared tile type, byte pixel box, and two byte output variables: ${rawLine}` };
     }
     if (!typeTest) {
