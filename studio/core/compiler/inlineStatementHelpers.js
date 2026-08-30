@@ -48,7 +48,9 @@ export function createInlineStatementCompiler(ctx) {
     emitBcdAdd,
     emitBcdSub,
     emitArithInt8Op,
-    emitArithInt16Op
+    emitArithInt16Op,
+    makeGeneratedLabel,
+    formatIxOffset
   } = ctx;
 
   return function compileInlineStatement(inlineStmt, rawLineText) {
@@ -296,6 +298,37 @@ export function createInlineStatementCompiler(ctx) {
                       inlineLines = emitClearValue(inlineClear[1]);
                       if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline clear statement: ${rawLineText}` };
                     } else {
+                      const inlineToggle = inlineStmt.match(new RegExp(`^toggle\\s+(${qualifiedOperand})$`, "i"));
+                      if (inlineToggle) {
+                        const name = inlineToggle[1];
+                        const info = getRuntimeInfo(name);
+                        if (info?.kind === "packed_bool") {
+                          const maskHex = `$${(1 << info.bit).toString(16).toUpperCase().padStart(2, "0")}`;
+                          if (info.storage === "stack") {
+                            const ref = formatIxOffset(info.packOffset ?? info.offset);
+                            inlineLines = [`    ld a,(${ref})`, `    xor ${maskHex}`, `    ld (${ref}),a`];
+                          } else {
+                            inlineLines = [`    ld hl,${info.packLabel}`, "    ld a,(hl)", `    xor ${maskHex}`, "    ld (hl),a"];
+                          }
+                        } else if (resolveValueType(name) === "int8") {
+                          const load = emitLoadInt8Into("a", name);
+                          const store = emitStoreInt8FromA(name);
+                          const setFalseLabel = makeGeneratedLabel("ToggleFalse");
+                          const doneLabel = makeGeneratedLabel("ToggleDone");
+                          inlineLines = load && store ? [
+                            ...load,
+                            "    or a",
+                            `    jr nz,${setFalseLabel}`,
+                            "    ld a,1",
+                            `    jr ${doneLabel}`,
+                            `${setFalseLabel}:`,
+                            "    xor a",
+                            `${doneLabel}:`,
+                            ...store
+                          ] : null;
+                        }
+                        if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline toggle statement: ${rawLineText}` };
+                      } else {
                       const inlineIncDec = inlineStmt.match(new RegExp(`^(inc|dec)\\s+(${qualifiedOperand})$`, "i"));
                       if (inlineIncDec) {
                         const op = inlineIncDec[1].toLowerCase();
@@ -331,6 +364,7 @@ export function createInlineStatementCompiler(ctx) {
                           }
                           if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline arithmetic statement: ${rawLineText}` };
                         }
+                      }
                       }
                     }
                   }

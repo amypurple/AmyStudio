@@ -4780,7 +4780,9 @@ export function transpileAmyCore(sourceText, deps) {
       emitBcdAdd,
       emitBcdSub,
       emitArithInt8Op,
-      emitArithInt16Op
+      emitArithInt16Op,
+      makeGeneratedLabel,
+      formatIxOffset
     });
 
     {

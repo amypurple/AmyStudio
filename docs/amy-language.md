@@ -1627,7 +1627,8 @@ The record array may be global or a record-array field qualified through a recor
 Single-line `if ... then` accepts the same qualified RAM buffers as normal statements
 for `get char`, `get count`, `get frame`, `put ... count`, and `put ... frame`.
 It also accepts qualified scalar and indexed targets for `inc` and `dec`, including
-record fields, overlay fields, and packed BCD values.
+record fields, overlay fields, and packed BCD values. `toggle` accepts qualified byte
+fields and packed booleans in the same single-line form while preserving neighboring bits.
 The old `copy array Dst from Src` spelling was removed; use `copy Src to Dst`.
 
 ### Multiply / Divide / Sqrt
