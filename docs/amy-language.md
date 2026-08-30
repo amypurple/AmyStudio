@@ -2671,6 +2671,8 @@ put Area frame size 5,5 at TileX,TileY
 
 Frame writes accept byte arrays from global, local, record, and overlay-qualified storage.
 Explicit row writes (`put Source count N at X,Y`) accept the same qualified byte arrays.
+For a fixed-length byte array, `put Buffer at X,Y` and `put Buffer centered at Y`
+infer the count, including for local, record, and overlay-qualified arrays.
 
 The left side of `replace` may be a single tile value or a declared `tile type`.
 This is useful for explosions, destructible terrain, and temporary map edits:

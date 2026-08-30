@@ -115,21 +115,22 @@ export function handleVramTextStatement({
 
   function getKnownByteSourceLength(sourceExpr) {
     const name = String(sourceExpr || "").trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return null;
-    const dataLength = dataLengths?.get(name);
-    if (typeof dataLength === "number") return dataLength;
-    const info = getRuntimeInfo(name);
-    if (info?.kind === "array" && info.elementType === "int8" && typeof info.length === "number") {
-      return info.length;
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      const dataLength = dataLengths?.get(name);
+      if (typeof dataLength === "number") return dataLength;
     }
-    return null;
+    const info = getByteArrayBufferInfo(name, 1);
+    return typeof info?.length === "number" ? info.length : null;
   }
 
   function emitPutCountLines(sourceName, count, xToken, yToken, errorLabel) {
     if (!Number.isInteger(count) || count < 1 || count > 255) {
       return { ok: false, log: `${errorLabel} requires a known byte source length from 1 to 255: ${rawLine}` };
     }
-    const loadSource = emitLoadSourceAddressIntoHL(sourceName);
+    const sourceInfo = getByteArrayBufferInfo(sourceName, 1);
+    const loadSource = sourceInfo
+      ? emitLoadArrayAddressIntoHL(sourceName, "0")
+      : emitLoadSourceAddressIntoHL(sourceName);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_PUT_AT",
       values: { d: yToken, e: xToken, b: String(count) },
@@ -949,7 +950,7 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }
 
-  const putImplicitCentered = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+centered\s+at\s+(.+)$/i);
+  const putImplicitCentered = line.match(new RegExp(`^put\\s+${qualifiedByteTarget}\\s+centered\\s+at\\s+(.+)$`, "i"));
   if (putImplicitCentered) {
     const length = getKnownByteSourceLength(putImplicitCentered[1]);
     const x = Number.isInteger(length) ? Math.ceil((32 - length) / 2) : null;
@@ -961,7 +962,7 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: emitted.lines };
   }
 
-  const putImplicitAt = line.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const putImplicitAt = line.match(new RegExp(`^put\\s+${qualifiedByteTarget}\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
   if (putImplicitAt) {
     const length = getKnownByteSourceLength(putImplicitAt[1]);
     const emitted = emitPutCountLines(putImplicitAt[1], length, putImplicitAt[2], putImplicitAt[3], "put without count");

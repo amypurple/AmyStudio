@@ -23,6 +23,7 @@ const tests = [
   { file: "test-get-char-qualified-rom.mjs", area: "qualified-tile-read", evidence: "rom" },
   { file: "test-put-frame-qualified-rom.mjs", area: "qualified-frame-write", evidence: "rom" },
   { file: "test-put-count-qualified-rom.mjs", area: "qualified-row-write", evidence: "rom" },
+  { file: "test-put-implicit-qualified-rom.mjs", area: "qualified-inferred-row-write", evidence: "rom" },
   { file: "test-choose-qualified-rom.mjs", area: "qualified-menu-choice", evidence: "rom" },
   { file: "test-controller-ram-safety.mjs", area: "controller-ram-layout", evidence: "compile+assemble" },
   { file: "test-overlay-layout-rom.mjs", area: "overlay-qualified-runtime", evidence: "rom" },
