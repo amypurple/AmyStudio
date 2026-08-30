@@ -1,5 +1,6 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added record and overlay-qualified record arrays to `fill record array ... field ...`.
 - Added record and overlay-qualified byte destinations to `fill array ... with ...`.
 - Added qualified byte arrays to `fill array ... repeating ...` and `reverse array`.
 - Added record and overlay-qualified byte buffers, plus indexed and qualified byte

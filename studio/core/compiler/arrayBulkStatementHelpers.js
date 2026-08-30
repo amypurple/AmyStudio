@@ -10,6 +10,7 @@ export function handleArrayBulkStatement({
   emitLoadInt8ValueInto,
   emitLoadArrayAddressIntoHL,
   getByteArrayBufferInfo,
+  parseRecordFieldRef,
   emitStoreInt8FromA,
   resolveValueType,
   makeGeneratedLabel,
@@ -103,11 +104,19 @@ export function handleArrayBulkStatement({
     };
   }
 
-  const fillRecordField = line.match(/^fill\s+record\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+field\s+([A-Za-z_][A-Za-z0-9_]*)\s+with\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
+  const fillRecordField = line.match(new RegExp(`^fill\\s+record\\s+array\\s+(${qualifiedByteTarget})\\s+field\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+with\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+)$`, "i"));
   if (fillRecordField) {
     const [, arrayName, fieldName, valueToken] = fillRecordField;
-    const arrayInfo = getRuntimeInfo(arrayName);
-    if (!arrayInfo || arrayInfo.kind !== "record_array" || !Number.isInteger(arrayInfo.length) || arrayInfo.length < 1 || arrayInfo.length > 255) {
+    const directArrayInfo = getRuntimeInfo(arrayName);
+    const qualifiedArray = parseRecordFieldRef?.(arrayName);
+    const qualifiedInfo = qualifiedArray?.isWholeRecordArray ? {
+      kind: "record_array_field",
+      length: qualifiedArray.fieldInfo.length,
+      recordSize: qualifiedArray.fieldInfo.elementSize,
+      recordTypeName: qualifiedArray.fieldInfo.recordTypeName || qualifiedArray.fieldInfo.declaredType
+    } : null;
+    const arrayInfo = directArrayInfo?.kind === "record_array" ? directArrayInfo : qualifiedInfo;
+    if (!arrayInfo || !Number.isInteger(arrayInfo.length) || arrayInfo.length < 1 || arrayInfo.length > 255) {
       return { ok: false, handled: true, log: `fill record array requires a fixed record array of 1..255 elements: ${rawLine}` };
     }
     const recordInfo = getRecordTypeInfo?.(arrayInfo.recordTypeName);
@@ -116,9 +125,15 @@ export function handleArrayBulkStatement({
       return { ok: false, handled: true, log: `fill record array currently requires a u8, i8, or bool field: ${rawLine}` };
     }
     const loadValue = emitLoadInt8Into("a", valueToken);
-    const loadAddress = Number.isInteger(arrayInfo.address)
-      ? [`    ld hl,${arrayInfo.address + fieldInfo.offset}`]
-      : null;
+    const qualifiedBase = qualifiedInfo ? emitLoadArrayAddressIntoHL(arrayName, "0") : null;
+    const loadAddress = qualifiedInfo
+      ? (qualifiedBase ? [
+          ...qualifiedBase,
+          ...(fieldInfo.offset > 0 && fieldInfo.offset <= 3
+            ? Array.from({ length: fieldInfo.offset }, () => "    inc hl")
+            : (fieldInfo.offset ? [`    ld de,${fieldInfo.offset}`, "    add hl,de"] : []))
+        ] : null)
+      : (Number.isInteger(arrayInfo.address) ? [`    ld hl,${arrayInfo.address + fieldInfo.offset}`] : null);
     if (!loadValue || !loadAddress) {
       return { ok: false, handled: true, log: `fill record array cannot resolve its value or base address: ${rawLine}` };
     }
