@@ -55,6 +55,7 @@ sub start:
   next Item
   shift array Values down ${shiftCount}
   print Sum at 0,0 digits ${formatDigits}
+  if Sum >= 0 then print Sum at 0,1 width ${formatDigits}
   format Sum into NumberBuffer width ${formatDigits}
   play dsound TestVoice step ${soundStep}
   sleep after ${timeout} seconds
@@ -109,6 +110,18 @@ end sub
   await writeFile(invalidFormatPath, invalidFormat);
   assert.notEqual(await compile(invalidFormatPath, join(output, "invalid-format.asm"), join(output, "invalid-format.rom")), 0,
     "an unknown formatting constant must fail closed");
+
+  const invalidInlineFormat = `project "BAD INLINE FORMAT SIZE"
+u8 Value = 7
+sub start:
+  if Value > 0 then print Value at 0,0 digits MissingDigits
+  loop forever
+end sub
+`;
+  const invalidInlineFormatPath = join(output, "invalid-inline-format.alexis");
+  await writeFile(invalidInlineFormatPath, invalidInlineFormat);
+  assert.notEqual(await compile(invalidInlineFormatPath, join(output, "invalid-inline-format.asm"), join(output, "invalid-inline-format.rom")), 0,
+    "an unknown inline formatting constant must fail closed");
 
   const invalidBcd = `project "BAD BCD SIZE"
 const ScoreDigits = 13

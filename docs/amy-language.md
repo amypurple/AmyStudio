@@ -1629,6 +1629,8 @@ for `get char`, `get count`, `get frame`, `put ... count`, and `put ... frame`.
 It also accepts qualified scalar and indexed targets for `inc` and `dec`, including
 record fields, overlay fields, and packed BCD values. `toggle` accepts qualified byte
 fields and packed booleans in the same single-line form while preserving neighboring bits.
+Inline `print ... digits/width N` accepts the same numeric compile-time constants as
+the normal multi-line form.
 The old `copy array Dst from Src` spelling was removed; use `copy Src to Dst`.
 
 ### Multiply / Divide / Sqrt

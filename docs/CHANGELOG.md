@@ -1,5 +1,6 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Accepted named compile-time constants for `digits/width` in single-line conditional prints.
 - Added the visible `Amy Inline Qualified Mutations Self-Test` Studio example.
 - Added qualified byte fields and packed booleans to single-line `if ... then toggle`,
   preserving neighboring values and packed bits.

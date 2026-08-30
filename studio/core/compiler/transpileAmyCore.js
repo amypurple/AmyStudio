@@ -4750,6 +4750,7 @@ export function transpileAmyCore(sourceText, deps) {
       emitTextLiteral,
       emitLoadInt8ValueInto,
       tryEvaluateByteConstantExpression,
+      tryEvaluateCompileTimeNumericExpression,
       formatHex16,
       splitTopLevelArgs,
       emitPrintAtDense,

@@ -18,6 +18,7 @@ export function createInlineStatementCompiler(ctx) {
     emitLoadInt8ValueInto,
     emitLoadInt8ValueIntoPreserving,
     tryEvaluateByteConstantExpression,
+    tryEvaluateCompileTimeNumericExpression,
     formatHex16,
     splitTopLevelArgs,
     emitPrintAtDense,
@@ -263,9 +264,15 @@ export function createInlineStatementCompiler(ctx) {
             inlineLines = emitPrintAtDense(parts[0], parts[1], parts.slice(2));
             if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline print statement: ${rawLineText}` };
           } else {
-            const inlinePrintAt = inlineStmt.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+([0-9]+))?$/i);
+            const inlinePrintAt = inlineStmt.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
             if (inlinePrintAt) {
-              inlineLines = emitPrintAutoAt(normalizeExpression(inlinePrintAt[1]), inlinePrintAt[2], inlinePrintAt[3], inlinePrintAt[5] || null, (inlinePrintAt[4] || "").toLowerCase() === "width");
+              let sizeToken = null;
+              if (inlinePrintAt[5]) {
+                const size = tryEvaluateCompileTimeNumericExpression(inlinePrintAt[5]);
+                if (!Number.isInteger(size) || size < 1 || size > 255) return { ok: false, lines: [], log: `Invalid inline print digits/width: ${rawLineText}` };
+                sizeToken = String(size);
+              }
+              inlineLines = emitPrintAutoAt(normalizeExpression(inlinePrintAt[1]), inlinePrintAt[2], inlinePrintAt[3], sizeToken, (inlinePrintAt[4] || "").toLowerCase() === "width");
               if (!inlineLines) return { ok: false, lines: [], log: `Invalid inline print statement: ${rawLineText}` };
             } else {
               const inlineRemovedCall = inlineStmt.match(/^(call|gosub)\b/i);
