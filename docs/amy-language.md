@@ -2677,6 +2677,8 @@ The buffer edited by `replace ... in Buffer frame ...` accepts the same qualifie
 byte-array forms.
 `fill array Buffer with Value` also accepts global, local, record, and
 overlay-qualified byte arrays.
+The source and destination of `fill array ... repeating ...`, and the target of
+`reverse array`, accept the same qualified byte-array forms.
 
 The left side of `replace` may be a single tile value or a declared `tile type`.
 This is useful for explosions, destructible terrain, and temporary map edits:

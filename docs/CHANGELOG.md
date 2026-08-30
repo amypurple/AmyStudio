@@ -1,6 +1,7 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
 - Added record and overlay-qualified byte destinations to `fill array ... with ...`.
+- Added qualified byte arrays to `fill array ... repeating ...` and `reverse array`.
 - Added record and overlay-qualified byte buffers, plus indexed and qualified byte
   destinations, to `replace ... frame ... into Count`.
 - Fixed an Experimental optimizer miscompile where folding a memory increment through

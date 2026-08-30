@@ -240,16 +240,16 @@ export function handleArrayBulkStatement({
     };
   }
 
-  const fillRepeating = line.match(/^fill\s+array\s+([A-Za-z_][A-Za-z0-9_]*)\s+repeating\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
+  const fillRepeating = line.match(new RegExp(`^fill\\s+array\\s+(${qualifiedByteTarget})\\s+repeating\\s+(${qualifiedByteTarget})(?:\\s+count\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+))?$`, "i"));
   if (fillRepeating) {
     const dstName = fillRepeating[1];
     const srcName = fillRepeating[2];
-    const dstInfo = getRuntimeInfo(dstName);
-    const srcInfo = getRuntimeInfo(srcName);
-    if (!dstInfo || dstInfo.kind !== "array" || dstInfo.elementType !== "int8") {
+    const dstInfo = getByteArrayBufferInfo?.(dstName, 1) || getRuntimeInfo(dstName);
+    const srcInfo = getByteArrayBufferInfo?.(srcName, 1) || getRuntimeInfo(srcName);
+    if (!dstInfo || !["array", "array_field"].includes(dstInfo.kind) || dstInfo.elementType !== "int8") {
       return { ok: false, handled: true, log: `fill array repeating requires a byte destination array: ${rawLine}` };
     }
-    if (!srcInfo || srcInfo.kind !== "array" || srcInfo.elementType !== "int8") {
+    if (!srcInfo || !["array", "array_field"].includes(srcInfo.kind) || srcInfo.elementType !== "int8") {
       return { ok: false, handled: true, log: `fill array repeating requires a byte source (pattern) array: ${rawLine}` };
     }
     const countToken = fillRepeating[3];
@@ -289,11 +289,11 @@ export function handleArrayBulkStatement({
     };
   }
 
-  const reverseArray = line.match(/^reverse\s+array\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+from\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
+  const reverseArray = line.match(new RegExp(`^reverse\\s+array\\s+(${qualifiedByteTarget})(?:\\s+from\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+)\\s+count\\s+([A-Za-z_][A-Za-z0-9_]*|\\$[0-9A-Fa-f]+|[0-9]+))?$`, "i"));
   if (reverseArray) {
     const arrName = reverseArray[1];
-    const info = getRuntimeInfo(arrName);
-    if (!info || info.kind !== "array" || info.elementType !== "int8") {
+    const info = getByteArrayBufferInfo?.(arrName, 1) || getRuntimeInfo(arrName);
+    if (!info || !["array", "array_field"].includes(info.kind) || info.elementType !== "int8") {
       return { ok: false, handled: true, log: `reverse array requires a byte array variable: ${rawLine}` };
     }
     const fromToken = reverseArray[2];

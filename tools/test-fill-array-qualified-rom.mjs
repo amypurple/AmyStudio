@@ -18,6 +18,8 @@ memory "colecovision_legacy_sdcc"
 record FillMemory:
   u8 Before
   u8 Tiles[6]
+  u8 Pattern[2]
+  u8 Repeated[6]
   u8 After
 end record
 overlay WorkRam
@@ -30,6 +32,10 @@ sub start:
   WorkRam.Game.Before = $A5
   WorkRam.Game.After = $5A
   fill array WorkRam.Game.Tiles with 7
+  WorkRam.Game.Pattern[0] = 3
+  WorkRam.Game.Pattern[1] = 9
+  fill array WorkRam.Game.Repeated repeating WorkRam.Game.Pattern
+  reverse array WorkRam.Game.Repeated
   Done = 1
   loop forever
 end sub
@@ -59,7 +65,11 @@ try {
       for (let frame = 0; frame < 60 && core.readRam(doneAddress, 1)[0] !== 1; frame += 1) core.runFrame();
       assert.equal(core.readRam(doneAddress, 1)[0], 1, `${profile}: completion marker`);
       const base = addressOf(asm, "AMY_SCENE_Game_Before");
-      assert.deepEqual([...core.readRam(base, 8)], [0xA5, 7, 7, 7, 7, 7, 7, 0x5A], `${profile}: fill and guards`);
+      assert.deepEqual(
+        [...core.readRam(base, 16)],
+        [0xA5, 7, 7, 7, 7, 7, 7, 3, 9, 9, 3, 9, 3, 9, 3, 0x5A],
+        `${profile}: fill, repeating, reverse, and guards`
+      );
     } finally {
       core.destroy();
     }
