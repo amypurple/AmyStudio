@@ -116,7 +116,7 @@ export function handleMathBitStatement({
     };
   }
 
-  const swapVars = line.match(/^swap\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+with\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)$/i);
+  const swapVars = line.match(new RegExp(`^swap\\s+${byteWordTargetPattern}\\s+with\\s+${byteWordTargetPattern}$`, "i"));
   if (swapVars) {
     const typeA = resolveValueType(swapVars[1]);
     const typeB = resolveValueType(swapVars[2]);
@@ -128,8 +128,9 @@ export function handleMathBitStatement({
       const storeA = emitStoreInt8FromA(swapVars[1]);
       const storeB = emitStoreInt8FromA(swapVars[2]);
       if (!loadA || !loadB || !storeA || !storeB) return { ok: false, handled: true, log: `swap: cannot load/store operands: ${rawLine}` };
-      return { ok: true, handled: true, lines: [...loadA, "    ld c,a", ...loadB, ...storeA, "    ld a,c", ...storeB] };
+      return { ok: true, handled: true, lines: [...loadA, "    push af", ...loadB, ...storeA, "    pop af", ...storeB] };
     }
+    if (typeA !== "int16") return { ok: false, handled: true, log: `swap currently supports only byte and word values: ${rawLine}` };
     const loadA = emitLoadInt16IntoHL(swapVars[1]);
     const loadB = emitLoadInt16IntoHL(swapVars[2]);
     const storeA = emitStoreInt16FromHL(swapVars[1]);

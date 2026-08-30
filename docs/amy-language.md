@@ -1478,6 +1478,19 @@ BCD notes:
 - `bcd digits 4 Timer = StartTimer` accepts non-negative decimal literals or named `const` values that fit the digit count
 - `Score = 0` clears a BCD value canonically
 - `Score += 25` and `Score -= 5` accept decimal literals or named `const` values
+
+### Swap
+
+```basic
+swap PlayerX with EnemyX
+swap State.Game.Bytes[I] with State.Game.Bytes[J]
+swap State.Game.Words[0] with State.Game.Words[1]
+```
+
+`swap A with B` exchanges two byte or two word RAM values of the same type. Targets may
+be scalars, indexed arrays, record fields, or overlay-qualified fields. Dynamic address
+calculations are safe even when they use `BC`. Whole records, BCD, 32-bit, fixed-point,
+and floating-point values are not currently accepted.
 - `Score = StartScore` accepts a named `const` value (encoded as BCD at compile time)
 - `if Score > StartScore goto Label` accepts a named `const` on the right side
 - `Score += Bonus` and `Score -= Delta` accept `u8` or `i8` sources
