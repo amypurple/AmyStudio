@@ -1247,7 +1247,7 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getChar[3])] };
   }
 
-  const getCharAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getCharAssign = line.match(/^(?!if\b)(.+?)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getCharAssign) {
     if (resolveValueType(getCharAssign[1]) !== "int8" || !emitStoreInt8FromA(getCharAssign[1])) {
       return { ok: false, handled: true, log: `get char assignment target must be a byte RAM variable: ${rawLine}` };
@@ -1294,7 +1294,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const getCountAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getCountAssign = line.match(/^(?!if\b)(.+?)\s*=\s*(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getCountAssign) {
     const targetInfo = getByteArrayBufferInfo(getCountAssign[1], 1);
     const loadCount = emitLoadCountIntoBC(getCountAssign[2]);
@@ -1352,7 +1352,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const getFrameAssign = line.match(/^(.+?)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getFrameAssign = line.match(/^(?!if\b)(.+?)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getFrameAssign) {
     const loadInputs = emitLoadRoutineByteInputsFromTokens({
       routineName: "GET_BKGRND",

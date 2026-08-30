@@ -53,6 +53,7 @@ export function createInlineStatementCompiler(ctx) {
 
   return function compileInlineStatement(inlineStmt, rawLineText) {
     let inlineLines = null;
+    const qualifiedOperand = "[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*";
     const currentFunction = currentFunctionRef();
     if (/^return$/i.test(inlineStmt)) {
       if (currentFunction) return { ok: false, lines: [], log: `Function return requires a value: ${rawLineText}` };
@@ -114,9 +115,10 @@ export function createInlineStatementCompiler(ctx) {
           inlineLines = emitFormulaAssignment(target, op, value);
           if (!inlineLines) return { ok: false, lines: [], log: `Invalid runtime assignment: ${rawLineText}` };
         } else {
-          const inlineGetCharAssign = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+          const inlineGetCharAssign = inlineStmt.match(new RegExp(`^(${qualifiedOperand})\\s*=\\s*(?:get|read)\\s+(?:char|tile)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
           if (inlineGetCharAssign) {
-            const targetInfo = getRuntimeInfo(inlineGetCharAssign[1]);
+            const targetType = resolveValueType(inlineGetCharAssign[1]);
+            const storeTarget = emitStoreInt8FromA(inlineGetCharAssign[1]);
             const loadInputs = emitLoadRoutineByteInputsFromTokens({
               routineName: "AMY_GET_CHAR_AT",
               values: { e: inlineGetCharAssign[2], d: inlineGetCharAssign[3] },
@@ -124,12 +126,12 @@ export function createInlineStatementCompiler(ctx) {
               emitLoadInt8ValueInto,
               emitLoadInt8ValueIntoPreserving
             });
-            if (!targetInfo || targetInfo.type !== "int8" || !loadInputs) {
+            if (targetType !== "int8" || !storeTarget || !loadInputs) {
               return { ok: false, lines: [], log: `Invalid inline get char assignment: ${rawLineText}` };
             }
-            inlineLines = [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(inlineGetCharAssign[1])];
+            inlineLines = [...loadInputs, "    call AMY_GET_CHAR_AT", ...storeTarget];
           } else {
-            const inlineGetCountAssign = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+            const inlineGetCountAssign = inlineStmt.match(new RegExp(`^(${qualifiedOperand})\\s*=\\s*(?:get|read)\\s+count\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
             if (inlineGetCountAssign) {
               const targetInfo = getByteArrayBufferInfo(inlineGetCountAssign[1], 1);
               const loadCount = emitLoadCountIntoBC(inlineGetCountAssign[2]);
@@ -153,7 +155,7 @@ export function createInlineStatementCompiler(ctx) {
                 `    call ${isDefinitelyByteSizedCount(inlineGetCountAssign[2]) ? "READ_VRAM" : "AMY_GET_VRAM"}`
               ];
             } else {
-              const inlineGetFrameAssign = inlineStmt.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get|read)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+              const inlineGetFrameAssign = inlineStmt.match(new RegExp(`^(${qualifiedOperand})\\s*=\\s*(?:get|read)\\s+frame\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
               if (inlineGetFrameAssign) {
                 const targetInfo = getByteArrayBufferInfo(inlineGetFrameAssign[1], 1);
                 const loadInputs = emitLoadRoutineByteInputsFromTokens({
@@ -177,9 +179,10 @@ export function createInlineStatementCompiler(ctx) {
                   "    pop ix"
                 ];
               } else {
-                const inlinePutCountAt = inlineStmt.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+                const inlinePutCountAt = inlineStmt.match(new RegExp(`^put\\s+(${qualifiedOperand})\\s+count\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
                 if (inlinePutCountAt) {
-                  const loadSource = emitLoadSourceAddressIntoHL(inlinePutCountAt[1]);
+                  const sourceInfo = getByteArrayBufferInfo(inlinePutCountAt[1], 1);
+                  const loadSource = sourceInfo ? emitLoadArrayAddressIntoHL(inlinePutCountAt[1], "0") : emitLoadSourceAddressIntoHL(inlinePutCountAt[1]);
                   const loadInputs = emitLoadRoutineByteInputsFromTokens({
                     routineName: "AMY_PUT_AT",
                     values: { b: inlinePutCountAt[2], e: inlinePutCountAt[3], d: inlinePutCountAt[4] },
@@ -192,12 +195,12 @@ export function createInlineStatementCompiler(ctx) {
                   }
                   inlineLines = [...loadSource, ...loadInputs, "    call AMY_PUT_AT"];
                 } else {
-                  const inlinePutFrameAt = inlineStmt.match(/^put\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+size\s+(.+?)\s*,\s*(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+                  const inlinePutFrameAt = inlineStmt.match(new RegExp(`^put\\s+(${qualifiedOperand})\\s+frame\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
                   if (inlinePutFrameAt) {
                     const sourceInfo = getByteArrayBufferInfo(inlinePutFrameAt[1], 1);
                     const sourceIsData = /^[A-Za-z_][A-Za-z0-9_]*$/.test(inlinePutFrameAt[1])
                       && typeof dataLengths?.get(inlinePutFrameAt[1]) === "number";
-                    const loadSource = emitLoadSourceAddressIntoHL(inlinePutFrameAt[1]);
+                    const loadSource = sourceInfo ? emitLoadArrayAddressIntoHL(inlinePutFrameAt[1], "0") : emitLoadSourceAddressIntoHL(inlinePutFrameAt[1]);
                     const loadInputs = emitLoadRoutineByteInputsFromTokens({
                       routineName: "PUT_FRAME",
                       values: { b: inlinePutFrameAt[3], c: inlinePutFrameAt[2], d: inlinePutFrameAt[5], e: inlinePutFrameAt[4] },

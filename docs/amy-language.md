@@ -1623,6 +1623,9 @@ reverse array Board from 2 count 6
 
 Current limits: `u8` arrays. `count` and slice values must be compile-time constants. A fixed `fill array` count from 1 to 255 uses a compact Z80 `DJNZ` loop. `fill record array ... field ...` fills one byte-sized `u8`, `i8`, or `bool` field across a fixed record array with a constant or byte value, advancing directly by the record size.
 The record array may be global or a record-array field qualified through a record or overlay.
+
+Single-line `if ... then` accepts the same qualified RAM buffers as normal statements
+for `get char`, `get count`, `get frame`, `put ... count`, and `put ... frame`.
 The old `copy array Dst from Src` spelling was removed; use `copy Src to Dst`.
 
 ### Multiply / Divide / Sqrt

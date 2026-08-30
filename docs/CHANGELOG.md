@@ -1,5 +1,7 @@
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
+- Added qualified VRAM read/write operands to single-line `if ... then` statements
+  and fixed normal VRAM assignment parsing from intercepting those inline forms.
 - Added record and overlay-qualified primitive arrays to `shift array`.
 - Added record and overlay-qualified record arrays to `fill record array ... field ...`.
 - Added record and overlay-qualified byte destinations to `fill array ... with ...`.
