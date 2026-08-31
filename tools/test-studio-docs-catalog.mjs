@@ -25,4 +25,20 @@ for (const required of [
 ]) {
   assert.ok(paths.includes(required), `Studio Docs must expose ${required}.`);
 }
+
+const languageReference = fs.readFileSync(path.join(root, "docs", "amy-language.md"), "utf8");
+const basicBlocks = [...languageReference.matchAll(/```basic\s*\r?\n([\s\S]*?)```/gi)].map((match) => match[1]);
+const removedCodeForms = [
+  /^\s*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s*=/im,
+  /^\s*(?:dim|ram|local|boolean)\s+[A-Za-z_]/im,
+  /^\s*(?:endif|wend|end\s+(?:for|do|function)|endselect|enddata)\s*$/im,
+  /^\s*label\s+[A-Za-z_]/im,
+  /^\s*(?:add\s+\S+\s+by|add\s+.+\s+to\s+\S+|subtract\s+|multiply\s+|mul\s+|divide\s+|div\s+|shl\s+|shr\s+)/im,
+  /^\s*put\s+(?:tile|chars)\b/im
+];
+for (const [index, block] of basicBlocks.entries()) {
+  for (const pattern of removedCodeForms) {
+    assert.doesNotMatch(block, pattern, `amy-language.md basic block ${index + 1} teaches removed Amy syntax.`);
+  }
+}
 console.log(`Studio docs catalog PASS (${paths.length} documents).`);

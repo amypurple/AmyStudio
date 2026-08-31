@@ -1273,7 +1273,7 @@ Qualified fields can also be loop counters and mutation targets:
 
 ```basic
 inc SceneRam.Game.Enemies[I].X
-add SceneRam.Game.Enemies[I].X by 2
+SceneRam.Game.Enemies[I].X += 2
 for SceneRam.Game.Counter = 0 to 3
   SceneRam.Game.Sum += SceneRam.Game.Counter
 next SceneRam.Game.Counter
@@ -1359,7 +1359,6 @@ do until condition
 loop
 loop while condition
 loop until condition
-end do
 continue do
 exit do
 ```
