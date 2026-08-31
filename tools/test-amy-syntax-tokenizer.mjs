@@ -85,6 +85,10 @@ assert.equal(tokenizeAmyLine("set default name table vram $1800").tokens.find((t
 for (const removedType of ["boolean", "float", "byte", "word", "sbyte"]) {
   assert.equal(isAutocompleteSourceTypeName(removedType), false, `${removedType} must not be an autocomplete source type`);
 }
+for (const snippet of ["u8 Counter = 0, Limit = 10", "u8 Stars[32]", "u16 Score = 0, HighScore = 0", "fixed Velocity = 0.5"]) {
+  const item = AMY_AUTOCOMPLETE.find((entry) => entry.snippet === snippet);
+  assert.match(item?.detail || "", /top[- ]level|source location/i, `${snippet} must explain automatic scope`);
+}
 
 assert.equal(tokenizeAmyLine("peek(Address)").tokens[0].type, "builtin");
 assert.equal(tokenizeAmyLine("count(Actors)").tokens[0].type, "builtin");
