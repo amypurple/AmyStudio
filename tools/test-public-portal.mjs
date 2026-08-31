@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { markdownToHtml } from "../studio/core/docsUi.js";
 
@@ -31,6 +33,31 @@ const qualityMarkdown = readFileSync(resolve(root, "docs/development-quality-pip
 
 for (const expected of ["./studio/", "./docs/", "./comparison.html", "https://github.com/amypurple/AmyStudio"]) {
   assert.ok(home.includes(expected), `home page missing link: ${expected}`);
+}
+
+const previewHtml = home.match(/<div class="studio-preview"[\s\S]*?<pre><code>([\s\S]*?)<\/code><\/pre>/)?.[1] || "";
+const previewSource = previewHtml
+  .replace(/<span class="line-number">[^<]*<\/span> ?/g, "")
+  .replace(/<[^>]+>/g, "")
+  .replaceAll("&lt;", "<")
+  .replaceAll("&gt;", ">")
+  .replaceAll("&amp;", "&")
+  .trim();
+assert.match(previewSource, /^project "FIRST CARTRIDGE"/);
+assert.doesNotMatch(previewSource, /^memory\b/im, "first program must use Studio's default memory profile");
+const previewTemp = mkdtempSync(resolve(tmpdir(), "amy-public-preview-"));
+try {
+  const sourcePath = resolve(previewTemp, "first-cartridge.alexis");
+  const romPath = resolve(previewTemp, "first-cartridge.rom");
+  writeFileSync(sourcePath, `${previewSource}\n`);
+  const compile = spawnSync(process.execPath, [resolve(root, "tools", "amyc.mjs"), sourcePath, "--rom", romPath, "--opt", "balanced"], {
+    cwd: root,
+    encoding: "utf8"
+  });
+  assert.equal(compile.status, 0, `home-page Amy example must compile:\n${compile.stdout || ""}${compile.stderr || ""}`);
+  assert.ok(existsSync(romPath), "home-page Amy example did not produce a ROM");
+} finally {
+  rmSync(previewTemp, { recursive: true, force: true });
 }
 for (const repository of [
   "AmysCVAssembly",
