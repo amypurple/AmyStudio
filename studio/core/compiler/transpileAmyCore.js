@@ -1950,8 +1950,8 @@ export function transpileAmyCore(sourceText, deps) {
             elementSize: byteCount
           };
         } else if (isSupportedSourceTypeName(declaredTypeToken)) {
-          if (!["u8", "i8", "u16", "i16", "u32", "i32", "fix8_8", "ufix8_8", "boolean", "bool"].includes(declaredType)) {
-            return `Record fields currently support u8, i8, u16, i16, u32, i32, fixed, ufixed, bool, and previously defined record types: ${fieldRaw}`;
+          if (!["u8", "i8", "u16", "i16", "u32", "i32", "fix8_8", "ufix8_8", "fix16_16", "boolean", "bool"].includes(declaredType)) {
+            return `Record fields currently support u8, i8, u16, i16, u32, i32, fixed, ufixed, fixed32, bool, and previously defined record types: ${fieldRaw}`;
           }
           const runtimeType = normalizeRuntimeType(declaredType);
           const elementSize = runtimeTypeSize(runtimeType);

@@ -349,6 +349,20 @@ export function createRuntimeValueHelpers({
     const recordField = parseRecordFieldRef(name);
     if (recordField) {
       if (recordField.fieldInfo.size !== bytes.length) return null;
+      if (bytes.length === 4) {
+        const loadAddress = emitLoadRecordFieldAddressIntoHL(name);
+        if (!loadAddress) return null;
+        return [
+          ...loadAddress,
+          `    ld (hl),${formatHex8(bytes[0])}`,
+          "    inc hl",
+          `    ld (hl),${formatHex8(bytes[1])}`,
+          "    inc hl",
+          `    ld (hl),${formatHex8(bytes[2])}`,
+          "    inc hl",
+          `    ld (hl),${formatHex8(bytes[3])}`
+        ];
+      }
       if (bytes.length === 2) {
         const wordValue = ((bytes[1] & 0xFF) << 8) | (bytes[0] & 0xFF);
         const storeTarget = emitStoreInt16FromHL(name);

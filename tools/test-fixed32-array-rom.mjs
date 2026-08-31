@@ -34,6 +34,15 @@ try {
   const source = join(temp, "fixed32-array.alexis");
   await writeFile(source, `project "FIXED32 ARRAY ROM"
 memory "colecovision_legacy_sdcc"
+record Motion:
+  fixed32 X
+  fixed32 Y
+end record
+Motion Actor
+overlay SharedMotion
+  Game as Motion
+  Menu as Motion
+end overlay
 u8 GuardBefore = 77
 fixed32 Result0 = 0.0
 fixed32 Result1 = 0.0
@@ -52,10 +61,16 @@ sub start:
   GlobalValues[Index] = -3.5
   GlobalValues[Index] *= 2.0
   GlobalValues[Index] /= 2.0
+  Actor.X = 1.75
+  Actor.X += 0.25
+  Actor.Y = Actor.X
+  SharedMotion.Game.X = -1.25
+  SharedMotion.Game.X -= 0.75
+  SharedMotion.Game.Y = SharedMotion.Game.X
   Result0 = Values[0]
   Result1 = Values[1]
   Result2 = Values[2]
-  if Values[0] = 1.5 and Values[1] = -2.25 and Values[2] = 2.0 and GlobalValues[0] = 1.25 and GlobalValues[Index] = -3.5 then
+  if Values[0] = 1.5 and Values[1] = -2.25 and Values[2] = 2.0 and GlobalValues[0] = 1.25 and GlobalValues[Index] = -3.5 and Actor.X = 2.0 and Actor.Y = 2.0 and SharedMotion.Game.X = -2.0 and SharedMotion.Menu.Y = -2.0 then
     Passed = 1
   end if
   loop forever
@@ -78,6 +93,7 @@ end sub
       assert.deepEqual([...core.readRam(addressOf(asm, "Result1"), 4)], [0x00, 0xC0, 0xFD, 0xFF], `${profile}: -2.25`);
       assert.deepEqual([...core.readRam(addressOf(asm, "Result2"), 4)], [0x00, 0x00, 0x02, 0x00], `${profile}: 2.0`);
       assert.deepEqual([...core.readRam(addressOf(asm, "GlobalValues"), 8)], [0x00, 0x40, 0x01, 0x00, 0x00, 0x80, 0xFC, 0xFF], `${profile}: global array`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "Actor"), 8)], [0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00], `${profile}: record fields`);
       assert.equal(core.readRam(addressOf(asm, "Passed"), 1)[0], 1, `${profile}: comparisons`);
     } finally {
       core.destroy();
