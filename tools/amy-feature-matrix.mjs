@@ -11,6 +11,8 @@ const onlyIndex = process.argv.indexOf("--only");
 const onlyFiles = onlyIndex >= 0
   ? new Set(String(process.argv[onlyIndex + 1] || "").split(",").map((file) => file.trim()).filter(Boolean))
   : null;
+const suiteIndex = process.argv.indexOf("--suite");
+const suite = suiteIndex >= 0 ? String(process.argv[suiteIndex + 1] || "").trim().toLowerCase() : null;
 const biosPath = process.env.AMY_COLECO_BIOS || resolve(root, "studio", "bios", "colecovision.rom");
 const hasBios = existsSync(biosPath);
 const tests = [
@@ -125,7 +127,19 @@ const tests = [
   { file: "test-amy-math-demo-rom.mjs", area: "math-demo-runtime", evidence: "rom" },
   { file: "test-meteor-dodge-rom.mjs", area: "representative-game-runtime", evidence: "rom" },
   { file: "test-sort-examples-rom.mjs", area: "sorting-runtime", evidence: "rom" },
-  { file: "test-internal-compiler-single-pass.mjs", area: "single-pass-studio-compile", evidence: "compile+assemble" }
+  { file: "test-internal-compiler-single-pass.mjs", area: "single-pass-studio-compile", evidence: "compile+assemble" },
+  { file: "test-project-file-import.mjs", area: "project-import", evidence: "unit", suite: "studio" },
+  { file: "test-project-file-text-editor.mjs", area: "project-file-editor", evidence: "unit", suite: "studio" },
+  { file: "test-project-tabs.mjs", area: "project-tabs", evidence: "unit", suite: "studio" },
+  { file: "test-rom-debugger-model.mjs", area: "debugger-model", evidence: "unit", suite: "studio" },
+  { file: "test-rom-recorder-breakpoint.mjs", area: "debugger-breakpoints", evidence: "unit", suite: "studio" },
+  { file: "test-rom-test-audio-sink.mjs", area: "debugger-audio", evidence: "unit", suite: "studio" },
+  { file: "test-rom-test-case.mjs", area: "debugger-test-cases", evidence: "unit", suite: "studio" },
+  { file: "test-rom-test-case-replay.mjs", area: "debugger-replay", evidence: "unit", suite: "studio" },
+  { file: "test-rom-test-recorder.mjs", area: "debugger-recorder", evidence: "unit", suite: "studio" },
+  { file: "test-routine-cycle-profiler.mjs", area: "debugger-cycle-profiler", evidence: "unit", suite: "studio" },
+  { file: "test-source-breakpoints.mjs", area: "source-breakpoints", evidence: "unit", suite: "studio" },
+  { file: "test-source-debug-map.mjs", area: "source-debug-map", evidence: "unit", suite: "studio" }
 ];
 
 const testNames = tests.map((test) => test.file);
@@ -137,7 +151,12 @@ if (duplicateTests.length || missingTests.length) {
   process.exit(2);
 }
 
-const selectedStart = fromFile ? tests.findIndex((test) => test.file === fromFile) : 0;
+if (suite && !["language", "studio"].includes(suite)) {
+  console.error(`Unknown matrix suite: ${suite}`);
+  process.exit(2);
+}
+const suiteTests = suite ? tests.filter((test) => (test.suite || "language") === suite) : tests;
+const selectedStart = fromFile ? suiteTests.findIndex((test) => test.file === fromFile) : 0;
 if (fromFile && selectedStart < 0) {
   console.error(`Unknown matrix test for --from: ${fromFile}`);
   process.exit(2);
@@ -151,13 +170,14 @@ if (onlyFiles) {
     console.error("--only requires one or more comma-separated test filenames.");
     process.exit(2);
   }
-  const unknownFiles = [...onlyFiles].filter((file) => !testNames.includes(file));
+  const suiteTestNames = suiteTests.map((test) => test.file);
+  const unknownFiles = [...onlyFiles].filter((file) => !suiteTestNames.includes(file));
   if (unknownFiles.length) {
     console.error(`Unknown matrix test(s) for --only: ${unknownFiles.join(", ")}`);
     process.exit(2);
   }
 }
-const selectedTests = onlyFiles ? tests.filter((test) => onlyFiles.has(test.file)) : tests.slice(selectedStart);
+const selectedTests = onlyFiles ? suiteTests.filter((test) => onlyFiles.has(test.file)) : suiteTests.slice(selectedStart);
 
 const results = [];
 const biosTests = new Set(selectedTests.filter((test) => test.evidence === "rom").map((test) => test.file));
@@ -200,4 +220,4 @@ if (full) {
 }
 
 const elapsedMs = results.reduce((sum, item) => sum + item.elapsedMs, 0);
-console.log(JSON.stringify({ passed: true, full, from: fromFile, only: onlyFiles ? [...onlyFiles] : null, elapsedMs, results }, null, 2));
+console.log(JSON.stringify({ passed: true, suite, full, from: fromFile, only: onlyFiles ? [...onlyFiles] : null, elapsedMs, results }, null, 2));
