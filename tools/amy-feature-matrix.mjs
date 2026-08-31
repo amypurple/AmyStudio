@@ -161,7 +161,9 @@ const tests = [
   { file: "test-gearcoleco-web-audio.mjs", area: "gearcoleco-web-audio", evidence: "unit", suite: "emulator", requires: ["studio/bios/colecovision.rom", "build/rom-tests/commando-tiny-music-box.rom"] },
   { file: "test-gearcoleco-web-rewind.mjs", area: "gearcoleco-web-rewind", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"], requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"] },
   { file: "test-gearcoleco-web-desktop-parity.mjs", area: "gearcoleco-parity", evidence: "unit", suite: "emulator", requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "build/rom-tests/warrior-dan2-fire-visual-test.sym", "tools/rom-baselines/warrior-dan2-fire-prompt.json"] },
-  { file: "test-rom-gearcoleco.mjs", area: "gearcoleco-rom-runner", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "--frames", "1"], requires: ["build/rom-tests/warrior-dan2-fire-visual-test.rom", process.env.GEARCOLECO_EXE || resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe")] }
+  { file: "test-rom-gearcoleco.mjs", area: "gearcoleco-rom-runner", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "--frames", "1"], requires: ["build/rom-tests/warrior-dan2-fire-visual-test.rom", process.env.GEARCOLECO_EXE || resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe")] },
+  { file: "test-nibble-codec.mjs", area: "nibble-codec", evidence: "unit", suite: "codecs" },
+  { file: "test-warrior-codecs.mjs", area: "warrior-codec-corpus", evidence: "unit", suite: "codecs" }
 ];
 
 const testNames = tests.map((test) => test.file);
@@ -173,7 +175,7 @@ if (duplicateTests.length || missingTests.length) {
   process.exit(2);
 }
 
-if (suite && !["language", "studio", "graphics", "emulator"].includes(suite)) {
+if (suite && !["language", "studio", "graphics", "emulator", "codecs"].includes(suite)) {
   console.error(`Unknown matrix suite: ${suite}`);
   process.exit(2);
 }
