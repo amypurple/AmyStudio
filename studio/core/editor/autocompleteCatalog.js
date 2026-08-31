@@ -100,6 +100,8 @@ const AMY_AUTOCOMPLETE_V21_ADDITIONS = [
   ["for I = 10 to 0 step -2", "Count downward by two with the preferred negative-step form"],
   ["fixed32 Camera32 = 1.5", "Declare a signed 16.16 fixed-point value with a decimal literal"],
   ["fixed32 Velocity32 = -0.125", "Declare a signed 16.16 fixed-point value with a negative decimal literal"],
+  ["fixed32 Path[8] = 0.0", "Declare a global or routine-local array of signed 16.16 fixed-point values"],
+  ["Path[Index] += 0.25", "Update one fixed32 array element using a constant or runtime index"],
   ["Camera32 += Velocity32", "Add one fixed32 value into another"],
   ["Camera32 -= 0.25", "Subtract a fixed32 decimal literal"]
 ];

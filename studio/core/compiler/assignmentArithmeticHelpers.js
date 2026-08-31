@@ -1156,19 +1156,20 @@ export function createAssignmentArithmeticHelpers({
       return null;
     }
     if (targetType === "u32" || targetType === "i32") {
+      const isFixed32Target = targetDeclaredType === "fix16_16";
       if ((opToken === "+=" || opToken === "-=") && isZero) return [];
-      if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "+=" && isOne) return emitU32Inc(target);
-      if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=" && isOne) return [];
-      if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=" && isZero) return emitRuntimeStore(target, "0");
-      if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=" && isOne) return [];
-      if (opToken === "+=") return emitArith32Op(target, valueToken, "add");
-      if (opToken === "-=") return emitArith32Op(target, valueToken, "sub");
+      if (!isFixed32Target && opToken === "+=" && isOne) return emitU32Inc(target);
+      if (isFixed32Target && opToken === "*=" && isOne) return [];
+      if (isFixed32Target && opToken === "*=" && isZero) return emitRuntimeStore(target, "0");
+      if (isFixed32Target && opToken === "/=" && isOne) return [];
+      if (opToken === "+=") return isFixed32Target ? emitFx16ArithOp(target, valueToken, "add") : emitArith32Op(target, valueToken, "add");
+      if (opToken === "-=") return isFixed32Target ? emitFx16ArithOp(target, valueToken, "sub") : emitArith32Op(target, valueToken, "sub");
       if (opToken === "<<=" || opToken === ">>=") return emitShift32(target, target, valueToken, opToken === "<<=" ? "left" : "right", targetType === "i32" && opToken === ">>=");
-      if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "*=") return emitArith32Op(target, valueToken, "mul");
-      if (getRuntimeInfo(target)?.kind !== "fix16_16" && opToken === "/=") return emitArith32Op(target, valueToken, "div");
-      if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "*=") return emitFx16MultiplyOp(target, valueToken);
-      if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "/=") return emitFx16DivideOp(target, valueToken);
-      if (getRuntimeInfo(target)?.kind === "fix16_16" && opToken === "^=") {
+      if (!isFixed32Target && opToken === "*=") return emitArith32Op(target, valueToken, "mul");
+      if (!isFixed32Target && opToken === "/=") return emitArith32Op(target, valueToken, "div");
+      if (isFixed32Target && opToken === "*=") return emitFx16MultiplyOp(target, valueToken);
+      if (isFixed32Target && opToken === "/=") return emitFx16DivideOp(target, valueToken);
+      if (isFixed32Target && opToken === "^=") {
         const exponent = constantNumeric ?? parseNumericLiteral(valueToken);
         if (exponent === 1) return [];
         if (exponent !== 2) return null;

@@ -3332,6 +3332,9 @@ constants; all forms generate the same flattened RAM layout and ASM. The total
 element count must be 1 through 255. Constant out-of-range indexes are
 rejected; variable indexes have no implicit bounds check. Primitive arrays may
 be global or local to a sub/function; local storage remains stack-relative.
+This includes `fixed32` arrays: decimal initialization, indexed assignment,
+comparison, addition, subtraction, multiplication, and division preserve signed
+16.16 semantics for constant or runtime indexes.
 Multidimensional record fields and overlays fail closed rather than using an
 ambiguous layout.
 
@@ -3403,6 +3406,7 @@ ambiguous layout.
 | Arcade score (BCD) | `bcd digits 8 Score8` / `Score8 += 100` / `print at X,Y, Score8` |
 | 32-bit counter | `u32 Counter32` / `inc Counter32` / `print Counter32 at X,Y` |
 | Fixed-point value | `fixed Speed = 0.0` / `ufixed ScreenX = 40.75` |
+| Fixed-point table | `fixed32 Path[8] = 0.0` / `Path[Index] += 0.25` |
 | Random value | `Die = random(1, 6)` / `Noise = random()` / `Fp5Value = random(10, 20)` |
 | ROM lookup table | `data Name bytes ...` / `restore Name` / `read Var` |
 | Fill `u8` array | `fill array Arr with 0` |

@@ -565,7 +565,38 @@ export function handleDeclarationStatement({
       }
       if (declaredType === "fix16_16") {
         if (lengthToken) {
-          return { handled: true, ok: false, log: `fixed32 arrays are not supported: ${rawLine}` };
+          const length = resolveArrayLength(lengthToken);
+          if (!Number.isInteger(length) || length < 1) {
+            return { handled: true, ok: false, log: `fixed32 array length must be a constant integer >= 1: ${rawLine}` };
+          }
+          let address;
+          try {
+            address = reserveRam(name, 4 * length, rawLine.trim());
+          } catch (error) {
+            return { handled: true, ok: false, log: String(error.message || error) };
+          }
+          const asmName = ensureUserVarAsmSymbol(name);
+          state.runtimeVars.set(name, { kind: "array", type: "i32", declaredType: "fix16_16", elementType: "i32", address, length, scope: "global", asmName });
+          state.runtimeDeclarations.push(`${asmName} EQU ${formatHex16(address)}`);
+          state.hasRuntimeRamDeclarations = true;
+          if (!isCompileTimeZeroInitializer(declaredType, initial)) {
+            const numeric = typeof tryEvaluateCompileTimeNumericExpression === "function"
+              ? tryEvaluateCompileTimeNumericExpression(initial)
+              : null;
+            if (numeric !== null) {
+              const bytes = encodeScaledSignedBytes(numeric, 65536, 4);
+              if (!bytes) return { handled: true, ok: false, log: `Invalid fixed32 array initializer for ${name}: ${initial}` };
+              queueImmediateRuntimeInit(address, Array.from({ length }, () => bytes).flat());
+            } else {
+              for (let index = 0; index < length; index += 1) {
+                const initCode = emitRuntimeStore(`${name}[${index}]`, initial);
+                if (!initCode) return { handled: true, ok: false, log: `Invalid fixed32 array initializer for ${name}: ${initial}` };
+                state.runtimeInit.push(...initCode);
+              }
+              state.hasRuntimeInit = true;
+            }
+          }
+          continue;
         }
         let address;
         try {

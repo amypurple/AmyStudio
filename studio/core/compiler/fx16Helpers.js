@@ -27,8 +27,12 @@ export function createFx16Helpers({
 
   function getFx16Info(name) {
     const info = getRuntimeInfo(name);
-    if (!info) return null;
-    if (info.kind === "fix16_16") return info;
+    if (info?.kind === "fix16_16") return info;
+    const arrayRef = parseArrayRef?.(name);
+    const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+    if (arrayInfo?.kind === "array" && normalizeDeclaredType(arrayInfo.declaredType) === "fix16_16") {
+      return { ...arrayInfo, kind: "fix16_16", storage: "fix16_16_array_element", arrayName: arrayRef.name, indexToken: arrayRef.index };
+    }
     return null;
   }
 
@@ -67,6 +71,7 @@ export function createFx16Helpers({
   //   - int16 variables promoted to integer part (sign-extended)
   function emitStoreFx16Source(valueToken, baseLabel) {
     if (getFp5Info(valueToken)) return emitStoreFp5SourceAsFx16(valueToken, baseLabel);
+    if (getFx16Info(valueToken)) return emitStoreExtended32(valueToken, baseLabel);
     const valueInfo = getRuntimeInfo(valueToken);
     if (valueInfo) {
       if (valueInfo.kind === "fix16_16") {
