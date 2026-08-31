@@ -746,7 +746,7 @@ Local-frame contract for inline ASM:
 const TileBase = $00
 ```
 
-`const` is the only compile-time constant keyword. `let` and `var` were removed.
+`const` declares a compile-time constant.
 
 ---
 
@@ -3436,7 +3436,6 @@ These are hard errors. Use the canonical form:
 | `ram u8 Pad1` / `dim u16 Score` / `local u8 X` | `u8 Pad1` / `u16 Score` / `u8 X` |
 | `boolean Ready = false` | `bool Ready = false` |
 | `bcd 2 Score` | `bcd digits 4 Score` |
-| `let Speed = 3` / `var Offset = $10` | `const Speed = 3` / `const Offset = $10` |
 | `struct Name:` | `record Name:` |
 
 ### Removed procedure and alias forms

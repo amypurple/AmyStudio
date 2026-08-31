@@ -91,6 +91,7 @@ export const SHIFT_DEPRECATIONS = [
 export const DECLARATION_DEPRECATIONS = [
   // let/var Name = Expr  →  const Name = Expr
   {
+    document: false,
     pattern: /^(let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/i,
     rewriteTemplate: "const $2 = $3",
     rewrite: (m) => `const ${m[2]} = ${m[3]}`,
