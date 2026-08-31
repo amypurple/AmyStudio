@@ -4,6 +4,7 @@
   runtime tests, self-tests, corpus size audits, emulation QA, documentation, and release gates.
 - Added concise `for each Element in Array` syntax when the index is unused, while
   retaining the explicit `for each Element, Index in Array` form when needed.
+- Added `select case (X, Y)` tuple matching with exact values and per-component ranges.
 - Added a public Amy Studio home page, styled documentation reader, ColecoVision
   toolchain comparison dashboard, and verified links to Amy's ColecoVision repositories.
 - Accepted record and overlay-qualified `u8` array buffers as destinations for

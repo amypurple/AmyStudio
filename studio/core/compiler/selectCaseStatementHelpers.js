@@ -16,11 +16,17 @@ export function handleSelectCaseStatement({
 
   const selectCaseDecl = line.match(/^select\s+case\s+(.+)$/i);
   if (selectCaseDecl) {
-    const exprToken = normalizeExpression(selectCaseDecl[1]);
+    const rawExpression = selectCaseDecl[1].trim();
+    const tupleTokens = rawExpression.startsWith("(") && rawExpression.endsWith(")")
+      ? splitTopLevelArgs(rawExpression.slice(1, -1)).map((token) => normalizeExpression(token.trim())).filter(Boolean)
+      : [];
+    const exprTokens = tupleTokens.length > 1 ? tupleTokens : null;
+    const exprToken = exprTokens ? null : normalizeExpression(rawExpression);
     const dispatchLabel = makeGeneratedLabel("SelectDispatch");
     const endLabel = makeGeneratedLabel("SelectEnd");
     selectStack.push({
       exprToken,
+      exprTokens,
       nextTestLabel: dispatchLabel,
       endLabel,
       hasCase: false,
@@ -50,6 +56,42 @@ export function handleSelectCaseStatement({
     const currentSelect = selectStack[selectStack.length - 1];
     if (!currentSelect) return { ok: false, handled: true, log: `case without matching select case: ${rawLine}` };
     if (currentSelect.hasDefault) return { ok: false, handled: true, log: `case cannot appear after default branch: ${rawLine}` };
+    if (currentSelect.exprTokens) {
+      const rawTuple = caseDecl[1].trim();
+      if (!rawTuple.startsWith("(") || !rawTuple.endsWith(")")) {
+        return { ok: false, handled: true, log: `Tuple select requires case (Value1, Value2, ...): ${rawLine}` };
+      }
+      const tupleValues = splitTopLevelArgs(rawTuple.slice(1, -1)).map((token) => normalizeExpression(token.trim())).filter(Boolean);
+      if (tupleValues.length !== currentSelect.exprTokens.length) {
+        return { ok: false, handled: true, log: `Tuple case has ${tupleValues.length} values but select has ${currentSelect.exprTokens.length}: ${rawLine}` };
+      }
+      const lines = [];
+      if (currentSelect.activeBody) lines.push(`    jp ${currentSelect.endLabel}`);
+      lines.push(`${currentSelect.nextTestLabel}:`);
+      const nextTestLabel = makeGeneratedLabel("CaseNext");
+      for (let index = 0; index < tupleValues.length; index += 1) {
+        const valueToken = tupleValues[index];
+        const rangeMatch = valueToken.match(/^(.+?)\s+to\s+(.+)$/i);
+        if (rangeMatch) {
+          const lowToken = normalizeExpression(rangeMatch[1]);
+          const highToken = normalizeExpression(rangeMatch[2]);
+          const lowFailCode = emitCompareGoto(currentSelect.exprTokens[index], "<", lowToken, nextTestLabel);
+          const highFailCode = emitCompareGoto(currentSelect.exprTokens[index], ">", highToken, nextTestLabel);
+          if (!lowToken || !highToken || !lowFailCode || !highFailCode) {
+            return { ok: false, handled: true, log: `Unsupported tuple case range: ${rawLine}` };
+          }
+          lines.push(...lowFailCode, ...highFailCode);
+        } else {
+          const mismatchCode = emitCompareGoto(currentSelect.exprTokens[index], "!=", valueToken, nextTestLabel);
+          if (!mismatchCode) return { ok: false, handled: true, log: `Unsupported tuple case value: ${rawLine}` };
+          lines.push(...mismatchCode);
+        }
+      }
+      currentSelect.nextTestLabel = nextTestLabel;
+      currentSelect.hasCase = true;
+      currentSelect.activeBody = true;
+      return { ok: true, handled: true, lines };
+    }
     const rawValueTokens = splitTopLevelArgs(caseDecl[1]).map((token) => normalizeExpression(token.trim())).filter(Boolean);
     const valueTokens = [];
     for (const token of rawValueTokens) {

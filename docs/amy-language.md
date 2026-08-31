@@ -1163,6 +1163,25 @@ Function calls are valid as the case expression: `select case AddTwo(1,2)`.
 `case` values may be numeric literals, constants, ranges, or a declared
 `tile type`; a tile type expands to all tile values in that group.
 
+Select several related values as a tuple when that avoids repeated `if X = ... and Y = ...`
+conditions. Parentheses are required so tuple matching remains distinct from the scalar
+`case 1, 2` form, which means "1 or 2":
+
+```basic
+select case (PlayerX, PlayerY)
+case (4, 2)
+  FoundExactTile
+case (5 to 7, 3)
+  FoundRowRange
+case else
+  KeepSearching
+end select
+```
+
+Tuple cases must have the same number of components as the `select`. Each component accepts
+a value or an inclusive `Low to High` range. Comparisons short-circuit to the next case and
+reserve no hidden RAM.
+
 The block closes with `end select`. `endselect`, `default`, and `case default`
 were removed; use `end select` and `case else`.
 
@@ -3088,6 +3107,7 @@ Current expression engine notes:
 | `else` | Default branch |
 | `if cond then stmt` | One-line guard |
 | `select case Expr` ... `end select` | Multi-way branch |
+| `select case (Expr1, Expr2)` ... `case (Value1, Value2)` | Multi-value branch with exact values or ranges |
 | `case N` / `case N to M` / `case else` | Case arms |
 | `for I = start to end` ... `next` | Counted loop |
 | `for I = start downto end` | Descending counted loop |
