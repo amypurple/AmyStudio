@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const full = process.argv.includes("--full");
+const fromIndex = process.argv.indexOf("--from");
+const fromFile = fromIndex >= 0 ? process.argv[fromIndex + 1] : null;
 const biosPath = process.env.AMY_COLECO_BIOS || resolve(root, "studio", "bios", "colecovision.rom");
 const hasBios = existsSync(biosPath);
 const tests = [
@@ -12,6 +14,7 @@ const tests = [
   { file: "test-start-runtime-init-codegen.mjs", area: "initializers", evidence: "compile+assemble" },
   { file: "test-runtime-catalog-dependencies.mjs", area: "runtime-linking", evidence: "compile+assemble" },
   { file: "test-set-sprite-codegen.mjs", area: "sprites", evidence: "compile+assemble" },
+  { file: "test-sprite-flicker-codegen.mjs", area: "sprite-flicker", evidence: "rom" },
   { file: "test-word-table-codegen.mjs", area: "word-tables", evidence: "compile+assemble" },
   { file: "test-int16-byte-widening-codegen.mjs", area: "integer-widening", evidence: "compile+assemble" },
   { file: "test-array-bulk-codegen.mjs", area: "bulk-arrays", evidence: "compile+assemble" },
@@ -33,12 +36,19 @@ const tests = [
   { file: "test-put-implicit-qualified-rom.mjs", area: "qualified-inferred-row-write", evidence: "rom" },
   { file: "test-choose-qualified-rom.mjs", area: "qualified-menu-choice", evidence: "rom" },
   { file: "test-controller-ram-safety.mjs", area: "controller-ram-layout", evidence: "compile+assemble" },
+  { file: "test-controller-backend-selection-rom.mjs", area: "controller-backend-selection", evidence: "rom" },
+  { file: "test-joypad-pressed-rom.mjs", area: "controller-edge-input", evidence: "rom" },
   { file: "test-overlay-layout-rom.mjs", area: "overlay-qualified-runtime", evidence: "rom" },
   { file: "test-amy-timer-rom.mjs", area: "named-timers", evidence: "rom" },
   { file: "test-amy-timer-safety-rom.mjs", area: "timer-safety", evidence: "rom" },
   { file: "test-pause-until-press-rom.mjs", area: "crt-safe-pause", evidence: "rom" },
   { file: "test-scene-lifecycle-rom.mjs", area: "scene-lifecycle", evidence: "rom" },
   { file: "test-scene-poison-rom.mjs", area: "scene-poison", evidence: "rom" },
+  { file: "test-state-machine-codegen.mjs", area: "state-machines", evidence: "compile+assemble" },
+  { file: "test-static-abi-asm-entry-rom.mjs", area: "static-abi-asm-entry", evidence: "rom" },
+  { file: "test-nmi-prologue-codegen.mjs", area: "nmi-prologue", evidence: "compile+assemble" },
+  { file: "test-screen-nmi-codegen.mjs", area: "screen-nmi-state", evidence: "compile+assemble" },
+  { file: "test-compile-time-conditionals.mjs", area: "conditional-compilation", evidence: "compile+assemble" },
   { file: "test-record-array-rom.mjs", area: "record-arrays", evidence: "rom" },
   { file: "test-local-record-rom.mjs", area: "local-records", evidence: "rom" },
   { file: "test-sprite-field-index-rom.mjs", area: "sprite-field-indexes", evidence: "rom" },
@@ -64,28 +74,39 @@ const tests = [
   { file: "test-spinner-rom.mjs", area: "spinner-input", evidence: "rom" }
 ];
 
-const results = [];
-const biosTests = new Set(tests.filter((test) => test.evidence === "rom").map((test) => test.file));
+const selectedStart = fromFile ? tests.findIndex((test) => test.file === fromFile) : 0;
+if (fromFile && selectedStart < 0) {
+  console.error(`Unknown matrix test for --from: ${fromFile}`);
+  process.exit(2);
+}
+const selectedTests = tests.slice(selectedStart);
 
-for (const test of tests) {
+const results = [];
+const biosTests = new Set(selectedTests.filter((test) => test.evidence === "rom").map((test) => test.file));
+
+for (const test of selectedTests) {
   const { file, area, evidence } = test;
   if (biosTests.has(file) && !hasBios) {
     results.push({ test: file, area, evidence, passed: true, skipped: true, elapsedMs: 0, reason: "Set AMY_COLECO_BIOS to run BIOS-backed ROM assertions." });
     console.log(`SKIP ${file}: ColecoVision BIOS not configured (set AMY_COLECO_BIOS).`);
     continue;
   }
+  console.log(`RUN  ${file}`);
   const started = Date.now();
   const result = spawnSync(process.execPath, [resolve(root, "tools", file)], {
     cwd: root,
-    encoding: "utf8"
+    encoding: "utf8",
+    timeout: 120_000
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
   results.push({ test: file, area, evidence, passed: result.status === 0, elapsedMs: Date.now() - started });
   if (output) process.stdout.write(`${output}\n`);
   if (result.status !== 0) {
+    if (result.error?.code === "ETIMEDOUT") process.stderr.write(`${file} exceeded the 120 second test limit.\n`);
     process.stderr.write(`Amy feature matrix stopped at ${file}.\n`);
     process.exit(result.status ?? 1);
   }
+  console.log(`PASS ${file} (${Date.now() - started} ms)`);
 }
 
 if (full) {
@@ -101,4 +122,4 @@ if (full) {
 }
 
 const elapsedMs = results.reduce((sum, item) => sum + item.elapsedMs, 0);
-console.log(JSON.stringify({ passed: true, full, elapsedMs, results }, null, 2));
+console.log(JSON.stringify({ passed: true, full, from: fromFile, elapsedMs, results }, null, 2));
