@@ -315,12 +315,11 @@ export function createRuntimeValueHelpers({
   }
 
   function emitStoreImmediateBytes(name, bytes) {
-    const arrayRef = parseArrayRef(name);
-    if (arrayRef) {
-      const info = getRuntimeInfo(arrayRef.name);
-      if (!info || info.kind !== "array" || runtimeTypeSize(info.elementType) !== bytes.length) return null;
+    const recordField = parseRecordFieldRef(name);
+    if (recordField) {
+      if (recordField.fieldInfo.size !== bytes.length) return null;
       if (bytes.length === 4) {
-        const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+        const loadAddress = emitLoadRecordFieldAddressIntoHL(name);
         if (!loadAddress) return null;
         return [
           ...loadAddress,
@@ -346,11 +345,12 @@ export function createRuntimeValueHelpers({
       }
       return null;
     }
-    const recordField = parseRecordFieldRef(name);
-    if (recordField) {
-      if (recordField.fieldInfo.size !== bytes.length) return null;
+    const arrayRef = parseArrayRef(name);
+    if (arrayRef) {
+      const info = getRuntimeInfo(arrayRef.name);
+      if (!info || info.kind !== "array" || runtimeTypeSize(info.elementType) !== bytes.length) return null;
       if (bytes.length === 4) {
-        const loadAddress = emitLoadRecordFieldAddressIntoHL(name);
+        const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
         if (!loadAddress) return null;
         return [
           ...loadAddress,

@@ -294,7 +294,7 @@ Current implemented record scope:
 - zero-initialized arrays of records inside a sub or function
 - field access such as `PieceVar.X` and `Pieces[I].Tile`
 - nested record fields such as `PieceVar.Pos.X` and `Pieces[I].Pos.Y`
-- fixed scalar array fields such as `PieceVar.HistoryX[I]` and `Pieces[P].Bonuses[2]`
+- fixed scalar array fields, including `fixed32`, such as `PieceVar.HistoryX[I]` and `Pieces[P].Bonuses[2]`
 - scalar `fixed32` fields with the same assignment, comparison, and arithmetic semantics as standalone values
 - packed scalar BCD fields such as `bcd digits 6 Score`
 

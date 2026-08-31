@@ -37,8 +37,10 @@ memory "colecovision_legacy_sdcc"
 record Motion:
   fixed32 X
   fixed32 Y
+  fixed32 Samples[2]
 end record
 Motion Actor
+Motion Actors[2]
 overlay SharedMotion
   Game as Motion
   Menu as Motion
@@ -54,6 +56,7 @@ u8 GuardAfter = 88
 
 sub start:
   fixed32 Values[3] = 0.0
+  Motion LocalActor = 0
   Values[0] = 1.5
   Values[1] = -2.25
   Values[2] = Values[0]
@@ -64,13 +67,21 @@ sub start:
   Actor.X = 1.75
   Actor.X += 0.25
   Actor.Y = Actor.X
+  Actor.Samples[Index] = 3.25
+  Actor.Samples[Index] -= 0.25
+  Actors[1].Samples[0] = -4.25
+  Actors[1].Samples[0] += 0.25
+  LocalActor.Samples[Index] = 5.5
+  LocalActor.Samples[Index] *= 2.0
   SharedMotion.Game.X = -1.25
   SharedMotion.Game.X -= 0.75
   SharedMotion.Game.Y = SharedMotion.Game.X
+  SharedMotion.Game.Samples[0] = 4.5
+  SharedMotion.Game.Samples[0] /= 1.5
   Result0 = Values[0]
   Result1 = Values[1]
   Result2 = Values[2]
-  if Values[0] = 1.5 and Values[1] = -2.25 and Values[2] = 2.0 and GlobalValues[0] = 1.25 and GlobalValues[Index] = -3.5 and Actor.X = 2.0 and Actor.Y = 2.0 and SharedMotion.Game.X = -2.0 and SharedMotion.Menu.Y = -2.0 then
+  if Values[0] = 1.5 and Values[1] = -2.25 and Values[2] = 2.0 and GlobalValues[0] = 1.25 and GlobalValues[Index] = -3.5 and Actor.X = 2.0 and Actor.Y = 2.0 and Actor.Samples[Index] = 3.0 and Actors[1].Samples[0] = -4.0 and LocalActor.Samples[Index] = 11.0 and SharedMotion.Game.X = -2.0 and SharedMotion.Menu.Y = -2.0 and SharedMotion.Menu.Samples[0] = 3.0 then
     Passed = 1
   end if
   loop forever
@@ -93,7 +104,7 @@ end sub
       assert.deepEqual([...core.readRam(addressOf(asm, "Result1"), 4)], [0x00, 0xC0, 0xFD, 0xFF], `${profile}: -2.25`);
       assert.deepEqual([...core.readRam(addressOf(asm, "Result2"), 4)], [0x00, 0x00, 0x02, 0x00], `${profile}: 2.0`);
       assert.deepEqual([...core.readRam(addressOf(asm, "GlobalValues"), 8)], [0x00, 0x40, 0x01, 0x00, 0x00, 0x80, 0xFC, 0xFF], `${profile}: global array`);
-      assert.deepEqual([...core.readRam(addressOf(asm, "Actor"), 8)], [0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00], `${profile}: record fields`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "Actor"), 16)], [0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0, 0, 0, 0, 0x00, 0x00, 0x03, 0x00], `${profile}: record fields`);
       assert.equal(core.readRam(addressOf(asm, "Passed"), 1)[0], 1, `${profile}: comparisons`);
     } finally {
       core.destroy();
