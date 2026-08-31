@@ -139,7 +139,16 @@ const tests = [
   { file: "test-rom-test-recorder.mjs", area: "debugger-recorder", evidence: "unit", suite: "studio" },
   { file: "test-routine-cycle-profiler.mjs", area: "debugger-cycle-profiler", evidence: "unit", suite: "studio" },
   { file: "test-source-breakpoints.mjs", area: "source-breakpoints", evidence: "unit", suite: "studio" },
-  { file: "test-source-debug-map.mjs", area: "source-debug-map", evidence: "unit", suite: "studio" }
+  { file: "test-source-debug-map.mjs", area: "source-debug-map", evidence: "unit", suite: "studio" },
+  { file: "test-graphics-asset-access.mjs", area: "graphics-assets", evidence: "unit", suite: "graphics" },
+  { file: "test-graphics-entry-ops.mjs", area: "graphics-entry-operations", evidence: "unit", suite: "graphics" },
+  { file: "test-graphics-impact.mjs", area: "graphics-impact-analysis", evidence: "unit", suite: "graphics" },
+  { file: "test-graphics-metadata.mjs", area: "graphics-metadata", evidence: "unit", suite: "graphics" },
+  { file: "test-graphics-preview-filters.mjs", area: "graphics-preview", evidence: "unit", suite: "graphics" },
+  { file: "test-graphics-tilemap-selection.mjs", area: "graphics-tilemap-selection", evidence: "unit", suite: "graphics" },
+  { file: "test-graphics-tms9918.mjs", area: "graphics-tms9918-rules", evidence: "unit", suite: "graphics" },
+  { file: "test-picture-converter.mjs", area: "picture-converter", evidence: "unit", suite: "graphics" },
+  { file: "test-picture-preview-paths.mjs", area: "picture-preview-paths", evidence: "unit", suite: "graphics" }
 ];
 
 const testNames = tests.map((test) => test.file);
@@ -151,7 +160,7 @@ if (duplicateTests.length || missingTests.length) {
   process.exit(2);
 }
 
-if (suite && !["language", "studio"].includes(suite)) {
+if (suite && !["language", "studio", "graphics"].includes(suite)) {
   console.error(`Unknown matrix suite: ${suite}`);
   process.exit(2);
 }
