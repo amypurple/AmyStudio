@@ -267,6 +267,7 @@ export const AMY_AUTOCOMPLETE = [
   ["select case (X, Y)", "Select a tuple of related values"],
   ["case 1", "Branch body for one select case value"],
   ["case (1, 2)", "Branch body for one tuple combination"],
+  ["case (1, 2), (3, 4)", "Branch body shared by several tuple combinations"],
   ["case 1 to 3", "Branch body for an inclusive select case range"],
   ["case else", "Fallback branch for select case"],
   ["end select", "Close a select case block"],

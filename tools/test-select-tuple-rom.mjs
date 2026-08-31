@@ -13,6 +13,8 @@ const source = `project "SELECT TUPLE ROM"
 memory "colecovision_legacy_sdcc"
 u8 X = 2
 u8 Y = 5
+u8 A = 3
+u8 B = 4
 u8 Result = 0
 u8 Guard = 99
 sub start:
@@ -23,6 +25,12 @@ sub start:
       Result = 20
     case else
       Result = 30
+  end select
+  select case (A, B)
+    case (1, 1), (3, 4)
+      Result += 2
+    case else
+      Result = 50
   end select
   select case X
     case 1, 2
@@ -60,14 +68,14 @@ try {
       core.loadBios(bios);
       core.loadRom(readFileSync(built.romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 4; frame += 1) core.runFrame();
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Result"), 1)[0], 21, `${profile}: tuple or scalar select result`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Result"), 1)[0], 23, `${profile}: tuple or scalar select result`);
       assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Guard"), 1)[0], 99, `${profile}: RAM guard`);
     } finally {
       core.destroy();
     }
   }
   for (const [name, replacement, message] of [
-    ["missing-parens", "case 2, 5", /tuple select requires case/i],
+    ["missing-parens", "case 2, 5", /tuple.*require.*\(Value1, Value2/i],
     ["wrong-arity", "case (2)", /tuple case has 1 values but select has 2/i]
   ]) {
     const bad = compile(name, source.replace("case (2, 4 to 6)", replacement));

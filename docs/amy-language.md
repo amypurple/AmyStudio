@@ -1173,14 +1173,16 @@ case (4, 2)
   FoundExactTile
 case (5 to 7, 3)
   FoundRowRange
+case (8, 1), (8, 7)
+  FoundEitherExit
 case else
   KeepSearching
 end select
 ```
 
 Tuple cases must have the same number of components as the `select`. Each component accepts
-a value or an inclusive `Low to High` range. Comparisons short-circuit to the next case and
-reserve no hidden RAM.
+a value or an inclusive `Low to High` range. Separate parenthesized tuples with commas when
+several combinations share one body. Comparisons short-circuit and reserve no hidden RAM.
 
 The block closes with `end select`. `endselect`, `default`, and `case default`
 were removed; use `end select` and `case else`.
