@@ -369,7 +369,7 @@ function optimizeGeneratedMemoryLoads(lines) {
   const conditionalBranch = /^\s*(?:jr|jp)\s+[a-z]{1,2}\s*,/i;
   const hardBarrier = /^\s*(?:call|ret|reti|retn)\b/i;
   const hlClobber = /^\s*(?:ld\s+hl,|inc\s+hl|dec\s+hl|add\s+hl,|adc\s+hl,|sbc\s+hl,|pop\s+hl|ex\s+de\s*,\s*hl|ex\s+\(sp\)\s*,\s*hl)\b/i;
-  const aClobber = /^\s*(?:ld\s+a,|add\s+a,|adc\s+a,|sub\b|sbc\s+a,|and\b|or\b|xor\b|in\s+a,|pop\s+af|neg|cpl|rlca|rla|rrca|rra)\b/i;
+  const aClobber = /^\s*(?:ld\s+a\s*,|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|rlca\b|rla\b|rrca\b|rra\b)/i;
   const memoryAtHlMutation = /^\s*(?:inc|dec)\s+\(hl\)\s*$/i;
 
   function findKnownHlSymbolBefore(sourceLines, startIndex) {
@@ -1185,13 +1185,13 @@ export function finalizeAmyTranspile({
   // user-procedure inlining must stay off to preserve exported labels.
   const generatedBody = hasExternalAsmInclude ? preInlineBody : inlineSingleCallUserProcedures(preInlineBody);
   const reachableBody = removeUnreachableAfterTerminators(generatedBody);
+  // Run memory-load tracking once, after control-flow rewrites. Reapplying it
+  // to its own output can discard the load that originally invalidated A.
   const optimizedBody = optimizeGeneratedMemoryLoads(
     coalesceAdjacentVramUploadGuards(
       optimizeGeneratedControlFlow(
         optimizeGeneratedTailCalls(
-          optimizeGeneratedDecAndBranch(
-            optimizeGeneratedMemoryLoads(reachableBody)
-          )
+          optimizeGeneratedDecAndBranch(reachableBody)
         )
       )
     )

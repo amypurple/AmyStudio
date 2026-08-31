@@ -49,6 +49,9 @@ u8 GuardBefore = 77
 fixed32 Result0 = 0.0
 fixed32 Result1 = 0.0
 fixed32 Result2 = 0.0
+fixed32 ResultRecordRef = 0.0
+fixed32 ResultLocalRef = 0.0
+fixed32 ResultOverlay = 0.0
 fixed32 GlobalValues[2] = 1.25
 u8 Index = 1
 u8 Passed = 0
@@ -64,15 +67,19 @@ sub start:
   GlobalValues[Index] = -3.5
   GlobalValues[Index] *= 2.0
   GlobalValues[Index] /= 2.0
-  Actor.X = 1.75
-  Actor.X += 0.25
+  GlobalValues[0] = 2.25
+  GlobalValues[0] = sqrt(GlobalValues[0])
+  Actor.X = -2.0
+  Actor.X = abs(Actor.X)
   Actor.Y = Actor.X
   Actor.Samples[Index] = 3.25
   Actor.Samples[Index] -= 0.25
   Actors[1].Samples[0] = -4.25
   Actors[1].Samples[0] += 0.25
+  Adjust(Actors[1].Samples[0])
   LocalActor.Samples[Index] = 5.5
   LocalActor.Samples[Index] *= 2.0
+  Adjust(LocalActor.Samples[Index])
   SharedMotion.Game.X = -1.25
   SharedMotion.Game.X -= 0.75
   SharedMotion.Game.Y = SharedMotion.Game.X
@@ -81,10 +88,18 @@ sub start:
   Result0 = Values[0]
   Result1 = Values[1]
   Result2 = Values[2]
-  if Values[0] = 1.5 and Values[1] = -2.25 and Values[2] = 2.0 and GlobalValues[0] = 1.25 and GlobalValues[Index] = -3.5 and Actor.X = 2.0 and Actor.Y = 2.0 and Actor.Samples[Index] = 3.0 and Actors[1].Samples[0] = -4.0 and LocalActor.Samples[Index] = 11.0 and SharedMotion.Game.X = -2.0 and SharedMotion.Menu.Y = -2.0 and SharedMotion.Menu.Samples[0] = 3.0 then
+  ResultRecordRef = Actors[1].Samples[0]
+  ResultLocalRef = LocalActor.Samples[Index]
+  ResultOverlay = SharedMotion.Menu.Samples[0]
+  if Values[0] = 1.5 and Values[1] = -2.25 and Values[2] = 2.0 and GlobalValues[0] = 1.5 and GlobalValues[Index] = -3.5 and Actor.X = 2.0 and Actor.Y = 2.0 and Actor.Samples[Index] = 3.0 and Actors[1].Samples[0] = -3.5 and LocalActor.Samples[Index] = 11.5 and SharedMotion.Game.X = -2.0 and SharedMotion.Menu.Y = -2.0 and SharedMotion.Menu.Samples[0] = 3.0 then
     Passed = 1
   end if
   loop forever
+end sub
+
+sub Adjust(ref fixed32 Value):
+  Value += 0.5
+  return
 end sub
 `);
   const bios = await readFile(resolve(root, "studio/bios/colecovision.rom"));
@@ -103,7 +118,10 @@ end sub
       assert.deepEqual([...core.readRam(addressOf(asm, "Result0"), 4)], [0x00, 0x80, 0x01, 0x00], `${profile}: 1.5`);
       assert.deepEqual([...core.readRam(addressOf(asm, "Result1"), 4)], [0x00, 0xC0, 0xFD, 0xFF], `${profile}: -2.25`);
       assert.deepEqual([...core.readRam(addressOf(asm, "Result2"), 4)], [0x00, 0x00, 0x02, 0x00], `${profile}: 2.0`);
-      assert.deepEqual([...core.readRam(addressOf(asm, "GlobalValues"), 8)], [0x00, 0x40, 0x01, 0x00, 0x00, 0x80, 0xFC, 0xFF], `${profile}: global array`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "ResultRecordRef"), 4)], [0x00, 0x80, 0xFC, 0xFF], `${profile}: record-array ref`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "ResultLocalRef"), 4)], [0x00, 0x80, 0x0B, 0x00], `${profile}: local-record ref`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "ResultOverlay"), 4)], [0x00, 0x00, 0x03, 0x00], `${profile}: overlay helper`);
+      assert.deepEqual([...core.readRam(addressOf(asm, "GlobalValues"), 8)], [0x00, 0x80, 0x01, 0x00, 0x00, 0x80, 0xFC, 0xFF], `${profile}: global array`);
       assert.deepEqual([...core.readRam(addressOf(asm, "Actor"), 16)], [0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x00, 0, 0, 0, 0, 0x00, 0x00, 0x03, 0x00], `${profile}: record fields`);
       assert.equal(core.readRam(addressOf(asm, "Passed"), 1)[0], 1, `${profile}: comparisons`);
     } finally {
@@ -112,5 +130,6 @@ end sub
   }
   console.log(`fixed32 array ROM: PASS (${profiles.length} profiles)`);
 } finally {
-  await rm(temp, { recursive: true, force: true });
+  if (process.env.AMY_KEEP_TEST_TEMP === "1") console.log(`kept test files: ${temp}`);
+  else await rm(temp, { recursive: true, force: true });
 }

@@ -43,6 +43,7 @@ const tests = [
   { file: "test-fp5-array-rom.mjs", area: "fp5-arrays", evidence: "rom" },
   { file: "test-fp5-fixed32-conversion-rom.mjs", area: "fp5-fixed32-conversion", evidence: "rom" },
   { file: "test-fixed-fixed32-conversion-rom.mjs", area: "fixed-fixed32-conversion", evidence: "rom" },
+  { file: "test-fixed32-array-rom.mjs", area: "fixed32-arrays-records-overlays", evidence: "rom" },
   { file: "test-wide-binary-expression-rom.mjs", area: "wide-binary-expressions", evidence: "rom" },
   { file: "test-global-initializers-rom.mjs", area: "layout-and-wide-integers", evidence: "rom" },
   { file: "test-array-store-layout-rom.mjs", area: "array-index-layout", evidence: "rom" },
