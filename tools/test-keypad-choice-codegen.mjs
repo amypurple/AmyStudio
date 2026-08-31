@@ -12,7 +12,7 @@ function compile(line, { nmiKnownOff = false } = {}) {
     emitLoadInt8ValueInto: (register, token) => ["    ld " + register + "," + token],
     emitLoadInt16IntoHL: () => null,
     emitStoreInt8FromA: (name) => ["    ld (" + name + "),a"],
-    resolveValueType: () => null,
+    resolveValueType: (name) => name === "Choice" ? "int8" : null,
     emitLoadInt8ValueIntoPreserving: (register, token) => ["    ld " + register + "," + token],
     getRuntimeInfo: (name) => name === "Choice" ? { type: "int8" } : null,
     emitStoreInt16FromHL: () => null,
