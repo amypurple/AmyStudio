@@ -444,9 +444,9 @@ check("for each computes a record element once and survives a nested loop", () =
   assert.equal(actorBaseLoads.length, 1, `expected one Actors[I] address computation, got ${actorBaseLoads.length}`);
   assert.ok(aliasPointerLoads.length >= 2, `expected repeated cheap alias-pointer loads, got ${aliasPointerLoads.length}`);
 });
-check("for each rejects an omitted index without allocating hidden RAM", () => {
-  assert.equal(forEachMissingIndex.ok, false);
-  assert.match(String(forEachMissingIndex.log || ""), /requires an explicit u8 index/i);
+check("for each accepts an omitted source index and creates an internal counter", () => {
+  assert.equal(forEachMissingIndex.ok, true, forEachMissingIndex.log || "transpile failed");
+  assert.match(String(forEachMissingIndex.asmBody || ""), /AMY_UVAR__EachIndex/i);
 });
 const RECORD_DATA_COPY_DEMO = `record Actor:
   u8 X
