@@ -102,6 +102,15 @@ Run the gate plus every catalog example with:
 node tools/amy-feature-matrix.mjs --full
 ```
 
+After fixing a late failure, resume from that test with:
+
+```text
+node tools/amy-feature-matrix.mjs --from test-name.mjs
+```
+
+The runner validates its manifest before starting, reports `RUN`/`PASS` progress, and
+stops a test that exceeds two minutes.
+
 BIOS-backed tests use a private BIOS path from `AMY_COLECO_BIOS`. Without one, those tests
 report an explicit skip; Amy Studio does not distribute the copyrighted ColecoVision BIOS.
 
@@ -113,8 +122,6 @@ The following are not current language promises:
 - `chr$()`, `left$()`, `right$()`, `mid$()`, string slicing, and general runtime string concatenation
 - typed general-purpose pointers and function pointers
 - recursively nested arrays inside records and unrestricted aggregate record layouts
-- scene lifecycle syntax, overlay lifetime enforcement, active-part debugger watches,
-  and optional `$CD` poison-fill diagnostics for missing scene initialization
 - unrestricted `ref` support for every numeric and aggregate type
 - automatic runtime bounds checks for calculated indexes
 - register-parameter ABI as a stable calling convention

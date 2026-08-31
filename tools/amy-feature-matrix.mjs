@@ -74,6 +74,15 @@ const tests = [
   { file: "test-spinner-rom.mjs", area: "spinner-input", evidence: "rom" }
 ];
 
+const testNames = tests.map((test) => test.file);
+const duplicateTests = [...new Set(testNames.filter((file, index) => testNames.indexOf(file) !== index))];
+const missingTests = testNames.filter((file) => !existsSync(resolve(root, "tools", file)));
+if (duplicateTests.length || missingTests.length) {
+  if (duplicateTests.length) console.error(`Duplicate matrix test(s): ${duplicateTests.join(", ")}`);
+  if (missingTests.length) console.error(`Missing matrix test file(s): ${missingTests.join(", ")}`);
+  process.exit(2);
+}
+
 const selectedStart = fromFile ? tests.findIndex((test) => test.file === fromFile) : 0;
 if (fromFile && selectedStart < 0) {
   console.error(`Unknown matrix test for --from: ${fromFile}`);
