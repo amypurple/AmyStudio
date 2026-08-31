@@ -3313,7 +3313,7 @@ routine arguments. For example, both `if Board[(Y << 3) + X] = 0 then` and
 required workaround. Runtime indexes remain the programmer's responsibility and are not
 implicitly bounds-checked.
 
-Global primitive arrays may declare two literal dimensions and use row/column
+Primitive arrays may declare two dimensions and use row/column
 indexing. Storage is row-major, so `Board[Y,X]` is equivalent to
 `Board[(Y * Columns) + X]` without a descriptor or runtime helper:
 

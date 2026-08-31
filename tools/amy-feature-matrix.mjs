@@ -15,6 +15,7 @@ const tests = [
   { file: "test-word-table-codegen.mjs", area: "word-tables", evidence: "compile+assemble" },
   { file: "test-int16-byte-widening-codegen.mjs", area: "integer-widening", evidence: "compile+assemble" },
   { file: "test-array-bulk-codegen.mjs", area: "bulk-arrays", evidence: "compile+assemble" },
+  { file: "test-2d-array-rom.mjs", area: "two-dimensional-arrays", evidence: "rom" },
   { file: "test-ref-param-codegen.mjs", area: "qualified-operands", evidence: "compile+assemble" },
   { file: "test-qualified-math-bit-rom.mjs", area: "qualified-math-bit", evidence: "rom" },
   { file: "test-vpeek-qualified-rom.mjs", area: "qualified-vram-read", evidence: "rom" },
