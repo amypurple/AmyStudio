@@ -3091,7 +3091,8 @@ Current expression engine notes:
 | `case N` / `case N to M` / `case else` | Case arms |
 | `for I = start to end` ... `next` | Counted loop |
 | `for I = start downto end` | Descending counted loop |
-| `for each Item, I in Array` ... `next` | Alias each global fixed-array element through an explicit u8 index |
+| `for each Item in Array` ... `next` | Iterate a fixed array through a mutable element alias |
+| `for each Item, I in Array` ... `next` | Same iteration with an explicit u8 index when its position is needed |
 | `for ... step N` / `for ... step -N` | Stepped loop |
 | `continue for` / `exit for` | Loop control |
 | `while cond` ... `end while` | Conditional loop |
