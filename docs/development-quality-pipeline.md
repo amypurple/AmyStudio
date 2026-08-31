@@ -114,6 +114,7 @@ node tools/amy-feature-matrix.mjs --suite studio
 node tools/amy-feature-matrix.mjs --suite graphics
 node tools/amy-feature-matrix.mjs --suite emulator
 node tools/amy-feature-matrix.mjs --suite codecs
+node tools/amy-feature-matrix.mjs --suite audio
 node tools/amy-feature-matrix.mjs --suite examples
 ```
 
@@ -122,6 +123,7 @@ node tools/amy-feature-matrix.mjs --suite examples
 - `graphics` covers graphics data, previews, TMS9918 rules, tile maps, and picture conversion.
 - `emulator` covers BIOS storage, controllers, regions, web-core rewind/audio, and desktop parity.
 - `codecs` verifies the published codecs with exact round trips; experimental codecs are excluded.
+- `audio` verifies DSound conversion, decoding, preview data, and future PSG/music workflows.
 - `examples` holds game-specific correctness checks such as Rails Puzzles solutions and VRAM bounds.
 
 The Studio suite validates the underlying models and integrations; it is not a browser click-through

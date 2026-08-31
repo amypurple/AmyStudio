@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, "..");
 const docs = readFileSync(resolve(root, "docs", "development-quality-pipeline.md"), "utf8");
 const runner = readFileSync(resolve(root, "tools", "amy-feature-matrix.mjs"), "utf8");
 const exclusions = JSON.parse(readFileSync(resolve(root, "tools", "amy-feature-matrix-exclusions.json"), "utf8"));
-const suites = ["language", "studio", "graphics", "emulator", "codecs", "examples"];
+const suites = ["language", "studio", "graphics", "emulator", "codecs", "audio", "examples"];
 
 for (const suite of suites) {
   assert.match(runner, new RegExp(`\\"${suite}\\"`), `Runner must register the ${suite} suite.`);

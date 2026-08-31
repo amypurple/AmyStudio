@@ -173,6 +173,7 @@ const tests = [
   { file: "test-rom-gearcoleco.mjs", area: "gearcoleco-rom-runner", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "--frames", "1"], requires: ["build/rom-tests/warrior-dan2-fire-visual-test.rom", process.env.GEARCOLECO_EXE || resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe")] },
   { file: "test-nibble-codec.mjs", area: "nibble-codec", evidence: "unit", suite: "codecs" },
   { file: "test-warrior-codecs.mjs", area: "warrior-codec-corpus", evidence: "unit", suite: "codecs" },
+  { file: "test-dsound-converter.mjs", area: "dsound-conversion", evidence: "unit", suite: "audio" },
   { file: "test-rails-puzzle-vram-bounds.mjs", area: "rails-puzzle-vram-safety", evidence: "rom", suite: "examples" },
   { file: "test-train-track-puzzles.mjs", area: "rails-puzzle-solutions", evidence: "unit", suite: "examples" }
 ];
@@ -186,7 +187,7 @@ if (duplicateTests.length || missingTests.length) {
   process.exit(2);
 }
 
-if (suite && !["language", "studio", "graphics", "emulator", "codecs", "examples"].includes(suite)) {
+if (suite && !["language", "studio", "graphics", "emulator", "codecs", "audio", "examples"].includes(suite)) {
   console.error(`Unknown matrix suite: ${suite}`);
   process.exit(2);
 }
