@@ -1,15 +1,15 @@
 # Vendored Deterministic JavaScript
 
-These files are copied from Amy's existing web tools so ALEXIS-Z80 can run offline as a single web studio.
+These files are copied from Amy's existing web tools so Amy Studio can run offline.
 
 ## Sources
 
 | Local path | Source project | Purpose |
 | --- | --- | --- |
-| `retrocompress-lite/js/codecs/*.js` | `C:/Users/Amy/Documents/git/RetroCompress-Lite/js/codecs/` | Deterministic compressors/decompressors for ZX0, ZX7, DAN1, DAN3, Pletter, BitBuster, LZF, and MDK-RLE |
-| `retrocompress-lite/js/codecConfig.js` | `C:/Users/Amy/Documents/git/RetroCompress-Lite/js/codecConfig.js` | Codec registry and dynamic loader |
-| `retrocompress-lite/js/utils.js` | `C:/Users/Amy/Documents/git/RetroCompress-Lite/js/utils.js` | CRC, byte formatting, validation helpers |
-| `amyscvsoundstudio/asmCodec.js` | `C:/Users/Amy/Documents/git/AmysCVSoundStudio/asmCodec.js` | Sound table ASM parser/dumper |
+| `retrocompress-lite/js/codecs/*.js` | [RetroCompress-Lite](https://github.com/amypurple/RetroCompress-Lite) | Deterministic compressors/decompressors for ZX0, ZX7, DAN1, DAN3, Pletter, BitBuster, LZF, and MDK-RLE |
+| `retrocompress-lite/js/codecConfig.js` | [RetroCompress-Lite](https://github.com/amypurple/RetroCompress-Lite) | Codec registry and dynamic loader |
+| `retrocompress-lite/js/utils.js` | [RetroCompress-Lite](https://github.com/amypurple/RetroCompress-Lite) | CRC, byte formatting, validation helpers |
+| `amyscvsoundstudio/asmCodec.js` | [Amy's CV Sound Studio](https://github.com/amypurple/AmysCVSoundStudio) | Sound table ASM parser/dumper |
 
 ## Local Adjustments
 

@@ -30,6 +30,10 @@ const home = readFileSync(resolve(root, "index.html"), "utf8");
 const comparison = readFileSync(resolve(root, "comparison.html"), "utf8");
 const docs = readFileSync(resolve(root, "docs/portal-docs.js"), "utf8");
 const qualityMarkdown = readFileSync(resolve(root, "docs/development-quality-pipeline.md"), "utf8");
+for (const relativePath of ["studio/manifest.js", "studio/vendor/README.md", "studio/vendor/amyscvassembly/README.md"]) {
+  const publicText = readFileSync(resolve(root, relativePath), "utf8");
+  assert.doesNotMatch(publicText, /C:[\\/]Users[\\/]/i, `${relativePath} exposes a personal absolute path`);
+}
 
 for (const expected of ["./studio/", "./docs/", "./comparison.html", "https://github.com/amypurple/AmyStudio"]) {
   assert.ok(home.includes(expected), `home page missing link: ${expected}`);
