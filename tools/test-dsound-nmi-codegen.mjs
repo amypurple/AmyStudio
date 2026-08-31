@@ -35,4 +35,4 @@ const playIndex = asm.indexOf("call AMY_PLAY_DSOUND");
 assert.ok(asm.indexOf("and $DF") < playIndex, "NMI disable must happen before playback");
 assert.ok(asm.indexOf("pop af", playIndex) > playIndex, "NMI state restore must happen after playback");
 
-console.log("dsound NMI wrapper codegen: PASS");
+console.log("dsound NMI protection codegen: PASS");
