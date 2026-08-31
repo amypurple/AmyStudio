@@ -46,7 +46,6 @@ const inline = compileAsm(`
   loop forever
 
 data InlineNameTable bytes $20 count 768
-end data
 `);
 assert.match(inline, /AMY_UDATA_InlineNameTable:/);
 assert.equal([...inline.split("AMY_UDATA_InlineNameTable:")[1].matchAll(/\$20/g)].length >= 768, true);
