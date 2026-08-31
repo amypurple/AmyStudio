@@ -62,7 +62,7 @@ const identifierLegalWords = [
   "Count", "Str", "Whole", "Peek", "Line", "Circle", "Plot", "Pset", "Set", "From",
   "By", "At", "With", "Between", "Pause", "Repeat", "Ref", "Raw", "Forever", "Into",
   "Cursor", "Sleep", "Let", "Var", "Dim", "Ram", "Local", "Endif", "Wend",
-  "Boolean", "Float", "Byte", "Word", "Sbyte"
+  "Boolean", "Float", "Byte", "Word", "Sbyte", "Label", "Default"
 ];
 for (const name of identifierLegalWords) {
   const declaration = tokenizeAmyLine(`u8 ${name} = 0`).tokens.find((token) => token.text === name);
@@ -73,13 +73,15 @@ for (const name of identifierLegalWords) {
   assert.equal(expression?.type, "identifier", `${name} expression use must stay neutral`);
 }
 
-for (const removed of ["let", "var", "dim", "ram", "local", "endif", "wend"]) {
+for (const removed of ["let", "var", "dim", "ram", "local", "endif", "wend", "label", "default"]) {
   assert.equal(
     AMY_AUTOCOMPLETE.some(({ snippet }) => new RegExp(`^${removed}\\b`, "i").test(snippet)),
     false,
     `${removed} must not appear in Amy autocomplete`
   );
 }
+assert.equal(tokenizeAmyLine("load default ascii").tokens.find((token) => token.text === "default")?.type, "keyword");
+assert.equal(tokenizeAmyLine("set default name table vram $1800").tokens.find((token) => token.text === "default")?.type, "keyword");
 for (const removedType of ["boolean", "float", "byte", "word", "sbyte"]) {
   assert.equal(isAutocompleteSourceTypeName(removedType), false, `${removedType} must not be an autocomplete source type`);
 }

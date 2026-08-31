@@ -3,10 +3,10 @@ import { matchAmyPhraseRanges } from "./amyGrammar.js";
 const KEYWORDS = new Set([
   "and", "as", "asm", "asset", "at", "between", "bind", "bitmap", "by", "call", "cartridge",
   "case", "choose", "clear", "cls", "codec", "const", "continue", "copy", "data",
-  "decompress", "default", "define", "disable", "display", "do", "downto",
+  "decompress", "define", "disable", "display", "do", "downto",
   "each", "else", "elseif", "enable", "end", "enter", "exit", "false", "fill", "fire",
   "for", "forever", "frame", "from", "function", "goto", "graphics", "hide",
-  "hitbox", "if", "in", "include", "label", "loop", "memory", "mute",
+  "hitbox", "if", "in", "include", "loop", "memory", "mute",
   "next", "nmi", "not", "on", "or", "overlay", "pause", "picture", "play", "print", "put",
   "raw", "read", "record", "ref", "repeat", "reset", "restore", "return",
   "scene", "screen", "select", "set", "show", "song", "sound", "sprite", "sprite16",
@@ -105,7 +105,8 @@ function amyLineContextTypes(line) {
   when(/^\s*test\s+checkpoint\b/i, ["test", "checkpoint"]);
   when(/^\s*on\s+vblank\b/i, ["vblank"]);
   when(/^\s*scene\b.*\buses\b/i, ["uses"]);
-  when(/^\s*load\s+default\s+ascii\b/i, ["ascii", "bold", "italic"]);
+  when(/^\s*load\s+default\s+ascii\b/i, ["default", "ascii", "bold", "italic"]);
+  when(/^\s*set\s+default\s+name\s+table\b/i, ["default"]);
   when(/^\s*(?:start|stop)\s+timer\b/i, ["start", "timer"]);
   when(/^\s*if\s+timer\b/i, ["timer"]);
   when(/^\s*play\s+sounds\b/i, ["sounds"]);

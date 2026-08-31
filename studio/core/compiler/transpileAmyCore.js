@@ -1562,7 +1562,7 @@ export function transpileAmyCore(sourceText, deps) {
     "if", "then", "else", "elseif",
     "do", "loop", "while", "until",
     "for", "to", "step", "next", "downto",
-    "select", "case", "default",
+    "select", "case",
     "goto", "return", "exit", "continue",
     "sub", "function",
     "const",
@@ -1575,7 +1575,7 @@ export function transpileAmyCore(sourceText, deps) {
     "random", "floor", "fraction", "highbyte", "lowbyte", "highword", "lowword", "sqrt", "log", "exp", "format",
     "fixed", "ufixed", "fixed32", "fp5", "bool", "bcd", "u8", "u16", "u32", "i8", "i16", "i32",
     "joypad", "keypad", "vdp", "status", "frame",
-    "on", "label", "wait", "choose", "fire",
+    "on", "wait", "choose", "fire",
     "true", "false"
   ]);
 
