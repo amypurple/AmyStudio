@@ -1,4 +1,4 @@
-export const AUTOCOMPLETE_SOURCE_TYPE_NAMES = new Set(["boolean", "bool", "u8", "i8", "u16", "i16", "u32", "i32", "fixed", "ufixed", "fixed32", "fp5", "float"]);
+export const AUTOCOMPLETE_SOURCE_TYPE_NAMES = new Set(["bool", "u8", "i8", "u16", "i16", "u32", "i32", "fixed", "ufixed", "fixed32", "fp5"]);
 
 export function isAutocompleteSourceTypeName(type) {
   return AUTOCOMPLETE_SOURCE_TYPE_NAMES.has(String(type || "").trim().toLowerCase());
@@ -121,9 +121,6 @@ const AMY_AUTOCOMPLETE_DETAIL_OVERRIDES = new Map([
   ["select case Choice", "Start a multi-branch selection block"],
   ["select case (X, Y)", "Select a tuple of related values"],
   ["sub DrawSprite(u8 X, u8 Y, u8 Pattern)", "Define a subroutine with typed parameters"],
-  ["local u16 Score = 0", "Declare a local 16-bit runtime variable"],
-  ["local i16 Delta = 0", "Declare a local signed 16-bit integer"],
-  ["local bool Done = false", "Declare a local boolean"],
   ["sub RunDemo:", "Start a subroutine block"],
   ["MyRoutine", "Call a no-argument subroutine without CALL"],
 ]);
@@ -326,10 +323,7 @@ export const AMY_AUTOCOMPLETE = [
   ["u16 Score = 0, HighScore = 0", "Declare 16-bit score variables on one line"],
   ["bcd digits 5 Credits, Bonus", "Declare same-width packed BCD score variables by displayed digit count"],
   ["bool GameOver = false, Ready = true", "Declare packed boolean flags on one line"],
-  ["local u16 Score = 0", "Declare a local 16-bit runtime variable"],
-  ["local i16 Delta = 0", "Declare a local signed 16-bit integer"],
   ["sub RunDemo:", "Start a subroutine block"],
-  ["local bool Done = false", "Declare a local boolean"],
   ["data Lookup bytes 1,2,3,4", "Declare ROM bytes on one line"],
   ["data Lookup bytes = 1,2,3,4", "Declare ROM bytes on one line with explicit assignment style"],
   ["data Levels words = @Level0, @Level1", "Declare an indexable ROM word/address table"],

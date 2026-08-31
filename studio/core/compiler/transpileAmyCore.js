@@ -1559,13 +1559,13 @@ export function transpileAmyCore(sourceText, deps) {
 
   const RESERVED_AMY_IDENTIFIERS = new Set([
     "and", "or", "not",
-    "if", "then", "else", "elseif", "endif",
-    "do", "loop", "while", "wend", "until",
+    "if", "then", "else", "elseif",
+    "do", "loop", "while", "until",
     "for", "to", "step", "next", "downto",
     "select", "case", "default",
     "goto", "return", "exit", "continue",
     "sub", "function",
-    "const", "dim", "ram", "local",
+    "const",
     "data", "restore", "read", "memory", "asset", "codec", "picture", "bitmap", "sprite16", "cartridge", "overlay",
     "screen", "display", "nmi", "graphics", "text", "cls", "print", "put", "fill",
     "vpoke", "vpeek", "vram", "decompress", "copy", "define", "show",
@@ -1573,7 +1573,7 @@ export function transpileAmyCore(sourceText, deps) {
     "play", "stop", "mute", "sound", "song", "dsound",
     "enable", "disable", "reset", "spinner", "spinners",
     "random", "floor", "fraction", "highbyte", "lowbyte", "highword", "lowword", "sqrt", "log", "exp", "format",
-    "fixed", "ufixed", "fixed32", "fp5", "float", "boolean", "bool", "bcd", "u8", "u16", "u32", "i8", "i16", "i32",
+    "fixed", "ufixed", "fixed32", "fp5", "bool", "bcd", "u8", "u16", "u32", "i8", "i16", "i32",
     "joypad", "keypad", "vdp", "status", "frame",
     "on", "label", "wait", "choose", "fire",
     "true", "false"

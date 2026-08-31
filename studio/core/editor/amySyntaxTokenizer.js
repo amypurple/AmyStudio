@@ -3,21 +3,20 @@ import { matchAmyPhraseRanges } from "./amyGrammar.js";
 const KEYWORDS = new Set([
   "and", "as", "asm", "asset", "at", "between", "bind", "bitmap", "by", "call", "cartridge",
   "case", "choose", "clear", "cls", "codec", "const", "continue", "copy", "data",
-  "decompress", "default", "define", "dim", "disable", "display", "do", "downto",
-  "each", "else", "elseif", "enable", "end", "endif", "enter", "exit", "false", "fill", "fire",
+  "decompress", "default", "define", "disable", "display", "do", "downto",
+  "each", "else", "elseif", "enable", "end", "enter", "exit", "false", "fill", "fire",
   "for", "forever", "frame", "from", "function", "goto", "graphics", "hide",
-  "hitbox", "if", "in", "include", "label", "local", "loop", "memory", "mute",
+  "hitbox", "if", "in", "include", "label", "loop", "memory", "mute",
   "next", "nmi", "not", "on", "or", "overlay", "pause", "picture", "play", "print", "put",
-  "ram", "raw", "read", "record", "ref", "repeat", "reset", "restore", "return",
+  "raw", "read", "record", "ref", "repeat", "reset", "restore", "return",
   "scene", "screen", "select", "set", "show", "song", "sound", "sprite", "sprite16",
   "sprites", "spinners", "status", "step", "stop", "sub", "swap", "text", "then",
   "to", "true", "until", "update", "vdp", "vpoke", "vpeek", "vram", "wait",
-  "wend", "while", "wipe", "with", "xor"
+  "while", "wipe", "with", "xor"
 ]);
 
 const TYPES = new Set([
-  "bcd", "bool", "byte", "fixed", "fp5", "i8", "i16", "i32", "sbyte", "u8",
-  "u16", "u32", "ufixed", "word"
+  "bcd", "bool", "fixed", "fp5", "i8", "i16", "i32", "u8", "u16", "u32", "ufixed"
 ]);
 
 const BUILTINS = new Set([
