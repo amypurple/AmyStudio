@@ -143,6 +143,7 @@ const tests = [
   { file: "test-routine-cycle-profiler.mjs", area: "debugger-cycle-profiler", evidence: "unit", suite: "studio" },
   { file: "test-source-breakpoints.mjs", area: "source-breakpoints", evidence: "unit", suite: "studio" },
   { file: "test-source-debug-map.mjs", area: "source-debug-map", evidence: "unit", suite: "studio" },
+  { file: "test-feature-matrix-docs.mjs", area: "feature-matrix-documentation", evidence: "unit", suite: "studio" },
   { file: "test-graphics-asset-access.mjs", area: "graphics-assets", evidence: "unit", suite: "graphics" },
   { file: "test-graphics-entry-ops.mjs", area: "graphics-entry-operations", evidence: "unit", suite: "graphics" },
   { file: "test-graphics-impact.mjs", area: "graphics-impact-analysis", evidence: "unit", suite: "graphics" },

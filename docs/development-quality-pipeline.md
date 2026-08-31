@@ -101,6 +101,43 @@ the modified resolver or helper. Examples:
 
 A size change does not replace these tests. Every existing self-test must still report PASS.
 
+#### Feature matrix suites
+
+`tools/amy-feature-matrix.mjs` registers the permanent release-gate tests and can run the
+complete matrix or one focused suite. Additional private DEV experiments remain separate until
+they are stable enough to promote:
+
+```text
+node tools/amy-feature-matrix.mjs --suite language
+node tools/amy-feature-matrix.mjs --suite studio
+node tools/amy-feature-matrix.mjs --suite graphics
+node tools/amy-feature-matrix.mjs --suite emulator
+node tools/amy-feature-matrix.mjs --suite codecs
+node tools/amy-feature-matrix.mjs --suite examples
+```
+
+- `language` covers parsing, code generation, ABI, RAM layout, runtime values, and optimizer safety.
+- `studio` covers project/editor models, documentation search, breakpoints, replay, audio, and profiling.
+- `graphics` covers graphics data, previews, TMS9918 rules, tile maps, and picture conversion.
+- `emulator` covers BIOS storage, controllers, regions, web-core rewind/audio, and desktop parity.
+- `codecs` verifies the published codecs with exact round trips; experimental codecs are excluded.
+- `examples` holds game-specific correctness checks such as Rails Puzzles solutions and VRAM bounds.
+
+The Studio suite validates the underlying models and integrations; it is not a browser click-through
+E2E suite. Emulator tests that require a local BIOS, ROM, baseline, or desktop executable report an
+explicit `SKIP` when that optional evidence is unavailable. Codec corpus tests can take longer than
+the focused unit suites.
+
+Run every registered test by omitting `--suite`. Use `--only` for comma-separated filenames or
+`--from` to resume at one test within the selected suite; those two options are mutually exclusive.
+Add `--full` to append a Balanced compile-and-assemble pass of the complete example catalogue:
+
+```text
+node tools/amy-feature-matrix.mjs --only test-project-tabs.mjs,test-source-breakpoints.mjs
+node tools/amy-feature-matrix.mjs --suite language --from test-overlay-rom.mjs
+node tools/amy-feature-matrix.mjs --full
+```
+
 ### 7. Audit the complete DEV corpus
 
 Compile every catalogued DEV example with the normal profile:
