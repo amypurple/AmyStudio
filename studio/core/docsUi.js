@@ -15,6 +15,21 @@ const DOCS = [
     path: "../docs/amy-graphics-editors-guide.md"
   },
   {
+    id: "current-version",
+    label: "Current Amy Version",
+    path: "../docs/amy-current-version.md"
+  },
+  {
+    id: "studio-workflow",
+    label: "Studio Workflow",
+    path: "../docs/studio-workflow.md"
+  },
+  {
+    id: "rom-testing",
+    label: "ROM Testing & Debug",
+    path: "../docs/rom-runtime-testing.md"
+  },
+  {
     id: "heritage",
     label: "Heritage",
     path: "../docs/amy-studio-heritage.md"
@@ -23,6 +38,21 @@ const DOCS = [
     id: "colecovision",
     label: "ColecoVision Essentials",
     path: "../docs/colecovision-essentials.md"
+  },
+  {
+    id: "coleco-controller-routines",
+    label: "Official Controller Routines",
+    path: "../docs/colecovision-official-controller-routines.md"
+  },
+  {
+    id: "compression",
+    label: "Compression Suite",
+    path: "../docs/compression-suite.md"
+  },
+  {
+    id: "quality",
+    label: "Development Quality Pipeline",
+    path: "../docs/development-quality-pipeline.md"
   }
 ];
 

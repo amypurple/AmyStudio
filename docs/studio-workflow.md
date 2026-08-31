@@ -1,7 +1,7 @@
 # Amy Studio Workflow
 
 ## Goal
-Use [studio/index.html](/C:/Users/Amy/Desktop/ALEXIS-Z80/studio/index.html) as the main Amy Studio environment for authoring source, generating ASM, compiling ROMs, and managing small embedded project assets.
+Use `studio/index.html` as the main Amy Studio environment for authoring source, generating ASM, compiling ROMs, managing embedded project assets, and testing the resulting cartridge.
 
 ## Steps
 1. Run `powershell -File tools/serve-studio.ps1`.
@@ -9,7 +9,18 @@ Use [studio/index.html](/C:/Users/Amy/Desktop/ALEXIS-Z80/studio/index.html) as t
 3. Write Amy source in the main editor.
 4. Optionally add embedded project files in the `Files` tab.
 5. Reference embedded files from source with the `@project/...` path prefix.
-6. Click `Generate ASM` or `Compile`.
+6. Use `Transpile`, `Generate ASM`, or `Compile ROM` according to the verification required.
+7. Run the compiled cartridge in `Open ROM / Debugger` when behavior, graphics, input, sound, or timing matters.
+
+`Transpile` validates Amy and emits generated assembly. `Generate ASM` prepares the assembly views and artifacts. `Compile ROM` assembles and links a runnable cartridge. A transpile success is not proof that the ROM boots or behaves correctly.
+
+## Project Import And Export
+
+The preferred exported project name ends in `.amy.json`. Amy Studio also recognizes older `.json` projects by validated content and accepts gzip-compressed `.amy.json.gz` or `.json.gz` projects. Files may be selected through **Import Project** or dropped directly onto the Studio page.
+
+Duplicate browser download names such as `game.amy (1).json` remain importable because recognition is content-based. Import validates the project structure and embedded file data before replacing the active project.
+
+Embedded files are part of the project export. A project does not share its private files with another `.amy.json` project unless those bytes are intentionally copied.
 
 ## Project, Files, And Docs Tabs
 
@@ -28,7 +39,7 @@ Compiler hints are summarized as `Hints: N` in the small status box. Use the
 generated ASM/log output when you need the full diagnostic text.
 
 ## Embedded Files
-Amy Studio can keep small binary assets inside the exported `.alexis.json` project file instead of requiring a separate disk path at compile time.
+Amy Studio can keep binary and text assets inside the exported `.amy.json` project file instead of requiring a separate disk path at compile time.
 
 Example:
 
@@ -42,6 +53,8 @@ Notes:
 - Regular filesystem assets still use `incbin` and are unchanged.
 - Existing demos and optimizer behavior are not altered unless a project explicitly references `@project/...`.
 - The `Files` tab has a direct `Audio/Voice` shortcut to the DSOUND workflow.
+- Editable embedded ASM/text files and `editors.json` can be opened directly from `Files`.
+- Adding, replacing, editing, or removing a project file invalidates the previous build.
 - `codec raw` is implied when the `asset` statement omits a codec.
 
 ## Picture Files And Preview
