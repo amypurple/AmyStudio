@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { tokenizeAmyLine, tokenizeAmySource } from "../studio/core/editor/amySyntaxTokenizer.js";
+import { AMY_AUTOCOMPLETE } from "../studio/core/editor/autocompleteCatalog.js";
 
 const compact = (tokens) => tokens.map(({ type, text }) => [type, text]);
 
@@ -60,7 +61,7 @@ assert.equal(tokenizeAmyLine("Player.Color = 1").tokens.find((token) => token.te
 const identifierLegalWords = [
   "Count", "Str", "Whole", "Peek", "Line", "Circle", "Plot", "Pset", "Set", "From",
   "By", "At", "With", "Between", "Pause", "Repeat", "Ref", "Raw", "Forever", "Into",
-  "Cursor", "Sleep"
+  "Cursor", "Sleep", "Let", "Var"
 ];
 for (const name of identifierLegalWords) {
   const declaration = tokenizeAmyLine(`u8 ${name} = 0`).tokens.find((token) => token.text === name);
@@ -69,6 +70,14 @@ for (const name of identifierLegalWords) {
   assert.equal(assignment?.type, "identifier", `${name} assignment must stay neutral`);
   const expression = tokenizeAmyLine(`Value = ${name} + 1`).tokens.find((token) => token.text === name);
   assert.equal(expression?.type, "identifier", `${name} expression use must stay neutral`);
+}
+
+for (const removed of ["let", "var"]) {
+  assert.equal(
+    AMY_AUTOCOMPLETE.some(({ snippet }) => new RegExp(`^${removed}\\b`, "i").test(snippet)),
+    false,
+    `${removed} must not appear in Amy autocomplete`
+  );
 }
 
 assert.equal(tokenizeAmyLine("peek(Address)").tokens[0].type, "builtin");

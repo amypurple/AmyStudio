@@ -6,12 +6,12 @@ const KEYWORDS = new Set([
   "decompress", "default", "define", "dim", "disable", "display", "do", "downto",
   "each", "else", "elseif", "enable", "end", "endif", "enter", "exit", "false", "fill", "fire",
   "for", "forever", "frame", "from", "function", "goto", "graphics", "hide",
-  "hitbox", "if", "in", "include", "label", "let", "local", "loop", "memory", "mute",
+  "hitbox", "if", "in", "include", "label", "local", "loop", "memory", "mute",
   "next", "nmi", "not", "on", "or", "overlay", "pause", "picture", "play", "print", "put",
   "ram", "raw", "read", "record", "ref", "repeat", "reset", "restore", "return",
   "scene", "screen", "select", "set", "show", "song", "sound", "sprite", "sprite16",
   "sprites", "spinners", "status", "step", "stop", "sub", "swap", "text", "then",
-  "to", "true", "until", "update", "var", "vdp", "vpoke", "vpeek", "vram", "wait",
+  "to", "true", "until", "update", "vdp", "vpoke", "vpeek", "vram", "wait",
   "wend", "while", "wipe", "with", "xor"
 ]);
 

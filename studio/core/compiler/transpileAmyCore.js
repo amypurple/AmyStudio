@@ -1565,7 +1565,7 @@ export function transpileAmyCore(sourceText, deps) {
     "select", "case", "default",
     "goto", "return", "exit", "continue",
     "sub", "function",
-    "let", "var", "const", "dim", "ram", "local",
+    "const", "dim", "ram", "local",
     "data", "restore", "read", "memory", "asset", "codec", "picture", "bitmap", "sprite16", "cartridge", "overlay",
     "screen", "display", "nmi", "graphics", "text", "cls", "print", "put", "fill",
     "vpoke", "vpeek", "vram", "decompress", "copy", "define", "show",
