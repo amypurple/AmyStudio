@@ -7,6 +7,10 @@ const root = resolve(import.meta.dirname, "..");
 const full = process.argv.includes("--full");
 const fromIndex = process.argv.indexOf("--from");
 const fromFile = fromIndex >= 0 ? process.argv[fromIndex + 1] : null;
+const onlyIndex = process.argv.indexOf("--only");
+const onlyFiles = onlyIndex >= 0
+  ? new Set(String(process.argv[onlyIndex + 1] || "").split(",").map((file) => file.trim()).filter(Boolean))
+  : null;
 const biosPath = process.env.AMY_COLECO_BIOS || resolve(root, "studio", "bios", "colecovision.rom");
 const hasBios = existsSync(biosPath);
 const tests = [
@@ -22,6 +26,9 @@ const tests = [
   { file: "test-dsound-nmi-codegen.mjs", area: "dsound-nmi-protection", evidence: "compile+assemble" },
   { file: "test-wait-or-press-codegen.mjs", area: "timed-input-wait", evidence: "compile+assemble" },
   { file: "test-int16-byte-widening-codegen.mjs", area: "integer-widening", evidence: "compile+assemble" },
+  { file: "test-mixed-sign-compare-codegen.mjs", area: "mixed-sign-comparisons", evidence: "compile+assemble" },
+  { file: "test-mul-div-assign-codegen.mjs", area: "multiply-divide-assignment", evidence: "compile+assemble" },
+  { file: "test-divide-by-zero-diagnostics.mjs", area: "divide-by-zero-diagnostics", evidence: "compile+assemble" },
   { file: "test-array-bulk-codegen.mjs", area: "bulk-arrays", evidence: "compile+assemble" },
   { file: "test-fill-array-qualified-rom.mjs", area: "qualified-array-fill-reverse", evidence: "rom" },
   { file: "test-fill-record-array-qualified-rom.mjs", area: "qualified-record-array-fill", evidence: "rom" },
@@ -29,6 +36,7 @@ const tests = [
   { file: "test-format-qualified-buffer-rom.mjs", area: "qualified-format-buffer", evidence: "rom" },
   { file: "test-2d-array-rom.mjs", area: "two-dimensional-arrays", evidence: "rom" },
   { file: "test-local-for-each-rom.mjs", area: "local-array-iteration", evidence: "rom" },
+  { file: "test-for-loop-codegen.mjs", area: "qualified-loop-lowering", evidence: "rom" },
   { file: "test-for-each-short-rom.mjs", area: "implicit-index-array-iteration", evidence: "rom" },
   { file: "test-whole-record-copy-rom.mjs", area: "whole-record-copy", evidence: "rom" },
   { file: "test-whole-record-compare-rom.mjs", area: "whole-record-compare", evidence: "rom" },
@@ -66,6 +74,8 @@ const tests = [
   { file: "test-sprite-field-index-rom.mjs", area: "sprite-field-indexes", evidence: "rom" },
   { file: "test-bcd-inc-dec-rom.mjs", area: "bcd", evidence: "rom" },
   { file: "test-bcd-array-rom.mjs", area: "bcd-arrays", evidence: "rom" },
+  { file: "test-local-bcd-initializer-rom.mjs", area: "local-bcd-initializers", evidence: "rom" },
+  { file: "test-bcd-fp5-format-rom.mjs", area: "bcd-fp5-formatting", evidence: "rom" },
   { file: "test-chars-in-box-rom.mjs", area: "tile-collision", evidence: "rom" },
   { file: "test-legacy-u32-rom.mjs", area: "legacy-wide-integers", evidence: "rom" },
   { file: "test-fp5-function-return-rom.mjs", area: "fp5-function-return", evidence: "rom" },
@@ -73,11 +83,15 @@ const tests = [
   { file: "test-fp5-fixed32-conversion-rom.mjs", area: "fp5-fixed32-conversion", evidence: "rom" },
   { file: "test-fixed-fixed32-conversion-rom.mjs", area: "fixed-fixed32-conversion", evidence: "rom" },
   { file: "test-fixed32-array-rom.mjs", area: "fixed32-arrays-records-overlays", evidence: "rom" },
+  { file: "test-fixed-array-element-rom.mjs", area: "fixed-array-elements", evidence: "rom" },
+  { file: "test-fixed-byte-context-codegen.mjs", area: "fixed-byte-contexts", evidence: "compile+assemble" },
   { file: "test-fixed-ref-param-rom.mjs", area: "fixed-reference-parameters", evidence: "rom" },
   { file: "test-fixed-recursion-rom.mjs", area: "fixed-recursion", evidence: "rom" },
   { file: "test-wide-binary-expression-rom.mjs", area: "wide-binary-expressions", evidence: "rom" },
   { file: "test-wide-bitwise-shift-rom.mjs", area: "wide-bitwise-shifts", evidence: "rom" },
   { file: "test-wide-call-return-expression-rom.mjs", area: "wide-call-return-expressions", evidence: "rom" },
+  { file: "test-wide-ref-param-rom.mjs", area: "wide-reference-parameters", evidence: "rom" },
+  { file: "test-value-param-sub-rom.mjs", area: "value-parameter-subs", evidence: "rom" },
   { file: "test-bcd-boundaries-rom.mjs", area: "bcd-boundaries", evidence: "rom" },
   { file: "test-compile-time-constant-contexts.mjs", area: "compile-time-constants", evidence: "compile+assemble" },
   { file: "test-optimizer-indexed-immediate-a-liveness.mjs", area: "optimizer-accumulator-liveness", evidence: "compile+assemble" },
@@ -100,7 +114,22 @@ if (fromFile && selectedStart < 0) {
   console.error(`Unknown matrix test for --from: ${fromFile}`);
   process.exit(2);
 }
-const selectedTests = tests.slice(selectedStart);
+if (fromFile && onlyFiles) {
+  console.error("Use either --from or --only, not both.");
+  process.exit(2);
+}
+if (onlyFiles) {
+  if (onlyFiles.size === 0) {
+    console.error("--only requires one or more comma-separated test filenames.");
+    process.exit(2);
+  }
+  const unknownFiles = [...onlyFiles].filter((file) => !testNames.includes(file));
+  if (unknownFiles.length) {
+    console.error(`Unknown matrix test(s) for --only: ${unknownFiles.join(", ")}`);
+    process.exit(2);
+  }
+}
+const selectedTests = onlyFiles ? tests.filter((test) => onlyFiles.has(test.file)) : tests.slice(selectedStart);
 
 const results = [];
 const biosTests = new Set(selectedTests.filter((test) => test.evidence === "rom").map((test) => test.file));
@@ -143,4 +172,4 @@ if (full) {
 }
 
 const elapsedMs = results.reduce((sum, item) => sum + item.elapsedMs, 0);
-console.log(JSON.stringify({ passed: true, full, from: fromFile, elapsedMs, results }, null, 2));
+console.log(JSON.stringify({ passed: true, full, from: fromFile, only: onlyFiles ? [...onlyFiles] : null, elapsedMs, results }, null, 2));
