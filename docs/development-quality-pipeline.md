@@ -105,7 +105,8 @@ A size change does not replace these tests. Every existing self-test must still 
 
 `tools/amy-feature-matrix.mjs` registers the permanent release-gate tests and can run the
 complete matrix or one focused suite. Additional private DEV experiments remain separate until
-they are stable enough to promote:
+they are stable enough to promote; every such exception must have a reason in
+`tools/amy-feature-matrix-exclusions.json`:
 
 ```text
 node tools/amy-feature-matrix.mjs --suite language
