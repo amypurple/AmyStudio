@@ -43,7 +43,8 @@ const previewSource = previewHtml
   .replaceAll("&gt;", ">")
   .replaceAll("&amp;", "&")
   .trim();
-assert.match(previewSource, /^project "FIRST CARTRIDGE"/);
+assert.match(previewSource, /^text screen/);
+assert.doesNotMatch(previewSource, /^project\b/im, "first program must use the Studio project name");
 assert.doesNotMatch(previewSource, /^memory\b/im, "first program must use Studio's default memory profile");
 const previewTemp = mkdtempSync(resolve(tmpdir(), "amy-public-preview-"));
 try {

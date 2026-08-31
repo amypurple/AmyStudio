@@ -3023,14 +3023,21 @@ Rules:
 
 ---
 
-## Memory and Project Metadata
+## Optional Memory and Project Metadata
+
+Code samples do not need either declaration. Amy Studio stores the project name and active
+memory profile in the project itself, so the shortest programs can begin directly with an
+executable statement.
 
 ```basic
 project "Name"
 memory "colecovision_legacy_sdcc"
 ```
 
-Available memory profiles live in `tools/memory/*.json`.
+`project "Name"` is an accepted source header for compatibility; the Studio Project field (or
+the source filename in the CLI) controls the actual build name. `memory "profile"` overrides the
+active memory profile when a source file deliberately needs a specific layout. Omit both from
+ordinary snippets. Available memory profiles live in `tools/memory/*.json`.
 
 ---
 
@@ -3040,8 +3047,8 @@ Available memory profiles live in `tools/memory/*.json`.
 
 | Statement | Meaning |
 |---|---|
-| `project "Name"` | Project header |
-| `memory "profile"` | Select memory profile |
+| `project "Name"` | Optional compatibility header; Studio owns the build name |
+| `memory "profile"` | Optional memory-profile override |
 | `const Name = value` | Compile-time constant |
 | `enum Name:` ... `end enum` | Group compile-time constants |
 | `u8 Name = value` | Global 8-bit unsigned RAM variable |
