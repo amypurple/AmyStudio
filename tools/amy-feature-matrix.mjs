@@ -148,7 +148,17 @@ const tests = [
   { file: "test-graphics-tilemap-selection.mjs", area: "graphics-tilemap-selection", evidence: "unit", suite: "graphics" },
   { file: "test-graphics-tms9918.mjs", area: "graphics-tms9918-rules", evidence: "unit", suite: "graphics" },
   { file: "test-picture-converter.mjs", area: "picture-converter", evidence: "unit", suite: "graphics" },
-  { file: "test-picture-preview-paths.mjs", area: "picture-preview-paths", evidence: "unit", suite: "graphics" }
+  { file: "test-picture-preview-paths.mjs", area: "picture-preview-paths", evidence: "unit", suite: "graphics" },
+  { file: "test-coleco-bios-storage.mjs", area: "bios-storage", evidence: "unit", suite: "emulator" },
+  { file: "test-emulator-bios-prompt.mjs", area: "bios-prompt", evidence: "unit", suite: "emulator" },
+  { file: "test-controller-profiles.mjs", area: "controller-profiles", evidence: "unit", suite: "emulator" },
+  { file: "test-mouse-spinner-input.mjs", area: "mouse-spinner", evidence: "unit", suite: "emulator" },
+  { file: "test-gearcoleco-region.mjs", area: "pal-ntsc-region", evidence: "unit", suite: "emulator" },
+  { file: "test-gearcoleco-web-core.mjs", area: "gearcoleco-web-core", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"], requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"] },
+  { file: "test-gearcoleco-web-audio.mjs", area: "gearcoleco-web-audio", evidence: "unit", suite: "emulator", requires: ["studio/bios/colecovision.rom", "build/rom-tests/commando-tiny-music-box.rom"] },
+  { file: "test-gearcoleco-web-rewind.mjs", area: "gearcoleco-web-rewind", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"], requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"] },
+  { file: "test-gearcoleco-web-desktop-parity.mjs", area: "gearcoleco-parity", evidence: "unit", suite: "emulator", requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "build/rom-tests/warrior-dan2-fire-visual-test.sym", "tools/rom-baselines/warrior-dan2-fire-prompt.json"] },
+  { file: "test-rom-gearcoleco.mjs", area: "gearcoleco-rom-runner", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "--frames", "1"], requires: ["build/rom-tests/warrior-dan2-fire-visual-test.rom", process.env.GEARCOLECO_EXE || resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe")] }
 ];
 
 const testNames = tests.map((test) => test.file);
@@ -160,7 +170,7 @@ if (duplicateTests.length || missingTests.length) {
   process.exit(2);
 }
 
-if (suite && !["language", "studio", "graphics"].includes(suite)) {
+if (suite && !["language", "studio", "graphics", "emulator"].includes(suite)) {
   console.error(`Unknown matrix suite: ${suite}`);
   process.exit(2);
 }
@@ -192,7 +202,13 @@ const results = [];
 const biosTests = new Set(selectedTests.filter((test) => test.evidence === "rom").map((test) => test.file));
 
 for (const test of selectedTests) {
-  const { file, area, evidence } = test;
+  const { file, area, evidence, args = [], requires = [] } = test;
+  const missingRequirements = requires.map((path) => resolve(root, path)).filter((path) => !existsSync(path));
+  if (missingRequirements.length) {
+    results.push({ test: file, area, evidence, passed: true, skipped: true, elapsedMs: 0, reason: `Missing optional requirement(s): ${missingRequirements.join(", ")}` });
+    console.log(`SKIP ${file}: missing optional requirement(s).`);
+    continue;
+  }
   if (biosTests.has(file) && !hasBios) {
     results.push({ test: file, area, evidence, passed: true, skipped: true, elapsedMs: 0, reason: "Set AMY_COLECO_BIOS to run BIOS-backed ROM assertions." });
     console.log(`SKIP ${file}: ColecoVision BIOS not configured (set AMY_COLECO_BIOS).`);
@@ -200,7 +216,7 @@ for (const test of selectedTests) {
   }
   console.log(`RUN  ${file}`);
   const started = Date.now();
-  const result = spawnSync(process.execPath, [resolve(root, "tools", file)], {
+  const result = spawnSync(process.execPath, [resolve(root, "tools", file), ...args], {
     cwd: root,
     encoding: "utf8",
     timeout: 120_000
