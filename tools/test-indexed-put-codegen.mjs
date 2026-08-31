@@ -10,6 +10,7 @@ const result = handleVramTextStatement({
   normalizeExpression: (value) => String(value).trim(),
   tryEvaluateConstantExpression: () => null,
   resolveAddressSymbol: (name) => name,
+  getByteArrayBufferInfo: () => null,
   emitLoadSourceAddressIntoHL: (source) => {
     sourceExpression = source;
     return ["    ld hl,Messages", "    ld a,(Offset)", "    ld e,a", "    ld d,0", "    add hl,de"];
