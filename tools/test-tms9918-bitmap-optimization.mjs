@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { compareTms9918BitmapVisuals, isTms9918CompressionCandidateEligible,
   optimizeTms9918BitmapControlled, optimizeTms9918BitmapLossless,
   renderTms9918ColorIndexes } from "../studio/core/tms9918BitmapOptimization.js";
+
+const cliSource = readFileSync(resolve(import.meta.dirname, "optimize-tms9918-bitmap.mjs"), "utf8");
+assert.doesNotMatch(cliSource, /[A-Za-z]:[\\/]/, "bitmap optimizer must not contain an absolute Windows path");
 
 assert.equal(isTms9918CompressionCandidateEligible({ beforeBytes: 100, afterBytes: 101, roundTripOk: true, visualOk: true }), false);
 assert.equal(isTms9918CompressionCandidateEligible({ beforeBytes: 100, afterBytes: 100, roundTripOk: true, visualOk: true }), false);

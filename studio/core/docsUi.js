@@ -25,6 +25,11 @@ const DOCS = [
     path: "../docs/studio-workflow.md"
   },
   {
+    id: "graphics-workflow",
+    label: "Graphics Workflow",
+    path: "../docs/graphics-workflow.md"
+  },
+  {
     id: "rom-testing",
     label: "ROM Testing & Debug",
     path: "../docs/rom-runtime-testing.md"

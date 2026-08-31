@@ -78,7 +78,7 @@ for (const repository of [
 for (const project of ["Amy Studio", "CVBasic", "z88dk +coleco"]) {
   assert.ok(comparison.includes(project), `comparison missing toolchain: ${project}`);
 }
-for (const document of ["amy-language.md", "amy-optimization-cookbook.md", "amy-graphics-editors-guide.md", "development-quality-pipeline.md"]) {
+for (const document of ["amy-language.md", "amy-optimization-cookbook.md", "amy-graphics-editors-guide.md", "graphics-workflow.md", "development-quality-pipeline.md"]) {
   assert.ok(docs.includes(document), `documentation reader missing document: ${document}`);
 }
 const qualityHtml = markdownToHtml(qualityMarkdown);
