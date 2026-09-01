@@ -280,7 +280,7 @@ cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy | ZX0, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
+| Amy | ZX0, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
@@ -303,7 +303,7 @@ their output independently.
 | ZX0 classic | `ZX0 Classic (v1)` / proposed codec `zx0v1` | z88dk v1.5 compressor plus exact benchmark VRAM port | Explicit extension and cross-format rejection tests |
 | ZX1 | `ZX1` | Official host payload and RAM decoder measured | Coleco-safe VRAM decoder and runtime proof |
 | ZX2 | `ZX2` | Official host payload and RAM decoder measured | Coleco-safe VRAM decoder and runtime proof |
-| aPLib | `aPLib` | Exact devkitSMS direct-to-VRAM ROM; browser encoder remains hidden | License/attribution review and browser/official stream parity |
+| aPLib | `aPLib` / codec `aplib` | Bidirectional appack parity and exact Amy/GearColeco VRAM ROM | Integrated; keep NMI-safe upload and attribution explicit |
 | MSC1 | `MSC1` | ugBASIC discards it for Warrior when it gives no gain | Useful Coleco corpus wins and a VRAM strategy |
 
 A host compressor alone is insufficient. An Amy codec requires round-trip tests, exact GearColeco
@@ -339,7 +339,7 @@ that narrower feature needs a direct-to-VRAM proof and a mixed corpus: bitmap ta
 tile sets, sprite frames, level maps, record arrays, and sound data. Only candidates that reduce
 `payload + linked decoder`, round-trip exactly, and pass GearColeco should be added.
 
-### aPLib candidate status
+### aPLib integration status
 
 aPLib has three useful pieces already available locally: the official host compressor, Amy's
 JavaScript beam-search encoder, and direct-to-VRAM Z80 implementations in z88dk/devkitSMS. The
@@ -352,12 +352,12 @@ exact-cost planner produces 3,054 bytes for Cake and 2,973 for Warrior, versus o
 payloads of 3,088 and 2,975. Official `appack` still wins some individual resources, so neither
 encoder universally dominates.
 
-The official `appack` payload is now linked to devkitSMS's existing VRAM decoder. With display and
-frame IRQ disabled during decompression, GearColeco reports exact pattern, color, and framebuffer
-output. The resulting Warrior ROM occupies 4,713 bytes instead of 13,680 with raw tables. Leaving
-frame IRQ active caused two corrupted pattern bytes, so the protection is a correctness
-requirement, not optional benchmark glue. Amy integration remains a separate decision because
-ZX0 is still smaller here and aPLib's license/attribution and decoder cost must remain explicit.
+Amy now ships the browser encoder and a 348-byte public-domain SMSlib-derived ColecoVision VRAM
+decoder. `decompress aplib Source to vram.pattern` accepts a raw `.aplib` stream and the existing
+VRAM upload wrapper provides the same NMI-safe contract as other Amy LZ codecs. A compiled Amy ROM
+reconstructed Warrior's 6,144-byte pattern and color tables exactly in GearColeco. The test ROM
+occupied 3,604 bytes with 2,973 compressed data bytes. The official aPLib executable is used only
+for differential testing and is not redistributed.
 
 The first reproducible size results and the rules for the cross-tool runtime comparison are in
 `competition/benchmarks/compression/README.md`. On two real 12,288-byte TMS9918 pictures, ZX0 has

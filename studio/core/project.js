@@ -295,6 +295,7 @@ function splitHeaderAndCodeIncludes(paths) {
 function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
   const codecToInclude = {
     zx0: "src/compression/zx0_vram.asm",
+    aplib: "src/compression/aplib_vram.asm",
     zx7: "src/compression/zx7_vram.asm",
     dan1: "src/compression/dan1_vram.asm",
     dan2: "src/compression/dan2_vram.asm",
@@ -313,7 +314,7 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
       String(asset.name).toLowerCase(),
       String(asset.codec).toLowerCase() === "rle" ? "mdkrle" : String(asset.codec).toLowerCase()
     ]));
-  const pattern = /^\s*decompress\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
+  const pattern = /^\s*decompress\s+(zx0|zx7|aplib|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
   let match;
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
@@ -323,12 +324,13 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
     const codec = assetCodecByName.get(match[1].toLowerCase());
     if (codec && codecToInclude[codec]) found.add(codecToInclude[codec]);
   }
-  const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx7|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s*$/gim;
+  const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx7|aplib|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s*$/gim;
   while ((match = pictureComponentPattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
   }
   const symbolToCodec = {
     zx0_decompress: "zx0",
+    aplib_decompress: "aplib",
     zx7_decompress: "zx7",
     dan1_decompress: "dan1",
     dan2_decompress: "dan2",

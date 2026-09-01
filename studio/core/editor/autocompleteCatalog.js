@@ -350,6 +350,7 @@ export const AMY_AUTOCOMPLETE = [
   ["copy TextLine1 to vram.name + $00C8", "Copy a text/data block to a VRAM offset"],
   ["decompress PatternAsset to vram.pattern", "Decompress a declared asset using its codec metadata"],
   ["decompress mdkrle Pattern to vram.pattern", "Explicit codec form for raw/data labels"],
+  ["decompress aplib Pattern to vram.pattern", "aPLib raw stream directly to ColecoVision VRAM"],
   ["decompress rle Pattern to vram.pattern", "Alias for lib4ksa/getput11 mdkrle-style VRAM decompression"],
   ["show picture TitleScreen", "All-in-one bitmap picture display: set mode, upload data, then screen on"],
   ["upload picture TitleScreen", "Upload/decompress a grouped picture without changing screen state"],

@@ -116,6 +116,17 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
+        aplib: {
+            name: 'aPLib',
+            author: 'Joergen Ibsen; Amy Studio browser encoder',
+            year: '1998-2014 / 2026',
+            description: 'Compact aPPack-compatible LZ stream with direct ColecoVision VRAM decompression.',
+            extensions: ['.aplib'],
+            module: './codecs/aplib.js',
+            className: 'APLibCodec',
+            enabled: true,
+            category: 'lz77'
+        },
     },
     
     // Add new codec categories here for easy organization
@@ -130,7 +141,7 @@ export const CODEC_CONFIG = {
     settings: {
         maxFileSize: 256 * 1024, // 256KB
         enableDebugMode: false,
-        defaultCompressionOrder: ['zx0', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
+        defaultCompressionOrder: ['zx0', 'aplib', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
     }
 };
 

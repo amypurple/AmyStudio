@@ -20,6 +20,16 @@
 - Distinguished the common six-tool Warrior benchmark from the four-picture Graphics II
   fidelity corpus and included both in the downloadable evidence archive.
 
+## 2026-09-01 - aPLib compression
+
+- Added aPLib as Amy Studio's eleventh browser compression codec.
+- Added `decompress aplib Source to vram...` with a direct TMS9918 VRAM decoder.
+- Added malformed-stream checks and official aPPack compatibility tests.
+- Added an exact GearColeco VRAM ROM test with deterministic public test data.
+- Updated the homepage, language reference, compression guide, comparison dashboard,
+  and downloadable evidence archive.
+- Kept the official aPPack executable and commercial graphics outside the public repository.
+
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
 - Documented the DEV-to-clean quality pipeline covering targeted repros, five-profile

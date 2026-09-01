@@ -10,6 +10,7 @@
 src/
   compression/
     zx0_vram.asm
+    aplib_vram.asm
     zx7_vram.asm
     nibble_vram.asm
     bitbuster_vram.asm
@@ -29,11 +30,13 @@ assets/
 
 ## Official Studio Codecs
 
-Amy Studio currently enables 10 compressors in the picture/tiles import chooser: `mdkrle`, `nibble`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster`, `zx7`, and `zx0`. `aplib` is intentionally excluded because Amy Studio does not currently ship a matching ColecoVision VRAM decompressor.
+Amy Studio currently enables 11 compressors in the picture/tiles import chooser: `mdkrle`, `nibble`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster`, `zx7`, `zx0`, and `aplib`.
+
+`aplib` uses Amy Studio's browser encoder and a 348-byte public-domain SMSlib-derived decoder adapted for plain ColecoVision VRAM addresses. The raw `.aplib` stream is compatible with aPPack. The Z80 routine writes directly to VRAM and requires NMI-safe use, like the other LZ VRAM codecs. The official aPLib package and `appack.exe` are test references only and are not redistributed by Amy Studio.
 
 `nibble` is the official Studio name for the legacy `DAN0nibble`-derived codec. It uses RLE commands plus 16-value data-stream references, with a 2026 relocatable header for browser project files.
 
-The quick image-import pass tests `raw` plus the 5 fastest compressors measured on the Warrior pattern/color benchmark: `mdkrle`, `nibble`, `bitbuster`, `zx7`, and `dan1`. The full “Compare all codecs” pass still evaluates all 10 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams like `mdkrle`/`nibble` are not unfairly compared with LZ codecs that can do VRAM back-copy.
+The quick image-import pass keeps the established fastest candidates. The full "Compare all codecs" pass evaluates all 11 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams are not unfairly compared with LZ codecs that can do VRAM back-copy.
 
 ## Workflow
 1. Export/compress assets with standalone tools (e.g., `zx0.exe`) or reuse Warrior binaries for validation.
