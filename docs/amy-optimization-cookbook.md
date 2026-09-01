@@ -258,6 +258,48 @@ Grouping consecutive RAM or VRAM work can save setup and address calculations, b
 
 The transpiler can remove some redundant state commands when control flow and inline ASM are understood. Do not rely on an optimization that has not been proven for the relevant control-flow path.
 
+## Protect direct VRAM manipulation
+
+The programmer owns the safety of a sequence that performs direct or composite VRAM
+manipulation. A VDP status read from NMI can reset the TMS9918 address latch between the
+two control-port writes or during a read-modify-write operation. This can produce an
+apparently random character or pixel outside the intended area.
+
+For a static screen, draw while the new display is hidden, then enable it:
+
+```basic
+bitmap screen
+cls
+' Draw the complete picture here.
+screen on
+```
+
+For visible progressive drawing, synchronize and protect a moderate batch:
+
+```basic
+wait
+nmi off
+for X = 20 to 220
+  pset X,20
+next
+nmi on
+```
+
+Repeat that pattern for the next batch. One pixel per frame is safe but often needlessly
+slow. One entire complex picture with NMI disabled avoids corruption but may pause music,
+timers, controller updates, and frame callbacks for too long. Choose a batch that is fast
+enough for the game while returning regularly to NMI service.
+
+Treat `pset`, `pget`, `line`, `circle`, `box`, `get frame`, bulk VRAM reads, VRAM-to-VRAM
+copies, and direct VDP-port ASM as operations that require an ownership plan when the
+screen and NMI are active. Some individual Amy helpers use an internal VDP lock, but that
+does not make an arbitrary multi-command sequence atomic. Do not place `wait` inside an
+`nmi off` section: frame waits require NMI to advance.
+
+Use **CVBasic Plot Port** for the hidden-display strategy and **CVBasic Live Plot Port**
+for visible batched drawing. The Vector Cube example protects each complete animation
+frame in the same way.
+
 ## Compression is a size and time tradeoff
 
 For a compressed asset, compare:
