@@ -140,7 +140,7 @@ export function handleSoundSpinnerStatement({
     };
   }
 
-  if (/^mute\s+all$/i.test(line) || /^stop\s+all\s+sound$/i.test(line)) {
+  if (/^mute\s+all$/i.test(line)) {
     return {
       ok: true,
       handled: true,

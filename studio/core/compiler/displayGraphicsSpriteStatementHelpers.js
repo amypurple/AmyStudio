@@ -45,7 +45,7 @@ export function handleDisplayGraphicsSpriteStatement({
     };
   }
 
-  if (/^graphics\s+(?:mode\s+)?bitmap$/i.test(line) || /^graphics\s+mode\s+2\s+bitmap$/i.test(line)) {
+  if (/^graphics\s+mode\s+2\s+bitmap$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SET_BITMAP_GRAPHICS_MODE"] };
   }
 
@@ -146,11 +146,11 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: [`    ld bc,${registerValue}`, "    call WRITE_REGISTER"] };
   }
 
-  if (/^(nmi\s+off|disable\s+nmi)$/i.test(line)) {
+  if (/^nmi\s+off$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_DISABLE_NMI"] };
   }
 
-  if (/^(nmi\s+on|enable\s+nmi)$/i.test(line)) {
+  if (/^nmi\s+on$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_ENABLE_NMI"] };
   }
 
@@ -198,18 +198,14 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: [`    ld a,${styleFlags}`, "    call AMY_LOAD_DEFAULT_ASCII_STYLE"] };
   }
 
-  const fillMode2TextColor = line.match(/^initialize\s+mode\s*2\s+text\s+color\s+with\s+(.+)$/i)
-    || line.match(/^fill\s+mode\s*2\s+text\s+color\s+with\s+(.+)$/i)
-    || line.match(/^fill\s+mode2\s+text\s+color\s+with\s+(.+)$/i);
+  const fillMode2TextColor = line.match(/^fill\s+mode\s+2\s+text\s+color\s+with\s+(.+)$/i);
   if (fillMode2TextColor) {
     const loadColor = emitLoadInt8ValueInto("a", fillMode2TextColor[1]);
     if (!loadColor) return { ok: false, handled: true, log: `Mode 2 text color must be a u8 value: ${rawLine}` };
     return { ok: true, handled: true, lines: [...loadColor, "    call AMY_FILL_MODE2_TEXT_COLOR"] };
   }
 
-  const fillMode2TextColorFull = line.match(/^fill\s+full\s+mode\s*2\s+text\s+color\s+with\s+(.+)$/i)
-    || line.match(/^fill\s+full\s+mode2\s+text\s+color\s+with\s+(.+)$/i)
-    || line.match(/^initialize\s+full\s+mode\s*2\s+text\s+color\s+with\s+(.+)$/i);
+  const fillMode2TextColorFull = line.match(/^fill\s+full\s+mode\s+2\s+text\s+color\s+with\s+(.+)$/i);
   if (fillMode2TextColorFull) {
     const loadColor = emitLoadInt8ValueInto("a", fillMode2TextColorFull[1]);
     if (!loadColor) return { ok: false, handled: true, log: `Full Mode 2 text color must be a u8 value: ${rawLine}` };
@@ -218,8 +214,7 @@ export function handleDisplayGraphicsSpriteStatement({
 
   if (/^duplicate\s+mode\s*2\s+patterns$/i.test(line)
     || /^duplicate\s+mode\s*2\s+pattern\s+thirds$/i.test(line)
-    || /^duplicate\s+mode\s*2\s+text\s+pattern\s+thirds$/i.test(line)
-    || /^duplicate\s+mode\s*2\s+text\s+patterns$/i.test(line)) {
+    || /^duplicate\s+mode\s+2\s+text\s+patterns$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_DUPLICATE_PATTERN_THIRDS"] };
   }
 

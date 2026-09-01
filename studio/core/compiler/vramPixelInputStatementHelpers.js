@@ -44,7 +44,7 @@ export function handleVramPixelInputStatement({
     return { handled: true, ok: true };
   }
 
-  const mode1Pixel = line.match(/^(pset|plot|preset)\s+(.+?)\s*,\s*(.+?)(?:\s+color\s+(.+))?$/i);
+  const mode1Pixel = line.match(/^(pset|preset)\s+(.+?)\s*,\s*(.+?)(?:\s+color\s+(.+))?$/i);
   if (mode1Pixel) {
     const opcode = mode1Pixel[1].toLowerCase();
     if (!currentGraphicsMode || currentGraphicsMode === "mode1_text" || currentGraphicsMode === "mode2_text") {
