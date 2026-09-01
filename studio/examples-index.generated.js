@@ -366,6 +366,21 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "cvbasic-plot-live-port",
+    "label": "CVBasic Live Plot Port",
+    "detail": "Visible progressive bitmap drawing with VBlank synchronization and short NMI-safe VDP critical sections.",
+    "projectName": "cvbasic-plot-live-port",
+    "sourceLang": "amy",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
+    "tags": [
+      "amy",
+      "cvbasic",
+      "port",
+      "cvbasic-port"
+    ]
+  },
+  {
     "id": "cvbasic-vector-cube-port",
     "label": "CVBasic Vector Cube Port",
     "detail": "Amy adaptation of Matthew Eggleston's CVBasic vector cube demo using native bitmap line drawing.",
