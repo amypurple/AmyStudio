@@ -1,7 +1,7 @@
 ## 2026-09-01 - Improved compressed bitmap evidence
 
 - Rebuilt the legacy SDCC bitmap with its historical DAN2 VRAM routine, reducing it from 4,269 to 3,643 bytes.
-- Replaced z88dk's raw bitmap tables with a verified ZX7 direct-to-VRAM path, reducing it from 14,293 to 5,115 bytes.
+- Added verified z88dk ZX0 and ZX7 direct-to-VRAM paths; ZX0 reduces the bitmap benchmark from 14,293 to 4,976 bytes.
 - Revalidated all seven Warrior ROMs with exact VRAM and pixel output and refreshed the evidence archive.
 - Verified ugBASIC's `COMPRESSED` image form; Warrior remains unchanged because MSC1 gives no gain and Coleco RLE is not implemented.
 

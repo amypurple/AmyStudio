@@ -46,7 +46,7 @@ Run `tools/build-five-tool-bluemsx-suite.ps1`, `tools/build-pvcollib-benchmarks.
 |---|---|---|
 | Amy | Experimental | Saved 1 byte on Bitmap and 2 on Controller versus Balanced; Hello was unchanged |
 | CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
-| z88dk | `+coleco -O3`; ZX7 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX7 core; MDKRLE and raw baselines remain measured |
+| z88dk | `+coleco -O3`; ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; ZX7, MDKRLE, and raw baselines remain measured |
 | ugBASIC 1.18 | Default maximum of 16 peephole passes | Explicit 32- and 64-pass builds produced the same Hello binary |
 | devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
@@ -63,11 +63,11 @@ default.
 | Sample | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib | Legacy devkit |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **238** | 1,466 | 3,687 | 5,245 | 1,507 | 1,106 | 795 |
-| Warrior bitmap | **3,254** | 4,948 | 5,115 | 18,034 | 4,713 | 4,525 | 3,643 |
+| Warrior bitmap | **3,254** | 4,948 | 4,976 | 18,034 | 4,713 | 4,525 | 3,643 |
 | Controller Visual | **595** | 1,695 | 4,016 | 5,993 | 1,430 | 1,194 | 932 |
 
 The improved bitmap rows retain measured baselines: z88dk's raw-table ROM was 14,293 bytes,
-MDKRLE reduced it to 5,911 bytes, and the validated ZX7 path reduces it to 5,115 bytes; the legacy devkit's GETPUT
+MDKRLE reduced it to 5,911 bytes, ZX7 to 5,115 bytes, and the validated ZX0 path to 4,976 bytes; the legacy devkit's GETPUT
 MDKRLE ROM was 4,269 bytes before DAN2 reduced it to 3,643. Both replacements reproduce the
 original pattern table, color table, and all 49,152 pixels exactly. The installed ugBASIC 1.18
 Coleco target accepts `LOAD IMAGE ... COMPRESSED`, but Warrior produces the same 18,034-byte ROM
@@ -112,16 +112,16 @@ bytes (`76.76%`), because foreground/background choices and unused bits can enco
 TMS9918 pixels in multiple ways. The rendered result is nevertheless exact: `0.00%` of pixels
 differ. Amy loads the original tables with ZX0, PVColLib uses its native RLE direct-to-VRAM path,
 the legacy devkit links its historical DAN2 direct-to-VRAM routine,
-z88dk uses ZX7 with a Coleco-safe port of its direct-to-VRAM decoder, devkitSMS uses its native aPLib direct-to-VRAM
+z88dk uses ZX0 with a Coleco-safe port of its direct-to-VRAM decoder, devkitSMS uses its native aPLib direct-to-VRAM
 decoder, and ugBASIC converts the complete image
 through its image-resource pipeline. PVColLib's bundled Pletter path was excluded after its stream
 failed exact VRAM validation; its RLE path passed exactly. This is useful native-pipeline evidence,
 but it is not a codec-ranking result. The separate compression
 benchmark uses identical payloads plus decoder cost and is the correct place for codec claims.
 
-The z88dk MDKRLE result reaches exact VRAM at frame 93 in the test harness; ZX7 reaches it at
-frame 138, 45 frames later, while saving another 796 occupied ROM bytes. This makes ZX7 the
-size winner and MDKRLE the faster loading option.
+The z88dk MDKRLE result reaches exact VRAM at frame 93 in the test harness; ZX0 reaches it at
+frame 132 and ZX7 at frame 138. ZX0 saves 935 occupied ROM bytes over MDKRLE and 139 over ZX7,
+making ZX0 the size winner while MDKRLE remains the faster loading option.
 
 z88dk's library also contains an SMS-targeted direct-to-VRAM aPLib decoder. A Coleco adaptation
 compiled to 5,274 bytes, but failed exact TMS9918 VRAM validation because its VRAM-to-VRAM copy
@@ -280,18 +280,22 @@ cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 |---|---|---|---|
 | Amy | ZX0, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
-| z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | ZX7 Coleco direct-to-VRAM port verified exactly; generic RAM decoders remain available | Manual headers/linking and host tools |
+| z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | ZX0 and ZX7 Coleco direct-to-VRAM ports verified exactly; generic RAM decoders remain available | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
 | SGlib_CV / SMSlib routine | ZX7 and aPLib | ZX7 API; aPLib direct-to-VRAM exact with frame IRQ disabled | Manual host compression and C asset inclusion |
 | PVColLib | RLE, Pletter, DAN1/2/3 | RLE direct-to-VRAM verified exactly here; other paths remain separate candidates | `gfx2col` conversion and C asset inclusion |
 | Amy legacy devkit | GETPUT 1.1 MDK-RLE | Direct-to-VRAM verified exactly on Warrior | External CVPaint/asset tools and C data inclusion |
+
+z88dk's public ZX0 integration request dates from February 2021, consistent with ZX0/ZX7 being
+available there by spring 2021. The stock routines target RAM; this benchmark adds only the
+ColecoVision TMS9918 direct-to-VRAM adaptation and validates its output independently.
 
 Current verdict: Amy leads in codec breadth and ColecoVision workflow; devkitSMS has verified ZX7
 and aPLib paths, PVColLib has a verified RLE path, and CVBasic has a concise Pletter path. On
 Warrior and Cake, official ZX1, ZX2, and aPLib do not beat Amy's ZX0 first-use ROM size. aPLib
 nevertheless cuts the devkitSMS Warrior ROM from 13,680 raw bytes to 4,713 occupied bytes. ZX1 remains worth a speed study,
 but its z88dk decoder targets RAM and needs a safe Coleco VRAM adaptation before it becomes an Amy
-feature candidate. z88dk ZX7 now has that Coleco proof. ugBASIC's MSC1 is a valid comparison
+feature candidate. z88dk ZX0 and ZX7 now have that Coleco proof. ugBASIC's MSC1 is a valid comparison
 candidate, not ten separate codecs, but it does not improve the Warrior resource.
 
 ### What MSC1 actually is
