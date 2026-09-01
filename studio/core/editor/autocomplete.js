@@ -1,5 +1,23 @@
 import { getEditorAdapter } from "./editorAdapter.js";
 
+export const AMY_AUTOCOMPLETE_STORAGE_KEY = "amy_studio_autocomplete_v1";
+
+export function loadAutocompletePreference(storage = globalThis.localStorage) {
+  try {
+    return storage?.getItem(AMY_AUTOCOMPLETE_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function saveAutocompletePreference(enabled, storage = globalThis.localStorage) {
+  try {
+    storage?.setItem(AMY_AUTOCOMPLETE_STORAGE_KEY, enabled ? "on" : "off");
+  } catch {
+    // Storage can be unavailable in private or embedded browser contexts.
+  }
+}
+
 export function currentLineInfo(text, caret) {
   const lineStart = text.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
   const lineEndRaw = text.indexOf("\n", caret);
@@ -31,7 +49,8 @@ export function createAutocompleteController(ctx) {
     setState,
     onSourceMutated,
     onAutocompleteApplied,
-    onScheduleInsightsRefresh
+    onScheduleInsightsRefresh,
+    isEnabled = () => true
   } = ctx;
   const sourceEditor = getEditorAdapter(els.sourceEditor);
 
@@ -146,6 +165,10 @@ export function createAutocompleteController(ctx) {
   }
 
   function updateAutocomplete({ force = false } = {}) {
+    if (!isEnabled()) {
+      closeAutocomplete();
+      return;
+    }
     const editorText = sourceEditor.getText();
     const caret = sourceEditor.getSelection().start;
     const { line } = currentLineInfo(editorText, caret);

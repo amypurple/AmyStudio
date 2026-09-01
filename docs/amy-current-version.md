@@ -78,6 +78,9 @@ Amy Studio supports colorized Amy source with native textarea editing semantics,
 breakpoints, symbolic ROM-test checkpoints, generated source maps, GearColeco-backed ROM
 assertions, and full example assembly. Syntax coloring is presentation-only: compilation,
 selection, autocomplete, breakpoints, and source text continue to use the underlying editor.
+
+The compact `AC` switch disables or enables autocomplete independently from syntax
+colouring. The preference persists locally and does not alter project files.
 The highlighting convention is semantic and deliberately uses the TMS9918A palette:
 
 - control-flow and general Amy grammar use cyan

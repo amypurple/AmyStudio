@@ -1,7 +1,11 @@
 import { manifest } from "./manifest.js";
 import { getRamLayout } from "./ramLayouts.js";
 import { compressBytes, decompressBytes, detectCodecFromName, getCompressionCatalog } from "./core/compression.js";
-import { createAutocompleteController } from "./core/editor/autocomplete.js?v=20260719-editor-input-debounce";
+import {
+  createAutocompleteController,
+  loadAutocompletePreference,
+  saveAutocompletePreference
+} from "./core/editor/autocomplete.js?v=20260901-autocomplete-toggle";
 import {
   amySyntaxColorWord,
   createAmySyntaxOverlay,
@@ -190,6 +194,7 @@ const els = {
   optimizationHint: document.getElementById("optimizationHint"),
   projectGraph: document.getElementById("projectGraph"),
   sourceEditor: document.getElementById("sourceEditor"),
+  btnToggleAutocomplete: document.getElementById("btnToggleAutocomplete"),
   btnToggleSyntaxColors: document.getElementById("btnToggleSyntaxColors"),
   sourceAutocomplete: document.getElementById("sourceAutocomplete"),
   sourceBreakpointGutter: document.getElementById("sourceBreakpointGutter"),
@@ -284,6 +289,7 @@ let autocompleteItems = [];
 let autocompleteIndex = 0;
 let autocompleteWordStart = 0;
 let autocompleteWordEnd = 0;
+let autocompleteEnabled = loadAutocompletePreference();
 let lastStatusText = "";
 let lastLibResolution = null;
 let emulatorBios = null;
@@ -595,7 +601,8 @@ const autocompleteController = createAutocompleteController({
   },
   onScheduleInsightsRefresh: () => {
     scheduleEditorInsightsRefresh();
-  }
+  },
+  isEnabled: () => autocompleteEnabled
 });
 
 const {
@@ -604,6 +611,20 @@ const {
   syncAutocompleteSelection,
   updateAutocomplete
 } = autocompleteController;
+
+function syncAutocompleteButton() {
+  els.btnToggleAutocomplete?.setAttribute("aria-checked", String(autocompleteEnabled));
+  if (els.btnToggleAutocomplete) {
+    els.btnToggleAutocomplete.title = `${autocompleteEnabled ? "Disable" : "Enable"} autocomplete`;
+  }
+}
+els.btnToggleAutocomplete?.addEventListener("click", () => {
+  autocompleteEnabled = !autocompleteEnabled;
+  saveAutocompletePreference(autocompleteEnabled);
+  if (!autocompleteEnabled) closeAutocomplete();
+  syncAutocompleteButton();
+});
+syncAutocompleteButton();
 
 function scheduleEditorInsightsRefresh() {
   clearTimeout(insightRefreshTimer);

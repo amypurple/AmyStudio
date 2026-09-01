@@ -1,3 +1,8 @@
+## 2026-09-01 - Added autocomplete preference
+
+- Added an independent `AC` switch that disables automatic suggestions and `Ctrl+Space`.
+- Kept the preference local and independent from syntax colouring and project files.
+
 ## 2026-09-01 - Added visual benchmarks and ZX1
 
 - Added a seven-tool sprite/metasprite benchmark with runtime-verified ROM evidence.
