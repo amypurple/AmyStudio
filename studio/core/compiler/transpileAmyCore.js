@@ -3990,7 +3990,11 @@ export function transpileAmyCore(sourceText, deps) {
       flushBufferedVdpR1PureModifiers();
     }
     {
-      const onFrameMatch = line.match(/^on\s+(?:vblank|frame)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      const removedOnFrame = line.match(/^on\s+frame\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (removedOnFrame) {
+        return { ok: false, asmBody: "", log: `'${rawLine.trim()}' was removed at top level; use 'on vblank ${removedOnFrame[1]}'` };
+      }
+      const onFrameMatch = line.match(/^on\s+vblank\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
       if (onFrameMatch) {
         if (currentProc || currentFunction) {
           return { ok: false, asmBody: "", log: `on vblank must be declared at top level: ${rawLine}` };

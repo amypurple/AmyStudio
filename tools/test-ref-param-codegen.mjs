@@ -521,7 +521,7 @@ check("scene frame rejects a reachable blocking statement", () => {
   assert.match(bad.log, /on frame path is not NMI-safe/i);
 });
 check("scenes reject a separate top-level on frame hook", () => {
-  const bad = transpileAmy(sceneDeclarationSource.replace("u8 Initial = Scenes.Menu", "on frame MenuFrame\nu8 Initial = Scenes.Menu"));
+  const bad = transpileAmy(sceneDeclarationSource.replace("u8 Initial = Scenes.Menu", "on vblank MenuFrame\nu8 Initial = Scenes.Menu"));
   assert.equal(bad.ok, false);
   assert.match(bad.log, /scenes own the single on frame hook/i);
 });

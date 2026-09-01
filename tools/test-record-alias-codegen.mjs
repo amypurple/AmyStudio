@@ -91,7 +91,7 @@ loop forever`, false);
   assert.match(recursive, /proven non-reentrant/i, "recursive alias rejection should explain the safety rule");
 
   const nmi = compile("record-alias-nmi", `${declarations}
-on frame Tick
+on vblank Tick
 sub Tick:
   with Actors[I] as Actor
     Actor.X += 1

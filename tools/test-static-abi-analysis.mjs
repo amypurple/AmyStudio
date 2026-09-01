@@ -52,7 +52,7 @@ assert(nmi.nmiReachable.has("tick") && nmi.nmiReachable.has("animate"), "NMI des
 assert(!nmi.eligible.has("animate") && nmi.eligible.has("mainleaf"), "NMI eligibility fence is wrong");
 
 const asmEdge = analyze(`
-on frame Tick
+on vblank Tick
 sub Tick:
   asm {
     call AMY_UPROC_Leaf
