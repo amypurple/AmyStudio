@@ -60,11 +60,11 @@ default.
 
 ### Real occupied size, excluding cartridge padding
 
-| Sample | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib | NewColeco |
+| Sample | Amy Studio | NewColeco | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **238** | 1,466 | 3,687 | 5,245 | 1,507 | 1,106 | 795 |
-| Warrior bitmap | **3,254** | 4,948 | 4,976 | 18,034 | 4,713 | 4,525 | 3,643 |
-| Controller Visual | **595** | 1,695 | 4,016 | 5,993 | 1,430 | 1,194 | 932 |
+| Hello World | **238** | 795 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
+| Warrior bitmap | **3,254** | 3,643 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
+| Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,993 |
 
 The improved bitmap rows retain measured baselines: z88dk's raw-table ROM was 14,293 bytes,
 MDKRLE reduced it to 5,911 bytes, ZX7 to 5,115 bytes, and the validated ZX0 path to 4,976 bytes; the legacy devkit's GETPUT
