@@ -2499,6 +2499,11 @@ VdpByte = vdp.status
 FrameCount = frame
 ```
 
+`keypad(N)` returns `0` through `9` for the digit keys, `10` for `*`, `11` for
+`#`, and `255` (`$FF`) when no key is pressed. Therefore test
+`keypad(N) <> 255` for any keypad press; `keypad(N) <> 0` is incorrect because
+it rejects the physical `0` key and treats the idle value as a press.
+
 These expressions may be assigned to variables, array elements, record fields, or
 overlay-qualified fields. The `read` statement is reserved for `DATA` cursor reads
 and explicit transfers such as `read vram`.

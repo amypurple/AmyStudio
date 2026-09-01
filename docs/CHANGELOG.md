@@ -2,6 +2,7 @@
 
 - Added an independent `AC` switch that disables automatic suggestions and `Ctrl+Space`.
 - Kept the preference local and independent from syntax colouring and project files.
+- Clarified that keypad digit `0` returns zero while no key returns `255` (`$FF`).
 
 ## 2026-09-01 - Added visual benchmarks and ZX1
 
