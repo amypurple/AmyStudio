@@ -25,7 +25,7 @@ instead of being treated as language features.
 | ugBASIC | Portable retro BASIC compiler | Declared target with common high-level multimedia vocabulary |
 | devkitSMS + `SGlib_CV` | SDCC C plus compact game libraries | ColecoVision adaptation of the SG/SMS development workflow |
 | PVColLib | ColecoVision-focused SDCC C library and devkit | Native VDP, controller, sprite, sound, music, and compression APIs |
-| Amy legacy devkit | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
+| NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
 
 ## Reproducible three-sample ROM suite
 
@@ -44,13 +44,13 @@ Run `tools/build-five-tool-bluemsx-suite.ps1`, `tools/build-pvcollib-benchmarks.
 
 | Solution | Setting used | Observation |
 |---|---|---|
-| Amy | Experimental | Saved 1 byte on Bitmap and 2 on Controller versus Balanced; Hello was unchanged |
+| Amy Studio | Experimental | Saved 1 byte on Bitmap and 2 on Controller versus Balanced; Hello was unchanged |
 | CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
 | z88dk | `+coleco -O3`; ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; ZX7, MDKRLE, and raw baselines remain measured |
 | ugBASIC 1.18 | Default maximum of 16 peephole passes | Explicit 32- and 64-pass builds produced the same Hello binary |
 | devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
-| Amy legacy devkit / SDCC 3.8 | `--std-c99`; original prebuilt libraries plus historical DAN2 | The exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
+| NewColeco / SDCC 3.8 | `--std-c99`; original prebuilt libraries plus historical DAN2 | The exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 
 These are the strongest **native settings that were built and validated here**. Generated code
 was not passed through Amy's optimizer or MDL, because doing so would compare an additional
@@ -60,7 +60,7 @@ default.
 
 ### Real occupied size, excluding cartridge padding
 
-| Sample | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib | Legacy devkit |
+| Sample | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib | NewColeco |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **238** | 1,466 | 3,687 | 5,245 | 1,507 | 1,106 | 795 |
 | Warrior bitmap | **3,254** | 4,948 | 4,976 | 18,034 | 4,713 | 4,525 | 3,643 |
@@ -141,7 +141,7 @@ four visually distinct sources to expose palette and conversion errors. Amy, CVB
 ugBASIC currently have all four generated ROMs; the reproducible seven-tool suite uses Warrior so
 that every solution is compared on one byte-identical target image.
 
-| Picture | Origin | Amy bytes | CVBasic bytes / fidelity | ugBASIC bytes / fidelity |
+| Picture | Origin | Amy Studio bytes | CVBasic bytes / fidelity | ugBASIC bytes / fidelity |
 |---|---|---:|---:|---:|
 | Cake | Native Graphics II | 3,363 | 5,027 / 0.00% different | 18,034 / 0.00% different |
 | Commando | Native Graphics II | 5,796 | 7,197 / 0.00% different | 18,034 / 0.00% different |
@@ -206,7 +206,7 @@ direct-to-VRAM path supplied by that solution.
 
 ### Data model
 
-| Area | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
+| Area | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
 |---|---|---|---|---|---|---|
 | Integer widths | Explicit signed/unsigned 8/16/32 | 8/16, signed or unsigned | C 8/16/32 | Backend defines signed/unsigned 8/16/32 | SDCC C 8/16/32 | SDCC C 8/16/32 |
 | Fractional math | `fixed`, `ufixed`, `fixed32`, `fp5` | None | C/library float and fixed libraries | `VT_FLOAT` exists; Coleco cost pending | SDCC float/manual fixed | SDCC float/manual fixed |
@@ -222,7 +222,7 @@ has a broad internal type system; its actual ColecoVision ROM/RAM cost still req
 
 ### Control, timing, and code organization
 
-| Area | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
+| Area | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
 |---|---|---|---|---|---|---|
 | Procedures/functions | Typed values, `ref`, returns, recursion | Procedures without value parameters; `DEF FN` expression macros | Full C | Procedures/functions documented | Full C | Full C |
 | State machines | Typed zero-RAM dispatch | Manual `SELECT`/labels | Manual enum/switch/table | Manual control constructs | Manual enum/switch/table | Manual enum/switch/table |
@@ -237,7 +237,7 @@ are visible and the entire service disappears when unused.
 
 ### TMS9918 graphics and sprites
 
-| Area | Amy | CVBasic | z88dk | ugBASIC | SGlib_CV | PVColLib |
+| Area | Amy Studio | CVBasic | z88dk | ugBASIC | SGlib_CV | PVColLib |
 |---|---|---|---|---|---|---|
 | Text/tile/bitmap modes | Coleco-specific commands and editors | Modes and direct VRAM commands | Generic TMS9918/graphics libraries | TMS9918 backend and resource conversion | Tile, bitmap, VDP and VRAM functions | Text, bitmap, VDP and VRAM functions |
 | Pixel/line/circle | Yes, programmer controls NMI-safe batching | Yes | Generic graphics | TMS9918 drawing backend | Pixel/bitmap helpers | Low-level VRAM/bitmap support |
@@ -251,7 +251,7 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 
 ### Controllers
 
-| Capability | Amy | CVBasic | z88dk | ugBASIC | SGlib_CV | PVColLib |
+| Capability | Amy Studio | CVBasic | z88dk | ugBASIC | SGlib_CV | PVColLib |
 |---|---|---|---|---|---|---|
 | Two directions/fire ports | Yes | Yes | `joystick(1/2)` | `JOY(0/1)` backend | NMI snapshots both ports | `joypad_1/2`, four fire bits |
 | Two keypad ports | Yes | Yes | `joystick(3/4)` high byte | `SCANCODE` path; exact port behavior pending | `SG_readCVNumPad` | `keypad_1/2` |
@@ -261,7 +261,7 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 
 ### Sound and music
 
-| Area | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
+| Area | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
 |---|---|---|---|---|---|---|
 | SN76489 tones/noise | BIOS sound tables and direct formats | `SOUND` | PSG libraries/manual ports | SN76489 backend | PSGlib_CV | BIOS-style sound tables |
 | Sequenced music | BIOS format and Tiny Sound | `MUSIC`, simple/full players | External/player libraries | `MUSIC` backend | PSG streams; looping/status | NMI-serviced music sequences |
@@ -280,13 +280,13 @@ cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy | ZX0, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
+| Amy Studio | ZX0, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
 | SGlib_CV / SMSlib routine | ZX7 and aPLib | ZX7 API; aPLib direct-to-VRAM exact with frame IRQ disabled | Manual host compression and C asset inclusion |
 | PVColLib | RLE, Pletter, DAN1/2/3 | RLE direct-to-VRAM verified exactly here; other paths remain separate candidates | `gfx2col` conversion and C asset inclusion |
-| Amy legacy devkit | GETPUT 1.1 MDK-RLE | Direct-to-VRAM verified exactly on Warrior | External CVPaint/asset tools and C data inclusion |
+| NewColeco | GETPUT 1.1 MDK-RLE | Direct-to-VRAM verified exactly on Warrior | External CVPaint/asset tools and C data inclusion |
 
 z88dk's public ZX0 integration request dates from February 2021, consistent with ZX0/ZX7 being
 available there by spring 2021. Its bundled compressor identifies itself as ZX0 v1.5 and emits
@@ -366,7 +366,7 @@ This is a size result, not a speed verdict; Z80 cycle measurements remain requir
 
 ## Memory, ROM size, and banking
 
-| Area | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
+| Area | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
 |---|---|---|---|---|---|---|
 | Stock 1 KB RAM focus | Core design, RAM estimates, overlays | Yes, global/static model | Configurable CRT/C runtime | Backend manages runtime/resources | SDCC/static library model | SDCC/static library model |
 | Dead helper elimination | Capability-driven generation | Compiler-generated runtime | Linker sections/libraries | Deploy-on-use modules and target optimizer | Linker library extraction | Linker library extraction |
@@ -475,7 +475,7 @@ same exact runtime test.
 
 Official source: [alekmaul/pvcollib](https://github.com/alekmaul/pvcollib)
 
-### Amy's legacy devkit remains a strong historical baseline
+### NewColeco remains a strong historical baseline
 
 The recovered SDCC branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Its
 prebuilt ASxxxx objects link successfully with the locally available SDCC 3.8 toolchain after
@@ -523,7 +523,7 @@ manually in Amy Studio ROM TEST & DEBUG or another ColecoVision emulator.
 
 | Tool | Occupied ROM | ROM file | Entry | GearColeco |
 |---|---:|---:|---:|---|
-| Amy Balanced | **408** | 408 | `$8120` | 120-frame boot PASS |
+| Amy Studio Balanced | **408** | 408 | `$8120` | 120-frame boot PASS |
 | devkitSMS / SDCC 4.5 | 1,337 | 16,384 | `$8024` | 120-frame boot PASS |
 | CVBasic 0.9.2 | 1,483 | 8,192 | `$853D` | 120-frame boot PASS |
 | z88dk `+coleco -O2` | 2,117 | 32,768 | `$802A` | 120-frame boot PASS |

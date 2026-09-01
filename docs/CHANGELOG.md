@@ -22,6 +22,7 @@
 
 ## 2026-09-01 - aPLib compression
 
+- Renamed comparison entries to `Amy Studio` and `NewColeco` across the dashboard and evidence archive.
 - Added aPLib as Amy Studio's eleventh browser compression codec.
 - Added `decompress aplib Source to vram...` with a direct TMS9918 VRAM decoder.
 - Added malformed-stream checks and official aPPack compatibility tests.
