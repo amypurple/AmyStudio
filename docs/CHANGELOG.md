@@ -1,3 +1,9 @@
+## 2026-09-01 - Recovered legacy SDCC benchmark
+
+- Added Amy's historical CRTCV, CVLIB, and GETPUT 1.1 devkit to the measured comparison.
+- Added runnable Hello World, exact Warrior bitmap, and controller-monitor ROM evidence.
+- Expanded the public evidence archive from six to seven solutions and 21 runtime-verified ROMs.
+
 ## 2026-09-01 - Expanded six-tool comparison evidence
 
 - Added PVColLib evidence for graphics, sprites, collision, controllers, spinners,
