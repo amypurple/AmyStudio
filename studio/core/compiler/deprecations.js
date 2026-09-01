@@ -154,6 +154,17 @@ export const U32_STATEMENT_DEPRECATIONS = [
   { pattern: /^u32\s+sub\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+([A-Za-z_][A-Za-z0-9_]*)$/i, rewrite: (m) => `${m[2]} -= ${m[1]}`, error: (m, raw) => `'${raw.trim()}' was removed; use '${m[2]} -= ${m[1]}'` }
 ];
 
+// ── Legacy BCD operation verbs ──────────────────────────────────────────────
+
+const Q = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*`;
+
+export const BCD_STATEMENT_DEPRECATIONS = [
+  { pattern: new RegExp(`^add\\s+bcd\\s+(${Q})\\s+by\\s+(.+)$`, "i"), error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} += ${m[2].trim()}'` },
+  { pattern: new RegExp(`^sub\\s+bcd\\s+(${Q})\\s+by\\s+(.+)$`, "i"), error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} -= ${m[2].trim()}'` },
+  { pattern: new RegExp(`^clear\\s+bcd\\s+(${Q})$`, "i"), error: (m, raw) => `'${raw.trim()}' was removed; use 'clear ${m[1]}'` },
+  { pattern: new RegExp(`^copy\\s+bcd\\s+(${Q})\\s+to\\s+(${Q})$`, "i"), error: (m, raw) => `'${raw.trim()}' was removed; use '${m[2]} = ${m[1]}'` }
+];
+
 // ── Generic dispatcher ───────────────────────────────────────────────────────
 
 function checkDeprecationTable(table, line, rawLine) {
@@ -182,6 +193,10 @@ export function checkArrayBulkDeprecation(line, rawLine) {
 
 export function checkU32StatementDeprecation(line, rawLine) {
   return checkDeprecationTable(U32_STATEMENT_DEPRECATIONS, line, rawLine);
+}
+
+export function checkBcdStatementDeprecation(line, rawLine) {
+  return checkDeprecationTable(BCD_STATEMENT_DEPRECATIONS, line, rawLine);
 }
 
 // ── Control-flow closers and aliases ─────────────────────────────────────────

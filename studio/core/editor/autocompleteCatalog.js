@@ -503,7 +503,7 @@ export function autocompleteCommandBias(snippet) {
   if (/^[a-z_][a-z0-9_]*\s*=\s*get\s+(char|count|frame)\b/.test(lower)) score -= 7;
   if (/^put\s+[a-z_][a-z0-9_]*\s+count\s+.+\s+at\s+/.test(lower)) score -= 6;
   if (/^put\s+[a-z_][a-z0-9_]*\s+frame\s+size\s+.+\s+at\s+/.test(lower)) score -= 6;
-  if (lower.startsWith("copy ") && !lower.startsWith("copy bytes ") && !lower.startsWith("copy bcd ")) score -= 4;
+  if (lower.startsWith("copy ") && !lower.startsWith("copy bytes ")) score -= 4;
   if (/\bthen\b.+\belse\b/.test(lower)) score -= 4;
   if (/[+\-*/]=/.test(lower)) score -= 4;
   if (/^for\s+\w+\s*=.+\bstep\s+-/.test(lower)) score -= 3;
@@ -514,7 +514,7 @@ export function autocompleteCommandBias(snippet) {
   if (lower.startsWith("put at ")) score += 8;
   if (lower.startsWith("put chars ")) score += 8;
   if (/^(sqrt|sqr|abs|sgn|int|log|exp)\s+.+\s+into\s+/.test(lower)) score += 8;
-  if (lower.startsWith("copy bytes ") || lower.startsWith("copy bcd ")) score += 4;
+  if (lower.startsWith("copy bytes ")) score += 4;
   if (lower.startsWith("label ") || /:$/.test(lower)) score += 10;
   return score;
 }

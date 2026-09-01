@@ -1,4 +1,4 @@
-import { checkMathIntoDeprecation, checkU32StatementDeprecation } from "./deprecations.js";
+import { checkBcdStatementDeprecation, checkMathIntoDeprecation, checkU32StatementDeprecation } from "./deprecations.js";
 
 export function handlePrintFormatStatement({
   line,
@@ -36,11 +36,7 @@ export function handlePrintFormatStatement({
   emitSgnInt16LikeInto,
   emitSgnFp5Into,
   emitIntFp5Into,
-  emitBcdAdd,
-  emitBcdSub,
   emitClearValue,
-  emitBcdClear,
-  emitBcdCopy,
   emitBcdPrint,
   tryEvaluateCompileTimeNumericExpression
 }) {
@@ -49,6 +45,8 @@ export function handlePrintFormatStatement({
   if (_depMath.handled) return _depMath;
   const _depU32 = checkU32StatementDeprecation(line, rawLine);
   if (_depU32.handled) return _depU32;
+  const _depBcd = checkBcdStatementDeprecation(line, rawLine);
+  if (_depBcd.handled) return _depBcd;
 
   function isFp5DeclaredType(type) {
     const lowered = String(type || "").trim().toLowerCase();
@@ -380,42 +378,10 @@ export function handlePrintFormatStatement({
   }
 
   const qualifiedValue = String.raw`([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*)`;
-  const addBcd = line.match(new RegExp(`^add\\s+bcd\\s+${qualifiedValue}\\s+by\\s+(.+)$`, "i"));
-  if (addBcd) {
-    const code = emitBcdAdd(addBcd[1], addBcd[2]);
-    if (!code) return { handled: true, ok: false, log: `add bcd requires a BCD variable and a decimal literal, u8/i8 variable, or same-size BCD variable: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const subBcd = line.match(new RegExp(`^sub\\s+bcd\\s+${qualifiedValue}\\s+by\\s+(.+)$`, "i"));
-  if (subBcd) {
-    const code = emitBcdSub(subBcd[1], subBcd[2]);
-    if (!code) return { handled: true, ok: false, log: `sub bcd requires a BCD variable and a decimal literal, u8/i8 variable, or same-size BCD variable: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
   const clearValue = line.match(new RegExp(`^clear\\s+${qualifiedValue}$`, "i"));
   if (clearValue) {
     const code = emitClearValue(clearValue[1]);
     if (!code) return { handled: true, ok: false, log: `clear requires a scalar numeric or BCD RAM/local variable: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const clearBcd = line.match(new RegExp(`^clear\\s+bcd\\s+${qualifiedValue}$`, "i"));
-  if (clearBcd) {
-    const code = emitBcdClear(clearBcd[1]);
-    if (!code) return { handled: true, ok: false, log: `legacy clear bcd requires a BCD variable. Prefer 'clear Value': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const copyBcd = line.match(new RegExp(`^copy\\s+bcd\\s+${qualifiedValue}\\s+to\\s+${qualifiedValue}$`, "i"));
-  if (copyBcd) {
-    const code = emitBcdCopy(copyBcd[1], copyBcd[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy copy bcd requires two same-size BCD variables. Prefer 'Target = Source': ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }

@@ -19,7 +19,7 @@ u8 Passed = 0
 
 sub ReadLocal:
   bcd digits 5 Score = 12345
-  copy bcd Score to Result
+  Result = Score
   Score = 1
   return
 end sub

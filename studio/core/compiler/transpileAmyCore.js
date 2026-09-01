@@ -4592,11 +4592,7 @@ export function transpileAmyCore(sourceText, deps) {
         emitSgnInt16LikeInto,
         emitSgnFp5Into,
         emitIntFp5Into,
-        emitBcdAdd,
-        emitBcdSub,
         emitClearValue,
-        emitBcdClear,
-        emitBcdCopy,
         emitBcdPrint,
         tryEvaluateCompileTimeNumericExpression
       });

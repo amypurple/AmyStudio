@@ -38,7 +38,7 @@ u8 Checks[14] = 0
 sub CheckLocal:
   bcd digits 5 Temp = 99999
   Temp += 1
-  copy bcd Temp to LocalResult
+  LocalResult = Temp
   return
 end sub
 

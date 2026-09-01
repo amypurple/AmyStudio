@@ -392,10 +392,10 @@ end overlay
 Shared.Scores.Score = 123
 inc Shared.Scores.Score
 Shared.Scores.Score += 5
-copy bcd Shared.Scores.Score to Shared.Scores.Best
+Shared.Scores.Best = Shared.Scores.Score
 if Shared.Scores.Best = 129 then Shared.Scores.Marker = 1
 print Shared.Scores.Best at 0,0
-clear bcd Shared.Scores.Score
+clear Shared.Scores.Score
 `, true, profile);
     const base = equAddress(bcd.asm, "AMY_OVERLAY_Shared");
     assert.equal(equAddress(bcd.asm, "AMY_SCENE_Scores_Score"), base + 1);
@@ -418,7 +418,7 @@ overlay Shared
   Scores as MixedScoreMemory
   Other as MixedScoreMemory
 end overlay
-copy bcd Shared.Scores.Score to Shared.Scores.Best
+Shared.Scores.Best = Shared.Scores.Score
 `, false).output, /same-size BCD variables/i);
 
   const lateMemorySource = join(temp, "overlay-late-memory.alexis");

@@ -61,8 +61,8 @@ PlayerState Player
 const recordFull = `${recordShared}Player.X = 12
 Player.Score = 4660
 Player.Tiles[2] = Player.X
-clear bcd Player.Points
-add bcd Player.Points by 125
+clear Player.Points
+Player.Points += 125
 if Player.Tiles[2] = 12 then Player.Score += 1
 loop forever
 `;
@@ -71,8 +71,8 @@ const recordAliased = `${recordShared}with Player as P
 P.X = 12
 P.Score = 4660
 P.Tiles[2] = P.X
-clear bcd P.Points
-add bcd P.Points by 125
+clear P.Points
+P.Points += 125
 if P.Tiles[2] = 12 then P.Score += 1
 end with
 loop forever
