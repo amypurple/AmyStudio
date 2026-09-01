@@ -4,6 +4,31 @@ Amy encourages readable game code, but the same result can often be expressed wi
 
 The generated Z80 and exact byte count can change with context and optimizer level. Compile the real project and use ROM TEST & DEBUG when timing matters.
 
+## Optimization profiles
+
+- **Off:** no optimization; best for exact ASM debugging.
+- **Safe:** conservative local peepholes only.
+- **Balanced:** recommended; local folds and branch shortening without speculative reuse.
+- **Aggressive:** adds speculative register reuse and header RST reuse; verify the ROM.
+- **Experimental:** adds hazardous reuse, dead-code removal, inlining, and eligible IX-frame stripping; test carefully.
+
+A higher profile does not guarantee a smaller ROM. Global initializers are preserved because ASM, indirect access, symbols, and debugger watches may observe them even without a direct Amy read.
+
+New optimizer rules are introduced in Aggressive and promoted only after ROM,
+output, and debugger-map validation. Balanced remains the recommended default.
+
+Register-pair shortening is conservative: writing either half of a pair invalidates
+knowledge about the full pair. For example, changing `H` prevents reuse of an older
+known `HL` address when compiling an indexed array access.
+
+Aggressive also removes locally proven redundant low-byte zero reloads. Calls,
+labels, control transfers, ASM barriers, and writes to the register cancel the
+optimization.
+
+Aggressive can remove a short register-pair save/restore when enclosed
+instructions only read that pair. Writes, stack access, calls, branches, labels,
+exchanges, and block instructions preserve the original `PUSH`/`POP`.
+
 ## Initializing an array of records
 
 Assume this actor layout:
@@ -231,49 +256,7 @@ Grouping consecutive RAM or VRAM work can save setup and address calculations, b
 - Perform long VRAM updates with an explicit safe ownership plan.
 - Test both NTSC and PAL when work approaches a frame budget.
 
-The transpiler can remove some redundant state commands when control flow and inline ASM are understood. The cookbook should not encourage programmers to rely on an optimization that has not been proven for their control-flow path.
-
-## Protect direct VRAM manipulation
-
-The programmer owns the safety of a sequence that performs direct or composite VRAM
-manipulation. A VDP status read from NMI can reset the TMS9918 address latch between the
-two control-port writes or during a read-modify-write operation. This can produce an
-apparently random character or pixel outside the intended area.
-
-For a static screen, draw while the new display is hidden, then enable it:
-
-```basic
-bitmap screen
-cls
-' Draw the complete picture here.
-screen on
-```
-
-For visible progressive drawing, synchronize and protect a moderate batch:
-
-```basic
-wait
-nmi off
-for X = 20 to 220
-  pset X,20
-next
-nmi on
-```
-
-Repeat that pattern for the next batch. One pixel per frame is safe but often needlessly
-slow. One entire complex picture with NMI disabled avoids corruption but may pause music,
-timers, controller updates, and frame callbacks for too long. Choose a batch that is fast
-enough for the game while returning regularly to NMI service.
-
-Treat `pset`, `pget`, `line`, `circle`, `box`, `get frame`, bulk VRAM reads, VRAM-to-VRAM
-copies, and direct VDP-port ASM as operations that require an ownership plan when the
-screen and NMI are active. Some individual Amy helpers use an internal VDP lock, but that
-does not make an arbitrary multi-command sequence atomic. Do not place `wait` inside an
-`nmi off` section: frame waits require NMI to advance.
-
-Use **CVBasic Plot Port** for the hidden-display strategy and **CVBasic Live Plot Port**
-for visible batched drawing. The Vector Cube example protects each complete animation
-frame in the same way.
+The transpiler can remove some redundant state commands when control flow and inline ASM are understood. Do not rely on an optimization that has not been proven for the relevant control-flow path.
 
 ## Compression is a size and time tradeoff
 
@@ -293,6 +276,7 @@ The smallest file is not always the smallest ROM, and the smallest ROM is not al
 Code that runs once at level load should favor correctness and compactness. Code that runs for every actor every frame may justify tables, byte-sized arithmetic, cheaper indexing, a bulk operation, or a specialized routine.
 
 Use the routine cycle profiler to identify the hot path before rewriting it. Its result is inclusive of nested calls; separate main execution from NMI/IRQ time and compare the total against both NTSC and PAL frame budgets.
+
 ## Replacing repeated decisions with lookup tables
 
 A chain that selects constants from a small, fixed mapping often costs more ROM than its data:
