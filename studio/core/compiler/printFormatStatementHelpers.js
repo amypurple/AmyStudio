@@ -4,7 +4,6 @@ export function handlePrintFormatStatement({
   line,
   rawLine,
   body,
-  addCompilerWarning,
   splitTopLevelArgs,
   normalizeExpression,
   resolveDeclaredValueType,
@@ -16,7 +15,6 @@ export function handlePrintFormatStatement({
   emitPrintI8At,
   emitFormatAutoIntoBuffer,
   emitFormatHexIntoBuffer,
-  emitFormatFp5FriendlyIntoBuffer,
   emitFormatBcdIntoBuffer,
   emitFormatI8IntoBuffer,
   emitFormatU32IntoBuffer,
@@ -77,10 +75,6 @@ export function handlePrintFormatStatement({
       return { ok: false, log: `digits/width requires a compile-time constant from 1 to 255: ${context}` };
     }
     return { ok: true, token: String(value) };
-  }
-
-  function warnLegacyInto(preferred) {
-    addCompilerWarning?.(`Prefer "${preferred}" instead of "${rawLine}".`);
   }
 
   const printCenteredLiteral = rawLine.match(/^\s*print\s+centered\s+at\s+(.+?)\s*,\s*"([^"]*)"\s*$/i);
@@ -322,7 +316,7 @@ export function handlePrintFormatStatement({
 
   const sqrtWord = line.match(/^sqrt\s+word\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (sqrtWord) {
-    return { handled: true, ok: false, log: `Legacy 'sqrt word' is no longer supported. Use 'sqrt Value into Var' with canonical types. Offending line: ${rawLine}` };
+    return { handled: true, ok: false, log: `Legacy 'sqrt word' is no longer supported. Use 'Var = sqrt(Value)' with canonical types. Offending line: ${rawLine}` };
   }
 
   const sqrtAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*sqrt\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
@@ -330,16 +324,6 @@ export function handlePrintFormatStatement({
     const sqrtValue = normalizeExpression(sqrtAssign[2]);
     const code = emitSqrtInt16Into(sqrtValue, sqrtAssign[1]) || emitSqrtFx16Into(sqrtValue, sqrtAssign[1]) || emitSqrtFp5Into(sqrtValue, sqrtAssign[1]);
     if (!code) return { handled: true, ok: false, log: `sqrt(...) currently requires either an unsigned 8/16-bit source with a u16 target, a fixed32-capable source with a fixed32 target, or an fp5 target with an fp5/integer source: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const sqrtAuto = line.match(/^sqrt\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (sqrtAuto) {
-    warnLegacyInto(`${sqrtAuto[2]} = sqrt(${sqrtAuto[1]})`);
-    const sqrtValue = normalizeExpression(sqrtAuto[1]);
-    const code = emitSqrtInt16Into(sqrtValue, sqrtAuto[2]) || emitSqrtFx16Into(sqrtValue, sqrtAuto[2]) || emitSqrtFp5Into(sqrtValue, sqrtAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `sqrt currently requires either an unsigned 8/16-bit source with a u16 target, a fixed32-capable source with a fixed32 target, or an fp5 target with an fp5/integer source: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -353,31 +337,11 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const sqrAuto = line.match(/^sqr\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (sqrAuto) {
-    warnLegacyInto(`${sqrAuto[2]} = sqr(${sqrAuto[1]})`);
-    const sqrtValue = normalizeExpression(sqrAuto[1]);
-    const code = emitSqrtInt16Into(sqrtValue, sqrAuto[2]) || emitSqrtFx16Into(sqrtValue, sqrAuto[2]) || emitSqrtFp5Into(sqrtValue, sqrAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `sqr currently requires either an unsigned 8/16-bit source with a u16 target, a fixed32-capable source with a fixed32 target, or an fp5 target with an fp5/integer source: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
   const logAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*log\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (logAssign) {
     const logValue = normalizeExpression(logAssign[2]);
     const code = emitLogFp5Into(logValue, logAssign[1]);
     if (!code) return { handled: true, ok: false, log: `log(...) currently requires an fp5 target with an fp5 or integer source: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const logAuto = line.match(/^log\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (logAuto) {
-    warnLegacyInto(`${logAuto[2]} = log(${logAuto[1]})`);
-    const logValue = normalizeExpression(logAuto[1]);
-    const code = emitLogFp5Into(logValue, logAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `log currently requires an fp5 target with an fp5 or integer source: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -391,31 +355,11 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const expAuto = line.match(/^exp\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (expAuto) {
-    warnLegacyInto(`${expAuto[2]} = exp(${expAuto[1]})`);
-    const expValue = normalizeExpression(expAuto[1]);
-    const code = emitExpFp5Into(expValue, expAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `exp currently requires an fp5 target with an fp5 or integer source: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
   const absAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*abs\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (absAssign) {
     const absValue = normalizeExpression(absAssign[2]);
     const code = emitAbsFx16Into(absValue, absAssign[1]) || emitAbsFp5Into(absValue, absAssign[1]);
     if (!code) return { handled: false };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const absAuto = line.match(/^abs\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (absAuto) {
-    warnLegacyInto(`${absAuto[2]} = abs(${absAuto[1]})`);
-    const absValue = normalizeExpression(absAuto[1]);
-    const code = emitAbsFx16Into(absValue, absAuto[2]) || emitAbsFp5Into(absValue, absAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `abs currently requires either a fixed32-capable source/target pair or an fp5 target with an fp5 or integer source: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -429,46 +373,11 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
-  const sgnAuto = line.match(/^sgn\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (sgnAuto) {
-    warnLegacyInto(`${sgnAuto[2]} = sgn(${sgnAuto[1]})`);
-    const sgnValue = normalizeExpression(sgnAuto[1]);
-    const code = emitSgnInt16LikeInto(sgnValue, sgnAuto[2]) || emitSgnFx16Into(sgnValue, sgnAuto[2]) || emitSgnFp5Into(sgnValue, sgnAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `sgn currently requires an fp5, integer, fixed, or fixed32 source and an i8/u8/i16/u16/fixed/fixed32/fp5 target compatible with numeric sign helpers: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
   const intAssign = line.match(new RegExp(`^${numericTargetPattern}\\s*=\\s*int\\s*\\(\\s*(.+?)\\s*\\)$`, "i"));
   if (intAssign) {
     const intValue = normalizeExpression(intAssign[2]);
     const code = emitIntFp5Into(intValue, intAssign[1]);
     if (!code) return { handled: true, ok: false, log: `int(...) currently requires an fp5 source and an fp5, fixed32, byte, or word target: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const intAuto = line.match(/^int\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (intAuto) {
-    warnLegacyInto(`${intAuto[2]} = int(${intAuto[1]})`);
-    const intValue = normalizeExpression(intAuto[1]);
-    const code = emitIntFp5Into(intValue, intAuto[2]);
-    if (!code) return { handled: true, ok: false, log: `int currently requires an fp5 source and an fp5, fixed32, byte, or word target: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const strAuto = line.match(/^str\$\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+digits\s+([0-9]+))?$/i);
-  if (strAuto) {
-    warnLegacyInto(`${strAuto[2]} = str$(${strAuto[1]})`);
-    const floatDigitsError = getFloatDigitsError(normalizeExpression(strAuto[1]), "digits", strAuto[3], rawLine);
-    if (floatDigitsError) {
-      return { handled: true, ok: false, log: floatDigitsError };
-    }
-    const normalizedValue = normalizeExpression(strAuto[1]);
-    const code = emitFormatFp5FriendlyIntoBuffer(normalizedValue, strAuto[2], strAuto[3] || null)
-      || emitFormatAutoIntoBuffer(normalizedValue, strAuto[2], strAuto[3] || null);
-    if (!code) return { handled: true, ok: false, log: `str$ requires a supported numeric value and a compatible u8 buffer: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }

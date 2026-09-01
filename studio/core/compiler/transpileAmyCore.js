@@ -4513,7 +4513,6 @@ export function transpileAmyCore(sourceText, deps) {
       const vramTextStmt = handleVramTextStatement({
         line,
         rawLine,
-        addCompilerWarning,
         normalizeExpression,
         tryEvaluateConstantExpression,
         resolveAddressSymbol,
@@ -4572,7 +4571,6 @@ export function transpileAmyCore(sourceText, deps) {
         emitPrintI8At,
         emitFormatAutoIntoBuffer,
         emitFormatHexIntoBuffer,
-        emitFormatFp5FriendlyIntoBuffer,
         emitFormatBcdIntoBuffer,
         emitFormatI8IntoBuffer,
         emitFormatU32IntoBuffer,
