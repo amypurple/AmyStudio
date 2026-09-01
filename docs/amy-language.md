@@ -113,7 +113,7 @@ print at 3,13, "COMPACT PLAYER" rem Another inline comment
 
 Implemented today:
 - apostrophe comments work on full lines and after code
-- `REM` comments are accepted for older BASIC-style notes, but new code should prefer apostrophe comments
+- `REM` comments were removed; use apostrophe comments
 - comment markers inside string literals are preserved as text
 - Amy Studio supports `Ctrl+/` (`Cmd+/` on macOS keyboards) to comment or uncomment all selected source lines
 

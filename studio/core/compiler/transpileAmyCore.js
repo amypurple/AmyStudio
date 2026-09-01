@@ -3972,7 +3972,11 @@ export function transpileAmyCore(sourceText, deps) {
     if (recordDefinitionLineNumbers.has(sourceLineNumber)) continue;
     const rawLine = lines[sourceLineNumber];
     if (/^rem(?:\s|$)/i.test(rawLine.trim())) {
-      addCompilerWarning(`Line ${sourceLineNumber + 1}: 'rem' was removed; use a single-quote comment (')`);
+      return {
+        ok: false,
+        asmBody: "",
+        log: `Line ${sourceLineNumber + 1}: 'rem' was removed; use a single-quote comment (')`
+      };
     }
     let line = stripAmyInlineComment(rawLine).trim();
     const internalSourceMarker = line.match(/^debug\s+source\s+marker\s+(\d+)$/i);
