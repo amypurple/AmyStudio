@@ -22,6 +22,7 @@
 
 ## 2026-09-01 - aPLib compression
 
+- Added a formatted 14-page PDF edition of the seven-tool comparison with the occupied-ROM chart.
 - Renamed comparison entries to `Amy Studio` and `NewColeco` across the dashboard and evidence archive.
 - Added aPLib as Amy Studio's eleventh browser compression codec.
 - Added `decompress aplib Source to vram...` with a direct TMS9918 VRAM decoder.
