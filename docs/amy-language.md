@@ -2258,10 +2258,11 @@ format Score   into Buffer              ' BCD: buffer length must match digit co
 ```
 
 Amy infers the numeric format from the source declaration; do not repeat the type
-between `print`/`format` and the value. Historical typed spellings remain accepted
-for source compatibility. In particular, `print u32 Bytes ...` and
-`format u32 Bytes into Buffer` can explicitly interpret a raw four-byte `u8` array
-as a little-endian value; new code should normally declare the value as `u32`.
+between `print`/`format` and the value. Historical typed spellings were removed.
+Declare four-byte numeric values as `u32` rather than as raw `u8[4]` arrays.
+
+BCD values additionally accept `print Score at X,Y tiles Offset` when their digits
+must use a non-ASCII tile range.
 
 `u32` destination buffer: 10 bytes.
 `fixed` destination buffer: 7 bytes.

@@ -199,6 +199,21 @@ export function checkBcdStatementDeprecation(line, rawLine) {
   return checkDeprecationTable(BCD_STATEMENT_DEPRECATIONS, line, rawLine);
 }
 
+export const TYPED_PRINT_FORMAT_DEPRECATIONS = [
+  {
+    pattern: /^print\s+(?:byte|word|i8|i16|u32|i32|fixed|ufixed|bcd)\s+(.+?)\s+at\s+(.+)$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'print ${m[1]} at ${m[2]}'`
+  },
+  {
+    pattern: /^format\s+(?:word|i8|i16|u32|i32|fixed|ufixed|bcd)\s+(.+?)\s+into\s+(.+)$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'format ${m[1]} into ${m[2]}'`
+  }
+];
+
+export function checkTypedPrintFormatDeprecation(line, rawLine) {
+  return checkDeprecationTable(TYPED_PRINT_FORMAT_DEPRECATIONS, line, rawLine);
+}
+
 // ── Control-flow closers and aliases ─────────────────────────────────────────
 
 export const IF_DEPRECATIONS = [

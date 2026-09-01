@@ -1,4 +1,4 @@
-import { checkBcdStatementDeprecation, checkMathIntoDeprecation, checkU32StatementDeprecation } from "./deprecations.js";
+import { checkBcdStatementDeprecation, checkMathIntoDeprecation, checkTypedPrintFormatDeprecation, checkU32StatementDeprecation } from "./deprecations.js";
 
 export function handlePrintFormatStatement({
   line,
@@ -12,19 +12,8 @@ export function handlePrintFormatStatement({
   emitPrintLiteralAt,
   emitPrintAutoAt,
   emitPrintHexAt,
-  emitPrintI8At,
   emitFormatAutoIntoBuffer,
   emitFormatHexIntoBuffer,
-  emitFormatBcdIntoBuffer,
-  emitFormatI8IntoBuffer,
-  emitFormatU32IntoBuffer,
-  emitFormatI32IntoBuffer,
-  emitPrintI16At,
-  emitPrintU32At,
-  emitPrintI32At,
-  emitFormatI16IntoBuffer,
-  emitPrintFix8_8At,
-  emitFormatFix8_8IntoBuffer,
   emitSqrtInt16Into,
   emitSqrtFx16Into,
   emitSqrtFp5Into,
@@ -47,6 +36,8 @@ export function handlePrintFormatStatement({
   if (_depU32.handled) return _depU32;
   const _depBcd = checkBcdStatementDeprecation(line, rawLine);
   if (_depBcd.handled) return _depBcd;
+  const _depTypedPrint = checkTypedPrintFormatDeprecation(line, rawLine);
+  if (_depTypedPrint.handled) return _depTypedPrint;
 
   function isFp5DeclaredType(type) {
     const lowered = String(type || "").trim().toLowerCase();
@@ -150,6 +141,14 @@ export function handlePrintFormatStatement({
     return { handled: true, ok: true };
   }
 
+  const printBcdTiles = line.match(new RegExp(`^print\\s+${numericTargetPattern}\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+tiles\\s+(.+)$`, "i"));
+  if (printBcdTiles) {
+    const code = emitBcdPrint(printBcdTiles[1], printBcdTiles[2], printBcdTiles[3], printBcdTiles[4]);
+    if (!code) return { handled: true, ok: false, log: `print ... tiles requires a BCD value, byte coordinates, and a byte tile offset: ${rawLine}` };
+    body.push(...code);
+    return { handled: true, ok: true };
+  }
+
   const printAutoAt = line.match(/^print\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+?)(?:\s+(digits|width)\s+(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*))?$/i);
   if (printAutoAt) {
     const size = resolveFormatSize(printAutoAt[5], rawLine);
@@ -167,24 +166,6 @@ export function handlePrintFormatStatement({
         log: `print requires a supported typed value, u8 coordinates, and valid optional digits/width: ${rawLine}`
       };
     }
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const printByteAt = line.match(/^print\s+byte\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+digits\s+([123]))?$/i);
-  if (printByteAt) {
-    return { handled: true, ok: false, log: `Legacy 'print byte' is no longer supported. Use canonical declarations plus 'print Value at X,Y digits N'. Offending line: ${rawLine}` };
-  }
-
-  const printWordAt = line.match(/^print\s+word\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+digits\s+([1-5]))?$/i);
-  if (printWordAt) {
-    return { handled: true, ok: false, log: `Legacy 'print word' is no longer supported. Use canonical declarations plus 'print Value at X,Y digits N'. Offending line: ${rawLine}` };
-  }
-
-  const printI8At = line.match(/^print\s+i8\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+digits\s+([2-4]))?$/i);
-  if (printI8At) {
-    const code = emitPrintI8At(printI8At[1], printI8At[2], printI8At[3], printI8At[4] || "4");
-    if (!code) return { handled: true, ok: false, log: `print i8 requires an i8 variable, u8 coordinates, and digits 2-4: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -220,91 +201,6 @@ export function handlePrintFormatStatement({
         log: `format requires a supported typed value, a u8 buffer, and valid optional digits/width: ${rawLine}`
       };
     }
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const formatWord = line.match(/^format\s+word\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+digits\s+([1-5])$/i);
-  if (formatWord) {
-    return { handled: true, ok: false, log: `Legacy 'format word' is no longer supported. Use canonical declarations plus 'format Value into Buffer digits N'. Offending line: ${rawLine}` };
-  }
-
-  const formatBcd = line.match(/^format\s+bcd\s+([A-Za-z_][A-Za-z0-9_]*)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (formatBcd) {
-    const code = emitFormatBcdIntoBuffer(formatBcd[1], formatBcd[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy format bcd requires a BCD variable and a u8 buffer of matching digit length. Prefer 'format Value into Buffer': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const formatI8 = line.match(/^format\s+i8\s+([A-Za-z_][A-Za-z0-9_]*)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+digits\s+([2-4])$/i);
-  if (formatI8) {
-    const code = emitFormatI8IntoBuffer(formatI8[1], formatI8[2], formatI8[3]);
-    if (!code) return { handled: true, ok: false, log: `legacy format i8 requires an i8 variable, a u8 buffer, and digits 2-4. Prefer 'format Value into Buffer digits N': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const formatU32 = line.match(/^format\s+u32\s+([A-Za-z_][A-Za-z0-9_]*)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (formatU32) {
-    const code = emitFormatU32IntoBuffer(formatU32[1], formatU32[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy format u32 requires a u32 value or 4-u8 array source and a 10-u8 buffer. Prefer 'format Value into Buffer': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const formatI32 = line.match(/^format\s+i32\s+([A-Za-z_][A-Za-z0-9_]*)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+digits\s+([2-9]|10|11)$/i);
-  if (formatI32) {
-    const code = emitFormatI32IntoBuffer(formatI32[1], formatI32[2], formatI32[3]);
-    if (!code) return { handled: true, ok: false, log: `legacy format i32 requires an i32 variable, a u8 buffer, and digits 2-11. Prefer 'format Value into Buffer digits N': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const printI16At = line.match(/^print\s+i16\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+digits\s+([2-6]))?$/i);
-  if (printI16At) {
-    const code = emitPrintI16At(printI16At[1], printI16At[2], printI16At[3], printI16At[4] || "6");
-    if (!code) return { handled: true, ok: false, log: `print i16 requires an i16 variable, u8 coordinates, and digits 2-6: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const printU32At = line.match(/^print\s+u32\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
-  if (printU32At) {
-    const code = emitPrintU32At(printU32At[1], printU32At[2], printU32At[3]);
-    if (!code) return { handled: true, ok: false, log: `print u32 requires a u32 value or 4-u8 array and u8 coordinates: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const printI32At = line.match(/^print\s+i32\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)(?:\s+digits\s+([2-9]|10|11))?$/i);
-  if (printI32At) {
-    const code = emitPrintI32At(printI32At[1], printI32At[2], printI32At[3], printI32At[4] || "11");
-    if (!code) return { handled: true, ok: false, log: `print i32 requires an i32 variable, u8 coordinates, and digits 2-11: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const formatI16 = line.match(/^format\s+i16\s+([A-Za-z_][A-Za-z0-9_]*)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)\s+digits\s+([2-6])$/i);
-  if (formatI16) {
-    const code = emitFormatI16IntoBuffer(formatI16[1], formatI16[2], formatI16[3]);
-    if (!code) return { handled: true, ok: false, log: `format i16 requires an i16 variable, a u8 buffer, and digits 2-6: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const printFixAt = line.match(/^print\s+(?:fixed|ufixed)\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)$/i);
-  if (printFixAt) {
-    const code = emitPrintFix8_8At(printFixAt[1], printFixAt[2], printFixAt[3]);
-    if (!code) return { handled: true, ok: false, log: `print fixed requires a fixed or ufixed variable and u8 coordinates: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const formatFix = line.match(/^format\s+(?:fixed|ufixed)\s+([A-Za-z_][A-Za-z0-9_]*)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (formatFix) {
-    const code = emitFormatFix8_8IntoBuffer(formatFix[1], formatFix[2]);
-    if (!code) return { handled: true, ok: false, log: `format fixed requires a fixed or ufixed variable and a 7-u8 buffer for fixed or 6-u8 buffer for ufixed: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -382,14 +278,6 @@ export function handlePrintFormatStatement({
   if (clearValue) {
     const code = emitClearValue(clearValue[1]);
     if (!code) return { handled: true, ok: false, log: `clear requires a scalar numeric or BCD RAM/local variable: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const printBcd = line.match(new RegExp(`^print\\s+bcd\\s+${qualifiedValue}\\s+at\\s+(.+?)\\s*,\\s*(.+?)(?:\\s+tiles\\s+(.+))?$`, "i"));
-  if (printBcd) {
-    const code = emitBcdPrint(printBcd[1], printBcd[2], printBcd[3], printBcd[4] || null);
-    if (!code) return { handled: true, ok: false, log: `print bcd requires a BCD variable and byte coordinates: ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
