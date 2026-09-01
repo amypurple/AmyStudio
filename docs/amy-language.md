@@ -1975,7 +1975,7 @@ When using a styled default ASCII font in Mode 2, follow it with
 pattern thirds.
 
 `tile screen` expands to the Mode 2 text-style tile surface:
-- `graphics mode 2 text`
+- configure the low-level Graphics II text-style tables
 - `load default ascii`
 - `duplicate mode 2 patterns`
 - fill the first 2KB color third with `$F0` (8 color bytes per tile/char)
@@ -1998,9 +1998,6 @@ duplicate mode 2 colors
 third thirds. `duplicate mode 2 colors` does the same for COLOR data. Do not use
 `duplicate mode 2 colors` when each third intentionally has distinct colors.
 
-`graphics mode 2 text` remains available as the explicit low-level setup alias
-for `mode 2 screen`, but new code should use `mode 2 screen` because it states
-the actual VDP surface instead of implying that text setup has already happened.
 ### Name table / screen pages
 
 ```basic
@@ -2586,7 +2583,6 @@ polls the VDP status register directly instead of hanging on `halt`.
 constant `0` waits are ignored.
 `wait N frame(s) or press` waits up to a 16-bit frame count but exits early
 when any action button is pressed. Without `on joypad N`, either controller can interrupt.
-`wait vblank [N]` remains accepted as the lower-level spelling.
 
 ### Choose (menu selection)
 
@@ -3275,7 +3271,6 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `wait` | Safe one-frame wait; works with NMI on or off |
 | `wait N frame(s)` | Safe 16-bit frame wait; constant 0 is ignored |
 | `wait N frame(s) or press [on joypad N]` | Wait up to N frames, but exit early on any action button |
-| `wait vblank [N]` | Low-level alias for frame waits |
 | `wait key N [on keypad N]` | Wait for keypad digit |
 | `wait key release [on keypad N]` | Wait for keypad release |
 | `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
