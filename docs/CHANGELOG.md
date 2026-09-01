@@ -1,3 +1,11 @@
+## 2026-09-01 - Added visual benchmarks and ZX1
+
+- Added a seven-tool sprite/metasprite benchmark with runtime-verified ROM evidence.
+- Added the official ZX1 codec and `decompress zx1 ... to vram` support.
+- Verified exact ZX1 round trips and direct VRAM output on four complete bitmap pictures.
+- Expanded the comparison PDF with complete Amy listings, the Warrior source bitmap,
+  and real GearColeco screenshots for every benchmark sample.
+
 ## 2026-09-01 - Improved compressed bitmap evidence
 
 - Rebuilt the legacy SDCC bitmap with its historical DAN2 VRAM routine, reducing it from 4,269 to 3,643 bytes.

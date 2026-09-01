@@ -3,6 +3,7 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "mdkrle", label: "RLE", description: "Tiny 46-byte routine; often best total cost for simple pictures." },
   { codec: "nibble", label: "Nibble", description: "DAN0nibble-derived fast RLE/data-stream codec; excellent quick-evaluation candidate." },
   { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine." },
+  { codec: "zx1", label: "ZX1", description: "Official ZX1 compression with a compact 134-byte direct-VRAM routine." },
   { codec: "aplib", label: "aPLib", description: "Strong aPPack-compatible compression with direct VRAM output." },
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
   { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco bitmap data." },
@@ -20,6 +21,7 @@ export const PICTURE_DECOMPRESSOR_ROUTINE_BYTES = {
   mdkrle: 46,
   nibble: 115,
   zx0: 133,
+  zx1: 134,
   aplib: 347,
   zx7: 136,
   dan1: 205,
@@ -55,6 +57,11 @@ const PICTURE_Z80_RUNTIME_INFO = {
     rank: 3,
     label: "LZ VRAM back-copy",
     note: "Strong compression, but runtime has VDP copy/read cost."
+  },
+  zx1: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "Official ZX1 stream; runtime has VDP copy/read cost."
   },
   aplib: {
     rank: 3,

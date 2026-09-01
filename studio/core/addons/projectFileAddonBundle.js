@@ -1,5 +1,5 @@
 const PICTURE_QUICK_COMPRESSION_CODECS = ["raw", "mdkrle", "nibble", "bitbuster", "zx7", "dan1"];
-const CODEC_EXTENSIONS = new Set(["zx0", "zx7", "aplib", "dan1", "dan2", "dan3", "pletter", "plet5", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
+const CODEC_EXTENSIONS = new Set(["zx0", "zx1", "zx7", "aplib", "dan1", "dan2", "dan3", "pletter", "plet5", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
 
 let pictureConvertPromise = null;
 let pictureCompressionPromise = null;

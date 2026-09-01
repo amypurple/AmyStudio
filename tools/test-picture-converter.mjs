@@ -126,6 +126,14 @@ async function main() {
   assert.equal(compressedEntries[0].codec, "zx0");
   assert.deepEqual(Array.from(compressedEntries[0].bytes), [3, 0xFC, 0]);
 
+  assert.equal(normalizePictureImportCodec("zx1"), "zx1");
+  const zx1Entries = await buildPictureProjectFileEntries("My Title.png", tables, {
+    codec: "zx1",
+    compressBytes: async (codec, bytes) => Uint8Array.from([codec.length, bytes[0]])
+  });
+  assert.deepEqual(zx1Entries.map((entry) => entry.path), ["my-title.pattern.zx1", "my-title.color.zx1"]);
+  assert.equal(zx1Entries[0].codec, "zx1");
+
   const bitbusterEntries = await buildPictureProjectFileEntries("My Title.png", tables, {
     codec: "bitbuster",
     compressBytes: async (codec, bytes) => Uint8Array.from([codec === "bitbuster" ? 12 : 0, bytes[0]])

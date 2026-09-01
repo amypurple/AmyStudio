@@ -116,6 +116,17 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
+        zx1: {
+            name: 'ZX1',
+            author: 'Einar Saukas',
+            year: '2021',
+            description: 'Simpler ZX0-family stream with faster Z80 decompression and near-ZX0 compression.',
+            extensions: ['.zx1'],
+            module: './codecs/zx1.js',
+            className: 'ZX1Codec',
+            enabled: true,
+            category: 'lz77'
+        },
         aplib: {
             name: 'aPLib',
             author: 'Joergen Ibsen; Amy Studio browser encoder',
@@ -141,7 +152,7 @@ export const CODEC_CONFIG = {
     settings: {
         maxFileSize: 256 * 1024, // 256KB
         enableDebugMode: false,
-        defaultCompressionOrder: ['zx0', 'aplib', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
+        defaultCompressionOrder: ['zx0', 'zx1', 'aplib', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
     }
 };
 

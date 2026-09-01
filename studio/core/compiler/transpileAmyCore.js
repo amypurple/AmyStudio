@@ -2186,7 +2186,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parsePictureDefinitions() {
-    const codecRe = "(zx0|zx7|aplib|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
+    const codecRe = "(zx0|zx1|zx7|aplib|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();

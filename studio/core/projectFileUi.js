@@ -56,6 +56,7 @@ export function createProjectFileUiHelpers({
     nibble: { rank: 1, label: "fast RAM/ROM->VRAM", note: "DAN0nibble stream writes directly to VRAM." },
     lzf: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
     zx0: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
+    zx1: { rank: 3, label: "LZ VRAM back-copy", note: "Official ZX1 stream; JS time is not Z80/VDP runtime." },
     aplib: { rank: 3, label: "LZ VRAM back-copy", note: "Compact stream; JS time is not Z80/VDP runtime." },
     zx7: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
     dan1: { rank: 3, label: "LZ VRAM back-copy", note: "JS time is not Z80/VDP runtime." },
@@ -112,7 +113,7 @@ export function createProjectFileUiHelpers({
   function pictureGroupNameFromPath(path) {
     const bare = normalizeProjectFilePath(path).slice("@project/".length).replace(/\\/g, "/");
     const file = bare.split("/").pop() || "Picture";
-    const withoutCodec = file.replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+    const withoutCodec = file.replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     const withoutComponent = withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return assetNameFromProjectPath(withoutComponent || file);
   }
@@ -121,12 +122,12 @@ export function createProjectFileUiHelpers({
     const project = getProject();
     const pictureName = pictureGroupNameFromPath(entry.path);
     const targetPrefix = normalizeProjectFilePath(entry.path)
-      .replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
+      .replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "")
       .toLowerCase();
     const group = (project.projectFiles || []).filter((candidate) => {
       const normalized = normalizeProjectFilePath(candidate.path).toLowerCase();
-      const withoutCodec = normalized.replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+      const withoutCodec = normalized.replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
       return withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "") === targetPrefix;
     });
     const patternFile = group.find((candidate) => pictureComponentFromPath?.(candidate.path) === "pattern");
@@ -191,13 +192,13 @@ export function createProjectFileUiHelpers({
 
   function tileGroupPrefix(path) {
     const normalized = normalizeProjectFilePath(path).toLowerCase();
-    const withoutCodec = normalized.replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+    const withoutCodec = normalized.replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     return withoutCodec.replace(/\.(pattern|pat|chr|color|col|clr|name|nam)$/i, "");
   }
 
   function pictureTableGroupPrefix(path) {
     const normalized = normalizeProjectFilePath(path).toLowerCase();
-    const withoutCodec = normalized.replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+    const withoutCodec = normalized.replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     return withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
   }
 
@@ -369,7 +370,7 @@ export function createProjectFileUiHelpers({
       .slice("@project/".length)
       .split("/")
       .pop()
-      .replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
+      .replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return `${base || "tiles"}.dat`;
   }
@@ -380,7 +381,7 @@ export function createProjectFileUiHelpers({
       .slice("@project/".length)
       .split("/")
       .pop()
-      .replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
+      .replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return `${base || "picture"}.pc`;
   }
@@ -1552,7 +1553,7 @@ export function createProjectFileUiHelpers({
   async function evaluatePictureCompressionCandidatesWithWorkers(tables, codecs) {
     const requestedCodecs = Array.isArray(codecs) && codecs.length
       ? codecs
-      : ["raw", "mdkrle", "nibble", "zx0", "aplib", "zx7", "dan2", "dan1", "dan3", "pletter", "bitbuster", "lzf"];
+      : ["raw", "mdkrle", "nibble", "zx0", "zx1", "aplib", "zx7", "dan2", "dan1", "dan3", "pletter", "bitbuster", "lzf"];
     if (typeof Worker === "undefined" || typeof URL === "undefined") {
       return evaluatePictureCompressionCandidates(tables, { codecs: requestedCodecs, compressBytes, decompressBytes });
     }
@@ -1870,6 +1871,7 @@ export function createProjectFileUiHelpers({
     { codec: "mdkrle", label: "RLE", description: "Tiny 46-byte routine; often good for maps and repeated tiles.", routineBytes: 46, extension: "rle" },
     { codec: "nibble", label: "Nibble", description: "DAN0nibble-derived fast RLE/data-stream codec; useful for quick testing on picture and tile data.", routineBytes: 115, extension: "nibble" },
     { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine.", routineBytes: 133, extension: "zx0" },
+    { codec: "zx1", label: "ZX1", description: "Official ZX1 compression with a compact 134-byte direct-VRAM routine.", routineBytes: 134, extension: "zx1" },
     { codec: "aplib", label: "aPLib", description: "Strong aPPack-compatible compression with direct VRAM output.", routineBytes: 348, extension: "aplib" },
     { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point.", routineBytes: 136, extension: "zx7" },
     { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco table data.", routineBytes: 212, extension: "dan2" },
@@ -2274,7 +2276,7 @@ export function createProjectFileUiHelpers({
   function projectFileBaseWithoutCodec(path) {
     return normalizeProjectFilePath(path)
       .slice("@project/".length)
-      .replace(/\.(zx0|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+      .replace(/\.(zx0|zx1|zx7|aplib|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
   }
 
   function editorNameFromBase(base) {

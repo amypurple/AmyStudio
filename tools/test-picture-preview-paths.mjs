@@ -7,6 +7,7 @@ import {
 
 const cases = [
   ["reversi.pattern.zx0", "pattern"],
+  ["title.pattern.zx1", "pattern"],
   ["reversi.name.zx0", "name"],
   ["reversi.color.raw", "color"],
   ["legacy.pattern.mdkrle", "pattern"],
@@ -22,6 +23,7 @@ assert.equal(pictureComponentFromPath("reversi-sprites.bin"), "");
 assert.equal(isPictureProjectFile({ path: "reversi-sprites.bin" }), false);
 
 assert.equal(spriteComponentFromPath("reversi.sprpat.zx0"), "sprpat");
+assert.equal(spriteComponentFromPath("flies.sprpat.zx1"), "sprpat");
 assert.equal(spriteComponentFromPath("reversi-sprites.bin"), "");
 
 console.log(`Picture preview paths: ${cases.length} recognized, non-picture control rejected.`);

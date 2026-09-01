@@ -9,11 +9,12 @@ const CODEC_CATALOG = {
   bitbuster12: { name: "BitBuster 1.2", extension: ".pck", category: "lz77" },
   zx7: { name: "ZX7", extension: ".zx7", category: "lz77" },
   zx0: { name: "ZX0", extension: ".zx0", category: "lz77" },
+  zx1: { name: "ZX1", extension: ".zx1", category: "lz77" },
   aplib: { name: "aPLib", extension: ".aplib", category: "lz77" },
   raw: { name: "RAW", extension: ".raw", category: "raw" }
 };
 
-const CODEC_ORDER = ["zx0", "aplib", "dan3", "dan2", "dan1", "zx7", "pletter", "bitbuster12", "nibble", "lzf", "mdkrle", "raw"];
+const CODEC_ORDER = ["zx0", "zx1", "aplib", "dan3", "dan2", "dan1", "zx7", "pletter", "bitbuster12", "nibble", "lzf", "mdkrle", "raw"];
 const CODEC_EXTENSIONS = {
   ".nibble": "nibble",
   ".mdk": "mdkrle",
@@ -26,6 +27,7 @@ const CODEC_EXTENSIONS = {
   ".pck": "bitbuster12",
   ".zx7": "zx7",
   ".zx0": "zx0",
+  ".zx1": "zx1",
   ".aplib": "aplib",
   ".raw": "raw"
 };

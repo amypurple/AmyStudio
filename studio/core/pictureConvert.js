@@ -22,6 +22,7 @@ const OUTPUT_HEIGHT = 192;
 const CODEC_FILE_EXTENSIONS = {
   raw: "",
   zx0: "zx0",
+  zx1: "zx1",
   aplib: "aplib",
   zx7: "zx7",
   dan1: "dan1",
