@@ -373,7 +373,7 @@ export function handleVramTextStatement({
   const plainPget = line.match(new RegExp(`^${qualifiedByteTarget}\\s*=\\s*pget\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
   if (plainPget) {
     if (currentGraphicsMode !== "multicolor") {
-      return { ok: false, handled: true, log: `pget without qualifier requires 'graphics mode 3 multicolor' to be active (last graphics statement seen was '${currentGraphicsMode ?? "none"}'): ${rawLine}` };
+      return { ok: false, handled: true, log: `pget without qualifier requires 'multicolor screen' to be active (last graphics statement seen was '${currentGraphicsMode ?? "none"}'): ${rawLine}` };
     }
     const targetType = resolveValueType(plainPget[1]);
     const loadInputs = emitLoadRoutineByteInputsFromTokens({

@@ -117,7 +117,7 @@ export function handleVramPixelInputStatement({
   const boxStmt = line.match(/^box\s+(.+?)\s*,\s*(.+?)\s+to\s+(.+?)\s*,\s*(.+?)\s+color\s+(.+)$/i);
   if (boxStmt) {
     if (currentGraphicsMode && currentGraphicsMode !== "multicolor") {
-      return { handled: true, ok: false, log: `box requires 'graphics mode 3 multicolor' to be active: ${rawLine}` };
+      return { handled: true, ok: false, log: `box requires 'multicolor screen' to be active: ${rawLine}` };
     }
     const loadBox = emitLoadRoutineByteInputsFromTokens({
       routineName: "AMY_MODE3_BOX",

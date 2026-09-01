@@ -1407,22 +1407,11 @@ export function transpileAmyCore(sourceText, deps) {
     if (/^graphics\s+mode\s+1\s+text$/i.test(line)) {
       return { kind: "authoritative", label: "graphics mode 1 text" };
     }
-    if (/^graphics\s+mode\s+2\s+text$/i.test(line)
-      || /^mode\s+2\s+screen$/i.test(line)
-      || /^graphics\s+mode\s+2\s+screen$/i.test(line)) {
+    if (/^mode\s+2\s+screen$/i.test(line)) {
       return { kind: "authoritative", label: "mode 2 screen" };
     }
     if (/^tile\s+screen$/i.test(line)) {
       return { kind: "authoritative", label: "tile screen" };
-    }
-    if (/^graphics\s+(?:mode\s+)?bitmap$/i.test(line) || /^graphics\s+mode\s+2\s+bitmap$/i.test(line)) {
-      return { kind: "authoritative", label: "graphics bitmap" };
-    }
-    if (/^graphics\s+mode\s*1(?:\s+color\s+.+)?$/i.test(line)) {
-      return { kind: "authoritative", label: "graphics mode 1" };
-    }
-    if (/^graphics\s+(?:mode\s+3\s+)?multicolor$/i.test(line) || /^graphics\s+mode\s+3$/i.test(line)) {
-      return { kind: "authoritative", label: "graphics mode 3 multicolor" };
     }
     if (/^sprites\s+8x8$/i.test(line)) {
       return { kind: "modifier", label: "sprites 8x8", category: "sprite_size" };
@@ -1466,7 +1455,7 @@ export function transpileAmyCore(sourceText, deps) {
     const knownBefore = knownVdpR1Value;
     const applyKnownEffect = () => {
       if (classification.kind === "authoritative") {
-        if (classification.label === "graphics mode 3 multicolor") return 0x8A;
+        if (classification.label === "multicolor screen") return 0x8A;
         return 0x82;
       }
       if (knownBefore === null) return null;

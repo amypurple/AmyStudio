@@ -25,7 +25,7 @@ end overlay
 u8 Index = 1
 
 sub start:
-  graphics mode 3 multicolor
+  multicolor screen
   pset 2,2 color 7
   pset 4,4 color 9
   WorkRam.Game.Colors[0] = pget 2,2

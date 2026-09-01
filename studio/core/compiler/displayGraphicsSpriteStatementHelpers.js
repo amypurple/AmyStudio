@@ -45,10 +45,6 @@ export function handleDisplayGraphicsSpriteStatement({
     };
   }
 
-  if (/^graphics\s+mode\s+2\s+bitmap$/i.test(line)) {
-    return { ok: true, handled: true, lines: ["    call AMY_SET_BITMAP_GRAPHICS_MODE"] };
-  }
-
   if (/^picture\s+screen$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SET_BITMAP_GRAPHICS_MODE"] };
   }
@@ -62,22 +58,11 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: [...loadColor, "    call AMY_SET_GRAPHICS_MODE1_BITMAP"] };
   }
 
-  const graphicsMode1Bitmap = line.match(/^graphics\s+mode\s*1(?:\s+color\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
-  if (graphicsMode1Bitmap) {
-    const loadColor = emitLoadInt8Into("a", graphicsMode1Bitmap[1] || "$F0");
-    if (!loadColor) {
-      return { ok: false, handled: true, log: `graphics mode1 color requires a byte literal or variable: ${rawLine}` };
-    }
-    return { ok: true, handled: true, lines: [...loadColor, "    call AMY_SET_GRAPHICS_MODE1_BITMAP"] };
-  }
-
   if (/^graphics\s+mode\s+1\s+text$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE1_TEXT"] };
   }
 
-  if (/^graphics\s+mode\s+2\s+text$/i.test(line)
-    || /^mode\s+2\s+screen$/i.test(line)
-    || /^graphics\s+mode\s+2\s+screen$/i.test(line)) {
+  if (/^mode\s+2\s+screen$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE2_TEXT"] };
   }
 
@@ -99,10 +84,6 @@ export function handleDisplayGraphicsSpriteStatement({
         "    call FILL_VRAM"
       ]
     };
-  }
-
-  if (/^graphics\s+(?:mode\s+3\s+)?multicolor$/i.test(line) || /^graphics\s+mode\s+3$/i.test(line)) {
-    return { ok: true, handled: true, lines: ["    call AMY_SET_GRAPHICS_MODE3_MULTICOLOR"] };
   }
 
   if (/^multicolor\s+screen$/i.test(line)) {

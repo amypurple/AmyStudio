@@ -330,6 +330,22 @@ export const VRAM_PIXEL_DEPRECATIONS = [
 ];
 
 export const DISPLAY_GRAPHICS_DEPRECATIONS = [
+  {
+    pattern: /^graphics\s+mode\s+1(?:\s+color\s+(.+))?$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1] ? `bitmap screen color ${m[1].trim()}` : "bitmap screen"}'`
+  },
+  {
+    pattern: /^graphics\s+mode\s+2\s+bitmap$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'picture screen'`
+  },
+  {
+    pattern: /^graphics\s+mode\s+2\s+(?:text|screen)$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'mode 2 screen'`
+  },
+  {
+    pattern: /^graphics\s+(?:(?:mode\s+3\s+)?multicolor|mode\s+3)$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'multicolor screen'`
+  },
   // graphics mode1 (no-space, no qualifier) → bitmap screen
   {
     pattern: /^graphics\s+mode1$/i,

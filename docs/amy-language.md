@@ -1882,14 +1882,9 @@ Canonical forms:
 - `picture screen`
 - `multicolor screen`
 
-Old technical forms still compile in some cases during cleanup, but examples
-should not use them:
-- `graphics mode 1 text`
-- `graphics mode 1 color $F0`
-- `graphics mode 2 text`
-- `graphics mode 2 screen`
-- `graphics mode 2 bitmap`
-- `graphics multicolor` / `graphics mode 3 multicolor`
+The old `graphics mode 1/2/3 ...` spellings were removed when an exact modern
+equivalent exists. `graphics mode 1 text` remains as a raw Mode 1 setup primitive:
+unlike `text screen`, it does not also upload the BIOS font and initialize colors.
 
 `bitmap screen` is the normal drawable bitmap surface for `pset`, `preset`,
 `line`, and `circle`; its default color byte is `$F0`, so the color clause is
