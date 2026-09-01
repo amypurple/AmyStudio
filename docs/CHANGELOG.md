@@ -1,3 +1,12 @@
+## 2026-09-01 - Expanded six-tool comparison evidence
+
+- Added PVColLib evidence for graphics, sprites, collision, controllers, spinners,
+  sound, music, compression, and expanded hardware support.
+- Replaced devkitSMS's raw Warrior tables with its native aPLib direct-to-VRAM path,
+  reducing occupied ROM from 13,680 to 4,713 bytes with exact GearColeco output.
+- Distinguished the common six-tool Warrior benchmark from the four-picture Graphics II
+  fidelity corpus and included both in the downloadable evidence archive.
+
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
 - Documented the DEV-to-clean quality pipeline covering targeted repros, five-profile
