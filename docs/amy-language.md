@@ -1634,8 +1634,7 @@ fields, and indexed byte-array fields. Direct scalar forms retain compact in-pla
 qualified or indexed forms use the normal typed address resolver.
 
 `min(A, B)` returns the smaller value. `max(A, B)` returns the larger value.
-The older `min Var with Value` / `max Var with Value` statements still compile
-during cleanup, but code should use expression assignment.
+The old `min Var with Value` / `max Var with Value` statements were removed.
 
 ### Fill / Copy arrays
 

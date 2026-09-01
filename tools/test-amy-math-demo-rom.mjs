@@ -13,11 +13,17 @@ const testSource = `
 u32 Counter32 = 0, Seed32 = 100000, Addend32 = 12345
 u16 RootA = 0, RootB = 0
 u8 U32Ok = 0
+u8 MinByte = 9, MaxByte = 3
+u16 MinWord = 300, MaxWord = 100
 bcd digits 6 DecScore
 
 sub start:
   RootA = sqrt(144)
   RootB = sqrt(625)
+  MinByte = min(MinByte, 3)
+  MaxByte = max(MaxByte, 9)
+  MinWord = min(MinWord, 100)
+  MaxWord = max(MaxWord, 300)
   Counter32 = Seed32
   Counter32 += Addend32
   Counter32 += 1
@@ -70,6 +76,10 @@ try {
       assert.equal(read("U32Ok", 1)[0], 1, `${profile}: u32 validation flag`);
       assert.deepEqual([...read("RootA", 2)], [12, 0], `${profile}: sqrt 144`);
       assert.deepEqual([...read("RootB", 2)], [25, 0], `${profile}: sqrt 625`);
+      assert.equal(read("MinByte", 1)[0], 3, `${profile}: u8 min expression`);
+      assert.equal(read("MaxByte", 1)[0], 9, `${profile}: u8 max expression`);
+      assert.deepEqual([...read("MinWord", 2)], [100, 0], `${profile}: u16 min expression`);
+      assert.deepEqual([...read("MaxWord", 2)], [44, 1], `${profile}: u16 max expression`);
       assert.deepEqual([...read("DecScore", 3)], [0x45, 0x13, 0x10], `${profile}: packed BCD 101345`);
     } finally {
       core.destroy();

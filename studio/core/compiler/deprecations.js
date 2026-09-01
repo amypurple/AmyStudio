@@ -51,6 +51,12 @@ export const ARITHMETIC_STATEMENT_DEPRECATIONS = [
     rewrite: (m) => `${m[1]} /= ${m[2]}`,
     error:   (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} /= ${m[2]}'`
   },
+  // min/max X with/to Y  ->  X = min/max(X, Y)
+  {
+    pattern: /^(min|max)\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:with|to)\s+(.+)$/i,
+    rewrite: (m) => `${m[2]} = ${m[1].toLowerCase()}(${m[2]}, ${m[3]})`,
+    error: (m, raw) => `'${raw.trim()}' was removed; use '${m[2]} = ${m[1].toLowerCase()}(${m[2]}, ${m[3].trim()})'`
+  },
 ];
 
 // ── Shift statement forms ────────────────────────────────────────────────────
