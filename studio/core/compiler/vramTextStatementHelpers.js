@@ -902,36 +902,6 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: expanded.asmLines };
   }
 
-  const putChars = line.match(/^put\s+chars\s+([A-Za-z_][A-Za-z0-9_]*)\s+at\s+(.+?)\s*,\s*(.+?)\s+count\s+(.+)$/i);
-  if (putChars) {
-    const loadY = emitLoadInt8ValueInto("d", putChars[3]);
-    const loadX = emitLoadInt8ValueInto("e", putChars[2]);
-    const loadCountBC = emitLoadCountIntoBC(putChars[4]);
-    const loadSource = emitLoadSourceAddressIntoHL(putChars[1]);
-    if (!loadY || !loadX || !loadCountBC || !loadSource) {
-      return { ok: false, handled: true, log: `put chars requires byte-sized coordinates and count: ${rawLine}` };
-    }
-    return {
-      ok: true,
-      handled: true,
-      lines: [
-        ...loadY,
-        ...loadX,
-        "    call CALC_OFFSET",
-        "    push de",
-        "    ld hl,($73F6)",
-        "    pop de",
-        "    add hl,de",
-        "    ex de,hl",
-        "    push de",
-        ...loadSource,
-        "    pop de",
-        ...loadCountBC,
-        "    call WRITE_VRAM"
-      ]
-    };
-  }
-
   const putCountAt = line.match(/^put\s+(.+?)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putCountAt) {
     const sourceInfo = getByteArrayBufferInfo(putCountAt[1], 1);
@@ -1002,22 +972,6 @@ export function handleVramTextStatement({
         "    pop ix"
       ]
     };
-  }
-
-  const putAt = line.match(/^put\s+at\s+(.+?)\s*,\s*(.+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s+count\s+(.+)$/i);
-  if (putAt) {
-    addCompilerWarning?.(`Prefer "put ${putAt[3]} count ${putAt[4]} at ${putAt[1]},${putAt[2]}" instead of "${rawLine}".`);
-    const loadSource = emitLoadSourceAddressIntoHL(putAt[3]);
-    const loadInputs = emitLoadRoutineByteInputsFromTokens({
-      routineName: "AMY_PUT_AT",
-      values: { d: putAt[2], e: putAt[1], b: putAt[4] },
-      emitLoadInt8ValueInto,
-      emitLoadInt8ValueIntoPreserving
-    });
-    if (!loadInputs || !loadSource) {
-      return { ok: false, handled: true, log: `put at requires byte-sized coordinates and count: ${rawLine}` };
-    }
-    return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
   }
 
   const fillCountAt = line.match(/^fill\s+(.+?)\s+count\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
@@ -1212,7 +1166,7 @@ export function handleVramTextStatement({
     return lines;
   }
 
-  const putChar = line.match(/^put\s+(?:char|tile)\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const putChar = line.match(/^put\s+char\s+(.+?)\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (putChar) {
     const sharedRecordLoad = emitPutCharFromSameRecordArray(putChar[1], putChar[2], putChar[3]);
     if (sharedRecordLoad) return { ok: true, handled: true, lines: [...sharedRecordLoad, "    call AMY_PUT_CHAR_AT"] };
@@ -1228,26 +1182,7 @@ export function handleVramTextStatement({
     return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_PUT_CHAR_AT"] };
   }
 
-  const getChar = line.match(/^get\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i)
-    || line.match(/^read\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i);
-  if (getChar) {
-    addCompilerWarning?.(`Prefer "${getChar[3]} = get char at ${getChar[1]},${getChar[2]}" instead of "${rawLine}".`);
-    if (resolveValueType(getChar[3]) !== "int8" || !emitStoreInt8FromA(getChar[3])) {
-      return { ok: false, handled: true, log: `get char target must be a byte RAM variable: ${rawLine}` };
-    }
-    const loadInputs = emitLoadRoutineByteInputsFromTokens({
-      routineName: "AMY_GET_CHAR_AT",
-      values: { e: getChar[1], d: getChar[2] },
-      emitLoadInt8ValueInto,
-      emitLoadInt8ValueIntoPreserving
-    });
-    if (!loadInputs) {
-      return { ok: false, handled: true, log: `get char requires byte-sized screen coordinates: ${rawLine}` };
-    }
-    return { ok: true, handled: true, lines: [...loadInputs, "    call AMY_GET_CHAR_AT", ...emitStoreInt8FromA(getChar[3])] };
-  }
-
-  const getCharAssign = line.match(/^(?!if\b)(.+?)\s*=\s*(?:get|read)\s+(?:char|tile)\s+at\s+(.+?)\s*,\s*(.+)$/i);
+  const getCharAssign = line.match(/^(?!if\b)(.+?)\s*=\s*get\s+char\s+at\s+(.+?)\s*,\s*(.+)$/i);
   if (getCharAssign) {
     if (resolveValueType(getCharAssign[1]) !== "int8" || !emitStoreInt8FromA(getCharAssign[1])) {
       return { ok: false, handled: true, log: `get char assignment target must be a byte RAM variable: ${rawLine}` };

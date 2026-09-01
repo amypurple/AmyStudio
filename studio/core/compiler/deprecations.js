@@ -516,43 +516,43 @@ export function checkMathIntoDeprecation(line, rawLine) {
 export const VRAM_CHAR_READ_DEPRECATIONS = [
   // get char at X,Y into V  →  V = get char at X,Y
   {
-    pattern: /^get\s+char\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i,
+    pattern: /^get\s+char\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i,
     rewrite: (m) => `${m[3]} = get char at ${m[1]},${m[2]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[3]} = get char at ${m[1].trim()},${m[2].trim()}'`
   },
   // get tile at X,Y into V  →  V = get char at X,Y
   {
-    pattern: /^get\s+tile\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i,
+    pattern: /^get\s+tile\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i,
     rewrite: (m) => `${m[3]} = get char at ${m[1]},${m[2]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[3]} = get char at ${m[1].trim()},${m[2].trim()}'`
   },
   // read char at X,Y into V  →  V = get char at X,Y
   {
-    pattern: /^read\s+char\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i,
+    pattern: /^read\s+char\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i,
     rewrite: (m) => `${m[3]} = get char at ${m[1]},${m[2]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[3]} = get char at ${m[1].trim()},${m[2].trim()}'`
   },
   // read tile at X,Y into V  →  V = get char at X,Y
   {
-    pattern: /^read\s+tile\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i,
+    pattern: /^read\s+tile\s+at\s+(.+?)\s*,\s*(.+?)\s+into\s+(.+)$/i,
     rewrite: (m) => `${m[3]} = get char at ${m[1]},${m[2]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[3]} = get char at ${m[1].trim()},${m[2].trim()}'`
   },
   // Var = read char at X,Y  →  Var = get char at X,Y
   {
-    pattern: /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*read\s+char\s+at\s+(.+?)\s*,\s*(.+)$/i,
+    pattern: /^(.+?)\s*=\s*read\s+char\s+at\s+(.+?)\s*,\s*(.+)$/i,
     rewrite: (m) => `${m[1]} = get char at ${m[2]},${m[3]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} = get char at ${m[2].trim()},${m[3].trim()}'`
   },
   // Var = get tile at X,Y  →  Var = get char at X,Y
   {
-    pattern: /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*get\s+tile\s+at\s+(.+?)\s*,\s*(.+)$/i,
+    pattern: /^(.+?)\s*=\s*get\s+tile\s+at\s+(.+?)\s*,\s*(.+)$/i,
     rewrite: (m) => `${m[1]} = get char at ${m[2]},${m[3]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} = get char at ${m[2].trim()},${m[3].trim()}'`
   },
   // Var = read tile at X,Y  →  Var = get char at X,Y
   {
-    pattern: /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*read\s+tile\s+at\s+(.+?)\s*,\s*(.+)$/i,
+    pattern: /^(.+?)\s*=\s*read\s+tile\s+at\s+(.+?)\s*,\s*(.+)$/i,
     rewrite: (m) => `${m[1]} = get char at ${m[2]},${m[3]}`,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} = get char at ${m[2].trim()},${m[3].trim()}'`
   },

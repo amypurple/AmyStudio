@@ -119,7 +119,7 @@ Shared.Game.Items[I + 1].Flags[J + 1] = 88
 Shared.Game.Items[1].Flags[2] = Shared.Game.Items[I].Flags[J]
 Shared.Game.After = 99
 Shared.Game.Items[0].X = get char at 0,0
-get tile at 1,1 into Shared.Game.Items[1].X
+Shared.Game.Items[1].X = get char at 1,1
 play sound Shared.Game.Items[2].X
 stop sound Shared.Game.Items[2].X
 print Shared.Game.Items[2].DX at 0,0 digits 3
