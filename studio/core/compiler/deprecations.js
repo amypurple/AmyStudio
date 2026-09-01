@@ -51,7 +51,7 @@ export const ARITHMETIC_STATEMENT_DEPRECATIONS = [
     rewrite: (m) => `${m[1]} /= ${m[2]}`,
     error:   (m, raw) => `'${raw.trim()}' was removed; use '${m[1]} /= ${m[2]}'`
   },
-  // min/max X with/to Y  ->  X = min/max(X, Y)
+  // min/max X with/to Y → X = min/max(X, Y)
   {
     pattern: /^(min|max)\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:with|to)\s+(.+)$/i,
     rewrite: (m) => `${m[2]} = ${m[1].toLowerCase()}(${m[2]}, ${m[3]})`,
@@ -330,18 +330,22 @@ export const VRAM_PIXEL_DEPRECATIONS = [
 ];
 
 export const DISPLAY_GRAPHICS_DEPRECATIONS = [
+  // graphics mode 1 [color C] → bitmap screen [color C]
   {
     pattern: /^graphics\s+mode\s+1(?:\s+color\s+(.+))?$/i,
     error: (m, raw) => `'${raw.trim()}' was removed; use '${m[1] ? `bitmap screen color ${m[1].trim()}` : "bitmap screen"}'`
   },
+  // graphics mode 2 bitmap → picture screen
   {
     pattern: /^graphics\s+mode\s+2\s+bitmap$/i,
     error: (m, raw) => `'${raw.trim()}' was removed; use 'picture screen'`
   },
+  // graphics mode 2 text/screen → mode 2 screen
   {
     pattern: /^graphics\s+mode\s+2\s+(?:text|screen)$/i,
     error: (m, raw) => `'${raw.trim()}' was removed; use 'mode 2 screen'`
   },
+  // graphics [mode 3] multicolor / graphics mode 3 → multicolor screen
   {
     pattern: /^graphics\s+(?:(?:mode\s+3\s+)?multicolor|mode\s+3)$/i,
     error: (m, raw) => `'${raw.trim()}' was removed; use 'multicolor screen'`
@@ -668,6 +672,7 @@ export function checkVramPutReorderDeprecation(line, rawLine) {
 }
 
 export const VRAM_FILL_DEPRECATIONS = [
+  // fill vram.TARGET with V count N → fill V count N to vram.TARGET
   {
     pattern: /^fill\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s+with\s+(.+?)\s+count\s+(.+)$/i,
     error: (m, raw) => `'${raw.trim()}' was removed; use 'fill ${m[2].trim()} count ${m[3].trim()} to vram.${m[1].toLowerCase()}'`
