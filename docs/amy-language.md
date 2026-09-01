@@ -2212,12 +2212,12 @@ Canonical defaults:
 ```basic
 print Counter at X,Y digits 3          ' u8 defaults to 3 digits
 print Score   at X,Y digits 5          ' u16 defaults to 5 digits
-print i8    Delta   at X,Y digits 4
-print i16   Delta   at X,Y digits 6
-print u32   Counter32 at X,Y
-print i32   Counter32 at X,Y digits 11
-print fixed  Speed  at X,Y
-print ufixed ScreenX at X,Y
+print Delta     at X,Y digits 4        ' i8
+print Delta16   at X,Y digits 6        ' i16
+print Counter32 at X,Y                 ' u32
+print Delta32   at X,Y digits 11       ' i32
+print Speed     at X,Y                 ' fixed
+print ScreenX   at X,Y                 ' ufixed
 ```
 
 Legacy prefixed forms like `print byte ...` and `print word ...` are retired from the active AMY surface.
@@ -2250,18 +2250,24 @@ format Delta32 into Buffer digits 11
 format Coins into Buffer
 
 format Score   into Buffer digits 5
-format i8      Delta   into Buffer digits 4
-format i16     Delta   into Buffer digits 6
-format u32     Counter32 into Buffer
-format i32     Counter32 into Buffer digits 11
-format fixed   Speed   into Buffer
-format ufixed  ScreenX into Buffer
+format Delta     into Buffer digits 4  ' i8
+format Delta16   into Buffer digits 6  ' i16
+format Counter32 into Buffer           ' u32
+format Delta32   into Buffer digits 11 ' i32
+format Speed     into Buffer           ' fixed
+format ScreenX   into Buffer           ' ufixed
 format Score   into Buffer              ' BCD: buffer length must match digit count
 ```
 
-`format u32` destination buffer: 10 bytes.  
-`format fixed` destination buffer: 7 bytes.  
-`format ufixed` destination buffer: 6 bytes.  
+Amy infers the numeric format from the source declaration; do not repeat the type
+between `print`/`format` and the value. Historical typed spellings remain accepted
+for source compatibility. In particular, `print u32 Bytes ...` and
+`format u32 Bytes into Buffer` can explicitly interpret a raw four-byte `u8` array
+as a little-endian value; new code should normally declare the value as `u32`.
+
+`u32` destination buffer: 10 bytes.
+`fixed` destination buffer: 7 bytes.
+`ufixed` destination buffer: 6 bytes.
 BCD destination buffer: matches BCD digit count.
 `format ... into Buffer` can target a global or local `u8` buffer, including a
 fixed-array field qualified through a record or RAM overlay. The destination must be
