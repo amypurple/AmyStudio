@@ -1558,8 +1558,8 @@ BCD current limits:
 - indexed byte reads such as `Score[0]` are for debugging/inspection only
 
 
-Legacy `u32 zero/copy/add/inc/sub` prefix commands remain accepted for source migration.
-New code should use `clear`, assignment, `+=`, `-=`, `inc`, and `dec` instead.
+The old `u32 zero/copy/add/inc/sub` prefix commands were removed. Use `clear`,
+assignment, `+=`, `-=`, `inc`, and `dec` instead.
 
 ### Shift
 
@@ -1731,8 +1731,7 @@ Simple `+`, `-`, and `*` binary expressions are supported for operands and desti
 of the same `u32` or `i32` type. A fitting integer literal is also accepted as
 either operand. The compiler stages both operands, so destination
 aliasing such as `Counter32 = Counter32 + Addend32` is safe. Operands may be
-`u32`/`i32` variables or elements of matching wide arrays. Legacy operations also
-accept compatible 4-byte little-endian `u8` arrays. Scalar `u16` values are not
+`u32`/`i32` variables or elements of matching wide arrays. Scalar `u16` values are not
 implicitly widened into this arithmetic. Multiplication keeps the low 32 bits;
 overflow wraps modulo 2^32 for both signed and unsigned values.
 Binary `/` and in-place `/=` are available for both `u32` and `i32`. A constant zero divisor
