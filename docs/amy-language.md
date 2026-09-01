@@ -1710,17 +1710,7 @@ Preferred current direction:
 - use `Fp5Var = random()` for an `fp5` fractional sample in `0.0 .. <1.0`
 - use `Fixed32Var = random()` for a `fixed32` fractional sample
 
-### U32 helpers
-
-```basic
-u32 copy Seed32 to Counter32
-u32 add Addend32 to Counter32
-u32 inc Counter32
-u32 sub Addend32 from Counter32
-if unsigned Left32 > Right32 goto Win
-```
-
-The canonical Amy shorthand also works:
+### U32 operations
 
 ```basic
 clear Counter32
@@ -1734,6 +1724,7 @@ Product32 = Counter32 * Addend32
 Quotient32 = Counter32 / Addend32
 Remainder32 = Counter32 % Addend32
 Next32 = Counter32 + 5
+if unsigned Left32 > Right32 goto Win
 ```
 
 Simple `+`, `-`, and `*` binary expressions are supported for operands and destinations

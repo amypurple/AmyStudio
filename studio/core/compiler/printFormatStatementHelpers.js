@@ -484,7 +484,7 @@ export function handlePrintFormatStatement({
   const u32Copy = line.match(/^u32\s+copy\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (u32Copy) {
     const code = emitU32Copy(u32Copy[1], u32Copy[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 copy requires u32 values or 4-byte byte-array operands. Prefer 'Target = Source' or 'copy Source to Target': ${rawLine}` };
+    if (!code) return { handled: true, ok: false, log: `legacy u32 copy requires u32 values or 4-byte byte-array operands. Prefer 'Target = Source': ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -492,7 +492,7 @@ export function handlePrintFormatStatement({
   const u32Add = line.match(/^u32\s+add\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (u32Add) {
     const code = emitU32Add(u32Add[1], u32Add[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 add requires u32 values or 4-byte byte-array operands. Prefer 'add Target by Value': ${rawLine}` };
+    if (!code) return { handled: true, ok: false, log: `legacy u32 add requires u32 values or 4-byte byte-array operands. Prefer 'Target += Value': ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
@@ -508,7 +508,7 @@ export function handlePrintFormatStatement({
   const u32Sub = line.match(/^u32\s+sub\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (u32Sub) {
     const code = emitU32Sub(u32Sub[1], u32Sub[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 sub requires u32 values or 4-byte byte-array operands. Prefer 'sub Target by Value': ${rawLine}` };
+    if (!code) return { handled: true, ok: false, log: `legacy u32 sub requires u32 values or 4-byte byte-array operands. Prefer 'Target -= Value': ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }
