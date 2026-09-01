@@ -4,9 +4,6 @@ export function handleRandomBounceStatement({
   line,
   rawLine,
   getRuntimeInfo,
-  emitRandomBetweenInto,
-  emitRandomFx16Into,
-  emitRandomFp5Into,
   scopedRuntimeName,
   makeGeneratedLabel,
   emitLoadInt8Into,
@@ -22,34 +19,6 @@ export function handleRandomBounceStatement({
       handled: true,
       log: `Legacy 'random byte into' is no longer supported. Use 'Var = random(0, 255)' with an explicit target. Offending line: ${rawLine}`
     };
-  }
-
-  const randomBetween = line.match(/^random\s+between\s+(.+?)\s+and\s+(.+?)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (randomBetween) {
-    const code = emitRandomBetweenInto(randomBetween[1], randomBetween[2], randomBetween[3]);
-    if (!code) return { ok: false, handled: true, log: `random between requires byte bounds and a byte RAM target: ${rawLine}` };
-    return { ok: true, handled: true, lines: code };
-  }
-
-  const randomFixed32 = line.match(/^random\s+fixed32\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (randomFixed32) {
-    const code = emitRandomFx16Into(randomFixed32[1]);
-    if (!code) return { ok: false, handled: true, log: `random fixed32 into requires a fixed32 RAM target: ${rawLine}` };
-    return { ok: true, handled: true, lines: code };
-  }
-
-  const randomFp5 = line.match(/^random\s+(?:fp5|float)\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (randomFp5) {
-    const code = emitRandomFp5Into(randomFp5[1]);
-    if (!code) return { ok: false, handled: true, log: `random fp5 into requires an fp5 RAM target: ${rawLine}` };
-    return { ok: true, handled: true, lines: code };
-  }
-
-  const rndAuto = line.match(/^rnd(?:\s+(?:fp5|float))?\s+into\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (rndAuto) {
-    const code = emitRandomFp5Into(rndAuto[1]);
-    if (!code) return { ok: false, handled: true, log: `rnd into currently requires an fp5 RAM target: ${rawLine}` };
-    return { ok: true, handled: true, lines: code };
   }
 
   const byteLvaluePattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)";
