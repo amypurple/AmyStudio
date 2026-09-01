@@ -133,6 +133,21 @@ export const ARRAY_BULK_DEPRECATIONS = [
   },
 ];
 
+// ── Legacy u32 operation verbs ──────────────────────────────────────────────
+
+export const U32_STATEMENT_DEPRECATIONS = [
+  // u32 zero X  →  clear X
+  { pattern: /^u32\s+zero\s+([A-Za-z_][A-Za-z0-9_]*)$/i, rewrite: (m) => `clear ${m[1]}`, error: (m, raw) => `'${raw.trim()}' was removed; use 'clear ${m[1]}'` },
+  // u32 copy A to B  →  B = A
+  { pattern: /^u32\s+copy\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i, rewrite: (m) => `${m[2]} = ${m[1]}`, error: (m, raw) => `'${raw.trim()}' was removed; use '${m[2]} = ${m[1]}'` },
+  // u32 add A to B  →  B += A
+  { pattern: /^u32\s+add\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i, rewrite: (m) => `${m[2]} += ${m[1]}`, error: (m, raw) => `'${raw.trim()}' was removed; use '${m[2]} += ${m[1]}'` },
+  // u32 inc X  →  inc X
+  { pattern: /^u32\s+inc\s+([A-Za-z_][A-Za-z0-9_]*)$/i, rewrite: (m) => `inc ${m[1]}`, error: (m, raw) => `'${raw.trim()}' was removed; use 'inc ${m[1]}'` },
+  // u32 sub A from B  →  B -= A
+  { pattern: /^u32\s+sub\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+([A-Za-z_][A-Za-z0-9_]*)$/i, rewrite: (m) => `${m[2]} -= ${m[1]}`, error: (m, raw) => `'${raw.trim()}' was removed; use '${m[2]} -= ${m[1]}'` }
+];
+
 // ── Generic dispatcher ───────────────────────────────────────────────────────
 
 function checkDeprecationTable(table, line, rawLine) {
@@ -157,6 +172,10 @@ export function checkDeclarationDeprecation(line, rawLine) {
 
 export function checkArrayBulkDeprecation(line, rawLine) {
   return checkDeprecationTable(ARRAY_BULK_DEPRECATIONS, line, rawLine);
+}
+
+export function checkU32StatementDeprecation(line, rawLine) {
+  return checkDeprecationTable(U32_STATEMENT_DEPRECATIONS, line, rawLine);
 }
 
 // ── Control-flow closers and aliases ─────────────────────────────────────────

@@ -36,7 +36,7 @@ export function handleDeclarationStatement({
   getRecordTypeInfo,
   findConstantZeroDivisor
 }) {
-  // Legacy u32 verbs are operations, not declarations; let their compatibility handler process them.
+  // Removed u32 verbs are operations; let the statement diagnostic report their replacements.
   if (/^u32\s+(?:zero|copy|add|inc|sub)\b/i.test(line)) return { handled: false };
 
   function encodeImmediateBytes(value, byteCount) {

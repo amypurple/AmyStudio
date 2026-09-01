@@ -8,20 +8,20 @@ import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearc
 
 const root = resolve(import.meta.dirname, "..");
 const amyc = join(root, "tools", "amyc.mjs");
-const temp = mkdtempSync(join(tmpdir(), "amy-u32-legacy-"));
+const temp = mkdtempSync(join(tmpdir(), "amy-u32-operations-"));
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
-const source = join(temp, "u32-legacy.alexis");
+const source = join(temp, "u32-operations.alexis");
 
-writeFileSync(source, `project "legacy u32 ROM test"
+writeFileSync(source, `project "u32 operations ROM test"
 memory "colecovision_legacy_sdcc"
 u32 A = 5
 u32 B = 2
 sub start:
-  u32 copy A to B
-  u32 add A to B
-  u32 inc B
-  u32 sub A from B
-  u32 zero A
+  B = A
+  B += A
+  inc B
+  B -= A
+  clear A
   loop forever
 end sub
 `);
@@ -49,13 +49,13 @@ try {
       core.loadBios(bios);
       core.loadRom(readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 3; frame += 1) core.runFrame();
-      assert.equal(readU32(core, addressOf(asm, "AMY_UVAR_A")), 0, `${profile}: legacy zero`);
-      assert.equal(readU32(core, addressOf(asm, "AMY_UVAR_B")), 6, `${profile}: legacy copy/add/inc/sub sequence`);
+      assert.equal(readU32(core, addressOf(asm, "AMY_UVAR_A")), 0, `${profile}: clear`);
+      assert.equal(readU32(core, addressOf(asm, "AMY_UVAR_B")), 6, `${profile}: assignment/add/inc/sub sequence`);
     } finally {
       core.destroy();
     }
   }
-  console.log(`legacy u32 ROM: PASS (${profiles.length} profiles)`);
+  console.log(`u32 operations ROM: PASS (${profiles.length} profiles)`);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

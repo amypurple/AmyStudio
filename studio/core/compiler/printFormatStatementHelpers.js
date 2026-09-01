@@ -1,4 +1,4 @@
-import { checkMathIntoDeprecation } from "./deprecations.js";
+import { checkMathIntoDeprecation, checkU32StatementDeprecation } from "./deprecations.js";
 
 export function handlePrintFormatStatement({
   line,
@@ -36,11 +36,6 @@ export function handlePrintFormatStatement({
   emitSgnInt16LikeInto,
   emitSgnFp5Into,
   emitIntFp5Into,
-  emitU32Zero,
-  emitU32Copy,
-  emitU32Add,
-  emitU32Inc,
-  emitU32Sub,
   emitBcdAdd,
   emitBcdSub,
   emitClearValue,
@@ -52,6 +47,8 @@ export function handlePrintFormatStatement({
   const numericTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
   const _depMath = checkMathIntoDeprecation(line, rawLine);
   if (_depMath.handled) return _depMath;
+  const _depU32 = checkU32StatementDeprecation(line, rawLine);
+  if (_depU32.handled) return _depU32;
 
   function isFp5DeclaredType(type) {
     const lowered = String(type || "").trim().toLowerCase();
@@ -378,46 +375,6 @@ export function handlePrintFormatStatement({
     const intValue = normalizeExpression(intAssign[2]);
     const code = emitIntFp5Into(intValue, intAssign[1]);
     if (!code) return { handled: true, ok: false, log: `int(...) currently requires an fp5 source and an fp5, fixed32, byte, or word target: ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const u32Zero = line.match(/^u32\s+zero\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (u32Zero) {
-    const code = emitU32Zero(u32Zero[1]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 zero requires a u32 value or 4-byte byte-array target. Prefer 'clear Value': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const u32Copy = line.match(/^u32\s+copy\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (u32Copy) {
-    const code = emitU32Copy(u32Copy[1], u32Copy[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 copy requires u32 values or 4-byte byte-array operands. Prefer 'Target = Source': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const u32Add = line.match(/^u32\s+add\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (u32Add) {
-    const code = emitU32Add(u32Add[1], u32Add[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 add requires u32 values or 4-byte byte-array operands. Prefer 'Target += Value': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const u32Inc = line.match(/^u32\s+inc\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (u32Inc) {
-    const code = emitU32Inc(u32Inc[1]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 inc requires a u32 value or 4-byte byte-array target. Prefer 'inc Value': ${rawLine}` };
-    body.push(...code);
-    return { handled: true, ok: true };
-  }
-
-  const u32Sub = line.match(/^u32\s+sub\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (u32Sub) {
-    const code = emitU32Sub(u32Sub[1], u32Sub[2]);
-    if (!code) return { handled: true, ok: false, log: `legacy u32 sub requires u32 values or 4-byte byte-array operands. Prefer 'Target -= Value': ${rawLine}` };
     body.push(...code);
     return { handled: true, ok: true };
   }

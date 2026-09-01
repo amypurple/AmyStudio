@@ -102,7 +102,7 @@ const tests = [
   { file: "test-chars-in-box-rom.mjs", area: "tile-collision", evidence: "rom" },
   { file: "test-print-at-syntax.mjs", area: "typed-printing", evidence: "compile+assemble" },
   { file: "test-keypad-choice-codegen.mjs", area: "keypad-menu-choice", evidence: "compile+assemble" },
-  { file: "test-legacy-u32-rom.mjs", area: "legacy-wide-integers", evidence: "rom" },
+  { file: "test-u32-operations-rom.mjs", area: "wide-integer-operations", evidence: "rom" },
   { file: "test-fp5-function-return-rom.mjs", area: "fp5-function-return", evidence: "rom" },
   { file: "test-fp5-array-rom.mjs", area: "fp5-arrays", evidence: "rom" },
   { file: "test-fp5-fixed32-conversion-rom.mjs", area: "fp5-fixed32-conversion", evidence: "rom" },
