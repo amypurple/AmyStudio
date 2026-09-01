@@ -25,7 +25,7 @@ const colecoColorNames = new Map([
   ["white", 15]
 ]);
 
-import { checkVramCharReadDeprecation, checkVramPutReorderDeprecation } from "./deprecations.js";
+import { checkVramCharReadDeprecation, checkVramFillDeprecation, checkVramPutReorderDeprecation } from "./deprecations.js";
 import { emitLoadRoutineByteInputsFromTokens } from "./routineRegisterLoadHelpers.js";
 
 export function handleVramTextStatement({
@@ -70,6 +70,8 @@ export function handleVramTextStatement({
   if (_depVramPut.handled) return _depVramPut;
   const _depVramRead = checkVramCharReadDeprecation(line, rawLine);
   if (_depVramRead.handled) return _depVramRead;
+  const _depVramFill = checkVramFillDeprecation(line, rawLine);
+  if (_depVramFill.handled) return _depVramFill;
   const qualifiedByteTarget = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
 
 
@@ -1047,14 +1049,6 @@ export function handleVramTextStatement({
     if (!countCode) return { ok: false, handled: true, log: `fill to VRAM count must be a valid byte count: ${rawLine}` };
     if (!loadValue) return { ok: false, handled: true, log: `fill to VRAM value must be a byte value: ${rawLine}` };
     return { ok: true, handled: true, lines: wrapVramUploadLines([...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"]) };
-  }
-
-  const fill = line.match(/^fill\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s+with\s+(.+?)\s+count\s+(.+)$/i);
-  if (fill) {
-    const targetLabel = { pattern: "VRAM_PATTERN", color: "VRAM_COLOR", name: "VRAM_NAME", spr_pat: "VRAM_SPR_PAT", spr_attr: "VRAM_SPR_ATTR" }[fill[1].toLowerCase()];
-    const loadValue = emitLoadInt8ValueInto("a", fill[2]);
-    if (!loadValue) return { ok: false, handled: true, log: `VRAM fill value must be a byte value: ${rawLine}` };
-    return { ok: true, handled: true, lines: wrapVramUploadLines([`    ld hl,${targetLabel}`, ...emitLoadCountIntoDE(fill[3]), ...loadValue, "    call FILL_VRAM"]) };
   }
 
   const findTileBox = line.match(new RegExp(`^find\\s+tile\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+under\\s+box\\s+(.+?)\\s*,\\s*(.+?)\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+into\\s+${qualifiedByteTarget}\\s*,\\s*${qualifiedByteTarget}$`, "i"));

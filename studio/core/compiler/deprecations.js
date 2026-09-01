@@ -666,3 +666,14 @@ export const VRAM_PUT_REORDER_DEPRECATIONS = [
 export function checkVramPutReorderDeprecation(line, rawLine) {
   return checkDeprecationTable(VRAM_PUT_REORDER_DEPRECATIONS, line, rawLine);
 }
+
+export const VRAM_FILL_DEPRECATIONS = [
+  {
+    pattern: /^fill\s+vram\.(pattern|color|name|spr_pat|spr_attr)\s+with\s+(.+?)\s+count\s+(.+)$/i,
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'fill ${m[2].trim()} count ${m[3].trim()} to vram.${m[1].toLowerCase()}'`
+  }
+];
+
+export function checkVramFillDeprecation(line, rawLine) {
+  return checkDeprecationTable(VRAM_FILL_DEPRECATIONS, line, rawLine);
+}

@@ -3170,7 +3170,6 @@ Current expression engine notes:
 | `vpoke vram_addr, Value` | Write one VRAM `u8` |
 | `vpeek vram_addr into Var` | Read one VRAM `u8` |
 | `fill V count N to vram.* [+ Offset]` | Fill a VRAM region with one byte using the BIOS FILL_VRAM path |
-| `fill vram.pattern with V count N` | Older compatible VRAM fill form; prefer `fill V count N to vram.pattern` |
 | `fill row R from Col count N with V` | Fill name table row |
 | `fill vram.name with sequence $00..$FF repeat N` | Fill sequential tiles |
 | `copy Src [count N] to Dst` | Bulk copy (VRAM, arrays, buffers) |
