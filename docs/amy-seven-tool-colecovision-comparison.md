@@ -175,6 +175,8 @@ all twelve compact corpus ROMs, their sources and assets, occupied sizes, and fr
 
 Legend: **Yes** = verified or explicit target support; **Partial** = manual or narrower support;
 **Pending** = must still be proven specifically on ColecoVision.
+`*` marks a benchmark adaptation written here, not a native ColecoVision
+direct-to-VRAM path supplied by that solution.
 
 | Capability | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS / SGlib_CV | PVColLib |
 |---|---|---|---|---|---|---|
@@ -193,7 +195,7 @@ Legend: **Yes** = verified or explicit target support; **Partial** = manual or n
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound | BIOS tables, Tiny Sound, DSOUND | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Direct-to-VRAM compression | Ten active Amy codecs | Pletter | ZX-family routines available; destination varies | Resource conversion documented | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Direct-to-VRAM compression | Ten active Amy codecs | Pletter | RAM APIs; ZX0* and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -280,15 +282,33 @@ cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 |---|---|---|---|
 | Amy | ZX0, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
-| z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | ZX0 and ZX7 Coleco direct-to-VRAM ports verified exactly; generic RAM decoders remain available | Manual headers/linking and host tools |
+| z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
 | SGlib_CV / SMSlib routine | ZX7 and aPLib | ZX7 API; aPLib direct-to-VRAM exact with frame IRQ disabled | Manual host compression and C asset inclusion |
 | PVColLib | RLE, Pletter, DAN1/2/3 | RLE direct-to-VRAM verified exactly here; other paths remain separate candidates | `gfx2col` conversion and C asset inclusion |
 | Amy legacy devkit | GETPUT 1.1 MDK-RLE | Direct-to-VRAM verified exactly on Warrior | External CVPaint/asset tools and C data inclusion |
 
 z88dk's public ZX0 integration request dates from February 2021, consistent with ZX0/ZX7 being
-available there by spring 2021. The stock routines target RAM; this benchmark adds only the
-ColecoVision TMS9918 direct-to-VRAM adaptation and validates its output independently.
+available there by spring 2021. Its bundled compressor identifies itself as ZX0 v1.5 and emits
+the official classic v1 format. Amy Studio's current `zx0` codec emits the later official v2
+format by default. The streams are intentionally not interchangeable. z88dk's stock routines
+target RAM; this benchmark adds only ColecoVision TMS9918 direct-to-VRAM adaptations and validates
+their output independently.
+
+### Codec naming and integration policy
+
+| Candidate | Honest Amy name | Current evidence | Integration condition |
+|---|---|---|---|
+| ZX0 modern | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
+| ZX0 classic | `ZX0 Classic (v1)` / proposed codec `zx0v1` | z88dk v1.5 compressor plus exact benchmark VRAM port | Explicit extension and cross-format rejection tests |
+| ZX1 | `ZX1` | Official host payload and RAM decoder measured | Coleco-safe VRAM decoder and runtime proof |
+| ZX2 | `ZX2` | Official host payload and RAM decoder measured | Coleco-safe VRAM decoder and runtime proof |
+| aPLib | `aPLib` | Exact devkitSMS direct-to-VRAM ROM; browser encoder remains hidden | License/attribution review and browser/official stream parity |
+| MSC1 | `MSC1` | ugBASIC discards it for Warrior when it gives no gain | Useful Coleco corpus wins and a VRAM strategy |
+
+A host compressor alone is insufficient. An Amy codec requires round-trip tests, exact GearColeco
+VRAM output, decoder cost, explicit destination semantics, malformed-stream failure tests,
+documentation, and attribution. RAM-only APIs and locally written VRAM ports must remain labelled.
 
 Current verdict: Amy leads in codec breadth and ColecoVision workflow; devkitSMS has verified ZX7
 and aPLib paths, PVColLib has a verified RLE path, and CVBasic has a concise Pletter path. On
