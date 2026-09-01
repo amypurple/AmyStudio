@@ -384,6 +384,13 @@ export const SOUND_DEPRECATIONS = [
     rewrite: (m) => `wait ${m[1]} frames`,
     error: (m, raw) => `'${raw.trim()}' was removed; use 'wait ${m[1].trim()} frames'`
   },
+  // wait frame / wait vblank(s) → wait
+  {
+    pattern: /^wait\s+(?:frame|vblanks?)$/i,
+    rewriteTemplate: "wait",
+    rewrite: () => "wait",
+    error: (m, raw) => `'${raw.trim()}' was removed; use 'wait'`
+  },
 ];
 
 // rem comment → ' comment  (warn-only: warnOnly: true)

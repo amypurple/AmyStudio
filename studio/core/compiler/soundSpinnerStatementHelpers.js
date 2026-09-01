@@ -148,9 +148,8 @@ export function handleSoundSpinnerStatement({
     };
   }
 
-  const waitAlone = line.match(/^wait$/i) || line.match(/^wait\s+frame$/i);
+  const waitAlone = line.match(/^wait$/i);
   const waitVblank = waitAlone
-    || line.match(/^wait\s+vblank(?:s)?(?:\s+(.+))?$/i)
     || line.match(/^wait\s+(.+?)\s+frames?$/i);
   if (waitVblank) {
     const countToken = normalizeExpression(waitVblank[1] || "1");

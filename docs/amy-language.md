@@ -2535,8 +2535,6 @@ wait 1 frame
 wait 5 frames
 wait 180 frames or press
 wait 180 frames or press on joypad 1
-wait vblank
-wait 5 frames
 wait key1
 wait key7 on keypad 2
 wait key release on keypad 2
@@ -2759,8 +2757,6 @@ wait
 wait 1 frame
 wait 5 frames
 wait 180 frames or press
-wait vblank
-wait 5 frames
 halt
 ```
 
