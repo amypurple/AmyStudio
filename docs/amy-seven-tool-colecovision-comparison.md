@@ -95,46 +95,24 @@ guesses by removing repeated final bytes:
 
 ### Runtime and comparability verdict
 
-| Sample | Runtime evidence | What it proves |
+| Sample | Runtime result | Verdict |
 |---|---|---|
-| Hello World | All seven ROMs complete 180 GearColeco frames | Valid header, entry, initialization, and stable execution |
-| Warrior bitmap | All seven produce a visible image | No blank or failed graphics initialization |
-| Warrior, Amy/z88dk/devkitSMS | Exact tables and framebuffer match | `0 / 49,152` pixels differ (`0.00%`) |
-| Warrior, CVBasic | Visible full-size TMSColor reconstruction after its Pletter load | `0 / 49,152` pixels differ (`0.00%`) |
-| Warrior, ugBASIC | Full-size converted image | `0 / 49,152` pixels differ (`0.00%`) |
-| Warrior, PVColLib | Exact RLE-decoded tables and framebuffer match | `0 / 49,152` pixels differ (`0.00%`) |
-| Warrior, legacy devkit | Exact DAN2 tables and framebuffer match | `0 / 49,152` pixels differ (`0.00%`) |
-| Controller Visual | Six of seven pass injected neutral, keypad `0`, held UP, FIRE, and release checks | ugBASIC boots, but its Coleco `COLOR BORDER` backend leaves VDP register 7 unchanged |
+| Hello World | Seven ROMs complete 180 GearColeco frames | Stable startup |
+| Warrior bitmap | Seven native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
+| Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
+| Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 
-The bitmap row deliberately compares each tool's practical native workflow, not one identical
-codec or representation. CVBasic receives a full-size BMP reconstructed from Amy's source image,
-then TMSColor converts it again into new TMS9918 pattern/color tables and compresses them with
-Pletter. Its tables differ in 1,112 of 6,144 pattern bytes (`18.10%`) and 4,716 of 6,144 color
-bytes (`76.76%`), because foreground/background choices and unused bits can encode the same
-TMS9918 pixels in multiple ways. The rendered result is nevertheless exact: `0.00%` of pixels
-differ. Amy loads the original tables with ZX0, PVColLib uses its native RLE direct-to-VRAM path,
-the legacy devkit links its historical DAN2 direct-to-VRAM routine,
-z88dk uses ZX0 with a Coleco-safe port of its direct-to-VRAM decoder, devkitSMS uses its native aPLib direct-to-VRAM
-decoder, and ugBASIC converts the complete image
-through its image-resource pipeline. PVColLib's bundled Pletter path was excluded after its stream
-failed exact VRAM validation; its RLE path passed exactly. This is useful native-pipeline evidence,
-but it is not a codec-ranking result. The separate compression
-benchmark uses identical payloads plus decoder cost and is the correct place for codec claims.
+The bitmap test uses each tool's validated native workflow: Amy ZX0, CVBasic Pletter, z88dk ZX0,
+ugBASIC image resources, devkitSMS aPLib, PVColLib RLE, and NewColeco DAN2. CVBasic's tables differ
+internally, but TMS9918 can encode the same pixels several ways. All seven framebuffers are exact.
+PVColLib Pletter failed VRAM validation and is excluded; codec rankings use the separate payload test.
 
-The z88dk MDKRLE result reaches exact VRAM at frame 93 in the test harness; ZX0 reaches it at
-frame 132 and ZX7 at frame 138. ZX0 saves 935 occupied ROM bytes over MDKRLE and 139 over ZX7,
-making ZX0 the size winner while MDKRLE remains the faster loading option.
+For z88dk, MDKRLE reaches VRAM at frame 93, ZX0 at 132, and ZX7 at 138. ZX0 saves 935 bytes over
+MDKRLE and 139 over ZX7; MDKRLE loads faster. The SMS aPLib Coleco adaptation failed exact VRAM
+validation and is excluded.
 
-z88dk's library also contains an SMS-targeted direct-to-VRAM aPLib decoder. A Coleco adaptation
-compiled to 5,274 bytes, but failed exact TMS9918 VRAM validation because its VRAM-to-VRAM copy
-semantics are target-specific. That result is deliberately excluded. It remains a useful future
-porting candidate, not valid comparison evidence.
-
-The earlier ugBASIC mismatch was a benchmark-input error, not a language defect. CVBasic and
-ugBASIC use different RGB approximations for the same TMS9918 palette indices. Feeding CVBasic's
-RGB palette into ugBASIC caused nearest-color remapping even though the intended index image was
-already valid. Each converter now receives the same indexed picture expressed in its expected RGB
-palette, and both render all four corpus pictures exactly.
+The initial ugBASIC mismatch came from the wrong RGB palette. With its target palette, all four
+corpus pictures render exactly.
 
 ### Graphics II bitmap compression ratios
 
