@@ -27,18 +27,22 @@ instead of being treated as language features.
 | PVColLib | ColecoVision-focused SDCC C library and devkit | Native VDP, controller, sprite, sound, music, and compression APIs |
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
 
-## Reproducible three-sample ROM suite
+## Reproducible four-sample ROM suite
 
-The current suite builds three runnable programs with all seven solutions:
+The current suite builds four runnable programs with all seven solutions:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
 3. a visual controller monitor.
+4. an animated, controller-driven three-color metasprite.
 
 Run `tools/build-five-tool-bluemsx-suite.ps1`, `tools/build-pvcollib-benchmarks.ps1`, then
-`node tools/build-legacy-devkit-benchmarks.mjs`. The 21 ROM files are written under
-`build/competition/bluemsx-sample-suite`, grouped by tool. The same directory receives
-`occupied-sizes.csv` from `tools/report-five-tool-sample-sizes.ps1`.
+`node tools/build-legacy-devkit-benchmarks.mjs` for the first three samples. Their 21 ROM files
+are written under `build/competition/bluemsx-sample-suite`, grouped by tool. The same directory
+receives `occupied-sizes.csv` from `tools/report-five-tool-sample-sizes.ps1`.
+
+Run `tools/build-sprite-metasprite-benchmarks.ps1` for the seven sprite ROMs and
+their stricter GearColeco VRAM/SAT oracle.
 
 ### Maximum native optimization used
 
@@ -124,21 +128,21 @@ separately runtime-verified in the Warrior benchmark.
 
 ### LZ-family ratios
 
-| Picture | ZX0 Classic | ZX0 modern | ZX1 | ZX7 | aPLib | Pletter | BitBuster | LZF |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Cake | 24.07% | 24.07% | 25.33% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
-| Commando | 43.21% | 43.21% | 45.58% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
-| Warrior | 23.19% | 23.19% | 24.12% | 24.28% | 24.19% | 24.32% | 24.43% | 26.00% |
-| Barbarian | 34.42% | 34.42% | 36.11% | 35.31% | 35.45% | 35.31% | 35.51% | 39.10% |
-| 421 title | 8.59% | 8.59% | 8.97% | 9.02% | 8.94% | 9.03% | 9.16% | 11.01% |
-| 421 credits | 22.68% | 22.68% | 23.56% | 24.18% | 23.50% | 24.22% | 24.35% | 26.34% |
-| Dacman title | 8.01% | 8.01% | 8.33% | 8.38% | 8.24% | 8.42% | 8.50% | 9.62% |
-| Dacman info | 10.25% | 10.25% | 10.47% | 11.06% | 10.38% | 11.08% | 11.19% | 12.51% |
-| Dacman 2 title | 9.56% | 9.56% | 10.04% | 9.99% | 9.99% | 10.02% | 10.12% | 11.82% |
-| Chateau title | 13.31% | 13.31% | 13.70% | 14.07% | 13.88% | 14.08% | 14.18% | 15.53% |
-| Arcade Trio title | 24.41% | 24.41% | 25.82% | 25.19% | 25.06% | 25.20% | 25.33% | 29.26% |
+| Picture | ZX0 Classic | ZX0 modern | ZX1 | ZX2 | ZX7 | aPLib | Pletter | BitBuster | LZF |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Cake | 24.07% | 24.07% | 25.33% | 25.42% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
+| Commando | 43.21% | 43.21% | 45.58% | 45.18% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
+| Warrior | 23.19% | 23.19% | 24.12% | 25.38% | 24.28% | 24.19% | 24.32% | 24.43% | 26.00% |
+| Barbarian | 34.42% | 34.42% | 36.11% | 36.39% | 35.31% | 35.45% | 35.31% | 35.51% | 39.10% |
+| 421 title | 8.59% | 8.59% | 8.97% | 9.08% | 9.02% | 8.94% | 9.03% | 9.16% | 11.01% |
+| 421 credits | 22.68% | 22.68% | 23.56% | 23.40% | 24.18% | 23.50% | 24.22% | 24.35% | 26.34% |
+| Dacman title | 8.01% | 8.01% | 8.33% | 8.49% | 8.38% | 8.24% | 8.42% | 8.50% | 9.62% |
+| Dacman info | 10.25% | 10.25% | 10.47% | 11.34% | 11.06% | 10.38% | 11.08% | 11.19% | 12.51% |
+| Dacman 2 title | 9.56% | 9.56% | 10.04% | 10.13% | 9.99% | 9.99% | 10.02% | 10.12% | 11.82% |
+| Chateau title | 13.31% | 13.31% | 13.70% | 13.77% | 14.07% | 13.88% | 14.08% | 14.18% | 15.53% |
+| Arcade Trio title | 24.41% | 24.41% | 25.82% | 25.53% | 25.19% | 25.06% | 25.20% | 25.33% | 29.26% |
 
-### Amy legacy and RLE-family ratios
+### DAN and RLE-family ratios
 
 | Picture | DAN1 | DAN2 | DAN3 fast | Nibble | MDK-RLE |
 |---|---:|---:|---:|---:|---:|
@@ -154,8 +158,9 @@ separately runtime-verified in the Warrior benchmark.
 | Chateau title | 13.44% | 13.44% | 13.52% | 17.01% | 18.95% |
 | Arcade Trio title | 24.58% | 24.36% | 24.64% | 30.24% | 35.71% |
 
-The complete byte counts and ratios are preserved in the evidence archive. The earlier four-picture
-framebuffer checks also remain there: all twelve converter ROMs differed by `0 / 49,152` pixels.
+The complete byte counts and ratios are preserved in
+`competition/benchmarks/compression/bitmap-codec-ratios.csv`. The earlier four-picture framebuffer
+checks remain in the evidence archive: all twelve converter ROMs differed by `0 / 49,152` pixels.
 
 ### Observations supported by this suite
 
@@ -170,7 +175,7 @@ framebuffer checks also remain there: all twelve converter ROMs differed by `0 /
   not automatically a 32 KB program.
 - Optimization claims require runtime validation. A smaller file without matching behavior is
   rejected rather than counted as a win.
-- Three samples are insufficient to declare one compiler universally smaller or faster. RAM,
+- Four samples are insufficient to declare one compiler universally smaller or faster. RAM,
   worst-frame cycles, build latency, sound behavior, sprite pressure, and gameplay logic remain
   separate measurements.
 
@@ -198,7 +203,7 @@ direct-to-VRAM path supplied by that solution.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound | BIOS tables, Tiny Sound, DSOUND | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Direct-to-VRAM compression | Ten active Amy codecs | Pletter | RAM APIs; ZX0* and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Direct-to-VRAM compression | Fourteen active Amy codecs | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -283,7 +288,7 @@ cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy Studio | ZX0, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
+| Amy Studio | ZX0, ZX1, ZX2, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
@@ -304,8 +309,8 @@ their output independently.
 |---|---|---|---|
 | ZX0 modern | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
 | ZX0 classic | `ZX0 Classic (v1)` / proposed codec `zx0v1` | z88dk v1.5 compressor plus exact benchmark VRAM port | Explicit extension and cross-format rejection tests |
-| ZX1 | `ZX1` | Official host payload and RAM decoder measured | Coleco-safe VRAM decoder and runtime proof |
-| ZX2 | `ZX2` | Official host payload and RAM decoder measured | Coleco-safe VRAM decoder and runtime proof |
+| ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact four-picture GearColeco VRAM proof | Integrated; measure Coleco cycle cost |
+| ZX2 | `ZX2` / codec `zx2` | Byte-identical browser encoder; exact eleven-picture round-trip and five-profile GearColeco VRAM proof | Integrated; measure Coleco cycle cost |
 | aPLib | `aPLib` / codec `aplib` | Bidirectional appack parity and exact Amy/GearColeco VRAM ROM | Integrated; keep NMI-safe upload and attribution explicit |
 | MSC1 | `MSC1` | ugBASIC discards it for Warrior when it gives no gain | Useful Coleco corpus wins and a VRAM strategy |
 
@@ -316,9 +321,9 @@ documentation, and attribution. RAM-only APIs and locally written VRAM ports mus
 Current verdict: Amy leads in codec breadth and ColecoVision workflow; devkitSMS has verified ZX7
 and aPLib paths, PVColLib has a verified RLE path, and CVBasic has a concise Pletter path. On
 Warrior and Cake, official ZX1, ZX2, and aPLib do not beat Amy's ZX0 first-use ROM size. aPLib
-nevertheless cuts the devkitSMS Warrior ROM from 13,680 raw bytes to 4,713 occupied bytes. ZX1 remains worth a speed study,
-but its z88dk decoder targets RAM and needs a safe Coleco VRAM adaptation before it becomes an Amy
-feature candidate. z88dk ZX0 and ZX7 now have that Coleco proof. ugBASIC's MSC1 is a valid comparison
+nevertheless cuts the devkitSMS Warrior ROM from 13,680 raw bytes to 4,713 occupied bytes. ZX1 is now
+an integrated Amy codec with a 127-byte direct-to-VRAM decoder and exact Cake, Commando, Warrior,
+and Barbarian runtime proofs. Its remaining question is measured cycle cost. ugBASIC's MSC1 is a valid comparison
 candidate, not ten separate codecs, but it does not improve the Warrior resource.
 
 ### What MSC1 actually is

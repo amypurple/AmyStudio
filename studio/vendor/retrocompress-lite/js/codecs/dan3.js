@@ -50,15 +50,12 @@ export class DAN3Codec {
         // to avoid garbage collection overhead and improve performance.
         this.match_heads = new Int32Array(65536);
         this.match_prev = new Int32Array(this.MAX);
+        this.matchClassOffsets = new Uint32Array(3 * (this.MAX_GAMMA + 1));
 
-        this.optimals = new Array(this.MAX);
-        for (let i = 0; i < this.MAX; i++) {
-            this.optimals[i] = {
-                bits: new Uint32Array(this.BIT_OFFSET_NBR),
-                offset: new Uint16Array(this.BIT_OFFSET_NBR),
-                len: new Uint8Array(this.BIT_OFFSET_NBR)
-            };
-        }
+        this.optimalCapacity = 0;
+        this.optimalBits = new Uint32Array(0);
+        this.optimalOffsets = new Uint16Array(0);
+        this.optimalLengths = new Uint8Array(0);
 
         this.compressionStats = {};
     }
@@ -218,28 +215,39 @@ export class DAN3Codec {
         this.MAX_OFFSET3 = (1 << this.BIT_OFFSET3) + this.MAX_OFFSET2;
     }
 
+    ensureOptimalCapacity(length) {
+        if (length <= this.optimalCapacity) return;
+        const cells = length * this.BIT_OFFSET_NBR;
+        this.optimalBits = new Uint32Array(cells);
+        this.optimalOffsets = new Uint16Array(cells);
+        this.optimalLengths = new Uint8Array(cells);
+        this.optimalCapacity = length;
+    }
+
     update_optimal(index, len, offset) {
         let i = this.BIT_OFFSET_NBR_ALLOWED - 1;
+        const row = index * this.BIT_OFFSET_NBR;
         while (i >= 0) {
+            const cell = row + i;
             let cost;
             if (offset === 0) {
                 if (index > 0) {
                     if (len === 1) {
-                        this.optimals[index].bits[i] = this.optimals[index - 1].bits[i] + 1 + 8;
-                        this.optimals[index].offset[i] = 0;
-                        this.optimals[index].len[i] = 1;
+                        this.optimalBits[cell] = this.optimalBits[cell - this.BIT_OFFSET_NBR] + 1 + 8;
+                        this.optimalOffsets[cell] = 0;
+                        this.optimalLengths[cell] = 1;
                     } else {
-                        cost = this.optimals[index - len].bits[i] + 1 + this.BIT_GOLOMG_MAX + 1 + 8 + len * 8;
-                        if (this.optimals[index].bits[i] > cost) {
-                            this.optimals[index].bits[i] = cost;
-                            this.optimals[index].offset[i] = 0;
-                            this.optimals[index].len[i] = len;
+                        cost = this.optimalBits[(index - len) * this.BIT_OFFSET_NBR + i] + 1 + this.BIT_GOLOMG_MAX + 1 + 8 + len * 8;
+                        if (this.optimalBits[cell] > cost) {
+                            this.optimalBits[cell] = cost;
+                            this.optimalOffsets[cell] = 0;
+                            this.optimalLengths[cell] = len;
                         }
                     }
                 } else {
-                    this.optimals[index].bits[i] = 8;
-                    this.optimals[index].offset[i] = 0;
-                    this.optimals[index].len[i] = 1;
+                    this.optimalBits[cell] = 8;
+                    this.optimalOffsets[cell] = 0;
+                    this.optimalLengths[cell] = 1;
                 }
             } else {
                 if (offset > this.MAX_OFFSET1) {
@@ -253,11 +261,11 @@ export class DAN3Codec {
                          continue;
                     }
                 }
-                cost = this.optimals[index - len].bits[i] + this.count_bits(offset, len);
-                if (this.optimals[index].bits[i] > cost) {
-                    this.optimals[index].bits[i] = cost;
-                    this.optimals[index].offset[i] = offset;
-                    this.optimals[index].len[i] = len;
+                cost = this.optimalBits[(index - len) * this.BIT_OFFSET_NBR + i] + this.count_bits(offset, len);
+                if (this.optimalBits[cell] > cost) {
+                    this.optimalBits[cell] = cost;
+                    this.optimalOffsets[cell] = offset;
+                    this.optimalLengths[cell] = len;
                 }
             }
             i--;
@@ -277,31 +285,44 @@ export class DAN3Codec {
         const match_hash = ((this.data_src[pos - 1] & 0xFF) << 8) | (this.data_src[pos] & 0xFF);
 
         if (prev_match_index === match_hash && this.bFAST === true &&
-            this.optimals[pos - 1].offset[0] === 1 && this.optimals[pos - 1].len[0] > 2) {
-            const len = this.optimals[pos - 1].len[0];
+            this.optimalOffsets[(pos - 1) * this.BIT_OFFSET_NBR] === 1 && this.optimalLengths[(pos - 1) * this.BIT_OFFSET_NBR] > 2) {
+            const len = this.optimalLengths[(pos - 1) * this.BIT_OFFSET_NBR];
             if (len < this.MAX_GAMMA) {
                 this.update_optimal(pos, len + 1, 1);
             }
         } else {
-            // OPTIMIZATION: Use array-based hash chain traversal.
-            let best_len = 1;
+            // Offsets in the same encoding tier have identical bit cost. Keep the
+            // first candidate for each length/tier, then replay useful candidates
+            // in original chain order so the encoded stream remains unchanged.
+            const classStride = this.MAX_GAMMA + 1;
+            const firstOffsets = this.matchClassOffsets;
+            firstOffsets.fill(0);
+            const usefulCandidates = [];
             const min_match_pos = pos > this.MAX_OFFSET ? pos - this.MAX_OFFSET : 0;
             let match_pos = this.match_heads[match_hash];
 
             while (match_pos !== -1 && match_pos > min_match_pos) {
                 const offset = pos - match_pos;
-
-                // Original match extension logic, crucial for correctness.
-                for (let len = 2; len <= this.MAX_GAMMA; len++) {
-                    this.update_optimal(pos, len, offset);
-                    best_len = len;
-                    if (match_pos < len || this.data_src[pos - len] !== this.data_src[pos - len - offset]) {
-                        break;
+                let maxLength = 2;
+                while (maxLength < this.MAX_GAMMA && match_pos >= maxLength &&
+                    this.data_src[pos - maxLength] === this.data_src[pos - maxLength - offset]) {
+                    maxLength++;
+                }
+                const offsetClass = offset > this.MAX_OFFSET2 ? 2 : (offset > this.MAX_OFFSET1 ? 1 : 0);
+                const classBase = offsetClass * classStride;
+                const lengths = [];
+                for (let len = 2; len <= maxLength; len++) {
+                    if (firstOffsets[classBase + len] === 0) {
+                        firstOffsets[classBase + len] = offset;
+                        lengths.push(len);
                     }
                 }
-                if (this.bFAST && best_len > 255) break;
+                if (lengths.length) usefulCandidates.push({ offset, lengths });
 
                 match_pos = this.match_prev[match_pos];
+            }
+            for (const candidate of usefulCandidates) {
+                for (const len of candidate.lengths) this.update_optimal(pos, len, candidate.offset);
             }
         }
 
@@ -315,10 +336,11 @@ export class DAN3Codec {
         let j, i = this.index_src - 1,
             len;
         while (i > 1) {
-            len = this.optimals[i].len[subset];
+            len = this.optimalLengths[i * this.BIT_OFFSET_NBR + subset];
             for (j = i - 1; j > i - len; j--) {
-                this.optimals[j].offset[subset] = 0;
-                this.optimals[j].len[subset] = 0;
+                const cell = j * this.BIT_OFFSET_NBR + subset;
+                this.optimalOffsets[cell] = 0;
+                this.optimalLengths[cell] = 0;
             }
             i = i - len;
         }
@@ -340,21 +362,23 @@ export class DAN3Codec {
         };
 
         for (i = 1; i < this.index_src; i++) {
-            if (this.optimals[i].len[subset] > 0) {
-                index = i - this.optimals[i].len[subset] + 1;
-                if (this.optimals[i].offset[subset] === 0) {
-                    if (this.optimals[i].len[subset] === 1) {
+            const cell = i * this.BIT_OFFSET_NBR + subset;
+            const length = this.optimalLengths[cell];
+            if (length > 0) {
+                index = i - length + 1;
+                if (this.optimalOffsets[cell] === 0) {
+                    if (length === 1) {
                         this.write_literal(this.data_src[index]);
                         this.compressionStats.literalCount++;
                     } else {
-                        this.write_literals_length(this.optimals[i].len[subset]);
-                        for (j = 0; j < this.optimals[i].len[subset]; j++) {
+                        this.write_literals_length(length);
+                        for (j = 0; j < length; j++) {
                             this.write_byte(this.data_src[index + j]);
                         }
                         this.compressionStats.rleCount++;
                     }
                 } else {
-                    this.write_doublet(this.optimals[i].len[subset], this.optimals[i].offset[subset]);
+                    this.write_doublet(length, this.optimalOffsets[cell]);
                     this.compressionStats.matchCount++;
                 }
             }
@@ -369,17 +393,15 @@ export class DAN3Codec {
 
         this.index_src = inputData.length;
         this.data_src.set(inputData);
+        this.ensureOptimalCapacity(this.index_src);
 
         // OPTIMIZATION: Reset match heads array.
         this.match_heads.fill(-1);
 
-        for (let i = 0; i < this.index_src; i++) {
-            for (let j = 0; j < this.BIT_OFFSET_NBR; j++) {
-                this.optimals[i].bits[j] = 0x7FFFFFFF;
-                this.optimals[i].offset[j] = 0;
-                this.optimals[i].len[j] = 0;
-            }
-        }
+        const cells = this.index_src * this.BIT_OFFSET_NBR;
+        this.optimalBits.fill(0x7FFFFFFF, 0, cells);
+        this.optimalOffsets.fill(0, 0, cells);
+        this.optimalLengths.fill(0, 0, cells);
 
         this.update_optimal(0, 1, 0);
 
@@ -407,12 +429,13 @@ export class DAN3Codec {
             i++;
         }
 
-        let bits_minimum = this.optimals[this.index_src - 1].bits[0];
+        const finalRow = (this.index_src - 1) * this.BIT_OFFSET_NBR;
+        let bits_minimum = this.optimalBits[finalRow];
         let bestSubset = 0;
 
         this.BIT_OFFSET_NBR_ALLOWED = this.BIT_OFFSET_NBR;
         for (let i = 0; i < this.BIT_OFFSET_NBR_ALLOWED; i++) {
-            const bits_minimum_temp = this.optimals[this.index_src - 1].bits[i];
+            const bits_minimum_temp = this.optimalBits[finalRow + i];
             if (bits_minimum_temp < bits_minimum) {
                 bits_minimum = bits_minimum_temp;
                 bestSubset = i;

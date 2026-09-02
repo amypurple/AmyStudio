@@ -1872,7 +1872,7 @@ export function createProjectFileUiHelpers({
     { codec: "mdkrle", label: "RLE", description: "Tiny 46-byte routine; often good for maps and repeated tiles.", routineBytes: 46, extension: "rle" },
     { codec: "nibble", label: "Nibble", description: "DAN0nibble-derived fast RLE/data-stream codec; useful for quick testing on picture and tile data.", routineBytes: 115, extension: "nibble" },
     { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine.", routineBytes: 133, extension: "zx0" },
-    { codec: "zx1", label: "ZX1", description: "Official ZX1 compression with a compact 134-byte direct-VRAM routine.", routineBytes: 134, extension: "zx1" },
+    { codec: "zx1", label: "ZX1", description: "Official ZX1 compression with a compact 127-byte direct-VRAM routine.", routineBytes: 127, extension: "zx1" },
     { codec: "zx2", label: "ZX2", description: "Official ZX2 compression with a compact 115-byte direct-VRAM routine.", routineBytes: 115, extension: "zx2" },
     { codec: "aplib", label: "aPLib", description: "Strong aPPack-compatible compression with direct VRAM output.", routineBytes: 348, extension: "aplib" },
     { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point.", routineBytes: 136, extension: "zx7" },

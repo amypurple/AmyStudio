@@ -118,14 +118,14 @@ for (const picture of corpus) {
     raw: pattern.length + color.length,
     zx0: zx0Pattern.length + zx0Color.length,
     zx1: zx1Pattern.length + zx1Color.length,
-    zx1Total: zx1Pattern.length + zx1Color.length + 134
+    zx1Total: zx1Pattern.length + zx1Color.length + 127
   });
 }
 
 const outputDir = path.join(root, "build", "audits", "zx1-picture-corpus");
 fs.mkdirSync(outputDir, { recursive: true });
 fs.writeFileSync(path.join(outputDir, "results.csv"), [
-  "picture,raw,zx0,zx1,zx1_with_134_byte_vram_decoder",
+  "picture,raw,zx0,zx1,zx1_with_127_byte_vram_decoder",
   ...results.map((row) => `${row.picture},${row.raw},${row.zx0},${row.zx1},${row.zx1Total}`)
 ].join("\n") + "\n");
 

@@ -10,7 +10,7 @@ const DEFAULT_ROUTINE_BYTES = {
   mdkrle: 46,
   nibble: 115,
   zx0: 133,
-  zx1: 134,
+  zx1: 127,
   zx2: 115,
   aplib: 347,
   zx7: 136,

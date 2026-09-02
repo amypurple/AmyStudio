@@ -19,21 +19,17 @@ zx1s_literals:
         out     (c),d
         res     6,d
         pop     bc
-        ld      a,c
-        ld      c,b
-        inc     c
-        ld      b,a
-zx1_lit_outer:
-        push    bc
-        ld      c,$be
-zx1_lit_inner:
-        outi
+zx1_lit_loop:
+        ld      a,b
+        or      c
+        jr      z,zx1_lit_done
+        ld      a,(hl)
+        out     ($be),a
+        inc     hl
         inc     de
-        jr      nz,zx1_lit_inner
-        pop     bc
-        dec     c
-        jr      nz,zx1_lit_outer
-        ld      bc,0                    ; LDIR-compatible postcondition required by ZX1 offset parsing
+        dec     bc
+        jr      zx1_lit_loop
+zx1_lit_done:
         ex      af,af'
 
         add     a,a
