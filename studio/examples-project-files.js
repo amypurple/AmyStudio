@@ -1,5 +1,6 @@
 import { reversiPublicProjectFiles } from "./examples-reversi-assets.js";
 import { warriorDan2FireTestProjectFiles } from "./examples-picture-assets.js?v=20260730-warrior-dan2-fire-test";
+import { warriorBenchmarkProjectFiles } from "./examples-benchmark-assets.js";
 import { trainTrackPuzzleProjectFiles } from "./examples-train-track-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
@@ -599,5 +600,6 @@ replaceEditorsProjectFile("fly-swatter-timer-quest", [
 ]);
 
 derivedProjectFilesById["warrior-dan2-fire-visual-test"] = warriorDan2FireTestProjectFiles;
+derivedProjectFilesById["toolchain-benchmark-warrior-bitmap"] = warriorBenchmarkProjectFiles;
 
 export const projectFilesById = derivedProjectFilesById;

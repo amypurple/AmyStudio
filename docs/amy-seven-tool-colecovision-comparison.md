@@ -33,8 +33,12 @@ The current suite builds four runnable programs with all seven solutions:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
-3. a visual controller monitor.
+3. a visual controller monitor;
 4. an animated, controller-driven three-color metasprite.
+
+A **metasprite** is one visual actor assembled from multiple hardware sprites.
+The benchmark overlaps three 16x16 TMS9918 sprites for white, yellow, and black
+layers, remaining below the four-sprites-per-scanline limit.
 
 Run `tools/build-five-tool-bluemsx-suite.ps1`, `tools/build-pvcollib-benchmarks.ps1`, then
 `node tools/build-legacy-devkit-benchmarks.mjs` for the first three samples. Their 21 ROM files

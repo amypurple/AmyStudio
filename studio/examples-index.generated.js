@@ -20,6 +20,59 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "toolchain-benchmark-hello",
+    "label": "Toolchain Benchmark: Hello World",
+    "detail": "Exact Amy Studio source used by the seven-tool Hello World comparison.",
+    "projectName": "toolchain-benchmark-hello",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "toolchain-benchmark-warrior-bitmap",
+    "label": "Toolchain Benchmark: Warrior Bitmap",
+    "detail": "Exact Amy Studio source and ZX0 assets used by the seven-tool Graphics II bitmap comparison.",
+    "projectName": "toolchain-benchmark-warrior-bitmap",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "toolchain-benchmark-controller",
+    "label": "Toolchain Benchmark: Controller Visual",
+    "detail": "Exact Amy Studio source used by the seven-tool controller-input comparison.",
+    "projectName": "toolchain-benchmark-controller",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "toolchain-benchmark-sprite-metasprite",
+    "label": "Toolchain Benchmark: Animated Metasprite",
+    "detail": "A three-color actor assembled from three overlapping hardware sprites, with two animation frames and joystick movement.",
+    "projectName": "toolchain-benchmark-sprite-metasprite",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "sprites",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-inline-qualified-mutations-selftest",
     "label": "Amy Inline Qualified Mutations Self-Test",
     "detail": "Visible self-test for single-line conditional inc, dec, and toggle on overlay fields, packed BCD, and neighboring packed booleans.",
