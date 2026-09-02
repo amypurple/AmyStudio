@@ -815,7 +815,7 @@
 
 This changelog records the current release-facing state of the AMY language and Amy Studio.
 
-For the current version decision, see [amy-current-version.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-current-version.md).
+For the current version decision, see [amy-current-version.md](../docs/amy-current-version.md).
 
 ---
 
@@ -3824,7 +3824,7 @@ replace `rnd fp5 into A`.
 convert safe Tier 1 syntax in built-in Studio examples.
 
 **Changes**
-- Added [tools/modernize-amy.mjs](C:/Users/Amy/Desktop/ALEXIS-Z80/tools/modernize-amy.mjs)
+- Added [tools/modernize-amy.mjs](../tools/modernize-amy.mjs)
   with dry-run default, `--write`, `--list`, and explicit `--include-js` for
   Studio example-source strings.
 - Modernized supported example syntax such as:
@@ -3847,7 +3847,7 @@ convert safe Tier 1 syntax in built-in Studio examples.
 cleanup plan and removed a few legacy examples from the teaching path.
 
 **Changes**
-- Added [amy-legacy-removal-plan-2026-06-09.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-legacy-removal-plan-2026-06-09.md)
+- Added [amy-legacy-removal-plan-2026-06-09.md](../docs/amy-legacy-removal-plan-2026-06-09.md)
   with Tier 1 / Tier 2 cleanup sequencing, modernizer requirement, and keep-list
   for intentional retro constructs.
 - Linked the removal plan from the language-design priorities note.
@@ -3868,7 +3868,7 @@ cleanup plan and removed a few legacy examples from the teaching path.
 documentation issues that were immediately factual.
 
 **Changes**
-- Added [amy-language-design-priorities-2026-06-09.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-language-design-priorities-2026-06-09.md)
+- Added [amy-language-design-priorities-2026-06-09.md](../docs/amy-language-design-priorities-2026-06-09.md)
   to track expression-engine, signed-comparison, alias, fall-through, reserved
   name, and signed-byte cleanup priorities.
 - Added `fixed32` to the manual type table.
@@ -4658,16 +4658,16 @@ coming from C-like languages.
 
 ### What changed
 
-- updated [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
+- updated [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
   - record parsing now accepts:
     - `record Name: ... end record`
     - `struct Name: ... end struct`
-- updated [studio/core/editor/autocompleteCatalog.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/editor/autocompleteCatalog.js)
+- updated [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
   - added canonical `record` examples
   - added `struct` alias examples with wording that keeps `record` as the preferred Amy spelling
 - updated:
-  - [docs/amy-language.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-language.md)
-  - [docs/amy-v2.1-reference-manual.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-v2.1-reference-manual.md)
+  - [docs/amy-language.md](../docs/amy-language.md)
+  - [docs/amy-v2.1-reference-manual.md](../docs/amy-v2.1-reference-manual.md)
   - removed stale wording that still treated records / arrays of record as wholly future work
 
 ### Language direction
@@ -4685,15 +4685,15 @@ so global arrays of record can use nested paths such as `Pieces[I].Pos.X`.
 
 ### What changed
 
-- updated [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
+- updated [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
   - record field declarations now accept previously defined record types
   - nested record fields contribute their full byte size to parent layout
 - updated:
-  - [studio/core/compiler/valueParseHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/valueParseHelpers.js)
-  - [studio/core/compiler/loadStoreHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/loadStoreHelpers.js)
+  - [studio/core/compiler/valueParseHelpers.js](../studio/core/compiler/valueParseHelpers.js)
+  - [studio/core/compiler/loadStoreHelpers.js](../studio/core/compiler/loadStoreHelpers.js)
   - nested member paths now resolve cumulative field offsets such as `Piece.Pos.X`
 - added a new shipped canary example:
-  - [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js)
+  - [studio/examples.js](../studio/examples.js)
   - `Nested Record Array Minimal`
 
 ### Validation
@@ -4723,10 +4723,10 @@ rewrites, `ldi` substitutions, and a few residual local register-fact wins.
 - ran:
   - `node tools/analyze-mdl-audit.js`
 - refreshed current analysis artifacts:
-  - [build/mdl-audit/mdl-analysis.md](C:/Users/Amy/Desktop/ALEXIS-Z80/build/mdl-audit/mdl-analysis.md)
-  - [build/mdl-audit/mdl-analysis.json](C:/Users/Amy/Desktop/ALEXIS-Z80/build/mdl-audit/mdl-analysis.json)
+  - [build/mdl-audit/mdl-analysis.md](../build/mdl-audit/mdl-analysis.md)
+  - [build/mdl-audit/mdl-analysis.json](../build/mdl-audit/mdl-analysis.json)
 - recorded the findings in:
-  - [docs/findings-trace-constant-reuse-2026-06-02.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/findings-trace-constant-reuse-2026-06-02.md)
+  - [docs/findings-trace-constant-reuse-2026-06-02.md](../docs/findings-trace-constant-reuse-2026-06-02.md)
 
 ### What was learned
 
@@ -4748,11 +4748,11 @@ rewrites, `ldi` substitutions, and a few residual local register-fact wins.
 
 If work stops during optimizer investigation, read these first:
 
-1. [docs/ai-project-orientation.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/ai-project-orientation.md)
-2. [docs/claude-studio-handoff.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/claude-studio-handoff.md)
-3. [docs/claude-validation-and-next-steps-2026-06-01.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/claude-validation-and-next-steps-2026-06-01.md)
-4. [docs/findings-trace-constant-reuse-2026-06-02.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/findings-trace-constant-reuse-2026-06-02.md)
-5. [build/mdl-audit/mdl-analysis.md](C:/Users/Amy/Desktop/ALEXIS-Z80/build/mdl-audit/mdl-analysis.md)
+1. [docs/ai-project-orientation.md](../docs/ai-project-orientation.md)
+2. [docs/claude-studio-handoff.md](../docs/claude-studio-handoff.md)
+3. [docs/claude-validation-and-next-steps-2026-06-01.md](../docs/claude-validation-and-next-steps-2026-06-01.md)
+4. [docs/findings-trace-constant-reuse-2026-06-02.md](../docs/findings-trace-constant-reuse-2026-06-02.md)
+5. [build/mdl-audit/mdl-analysis.md](../build/mdl-audit/mdl-analysis.md)
 
 ## 2026-06-02 — Narrow `LDIR/LDDR` BC=0 Promotion To Balanced
 
@@ -4763,14 +4763,14 @@ the rest of speculative register tracking.
 
 ### What changed
 
-- updated [studio/core/optimization.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/optimization.js)
+- updated [studio/core/optimization.js](../studio/core/optimization.js)
   - `balanced` now explicitly includes proven `LDIR/LDDR BC=0` reuse
-- updated [studio/vendor/amyscvassembly/optimizerCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/vendor/amyscvassembly/optimizerCore.js)
+- updated [studio/vendor/amyscvassembly/optimizerCore.js](../studio/vendor/amyscvassembly/optimizerCore.js)
   - added a narrow config gate for block-copy `BC=0` reuse
   - kept the rest of `speculativeValueReuse` at `aggressive`
 - updated investigation / plan docs:
-  - [docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md)
-  - [docs/plan-optimizer-next-2026-06-01.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/plan-optimizer-next-2026-06-01.md)
+  - [docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md](../docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md)
+  - [docs/plan-optimizer-next-2026-06-01.md](../docs/plan-optimizer-next-2026-06-01.md)
 
 ### Why this is not treated as speculative anymore
 
@@ -4826,8 +4826,8 @@ claimed wins.
 
 ### Key docs
 
-- [docs/claude-proof-window-refuted-2026-06-02.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/claude-proof-window-refuted-2026-06-02.md)
-- [docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md)
+- [docs/claude-proof-window-refuted-2026-06-02.md](../docs/claude-proof-window-refuted-2026-06-02.md)
+- [docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md](../docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md)
 
 ## 2026-06-01 — Optimizer Parens Fix And Peephole Session
 
@@ -4892,13 +4892,13 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
 
 ## 2026-05-24 — FP5 Log Cleanup And Exp Backlog
 
-- moved the current fp5 `exp` improvement work out of the active tranche and recorded it as deferred backlog work in [docs/amy-current-version.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-current-version.md)
+- moved the current fp5 `exp` improvement work out of the active tranche and recorded it as deferred backlog work in [docs/amy-current-version.md](../docs/amy-current-version.md)
 - recorded `log` improvement alongside `exp` as backlog-quality future work, while keeping the current first-pass `log` helper active
-- cleaned the first fp5 `log` helper in [src/alexis_lib/coleco_math_fp5.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fp5.asm) so it no longer converts a fixed32 `ln(2)` constant at runtime:
+- cleaned the first fp5 `log` helper in [src/alexis_lib/coleco_math_fp5.asm](../src/alexis_lib/coleco_math_fp5.asm) so it no longer converts a fixed32 `ln(2)` constant at runtime:
   - replaced the fixed32 bridge constant with a native fp5 `ln(2)` constant
   - kept the rest of the first-pass fp5 `log` structure unchanged
   - this makes the exponent contribution path fully fp5 end-to-end
-- added `Amy FP5 Sign / Int Lab` in [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) and [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) to verify the already-implemented fp5 `sgn` and `int` helpers with exact expected results
+- added `Amy FP5 Sign / Int Lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) to verify the already-implemented fp5 `sgn` and `int` helpers with exact expected results
 - verified the current fp5 helper tranche through the example labs:
   - `Amy FP5 Abs Lab`
   - `Amy FP5 Sign / Int Lab`
@@ -4916,23 +4916,23 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - exact/debug output through `print Value ... digits 16`
   - friendly/public decimal text through `str$ Value into Buffer`
 - added the first native fp5 control-flow comparison path:
-  - new runtime helper `AMY_FP5_CMP_FPA1_FPA2` in [src/alexis_lib/coleco_math_fp5.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fp5.asm)
-  - compiler support for fp5 comparisons in [studio/core/compiler/fx16Helpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/fx16Helpers.js), [studio/core/compiler/controlFlowHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/controlFlowHelpers.js), and [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
+  - new runtime helper `AMY_FP5_CMP_FPA1_FPA2` in [src/alexis_lib/coleco_math_fp5.asm](../src/alexis_lib/coleco_math_fp5.asm)
+  - compiler support for fp5 comparisons in [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/controlFlowHelpers.js](../studio/core/compiler/controlFlowHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
   - current direct support covers fp5-vs-fp5 and fp5-vs-integer-literal control-flow comparisons
-- added `amy-float-compare-lab` / `Amy FP5 Compare Lab` in [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) and [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) as a dedicated fp5 comparison smoke test
+- added `amy-float-compare-lab` / `Amy FP5 Compare Lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) as a dedicated fp5 comparison smoke test
 - refreshed the current-version note, user-facing language reference, reference manual, fp5 runtime contract, SmartBASIC fp5 guide, and root README so they describe the same current fp5 reality
 - expanded parser/editor acceptance so `fp5` is now a first-class built-in spelling in:
-  - [studio/core/compiler/typeSymbolHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/typeSymbolHelpers.js)
-  - [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
-  - [studio/core/editor/autocompleteCatalog.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/editor/autocompleteCatalog.js)
+  - [studio/core/compiler/typeSymbolHelpers.js](../studio/core/compiler/typeSymbolHelpers.js)
+  - [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+  - [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
 - extended fp5 random statement parsing:
   - `random fp5 into Var`
   - `rnd fp5 into Var`
   - `random float into Var` remains accepted
-  - implemented in [studio/core/compiler/randomBounceStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/randomBounceStatementHelpers.js)
+  - implemented in [studio/core/compiler/randomBounceStatementHelpers.js](../studio/core/compiler/randomBounceStatementHelpers.js)
 - updated the main fp5 showcase examples to teach `fp5` directly instead of only `float`:
-  - [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js)
-  - [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js)
+  - [studio/examples-numeric.js](../studio/examples-numeric.js)
+  - [studio/examples.js](../studio/examples.js)
 
 ## 2026-05-19 — Refactor Progress
 
@@ -4940,7 +4940,7 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `float` is now recognized as a canonical AMY source type
   - compiler/runtime sizing now reserves 5 bytes for `float` storage
   - global and local `float` variables now allocate proper storage and support zero initialization plus float-to-float copy
-  - added the first real `fp5` runtime module in [src/alexis_lib/coleco_math_fp5.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fp5.asm):
+  - added the first real `fp5` runtime module in [src/alexis_lib/coleco_math_fp5.asm](../src/alexis_lib/coleco_math_fp5.asm):
     - zero/copy/load/store helpers
     - `u16 -> float`
     - `i16 -> float`
@@ -4952,49 +4952,49 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
     - non-zero/non-copy `float` initialization
     - `float` parameters and return types in subroutines/functions
   - touched:
-    - [studio/core/compiler/typeSymbolHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/typeSymbolHelpers.js)
-    - [studio/core/compiler/procHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/procHelpers.js)
-    - [studio/core/compiler/declarationStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/declarationStatementHelpers.js)
-    - [studio/core/compiler/runtimeValueHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/runtimeValueHelpers.js)
-    - [studio/core/compiler/typeInferenceHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/typeInferenceHelpers.js)
-    - [studio/core/compiler/firstPassScanHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/firstPassScanHelpers.js)
-    - [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
-    - [studio/core/editor/autocompleteCatalog.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/editor/autocompleteCatalog.js)
+    - [studio/core/compiler/typeSymbolHelpers.js](../studio/core/compiler/typeSymbolHelpers.js)
+    - [studio/core/compiler/procHelpers.js](../studio/core/compiler/procHelpers.js)
+    - [studio/core/compiler/declarationStatementHelpers.js](../studio/core/compiler/declarationStatementHelpers.js)
+    - [studio/core/compiler/runtimeValueHelpers.js](../studio/core/compiler/runtimeValueHelpers.js)
+    - [studio/core/compiler/typeInferenceHelpers.js](../studio/core/compiler/typeInferenceHelpers.js)
+    - [studio/core/compiler/firstPassScanHelpers.js](../studio/core/compiler/firstPassScanHelpers.js)
+    - [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+    - [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
 
 - added statement-style fixed32 fractional random support:
   - `random fixed32 into Var` now compiles to `AMY_FX16_16_RND` and stores a `0.0 .. <1.0` fixed32 sample
-  - wired through [studio/core/compiler/fx16Helpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/fx16Helpers.js), [studio/core/compiler/randomBounceStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/randomBounceStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
-  - added `amy-fixed32-random-lab` in [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) and [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) as a focused smoke test
+  - wired through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/randomBounceStatementHelpers.js](../studio/core/compiler/randomBounceStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+  - added `amy-fixed32-random-lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) as a focused smoke test
 - added statement-style fixed32 absolute value support:
   - `abs Value into Target` now compiles for fixed32-capable source/target pairs
-  - wired through [studio/core/compiler/fx16Helpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
-  - added `amy-fixed32-abs-lab` in [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) and [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) as a focused smoke test
+  - wired through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](../studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+  - added `amy-fixed32-abs-lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) as a focused smoke test
 - expanded the live `fixed32` surface toward production arithmetic:
-  - implemented compiler-routed `fixed32 *= ...` through [studio/core/compiler/fx16Helpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/fx16Helpers.js), [studio/core/compiler/assignmentArithmeticHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/assignmentArithmeticHelpers.js), and [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
-  - replaced the old placeholder `AMY_FX16_16_MULT` in [src/alexis_lib/coleco_math_fx16.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fx16.asm) with a real signed 16.16 multiply that builds a 64-bit absolute product and writes back the middle 32 bits
-  - expanded [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) and [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) so `amy-fixed32-selftest` now covers whole and fractional multiplication in addition to signed add/subtract and whole-value sqrt
+  - implemented compiler-routed `fixed32 *= ...` through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/assignmentArithmeticHelpers.js](../studio/core/compiler/assignmentArithmeticHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+  - replaced the old placeholder `AMY_FX16_16_MULT` in [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm) with a real signed 16.16 multiply that builds a 64-bit absolute product and writes back the middle 32 bits
+  - expanded [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) so `amy-fixed32-selftest` now covers whole and fractional multiplication in addition to signed add/subtract and whole-value sqrt
 - added `amy-fixed32-multiply-lab` as a dedicated fixed32 multiply-debug screen covering multiply-by-zero, one, two, one-half, and signed combinations so the broken multiply path can be diagnosed case by case
 - added `amy-fixed32-multiply-bytes` as a second fixed32 multiply-debug screen that prints both the decimal result and the raw `[3][2][1][0]` bytes, so multiply failures can be distinguished from formatting issues
 - added `copy bytes of Value to Buffer` to the compiler for scalar RAM values (`u8/i8`, `u16/i16/fixed/ufixed`, `u32/i32/fixed32`) so AMY code can inspect raw little-endian bytes without ad hoc casts
 - documented `copy bytes of Value to Buffer` as a user-facing debugging technique in:
-  - [docs/amy-language.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-language.md)
-  - [docs/amy-v2.1-reference-manual.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-v2.1-reference-manual.md)
+  - [docs/amy-language.md](../docs/amy-language.md)
+  - [docs/amy-v2.1-reference-manual.md](../docs/amy-v2.1-reference-manual.md)
   - including a concrete `fixed32 = 1.5` raw-byte example and little-endian debugging guidance
 - implemented the first real `fixed32` math helper surface:
-  - added [src/alexis_lib/coleco_math_fx16.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fx16.asm) `AMY_FX16_16_SQRT`
-  - exposed statement-style `sqrt Value into Target` for `fixed32` source/target pairs through [studio/core/compiler/fx16Helpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
+  - added [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm) `AMY_FX16_16_SQRT`
+  - exposed statement-style `sqrt Value into Target` for `fixed32` source/target pairs through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](../studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
   - kept expression-form `A = sqrt(B)` explicitly out of scope for now
 - updated `fix16_16` library integration so `AMY_FX16_16_SQRT` is auto-resolved:
-  - [studio/core/project.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/project.js)
-  - [studio/core/libraryModules.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/libraryModules.js)
-- cleaned the current `fix16_16` helper layer in [src/alexis_lib/coleco_math_fx16.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fx16.asm):
+  - [studio/core/project.js](../studio/core/project.js)
+  - [studio/core/libraryModules.js](../studio/core/libraryModules.js)
+- cleaned the current `fix16_16` helper layer in [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm):
   - fixed `AMY_FX16_16_ABS`, which was previously checking the combined OR of all four bytes instead of the actual sign byte
   - marked `AMY_FX16_16_MULT`, `AMY_FX16_16_DIV`, and `AMY_FX16_16_RND` as provisional low-level routines, not yet compiler-integrated promises
-- updated the umbrella include [src/alexis_lib/coleco_math.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math.asm) so it now includes `coleco_math_fx16.asm`
+- updated the umbrella include [src/alexis_lib/coleco_math.asm](../src/alexis_lib/coleco_math.asm) so it now includes `coleco_math_fx16.asm`
 - fixed library auto-resolution for `fix16_16` usage:
-  - [studio/core/project.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/project.js) now detects `AMY_FX16_16_*` references and pulls in `src/alexis_lib/coleco_math_fx16.asm`
-  - [studio/core/libraryModules.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/libraryModules.js) now lists the broader `fix16_16` symbol surface for split-library resolution
-- kept the next `fixed32` math step explicitly tracked in [docs/fixed-ufixed-roadmap.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/fixed-ufixed-roadmap.md):
+  - [studio/core/project.js](../studio/core/project.js) now detects `AMY_FX16_16_*` references and pulls in `src/alexis_lib/coleco_math_fx16.asm`
+  - [studio/core/libraryModules.js](../studio/core/libraryModules.js) now lists the broader `fix16_16` symbol surface for split-library resolution
+- kept the next `fixed32` math step explicitly tracked in [docs/fixed-ufixed-roadmap.md](../docs/fixed-ufixed-roadmap.md):
   - `MULT` / `DIV` / formatter / language-level support still need a proper audited pass
 
 - compiler optimization pass added for startup-clear-aware RAM init elision:
@@ -5005,64 +5005,64 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - removes redundant `ld r,n` reloads when the register value is still provably live
   - intentionally does **not** do flag-changing substitutions like `ld a,0 -> xor a`
   - kept conservative so it fits `Balanced`-class optimization rather than risky experimental rewriting
-- recorded the next `fixed32` math step in [docs/fixed-ufixed-roadmap.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/fixed-ufixed-roadmap.md):
+- recorded the next `fixed32` math step in [docs/fixed-ufixed-roadmap.md](../docs/fixed-ufixed-roadmap.md):
   - expand and audit the existing `fix16_16` math subsystem properly
   - do not blindly paste the proposed 16.16 math listing without syntax and correctness review
 
-- recorded the first improved runnable AMY `fixed32` Ahl benchmark result in [docs/creative-computing-benchmark.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/creative-computing-benchmark.md):
+- recorded the first improved runnable AMY `fixed32` Ahl benchmark result in [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md):
   - `0:20`, `accuracy 3.0623`, `random 9.5361`, `S 5034.6885`, `R 990.4638`
   - explicitly marked as a `fixed32` result and not an optimized historical floating-point comparison
-- continued the `fixed32` quality pass in [src/alexis_lib/coleco_math_fx16.asm](C:/Users/Amy/Desktop/ALEXIS-Z80/src/alexis_lib/coleco_math_fx16.asm):
+- continued the `fixed32` quality pass in [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm):
   - `AMY_FX16_16_DIV` now rounds to nearest instead of always truncating the quotient
   - this aligns divide behavior with the recent multiply and square-root rounding improvements
-- documented the preferred next high-accuracy real-number direction in [docs/apple-mbasic-float-plan.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/apple-mbasic-float-plan.md):
+- documented the preferred next high-accuracy real-number direction in [docs/apple-mbasic-float-plan.md](../docs/apple-mbasic-float-plan.md):
   - no custom float
   - prefer a proven Apple / MBASIC-style `5-byte` BASIC float family for future benchmark-grade accuracy work
 - promoted the Creative Computing / Ahl benchmark from blocked sketch to runnable fixed32 rewrite:
-  - [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) now runs the benchmark with statement `sqrt`, `random fixed32`, `^= 2`, and statement `abs`
-  - [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) now lists it as `Ahl Benchmark` with project name `amy-ahl-benchmark`
-  - [docs/creative-computing-benchmark.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/creative-computing-benchmark.md) now describes it as a runnable rewrite pending numerical validation
+  - [studio/examples-numeric.js](../studio/examples-numeric.js) now runs the benchmark with statement `sqrt`, `random fixed32`, `^= 2`, and statement `abs`
+  - [studio/examples.js](../studio/examples.js) now lists it as `Ahl Benchmark` with project name `amy-ahl-benchmark`
+  - [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) now describes it as a runnable rewrite pending numerical validation
 - updated the Creative Computing benchmark tracking:
-  - [docs/creative-computing-benchmark.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/creative-computing-benchmark.md) now uses the intended `fixed32` benchmark sketch
-  - [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) now carries the same `fixed32` benchmark target source
-  - [studio/examples.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples.js) now lists the blocked benchmark sketch in the studio catalog so progress can be tracked until it becomes runnable
-- refreshed [README.md](C:/Users/Amy/Desktop/ALEXIS-Z80/README.md) so it reflects the current AMY Studio state instead of older meta-project wording
-- cleaned [studio/core/editor/autocompleteCatalog.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/editor/autocompleteCatalog.js):
+  - [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) now uses the intended `fixed32` benchmark sketch
+  - [studio/examples-numeric.js](../studio/examples-numeric.js) now carries the same `fixed32` benchmark target source
+  - [studio/examples.js](../studio/examples.js) now lists the blocked benchmark sketch in the studio catalog so progress can be tracked until it becomes runnable
+- refreshed [README.md](../README.md) so it reflects the current AMY Studio state instead of older meta-project wording
+- cleaned [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js):
   - removed several stale/non-canonical suggestions from the active catalog
   - kept canonical suggestions such as `next` and `graphics mode 2 bitmap`
   - added current `fixed32` suggestions for declaration, copy, and `+=` / `-=`
-- moved the autocomplete catalog into [studio/core/editor/autocompleteCatalog.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/editor/autocompleteCatalog.js)
-- removed the autocomplete type-name set, snippet lists, detail overrides, and command-bias scoring from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- moved the autocomplete catalog into [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
+- removed the autocomplete type-name set, snippet lists, detail overrides, and command-bias scoring from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `701` lines after this autocomplete extraction
-- moved the main compiler body into [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js)
-- left a thin `transpileAmy(...)` wrapper in [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) that forwards the live helper/module dependencies
+- moved the main compiler body into [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+- left a thin `transpileAmy(...)` wrapper in [studio/app.js](../studio/app.js) that forwards the live helper/module dependencies
 - `studio/app.js` is now down to about `1075` lines after this core compiler extraction
-- wired [studio/core/projectBridgeHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/projectBridgeHelpers.js) for the local project bridge wrapper layer:
+- wired [studio/core/projectBridgeHelpers.js](../studio/core/projectBridgeHelpers.js) for the local project bridge wrapper layer:
   - starter source wrapper
   - new/load/migrate project wrappers
   - project-file candidate wrapper
   - save/export/import wrappers
-- removed those local project bridge wrappers from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed those local project bridge wrappers from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3056` lines after this shell extraction
-- wired [studio/core/bindStudioEvents.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/bindStudioEvents.js) for the top-level studio event-binding shell:
+- wired [studio/core/bindStudioEvents.js](../studio/core/bindStudioEvents.js) for the top-level studio event-binding shell:
   - ASM view event wiring
   - top UI event wiring
   - studio runtime event wiring
-- removed that `bindEvents()` shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that `bindEvents()` shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3077` lines after this shell extraction
-- wired [studio/core/projectEditorUi.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/projectEditorUi.js) for the project editor shell block:
+- wired [studio/core/projectEditorUi.js](../studio/core/projectEditorUi.js) for the project editor shell block:
   - commit source text to project/editor
   - insert snippet into source
   - sync UI from the current project
-- removed that project editor shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that project editor shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3089` lines after this shell extraction
-- wired [studio/core/previewShell.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/previewShell.js) for the preview / optimization shell block:
+- wired [studio/core/previewShell.js](../studio/core/previewShell.js) for the preview / optimization shell block:
   - optimization hint update
   - preview button visibility/state
   - source cartridge metadata refresh
-- removed that preview / optimization shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that preview / optimization shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3119` lines after this shell extraction
-- wired [studio/core/emulatorShell.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/emulatorShell.js) for the emulator shell block:
+- wired [studio/core/emulatorShell.js](../studio/core/emulatorShell.js) for the emulator shell block:
   - emulator UI state update
   - ROM object URL lifecycle
   - clear compiled artifacts
@@ -5070,9 +5070,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - embedded emulator launch
   - BIOS auto-load
   - simple view switch helper
-- removed that emulator shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that emulator shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3139` lines after this shell extraction
-- wired [studio/core/statusAsmUi.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/statusAsmUi.js) for the status / ASM view shell block:
+- wired [studio/core/statusAsmUi.js](../studio/core/statusAsmUi.js) for the status / ASM view shell block:
   - status line update
   - library resolution panel render
   - ASM view state selection
@@ -5080,34 +5080,34 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - editor insight refresh
   - ASM editor sync
   - codec status line
-- removed that status / ASM view shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that status / ASM view shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3281` lines after this shell extraction
-- wired [studio/core/projectLifecycle.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/projectLifecycle.js) for the project lifecycle shell block:
+- wired [studio/core/projectLifecycle.js](../studio/core/projectLifecycle.js) for the project lifecycle shell block:
   - default starter source
   - new project creation
   - build-from-example creation
   - project load/migrate
   - project-file candidate naming
   - save-to-storage helper
-- removed that lifecycle shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that lifecycle shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3373` lines after this shell extraction
-- wired [studio/core/examplePicker.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/examplePicker.js) for the example picker shell/UI block:
+- wired [studio/core/examplePicker.js](../studio/core/examplePicker.js) for the example picker shell/UI block:
   - example tag ordering
   - example filtering
   - example metadata panel render
   - example picker render
-- removed that example picker shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that example picker shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3427` lines after this shell extraction
-- wired [studio/core/projectPersistence.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/projectPersistence.js) for project export/import normalization
-- wired [studio/core/projectFileUi.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/projectFileUi.js) for the embedded project-file shell/UI block:
+- wired [studio/core/projectPersistence.js](../studio/core/projectPersistence.js) for project export/import normalization
+- wired [studio/core/projectFileUi.js](../studio/core/projectFileUi.js) for the embedded project-file shell/UI block:
   - asset snippet insertion
   - dsound play snippet insertion
   - upsert/remove project files
   - project-file rendering
   - imported project-file attachment
-- removed that project persistence / project-file shell block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that project persistence / project-file shell block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3471` lines after this shell extraction
-- wired [studio/core/compiler/transpileFinalizationHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileFinalizationHelpers.js) for the end-of-transpile finalizer:
+- wired [studio/core/compiler/transpileFinalizationHelpers.js](../studio/core/compiler/transpileFinalizationHelpers.js) for the end-of-transpile finalizer:
   - unclosed block checks
   - deferred final proc/function cleanup
   - data block flush
@@ -5115,25 +5115,25 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - stack frame prologue insertion
   - runtime init / numeric helper / text / ROM block assembly
   - final optimized body packaging
-- removed that finalization block from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that finalization block from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3571` lines after the finalization extraction
-- wired [studio/core/compiler/firstPassScanHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/firstPassScanHelpers.js) for the first-pass symbol/signature scan:
+- wired [studio/core/compiler/firstPassScanHelpers.js](../studio/core/compiler/firstPassScanHelpers.js) for the first-pass symbol/signature scan:
   - source type alias registration
   - const/data/declaration pre-scan
   - label pre-scan
   - sub/function signature pre-scan
   - stack parameter slot pre-registration
-- removed that first-pass scan cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that first-pass scan cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3651` lines after the first-pass extraction
-- wired [studio/core/compiler/declarationStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/declarationStatementHelpers.js) for the declaration cluster:
+- wired [studio/core/compiler/declarationStatementHelpers.js](../studio/core/compiler/declarationStatementHelpers.js) for the declaration cluster:
   - `let` / `var` / `const`
   - `bcd`
   - typed global/local declarations
   - array declarations
   - removed built-in type rejection
-- removed that declaration cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed that declaration cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3784` lines after the declaration extraction
-- wired [studio/core/compiler/dataMetaStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/dataMetaStatementHelpers.js) for the early data/meta parser cluster:
+- wired [studio/core/compiler/dataMetaStatementHelpers.js](../studio/core/compiler/dataMetaStatementHelpers.js) for the early data/meta parser cluster:
   - `define TypeAlias as CanonicalType` second-pass skip
   - multiline `data` block state
   - `enddata`
@@ -5144,10 +5144,10 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `data ... sprite16`
   - `memory "..."`
   - `cartridge "..."`
-- removed that early data/meta cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
-- added [docs/fixed-ufixed-roadmap.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/fixed-ufixed-roadmap.md) to document the current real `fixed` / `ufixed` surface and the future path toward stronger numeric support
-- updated [docs/creative-computing-benchmark.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/creative-computing-benchmark.md) with corrected time ordering and additional benchmark context
-- wired [studio/core/compiler/inlineStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/inlineStatementHelpers.js) for the inline statement compiler used by one-line `if ... then ... else ...` forms:
+- removed that early data/meta cluster from [studio/app.js](../studio/app.js)
+- added [docs/fixed-ufixed-roadmap.md](../docs/fixed-ufixed-roadmap.md) to document the current real `fixed` / `ufixed` surface and the future path toward stronger numeric support
+- updated [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) with corrected time ordering and additional benchmark context
+- wired [studio/core/compiler/inlineStatementHelpers.js](../studio/core/compiler/inlineStatementHelpers.js) for the inline statement compiler used by one-line `if ... then ... else ...` forms:
   - inline `return`
   - inline `set`
   - inline `print`
@@ -5157,9 +5157,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - inline `inc/dec`
   - inline `add/sub`
   - inline loop exits / continues
-- removed the buried local inline statement compiler from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local inline statement compiler from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `3884` lines after this extraction
-- wired [studio/core/compiler/procFunctionStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/procFunctionStatementHelpers.js) for the proc / function declaration cluster:
+- wired [studio/core/compiler/procFunctionStatementHelpers.js](../studio/core/compiler/procFunctionStatementHelpers.js) for the proc / function declaration cluster:
   - removed `proc` / `call` / `gosub` legacy declaration checks
   - legacy `sub start:` compatibility
   - `sub ...`
@@ -5167,9 +5167,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `end sub`
   - `end function`
   - `end` / `project` no-op lines
-- removed the buried local proc / function declaration cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local proc / function declaration cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `4013` lines after this extraction
-- wired [studio/core/compiler/routineStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/routineStatementHelpers.js) for the routine / return / set / implicit-call cluster:
+- wired [studio/core/compiler/routineStatementHelpers.js](../studio/core/compiler/routineStatementHelpers.js) for the routine / return / set / implicit-call cluster:
   - `set Name = Value`
   - `return`
   - `return Value`
@@ -5178,9 +5178,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - implicit procedure calls
   - `include asm "..."`
   - removed `call/gosub` rejection path
-- removed the buried local routine / return / set / implicit-call cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local routine / return / set / implicit-call cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `4098` lines after this extraction
-- wired [studio/core/compiler/vramPixelInputStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/vramPixelInputStatementHelpers.js) for the VRAM pixel / mode1 draw / input-read cluster:
+- wired [studio/core/compiler/vramPixelInputStatementHelpers.js](../studio/core/compiler/vramPixelInputStatementHelpers.js) for the VRAM pixel / mode1 draw / input-read cluster:
   - `vpoke`
   - `vpeek`
   - `pset` / `plot` / `preset`
@@ -5191,11 +5191,11 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `wait key`
   - `wait key release`
   - `choose keypad ... into ...`
-- removed the buried local VRAM pixel / mode1 draw / input-read statement cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local VRAM pixel / mode1 draw / input-read statement cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `4156` lines after this extraction
-- added [docs/creative-computing-benchmark.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/creative-computing-benchmark.md) to document the Creative Computing / Ahl benchmark, its AMY translation sketch, the current numeric blockers, and a partial historical result table
-- added `amyAhlBenchmarkSketchSource` in [studio/examples-numeric.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/examples-numeric.js) as a non-catalogued future benchmark sketch
-- wired [studio/core/compiler/printFormatStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/printFormatStatementHelpers.js) for the print / format statement cluster:
+- added [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) to document the Creative Computing / Ahl benchmark, its AMY translation sketch, the current numeric blockers, and a partial historical result table
+- added `amyAhlBenchmarkSketchSource` in [studio/examples-numeric.js](../studio/examples-numeric.js) as a non-catalogued future benchmark sketch
+- wired [studio/core/compiler/printFormatStatementHelpers.js](../studio/core/compiler/printFormatStatementHelpers.js) for the print / format statement cluster:
   - `print at ...`
   - `print "..." at ...`
   - `print Value at X,Y`
@@ -5204,9 +5204,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `sqrt ... into ...`
   - legacy `u32 zero/copy/add/inc/sub`
   - `add/sub/clear/copy/print bcd`
-- removed the buried local print / format / legacy u32 / BCD statement cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local print / format / legacy u32 / BCD statement cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `4190` lines after the print/format extraction
-- wired [studio/core/compiler/soundSpinnerStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/soundSpinnerStatementHelpers.js) for the sound / spinner / wait statement cluster:
+- wired [studio/core/compiler/soundSpinnerStatementHelpers.js](../studio/core/compiler/soundSpinnerStatementHelpers.js) for the sound / spinner / wait statement cluster:
   - `set sound table ...`
   - `play song`
   - `stop song`
@@ -5222,9 +5222,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `wait vblank`
   - `wait N frames`
   - `play dsound`
-- removed the buried local sound / spinner / wait statement cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local sound / spinner / wait statement cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `4952` lines after the sound/spinner extraction
-- wired [studio/core/compiler/displayGraphicsSpriteStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/displayGraphicsSpriteStatementHelpers.js) for the display / graphics / sprite statement cluster:
+- wired [studio/core/compiler/displayGraphicsSpriteStatementHelpers.js](../studio/core/compiler/displayGraphicsSpriteStatementHelpers.js) for the display / graphics / sprite statement cluster:
   - `screen on/off`
   - `display on/off`
   - `graphics bitmap`
@@ -5245,9 +5245,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `update sprites`
   - `set sprite ...`
   - `hide sprite ...`
-- removed the buried local display / graphics / sprite statement cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local display / graphics / sprite statement cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5063` lines after the display/graphics/sprite extraction
-- wired [studio/core/compiler/mathBitStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/mathBitStatementHelpers.js) for the scalar math/bit utility statement cluster:
+- wired [studio/core/compiler/mathBitStatementHelpers.js](../studio/core/compiler/mathBitStatementHelpers.js) for the scalar math/bit utility statement cluster:
   - `multiply` / `mul`
   - `divide` / `div`
   - `clamp ... between ... and ...`
@@ -5257,9 +5257,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `min ... with/to ...`
   - `max ... with/to ...`
   - `shift array ... down/up ...`
-- removed the buried local math/bit utility statement cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local math/bit utility statement cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5270` lines after the math/bit extraction
-- wired [studio/core/compiler/mutateStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/mutateStatementHelpers.js) for the core mutate/arithmetic statement cluster:
+- wired [studio/core/compiler/mutateStatementHelpers.js](../studio/core/compiler/mutateStatementHelpers.js) for the core mutate/arithmetic statement cluster:
   - `inc` / `dec`
   - `add ... by ...`
   - `add ... to ...`
@@ -5272,9 +5272,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `negate`
   - `not`
   - `toggle`
-- removed the buried local mutate/arithmetic statement cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local mutate/arithmetic statement cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5503` lines after the mutate/arithmetic extraction
-- wired [studio/core/compiler/dispatchLabelStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/dispatchLabelStatementHelpers.js) for the dispatch/label cluster:
+- wired [studio/core/compiler/dispatchLabelStatementHelpers.js](../studio/core/compiler/dispatchLabelStatementHelpers.js) for the dispatch/label cluster:
   - `set number digits ...`
   - `set number pad ...`
   - `copy X to Y`
@@ -5284,51 +5284,51 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - bare `Foo:`
   - `goto Foo`
   - removed `call/gosub` rejection
-- removed the buried local dispatch/label cluster from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local dispatch/label cluster from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5692` lines after the dispatch/label extraction
-- wired [studio/core/compiler/specialIfGotoStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/specialIfGotoStatementHelpers.js) for the special branch forms:
+- wired [studio/core/compiler/specialIfGotoStatementHelpers.js](../studio/core/compiler/specialIfGotoStatementHelpers.js) for the special branch forms:
   - `if Var goto Label`
   - `if any collision goto Label`
   - sprite collision `if ... goto` forms
   - compare `if ... goto`
   - controller-direction / controller-button `if ... goto`
   - `if bit N of Var goto Label`
-- removed the buried local special `if ... goto` family from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local special `if ... goto` family from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5754` lines after the special-branch extraction
-- wired [studio/core/compiler/randomBounceStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/randomBounceStatementHelpers.js) for `random between ... into ...` and `bounce ... by ... between ... and ...`
-- removed the buried local random/bounce statement family from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- wired [studio/core/compiler/randomBounceStatementHelpers.js](../studio/core/compiler/randomBounceStatementHelpers.js) for `random between ... into ...` and `bounce ... by ... between ... and ...`
+- removed the buried local random/bounce statement family from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5795` lines after the random/bounce extraction
-- wired [studio/core/compiler/arrayBulkStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/arrayBulkStatementHelpers.js) for bulk byte-array statements
+- wired [studio/core/compiler/arrayBulkStatementHelpers.js](../studio/core/compiler/arrayBulkStatementHelpers.js) for bulk byte-array statements
   - `fill array ... with ...`
   - `copy array ... from ...`
   - `fill array ... repeating ...`
   - `reverse array ...`
-- removed the buried local bulk array statement family from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- removed the buried local bulk array statement family from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5839` lines after the bulk-array extraction
-- wired [studio/core/compiler/ifStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/ifStatementHelpers.js) for `if` / `elseif` / `else` / `end if` plus single-line `if ... then ... else ...`
-- removed the buried local core `if` statement family from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
+- wired [studio/core/compiler/ifStatementHelpers.js](../studio/core/compiler/ifStatementHelpers.js) for `if` / `elseif` / `else` / `end if` plus single-line `if ... then ... else ...`
+- removed the buried local core `if` statement family from [studio/app.js](../studio/app.js)
 - `studio/app.js` is now down to about `5976` lines after the `if` extraction
-- wired [studio/core/compiler/forStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/forStatementHelpers.js) for the full `for` / `downto` / `next` / `end for` / `exit for` / `continue for` family
-- removed the buried local `for` statement family from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
-- fixed helper wire-order regressions in [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) by using lazy wrapper calls where later-wired compiler helpers were captured too early
+- wired [studio/core/compiler/forStatementHelpers.js](../studio/core/compiler/forStatementHelpers.js) for the full `for` / `downto` / `next` / `end for` / `exit for` / `continue for` family
+- removed the buried local `for` statement family from [studio/app.js](../studio/app.js)
+- fixed helper wire-order regressions in [studio/app.js](../studio/app.js) by using lazy wrapper calls where later-wired compiler helpers were captured too early
 - `studio/app.js` is now down to about `6046` lines after the `for` extraction
-- wired [studio/core/compiler/simpleArithmeticHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/simpleArithmeticHelpers.js) for int8/int16 arithmetic and shifts
-- removed the local duplicate simple arithmetic helper slab from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- wired [studio/core/compiler/simpleArithmeticHelpers.js](../studio/core/compiler/simpleArithmeticHelpers.js) for int8/int16 arithmetic and shifts
+- removed the local duplicate simple arithmetic helper slab from [studio/app.js](../studio/app.js):
   - `emitArithInt8Op`
   - `emitLoadInt16ArithSourceIntoDE`
   - `emitArithInt16Op`
   - `emitShiftVar`
   - `emitShiftVarByN`
-- wired [studio/core/compiler/expressionComputeHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/expressionComputeHelpers.js) for AST expression loading/storage helpers
-- removed the local duplicate expression-compute helper slab from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- wired [studio/core/compiler/expressionComputeHelpers.js](../studio/core/compiler/expressionComputeHelpers.js) for AST expression loading/storage helpers
+- removed the local duplicate expression-compute helper slab from [studio/app.js](../studio/app.js):
   - `emitComputeExpressionAst`
   - `emitStoreComputedExpression`
   - `emitStoreComputedToScratch32`
   - `coerceComputedExpressionForCompare`
   - `emitLoadInt8AstIntoA`
   - `emitLoadInt16AstIntoHL`
-- wired [studio/core/compiler/valueParseHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/valueParseHelpers.js) for parse/value helper logic
-- removed the local duplicate parse/value helper slab from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- wired [studio/core/compiler/valueParseHelpers.js](../studio/core/compiler/valueParseHelpers.js) for parse/value helper logic
+- removed the local duplicate parse/value helper slab from [studio/app.js](../studio/app.js):
   - `splitTopLevelArgs`
   - `parseAmyDeclarationList`
   - `isWordChar`
@@ -5350,8 +5350,8 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `resolveValueType`
   - `resolveExpressionAstValueType`
   - `resolveExpressionAstDeclaredType`
-- wired [studio/core/compiler/u32Helpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/u32Helpers.js) for the 32-bit compare/store family
-- removed the local duplicate 32-bit helper slab from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- wired [studio/core/compiler/u32Helpers.js](../studio/core/compiler/u32Helpers.js) for the 32-bit compare/store family
+- removed the local duplicate 32-bit helper slab from [studio/app.js](../studio/app.js):
   - `ensureCompareScratch32`
   - `emitStoreMemory32ToTarget`
   - `emitPrepareU32Source`
@@ -5363,8 +5363,8 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `getU32Info`
   - `getI32Info`
   - `emitU32ArrayCompareGoto`
-- wired [studio/core/compiler/procHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/procHelpers.js) to match the live compiler behavior
-- removed the local duplicate proc/runtime helper slab from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- wired [studio/core/compiler/procHelpers.js](../studio/core/compiler/procHelpers.js) to match the live compiler behavior
+- removed the local duplicate proc/runtime helper slab from [studio/app.js](../studio/app.js):
   - `ensureProcLocalMap`
   - `ensureProcFrame`
   - `emitAdjustSpBy`
@@ -5380,16 +5380,16 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `scopedRuntimeName`
   - `runtimeTypeSize`
 - `studio/app.js` is now down to about `6467` lines after the proc/runtime, 32-bit, parse/value, expression-compute, and simple-arithmetic extractions
-- fully wired the BCD compiler helper family through [studio/core/compiler/bcdHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/bcdHelpers.js)
-- removed the local duplicate BCD slab from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js)
-- staged then wired [studio/core/compiler/loadStoreHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/loadStoreHelpers.js) for the first load/store/address cut
-- removed these local helpers from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- fully wired the BCD compiler helper family through [studio/core/compiler/bcdHelpers.js](../studio/core/compiler/bcdHelpers.js)
+- removed the local duplicate BCD slab from [studio/app.js](../studio/app.js)
+- staged then wired [studio/core/compiler/loadStoreHelpers.js](../studio/core/compiler/loadStoreHelpers.js) for the first load/store/address cut
+- removed these local helpers from [studio/app.js](../studio/app.js):
   - `emitLoadArrayAddressIntoHL`
   - `getByteArrayBufferInfo`
   - `emitStoreInt8FromA`
   - `emitStoreInt16FromHL`
-- staged then wired [studio/core/compiler/byteLoadHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/byteLoadHelpers.js) for the byte-load/count family
-- removed these local helpers from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- staged then wired [studio/core/compiler/byteLoadHelpers.js](../studio/core/compiler/byteLoadHelpers.js) for the byte-load/count family
+- removed these local helpers from [studio/app.js](../studio/app.js):
   - `emitLoadInt8Into`
   - `emitLoadInt8ValueInto`
   - `emitLoadInt8ValueIntoPreserving`
@@ -5401,8 +5401,8 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `emitScaleAByConst`
   - `emitRandomCountIntoA`
   - `emitLoadInt8TermIntoA`
-- staged then wired [studio/core/compiler/addressHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/addressHelpers.js) for source/VRAM address loading
-- removed these local helpers from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js):
+- staged then wired [studio/core/compiler/addressHelpers.js](../studio/core/compiler/addressHelpers.js) for source/VRAM address loading
+- removed these local helpers from [studio/app.js](../studio/app.js):
   - `emitLoadSourceAddressIntoHL`
   - `emitLoadVramAddressIntoDE`
   - `emitLoadVramAddressIntoHL`
@@ -5475,32 +5475,32 @@ Why this is still `v2.1` and not `v2.2`:
 
 - began Phase 1 of the `studio/app.js` refactor
 - extracted low-risk pure helpers into:
-  - [studio/core/emulatorBackends.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/emulatorBackends.js)
-  - [studio/core/utils/bytes.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/utils/bytes.js)
-  - [studio/core/utils/cartridgeMeta.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/utils/cartridgeMeta.js)
-  - [studio/core/utils/dataUrls.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/utils/dataUrls.js)
-  - [studio/core/utils/downloads.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/utils/downloads.js)
-  - [studio/core/utils/formatters.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/utils/formatters.js)
-  - [studio/core/optimization.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/optimization.js)
-  - [studio/core/editor/autocomplete.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/editor/autocomplete.js)
-  - [studio/core/amyCompiler.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/amyCompiler.js)
-  - [studio/core/compilerFrontend.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compilerFrontend.js)
-  - [studio/core/compiler/runtimeCallHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/runtimeCallHelpers.js)
-  - [studio/core/uiEvents.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/uiEvents.js)
+  - [studio/core/emulatorBackends.js](../studio/core/emulatorBackends.js)
+  - [studio/core/utils/bytes.js](../studio/core/utils/bytes.js)
+  - [studio/core/utils/cartridgeMeta.js](../studio/core/utils/cartridgeMeta.js)
+  - [studio/core/utils/dataUrls.js](../studio/core/utils/dataUrls.js)
+  - [studio/core/utils/downloads.js](../studio/core/utils/downloads.js)
+  - [studio/core/utils/formatters.js](../studio/core/utils/formatters.js)
+  - [studio/core/optimization.js](../studio/core/optimization.js)
+  - [studio/core/editor/autocomplete.js](../studio/core/editor/autocomplete.js)
+  - [studio/core/amyCompiler.js](../studio/core/amyCompiler.js)
+  - [studio/core/compilerFrontend.js](../studio/core/compilerFrontend.js)
+  - [studio/core/compiler/runtimeCallHelpers.js](../studio/core/compiler/runtimeCallHelpers.js)
+  - [studio/core/uiEvents.js](../studio/core/uiEvents.js)
 - moved autocomplete, ASM view buttons, and most `bindEvents()` UI wiring out of `studio/app.js`
 - moved compiler frontend helpers out of `studio/app.js`
 - renamed compiler entrypoints from Alexis-facing names to Amy-facing names
 - moved source-language compiler dispatch out of `studio/app.js`
 - moved compiler runtime call-clobber logic out of `studio/app.js`
-  - [studio/core/utils/projectFiles.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/utils/projectFiles.js)
+  - [studio/core/utils/projectFiles.js](../studio/core/utils/projectFiles.js)
 - kept behavior unchanged while reducing some utility clutter inside `studio/app.js`
 - started duplicate-first staging for deeper compiler-family extraction
-  - added [studio/core/compiler/typeSymbolHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/typeSymbolHelpers.js) as a staged type/symbol module
-  - added [studio/core/compiler/dataHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/dataHelpers.js) as a staged data/bitmap module
-  - added [studio/core/compiler/controlFlowHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/controlFlowHelpers.js) as a staged compare/conditional/indexed-dispatch module
-  - added [studio/core/compiler/bcdHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/bcdHelpers.js) as a staged packed-BCD runtime/codegen module
-  - added [studio/core/compiler/printHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/printHelpers.js) as a staged numeric/text print emitter module
-  - added [studio/core/compiler/procHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/procHelpers.js) as a staged proc/runtime helper module
+  - added [studio/core/compiler/typeSymbolHelpers.js](../studio/core/compiler/typeSymbolHelpers.js) as a staged type/symbol module
+  - added [studio/core/compiler/dataHelpers.js](../studio/core/compiler/dataHelpers.js) as a staged data/bitmap module
+  - added [studio/core/compiler/controlFlowHelpers.js](../studio/core/compiler/controlFlowHelpers.js) as a staged compare/conditional/indexed-dispatch module
+  - added [studio/core/compiler/bcdHelpers.js](../studio/core/compiler/bcdHelpers.js) as a staged packed-BCD runtime/codegen module
+  - added [studio/core/compiler/printHelpers.js](../studio/core/compiler/printHelpers.js) as a staged numeric/text print emitter module
+  - added [studio/core/compiler/procHelpers.js](../studio/core/compiler/procHelpers.js) as a staged proc/runtime helper module
   - wired `dataHelpers.js` into `studio/app.js` and removed the old inline data/bitmap helper block
   - wired `typeSymbolHelpers.js` into `studio/app.js` and removed the old inline type/symbol helper block
   - wired `controlFlowHelpers.js` into `studio/app.js` and removed the old inline control-flow helper block
@@ -5516,7 +5516,7 @@ Why this is still `v2.1` and not `v2.2`:
   - `next` instead of `next I`
   - `<<=` / `>>=`
 - updated screen/mode wording in selected examples to better distinguish hardware modes from convenience aliases
-- expanded and corrected the size baseline set in [amy-studio-size-baselines.csv](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/amy-studio-size-baselines.csv)
+- expanded and corrected the size baseline set in [amy-studio-size-baselines.csv](../docs/amy-studio-size-baselines.csv)
 - confirmed recent baseline additions including:
   - `amy-feature-test`
   - `cvbasic-test3-port`
@@ -5536,7 +5536,7 @@ Why this is still `v2.1` and not `v2.2`:
 
 ### Refactor progress
 
-- moved assignment and mixed arithmetic helpers out of [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [assignmentArithmeticHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/assignmentArithmeticHelpers.js)
+- moved assignment and mixed arithmetic helpers out of [studio/app.js](../studio/app.js) into [assignmentArithmeticHelpers.js](../studio/core/compiler/assignmentArithmeticHelpers.js)
   - `emitLoadUnsignedInt16ValueIntoBC`
   - `emitU32Add`
   - `emitU32Sub`
@@ -5546,26 +5546,26 @@ Why this is still `v2.1` and not `v2.2`:
   - `emitMultiplyInt16Op`
   - `emitDivideInt8Op`
 - updated the helper wiring order in `app.js` so the new module binds after simple arithmetic helpers and keeps `=` assignment support through `emitRuntimeStore`
-- moved runtime value/store helpers out of [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [runtimeValueHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/runtimeValueHelpers.js)
+- moved runtime value/store helpers out of [studio/app.js](../studio/app.js) into [runtimeValueHelpers.js](../studio/core/compiler/runtimeValueHelpers.js)
   - `emitLoadInt16IntoHL`
   - `emitRuntimeStore`
   - `emitStoreImmediate32`
   - `emitPushArgument`
   - `ensureDataCursorVar`
-- moved compare/literal helpers out of [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [compareLiteralHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/compareLiteralHelpers.js)
+- moved compare/literal helpers out of [studio/app.js](../studio/app.js) into [compareLiteralHelpers.js](../studio/core/compiler/compareLiteralHelpers.js)
   - `emitTextLiteral`
   - `optimizeRepeatedBitTestLoads`
   - `emitSignedInt8CompareGoto`
   - `emitSignedInt16CompareGoto`
-- moved the remaining shell helper cluster out of [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [compilerShellHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/compilerShellHelpers.js)
+- moved the remaining shell helper cluster out of [studio/app.js](../studio/app.js) into [compilerShellHelpers.js](../studio/core/compiler/compilerShellHelpers.js)
   - `makeGeneratedLabel`
   - `optimizeTransientDrawCoordinateTemps`
   - `reserveRam`
   - `isZeroInitializer`
   - `formatIxOffset`
-- extracted the `restore` / `read` DATA cursor statement family from [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [dataCursorStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/dataCursorStatementHelpers.js)
-- extracted the `while` / `do` loop statement families from the main compiler loop in [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [loopStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/loopStatementHelpers.js)
-- extracted the `select case` statement family from the main compiler loop in [studio/app.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/app.js) into [selectCaseStatementHelpers.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/selectCaseStatementHelpers.js)
+- extracted the `restore` / `read` DATA cursor statement family from [studio/app.js](../studio/app.js) into [dataCursorStatementHelpers.js](../studio/core/compiler/dataCursorStatementHelpers.js)
+- extracted the `while` / `do` loop statement families from the main compiler loop in [studio/app.js](../studio/app.js) into [loopStatementHelpers.js](../studio/core/compiler/loopStatementHelpers.js)
+- extracted the `select case` statement family from the main compiler loop in [studio/app.js](../studio/app.js) into [selectCaseStatementHelpers.js](../studio/core/compiler/selectCaseStatementHelpers.js)
 - reduced `studio/app.js` to roughly `6128` lines after these cuts
 - Added first visible `fixed32` selftest example to Studio, covering add, subtract, square root, and on-screen decimal output.
 - Added `coleco_math_format_fx16.asm` plus compiler/library wiring so `fixed32` values can now print and format through a native 16.16 decimal path.
@@ -5667,17 +5667,17 @@ Why this is still `v2.1` and not `v2.2`:
 - Fixed `AMY_SCREEN_ON_NMI` and `AMY_SCREEN_OFF_NO_NMI` so they preserve sprite size/zoom bits from BIOS VDP R1 shadow `$73C4` instead of forcing hardcoded register-1 values.
 - Reason: programs such as `cvbasic-controller-port` could correctly select `sprites 8x8`, then silently get reset to `16x16 simple` by a later `screen on`.
 - Regenerated both `studio/core/alexisLibrarySources.generated.js` and `studio/core/alexisRuntimeCatalog.generated.js` so Studio browser/runtime export paths pick up the corrected VDP screen helpers.
-- Added [docs/vdp-r1-order-simulation-2026-06-03.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/vdp-r1-order-simulation-2026-06-03.md) to document systematic R1 order simulation.
+- Added [docs/vdp-r1-order-simulation-2026-06-03.md](../docs/vdp-r1-order-simulation-2026-06-03.md) to document systematic R1 order simulation.
 - Result: no mismatch was found between expected R1 semantics and emitted/helper behavior across ordered sequences of length 1, 2, and 3 for the main R1-affecting screen/sprite/NMI commands.
 - Important nuance: `text screen` / `graphics mode 2 text` intentionally reset R1 to the mode baseline (`$82`), so `sprites 8x8` must still come after them if the program wants 8x8 sprites to remain active.
 - Removed redundant `ld ($73C4),a` writes from the sprite/screen/NMI helpers that already end in BIOS `WRITE_REGISTER`.
 - Reason: BIOS `WRITE_REGISTER` updates `VDP1Shad` (`$73C4`) itself when writing VDP register 1, so those extra stores only cost bytes.
-- Added [docs/vdp-r1-smart-transpiler-plan-2026-06-03.md](C:/Users/Amy/Desktop/ALEXIS-Z80/docs/vdp-r1-smart-transpiler-plan-2026-06-03.md).
+- Added [docs/vdp-r1-smart-transpiler-plan-2026-06-03.md](../docs/vdp-r1-smart-transpiler-plan-2026-06-03.md).
 - Plan direction:
   - Phase 1: warning-only transpiler diagnostics for misleading R1 command order
   - Phase 2: explicit docs for “authoritative mode commands” vs “incremental R1 modifiers”
   - Phase 3: future state-aware compact codegen for VDP R1
-- Implemented the first Phase 1 warning in [studio/core/compiler/transpileAmyCore.js](C:/Users/Amy/Desktop/ALEXIS-Z80/studio/core/compiler/transpileAmyCore.js).
+- Implemented the first Phase 1 warning in [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js).
 - Current warning scope:
   - an authoritative R1 mode command such as `text screen` or `graphics mode 2 text`
   - appearing after earlier R1 modifiers such as:

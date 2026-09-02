@@ -179,8 +179,8 @@ export const manifest = {
     ]
   },
   deterministicSources: {
-    assembler: "C:/Users/Amy/Documents/git/AmysCVAssembly/AmysCVAssemblerPro-v2.html",
-    compression: "C:/Users/Amy/Documents/git/RetroCompress-Lite/js",
-    soundAsm: "C:/Users/Amy/Documents/git/AmysCVSoundStudio/asmCodec.js"
+    assembler: "https://github.com/amypurple/AmysCVAssembly",
+    compression: "https://github.com/amypurple/RetroCompress-Lite",
+    soundAsm: "https://github.com/amypurple/AmysCVSoundStudio"
   }
 };
