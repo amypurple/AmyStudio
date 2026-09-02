@@ -136,25 +136,48 @@ RGB palette into ugBASIC caused nearest-color remapping even though the intended
 already valid. Each converter now receives the same indexed picture expressed in its expected RGB
 palette, and both render all four corpus pictures exactly.
 
-### Four-picture Graphics II fidelity corpus
+### Graphics II bitmap compression ratios
 
-This is a second, broader converter-fidelity corpus, not the single Warrior row above. It uses
-four visually distinct sources to expose palette and conversion errors. Amy, CVBasic, and
-ugBASIC currently have all four generated ROMs; the reproducible seven-tool suite uses Warrior so
-that every solution is compared on one byte-identical target image.
+Each picture is exactly 12,288 RAW bytes (6,144 Pattern + 6,144 Color). Percentages are compressed
+payload / RAW payload; lower is better. Decoder code is excluded because it is linked once and may
+serve several assets. All Amy codecs round-trip exactly; DAN3 uses its reproducible fast compressor
+setting. ZX0 Classic uses the official z88dk ZX0 v1.5 compressor; its Coleco VRAM decoder was
+separately runtime-verified in the Warrior benchmark.
 
-| Picture | Origin | Amy Studio bytes | CVBasic bytes / fidelity | ugBASIC bytes / fidelity |
-|---|---|---:|---:|---:|
-| Cake | Native Graphics II | 3,363 | 5,027 / 0.00% different | 18,034 / 0.00% different |
-| Commando | Native Graphics II | 5,796 | 7,197 / 0.00% different | 18,034 / 0.00% different |
-| Warrior | ZX Spectrum conversion | 3,254 | 4,948 / 0.00% different | 18,034 / 0.00% different |
-| Barbarian | ZX Spectrum conversion | 4,634 | 6,630 / 0.00% different | 18,034 / 0.00% different |
+### LZ-family ratios
 
-Every fidelity result is measured from a complete 256x192 GearColeco framebuffer: `0 / 49,152`
-pixels differ. Cake and Commando test genuine Graphics II assets. Warrior and Barbarian preserve
-their identity as previously converted ZX Spectrum pictures; this classification concerns their
-source, not a loss introduced by the converter-fidelity benchmark. The evidence archive includes
-all twelve compact corpus ROMs, their sources and assets, occupied sizes, and framebuffer results.
+| Picture | ZX0 Classic | ZX0 modern | ZX1 | ZX7 | aPLib | Pletter | BitBuster | LZF |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Cake | 24.07% | 24.07% | 25.33% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
+| Commando | 43.21% | 43.21% | 45.58% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
+| Warrior | 23.19% | 23.19% | 24.12% | 24.28% | 24.19% | 24.32% | 24.43% | 26.00% |
+| Barbarian | 34.42% | 34.42% | 36.11% | 35.31% | 35.45% | 35.31% | 35.51% | 39.10% |
+| 421 title | 8.59% | 8.59% | 8.97% | 9.02% | 8.94% | 9.03% | 9.16% | 11.01% |
+| 421 credits | 22.68% | 22.68% | 23.56% | 24.18% | 23.50% | 24.22% | 24.35% | 26.34% |
+| Dacman title | 8.01% | 8.01% | 8.33% | 8.38% | 8.24% | 8.42% | 8.50% | 9.62% |
+| Dacman info | 10.25% | 10.25% | 10.47% | 11.06% | 10.38% | 11.08% | 11.19% | 12.51% |
+| Dacman 2 title | 9.56% | 9.56% | 10.04% | 9.99% | 9.99% | 10.02% | 10.12% | 11.82% |
+| Chateau title | 13.31% | 13.31% | 13.70% | 14.07% | 13.88% | 14.08% | 14.18% | 15.53% |
+| Arcade Trio title | 24.41% | 24.41% | 25.82% | 25.19% | 25.06% | 25.20% | 25.33% | 29.26% |
+
+### Amy legacy and RLE-family ratios
+
+| Picture | DAN1 | DAN2 | DAN3 fast | Nibble | MDK-RLE |
+|---|---:|---:|---:|---:|---:|
+| Cake | 24.46% | 24.41% | 24.49% | 28.92% | 33.11% |
+| Commando | 43.33% | 43.23% | 43.32% | 51.23% | 59.29% |
+| Warrior | 23.62% | 23.58% | 23.60% | 27.22% | 30.00% |
+| Barbarian | 35.34% | 35.29% | 35.05% | 41.32% | 44.78% |
+| 421 title | 8.76% | 8.68% | 9.07% | 11.95% | 13.96% |
+| 421 credits | 22.96% | 22.94% | 22.97% | 25.75% | 28.91% |
+| Dacman title | 7.89% | 7.91% | 8.43% | 9.63% | 11.31% |
+| Dacman info | 10.38% | 10.36% | 10.53% | 13.31% | 14.59% |
+| Dacman 2 title | 9.53% | 9.51% | 9.73% | 13.54% | 16.42% |
+| Chateau title | 13.44% | 13.44% | 13.52% | 17.01% | 18.95% |
+| Arcade Trio title | 24.58% | 24.36% | 24.64% | 30.24% | 35.71% |
+
+The complete byte counts and ratios are preserved in the evidence archive. The earlier four-picture
+framebuffer checks also remain there: all twelve converter ROMs differed by `0 / 49,152` pixels.
 
 ### Observations supported by this suite
 
