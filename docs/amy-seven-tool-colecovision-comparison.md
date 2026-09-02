@@ -64,7 +64,7 @@ default.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **238** | 795 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
 | Warrior bitmap | **3,254** | 3,643 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
-| Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,993 |
+| Controller Visual | **596** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
 
 The improved bitmap rows retain measured baselines: z88dk's raw-table ROM was 14,293 bytes,
 MDKRLE reduced it to 5,911 bytes, ZX7 to 5,115 bytes, and the validated ZX0 path to 4,976 bytes; the legacy devkit's GETPUT
@@ -102,7 +102,7 @@ guesses by removing repeated final bytes:
 | Warrior, ugBASIC | Full-size converted image | `0 / 49,152` pixels differ (`0.00%`) |
 | Warrior, PVColLib | Exact RLE-decoded tables and framebuffer match | `0 / 49,152` pixels differ (`0.00%`) |
 | Warrior, legacy devkit | Exact DAN2 tables and framebuffer match | `0 / 49,152` pixels differ (`0.00%`) |
-| Controller Visual | All seven complete 180 GearColeco frames | Stable monitor startup; manual input semantics still need automated injection |
+| Controller Visual | Six of seven pass injected neutral, keypad `0`, held UP, FIRE, and release checks | ugBASIC boots, but its Coleco `COLOR BORDER` backend leaves VDP register 7 unchanged |
 
 The bitmap row deliberately compares each tool's practical native workflow, not one identical
 codec or representation. CVBasic receives a full-size BMP reconstructed from Amy's source image,

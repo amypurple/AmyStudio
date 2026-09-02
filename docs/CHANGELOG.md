@@ -1,3 +1,9 @@
+## 2026-09-01 - Verified controller behavior
+
+- Automated neutral, keypad `0`, held direction, FIRE, and release checks across seven toolchains.
+- Documented six passing solutions and the ugBASIC Coleco border-update failure.
+- Refreshed the evidence archive and simplified the PDF to one Warrior image.
+
 ## 2026-09-01 - Added autocomplete preference
 
 - Added an independent `AC` switch that disables automatic suggestions and `Ctrl+Space`.
@@ -9,8 +15,8 @@
 - Added a seven-tool sprite/metasprite benchmark with runtime-verified ROM evidence.
 - Added the official ZX1 codec and `decompress zx1 ... to vram` support.
 - Verified exact ZX1 round trips and direct VRAM output on four complete bitmap pictures.
-- Expanded the comparison PDF with complete Amy listings, the Warrior source bitmap,
-  and real GearColeco screenshots for every benchmark sample.
+- Expanded the comparison PDF with complete Amy listings and real GearColeco screenshots
+  for every benchmark sample.
 
 ## 2026-09-01 - Improved compressed bitmap evidence
 
