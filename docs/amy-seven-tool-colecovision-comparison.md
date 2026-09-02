@@ -112,8 +112,9 @@ internally, but TMS9918 can encode the same pixels several ways. All seven frame
 PVColLib Pletter failed VRAM validation and is excluded; codec rankings use the separate payload test.
 
 For z88dk, MDKRLE reaches VRAM at frame 93, ZX0 at 132, and ZX7 at 138. ZX0 saves 935 bytes over
-MDKRLE and 139 over ZX7; MDKRLE loads faster. The SMS aPLib Coleco adaptation failed exact VRAM
-validation and is excluded.
+MDKRLE and 139 over ZX7; MDKRLE loads faster. A separate attempt to transplant the SMS aPLib
+decoder into the z88dk fixture failed exact VRAM validation and is excluded. The native devkitSMS
+aPLib fixture remains exact when frame interrupts are disabled during decompression.
 
 The initial ugBASIC mismatch came from the wrong RGB palette. With its target palette, all four
 corpus pictures render exactly.
@@ -122,25 +123,26 @@ corpus pictures render exactly.
 
 Each picture is exactly 12,288 RAW bytes (6,144 Pattern + 6,144 Color). Percentages are compressed
 payload / RAW payload; lower is better. Decoder code is excluded because it is linked once and may
-serve several assets. All Amy codecs round-trip exactly; DAN3 uses its reproducible fast compressor
+serve several assets. Every measured stream round-trips exactly; DAN3 uses its reproducible fast compressor
 setting. ZX0 Classic uses the official z88dk ZX0 v1.5 compressor; its Coleco VRAM decoder was
-separately runtime-verified in the Warrior benchmark.
+separately runtime-verified in the Warrior benchmark. Classic and modern ZX0 use incompatible
+stream formats, but their payload sizes match for every picture here, so one ratio column represents both.
 
 ### LZ-family ratios
 
-| Picture | ZX0 Classic | ZX0 modern | ZX1 | ZX2 | ZX7 | aPLib | Pletter | BitBuster | LZF |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Cake | 24.07% | 24.07% | 25.33% | 25.42% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
-| Commando | 43.21% | 43.21% | 45.58% | 45.18% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
-| Warrior | 23.19% | 23.19% | 24.12% | 25.38% | 24.28% | 24.19% | 24.32% | 24.43% | 26.00% |
-| Barbarian | 34.42% | 34.42% | 36.11% | 36.39% | 35.31% | 35.45% | 35.31% | 35.51% | 39.10% |
-| 421 title | 8.59% | 8.59% | 8.97% | 9.08% | 9.02% | 8.94% | 9.03% | 9.16% | 11.01% |
-| 421 credits | 22.68% | 22.68% | 23.56% | 23.40% | 24.18% | 23.50% | 24.22% | 24.35% | 26.34% |
-| Dacman title | 8.01% | 8.01% | 8.33% | 8.49% | 8.38% | 8.24% | 8.42% | 8.50% | 9.62% |
-| Dacman info | 10.25% | 10.25% | 10.47% | 11.34% | 11.06% | 10.38% | 11.08% | 11.19% | 12.51% |
-| Dacman 2 title | 9.56% | 9.56% | 10.04% | 10.13% | 9.99% | 9.99% | 10.02% | 10.12% | 11.82% |
-| Chateau title | 13.31% | 13.31% | 13.70% | 13.77% | 14.07% | 13.88% | 14.08% | 14.18% | 15.53% |
-| Arcade Trio title | 24.41% | 24.41% | 25.82% | 25.53% | 25.19% | 25.06% | 25.20% | 25.33% | 29.26% |
+| Picture | ZX0 Classic / modern | ZX1 | ZX2 | ZX7 | aPLib | Pletter | BitBuster | LZF |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Cake | 24.07% | 25.33% | 25.42% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
+| Commando | 43.21% | 45.58% | 45.18% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
+| Warrior | 23.19% | 24.12% | 25.38% | 24.28% | 24.19% | 24.32% | 24.43% | 26.00% |
+| Barbarian | 34.42% | 36.11% | 36.39% | 35.31% | 35.45% | 35.31% | 35.51% | 39.10% |
+| 421 title | 8.59% | 8.97% | 9.08% | 9.02% | 8.94% | 9.03% | 9.16% | 11.01% |
+| 421 credits | 22.68% | 23.56% | 23.40% | 24.18% | 23.50% | 24.22% | 24.35% | 26.34% |
+| Dacman title | 8.01% | 8.33% | 8.49% | 8.38% | 8.24% | 8.42% | 8.50% | 9.62% |
+| Dacman info | 10.25% | 10.47% | 11.34% | 11.06% | 10.38% | 11.08% | 11.19% | 12.51% |
+| Dacman 2 title | 9.56% | 10.04% | 10.13% | 9.99% | 9.99% | 10.02% | 10.12% | 11.82% |
+| Chateau title | 13.31% | 13.70% | 13.77% | 14.07% | 13.88% | 14.08% | 14.18% | 15.53% |
+| Arcade Trio title | 24.41% | 25.82% | 25.53% | 25.19% | 25.06% | 25.20% | 25.33% | 29.26% |
 
 ### DAN and RLE-family ratios
 
@@ -203,7 +205,7 @@ direct-to-VRAM path supplied by that solution.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound | BIOS tables, Tiny Sound, DSOUND | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Direct-to-VRAM compression | Fourteen active Amy codecs | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Direct-to-VRAM compression | Thirteen active codecs; ZX0 Classic measured separately | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
