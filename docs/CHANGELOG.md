@@ -3,6 +3,7 @@
 - Automated neutral, keypad `0`, held direction, FIRE, and release checks across seven toolchains.
 - Documented six passing solutions and the ugBASIC Coleco border-update failure.
 - Refreshed the evidence archive and simplified the PDF to one Warrior image.
+- Added an Amy sprite/metasprite code example and GearColeco capture to the PDF.
 
 ## 2026-09-01 - Added autocomplete preference
 
