@@ -160,8 +160,56 @@ stream formats, but their payload sizes match for every picture here, so one rat
 | Chateau title | 13.44% | 13.44% | 13.52% | 17.01% | 18.95% |
 | Arcade Trio title | 24.58% | 24.36% | 24.64% | 30.24% | 35.71% |
 
-The complete byte counts and ratios are preserved in
-`competition/benchmarks/compression/bitmap-codec-ratios.csv`. The earlier four-picture framebuffer
+### Amy direct-to-VRAM decompressor sizes
+
+These are assembled routine bytes, excluding compressed data and common program startup code. A routine is linked once and can decode any number of assets using that codec.
+
+| Codec | Routine bytes |
+|---|---:|
+| ZX0 modern | 133 |
+| ZX1 | 127 |
+| ZX2 | 115 |
+| ZX7 | 136 |
+| aPLib | 348 |
+| Pletter | 212 |
+| BitBuster | 166 |
+| LZF | 117 |
+| DAN1 | 205 |
+| DAN2 | 212 |
+| DAN3 fast | 205 |
+| Nibble | 115 |
+| MDK-RLE | 46 |
+
+### Representative first-use totals
+
+Each value is the complete compressed Pattern + Color payload plus one Amy direct-to-VRAM decompressor. It is not the full ROM size. Commando, Warrior, and Dacman title represent a difficult, middle, and highly compressible case in this corpus.
+
+| Codec | Commando | Warrior | Dacman title |
+|---|---:|---:|---:|
+| ZX0 modern | 5,443 | 2,982 | 1,117 |
+| ZX1 | 5,728 | 3,091 | 1,151 |
+| ZX2 | 5,667 | 3,234 | 1,158 |
+| ZX7 | 5,649 | 3,120 | 1,166 |
+| aPLib | 5,803 | 3,321 | 1,360 |
+| Pletter | 5,720 | 3,200 | 1,247 |
+| BitBuster | 5,704 | 3,168 | 1,211 |
+| LZF | 6,253 | 3,312 | 1,299 |
+| DAN1 | 5,529 | 3,108 | 1,174 |
+| DAN2 | 5,524 | 3,109 | 1,184 |
+| DAN3 fast | 5,528 | 3,105 | 1,241 |
+| Nibble | 6,410 | 3,460 | 1,298 |
+| MDK-RLE | 7,331 | 3,733 | 1,436 |
+
+
+aPLib is the clear code-size outlier at 348 bytes. It remains valid, but it must save at least 136
+payload bytes to beat a 212-byte decoder on first use; it does not win any of these three
+representative first-use cases. MDK-RLE is the opposite extreme at 46 bytes, but its larger
+payloads lose all three totals.
+
+
+The complete payload counts and ratios are preserved in
+`competition/benchmarks/compression/bitmap-codec-ratios.csv`; decoder and representative first-use
+totals are in `bitmap-codec-first-use.csv`. The earlier four-picture framebuffer
 checks remain in the evidence archive: all twelve converter ROMs differed by `0 / 49,152` pixels.
 
 ### Observations supported by this suite
