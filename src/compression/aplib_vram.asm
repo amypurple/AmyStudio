@@ -3,16 +3,17 @@
 ;
 ; Derived from the public-domain SMSlib routine by sverx, itself based on the
 ; aPPack decompressor by dwedit, utopian, Metalbrain, and Maxim. Adapted for
-; Amy Studio and the ColecoVision VDP ports. Keep NMI disabled while it runs.
+; Amy Studio and the ColecoVision VDP ports. This compact variant shares one
+; bit reader instead of duplicating refill paths. Keep NMI disabled while it
+; runs. IX and IY are preserved for a safe return to Amy and Coleco BIOS code.
 
 aplib_decompress:
     push ix
+    push iy
     set 6,d
     ld c,$bf
-    di
     out (c),e
     out (c),d
-    ei
     ld a,$80
 
 aplib_emit_raw:
@@ -28,46 +29,25 @@ aplib_no_pair:
     ld h,1
 
 aplib_loop:
-    add a,a
-    jr z,aplib_bit1
+    call aplib_get_bit
     jr nc,aplib_emit_raw
-aplib_bit1_set:
-    add a,a
-    jr z,aplib_bit2
+    call aplib_get_bit
     jr nc,aplib_emit_block
-aplib_bit2_set:
-    add a,a
-    jr z,aplib_bit3
+    call aplib_get_bit
     jr nc,aplib_small_block
-aplib_bit3_set:
     ld bc,$10
 
 aplib_four_bits_loop:
-    add a,a
-    jr z,aplib_four_bits
-aplib_four_bits_done:
+    call aplib_get_bit
     rl c
-    jp nc,aplib_four_bits_loop
+    jr nc,aplib_four_bits_loop
     jr nz,aplib_single_offset
     ex de,hl
     ld c,$be
     out (c),b
     ex de,hl
     inc de
-    jp aplib_no_pair
-
-aplib_bit1:
-    ld a,(hl)
-    inc hl
-    rla
-    jr c,aplib_bit1_set
-    jp aplib_emit_raw
-
-aplib_four_bits:
-    ld a,(hl)
-    inc hl
-    rla
-    jp aplib_four_bits_done
+    jr aplib_no_pair
 
 aplib_single_offset:
     ex af,af'
@@ -77,27 +57,17 @@ aplib_single_offset:
     sbc hl,bc
     res 6,h
     ld c,$bf
-    di
     out (c),l
     out (c),h
-    ei
     in a,($be)
     pop hl
-    di
     out (c),l
     out (c),h
-    ei
     out ($be),a
     ex de,hl
     ex af,af'
     inc de
-    jp aplib_no_pair
-
-aplib_bit3:
-    ld a,(hl)
-    inc hl
-    rla
-    jr c,aplib_bit3_set
+    jr aplib_no_pair
 
 aplib_small_block:
     ld c,(hl)
@@ -120,13 +90,7 @@ aplib_small_block:
     pop hl
     db $dd
     ld h,b
-    jp aplib_loop
-
-aplib_bit2:
-    ld a,(hl)
-    inc hl
-    rla
-    jr c,aplib_bit2_set
+    jr aplib_loop
 
 aplib_emit_block:
     call aplib_get_var
@@ -153,7 +117,7 @@ aplib_emit_block:
     jr c,aplib_length_far
     inc bc
     inc bc
-    jp aplib_length_ready
+    jr aplib_length_ready
 aplib_length_far:
     ld a,4
     cp d
@@ -187,69 +151,33 @@ aplib_reuse_offset:
     ld h,b
     jp aplib_loop
 
-aplib_var_bit1:
-    ld a,(hl)
-    inc hl
-    rla
-    jp aplib_var_bit1_done
-aplib_var_flag1:
-    ld a,(hl)
-    inc hl
-    rla
-    jp aplib_var_flag1_done
-aplib_var_bit2:
-    ld a,(hl)
-    inc hl
-    rla
-    jp aplib_var_bit2_done
-aplib_var_flag2:
-    ld a,(hl)
-    inc hl
-    rla
-    jp aplib_var_flag2_done
-aplib_var_bit:
-    ld a,(hl)
-    inc hl
-    rla
-    jp aplib_var_bit_done
-aplib_var_flag:
-    ld a,(hl)
-    inc hl
-    rla
-    ret nc
-    jp aplib_var_loop
-
 aplib_get_var_shadow:
     ex af,af'
 aplib_get_var:
     ld bc,1
-    add a,a
-    jr z,aplib_var_bit1
-aplib_var_bit1_done:
+    call aplib_get_bit
     rl c
-    add a,a
-    jr z,aplib_var_flag1
-aplib_var_flag1_done:
+    call aplib_get_bit
     ret nc
-    add a,a
-    jr z,aplib_var_bit2
-aplib_var_bit2_done:
+    call aplib_get_bit
     rl c
-    add a,a
-    jr z,aplib_var_flag2
-aplib_var_flag2_done:
+    call aplib_get_bit
     ret nc
 aplib_var_loop:
-    add a,a
-    jr z,aplib_var_bit
-aplib_var_bit_done:
+    call aplib_get_bit
     rl c
     rl b
+    call aplib_get_bit
+    jr c,aplib_var_loop
+    ret
+
+aplib_get_bit:
     add a,a
-    jr z,aplib_var_flag
-aplib_var_flag_done:
-    ret nc
-    jp aplib_var_loop
+    ret nz
+    ld a,(hl)
+    inc hl
+    rla
+    ret
 
 aplib_vram_copy:
     ex af,af'
@@ -268,13 +196,11 @@ aplib_copy_tail:
     ld b,c
     ld c,$bf
 aplib_copy_loop:
-    di
     out (c),l
     out (c),h
     in a,($be)
     out (c),e
     out (c),d
-    ei
     out ($be),a
     inc hl
     inc de
@@ -283,5 +209,6 @@ aplib_copy_loop:
     ret
 
 aplib_leave:
+    pop iy
     pop ix
     ret

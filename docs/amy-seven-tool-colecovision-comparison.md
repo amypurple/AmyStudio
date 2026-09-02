@@ -127,14 +127,14 @@ corpus pictures render exactly.
 
 Each picture is exactly 12,288 RAW bytes (6,144 Pattern + 6,144 Color). Percentages are compressed
 payload / RAW payload; lower is better. Decoder code is excluded because it is linked once and may
-serve several assets. Every measured stream round-trips exactly; DAN3 uses its reproducible fast compressor
+serve several assets. Every measured stream round-trips exactly; DAN3 uses its full-search best-size
 setting. ZX0 Classic uses the official z88dk ZX0 v1.5 compressor; its Coleco VRAM decoder was
 separately runtime-verified in the Warrior benchmark. Classic and modern ZX0 use incompatible
 stream formats, but their payload sizes match for every picture here, so one ratio column represents both.
 
 ### LZ-family ratios
 
-| Picture | ZX0 Classic / modern | ZX1 | ZX2 | ZX7 | aPLib | Pletter | BitBuster | LZF |
+| Picture | ZX0 Classic / modern | ZX1 | ZX2 | ZX7 | aPLib Compact | Pletter | BitBuster | LZF |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Cake | 24.07% | 25.33% | 25.42% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
 | Commando | 43.21% | 45.58% | 45.18% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
@@ -150,19 +150,19 @@ stream formats, but their payload sizes match for every picture here, so one rat
 
 ### DAN and RLE-family ratios
 
-| Picture | DAN1 | DAN2 | DAN3 fast | Nibble | MDK-RLE |
+| Picture | DAN1 | DAN2 | DAN3 Best | Nibble | MDK-RLE |
 |---|---:|---:|---:|---:|---:|
-| Cake | 24.46% | 24.41% | 24.49% | 28.92% | 33.11% |
-| Commando | 43.33% | 43.23% | 43.32% | 51.23% | 59.29% |
-| Warrior | 23.62% | 23.58% | 23.60% | 27.22% | 30.00% |
-| Barbarian | 35.34% | 35.29% | 35.05% | 41.32% | 44.78% |
-| 421 title | 8.76% | 8.68% | 9.07% | 11.95% | 13.96% |
-| 421 credits | 22.96% | 22.94% | 22.97% | 25.75% | 28.91% |
-| Dacman title | 7.89% | 7.91% | 8.43% | 9.63% | 11.31% |
-| Dacman info | 10.38% | 10.36% | 10.53% | 13.31% | 14.59% |
-| Dacman 2 title | 9.53% | 9.51% | 9.73% | 13.54% | 16.42% |
-| Chateau title | 13.44% | 13.44% | 13.52% | 17.01% | 18.95% |
-| Arcade Trio title | 24.58% | 24.36% | 24.64% | 30.24% | 35.71% |
+| Cake | 24.46% | 24.41% | 24.45% | 28.92% | 33.11% |
+| Commando | 43.33% | 43.23% | 43.29% | 51.23% | 59.29% |
+| Warrior | 23.62% | 23.58% | 23.53% | 27.22% | 30.00% |
+| Barbarian | 35.34% | 35.29% | 34.88% | 41.32% | 44.78% |
+| 421 title | 8.76% | 8.68% | 9.05% | 11.95% | 13.96% |
+| 421 credits | 22.96% | 22.94% | 22.93% | 25.75% | 28.91% |
+| Dacman title | 7.89% | 7.91% | 8.41% | 9.63% | 11.31% |
+| Dacman info | 10.38% | 10.36% | 10.51% | 13.31% | 14.59% |
+| Dacman 2 title | 9.53% | 9.51% | 9.71% | 13.54% | 16.42% |
+| Chateau title | 13.44% | 13.44% | 13.49% | 17.01% | 18.95% |
+| Arcade Trio title | 24.58% | 24.36% | 24.63% | 30.24% | 35.71% |
 
 ### Amy direct-to-VRAM decompressor sizes
 
@@ -174,13 +174,13 @@ These are assembled routine bytes, excluding compressed data and common program 
 | ZX1 | 127 |
 | ZX2 | 115 |
 | ZX7 | 136 |
-| aPLib | 348 |
+| aPLib Compact | 283 |
 | Pletter | 212 |
 | BitBuster | 166 |
 | LZF | 117 |
 | DAN1 | 205 |
 | DAN2 | 212 |
-| DAN3 fast | 205 |
+| DAN3 Best | 205 |
 | Nibble | 115 |
 | MDK-RLE | 46 |
 
@@ -194,21 +194,20 @@ Each value is the complete compressed Pattern + Color payload plus one Amy direc
 | ZX1 | 5,728 | 3,091 | 1,151 |
 | ZX2 | 5,667 | 3,234 | 1,158 |
 | ZX7 | 5,649 | 3,120 | 1,166 |
-| aPLib | 5,803 | 3,321 | 1,360 |
+| aPLib Compact | 5,738 | 3,256 | 1,295 |
 | Pletter | 5,720 | 3,200 | 1,247 |
 | BitBuster | 5,704 | 3,168 | 1,211 |
 | LZF | 6,253 | 3,312 | 1,299 |
 | DAN1 | 5,529 | 3,108 | 1,174 |
 | DAN2 | 5,524 | 3,109 | 1,184 |
-| DAN3 fast | 5,528 | 3,105 | 1,241 |
+| DAN3 Best | 5,525 | 3,096 | 1,238 |
 | Nibble | 6,410 | 3,460 | 1,298 |
 | MDK-RLE | 7,331 | 3,733 | 1,436 |
 
 
-aPLib is the clear code-size outlier at 348 bytes. It remains valid, but it must save at least 136
-payload bytes to beat a 212-byte decoder on first use; it does not win any of these three
-representative first-use cases. MDK-RLE is the opposite extreme at 46 bytes, but its larger
-payloads lose all three totals.
+aPLib Compact is 283 bytes, or 280 after Balanced optimization. It replaces the previous 348-byte
+unrolled routine without changing the stream or payload, and preserves IX/IY for safe return to
+Amy and BIOS code. MDK-RLE is only 46 bytes, but its larger payloads lose all three totals.
 
 
 The complete payload counts and ratios are preserved in
@@ -418,11 +417,12 @@ exact-cost planner produces 3,054 bytes for Cake and 2,973 for Warrior, versus o
 payloads of 3,088 and 2,975. Official `appack` still wins some individual resources, so neither
 encoder universally dominates.
 
-Amy now ships the browser encoder and a 348-byte public-domain SMSlib-derived ColecoVision VRAM
-decoder. `decompress aplib Source to vram.pattern` accepts a raw `.aplib` stream and the existing
+Amy now ships the browser encoder and a 283-byte compact public-domain SMSlib-derived ColecoVision
+VRAM decoder. `decompress aplib Source to vram.pattern` accepts a raw `.aplib` stream and the existing
 VRAM upload wrapper provides the same NMI-safe contract as other Amy LZ codecs. A compiled Amy ROM
-reconstructed Warrior's 6,144-byte pattern and color tables exactly in GearColeco. The test ROM
-occupied 3,604 bytes with 2,973 compressed data bytes. The official aPLib executable is used only
+reconstructed Warrior's 6,144-byte pattern and color tables exactly in GearColeco under all five
+optimization profiles. The Balanced test ROM occupied 3,553 bytes with 2,973 compressed data bytes.
+The official aPLib executable is used only
 for differential testing and is not redistributed.
 
 The first reproducible size results and the rules for the cross-tool runtime comparison are in

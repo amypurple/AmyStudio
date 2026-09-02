@@ -1874,11 +1874,11 @@ export function createProjectFileUiHelpers({
     { codec: "zx0", label: "ZX0", description: "Strong compression with a compact 133-byte routine.", routineBytes: 133, extension: "zx0" },
     { codec: "zx1", label: "ZX1", description: "Official ZX1 compression with a compact 127-byte direct-VRAM routine.", routineBytes: 127, extension: "zx1" },
     { codec: "zx2", label: "ZX2", description: "Official ZX2 compression with a compact 115-byte direct-VRAM routine.", routineBytes: 115, extension: "zx2" },
-    { codec: "aplib", label: "aPLib", description: "Strong aPPack-compatible compression with direct VRAM output.", routineBytes: 348, extension: "aplib" },
+    { codec: "aplib", label: "aPLib Compact", description: "Strong aPPack-compatible compression with a compact direct-VRAM routine.", routineBytes: 283, extension: "aplib" },
     { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point.", routineBytes: 136, extension: "zx7" },
     { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco table data.", routineBytes: 212, extension: "dan2" },
     { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline.", routineBytes: 205, extension: "dan1" },
-    { codec: "dan3", label: "DAN3", description: "DAN family variant, sometimes wins on structured data.", routineBytes: 205, extension: "dan3" },
+    { codec: "dan3", label: "DAN3 Best", description: "Full DAN3 search for the smallest result; slower to compress, with the same decompressor.", routineBytes: 205, extension: "dan3" },
     { codec: "pletter", label: "Pletter", description: "Classic MSX/Coleco-friendly LZ compressor.", routineBytes: 212, extension: "pletter" },
     { codec: "bitbuster", label: "BitBuster 1.2", description: "Classic BitBuster stream; Amy source uses codec bitbuster.", routineBytes: 166, extension: "bitbuster" },
     { codec: "lzf", label: "LZF", description: "Fast LZ family candidate.", routineBytes: 117, extension: "lzf" }
