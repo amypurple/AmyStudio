@@ -38,7 +38,7 @@ Amy Studio currently enables 13 compressors in the picture/tiles import chooser:
 
 `zx2` is byte-compatible with Einar Saukas' official ZX2 v1.1 stream. Its 115-byte direct-to-VRAM decoder is smaller than ZX1, while its 255-byte match window can produce larger payloads. All 22 Pattern/Color tables from the eleven-picture corpus match `zx2.exe` byte for byte and round-trip exactly; Warrior and a synthetic long-literal case pass exact GearColeco VRAM validation under every optimizer profile.
 
-`aplib` uses Amy Studio's browser encoder and a compact 283-byte public-domain SMSlib-derived decoder adapted for plain ColecoVision VRAM addresses (280 bytes after Balanced optimization). The former unrolled decoder was 348 bytes and faster, but used the same raw aPPack-compatible stream. The compact Z80 routine writes directly to VRAM, preserves IX/IY, and requires NMI-safe use like the other LZ VRAM codecs. The official aPLib package and `appack.exe` are test references only and are not redistributed by Amy Studio.
+`aplib` uses Amy Studio's browser encoder and a compact 244-byte public-domain SMSlib-derived decoder adapted for plain ColecoVision VRAM addresses. Its size is unchanged across Amy's optimization profiles. The former unrolled decoder was 348 bytes and faster, but used the same raw aPPack-compatible stream. The compact Z80 routine writes directly to VRAM, preserves IX/IY, and requires NMI-safe use like the other LZ VRAM codecs. The official aPLib package and `appack.exe` are test references only and are not redistributed by Amy Studio.
 
 `nibble` is the official Studio name for the legacy `DAN0nibble`-derived codec. It uses RLE commands plus 16-value data-stream references, with a 2026 relocatable header for browser project files.
 

@@ -6418,6 +6418,9 @@ export class Z80Optimizer {
                     if (mnem === 'ex' &&
                         token.operands.length === 2 &&
                         !token.label) {
+                        const exchangeTouchesAf = token.operands.some((operand) =>
+                            String(operand.value).replace(/[()']/g, '').toLowerCase() === 'af'
+                        );
                         const buffered = [];
                         let cancelIndex = -1;
                         for (let j = i + 1; j < tokens.length && j <= i + 4; j++) {
@@ -6434,6 +6437,7 @@ export class Z80Optimizer {
                             if (midMnem === 'exx' ||
                                 isUnconditionalFlowStop(midTok) ||
                                 ['call', 'rst', 'reti', 'retn', 'jp', 'jr', 'djnz'].includes(midMnem) ||
+                                (exchangeTouchesAf && instructionCanClobberRegister(midTok, 'af')) ||
                                 instructionCanClobberRegister(midTok, 'de') ||
                                 instructionCanClobberRegister(midTok, 'hl')) {
                                 break;

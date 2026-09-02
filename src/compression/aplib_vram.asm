@@ -42,31 +42,22 @@ aplib_four_bits_loop:
     rl c
     jr nc,aplib_four_bits_loop
     jr nz,aplib_single_offset
-    ex de,hl
-    ld c,$be
-    out (c),b
-    ex de,hl
+    push af
+    xor a
+    out ($be),a
+    pop af
     inc de
     jr aplib_no_pair
 
 aplib_single_offset:
-    ex af,af'
-    ex de,hl
     push hl
+    ld h,d
+    ld l,e
     or a
     sbc hl,bc
-    res 6,h
-    ld c,$bf
-    out (c),l
-    out (c),h
-    in a,($be)
+    ld bc,1
+    call aplib_vram_copy
     pop hl
-    out (c),l
-    out (c),h
-    out ($be),a
-    ex de,hl
-    ex af,af'
-    inc de
     jr aplib_no_pair
 
 aplib_small_block:
@@ -88,9 +79,7 @@ aplib_small_block:
     ex af,af'
     call aplib_vram_copy
     pop hl
-    db $dd
-    ld h,b
-    jr aplib_loop
+    jr aplib_pair_done
 
 aplib_emit_block:
     call aplib_get_var
@@ -132,9 +121,7 @@ aplib_length_ready:
     pop de
     call aplib_vram_copy
     pop hl
-    db $dd
-    ld h,b
-    jp aplib_loop
+    jr aplib_pair_done
 
 aplib_reuse_offset:
     call aplib_get_var_shadow
@@ -147,22 +134,15 @@ aplib_reuse_offset:
     pop de
     call aplib_vram_copy
     pop hl
+aplib_pair_done:
     db $dd
-    ld h,b
+    ld h,0
     jp aplib_loop
 
 aplib_get_var_shadow:
     ex af,af'
 aplib_get_var:
     ld bc,1
-    call aplib_get_bit
-    rl c
-    call aplib_get_bit
-    ret nc
-    call aplib_get_bit
-    rl c
-    call aplib_get_bit
-    ret nc
 aplib_var_loop:
     call aplib_get_bit
     rl c
@@ -181,19 +161,10 @@ aplib_get_bit:
 
 aplib_vram_copy:
     ex af,af'
-    res 6,h
-    ld a,b
-    or a
-    jr z,aplib_copy_tail
-aplib_copy_pages:
+    push iy
     push bc
-    ld c,$bf
-    ld b,0
-    call aplib_copy_loop
-    pop bc
-    djnz aplib_copy_pages
-aplib_copy_tail:
-    ld b,c
+    pop iy
+    res 6,h
     ld c,$bf
 aplib_copy_loop:
     out (c),l
@@ -204,7 +175,13 @@ aplib_copy_loop:
     out ($be),a
     inc hl
     inc de
-    djnz aplib_copy_loop
+    dec iy
+    db $fd
+    ld a,h
+    db $fd
+    or l
+    jr nz,aplib_copy_loop
+    pop iy
     ex af,af'
     ret
 

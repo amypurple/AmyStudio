@@ -174,7 +174,7 @@ These are assembled routine bytes, excluding compressed data and common program 
 | ZX1 | 127 |
 | ZX2 | 115 |
 | ZX7 | 136 |
-| aPLib Compact | 283 |
+| aPLib Compact | 244 |
 | Pletter | 212 |
 | BitBuster | 166 |
 | LZF | 117 |
@@ -194,7 +194,7 @@ Each value is the complete compressed Pattern + Color payload plus one Amy direc
 | ZX1 | 5,728 | 3,091 | 1,151 |
 | ZX2 | 5,667 | 3,234 | 1,158 |
 | ZX7 | 5,649 | 3,120 | 1,166 |
-| aPLib Compact | 5,738 | 3,256 | 1,295 |
+| aPLib Compact | 5,699 | 3,217 | 1,256 |
 | Pletter | 5,720 | 3,200 | 1,247 |
 | BitBuster | 5,704 | 3,168 | 1,211 |
 | LZF | 6,253 | 3,312 | 1,299 |
@@ -205,7 +205,7 @@ Each value is the complete compressed Pattern + Color payload plus one Amy direc
 | MDK-RLE | 7,331 | 3,733 | 1,436 |
 
 
-aPLib Compact is 283 bytes, or 280 after Balanced optimization. It replaces the previous 348-byte
+aPLib Compact is 244 bytes under every optimization profile. It replaces the previous 348-byte
 unrolled routine without changing the stream or payload, and preserves IX/IY for safe return to
 Amy and BIOS code. MDK-RLE is only 46 bytes, but its larger payloads lose all three totals.
 
@@ -417,11 +417,11 @@ exact-cost planner produces 3,054 bytes for Cake and 2,973 for Warrior, versus o
 payloads of 3,088 and 2,975. Official `appack` still wins some individual resources, so neither
 encoder universally dominates.
 
-Amy now ships the browser encoder and a 283-byte compact public-domain SMSlib-derived ColecoVision
+Amy now ships the browser encoder and a 244-byte compact public-domain SMSlib-derived ColecoVision
 VRAM decoder. `decompress aplib Source to vram.pattern` accepts a raw `.aplib` stream and the existing
 VRAM upload wrapper provides the same NMI-safe contract as other Amy LZ codecs. A compiled Amy ROM
 reconstructed Warrior's 6,144-byte pattern and color tables exactly in GearColeco under all five
-optimization profiles. The Balanced test ROM occupied 3,553 bytes with 2,973 compressed data bytes.
+optimization profiles. The Balanced test ROM occupied 3,517 bytes with 2,973 compressed data bytes.
 The official aPLib executable is used only
 for differential testing and is not redistributed.
 
