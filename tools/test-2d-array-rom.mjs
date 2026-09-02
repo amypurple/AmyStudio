@@ -13,6 +13,16 @@ const BoardRows = 4
 const BoardColumns = 5
 const WordRows = 2
 const WordColumns = $03
+record GridState:
+  u8 Cells[BoardRows,BoardColumns]
+  u16 Costs[WordRows,WordColumns]
+end record
+overlay SharedGrid
+  GameGrid as GridState
+  EditGrid as GridState
+end overlay
+GridState State
+GridState States[2]
 u8 Board[BoardRows,BoardColumns]
 u16 Words[WordRows,WordColumns]
 u8 Row = 2
@@ -24,10 +34,19 @@ sub start:
   Board[Row,Column] = 42
   Board[Row-1,Column+1] = 77
   Words[1,2] = $1234
+  State.Cells[Row,Column] = 51
+  State.Costs[1,2] = $4567
+  States[1].Cells[Row-1,Column] = 61
+  SharedGrid.GameGrid.Cells[Row,Column-1] = 71
+  CheckRecordGrid(State)
   if Board[0,0] = 11 then Passed += 1
   if Board[Row,Column] = 42 then Passed += 1
   if Board[Row-1,Column+1] = 77 then Passed += 1
   if Words[1,2] = $1234 then Passed += 1
+  if State.Cells[Row,Column] = 51 then Passed += 1
+  if State.Costs[1,2] = $4567 then Passed += 1
+  if States[1].Cells[Row-1,Column] = 61 then Passed += 1
+  if SharedGrid.EditGrid.Cells[Row,Column-1] = 71 then Passed += 1
   CheckLocalGrid(1)
   CheckLocalGrid(2)
   CheckOtherGrid
@@ -52,6 +71,15 @@ sub CheckOtherGrid:
   LocalBoard[0,1] = 5
   LocalResult += LocalBoard[0,1]
   if LocalBoard[0,1] = 5 then Passed += 1
+  return
+end sub
+
+sub CheckRecordGrid(ref GridState Grid):
+  GridState LocalGrid
+  LocalGrid.Cells[1,1] = 81
+  Grid.Cells[1,2] = 91
+  if LocalGrid.Cells[1,1] = 81 then Passed += 1
+  if Grid.Cells[1,2] = 91 then Passed += 1
   return
 end sub
 `;
@@ -97,7 +125,7 @@ try {
       core.loadBios(bios);
       core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 8; frame += 1) core.runFrame();
-      assert.equal(core.readRam(passed, 1)[0], 8, `${profile}: global/local 2D reads failed`);
+      assert.equal(core.readRam(passed, 1)[0], 14, `${profile}: global/local/record/overlay 2D reads failed`);
       assert.deepEqual([...core.readRam(localResult, 2)], [0x33, 0x24], `${profile}: local 2D values or calls failed`);
       const bytes = core.readRam(board, 20);
       assert.equal(bytes[0], 11, `${profile}: Board[0,0] address`);
@@ -116,7 +144,8 @@ try {
     ["unknown", "u8 Board[16]\nBoard[1,2] = 3\nloop forever\n", /no matching 2D array/i],
     ["bounds", "u8 Board[3,4]\nBoard[3,0] = 1\nloop forever\n", /outside 3x4/i],
     ["unknown-constant", "const Rows = 3\nu8 Board[Rows,MissingColumns]\nloop forever\n", /unknown 2D array dimension constant/i],
-    ["record-field", "record Grid:\n  u8 Cells[4,4]\nend record\nloop forever\n", /records and overlays are not supported/i]
+    ["record-bounds", "record Grid:\n  u8 Cells[4,4]\nend record\nGrid State\nState.Cells[4,0] = 1\nloop forever\n", /outside 4x4/i],
+    ["overlay-direct", "overlay Bad\n  u8 Cells[4,4]\nend overlay\nloop forever\n", /must be fields of an overlay part record/i]
   ];
   for (const [name, text] of invalid) {
     const badSource = join(output, `${name}.alexis`);

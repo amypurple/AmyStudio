@@ -912,6 +912,7 @@ export function transpileAmyCore(sourceText, deps) {
   function lowerTwoDimensionalArrays(rawLines) {
     const arrays = new Map();
     const localArrays = new Map();
+    const recordArrays = new Map();
     const constants = collectEarlyNumericConstants(rawLines);
     const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
     const declarationPattern = new RegExp(`^(\\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*,\\s*(${dimensionToken})\\s*\\](.*)$`, "i");
@@ -920,19 +921,22 @@ export function transpileAmyCore(sourceText, deps) {
       if (value === null) throw new Error(`Unknown 2D array dimension constant '${token}' at line ${lineIndex + 1}`);
       return value;
     };
-    let aggregateDepth = 0;
+    let currentRecord = null;
+    let currentOverlay = false;
     let currentRoutine = null;
     const declarationsLowered = rawLines.map((rawLine, lineIndex) => {
       const code = stripAmyInlineComment(rawLine);
       const stripped = code.trim();
-      if (/^(?:record|overlay)\b/i.test(stripped)) aggregateDepth += 1;
+      const recordStart = stripped.match(/^record\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (recordStart) {
+        currentRecord = recordStart[1].toLowerCase();
+        recordArrays.set(currentRecord, new Map());
+      }
+      if (/^overlay\b/i.test(stripped)) currentOverlay = true;
       const routineStart = stripped.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
       if (routineStart) currentRoutine = routineStart[1].toLowerCase();
       const declaration = code.match(declarationPattern);
       if (declaration) {
-        if (aggregateDepth) {
-          throw new Error(`2D arrays in records and overlays are not supported at line ${lineIndex + 1}`);
-        }
         const rows = resolveDimension(declaration[4], lineIndex);
         const columns = resolveDimension(declaration[5], lineIndex);
         const length = rows * columns;
@@ -940,6 +944,16 @@ export function transpileAmyCore(sourceText, deps) {
           throw new Error(`2D array '${declaration[3]}' dimensions must contain 1..255 elements at line ${lineIndex + 1}`);
         }
         const key = declaration[3].toLowerCase();
+        if (currentOverlay) {
+          throw new Error(`2D arrays must be fields of an overlay part record at line ${lineIndex + 1}`);
+        }
+        if (currentRecord) {
+          const fields = recordArrays.get(currentRecord);
+          if (fields.has(key)) throw new Error(`Duplicate 2D record field declaration '${declaration[3]}' at line ${lineIndex + 1}`);
+          fields.set(key, { name: declaration[3], rows, columns });
+          const comment = rawLine.slice(code.length);
+          return `${declaration[1]}${declaration[2]} ${declaration[3]}[${length}]${declaration[6]}${comment}`;
+        }
         const scopeArrays = currentRoutine
           ? (localArrays.get(currentRoutine) || (localArrays.set(currentRoutine, new Map()), localArrays.get(currentRoutine)))
           : arrays;
@@ -948,10 +962,55 @@ export function transpileAmyCore(sourceText, deps) {
         const comment = rawLine.slice(code.length);
         return `${declaration[1]}${declaration[2]} ${declaration[3]}[${length}]${declaration[6]}${comment}`;
       }
-      if (/^end\s+(?:record|overlay)$/i.test(stripped)) aggregateDepth = Math.max(0, aggregateDepth - 1);
+      if (/^end\s+record$/i.test(stripped)) currentRecord = null;
+      if (/^end\s+overlay$/i.test(stripped)) currentOverlay = false;
       if (/^end\s+(?:sub|function)$/i.test(stripped)) currentRoutine = null;
       return rawLine;
     });
+
+    const recordBindings = new Map();
+    const localRecordBindings = new Map();
+    const overlayBindings = new Map();
+    let scanRecord = false;
+    let scanOverlay = null;
+    let scanRoutine = null;
+    for (const rawLine of declarationsLowered) {
+      const stripped = stripAmyInlineComment(rawLine).trim();
+      if (/^record\b/i.test(stripped)) { scanRecord = true; continue; }
+      if (/^end\s+record$/i.test(stripped)) { scanRecord = false; continue; }
+      const overlayStart = stripped.match(/^overlay\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
+      if (overlayStart) { scanOverlay = overlayStart[1]; continue; }
+      if (/^end\s+overlay$/i.test(stripped)) { scanOverlay = null; continue; }
+      const routineStart = stripped.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\((.*)\))?/i);
+      if (routineStart) {
+        scanRoutine = routineStart[1].toLowerCase();
+        const bindings = new Map();
+        localRecordBindings.set(scanRoutine, bindings);
+        for (const parameter of String(routineStart[2] || "").split(",")) {
+          const match = parameter.trim().match(/^(?:ref\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+          if (match && recordArrays.has(match[1].toLowerCase())) bindings.set(match[2].toLowerCase(), match[1].toLowerCase());
+        }
+        continue;
+      }
+      if (/^end\s+(?:sub|function)$/i.test(stripped)) { scanRoutine = null; continue; }
+      if (scanRecord) continue;
+      if (scanRoutine) {
+        const local = stripped.match(/^(?:(?:ram|dim|local)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[[^\]]+\])?/i);
+        if (local && recordArrays.has(local[1].toLowerCase())) {
+          localRecordBindings.get(scanRoutine).set(local[2].toLowerCase(), local[1].toLowerCase());
+        }
+        continue;
+      }
+      if (scanOverlay) {
+        const part = stripped.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+        if (part) overlayBindings.set(`${scanOverlay}.${part[1]}`.toLowerCase(), part[2].toLowerCase());
+        continue;
+      }
+      const binding = stripped.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[[^\]]+\])?/i);
+      if (binding && recordArrays.has(binding[1].toLowerCase())) {
+        recordBindings.set(binding[2].toLowerCase(), binding[1].toLowerCase());
+      }
+    }
 
     const splitIndexes = (content) => {
       let depth = 0;
@@ -988,27 +1047,51 @@ export function transpileAmyCore(sourceText, deps) {
       const commentAt = commentIndex(rawLine);
       const code = commentAt >= 0 ? rawLine.slice(0, commentAt) : rawLine;
       const comment = commentAt >= 0 ? rawLine.slice(commentAt) : "";
+      const rewriteQualified = (segment) => segment.replace(/\b([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^,\]]+\])?((?:\.[A-Za-z_][A-Za-z0-9_]*)+)\s*\[([^\]]+)\]/g,
+        (whole, baseName, baseIndex, pathText, indexText) => {
+          const path = pathText.slice(1).split(".");
+          let recordType = localRecordBindings.get(routineName)?.get(baseName.toLowerCase())
+            || recordBindings.get(baseName.toLowerCase());
+          let fieldName = null;
+          if (path.length === 1 && recordType) {
+            fieldName = path[0];
+          } else if (path.length === 2 && !baseIndex) {
+            recordType = overlayBindings.get(`${baseName}.${path[0]}`.toLowerCase());
+            fieldName = path[1];
+          }
+          const dimensions = recordArrays.get(recordType)?.get(fieldName?.toLowerCase());
+          const indexes = dimensions ? splitIndexes(indexText) : null;
+          if (!dimensions || !indexes) return whole;
+          const row = constantIndex(indexes.row);
+          const column = constantIndex(indexes.column);
+          if ((row !== null && (row < 0 || row >= dimensions.rows))
+              || (column !== null && (column < 0 || column >= dimensions.columns))) {
+            throw new Error(`2D access '${whole.trim()}' is outside ${dimensions.rows}x${dimensions.columns} at line ${lineIndex + 1}`);
+          }
+          return `${baseName}${baseIndex || ""}${pathText}[(((${indexes.row}) * ${dimensions.columns}) + (${indexes.column}))]`;
+        });
+      const qualified = code.split(/("[^"]*")/).map((segment, index) => index % 2 ? segment : rewriteQualified(segment)).join("");
       let result = "";
       let cursor = 0;
       let inString = false;
-      while (cursor < code.length) {
-        const ch = code[cursor];
+      while (cursor < qualified.length) {
+        const ch = qualified[cursor];
         if (ch === '"') { inString = !inString; result += ch; cursor += 1; continue; }
         if (!inString && /[A-Za-z_]/.test(ch)) {
           let nameEnd = cursor + 1;
-          while (nameEnd < code.length && /[A-Za-z0-9_]/.test(code[nameEnd])) nameEnd += 1;
-          const name = code.slice(cursor, nameEnd);
+          while (nameEnd < qualified.length && /[A-Za-z0-9_]/.test(qualified[nameEnd])) nameEnd += 1;
+          const name = qualified.slice(cursor, nameEnd);
           let bracket = nameEnd;
-          while (/\s/.test(code[bracket] || "")) bracket += 1;
-          if (code[bracket] === "[") {
+          while (/\s/.test(qualified[bracket] || "")) bracket += 1;
+          if (qualified[bracket] === "[") {
             let depth = 1;
             let end = bracket + 1;
-            for (; end < code.length && depth; end += 1) {
-              if (code[end] === "[") depth += 1;
-              else if (code[end] === "]") depth -= 1;
+            for (; end < qualified.length && depth; end += 1) {
+              if (qualified[end] === "[") depth += 1;
+              else if (qualified[end] === "]") depth -= 1;
             }
             if (depth !== 0) throw new Error(`Unclosed array index at line ${lineIndex + 1}`);
-            const content = code.slice(bracket + 1, end - 1);
+            const content = qualified.slice(bracket + 1, end - 1);
             const indexes = splitIndexes(content);
             if (indexes) {
               const array = localArrays.get(routineName)?.get(name.toLowerCase()) || arrays.get(name.toLowerCase());

@@ -412,8 +412,8 @@ semantics.
 Indexed paths may combine a record-array index with a scalar array-field index, as in
 `Container.Items[I].Flags[J]`. Each index contributes its own checked byte stride to the
 address calculation. Constant indices are range-checked; runtime indices must be byte
-expressions and have no implicit bounds check. Recursive or multidimensional record fields
-remain deferred; primitive 2D arrays are documented below.
+expressions and have no implicit bounds check. Recursive record fields remain deferred.
+Direct primitive 2D record fields are supported and documented below.
 
 Repeated accesses to one record-array element should use a lexical alias:
 
@@ -461,7 +461,7 @@ writing `Player.X` and `Player.Score`. A scalar or unknown root cannot become a 
 an alias; its qualified fields are rejected normally.
 
 Current record limits:
-- no recursive or multidimensional record-array fields yet
+- no recursive records or 2D fields reached through nested record fields yet
 - no whole-record assignment through pointer-backed aliases
 - no whole-record comparison through pointer-backed aliases
 - no arrays of BCD fields yet; BCD fields are scalar
@@ -3043,7 +3043,7 @@ ordinary snippets. Available memory profiles live in `tools/memory/*.json`.
 | `u8 Name = value` | Global 8-bit unsigned RAM variable |
 | `i8 Name = value` | Global 8-bit signed RAM variable |
 | `u8 Name[N]` | Global 8-bit RAM array |
-| `u8 Name[Rows,Columns]` | Row-major global or local primitive 2D array (1..255 total elements) |
+| `u8 Name[Rows,Columns]` | Row-major primitive 2D array, including direct record fields (1..255 total elements) |
 | `u16 Name = value` | Global 16-bit unsigned RAM variable |
 | `i16 Name = value` | Global 16-bit signed RAM variable |
 | `bool Name = false` | Global boolean (bit-packed) |
@@ -3318,20 +3318,28 @@ const MapWidth = 16
 const MapHeight = 12
 u8 Map[MapHeight,MapWidth]
 
+record RoomState:
+  u8 Tiles[MapHeight,MapWidth]
+end record
+RoomState Room
+
 Board[Row,Column] = Tile
 if Board[Row,Column] = Wall then StopPlayer
+Room.Tiles[Row,Column] = Tile
 ```
 
 Dimensions may be decimal or hexadecimal literals or numeric compile-time
 constants; all forms generate the same flattened RAM layout and ASM. The total
 element count must be 1 through 255. Constant out-of-range indexes are
 rejected; variable indexes have no implicit bounds check. Primitive arrays may
-be global or local to a sub/function; local storage remains stack-relative.
+be global, local to a sub/function, or direct fields of a record. Record fields
+work through global or local scalar instances, record-array elements, compatible
+record parameters, and overlay parts while keeping the same flat row-major
+storage and zero descriptor cost. Nested 2D record paths remain unsupported.
+Local storage remains stack-relative.
 This includes `fixed32` arrays: decimal initialization, indexed assignment,
 comparison, addition, subtraction, multiplication, and division preserve signed
 16.16 semantics for constant or runtime indexes.
-Multidimensional record fields and overlays fail closed rather than using an
-ambiguous layout.
 
 | Statement | Meaning |
 |---|---|
