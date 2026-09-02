@@ -11,6 +11,7 @@ src/
   compression/
     zx0_vram.asm
     zx1_vram.asm
+    zx2_vram.asm
     aplib_vram.asm
     zx7_vram.asm
     nibble_vram.asm
@@ -31,15 +32,17 @@ assets/
 
 ## Official Studio Codecs
 
-Amy Studio currently enables 12 compressors in the picture/tiles import chooser: `mdkrle`, `nibble`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster`, `zx7`, `zx0`, `zx1`, and `aplib`.
+Amy Studio currently enables 13 compressors in the picture/tiles import chooser: `mdkrle`, `nibble`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster`, `zx7`, `zx0`, `zx1`, `zx2`, and `aplib`.
 
 `zx1` is byte-compatible with Einar Saukas' official ZX1 standard stream. Amy's 134-byte decoder writes directly to ColecoVision VRAM. Four complete 12,288-byte bitmap pictures pass exact round-trip checks and GearColeco VRAM validation; Warrior also passes every optimizer profile.
+
+`zx2` is byte-compatible with Einar Saukas' official ZX2 v1.1 stream. Its 115-byte direct-to-VRAM decoder is smaller than ZX1, while its 255-byte match window can produce larger payloads. All 22 Pattern/Color tables from the eleven-picture corpus match `zx2.exe` byte for byte and round-trip exactly; Warrior and a synthetic long-literal case pass exact GearColeco VRAM validation under every optimizer profile.
 
 `aplib` uses Amy Studio's browser encoder and a 348-byte public-domain SMSlib-derived decoder adapted for plain ColecoVision VRAM addresses. The raw `.aplib` stream is compatible with aPPack. The Z80 routine writes directly to VRAM and requires NMI-safe use, like the other LZ VRAM codecs. The official aPLib package and `appack.exe` are test references only and are not redistributed by Amy Studio.
 
 `nibble` is the official Studio name for the legacy `DAN0nibble`-derived codec. It uses RLE commands plus 16-value data-stream references, with a 2026 relocatable header for browser project files.
 
-The quick image-import pass keeps the established fastest candidates. The full "Compare all codecs" pass evaluates all 12 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams are not unfairly compared with LZ codecs that can do VRAM back-copy.
+The quick image-import pass keeps the established fastest candidates. The full "Compare all codecs" pass evaluates all 13 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams are not unfairly compared with LZ codecs that can do VRAM back-copy.
 
 ## Workflow
 1. Export/compress assets with standalone tools (e.g., `zx0.exe`) or reuse Warrior binaries for validation.

@@ -1,3 +1,9 @@
+## 2026-09-02 - Added ZX2 compression
+
+- Added an official-stream-compatible ZX2 browser codec and 115-byte direct-to-VRAM decoder.
+- Verified byte-identical output against ZX2 v1.1 across all eleven corpus pictures.
+- Verified exact Warrior and long-literal VRAM output under all five optimization profiles.
+
 ## 2026-09-01 - Verified controller behavior
 
 - Automated neutral, keypad `0`, held direction, FIRE, and release checks across seven toolchains.

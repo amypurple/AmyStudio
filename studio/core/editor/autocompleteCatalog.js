@@ -351,6 +351,7 @@ export const AMY_AUTOCOMPLETE = [
   ["decompress PatternAsset to vram.pattern", "Decompress a declared asset using its codec metadata"],
   ["decompress mdkrle Pattern to vram.pattern", "Explicit codec form for raw/data labels"],
   ["decompress zx1 Pattern to vram.pattern", "Official ZX1 stream directly to ColecoVision VRAM"],
+  ["decompress zx2 Pattern to vram.pattern", "Official ZX2 stream through a compact direct-to-VRAM decoder"],
   ["decompress aplib Pattern to vram.pattern", "aPLib raw stream directly to ColecoVision VRAM"],
   ["decompress rle Pattern to vram.pattern", "Alias for lib4ksa/getput11 mdkrle-style VRAM decompression"],
   ["show picture TitleScreen", "All-in-one bitmap picture display: set mode, upload data, then screen on"],

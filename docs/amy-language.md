@@ -2064,6 +2064,7 @@ merge PatternBytes count 8 to vram.pattern mask $F0 xor $0F
 decompress Asset to vram.pattern        ' asset codec inferred when declared with codec metadata
 decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress zx1   Table   to vram.pattern ' official ZX1 stream, direct to VRAM
+decompress zx2   Table   to vram.pattern ' official ZX2 stream, compact direct-to-VRAM decoder
 decompress aplib Table   to vram.pattern ' aPPack-compatible stream, direct to VRAM
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name

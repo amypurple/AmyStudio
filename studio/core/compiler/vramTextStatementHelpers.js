@@ -238,7 +238,7 @@ export function handleVramTextStatement({
     };
   }
 
-  const decomp = line.match(/^decompress\s+(zx0|zx1|zx7|aplib|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
+  const decomp = line.match(/^decompress\s+(zx0|zx1|zx2|zx7|aplib|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
   if (decomp) {
     const codec = decomp[1].toLowerCase() === "rle" ? "mdkrle" : decomp[1].toLowerCase();
     const sourceName = decomp[2];

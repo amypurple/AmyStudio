@@ -5,7 +5,7 @@ const TMS_PALETTE = [
   "#FC5554", "#FF7978", "#D4C154", "#E5CE80", "#21B03B", "#C95AA9", "#CCCCCC", "#FFFFFF"
 ];
 
-const CODEC_EXTENSIONS = new Set(["raw", "zx0", "zx1", "zx7", "aplib", "dan1", "dan2", "dan3", "pletter", "plet5", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
+const CODEC_EXTENSIONS = new Set(["raw", "zx0", "zx1", "zx2", "zx7", "aplib", "dan1", "dan2", "dan3", "pletter", "plet5", "lzf", "rle", "mdkrle", "bitbuster", "nibble"]);
 
 function normalizePreviewCodec(codec) {
   const normalized = String(codec || "").toLowerCase();
