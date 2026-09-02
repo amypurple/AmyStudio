@@ -110,6 +110,10 @@ guesses by removing repeated final bytes:
 | Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
 | Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 
+PVColLib and NewColeco use `$F0` white-on-transparent text in the controller fixture instead of
+their customary `$F1` white-on-black. This presentation-only normalization exposes the changing
+VDP R7 backdrop without changing controller logic or occupied size.
+
 The bitmap test uses each tool's validated native workflow: Amy ZX0, CVBasic Pletter, z88dk ZX0,
 ugBASIC image resources, devkitSMS aPLib, PVColLib RLE, and NewColeco DAN2. CVBasic's tables differ
 internally, but TMS9918 can encode the same pixels several ways. All seven framebuffers are exact.
