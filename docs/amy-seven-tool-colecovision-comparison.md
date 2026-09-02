@@ -64,7 +64,9 @@ default.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **238** | 795 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
 | Warrior bitmap | **3,254** | 3,643 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
-| Controller Visual | **596** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
+| Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
+| Sprite Metasprite | **1,000** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
+| **Four-sample total** | **5,087** | **6,512** | **8,129** | **9,331** | **9,954** | **15,581** | **36,884** |
 
 The improved bitmap rows retain measured baselines: z88dk's raw-table ROM was 14,293 bytes,
 MDKRLE reduced it to 5,911 bytes, ZX7 to 5,115 bytes, and the validated ZX0 path to 4,976 bytes; the legacy devkit's GETPUT

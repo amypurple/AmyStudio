@@ -593,6 +593,9 @@ export function createControlFlowHelpers(ctx) {
         const immediateValue = Number.parseInt(String(rightImmediate).replace(/^\$/, "0x"), 0);
         if ((effectiveOperator === "==" || effectiveOperator === "!=") && immediateValue === 0) {
           lines.push("    or a");
+        } else if ((effectiveOperator === "==" || effectiveOperator === "!=") && immediateValue === 255) {
+          // The branch immediately consumes Z/NZ and A is scratch in this emitter.
+          lines.push("    inc a");
         } else {
           lines.push(`    cp ${rightImmediate}`);
         }
