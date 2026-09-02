@@ -288,6 +288,10 @@ tables rather than another playback format.
 Compression must be scored as `compressed payload + linked decompressor`, with destination and
 cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
+All thirteen integrated Amy codecs were also compiled as separate Balanced ROMs and run for 180
+NTSC frames in GearColeco. Every ROM reproduced Warrior's 6,144 Pattern bytes and 6,144 Color
+bytes exactly in VRAM. Run `node tools/test-integrated-codec-vram-roms.mjs` to repeat this check.
+
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
 | Amy Studio | ZX0, ZX1, ZX2, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
