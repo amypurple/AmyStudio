@@ -15,6 +15,8 @@ Coleco BIOS sound composition remains technical because its compact commands dir
 
 The source sound inspector includes a small command authoring preview. `Echo tail` models a sustained note followed by a quieter tail: a volume-sweep step of `+3` is approximately -6 dB, and a BIOS sweep count of `2` means one transition because the count includes the initial volume. The first-transition delay is a four-bit value, so a single-command echo can hold its main volume for only 1..16 frames. Longer musical echoes need multiple commands or another sound-table area.
 
+The preview can accept Note On and Note Off messages from a Web MIDI keyboard. MIDI note number selects note/octave, velocity selects Coleco volume 1..15, and held time becomes a deterministic PAL/NTSC frame count when the key is released. The browser asks for access only after `MIDI` is pressed. A held note saturates at the BIOS command limit of 256 frames; one-command echo capture is capped at its 16-frame initial-delay limit.
+
 DSound is not the WAV-to-notes converter. It preserves a short waveform as digital amplitude samples. Amy's historical `WAV2CV3` instead uses FFT analysis to extract dominant frequencies and strengths over time, then produces ordinary PSG tone commands that can coexist with gameplay. See [Legacy WAV to ColecoVision PSG Reconstruction](legacy-wav-to-coleco-psg-reconstruction.md).
 
 ## PSG Music and Sound Effects (lib4ksa)

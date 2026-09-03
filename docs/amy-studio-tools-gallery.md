@@ -27,6 +27,8 @@ To reproduce it, open `PROJECT` > `Browse` > `Space Trainer`, then choose `SOURC
 
 The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail holds the main volume, then drops by about 6 dB for the remaining frames. It uses one six-byte BIOS command when the main section is at most 16 frames; the tool rejects larger values rather than silently emitting a different effect.
 
+Choose `MIDI` to authorize a connected keyboard through Web MIDI. Note On selects note, octave and velocity; Note Off converts the held time to PAL/NTSC frames, updates the BIOS command, then auditions it. MIDI requires HTTPS or localhost and browser permission. Durations saturate at 256 frames, or 16 main frames for a one-command `Echo tail`.
+
 ## Project Files
 
 Open `FILES` to reach tools attached to individual project resources.

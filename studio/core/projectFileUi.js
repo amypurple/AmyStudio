@@ -4,8 +4,9 @@ import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./grap
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-address-expressions";
-import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js";
-import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-command-preview";
+import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260903-echo-tail";
+import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-bios-sweep-count";
+import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2651,10 +2652,23 @@ export function createProjectFileUiHelpers({
     playPreview.type = "button";
     playPreview.textContent = "▶ Listen";
     playPreview.title = "Preview through SN76489-compatible synthesis";
-    builderHeader.append(builderHeading, playPreview);
+    const midiButton = document.createElement("button");
+    midiButton.type = "button";
+    midiButton.textContent = "MIDI";
+    midiButton.title = "Connect a Web MIDI keyboard";
+    const builderActions = document.createElement("div");
+    builderActions.className = "sound-command-builder__actions";
+    builderActions.append(midiButton, playPreview);
+    builderHeader.append(builderHeading, builderActions);
+    const midiStatus = document.createElement("span");
+    midiStatus.className = "sound-command-builder__midi-status";
+    midiStatus.textContent = "MIDI keyboard not connected.";
     const preview = document.createElement("pre");
     const previewDescription = document.createElement("span");
     let currentPreview = null;
+    let midiConnection = null;
+    const midiNoteStarts = new Map();
+    let lastMidiNote = null;
     function updateVisibleToneFields() {
       const mode = inputs.mode.value;
       fieldLabels.note.hidden = mode === "Noise";
@@ -2710,9 +2724,53 @@ export function createProjectFileUiHelpers({
         playPreview.textContent = "▶ Listen";
       }
     });
+    midiButton.addEventListener("click", async () => {
+      if (midiConnection) {
+        midiConnection.disconnect();
+        midiConnection = null;
+        midiButton.textContent = "MIDI";
+        midiStatus.textContent = "MIDI keyboard not connected.";
+        return;
+      }
+      midiButton.disabled = true;
+      midiStatus.textContent = "Waiting for MIDI permission...";
+      try {
+        midiConnection = await connectColecoMidiInput((message) => {
+          if (message.octave < 0 || message.octave > 8) return;
+          if (message.on) {
+            inputs.mode.value = "Tone";
+            inputs.note.value = message.note;
+            inputs.octave.value = String(message.octave);
+            inputs.volume.value = String(message.volume);
+            midiNoteStarts.set(message.noteNumber, performance.now());
+            lastMidiNote = message.noteNumber;
+            updateTonePreview();
+            midiStatus.textContent = `MIDI: holding ${message.note}${message.octave}...`;
+            return;
+          }
+          const startedAt = midiNoteStarts.get(message.noteNumber);
+          midiNoteStarts.delete(message.noteNumber);
+          if (startedAt == null || lastMidiNote !== message.noteNumber) return;
+          const maximum = inputs.envelope.value === "Echo tail" ? 16 : 256;
+          const frames = midiHoldFrames(performance.now() - startedAt, inputs.region.value, maximum);
+          inputs.frames.value = String(frames);
+          updateTonePreview();
+          midiStatus.textContent = `MIDI: ${message.note}${message.octave} captured as ${frames} frame${frames === 1 ? "" : "s"}.`;
+          if (!playPreview.disabled) playPreview.click();
+        });
+        midiButton.textContent = "MIDI On";
+        midiStatus.textContent = midiConnection.names.length
+          ? `MIDI: ${midiConnection.names.join(", ")}`
+          : "MIDI enabled; connect or switch on a keyboard.";
+      } catch (error) {
+        midiStatus.textContent = error.message;
+      } finally {
+        midiButton.disabled = false;
+      }
+    });
     controls.addEventListener("input", updateTonePreview);
     updateTonePreview();
-    builder.append(builderHeader, controls, preview, previewDescription);
+    builder.append(builderHeader, midiStatus, controls, preview, previewDescription);
     const list = document.createElement("div");
     list.className = "graphics-editor-modal__list";
     for (const table of analysis.tables) {
@@ -2749,8 +2807,12 @@ export function createProjectFileUiHelpers({
       warning.textContent = message;
       list.appendChild(warning);
     }
-    close.addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+    const closeInspector = () => {
+      midiConnection?.disconnect();
+      overlay.remove();
+    };
+    close.addEventListener("click", closeInspector);
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) closeInspector(); });
     panel.append(header, note, builder, list);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
