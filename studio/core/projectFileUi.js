@@ -3,6 +3,9 @@ import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
+import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-address-expressions";
+import { buildColecoBassNote, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js";
+import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-command-preview";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2561,12 +2564,187 @@ export function createProjectFileUiHelpers({
   function setProjectFileActionIcon(button, icon, label) {
     const paths = {
       edit: '<path d="M4 20l4-1 11-11-3-3L5 16zM14 7l3 3"/>',
+      sound: '<path d="M9 18V6l10-2v12M9 10l10-2M6 18a3 2 0 1 1-6 0 3 2 0 1 1 6 0Zm13-2a3 2 0 1 1-6 0 3 2 0 1 1 6 0Z"/>',
       remove: '<path d="M5 7h14M9 7V4h6v3M8 7l1 13h6l1-13M10 10v7M14 10v7"/>'
     };
     button.classList.add("project-file__icon-action");
     button.title = label;
     button.setAttribute("aria-label", label);
     button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+  }
+  function soundInspectionForEntry(entry) {
+    return inspectProjectSoundFile(entry, projectFileBytes(entry));
+  }
+  function inspectSourceSoundTables(source) {
+    const analysis = inspectSoundTableSource(source);
+    return analysis.tables.length ? analysis : null;
+  }
+  function openSourceSoundInspector(analysis) {
+    openProjectSoundInspector({ path: "Amy source" }, analysis);
+  }
+  function openProjectSoundInspector(entry, analysis) {
+    const overlay = document.createElement("div");
+    overlay.className = "graphics-editor-modal-backdrop";
+    const panel = document.createElement("section");
+    panel.className = "graphics-editor-modal graphics-editor-json-modal sound-table-inspector-modal";
+    const header = document.createElement("div");
+    header.className = "graphics-editor-modal__header";
+    const title = document.createElement("h3");
+    title.textContent = `Sound tables · ${entry.path}`;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "graphics-editor-modal__close";
+    close.textContent = "✕";
+    close.title = "Close";
+    close.setAttribute("aria-label", "Close sound-table inspector");
+    header.append(title, close);
+    const note = document.createElement("p");
+    note.className = "graphics-editor-modal__note";
+    note.textContent = "Read-only BIOS table inspection. Slot order is the play sound index; higher sound-area addresses have higher priority.";
+    const builder = document.createElement("section");
+    builder.className = "graphics-editor-modal__item sound-command-builder";
+    const builderHeading = document.createElement("strong");
+    builderHeading.textContent = "Tone command preview";
+    const controls = document.createElement("div");
+    controls.className = "sound-command-builder__controls";
+    const fields = [
+      ["Mode", "select", ["Tone", "Bass", "Noise"], "Tone"],
+      ["Note", "select", ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"], "A"],
+      ["Octave", "number", null, "4"],
+      ["Channel", "number", null, "1"],
+      ["Volume", "number", null, "15"],
+      ["Frames", "number", null, "12"],
+      ["Noise", "select", COLECO_NOISE_MODES.map((name, index) => `${index}: ${name}`), `4: ${COLECO_NOISE_MODES[4]}`],
+      ["Region", "select", ["NTSC", "PAL"], "NTSC"],
+      ["Envelope", "select", ["Steady", "Fade out"], "Steady"]
+    ];
+    const inputs = {};
+    const fieldLabels = {};
+    for (const [labelText, kind, choices, initial] of fields) {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      label.dataset.soundField = labelText.toLowerCase();
+      const input = document.createElement(kind === "select" ? "select" : "input");
+      if (kind !== "select") input.type = kind;
+      if (labelText === "Octave") { input.min = "0"; input.max = "8"; }
+      if (labelText === "Channel") { input.min = "1"; input.max = "3"; }
+      if (labelText === "Volume") { input.min = "0"; input.max = "15"; }
+      if (labelText === "Frames") { input.min = "1"; input.max = "256"; }
+      if (choices) {
+        for (const choice of choices) {
+          const option = document.createElement("option");
+          option.value = choice;
+          option.textContent = choice;
+          input.appendChild(option);
+        }
+      }
+      input.value = initial;
+      inputs[labelText.toLowerCase()] = input;
+      fieldLabels[labelText.toLowerCase()] = label;
+      label.appendChild(input);
+      controls.appendChild(label);
+    }
+    const playPreview = document.createElement("button");
+    playPreview.type = "button";
+    playPreview.textContent = "▶ Listen";
+    playPreview.title = "Preview through SN76489-compatible synthesis";
+    controls.appendChild(playPreview);
+    const preview = document.createElement("pre");
+    const previewDescription = document.createElement("span");
+    let currentPreview = null;
+    function updateVisibleToneFields() {
+      const mode = inputs.mode.value;
+      fieldLabels.note.hidden = mode === "Noise";
+      fieldLabels.octave.hidden = mode === "Noise";
+      fieldLabels.channel.hidden = mode !== "Tone";
+      fieldLabels.noise.hidden = mode !== "Noise";
+    }
+    function updateTonePreview() {
+      try {
+        updateVisibleToneFields();
+        const options = {
+          note: inputs.note.value,
+          octave: Number(inputs.octave.value),
+          channel: Number(inputs.channel.value),
+          volume: Number(inputs.volume.value),
+          length: Number(inputs.frames.value),
+          noise: Number.parseInt(inputs.noise.value, 10),
+          region: inputs.region.value,
+          fade: inputs.envelope.value === "Fade out"
+        };
+        const result = inputs.mode.value === "Bass"
+          ? buildColecoBassNote(options)
+          : inputs.mode.value === "Noise"
+            ? buildColecoNoise(options)
+            : buildColecoToneNote(options);
+        preview.textContent = result.asm;
+        previewDescription.textContent = result.description;
+        currentPreview = result.events || [result.event];
+        playPreview.disabled = false;
+      } catch (error) {
+        preview.textContent = "Invalid command";
+        previewDescription.textContent = error.message;
+        currentPreview = null;
+        playPreview.disabled = true;
+      }
+    }
+    playPreview.addEventListener("click", async () => {
+      if (!currentPreview) return;
+      playPreview.disabled = true;
+      playPreview.textContent = "Playing...";
+      try {
+        await previewColecoSoundEvents(currentPreview, { region: inputs.region.value });
+      } catch (error) {
+        previewDescription.textContent = error.message;
+      } finally {
+        playPreview.disabled = false;
+        playPreview.textContent = "▶ Listen";
+      }
+    });
+    controls.addEventListener("input", updateTonePreview);
+    updateTonePreview();
+    builder.append(builderHeading, controls, preview, previewDescription);
+    const list = document.createElement("div");
+    list.className = "graphics-editor-modal__list";
+    for (const table of analysis.tables) {
+      const item = document.createElement("section");
+      item.className = "graphics-editor-modal__item";
+      const heading = document.createElement("strong");
+      heading.textContent = `${table.name} · ${table.entries.length} entries`;
+      item.appendChild(heading);
+      const priorityUses = new Map();
+      for (const sound of table.entries) {
+        if (sound.priority) priorityUses.set(sound.priority, (priorityUses.get(sound.priority) || 0) + 1);
+      }
+      for (const sound of table.entries) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = `${sound.index}. ${sound.label} · area ${sound.area ?? "?"}` +
+          `${sound.priority ? ` · priority ${sound.priority}${priorityUses.get(sound.priority) > 1 ? " shared" : ""}` : ""}` +
+          `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
+        details.appendChild(summary);
+        if (sound.stream?.status === "valid") {
+          const commands = document.createElement("pre");
+          commands.textContent = sound.stream.events.map((event, index) =>
+            `${String(index + 1).padStart(2, " ")}  ${describeColecoSoundEvent(event)}`
+          ).join("\n");
+          details.appendChild(commands);
+        }
+        item.appendChild(details);
+      }
+      list.appendChild(item);
+    }
+    for (const message of analysis.diagnostics) {
+      const warning = document.createElement("p");
+      warning.className = "graphics-editor-json-modal__error";
+      warning.textContent = message;
+      list.appendChild(warning);
+    }
+    close.addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+    panel.append(header, note, builder, list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
   }
   function renderProjectFiles() {
     syncGraphicsEditorsMenuState();
@@ -2626,6 +2804,15 @@ export function createProjectFileUiHelpers({
         setProjectFileActionIcon(editTextButton, "edit", `Edit ${entry.path}`);
         editTextButton.addEventListener("click", () => openProjectFileTextEditor(entry));
         actions.appendChild(editTextButton);
+
+        const soundAnalysis = soundInspectionForEntry(entry);
+        if (soundAnalysis) {
+          const inspectSoundButton = document.createElement("button");
+          inspectSoundButton.type = "button";
+          setProjectFileActionIcon(inspectSoundButton, "sound", `Inspect sound tables in ${entry.path}`);
+          inspectSoundButton.addEventListener("click", () => openProjectSoundInspector(entry, soundAnalysis));
+          actions.appendChild(inspectSoundButton);
+        }
       }
 
       if (kind === "dsound") {
@@ -2924,6 +3111,8 @@ export function createProjectFileUiHelpers({
     upsertProjectFile,
     removeProjectFile,
     renderProjectFiles,
-    addImportedProjectFiles
+    addImportedProjectFiles,
+    inspectSourceSoundTables,
+    openSourceSoundInspector
   };
 }

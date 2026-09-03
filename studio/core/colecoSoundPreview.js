@@ -1,0 +1,96 @@
+const CLOCKS = Object.freeze({ NTSC: 3579545, PAL: 3546893 });
+
+function amplitudeForAttenuation(attenuation) {
+  if (attenuation >= 15) return 0;
+  return 0.24 * (10 ** ((-2 * attenuation) / 20));
+}
+
+function scheduleVolume(gain, event, start, frameSeconds) {
+  let attenuation = event.attenuation ?? 15;
+  gain.setValueAtTime(amplitudeForAttenuation(attenuation), start);
+  const sweep = event.volumeSweep;
+  if (!sweep) return;
+  let frame = sweep.firstLength;
+  for (let index = 0; index < sweep.count && frame < event.length; index += 1) {
+    attenuation = Math.min(15, attenuation + sweep.step);
+    gain.setValueAtTime(amplitudeForAttenuation(attenuation), start + (frame * frameSeconds));
+    frame += sweep.stepLength;
+  }
+}
+
+function makeNoiseBuffer(context, event, duration, region, tone3Period = null) {
+  const sampleCount = Math.max(1, Math.ceil(context.sampleRate * duration));
+  const buffer = context.createBuffer(1, sampleCount, context.sampleRate);
+  const output = buffer.getChannelData(0);
+  const clock = CLOCKS[region] || CLOCKS.NTSC;
+  const divisors = [512, 1024, 2048];
+  const rate = event.noise % 4 === 3 && tone3Period
+    ? clock / (32 * tone3Period)
+    : event.noise % 4 === 3 ? 440 : clock / divisors[event.noise % 4];
+  let phase = 0;
+  let level = 1;
+  let lfsr = 0x4000;
+  for (let index = 0; index < sampleCount; index += 1) {
+    phase += rate / context.sampleRate;
+    if (phase >= 1) {
+      phase -= 1;
+      const white = event.noise >= 4;
+      const feedback = white ? ((lfsr ^ (lfsr >> 1)) & 1) : (lfsr & 1);
+      lfsr = (lfsr >> 1) | (feedback << 14);
+      level = (lfsr & 1) ? 1 : -1;
+    }
+    output[index] = level;
+  }
+  return buffer;
+}
+
+export async function previewColecoSoundEvents(events, { region = "NTSC" } = {}) {
+  const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("This browser cannot preview audio.");
+  const context = new AudioContextClass();
+  const frameSeconds = 1 / (region === "PAL" ? 50 : 60);
+  const playable = [...(events || [])].filter((event) => ["note", "frequency-sweep", "volume-sweep", "frequency-volume-sweep"].includes(event.type));
+  if (!playable.length) {
+    await context.close();
+    throw new Error("The generated command has no playable event.");
+  }
+  const start = context.currentTime + 0.02;
+  const tone3Period = playable.find((event) => event.channel === 3)?.period || null;
+  let longest = 0;
+  for (const event of playable) {
+    const duration = event.length * frameSeconds;
+    longest = Math.max(longest, duration);
+    const gain = context.createGain();
+    scheduleVolume(gain.gain, event, start, frameSeconds);
+    gain.connect(context.destination);
+    if (event.channel === 0) {
+      const source = context.createBufferSource();
+      source.buffer = makeNoiseBuffer(context, event, duration, region, tone3Period);
+      source.connect(gain);
+      source.start(start);
+      source.stop(start + duration);
+    } else {
+      const oscillator = context.createOscillator();
+      oscillator.type = "square";
+      const clock = CLOCKS[region] || CLOCKS.NTSC;
+      let period = event.period;
+      oscillator.frequency.setValueAtTime(clock / (32 * period), start);
+      const sweep = event.frequencySweep;
+      if (sweep) {
+        let frame = sweep.firstLength;
+        while (frame < event.length) {
+          period = Math.max(1, Math.min(1023, period + sweep.step));
+          oscillator.frequency.setValueAtTime(clock / (32 * period), start + (frame * frameSeconds));
+          frame += sweep.stepLength;
+        }
+      }
+      oscillator.connect(gain);
+      oscillator.start(start);
+      oscillator.stop(start + duration);
+    }
+  }
+  await new Promise((resolve) => setTimeout(resolve, Math.ceil((longest + 0.05) * 1000)));
+  await context.close();
+}
+
+export { amplitudeForAttenuation };

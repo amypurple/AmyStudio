@@ -91,7 +91,7 @@ import {
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260808-frame-entry-sizes";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260903-sound-command-listen";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
@@ -151,6 +151,7 @@ const els = {
   btnViewMemoryMap: document.getElementById("btnViewMemoryMap"),
   btnToggleAsm: document.getElementById("btnToggleAsm"),
   btnShowAsm: document.getElementById("btnShowAsm"),
+  btnInspectSourceSounds: document.getElementById("btnInspectSourceSounds"),
   layoutEl: document.querySelector(".layout"),
   topbarMenu: document.querySelector(".topbar__menu--quiet"),
   optimizationMenu: document.querySelector(".topbar__menu--opt"),
@@ -170,9 +171,11 @@ const els = {
   projectPanelTabProject: document.getElementById("projectPanelTabProject"),
   projectPanelTabFiles: document.getElementById("projectPanelTabFiles"),
   projectPanelTabDocs: document.getElementById("projectPanelTabDocs"),
+  projectPanelTabAssistant: document.getElementById("projectPanelTabAssistant"),
   projectPanelProject: document.getElementById("projectPanelProject"),
   projectPanelFiles: document.getElementById("projectPanelFiles"),
   projectPanelDocs: document.getElementById("projectPanelDocs"),
+  projectPanelAssistant: document.getElementById("projectPanelAssistant"),
   projectFilesSummary: document.getElementById("projectFilesSummary"),
   projectFilesList: document.getElementById("projectFilesList"),
   docsSelect: document.getElementById("docsSelect"),
@@ -180,6 +183,10 @@ const els = {
   docsStatus: document.getElementById("docsStatus"),
   docsContent: document.getElementById("docsContent"),
   btnDocsRefresh: document.getElementById("btnDocsRefresh"),
+  assistantInput: document.getElementById("assistantInput"),
+  assistantRun: document.getElementById("assistantRun"),
+  assistantStatus: document.getElementById("assistantStatus"),
+  assistantOutput: document.getElementById("assistantOutput"),
   btnAddProjectFile: document.getElementById("btnAddProjectFile"),
   btnNewTileSet: document.getElementById("btnNewTileSet"),
   btnNewBitmap: document.getElementById("btnNewBitmap"),
@@ -347,7 +354,8 @@ function setupProjectPanelTabs() {
   const tabs = [
     { button: els.projectPanelTabProject, panel: els.projectPanelProject },
     { button: els.projectPanelTabFiles, panel: els.projectPanelFiles },
-    { button: els.projectPanelTabDocs, panel: els.projectPanelDocs }
+    { button: els.projectPanelTabDocs, panel: els.projectPanelDocs },
+    { button: els.projectPanelTabAssistant, panel: els.projectPanelAssistant }
   ];
   if (tabs.some((tab) => !tab.button || !tab.panel)) return;
 
@@ -359,6 +367,7 @@ function setupProjectPanelTabs() {
       tab.panel.classList.toggle("hidden", !active);
     }
     if (targetButton === els.projectPanelTabDocs) void ensureDocsUi();
+    if (targetButton === els.projectPanelTabAssistant) void ensureAssistantUi();
   }
 
   for (const tab of tabs) {
@@ -431,7 +440,7 @@ function refreshExampleBrowserUi() {
 
 function currentExamplesRevision() {
   const pageVersion = new URLSearchParams(window.location.search || "").get("v") || "";
-  return pageVersion || "20260802-spinner-consume";
+  return pageVersion || "20260811-dacman2-graphics";
 }
 
 function preloadExamplesCatalog() {
@@ -507,7 +516,7 @@ async function dsoundBytesToPreviewSamples(...args) {
 
 function loadInternalCompilerModule() {
   if (!internalCompilerModulePromise) {
-    internalCompilerModulePromise = import("./core/internalCompilerClient.js?v=20260828-library-bundle");
+    internalCompilerModulePromise = import("./core/internalCompilerClient.js?v=20260827-compile-worker");
   }
   return internalCompilerModulePromise;
 }
@@ -891,7 +900,9 @@ const {
   upsertProjectFile,
   removeProjectFile,
   renderProjectFiles,
-  addImportedProjectFiles
+  addImportedProjectFiles,
+  inspectSourceSoundTables,
+  openSourceSoundInspector
 } = createProjectFileUiHelpers({
   els,
   getProject: () => project,
@@ -917,6 +928,15 @@ const {
   ...projectFileAddons
 });
 
+els.btnInspectSourceSounds?.addEventListener("click", () => {
+  const analysis = inspectSourceSoundTables(els.sourceEditor.value);
+  if (!analysis) {
+    setStatus("No BIOS sound table found in source.");
+    return;
+  }
+  openSourceSoundInspector(analysis);
+});
+
 window.__amyStudioGraphicsEditors = {
   open: openGraphicsEditorsFromProject,
   create: createEditorsJsonProjectFile,
@@ -926,7 +946,7 @@ window.__amyStudioGraphicsEditors = {
 let docsUiPromise = null;
 function ensureDocsUi() {
   if (!docsUiPromise) {
-    docsUiPromise = import("./core/docsUi.js?v=20260723-lazy-docs").then((module) => {
+    docsUiPromise = import("./core/docsUi.js?v=20260903-tools-gallery").then((module) => {
       const docsUi = module.createDocsUi({
         els,
         setStatus: (...args) => setStatus(...args)
@@ -936,6 +956,55 @@ function ensureDocsUi() {
     });
   }
   return docsUiPromise;
+}
+
+let assistantUiPromise = null;
+function ensureAssistantUi() {
+  if (!assistantUiPromise) {
+    assistantUiPromise = import("./core/assistantUi.js?v=20260819-readonly-project-lab2").then((module) => {
+      const assistantUi = module.createAssistantUi({
+        els,
+        openDocument: async (docId, query) => {
+          els.projectPanelTabDocs.click();
+          await ensureDocsUi();
+          els.docsSelect.value = docId;
+          els.docsSearch.value = query || "";
+          els.docsSelect.dispatchEvent(new Event("change"));
+        },
+        inspectExample: async (exampleId) => {
+          await ensureExamplesLoaded({ forceFresh: false });
+          renderExamplePicker();
+          els.exampleSelect.value = exampleId;
+          renderExampleMeta(exampleId);
+          els.examplesDialog.showModal();
+        },
+        openExample: async (exampleId) => {
+          const example = await getExampleById(exampleId);
+          if (!example) throw new Error(`Unknown example: ${exampleId}`);
+          const nextProject = buildProjectFromExample(example);
+          nextProject.exampleId = example.id;
+          const result = openExampleInTab(nextProject, { clean: true });
+          setStatus(result.reused ? `Example already open: ${example.label}` : `Opened example: ${example.label}`);
+        },
+        getProject: () => project,
+        goToSourceLine: (lineNumber) => {
+          const lines = els.sourceEditor.value.split("\n");
+          const line = Math.max(1, Math.min(lines.length, Number(lineNumber) || 1));
+          const start = lines.slice(0, line - 1).reduce((total, value) => total + value.length + 1, 0);
+          const end = start + (lines[line - 1]?.length || 0);
+          els.sourceEditor.focus();
+          els.sourceEditor.setSelectionRange(start, end);
+          const lineHeight = parseFloat(getComputedStyle(els.sourceEditor).lineHeight) || 20;
+          els.sourceEditor.scrollTop = Math.max(0, (line - 4) * lineHeight);
+        },
+        showProjectFiles: () => els.projectPanelTabFiles?.click(),
+        setStatus: (...args) => setStatus(...args)
+      });
+      assistantUi.bind();
+      return assistantUi;
+    });
+  }
+  return assistantUiPromise;
 }
 
 const {

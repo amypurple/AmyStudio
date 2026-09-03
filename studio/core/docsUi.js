@@ -1,4 +1,4 @@
-const DOCS = [
+export const DOCS = [
   {
     id: "language",
     label: "Language Reference",
@@ -30,9 +30,29 @@ const DOCS = [
     path: "../docs/graphics-workflow.md"
   },
   {
+    id: "audio-workflow",
+    label: "Audio Workflow",
+    path: "../docs/audio-workflow.md"
+  },
+  {
+    id: "studio-tools",
+    label: "Studio Tools Gallery",
+    path: "../docs/amy-studio-tools-gallery.md"
+  },
+  {
+    id: "wav-psg",
+    label: "WAV to PSG Reconstruction",
+    path: "../docs/legacy-wav-to-coleco-psg-reconstruction.md"
+  },
+  {
     id: "rom-testing",
     label: "ROM Testing & Debug",
     path: "../docs/rom-runtime-testing.md"
+  },
+  {
+    id: "assistant-catalog",
+    label: "Assistant Command Catalog",
+    path: "../docs/amy-studio-assistant-command-catalog.md"
   },
   {
     id: "heritage",
@@ -58,6 +78,21 @@ const DOCS = [
     id: "quality",
     label: "Development Quality Pipeline",
     path: "../docs/development-quality-pipeline.md"
+  },
+  {
+    id: "memory-map",
+    label: "ColecoVision Memory Map",
+    path: "../docs/colecovision-memory-map.md"
+  },
+  {
+    id: "game-flow",
+    label: "Game Flow Conventions",
+    path: "../docs/colecovision-game-flow-conventions.md"
+  },
+  {
+    id: "javascript",
+    label: "JavaScript Integration",
+    path: "../docs/javascript-integration.md"
   }
 ];
 
@@ -70,7 +105,20 @@ function escapeHtml(value) {
 }
 
 function inlineMarkdown(text) {
-  return escapeHtml(text)
+  const images = [];
+  const withImageTokens = String(text ?? "").replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, src) => {
+    const raw = String(src || "").trim();
+    if (!raw || /^[A-Za-z]:[\\/]/.test(raw)) return "";
+    const href = /^(?:https?:|data:)/i.test(raw)
+      ? raw
+      : raw.startsWith("../") || raw.startsWith("./")
+        ? raw
+        : `../docs/${raw.replace(/^docs\//, "")}`;
+    const token = `AMYDOCIMAGE${images.length}TOKEN`;
+    images.push(`<img class="docs-image" src="${escapeHtml(href)}" alt="${escapeHtml(alt)}" loading="lazy" />`);
+    return token;
+  });
+  let html = escapeHtml(withImageTokens)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
@@ -80,6 +128,10 @@ function inlineMarkdown(text) {
       if (link.external) attrs.push('target="_blank"', 'rel="noreferrer"');
       return `<a ${attrs.join(" ")}>${escapeHtml(label)}</a>`;
     });
+  images.forEach((image, index) => {
+    html = html.replace(`AMYDOCIMAGE${index}TOKEN`, image);
+  });
+  return html;
 }
 
 function normalizeDocHref(href) {

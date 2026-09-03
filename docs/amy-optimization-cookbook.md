@@ -1,33 +1,10 @@
 # Amy Optimization Cookbook
 
+For the visual path to each Studio editor, importer, sound tool, compression comparison, and debugger, see the [Studio Tools Gallery](amy-studio-tools-gallery.md). The gallery documents where each tool is reached and the UI checks required before its output is trusted.
+
 Amy encourages readable game code, but the same result can often be expressed with different ROM-size, RAM, and execution-time tradeoffs. This guide shows practical progressions: begin with the clearest form, measure, then select a more data-driven form when it benefits the game.
 
 The generated Z80 and exact byte count can change with context and optimizer level. Compile the real project and use ROM TEST & DEBUG when timing matters.
-
-## Optimization profiles
-
-- **Off:** no optimization; best for exact ASM debugging.
-- **Safe:** conservative local peepholes only.
-- **Balanced:** recommended; local folds and branch shortening without speculative reuse.
-- **Aggressive:** adds speculative register reuse and header RST reuse; verify the ROM.
-- **Experimental:** adds hazardous reuse, dead-code removal, inlining, and eligible IX-frame stripping; test carefully.
-
-A higher profile does not guarantee a smaller ROM. Global initializers are preserved because ASM, indirect access, symbols, and debugger watches may observe them even without a direct Amy read.
-
-New optimizer rules are introduced in Aggressive and promoted only after ROM,
-output, and debugger-map validation. Balanced remains the recommended default.
-
-Register-pair shortening is conservative: writing either half of a pair invalidates
-knowledge about the full pair. For example, changing `H` prevents reuse of an older
-known `HL` address when compiling an indexed array access.
-
-Aggressive also removes locally proven redundant low-byte zero reloads. Calls,
-labels, control transfers, ASM barriers, and writes to the register cancel the
-optimization.
-
-Aggressive can remove a short register-pair save/restore when enclosed
-instructions only read that pair. Writes, stack access, calls, branches, labels,
-exchanges, and block instructions preserve the original `PUSH`/`POP`.
 
 ## Initializing an array of records
 
@@ -256,7 +233,7 @@ Grouping consecutive RAM or VRAM work can save setup and address calculations, b
 - Perform long VRAM updates with an explicit safe ownership plan.
 - Test both NTSC and PAL when work approaches a frame budget.
 
-The transpiler can remove some redundant state commands when control flow and inline ASM are understood. Do not rely on an optimization that has not been proven for the relevant control-flow path.
+The transpiler can remove some redundant state commands when control flow and inline ASM are understood. The cookbook should not encourage programmers to rely on an optimization that has not been proven for their control-flow path.
 
 ## Protect direct VRAM manipulation
 
@@ -318,7 +295,6 @@ The smallest file is not always the smallest ROM, and the smallest ROM is not al
 Code that runs once at level load should favor correctness and compactness. Code that runs for every actor every frame may justify tables, byte-sized arithmetic, cheaper indexing, a bulk operation, or a specialized routine.
 
 Use the routine cycle profiler to identify the hot path before rewriting it. Its result is inclusive of nested calls; separate main execution from NMI/IRQ time and compare the total against both NTSC and PAL frame budgets.
-
 ## Replacing repeated decisions with lookup tables
 
 A chain that selects constants from a small, fixed mapping often costs more ROM than its data:
