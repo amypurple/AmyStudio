@@ -144,6 +144,11 @@ try {
       `document.querySelector(".sound-table-inspector-modal")?.textContent.includes("SpaceTrainerSoundTable") === true`,
       "source sound-table inspector"
     );
+    await evaluate(`(() => {
+      const envelope = document.querySelector('[data-sound-field="envelope"] select');
+      envelope.value = "Echo tail";
+      envelope.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
     await evaluate(`Array.from(document.querySelectorAll(".sound-command-builder button")).find((button) => button.textContent.includes("Listen"))?.click()`);
     await waitFor(
       `Array.from(document.querySelectorAll(".sound-command-builder button")).some((button) => button.textContent.includes("Playing"))`,

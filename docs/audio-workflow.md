@@ -13,6 +13,8 @@ Amy Studio currently supports three playback families, plus one historical recon
 
 Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Existing tools and legacy data can be imported, validated, and hand-optimized, but Amy Studio does not yet provide a finished integrated visual BIOS sound composer.
 
+The source sound inspector includes a small command authoring preview. `Echo tail` models a sustained note followed by a quieter tail: a volume-sweep step of `+3` is approximately -6 dB, and a BIOS sweep count of `2` means one transition because the count includes the initial volume. The first-transition delay is a four-bit value, so a single-command echo can hold its main volume for only 1..16 frames. Longer musical echoes need multiple commands or another sound-table area.
+
 DSound is not the WAV-to-notes converter. It preserves a short waveform as digital amplitude samples. Amy's historical `WAV2CV3` instead uses FFT analysis to extract dominant frequencies and strengths over time, then produces ordinary PSG tone commands that can coexist with gameplay. See [Legacy WAV to ColecoVision PSG Reconstruction](legacy-wav-to-coleco-psg-reconstruction.md).
 
 ## PSG Music and Sound Effects (lib4ksa)

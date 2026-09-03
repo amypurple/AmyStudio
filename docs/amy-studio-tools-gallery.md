@@ -25,6 +25,8 @@ This capture verifies that the inspector fits at 1440x1000 and keeps its close c
 
 To reproduce it, open `PROJECT` > `Browse` > `Space Trainer`, then choose `SOURCE` > `SOUND`. Music-box projects also expose their included ASM sound files from `FILES`.
 
+The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail holds the main volume, then drops by about 6 dB for the remaining frames. It uses one six-byte BIOS command when the main section is at most 16 frames; the tool rejects larger values rather than silently emitting a different effect.
+
 ## Project Files
 
 Open `FILES` to reach tools attached to individual project resources.

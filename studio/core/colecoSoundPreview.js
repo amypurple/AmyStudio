@@ -5,16 +5,23 @@ function amplitudeForAttenuation(attenuation) {
   return 0.24 * (10 ** ((-2 * attenuation) / 20));
 }
 
-function scheduleVolume(gain, event, start, frameSeconds) {
+function volumeEnvelopeForEvent(event) {
   let attenuation = event.attenuation ?? 15;
-  gain.setValueAtTime(amplitudeForAttenuation(attenuation), start);
+  const points = [{ frame: 0, attenuation }];
   const sweep = event.volumeSweep;
-  if (!sweep) return;
+  if (!sweep) return points;
   let frame = sweep.firstLength;
-  for (let index = 0; index < sweep.count && frame < event.length; index += 1) {
-    attenuation = Math.min(15, attenuation + sweep.step);
-    gain.setValueAtTime(amplitudeForAttenuation(attenuation), start + (frame * frameSeconds));
+  for (let index = 1; index < sweep.count && frame < event.length; index += 1) {
+    attenuation = (attenuation + sweep.step) & 0x0f;
+    points.push({ frame, attenuation });
     frame += sweep.stepLength;
+  }
+  return points;
+}
+
+function scheduleVolume(gain, event, start, frameSeconds) {
+  for (const point of volumeEnvelopeForEvent(event)) {
+    gain.setValueAtTime(amplitudeForAttenuation(point.attenuation), start + (point.frame * frameSeconds));
   }
 }
 
@@ -93,4 +100,4 @@ export async function previewColecoSoundEvents(events, { region = "NTSC" } = {})
   await context.close();
 }
 
-export { amplitudeForAttenuation };
+export { amplitudeForAttenuation, volumeEnvelopeForEvent };

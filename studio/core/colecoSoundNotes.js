@@ -161,6 +161,33 @@ export function buildColecoToneNote(options) {
   };
 }
 
+export function buildColecoEchoTone({ note, octave, channel = 1, volume = 15, mainFrames = 12, tailFrames = 8, drop = 3, region = "NTSC" }) {
+  if (!Number.isInteger(mainFrames) || mainFrames < 1 || mainFrames > 16) {
+    throw new Error("A single-command echo needs 1..16 main frames.");
+  }
+  if (!Number.isInteger(tailFrames) || tailFrames < 1 || mainFrames + tailFrames > 256) {
+    throw new Error("Echo tail must keep the total duration within 256 frames.");
+  }
+  if (!Number.isInteger(volume) || volume < 1 || volume > 15) throw new Error("Echo volume must be 1..15.");
+  if (!Number.isInteger(drop) || drop < 1 || drop > 15) throw new Error("Echo drop must be 1..15 attenuation steps.");
+  const attenuation = 15 - volume;
+  if (attenuation + drop > 15) throw new Error("Echo tail would wrap the hardware attenuation.");
+  const bytes = encodeToneCommand({
+    channel,
+    period: notePeriod(note, octave, region),
+    attenuation,
+    length: mainFrames + tailFrames,
+    volumeSweep: { step: drop, count: 2, stepLength: 16, firstLength: mainFrames }
+  });
+  const decoded = decodeColecoSoundStream([...bytes, 0x50]);
+  return {
+    bytes,
+    asm: formatColecoSoundBytes(bytes),
+    event: decoded.events[0],
+    description: `${describeColecoSoundEvent(decoded.events[0], { region })} · echo tail ${tailFrames} frames · one BIOS command`
+  };
+}
+
 export function encodeBassNote({ note, octave, length, region = "NTSC", lfsr = 15, volume = 15, fade = false }) {
   if (![15, 16].includes(lfsr)) throw new Error("Bass LFSR must be 15 or 16.");
   if (!Number.isInteger(length) || length < 1 || length > 256) throw new Error("Sound length must be 1..256.");

@@ -4,7 +4,7 @@ import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./grap
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-address-expressions";
-import { buildColecoBassNote, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js";
+import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js";
 import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-command-preview";
 
 export function createProjectFileUiHelpers({
@@ -2605,6 +2605,8 @@ export function createProjectFileUiHelpers({
     builder.className = "graphics-editor-modal__item sound-command-builder";
     const builderHeading = document.createElement("strong");
     builderHeading.textContent = "Tone command preview";
+    const builderHeader = document.createElement("div");
+    builderHeader.className = "sound-command-builder__header";
     const controls = document.createElement("div");
     controls.className = "sound-command-builder__controls";
     const fields = [
@@ -2614,9 +2616,10 @@ export function createProjectFileUiHelpers({
       ["Channel", "number", null, "1"],
       ["Volume", "number", null, "15"],
       ["Frames", "number", null, "12"],
+      ["Tail frames", "number", null, "8"],
       ["Noise", "select", COLECO_NOISE_MODES.map((name, index) => `${index}: ${name}`), `4: ${COLECO_NOISE_MODES[4]}`],
       ["Region", "select", ["NTSC", "PAL"], "NTSC"],
-      ["Envelope", "select", ["Steady", "Fade out"], "Steady"]
+      ["Envelope", "select", ["Steady", "Fade out", "Echo tail"], "Steady"]
     ];
     const inputs = {};
     const fieldLabels = {};
@@ -2648,7 +2651,7 @@ export function createProjectFileUiHelpers({
     playPreview.type = "button";
     playPreview.textContent = "▶ Listen";
     playPreview.title = "Preview through SN76489-compatible synthesis";
-    controls.appendChild(playPreview);
+    builderHeader.append(builderHeading, playPreview);
     const preview = document.createElement("pre");
     const previewDescription = document.createElement("span");
     let currentPreview = null;
@@ -2658,6 +2661,8 @@ export function createProjectFileUiHelpers({
       fieldLabels.octave.hidden = mode === "Noise";
       fieldLabels.channel.hidden = mode !== "Tone";
       fieldLabels.noise.hidden = mode !== "Noise";
+      fieldLabels["tail frames"].hidden = inputs.envelope.value !== "Echo tail";
+      fieldLabels.frames.firstChild.nodeValue = inputs.envelope.value === "Echo tail" ? "Main frames" : "Frames";
     }
     function updateTonePreview() {
       try {
@@ -2672,7 +2677,11 @@ export function createProjectFileUiHelpers({
           region: inputs.region.value,
           fade: inputs.envelope.value === "Fade out"
         };
-        const result = inputs.mode.value === "Bass"
+        const result = inputs.envelope.value === "Echo tail" && inputs.mode.value === "Tone"
+          ? buildColecoEchoTone({ ...options, mainFrames: options.length, tailFrames: Number(inputs["tail frames"].value) })
+          : inputs.envelope.value === "Echo tail"
+            ? (() => { throw new Error("Echo tail currently applies to Tone mode."); })()
+          : inputs.mode.value === "Bass"
           ? buildColecoBassNote(options)
           : inputs.mode.value === "Noise"
             ? buildColecoNoise(options)
@@ -2703,7 +2712,7 @@ export function createProjectFileUiHelpers({
     });
     controls.addEventListener("input", updateTonePreview);
     updateTonePreview();
-    builder.append(builderHeading, controls, preview, previewDescription);
+    builder.append(builderHeader, controls, preview, previewDescription);
     const list = document.createElement("div");
     list.className = "graphics-editor-modal__list";
     for (const table of analysis.tables) {
