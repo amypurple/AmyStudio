@@ -1127,11 +1127,61 @@ export function transpileAmyCore(sourceText, deps) {
     });
     return { ok: true, lines, arrays, localArrays };
   }
+  function lowerMetaspriteData(sourceLines) {
+    const definitions = new Map();
+    const lowered = [];
+    let active = null;
+    for (const rawLine of sourceLines) {
+      const line = stripAmyInlineComment(rawLine).trim();
+      if (!active) {
+        const start = line.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+metasprite\s+layers\s+(.+)$/i);
+        if (!start) {
+          lowered.push(rawLine);
+          continue;
+        }
+        const layers = Number(resolveEarlyNumericConstant(start[2], collectEarlyNumericConstants(sourceLines)));
+        if (!Number.isInteger(layers) || layers < 1 || layers > 4) {
+          throw new Error(`Metasprite ${start[1]} requires a constant layer count from 1 to 4.`);
+        }
+        active = { name: start[1], layers, frames: 0 };
+        lowered.push(`data ${start[1]} bytes`);
+        continue;
+      }
+      if (/^end\s+data$/i.test(line)) {
+        if (!active.frames) throw new Error(`Metasprite ${active.name} must contain at least one frame.`);
+        definitions.set(active.name.toLowerCase(), { ...active });
+        lowered.push("end data");
+        active = null;
+        continue;
+      }
+      if (!line || line.startsWith("'") || line.startsWith(";")) {
+        lowered.push(rawLine);
+        continue;
+      }
+      const frame = line.match(/^frame\s+(.+)$/i);
+      if (!frame) throw new Error(`Metasprite ${active.name} expects 'frame pattern,color, ...' or 'end data'.`);
+      const values = frame[1].split(",").map((value) => value.trim()).filter(Boolean);
+      if (values.length !== active.layers * 2) {
+        throw new Error(`Metasprite ${active.name} frame ${active.frames} requires ${active.layers} pattern/color pairs.`);
+      }
+      active.frames += 1;
+      lowered.push(`  ${values.join(",")}`);
+    }
+    if (active) throw new Error(`Metasprite ${active.name} is missing 'end data'.`);
+    return { lines: lowered, definitions };
+  }
+
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
+  let metaspriteLowering;
+  try {
+    metaspriteLowering = lowerMetaspriteData(conditionalPrepass.lines);
+  } catch (error) {
+    return { ok: false, asmBody: "", log: error instanceof Error ? error.message : String(error) };
+  }
   let twoDimensionalLowering;
   try {
-    twoDimensionalLowering = lowerTwoDimensionalArrays(conditionalPrepass.lines);
+    twoDimensionalLowering = lowerTwoDimensionalArrays(metaspriteLowering.lines);
   } catch (error) {
     return { ok: false, asmBody: "", log: error instanceof Error ? error.message : String(error) };
   }
@@ -4519,6 +4569,64 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const setMetasprite = line.match(/^set\s+metasprite\s+([A-Za-z_][A-Za-z0-9_]*)\s+frame\s+(.+?)\s+to\s+(.+?)\s*,\s*(.+?)\s+using\s+sprite\s+(.+)$/i);
+      if (setMetasprite) {
+        const definition = metaspriteLowering.definitions.get(setMetasprite[1].toLowerCase());
+        if (!definition) return { ok: false, asmBody: "", log: `Unknown metasprite data '${setMetasprite[1]}': ${rawLine}` };
+        const firstSprite = tryEvaluateConstantExpression(setMetasprite[5]);
+        if (!Number.isInteger(firstSprite) || firstSprite < 0 || firstSprite + definition.layers > 32) {
+          return { ok: false, asmBody: "", log: `set metasprite requires a constant sprite range within 0..31: ${rawLine}` };
+        }
+        const frameConstant = tryEvaluateConstantExpression(setMetasprite[2]);
+        if (Number.isInteger(frameConstant) && (frameConstant < 0 || frameConstant >= definition.frames)) {
+          return { ok: false, asmBody: "", log: `Metasprite ${definition.name} frame ${frameConstant} is outside 0..${definition.frames - 1}.` };
+        }
+        const loadY = emitLoadInt8ValueIntoPreserving("b", setMetasprite[3], []);
+        const loadX = emitLoadInt8ValueIntoPreserving("c", setMetasprite[4], ["b"]);
+        const loadFrame = emitLoadInt8ValueIntoPreserving("a", setMetasprite[2], ["b", "c"]);
+        if (!loadY || !loadX || !loadFrame) {
+          return { ok: false, asmBody: "", log: `set metasprite requires byte-sized frame and coordinates: ${rawLine}` };
+        }
+        const stride = definition.layers * 2;
+        const scaleFrame = stride === 2 ? ["    add a,a"]
+          : stride === 4 ? ["    add a,a", "    add a,a"]
+            : stride === 6 ? ["    ld e,a", "    add a,a", "    add a,e", "    add a,a"]
+              : ["    add a,a", "    add a,a", "    add a,a"];
+        const loopLabel = makeGeneratedLabel("METASPRITE_LOOP");
+        body.push(
+          ...loadY,
+          ...loadX,
+          ...loadFrame,
+          ...scaleFrame,
+          "    ld e,a",
+          "    ld d,0",
+          `    ld hl,AMY_UDATA_${definition.name}`,
+          "    add hl,de",
+          "    push ix",
+          "    push hl",
+          "    pop ix",
+          `    ld hl,AMY_SPRITE_TABLE+${firstSprite * 4}`,
+          `    ld d,${definition.layers}`,
+          `${loopLabel}:`,
+          "    ld (hl),b",
+          "    inc hl",
+          "    ld (hl),c",
+          "    inc hl",
+          "    ld a,(ix+0)",
+          "    ld (hl),a",
+          "    inc hl",
+          "    ld a,(ix+1)",
+          "    ld (hl),a",
+          "    inc hl",
+          "    inc ix",
+          "    inc ix",
+          "    dec d",
+          `    jr nz,${loopLabel}`,
+          "    pop ix"
+        );
+        continue;
+      }
+
       const displayGraphicsSpriteStmt = handleDisplayGraphicsSpriteStatement({
         line,
         rawLine,
@@ -4526,6 +4634,7 @@ export function transpileAmyCore(sourceText, deps) {
         currentGraphicsMode,
         emitLoadInt8Into,
         emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving,
         tryEvaluateConstantExpression,
         formatHex16,
         makeGeneratedLabel,

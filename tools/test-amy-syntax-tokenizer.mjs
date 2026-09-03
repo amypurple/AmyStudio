@@ -181,6 +181,8 @@ for (const [source, expected] of [
   ["set sprite 0 pattern bit 1 on", ["pattern", "bit"]],
   ["sprites flicker on", ["sprites", "flicker", "on"]],
   ["sprites stable 0 to 2", ["sprites", "stable"]],
+  ["data PlayerMeta metasprite layers 3", ["data", "metasprite", "layers"]],
+  ["set metasprite PlayerMeta frame Frame to Y,X using sprite 0", ["set", "metasprite", "frame", "to", "using", "sprite"]],
   ["if joypad(1).fire.pressed then", ["pressed"]],
   ["if joypad(1).fire.released then", ["released"]],
   ["debug breakpoint \"loop\"", ["debug", "breakpoint"]],

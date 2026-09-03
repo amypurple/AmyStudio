@@ -3,6 +3,7 @@ export const AMY_FIXED_PHRASES = Object.freeze([
   ["screen on","vdp"],["screen off","vdp"],["display on","vdp"],["display off","vdp"],["nmi on","vdp"],["nmi off","vdp"],
   ["swap screens","vdp"],["sprites simple","vdp"],["sprites double","vdp"],["sprites magnified","vdp"],
   ["sprites flicker on","vdp"],["sprites flicker off","vdp"],["sprites stable","vdp"],
+  ["set metasprite","vdp"],
   ["wait fire","keyword"],["wait no fire","keyword"],["pause until press","keyword"],["pause until press and release","keyword"],["sleep after","keyword"],["choose menu","keyword"],["choose keypad","keyword"],
   ["sound runtime on","keyword"],["sound runtime off","keyword"],["stop all","keyword"],["mute all","keyword"],["loop forever","keyword"],
   ["state machine","keyword"],["end state machine","keyword"],["on enter","keyword"],["on frame","keyword"],

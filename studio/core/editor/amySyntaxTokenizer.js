@@ -6,7 +6,7 @@ const KEYWORDS = new Set([
   "decompress", "define", "disable", "display", "do", "downto",
   "each", "else", "elseif", "enable", "end", "enter", "exit", "false", "fill", "fire",
   "for", "forever", "frame", "from", "function", "goto", "graphics", "hide",
-  "hitbox", "if", "in", "include", "loop", "memory", "mute",
+  "hitbox", "if", "in", "include", "layers", "loop", "memory", "metasprite", "mute",
   "next", "nmi", "not", "on", "or", "overlay", "pause", "picture", "play", "print", "put",
   "raw", "read", "record", "ref", "repeat", "reset", "restore", "return",
   "scene", "screen", "select", "set", "show", "song", "sound", "sprite", "sprite16",
@@ -46,7 +46,7 @@ const CONTEXTUAL_IDENTIFIERS = new Set([
 
 const VDP_KEYWORDS = new Set([
   "bitmap", "circle", "cls", "display", "graphics", "hitbox", "line", "nmi",
-  "picture", "plot", "preset", "pset", "screen", "show", "sprite", "sprite16",
+  "metasprite", "picture", "plot", "preset", "pset", "screen", "show", "sprite", "sprite16",
   "sprites", "vdp", "vpoke", "vpeek", "vram", "wipe"
 ]);
 

@@ -2357,6 +2357,28 @@ update sprites
 update sprites from 4 count 4
 ```
 
+One logical actor may use up to four consecutive hardware sprites without
+duplicating its renderer:
+
+```basic
+data PlayerMeta metasprite layers 3
+  frame 0,15, 4,11, 8,1
+  frame 12,15, 16,11, 20,1
+end data
+
+set metasprite PlayerMeta frame AnimationFrame to PlayerY,PlayerX using sprite 0
+update sprites
+```
+
+Each frame contains one `Pattern,Color` pair per layer. Layers are written in
+source order to consecutive SAT entries, so the first layer has the highest
+TMS9918 priority. The layer count and first sprite are compile-time constants;
+the frame and coordinates are byte expressions. Constant frames and sprite
+ranges are checked at compile time. Rendering is synchronous, allocates no RAM,
+does not update VRAM, and performs no hidden NMI work. Call `update sprites`
+normally after changing the shadow table. Keep every layer inside a protected
+`sprites stable` range when sprite flicker is enabled.
+
 Literal sprite indexes must be in `0..31`; an out-of-range literal is a compile error. The full setter, single-field setters/getters, `hide sprite`, and named-hitbox collision operands accept byte-sized runtime index expressions. Constant forms still fold to direct shadow-table addresses. Multi-sprite field lists and partial clear/update ranges remain constant-only compile-time operations.
 
 After changing shadow entries, call `update sprites`.  
