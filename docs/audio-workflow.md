@@ -11,7 +11,7 @@ Amy Studio currently supports three playback families, plus one historical recon
 | Short digital voice or sampled audio | DSound / `play dsound` |
 | Reconstruct WAV audio as editable PSG notes | historical WAV2CV FFT pipeline; planned Studio tool |
 
-Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Amy Studio now provides an incremental sequence editor inside the source sound inspector; full song arrangement remains future work.
+Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Amy Studio provides a Sound FX editor inside the source sound inspector: select a command, change its note/noise, channel, volume, duration or envelope, audition it, replace it, then play and save the complete sequence. Existing advanced sweep commands remain byte-exact unless deliberately replaced. Full song arrangement remains future work.
 
 The source sound inspector includes a small command authoring preview. `Echo tail` models a sustained note followed by a quieter tail: a volume-sweep step of `+3` is approximately -6 dB, and a BIOS sweep count of `2` means one transition because the count includes the initial volume. The first-transition delay is a four-bit value, so a single-command echo can hold its main volume for only 1..16 frames. Longer musical echoes need multiple commands or another sound-table area.
 

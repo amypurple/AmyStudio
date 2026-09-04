@@ -2628,7 +2628,7 @@ export function createProjectFileUiHelpers({
     const controls = document.createElement("div");
     controls.className = "sound-command-builder__controls";
     const fields = [
-      ["Mode", "select", ["Tone", "Bass", "Noise"], "Tone"],
+      ["Mode", "select", ["Tone", "Bass", "Noise", "Rest"], "Tone"],
       ["Note", "select", ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"], "A"],
       ["Octave", "number", null, "4"],
       ["Channel", "number", null, "1"],
@@ -2689,11 +2689,14 @@ export function createProjectFileUiHelpers({
     let lastMidiNote = null;
     function updateVisibleToneFields() {
       const mode = inputs.mode.value;
-      fieldLabels.note.hidden = mode === "Noise";
-      fieldLabels.octave.hidden = mode === "Noise";
-      fieldLabels.channel.hidden = mode !== "Tone";
+      const pitched = mode === "Tone" || mode === "Bass";
+      fieldLabels.note.hidden = !pitched;
+      fieldLabels.octave.hidden = !pitched;
+      fieldLabels.channel.hidden = mode !== "Tone" && mode !== "Rest";
+      fieldLabels.volume.hidden = mode === "Rest";
       fieldLabels.noise.hidden = mode !== "Noise";
-      fieldLabels["tail frames"].hidden = inputs.envelope.value !== "Echo tail";
+      fieldLabels.envelope.hidden = mode === "Rest";
+      fieldLabels["tail frames"].hidden = mode === "Rest" || inputs.envelope.value !== "Echo tail";
       fieldLabels.frames.firstChild.nodeValue = inputs.envelope.value === "Echo tail" ? "Main frames" : "Frames";
     }
     function updateTonePreview() {
@@ -2709,7 +2712,18 @@ export function createProjectFileUiHelpers({
           region: inputs.region.value,
           fade: inputs.envelope.value === "Fade out"
         };
-        const result = inputs.envelope.value === "Echo tail" && inputs.mode.value === "Tone"
+        const result = inputs.mode.value === "Rest"
+          ? (() => {
+              const channel = Number(inputs.channel.value);
+              const length = Number(inputs.frames.value);
+              if (!Number.isInteger(channel) || channel < 0 || channel > 3) throw new Error("Rest channel must be 0..3.");
+              if (!Number.isInteger(length) || (length > 31 && length !== 256) || length < 1) {
+                throw new Error("A BIOS rest must last 1..31 or 256 frames.");
+              }
+              const event = { type: "rest", channel, length, bytes: [(channel << 6) | 0x20 | (length === 256 ? 0 : length)] };
+              return { asm: `$${event.bytes[0].toString(16).toUpperCase().padStart(2, "0")}`, description: describeColecoSoundEvent(event), event };
+            })()
+          : inputs.envelope.value === "Echo tail" && inputs.mode.value === "Tone"
           ? buildColecoEchoTone({ ...options, mainFrames: options.length, tailFrames: Number(inputs["tail frames"].value) })
           : inputs.envelope.value === "Echo tail"
             ? (() => { throw new Error("Echo tail currently applies to Tone mode."); })()
@@ -3092,6 +3106,7 @@ export function createProjectFileUiHelpers({
         return button;
       };
       const addButton = action("+ Add", "Insert the command composer result after the selection");
+      const replaceButton = action("Replace selected", "Replace the selected command with the composer result");
       const duplicateButton = action("Duplicate", "Duplicate the selected sound command");
       const recordButton = action("Record MIDI", "Append each released MIDI note to the sequence");
       const endButton = action("End (stop)", "Stop playback after the final command");
@@ -3099,12 +3114,72 @@ export function createProjectFileUiHelpers({
       const upButton = action("↑", "Move selected command up");
       const downButton = action("↓", "Move selected command down");
       const deleteButton = action("−", "Delete selected command");
-      const listenButton = action("▶ Listen");
+      const listenButton = action("▶ Play", "Play the complete sound effect");
+      const pauseSequenceButton = action("Ⅱ Pause", "Pause or resume the sound effect");
+      const stopSequenceButton = action("■ Stop", "Stop the sound effect");
+      pauseSequenceButton.disabled = true;
+      stopSequenceButton.disabled = true;
       const saveButton = action("Save");
       const cancelButton = action("Cancel");
+      const editActions = document.createElement("div");
+      editActions.className = "sound-sequence-editor__action-group";
+      editActions.append(addButton, replaceButton, duplicateButton, upButton, downButton, deleteButton);
+      const playbackActions = document.createElement("div");
+      playbackActions.className = "sound-sequence-editor__action-group is-transport";
+      playbackActions.append(listenButton, pauseSequenceButton, stopSequenceButton);
+      const fileActions = document.createElement("div");
+      fileActions.className = "sound-sequence-editor__action-group";
+      fileActions.append(recordButton, endButton, repeatButton, saveButton, cancelButton);
+      editorActions.append(editActions, playbackActions, fileActions);
       function showEditorError(error) {
         editorError.textContent = error?.message || String(error);
         editorError.hidden = false;
+      }
+      function nearestTone(period) {
+        let best = null;
+        for (let octave = 0; octave <= 8; octave += 1) {
+          for (const noteName of ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]) {
+            try {
+              const candidate = buildColecoToneNote({ note: noteName, octave, channel: 1, volume: 15, length: 1, region: inputs.region.value }).event;
+              const error = Math.abs(candidate.period - period);
+              if (!best || error < best.error) best = { noteName, octave, error };
+            } catch {}
+          }
+        }
+        return best;
+      }
+      function loadSelectedCommand() {
+        const event = events[selected];
+        replaceButton.disabled = true;
+        if (!event || ["end", "repeat", "tiny"].includes(event.type)) return;
+        if (event.type === "rest") {
+          inputs.mode.value = "Rest";
+          inputs.channel.value = String(event.channel);
+          inputs.frames.value = String(event.length);
+        } else if (event.type === "note" && event.channel === 0) {
+          inputs.mode.value = "Noise";
+          inputs.noise.value = `${event.noise}: ${COLECO_NOISE_MODES[event.noise]}`;
+          inputs.volume.value = String(15 - event.attenuation);
+          inputs.frames.value = String(event.length);
+          inputs.envelope.value = "Steady";
+        } else if (event.type === "note" && event.channel > 0) {
+          const closest = nearestTone(event.period);
+          if (!closest) return;
+          inputs.mode.value = "Tone";
+          inputs.note.value = closest.noteName;
+          inputs.octave.value = String(closest.octave);
+          inputs.channel.value = String(event.channel);
+          inputs.volume.value = String(15 - event.attenuation);
+          inputs.frames.value = String(event.length);
+          inputs.envelope.value = "Steady";
+        } else {
+          editorNote.textContent = `${ownershipNote} This sweep can be played and reordered, but the simple editor will not rewrite it approximately.`;
+          updateTonePreview();
+          return;
+        }
+        editorNote.textContent = `${ownershipNote} Edit the selected command, preview it, then replace it.`;
+        updateTonePreview();
+        replaceButton.disabled = !currentPreview?.length;
       }
       function renderEvents() {
         eventList.textContent = "";
@@ -3130,7 +3205,7 @@ export function createProjectFileUiHelpers({
           duration.className = "sound-sequence-editor__duration";
           duration.style.setProperty("--sound-duration", `${Math.max(terminal ? 1 : event.length || 1, 1)}`);
           button.append(position, description, duration);
-          button.addEventListener("click", () => { selected = index; renderEvents(); });
+          button.addEventListener("click", () => { selected = index; renderEvents(); loadSelectedCommand(); });
           eventList.appendChild(button);
           if (!terminal) frame += event.length || 0;
         });
@@ -3141,6 +3216,7 @@ export function createProjectFileUiHelpers({
         downButton.disabled = selected < 0 || selected >= events.length - 1 || selectedIsTerminal || nextIsTerminal;
         deleteButton.disabled = selected < 0;
         duplicateButton.disabled = selected < 0 || selectedIsTerminal;
+        replaceButton.disabled = selected < 0 || selectedIsTerminal;
         listenButton.disabled = !events.length;
       }
       function insertCommands(commands) {
@@ -3151,6 +3227,13 @@ export function createProjectFileUiHelpers({
         renderEvents();
       }
       addButton.addEventListener("click", () => insertCommands(currentPreview));
+      replaceButton.addEventListener("click", () => {
+        if (selected < 0 || !currentPreview?.length) return;
+        events.splice(selected, 1, ...currentPreview.map((event) => ({ ...event, bytes: [...event.bytes] })));
+        selected += currentPreview.length - 1;
+        renderEvents();
+        loadSelectedCommand();
+      });
       duplicateButton.addEventListener("click", () => insertCommands([events[selected]]));
       recordButton.addEventListener("click", () => {
         if (!midiConnection) {
@@ -3181,9 +3264,36 @@ export function createProjectFileUiHelpers({
       deleteButton.addEventListener("click", () => { events.splice(selected, 1); selected = Math.min(selected, events.length - 1); renderEvents(); });
       listenButton.addEventListener("click", async () => {
         const audible = scheduleColecoSoundSequence(events);
-        try { await previewColecoSoundEvents(audible, { region: inputs.region.value }); }
-        catch (error) { showEditorError(error); }
+        let playback = null;
+        try {
+          await activeSoundPreview?.stop();
+          playback = await startColecoSoundPreview(audible, { region: inputs.region.value });
+          activeSoundPreview = playback;
+          listenButton.disabled = true;
+          pauseSequenceButton.disabled = false;
+          stopSequenceButton.disabled = false;
+          await playback.done;
+        } catch (error) {
+          showEditorError(error);
+        } finally {
+          if (!playback || activeSoundPreview === playback) activeSoundPreview = null;
+          listenButton.disabled = !events.length;
+          pauseSequenceButton.disabled = true;
+          pauseSequenceButton.textContent = "Ⅱ Pause";
+          stopSequenceButton.disabled = true;
+        }
       });
+      pauseSequenceButton.addEventListener("click", async () => {
+        if (!activeSoundPreview) return;
+        if (activeSoundPreview.isPaused()) {
+          await activeSoundPreview.resume();
+          pauseSequenceButton.textContent = "Ⅱ Pause";
+        } else {
+          await activeSoundPreview.pause();
+          pauseSequenceButton.textContent = "▶ Resume";
+        }
+      });
+      stopSequenceButton.addEventListener("click", () => activeSoundPreview?.stop());
       saveButton.addEventListener("click", () => {
         try {
           const result = replaceColecoSoundSegment(analysis.source, sound.label, events);
@@ -3194,6 +3304,7 @@ export function createProjectFileUiHelpers({
       });
       const closeSequenceEditor = () => {
         if (activeMidiRecorder === insertCommands) activeMidiRecorder = null;
+        activeSoundPreview?.stop();
         panel.appendChild(builder);
         builder.hidden = true;
         list.hidden = false;
@@ -3205,6 +3316,7 @@ export function createProjectFileUiHelpers({
       cancelButton.addEventListener("click", closeSequenceEditor);
       editorBackdrop.addEventListener("click", (event) => { if (event.target === editorBackdrop) closeSequenceEditor(); });
       renderEvents();
+      loadSelectedCommand();
       editor.append(editorHeader, editorNote, builder, timelineSummary, eventList, editorError, editorActions);
       editorBackdrop.appendChild(editor);
       document.body.appendChild(editorBackdrop);
