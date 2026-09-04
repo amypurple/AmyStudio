@@ -8,7 +8,7 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { describeTinySoundCommand, replaceTinySoundByte, tinyNoteChoices } from "./colecoTinySound.js?v=20260904-tiny-pitch-edit";
+import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, tinyNoteChoices } from "./colecoTinySound.js?v=20260904-tiny-pitch-playback";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2904,6 +2904,7 @@ export function createProjectFileUiHelpers({
           const source = replaceTinySoundByte(analysis.source, selectedNote.voice.label, byteIndex, choice.code);
           saveSoundSource(source);
           analysis.source = source;
+          selectedNote.voice.stream.tiny = decodeTinySoundSource(source, selectedNote.voice.label, { region: inputs.region.value });
           selectedNote.command.code = choice.code;
           selectedNote.command.period = choice.period;
           selectedNote.command.name = choice.name;

@@ -63,7 +63,12 @@ assert.equal(choices[0].code, 4);
 assert.equal(choices[0].period, 0x03f8);
 const editedSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 5, 0x20);
 assert.match(editedSource, /db \$08,\$02,\$60,\$19,\$22,\$20,\$00,\$1E,\$01,\$FF/);
-assert.equal(decodeTinySoundSource(editedSource, "brinquitos_music_gladiators_ch1").commands[1].code, 0x20);
+const editedDecoded = decodeTinySoundSource(editedSource, "brinquitos_music_gladiators_ch1");
+assert.equal(editedDecoded.commands[1].code, 0x20);
+assert.equal(editedDecoded.previewEvents[0].period, tinyNoteChoices().find((choice) => choice.code === 0x20).period,
+  "full-sequence playback data must use the edited pitch");
+assert.notEqual(editedDecoded.previewEvents[0].period, decodeTinySoundSource(fixture, "brinquitos_music_gladiators_ch1").previewEvents[0].period,
+  "edited playback must not retain the cached original pitch");
 assert.equal(editedSource.replace("$20", "$1F"), fixture, "surgical edit preserves every unrelated source character");
 assert.throws(() => replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 999, 4), /was not found/);
 
