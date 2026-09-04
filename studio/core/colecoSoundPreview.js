@@ -66,34 +66,35 @@ export async function previewColecoSoundEvents(events, { region = "NTSC" } = {})
   let longest = 0;
   for (const event of playable) {
     const duration = event.length * frameSeconds;
-    longest = Math.max(longest, duration);
+    const eventStart = start + ((event.startFrame || 0) * frameSeconds);
+    longest = Math.max(longest, ((event.startFrame || 0) * frameSeconds) + duration);
     const gain = context.createGain();
-    scheduleVolume(gain.gain, event, start, frameSeconds);
+    scheduleVolume(gain.gain, event, eventStart, frameSeconds);
     gain.connect(context.destination);
     if (event.channel === 0) {
       const source = context.createBufferSource();
       source.buffer = makeNoiseBuffer(context, event, duration, region, tone3Period);
       source.connect(gain);
-      source.start(start);
-      source.stop(start + duration);
+      source.start(eventStart);
+      source.stop(eventStart + duration);
     } else {
       const oscillator = context.createOscillator();
       oscillator.type = "square";
       const clock = CLOCKS[region] || CLOCKS.NTSC;
       let period = event.period;
-      oscillator.frequency.setValueAtTime(clock / (32 * period), start);
+      oscillator.frequency.setValueAtTime(clock / (32 * period), eventStart);
       const sweep = event.frequencySweep;
       if (sweep) {
         let frame = sweep.firstLength;
         while (frame < event.length) {
           period = Math.max(1, Math.min(1023, period + sweep.step));
-          oscillator.frequency.setValueAtTime(clock / (32 * period), start + (frame * frameSeconds));
+          oscillator.frequency.setValueAtTime(clock / (32 * period), eventStart + (frame * frameSeconds));
           frame += sweep.stepLength;
         }
       }
       oscillator.connect(gain);
-      oscillator.start(start);
-      oscillator.stop(start + duration);
+      oscillator.start(eventStart);
+      oscillator.stop(eventStart + duration);
     }
   }
   await new Promise((resolve) => setTimeout(resolve, Math.ceil((longest + 0.05) * 1000)));

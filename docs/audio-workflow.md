@@ -11,11 +11,13 @@ Amy Studio currently supports three playback families, plus one historical recon
 | Short digital voice or sampled audio | DSound / `play dsound` |
 | Reconstruct WAV audio as editable PSG notes | historical WAV2CV FFT pipeline; planned Studio tool |
 
-Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Existing tools and legacy data can be imported, validated, and hand-optimized, but Amy Studio does not yet provide a finished integrated visual BIOS sound composer.
+Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Amy Studio now provides an incremental sequence editor inside the source sound inspector; full song arrangement remains future work.
 
 The source sound inspector includes a small command authoring preview. `Echo tail` models a sustained note followed by a quieter tail: a volume-sweep step of `+3` is approximately -6 dB, and a BIOS sweep count of `2` means one transition because the count includes the initial volume. The first-transition delay is a four-bit value, so a single-command echo can hold its main volume for only 1..16 frames. Longer musical echoes need multiple commands or another sound-table area.
 
 The preview can accept Note On and Note Off messages from a Web MIDI keyboard. MIDI note number selects note/octave, velocity selects Coleco volume 1..15, and held time becomes a deterministic PAL/NTSC frame count when the key is released. The browser asks for access only after `MIDI` is pressed. A held note saturates at the BIOS command limit of 256 frames; one-command echo capture is capped at its 16-frame initial-delay limit.
+
+Open `SOURCE` > `SOUND`, expand a table entry, then choose `Edit sequence`. Commands can be auditioned, inserted from the tone preview, reordered, deleted, and terminated with `End` or `Repeat`. Saving rewrites only that label's `db`/`.db`/`defb` rows. If the label intentionally falls through to a shared tail, the tail remains byte-exact. The editor rejects multiple terminals, commands after a terminal, standalone unterminated data, and segments containing unreachable trailing bytes.
 
 DSound is not the WAV-to-notes converter. It preserves a short waveform as digital amplitude samples. Amy's historical `WAV2CV3` instead uses FFT analysis to extract dominant frequencies and strengths over time, then produces ordinary PSG tone commands that can coexist with gameplay. See [Legacy WAV to ColecoVision PSG Reconstruction](legacy-wav-to-coleco-psg-reconstruction.md).
 
@@ -230,6 +232,8 @@ ornaments such as vibrato or arpeggio-like behavior.
 - the runtime automatically keeps `AMY_FRAME_COUNTER` active when tiny sound is present
 - Commando sample status: working
 - status note: tiny sound support is almost perfect; one known bug remains inside the historical tiny sound routine itself and is intentionally deferred for a later fix
+- the Studio sound inspector decodes tempo, instrument, notes, sustain, silence, drums, special notes, and loops; it can audition one Tiny Sound channel or matching `_ch1`/`_ch2` pairs
+- Tiny Sound editing remains read-only until byte-exact round-trip tests cover the complete historical format
 
 ### Integration rules
 
@@ -371,8 +375,7 @@ for (let i = 15; i >= 0; i--) {
 
 ### Conversion tool
 
-Original tool: `C:\Users\Amy\Desktop\Novembre\programmes en VB\wav2cvds\`
-(Visual Basic 6, authored by Amy Bienvenu)
+Original tool: Amy's historical `wav2cvds` Visual Basic 6 project.
 
 Two versions exist:
 - `wav2cvds` — v1: RLE nibble compression, direct AY-3-8910 quantization

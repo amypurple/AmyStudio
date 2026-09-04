@@ -1,3 +1,6 @@
+import { decodeColecoSoundStream } from "./colecoSoundNotes.js";
+import { decodeTinySoundSource } from "./colecoTinySound.js";
+
 function stripComment(line) {
   return String(line || "").replace(/;.*/, "");
 }
@@ -64,6 +67,23 @@ function decodeStreamAtLabel(lines, labelInfo) {
   }
 }
 
+function decodeTinyAtLabel(source, label) {
+  try {
+    const tiny = decodeTinySoundSource(source, label);
+    return {
+      status: "valid",
+      format: "tiny",
+      events: tiny.commands,
+      eventCount: tiny.commands.length,
+      byteCount: tiny.bytes.length + 4,
+      terminal: tiny.loop ? "loop" : "end",
+      tiny
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function inspectSoundTableSource(sourceText, { base = 0x702b, stride = 10 } = {}) {
   const source = String(sourceText || "");
   const lines = source.split(/\r?\n/);
@@ -115,7 +135,7 @@ export function inspectSoundTableSource(sourceText, { base = 0x702b, stride = 10
       if (entry.area === null) diagnostics.push(`${table.name}: entry ${entry.index} uses unaligned area $${hex4(entry.address)}.`);
       if (!labels.has(entry.label.toLowerCase())) diagnostics.push(`${table.name}: missing sound label ${entry.label}.`);
       const labelInfo = labels.get(entry.label.toLowerCase());
-      entry.stream = labelInfo ? decodeStreamAtLabel(lines, labelInfo) : null;
+      entry.stream = labelInfo ? (decodeTinyAtLabel(source, entry.label) || decodeStreamAtLabel(lines, labelInfo)) : null;
       if (entry.stream && entry.stream.status !== "valid") {
         diagnostics.push(`${table.name}: entry ${entry.index} ${entry.label} is ${entry.stream.status}${entry.stream.error ? ` (${entry.stream.error})` : ""}.`);
       }
@@ -151,4 +171,3 @@ export function inspectProjectSoundFile(file, bytes = null) {
   const analysis = inspectSoundTableSource(text);
   return analysis.tables.length ? analysis : null;
 }
-import { decodeColecoSoundStream } from "./colecoSoundNotes.js";

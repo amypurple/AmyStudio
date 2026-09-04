@@ -3,10 +3,12 @@ import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
-import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-address-expressions";
+import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-tiny-sound-inspector";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260903-echo-tail";
-import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-bios-sweep-count";
+import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-tiny-sound-timeline";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
+import { createColecoSoundTerminal, decodeColecoSoundSegment, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequence-editor2";
+import { describeTinySoundCommand } from "./colecoTinySound.js?v=20260903-tiny-inspector";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2601,7 +2603,7 @@ export function createProjectFileUiHelpers({
     header.append(title, close);
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "Read-only BIOS table inspection. Slot order is the play sound index; higher sound-area addresses have higher priority.";
+    note.textContent = "Inspect and audition BIOS or Tiny Sound entries. Slot order is the play sound index; higher sound-area addresses have higher priority.";
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     const builderHeading = document.createElement("strong");
@@ -2771,6 +2773,136 @@ export function createProjectFileUiHelpers({
     controls.addEventListener("input", updateTonePreview);
     updateTonePreview();
     builder.append(builderHeader, midiStatus, controls, preview, previewDescription);
+    function saveSoundSource(source) {
+      if (entry.path === "Amy source") {
+        commitProjectSourceText(source);
+        setStatus("Saved sound sequence to Amy source.");
+        return;
+      }
+      upsertProjectFile({
+        ...entry,
+        text: undefined,
+        base64: bytesToBase64(new TextEncoder().encode(source))
+      });
+      setStatus(`Saved sound sequence to ${entry.path}.`);
+    }
+    function openSequenceEditor(sound) {
+      let segment;
+      try {
+        segment = decodeColecoSoundSegment(analysis.source, sound.label);
+      } catch (error) {
+        setStatus(error.message || String(error));
+        return;
+      }
+      let events = [...segment.events];
+      let selected = events.length ? 0 : -1;
+      const editorBackdrop = document.createElement("div");
+      editorBackdrop.className = "graphics-editor-modal-backdrop";
+      const editor = document.createElement("section");
+      editor.className = "graphics-editor-modal graphics-editor-json-modal sound-sequence-editor-modal";
+      const editorHeader = document.createElement("div");
+      editorHeader.className = "graphics-editor-modal__header";
+      const editorTitle = document.createElement("h3");
+      editorTitle.textContent = `Sequence · ${sound.label}`;
+      const editorClose = document.createElement("button");
+      editorClose.type = "button";
+      editorClose.className = "graphics-editor-modal__close";
+      editorClose.textContent = "✕";
+      editorClose.setAttribute("aria-label", "Close sequence editor");
+      editorHeader.append(editorTitle, editorClose);
+      const editorNote = document.createElement("p");
+      editorNote.className = "graphics-editor-modal__note";
+      editorNote.textContent = segment.sharedTailLabel
+        ? `Editing only ${sound.label}'s prefix. Shared tail ${segment.sharedTailLabel} remains byte-exact.`
+        : "Editing this label's complete byte segment.";
+      const eventList = document.createElement("div");
+      eventList.className = "graphics-editor-modal__list sound-sequence-editor__events";
+      const editorError = document.createElement("p");
+      editorError.className = "graphics-editor-json-modal__error";
+      editorError.hidden = true;
+      const editorActions = document.createElement("div");
+      editorActions.className = "graphics-editor-json-modal__actions";
+      const action = (label, title = label) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.title = title;
+        editorActions.appendChild(button);
+        return button;
+      };
+      const addButton = action("+ Command", "Append the command from Tone command preview");
+      const endButton = action("End", "End after the selected label");
+      const repeatButton = action("Repeat", "Repeat the selected label");
+      const upButton = action("↑", "Move selected command up");
+      const downButton = action("↓", "Move selected command down");
+      const deleteButton = action("−", "Delete selected command");
+      const listenButton = action("▶ Listen");
+      const saveButton = action("Save");
+      const cancelButton = action("Cancel");
+      function showEditorError(error) {
+        editorError.textContent = error?.message || String(error);
+        editorError.hidden = false;
+      }
+      function renderEvents() {
+        eventList.textContent = "";
+        events.forEach((event, index) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "graphics-editor-modal__item";
+          button.classList.toggle("is-selected", index === selected);
+          button.textContent = `${index + 1}. ${describeColecoSoundEvent(event, { region: inputs.region.value })}`;
+          button.addEventListener("click", () => { selected = index; renderEvents(); });
+          eventList.appendChild(button);
+        });
+        if (!events.length) eventList.textContent = "No commands in this segment.";
+        upButton.disabled = selected <= 0;
+        downButton.disabled = selected < 0 || selected >= events.length - 1;
+        deleteButton.disabled = selected < 0;
+        listenButton.disabled = !events.length;
+      }
+      addButton.addEventListener("click", () => {
+        if (!currentPreview?.length) return;
+        const terminal = events.findIndex((event) => ["end", "repeat", "tiny"].includes(event.type));
+        const insertion = terminal >= 0 ? terminal : events.length;
+        events.splice(insertion, 0, ...currentPreview.map((event) => ({ ...event, bytes: [...event.bytes] })));
+        selected = insertion;
+        renderEvents();
+      });
+      function setTerminal(type) {
+        const terminal = events.findIndex((event) => ["end", "repeat", "tiny"].includes(event.type));
+        const audible = events.filter((event) => !["end", "repeat", "tiny"].includes(event.type));
+        const channel = audible.at(-1)?.channel ?? 1;
+        events = [...audible, createColecoSoundTerminal(type, channel)];
+        selected = events.length - 1;
+        renderEvents();
+      }
+      endButton.addEventListener("click", () => setTerminal("end"));
+      repeatButton.addEventListener("click", () => setTerminal("repeat"));
+      upButton.addEventListener("click", () => { events = moveColecoSoundEvent(events, selected, selected - 1); selected -= 1; renderEvents(); });
+      downButton.addEventListener("click", () => { events = moveColecoSoundEvent(events, selected, selected + 1); selected += 1; renderEvents(); });
+      deleteButton.addEventListener("click", () => { events.splice(selected, 1); selected = Math.min(selected, events.length - 1); renderEvents(); });
+      listenButton.addEventListener("click", async () => {
+        const audible = events.filter((event) => !["end", "repeat", "tiny"].includes(event.type));
+        try { await previewColecoSoundEvents(audible, { region: inputs.region.value }); }
+        catch (error) { showEditorError(error); }
+      });
+      saveButton.addEventListener("click", () => {
+        try {
+          const result = replaceColecoSoundSegment(analysis.source, sound.label, events);
+          saveSoundSource(result.source);
+          editorBackdrop.remove();
+          closeInspector();
+        } catch (error) { showEditorError(error); }
+      });
+      const closeSequenceEditor = () => editorBackdrop.remove();
+      editorClose.addEventListener("click", closeSequenceEditor);
+      cancelButton.addEventListener("click", closeSequenceEditor);
+      editorBackdrop.addEventListener("click", (event) => { if (event.target === editorBackdrop) closeSequenceEditor(); });
+      renderEvents();
+      editor.append(editorHeader, editorNote, eventList, editorError, editorActions);
+      editorBackdrop.appendChild(editor);
+      document.body.appendChild(editorBackdrop);
+    }
     const list = document.createElement("div");
     list.className = "graphics-editor-modal__list";
     for (const table of analysis.tables) {
@@ -2783,19 +2915,71 @@ export function createProjectFileUiHelpers({
       for (const sound of table.entries) {
         if (sound.priority) priorityUses.set(sound.priority, (priorityUses.get(sound.priority) || 0) + 1);
       }
+      const soundsByLabel = new Map(table.entries.map((sound) => [sound.label.toLowerCase(), sound]));
       for (const sound of table.entries) {
         const details = document.createElement("details");
         const summary = document.createElement("summary");
         summary.textContent = `${sound.index}. ${sound.label} · area ${sound.area ?? "?"}` +
           `${sound.priority ? ` · priority ${sound.priority}${priorityUses.get(sound.priority) > 1 ? " shared" : ""}` : ""}` +
-          `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
+          `${sound.stream?.status === "valid" ? ` · ${sound.stream.format === "tiny" ? "Tiny · " : ""}${sound.stream.eventCount} commands` : ""}`;
         details.appendChild(summary);
         if (sound.stream?.status === "valid") {
           const commands = document.createElement("pre");
           commands.textContent = sound.stream.events.map((event, index) =>
-            `${String(index + 1).padStart(2, " ")}  ${describeColecoSoundEvent(event)}`
+            `${String(index + 1).padStart(2, " ")}  ${sound.stream.format === "tiny" ? describeTinySoundCommand(event) : describeColecoSoundEvent(event)}`
           ).join("\n");
           details.appendChild(commands);
+          const listenExisting = document.createElement("button");
+          listenExisting.type = "button";
+          listenExisting.textContent = sound.stream.format === "tiny" ? "▶ Listen Tiny channel" : "▶ Listen sound";
+          listenExisting.addEventListener("click", async () => {
+            try {
+              const playable = sound.stream.format === "tiny"
+                ? sound.stream.tiny.previewEvents
+                : (() => {
+                    let startFrame = 0;
+                    return sound.stream.events.flatMap((event) => {
+                      if (["end", "repeat", "tiny"].includes(event.type)) return [];
+                      const scheduled = { ...event, startFrame };
+                      startFrame += event.length || 0;
+                      return [scheduled];
+                    });
+                  })();
+              await previewColecoSoundEvents(playable, { region: inputs.region.value });
+            } catch (error) {
+              setStatus(error.message || String(error));
+            }
+          });
+          details.appendChild(listenExisting);
+          const pairMatch = sound.stream.format === "tiny" ? sound.label.match(/^(.*)_ch1$/i) : null;
+          const pairedSound = pairMatch ? soundsByLabel.get(`${pairMatch[1]}_ch2`.toLowerCase()) : null;
+          if (pairedSound?.stream?.format === "tiny") {
+            const listenPair = document.createElement("button");
+            listenPair.type = "button";
+            listenPair.textContent = "▶ Listen Tiny pair";
+            listenPair.addEventListener("click", async () => {
+              try {
+                await previewColecoSoundEvents([
+                  ...sound.stream.tiny.previewEvents,
+                  ...pairedSound.stream.tiny.previewEvents
+                ], { region: inputs.region.value });
+              } catch (error) {
+                setStatus(error.message || String(error));
+              }
+            });
+            details.appendChild(listenPair);
+          }
+        }
+        if (sound.stream?.format === "tiny") {
+          const readOnly = document.createElement("span");
+          readOnly.textContent = "Tiny Sound sequence · read-only";
+          details.appendChild(readOnly);
+        } else {
+          const editSequence = document.createElement("button");
+          editSequence.type = "button";
+          editSequence.textContent = "Edit sequence";
+          editSequence.addEventListener("click", () => openSequenceEditor(sound));
+          details.appendChild(editSequence);
         }
         item.appendChild(details);
       }

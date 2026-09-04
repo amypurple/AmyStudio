@@ -13,7 +13,7 @@ This guide answers three questions for every user-facing tool: where it is, what
 | Compile ROM | Top toolbar compile icon | Build the active project and retain its ROM while switching project tabs. |
 | ROM Test & Debug | Top toolbar run/debug icon | Run the compiled ROM, inspect execution, use breakpoints, rewind, controls, and disassembly. |
 
-The sound inspector is read-only. Its numbered rows match `play sound N`; its area address reports BIOS priority and is not a second sound index.
+The sound inspector explains each table entry and opens a focused sequence editor. Its numbered rows match `play sound N`; its area address reports BIOS priority and is not a second sound index.
 
 ### BIOS Sound Inspector
 
@@ -28,6 +28,10 @@ To reproduce it, open `PROJECT` > `Browse` > `Space Trainer`, then choose `SOURC
 The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail holds the main volume, then drops by about 6 dB for the remaining frames. It uses one six-byte BIOS command when the main section is at most 16 frames; the tool rejects larger values rather than silently emitting a different effect.
 
 Choose `MIDI` to authorize a connected keyboard through Web MIDI. Note On selects note, octave and velocity; Note Off converts the held time to PAL/NTSC frames, updates the BIOS command, then auditions it. MIDI requires HTTPS or localhost and browser permission. Durations saturate at 256 frames, or 16 main frames for a one-command `Echo tail`.
+
+Expand a sound and choose `Edit sequence` to insert the previewed command, reorder commands, listen, choose `End` or `Repeat`, and save to Amy source or an embedded ASM file. Shared-tail labels are not flattened or duplicated. Invalid terminal placement is rejected before source data changes.
+
+Tiny Sound entries show their tempo, instrument, musical notes, sustain, silence, special commands, and loop instead of the misleading single `Tiny` command. `Listen Tiny channel` auditions one channel; matching `_ch1` and `_ch2` labels also offer `Listen Tiny pair`. Tiny data remains read-only while its full historical format receives round-trip coverage.
 
 ## Project Files
 
@@ -72,7 +76,7 @@ The picture/resource import dialog compares the codecs bundled by the current St
 
 | Tool | Open it | Purpose |
 | --- | --- | --- |
-| BIOS sound inspector | `SOURCE` > `SOUND`, or sound action in `FILES` | Explain existing table data without rewriting it. |
+| BIOS sound inspector | `SOURCE` > `SOUND`, or sound action in `FILES` | Inspect and safely edit one sound-label sequence. |
 | Tone preview | Top of the sound inspector | Generate one legal tone, bass, or noise command for comparison and authoring. |
 | WAV to DSOUND | Burger menu audio workflow | Convert sampled WAV audio into ColecoVision digitized playback data. |
 | DSOUND preview | `.dsound` file action | Listen to the encoded sample before compiling it into a ROM. |
