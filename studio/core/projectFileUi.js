@@ -3065,17 +3065,37 @@ export function createProjectFileUiHelpers({
           const listenExisting = document.createElement("button");
           listenExisting.type = "button";
           listenExisting.textContent = sound.stream.format === "tiny" ? "▶ Listen Tiny channel" : "▶ Listen sound";
+          const stopExisting = document.createElement("button");
+          stopExisting.type = "button";
+          stopExisting.textContent = "■ Stop";
+          stopExisting.disabled = true;
           listenExisting.addEventListener("click", async () => {
+            let playback = null;
             try {
               const playable = sound.stream.format === "tiny"
                 ? sound.stream.tiny.previewEvents
                 : scheduleColecoSoundSequence(sound.stream.events);
-              await previewColecoSoundEvents(playable, { region: inputs.region.value });
+              await activeSoundPreview?.stop();
+              playback = await startColecoSoundPreview(playable, { region: inputs.region.value });
+              activeSoundPreview = playback;
+              listenExisting.disabled = true;
+              stopExisting.disabled = false;
+              await playback.done;
             } catch (error) {
               setStatus(error.message || String(error));
+            } finally {
+              if (!playback || activeSoundPreview === playback) {
+                activeSoundPreview = null;
+                listenExisting.disabled = false;
+                stopExisting.disabled = true;
+              }
             }
           });
-          details.appendChild(listenExisting);
+          stopExisting.addEventListener("click", () => activeSoundPreview?.stop());
+          const existingTransport = document.createElement("span");
+          existingTransport.className = "sound-sequence-transport";
+          existingTransport.append(listenExisting, stopExisting);
+          details.appendChild(existingTransport);
           const pairMatch = sound.stream.format === "tiny" ? sound.label.match(/^(.*)_ch1$/i) : null;
           const pairedSound = pairMatch ? soundsByLabel.get(`${pairMatch[1]}_ch2`.toLowerCase()) : null;
           if (pairedSound?.stream?.format === "tiny") {

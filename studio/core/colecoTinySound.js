@@ -34,9 +34,12 @@ function parseDb(line) {
   return values.every((value) => Number.isInteger(value) && value >= 0 && value <= 255) ? values : null;
 }
 
-function noteIndex(code) {
-  const value = code & 0x3f;
-  return ((((value - 1) & 0x3f) * 2) + 1) % TINY_NOTE_PERIODS.length;
+export function tinyNoteIndex(code) {
+  return ((((code - 4) & 0x3f) * 2) + 1) % TINY_NOTE_PERIODS.length;
+}
+
+export function tinyNoteHasArpeggio(code) {
+  return (((code - 4) & 0x40) !== 0);
 }
 
 function noteName(period, region = "NTSC") {
@@ -121,7 +124,7 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     if (code === 0x03) {
       const values = take(7, commandOffset);
       const period = values[0] | ((values[1] & 0x03) << 8);
-      const event = { type: "note", channel: stream.channel, period, attenuation: values[1] >> 4, length: values[2] || 256, startFrame: frame };
+      const event = { type: "note", channel: stream.channel, period, attenuation: values[1] >> 4, length: tempo, startFrame: frame };
       commands.push({ type: "special-note", code, offset: commandOffset, values, period, ...noteName(period, region), startFrame: frame, frames: event.length });
       previewEvents.push(event);
       lastNote = event;
@@ -136,9 +139,9 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
       frame += tempo;
       continue;
     }
-    const arpeggio = (code & 0x40) !== 0;
+    const arpeggio = tinyNoteHasArpeggio(code);
     const arpeggioCode = arpeggio ? take(1, commandOffset)[0] : null;
-    const period = TINY_NOTE_PERIODS[noteIndex(code)];
+    const period = TINY_NOTE_PERIODS[tinyNoteIndex(code)];
     const named = noteName(period, region);
     const event = { type: "note", channel: stream.channel, period, attenuation, length: tempo, startFrame: frame };
     commands.push({ type: "note", code, offset: commandOffset, period, ...named, startFrame: frame, frames: tempo, arpeggioCode });

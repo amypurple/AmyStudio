@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, tinyNoteHasArpeggio, tinyNoteIndex } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -40,6 +40,22 @@ assert.ok(decoded.previewEvents.every((event, index, events) => index === 0 || e
 assert.ok(decoded.commands.every((command) => Number.isInteger(command.startFrame)));
 assert.equal(decoded.commands.at(-1).startFrame, decoded.totalFrames);
 assert.match(describeTinySoundCommand(decoded.commands[1]), /Hz/);
+assert.equal(tinyNoteIndex(0x1f), 55, "ordinary note follows the runtime's code-minus-four indexing");
+assert.equal(tinyNoteIndex(0x40), 9, "note indexing wraps the low six bits like the runtime");
+assert.equal(tinyNoteHasArpeggio(0x40), false);
+assert.equal(tinyNoteHasArpeggio(0x44), true);
+assert.equal(tinyNoteHasArpeggio(0x80), true);
+
+const special = decodeTinySoundSource(`Special:\n db $44\n dw sndtiny_1\n db $08,$03,$10,$20,$31,$40,$50,$60,$70,$01,$FF`, "Special");
+assert.equal(special.commands[0].type, "special-note");
+assert.equal(special.commands[0].frames, 8, "$03 lasts for the stream tempo, not its third register byte");
+assert.equal(special.commands[1].startFrame, 8);
+
+const noBoundaryArpeggio = decodeTinySoundSource(`NoArp:\n db $44\n dw sndtiny_1\n db $08,$40,$01,$FF`, "NoArp");
+assert.deepEqual(noBoundaryArpeggio.commands.map((command) => command.type), ["note", "silence", "loop"]);
+const boundaryArpeggio = decodeTinySoundSource(`Arp:\n db $44\n dw sndtiny_1\n db $08,$80,$10,$01,$FF`, "Arp");
+assert.deepEqual(boundaryArpeggio.commands.map((command) => command.type), ["note", "silence", "loop"]);
+assert.equal(boundaryArpeggio.commands[0].arpeggioCode, 0x10);
 
 const inspected = inspectSoundTableSource(source);
 const tinyEntry = inspected.tables[0].entries.find((entry) => entry.label === "brinquitos_music_gladiators_ch1");
