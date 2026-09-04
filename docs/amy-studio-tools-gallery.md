@@ -13,7 +13,7 @@ This guide answers three questions for every user-facing tool: where it is, what
 | Compile ROM | Top toolbar compile icon | Build the active project and retain its ROM while switching project tabs. |
 | ROM Test & Debug | Top toolbar run/debug icon | Run the compiled ROM, inspect execution, use breakpoints, rewind, controls, and disassembly. |
 
-The Sound & Music workspace opens as a compact library. If no table exists, `SOUND` opens a human-controlled creator for Music/SFX names, area count, and BIOS slot assignment. Select an existing BIOS effect and choose `Edit` to change or drag individual commands, including exact periods, 256-frame durations, and frequency/volume sweeps. Commands and complete effects can be auditioned before saving. Tiny Sound pairs open in the multichannel sequencer. `Composer` and optional `Technical` details stay separate from normal work. Numbered rows match `play sound N`; area addresses report BIOS priority, not another sound index.
+The Sound & Music workspace opens as a compact library. If no table exists, `SOUND` opens a human-controlled creator for Music/SFX names, area count, and BIOS slot assignment. Existing tables offer `+ Sound`, including a clear warning when the chosen slot is shared. Select a BIOS effect and choose `Edit` to change or drag individual commands, including exact periods, 256-frame durations, and frequency/volume sweeps. Commands and complete effects can be auditioned before saving. Tiny Sound pairs open in the multichannel sequencer. `Composer` and optional `Technical` details stay separate from normal work. Numbered rows match `play sound N`; area addresses report BIOS priority, not another sound index.
 
 ### BIOS Sound Inspector
 

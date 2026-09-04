@@ -47,3 +47,26 @@ export function insertColecoSoundTableSource(sourceText, built) {
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   return `${lines.join(newline).replace(/\s*$/, "")}${newline}${newline}${built.asm}${newline}`;
 }
+
+export function addColecoSoundToTableSource(sourceText, { tableName, soundName, role = "sfx", slot }) {
+  const source = String(sourceText || "");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName || "")) throw new Error("Sound table name must be an Amy identifier.");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(soundName || "")) throw new Error("Sound name must be an Amy identifier.");
+  if (!Number.isInteger(slot) || slot < 1 || slot > 8) throw new Error("Sound slot must be 1..8.");
+  if (new RegExp(`^\\s*${soundName}\\s*:`, "im").test(source)) throw new Error(`Sound label ${soundName} already exists.`);
+  const lines = source.split(/\r?\n/);
+  const tableLine = lines.findIndex((line) => new RegExp(`^\\s*${tableName}\\s*:\\s*(?:;.*)?$`, "i").test(line));
+  if (tableLine < 0) throw new Error(`Sound table ${tableName} was not found.`);
+  let insertion = tableLine + 1;
+  while (insertion < lines.length && (/^\s*(?:\.?dw|defw)\b/i.test(lines[insertion]) || /^\s*(?:;.*)?$/.test(lines[insertion]))) insertion += 1;
+  const indent = lines.slice(tableLine + 1, insertion).find((line) => /\S/.test(line))?.match(/^\s*/)?.[0] || "    ";
+  const address = colecoSoundAreaAddress(slot).toString(16).toUpperCase().padStart(4, "0");
+  lines.splice(insertion, 0,
+    `${indent}dw ${soundName},$${address} ; ${role === "music" ? "music" : "sfx"} · slot ${slot}`,
+    "",
+    `${soundName}:`,
+    `${indent}db $50`,
+    ""
+  );
+  return lines.join(source.includes("\r\n") ? "\r\n" : "\n");
+}

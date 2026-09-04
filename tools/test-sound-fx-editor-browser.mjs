@@ -111,6 +111,20 @@ try {
   assert.match(created, /dw MusicVoice1,\$702B ; music · slot 1/);
   assert.match(created, /dw SoundEffect1,\$705D ; sfx · slot 6/);
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
+  await evaluate(`document.getElementById("btnInspectSourceSounds").click()`);
+  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created sound library");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ Sound").click()`);
+  await waitFor(`document.querySelector(".sound-add-modal")`, "add sound dialog");
+  await evaluate(`(() => {
+    const name = document.querySelector('.sound-add-modal input');
+    name.value = "ExtraSound";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    Array.from(document.querySelectorAll(".sound-add-modal button")).find((button) => button.textContent === "Add sound").click();
+  })()`);
+  await waitFor(`!document.querySelector(".sound-add-modal") && !document.querySelector(".sound-table-inspector-modal")`, "existing table update");
+  const extended = await evaluate(`document.getElementById("sourceEditor").value`);
+  assert.match(extended, /dw ExtraSound,\$705D ; sfx · slot 6/);
+  assert.match(extended, /ExtraSound:\n    db \$50/);
   const fixture = `SoundTable:\n    dw TestSfx,$703F\nTestSfx:\n    db $40,$6B,$00,$02,$50\n`;
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");

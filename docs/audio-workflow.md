@@ -15,6 +15,8 @@ Coleco BIOS sound composition remains technical because its compact commands dir
 
 If the project has no BIOS sound table, choose `SOUND` to open **New Sound Table**. Set the table name and number of sound slots, add Music and SFX rows, and choose every slot yourself. Early slots are recommended for simultaneous music voices; later slots are convenient for effects. Sounds sharing one slot intentionally interrupt each other. `Create table` inserts the initialization in `sub start` when present and adds editable, silent sound labels to the source.
 
+For an existing table, open `SOUND` and choose `+ Sound`. Select its table, role and BIOS slot before confirming. Amy Studio reports whether the slot is free or which sounds already occupy it. The new entry and its silent editable label are inserted without regenerating the existing expert ASM.
+
 The source sound inspector includes a small command authoring preview. `Echo tail` models a sustained note followed by a quieter tail: a volume-sweep step of `+3` is approximately -6 dB, and a BIOS sweep count of `2` means one transition because the count includes the initial volume. The first-transition delay is a four-bit value, so a single-command echo can hold its main volume for only 1..16 frames. Longer musical echoes need multiple commands or another sound-table area.
 
 The preview can accept Note On and Note Off messages from a Web MIDI keyboard. MIDI note number selects note/octave, velocity selects Coleco volume 1..15, and held time becomes a deterministic PAL/NTSC frame count when the key is released. The browser asks for access only after `MIDI` is pressed. A held note saturates at the BIOS command limit of 256 frames; one-command echo capture is capped at its 16-frame initial-delay limit.

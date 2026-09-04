@@ -9,7 +9,7 @@ import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSound
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, tinyNoteChoices } from "./colecoTinySound.js?v=20260904-tiny-pitch-playback";
-import { buildColecoSoundTableSource, insertColecoSoundTableSource } from "./colecoSoundTableBuilder.js?v=20260905-human-slots";
+import { addColecoSoundToTableSource, buildColecoSoundTableSource, colecoSoundAreaAddress, insertColecoSoundTableSource } from "./colecoSoundTableBuilder.js?v=20260905-add-sound";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2761,7 +2761,10 @@ export function createProjectFileUiHelpers({
     const technicalToggle = document.createElement("button");
     technicalToggle.type = "button";
     technicalToggle.textContent = "Technical";
-    viewTabs.append(soundsTab, composerTab, technicalToggle);
+    const addSoundButton = document.createElement("button");
+    addSoundButton.type = "button";
+    addSoundButton.textContent = "+ Sound";
+    viewTabs.append(soundsTab, composerTab, technicalToggle, addSoundButton);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     builder.hidden = true;
@@ -3015,6 +3018,109 @@ export function createProjectFileUiHelpers({
       });
       setStatus(`Saved sound sequence to ${entry.path}.`);
     }
+    function openAddSoundDialog() {
+      const backdrop = document.createElement("div");
+      backdrop.className = "graphics-editor-modal-backdrop";
+      const dialog = document.createElement("section");
+      dialog.className = "graphics-editor-modal graphics-editor-json-modal sound-add-modal";
+      const dialogHeader = document.createElement("div");
+      dialogHeader.className = "graphics-editor-modal__header";
+      const dialogTitle = document.createElement("h3");
+      dialogTitle.textContent = "Add Sound";
+      const dialogClose = document.createElement("button");
+      dialogClose.type = "button";
+      dialogClose.className = "graphics-editor-modal__close";
+      dialogClose.textContent = "✕";
+      dialogHeader.append(dialogTitle, dialogClose);
+      const fields = document.createElement("div");
+      fields.className = "sound-add-modal__fields";
+      const makeField = (caption, control) => {
+        const label = document.createElement("label");
+        label.textContent = caption;
+        label.appendChild(control);
+        fields.appendChild(label);
+        return control;
+      };
+      const table = makeField("Table", document.createElement("select"));
+      for (const item of analysis.tables) {
+        const option = document.createElement("option");
+        option.value = item.name;
+        option.textContent = item.name;
+        table.appendChild(option);
+      }
+      const name = makeField("Sound name", document.createElement("input"));
+      name.value = "NewSound";
+      const role = makeField("Role", document.createElement("select"));
+      for (const [value, caption] of [["music", "Music voice"], ["sfx", "Sound effect"]]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = caption;
+        role.appendChild(option);
+      }
+      role.value = "sfx";
+      const slot = makeField("BIOS slot", document.createElement("select"));
+      const installedAreas = (tableName) => Number(analysis.source.match(new RegExp(`set\\s+sound\\s+table\\s+${tableName}\\s+areas\\s+(\\d+)`, "i"))?.[1]) || 8;
+      const refreshSlots = () => {
+        const previous = Number(slot.value);
+        const count = installedAreas(table.value);
+        slot.textContent = "";
+        for (let index = 1; index <= count; index += 1) {
+          const option = document.createElement("option");
+          option.value = String(index);
+          option.textContent = `Slot ${index} · $${colecoSoundAreaAddress(index).toString(16).toUpperCase()}`;
+          slot.appendChild(option);
+        }
+        slot.value = String(previous >= 1 && previous <= count ? previous : role.value === "music" ? 1 : count);
+      };
+      const warning = document.createElement("p");
+      warning.className = "graphics-editor-modal__note";
+      const confirm = document.createElement("button");
+      confirm.type = "button";
+      confirm.textContent = "Add sound";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      const actions = document.createElement("div");
+      actions.className = "graphics-editor-json-modal__actions";
+      actions.append(confirm, cancel);
+      const updateWarning = () => {
+        const selectedTable = analysis.tables.find((item) => item.name === table.value);
+        const occupants = selectedTable?.entries.filter((entry) => entry.area === Number(slot.value)).map((entry) => entry.label) || [];
+        warning.textContent = occupants.length
+          ? `Shared with ${occupants.join(", ")}. Playing one of these sounds interrupts the others.`
+          : "This slot is currently free in the selected table.";
+      };
+      table.addEventListener("change", () => { refreshSlots(); updateWarning(); });
+      role.addEventListener("change", () => { refreshSlots(); updateWarning(); });
+      slot.addEventListener("change", updateWarning);
+      const dismiss = () => backdrop.remove();
+      dialogClose.addEventListener("click", dismiss);
+      cancel.addEventListener("click", dismiss);
+      confirm.addEventListener("click", () => {
+        try {
+          const source = addColecoSoundToTableSource(analysis.source, {
+            tableName: table.value,
+            soundName: name.value.trim(),
+            role: role.value,
+            slot: Number(slot.value)
+          });
+          saveSoundSource(source);
+          setStatus(`Added ${name.value.trim()} to ${table.value}. Open SOUND again to edit it.`);
+          dismiss();
+          closeInspector();
+        } catch (error) {
+          warning.textContent = error.message;
+        }
+      });
+      refreshSlots();
+      updateWarning();
+      dialog.append(dialogHeader, fields, warning, actions);
+      backdrop.appendChild(dialog);
+      document.body.appendChild(backdrop);
+      name.focus();
+      name.select();
+    }
+    addSoundButton.addEventListener("click", openAddSoundDialog);
     function openTinyPairSequencer(sound, pairedSound) {
       const voices = [sound, pairedSound];
       const totalFrames = Math.max(...voices.map((voice) => voice.stream.tiny.totalFrames));
