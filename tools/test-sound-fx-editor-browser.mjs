@@ -125,6 +125,31 @@ try {
   const extended = await evaluate(`document.getElementById("sourceEditor").value`);
   assert.match(extended, /dw ExtraSound,\$705D ; sfx · slot 6/);
   assert.match(extended, /ExtraSound:\n    db \$50/);
+  const terminalFixture = `SoundTable:\n    dw EndOnly,$703F\nEndOnly:\n    db $50\n`;
+  await evaluate(`(() => {
+    const editor = document.getElementById("sourceEditor");
+    editor.value = ${JSON.stringify(terminalFixture)};
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    document.getElementById("btnInspectSourceSounds").click();
+  })()`);
+  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "terminal-only sound library");
+  await evaluate(`(() => {
+    const row = Array.from(document.querySelectorAll(".sound-library-row")).find((item) => item.textContent.includes("EndOnly"));
+    row.click();
+    Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Edit").click();
+  })()`);
+  await waitFor(`document.querySelector(".sound-sequence-editor-modal")`, "terminal-only Sound FX editor");
+  await evaluate(`(() => {
+    const input = document.querySelector('[data-sound-field="frames"] input');
+    input.value = "9";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll(".sound-command-builder__actions button")).find((button) => button.textContent === "Apply changes").disabled`), true, "terminal commands cannot be overwritten by the composer");
+  assert.match(await evaluate(`document.querySelector(".sound-sequence-editor__events").textContent`), /End/);
+  await evaluate(`Array.from(document.querySelectorAll(".sound-sequence-editor-modal button")).find((button) => button.textContent === "Cancel").click()`);
+  await waitFor(`!document.querySelector(".sound-sequence-editor-modal")`, "terminal-only editor close");
+  await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
+  await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "terminal-only library close");
   const fixture = `SoundTable:\n    dw TestSfx,$703F\nTestSfx:\n    db $40,$6B,$00,$02,$50\n`;
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");

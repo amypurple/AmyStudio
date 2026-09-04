@@ -2849,6 +2849,7 @@ export function createProjectFileUiHelpers({
     applyComposer.hidden = true;
     applyComposer.disabled = true;
     let applyComposerChange = null;
+    let selectedComposerIsTerminal = false;
     applyComposer.addEventListener("click", () => applyComposerChange?.());
     builderActions.append(midiButton, playPreview, applyComposer);
     builderHeader.append(builderHeading, builderActions);
@@ -3006,7 +3007,7 @@ export function createProjectFileUiHelpers({
     });
     controls.addEventListener("input", () => {
       updateTonePreview();
-      applyComposer.disabled = !applyComposerChange || !currentPreview?.length;
+      applyComposer.disabled = selectedComposerIsTerminal || !applyComposerChange || !currentPreview?.length;
     });
     updateTonePreview();
     builder.append(builderHeader, midiStatus, controls, preview, previewDescription);
@@ -3501,6 +3502,9 @@ export function createProjectFileUiHelpers({
         updateTonePreview();
         applyComposer.disabled = !currentPreview?.length;
       }
+      function isSelectedTerminal() {
+        return ["end", "repeat", "tiny"].includes(events[selected]?.type);
+      }
       function renderEvents() {
         eventList.textContent = "";
         let frame = 0;
@@ -3560,7 +3564,8 @@ export function createProjectFileUiHelpers({
           if (!terminal) frame += event.length || 0;
         });
         if (!events.length) eventList.textContent = "No commands in this segment.";
-        const selectedIsTerminal = ["end", "repeat", "tiny"].includes(events[selected]?.type);
+        const selectedIsTerminal = isSelectedTerminal();
+        selectedComposerIsTerminal = selectedIsTerminal;
         const nextIsTerminal = ["end", "repeat", "tiny"].includes(events[selected + 1]?.type);
         upButton.disabled = selected <= 0 || selectedIsTerminal;
         downButton.disabled = selected < 0 || selected >= events.length - 1 || selectedIsTerminal || nextIsTerminal;
@@ -3672,6 +3677,7 @@ export function createProjectFileUiHelpers({
         if (activeMidiRecorder === insertCommands) activeMidiRecorder = null;
         activeSoundPreview?.stop();
         applyComposerChange = null;
+        selectedComposerIsTerminal = false;
         applyComposer.hidden = true;
         applyComposer.disabled = true;
         panel.appendChild(builder);
@@ -3813,7 +3819,7 @@ export function createProjectFileUiHelpers({
         const details = document.createElement("details");
         const summary = document.createElement("summary");
         summary.textContent = `Technical details · area ${sound.area ?? "?"}` +
-          `${sound.priority ? ` · priority ${sound.priority}${priorityUses.get(sound.priority) > 1 ? " shared" : ""}` : ""}` +
+          `${sound.priority ? ` · slot ${sound.priority}${priorityUses.get(sound.priority) > 1 ? " shared" : ""}` : ""}` +
           `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
         details.appendChild(summary);
         if (sound.stream?.status === "valid") {
