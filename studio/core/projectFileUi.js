@@ -2594,7 +2594,7 @@ export function createProjectFileUiHelpers({
     const header = document.createElement("div");
     header.className = "graphics-editor-modal__header";
     const title = document.createElement("h3");
-    title.textContent = `Sound tables · ${entry.path}`;
+    title.textContent = `Sound & Music · ${entry.path}`;
     const close = document.createElement("button");
     close.type = "button";
     close.className = "graphics-editor-modal__close";
@@ -2604,9 +2604,23 @@ export function createProjectFileUiHelpers({
     header.append(title, close);
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "Inspect and audition BIOS or Tiny Sound entries. Slot order is the play sound index; higher sound-area addresses have higher priority.";
+    note.textContent = "Select a sound to listen or edit. Technical bytes stay collapsed.";
+    const viewTabs = document.createElement("div");
+    viewTabs.className = "sound-workspace-tabs";
+    const soundsTab = document.createElement("button");
+    soundsTab.type = "button";
+    soundsTab.textContent = "Sounds";
+    soundsTab.classList.add("is-active");
+    const composerTab = document.createElement("button");
+    composerTab.type = "button";
+    composerTab.textContent = "Composer";
+    const technicalToggle = document.createElement("button");
+    technicalToggle.type = "button";
+    technicalToggle.textContent = "Technical";
+    viewTabs.append(soundsTab, composerTab, technicalToggle);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
+    builder.hidden = true;
     const builderHeading = document.createElement("strong");
     builderHeading.textContent = "Command composer";
     const builderHeader = document.createElement("div");
@@ -3038,6 +3052,7 @@ export function createProjectFileUiHelpers({
         return;
       }
       let events = [...segment.events];
+      builder.hidden = false;
       let selected = events.length ? 0 : -1;
       const editorBackdrop = document.createElement("div");
       editorBackdrop.className = "graphics-editor-modal-backdrop";
@@ -3179,7 +3194,11 @@ export function createProjectFileUiHelpers({
       });
       const closeSequenceEditor = () => {
         if (activeMidiRecorder === insertCommands) activeMidiRecorder = null;
-        panel.insertBefore(builder, list);
+        panel.appendChild(builder);
+        builder.hidden = true;
+        list.hidden = false;
+        soundsTab.classList.add("is-active");
+        composerTab.classList.remove("is-active");
         editorBackdrop.remove();
       };
       editorClose.addEventListener("click", closeSequenceEditor);
@@ -3204,11 +3223,24 @@ export function createProjectFileUiHelpers({
       }
       const soundsByLabel = new Map(table.entries.map((sound) => [sound.label.toLowerCase(), sound]));
       for (const sound of table.entries) {
+        const pairSuffix = sound.stream?.format === "tiny" ? sound.label.match(/^(.*)_ch([12])$/i) : null;
+        const pairedSound = pairSuffix?.[2] === "1" ? soundsByLabel.get(`${pairSuffix[1]}_ch2`.toLowerCase()) : null;
+        const pairedFollower = pairSuffix?.[2] === "2" && soundsByLabel.has(`${pairSuffix[1]}_ch1`.toLowerCase());
+        const soundRow = document.createElement("div");
+        soundRow.className = "sound-library-row";
+        const soundMeta = document.createElement("span");
+        soundMeta.className = "sound-library-row__meta";
+        soundMeta.textContent = `${sound.index}. ${sound.label}` +
+          `${sound.stream?.format === "tiny" ? " · Tiny" : ""}` +
+          `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
+        const quickActions = document.createElement("div");
+        quickActions.className = "sound-library-row__actions";
+        soundRow.append(soundMeta, quickActions);
         const details = document.createElement("details");
         const summary = document.createElement("summary");
-        summary.textContent = `${sound.index}. ${sound.label} · area ${sound.area ?? "?"}` +
+        summary.textContent = `Technical details · area ${sound.area ?? "?"}` +
           `${sound.priority ? ` · priority ${sound.priority}${priorityUses.get(sound.priority) > 1 ? " shared" : ""}` : ""}` +
-          `${sound.stream?.status === "valid" ? ` · ${sound.stream.format === "tiny" ? "Tiny · " : ""}${sound.stream.eventCount} commands` : ""}`;
+          `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
         details.appendChild(summary);
         if (sound.stream?.status === "valid") {
           const commands = document.createElement("pre");
@@ -3218,7 +3250,7 @@ export function createProjectFileUiHelpers({
           details.appendChild(commands);
           const listenExisting = document.createElement("button");
           listenExisting.type = "button";
-          listenExisting.textContent = sound.stream.format === "tiny" ? "▶ Listen Tiny channel" : "▶ Listen sound";
+          listenExisting.textContent = "▶ Play";
           const stopExisting = document.createElement("button");
           stopExisting.type = "button";
           stopExisting.textContent = "■ Stop";
@@ -3249,62 +3281,23 @@ export function createProjectFileUiHelpers({
           const existingTransport = document.createElement("span");
           existingTransport.className = "sound-sequence-transport";
           existingTransport.append(listenExisting, stopExisting);
-          details.appendChild(existingTransport);
-          const pairMatch = sound.stream.format === "tiny" ? sound.label.match(/^(.*)_ch1$/i) : null;
-          const pairedSound = pairMatch ? soundsByLabel.get(`${pairMatch[1]}_ch2`.toLowerCase()) : null;
+          if (!pairedSound && !pairedFollower) quickActions.appendChild(existingTransport);
           if (pairedSound?.stream?.format === "tiny") {
-            const pairTransport = document.createElement("span");
-            pairTransport.className = "sound-sequence-transport";
-            const listenPair = document.createElement("button");
-            listenPair.type = "button";
-            listenPair.textContent = "▶ Play 2 channels";
-            const stopPair = document.createElement("button");
-            stopPair.type = "button";
-            stopPair.textContent = "■ Stop";
-            stopPair.disabled = true;
-            listenPair.addEventListener("click", async () => {
-              try {
-                await activeSoundPreview?.stop();
-                const playback = await startColecoSoundPreview([
-                  ...sound.stream.tiny.previewEvents,
-                  ...pairedSound.stream.tiny.previewEvents
-                ], { region: inputs.region.value });
-                activeSoundPreview = playback;
-                listenPair.disabled = true;
-                stopPair.disabled = false;
-                listenPair.textContent = "↻ Play again";
-                await playback.done;
-                if (activeSoundPreview === playback) activeSoundPreview = null;
-                listenPair.disabled = false;
-                stopPair.disabled = true;
-              } catch (error) {
-                setStatus(error.message || String(error));
-              }
-            });
-            stopPair.addEventListener("click", async () => {
-              await activeSoundPreview?.stop();
-            });
-            pairTransport.append(listenPair, stopPair);
-            details.appendChild(pairTransport);
             const openPairSequencer = document.createElement("button");
             openPairSequencer.type = "button";
-            openPairSequencer.textContent = "Open 2-channel sequencer";
+            openPairSequencer.textContent = "Sequencer";
             openPairSequencer.addEventListener("click", () => openTinyPairSequencer(sound, pairedSound));
-            details.appendChild(openPairSequencer);
+            quickActions.appendChild(openPairSequencer);
           }
         }
-        if (sound.stream?.format === "tiny") {
-          const readOnly = document.createElement("span");
-          readOnly.textContent = "Tiny Sound sequence · pitch editing in paired sequencer";
-          details.appendChild(readOnly);
-        } else {
+        if (sound.stream?.format !== "tiny") {
           const editSequence = document.createElement("button");
           editSequence.type = "button";
-          editSequence.textContent = "Edit sequence";
+          editSequence.textContent = "Edit";
           editSequence.addEventListener("click", () => openSequenceEditor(sound));
-          details.appendChild(editSequence);
+          quickActions.appendChild(editSequence);
         }
-        item.appendChild(details);
+        item.append(soundRow, details);
       }
       list.appendChild(item);
     }
@@ -3321,7 +3314,23 @@ export function createProjectFileUiHelpers({
     };
     close.addEventListener("click", closeInspector);
     overlay.addEventListener("click", (event) => { if (event.target === overlay) closeInspector(); });
-    panel.append(header, note, builder, list);
+    const setWorkspaceView = (view) => {
+      const composer = view === "composer";
+      builder.hidden = !composer;
+      list.hidden = composer;
+      soundsTab.classList.toggle("is-active", !composer);
+      composerTab.classList.toggle("is-active", composer);
+      note.textContent = composer
+        ? "Build and audition one compact BIOS sound command."
+        : "Select a sound to listen or edit. Technical bytes stay collapsed.";
+    };
+    soundsTab.addEventListener("click", () => setWorkspaceView("sounds"));
+    composerTab.addEventListener("click", () => setWorkspaceView("composer"));
+    technicalToggle.addEventListener("click", () => {
+      const visible = panel.classList.toggle("show-technical");
+      technicalToggle.classList.toggle("is-active", visible);
+    });
+    panel.append(header, viewTabs, note, list, builder);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
   }

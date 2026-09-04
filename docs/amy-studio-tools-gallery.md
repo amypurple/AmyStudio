@@ -13,7 +13,7 @@ This guide answers three questions for every user-facing tool: where it is, what
 | Compile ROM | Top toolbar compile icon | Build the active project and retain its ROM while switching project tabs. |
 | ROM Test & Debug | Top toolbar run/debug icon | Run the compiled ROM, inspect execution, use breakpoints, rewind, controls, and disassembly. |
 
-The sound inspector explains each table entry and opens a focused sequence editor. Its numbered rows match `play sound N`; its area address reports BIOS priority and is not a second sound index.
+The Sound & Music workspace opens as a compact library. `Composer` and optional `Technical` details stay separate from normal Play, Edit, and Sequencer actions. Numbered rows match `play sound N`; area addresses report BIOS priority, not another sound index.
 
 ### BIOS Sound Inspector
 
@@ -29,10 +29,9 @@ The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail hold
 
 Choose `MIDI` to authorize a connected keyboard through Web MIDI. Note On selects note, octave and velocity; Note Off converts the held time to PAL/NTSC frames, updates the BIOS command, then auditions it. MIDI requires HTTPS or localhost and browser permission. Durations saturate at 256 frames, or 16 main frames for a one-command `Echo tail`.
 
-Expand a sound and choose `Edit sequence`. Compose a command, select its insertion point, then use `+ Add` as often as needed. The timeline shows each command's start frame. `End` stops playback; `Repeat` loops. `Record MIDI` appends each released note with its held duration. Commands can also be duplicated, reordered, auditioned, and saved to Amy source or embedded ASM. Shared tails remain byte-exact, and invalid terminal placement is rejected.
+Choose `Edit` beside a regular BIOS sound. Compose a command, select its insertion point, then use `+ Add` as often as needed. The timeline shows each command's start frame. `End` stops playback; `Repeat` loops. `Record MIDI` appends each released note with its held duration. Commands can also be duplicated, reordered, auditioned, and saved to Amy source or embedded ASM. Shared tails remain byte-exact, and invalid terminal placement is rejected.
 
-Tiny Sound entries show their tempo, instrument, musical notes, sustain, silence, special commands, and loop instead of the misleading single `Tiny` command. `Listen Tiny channel` auditions one channel; matching `_ch1` and `_ch2` labels open synchronized lanes with active-event highlighting, pause/resume, isolated note preview, and safe pitch editing for plain notes.
-`Open 2-channel sequencer` displays matching Tiny voices in synchronized columns with duration-scaled notes, rests, holds, and shared transport. Tiny data remains read-only until Amy Studio can re-encode every command without changing its meaning.
+Matching Tiny Sound `_ch1` and `_ch2` labels expose one `Sequencer` action. It opens synchronized lanes with active-event highlighting, pause/resume, isolated note preview, and byte-local pitch editing for plain notes. `Technical` reveals tempo, instruments, sustain, silence, special commands, and loops; complex commands remain read-only.
 
 ## Project Files
 
