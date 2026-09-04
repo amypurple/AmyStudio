@@ -8,7 +8,7 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { describeTinySoundCommand } from "./colecoTinySound.js?v=20260903-tiny-inspector";
+import { describeTinySoundCommand, replaceTinySoundByte, tinyNoteChoices } from "./colecoTinySound.js?v=20260904-tiny-pitch-edit";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2810,10 +2810,28 @@ export function createProjectFileUiHelpers({
       sequencerHeader.append(sequencerTitle, sequencerClose);
       const summary = document.createElement("p");
       summary.className = "graphics-editor-modal__note";
-      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · Tiny Sound read-only`;
+      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · plain-note pitch editing`;
+      const noteEditor = document.createElement("div");
+      noteEditor.className = "tiny-pair-sequencer__editor";
+      const selectedLabel = document.createElement("span");
+      selectedLabel.textContent = "Select a plain note to edit its pitch.";
+      const pitch = document.createElement("select");
+      pitch.disabled = true;
+      for (const choice of tinyNoteChoices(inputs.region.value)) {
+        const option = document.createElement("option");
+        option.value = String(choice.code);
+        option.textContent = `${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`;
+        pitch.appendChild(option);
+      }
+      const savePitch = document.createElement("button");
+      savePitch.type = "button";
+      savePitch.textContent = "Save pitch";
+      savePitch.disabled = true;
+      noteEditor.append(selectedLabel, pitch, savePitch);
       const lanes = document.createElement("div");
       lanes.className = "tiny-pair-sequencer__lanes";
       const laneViews = [];
+      let selectedNote = null;
       for (const voice of voices) {
         const column = document.createElement("section");
         column.className = "tiny-pair-sequencer__column";
@@ -2835,6 +2853,27 @@ export function createProjectFileUiHelpers({
             ? command.name
             : command.type === "silence" ? "Rest" : command.type === "sustain" ? "Hold" : "Drum";
           block.title = `F${command.startFrame} · ${describeTinySoundCommand(command)}`;
+          if (command.type === "note" && command.arpeggioCode === null) {
+            block.classList.add("is-editable");
+            block.tabIndex = 0;
+            block.setAttribute("role", "button");
+            const selectNote = () => {
+              for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
+              block.classList.add("is-selected");
+              selectedNote = { voice, command };
+              pitch.value = String(command.code);
+              pitch.disabled = false;
+              savePitch.disabled = false;
+              selectedLabel.textContent = `Channel ${voice.stream.tiny.channel} · frame ${command.startFrame} · ${command.name}`;
+            };
+            block.addEventListener("click", selectNote);
+            block.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                selectNote();
+              }
+            });
+          }
           blocks.push({ command, block });
           lane.appendChild(block);
         }
@@ -2850,6 +2889,17 @@ export function createProjectFileUiHelpers({
         lanes.appendChild(column);
         laneViews.push({ lane, blocks, playhead });
       }
+      savePitch.addEventListener("click", () => {
+        if (!selectedNote) return;
+        try {
+          const byteIndex = selectedNote.command.offset + 1;
+          const source = replaceTinySoundByte(analysis.source, selectedNote.voice.label, byteIndex, Number(pitch.value));
+          saveSoundSource(source);
+          closeTinySequencer();
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+      });
       const transport = document.createElement("div");
       transport.className = "graphics-editor-json-modal__actions";
       const play = document.createElement("button");
@@ -2910,7 +2960,7 @@ export function createProjectFileUiHelpers({
       };
       sequencerClose.addEventListener("click", closeTinySequencer);
       backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeTinySequencer(); });
-      sequencer.append(sequencerHeader, summary, lanes, transport);
+      sequencer.append(sequencerHeader, summary, noteEditor, lanes, transport);
       backdrop.appendChild(sequencer);
       document.body.appendChild(backdrop);
     }
@@ -3180,7 +3230,7 @@ export function createProjectFileUiHelpers({
         }
         if (sound.stream?.format === "tiny") {
           const readOnly = document.createElement("span");
-          readOnly.textContent = "Tiny Sound sequence · read-only";
+          readOnly.textContent = "Tiny Sound sequence · pitch editing in paired sequencer";
           details.appendChild(readOnly);
         } else {
           const editSequence = document.createElement("button");

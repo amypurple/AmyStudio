@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, tinyNoteHasArpeggio, tinyNoteIndex } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteIndex } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -56,6 +56,16 @@ assert.deepEqual(noBoundaryArpeggio.commands.map((command) => command.type), ["n
 const boundaryArpeggio = decodeTinySoundSource(`Arp:\n db $44\n dw sndtiny_1\n db $08,$80,$10,$01,$FF`, "Arp");
 assert.deepEqual(boundaryArpeggio.commands.map((command) => command.type), ["note", "silence", "loop"]);
 assert.equal(boundaryArpeggio.commands[0].arpeggioCode, 0x10);
+
+const choices = tinyNoteChoices();
+assert.equal(choices.length, 60);
+assert.equal(choices[0].code, 4);
+assert.equal(choices[0].period, 0x03f8);
+const editedSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 5, 0x20);
+assert.match(editedSource, /db \$08,\$02,\$60,\$19,\$22,\$20,\$00,\$1E,\$01,\$FF/);
+assert.equal(decodeTinySoundSource(editedSource, "brinquitos_music_gladiators_ch1").commands[1].code, 0x20);
+assert.equal(editedSource.replace("$20", "$1F"), fixture, "surgical edit preserves every unrelated source character");
+assert.throws(() => replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 999, 4), /was not found/);
 
 const inspected = inspectSoundTableSource(source);
 const tinyEntry = inspected.tables[0].entries.find((entry) => entry.label === "brinquitos_music_gladiators_ch1");

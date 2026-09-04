@@ -50,6 +50,56 @@ function noteName(period, region = "NTSC") {
   return { frequency, name: `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}` };
 }
 
+export function tinyNoteChoices(region = "NTSC") {
+  return Array.from({ length: 60 }, (_, index) => {
+    const code = index + 4;
+    const period = TINY_NOTE_PERIODS[tinyNoteIndex(code)];
+    return { code, period, ...noteName(period, region) };
+  });
+}
+
+export function replaceTinySoundByte(sourceText, label, byteIndex, value) {
+  if (!Number.isInteger(byteIndex) || byteIndex < 0) throw new Error("Tiny Sound byte index must be non-negative.");
+  if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error("Tiny Sound replacement must fit in one byte.");
+  const newline = String(sourceText || "").includes("\r\n") ? "\r\n" : "\n";
+  const lines = String(sourceText || "").split(/\r?\n/);
+  const wanted = String(label || "").toLowerCase();
+  let inside = false;
+  let handlerSeen = false;
+  let currentByte = 0;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const clean = stripComment(lines[lineIndex]).trim();
+    const foundLabel = clean.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*$/);
+    if (foundLabel) {
+      if (inside) break;
+      inside = foundLabel[1].toLowerCase() === wanted;
+      continue;
+    }
+    if (!inside) continue;
+    if (/^(?:\.?dw|defw)\s+sndtiny_[12]\s*$/i.test(clean)) {
+      handlerSeen = true;
+      continue;
+    }
+    if (!handlerSeen) continue;
+    const match = lines[lineIndex].match(/^(\s*(?:\.?db|defb)\s+)([^;]+)(.*)$/i);
+    if (!match) continue;
+    const tokens = match[2].split(",");
+    for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+      if (parseByte(tokens[tokenIndex]) === null) continue;
+      if (currentByte === byteIndex) {
+        const before = tokens[tokenIndex];
+        const leading = before.match(/^\s*/)?.[0] || "";
+        const trailing = before.match(/\s*$/)?.[0] || "";
+        tokens[tokenIndex] = `${leading}$${value.toString(16).toUpperCase().padStart(2, "0")}${trailing}`;
+        lines[lineIndex] = `${match[1]}${tokens.join(",")}${match[3]}`;
+        return lines.join(newline);
+      }
+      currentByte += 1;
+    }
+  }
+  throw new Error(`Tiny Sound byte ${byteIndex} was not found in ${label}.`);
+}
+
 export function readTinySoundLabel(sourceText, label) {
   const lines = String(sourceText || "").split(/\r?\n/);
   const wanted = String(label || "").toLowerCase();

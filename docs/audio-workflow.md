@@ -19,7 +19,7 @@ The preview can accept Note On and Note Off messages from a Web MIDI keyboard. M
 
 Open `SOURCE` > `SOUND`, expand a table entry, then choose `Edit sequence`. The command composer moves into the sequencer: select a timeline row and press `+ Add` repeatedly, or use `Record MIDI` to append each released note. `End` stops the sequence; `Repeat` loops it. Commands can be duplicated, reordered, deleted, and auditioned in order. Saving rewrites only that label's `db`/`.db`/`defb` rows. Shared tails remain byte-exact, and malformed terminal placement is rejected.
 
-For Tiny Sound music stored as `_ch1` and `_ch2`, expand channel 1 and choose `Open 2-channel sequencer`. Both channels appear as synchronized columns with duration-scaled notes, rests, holds, and a shared `Play`/`Stop` transport. Tiny Sound editing is still read-only; edit its source data directly until a lossless Tiny encoder is available.
+For Tiny Sound music stored as `_ch1` and `_ch2`, expand channel 1 and choose `Open 2-channel sequencer`. Both channels appear as synchronized columns with duration-scaled notes, rests, holds, a shared `Play`/`Stop` transport, and a playhead that highlights the active events. Select a plain note to change its pitch. Amy Studio replaces only that command byte; arpeggios and special commands remain read-only until their exact encoding is fully covered.
 
 DSound is not the WAV-to-notes converter. It preserves a short waveform as digital amplitude samples. Amy's historical `WAV2CV3` instead uses FFT analysis to extract dominant frequencies and strengths over time, then produces ordinary PSG tone commands that can coexist with gameplay. See [Legacy WAV to ColecoVision PSG Reconstruction](legacy-wav-to-coleco-psg-reconstruction.md).
 
@@ -235,7 +235,7 @@ ornaments such as vibrato or arpeggio-like behavior.
 - Commando sample status: working
 - status note: tiny sound support is almost perfect; one known bug remains inside the historical tiny sound routine itself and is intentionally deferred for a later fix
 - the Studio sound inspector decodes tempo, instrument, notes, sustain, silence, drums, special notes, and loops; it can audition one Tiny Sound channel or matching `_ch1`/`_ch2` pairs
-- Tiny Sound editing remains read-only until byte-exact round-trip tests cover the complete historical format
+- plain Tiny Sound note pitches can be edited with byte-local source preservation; instruments, timing, arpeggios, drums, and special commands remain read-only until their exact encoding is fully covered
 
 ### Integration rules
 
