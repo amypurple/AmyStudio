@@ -4,7 +4,7 @@ import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./grap
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-tiny-sound-inspector";
-import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260903-echo-tail";
+import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoSoundCommand, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
@@ -2628,16 +2628,25 @@ export function createProjectFileUiHelpers({
     const controls = document.createElement("div");
     controls.className = "sound-command-builder__controls";
     const fields = [
-      ["Mode", "select", ["Tone", "Bass", "Noise", "Rest"], "Tone"],
+      ["Mode", "select", ["Tone", "Tone period", "Bass", "Noise", "Rest"], "Tone"],
       ["Note", "select", ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"], "A"],
       ["Octave", "number", null, "4"],
+      ["Period", "number", null, "254"],
       ["Channel", "number", null, "1"],
       ["Volume", "number", null, "15"],
       ["Frames", "number", null, "12"],
       ["Tail frames", "number", null, "8"],
       ["Noise", "select", COLECO_NOISE_MODES.map((name, index) => `${index}: ${name}`), `4: ${COLECO_NOISE_MODES[4]}`],
       ["Region", "select", ["NTSC", "PAL"], "NTSC"],
-      ["Envelope", "select", ["Steady", "Fade out", "Echo tail"], "Steady"]
+      ["Envelope", "select", ["Steady", "Fade out", "Echo tail", "Custom sweep"], "Steady"],
+      ["Pitch sweep", "select", ["Off", "On"], "Off"],
+      ["Pitch step", "number", null, "0"],
+      ["Pitch every", "number", null, "1"],
+      ["Pitch first", "number", null, "1"],
+      ["Volume step", "number", null, "1"],
+      ["Volume count", "number", null, "1"],
+      ["Volume every", "number", null, "1"],
+      ["Volume first", "number", null, "1"]
     ];
     const inputs = {};
     const fieldLabels = {};
@@ -2649,8 +2658,14 @@ export function createProjectFileUiHelpers({
       if (kind !== "select") input.type = kind;
       if (labelText === "Octave") { input.min = "0"; input.max = "8"; }
       if (labelText === "Channel") { input.min = "1"; input.max = "3"; }
+      if (labelText === "Period") { input.min = "1"; input.max = "1023"; }
       if (labelText === "Volume") { input.min = "0"; input.max = "15"; }
       if (labelText === "Frames") { input.min = "1"; input.max = "256"; }
+      if (labelText === "Pitch step") { input.min = "-128"; input.max = "127"; }
+      if (["Pitch every", "Pitch first", "Volume step", "Volume count", "Volume every", "Volume first"].includes(labelText)) {
+        input.min = labelText === "Volume step" ? "0" : "1";
+        input.max = labelText === "Volume step" ? "15" : "16";
+      }
       if (choices) {
         for (const choice of choices) {
           const option = document.createElement("option");
@@ -2692,11 +2707,23 @@ export function createProjectFileUiHelpers({
       const pitched = mode === "Tone" || mode === "Bass";
       fieldLabels.note.hidden = !pitched;
       fieldLabels.octave.hidden = !pitched;
-      fieldLabels.channel.hidden = mode !== "Tone" && mode !== "Rest";
+      fieldLabels.period.hidden = mode !== "Tone period";
+      fieldLabels.channel.hidden = mode !== "Tone" && mode !== "Tone period" && mode !== "Rest";
       fieldLabels.volume.hidden = mode === "Rest";
       fieldLabels.noise.hidden = mode !== "Noise";
       fieldLabels.envelope.hidden = mode === "Rest";
       fieldLabels["tail frames"].hidden = mode === "Rest" || inputs.envelope.value !== "Echo tail";
+      const sweepCapable = mode === "Tone" || mode === "Tone period" || mode === "Noise";
+      const pitchSweep = sweepCapable && inputs["pitch sweep"].value === "On";
+      fieldLabels["pitch sweep"].hidden = !sweepCapable;
+      fieldLabels["pitch step"].hidden = !pitchSweep;
+      fieldLabels["pitch every"].hidden = !pitchSweep;
+      fieldLabels["pitch first"].hidden = !pitchSweep;
+      const volumeSweep = sweepCapable && inputs.envelope.value === "Custom sweep";
+      fieldLabels["volume step"].hidden = !volumeSweep;
+      fieldLabels["volume count"].hidden = !volumeSweep;
+      fieldLabels["volume every"].hidden = !volumeSweep;
+      fieldLabels["volume first"].hidden = !volumeSweep;
       fieldLabels.frames.firstChild.nodeValue = inputs.envelope.value === "Echo tail" ? "Main frames" : "Frames";
     }
     function updateTonePreview() {
@@ -2706,12 +2733,24 @@ export function createProjectFileUiHelpers({
           note: inputs.note.value,
           octave: Number(inputs.octave.value),
           channel: Number(inputs.channel.value),
+          period: inputs.mode.value === "Tone period" ? Number(inputs.period.value) : null,
           volume: Number(inputs.volume.value),
           length: Number(inputs.frames.value),
           noise: Number.parseInt(inputs.noise.value, 10),
           region: inputs.region.value,
           fade: inputs.envelope.value === "Fade out"
         };
+        const frequencySweep = inputs["pitch sweep"].value === "On" ? {
+          step: Number(inputs["pitch step"].value),
+          stepLength: Number(inputs["pitch every"].value),
+          firstLength: Number(inputs["pitch first"].value)
+        } : null;
+        const volumeSweep = inputs.envelope.value === "Custom sweep" ? {
+          step: Number(inputs["volume step"].value),
+          count: Number(inputs["volume count"].value),
+          stepLength: Number(inputs["volume every"].value),
+          firstLength: Number(inputs["volume first"].value)
+        } : null;
         const result = inputs.mode.value === "Rest"
           ? (() => {
               const channel = Number(inputs.channel.value);
@@ -2723,6 +2762,10 @@ export function createProjectFileUiHelpers({
               const event = { type: "rest", channel, length, bytes: [(channel << 6) | 0x20 | (length === 256 ? 0 : length)] };
               return { asm: `$${event.bytes[0].toString(16).toUpperCase().padStart(2, "0")}`, description: describeColecoSoundEvent(event), event };
             })()
+          : (inputs.mode.value === "Tone" || inputs.mode.value === "Tone period" || inputs.mode.value === "Noise") && (frequencySweep || volumeSweep)
+            ? buildColecoSoundCommand({ ...options, mode: inputs.mode.value, frequencySweep, volumeSweep })
+          : inputs.mode.value === "Tone period"
+            ? buildColecoSoundCommand({ ...options, mode: inputs.mode.value })
           : inputs.envelope.value === "Echo tail" && inputs.mode.value === "Tone"
           ? buildColecoEchoTone({ ...options, mainFrames: options.length, tailFrames: Number(inputs["tail frames"].value) })
           : inputs.envelope.value === "Echo tail"
@@ -3068,6 +3111,7 @@ export function createProjectFileUiHelpers({
       let events = [...segment.events];
       builder.hidden = false;
       let selected = events.length ? 0 : -1;
+      let draggedCommand = -1;
       const editorBackdrop = document.createElement("div");
       editorBackdrop.className = "graphics-editor-modal-backdrop";
       const editor = document.createElement("section");
@@ -3135,19 +3179,6 @@ export function createProjectFileUiHelpers({
         editorError.textContent = error?.message || String(error);
         editorError.hidden = false;
       }
-      function nearestTone(period) {
-        let best = null;
-        for (let octave = 0; octave <= 8; octave += 1) {
-          for (const noteName of ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]) {
-            try {
-              const candidate = buildColecoToneNote({ note: noteName, octave, channel: 1, volume: 15, length: 1, region: inputs.region.value }).event;
-              const error = Math.abs(candidate.period - period);
-              if (!best || error < best.error) best = { noteName, octave, error };
-            } catch {}
-          }
-        }
-        return best;
-      }
       function loadSelectedCommand() {
         const event = events[selected];
         replaceButton.disabled = true;
@@ -3161,22 +3192,31 @@ export function createProjectFileUiHelpers({
           inputs.noise.value = `${event.noise}: ${COLECO_NOISE_MODES[event.noise]}`;
           inputs.volume.value = String(15 - event.attenuation);
           inputs.frames.value = String(event.length);
-          inputs.envelope.value = "Steady";
-        } else if (event.type === "note" && event.channel > 0) {
-          const closest = nearestTone(event.period);
-          if (!closest) return;
-          inputs.mode.value = "Tone";
-          inputs.note.value = closest.noteName;
-          inputs.octave.value = String(closest.octave);
+        } else if (["note", "frequency-sweep", "volume-sweep", "frequency-volume-sweep"].includes(event.type) && event.channel === 0) {
+          inputs.mode.value = "Noise";
+          inputs.noise.value = `${event.noise}: ${COLECO_NOISE_MODES[event.noise]}`;
+          inputs.volume.value = String(15 - event.attenuation);
+          inputs.frames.value = String(event.length);
+        } else if (["note", "frequency-sweep", "volume-sweep", "frequency-volume-sweep"].includes(event.type) && event.channel > 0) {
+          inputs.mode.value = "Tone period";
+          inputs.period.value = String(event.period);
           inputs.channel.value = String(event.channel);
           inputs.volume.value = String(15 - event.attenuation);
           inputs.frames.value = String(event.length);
-          inputs.envelope.value = "Steady";
         } else {
-          editorNote.textContent = `${ownershipNote} This sweep can be played and reordered, but the simple editor will not rewrite it approximately.`;
+          editorNote.textContent = `${ownershipNote} This command cannot be rewritten by the visual editor.`;
           updateTonePreview();
           return;
         }
+        inputs["pitch sweep"].value = event.frequencySweep ? "On" : "Off";
+        inputs["pitch step"].value = String(event.frequencySweep?.step ?? 0);
+        inputs["pitch every"].value = String(event.frequencySweep?.stepLength ?? 1);
+        inputs["pitch first"].value = String(event.frequencySweep?.firstLength ?? 1);
+        inputs.envelope.value = event.volumeSweep ? "Custom sweep" : "Steady";
+        inputs["volume step"].value = String(event.volumeSweep?.step ?? 1);
+        inputs["volume count"].value = String(event.volumeSweep?.count ?? 1);
+        inputs["volume every"].value = String(event.volumeSweep?.stepLength ?? 1);
+        inputs["volume first"].value = String(event.volumeSweep?.firstLength ?? 1);
         editorNote.textContent = `${ownershipNote} Edit the selected command, preview it, then replace it.`;
         updateTonePreview();
         replaceButton.disabled = !currentPreview?.length;
@@ -3206,6 +3246,35 @@ export function createProjectFileUiHelpers({
           duration.style.setProperty("--sound-duration", `${Math.max(terminal ? 1 : event.length || 1, 1)}`);
           button.append(position, description, duration);
           button.addEventListener("click", () => { selected = index; renderEvents(); loadSelectedCommand(); });
+          if (!terminal) {
+            button.draggable = true;
+            button.title = `${button.title ? `${button.title}\n` : ""}Drag to reorder`;
+            button.addEventListener("dragstart", (dragEvent) => {
+              draggedCommand = index;
+              button.classList.add("is-dragging");
+              dragEvent.dataTransfer.effectAllowed = "move";
+              dragEvent.dataTransfer.setData("text/plain", String(index));
+            });
+            button.addEventListener("dragend", () => {
+              draggedCommand = -1;
+              button.classList.remove("is-dragging");
+            });
+          }
+          button.addEventListener("dragover", (dragEvent) => {
+            if (draggedCommand < 0) return;
+            dragEvent.preventDefault();
+            dragEvent.dataTransfer.dropEffect = "move";
+          });
+          button.addEventListener("drop", (dragEvent) => {
+            dragEvent.preventDefault();
+            if (draggedCommand < 0 || draggedCommand === index) return;
+            const destination = terminal ? Math.max(0, index - 1) : index;
+            events = moveColecoSoundEvent(events, draggedCommand, destination);
+            selected = destination;
+            draggedCommand = -1;
+            renderEvents();
+            loadSelectedCommand();
+          });
           eventList.appendChild(button);
           if (!terminal) frame += event.length || 0;
         });

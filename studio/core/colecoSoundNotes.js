@@ -64,6 +64,12 @@ export function encodeToneCommand({
     (attenuation << 4) | ((period >> 8) & 0x03),
     length === 256 ? 0 : length
   ];
+  output.push(...encodeSweepParameters(frequencySweep, volumeSweep));
+  return output;
+}
+
+function encodeSweepParameters(frequencySweep, volumeSweep) {
+  const output = [];
   if (frequencySweep) {
     const stepLength = nibbleLength(frequencySweep.stepLength, "Frequency step length");
     const firstLength = nibbleLength(frequencySweep.firstLength, "Frequency first-step length");
@@ -114,16 +120,25 @@ export const COLECO_NOISE_MODES = Object.freeze([
   "White · Tone 3"
 ]);
 
-export function encodeNoiseCommand({ noise = 4, volume = 15, length, fade = false }) {
+export function encodeNoiseCommand({ noise = 4, volume = 15, length, fade = false, frequencySweep = null, volumeSweep = null }) {
   if (!Number.isInteger(noise) || noise < 0 || noise > 7) throw new Error("Noise mode must be 0..7.");
   if (!Number.isInteger(volume) || volume < 0 || volume > 15) throw new Error("Volume must be 0..15.");
   if (!Number.isInteger(length) || length < 1 || length > 256) throw new Error("Sound length must be 1..256.");
   if (fade && length > 255) throw new Error("A fading sound length must be 1..255.");
   const encodedLength = length === 256 ? 0 : length;
   const control = ((15 - volume) << 4) | noise;
-  return fade
-    ? [0x02, control, encodedLength, ...fadeParameters(length)]
-    : [0x00, 0x00, control, encodedLength];
+  if (fade && (frequencySweep || volumeSweep)) throw new Error("Use either fade or explicit sweep parameters.");
+  if (fade) {
+    const [stepAndCount, lengths] = fadeParameters(length);
+    volumeSweep = {
+      step: stepAndCount >> 4,
+      count: stepAndCount & 0x0f || 16,
+      stepLength: lengths >> 4 || 16,
+      firstLength: lengths & 0x0f || 16
+    };
+  }
+  const type = (frequencySweep ? 1 : 0) | (volumeSweep ? 2 : 0);
+  return [type, ...(type === 0 ? [0x00] : []), control, encodedLength, ...encodeSweepParameters(frequencySweep, volumeSweep)];
 }
 
 export function buildColecoNoise(options) {
@@ -136,6 +151,30 @@ export function buildColecoNoise(options) {
     asm: formatColecoSoundBytes(bytes),
     event,
     description: describeColecoSoundEvent(event, { region: options?.region })
+  };
+}
+
+export function buildColecoSoundCommand({ mode = "Tone", note, octave, period = null, channel = 1, noise = 4, volume = 15, length, region = "NTSC", frequencySweep = null, volumeSweep = null }) {
+  const normalizedMode = String(mode).toLowerCase();
+  const bytes = normalizedMode === "noise"
+    ? encodeNoiseCommand({ noise, volume, length, frequencySweep, volumeSweep })
+    : encodeToneCommand({
+        channel,
+        period: Number.isInteger(period) ? period : notePeriod(note, octave, region),
+        attenuation: 15 - volume,
+        length,
+        frequencySweep,
+        volumeSweep
+      });
+  const terminal = normalizedMode === "noise" ? 0x10 : (channel << 6) | 0x10;
+  const decoded = decodeColecoSoundStream([...bytes, terminal]);
+  const event = decoded.events[0];
+  if (!event || decoded.events[1]?.type !== "end") throw new Error("Generated command did not round-trip through the BIOS decoder.");
+  return {
+    bytes,
+    asm: formatColecoSoundBytes(bytes),
+    event,
+    description: describeColecoSoundEvent(event, { region })
   };
 }
 
