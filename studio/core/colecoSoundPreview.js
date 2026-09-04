@@ -51,6 +51,16 @@ function makeNoiseBuffer(context, event, duration, region, tone3Period = null) {
   return buffer;
 }
 
+export function scheduleColecoSoundSequence(events) {
+  let startFrame = 0;
+  return [...(events || [])].flatMap((event) => {
+    if (["end", "repeat", "tiny"].includes(event?.type)) return [];
+    const scheduled = { ...event, startFrame };
+    startFrame += event.length || 0;
+    return [scheduled];
+  });
+}
+
 export async function previewColecoSoundEvents(events, { region = "NTSC" } = {}) {
   const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AudioContextClass) throw new Error("This browser cannot preview audio.");

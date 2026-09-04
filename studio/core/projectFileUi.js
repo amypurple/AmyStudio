@@ -5,7 +5,7 @@ import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-tiny-sound-inspector";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260903-echo-tail";
-import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260903-tiny-sound-timeline";
+import { previewColecoSoundEvents, scheduleColecoSoundSequence } from "./colecoSoundPreview.js?v=20260903-sequential-sound-preview";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequence-editor2";
 import { describeTinySoundCommand } from "./colecoTinySound.js?v=20260903-tiny-inspector";
@@ -2882,7 +2882,7 @@ export function createProjectFileUiHelpers({
       downButton.addEventListener("click", () => { events = moveColecoSoundEvent(events, selected, selected + 1); selected += 1; renderEvents(); });
       deleteButton.addEventListener("click", () => { events.splice(selected, 1); selected = Math.min(selected, events.length - 1); renderEvents(); });
       listenButton.addEventListener("click", async () => {
-        const audible = events.filter((event) => !["end", "repeat", "tiny"].includes(event.type));
+        const audible = scheduleColecoSoundSequence(events);
         try { await previewColecoSoundEvents(audible, { region: inputs.region.value }); }
         catch (error) { showEditorError(error); }
       });
@@ -2936,15 +2936,7 @@ export function createProjectFileUiHelpers({
             try {
               const playable = sound.stream.format === "tiny"
                 ? sound.stream.tiny.previewEvents
-                : (() => {
-                    let startFrame = 0;
-                    return sound.stream.events.flatMap((event) => {
-                      if (["end", "repeat", "tiny"].includes(event.type)) return [];
-                      const scheduled = { ...event, startFrame };
-                      startFrame += event.length || 0;
-                      return [scheduled];
-                    });
-                  })();
+                : scheduleColecoSoundSequence(sound.stream.events);
               await previewColecoSoundEvents(playable, { region: inputs.region.value });
             } catch (error) {
               setStatus(error.message || String(error));

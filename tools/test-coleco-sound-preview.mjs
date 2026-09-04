@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { amplitudeForAttenuation, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
+import { amplitudeForAttenuation, scheduleColecoSoundSequence, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
 import { buildColecoEchoTone } from "../studio/core/colecoSoundNotes.js";
 
 assert.equal(amplitudeForAttenuation(15), 0);
@@ -7,6 +7,14 @@ assert.equal(amplitudeForAttenuation(16), 0);
 assert(amplitudeForAttenuation(0) > amplitudeForAttenuation(1));
 assert(amplitudeForAttenuation(1) > amplitudeForAttenuation(14));
 assert(Math.abs(amplitudeForAttenuation(0) - 0.24) < 0.000001);
+
+const scheduled = scheduleColecoSoundSequence([
+  { type: "note", length: 3 },
+  { type: "frequency-sweep", length: 5 },
+  { type: "end" }
+]);
+assert.deepEqual(scheduled.map((event) => event.startFrame), [0, 3]);
+assert.equal(scheduled.length, 2);
 
 assert.deepEqual(volumeEnvelopeForEvent({
   attenuation: 0,
