@@ -132,8 +132,12 @@ try {
       `document.getElementById("docsContent")?.textContent.includes("Studio Tools Gallery") === true`,
       "Studio Tools Gallery"
     );
-  } else if (view === "sound-inspector") {
-    const source = await readFile(path.resolve("studio/examples-src/space-trainer.alexis"), "utf8");
+  } else if (["sound-inspector", "sound-manager", "sound-fx-editor", "sound-table-creator"].includes(view)) {
+    const source = view === "sound-table-creator"
+      ? `project "SOUND WORKSHOP"\n\nsub start:\n  text screen\n`
+      : view === "sound-fx-editor"
+        ? `project "SOUND WORKSHOP"\n\nsub start:\n  set sound table WorkshopSoundTable areas 6\n  text screen\n\nasm {\nWorkshopSoundTable:\n  dw JumpSound,$705D\nJumpSound:\n  db $40,$6B,$00,$09,$50\n}\n`
+        : await readFile(path.resolve("studio/examples-src/space-trainer.alexis"), "utf8");
     await evaluate(`(() => {
       const editor = document.getElementById("sourceEditor");
       editor.value = ${JSON.stringify(source)};
@@ -141,30 +145,23 @@ try {
       document.getElementById("btnInspectSourceSounds")?.click();
     })()`);
     await waitFor(
-      `document.querySelector(".sound-table-inspector-modal")?.textContent.includes("SpaceTrainerSoundTable") === true`,
-      "source sound-table inspector"
+      view === "sound-table-creator"
+        ? `document.querySelector(".sound-table-creator-modal") !== null`
+        : `document.querySelector(".sound-table-inspector-modal") !== null`,
+      view === "sound-table-creator" ? "sound-table creator" : "source sound-table inspector"
     );
-    await evaluate(`(() => {
-      const envelope = document.querySelector('[data-sound-field="envelope"] select');
-      envelope.value = "Echo tail";
-      envelope.dispatchEvent(new Event("input", { bubbles: true }));
-    })()`);
-    await evaluate(`Array.from(document.querySelectorAll(".sound-command-builder button")).find((button) => button.textContent.includes("Listen"))?.click()`);
-    await waitFor(
-      `Array.from(document.querySelectorAll(".sound-command-builder button")).some((button) => button.textContent.includes("Playing"))`,
-      "sound preview playback start",
-      20
-    );
-    await waitFor(
-      `Array.from(document.querySelectorAll(".sound-command-builder button")).some((button) => button.textContent.includes("Listen") && !button.disabled)`,
-      "sound preview playback completion",
-      50
-    );
+    if (view === "sound-fx-editor") {
+      await evaluate(`(() => {
+        document.querySelector(".sound-library-row")?.click();
+        Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Edit")?.click();
+      })()`);
+      await waitFor(`document.querySelector(".sound-sequence-editor-modal") !== null`, "Sound FX editor");
+    }
   } else {
     throw new Error(`Unknown capture view: ${view}`);
   }
   const layout = await evaluate(`(() => {
-    const element = document.querySelector(".sound-table-inspector-modal") || document.getElementById("projectPanelDocs");
+    const element = document.querySelector(".sound-sequence-editor-modal") || document.querySelector(".sound-table-creator-modal") || document.querySelector(".sound-table-inspector-modal") || document.getElementById("projectPanelDocs");
     const close = element?.querySelector("button[aria-label^='Close']");
     if (!element) return null;
     const rect = element.getBoundingClientRect();

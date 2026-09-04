@@ -99,7 +99,7 @@ try {
     const editor = document.getElementById("sourceEditor");
     editor.value = "sub start:\\n  text screen\\n";
     editor.dispatchEvent(new Event("input", { bubbles: true }));
-    document.getElementById("btnInspectSourceSounds").click();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true, shiftKey: true, bubbles: true }));
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Sound effect").click()`);

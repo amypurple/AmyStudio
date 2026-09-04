@@ -938,6 +938,13 @@ els.btnInspectSourceSounds?.addEventListener("click", () => {
   openSourceSoundInspector(analysis);
 });
 
+document.addEventListener("keydown", (event) => {
+  if (event.altKey && event.shiftKey && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    els.btnInspectSourceSounds?.click();
+  }
+});
+
 window.__amyStudioGraphicsEditors = {
   open: openGraphicsEditorsFromProject,
   create: createEditorsJsonProjectFile,

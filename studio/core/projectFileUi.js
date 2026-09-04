@@ -2624,6 +2624,10 @@ export function createProjectFileUiHelpers({
     rows.className = "sound-table-creator__rows";
     const preview = document.createElement("pre");
     preview.className = "sound-table-creator__preview";
+    const previewDetails = document.createElement("details");
+    const previewSummary = document.createElement("summary");
+    previewSummary.textContent = "Generated Amy source";
+    previewDetails.append(previewSummary, preview);
     const message = document.createElement("p");
     message.className = "graphics-editor-json-modal__error";
     const actions = document.createElement("div");
@@ -2722,7 +2726,7 @@ export function createProjectFileUiHelpers({
     });
     addRow("music");
     addRow("sfx");
-    panel.append(header, note, settings, rows, actions, message, preview);
+    panel.append(header, note, settings, rows, actions, message, previewDetails);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
   }
@@ -2806,6 +2810,7 @@ export function createProjectFileUiHelpers({
       if (labelText === "Octave") { input.min = "0"; input.max = "8"; }
       if (labelText === "Channel") { input.min = "1"; input.max = "3"; }
       if (labelText === "Period") { input.min = "1"; input.max = "1023"; }
+      if (labelText === "Mode") input.style.width = "126px";
       if (labelText === "Volume") { input.min = "0"; input.max = "15"; }
       if (labelText === "Frames") { input.min = "1"; input.max = "256"; }
       if (labelText === "Pitch step") { input.min = "-128"; input.max = "127"; }

@@ -8,7 +8,7 @@ This guide answers three questions for every user-facing tool: where it is, what
 | --- | --- | --- |
 | Examples | `PROJECT` > `Browse` | Open a catalogued Amy project without discarding another open project. |
 | Source editor | Main `SOURCE` panel | Edit Amy code with syntax colors, autocomplete, comments, and breakpoint gutters. |
-| Sound-table inspector | `SOURCE` > `SOUND` | Decode BIOS sound-table slots, area priority, commands, notes, rests, envelopes, and shared tails. |
+| Sound & Music | `SOURCE` > `SOUND` or `Alt+Shift+S` | Create or manage BIOS tables, slots, effects, music voices, commands, and shared tails. |
 | Generated assembly | `SOURCE` > `ASM` | Inspect the Z80 emitted by the transpiler and selected optimizer profile. |
 | Compile ROM | Top toolbar compile icon | Build the active project and retain its ROM while switching project tabs. |
 | ROM Test & Debug | Top toolbar run/debug icon | Run the compiled ROM, inspect execution, use breakpoints, rewind, controls, and disassembly. |
@@ -17,9 +17,9 @@ The Sound & Music workspace opens as a compact library. If no table exists, `SOU
 
 ### BIOS Sound Inspector
 
-Open an Amy source containing sound-table declarations, then choose `SOURCE` > `SOUND`.
+Open an Amy source containing sound-table declarations, then choose `SOURCE` > `SOUND` or press `Alt+Shift+S`.
 
-![Space Trainer BIOS sound-table inspector](images/studio-sound-inspector.png)
+![Space Trainer Sound and Music manager](images/studio-sound-manager.png)
 
 This capture verifies that the inspector fits at 1440x1000 and keeps its close control visible. A separate 1280x720 check verifies vertical scrolling when a source contains more entries than fit in the window.
 
@@ -29,7 +29,13 @@ The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail hold
 
 Choose `MIDI` to authorize a connected keyboard through Web MIDI. Note On selects note, octave and velocity; Note Off converts the held time to PAL/NTSC frames, updates the BIOS command, then auditions it. MIDI requires HTTPS or localhost and browser permission. Durations saturate at 256 frames, or 16 main frames for a one-command `Echo tail`.
 
-Choose `Edit` beside a regular BIOS sound. Compose a command, select its insertion point, then use `+ Add` as often as needed. The timeline shows each command's start frame. `End` stops playback; `Repeat` loops. `Record MIDI` appends each released note with its held duration. Commands can also be duplicated, reordered, auditioned, and saved to Amy source or embedded ASM. Shared tails remain byte-exact, and invalid terminal placement is rejected.
+If no table exists, the same `SOUND` action opens the creator. Choose the table name, area count, Music/SFX rows, and every BIOS slot before confirming.
+
+![Human-guided BIOS sound-table creator](images/studio-sound-table-creator.png)
+
+Choose `Edit` for a regular BIOS sound. Clicking a command loads it into Command Composer. Change its fields and choose `Apply changes`; Undo and Redo remain available until Save. `+ Add` inserts another command. The timeline shows each command's start frame. `End` stops playback; `Repeat` loops. `Record MIDI` appends each released note with its held duration. Commands can also be duplicated, dragged, reordered with arrows, auditioned, and saved to Amy source or embedded ASM. Shared tails remain byte-exact, and invalid terminal placement is rejected.
+
+![BIOS Sound FX command editor](images/studio-sound-fx-editor.png)
 
 Matching Tiny Sound `_ch1` and `_ch2` labels expose one `Sequencer` action. It opens synchronized lanes with active-event highlighting, pause/resume, isolated note preview, and byte-local pitch editing for plain notes. `Technical` reveals tempo, instruments, sustain, silence, special commands, and loops; complex commands remain read-only.
 
@@ -76,7 +82,7 @@ The picture/resource import dialog compares the codecs bundled by the current St
 
 | Tool | Open it | Purpose |
 | --- | --- | --- |
-| BIOS sound inspector | `SOURCE` > `SOUND`, or sound action in `FILES` | Inspect and safely edit one sound-label sequence. |
+| Sound & Music manager | `SOURCE` > `SOUND`, `Alt+Shift+S`, or sound action in `FILES` | Create tables, assign slots, and safely edit sound-label sequences. |
 | Tone preview | Top of the sound inspector | Generate one legal tone, bass, or noise command for comparison and authoring. |
 | WAV to DSOUND | Burger menu audio workflow | Convert sampled WAV audio into ColecoVision digitized playback data. |
 | DSOUND preview | `.dsound` file action | Listen to the encoded sample before compiling it into a ROM. |
