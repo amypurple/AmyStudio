@@ -29,7 +29,7 @@ The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail hold
 
 Choose `MIDI` to authorize a connected keyboard through Web MIDI. Note On selects note, octave and velocity; Note Off converts the held time to PAL/NTSC frames, updates the BIOS command, then auditions it. MIDI requires HTTPS or localhost and browser permission. Durations saturate at 256 frames, or 16 main frames for a one-command `Echo tail`.
 
-Expand a sound and choose `Edit sequence` to insert the previewed command, reorder commands, listen, choose `End` or `Repeat`, and save to Amy source or an embedded ASM file. Shared-tail labels are not flattened or duplicated. Invalid terminal placement is rejected before source data changes.
+Expand a sound and choose `Edit sequence`. Compose a command, select its insertion point, then use `+ Add` as often as needed. The timeline shows each command's start frame. `End` stops playback; `Repeat` loops. `Record MIDI` appends each released note with its held duration. Commands can also be duplicated, reordered, auditioned, and saved to Amy source or embedded ASM. Shared tails remain byte-exact, and invalid terminal placement is rejected.
 
 Tiny Sound entries show their tempo, instrument, musical notes, sustain, silence, special commands, and loop instead of the misleading single `Tiny` command. `Listen Tiny channel` auditions one channel; matching `_ch1` and `_ch2` labels also offer `Listen Tiny pair`. Tiny data remains read-only while its full historical format receives round-trip coverage.
 

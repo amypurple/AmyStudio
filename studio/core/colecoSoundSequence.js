@@ -132,3 +132,14 @@ export function moveColecoSoundEvent(events, from, to) {
   copy.splice(to, 0, event);
   return copy;
 }
+
+export function insertColecoSoundEvents(events, additions, afterIndex = -1) {
+  const copy = [...(events || [])];
+  const incoming = [...(additions || [])].map((event) => ({ ...event, bytes: [...(event.bytes || [])] }));
+  if (!incoming.length) return { events: copy, selected: afterIndex };
+  const terminal = copy.findIndex((event) => ["end", "repeat", "tiny"].includes(event?.type));
+  let insertion = Number.isInteger(afterIndex) && afterIndex >= 0 ? afterIndex + 1 : copy.length;
+  if (terminal >= 0) insertion = Math.min(insertion, terminal);
+  copy.splice(insertion, 0, ...incoming);
+  return { events: copy, selected: insertion + incoming.length - 1 };
+}

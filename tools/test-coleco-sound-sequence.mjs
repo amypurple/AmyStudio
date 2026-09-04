@@ -3,6 +3,7 @@ import {
   createColecoSoundTerminal,
   decodeColecoSoundSegment,
   findColecoSoundSegment,
+  insertColecoSoundEvents,
   moveColecoSoundEvent,
   replaceColecoSoundSegment,
   validateColecoSoundSequence
@@ -42,6 +43,14 @@ assert.throws(() => createColecoSoundTerminal("tiny"), /end or repeat/);
 assert.throws(() => validateColecoSoundSequence(tail.events.toReversed()), /must be the last/);
 assert.throws(() => validateColecoSoundSequence([{ bytes: [0x60] }]), /must end/);
 assert.doesNotThrow(() => validateColecoSoundSequence([{ bytes: [0x60] }], { allowSharedTail: true }));
+
+const inserted = insertColecoSoundEvents(tail.events, [{ type: "note", length: 3, bytes: [0x40, 0x10, 0x00, 0x03] }], 0);
+assert.equal(inserted.selected, 1);
+assert.equal(inserted.events[1].type, "note");
+assert.equal(inserted.events.at(-1).type, "end", "insertions stay before the terminal command");
+const appendedBeforeEnd = insertColecoSoundEvents(tail.events, [inserted.events[1]], 99);
+assert.equal(appendedBeforeEnd.events.at(-2).type, "note");
+assert.notEqual(appendedBeforeEnd.events.at(-2).bytes, inserted.events[1].bytes, "inserted command bytes are copied");
 
 const replacement = replaceColecoSoundSegment(source, "SoundA", [{ bytes: [0x60] }]);
 assert.match(replacement.source, /SoundA:\n    db \$60\nSharedTail:/);

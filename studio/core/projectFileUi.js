@@ -7,7 +7,7 @@ import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableIn
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260903-echo-tail";
 import { previewColecoSoundEvents, scheduleColecoSoundSequence } from "./colecoSoundPreview.js?v=20260903-sequential-sound-preview";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
-import { createColecoSoundTerminal, decodeColecoSoundSegment, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequence-editor2";
+import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { describeTinySoundCommand } from "./colecoTinySound.js?v=20260903-tiny-inspector";
 
 export function createProjectFileUiHelpers({
@@ -2607,7 +2607,7 @@ export function createProjectFileUiHelpers({
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     const builderHeading = document.createElement("strong");
-    builderHeading.textContent = "Tone command preview";
+    builderHeading.textContent = "Command composer";
     const builderHeader = document.createElement("div");
     builderHeader.className = "sound-command-builder__header";
     const controls = document.createElement("div");
@@ -2669,6 +2669,7 @@ export function createProjectFileUiHelpers({
     const previewDescription = document.createElement("span");
     let currentPreview = null;
     let midiConnection = null;
+    let activeMidiRecorder = null;
     const midiNoteStarts = new Map();
     let lastMidiNote = null;
     function updateVisibleToneFields() {
@@ -2758,6 +2759,7 @@ export function createProjectFileUiHelpers({
           inputs.frames.value = String(frames);
           updateTonePreview();
           midiStatus.textContent = `MIDI: ${message.note}${message.octave} captured as ${frames} frame${frames === 1 ? "" : "s"}.`;
+          if (activeMidiRecorder && currentPreview) activeMidiRecorder(currentPreview);
           if (!playPreview.disabled) playPreview.click();
         });
         midiButton.textContent = "MIDI On";
@@ -2812,9 +2814,10 @@ export function createProjectFileUiHelpers({
       editorHeader.append(editorTitle, editorClose);
       const editorNote = document.createElement("p");
       editorNote.className = "graphics-editor-modal__note";
-      editorNote.textContent = segment.sharedTailLabel
+      const ownershipNote = segment.sharedTailLabel
         ? `Editing only ${sound.label}'s prefix. Shared tail ${segment.sharedTailLabel} remains byte-exact.`
         : "Editing this label's complete byte segment.";
+      editorNote.textContent = `${ownershipNote} Compose a command, select its destination, then add it.`;
       const eventList = document.createElement("div");
       eventList.className = "graphics-editor-modal__list sound-sequence-editor__events";
       const editorError = document.createElement("p");
@@ -2830,9 +2833,11 @@ export function createProjectFileUiHelpers({
         editorActions.appendChild(button);
         return button;
       };
-      const addButton = action("+ Command", "Append the command from Tone command preview");
-      const endButton = action("End", "End after the selected label");
-      const repeatButton = action("Repeat", "Repeat the selected label");
+      const addButton = action("+ Add", "Insert the command composer result after the selection");
+      const duplicateButton = action("Duplicate", "Duplicate the selected sound command");
+      const recordButton = action("Record MIDI", "Append each released MIDI note to the sequence");
+      const endButton = action("End (stop)", "Stop playback after the final command");
+      const repeatButton = action("Repeat (loop)", "Loop to the first command after the final command");
       const upButton = action("↑", "Move selected command up");
       const downButton = action("↓", "Move selected command down");
       const deleteButton = action("−", "Delete selected command");
@@ -2845,28 +2850,49 @@ export function createProjectFileUiHelpers({
       }
       function renderEvents() {
         eventList.textContent = "";
+        let frame = 0;
         events.forEach((event, index) => {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "graphics-editor-modal__item";
           button.classList.toggle("is-selected", index === selected);
-          button.textContent = `${index + 1}. ${describeColecoSoundEvent(event, { region: inputs.region.value })}`;
+          const terminal = ["end", "repeat", "tiny"].includes(event.type);
+          button.textContent = `${String(index + 1).padStart(2, "0")} · ${terminal ? "END" : `F${String(frame).padStart(4, "0")}`} · ${describeColecoSoundEvent(event, { region: inputs.region.value })}`;
           button.addEventListener("click", () => { selected = index; renderEvents(); });
           eventList.appendChild(button);
+          if (!terminal) frame += event.length || 0;
         });
         if (!events.length) eventList.textContent = "No commands in this segment.";
-        upButton.disabled = selected <= 0;
-        downButton.disabled = selected < 0 || selected >= events.length - 1;
+        const selectedIsTerminal = ["end", "repeat", "tiny"].includes(events[selected]?.type);
+        const nextIsTerminal = ["end", "repeat", "tiny"].includes(events[selected + 1]?.type);
+        upButton.disabled = selected <= 0 || selectedIsTerminal;
+        downButton.disabled = selected < 0 || selected >= events.length - 1 || selectedIsTerminal || nextIsTerminal;
         deleteButton.disabled = selected < 0;
+        duplicateButton.disabled = selected < 0 || selectedIsTerminal;
         listenButton.disabled = !events.length;
       }
-      addButton.addEventListener("click", () => {
-        if (!currentPreview?.length) return;
-        const terminal = events.findIndex((event) => ["end", "repeat", "tiny"].includes(event.type));
-        const insertion = terminal >= 0 ? terminal : events.length;
-        events.splice(insertion, 0, ...currentPreview.map((event) => ({ ...event, bytes: [...event.bytes] })));
-        selected = insertion;
+      function insertCommands(commands) {
+        if (!commands?.length) return;
+        const inserted = insertColecoSoundEvents(events, commands, selected);
+        events = inserted.events;
+        selected = inserted.selected;
         renderEvents();
+      }
+      addButton.addEventListener("click", () => insertCommands(currentPreview));
+      duplicateButton.addEventListener("click", () => insertCommands([events[selected]]));
+      recordButton.addEventListener("click", () => {
+        if (!midiConnection) {
+          showEditorError(new Error("Connect a MIDI keyboard with MIDI before recording."));
+          return;
+        }
+        if (activeMidiRecorder) {
+          activeMidiRecorder = null;
+          recordButton.textContent = "Record MIDI";
+          return;
+        }
+        activeMidiRecorder = insertCommands;
+        recordButton.textContent = "Stop recording";
+        editorError.hidden = true;
       });
       function setTerminal(type) {
         const terminal = events.findIndex((event) => ["end", "repeat", "tiny"].includes(event.type));
@@ -2894,12 +2920,16 @@ export function createProjectFileUiHelpers({
           closeInspector();
         } catch (error) { showEditorError(error); }
       });
-      const closeSequenceEditor = () => editorBackdrop.remove();
+      const closeSequenceEditor = () => {
+        if (activeMidiRecorder === insertCommands) activeMidiRecorder = null;
+        panel.insertBefore(builder, list);
+        editorBackdrop.remove();
+      };
       editorClose.addEventListener("click", closeSequenceEditor);
       cancelButton.addEventListener("click", closeSequenceEditor);
       editorBackdrop.addEventListener("click", (event) => { if (event.target === editorBackdrop) closeSequenceEditor(); });
       renderEvents();
-      editor.append(editorHeader, editorNote, eventList, editorError, editorActions);
+      editor.append(editorHeader, editorNote, builder, eventList, editorError, editorActions);
       editorBackdrop.appendChild(editor);
       document.body.appendChild(editorBackdrop);
     }
