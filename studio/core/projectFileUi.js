@@ -5,7 +5,7 @@ import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-tiny-sound-inspector";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260903-echo-tail";
-import { previewColecoSoundEvents, scheduleColecoSoundSequence } from "./colecoSoundPreview.js?v=20260903-sequential-sound-preview";
+import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { describeTinySoundCommand } from "./colecoTinySound.js?v=20260903-tiny-inspector";
@@ -2586,6 +2586,7 @@ export function createProjectFileUiHelpers({
     openProjectSoundInspector({ path: "Amy source" }, analysis);
   }
   function openProjectSoundInspector(entry, analysis) {
+    let activeSoundPreview = null;
     const overlay = document.createElement("div");
     overlay.className = "graphics-editor-modal-backdrop";
     const panel = document.createElement("section");
@@ -2992,20 +2993,39 @@ export function createProjectFileUiHelpers({
           const pairMatch = sound.stream.format === "tiny" ? sound.label.match(/^(.*)_ch1$/i) : null;
           const pairedSound = pairMatch ? soundsByLabel.get(`${pairMatch[1]}_ch2`.toLowerCase()) : null;
           if (pairedSound?.stream?.format === "tiny") {
+            const pairTransport = document.createElement("span");
+            pairTransport.className = "sound-sequence-transport";
             const listenPair = document.createElement("button");
             listenPair.type = "button";
-            listenPair.textContent = "▶ Listen Tiny pair";
+            listenPair.textContent = "▶ Play 2 channels";
+            const stopPair = document.createElement("button");
+            stopPair.type = "button";
+            stopPair.textContent = "■ Stop";
+            stopPair.disabled = true;
             listenPair.addEventListener("click", async () => {
               try {
-                await previewColecoSoundEvents([
+                await activeSoundPreview?.stop();
+                const playback = await startColecoSoundPreview([
                   ...sound.stream.tiny.previewEvents,
                   ...pairedSound.stream.tiny.previewEvents
                 ], { region: inputs.region.value });
+                activeSoundPreview = playback;
+                listenPair.disabled = true;
+                stopPair.disabled = false;
+                listenPair.textContent = "↻ Play again";
+                await playback.done;
+                if (activeSoundPreview === playback) activeSoundPreview = null;
+                listenPair.disabled = false;
+                stopPair.disabled = true;
               } catch (error) {
                 setStatus(error.message || String(error));
               }
             });
-            details.appendChild(listenPair);
+            stopPair.addEventListener("click", async () => {
+              await activeSoundPreview?.stop();
+            });
+            pairTransport.append(listenPair, stopPair);
+            details.appendChild(pairTransport);
           }
         }
         if (sound.stream?.format === "tiny") {
@@ -3030,6 +3050,7 @@ export function createProjectFileUiHelpers({
       list.appendChild(warning);
     }
     const closeInspector = () => {
+      activeSoundPreview?.stop();
       midiConnection?.disconnect();
       overlay.remove();
     };

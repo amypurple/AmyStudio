@@ -19,6 +19,8 @@ The preview can accept Note On and Note Off messages from a Web MIDI keyboard. M
 
 Open `SOURCE` > `SOUND`, expand a table entry, then choose `Edit sequence`. The command composer moves into the sequencer: select a timeline row and press `+ Add` repeatedly, or use `Record MIDI` to append each released note. `End` stops the sequence; `Repeat` loops it. Commands can be duplicated, reordered, deleted, and auditioned in order. Saving rewrites only that label's `db`/`.db`/`defb` rows. Shared tails remain byte-exact, and malformed terminal placement is rejected.
 
+For Tiny Sound music stored as `_ch1` and `_ch2`, expand channel 1 and use `Play 2 channels`, `Stop`, then `Play again`. Both channels share the same preview clock. Tiny Sound editing is still read-only; edit its source data directly until a lossless Tiny encoder is available.
+
 DSound is not the WAV-to-notes converter. It preserves a short waveform as digital amplitude samples. Amy's historical `WAV2CV3` instead uses FFT analysis to extract dominant frequencies and strengths over time, then produces ordinary PSG tone commands that can coexist with gameplay. See [Legacy WAV to ColecoVision PSG Reconstruction](legacy-wav-to-coleco-psg-reconstruction.md).
 
 ## PSG Music and Sound Effects (lib4ksa)

@@ -61,7 +61,7 @@ export function scheduleColecoSoundSequence(events) {
   });
 }
 
-export async function previewColecoSoundEvents(events, { region = "NTSC" } = {}) {
+export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) {
   const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AudioContextClass) throw new Error("This browser cannot preview audio.");
   const context = new AudioContextClass();
@@ -107,8 +107,23 @@ export async function previewColecoSoundEvents(events, { region = "NTSC" } = {})
       oscillator.stop(eventStart + duration);
     }
   }
-  await new Promise((resolve) => setTimeout(resolve, Math.ceil((longest + 0.05) * 1000)));
-  await context.close();
+  let finished = false;
+  let resolveDone;
+  const done = new Promise((resolve) => { resolveDone = resolve; });
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    try { await context.close(); } catch {}
+    resolveDone();
+  };
+  const timer = setTimeout(finish, Math.ceil((longest + 0.05) * 1000));
+  return { done, stop: finish, durationSeconds: longest };
+}
+
+export async function previewColecoSoundEvents(events, options = {}) {
+  const playback = await startColecoSoundPreview(events, options);
+  await playback.done;
 }
 
 export { amplitudeForAttenuation, volumeEnvelopeForEvent };
