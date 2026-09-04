@@ -37,6 +37,8 @@ assert.equal(decoded.commands.at(-1).type, "loop");
 assert.equal(decoded.loop, true);
 assert.ok(decoded.previewEvents.length >= 2);
 assert.ok(decoded.previewEvents.every((event, index, events) => index === 0 || event.startFrame >= events[index - 1].startFrame));
+assert.ok(decoded.commands.every((command) => Number.isInteger(command.startFrame)));
+assert.equal(decoded.commands.at(-1).startFrame, decoded.totalFrames);
 assert.match(describeTinySoundCommand(decoded.commands[1]), /Hz/);
 
 const inspected = inspectSoundTableSource(source);

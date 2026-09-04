@@ -96,18 +96,18 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     const commandOffset = offset;
     const code = bytes[offset++];
     if (code === 0xff) {
-      commands.push({ type: "loop", code, offset: commandOffset });
+      commands.push({ type: "loop", code, offset: commandOffset, startFrame: frame, frames: 0 });
       loop = true;
       break;
     }
     if (code === 0x00) {
-      commands.push({ type: "sustain", code, offset: commandOffset, frames: tempo });
+      commands.push({ type: "sustain", code, offset: commandOffset, startFrame: frame, frames: tempo });
       if (lastNote) lastNote.length += tempo;
       frame += tempo;
       continue;
     }
     if (code === 0x01) {
-      commands.push({ type: "silence", code, offset: commandOffset, frames: tempo });
+      commands.push({ type: "silence", code, offset: commandOffset, startFrame: frame, frames: tempo });
       lastNote = null;
       frame += tempo;
       continue;
@@ -115,14 +115,14 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     if (code === 0x02) {
       const values = take(3, commandOffset);
       attenuation = values[0] >> 4;
-      commands.push({ type: "instrument", code, offset: commandOffset, values, attenuation });
+      commands.push({ type: "instrument", code, offset: commandOffset, values, attenuation, startFrame: frame, frames: 0 });
       continue;
     }
     if (code === 0x03) {
       const values = take(7, commandOffset);
       const period = values[0] | ((values[1] & 0x03) << 8);
       const event = { type: "note", channel: stream.channel, period, attenuation: values[1] >> 4, length: values[2] || 256, startFrame: frame };
-      commands.push({ type: "special-note", code, offset: commandOffset, values, period, ...noteName(period, region) });
+      commands.push({ type: "special-note", code, offset: commandOffset, values, period, ...noteName(period, region), startFrame: frame, frames: event.length });
       previewEvents.push(event);
       lastNote = event;
       frame += event.length;
@@ -130,7 +130,7 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     }
     if (code === 0xfe) {
       const event = { type: "note", channel: 0, noise: 4, attenuation: 5, length: tempo, startFrame: frame };
-      commands.push({ type: "drum", code, offset: commandOffset, frames: tempo });
+      commands.push({ type: "drum", code, offset: commandOffset, startFrame: frame, frames: tempo });
       previewEvents.push(event);
       lastNote = null;
       frame += tempo;
@@ -141,7 +141,7 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     const period = TINY_NOTE_PERIODS[noteIndex(code)];
     const named = noteName(period, region);
     const event = { type: "note", channel: stream.channel, period, attenuation, length: tempo, startFrame: frame };
-    commands.push({ type: "note", code, offset: commandOffset, period, ...named, frames: tempo, arpeggioCode });
+    commands.push({ type: "note", code, offset: commandOffset, period, ...named, startFrame: frame, frames: tempo, arpeggioCode });
     previewEvents.push(event);
     lastNote = event;
     frame += tempo;

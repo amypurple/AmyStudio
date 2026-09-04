@@ -2789,6 +2789,92 @@ export function createProjectFileUiHelpers({
       });
       setStatus(`Saved sound sequence to ${entry.path}.`);
     }
+    function openTinyPairSequencer(sound, pairedSound) {
+      const voices = [sound, pairedSound];
+      const totalFrames = Math.max(...voices.map((voice) => voice.stream.tiny.totalFrames));
+      const pixelsPerFrame = Math.max(2.5, Math.min(4, 900 / Math.max(totalFrames, 1)));
+      const laneHeight = Math.max(180, Math.ceil(totalFrames * pixelsPerFrame));
+      const backdrop = document.createElement("div");
+      backdrop.className = "graphics-editor-modal-backdrop";
+      const sequencer = document.createElement("section");
+      sequencer.className = "graphics-editor-modal graphics-editor-json-modal tiny-pair-sequencer-modal";
+      const sequencerHeader = document.createElement("div");
+      sequencerHeader.className = "graphics-editor-modal__header";
+      const sequencerTitle = document.createElement("h3");
+      sequencerTitle.textContent = `Music sequencer · ${sound.label.replace(/_ch1$/i, "")}`;
+      const sequencerClose = document.createElement("button");
+      sequencerClose.type = "button";
+      sequencerClose.className = "graphics-editor-modal__close";
+      sequencerClose.textContent = "✕";
+      sequencerClose.setAttribute("aria-label", "Close music sequencer");
+      sequencerHeader.append(sequencerTitle, sequencerClose);
+      const summary = document.createElement("p");
+      summary.className = "graphics-editor-modal__note";
+      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · Tiny Sound read-only`;
+      const lanes = document.createElement("div");
+      lanes.className = "tiny-pair-sequencer__lanes";
+      for (const voice of voices) {
+        const column = document.createElement("section");
+        column.className = "tiny-pair-sequencer__column";
+        const heading = document.createElement("strong");
+        heading.textContent = `Channel ${voice.stream.tiny.channel}`;
+        const instrument = voice.stream.tiny.commands.find((command) => command.type === "instrument");
+        if (instrument) heading.title = describeTinySoundCommand(instrument);
+        const lane = document.createElement("div");
+        lane.className = "tiny-pair-sequencer__lane";
+        lane.style.height = `${laneHeight}px`;
+        for (const command of voice.stream.tiny.commands) {
+          if (!command.frames) continue;
+          const block = document.createElement("div");
+          block.className = `tiny-pair-sequencer__block is-${command.type}`;
+          block.style.top = `${Math.round(command.startFrame * pixelsPerFrame)}px`;
+          block.style.height = `${Math.max(18, Math.round(command.frames * pixelsPerFrame))}px`;
+          block.textContent = command.type === "note" || command.type === "special-note"
+            ? command.name
+            : command.type === "silence" ? "Rest" : command.type === "sustain" ? "Hold" : "Drum";
+          block.title = `F${command.startFrame} · ${describeTinySoundCommand(command)}`;
+          lane.appendChild(block);
+        }
+        const loop = document.createElement("div");
+        loop.className = "tiny-pair-sequencer__loop";
+        loop.textContent = voice.stream.tiny.loop ? "↻ LOOP" : "END";
+        lane.appendChild(loop);
+        column.append(heading, lane);
+        lanes.appendChild(column);
+      }
+      const transport = document.createElement("div");
+      transport.className = "graphics-editor-json-modal__actions";
+      const play = document.createElement("button");
+      play.type = "button";
+      play.textContent = "▶ Play";
+      const stop = document.createElement("button");
+      stop.type = "button";
+      stop.textContent = "■ Stop";
+      stop.disabled = true;
+      play.addEventListener("click", async () => {
+        await activeSoundPreview?.stop();
+        const playback = await startColecoSoundPreview(voices.flatMap((voice) => voice.stream.tiny.previewEvents), { region: inputs.region.value });
+        activeSoundPreview = playback;
+        play.disabled = true;
+        play.textContent = "↻ Play again";
+        stop.disabled = false;
+        await playback.done;
+        if (activeSoundPreview === playback) activeSoundPreview = null;
+        play.disabled = false;
+        stop.disabled = true;
+      });
+      stop.addEventListener("click", () => activeSoundPreview?.stop());
+      transport.append(play, stop);
+      const closeTinySequencer = () => {
+        activeSoundPreview?.stop();
+        backdrop.remove();
+      };
+      sequencerClose.addEventListener("click", closeTinySequencer);
+      backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeTinySequencer(); });
+      sequencer.append(sequencerHeader, summary, lanes, transport);
+      backdrop.appendChild(sequencer);
+      document.body.appendChild(backdrop);
+    }
     function openSequenceEditor(sound) {
       let segment;
       try {
@@ -3026,6 +3112,11 @@ export function createProjectFileUiHelpers({
             });
             pairTransport.append(listenPair, stopPair);
             details.appendChild(pairTransport);
+            const openPairSequencer = document.createElement("button");
+            openPairSequencer.type = "button";
+            openPairSequencer.textContent = "Open 2-channel sequencer";
+            openPairSequencer.addEventListener("click", () => openTinyPairSequencer(sound, pairedSound));
+            details.appendChild(openPairSequencer);
           }
         }
         if (sound.stream?.format === "tiny") {
