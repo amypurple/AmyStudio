@@ -118,7 +118,13 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     resolveDone();
   };
   const timer = setTimeout(finish, Math.ceil((longest + 0.05) * 1000));
-  return { done, stop: finish, durationSeconds: longest };
+  return {
+    done,
+    stop: finish,
+    durationSeconds: longest,
+    durationFrames: Math.round(longest / frameSeconds),
+    currentFrame: () => Math.max(0, Math.min(longest / frameSeconds, (context.currentTime - start) / frameSeconds))
+  };
 }
 
 export async function previewColecoSoundEvents(events, options = {}) {

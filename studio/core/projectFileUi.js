@@ -2813,6 +2813,7 @@ export function createProjectFileUiHelpers({
       summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · Tiny Sound read-only`;
       const lanes = document.createElement("div");
       lanes.className = "tiny-pair-sequencer__lanes";
+      const laneViews = [];
       for (const voice of voices) {
         const column = document.createElement("section");
         column.className = "tiny-pair-sequencer__column";
@@ -2823,6 +2824,7 @@ export function createProjectFileUiHelpers({
         const lane = document.createElement("div");
         lane.className = "tiny-pair-sequencer__lane";
         lane.style.height = `${laneHeight}px`;
+        const blocks = [];
         for (const command of voice.stream.tiny.commands) {
           if (!command.frames) continue;
           const block = document.createElement("div");
@@ -2833,14 +2835,20 @@ export function createProjectFileUiHelpers({
             ? command.name
             : command.type === "silence" ? "Rest" : command.type === "sustain" ? "Hold" : "Drum";
           block.title = `F${command.startFrame} · ${describeTinySoundCommand(command)}`;
+          blocks.push({ command, block });
           lane.appendChild(block);
         }
+        const playhead = document.createElement("div");
+        playhead.className = "tiny-pair-sequencer__playhead";
+        playhead.hidden = true;
+        lane.appendChild(playhead);
         const loop = document.createElement("div");
         loop.className = "tiny-pair-sequencer__loop";
         loop.textContent = voice.stream.tiny.loop ? "↻ LOOP" : "END";
         lane.appendChild(loop);
         column.append(heading, lane);
         lanes.appendChild(column);
+        laneViews.push({ lane, blocks, playhead });
       }
       const transport = document.createElement("div");
       transport.className = "graphics-editor-json-modal__actions";
@@ -2851,21 +2859,52 @@ export function createProjectFileUiHelpers({
       stop.type = "button";
       stop.textContent = "■ Stop";
       stop.disabled = true;
+      let animationFrame = 0;
+      const clearPlayhead = () => {
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+        for (const view of laneViews) {
+          view.playhead.hidden = true;
+          for (const item of view.blocks) item.block.classList.remove("is-playing");
+        }
+      };
+      const followPlayback = (playback) => {
+        const frame = playback.currentFrame();
+        const top = Math.round(frame * pixelsPerFrame);
+        for (const view of laneViews) {
+          view.playhead.hidden = false;
+          view.playhead.style.transform = `translateY(${top}px)`;
+          for (const item of view.blocks) {
+            const active = frame >= item.command.startFrame && frame < item.command.startFrame + item.command.frames;
+            item.block.classList.toggle("is-playing", active);
+          }
+        }
+        const targetScroll = Math.max(0, top - Math.round(lanes.clientHeight * 0.35));
+        if (Math.abs(lanes.scrollTop - targetScroll) > 24) lanes.scrollTop = targetScroll;
+        if (activeSoundPreview === playback) animationFrame = requestAnimationFrame(() => followPlayback(playback));
+      };
       play.addEventListener("click", async () => {
         await activeSoundPreview?.stop();
+        clearPlayhead();
         const playback = await startColecoSoundPreview(voices.flatMap((voice) => voice.stream.tiny.previewEvents), { region: inputs.region.value });
         activeSoundPreview = playback;
         play.disabled = true;
         play.textContent = "↻ Play again";
         stop.disabled = false;
+        followPlayback(playback);
         await playback.done;
         if (activeSoundPreview === playback) activeSoundPreview = null;
+        clearPlayhead();
         play.disabled = false;
         stop.disabled = true;
       });
-      stop.addEventListener("click", () => activeSoundPreview?.stop());
+      stop.addEventListener("click", () => {
+        clearPlayhead();
+        activeSoundPreview?.stop();
+      });
       transport.append(play, stop);
       const closeTinySequencer = () => {
+        clearPlayhead();
         activeSoundPreview?.stop();
         backdrop.remove();
       };
