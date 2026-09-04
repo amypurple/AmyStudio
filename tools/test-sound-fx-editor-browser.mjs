@@ -102,6 +102,9 @@ try {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true, shiftKey: true, bubbles: true }));
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator");
+  const modalCount = await evaluate(`document.querySelectorAll(".graphics-editor-modal-backdrop").length`);
+  await evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true, shiftKey: true, bubbles: true }))`);
+  assert.equal(await evaluate(`document.querySelectorAll(".graphics-editor-modal-backdrop").length`), modalCount, "sound shortcut must not stack a modal over an open dialog");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Sound effect").click()`);
   await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Create table").click()`);

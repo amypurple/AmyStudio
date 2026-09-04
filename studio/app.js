@@ -941,6 +941,7 @@ els.btnInspectSourceSounds?.addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   if (event.altKey && event.shiftKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
+    if (document.querySelector(".graphics-editor-modal-backdrop")) return;
     els.btnInspectSourceSounds?.click();
   }
 });
