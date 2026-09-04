@@ -2820,6 +2820,8 @@ export function createProjectFileUiHelpers({
       editorNote.textContent = `${ownershipNote} Compose a command, select its destination, then add it.`;
       const eventList = document.createElement("div");
       eventList.className = "graphics-editor-modal__list sound-sequence-editor__events";
+      const timelineSummary = document.createElement("div");
+      timelineSummary.className = "sound-sequence-editor__summary";
       const editorError = document.createElement("p");
       editorError.className = "graphics-editor-json-modal__error";
       editorError.hidden = true;
@@ -2851,13 +2853,27 @@ export function createProjectFileUiHelpers({
       function renderEvents() {
         eventList.textContent = "";
         let frame = 0;
+        const audibleEvents = events.filter((event) => !["end", "repeat", "tiny"].includes(event.type));
+        const totalFrames = audibleEvents.reduce((sum, event) => sum + (event.length || 0), 0);
+        const framesPerSecond = inputs.region.value === "PAL" ? 50 : 60;
+        timelineSummary.textContent = `${audibleEvents.length} command${audibleEvents.length === 1 ? "" : "s"} · ${totalFrames} frames · ${(totalFrames / framesPerSecond).toFixed(2)} s ${inputs.region.value}`;
         events.forEach((event, index) => {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "graphics-editor-modal__item";
           button.classList.toggle("is-selected", index === selected);
           const terminal = ["end", "repeat", "tiny"].includes(event.type);
-          button.textContent = `${String(index + 1).padStart(2, "0")} · ${terminal ? "END" : `F${String(frame).padStart(4, "0")}`} · ${describeColecoSoundEvent(event, { region: inputs.region.value })}`;
+          button.classList.toggle("is-terminal", terminal);
+          const position = document.createElement("span");
+          position.className = "sound-sequence-editor__position";
+          position.textContent = `${String(index + 1).padStart(2, "0")} · ${terminal ? "END" : `F${String(frame).padStart(4, "0")}`}`;
+          const description = document.createElement("span");
+          description.className = "sound-sequence-editor__description";
+          description.textContent = describeColecoSoundEvent(event, { region: inputs.region.value });
+          const duration = document.createElement("span");
+          duration.className = "sound-sequence-editor__duration";
+          duration.style.setProperty("--sound-duration", `${Math.max(terminal ? 1 : event.length || 1, 1)}`);
+          button.append(position, description, duration);
           button.addEventListener("click", () => { selected = index; renderEvents(); });
           eventList.appendChild(button);
           if (!terminal) frame += event.length || 0;
@@ -2929,7 +2945,7 @@ export function createProjectFileUiHelpers({
       cancelButton.addEventListener("click", closeSequenceEditor);
       editorBackdrop.addEventListener("click", (event) => { if (event.target === editorBackdrop) closeSequenceEditor(); });
       renderEvents();
-      editor.append(editorHeader, editorNote, builder, eventList, editorError, editorActions);
+      editor.append(editorHeader, editorNote, builder, timelineSummary, eventList, editorError, editorActions);
       editorBackdrop.appendChild(editor);
       document.body.appendChild(editorBackdrop);
     }
