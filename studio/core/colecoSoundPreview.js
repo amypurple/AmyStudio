@@ -108,7 +108,9 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     }
   }
   let finished = false;
+  let paused = false;
   let resolveDone;
+  let timer = 0;
   const done = new Promise((resolve) => { resolveDone = resolve; });
   const finish = async () => {
     if (finished) return;
@@ -117,10 +119,28 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     try { await context.close(); } catch {}
     resolveDone();
   };
-  const timer = setTimeout(finish, Math.ceil((longest + 0.05) * 1000));
+  const armFinishTimer = () => {
+    clearTimeout(timer);
+    const elapsed = Math.max(0, context.currentTime - start);
+    timer = setTimeout(finish, Math.ceil((Math.max(0, longest - elapsed) + 0.05) * 1000));
+  };
+  armFinishTimer();
   return {
     done,
     stop: finish,
+    pause: async () => {
+      if (finished || paused) return;
+      await context.suspend();
+      paused = true;
+      clearTimeout(timer);
+    },
+    resume: async () => {
+      if (finished || !paused) return;
+      await context.resume();
+      paused = false;
+      armFinishTimer();
+    },
+    isPaused: () => paused,
     durationSeconds: longest,
     durationFrames: Math.round(longest / frameSeconds),
     currentFrame: () => Math.max(0, Math.min(longest / frameSeconds, (context.currentTime - start) / frameSeconds))

@@ -2827,7 +2827,11 @@ export function createProjectFileUiHelpers({
       savePitch.type = "button";
       savePitch.textContent = "Save pitch";
       savePitch.disabled = true;
-      noteEditor.append(selectedLabel, pitch, savePitch);
+      const previewPitch = document.createElement("button");
+      previewPitch.type = "button";
+      previewPitch.textContent = "▶ Preview note";
+      previewPitch.disabled = true;
+      noteEditor.append(selectedLabel, pitch, previewPitch, savePitch);
       const lanes = document.createElement("div");
       lanes.className = "tiny-pair-sequencer__lanes";
       const laneViews = [];
@@ -2863,6 +2867,7 @@ export function createProjectFileUiHelpers({
               selectedNote = { voice, command };
               pitch.value = String(command.code);
               pitch.disabled = false;
+              previewPitch.disabled = false;
               savePitch.disabled = false;
               selectedLabel.textContent = `Channel ${voice.stream.tiny.channel} · frame ${command.startFrame} · ${command.name}`;
             };
@@ -2900,6 +2905,27 @@ export function createProjectFileUiHelpers({
           setStatus(error.message || String(error));
         }
       });
+      previewPitch.addEventListener("click", async () => {
+        if (!selectedNote) return;
+        try {
+          await activeSoundPreview?.stop();
+          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitch.value));
+          if (!choice) return;
+          const playback = await startColecoSoundPreview([{
+            type: "note",
+            channel: selectedNote.voice.stream.tiny.channel,
+            period: choice.period,
+            attenuation: selectedNote.command.attenuation ?? 8,
+            length: selectedNote.command.frames,
+            startFrame: 0
+          }], { region: inputs.region.value });
+          activeSoundPreview = playback;
+          await playback.done;
+          if (activeSoundPreview === playback) activeSoundPreview = null;
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+      });
       const transport = document.createElement("div");
       transport.className = "graphics-editor-json-modal__actions";
       const play = document.createElement("button");
@@ -2909,6 +2935,10 @@ export function createProjectFileUiHelpers({
       stop.type = "button";
       stop.textContent = "■ Stop";
       stop.disabled = true;
+      const pause = document.createElement("button");
+      pause.type = "button";
+      pause.textContent = "Ⅱ Pause";
+      pause.disabled = true;
       let animationFrame = 0;
       const clearPlayhead = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
@@ -2941,18 +2971,33 @@ export function createProjectFileUiHelpers({
         play.disabled = true;
         play.textContent = "↻ Play again";
         stop.disabled = false;
+        pause.disabled = false;
+        pause.textContent = "Ⅱ Pause";
         followPlayback(playback);
         await playback.done;
         if (activeSoundPreview === playback) activeSoundPreview = null;
         clearPlayhead();
         play.disabled = false;
         stop.disabled = true;
+        pause.disabled = true;
+        pause.textContent = "Ⅱ Pause";
       });
       stop.addEventListener("click", () => {
         clearPlayhead();
         activeSoundPreview?.stop();
       });
-      transport.append(play, stop);
+      pause.addEventListener("click", async () => {
+        const playback = activeSoundPreview;
+        if (!playback) return;
+        if (playback.isPaused()) {
+          await playback.resume();
+          pause.textContent = "Ⅱ Pause";
+        } else {
+          await playback.pause();
+          pause.textContent = "▶ Resume";
+        }
+      });
+      transport.append(play, pause, stop);
       const closeTinySequencer = () => {
         clearPlayhead();
         activeSoundPreview?.stop();

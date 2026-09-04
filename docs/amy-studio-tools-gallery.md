@@ -31,7 +31,7 @@ Choose `MIDI` to authorize a connected keyboard through Web MIDI. Note On select
 
 Expand a sound and choose `Edit sequence`. Compose a command, select its insertion point, then use `+ Add` as often as needed. The timeline shows each command's start frame. `End` stops playback; `Repeat` loops. `Record MIDI` appends each released note with its held duration. Commands can also be duplicated, reordered, auditioned, and saved to Amy source or embedded ASM. Shared tails remain byte-exact, and invalid terminal placement is rejected.
 
-Tiny Sound entries show their tempo, instrument, musical notes, sustain, silence, special commands, and loop instead of the misleading single `Tiny` command. `Listen Tiny channel` auditions one channel; matching `_ch1` and `_ch2` labels open synchronized lanes with active-event highlighting and safe pitch editing for plain notes.
+Tiny Sound entries show their tempo, instrument, musical notes, sustain, silence, special commands, and loop instead of the misleading single `Tiny` command. `Listen Tiny channel` auditions one channel; matching `_ch1` and `_ch2` labels open synchronized lanes with active-event highlighting, pause/resume, isolated note preview, and safe pitch editing for plain notes.
 `Open 2-channel sequencer` displays matching Tiny voices in synchronized columns with duration-scaled notes, rests, holds, and shared transport. Tiny data remains read-only until Amy Studio can re-encode every command without changing its meaning.
 
 ## Project Files
