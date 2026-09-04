@@ -3209,6 +3209,91 @@ export function createProjectFileUiHelpers({
       editorBackdrop.appendChild(editor);
       document.body.appendChild(editorBackdrop);
     }
+    const libraryTransport = document.createElement("div");
+    libraryTransport.className = "sound-library-transport";
+    const selectedSoundLabel = document.createElement("span");
+    selectedSoundLabel.textContent = "Select a sound";
+    const libraryPlay = document.createElement("button");
+    libraryPlay.type = "button";
+    libraryPlay.textContent = "▶ Play";
+    libraryPlay.disabled = true;
+    const libraryPause = document.createElement("button");
+    libraryPause.type = "button";
+    libraryPause.textContent = "Ⅱ Pause";
+    libraryPause.disabled = true;
+    const libraryStop = document.createElement("button");
+    libraryStop.type = "button";
+    libraryStop.textContent = "■ Stop";
+    libraryStop.disabled = true;
+    const libraryAction = document.createElement("button");
+    libraryAction.type = "button";
+    libraryAction.hidden = true;
+    libraryTransport.append(selectedSoundLabel, libraryPlay, libraryPause, libraryStop, libraryAction);
+    let selectedLibrarySound = null;
+    const selectLibrarySound = (selection) => {
+      selectedLibrarySound?.row.classList.remove("is-selected");
+      selectedLibrarySound = selection;
+      selection.row.classList.add("is-selected");
+      selectedSoundLabel.textContent = `${selection.sound.index}. ${selection.sound.label}`;
+      libraryPlay.disabled = selection.sound.stream?.status !== "valid";
+      libraryAction.hidden = false;
+      if (selection.pairedSound?.stream?.format === "tiny") {
+        libraryAction.textContent = "Sequencer";
+        libraryAction.disabled = false;
+      } else if (selection.sound.stream?.format !== "tiny") {
+        libraryAction.textContent = "Edit";
+        libraryAction.disabled = false;
+      } else {
+        libraryAction.textContent = "No editor";
+        libraryAction.disabled = true;
+      }
+    };
+    libraryPlay.addEventListener("click", async () => {
+      if (!selectedLibrarySound) return;
+      let playback = null;
+      try {
+        await activeSoundPreview?.stop();
+        const { sound, pairedSound } = selectedLibrarySound;
+        const playable = pairedSound?.stream?.format === "tiny"
+          ? [...sound.stream.tiny.previewEvents, ...pairedSound.stream.tiny.previewEvents]
+          : sound.stream.format === "tiny"
+            ? sound.stream.tiny.previewEvents
+            : scheduleColecoSoundSequence(sound.stream.events);
+        playback = await startColecoSoundPreview(playable, { region: inputs.region.value });
+        activeSoundPreview = playback;
+        libraryPlay.disabled = true;
+        libraryPause.disabled = false;
+        libraryStop.disabled = false;
+        await playback.done;
+      } catch (error) {
+        setStatus(error.message || String(error));
+      } finally {
+        if (!playback || activeSoundPreview === playback) activeSoundPreview = null;
+        libraryPlay.disabled = !selectedLibrarySound || selectedLibrarySound.sound.stream?.status !== "valid";
+        libraryPause.disabled = true;
+        libraryPause.textContent = "Ⅱ Pause";
+        libraryStop.disabled = true;
+      }
+    });
+    libraryPause.addEventListener("click", async () => {
+      if (!activeSoundPreview) return;
+      if (activeSoundPreview.isPaused()) {
+        await activeSoundPreview.resume();
+        libraryPause.textContent = "Ⅱ Pause";
+      } else {
+        await activeSoundPreview.pause();
+        libraryPause.textContent = "▶ Resume";
+      }
+    });
+    libraryStop.addEventListener("click", () => activeSoundPreview?.stop());
+    libraryAction.addEventListener("click", () => {
+      if (!selectedLibrarySound) return;
+      if (selectedLibrarySound.pairedSound?.stream?.format === "tiny") {
+        openTinyPairSequencer(selectedLibrarySound.sound, selectedLibrarySound.pairedSound);
+      } else if (selectedLibrarySound.sound.stream?.format !== "tiny") {
+        openSequenceEditor(selectedLibrarySound.sound);
+      }
+    });
     const list = document.createElement("div");
     list.className = "graphics-editor-modal__list";
     for (const table of analysis.tables) {
@@ -3233,9 +3318,17 @@ export function createProjectFileUiHelpers({
         soundMeta.textContent = `${sound.index}. ${sound.label}` +
           `${sound.stream?.format === "tiny" ? " · Tiny" : ""}` +
           `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
-        const quickActions = document.createElement("div");
-        quickActions.className = "sound-library-row__actions";
-        soundRow.append(soundMeta, quickActions);
+        soundRow.tabIndex = 0;
+        soundRow.setAttribute("role", "button");
+        const selection = { sound, pairedSound, row: soundRow };
+        soundRow.addEventListener("click", () => selectLibrarySound(selection));
+        soundRow.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            selectLibrarySound(selection);
+          }
+        });
+        soundRow.append(soundMeta);
         const details = document.createElement("details");
         const summary = document.createElement("summary");
         summary.textContent = `Technical details · area ${sound.area ?? "?"}` +
@@ -3248,56 +3341,9 @@ export function createProjectFileUiHelpers({
             `${String(index + 1).padStart(2, " ")}  ${sound.stream.format === "tiny" ? describeTinySoundCommand(event) : describeColecoSoundEvent(event)}`
           ).join("\n");
           details.appendChild(commands);
-          const listenExisting = document.createElement("button");
-          listenExisting.type = "button";
-          listenExisting.textContent = "▶ Play";
-          const stopExisting = document.createElement("button");
-          stopExisting.type = "button";
-          stopExisting.textContent = "■ Stop";
-          stopExisting.disabled = true;
-          listenExisting.addEventListener("click", async () => {
-            let playback = null;
-            try {
-              const playable = sound.stream.format === "tiny"
-                ? sound.stream.tiny.previewEvents
-                : scheduleColecoSoundSequence(sound.stream.events);
-              await activeSoundPreview?.stop();
-              playback = await startColecoSoundPreview(playable, { region: inputs.region.value });
-              activeSoundPreview = playback;
-              listenExisting.disabled = true;
-              stopExisting.disabled = false;
-              await playback.done;
-            } catch (error) {
-              setStatus(error.message || String(error));
-            } finally {
-              if (!playback || activeSoundPreview === playback) {
-                activeSoundPreview = null;
-                listenExisting.disabled = false;
-                stopExisting.disabled = true;
-              }
-            }
-          });
-          stopExisting.addEventListener("click", () => activeSoundPreview?.stop());
-          const existingTransport = document.createElement("span");
-          existingTransport.className = "sound-sequence-transport";
-          existingTransport.append(listenExisting, stopExisting);
-          if (!pairedSound && !pairedFollower) quickActions.appendChild(existingTransport);
-          if (pairedSound?.stream?.format === "tiny") {
-            const openPairSequencer = document.createElement("button");
-            openPairSequencer.type = "button";
-            openPairSequencer.textContent = "Sequencer";
-            openPairSequencer.addEventListener("click", () => openTinyPairSequencer(sound, pairedSound));
-            quickActions.appendChild(openPairSequencer);
-          }
-        }
-        if (sound.stream?.format !== "tiny") {
-          const editSequence = document.createElement("button");
-          editSequence.type = "button";
-          editSequence.textContent = "Edit";
-          editSequence.addEventListener("click", () => openSequenceEditor(sound));
-          quickActions.appendChild(editSequence);
         }
         item.append(soundRow, details);
+        if (!selectedLibrarySound && !pairedFollower) selectLibrarySound(selection);
       }
       list.appendChild(item);
     }
@@ -3318,6 +3364,7 @@ export function createProjectFileUiHelpers({
       const composer = view === "composer";
       builder.hidden = !composer;
       list.hidden = composer;
+      libraryTransport.hidden = composer;
       soundsTab.classList.toggle("is-active", !composer);
       composerTab.classList.toggle("is-active", composer);
       note.textContent = composer
@@ -3330,7 +3377,7 @@ export function createProjectFileUiHelpers({
       const visible = panel.classList.toggle("show-technical");
       technicalToggle.classList.toggle("is-active", visible);
     });
-    panel.append(header, viewTabs, note, list, builder);
+    panel.append(header, viewTabs, note, libraryTransport, list, builder);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
   }
