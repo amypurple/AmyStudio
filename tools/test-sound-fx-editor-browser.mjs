@@ -121,9 +121,13 @@ try {
     set("pitch step", "3");
     set("pitch every", "2");
     set("pitch first", "1");
-    Array.from(document.querySelectorAll(".sound-sequence-editor__action-group button")).find((button) => button.textContent === "Replace selected").click();
+    Array.from(document.querySelectorAll(".sound-command-builder__actions button")).find((button) => button.textContent === "Apply changes").click();
   })()`);
   await waitFor(`document.querySelector(".sound-sequence-editor__events").textContent.includes("9 frames") && document.querySelector(".sound-sequence-editor__events").textContent.includes("freq +3 every 2 frames")`, "replaced command");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-sequence-editor__action-group button")).find((button) => button.textContent === "Undo").click()`);
+  await waitFor(`document.querySelector('[data-sound-field="frames"] input').value === "2"`, "undo command edit");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-sequence-editor__action-group button")).find((button) => button.textContent === "Redo").click()`);
+  await waitFor(`document.querySelector('[data-sound-field="frames"] input').value === "9"`, "redo command edit");
   await evaluate(`Array.from(document.querySelectorAll(".sound-sequence-editor__action-group button")).find((button) => button.textContent === "Save").click()`);
   await waitFor(`!document.querySelector(".sound-sequence-editor-modal")`, "editor save");
   const saved = await evaluate(`document.getElementById("sourceEditor").value`);

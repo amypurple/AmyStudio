@@ -2690,7 +2690,15 @@ export function createProjectFileUiHelpers({
     midiButton.title = "Connect a Web MIDI keyboard";
     const builderActions = document.createElement("div");
     builderActions.className = "sound-command-builder__actions";
-    builderActions.append(midiButton, playPreview);
+    const applyComposer = document.createElement("button");
+    applyComposer.type = "button";
+    applyComposer.textContent = "Apply changes";
+    applyComposer.title = "Apply these fields to the selected sound command";
+    applyComposer.hidden = true;
+    applyComposer.disabled = true;
+    let applyComposerChange = null;
+    applyComposer.addEventListener("click", () => applyComposerChange?.());
+    builderActions.append(midiButton, playPreview, applyComposer);
     builderHeader.append(builderHeading, builderActions);
     const midiStatus = document.createElement("span");
     midiStatus.className = "sound-command-builder__midi-status";
@@ -2844,7 +2852,10 @@ export function createProjectFileUiHelpers({
         midiButton.disabled = false;
       }
     });
-    controls.addEventListener("input", updateTonePreview);
+    controls.addEventListener("input", () => {
+      updateTonePreview();
+      applyComposer.disabled = !applyComposerChange || !currentPreview?.length;
+    });
     updateTonePreview();
     builder.append(builderHeader, midiStatus, controls, preview, previewDescription);
     function saveSoundSource(source) {
@@ -3150,7 +3161,6 @@ export function createProjectFileUiHelpers({
         return button;
       };
       const addButton = action("+ Add", "Insert the command composer result after the selection");
-      const replaceButton = action("Replace selected", "Replace the selected command with the composer result");
       const duplicateButton = action("Duplicate", "Duplicate the selected sound command");
       const recordButton = action("Record MIDI", "Append each released MIDI note to the sequence");
       const endButton = action("End (stop)", "Stop playback after the final command");
@@ -3158,6 +3168,8 @@ export function createProjectFileUiHelpers({
       const upButton = action("↑", "Move selected command up");
       const downButton = action("↓", "Move selected command down");
       const deleteButton = action("−", "Delete selected command");
+      const undoButton = action("Undo", "Undo the last sequence edit");
+      const redoButton = action("Redo", "Redo the last undone sequence edit");
       const listenButton = action("▶ Play", "Play the complete sound effect");
       const pauseSequenceButton = action("Ⅱ Pause", "Pause or resume the sound effect");
       const stopSequenceButton = action("■ Stop", "Stop the sound effect");
@@ -3167,7 +3179,7 @@ export function createProjectFileUiHelpers({
       const cancelButton = action("Cancel");
       const editActions = document.createElement("div");
       editActions.className = "sound-sequence-editor__action-group";
-      editActions.append(addButton, replaceButton, duplicateButton, upButton, downButton, deleteButton);
+      editActions.append(addButton, duplicateButton, upButton, downButton, deleteButton, undoButton, redoButton);
       const playbackActions = document.createElement("div");
       playbackActions.className = "sound-sequence-editor__action-group is-transport";
       playbackActions.append(listenButton, pauseSequenceButton, stopSequenceButton);
@@ -3179,9 +3191,22 @@ export function createProjectFileUiHelpers({
         editorError.textContent = error?.message || String(error);
         editorError.hidden = false;
       }
+      const undoStack = [];
+      const redoStack = [];
+      const cloneEvents = (value) => structuredClone(value);
+      function rememberEdit() {
+        undoStack.push({ events: cloneEvents(events), selected });
+        redoStack.length = 0;
+      }
+      function restoreEdit(snapshot) {
+        events = cloneEvents(snapshot.events);
+        selected = snapshot.selected;
+        renderEvents();
+        loadSelectedCommand();
+      }
       function loadSelectedCommand() {
         const event = events[selected];
-        replaceButton.disabled = true;
+        applyComposer.disabled = true;
         if (!event || ["end", "repeat", "tiny"].includes(event.type)) return;
         if (event.type === "rest") {
           inputs.mode.value = "Rest";
@@ -3219,7 +3244,7 @@ export function createProjectFileUiHelpers({
         inputs["volume first"].value = String(event.volumeSweep?.firstLength ?? 1);
         editorNote.textContent = `${ownershipNote} Edit the selected command, preview it, then replace it.`;
         updateTonePreview();
-        replaceButton.disabled = !currentPreview?.length;
+        applyComposer.disabled = !currentPreview?.length;
       }
       function renderEvents() {
         eventList.textContent = "";
@@ -3269,6 +3294,7 @@ export function createProjectFileUiHelpers({
             dragEvent.preventDefault();
             if (draggedCommand < 0 || draggedCommand === index) return;
             const destination = terminal ? Math.max(0, index - 1) : index;
+            rememberEdit();
             events = moveColecoSoundEvent(events, draggedCommand, destination);
             selected = destination;
             draggedCommand = -1;
@@ -3285,24 +3311,29 @@ export function createProjectFileUiHelpers({
         downButton.disabled = selected < 0 || selected >= events.length - 1 || selectedIsTerminal || nextIsTerminal;
         deleteButton.disabled = selected < 0;
         duplicateButton.disabled = selected < 0 || selectedIsTerminal;
-        replaceButton.disabled = selected < 0 || selectedIsTerminal;
+        applyComposer.disabled = selected < 0 || selectedIsTerminal || !currentPreview?.length;
+        undoButton.disabled = !undoStack.length;
+        redoButton.disabled = !redoStack.length;
         listenButton.disabled = !events.length;
       }
       function insertCommands(commands) {
         if (!commands?.length) return;
+        rememberEdit();
         const inserted = insertColecoSoundEvents(events, commands, selected);
         events = inserted.events;
         selected = inserted.selected;
         renderEvents();
       }
       addButton.addEventListener("click", () => insertCommands(currentPreview));
-      replaceButton.addEventListener("click", () => {
+      applyComposerChange = () => {
         if (selected < 0 || !currentPreview?.length) return;
+        rememberEdit();
         events.splice(selected, 1, ...currentPreview.map((event) => ({ ...event, bytes: [...event.bytes] })));
         selected += currentPreview.length - 1;
         renderEvents();
         loadSelectedCommand();
-      });
+      };
+      applyComposer.hidden = false;
       duplicateButton.addEventListener("click", () => insertCommands([events[selected]]));
       recordButton.addEventListener("click", () => {
         if (!midiConnection) {
@@ -3319,6 +3350,7 @@ export function createProjectFileUiHelpers({
         editorError.hidden = true;
       });
       function setTerminal(type) {
+        rememberEdit();
         const terminal = events.findIndex((event) => ["end", "repeat", "tiny"].includes(event.type));
         const audible = events.filter((event) => !["end", "repeat", "tiny"].includes(event.type));
         const channel = audible.at(-1)?.channel ?? 1;
@@ -3328,9 +3360,19 @@ export function createProjectFileUiHelpers({
       }
       endButton.addEventListener("click", () => setTerminal("end"));
       repeatButton.addEventListener("click", () => setTerminal("repeat"));
-      upButton.addEventListener("click", () => { events = moveColecoSoundEvent(events, selected, selected - 1); selected -= 1; renderEvents(); });
-      downButton.addEventListener("click", () => { events = moveColecoSoundEvent(events, selected, selected + 1); selected += 1; renderEvents(); });
-      deleteButton.addEventListener("click", () => { events.splice(selected, 1); selected = Math.min(selected, events.length - 1); renderEvents(); });
+      upButton.addEventListener("click", () => { rememberEdit(); events = moveColecoSoundEvent(events, selected, selected - 1); selected -= 1; renderEvents(); loadSelectedCommand(); });
+      downButton.addEventListener("click", () => { rememberEdit(); events = moveColecoSoundEvent(events, selected, selected + 1); selected += 1; renderEvents(); loadSelectedCommand(); });
+      deleteButton.addEventListener("click", () => { rememberEdit(); events.splice(selected, 1); selected = Math.min(selected, events.length - 1); renderEvents(); loadSelectedCommand(); });
+      undoButton.addEventListener("click", () => {
+        if (!undoStack.length) return;
+        redoStack.push({ events: cloneEvents(events), selected });
+        restoreEdit(undoStack.pop());
+      });
+      redoButton.addEventListener("click", () => {
+        if (!redoStack.length) return;
+        undoStack.push({ events: cloneEvents(events), selected });
+        restoreEdit(redoStack.pop());
+      });
       listenButton.addEventListener("click", async () => {
         const audible = scheduleColecoSoundSequence(events);
         let playback = null;
@@ -3374,6 +3416,9 @@ export function createProjectFileUiHelpers({
       const closeSequenceEditor = () => {
         if (activeMidiRecorder === insertCommands) activeMidiRecorder = null;
         activeSoundPreview?.stop();
+        applyComposerChange = null;
+        applyComposer.hidden = true;
+        applyComposer.disabled = true;
         panel.appendChild(builder);
         builder.hidden = true;
         list.hidden = false;
