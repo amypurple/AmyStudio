@@ -91,7 +91,7 @@ import {
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260904-tiny-lanes";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260905-sound-table-creator";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
@@ -902,7 +902,8 @@ const {
   renderProjectFiles,
   addImportedProjectFiles,
   inspectSourceSoundTables,
-  openSourceSoundInspector
+  openSourceSoundInspector,
+  openSourceSoundTableCreator
 } = createProjectFileUiHelpers({
   els,
   getProject: () => project,
@@ -931,7 +932,7 @@ const {
 els.btnInspectSourceSounds?.addEventListener("click", () => {
   const analysis = inspectSourceSoundTables(els.sourceEditor.value);
   if (!analysis) {
-    setStatus("No BIOS sound table found in source.");
+    openSourceSoundTableCreator(els.sourceEditor.value);
     return;
   }
   openSourceSoundInspector(analysis);

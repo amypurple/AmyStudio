@@ -95,6 +95,22 @@ try {
   await client.send("Page.enable");
   await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/studio/?sound-fx-browser-test=1` });
   await waitFor(`document.getElementById("studioLoading") === null`, "Studio startup");
+  await evaluate(`(() => {
+    const editor = document.getElementById("sourceEditor");
+    editor.value = "sub start:\\n  text screen\\n";
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    document.getElementById("btnInspectSourceSounds").click();
+  })()`);
+  await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Sound effect").click()`);
+  await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Create table").click()`);
+  await waitFor(`!document.querySelector(".sound-table-creator-modal")`, "sound table creation");
+  const created = await evaluate(`document.getElementById("sourceEditor").value`);
+  assert.match(created, /sub start:\n  set sound table GameSoundTable areas 6\n  text screen/);
+  assert.match(created, /dw MusicVoice1,\$702B ; music · slot 1/);
+  assert.match(created, /dw SoundEffect1,\$705D ; sfx · slot 6/);
+  assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
   const fixture = `SoundTable:\n    dw TestSfx,$703F\nTestSfx:\n    db $40,$6B,$00,$02,$50\n`;
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");

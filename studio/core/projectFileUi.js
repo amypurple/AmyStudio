@@ -9,6 +9,7 @@ import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSound
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, tinyNoteChoices } from "./colecoTinySound.js?v=20260904-tiny-pitch-playback";
+import { buildColecoSoundTableSource, insertColecoSoundTableSource } from "./colecoSoundTableBuilder.js?v=20260905-human-slots";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2582,6 +2583,149 @@ export function createProjectFileUiHelpers({
     const analysis = inspectSoundTableSource(source);
     return analysis.tables.length ? analysis : null;
   }
+  function openSourceSoundTableCreator(sourceText) {
+    const overlay = document.createElement("div");
+    overlay.className = "graphics-editor-modal-backdrop";
+    const panel = document.createElement("section");
+    panel.className = "graphics-editor-modal graphics-editor-json-modal sound-table-creator-modal";
+    const header = document.createElement("div");
+    header.className = "graphics-editor-modal__header";
+    const title = document.createElement("h3");
+    title.textContent = "New Sound Table";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "graphics-editor-modal__close";
+    close.textContent = "✕";
+    close.setAttribute("aria-label", "Close sound table creator");
+    header.append(title, close);
+    const note = document.createElement("p");
+    note.className = "graphics-editor-modal__note";
+    note.textContent = "Reserve early slots for simultaneous music voices. Put effects in later slots; effects sharing a slot interrupt each other.";
+    const settings = document.createElement("div");
+    settings.className = "sound-table-creator__settings";
+    const tableLabel = document.createElement("label");
+    tableLabel.textContent = "Table name";
+    const tableName = document.createElement("input");
+    tableName.value = "GameSoundTable";
+    tableLabel.appendChild(tableName);
+    const areaLabel = document.createElement("label");
+    areaLabel.textContent = "Sound slots";
+    const areaCount = document.createElement("select");
+    for (let count = 1; count <= 8; count += 1) {
+      const option = document.createElement("option");
+      option.value = String(count);
+      option.textContent = String(count);
+      if (count === 6) option.selected = true;
+      areaCount.appendChild(option);
+    }
+    areaLabel.appendChild(areaCount);
+    settings.append(tableLabel, areaLabel);
+    const rows = document.createElement("div");
+    rows.className = "sound-table-creator__rows";
+    const preview = document.createElement("pre");
+    preview.className = "sound-table-creator__preview";
+    const message = document.createElement("p");
+    message.className = "graphics-editor-json-modal__error";
+    const actions = document.createElement("div");
+    actions.className = "graphics-editor-json-modal__actions";
+    const addMusic = document.createElement("button");
+    addMusic.type = "button";
+    addMusic.textContent = "+ Music voice";
+    const addSfx = document.createElement("button");
+    addSfx.type = "button";
+    addSfx.textContent = "+ Sound effect";
+    const create = document.createElement("button");
+    create.type = "button";
+    create.textContent = "Create table";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    actions.append(addMusic, addSfx, create, cancel);
+    let nextMusic = 1;
+    let nextSfx = 1;
+    let built = null;
+    function addRow(role) {
+      const row = document.createElement("div");
+      row.className = "sound-table-creator__row";
+      row.dataset.role = role;
+      const name = document.createElement("input");
+      name.setAttribute("aria-label", "Sound name");
+      name.value = role === "music" ? `MusicVoice${nextMusic++}` : `SoundEffect${nextSfx++}`;
+      const roleText = document.createElement("span");
+      roleText.textContent = role === "music" ? "Music" : "SFX";
+      const slot = document.createElement("select");
+      slot.setAttribute("aria-label", "Sound slot");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "−";
+      remove.title = "Remove sound";
+      remove.setAttribute("aria-label", "Remove sound");
+      remove.addEventListener("click", () => { row.remove(); update(); });
+      row.append(name, roleText, slot, remove);
+      rows.appendChild(row);
+      refreshSlots(row, role);
+      update();
+    }
+    function refreshSlots(row, role = row.dataset.role) {
+      const slot = row.querySelector("select");
+      const previous = Number(slot.value);
+      slot.textContent = "";
+      const count = Number(areaCount.value);
+      for (let index = 1; index <= count; index += 1) {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `Slot ${index}`;
+        slot.appendChild(option);
+      }
+      slot.value = String(previous >= 1 && previous <= count ? previous : role === "music" ? Math.min(rows.querySelectorAll('[data-role="music"]').length, count) : count);
+    }
+    function update() {
+      try {
+        built = buildColecoSoundTableSource({
+          tableName: tableName.value.trim(),
+          areaCount: Number(areaCount.value),
+          sounds: [...rows.children].map((row) => ({
+            name: row.querySelector("input").value.trim(),
+            role: row.dataset.role,
+            slot: Number(row.querySelector("select").value)
+          }))
+        });
+        preview.textContent = `${built.setup}\n\n${built.asm}`;
+        message.hidden = true;
+        if (built.sharedSlots.length) {
+          message.hidden = false;
+          message.textContent = built.sharedSlots.map((shared) => `Slot ${shared.slot} is shared: ${shared.names.join(", ")}. These sounds interrupt each other.`).join(" ");
+        }
+        create.disabled = false;
+      } catch (error) {
+        built = null;
+        preview.textContent = "";
+        message.hidden = false;
+        message.textContent = error.message;
+        create.disabled = true;
+      }
+    }
+    areaCount.addEventListener("change", () => { for (const row of rows.children) refreshSlots(row); update(); });
+    settings.addEventListener("input", update);
+    rows.addEventListener("input", update);
+    addMusic.addEventListener("click", () => addRow("music"));
+    addSfx.addEventListener("click", () => addRow("sfx"));
+    const dismiss = () => overlay.remove();
+    close.addEventListener("click", dismiss);
+    cancel.addEventListener("click", dismiss);
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) dismiss(); });
+    create.addEventListener("click", () => {
+      if (!built) return;
+      commitProjectSourceText(insertColecoSoundTableSource(sourceText, built));
+      setStatus(`Created ${built.sounds.length}-sound table ${tableName.value.trim()}. Open SOUND again to edit its commands.`);
+      dismiss();
+    });
+    addRow("music");
+    addRow("sfx");
+    panel.append(header, note, settings, rows, actions, message, preview);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  }
   function openSourceSoundInspector(analysis) {
     openProjectSoundInspector({ path: "Amy source" }, analysis);
   }
@@ -3974,6 +4118,7 @@ export function createProjectFileUiHelpers({
     renderProjectFiles,
     addImportedProjectFiles,
     inspectSourceSoundTables,
-    openSourceSoundInspector
+    openSourceSoundInspector,
+    openSourceSoundTableCreator
   };
 }
