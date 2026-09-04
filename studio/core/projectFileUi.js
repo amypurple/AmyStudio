@@ -2862,9 +2862,10 @@ export function createProjectFileUiHelpers({
             block.tabIndex = 0;
             block.setAttribute("role", "button");
             const selectNote = () => {
+              if (selectedNote) selectedNote.block.textContent = selectedNote.command.name;
               for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
               block.classList.add("is-selected");
-              selectedNote = { voice, command };
+              selectedNote = { voice, command, block };
               pitch.value = String(command.code);
               pitch.disabled = false;
               previewPitch.disabled = false;
@@ -2897,13 +2898,31 @@ export function createProjectFileUiHelpers({
       savePitch.addEventListener("click", () => {
         if (!selectedNote) return;
         try {
+          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitch.value));
+          if (!choice) return;
           const byteIndex = selectedNote.command.offset + 1;
-          const source = replaceTinySoundByte(analysis.source, selectedNote.voice.label, byteIndex, Number(pitch.value));
+          const source = replaceTinySoundByte(analysis.source, selectedNote.voice.label, byteIndex, choice.code);
           saveSoundSource(source);
-          closeTinySequencer();
+          analysis.source = source;
+          selectedNote.command.code = choice.code;
+          selectedNote.command.period = choice.period;
+          selectedNote.command.name = choice.name;
+          selectedNote.command.frequency = choice.frequency;
+          selectedNote.block.textContent = choice.name;
+          selectedNote.block.title = `F${selectedNote.command.startFrame} · ${describeTinySoundCommand(selectedNote.command)}`;
+          selectedLabel.textContent = `Saved · channel ${selectedNote.voice.stream.tiny.channel} · frame ${selectedNote.command.startFrame} · ${choice.name}`;
+          savePitch.disabled = true;
         } catch (error) {
           setStatus(error.message || String(error));
         }
+      });
+      pitch.addEventListener("input", () => {
+        if (!selectedNote) return;
+        const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitch.value));
+        if (!choice) return;
+        selectedNote.block.textContent = choice.name;
+        selectedLabel.textContent = `Unsaved · channel ${selectedNote.voice.stream.tiny.channel} · frame ${selectedNote.command.startFrame} · ${choice.name}`;
+        savePitch.disabled = choice.code === selectedNote.command.code;
       });
       previewPitch.addEventListener("click", async () => {
         if (!selectedNote) return;
