@@ -8,7 +8,7 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, tinyNoteChoices } from "./colecoTinySound.js?v=20260904-tiny-pitch-playback";
+import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260905-tiny-envelope-editor";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, colecoSoundAreaAddress, insertColecoSoundTableSource } from "./colecoSoundTableBuilder.js?v=20260905-add-sound";
 
 export function createProjectFileUiHelpers({
@@ -3150,7 +3150,79 @@ export function createProjectFileUiHelpers({
       sequencerHeader.append(sequencerTitle, sequencerClose);
       const summary = document.createElement("p");
       summary.className = "graphics-editor-modal__note";
-      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · plain-note pitch editing`;
+      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · notes and envelopes are editable`;
+      const envelopeEditor = document.createElement("div");
+      envelopeEditor.className = "tiny-pair-sequencer__envelopes";
+      const nibbleValue = (value) => value === 16 ? 0 : value & 0x0f;
+      const addNumber = (labelText, value, min, max) => {
+        const label = document.createElement("label");
+        label.textContent = labelText;
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = String(min);
+        input.max = String(max);
+        input.value = String(value);
+        label.appendChild(input);
+        return { label, input };
+      };
+      for (const voice of voices) {
+        const command = voice.stream.tiny.commands.find((item) => item.type === "instrument");
+        if (!command) continue;
+        const envelope = tinyInstrumentEnvelope(command.values);
+        const panel = document.createElement("fieldset");
+        panel.className = "tiny-pair-sequencer__envelope";
+        const legend = document.createElement("legend");
+        legend.textContent = `Channel ${voice.stream.tiny.channel} instrument`;
+        const bytes = document.createElement("code");
+        const showBytes = () => {
+          bytes.textContent = `$02,${command.values.map((value) => `$${value.toString(16).toUpperCase().padStart(2, "0")}`).join(",")}`;
+        };
+        showBytes();
+        const volume = addNumber("Volume", 15 - (command.values[0] >> 4), 0, 15);
+        const modeLabel = document.createElement("label");
+        modeLabel.textContent = "Envelope";
+        const mode = document.createElement("select");
+        mode.append(new Option("Decay", "decay"), new Option("Steady", "steady"));
+        mode.value = envelope ? "decay" : "steady";
+        modeLabel.appendChild(mode);
+        const step = addNumber("Step", envelope?.step ?? 1, 0, 15);
+        const count = addNumber("Count", envelope?.count ?? 1, 1, 16);
+        const first = addNumber("First", envelope?.firstLength ?? 1, 1, 16);
+        const every = addNumber("Every", envelope?.stepLength ?? 1, 1, 16);
+        const apply = document.createElement("button");
+        apply.type = "button";
+        apply.textContent = "Apply envelope";
+        const syncMode = () => {
+          const disabled = mode.value === "steady";
+          for (const control of [step.input, count.input, first.input, every.input]) control.disabled = disabled;
+        };
+        mode.addEventListener("change", syncMode);
+        syncMode();
+        apply.addEventListener("click", () => {
+          try {
+            const values = [
+              ((15 - Number(volume.input.value)) & 0x0f) << 4,
+              mode.value === "steady" ? 0 : ((Number(step.input.value) & 0x0f) << 4) | nibbleValue(Number(count.input.value)),
+              (nibbleValue(Number(every.input.value)) << 4) | nibbleValue(Number(first.input.value))
+            ];
+            let source = analysis.source;
+            for (let index = 0; index < values.length; index += 1) {
+              source = replaceTinySoundByte(source, voice.label, command.offset + 2 + index, values[index]);
+            }
+            saveSoundSource(source);
+            analysis.source = source;
+            command.values = values;
+            command.attenuation = values[0] >> 4;
+            voice.stream.tiny = decodeTinySoundSource(source, voice.label, { region: inputs.region.value });
+            showBytes();
+            selectedLabel.textContent = `Saved · channel ${voice.stream.tiny.channel} envelope`;
+          } catch (error) {
+            setStatus(error.message || String(error));
+          }
+        });
+        panel.append(legend, bytes, volume.label, modeLabel, step.label, count.label, first.label, every.label, apply);
+        envelopeEditor.appendChild(panel);
+      }
       const noteEditor = document.createElement("div");
       noteEditor.className = "tiny-pair-sequencer__editor";
       const selectedLabel = document.createElement("span");
@@ -3365,7 +3437,7 @@ export function createProjectFileUiHelpers({
       };
       sequencerClose.addEventListener("click", closeTinySequencer);
       backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeTinySequencer(); });
-      sequencer.append(sequencerHeader, summary, noteEditor, lanes, transport);
+      sequencer.append(sequencerHeader, summary, envelopeEditor, noteEditor, lanes, transport);
       backdrop.appendChild(sequencer);
       document.body.appendChild(backdrop);
     }

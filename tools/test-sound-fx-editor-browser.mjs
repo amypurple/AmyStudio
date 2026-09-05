@@ -22,11 +22,14 @@ const server = createServer(async (request, response) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const port = server.address().port;
-const debugPort = 9444;
+const debugProbe = createServer();
+await new Promise((resolve) => debugProbe.listen(0, "127.0.0.1", resolve));
+const debugPort = debugProbe.address().port;
+await new Promise((resolve) => debugProbe.close(resolve));
 const browser = spawn(edgePath, [
   "--headless=new",
   `--remote-debugging-port=${debugPort}`,
-  `--user-data-dir=${path.resolve(".tmp/sound-fx-browser-test")}`,
+  `--user-data-dir=${path.resolve(`.tmp/sound-fx-browser-test-${process.pid}`)}`,
   "--disable-gpu",
   "--autoplay-policy=no-user-gesture-required",
   "about:blank"
@@ -128,6 +131,36 @@ try {
   const extended = await evaluate(`document.getElementById("sourceEditor").value`);
   assert.match(extended, /dw ExtraSound,\$705D ; sfx · slot 6/);
   assert.match(extended, /ExtraSound:\n    db \$50/);
+  const tinyFixture = `TinyTable:\n    dw TestMusic_ch1,$702B\n    dw TestMusic_ch2,$7035\nTestMusic_ch1:\n    db $44\n    dw sndtiny_1\n    db $08,$02,$60,$19,$22,$1F,$00,$01,$FF\nTestMusic_ch2:\n    db $84\n    dw sndtiny_2\n    db $08,$02,$80,$19,$22,$13,$00,$01,$FF\n`;
+  await evaluate(`(() => {
+    const editor = document.getElementById("sourceEditor");
+    editor.value = ${JSON.stringify(tinyFixture)};
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    document.getElementById("btnInspectSourceSounds").click();
+  })()`);
+  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "Tiny Sound library");
+  await evaluate(`(() => {
+    Array.from(document.querySelectorAll(".sound-library-row")).find((item) => item.textContent.includes("TestMusic_ch1")).click();
+    Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Sequencer").click();
+  })()`);
+  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__envelope").length === 2`, "Tiny envelope editors");
+  assert.match(await evaluate(`document.querySelector(".tiny-pair-sequencer__envelope code").textContent`), /^\$02,\$60,\$19,\$22$/);
+  await evaluate(`(() => {
+    const panel = document.querySelector(".tiny-pair-sequencer__envelope");
+    const input = (name) => Array.from(panel.querySelectorAll("label")).find((label) => label.firstChild.textContent === name).querySelector("input,select");
+    input("Volume").value = "12";
+    input("Step").value = "2";
+    input("Count").value = "15";
+    input("First").value = "4";
+    input("Every").value = "16";
+    Array.from(panel.querySelectorAll("button")).find((button) => button.textContent === "Apply envelope").click();
+  })()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__envelope code").textContent === "$02,$30,$2F,$04"`, "edited Tiny envelope");
+  assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /db \$08,\$02,\$30,\$2F,\$04,\$1F/);
+  await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
+  await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "Tiny sequencer close");
+  await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
+  await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "Tiny library close");
   const terminalFixture = `SoundTable:\n    dw EndOnly,$703F\nEndOnly:\n    db $50\n`;
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");

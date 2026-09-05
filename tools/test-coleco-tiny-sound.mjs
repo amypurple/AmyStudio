@@ -90,6 +90,24 @@ assert.notEqual(editedDecoded.previewEvents[0].period, decodeTinySoundSource(fix
 assert.equal(editedSource.replace("$20", "$1F"), fixture, "surgical edit preserves every unrelated source character");
 assert.throws(() => replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 999, 4), /was not found/);
 
+let envelopeSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 2, 0x30);
+envelopeSource = replaceTinySoundByte(envelopeSource, "brinquitos_music_gladiators_ch1", 3, 0x2f);
+envelopeSource = replaceTinySoundByte(envelopeSource, "brinquitos_music_gladiators_ch1", 4, 0x04);
+const envelopeDecoded = decodeTinySoundSource(envelopeSource, "brinquitos_music_gladiators_ch1");
+assert.deepEqual(envelopeDecoded.commands[0].values, [0x30, 0x2f, 0x04], "the editor can replace all three instrument bytes");
+assert.deepEqual(tinyInstrumentEnvelope(envelopeDecoded.commands[0].values), {
+  step: 2,
+  count: 15,
+  firstLength: 4,
+  stepLength: 16
+});
+assert.deepEqual(envelopeDecoded.previewEvents[0].volumeSweep, {
+  step: 2,
+  count: 15,
+  firstLength: 4,
+  stepLength: 16
+}, "sequence playback must immediately use the edited envelope");
+
 const inspected = inspectSoundTableSource(source);
 const tinyEntry = inspected.tables[0].entries.find((entry) => entry.label === "brinquitos_music_gladiators_ch1");
 const normalEntry = inspected.tables[0].entries.find((entry) => entry.label === "brinquitos_jump_sfx");
