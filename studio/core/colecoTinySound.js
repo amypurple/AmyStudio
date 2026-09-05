@@ -58,6 +58,18 @@ export function tinyNoteChoices(region = "NTSC") {
   });
 }
 
+export function tinyInstrumentEnvelope(values) {
+  const stepAndCount = values?.[1] || 0;
+  const rate = values?.[2] || 0;
+  if (!stepAndCount) return null;
+  return {
+    step: stepAndCount >> 4,
+    count: (stepAndCount & 0x0f) || 16,
+    firstLength: (rate & 0x0f) || 16,
+    stepLength: (rate >> 4) || 16
+  };
+}
+
 export function replaceTinySoundByte(sourceText, label, byteIndex, value) {
   if (!Number.isInteger(byteIndex) || byteIndex < 0) throw new Error("Tiny Sound byte index must be non-negative.");
   if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error("Tiny Sound replacement must fit in one byte.");
@@ -137,6 +149,8 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
   let offset = 0;
   let frame = 0;
   let attenuation = 8;
+  let instrumentDecay = 0;
+  let instrumentRate = 0;
   let loop = false;
   let lastNote = null;
   function take(count, commandOffset) {
@@ -155,7 +169,18 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     }
     if (code === 0x00) {
       commands.push({ type: "sustain", code, offset: commandOffset, startFrame: frame, frames: tempo });
-      if (lastNote) lastNote.length += tempo;
+      if (lastNote) {
+        const oldLength = lastNote.length;
+        lastNote.length += tempo;
+        if (lastNote.arpeggioPeriod) {
+          for (let localFrame = oldLength; localFrame < lastNote.length; localFrame += 1) {
+            lastNote.frequencyFrames.push({
+              frame: localFrame,
+              period: ((lastNote.startFrame + localFrame) & 1) ? lastNote.arpeggioPeriod : lastNote.period
+            });
+          }
+        }
+      }
       frame += tempo;
       continue;
     }
@@ -168,6 +193,8 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     if (code === 0x02) {
       const values = take(3, commandOffset);
       attenuation = values[0] >> 4;
+      instrumentDecay = values[1];
+      instrumentRate = values[2];
       commands.push({ type: "instrument", code, offset: commandOffset, values, attenuation, startFrame: frame, frames: 0 });
       continue;
     }
@@ -182,7 +209,16 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
       continue;
     }
     if (code === 0xfe) {
-      const event = { type: "note", channel: 0, noise: 4, attenuation: 5, length: tempo, startFrame: frame };
+      const event = {
+        type: "frequency-volume-sweep",
+        channel: stream.channel,
+        period: 0x015f,
+        attenuation: 1,
+        length: tempo,
+        startFrame: frame,
+        frequencySweep: { step: 0x30, firstLength: 1, stepLength: 1 },
+        volumeSweep: { step: 1, count: 13, firstLength: 2, stepLength: 2 }
+      };
       commands.push({ type: "drum", code, offset: commandOffset, startFrame: frame, frames: tempo });
       previewEvents.push(event);
       lastNote = null;
@@ -192,8 +228,22 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     const arpeggio = tinyNoteHasArpeggio(code);
     const arpeggioCode = arpeggio ? take(1, commandOffset)[0] : null;
     const period = TINY_NOTE_PERIODS[tinyNoteIndex(code)];
+    const arpeggioPeriod = arpeggio ? TINY_NOTE_PERIODS[tinyNoteIndex(arpeggioCode)] : null;
     const named = noteName(period, region);
-    const event = { type: "note", channel: stream.channel, period, attenuation, length: tempo, startFrame: frame };
+    const volumeSweep = tinyInstrumentEnvelope([attenuation << 4, instrumentDecay, instrumentRate]);
+    const frequencyFrames = arpeggio
+      ? Array.from({ length: tempo }, (_, localFrame) => ({ frame: localFrame, period: ((frame + localFrame) & 1) ? arpeggioPeriod : period }))
+      : null;
+    const event = {
+      type: volumeSweep ? "volume-sweep" : "note",
+      channel: stream.channel,
+      period,
+      attenuation,
+      length: tempo,
+      startFrame: frame,
+      ...(volumeSweep ? { volumeSweep } : {}),
+      ...(frequencyFrames ? { frequencyFrames, arpeggioPeriod } : {})
+    };
     commands.push({ type: "note", code, offset: commandOffset, period, ...named, startFrame: frame, frames: tempo, arpeggioCode });
     previewEvents.push(event);
     lastNote = event;

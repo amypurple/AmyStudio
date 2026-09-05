@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteIndex } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteIndex } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -45,6 +45,18 @@ assert.equal(tinyNoteIndex(0x40), 9, "note indexing wraps the low six bits like 
 assert.equal(tinyNoteHasArpeggio(0x40), false);
 assert.equal(tinyNoteHasArpeggio(0x44), true);
 assert.equal(tinyNoteHasArpeggio(0x80), true);
+assert.deepEqual(tinyInstrumentEnvelope([0x00, 0x33, 0x22]), {
+  step: 3, count: 3, firstLength: 2, stepLength: 2
+});
+const envelope = decodeTinySoundSource(`Envelope:\n db $44\n dw sndtiny_1\n db $08,$02,$00,$33,$22,$1F,$00,$01,$FF`, "Envelope");
+assert.equal(envelope.previewEvents[0].length, 16, "sustain extends the note and its envelope");
+assert.deepEqual(envelope.previewEvents[0].volumeSweep, { step: 3, count: 3, firstLength: 2, stepLength: 2 });
+const drum = decodeTinySoundSource(`Drum:\n db $44\n dw sndtiny_1\n db $08,$FE,$01,$FF`, "Drum");
+assert.deepEqual(drum.previewEvents[0], {
+  type: "frequency-volume-sweep", channel: 1, period: 0x015f, attenuation: 1, length: 8, startFrame: 0,
+  frequencySweep: { step: 0x30, firstLength: 1, stepLength: 1 },
+  volumeSweep: { step: 1, count: 13, firstLength: 2, stepLength: 2 }
+}, "$FE is a descending tone with decay on the Tiny voice channel, not noise");
 
 const special = decodeTinySoundSource(`Special:\n db $44\n dw sndtiny_1\n db $08,$03,$10,$20,$31,$40,$50,$60,$70,$01,$FF`, "Special");
 assert.equal(special.commands[0].type, "special-note");
@@ -56,6 +68,12 @@ assert.deepEqual(noBoundaryArpeggio.commands.map((command) => command.type), ["n
 const boundaryArpeggio = decodeTinySoundSource(`Arp:\n db $44\n dw sndtiny_1\n db $08,$80,$10,$01,$FF`, "Arp");
 assert.deepEqual(boundaryArpeggio.commands.map((command) => command.type), ["note", "silence", "loop"]);
 assert.equal(boundaryArpeggio.commands[0].arpeggioCode, 0x10);
+assert.deepEqual(boundaryArpeggio.previewEvents[0].frequencyFrames.slice(0, 4).map((point) => point.period), [
+  boundaryArpeggio.previewEvents[0].period,
+  tinyNoteChoices().find((choice) => choice.code === 0x10).period,
+  boundaryArpeggio.previewEvents[0].period,
+  tinyNoteChoices().find((choice) => choice.code === 0x10).period
+]);
 
 const choices = tinyNoteChoices();
 assert.equal(choices.length, 60);

@@ -113,6 +113,9 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
       let period = event.period;
       oscillator.frequency.setValueAtTime(clock / (32 * period), eventStart);
       scheduleVolume(gain.gain, event, eventStart, frameSeconds);
+      for (const point of event.frequencyFrames || []) {
+        oscillator.frequency.setValueAtTime(clock / (32 * point.period), eventStart + (point.frame * frameSeconds));
+      }
       const sweep = event.frequencySweep;
       if (sweep) {
         let frame = sweep.firstLength;
