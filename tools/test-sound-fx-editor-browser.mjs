@@ -181,7 +181,7 @@ try {
     set("pitch first", "1");
     Array.from(document.querySelectorAll(".sound-command-builder__actions button")).find((button) => button.textContent === "Apply changes").click();
   })()`);
-  await waitFor(`document.querySelector(".sound-sequence-editor__events").textContent.includes("9 frames") && document.querySelector(".sound-sequence-editor__events").textContent.includes("freq +3 every 2 frames")`, "replaced command");
+  await waitFor(`document.querySelector(".sound-sequence-editor__events").textContent.includes("9 sweep counts") && document.querySelector(".sound-sequence-editor__events").textContent.includes("17 rendered frames") && document.querySelector(".sound-sequence-editor__events").textContent.includes("freq +3 every 2 frames")`, "replaced command");
   await evaluate(`Array.from(document.querySelectorAll(".sound-sequence-editor__action-group button")).find((button) => button.textContent === "Undo").click()`);
   await waitFor(`document.querySelector('[data-sound-field="frames"] input').value === "2"`, "undo command edit");
   await evaluate(`Array.from(document.querySelectorAll(".sound-sequence-editor__action-group button")).find((button) => button.textContent === "Redo").click()`);

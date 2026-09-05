@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { amplitudeForAttenuation, buildColecoPreviewTracks, scheduleColecoSoundSequence, startColecoSoundPreview, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
+import { amplitudeForAttenuation, buildColecoPreviewTracks, eventDurationFrames, scheduleColecoSoundSequence, startColecoSoundPreview, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
 import { buildColecoEchoTone } from "../studio/core/colecoSoundNotes.js";
 
 assert.equal(amplitudeForAttenuation(15), 0);
@@ -15,6 +15,19 @@ const scheduled = scheduleColecoSoundSequence([
 ]);
 assert.deepEqual(scheduled.map((event) => event.startFrame), [0, 3]);
 assert.equal(scheduled.length, 2);
+assert.equal(eventDurationFrames({
+  length: 4,
+  frequencySweep: { firstLength: 2, stepLength: 3 }
+}), 11, "BIOS frequency-sweep length counts expirations, not rendered frames");
+assert.equal(eventDurationFrames({
+  length: 4,
+  durationFrames: 4,
+  frequencySweep: { firstLength: 2, stepLength: 3 }
+}), 4, "synthetic preview events can provide an explicit rendered duration");
+assert.deepEqual(scheduleColecoSoundSequence([
+  { type: "frequency-sweep", length: 4, frequencySweep: { firstLength: 2, stepLength: 3 } },
+  { type: "note", length: 5 }
+]).map((event) => event.startFrame), [0, 11]);
 const tracks = buildColecoPreviewTracks([
   { type: "note", channel: 1, startFrame: 0, length: 3 },
   { type: "note", channel: 1, startFrame: 3, length: 4 },

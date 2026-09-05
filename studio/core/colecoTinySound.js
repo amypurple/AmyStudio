@@ -215,6 +215,7 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
         period: 0x015f,
         attenuation: 1,
         length: tempo,
+        durationFrames: tempo,
         startFrame: frame,
         frequencySweep: { step: 0x30, firstLength: 1, stepLength: 1 },
         volumeSweep: { step: 1, count: 13, firstLength: 2, stepLength: 2 }

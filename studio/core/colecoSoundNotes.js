@@ -376,9 +376,12 @@ export function describeColecoSoundEvent(event, { region = "NTSC" } = {}) {
     const octave = Math.floor(midi / 12) - 1;
     parts.push(`Tone ${event.channel}`, `${noteName}${octave}`, `${frequency.toFixed(1)} Hz`, `period ${event.period}`, `volume ${15 - event.attenuation}/15`);
   }
-  parts.push(`${event.length} frames`);
   if (event.frequencySweep) {
+    const renderedFrames = event.frequencySweep.firstLength + (Math.max(1, event.length) - 1) * event.frequencySweep.stepLength;
+    parts.push(`${event.length} sweep counts`, `${renderedFrames} rendered frames`);
     parts.push(`freq ${event.frequencySweep.step >= 0 ? "+" : ""}${event.frequencySweep.step} every ${event.frequencySweep.stepLength} frame${event.frequencySweep.stepLength === 1 ? "" : "s"}`);
+  } else {
+    parts.push(`${event.length} frames`);
   }
   if (event.volumeSweep) {
     parts.push(`volume ${event.volumeSweep.step >= 0 ? "+" : ""}${event.volumeSweep.step} × ${event.volumeSweep.count}`);

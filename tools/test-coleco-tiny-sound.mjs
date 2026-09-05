@@ -53,7 +53,7 @@ assert.equal(envelope.previewEvents[0].length, 16, "sustain extends the note and
 assert.deepEqual(envelope.previewEvents[0].volumeSweep, { step: 3, count: 3, firstLength: 2, stepLength: 2 });
 const drum = decodeTinySoundSource(`Drum:\n db $44\n dw sndtiny_1\n db $08,$FE,$01,$FF`, "Drum");
 assert.deepEqual(drum.previewEvents[0], {
-  type: "frequency-volume-sweep", channel: 1, period: 0x015f, attenuation: 1, length: 8, startFrame: 0,
+  type: "frequency-volume-sweep", channel: 1, period: 0x015f, attenuation: 1, length: 8, durationFrames: 8, startFrame: 0,
   frequencySweep: { step: 0x30, firstLength: 1, stepLength: 1 },
   volumeSweep: { step: 1, count: 13, firstLength: 2, stepLength: 2 }
 }, "$FE is a descending tone with decay on the Tiny voice channel, not noise");

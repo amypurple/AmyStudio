@@ -5,13 +5,20 @@ function amplitudeForAttenuation(attenuation) {
   return 0.24 * (10 ** ((-2 * attenuation) / 20));
 }
 
+function eventDurationFrames(event) {
+  if (Number.isInteger(event?.durationFrames)) return event.durationFrames;
+  if (!event?.frequencySweep) return event?.length || 0;
+  return event.frequencySweep.firstLength + (Math.max(1, event.length) - 1) * event.frequencySweep.stepLength;
+}
+
 function volumeEnvelopeForEvent(event) {
   let attenuation = event.attenuation ?? 15;
   const points = [{ frame: 0, attenuation }];
   const sweep = event.volumeSweep;
   if (!sweep) return points;
+  const duration = eventDurationFrames(event);
   let frame = sweep.firstLength;
-  for (let index = 1; index < sweep.count && frame < event.length; index += 1) {
+  for (let index = 1; index < sweep.count && frame < duration; index += 1) {
     attenuation = (attenuation + sweep.step) & 0x0f;
     points.push({ frame, attenuation });
     frame += sweep.stepLength;
@@ -64,7 +71,7 @@ export function scheduleColecoSoundSequence(events) {
   return [...(events || [])].flatMap((event) => {
     if (["end", "repeat", "tiny"].includes(event?.type)) return [];
     const scheduled = { ...event, startFrame };
-    startFrame += event.length || 0;
+    startFrame += eventDurationFrames(event);
     return [scheduled];
   });
 }
@@ -97,7 +104,7 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
   let longest = 0;
   const tracks = buildColecoPreviewTracks(playable);
   for (const event of playable) {
-    const duration = event.length * frameSeconds;
+    const duration = eventDurationFrames(event) * frameSeconds;
     longest = Math.max(longest, ((event.startFrame || 0) * frameSeconds) + duration);
   }
   const clock = CLOCKS[region] || CLOCKS.NTSC;
@@ -109,7 +116,8 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     oscillator.type = "square";
     for (const [index, event] of channelEvents.entries()) {
       const eventStart = start + ((event.startFrame || 0) * frameSeconds);
-      const eventEndFrame = (event.startFrame || 0) + event.length;
+      const eventDuration = eventDurationFrames(event);
+      const eventEndFrame = (event.startFrame || 0) + eventDuration;
       let period = event.period;
       oscillator.frequency.setValueAtTime(clock / (32 * period), eventStart);
       scheduleVolume(gain.gain, event, eventStart, frameSeconds);
@@ -119,7 +127,7 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
       const sweep = event.frequencySweep;
       if (sweep) {
         let frame = sweep.firstLength;
-        while (frame < event.length) {
+        while (frame < eventDuration) {
           period = Math.max(1, Math.min(1023, period + sweep.step));
           oscillator.frequency.setValueAtTime(clock / (32 * period), eventStart + (frame * frameSeconds));
           frame += sweep.stepLength;
@@ -137,7 +145,7 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     gain.gain.setValueAtTime(0, start);
     for (const [index, event] of tracks.noises.entries()) {
       const eventStart = start + ((event.startFrame || 0) * frameSeconds);
-      const eventEndFrame = (event.startFrame || 0) + event.length;
+      const eventEndFrame = (event.startFrame || 0) + eventDurationFrames(event);
       scheduleVolume(gain.gain, event, eventStart, frameSeconds);
       const next = tracks.noises[index + 1];
       if (!next || (next.startFrame || 0) !== eventEndFrame) gain.gain.setValueAtTime(0, start + (eventEndFrame * frameSeconds));
@@ -194,4 +202,4 @@ export async function previewColecoSoundEvents(events, options = {}) {
   await playback.done;
 }
 
-export { amplitudeForAttenuation, volumeEnvelopeForEvent };
+export { amplitudeForAttenuation, eventDurationFrames, volumeEnvelopeForEvent };

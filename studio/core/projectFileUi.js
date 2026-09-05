@@ -2885,7 +2885,9 @@ export function createProjectFileUiHelpers({
       fieldLabels["volume count"].hidden = !volumeSweep;
       fieldLabels["volume every"].hidden = !volumeSweep;
       fieldLabels["volume first"].hidden = !volumeSweep;
-      fieldLabels.frames.firstChild.nodeValue = inputs.envelope.value === "Echo tail" ? "Main frames" : "Frames";
+      fieldLabels.frames.firstChild.nodeValue = inputs.envelope.value === "Echo tail"
+        ? "Main frames"
+        : pitchSweep ? "Sweep count" : "Frames";
     }
     function updateTonePreview() {
       try {
