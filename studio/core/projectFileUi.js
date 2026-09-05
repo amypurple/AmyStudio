@@ -3151,8 +3151,6 @@ export function createProjectFileUiHelpers({
       const summary = document.createElement("p");
       summary.className = "graphics-editor-modal__note";
       summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · notes and envelopes are editable`;
-      const envelopeEditor = document.createElement("div");
-      envelopeEditor.className = "tiny-pair-sequencer__envelopes";
       const nibbleValue = (value) => value === 16 ? 0 : value & 0x0f;
       const addNumber = (labelText, value, min, max) => {
         const label = document.createElement("label");
@@ -3165,19 +3163,93 @@ export function createProjectFileUiHelpers({
         label.appendChild(input);
         return { label, input };
       };
-      for (const voice of voices) {
-        const command = voice.stream.tiny.commands.find((item) => item.type === "instrument");
-        if (!command) continue;
+      const statusLine = document.createElement("p");
+      statusLine.className = "tiny-pair-sequencer__status";
+      statusLine.textContent = "Click a note or a channel heading to edit it inline.";
+      // One shared floating popover, positioned beside whatever block/heading was clicked,
+      // reused for both note-pitch edits and channel-instrument-envelope edits (per Amy's
+      // request to consolidate the two separate above-timeline panels this replaces).
+      const popover = document.createElement("div");
+      popover.className = "tiny-pair-sequencer__popover hidden";
+      popover.hidden = true;
+      const popoverTitle = document.createElement("strong");
+      const popoverBody = document.createElement("div");
+      popoverBody.className = "tiny-pair-sequencer__popover-body";
+      const popoverActions = document.createElement("div");
+      popoverActions.className = "tiny-pair-sequencer__popover-actions";
+      const popoverPreview = document.createElement("button");
+      popoverPreview.type = "button";
+      popoverPreview.textContent = "▶ Preview";
+      const popoverCancel = document.createElement("button");
+      popoverCancel.type = "button";
+      popoverCancel.textContent = "Cancel";
+      const popoverApply = document.createElement("button");
+      popoverApply.type = "button";
+      popoverApply.textContent = "Apply";
+      popoverActions.append(popoverPreview, popoverCancel, popoverApply);
+      popover.append(popoverTitle, popoverBody, popoverActions);
+      let activeEditor = null;
+      const positionPopoverNear = (targetEl) => {
+        const containerRect = sequencer.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        const top = targetRect.top - containerRect.top;
+        const maxTop = Math.max(8, containerRect.height - popover.offsetHeight - 8);
+        popover.style.top = `${Math.max(8, Math.min(top, maxTop))}px`;
+        const left = targetRect.left - containerRect.left + targetRect.width + 10;
+        const maxLeft = Math.max(8, containerRect.width - popover.offsetWidth - 8);
+        popover.style.left = `${Math.max(8, Math.min(left, maxLeft))}px`;
+      };
+      const closePopover = (restore) => {
+        if (!activeEditor) return;
+        if (restore && activeEditor.type === "note") {
+          activeEditor.block.textContent = activeEditor.originalText;
+          activeEditor.block.title = activeEditor.originalTitle;
+        }
+        activeEditor.block?.classList.remove("is-selected");
+        activeEditor.heading?.classList.remove("is-selected");
+        popover.hidden = true;
+        popover.classList.add("hidden");
+        activeEditor = null;
+      };
+      const openNoteEditor = (voice, command, block) => {
+        closePopover(true);
+        for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
+        block.classList.add("is-selected");
+        activeEditor = { type: "note", voice, command, block, originalText: block.textContent, originalTitle: block.title };
+        popoverTitle.textContent = `Channel ${voice.stream.tiny.channel} · frame ${command.startFrame} pitch`;
+        popoverBody.innerHTML = "";
+        const pitchLabel = document.createElement("label");
+        pitchLabel.textContent = "Pitch";
+        const pitchSelect = document.createElement("select");
+        for (const choice of tinyNoteChoices(inputs.region.value)) {
+          const option = document.createElement("option");
+          option.value = String(choice.code);
+          option.textContent = `${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`;
+          pitchSelect.appendChild(option);
+        }
+        pitchSelect.value = String(command.code);
+        pitchSelect.addEventListener("input", () => {
+          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitchSelect.value));
+          if (choice) block.textContent = choice.name;
+        });
+        pitchLabel.appendChild(pitchSelect);
+        popoverBody.appendChild(pitchLabel);
+        activeEditor.pitchSelect = pitchSelect;
+        popoverPreview.hidden = false;
+        popover.hidden = false;
+        popover.classList.remove("hidden");
+        positionPopoverNear(block);
+        pitchSelect.focus();
+      };
+      const openInstrumentEditor = (voice, command, heading) => {
+        closePopover(true);
+        heading.classList.add("is-selected");
+        activeEditor = { type: "instrument", voice, command, heading };
+        popoverTitle.textContent = `Channel ${voice.stream.tiny.channel} instrument`;
+        popoverBody.innerHTML = "";
         const envelope = tinyInstrumentEnvelope(command.values);
-        const panel = document.createElement("fieldset");
-        panel.className = "tiny-pair-sequencer__envelope";
-        const legend = document.createElement("legend");
-        legend.textContent = `Channel ${voice.stream.tiny.channel} instrument`;
-        const bytes = document.createElement("code");
-        const showBytes = () => {
-          bytes.textContent = `$02,${command.values.map((value) => `$${value.toString(16).toUpperCase().padStart(2, "0")}`).join(",")}`;
-        };
-        showBytes();
+        const bytesLine = document.createElement("code");
+        bytesLine.textContent = `$02,${command.values.map((value) => `$${value.toString(16).toUpperCase().padStart(2, "0")}`).join(",")}`;
         const volume = addNumber("Volume", 15 - (command.values[0] >> 4), 0, 15);
         const modeLabel = document.createElement("label");
         modeLabel.textContent = "Envelope";
@@ -3189,17 +3261,62 @@ export function createProjectFileUiHelpers({
         const count = addNumber("Count", envelope?.count ?? 1, 1, 16);
         const first = addNumber("First", envelope?.firstLength ?? 1, 1, 16);
         const every = addNumber("Every", envelope?.stepLength ?? 1, 1, 16);
-        const apply = document.createElement("button");
-        apply.type = "button";
-        apply.textContent = "Apply envelope";
         const syncMode = () => {
           const disabled = mode.value === "steady";
           for (const control of [step.input, count.input, first.input, every.input]) control.disabled = disabled;
         };
         mode.addEventListener("change", syncMode);
         syncMode();
-        apply.addEventListener("click", () => {
-          try {
+        popoverBody.append(bytesLine, volume.label, modeLabel, step.label, count.label, first.label, every.label);
+        activeEditor.fields = { volume, mode, step, count, first, every };
+        popoverPreview.hidden = true;
+        popover.hidden = false;
+        popover.classList.remove("hidden");
+        positionPopoverNear(heading);
+        volume.input.focus();
+      };
+      popoverCancel.addEventListener("click", () => closePopover(true));
+      popover.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closePopover(true);
+        }
+      });
+      popoverPreview.addEventListener("click", async () => {
+        if (!activeEditor || activeEditor.type !== "note") return;
+        try {
+          await activeSoundPreview?.stop();
+          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(activeEditor.pitchSelect.value));
+          if (!choice) return;
+          const playback = await startColecoSoundPreview([{
+            type: "note",
+            channel: activeEditor.voice.stream.tiny.channel,
+            period: choice.period,
+            attenuation: activeEditor.command.attenuation ?? 8,
+            length: activeEditor.command.frames,
+            startFrame: 0
+          }], { region: inputs.region.value });
+          activeSoundPreview = playback;
+          await playback.done;
+          if (activeSoundPreview === playback) activeSoundPreview = null;
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+      });
+      popoverApply.addEventListener("click", () => {
+        if (!activeEditor) return;
+        try {
+          if (activeEditor.type === "note") {
+            const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(activeEditor.pitchSelect.value));
+            if (!choice) return;
+            const byteIndex = activeEditor.command.offset + 1;
+            const source = replaceTinySoundByte(analysis.source, activeEditor.voice.label, byteIndex, choice.code);
+            saveSoundSource(source);
+            analysis.source = source;
+            rebuildLane(activeEditor.voice);
+            statusLine.textContent = `Saved · channel ${activeEditor.voice.stream.tiny.channel} · frame ${activeEditor.command.startFrame} · ${choice.name}`;
+          } else if (activeEditor.type === "instrument") {
+            const { volume, mode, step, count, first, every } = activeEditor.fields;
             const values = [
               ((15 - Number(volume.input.value)) & 0x0f) << 4,
               mode.value === "steady" ? 0 : ((Number(step.input.value) & 0x0f) << 4) | nibbleValue(Number(count.input.value)),
@@ -3207,54 +3324,41 @@ export function createProjectFileUiHelpers({
             ];
             let source = analysis.source;
             for (let index = 0; index < values.length; index += 1) {
-              source = replaceTinySoundByte(source, voice.label, command.offset + 2 + index, values[index]);
+              source = replaceTinySoundByte(source, activeEditor.voice.label, activeEditor.command.offset + 2 + index, values[index]);
             }
             saveSoundSource(source);
             analysis.source = source;
-            command.values = values;
-            command.attenuation = values[0] >> 4;
-            voice.stream.tiny = decodeTinySoundSource(source, voice.label, { region: inputs.region.value });
-            showBytes();
-            selectedLabel.textContent = `Saved · channel ${voice.stream.tiny.channel} envelope`;
-          } catch (error) {
-            setStatus(error.message || String(error));
+            rebuildLane(activeEditor.voice);
+            statusLine.textContent = `Saved · channel ${activeEditor.voice.stream.tiny.channel} instrument`;
           }
-        });
-        panel.append(legend, bytes, volume.label, modeLabel, step.label, count.label, first.label, every.label, apply);
-        envelopeEditor.appendChild(panel);
-      }
-      const noteEditor = document.createElement("div");
-      noteEditor.className = "tiny-pair-sequencer__editor";
-      const selectedLabel = document.createElement("span");
-      selectedLabel.textContent = "Select a plain note to edit its pitch.";
-      const pitch = document.createElement("select");
-      pitch.disabled = true;
-      for (const choice of tinyNoteChoices(inputs.region.value)) {
-        const option = document.createElement("option");
-        option.value = String(choice.code);
-        option.textContent = `${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`;
-        pitch.appendChild(option);
-      }
-      const savePitch = document.createElement("button");
-      savePitch.type = "button";
-      savePitch.textContent = "Save pitch";
-      savePitch.disabled = true;
-      const previewPitch = document.createElement("button");
-      previewPitch.type = "button";
-      previewPitch.textContent = "▶ Preview note";
-      previewPitch.disabled = true;
-      noteEditor.append(selectedLabel, pitch, previewPitch, savePitch);
+          closePopover(false);
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+      });
       const lanes = document.createElement("div");
       lanes.className = "tiny-pair-sequencer__lanes";
       const laneViews = [];
-      let selectedNote = null;
-      for (const voice of voices) {
+      const buildLane = (voice) => {
         const column = document.createElement("section");
         column.className = "tiny-pair-sequencer__column";
         const heading = document.createElement("strong");
         heading.textContent = `Channel ${voice.stream.tiny.channel}`;
         const instrument = voice.stream.tiny.commands.find((command) => command.type === "instrument");
-        if (instrument) heading.title = describeTinySoundCommand(instrument);
+        if (instrument) {
+          heading.title = describeTinySoundCommand(instrument);
+          heading.classList.add("is-editable");
+          heading.tabIndex = 0;
+          heading.setAttribute("role", "button");
+          const openThisInstrument = () => openInstrumentEditor(voice, instrument, heading);
+          heading.addEventListener("click", openThisInstrument);
+          heading.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              openThisInstrument();
+            }
+          });
+        }
         const lane = document.createElement("div");
         lane.className = "tiny-pair-sequencer__lane";
         lane.style.height = `${laneHeight}px`;
@@ -3273,22 +3377,12 @@ export function createProjectFileUiHelpers({
             block.classList.add("is-editable");
             block.tabIndex = 0;
             block.setAttribute("role", "button");
-            const selectNote = () => {
-              if (selectedNote) selectedNote.block.textContent = selectedNote.command.name;
-              for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
-              block.classList.add("is-selected");
-              selectedNote = { voice, command, block };
-              pitch.value = String(command.code);
-              pitch.disabled = false;
-              previewPitch.disabled = false;
-              savePitch.disabled = false;
-              selectedLabel.textContent = `Channel ${voice.stream.tiny.channel} · frame ${command.startFrame} · ${command.name}`;
-            };
-            block.addEventListener("click", selectNote);
+            const openThisNote = () => openNoteEditor(voice, command, block);
+            block.addEventListener("click", openThisNote);
             block.addEventListener("keydown", (event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                selectNote();
+                openThisNote();
               }
             });
           }
@@ -3304,60 +3398,27 @@ export function createProjectFileUiHelpers({
         loop.textContent = voice.stream.tiny.loop ? "↻ LOOP" : "END";
         lane.appendChild(loop);
         column.append(heading, lane);
-        lanes.appendChild(column);
-        laneViews.push({ lane, blocks, playhead });
+        return { voice, column, lane, blocks, playhead };
+      };
+      for (const voice of voices) {
+        const view = buildLane(voice);
+        laneViews.push(view);
+        lanes.appendChild(view.column);
       }
-      savePitch.addEventListener("click", () => {
-        if (!selectedNote) return;
-        try {
-          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitch.value));
-          if (!choice) return;
-          const byteIndex = selectedNote.command.offset + 1;
-          const source = replaceTinySoundByte(analysis.source, selectedNote.voice.label, byteIndex, choice.code);
-          saveSoundSource(source);
-          analysis.source = source;
-          selectedNote.voice.stream.tiny = decodeTinySoundSource(source, selectedNote.voice.label, { region: inputs.region.value });
-          selectedNote.command.code = choice.code;
-          selectedNote.command.period = choice.period;
-          selectedNote.command.name = choice.name;
-          selectedNote.command.frequency = choice.frequency;
-          selectedNote.block.textContent = choice.name;
-          selectedNote.block.title = `F${selectedNote.command.startFrame} · ${describeTinySoundCommand(selectedNote.command)}`;
-          selectedLabel.textContent = `Saved · channel ${selectedNote.voice.stream.tiny.channel} · frame ${selectedNote.command.startFrame} · ${choice.name}`;
-          savePitch.disabled = true;
-        } catch (error) {
-          setStatus(error.message || String(error));
-        }
-      });
-      pitch.addEventListener("input", () => {
-        if (!selectedNote) return;
-        const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitch.value));
-        if (!choice) return;
-        selectedNote.block.textContent = choice.name;
-        selectedLabel.textContent = `Unsaved · channel ${selectedNote.voice.stream.tiny.channel} · frame ${selectedNote.command.startFrame} · ${choice.name}`;
-        savePitch.disabled = choice.code === selectedNote.command.code;
-      });
-      previewPitch.addEventListener("click", async () => {
-        if (!selectedNote) return;
-        try {
-          await activeSoundPreview?.stop();
-          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitch.value));
-          if (!choice) return;
-          const playback = await startColecoSoundPreview([{
-            type: "note",
-            channel: selectedNote.voice.stream.tiny.channel,
-            period: choice.period,
-            attenuation: selectedNote.command.attenuation ?? 8,
-            length: selectedNote.command.frames,
-            startFrame: 0
-          }], { region: inputs.region.value });
-          activeSoundPreview = playback;
-          await playback.done;
-          if (activeSoundPreview === playback) activeSoundPreview = null;
-        } catch (error) {
-          setStatus(error.message || String(error));
-        }
-      });
+      // Re-decodes `voice` from the (already-saved) Amy source and refreshes only that
+      // voice's lane in place - rebuilding blocks fresh from the new decode (rather than
+      // hand-patching individual command fields) so nothing in the timeline, transport, or
+      // popover can reference stale pre-edit command objects.
+      function rebuildLane(voice) {
+        voice.stream.tiny = decodeTinySoundSource(analysis.source, voice.label, { region: inputs.region.value });
+        const view = laneViews.find((item) => item.voice === voice);
+        const rebuilt = buildLane(voice);
+        view.column.replaceWith(rebuilt.column);
+        view.column = rebuilt.column;
+        view.lane = rebuilt.lane;
+        view.blocks = rebuilt.blocks;
+        view.playhead = rebuilt.playhead;
+      }
       const transport = document.createElement("div");
       transport.className = "graphics-editor-json-modal__actions";
       const play = document.createElement("button");
@@ -3433,11 +3494,12 @@ export function createProjectFileUiHelpers({
       const closeTinySequencer = () => {
         clearPlayhead();
         activeSoundPreview?.stop();
+        closePopover(true);
         backdrop.remove();
       };
       sequencerClose.addEventListener("click", closeTinySequencer);
       backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeTinySequencer(); });
-      sequencer.append(sequencerHeader, summary, envelopeEditor, noteEditor, lanes, transport);
+      sequencer.append(sequencerHeader, summary, statusLine, lanes, transport, popover);
       backdrop.appendChild(sequencer);
       document.body.appendChild(backdrop);
     }

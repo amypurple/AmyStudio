@@ -143,20 +143,73 @@ try {
     Array.from(document.querySelectorAll(".sound-library-row")).find((item) => item.textContent.includes("TestMusic_ch1")).click();
     Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Sequencer").click();
   })()`);
-  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__envelope").length === 2`, "Tiny envelope editors");
-  assert.match(await evaluate(`document.querySelector(".tiny-pair-sequencer__envelope code").textContent`), /^\$02,\$60,\$19,\$22$/);
+  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__column > strong.is-editable").length === 2`, "Tiny channel instrument headings");
+  assert.equal(await evaluate(`document.querySelector(".tiny-pair-sequencer__popover").hidden`), true, "popover starts hidden");
+
+  // Inline instrument-envelope edit: click the channel heading, edit fields in the shared
+  // popover, Apply, and verify both the popover's own byte preview and the Amy source text.
+  await evaluate(`document.querySelectorAll(".tiny-pair-sequencer__column > strong.is-editable")[0].click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === false`, "instrument popover open");
+  assert.match(await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-body code").textContent`), /^\$02,\$60,\$19,\$22$/);
   await evaluate(`(() => {
-    const panel = document.querySelector(".tiny-pair-sequencer__envelope");
-    const input = (name) => Array.from(panel.querySelectorAll("label")).find((label) => label.firstChild.textContent === name).querySelector("input,select");
+    const body = document.querySelector(".tiny-pair-sequencer__popover-body");
+    const input = (name) => Array.from(body.querySelectorAll("label")).find((label) => label.firstChild.textContent === name).querySelector("input,select");
     input("Volume").value = "12";
     input("Step").value = "2";
     input("Count").value = "15";
     input("First").value = "4";
     input("Every").value = "16";
-    Array.from(panel.querySelectorAll("button")).find((button) => button.textContent === "Apply envelope").click();
   })()`);
-  await waitFor(`document.querySelector(".tiny-pair-sequencer__envelope code").textContent === "$02,$30,$2F,$04"`, "edited Tiny envelope");
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Apply").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === true`, "instrument popover closes after apply");
   assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /db \$08,\$02,\$30,\$2F,\$04,\$1F/);
+
+  // Inline note-pitch edit: click the one plain-note block, change its pitch, cancel via
+  // Escape (must restore the block's original text AND leave the Amy source untouched),
+  // then re-open and Apply for real.
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__block.is-editable")`, "editable note block");
+  const originalNoteText = await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").textContent`);
+  const beforeCancelApplySource = await evaluate(`document.getElementById("sourceEditor").value`);
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === false`, "note popover open");
+  const liveEditedText = await evaluate(`(() => {
+    const select = document.querySelector(".tiny-pair-sequencer__popover-body select");
+    const otherOption = Array.from(select.options).find((option) => option.value !== select.value);
+    select.value = otherOption.value;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    return document.querySelector(".tiny-pair-sequencer__block.is-editable").textContent;
+  })()`);
+  assert.notEqual(liveEditedText, originalNoteText, "selecting a different pitch must update the block optimistically before Apply");
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__popover").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === true`, "note popover closes on Escape");
+  assert.equal(await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").textContent`), originalNoteText, "Escape must restore the block's original text");
+  assert.equal(await evaluate(`document.getElementById("sourceEditor").value`), beforeCancelApplySource, "Escape/Cancel must not touch the Amy source");
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === false`, "note popover reopen");
+  await evaluate(`(() => {
+    const select = document.querySelector(".tiny-pair-sequencer__popover-body select");
+    const otherOption = Array.from(select.options).find((option) => option.value !== select.value);
+    select.value = otherOption.value;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Apply").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === true`, "note popover closes after apply");
+  const afterApplySource = await evaluate(`document.getElementById("sourceEditor").value`);
+  assert.notEqual(afterApplySource, beforeCancelApplySource, "applying a pitch edit must change the Amy source");
+
+  // Playback after edits must use freshly decoded events, not any pre-edit cache: reopening
+  // the note editor right after Apply must reflect the new code, and Play must not throw.
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === false`, "note popover reopen after apply");
+  const reopenedBlockText = await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").textContent`);
+  assert.equal(reopenedBlockText, await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-body select option:checked").textContent`).then((text) => text.split(" · ")[0]), "reopened editor must show the just-applied pitch, not stale data");
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-actions button:nth-child(2)").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === true`, "note popover closes on cancel");
+  await evaluate(`Array.from(document.querySelectorAll(".graphics-editor-json-modal__actions button")).find((button) => button.textContent === "▶ Play").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__playhead").hidden === false`, "playback starts using post-edit decoded events");
+  await evaluate(`Array.from(document.querySelectorAll(".graphics-editor-json-modal__actions button")).find((button) => button.textContent === "■ Stop").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__playhead").hidden === true`, "playback stop clears playhead");
+
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "Tiny sequencer close");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
