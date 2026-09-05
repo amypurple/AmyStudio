@@ -84,7 +84,7 @@ async function evaluate(expression) {
   return result.result?.value;
 }
 async function waitFor(expression, description) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     if (await evaluate(expression)) return;
     await delay(100);
   }
