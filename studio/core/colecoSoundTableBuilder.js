@@ -1,3 +1,5 @@
+import { readTinySoundLabel } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
+
 const AREA_BASE = 0x702b;
 const AREA_STRIDE = 10;
 
@@ -46,6 +48,150 @@ export function insertColecoSoundTableSource(sourceText, built) {
   lines.splice(insertion, 0, `${indent}${built.setup}`);
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   return `${lines.join(newline).replace(/\s*$/, "")}${newline}${newline}${built.asm}${newline}`;
+}
+
+// Tiny Sound channel 1/2 -> BIOS sound-area slot, matching the convention already used
+// throughout this project's own Tiny Sound content (see
+// "examples/tiny music/applied in a project/snddata_tinymusic.asm"'s _snd_table: every
+// music_ch1_* entry targets $702B+30 (slot 4) and every music_ch2_* entry targets $702B+20
+// (slot 3)).
+const TINY_CHANNEL_SLOT = { 1: 4, 2: 3 };
+
+// Rename one assembler symbol and its code references. Comments stay byte-for-byte intact,
+// and identifier boundaries prevent similarly named labels from changing.
+export function renameLabelDeclaration(fileText, oldLabel, newLabel) {
+  const text = String(fileText || "");
+  const lines = text.split(/\r?\n/);
+  const targetLine = lines.findIndex((line) => new RegExp(`^\\s*${oldLabel}\\s*:\\s*$`, "i").test(line));
+  if (targetLine < 0) throw new Error(`Label ${oldLabel} was not found.`);
+  if (lines.some((line, index) => index !== targetLine && new RegExp(`^\\s*${newLabel}\\s*:\\s*$`, "i").test(line))) {
+    throw new Error(`Label ${newLabel} already exists.`);
+  }
+  const symbol = new RegExp(`\\b${oldLabel}\\b`, "gi");
+  for (let index = 0; index < lines.length; index += 1) {
+    const commentAt = lines[index].indexOf(";");
+    const code = commentAt < 0 ? lines[index] : lines[index].slice(0, commentAt);
+    const comment = commentAt < 0 ? "" : lines[index].slice(commentAt);
+    lines[index] = `${code.replace(symbol, newLabel)}${comment}`;
+  }
+  return lines.join(text.includes("\r\n") ? "\r\n" : "\n");
+}
+
+// Builds a self-contained "play song" wrapper referencing one or two already-existing Tiny
+// Sound channel alias labels (see insertLabelAlias above - channel.label here must already
+// be a real declared label in the same text, either the stream's own original label or an
+// alias inserted for it). The wrapper is plain assembly text meant to be appended to the
+// SAME attached .asm/.inc file the channel streams live in (see appendTinySoundWrapper
+// below) - not wrapped in an Amy `asm { }` block, since it never becomes part of the Amy
+// source text itself; the Sound Library's own inspector (soundTableInspector.js) only ever
+// reads one text blob at a time (either the visible Amy source or one attached project
+// file), never a combination, so keeping the wrapper in the SAME file as the streams it
+// references is what makes the generated song show up correctly when that file is
+// inspected or opened in the sequencer.
+//
+// Always creates its OWN sound-area table rather than trying to splice into an existing
+// one: an existing table's `dw` pointer list may live in a different file this function
+// never sees, and appending in the wrong place would corrupt someone else's working table,
+// so a fresh table is the only broadly-safe option. The generated song label's byte layout
+// (duration word; a "trigger count in bits 7-6, 1-based sound-table index in bits 5-0"
+// byte per triggered entry; a final loop/chain word whose bit 15 being set makes the
+// player treat it as a jump instead of a duration) is transcribed directly from this
+// project's own runtime, src/alexis_lib/coleco_music.asm's AMY_TRIGGER_SOUNDS - not
+// guessed from the example file's (sometimes off-by-one) comments.
+export function buildTinySoundSongSource({ name, channels, durationFrames }) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name || "")) throw new Error("Song name must be an Amy identifier.");
+  if (!Array.isArray(channels) || !channels.length || channels.length > 2) throw new Error("Pick one or two Tiny Sound channel streams to import.");
+  const seenChannels = new Set();
+  for (const channel of channels) {
+    if (![1, 2].includes(channel?.number)) throw new Error("Tiny Sound channel must be 1 or 2.");
+    if (seenChannels.has(channel.number)) throw new Error(`Channel ${channel.number} was picked twice.`);
+    seenChannels.add(channel.number);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(channel?.label || "")) throw new Error(`Invalid Tiny Sound stream label: ${channel?.label}`);
+  }
+  if (!Number.isInteger(durationFrames) || durationFrames < 1 || durationFrames > 0x7fff) {
+    throw new Error("Song duration must be 1..32767 frames so a single loop entry can hold it.");
+  }
+  const tableName = `${name}_table`;
+  const songLabel = `${name}_song`;
+  const hex2 = (value) => `$${value.toString(16).toUpperCase().padStart(2, "0")}`;
+  const hex4 = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
+  const entries = channels.map((channel, index) => ({
+    label: channel.label,
+    channel: channel.number,
+    slot: TINY_CHANNEL_SLOT[channel.number],
+    index: index + 1
+  }));
+  const lines = [`${tableName}:`];
+  for (const entry of entries) lines.push(`    dw ${entry.label},${hex4(colecoSoundAreaAddress(entry.slot))} ; music - channel ${entry.channel}`);
+  lines.push("", `${songLabel}:`, `    dw ${durationFrames}`);
+  const indexBytes = entries.map((entry, i) => i === 0 ? (((entries.length - 1) << 6) | (entry.index & 0x3f)) : (entry.index & 0x3f));
+  lines.push(`    db ${indexBytes.map(hex2).join(",")}`, `    dw ${songLabel} ; loop forever`);
+  return {
+    asm: lines.join("\n"),
+    setup: `set sound table ${tableName} areas 4`,
+    play: `play song ${songLabel}`,
+    tableName,
+    songLabel,
+    entries
+  };
+}
+
+// Appends the wrapper (table + song data) to the attached file's own text - the channel
+// streams/aliases and the wrapper that references them must stay in one file/text blob
+// (see buildTinySoundSongSource's comment for why).
+export function appendTinySoundWrapper(fileText, built) {
+  if (!built?.asm) throw new Error("Built Tiny Sound song is missing its data.");
+  const text = String(fileText || "");
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  return `${text.replace(/\s*$/, "")}${newline}${newline}${built.asm}${newline}`;
+}
+
+// End-to-end: given the raw pasted/uploaded candidate file text and the channel streams the
+// human picked from it (each `{ number: 1|2, label }`, label being the stream's own real
+// declared label as found by scanTinySoundStreams), produces the final attached-file text
+// (original content untouched except for renaming each picked channel's own declaration
+// line to "<name>_ch1"/"<name>_ch2" - see renameLabelDeclaration - so the existing
+// sequencer's channel-pairing regex can find it) plus the built song/setup/play wrapper.
+export function prepareTinySoundImport({ fileText, name, channels, durationFrames }) {
+  if (!Array.isArray(channels) || !channels.length) throw new Error("Pick one or two Tiny Sound channel streams to import.");
+  const seenChannels = new Set();
+  for (const channel of channels) {
+    if (seenChannels.has(channel?.number)) throw new Error(`Channel ${channel.number} was picked twice.`);
+    seenChannels.add(channel?.number);
+  }
+  let text = String(fileText || "");
+  const renamedChannels = channels.map((channel) => {
+    const stream = readTinySoundLabel(text, channel.label);
+    if (stream.channel !== channel.number) throw new Error(`${channel.label} is encoded for channel ${stream.channel}, not channel ${channel.number}.`);
+    const renamed = `${name}_ch${channel.number}`;
+    if (channel.label.toLowerCase() !== renamed.toLowerCase()) {
+      text = renameLabelDeclaration(text, channel.label, renamed);
+    }
+    return { number: channel.number, label: renamed };
+  });
+  const built = buildTinySoundSongSource({ name, channels: renamedChannels, durationFrames });
+  return { fileText: appendTinySoundWrapper(text, built), built };
+}
+
+// Inserts the `set sound table ...`/`play song ...` lines into Amy source, right after
+// `sub start:` (matching insertColecoSoundTableSource's own insertion point) - only when
+// `installTable` is true, meaning the caller has confirmed (via inspectSourceSoundTables
+// finding nothing) that no sound table is already active. Starting a second table/song
+// when one is already playing would silently override it, so callers must never pass
+// installTable:true otherwise; when it's false this returns the source unchanged, and the
+// caller is expected to surface built.setup/built.play as text for the human to place.
+export function insertTinySoundSongPlayback(sourceText, built, { installTable }) {
+  const source = String(sourceText || "");
+  if (!built?.setup || !built?.play) throw new Error("Built Tiny Sound song is missing setup or play.");
+  if (!installTable) return source;
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^\s*sub\s+start\s*:/i.test(line));
+  let insertion = start >= 0 ? start + 1 : lines.findIndex((line) => /^\s*(?:text|tile|bitmap|picture|mode\s+\d+)\s+screen\b/i.test(line));
+  if (insertion < 0) insertion = lines.length;
+  const indent = start >= 0 ? (lines[start].match(/^\s*/)?.[0] || "") + "  " : "";
+  lines.splice(insertion, 0, `${indent}${built.setup}`, `${indent}${built.play}`);
+  return lines.join(newline);
 }
 
 export function addColecoSoundToTableSource(sourceText, { tableName, soundName, role = "sfx", slot }) {

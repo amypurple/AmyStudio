@@ -139,6 +139,34 @@ export function readTinySoundLabel(sourceText, label) {
   return { header: rows[0], channel: rows[0] >> 6, handler, bytes: rows.slice(1) };
 }
 
+// Scans arbitrary source text (typically a pasted/uploaded candidate file, not yet part of
+// any project) for every label that is a valid SPECIAL-04 Tiny Sound stream, by trying the
+// same readTinySoundLabel() every other Tiny Sound feature already trusts - rather than
+// duplicating its header/handler-pointer parsing rules here and risking the two drifting
+// apart. Used by the Tiny Sound import workflow to find candidate channel streams before
+// anything is added to a project.
+export function scanTinySoundStreams(sourceText) {
+  const source = String(sourceText || "");
+  const lines = source.split(/\r?\n/);
+  const seen = new Set();
+  const found = [];
+  for (const line of lines) {
+    const match = stripComment(line).trim().match(/^([A-Za-z_][A-Za-z0-9_]*):\s*$/);
+    if (!match) continue;
+    const label = match[1];
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const stream = readTinySoundLabel(source, label);
+      found.push({ label, channel: stream.channel });
+    } catch {
+      // Not a Tiny Sound stream label (or malformed) - not a candidate, skip silently.
+    }
+  }
+  return found;
+}
+
 export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxCommands = 4096 } = {}) {
   const stream = readTinySoundLabel(sourceText, label);
   if (!stream.bytes.length) throw new Error(`Tiny Sound label ${label} has no tempo.`);

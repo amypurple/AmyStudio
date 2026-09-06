@@ -283,5 +283,6 @@ try {
   } else {
     browser.kill();
   }
+  server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
 }

@@ -29,6 +29,8 @@ Open `SOURCE` > `SOUND` to enter the compact sound library. Use `Play`, `Edit`, 
 
 For Tiny Sound music stored as `_ch1` and `_ch2`, choose `Sequencer` beside channel 1. Both channels appear as synchronized columns with duration-scaled notes, rests, holds, a shared `Play`/`Pause`/`Stop` transport, and a playhead that highlights the active events. Click a channel heading to edit its `$02` volume and decay envelope inline, or click a plain note to edit and preview its pitch. `Cancel` or `Escape` discards the pending edit. Amy Studio changes only the selected source bytes; arpeggios and special commands remain read-only until their exact encoding is fully covered.
 
+To add existing Tiny Sound music, open `SOURCE` > `SOUND` and choose `Import Tiny Sound`. Paste or select an ASM/INC export, verify the detected channel streams with `Preview`, choose a unique song name, then select `Insert`. With no active sound table, Studio attaches the file and inserts `set sound table` plus `play song`. If the project already installs a table, the imported table remains inactive and the exact activation lines are added as comments in SOURCE for the programmer to place deliberately.
+
 DSound is not the WAV-to-notes converter. It preserves a short waveform as digital amplitude samples. Amy's historical `WAV2CV3` instead uses FFT analysis to extract dominant frequencies and strengths over time, then produces ordinary PSG tone commands that can coexist with gameplay. See [Legacy WAV to ColecoVision PSG Reconstruction](legacy-wav-to-coleco-psg-reconstruction.md).
 
 ## PSG Music and Sound Effects (lib4ksa)
@@ -243,7 +245,7 @@ ornaments such as vibrato or arpeggio-like behavior.
 - Commando sample status: working
 - status note: tiny sound support is almost perfect; one known bug remains inside the historical tiny sound routine itself and is intentionally deferred for a later fix
 - the Studio sound inspector decodes tempo, instrument, notes, sustain, silence, drums, special notes, and loops; it can audition one Tiny Sound channel or matching `_ch1`/`_ch2` pairs
-- plain Tiny Sound note pitches can be edited with byte-local source preservation; instruments, timing, arpeggios, drums, and special commands remain read-only until their exact encoding is fully covered
+- plain Tiny Sound pitches and `$02` instrument envelopes can be edited inline with byte-local source preservation; timing, arpeggios, drums, and special commands remain read-only until their exact encoding is fully covered
 
 ### Integration rules
 

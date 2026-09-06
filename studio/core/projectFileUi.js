@@ -8,8 +8,8 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260905-tiny-envelope-editor";
-import { addColecoSoundToTableSource, buildColecoSoundTableSource, colecoSoundAreaAddress, insertColecoSoundTableSource } from "./colecoSoundTableBuilder.js?v=20260905-add-sound";
+import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
+import { addColecoSoundToTableSource, buildColecoSoundTableSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260906-tiny-import";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2601,6 +2601,10 @@ export function createProjectFileUiHelpers({
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
     note.textContent = "Reserve early slots for simultaneous music voices. Put effects in later slots; effects sharing a slot interrupt each other.";
+    const importTinyButton = document.createElement("button");
+    importTinyButton.type = "button";
+    importTinyButton.textContent = "Import Tiny Sound instead";
+    importTinyButton.addEventListener("click", () => { overlay.remove(); openTinySoundImportDialog(); });
     const settings = document.createElement("div");
     settings.className = "sound-table-creator__settings";
     const tableLabel = document.createElement("label");
@@ -2726,13 +2730,247 @@ export function createProjectFileUiHelpers({
     });
     addRow("music");
     addRow("sfx");
-    panel.append(header, note, settings, rows, actions, message, previewDetails);
+    panel.append(header, note, importTinyButton, settings, rows, actions, message, previewDetails);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
   }
   function openSourceSoundInspector(analysis) {
     openProjectSoundInspector({ path: "Amy source" }, analysis);
   }
+  // Import an existing, already-encoded Tiny Sound (SPECIAL-04) .asm/.inc file: paste or
+  // pick a file, preview what it decodes to, pick which stream is channel 1/2, attach it to
+  // the project, and wire up "set sound table"/"play song" when it's safe to do so
+  // automatically (no sound table installed yet). Deliberately does not attempt to convert
+  // CVBasic MUSIC blocks, MIDI, or any other format - only real Tiny Sound bytes this
+  // project's own decoder can already prove valid via decodeTinySoundSource.
+  function openTinySoundImportDialog({ onImported } = {}) {
+    let activeSoundPreview = null;
+    const backdrop = document.createElement("div");
+    backdrop.className = "graphics-editor-modal-backdrop";
+    const dialog = document.createElement("section");
+    dialog.className = "graphics-editor-modal graphics-editor-json-modal tiny-import-modal";
+    const header = document.createElement("div");
+    header.className = "graphics-editor-modal__header";
+    const title = document.createElement("h3");
+    title.textContent = "Import Tiny Sound";
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "graphics-editor-modal__close";
+    closeButton.textContent = "✕";
+    closeButton.setAttribute("aria-label", "Close Tiny Sound import");
+    header.append(title, closeButton);
+    const note = document.createElement("p");
+    note.className = "graphics-editor-modal__note";
+    note.textContent = "Paste or pick an existing Tiny Sound (SPECIAL-04) .asm/.inc file - the kind produced by a real Tiny Sound tracker/exporter. This does not convert MIDI, CVBasic, or any other music format; only real, already-encoded Tiny Sound streams are accepted.";
+
+    const pasteLabel = document.createElement("label");
+    pasteLabel.className = "tiny-import__field";
+    pasteLabel.textContent = "Paste ASM";
+    const textarea = document.createElement("textarea");
+    textarea.rows = 8;
+    textarea.className = "tiny-import__textarea";
+    pasteLabel.appendChild(textarea);
+
+    const fileRow = document.createElement("div");
+    fileRow.className = "tiny-import__file-row";
+    const fileLabel = document.createElement("label");
+    fileLabel.textContent = "...or pick a file";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".asm,.inc,.s,.txt";
+    fileLabel.appendChild(fileInput);
+    fileRow.appendChild(fileLabel);
+
+    const scanStatus = document.createElement("p");
+    scanStatus.className = "tiny-import__status";
+    scanStatus.textContent = "Paste or pick a file to scan for Tiny Sound streams.";
+
+    const pickers = document.createElement("div");
+    pickers.className = "tiny-import__pickers";
+    const ch1Label = document.createElement("label");
+    ch1Label.textContent = "Channel 1 stream";
+    const ch1Select = document.createElement("select");
+    ch1Select.disabled = true;
+    ch1Label.appendChild(ch1Select);
+    const ch2Label = document.createElement("label");
+    ch2Label.textContent = "Channel 2 stream";
+    const ch2Select = document.createElement("select");
+    ch2Select.disabled = true;
+    ch2Label.appendChild(ch2Select);
+    pickers.append(ch1Label, ch2Label);
+
+    const regionLabel = document.createElement("label");
+    regionLabel.textContent = "Region";
+    const regionSelect = document.createElement("select");
+    regionSelect.append(new Option("NTSC", "NTSC"), new Option("PAL", "PAL"));
+    regionLabel.appendChild(regionSelect);
+
+    const nameLabel = document.createElement("label");
+    nameLabel.textContent = "Song name";
+    const nameInput = document.createElement("input");
+    nameInput.value = "MyMusic";
+    nameLabel.appendChild(nameInput);
+
+    const fileNameLabel = document.createElement("label");
+    fileNameLabel.textContent = "Attach as file";
+    const fileNameInput = document.createElement("input");
+    fileNameLabel.appendChild(fileNameInput);
+    let fileNameEdited = false;
+    fileNameInput.addEventListener("input", () => { fileNameEdited = true; });
+    const syncFileName = () => {
+      if (fileNameEdited) return;
+      const slug = (nameInput.value || "mymusic").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "mymusic";
+      fileNameInput.value = `${slug}-tiny-music.asm`;
+    };
+    syncFileName();
+    nameInput.addEventListener("input", syncFileName);
+
+    const previewInfo = document.createElement("p");
+    previewInfo.className = "tiny-import__preview-info";
+
+    const hasExistingTable = /(?:^|\n)\s*set\s+sound\s+table\b/i.test(els.sourceEditor.value)
+      || !!inspectSoundTableSource(els.sourceEditor.value).tables.length;
+    const tableStatus = document.createElement("p");
+    tableStatus.className = "tiny-import__status tiny-import__table-status";
+    tableStatus.textContent = hasExistingTable
+      ? "This project already uses a sound table. Import will attach a separate table without activating it. The exact setup and play lines will be left as comments in SOURCE."
+      : "No sound table yet - import will create one and start it automatically after \"sub start:\".";
+
+    const actions = document.createElement("div");
+    actions.className = "graphics-editor-json-modal__actions";
+    const previewButton = document.createElement("button");
+    previewButton.type = "button";
+    previewButton.textContent = "▶ Preview";
+    previewButton.disabled = true;
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.textContent = "Cancel";
+    const insertButton = document.createElement("button");
+    insertButton.type = "button";
+    insertButton.textContent = "Insert";
+    insertButton.disabled = true;
+    actions.append(previewButton, cancelButton, insertButton);
+
+    let scanned = [];
+    function rebuildSelect(select, wantChannel) {
+      const current = select.value;
+      select.innerHTML = "";
+      select.appendChild(new Option("(none)", ""));
+      for (const item of scanned.filter((candidate) => candidate.channel === wantChannel)) {
+        select.appendChild(new Option(item.label, item.label));
+      }
+      const preferred = scanned.find((item) => item.channel === wantChannel && item.label === current) || scanned.find((item) => item.channel === wantChannel);
+      select.value = preferred ? preferred.label : "";
+      select.disabled = scanned.length === 0;
+    }
+    function pickedChannels() {
+      const channels = [];
+      if (ch1Select.value) channels.push({ number: 1, label: ch1Select.value });
+      if (ch2Select.value) channels.push({ number: 2, label: ch2Select.value });
+      return channels;
+    }
+    function updatePreview() {
+      const channels = pickedChannels();
+      insertButton.disabled = true;
+      previewButton.disabled = true;
+      if (!channels.length) { previewInfo.textContent = ""; return; }
+      try {
+        const decoded = channels.map((channel) => ({ ...channel, decoded: decodeTinySoundSource(textarea.value, channel.label, { region: regionSelect.value }) }));
+        const durationFrames = Math.max(...decoded.map((item) => item.decoded.totalFrames));
+        const seconds = (durationFrames / (regionSelect.value === "PAL" ? 50 : 60)).toFixed(2);
+        previewInfo.textContent = decoded.map((item) => `Channel ${item.number}: ${item.decoded.commands.length} commands, ${item.decoded.totalFrames} frames, ${item.decoded.loop ? "loops" : "no loop marker"}`).join(" · ") + ` · plays ~${seconds}s`;
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nameInput.value || "")) { previewInfo.textContent += " · song name must be a plain identifier (letters, digits, _)"; return; }
+        insertButton.disabled = false;
+        previewButton.disabled = false;
+      } catch (error) {
+        previewInfo.textContent = `Can't preview yet: ${error.message || error}`;
+      }
+    }
+    function rescan() {
+      scanned = scanTinySoundStreams(textarea.value);
+      scanStatus.textContent = scanned.length
+        ? `Found ${scanned.length} Tiny Sound stream${scanned.length === 1 ? "" : "s"}.`
+        : (textarea.value.trim() ? "No Tiny Sound streams found in this text." : "Paste or pick a file to scan for Tiny Sound streams.");
+      rebuildSelect(ch1Select, 1);
+      rebuildSelect(ch2Select, 2);
+      updatePreview();
+    }
+    textarea.addEventListener("input", rescan);
+    ch1Select.addEventListener("change", updatePreview);
+    ch2Select.addEventListener("change", updatePreview);
+    regionSelect.addEventListener("change", updatePreview);
+    nameInput.addEventListener("input", updatePreview);
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      textarea.value = await file.text();
+      rescan();
+    });
+
+    previewButton.addEventListener("click", async () => {
+      try {
+        await activeSoundPreview?.stop();
+        const channels = pickedChannels();
+        const events = channels.flatMap((channel) => decodeTinySoundSource(textarea.value, channel.label, { region: regionSelect.value }).previewEvents);
+        const playback = await startColecoSoundPreview(events, { region: regionSelect.value });
+        activeSoundPreview = playback;
+        await playback.done;
+        if (activeSoundPreview === playback) activeSoundPreview = null;
+      } catch (error) {
+        setStatus(error.message || String(error));
+      }
+    });
+    insertButton.addEventListener("click", () => {
+      try {
+        const channels = pickedChannels();
+        if (!channels.length) throw new Error("Pick at least one Tiny Sound channel stream.");
+        const decoded = channels.map((channel) => decodeTinySoundSource(textarea.value, channel.label, { region: regionSelect.value }));
+        const durationFrames = Math.min(0x7fff, Math.max(...decoded.map((item) => item.totalFrames)));
+        const name = nameInput.value.trim();
+        const symbolPattern = new RegExp(`(?:^|\\n)\\s*${name}_(?:table|song|ch[12])\\s*:`, "i");
+        const symbolExists = symbolPattern.test(els.sourceEditor.value)
+          || (getProject().projectFiles || []).some((entry) => symbolPattern.test(projectFileText(entry)));
+        if (symbolExists) throw new Error(`Tiny Sound name ${name} is already used. Choose another song name.`);
+        const { fileText, built } = prepareTinySoundImport({ fileText: textarea.value, name, channels, durationFrames });
+        // ensureProjectFilePathCandidate/normalizeProjectFilePath already return the
+        // canonical "@project/..." form - re-wrapping it below would double the prefix.
+        const filePath = ensureProjectFilePathCandidate(fileNameInput.value.trim() || `${name.toLowerCase()}-tiny-music.asm`);
+        const fileBase64 = bytesToBase64(new TextEncoder().encode(fileText));
+        upsertProjectFile({ path: filePath, base64: fileBase64, kind: "asm", source: "imported" });
+        let amySource = els.sourceEditor.value;
+        const includeLine = `include "${filePath}"`;
+        if (!amySource.includes(includeLine)) {
+          amySource = `${amySource.replace(/\s*$/, "")}\n\n${includeLine}\n`;
+        }
+        if (!hasExistingTable) {
+          amySource = insertTinySoundSongPlayback(amySource, built, { installTable: true });
+          commitProjectSourceText(amySource);
+          setStatus(`Imported "${name}" - sound table installed and playing via "${built.play}".`);
+        } else {
+          amySource = `${amySource.replace(/\s*$/, "")}\n\n' Imported Tiny Sound is inactive; place these commands where needed:\n' ${built.setup}\n' ${built.play}\n`;
+          commitProjectSourceText(amySource);
+          setStatus(`Imported "${name}" as an inactive table; setup instructions were added to SOURCE.`);
+        }
+        const newEntry = { path: filePath, base64: fileBase64 };
+        const newAnalysis = soundInspectionForEntry(newEntry);
+        backdrop.remove();
+        if (newAnalysis) openProjectSoundInspector(newEntry, newAnalysis);
+        onImported?.({ filePath, name, built });
+      } catch (error) {
+        setStatus(error.message || String(error));
+      }
+    });
+    const closeImportDialog = () => { activeSoundPreview?.stop(); backdrop.remove(); };
+    closeButton.addEventListener("click", closeImportDialog);
+    cancelButton.addEventListener("click", closeImportDialog);
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeImportDialog(); });
+
+    dialog.append(header, note, pasteLabel, fileRow, scanStatus, pickers, regionLabel, nameLabel, fileNameLabel, previewInfo, tableStatus, actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    textarea.focus();
+  }
+
   function openProjectSoundInspector(entry, analysis) {
     let activeSoundPreview = null;
     const overlay = document.createElement("div");
@@ -2768,7 +3006,11 @@ export function createProjectFileUiHelpers({
     const addSoundButton = document.createElement("button");
     addSoundButton.type = "button";
     addSoundButton.textContent = "+ Sound";
-    viewTabs.append(soundsTab, composerTab, technicalToggle, addSoundButton);
+    const importTinyButton = document.createElement("button");
+    importTinyButton.type = "button";
+    importTinyButton.textContent = "Import Tiny Sound";
+    importTinyButton.addEventListener("click", () => openTinySoundImportDialog());
+    viewTabs.append(soundsTab, composerTab, technicalToggle, addSoundButton, importTinyButton);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     builder.hidden = true;
