@@ -247,9 +247,35 @@ tables rather than another playback format.
 Compression must be scored as `compressed payload + linked decompressor`, with destination and
 cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
-All thirteen integrated Amy codecs were also compiled as separate Balanced ROMs and run for 180
+All fourteen integrated Amy codecs were also compiled as separate Balanced ROMs and run for 180
 NTSC frames in GearColeco. Every ROM reproduced Warrior's 6,144 Pattern bytes and 6,144 Color
 bytes exactly in VRAM. Run `node tools/test-integrated-codec-vram-roms.mjs` to repeat this check.
+
+### Direct-to-VRAM speed ranking
+
+GearColeco measured two complete 6,144-byte decompression commands and verified all 12,288 output
+bytes in VRAM. Results use the most-compressible, median, and least-compressible corpus pictures.
+
+| Rank | Codec | Decoder bytes | Average cycles | Observed range | NTSC frames | PAL frames |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | MDK-RLE | 46 | 445,166 | 397,701-480,470 | 7.45 | 6.24 |
+| 2 | LZF | 117 | 2,228,378 | 1,699,652-2,499,555 | 37.30 | 31.23 |
+| 3 | Nibble | 115 | 2,500,641 | 1,109,539-4,605,294 | 41.86 | 35.04 |
+| 4 | BitBuster | 166 | 2,534,837 | 2,200,323-2,848,558 | 42.43 | 35.52 |
+| 5 | ZX2 | 115 | 2,640,553 | 2,523,782-2,813,703 | 44.20 | 37.00 |
+| 6 | ZX1 | 127 | 2,649,233 | 2,542,465-2,824,788 | 44.35 | 37.12 |
+| 7 | ZX0 modern | 133 | 2,776,094 | 2,593,812-2,917,877 | 46.47 | 38.90 |
+| 8 | aPLib Compact | 244 | 2,882,985 | 2,038,419-3,910,905 | 48.26 | 40.40 |
+| 9 | Pletter | 212 | 3,011,986 | 2,593,248-3,420,132 | 50.42 | 42.21 |
+| 10 | ZX7 | 136 | 3,045,957 | 2,646,525-3,421,800 | 50.99 | 42.68 |
+| 11 | DAN3 Best | 205 | 3,260,654 | 2,819,207-3,514,505 | 54.58 | 45.69 |
+| 12 | MegaLZ | 162 | 3,545,056 | 3,003,617-4,081,177 | 59.35 | 49.68 |
+| 13 | DAN2 | 212 | 3,683,858 | 2,806,792-4,725,242 | 61.67 | 51.62 |
+| 14 | DAN1 | 205 | 3,809,391 | 2,827,513-5,013,133 | 63.77 | 53.38 |
+
+Frame values are time equivalents (`59,736` cycles NTSC; `71,364` PAL), not VBlank waits. Speed
+and ROM-size rankings are separate; programmers should compare payload plus decoder size and then
+choose a loading time appropriate to the game.
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
