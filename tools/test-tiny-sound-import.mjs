@@ -73,9 +73,9 @@ const { fileText: preparedFileText, built } = prepareTinySoundImport({
 });
 assert.match(preparedFileText, /^MyTune_ch1:$/m, "channel 1 must be renamed so the existing sequencer's pairing regex can find it");
 assert.match(preparedFileText, /^MyTune_ch2:$/m);
-assert.match(preparedFileText, /dw MyTune_ch1,\$7049 ; music - channel 1/);
-assert.match(preparedFileText, /dw MyTune_ch2,\$703F ; music - channel 2/);
-assert.equal(built.setup, "set sound table MyTune_table areas 4");
+assert.match(preparedFileText, /dw MyTune_ch1,\$702B ; music - channel 1/);
+assert.match(preparedFileText, /dw MyTune_ch2,\$7035 ; music - channel 2/);
+assert.equal(built.setup, "set sound table MyTune_table areas 2");
 assert.equal(built.play, "play song MyTune_song");
 
 // Trigger byte layout, transcribed from src/alexis_lib/coleco_music.asm's
@@ -93,7 +93,7 @@ const soloResult = prepareTinySoundImport({
   channels: [{ number: 1, label: "music_ch1_A" }],
   durationFrames: ch1.totalFrames
 });
-assert.match(soloResult.fileText, /dw SoloTune_ch1,\$7049/);
+assert.match(soloResult.fileText, /dw SoloTune_ch1,\$702B/);
 assert.doesNotMatch(soloResult.fileText, /SoloTune_ch2/);
 assert.match(soloResult.fileText, /db \$01/, "single-channel trigger byte: (1-1)<<6 | firstIndex(1) = 0x01");
 
@@ -122,7 +122,7 @@ let amySource = [
 const untouched = insertTinySoundSongPlayback(amySource, built, { installTable: false });
 assert.equal(untouched, amySource, "installTable:false must not modify the source (an existing table must never be silently replaced)");
 amySource = insertTinySoundSongPlayback(amySource, built, { installTable: true });
-assert.match(amySource, /sub start:\n\s*set sound table MyTune_table areas 4\n\s*play song MyTune_song/);
+assert.match(amySource, /sub start:\n\s*set sound table MyTune_table areas 2\n\s*play song MyTune_song/);
 
 async function assertRomProducesAudio(romBytes, profile) {
   const core = await GearcolecoTestCore.create({ seed: 0x54494E59 });

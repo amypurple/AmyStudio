@@ -9,7 +9,7 @@ import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPrevi
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
-import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-table-recovery";
+import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-tiny-insert";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2824,7 +2824,14 @@ export function createProjectFileUiHelpers({
     const nameLabel = document.createElement("label");
     nameLabel.textContent = "Song name";
     const nameInput = document.createElement("input");
-    nameInput.value = initialName;
+    const songNameInUse = (candidate) => {
+      const symbolPattern = new RegExp(`(?:^|\\n)\\s*${candidate}_(?:table|song|ch[12])\\s*:`, "i");
+      return symbolPattern.test(els.sourceEditor.value)
+        || (getProject().projectFiles || []).some((entry) => symbolPattern.test(projectFileText(entry)));
+    };
+    let uniqueName = initialName;
+    for (let suffix = 2; songNameInUse(uniqueName); suffix += 1) uniqueName = `${initialName}${suffix}`;
+    nameInput.value = uniqueName;
     nameLabel.appendChild(nameInput);
 
     const fileNameLabel = document.createElement("label");
@@ -2843,6 +2850,9 @@ export function createProjectFileUiHelpers({
 
     const previewInfo = document.createElement("p");
     previewInfo.className = "tiny-import__preview-info";
+    const errorMessage = document.createElement("p");
+    errorMessage.className = "graphics-editor-json-modal__error";
+    errorMessage.hidden = true;
 
     const hasExistingTable = /(?:^|\n)\s*set\s+sound\s+table\b/i.test(els.sourceEditor.value)
       || !!inspectSoundTableSource(els.sourceEditor.value).tables.length;
@@ -2886,6 +2896,7 @@ export function createProjectFileUiHelpers({
       return channels;
     }
     function updatePreview() {
+      errorMessage.hidden = true;
       const channels = pickedChannels();
       insertButton.disabled = true;
       previewButton.disabled = true;
@@ -2933,7 +2944,8 @@ export function createProjectFileUiHelpers({
         await playback.done;
         if (activeSoundPreview === playback) activeSoundPreview = null;
       } catch (error) {
-        setStatus(error.message || String(error));
+        errorMessage.hidden = false;
+        errorMessage.textContent = error.message || String(error);
       }
     });
     insertButton.addEventListener("click", () => {
@@ -2973,7 +2985,8 @@ export function createProjectFileUiHelpers({
         if (newAnalysis) openProjectSoundInspector(newEntry, newAnalysis, { openSequencerFor: name });
         onImported?.({ filePath, name, built });
       } catch (error) {
-        setStatus(error.message || String(error));
+        errorMessage.hidden = false;
+        errorMessage.textContent = error.message || String(error);
       }
     });
     const closeImportDialog = () => { activeSoundPreview?.stop(); backdrop.remove(); };
@@ -2981,7 +2994,7 @@ export function createProjectFileUiHelpers({
     cancelButton.addEventListener("click", closeImportDialog);
     backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeImportDialog(); });
 
-    dialog.append(header, note, pasteLabel, fileRow, scanStatus, pickers, regionLabel, nameLabel, fileNameLabel, previewInfo, tableStatus, actions);
+    dialog.append(header, note, pasteLabel, fileRow, scanStatus, pickers, regionLabel, nameLabel, fileNameLabel, previewInfo, tableStatus, errorMessage, actions);
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
     if (initialText) {

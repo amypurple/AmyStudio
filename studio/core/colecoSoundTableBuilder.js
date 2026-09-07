@@ -63,7 +63,7 @@ export function insertColecoSoundTableSource(sourceText, built) {
 // "examples/tiny music/applied in a project/snddata_tinymusic.asm"'s _snd_table: every
 // music_ch1_* entry targets $702B+30 (slot 4) and every music_ch2_* entry targets $702B+20
 // (slot 3)).
-const TINY_CHANNEL_SLOT = { 1: 4, 2: 3 };
+const TINY_CHANNEL_SLOT = { 1: 1, 2: 2 };
 
 export function buildTinySoundStarterSource() {
   return [
@@ -155,7 +155,7 @@ export function buildTinySoundSongSource({ name, channels, durationFrames }) {
   lines.push(`    db ${indexBytes.map(hex2).join(",")}`, `    dw ${songLabel} ; loop forever`);
   return {
     asm: lines.join("\n"),
-    setup: `set sound table ${tableName} areas 4`,
+    setup: `set sound table ${tableName} areas ${entries.length}`,
     play: `play song ${songLabel}`,
     tableName,
     songLabel,

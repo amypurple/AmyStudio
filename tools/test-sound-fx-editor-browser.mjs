@@ -118,6 +118,12 @@ try {
   assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /play song MySong_song/, "new Tiny song is installed in the project");
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
+  assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /should target/, "generated Tiny table uses canonical sound slots");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "New Tiny Song").click()`);
+  await waitFor(`document.querySelector(".tiny-import-modal")`, "second Tiny song starter");
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll(".tiny-import-modal label")).find((label) => label.textContent.startsWith("Song name")).querySelector("input").value`), "MySong2", "a second starter receives a collision-free name");
+  await evaluate(`document.querySelector('[aria-label="Close Tiny Sound import"]').click()`);
+  await waitFor(`!document.querySelector(".tiny-import-modal")`, "second Tiny song starter closes");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "new Tiny song inspector closes");
   await evaluate(`(() => {
