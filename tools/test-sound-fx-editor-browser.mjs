@@ -98,6 +98,8 @@ try {
   await client.send("Page.enable");
   await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/studio/?sound-fx-browser-test=1` });
   await waitFor(`document.getElementById("studioLoading") === null`, "Studio startup");
+  assert.equal(await evaluate(`document.querySelector(".panel-bar--cyan").querySelectorAll("button").length`), 0, "SOURCE title bar contains no controls");
+  assert.ok(await evaluate(`document.getElementById("btnInspectSourceSounds").closest(".source-toolbar") !== null`), "SOUND belongs to the source toolbar");
   assert.notEqual(await evaluate(`getComputedStyle(document.getElementById("btnInspectSourceSounds")).display`), "none", "SOUND stays visible while the ASM panel is open");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
