@@ -141,6 +141,7 @@ try {
   await evaluate(`Array.from(document.querySelectorAll(".tiny-import-modal .graphics-editor-json-modal__actions button")).find((button) => button.textContent === "Insert").click()`);
   await waitFor(`!document.querySelector(".tiny-import-modal")`, "import dialog closes after insert");
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "sound inspector opens for the newly imported file");
+  await waitFor(`document.querySelector(".tiny-pair-sequencer-modal")`, "two-channel import opens directly in the sequencer");
 
   const sourceAfter = await evaluate(`document.getElementById("sourceEditor").value`);
   assert.match(sourceAfter, /include "@project\/commando-tiny-music\.asm"/, "Amy source must include the attached file");
@@ -152,6 +153,9 @@ try {
   assert.match(rowText, /Commando_ch1/);
   assert.match(rowText, /Commando_ch2/);
   assert.match(rowText, /Tiny/);
+  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-editable, .tiny-pair-sequencer__block.is-sustain, .tiny-pair-sequencer__block.is-silence").length > 0`, "automatic sequencer shows imported stream blocks");
+  await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
+  await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "automatic sequencer closes");
 
   // Re-importing the same song name must fail closed: automatic file-name suffixing would
   // protect the file, but duplicate assembler labels would still break the project.
@@ -176,21 +180,6 @@ try {
   await waitFor(`!document.querySelector(".tiny-import-modal")`, "collision dialog closes");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "source inspector closes after collision check");
-
-  // Re-open the imported file's inspector for the sequencer behavior check.
-  await evaluate(`Array.from(document.querySelectorAll('[aria-label^="Inspect sound tables in"]')).find((button) => button.getAttribute("aria-label").includes("commando-tiny-music.asm")).click()`);
-  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "imported inspector reopens");
-
-  await evaluate(`(() => {
-    Array.from(document.querySelectorAll(".sound-library-row")).find((item) => item.textContent.includes("Commando_ch1")).click();
-    Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Sequencer").click();
-  })()`);
-  await waitFor(`document.querySelector(".tiny-pair-sequencer-modal")`, "sequencer opens for the imported song");
-  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-editable, .tiny-pair-sequencer__block.is-sustain, .tiny-pair-sequencer__block.is-silence").length > 0`, "sequencer shows blocks for the imported streams");
-  await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
-  await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "sequencer closes");
-  await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
-  await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "inspector closes");
 
   // Second pass: a project that ALREADY has a sound table must not get a second
   // "set sound table"/"play song" auto-installed - only the manual snippet shown.

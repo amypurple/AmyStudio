@@ -2956,7 +2956,7 @@ export function createProjectFileUiHelpers({
         const newEntry = { path: filePath, base64: fileBase64 };
         const newAnalysis = soundInspectionForEntry(newEntry);
         backdrop.remove();
-        if (newAnalysis) openProjectSoundInspector(newEntry, newAnalysis);
+        if (newAnalysis) openProjectSoundInspector(newEntry, newAnalysis, { openSequencerFor: name });
         onImported?.({ filePath, name, built });
       } catch (error) {
         setStatus(error.message || String(error));
@@ -2973,7 +2973,7 @@ export function createProjectFileUiHelpers({
     textarea.focus();
   }
 
-  function openProjectSoundInspector(entry, analysis) {
+  function openProjectSoundInspector(entry, analysis, { openSequencerFor = "" } = {}) {
     let activeSoundPreview = null;
     const overlay = document.createElement("div");
     overlay.className = "graphics-editor-modal-backdrop";
@@ -4247,6 +4247,10 @@ export function createProjectFileUiHelpers({
     panel.append(header, viewTabs, note, libraryTransport, list, builder);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+    if (openSequencerFor && selectedLibrarySound?.pairedSound?.stream?.format === "tiny"
+      && selectedLibrarySound.sound.label.toLowerCase() === `${openSequencerFor}_ch1`.toLowerCase()) {
+      openTinyPairSequencer(selectedLibrarySound.sound, selectedLibrarySound.pairedSound);
+    }
   }
   function renderProjectFiles() {
     syncGraphicsEditorsMenuState();

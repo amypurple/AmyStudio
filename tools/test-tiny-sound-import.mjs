@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { decodeTinySoundSource, scanTinySoundStreams } from "../studio/core/colecoTinySound.js";
 import { insertTinySoundSongPlayback, prepareTinySoundImport, renameLabelDeclaration } from "../studio/core/colecoSoundTableBuilder.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
+import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -115,17 +116,38 @@ assert.equal(untouched, amySource, "installTable:false must not modify the sourc
 amySource = insertTinySoundSongPlayback(amySource, built, { installTable: true });
 assert.match(amySource, /sub start:\n\s*set sound table MyTune_table areas 4\n\s*play song MyTune_song/);
 
-// Compile the resulting fixture through the real Amy compiler (per acceptance criteria) -
-// the attached file is a genuine separate include, exactly matching how an imported Tiny
-// Sound file is actually wired into a project.
+async function assertRomProducesAudio(romBytes, profile) {
+  const core = await GearcolecoTestCore.create({ seed: 0x54494E59 });
+  try {
+    core.loadBios(fs.readFileSync(path.join(root, "studio/bios/colecovision.rom")));
+    core.loadRom(romBytes, { region: GEARCOLECO_TEST_REGION.NTSC });
+    let nonZeroSamples = 0;
+    for (let frame = 0; frame < 120; frame += 1) {
+      core.runFrame();
+      for (const sample of core.getAudioFrame().samples) {
+        if (sample !== 0) nonZeroSamples += 1;
+      }
+    }
+    assert.ok(nonZeroSamples > 0, `${profile}: imported Tiny Sound song must produce PCM`);
+  } finally {
+    core.destroy();
+  }
+}
+
+// Compile exactly what the importer generated, through every optimization profile, then
+// boot each ROM and require real PCM output. The attached file remains a genuine separate
+// include, matching the project workflow in Amy Studio.
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "amy-tiny-import-test-"));
 try {
   const sourcePath = path.join(temp, "s.alexis");
-  const romPath = path.join(temp, "r.rom");
   fs.writeFileSync(path.join(temp, "mytune-tiny-music.asm"), preparedFileText);
   fs.writeFileSync(sourcePath, amySource);
-  execFileSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--rom", romPath, "--opt", "off", "--project-dir", temp], { cwd: root, stdio: "pipe" });
-  assert.ok(fs.existsSync(romPath), "ROM must be produced");
+  for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
+    const romPath = path.join(temp, `r-${profile}.rom`);
+    execFileSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--rom", romPath, "--opt", profile, "--project-dir", temp], { cwd: root, stdio: "pipe" });
+    assert.ok(fs.existsSync(romPath), `${profile}: ROM must be produced`);
+    await assertRomProducesAudio(fs.readFileSync(romPath), profile);
+  }
 
   // Verify the sound-table inspector (the same one the Sound Library uses) finds the new
   // table and both entries when it inspects the attached file's own text, and that they
