@@ -8,7 +8,7 @@ This guide answers three questions for every user-facing tool: where it is, what
 | --- | --- | --- |
 | Examples | `PROJECT` > `Browse` | Open a catalogued Amy project without discarding another open project. |
 | Source editor | Main `SOURCE` panel | Edit Amy code with syntax colors, autocomplete, comments, and breakpoint gutters. |
-| Sound & Music | `SOURCE` > `SOUND` or `Alt+Shift+S` | Create or manage BIOS tables, slots, effects, music voices, commands, and shared tails. |
+| Sound & Music | `SOUND` in the central source editor's title bar | Create or manage BIOS tables, slots, effects, music voices, commands, and shared tails. |
 | Generated assembly | `SOURCE` > `ASM` | Inspect the Z80 emitted by the transpiler and selected optimizer profile. |
 | Compile ROM | Top toolbar compile icon | Build the active project and retain its ROM while switching project tabs. |
 | ROM Test & Debug | Top toolbar run/debug icon | Run the compiled ROM, inspect execution, use breakpoints, rewind, controls, and disassembly. |
@@ -17,13 +17,13 @@ The Sound & Music workspace opens as a compact library. If no table exists, `SOU
 
 ### BIOS Sound Inspector
 
-Open an Amy source containing sound-table declarations, then choose `SOURCE` > `SOUND` or press `Alt+Shift+S`.
+Open an Amy source containing sound-table declarations, then click `SOUND` in the central source editor's title bar.
 
 ![Space Trainer Sound and Music manager](images/studio-sound-manager.png)
 
 This capture verifies that the inspector fits at 1440x1000 and keeps its close control visible. A separate 1280x720 check verifies vertical scrolling when a source contains more entries than fit in the window.
 
-To reproduce it, open `PROJECT` > `Browse` > `Space Trainer`, then choose `SOURCE` > `SOUND`. Music-box projects also expose their included ASM sound files from `FILES`.
+To reproduce it, open `PROJECT` > `Browse` > `Space Trainer`, then click `SOUND` in the central source editor's title bar. Music-box projects also expose their included ASM sound files from `FILES`.
 
 The command preview offers `Steady`, `Fade out`, and `Echo tail`. Echo tail holds the main volume, then drops by about 6 dB for the remaining frames. It uses one six-byte BIOS command when the main section is at most 16 frames; the tool rejects larger values rather than silently emitting a different effect.
 
@@ -84,7 +84,7 @@ The picture/resource import dialog compares the codecs bundled by the current St
 
 | Tool | Open it | Purpose |
 | --- | --- | --- |
-| Sound & Music manager | `SOURCE` > `SOUND`, `Alt+Shift+S`, or sound action in `FILES` | Create tables, assign slots, and safely edit sound-label sequences. |
+| Sound & Music manager | `SOUND` in the source editor title bar, or the sound action in `FILES` | Create tables, assign slots, and safely edit sound-label sequences. |
 | Tone preview | Top of the sound inspector | Generate one legal tone, bass, or noise command for comparison and authoring. |
 | WAV to DSOUND | Burger menu audio workflow | Convert sampled WAV audio into ColecoVision digitized playback data. |
 | DSOUND preview | `.dsound` file action | Listen to the encoded sample before compiling it into a ROM. |
