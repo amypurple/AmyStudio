@@ -120,6 +120,7 @@ const tests = [
   { file: "test-bcd-boundaries-rom.mjs", area: "bcd-boundaries", evidence: "rom" },
   { file: "test-compile-time-constant-contexts.mjs", area: "compile-time-constants", evidence: "compile+assemble" },
   { file: "test-optimizer-indexed-immediate-a-liveness.mjs", area: "optimizer-accumulator-liveness", evidence: "compile+assemble" },
+  { file: "test-optimizer-djnz-reachability.mjs", area: "optimizer-control-flow", evidence: "compile+assemble" },
   { file: "test-optimizer-exx-barrier.mjs", area: "optimizer-exx-barriers", evidence: "compile+assemble" },
   { file: "test-optimizer-half-register-proof.mjs", area: "optimizer-half-register-liveness", evidence: "compile+assemble" },
   { file: "test-optimizer-aggressive-duplicate-l-zero.mjs", area: "optimizer-duplicate-l-zero", evidence: "compile+assemble" },

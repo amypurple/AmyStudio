@@ -681,6 +681,12 @@ export class Z80Optimizer {
                             if (token.operands.length === 1) {
                                 break;
                             }
+                        } else if (mnem === 'djnz') {
+                            // DJNZ is conditional: both its target and fall-through are reachable.
+                            const lastOp = token.operands[token.operands.length - 1];
+                            if (lastOp.type === 'symbol' && labels.has(lastOp.value)) {
+                                this.markReachableFrom(labels.get(lastOp.value), tokens, reachable, labels);
+                            }
                         } else if (mnem === 'call') {
                             // CALL doesn't end flow - it returns!
                             const lastOp = token.operands[token.operands.length - 1];

@@ -12,6 +12,7 @@ const quickTests = [
   "test-overlay-layout-rom.mjs",
   "test-controller-backend-selection-rom.mjs",
   "test-optimizer-indexed-immediate-a-liveness.mjs",
+  "test-optimizer-djnz-reachability.mjs",
   "test-internal-compiler-single-pass.mjs"
 ];
 
