@@ -64,8 +64,8 @@ Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
 | Hello World | **238** | 795 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
 | Warrior bitmap | **3,254** | 3,643 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
 | Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
-| Sprite Metasprite | **1,000** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| **Four-sample total** | **5,087** | **6,512** | **8,129** | **9,331** | **9,954** | **15,581** | **36,884** |
+| Sprite Metasprite | **983** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
+| **Four-sample total** | **5,070** | **6,512** | **8,129** | **9,331** | **9,954** | **15,581** | **36,884** |
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -104,7 +104,7 @@ corpus pictures render exactly.
 
 ### Graphics II bitmap compression corpus
 
-The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 630 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
+The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 630 codec/input results, including RAW, round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | Best-size pictures |
 |---:|---|---:|---:|---:|---:|
@@ -164,7 +164,7 @@ direct-to-VRAM path supplied by that solution.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound | BIOS tables, Tiny Sound, DSOUND | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Direct-to-VRAM compression | Thirteen active codecs; ZX0 Classic measured separately | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Direct-to-VRAM compression | Fourteen active codecs, including MegaLZ; ZX0 Classic measured separately | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -236,11 +236,12 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 | Sequenced music | BIOS format and Tiny Sound | `MUSIC`, simple/full players | External/player libraries | `MUSIC` backend | PSG streams; looping/status | NMI-serviced music sequences |
 | Concurrent SFX | Coleco table areas/Tiny Sound | Channel depends on music mode | Library-dependent | Pending measurement | PSG SFX channels and frame service | Four music areas plus sound areas 5+ for SFX |
 | Digital samples | DSOUND | No first-class support | Manual/custom | Pending | No first-class support found | No first-class support found |
-| Authoring | Amy's CV Sound Studio exists; Studio integration incomplete | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
+| Authoring | Integrated table inspector, tone preview, echo-tail builder, MIDI capture; full sequence editing pending | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
 
-Amy has the broadest playback formats, but CVBasic currently has the simplest music source syntax.
-The most valuable Amy improvement remains visual, reliable creation of Coleco BIOS/Tiny Sound
-tables rather than another playback format.
+Amy has the broadest playback formats, while CVBasic keeps the simplest music source syntax.
+Amy Studio can now inspect existing BIOS tables, preview generated commands, audition steady/fade/
+echo envelopes, and capture note, velocity, and duration from Web MIDI. The remaining authoring gap
+is a complete multi-command sequence editor with byte-exact source/project write-back.
 
 ## Compression evidence
 
@@ -253,8 +254,10 @@ bytes exactly in VRAM. Run `node tools/test-integrated-codec-vram-roms.mjs` to r
 
 ### Direct-to-VRAM speed ranking
 
-GearColeco measured two complete 6,144-byte decompression commands and verified all 12,288 output
-bytes in VRAM. Results use the most-compressible, median, and least-compressible corpus pictures.
+This benchmark measures two complete 6,144-byte Amy decompression commands (Pattern and Color)
+with NMI disabled. GearColeco counts exact Z80 master-clock cycles between executable markers and
+then verifies all 12,288 VRAM bytes. The samples are the mechanically selected most-compressible,
+median, and least-compressible corpus pictures. Run `node tools/benchmark-codec-vram-cycles.mjs`.
 
 | Rank | Codec | Decoder bytes | Average cycles | Observed range | NTSC frames | PAL frames |
 |---:|---|---:|---:|---:|---:|---:|
@@ -273,13 +276,14 @@ bytes in VRAM. Results use the most-compressible, median, and least-compressible
 | 13 | DAN2 | 212 | 3,683,858 | 2,806,792-4,725,242 | 61.67 | 51.62 |
 | 14 | DAN1 | 205 | 3,809,391 | 2,827,513-5,013,133 | 63.77 | 53.38 |
 
-Frame values are time equivalents (`59,736` cycles NTSC; `71,364` PAL), not VBlank waits. Speed
-and ROM-size rankings are separate; programmers should compare payload plus decoder size and then
-choose a loading time appropriate to the game.
+Frame values are time equivalents (`59,736` cycles NTSC; `71,364` PAL), not VBlank waits.
+Speed and ROM-size rankings are separate: choose using compressed payload plus decoder size, then
+check whether the measured loading time suits the game. Nibble and aPLib vary substantially by
+input, which is why Amy Studio should present per-asset estimates rather than one universal winner.
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy Studio | ZX0, ZX1, ZX2, aPLib, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
+| Amy Studio | ZX0, ZX1, ZX2, aPLib, MegaLZ, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
@@ -300,9 +304,10 @@ their output independently.
 |---|---|---|---|
 | ZX0 modern | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
 | ZX0 classic | `ZX0 Classic (v1)` / proposed codec `zx0v1` | z88dk v1.5 compressor plus exact benchmark VRAM port | Explicit extension and cross-format rejection tests |
-| ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact four-picture GearColeco VRAM proof | Integrated; measure Coleco cycle cost |
-| ZX2 | `ZX2` / codec `zx2` | Byte-identical browser encoder; exact eleven-picture round-trip and five-profile GearColeco VRAM proof | Integrated; measure Coleco cycle cost |
+| ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact GearColeco VRAM and cycle proof | Integrated and measured |
+| ZX2 | `ZX2` / codec `zx2` | Exact corpus round-trip, five-profile VRAM proof, and cycle proof | Integrated and measured |
 | aPLib | `aPLib` / codec `aplib` | Bidirectional appack parity and exact Amy/GearColeco VRAM ROM | Integrated; keep NMI-safe upload and attribution explicit |
+| MegaLZ | `MegaLZ` / codec `megalz` | Independent DEC40-compatible encoder; exact corpus round-trip and GearColeco VRAM/cycle proof | Integrated and measured |
 | MSC1 | `MSC1` | ugBASIC discards it for Warrior when it gives no gain | Useful Coleco corpus wins and a VRAM strategy |
 
 A host compressor alone is insufficient. An Amy codec requires round-trip tests, exact GearColeco
@@ -313,8 +318,8 @@ Current verdict: Amy leads in codec breadth and ColecoVision workflow; devkitSMS
 and aPLib paths, PVColLib has a verified RLE path, and CVBasic has a concise Pletter path. On
 Warrior and Cake, official ZX1, ZX2, and aPLib do not beat Amy's ZX0 first-use ROM size. aPLib
 nevertheless cuts the devkitSMS Warrior ROM from 13,680 raw bytes to 4,713 occupied bytes. ZX1 is now
-an integrated Amy codec with a 127-byte direct-to-VRAM decoder and exact Cake, Commando, Warrior,
-and Barbarian runtime proofs. Its remaining question is measured cycle cost. ugBASIC's MSC1 is a valid comparison
+an integrated Amy codec with a 127-byte direct-to-VRAM decoder and exact runtime and cycle proofs.
+ugBASIC's MSC1 is a valid comparison
 candidate, not ten separate codecs, but it does not improve the Warrior resource.
 
 ### What MSC1 actually is
@@ -362,7 +367,8 @@ for differential testing and is not redistributed.
 The first reproducible size results and the rules for the cross-tool runtime comparison are in
 `competition/benchmarks/compression/README.md`. On two real 12,288-byte TMS9918 pictures, ZX0 has
 the smallest Amy first-use ROM total after its current 133-byte decompressor estimate is included.
-This is a size result, not a speed verdict; Z80 cycle measurements remain required.
+The separate GearColeco cycle benchmark supplies the speed evidence; size and speed remain
+independent selection criteria.
 
 ## Memory, ROM size, and banking
 
@@ -493,16 +499,18 @@ results while adding the Amy language, integrated assets, diagnostics, and debug
 The comparison becomes stronger as equivalent game behaviors are implemented seven times. Current
 status and order:
 
-1. **Controller snapshot: built, semantic injection pending.** Inject directions, both fire
-   buttons, keypad, press, hold, and release; assert the result bytes instead of only booting.
-2. **Sprite/metasprite stress: next.** Move eight visible sprites and two multi-sprite actors
-   across one scanline; record SAT ordering, flicker policy, ROM, RAM, and worst-frame cycles.
-3. **Tile animation.** Update a small Graphics II region every frame without corruption and
+1. **Controller snapshot: complete.** Six toolchains pass injected neutral, keypad, direction,
+   fire, and release states; ugBASIC's VDP R7 update remains the documented exception.
+2. **Sprite/metasprite stress: complete.** Seven toolchains build and boot the shared fixture.
+   Amy's native metasprite path is runtime-equivalent, uses zero permanent RAM, preserves explicit
+   layer priority, and is smaller than the manual renderer in all five profiles.
+3. **Tile animation: next.** Update a small Graphics II region every frame without corruption and
    measure VRAM bytes per frame.
 4. **State update.** Run an actor array, collision checks, timers, and state dispatch.
-5. **Sound.** Start, loop, stop, and switch one ColecoVision PSG sequence.
-6. **Compression: payload sizes measured; cycle suite pending.** Compare identical
-   pattern/color/name data including linked decoder bytes, destination, and cycles.
+5. **Sound authoring: functional and still evolving.** BIOS commands and Tiny Sound sequences can
+   be inspected, auditioned, edited, imported, and written back; UX and audio-parity QA continue.
+6. **Compression: payload and cycle suites complete.** Fourteen codecs have exact VRAM proof;
+   representative streams now include linked decoder bytes and GearColeco cycle measurements.
 7. **Visible Hello: complete.** Keep it separate from the minimal runtime fixture so font/text
    costs remain explicit.
 
@@ -510,8 +518,7 @@ The first fixture is now in `competition/benchmarks/controller-input`. Initial b
 
 - Amy: Off 413, Safe 409, Balanced 408, Aggressive 408, and Experimental 406 ROM bytes. The
   fixture has five explicit result bytes plus Amy's selected runtime state. All controller
-  capabilities are selected from actual source usage. Runtime input injection is still required
-  before these five builds receive the stronger runtime-verified status.
+  capabilities are selected from actual source usage.
 - z88dk `+coleco -O2`: 2,117 bytes of useful binary before its cartridge image is padded to
   32,768 bytes. Its CRT/BSS map reaches `$717A`; the five result bytes occupy `$701F-$7023`.
 - CVBasic, ugBASIC, and devkitSMS are now locally built and measured below.
@@ -534,9 +541,8 @@ includes each toolchain's padding. CVBasic is measured from `ROM_END`, z88dk fro
 linked binary, ugBASIC from its code and data binaries, and devkitSMS from its Intel HEX span. The
 measurement never guesses by trimming trailing `$00` or `$FF` bytes.
 
-The current GearColeco result proves deterministic startup and 120 completed frames, not yet
-equivalent controller semantics. Controlled input injection and assertions on all five result
-bytes are the next required QA stage.
+The later seven-solution controller suite adds controlled input injection and assertions. Six
+solutions pass equivalent semantics; ugBASIC boots but does not update VDP R7 in this fixture.
 
 For every fixture record source lines, compiler version, build time, ROM bytes, permanent RAM,
 worst-frame cycles, and runtime result. A smaller ROM that fails visually or changes behavior is
@@ -546,30 +552,28 @@ not an optimization win.
 
 | Rank | Work | Value | Effort | Risk | Decision gate |
 |---:|---|---|---|---|---|
-| 1 | Five-tool sprite/metasprite benchmark | High | Medium | Low | Evidence first; no syntax yet |
-| 2 | First-class metasprite data/rendering prototype | High | Medium | Medium | Must beat or clarify manual sprite code without hiding priority or scanline limits |
-| 3 | Integrate Coleco BIOS/Tiny Sound authoring into Studio | High | Medium-large | Medium | Round-trip existing sound tables and preserve byte-exact expert editing |
-| 4 | ZX1 direct-to-VRAM speed/size experiment | Medium | Medium | Medium | Add only if payload + decoder or cycles wins a documented use case |
-| 5 | Small explicit animation service | High | Large | Medium-high | Zero linked cost when unused; RAM and per-frame cycle budget must be visible |
-| 6 | Aggregate-field 2D arrays and remaining operand symmetry | Medium | Medium | Medium | Driven by a real game repro, with fail-closed diagnostics and five-profile tests |
+| 1 | Complete BIOS/Tiny Sound sequence authoring | High | Medium-large | Medium | Byte-exact write-back, stable indices/shared tails, and ROM/audio runtime proof |
+| 2 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
+| 3 | State-update benchmark | High | Medium | Low | Equivalent actor arrays, collisions, timers, dispatch, ROM, RAM, and worst-frame cycles |
+| 4 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
+| 5 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
 
-### Next concrete work: metasprite evidence before language design
+### Completed gaps and next concrete work
 
-1. Define one exact actor made from two or three 8x8 sprites, plus enough independent sprites to
-   exceed four sprites on one scanline.
-2. Implement it idiomatically in all seven solutions using only ColecoVision-confirmed APIs.
-3. Capture occupied ROM, permanent RAM, SAT update bytes, worst-frame cycles, visual result, and
-   priority/flicker behavior.
-4. In Amy, compare explicit `set sprite` code against a data-driven helper prototype.
-5. Reject the feature if it adds hidden NMI work, allocates RAM when unused, obscures sprite 0
-   priority, or makes protected composite actors flicker internally.
-6. If the prototype wins, then define syntax, diagnostics, source-debug mapping, autocomplete,
-   highlighting, documentation, and clean-repository synchronization.
+Completed and runtime-guarded:
 
-### Deliberate non-goals
+- the seven-tool sprite/metasprite fixture and shared GearColeco SAT oracle;
+- native `data ... metasprite layers N` and `set metasprite ...`, with zero permanent RAM and
+  savings of `33`, `33`, `18`, `17`, and `17` bytes versus explicit rendering in the five profiles;
+- stable sprite ranges and flicker with protected high-priority sprites;
+- direct primitive 2D fields in records and overlay parts, verified in all five profiles;
+- ZX1 direct-to-VRAM with exact four-picture GearColeco VRAM proof;
+- Studio BIOS table inspection, command listening, compact echo-tail generation, and Web MIDI
+  note/velocity/duration capture.
 
-- ROM banking and extra hardware remain outside Amy's stock-console philosophy.
-- General dynamic strings remain a poor trade for 1 KB RAM; fixed buffers and formatting are the
-  preferred model.
-- Multi-platform abstraction, a general C standard library, and IEEE floating point are not
-  useful measures of Amy's ColecoVision-specific quality.
+Next concrete work is the **sound sequence editor**. It must turn the tested command layer into a
+multi-command timeline, preserve table slot numbers and shared-tail labels, preview area priority,
+and write byte-exact Amy/project data. Acceptance requires parser round trips, synthesized audio
+checks, and a GearColeco ROM proving start, loop, switch, stop, and concurrent SFX behavior. After
+that, finish controller input injection and build the tile-animation fixture before designing a
+general animation service.
