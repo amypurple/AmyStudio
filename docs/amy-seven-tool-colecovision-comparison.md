@@ -11,9 +11,8 @@ This comparison separates four kinds of evidence:
 - **Documented**: claimed by the tool's official documentation, but not yet measured here.
 - **Unverified**: available somewhere in the wider tool, but not proven for ColecoVision.
 
-Amy Studio is both a language and an integrated development environment. The other entries are
-primarily compilers or C development kits. IDE-only capabilities are therefore listed separately
-instead of being treated as language features.
+Amy Studio combines a language and IDE; the others are mainly compilers or C kits. IDE-only
+features are listed separately from language capabilities.
 
 ## The seven solutions
 
@@ -29,24 +28,19 @@ instead of being treated as language features.
 
 ## Reproducible four-sample ROM suite
 
-The current suite builds four runnable programs with all seven solutions:
+The suite builds four runnable programs with all seven solutions:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
 3. a visual controller monitor;
 4. an animated, controller-driven three-color metasprite.
 
-A **metasprite** is one visual actor assembled from multiple hardware sprites.
-The benchmark overlaps three 16x16 TMS9918 sprites for white, yellow, and black
-layers, remaining below the four-sprites-per-scanline limit.
+A **metasprite** combines hardware sprites into one actor. This test overlaps three 16x16 layers
+(white, yellow, black), below the four-sprites-per-scanline limit.
 
-Run `tools/build-five-tool-bluemsx-suite.ps1`, `tools/build-pvcollib-benchmarks.ps1`, then
-`node tools/build-legacy-devkit-benchmarks.mjs` for the first three samples. Their 21 ROM files
-are written under `build/competition/bluemsx-sample-suite`, grouped by tool. The same directory
-receives `occupied-sizes.csv` from `tools/report-five-tool-sample-sizes.ps1`.
-
-Run `tools/build-sprite-metasprite-benchmarks.ps1` for the seven sprite ROMs and
-their stricter GearColeco VRAM/SAT oracle.
+The build scripts create 21 ROMs for the first three samples plus seven sprite ROMs, grouped under
+`build/competition`. `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; the sprite
+script also runs the stricter GearColeco VRAM/SAT oracle.
 
 ### Maximum native optimization used
 
@@ -60,11 +54,8 @@ their stricter GearColeco VRAM/SAT oracle.
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 3.8 | `--std-c99`; original prebuilt libraries plus historical DAN2 | The exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 
-These are the strongest **native settings that were built and validated here**. Generated code
-was not passed through Amy's optimizer or MDL, because doing so would compare an additional
-external optimizer rather than each solution's normal output. Amy Experimental is appropriate
-for this maximum-size experiment; this table does not redefine Balanced as Amy's recommended
-default.
+These are the strongest **native settings validated here**. No competitor output passed through
+Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains its default.
 
 ### Real occupied size, excluding cartridge padding
 
@@ -76,30 +67,17 @@ default.
 | Sprite Metasprite | **1,000** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
 | **Four-sample total** | **5,087** | **6,512** | **8,129** | **9,331** | **9,954** | **15,581** | **36,884** |
 
-The improved bitmap rows retain measured baselines: z88dk's raw-table ROM was 14,293 bytes,
-MDKRLE reduced it to 5,911 bytes, ZX7 to 5,115 bytes, and the validated ZX0 path to 4,976 bytes; the legacy devkit's GETPUT
-MDKRLE ROM was 4,269 bytes before DAN2 reduced it to 3,643. Both replacements reproduce the
-original pattern table, color table, and all 49,152 pixels exactly. The installed ugBASIC 1.18
-Coleco target accepts `LOAD IMAGE ... COMPRESSED`, but Warrior produces the same 18,034-byte ROM
-and identical hash as `NONE`: MSC1 is discarded when it does not shrink the converted resource.
-The RLE image branch is compiled only for C128, not Coleco.
+Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
+NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
+ugBASIC's `COMPRESSED` and `NONE` Warrior builds are identical at 18,034 bytes: MSC1 was discarded,
+and its RLE image branch is C128-only.
 
-The exact legacy payload comparison is MDKRLE 3,687 bytes, DAN1 2,903, DAN2
-2,897, and DAN3 2,891. DAN2 remains the linked benchmark: DAN3 saves only six
-payload bytes before decoder cost, while the historical DAN2 SDCC wrapper is
-already validated end to end.
+Legacy payloads are MDKRLE 3,687, DAN1 2,903, DAN2 2,897, and DAN3 2,891 bytes. DAN2 stays linked:
+DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to end.
 
-`Occupied` includes the cartridge header, linked runtime, program code, and ROM data. It does not
-include the `$00`/`$FF` bytes added to reach an 8, 16, or 32 KB cartridge image. The report never
-guesses by removing repeated final bytes:
-
-- Amy uses the assembled ROM length;
-- CVBasic uses `ROM_END - $8000` from the assembler listing;
-- z88dk uses its unpadded linked binary;
-- ugBASIC uses its generated code and data binaries;
-- devkitSMS uses the occupied Intel HEX address span above `$8000`.
-- PVColLib uses the occupied Intel HEX address span above `$8000`.
-- the legacy devkit uses the complete unpadded binary emitted from its Intel HEX link.
+`Occupied` includes header, runtime, code, and data, but excludes cartridge padding. Sources are:
+assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated code+data
+(ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
 ### Runtime and comparability verdict
 
@@ -110,19 +88,16 @@ guesses by removing repeated final bytes:
 | Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
 | Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 
-PVColLib and NewColeco use `$F0` white-on-transparent text in the controller fixture instead of
-their customary `$F1` white-on-black. This presentation-only normalization exposes the changing
-VDP R7 backdrop without changing controller logic or occupied size.
+PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
+controller logic and occupied size are unchanged.
 
-The bitmap test uses each tool's validated native workflow: Amy ZX0, CVBasic Pletter, z88dk ZX0,
-ugBASIC image resources, devkitSMS aPLib, PVColLib RLE, and NewColeco DAN2. CVBasic's tables differ
-internally, but TMS9918 can encode the same pixels several ways. All seven framebuffers are exact.
-PVColLib Pletter failed VRAM validation and is excluded; codec rankings use the separate payload test.
+Native bitmap paths are Amy/z88dk ZX0, CVBasic Pletter, ugBASIC resources, devkitSMS aPLib,
+PVColLib RLE, and NewColeco DAN2. All framebuffers are exact despite equivalent internal table
+encodings. PVColLib Pletter failed VRAM validation and is excluded.
 
-For z88dk, MDKRLE reaches VRAM at frame 93, ZX0 at 132, and ZX7 at 138. ZX0 saves 935 bytes over
-MDKRLE and 139 over ZX7; MDKRLE loads faster. A separate attempt to transplant the SMS aPLib
-decoder into the z88dk fixture failed exact VRAM validation and is excluded. The native devkitSMS
-aPLib fixture remains exact when frame interrupts are disabled during decompression.
+For z88dk, MDKRLE reaches VRAM at frame 93, ZX0 at 132, and ZX7 at 138. ZX0 saves 935 bytes versus
+MDKRLE and 139 versus ZX7; MDKRLE is faster. A transplanted SMS aPLib path failed and is excluded;
+native devkitSMS aPLib remains exact with frame interrupts disabled during decompression.
 
 The initial ugBASIC mismatch came from the wrong RGB palette. With its target palette, all four
 corpus pictures render exactly.
@@ -159,20 +134,11 @@ The three website representatives are selected mechanically from each picture's 
 The PDF shows every converted image. Complete per-picture ratios, decoder sizes, first-use totals, and exact source values are in `competition/benchmarks/compression/bitmap-codec-ratios.csv`, `bitmap-codec-aggregate.csv`, and `bitmap-codec-first-use.csv`.
 ### Observations supported by this suite
 
-- Amy has the smallest Hello and controller-monitor footprint because its Coleco BIOS-aware
-  runtime is selected from actual source capabilities.
-- Amy wins this exact full-picture ROM measurement. CVBasic's internally different TMS9918 tables
-  render the same pixels, but its Pletter streams and larger runtime produce a 4,948-byte result
-  versus Amy's 3,254 bytes.
-- General C/BASIC portability runtimes have a visible fixed cost on tiny programs; this does not
-  prove they remain proportionally larger in complete games.
-- Cartridge file length is packaging evidence, not occupied-code evidence. A 32 KB z88dk file is
-  not automatically a 32 KB program.
-- Optimization claims require runtime validation. A smaller file without matching behavior is
-  rejected rather than counted as a win.
-- Four samples are insufficient to declare one compiler universally smaller or faster. RAM,
-  worst-frame cycles, build latency, sound behavior, sprite pressure, and gameplay logic remain
-  separate measurements.
+- Amy is smallest for Hello, Controller, and this exact bitmap ROM (3,254 versus CVBasic's 4,948 bytes).
+- Portable C/BASIC runtimes add visible fixed cost, but complete games may scale differently.
+- Cartridge length includes packaging; a padded 32 KB file is not necessarily a 32 KB program.
+- Smaller results count only after runtime validation; four samples cannot prove a universal winner.
+- RAM, worst-frame cycles, build latency, sound, sprite pressure, and gameplay remain separate tests.
 
 ## Preliminary capability matrix
 
