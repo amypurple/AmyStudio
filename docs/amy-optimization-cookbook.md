@@ -295,6 +295,8 @@ The smallest file is not always the smallest ROM, and the smallest ROM is not al
 Code that runs once at level load should favor correctness and compactness. Code that runs for every actor every frame may justify tables, byte-sized arithmetic, cheaper indexing, a bulk operation, or a specialized routine.
 
 Use the routine cycle profiler to identify the hot path before rewriting it. Its result is inclusive of nested calls; separate main execution from NMI/IRQ time and compare the total against both NTSC and PAL frame budgets.
+
+For repeatable before/after compiler measurements, use the commands in [Deterministic validation](amy-deterministic-validation.md). ROM size alone never replaces runtime and visual verification.
 ## Replacing repeated decisions with lookup tables
 
 A chain that selects constants from a small, fixed mapping often costs more ROM than its data:

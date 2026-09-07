@@ -174,6 +174,11 @@ const tests = [
   { file: "test-nibble-codec.mjs", area: "nibble-codec", evidence: "unit", suite: "codecs" },
   { file: "test-warrior-codecs.mjs", area: "warrior-codec-corpus", evidence: "unit", suite: "codecs" },
   { file: "test-dsound-converter.mjs", area: "dsound-conversion", evidence: "unit", suite: "audio" },
+  { file: "test-sound-table-inspector.mjs", area: "sound-table-inspection", evidence: "unit", suite: "audio" },
+  { file: "test-coleco-sound-notes.mjs", area: "bios-note-encoding", evidence: "unit", suite: "audio" },
+  { file: "test-tiny-sound-import.mjs", area: "tiny-sound-import", evidence: "compile+assemble", suite: "audio" },
+  { file: "test-tiny-sound-import-browser.mjs", area: "tiny-sound-import-ui", evidence: "browser", suite: "audio" },
+  { file: "test-sound-fx-editor-browser.mjs", area: "sound-fx-editor-ui", evidence: "browser", suite: "audio" },
   { file: "test-rails-puzzle-vram-bounds.mjs", area: "rails-puzzle-vram-safety", evidence: "rom", suite: "examples" },
   { file: "test-train-track-puzzles.mjs", area: "rails-puzzle-solutions", evidence: "unit", suite: "examples" }
 ];

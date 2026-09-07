@@ -10,6 +10,11 @@ export const DOCS = [
     path: "../docs/amy-optimization-cookbook.md"
   },
   {
+    id: "deterministic-validation",
+    label: "Deterministic Validation",
+    path: "../docs/amy-deterministic-validation.md"
+  },
+  {
     id: "graphics-editors",
     label: "Graphics Editors Guide",
     path: "../docs/amy-graphics-editors-guide.md"
