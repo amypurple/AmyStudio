@@ -156,10 +156,14 @@ try {
   await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-editable, .tiny-pair-sequencer__block.is-sustain, .tiny-pair-sequencer__block.is-silence").length > 0`, "automatic sequencer shows imported stream blocks");
   await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").click()`);
   await waitFor(`document.querySelector('[aria-label="Play from selection"]')?.disabled === false`, "selection playback becomes available");
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Apply").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__block.is-selected")`, "selection highlight survives lane rebuild after Apply");
   await evaluate(`document.querySelector('[aria-label="Play from selection"]').click()`);
   await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`, "selection playback shows its playhead");
-  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer-modal .graphics-editor-json-modal__actions button")).find((button) => button.textContent.includes("Stop")).click()`);
+  await evaluate(`document.querySelector('[aria-label="Stop playback"]').click()`);
   await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).every((item) => item.hidden)`, "selection playback stops cleanly");
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-selected").click()`);
+  await waitFor(`!document.querySelector(".tiny-pair-sequencer__popover").hidden`, "selected note reopens for preview");
   await evaluate(`document.querySelector('[aria-label="Loop selection"]').click()`);
   await delay(600);
   assert.ok(await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`), "selection loop must still be playing after one short note duration");

@@ -105,6 +105,21 @@ assert.deepEqual(sliced, [
 assert.throws(() => sliceColecoPreviewEvents([], -1), /non-negative/);
 assert.throws(() => sliceColecoPreviewEvents([], 4, 4), /follow/);
 
+// A change landing exactly on the selection's start frame must become the slice's initial
+// value (not a stray mid-slice frame at offset 0), and a change landing exactly on the
+// selection's end frame must belong to the NEXT segment, not this one (selection end is
+// exclusive, matching how "Loop" repeats [start,end) and playback naturally continues past
+// end into whatever comes next).
+assert.deepEqual(sliceColecoPreviewEvents([
+  {
+    type: "note", channel: 1, period: 100, attenuation: 5, startFrame: 0, length: 10, durationFrames: 10,
+    frequencyFrames: [{ frame: 4, period: 150 }, { frame: 8, period: 250 }],
+    volumeFrames: [{ frame: 4, attenuation: 9 }, { frame: 8, attenuation: 2 }]
+  }
+], 4, 8), [
+  { type: "note", channel: 1, period: 150, attenuation: 9, startFrame: 0, length: 4, durationFrames: 4 }
+], "a control point exactly at the selection start/end boundary is handled inclusively at the start, exclusively at the end");
+
 const echo = buildColecoEchoTone({ note: "A", octave: 4, mainFrames: 12, tailFrames: 8, volume: 15 });
 assert.equal(echo.bytes.length, 6);
 assert.equal(echo.event.length, 20);

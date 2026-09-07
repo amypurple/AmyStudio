@@ -3623,6 +3623,11 @@ export function createProjectFileUiHelpers({
             ? command.name
             : command.type === "silence" ? "Rest" : command.type === "sustain" ? "Hold" : "Drum";
           block.title = `F${command.startFrame} · ${describeTinySoundCommand(command)}`;
+          if (selectedRange
+            && command.startFrame === selectedRange.startFrame
+            && command.startFrame + command.frames === selectedRange.endFrame) {
+            block.classList.add("is-selected");
+          }
           if (command.type === "note" && command.arpeggioCode === null) {
             block.classList.add("is-editable");
             block.tabIndex = 0;
@@ -3691,10 +3696,12 @@ export function createProjectFileUiHelpers({
       const stop = document.createElement("button");
       stop.type = "button";
       stop.textContent = "■ Stop";
+      stop.setAttribute("aria-label", "Stop playback");
       stop.disabled = true;
       const pause = document.createElement("button");
       pause.type = "button";
       pause.textContent = "Ⅱ Pause";
+      pause.setAttribute("aria-label", "Pause playback");
       pause.disabled = true;
       let animationFrame = 0;
       let transportGeneration = 0;
@@ -3756,10 +3763,11 @@ export function createProjectFileUiHelpers({
       play.addEventListener("click", () => startTransport());
       playSelection.addEventListener("click", () => selectedRange && startTransport({ startFrame: selectedRange.startFrame }));
       loopSelection.addEventListener("click", () => selectedRange && startTransport({ ...selectedRange, loop: true }));
-      stop.addEventListener("click", () => {
+      stop.addEventListener("click", async () => {
         transportGeneration += 1;
-        activeSoundPreview?.stop();
-        activeSoundPreview = null;
+        const playback = activeSoundPreview;
+        if (playback) await playback.stop();
+        if (activeSoundPreview === playback) activeSoundPreview = null;
         setTransportIdle();
       });
       pause.addEventListener("click", async () => {
