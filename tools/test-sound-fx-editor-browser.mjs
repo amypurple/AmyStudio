@@ -120,7 +120,7 @@ try {
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
   assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /should target/, "generated Tiny table uses canonical sound slots");
-  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["+ Table", "+ Sound", "+ Music", "Technical"], "an installed Tiny table emphasizes editing instead of inviting accidental duplication");
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["+ Table", "+ Sound", "+ Music", "+ Another Tiny table", "Technical"], "an installed Tiny table keeps multiple music tables possible without disguising the action as editing");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "new Tiny song inspector closes");
   await evaluate(`(() => {

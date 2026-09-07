@@ -2606,6 +2606,7 @@ export function createProjectFileUiHelpers({
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
     newTinyButton.textContent = "+ Tiny table";
+    newTinyButton.title = "Create a separate Tiny Sound music table; select it before play song";
     newTinyButton.addEventListener("click", () => {
       overlay.remove();
       openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true });
@@ -3057,11 +3058,12 @@ export function createProjectFileUiHelpers({
     addMusicButton.textContent = "+ Music";
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
-    newTinyButton.textContent = "+ Tiny table";
-    newTinyButton.addEventListener("click", () => openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true }));
     const inspectingTinyTable = analysis.tables.some((table) => table.entries.some((sound) => sound.stream?.format === "tiny"));
+    newTinyButton.textContent = inspectingTinyTable ? "+ Another Tiny table" : "+ Tiny table";
+    newTinyButton.title = "Create a separate Tiny Sound music table; select it before play song";
+    newTinyButton.addEventListener("click", () => openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true }));
     viewTabs.append(addTableButton, addSoundButton, addMusicButton);
-    if (!inspectingTinyTable) viewTabs.appendChild(newTinyButton);
+    viewTabs.appendChild(newTinyButton);
     viewTabs.appendChild(technicalToggle);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
