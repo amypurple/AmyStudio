@@ -85,6 +85,7 @@ The picture/resource import dialog compares the codecs bundled by the current St
 | Tool | Open it | Purpose |
 | --- | --- | --- |
 | Sound & Music manager | `SOUND` in the source editor title bar, or the sound action in `FILES` | Create tables, assign slots, and safely edit sound-label sequences. |
+| New Tiny Song | `SOUND` > `New Tiny Song` | Insert a two-channel starter song, then edit and audition its notes in the sequencer. |
 | Tone preview | Top of the sound inspector | Generate one legal tone, bass, or noise command for comparison and authoring. |
 | WAV to DSOUND | Burger menu audio workflow | Convert sampled WAV audio into ColecoVision digitized playback data. |
 | DSOUND preview | `.dsound` file action | Listen to the encoded sample before compiling it into a ROM. |

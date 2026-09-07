@@ -57,6 +57,25 @@ export function insertColecoSoundTableSource(sourceText, built) {
 // (slot 3)).
 const TINY_CHANNEL_SLOT = { 1: 4, 2: 3 };
 
+export function buildTinySoundStarterSource() {
+  return [
+    "starter_ch1_A:",
+    "    db $44",
+    "    dw sndtiny_1",
+    "    db 8",
+    "    db $02,$60,$19,$22",
+    "    db $28,$2C,$30,$34,$34,$30,$2C,$28,$00,$01,$FF",
+    "",
+    "starter_ch2_A:",
+    "    db $84",
+    "    dw sndtiny_2",
+    "    db 8",
+    "    db $02,$80,$13,$33",
+    "    db $18,$1C,$20,$24,$24,$20,$1C,$18,$00,$01,$FF",
+    ""
+  ].join("\n");
+}
+
 // Rename one assembler symbol and its code references. Comments stay byte-for-byte intact,
 // and identifier boundaries prevent similarly named labels from changing.
 export function renameLabelDeclaration(fileText, oldLabel, newLabel) {

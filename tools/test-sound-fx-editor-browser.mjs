@@ -98,6 +98,7 @@ try {
   await client.send("Page.enable");
   await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/studio/?sound-fx-browser-test=1` });
   await waitFor(`document.getElementById("studioLoading") === null`, "Studio startup");
+  assert.notEqual(await evaluate(`getComputedStyle(document.getElementById("btnInspectSourceSounds")).display`), "none", "SOUND stays visible while the ASM panel is open");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
     editor.value = "sub start:\\n  text screen\\n";
@@ -105,6 +106,25 @@ try {
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "New Tiny Song").click()`);
+  await waitFor(`document.querySelector(".tiny-import-modal")`, "new Tiny song starter");
+  assert.equal(await evaluate(`document.querySelector(".tiny-import-modal h3").textContent`), "New Tiny Song");
+  assert.equal(await evaluate(`document.querySelectorAll(".tiny-import__pickers select:not([disabled])").length`), 2, "starter exposes two valid channels");
+  assert.equal(await evaluate(`document.querySelector(".tiny-import-modal .graphics-editor-json-modal__actions button:last-child").disabled`), false, "starter is ready to insert");
+  await evaluate(`document.querySelector(".tiny-import-modal .graphics-editor-json-modal__actions button:last-child").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song opens in sequencer");
+  assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /play song MySong_song/, "new Tiny song is installed in the project");
+  await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
+  await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
+  await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
+  await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "new Tiny song inspector closes");
+  await evaluate(`(() => {
+    const editor = document.getElementById("sourceEditor");
+    editor.value = "sub start:\\n  text screen\\n";
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    document.getElementById("btnInspectSourceSounds").click();
+  })()`);
+  await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator reopens");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Sound effect").click()`);
   await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Create table").click()`);

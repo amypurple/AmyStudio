@@ -9,7 +9,7 @@ import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPrevi
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
-import { addColecoSoundToTableSource, buildColecoSoundTableSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260906-tiny-import";
+import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-tiny-starter";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2607,6 +2607,13 @@ export function createProjectFileUiHelpers({
     importTinyButton.type = "button";
     importTinyButton.textContent = "Import Tiny Sound instead";
     importTinyButton.addEventListener("click", () => { overlay.remove(); openTinySoundImportDialog(); });
+    const newTinyButton = document.createElement("button");
+    newTinyButton.type = "button";
+    newTinyButton.textContent = "New Tiny Song";
+    newTinyButton.addEventListener("click", () => {
+      overlay.remove();
+      openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true });
+    });
     const settings = document.createElement("div");
     settings.className = "sound-table-creator__settings";
     const tableLabel = document.createElement("label");
@@ -2732,7 +2739,7 @@ export function createProjectFileUiHelpers({
     });
     addRow("music");
     addRow("sfx");
-    panel.append(header, note, importTinyButton, settings, rows, actions, message, previewDetails);
+    panel.append(header, note, newTinyButton, importTinyButton, settings, rows, actions, message, previewDetails);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
   }
@@ -2745,7 +2752,7 @@ export function createProjectFileUiHelpers({
   // automatically (no sound table installed yet). Deliberately does not attempt to convert
   // CVBasic MUSIC blocks, MIDI, or any other format - only real Tiny Sound bytes this
   // project's own decoder can already prove valid via decodeTinySoundSource.
-  function openTinySoundImportDialog({ onImported } = {}) {
+  function openTinySoundImportDialog({ onImported, initialText = "", initialName = "MyMusic", creating = false } = {}) {
     let activeSoundPreview = null;
     const backdrop = document.createElement("div");
     backdrop.className = "graphics-editor-modal-backdrop";
@@ -2754,7 +2761,7 @@ export function createProjectFileUiHelpers({
     const header = document.createElement("div");
     header.className = "graphics-editor-modal__header";
     const title = document.createElement("h3");
-    title.textContent = "Import Tiny Sound";
+    title.textContent = creating ? "New Tiny Song" : "Import Tiny Sound";
     const closeButton = document.createElement("button");
     closeButton.type = "button";
     closeButton.className = "graphics-editor-modal__close";
@@ -2763,7 +2770,9 @@ export function createProjectFileUiHelpers({
     header.append(title, closeButton);
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "Paste or pick an existing Tiny Sound (SPECIAL-04) .asm/.inc file - the kind produced by a real Tiny Sound tracker/exporter. This does not convert MIDI, CVBasic, or any other music format; only real, already-encoded Tiny Sound streams are accepted.";
+    note.textContent = creating
+      ? "Start with two editable Tiny Sound channels. Name the song, insert it, then edit and audition its notes in the sequencer."
+      : "Paste or pick an existing Tiny Sound (SPECIAL-04) .asm/.inc file - the kind produced by a real Tiny Sound tracker/exporter. This does not convert MIDI, CVBasic, or any other music format; only real, already-encoded Tiny Sound streams are accepted.";
 
     const pasteLabel = document.createElement("label");
     pasteLabel.className = "tiny-import__field";
@@ -2810,7 +2819,7 @@ export function createProjectFileUiHelpers({
     const nameLabel = document.createElement("label");
     nameLabel.textContent = "Song name";
     const nameInput = document.createElement("input");
-    nameInput.value = "MyMusic";
+    nameInput.value = initialName;
     nameLabel.appendChild(nameInput);
 
     const fileNameLabel = document.createElement("label");
@@ -2970,6 +2979,10 @@ export function createProjectFileUiHelpers({
     dialog.append(header, note, pasteLabel, fileRow, scanStatus, pickers, regionLabel, nameLabel, fileNameLabel, previewInfo, tableStatus, actions);
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
+    if (initialText) {
+      textarea.value = initialText;
+      rescan();
+    }
     textarea.focus();
   }
 
@@ -3012,7 +3025,11 @@ export function createProjectFileUiHelpers({
     importTinyButton.type = "button";
     importTinyButton.textContent = "Import Tiny Sound";
     importTinyButton.addEventListener("click", () => openTinySoundImportDialog());
-    viewTabs.append(soundsTab, composerTab, technicalToggle, addSoundButton, importTinyButton);
+    const newTinyButton = document.createElement("button");
+    newTinyButton.type = "button";
+    newTinyButton.textContent = "New Tiny Song";
+    newTinyButton.addEventListener("click", () => openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true }));
+    viewTabs.append(soundsTab, composerTab, technicalToggle, addSoundButton, newTinyButton, importTinyButton);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     builder.hidden = true;

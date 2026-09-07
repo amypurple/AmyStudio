@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeTinySoundSource, scanTinySoundStreams } from "../studio/core/colecoTinySound.js";
-import { insertTinySoundSongPlayback, prepareTinySoundImport, renameLabelDeclaration } from "../studio/core/colecoSoundTableBuilder.js";
+import { buildTinySoundStarterSource, insertTinySoundSongPlayback, prepareTinySoundImport, renameLabelDeclaration } from "../studio/core/colecoSoundTableBuilder.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
 
@@ -41,6 +41,14 @@ const candidate = [
 // front, by trying the same readTinySoundLabel() the rest of Tiny Sound already trusts.
 const found = scanTinySoundStreams(candidate);
 assert.deepEqual(found, [{ label: "music_ch1_A", channel: 1 }, { label: "music_ch2_A", channel: 2 }]);
+
+const starter = buildTinySoundStarterSource();
+assert.deepEqual(scanTinySoundStreams(starter), [
+  { label: "starter_ch1_A", channel: 1 },
+  { label: "starter_ch2_A", channel: 2 }
+]);
+assert.ok(decodeTinySoundSource(starter, "starter_ch1_A").commands.filter((command) => command.type === "note").length >= 8);
+assert.ok(decodeTinySoundSource(starter, "starter_ch2_A").commands.filter((command) => command.type === "note").length >= 8);
 
 // Text with no Tiny Sound streams at all must scan clean (not throw, not find phantoms).
 assert.deepEqual(scanTinySoundStreams("NotTiny:\n  db $50\n"), []);
