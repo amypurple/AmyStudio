@@ -174,6 +174,8 @@ const tests = [
   { file: "test-rom-gearcoleco.mjs", area: "gearcoleco-rom-runner", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "--frames", "1"], requires: ["build/rom-tests/warrior-dan2-fire-visual-test.rom", process.env.GEARCOLECO_EXE || resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe")] },
   { file: "test-nibble-codec.mjs", area: "nibble-codec", evidence: "unit", suite: "codecs" },
   { file: "test-warrior-codecs.mjs", area: "warrior-codec-corpus", evidence: "unit", suite: "codecs" },
+  { file: "test-megalz-codec.mjs", area: "megalz-codec", evidence: "unit", suite: "codecs" },
+  { file: "test-megalz-vram-rom.mjs", area: "megalz-vram", evidence: "rom", suite: "codecs" },
   { file: "test-dsound-converter.mjs", area: "dsound-conversion", evidence: "unit", suite: "audio" },
   { file: "test-sound-table-inspector.mjs", area: "sound-table-inspection", evidence: "unit", suite: "audio" },
   { file: "test-coleco-sound-notes.mjs", area: "bios-note-encoding", evidence: "unit", suite: "audio" },

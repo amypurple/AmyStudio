@@ -6,6 +6,7 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "zx1", label: "ZX1", description: "Official ZX1 compression with a compact 127-byte direct-VRAM routine." },
   { codec: "zx2", label: "ZX2", description: "Official ZX2 compression with a compact 115-byte direct-VRAM routine." },
   { codec: "aplib", label: "aPLib Compact", description: "Strong aPPack-compatible compression with a compact direct-VRAM routine." },
+  { codec: "megalz", label: "MegaLZ", description: "DEC40-compatible compression with a compact direct-VRAM routine." },
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
   { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco bitmap data." },
   { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline." },
@@ -25,6 +26,7 @@ export const PICTURE_DECOMPRESSOR_ROUTINE_BYTES = {
   zx1: 127,
   zx2: 115,
   aplib: 244,
+  megalz: 162,
   zx7: 136,
   dan1: 205,
   dan2: 212,
@@ -74,6 +76,11 @@ const PICTURE_Z80_RUNTIME_INFO = {
     rank: 3,
     label: "LZ VRAM back-copy",
     note: "Compact stream; runtime copies matches through TMS9918 VRAM."
+  },
+  megalz: {
+    rank: 3,
+    label: "LZ VRAM back-copy",
+    note: "DEC40-compatible stream; runtime copies matches through TMS9918 VRAM."
   },
   zx7: {
     rank: 3,

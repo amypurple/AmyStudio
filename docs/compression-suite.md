@@ -13,6 +13,7 @@ src/
     zx1_vram.asm
     zx2_vram.asm
     aplib_vram.asm
+    megalz_vram.asm
     zx7_vram.asm
     nibble_vram.asm
     bitbuster_vram.asm
@@ -32,7 +33,7 @@ assets/
 
 ## Official Studio Codecs
 
-Amy Studio currently enables 13 compressors in the picture/tiles import chooser: `mdkrle`, `nibble`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster`, `zx7`, `zx0`, `zx1`, `zx2`, and `aplib`.
+Amy Studio currently enables 14 compressors in the picture/tiles import chooser: `mdkrle`, `nibble`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster`, `zx7`, `zx0`, `zx1`, `zx2`, `aplib`, and `megalz`.
 
 `zx1` is byte-compatible with Einar Saukas' official ZX1 standard stream. Amy's 127-byte decoder writes directly to ColecoVision VRAM. Four complete 12,288-byte bitmap pictures pass exact round-trip checks and GearColeco VRAM validation; Warrior and a long-literal stress case also pass every optimizer profile.
 
@@ -40,9 +41,11 @@ Amy Studio currently enables 13 compressors in the picture/tiles import chooser:
 
 `aplib` uses Amy Studio's browser encoder and a compact 244-byte public-domain SMSlib-derived decoder adapted for plain ColecoVision VRAM addresses. Its size is unchanged across Amy's optimization profiles. The former unrolled decoder was 348 bytes and faster, but used the same raw aPPack-compatible stream. The compact Z80 routine writes directly to VRAM, preserves IX/IY, and requires NMI-safe use like the other LZ VRAM codecs. The official aPLib package and `appack.exe` are test references only and are not redistributed by Amy Studio.
 
+`megalz` uses an independently written JavaScript encoder and decoder for the documented MegaLZ V4/DEC40 stream. Its 162-byte optimized Z80 routine writes directly to VRAM. The JavaScript decoder restores all 22 corpus streams produced by MegaLZ v4.89, while the JavaScript encoder reaches the same optimal size on every table and its streams are accepted by the reference decoder. Warrior passes complete Pattern/Color VRAM validation in GearColeco under all five optimization profiles.
+
 `nibble` is the official Studio name for the legacy `DAN0nibble`-derived codec. It uses RLE commands plus 16-value data-stream references, with a 2026 relocatable header for browser project files.
 
-The quick image-import pass keeps the established fastest candidates. The full "Compare all codecs" pass evaluates all 13 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams are not unfairly compared with LZ codecs that can do VRAM back-copy.
+The quick image-import pass keeps the established fastest candidates. The full "Compare all codecs" pass evaluates all 14 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams are not unfairly compared with LZ codecs that can do VRAM back-copy.
 
 ## Workflow
 1. Export/compress assets with standalone tools (e.g., `zx0.exe`) or reuse Warrior binaries for validation.

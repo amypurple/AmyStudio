@@ -13,6 +13,8 @@ const quickTests = [
   "test-controller-backend-selection-rom.mjs",
   "test-optimizer-indexed-immediate-a-liveness.mjs",
   "test-optimizer-djnz-reachability.mjs",
+  "test-megalz-codec.mjs",
+  "test-megalz-vram-rom.mjs",
   "test-internal-compiler-single-pass.mjs"
 ];
 

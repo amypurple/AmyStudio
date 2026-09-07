@@ -951,7 +951,7 @@ node tools/audit-example-graphics-optimization.mjs
 
 Amy Studio currently recognizes eleven configured codecs in its codec surface. A codec being available in the browser does not imply its decompressor is automatically linked into every ROM.
 
-The exact codec identifiers are `nibble`, `mdkrle`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster12`, `zx7`, `zx0`, and `aplib`. Raw data is an uncompressed storage choice, not an additional codec. Relevant extensions include `.mdk`/`.rle`, `.plet5`, `.pck`, and `.aplib`; assistants must resolve aliases through codec metadata rather than guessing from display names.
+The exact codec identifiers are `nibble`, `mdkrle`, `lzf`, `dan3`, `dan1`, `dan2`, `pletter`, `bitbuster12`, `zx7`, `zx0`, `zx1`, `zx2`, `aplib`, and `megalz`. Raw data is an uncompressed storage choice, not an additional codec. Relevant extensions include `.mdk`/`.rle`, `.plet5`, `.pck`, `.aplib`, and `.mlz`; assistants must resolve aliases through codec metadata rather than guessing from display names.
 
 ### 13.2 Convert legacy assets
 
