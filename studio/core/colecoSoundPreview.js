@@ -14,6 +14,12 @@ function eventDurationFrames(event) {
 function volumeEnvelopeForEvent(event) {
   let attenuation = event.attenuation ?? 15;
   const points = [{ frame: 0, attenuation }];
+  if (Array.isArray(event.volumeFrames)) {
+    for (const point of event.volumeFrames) {
+      if (point.frame > 0) points.push({ frame: point.frame, attenuation: point.attenuation & 0x0f });
+    }
+    return points;
+  }
   const sweep = event.volumeSweep;
   if (!sweep) return points;
   const duration = eventDurationFrames(event);
@@ -24,6 +30,64 @@ function volumeEnvelopeForEvent(event) {
     frame += sweep.stepLength;
   }
   return points;
+}
+
+function frequencyTimelineForEvent(event) {
+  let period = event.period;
+  const points = [{ frame: 0, period }];
+  if (Array.isArray(event.frequencyFrames)) {
+    for (const point of event.frequencyFrames) if (point.frame > 0) points.push({ frame: point.frame, period: point.period });
+    return points;
+  }
+  const sweep = event.frequencySweep;
+  if (!sweep) return points;
+  const duration = eventDurationFrames(event);
+  for (let frame = sweep.firstLength; frame < duration; frame += sweep.stepLength) {
+    period = Math.max(1, Math.min(1023, period + sweep.step));
+    points.push({ frame, period });
+  }
+  return points;
+}
+
+export function sliceColecoPreviewEvents(events, startFrame, endFrame = Infinity) {
+  if (!Number.isFinite(startFrame) || startFrame < 0) throw new Error("Preview start frame must be non-negative.");
+  if (!(endFrame > startFrame)) throw new Error("Preview end frame must follow its start frame.");
+  const sliced = [];
+  for (const event of events || []) {
+    const eventStart = event.startFrame || 0;
+    const eventEnd = eventStart + eventDurationFrames(event);
+    const clippedStart = Math.max(startFrame, eventStart);
+    const clippedEnd = Math.min(endFrame, eventEnd);
+    if (clippedEnd <= clippedStart) continue;
+    const offset = clippedStart - eventStart;
+    const durationFrames = clippedEnd - clippedStart;
+    const frequencies = frequencyTimelineForEvent(event);
+    const volumes = volumeEnvelopeForEvent(event);
+    const initialPeriod = frequencies.filter((point) => point.frame <= offset).at(-1)?.period ?? event.period;
+    const initialAttenuation = volumes.filter((point) => point.frame <= offset).at(-1)?.attenuation ?? event.attenuation;
+    const frequencyFrames = frequencies
+      .filter((point) => point.frame > offset && point.frame < offset + durationFrames)
+      .map((point) => ({ frame: point.frame - offset, period: point.period }));
+    const volumeFrames = volumes
+      .filter((point) => point.frame > offset && point.frame < offset + durationFrames)
+      .map((point) => ({ frame: point.frame - offset, attenuation: point.attenuation }));
+    const copy = {
+      ...event,
+      startFrame: clippedStart - startFrame,
+      period: initialPeriod,
+      attenuation: initialAttenuation,
+      length: durationFrames,
+      durationFrames
+    };
+    delete copy.frequencySweep;
+    delete copy.volumeSweep;
+    delete copy.frequencyFrames;
+    delete copy.volumeFrames;
+    if (frequencyFrames.length) copy.frequencyFrames = frequencyFrames;
+    if (volumeFrames.length) copy.volumeFrames = volumeFrames;
+    sliced.push(copy);
+  }
+  return sliced;
 }
 
 function scheduleVolume(gain, event, start, frameSeconds) {

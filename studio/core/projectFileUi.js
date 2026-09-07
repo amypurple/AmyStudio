@@ -5,7 +5,7 @@ import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-tiny-sound-inspector";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoSoundCommand, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";
-import { previewColecoSoundEvents, scheduleColecoSoundSequence, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260904-transport";
+import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260907-selection";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
@@ -3433,6 +3433,7 @@ export function createProjectFileUiHelpers({
       popoverActions.append(popoverPreview, popoverCancel, popoverApply);
       popover.append(popoverTitle, popoverBody, popoverActions);
       let activeEditor = null;
+      let selectedRange = null;
       const positionPopoverNear = (targetEl) => {
         const containerRect = sequencer.getBoundingClientRect();
         const targetRect = targetEl.getBoundingClientRect();
@@ -3460,6 +3461,9 @@ export function createProjectFileUiHelpers({
         for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
         block.classList.add("is-selected");
         activeEditor = { type: "note", voice, command, block, originalText: block.textContent, originalTitle: block.title };
+        selectedRange = { startFrame: command.startFrame, endFrame: command.startFrame + command.frames };
+        playSelection.disabled = false;
+        loopSelection.disabled = false;
         popoverTitle.textContent = `Channel ${voice.stream.tiny.channel} · frame ${command.startFrame} pitch`;
         popoverBody.innerHTML = "";
         const pitchLabel = document.createElement("label");
@@ -3529,7 +3533,9 @@ export function createProjectFileUiHelpers({
       popoverPreview.addEventListener("click", async () => {
         if (!activeEditor || activeEditor.type !== "note") return;
         try {
+          transportGeneration += 1;
           await activeSoundPreview?.stop();
+          setTransportIdle();
           const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(activeEditor.pitchSelect.value));
           if (!choice) return;
           const playback = await startColecoSoundPreview([{
@@ -3667,7 +3673,21 @@ export function createProjectFileUiHelpers({
       transport.className = "graphics-editor-json-modal__actions";
       const play = document.createElement("button");
       play.type = "button";
-      play.textContent = "▶ Play";
+      play.textContent = "▶ All";
+      play.title = "Play the complete song";
+      play.setAttribute("aria-label", "Play complete song");
+      const playSelection = document.createElement("button");
+      playSelection.type = "button";
+      playSelection.textContent = "▶ Here";
+      playSelection.title = "Play from the selected note";
+      playSelection.setAttribute("aria-label", "Play from selection");
+      playSelection.disabled = true;
+      const loopSelection = document.createElement("button");
+      loopSelection.type = "button";
+      loopSelection.textContent = "↻ Loop";
+      loopSelection.title = "Repeat the selected note range";
+      loopSelection.setAttribute("aria-label", "Loop selection");
+      loopSelection.disabled = true;
       const stop = document.createElement("button");
       stop.type = "button";
       stop.textContent = "■ Stop";
@@ -3677,6 +3697,7 @@ export function createProjectFileUiHelpers({
       pause.textContent = "Ⅱ Pause";
       pause.disabled = true;
       let animationFrame = 0;
+      let transportGeneration = 0;
       const clearPlayhead = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
         animationFrame = 0;
@@ -3685,8 +3706,8 @@ export function createProjectFileUiHelpers({
           for (const item of view.blocks) item.block.classList.remove("is-playing");
         }
       };
-      const followPlayback = (playback) => {
-        const frame = playback.currentFrame();
+      const followPlayback = (playback, frameOffset = 0) => {
+        const frame = frameOffset + playback.currentFrame();
         const top = Math.round(frame * pixelsPerFrame);
         for (const view of laneViews) {
           view.playhead.hidden = false;
@@ -3698,30 +3719,48 @@ export function createProjectFileUiHelpers({
         }
         const targetScroll = Math.max(0, top - Math.round(lanes.clientHeight * 0.35));
         if (Math.abs(lanes.scrollTop - targetScroll) > 24) lanes.scrollTop = targetScroll;
-        if (activeSoundPreview === playback) animationFrame = requestAnimationFrame(() => followPlayback(playback));
+        if (activeSoundPreview === playback) animationFrame = requestAnimationFrame(() => followPlayback(playback, frameOffset));
       };
-      play.addEventListener("click", async () => {
-        await activeSoundPreview?.stop();
-        clearPlayhead();
-        const playback = await startColecoSoundPreview(voices.flatMap((voice) => voice.stream.tiny.previewEvents), { region: inputs.region.value });
-        activeSoundPreview = playback;
-        play.disabled = true;
-        play.textContent = "↻ Play again";
-        stop.disabled = false;
-        pause.disabled = false;
-        pause.textContent = "Ⅱ Pause";
-        followPlayback(playback);
-        await playback.done;
-        if (activeSoundPreview === playback) activeSoundPreview = null;
+      const setTransportIdle = () => {
         clearPlayhead();
         play.disabled = false;
+        play.textContent = "▶ All";
+        playSelection.disabled = !selectedRange;
+        loopSelection.disabled = !selectedRange;
         stop.disabled = true;
         pause.disabled = true;
         pause.textContent = "Ⅱ Pause";
-      });
-      stop.addEventListener("click", () => {
+      };
+      const startTransport = async ({ startFrame = 0, endFrame = Infinity, loop = false } = {}) => {
+        const generation = ++transportGeneration;
+        await activeSoundPreview?.stop();
         clearPlayhead();
+        play.disabled = true;
+        playSelection.disabled = true;
+        loopSelection.disabled = true;
+        stop.disabled = false;
+        pause.disabled = false;
+        pause.textContent = "Ⅱ Pause";
+        do {
+          const events = sliceColecoPreviewEvents(voices.flatMap((voice) => voice.stream.tiny.previewEvents), startFrame, endFrame);
+          const playback = await startColecoSoundPreview(events, { region: inputs.region.value });
+          if (generation !== transportGeneration) { await playback.stop(); break; }
+          activeSoundPreview = playback;
+          followPlayback(playback, startFrame);
+          await playback.done;
+          if (activeSoundPreview === playback) activeSoundPreview = null;
+          clearPlayhead();
+        } while (loop && generation === transportGeneration);
+        if (generation === transportGeneration) setTransportIdle();
+      };
+      play.addEventListener("click", () => startTransport());
+      playSelection.addEventListener("click", () => selectedRange && startTransport({ startFrame: selectedRange.startFrame }));
+      loopSelection.addEventListener("click", () => selectedRange && startTransport({ ...selectedRange, loop: true }));
+      stop.addEventListener("click", () => {
+        transportGeneration += 1;
         activeSoundPreview?.stop();
+        activeSoundPreview = null;
+        setTransportIdle();
       });
       pause.addEventListener("click", async () => {
         const playback = activeSoundPreview;
@@ -3734,8 +3773,9 @@ export function createProjectFileUiHelpers({
           pause.textContent = "▶ Resume";
         }
       });
-      transport.append(play, pause, stop);
+      transport.append(play, playSelection, loopSelection, pause, stop);
       const closeTinySequencer = () => {
+        transportGeneration += 1;
         clearPlayhead();
         activeSoundPreview?.stop();
         closePopover(true);

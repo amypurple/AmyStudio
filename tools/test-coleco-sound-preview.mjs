@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { amplitudeForAttenuation, buildColecoPreviewTracks, eventDurationFrames, scheduleColecoSoundSequence, startColecoSoundPreview, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
+import { amplitudeForAttenuation, buildColecoPreviewTracks, eventDurationFrames, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
 import { buildColecoEchoTone } from "../studio/core/colecoSoundNotes.js";
 
 assert.equal(amplitudeForAttenuation(15), 0);
@@ -85,6 +85,25 @@ assert.deepEqual(volumeEnvelopeForEvent({
   length: 24,
   volumeSweep: { step: 3, count: 1, firstLength: 12, stepLength: 8 }
 }), [{ frame: 0, attenuation: 0 }], "BIOS count includes the initial attenuation");
+
+const sliced = sliceColecoPreviewEvents([
+  {
+    type: "volume-sweep", channel: 1, period: 200, attenuation: 0, startFrame: 0, length: 12, durationFrames: 12,
+    frequencyFrames: [{ frame: 2, period: 190 }, { frame: 6, period: 180 }, { frame: 10, period: 170 }],
+    volumeSweep: { step: 3, count: 4, firstLength: 3, stepLength: 3 }
+  },
+  { type: "note", channel: 2, period: 300, attenuation: 4, startFrame: 8, length: 8 }
+], 5, 11);
+assert.deepEqual(sliced, [
+  {
+    type: "volume-sweep", channel: 1, period: 190, attenuation: 3, startFrame: 0, length: 6, durationFrames: 6,
+    frequencyFrames: [{ frame: 1, period: 180 }, { frame: 5, period: 170 }],
+    volumeFrames: [{ frame: 1, attenuation: 6 }, { frame: 4, attenuation: 9 }]
+  },
+  { type: "note", channel: 2, period: 300, attenuation: 4, startFrame: 3, length: 3, durationFrames: 3 }
+], "slicing resumes overlapping voices at their exact envelope state");
+assert.throws(() => sliceColecoPreviewEvents([], -1), /non-negative/);
+assert.throws(() => sliceColecoPreviewEvents([], 4, 4), /follow/);
 
 const echo = buildColecoEchoTone({ note: "A", octave: 4, mainFrames: 12, tailFrames: 8, volume: 15 });
 assert.equal(echo.bytes.length, 6);

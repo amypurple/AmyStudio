@@ -154,6 +154,19 @@ try {
   assert.match(rowText, /Commando_ch2/);
   assert.match(rowText, /Tiny/);
   await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-editable, .tiny-pair-sequencer__block.is-sustain, .tiny-pair-sequencer__block.is-silence").length > 0`, "automatic sequencer shows imported stream blocks");
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").click()`);
+  await waitFor(`document.querySelector('[aria-label="Play from selection"]')?.disabled === false`, "selection playback becomes available");
+  await evaluate(`document.querySelector('[aria-label="Play from selection"]').click()`);
+  await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`, "selection playback shows its playhead");
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer-modal .graphics-editor-json-modal__actions button")).find((button) => button.textContent.includes("Stop")).click()`);
+  await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).every((item) => item.hidden)`, "selection playback stops cleanly");
+  await evaluate(`document.querySelector('[aria-label="Loop selection"]').click()`);
+  await delay(600);
+  assert.ok(await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`), "selection loop must still be playing after one short note duration");
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent.includes("Preview")).click()`);
+  await delay(600);
+  assert.ok(await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).every((item) => item.hidden)`), "note preview must cancel the selection loop without resurrecting it");
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Loop selection"]').disabled`), false, "transport returns to idle after note preview interrupts a loop");
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "automatic sequencer closes");
 

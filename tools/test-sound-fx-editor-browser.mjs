@@ -205,7 +205,7 @@ try {
   assert.equal(reopenedBlockText, await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-body select option:checked").textContent`).then((text) => text.split(" · ")[0]), "reopened editor must show the just-applied pitch, not stale data");
   await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-actions button:nth-child(2)").click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === true`, "note popover closes on cancel");
-  await evaluate(`Array.from(document.querySelectorAll(".graphics-editor-json-modal__actions button")).find((button) => button.textContent === "▶ Play").click()`);
+  await evaluate(`document.querySelector('[aria-label="Play complete song"]').click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer__playhead").hidden === false`, "playback starts using post-edit decoded events");
   await evaluate(`Array.from(document.querySelectorAll(".graphics-editor-json-modal__actions button")).find((button) => button.textContent === "■ Stop").click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer__playhead").hidden === true`, "playback stop clears playhead");
