@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteIndex } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteIndex, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -62,6 +62,14 @@ const special = decodeTinySoundSource(`Special:\n db $44\n dw sndtiny_1\n db $08
 assert.equal(special.commands[0].type, "special-note");
 assert.equal(special.commands[0].frames, 8, "$03 lasts for the stream tempo, not its third register byte");
 assert.equal(special.commands[1].startFrame, 8);
+assert.deepEqual(tinySpecialNoteEvent([0x10,0x20,0x04,0x21,0x02,0x13,0x22], 8, 1), {
+  type: "volume-sweep", channel: 1, period: 0x10, attenuation: 2, length: 8, durationFrames: 8,
+  frequencyFrames: [{ frame: 1, period: 0x12 }, { frame: 3, period: 0x14 }, { frame: 5, period: 0x16 }],
+  volumeSweep: { step: 1, count: 3, firstLength: 2, stepLength: 2 }
+}, "$03 models the BIOS twang counters, signed period offset, and attenuation sweep");
+assert.deepEqual(tinySpecialNoteEvent([0x20,0x10,0x02,0x11,0xFE,0x00,0x00], 6, 2).frequencyFrames, [
+  { frame: 1, period: 0x1e }
+], "$03 sign-extends a negative twang and stops after the IX+5 counter expires");
 
 const noBoundaryArpeggio = decodeTinySoundSource(`NoArp:\n db $44\n dw sndtiny_1\n db $08,$40,$01,$FF`, "NoArp");
 assert.deepEqual(noBoundaryArpeggio.commands.map((command) => command.type), ["note", "silence", "loop"]);

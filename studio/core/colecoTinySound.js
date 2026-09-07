@@ -70,6 +70,40 @@ export function tinyInstrumentEnvelope(values) {
   };
 }
 
+export function tinySpecialNoteEvent(values, tempo, channel) {
+  if (!Array.isArray(values) || values.length !== 7) throw new Error("A Tiny Sound $03 command needs seven bytes.");
+  const periodWordStart = values[0] | (values[1] << 8);
+  const twang = values[4] >= 0x80 ? values[4] - 0x100 : values[4];
+  let periodWord = periodWordStart;
+  let sweepCounter = (values[3] & 0x0f) || 16;
+  const sweepReload = (values[3] >> 4) || 16;
+  let sweepSteps = values[2];
+  const frequencyFrames = [];
+  if (twang) {
+    for (let frame = 1; frame < tempo; frame += 1) {
+      sweepCounter -= 1;
+      if (sweepCounter) continue;
+      sweepCounter = sweepReload;
+      sweepSteps = (sweepSteps - 1) & 0xff;
+      if (!sweepSteps) break;
+      periodWord = (periodWord + twang) & 0xffff;
+      periodWord &= ~0x0400;
+      frequencyFrames.push({ frame, period: periodWord & 0x03ff });
+    }
+  }
+  const volumeSweep = tinyInstrumentEnvelope([values[1] & 0xf0, values[5], values[6]]);
+  return {
+    type: volumeSweep ? "volume-sweep" : "note",
+    channel,
+    period: periodWordStart & 0x03ff,
+    attenuation: values[1] >> 4,
+    length: tempo,
+    durationFrames: tempo,
+    ...(frequencyFrames.length ? { frequencyFrames } : {}),
+    ...(volumeSweep ? { volumeSweep } : {})
+  };
+}
+
 export function replaceTinySoundByte(sourceText, label, byteIndex, value) {
   if (!Number.isInteger(byteIndex) || byteIndex < 0) throw new Error("Tiny Sound byte index must be non-negative.");
   if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error("Tiny Sound replacement must fit in one byte.");
@@ -228,8 +262,8 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
     }
     if (code === 0x03) {
       const values = take(7, commandOffset);
-      const period = values[0] | ((values[1] & 0x03) << 8);
-      const event = { type: "note", channel: stream.channel, period, attenuation: values[1] >> 4, length: tempo, startFrame: frame };
+      const event = { ...tinySpecialNoteEvent(values, tempo, stream.channel), startFrame: frame };
+      const period = event.period;
       commands.push({ type: "special-note", code, offset: commandOffset, values, period, ...noteName(period, region), startFrame: frame, frames: event.length });
       previewEvents.push(event);
       lastNote = event;

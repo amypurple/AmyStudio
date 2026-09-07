@@ -23,7 +23,7 @@ The source sound inspector includes a small command authoring preview. `Echo tai
 
 The preview can accept Note On and Note Off messages from a Web MIDI keyboard. MIDI note number selects note/octave, velocity selects Coleco volume 1..15, and held time becomes a deterministic PAL/NTSC frame count when the key is released. The browser asks for access only after `MIDI` is pressed. A held note saturates at the BIOS command limit of 256 frames; one-command echo capture is capped at its 16-frame initial-delay limit.
 
-Tiny Sound sequence playback follows its instrument decay across notes and `$00` sustains, alternates encoded arpeggios at the runtime's frame cadence, and renders `$FE` as the original descending tone with decay on its Tiny voice channel. Raw `$03` special-note twang remains a technical preview limitation.
+Tiny Sound sequence playback follows its instrument decay across notes and `$00` sustains, alternates encoded arpeggios at the runtime's frame cadence, renders `$FE` as the original descending tone with decay, and reproduces `$03` special-note pitch twang and attenuation directly from its seven BIOS-area bytes.
 
 Open `SOURCE` > `SOUND` to enter the compact sound library. Use `Play`, `Edit`, or `Sequencer` directly. `Composer` builds individual commands; `Technical` reveals decoded bytes and priority only when needed. The regular BIOS editor can add, duplicate, reorder, delete, audition, and save commands while preserving shared tails.
 
@@ -75,6 +75,8 @@ musical correctness test.
 Tiny Sound import is also exercised as a complete new-project workflow. The test
 builds the attached ASM and Amy setup produced by the importer under all five
 optimization profiles, boots every ROM in GearColeco, and requires real PCM output.
+An additional parity ROM observes `$03` period and attenuation changes directly in
+the BIOS sound area on every frame and compares them with the browser preview model.
 
 ---
 
