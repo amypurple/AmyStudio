@@ -107,6 +107,18 @@ async function main() {
   });
   assert.equal(noDitherTables.pattern[0], 0xFC, "No-dither diagnostic path should keep deterministic row conversion");
 
+  const paletteVariant = new Uint8ClampedArray(256 * 192 * 4);
+  fill(paletteVariant, 0x08, 0x08, 0x08);
+  for (let x = 0; x < 4; x += 1) {
+    const offset = x * 4;
+    paletteVariant[offset] = 0x29;
+    paletteVariant[offset + 1] = 0xC0;
+    paletteVariant[offset + 2] = 0x48;
+  }
+  const preserved = rgbaToColecoBitmapTables(paletteVariant, 256, 192);
+  assert.equal(preserved.pattern[0], 0xF0, "Near-TMS two-color rows should preserve their pixels without dithering");
+  assert.equal(preserved.color[0], 0x21, "Near-TMS rows should retain their normalized palette pair");
+
   const name = defaultPictureNameTable();
   assert.equal(name[0], 0);
   assert.equal(name[255], 255);

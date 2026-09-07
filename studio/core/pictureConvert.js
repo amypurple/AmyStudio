@@ -232,6 +232,28 @@ function chooseBestPalettePair(pixels, palette) {
   return [first, second];
 }
 
+function exactTmsRowPair(pixels, palette, options = {}) {
+  if (options.preserveTmsRows === false) return null;
+  const tolerance = Math.max(0, Number(options.preserveTmsTolerance ?? 4096));
+  const indexes = [];
+  for (const pixel of pixels) {
+    let best = palette[0];
+    let bestDistance = Infinity;
+    for (const candidate of palette) {
+      const distance = colorDistanceSquared(candidate, pixel);
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+    if (bestDistance > tolerance) return null;
+    indexes.push(best.index);
+  }
+  const unique = [...new Set(indexes)];
+  if (unique.length > 2) return null;
+  return { indexes, first: unique[0], second: unique[1] ?? unique[0] };
+}
+
 function orderedPairChoice(first, second, pixel, method, amount) {
   if (method === "none") {
     return colorDistanceSquared(first, pixel) <= colorDistanceSquared(second, pixel) ? first : second;
@@ -281,6 +303,18 @@ function cvPaintRow8x1ToTables(rgba, options = {}) {
       const pixels = method === "error-diffusion"
         ? Array.from({ length: 8 }, (_, bit) => getPixel(tileX * 8 + bit, y))
         : rowPixelsFromRgba(rgba, y, tileX);
+      const originalPixels = method === "error-diffusion" ? rowPixelsFromRgba(rgba, y, tileX) : pixels;
+      const exactRow = exactTmsRowPair(originalPixels, palette, options);
+      if (exactRow) {
+        let patternByte = 0;
+        for (let bit = 0; bit < 8; bit += 1) {
+          if (exactRow.indexes[bit] === exactRow.first) patternByte |= 0x80 >> bit;
+        }
+        const tableOffset = Math.floor(y / 8) * 256 + tileX * 8 + (y & 7);
+        pattern[tableOffset] = patternByte;
+        color[tableOffset] = ((exactRow.first & 0x0F) << 4) | (exactRow.second & 0x0F);
+        continue;
+      }
       const [first, second] = chooseBestPalettePair(pixels, palette);
       let patternByte = 0;
 

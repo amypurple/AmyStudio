@@ -173,6 +173,7 @@ const tests = [
   { file: "test-gearcoleco-web-desktop-parity.mjs", area: "gearcoleco-parity", evidence: "unit", suite: "emulator", requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "build/rom-tests/warrior-dan2-fire-visual-test.sym", "tools/rom-baselines/warrior-dan2-fire-prompt.json"] },
   { file: "test-rom-gearcoleco.mjs", area: "gearcoleco-rom-runner", evidence: "unit", suite: "emulator", args: ["--rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom", "--frames", "1"], requires: ["build/rom-tests/warrior-dan2-fire-visual-test.rom", process.env.GEARCOLECO_EXE || resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe")] },
   { file: "test-nibble-codec.mjs", area: "nibble-codec", evidence: "unit", suite: "codecs" },
+  { file: "test-dan1-codec.mjs", area: "dan1-codec", evidence: "unit", suite: "codecs" },
   { file: "test-warrior-codecs.mjs", area: "warrior-codec-corpus", evidence: "unit", suite: "codecs" },
   { file: "test-megalz-codec.mjs", area: "megalz-codec", evidence: "unit", suite: "codecs" },
   { file: "test-megalz-vram-rom.mjs", area: "megalz-vram", evidence: "rom", suite: "codecs" },

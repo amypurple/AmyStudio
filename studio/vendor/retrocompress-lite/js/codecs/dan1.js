@@ -185,16 +185,14 @@ export class DAN1Codec {
   _readNibble() { return this._readBits(4); }
 
   _readEliasGamma() {
-    // Mirrors C: count until first '1'. If 17 reads occur without a '1', return 0 (RLE/END sentinel).
+    // The Z80 decoder branches to the special marker after exactly 16 zero bits.
     let counter = 0;
-    // Ensure carry starts at 0 equivalent (our bit reader doesn't track carry flag,
-    // but semantics are: read until we see a 1 bit or hit the 17-limit)
-    while (counter < 17) {
+    while (counter < 16) {
       const b = this._readBit();
       counter++;
       if (b === 1) break;
     }
-    if (counter >= 17) return 0;
+    if (counter >= 16) return 0;
     // Now reconstruct the remaining (counter-1) payload bits of the Elias-gamma value.
     // Start from 1, then read exactly (counter-1) bits, MSB-first.
     let value = 1;

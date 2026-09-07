@@ -127,98 +127,36 @@ aPLib fixture remains exact when frame interrupts are disabled during decompress
 The initial ugBASIC mismatch came from the wrong RGB palette. With its target palette, all four
 corpus pictures render exactly.
 
-### Graphics II bitmap compression ratios
+### Graphics II bitmap compression corpus
 
-Each picture is exactly 12,288 RAW bytes (6,144 Pattern + 6,144 Color). Percentages are compressed
-payload / RAW payload; lower is better. Decoder code is excluded because it is linked once and may
-serve several assets. Every measured stream round-trips exactly; DAN3 uses its full-search best-size
-setting. ZX0 Classic uses the official z88dk ZX0 v1.5 compressor; its Coleco VRAM decoder was
-separately runtime-verified in the Warrior benchmark. Classic and modern ZX0 use incompatible
-stream formats, but their payload sizes match for every picture here, so one ratio column represents both.
+The corpus contains 35 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 525 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
-### LZ-family ratios
+| Rank | Codec | Total bytes | Average ratio | Median ratio | Best-size pictures |
+|---:|---|---:|---:|---:|---:|
+| 1 | ZX0 modern | 143,960 | 33.47% | 24.41% | 21 |
+| 2 | DAN2 | 144,624 | 33.63% | 24.41% | 3 |
+| 3 | DAN3 Best | 144,776 | 33.66% | 24.63% | 6 |
+| 4 | DAN1 | 144,920 | 33.70% | 24.58% | 5 |
+| 5 | MegaLZ | 147,855 | 34.38% | 25.30% | 0 |
+| 6 | aPLib Compact | 148,210 | 34.46% | 25.06% | 0 |
+| 7 | Pletter | 148,546 | 34.54% | 25.29% | 0 |
+| 8 | ZX7 | 148,578 | 34.55% | 25.26% | 0 |
+| 9 | BitBuster | 149,520 | 34.77% | 25.44% | 0 |
+| 10 | ZX1 | 152,221 | 35.39% | 25.82% | 0 |
+| 11 | ZX2 | 153,026 | 35.58% | 25.53% | 0 |
+| 12 | LZF | 166,460 | 38.70% | 29.48% | 0 |
+| 13 | Nibble | 183,514 | 42.67% | 33.09% | 0 |
+| 14 | MDK-RLE | 216,408 | 50.32% | 40.26% | 0 |
 
-| Picture | ZX0 Classic / modern | ZX1 | ZX2 | ZX7 | aPLib Compact | Pletter | BitBuster | LZF |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Cake | 24.07% | 25.33% | 25.42% | 25.26% | 24.85% | 25.29% | 25.44% | 29.48% |
-| Commando | 43.21% | 45.58% | 45.18% | 44.86% | 44.39% | 44.82% | 45.07% | 49.93% |
-| Warrior | 23.19% | 24.12% | 25.38% | 24.28% | 24.19% | 24.32% | 24.43% | 26.00% |
-| Barbarian | 34.42% | 36.11% | 36.39% | 35.31% | 35.45% | 35.31% | 35.51% | 39.10% |
-| 421 title | 8.59% | 8.97% | 9.08% | 9.02% | 8.94% | 9.03% | 9.16% | 11.01% |
-| 421 credits | 22.68% | 23.56% | 23.40% | 24.18% | 23.50% | 24.22% | 24.35% | 26.34% |
-| Dacman title | 8.01% | 8.33% | 8.49% | 8.38% | 8.24% | 8.42% | 8.50% | 9.62% |
-| Dacman info | 10.25% | 10.47% | 11.34% | 11.06% | 10.38% | 11.08% | 11.19% | 12.51% |
-| Dacman 2 title | 9.56% | 10.04% | 10.13% | 9.99% | 9.99% | 10.02% | 10.12% | 11.82% |
-| Chateau title | 13.31% | 13.70% | 13.77% | 14.07% | 13.88% | 14.08% | 14.18% | 15.53% |
-| Arcade Trio title | 24.41% | 25.82% | 25.53% | 25.19% | 25.06% | 25.20% | 25.33% | 29.26% |
+The three website representatives are selected mechanically from each picture's best payload ratio:
 
-### DAN and RLE-family ratios
+| Role | Picture | Best ratio |
+|---|---|---:|
+| most compressible | NewColeco ROM File Edition | 7.33% |
+| median | Arcade Trio title | 24.36% |
+| least compressible | asian beauty 2 | 77.95% |
 
-| Picture | DAN1 | DAN2 | DAN3 Best | Nibble | MDK-RLE |
-|---|---:|---:|---:|---:|---:|
-| Cake | 24.46% | 24.41% | 24.45% | 28.92% | 33.11% |
-| Commando | 43.33% | 43.23% | 43.29% | 51.23% | 59.29% |
-| Warrior | 23.62% | 23.58% | 23.53% | 27.22% | 30.00% |
-| Barbarian | 35.34% | 35.29% | 34.88% | 41.32% | 44.78% |
-| 421 title | 8.76% | 8.68% | 9.05% | 11.95% | 13.96% |
-| 421 credits | 22.96% | 22.94% | 22.93% | 25.75% | 28.91% |
-| Dacman title | 7.89% | 7.91% | 8.41% | 9.63% | 11.31% |
-| Dacman info | 10.38% | 10.36% | 10.51% | 13.31% | 14.59% |
-| Dacman 2 title | 9.53% | 9.51% | 9.71% | 13.54% | 16.42% |
-| Chateau title | 13.44% | 13.44% | 13.49% | 17.01% | 18.95% |
-| Arcade Trio title | 24.58% | 24.36% | 24.63% | 30.24% | 35.71% |
-
-### Amy direct-to-VRAM decompressor sizes
-
-These are assembled routine bytes, excluding compressed data and common program startup code. A routine is linked once and can decode any number of assets using that codec.
-
-| Codec | Routine bytes |
-|---|---:|
-| ZX0 modern | 133 |
-| ZX1 | 127 |
-| ZX2 | 115 |
-| ZX7 | 136 |
-| aPLib Compact | 244 |
-| Pletter | 212 |
-| BitBuster | 166 |
-| LZF | 117 |
-| DAN1 | 205 |
-| DAN2 | 212 |
-| DAN3 Best | 205 |
-| Nibble | 115 |
-| MDK-RLE | 46 |
-
-### Representative first-use totals
-
-Each value is the complete compressed Pattern + Color payload plus one Amy direct-to-VRAM decompressor. It is not the full ROM size. Commando, Warrior, and Dacman title represent a difficult, middle, and highly compressible case in this corpus.
-
-| Codec | Commando | Warrior | Dacman title |
-|---|---:|---:|---:|
-| ZX0 modern | 5,443 | 2,982 | 1,117 |
-| ZX1 | 5,728 | 3,091 | 1,151 |
-| ZX2 | 5,667 | 3,234 | 1,158 |
-| ZX7 | 5,649 | 3,120 | 1,166 |
-| aPLib Compact | 5,699 | 3,217 | 1,256 |
-| Pletter | 5,720 | 3,200 | 1,247 |
-| BitBuster | 5,704 | 3,168 | 1,211 |
-| LZF | 6,253 | 3,312 | 1,299 |
-| DAN1 | 5,529 | 3,108 | 1,174 |
-| DAN2 | 5,524 | 3,109 | 1,184 |
-| DAN3 Best | 5,525 | 3,096 | 1,238 |
-| Nibble | 6,410 | 3,460 | 1,298 |
-| MDK-RLE | 7,331 | 3,733 | 1,436 |
-
-
-aPLib Compact is 244 bytes under every optimization profile. It replaces the previous 348-byte
-unrolled routine without changing the stream or payload, and preserves IX/IY for safe return to
-Amy and BIOS code. MDK-RLE is only 46 bytes, but its larger payloads lose all three totals.
-
-
-The complete payload counts and ratios are preserved in
-`competition/benchmarks/compression/bitmap-codec-ratios.csv`; decoder and representative first-use
-totals are in `bitmap-codec-first-use.csv`. The earlier four-picture framebuffer
-checks remain in the evidence archive: all twelve converter ROMs differed by `0 / 49,152` pixels.
-
+The PDF shows every converted image. Complete per-picture ratios, decoder sizes, first-use totals, and exact source values are in `competition/benchmarks/compression/bitmap-codec-ratios.csv`, `bitmap-codec-aggregate.csv`, and `bitmap-codec-first-use.csv`.
 ### Observations supported by this suite
 
 - Amy has the smallest Hello and controller-monitor footprint because its Coleco BIOS-aware
