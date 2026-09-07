@@ -122,7 +122,7 @@ try {
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "new Tiny song inspector closes");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
-    editor.value = "sub start:\\n  text screen\\n";
+    editor.value = "sub start:\\n  set sound table GameSoundTable areas 6\\n  text screen\\n";
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
@@ -133,6 +133,7 @@ try {
   await waitFor(`!document.querySelector(".sound-table-creator-modal")`, "sound table creation");
   const created = await evaluate(`document.getElementById("sourceEditor").value`);
   assert.match(created, /sub start:\n  set sound table GameSoundTable areas 6\n  text screen/);
+  assert.equal((created.match(/set sound table GameSoundTable areas 6/g) || []).length, 1, "repair must keep one setup command");
   assert.match(created, /dw MusicVoice1,\$702B ; music · slot 1/);
   assert.match(created, /dw SoundEffect1,\$705D ; sfx · slot 6/);
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);

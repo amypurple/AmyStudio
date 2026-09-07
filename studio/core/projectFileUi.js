@@ -9,7 +9,7 @@ import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPrevi
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
-import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-tiny-starter";
+import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-table-recovery";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2733,9 +2733,14 @@ export function createProjectFileUiHelpers({
     overlay.addEventListener("click", (event) => { if (event.target === overlay) dismiss(); });
     create.addEventListener("click", () => {
       if (!built) return;
-      commitProjectSourceText(insertColecoSoundTableSource(sourceText, built));
-      setStatus(`Created ${built.sounds.length}-sound table ${tableName.value.trim()}. Open SOUND again to edit its commands.`);
-      dismiss();
+      try {
+        commitProjectSourceText(insertColecoSoundTableSource(els.sourceEditor.value, built));
+        setStatus(`Created ${built.sounds.length}-sound table ${tableName.value.trim()}. Open SOUND again to edit its commands.`);
+        dismiss();
+      } catch (error) {
+        message.hidden = false;
+        message.textContent = error.message || String(error);
+      }
     });
     addRow("music");
     addRow("sfx");

@@ -20,6 +20,10 @@ assert.deepEqual(built.sharedSlots, [{ slot: 5, names: ["JumpSound", "HitSound"]
 const inserted = insertColecoSoundTableSource("project \"SOUND TEST\"\n\nsub start:\n  text screen\n", built);
 assert.match(inserted, /sub start:\n  set sound table GameSoundTable areas 6\n  text screen/);
 assert.match(inserted, /GameSoundTable:\n    dw MusicA/);
+const repaired = insertColecoSoundTableSource("sub start:\n  set sound table GameSoundTable areas 6\n  text screen\n", built);
+assert.equal((repaired.match(/set sound table GameSoundTable areas 6/g) || []).length, 1, "repair must not duplicate setup");
+assert.match(repaired, /GameSoundTable:\n    dw MusicA/, "missing table data is repaired");
+assert.throws(() => insertColecoSoundTableSource(inserted, built), /already installed.*Open SOUND/i);
 const extended = addColecoSoundToTableSource(inserted, { tableName: "GameSoundTable", soundName: "DoorSound", role: "sfx", slot: 6 });
 assert.match(extended, /dw DoorSound,\$705D ; sfx · slot 6\n\nDoorSound:\n    db \$50/);
 assert.match(extended, /dw MusicA,\$702B/, "existing table data must remain intact");

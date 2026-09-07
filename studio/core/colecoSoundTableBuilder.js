@@ -33,13 +33,21 @@ export function buildColecoSoundTableSource({ tableName, areaCount, sounds }) {
   for (const sound of normalized) slots.set(sound.slot, [...(slots.get(sound.slot) || []), sound.name]);
   const sharedSlots = [...slots].filter(([, namesInSlot]) => namesInSlot.length > 1)
     .map(([slot, namesInSlot]) => ({ slot, names: namesInSlot }));
-  return { setup: `set sound table ${tableName} areas ${areaCount}`, asm: lines.join("\n"), sounds: normalized, sharedSlots };
+  return { setup: `set sound table ${tableName} areas ${areaCount}`, asm: lines.join("\n"), tableName, sounds: normalized, sharedSlots };
 }
 
 export function insertColecoSoundTableSource(sourceText, built) {
   const source = String(sourceText || "");
   if (!built?.setup || !built?.asm) throw new Error("Built sound table is missing setup or data.");
-  if (new RegExp(`\\b${built.setup.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(source)) throw new Error("This sound table is already installed.");
+  const setupInstalled = new RegExp(`\\b${built.setup.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(source);
+  if (setupInstalled) {
+    const tableName = built.tableName || built.setup.match(/\btable\s+([A-Za-z_][A-Za-z0-9_]*)/i)?.[1];
+    if (tableName && new RegExp(`^\\s*${tableName}\\s*:`, "im").test(source)) {
+      throw new Error(`${tableName} is already installed. Open SOUND to edit it.`);
+    }
+    const newline = source.includes("\r\n") ? "\r\n" : "\n";
+    return `${source.replace(/\s*$/, "")}${newline}${newline}${built.asm}${newline}`;
+  }
   const lines = source.split(/\r?\n/);
   const start = lines.findIndex((line) => /^\s*sub\s+start\s*:/i.test(line));
   let insertion = start >= 0 ? start + 1 : lines.findIndex((line) => /^\s*(?:text|tile|bitmap|picture|mode\s+\d+)\s+screen\b/i.test(line));
