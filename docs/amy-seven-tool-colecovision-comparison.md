@@ -129,32 +129,32 @@ corpus pictures render exactly.
 
 ### Graphics II bitmap compression corpus
 
-The corpus contains 46 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 690 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
+The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 630 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | Best-size pictures |
 |---:|---|---:|---:|---:|---:|
-| 1 | ZX0 modern | 190,037 | 33.62% | 24.24% | 24 |
-| 2 | DAN2 | 190,348 | 33.68% | 24.38% | 7 |
-| 3 | DAN1 | 190,707 | 33.74% | 24.52% | 6 |
-| 4 | DAN3 Best | 190,773 | 33.75% | 24.54% | 9 |
-| 5 | MegaLZ | 194,895 | 34.48% | 25.27% | 0 |
-| 6 | aPLib Compact | 195,679 | 34.62% | 24.95% | 0 |
-| 7 | Pletter | 195,925 | 34.66% | 25.24% | 0 |
-| 8 | ZX7 | 195,946 | 34.67% | 25.23% | 0 |
-| 9 | BitBuster | 197,220 | 34.89% | 25.38% | 0 |
-| 10 | ZX1 | 201,247 | 35.60% | 25.57% | 0 |
-| 11 | ZX2 | 202,103 | 35.75% | 25.48% | 0 |
-| 12 | LZF | 220,059 | 38.93% | 29.37% | 0 |
-| 13 | Nibble | 240,948 | 42.63% | 35.48% | 0 |
-| 14 | MDK-RLE | 284,127 | 50.27% | 42.52% | 0 |
+| 1 | ZX0 modern | 166,556 | 32.27% | 23.63% | 22 |
+| 2 | DAN2 | 166,923 | 32.34% | 23.99% | 5 |
+| 3 | DAN3 Best | 167,186 | 32.39% | 23.99% | 9 |
+| 4 | DAN1 | 167,240 | 32.41% | 24.04% | 6 |
+| 5 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 |
+| 6 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 |
+| 7 | Pletter | 171,751 | 33.28% | 24.80% | 0 |
+| 8 | ZX7 | 171,788 | 33.29% | 24.77% | 0 |
+| 9 | BitBuster | 172,941 | 33.51% | 24.94% | 0 |
+| 10 | ZX1 | 176,562 | 34.21% | 24.98% | 0 |
+| 11 | ZX2 | 177,582 | 34.41% | 25.40% | 0 |
+| 12 | LZF | 193,412 | 37.48% | 28.36% | 0 |
+| 13 | Nibble | 214,555 | 41.57% | 35.48% | 0 |
+| 14 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 |
 
 The three website representatives are selected mechanically from each picture's best payload ratio:
 
 | Role | Picture | Best ratio |
 |---|---|---:|
 | most compressible | NewColeco ROM File Edition | 7.33% |
-| median | Arcade Trio title | 24.36% |
-| least compressible | asian beauty 2 | 77.95% |
+| median | Cake | 24.07% |
+| least compressible | mona lisa | 76.71% |
 
 The PDF shows every converted image. Complete per-picture ratios, decoder sizes, first-use totals, and exact source values are in `competition/benchmarks/compression/bitmap-codec-ratios.csv`, `bitmap-codec-aggregate.csv`, and `bitmap-codec-first-use.csv`.
 ### Observations supported by this suite
