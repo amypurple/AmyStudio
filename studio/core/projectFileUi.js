@@ -2603,13 +2603,9 @@ export function createProjectFileUiHelpers({
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
     note.textContent = "Reserve early slots for simultaneous music voices. Put effects in later slots; effects sharing a slot interrupt each other.";
-    const importTinyButton = document.createElement("button");
-    importTinyButton.type = "button";
-    importTinyButton.textContent = "Import Tiny Sound instead";
-    importTinyButton.addEventListener("click", () => { overlay.remove(); openTinySoundImportDialog(); });
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
-    newTinyButton.textContent = "New Tiny Song";
+    newTinyButton.textContent = "+ Tiny table";
     newTinyButton.addEventListener("click", () => {
       overlay.remove();
       openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true });
@@ -2742,9 +2738,8 @@ export function createProjectFileUiHelpers({
         message.textContent = error.message || String(error);
       }
     });
-    addRow("music");
-    addRow("sfx");
-    panel.append(header, note, newTinyButton, importTinyButton, settings, rows, actions, message, previewDetails);
+    update();
+    panel.append(header, note, newTinyButton, settings, rows, actions, message, previewDetails);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
   }
@@ -3026,28 +3021,23 @@ export function createProjectFileUiHelpers({
     note.textContent = "Select a sound to listen or edit. Technical bytes stay collapsed.";
     const viewTabs = document.createElement("div");
     viewTabs.className = "sound-workspace-tabs";
-    const soundsTab = document.createElement("button");
-    soundsTab.type = "button";
-    soundsTab.textContent = "Sounds";
-    soundsTab.classList.add("is-active");
-    const composerTab = document.createElement("button");
-    composerTab.type = "button";
-    composerTab.textContent = "Composer";
     const technicalToggle = document.createElement("button");
     technicalToggle.type = "button";
     technicalToggle.textContent = "Technical";
+    const addTableButton = document.createElement("button");
+    addTableButton.type = "button";
+    addTableButton.textContent = "+ Table";
     const addSoundButton = document.createElement("button");
     addSoundButton.type = "button";
     addSoundButton.textContent = "+ Sound";
-    const importTinyButton = document.createElement("button");
-    importTinyButton.type = "button";
-    importTinyButton.textContent = "Import Tiny Sound";
-    importTinyButton.addEventListener("click", () => openTinySoundImportDialog());
+    const addMusicButton = document.createElement("button");
+    addMusicButton.type = "button";
+    addMusicButton.textContent = "+ Music";
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
-    newTinyButton.textContent = "New Tiny Song";
+    newTinyButton.textContent = "+ Tiny table";
     newTinyButton.addEventListener("click", () => openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true }));
-    viewTabs.append(soundsTab, composerTab, technicalToggle, addSoundButton, newTinyButton, importTinyButton);
+    viewTabs.append(addTableButton, addSoundButton, addMusicButton, newTinyButton, technicalToggle);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     builder.hidden = true;
@@ -3305,7 +3295,7 @@ export function createProjectFileUiHelpers({
       });
       setStatus(`Saved sound sequence to ${entry.path}.`);
     }
-    function openAddSoundDialog() {
+    function openAddSoundDialog(initialRole = "sfx") {
       const backdrop = document.createElement("div");
       backdrop.className = "graphics-editor-modal-backdrop";
       const dialog = document.createElement("section");
@@ -3344,7 +3334,7 @@ export function createProjectFileUiHelpers({
         option.textContent = caption;
         role.appendChild(option);
       }
-      role.value = "sfx";
+      role.value = initialRole;
       const slot = makeField("BIOS slot", document.createElement("select"));
       const installedAreas = (tableName) => Number(analysis.source.match(new RegExp(`set\\s+sound\\s+table\\s+${tableName}\\s+areas\\s+(\\d+)`, "i"))?.[1]) || 8;
       const refreshSlots = () => {
@@ -3363,7 +3353,7 @@ export function createProjectFileUiHelpers({
       warning.className = "graphics-editor-modal__note";
       const confirm = document.createElement("button");
       confirm.type = "button";
-      confirm.textContent = "Add sound";
+      confirm.textContent = initialRole === "music" ? "Add music" : "Add sound";
       const cancel = document.createElement("button");
       cancel.type = "button";
       cancel.textContent = "Cancel";
@@ -3407,7 +3397,8 @@ export function createProjectFileUiHelpers({
       name.focus();
       name.select();
     }
-    addSoundButton.addEventListener("click", openAddSoundDialog);
+    addSoundButton.addEventListener("click", () => openAddSoundDialog("sfx"));
+    addMusicButton.addEventListener("click", () => openAddSoundDialog("music"));
     function openTinyPairSequencer(sound, pairedSound) {
       const voices = [sound, pairedSound];
       const totalFrames = Math.max(...voices.map((voice) => voice.stream.tiny.totalFrames));
@@ -4146,8 +4137,6 @@ export function createProjectFileUiHelpers({
         panel.appendChild(builder);
         builder.hidden = true;
         list.hidden = false;
-        soundsTab.classList.add("is-active");
-        composerTab.classList.remove("is-active");
         editorBackdrop.remove();
       };
       editorClose.addEventListener("click", closeSequenceEditor);
@@ -4178,14 +4167,20 @@ export function createProjectFileUiHelpers({
     const libraryAction = document.createElement("button");
     libraryAction.type = "button";
     libraryAction.hidden = true;
-    libraryTransport.append(selectedSoundLabel, libraryPlay, libraryPause, libraryStop, libraryAction);
+    const insertPlay = document.createElement("button");
+    insertPlay.type = "button";
+    insertPlay.textContent = "Insert play";
+    insertPlay.title = "Insert the table selection and play command in Amy source";
+    insertPlay.disabled = true;
+    libraryTransport.append(selectedSoundLabel, libraryPlay, libraryPause, libraryStop, libraryAction, insertPlay);
     let selectedLibrarySound = null;
     const selectLibrarySound = (selection) => {
       selectedLibrarySound?.row.classList.remove("is-selected");
       selectedLibrarySound = selection;
       selection.row.classList.add("is-selected");
-      selectedSoundLabel.textContent = `${selection.sound.index}. ${selection.sound.label}`;
+      selectedSoundLabel.textContent = `${selection.table.name} · ${selection.sound.index}. ${selection.sound.label}`;
       libraryPlay.disabled = selection.sound.stream?.status !== "valid";
+      insertPlay.disabled = false;
       libraryAction.hidden = false;
       if (selection.pairedSound?.stream?.format === "tiny") {
         libraryAction.textContent = "Sequencer";
@@ -4244,6 +4239,25 @@ export function createProjectFileUiHelpers({
         openSequenceEditor(selectedLibrarySound.sound);
       }
     });
+    insertPlay.addEventListener("click", () => {
+      if (!selectedLibrarySound) return;
+      const { table, sound, pairedSound } = selectedLibrarySound;
+      const areaCount = Math.max(1, ...table.entries.map((item) => item.area || 1));
+      const pair = pairedSound?.stream?.format === "tiny" && sound.label.match(/^(.*)_ch1$/i);
+      const play = pair ? `play song ${pair[1]}_song` : `play sound ${sound.index}`;
+      const block = `set sound table ${table.name} areas ${areaCount}\n${play}`;
+      const editor = els.sourceEditor;
+      const source = editor.value;
+      const start = editor.selectionStart ?? source.length;
+      const end = editor.selectionEnd ?? start;
+      const before = source.slice(0, start);
+      const after = source.slice(end);
+      const prefix = before && !before.endsWith("\n") ? "\n" : "";
+      const suffix = after && !after.startsWith("\n") ? "\n" : "";
+      commitProjectSourceText(`${before}${prefix}${block}${suffix}${after}`);
+      setStatus(`Inserted ${play} with ${table.name}.`);
+      closeInspector();
+    });
     const list = document.createElement("div");
     list.className = "graphics-editor-modal__list";
     for (const table of analysis.tables) {
@@ -4270,7 +4284,7 @@ export function createProjectFileUiHelpers({
           `${sound.stream?.status === "valid" ? ` · ${sound.stream.eventCount} commands` : ""}`;
         soundRow.tabIndex = 0;
         soundRow.setAttribute("role", "button");
-        const selection = { sound, pairedSound, row: soundRow };
+        const selection = { table, sound, pairedSound, row: soundRow };
         soundRow.addEventListener("click", () => selectLibrarySound(selection));
         soundRow.addEventListener("keydown", (event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -4308,21 +4322,12 @@ export function createProjectFileUiHelpers({
       midiConnection?.disconnect();
       overlay.remove();
     };
+    addTableButton.addEventListener("click", () => {
+      closeInspector();
+      openSourceSoundTableCreator(els.sourceEditor.value);
+    });
     close.addEventListener("click", closeInspector);
     overlay.addEventListener("click", (event) => { if (event.target === overlay) closeInspector(); });
-    const setWorkspaceView = (view) => {
-      const composer = view === "composer";
-      builder.hidden = !composer;
-      list.hidden = composer;
-      libraryTransport.hidden = composer;
-      soundsTab.classList.toggle("is-active", !composer);
-      composerTab.classList.toggle("is-active", composer);
-      note.textContent = composer
-        ? "Build and audition one compact BIOS sound command."
-        : "Select a sound to listen or edit. Technical bytes stay collapsed.";
-    };
-    soundsTab.addEventListener("click", () => setWorkspaceView("sounds"));
-    composerTab.addEventListener("click", () => setWorkspaceView("composer"));
     technicalToggle.addEventListener("click", () => {
       const visible = panel.classList.toggle("show-technical");
       technicalToggle.classList.toggle("is-active", visible);

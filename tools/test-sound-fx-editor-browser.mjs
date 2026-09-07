@@ -108,7 +108,7 @@ try {
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "New Tiny Song").click()`);
+  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Tiny table").click()`);
   await waitFor(`document.querySelector(".tiny-import-modal")`, "new Tiny song starter");
   assert.equal(await evaluate(`document.querySelector(".tiny-import-modal h3").textContent`), "New Tiny Song");
   assert.equal(await evaluate(`document.querySelectorAll(".tiny-import__pickers select:not([disabled])").length`), 2, "starter exposes two valid channels");
@@ -119,7 +119,8 @@ try {
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
   assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /should target/, "generated Tiny table uses canonical sound slots");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "New Tiny Song").click()`);
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["+ Table", "+ Sound", "+ Music", "+ Tiny table", "Technical"], "sound manager exposes one concise action row");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ Tiny table").click()`);
   await waitFor(`document.querySelector(".tiny-import-modal")`, "second Tiny song starter");
   assert.equal(await evaluate(`Array.from(document.querySelectorAll(".tiny-import-modal label")).find((label) => label.textContent.startsWith("Song name")).querySelector("input").value`), "MySong2", "a second starter receives a collision-free name");
   await evaluate(`document.querySelector('[aria-label="Close Tiny Sound import"]').click()`);
@@ -133,7 +134,12 @@ try {
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator reopens");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Sound effect").click()`);
+  await evaluate(`(() => {
+    const buttons = Array.from(document.querySelectorAll(".sound-table-creator-modal button"));
+    buttons.find((button) => button.textContent === "+ Music voice").click();
+    buttons.find((button) => button.textContent === "+ Sound effect").click();
+    buttons.find((button) => button.textContent === "+ Sound effect").click();
+  })()`);
   await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Create table").click()`);
   await waitFor(`!document.querySelector(".sound-table-creator-modal")`, "sound table creation");
@@ -145,6 +151,16 @@ try {
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
   await evaluate(`document.getElementById("btnInspectSourceSounds").click()`);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created sound library");
+  await evaluate(`(() => {
+    const editor = document.getElementById("sourceEditor");
+    editor.selectionStart = editor.selectionEnd = editor.value.length;
+    document.querySelector(".sound-library-row").click();
+    Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Insert play").click();
+  })()`);
+  await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "play command insertion");
+  assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /set sound table GameSoundTable areas 6\nplay sound 1$/, "play helper inserts the selected table and sound command");
+  await evaluate(`document.getElementById("btnInspectSourceSounds").click()`);
+  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "sound library reopens after play insertion");
   await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ Sound").click()`);
   await waitFor(`document.querySelector(".sound-add-modal")`, "add sound dialog");
   await evaluate(`(() => {

@@ -58,11 +58,8 @@ export function insertColecoSoundTableSource(sourceText, built) {
   return `${lines.join(newline).replace(/\s*$/, "")}${newline}${newline}${built.asm}${newline}`;
 }
 
-// Tiny Sound channel 1/2 -> BIOS sound-area slot, matching the convention already used
-// throughout this project's own Tiny Sound content (see
-// "examples/tiny music/applied in a project/snddata_tinymusic.asm"'s _snd_table: every
-// music_ch1_* entry targets $702B+30 (slot 4) and every music_ch2_* entry targets $702B+20
-// (slot 3)).
+// Tiny Sound channel 1/2 -> the first two BIOS sound areas. Keeping these voices in
+// canonical slots makes the generated table valid on its own and leaves no hidden gaps.
 const TINY_CHANNEL_SLOT = { 1: 1, 2: 2 };
 
 export function buildTinySoundStarterSource() {
