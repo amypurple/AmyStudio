@@ -2693,6 +2693,15 @@ export function createProjectFileUiHelpers({
       slot.value = String(previous >= 1 && previous <= count ? previous : role === "music" ? Math.min(rows.querySelectorAll('[data-role="music"]').length, count) : count);
     }
     function update() {
+      if (!rows.children.length) {
+        built = null;
+        preview.textContent = "";
+        message.className = "graphics-editor-modal__note";
+        message.hidden = false;
+        message.textContent = "Choose Music voice or Sound effect.";
+        create.disabled = true;
+        return;
+      }
       try {
         built = buildColecoSoundTableSource({
           tableName: tableName.value.trim(),
@@ -2704,6 +2713,7 @@ export function createProjectFileUiHelpers({
           }))
         });
         preview.textContent = `${built.setup}\n\n${built.asm}`;
+        message.className = "graphics-editor-json-modal__error";
         message.hidden = true;
         if (built.sharedSlots.length) {
           message.hidden = false;
@@ -2713,6 +2723,7 @@ export function createProjectFileUiHelpers({
       } catch (error) {
         built = null;
         preview.textContent = "";
+        message.className = "graphics-editor-json-modal__error";
         message.hidden = false;
         message.textContent = error.message;
         create.disabled = true;
@@ -2753,7 +2764,13 @@ export function createProjectFileUiHelpers({
   // CVBasic MUSIC blocks, MIDI, or any other format - only real Tiny Sound bytes this
   // project's own decoder can already prove valid via decodeTinySoundSource.
   function openTinySoundImportDialog({ onImported, initialText = "", initialName = "MyMusic", creating = false } = {}) {
+    const existingDialog = document.querySelector(".tiny-import-modal");
+    if (existingDialog) {
+      existingDialog.querySelector("input, textarea, button")?.focus();
+      return;
+    }
     let activeSoundPreview = null;
+    let inserting = false;
     const backdrop = document.createElement("div");
     backdrop.className = "graphics-editor-modal-backdrop";
     const dialog = document.createElement("section");
@@ -2944,6 +2961,9 @@ export function createProjectFileUiHelpers({
       }
     });
     insertButton.addEventListener("click", () => {
+      if (inserting) return;
+      inserting = true;
+      insertButton.disabled = true;
       try {
         const channels = pickedChannels();
         if (!channels.length) throw new Error("Pick at least one Tiny Sound channel stream.");
@@ -2980,6 +3000,8 @@ export function createProjectFileUiHelpers({
         if (newAnalysis) openProjectSoundInspector(newEntry, newAnalysis, { openSequencerFor: name });
         onImported?.({ filePath, name, built });
       } catch (error) {
+        inserting = false;
+        updatePreview();
         errorMessage.hidden = false;
         errorMessage.textContent = error.message || String(error);
       }
@@ -3037,7 +3059,10 @@ export function createProjectFileUiHelpers({
     newTinyButton.type = "button";
     newTinyButton.textContent = "+ Tiny table";
     newTinyButton.addEventListener("click", () => openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true }));
-    viewTabs.append(addTableButton, addSoundButton, addMusicButton, newTinyButton, technicalToggle);
+    const inspectingTinyTable = analysis.tables.some((table) => table.entries.some((sound) => sound.stream?.format === "tiny"));
+    viewTabs.append(addTableButton, addSoundButton, addMusicButton);
+    if (!inspectingTinyTable) viewTabs.appendChild(newTinyButton);
+    viewTabs.appendChild(technicalToggle);
     const builder = document.createElement("section");
     builder.className = "graphics-editor-modal__item sound-command-builder";
     builder.hidden = true;
