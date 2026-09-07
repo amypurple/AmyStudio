@@ -120,7 +120,8 @@ try {
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
   assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /should target/, "generated Tiny table uses canonical sound slots");
-  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["+ Table", "+ Sound", "+ Music", "+ Another Tiny table", "Technical"], "an installed Tiny table keeps multiple music tables possible without disguising the action as editing");
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ Sound", "+ Music", "+ Another Tiny table", "Technical"], "an installed Tiny table keeps table viewing separate from table creation");
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll(".sound-table-inspector-modal button")).find((button) => button.textContent === "New table...").textContent`), "New table...", "creating another table is an explicit secondary action");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "new Tiny song inspector closes");
   await evaluate(`(() => {
@@ -145,9 +146,8 @@ try {
   assert.match(created, /dw MusicVoice1,\$702B ; music · slot 1/);
   assert.match(created, /dw SoundEffect1,\$705D ; sfx · slot 6/);
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
-  await evaluate(`document.getElementById("btnInspectSourceSounds").click()`);
-  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created sound library");
-  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["+ Table", "+ Sound", "+ Music", "+ Tiny table", "Technical"], "ordinary table exposes one concise action row");
+  await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created table opens directly in sound library");
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ Sound", "+ Music", "+ Tiny table", "Technical"], "ordinary table exposes one concise action row");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
     editor.selectionStart = editor.selectionEnd = editor.value.length;
@@ -166,10 +166,13 @@ try {
     name.dispatchEvent(new Event("input", { bubbles: true }));
     Array.from(document.querySelectorAll(".sound-add-modal button")).find((button) => button.textContent === "Add sound").click();
   })()`);
-  await waitFor(`!document.querySelector(".sound-add-modal") && !document.querySelector(".sound-table-inspector-modal")`, "existing table update");
+  await waitFor(`!document.querySelector(".sound-add-modal") && document.querySelector(".sound-table-inspector-modal")`, "existing table update remains in sound manager");
   const extended = await evaluate(`document.getElementById("sourceEditor").value`);
   assert.match(extended, /dw ExtraSound,\$705D ; sfx · slot 6/);
   assert.match(extended, /ExtraSound:\n    db \$50/);
+  assert.match(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /ExtraSound/, "new sound is immediately visible for further editing");
+  await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
+  await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "updated sound manager closes");
   const tinyFixture = `TinyTable:\n    dw TestMusic_ch1,$702B\n    dw TestMusic_ch2,$7035\nTestMusic_ch1:\n    db $44\n    dw sndtiny_1\n    db $08,$02,$60,$19,$22,$1F,$00,$01,$FF\nTestMusic_ch2:\n    db $84\n    dw sndtiny_2\n    db $08,$02,$80,$19,$22,$13,$00,$01,$FF\n`;
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");

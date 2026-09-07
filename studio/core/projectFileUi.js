@@ -2742,9 +2742,12 @@ export function createProjectFileUiHelpers({
     create.addEventListener("click", () => {
       if (!built) return;
       try {
-        commitProjectSourceText(insertColecoSoundTableSource(els.sourceEditor.value, built));
-        setStatus(`Created ${built.sounds.length}-sound table ${tableName.value.trim()}. Open SOUND again to edit its commands.`);
+        const updatedSource = insertColecoSoundTableSource(els.sourceEditor.value, built);
+        commitProjectSourceText(updatedSource);
+        setStatus(`Created ${tableName.value.trim()}.`);
         dismiss();
+        const updatedAnalysis = inspectSourceSoundTables(updatedSource);
+        if (updatedAnalysis) openSourceSoundInspector(updatedAnalysis);
       } catch (error) {
         message.hidden = false;
         message.textContent = error.message || String(error);
@@ -3049,7 +3052,9 @@ export function createProjectFileUiHelpers({
     technicalToggle.textContent = "Technical";
     const addTableButton = document.createElement("button");
     addTableButton.type = "button";
-    addTableButton.textContent = "+ Table";
+    addTableButton.textContent = "Tables";
+    addTableButton.classList.add("is-active");
+    addTableButton.title = "View the current sound tables";
     const addSoundButton = document.createElement("button");
     addSoundButton.type = "button";
     addSoundButton.textContent = "+ Sound";
@@ -3409,9 +3414,11 @@ export function createProjectFileUiHelpers({
             slot: Number(slot.value)
           });
           saveSoundSource(source);
-          setStatus(`Added ${name.value.trim()} to ${table.value}. Open SOUND again to edit it.`);
+          setStatus(`Added ${name.value.trim()} to ${table.value}.`);
           dismiss();
           closeInspector();
+          const updatedAnalysis = inspectSoundTableSource(source);
+          if (updatedAnalysis.tables.length) openProjectSoundInspector(entry, updatedAnalysis);
         } catch (error) {
           warning.textContent = error.message;
         }
@@ -4344,12 +4351,23 @@ export function createProjectFileUiHelpers({
       warning.textContent = message;
       list.appendChild(warning);
     }
+    const tableActions = document.createElement("div");
+    tableActions.className = "graphics-editor-json-modal__actions";
+    const newTableButton = document.createElement("button");
+    newTableButton.type = "button";
+    newTableButton.textContent = "New table...";
+    newTableButton.title = "Create an additional sound table for another game state or scene";
+    tableActions.appendChild(newTableButton);
+    list.appendChild(tableActions);
     const closeInspector = () => {
       activeSoundPreview?.stop();
       midiConnection?.disconnect();
       overlay.remove();
     };
     addTableButton.addEventListener("click", () => {
+      list.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    newTableButton.addEventListener("click", () => {
       closeInspector();
       openSourceSoundTableCreator(els.sourceEditor.value);
     });
