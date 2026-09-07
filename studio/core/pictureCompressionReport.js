@@ -10,7 +10,7 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
   { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco bitmap data." },
   { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline." },
-  { codec: "dan3", label: "DAN3 Best", description: "Full DAN3 search for the smallest result; slower to compress, with the same decompressor." },
+  { codec: "dan3", label: "DAN3", description: "Full DAN3 search for the smallest result; slower to compress, with the same decompressor." },
   { codec: "pletter", label: "Pletter", description: "Classic MSX/Coleco-friendly LZ compressor." },
   { codec: "bitbuster", label: "BitBuster 1.2", description: "Classic BitBuster stream; Amy source uses codec bitbuster." },
   { codec: "lzf", label: "LZF", description: "Fast LZ family candidate." }

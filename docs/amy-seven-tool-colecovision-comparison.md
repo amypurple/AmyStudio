@@ -108,9 +108,9 @@ The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern 
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | Best-size pictures |
 |---:|---|---:|---:|---:|---:|
-| 1 | ZX0 modern | 166,556 | 32.27% | 23.63% | 22 |
+| 1 | ZX0 | 166,556 | 32.27% | 23.63% | 22 |
 | 2 | DAN2 | 166,923 | 32.34% | 23.99% | 5 |
-| 3 | DAN3 Best | 167,186 | 32.39% | 23.99% | 9 |
+| 3 | DAN3 | 167,186 | 32.39% | 23.99% | 9 |
 | 4 | DAN1 | 167,240 | 32.41% | 24.04% | 6 |
 | 5 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 |
 | 6 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 |
@@ -267,11 +267,11 @@ median, and least-compressible corpus pictures. Run `node tools/benchmark-codec-
 | 4 | BitBuster | 166 | 2,534,837 | 2,200,323-2,848,558 | 42.43 | 35.52 |
 | 5 | ZX2 | 115 | 2,640,553 | 2,523,782-2,813,703 | 44.20 | 37.00 |
 | 6 | ZX1 | 127 | 2,649,233 | 2,542,465-2,824,788 | 44.35 | 37.12 |
-| 7 | ZX0 modern | 133 | 2,776,094 | 2,593,812-2,917,877 | 46.47 | 38.90 |
+| 7 | ZX0 | 133 | 2,776,094 | 2,593,812-2,917,877 | 46.47 | 38.90 |
 | 8 | aPLib Compact | 244 | 2,882,985 | 2,038,419-3,910,905 | 48.26 | 40.40 |
 | 9 | Pletter | 212 | 3,011,986 | 2,593,248-3,420,132 | 50.42 | 42.21 |
 | 10 | ZX7 | 136 | 3,045,957 | 2,646,525-3,421,800 | 50.99 | 42.68 |
-| 11 | DAN3 Best | 205 | 3,260,654 | 2,819,207-3,514,505 | 54.58 | 45.69 |
+| 11 | DAN3 | 205 | 3,260,654 | 2,819,207-3,514,505 | 54.58 | 45.69 |
 | 12 | MegaLZ | 162 | 3,545,056 | 3,003,617-4,081,177 | 59.35 | 49.68 |
 | 13 | DAN2 | 212 | 3,683,858 | 2,806,792-4,725,242 | 61.67 | 51.62 |
 | 14 | DAN1 | 205 | 3,809,391 | 2,827,513-5,013,133 | 63.77 | 53.38 |
@@ -302,7 +302,7 @@ their output independently.
 
 | Candidate | Honest Amy name | Current evidence | Integration condition |
 |---|---|---|---|
-| ZX0 modern | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
+| ZX0 | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
 | ZX0 classic | `ZX0 Classic (v1)` / proposed codec `zx0v1` | z88dk v1.5 compressor plus exact benchmark VRAM port | Explicit extension and cross-format rejection tests |
 | ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact GearColeco VRAM and cycle proof | Integrated and measured |
 | ZX2 | `ZX2` / codec `zx2` | Exact corpus round-trip, five-profile VRAM proof, and cycle proof | Integrated and measured |
@@ -552,11 +552,12 @@ not an optimization win.
 
 | Rank | Work | Value | Effort | Risk | Decision gate |
 |---:|---|---|---|---|---|
-| 1 | Complete BIOS/Tiny Sound sequence authoring | High | Medium-large | Medium | Byte-exact write-back, stable indices/shared tails, and ROM/audio runtime proof |
-| 2 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
-| 3 | State-update benchmark | High | Medium | Low | Equivalent actor arrays, collisions, timers, dispatch, ROM, RAM, and worst-frame cycles |
-| 4 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
-| 5 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
+| 1 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, visible Tiny envelopes, reliable inline edits, undo, and byte-exact write-back |
+| 2 | Add per-asset compression cost guidance | High | Medium | Low | Show payload + decoder bytes and measured/estimated cycles without claiming one universal winner |
+| 3 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
+| 4 | State-update benchmark | High | Medium | Low | Equivalent actor arrays, collisions, timers, dispatch, ROM, RAM, and worst-frame cycles |
+| 5 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
+| 6 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
 
 ### Completed gaps and next concrete work
 
@@ -568,12 +569,11 @@ Completed and runtime-guarded:
 - stable sprite ranges and flicker with protected high-priority sprites;
 - direct primitive 2D fields in records and overlay parts, verified in all five profiles;
 - ZX1 direct-to-VRAM with exact four-picture GearColeco VRAM proof;
-- Studio BIOS table inspection, command listening, compact echo-tail generation, and Web MIDI
-  note/velocity/duration capture.
+- Studio BIOS/Tiny Sound inspection, continuous playback, synchronized channel lanes, inline
+  command/envelope editing, undoable write-back, import, and Web MIDI capture.
 
-Next concrete work is the **sound sequence editor**. It must turn the tested command layer into a
-multi-command timeline, preserve table slot numbers and shared-tail labels, preview area priority,
-and write byte-exact Amy/project data. Acceptance requires parser round trips, synthesized audio
-checks, and a GearColeco ROM proving start, loop, switch, stop, and concurrent SFX behavior. After
-that, finish controller input injection and build the tile-animation fixture before designing a
-general animation service.
+Next concrete work is **sound-editor closure**, not another sequencer rewrite: verify preview
+timing against GearColeco, expose every Tiny envelope that affects playback, and keep timeline
+edits, undo, source write-back, table indices, and shared tails consistent. In parallel, surface
+the new per-asset compression size/cycle evidence in Studio. Then build the tile-animation and
+state-update fixtures before designing a general animation service.

@@ -1887,7 +1887,7 @@ export function createProjectFileUiHelpers({
     { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point.", routineBytes: 136, extension: "zx7" },
     { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco table data.", routineBytes: 212, extension: "dan2" },
     { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline.", routineBytes: 205, extension: "dan1" },
-    { codec: "dan3", label: "DAN3 Best", description: "Full DAN3 search for the smallest result; slower to compress, with the same decompressor.", routineBytes: 205, extension: "dan3" },
+    { codec: "dan3", label: "DAN3", description: "Full DAN3 search for the smallest result; slower to compress, with the same decompressor.", routineBytes: 205, extension: "dan3" },
     { codec: "pletter", label: "Pletter", description: "Classic MSX/Coleco-friendly LZ compressor.", routineBytes: 212, extension: "pletter" },
     { codec: "bitbuster", label: "BitBuster 1.2", description: "Classic BitBuster stream; Amy source uses codec bitbuster.", routineBytes: 166, extension: "bitbuster" },
     { codec: "lzf", label: "LZF", description: "Fast LZ family candidate.", routineBytes: 117, extension: "lzf" }
