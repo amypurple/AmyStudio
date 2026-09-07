@@ -129,24 +129,24 @@ corpus pictures render exactly.
 
 ### Graphics II bitmap compression corpus
 
-The corpus contains 35 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 525 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
+The corpus contains 46 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 690 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | Best-size pictures |
 |---:|---|---:|---:|---:|---:|
-| 1 | ZX0 modern | 143,960 | 33.47% | 24.41% | 21 |
-| 2 | DAN2 | 144,624 | 33.63% | 24.41% | 3 |
-| 3 | DAN3 Best | 144,776 | 33.66% | 24.63% | 6 |
-| 4 | DAN1 | 144,920 | 33.70% | 24.58% | 5 |
-| 5 | MegaLZ | 147,855 | 34.38% | 25.30% | 0 |
-| 6 | aPLib Compact | 148,210 | 34.46% | 25.06% | 0 |
-| 7 | Pletter | 148,546 | 34.54% | 25.29% | 0 |
-| 8 | ZX7 | 148,578 | 34.55% | 25.26% | 0 |
-| 9 | BitBuster | 149,520 | 34.77% | 25.44% | 0 |
-| 10 | ZX1 | 152,221 | 35.39% | 25.82% | 0 |
-| 11 | ZX2 | 153,026 | 35.58% | 25.53% | 0 |
-| 12 | LZF | 166,460 | 38.70% | 29.48% | 0 |
-| 13 | Nibble | 183,514 | 42.67% | 33.09% | 0 |
-| 14 | MDK-RLE | 216,408 | 50.32% | 40.26% | 0 |
+| 1 | ZX0 modern | 190,037 | 33.62% | 24.24% | 24 |
+| 2 | DAN2 | 190,348 | 33.68% | 24.38% | 7 |
+| 3 | DAN1 | 190,707 | 33.74% | 24.52% | 6 |
+| 4 | DAN3 Best | 190,773 | 33.75% | 24.54% | 9 |
+| 5 | MegaLZ | 194,895 | 34.48% | 25.27% | 0 |
+| 6 | aPLib Compact | 195,679 | 34.62% | 24.95% | 0 |
+| 7 | Pletter | 195,925 | 34.66% | 25.24% | 0 |
+| 8 | ZX7 | 195,946 | 34.67% | 25.23% | 0 |
+| 9 | BitBuster | 197,220 | 34.89% | 25.38% | 0 |
+| 10 | ZX1 | 201,247 | 35.60% | 25.57% | 0 |
+| 11 | ZX2 | 202,103 | 35.75% | 25.48% | 0 |
+| 12 | LZF | 220,059 | 38.93% | 29.37% | 0 |
+| 13 | Nibble | 240,948 | 42.63% | 35.48% | 0 |
+| 14 | MDK-RLE | 284,127 | 50.27% | 42.52% | 0 |
 
 The three website representatives are selected mechanically from each picture's best payload ratio:
 
