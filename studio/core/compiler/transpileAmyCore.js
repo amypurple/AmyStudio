@@ -4183,6 +4183,13 @@ export function transpileAmyCore(sourceText, deps) {
           get cartridgeMeta() { return cartridgeMeta; },
           set cartridgeMeta(value) { cartridgeMeta = value; },
           get hasRamOverlay() { return overlayDefinitions.size > 0; },
+          closeImplicitStartBeforeDataInclude: () => {
+            if (currentProc !== "Start" || !openedImplicitStart) return;
+            emitCurrentProcReturnLinesIfNeeded();
+            currentProc = null;
+            currentFunction = null;
+            openedImplicitStart = false;
+          },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,
           describeGlobalNameCollision

@@ -124,6 +124,7 @@ export function handleDataMetaStatement({
 
   const includeAsm = line.match(/^include\s+asm\s+"([^"]+)"$/i);
   if (includeAsm) {
+    state.closeImplicitStartBeforeDataInclude?.();
     const includePath = includeAsm[1].replace(/\\/g, "/");
     const includeText = state.resolveAsmInclude?.(includePath);
     if (includeText == null && state.hasRamOverlay) {
@@ -137,6 +138,7 @@ export function handleDataMetaStatement({
 
   const includeRawAsm = line.match(/^include\s+"([^"]+\.(?:asm|inc|s))"$/i);
   if (includeRawAsm) {
+    state.closeImplicitStartBeforeDataInclude?.();
     const includePath = includeRawAsm[1].replace(/\\/g, "/");
     const includeText = state.resolveAsmInclude?.(includePath);
     if (includeText == null && state.hasRamOverlay) {

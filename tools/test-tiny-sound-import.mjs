@@ -109,20 +109,16 @@ assert.throws(() => prepareTinySoundImport({ fileText: candidate, name: "X", cha
 let amySource = [
   'project "Tiny Import Test"',
   'memory "colecovision_legacy_sdcc"',
-  "sub start:",
-  "  text screen",
-  "  screen on",
-  "MainLoop:",
-  "  wait 1 frames",
-  "  goto MainLoop",
-  "end sub",
+  "text screen",
+  'print at 13,11, "HELLO"',
+  "screen on",
   "",
   'include "@project/mytune-tiny-music.asm"'
 ].join("\n");
 const untouched = insertTinySoundSongPlayback(amySource, built, { installTable: false });
 assert.equal(untouched, amySource, "installTable:false must not modify the source (an existing table must never be silently replaced)");
 amySource = insertTinySoundSongPlayback(amySource, built, { installTable: true });
-assert.match(amySource, /sub start:\n\s*set sound table MyTune_table areas 2\n\s*play song MyTune_song/);
+assert.match(amySource, /set sound table MyTune_table areas 2\nplay song MyTune_song\ntext screen/);
 
 async function assertRomProducesAudio(romBytes, profile) {
   const core = await GearcolecoTestCore.create({ seed: 0x54494E59 });
@@ -152,8 +148,11 @@ try {
   fs.writeFileSync(sourcePath, amySource);
   for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
     const romPath = path.join(temp, `r-${profile}.rom`);
-    execFileSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--rom", romPath, "--opt", profile, "--project-dir", temp], { cwd: root, stdio: "pipe" });
+    const asmPath = path.join(temp, `r-${profile}.asm`);
+    execFileSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--rom", romPath, "--asm", asmPath, "--opt", profile, "--project-dir", temp], { cwd: root, stdio: "pipe" });
     assert.ok(fs.existsSync(romPath), `${profile}: ROM must be produced`);
+    const generatedAsm = fs.readFileSync(asmPath, "utf8");
+    assert.ok(generatedAsm.indexOf("AMY_START_FOREVER:") < generatedAsm.indexOf('include "@project/mytune-tiny-music.asm"'), `${profile}: implicit Start must stop before attached ASM data`);
     await assertRomProducesAudio(fs.readFileSync(romPath), profile);
   }
 
