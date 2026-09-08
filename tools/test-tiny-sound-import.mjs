@@ -97,6 +97,14 @@ assert.match(soloResult.fileText, /dw SoloTune_ch1,\$702B/);
 assert.doesNotMatch(soloResult.fileText, /SoloTune_ch2/);
 assert.match(soloResult.fileText, /db \$01/, "single-channel trigger byte: (1-1)<<6 | firstIndex(1) = 0x01");
 
+const channelTwoOnly = prepareTinySoundImport({
+  fileText: candidate,
+  name: "ChannelTwoOnly",
+  channels: [{ number: 2, label: "music_ch2_A" }],
+  durationFrames: ch2.totalFrames
+});
+assert.match(channelTwoOnly.fileText, /dw ChannelTwoOnly_ch2,\$702B/, "the first entry always anchors InitSound at BIOS slot 1");
+
 // Rejections: bad name, duplicate channel, out-of-range duration.
 assert.throws(() => prepareTinySoundImport({ fileText: candidate, name: "bad name", channels: [{ number: 1, label: "music_ch1_A" }], durationFrames: 1 }), /Amy identifier/);
 assert.throws(() => prepareTinySoundImport({ fileText: candidate, name: "X", channels: [{ number: 1, label: "music_ch1_A" }, { number: 1, label: "music_ch2_A" }], durationFrames: 1 }), /picked twice/);

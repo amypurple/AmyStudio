@@ -30,6 +30,7 @@ assert.match(extended, /dw MusicA,\$702B/, "existing table data must remain inta
 assert.throws(() => addColecoSoundToTableSource(extended, { tableName: "GameSoundTable", soundName: "DoorSound", slot: 4 }), /already exists/);
 assert.throws(() => buildColecoSoundTableSource({ tableName: "Bad name", areaCount: 4, sounds: [{ name: "A", slot: 1 }] }), /identifier/);
 assert.throws(() => buildColecoSoundTableSource({ tableName: "T", areaCount: 2, sounds: [{ name: "A", slot: 3 }] }), /slot from 1 to 2/);
+assert.throws(() => buildColecoSoundTableSource({ tableName: "T", areaCount: 6, sounds: [{ name: "OnlyEffect", slot: 6 }] }), /first sound-table entry must use BIOS slot 1/i);
 
 const explicitStart = "sub start:\n  set sound table GameSoundTable areas 6\n  text screen\nend sub\n\nasm {\nSounds:\n  db $50\n}\n";
 const safePlay = insertColecoSoundPlayback(explicitStart, {

@@ -23,6 +23,9 @@ export function buildColecoSoundTableSource({ tableName, areaCount, sounds }) {
     names.add(name.toLowerCase());
     return { name, role, slot, address: colecoSoundAreaAddress(slot) };
   });
+  if (normalized[0].slot !== 1) {
+    throw new Error("The first sound-table entry must use BIOS slot 1.");
+  }
   const hex = (value) => `$${value.toString(16).toUpperCase().padStart(4, "0")}`;
   const lines = ["asm {", `${tableName}:`];
   for (const sound of normalized) lines.push(`    dw ${sound.name},${hex(sound.address)} ; ${sound.role} · slot ${sound.slot}`);
@@ -125,10 +128,6 @@ export function insertColecoSoundPlayback(sourceText, { tableName, areaCount, pl
   return `${before}${prefix}${block}${suffix}${after}`;
 }
 
-// Tiny Sound channel 1/2 -> the first two BIOS sound areas. Keeping these voices in
-// canonical slots makes the generated table valid on its own and leaves no hidden gaps.
-const TINY_CHANNEL_SLOT = { 1: 1, 2: 2 };
-
 export function buildTinySoundStarterSource() {
   return [
     "starter_ch1_A:",
@@ -209,7 +208,8 @@ export function buildTinySoundSongSource({ name, channels, durationFrames }) {
   const entries = channels.map((channel, index) => ({
     label: channel.label,
     channel: channel.number,
-    slot: TINY_CHANNEL_SLOT[channel.number],
+    // InitSound takes the first entry's area as the base of its contiguous work array.
+    slot: index + 1,
     index: index + 1
   }));
   const lines = [`${tableName}:`];

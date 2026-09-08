@@ -140,6 +140,8 @@ try {
     buttons.find((button) => button.textContent === "+ BIOS sound").click();
   })()`);
   await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
+  assert.equal(await evaluate(`document.querySelector(".sound-table-creator__row select").value`), "1", "first table entry is anchored to BIOS slot 1");
+  assert.equal(await evaluate(`document.querySelector(".sound-table-creator__row select").disabled`), true, "first table entry slot cannot be changed");
   assert.equal(await evaluate(`document.querySelector(".sound-table-creator-modal details").hidden`), false, "generated source appears after adding a sound");
   assert.equal(await evaluate(`document.querySelector(".sound-table-creator-modal details").open`), true, "generated source opens after adding a sound");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Create table").click()`);

@@ -2694,7 +2694,9 @@ export function createProjectFileUiHelpers({
         option.textContent = `Slot ${index}`;
         slot.appendChild(option);
       }
-      slot.value = String(previous >= 1 && previous <= count ? previous : role === "music" ? Math.min(rows.querySelectorAll('[data-role="music"]').length, count) : count);
+      const firstEntry = row === rows.firstElementChild;
+      slot.value = String(previous >= 1 && previous <= count ? previous : firstEntry ? 1 : role === "music" ? Math.min(rows.querySelectorAll('[data-role="music"]').length, count) : count);
+      slot.disabled = firstEntry;
     }
     function update() {
       if (!rows.children.length) {
