@@ -2870,13 +2870,18 @@ export function createProjectFileUiHelpers({
     errorMessage.className = "graphics-editor-json-modal__error";
     errorMessage.hidden = true;
 
-    const hasExistingTable = /(?:^|\n)\s*set\s+sound\s+table\b/i.test(els.sourceEditor.value)
-      || !!inspectSoundTableSource(els.sourceEditor.value).tables.length;
+    const sourceSoundAnalysis = inspectSoundTableSource(els.sourceEditor.value);
+    const projectFileHasTable = (getProject().projectFiles || []).some((entry) =>
+      inspectSoundTableSource(projectFileText(entry)).tables.length > 0);
+    const hasExistingTable = sourceSoundAnalysis.tables.length > 0 || projectFileHasTable;
+    const hasOrphanTableSetup = !hasExistingTable && /(?:^|\n)\s*set\s+sound\s+table\b/i.test(els.sourceEditor.value);
     const tableStatus = document.createElement("p");
     tableStatus.className = "tiny-import__status tiny-import__table-status";
     tableStatus.textContent = hasExistingTable
       ? "This project already uses a sound table. Import will attach a separate table without activating it. The exact setup and play lines will be left as comments in SOURCE."
-      : "No sound table yet - import will create one and start it automatically after \"sub start:\".";
+      : hasOrphanTableSetup
+        ? "The current sound-table setup has no matching table data. It will be replaced by this complete Tiny Sound table."
+        : "No sound table yet - import will create one and start it automatically after \"sub start:\".";
 
     const actions = document.createElement("div");
     actions.className = "graphics-editor-json-modal__actions";
@@ -2990,6 +2995,9 @@ export function createProjectFileUiHelpers({
           amySource = `${amySource.replace(/\s*$/, "")}\n\n${includeLine}\n`;
         }
         if (!hasExistingTable) {
+          if (hasOrphanTableSetup) {
+            amySource = amySource.replace(/^\s*set\s+sound\s+table\s+[A-Za-z_][A-Za-z0-9_]*\s+areas\s+\d+\s*(?:'[^\r\n]*)?\r?\n?/gim, "");
+          }
           amySource = insertTinySoundSongPlayback(amySource, built, { installTable: true });
           commitProjectSourceText(amySource);
           setStatus(`Imported "${name}" - sound table installed and playing via "${built.play}".`);

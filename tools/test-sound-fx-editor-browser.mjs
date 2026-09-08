@@ -103,7 +103,7 @@ try {
   assert.notEqual(await evaluate(`getComputedStyle(document.getElementById("btnInspectSourceSounds")).display`), "none", "SOUND stays visible while the ASM panel is open");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
-    editor.value = "sub start:\\n  text screen\\n";
+    editor.value = "' Amy starter\\nset sound table GameSoundTable areas 6\\ntext screen\\n";
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
@@ -117,6 +117,7 @@ try {
   await evaluate(`document.querySelector(".tiny-import-modal .graphics-editor-json-modal__actions button:last-child").click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song opens in sequencer");
   assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /play song MySong_song/, "new Tiny song is installed in the project");
+  assert.doesNotMatch(await evaluate(`document.getElementById("sourceEditor").value`), /GameSoundTable/, "an orphan table setup is replaced instead of causing an undefined assembler symbol");
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
   assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /should target/, "generated Tiny table uses canonical sound slots");
