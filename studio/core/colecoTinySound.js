@@ -42,6 +42,31 @@ export function tinyNoteHasArpeggio(code) {
   return (((code - 4) & 0x40) !== 0);
 }
 
+export function tinyNoteHasVibrato(code) {
+  return (((code - 4) & 0x80) !== 0);
+}
+
+export function tinyPlainNoteCode(code) {
+  return (((code - 4) & 0x3f) + 4);
+}
+
+export function tinyDecoratedNoteCode(code, { arpeggio = false, vibrato = false } = {}) {
+  return tinyPlainNoteCode(code) + (arpeggio ? 0x40 : 0) + (vibrato ? 0x80 : 0);
+}
+
+export function tinyNotePeriodAtFrame(code, arpeggioCode, frame) {
+  const baseIndex = tinyNoteIndex(code);
+  const arpeggio = tinyNoteHasArpeggio(code);
+  const vibrato = tinyNoteHasVibrato(code);
+  const secondIndex = arpeggio ? tinyNoteIndex(arpeggioCode) : baseIndex;
+  const phaseUsesSecond = [false, true, false, true, false, true, false, true];
+  const phaseDelta = [0, 0, 1, 1, 0, 0, -1, -1];
+  const phase = frame & 7;
+  const center = phaseUsesSecond[phase] ? secondIndex : baseIndex;
+  const index = center + (vibrato ? phaseDelta[phase] : 0);
+  return TINY_NOTE_PERIODS[Math.max(0, Math.min(TINY_NOTE_PERIODS.length - 1, index))];
+}
+
 function noteName(period, region = "NTSC") {
   const clock = region === "PAL" ? 3546893 : 3579545;
   const frequency = clock / (32 * period);
@@ -234,11 +259,12 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
       if (lastNote) {
         const oldLength = lastNote.length;
         lastNote.length += tempo;
-        if (lastNote.arpeggioPeriod) {
+        lastNote.durationFrames = lastNote.length;
+        if (lastNote.frequencyFrames && lastNote.tinyCode !== undefined) {
           for (let localFrame = oldLength; localFrame < lastNote.length; localFrame += 1) {
             lastNote.frequencyFrames.push({
               frame: localFrame,
-              period: ((lastNote.startFrame + localFrame) & 1) ? lastNote.arpeggioPeriod : lastNote.period
+              period: tinyNotePeriodAtFrame(lastNote.tinyCode, lastNote.tinyArpeggioCode, lastNote.startFrame + localFrame)
             });
           }
         }
@@ -289,13 +315,17 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
       continue;
     }
     const arpeggio = tinyNoteHasArpeggio(code);
+    const vibrato = tinyNoteHasVibrato(code);
     const arpeggioCode = arpeggio ? take(1, commandOffset)[0] : null;
     const period = TINY_NOTE_PERIODS[tinyNoteIndex(code)];
     const arpeggioPeriod = arpeggio ? TINY_NOTE_PERIODS[tinyNoteIndex(arpeggioCode)] : null;
     const named = noteName(period, region);
     const volumeSweep = tinyInstrumentEnvelope([attenuation << 4, instrumentDecay, instrumentRate]);
-    const frequencyFrames = arpeggio
-      ? Array.from({ length: tempo }, (_, localFrame) => ({ frame: localFrame, period: ((frame + localFrame) & 1) ? arpeggioPeriod : period }))
+    const frequencyFrames = arpeggio || vibrato
+      ? Array.from({ length: tempo }, (_, localFrame) => ({
+        frame: localFrame,
+        period: tinyNotePeriodAtFrame(code, arpeggioCode, frame + localFrame)
+      }))
       : null;
     const event = {
       type: volumeSweep ? "volume-sweep" : "note",
@@ -304,10 +334,13 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
       attenuation,
       length: tempo,
       startFrame: frame,
+      durationFrames: tempo,
+      tinyCode: code,
+      tinyArpeggioCode: arpeggioCode,
       ...(volumeSweep ? { volumeSweep } : {}),
       ...(frequencyFrames ? { frequencyFrames, arpeggioPeriod } : {})
     };
-    commands.push({ type: "note", code, offset: commandOffset, period, ...named, startFrame: frame, frames: tempo, arpeggioCode });
+    commands.push({ type: "note", code, offset: commandOffset, period, ...named, startFrame: frame, frames: tempo, arpeggioCode, vibrato });
     previewEvents.push(event);
     lastNote = event;
     frame += tempo;
@@ -317,7 +350,7 @@ export function decodeTinySoundSource(sourceText, label, { region = "NTSC", maxC
 }
 
 export function describeTinySoundCommand(command) {
-  if (command.type === "note") return `${command.name} · code $${command.code.toString(16).toUpperCase().padStart(2,"0")} · ${command.frequency.toFixed(1)} Hz · ${command.frames} frames${command.arpeggioCode === null ? "" : ` · arpeggio $${command.arpeggioCode.toString(16).toUpperCase().padStart(2,"0")}`}`;
+  if (command.type === "note") return `${command.name} · code $${command.code.toString(16).toUpperCase().padStart(2,"0")} · ${command.frequency.toFixed(1)} Hz · ${command.frames} frames${command.arpeggioCode === null ? "" : ` · arpeggio $${command.arpeggioCode.toString(16).toUpperCase().padStart(2,"0")}`}${command.vibrato ? " · vibrato" : ""}`;
   if (command.type === "instrument") return `Instrument · attenuation ${command.attenuation} · $${command.values.map((v) => v.toString(16).toUpperCase().padStart(2,"0")).join(",$")}`;
   if (command.type === "special-note") return `Special note · ${command.name} · ${command.frequency.toFixed(1)} Hz`;
   if (command.type === "sustain") return `Sustain · ${command.frames} frames`;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteIndex, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteHasVibrato, tinyNoteIndex, tinyNotePeriodAtFrame, tinyPlainNoteCode, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -45,6 +45,10 @@ assert.equal(tinyNoteIndex(0x40), 9, "note indexing wraps the low six bits like 
 assert.equal(tinyNoteHasArpeggio(0x40), false);
 assert.equal(tinyNoteHasArpeggio(0x44), true);
 assert.equal(tinyNoteHasArpeggio(0x80), true);
+assert.equal(tinyNoteHasVibrato(0x84), true);
+assert.equal(tinyNoteHasVibrato(0x44), false);
+assert.equal(tinyPlainNoteCode(0xdf), 0x1f);
+assert.equal(tinyDecoratedNoteCode(0x1f, { arpeggio: true, vibrato: true }), 0xdf);
 assert.deepEqual(tinyInstrumentEnvelope([0x00, 0x33, 0x22]), {
   step: 3, count: 3, firstLength: 2, stepLength: 2
 });
@@ -82,6 +86,14 @@ assert.deepEqual(boundaryArpeggio.previewEvents[0].frequencyFrames.slice(0, 4).m
   boundaryArpeggio.previewEvents[0].period,
   tinyNoteChoices().find((choice) => choice.code === 0x10).period
 ]);
+const vibrato = decodeTinySoundSource(`Vibrato:\n db $44\n dw sndtiny_1\n db $08,$9F,$01,$FF`, "Vibrato");
+assert.equal(vibrato.commands[0].vibrato, true);
+assert.deepEqual(vibrato.previewEvents[0].frequencyFrames.map((point) => point.period),
+  Array.from({ length: 8 }, (_, frame) => tinyNotePeriodAtFrame(0x9f, null, frame)),
+  "vibrato follows the legacy runtime's global eight-phase pitch table");
+const sustainedVibrato = decodeTinySoundSource(`SustainVibrato:\n db $44\n dw sndtiny_1\n db $04,$9F,$00,$FF`, "SustainVibrato");
+assert.equal(sustainedVibrato.previewEvents[0].durationFrames, 8, "sustain extends the rendered event duration");
+assert.equal(sustainedVibrato.previewEvents[0].frequencyFrames.length, 8, "vibrato continues through sustain");
 
 const choices = tinyNoteChoices();
 assert.equal(choices.length, 60);

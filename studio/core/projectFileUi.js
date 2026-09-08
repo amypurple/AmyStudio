@@ -8,7 +8,7 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260907-selection";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
+import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260908-tiny-effects";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
 
 export function createProjectFileUiHelpers({
@@ -3450,9 +3450,9 @@ export function createProjectFileUiHelpers({
     addMusicButton.addEventListener("click", () => openAddSoundDialog("music"));
     function openTinyPairSequencer(sound, pairedSound) {
       const voices = [sound, pairedSound];
-      const totalFrames = Math.max(...voices.map((voice) => voice.stream.tiny.totalFrames));
+      let totalFrames = Math.max(...voices.map((voice) => voice.stream.tiny.totalFrames));
       const pixelsPerFrame = Math.max(2.5, Math.min(4, 900 / Math.max(totalFrames, 1)));
-      const laneHeight = Math.max(180, Math.ceil(totalFrames * pixelsPerFrame));
+      let laneHeight = Math.max(180, Math.ceil(totalFrames * pixelsPerFrame));
       const backdrop = document.createElement("div");
       backdrop.className = "graphics-editor-modal-backdrop";
       const sequencer = document.createElement("section");
@@ -3469,7 +3469,7 @@ export function createProjectFileUiHelpers({
       sequencerHeader.append(sequencerTitle, sequencerClose);
       const summary = document.createElement("p");
       summary.className = "graphics-editor-modal__note";
-      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · notes and envelopes are editable`;
+      summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · independent tempo · notes and envelopes are editable`;
       const nibbleValue = (value) => value === 16 ? 0 : value & 0x0f;
       const addNumber = (labelText, value, min, max) => {
         const label = document.createElement("label");
@@ -3531,6 +3531,27 @@ export function createProjectFileUiHelpers({
         popover.classList.add("hidden");
         activeEditor = null;
       };
+      const openTempoEditor = (voice, button) => {
+        closePopover(true);
+        button.classList.add("is-selected");
+        activeEditor = { type: "tempo", voice, block: button };
+        popoverTitle.textContent = `Channel ${voice.stream.tiny.channel} tempo`;
+        popoverBody.innerHTML = "";
+        const tempo = addNumber("Frames per step", voice.stream.tiny.tempo, 1, 256);
+        const rate = document.createElement("small");
+        rate.textContent = `${(inputs.region.value === "PAL" ? 50 : 60) / voice.stream.tiny.tempo} steps/second`;
+        tempo.input.addEventListener("input", () => {
+          const value = Math.max(1, Math.min(256, Number(tempo.input.value) || 1));
+          rate.textContent = `${((inputs.region.value === "PAL" ? 50 : 60) / value).toFixed(2)} steps/second`;
+        });
+        popoverBody.append(tempo.label, rate);
+        activeEditor.fields = { tempo };
+        popoverPreview.hidden = true;
+        popover.hidden = false;
+        popover.classList.remove("hidden");
+        positionPopoverNear(button);
+        tempo.input.focus();
+      };
       const openNoteEditor = (voice, command, block) => {
         closePopover(true);
         for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
@@ -3550,14 +3571,37 @@ export function createProjectFileUiHelpers({
           option.textContent = `${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`;
           pitchSelect.appendChild(option);
         }
-        pitchSelect.value = String(command.code);
+        pitchSelect.value = String(tinyPlainNoteCode(command.code));
         pitchSelect.addEventListener("input", () => {
           const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(pitchSelect.value));
           if (choice) block.textContent = choice.name;
         });
         pitchLabel.appendChild(pitchSelect);
-        popoverBody.appendChild(pitchLabel);
+        const vibratoLabel = document.createElement("label");
+        vibratoLabel.className = "tiny-pair-sequencer__check";
+        const vibrato = document.createElement("input");
+        vibrato.type = "checkbox";
+        vibrato.checked = Boolean(command.vibrato);
+        vibratoLabel.append(vibrato, document.createTextNode("Vibrato"));
+        let arpeggioSelect = null;
+        if (command.arpeggioCode !== null) {
+          const arpeggioLabel = document.createElement("label");
+          arpeggioLabel.textContent = "Arpeggio note";
+          arpeggioSelect = document.createElement("select");
+          for (const choice of tinyNoteChoices(inputs.region.value)) {
+            arpeggioSelect.appendChild(new Option(`${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`, String(choice.code)));
+          }
+          arpeggioSelect.value = String(tinyPlainNoteCode(command.arpeggioCode));
+          arpeggioLabel.appendChild(arpeggioSelect);
+          popoverBody.append(pitchLabel, arpeggioLabel, vibratoLabel);
+        } else {
+          const hint = document.createElement("small");
+          hint.textContent = "Arpeggio adds a second byte; creation will follow after safe stream editing.";
+          popoverBody.append(pitchLabel, vibratoLabel, hint);
+        }
         activeEditor.pitchSelect = pitchSelect;
+        activeEditor.vibrato = vibrato;
+        activeEditor.arpeggioSelect = arpeggioSelect;
         popoverPreview.hidden = false;
         popover.hidden = false;
         popover.classList.remove("hidden");
@@ -3611,16 +3655,17 @@ export function createProjectFileUiHelpers({
           transportGeneration += 1;
           await activeSoundPreview?.stop();
           setTransportIdle();
-          const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(activeEditor.pitchSelect.value));
-          if (!choice) return;
-          const playback = await startColecoSoundPreview([{
-            type: "note",
-            channel: activeEditor.voice.stream.tiny.channel,
-            period: choice.period,
-            attenuation: activeEditor.command.attenuation ?? 8,
-            length: activeEditor.command.frames,
-            startFrame: 0
-          }], { region: inputs.region.value });
+          const plainCode = Number(activeEditor.pitchSelect.value);
+          const code = tinyDecoratedNoteCode(plainCode, {
+            arpeggio: activeEditor.command.arpeggioCode !== null,
+            vibrato: activeEditor.vibrato.checked
+          });
+          let previewSource = replaceTinySoundByte(analysis.source, activeEditor.voice.label, activeEditor.command.offset + 1, code);
+          if (activeEditor.arpeggioSelect) previewSource = replaceTinySoundByte(previewSource, activeEditor.voice.label, activeEditor.command.offset + 2, Number(activeEditor.arpeggioSelect.value));
+          const decoded = decodeTinySoundSource(previewSource, activeEditor.voice.label, { region: inputs.region.value });
+          const event = decoded.previewEvents.find((item) => item.startFrame === activeEditor.command.startFrame);
+          if (!event) return;
+          const playback = await startColecoSoundPreview([{ ...event, startFrame: 0 }], { region: inputs.region.value });
           activeSoundPreview = playback;
           await playback.done;
           if (activeSoundPreview === playback) activeSoundPreview = null;
@@ -3635,7 +3680,12 @@ export function createProjectFileUiHelpers({
             const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(activeEditor.pitchSelect.value));
             if (!choice) return;
             const byteIndex = activeEditor.command.offset + 1;
-            const source = replaceTinySoundByte(analysis.source, activeEditor.voice.label, byteIndex, choice.code);
+            const code = tinyDecoratedNoteCode(choice.code, {
+              arpeggio: activeEditor.command.arpeggioCode !== null,
+              vibrato: activeEditor.vibrato.checked
+            });
+            let source = replaceTinySoundByte(analysis.source, activeEditor.voice.label, byteIndex, code);
+            if (activeEditor.arpeggioSelect) source = replaceTinySoundByte(source, activeEditor.voice.label, byteIndex + 1, Number(activeEditor.arpeggioSelect.value));
             saveSoundSource(source);
             analysis.source = source;
             rebuildLane(activeEditor.voice);
@@ -3655,6 +3705,13 @@ export function createProjectFileUiHelpers({
             analysis.source = source;
             rebuildLane(activeEditor.voice);
             statusLine.textContent = `Saved · channel ${activeEditor.voice.stream.tiny.channel} instrument`;
+          } else if (activeEditor.type === "tempo") {
+            const value = Math.max(1, Math.min(256, Number(activeEditor.fields.tempo.input.value) || 1));
+            const source = replaceTinySoundByte(analysis.source, activeEditor.voice.label, 0, value === 256 ? 0 : value);
+            saveSoundSource(source);
+            analysis.source = source;
+            rebuildLane(activeEditor.voice);
+            statusLine.textContent = `Saved · channel ${activeEditor.voice.stream.tiny.channel} · tempo ${value} frames`;
           }
           closePopover(false);
         } catch (error) {
@@ -3667,8 +3724,16 @@ export function createProjectFileUiHelpers({
       const buildLane = (voice) => {
         const column = document.createElement("section");
         column.className = "tiny-pair-sequencer__column";
+        const channelBar = document.createElement("div");
+        channelBar.className = "tiny-pair-sequencer__channel-bar";
         const heading = document.createElement("strong");
         heading.textContent = `Channel ${voice.stream.tiny.channel}`;
+        const tempoButton = document.createElement("button");
+        tempoButton.type = "button";
+        tempoButton.className = "tiny-pair-sequencer__tempo";
+        tempoButton.textContent = `Tempo ${voice.stream.tiny.tempo}`;
+        tempoButton.title = "Frames per Tiny Sound step";
+        tempoButton.addEventListener("click", () => openTempoEditor(voice, tempoButton));
         const instrument = voice.stream.tiny.commands.find((command) => command.type === "instrument");
         if (instrument) {
           heading.title = describeTinySoundCommand(instrument);
@@ -3684,26 +3749,32 @@ export function createProjectFileUiHelpers({
             }
           });
         }
+        channelBar.append(heading, tempoButton);
         const lane = document.createElement("div");
         lane.className = "tiny-pair-sequencer__lane";
         lane.style.height = `${laneHeight}px`;
         const blocks = [];
         for (const command of voice.stream.tiny.commands) {
-          if (!command.frames) continue;
+          if (!command.frames && command.type !== "instrument") continue;
           const block = document.createElement("div");
           block.className = `tiny-pair-sequencer__block is-${command.type}`;
           block.style.top = `${Math.round(command.startFrame * pixelsPerFrame)}px`;
-          block.style.height = `${Math.max(18, Math.round(command.frames * pixelsPerFrame))}px`;
-          block.textContent = command.type === "note" || command.type === "special-note"
+          block.style.height = `${command.type === "instrument" ? 18 : Math.max(18, Math.round(command.frames * pixelsPerFrame))}px`;
+          block.textContent = command.type === "instrument" ? "ENV"
+            : command.type === "note" || command.type === "special-note"
             ? command.name
             : command.type === "silence" ? "Rest" : command.type === "sustain" ? "Hold" : "Drum";
           block.title = `F${command.startFrame} · ${describeTinySoundCommand(command)}`;
+          if (command.type === "note") {
+            const effects = [command.arpeggioCode !== null ? "ARP" : "", command.vibrato ? "VIB" : ""].filter(Boolean).join(" + ");
+            if (effects) block.dataset.effects = effects;
+          }
           if (selectedRange
             && command.startFrame === selectedRange.startFrame
             && command.startFrame + command.frames === selectedRange.endFrame) {
             block.classList.add("is-selected");
           }
-          if (command.type === "note" && command.arpeggioCode === null) {
+          if (command.type === "note") {
             block.classList.add("is-editable");
             block.tabIndex = 0;
             block.setAttribute("role", "button");
@@ -3713,6 +3784,18 @@ export function createProjectFileUiHelpers({
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 openThisNote();
+              }
+            });
+          } else if (command.type === "instrument") {
+            block.classList.add("is-editable", "is-marker");
+            block.tabIndex = 0;
+            block.setAttribute("role", "button");
+            const openThisInstrument = () => openInstrumentEditor(voice, command, block);
+            block.addEventListener("click", openThisInstrument);
+            block.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openThisInstrument();
               }
             });
           }
@@ -3727,7 +3810,7 @@ export function createProjectFileUiHelpers({
         loop.className = "tiny-pair-sequencer__loop";
         loop.textContent = voice.stream.tiny.loop ? "↻ LOOP" : "END";
         lane.appendChild(loop);
-        column.append(heading, lane);
+        column.append(channelBar, lane);
         return { voice, column, lane, blocks, playhead };
       };
       for (const voice of voices) {
@@ -3741,6 +3824,10 @@ export function createProjectFileUiHelpers({
       // popover can reference stale pre-edit command objects.
       function rebuildLane(voice) {
         voice.stream.tiny = decodeTinySoundSource(analysis.source, voice.label, { region: inputs.region.value });
+        totalFrames = Math.max(...voices.map((item) => item.stream.tiny.totalFrames));
+        laneHeight = Math.max(180, Math.ceil(totalFrames * pixelsPerFrame));
+        summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · independent tempo · notes and envelopes are editable`;
+        for (const item of laneViews) item.lane.style.height = `${laneHeight}px`;
         const view = laneViews.find((item) => item.voice === voice);
         const rebuilt = buildLane(voice);
         view.column.replaceWith(rebuilt.column);

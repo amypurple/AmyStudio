@@ -37,7 +37,7 @@ Choose `Edit` for a regular BIOS sound. Clicking a command loads it into Command
 
 ![BIOS Sound FX command editor](images/studio-sound-fx-editor.png)
 
-Matching Tiny Sound `_ch1` and `_ch2` labels expose one `Sequencer` action. It opens synchronized lanes with active-event highlighting, pause/resume, and inline editing for plain-note pitch and `$02` channel envelopes. `Technical` reveals tempo, sustain, silence, special commands, and loops; complex commands remain read-only.
+Matching Tiny Sound `_ch1` and `_ch2` labels expose one `Sequencer` action. It aligns both channels on a shared frame timeline while preserving each channel's independent tempo. Channel tempo, ordinary notes, vibrato, existing arpeggios, and every `$02` envelope change can be edited inline. `Technical` reveals sustain, silence, special notes, drums, loops, and their encoded bytes. Adding or removing the extra arpeggio byte remains a source-level operation.
 
 `Import Tiny Sound` validates an existing ASM/INC export, previews its detected channels, attaches it to the project, and creates a dedicated song wrapper. It never replaces an active sound table automatically.
 
