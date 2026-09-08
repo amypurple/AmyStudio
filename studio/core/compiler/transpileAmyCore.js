@@ -4183,12 +4183,14 @@ export function transpileAmyCore(sourceText, deps) {
           get cartridgeMeta() { return cartridgeMeta; },
           set cartridgeMeta(value) { cartridgeMeta = value; },
           get hasRamOverlay() { return overlayDefinitions.size > 0; },
-          closeImplicitStartBeforeDataInclude: () => {
-            if (currentProc !== "Start" || !openedImplicitStart) return;
+          sealCurrentProcedureBeforeDetachedAsm: () => {
+            if (!currentProc) return;
             emitCurrentProcReturnLinesIfNeeded();
-            currentProc = null;
-            currentFunction = null;
-            openedImplicitStart = false;
+            if (currentProc === "Start" && openedImplicitStart) {
+              currentProc = null;
+              currentFunction = null;
+              openedImplicitStart = false;
+            }
           },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,

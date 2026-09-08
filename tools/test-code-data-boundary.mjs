@@ -1,0 +1,83 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
+
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), "amy-code-data-boundary-"));
+const addressOf = (asm, symbol) => {
+  const match = asm.match(new RegExp(`^${symbol}\\s+EQU\\s+\\$([0-9A-Fa-f]{4})$`, "m"));
+  assert.ok(match, `missing address for ${symbol}`);
+  return Number.parseInt(match[1], 16);
+};
+const source = [
+  'project "Code Data Boundary"',
+  'memory "colecovision_legacy_sdcc"',
+  "u8 Passed = 0",
+  "sub start:",
+  "  IncludedWorker",
+  "  InlineWorker",
+  "  InlineCodeWorker",
+  "  loop forever",
+  "end sub",
+  "sub InlineCodeWorker:",
+  "  asm {",
+  "    di",
+  "    ei",
+  "  }",
+  "  Passed += 4",
+  "  return",
+  "end sub",
+  "sub IncludedWorker:",
+  "  Passed += 1",
+  '  include "@project/boundary-data.asm"',
+  "end sub",
+  "sub InlineWorker:",
+  "  Passed += 2",
+  "  asm {",
+  "BoundaryInlineData:",
+  "    db $C3,$00,$00",
+  "  }",
+  "end sub",
+  ""
+].join("\n");
+
+try {
+  const sourcePath = path.join(temp, "boundary.alexis");
+  fs.writeFileSync(sourcePath, source);
+  fs.writeFileSync(path.join(temp, "boundary-data.asm"), "BoundaryIncludedData:\n    db $C3,$00,$00\n");
+
+  for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
+    const romPath = path.join(temp, `boundary-${profile}.rom`);
+    const asmPath = path.join(temp, `boundary-${profile}.asm`);
+    execFileSync(process.execPath, [
+      "tools/amyc.mjs", sourcePath, "--rom", romPath, "--asm", asmPath,
+      "--opt", profile, "--project-dir", temp
+    ], { cwd: root, stdio: "pipe" });
+
+    const asm = fs.readFileSync(asmPath, "utf8");
+    const includeAt = asm.indexOf('include "@project/boundary-data.asm"');
+    const inlineAt = asm.indexOf("BoundaryInlineData:");
+    const inlineCodeAt = asm.search(/^\s*di\s*$/m);
+    assert.ok(includeAt > 0 && /ret\s*$/.test(asm.slice(0, includeAt).trimEnd()), `${profile}: include must be preceded by ret`);
+    assert.ok(inlineAt > 0 && /ret\s*$/.test(asm.slice(0, inlineAt).trimEnd()), `${profile}: detached inline ASM must be preceded by ret`);
+    assert.ok(inlineCodeAt > 0, `${profile}: executable inline ASM must remain present`);
+
+    const core = await GearcolecoTestCore.create({ seed: 0x434F4445 });
+    try {
+      core.loadBios(fs.readFileSync(path.join(root, "studio/bios/colecovision.rom")));
+      core.loadRom(fs.readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
+      for (let frame = 0; frame < 8; frame += 1) core.runFrame();
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 7, `${profile}: routines must return without executing data bytes`);
+    } finally {
+      core.destroy();
+    }
+  }
+} finally {
+  fs.rmSync(temp, { recursive: true, force: true });
+}
+
+console.log("Code/data boundary tests passed.");

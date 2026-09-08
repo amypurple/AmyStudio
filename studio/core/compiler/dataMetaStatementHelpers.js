@@ -94,6 +94,12 @@ export function handleDataMetaStatement({
 
   if (state.inAsm) {
     if (line === "}") {
+      const emitsInlineData = state.asmBuffer.some((entry) =>
+        /^\s*(?:\.?d(?:b|w|s)|defb|defw|defs|incbin)\b/i.test(String(entry || ""))
+      );
+      if (emitsInlineData) {
+        state.sealCurrentProcedureBeforeDetachedAsm?.();
+      }
       body.push(...state.asmBuffer);
       state.asmBuffer = [];
       state.inAsm = false;
@@ -124,7 +130,7 @@ export function handleDataMetaStatement({
 
   const includeAsm = line.match(/^include\s+asm\s+"([^"]+)"$/i);
   if (includeAsm) {
-    state.closeImplicitStartBeforeDataInclude?.();
+    state.sealCurrentProcedureBeforeDetachedAsm?.();
     const includePath = includeAsm[1].replace(/\\/g, "/");
     const includeText = state.resolveAsmInclude?.(includePath);
     if (includeText == null && state.hasRamOverlay) {
@@ -138,7 +144,7 @@ export function handleDataMetaStatement({
 
   const includeRawAsm = line.match(/^include\s+"([^"]+\.(?:asm|inc|s))"$/i);
   if (includeRawAsm) {
-    state.closeImplicitStartBeforeDataInclude?.();
+    state.sealCurrentProcedureBeforeDetachedAsm?.();
     const includePath = includeRawAsm[1].replace(/\\/g, "/");
     const includeText = state.resolveAsmInclude?.(includePath);
     if (includeText == null && state.hasRamOverlay) {
