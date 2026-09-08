@@ -4183,15 +4183,7 @@ export function transpileAmyCore(sourceText, deps) {
           get cartridgeMeta() { return cartridgeMeta; },
           set cartridgeMeta(value) { cartridgeMeta = value; },
           get hasRamOverlay() { return overlayDefinitions.size > 0; },
-          sealCurrentProcedureBeforeDetachedAsm: () => {
-            if (!currentProc) return;
-            emitCurrentProcReturnLinesIfNeeded();
-            if (currentProc === "Start" && openedImplicitStart) {
-              currentProc = null;
-              currentFunction = null;
-              openedImplicitStart = false;
-            }
-          },
+          get detachedAsmData() { return romData; },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,
           describeGlobalNameCollision

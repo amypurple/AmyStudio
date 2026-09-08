@@ -62,8 +62,9 @@ try {
     const includeAt = asm.indexOf('include "@project/boundary-data.asm"');
     const inlineAt = asm.indexOf("BoundaryInlineData:");
     const inlineCodeAt = asm.search(/^\s*di\s*$/m);
-    assert.ok(includeAt > 0 && /ret\s*$/.test(asm.slice(0, includeAt).trimEnd()), `${profile}: include must be preceded by ret`);
-    assert.ok(inlineAt > 0 && /ret\s*$/.test(asm.slice(0, inlineAt).trimEnd()), `${profile}: detached inline ASM must be preceded by ret`);
+    const startSinkAt = asm.indexOf("AMY_START_FOREVER:");
+    assert.ok(includeAt > startSinkAt, `${profile}: include must be emitted after executable code`);
+    assert.ok(inlineAt > startSinkAt, `${profile}: detached inline ASM data must be emitted after executable code`);
     assert.ok(inlineCodeAt > 0, `${profile}: executable inline ASM must remain present`);
 
     const core = await GearcolecoTestCore.create({ seed: 0x434F4445 });
@@ -75,6 +76,27 @@ try {
     } finally {
       core.destroy();
     }
+
+    const implicitSourcePath = path.join(temp, `implicit-${profile}.alexis`);
+    const implicitRomPath = path.join(temp, `implicit-${profile}.rom`);
+    const implicitAsmPath = path.join(temp, `implicit-${profile}.asm`);
+    fs.writeFileSync(implicitSourcePath, [
+      'project "Implicit Code Data Boundary"',
+      'memory "colecovision_legacy_sdcc"',
+      "u8 Passed = 0",
+      "Passed = 1",
+      'include "@project/boundary-data.asm"',
+      "Passed += 2",
+      "loop forever",
+      ""
+    ].join("\n"));
+    execFileSync(process.execPath, [
+      "tools/amyc.mjs", implicitSourcePath, "--rom", implicitRomPath, "--asm", implicitAsmPath,
+      "--opt", profile, "--project-dir", temp
+    ], { cwd: root, stdio: "pipe" });
+    const implicitAsm = fs.readFileSync(implicitAsmPath, "utf8");
+    assert.equal((implicitAsm.match(/^Start:$/gm) || []).length, 1, `${profile}: implicit source must emit exactly one Start label`);
+    assert.ok(implicitAsm.indexOf('include "@project/boundary-data.asm"') > implicitAsm.indexOf("AMY_START_FOREVER:"), `${profile}: implicit include must follow the Start sink`);
   }
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });

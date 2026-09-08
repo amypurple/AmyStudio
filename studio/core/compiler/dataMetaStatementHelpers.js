@@ -98,9 +98,10 @@ export function handleDataMetaStatement({
         /^\s*(?:\.?d(?:b|w|s)|defb|defw|defs|incbin)\b/i.test(String(entry || ""))
       );
       if (emitsInlineData) {
-        state.sealCurrentProcedureBeforeDetachedAsm?.();
+        state.detachedAsmData.push(...state.asmBuffer);
+      } else {
+        body.push(...state.asmBuffer);
       }
-      body.push(...state.asmBuffer);
       state.asmBuffer = [];
       state.inAsm = false;
     } else {
@@ -130,7 +131,6 @@ export function handleDataMetaStatement({
 
   const includeAsm = line.match(/^include\s+asm\s+"([^"]+)"$/i);
   if (includeAsm) {
-    state.sealCurrentProcedureBeforeDetachedAsm?.();
     const includePath = includeAsm[1].replace(/\\/g, "/");
     const includeText = state.resolveAsmInclude?.(includePath);
     if (includeText == null && state.hasRamOverlay) {
@@ -138,13 +138,12 @@ export function handleDataMetaStatement({
     }
     const overlayAliasError = validateOverlayAsmText(includeText, `ASM include '${includePath}'`);
     if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
-    body.push(`include "${includePath}"`);
+    state.detachedAsmData.push(`include "${includePath}"`);
     return { handled: true, ok: true };
   }
 
   const includeRawAsm = line.match(/^include\s+"([^"]+\.(?:asm|inc|s))"$/i);
   if (includeRawAsm) {
-    state.sealCurrentProcedureBeforeDetachedAsm?.();
     const includePath = includeRawAsm[1].replace(/\\/g, "/");
     const includeText = state.resolveAsmInclude?.(includePath);
     if (includeText == null && state.hasRamOverlay) {
@@ -152,7 +151,7 @@ export function handleDataMetaStatement({
     }
     const overlayAliasError = validateOverlayAsmText(includeText, `ASM include '${includePath}'`);
     if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
-    body.push(`include "${includePath}"`);
+    state.detachedAsmData.push(`include "${includePath}"`);
     return { handled: true, ok: true };
   }
 
