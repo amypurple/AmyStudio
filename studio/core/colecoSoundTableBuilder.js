@@ -58,6 +58,73 @@ export function insertColecoSoundTableSource(sourceText, built) {
   return `${lines.join(newline).replace(/\s*$/, "")}${newline}${newline}${built.asm}${newline}`;
 }
 
+export function insertColecoSoundPlayback(sourceText, { tableName, areaCount, play, selectionStart, selectionEnd }) {
+  const source = String(sourceText || "");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName || "")) throw new Error("Sound table name must be an Amy identifier.");
+  if (!Number.isInteger(areaCount) || areaCount < 1 || areaCount > 8) throw new Error("Sound areas must be 1..8.");
+  if (!/^play\s+(?:sound\s+\d+|song\s+[A-Za-z_][A-Za-z0-9_]*)$/i.test(play || "")) throw new Error("Invalid sound playback command.");
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
+  const offsets = [];
+  let offset = 0;
+  for (const line of lines) {
+    offsets.push(offset);
+    offset += line.length + newline.length;
+  }
+  const requested = Math.max(0, Math.min(Number.isInteger(selectionStart) ? selectionStart : source.length, source.length));
+  const requestedEnd = Math.max(requested, Math.min(Number.isInteger(selectionEnd) ? selectionEnd : requested, source.length));
+  const lineAt = (position) => {
+    let index = 0;
+    while (index + 1 < offsets.length && offsets[index + 1] <= position) index += 1;
+    return index;
+  };
+  const subRanges = [];
+  let active = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    const start = lines[index].match(/^\s*sub\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s*:/i);
+    if (start) active = { name: start[1], start: index, end: lines.length };
+    if (/^\s*end\s+sub\s*$/i.test(lines[index]) && active) {
+      active.end = index;
+      subRanges.push(active);
+      active = null;
+    }
+  }
+  if (active) subRanges.push(active);
+  const requestedLine = lineAt(requested);
+  let targetStart = requested;
+  let targetEnd = requestedEnd;
+  let indent = "";
+  let scopeStart = 0;
+  const enclosing = subRanges.find((range) => requestedLine > range.start && requestedLine < range.end);
+  if (enclosing) {
+    scopeStart = offsets[enclosing.start];
+  } else {
+    const startSub = subRanges.find((range) => /^start$/i.test(range.name));
+    if (startSub) {
+      targetStart = offsets[startSub.end];
+      targetEnd = targetStart;
+      indent = `${lines[startSub.start].match(/^\s*/)?.[0] || ""}  `;
+      scopeStart = offsets[startSub.start];
+    } else {
+      const firstSub = subRanges[0];
+      if (firstSub && requestedLine >= firstSub.start) {
+        targetStart = offsets[firstSub.start];
+        targetEnd = targetStart;
+      }
+    }
+  }
+  const scope = source.slice(scopeStart, targetStart).replace(/'.*$/gm, "");
+  const tableCommands = [...scope.matchAll(/\bset\s+sound\s+table\s+([A-Za-z_][A-Za-z0-9_]*)\s+areas\s+(\d+)\b/gi)];
+  const lastTable = tableCommands.at(-1);
+  const sameTableActive = lastTable && lastTable[1].toLowerCase() === tableName.toLowerCase() && Number(lastTable[2]) === areaCount;
+  const block = `${sameTableActive ? "" : `${indent}set sound table ${tableName} areas ${areaCount}${newline}`}${indent}${play}`;
+  const before = source.slice(0, targetStart);
+  const after = source.slice(targetEnd);
+  const prefix = before && !before.endsWith("\n") ? newline : "";
+  const suffix = after && !after.startsWith("\n") ? newline : "";
+  return `${before}${prefix}${block}${suffix}${after}`;
+}
+
 // Tiny Sound channel 1/2 -> the first two BIOS sound areas. Keeping these voices in
 // canonical slots makes the generated table valid on its own and leaves no hidden gaps.
 const TINY_CHANNEL_SLOT = { 1: 1, 2: 2 };

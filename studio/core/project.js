@@ -1379,7 +1379,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const cartridge = metadata?.cartridge || null;
   const romTitleStart = 0x8024;
   const romCodeStart = cartridge ? romTitleStart + cartridge.bytes.length + 1 : romTitleStart;
-  const forceTinySound = sourceHintsTinySound(project.sourceText || "");
+  const forceTinySound = sourceHintsTinySound(asmBodyForDependencyScan);
   const alexisRuntimeForCaps = renderAlexisRuntime(asmBodyForDependencyScan, {
     forceTinySound
   });

@@ -159,7 +159,9 @@ try {
     Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Insert play").click();
   })()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "play command insertion");
-  assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /set sound table GameSoundTable areas 6\nplay sound 1$/, "play helper inserts the selected table and sound command");
+  const sourceWithPlay = await evaluate(`document.getElementById("sourceEditor").value`);
+  assert.match(sourceWithPlay, /play sound 1/, "play helper inserts the selected sound");
+  assert.equal((sourceWithPlay.match(/set sound table GameSoundTable areas 6/g) || []).length, 1, "play helper does not repeat the active table");
   await evaluate(`document.getElementById("btnInspectSourceSounds").click()`);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "sound library reopens after play insertion");
   await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ BIOS sound").click()`);

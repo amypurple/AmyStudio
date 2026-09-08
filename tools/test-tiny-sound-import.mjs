@@ -156,6 +156,15 @@ try {
     await assertRomProducesAudio(fs.readFileSync(romPath), profile);
   }
 
+  // Runtime detection is based on attached ASM content, not a filename convention.
+  fs.writeFileSync(path.join(temp, "voice.asm"), preparedFileText);
+  const genericSource = amySource.replace("mytune-tiny-music.asm", "voice.asm");
+  const genericSourcePath = path.join(temp, "generic-name.alexis");
+  const genericRomPath = path.join(temp, "generic-name.rom");
+  fs.writeFileSync(genericSourcePath, genericSource);
+  execFileSync(process.execPath, ["tools/amyc.mjs", genericSourcePath, "--rom", genericRomPath, "--opt", "safe", "--project-dir", temp], { cwd: root, stdio: "pipe" });
+  await assertRomProducesAudio(fs.readFileSync(genericRomPath), "generic attached filename");
+
   // Verify the sound-table inspector (the same one the Sound Library uses) finds the new
   // table and both entries when it inspects the attached file's own text, and that they
   // decode as genuine Tiny Sound streams (not a BIOS-format fallback).

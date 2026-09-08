@@ -138,6 +138,24 @@ function addProjectDirFiles(files, projectDir) {
   visit(projectDir);
 }
 
+function collectProjectDirAsmFiles(projectDir) {
+  const files = [];
+  if (!projectDir || !existsSync(projectDir)) return files;
+  const visit = (dir, prefix = "") => {
+    for (const entry of readdirSync(dir)) {
+      const abs = path.join(dir, entry);
+      const rel = prefix ? `${prefix}/${entry}` : entry;
+      const st = statSync(abs);
+      if (st.isDirectory()) visit(abs, rel);
+      else if (/\.(?:asm|inc)$/i.test(entry)) {
+        files.push({ path: rel.replace(/\\/g, "/"), base64: Buffer.from(readFileSync(abs)).toString("base64") });
+      }
+    }
+  };
+  visit(projectDir);
+  return files;
+}
+
 function buildAssemblyFiles(asm, projectDir) {
   const files = { "main.asm": asm, ...alexisLibrarySources };
   addProjectDirFiles(files, projectDir);
@@ -184,6 +202,7 @@ async function main() {
   });
   project.sourceText = sourceText;
   project.projectName = path.basename(base);
+  project.projectFiles = collectProjectDirAsmFiles(opts.projectDir);
 
   const transpiled = transpileAmySource({ sourceLang: "amy", sourceText, transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude }), lexZ80Source, summarizeTokens });
   if (!transpiled?.ok) { console.error("Transpile failed: " + (transpiled?.log || "unknown error")); process.exit(1); }

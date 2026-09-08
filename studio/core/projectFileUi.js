@@ -9,7 +9,7 @@ import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPrevi
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyInstrumentEnvelope, tinyNoteChoices } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
-import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-tiny-insert";
+import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
 
 export function createProjectFileUiHelpers({
   els,
@@ -4292,17 +4292,16 @@ export function createProjectFileUiHelpers({
       const areaCount = Math.max(1, ...table.entries.map((item) => item.area || 1));
       const pair = pairedSound?.stream?.format === "tiny" && sound.label.match(/^(.*)_ch1$/i);
       const play = pair ? `play song ${pair[1]}_song` : `play sound ${sound.index}`;
-      const block = `set sound table ${table.name} areas ${areaCount}\n${play}`;
       const editor = els.sourceEditor;
-      const source = editor.value;
-      const start = editor.selectionStart ?? source.length;
-      const end = editor.selectionEnd ?? start;
-      const before = source.slice(0, start);
-      const after = source.slice(end);
-      const prefix = before && !before.endsWith("\n") ? "\n" : "";
-      const suffix = after && !after.startsWith("\n") ? "\n" : "";
-      commitProjectSourceText(`${before}${prefix}${block}${suffix}${after}`);
-      setStatus(`Inserted ${play} with ${table.name}.`);
+      const updated = insertColecoSoundPlayback(editor.value, {
+        tableName: table.name,
+        areaCount,
+        play,
+        selectionStart: editor.selectionStart,
+        selectionEnd: editor.selectionEnd
+      });
+      commitProjectSourceText(updated);
+      setStatus(`Inserted ${play}.`);
       closeInspector();
     });
     const list = document.createElement("div");

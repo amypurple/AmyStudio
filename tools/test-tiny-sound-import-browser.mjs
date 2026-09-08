@@ -110,8 +110,16 @@ try {
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator (no table yet)");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Import Tiny Sound instead").click()`);
+  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Tiny music").click()`);
   await waitFor(`document.querySelector(".tiny-import-modal")`, "Tiny Sound import dialog");
+  // "+ Tiny music" opens a starter (creating:true) dialog with its own generated starter
+  // text/name pre-filled - clear those back out so this test still drives the plain
+  // paste/scan/pick import flow it was written for, rather than the starter shortcut.
+  await evaluate(`(() => {
+    const textarea = document.querySelector(".tiny-import-modal textarea");
+    textarea.value = "";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
 
   await evaluate(`(() => {
     const textarea = document.querySelector(".tiny-import-modal textarea");
@@ -145,7 +153,7 @@ try {
 
   const sourceAfter = await evaluate(`document.getElementById("sourceEditor").value`);
   assert.match(sourceAfter, /include "@project\/commando-tiny-music\.asm"/, "Amy source must include the attached file");
-  assert.match(sourceAfter, /set sound table Commando_table areas 4/, "no prior table -> setup line auto-inserted");
+  assert.match(sourceAfter, /set sound table Commando_table areas 2/, "no prior table -> setup line auto-inserted");
   assert.match(sourceAfter, /play song Commando_song/, "no prior table -> play line auto-inserted");
 
   await waitFor(`document.querySelectorAll(".sound-library-row").length === 2`, "imported song shows 2 paired rows");
@@ -180,7 +188,7 @@ try {
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "imported inspector closes before collision check");
   await evaluate(`Array.from(document.querySelectorAll('[aria-label^="Inspect sound tables in"]')).find((button) => button.getAttribute("aria-label").includes("commando-tiny-music.asm")).click()`);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "imported sound inspector before collision check");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "Import Tiny Sound").click()`);
+  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ Tiny music").click()`);
   await waitFor(`document.querySelector(".tiny-import-modal")`, "collision import dialog");
   await evaluate(`(() => {
     const textarea = document.querySelector(".tiny-import-modal textarea");
@@ -207,13 +215,16 @@ try {
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "existing-table inspector");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "Import Tiny Sound").click()`);
+  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ Tiny music").click()`);
   await waitFor(`document.querySelector(".tiny-import-modal")`, "import dialog (existing table)");
   assert.match(await evaluate(`document.querySelector(".tiny-import__table-status").textContent`), /already uses a sound table/);
   await evaluate(`(() => {
     const textarea = document.querySelector(".tiny-import-modal textarea");
     textarea.value = ${JSON.stringify(candidateAsm)};
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const name = Array.from(document.querySelectorAll(".tiny-import-modal label")).find((label) => label.textContent.startsWith("Song name")).querySelector("input");
+    name.value = "MyMusic";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
   })()`);
   await waitFor(`document.querySelector(".tiny-import__status").textContent.includes("Found 2")`, "scan finds both streams (existing-table pass)");
   await evaluate(`Array.from(document.querySelectorAll(".tiny-import-modal .graphics-editor-json-modal__actions button")).find((button) => button.textContent === "Insert").click()`);
@@ -222,7 +233,7 @@ try {
   assert.match(sourceAfterExisting, /include "@project\/mymusic-tiny-music\.asm"/, "attaches the file even with an existing table");
   assert.equal((sourceAfterExisting.match(/^\s*set sound table/gm) || []).length, 1, "must NOT silently install a second sound table");
   assert.equal((sourceAfterExisting.match(/^\s*play song/gm) || []).length, 1, "must NOT silently start a second song");
-  assert.match(sourceAfterExisting, /' set sound table MyMusic_table areas 4\n' play song MyMusic_song/, "manual activation commands must remain visible in SOURCE");
+  assert.match(sourceAfterExisting, /'\s*set sound table MyMusic_table areas 2\n'\s*play song MyMusic_song/, "manual activation commands must remain visible in SOURCE, as ' comments");
 
   console.log("Tiny Sound import browser behavior tests passed.");
 } finally {
