@@ -82,9 +82,9 @@ assert.equal(built.play, "play song MyTune_song");
 // AMY_TRIGGER_SOUNDS: bits 7-6 = (triggerCount-1), bits 5-0 = the 1-based sound-table
 // index. Two channels at table position 1: (2-1)<<6 | 1 = 0x41, then index 2 = 0x02.
 assert.match(preparedFileText, /db \$41,\$02/);
-// The loop/chain word must have bit 15 set (a real label address always does) so the
-// runtime treats it as "jump back to this song" rather than a duration.
-assert.match(preparedFileText, /dw MyTune_song ; loop forever/);
+// `play song` only triggers the SPECIAL-04 entries. Tiny Sound owns its loop/end state.
+assert.match(preparedFileText, /dw \$0001 ; trigger streams once/);
+assert.match(preparedFileText, /dw \$0000 ; song sequence ends/);
 
 // Single-channel import must also work (channel 2 omitted).
 const soloResult = prepareTinySoundImport({

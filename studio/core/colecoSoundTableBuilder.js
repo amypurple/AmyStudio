@@ -133,7 +133,7 @@ export function buildTinySoundSongSource({ name, channels, durationFrames }) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(channel?.label || "")) throw new Error(`Invalid Tiny Sound stream label: ${channel?.label}`);
   }
   if (!Number.isInteger(durationFrames) || durationFrames < 1 || durationFrames > 0x7fff) {
-    throw new Error("Song duration must be 1..32767 frames so a single loop entry can hold it.");
+    throw new Error("Tiny Sound preview duration must be 1..32767 frames.");
   }
   const tableName = `${name}_table`;
   const songLabel = `${name}_song`;
@@ -147,9 +147,11 @@ export function buildTinySoundSongSource({ name, channels, durationFrames }) {
   }));
   const lines = [`${tableName}:`];
   for (const entry of entries) lines.push(`    dw ${entry.label},${hex4(colecoSoundAreaAddress(entry.slot))} ; music - channel ${entry.channel}`);
-  lines.push("", `${songLabel}:`, `    dw ${durationFrames}`);
+  // `play song` is the generic lib4ksa scheduler. It triggers these Tiny Sound
+  // entries once; each SPECIAL-04 stream owns its own loop/end behavior.
+  lines.push("", `${songLabel}:`, "    dw $0001 ; trigger streams once");
   const indexBytes = entries.map((entry, i) => i === 0 ? (((entries.length - 1) << 6) | (entry.index & 0x3f)) : (entry.index & 0x3f));
-  lines.push(`    db ${indexBytes.map(hex2).join(",")}`, `    dw ${songLabel} ; loop forever`);
+  lines.push(`    db ${indexBytes.map(hex2).join(",")}`, "    dw $0000 ; song sequence ends");
   return {
     asm: lines.join("\n"),
     setup: `set sound table ${tableName} areas ${entries.length}`,
