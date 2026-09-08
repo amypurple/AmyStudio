@@ -2605,8 +2605,8 @@ export function createProjectFileUiHelpers({
     note.textContent = "Reserve early slots for simultaneous music voices. Put effects in later slots; effects sharing a slot interrupt each other.";
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
-    newTinyButton.textContent = "+ Tiny table";
-    newTinyButton.title = "Create a separate Tiny Sound music table; select it before play song";
+    newTinyButton.textContent = "+ Tiny music";
+    newTinyButton.title = "Create a separate Tiny Sound music table";
     newTinyButton.addEventListener("click", () => {
       overlay.remove();
       openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true });
@@ -2638,16 +2638,17 @@ export function createProjectFileUiHelpers({
     const previewSummary = document.createElement("summary");
     previewSummary.textContent = "Generated Amy source";
     previewDetails.append(previewSummary, preview);
+    previewDetails.hidden = true;
     const message = document.createElement("p");
     message.className = "graphics-editor-json-modal__error";
     const actions = document.createElement("div");
     actions.className = "graphics-editor-json-modal__actions";
     const addMusic = document.createElement("button");
     addMusic.type = "button";
-    addMusic.textContent = "+ Music voice";
+    addMusic.textContent = "+ BIOS music";
     const addSfx = document.createElement("button");
     addSfx.type = "button";
-    addSfx.textContent = "+ Sound effect";
+    addSfx.textContent = "+ BIOS sound";
     const create = document.createElement("button");
     create.type = "button";
     create.textContent = "Create table";
@@ -2679,6 +2680,8 @@ export function createProjectFileUiHelpers({
       rows.appendChild(row);
       refreshSlots(row, role);
       update();
+      previewDetails.hidden = false;
+      previewDetails.open = true;
     }
     function refreshSlots(row, role = row.dataset.role) {
       const slot = row.querySelector("select");
@@ -2697,9 +2700,10 @@ export function createProjectFileUiHelpers({
       if (!rows.children.length) {
         built = null;
         preview.textContent = "";
+        previewDetails.hidden = true;
         message.className = "graphics-editor-modal__note";
         message.hidden = false;
-        message.textContent = "Choose Music voice or Sound effect.";
+        message.textContent = "Add BIOS music or a BIOS sound effect.";
         create.disabled = true;
         return;
       }
@@ -2714,6 +2718,7 @@ export function createProjectFileUiHelpers({
           }))
         });
         preview.textContent = `${built.setup}\n\n${built.asm}`;
+        previewDetails.hidden = false;
         message.className = "graphics-editor-json-modal__error";
         message.hidden = true;
         if (built.sharedSlots.length) {
@@ -3065,15 +3070,15 @@ export function createProjectFileUiHelpers({
     addTableButton.title = "View the current sound tables";
     const addSoundButton = document.createElement("button");
     addSoundButton.type = "button";
-    addSoundButton.textContent = "+ Sound";
+    addSoundButton.textContent = "+ BIOS sound";
     const addMusicButton = document.createElement("button");
     addMusicButton.type = "button";
-    addMusicButton.textContent = "+ Music";
+    addMusicButton.textContent = "+ BIOS music";
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
     const inspectingTinyTable = analysis.tables.some((table) => table.entries.some((sound) => sound.stream?.format === "tiny"));
-    newTinyButton.textContent = inspectingTinyTable ? "+ Another Tiny table" : "+ Tiny table";
-    newTinyButton.title = "Create a separate Tiny Sound music table; select it before play song";
+    newTinyButton.textContent = "+ Tiny music";
+    newTinyButton.title = "Create a separate Tiny Sound music table";
     newTinyButton.addEventListener("click", () => openTinySoundImportDialog({ initialText: buildTinySoundStarterSource(), initialName: "MySong", creating: true }));
     viewTabs.append(addTableButton, addSoundButton, addMusicButton);
     viewTabs.appendChild(newTinyButton);
@@ -3368,7 +3373,7 @@ export function createProjectFileUiHelpers({
       const name = makeField("Sound name", document.createElement("input"));
       name.value = "NewSound";
       const role = makeField("Role", document.createElement("select"));
-      for (const [value, caption] of [["music", "Music voice"], ["sfx", "Sound effect"]]) {
+      for (const [value, caption] of [["music", "BIOS music voice"], ["sfx", "BIOS sound effect"]]) {
         const option = document.createElement("option");
         option.value = value;
         option.textContent = caption;

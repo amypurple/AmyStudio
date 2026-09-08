@@ -109,7 +109,8 @@ try {
   })()`);
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator");
   assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-creator-modal").textContent`), /Add at least one sound/, "empty table creator gives a neutral choice instead of an error");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Tiny table").click()`);
+  assert.equal(await evaluate(`document.querySelector(".sound-table-creator-modal details").hidden`), true, "empty generated source stays hidden");
+  await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "+ Tiny music").click()`);
   await waitFor(`document.querySelector(".tiny-import-modal")`, "new Tiny song starter");
   assert.equal(await evaluate(`document.querySelector(".tiny-import-modal h3").textContent`), "New Tiny Song");
   assert.equal(await evaluate(`document.querySelectorAll(".tiny-import__pickers select:not([disabled])").length`), 2, "starter exposes two valid channels");
@@ -121,7 +122,7 @@ try {
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "new Tiny song sequencer closes");
   assert.doesNotMatch(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /should target/, "generated Tiny table uses canonical sound slots");
-  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ Sound", "+ Music", "+ Another Tiny table", "Technical"], "an installed Tiny table keeps table viewing separate from table creation");
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ BIOS sound", "+ BIOS music", "+ Tiny music", "Technical"], "sound actions distinguish BIOS entries from Tiny music");
   assert.equal(await evaluate(`Array.from(document.querySelectorAll(".sound-table-inspector-modal button")).find((button) => button.textContent === "New table...").textContent`), "New table...", "creating another table is an explicit secondary action");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "new Tiny song inspector closes");
@@ -134,11 +135,13 @@ try {
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator reopens");
   await evaluate(`(() => {
     const buttons = Array.from(document.querySelectorAll(".sound-table-creator-modal button"));
-    buttons.find((button) => button.textContent === "+ Music voice").click();
-    buttons.find((button) => button.textContent === "+ Sound effect").click();
-    buttons.find((button) => button.textContent === "+ Sound effect").click();
+    buttons.find((button) => button.textContent === "+ BIOS music").click();
+    buttons.find((button) => button.textContent === "+ BIOS sound").click();
+    buttons.find((button) => button.textContent === "+ BIOS sound").click();
   })()`);
   await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
+  assert.equal(await evaluate(`document.querySelector(".sound-table-creator-modal details").hidden`), false, "generated source appears after adding a sound");
+  assert.equal(await evaluate(`document.querySelector(".sound-table-creator-modal details").open`), true, "generated source opens after adding a sound");
   await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator-modal button")).find((button) => button.textContent === "Create table").click()`);
   await waitFor(`!document.querySelector(".sound-table-creator-modal")`, "sound table creation");
   const created = await evaluate(`document.getElementById("sourceEditor").value`);
@@ -148,7 +151,7 @@ try {
   assert.match(created, /dw SoundEffect1,\$705D ; sfx · slot 6/);
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created table opens directly in sound library");
-  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ Sound", "+ Music", "+ Tiny table", "Technical"], "ordinary table exposes one concise action row");
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ BIOS sound", "+ BIOS music", "+ Tiny music", "Technical"], "ordinary table exposes explicit sound formats");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
     editor.selectionStart = editor.selectionEnd = editor.value.length;
@@ -159,7 +162,7 @@ try {
   assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /set sound table GameSoundTable areas 6\nplay sound 1$/, "play helper inserts the selected table and sound command");
   await evaluate(`document.getElementById("btnInspectSourceSounds").click()`);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "sound library reopens after play insertion");
-  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ Sound").click()`);
+  await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).find((button) => button.textContent === "+ BIOS sound").click()`);
   await waitFor(`document.querySelector(".sound-add-modal")`, "add sound dialog");
   await evaluate(`(() => {
     const name = document.querySelector('.sound-add-modal input');
