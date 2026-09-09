@@ -229,6 +229,32 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "wav-spectral-sfx-demo",
+    "label": "WAV Spectral Game SFX",
+    "detail": "Two-channel non-blocking BIOS sound generated from a short 440/660 Hz WAV, with FIRE replay.",
+    "projectName": "wav-spectral-sfx-demo",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "hello-world-spectral",
+    "label": "Hello World Spectral Voice",
+    "detail": "Offline speech converted to two formant tones plus variable-clock white noise, with FIRE replay.",
+    "projectName": "hello-world-spectral",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "rebound-demo",
     "label": "Rebound Demo",
     "detail": "Simple arcade-style motion demo for control and rendering comparison.",

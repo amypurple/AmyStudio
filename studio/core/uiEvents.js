@@ -1,4 +1,6 @@
 import { getEditorAdapter } from "./editor/editorAdapter.js";
+import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260907-selection";
+import { buildPsgSoundAsm, convertSamplesToPsgSound, psgSoundToPreviewEvents } from "./wavToPsgSound.js";
 
 export const PROJECT_FILE_PATTERN = /(?:\.amy)?\.json(?:\.gz)?$/i;
 
@@ -247,6 +249,24 @@ export function bindTopUiEvents(ctx) {
     closeTopbarMenu();
   });
 
+  els.btnReloadExample?.addEventListener("click", async () => {
+    flushSourceAutosave();
+    const example = await getExampleById(els.exampleSelect.value);
+    if (!example) {
+      setStatus("Choose an example first.");
+      return;
+    }
+    const nextProject = buildProjectFromExample(example);
+    nextProject.exampleId = example.id;
+    const result = openExampleInTab(nextProject, { clean: true, reload: true });
+    if (result.cancelled) return;
+    syncUiFromProject();
+    setStatus(result.reloaded ? `Restored: ${example.label}` : `Loaded: ${example.label}`);
+    els.examplesDialog?.close();
+    closeAutocomplete();
+    closeTopbarMenu();
+  });
+
   els.btnAddProjectFile?.addEventListener("click", () => {
     els.projectFileImport.value = "";
     els.projectFileImport.accept = "";
@@ -323,6 +343,8 @@ export function bindStudioRuntimeEvents(ctx) {
     wavToDsound,
     audioBufferToDsound,
     dsoundBytesToPreviewSamples,
+    decodeAudioBufferToMono,
+    parseWavAudio,
     insertTextIntoSource,
     ensureProjectFilePathCandidate,
     upsertProjectFile,
@@ -337,6 +359,8 @@ export function bindStudioRuntimeEvents(ctx) {
   let wavRecordedChunks = [];
   let wavRecordedBlob = null;
   let wavRecordedObjectUrl = "";
+  let wavPsgPreview = null;
+  let wavPsgBuilt = null;
 
   function setWavRecordingIdleState(message = "No recording yet.") {
     if (els.btnWavRecordStart) els.btnWavRecordStart.disabled = false;
@@ -523,6 +547,8 @@ export function bindStudioRuntimeEvents(ctx) {
   }
 
   async function renderDsoundResult(result, statusText = "Done.") {
+    wavPsgPreview = null;
+    wavPsgBuilt = null;
     els.wavOutput.value = result.alexisSource;
     els.wavStats.textContent =
       `${result.nibbleCount.toLocaleString()} samples · ` +
@@ -561,28 +587,45 @@ export function bindStudioRuntimeEvents(ctx) {
     }
   }
 
+  async function decodeAudioFile(file) {
+    const buffer = await file.arrayBuffer();
+    if (/\.wav$/i.test(file.name || "") || /audio\/wav/i.test(file.type || "")) {
+      try { return await parseWavAudio(buffer); } catch {}
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) throw new Error("This browser cannot decode this audio file.");
+    const context = new AudioCtx();
+    try {
+      return await decodeAudioBufferToMono(await context.decodeAudioData(buffer.slice(0)));
+    } finally {
+      await context.close();
+    }
+  }
+
+  async function convertFileToGameSfx(file) {
+    const decoded = await decodeAudioFile(file);
+    const result = convertSamplesToPsgSound(decoded.samples, decoded.sampleRate, {
+      region: els.wavPsgRegion?.value || "NTSC",
+      maxVoices: Number(els.wavPsgVoices?.value || 2),
+      allowNoise: Boolean(els.wavPsgNoise?.checked),
+      variableNoise: "auto",
+      speechMode: Boolean(els.wavPsgSpeech?.checked)
+    });
+    if (!result.usedVoices) throw new Error("No audible game-sound voice was detected.");
+    wavPsgBuilt = buildPsgSoundAsm(result, { label: els.wavLabel.value.trim() || "ImportedSound" });
+    wavPsgPreview = { events: psgSoundToPreviewEvents(result), region: result.region };
+    els.wavOutput.value = `asm {\n${wavPsgBuilt.asm}\n}`;
+    const support = result.usedVoices - result.audibleVoices;
+    els.wavStats.textContent = `${result.audibleVoices} audible voice${result.audibleVoices === 1 ? "" : "s"}${support ? ` + ${support} noise-clock slot` : ""} · ${result.frameCount} ${result.region} frames · ${result.streams.reduce((sum, stream) => sum + stream.bytes.length, 0)} sound bytes`;
+    els.wavOutputWrap.classList.add("visible");
+    els.wavDsoundPreview.hidden = true;
+    els.wavStatus.textContent = "Game SFX ready. Replay it before inserting.";
+  }
+
   els.fileImport.addEventListener("change", async () => {
     const file = els.fileImport.files && els.fileImport.files[0];
     await importProjectFile(file);
     els.fileImport.value = "";
-  });
-
-  els.btnReloadExample?.addEventListener("click", async () => {
-    flushSourceAutosave();
-    const example = await getExampleById(els.exampleSelect.value);
-    if (!example) {
-      setStatus("Choose an example first.");
-      return;
-    }
-    const nextProject = buildProjectFromExample(example);
-    nextProject.exampleId = example.id;
-    const result = openExampleInTab(nextProject, { clean: true, reload: true });
-    if (result.cancelled) return;
-    syncUiFromProject();
-    setStatus(result.reloaded ? `Restored: ${example.label}` : `Loaded: ${example.label}`);
-    els.examplesDialog?.close();
-    closeAutocomplete();
-    closeTopbarMenu();
   });
 
   const studioDropTarget = document.getElementById("studioView");
@@ -1053,6 +1096,16 @@ export function bindStudioRuntimeEvents(ctx) {
   });
 
   els.btnWavPreviewOutput?.addEventListener("click", async () => {
+    if (wavPsgPreview) {
+      try {
+        els.wavStatus.textContent = "Playing converted game sound...";
+        await previewColecoSoundEvents(wavPsgPreview.events, { region: wavPsgPreview.region });
+        els.wavStatus.textContent = "Replay complete.";
+      } catch (error) {
+        els.wavStatus.textContent = `Preview failed: ${error.message || error}`;
+      }
+      return;
+    }
     const bytes = parseCurrentDsoundBytes();
     if (!bytes) {
       els.wavStatus.textContent = "Convert audio first.";
@@ -1070,9 +1123,12 @@ export function bindStudioRuntimeEvents(ctx) {
 
   els.btnWavInsertIntoEditor.addEventListener("click", () => {
     const block = els.wavOutput.value;
-    insertTextIntoSource(block, { beforeProcedures: true });
+    const insert = wavPsgBuilt ? `${wavPsgBuilt.setup}\n${wavPsgBuilt.play}\n\n${block}` : block;
+    insertTextIntoSource(insert, { beforeProcedures: true });
     els.wavConverterDialog.close();
-    setStatus(`Inserted "${els.wavLabel.value.trim() || "SoundData"}" data block into source.`);
+    setStatus(wavPsgBuilt
+      ? `Inserted ${wavPsgBuilt.soundCount}-voice game sound and playback commands.`
+      : `Inserted "${els.wavLabel.value.trim() || "SoundData"}" data block into source.`);
   });
 
   els.btnWavSaveProjectFile?.addEventListener("click", () => {
@@ -1095,6 +1151,24 @@ export function bindStudioRuntimeEvents(ctx) {
     insertSavedDsoundSnippet(saved);
     els.wavConverterDialog.close();
     setStatus(`Saved ${saved.path} and inserted play dsound snippet.`);
+  });
+
+  els.btnWavConvertPsg?.addEventListener("click", async () => {
+    const file = els.wavFile.files && els.wavFile.files[0];
+    if (!file) {
+      els.wavStatus.textContent = "Choose an audio file first.";
+      return;
+    }
+    els.btnWavConvertPsg.disabled = true;
+    els.wavStatus.textContent = "Analyzing tones and noise...";
+    try {
+      await convertFileToGameSfx(file);
+    } catch (error) {
+      els.wavStatus.textContent = `Error: ${error.message || error}`;
+      els.wavOutputWrap.classList.remove("visible");
+    } finally {
+      els.btnWavConvertPsg.disabled = false;
+    }
   });
 }
 

@@ -110,7 +110,7 @@ import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260802-keypad-blank";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260805-bios-import-fix";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260909-spectral-psg";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260731-source-marker-alignment";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
@@ -233,6 +233,7 @@ const els = {
   wavConverterDialog: document.getElementById("wavConverterDialog"),
   wavFile: document.getElementById("wavFile"),
   btnWavQuickAddFile: document.getElementById("btnWavQuickAddFile"),
+  btnWavConvertPsg: document.getElementById("btnWavConvertPsg"),
   btnWavRecordStart: document.getElementById("btnWavRecordStart"),
   btnWavRecordStop: document.getElementById("btnWavRecordStop"),
   btnWavUseRecording: document.getElementById("btnWavUseRecording"),
@@ -243,6 +244,10 @@ const els = {
   wavStepValue: document.getElementById("wavStepValue"),
   wavSampleRateHint: document.getElementById("wavSampleRateHint"),
   wavAmp: document.getElementById("wavAmp"),
+  wavPsgRegion: document.getElementById("wavPsgRegion"),
+  wavPsgVoices: document.getElementById("wavPsgVoices"),
+  wavPsgNoise: document.getElementById("wavPsgNoise"),
+  wavPsgSpeech: document.getElementById("wavPsgSpeech"),
   wavLabel: document.getElementById("wavLabel"),
   btnWavConvert: document.getElementById("btnWavConvert"),
   wavStatus: document.getElementById("wavStatus"),
@@ -512,6 +517,14 @@ async function audioBufferToDsound(...args) {
 
 async function dsoundBytesToPreviewSamples(...args) {
   return (await loadWavToDsoundModule()).dsoundBytesToPreviewSamples(...args);
+}
+
+async function decodeAudioBufferToMono(audioBuffer) {
+  return (await loadWavToDsoundModule()).audioBufferToMonoSamples(audioBuffer);
+}
+
+async function parseWavAudio(buffer) {
+  return (await loadWavToDsoundModule()).parseWav(buffer);
 }
 
 function loadInternalCompilerModule() {
@@ -1211,6 +1224,8 @@ function bindEvents() {
         wavToDsound,
         audioBufferToDsound,
         dsoundBytesToPreviewSamples,
+        decodeAudioBufferToMono,
+        parseWavAudio,
         insertTextIntoSource: (...args) => insertTextIntoSource(...args),
         ensureProjectFilePathCandidate,
         upsertProjectFile,
