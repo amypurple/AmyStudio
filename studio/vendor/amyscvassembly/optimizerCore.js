@@ -1012,6 +1012,7 @@ export class Z80Optimizer {
                 const optimized = [];
                 let pc = this.assembler.firstOrg || 0;
                 const newSymbolTable = {};
+                let timingSensitiveRegion = false;
 
                 // DEBUG: Log initial PC
                 optimizerLog(`  Optimizer starting PC: 0x${pc.toString(16)} (firstOrg: ${this.assembler.firstOrg ? '0x' + this.assembler.firstOrg.toString(16) : 'null'})`, 'debug');
@@ -1023,6 +1024,20 @@ export class Z80Optimizer {
                         pc = this.assembler.evaluateExpression(token.operands[0]);
                         optimized.push(token);
                         if (token.label) { newSymbolTable[token.label] = pc; }
+                        continue;
+                    }
+
+                    const timingLabel = String(token?.label || '');
+                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_/i.test(timingLabel)) {
+                        timingSensitiveRegion = true;
+                    }
+                    if (timingSensitiveRegion && token instanceof Instruction) {
+                        if (token.label) newSymbolTable[token.label] = pc;
+                        optimized.push(token);
+                        pc += this.estimateTokenByteSize(token);
+                        if (/^AMY_OPTIMIZER_TIMING_END_/i.test(timingLabel)) {
+                            timingSensitiveRegion = false;
+                        }
                         continue;
                     }
 
@@ -2005,9 +2020,27 @@ export class Z80Optimizer {
                 let liveDeImmediate = null;
                 let liveBImmediate = null;
                 let liveCImmediate = null;
+                let timingSensitiveRegion = false;
 
                 for (let i = 0; i < tokens.length; i++) {
                     const token = tokens[i];
+
+                    // Preserve hand-timed hardware code exactly. Logical deadness is
+                    // irrelevant when instruction duration is observable behaviour.
+                    const timingLabel = String(token?.label || '');
+                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_/i.test(timingLabel)) {
+                        timingSensitiveRegion = true;
+                    }
+                    if (timingSensitiveRegion) {
+                        liveDeImmediate = null;
+                        liveBImmediate = null;
+                        liveCImmediate = null;
+                        optimized.push(token);
+                        if (/^AMY_OPTIMIZER_TIMING_END_/i.test(timingLabel)) {
+                            timingSensitiveRegion = false;
+                        }
+                        continue;
+                    }
 
                     if (!(token instanceof Instruction)) {
                         liveDeImmediate = null;

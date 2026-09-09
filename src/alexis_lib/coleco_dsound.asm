@@ -23,19 +23,25 @@ AMY_DSOUND_LOOP1:
     call AMY_DSOUND_VOLUME_ALL
     ld a,(hl)
     inc hl
+; These loads are calibrated 7-T-state delays, not redundant assignments.
+; The zero-byte timing markers preserve this region under every optimizer profile.
+AMY_OPTIMIZER_TIMING_BEGIN_DSOUND_RAW:
     ld b,1
     ld b,1
     ld b,1
     nop
     nop
     nop
+AMY_OPTIMIZER_TIMING_END_DSOUND_RAW:
     call AMY_DSOUND_VOLUME_ALL
-    jp AMY_DSOUND_LOOP1
+    jr AMY_DSOUND_LOOP1
 AMY_DSOUND_SPECIAL:
     inc hl
     ld d,(hl)
     ld a,d
     cp 0
+AMY_OPTIMIZER_TIMING_BEGIN_DSOUND_RLE:
+    nop
     jp nz,AMY_DSOUND_SMALL_LOOP2
     ret
 AMY_DSOUND_LOOP2:
@@ -51,6 +57,7 @@ AMY_DSOUND_DO_NOTHING2:
     nop
     nop
     nop
+AMY_OPTIMIZER_TIMING_END_DSOUND_RLE:
     ld b,c
 AMY_DSOUND_DO_NOTHING3:
     djnz AMY_DSOUND_DO_NOTHING3
