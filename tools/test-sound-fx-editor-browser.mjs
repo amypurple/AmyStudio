@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { decodeTinySoundSource } from "../studio/core/colecoTinySound.js";
 
 const root = path.resolve(".");
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
@@ -194,6 +195,21 @@ try {
     Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Sequencer").click();
   })()`);
   await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__channel-bar > strong.is-editable").length === 2`, "Tiny channel instrument headings");
+  assert.equal(await evaluate(`document.querySelector(".tiny-pair-sequencer__render-bar select").value`), "NTSC", "sequencer exposes its playback region");
+  assert.match(await evaluate(`document.querySelector(".tiny-pair-sequencer__render-bar").textContent`), /NTSC · 60 Hz/);
+  await evaluate(`(() => {
+    const select = document.querySelector(".tiny-pair-sequencer__render-bar select");
+    select.value = "PAL";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__status").textContent.includes("PAL · 50 frames/second")`, "PAL rendering selection");
+  assert.match(await evaluate(`document.querySelector(".tiny-pair-sequencer-modal > .graphics-editor-modal__note").textContent`), /PAL/);
+  await evaluate(`(() => {
+    const select = document.querySelector(".tiny-pair-sequencer__render-bar select");
+    select.value = "NTSC";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__status").textContent.includes("NTSC · 60 frames/second")`, "NTSC rendering restoration");
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__tempo")).map((button) => button.textContent)`), ["Tempo 8", "Tempo 8"], "each channel exposes its own tempo");
   assert.equal(await evaluate(`document.querySelector(".tiny-pair-sequencer__popover").hidden`), true, "popover starts hidden");
 
@@ -269,6 +285,24 @@ try {
   assert.equal(reopenedBlockText, await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-body select option:checked").textContent`).then((text) => text.split(" · ")[0]), "reopened editor must show the just-applied pitch, not stale data");
   await evaluate(`document.querySelector(".tiny-pair-sequencer__popover-actions button:nth-child(2)").click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === true`, "note popover closes on cancel");
+
+  // A plain note can gain the format's second arpeggio byte, and the lane immediately
+  // reflects that structural source edit instead of requiring hand-written ASM.
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-note.is-editable").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__popover").hidden === false`, "note popover opens for arpeggio creation");
+  await evaluate(`(() => {
+    const labels = Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-body label"));
+    const toggle = labels.find((label) => label.textContent.includes("Arpeggio")).querySelector('input[type="checkbox"]');
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    const second = labels.find((label) => label.textContent.includes("Second note")).querySelector("select");
+    second.value = "19";
+  })()`);
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Apply").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__block.is-note[data-effects*='ARP']")`, "arpeggio badge after structural edit");
+  const arpeggioSource = await evaluate(`document.getElementById("sourceEditor").value`);
+  assert.equal(decodeTinySoundSource(arpeggioSource, "TestMusic_ch1").commands.find((command) => command.type === "note").arpeggioCode, 19,
+    "sequencer inserts and decodes the selected arpeggio note");
   await evaluate(`document.querySelector('[aria-label="Play complete song"]').click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer__playhead").hidden === false`, "playback starts using post-edit decoded events");
   await evaluate(`Array.from(document.querySelectorAll(".graphics-editor-json-modal__actions button")).find((button) => button.textContent === "■ Stop").click()`);

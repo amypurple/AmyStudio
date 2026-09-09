@@ -171,6 +171,60 @@ export function replaceTinySoundByte(sourceText, label, byteIndex, value) {
   throw new Error(`Tiny Sound byte ${byteIndex} was not found in ${label}.`);
 }
 
+function findTinySoundByteToken(sourceText, label, byteIndex) {
+  if (!Number.isInteger(byteIndex) || byteIndex < 0) throw new Error("Tiny Sound byte index must be non-negative.");
+  const lines = String(sourceText || "").split(/\r?\n/);
+  const wanted = String(label || "").toLowerCase();
+  let inside = false;
+  let handlerSeen = false;
+  let currentByte = 0;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const clean = stripComment(lines[lineIndex]).trim();
+    const foundLabel = clean.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*$/);
+    if (foundLabel) {
+      if (inside) break;
+      inside = foundLabel[1].toLowerCase() === wanted;
+      continue;
+    }
+    if (!inside) continue;
+    if (/^(?:\.?dw|defw)\s+sndtiny_[12]\s*$/i.test(clean)) {
+      handlerSeen = true;
+      continue;
+    }
+    if (!handlerSeen) continue;
+    const match = lines[lineIndex].match(/^(\s*(?:\.?db|defb)\s+)([^;]+)(.*)$/i);
+    if (!match) continue;
+    const tokens = match[2].split(",");
+    for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+      if (parseByte(tokens[tokenIndex]) === null) continue;
+      if (currentByte === byteIndex) return { lines, lineIndex, match, tokens, tokenIndex };
+      currentByte += 1;
+    }
+  }
+  throw new Error(`Tiny Sound byte ${byteIndex} was not found in ${label}.`);
+}
+
+export function insertTinySoundByteAfter(sourceText, label, byteIndex, value) {
+  if (!Number.isInteger(value) || value < 0 || value > 255) throw new Error("Tiny Sound insertion must fit in one byte.");
+  const newline = String(sourceText || "").includes("\r\n") ? "\r\n" : "\n";
+  const found = findTinySoundByteToken(sourceText, label, byteIndex);
+  found.tokens.splice(found.tokenIndex + 1, 0, `$${value.toString(16).toUpperCase().padStart(2, "0")}`);
+  found.lines[found.lineIndex] = `${found.match[1]}${found.tokens.join(",")}${found.match[3]}`;
+  return found.lines.join(newline);
+}
+
+export function removeTinySoundByte(sourceText, label, byteIndex) {
+  const newline = String(sourceText || "").includes("\r\n") ? "\r\n" : "\n";
+  const found = findTinySoundByteToken(sourceText, label, byteIndex);
+  found.tokens.splice(found.tokenIndex, 1);
+  if (found.tokens.some((token) => parseByte(token) !== null)) {
+    found.lines[found.lineIndex] = `${found.match[1]}${found.tokens.join(",")}${found.match[3]}`;
+  } else {
+    found.lines.splice(found.lineIndex, 1);
+  }
+  return found.lines.join(newline);
+}
+
 export function readTinySoundLabel(sourceText, label) {
   const lines = String(sourceText || "").split(/\r?\n/);
   const wanted = String(label || "").toLowerCase();

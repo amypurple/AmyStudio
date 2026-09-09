@@ -221,6 +221,14 @@ not for every assignment that happens to mention a variable named `Temp`.
 
 Some tables are APIs, not merely collections of independent values. The Coleco BIOS sound table is positional: `play sound 14` means entry 14. Removing entry 11 silently changes what 12 and every later number mean.
 
+Tiny Sound `$FF` loops indefinitely. Stop every active music voice before changing scenes or tables:
+
+```basic
+mute all
+```
+
+Use `stop sound N` only when one table entry should stop while other voices continue. A two-channel Tiny Sound song occupies two entries, so `mute all` is normally the safest scene-transition command.
+
 When an unused positional entry must disappear logically but later numbers must remain stable, keep a small compatible alias or update every reference and test the result. The same care applies to indexed routine tables, level-reference tables, animation frame order, and any data where source code stores numeric indexes.
 
 ## Batch transfers around VDP ownership

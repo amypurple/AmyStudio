@@ -8,7 +8,7 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260907-selection";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { decodeTinySoundSource, describeTinySoundCommand, replaceTinySoundByte, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260908-tiny-effects";
+import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, removeTinySoundByte, replaceTinySoundByte, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260908-tiny-arpeggio";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
 
 export function createProjectFileUiHelpers({
@@ -3059,7 +3059,7 @@ export function createProjectFileUiHelpers({
     header.append(title, close);
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "Select a sound to listen or edit. Technical bytes stay collapsed.";
+    note.textContent = "Select a sound to listen or edit. Looping music keeps playing: use mute all for every voice, or stop sound N for one table entry.";
     const viewTabs = document.createElement("div");
     viewTabs.className = "sound-workspace-tabs";
     const technicalToggle = document.createElement("button");
@@ -3470,6 +3470,17 @@ export function createProjectFileUiHelpers({
       const summary = document.createElement("p");
       summary.className = "graphics-editor-modal__note";
       summary.textContent = `2 channels · ${totalFrames} frames · ${(totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · independent tempo · notes and envelopes are editable`;
+      const renderBar = document.createElement("div");
+      renderBar.className = "tiny-pair-sequencer__render-bar";
+      const regionLabel = document.createElement("label");
+      regionLabel.textContent = "Playback";
+      const regionSelect = document.createElement("select");
+      regionSelect.append(new Option("NTSC · 60 Hz", "NTSC"), new Option("PAL · 50 Hz", "PAL"));
+      regionSelect.value = inputs.region.value;
+      regionLabel.appendChild(regionSelect);
+      const regionHint = document.createElement("span");
+      regionHint.textContent = "Tempo is measured in video frames.";
+      renderBar.append(regionLabel, regionHint);
       const nibbleValue = (value) => value === 16 ? 0 : value & 0x0f;
       const addNumber = (labelText, value, min, max) => {
         const label = document.createElement("label");
@@ -3583,24 +3594,27 @@ export function createProjectFileUiHelpers({
         vibrato.type = "checkbox";
         vibrato.checked = Boolean(command.vibrato);
         vibratoLabel.append(vibrato, document.createTextNode("Vibrato"));
-        let arpeggioSelect = null;
-        if (command.arpeggioCode !== null) {
-          const arpeggioLabel = document.createElement("label");
-          arpeggioLabel.textContent = "Arpeggio note";
-          arpeggioSelect = document.createElement("select");
-          for (const choice of tinyNoteChoices(inputs.region.value)) {
-            arpeggioSelect.appendChild(new Option(`${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`, String(choice.code)));
-          }
-          arpeggioSelect.value = String(tinyPlainNoteCode(command.arpeggioCode));
-          arpeggioLabel.appendChild(arpeggioSelect);
-          popoverBody.append(pitchLabel, arpeggioLabel, vibratoLabel);
-        } else {
-          const hint = document.createElement("small");
-          hint.textContent = "Arpeggio adds a second byte; creation will follow after safe stream editing.";
-          popoverBody.append(pitchLabel, vibratoLabel, hint);
+        const arpeggioToggleLabel = document.createElement("label");
+        arpeggioToggleLabel.className = "tiny-pair-sequencer__check";
+        const arpeggioToggle = document.createElement("input");
+        arpeggioToggle.type = "checkbox";
+        arpeggioToggle.checked = command.arpeggioCode !== null;
+        arpeggioToggleLabel.append(arpeggioToggle, document.createTextNode("Arpeggio"));
+        const arpeggioLabel = document.createElement("label");
+        arpeggioLabel.textContent = "Second note";
+        const arpeggioSelect = document.createElement("select");
+        for (const choice of tinyNoteChoices(inputs.region.value)) {
+          arpeggioSelect.appendChild(new Option(`${choice.name} · $${choice.code.toString(16).toUpperCase().padStart(2, "0")}`, String(choice.code)));
         }
+        arpeggioSelect.value = String(command.arpeggioCode === null ? tinyPlainNoteCode(command.code) : tinyPlainNoteCode(command.arpeggioCode));
+        arpeggioLabel.appendChild(arpeggioSelect);
+        const syncArpeggio = () => { arpeggioSelect.disabled = !arpeggioToggle.checked; };
+        arpeggioToggle.addEventListener("change", syncArpeggio);
+        syncArpeggio();
+        popoverBody.append(pitchLabel, arpeggioToggleLabel, arpeggioLabel, vibratoLabel);
         activeEditor.pitchSelect = pitchSelect;
         activeEditor.vibrato = vibrato;
+        activeEditor.arpeggioToggle = arpeggioToggle;
         activeEditor.arpeggioSelect = arpeggioSelect;
         popoverPreview.hidden = false;
         popover.hidden = false;
@@ -3656,12 +3670,15 @@ export function createProjectFileUiHelpers({
           await activeSoundPreview?.stop();
           setTransportIdle();
           const plainCode = Number(activeEditor.pitchSelect.value);
+          const arpeggio = activeEditor.arpeggioToggle.checked;
           const code = tinyDecoratedNoteCode(plainCode, {
-            arpeggio: activeEditor.command.arpeggioCode !== null,
+            arpeggio,
             vibrato: activeEditor.vibrato.checked
           });
           let previewSource = replaceTinySoundByte(analysis.source, activeEditor.voice.label, activeEditor.command.offset + 1, code);
-          if (activeEditor.arpeggioSelect) previewSource = replaceTinySoundByte(previewSource, activeEditor.voice.label, activeEditor.command.offset + 2, Number(activeEditor.arpeggioSelect.value));
+          if (arpeggio && activeEditor.command.arpeggioCode === null) previewSource = insertTinySoundByteAfter(previewSource, activeEditor.voice.label, activeEditor.command.offset + 1, Number(activeEditor.arpeggioSelect.value));
+          else if (!arpeggio && activeEditor.command.arpeggioCode !== null) previewSource = removeTinySoundByte(previewSource, activeEditor.voice.label, activeEditor.command.offset + 2);
+          else if (arpeggio) previewSource = replaceTinySoundByte(previewSource, activeEditor.voice.label, activeEditor.command.offset + 2, Number(activeEditor.arpeggioSelect.value));
           const decoded = decodeTinySoundSource(previewSource, activeEditor.voice.label, { region: inputs.region.value });
           const event = decoded.previewEvents.find((item) => item.startFrame === activeEditor.command.startFrame);
           if (!event) return;
@@ -3680,12 +3697,15 @@ export function createProjectFileUiHelpers({
             const choice = tinyNoteChoices(inputs.region.value).find((item) => item.code === Number(activeEditor.pitchSelect.value));
             if (!choice) return;
             const byteIndex = activeEditor.command.offset + 1;
+            const arpeggio = activeEditor.arpeggioToggle.checked;
             const code = tinyDecoratedNoteCode(choice.code, {
-              arpeggio: activeEditor.command.arpeggioCode !== null,
+              arpeggio,
               vibrato: activeEditor.vibrato.checked
             });
             let source = replaceTinySoundByte(analysis.source, activeEditor.voice.label, byteIndex, code);
-            if (activeEditor.arpeggioSelect) source = replaceTinySoundByte(source, activeEditor.voice.label, byteIndex + 1, Number(activeEditor.arpeggioSelect.value));
+            if (arpeggio && activeEditor.command.arpeggioCode === null) source = insertTinySoundByteAfter(source, activeEditor.voice.label, byteIndex, Number(activeEditor.arpeggioSelect.value));
+            else if (!arpeggio && activeEditor.command.arpeggioCode !== null) source = removeTinySoundByte(source, activeEditor.voice.label, byteIndex + 1);
+            else if (arpeggio) source = replaceTinySoundByte(source, activeEditor.voice.label, byteIndex + 1, Number(activeEditor.arpeggioSelect.value));
             saveSoundSource(source);
             analysis.source = source;
             rebuildLane(activeEditor.voice);
@@ -3836,6 +3856,10 @@ export function createProjectFileUiHelpers({
         view.blocks = rebuilt.blocks;
         view.playhead = rebuilt.playhead;
       }
+      function rebuildAllLanesForRegion() {
+        closePopover(true);
+        for (const voice of voices) rebuildLane(voice);
+      }
       const transport = document.createElement("div");
       transport.className = "graphics-editor-json-modal__actions";
       const play = document.createElement("button");
@@ -3867,6 +3891,15 @@ export function createProjectFileUiHelpers({
       pause.disabled = true;
       let animationFrame = 0;
       let transportGeneration = 0;
+      regionSelect.addEventListener("change", async () => {
+        transportGeneration += 1;
+        await activeSoundPreview?.stop();
+        activeSoundPreview = null;
+        inputs.region.value = regionSelect.value;
+        rebuildAllLanesForRegion();
+        setTransportIdle();
+        statusLine.textContent = `Playback set to ${regionSelect.value} · ${regionSelect.value === "PAL" ? 50 : 60} frames/second`;
+      });
       const clearPlayhead = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
         animationFrame = 0;
@@ -3953,7 +3986,7 @@ export function createProjectFileUiHelpers({
       };
       sequencerClose.addEventListener("click", closeTinySequencer);
       backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeTinySequencer(); });
-      sequencer.append(sequencerHeader, summary, statusLine, lanes, transport, popover);
+      sequencer.append(sequencerHeader, renderBar, summary, statusLine, lanes, transport, popover);
       backdrop.appendChild(sequencer);
       document.body.appendChild(backdrop);
     }

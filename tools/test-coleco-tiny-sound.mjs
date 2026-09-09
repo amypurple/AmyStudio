@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, readTinySoundLabel, replaceTinySoundByte, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteHasVibrato, tinyNoteIndex, tinyNotePeriodAtFrame, tinyPlainNoteCode, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, readTinySoundLabel, removeTinySoundByte, replaceTinySoundByte, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteHasVibrato, tinyNoteIndex, tinyNotePeriodAtFrame, tinyPlainNoteCode, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -109,6 +109,13 @@ assert.notEqual(editedDecoded.previewEvents[0].period, decodeTinySoundSource(fix
   "edited playback must not retain the cached original pitch");
 assert.equal(editedSource.replace("$20", "$1F"), fixture, "surgical edit preserves every unrelated source character");
 assert.throws(() => replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 999, 4), /was not found/);
+let arpeggioSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 5, 0x5f);
+arpeggioSource = insertTinySoundByteAfter(arpeggioSource, "brinquitos_music_gladiators_ch1", 5, 0x13);
+assert.equal(decodeTinySoundSource(arpeggioSource, "brinquitos_music_gladiators_ch1").commands[1].arpeggioCode, 0x13,
+  "the editor can structurally add an arpeggio byte");
+arpeggioSource = replaceTinySoundByte(arpeggioSource, "brinquitos_music_gladiators_ch1", 5, 0x1f);
+arpeggioSource = removeTinySoundByte(arpeggioSource, "brinquitos_music_gladiators_ch1", 6);
+assert.equal(arpeggioSource, fixture, "removing an arpeggio restores the byte-exact original stream");
 
 let envelopeSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 2, 0x30);
 envelopeSource = replaceTinySoundByte(envelopeSource, "brinquitos_music_gladiators_ch1", 3, 0x2f);
