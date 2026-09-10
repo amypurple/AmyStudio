@@ -557,8 +557,8 @@ not an optimization win.
 | Rank | Work | Value | Effort | Risk | Decision gate |
 |---:|---|---|---|---|---|
 | 1 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, visible Tiny envelopes, reliable inline edits, undo, and byte-exact write-back |
-| 2 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
-| 3 | State-update benchmark | High | Medium | Low | Equivalent actor arrays, collisions, timers, dispatch, ROM, RAM, and worst-frame cycles |
+| 2 | Finish state-update display-cost audit | High | Medium | Low | Seven engines pass; split screen setup, literal text, coordinates, decimal conversion, and VRAM output |
+| 3 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
 | 4 | Finish in-Studio compression guidance | Medium | Small | Low | Show first-use ROM, CPU RAM, and measured cycles beside each asset choice |
 | 5 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
 | 6 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
@@ -571,8 +571,11 @@ Completed and runtime-guarded:
 - primitive 2D record/overlay fields, verified in all five profiles;
 - fifteen direct-to-VRAM codecs with exact round trips, sizes, cycles, and 42-picture rankings;
 - exact Warrior proof ROMs: Exomizer 3,319 bytes and ZX0 3,254 bytes;
+- seven-tool state-update fixture: all engines reach the same oracle. Amy is 1,460 bytes displayed
+  and 949 bytes engine-only in Experimental; compound record-array expressions now pass. Default
+  numeric output shed 68 ROM bytes and two RAM bytes by linking glyph remapping only when used;
 - sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
 
-Next concrete work is **sound-editor closure**: verify preview timing against GearColeco and keep
-envelopes, edits, undo, write-back, indices, and shared tails consistent. Then finish compact
-compression cost guidance and build the tile-animation and state-update fixtures.
+Next concrete work is **display-cost isolation**. Measure literal text, coordinate setup, decimal
+conversion, and VRAM output independently, then optimize only behavior-identical paths. The
+tile-animation benchmark and sound-editor timing/write-back QA follow.

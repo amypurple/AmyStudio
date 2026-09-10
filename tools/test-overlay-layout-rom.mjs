@@ -35,7 +35,7 @@ try {
       core.loadBios(bios);
       core.loadRom(readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
       for (let frame = 0; frame < 8; frame += 1) core.runFrame();
-      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 36, `${profile}: overlay assertions failed`);
+      assert.equal(core.readRam(addressOf(asm, "AMY_UVAR_Passed"), 1)[0], 39, `${profile}: overlay assertions failed`);
       assert.deepEqual([...core.readVram(0x1800 + 12 * 32 + 14, 4)], [...Buffer.from("PASS")], `${profile}: PASS marker missing`);
     } finally {
       core.destroy();

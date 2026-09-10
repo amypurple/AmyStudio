@@ -127,6 +127,15 @@ export function createPrintHelpers(ctx) {
   function emitNumericPostprocessAt(bufferRef, count, widthMode = false) {
     const width = Number.parseInt(String(count), 10);
     if (!Number.isInteger(width) || width < 1) return null;
+    if (!state.usesCustomNumericTiles) {
+      if (!widthMode) return [];
+      state.needsNumericDefaultWidthHelper = true;
+      return [
+        `    ld hl,${bufferRef}`,
+        `    ld b,${width}`,
+        "    call AMY_NUMERIC_DEFAULT_WIDTH"
+      ];
+    }
     ensureNumericFormatVars();
     state.needsNumericPostprocessHelpers = true;
     if (widthMode) state.needsNumericPostprocessWidthHelper = true;
@@ -141,6 +150,15 @@ export function createPrintHelpers(ctx) {
     const loadDest = emitLoadArrayAddressIntoHL(bufferToken, "0");
     const width = Number.parseInt(String(count), 10);
     if (!loadDest || !Number.isInteger(width) || width < 1) return null;
+    if (!state.usesCustomNumericTiles) {
+      if (!widthMode) return [];
+      state.needsNumericDefaultWidthHelper = true;
+      return [
+        ...loadDest,
+        `    ld b,${width}`,
+        "    call AMY_NUMERIC_DEFAULT_WIDTH"
+      ];
+    }
     ensureNumericFormatVars();
     state.needsNumericPostprocessHelpers = true;
     if (widthMode) state.needsNumericPostprocessWidthHelper = true;

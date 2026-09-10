@@ -282,7 +282,7 @@ export function createByteLoadHelpers(ctx) {
   }
 
   function emitScaleAByConst(scale) {
-    if (!Number.isInteger(scale) || scale < 0 || scale > 16) return null;
+    if (!Number.isInteger(scale) || scale < 0 || scale > 0xFF) return null;
     if (scale === 0) return ["    xor a"];
     if (scale === 1) return [];
     if ((scale & (scale - 1)) === 0) {
@@ -296,8 +296,13 @@ export function createByteLoadHelpers(ctx) {
       for (let i = 0; i < shifts; i++) lines.push("    add a,a");
       return lines;
     }
-    const lines = ["    ld b,a", "    xor a"];
-    for (let i = 0; i < scale; i++) lines.push("    add a,b");
+    // Build the low byte with a binary shift-add chain; u8 arithmetic wraps naturally.
+    const bits = scale.toString(2).slice(1);
+    const lines = ["    ld b,a"];
+    for (const bit of bits) {
+      lines.push("    add a,a");
+      if (bit === "1") lines.push("    add a,b");
+    }
     return lines;
   }
 

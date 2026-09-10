@@ -11,6 +11,14 @@ export function handleSelectCaseStatement({
   getTileTypeInfo,
   emitSelectCaseEqGoto
 }) {
+  const comparePreservesAccumulator = (lines) => {
+    const instructions = (lines || [])
+      .map((entry) => String(entry).replace(/;.*/, "").trim())
+      .filter((entry) => entry && !entry.endsWith(":"));
+    const jumpIndex = instructions.findLastIndex((entry) => /^j(?:p|r)\s+/i.test(entry));
+    return jumpIndex > 0 && /^cp\s+/i.test(instructions[jumpIndex - 1]);
+  };
+
   const _dep = checkSelectDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
@@ -74,7 +82,9 @@ export function handleSelectCaseStatement({
           if (tupleValues.length !== currentSelect.exprTokens.length) {
             return { ok: false, handled: true, log: `Tuple case has ${tupleValues.length} values but select has ${currentSelect.exprTokens.length}: ${rawLine}` };
           }
-          const alternativeFailLabel = alternativeIndex === alternatives.length - 1 ? nextTestLabel : makeGeneratedLabel("TupleAlternative");
+          const alternativeFailLabel = alternativeIndex === alternatives.length - 1
+            ? nextTestLabel
+            : makeGeneratedLabel("TupleAlternative");
           for (let index = 0; index < tupleValues.length; index += 1) {
             const valueToken = tupleValues[index];
             const rangeMatch = valueToken.match(/^(.+?)\s+to\s+(.+)$/i);
@@ -83,7 +93,9 @@ export function handleSelectCaseStatement({
               const highToken = normalizeExpression(rangeMatch[2]);
               const lowFailCode = emitCompareGoto(currentSelect.exprTokens[index], "<", lowToken, alternativeFailLabel);
               const highFailCode = emitCompareGoto(currentSelect.exprTokens[index], ">", highToken, alternativeFailLabel);
-              if (!lowToken || !highToken || !lowFailCode || !highFailCode) return { ok: false, handled: true, log: `Unsupported tuple case range: ${rawLine}` };
+              if (!lowToken || !highToken || !lowFailCode || !highFailCode) {
+                return { ok: false, handled: true, log: `Unsupported tuple case range: ${rawLine}` };
+              }
               lines.push(...lowFailCode, ...highFailCode);
             } else {
               const mismatchCode = emitCompareGoto(currentSelect.exprTokens[index], "!=", valueToken, alternativeFailLabel);
@@ -162,7 +174,7 @@ export function handleSelectCaseStatement({
       currentSelect.nextTestLabel = nextTestLabel;
       currentSelect.hasCase = true;
       currentSelect.activeBody = true;
-      currentSelect.exprPreloaded = true;
+      currentSelect.exprPreloaded = comparePreservesAccumulator(code);
       return { ok: true, handled: true, lines };
     }
 
@@ -185,7 +197,7 @@ export function handleSelectCaseStatement({
         lines.push(...lowFailCode);
         lines.push(...highFailCode);
         lines.push(`    jp ${bodyLabel}`);
-        valuesPreloaded = true;
+        valuesPreloaded = comparePreservesAccumulator(highFailCode);
         continue;
       }
       const code = emitSelectCaseEqGoto
@@ -195,7 +207,7 @@ export function handleSelectCaseStatement({
         return { ok: false, handled: true, log: `Unsupported case value in select case block: ${rawLine}` };
       }
       lines.push(...code);
-      valuesPreloaded = true;
+      valuesPreloaded = comparePreservesAccumulator(code);
     }
     lines.push(`    jp ${nextTestLabel}`);
     lines.push(`${bodyLabel}:`);

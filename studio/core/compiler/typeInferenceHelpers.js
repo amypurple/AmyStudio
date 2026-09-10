@@ -348,7 +348,8 @@ export function createTypeInferenceHelpers({
   }
 
   function parseFormulaAssignment(text) {
-    const match = String(text).trim().match(/^([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s*(\+=|-=|\*=|\/=|\^=|=)\s*(.+)$/);
+    const targetPattern = String.raw`[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)*`;
+    const match = String(text).trim().match(new RegExp(`^(${targetPattern})\\s*(<<=|>>=|\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|=)\\s*(.+)$`));
     if (!match) return null;
     return {
       target: match[1],

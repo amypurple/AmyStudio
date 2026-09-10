@@ -78,7 +78,7 @@ try {
     const actualPass = core.readRam(passAddress, 1)[0];
     const actualFail = core.readRam(failAddress, 1)[0];
     console.log(`Record runtime counters: pass=${actualPass}, fail=${actualFail}`);
-    assert.equal(actualPass, 25, "Not every record-array assertion passed.");
+    assert.equal(actualPass, 28, "Not every record-array assertion passed.");
     assert.equal(actualFail, 0, "At least one record-array assertion failed.");
   } finally {
     core.destroy();
@@ -86,7 +86,7 @@ try {
 
   const overhead = recordStat.size - parallelStat.size;
   const ratio = recordStat.size / parallelStat.size;
-  console.log(`Amy record-array ROM self-test PASS (${optimization}: 25 assertions)`);
+  console.log(`Amy record-array ROM self-test PASS (${optimization}: 28 assertions)`);
   console.log(`Parallel arrays: ${parallelStat.size} bytes`);
   console.log(`Record array:    ${recordStat.size} bytes`);
   console.log(`Record overhead: ${overhead >= 0 ? "+" : ""}${overhead} bytes (${ratio.toFixed(2)}x)`);

@@ -369,7 +369,7 @@ function optimizeGeneratedMemoryLoads(lines) {
   const conditionalBranch = /^\s*(?:jr|jp)\s+[a-z]{1,2}\s*,/i;
   const hardBarrier = /^\s*(?:call|ret|reti|retn)\b/i;
   const hlClobber = /^\s*(?:ld\s+hl,|inc\s+hl|dec\s+hl|add\s+hl,|adc\s+hl,|sbc\s+hl,|pop\s+hl|ex\s+de\s*,\s*hl|ex\s+\(sp\)\s*,\s*hl)\b/i;
-  const aClobber = /^\s*(?:ld\s+a\s*,|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|rlca\b|rla\b|rrca\b|rra\b)/i;
+  const aClobber = /^\s*(?:ld\s+a\s*,|inc\s+a\b|dec\s+a\b|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|rlca\b|rla\b|rrca\b|rra\b)/i;
   const memoryAtHlMutation = /^\s*(?:inc|dec)\s+\(hl\)\s*$/i;
 
   function findKnownHlSymbolBefore(sourceLines, startIndex) {
@@ -548,6 +548,7 @@ export function finalizeAmyTranspile({
     staticAbiRamUsage,
     needsNumericPostprocessHelpers,
     needsNumericPostprocessWidthHelper,
+    needsNumericDefaultWidthHelper,
     needsFp5FriendlyFormatHelper,
     numericPadCharName,
     numericDigitBaseName,
@@ -867,6 +868,26 @@ export function finalizeAmyTranspile({
               "    jp AMY_NUMERIC_POSTPROCESS"
             ]
           : [])
+      ].join("\n")
+    : "";
+
+  const numericDefaultWidthHelperBlock = needsNumericDefaultWidthHelper
+    ? [
+        "",
+        "; --- Amy default ASCII numeric width helper ---",
+        "AMY_NUMERIC_DEFAULT_WIDTH:",
+        "    ld a,b",
+        "    or a",
+        "    ret z",
+        "AMY_NUMERIC_DEFAULT_WIDTH_LOOP:",
+        "    dec b",
+        "    ret z",
+        "    ld a,(hl)",
+        "    cp $30",
+        "    ret nz",
+        "    ld (hl),$20",
+        "    inc hl",
+        "    jr AMY_NUMERIC_DEFAULT_WIDTH_LOOP"
       ].join("\n")
     : "";
 
@@ -1191,7 +1212,9 @@ export function finalizeAmyTranspile({
     coalesceAdjacentVramUploadGuards(
       optimizeGeneratedControlFlow(
         optimizeGeneratedTailCalls(
-          optimizeGeneratedDecAndBranch(reachableBody)
+          optimizeGeneratedDecAndBranch(
+            reachableBody
+          )
         )
       )
     )
@@ -1245,7 +1268,7 @@ export function finalizeAmyTranspile({
   const runtimeMarkers = needsFrameCounter
     ? ["; AMY runtime requirement: AMY_FRAME_COUNTER"]
     : [];
-  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), initRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
+  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), initRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, numericDefaultWidthHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`

@@ -17,6 +17,7 @@ u8 A = 3
 u8 B = 4
 u8 Result = 0
 u8 Guard = 99
+
 sub start:
   select case (X, Y)
     case (1, 1)
@@ -53,7 +54,11 @@ function compile(name, text, profile = "balanced") {
   const asmPath = join(temp, `${name}.asm`);
   const romPath = join(temp, `${name}.rom`);
   writeFileSync(sourcePath, text);
-  const result = spawnSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--asm", asmPath, "--rom", romPath, "--opt", profile], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--asm", asmPath, "--rom", romPath, "--opt", profile], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024
+  });
   return { result, asmPath, romPath };
 }
 
@@ -74,6 +79,7 @@ try {
       core.destroy();
     }
   }
+
   for (const [name, replacement, message] of [
     ["missing-parens", "case 2, 5", /tuple.*require.*\(Value1, Value2/i],
     ["wrong-arity", "case (2)", /tuple case has 1 values but select has 2/i]

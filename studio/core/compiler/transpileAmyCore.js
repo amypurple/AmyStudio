@@ -1198,6 +1198,9 @@ export function transpileAmyCore(sourceText, deps) {
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);
+  const usesCustomNumericTiles = lines.some((candidateRaw) =>
+    /^set\s+number\s+(?:digits|pad)\s+(?:tile|tiles|char|to)\s+/i.test(stripAmyInlineComment(candidateRaw).trim())
+  );
   const earlyCompileTimeConstants = collectEarlyNumericConstants(lines);
   const spriteStableRanges = [];
   let usesSpriteFlicker = false;
@@ -1290,6 +1293,7 @@ export function transpileAmyCore(sourceText, deps) {
   let numericPadCharName = null;
   let needsNumericPostprocessHelpers = false;
   let needsNumericPostprocessWidthHelper = false;
+  let needsNumericDefaultWidthHelper = false;
   let needsFp5FriendlyFormatHelper = false;
   let fp5FriendlyFirstIntName = null;
   let fp5FriendlyDotName = null;
@@ -3791,6 +3795,7 @@ export function transpileAmyCore(sourceText, deps) {
       set numericDigitBaseName(value) { numericDigitBaseName = value; },
       get numericPadCharName() { return numericPadCharName; },
       set numericPadCharName(value) { numericPadCharName = value; },
+      usesCustomNumericTiles,
       get hasRuntimeRamDeclarations() { return hasRuntimeRamDeclarations; },
       set hasRuntimeRamDeclarations(value) { hasRuntimeRamDeclarations = value; },
       get hasRuntimeInit() { return hasRuntimeInit; },
@@ -3799,6 +3804,8 @@ export function transpileAmyCore(sourceText, deps) {
       set needsNumericPostprocessHelpers(value) { needsNumericPostprocessHelpers = value; },
       get needsNumericPostprocessWidthHelper() { return needsNumericPostprocessWidthHelper; },
       set needsNumericPostprocessWidthHelper(value) { needsNumericPostprocessWidthHelper = value; },
+      get needsNumericDefaultWidthHelper() { return needsNumericDefaultWidthHelper; },
+      set needsNumericDefaultWidthHelper(value) { needsNumericDefaultWidthHelper = value; },
       get needsFp5FriendlyFormatHelper() { return needsFp5FriendlyFormatHelper; },
       set needsFp5FriendlyFormatHelper(value) { needsFp5FriendlyFormatHelper = value; },
       get fp5FriendlyFirstIntName() { return fp5FriendlyFirstIntName; },
@@ -4898,6 +4905,11 @@ export function transpileAmyCore(sourceText, deps) {
       }
       const assignmentCode = emitFormulaAssignment(formulaAssignment.target, formulaAssignment.op, formulaAssignment.value);
       if (!assignmentCode) {
+        if (formulaAssignment.op === "="
+          && resolveValueType(formulaAssignment.target) === "bcd"
+          && resolveValueType(formulaAssignment.value) === "bcd") {
+          return { ok: false, asmBody: "", log: `BCD assignment requires same-size BCD variables: ${rawLine}` };
+        }
         return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };
       }
       body.push(...assignmentCode);
@@ -5590,6 +5602,7 @@ export function transpileAmyCore(sourceText, deps) {
       staticAbiRamUsage,
       needsNumericPostprocessHelpers,
       needsNumericPostprocessWidthHelper,
+      needsNumericDefaultWidthHelper,
       needsFp5FriendlyFormatHelper,
       numericPadCharName,
       numericDigitBaseName,
