@@ -1,5 +1,21 @@
 # Amy Optimization Cookbook
 
+## Calling Z80 without an accidental ABI
+
+Prefer `call asm` over a large inline block when a reusable Z80 routine has a clear register
+contract. Scalar operands pass values; write `address of` for pointers:
+
+```basic
+call asm DrawSpan with a = Color, hl = address of Pixels, bc = PixelCount
+```
+
+Amy stages multiple arguments before loading their registers, so evaluating one cannot overwrite
+another. The routine must `ret`, preserve `IX`, `IY`, and `SP`, and document every clobbered register
+and flag. Return through an address argument or a global; `call asm` does not produce a typed Amy
+expression. External ASM may use stable global labels such as `AMY_UVAR_Pixels`, but must not depend
+on compiler-private `AMY_SPARM_*` or `AMY_LVAR_*` cells. See the **Inline ASM** section of the Amy
+Language Reference for the complete bridge contract.
+
 For the visual path to each Studio editor, importer, sound tool, compression comparison, and debugger, see the [Studio Tools Gallery](amy-studio-tools-gallery.md). The gallery documents where each tool is reached and the UI checks required before its output is trusted.
 
 Amy encourages readable game code, but the same result can often be expressed with different ROM-size, RAM, and execution-time tradeoffs. This guide shows practical progressions: begin with the clearest form, measure, then select a more data-driven form when it benefits the game.

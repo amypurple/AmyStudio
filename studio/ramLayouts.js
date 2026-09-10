@@ -200,7 +200,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
       reserved.push({ start: current, endExclusive: aligned, label: "Exomizer alignment gap" });
     }
     addresses.exomizer_table = aligned;
-    reserved.push({ start: aligned, endExclusive: aligned + 156, label: "Exomizer P0 temporary table" });
+    reserved.push({ start: aligned, endExclusive: aligned + 156, label: "Exomizer 2 temporary table" });
     current = aligned + 156;
   }
 

@@ -152,7 +152,7 @@ export const manifest = {
   compression: [
     { id: "src/compression/aplib_vram.asm", label: "aPLib -> VRAM", detail: "HL=src, DE=vram dest, call aplib_decompress", codecId: "aplib" },
     { id: "src/compression/megalz_vram.asm", label: "MegaLZ -> VRAM", detail: "HL=src, DE=vram dest, call megalz_decompress", codecId: "megalz" },
-    { id: "src/compression/exomizer_vram.asm", label: "Exomizer P0 -> VRAM", detail: "HL=src, DE=vram dest, call exomizer_decompress", codecId: "exomizer" },
+    { id: "src/compression/exomizer_vram.asm", label: "Exomizer 2 -> VRAM", detail: "HL=src, DE=vram dest, call exomizer_decompress", codecId: "exomizer" },
     { id: "src/compression/zx0_vram.asm", label: "ZX0 -> VRAM", detail: "HL=src, DE=vram dest, call zx0_decompress", codecId: "zx0" },
     { id: "src/compression/zx7_vram.asm", label: "ZX7 -> VRAM", detail: "HL=src, DE=vram dest, call zx7_decompress", codecId: "zx7" },
     { id: "src/compression/bitbuster_vram.asm", label: "BitBuster -> VRAM", detail: "Warrior routine", codecId: "bitbuster12" },

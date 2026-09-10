@@ -161,7 +161,7 @@ export const CODEC_CONFIG = {
             category: 'lz77'
         },
         exomizer: {
-            name: 'Exomizer P0',
+            name: 'Exomizer 2',
             author: 'Magnus Lind; independent Amy Studio browser codec',
             year: '2002 / 2026',
             description: 'Exomizer 2 raw P0 stream with direct ColecoVision VRAM decompression.',

@@ -104,32 +104,35 @@ corpus pictures render exactly.
 
 ### Graphics II bitmap compression corpus
 
-The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 630 codec/input results, including RAW, round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
+The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 630 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
-| Rank | Codec | Total bytes | Average ratio | Median ratio | Best-size pictures |
-|---:|---|---:|---:|---:|---:|
-| 1 | ZX0 | 166,556 | 32.27% | 23.63% | 22 |
-| 2 | DAN2 | 166,923 | 32.34% | 23.99% | 5 |
-| 3 | DAN3 | 167,186 | 32.39% | 23.99% | 9 |
-| 4 | DAN1 | 167,240 | 32.41% | 24.04% | 6 |
-| 5 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 |
-| 6 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 |
-| 7 | Pletter | 171,751 | 33.28% | 24.80% | 0 |
-| 8 | ZX7 | 171,788 | 33.29% | 24.77% | 0 |
-| 9 | BitBuster | 172,941 | 33.51% | 24.94% | 0 |
-| 10 | ZX1 | 176,562 | 34.21% | 24.98% | 0 |
-| 11 | ZX2 | 177,582 | 34.41% | 25.40% | 0 |
-| 12 | LZF | 193,412 | 37.48% | 28.36% | 0 |
-| 13 | Nibble | 214,555 | 41.57% | 35.48% | 0 |
-| 14 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 |
+The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate.
+
+| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | Exomizer 2 | 161,374 | 31.27% | 23.43% | 21 | 12 | 2 | 3 | 1 |
+| 2 | ZX0 | 166,556 | 32.27% | 23.63% | 21 | 18 | 1 | 2 | 0 |
+| 3 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 7 | 13 | 10 |
+| 4 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 16 | 5 | 11 |
+| 5 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 3 | 4 | 9 | 16 |
+| 6 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 1 | 1 | 1 |
+| 7 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 | 0 | 0 | 0 | 0 |
+| 8 | Pletter | 171,751 | 33.28% | 24.80% | 0 | 0 | 0 | 0 | 0 |
+| 9 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 2 | 9 | 3 |
+| 10 | BitBuster | 172,941 | 33.51% | 24.94% | 0 | 0 | 0 | 0 | 0 |
+| 11 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 4 | 5 | 0 | 0 |
+| 12 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 5 | 4 | 0 | 0 |
+| 13 | LZF | 193,412 | 37.48% | 28.36% | 0 | 0 | 0 | 0 | 0 |
+| 14 | Nibble | 214,555 | 41.57% | 35.48% | 0 | 0 | 0 | 0 | 0 |
+| 15 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 | 0 | 0 | 0 | 0 |
 
 The three website representatives are selected mechanically from each picture's best payload ratio:
 
 | Role | Picture | Best ratio |
 |---|---|---:|
 | most compressible | NewColeco ROM File Edition | 7.33% |
-| median | Cake | 24.07% |
-| least compressible | mona lisa | 76.71% |
+| median | Cake | 23.89% |
+| least compressible | mona lisa | 74.93% |
 
 The PDF shows every converted image. Complete per-picture ratios, decoder sizes, first-use totals, and exact source values are in `competition/benchmarks/compression/bitmap-codec-ratios.csv`, `bitmap-codec-aggregate.csv`, and `bitmap-codec-first-use.csv`.
 ### Observations supported by this suite
@@ -164,7 +167,7 @@ direct-to-VRAM path supplied by that solution.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound | BIOS tables, Tiny Sound, DSOUND | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Direct-to-VRAM compression | Fourteen active codecs, including MegaLZ; ZX0 Classic measured separately | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Direct-to-VRAM compression | Fifteen active codecs, including Exomizer 2 and MegaLZ | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -248,7 +251,7 @@ is a complete multi-command sequence editor with byte-exact source/project write
 Compression must be scored as `compressed payload + linked decompressor`, with destination and
 cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
-All fourteen integrated Amy codecs were also compiled as separate Balanced ROMs and run for 180
+All fifteen integrated Amy codecs were also compiled as separate Balanced ROMs and run for 180
 NTSC frames in GearColeco. Every ROM reproduced Warrior's 6,144 Pattern bytes and 6,144 Color
 bytes exactly in VRAM. Run `node tools/test-integrated-codec-vram-roms.mjs` to repeat this check.
 
@@ -275,6 +278,7 @@ median, and least-compressible corpus pictures. Run `node tools/benchmark-codec-
 | 12 | MegaLZ | 162 | 3,545,056 | 3,003,617-4,081,177 | 59.35 | 49.68 |
 | 13 | DAN2 | 212 | 3,683,858 | 2,806,792-4,725,242 | 61.67 | 51.62 |
 | 14 | DAN1 | 205 | 3,809,391 | 2,827,513-5,013,133 | 63.77 | 53.38 |
+| 15 | Exomizer 2 | 226 | 5,443,661 | 3,379,601-8,078,445 | 91.13 | 76.28 |
 
 Frame values are time equivalents (`59,736` cycles NTSC; `71,364` PAL), not VBlank waits.
 Speed and ROM-size rankings are separate: choose using compressed payload plus decoder size, then
@@ -283,7 +287,7 @@ input, which is why Amy Studio should present per-asset estimates rather than on
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy Studio | ZX0, ZX1, ZX2, aPLib, MegaLZ, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
+| Amy Studio | Exomizer 2, ZX0, ZX1, ZX2, aPLib, MegaLZ, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, including workspace-based formats | Browser comparison/import and asset metadata |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
@@ -303,11 +307,11 @@ their output independently.
 | Candidate | Honest Amy name | Current evidence | Integration condition |
 |---|---|---|---|
 | ZX0 | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
-| ZX0 classic | `ZX0 Classic (v1)` / proposed codec `zx0v1` | z88dk v1.5 compressor plus exact benchmark VRAM port | Explicit extension and cross-format rejection tests |
 | ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact GearColeco VRAM and cycle proof | Integrated and measured |
 | ZX2 | `ZX2` / codec `zx2` | Exact corpus round-trip, five-profile VRAM proof, and cycle proof | Integrated and measured |
 | aPLib | `aPLib` / codec `aplib` | Bidirectional appack parity and exact Amy/GearColeco VRAM ROM | Integrated; keep NMI-safe upload and attribution explicit |
 | MegaLZ | `MegaLZ` / codec `megalz` | Independent DEC40-compatible encoder; exact corpus round-trip and GearColeco VRAM/cycle proof | Integrated and measured |
+| Exomizer 2 | codec `exomizer` | Independent browser encoder, exact 42-picture round trip, five-profile VRAM proof, and cycle proof | Integrated; 226-byte decoder; compiler-assigned 256-byte-aligned `AMY_EXOMIZER_TABLE` reserves 156 bytes through address +$009B |
 | MSC1 | `MSC1` | ugBASIC discards it for Warrior when it gives no gain | Useful Coleco corpus wins and a VRAM strategy |
 
 A host compressor alone is insufficient. An Amy codec requires round-trip tests, exact GearColeco
@@ -509,7 +513,7 @@ status and order:
 4. **State update.** Run an actor array, collision checks, timers, and state dispatch.
 5. **Sound authoring: functional and still evolving.** BIOS commands and Tiny Sound sequences can
    be inspected, auditioned, edited, imported, and written back; UX and audio-parity QA continue.
-6. **Compression: payload and cycle suites complete.** Fourteen codecs have exact VRAM proof;
+6. **Compression: payload and cycle suites complete.** Fifteen codecs have exact VRAM proof;
    representative streams now include linked decoder bytes and GearColeco cycle measurements.
 7. **Visible Hello: complete.** Keep it separate from the minimal runtime fixture so font/text
    costs remain explicit.
@@ -553,9 +557,9 @@ not an optimization win.
 | Rank | Work | Value | Effort | Risk | Decision gate |
 |---:|---|---|---|---|---|
 | 1 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, visible Tiny envelopes, reliable inline edits, undo, and byte-exact write-back |
-| 2 | Add per-asset compression cost guidance | High | Medium | Low | Show payload + decoder bytes and measured/estimated cycles without claiming one universal winner |
-| 3 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
-| 4 | State-update benchmark | High | Medium | Low | Equivalent actor arrays, collisions, timers, dispatch, ROM, RAM, and worst-frame cycles |
+| 2 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
+| 3 | State-update benchmark | High | Medium | Low | Equivalent actor arrays, collisions, timers, dispatch, ROM, RAM, and worst-frame cycles |
+| 4 | Finish in-Studio compression guidance | Medium | Small | Low | Show first-use ROM, CPU RAM, and measured cycles beside each asset choice |
 | 5 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
 | 6 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
 
@@ -563,17 +567,12 @@ not an optimization win.
 
 Completed and runtime-guarded:
 
-- the seven-tool sprite/metasprite fixture and shared GearColeco SAT oracle;
-- native `data ... metasprite layers N` and `set metasprite ...`, with zero permanent RAM and
-  savings of `33`, `33`, `18`, `17`, and `17` bytes versus explicit rendering in the five profiles;
-- stable sprite ranges and flicker with protected high-priority sprites;
-- direct primitive 2D fields in records and overlay parts, verified in all five profiles;
-- ZX1 direct-to-VRAM with exact four-picture GearColeco VRAM proof;
-- Studio BIOS/Tiny Sound inspection, continuous playback, synchronized channel lanes, inline
-  command/envelope editing, undoable write-back, import, and Web MIDI capture.
+- seven-tool metasprite fixture, SAT oracle, native metasprites, protected-priority flicker;
+- primitive 2D record/overlay fields, verified in all five profiles;
+- fifteen direct-to-VRAM codecs with exact round trips, sizes, cycles, and 42-picture rankings;
+- exact Warrior proof ROMs: Exomizer 3,319 bytes and ZX0 3,254 bytes;
+- sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
 
-Next concrete work is **sound-editor closure**, not another sequencer rewrite: verify preview
-timing against GearColeco, expose every Tiny envelope that affects playback, and keep timeline
-edits, undo, source write-back, table indices, and shared tails consistent. In parallel, surface
-the new per-asset compression size/cycle evidence in Studio. Then build the tile-animation and
-state-update fixtures before designing a general animation service.
+Next concrete work is **sound-editor closure**: verify preview timing against GearColeco and keep
+envelopes, edits, undo, write-back, indices, and shared tails consistent. Then finish compact
+compression cost guidance and build the tile-animation and state-update fixtures.

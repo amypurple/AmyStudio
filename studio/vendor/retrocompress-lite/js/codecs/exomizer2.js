@@ -80,7 +80,7 @@ function tableEntries(bits) {
 
 function findEntry(entries, value) {
   const index = entries.findIndex((entry) => value >= entry.base && value < entry.base + (1 << entry.bits));
-  if (index < 0) throw new Error(`Value ${value} is outside the Exomizer P0 table`);
+  if (index < 0) throw new Error(`Value ${value} is outside the Exomizer 2 table`);
   return { index, entry: entries[index] };
 }
 

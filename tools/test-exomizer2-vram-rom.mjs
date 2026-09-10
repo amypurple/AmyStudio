@@ -12,6 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "amy-exomizer2-vram-"));
 const sourcePath = path.join(temp, "exomizer2-vram.alexis");
 const romPath = path.join(temp, "exomizer2-vram.rom");
+const asmPath = path.join(temp, "exomizer2-vram.asm");
 
 let state = 0x6d2b79f5;
 const raw = Buffer.alloc(6144);
@@ -27,6 +28,7 @@ assert.ok(packed.length > raw.length, "Fixture must exercise Exomizer's incompre
 fs.writeFileSync(sourcePath, [
   'project "EXOMIZER2 VRAM SELFTEST"',
   'memory "colecovision_legacy_sdcc"',
+  "u8 GuardAfterExomizer = $5A",
   "bitmap screen",
   "nmi off",
   "decompress exomizer PackedData to vram.pattern",
@@ -41,10 +43,19 @@ try {
     ? [process.env.AMY_EXOMIZER2_PROFILE]
     : ["off", "safe", "balanced", "aggressive", "experimental"];
   for (const profile of profiles) {
-    execFileSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--rom", romPath, "--opt", profile], {
+    execFileSync(process.execPath, ["tools/amyc.mjs", sourcePath, "--asm", asmPath, "--rom", romPath, "--opt", profile], {
       cwd: root,
       stdio: "pipe"
     });
+    const asm = fs.readFileSync(asmPath, "utf8");
+    const tableMatch = asm.match(/^AMY_EXOMIZER_TABLE\s+EQU\s+\$([0-9A-F]+)$/mi);
+    const guardMatch = asm.match(/^AMY_UVAR_GuardAfterExomizer\s+EQU\s+\$([0-9A-F]+)$/mi);
+    assert.ok(tableMatch, `${profile}: missing AMY_EXOMIZER_TABLE`);
+    assert.ok(guardMatch, `${profile}: missing GuardAfterExomizer address`);
+    const tableAddress = Number.parseInt(tableMatch[1], 16);
+    const guardAddress = Number.parseInt(guardMatch[1], 16);
+    assert.equal(tableAddress & 0xff, 0, `${profile}: Exomizer table must be 256-byte aligned`);
+    assert.ok(guardAddress >= tableAddress + 156, `${profile}: user RAM overlaps Exomizer table`);
     const core = await GearcolecoTestCore.create({ seed: 0x45584f32 });
     try {
       core.loadBios(fs.readFileSync(path.join(root, "studio", "bios", "colecovision.rom")));

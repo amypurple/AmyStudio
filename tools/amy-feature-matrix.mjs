@@ -117,6 +117,7 @@ const tests = [
   { file: "test-wide-call-return-expression-rom.mjs", area: "wide-call-return-expressions", evidence: "rom" },
   { file: "test-wide-ref-param-rom.mjs", area: "wide-reference-parameters", evidence: "rom" },
   { file: "test-value-param-sub-rom.mjs", area: "value-parameter-subs", evidence: "rom" },
+  { file: "test-call-asm-abi-rom.mjs", area: "call-asm-register-abi", evidence: "rom" },
   { file: "test-bcd-boundaries-rom.mjs", area: "bcd-boundaries", evidence: "rom" },
   { file: "test-compile-time-constant-contexts.mjs", area: "compile-time-constants", evidence: "compile+assemble" },
   { file: "test-optimizer-indexed-immediate-a-liveness.mjs", area: "optimizer-accumulator-liveness", evidence: "compile+assemble" },

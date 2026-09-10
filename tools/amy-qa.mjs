@@ -8,6 +8,7 @@ const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const quickTests = [
   "test-expression-fail-closed.mjs",
   "test-array-store-layout-rom.mjs",
+  "test-call-asm-abi-rom.mjs",
   "test-global-initializers-rom.mjs",
   "test-overlay-layout-rom.mjs",
   "test-controller-backend-selection-rom.mjs",

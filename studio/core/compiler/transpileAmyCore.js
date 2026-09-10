@@ -4450,6 +4450,10 @@ export function transpileAmyCore(sourceText, deps) {
           const value = valueToken.trim();
           const conflict = reserveAsmRegister(normalized);
           if (conflict) return { ok: false, log: conflict };
+          const addressMatch = value.match(/^address\s+of\s+(.+)$/i);
+          if (addressMatch && !["hl", "de", "bc"].includes(normalized)) {
+            return { ok: false, log: `call asm address arguments require hl, de, or bc, not ${normalized}.` };
+          }
           if (["a", "b", "c", "d", "e", "h", "l"].includes(normalized)) {
             const load = emitLoadInt8Into(normalized, value);
             if (!load) return { ok: false, log: `cannot load ${value} into ${normalized} for '${rawLine.trim()}'` };
@@ -4457,15 +4461,19 @@ export function transpileAmyCore(sourceText, deps) {
           }
           if (normalized === "hl") {
             let load = null;
-            if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoHL(value);
-            if (!load) load = emitLoadSourceAddressIntoHL(value);
+            if (addressMatch) load = emitLoadSourceAddressIntoHL(addressMatch[1].trim());
+            else if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoHL(value);
             if (!load) load = emitLoadInt16IntoHL(value);
+            if (!load) load = emitLoadSourceAddressIntoHL(value);
             if (!load) return { ok: false, log: `cannot load ${value} into hl for '${rawLine.trim()}'` };
             return { ok: true, lines: load };
           }
           if (normalized === "de") {
             let load = null;
-            if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoDE(value);
+            if (addressMatch) {
+              const hlLoad = emitLoadSourceAddressIntoHL(addressMatch[1].trim());
+              if (hlLoad) load = [...hlLoad, "    ex de,hl"];
+            } else if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoDE(value);
             if (!load) {
               const hlLoad = emitLoadInt16IntoHL(value) || emitLoadSourceAddressIntoHL(value);
               if (hlLoad) load = [...hlLoad, "    ex de,hl"];
@@ -4474,23 +4482,68 @@ export function transpileAmyCore(sourceText, deps) {
             return { ok: true, lines: load };
           }
           if (normalized === "bc") {
-            const load = emitLoadCountIntoBC(value) || emitLoadUnsignedInt16ValueIntoBC(value);
+            let load = null;
+            if (addressMatch) {
+              const hlLoad = emitLoadSourceAddressIntoHL(addressMatch[1].trim());
+              if (hlLoad) load = [...hlLoad, "    ld b,h", "    ld c,l"];
+            }
+            if (!load) load = emitLoadCountIntoBC(value) || emitLoadUnsignedInt16ValueIntoBC(value);
             if (!load) return { ok: false, log: `cannot load ${value} into bc for '${rawLine.trim()}'` };
             return { ok: true, lines: load };
           }
           return { ok: false, log: `unsupported call asm register '${reg}' in '${rawLine.trim()}'` };
         }
 
+        function emitStageAsmArgument(reg, valueToken) {
+          const normalized = reg.toLowerCase();
+          const value = valueToken.trim();
+          const addressMatch = value.match(/^address\s+of\s+(.+)$/i);
+          if (addressMatch) {
+            if (!["hl", "de", "bc"].includes(normalized)) {
+              return { ok: false, log: `call asm address arguments require hl, de, or bc, not ${normalized}.` };
+            }
+            const load = emitLoadSourceAddressIntoHL(addressMatch[1].trim());
+            return load ? { ok: true, lines: load } : { ok: false, log: `cannot take address of ${addressMatch[1].trim()}` };
+          }
+          if (["a", "b", "c", "d", "e", "h", "l"].includes(normalized)) {
+            const load = emitLoadInt8Into("a", value);
+            return load ? { ok: true, lines: [...load, "    ld l,a", "    ld h,0"] } : { ok: false, log: `cannot load ${value} for ${normalized}` };
+          }
+          let load = null;
+          if (/^vram(?:\.|\s+)/i.test(value)) load = emitLoadVramAddressIntoHL(value);
+          if (!load) load = emitLoadInt16IntoHL(value);
+          if (!load) load = emitLoadSourceAddressIntoHL(value);
+          return load ? { ok: true, lines: load } : { ok: false, log: `cannot load ${value} for ${normalized}` };
+        }
+
         if (argsText) {
           const assignments = argsText.split(/\s*,\s*/).filter(Boolean);
+          const parsedAssignments = [];
           for (const assignment of assignments) {
             const match = assignment.match(/^(a|b|c|d|e|h|l|hl|de|bc)\s*=\s*(.+)$/i);
             if (!match) {
               return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid call asm argument '${assignment}'` };
             }
-            const loaded = emitLoadAsmRegister(match[1], match[2]);
+            const conflict = reserveAsmRegister(match[1]);
+            if (conflict) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: ${conflict}` };
+            parsedAssignments.push({ reg: match[1].toLowerCase(), value: match[2] });
+          }
+          if (parsedAssignments.length === 1) {
+            usedRegs.clear();
+            const loaded = emitLoadAsmRegister(parsedAssignments[0].reg, parsedAssignments[0].value);
             if (!loaded.ok) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: ${loaded.log}` };
             lines.push(...loaded.lines);
+          } else {
+            const staged = [...parsedAssignments].sort((left, right) => (left.reg === "hl" ? -1 : 0) - (right.reg === "hl" ? -1 : 0));
+            for (const argument of staged) {
+              const loaded = emitStageAsmArgument(argument.reg, argument.value);
+              if (!loaded.ok) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: ${loaded.log}` };
+              lines.push(...loaded.lines, "    push hl");
+            }
+            for (const argument of [...staged].reverse()) {
+              if (["hl", "de", "bc"].includes(argument.reg)) lines.push(`    pop ${argument.reg}`);
+              else lines.push("    pop hl", `    ld ${argument.reg},l`);
+            }
           }
         }
         lines.push(`    call ${label}`);

@@ -2066,7 +2066,7 @@ decompress zx0   Table   to vram.pattern ' explicit codec for raw/data labels
 decompress zx1   Table   to vram.pattern ' official ZX1 stream, direct to VRAM
 decompress zx2   Table   to vram.pattern ' official ZX2 stream, compact direct-to-VRAM decoder
 decompress aplib Table   to vram.pattern ' aPPack-compatible stream, direct to VRAM
-decompress exomizer Table to vram.pattern ' Exomizer 2 P0 stream, direct to VRAM
+decompress exomizer Table to vram.pattern ' Exomizer 2 stream, direct to VRAM
 decompress rle   Table   to vram.color
 decompress mdkrle Table  to vram.name
 decompress pletter Asset  to vram.name
@@ -2084,7 +2084,7 @@ copy vram.spr_attr + SourceOffset count 19 to vram.name + TargetOffset
 
 For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses the codec from the `asset ... codec ...` declaration. Use the explicit `decompress codec TableName to vram.*` form for old ROM data labels, generated tables, or cases where there is no asset metadata.
 
-`exomizer` reserves a 256-byte-aligned, 156-byte work table in RAM only when the project uses that codec. Its direct-VRAM decoder is 226 bytes. The picture compressor compares the resulting payload and decoder cost with RAW and the other codecs rather than assuming Exomizer is smaller.
+`exomizer` reserves a 256-byte-aligned, 156-byte work table in RAM only when the project uses that codec. Its direct-VRAM decoder is 226 bytes. The generated `AMY_EXOMIZER_TABLE` address depends on the other runtime services: the reserved range is `AMY_EXOMIZER_TABLE` through `AMY_EXOMIZER_TABLE + $009B`. Never hard-code that address or overlap the range with globals, overlays, or scratch RAM; verify it in the generated ASM/RAM report. The picture compressor compares payload and decoder cost with RAW and the other codecs rather than assuming Exomizer is smaller.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old
 lib4ksa masked VRAM upload helper. Each byte written is `(source_byte & M) xor X`.
@@ -2776,6 +2776,9 @@ play dsound SoundData
 play dsound SoundData step 2
 ```
 
+Coleco BIOS sound indexes are `1..62`. Index `63` aliases the BIOS free-area
+sentinel and cannot start; compile-time indexes outside the valid range are rejected.
+
 ---
 
 ## Timing
@@ -3024,15 +3027,73 @@ For routines that expect register parameters, specify the register loads explici
 
 ```basic
 call asm AMY_PLAY_SOUND with b = 6
-call asm AMY_COPY_BYTES_TO_VRAM with hl = PictureData, de = vram.pattern, bc = 768
+call asm AMY_COPY_BYTES_TO_VRAM with hl = address of PictureData, de = vram.pattern, bc = 768
 call asm AMY_PUT_CHAR_AT with a = Tile, d = Y, e = X
 ```
 
+`call asm` has an explicit register ABI rather than a fixed parameter order. A scalar expression
+passes its value. A ROM data block, array, or asset name passes its address when a word register
+is required. Prefer `address of` whenever an address is intended, including for scalars and local
+variables:
+
+```basic
+u8 Lives = 3
+u16 Score = 1200
+u8 Buffer[32]
+
+call asm ReadValues with a = Lives, hl = Score
+call asm FillBuffer with hl = address of Buffer, de = address of Lives
+```
+
+For two or more register arguments, Amy evaluates every expression first and stages the results
+before loading the requested registers. One argument therefore cannot destroy another while it is
+being calculated, and argument order in the source does not affect the call.
+
+#### Calling convention and results
+
+- Supported argument registers are `a`, `b`, `c`, `d`, `e`, `h`, `l`, `hl`, `de`, and `bc`.
+- `address of` requires `hl`, `de`, or `bc`.
+- A raw ASM routine returns with `ret` and may destroy registers and flags unless its own contract
+  says otherwise. Preserve `IX`, `IY`, and `SP` unless the routine explicitly owns them.
+- `call asm` is a statement and does not capture a return register. Return a value by writing
+  through an address argument or into a documented global. Use an Amy `function` when a typed
+  expression result is required.
+- Do not set both a register pair and one of its halves in one call, such as `hl` and `h`.
+
+#### Amy symbols visible to ASM
+
+Inline `asm {}` rewrites source-level global, constant, data, label, and routine names to their
+generated assembler symbols. Parentheses still distinguish an address from the byte stored there:
+
+```basic
+u8 Lives = 3
+
+asm {
+  ld a,(Lives)       ; rewritten to ld a,(AMY_UVAR_Lives)
+  ld hl,Lives        ; address of the global
+}
+```
+
+An external `include asm` file is already assembler source, so use the generated names shown in
+the expanded ASM view:
+
+| Amy declaration | Generated ASM symbol |
+|---|---|
+| global scalar, array, or record `Thing` | `AMY_UVAR_Thing` |
+| `const Thing` | `AMY_UCONST_Thing` |
+| `data Thing ...` | `AMY_UDATA_Thing` |
+| source label `Thing:` | `AMY_ULBL_Thing` |
+| `sub Thing` / `function Thing` | `AMY_UPROC_Thing` |
+
+Global arrays and records are contiguous, byte-packed storage beginning at their `AMY_UVAR_*`
+label. Do not couple external ASM to `AMY_SPARM_*`, `AMY_LVAR_*`, stack offsets, scene aliases, or
+overlay aliases: those are compiler-managed implementation details and may change with recursion,
+NMI reachability, optimization, or RAM-overlay ownership. Pass their value or address explicitly
+through `call asm` instead.
+
 Rules:
 - `call asm` targets a raw assembler label; it does not apply Amy `sub` name mangling.
-- Supported argument registers are `a`, `b`, `c`, `d`, `e`, `h`, `l`, `hl`, `de`, and `bc`.
 - Arguments are Z80 ABI registers, not typed Amy parameters; document what the routine destroys.
-- Do not set both a word register and one of its byte halves in the same call, for example `hl` and `h`.
 - `include asm` emits code at that source position. If the include contains executable routines, place it after a terminating jump/loop or call it through a forward `call asm` so normal program flow cannot fall into the included code accidentally.
 
 ---
@@ -3315,8 +3376,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | Statement | Meaning |
 |---|---|
 | `set sound table Name [areas N]` | Install sound table |
-| `play sound N` | Trigger sound slot |
-| `play sounds A, B [, ...]` | Trigger two or more sound slots together |
+| `play sound N` | Trigger BIOS sound slot 1..62 |
+| `play sounds A, B [, ...]` | Trigger two or more BIOS sound slots (each 1..62) |
 | `play song Name` | Start music table |
 | `stop song` | Stop music |
 | `mute all` | Silence output |

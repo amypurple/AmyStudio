@@ -13,7 +13,7 @@ const CODEC_CATALOG = {
   zx2: { name: "ZX2", extension: ".zx2", category: "lz77" },
   aplib: { name: "aPLib", extension: ".aplib", category: "lz77" },
   megalz: { name: "MegaLZ", extension: ".mlz", category: "lz77" },
-  exomizer: { name: "Exomizer P0", extension: ".exo", category: "lz77" },
+  exomizer: { name: "Exomizer 2", extension: ".exo", category: "lz77" },
   raw: { name: "RAW", extension: ".raw", category: "raw" }
 };
 
