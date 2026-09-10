@@ -22,7 +22,7 @@ score 425, and checksum 1478. Sizes are occupied bytes, excluding cartridge padd
 | Toolchain | Bytes | Average cycles | Worst update |
 |---|---:|---:|---:|
 | Amy Experimental | 1,460 | 5,510 | 6,836 |
-| Amy Balanced | 1,466 | 5,513 | 6,839 |
+| Amy Balanced | 1,464 | 5,513 | 6,839 |
 | z88dk `+coleco -O2` | 2,878 | 6,848 | 9,249 |
 | NewColeco legacy SDCC | 1,253 | 7,922 | 10,563 |
 | PVColLib / SDCC | 1,308 | 7,988 | 9,932 |
