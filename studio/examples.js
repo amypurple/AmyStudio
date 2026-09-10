@@ -1,5 +1,14 @@
 import { loadExampleSource, loadExampleSources, loadExamplesIndex } from "./core/exampleSourceLoader.js";
-import { projectFilesById } from "./examples-project-files.js?v=20260817-studio-tooling";
+
+let projectFilesModulePromise = null;
+
+async function loadExampleProjectFilesById(id) {
+  if (!projectFilesModulePromise) {
+    projectFilesModulePromise = import("./examples-project-files.js?v=20260817-studio-tooling");
+  }
+  const module = await projectFilesModulePromise;
+  return module.projectFilesById?.[id] || [];
+}
 
 // DATA-DRIVEN CATALOG. The ordered list + text metadata lives in
 // studio/examples-src/index.json (loaded here); each Amy listing lives in its own
@@ -74,7 +83,7 @@ const rawExampleCatalog = exampleManifestData.map((entry) => ({
   selectedBundles: [],
   selectedCompression: [],
   selectedAssets: [],
-  projectFiles: projectFilesById[entry.id] || [],
+  projectFiles: [],
   sourceText: ""
 }));
 
@@ -109,6 +118,7 @@ if (__IS_NODE) {
   for (const example of exampleCatalog) {
     const loaded = __exampleSources.get(example.id);
     if (typeof loaded === "string" && loaded.length) example.sourceText = loaded;
+    example.projectFiles = (await loadExampleProjectFilesById(example.id)).map((entry) => ({ ...entry }));
   }
 }
 
@@ -116,6 +126,9 @@ if (__IS_NODE) {
 export async function loadExampleSourceById(id) {
   const example = exampleCatalog.find((item) => item.id === id);
   if (!example) return null;
+  if (!example.projectFiles?.length) {
+    example.projectFiles = (await loadExampleProjectFilesById(id)).map((entry) => ({ ...entry }));
+  }
   if (typeof example.sourceText === "string" && example.sourceText.length) return example.sourceText;
   const text = await loadExampleSource(id);
   if (typeof text === "string") example.sourceText = text;

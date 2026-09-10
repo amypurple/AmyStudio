@@ -15,6 +15,8 @@ const quickTests = [
   "test-optimizer-djnz-reachability.mjs",
   "test-megalz-codec.mjs",
   "test-megalz-vram-rom.mjs",
+  "test-exomizer2-codec.mjs",
+  "test-exomizer2-vram-rom.mjs",
   "test-internal-compiler-single-pass.mjs"
 ];
 

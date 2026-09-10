@@ -1103,7 +1103,25 @@ function captureProjectTabRuntime() {
   };
 }
 
+function setProjectWorkspaceEnabled(enabled) {
+  for (const element of [
+    els.projectName,
+    els.sourceEditor,
+    els.btnSave,
+    els.btnTranspile,
+    els.btnGenerate,
+    els.btnCompile,
+    els.btnRunEmulator,
+    els.btnAddProjectFile,
+    els.btnProjectAudio,
+    els.btnProjectPicture
+  ]) {
+    if (element) element.disabled = !enabled;
+  }
+}
+
 function activateProjectTab(nextProject, viewState = {}, runtimeState = {}) {
+  setProjectWorkspaceEnabled(true);
   project = nextProject;
   clearCompiledArtifacts();
   compiledRom = runtimeState.compiledRom || null;
@@ -1128,6 +1146,14 @@ function activateProjectTab(nextProject, viewState = {}, runtimeState = {}) {
   setStatus(`Active project: ${project.projectName}`);
 }
 
+function activateEmptyWorkspace() {
+  project = { ...newProject(), projectName: "No project", sourceText: "", projectFiles: [] };
+  clearCompiledArtifacts();
+  syncUiFromProject();
+  setProjectWorkspaceEnabled(false);
+  setStatus("No project open. Choose New, Open, or Browse examples.");
+}
+
 projectTabsController = createProjectTabs({
   container: els.projectTabs,
   initialProject: project,
@@ -1135,9 +1161,10 @@ projectTabsController = createProjectTabs({
   onBeforeActivate: captureProjectTabView,
   captureTransientState: captureProjectTabRuntime,
   snapshotProject: exportProject,
-  onActivate: activateProjectTab
+  onActivate: activateProjectTab,
+  onEmpty: activateEmptyWorkspace
 });
-project = projectTabsController.getActiveProject();
+project = projectTabsController.getActiveProject() || project;
 
 function openProjectInTab(nextProject, options) {
   projectTabsController.openProject(nextProject, options);

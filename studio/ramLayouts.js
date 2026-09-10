@@ -48,6 +48,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsBackdropShadow = !!caps.needsBackdropShadow;
   const needsSleepState = !!caps.needsSleepState;
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
+  const needsExomizer = !!caps.needsExomizer;
   const needsRuntimeState =
     needsControllers ||
     needsSpinner ||
@@ -191,6 +192,16 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     addresses.tinysound_slot_2 = current + 0x10;
     reserved.push({ start: current, endExclusive: current + 0x20, label: "Amy tiny sound state (2 x 16-byte slots)" });
     current += 0x20;
+  }
+
+  if (needsExomizer) {
+    const aligned = (current + 0xff) & ~0xff;
+    if (aligned > current) {
+      reserved.push({ start: current, endExclusive: aligned, label: "Exomizer alignment gap" });
+    }
+    addresses.exomizer_table = aligned;
+    reserved.push({ start: aligned, endExclusive: aligned + 156, label: "Exomizer P0 temporary table" });
+    current = aligned + 156;
   }
 
   if (needsFrameCounter) {

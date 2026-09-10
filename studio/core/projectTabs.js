@@ -20,15 +20,18 @@ export function createProjectTabs({
   onBeforeActivate = () => ({}),
   captureTransientState = () => ({}),
   snapshotProject = (project) => project,
-  onActivate = () => {}
+  onActivate = () => {},
+  onEmpty = () => {}
 }) {
   let tabs = [];
   let activeId = "";
 
   function load() {
+    let restoredSession = false;
     try {
       const saved = JSON.parse(storage?.getItem(storageKey) || "null");
-      if (saved?.version === SESSION_VERSION && Array.isArray(saved.tabs) && saved.tabs.length) {
+      if (saved?.version === SESSION_VERSION && Array.isArray(saved.tabs)) {
+        restoredSession = true;
         tabs = saved.tabs
           .filter((tab) => tab?.project && typeof tab.project === "object")
           .map((tab) => {
@@ -46,7 +49,7 @@ export function createProjectTabs({
         activeId = tabs.some((tab) => tab.id === saved.activeId) ? saved.activeId : tabs[0]?.id;
       }
     } catch (_) {}
-    if (!tabs.length) {
+    if (!tabs.length && !restoredSession) {
       const project = initialProject;
       tabs = [{ id: makeId(), project, cleanFingerprint: fingerprint(snapshotProject(project)), cleanFingerprintVersion: FINGERPRINT_VERSION, viewState: {} }];
       activeId = tabs[0].id;
@@ -54,7 +57,7 @@ export function createProjectTabs({
   }
 
   function activeTab() {
-    return tabs.find((tab) => tab.id === activeId) || tabs[0];
+    return tabs.find((tab) => tab.id === activeId) || tabs[0] || null;
   }
 
   function isDirty(tab) {
@@ -118,8 +121,11 @@ export function createProjectTabs({
 
   function activateTab(id) {
     if (id === activeId || !tabs.some((tab) => tab.id === id)) return;
-    activeTab().viewState = onBeforeActivate(activeTab().project) || {};
-    activeTab().transientState = captureTransientState(activeTab().project) || {};
+    const current = activeTab();
+    if (current) {
+      current.viewState = onBeforeActivate(current.project) || {};
+      current.transientState = captureTransientState(current.project) || {};
+    }
     activeId = id;
     persist();
     render();
@@ -128,8 +134,11 @@ export function createProjectTabs({
   }
 
   function openProject(project, { clean = true } = {}) {
-    activeTab().viewState = onBeforeActivate(activeTab().project) || {};
-    activeTab().transientState = captureTransientState(activeTab().project) || {};
+    const current = activeTab();
+    if (current) {
+      current.viewState = onBeforeActivate(current.project) || {};
+      current.transientState = captureTransientState(current.project) || {};
+    }
     const tab = {
       id: makeId(),
       project,
@@ -184,8 +193,11 @@ export function createProjectTabs({
     }
     tabs.splice(index, 1);
     if (!tabs.length) {
-      const project = initialProject;
-      tabs.push({ id: makeId(), project, cleanFingerprint: fingerprint(snapshotProject(project)), cleanFingerprintVersion: FINGERPRINT_VERSION, viewState: {} });
+      activeId = "";
+      persist();
+      render();
+      onEmpty();
+      return true;
     }
     if (activeId === id) {
       activeId = tabs[Math.min(index, tabs.length - 1)].id;
@@ -204,6 +216,7 @@ export function createProjectTabs({
 
   function markActiveClean() {
     const tab = activeTab();
+    if (!tab) return;
     tab.cleanFingerprint = fingerprint(snapshotProject(tab.project));
     tab.cleanFingerprintVersion = FINGERPRINT_VERSION;
     persist();
@@ -213,8 +226,9 @@ export function createProjectTabs({
   load();
   render();
   revealActiveTab();
+  if (!tabs.length) onEmpty();
   return {
-    getActiveProject: () => activeTab().project,
+    getActiveProject: () => activeTab()?.project || null,
     openProject,
     openExampleProject,
     activateTab,

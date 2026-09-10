@@ -96,6 +96,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   }
   const usesTinySound = sourceHintsTinySound(text);
   const needsTinySound = usesTinySound;
+  const needsExomizer = /\b(?:decompress\s+exomizer|exomizer_decompress|codec\s+exomizer)\b/i.test(codeText);
   const usesHalt = /\bhalt\b/i.test(text);
   const usesWaitVblank = /^\s*wait\s*(?:'.*)?$/im.test(text) ||
     /\bwait\s+vblanks?\b/i.test(text) ||
@@ -171,6 +172,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     usesVblankHook,
     needsVdpStatusShadow,
     needsTinySound,
+    needsExomizer,
     usesTinySound,
     usesHalt,
     usesWaitVblank,

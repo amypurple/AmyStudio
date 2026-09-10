@@ -64,4 +64,27 @@ assert.equal(restored.getState().tabs.length, tabs.getState().tabs.length, "open
 assert.equal(restored.getActiveProject().sourceText, "changed", "session changes survive a page reload");
 assert.equal(restored.getState().tabs[0].transientState, undefined, "compiled artifacts are session-only and not serialized");
 
+const emptyStorage = memoryStorage();
+let emptyActivations = 0;
+const closable = createProjectTabs({
+  container: null,
+  initialProject: { projectName: "Only project", sourceText: "" },
+  storage: emptyStorage,
+  confirmClose: () => true,
+  onEmpty: () => { emptyActivations += 1; }
+});
+assert.equal(closable.closeTab(closable.getState().activeId), true, "last project can close");
+assert.equal(closable.getState().tabs.length, 0, "closing the last project leaves an empty workspace");
+assert.equal(closable.getActiveProject(), null, "empty workspace has no hidden active project");
+assert.equal(emptyActivations, 1, "empty workspace callback runs once");
+const restoredEmpty = createProjectTabs({
+  container: null,
+  initialProject: { projectName: "Must not reappear" },
+  storage: emptyStorage,
+  onEmpty: () => { emptyActivations += 1; }
+});
+assert.equal(restoredEmpty.getState().tabs.length, 0, "an intentionally empty session remains empty after reload");
+restoredEmpty.openProject({ projectName: "Fresh project", sourceText: "" });
+assert.equal(restoredEmpty.getActiveProject().projectName, "Fresh project", "New opens normally from an empty workspace");
+
 console.log("Project tabs tests passed.");

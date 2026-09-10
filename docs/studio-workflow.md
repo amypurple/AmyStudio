@@ -4,7 +4,7 @@
 Use `studio/index.html` as the main Amy Studio environment for authoring source, generating ASM, compiling ROMs, managing embedded project assets, and testing the resulting cartridge.
 
 ## Steps
-1. Run `powershell -File tools/serve-studio.ps1`.
+1. On Windows, run `tools\serve-studio.cmd`. On macOS/Linux, run `python3 -m http.server 8080` from the repository root.
 2. Open `http://localhost:8080/studio/` in your browser.
 3. Write Amy source in the main editor.
 4. Optionally add embedded project files in the `Files` tab.

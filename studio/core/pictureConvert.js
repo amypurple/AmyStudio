@@ -26,6 +26,7 @@ const CODEC_FILE_EXTENSIONS = {
   zx2: "zx2",
   aplib: "aplib",
   megalz: "mlz",
+  exomizer: "exo",
   zx7: "zx7",
   dan1: "dan1",
   dan2: "dan2",

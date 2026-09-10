@@ -160,6 +160,17 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
+        exomizer: {
+            name: 'Exomizer P0',
+            author: 'Magnus Lind; independent Amy Studio browser codec',
+            year: '2002 / 2026',
+            description: 'Exomizer 2 raw P0 stream with direct ColecoVision VRAM decompression.',
+            extensions: ['.exo'],
+            module: './codecs/exomizer2.js',
+            className: 'Exomizer2Codec',
+            enabled: true,
+            category: 'lz77'
+        },
     },
     
     // Add new codec categories here for easy organization
@@ -174,7 +185,7 @@ export const CODEC_CONFIG = {
     settings: {
         maxFileSize: 256 * 1024, // 256KB
         enableDebugMode: false,
-        defaultCompressionOrder: ['zx0', 'zx1', 'zx2', 'aplib', 'megalz', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
+        defaultCompressionOrder: ['zx0', 'zx1', 'zx2', 'aplib', 'megalz', 'exomizer', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
     }
 };
 

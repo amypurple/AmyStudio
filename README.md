@@ -33,17 +33,25 @@ Development audits, old failed attempts, broad research notes, large emulator so
 
 ## Run Locally
 
-Serve the repository root with any static HTTP server, then open `/studio/`.
+Download the repository ZIP from GitHub and extract it, or clone the repository.
+
+On Windows, double-click `tools\serve-studio.cmd`. It starts the local server and
+opens Amy Studio. The launcher safely bypasses the script policy for this one
+repository script only.
+
+From a terminal on Windows:
+
+```powershell
+.\tools\serve-studio.cmd
+```
+
+On macOS, Linux, or any system with Python 3:
 
 ```sh
-python -m http.server 8080
+python3 -m http.server 8080
 ```
 
-Then open:
-
-```text
-http://localhost:8080/studio/
-```
+Then open `http://localhost:8080/studio/`. Stop the server with `Ctrl+C`.
 
 ## ROM Test And Debug
 
