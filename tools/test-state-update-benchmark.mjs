@@ -14,6 +14,7 @@ const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceArg = process.argv.slice(2).find(argument => !argument.startsWith("--"));
 const coreOnly = process.argv.includes("--core-only");
+const publish = process.argv.includes("--publish");
 let source = sourceArg
   ? path.resolve(root, sourceArg)
   : path.join(root, "competition", "benchmarks", "state-update", "amy-state-update.alexis");
@@ -63,6 +64,15 @@ try {
         checksum: readWord(core, symbols.Checksum),
       };
       results.push({ profile, romBytes: rom.length, averageCycles: average(updateCycles), worstCycles: Math.max(...updateCycles), state });
+      if (publish && !coreOnly && profile === "experimental") {
+        const build = path.join(root, "build", "competition", "state-update");
+        const screenshot = path.join(root, "competition", "benchmarks", "screenshots", "amy-state-update.png");
+        fs.mkdirSync(build, { recursive: true });
+        fs.mkdirSync(path.dirname(screenshot), { recursive: true });
+        fs.copyFileSync(asmPath, path.join(build, "amy.asm"));
+        fs.copyFileSync(romPath, path.join(build, "amy.rom"));
+        writeFramebufferPng(core.getFramebuffer(), screenshot);
+      }
     } finally {
       core.destroy();
     }
@@ -112,6 +122,22 @@ function readWord(core, address) {
 
 function average(values) {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function writeFramebufferPng(frame, output) {
+  const rgba = Buffer.alloc(frame.width * frame.height * 4);
+  for (let index = 0; index < frame.pixels.length; index += 1) {
+    const pixel = frame.pixels[index];
+    rgba[index * 4] = Math.round(((pixel >>> 11) & 31) * 255 / 31);
+    rgba[index * 4 + 1] = Math.round(((pixel >>> 5) & 63) * 255 / 63);
+    rgba[index * 4 + 2] = Math.round((pixel & 31) * 255 / 31);
+    rgba[index * 4 + 3] = 255;
+  }
+  const encoded = spawnSync("ffmpeg", [
+    "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${frame.width}x${frame.height}`,
+    "-i", "pipe:0", "-frames:v", "1", "-y", output,
+  ], { input: rgba, encoding: null });
+  assert.equal(encoded.status, 0, `Screenshot encoding failed: ${encoded.stderr?.toString() ?? ""}`);
 }
 
 function simulateReference() {

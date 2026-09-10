@@ -26,21 +26,22 @@ features are listed separately from language capabilities.
 | PVColLib | ColecoVision-focused SDCC C library and devkit | Native VDP, controller, sprite, sound, music, and compression APIs |
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
 
-## Reproducible four-sample ROM suite
+## Reproducible five-sample ROM suite
 
-The suite builds four runnable programs with all seven solutions:
+The suite builds five runnable programs with all seven solutions:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
 3. a visual controller monitor;
-4. an animated, controller-driven three-color metasprite.
+4. an animated, controller-driven three-color metasprite;
+5. a deterministic six-actor gameplay state update.
 
 A **metasprite** combines hardware sprites into one actor. This test overlaps three 16x16 layers
 (white, yellow, black), below the four-sprites-per-scanline limit.
 
-The build scripts create 21 ROMs for the first three samples plus seven sprite ROMs, grouped under
-`build/competition`. `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; the sprite
-script also runs the stricter GearColeco VRAM/SAT oracle.
+The build scripts create 35 ROMs, grouped under `build/competition`.
+`tools/report-five-tool-sample-sizes.ps1` records occupied sizes; dedicated GearColeco tests verify
+the bitmap, controller, metasprite, and deterministic state-update oracles.
 
 ### Maximum native optimization used
 
@@ -65,7 +66,8 @@ Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
 | Warrior bitmap | **3,254** | 3,643 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
 | Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
 | Sprite Metasprite | **983** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| **Four-sample total** | **5,070** | **6,512** | **8,129** | **9,331** | **9,954** | **15,581** | **36,884** |
+| Gameplay State Update | 1,460 | **1,253** | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
+| **Five-sample total** | **6,530** | **7,765** | **9,437** | **11,457** | **12,407** | **18,459** | **47,363** |
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -87,6 +89,7 @@ assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), gene
 | Warrior bitmap | Seven native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
 | Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
 | Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
+| Gameplay State Update | Seven match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
@@ -140,7 +143,7 @@ The PDF shows every converted image. Complete per-picture ratios, decoder sizes,
 - Amy is smallest for Hello, Controller, and this exact bitmap ROM (3,254 versus CVBasic's 4,948 bytes).
 - Portable C/BASIC runtimes add visible fixed cost, but complete games may scale differently.
 - Cartridge length includes packaging; a padded 32 KB file is not necessarily a 32 KB program.
-- Smaller results count only after runtime validation; four samples cannot prove a universal winner.
+- Smaller results count only after runtime validation; five samples cannot prove a universal winner.
 - RAM, worst-frame cycles, build latency, sound, sprite pressure, and gameplay remain separate tests.
 
 ## Preliminary capability matrix
