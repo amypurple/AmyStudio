@@ -166,7 +166,14 @@ try {
   await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-editable, .tiny-pair-sequencer__block.is-sustain, .tiny-pair-sequencer__block.is-silence").length > 0`, "automatic sequencer shows imported stream blocks");
   await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-note.is-editable").click()`);
   await waitFor(`document.querySelector('[aria-label="Play from selection"]')?.disabled === false`, "selection playback becomes available");
+  const sustainCountBeforeResize = await evaluate(`document.querySelectorAll(".tiny-pair-sequencer__block.is-sustain").length`);
+  await evaluate(`(() => {
+    const input = Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-body label")).find((label) => label.textContent.startsWith("Steps")).querySelector("input");
+    input.value = "3";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
   await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Apply").click()`);
+  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-sustain").length === ${sustainCountBeforeResize + 1}`, "Steps adds one encoded sustain block");
   await waitFor(`document.querySelector(".tiny-pair-sequencer__block.is-selected")`, "selection highlight survives lane rebuild after Apply");
   await evaluate(`document.querySelector('[aria-label="Play from selection"]').click()`);
   await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`, "selection playback shows its playhead");

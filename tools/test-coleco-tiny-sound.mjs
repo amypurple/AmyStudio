@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, readTinySoundLabel, removeTinySoundByte, replaceTinySoundByte, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteHasVibrato, tinyNoteIndex, tinyNotePeriodAtFrame, tinyPlainNoteCode, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
+import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, readTinySoundLabel, removeTinySoundByte, replaceTinySoundByte, resizeTinySoundNoteSteps, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyNoteHasArpeggio, tinyNoteHasVibrato, tinyNoteIndex, tinyNotePeriodAtFrame, tinyPlainNoteCode, tinySpecialNoteEvent } from "../studio/core/colecoTinySound.js";
 import { inspectSoundTableSource } from "../studio/core/soundTableInspector.js";
 
 const fixture = `
@@ -133,6 +133,20 @@ duplicatedArpeggioSource = insertTinySoundByteAfter(duplicatedArpeggioSource, "b
 const duplicatedArpeggioCommands = decodeTinySoundSource(duplicatedArpeggioSource, "brinquitos_music_gladiators_ch1").commands.slice(1, 3);
 assert.deepEqual(duplicatedArpeggioCommands.map((command) => [command.code, command.arpeggioCode]), [[0x5f, 0x13], [0x5f, 0x13]],
   "duplicating an arpeggio preserves its two-byte command boundary");
+
+const resizedPlainSource = resizeTinySoundNoteSteps(fixture, "brinquitos_music_gladiators_ch1", 4, 3);
+const resizedPlain = decodeTinySoundSource(resizedPlainSource, "brinquitos_music_gladiators_ch1");
+assert.deepEqual(resizedPlain.commands.slice(1, 5).map((command) => command.type), ["note", "sustain", "sustain", "note"],
+  "resizing a note adds only contiguous Tiny Sound sustain commands");
+assert.equal(resizedPlain.previewEvents[0].durationFrames, 24, "three steps render for three channel-tempo intervals");
+assert.equal(resizeTinySoundNoteSteps(resizedPlainSource, "brinquitos_music_gladiators_ch1", 4, 2), fixture,
+  "shrinking the note preserves its original sustain and restores the source byte-exactly");
+const arpeggioRhythmSource = `ArpRhythm:\n db $44\n dw sndtiny_1\n db $08,$02,$60,$19,$22,$5F,$13,$00,$1E,$FF`;
+const resizedArpeggioSource = resizeTinySoundNoteSteps(arpeggioRhythmSource, "ArpRhythm", 4, 3);
+const resizedArpeggio = decodeTinySoundSource(resizedArpeggioSource, "ArpRhythm");
+assert.equal(resizedArpeggio.commands[0 + 1].arpeggioCode, 0x13, "rhythm editing preserves the arpeggio operand");
+assert.equal(resizedArpeggio.previewEvents[0].durationFrames, 24, "arpeggio playback extends across added sustains");
+assert.throws(() => resizeTinySoundNoteSteps(fixture, "brinquitos_music_gladiators_ch1", 4, 0), /1\.\.64/);
 
 let envelopeSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 2, 0x30);
 envelopeSource = replaceTinySoundByte(envelopeSource, "brinquitos_music_gladiators_ch1", 3, 0x2f);

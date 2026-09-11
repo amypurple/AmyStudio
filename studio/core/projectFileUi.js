@@ -8,7 +8,7 @@ import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColeco
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260907-selection";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
-import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, removeTinySoundByte, replaceTinySoundByte, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260908-tiny-arpeggio";
+import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, removeTinySoundByte, replaceTinySoundByte, resizeTinySoundNoteSteps, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
 
 export function createProjectFileUiHelpers({
@@ -3625,14 +3625,19 @@ export function createProjectFileUiHelpers({
         }
         arpeggioSelect.value = String(command.arpeggioCode === null ? tinyPlainNoteCode(command.code) : tinyPlainNoteCode(command.arpeggioCode));
         arpeggioLabel.appendChild(arpeggioSelect);
+        let sustainCount = 0;
+        const commandIndex = voice.stream.tiny.commands.indexOf(command);
+        while (voice.stream.tiny.commands[commandIndex + 1 + sustainCount]?.type === "sustain") sustainCount += 1;
+        const steps = addNumber("Steps", sustainCount + 1, 1, 64);
         const syncArpeggio = () => { arpeggioSelect.disabled = !arpeggioToggle.checked; };
         arpeggioToggle.addEventListener("change", syncArpeggio);
         syncArpeggio();
-        popoverBody.append(pitchLabel, arpeggioToggleLabel, arpeggioLabel, vibratoLabel);
+        popoverBody.append(pitchLabel, steps.label, arpeggioToggleLabel, arpeggioLabel, vibratoLabel);
         activeEditor.pitchSelect = pitchSelect;
         activeEditor.vibrato = vibrato;
         activeEditor.arpeggioToggle = arpeggioToggle;
         activeEditor.arpeggioSelect = arpeggioSelect;
+        activeEditor.steps = steps;
         popoverPreview.hidden = false;
         popoverAdd.hidden = false;
         popoverDelete.hidden = false;
@@ -3765,6 +3770,7 @@ export function createProjectFileUiHelpers({
             if (arpeggio && activeEditor.command.arpeggioCode === null) source = insertTinySoundByteAfter(source, activeEditor.voice.label, byteIndex, Number(activeEditor.arpeggioSelect.value));
             else if (!arpeggio && activeEditor.command.arpeggioCode !== null) source = removeTinySoundByte(source, activeEditor.voice.label, byteIndex + 1);
             else if (arpeggio) source = replaceTinySoundByte(source, activeEditor.voice.label, byteIndex + 1, Number(activeEditor.arpeggioSelect.value));
+            source = resizeTinySoundNoteSteps(source, activeEditor.voice.label, activeEditor.command.offset, Number(activeEditor.steps.input.value));
             saveSoundSource(source);
             analysis.source = source;
             rebuildLane(activeEditor.voice);

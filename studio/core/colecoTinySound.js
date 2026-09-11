@@ -225,6 +225,31 @@ export function removeTinySoundByte(sourceText, label, byteIndex) {
   return found.lines.join(newline);
 }
 
+export function resizeTinySoundNoteSteps(sourceText, label, commandOffset, steps) {
+  if (!Number.isInteger(commandOffset) || commandOffset < 0) throw new Error("Tiny Sound command offset must be non-negative.");
+  if (!Number.isInteger(steps) || steps < 1 || steps > 64) throw new Error("Tiny Sound note length must be 1..64 steps.");
+  const decoded = decodeTinySoundSource(sourceText, label);
+  const noteIndex = decoded.commands.findIndex((command) => command.type === "note" && command.offset === commandOffset);
+  if (noteIndex < 0) throw new Error(`Tiny Sound note at offset ${commandOffset} was not found in ${label}.`);
+  const note = decoded.commands[noteIndex];
+  let sustainCount = 0;
+  while (decoded.commands[noteIndex + 1 + sustainCount]?.type === "sustain") sustainCount += 1;
+  const wantedSustains = steps - 1;
+  let source = sourceText;
+  if (wantedSustains > sustainCount) {
+    const noteLastByte = note.offset + 1 + (note.arpeggioCode === null ? 0 : 1);
+    const insertAfter = noteLastByte + sustainCount;
+    for (let index = sustainCount; index < wantedSustains; index += 1) {
+      source = insertTinySoundByteAfter(source, label, insertAfter, 0x00);
+    }
+  } else {
+    for (let index = sustainCount - 1; index >= wantedSustains; index -= 1) {
+      source = removeTinySoundByte(source, label, note.offset + 2 + (note.arpeggioCode === null ? 0 : 1) + index);
+    }
+  }
+  return source;
+}
+
 export function readTinySoundLabel(sourceText, label) {
   const lines = String(sourceText || "").split(/\r?\n/);
   const wanted = String(label || "").toLowerCase();
