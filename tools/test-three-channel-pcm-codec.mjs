@@ -40,8 +40,15 @@ const resampled = resampleThreeChannelPcm(samples, 5, 5);
 assert.equal(resampled.length, samples.length);
 assert.deepEqual([...resampled], [...samples].map(quantizeThreeChannelPcmSample));
 
+const quietSamples = Float32Array.from([-0.1, 0, 0.1]);
+const quietNormal = resampleThreeChannelPcm(quietSamples, 3, 3);
+const quietAmplified = resampleThreeChannelPcm(quietSamples, 3, 3, { gainPercent: 400 });
+assert(quietAmplified[0] < quietNormal[0]);
+assert(quietAmplified[2] > quietNormal[2]);
+
 const converted = samplesToThreeChannelPcm(samples, 5, { targetRate: 5, label: "Wave" });
 assert.equal(converted.unitCount, 5);
+assert.equal(samplesToThreeChannelPcm(quietSamples, 3, { targetRate: 3, gainPercent: 250 }).gainPercent, 250);
 assert.match(converted.alexisSource, /^data Wave bytes/m);
 const convertedLevels = decodeThreeChannelPcm(converted.bytes);
 assert.equal(convertedLevels.length, resampled.length);

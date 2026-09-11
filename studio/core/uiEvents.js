@@ -493,7 +493,8 @@ export function bindStudioRuntimeEvents(ctx) {
       kind: wavDigitalKind,
       source: wavDigitalKind === "tripcm" ? "wavToTriPcm" : "wavToDsound",
       dsoundStep: step,
-      dsoundAmpPercent: ampPercent
+      dsoundAmpPercent: ampPercent,
+      tripcmGainPercent: wavDigitalKind === "tripcm" ? ampPercent : undefined
     });
     return { label, path, step, ampPercent };
   }
@@ -522,7 +523,7 @@ export function bindStudioRuntimeEvents(ctx) {
       const label = els.wavLabel.value.trim() || "SoundData";
       if (els.wavDigitalFormat?.value === "tripcm") {
         const decoded = await decodeAudioBufferToMono(audioBuffer);
-        return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label });
+        return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label, gainPercent: ampPercent });
       }
       return await audioBufferToDsound(audioBuffer, { step, ampPercent, label });
     } finally {
@@ -536,7 +537,7 @@ export function bindStudioRuntimeEvents(ctx) {
     const label = els.wavLabel.value.trim() || "SoundData";
     if (els.wavDigitalFormat?.value === "tripcm") {
       const decoded = await decodeAudioFile(file);
-      return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label });
+      return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label, gainPercent: ampPercent });
     }
     const buffer = await file.arrayBuffer();
     const name = String(file.name || "").toLowerCase();
@@ -570,7 +571,8 @@ export function bindStudioRuntimeEvents(ctx) {
       `${(result.nibbleCount ?? result.unitCount).toLocaleString()} samples · ` +
       `${result.sampleRate.toLocaleString()} Hz · ` +
       `${result.durationSec.toFixed(2)}s · ` +
-      `${result.byteCount.toLocaleString()} bytes encoded`;
+      `${result.byteCount.toLocaleString()} bytes encoded` +
+      (wavDigitalKind === "tripcm" ? ` · ${result.gainPercent}% gain` : "");
     els.wavOutputWrap.classList.add("visible");
     await updateDsoundPreview(result.bytes, result.sampleRate);
     els.wavStatus.textContent = statusText;
@@ -582,7 +584,7 @@ export function bindStudioRuntimeEvents(ctx) {
     if (!saved) return;
     insertSavedDigitalSnippet(saved);
     els.wavConverterDialog.close();
-    setStatus(`Saved ${saved.path} and inserted play dsound snippet.`);
+    setStatus(`Saved ${saved.path} and inserted play ${wavDigitalKind} snippet.`);
   }
 
   async function importProjectFile(file) {
@@ -990,14 +992,17 @@ export function bindStudioRuntimeEvents(ctx) {
     els.wavSampleRateHint.textContent = `~${rate.toLocaleString()} Hz at step ${step}`;
   });
 
-  els.wavDigitalFormat?.addEventListener("change", () => {
+  function syncDigitalFormatControls() {
     const tripcm = els.wavDigitalFormat.value === "tripcm";
-    els.wavStep.closest(".field")?.classList.toggle("hidden", tripcm);
-    els.wavAmp.closest(".field")?.classList.toggle("hidden", tripcm);
+    els.wavStep.disabled = tripcm;
+    els.wavStep.closest(".field")?.classList.toggle("field--disabled", tripcm);
     els.wavStatus.textContent = tripcm
-      ? "TriPCM uses three tone channels and blocks during playback."
+      ? "TriPCM uses three tone channels. Input gain is applied before encoding."
       : "DSOUND uses three tone channels and blocks during playback.";
-  });
+  }
+
+  els.wavDigitalFormat?.addEventListener("change", syncDigitalFormatControls);
+  syncDigitalFormatControls();
 
   els.btnWavConvert.addEventListener("click", async () => {
     const file = els.wavFile.files[0];

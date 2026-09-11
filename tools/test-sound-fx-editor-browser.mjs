@@ -110,7 +110,9 @@ try {
     select.value = "tripcm";
     select.dispatchEvent(new Event("change", { bubbles: true }));
   })()`);
-  assert.equal(await evaluate(`document.getElementById("wavStep").closest(".field").classList.contains("hidden")`), true, "TriPCM hides the DSOUND-only step control");
+  assert.equal(await evaluate(`document.getElementById("wavStep").disabled`), true, "TriPCM disables the DSOUND-only step control");
+  assert.equal(await evaluate(`document.getElementById("wavStep").closest(".field").classList.contains("field--disabled")`), true, "TriPCM visibly dims the DSOUND-only step control");
+  assert.equal(await evaluate(`document.getElementById("wavAmp").disabled`), false, "TriPCM keeps input gain available");
   assert.match(await evaluate(`document.getElementById("wavStatus").textContent`), /three tone channels/i, "TriPCM states its blocking channel cost");
   await evaluate(`(() => {
     const sampleCount = 128;
@@ -127,6 +129,7 @@ try {
     transfer.items.add(new File([bytes], "tripcm-test.wav", { type: "audio/wav" }));
     document.getElementById("wavFile").files = transfer.files;
     document.getElementById("wavLabel").value = "TriTest";
+    document.getElementById("wavAmp").value = "200";
     document.getElementById("btnWavConvert").click();
   })()`);
   try {
@@ -135,6 +138,7 @@ try {
     throw new Error(`${error.message} Status: ${await evaluate(`document.getElementById("wavStatus").textContent`)} Output: ${await evaluate(`document.getElementById("wavOutput").value.slice(0, 80)`)}`);
   }
   assert.match(await evaluate(`document.getElementById("wavStats").textContent`), /bytes encoded/, "TriPCM conversion reports encoded size");
+  assert.match(await evaluate(`document.getElementById("wavStats").textContent`), /200% gain/, "TriPCM conversion reports the applied input gain");
   await evaluate(`document.getElementById("btnWavSaveAndInsertPlay").click()`);
   await waitFor(`!document.getElementById("wavConverterDialog").open`, "TriPCM project insertion");
   assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /asset TriTest from "@project\/TriTest\.tripcm"[\s\S]*play tripcm TriTest/, "TriPCM creates an asset and playback command");

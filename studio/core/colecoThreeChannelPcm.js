@@ -52,9 +52,12 @@ export function quantizeThreeChannelPcmSample(sample) {
   return best;
 }
 
-export function resampleThreeChannelPcm(samples, sourceRate, targetRate = 17500) {
+export function resampleThreeChannelPcm(samples, sourceRate, targetRate = 17500, {
+  gainPercent = 100
+} = {}) {
   if (!samples?.length) return new Uint8Array();
   if (!(sourceRate > 0) || !(targetRate > 0)) throw new Error("Audio sample rates must be positive.");
+  const gain = Math.max(0, Math.min(8, (Number(gainPercent) || 100) / 100));
   const count = Math.max(1, Math.round(samples.length * targetRate / sourceRate));
   const levels = new Uint8Array(count);
   for (let index = 0; index < count; index += 1) {
@@ -62,7 +65,7 @@ export function resampleThreeChannelPcm(samples, sourceRate, targetRate = 17500)
     const left = Math.min(samples.length - 1, Math.floor(sourcePosition));
     const right = Math.min(samples.length - 1, left + 1);
     const fraction = sourcePosition - left;
-    const sample = samples[left] + (samples[right] - samples[left]) * fraction;
+    const sample = (samples[left] + (samples[right] - samples[left]) * fraction) * gain;
     levels[index] = quantizeThreeChannelPcmSample(sample);
   }
   return levels;
@@ -156,9 +159,10 @@ export function threeChannelPcmBytesToPreviewSamples(bytes, options = {}) {
 
 export function samplesToThreeChannelPcm(samples, sourceRate, {
   targetRate = 17500,
-  label = "SoundData"
+  label = "SoundData",
+  gainPercent = 100
 } = {}) {
-  const levels = resampleThreeChannelPcm(samples, sourceRate, targetRate);
+  const levels = resampleThreeChannelPcm(samples, sourceRate, targetRate, { gainPercent });
   const bytes = encodeThreeChannelPcm(levels);
   const rows = [];
   for (let offset = 0; offset < bytes.length; offset += 16) {
@@ -169,6 +173,7 @@ export function samplesToThreeChannelPcm(samples, sourceRate, {
     levels,
     bytes,
     sampleRate: targetRate,
+    gainPercent,
     durationSec: levels.length / targetRate,
     unitCount: levels.length,
     byteCount: bytes.length,
