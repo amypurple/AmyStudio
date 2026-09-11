@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { amplitudeForAttenuation, buildColecoPreviewTracks, eventDurationFrames, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
+import { amplitudeForAttenuation, buildColecoPreviewTracks, eventDurationFrames, noiseEventIndexAtFrame, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview, volumeEnvelopeForEvent } from "../studio/core/colecoSoundPreview.js";
 import { buildColecoEchoTone } from "../studio/core/colecoSoundNotes.js";
 
 assert.equal(amplitudeForAttenuation(15), 0);
@@ -28,6 +28,12 @@ assert.deepEqual(scheduleColecoSoundSequence([
   { type: "frequency-sweep", length: 4, frequencySweep: { firstLength: 2, stepLength: 3 } },
   { type: "note", length: 5 }
 ]).map((event) => event.startFrame), [0, 11]);
+const sweptNoise = [
+  { type: "frequency-sweep", channel: 0, startFrame: 0, length: 4, frequencySweep: { firstLength: 2, stepLength: 3 } },
+  { type: "note", channel: 0, startFrame: 11, length: 5 }
+];
+assert.equal(noiseEventIndexAtFrame(sweptNoise, 10), 0, "noise sweep stays active for its full BIOS-rendered duration");
+assert.equal(noiseEventIndexAtFrame(sweptNoise, 11), 1, "next noise command starts at the BIOS sweep boundary");
 const tracks = buildColecoPreviewTracks([
   { type: "note", channel: 1, startFrame: 0, length: 3 },
   { type: "note", channel: 1, startFrame: 3, length: 4 },

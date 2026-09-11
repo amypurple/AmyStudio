@@ -49,6 +49,17 @@ function frequencyTimelineForEvent(event) {
   return points;
 }
 
+function noiseEventIndexAtFrame(events, frame, startIndex = 0) {
+  let index = startIndex;
+  while (index < events.length) {
+    const event = events[index];
+    const endFrame = (event.startFrame || 0) + eventDurationFrames(event);
+    if (frame < endFrame) break;
+    index += 1;
+  }
+  return index;
+}
+
 export function sliceColecoPreviewEvents(events, startFrame, endFrame = Infinity) {
   if (!Number.isFinite(startFrame) || startFrame < 0) throw new Error("Preview start frame must be non-negative.");
   if (!(endFrame > startFrame)) throw new Error("Preview end frame must follow its start frame.");
@@ -96,7 +107,7 @@ function scheduleVolume(gain, event, start, frameSeconds) {
   }
 }
 
-function makeNoiseTrackBuffer(context, events, duration, region, tone3Period = null) {
+function makeNoiseTrackBuffer(context, events, duration, region, tone3Events = []) {
   const sampleCount = Math.max(1, Math.ceil(context.sampleRate * duration));
   const buffer = context.createBuffer(1, sampleCount, context.sampleRate);
   const output = buffer.getChannelData(0);
@@ -106,15 +117,19 @@ function makeNoiseTrackBuffer(context, events, duration, region, tone3Period = n
   let level = 1;
   let lfsr = 0x4000;
   let eventIndex = 0;
+  let tone3Index = 0;
   for (let index = 0; index < sampleCount; index += 1) {
     const seconds = index / context.sampleRate;
-    while (eventIndex < events.length && seconds >= ((events[eventIndex].startFrame || 0) + events[eventIndex].length) / (region === "PAL" ? 50 : 60)) eventIndex += 1;
+    const currentFrame = seconds * (region === "PAL" ? 50 : 60);
+    eventIndex = noiseEventIndexAtFrame(events, currentFrame, eventIndex);
     const event = events[eventIndex];
     const eventStart = (event?.startFrame || 0) / (region === "PAL" ? 50 : 60);
     if (!event || seconds < eventStart) {
       output[index] = 0;
       continue;
     }
+    while (tone3Index + 1 < tone3Events.length && currentFrame >= (tone3Events[tone3Index + 1].startFrame || 0)) tone3Index += 1;
+    const tone3Period = tone3Events[tone3Index]?.period || null;
     const rate = event.noise % 4 === 3 && tone3Period
       ? clock / (32 * tone3Period)
       : event.noise % 4 === 3 ? 440 : clock / divisors[event.noise % 4];
@@ -164,7 +179,7 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     throw new Error("The generated command has no playable event.");
   }
   const start = context.currentTime + 0.02;
-  const tone3Period = playable.find((event) => event.channel === 3)?.period || null;
+  const tone3Events = playable.filter((event) => event.channel === 3);
   let longest = 0;
   const tracks = buildColecoPreviewTracks(playable);
   for (const event of playable) {
@@ -216,7 +231,7 @@ export async function startColecoSoundPreview(events, { region = "NTSC" } = {}) 
     }
     gain.connect(context.destination);
     const source = context.createBufferSource();
-    source.buffer = makeNoiseTrackBuffer(context, tracks.noises, longest, region, tone3Period);
+    source.buffer = makeNoiseTrackBuffer(context, tracks.noises, longest, region, tone3Events);
     source.connect(gain);
     source.start(start);
     source.stop(start + longest);
@@ -266,4 +281,4 @@ export async function previewColecoSoundEvents(events, options = {}) {
   await playback.done;
 }
 
-export { amplitudeForAttenuation, eventDurationFrames, volumeEnvelopeForEvent };
+export { amplitudeForAttenuation, eventDurationFrames, noiseEventIndexAtFrame, volumeEnvelopeForEvent };
