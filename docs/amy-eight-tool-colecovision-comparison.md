@@ -547,10 +547,9 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
 | 1 | Close sound-editor fidelity and workflow gaps | Active | High | Medium | Medium |
-| 2 | Add a small explicit animation service | Design after evidence | High | Large | Medium-high |
-| 3 | Complete nested aggregate 2D fields and operand symmetry | Deferred to real use case | Medium | Medium | Medium |
-| 4 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
-| 5 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
+| 2 | Add a small explicit animation service | Next implementation study | High | Large | Medium-high |
+| 3 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
+| 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
 
 The codec study starts from libcv's verified RLE+Huffman path without copying its format into Amy.
 It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
@@ -562,8 +561,9 @@ decoder bytes, CPU RAM, GearColeco cycles, and a first-use ROM win over Amy's ex
 Completed and runtime-guarded:
 
 - eight-tool metasprite, state-update, and tile-animation fixtures with exact runtime oracles;
-- native metasprites, protected-priority flicker, editable benchmark graphics, and 2D
-  record/overlay fields verified in all five profiles;
+- native metasprites, protected-priority flicker, and editable benchmark graphics;
+- complete 2D global/local arrays and record, record-array, parameter, and overlay fields with
+  constant dimensions, expression indexes, bounds diagnostics, and five-profile runtime proof;
 - fifteen direct-to-VRAM codecs with exact round trips, decoder costs, cycles, RAM use, and
   42-picture rankings; Warrior is 3,254 bytes with ZX0 and 3,319 with Exomizer;
 - indexed-coordinate `put frame` corruption fixed through the Tile Animation VRAM oracle;
