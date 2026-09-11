@@ -192,6 +192,7 @@ const tests = [
   { file: "test-coleco-sound-sequence.mjs", area: "bios-sound-sequence", evidence: "unit", suite: "audio" },
   { file: "test-coleco-tiny-sound.mjs", area: "tiny-sound-decoding", evidence: "unit", suite: "audio" },
   { file: "test-sound-sweep-preview-parity-rom.mjs", area: "bios-sweep-preview-parity", evidence: "rom", suite: "audio" },
+  { file: "test-tiny-arpeggio-parity-rom.mjs", area: "tiny-arpeggio-parity", evidence: "rom", suite: "audio" },
   { file: "test-tiny-special-note-parity-rom.mjs", area: "tiny-special-note-parity", evidence: "rom", suite: "audio" },
   { file: "test-tiny-vibrato-parity-rom.mjs", area: "tiny-vibrato-parity", evidence: "rom", suite: "audio" },
   { file: "test-wav-to-psg-sound.mjs", area: "wav-to-psg-conversion", evidence: "unit", suite: "audio" },
