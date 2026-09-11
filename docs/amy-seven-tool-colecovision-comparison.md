@@ -531,14 +531,13 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 ## Ranked Amy gap plan
 
-| Rank | Work | Value | Effort | Risk | Decision gate |
+| Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Isolate and reduce display code cost | High | Medium | Low | Measure screen setup, literal text, coordinates, decimal conversion, and VRAM output separately |
-| 2 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, Tiny envelopes, reliable edits, undo, and byte-exact project insertion |
-| 3 | Measure tile-animation cycles and VRAM budget | Medium | Small | Low | Runtime equivalence and corruption oracle pass; add comparable cycle/write counts |
-| 4 | Finish in-Studio compression guidance | Medium | Small | Low | Show first-use ROM, CPU RAM, and measured cycles beside each asset choice |
-| 5 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
-| 6 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
+| 1 | Isolate and reduce display code cost | Next benchmark | High | Medium | Low |
+| 2 | Close sound-editor fidelity and workflow gaps | Active | High | Medium | Medium |
+| 3 | Add a small explicit animation service | Design after evidence | High | Large | Medium-high |
+| 4 | Complete nested aggregate 2D fields and operand symmetry | Deferred to real use case | Medium | Medium | Medium |
+| 5 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
 
 ### Completed gaps and next concrete work
 
@@ -553,8 +552,13 @@ Completed and runtime-guarded:
   numeric output shed 68 ROM bytes and two RAM bytes by linking glyph remapping only when used;
 - seven-tool tile animation: all engines animate the same shared star patterns and six 3x2 ships;
   exact VRAM checks also exposed and fixed indexed-coordinate `put frame` source corruption;
+- editable benchmark graphics: Metasprite exposes its three animated layers and Tile Animation
+  exposes the star phases and both ship frames through project `editors.json` metadata;
+- in-Studio compression guidance: payload, first-use decoder cost, CPU RAM, measured cycles, and
+  exact 42-picture rankings are available;
 - sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
 
 Next concrete work is **display-cost isolation**. Measure literal text, coordinate setup, decimal
-conversion, and VRAM output independently, then optimize only behavior-identical paths. Tile
-animation runtime equivalence is complete; cycle/write accounting and sound-editor timing QA follow.
+conversion, and VRAM output independently, then optimize only behavior-identical paths. In parallel,
+sound-editor QA must keep comparing browser preview bytes and timing with the BIOS player in GearColeco.
+The animation service and ROM banking remain deliberate design work, not safe incremental fixes.
