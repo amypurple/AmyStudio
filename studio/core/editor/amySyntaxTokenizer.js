@@ -1,7 +1,7 @@
 import { matchAmyPhraseRanges } from "./amyGrammar.js";
 
 const KEYWORDS = new Set([
-  "and", "as", "asm", "asset", "at", "between", "bind", "bitmap", "by", "call", "cartridge",
+  "and", "animation", "as", "asm", "asset", "at", "between", "bind", "bitmap", "by", "call", "cartridge",
   "case", "choose", "clear", "cls", "codec", "const", "continue", "copy", "data",
   "decompress", "define", "disable", "display", "do", "downto",
   "each", "else", "elseif", "enable", "end", "enter", "exit", "false", "fill", "fire",
@@ -27,7 +27,7 @@ const BUILTINS = new Set([
 const METADATA = new Set(["project", "cartridge", "memory"]);
 
 const STATEMENT_KEYWORDS = new Set([
-  "backdrop", "dispatch", "duplicate", "load", "merge", "timer"
+  "animation", "backdrop", "dispatch", "duplicate", "load", "merge", "timer"
 ]);
 
 const QUALIFIER_KEYWORDS = new Set([
@@ -36,7 +36,7 @@ const QUALIFIER_KEYWORDS = new Set([
   "using", "width", "with"
 ]);
 
-const TIME_UNITS = new Set(["frame", "frames", "seconds", "tick", "ticks"]);
+const TIME_UNITS = new Set(["frame", "frames", "seconds", "tick", "ticks", "update", "updates"]);
 
 const CONTEXTUAL_IDENTIFIERS = new Set([
   "at", "between", "by", "circle", "count", "cursor", "forever", "from", "into", "line",
@@ -109,6 +109,8 @@ function amyLineContextTypes(line) {
   when(/^\s*set\s+default\s+name\s+table\b/i, ["default"]);
   when(/^\s*(?:start|stop)\s+timer\b/i, ["start", "timer"]);
   when(/^\s*if\s+timer\b/i, ["timer"]);
+  when(/^\s*animation\b.*\busing\b.*\bevery\b/i, ["animation", "using", "every"]);
+  when(/^\s*update\s+animation\b.*\busing\s+sprite\b/i, ["update", "animation", "to", "using", "sprite"], "vdp");
   when(/^\s*play\s+sounds\b/i, ["sounds"]);
   return types;
 }

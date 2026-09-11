@@ -2373,6 +2373,29 @@ set metasprite PlayerMeta frame AnimationFrame to PlayerY,PlayerX using sprite 0
 update sprites
 ```
 
+For a compact cooperative animation, declare a named animation at top level after
+its metasprite data and call it once per intended update, normally after `wait`:
+
+```basic
+animation PlayerWalk using PlayerMeta every 8 updates
+
+MainLoop:
+  wait
+  update animation PlayerWalk to PlayerY,PlayerX using sprite 0
+  update sprites
+  goto MainLoop
+```
+
+Each animation reserves exactly two RAM bytes: its update counter and current
+frame. The declaration accepts a constant interval from 1 to 255. `update
+animation` is synchronous and nonblocking: it advances the counter, wraps the
+metasprite frame, and writes the selected frame to the sprite shadow table. It
+does not install an NMI hook, read the clock, or upload the SAT. Calling it more
+or less than once per video frame intentionally changes its speed; use `update
+sprites` separately when the shadow table is ready. Programs that need unrelated
+timing or start/stop control should continue using explicit variables or named
+timers.
+
 Each frame contains one `Pattern,Color` pair per layer. Layers are written in
 source order to consecutive SAT entries, so the first layer has the highest
 TMS9918 priority. The layer count and first sprite are compile-time constants;
@@ -3242,6 +3265,8 @@ Current expression engine notes:
 | `timer Name after N ticks [stopped]` | Declare a one-shot named timer; N is a constant from 1 to 65535 |
 | `start timer Name` / `stop timer Name` | Enable/reset or disable a named timer |
 | `if timer Name then Statement` | Test and consume a timer signal in normal code |
+| `animation Name using Meta every N updates` | Declare a cooperative metasprite animation with two bytes of state |
+| `update animation Name to Y,X using sprite I` | Advance and render that animation; call `update sprites` separately |
 | `text screen` | Standard 32x24 text/tile bootstrap |
 | `tile screen` | Mode 2 tile bootstrap with duplicated patterns and 8 color bytes per tile |
 | `bitmap screen` / `bitmap screen color $F0` | Drawable bitmap surface for `pset`, `line`, `circle`; default color is `$F0` |
@@ -3665,7 +3690,7 @@ These ideas have come up and may still prove worthwhile, but they are not commit
 
 - compact flag-group syntax beyond ordinary packed `bool` globals/locals
 - richer chess / AI-oriented helpers beyond what recursion and local stack arrays already make possible
-- higher-level sprite animation DSLs on top of the existing machine-friendly primitives
+- autonomous animation scheduling beyond the explicit cooperative animation primitive
 
 ---
 

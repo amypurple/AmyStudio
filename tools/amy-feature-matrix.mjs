@@ -22,6 +22,7 @@ const tests = [
   { file: "test-start-runtime-init-codegen.mjs", area: "initializers", evidence: "compile+assemble" },
   { file: "test-runtime-catalog-dependencies.mjs", area: "runtime-linking", evidence: "compile+assemble" },
   { file: "test-set-sprite-codegen.mjs", area: "sprites", evidence: "compile+assemble" },
+  { file: "test-animation-service-prototype.mjs", area: "cooperative-animation", evidence: "rom" },
   { file: "test-sprite-flicker-codegen.mjs", area: "sprite-flicker", evidence: "rom" },
   { file: "test-120-color-codegen.mjs", area: "120-color-mode", evidence: "compile+assemble" },
   { file: "test-word-table-codegen.mjs", area: "word-tables", evidence: "compile+assemble" },

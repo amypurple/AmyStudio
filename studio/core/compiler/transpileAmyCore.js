@@ -1171,6 +1171,55 @@ export function transpileAmyCore(sourceText, deps) {
     return { lines: lowered, definitions };
   }
 
+  function lowerMetaspriteAnimations(sourceLines, metaspriteDefinitions) {
+    const definitions = new Map();
+    const constants = collectEarlyNumericConstants(sourceLines);
+    const lowered = [];
+    let declarationsClosed = false;
+
+    for (const rawLine of sourceLines) {
+      const line = stripAmyInlineComment(rawLine).trim();
+      if (/^(?:sub|function)\b/i.test(line)) declarationsClosed = true;
+      const declaration = line.match(/^animation\s+([A-Za-z_][A-Za-z0-9_]*)\s+using\s+([A-Za-z_][A-Za-z0-9_]*)\s+every\s+(.+?)\s+updates?$/i);
+      if (declaration) {
+        const name = declaration[1];
+        if (declarationsClosed) throw new Error(`Animation ${name} must be declared at top level before routines.`);
+        const key = name.toLowerCase();
+        const metasprite = metaspriteDefinitions.get(declaration[2].toLowerCase());
+        if (!metasprite) throw new Error(`Animation ${name} uses unknown metasprite data '${declaration[2]}'.`);
+        if (definitions.has(key)) throw new Error(`Duplicate animation '${name}'.`);
+        const interval = Number(resolveEarlyNumericConstant(declaration[3], constants));
+        if (!Number.isInteger(interval) || interval < 1 || interval > 255) {
+          throw new Error(`Animation ${name} requires a constant update interval from 1 to 255.`);
+        }
+        const tickName = `__amy_animation_${name}_tick`;
+        const frameName = `__amy_animation_${name}_frame`;
+        definitions.set(key, { name, metasprite, interval, tickName, frameName });
+        lowered.push(`u8 ${tickName} = 0`, `u8 ${frameName} = 0`);
+        continue;
+      }
+
+      const update = line.match(/^update\s+animation\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+(.+?)\s*,\s*(.+?)\s+using\s+sprite\s+(.+)$/i);
+      if (update) {
+        const animation = definitions.get(update[1].toLowerCase());
+        if (!animation) throw new Error(`Unknown animation '${update[1]}'. Declare it before its first update.`);
+        lowered.push(
+          `${animation.tickName} += 1`,
+          `if ${animation.tickName} = ${animation.interval} then`,
+          `  ${animation.tickName} = 0`,
+          `  ${animation.frameName} += 1`,
+          `  if ${animation.frameName} = ${animation.metasprite.frames} then ${animation.frameName} = 0`,
+          "end if",
+          `set metasprite ${animation.metasprite.name} frame ${animation.frameName} to ${update[2]},${update[3]} using sprite ${update[4]}`
+        );
+        continue;
+      }
+
+      lowered.push(rawLine);
+    }
+    return { lines: lowered, definitions };
+  }
+
   const conditionalPrepass = preprocessCompileTimeConditionals(sourceText.split(/\r?\n/));
   if (!conditionalPrepass.ok) return { ok: false, asmBody: "", log: conditionalPrepass.log };
   let metaspriteLowering;
@@ -1181,7 +1230,8 @@ export function transpileAmyCore(sourceText, deps) {
   }
   let twoDimensionalLowering;
   try {
-    twoDimensionalLowering = lowerTwoDimensionalArrays(metaspriteLowering.lines);
+    const animationLowering = lowerMetaspriteAnimations(metaspriteLowering.lines, metaspriteLowering.definitions);
+    twoDimensionalLowering = lowerTwoDimensionalArrays(animationLowering.lines);
   } catch (error) {
     return { ok: false, asmBody: "", log: error instanceof Error ? error.message : String(error) };
   }

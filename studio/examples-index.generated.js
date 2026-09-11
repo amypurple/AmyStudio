@@ -149,6 +149,19 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "amy-animation-service",
+    "label": "Amy Cooperative Animation",
+    "detail": "A compact two-layer metasprite animation with explicit update cadence, two bytes of state, and no hidden scheduler.",
+    "projectName": "amy-animation-service",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "hello-world-minimal",
     "label": "Hello World Minimal",
     "detail": "Smallest useful Amy Mode 2 text hello world.",

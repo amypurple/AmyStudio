@@ -30,9 +30,11 @@ assert.deepEqual(result.lines, [
   "    ld e,a",
   "    ld d,0",
   "    add hl,de",
+  "    push hl",
   "    ld d,22",
   "    ld e,4",
   "    ld b,25",
+  "    pop hl",
   "    call AMY_PUT_AT"
 ]);
 console.log("indexed put codegen: PASS");

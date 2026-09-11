@@ -222,7 +222,11 @@ check("variable index emits the minimal dereference sequence", () => {
 });
 
 check("put frame accepts a table entry as source", () => {
-  assert.match(asm, /ex de,hl\s*\n(?:\s*ld [bcde],.*\n)+(?:.*\n)*?\s*call PUT_FRAME/, "PUT_FRAME should be fed by the dereferenced HL");
+  assert.match(
+    asm,
+    /ex de,hl\s*\n\s*push hl\s*\n(?:\s*ld [abcde],.*\n)+\s*pop hl\s*\n\s*push ix\s*\n\s*push iy\s*\n\s*call PUT_FRAME/,
+    "PUT_FRAME should preserve and restore the dereferenced HL around argument setup"
+  );
 });
 
 check("word table entry can be assigned to a u16 pointer variable", () => {
