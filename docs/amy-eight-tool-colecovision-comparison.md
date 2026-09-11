@@ -1,4 +1,4 @@
-# ColecoVision development: seven-solution comparison
+# ColecoVision development: eight-solution comparison
 
 Date: 2026-09-01
 
@@ -14,7 +14,7 @@ This comparison separates four kinds of evidence:
 Amy Studio combines a language and IDE; the others are mainly compilers or C kits. IDE-only
 features are listed separately from language capabilities.
 
-## The seven solutions
+## The eight solutions
 
 | Solution | Primary approach | ColecoVision position |
 |---|---|---|
@@ -25,10 +25,11 @@ features are listed separately from language capabilities.
 | devkitSMS + `SGlib_CV` | SDCC C plus compact game libraries | ColecoVision adaptation of the SG/SMS development workflow |
 | PVColLib | ColecoVision-focused SDCC C library and devkit | Native VDP, controller, sprite, sound, music, and compression APIs |
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
+| libcv / libcvu | ColecoVision-focused SDCC C libraries by Philipp Klaus Krause | Small link-only runtime with native graphics, input, sprites, and RLE+Huffman assets |
 
 ## Reproducible six-sample ROM suite
 
-The suite builds six runnable programs with all seven solutions:
+The suite builds six runnable programs with all eight solutions:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
@@ -40,7 +41,7 @@ The suite builds six runnable programs with all seven solutions:
 A **metasprite** combines hardware sprites into one actor. This test overlaps three 16x16 layers
 (white, yellow, black), below the four-sprites-per-scanline limit.
 
-The build scripts create 42 ROMs, grouped under `build/competition`.
+The build scripts create 48 ROMs, grouped under `build/competition`.
 `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; dedicated GearColeco tests verify
 the bitmap, controller, metasprite, and deterministic state-update oracles.
 
@@ -55,21 +56,22 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 3.8 | `--std-c99`; original prebuilt libraries plus historical DAN2 | The exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
+| libcv / libcvu / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Linked only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
 These are the strongest **native settings validated here**. No competitor output passed through
 Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains its default.
 
 ### Real occupied size, excluding cartridge padding
 
-| Sample | Amy Studio | NewColeco | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **238** | 795 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
-| Warrior bitmap | **3,254** | 3,643 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
-| Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
-| Sprite Metasprite | **983** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| Gameplay State Update | 1,460 | **1,253** | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
-| Tile Animation | 1,387 | **1,376** | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
-| **Six-sample total** | **7,917** | **9,141** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
+| Sample | Amy Studio | NewColeco | libcv | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Hello World | **238** | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
+| Warrior bitmap | **3,254** | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
+| Controller Visual | **595** | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
+| Sprite Metasprite | **983** | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
+| Gameplay State Update | 1,460 | **1,253** | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
+| Tile Animation | 1,387 | **1,376** | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
+| **Six-sample total** | **7,917** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -87,18 +89,18 @@ assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), gene
 
 | Sample | Runtime result | Verdict |
 |---|---|---|
-| Hello World | Seven ROMs complete 180 GearColeco frames | Stable startup |
-| Warrior bitmap | Seven native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
-| Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
-| Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
-| Gameplay State Update | Seven match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
-| Tile Animation | Seven continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
+| Hello World | Eight ROMs complete 180 GearColeco frames | Stable startup |
+| Warrior bitmap | Eight native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
+| Controller Visual | Seven pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
+| Sprite Metasprite | Eight pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
+| Gameplay State Update | Eight match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
+| Tile Animation | Eight continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
 
 Native bitmap paths are Amy/z88dk ZX0, CVBasic Pletter, ugBASIC resources, devkitSMS aPLib,
-PVColLib RLE, and NewColeco DAN2. All framebuffers are exact despite equivalent internal table
+PVColLib RLE, libcv RLE+Huffman, and NewColeco DAN2. All framebuffers are exact despite equivalent internal table
 encodings. PVColLib Pletter failed VRAM validation and is excluded.
 
 For z88dk, MDKRLE reaches VRAM at frame 93, ZX0 at 132, and ZX7 at 138. ZX0 saves 935 bytes versus
@@ -504,19 +506,30 @@ Studio. Its 795-byte Hello, 3,643-byte DAN2 bitmap, and 932-byte controller moni
 BIOS-aware and link-only-what-is-used philosophy was already effective. Amy Studio improves those
 results while adding the Amy language, integrated assets, diagnostics, and debugging.
 
+### libcv is compact but deliberately low level
+
+Philipp Klaus Krause's libcv/libcvu links only used SDCC modules and completes all six fixtures.
+Its six-sample total is 10,835 bytes, third overall. The deterministic state update averages 8,315
+cycles with a 10,412-cycle worst frame. Its native RLE+Huffman bitmap path reproduces all 12,288
+Warrior bytes exactly, but the 2,934-byte payload also needs a 514-byte tree/configuration, about
+411 linked decoder bytes, and 19 bytes of runtime state. Across 42 pictures its median payload is
+4,098 bytes and it usually ranks 14th or 15th among 17 measured methods. This makes libcv useful
+evidence for compact C linking and shared-codebook research, not a general replacement for Amy's
+current bitmap codecs.
+
 ## Next measurement suite
 
-The comparison becomes stronger as equivalent game behaviors are implemented seven times. Current
+The comparison becomes stronger as equivalent game behaviors are implemented eight times. Current
 status and order:
 
-1. **Controller snapshot: complete.** Six toolchains pass injected neutral, keypad, direction,
+1. **Controller snapshot: complete.** Seven toolchains pass injected neutral, keypad, direction,
    fire, and release states; ugBASIC's VDP R7 update remains the documented exception.
-2. **Sprite/metasprite stress: complete.** Seven toolchains build and boot the shared fixture.
+2. **Sprite/metasprite stress: complete.** Eight toolchains build and boot the shared fixture.
    Amy's native metasprite path is runtime-equivalent, uses zero permanent RAM, preserves explicit
    layer priority, and is smaller than the manual renderer in all five profiles.
-3. **Tile animation: complete.** Seven ROMs animate shared patterns and 3x2 Name Table frames;
+3. **Tile animation: complete.** Eight ROMs animate shared patterns and 3x2 Name Table frames;
    GearColeco verifies every pattern, color, tile position, animation phase, and final state.
-4. **State update: complete.** Seven ROMs run the same actor array, collision checks, timers, and
+4. **State update: complete.** Eight ROMs run the same actor array, collision checks, timers, and
    state dispatch oracle.
 5. **Sound authoring: functional and still evolving.** BIOS commands and Tiny Sound sequences can
    be inspected, auditioned, edited, imported, and written back; UX and audio-parity QA continue.
@@ -536,34 +549,25 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 | 1 | Close sound-editor fidelity and workflow gaps | Active | High | Medium | Medium |
 | 2 | Add a small explicit animation service | Design after evidence | High | Large | Medium-high |
 | 3 | Complete nested aggregate 2D fields and operand symmetry | Deferred to real use case | Medium | Medium | Medium |
-| 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
+| 4 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
+| 5 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
+
+The codec study starts from libcv's verified RLE+Huffman path without copying its format into Amy.
+It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
+all 42 pictures. Adoption requires exact JavaScript round trips, direct-to-VRAM Z80 proof, measured
+decoder bytes, CPU RAM, GearColeco cycles, and a first-use ROM win over Amy's existing codecs.
 
 ### Completed gaps and next concrete work
 
 Completed and runtime-guarded:
 
-- seven-tool metasprite fixture, SAT oracle, native metasprites, protected-priority flicker;
-- primitive 2D record/overlay fields, verified in all five profiles;
-- fifteen direct-to-VRAM codecs with exact round trips, sizes, cycles, and 42-picture rankings;
-- exact Warrior proof ROMs: Exomizer 3,319 bytes and ZX0 3,254 bytes;
-- seven-tool state-update fixture: all engines reach the same oracle. Amy is 1,460 bytes displayed
-  and 949 bytes engine-only in Experimental; compound record-array expressions now pass. Default
-  numeric output shed 68 ROM bytes and two RAM bytes by linking glyph remapping only when used;
-- seven-tool tile animation: all engines animate the same shared star patterns and six 3x2 ships;
-  exact VRAM checks also exposed and fixed indexed-coordinate `put frame` source corruption;
-- editable benchmark graphics: Metasprite exposes its three animated layers and Tile Animation
-  exposes the star phases and both ship frames through project `editors.json` metadata;
-- in-Studio compression guidance: payload, first-use decoder cost, CPU RAM, measured cycles, and
-  exact 42-picture rankings are available;
-- sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
-- display-cost isolation: 155 five-profile GearColeco runs cover literals, variables, expressions,
-  qualified operands, numeric types, boundaries, mixed widths, and HUD output. `u8`-only output
-  saves 22 bytes, `put char` saves 9 bytes in 37 programs, and adaptive narrow `u8` formatting saves
-  212 corpus bytes in Balanced through Experimental. No ROM grows;
-- HUD display-cost closure: default output, explicit width, BCD, a range-aware Amy expression, and
-  equivalent hand-written Z80 were compared. `put char Lives + $30 at 20,3` matches hand-written
-  Z80 exactly at 498 occupied bytes and 1,905 measured cycles. Keeping that range assumption
-  explicit avoids unsafe compiler behavior.
-
-Next: continue sound-editor QA against the BIOS player in GearColeco. Animation and ROM banking
-remain deliberate design work.
+- eight-tool metasprite, state-update, and tile-animation fixtures with exact runtime oracles;
+- native metasprites, protected-priority flicker, editable benchmark graphics, and 2D
+  record/overlay fields verified in all five profiles;
+- fifteen direct-to-VRAM codecs with exact round trips, decoder costs, cycles, RAM use, and
+  42-picture rankings; Warrior is 3,254 bytes with ZX0 and 3,319 with Exomizer;
+- indexed-coordinate `put frame` corruption fixed through the Tile Animation VRAM oracle;
+- sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI;
+- 155 five-profile display tests covering literals, variables, expressions, qualified operands,
+  numeric boundaries, mixed widths, BCD, and HUD output. Adaptive `u8` formatting saves 212 corpus
+  bytes without ROM growth; explicit Amy digits match hand-written Z80 at 498 bytes and 1,905 cycles.
