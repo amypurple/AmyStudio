@@ -72,6 +72,27 @@ amplitude table and emits adjacent code bytes as PSG data. A modern encoder
 must reject, clamp, or choose another legal delta instead. The decoder should
 also fail safely rather than read beyond its amplitude table.
 
+## Development prototype
+
+The development repository now contains a first independent implementation:
+
+- `studio/core/colecoThreeChannelPcm.js`: 46-level quantizer, linear
+  resampling, safe 32-delta selection, 1..8-unit RLE, encoder and strict
+  decoder;
+- `src/alexis_lib/coleco_tripcm.asm`: direct-to-PSG streaming player using the
+  historical cadence and table layout;
+- `tools/test-three-channel-pcm-codec.mjs`: deterministic codec and hostile
+  stream tests;
+- `tools/test-three-channel-pcm-rom.mjs`: five-profile compile and GearColeco
+  runtime validation.
+
+The initial player plus its 170 bytes of amplitude/delta tables occupies about
+279 bytes before optimization. It is intentionally not wired into the public
+Amy language or clean repository yet. The remaining work is to calibrate its
+exact sample rate, compare generated audio against the real-output MP3, decide
+the public format name and syntax, and integrate WAV preview/import without
+confusing it with ordinary DSOUND.
+
 ## Current attenuation validation
 
 The separately supplied real-ColecoVision attenuation recording measures
