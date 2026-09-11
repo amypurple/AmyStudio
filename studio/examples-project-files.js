@@ -599,6 +599,17 @@ replaceEditorsProjectFile("fly-swatter-timer-quest", [
   { name: "Boss Fly Tile Animation", kind: "metatiles", entries: ["BossTileFrame", "BossTileFrameB", "BossDeadFrame"], frameSize: [7, 3], frameCount: 3, pattern: { from: "builtin", name: "amy-default-ascii" }, baseTile: 0, tileCount: 128, animation: { frameMs: 180, frames: [0, 1] }, notes: "Editable 7x3 character frames. Animation alternates the two flying poses; frame 3 is the defeated boss with X eyes." }
 ]);
 
+replaceEditorsProjectFile("toolchain-benchmark-sprite-metasprite", [
+  { name: "Metasprite Detail Layer", kind: "sprite-patterns", patterns: [{ from: "inline", name: "DetailFrame0" }, { from: "inline", name: "DetailFrame1" }], spriteSize: [16, 16], spriteCount: 2, basePattern: 0, sourceBasePattern: 0, spriteColor: 15, animation: { frameMs: 133, frames: [0, 1] }, notes: "White eye layer for the two-frame player metasprite." },
+  { name: "Metasprite Body Layer", kind: "sprite-patterns", patterns: [{ from: "inline", name: "BodyFrame0" }, { from: "inline", name: "BodyFrame1" }], spriteSize: [16, 16], spriteCount: 2, basePattern: 4, sourceBasePattern: 4, spriteColor: 11, animation: { frameMs: 133, frames: [0, 1] }, notes: "Yellow body layer for the two-frame player metasprite." },
+  { name: "Metasprite Outline Layer", kind: "sprite-patterns", patterns: [{ from: "inline", name: "OutlineFrame0" }, { from: "inline", name: "OutlineFrame1" }], spriteSize: [16, 16], spriteCount: 2, basePattern: 8, sourceBasePattern: 8, spriteColor: 1, animation: { frameMs: 133, frames: [0, 1] }, notes: "Black outline and pupil layer for the two-frame player metasprite." }
+]);
+
+replaceEditorsProjectFile("toolchain-benchmark-tile-animation", [
+  { name: "Animated Star Tile", kind: "charset", patterns: [{ from: "inline", name: "StarPattern0" }, { from: "inline", name: "StarPattern1" }, { from: "inline", name: "StarPattern2" }, { from: "inline", name: "StarPattern3" }], colors: [{ from: "inline", name: "StarColor" }], baseTile: 128, sourceBaseTile: 128, tileCount: 1, screenMode: "mode2", animation: { frameMs: 67, frames: [0, 1, 2, 3] }, notes: "Four pattern phases uploaded to shared star tile $80 at runtime." },
+  { name: "Animated Enemy Ships", kind: "charset", pattern: { from: "inline", name: "ShipPatterns" }, color: { from: "inline", name: "ShipColors" }, baseTile: 144, sourceBaseTile: 144, tileCount: 12, screenMode: "mode2", notes: "Two consecutive 3x2 enemy ship frames: tiles $90-$95 and $96-$9B." }
+]);
+
 derivedProjectFilesById["warrior-dan2-fire-visual-test"] = warriorDan2FireTestProjectFiles;
 derivedProjectFilesById["toolchain-benchmark-warrior-bitmap"] = warriorBenchmarkProjectFiles;
 
