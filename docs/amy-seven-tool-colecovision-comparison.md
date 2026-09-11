@@ -533,11 +533,10 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Isolate and reduce display code cost | Next benchmark | High | Medium | Low |
-| 2 | Close sound-editor fidelity and workflow gaps | Active | High | Medium | Medium |
-| 3 | Add a small explicit animation service | Design after evidence | High | Large | Medium-high |
-| 4 | Complete nested aggregate 2D fields and operand symmetry | Deferred to real use case | Medium | Medium | Medium |
-| 5 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
+| 1 | Close sound-editor fidelity and workflow gaps | Active | High | Medium | Medium |
+| 2 | Add a small explicit animation service | Design after evidence | High | Large | Medium-high |
+| 3 | Complete nested aggregate 2D fields and operand symmetry | Deferred to real use case | Medium | Medium | Medium |
+| 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
 
 ### Completed gaps and next concrete work
 
@@ -557,8 +556,14 @@ Completed and runtime-guarded:
 - in-Studio compression guidance: payload, first-use decoder cost, CPU RAM, measured cycles, and
   exact 42-picture rankings are available;
 - sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
+- display-cost isolation: 155 five-profile GearColeco runs cover literals, variables, expressions,
+  qualified operands, numeric types, boundaries, mixed widths, and HUD output. `u8`-only output
+  saves 22 bytes, `put char` saves 9 bytes in 37 programs, and adaptive narrow `u8` formatting saves
+  212 corpus bytes in Balanced through Experimental. No ROM grows;
+- HUD display-cost closure: default output, explicit width, BCD, a range-aware Amy expression, and
+  equivalent hand-written Z80 were compared. `put char Lives + $30 at 20,3` matches hand-written
+  Z80 exactly at 498 occupied bytes and 1,905 measured cycles. Keeping that range assumption
+  explicit avoids unsafe compiler behavior.
 
-Next concrete work is **display-cost isolation**. Measure literal text, coordinate setup, decimal
-conversion, and VRAM output independently, then optimize only behavior-identical paths. In parallel,
-sound-editor QA must keep comparing browser preview bytes and timing with the BIOS player in GearColeco.
-The animation service and ROM banking remain deliberate design work, not safe incremental fixes.
+Next: continue sound-editor QA against the BIOS player in GearColeco. Animation and ROM banking
+remain deliberate design work.

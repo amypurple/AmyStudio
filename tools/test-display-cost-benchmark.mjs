@@ -54,6 +54,10 @@ const cases = [
   },
   { id: "print-bcd", expected: "1234" },
   { id: "hud-update", expected: "12345", address: 0x1800 + 3 * 32 + 2, extra: { address: 0x1800 + 3 * 32 + 20, expected: "003" } },
+  { id: "hud-update-compact", expected: "12345", address: 0x1800 + 3 * 32 + 2, extra: { address: 0x1800 + 3 * 32 + 20, expected: "3" } },
+  { id: "hud-update-explicit-digit", expected: "12345", address: 0x1800 + 3 * 32 + 2, extra: { address: 0x1800 + 3 * 32 + 20, expected: "3" } },
+  { id: "hud-update-bcd", expected: "12345", address: 0x1800 + 3 * 32 + 2, extra: { address: 0x1800 + 3 * 32 + 20, expected: "3" } },
+  { id: "hud-update-hand-z80", expected: "12345", address: 0x1800 + 3 * 32 + 2, extra: { address: 0x1800 + 3 * 32 + 20, expected: "3" } },
 ];
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureDir = path.join(root, "competition", "benchmarks", "display-cost");

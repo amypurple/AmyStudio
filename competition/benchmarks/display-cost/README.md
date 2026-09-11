@@ -35,6 +35,10 @@ The baseline contains both markers but no display operation. Reported deltas sub
 | Qualified/expression `i16`, digits 3 | 188 | 2,803 |
 | Four-digit BCD | 113 | 1,776 |
 | Two-value HUD update | 225 | 2,192 |
+| Compact HUD (`Lives digits 1`) | 206 | 2,021 |
+| Explicit ranged digit (`Lives + $30`) | 203 | 1,905 |
+| BCD-score HUD | 245 | 2,752 |
+| Equivalent hand-written Z80 HUD | 203 | 1,905 |
 
 Splitting `AMY_U8_TO_ASCII2` from the three-digit formatter saves 22 ROM bytes in every build that prints `u8` values without also printing fixed-point values. The measured `u8` execution time is unchanged.
 
@@ -43,3 +47,12 @@ Removing the stale `AMY_GET_VRAM` dependency from `AMY_PUT_CHAR_AT` saves 9 ROM 
 One- and two-digit `u8` output now selects modulo-10 and modulo-100 formatters when they are the only widths needed. If a program mixes both widths or also prints three digits, finalization reuses the single three-digit formatter instead of linking duplicate helpers. Decimal boundary tests cover 0, 9, 10, 99, 100, and 255. Across the 222-example corpus, 22 programs shrink, none grow: 193 bytes total in Off/Safe and 212 bytes in Balanced/Aggressive/Experimental. Train Track Puzzle, Meteor Dodge, and Amy Bounce Edge Lab each save 20 bytes.
 
 Signed 16-bit output with `digits 2` or `digits 3` now copies its one- or two-byte magnitude suffix directly instead of setting up `LDIR`. This saves 5 bytes per print site with unchanged formatting work. Tests cover `-32768`, all supported widths, expressions, and qualified record fields. The five-profile corpus remains 222/222; the one existing affected example saves 10 bytes in every profile and no ROM grows. Unsigned 16-bit short widths retain the full exact formatter: replacing it with repeated modulo subtraction would trade a small ROM gain for unacceptable worst-case latency at `65535`.
+
+The HUD comparison closes the remaining hand-written-code question. Declaring the one-character
+width saves 19 bytes and 171 cycles over default three-digit `u8` output. When the program already
+guarantees a value in `0..9`, `put char Lives + $30 at 20,3` saves another 3 bytes and 116 cycles
+and produces exactly the same ROM size and measured cycles as the equivalent hand-written Z80.
+The compiler must not apply that conversion implicitly because `digits 1` has defined modulo-10
+behavior for every `u8` value. A five-digit BCD score is larger and slower for this display-only
+case, so BCD should be chosen for game-state arithmetic needs rather than assumed to make output
+cheaper.
