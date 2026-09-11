@@ -3568,14 +3568,18 @@ export function createProjectFileUiHelpers({
         positionPopoverNear(button);
         tempo.input.focus();
       };
-      const openNoteEditor = (voice, command, block) => {
+      const selectTimedBlock = (voice, command, block) => {
         closePopover(true);
         for (const view of laneViews) for (const item of view.blocks) item.block.classList.remove("is-selected");
         block.classList.add("is-selected");
-        activeEditor = { type: "note", voice, command, block, originalText: block.textContent, originalTitle: block.title };
         selectedRange = { startFrame: command.startFrame, endFrame: command.startFrame + command.frames };
         playSelection.disabled = false;
         loopSelection.disabled = false;
+        statusLine.textContent = `Selected · channel ${voice.stream.tiny.channel} · frame ${command.startFrame} · ${describeTinySoundCommand(command)}`;
+      };
+      const openNoteEditor = (voice, command, block) => {
+        selectTimedBlock(voice, command, block);
+        activeEditor = { type: "note", voice, command, block, originalText: block.textContent, originalTitle: block.title };
         popoverTitle.textContent = `Channel ${voice.stream.tiny.channel} · frame ${command.startFrame} pitch`;
         popoverBody.innerHTML = "";
         const pitchLabel = document.createElement("label");
@@ -3821,6 +3825,18 @@ export function createProjectFileUiHelpers({
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 openThisInstrument();
+              }
+            });
+          } else if (command.frames > 0) {
+            block.classList.add("is-selectable");
+            block.tabIndex = 0;
+            block.setAttribute("role", "button");
+            const selectThisBlock = () => selectTimedBlock(voice, command, block);
+            block.addEventListener("click", selectThisBlock);
+            block.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                selectThisBlock();
               }
             });
           }

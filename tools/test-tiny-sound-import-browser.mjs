@@ -172,7 +172,14 @@ try {
   await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`, "selection playback shows its playhead");
   await evaluate(`document.querySelector('[aria-label="Stop playback"]').click()`);
   await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).every((item) => item.hidden)`, "selection playback stops cleanly");
-  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-selected").click()`);
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-sustain").click()`);
+  await waitFor(`document.querySelector(".tiny-pair-sequencer__block.is-sustain.is-selected")`, "sustain block becomes the playback selection");
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Play from selection"]').disabled`), false, "Here must accept a selected sustain block");
+  assert.match(await evaluate(`document.querySelector(".tiny-pair-sequencer__status").textContent`), /Selected.*sustain/i, "selection status identifies the sustain command");
+  await evaluate(`document.querySelector('[aria-label="Play from selection"]').click()`);
+  await waitFor(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).some((item) => !item.hidden)`, "sustain selection playback shows its playhead");
+  await evaluate(`document.querySelector('[aria-label="Stop playback"]').click()`);
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-note.is-editable").click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer__popover").hidden`, "selected note reopens for preview");
   await evaluate(`document.querySelector('[aria-label="Loop selection"]').click()`);
   await delay(600);
