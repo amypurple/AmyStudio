@@ -188,6 +188,13 @@ try {
   await delay(600);
   assert.ok(await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__playhead")).every((item) => item.hidden)`), "note preview must cancel the selection loop without resurrecting it");
   assert.equal(await evaluate(`document.querySelector('[aria-label="Loop selection"]').disabled`), false, "transport returns to idle after note preview interrupts a loop");
+  const noteCountBeforeAdd = await evaluate(`document.querySelectorAll(".tiny-pair-sequencer__block.is-note").length`);
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Add after").click()`);
+  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-note").length === ${noteCountBeforeAdd + 1}`, "Add after creates one sequencer note");
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-note.is-selected").click()`);
+  await waitFor(`!document.querySelector(".tiny-pair-sequencer__popover").hidden`, "added note opens for deletion");
+  await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Delete").click()`);
+  await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-note").length === ${noteCountBeforeAdd}`, "Delete removes one sequencer note");
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "automatic sequencer closes");
 

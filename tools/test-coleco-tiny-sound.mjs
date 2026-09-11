@@ -117,6 +117,23 @@ arpeggioSource = replaceTinySoundByte(arpeggioSource, "brinquitos_music_gladiato
 arpeggioSource = removeTinySoundByte(arpeggioSource, "brinquitos_music_gladiators_ch1", 6);
 assert.equal(arpeggioSource, fixture, "removing an arpeggio restores the byte-exact original stream");
 
+let duplicatedNoteSource = insertTinySoundByteAfter(fixture, "brinquitos_music_gladiators_ch1", 5, 0x1f);
+assert.deepEqual(
+  decodeTinySoundSource(duplicatedNoteSource, "brinquitos_music_gladiators_ch1").commands.slice(1, 3).map((command) => command.code),
+  [0x1f, 0x1f],
+  "a plain note can be duplicated as one source byte"
+);
+duplicatedNoteSource = removeTinySoundByte(duplicatedNoteSource, "brinquitos_music_gladiators_ch1", 6);
+assert.equal(duplicatedNoteSource, fixture, "deleting the duplicated plain note restores the source byte-exactly");
+
+let duplicatedArpeggioSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 5, 0x5f);
+duplicatedArpeggioSource = insertTinySoundByteAfter(duplicatedArpeggioSource, "brinquitos_music_gladiators_ch1", 5, 0x13);
+duplicatedArpeggioSource = insertTinySoundByteAfter(duplicatedArpeggioSource, "brinquitos_music_gladiators_ch1", 6, 0x5f);
+duplicatedArpeggioSource = insertTinySoundByteAfter(duplicatedArpeggioSource, "brinquitos_music_gladiators_ch1", 7, 0x13);
+const duplicatedArpeggioCommands = decodeTinySoundSource(duplicatedArpeggioSource, "brinquitos_music_gladiators_ch1").commands.slice(1, 3);
+assert.deepEqual(duplicatedArpeggioCommands.map((command) => [command.code, command.arpeggioCode]), [[0x5f, 0x13], [0x5f, 0x13]],
+  "duplicating an arpeggio preserves its two-byte command boundary");
+
 let envelopeSource = replaceTinySoundByte(fixture, "brinquitos_music_gladiators_ch1", 2, 0x30);
 envelopeSource = replaceTinySoundByte(envelopeSource, "brinquitos_music_gladiators_ch1", 3, 0x2f);
 envelopeSource = replaceTinySoundByte(envelopeSource, "brinquitos_music_gladiators_ch1", 4, 0x04);

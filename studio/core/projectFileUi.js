@@ -3515,13 +3515,19 @@ export function createProjectFileUiHelpers({
       const popoverPreview = document.createElement("button");
       popoverPreview.type = "button";
       popoverPreview.textContent = "▶ Preview";
+      const popoverAdd = document.createElement("button");
+      popoverAdd.type = "button";
+      popoverAdd.textContent = "Add after";
+      const popoverDelete = document.createElement("button");
+      popoverDelete.type = "button";
+      popoverDelete.textContent = "Delete";
       const popoverCancel = document.createElement("button");
       popoverCancel.type = "button";
       popoverCancel.textContent = "Cancel";
       const popoverApply = document.createElement("button");
       popoverApply.type = "button";
       popoverApply.textContent = "Apply";
-      popoverActions.append(popoverPreview, popoverCancel, popoverApply);
+      popoverActions.append(popoverPreview, popoverAdd, popoverDelete, popoverCancel, popoverApply);
       popover.append(popoverTitle, popoverBody, popoverActions);
       let activeEditor = null;
       let selectedRange = null;
@@ -3563,6 +3569,8 @@ export function createProjectFileUiHelpers({
         popoverBody.append(tempo.label, rate);
         activeEditor.fields = { tempo };
         popoverPreview.hidden = true;
+        popoverAdd.hidden = true;
+        popoverDelete.hidden = true;
         popover.hidden = false;
         popover.classList.remove("hidden");
         positionPopoverNear(button);
@@ -3626,6 +3634,8 @@ export function createProjectFileUiHelpers({
         activeEditor.arpeggioToggle = arpeggioToggle;
         activeEditor.arpeggioSelect = arpeggioSelect;
         popoverPreview.hidden = false;
+        popoverAdd.hidden = false;
+        popoverDelete.hidden = false;
         popover.hidden = false;
         popover.classList.remove("hidden");
         positionPopoverNear(block);
@@ -3660,6 +3670,8 @@ export function createProjectFileUiHelpers({
         popoverBody.append(bytesLine, volume.label, modeLabel, step.label, count.label, first.label, every.label);
         activeEditor.fields = { volume, mode, step, count, first, every };
         popoverPreview.hidden = true;
+        popoverAdd.hidden = true;
+        popoverDelete.hidden = true;
         popover.hidden = false;
         popover.classList.remove("hidden");
         positionPopoverNear(heading);
@@ -3695,6 +3707,44 @@ export function createProjectFileUiHelpers({
           activeSoundPreview = playback;
           await playback.done;
           if (activeSoundPreview === playback) activeSoundPreview = null;
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+      });
+      popoverAdd.addEventListener("click", () => {
+        if (!activeEditor || activeEditor.type !== "note") return;
+        try {
+          const { voice, command } = activeEditor;
+          const byteIndex = command.offset + 1 + (command.arpeggioCode === null ? 0 : 1);
+          let source = insertTinySoundByteAfter(analysis.source, voice.label, byteIndex, command.code);
+          if (command.arpeggioCode !== null) {
+            source = insertTinySoundByteAfter(source, voice.label, byteIndex + 1, command.arpeggioCode);
+          }
+          saveSoundSource(source);
+          analysis.source = source;
+          selectedRange = { startFrame: command.startFrame + command.frames, endFrame: command.startFrame + command.frames * 2 };
+          closePopover(false);
+          rebuildLane(voice);
+          statusLine.textContent = `Added · channel ${voice.stream.tiny.channel} · frame ${selectedRange.startFrame}`;
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+      });
+      popoverDelete.addEventListener("click", () => {
+        if (!activeEditor || activeEditor.type !== "note") return;
+        try {
+          const { voice, command } = activeEditor;
+          let source = analysis.source;
+          if (command.arpeggioCode !== null) source = removeTinySoundByte(source, voice.label, command.offset + 2);
+          source = removeTinySoundByte(source, voice.label, command.offset + 1);
+          saveSoundSource(source);
+          analysis.source = source;
+          selectedRange = null;
+          playSelection.disabled = true;
+          loopSelection.disabled = true;
+          closePopover(false);
+          rebuildLane(voice);
+          statusLine.textContent = `Deleted · channel ${voice.stream.tiny.channel} · frame ${command.startFrame}`;
         } catch (error) {
           setStatus(error.message || String(error));
         }
