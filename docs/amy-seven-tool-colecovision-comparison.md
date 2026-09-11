@@ -68,8 +68,8 @@ Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
 | Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
 | Sprite Metasprite | **983** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
 | Gameplay State Update | 1,460 | **1,253** | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
-| Tile Animation | **1,400** | 1,466 | 1,602 | 1,922 | 2,998 | 2,920 | 6,636 |
-| **Six-sample total** | **7,930** | **9,231** | **11,039** | **13,379** | **15,405** | **21,379** | **53,999** |
+| Tile Animation | 1,387 | **1,376** | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
+| **Six-sample total** | **7,917** | **9,141** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -92,7 +92,7 @@ assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), gene
 | Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
 | Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 | Gameplay State Update | Seven match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
-| Tile Animation | Seven animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles |
+| Tile Animation | Seven continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
