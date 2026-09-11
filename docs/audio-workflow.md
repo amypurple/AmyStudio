@@ -2,7 +2,7 @@
 
 ## Choose the sound path
 
-Amy Studio currently supports three playback families, plus one historical reconstruction workflow that is not yet integrated. Choose by runtime need rather than treating them as interchangeable:
+Amy Studio supports four playback families plus one reconstruction workflow. Choose by runtime need rather than treating them as interchangeable:
 
 | Need | Format and Amy path |
 |---|---|

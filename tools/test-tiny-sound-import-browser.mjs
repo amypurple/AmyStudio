@@ -14,6 +14,7 @@ const server = createServer(async (request, response) => {
     if (!file.startsWith(root)) throw new Error("outside root");
     if ((await stat(file)).isDirectory()) file = path.join(file, "index.html");
     response.setHeader("Content-Type", mime.get(path.extname(file)) || "application/octet-stream");
+    response.setHeader("Cache-Control", "no-store");
     response.end(await readFile(file));
   } catch {
     response.statusCode = 404;
@@ -100,6 +101,7 @@ try {
   await client.send("Page.enable");
   await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/studio/?tiny-import-browser-test=1` });
   await waitFor(`document.getElementById("studioLoading") === null`, "Studio startup");
+  assert.equal(await evaluate(`performance.getEntriesByType("resource").some(entry => entry.name.includes("/core/projectFileUi.js?v="))`), true, "project-file UI module is loaded");
 
   // Start from an empty project (no sound table yet) so the "no table" auto-wiring path
   // is what gets exercised end to end.
@@ -162,7 +164,7 @@ try {
   assert.match(rowText, /Commando_ch2/);
   assert.match(rowText, /Tiny/);
   await waitFor(`document.querySelectorAll(".tiny-pair-sequencer__block.is-editable, .tiny-pair-sequencer__block.is-sustain, .tiny-pair-sequencer__block.is-silence").length > 0`, "automatic sequencer shows imported stream blocks");
-  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-editable").click()`);
+  await evaluate(`document.querySelector(".tiny-pair-sequencer__block.is-note.is-editable").click()`);
   await waitFor(`document.querySelector('[aria-label="Play from selection"]')?.disabled === false`, "selection playback becomes available");
   await evaluate(`Array.from(document.querySelectorAll(".tiny-pair-sequencer__popover-actions button")).find((button) => button.textContent === "Apply").click()`);
   await waitFor(`document.querySelector(".tiny-pair-sequencer__block.is-selected")`, "selection highlight survives lane rebuild after Apply");
