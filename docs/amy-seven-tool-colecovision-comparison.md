@@ -136,9 +136,9 @@ The three website representatives are selected mechanically from each picture's 
 
 | Role | Picture | Best ratio |
 |---|---|---:|
-| most compressible | NewColeco ROM File Edition | 7.33% |
+| most compressible | ROM File Edition | 7.33% |
 | median | Cake | 23.89% |
-| least compressible | mona lisa | 74.93% |
+| least compressible | Mona Lisa | 74.93% |
 
 The PDF shows every converted image. Complete per-picture ratios, decoder sizes, first-use totals, and exact source values are in `competition/benchmarks/compression/bitmap-codec-ratios.csv`, `bitmap-codec-aggregate.csv`, and `bitmap-codec-first-use.csv`.
 ### Observations supported by this suite
