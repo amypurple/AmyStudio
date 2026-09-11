@@ -102,6 +102,42 @@ try {
   assert.equal(await evaluate(`document.querySelector(".panel-bar--cyan").querySelectorAll("button").length`), 0, "SOURCE title bar contains no controls");
   assert.ok(await evaluate(`document.getElementById("btnInspectSourceSounds").closest(".source-toolbar") !== null`), "SOUND belongs to the source toolbar");
   assert.notEqual(await evaluate(`getComputedStyle(document.getElementById("btnInspectSourceSounds")).display`), "none", "SOUND stays visible while the ASM panel is open");
+  await evaluate(`document.getElementById("btnProjectAudio").click()`);
+  await waitFor(`document.getElementById("wavConverterDialog").open`, "audio converter");
+  assert.deepEqual(await evaluate(`Array.from(document.getElementById("wavDigitalFormat").options).map(option => option.value)`), ["dsound", "tripcm"], "digital converter exposes DSOUND and TriPCM without another panel");
+  await evaluate(`(() => {
+    const select = document.getElementById("wavDigitalFormat");
+    select.value = "tripcm";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  assert.equal(await evaluate(`document.getElementById("wavStep").closest(".field").classList.contains("hidden")`), true, "TriPCM hides the DSOUND-only step control");
+  assert.match(await evaluate(`document.getElementById("wavStatus").textContent`), /three tone channels/i, "TriPCM states its blocking channel cost");
+  await evaluate(`(() => {
+    const sampleCount = 128;
+    const bytes = new Uint8Array(44 + sampleCount);
+    const view = new DataView(bytes.buffer);
+    const tag = (offset, text) => { for (let index = 0; index < text.length; index += 1) bytes[offset + index] = text.charCodeAt(index); };
+    tag(0, "RIFF"); view.setUint32(4, 36 + sampleCount, true); tag(8, "WAVE");
+    tag(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 8000, true);
+    view.setUint16(32, 1, true); view.setUint16(34, 8, true); tag(36, "data");
+    view.setUint32(40, sampleCount, true);
+    for (let index = 0; index < sampleCount; index += 1) bytes[44 + index] = 128 + Math.round(Math.sin(index * Math.PI / 8) * 80);
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "tripcm-test.wav", { type: "audio/wav" }));
+    document.getElementById("wavFile").files = transfer.files;
+    document.getElementById("wavLabel").value = "TriTest";
+    document.getElementById("btnWavConvert").click();
+  })()`);
+  try {
+    await waitFor(`document.getElementById("wavOutput").value.includes("data TriTest bytes")`, "TriPCM WAV conversion");
+  } catch (error) {
+    throw new Error(`${error.message} Status: ${await evaluate(`document.getElementById("wavStatus").textContent`)} Output: ${await evaluate(`document.getElementById("wavOutput").value.slice(0, 80)`)}`);
+  }
+  assert.match(await evaluate(`document.getElementById("wavStats").textContent`), /bytes encoded/, "TriPCM conversion reports encoded size");
+  await evaluate(`document.getElementById("btnWavSaveAndInsertPlay").click()`);
+  await waitFor(`!document.getElementById("wavConverterDialog").open`, "TriPCM project insertion");
+  assert.match(await evaluate(`document.getElementById("sourceEditor").value`), /asset TriTest from "@project\/TriTest\.tripcm"[\s\S]*play tripcm TriTest/, "TriPCM creates an asset and playback command");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
     editor.value = "' Amy starter\\nset sound table GameSoundTable areas 6\\ntext screen\\n";

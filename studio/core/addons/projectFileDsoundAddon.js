@@ -1,6 +1,7 @@
 export function createProjectFileDsoundAddon({
   projectFileBytes,
   dsoundBytesToPreviewSamples,
+  threeChannelPcmBytesToPreviewSamples,
   cvSampleRate,
   setStatus
 }) {
@@ -35,14 +36,15 @@ export function createProjectFileDsoundAddon({
     return new Blob([buffer], { type: "audio/wav" });
   }
 
-  async function previewProjectFileDsound(entry) {
+  async function previewProjectFileDsound(entry, kind = "dsound") {
     const bytes = projectFileBytes(entry);
     if (!bytes.length) {
       setStatus(`No bytes available for ${entry.path}.`);
       return;
     }
-    if (!dsoundBytesToPreviewSamples) {
-      setStatus("DSOUND preview helper is unavailable in this Studio build.");
+    const previewHelper = kind === "tripcm" ? threeChannelPcmBytesToPreviewSamples : dsoundBytesToPreviewSamples;
+    if (!previewHelper) {
+      setStatus(`${kind.toUpperCase()} preview helper is unavailable in this Studio build.`);
       return;
     }
     if (activePreviewUrl) {
@@ -53,8 +55,8 @@ export function createProjectFileDsoundAddon({
       activePreviewAudio.pause?.();
       activePreviewAudio = null;
     }
-    const sampleRate = Number.isFinite(entry?.dsoundStep) ? Math.trunc(cvSampleRate(entry.dsoundStep)) : 20616;
-    const previewSamples = await dsoundBytesToPreviewSamples(bytes);
+    const sampleRate = kind === "tripcm" ? 17500 : (Number.isFinite(entry?.dsoundStep) ? Math.trunc(cvSampleRate(entry.dsoundStep)) : 20616);
+    const previewSamples = await previewHelper(bytes);
     const wavBlob = encodePreviewWav(previewSamples, sampleRate);
     activePreviewUrl = URL.createObjectURL(wavBlob);
     activePreviewAudio = new Audio(activePreviewUrl);

@@ -855,5 +855,10 @@ export const alexisRuntimeCatalog = {
     "group": "display",
     "sourcePath": "src/alexis_lib/coleco_120c.asm",
     "asm": "AMY_120C_UPDATE:"
+  },
+  "AMY_PLAY_TRIPCM": {
+    "group": "sound",
+    "sourcePath": "src/alexis_lib/coleco_tripcm.asm",
+    "asm": "AMY_PLAY_TRIPCM:"
   }
 };

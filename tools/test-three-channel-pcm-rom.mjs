@@ -9,7 +9,6 @@ import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearc
 
 const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
-const player = await readFile(resolve(root, "src/alexis_lib/coleco_tripcm.asm"), "utf8");
 const levels = [];
 for (let repeat = 0; repeat < 120; repeat += 1) {
   for (let level = 19; level <= 45; level += 1) levels.push(level);
@@ -26,20 +25,13 @@ u8 Finished = 0
 sub start:
   text screen
   screen on
-  nmi off
-  call asm AMY_TRIPCM_TEST_ENTRY
-  nmi on
+  play tripcm TripcmTestData
   Finished = 1
   loop forever
 
-asm {
-AMY_TRIPCM_TEST_ENTRY:
-    ld hl,AMY_TRIPCM_TEST_DATA
-    jp AMY_PLAY_TRIPCM
-${player}
-AMY_TRIPCM_TEST_DATA:
-${db}
-}
+data TripcmTestData bytes
+${db.replace(/^    db /gm, "  ")}
+end data
 `;
 
 function compile(sourcePath, asmPath, romPath, profile) {

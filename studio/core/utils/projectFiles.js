@@ -39,6 +39,7 @@ export function assetNameFromProjectPath(path) {
 export function fileKindFromPath(path) {
   const lower = normalizeProjectFilePath(path).toLowerCase();
   if (lower.endsWith(".dsound")) return "dsound";
+  if (lower.endsWith(".tripcm")) return "tripcm";
   if (/\.(sprpat|sprcolor|sprattr)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "sprite";
   if (/\.(pc|pattern|pat|chr|color|col|clr|name|nam)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "picture";
   if (/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/.test(lower)) return "compressed";

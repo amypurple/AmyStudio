@@ -139,3 +139,39 @@ export function threeChannelPcmLevelTableBytes() {
 export function threeChannelPcmDeltaTableBytes() {
   return Uint8Array.from(DELTAS, delta => (delta * 3) & 0xff);
 }
+
+export function threeChannelPcmLevelsToPreviewSamples(levels, { gain = 0.9 } = {}) {
+  const output = new Float32Array(levels?.length || 0);
+  for (let index = 0; index < output.length; index += 1) {
+    const level = THREE_CHANNEL_PCM_LEVELS[levels[index]];
+    if (!level) throw new Error(`Three-channel PCM level ${levels[index]} must be 0..45.`);
+    output[index] = Math.max(-1, Math.min(1, ((level.amplitude * 2) - 1) * gain));
+  }
+  return output;
+}
+
+export function threeChannelPcmBytesToPreviewSamples(bytes, options = {}) {
+  return threeChannelPcmLevelsToPreviewSamples(decodeThreeChannelPcm(bytes), options);
+}
+
+export function samplesToThreeChannelPcm(samples, sourceRate, {
+  targetRate = 17500,
+  label = "SoundData"
+} = {}) {
+  const levels = resampleThreeChannelPcm(samples, sourceRate, targetRate);
+  const bytes = encodeThreeChannelPcm(levels);
+  const rows = [];
+  for (let offset = 0; offset < bytes.length; offset += 16) {
+    rows.push(`  $${Array.from(bytes.slice(offset, offset + 16), value => value.toString(16).toUpperCase().padStart(2, "0")).join(",$")}`);
+  }
+  return {
+    label,
+    levels,
+    bytes,
+    sampleRate: targetRate,
+    durationSec: levels.length / targetRate,
+    unitCount: levels.length,
+    byteCount: bytes.length,
+    alexisSource: `data ${label} bytes\n${rows.join("\n")}\nend data`
+  };
+}

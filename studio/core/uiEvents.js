@@ -343,6 +343,8 @@ export function bindStudioRuntimeEvents(ctx) {
     wavToDsound,
     audioBufferToDsound,
     dsoundBytesToPreviewSamples,
+    samplesToThreeChannelPcm,
+    threeChannelPcmBytesToPreviewSamples,
     decodeAudioBufferToMono,
     parseWavAudio,
     insertTextIntoSource,
@@ -361,6 +363,7 @@ export function bindStudioRuntimeEvents(ctx) {
   let wavRecordedObjectUrl = "";
   let wavPsgPreview = null;
   let wavPsgBuilt = null;
+  let wavDigitalKind = "dsound";
 
   function setWavRecordingIdleState(message = "No recording yet.") {
     if (els.btnWavRecordStart) els.btnWavRecordStart.disabled = false;
@@ -431,7 +434,9 @@ export function bindStudioRuntimeEvents(ctx) {
   async function updateDsoundPreview(bytes, sampleRate) {
     clearDsoundPreview();
     if (!bytes?.length || !els.wavDsoundPreview) return;
-    const previewSamples = await dsoundBytesToPreviewSamples(bytes);
+    const previewSamples = wavDigitalKind === "tripcm"
+      ? await threeChannelPcmBytesToPreviewSamples(bytes)
+      : await dsoundBytesToPreviewSamples(bytes);
     const wavBlob = encodePreviewWav(previewSamples, sampleRate);
     wavDsoundPreviewObjectUrl = URL.createObjectURL(wavBlob);
     wavDsoundPreviewSampleRate = sampleRate;
@@ -472,31 +477,33 @@ export function bindStudioRuntimeEvents(ctx) {
     return bytes.length ? bytes : null;
   }
 
-  function saveCurrentDsoundProjectFile() {
+  function saveCurrentDigitalProjectFile() {
     const label = els.wavLabel.value.trim() || "SoundData";
     const bytes = parseCurrentDsoundBytes();
     const step = parseInt(els.wavStep.value, 10) || 0;
     const ampPercent = parseInt(els.wavAmp.value, 10) || 125;
     if (!bytes) {
-      els.wavStatus.textContent = "No dsound bytes available yet.";
+      els.wavStatus.textContent = "No digital audio bytes available yet.";
       return null;
     }
-    const path = ensureProjectFilePathCandidate(`${label}.dsound`);
+    const path = ensureProjectFilePathCandidate(`${label}.${wavDigitalKind}`);
     upsertProjectFile({
       path,
       base64: bytesToBase64(Uint8Array.from(bytes)),
-      kind: "dsound",
-      source: "wavToDsound",
+      kind: wavDigitalKind,
+      source: wavDigitalKind === "tripcm" ? "wavToTriPcm" : "wavToDsound",
       dsoundStep: step,
       dsoundAmpPercent: ampPercent
     });
     return { label, path, step, ampPercent };
   }
 
-  function insertSavedDsoundSnippet(saved) {
+  function insertSavedDigitalSnippet(saved) {
     const snippet = [
       `asset ${saved.label} from "${saved.path}"`,
-      `play dsound ${saved.label}${saved.step ? ` step ${saved.step}` : ""}`
+      wavDigitalKind === "tripcm"
+        ? `play tripcm ${saved.label}`
+        : `play dsound ${saved.label}${saved.step ? ` step ${saved.step}` : ""}`
     ].join("\n");
     insertTextIntoSource(snippet, { beforeProcedures: true });
   }
@@ -513,6 +520,10 @@ export function bindStudioRuntimeEvents(ctx) {
       const step = parseInt(els.wavStep.value, 10);
       const ampPercent = parseInt(els.wavAmp.value, 10) || 125;
       const label = els.wavLabel.value.trim() || "SoundData";
+      if (els.wavDigitalFormat?.value === "tripcm") {
+        const decoded = await decodeAudioBufferToMono(audioBuffer);
+        return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label });
+      }
       return await audioBufferToDsound(audioBuffer, { step, ampPercent, label });
     } finally {
       await audioContext.close();
@@ -523,6 +534,10 @@ export function bindStudioRuntimeEvents(ctx) {
     const step = parseInt(els.wavStep.value, 10);
     const ampPercent = parseInt(els.wavAmp.value, 10) || 125;
     const label = els.wavLabel.value.trim() || "SoundData";
+    if (els.wavDigitalFormat?.value === "tripcm") {
+      const decoded = await decodeAudioFile(file);
+      return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label });
+    }
     const buffer = await file.arrayBuffer();
     const name = String(file.name || "").toLowerCase();
     const looksLikeWav = name.endsWith(".wav") || file.type === "audio/wav" || file.type === "audio/x-wav";
@@ -547,11 +562,12 @@ export function bindStudioRuntimeEvents(ctx) {
   }
 
   async function renderDsoundResult(result, statusText = "Done.") {
+    wavDigitalKind = els.wavDigitalFormat?.value === "tripcm" ? "tripcm" : "dsound";
     wavPsgPreview = null;
     wavPsgBuilt = null;
     els.wavOutput.value = result.alexisSource;
     els.wavStats.textContent =
-      `${result.nibbleCount.toLocaleString()} samples · ` +
+      `${(result.nibbleCount ?? result.unitCount).toLocaleString()} samples · ` +
       `${result.sampleRate.toLocaleString()} Hz · ` +
       `${result.durationSec.toFixed(2)}s · ` +
       `${result.byteCount.toLocaleString()} bytes encoded`;
@@ -560,11 +576,11 @@ export function bindStudioRuntimeEvents(ctx) {
     els.wavStatus.textContent = statusText;
   }
 
-  async function quickAddDsoundFromResult(result, statusText = "Saved and inserted play dsound snippet.") {
+  async function quickAddDsoundFromResult(result, statusText = "Saved and inserted playback snippet.") {
     await renderDsoundResult(result, statusText);
-    const saved = saveCurrentDsoundProjectFile();
+    const saved = saveCurrentDigitalProjectFile();
     if (!saved) return;
-    insertSavedDsoundSnippet(saved);
+    insertSavedDigitalSnippet(saved);
     els.wavConverterDialog.close();
     setStatus(`Saved ${saved.path} and inserted play dsound snippet.`);
   }
@@ -974,6 +990,15 @@ export function bindStudioRuntimeEvents(ctx) {
     els.wavSampleRateHint.textContent = `~${rate.toLocaleString()} Hz at step ${step}`;
   });
 
+  els.wavDigitalFormat?.addEventListener("change", () => {
+    const tripcm = els.wavDigitalFormat.value === "tripcm";
+    els.wavStep.closest(".field")?.classList.toggle("hidden", tripcm);
+    els.wavAmp.closest(".field")?.classList.toggle("hidden", tripcm);
+    els.wavStatus.textContent = tripcm
+      ? "TriPCM uses three tone channels and blocks during playback."
+      : "DSOUND uses three tone channels and blocks during playback.";
+  });
+
   els.btnWavConvert.addEventListener("click", async () => {
     const file = els.wavFile.files[0];
     if (!file) {
@@ -1060,7 +1085,7 @@ export function bindStudioRuntimeEvents(ctx) {
     try {
       const result = await convertRecordingBlob(wavRecordedBlob);
       await renderDsoundResult(result, "Recording converted.");
-      els.wavRecordStatus.textContent = "Recording converted to dsound.";
+      els.wavRecordStatus.textContent = `Recording converted to ${wavDigitalKind}.`;
     } catch (err) {
       els.wavStatus.textContent = `Error: ${err.message || err}`;
       els.wavOutputWrap.classList.remove("visible");
@@ -1111,11 +1136,11 @@ export function bindStudioRuntimeEvents(ctx) {
       els.wavStatus.textContent = "Convert audio first.";
       return;
     }
-    const sampleRate = wavDsoundPreviewSampleRate || Math.trunc(cvSampleRate(parseInt(els.wavStep.value, 10) || 0));
+    const sampleRate = wavDsoundPreviewSampleRate || (wavDigitalKind === "tripcm" ? 17500 : Math.trunc(cvSampleRate(parseInt(els.wavStep.value, 10) || 0)));
     await updateDsoundPreview(bytes, sampleRate);
     try {
       await els.wavDsoundPreview?.play?.();
-      els.wavStatus.textContent = "Playing converted dsound preview.";
+      els.wavStatus.textContent = `Playing converted ${wavDigitalKind} preview.`;
     } catch {
       els.wavStatus.textContent = "Converted preview is ready below.";
     }
@@ -1136,7 +1161,7 @@ export function bindStudioRuntimeEvents(ctx) {
       els.wavStatus.textContent = "Convert audio first.";
       return;
     }
-    const saved = saveCurrentDsoundProjectFile();
+    const saved = saveCurrentDigitalProjectFile();
     if (!saved) return;
     els.wavStatus.textContent = `Saved ${saved.path} to project files.`;
   });
@@ -1146,11 +1171,11 @@ export function bindStudioRuntimeEvents(ctx) {
       els.wavStatus.textContent = "Convert audio first.";
       return;
     }
-    const saved = saveCurrentDsoundProjectFile();
+    const saved = saveCurrentDigitalProjectFile();
     if (!saved) return;
-    insertSavedDsoundSnippet(saved);
+    insertSavedDigitalSnippet(saved);
     els.wavConverterDialog.close();
-    setStatus(`Saved ${saved.path} and inserted play dsound snippet.`);
+    setStatus(`Saved ${saved.path} and inserted ${wavDigitalKind} playback.`);
   });
 
   els.btnWavConvertPsg?.addEventListener("click", async () => {

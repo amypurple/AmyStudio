@@ -2774,7 +2774,11 @@ DSOUND (4-bit PCM via AY-3-8910):
 ```basic
 play dsound SoundData
 play dsound SoundData step 2
+play tripcm SpeechData
 ```
+
+`play tripcm` plays blocking three-channel digital audio and restores the
+previous display/NMI state when it returns.
 
 Coleco BIOS sound indexes are `1..62`. Index `63` aliases the BIOS free-area
 sentinel and cannot start; compile-time indexes outside the valid range are rejected.

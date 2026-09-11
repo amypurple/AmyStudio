@@ -9,6 +9,7 @@ Amy Studio currently supports three playback families, plus one historical recon
 | Coleco BIOS/lib4ksa music and effects | sound table plus `play sound N` |
 | Amy's compact music/effect sequences | Tiny Sound / `play tiny` workflows |
 | Short digital voice or sampled audio | DSound / `play dsound` |
+| Higher-quality digital voice or sampled audio | TriPCM / `play tripcm` |
 | Reconstruct WAV audio as editable PSG notes | historical WAV2CV FFT pipeline; planned Studio tool |
 
 Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Amy Studio provides a Sound FX editor inside the source sound inspector: select a command, change its note/noise, exact PSG period, channel, volume, duration, frequency sweep or volume sweep, audition it, then choose `Apply changes`. Duration `256` is shown normally even though the BIOS encodes it as `$00`. Commands can be reordered by dragging or with the arrow buttons, and sequence edits support Undo/Redo before saving. Sequence preview keeps each PSG channel continuous between adjacent commands; only an actual gap silences it. Full song arrangement remains future work.
@@ -442,4 +443,24 @@ The converter's **Save + insert play snippet** action creates the project file a
 - Should not be called from within an NMI handler
 - Nibble value 0 must never appear as audio data (reserved for RLE/termination)
 - Step value 0 gives highest quality; higher step values reduce sample rate and ROM size
+
+## Three-channel digital audio — TriPCM
+
+TriPCM implements Amy Bienvenu's 2009 three-channel attenuation technique. It
+combines the three tone-channel volume outputs into 46 amplitude levels, then
+stores bounded level deltas with short run lengths.
+
+Use **Files > Audio/Voice**, open **Advanced conversion options**, and choose
+**TriPCM (3 channels)**. Convert and replay the result before choosing **Save +
+insert play snippet**:
+
+```amy
+asset Speech from "@project/Speech.tripcm"
+play tripcm Speech
+```
+
+`play tripcm` is blocking, uses all three tone channels, and mutes the PSG when
+it finishes. Amy restores the previous display/NMI state before execution
+continues. Prefer DSOUND when ROM size matters more than fidelity; use BIOS
+sound tables for non-blocking music and game effects.
 

@@ -1696,7 +1696,7 @@ export function transpileAmyCore(sourceText, deps) {
     "screen", "display", "nmi", "graphics", "text", "cls", "print", "put", "fill",
     "vpoke", "vpeek", "vram", "decompress", "copy", "define", "show",
     "sprites", "sprite", "hitbox", "hide", "clear", "update", "swap", "wipe",
-    "play", "stop", "mute", "sound", "song", "dsound",
+    "play", "stop", "mute", "sound", "song", "dsound", "tripcm",
     "enable", "disable", "reset", "spinner", "spinners",
     "random", "floor", "fraction", "highbyte", "lowbyte", "highword", "lowword", "sqrt", "log", "exp", "format",
     "fixed", "ufixed", "fixed32", "fp5", "bool", "bcd", "u8", "u16", "u32", "i8", "i16", "i32",

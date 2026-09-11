@@ -5,6 +5,8 @@ import {
   encodeThreeChannelPcm,
   quantizeThreeChannelPcmSample,
   resampleThreeChannelPcm,
+  samplesToThreeChannelPcm,
+  threeChannelPcmBytesToPreviewSamples,
   threeChannelPcmDeltaTableBytes,
   threeChannelPcmLevelTableBytes
 } from "../studio/core/colecoThreeChannelPcm.js";
@@ -37,6 +39,14 @@ const samples = Float32Array.from([-1, -0.5, 0, 0.5, 1]);
 const resampled = resampleThreeChannelPcm(samples, 5, 5);
 assert.equal(resampled.length, samples.length);
 assert.deepEqual([...resampled], [...samples].map(quantizeThreeChannelPcmSample));
+
+const converted = samplesToThreeChannelPcm(samples, 5, { targetRate: 5, label: "Wave" });
+assert.equal(converted.unitCount, 5);
+assert.match(converted.alexisSource, /^data Wave bytes/m);
+const convertedLevels = decodeThreeChannelPcm(converted.bytes);
+assert.equal(convertedLevels.length, resampled.length);
+assert([...convertedLevels].every(level => level >= 0 && level < 46));
+assert.equal(threeChannelPcmBytesToPreviewSamples(converted.bytes).length, 5);
 
 assert.throws(() => decodeThreeChannelPcm([0]), /no end marker/i);
 assert.throws(() => decodeThreeChannelPcm([30, 255], { startIndex: 0 }), /leaves the amplitude table/i);

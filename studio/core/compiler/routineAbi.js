@@ -210,6 +210,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_UPDATE_MUSIC: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PLAY_SONG: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PLAY_DSOUND: abi({ inputs: { hl: "dsound data", c: "step" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_PLAY_TRIPCM: abi({ inputs: { hl: "tripcm data" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_WAIT_FRAMES_SAFE: abi({ inputs: { hl: "frame count" }, clobbers: ["af", "de"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK_RESUME: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),

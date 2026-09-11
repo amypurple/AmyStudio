@@ -69,7 +69,7 @@ import { handleSpecialIfGotoStatement } from "./core/compiler/specialIfGotoState
 import { createRuntimeValueHelpers } from "./core/compiler/runtimeValueHelpers.js?v=20260710-word-ptr";
 import { handleSelectCaseStatement } from "./core/compiler/selectCaseStatementHelpers.js";
 import { createSimpleArithmeticHelpers } from "./core/compiler/simpleArithmeticHelpers.js?v=20260714-record-fixed-source-preserve";
-import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260605-dsound-asset-fix";
+import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStatementHelpers.js?v=20260911-tripcm";
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
 import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js?v=20260802-spinner-consume";
@@ -91,7 +91,7 @@ import {
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260907-orphan-sound-table";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260911-tripcm";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
@@ -110,8 +110,8 @@ import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260802-keypad-blank";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260909-spectral-psg";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260731-source-marker-alignment";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260911-tripcm";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bytesToDataUrl } from "./core/utils/dataUrls.js";
@@ -241,6 +241,7 @@ const els = {
   wavRecordStatus: document.getElementById("wavRecordStatus"),
   wavRecordingPreview: document.getElementById("wavRecordingPreview"),
   wavStep: document.getElementById("wavStep"),
+  wavDigitalFormat: document.getElementById("wavDigitalFormat"),
   wavStepValue: document.getElementById("wavStepValue"),
   wavSampleRateHint: document.getElementById("wavSampleRateHint"),
   wavAmp: document.getElementById("wavAmp"),
@@ -317,6 +318,7 @@ let examplesIndexSynced = false;
 let examplesModulePromise = null;
 let examplesModuleRevision = "";
 let wavToDsoundModulePromise = null;
+let threeChannelPcmModulePromise = null;
 
 function debugExampleBrowser(stage, extra = {}) {
   const payload = {
@@ -525,6 +527,19 @@ async function decodeAudioBufferToMono(audioBuffer) {
 
 async function parseWavAudio(buffer) {
   return (await loadWavToDsoundModule()).parseWav(buffer);
+}
+
+function loadThreeChannelPcmModule() {
+  if (!threeChannelPcmModulePromise) threeChannelPcmModulePromise = import("./core/colecoThreeChannelPcm.js");
+  return threeChannelPcmModulePromise;
+}
+
+async function samplesToThreeChannelPcm(...args) {
+  return (await loadThreeChannelPcmModule()).samplesToThreeChannelPcm(...args);
+}
+
+async function threeChannelPcmBytesToPreviewSamples(...args) {
+  return (await loadThreeChannelPcmModule()).threeChannelPcmBytesToPreviewSamples(...args);
 }
 
 function loadInternalCompilerModule() {
@@ -935,6 +950,7 @@ const {
   projectFileBytes,
   bytesToBase64,
   dsoundBytesToPreviewSamples,
+  threeChannelPcmBytesToPreviewSamples,
   cvSampleRate,
   detectCodecFromName,
   decompressBytes,
@@ -1251,6 +1267,8 @@ function bindEvents() {
         wavToDsound,
         audioBufferToDsound,
         dsoundBytesToPreviewSamples,
+        samplesToThreeChannelPcm,
+        threeChannelPcmBytesToPreviewSamples,
         decodeAudioBufferToMono,
         parseWavAudio,
         insertTextIntoSource: (...args) => insertTextIntoSource(...args),

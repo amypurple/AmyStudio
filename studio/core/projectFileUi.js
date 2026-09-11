@@ -1,5 +1,5 @@
 import { createProjectFileCreationAddon } from "./addons/projectFileCreationAddon.js";
-import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js";
+import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js?v=20260911-tripcm";
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
@@ -29,6 +29,7 @@ export function createProjectFileUiHelpers({
   projectFileBytes,
   bytesToBase64,
   dsoundBytesToPreviewSamples,
+  threeChannelPcmBytesToPreviewSamples,
   cvSampleRate,
   detectCodecFromName,
   decompressBytes,
@@ -94,7 +95,7 @@ export function createProjectFileUiHelpers({
   }
   function assetSnippetForEntry(entry, assetName) {
     const normalizedPath = normalizeProjectFilePath(entry.path);
-    const codec = String(entry?.codec || ((entry.kind || fileKindFromPath(entry.path)) === "dsound" ? "raw" : "")).toLowerCase();
+    const codec = String(entry?.codec || (["dsound", "tripcm"].includes(entry.kind || fileKindFromPath(entry.path)) ? "raw" : "")).toLowerCase();
     return codec && codec !== "raw"
       ? `asset ${assetName} from "${normalizedPath}" codec ${codec}`
       : `asset ${assetName} from "${normalizedPath}"`;
@@ -114,7 +115,9 @@ export function createProjectFileUiHelpers({
       : "";
     const snippet = [
       assetSnippetForEntry(entry, assetName),
-      `play dsound ${assetName}${stepSuffix}`
+      (entry.kind || fileKindFromPath(entry.path)) === "tripcm"
+        ? `play tripcm ${assetName}`
+        : `play dsound ${assetName}${stepSuffix}`
     ].join("\n");
     insertTextIntoSource(snippet, { beforeProcedures: true });
     setStatus(`Inserted dsound reference for ${entry.path}.`);
@@ -4558,8 +4561,8 @@ export function createProjectFileUiHelpers({
       if (!isGraphicsEditorsProjectFile(entry)) {
         const assetButton = document.createElement("button");
         assetButton.type = "button";
-        assetButton.textContent = kind === "dsound" ? "Asset+Play" : (isPictureProjectFile?.(entry) ? "Picture" : "Asset");
-        assetButton.addEventListener("click", () => (kind === "dsound"
+        assetButton.textContent = ["dsound", "tripcm"].includes(kind) ? "Asset+Play" : (isPictureProjectFile?.(entry) ? "Picture" : "Asset");
+        assetButton.addEventListener("click", () => (["dsound", "tripcm"].includes(kind)
           ? insertProjectFilePlaySnippet(entry)
           : (isPictureProjectFile?.(entry) ? insertProjectFilePictureSnippet(entry) : insertProjectFileAssetSnippet(entry))));
         actions.appendChild(assetButton);
@@ -4590,9 +4593,9 @@ export function createProjectFileUiHelpers({
         }
       }
 
-      if (kind === "dsound") {
+      if (["dsound", "tripcm"].includes(kind)) {
         const playButton = makeProjectFilePreviewButton(entry, () => {
-          void previewProjectFileDsound(entry);
+          void previewProjectFileDsound(entry, kind);
         });
         playButton.title = `Play ${entry.path}`;
         playButton.setAttribute("aria-label", `Play ${entry.path}`);
@@ -4869,6 +4872,7 @@ export function createProjectFileUiHelpers({
   const dsoundAddon = createProjectFileDsoundAddon({
     projectFileBytes,
     dsoundBytesToPreviewSamples,
+    threeChannelPcmBytesToPreviewSamples,
     cvSampleRate,
     setStatus
   });

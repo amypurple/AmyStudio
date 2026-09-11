@@ -369,6 +369,7 @@ export const AMY_AUTOCOMPLETE = [
   ["wipe bitmap down", "Clear bitmap color rows top-to-bottom, one pixel row per frame"],
   ["play dsound SpeechData", "Play 4-bit PCM digital sound (blocking, silences PSG music)"],
   ["play dsound SpeechData step 0", "Play 4-bit PCM digital sound with explicit quality step (0=highest)"],
+  ["play tripcm SpeechData", "Play three-channel digital audio (blocking, silences PSG music)"],
   ["sprites 8x8", "Use 8x8 sprite size"],
   ["sprites 16x16", "Use 16x16 sprite size"],
   ["sprites simple", "Zoom off — render sprites at native pixel size"],

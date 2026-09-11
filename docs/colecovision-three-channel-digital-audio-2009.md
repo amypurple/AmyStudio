@@ -72,7 +72,7 @@ amplitude table and emits adjacent code bytes as PSG data. A modern encoder
 must reject, clamp, or choose another legal delta instead. The decoder should
 also fail safely rather than read beyond its amplitude table.
 
-## Development prototype
+## Development implementation
 
 The development repository now contains a first independent implementation:
 
@@ -86,12 +86,12 @@ The development repository now contains a first independent implementation:
 - `tools/test-three-channel-pcm-rom.mjs`: five-profile compile and GearColeco
   runtime validation.
 
-The initial player plus its 170 bytes of amplitude/delta tables occupies about
-279 bytes before optimization. It is intentionally not wired into the public
-Amy language or clean repository yet. The remaining work is to calibrate its
-exact sample rate, compare generated audio against the real-output MP3, decide
-the public format name and syntax, and integrate WAV preview/import without
-confusing it with ordinary DSOUND.
+The player plus its 170 bytes of amplitude/delta tables occupies about 279
+bytes before optimization. Amy Studio exposes the format as **TriPCM**. The
+Audio/Voice tool converts browser-decodable audio, previews the decoded stream,
+saves a `.tripcm` project asset, and inserts `play tripcm Label`. The compiler
+links the player only when used. GearColeco validates the complete language and
+runtime path under all five optimization profiles.
 
 ## Current attenuation validation
 
