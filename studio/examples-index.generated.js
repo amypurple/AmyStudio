@@ -21,6 +21,21 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "earth-globe-demo",
+    "label": "Earth Globe",
+    "detail": "A rotating tiled Earth with deterministic ZX0 tile-order optimization and a static 12-sprite circular mask.",
+    "projectName": "earth-globe-demo",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "graphics",
+      "animation",
+      "zx0"
+    ]
+  },
+  {
     "id": "toolchain-benchmark-hello",
     "label": "Toolchain Benchmark: Hello World",
     "detail": "Exact Amy Studio source used by the seven-tool Hello World comparison.",
