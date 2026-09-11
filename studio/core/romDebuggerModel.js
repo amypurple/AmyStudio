@@ -73,6 +73,7 @@ export function decodeVdpRegisters(values) {
   const r0 = registers[0] || 0;
   const r1 = registers[1] || 0;
   const modeBits = ((r1 >> 3) & 1) << 2 | ((r1 >> 4) & 1) << 1 | ((r0 >> 1) & 1);
+  const graphicsII = modeBits === 1;
   const modeNames = new Map([
     [0, "Graphics I"],
     [1, "Graphics II"],
@@ -91,8 +92,13 @@ export function decodeVdpRegisters(values) {
     sprites16: Boolean(r1 & 0x02),
     spritesMagnified: Boolean(r1 & 0x01),
     nameTable: ((registers[2] || 0) & 0x0F) << 10,
-    colorTable: ((registers[3] || 0) & 0xFF) << 6,
-    patternTable: ((registers[4] || 0) & 0x07) << 11,
+    // Graphics II uses R3/R4's low bits as table masks, not base-address bits.
+    colorTable: graphicsII
+      ? ((registers[3] || 0) & 0x80) << 6
+      : ((registers[3] || 0) & 0xFF) << 6,
+    patternTable: graphicsII
+      ? ((registers[4] || 0) & 0x04) << 11
+      : ((registers[4] || 0) & 0x07) << 11,
     spriteAttributeTable: ((registers[5] || 0) & 0x7F) << 7,
     spritePatternTable: ((registers[6] || 0) & 0x07) << 11,
     backdrop: (registers[7] || 0) & 0x0F

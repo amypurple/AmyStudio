@@ -142,8 +142,23 @@ assert.equal(vdp.displayEnabled, true);
 assert.equal(vdp.nmiEnabled, true);
 assert.equal(vdp.sprites16, true);
 assert.equal(vdp.nameTable, 0x1800);
+assert.equal(vdp.colorTable, 0x2000, "Graphics II R3 low bits are table masks, not address bits");
+assert.equal(vdp.patternTable, 0x0000, "Graphics II R4 low bits are table masks, not address bits");
 assert.equal(vdp.spriteAttributeTable, 0x1B00);
 assert.equal(vdp.spritePatternTable, 0x3800);
 assert.equal(vdp.backdrop, 5);
+
+const vdpMode2FullMasks = decodeVdpRegisters(Uint8Array.from([
+  0x02, 0xE2, 0x06, 0xFF, 0xFF, 0x36, 0x07, 0xF5
+]));
+assert.equal(vdpMode2FullMasks.colorTable, 0x2000);
+assert.equal(vdpMode2FullMasks.patternTable, 0x2000);
+
+const vdpGraphicsI = decodeVdpRegisters(Uint8Array.from([
+  0x00, 0xE0, 0x06, 0x80, 0x07, 0x36, 0x07, 0xF5
+]));
+assert.equal(vdpGraphicsI.mode, "Graphics I");
+assert.equal(vdpGraphicsI.colorTable, 0x2000);
+assert.equal(vdpGraphicsI.patternTable, 0x3800);
 
 console.log("ROM debugger model: PASS");
