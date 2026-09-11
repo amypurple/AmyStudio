@@ -13,6 +13,7 @@ const exampleCategoryOrder = [
   "Language",
   "Numeric",
   "CVBasic Ports",
+  "Benchmarks",
   "Demos",
   "Music",
   "Selftests",
@@ -48,6 +49,7 @@ function classifyEditorialTrack(id) {
 }
 
 function categorizeExample(id) {
+  if (id.startsWith("toolchain-benchmark-")) return "Benchmarks";
   if (id.includes("minimal") || id === "text-screen-demo") return "Minimal";
   if (id.includes("qbasic") || id.includes("flow") || id.includes("v22")) return "Language";
   if (id.includes("numeric") || id.includes("math") || id.includes("compare-fixed") || id.includes("arithmetic") || id.includes("fixed-ufixed") || id.includes("fixed32") || id.includes("float")) return "Numeric";
@@ -61,6 +63,7 @@ function categorizeExample(id) {
 
 function collectExampleTags(example) {
   const tags = [example.sourceLang];
+  if (example.id.startsWith("toolchain-benchmark-")) tags.push("benchmark");
   if (example.id.includes("minimal")) tags.push("minimal");
   if (example.id.includes("numeric") || example.id.includes("math") || example.id.includes("fixed-ufixed") || example.id.includes("arithmetic") || example.id.includes("fixed32")) tags.push("numeric");
   if (example.id.includes("qbasic")) tags.push("qbasic");

@@ -1,0 +1,135 @@
+project "Amy Tile Animation Benchmark"
+memory "colecovision_legacy_sdcc"
+
+const ShipCount = 6
+const AnimationTicks = 64
+const StarTile = $80
+
+data StarPattern0 bytes $00,$00,$10,$00,$00,$00,$00,$00
+data StarPattern1 bytes $00,$00,$00,$10,$38,$10,$00,$00
+data StarPattern2 bytes $00,$00,$10,$38,$7C,$38,$10,$00
+data StarPattern3 bytes $00,$00,$00,$10,$38,$10,$00,$00
+data StarColor bytes $F1,$F1,$F1,$F1,$B1,$F1,$F1,$F1
+
+' Two preloaded 3x2 tile frames. The hull stays stable while engine flames
+' and navigation lights alternate through Name Table tile replacement.
+data ShipPatterns bytes
+  $00,$00,$01,$03,$07,$0F,$1F,$3F
+  $18,$3C,$7E,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$C0,$E0,$F0,$F8,$FC
+  $7F,$FF,$DB,$FF,$7E,$3C,$18,$00
+  $FF,$E7,$C3,$81,$24,$24,$00,$00
+  $FE,$FF,$DB,$FF,$7E,$3C,$18,$00
+  $00,$01,$03,$07,$0F,$1F,$3F,$7F
+  $18,$3C,$7E,$FF,$FF,$FF,$FF,$FF
+  $00,$80,$C0,$E0,$F0,$F8,$FC,$FE
+  $FF,$DB,$FF,$7E,$3C,$18,$00,$00
+  $E7,$C3,$81,$24,$5A,$24,$00,$00
+  $FF,$DB,$FF,$7E,$3C,$18,$00,$00
+end data
+
+data ShipColors bytes
+  $51,$51,$51,$51,$71,$71,$71,$71
+  $F1,$F1,$F1,$F1,$F1,$71,$71,$71
+  $51,$51,$51,$51,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$B1,$91,$91
+  $71,$71,$71,$71,$B1,$91,$91,$91
+  $71,$71,$71,$71,$71,$B1,$91,$91
+  $51,$51,$51,$51,$71,$71,$71,$71
+  $F1,$F1,$F1,$F1,$F1,$71,$71,$71
+  $51,$51,$51,$51,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$91,$B1,$91
+  $71,$71,$71,$71,$91,$B1,$F1,$91
+  $71,$71,$71,$71,$71,$91,$B1,$91
+end data
+
+data ShipFrame0 bytes $90,$91,$92,$93,$94,$95
+data ShipFrame1 bytes $96,$97,$98,$99,$9A,$9B
+data ShipX bytes 4,15,25,8,20,14
+data ShipY bytes 6,6,6,14,14,19
+
+u8 Tick = 0
+u8 ShipIndex = 0
+u8 StarFrame = 0
+u8 ShipFrame = 0
+u8 PatternUpdates = 0
+u8 NameUpdates = 0
+
+tile screen
+backdrop black
+
+nmi off
+copy StarPattern0 count 8 to vram.pattern + StarTile * 8
+copy StarPattern0 count 8 to vram.pattern + $0800 + StarTile * 8
+copy StarPattern0 count 8 to vram.pattern + $1000 + StarTile * 8
+copy StarColor count 8 to vram.color + StarTile * 8
+copy StarColor count 8 to vram.color + $0800 + StarTile * 8
+copy StarColor count 8 to vram.color + $1000 + StarTile * 8
+copy ShipPatterns count 96 to vram.pattern + $90 * 8
+copy ShipPatterns count 96 to vram.pattern + $0800 + $90 * 8
+copy ShipPatterns count 96 to vram.pattern + $1000 + $90 * 8
+copy ShipColors count 96 to vram.color + $90 * 8
+copy ShipColors count 96 to vram.color + $0800 + $90 * 8
+copy ShipColors count 96 to vram.color + $1000 + $90 * 8
+
+' Every star shares tile $80. One pattern upload animates the whole sky.
+put char StarTile at 2,4
+put char StarTile at 9,5
+put char StarTile at 22,4
+put char StarTile at 29,7
+put char StarTile at 1,10
+put char StarTile at 12,11
+put char StarTile at 18,9
+put char StarTile at 27,12
+put char StarTile at 5,17
+put char StarTile at 24,18
+put char StarTile at 3,21
+put char StarTile at 28,20
+
+for ShipIndex = 0 to ShipCount - 1
+  put ShipFrame0 frame size 3,2 at ShipX[ShipIndex],ShipY[ShipIndex]
+next
+nmi on
+screen on
+
+for Tick = 0 to AnimationTicks - 1
+  wait
+  if Tick & 3 = 3 then
+    StarFrame += 1
+    and StarFrame with 3
+    nmi off
+    if StarFrame = 0 then
+      copy StarPattern0 count 8 to vram.pattern + StarTile * 8
+      copy StarPattern0 count 8 to vram.pattern + $0800 + StarTile * 8
+      copy StarPattern0 count 8 to vram.pattern + $1000 + StarTile * 8
+    elseif StarFrame = 1 then
+      copy StarPattern1 count 8 to vram.pattern + StarTile * 8
+      copy StarPattern1 count 8 to vram.pattern + $0800 + StarTile * 8
+      copy StarPattern1 count 8 to vram.pattern + $1000 + StarTile * 8
+    elseif StarFrame = 2 then
+      copy StarPattern2 count 8 to vram.pattern + StarTile * 8
+      copy StarPattern2 count 8 to vram.pattern + $0800 + StarTile * 8
+      copy StarPattern2 count 8 to vram.pattern + $1000 + StarTile * 8
+    else
+      copy StarPattern3 count 8 to vram.pattern + StarTile * 8
+      copy StarPattern3 count 8 to vram.pattern + $0800 + StarTile * 8
+      copy StarPattern3 count 8 to vram.pattern + $1000 + StarTile * 8
+    end if
+    nmi on
+    PatternUpdates += 1
+  end if
+
+  if Tick & 7 = 7 then
+    ShipFrame ^= 1
+    nmi off
+    for ShipIndex = 0 to ShipCount - 1
+      if ShipFrame = 0 then
+        put ShipFrame0 frame size 3,2 at ShipX[ShipIndex],ShipY[ShipIndex]
+      else
+        put ShipFrame1 frame size 3,2 at ShipX[ShipIndex],ShipY[ShipIndex]
+      end if
+    next
+    nmi on
+    NameUpdates += 1
+  end if
+next

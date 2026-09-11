@@ -22,6 +22,8 @@ overlay WorkRam
   Menu as FrameData
 end overlay
 u8 Readback[4]
+data FrameX bytes 7
+data FrameY bytes 5
 u8 Done = 0
 sub start:
   text screen
@@ -29,11 +31,11 @@ sub start:
   WorkRam.Game.Tiles[1] = 42
   WorkRam.Game.Tiles[2] = 43
   WorkRam.Game.Tiles[3] = 44
-  put WorkRam.Game.Tiles frame size 2,2 at 0,0
-  Readback[0] = get char at 0,0
-  Readback[1] = get char at 1,0
-  Readback[2] = get char at 0,1
-  Readback[3] = get char at 1,1
+  put WorkRam.Game.Tiles frame size 2,2 at FrameX[0],FrameY[0]
+  Readback[0] = get char at 7,5
+  Readback[1] = get char at 8,5
+  Readback[2] = get char at 7,6
+  Readback[3] = get char at 8,6
   Done = 1
   loop forever
 end sub
@@ -74,4 +76,3 @@ try {
   if (process.env.AMY_KEEP_TEST_TEMP) console.log(`Kept test files: ${temp}`);
   else rmSync(temp, { recursive: true, force: true });
 }
-

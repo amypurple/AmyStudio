@@ -5,6 +5,7 @@ export const exampleCategoryOrder = [
   "Language",
   "Numeric",
   "CVBasic Ports",
+  "Benchmarks",
   "Demos",
   "Music",
   "Selftests",
@@ -26,9 +27,10 @@ export const exampleManifest = [
     "projectName": "toolchain-benchmark-hello",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Benchmarks",
     "tags": [
       "amy",
+      "benchmark",
       "manual-canon"
     ]
   },
@@ -39,9 +41,10 @@ export const exampleManifest = [
     "projectName": "toolchain-benchmark-warrior-bitmap",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Benchmarks",
     "tags": [
       "amy",
+      "benchmark",
       "manual-canon"
     ]
   },
@@ -52,9 +55,10 @@ export const exampleManifest = [
     "projectName": "toolchain-benchmark-controller",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Benchmarks",
     "tags": [
       "amy",
+      "benchmark",
       "manual-canon"
     ]
   },
@@ -65,10 +69,39 @@ export const exampleManifest = [
     "projectName": "toolchain-benchmark-sprite-metasprite",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Benchmarks",
     "tags": [
       "amy",
+      "benchmark",
       "sprites",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "toolchain-benchmark-state-update",
+    "label": "Toolchain Benchmark: State Update",
+    "detail": "Record-array actors, state-machine dispatch, collision, timers, and scoring used by the seven-tool runtime comparison.",
+    "projectName": "toolchain-benchmark-state-update",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Benchmarks",
+    "tags": [
+      "amy",
+      "benchmark",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "toolchain-benchmark-tile-animation",
+    "label": "Toolchain Benchmark: Tile Animation",
+    "detail": "A star field animated through shared pattern updates and six 3x2 ships animated through Name Table tile replacement.",
+    "projectName": "toolchain-benchmark-tile-animation",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Benchmarks",
+    "tags": [
+      "amy",
+      "benchmark",
       "manual-canon"
     ]
   },

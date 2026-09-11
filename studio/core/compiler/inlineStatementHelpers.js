@@ -196,7 +196,7 @@ export function createInlineStatementCompiler(ctx) {
                   if (!loadSource || !loadInputs) {
                     return { ok: false, lines: [], log: `Invalid inline put count statement: ${rawLineText}` };
                   }
-                  inlineLines = [...loadSource, ...loadInputs, "    call AMY_PUT_AT"];
+                  inlineLines = [...loadSource, "    push hl", ...loadInputs, "    pop hl", "    call AMY_PUT_AT"];
                 } else {
                   const inlinePutFrameAt = inlineStmt.match(new RegExp(`^put\\s+(${qualifiedOperand})\\s+frame\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
                   if (inlinePutFrameAt) {
@@ -216,7 +216,9 @@ export function createInlineStatementCompiler(ctx) {
                     }
                     inlineLines = [
                       ...loadSource,
+                      "    push hl",
                       ...loadInputs,
+                      "    pop hl",
                       "    push ix",
                       "    push iy",
                       "    call PUT_FRAME",

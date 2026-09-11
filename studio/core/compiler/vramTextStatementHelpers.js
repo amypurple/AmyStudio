@@ -142,7 +142,7 @@ export function handleVramTextStatement({
     if (!loadInputs || !loadSource) {
       return { ok: false, log: `${errorLabel} requires a byte source plus byte-sized coordinates: ${rawLine}` };
     }
-    return { ok: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
+    return { ok: true, lines: [...loadSource, "    push hl", ...loadInputs, "    pop hl", "    call AMY_PUT_AT"] };
   }
 
   function emitLoadPixelTileCoord(register, token) {
@@ -919,7 +919,7 @@ export function handleVramTextStatement({
     if (!loadInputs || !loadSource) {
       return { ok: false, handled: true, log: `put Source count N at X,Y requires an addressable byte source, byte-sized coordinates, and a byte-sized count: ${rawLine}` };
     }
-    return { ok: true, handled: true, lines: [...loadSource, ...loadInputs, "    call AMY_PUT_AT"] };
+    return { ok: true, handled: true, lines: [...loadSource, "    push hl", ...loadInputs, "    pop hl", "    call AMY_PUT_AT"] };
   }
 
   const putImplicitCentered = line.match(new RegExp(`^put\\s+${qualifiedByteTarget}\\s+centered\\s+at\\s+(.+)$`, "i"));
@@ -966,7 +966,9 @@ export function handleVramTextStatement({
       handled: true,
       lines: [
         ...loadSource,
+        "    push hl",
         ...loadInputs,
+        "    pop hl",
         "    push ix",
         "    push iy",
         "    call PUT_FRAME",
