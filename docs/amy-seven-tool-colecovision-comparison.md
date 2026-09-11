@@ -525,46 +525,16 @@ status and order:
 7. **Visible Hello: complete.** Keep it separate from the minimal runtime fixture so font/text
    costs remain explicit.
 
-The first fixture is now in `competition/benchmarks/controller-input`. Initial build facts:
-
-- Amy: Off 413, Safe 409, Balanced 408, Aggressive 408, and Experimental 406 ROM bytes. The
-  fixture has five explicit result bytes plus Amy's selected runtime state. All controller
-  capabilities are selected from actual source usage.
-- z88dk `+coleco -O2`: 2,117 bytes of useful binary before its cartridge image is padded to
-  32,768 bytes. Its CRT/BSS map reaches `$717A`; the five result bytes occupy `$701F-$7023`.
-- CVBasic, ugBASIC, and devkitSMS are now locally built and measured below.
-
-### Controller fixture ROM results
-
-The build keeps all five ROMs under `build/competition/controller-input/` so they can be loaded
-manually in Amy Studio ROM TEST & DEBUG or another ColecoVision emulator.
-
-| Tool | Occupied ROM | ROM file | Entry | GearColeco |
-|---|---:|---:|---:|---|
-| Amy Studio Balanced | **408** | 408 | `$8120` | 120-frame boot PASS |
-| devkitSMS / SDCC 4.5 | 1,337 | 16,384 | `$8024` | 120-frame boot PASS |
-| CVBasic 0.9.2 | 1,483 | 8,192 | `$853D` | 120-frame boot PASS |
-| z88dk `+coleco -O2` | 2,117 | 32,768 | `$802A` | 120-frame boot PASS |
-| ugBASIC 1.18 | 5,337 | 16,384 | `$82BF` | 120-frame boot PASS |
-
-`Occupied ROM` compares compiler and runtime output. `ROM file` is the downloadable file size and
-includes each toolchain's padding. CVBasic is measured from `ROM_END`, z88dk from its unpadded
-linked binary, ugBASIC from its code and data binaries, and devkitSMS from its Intel HEX span. The
-measurement never guesses by trimming trailing `$00` or `$FF` bytes.
-
-The later seven-solution controller suite adds controlled input injection and assertions. Six
-solutions pass equivalent semantics; ugBASIC boots but does not update VDP R7 in this fixture.
-
-For every fixture record source lines, compiler version, build time, ROM bytes, permanent RAM,
-worst-frame cycles, and runtime result. A smaller ROM that fails visually or changes behavior is
-not an optimization win.
+All six Amy listings are available in Amy Studio under **Benchmarks**. The evidence archive groups
+the matching source and loadable ROM for every tool. Measurements use occupied bytes rather than
+padding, and a smaller result counts only when the shared runtime oracle passes.
 
 ## Ranked Amy gap plan
 
 | Rank | Work | Value | Effort | Risk | Decision gate |
 |---:|---|---|---|---|---|
-| 1 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, visible Tiny envelopes, reliable inline edits, undo, and byte-exact write-back |
-| 2 | Finish state-update display-cost audit | High | Medium | Low | Seven engines pass; split screen setup, literal text, coordinates, decimal conversion, and VRAM output |
+| 1 | Isolate and reduce display code cost | High | Medium | Low | Measure screen setup, literal text, coordinates, decimal conversion, and VRAM output separately |
+| 2 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, Tiny envelopes, reliable edits, undo, and byte-exact project insertion |
 | 3 | Measure tile-animation cycles and VRAM budget | Medium | Small | Low | Runtime equivalence and corruption oracle pass; add comparable cycle/write counts |
 | 4 | Finish in-Studio compression guidance | Medium | Small | Low | Show first-use ROM, CPU RAM, and measured cycles beside each asset choice |
 | 5 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
@@ -581,6 +551,8 @@ Completed and runtime-guarded:
 - seven-tool state-update fixture: all engines reach the same oracle. Amy is 1,460 bytes displayed
   and 949 bytes engine-only in Experimental; compound record-array expressions now pass. Default
   numeric output shed 68 ROM bytes and two RAM bytes by linking glyph remapping only when used;
+- seven-tool tile animation: all engines animate the same shared star patterns and six 3x2 ships;
+  exact VRAM checks also exposed and fixed indexed-coordinate `put frame` source corruption;
 - sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
 
 Next concrete work is **display-cost isolation**. Measure literal text, coordinate setup, decimal
