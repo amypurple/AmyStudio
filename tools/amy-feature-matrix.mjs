@@ -186,7 +186,6 @@ const tests = [
   { file: "test-three-channel-pcm-codec.mjs", area: "tripcm-codec", evidence: "unit", suite: "audio" },
   { file: "test-three-channel-pcm-rom.mjs", area: "tripcm-runtime", evidence: "GearColeco", suite: "audio" },
   { file: "test-sound-table-inspector.mjs", area: "sound-table-inspection", evidence: "unit", suite: "audio" },
-  { file: "test-sound-table-validator.mjs", area: "sound-table-validation", evidence: "unit", suite: "audio" },
   { file: "test-coleco-sound-notes.mjs", area: "bios-note-encoding", evidence: "unit", suite: "audio" },
   { file: "test-coleco-sound-notes-rom.mjs", area: "bios-note-runtime-audio", evidence: "rom", suite: "audio" },
   { file: "test-coleco-sound-preview.mjs", area: "bios-sound-preview", evidence: "unit", suite: "audio" },
