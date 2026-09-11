@@ -254,7 +254,7 @@ ornaments such as vibrato or arpeggio-like behavior.
 - Commando sample status: working
 - status note: tiny sound support is almost perfect; one known bug remains inside the historical tiny sound routine itself and is intentionally deferred for a later fix
 - the Studio sound inspector decodes tempo, instrument, notes, sustain, silence, drums, special notes, and loops; it can audition one Tiny Sound channel or matching `_ch1`/`_ch2` pairs
-- plain Tiny Sound pitches and `$02` instrument envelopes can be edited inline with byte-local source preservation; timing, arpeggios, drums, and special commands remain read-only until their exact encoding is fully covered
+- plain pitches, vibrato, arpeggios, channel tempo, and `$02` instrument envelopes can be edited inline with byte-local source preservation; holds, rests, drums, and special commands remain selectable but read-only
 
 ### Integration rules
 
