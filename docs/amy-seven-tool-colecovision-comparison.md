@@ -26,20 +26,21 @@ features are listed separately from language capabilities.
 | PVColLib | ColecoVision-focused SDCC C library and devkit | Native VDP, controller, sprite, sound, music, and compression APIs |
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
 
-## Reproducible five-sample ROM suite
+## Reproducible six-sample ROM suite
 
-The suite builds five runnable programs with all seven solutions:
+The suite builds six runnable programs with all seven solutions:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
 3. a visual controller monitor;
 4. an animated, controller-driven three-color metasprite;
-5. a deterministic six-actor gameplay state update.
+5. a deterministic six-actor gameplay state update;
+6. a Graphics II star field and six animated 3x2 tile ships.
 
 A **metasprite** combines hardware sprites into one actor. This test overlaps three 16x16 layers
 (white, yellow, black), below the four-sprites-per-scanline limit.
 
-The build scripts create 35 ROMs, grouped under `build/competition`.
+The build scripts create 42 ROMs, grouped under `build/competition`.
 `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; dedicated GearColeco tests verify
 the bitmap, controller, metasprite, and deterministic state-update oracles.
 
@@ -67,7 +68,8 @@ Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
 | Controller Visual | **595** | 932 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
 | Sprite Metasprite | **983** | 1,142 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
 | Gameplay State Update | 1,460 | **1,253** | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
-| **Five-sample total** | **6,530** | **7,765** | **9,437** | **11,457** | **12,407** | **18,459** | **47,363** |
+| Tile Animation | **1,400** | 1,466 | 1,602 | 1,922 | 2,998 | 2,920 | 6,636 |
+| **Six-sample total** | **7,930** | **9,231** | **11,039** | **13,379** | **15,405** | **21,379** | **53,999** |
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -90,6 +92,7 @@ assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), gene
 | Controller Visual | Six pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
 | Sprite Metasprite | Seven pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 | Gameplay State Update | Seven match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
+| Tile Animation | Seven animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles |
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
@@ -511,9 +514,10 @@ status and order:
 2. **Sprite/metasprite stress: complete.** Seven toolchains build and boot the shared fixture.
    Amy's native metasprite path is runtime-equivalent, uses zero permanent RAM, preserves explicit
    layer priority, and is smaller than the manual renderer in all five profiles.
-3. **Tile animation: next.** Update a small Graphics II region every frame without corruption and
-   measure VRAM bytes per frame.
-4. **State update.** Run an actor array, collision checks, timers, and state dispatch.
+3. **Tile animation: complete.** Seven ROMs animate shared patterns and 3x2 Name Table frames;
+   GearColeco verifies every pattern, color, tile position, animation phase, and final state.
+4. **State update: complete.** Seven ROMs run the same actor array, collision checks, timers, and
+   state dispatch oracle.
 5. **Sound authoring: functional and still evolving.** BIOS commands and Tiny Sound sequences can
    be inspected, auditioned, edited, imported, and written back; UX and audio-parity QA continue.
 6. **Compression: payload and cycle suites complete.** Fifteen codecs have exact VRAM proof;
@@ -561,7 +565,7 @@ not an optimization win.
 |---:|---|---|---|---|---|
 | 1 | Close sound-editor fidelity and UX gaps | High | Medium | Medium | Emulator-faithful preview, visible Tiny envelopes, reliable inline edits, undo, and byte-exact write-back |
 | 2 | Finish state-update display-cost audit | High | Medium | Low | Seven engines pass; split screen setup, literal text, coordinates, decimal conversion, and VRAM output |
-| 3 | Seven-tool tile-animation benchmark | High | Medium | Low | Equivalent Graphics II workload, VRAM bytes/frame, cycles, and corruption oracle |
+| 3 | Measure tile-animation cycles and VRAM budget | Medium | Small | Low | Runtime equivalence and corruption oracle pass; add comparable cycle/write counts |
 | 4 | Finish in-Studio compression guidance | Medium | Small | Low | Show first-use ROM, CPU RAM, and measured cycles beside each asset choice |
 | 5 | Small explicit animation service | High | Large | Medium-high | Add only after benchmark evidence; zero linked cost when unused and visible RAM/cycle budget |
 | 6 | Nested aggregate 2D fields and final operand symmetry | Medium | Medium | Medium | Direct record/overlay 2D fields already pass; add nesting only for a real game need |
@@ -580,5 +584,5 @@ Completed and runtime-guarded:
 - sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI.
 
 Next concrete work is **display-cost isolation**. Measure literal text, coordinate setup, decimal
-conversion, and VRAM output independently, then optimize only behavior-identical paths. The
-tile-animation benchmark and sound-editor timing/write-back QA follow.
+conversion, and VRAM output independently, then optimize only behavior-identical paths. Tile
+animation runtime equivalence is complete; cycle/write accounting and sound-editor timing QA follow.
