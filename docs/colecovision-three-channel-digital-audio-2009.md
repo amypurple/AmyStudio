@@ -78,3 +78,31 @@ The separately supplied real-ColecoVision attenuation recording measures
 approximately `-1.97 dB` per step over its clean range. This validates Amy
 Studio's existing `10^(-2*attenuation/20)` preview curve. The new format needs
 the 46-level quantizer and streaming player, not a change to that curve.
+
+## Real-output MP3 comparison
+
+The supplied `sndtest_sample.mp3` has SHA-256
+`9F2B6EEBED58C953E9488EE0EEB1DC6FC4E559FC51226D75297A9FBB880059AC`.
+It is mono, 44.1 kHz, and 7.680 seconds long. An NTSC GearColeco capture of
+the supplied ROM over the matching 461-frame interval is 7.689 seconds long.
+The nearly exact duration and matching time-frequency structure strongly
+support that the MP3 is a recording of this encoded stream.
+
+A deterministic comparison used 150 proportional time windows and 48
+logarithmically spaced frequencies from 90 Hz to 18 kHz. After removing each
+window's overall level, spectral-shape correlation measured:
+
+```text
+mean       0.668
+median     0.692
+10th pct   0.465
+90th pct   0.834
+```
+
+The recording is approximately 6.2 dB louder overall than GearColeco's output
+and has a higher zero-crossing rate (`0.0355` versus `0.0264`), consistent with
+more high-frequency content. Absolute gain is not significant, but the
+spectral difference means the emulator output is a useful decoder oracle, not
+yet proof of analog-output fidelity. The MP3 should be retained as a private
+reference oracle for future PSG mixer/filter calibration; it should not be
+committed without an explicit publication decision.
