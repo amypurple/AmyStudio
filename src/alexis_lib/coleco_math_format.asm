@@ -35,7 +35,10 @@ AMY_U16_TO_ASCII5_COUNT_SUB_LOOP:
     ret
 
 ; other format routines are in separate files:
-;   coleco_math_format_u8.asm   — AMY_U8_TO_ASCII3, AMY_U8_TO_ASCII2  (used by i8 and fix8_8 print)
+;   coleco_math_format_u8.asm   - AMY_U8_TO_ASCII3
+;   coleco_math_format_u8_1.asm - AMY_U8_TO_ASCII1_MOD
+;   coleco_math_format_u8_2.asm - AMY_U8_TO_ASCII2 (used by fixed-point print)
+;   coleco_math_format_u8_2_mod.asm - AMY_U8_TO_ASCII2_MOD
 ;   coleco_math_format_i16.asm  — AMY_I16_TO_ASCII6
 ;   coleco_math_format_u32.asm  — AMY_U32_TO_ASCII10
 ;   coleco_math_format_i32.asm  — AMY_I32_TO_ASCII11

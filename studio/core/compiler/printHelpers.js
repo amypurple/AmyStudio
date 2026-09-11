@@ -180,10 +180,14 @@ export function createPrintHelpers(ctx) {
     const offset = 3 - width;
     const postprocess = emitNumericPostprocessAt(`AMY_BUFFER32${offset ? `+${offset}` : ""}`, width, widthMode);
     if (!postprocess) return null;
+    const formatter = width === 1
+      ? "AMY_U8_TO_ASCII1_MOD"
+      : (width === 2 ? "AMY_U8_TO_ASCII2_MOD" : "AMY_U8_TO_ASCII3");
+    const destination = width === 3 ? "AMY_BUFFER32" : `AMY_BUFFER32+${offset}`;
     return [
       ...loadValue,
-      "    ld de,AMY_BUFFER32",
-      "    call AMY_U8_TO_ASCII3",
+      `    ld de,${destination}`,
+      `    call ${formatter}`,
       ...postprocess,
       ...loadCoords,
       `    ld hl,AMY_BUFFER32${offset ? `+${offset}` : ""}`,
@@ -264,10 +268,18 @@ export function createPrintHelpers(ctx) {
     ];
     if (digits < 6) {
       const magnitudeStart = 7 - digits;
-      lines.push(`    ld hl,AMY_BUFFER32+${magnitudeStart}`);
-      lines.push("    ld de,AMY_BUFFER32+1");
-      lines.push(`    ld bc,${digits - 1}`);
-      lines.push("    ldir");
+      if (digits === 2) {
+        lines.push(`    ld a,(AMY_BUFFER32+${magnitudeStart})`);
+        lines.push("    ld (AMY_BUFFER32+1),a");
+      } else if (digits === 3) {
+        lines.push(`    ld hl,(AMY_BUFFER32+${magnitudeStart})`);
+        lines.push("    ld (AMY_BUFFER32+1),hl");
+      } else {
+        lines.push(`    ld hl,AMY_BUFFER32+${magnitudeStart}`);
+        lines.push("    ld de,AMY_BUFFER32+1");
+        lines.push(`    ld bc,${digits - 1}`);
+        lines.push("    ldir");
+      }
     }
     lines.push(
       ...emitNumericPostprocessAt("AMY_BUFFER32", digits, widthMode),

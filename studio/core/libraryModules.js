@@ -64,7 +64,14 @@ const splitLibraryCatalog = {
       deps: ["src/alexis_lib/coleco_math_fx16_core.asm"]
     },
     { path: "src/alexis_lib/coleco_math_format.asm",    symbols: ["AMY_U16_TO_ASCII5"] },
-    { path: "src/alexis_lib/coleco_math_format_u8.asm", symbols: ["AMY_U8_TO_ASCII3", "AMY_U8_TO_ASCII2"] },
+    { path: "src/alexis_lib/coleco_math_format_u8.asm", symbols: ["AMY_U8_TO_ASCII3"] },
+    { path: "src/alexis_lib/coleco_math_format_u8_1.asm", symbols: ["AMY_U8_TO_ASCII1_MOD"] },
+    { path: "src/alexis_lib/coleco_math_format_u8_2.asm", symbols: ["AMY_U8_TO_ASCII2"] },
+    {
+      path: "src/alexis_lib/coleco_math_format_u8_2_mod.asm",
+      symbols: ["AMY_U8_TO_ASCII2_MOD"],
+      deps: ["src/alexis_lib/coleco_math_format_u8_2.asm"]
+    },
     { path: "src/alexis_lib/coleco_math_format_i16.asm", symbols: ["AMY_I16_TO_ASCII6"], deps: ["src/alexis_lib/coleco_math_format.asm"] },
     {
       path: "src/alexis_lib/coleco_math_format_u32.asm",
@@ -79,14 +86,14 @@ const splitLibraryCatalog = {
     {
       path: "src/alexis_lib/coleco_math_format_fx.asm",
       symbols: ["AMY_FX8_8_FRAC_TO_HUNDREDTHS", "AMY_FX8_8_TO_ASCII6", "AMY_SFX8_8_TO_ASCII7"],
-      deps: ["src/alexis_lib/coleco_math_format_u8.asm"]
+      deps: ["src/alexis_lib/coleco_math_format_u8.asm", "src/alexis_lib/coleco_math_format_u8_2.asm"]
     },
     {
       path: "src/alexis_lib/coleco_math_format_fx16.asm",
       symbols: ["AMY_FX16_16_FRAC_TO_HUNDREDTHS", "AMY_FX16_16_FRAC_TO_TEN_THOUSANDTHS", "AMY_FX16_16_TO_ASCII9", "AMY_FX16_16_TO_ASCII11"],
       deps: [
         "src/alexis_lib/coleco_math_format.asm",
-        "src/alexis_lib/coleco_math_format_u8.asm",
+        "src/alexis_lib/coleco_math_format_u8_2.asm",
         "src/alexis_lib/coleco_math_fx16_core.asm",
         "src/alexis_lib/coleco_math_fx16_mul_helpers.asm"
       ]

@@ -458,7 +458,7 @@ export const alexisRuntimeCatalog = {
   },
   "AMY_U8_TO_ASCII2": {
     "group": "math",
-    "sourcePath": "src/alexis_lib/coleco_math_format_u8.asm",
+    "sourcePath": "src/alexis_lib/coleco_math_format_u8_2.asm",
     "asm": "AMY_U8_TO_ASCII2:\n    ld b,0\nAMY_U8_TO_ASCII2_TENS:\n    cp 10\n    jr c,AMY_U8_TO_ASCII2_TENS_DONE\n    sub 10\n    inc b\n    jr AMY_U8_TO_ASCII2_TENS\nAMY_U8_TO_ASCII2_TENS_DONE:\n    ld c,a\n    ld a,b\n    add a,$30\n    ld (de),a\n    inc de\n    ld a,c\n    add a,$30\n    ld (de),a\n    inc de\n    ret"
   },
   "AMY_FX8_8_FRAC_TO_HUNDREDTHS": {
@@ -644,8 +644,7 @@ export const alexisRuntimeCatalog = {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
     "deps": [
-      "AMY_TEXT_CALC_NAME_ADDRESS",
-      "AMY_GET_VRAM"
+      "AMY_TEXT_CALC_NAME_ADDRESS"
     ],
     "clobbers": [
       "af",
@@ -817,6 +816,17 @@ export const alexisRuntimeCatalog = {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_pattern_transform.asm",
     "asm": "AMY_ROTATE_PATTERN_90:\n    push ix\n    ld a,3\n    call ROTATE_90\n    pop ix\n    ret"
+  },
+  "AMY_U8_TO_ASCII1_MOD": {
+    "group": "math",
+    "sourcePath": "src/alexis_lib/coleco_math_format_u8_1.asm",
+    "asm": ""
+  },
+  "AMY_U8_TO_ASCII2_MOD": {
+    "group": "math",
+    "sourcePath": "src/alexis_lib/coleco_math_format_u8_2_mod.asm",
+    "deps": ["AMY_U8_TO_ASCII2"],
+    "asm": ""
   },
   "AMY_PAUSE_PRESS_RELEASE_BLANK": {
     "group": "input",

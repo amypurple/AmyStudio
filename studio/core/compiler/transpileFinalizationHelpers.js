@@ -1190,12 +1190,31 @@ export function finalizeAmyTranspile({
 
   const sourceMarkerPlan = extractSourceMarkerPlan(body);
 
+  function consolidateU8Formatters(lines) {
+    const usesOne = lines.some((line) => /\bcall AMY_U8_TO_ASCII1_MOD\b/.test(String(line)));
+    const usesTwo = lines.some((line) => /\bcall AMY_U8_TO_ASCII2_MOD\b/.test(String(line)));
+    const usesThree = lines.some((line) => /\bcall AMY_U8_TO_ASCII3\b/.test(String(line)));
+    if (!usesThree && !(usesOne && usesTwo)) return lines;
+    const result = [...lines];
+    for (let index = 0; index < result.length; index += 1) {
+      const call = String(result[index]);
+      const offset = /\bcall AMY_U8_TO_ASCII1_MOD\b/.test(call)
+        ? 2
+        : (/\bcall AMY_U8_TO_ASCII2_MOD\b/.test(call) ? 1 : 0);
+      if (!offset) continue;
+      if (String(result[index - 1] || "").trim() !== `ld de,AMY_BUFFER32+${offset}`) continue;
+      result[index - 1] = "    ld de,AMY_BUFFER32";
+      result[index] = "    call AMY_U8_TO_ASCII3";
+    }
+    return result;
+  }
+
   const preInlineBody = simplifyStartTailForeverGoto(
     removeDeadReturnsAfterJumps(
       optimizeRedundantImmediateLoads(
         optimizeSequentialAbsoluteByteStores(
           optimizeSharedRecordPutCharLoads(
-            optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(sourceMarkerPlan.clean))
+            optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(sourceMarkerPlan.clean)))
           )
         )
       )

@@ -55,7 +55,10 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const usesFp5Sqrt = /\bAMY_FP5_SQRT_MEM\b/.test(asmBody);
   const usesFp5Trans = /\bAMY_FP5_(?:LOG_MEM|EXP_MEM)\b/.test(asmBody);
   const usesFormatWord   = /\bAMY_U16_TO_ASCII5\b/.test(asmBody);
-  const usesFormatU8     = /\bAMY_(?:U8_TO_ASCII3|U8_TO_ASCII2)\b/.test(asmBody);
+  const usesFormatU8_3   = /\bAMY_U8_TO_ASCII3\b/.test(asmBody);
+  const usesFormatU8_1   = /\bAMY_U8_TO_ASCII1_MOD\b/.test(asmBody);
+  const usesFormatU8_2   = /\bAMY_U8_TO_ASCII2\b/.test(asmBody);
+  const usesFormatU8_2Mod = /\bAMY_U8_TO_ASCII2_MOD\b/.test(asmBody);
   const usesFormatI16    = /\bAMY_I16_TO_ASCII6\b/.test(asmBody);
   const usesFormatU32    = /\bAMY_U32_TO_ASCII10\b/.test(asmBody);
   const usesFormatI32    = /\bAMY_I32_TO_ASCII11\b/.test(asmBody);
@@ -68,8 +71,8 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const usesCompareSmall = /\bAMY_(?:CMP_U8|CMP_S8|CMP_U16|CMP_S16)\b/.test(asmBody);
   // Resolve dependencies
   const needsFormatWord = usesFormatWord || usesFormatI16 || usesFormatFx16 || usesFormatFp5 || usesFp5FormatExact;     // i16/fx16/fp5 exact format call AMY_U16_TO_ASCII5
-  const needsFormatU8   = usesFormatU8 || usesFormatFx;        // fx calls AMY_U8_TO_ASCII3/2; i8 emits AMY_U8_TO_ASCII3 inline
-  const needsFormatU8Fx = needsFormatU8 || usesFormatFx16;
+  const needsFormatU8_3 = usesFormatU8_3 || usesFormatFx;
+  const needsFormatU8_2 = usesFormatU8_2 || usesFormatFx || usesFormatFx16;
   const needsFormatU32  = usesFormatU32 || usesFormatI32;      // i32 format call U32_TO_ASCII10
   const needsCompareU32 = usesCompareU32 || needsFormatU32;    // format_u32 calls CMP_U32_MEM
   const needsU32Copy    = usesU32Copy || needsFormatU32;         // format_u32/i32/fp5 call AMY_U32_COPY
@@ -114,7 +117,13 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   if (usesFp5Sqrt) resolved.add("src/alexis_lib/coleco_math_fp5_sqrt.asm");
   if (usesFp5Trans) resolved.add("src/alexis_lib/coleco_math_fp5_trans.asm");
   if (needsFormatWord)  resolved.add("src/alexis_lib/coleco_math_format.asm");
-  if (needsFormatU8Fx)  resolved.add("src/alexis_lib/coleco_math_format_u8.asm");
+  if (needsFormatU8_3)  resolved.add("src/alexis_lib/coleco_math_format_u8.asm");
+  if (usesFormatU8_1)   resolved.add("src/alexis_lib/coleco_math_format_u8_1.asm");
+  if (needsFormatU8_2)  resolved.add("src/alexis_lib/coleco_math_format_u8_2.asm");
+  if (usesFormatU8_2Mod) {
+    resolved.add("src/alexis_lib/coleco_math_format_u8_2.asm");
+    resolved.add("src/alexis_lib/coleco_math_format_u8_2_mod.asm");
+  }
   if (usesFormatI16)    resolved.add("src/alexis_lib/coleco_math_format_i16.asm");
   if (needsFormatU32)   resolved.add("src/alexis_lib/coleco_math_format_u32.asm");
   if (usesFormatI32)    resolved.add("src/alexis_lib/coleco_math_format_i32.asm");
