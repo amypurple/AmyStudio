@@ -3047,6 +3047,13 @@ export function createProjectFileUiHelpers({
 
   function openProjectSoundInspector(entry, analysis, { openSequencerFor = "" } = {}) {
     let activeSoundPreview = null;
+    let soundPreviewStop = Promise.resolve();
+    const stopActiveSoundPreview = () => {
+      const playback = activeSoundPreview;
+      activeSoundPreview = null;
+      if (playback) soundPreviewStop = soundPreviewStop.then(() => playback.stop());
+      return soundPreviewStop;
+    };
     const overlay = document.createElement("div");
     overlay.className = "graphics-editor-modal-backdrop";
     const panel = document.createElement("section");
@@ -3693,7 +3700,7 @@ export function createProjectFileUiHelpers({
         if (!activeEditor || activeEditor.type !== "note") return;
         try {
           transportGeneration += 1;
-          await activeSoundPreview?.stop();
+          await stopActiveSoundPreview();
           setTransportIdle();
           const plainCode = Number(activeEditor.pitchSelect.value);
           const arpeggio = activeEditor.arpeggioToggle.checked;
@@ -3970,8 +3977,7 @@ export function createProjectFileUiHelpers({
       let transportGeneration = 0;
       regionSelect.addEventListener("change", async () => {
         transportGeneration += 1;
-        await activeSoundPreview?.stop();
-        activeSoundPreview = null;
+        await stopActiveSoundPreview();
         inputs.region.value = regionSelect.value;
         rebuildAllLanesForRegion();
         setTransportIdle();
@@ -4012,7 +4018,7 @@ export function createProjectFileUiHelpers({
       };
       const startTransport = async ({ startFrame = 0, endFrame = Infinity, loop = false } = {}) => {
         const generation = ++transportGeneration;
-        await activeSoundPreview?.stop();
+        await stopActiveSoundPreview();
         clearPlayhead();
         play.disabled = true;
         playSelection.disabled = true;
@@ -4037,9 +4043,7 @@ export function createProjectFileUiHelpers({
       loopSelection.addEventListener("click", () => selectedRange && startTransport({ ...selectedRange, loop: true }));
       stop.addEventListener("click", async () => {
         transportGeneration += 1;
-        const playback = activeSoundPreview;
-        if (playback) await playback.stop();
-        if (activeSoundPreview === playback) activeSoundPreview = null;
+        await stopActiveSoundPreview();
         setTransportIdle();
       });
       pause.addEventListener("click", async () => {
@@ -4054,10 +4058,10 @@ export function createProjectFileUiHelpers({
         }
       });
       transport.append(play, playSelection, loopSelection, pause, stop);
-      const closeTinySequencer = () => {
+      const closeTinySequencer = async () => {
         transportGeneration += 1;
         clearPlayhead();
-        activeSoundPreview?.stop();
+        await stopActiveSoundPreview();
         closePopover(true);
         backdrop.remove();
       };
@@ -4337,7 +4341,7 @@ export function createProjectFileUiHelpers({
         const audible = scheduleColecoSoundSequence(events);
         let playback = null;
         try {
-          await activeSoundPreview?.stop();
+          await stopActiveSoundPreview();
           playback = await startColecoSoundPreview(audible, { region: inputs.region.value });
           activeSoundPreview = playback;
           listenButton.disabled = true;
@@ -4364,7 +4368,9 @@ export function createProjectFileUiHelpers({
           pauseSequenceButton.textContent = "▶ Resume";
         }
       });
-      stopSequenceButton.addEventListener("click", () => activeSoundPreview?.stop());
+      stopSequenceButton.addEventListener("click", async () => {
+        await stopActiveSoundPreview();
+      });
       saveButton.addEventListener("click", () => {
         try {
           const result = replaceColecoSoundSegment(analysis.source, sound.label, events);
@@ -4373,9 +4379,9 @@ export function createProjectFileUiHelpers({
           closeInspector();
         } catch (error) { showEditorError(error); }
       });
-      const closeSequenceEditor = () => {
+      const closeSequenceEditor = async () => {
         if (activeMidiRecorder === insertCommands) activeMidiRecorder = null;
-        activeSoundPreview?.stop();
+        await stopActiveSoundPreview();
         applyComposerChange = null;
         selectedComposerIsTerminal = false;
         applyComposer.hidden = true;
@@ -4443,7 +4449,7 @@ export function createProjectFileUiHelpers({
       if (!selectedLibrarySound) return;
       let playback = null;
       try {
-        await activeSoundPreview?.stop();
+        await stopActiveSoundPreview();
         const { sound, pairedSound } = selectedLibrarySound;
         const playable = pairedSound?.stream?.format === "tiny"
           ? [...sound.stream.tiny.previewEvents, ...pairedSound.stream.tiny.previewEvents]
@@ -4476,7 +4482,9 @@ export function createProjectFileUiHelpers({
         libraryPause.textContent = "▶ Resume";
       }
     });
-    libraryStop.addEventListener("click", () => activeSoundPreview?.stop());
+    libraryStop.addEventListener("click", async () => {
+      await stopActiveSoundPreview();
+    });
     libraryAction.addEventListener("click", () => {
       if (!selectedLibrarySound) return;
       if (selectedLibrarySound.pairedSound?.stream?.format === "tiny") {
@@ -4570,16 +4578,16 @@ export function createProjectFileUiHelpers({
     newTableButton.title = "Create an additional sound table for another game state or scene";
     tableActions.appendChild(newTableButton);
     list.appendChild(tableActions);
-    const closeInspector = () => {
-      activeSoundPreview?.stop();
+    const closeInspector = async () => {
+      await stopActiveSoundPreview();
       midiConnection?.disconnect();
       overlay.remove();
     };
     addTableButton.addEventListener("click", () => {
       list.scrollTo({ top: 0, behavior: "smooth" });
     });
-    newTableButton.addEventListener("click", () => {
-      closeInspector();
+    newTableButton.addEventListener("click", async () => {
+      await closeInspector();
       openSourceSoundTableCreator(els.sourceEditor.value);
     });
     close.addEventListener("click", closeInspector);
