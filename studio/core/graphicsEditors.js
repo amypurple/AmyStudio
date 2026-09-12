@@ -7,6 +7,7 @@ import { applyTmsPixelColor, drawEditorTilePattern, drawTileGridEditorOverlay, d
 import { applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260721-preview-filters";
 import { copyTilemapSelection, fillTilemapSelection, normalizeTilemapSelection, pasteTilemapSelection } from "./graphicsTilemapSelection.js?v=20260729-tilemap-clipboard";
 import { openBitmapScreenGraphicsEditor } from "./graphicsBitmapEditor.js?v=20260811-bitmap-zoom-memory";
+import { buildAnimatedCharsetEditor } from "./graphicsEditorBuilder.js?v=20260912-guided-editor-builder";
 
 export function createGraphicsEditorUi({
   TMS_PALETTE,
@@ -20,6 +21,7 @@ export function createGraphicsEditorUi({
   compressBytes,
   commitProjectSourceText,
   upsertProjectFile,
+  saveGraphicsEditorSetup,
   setStatus
 }) {
   let tilemapClipboard = null;
@@ -2633,8 +2635,20 @@ export function createGraphicsEditorUi({
     const { backdrop, dialog } = modal;
 
     const intro = document.createElement("p");
-    intro.textContent = "Open one of the graphics editors defined in editors.json.";
+    intro.textContent = "Open an editor or create one from graphics data already in this project.";
     dialog.appendChild(intro);
+
+    const setupActions = document.createElement("div");
+    setupActions.className = "graphics-editor-builder__actions";
+    const newEditorButton = document.createElement("button");
+    newEditorButton.type = "button";
+    newEditorButton.textContent = "New Animated Editor";
+    newEditorButton.addEventListener("click", () => {
+      modal.close();
+      openAnimatedCharsetBuilder(entry, config);
+    });
+    setupActions.appendChild(newEditorButton);
+    dialog.appendChild(setupActions);
 
     const sourceBlocks = sourceBlocksForGraphicsConfig(config);
 
@@ -2655,6 +2669,16 @@ export function createGraphicsEditorUi({
         openGraphicsEditorDefinition(entry, editor, config);
       });
       item.append(openEditorButton);
+      if (editor.kind === "charset" && (!Array.isArray(editor.patternRefs) || editor.patternRefs.length <= 1)) {
+        const editSetupButton = document.createElement("button");
+        editSetupButton.type = "button";
+        editSetupButton.textContent = "Edit Setup";
+        editSetupButton.addEventListener("click", () => {
+          modal.close();
+          openAnimatedCharsetBuilder(entry, config, editor);
+        });
+        item.append(editSetupButton);
+      }
       if (editor.entries.length) {
         const frameSize = Array.isArray(editor.frameSize || editor.metatileSize) ? (editor.frameSize || editor.metatileSize) : null;
         const frameBytes = frameSize ? Math.max(1, Number(frameSize[0]) || 1) * Math.max(1, Number(frameSize[1]) || 1) : 0;
@@ -2677,11 +2701,97 @@ export function createGraphicsEditorUi({
 
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "This sidecar keeps editor intent outside the Amy syntax for now, so legacy listings and compressed files remain stable.";
+    note.textContent = "Amy Studio maintains editors.json automatically. Advanced users may still edit it from Files.";
     dialog.appendChild(note);
 
     modal.mount();
     setStatus("Opened graphics editor metadata from " + entry.path + ".");
+  }
+
+  function inlineByteDataNames() {
+    const names = [];
+    const source = String(getProject().sourceText || "");
+    const pattern = /(?:^|\n)\s*data\s+([A-Za-z_][A-Za-z0-9_]*)\s+bytes\b/gi;
+    let match;
+    while ((match = pattern.exec(source))) names.push(match[1]);
+    return names;
+  }
+
+  function openAnimatedCharsetBuilder(entry, config, existing = null) {
+    const names = inlineByteDataNames();
+    const modal = createGraphicsEditorModal({ title: existing ? "Edit animated graphics" : "New animated graphics" });
+    const { dialog } = modal;
+    const form = document.createElement("form");
+    form.className = "graphics-editor-builder";
+    const addField = (labelText, input) => {
+      const label = document.createElement("label");
+      const caption = document.createElement("span");
+      caption.textContent = labelText;
+      label.append(caption, input);
+      form.appendChild(label);
+      return input;
+    };
+    const textInput = (value = "") => Object.assign(document.createElement("input"), { type: "text", value: String(value) });
+    const numberInput = (value, min = 0, max = 255) => Object.assign(document.createElement("input"), { type: "number", value: String(value), min: String(min), max: String(max) });
+    const selectInput = (value = "", optional = false) => {
+      const select = document.createElement("select");
+      if (optional) select.appendChild(new Option("None", ""));
+      for (const name of names) select.appendChild(new Option(name, name));
+      select.value = value;
+      return select;
+    };
+    const patternName = existing?.patternRef?.name || existing?.pattern?.name || names[0] || "";
+    const colorName = existing?.colorRef?.name || existing?.color?.name || "";
+    const frameSize = existing?.animation?.frameSize || [3, 2];
+    const frameNames = existing?.frameEntries || [];
+    const fields = {
+      name: addField("Editor name", textInput(existing?.name || "Animated Tiles")),
+      pattern: addField("Pattern data", selectInput(patternName)),
+      color: addField("Color data", selectInput(colorName, true)),
+      baseTile: addField("Base tile (decimal)", numberInput(existing?.baseTile ?? 0)),
+      tileCount: addField("Editable tiles", numberInput(existing?.tileCount ?? 1, 1, 256)),
+      width: addField("Frame width", numberInput(frameSize[0], 1, 32)),
+      height: addField("Frame height", numberInput(frameSize[1], 1, 24)),
+      count: addField("Frames", numberInput(existing?.animation?.frames?.length || frameNames.length || 2, 1, 64)),
+      prefix: addField("New frame table prefix", textInput(frameNames[0]?.replace(/\d+$/, "") || "AnimationFrame")),
+      frameMs: addField("Preview milliseconds", numberInput(existing?.animation?.frameMs || 133, 1, 10000))
+    };
+    const help = document.createElement("p");
+    help.className = "graphics-editor-modal__note";
+    help.textContent = "Missing frame tables are added to Amy source. Existing Pattern and Color data are never replaced.";
+    const error = document.createElement("p");
+    error.className = "graphics-editor-builder__error";
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.textContent = existing ? "Update Editor" : "Create Editor";
+    form.append(help, error, save);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      try {
+        const frameCount = Number(fields.count.value);
+        const keepNames = frameNames.length === frameCount ? frameNames : [];
+        const editor = buildAnimatedCharsetEditor({
+          name: fields.name.value,
+          patternName: fields.pattern.value,
+          colorName: fields.color.value,
+          baseTile: Number(fields.baseTile.value),
+          tileCount: Number(fields.tileCount.value),
+          frameWidth: Number(fields.width.value),
+          frameHeight: Number(fields.height.value),
+          frameCount,
+          frameNames: keepNames,
+          framePrefix: fields.prefix.value,
+          frameMs: Number(fields.frameMs.value)
+        });
+        const updatedEntry = saveGraphicsEditorSetup(entry, existing?.name || "", editor);
+        modal.close();
+        openGraphicsEditorsConfig(updatedEntry);
+      } catch (builderError) {
+        error.textContent = builderError.message || String(builderError);
+      }
+    });
+    dialog.appendChild(form);
+    modal.mount();
   }
 
 

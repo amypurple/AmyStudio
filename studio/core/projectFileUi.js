@@ -12,6 +12,7 @@ import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAft
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
 import { buildColecoBiosArrangement, colecoBiosArrangementFrames, scheduleColecoBiosArrangement } from "./colecoBiosArranger.js?v=20260911-offsets";
 import { scheduleColecoMusicSong } from "./colecoMusicSong.js?v=20260912-song-timeline";
+import { initialAnimationFrameBytes } from "./graphicsEditorBuilder.js?v=20260912-guided-editor-builder";
 
 export function createProjectFileUiHelpers({
   els,
@@ -2227,7 +2228,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260912-editable-animation-layouts").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260912-guided-editor-builder").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,
@@ -2239,6 +2240,7 @@ export function createProjectFileUiHelpers({
         compressBytes,
         commitProjectSourceText,
         upsertProjectFile,
+        saveGraphicsEditorSetup,
         setStatus
       }));
     }
@@ -2289,6 +2291,42 @@ export function createProjectFileUiHelpers({
     });
     setStatus(statusText || "Updated editors.json.");
     return { ...(existing || {}), path: existing?.path || "editors.json", kind: existing?.kind || "editor-config", base64: bytesToBase64(bytes) };
+  }
+
+  function appendGeneratedByteDataBlock(source, name, bytes) {
+    if (sourceHasAmyDataBlock(name)) return source;
+    const values = Array.from(bytes, (value) => "$" + value.toString(16).toUpperCase().padStart(2, "0"));
+    const rows = [];
+    for (let index = 0; index < values.length; index += 16) rows.push("  " + values.slice(index, index + 16).join(","));
+    const block = "data " + name + " bytes\n" + rows.join("\n") + "\nend data";
+    const trimmed = String(source || "").replace(/\s*$/, "");
+    return trimmed ? trimmed + "\n\n" + block + "\n" : block + "\n";
+  }
+
+  function saveGraphicsEditorSetup(entry, previousName, editor) {
+    const currentEntry = editorsJsonEntry() || entry;
+    const config = currentEntry
+      ? parseGraphicsEditorsConfig(currentEntry, projectFileBytes(currentEntry))
+      : { version: 1, editors: [] };
+    const wanted = String(previousName || "").trim().toLowerCase();
+    const index = wanted ? config.editors.findIndex((item) => String(item.name || "").trim().toLowerCase() === wanted) : -1;
+    const editors = config.editors.map((item) => ({ ...item }));
+    if (index >= 0) editors[index] = editor;
+    else editors.push(editor);
+
+    let source = String(getProject().sourceText || "");
+    const [width, height] = editor.animation.frameSize;
+    for (let frameIndex = 0; frameIndex < editor.frameEntries.length; frameIndex += 1) {
+      source = appendGeneratedByteDataBlock(source, editor.frameEntries[frameIndex], initialAnimationFrameBytes({
+        baseTile: editor.baseTile,
+        tileCount: editor.tileCount,
+        width,
+        height,
+        frameIndex
+      }));
+    }
+    if (source !== String(getProject().sourceText || "")) commitProjectSourceText(source);
+    return upsertEditorsJson({ ...config, version: 1, editors }, index >= 0 ? "Updated graphics editor setup." : "Created graphics editor setup.");
   }
 
   function projectFileBaseWithoutCodec(path) {
