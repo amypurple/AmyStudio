@@ -108,6 +108,13 @@ const appendSource = [
 ].join("\n");
 const appendedBlock = appendAmyByteDataBlock(appendSource, "Board2", Uint8Array.from([0x81, 0x82, 0x83]), 2, { beforeWordTable: "Boards" });
 assert.match(appendedBlock, /data Board2 bytes\n  \$81,\$82\n  \$83\nend data\n\ndata Boards words = @Board1/);
+
+const compactBlock = appendAmyByteDataBlock(appendSource, "Board2", Uint8Array.from([0x81, 0x82, 0x83]), 16, { beforeWordTable: "Boards" });
+assert.match(compactBlock, /data Board2 bytes \$81,\$82,\$83\n\ndata Boards words = @Board1/);
+const compactParsed = parseAmyByteDataBlocks(compactBlock, ["Board2"]);
+assert.deepEqual(Array.from(compactParsed.get("Board2")), [0x81, 0x82, 0x83]);
+const compactBlockReplaced = replaceAmyByteDataBlock(compactBlock, "Board2", Uint8Array.from([0x11, 0x22]), 16);
+assert.match(compactBlockReplaced, /data Board2 bytes \$11,\$22/);
 const appendedTable = appendAmyWordTableEntry(appendedBlock, "Boards", "Board2");
 assert.match(appendedTable, /data Boards words = @Board1,@Board2/);
 assert.deepEqual(Array.from(parseAmyByteDataBlocks(appendedTable, ["Board2"]).get("Board2")), [0x81, 0x82, 0x83]);

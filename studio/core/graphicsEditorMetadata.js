@@ -375,7 +375,11 @@ export function appendAmyByteDataBlock(sourceText, blockName, bytes, rowWidth = 
     }
   }
 
-  const blockLines = ["data " + name + " bytes", ...formatAmyByteRows(Uint8Array.from(bytes || []), rowWidth), "end data", ""];
+  const sourceBytes = Uint8Array.from(bytes || []);
+  const rows = formatAmyByteRows(sourceBytes, rowWidth);
+  const blockLines = rows.length === 1
+    ? ["data " + name + " bytes " + rows[0].trim(), ""]
+    : ["data " + name + " bytes", ...rows, "end data", ""];
   return [...lines.slice(0, insertAt), ...blockLines, ...lines.slice(insertAt)].join(newline);
 }
 
