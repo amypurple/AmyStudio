@@ -69,9 +69,9 @@ Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
 | Warrior bitmap | **3,254** | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
 | Controller Visual | **595** | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
 | Sprite Metasprite | **983** | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| Gameplay State Update | 1,460 | **1,253** | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
-| Tile Animation | 1,387 | **1,376** | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
-| **Six-sample total** | **7,917** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
+| Gameplay State Update* | 1,460 | **1,253** | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
+| Tile Animation | 1,378 | **1,376** | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
+| **Six-sample total*** | **7,908** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -95,6 +95,11 @@ assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), gene
 | Sprite Metasprite | Eight pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 | Gameplay State Update | Eight match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
 | Tile Animation | Eight continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
+
+The State Update row is behavior-validated but not yet a strict code-size comparison: Amy Studio
+also draws a title, progress text, score, and checksum, while the current NewColeco fixture runs
+the state simulation without equivalent display output. Its sizes remain evidence artifacts, not
+a code-generator ranking, until matched headless and visible variants are built.
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
