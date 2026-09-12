@@ -148,18 +148,33 @@ export function createGraphicsEditorUi({
   }
 
   async function openCharsetGraphicsEditor(editor) {
-    const inlinePatternName = editor.patternRef?.from === "inline" ? editor.patternRef.name : "";
+    const patternRefs = Array.isArray(editor.patternRefs) && editor.patternRefs.length
+      ? editor.patternRefs
+      : (editor.patternRef ? [editor.patternRef] : []);
+    const inlinePatternNames = patternRefs.filter((ref) => ref.from === "inline").map((ref) => ref.name);
+    const inlinePatternName = inlinePatternNames.length === 1 ? inlinePatternNames[0] : "";
     const patternFile = inlinePatternName ? null : patternFileForCharsetEditor(editor);
-    if (!patternFile && !inlinePatternName) {
+    if (!patternFile && !inlinePatternNames.length) {
       setStatus("Cannot open " + editor.name + ": missing pattern file " + (editor.patternFile || editor.tilesetFile || "") + ".");
       return;
     }
     let decodedPatternBytes;
+    const inlinePatternSegments = [];
     try {
-      if (inlinePatternName) {
-        const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", [inlinePatternName]);
-        decodedPatternBytes = blocks.get(inlinePatternName);
-        if (!decodedPatternBytes) throw new Error("Cannot find data " + inlinePatternName + " bytes block.");
+      if (inlinePatternNames.length) {
+        if (inlinePatternNames.length !== patternRefs.length) throw new Error("Animated charset patterns must all use inline data or one file.");
+        const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", inlinePatternNames);
+        const chunks = [];
+        let offset = 0;
+        for (const name of inlinePatternNames) {
+          const bytes = blocks.get(name);
+          if (!bytes) throw new Error("Cannot find data " + name + " bytes block.");
+          chunks.push(bytes);
+          inlinePatternSegments.push({ name, offset, length: bytes.length });
+          offset += bytes.length;
+        }
+        decodedPatternBytes = new Uint8Array(offset);
+        for (let index = 0; index < chunks.length; index += 1) decodedPatternBytes.set(chunks[index], inlinePatternSegments[index].offset);
       } else {
         decodedPatternBytes = await decodedProjectFileBytes(patternFile);
       }
@@ -216,11 +231,20 @@ export function createGraphicsEditorUi({
     let charsetClipboard = null;
     const editScale = 24;
     const paletteScale = 2;
+    const animationFrames = Array.isArray(editor.animation?.frames) ? editor.animation.frames.map(Number).filter(Number.isInteger) : [];
+    const animationFrameSize = Array.isArray(editor.animation?.frameSize) ? editor.animation.frameSize : [1, 1];
+    const animationWidth = Math.max(1, Number(animationFrameSize[0]) || 1);
+    const animationHeight = Math.max(1, Number(animationFrameSize[1]) || 1);
+    let animationPosition = 0;
+    let animationTimer = null;
 
     const modal = createGraphicsEditorModal({
       title: editor.name,
       className: "graphics-editor-modal--charset",
-      onCloseRequest: () => (dirty || dirtyColor) ? confirm("Close without saving tileset changes?") : true
+      onCloseRequest: () => {
+        if (animationTimer) clearInterval(animationTimer);
+        return (dirty || dirtyColor) ? confirm("Close without saving tileset changes?") : true;
+      }
     });
     const { backdrop, dialog } = modal;
 
@@ -233,7 +257,7 @@ export function createGraphicsEditorUi({
     modeLabel.textContent = "Left click paints. Right click erases. Drag continues the stroke.";
     const saveButton = document.createElement("button");
     saveButton.type = "button";
-    saveButton.textContent = inlinePatternName ? "Save Source Data" : "Save Pattern File";
+    saveButton.textContent = inlinePatternNames.length ? "Save Source Data" : "Save Pattern File";
     const copyButton = document.createElement("button");
     copyButton.type = "button";
     copyButton.textContent = "Copy";
@@ -249,7 +273,12 @@ export function createGraphicsEditorUi({
     const redoButton = document.createElement("button");
     redoButton.type = "button";
     redoButton.textContent = "Redo";
-    toolbar.append(selectedLabel, modeLabel, copyButton, pasteButton, saveButton, undoButton, redoButton);
+    const animationToggle = document.createElement("button");
+    animationToggle.type = "button";
+    animationToggle.textContent = "Animate";
+    animationToggle.disabled = animationFrames.length < 2;
+    animationToggle.setAttribute("aria-pressed", "false");
+    toolbar.append(selectedLabel, modeLabel, animationToggle, copyButton, pasteButton, saveButton, undoButton, redoButton);
     dialog.appendChild(toolbar);
 
     const body = document.createElement("div");
@@ -260,6 +289,12 @@ export function createGraphicsEditorUi({
     editCanvas.width = 8 * editScale;
     editCanvas.height = 8 * editScale;
     editCanvas.className = "graphics-editor-charset-canvas";
+    const animationCanvas = document.createElement("canvas");
+    const animationScale = Math.max(2, Math.min(6, Math.floor(12 / Math.max(animationWidth, animationHeight))));
+    animationCanvas.width = animationWidth * 8 * animationScale;
+    animationCanvas.height = animationHeight * 8 * animationScale;
+    animationCanvas.className = "graphics-editor-animation-preview";
+    animationCanvas.title = "Runtime-style tile animation preview.";
     const colorRow = document.createElement("div");
     colorRow.className = "graphics-editor-color-row";
     const colorButtons = [];
@@ -280,7 +315,7 @@ export function createGraphicsEditorUi({
       colorButtons.push(button);
       colorRow.appendChild(button);
     }
-    editorPane.append(editCanvas, colorRow);
+    editorPane.append(editCanvas, animationCanvas, colorRow);
     const tileList = document.createElement("div");
     tileList.className = "graphics-editor-palette graphics-editor-charset-list";
     body.append(editorPane, tileList);
@@ -301,7 +336,36 @@ export function createGraphicsEditorUi({
     }
 
     function colorRowsForIndex(index) {
-      return tileColorRowsForValue(colorBytes, patternBytes, tileValueForIndex(index), baseTile, editor.previewScreenAt?.[1] || 0);
+      const colorIndex = editor.animation?.sharedColor ? 0 : index;
+      return tileColorRowsForValue(colorBytes, patternBytes, tileValueForIndex(colorIndex), baseTile, editor.previewScreenAt?.[1] || 0);
+    }
+
+    function renderCharsetAnimation() {
+      const ctx = animationCanvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, animationCanvas.width, animationCanvas.height);
+      const frame = animationFrames[animationPosition] || 0;
+      const firstIndex = frame * animationWidth * animationHeight;
+      for (let row = 0; row < animationHeight; row += 1) {
+        for (let col = 0; col < animationWidth; col += 1) {
+          const index = firstIndex + row * animationWidth + col;
+          if (index >= tileCount) continue;
+          drawEditorTilePattern(ctx, tilePatternForIndex(index), col * 8 * animationScale, row * 8 * animationScale,
+            animationScale, "#66a6ff", "#000000", colorRowsForIndex(index), TMS_PALETTE);
+        }
+      }
+    }
+
+    function setCharsetAnimationPlaying(playing) {
+      if (animationTimer) clearInterval(animationTimer);
+      animationTimer = null;
+      animationToggle.textContent = playing ? "Pause" : "Animate";
+      animationToggle.setAttribute("aria-pressed", String(playing));
+      if (!playing || animationFrames.length < 2) return;
+      animationTimer = setInterval(() => {
+        animationPosition = (animationPosition + 1) % animationFrames.length;
+        renderCharsetAnimation();
+      }, Math.max(40, Number(editor.animation?.frameMs) || 160));
     }
 
     function updateSelectedLabel() {
@@ -370,6 +434,7 @@ export function createGraphicsEditorUi({
       }
       updateSelectedLabel();
       updateActiveColorUi();
+      renderCharsetAnimation();
     }
 
     function renderTileList() {
@@ -518,8 +583,12 @@ export function createGraphicsEditorUi({
 
     saveButton.addEventListener("click", async () => {
       try {
-        if (inlinePatternName) {
-          const nextSource = replaceAmyByteDataBlock(getProject().sourceText || "", inlinePatternName, patternBytes, Number(editor.rowWidth || 16));
+        if (inlinePatternNames.length) {
+          let nextSource = getProject().sourceText || "";
+          for (const segment of inlinePatternSegments) {
+            nextSource = replaceAmyByteDataBlock(nextSource, segment.name,
+              patternBytes.slice(segment.offset, segment.offset + segment.length), Number(editor.rowWidth || 16));
+          }
           commitProjectSourceText(nextSource);
         } else {
           const patternCodec = String(patternFile.codec || detectCodecFromName(patternFile.path) || "raw").toLowerCase();
@@ -575,10 +644,12 @@ export function createGraphicsEditorUi({
       restoreCharsetSnapshot(redoStack.pop());
       setStatus("Redo " + editor.name + " tileset edit.");
     });
+    animationToggle.addEventListener("click", () => setCharsetAnimationPlaying(!animationTimer));
 
     updateCharsetHistoryButtons();
     renderTileList();
     renderActiveTile();
+    setCharsetAnimationPlaying(animationFrames.length > 1);
     modal.mount();
     setStatus("Opened charset editor for " + editor.name + ".");
   }

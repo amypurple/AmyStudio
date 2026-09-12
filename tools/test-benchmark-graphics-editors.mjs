@@ -10,7 +10,7 @@ import { parseAmyByteDataBlocks, parseGraphicsEditorsConfig } from "../studio/co
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const expected = new Map([
   ["toolchain-benchmark-sprite-metasprite", 1],
-  ["toolchain-benchmark-tile-animation", 3]
+  ["toolchain-benchmark-tile-animation", 2]
 ]);
 const configs = new Map();
 
@@ -38,12 +38,11 @@ assert.deepEqual(metasprite.animation.frames.map((frame) => frame.layers.map((la
 ]);
 
 const tiles = configs.get("toolchain-benchmark-tile-animation").editors;
-assert.equal(tiles[0].kind, "sprite-patterns");
-assert.equal(tiles[0].spriteCount, 4);
+assert.equal(tiles[0].kind, "charset");
 assert.deepEqual(tiles[0].animation.frames, [0, 1, 2, 3]);
-assert.equal(tiles[2].kind, "metatiles");
-assert.deepEqual(tiles[2].entries, ["ShipFrame0", "ShipFrame1"]);
-assert.deepEqual(tiles[2].frameSize, [3, 2]);
-assert.deepEqual(tiles[2].animation.frames, [0, 1]);
+assert.equal(tiles[0].animation.sharedColor, true);
+assert.equal(tiles[1].kind, "charset");
+assert.deepEqual(tiles[1].animation.frameSize, [3, 2]);
+assert.deepEqual(tiles[1].animation.frames, [0, 1]);
 
 console.log("Benchmark graphics editor tests passed.");

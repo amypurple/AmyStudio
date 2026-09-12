@@ -1,6 +1,7 @@
 ## 2026-09-11 - Completed Sound Workspace v1
 
 - Added complete animated previews for the benchmark's layered metasprite and 3x2 tile ship.
+- Added native colored charset animation previews, including multi-block tile frames and composed frames.
 - Recorded full four-area Tiny Sound song sequencing as the next sound-authoring gap.
 
 - Added a parallel BIOS multi-area arranger with explicit voice selection, preview offsets, and
