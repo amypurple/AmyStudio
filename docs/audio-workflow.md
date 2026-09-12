@@ -28,7 +28,7 @@ Run its deterministic release gate with:
 node tools/amy-feature-matrix.mjs --suite audio
 ```
 
-The public gate currently covers 22 unit, browser, compiler and GearColeco tests. Future work may improve
+The public gate currently covers 23 unit, browser, compiler and GearColeco tests. Future work may improve
 workflow polish, timeline offsets, and additional browser-versus-PSG
 fidelity measurements without changing this v1 contract.
 
@@ -41,6 +41,10 @@ existing source-writing sequence editor for that lane. This first version aligns
 frame zero by default. Start-frame offsets support arrangement experiments and accurate preview,
 including later shared-area interruption, but remain preview-only because the current BIOS song
 scheduler stops all four music areas before every new trigger row.
+
+The release gate also compiles a real multi-area arrangement and observes the Coleco BIOS work
+areas in GearColeco. It proves that independent voices coexist and that a later sound replaces
+only the voice assigned to the same area after its requested frame delay.
 
 For a frequency sweep, the encoded length is a sweep count rather than a direct frame duration. Amy Studio labels it `Sweep count` and previews the BIOS duration: first delay plus the remaining counts multiplied by the repeat interval.
 

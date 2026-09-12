@@ -5,7 +5,7 @@
 - Stabilized the everyday BIOS sound-table and Sound FX authoring workflow.
 - Stabilized two-channel Tiny Sound creation, import, sequencing, inline editing, playback,
   source write-back, and compilation.
-- Added a 22-test public audio release gate covering unit, browser, compiler, and GearColeco behavior.
+- Added a 23-test public audio release gate, including real BIOS multi-area priority and timing parity in GearColeco.
 - Replaced an obsolete, non-reproducible Tiny Sound warning with measured runtime status.
 
 ## 2026-09-02 - Added ZX2 compression

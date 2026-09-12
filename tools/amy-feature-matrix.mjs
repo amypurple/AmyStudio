@@ -201,6 +201,7 @@ const tests = [
   { file: "test-tiny-sound-import-browser.mjs", area: "tiny-sound-import-ui", evidence: "browser", suite: "audio" },
   { file: "test-sound-fx-editor-ui.mjs", area: "sound-fx-editor-source-contract", evidence: "unit", suite: "audio" },
   { file: "test-coleco-bios-arranger.mjs", area: "bios-multi-area-arranger", evidence: "unit", suite: "audio" },
+  { file: "test-coleco-bios-arranger-parity-rom.mjs", area: "bios-multi-area-arranger-runtime", evidence: "rom", suite: "audio" },
   { file: "test-sound-fx-editor-browser.mjs", area: "sound-fx-editor-ui", evidence: "browser", suite: "audio" },
   { file: "test-rails-puzzle-vram-bounds.mjs", area: "rails-puzzle-vram-safety", evidence: "rom", suite: "examples" },
   { file: "test-train-track-puzzles.mjs", area: "rails-puzzle-solutions", evidence: "unit", suite: "examples" }
