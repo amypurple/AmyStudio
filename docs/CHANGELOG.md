@@ -1,9 +1,10 @@
 ## 2026-09-11 - Completed Sound Workspace v1
 
+- Added a parallel BIOS multi-area arranger with explicit voice selection and shared-area semantics.
 - Stabilized the everyday BIOS sound-table and Sound FX authoring workflow.
 - Stabilized two-channel Tiny Sound creation, import, sequencing, inline editing, playback,
   source write-back, and compilation.
-- Added a 21-test audio release gate covering unit, browser, compiler, and GearColeco behavior.
+- Added a 22-test public audio release gate covering unit, browser, compiler, and GearColeco behavior.
 - Replaced an obsolete, non-reproducible Tiny Sound warning with measured runtime status.
 
 ## 2026-09-02 - Added ZX2 compression

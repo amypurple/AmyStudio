@@ -195,6 +195,18 @@ try {
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created table opens directly in sound library");
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ BIOS sound", "+ BIOS music", "+ Tiny music", "Technical"], "ordinary table exposes explicit sound formats");
+  await evaluate(`document.querySelector(".sound-table-arrange").click()`);
+  await waitFor(`document.querySelector(".bios-arranger-modal")`, "BIOS table arranger");
+  assert.equal(await evaluate(`document.querySelectorAll(".bios-arranger__lane").length`), 3, "arranger shows one lane per valid BIOS entry");
+  assert.match(await evaluate(`document.querySelector(".bios-arranger-modal > .graphics-editor-modal__note").textContent`), /3 BIOS voices · 3 selected/);
+  await evaluate(`(() => {
+    const checkbox = document.querySelector('.bios-arranger__lane input[type="checkbox"]');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+  assert.match(await evaluate(`document.querySelector(".bios-arranger-modal > .graphics-editor-modal__note").textContent`), /3 BIOS voices · 2 selected/, "arranger updates explicit voice selection");
+  await evaluate(`document.querySelector('[aria-label="Close BIOS arranger"]').click()`);
+  await waitFor(`!document.querySelector(".bios-arranger-modal")`, "BIOS arranger closes");
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
     editor.selectionStart = editor.selectionEnd = editor.value.length;

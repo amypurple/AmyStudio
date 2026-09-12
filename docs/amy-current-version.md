@@ -72,7 +72,7 @@ possible; calculated indexes intentionally have no implicit runtime bounds check
 - `120 colors on` / `120 colors off` for the historical per-frame VDP R3/R4 technique
 - sound, music, DSound, TriPCM, and NMI-aware playback commands
 - Sound Workspace v1 for BIOS table/SFX editing and two-channel Tiny Sound creation, import,
-  sequencing, playback, source write-back, and Web MIDI capture
+  sequencing, multi-area BIOS arrangement, playback, source write-back, and Web MIDI capture
 
 ### Development and testing
 

@@ -10,6 +10,7 @@ import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=2
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, removeTinySoundByte, replaceTinySoundByte, resizeTinySoundNoteSteps, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
+import { buildColecoBiosArrangement, scheduleColecoBiosArrangement } from "./colecoBiosArranger.js?v=20260911-v1";
 
 export function createProjectFileUiHelpers({
   els,
@@ -4400,6 +4401,130 @@ export function createProjectFileUiHelpers({
       editorBackdrop.appendChild(editor);
       document.body.appendChild(editorBackdrop);
     }
+    function openBiosTableArranger(table) {
+      const arrangement = buildColecoBiosArrangement(table);
+      if (!arrangement.lanes.length) {
+        setStatus(`${table.name} has no editable BIOS voices.`);
+        return;
+      }
+      const selected = new Set(arrangement.lanes.map((lane) => lane.index));
+      const backdrop = document.createElement("div");
+      backdrop.className = "graphics-editor-modal-backdrop";
+      const arranger = document.createElement("section");
+      arranger.className = "graphics-editor-modal graphics-editor-json-modal bios-arranger-modal";
+      const arrangerHeader = document.createElement("div");
+      arrangerHeader.className = "graphics-editor-modal__header";
+      const arrangerTitle = document.createElement("h3");
+      arrangerTitle.textContent = `BIOS arranger · ${table.name}`;
+      const arrangerClose = document.createElement("button");
+      arrangerClose.type = "button";
+      arrangerClose.className = "graphics-editor-modal__close";
+      arrangerClose.textContent = "✕";
+      arrangerClose.setAttribute("aria-label", "Close BIOS arranger");
+      arrangerHeader.append(arrangerTitle, arrangerClose);
+      const summary = document.createElement("p");
+      summary.className = "graphics-editor-modal__note";
+      const lanes = document.createElement("div");
+      lanes.className = "bios-arranger__lanes";
+      const transport = document.createElement("div");
+      transport.className = "graphics-editor-json-modal__actions is-transport";
+      const play = document.createElement("button");
+      play.type = "button";
+      play.textContent = "▶ Play selected";
+      const pause = document.createElement("button");
+      pause.type = "button";
+      pause.textContent = "Ⅱ Pause";
+      pause.disabled = true;
+      const stop = document.createElement("button");
+      stop.type = "button";
+      stop.textContent = "■ Stop";
+      stop.disabled = true;
+      transport.append(play, pause, stop);
+      const refreshSummary = () => {
+        const selectedLanes = arrangement.lanes.filter((lane) => selected.has(lane.index));
+        const occupiedAreas = new Set(selectedLanes.map((lane) => lane.area ?? `entry-${lane.index}`));
+        const interrupted = selectedLanes.length - occupiedAreas.size;
+        summary.textContent = `${arrangement.lanes.length} BIOS voices · ${selected.size} selected · ${arrangement.totalFrames} frames` +
+          (interrupted ? ` · ${interrupted} interrupted by shared areas` : "");
+        play.disabled = selected.size === 0;
+      };
+      for (const lane of arrangement.lanes) {
+        const row = document.createElement("div");
+        row.className = "bios-arranger__lane";
+        const enabled = document.createElement("input");
+        enabled.type = "checkbox";
+        enabled.checked = true;
+        enabled.setAttribute("aria-label", `Include ${lane.label}`);
+        enabled.addEventListener("change", () => {
+          if (enabled.checked) selected.add(lane.index);
+          else selected.delete(lane.index);
+          refreshSummary();
+        });
+        const identity = document.createElement("strong");
+        identity.textContent = `${lane.index}. ${lane.label}`;
+        const area = document.createElement("span");
+        area.textContent = `Area ${lane.area ?? "?"}`;
+        const bar = document.createElement("div");
+        bar.className = "bios-arranger__bar";
+        bar.style.setProperty("--lane-width", `${Math.max(2, Math.round((lane.totalFrames / Math.max(arrangement.totalFrames, 1)) * 100))}%`);
+        bar.title = `${lane.events.length} commands · ${lane.totalFrames} frames`;
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => openSequenceEditor(lane.entry));
+        row.append(enabled, identity, area, bar, edit);
+        lanes.appendChild(row);
+      }
+      let generation = 0;
+      play.addEventListener("click", async () => {
+        const current = ++generation;
+        await stopActiveSoundPreview();
+        const events = scheduleColecoBiosArrangement(arrangement, selected);
+        if (!events.length || current !== generation) return;
+        const playback = await startColecoSoundPreview(events, { region: inputs.region.value });
+        activeSoundPreview = playback;
+        play.disabled = true;
+        pause.disabled = false;
+        stop.disabled = false;
+        await playback.done;
+        if (activeSoundPreview === playback) activeSoundPreview = null;
+        if (current === generation) {
+          play.disabled = selected.size === 0;
+          pause.disabled = true;
+          pause.textContent = "Ⅱ Pause";
+          stop.disabled = true;
+        }
+      });
+      pause.addEventListener("click", async () => {
+        if (!activeSoundPreview) return;
+        if (activeSoundPreview.isPaused()) {
+          await activeSoundPreview.resume();
+          pause.textContent = "Ⅱ Pause";
+        } else {
+          await activeSoundPreview.pause();
+          pause.textContent = "▶ Resume";
+        }
+      });
+      stop.addEventListener("click", async () => {
+        generation += 1;
+        await stopActiveSoundPreview();
+        play.disabled = selected.size === 0;
+        pause.disabled = true;
+        pause.textContent = "Ⅱ Pause";
+        stop.disabled = true;
+      });
+      const closeArranger = async () => {
+        generation += 1;
+        await stopActiveSoundPreview();
+        backdrop.remove();
+      };
+      arrangerClose.addEventListener("click", closeArranger);
+      backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeArranger(); });
+      refreshSummary();
+      arranger.append(arrangerHeader, summary, lanes, transport);
+      backdrop.appendChild(arranger);
+      document.body.appendChild(backdrop);
+    }
     const libraryTransport = document.createElement("div");
     libraryTransport.className = "sound-library-transport";
     const selectedSoundLabel = document.createElement("span");
@@ -4518,7 +4643,12 @@ export function createProjectFileUiHelpers({
       item.className = "graphics-editor-modal__item";
       const heading = document.createElement("strong");
       heading.textContent = `${table.name} · ${table.entries.length} entries`;
-      item.appendChild(heading);
+      const arrangeButton = document.createElement("button");
+      arrangeButton.type = "button";
+      arrangeButton.textContent = "Arrange table";
+      arrangeButton.className = "sound-table-arrange";
+      arrangeButton.addEventListener("click", () => openBiosTableArranger(table));
+      item.append(heading, arrangeButton);
       const priorityUses = new Map();
       for (const sound of table.entries) {
         if (sound.priority) priorityUses.set(sound.priority, (priorityUses.get(sound.priority) || 0) + 1);
