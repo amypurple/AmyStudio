@@ -205,6 +205,14 @@ try {
   await evaluate(`document.querySelector('[aria-label="Close music sequencer"]').click()`);
   await waitFor(`!document.querySelector(".tiny-pair-sequencer-modal")`, "automatic sequencer closes");
 
+  // The edited attached stream must survive the complete Studio compile path. This catches
+  // UI-only edits that appear in the rebuilt lane but never reach the project file consumed
+  // by the compiler.
+  await evaluate(`document.getElementById("btnCompile").click()`);
+  await waitFor(`document.getElementById("status").textContent.includes("Compile OK:")`, "edited Tiny Sound project compiles");
+  assert.match(await evaluate(`window.alexisLastListing || ""`), /db\s+\$28,\$00,\$00,\$01,\$FF/i,
+    "compiled listing must contain the edited three-step Tiny Sound note");
+
   // Re-importing the same song name must fail closed: automatic file-name suffixing would
   // protect the file, but duplicate assembler labels would still break the project.
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
