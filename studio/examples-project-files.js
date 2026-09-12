@@ -602,14 +602,37 @@ replaceEditorsProjectFile("fly-swatter-timer-quest", [
 ]);
 
 replaceEditorsProjectFile("toolchain-benchmark-sprite-metasprite", [
-  { name: "Metasprite Detail Layer", kind: "sprite-patterns", patterns: [{ from: "inline", name: "DetailFrame0" }, { from: "inline", name: "DetailFrame1" }], spriteSize: [16, 16], spriteCount: 2, basePattern: 0, sourceBasePattern: 0, spriteColor: 15, animation: { frameMs: 133, frames: [0, 1] }, notes: "White eye layer for the two-frame player metasprite." },
-  { name: "Metasprite Body Layer", kind: "sprite-patterns", patterns: [{ from: "inline", name: "BodyFrame0" }, { from: "inline", name: "BodyFrame1" }], spriteSize: [16, 16], spriteCount: 2, basePattern: 4, sourceBasePattern: 4, spriteColor: 11, animation: { frameMs: 133, frames: [0, 1] }, notes: "Yellow body layer for the two-frame player metasprite." },
-  { name: "Metasprite Outline Layer", kind: "sprite-patterns", patterns: [{ from: "inline", name: "OutlineFrame0" }, { from: "inline", name: "OutlineFrame1" }], spriteSize: [16, 16], spriteCount: 2, basePattern: 8, sourceBasePattern: 8, spriteColor: 1, animation: { frameMs: 133, frames: [0, 1] }, notes: "Black outline and pupil layer for the two-frame player metasprite." }
+  {
+    name: "Animated Three-Color Metasprite",
+    kind: "sprite-patterns",
+    patterns: [
+      { from: "inline", name: "DetailFrame0" },
+      { from: "inline", name: "BodyFrame0" },
+      { from: "inline", name: "OutlineFrame0" },
+      { from: "inline", name: "DetailFrame1" },
+      { from: "inline", name: "BodyFrame1" },
+      { from: "inline", name: "OutlineFrame1" }
+    ],
+    spriteSize: [16, 16],
+    spriteCount: 6,
+    basePattern: 0,
+    sourceBasePattern: 0,
+    spriteColor: 15,
+    animation: {
+      frameMs: 133,
+      frames: [
+        { layers: [{ pattern: 0, color: 15 }, { pattern: 1, color: 11 }, { pattern: 2, color: 1 }] },
+        { layers: [{ pattern: 3, color: 15 }, { pattern: 4, color: 11 }, { pattern: 5, color: 1 }] }
+      ]
+    },
+    notes: "Edit all six source patterns and preview both three-layer animation frames as one actor."
+  }
 ]);
 
 replaceEditorsProjectFile("toolchain-benchmark-tile-animation", [
-  { name: "Animated Star Tile", kind: "charset", patterns: [{ from: "inline", name: "StarPattern0" }, { from: "inline", name: "StarPattern1" }, { from: "inline", name: "StarPattern2" }, { from: "inline", name: "StarPattern3" }], colors: [{ from: "inline", name: "StarColor" }], baseTile: 128, sourceBaseTile: 128, tileCount: 1, screenMode: "mode2", animation: { frameMs: 67, frames: [0, 1, 2, 3] }, notes: "Four pattern phases uploaded to shared star tile $80 at runtime." },
-  { name: "Animated Enemy Ships", kind: "charset", pattern: { from: "inline", name: "ShipPatterns" }, color: { from: "inline", name: "ShipColors" }, baseTile: 144, sourceBaseTile: 144, tileCount: 12, screenMode: "mode2", notes: "Two consecutive 3x2 enemy ship frames: tiles $90-$95 and $96-$9B." }
+  { name: "Animated Star Tile", kind: "sprite-patterns", patterns: [{ from: "inline", name: "StarPattern0" }, { from: "inline", name: "StarPattern1" }, { from: "inline", name: "StarPattern2" }, { from: "inline", name: "StarPattern3" }], spriteSize: [8, 8], spriteCount: 4, basePattern: 128, sourceBasePattern: 128, patternTable: "vram.pattern", spriteColor: 15, animation: { frameMs: 67, frames: [0, 1, 2, 3] }, notes: "Four editable pattern phases uploaded to shared star tile $80 at runtime. StarColor remains source-managed; white is the animation preview color." },
+  { name: "Animated Enemy Ships", kind: "charset", pattern: { from: "inline", name: "ShipPatterns" }, color: { from: "inline", name: "ShipColors" }, baseTile: 144, sourceBaseTile: 144, tileCount: 12, screenMode: "mode2", notes: "Two consecutive 3x2 enemy ship frames: tiles $90-$95 and $96-$9B." },
+  { name: "Enemy Ship 3x2 Animation", kind: "metatiles", entries: ["ShipFrame0", "ShipFrame1"], frameSize: [3, 2], frameCount: 2, pattern: { from: "inline", name: "ShipPatterns" }, color: { from: "inline", name: "ShipColors" }, baseTile: 144, sourceBaseTile: 144, tileCount: 12, animation: { frameMs: 133, frames: [0, 1] }, notes: "Edit the NAME-table frames and preview the complete enemy ship animation." }
 ]);
 
 derivedProjectFilesById["warrior-dan2-fire-visual-test"] = warriorDan2FireTestProjectFiles;

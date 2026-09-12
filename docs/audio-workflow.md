@@ -34,6 +34,11 @@ fidelity measurements without changing this v1 contract.
 
 Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Amy Studio provides a Sound FX editor inside the source sound inspector: select a command, change its note/noise, exact PSG period, channel, volume, duration, frequency sweep or volume sweep, audition it, then choose `Apply changes`. Duration `256` is shown normally even though the BIOS encodes it as `$00`. Commands can be reordered by dragging or with the arrow buttons, and sequence edits support Undo/Redo before saving. Sequence preview keeps each PSG channel continuous between adjacent commands; only an actual gap silences it. The two-channel Tiny Sound sequencer handles compact songs, while the BIOS arranger combines ordinary table voices.
 
+A complete four-area Tiny Sound song such as Commando remains a tooling gap. Its song table can
+switch noise and three tone streams over time; the current sequencer edits one paired two-channel
+section, not the entire scheduled composition. A future song-table timeline must decode those
+trigger rows and present all four BIOS areas together.
+
 For a BIOS table, choose `Arrange table` to see every valid BIOS entry as a parallel lane. Select
 the voices to audition, then use Play, Pause, or Stop. Entries sharing one BIOS area are marked as
 interruptions and the later table entry owns that area, matching the Coleco BIOS. `Edit` opens the

@@ -1,5 +1,8 @@
 ## 2026-09-11 - Completed Sound Workspace v1
 
+- Added complete animated previews for the benchmark's layered metasprite and 3x2 tile ship.
+- Recorded full four-area Tiny Sound song sequencing as the next sound-authoring gap.
+
 - Added a parallel BIOS multi-area arranger with explicit voice selection, preview offsets, and
   shared-area interruption semantics.
 - Stabilized the everyday BIOS sound-table and Sound FX authoring workflow.
