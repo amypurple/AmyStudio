@@ -1,4 +1,4 @@
-import { scheduleColecoSoundSequence } from "./colecoSoundPreview.js";
+import { scheduleColecoSoundSequence, sliceColecoPreviewEvents } from "./colecoSoundPreview.js";
 
 function eventFrames(event) {
   if (["end", "repeat", "tiny"].includes(event?.type)) return 0;
@@ -30,14 +30,37 @@ export function buildColecoBiosArrangement(table) {
   };
 }
 
-export function scheduleColecoBiosArrangement(arrangement, selectedIndexes) {
+function laneOffset(offsets, index) {
+  const value = offsets instanceof Map ? offsets.get(index) : offsets?.[index];
+  return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+export function colecoBiosArrangementFrames(arrangement, selectedIndexes, offsets = {}) {
+  const selected = selectedIndexes instanceof Set ? selectedIndexes : new Set(selectedIndexes || []);
+  return arrangement.lanes
+    .filter((lane) => selected.has(lane.index))
+    .reduce((maximum, lane) => Math.max(maximum, laneOffset(offsets, lane.index) + lane.totalFrames), 0);
+}
+
+export function scheduleColecoBiosArrangement(arrangement, selectedIndexes, offsets = {}) {
   const selected = selectedIndexes instanceof Set ? selectedIndexes : new Set(selectedIndexes || []);
   const selectedLanes = arrangement.lanes.filter((lane) => selected.has(lane.index));
-  // BIOS entries mapped to one work area interrupt each other. The table is triggered
-  // in index order, so the last selected entry assigned to an area owns that area.
-  const ownerByArea = new Map();
-  for (const lane of selectedLanes) ownerByArea.set(lane.area ?? `entry-${lane.index}`, lane);
-  return selectedLanes
-    .filter((lane) => ownerByArea.get(lane.area ?? `entry-${lane.index}`) === lane)
-    .flatMap((lane) => lane.scheduled.map((event) => ({ ...event, soundIndex: lane.index, soundArea: lane.area })));
+  const starts = selectedLanes.map((lane) => ({ lane, offset: laneOffset(offsets, lane.index) }));
+  starts.sort((left, right) => left.offset - right.offset || left.lane.index - right.lane.index);
+  return starts.flatMap(({ lane, offset }, position) => {
+    const areaKey = lane.area ?? `entry-${lane.index}`;
+    const next = starts.slice(position + 1).find((candidate) =>
+      (candidate.lane.area ?? `entry-${candidate.lane.index}`) === areaKey);
+    const relativeEnd = next ? next.offset - offset : Infinity;
+    if (relativeEnd <= 0) return [];
+    const events = Number.isFinite(relativeEnd)
+      ? sliceColecoPreviewEvents(lane.scheduled, 0, relativeEnd)
+      : lane.scheduled;
+    return events.map((event) => ({
+      ...event,
+      startFrame: (event.startFrame || 0) + offset,
+      soundIndex: lane.index,
+      soundArea: lane.area
+    }));
+  });
 }

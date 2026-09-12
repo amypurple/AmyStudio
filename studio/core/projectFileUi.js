@@ -10,7 +10,7 @@ import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=2
 import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundEvents, moveColecoSoundEvent, replaceColecoSoundSegment } from "./colecoSoundSequence.js?v=20260903-sequencer";
 import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, removeTinySoundByte, replaceTinySoundByte, resizeTinySoundNoteSteps, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
-import { buildColecoBiosArrangement, scheduleColecoBiosArrangement } from "./colecoBiosArranger.js?v=20260911-v1";
+import { buildColecoBiosArrangement, colecoBiosArrangementFrames, scheduleColecoBiosArrangement } from "./colecoBiosArranger.js?v=20260911-offsets";
 
 export function createProjectFileUiHelpers({
   els,
@@ -4408,6 +4408,7 @@ export function createProjectFileUiHelpers({
         return;
       }
       const selected = new Set(arrangement.lanes.map((lane) => lane.index));
+      const offsets = new Map(arrangement.lanes.map((lane) => [lane.index, 0]));
       const backdrop = document.createElement("div");
       backdrop.className = "graphics-editor-modal-backdrop";
       const arranger = document.createElement("section");
@@ -4424,6 +4425,9 @@ export function createProjectFileUiHelpers({
       arrangerHeader.append(arrangerTitle, arrangerClose);
       const summary = document.createElement("p");
       summary.className = "graphics-editor-modal__note";
+      const offsetNote = document.createElement("p");
+      offsetNote.className = "graphics-editor-modal__note";
+      offsetNote.textContent = "Start offsets affect audition only. Edit changes a voice's source; the BIOS song scheduler cannot preserve staggered voices without restarting them.";
       const lanes = document.createElement("div");
       lanes.className = "bios-arranger__lanes";
       const transport = document.createElement("div");
@@ -4442,15 +4446,28 @@ export function createProjectFileUiHelpers({
       transport.append(play, pause, stop);
       const refreshSummary = () => {
         const selectedLanes = arrangement.lanes.filter((lane) => selected.has(lane.index));
-        const occupiedAreas = new Set(selectedLanes.map((lane) => lane.area ?? `entry-${lane.index}`));
-        const interrupted = selectedLanes.length - occupiedAreas.size;
-        summary.textContent = `${arrangement.lanes.length} BIOS voices · ${selected.size} selected · ${arrangement.totalFrames} frames` +
-          (interrupted ? ` · ${interrupted} interrupted by shared areas` : "");
+        const startsByArea = new Map();
+        for (const lane of selectedLanes) {
+          const key = lane.area ?? `entry-${lane.index}`;
+          startsByArea.set(key, (startsByArea.get(key) || 0) + 1);
+        }
+        const interruptions = [...startsByArea.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+        const totalFrames = colecoBiosArrangementFrames(arrangement, selected, offsets);
+        summary.textContent = `${arrangement.lanes.length} BIOS voices · ${selected.size} selected · ${totalFrames} frames` +
+          (interruptions ? ` · ${interruptions} shared-area interruption${interruptions === 1 ? "" : "s"}` : "");
         play.disabled = selected.size === 0;
+        for (const row of lanes.children) {
+          const index = Number(row.dataset.soundIndex);
+          const lane = arrangement.lanes.find((item) => item.index === index);
+          const start = offsets.get(index) || 0;
+          row.querySelector(".bios-arranger__bar")?.style.setProperty("--lane-start", `${Math.round((start / Math.max(totalFrames, 1)) * 100)}%`);
+          row.querySelector(".bios-arranger__bar")?.style.setProperty("--lane-width", `${Math.max(2, Math.round((lane.totalFrames / Math.max(totalFrames, 1)) * 100))}%`);
+        }
       };
       for (const lane of arrangement.lanes) {
         const row = document.createElement("div");
         row.className = "bios-arranger__lane";
+        row.dataset.soundIndex = String(lane.index);
         const enabled = document.createElement("input");
         enabled.type = "checkbox";
         enabled.checked = true;
@@ -4464,6 +4481,21 @@ export function createProjectFileUiHelpers({
         identity.textContent = `${lane.index}. ${lane.label}`;
         const area = document.createElement("span");
         area.textContent = `Area ${lane.area ?? "?"}`;
+        const offsetLabel = document.createElement("label");
+        offsetLabel.className = "bios-arranger__offset";
+        offsetLabel.textContent = "Start";
+        const offsetInput = document.createElement("input");
+        offsetInput.type = "number";
+        offsetInput.min = "0";
+        offsetInput.max = "32767";
+        offsetInput.value = "0";
+        offsetInput.setAttribute("aria-label", `Start frame for ${lane.label}`);
+        offsetInput.addEventListener("input", () => {
+          const value = Number(offsetInput.value);
+          offsets.set(lane.index, Number.isInteger(value) && value >= 0 ? Math.min(value, 32767) : 0);
+          refreshSummary();
+        });
+        offsetLabel.appendChild(offsetInput);
         const bar = document.createElement("div");
         bar.className = "bios-arranger__bar";
         bar.style.setProperty("--lane-width", `${Math.max(2, Math.round((lane.totalFrames / Math.max(arrangement.totalFrames, 1)) * 100))}%`);
@@ -4472,22 +4504,28 @@ export function createProjectFileUiHelpers({
         edit.type = "button";
         edit.textContent = "Edit";
         edit.addEventListener("click", () => openSequenceEditor(lane.entry));
-        row.append(enabled, identity, area, bar, edit);
+        row.append(enabled, identity, area, offsetLabel, bar, edit);
         lanes.appendChild(row);
       }
       let generation = 0;
       play.addEventListener("click", async () => {
         const current = ++generation;
-        await stopActiveSoundPreview();
-        const events = scheduleColecoBiosArrangement(arrangement, selected);
-        if (!events.length || current !== generation) return;
-        const playback = await startColecoSoundPreview(events, { region: inputs.region.value });
-        activeSoundPreview = playback;
-        play.disabled = true;
-        pause.disabled = false;
-        stop.disabled = false;
-        await playback.done;
-        if (activeSoundPreview === playback) activeSoundPreview = null;
+        let playback = null;
+        try {
+          await stopActiveSoundPreview();
+          const events = scheduleColecoBiosArrangement(arrangement, selected, offsets);
+          if (!events.length || current !== generation) throw new Error("The selected voices contain no audible commands.");
+          playback = await startColecoSoundPreview(events, { region: inputs.region.value });
+          activeSoundPreview = playback;
+          play.disabled = true;
+          pause.disabled = false;
+          stop.disabled = false;
+          await playback.done;
+        } catch (error) {
+          setStatus(error.message || String(error));
+        } finally {
+          if (playback && activeSoundPreview === playback) activeSoundPreview = null;
+        }
         if (current === generation) {
           play.disabled = selected.size === 0;
           pause.disabled = true;
@@ -4521,7 +4559,7 @@ export function createProjectFileUiHelpers({
       arrangerClose.addEventListener("click", closeArranger);
       backdrop.addEventListener("click", (event) => { if (event.target === backdrop) closeArranger(); });
       refreshSummary();
-      arranger.append(arrangerHeader, summary, lanes, transport);
+      arranger.append(arrangerHeader, summary, offsetNote, lanes, transport);
       backdrop.appendChild(arranger);
       document.body.appendChild(backdrop);
     }

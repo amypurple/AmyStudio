@@ -195,8 +195,16 @@ try {
   assert.match(created, /dw SoundEffect2,\$705D ; sfx · slot 6/);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "created table opens directly in sound library");
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-workspace-tabs button")).map((button) => button.textContent)`), ["Tables", "+ BIOS sound", "+ BIOS music", "+ Tiny music", "Technical"], "ordinary table exposes explicit sound formats");
-  await evaluate(`document.querySelector(".sound-table-arrange").click()`);
+  await evaluate(`(() => {
+    window.__biosArrangerError = "";
+    window.addEventListener("error", (event) => { window.__biosArrangerError = event.error?.stack || event.message; }, { once: true });
+    window.addEventListener("unhandledrejection", (event) => { window.__biosArrangerError = event.reason?.stack || String(event.reason); }, { once: true });
+    document.querySelector(".sound-table-arrange").click();
+  })()`);
+  await delay(250);
+  assert.equal(await evaluate(`window.__biosArrangerError`), "", "opening the BIOS arranger must not throw in the browser");
   await waitFor(`document.querySelector(".bios-arranger-modal")`, "BIOS table arranger");
+  assert.match(await evaluate(`document.querySelector(".bios-arranger-modal").textContent`), /Start offsets affect audition only/, "arranger discloses that offsets do not rewrite the BIOS scheduler");
   assert.equal(await evaluate(`document.querySelectorAll(".bios-arranger__lane").length`), 3, "arranger shows one lane per valid BIOS entry");
   assert.match(await evaluate(`document.querySelector(".bios-arranger-modal > .graphics-editor-modal__note").textContent`), /3 BIOS voices · 3 selected/);
   await evaluate(`(() => {
@@ -205,6 +213,13 @@ try {
     checkbox.dispatchEvent(new Event("change", { bubbles: true }));
   })()`);
   assert.match(await evaluate(`document.querySelector(".bios-arranger-modal > .graphics-editor-modal__note").textContent`), /3 BIOS voices · 2 selected/, "arranger updates explicit voice selection");
+  await evaluate(`(() => {
+    const input = document.querySelectorAll('.bios-arranger__offset input')[1];
+    input.value = "12";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  assert.equal(await evaluate(`document.querySelectorAll('.bios-arranger__offset input')[1].value`), "12", "arranger accepts a per-lane frame offset");
+  assert.match(await evaluate(`document.querySelector(".bios-arranger-modal > .graphics-editor-modal__note").textContent`), /frames/, "offset rebuilds the shared timeline summary");
   await evaluate(`document.querySelector('[aria-label="Close BIOS arranger"]').click()`);
   await waitFor(`!document.querySelector(".bios-arranger-modal")`, "BIOS arranger closes");
   await evaluate(`(() => {

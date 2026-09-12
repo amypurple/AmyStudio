@@ -38,7 +38,9 @@ For a BIOS table, choose `Arrange table` to see every valid BIOS entry as a para
 the voices to audition, then use Play, Pause, or Stop. Entries sharing one BIOS area are marked as
 interruptions and the later table entry owns that area, matching the Coleco BIOS. `Edit` opens the
 existing source-writing sequence editor for that lane. This first version aligns selected lanes at
-frame zero; arbitrary lane offsets remain future work.
+frame zero by default. Start-frame offsets support arrangement experiments and accurate preview,
+including later shared-area interruption, but remain preview-only because the current BIOS song
+scheduler stops all four music areas before every new trigger row.
 
 For a frequency sweep, the encoded length is a sweep count rather than a direct frame duration. Amy Studio labels it `Sweep count` and previews the BIOS duration: first delay plus the remaining counts multiplied by the repeat interval.
 

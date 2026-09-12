@@ -1,6 +1,7 @@
 ## 2026-09-11 - Completed Sound Workspace v1
 
-- Added a parallel BIOS multi-area arranger with explicit voice selection and shared-area semantics.
+- Added a parallel BIOS multi-area arranger with explicit voice selection, preview offsets, and
+  shared-area interruption semantics.
 - Stabilized the everyday BIOS sound-table and Sound FX authoring workflow.
 - Stabilized two-channel Tiny Sound creation, import, sequencing, inline editing, playback,
   source write-back, and compilation.

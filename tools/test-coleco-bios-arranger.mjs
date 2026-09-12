@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildColecoBiosArrangement, scheduleColecoBiosArrangement } from "../studio/core/colecoBiosArranger.js";
+import { buildColecoBiosArrangement, colecoBiosArrangementFrames, scheduleColecoBiosArrangement } from "../studio/core/colecoBiosArranger.js";
 
 const table = {
   name: "TestTable",
@@ -29,5 +29,13 @@ assert.deepEqual(
   [2, 2],
   "the later table entry must own a shared BIOS work area"
 );
+assert.equal(colecoBiosArrangementFrames(arrangement, [1, 2], { 1: 5, 2: 20 }), 32);
+const offsetEvents = scheduleColecoBiosArrangement(arrangement, [1, 2], { 1: 5, 2: 20 });
+assert.deepEqual(offsetEvents.filter((event) => event.soundIndex === 1).map((event) => event.startFrame), [5]);
+assert.deepEqual(offsetEvents.filter((event) => event.soundIndex === 2).map((event) => event.startFrame), [20, 23]);
+
+const interruptedEvents = scheduleColecoBiosArrangement(sharedArrangement, [1, 2], { 1: 0, 2: 4 });
+assert.equal(interruptedEvents.find((event) => event.soundIndex === 1)?.length, 4, "later area owner clips the earlier voice");
+assert.deepEqual(interruptedEvents.filter((event) => event.soundIndex === 2).map((event) => event.startFrame), [4, 7]);
 
 console.log("Coleco BIOS arranger tests passed.");
