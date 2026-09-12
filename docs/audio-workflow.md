@@ -292,6 +292,8 @@ ornaments such as vibrato or arpeggio-like behavior.
 - Tiny Sound runtime and preview behavior are guarded by browser, compiler and GearColeco parity tests
 - the Studio sound inspector decodes tempo, instrument, notes, sustain, silence, drums, special notes, and loops; it can audition one Tiny Sound channel or matching `_ch1`/`_ch2` pairs
 - plain pitches, vibrato, arpeggios, channel tempo, and `$02` instrument envelopes can be edited inline with byte-local source preservation; holds, rests, drums, and special commands remain selectable but read-only
+- the Sound & Music manager also recognizes complete BIOS song schedules such as `_commando_music`; its timeline shows every duration and trigger across noise plus all three tone areas, auditions the complete composition, and can insert the matching `play song` command
+- complete-song trigger rows are currently inspectable and playable but not yet structurally editable; edit the referenced sound streams individually
 
 ### Integration rules
 

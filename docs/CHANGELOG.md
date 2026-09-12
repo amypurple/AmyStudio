@@ -5914,3 +5914,9 @@ Why this is still `v2.1` and not `v2.2`:
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
 - ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.
+
+## 2026-09-12 - Complete BIOS song timeline
+
+- Sound & Music now recognizes full lib4ksa/Amy song schedules instead of exposing only their individual table entries.
+- Added a four-area timeline for noise and the three tone channels, with trigger changes, durations, playback highlighting, pause/stop controls, and safe `play song` insertion.
+- Added unit and real browser behavior coverage.

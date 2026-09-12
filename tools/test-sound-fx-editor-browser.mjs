@@ -249,7 +249,7 @@ try {
   assert.match(await evaluate(`document.querySelector(".sound-table-inspector-modal").textContent`), /ExtraSound/, "new sound is immediately visible for further editing");
   await evaluate(`document.querySelector('[aria-label="Close sound-table inspector"]').click()`);
   await waitFor(`!document.querySelector(".sound-table-inspector-modal")`, "updated sound manager closes");
-  const tinyFixture = `TinyTable:\n    dw TestMusic_ch1,$702B\n    dw TestMusic_ch2,$7035\nTestMusic_ch1:\n    db $44\n    dw sndtiny_1\n    db $08,$02,$60,$19,$22,$1F,$00,$01,$FF\nTestMusic_ch2:\n    db $84\n    dw sndtiny_2\n    db $08,$02,$80,$19,$22,$13,$00,$01,$FF\n`;
+  const tinyFixture = `TinyTable:\n    dw TestMusic_ch1,$702B\n    dw TestMusic_ch2,$7035\nTestMusic_ch1:\n    db $44\n    dw sndtiny_1\n    db $08,$02,$60,$19,$22,$1F,$00,$01,$FF\nTestMusic_ch2:\n    db $84\n    dw sndtiny_2\n    db $08,$02,$80,$19,$22,$13,$00,$01,$FF\nTestMusic_song:\n    dw 24\n    db $41,$02\n    dw 0\n`;
   await evaluate(`(() => {
     const editor = document.getElementById("sourceEditor");
     editor.value = ${JSON.stringify(tinyFixture)};
@@ -257,6 +257,13 @@ try {
     document.getElementById("btnInspectSourceSounds").click();
   })()`);
   await waitFor(`document.querySelector(".sound-table-inspector-modal")`, "Tiny Sound library");
+  assert.match(await evaluate(`document.querySelector(".coleco-song-list").textContent`), /TestMusic_song · 1 changes · 24 frames/, "complete BIOS song is discovered");
+  await evaluate(`document.querySelector(".coleco-song-list button").click()`);
+  await waitFor(`document.querySelector(".coleco-song-timeline-modal")`, "complete song timeline");
+  assert.equal(await evaluate(`document.querySelectorAll(".coleco-song-timeline > *").length`), 10, "timeline has five headings and one four-area change row");
+  assert.match(await evaluate(`document.querySelector(".coleco-song-timeline-modal").textContent`), /Noise · area 1.*Tone 3 · area 2.*TestMusic_ch1.*TestMusic_ch2/s, "timeline maps triggered sounds to BIOS areas");
+  await evaluate(`document.querySelector('[aria-label="Close song timeline"]').click()`);
+  await waitFor(`!document.querySelector(".coleco-song-timeline-modal")`, "complete song timeline closes");
   await evaluate(`(() => {
     Array.from(document.querySelectorAll(".sound-library-row")).find((item) => item.textContent.includes("TestMusic_ch1")).click();
     Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Sequencer").click();

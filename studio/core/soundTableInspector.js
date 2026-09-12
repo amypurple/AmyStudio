@@ -1,5 +1,6 @@
 import { decodeColecoSoundStream } from "./colecoSoundNotes.js";
 import { decodeTinySoundSource } from "./colecoTinySound.js";
+import { inspectColecoMusicSongs } from "./colecoMusicSong.js";
 
 function stripComment(line) {
   return String(line || "").replace(/;.*/, "");
@@ -145,6 +146,7 @@ export function inspectSoundTableSource(sourceText, { base = 0x702b, stride = 10
   return {
     source,
     tables,
+    songs: inspectColecoMusicSongs(source, tables),
     diagnostics,
     // The inspector never regenerates expert ASM. This is deliberately byte-for-byte lossless.
     serialize: () => source

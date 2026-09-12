@@ -3,7 +3,7 @@ import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
-import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260903-tiny-sound-inspector";
+import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260912-song-timeline";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoSoundCommand, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";
 import { previewColecoSoundEvents, scheduleColecoSoundSequence, sliceColecoPreviewEvents, startColecoSoundPreview } from "./colecoSoundPreview.js?v=20260907-selection";
 import { connectColecoMidiInput, midiHoldFrames } from "./colecoMidiInput.js?v=20260903-midi-duration";
@@ -11,6 +11,7 @@ import { createColecoSoundTerminal, decodeColecoSoundSegment, insertColecoSoundE
 import { decodeTinySoundSource, describeTinySoundCommand, insertTinySoundByteAfter, removeTinySoundByte, replaceTinySoundByte, resizeTinySoundNoteSteps, scanTinySoundStreams, tinyDecoratedNoteCode, tinyInstrumentEnvelope, tinyNoteChoices, tinyPlainNoteCode } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
 import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoundStarterSource, colecoSoundAreaAddress, insertColecoSoundPlayback, insertColecoSoundTableSource, insertTinySoundSongPlayback, prepareTinySoundImport } from "./colecoSoundTableBuilder.js?v=20260907-safe-play-insert";
 import { buildColecoBiosArrangement, colecoBiosArrangementFrames, scheduleColecoBiosArrangement } from "./colecoBiosArranger.js?v=20260911-offsets";
+import { scheduleColecoMusicSong } from "./colecoMusicSong.js?v=20260912-song-timeline";
 
 export function createProjectFileUiHelpers({
   els,
@@ -4563,6 +4564,152 @@ export function createProjectFileUiHelpers({
       backdrop.appendChild(arranger);
       document.body.appendChild(backdrop);
     }
+    function openSongTimeline(song, table) {
+      const backdrop = document.createElement("div");
+      backdrop.className = "graphics-editor-modal-backdrop";
+      const modal = document.createElement("section");
+      modal.className = "graphics-editor-modal graphics-editor-json-modal coleco-song-timeline-modal";
+      const header = document.createElement("div");
+      header.className = "graphics-editor-modal__header";
+      const title = document.createElement("h3");
+      title.textContent = `Song timeline · ${song.name}`;
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "graphics-editor-modal__close";
+      close.textContent = "✕";
+      close.setAttribute("aria-label", "Close song timeline");
+      header.append(title, close);
+      const note = document.createElement("p");
+      note.className = "graphics-editor-modal__note";
+      const loopText = song.terminal.type === "jump" ? `loops to ${song.terminal.label}` : "ends";
+      note.textContent = `${song.rows.length} changes · ${song.totalFrames} frames · ${(song.totalFrames / (inputs.region.value === "PAL" ? 50 : 60)).toFixed(2)} s ${inputs.region.value} · ${loopText}`;
+      const grid = document.createElement("div");
+      grid.className = "coleco-song-timeline";
+      for (const text of ["Start / length", "Noise · area 1", "Tone 3 · area 2", "Tone 2 · area 3", "Tone 1 · area 4"]) {
+        const cell = document.createElement("strong");
+        cell.textContent = text;
+        grid.appendChild(cell);
+      }
+      const rowElements = [];
+      let active = new Map();
+      for (const row of song.rows) {
+        const triggered = new Map();
+        for (const index of row.indices) {
+          const entry = table.entries[index - 1];
+          if (entry?.area) triggered.set(entry.area, entry);
+        }
+        active = new Map(active);
+        for (const [area, entry] of triggered) active.set(area, entry);
+        const cells = [];
+        const timing = document.createElement("span");
+        timing.textContent = `${row.startFrame} / ${row.durationFrames}`;
+        timing.className = "coleco-song-timeline__time";
+        cells.push(timing);
+        for (let area = 1; area <= 4; area += 1) {
+          const cell = document.createElement("span");
+          const entry = active.get(area);
+          cell.textContent = entry ? `${entry.index}. ${entry.label}` : "—";
+          if (triggered.has(area)) cell.classList.add("is-triggered");
+          cells.push(cell);
+        }
+        for (const cell of cells) grid.appendChild(cell);
+        rowElements.push({ row, cells });
+      }
+      const actions = document.createElement("div");
+      actions.className = "graphics-editor-json-modal__actions";
+      const play = document.createElement("button");
+      play.type = "button";
+      play.textContent = "▶ Play";
+      const pause = document.createElement("button");
+      pause.type = "button";
+      pause.textContent = "Ⅱ Pause";
+      pause.disabled = true;
+      const stop = document.createElement("button");
+      stop.type = "button";
+      stop.textContent = "■ Stop";
+      stop.disabled = true;
+      const insert = document.createElement("button");
+      insert.type = "button";
+      insert.textContent = "Insert play";
+      actions.append(play, pause, stop, insert);
+      let generation = 0;
+      let animationFrame = 0;
+      const clearCurrent = () => {
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        animationFrame = 0;
+        for (const item of rowElements) for (const cell of item.cells) cell.classList.remove("is-playing");
+      };
+      const follow = (playback) => {
+        const frame = playback.currentFrame();
+        const current = rowElements.find((item) => frame >= item.row.startFrame && frame < item.row.startFrame + item.row.durationFrames);
+        for (const item of rowElements) for (const cell of item.cells) cell.classList.toggle("is-playing", item === current);
+        if (activeSoundPreview === playback) animationFrame = requestAnimationFrame(() => follow(playback));
+      };
+      const idle = () => {
+        clearCurrent();
+        play.disabled = false;
+        pause.disabled = true;
+        pause.textContent = "Ⅱ Pause";
+        stop.disabled = true;
+      };
+      play.addEventListener("click", async () => {
+        const current = ++generation;
+        try {
+          await stopActiveSoundPreview();
+          const events = scheduleColecoMusicSong(song, table, { scheduleSequence: scheduleColecoSoundSequence });
+          const playback = await startColecoSoundPreview(events, { region: inputs.region.value });
+          activeSoundPreview = playback;
+          play.disabled = true;
+          pause.disabled = false;
+          stop.disabled = false;
+          follow(playback);
+          await playback.done;
+          if (activeSoundPreview === playback) activeSoundPreview = null;
+        } catch (error) {
+          setStatus(error.message || String(error));
+        }
+        if (current === generation) idle();
+      });
+      pause.addEventListener("click", async () => {
+        if (!activeSoundPreview) return;
+        if (activeSoundPreview.isPaused()) {
+          await activeSoundPreview.resume();
+          pause.textContent = "Ⅱ Pause";
+        } else {
+          await activeSoundPreview.pause();
+          pause.textContent = "▶ Resume";
+        }
+      });
+      stop.addEventListener("click", async () => {
+        generation += 1;
+        await stopActiveSoundPreview();
+        idle();
+      });
+      insert.addEventListener("click", () => {
+        const editor = els.sourceEditor;
+        const areaCount = Math.max(1, ...table.entries.map((entry) => entry.area || 1));
+        const updated = insertColecoSoundPlayback(editor.value, {
+          tableName: table.name,
+          areaCount,
+          play: `play song ${song.name}`,
+          selectionStart: editor.selectionStart,
+          selectionEnd: editor.selectionEnd
+        });
+        commitProjectSourceText(updated);
+        setStatus(`Inserted play song ${song.name}.`);
+      });
+      const dismiss = async () => {
+        generation += 1;
+        clearCurrent();
+        await stopActiveSoundPreview();
+        backdrop.remove();
+      };
+      close.addEventListener("click", dismiss);
+      backdrop.addEventListener("click", (event) => { if (event.target === backdrop) dismiss(); });
+      modal.append(header, note, grid, actions);
+      backdrop.appendChild(modal);
+      document.body.appendChild(backdrop);
+    }
     const libraryTransport = document.createElement("div");
     libraryTransport.className = "sound-library-transport";
     const selectedSoundLabel = document.createElement("span");
@@ -4676,6 +4823,29 @@ export function createProjectFileUiHelpers({
     });
     const list = document.createElement("div");
     list.className = "graphics-editor-modal__list";
+    if (analysis.songs?.length) {
+      const songs = document.createElement("section");
+      songs.className = "graphics-editor-modal__item coleco-song-list";
+      const heading = document.createElement("strong");
+      heading.textContent = `Music · ${analysis.songs.length} song${analysis.songs.length === 1 ? "" : "s"}`;
+      songs.appendChild(heading);
+      for (const song of analysis.songs) {
+        const row = document.createElement("div");
+        row.className = "sound-library-row";
+        const label = document.createElement("span");
+        label.className = "sound-library-row__meta";
+        label.textContent = `${song.name} · ${song.rows.length} changes · ${song.totalFrames} frames`;
+        const open = document.createElement("button");
+        open.type = "button";
+        open.textContent = "Timeline";
+        const table = analysis.tables.find((candidate) => song.tables.includes(candidate.name));
+        open.disabled = !table;
+        open.addEventListener("click", () => table && openSongTimeline(song, table));
+        row.append(label, open);
+        songs.appendChild(row);
+      }
+      list.appendChild(songs);
+    }
     for (const table of analysis.tables) {
       const item = document.createElement("section");
       item.className = "graphics-editor-modal__item";
