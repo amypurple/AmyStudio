@@ -2,6 +2,7 @@
 
 - Added complete animated previews for the benchmark's layered metasprite and 3x2 tile ship.
 - Added native colored charset animation previews, including multi-block tile frames and composed frames.
+- Made composed charset frames directly editable: choose a frame, then click any tile to edit its pattern and colors.
 - Recorded full four-area Tiny Sound song sequencing as the next sound-authoring gap.
 
 - Added a parallel BIOS multi-area arranger with explicit voice selection, preview offsets, and

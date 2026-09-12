@@ -294,7 +294,9 @@ export function createGraphicsEditorUi({
     animationCanvas.width = animationWidth * 8 * animationScale;
     animationCanvas.height = animationHeight * 8 * animationScale;
     animationCanvas.className = "graphics-editor-animation-preview";
-    animationCanvas.title = "Runtime-style tile animation preview.";
+    animationCanvas.title = "Click a tile in the composed frame to edit its 8x8 pattern.";
+    const animationFrameList = document.createElement("div");
+    animationFrameList.className = "graphics-editor-palette graphics-editor-charset-list graphics-editor-metatile-frame-list";
     const colorRow = document.createElement("div");
     colorRow.className = "graphics-editor-color-row";
     const colorButtons = [];
@@ -315,7 +317,7 @@ export function createGraphicsEditorUi({
       colorButtons.push(button);
       colorRow.appendChild(button);
     }
-    editorPane.append(editCanvas, animationCanvas, colorRow);
+    editorPane.append(editCanvas, animationCanvas, animationFrameList, colorRow);
     const tileList = document.createElement("div");
     tileList.className = "graphics-editor-palette graphics-editor-charset-list";
     body.append(editorPane, tileList);
@@ -356,6 +358,25 @@ export function createGraphicsEditorUi({
       }
     }
 
+    function selectCharsetAnimationFrame(position) {
+      animationPosition = Math.max(0, Math.min(animationFrames.length - 1, position));
+      setCharsetAnimationPlaying(false);
+      renderCharsetAnimation();
+      renderCharsetAnimationFrames();
+    }
+
+    function renderCharsetAnimationFrames() {
+      animationFrameList.textContent = "";
+      for (let position = 0; position < animationFrames.length; position += 1) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Frame " + position;
+        button.classList.toggle("selected", position === animationPosition);
+        button.addEventListener("click", () => selectCharsetAnimationFrame(position));
+        animationFrameList.appendChild(button);
+      }
+    }
+
     function setCharsetAnimationPlaying(playing) {
       if (animationTimer) clearInterval(animationTimer);
       animationTimer = null;
@@ -365,6 +386,7 @@ export function createGraphicsEditorUi({
       animationTimer = setInterval(() => {
         animationPosition = (animationPosition + 1) % animationFrames.length;
         renderCharsetAnimation();
+        renderCharsetAnimationFrames();
       }, Math.max(40, Number(editor.animation?.frameMs) || 160));
     }
 
@@ -549,6 +571,19 @@ export function createGraphicsEditorUi({
     editCanvas.addEventListener("pointerleave", (event) => {
       if (paintingPointerId === event.pointerId && (event.buttons & 3) === 0) stopCharsetPainting();
     });
+    animationCanvas.addEventListener("click", (event) => {
+      const rect = animationCanvas.getBoundingClientRect();
+      const col = Math.floor((event.clientX - rect.left) * animationCanvas.width / rect.width / (8 * animationScale));
+      const row = Math.floor((event.clientY - rect.top) * animationCanvas.height / rect.height / (8 * animationScale));
+      if (col < 0 || row < 0 || col >= animationWidth || row >= animationHeight) return;
+      const frame = animationFrames[animationPosition] || 0;
+      const index = frame * animationWidth * animationHeight + row * animationWidth + col;
+      if (index < 0 || index >= tileCount) return;
+      activeIndex = index;
+      dispatchGraphicsTileSelected(tileValueForIndex(index));
+      renderTileList();
+      renderActiveTile();
+    });
 
     copyButton.addEventListener("click", () => {
       const sourceTile = tileValueForIndex(activeIndex);
@@ -649,6 +684,7 @@ export function createGraphicsEditorUi({
     updateCharsetHistoryButtons();
     renderTileList();
     renderActiveTile();
+    renderCharsetAnimationFrames();
     setCharsetAnimationPlaying(animationFrames.length > 1);
     modal.mount();
     setStatus("Opened charset editor for " + editor.name + ".");
