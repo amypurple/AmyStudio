@@ -48,6 +48,16 @@ Amy Studio currently enables 15 compressors in the picture/tiles import chooser:
 
 `nibble` is the official Studio name for the legacy `DAN0nibble`-derived codec. It uses RLE commands plus 16-value data-stream references, with a 2026 relocatable header for browser project files.
 
+### Related external format: libcv RLE + Huffman
+
+Philipp Klaus Krause's `libcv` / `libcvu` toolchain includes an RLE-plus-Huffman
+graphics format with a resource-specific generated model. Amy Studio validates
+and documents it as ColecoVision development heritage and comparison evidence;
+it is not one of Studio's selectable codecs. A 42-picture exact-round-trip study
+found a 4,098-byte median payload, usually ranking 14th or 15th among the measured
+methods. A separate compact canonical-model experiment also lost to ZX2 before
+decoder cost, so no Amy runtime was adopted.
+
 The quick image-import pass keeps the established fastest candidates. The full "Compare all codecs" pass evaluates all 15 compressors. Browser compression/verification timings are not presented as Z80 decompression speed; the chooser uses a separate `Z80/VDP runtime` class so direct streams are not unfairly compared with LZ codecs that can do VRAM back-copy.
 
 ## Workflow

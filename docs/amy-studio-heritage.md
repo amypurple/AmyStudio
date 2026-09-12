@@ -455,3 +455,18 @@ Useful follow-up documentation tasks:
   sprite patterns, and sprite attributes.
 - Add a migration page for old ICVGM/CV Paint/SC2/GRP assets into Amy Studio
   project files.
+
+## Related ColecoVision Compression Heritage
+
+Philipp Klaus Krause's `libcv` / `libcvu` SDCC development kit includes a native
+RLE-plus-Huffman graphics pipeline. Its tools analyze each resource, RLE-encode
+the bytes, generate a Huffman model, and link the matching decoder data. The
+format is part of ColecoVision development history and remains documented in
+Amy Studio's toolchain comparison, but it is not an Amy Studio codec.
+
+Amy's 42-picture study confirmed exact libcv round trips. It also found that the
+full per-picture model is costly and that one model shared by unlike pictures
+hurts compression. An independent compact canonical-Huffman experiment passed
+all host round trips but still produced 183,675 payload bytes, versus 177,582
+for ZX2 before counting a new Z80 decoder. Amy therefore preserves the research
+and credit without adding an inferior or picture-specific codec to Studio.
