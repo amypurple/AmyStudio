@@ -44,5 +44,6 @@ assert.equal(tiles[0].animation.sharedColor, true);
 assert.equal(tiles[1].kind, "charset");
 assert.deepEqual(tiles[1].animation.frameSize, [3, 2]);
 assert.deepEqual(tiles[1].animation.frames, [0, 1]);
+assert.deepEqual(tiles[1].frameEntries, ["ShipFrame0", "ShipFrame1"]);
 
 console.log("Benchmark graphics editor tests passed.");

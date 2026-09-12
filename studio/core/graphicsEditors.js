@@ -235,6 +235,31 @@ export function createGraphicsEditorUi({
     const animationFrameSize = Array.isArray(editor.animation?.frameSize) ? editor.animation.frameSize : [1, 1];
     const animationWidth = Math.max(1, Number(animationFrameSize[0]) || 1);
     const animationHeight = Math.max(1, Number(animationFrameSize[1]) || 1);
+    const animationFrameBytes = animationWidth * animationHeight;
+    const frameEntryNames = Array.isArray(editor.frameEntries) ? editor.frameEntries.map(String).filter(Boolean) : [];
+    const frameEntrySegments = [];
+    let frameBytes = null;
+    if (frameEntryNames.length) {
+      try {
+        const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", frameEntryNames);
+        const chunks = [];
+        let offset = 0;
+        for (const name of frameEntryNames) {
+          const bytes = blocks.get(name);
+          if (!bytes || bytes.length !== animationFrameBytes) {
+            throw new Error(name + " must contain exactly " + animationFrameBytes + " tile values.");
+          }
+          chunks.push(bytes);
+          frameEntrySegments.push({ name, offset, length: bytes.length });
+          offset += bytes.length;
+        }
+        frameBytes = new Uint8Array(offset);
+        for (let index = 0; index < chunks.length; index += 1) frameBytes.set(chunks[index], frameEntrySegments[index].offset);
+      } catch (error) {
+        setStatus("Cannot edit composed frames for " + editor.name + ": " + (error.message || error));
+        return;
+      }
+    }
     let animationPosition = 0;
     let animationTimer = null;
 
@@ -325,7 +350,9 @@ export function createGraphicsEditorUi({
 
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "Edits pattern bytes and linked color bytes when a color file is declared; compressed color files are verified before save.";
+    note.textContent = frameBytes
+      ? "Click a composed frame cell to edit that tile's pixels. Shift+click places the selected tile in that cell. Save updates patterns, colors, and both frame tables."
+      : "Edits pattern bytes and linked color bytes when a color file is declared; compressed color files are verified before save.";
     dialog.appendChild(note);
 
     function tileValueForIndex(index) {
@@ -342,16 +369,21 @@ export function createGraphicsEditorUi({
       return tileColorRowsForValue(colorBytes, patternBytes, tileValueForIndex(colorIndex), baseTile, editor.previewScreenAt?.[1] || 0);
     }
 
+    function animationTileIndex(position, row, col) {
+      const frame = animationFrames[position] || 0;
+      if (!frameBytes) return frame * animationFrameBytes + row * animationWidth + col;
+      const offset = frame * animationFrameBytes + row * animationWidth + col;
+      return (frameBytes[offset] ?? baseTile) - baseTile;
+    }
+
     function renderCharsetAnimation() {
       const ctx = animationCanvas.getContext("2d");
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, animationCanvas.width, animationCanvas.height);
-      const frame = animationFrames[animationPosition] || 0;
-      const firstIndex = frame * animationWidth * animationHeight;
       for (let row = 0; row < animationHeight; row += 1) {
         for (let col = 0; col < animationWidth; col += 1) {
-          const index = firstIndex + row * animationWidth + col;
-          if (index >= tileCount) continue;
+          const index = animationTileIndex(animationPosition, row, col);
+          if (index < 0 || index >= tileCount) continue;
           drawEditorTilePattern(ctx, tilePatternForIndex(index), col * 8 * animationScale, row * 8 * animationScale,
             animationScale, "#66a6ff", "#000000", colorRowsForIndex(index), TMS_PALETTE);
         }
@@ -403,6 +435,7 @@ export function createGraphicsEditorUi({
       return {
         pattern: Uint8Array.from(patternBytes),
         color: writableColorBytes ? Uint8Array.from(writableColorBytes) : null,
+        frames: frameBytes ? Uint8Array.from(frameBytes) : null,
         activeIndex,
         activeColor
       };
@@ -418,6 +451,7 @@ export function createGraphicsEditorUi({
     function restoreCharsetSnapshot(snapshot) {
       patternBytes.set(snapshot.pattern);
       if (writableColorBytes && snapshot.color) writableColorBytes.set(snapshot.color);
+      if (frameBytes && snapshot.frames) frameBytes.set(snapshot.frames);
       activeIndex = snapshot.activeIndex;
       activeColor = snapshot.activeColor;
       dirty = true;
@@ -577,8 +611,18 @@ export function createGraphicsEditorUi({
       const row = Math.floor((event.clientY - rect.top) * animationCanvas.height / rect.height / (8 * animationScale));
       if (col < 0 || row < 0 || col >= animationWidth || row >= animationHeight) return;
       const frame = animationFrames[animationPosition] || 0;
-      const index = frame * animationWidth * animationHeight + row * animationWidth + col;
+      const frameOffset = frame * animationFrameBytes + row * animationWidth + col;
+      const index = animationTileIndex(animationPosition, row, col);
       if (index < 0 || index >= tileCount) return;
+      if (event.shiftKey && frameBytes) {
+        pushCharsetUndoSnapshot();
+        frameBytes[frameOffset] = tileValueForIndex(activeIndex);
+        dirty = true;
+        renderCharsetAnimation();
+        updateSelectedLabel();
+        setStatus("Placed tile $" + tileValueForIndex(activeIndex).toString(16).toUpperCase().padStart(2, "0") + " in frame " + frame + ".");
+        return;
+      }
       activeIndex = index;
       dispatchGraphicsTileSelected(tileValueForIndex(index));
       renderTileList();
@@ -623,6 +667,10 @@ export function createGraphicsEditorUi({
           for (const segment of inlinePatternSegments) {
             nextSource = replaceAmyByteDataBlock(nextSource, segment.name,
               patternBytes.slice(segment.offset, segment.offset + segment.length), Number(editor.rowWidth || 16));
+          }
+          for (const segment of frameEntrySegments) {
+            nextSource = replaceAmyByteDataBlock(nextSource, segment.name,
+              frameBytes.slice(segment.offset, segment.offset + segment.length), animationFrameBytes);
           }
           commitProjectSourceText(nextSource);
         } else {

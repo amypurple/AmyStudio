@@ -5920,3 +5920,5 @@ Why this is still `v2.1` and not `v2.2`:
 - Sound & Music now recognizes full lib4ksa/Amy song schedules instead of exposing only their individual table entries.
 - Added a four-area timeline for noise and the three tone channels, with trigger changes, durations, playback highlighting, pause/stop controls, and safe `play song` insertion.
 - Added unit and real browser behavior coverage.
+- Added direct `GRAPHICS` access beside `SOUND` in the Source toolbar.
+- Animated charset editors can now edit and save composed frame tables as well as their tile patterns and colors.

@@ -152,6 +152,7 @@ const els = {
   btnToggleAsm: document.getElementById("btnToggleAsm"),
   btnShowAsm: document.getElementById("btnShowAsm"),
   btnInspectSourceSounds: document.getElementById("btnInspectSourceSounds"),
+  btnInspectSourceGraphics: document.getElementById("btnInspectSourceGraphics"),
   layoutEl: document.querySelector(".layout"),
   topbarMenu: document.querySelector(".topbar__menu--quiet"),
   optimizationMenu: document.querySelector(".topbar__menu--opt"),
@@ -966,6 +967,8 @@ els.btnInspectSourceSounds?.addEventListener("click", () => {
   }
   openSourceSoundInspector(analysis);
 });
+
+els.btnInspectSourceGraphics?.addEventListener("click", openGraphicsEditorsFromProject);
 
 window.__amyStudioGraphicsEditors = {
   open: openGraphicsEditorsFromProject,

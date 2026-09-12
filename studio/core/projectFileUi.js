@@ -2227,7 +2227,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260812-sprite-tile-preview").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260912-editable-animation-layouts").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,

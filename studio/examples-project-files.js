@@ -631,7 +631,7 @@ replaceEditorsProjectFile("toolchain-benchmark-sprite-metasprite", [
 
 replaceEditorsProjectFile("toolchain-benchmark-tile-animation", [
   { name: "Animated Star Tile", kind: "charset", patterns: [{ from: "inline", name: "StarPattern0" }, { from: "inline", name: "StarPattern1" }, { from: "inline", name: "StarPattern2" }, { from: "inline", name: "StarPattern3" }], color: { from: "inline", name: "StarColor" }, baseTile: 128, sourceBaseTile: 128, tileCount: 4, screenMode: "mode2", animation: { frameMs: 67, frameSize: [1, 1], frames: [0, 1, 2, 3], sharedColor: true }, notes: "Four editable Graphics II pattern phases with the runtime StarColor rows." },
-  { name: "Animated Enemy Ships", kind: "charset", pattern: { from: "inline", name: "ShipPatterns" }, color: { from: "inline", name: "ShipColors" }, baseTile: 144, sourceBaseTile: 144, tileCount: 12, screenMode: "mode2", animation: { frameMs: 133, frameSize: [3, 2], frames: [0, 1] }, notes: "Edit both six-tile frames and preview the complete 3x2 enemy ship animation." }
+  { name: "Animated Enemy Ships", kind: "charset", pattern: { from: "inline", name: "ShipPatterns" }, color: { from: "inline", name: "ShipColors" }, baseTile: 144, sourceBaseTile: 144, tileCount: 12, screenMode: "mode2", frameEntries: ["ShipFrame0", "ShipFrame1"], animation: { frameMs: 133, frameSize: [3, 2], frames: [0, 1] }, notes: "Edit every tile pattern; Shift+click a composed frame cell to replace its tile." }
 ]);
 
 derivedProjectFilesById["warrior-dan2-fire-visual-test"] = warriorDan2FireTestProjectFiles;
