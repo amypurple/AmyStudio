@@ -86,6 +86,11 @@ assert.equal(repeatedBlocks.get("UntitledNameTable").length, 768);
 assert.equal(repeatedBlocks.get("UntitledNameTable")[0], 0x20);
 assert.equal(repeatedBlocks.get("UntitledNameTable")[767], 0x20);
 
+const compactSource = "data ShipFrame0 bytes $90,$91,$92,$93,$94,$95";
+assert.deepEqual(Array.from(parseAmyByteDataBlocks(compactSource, ["ShipFrame0"]).get("ShipFrame0")), [0x90, 0x91, 0x92, 0x93, 0x94, 0x95]);
+const compactReplaced = replaceAmyByteDataBlock(compactSource, "ShipFrame0", Uint8Array.from([0x96, 0x97]), 2);
+assert.equal(compactReplaced, "data ShipFrame0 bytes $96,$97");
+
 const replaced = replaceAmyByteDataBlock(amySource, "Board1", Uint8Array.from([1, 2, 3, 4, 5]), 3);
 const reparsed = parseAmyByteDataBlocks(replaced, ["Board1", "Other"]);
 assert.deepEqual(Array.from(reparsed.get("Board1")), [1, 2, 3, 4, 5]);

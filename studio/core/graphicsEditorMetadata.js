@@ -262,13 +262,13 @@ export function parseAmyByteDataBlocks(sourceText, requestedNames = null) {
   for (const line of lines) {
     const clean = stripAmyComment(line);
     if (!current) {
-      const match = /^\s*data\s+([A-Za-z_][A-Za-z0-9_]*)\s+(bytes|bitmap8|sprite16)\b/i.exec(clean);
+      const match = /^\s*data\s+([A-Za-z_][A-Za-z0-9_]*)\s+(bytes|bitmap8|sprite16)\b(.*)$/i.exec(clean);
       if (!match) continue;
       const name = match[1];
       const layout = String(match[2] || "bytes").toLowerCase();
-      const inlineMatch = layout === "bytes" ? /\bbytes\s*=\s*(.*)$/i.exec(clean) : null;
-      if (inlineMatch) {
-        if (!wanted || wanted.has(name.toLowerCase())) blocks.set(name, parseByteDataBody(inlineMatch[1], name));
+      const inlineBody = layout === "bytes" ? String(match[3] || "").replace(/^\s*=\s*/, "").trim() : "";
+      if (inlineBody) {
+        if (!wanted || wanted.has(name.toLowerCase())) blocks.set(name, parseByteDataBody(inlineBody, name));
         continue;
       }
       current = { name, layout, lines: [] };
@@ -318,11 +318,14 @@ export function replaceAmyByteDataBlock(sourceText, blockName, bytes, rowWidth =
     if (start < 0) {
       const clean = stripAmyComment(lines[index]);
       if (headerRe.test(clean)) {
-        if (/\bbytes\s*=/i.test(clean)) {
+        const inlineMatch = /^\s*data\s+[A-Za-z_][A-Za-z0-9_]*\s+bytes\b(.*)$/i.exec(clean);
+        const inlineBody = String(inlineMatch?.[1] || "").replace(/^\s*=\s*/, "").trim();
+        if (inlineBody) {
           const indent = /^\s*/.exec(lines[index])?.[0] || "";
           const comment = /(\s*'.*)$/.exec(lines[index])?.[1] || "";
+          const separator = /^\s*=/.test(String(inlineMatch?.[1] || "")) ? " = " : " ";
           const values = Array.from(Uint8Array.from(bytes || []), (value) => "$" + (value & 0xFF).toString(16).toUpperCase().padStart(2, "0"));
-          lines[index] = indent + "data " + name + " bytes = " + values.join(",") + comment;
+          lines[index] = indent + "data " + name + " bytes" + separator + values.join(",") + comment;
           return lines.join(newline);
         }
         start = index;

@@ -22,7 +22,7 @@ for (const [id, editorCount] of expected) {
   configs.set(id, config);
   assert.equal(config.editors.length, editorCount, id + " editor count");
   for (const editor of config.editors) {
-    const names = [...editor.patternRefs, ...editor.colorRefs]
+    const names = [...editor.patternRefs, ...editor.colorRefs, ...(editor.entries || []).map((name) => ({ from: "inline", name }))]
       .filter(({ from }) => from === "inline")
       .map(({ name }) => name);
     const blocks = parseAmyByteDataBlocks(source, names);
