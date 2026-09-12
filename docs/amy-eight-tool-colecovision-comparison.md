@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Date: 2026-09-01
+Updated: 2026-09-12
 
 ## Method
 
@@ -45,7 +45,7 @@ The build scripts create 48 ROMs, grouped under `build/competition`.
 `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; dedicated GearColeco tests verify
 the bitmap, controller, metasprite, and deterministic state-update oracles.
 
-### Maximum native optimization used
+### Validated optimization settings
 
 | Solution | Setting used | Observation |
 |---|---|---|
@@ -55,11 +55,13 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | ugBASIC 1.18 | Default maximum of 16 peephole passes | Explicit 32- and 64-pass builds produced the same Hello binary |
 | devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
-| NewColeco / SDCC 3.8 | `--std-c99`; original prebuilt libraries plus historical DAN2 | The exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
+| NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | libcv / libcvu / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Linked only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
-These are the strongest **native settings validated here**. No competitor output passed through
-Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains its default.
+These are the most size-oriented **native settings successfully validated in this study**. They
+are not claims about every release or possible project configuration. No other toolchain's output
+passed through Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
+its default.
 
 ### Real occupied size, excluding cartridge padding
 
@@ -150,10 +152,12 @@ The three website representatives are selected mechanically from each picture's 
 The PDF shows every converted image. Complete per-picture ratios, decoder sizes, first-use totals, and exact source values are in `competition/benchmarks/compression/bitmap-codec-ratios.csv`, `bitmap-codec-aggregate.csv`, and `bitmap-codec-first-use.csv`.
 ### Observations supported by this suite
 
-- Amy is smallest for Hello, Controller, and this exact bitmap ROM (3,254 versus CVBasic's 4,948 bytes).
+- Amy produces the smallest measured ROM for Hello, Controller, and this exact bitmap fixture
+  (3,254 versus CVBasic's 4,948 bytes for the bitmap).
 - Portable C/BASIC runtimes add visible fixed cost, but complete games may scale differently.
 - Cartridge length includes packaging; a padded 32 KB file is not necessarily a 32 KB program.
-- Smaller results count only after runtime validation; five samples cannot prove a universal winner.
+- Smaller results count only after runtime validation; this finite suite cannot establish a
+  universal winner.
 - RAM, worst-frame cycles, build latency, sound, sprite pressure, and gameplay remain separate tests.
 
 ## Preliminary capability matrix
@@ -162,6 +166,9 @@ Legend: **Yes** = verified or explicit target support; **Partial** = manual or n
 **Pending** = must still be proven specifically on ColecoVision.
 `*` marks a benchmark adaptation written here, not a native ColecoVision
 direct-to-VRAM path supplied by that solution.
+
+This compact matrix covers six current general-purpose toolchains. NewColeco and libcv are
+documented separately below from their measured fixtures and inspected APIs.
 
 | Capability | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS / SGlib_CV | PVColLib |
 |---|---|---|---|---|---|---|
@@ -201,9 +208,10 @@ direct-to-VRAM path supplied by that solution.
 | Mutually exclusive RAM | First-class overlays/scenes | Manual aliases | union/linker/manual | Banking/resource allocator; no equivalent proven | union/linker/manual | union/linker/manual |
 | Dynamic strings | Deliberately fixed-buffer oriented | Mostly literals/printing | C strings and allocation libraries | First-class strings | C strings; risky in 1 KB RAM | C strings; risky in 1 KB RAM |
 
-Amy's data model is the most game-oriented for stock ColecoVision RAM. C remains the most general,
-but generality does not provide automatic lifetime analysis or a debugger-aware overlay. ugBASIC
-has a broad internal type system; its actual ColecoVision ROM/RAM cost still requires compilation.
+Amy's data model directly addresses stock ColecoVision game RAM through overlays and scenes. C
+offers general-purpose unions and pointers but leaves lifetime analysis and debugger-aware overlay
+tracking to the project. ugBASIC has a broad internal type system; its ColecoVision ROM/RAM cost
+still requires fixture-specific compilation and validation.
 
 ### Control, timing, and code organization
 
@@ -215,10 +223,10 @@ has a broad internal type system; its actual ColecoVision ROM/RAM cost still req
 | Parallel animation | Not yet first-class | Manual | Manual/interrupt | `ANIMATION`, `ANIMATE`, `MOVE`, paths and multitasking source present | Manual frame service | Manual NMI/frame service |
 | Inline assembly | Amy ASM bridge | `ASM`, `CALL`, `USR` | Native inline/external ASM | Supported | SDCC inline/external ASM | SDCC inline/external ASM |
 
-ugBASIC is the strongest source of ideas for a future optional Amy animation service. It also
-shows the risk: animations create state variables, thread handles, paths, delays, signals, and
-background-preservation storage. Amy should not copy that surface until exact RAM and cycle costs
-are visible and the entire service disappears when unused.
+ugBASIC provides a useful reference for a future optional Amy animation service. Its broader
+abstraction also illustrates costs Amy would need to measure: state variables, thread handles,
+paths, delays, signals, and background-preservation storage. Amy should evaluate those ideas only
+when exact RAM and cycle costs are visible and the entire service disappears when unused.
 
 ### TMS9918 graphics and sprites
 
@@ -252,12 +260,14 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 | Sequenced music | BIOS format and Tiny Sound | `MUSIC`, simple/full players | External/player libraries | `MUSIC` backend | PSG streams; looping/status | NMI-serviced music sequences |
 | Concurrent SFX | Coleco table areas/Tiny Sound | Channel depends on music mode | Library-dependent | Pending measurement | PSG SFX channels and frame service | Four music areas plus sound areas 5+ for SFX |
 | Digital samples | DSOUND | No first-class support | Manual/custom | Pending | No first-class support found | No first-class support found |
-| Authoring | Integrated table inspector, tone preview, echo-tail builder, MIDI capture; full sequence editing pending | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
+| Authoring | Integrated table/SFX editors, two-channel Tiny Sound sequencer, MIDI capture | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
 
-Amy has the broadest playback formats, while CVBasic keeps the simplest music source syntax.
-Amy Studio can now inspect existing BIOS tables, preview generated commands, audition steady/fade/
-echo envelopes, and capture note, velocity, and duration from Web MIDI. The remaining authoring gap
-is a complete multi-command sequence editor with byte-exact source/project write-back.
+Amy Studio exposes the widest set of playback formats examined in this study, while CVBasic keeps
+a particularly concise music source syntax. Amy Studio can inspect and edit BIOS sound tables,
+audition steady/fade/echo envelopes, and capture note, velocity, and duration from Web MIDI. Its
+two-channel Tiny Sound sequencer edits notes, duration, tempo, envelopes, vibrato, and arpeggios
+with byte-exact project write-back. Remaining work is workflow polish and broader browser-versus-
+PSG fidelity measurement, not basic sequence editing.
 
 ## Compression evidence
 
@@ -331,8 +341,9 @@ A host compressor alone is insufficient. An Amy codec requires round-trip tests,
 VRAM output, decoder cost, explicit destination semantics, malformed-stream failure tests,
 documentation, and attribution. RAM-only APIs and locally written VRAM ports must remain labelled.
 
-Current verdict: Amy leads in codec breadth and ColecoVision workflow; devkitSMS has verified ZX7
-and aPLib paths, PVColLib has a verified RLE path, and CVBasic has a concise Pletter path. On
+Current measured status: Amy Studio integrates the broadest codec selection examined in this
+ColecoVision workflow; devkitSMS has verified ZX7 and aPLib paths, PVColLib has a verified RLE
+path, and CVBasic has a concise Pletter path. On
 Warrior and Cake, official ZX1, ZX2, and aPLib do not beat Amy's ZX0 first-use ROM size. aPLib
 nevertheless cuts the devkitSMS Warrior ROM from 13,680 raw bytes to 4,713 occupied bytes. ZX1 is now
 an integrated Amy codec with a 127-byte direct-to-VRAM decoder and exact runtime and cycle proofs.
@@ -397,9 +408,9 @@ independent selection criteria.
 | Beyond 32 KB | Deliberately excluded | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
 | Debug-aware RAM names | Yes, including overlay aliases | Assembly labels | Map/debug symbols | Generated symbols | Map symbols | Map symbols |
 
-Banking is a capability advantage for CVBasic, z88dk, and devkitSMS, but not a feature Amy intends
-to adopt: Amy explicitly preserves the original unexpanded-hardware philosophy. The comparison
-should describe this limitation honestly without turning it into a roadmap requirement.
+Banking is an established capability in CVBasic, z88dk, devkitSMS, and PVColLib. Amy Studio keeps
+stock, unbanked cartridges as its current release baseline; MegaCart support is documented as a
+future architecture project and is not counted in these measurements.
 
 ### Stock baseline versus expanded hardware
 
@@ -429,19 +440,19 @@ Studio's deliberate original-hardware target.
 | Project graphics editors | Integrated/configurable | Separate tools | Separate tools | Resource conversion/IDE | Separate tools | `gfx2col`/separate tools |
 | Automated ROM tests | Corpus, checkpoints, runtime harness | Not integrated | Buildable manually | Not established | Not established | Not established |
 
-This is Amy Studio's decisive advantage. A fair comparison should still label command-line-only
+This is a measured distinction of Amy Studio's current workflow. A fair comparison should still label command-line-only
 Amy scripts separately from features directly accessible in the IDE.
 
-### Amy Studio leads in ColecoVision integration
+### Amy Studio emphasizes ColecoVision integration
 
-Amy's strongest distinction is not one isolated keyword. It connects source editing, asset
+Amy Studio's principal distinction in this study is not one isolated keyword. It connects source editing, asset
 conversion, compression, assembly optimization, ROM execution, source breakpoints, rewind,
 memory and VRAM inspection, controller configuration, profiling, and automated tests in one
 ColecoVision-focused workflow. Its overlays, typed state machines, BCD, fixed-point support,
 runtime-checked wide integers, collision helpers, and BIOS-aware input selection are also
 substantial language-level strengths.
 
-### CVBasic leads in portability and established BASIC simplicity
+### CVBasic emphasizes portability and established BASIC simplicity
 
 CVBasic has a compact QBasic-like surface, a mature ColecoVision backend, many complete game
 examples, spinner support, sprite flicker support, music commands, and optional ROM banking. It
@@ -450,7 +461,7 @@ model, integrated debugger, or asset/debug pipeline.
 
 Official source: [nanochess/CVBasic](https://github.com/nanochess/CVBasic)
 
-### z88dk leads in general C and toolchain breadth
+### z88dk emphasizes general C and toolchain breadth
 
 z88dk provides full C data structures, pointers, mature compilers, assemblers, linkers, libraries,
 compression utilities, and many Z80 targets. This flexibility also exposes more low-level choices
@@ -498,18 +509,20 @@ same exact runtime test.
 
 Official source: [alekmaul/pvcollib](https://github.com/alekmaul/pvcollib)
 
-### NewColeco remains a strong historical baseline
+### NewColeco provides a historical baseline
 
-The recovered SDCC branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Its
-prebuilt ASxxxx objects link successfully with the locally available SDCC 3.8 toolchain after
-using the modern `.rel` extension; no ABI or library source change was required. The three new
-fixtures complete 180 NTSC frames in GearColeco. Warrior is decompressed directly to VRAM with
+The recovered SDCC branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Their
+prebuilt ASxxxx objects require the historical stack-parameter ABI, `.o` object naming, and
+first-object linker output convention. The comparison pins SDCC 2.9.0 #5416 (March 2009).
+Modern SDCC 3.8/4.5 builds can link and boot while silently miscalling stack-ABI routines, so only
+behavior-validated NewColeco results count here. Warrior is decompressed directly to VRAM with
 GETPUT's MDK-RLE routine and matches all 12,288 target table bytes and all 49,152 pixels.
 
-This is not an unrelated seventh competitor: it is the documented historical ancestor of Amy
+This is not an unrelated additional competitor: it is the documented historical ancestor of Amy
 Studio. Its 795-byte Hello, 3,643-byte DAN2 bitmap, and 932-byte controller monitor show that the old
-BIOS-aware and link-only-what-is-used philosophy was already effective. Amy Studio improves those
-results while adding the Amy language, integrated assets, diagnostics, and debugging.
+BIOS-aware and link-only-what-is-used philosophy was already effective. Amy Studio adds the Amy
+language, integrated assets, diagnostics, and debugging; this describes an evolution of workflow,
+not a judgment on the earlier kit.
 
 ### libcv is compact but deliberately low level
 
