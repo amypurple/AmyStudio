@@ -12,6 +12,25 @@ Amy Studio supports four playback families plus one reconstruction workflow. Cho
 | Higher-quality digital voice or sampled audio | TriPCM / `play tripcm` |
 | Reconstruct WAV audio as editable PSG notes | historical WAV2CV FFT pipeline; planned Studio tool |
 
+## Sound Workspace v1
+
+Sound Workspace v1 covers the complete everyday path: create or inspect a BIOS sound table,
+add Music/SFX entries with explicit sound-area ownership, compose and reorder BIOS commands,
+preview/edit/save effects, create or import two-channel Tiny Sound music, edit its notes,
+durations, tempo, envelopes, vibrato and arpeggios, insert the Amy playback command, and compile
+the edited project. DSound, TriPCM, WAV spectral conversion and Web MIDI remain available as
+specialized tools.
+
+Run its deterministic release gate with:
+
+```text
+node tools/amy-feature-matrix.mjs --suite audio
+```
+
+The gate currently covers 21 unit, browser, compiler and GearColeco tests. Future work may improve
+workflow polish, general BIOS multi-area song arrangement, and additional browser-versus-PSG
+fidelity measurements without changing this v1 contract.
+
 Coleco BIOS sound composition remains technical because its compact commands directly describe PSG periods, attenuation, duration, sweeps, and sound-area behavior. Amy Studio provides a Sound FX editor inside the source sound inspector: select a command, change its note/noise, exact PSG period, channel, volume, duration, frequency sweep or volume sweep, audition it, then choose `Apply changes`. Duration `256` is shown normally even though the BIOS encodes it as `$00`. Commands can be reordered by dragging or with the arrow buttons, and sequence edits support Undo/Redo before saving. Sequence preview keeps each PSG channel continuous between adjacent commands; only an actual gap silences it. The two-channel Tiny Sound sequencer handles compact song arrangement; a general multi-area BIOS music arranger remains future work.
 
 For a frequency sweep, the encoded length is a sweep count rather than a direct frame duration. Amy Studio labels it `Sweep count` and previews the BIOS duration: first delay plus the remaining counts multiplied by the repeat interval.
@@ -252,7 +271,7 @@ ornaments such as vibrato or arpeggio-like behavior.
 - music tables can trigger tiny sound slots through `play song`
 - the runtime automatically keeps `AMY_FRAME_COUNTER` active when tiny sound is present
 - Commando sample status: working
-- status note: tiny sound support is almost perfect; one known bug remains inside the historical tiny sound routine itself and is intentionally deferred for a later fix
+- Tiny Sound runtime and preview behavior are guarded by browser, compiler and GearColeco parity tests
 - the Studio sound inspector decodes tempo, instrument, notes, sustain, silence, drums, special notes, and loops; it can audition one Tiny Sound channel or matching `_ch1`/`_ch2` pairs
 - plain pitches, vibrato, arpeggios, channel tempo, and `$02` instrument envelopes can be edited inline with byte-local source preservation; holds, rests, drums, and special commands remain selectable but read-only
 

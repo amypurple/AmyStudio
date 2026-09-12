@@ -70,7 +70,9 @@ possible; calculated indexes intentionally have no implicit runtime bounds check
 - keypad choice helpers, CRT-safe pauses, and PAL/NTSC-aware blanking
 - text, tile, bitmap, sprites, VRAM transfer, decompression, and picture commands
 - `120 colors on` / `120 colors off` for the historical per-frame VDP R3/R4 technique
-- sound, music, DSound, and NMI-aware playback commands
+- sound, music, DSound, TriPCM, and NMI-aware playback commands
+- Sound Workspace v1 for BIOS table/SFX editing and two-channel Tiny Sound creation, import,
+  sequencing, playback, source write-back, and Web MIDI capture
 
 ### Development and testing
 

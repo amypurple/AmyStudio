@@ -1,3 +1,11 @@
+## 2026-09-11 - Completed Sound Workspace v1
+
+- Stabilized the everyday BIOS sound-table and Sound FX authoring workflow.
+- Stabilized two-channel Tiny Sound creation, import, sequencing, inline editing, playback,
+  source write-back, and compilation.
+- Added a 21-test audio release gate covering unit, browser, compiler, and GearColeco behavior.
+- Replaced an obsolete, non-reproducible Tiny Sound warning with measured runtime status.
+
 ## 2026-09-02 - Added ZX2 compression
 
 - Added an official-stream-compatible ZX2 browser codec and 115-byte direct-to-VRAM decoder.
