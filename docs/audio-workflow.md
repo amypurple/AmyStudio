@@ -525,6 +525,18 @@ VoiceSequence:
 }
 ```
 
+For several sequences, a word-pointer table avoids duplicating the playback
+wrapper inside a menu or loop:
+
+```amy
+play voxpcm VoiceTable[Destination]
+
+asm {
+VoiceTable:
+  dw VoiceOne,VoiceTwo,VoiceThree
+}
+```
+
 Each stream pointer is followed by repeat and command-boundary delay counts.
 They keep output units evenly spaced despite the decoder paths having different
 costs. Larger values let a lower-density stream preserve the original duration.

@@ -374,6 +374,7 @@ export const AMY_AUTOCOMPLETE = [
   ["play tripcm compact SpeechData", "Play experimental compact three-channel digital audio"],
   ["play tripcm sequence SpeechSequence", "Play a compact TriPCM segment table without gaps"],
   ["play voxpcm SpeechSequence", "Play cycle-balanced variable-quality digital audio"],
+  ["play voxpcm SpeechTable[Index]", "Play one VoxPCM sequence selected from a word-pointer table"],
   ["sprites 8x8", "Use 8x8 sprite size"],
   ["sprites 16x16", "Use 16x16 sprite size"],
   ["sprites simple", "Zoom off — render sprites at native pixel size"],

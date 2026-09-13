@@ -35,13 +35,14 @@ const sequenceDb = sequenceParts.map((part, index) => {
 }).join("\n\n");
 const source = `
 u8 Finished = 0
+u8 VoiceIndex = 0
 
 sub start:
   text screen
   screen on
   play tripcm TripcmTestData
   play tripcm compact TripcmCompactTestData
-  play voxpcm TripcmSequence
+  play voxpcm TripcmSequenceTable[VoiceIndex]
   Finished = 1
   loop forever
 
@@ -56,6 +57,8 @@ end data
 ${sequenceDb}
 
 asm {
+TripcmSequenceTable:
+  dw TripcmSequence
 TripcmSequence:
   dw TripcmSequencePart1
   db 8,2

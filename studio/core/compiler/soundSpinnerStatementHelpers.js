@@ -238,10 +238,11 @@ export function handleSoundSpinnerStatement({
   }
 
   const playTriPcm = line.match(/^play\s+tripcm(?:\s+(compact|sequence))?\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const playVoxPcmIndexed = line.match(/^play\s+voxpcm\s+([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/i);
   const playVoxPcm = line.match(/^play\s+voxpcm\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (playTriPcm || playVoxPcm) {
-    const dataSymbol = playVoxPcm?.[1] || playTriPcm[2];
-    const player = playVoxPcm
+  if (playTriPcm || playVoxPcm || playVoxPcmIndexed) {
+    const dataSymbol = playVoxPcmIndexed?.[1] || playVoxPcm?.[1] || playTriPcm[2];
+    const player = playVoxPcm || playVoxPcmIndexed
       ? "AMY_PLAY_TRIPCM_SEQUENCE"
       : playTriPcm[1]?.toLowerCase() === "sequence"
         ? "AMY_PLAY_TRIPCM_SEQUENCE"
@@ -250,6 +251,26 @@ export function handleSoundSpinnerStatement({
           : "AMY_PLAY_TRIPCM";
     const nmiOffLabel = makeGeneratedLabel("TriPcmNmiWasOff");
     const doneLabel = makeGeneratedLabel("TriPcmDone");
+    const indexedLoad = playVoxPcmIndexed
+      ? emitLoadInt8Into("a", playVoxPcmIndexed[2])
+      : null;
+    if (playVoxPcmIndexed && !indexedLoad) {
+      return { ok: false, handled: true, log: `play voxpcm table index must be a byte expression: ${rawLine}` };
+    }
+    const loadSequence = indexedLoad
+      ? [
+          ...indexedLoad,
+          "    ld l,a",
+          "    ld h,0",
+          "    add hl,hl",
+          `    ld de,${resolveAddressSymbol(dataSymbol)}`,
+          "    add hl,de",
+          "    ld e,(hl)",
+          "    inc hl",
+          "    ld d,(hl)",
+          "    ex de,hl"
+        ]
+      : [`    ld hl,${resolveAddressSymbol(dataSymbol)}`];
     return {
       ok: true,
       handled: true,
@@ -264,7 +285,7 @@ export function handleSoundSpinnerStatement({
         "    ld b,1",
         "    call WRITE_REGISTER",
         "    call READ_REGISTER",
-        `    ld hl,${resolveAddressSymbol(dataSymbol)}`,
+        ...loadSequence,
         `    call ${player}`,
         "    pop af",
         "    ld ($73C4),a",
