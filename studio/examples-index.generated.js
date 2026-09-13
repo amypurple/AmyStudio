@@ -21,6 +21,22 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "solar-system-encyclopedia",
+    "label": "3D Solar System",
+    "detail": "Eleven animated celestial bodies with shared sprite masks, ZX0 graphics, facts, and a CRT-safe menu.",
+    "projectName": "solar-system-encyclopedia",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "graphics",
+      "animation",
+      "zx0",
+      "sprites"
+    ]
+  },
+  {
     "id": "space-taxi-voice-demo",
     "label": "Space Taxi VoxPCM Voice Demo",
     "detail": "Captioned Hey Taxi, pad 1-9, up, please and thanks phrases assembled from reusable adaptive VoxPCM words.",
