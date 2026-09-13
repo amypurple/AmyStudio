@@ -3,6 +3,7 @@ import { warriorDan2FireTestProjectFiles } from "./examples-picture-assets.js?v=
 import { warriorBenchmarkProjectFiles } from "./examples-benchmark-assets.js";
 import { trainTrackPuzzleProjectFiles } from "./examples-train-track-assets.generated.js";
 import { earthGlobeProjectFiles } from "./examples-earth-globe-assets.generated.js";
+import { spaceTaxiVoiceProjectFiles } from "./examples-voxpcm-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -24,6 +25,7 @@ function makeEditorsProjectFile(editors) {
 
 
 const derivedProjectFilesById = {
+  "space-taxi-voice-demo": spaceTaxiVoiceProjectFiles,
   "earth-globe-demo": earthGlobeProjectFiles,
   "train-track-puzzle": trainTrackPuzzleProjectFiles,
   "sprite-minimal": [

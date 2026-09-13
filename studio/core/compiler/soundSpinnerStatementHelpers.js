@@ -33,6 +33,15 @@ export function handleSoundSpinnerStatement({
   const _dep = checkSoundDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
+  const validateSoundIndex = (expression) => {
+    const value = tryEvaluateCompileTimeNumericExpression(expression);
+    if (value === null || value === undefined || !Number.isFinite(value)) return null;
+    if (!Number.isInteger(value) || value < 1 || value > 62) {
+      return `Coleco BIOS sound indexes must be 1..62; index 63 aliases the free-area sentinel: ${rawLine}`;
+    }
+    return null;
+  };
+
   const setSoundTable = line.match(/^set\s+sound\s+table\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+areas\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
   if (setSoundTable) {
     const lines = [];
@@ -103,6 +112,8 @@ export function handleSoundSpinnerStatement({
     }
     const lines = ["    ld a,1", "    ld (AMY_SOUND_ENABLED),a"];
     for (const expression of soundExpressions) {
+      const rangeError = validateSoundIndex(expression);
+      if (rangeError) return { ok: false, handled: true, log: rangeError };
       const loadSound = emitLoadInt8Into("b", expression);
       if (!loadSound) return { ok: false, handled: true, log: `play sounds requires byte sound indexes: ${rawLine}` };
       lines.push(...loadSound, "    call AMY_PLAY_SOUND");
@@ -116,6 +127,8 @@ export function handleSoundSpinnerStatement({
     if (soundExpressions?.length > 1) {
       return { ok: false, handled: true, log: `play sound accepts one index; use play sounds for a comma-separated list: ${rawLine}` };
     }
+    const rangeError = validateSoundIndex(playSound[1]);
+    if (rangeError) return { ok: false, handled: true, log: rangeError };
     const loadSound = emitLoadInt8Into("b", playSound[1]);
     if (!loadSound) return { ok: false, handled: true, log: `play sound requires a byte sound index: ${rawLine}` };
     return {
@@ -127,6 +140,8 @@ export function handleSoundSpinnerStatement({
 
   const stopSound = line.match(/^stop\s+sound\s+(.+)$/i);
   if (stopSound) {
+    const rangeError = validateSoundIndex(stopSound[1]);
+    if (rangeError) return { ok: false, handled: true, log: rangeError };
     const loadSound = emitLoadInt8Into("b", stopSound[1]);
     if (!loadSound) return { ok: false, handled: true, log: `stop sound requires a byte sound index: ${rawLine}` };
     return { ok: true, handled: true, lines: [...loadSound, "    call AMY_STOP_SOUND"] };
@@ -222,8 +237,17 @@ export function handleSoundSpinnerStatement({
     };
   }
 
-  const playTriPcm = line.match(/^play\s+tripcm\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-  if (playTriPcm) {
+  const playTriPcm = line.match(/^play\s+tripcm(?:\s+(compact|sequence))?\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const playVoxPcm = line.match(/^play\s+voxpcm\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  if (playTriPcm || playVoxPcm) {
+    const dataSymbol = playVoxPcm?.[1] || playTriPcm[2];
+    const player = playVoxPcm
+      ? "AMY_PLAY_TRIPCM_SEQUENCE"
+      : playTriPcm[1]?.toLowerCase() === "sequence"
+        ? "AMY_PLAY_TRIPCM_SEQUENCE"
+        : playTriPcm[1]
+          ? "AMY_PLAY_TRIPCM_COMPACT"
+          : "AMY_PLAY_TRIPCM";
     const nmiOffLabel = makeGeneratedLabel("TriPcmNmiWasOff");
     const doneLabel = makeGeneratedLabel("TriPcmDone");
     return {
@@ -240,8 +264,8 @@ export function handleSoundSpinnerStatement({
         "    ld b,1",
         "    call WRITE_REGISTER",
         "    call READ_REGISTER",
-        `    ld hl,${resolveAddressSymbol(playTriPcm[1])}`,
-        "    call AMY_PLAY_TRIPCM",
+        `    ld hl,${resolveAddressSymbol(dataSymbol)}`,
+        `    call ${player}`,
         "    pop af",
         "    ld ($73C4),a",
         "    push af",

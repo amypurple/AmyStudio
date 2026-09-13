@@ -28,7 +28,7 @@ Run its deterministic release gate with:
 node tools/amy-feature-matrix.mjs --suite audio
 ```
 
-The public gate currently covers 23 unit, browser, compiler and GearColeco tests. Future work may improve
+The gate currently covers 24 unit, browser, compiler and GearColeco tests. Future work may improve
 workflow polish, timeline offsets, and additional browser-versus-PSG
 fidelity measurements without changing this v1 contract.
 
@@ -487,7 +487,8 @@ The converter's **Save + insert play snippet** action creates the project file a
 
 TriPCM implements Amy Bienvenu's 2009 three-channel attenuation technique. It
 combines the three tone-channel volume outputs into 46 amplitude levels, then
-stores bounded level deltas with short run lengths.
+stores bounded level deltas. One command can apply the same delta for up to
+eight consecutive units, efficiently describing short amplitude ramps.
 
 Use **Files > Audio/Voice**, open **Advanced conversion options**, and choose
 **TriPCM (3 channels)**. Convert and replay the result before choosing **Save +
@@ -497,6 +498,51 @@ insert play snippet**:
 asset Speech from "@project/Speech.tripcm"
 play tripcm Speech
 ```
+
+The advanced converter also offers optional **TriPCM dithering**. Without it,
+each sample uses the nearest three-channel amplitude. With it, deterministic
+error diffusion carries a small quantization residual into the next sample so
+nearby over- and undershoots balance over time. Preview both results: dithering
+usually improves average amplitude fidelity but may use a few more bytes.
+
+Amy Studio also supports gapless compact-stream sequences. This is
+useful for assembling a longer recording from reusable sections or giving each
+section a different conversion-quality budget while keeping one fixed Z80
+playback cadence:
+
+```amy
+play voxpcm VoiceSequence
+
+asm {
+VoiceSequence:
+  dw VoicePartA
+  db 9,1
+  dw VoicePartB
+  db 12,4
+  dw VoicePartC
+  db 17,9
+  dw 0,VoiceSequence
+}
+```
+
+Each stream pointer is followed by repeat and command-boundary delay counts.
+They keep output units evenly spaced despite the decoder paths having different
+costs. Larger values let a lower-density stream preserve the original duration.
+The first zero pointer ends the list. The following word is zero to return or a
+table address to loop/continue. Each part ends in `$FF`. The player prepares
+the PSG once and does not mute it between parts. Sequence playback is blocking.
+
+VoxPCM offers seven segment qualities: `minimum`, `draft`, `tiny`, `compact`,
+`balanced`, `high` and `maximum`. `minimum` is the lowest-density speech
+setting. Adaptive conversion analyzes short windows relative to the whole
+recording and selects among those levels. Stable passages therefore cost fewer
+bytes while detailed transients receive denser data. A table may reference the
+same part repeatedly without duplicating its audio payload.
+
+To create one, open **Files > Audio/Voice**, choose **VoxPCM (adaptive)**,
+select or record audio, then use **Replay converted sound**. **Save + insert
+play snippet** creates every `.voxpcm` segment, the sequence table, and the
+`play voxpcm` command in the current project.
 
 `play tripcm` is blocking, uses all three tone channels, and mutes the PSG when
 it finishes. Amy restores the previous display/NMI state before execution

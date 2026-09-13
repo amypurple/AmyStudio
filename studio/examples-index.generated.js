@@ -21,6 +21,22 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "space-taxi-voice-demo",
+    "label": "Space Taxi VoxPCM Voice Demo",
+    "detail": "Captioned Hey Taxi, pad 1-9, up, please and thanks phrases assembled from reusable adaptive VoxPCM words.",
+    "projectName": "space-taxi-voice-demo",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Music",
+    "tags": [
+      "amy",
+      "audio",
+      "voice",
+      "voxpcm",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "earth-globe-demo",
     "label": "Earth Globe",
     "detail": "A rotating tiled Earth with deterministic ZX0 tile-order optimization and a static 12-sprite circular mask.",

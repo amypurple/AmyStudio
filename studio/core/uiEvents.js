@@ -345,6 +345,9 @@ export function bindStudioRuntimeEvents(ctx) {
     dsoundBytesToPreviewSamples,
     samplesToThreeChannelPcm,
     threeChannelPcmBytesToPreviewSamples,
+    encodeVoxPcmSegments,
+    voxPcmToPreviewSamples,
+    voxPcmSequenceAsm,
     decodeAudioBufferToMono,
     parseWavAudio,
     insertTextIntoSource,
@@ -364,6 +367,7 @@ export function bindStudioRuntimeEvents(ctx) {
   let wavPsgPreview = null;
   let wavPsgBuilt = null;
   let wavDigitalKind = "dsound";
+  let wavVoxPcmResult = null;
 
   function setWavRecordingIdleState(message = "No recording yet.") {
     if (els.btnWavRecordStart) els.btnWavRecordStart.disabled = false;
@@ -494,7 +498,8 @@ export function bindStudioRuntimeEvents(ctx) {
       source: wavDigitalKind === "tripcm" ? "wavToTriPcm" : "wavToDsound",
       dsoundStep: step,
       dsoundAmpPercent: ampPercent,
-      tripcmGainPercent: wavDigitalKind === "tripcm" ? ampPercent : undefined
+      tripcmGainPercent: wavDigitalKind === "tripcm" ? ampPercent : undefined,
+      tripcmDither: wavDigitalKind === "tripcm" ? Boolean(els.wavTriPcmDither?.checked) : undefined
     });
     return { label, path, step, ampPercent };
   }
@@ -509,6 +514,23 @@ export function bindStudioRuntimeEvents(ctx) {
     insertTextIntoSource(snippet, { beforeProcedures: true });
   }
 
+  async function saveCurrentVoxPcmProject() {
+    if (!wavVoxPcmResult?.parts?.length) {
+      els.wavStatus.textContent = "Convert audio to VoxPCM first.";
+      return null;
+    }
+    const label = els.wavLabel.value.trim() || "VoiceData";
+    const savedParts = wavVoxPcmResult.parts.map((part, index) => {
+      const path = ensureProjectFilePathCandidate(`${label}-${String(index + 1).padStart(3, "0")}.voxpcm`);
+      upsertProjectFile({ path, base64: bytesToBase64(part.bytes), kind: "voxpcm", source: `VoxPCM ${part.quality}` });
+      return { ...part, label: `${label}Part${index + 1}`, path };
+    });
+    const assets = savedParts.map(part => `asset ${part.label} from "${part.path}"`);
+    const table = await voxPcmSequenceAsm(label, savedParts, { loop: false });
+    insertTextIntoSource(`${assets.join("\n")}\n\nplay voxpcm ${label}\n\nasm {\n${table}\n}`, { beforeProcedures: true });
+    return { label, count: savedParts.length };
+  }
+
   async function convertRecordingBlob(blob) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) {
@@ -521,9 +543,17 @@ export function bindStudioRuntimeEvents(ctx) {
       const step = parseInt(els.wavStep.value, 10);
       const ampPercent = parseInt(els.wavAmp.value, 10) || 125;
       const label = els.wavLabel.value.trim() || "SoundData";
+      if (els.wavDigitalFormat?.value === "voxpcm") {
+        const decoded = await decodeAudioBufferToMono(audioBuffer);
+        return encodeVoxPcmSegments(decoded.samples, decoded.sampleRate, {
+          segmentMilliseconds: Number(els.wavVoxPcmSegment.value), minimumQuality: els.wavVoxPcmMinimum.value,
+          maximumQuality: els.wavVoxPcmMaximum.value, gainPercent: ampPercent,
+          dither: Boolean(els.wavTriPcmDither?.checked), labelPrefix: `${label}Part`
+        });
+      }
       if (els.wavDigitalFormat?.value === "tripcm") {
         const decoded = await decodeAudioBufferToMono(audioBuffer);
-        return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label, gainPercent: ampPercent });
+        return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label, gainPercent: ampPercent, dither: Boolean(els.wavTriPcmDither?.checked) });
       }
       return await audioBufferToDsound(audioBuffer, { step, ampPercent, label });
     } finally {
@@ -535,9 +565,17 @@ export function bindStudioRuntimeEvents(ctx) {
     const step = parseInt(els.wavStep.value, 10);
     const ampPercent = parseInt(els.wavAmp.value, 10) || 125;
     const label = els.wavLabel.value.trim() || "SoundData";
+    if (els.wavDigitalFormat?.value === "voxpcm") {
+      const decoded = await decodeAudioFile(file);
+      return encodeVoxPcmSegments(decoded.samples, decoded.sampleRate, {
+        segmentMilliseconds: Number(els.wavVoxPcmSegment.value), minimumQuality: els.wavVoxPcmMinimum.value,
+        maximumQuality: els.wavVoxPcmMaximum.value, gainPercent: ampPercent,
+        dither: Boolean(els.wavTriPcmDither?.checked), labelPrefix: `${label}Part`
+      });
+    }
     if (els.wavDigitalFormat?.value === "tripcm") {
       const decoded = await decodeAudioFile(file);
-      return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label, gainPercent: ampPercent });
+      return await samplesToThreeChannelPcm(decoded.samples, decoded.sampleRate, { label, gainPercent: ampPercent, dither: Boolean(els.wavTriPcmDither?.checked) });
     }
     const buffer = await file.arrayBuffer();
     const name = String(file.name || "").toLowerCase();
@@ -563,16 +601,30 @@ export function bindStudioRuntimeEvents(ctx) {
   }
 
   async function renderDsoundResult(result, statusText = "Done.") {
-    wavDigitalKind = els.wavDigitalFormat?.value === "tripcm" ? "tripcm" : "dsound";
+    wavDigitalKind = ["tripcm", "voxpcm"].includes(els.wavDigitalFormat?.value) ? els.wavDigitalFormat.value : "dsound";
+    wavVoxPcmResult = wavDigitalKind === "voxpcm" ? result : null;
     wavPsgPreview = null;
     wavPsgBuilt = null;
+    if (wavDigitalKind === "voxpcm") {
+      els.wavOutput.value = `${result.parts.length} project files will be created.\n\n${await voxPcmSequenceAsm(els.wavLabel.value.trim() || "VoiceData", result.parts, { loop: false })}`;
+      els.wavStats.textContent = `${result.parts.length} adaptive parts · ${result.durationSeconds.toFixed(2)}s · ${result.byteCount.toLocaleString()} bytes encoded`;
+      els.wavOutputWrap.classList.add("visible");
+      clearDsoundPreview();
+      const wavBlob = encodePreviewWav(await voxPcmToPreviewSamples(result.parts), 22050);
+      wavDsoundPreviewObjectUrl = URL.createObjectURL(wavBlob);
+      wavDsoundPreviewSampleRate = 22050;
+      els.wavDsoundPreview.src = wavDsoundPreviewObjectUrl;
+      els.wavDsoundPreview.hidden = false;
+      els.wavStatus.textContent = statusText;
+      return;
+    }
     els.wavOutput.value = result.alexisSource;
     els.wavStats.textContent =
       `${(result.nibbleCount ?? result.unitCount).toLocaleString()} samples · ` +
       `${result.sampleRate.toLocaleString()} Hz · ` +
       `${result.durationSec.toFixed(2)}s · ` +
       `${result.byteCount.toLocaleString()} bytes encoded` +
-      (wavDigitalKind === "tripcm" ? ` · ${result.gainPercent}% gain` : "");
+      (wavDigitalKind === "tripcm" ? ` · ${result.gainPercent}% gain · ${result.dither ? "dithered" : "no dither"}` : "");
     els.wavOutputWrap.classList.add("visible");
     await updateDsoundPreview(result.bytes, result.sampleRate);
     els.wavStatus.textContent = statusText;
@@ -580,6 +632,13 @@ export function bindStudioRuntimeEvents(ctx) {
 
   async function quickAddDsoundFromResult(result, statusText = "Saved and inserted playback snippet.") {
     await renderDsoundResult(result, statusText);
+    if (wavDigitalKind === "voxpcm") {
+      const saved = await saveCurrentVoxPcmProject();
+      if (!saved) return;
+      els.wavConverterDialog.close();
+      setStatus(`Saved ${saved.count} VoxPCM parts and inserted play voxpcm ${saved.label}.`);
+      return;
+    }
     const saved = saveCurrentDigitalProjectFile();
     if (!saved) return;
     insertSavedDigitalSnippet(saved);
@@ -994,10 +1053,18 @@ export function bindStudioRuntimeEvents(ctx) {
 
   function syncDigitalFormatControls() {
     const tripcm = els.wavDigitalFormat.value === "tripcm";
-    els.wavStep.disabled = tripcm;
-    els.wavStep.closest(".field")?.classList.toggle("field--disabled", tripcm);
-    els.wavStatus.textContent = tripcm
-      ? "TriPCM uses three tone channels. Input gain is applied before encoding."
+    const voxpcm = els.wavDigitalFormat.value === "voxpcm";
+    els.wavStep.disabled = tripcm || voxpcm;
+    els.wavStep.closest(".field")?.classList.toggle("field--disabled", tripcm || voxpcm);
+    if (els.wavTriPcmDither) {
+      els.wavTriPcmDither.disabled = !(tripcm || voxpcm);
+      els.wavTriPcmDither.closest(".field")?.classList.toggle("field--disabled", !(tripcm || voxpcm));
+    }
+    if (els.wavVoxPcmOptions) els.wavVoxPcmOptions.hidden = !voxpcm;
+    if (els.btnWavInsertIntoEditor) els.btnWavInsertIntoEditor.disabled = voxpcm;
+    if (els.btnWavSaveProjectFile) els.btnWavSaveProjectFile.disabled = voxpcm;
+    els.wavStatus.textContent = voxpcm ? "VoxPCM adapts quality by segment and blocks during playback."
+      : tripcm ? "TriPCM uses three tone channels. Input gain is applied before encoding."
       : "DSOUND uses three tone channels and blocks during playback.";
   }
 
@@ -1126,6 +1193,11 @@ export function bindStudioRuntimeEvents(ctx) {
   });
 
   els.btnWavPreviewOutput?.addEventListener("click", async () => {
+    if (wavDigitalKind === "voxpcm" && wavVoxPcmResult) {
+      await els.wavDsoundPreview?.play?.();
+      els.wavStatus.textContent = "Playing converted VoxPCM preview.";
+      return;
+    }
     if (wavPsgPreview) {
       try {
         els.wavStatus.textContent = "Playing converted game sound...";
@@ -1161,9 +1233,14 @@ export function bindStudioRuntimeEvents(ctx) {
       : `Inserted "${els.wavLabel.value.trim() || "SoundData"}" data block into source.`);
   });
 
-  els.btnWavSaveProjectFile?.addEventListener("click", () => {
+  els.btnWavSaveProjectFile?.addEventListener("click", async () => {
     if (!els.wavOutput.value.trim()) {
       els.wavStatus.textContent = "Convert audio first.";
+      return;
+    }
+    if (wavDigitalKind === "voxpcm") {
+      const saved = await saveCurrentVoxPcmProject();
+      if (saved) els.wavStatus.textContent = `Saved ${saved.count} VoxPCM parts and inserted the sequence.`;
       return;
     }
     const saved = saveCurrentDigitalProjectFile();
@@ -1171,9 +1248,16 @@ export function bindStudioRuntimeEvents(ctx) {
     els.wavStatus.textContent = `Saved ${saved.path} to project files.`;
   });
 
-  els.btnWavSaveAndInsertPlay?.addEventListener("click", () => {
+  els.btnWavSaveAndInsertPlay?.addEventListener("click", async () => {
     if (!els.wavOutput.value.trim()) {
       els.wavStatus.textContent = "Convert audio first.";
+      return;
+    }
+    if (wavDigitalKind === "voxpcm") {
+      const saved = await saveCurrentVoxPcmProject();
+      if (!saved) return;
+      els.wavConverterDialog.close();
+      setStatus(`Saved ${saved.count} VoxPCM parts and inserted playback.`);
       return;
     }
     const saved = saveCurrentDigitalProjectFile();

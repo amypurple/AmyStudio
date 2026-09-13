@@ -246,6 +246,11 @@ const els = {
   wavStepValue: document.getElementById("wavStepValue"),
   wavSampleRateHint: document.getElementById("wavSampleRateHint"),
   wavAmp: document.getElementById("wavAmp"),
+  wavTriPcmDither: document.getElementById("wavTriPcmDither"),
+  wavVoxPcmOptions: document.getElementById("wavVoxPcmOptions"),
+  wavVoxPcmMinimum: document.getElementById("wavVoxPcmMinimum"),
+  wavVoxPcmMaximum: document.getElementById("wavVoxPcmMaximum"),
+  wavVoxPcmSegment: document.getElementById("wavVoxPcmSegment"),
   wavPsgRegion: document.getElementById("wavPsgRegion"),
   wavPsgVoices: document.getElementById("wavPsgVoices"),
   wavPsgNoise: document.getElementById("wavPsgNoise"),
@@ -541,6 +546,24 @@ async function samplesToThreeChannelPcm(...args) {
 
 async function threeChannelPcmBytesToPreviewSamples(...args) {
   return (await loadThreeChannelPcmModule()).threeChannelPcmBytesToPreviewSamples(...args);
+}
+
+let voxPcmModulePromise = null;
+function loadVoxPcmModule() {
+  if (!voxPcmModulePromise) voxPcmModulePromise = import("./core/colecoVoxPcm.js");
+  return voxPcmModulePromise;
+}
+
+async function encodeVoxPcmSegments(...args) {
+  return (await loadVoxPcmModule()).encodeVoxPcmSegments(...args);
+}
+
+async function voxPcmToPreviewSamples(...args) {
+  return (await loadVoxPcmModule()).voxPcmToPreviewSamples(...args);
+}
+
+async function voxPcmSequenceAsm(...args) {
+  return (await loadVoxPcmModule()).voxPcmSequenceAsm(...args);
 }
 
 function loadInternalCompilerModule() {
@@ -1272,6 +1295,9 @@ function bindEvents() {
         dsoundBytesToPreviewSamples,
         samplesToThreeChannelPcm,
         threeChannelPcmBytesToPreviewSamples,
+        encodeVoxPcmSegments,
+        voxPcmToPreviewSamples,
+        voxPcmSequenceAsm,
         decodeAudioBufferToMono,
         parseWavAudio,
         insertTextIntoSource: (...args) => insertTextIntoSource(...args),
