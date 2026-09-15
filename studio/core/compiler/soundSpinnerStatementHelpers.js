@@ -28,7 +28,9 @@ export function handleSoundSpinnerStatement({
   tryEvaluateCompileTimeNumericExpression,
   normalizeExpression,
   makeGeneratedLabel,
-  resolveAddressSymbol
+  resolveAddressSymbol,
+  emitLoadSourceAddressIntoHL,
+  emitStoreInt8FromA
 }) {
   const _dep = checkSoundDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -41,6 +43,103 @@ export function handleSoundSpinnerStatement({
     }
     return null;
   };
+
+  const psgTone = line.match(/^psg\s+tone\s+(.+?)\s*,\s*(.+)$/i);
+  if (psgTone) {
+    const loadPeriod = emitLoadInt16IntoHL(psgTone[2]);
+    const loadChannel = emitLoadInt8Into("b", psgTone[1]);
+    if (!loadPeriod || !loadChannel) return { ok: false, handled: true, log: `psg tone requires a byte channel and 16-bit period: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadPeriod, ...loadChannel, "    call AMY_PSG_TONE"] };
+  }
+
+  const psgVolume = line.match(/^psg\s+volume\s+(.+?)\s*,\s*(.+)$/i);
+  if (psgVolume) {
+    const loadAttenuation = emitLoadInt8Into("c", psgVolume[2]);
+    const loadChannel = emitLoadInt8Into("b", psgVolume[1]);
+    if (!loadAttenuation || !loadChannel) return { ok: false, handled: true, log: `psg volume requires byte channel and attenuation values: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadAttenuation, ...loadChannel, "    call AMY_PSG_VOLUME"] };
+  }
+
+  const psgNoise = line.match(/^psg\s+noise\s+(.+?)\s*,\s*(.+)$/i);
+  if (psgNoise) {
+    const loadRate = emitLoadInt8Into("c", psgNoise[2]);
+    const loadMode = emitLoadInt8Into("b", psgNoise[1]);
+    if (!loadRate || !loadMode) return { ok: false, handled: true, log: `psg noise requires byte mode and rate values: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadRate, ...loadMode, "    call AMY_PSG_NOISE"] };
+  }
+
+  const voiceDetect = line.match(/^voice\s+detect\s+into\s+(.+)$/i);
+  if (voiceDetect) {
+    const store = emitStoreInt8FromA?.(voiceDetect[1].trim());
+    if (!store) return { ok: false, handled: true, log: `voice detect into requires a byte variable: ${rawLine}` };
+    return { ok: true, handled: true, lines: ["    call AMY_VOICE_DETECT", ...store] };
+  }
+
+  const voiceSpeak = line.match(/^voice\s+speak\s+(.+?)\s+using\s+(.+)$/i);
+  if (voiceSpeak) {
+    const loadModule = emitLoadInt8Into("b", voiceSpeak[2]);
+    const loadPhrase = emitLoadSourceAddressIntoHL?.(voiceSpeak[1]);
+    if (!loadModule || !loadPhrase) return { ok: false, handled: true, log: `voice speak requires a data block or word-table entry and a byte module value: ${rawLine}` };
+    return {
+      ok: true,
+      handled: true,
+      lines: [...loadPhrase, ...loadModule, "    call AMY_VOICE_SPEAK"]
+    };
+  }
+
+  const voiceStart = line.match(/^voice\s+start\s+(.+?)\s+using\s+(.+)$/i);
+  if (voiceStart) {
+    const loadModule = emitLoadInt8Into("b", voiceStart[2]);
+    const loadPhrase = emitLoadSourceAddressIntoHL?.(voiceStart[1]);
+    if (!loadModule || !loadPhrase) return { ok: false, handled: true, log: `voice start requires a data block or word-table entry and a byte module value: ${rawLine}` };
+    return {
+      ok: true,
+      handled: true,
+      lines: [
+        "    ld a,(NO_NMI)", "    push af", "    ld a,1", "    ld (NO_NMI),a",
+        ...loadPhrase, ...loadModule, "    call AMY_VOICE_START",
+        "    pop af", "    ld (NO_NMI),a"
+      ]
+    };
+  }
+
+  if (/^voice\s+stop$/i.test(line)) {
+    return {
+      ok: true,
+      handled: true,
+      lines: ["    ld a,(NO_NMI)", "    push af", "    ld a,1", "    ld (NO_NMI),a", "    call AMY_VOICE_STOP", "    pop af", "    ld (NO_NMI),a"]
+    };
+  }
+
+  const voiceSpeaking = line.match(/^voice\s+speaking\s+into\s+(.+)$/i);
+  if (voiceSpeaking) {
+    const store = emitStoreInt8FromA?.(voiceSpeaking[1].trim());
+    if (!store) return { ok: false, handled: true, log: `voice speaking into requires a byte variable: ${rawLine}` };
+    return { ok: true, handled: true, lines: ["    call AMY_VOICE_SPEAKING", ...store] };
+  }
+
+  const voiceAllophone = line.match(/^voice\s+allophone\s+(.+?)\s+using\s+(.+)$/i);
+  if (voiceAllophone) {
+    const loadCode = emitLoadInt8Into("c", voiceAllophone[1]);
+    const loadModule = emitLoadInt8Into("b", voiceAllophone[2]);
+    if (!loadCode || !loadModule) return { ok: false, handled: true, log: `voice allophone requires byte allophone and module values: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadCode, ...loadModule, "    call AMY_VOICE_ALLOPHONE"] };
+  }
+
+  const voiceReady = line.match(/^voice\s+ready\s+(.+?)\s+into\s+(.+)$/i);
+  if (voiceReady) {
+    const loadModule = emitLoadInt8Into("b", voiceReady[1]);
+    const store = emitStoreInt8FromA?.(voiceReady[2].trim());
+    if (!loadModule || !store) return { ok: false, handled: true, log: `voice ready requires a byte module value and byte destination: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadModule, "    call AMY_VOICE_READY", ...store] };
+  }
+
+  const voiceReset = line.match(/^voice\s+reset\s+(.+)$/i);
+  if (voiceReset) {
+    const loadModule = emitLoadInt8Into("b", voiceReset[1]);
+    if (!loadModule) return { ok: false, handled: true, log: `voice reset requires a byte module value: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadModule, "    call AMY_VOICE_RESET"] };
+  }
 
   const setSoundTable = line.match(/^set\s+sound\s+table\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+areas\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?$/i);
   if (setSoundTable) {

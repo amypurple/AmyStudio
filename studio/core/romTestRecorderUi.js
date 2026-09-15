@@ -272,6 +272,7 @@ function buildDialog() {
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<select data-field="region"><option value="-1" selected>Auto (BIOS)</option><option value="0">NTSC 60 Hz</option><option value="1">PAL 50 Hz</option></select></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
+          <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button>
           <button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button>
           <button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button>
@@ -364,6 +365,7 @@ export function createRomTestRecorderUi({
         <div class="rom-recorder__card"><strong>Execution</strong>${playing ? "Running" : "Paused"} · ${core.getRegionName()} ${core.getFramesPerSecond()} Hz</div>
         <div class="rom-recorder__card"><strong>VDP mode</strong>${vdp.mode} · screen ${vdp.displayEnabled ? "on" : "off"} · NMI ${vdp.nmiEnabled ? "on" : "off"}</div>
         <div class="rom-recorder__card"><strong>Sprites</strong>${vdp.sprites16 ? "16×16" : "8×8"}${vdp.spritesMagnified ? " magnified" : ""} · backdrop ${vdp.backdrop}</div>
+        <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 voice module ${field("voiceModule").value}</div>
         <div class="rom-recorder__card"><strong>Name / pattern / color</strong>${formatHex(vdp.nameTable)} / ${formatHex(vdp.patternTable)} / ${formatHex(vdp.colorTable)}</div>
         <div class="rom-recorder__card"><strong>Sprite attributes / patterns</strong>${formatHex(vdp.spriteAttributeTable)} / ${formatHex(vdp.spritePatternTable)}</div>
       </div>
@@ -1200,6 +1202,7 @@ export function createRomTestRecorderUi({
     loadedRom = rom;
     core.loadBios(bios);
     core.loadRom(rom, { region: Number(field("region").value) });
+    core.setVoiceModuleProfile(field("voiceModule").value);
     recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
     recorder.start();
     if (!externalRom) installSourceBreakpoints();
@@ -1286,6 +1289,16 @@ export function createRomTestRecorderUi({
       setRecorderStatus("Restarting in the selected video region...");
       try { await startCore(); setRecorderStatus(`Running in ${core.getRegionName()} at ${core.getFramesPerSecond()} Hz.`); }
       catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
+    field("voiceModule").addEventListener("change", async () => {
+      const profile = field("voiceModule").selectedOptions[0]?.textContent || field("voiceModule").value;
+      setRecorderStatus(`Restarting with voice hardware: ${profile}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`Voice hardware is ${profile}; recording restarted for hardware detection.`);
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
     });
     field("controller").addEventListener("change", () => {
       controllerMasks[0] = 0;

@@ -522,6 +522,70 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/vendor/cvdevkit_sdcc/lib4ksa/spinner.s",
     "asm": "AMY_RESET_SPINNERS:\n    push af\n    xor a\n    ld hl,SPINNER_1\n    ld (hl),a\n    ld hl,SPINNER_2\n    ld (hl),a\n    pop af\n    ret"
   },
+  "AMY_VOICE_DETECT": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "asm": "AMY_VOICE_DETECT:\n    ret"
+  },
+  "AMY_VOICE_READY": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "asm": "AMY_VOICE_READY:\n    ret"
+  },
+  "AMY_VOICE_RESET": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "asm": "AMY_VOICE_RESET:\n    ret"
+  },
+  "AMY_VOICE_ALLOPHONE": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "deps": ["AMY_VOICE_READY"],
+    "asm": "AMY_VOICE_ALLOPHONE:\n    ret"
+  },
+  "AMY_VOICE_SPEAK": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "deps": ["AMY_VOICE_ALLOPHONE"],
+    "asm": "AMY_VOICE_SPEAK:\n    ret"
+  },
+  "AMY_VOICE_START": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "deps": ["AMY_VOICE_UPDATE"],
+    "asm": "AMY_VOICE_START:\n    ret"
+  },
+  "AMY_VOICE_UPDATE": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "deps": ["AMY_VOICE_READY", "AMY_VOICE_STOP"],
+    "asm": "AMY_VOICE_UPDATE:\n    ret"
+  },
+  "AMY_VOICE_STOP": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "asm": "AMY_VOICE_STOP:\n    ret"
+  },
+  "AMY_VOICE_SPEAKING": {
+    "group": "voice",
+    "sourcePath": "src/alexis_lib/coleco_voice.asm",
+    "asm": "AMY_VOICE_SPEAKING:\n    ret"
+  },
+  "AMY_PSG_TONE": {
+    "group": "sound",
+    "sourcePath": "src/alexis_lib/coleco_psg.asm",
+    "asm": "AMY_PSG_TONE:\n    ret"
+  },
+  "AMY_PSG_VOLUME": {
+    "group": "sound",
+    "sourcePath": "src/alexis_lib/coleco_psg.asm",
+    "asm": "AMY_PSG_VOLUME:\n    ret"
+  },
+  "AMY_PSG_NOISE": {
+    "group": "sound",
+    "sourcePath": "src/alexis_lib/coleco_psg.asm",
+    "asm": "AMY_PSG_NOISE:\n    ret"
+  },
   "AMY_WAIT_FRAMES_SAFE": {
     "group": "system",
     "sourcePath": "src/alexis_lib/coleco_wait.asm",

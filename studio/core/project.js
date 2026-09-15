@@ -1,7 +1,7 @@
 import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
-import { inferControllerBackendFromSource } from "./compilerFrontend.js";
+import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js";
 
 export function pathToLabel(path) {
   const base = path.split("/").pop() || "asset";
@@ -198,11 +198,29 @@ function decodeProjectTextForDependencyScan(projectFile) {
   return Array.from(bytes, (value) => String.fromCharCode(value & 0xFF)).join("");
 }
 
-function collectProjectAsmTextForDependencyScan(project) {
-  return (project.projectFiles || [])
-    .map((file) => decodeProjectTextForDependencyScan(file))
-    .filter(Boolean)
-    .join("\n");
+function collectProjectAsmTextForDependencyScan(project, entryText = project.sourceText || "") {
+  const filesByPath = new Map();
+  for (const file of project.projectFiles || []) {
+    const normalized = normalizeAsmIncludePath(file?.path || "").replace(/^@project\//i, "");
+    if (normalized) filesByPath.set(normalized.toLowerCase(), file);
+  }
+  const collected = [];
+  const visited = new Set();
+  const pendingTexts = [String(entryText || "")];
+  while (pendingTexts.length) {
+    const text = pendingTexts.pop();
+    for (const match of text.matchAll(/\binclude\s+["']@project\/([^"']+)["']/gi)) {
+      const normalized = normalizeAsmIncludePath(match[1]).replace(/^@project\//i, "");
+      const key = normalized.toLowerCase();
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const dependencyText = decodeProjectTextForDependencyScan(filesByPath.get(key));
+      if (!dependencyText) continue;
+      collected.push(dependencyText);
+      pendingTexts.push(dependencyText);
+    }
+  }
+  return collected.join("\n");
 }
 
 function buildLegacyInitInstructions(caps) {
@@ -405,27 +423,30 @@ function inferControllerBackend(sourceText, asmBody, { usesKeypad1, usesKeypad2,
   return backend;
 }
 
-function inferRuntimeCapabilities(project, asmBody) {
+function inferRuntimeCapabilities(project, asmBody, controllerUsageText = project.sourceText || "") {
   const sourceText = project.sourceText || "";
-  const usesSleepService = /^\s*sleep\s+after\s+(?:[0-9]+|\$[0-9A-F]+|[A-Za-z_][A-Za-z0-9_]*)\s+seconds?(?:\s+on\s+joypad\s+[12])?\s*$/im.test(sourceText);
-  const usesJoypadPressed1 = /\bJOYPAD_PRESSED_1\b/.test(asmBody);
-  const usesJoypadPressed2 = /\bJOYPAD_PRESSED_2\b/.test(asmBody);
-  const usesJoypadReleased1 = /\bJOYPAD_RELEASED_1\b/.test(asmBody);
-  const usesJoypadReleased2 = /\bJOYPAD_RELEASED_2\b/.test(asmBody);
+  const sourceMemoryCaps = inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound);
+  const usesSleepService = /\bsleep\s+after\s+(?:[0-9]+|\$[0-9A-F]+|[A-Za-z_][A-Za-z0-9_]*)\s+seconds?(?:\s+on\s+joypad\s+[12])?/i.test(sourceText);
+  const usesJoypadPressed1 = sourceMemoryCaps.usesJoypadPressed1 || /\bJOYPAD_PRESSED_1\b/.test(controllerUsageText);
+  const usesJoypadPressed2 = sourceMemoryCaps.usesJoypadPressed2 || /\bJOYPAD_PRESSED_2\b/.test(controllerUsageText);
+  const usesJoypadReleased1 = sourceMemoryCaps.usesJoypadReleased1 || /\bJOYPAD_RELEASED_1\b/.test(controllerUsageText);
+  const usesJoypadReleased2 = sourceMemoryCaps.usesJoypadReleased2 || /\bJOYPAD_RELEASED_2\b/.test(controllerUsageText);
   const usesSoundApi = /\bAMY_(SET_SOUND_TABLE|PLAY_SOUND|STOP_SOUND|MUTE_ALL)\b/.test(asmBody);
   const usesMusicApi = /\bAMY_(PLAY_SONG|UPDATE_MUSIC|STOP_SONG|NEXT_SONG)\b/.test(asmBody);
   const usesTinySound = /\bsndtiny_[12]\b/.test(asmBody) || sourceHintsTinySound(sourceText);
   const usesSprites = /\bAMY_(SET_SPRITES8X8|SET_SPRITES16X16|SET_SPRITES_SIMPLE|SET_SPRITES_DOUBLE|SET_SPRITE_COUNT|SET_SPRITE|HIDE_SPRITE|CLEAR_SPRITES|UPDATE_SPRITES)\b/.test(asmBody)
     || /\bsprites?\b/i.test(sourceText);
   const needsSpriteFlicker = /\bAMY_(?:SPRITE_FLICKER_(?:ON|OFF)|UPDATE_SPRITES_FLICKER)\b/.test(asmBody);
-  const usesJoypad1 = /\bJOYPAD_1\b/.test(asmBody) || usesJoypadPressed1 || usesJoypadReleased1 || usesSleepService;
-  const usesKeypad1 = /\bKEYPAD_1\b/.test(asmBody) || usesSleepService;
-  const usesJoypad2 = /\bJOYPAD_2\b/.test(asmBody) || usesJoypadPressed2 || usesJoypadReleased2 || usesSleepService;
-  const usesKeypad2 = /\bKEYPAD_2\b/.test(asmBody) || usesSleepService;
+  const sourceControllerBackend = inferControllerBackendFromSource(sourceText);
+  const needsGeneralControllerFallback = sourceMemoryCaps.needsControllers && !sourceControllerBackend;
+  const usesJoypad1 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsJoypad1) || /\bJOYPAD_1\b/.test(controllerUsageText) || usesJoypadPressed1 || usesJoypadReleased1 || usesSleepService;
+  const usesKeypad1 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsKeypad1) || /\bKEYPAD_1\b/.test(controllerUsageText) || usesSleepService;
+  const usesJoypad2 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsJoypad2) || /\bJOYPAD_2\b/.test(controllerUsageText) || usesJoypadPressed2 || usesJoypadReleased2 || usesSleepService;
+  const usesKeypad2 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsKeypad2) || /\bKEYPAD_2\b/.test(controllerUsageText) || usesSleepService;
   const usesJoypadVars = usesJoypad1 || usesKeypad1 || usesJoypad2 || usesKeypad2;
   const usesSpinner = /\bAMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)\b/.test(asmBody)
     || /\bspinner\b/i.test(sourceText);
-  let controllerBackend = inferControllerBackend(sourceText, asmBody, {
+  let controllerBackend = inferControllerBackend(sourceText, controllerUsageText, {
     usesKeypad1,
     usesKeypad2,
     usesSpinner,
@@ -458,13 +479,14 @@ function inferRuntimeCapabilities(project, asmBody) {
   const needsSleepState = /\bAMY_SLEEP_IDLE_TICKS\b/.test(asmBody);
   const needsExomizer = /\b(?:exomizer_decompress|AMY_EXOMIZER_TABLE)\b/.test(asmBody)
     || /\b(?:decompress\s+exomizer|codec\s+exomizer)\b/i.test(sourceText);
+  const needsVoiceQueue = sourceMemoryCaps.needsVoiceQueue || /\bAMY_VOICE_(?:START|UPDATE|STOP|SPEAKING)\b/.test(asmBody);
   const soundAreaCount = inferSoundAreaCount(sourceText);
-  const needsNmi = usesScreenOnNmi || usesHalt || needs120c || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow;
+  const needsNmi = usesScreenOnNmi || usesHalt || needs120c || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow || needsVoiceQueue;
   if (controllerBackend?.controllerBackend === "bios_cont_scan_compact" &&
       (needsSound || needsSpinner || needsFrameCounter || needs120c)) {
     controllerBackend = null;
   }
-  const needsNmiAckOnly = needsNmi && !needs120c && !needsControllers && !needsSound;
+  const needsNmiAckOnly = needsNmi && !needs120c && !needsControllers && !needsSound && !needsVoiceQueue;
   return {
     needsSprites,
     needsSpriteFlicker,
@@ -482,6 +504,7 @@ function inferRuntimeCapabilities(project, asmBody) {
     needsBackdropShadow,
     needsSleepState,
     needsExomizer,
+    needsVoiceQueue,
     soundAreaCount,
     needsNmiAckOnly,
     usesJoypad1,
@@ -492,7 +515,13 @@ function inferRuntimeCapabilities(project, asmBody) {
     usesJoypadPressed2,
     usesJoypadReleased2,
     usesKeypad2,
-    ...(controllerBackend || {})
+    ...(controllerBackend || {}),
+    ...(controllerBackend ? {
+      decoderNeedsJoypad1: usesJoypad1,
+      decoderNeedsKeypad1: usesKeypad1,
+      decoderNeedsJoypad2: usesJoypad2,
+      decoderNeedsKeypad2: usesKeypad2
+    } : {})
   };
 }
 
@@ -520,6 +549,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     caps.needs120c ||
     caps.needsBackdropShadow ||
     caps.needsSleepState ||
+    caps.needsVoiceQueue ||
     needsNmi;
   const needsSoundState =
     caps.needsSound ||
@@ -577,6 +607,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     needs120c: caps.needs120c,
     needsBackdropShadow: caps.needsBackdropShadow,
     needsSleepState: caps.needsSleepState,
+    needsVoiceQueue: caps.needsVoiceQueue,
     usesJoypadPressed1,
     usesJoypadPressed2,
     usesJoypadReleased1,
@@ -709,6 +740,10 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     }
     if (caps.needsSleepState) {
       lines.push(`AMY_SLEEP_IDLE_TICKS EQU ${hex16(addr.sleep_idle_ticks)}`);
+    }
+    if (caps.needsVoiceQueue) {
+      lines.push(`AMY_VOICE_MODULE EQU ${hex16(addr.voice_module)}`);
+      lines.push(`AMY_VOICE_POINTER EQU ${hex16(addr.voice_pointer)}`);
     }
     if (needsRuntimeState) {
       lines.push(`NO_NMI          EQU ${hex16(addr.no_nmi)}`);
@@ -1255,6 +1290,9 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ld (NO_NMI),a");
     lines.push("AMY_SKIP_USER_FRAME_HOOK:");
   }
+  if (caps.needsVoiceQueue) {
+    lines.push("        call AMY_VOICE_UPDATE");
+  }
   lines.push("        pop hl");
   lines.push("        pop de");
   lines.push("        pop bc");
@@ -1391,7 +1429,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     .join("\n");
 
   const asmBodyBase = asmBody;
-  const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project);
+  const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project, `${project.sourceText || ""}\n${asmBodyBase}`);
   const asmBodyForDependencyScan = `${stripSourceMarkersForScan(asmBodyBase)}\n${projectAsmDependencyText}`;
   const cartridge = metadata?.cartridge || null;
   const romTitleStart = 0x8024;
@@ -1402,7 +1440,8 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   });
   const runtimeCaps = inferRuntimeCapabilities(
     project,
-    `${asmBodyForDependencyScan}\n${alexisRuntimeForCaps || ""}`
+    `${asmBodyForDependencyScan}\n${alexisRuntimeForCaps || ""}`,
+    `${project.sourceText || ""}\n${projectAsmDependencyText}`
   );
   if (metadata?.needsFrameCounter) {
     runtimeCaps.needsFrameCounter = true;

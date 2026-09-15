@@ -1503,6 +1503,7 @@ export function transpileAmyCore(sourceText, deps) {
   let lastAuthoritativeR1Label = null;
   let lastAuthoritativeR1Line = null;
   let bufferedVdpR1PureModifiers = [];
+  let bufferedVdpR1StartValue = null;
 
   function addCompilerWarning(message) {
     const text = String(message || "").trim();
@@ -1522,6 +1523,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
   function resetBufferedVdpR1PureModifiers() {
     bufferedVdpR1PureModifiers = [];
+    bufferedVdpR1StartValue = null;
   }
   function resetVdpR1SemanticTracking() {
     resetVdpR1ModifierContexts();
@@ -1530,25 +1532,15 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function isBufferableVdpR1PureModifier(classification) {
-    return classification?.kind === "modifier"
-      && classification.label !== "nmi on"
-      && classification.label !== "nmi off"
-      && (
-        classification.category === "sprite_size"
-        || classification.category === "sprite_zoom"
-        || classification.category === "display"
-        || classification.category === "screen"
-        || classification.category === "screen_nmi"
-        || classification.category === "nmi"
-      );
+    return classification?.kind === "modifier";
   }
 
   function flushBufferedVdpR1PureModifiers() {
     if (!bufferedVdpR1PureModifiers.length) return;
     if (
-      lastAuthoritativeR1Baseline !== null &&
+      bufferedVdpR1StartValue !== null &&
       knownVdpR1Value !== null &&
-      knownVdpR1Value === lastAuthoritativeR1Baseline
+      knownVdpR1Value === bufferedVdpR1StartValue
     ) {
       const preview = bufferedVdpR1PureModifiers
         .map((entry) => `${entry.label} (line ${entry.lineNumber})`)
@@ -1664,6 +1656,7 @@ export function transpileAmyCore(sourceText, deps) {
     const knownAfter = applyKnownEffect();
       if (classification.kind === "modifier") {
         let suppressEmit = false;
+        const redundant = knownBefore !== null && knownAfter === knownBefore;
         const previousSameCategory = vdpR1ModifierContexts.find((entry) => entry.category === classification.category);
         if (
           classification.label === "display on" &&
@@ -1683,13 +1676,8 @@ export function transpileAmyCore(sourceText, deps) {
         ) {
           addCompilerWarning("display off only disables the display bit here; NMI remains enabled in the known VDP register 1 state. In normal Amy code, prefer screen off unless you intentionally want a blank display with interrupts still running.");
         }
-        if (knownBefore !== null && knownAfter === knownBefore) {
-          suppressEmit = classification.label !== "nmi on" && classification.label !== "nmi off";
-          if (suppressEmit) {
-            addCompilerWarning(`${classification.label} has no effect here; current known VDP register 1 state already includes that setting, so this command is omitted from generated ASM.`);
-          } else {
-            addCompilerWarning(`${classification.label} has no effect on the known VDP register 1 bit state here, but it is still emitted as an explicit NMI ownership barrier.`);
-          }
+        if (redundant) {
+          addCompilerWarning(`${classification.label} leaves the tracked VDP register 1 bits unchanged in this uninterrupted R1 sequence and may be omitted from generated ASM.`);
         }
         if (previousSameCategory && previousSameCategory.label !== classification.label) {
           addCompilerWarning(`${classification.label} supersedes earlier ${previousSameCategory.label} (line ${previousSameCategory.lineNumber}) for the same VDP register 1 setting category in this straight-line flow.`);
@@ -1701,7 +1689,7 @@ export function transpileAmyCore(sourceText, deps) {
         lineNumber
       });
       knownVdpR1Value = knownAfter;
-      return { suppressEmit };
+      return { suppressEmit, knownBefore, redundant };
     }
     if (classification.kind === "authoritative" && vdpR1ModifierContexts.length) {
       const modifierPreview = vdpR1ModifierContexts
@@ -4144,6 +4132,51 @@ export function transpileAmyCore(sourceText, deps) {
   if (firstPassNameError) {
     return { ok: false, asmBody: "", log: firstPassNameError };
   }
+  // Address-valued tables participate in expressions, so their shape must be
+  // known before statement emission regardless of declaration order.
+  for (let index = 0; index < lines.length; index += 1) {
+    const header = stripAmyInlineComment(lines[index]).trim().match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+words(?:(?:\s*=\s*|\s+)(.+))?$/i);
+    if (!header) continue;
+    const tokens = [];
+    if (header[2]?.trim()) {
+      tokens.push(...header[2].split(",").map((token) => token.trim()).filter(Boolean));
+    } else {
+      while (++index < lines.length) {
+        const dataLine = stripAmyInlineComment(lines[index]).trim();
+        if (/^end\s+data$/i.test(dataLine)) break;
+        if (dataLine) tokens.push(...dataLine.split(",").map((token) => token.trim()).filter(Boolean));
+      }
+    }
+    const entries = tokens.map((token) => {
+      const address = token.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
+      if (address) return ensureDataAsmSymbol(address[1]);
+      if (/^0x[0-9A-Fa-f]+$/i.test(token)) return `$${token.slice(2).toUpperCase()}`;
+      return token.toUpperCase();
+    });
+    if (entries.length && entries.length <= 128) dataWordTables.set(header[1], { length: entries.length, entries });
+  }
+  // Byte-table indexing is valid before the data declaration too. Record only
+  // its expanded shape here; the normal pass still owns byte emission/order.
+  for (let index = 0; index < lines.length; index += 1) {
+    const header = stripAmyInlineComment(lines[index]).trim().match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+bytes(?:(?:\s*=\s*|\s+)(.+))?$/i);
+    if (!header) continue;
+    const block = { name: header[1], values: [] };
+    try {
+      if (header[2]?.trim()) {
+        appendDataTokens(block, header[2], lines[index].trim());
+      } else {
+        while (++index < lines.length) {
+          const dataLine = stripAmyInlineComment(lines[index]).trim();
+          if (/^end\s+data$/i.test(dataLine)) break;
+          if (dataLine && looksLikeDataTokens(dataLine)) appendDataTokens(block, dataLine, lines[index].trim());
+        }
+      }
+      const length = block.values.reduce((sum, value) => sum + expandDataValueToken(value, block.name).length, 0);
+      if (length) dataLengths.set(block.name, length);
+    } catch {
+      // The normal pass reports the authoritative syntax or constant error.
+    }
+  }
   const staticLocalProcScanError = analyzeStaticLocalProcCandidates();
   if (staticLocalProcScanError) {
     return { ok: false, asmBody: "", log: staticLocalProcScanError };
@@ -4176,7 +4209,7 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     const currentVdpR1Classification = classifyVdpR1SemanticStatement(line);
-    if (!currentVdpR1Classification) {
+    if (!currentVdpR1Classification && line) {
       flushBufferedVdpR1PureModifiers();
     }
     {
@@ -4218,6 +4251,11 @@ export function transpileAmyCore(sourceText, deps) {
       }
     }
     {
+      const byteDataDeclaration = line.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+bytes(?:\s|$)/i);
+      if (byteDataDeclaration && !mapHasInsensitive(dataBlocks, byteDataDeclaration[1])) {
+        const provisionalName = [...dataLengths.keys()].find((name) => lowerName(name) === lowerName(byteDataDeclaration[1]));
+        if (provisionalName) dataLengths.delete(provisionalName);
+      }
       const dataMetaStmt = handleDataMetaStatement({
         line,
         rawLine,
@@ -4773,6 +4811,10 @@ export function transpileAmyCore(sourceText, deps) {
         }
         if (!vdpR1WarningResult?.suppressEmit) {
           if (isBufferableVdpR1PureModifier(currentVdpR1Classification)) {
+            if (vdpR1WarningResult.redundant) continue;
+            if (!bufferedVdpR1PureModifiers.length) {
+              bufferedVdpR1StartValue = vdpR1WarningResult.knownBefore;
+            }
             bufferedVdpR1PureModifiers = bufferedVdpR1PureModifiers
               .filter((entry) => entry.category !== currentVdpR1Classification.category);
             bufferedVdpR1PureModifiers.push({
@@ -4800,7 +4842,9 @@ export function transpileAmyCore(sourceText, deps) {
         tryEvaluateCompileTimeNumericExpression,
         normalizeExpression,
         makeGeneratedLabel,
-        resolveAddressSymbol
+        resolveAddressSymbol,
+        emitLoadSourceAddressIntoHL,
+        emitStoreInt8FromA
       });
       if (soundSpinnerStmt.handled) {
         if (!soundSpinnerStmt.ok) return { ok: false, asmBody: "", log: soundSpinnerStmt.log };
@@ -5083,7 +5127,20 @@ export function transpileAmyCore(sourceText, deps) {
       emitArithInt8Op,
       emitArithInt16Op,
       makeGeneratedLabel,
-      formatIxOffset
+      formatIxOffset,
+      compileDisplayGraphicsSpriteStatement: (inlineLine, inlineRawLine) => handleDisplayGraphicsSpriteStatement({
+        line: inlineLine,
+        rawLine: inlineRawLine,
+        preferScreenOnNoNmi,
+        currentGraphicsMode,
+        emitLoadInt8Into,
+        emitLoadInt8ValueInto,
+        emitLoadInt8ValueIntoPreserving,
+        tryEvaluateConstantExpression,
+        formatHex16,
+        makeGeneratedLabel,
+        usesSpriteFlicker
+      })
     });
 
     {

@@ -49,6 +49,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsSleepState = !!caps.needsSleepState;
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
   const needsExomizer = !!caps.needsExomizer;
+  const needsVoiceQueue = !!caps.needsVoiceQueue;
   const needsRuntimeState =
     needsControllers ||
     needsSpinner ||
@@ -61,7 +62,9 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     needsUserFrameHook ||
     needsAmyTimers ||
     needsSleepState ||
-    needsBackdropShadow;
+    needsBackdropShadow ||
+    needsVoiceQueue;
+
   const needsSoundState = !!caps.needsSoundState || needsSound || needsMusic;
 
   const reserved = [
@@ -125,6 +128,13 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
       reserved.push({ start: current, endExclusive: current + 4, label: "Amy controller state" });
       current += 4;
     }
+  }
+
+  if (needsVoiceQueue) {
+    addresses.voice_module = current;
+    addresses.voice_pointer = current + 1;
+    reserved.push({ start: current, endExclusive: current + 3, label: "Amy SP0256 voice queue state" });
+    current += 3;
   }
 
   if (usesJoypadPressed1 || usesJoypadReleased1) {

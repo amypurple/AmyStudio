@@ -597,7 +597,8 @@ export function createControlFlowHelpers(ctx) {
           // The branch immediately consumes Z/NZ and A is scratch in this emitter.
           lines.push("    dec a");
         } else if ((effectiveOperator === "==" || effectiveOperator === "!=") && immediateValue === 255) {
-          // The branch immediately consumes Z/NZ and A is scratch in this emitter.
+          // This emitter branches immediately and treats A as scratch, so wrapping
+          // $FF to zero is both smaller and faster than CP $FF.
           lines.push("    inc a");
         } else {
           lines.push(`    cp ${rightImmediate}`);

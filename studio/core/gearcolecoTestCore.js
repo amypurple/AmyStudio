@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20260802-z80-explorer",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20260914-sp0256-voice",
   import.meta.url
 );
 
@@ -268,6 +268,25 @@ export class GearcolecoTestCore {
   getFramebuffer() {
     const framebuffer = this.getFramebufferView();
     return { ...framebuffer, pixels: framebuffer.pixels.slice() };
+  }
+
+  setVoiceModuleEnabled(enabled) {
+    this.assertAlive();
+    if (this.module._gcw_set_sp0256_enabled(enabled ? 1 : 0) !== 1) {
+      throw new Error("GearColeco could not configure the SP0256 voice module.");
+    }
+  }
+
+  setVoiceModuleProfile(profile) {
+    this.assertAlive();
+    const profiles = { absent: 0, lundy: 1, eve: 2 };
+    const type = typeof profile === "number" ? profile : profiles[String(profile).toLowerCase()];
+    if (!Number.isInteger(type) || type < 0 || type > 2) {
+      throw new RangeError(`Unknown voice-module profile '${profile}'.`);
+    }
+    if (this.module._gcw_set_voice_module_type(type) !== 1) {
+      throw new Error("GearColeco could not configure the voice-module profile.");
+    }
   }
 
   getFramebufferView() {

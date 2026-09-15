@@ -51,13 +51,22 @@ export function createInlineStatementCompiler(ctx) {
     emitArithInt8Op,
     emitArithInt16Op,
     makeGeneratedLabel,
-    formatIxOffset
+    formatIxOffset,
+    compileDisplayGraphicsSpriteStatement
   } = ctx;
 
   return function compileInlineStatement(inlineStmt, rawLineText) {
     let inlineLines = null;
     const qualifiedOperand = "[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*";
     const currentFunction = currentFunctionRef();
+    if (/^(?:set|hide)\s+sprites?\b/i.test(inlineStmt)) {
+      const displayResult = compileDisplayGraphicsSpriteStatement?.(inlineStmt, rawLineText);
+      if (displayResult?.handled) {
+        return displayResult.ok
+          ? { ok: true, lines: displayResult.lines, log: "" }
+          : { ok: false, lines: [], log: displayResult.log };
+      }
+    }
     if (/^return$/i.test(inlineStmt)) {
       if (currentFunction) return { ok: false, lines: [], log: `Function return requires a value: ${rawLineText}` };
       inlineLines = emitCurrentProcReturnLines();
@@ -185,7 +194,9 @@ export function createInlineStatementCompiler(ctx) {
                 const inlinePutCountAt = inlineStmt.match(new RegExp(`^put\\s+(${qualifiedOperand})\\s+count\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+)$`, "i"));
                 if (inlinePutCountAt) {
                   const sourceInfo = getByteArrayBufferInfo(inlinePutCountAt[1], 1);
-                  const loadSource = sourceInfo ? emitLoadArrayAddressIntoHL(inlinePutCountAt[1], "0") : emitLoadSourceAddressIntoHL(inlinePutCountAt[1]);
+                  const loadSource = sourceInfo
+                    ? emitLoadArrayAddressIntoHL(inlinePutCountAt[1], "0")
+                    : emitLoadSourceAddressIntoHL(inlinePutCountAt[1]);
                   const loadInputs = emitLoadRoutineByteInputsFromTokens({
                     routineName: "AMY_PUT_AT",
                     values: { b: inlinePutCountAt[2], e: inlinePutCountAt[3], d: inlinePutCountAt[4] },
@@ -203,7 +214,9 @@ export function createInlineStatementCompiler(ctx) {
                     const sourceInfo = getByteArrayBufferInfo(inlinePutFrameAt[1], 1);
                     const sourceIsData = /^[A-Za-z_][A-Za-z0-9_]*$/.test(inlinePutFrameAt[1])
                       && typeof dataLengths?.get(inlinePutFrameAt[1]) === "number";
-                    const loadSource = sourceInfo ? emitLoadArrayAddressIntoHL(inlinePutFrameAt[1], "0") : emitLoadSourceAddressIntoHL(inlinePutFrameAt[1]);
+                    const loadSource = sourceInfo
+                      ? emitLoadArrayAddressIntoHL(inlinePutFrameAt[1], "0")
+                      : emitLoadSourceAddressIntoHL(inlinePutFrameAt[1]);
                     const loadInputs = emitLoadRoutineByteInputsFromTokens({
                       routineName: "PUT_FRAME",
                       values: { b: inlinePutFrameAt[3], c: inlinePutFrameAt[2], d: inlinePutFrameAt[5], e: inlinePutFrameAt[4] },

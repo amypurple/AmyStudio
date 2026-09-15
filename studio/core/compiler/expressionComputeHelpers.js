@@ -950,9 +950,15 @@ export function createExpressionComputeHelpers({
           return [`    ld de,(${scopedRuntimeName(rightToken)})`, "    ld hl,0", "    or a", "    sbc hl,de"];
         }
       }
+      const leftDeclaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
+      const rightDeclaredType = resolveDeclaredValueType(renderExpressionAst(node.right));
       const arithmeticContext = isAnyFixedDeclaredType(preferredDeclaredType)
         ? normalizeDeclaredType(preferredDeclaredType)
-        : resolveDeclaredValueType(renderExpressionAst(node));
+        : isAnyFixedDeclaredType(leftDeclaredType)
+          ? normalizeDeclaredType(leftDeclaredType)
+          : isAnyFixedDeclaredType(rightDeclaredType)
+            ? normalizeDeclaredType(rightDeclaredType)
+            : resolveDeclaredValueType(renderExpressionAst(node));
       const loadLeft = emitLoadInt16AstIntoHL(node.left, arithmeticContext);
       const loadRight = emitLoadInt16AstIntoHL(node.right, arithmeticContext);
       if (!loadLeft || !loadRight) return null;
