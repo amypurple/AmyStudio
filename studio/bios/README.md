@@ -15,3 +15,16 @@ BIOS in this folder under either filename:
 - `os7.rom`
 
 Known original ColecoVision BIOS MD5: `2c66f5911e5b42b8ebe113403548eee7`.
+
+## Coleco ADAM firmware
+
+The debugger can also boot ADAM SmartWriter or an ADAM cartridge. Choose the
+ADAM machine profile, then select these three firmware files together:
+
+- `OS7.ROM` (8 KiB)
+- `EOS.ROM` (8 KiB)
+- `WP.ROM` (32 KiB)
+
+Amy Studio validates the sizes and stores the files only in the current browser
+profile. They are never added to a project, project export, or repository. Use
+**Forget ADAM firmware** in the debugger to remove the saved copies.

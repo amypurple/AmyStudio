@@ -1,8 +1,14 @@
 import {
   GearcolecoTestCore,
   GEARCOLECO_TEST_INPUT,
-  GEARCOLECO_TEST_REGION
+  GEARCOLECO_TEST_REGION,
+  GEARCOLECO_VIDEO_CHIP
 } from "./gearcolecoTestCore.js?v=20260817-framebuffer-view";
+import {
+  clearAdamFirmwareFromBrowser,
+  loadAdamFirmwareFromBrowser,
+  saveAdamFirmwareToBrowser
+} from "./adamFirmwareStorage.js";
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
 import {
@@ -270,6 +276,8 @@ function buildDialog() {
       </div>
       <div class="rom-recorder__side">
         <div class="rom-recorder__settings">
+          <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">ADAM SmartWriter</option><option value="adam-cartridge">ADAM Cartridge</option></select></label>
+          <label>Video<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A</option></select></label>
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<select data-field="region"><option value="-1" selected>Auto (BIOS)</option><option value="0">NTSC 60 Hz</option><option value="1">PAL 50 Hz</option></select></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
@@ -278,6 +286,8 @@ function buildDialog() {
           <button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button>
           <button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button>
         </div>
+        <div class="rom-recorder__tools"><button type="button" data-action="loadAdamFirmware">Configure ADAM firmware...</button><button type="button" data-action="clearAdamFirmware">Forget ADAM firmware</button></div>
+        <input data-field="adamFirmwareFiles" type="file" accept=".rom,application/octet-stream" multiple hidden>
         <label>Target<select data-field="checkpoint"><option value="">Current frame</option></select></label>
         <div class="rom-recorder__tools"><button class="rom-recorder__compact-action" type="button" data-action="loadRom" title="Open external ROM" aria-label="Open external ROM">&#x21E7;</button><button class="rom-recorder__compact-action" type="button" data-action="useCompiledRom" title="Return to compiled Amy ROM" aria-label="Return to compiled Amy ROM">&#x21A9;</button><button class="rom-recorder__compact-action" type="button" data-action="arm" title="Run to checkpoint" aria-label="Run to checkpoint">&#x25B6;</button><button class="rom-recorder__compact-action" type="button" data-action="create" title="Save test JSON" aria-label="Save test JSON">&#x21E9;</button><button class="rom-recorder__compact-action" type="button" data-action="replay" title="Open and replay test" aria-label="Open and replay test">&#x21BB;</button></div>
         <label title="Allow a recompiled ROM with a different hash"><span>ROM &#x0394;</span><input data-field="allowRebuilt" type="checkbox" aria-label="Allow ROM hash change"></label>
@@ -343,12 +353,54 @@ export function createRomTestRecorderUi({
   let profileRequest = null;
   let profileRunToken = 0;
   const profileStats = new Map();
+  let adamFirmware = loadAdamFirmwareFromBrowser();
 
   const field = (name) => dialog.querySelector(`[data-field="${name}"]`);
   const action = (name) => dialog.querySelector(`[data-action="${name}"]`);
 
   function setRecorderStatus(message) {
     field("status").textContent = message;
+  }
+
+  function selectedMachineNeedsAdam() {
+    return field("machine").value.startsWith("adam-");
+  }
+
+  function updateFirmwareActions() {
+    const configured = Boolean(adamFirmware);
+    action("clearAdamFirmware").disabled = !configured;
+    action("loadAdamFirmware").textContent = configured
+      ? "Replace ADAM firmware..."
+      : "Configure ADAM firmware...";
+    const needsColecoBios = !selectedMachineNeedsAdam();
+    field("biosMissing").hidden = needsColecoBios ? Boolean(getEmulatorBios()) : configured;
+    field("biosMissing").querySelector("strong").textContent = needsColecoBios
+      ? "ColecoVision BIOS missing"
+      : "ADAM firmware missing";
+    field("biosMissing").querySelector("p").textContent = needsColecoBios
+      ? "Amy Studio cannot distribute the system BIOS. Add your own 8 KiB BIOS; it remains stored only in this browser."
+      : "Select your OS7.ROM, EOS.ROM, and WP.ROM files. They remain stored only in this browser.";
+    const button = action("loadBios");
+    button.textContent = needsColecoBios ? "Add ColecoVision BIOS..." : "Add ADAM firmware...";
+  }
+
+  async function importAdamFirmware(files) {
+    const selected = new Map(Array.from(files || []).map((file) => [file.name.toLowerCase(), file]));
+    const os7File = selected.get("os7.rom");
+    const eosFile = selected.get("eos.rom");
+    const wpFile = selected.get("wp.rom");
+    if (!os7File || !eosFile || !wpFile) {
+      throw new Error("Select OS7.ROM, EOS.ROM, and WP.ROM together.");
+    }
+    const [os7, eos, smartwriter] = await Promise.all([
+      os7File.arrayBuffer(), eosFile.arrayBuffer(), wpFile.arrayBuffer()
+    ]);
+    const images = { os7: new Uint8Array(os7), eos: new Uint8Array(eos), smartwriter: new Uint8Array(smartwriter) };
+    saveAdamFirmwareToBrowser(images, {
+      os7: os7File.name, eos: eosFile.name, smartwriter: wpFile.name
+    });
+    adamFirmware = loadAdamFirmwareFromBrowser();
+    updateFirmwareActions();
   }
 
   function parseAddressField(name, max = 0xFFFF) {
@@ -1198,11 +1250,22 @@ export function createRomTestRecorderUi({
     stopCore();
     const rom = romOverride || externalRom || getCompiledRom();
     const bios = getEmulatorBios();
-    if (!rom || !bios) throw new Error("Compile or open a ROM and load a BIOS first.");
+    const machine = field("machine").value;
+    const adam = machine.startsWith("adam-");
+    if (!adam && (!rom || !bios)) throw new Error("Compile or open a ROM and load a BIOS first.");
+    if (adam && !adamFirmware) throw new Error("Configure OS7.ROM, EOS.ROM, and WP.ROM first.");
+    if (machine === "adam-cartridge" && !rom) throw new Error("Compile or open a cartridge ROM first.");
     core = await GearcolecoTestCore.create({ seed: SEED });
     loadedRom = rom;
-    core.loadBios(bios);
-    core.loadRom(rom, { region: Number(field("region").value) });
+    core.setVideoChip(field("videoChip").value);
+    if (adam) {
+      core.loadAdamFirmware(adamFirmware);
+      if (machine === "adam-cartridge") core.loadRom(rom, { region: Number(field("region").value) });
+      core.startAdam({ cartridge: machine === "adam-cartridge" });
+    } else {
+      core.loadBios(bios);
+      core.loadRom(rom, { region: Number(field("region").value) });
+    }
     core.setVoiceModuleProfile(field("voiceModule").value);
     recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
     recorder.start();
@@ -1274,7 +1337,34 @@ export function createRomTestRecorderUi({
 
   function bindDialog() {
     action("close").addEventListener("click", () => dialog.close());
-    action("loadBios").addEventListener("click", requestEmulatorBios);
+    action("loadBios").addEventListener("click", () => {
+      if (selectedMachineNeedsAdam()) {
+        field("adamFirmwareFiles").value = "";
+        field("adamFirmwareFiles").click();
+      } else {
+        requestEmulatorBios();
+      }
+    });
+    action("loadAdamFirmware").addEventListener("click", () => {
+      field("adamFirmwareFiles").value = "";
+      field("adamFirmwareFiles").click();
+    });
+    action("clearAdamFirmware").addEventListener("click", () => {
+      clearAdamFirmwareFromBrowser();
+      adamFirmware = null;
+      stopCore();
+      updateFirmwareActions();
+      setRecorderStatus("ADAM firmware removed from this browser.");
+    });
+    field("adamFirmwareFiles").addEventListener("change", async () => {
+      try {
+        await importAdamFirmware(field("adamFirmwareFiles").files);
+        setRecorderStatus("ADAM firmware stored only in this browser. Starting ADAM...");
+        if (selectedMachineNeedsAdam()) await startCore();
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
+    });
     action("fullscreen").addEventListener("click", async () => {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await dialog.requestFullscreen();
@@ -1467,6 +1557,13 @@ export function createRomTestRecorderUi({
         setRecorderStatus(error.message || String(error));
       }
     });
+    for (const name of ["machine", "videoChip"]) field(name).addEventListener("change", async () => {
+      updateFirmwareActions();
+      const profile = field("machine").selectedOptions[0]?.textContent || field("machine").value;
+      setRecorderStatus(`Starting ${profile}...`);
+      try { await startCore(); setRecorderStatus(`${profile} is running.`); }
+      catch (error) { stopCore(); setRecorderStatus(error.message || String(error)); }
+    });
     let romDragDepth = 0;
     dialog.addEventListener("dragenter", (event) => {
       if (!event.dataTransfer?.types?.includes("Files")) return;
@@ -1613,11 +1710,14 @@ export function createRomTestRecorderUi({
     applyScale();
     action("useCompiledRom").disabled = !getCompiledRom();
     dialog.showModal();
-    field("biosMissing").hidden = Boolean(getEmulatorBios());
-    if (!getEmulatorBios()) {
+    updateFirmwareActions();
+    const missingSystemFirmware = selectedMachineNeedsAdam() ? !adamFirmware : !getEmulatorBios();
+    if (missingSystemFirmware) {
       playing = false;
       playbackAccumulator = 0;
-      setRecorderStatus("ColecoVision BIOS missing. Add your own 8 KiB BIOS to start emulation.");
+      setRecorderStatus(selectedMachineNeedsAdam()
+        ? "ADAM firmware missing. Add OS7.ROM, EOS.ROM, and WP.ROM to start emulation."
+        : "ColecoVision BIOS missing. Add your own 8 KiB BIOS to start emulation.");
       action("loadBios").focus();
       return;
     }
@@ -1631,7 +1731,7 @@ export function createRomTestRecorderUi({
       dialog.querySelector("canvas").focus();
       return;
     }
-    if (!getCompiledRom() && !externalRom) {
+    if (!getCompiledRom() && !externalRom && field("machine").value !== "adam-computer") {
       playing = false;
       playbackAccumulator = 0;
       setRecorderStatus("Open a .rom, .col, or .bin with ⇧. No Amy compilation is required.");
