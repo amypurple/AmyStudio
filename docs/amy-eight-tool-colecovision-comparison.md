@@ -25,7 +25,7 @@ features are listed separately from language capabilities.
 | devkitSMS + `SGlib_CV` | SDCC C plus compact game libraries | ColecoVision adaptation of the SG/SMS development workflow |
 | PVColLib | ColecoVision-focused SDCC C library and devkit | Native VDP, controller, sprite, sound, music, and compression APIs |
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
-| libcv / libcvu | ColecoVision-focused SDCC C libraries by Philipp Klaus Krause | Small link-only runtime with native graphics, input, sprites, and RLE+Huffman assets |
+| PkK's devkit | Philipp Klaus Krause's ColecoVision SDCC C devkit, using the `libcv` / `libcvu` libraries | Small link-only runtime with native graphics, input, sprites, and RLE+Huffman assets |
 
 ## Reproducible six-sample ROM suite
 
@@ -56,7 +56,7 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
-| libcv / libcvu / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Linked only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
+| PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
 These are the most size-oriented **native settings successfully validated in this study**. They
 are not claims about every release or possible project configuration. No other toolchain's output
@@ -65,7 +65,7 @@ its default.
 
 ### Real occupied size, excluding cartridge padding
 
-| Sample | Amy Studio | NewColeco | libcv | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
+| Sample | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **238** | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
 | Warrior bitmap | **3,254** | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
@@ -107,7 +107,7 @@ PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes r
 controller logic and occupied size are unchanged.
 
 Native bitmap paths are Amy/z88dk ZX0, CVBasic Pletter, ugBASIC resources, devkitSMS aPLib,
-PVColLib RLE, libcv RLE+Huffman, and NewColeco DAN2. All framebuffers are exact despite equivalent internal table
+PVColLib RLE, PkK's devkit using `libcv` RLE+Huffman, and NewColeco DAN2. All framebuffers are exact despite equivalent internal table
 encodings. PVColLib Pletter failed VRAM validation and is excluded.
 
 For z88dk, MDKRLE reaches VRAM at frame 93, ZX0 at 132, and ZX7 at 138. ZX0 saves 935 bytes versus
@@ -167,7 +167,7 @@ Legend: **Yes** = verified or explicit target support; **Partial** = manual or n
 `*` marks a benchmark adaptation written here, not a native ColecoVision
 direct-to-VRAM path supplied by that solution.
 
-This compact matrix covers six current general-purpose toolchains. NewColeco and libcv are
+This compact matrix covers six current general-purpose toolchains. NewColeco and PkK's devkit are
 documented separately below from their measured fixtures and inspected APIs.
 
 | Capability | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS / SGlib_CV | PVColLib |
@@ -524,14 +524,14 @@ BIOS-aware and link-only-what-is-used philosophy was already effective. Amy Stud
 language, integrated assets, diagnostics, and debugging; this describes an evolution of workflow,
 not a judgment on the earlier kit.
 
-### libcv is compact but deliberately low level
+### PkK's devkit is compact but deliberately low level
 
-Philipp Klaus Krause's libcv/libcvu links only used SDCC modules and completes all six fixtures.
+Philipp Klaus Krause's devkit uses `libcv` / `libcvu`, links only used SDCC modules, and completes all six fixtures.
 Its six-sample total is 10,835 bytes, third overall. The deterministic state update averages 8,315
 cycles with a 10,412-cycle worst frame. Its native RLE+Huffman bitmap path reproduces all 12,288
 Warrior bytes exactly, but the 2,934-byte payload also needs a 514-byte tree/configuration, about
 411 linked decoder bytes, and 19 bytes of runtime state. Across 42 pictures its median payload is
-4,098 bytes and it usually ranks 14th or 15th among 17 measured methods. This makes libcv useful
+4,098 bytes and it usually ranks 14th or 15th among 17 measured methods. This makes PkK's devkit useful
 evidence for compact C linking and shared-codebook research, not a general replacement for Amy's
 current bitmap codecs.
 
@@ -569,7 +569,7 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 | 3 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
 | 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
 
-The codec study starts from libcv's verified RLE+Huffman path without copying its format into Amy.
+The codec study starts from the verified `libcv` RLE+Huffman path in PkK's devkit without copying its format into Amy.
 It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
 all 42 pictures. Adoption requires exact JavaScript round trips, direct-to-VRAM Z80 proof, measured
 decoder bytes, CPU RAM, GearColeco cycles, and a first-use ROM win over Amy's existing codecs.
