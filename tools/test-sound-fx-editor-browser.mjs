@@ -104,7 +104,7 @@ try {
   assert.notEqual(await evaluate(`getComputedStyle(document.getElementById("btnInspectSourceSounds")).display`), "none", "SOUND stays visible while the ASM panel is open");
   await evaluate(`document.getElementById("btnProjectAudio").click()`);
   await waitFor(`document.getElementById("wavConverterDialog").open`, "audio converter");
-  assert.deepEqual(await evaluate(`Array.from(document.getElementById("wavDigitalFormat").options).map(option => option.value)`), ["dsound", "tripcm"], "digital converter exposes DSOUND and TriPCM without another panel");
+  assert.deepEqual(await evaluate(`Array.from(document.getElementById("wavDigitalFormat").options).map(option => option.value)`), ["dsound", "tripcm", "voxpcm"], "digital converter exposes DSOUND, TriPCM, and VOXPCM without another panel");
   await evaluate(`(() => {
     const select = document.getElementById("wavDigitalFormat");
     select.value = "tripcm";

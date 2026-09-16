@@ -158,8 +158,9 @@ try {
   assert.match(sourceAfter, /set sound table Commando_table areas 2/, "no prior table -> setup line auto-inserted");
   assert.match(sourceAfter, /play song Commando_song/, "no prior table -> play line auto-inserted");
 
-  await waitFor(`document.querySelectorAll(".sound-library-row").length === 2`, "imported song shows 2 paired rows");
-  const rowText = await evaluate(`Array.from(document.querySelectorAll(".sound-library-row")).map((row) => row.textContent).join(" | ")`);
+  const tableRowSelector = ".graphics-editor-modal__item:not(.coleco-song-list) > .sound-library-row";
+  await waitFor(`document.querySelectorAll(${JSON.stringify(tableRowSelector)}).length === 2`, "imported song shows 2 paired rows");
+  const rowText = await evaluate(`Array.from(document.querySelectorAll(${JSON.stringify(tableRowSelector)})).map((row) => row.textContent).join(" | ")`);
   assert.match(rowText, /Commando_ch1/);
   assert.match(rowText, /Commando_ch2/);
   assert.match(rowText, /Tiny/);

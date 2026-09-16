@@ -1064,5 +1064,19 @@ export const exampleManifest = [
       "selftest",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-runtime-input-expression-test",
+    "label": "Amy Runtime Input Expression Test",
+    "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",
+    "projectName": "amy-runtime-input-expression-test",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
   }
 ];

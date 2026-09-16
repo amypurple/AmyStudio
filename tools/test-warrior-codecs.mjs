@@ -1,18 +1,23 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 
 import { compressBytes, decompressBytes, getCompressionCatalog } from '../studio/core/compression.js';
+import { exampleCatalog } from '../studio/examples.js';
 
 const sourceFiles = [
-  { name: 'warrior.pattern', path: 'assets/compressed/warrior/pattern.zx0' },
-  { name: 'warrior.color', path: 'assets/compressed/warrior/color.zx0' },
+  { name: 'warrior.pattern', path: 'warrior.pattern.zx0' },
+  { name: 'warrior.color', path: 'warrior.color.zx0' },
 ];
+
+const example = exampleCatalog.find((entry) => entry.id === 'warrior-barbarian-slideshow');
+assert.ok(example, 'missing Warrior/Barbarian example');
 
 const codecs = getCompressionCatalog().filter((entry) => entry.codecId !== 'raw');
 const rows = [];
 
 for (const file of sourceFiles) {
-  const zx0Bytes = new Uint8Array(await readFile(file.path));
+  const projectFile = example.projectFiles?.find((entry) => entry.path === file.path);
+  assert.ok(projectFile?.base64, `missing embedded ${file.path}`);
+  const zx0Bytes = new Uint8Array(Buffer.from(projectFile.base64, 'base64'));
   const raw = new Uint8Array(await decompressBytes('zx0', zx0Bytes));
   assert.equal(raw.length, 6144, `${file.name}: expected 6144 raw bytes after ZX0 decode`);
 
