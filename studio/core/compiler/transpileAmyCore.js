@@ -4149,7 +4149,7 @@ export function transpileAmyCore(sourceText, deps) {
     }
     const entries = tokens.map((token) => {
       const address = token.match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
-      if (address) return ensureDataAsmSymbol(address[1]);
+      if (address) return resolveAddressSymbol(address[1]);
       if (/^0x[0-9A-Fa-f]+$/i.test(token)) return `$${token.slice(2).toUpperCase()}`;
       return token.toUpperCase();
     });

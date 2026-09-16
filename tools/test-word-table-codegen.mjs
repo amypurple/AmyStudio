@@ -194,6 +194,15 @@ loop forever
 
 const result = transpileAmy(TABLE_DEMO);
 
+const assetTableResult = transpileAmy(`asset Picture0 from "@project/picture-0.zx0" codec zx0
+asset Picture1 from "@project/picture-1.zx0" codec zx0
+data Pictures words = @Picture0, @Picture1
+u8 PictureIndex = 0
+u16 PictureAddress = 0
+PictureAddress = Pictures[PictureIndex]
+loop forever
+`);
+
 check("word table demo transpiles", () => {
   assert.equal(result.ok, true, result.log || "transpile failed");
 });
@@ -226,6 +235,15 @@ check("put frame accepts a table entry as source", () => {
     asm,
     /ex de,hl\s*\n\s*push hl\s*\n(?:\s*ld [abcde],.*\n)+\s*pop hl\s*\n\s*push ix\s*\n\s*push iy\s*\n\s*call PUT_FRAME/,
     "PUT_FRAME should preserve and restore the dereferenced HL around argument setup"
+  );
+});
+
+check("word table preserves asset labels", () => {
+  assert.equal(assetTableResult.ok, true, assetTableResult.log || "asset table transpile failed");
+  assert.match(
+    assetTableResult.asmBody,
+    /AMY_UDATA_Pictures:\s*\n\s*dw Asset_Picture0,Asset_Picture1/,
+    "asset addresses must resolve to Asset_ labels rather than synthetic AMY_UDATA_ labels"
   );
 });
 
