@@ -230,6 +230,7 @@ function ensureStyles() {
     .rom-recorder__frame { min-width:72px; color:#65dbef; }
     .rom-recorder__status { min-height:1.5em; color:#a7b4bb; }
     .rom-recorder__compact-action { display:inline-grid; place-items:center; width:34px; min-width:34px; height:34px; padding:0; font-size:15px; line-height:1; }
+    .rom-recorder.is-rom-dragover { outline:3px solid #65dbef; outline-offset:-5px; }
     @media(max-width:1080px) { .rom-recorder__body { display:block; height:auto; max-height:calc(96vh - 52px); overflow:auto; } .rom-recorder__stage,.rom-recorder__side,.rom-recorder__debug { margin-bottom:10px; } .rom-recorder__transport { grid-template-columns:repeat(6,auto); } .rom-recorder__transport input[type=range] { grid-column:1 / -1; } }
   `;
   document.head.append(style);
@@ -280,7 +281,7 @@ function buildDialog() {
         <label>Target<select data-field="checkpoint"><option value="">Current frame</option></select></label>
         <div class="rom-recorder__tools"><button class="rom-recorder__compact-action" type="button" data-action="loadRom" title="Open external ROM" aria-label="Open external ROM">&#x21E7;</button><button class="rom-recorder__compact-action" type="button" data-action="useCompiledRom" title="Return to compiled Amy ROM" aria-label="Return to compiled Amy ROM">&#x21A9;</button><button class="rom-recorder__compact-action" type="button" data-action="arm" title="Run to checkpoint" aria-label="Run to checkpoint">&#x25B6;</button><button class="rom-recorder__compact-action" type="button" data-action="create" title="Save test JSON" aria-label="Save test JSON">&#x21E9;</button><button class="rom-recorder__compact-action" type="button" data-action="replay" title="Open and replay test" aria-label="Open and replay test">&#x21BB;</button></div>
         <label title="Allow a recompiled ROM with a different hash"><span>ROM &#x0394;</span><input data-field="allowRebuilt" type="checkbox" aria-label="Allow ROM hash change"></label>
-        <input data-field="romFile" type="file" accept=".rom,.col,.bin,application/octet-stream" hidden>
+        <input data-field="romFile" type="file" accept=".rom,.col" hidden>
         <input data-field="testFile" type="file" accept=".amy-rom-test.json,application/json" hidden>
         <div class="rom-recorder__status" data-field="status">Ready.</div>
       </div>
@@ -1252,6 +1253,25 @@ export function createRomTestRecorderUi({
     button.addEventListener("lostpointercapture", release);
   }
 
+  async function loadExternalRomFile(file) {
+    const extension = String(file?.name || "").toLowerCase().match(/\.[^.]+$/)?.[0] || "";
+    if (extension !== ".rom" && extension !== ".col") {
+      throw new Error("External ROM must be an uncompressed .rom or .col file. ZIP and GZ archives are not supported yet.");
+    }
+    setRecorderStatus(`Loading ${file.name}...`);
+    externalRom = new Uint8Array(await file.arrayBuffer());
+    externalRomName = file.name;
+    symbols = [];
+    profileStats.clear();
+    field("checkpoint").replaceChildren(new Option("Current frame", ""));
+    field("rawMap").textContent = "External ROM: no Amy linker map.";
+    await startCore(externalRom);
+    action("useCompiledRom").disabled = !getCompiledRom();
+    renderSymbolList();
+    renderBreakpointList();
+    setRecorderStatus(`Running external ROM ${externalRomName}. Mouse spinner deltas are recorded per frame.`);
+  }
+
   function bindDialog() {
     action("close").addEventListener("click", () => dialog.close());
     action("loadBios").addEventListener("click", requestEmulatorBios);
@@ -1439,19 +1459,44 @@ export function createRomTestRecorderUi({
     field("romFile").addEventListener("change", async () => {
       const file = field("romFile").files?.[0];
       if (!file) return;
-      setRecorderStatus(`Loading ${file.name}...`);
       try {
-        externalRom = new Uint8Array(await file.arrayBuffer());
-        externalRomName = file.name;
-        symbols = [];
-        profileStats.clear();
-        field("checkpoint").replaceChildren(new Option("Current frame", ""));
-        field("rawMap").textContent = "External ROM: no Amy linker map.";
-        await startCore(externalRom);
-        action("useCompiledRom").disabled = !getCompiledRom();
-        renderSymbolList();
-        renderBreakpointList();
-        setRecorderStatus(`Running external ROM ${externalRomName}. Mouse spinner deltas are recorded per frame.`);
+        await loadExternalRomFile(file);
+      } catch (error) {
+        externalRom = null;
+        externalRomName = "";
+        setRecorderStatus(error.message || String(error));
+      }
+    });
+    let romDragDepth = 0;
+    dialog.addEventListener("dragenter", (event) => {
+      if (!event.dataTransfer?.types?.includes("Files")) return;
+      event.preventDefault();
+      romDragDepth += 1;
+      dialog.classList.add("is-rom-dragover");
+    });
+    dialog.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer?.types?.includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    });
+    dialog.addEventListener("dragleave", () => {
+      romDragDepth = Math.max(0, romDragDepth - 1);
+      if (!romDragDepth) dialog.classList.remove("is-rom-dragover");
+    });
+    dialog.addEventListener("drop", async (event) => {
+      if (!event.dataTransfer?.files?.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      romDragDepth = 0;
+      dialog.classList.remove("is-rom-dragover");
+      const files = [...event.dataTransfer.files];
+      const romFile = files.find((file) => /\.(?:rom|col)$/i.test(file.name || ""));
+      if (!romFile) {
+        setRecorderStatus("Drop one uncompressed .rom or .col file here. ZIP and GZ archives are not supported yet.");
+        return;
+      }
+      try {
+        await loadExternalRomFile(romFile);
       } catch (error) {
         externalRom = null;
         externalRomName = "";
