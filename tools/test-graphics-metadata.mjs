@@ -47,6 +47,7 @@ const multiSourceConfig = parseGraphicsEditorsConfig({ path: "editors.json" }, j
     kind: "sprite-patterns",
     patterns: [{ from: "inline", name: "FrameA" }, { from: "file", name: "frame-b.zx0" }],
     colors: [{ from: "inline", name: "ColorsA" }, { from: "file", name: "colors-b.raw" }],
+    previewSize: [16, 48],
     animation: { frameMs: 120, frames: [0, { layers: [{ pattern: 1, color: 6, offset: [1, -1] }] }] }
   }]
 }));
@@ -58,6 +59,7 @@ assert.deepEqual(multiSourceConfig.editors[0].colorRefs.map(({ from, name }) => 
   { from: "inline", name: "ColorsA" },
   { from: "file", name: "colors-b.raw" }
 ]);
+assert.deepEqual(multiSourceConfig.editors[0].previewSize, [16, 48]);
 assert.match(describeGraphicsEditor(config.editors[0]), /tilemap .* 19x21 .* screen 6,2 .* 1 entry/);
 
 assert.equal(parseGraphicsEditorsConfig({ path: "not-editors.json.bin" }, jsonBytes({ editors: [] })), null);

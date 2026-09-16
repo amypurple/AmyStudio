@@ -796,6 +796,9 @@ export function createGraphicsEditorUi({
     const spriteSize = Array.isArray(editor.spriteSize) ? editor.spriteSize : [16, 16];
     const spriteWidth = Math.max(8, Number(spriteSize[0]) || 16);
     const spriteHeight = Math.max(8, Number(spriteSize[1]) || 16);
+    const previewSize = Array.isArray(editor.previewSize) ? editor.previewSize : spriteSize;
+    const previewWidth = Math.max(spriteWidth, Number(previewSize[0]) || spriteWidth);
+    const previewHeight = Math.max(spriteHeight, Number(previewSize[1]) || spriteHeight);
     const bytesPerSprite = spriteWidth <= 8 && spriteHeight <= 8 ? 8 : 32;
     const patternStep = bytesPerSprite / 8;
     const sourceBasePattern = Number(editor.sourceBasePattern ?? editor.dataBasePattern ?? editor.basePattern ?? 0) & 0xFF;
@@ -923,8 +926,8 @@ export function createGraphicsEditorUi({
     editCanvas.className = "graphics-editor-charset-canvas";
     editorPane.appendChild(editCanvas);
     const animationCanvas = document.createElement("canvas");
-    animationCanvas.width = spriteWidth * 8;
-    animationCanvas.height = spriteHeight * 8;
+    animationCanvas.width = previewWidth * 8;
+    animationCanvas.height = previewHeight * 8;
     animationCanvas.className = "graphics-editor-animation-preview";
     animationCanvas.title = "Runtime-style animation preview. Editing remains in the pixel grid above.";
     editorPane.appendChild(animationCanvas);
@@ -1061,21 +1064,21 @@ export function createGraphicsEditorUi({
       return backgroundTile;
     }
 
-    function drawSpriteBackground(ctx, scale, tileValue = backgroundTile) {
+    function drawSpriteBackground(ctx, scale, tileValue = backgroundTile, width = spriteWidth, height = spriteHeight) {
       ctx.fillStyle = "#050509";
-      ctx.fillRect(0, 0, spriteWidth * scale, spriteHeight * scale);
+      ctx.fillRect(0, 0, width * scale, height * scale);
       if (!backgroundPatternBytes) {
         const checker = Math.max(2, Math.floor(scale / 2));
-        for (let y = 0; y < spriteHeight * scale; y += checker) {
-          for (let x = 0; x < spriteWidth * scale; x += checker) {
+        for (let y = 0; y < height * scale; y += checker) {
+          for (let x = 0; x < width * scale; x += checker) {
             ctx.fillStyle = ((x / checker + y / checker) & 1) ? "#171722" : "#08080d";
             ctx.fillRect(x, y, checker, checker);
           }
         }
         return;
       }
-      const tilesX = Math.ceil(spriteWidth / 8);
-      const tilesY = Math.ceil(spriteHeight / 8);
+      const tilesX = Math.ceil(width / 8);
+      const tilesY = Math.ceil(height / 8);
       for (let ty = 0; ty < tilesY; ty += 1) {
         for (let tx = 0; tx < tilesX; tx += 1) {
           const pattern = tilePatternBytesForValue(backgroundPatternBytes, tileValue, backgroundBaseTile);
@@ -1108,7 +1111,7 @@ export function createGraphicsEditorUi({
       const scale = 8;
       ctx.imageSmoothingEnabled = false;
       const frame = animationFrames[animationPosition] || { layers: [], backgroundTile: null };
-      drawSpriteBackground(ctx, scale, frame.backgroundTile ?? backgroundTile);
+      drawSpriteBackground(ctx, scale, frame.backgroundTile ?? backgroundTile, previewWidth, previewHeight);
       for (const layer of frame.layers) {
         ctx.fillStyle = TMS_PALETTE[layer.color] || "#ffffff";
         for (let row = 0; row < spriteHeight; row += 1) {

@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20260914-sp0256-voice",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20260916-gearcoleco-170-adam-f18a-voice",
   import.meta.url
 );
 
@@ -8,6 +8,17 @@ export const GEARCOLECO_TEST_REGION = Object.freeze({
   PAL: 1,
   AUTO: -1
 });
+
+export const GEARCOLECO_VIDEO_CHIP = Object.freeze({
+  AUTO: 0,
+  TMS9918A: 1,
+  F18A: 2
+});
+
+export const GEARCOLECO_MACHINE = Object.freeze({ AUTO: 0, COLECOVISION: 1, ADAM: 2 });
+export const GEARCOLECO_ADAM_BOOT = Object.freeze({ COMPUTER: 0, CARTRIDGE: 1 });
+export const GEARCOLECO_ADAM_MEDIA = Object.freeze({ DATA_PACK: 1, DISK: 2 });
+export const GEARCOLECO_ADAM_SLOT = Object.freeze({ DISK_1: 0, DISK_2: 1, DATA_PACK_1: 2, DATA_PACK_2: 3 });
 
 export function detectColecoRegionFromBios(bytes) {
   const bios = requireBytes(bytes, "BIOS");
@@ -268,6 +279,75 @@ export class GearcolecoTestCore {
   getFramebuffer() {
     const framebuffer = this.getFramebufferView();
     return { ...framebuffer, pixels: framebuffer.pixels.slice() };
+  }
+
+  loadAdamFirmware({ os7, eos, smartwriter }) {
+    const images = [
+      requireBytes(os7, "ADAM OS-7"),
+      requireBytes(eos, "ADAM EOS"),
+      requireBytes(smartwriter, "ADAM SmartWriter")
+    ];
+    const pointers = images.map((bytes) => this.module._malloc(bytes.byteLength || 1));
+    try {
+      images.forEach((bytes, index) => this.module.HEAPU8.set(bytes, pointers[index]));
+      if (this.module._gcw_load_adam_firmware(
+        pointers[0], images[0].byteLength,
+        pointers[1], images[1].byteLength,
+        pointers[2], images[2].byteLength
+      ) !== 1) throw new Error("GearColeco rejected the ADAM firmware set.");
+    } finally {
+      pointers.forEach((pointer) => this.module._free(pointer));
+    }
+  }
+
+  startAdam({ cartridge = false } = {}) {
+    this.assertAlive();
+    if (this.module._gcw_start_adam(cartridge ? 1 : 0) !== 1) {
+      throw new Error("GearColeco could not start Coleco ADAM.");
+    }
+  }
+
+  getMachine() {
+    this.assertAlive();
+    return this.module._gcw_get_machine() | 0;
+  }
+
+  loadAdamMedia(bytes, { slot, type, writeProtected = true }) {
+    return this.withInputBytes(bytes, "ADAM media", (pointer, size) => {
+      if (this.module._gcw_load_adam_media(slot, type, pointer, size, writeProtected ? 1 : 0) !== 1) {
+        throw new Error("GearColeco rejected the ADAM media image.");
+      }
+      return true;
+    });
+  }
+
+  ejectAdamMedia(slot) {
+    this.assertAlive();
+    this.module._gcw_eject_adam_media(slot);
+  }
+
+  setAdamKey(key, pressed) {
+    this.assertAlive();
+    if (this.module._gcw_adam_key(key, pressed ? 1 : 0) !== 1) {
+      throw new RangeError(`Invalid ADAM key ${key}.`);
+    }
+  }
+
+  setVideoChip(chip) {
+    this.assertAlive();
+    const profiles = { auto: 0, tms9918a: 1, f18a: 2 };
+    const value = typeof chip === "number" ? chip : profiles[String(chip).toLowerCase()];
+    if (!Number.isInteger(value) || value < 0 || value > 2) {
+      throw new RangeError(`Unknown video chip '${chip}'.`);
+    }
+    if (this.module._gcw_set_video_chip(value) !== 1) {
+      throw new Error("GearColeco could not select the video chip.");
+    }
+  }
+
+  getVideoChip() {
+    this.assertAlive();
+    return this.module._gcw_get_video_chip() | 0;
   }
 
   setVoiceModuleEnabled(enabled) {
