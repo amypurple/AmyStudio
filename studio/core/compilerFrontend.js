@@ -138,6 +138,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const usesVblankHook = /^\s*on\s+(?:vblank|frame)\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:'.*)?$/im.test(codeText);
   const needsFrameCounter =
     usesTinySound ||
+    needsSpriteFlicker ||
     /\bAMY_FRAME_COUNTER\b/i.test(text) ||
     /\bframe\b(?!\s+size)/i.test(codeText);
   const needsVdpStatusShadow =
@@ -156,7 +157,11 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsVdpStatusShadow ||
     needsFrameCounter ||
     usesVblankHook;
-  const controllerBackend = inferControllerBackendFromSource(codeText);
+  let controllerBackend = inferControllerBackendFromSource(codeText);
+  if (controllerBackend?.controllerBackend === "bios_cont_scan_compact" &&
+      (needsSound || needsSpinner || needsFrameCounter)) {
+    controllerBackend = null;
+  }
   return {
     needsSound,
     needsMusic,

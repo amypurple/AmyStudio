@@ -25,6 +25,12 @@ function compile(name, body, succeeds = true) {
   return readFileSync(asm, "utf8");
 }
 
+function addressOf(asm, symbol) {
+  const match = asm.match(new RegExp(`^${symbol} EQU \\$([0-9A-F]+)$`, "im"));
+  assert.ok(match, `Missing ${symbol}`);
+  return Number.parseInt(match[1], 16);
+}
+
 try {
   const asm = compile("voice-api", `
 u8 module = 0
@@ -64,6 +70,28 @@ end data
   assert.match(asm, /ld hl,AMY_UDATA_phrases[\s\S]*add hl,de[\s\S]*call AMY_VOICE_START/i);
   assert.match(asm, /out \(\$43\),a/i);
   assert.match(asm, /out \(\$48\),a/i);
+
+  const combinedAsm = compile("voice-flicker-layout", `
+u8 module = 0
+u8 enabled = 1
+sprites stable 28 to 31
+voice detect into module
+sprites flicker on
+set sprite count 32
+update sprites
+mute all
+MainLoop:
+  wait
+  if joypad(1).button1.pressed then enabled = 0
+  if keypad(1) = 1 then enabled = 1
+  goto MainLoop
+`);
+  const spriteTable = addressOf(combinedAsm, "AMY_SPRITE_TABLE");
+  const firstUserVariable = addressOf(combinedAsm, "AMY_UVAR_module");
+  assert.ok(firstUserVariable >= spriteTable + 0x80,
+    `voice variables overlap the 32-entry sprite shadow: table=$${spriteTable.toString(16)}, user=$${firstUserVariable.toString(16)}`);
+  assert.equal(addressOf(combinedAsm, "AMY_RAM_BASE"), firstUserVariable,
+    "generated runtime and transpiler must agree on the first user RAM address");
 
   assert.match(compile("bad-detect", "u16 module = 0\nvoice detect into module", false), /byte variable/i);
   assert.match(compile("bad-phrase", "u8 module = 0\nvoice speak 42 using module", false), /data block or word-table entry/i);
