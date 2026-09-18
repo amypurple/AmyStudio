@@ -2,7 +2,7 @@ import { createGraphicsEditorModal } from "./editorShell.js?v=20260719-graphics-
 import { addGraphicsEntryToConfig, nextGraphicsEntryName, validateNewGraphicsEntryName } from "./graphicsEditorEntryOps.js?v=20260719-graphics-entry-ops";
 import { appendAmyByteDataBlock, appendAmyWordTableEntry, describeGraphicsEditor, parseAmyByteDataBlocks, parseGraphicsEditorsConfig, replaceAmyByteDataBlock } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { computeTilesetImpact } from "./graphicsImpact.js?v=20260718-graphics-impact";
-import { createGraphicsProjectAssetAccess } from "./projectAssetAccess.js?v=20260729-file-backed-tilemap";
+import { createGraphicsProjectAssetAccess } from "./projectAssetAccess.js?v=20260916-project-path-refs";
 import { applyTmsPixelColor, drawEditorTilePattern, drawTileGridEditorOverlay, drawTilePattern, renderTileGrid, tileColorOffsetForValue, tileColorRowsForValue, tilePatternBytesForValue } from "./graphicsTms9918.js?v=20260811-smart-tile-colors";
 import { applyGraphicsPreviewFilter, normalizePreviewFilter } from "./graphicsPreviewFilters.js?v=20260721-preview-filters";
 import { copyTilemapSelection, fillTilemapSelection, normalizeTilemapSelection, pasteTilemapSelection } from "./graphicsTilemapSelection.js?v=20260729-tilemap-clipboard";
@@ -152,7 +152,7 @@ export function createGraphicsEditorUi({
   async function openCharsetGraphicsEditor(editor) {
     const patternRefs = Array.isArray(editor.patternRefs) && editor.patternRefs.length
       ? editor.patternRefs
-      : (editor.patternRef ? [editor.patternRef] : []);
+      : ((editor.patternRef || editor.pattern) ? [editor.patternRef || editor.pattern] : []);
     const inlinePatternNames = patternRefs.filter((ref) => ref.from === "inline").map((ref) => ref.name);
     const inlinePatternName = inlinePatternNames.length === 1 ? inlinePatternNames[0] : "";
     const patternFile = inlinePatternName ? null : patternFileForCharsetEditor(editor);
@@ -185,7 +185,8 @@ export function createGraphicsEditorUi({
       return;
     }
     const patternBytes = Uint8Array.from(decodedPatternBytes);
-    const inlineColorName = editor.colorRef?.from === "inline" ? editor.colorRef.name : "";
+    const colorRef = editor.colorRef || editor.color;
+    const inlineColorName = colorRef?.from === "inline" ? colorRef.name : "";
     let colorFile = inlineColorName ? null : findEditorColorFile(editor);
     let colorBytes = null;
     let writableColorBytes = null;
@@ -688,6 +689,14 @@ export function createGraphicsEditorUi({
             base64: bytesToBase64(encodedPattern)
           });
         }
+        if (!inlinePatternNames.length && frameEntrySegments.length) {
+          let nextSource = getProject().sourceText || "";
+          for (const segment of frameEntrySegments) {
+            nextSource = replaceAmyByteDataBlock(nextSource, segment.name,
+              frameBytes.slice(segment.offset, segment.offset + segment.length), animationFrameBytes);
+          }
+          commitProjectSourceText(nextSource);
+        }
         if (dirtyColor && inlineColorName && writableColorBytes) {
           const nextSource = replaceAmyByteDataBlock(getProject().sourceText || "", inlineColorName, writableColorBytes, Number(editor.rowWidth || 16));
           commitProjectSourceText(nextSource);
@@ -741,7 +750,7 @@ export function createGraphicsEditorUi({
   }
 
 
-  async function openSpritePatternGraphicsEditor(editor) {
+  async function openSpritePatternGraphicsEditor(editor, configEntry = null) {
     const patternRefs = Array.isArray(editor.patternRefs) && editor.patternRefs.length
       ? editor.patternRefs
       : (editor.patternRef ? [editor.patternRef] : []);
@@ -772,6 +781,11 @@ export function createGraphicsEditorUi({
       : "";
     const spriteFile = patternSegments.length === 1 ? patternSegments[0].file : null;
     const patternBytes = Uint8Array.from(patternSegments.flatMap((segment) => [...segment.bytes]));
+    const declaredPatternIds = patternSegments.flatMap((segment) => {
+      const count = Math.floor(segment.bytes.length / 32);
+      const first = Number(segment.ref.basePattern);
+      return Array.from({ length: count }, (_, index) => Number.isFinite(first) ? ((first + index * 4) & 0xFF) : null);
+    });
     let backgroundPatternBytes = null;
     let backgroundColorBytes = null;
     let backgroundTile = Number(editor.backgroundTile ?? editor.blankTile ?? 0) & 0xFF;
@@ -830,30 +844,78 @@ export function createGraphicsEditorUi({
     const rawAnimationFrames = Array.isArray(editor.animation?.frames) && editor.animation.frames.length
       ? editor.animation.frames
       : Array.from({ length: spriteCount }, (_, index) => index);
+    const compositionGrid = Array.isArray(editor.compositionGrid) ? editor.compositionGrid : null;
+    const compositionRows = Math.max(1, Number(compositionGrid?.[0]) || 0);
+    const compositionLayersPerRow = Math.max(1, Number(compositionGrid?.[1]) || 0);
     const animationFrames = rawAnimationFrames.map((frame) => {
       if (Number.isInteger(Number(frame))) {
         return { layers: [{ pattern: Number(frame), color: spriteColorDefault, x: 0, y: 0 }], backgroundTile: null };
       }
       const layers = Array.isArray(frame) ? frame : (Array.isArray(frame?.layers) ? frame.layers : []);
-      return {
-        layers: layers.map((layer) => ({
+      const normalizedLayers = layers.map((layer) => ({
           pattern: Number(layer.pattern ?? layer.frame ?? 0),
           color: Number(layer.color ?? spriteColorDefault) & 0x0F,
           x: Number(layer.x ?? layer.offset?.[0] ?? 0) || 0,
           y: Number(layer.y ?? layer.offset?.[1] ?? 0) || 0
-        })).filter((layer) => Number.isInteger(layer.pattern) && layer.pattern >= 0 && layer.pattern < spriteCount),
+        })).filter((layer) => Number.isInteger(layer.pattern) && layer.pattern >= 0 && layer.pattern < spriteCount);
+      if (compositionGrid) {
+        const slots = [];
+        for (let row = 0; row < compositionRows; row += 1) {
+          const rowLayers = normalizedLayers.filter((layer) => layer.x === 0 && layer.y === row * spriteHeight);
+          for (let slot = 0; slot < compositionLayersPerRow; slot += 1) {
+            slots.push(rowLayers[slot] || { pattern: 0, color: 0, x: 0, y: row * spriteHeight });
+          }
+        }
+        normalizedLayers.splice(0, normalizedLayers.length, ...slots);
+      }
+      return {
+        layers: normalizedLayers,
         backgroundTile: frame && !Array.isArray(frame) && frame.backgroundTile != null
           ? Number(frame.backgroundTile) & 0xFF
           : null
       };
     }).filter((frame) => frame.layers.length);
+    if (editor.compositionEntry && animationFrames.length) {
+      try {
+        const blocks = parseAmyByteDataBlocks(getProject().sourceText || "", [editor.compositionEntry]);
+        const bytes = blocks.get(editor.compositionEntry);
+        const layerCount = animationFrames[0].layers.length;
+        const expectedLength = animationFrames.length * layerCount * 2;
+        if (!bytes || bytes.length !== expectedLength) {
+          throw new Error(`${editor.compositionEntry} must contain exactly ${expectedLength} pattern/color bytes.`);
+        }
+        const runtimePatternForIndex = (index) => {
+          if (declaredPatternIds[index] != null) return declaredPatternIds[index] & 0xFC;
+          const value = (basePattern + index * patternStep) & 0xFF;
+          return spriteWidth >= 16 ? value & 0xFC : value;
+        };
+        let offset = 0;
+        for (const frame of animationFrames) {
+          for (const layer of frame.layers) {
+            const runtimePattern = bytes[offset++] & (spriteWidth >= 16 ? 0xFC : 0xFF);
+            layer.color = bytes[offset++] & 0x0F;
+            if (runtimePatternForIndex(layer.pattern) !== runtimePattern) {
+              const matchingIndex = Array.from({ length: spriteCount }, (_, index) => index)
+                .find((index) => runtimePatternForIndex(index) === runtimePattern);
+              if (matchingIndex == null) throw new Error(`VDP pattern $${runtimePattern.toString(16).toUpperCase()} is not declared by this editor.`);
+              layer.pattern = matchingIndex;
+            }
+          }
+        }
+      } catch (error) {
+        setStatus(`Cannot load runtime sprite attributes for ${editor.name}: ${error.message || error}`);
+        return;
+      }
+    }
     let animationTimer = null;
     let animationPosition = 0;
+    let previewExpression = Math.max(0, Math.min(3, Number(editor.previewExpression) || 0));
+    let dirtyComposition = false;
 
     const modal = createGraphicsEditorModal({
       title: editor.name,
       className: "graphics-editor-modal--charset graphics-editor-modal--sprites",
-      onCloseRequest: () => { if (animationTimer) clearInterval(animationTimer); return (dirty || dirtyAttributeColor) ? confirm("Close without saving sprite editor changes?") : true; }
+      onCloseRequest: () => { if (animationTimer) clearInterval(animationTimer); return (dirty || dirtyAttributeColor || dirtyComposition) ? confirm("Close without saving sprite editor changes?") : true; }
     });
     const { dialog } = modal;
 
@@ -866,7 +928,7 @@ export function createGraphicsEditorUi({
     modeLabel.textContent = "Left click draws. Right click erases. Drag continues the stroke.";
     const saveButton = document.createElement("button");
     saveButton.type = "button";
-    saveButton.textContent = "Save Sprite File";
+    saveButton.textContent = compositionGrid ? "Save Patterns & Attributes" : "Save Sprite File";
     const undoButton = document.createElement("button");
     undoButton.type = "button";
     undoButton.textContent = "Undo";
@@ -931,6 +993,9 @@ export function createGraphicsEditorUi({
     animationCanvas.className = "graphics-editor-animation-preview";
     animationCanvas.title = "Runtime-style animation preview. Editing remains in the pixel grid above.";
     editorPane.appendChild(animationCanvas);
+    const compositionPanel = document.createElement("div");
+    compositionPanel.className = "graphics-editor-composition";
+    editorPane.appendChild(compositionPanel);
     const spriteList = document.createElement("div");
     spriteList.className = "graphics-editor-palette graphics-editor-charset-list";
     body.append(editorPane, spriteList);
@@ -946,11 +1011,13 @@ export function createGraphicsEditorUi({
     }
 
     function alignedSpritePatternNumber(index) {
+      if (declaredPatternIds[index] != null) return declaredPatternIds[index] & 0xFC;
       const patternNumber = spritePatternNumber(index);
       return spriteWidth >= 16 ? (patternNumber & 0xFC) : patternNumber;
     }
 
     function spritePatternByteBase(index) {
+      if (declaredPatternIds[index] != null) return index * bytesPerSprite;
       const sourceAligned = spriteWidth >= 16 ? (sourceBasePattern & 0xFC) : sourceBasePattern;
       const activeAligned = alignedSpritePatternNumber(index);
       return Math.max(0, (activeAligned - sourceAligned) * 8);
@@ -1112,15 +1179,118 @@ export function createGraphicsEditorUi({
       ctx.imageSmoothingEnabled = false;
       const frame = animationFrames[animationPosition] || { layers: [], backgroundTile: null };
       drawSpriteBackground(ctx, scale, frame.backgroundTile ?? backgroundTile, previewWidth, previewHeight);
-      for (const layer of frame.layers) {
-        ctx.fillStyle = TMS_PALETTE[layer.color] || "#ffffff";
-        for (let row = 0; row < spriteHeight; row += 1) {
-          for (let col = 0; col < spriteWidth; col += 1) {
-            if (!spritePixel(layer.pattern, col, row)) continue;
-            ctx.fillRect((col + layer.x) * scale, (row + layer.y) * scale, scale, scale);
+      // TMS9918A evaluates sprites in SAT order. Only the first four sprites on
+      // a scanline participate, and the lowest SAT index owns overlapping pixels.
+      for (let py = 0; py < previewHeight; py += 1) {
+        const scanlineSprites = frame.layers
+          .filter((layer) => py >= layer.y && py < layer.y + spriteHeight)
+          .slice(0, 4);
+        for (let px = 0; px < previewWidth; px += 1) {
+          for (const layer of scanlineSprites) {
+            const col = px - layer.x;
+            const row = py - layer.y;
+            const layerIndex = frame.layers.indexOf(layer);
+            const pattern = Number(editor.expressionLayer) === layerIndex ? layer.pattern + previewExpression : layer.pattern;
+            if (col < 0 || col >= spriteWidth || !spritePixel(pattern, col, row)) continue;
+            const color = layer.color & 0x0F;
+            if (color === 0) continue;
+            ctx.fillStyle = TMS_PALETTE[color] || "#ffffff";
+            ctx.fillRect(px * scale, py * scale, scale, scale);
+            break;
           }
         }
       }
+    }
+
+    function renderCompositionPanel() {
+      compositionPanel.textContent = "";
+      if (!compositionGrid) return;
+      const frame = animationFrames[animationPosition];
+      const satBase = Math.max(0, Number(editor.satBase) || 0);
+      const heading = document.createElement("strong");
+      heading.textContent = `Composition ${animationPosition + 1}/${animationFrames.length} · SAT priority ${satBase}→${satBase + frame.layers.length - 1}`;
+      compositionPanel.appendChild(heading);
+      if (Number.isInteger(Number(editor.expressionLayer))) {
+        const expressionLabel = document.createElement("label");
+        expressionLabel.textContent = "Runtime emotion";
+        const expressionSelect = document.createElement("select");
+        ["Neutral", "Smile", "Wink", "Concerned"].forEach((name, index) => expressionSelect.append(new Option(`${index} · ${name}`, String(index))));
+        expressionSelect.value = String(previewExpression);
+        expressionSelect.addEventListener("change", () => {
+          previewExpression = Number(expressionSelect.value);
+          renderAnimationPreview();
+        });
+        expressionLabel.appendChild(expressionSelect);
+        compositionPanel.appendChild(expressionLabel);
+      }
+      for (let row = 0; row < compositionRows; row += 1) {
+        for (let slot = 0; slot < compositionLayersPerRow; slot += 1) {
+          const layer = frame.layers[row * compositionLayersPerRow + slot];
+          const label = document.createElement("label");
+          const layerIndex = row * compositionLayersPerRow + slot;
+          const expressionSuffix = Number(editor.expressionLayer) === layerIndex ? " (expression base)" : "";
+          label.textContent = `SAT ${satBase + layerIndex} · ${["Head", "Middle", "Bottom"][row] || `Row ${row + 1}`} ${slot + 1}${expressionSuffix}`;
+          const patternSelect = document.createElement("select");
+          for (let pattern = 0; pattern < spriteCount; pattern += 1) {
+            patternSelect.append(new Option(`Pattern ${pattern} ($${alignedSpritePatternNumber(pattern).toString(16).toUpperCase().padStart(2, "0")})`, String(pattern)));
+          }
+          patternSelect.value = String(layer.pattern);
+          const colorSelect = document.createElement("select");
+          for (let color = 0; color < 16; color += 1) colorSelect.append(new Option(`Color $${color.toString(16).toUpperCase()}`, String(color)));
+          colorSelect.value = String(layer.color);
+          patternSelect.addEventListener("change", () => {
+            layer.pattern = Number(patternSelect.value);
+            dirtyComposition = true;
+            renderAnimationPreview();
+          });
+          colorSelect.addEventListener("change", () => {
+            layer.color = Number(colorSelect.value) & 0x0F;
+            dirtyComposition = true;
+            renderAnimationPreview();
+          });
+          label.append(patternSelect, colorSelect);
+          compositionPanel.appendChild(label);
+        }
+      }
+      const previous = document.createElement("button");
+      previous.type = "button";
+      previous.textContent = "Previous outfit";
+      const next = document.createElement("button");
+      next.type = "button";
+      next.textContent = "Next outfit";
+      previous.addEventListener("click", () => {
+        animationPosition = (animationPosition + animationFrames.length - 1) % animationFrames.length;
+        renderAnimationPreview();
+        renderCompositionPanel();
+      });
+      next.addEventListener("click", () => {
+        animationPosition = (animationPosition + 1) % animationFrames.length;
+        renderAnimationPreview();
+        renderCompositionPanel();
+      });
+      compositionPanel.append(previous, next);
+    }
+
+    function saveCompositionMetadata() {
+      if (!dirtyComposition || !configEntry) return;
+      if (editor.compositionEntry) {
+        const bytes = [];
+        for (const frame of animationFrames) {
+          for (const layer of frame.layers) bytes.push(alignedSpritePatternNumber(layer.pattern), layer.color & 0x0F);
+        }
+        const nextSource = replaceAmyByteDataBlock(getProject().sourceText || "", editor.compositionEntry,
+          Uint8Array.from(bytes), compositionLayersPerRow * 2);
+        commitProjectSourceText(nextSource);
+      }
+      const config = JSON.parse(new TextDecoder().decode(projectFileBytes(configEntry)));
+      const target = config.editors.find((item) => String(item.name || "") === String(editor.name || ""));
+      if (!target) throw new Error("Cannot find " + editor.name + " in " + configEntry.path + ".");
+      target.animation = { ...(target.animation || {}), frames: animationFrames.map((frame) => ({
+        ...(frame.backgroundTile == null ? {} : { backgroundTile: frame.backgroundTile }),
+        layers: frame.layers.map((layer) => ({ pattern: layer.pattern, color: layer.color, offset: [layer.x, layer.y] }))
+      })) };
+      const bytes = new TextEncoder().encode(JSON.stringify(config, null, 2) + "\n");
+      upsertProjectFile({ ...configEntry, base64: bytesToBase64(bytes) });
     }
 
     function setAnimationPlaying(playing) {
@@ -1134,6 +1304,7 @@ export function createGraphicsEditorUi({
       animationTimer = setInterval(() => {
         animationPosition = (animationPosition + 1) % animationFrames.length;
         renderAnimationPreview();
+        renderCompositionPanel();
       }, Math.max(40, Number(editor.animation?.frameMs) || 160));
     }
 
@@ -1267,12 +1438,15 @@ export function createGraphicsEditorUi({
             upsertProjectFile({ ...segment.file, codec, base64: bytesToBase64(encoded) });
           }
           if (sourceChanged) commitProjectSourceText(sourceText);
-        }        if (dirtyAttributeColor) {
+        }
+        if (dirtyAttributeColor) {
           if (attributeColorBinding) writeBoundSpriteAttributeColor(attributeColorBinding, spriteColor);
           else writeInferredSpriteAttributeColors(editor, basePattern, spriteColor);
         }
+        saveCompositionMetadata();
         dirty = false;
         dirtyAttributeColor = false;
+        dirtyComposition = false;
         undoStack.length = 0;
         redoStack.length = 0;
         updateSpriteHistoryButtons();
@@ -1300,6 +1474,7 @@ export function createGraphicsEditorUi({
     renderSpriteList();
     renderActiveSprite();
     renderAnimationPreview();
+    renderCompositionPanel();
     setAnimationPlaying(animationFrames.length > 1);
     modal.mount();
     setStatus("Opened sprite pattern editor for " + editor.name + ".");
@@ -2596,7 +2771,7 @@ export function createGraphicsEditorUi({
       });
     }
     if (editor.kind === "charset") return void openCharsetGraphicsEditor(editor);
-    if (editor.kind === "sprite-patterns" || editor.kind === "sprites") return void openSpritePatternGraphicsEditor(editor);
+    if (editor.kind === "sprite-patterns" || editor.kind === "sprites") return void openSpritePatternGraphicsEditor(editor, entry);
     if (editor.kind === "metatiles" || editor.kind === "frames") return void openMetatileGraphicsEditor(editor, sourceBlocks);
     return void openTilemapGraphicsEditor(editor, sourceBlocks, entry, config);
   }

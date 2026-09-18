@@ -1,7 +1,10 @@
+import { voxPcmToPreviewSamples } from "../colecoVoxPcm.js";
+
 export function createProjectFileDsoundAddon({
   projectFileBytes,
   dsoundBytesToPreviewSamples,
   threeChannelPcmBytesToPreviewSamples,
+  resolveProjectFileBytes,
   cvSampleRate,
   setStatus
 }) {
@@ -37,12 +40,16 @@ export function createProjectFileDsoundAddon({
   }
 
   async function previewProjectFileDsound(entry, kind = "dsound") {
-    const bytes = projectFileBytes(entry);
+    setStatus(`Preparing preview for ${entry.path}.`);
+    const bytes = resolveProjectFileBytes ? await resolveProjectFileBytes(entry) : projectFileBytes(entry);
     if (!bytes.length) {
       setStatus(`No bytes available for ${entry.path}.`);
       return;
     }
-    const previewHelper = kind === "tripcm" ? threeChannelPcmBytesToPreviewSamples : dsoundBytesToPreviewSamples;
+    const voxQuality = String(entry?.voxPcmQuality || entry?.source || "").match(/(?:VoxPCM\s+)?(minimum|draft|tiny|compact|balanced|high|maximum)/i)?.[1]?.toLowerCase() || "balanced";
+    const previewHelper = kind === "voxpcm"
+      ? (data) => voxPcmToPreviewSamples([{ bytes: data, quality: voxQuality }], 22050)
+      : (kind === "tripcm" ? threeChannelPcmBytesToPreviewSamples : dsoundBytesToPreviewSamples);
     if (!previewHelper) {
       setStatus(`${kind.toUpperCase()} preview helper is unavailable in this Studio build.`);
       return;
@@ -55,7 +62,7 @@ export function createProjectFileDsoundAddon({
       activePreviewAudio.pause?.();
       activePreviewAudio = null;
     }
-    const sampleRate = kind === "tripcm" ? 17500 : (Number.isFinite(entry?.dsoundStep) ? Math.trunc(cvSampleRate(entry.dsoundStep)) : 20616);
+    const sampleRate = kind === "voxpcm" ? 22050 : (kind === "tripcm" ? 17500 : (Number.isFinite(entry?.dsoundStep) ? Math.trunc(cvSampleRate(entry.dsoundStep)) : 20616));
     const previewSamples = await previewHelper(bytes);
     const wavBlob = encodePreviewWav(previewSamples, sampleRate);
     activePreviewUrl = URL.createObjectURL(wavBlob);

@@ -18,7 +18,7 @@ export function createGraphicsProjectAssetAccess({
   }
 
   function findFileByProjectName(files, wantedFile) {
-    const wanted = String(wantedFile || "").toLowerCase();
+    const wanted = normalizeProjectFilePath(wantedFile || "").slice("@project/".length).toLowerCase();
     if (!wanted) return null;
     return files.find((file) => projectFileName(file) === wanted) || null;
   }
@@ -47,7 +47,7 @@ export function createGraphicsProjectAssetAccess({
   function findEditorColorFile(editor) {
     const project = getProject();
     const files = project.projectFiles || [];
-    const byRef = findFileByRef(files, editor.colorRef);
+    const byRef = findFileByRef(files, editor.colorRef) || findFileByRef(files, editor.color);
     if (byRef) return byRef;
     const direct = findFileByProjectName(files, editor.colorFile);
     if (direct) return direct;
@@ -71,7 +71,7 @@ export function createGraphicsProjectAssetAccess({
   function patternFileForCharsetEditor(editor) {
     const project = getProject();
     const files = project.projectFiles || [];
-    const byRef = findFileByRef(files, editor.patternRef);
+    const byRef = findFileByRef(files, editor.patternRef) || findFileByRef(files, editor.pattern);
     if (byRef) return byRef;
     const direct = findFileByProjectName(files, editor.patternFile || editor.tilesetFile);
     if (direct) return direct;

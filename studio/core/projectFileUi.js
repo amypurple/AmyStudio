@@ -1,5 +1,5 @@
 import { createProjectFileCreationAddon } from "./addons/projectFileCreationAddon.js";
-import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js?v=20260911-tripcm";
+import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js?v=20260918-files-audit";
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
 import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
@@ -113,14 +113,17 @@ export function createProjectFileUiHelpers({
 
   function insertProjectFilePlaySnippet(entry) {
     const assetName = assetNameFromProjectPath(entry.path);
+    const playKind = fileKindFromPath(entry.path) === "voxpcm" ? "voxpcm" : (entry.kind || fileKindFromPath(entry.path));
     const stepSuffix = Number.isFinite(entry?.dsoundStep) && entry.dsoundStep > 0
       ? ` step ${entry.dsoundStep}`
       : "";
     const snippet = [
       assetSnippetForEntry(entry, assetName),
-      (entry.kind || fileKindFromPath(entry.path)) === "tripcm"
+      playKind === "tripcm"
         ? `play tripcm ${assetName}`
-        : `play dsound ${assetName}${stepSuffix}`
+        : (playKind === "voxpcm"
+          ? `play voxpcm ${assetName}`
+          : `play dsound ${assetName}${stepSuffix}`)
     ].join("\n");
     insertTextIntoSource(snippet, { beforeProcedures: true });
     setStatus(`Inserted dsound reference for ${entry.path}.`);
@@ -2228,7 +2231,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260912-guided-editor-builder").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260918-universal-composition").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,
@@ -2291,6 +2294,51 @@ export function createProjectFileUiHelpers({
     });
     setStatus(statusText || "Updated editors.json.");
     return { ...(existing || {}), path: existing?.path || "editors.json", kind: existing?.kind || "editor-config", base64: bytesToBase64(bytes) };
+  }
+
+  function sourceReferencesProjectFile(entry) {
+    const source = String(getProject()?.sourceText || "").replace(/\\/g, "/").toLowerCase();
+    const path = normalizeProjectFilePath(entry?.path || "").toLowerCase();
+    const bare = path.slice("@project/".length);
+    return source.includes(`"${path}"`) || source.includes(`'${path}'`)
+      || source.includes(`"${bare}"`) || source.includes(`'${bare}'`);
+  }
+
+  function graphicsEditorBindings(files) {
+    const configEntry = files.find((candidate) => isGraphicsEditorsProjectFile(candidate));
+    if (!configEntry) return { configEntry: null, config: null, byPath: new Map() };
+    try {
+      const config = parseGraphicsEditorsConfig(configEntry, projectFileBytes(configEntry));
+      const byPath = new Map();
+      const addRef = (ref, editor) => {
+        if (!ref || (typeof ref === "object" && ref.from !== "file")) return;
+        const name = typeof ref === "string" ? ref : ref.name;
+        const path = normalizeProjectFilePath(name || "").toLowerCase();
+        if (!path) return;
+        if (!byPath.has(path)) byPath.set(path, []);
+        if (!byPath.get(path).some((item) => item.name === editor.name)) byPath.get(path).push(editor);
+      };
+      for (const editor of config.editors || []) {
+        [editor.tilesetRef, editor.patternRef, editor.colorRef, editor.sourceRef, editor.source,
+          editor.dataRef, editor.data,
+          ...(editor.patternRefs || []), ...(editor.colorRefs || [])].forEach((ref) => addRef(ref, editor));
+      }
+      return { configEntry, config, byPath };
+    } catch {
+      return { configEntry, config: null, byPath: new Map() };
+    }
+  }
+
+  async function pictureActionCapabilities(entry) {
+    const group = pictureTableGroupForEntry(entry);
+    const pc = group.pcFile ? await decodedProjectBytes(group.pcFile) : null;
+    const pattern = group.patternFile ? await decodedProjectBytes(group.patternFile) : null;
+    const color = group.colorFile ? await decodedProjectBytes(group.colorFile) : null;
+    const name = group.nameFile ? await decodedProjectBytes(group.nameFile) : null;
+    const bitmap = pattern?.length === 6144 && color?.length === 6144 && isLinearMode2NameTable(name);
+    const tiles = pattern?.length >= 2048 && color?.length >= 2048 && name?.length >= 768;
+    const packed = pc?.length >= 12288;
+    return { bitmap, tiles, preview: bitmap || tiles || packed, exportPc: bitmap || tiles || packed };
   }
 
   function appendGeneratedByteDataBlock(source, name, bytes) {
@@ -4992,6 +5040,7 @@ export function createProjectFileUiHelpers({
     }
     const totalBytes = files.reduce((sum, entry) => sum + projectFileBytes(entry).length, 0);
     els.projectFilesSummary.textContent = `${files.length} embedded file${files.length === 1 ? "" : "s"} · ${formatByteSize(totalBytes)} · reference with "@project/..."`;
+    const editorBindings = graphicsEditorBindings(files);
     for (const entry of files) {
       const row = document.createElement("div");
       row.className = "project-file";
@@ -5013,23 +5062,43 @@ export function createProjectFileUiHelpers({
       const actions = document.createElement("div");
       actions.className = "project-file__actions";
 
-      const kind = entry.kind || fileKindFromPath(entry.path);
-      if (!isGraphicsEditorsProjectFile(entry)) {
+      const detectedKind = fileKindFromPath(entry.path);
+      const kind = detectedKind === "voxpcm" ? detectedKind : (entry.kind || detectedKind);
+      const entryCodec = String(entry.codec || detectCodecFromName?.(entry.path) || "raw").toLowerCase();
+      const directlyPlayableAsset = ["dsound", "tripcm", "voxpcm"].includes(kind) && entryCodec === "raw";
+      const boundEditors = editorBindings.byPath.get(normalizeProjectFilePath(entry.path).toLowerCase()) || [];
+      if (!isGraphicsEditorsProjectFile(entry) && !sourceReferencesProjectFile(entry) && !boundEditors.length) {
         const assetButton = document.createElement("button");
         assetButton.type = "button";
-        assetButton.textContent = ["dsound", "tripcm"].includes(kind) ? "Asset+Play" : (isPictureProjectFile?.(entry) ? "Picture" : "Asset");
-        assetButton.addEventListener("click", () => (["dsound", "tripcm"].includes(kind)
+        assetButton.textContent = directlyPlayableAsset ? "Asset+Play" : (isPictureProjectFile?.(entry) ? "Picture" : "Asset");
+        assetButton.addEventListener("click", () => (directlyPlayableAsset
           ? insertProjectFilePlaySnippet(entry)
           : (isPictureProjectFile?.(entry) ? insertProjectFilePictureSnippet(entry) : insertProjectFileAssetSnippet(entry))));
         actions.appendChild(assetButton);
       }
 
       if (isGraphicsEditorsProjectFile(entry)) {
+        const openEditorsButton = document.createElement("button");
+        openEditorsButton.type = "button";
+        openEditorsButton.textContent = "Open Editors";
+        openEditorsButton.disabled = !editorBindings.config;
+        openEditorsButton.addEventListener("click", () => void graphicsEditors.openGraphicsEditorsConfig(entry));
+        actions.appendChild(openEditorsButton);
+
         const editJsonButton = document.createElement("button");
         editJsonButton.type = "button";
         setProjectFileActionIcon(editJsonButton, "edit", `Edit JSON ${entry.path}`);
         editJsonButton.addEventListener("click", () => openProjectFileJsonEditor(entry));
         actions.appendChild(editJsonButton);
+      }
+
+      for (const editor of boundEditors) {
+        const openEditorButton = document.createElement("button");
+        openEditorButton.type = "button";
+        openEditorButton.textContent = `Open ${editor.name}`;
+        openEditorButton.title = `Open ${editor.name} for ${entry.path}`;
+        openEditorButton.addEventListener("click", () => void graphicsEditors.openGraphicsEditorFromConfig(editorBindings.configEntry, editor.name));
+        actions.appendChild(openEditorButton);
       }
 
       if (isEditableProjectTextPath(entry.path)) {
@@ -5049,9 +5118,12 @@ export function createProjectFileUiHelpers({
         }
       }
 
-      if (["dsound", "tripcm"].includes(kind)) {
+      if (["dsound", "tripcm", "voxpcm"].includes(kind)) {
         const playButton = makeProjectFilePreviewButton(entry, () => {
-          void previewProjectFileDsound(entry, kind);
+          setStatus(`Preparing preview for ${entry.path}.`);
+          void previewProjectFileDsound(entry, kind).catch((error) => {
+            setStatus(`Cannot preview ${entry.path}: ${error?.message || error}`);
+          });
         });
         playButton.title = `Play ${entry.path}`;
         playButton.setAttribute("aria-label", `Play ${entry.path}`);
@@ -5059,28 +5131,39 @@ export function createProjectFileUiHelpers({
         actions.appendChild(playButton);
       }
 
-      if (isPictureProjectFile?.(entry)) {
-        const previewButton = makeProjectFilePreviewButton(entry, () => {
-          void previewProjectFilePicture(entry);
-        });
-        actions.appendChild(previewButton);
+      if (isPictureProjectFile?.(entry) && !boundEditors.length) {
+        const verifiedActions = document.createElement("span");
+        verifiedActions.className = "project-file__verified-actions";
+        actions.appendChild(verifiedActions);
+        void pictureActionCapabilities(entry).then((capabilities) => {
+          if (!row.isConnected) return;
+          if (capabilities.preview) {
+            const previewButton = makeProjectFilePreviewButton(entry, () => void previewProjectFilePicture(entry));
+            verifiedActions.appendChild(previewButton);
+          }
+          if (capabilities.bitmap) {
+            const showPictureButton = document.createElement("button");
+            showPictureButton.type = "button";
+            showPictureButton.textContent = "Show bitmap";
+            showPictureButton.title = `Insert bitmap picture declaration and show command for ${entry.path}`;
+            showPictureButton.addEventListener("click", () => insertProjectFilePictureSnippet(entry));
+            verifiedActions.appendChild(showPictureButton);
 
-        if (canOpenBitmapEditor(entry)) {
-          const editBitmapButton = document.createElement("button");
+            const editBitmapButton = document.createElement("button");
           editBitmapButton.type = "button";
           setProjectFileActionIcon(editBitmapButton, "edit", `Edit bitmap ${entry.path}`);
           editBitmapButton.addEventListener("click", () => void openProjectBitmapEditor(entry));
-          actions.appendChild(editBitmapButton);
-        }
+            verifiedActions.appendChild(editBitmapButton);
+          }
 
-        if (canOpenTileEditor(entry)) {
+          if (capabilities.tiles) {
           const tileButton = document.createElement("button");
           tileButton.type = "button";
           tileButton.textContent = "Tiles";
           tileButton.addEventListener("click", () => {
             void openProjectTileEditor(entry);
           });
-          actions.appendChild(tileButton);
+            verifiedActions.appendChild(tileButton);
 
           const exportDatButton = document.createElement("button");
           exportDatButton.type = "button";
@@ -5088,18 +5171,21 @@ export function createProjectFileUiHelpers({
           exportDatButton.addEventListener("click", () => {
             void exportProjectTileGroupAsDat(entry);
           });
-          actions.appendChild(exportDatButton);
-        }
+            verifiedActions.appendChild(exportDatButton);
+          }
 
-        if (canExportPc(entry)) {
+          if (capabilities.exportPc) {
           const exportPcButton = document.createElement("button");
           exportPcButton.type = "button";
           exportPcButton.textContent = "Export ICVGM .pc";
           exportPcButton.addEventListener("click", () => {
             void exportProjectGroupAsPc(entry);
           });
-          actions.appendChild(exportPcButton);
-        }
+            verifiedActions.appendChild(exportPcButton);
+          }
+        }).catch((error) => {
+          if (row.isConnected) verifiedActions.title = `Cannot inspect ${entry.path}: ${error?.message || error}`;
+        });
       }
 
       const removeButton = document.createElement("button");
@@ -5329,6 +5415,7 @@ export function createProjectFileUiHelpers({
     projectFileBytes,
     dsoundBytesToPreviewSamples,
     threeChannelPcmBytesToPreviewSamples,
+    resolveProjectFileBytes: decodedProjectBytes,
     cvSampleRate,
     setStatus
   });
