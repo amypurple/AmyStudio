@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-09-12
+Updated: 2026-09-18
 
 ## Method
 
@@ -18,7 +18,7 @@ features are listed separately from language capabilities.
 
 | Solution | Primary approach | ColecoVision position |
 |---|---|---|
-| Amy Studio | ColecoVision-first Amy language and browser IDE | Original 1 KB RAM, BIOS-aware, no extra hardware by design |
+| Amy Studio | ColecoVision-first Amy language and browser IDE | Stock 1 KB RAM cartridge target, with optional hardware simulation in the debugger |
 | CVBasic | Portable integer BASIC cross-compiler | Mature native target; optional MegaCart and SGM support |
 | z88dk `+coleco` | General Z80 C toolchain | C compiler, assembler, linker, libraries, and app packaging |
 | ugBASIC | Portable retro BASIC compiler | Declared target with common high-level multimedia vocabulary |
@@ -186,12 +186,12 @@ documented separately below from their measured fixtures and inspected APIs.
 | Keypad | Yes | Yes | Library/manual | Pending | Yes/target library | Yes, both ports |
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
-| Coleco PSG sound | BIOS tables, Tiny Sound, DSOUND | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
+| Coleco PSG sound and voice | BIOS tables, Tiny Sound, DSOUND, VoxPCM, and SP0256 Lundy/EVE modules | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
 | Direct-to-VRAM compression | Fifteen active codecs, including Exomizer 2 and MegaLZ | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
-| Graphics editors and project assets | Integrated | Separate tools | Separate tools | Conversion-oriented IDE/tools | Separate asset tools | `gfx2col` and separate asset tools |
+| Graphics editors and project assets | Integrated bitmap, tile, sprite, frame, tilemap, and composite editors | Separate tools | Separate tools | Conversion-oriented IDE/tools | Separate asset tools | `gfx2col` and separate asset tools |
 | Automated ROM behavior tests | Integrated project pipeline | Not supplied as one system | Can be assembled manually | Not established | Not established | Not established |
 
 ## Detailed language and runtime evidence
@@ -259,15 +259,17 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 | SN76489 tones/noise | BIOS sound tables and direct formats | `SOUND` | PSG libraries/manual ports | SN76489 backend | PSGlib_CV | BIOS-style sound tables |
 | Sequenced music | BIOS format and Tiny Sound | `MUSIC`, simple/full players | External/player libraries | `MUSIC` backend | PSG streams; looping/status | NMI-serviced music sequences |
 | Concurrent SFX | Coleco table areas/Tiny Sound | Channel depends on music mode | Library-dependent | Pending measurement | PSG SFX channels and frame service | Four music areas plus sound areas 5+ for SFX |
-| Digital samples | DSOUND | No first-class support | Manual/custom | Pending | No first-class support found | No first-class support found |
-| Authoring | Integrated table/SFX editors, two-channel Tiny Sound sequencer, MIDI capture | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
+| Digital samples | DSOUND and adaptive VoxPCM, including WAV conversion and preview | No first-class support | Manual/custom | Pending | No first-class support found | No first-class support found |
+| Speech hardware | SP0256-AL2 Lundy and EVE detection, state, queueing, timing, and debugger emulation | Manual I/O/custom | Manual I/O/custom | Not established | Manual I/O/custom | Manual I/O/custom |
+| Authoring | Integrated table/SFX editors, two-channel Tiny Sound sequencer, MIDI capture, and WAV-to-VoxPCM workflow | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
 
 Amy Studio exposes the widest set of playback formats examined in this study, while CVBasic keeps
 a particularly concise music source syntax. Amy Studio can inspect and edit BIOS sound tables,
 audition steady/fade/echo envelopes, and capture note, velocity, and duration from Web MIDI. Its
 two-channel Tiny Sound sequencer edits notes, duration, tempo, envelopes, vibrato, and arpeggios
-with byte-exact project write-back. Remaining work is workflow polish and broader browser-versus-
-PSG fidelity measurement, not basic sequence editing.
+with byte-exact project write-back. VoxPCM supplies adaptive software speech on stock hardware;
+the separate SP0256 path supports Lundy and EVE voice modules with asynchronous allophone queues.
+Remaining work is workflow polish and broader browser-versus-hardware fidelity measurement.
 
 ## Compression evidence
 
@@ -421,8 +423,10 @@ is credited separately because it changes the machine available to the programme
 | Extension | Verified or documented advantage | Scope in this comparison |
 |---|---|---|
 | MegaCart / bank switching | CVBasic, z88dk, devkitSMS, and PVColLib can exceed the normal cartridge space | Valid capability; excluded from stock-ROM size ranking |
-| F18A | PVColLib provides dedicated APIs and examples for enhanced video hardware | Valid for modified or compatible clone systems; out of scope for ColecoVision-exclusive titles |
+| F18A | PVColLib provides APIs and examples; Amy's GearColeco 1.7.0 debugger can emulate F18A video | Debug validation is available in Amy, but first-class Amy language APIs remain future work |
 | SGM / AY-3-8910-compatible sound | CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
+| SP0256 voice modules | Amy provides Lundy/EVE commands and debugger-selectable module emulation | Optional external hardware; excluded from the stock sound ranking |
+| Coleco ADAM | Amy's GearColeco debugger accepts browser-local OS7, EOS, and WP firmware and exposes ADAM emulation | Emulator support is present; an Amy ADAM program target, EOS memory map, and media packaging are not yet complete |
 | Extra RAM | Available through SGM, ADAM, and compatible clones depending on the tool/runtime | Report separately; never count it as stock 1 KB RAM |
 
 This separation lets every solution show its extended-hardware strengths without weakening Amy
@@ -434,10 +438,12 @@ Studio's deliberate original-hardware target.
 |---|---|---|---|---|---|---|
 | Browser IDE | Integrated | No official integrated IDE | No | IDE/web options advertised | No | No |
 | Source breakpoints | Yes | External emulator | External debugger | IDE-dependent/unverified | External emulator | External emulator |
-| ASM stepping/rewind | Integrated GearColeco workflow | External | External | External | External | External |
+| ASM stepping/rewind | Integrated GearColeco 1.7.0 workflow | External | External | External | External | External |
 | RAM/VRAM/symbol inspection | Integrated | External | External | External | External | External/map symbols |
 | Cycle profiling | Integrated | External/manual | External/manual | Unverified | External/manual | External/manual |
-| Project graphics editors | Integrated/configurable | Separate tools | Separate tools | Resource conversion/IDE | Separate tools | `gfx2col`/separate tools |
+| Project graphics editors | Configurable `editors.json`; bitmap, tile, sprite, frame, tilemap, and composite previews | Separate tools | Separate tools | Resource conversion/IDE | Separate tools | `gfx2col`/separate tools |
+| External ROM loading | Drag-and-drop `.rom` and `.col` into Debug | External emulator | External emulator | External emulator | External emulator | External emulator |
+| Optional hardware setup | Voice-module selection plus browser-local Coleco/ADAM firmware | External emulator | External emulator | External emulator | External emulator | External emulator |
 | Automated ROM tests | Corpus, checkpoints, runtime harness | Not integrated | Buildable manually | Not established | Not established | Not established |
 
 This is a measured distinction of Amy Studio's current workflow. A fair comparison should still label command-line-only
@@ -446,9 +452,11 @@ Amy scripts separately from features directly accessible in the IDE.
 ### Amy Studio emphasizes ColecoVision integration
 
 Amy Studio's principal distinction in this study is not one isolated keyword. It connects source editing, asset
-conversion, compression, assembly optimization, ROM execution, source breakpoints, rewind,
-memory and VRAM inspection, controller configuration, profiling, and automated tests in one
-ColecoVision-focused workflow. Its overlays, typed state machines, BCD, fixed-point support,
+conversion, compression, assembly optimization, ROM execution, external-ROM drag-and-drop,
+source breakpoints, rewind, memory and VRAM inspection, controller and optional-hardware
+configuration, profiling, and automated tests in one ColecoVision-focused workflow. Its
+universal graphics editor follows TMS9918 sprite priority and scanline rules while previewing
+tile/sprite composites. Its overlays, typed state machines, BCD, fixed-point support,
 runtime-checked wide integers, collision helpers, and BIOS-aware input selection are also
 substantial language-level strengths.
 
@@ -549,8 +557,9 @@ status and order:
    GearColeco verifies every pattern, color, tile position, animation phase, and final state.
 4. **State update: complete.** Eight ROMs run the same actor array, collision checks, timers, and
    state dispatch oracle.
-5. **Sound authoring: functional and still evolving.** BIOS commands and Tiny Sound sequences can
-   be inspected, auditioned, edited, imported, and written back; UX and audio-parity QA continue.
+5. **Sound and voice: functional and still evolving.** BIOS commands and Tiny Sound sequences can
+   be inspected, auditioned, edited, imported, and written back. VoxPCM WAV conversion and preview,
+   plus SP0256 Lundy/EVE commands and emulation, are integrated; UX and hardware-parity QA continue.
 6. **Compression: payload and cycle suites complete.** Fifteen codecs have exact VRAM proof;
    representative streams now include linked decoder bytes and GearColeco cycle measurements.
 7. **Visible Hello: complete.** Keep it separate from the minimal runtime fixture so font/text
@@ -564,10 +573,11 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Close sound-editor fidelity and workflow gaps | Active | High | Medium | Medium |
-| 2 | Add a small explicit animation service | Next implementation study | High | Large | Medium-high |
-| 3 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
+| 1 | Define an Amy ADAM target: EOS memory map, non-cartridge output, and disk/data-pack packaging | Architecture study | High | Large | High |
+| 2 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
+| 3 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
 | 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
+| 5 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
 
 The codec study starts from the verified `libcv` RLE+Huffman path in PkK's devkit without copying its format into Amy.
 It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
@@ -578,14 +588,16 @@ decoder bytes, CPU RAM, GearColeco cycles, and a first-use ROM win over Amy's ex
 
 Completed and runtime-guarded:
 
-- eight-tool metasprite, state-update, and tile-animation fixtures with exact runtime oracles;
-- native metasprites, protected-priority flicker, and editable benchmark graphics;
-- complete 2D global/local arrays and record, record-array, parameter, and overlay fields with
-  constant dimensions, expression indexes, bounds diagnostics, and five-profile runtime proof;
-- fifteen direct-to-VRAM codecs with exact round trips, decoder costs, cycles, RAM use, and
-  42-picture rankings; Warrior is 3,254 bytes with ZX0 and 3,319 with Exomizer;
-- indexed-coordinate `put frame` corruption fixed through the Tile Animation VRAM oracle;
-- sound inspection, continuous playback, sequencer editing, undo, import, and Web MIDI;
-- 155 five-profile display tests covering literals, variables, expressions, qualified operands,
-  numeric boundaries, mixed widths, BCD, and HUD output. Adaptive `u8` formatting saves 212 corpus
-  bytes without ROM growth; explicit Amy digits match hand-written Z80 at 498 bytes and 1,905 cycles.
+- exact eight-tool metasprite, state-update, and tile-animation runtime oracles, plus native
+  metasprites, protected-priority flicker, and editable graphics;
+- complete 2D arrays and record/overlay fields with bounds diagnostics and five-profile proof;
+- fifteen direct-to-VRAM codecs with round trips, decoder cost, cycles, RAM, and 42-picture ranks;
+- corrected indexed `put frame`, sound inspection/editing, playback, undo, import, and Web MIDI;
+- adaptive VoxPCM conversion, preview, reusable-word playback, Space Taxi/Solar System demos, and
+  SP0256-AL2 Lundy/EVE commands, timing, queues, and debugger emulation;
+- GearColeco 1.7.0 with F18A/ADAM emulation and browser-local OS7/EOS/WP firmware, while the
+  unfinished Amy ADAM software target remains explicit;
+- `.rom`/`.col` drag-and-drop and universal graphics editors with TMS9918 priority and scanline
+  preview, tilemaps, frames, and tile/sprite composites;
+- 155 five-profile display tests; adaptive `u8` saves 212 corpus bytes without ROM growth, while
+  explicit Amy digits match hand-written Z80 at 498 bytes and 1,905 cycles.
