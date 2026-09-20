@@ -5,6 +5,7 @@ import { trainTrackPuzzleProjectFiles } from "./examples-train-track-assets.gene
 import { earthGlobeProjectFiles } from "./examples-earth-globe-assets.generated.js";
 import { spaceTaxiVoiceProjectFiles } from "./examples-voxpcm-assets.generated.js";
 import { solarSystemEncyclopediaProjectFiles } from "./examples-solar-system-assets.generated.js";
+import { mazeEscapeProjectFiles } from "./examples-maze-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -26,6 +27,7 @@ function makeEditorsProjectFile(editors) {
 
 
 const derivedProjectFilesById = {
+  "3d-maze-escape": mazeEscapeProjectFiles,
   "solar-system-encyclopedia": solarSystemEncyclopediaProjectFiles,
   "space-taxi-voice-demo": spaceTaxiVoiceProjectFiles,
   "earth-globe-demo": earthGlobeProjectFiles,

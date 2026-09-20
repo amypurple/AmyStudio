@@ -1,0 +1,814 @@
+project "TMS9918A Maze Engine Large"
+memory "colecovision_legacy_sdcc"
+
+asset MazeMap from "@project/maze-map.bin" codec raw
+asset MazeViews from "@project/maze-views.9bit.bin" codec raw
+asset MazeImageRows from "@project/maze-image-rows.9bit.bin" codec raw
+asset MazeRows from "@project/maze-rows.bin" codec raw
+asset MazeMaskSprites from "@project/maze-mask-sprites.bin" codec raw
+asset MazeTileMapTop from "@project/maze-tile-map-top.bin" codec raw
+asset MazeTileMapMiddle from "@project/maze-tile-map-middle.bin" codec raw
+asset MazeTileMapBottom from "@project/maze-tile-map-bottom.bin" codec raw
+asset MazeDictionaryPatterns from "@project/maze-dictionary-patterns.zx0" codec zx0
+asset MazeDictionaryColors from "@project/maze-dictionary-colors.zx0" codec zx0
+
+u8 CellX = 0
+u8 CellZ = 0
+u8 Heading = 0
+u8 ViewX = 0
+u8 ViewZ = 0
+u8 ViewHeading = 0
+u8 ViewSub = 0
+u8 PackedCell = 0
+u8 WallBits = 0
+u8 MapIndex = 0
+u8 MapShift = 0
+u16 MazeImagePointer = 0
+u8 MazeRowNumber = 0
+u8 MazeNameTop[16]
+u8 MazeNameBottom[16]
+u8 LocatorTile = 0
+u8 PreviousLocatorTile = 255
+u8 LocatorPatternData[8]
+u16 ElapsedFrames = 0
+u8 ResultSeconds = 0
+u16 MoveCount = 0
+u16 StepCount = 0
+u8 ChallengeWon = 0
+u8 FootstepPhase = 0
+u8 VoiceModule = 0
+
+sub start:
+  set sound table MazeSoundTable areas 2
+  voice detect into VoiceModule
+  title_screen
+  mute all
+  ElapsedFrames = 0
+  MoveCount = 0
+  StepCount = 0
+  ChallengeWon = 0
+  FootstepPhase = 0
+  CellX = 0
+  CellZ = 0
+  Heading = 0
+  PreviousLocatorTile = 255
+  screen off
+  bitmap screen
+  backdrop black
+  fill $00 count $0300 to vram.name
+  decompress zx0 MazeDictionaryPatterns to vram.pattern
+  decompress zx0 MazeDictionaryColors to vram.color
+  copy MazeMaskSprites count 448 to vram.spr_pat
+  sprites 16x16
+  sprites double
+  set sprite count 12
+  set sprite 0 to 31,64,0,1
+  set sprite 1 to 31,96,4,1
+  set sprite 2 to 31,128,8,1
+  set sprite 3 to 31,160,12,1
+  set sprite 4 to 63,64,16,1
+  set sprite 5 to 63,160,20,1
+  set sprite 6 to 95,64,24,1
+  set sprite 7 to 95,160,28,1
+  set sprite 8 to 127,64,32,1
+  set sprite 9 to 127,96,36,1
+  set sprite 10 to 127,128,40,1
+  set sprite 11 to 127,160,44,1
+  update sprites
+  asm {
+    call Maze_InitLocatorHud
+  }
+  draw_current_view
+  screen on
+
+main_loop:
+  wait
+  ElapsedFrames += 1
+  if ElapsedFrames = 10500 then
+    play song MazeAlarmSong
+    voice start MazePhraseHurryUp using VoiceModule
+  end if
+  if ElapsedFrames >= 10800 then
+    challenge_failed
+    return
+  end if
+  if joypad(1).left then
+    turn_left
+  elseif joypad(1).right then
+    turn_right
+  elseif joypad(1).up then
+    move_forward
+  elseif joypad(1).down then
+    move_backward
+  end if
+  goto main_loop
+
+sub title_screen:
+  screen off
+  text screen
+  backdrop black
+  set sprite count 0
+  update sprites
+  print centered at 5, "ESCAPE THE 3D MAZE"
+  print centered at 20, "FIRE"
+  screen on
+  wait
+  voice start MazePhraseTitle using VoiceModule
+  pause until press and release on joypad 1 sleep after 30 seconds
+  return
+
+sub draw_current_view:
+  ViewX = CellX
+  ViewZ = CellZ
+  ViewHeading = Heading
+  ViewSub = 0
+  draw_view
+  update_locator
+  return
+
+sub update_locator:
+  asm {
+    call Maze_UpdateLocatorHud
+  }
+  return
+
+sub draw_view:
+  asm {
+    call Maze_DrawView
+  }
+  return
+
+sub read_wall_bits:
+  asm {
+    ld a,(AMY_UVAR_MapIndex)
+    ld l,a
+    ld h,0
+    ld de,MazeMap
+    add hl,de
+    ld a,(hl)
+    ld b,a
+    ld a,(AMY_UVAR_MapShift)
+    or a
+    jr z,Maze_WallBitsReady
+Maze_WallBitsShift:
+    srl b
+    dec a
+    jr nz,Maze_WallBitsShift
+Maze_WallBitsReady:
+    ld a,b
+    ld (AMY_UVAR_WallBits),a
+  }
+  return
+
+sub turn_right:
+  MoveCount += 1
+  ViewX = CellX
+  ViewZ = CellZ
+  ViewHeading = Heading
+  ViewSub = 1
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  ViewSub = 2
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  Heading += 1
+  Heading &= 3
+  draw_current_view
+  return
+
+sub turn_left:
+  MoveCount += 1
+  ViewX = CellX
+  ViewZ = CellZ
+  ViewHeading = Heading - 1
+  ViewHeading &= 3
+  ViewSub = 2
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  ViewSub = 1
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  Heading = ViewHeading
+  draw_current_view
+  return
+
+sub move_forward:
+  if CellX = 15 and CellZ = 15 and Heading = 2 then
+    escaped
+    return
+  end if
+  if Heading = 0 then
+    if CellZ = 0 then return
+    PackedCell = (CellZ << 4) + CellX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 1 then return
+  elseif Heading = 1 then
+    if CellX = 15 then return
+    PackedCell = (CellZ << 4) + CellX + 1
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 2 then return
+  elseif Heading = 2 then
+    if CellZ = 15 then return
+    PackedCell = ((CellZ + 1) << 4) + CellX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 1 then return
+  else
+    if CellX = 0 then return
+    PackedCell = (CellZ << 4) + CellX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 2 then return
+  end if
+  ViewX = CellX
+  ViewZ = CellZ
+  ViewHeading = Heading
+  ViewSub = 3
+  MoveCount += 1
+  StepCount += 1
+  play_footstep
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  ViewSub = 4
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  if Heading = 0 then CellZ -= 1
+  if Heading = 1 then CellX += 1
+  if Heading = 2 then CellZ += 1
+  if Heading = 3 then CellX -= 1
+  ViewX = CellX
+  ViewZ = CellZ
+  ViewSub = 5
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  draw_current_view
+  return
+
+sub move_backward:
+  if Heading = 0 then
+    if CellZ = 15 then return
+    ViewZ = CellZ + 1
+    PackedCell = (ViewZ << 4) + CellX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 1 then return
+    ViewX = CellX
+  elseif Heading = 1 then
+    if CellX = 0 then return
+    ViewX = CellX - 1
+    ViewZ = CellZ
+    PackedCell = (CellZ << 4) + CellX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 2 then return
+  elseif Heading = 2 then
+    if CellZ = 0 then return
+    ViewZ = CellZ - 1
+    PackedCell = (CellZ << 4) + CellX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 1 then return
+    ViewX = CellX
+  else
+    if CellX = 15 then return
+    ViewX = CellX + 1
+    ViewZ = CellZ
+    PackedCell = (CellZ << 4) + ViewX
+    MapShift = (PackedCell & 3) << 1
+    MapIndex = PackedCell >> 2
+    read_wall_bits
+    if WallBits & 2 then return
+  end if
+  ViewHeading = Heading
+  ViewSub = 5
+  MoveCount += 1
+  StepCount += 1
+  play_footstep
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  ViewSub = 4
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  CellX = ViewX
+  CellZ = ViewZ
+  ViewSub = 3
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 3
+  draw_current_view
+  return
+
+sub escaped:
+  ViewX = CellX
+  ViewZ = CellZ
+  ViewHeading = Heading
+  ViewSub = 3
+  draw_view
+  wait 3 frames
+  ViewSub = 4
+  draw_view
+  wait 3 frames
+  ViewSub = 5
+  draw_view
+  wait 3 frames
+  ElapsedFrames += 9
+  ChallengeWon = 1
+  escape_silhouette
+  results_screen
+  return
+
+sub challenge_failed:
+  ChallengeWon = 0
+  results_screen
+  return
+
+sub play_footstep:
+  if FootstepPhase = 0 then
+    play sound 2
+    FootstepPhase = 1
+  else
+    play sound 3
+    FootstepPhase = 0
+  end if
+  return
+
+sub escape_silhouette:
+  screen off
+  bitmap screen
+  backdrop cyan
+  fill $00 count $0300 to vram.name
+  asm {
+    call Maze_ClearSilhouetteScreen
+  }
+  sprites 16x16
+  sprites double
+  set sprite count 1
+  set sprite 0 to 15,112,48,1
+  update sprites
+  screen on
+  set sprite 0 to 47,112,48,1
+  update sprites
+  wait 4 frames
+  set sprite 0 to 95,112,52,1
+  update sprites
+  wait 4 frames
+  set sprite 0 to 159,112,48,1
+  update sprites
+  wait 4 frames
+  screen off
+  return
+
+sub results_screen:
+  mute all
+  ResultSeconds = 0
+result_seconds_loop:
+  if ElapsedFrames < 60 goto result_seconds_ready
+  ElapsedFrames -= 60
+  ResultSeconds += 1
+  goto result_seconds_loop
+result_seconds_ready:
+  screen off
+  text screen
+  backdrop black
+  set sprite count 0
+  update sprites
+  if ChallengeWon then
+    voice start MazePhraseOops using VoiceModule
+    print centered at 4, "VICTORY"
+    print centered at 6, "YOU ESCAPED THE MAZE"
+  else
+    voice start MazePhraseBetterLuck using VoiceModule
+    print centered at 4, "CHALLENGE FAILED"
+    print centered at 6, "TIME LIMIT: 180 SECONDS"
+  end if
+  print "TIME" at 7,10
+  print ResultSeconds at 19,10 digits 3
+  print "SECONDS" at 23,10
+  print "MOVEMENTS" at 7,13
+  print MoveCount at 21,13 digits 5
+  print "STEPS" at 7,16
+  print StepCount at 21,16 digits 5
+  print centered at 21, "PRESS FIRE TO RESTART"
+  screen on
+  pause until press and release on joypad 1 sleep after 30 seconds
+  asm {
+    ld sp,$73B7
+    jp Start
+  }
+  return
+
+asm {
+MazeSoundTable:
+  dw MazeAlarmMusic1,$702B
+  dw MazeStep1,$7035
+  dw MazeStep2,$7035
+MazeAlarmMusic1:
+  db $44
+  dw sndtiny_1
+  db $0A
+  db $02,$60,$19,$22
+  db $13,$16,$1A,$16,$FF
+MazeAlarmSong:
+  dw $0001
+  db $41
+  dw $0000
+MazeStep1:
+  db $02,$05,$0B,$1D,$11,$10
+MazeStep2:
+  db $02,$06,$0B,$1D,$12,$10
+
+MazePhraseTitle:
+  db $0C,$37,$2A,$14,$09,$01,$36,$0F,$01,$1D,$0E,$13,$01,$21,$13,$01,$10,$14,$2B,$FF
+MazePhraseHurryUp:
+  db $39,$33,$13,$01,$1E,$09,$FF
+MazePhraseBetterLuck:
+  db $1C,$07,$0D,$33,$01,$2D,$1E,$2A,$01,$0B,$07,$2A,$37,$0D,$01,$0D,$06,$10,$FF
+MazePhraseOops:
+  db $1F,$09,$37,$01,$1F,$09,$37,$01,$1F,$09,$37,$FF
+
+Maze_RowOffsets:
+  dw 0,128,1192,3616,6376,9168,11480,12008
+
+Maze_InitLocatorHud:
+  ld hl,Maze_HudPatterns
+  ld de,$0700
+  ld bc,168
+  call AMY_COPY_BYTES_TO_VRAM
+  ld hl,Maze_HudColors
+  ld de,$2700
+  ld bc,168
+  call AMY_COPY_BYTES_TO_VRAM
+  ld hl,Maze_HudMapRow
+  ld de,$181A
+  ld bc,6
+  call AMY_COPY_BYTES_TO_VRAM
+  ld hl,Maze_HudMapBodyRows
+  ld de,$183A
+  ld b,4
+Maze_InitLocatorHudBody:
+  push bc
+  push de
+  ld bc,6
+  call AMY_COPY_BYTES_TO_VRAM
+  pop de
+  ld a,e
+  add a,32
+  ld e,a
+  jr nc,Maze_InitLocatorHudBodyNoCarry
+  inc d
+Maze_InitLocatorHudBodyNoCarry:
+  pop bc
+  djnz Maze_InitLocatorHudBody
+  ld hl,Maze_HudBlankPattern
+  ld de,$18BA
+  ld bc,6
+  jp AMY_COPY_BYTES_TO_VRAM
+
+Maze_HudPatterns:
+  ; $E0-$EF are independent grey map cells updated by the locator.
+  ds 120,0
+  db 0,0,0,0,0,0,$03,$03
+  ; $F0 blank, $F1-$F4 N/S/W/E.
+  db 0,0,0,0,0,0,0,0
+Maze_HudLetterPatterns:
+  db $42,$62,$52,$4A,$46,$42,$42,$00
+  db $3C,$42,$40,$3C,$02,$42,$3C,$00
+  db $42,$42,$42,$5A,$5A,$66,$42,$00
+  db $7E,$40,$40,$7C,$40,$40,$7E,$00
+Maze_HudColors:
+  ; Red foreground on grey background; an empty pattern remains solid grey.
+  ds 120,$6E
+  db $6E,$6E,$6E,$6E,$6E,$6E,$7E,$7E
+  db $11,$11,$11,$11,$11,$11,$11,$11
+Maze_HudLetterColors:
+  db $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  db $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  db $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  db $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+Maze_HudMapRow:
+  db 0,0,$F1,0,0,0
+Maze_HudMapBodyRows:
+  db 0,$E0,$E1,$E2,$E3,0
+  db 0,$E4,$E5,$E6,$E7,0
+  db 0,$E8,$E9,$EA,$EB,0
+  db 0,$EC,$ED,$EE,$EF,0
+Maze_HudBlankPattern:
+  db 0,0,0,0,0,0,0,0
+Maze_HudExitPattern:
+  db 0,0,0,0,0,0,$03,$03
+
+Maze_ClearSilhouetteScreen:
+  ld de,$0000
+  call Maze_ClearEightBytes
+  ld de,$0800
+  call Maze_ClearEightBytes
+  ld de,$1000
+  call Maze_ClearEightBytes
+  ld de,$2000
+  call Maze_ClearEightBytes
+  ld de,$2800
+  call Maze_ClearEightBytes
+  ld de,$3000
+Maze_ClearEightBytes:
+  ld hl,Maze_HudBlankPattern
+  ld bc,8
+  jp AMY_COPY_BYTES_TO_VRAM
+
+Maze_UpdateLocatorHud:
+  ld a,(AMY_UVAR_PreviousLocatorTile)
+  cp $FF
+  jr z,Maze_UpdateLocatorNoPrevious
+  call Maze_LocatorPatternAddress
+  ld hl,Maze_HudBlankPattern
+  ld a,(AMY_UVAR_PreviousLocatorTile)
+  cp 15
+  jr nz,Maze_UpdateLocatorRestoreReady
+  ld hl,Maze_HudExitPattern
+Maze_UpdateLocatorRestoreReady:
+  ld bc,8
+  call AMY_COPY_BYTES_TO_VRAM
+Maze_UpdateLocatorNoPrevious:
+  ; Tile = (CellZ / 4) * 4 + CellX / 4.
+  ld a,(AMY_UVAR_CellZ)
+  srl a
+  srl a
+  add a,a
+  add a,a
+  ld b,a
+  ld a,(AMY_UVAR_CellX)
+  srl a
+  srl a
+  add a,b
+  ld (AMY_UVAR_LocatorTile),a
+  ld (AMY_UVAR_PreviousLocatorTile),a
+  push af
+  ld hl,AMY_UVAR_LocatorPatternData
+  ld b,8
+  xor a
+Maze_UpdateLocatorClear:
+  ld (hl),a
+  inc hl
+  djnz Maze_UpdateLocatorClear
+  pop af
+  push af
+  cp 15
+  jr nz,Maze_UpdateLocatorExitReady
+  ld hl,AMY_UVAR_LocatorPatternData+6
+  ld (hl),$03
+  inc hl
+  ld (hl),$03
+Maze_UpdateLocatorExitReady:
+  ; Draw a two-by-two red point at two pixels per maze cell.
+  ld a,(AMY_UVAR_CellX)
+  and 3
+  ld b,a
+  ld a,$C0
+  jr z,Maze_UpdateLocatorMaskReady
+Maze_UpdateLocatorShift:
+  srl a
+  srl a
+  djnz Maze_UpdateLocatorShift
+Maze_UpdateLocatorMaskReady:
+  ld c,a
+  ld a,(AMY_UVAR_CellZ)
+  and 3
+  add a,a
+  ld e,a
+  ld d,0
+  ld hl,AMY_UVAR_LocatorPatternData
+  add hl,de
+  ld (hl),c
+  inc hl
+  ld (hl),c
+  pop af
+  call Maze_LocatorPatternAddress
+  ld hl,AMY_UVAR_LocatorPatternData
+  ld bc,8
+  call AMY_COPY_BYTES_TO_VRAM
+  ; Top-centre heading tile: N, E, S or W.
+  ld a,(AMY_UVAR_Heading)
+  ld hl,Maze_HudHeadingTiles
+  ld e,a
+  ld d,0
+  add hl,de
+  ld b,(hl)
+  ld a,$0F
+  out (VDP_CTRL_PORT),a
+  ld a,$58
+  out (VDP_CTRL_PORT),a
+  ld a,b
+  out (VDP_DATA_PORT),a
+  ret
+
+Maze_LocatorPatternAddress:
+  ; Input A is map tile index 0-15; output DE is $0700 + A*8.
+  ld l,a
+  ld h,0
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  ld de,$0700
+  add hl,de
+  ex de,hl
+  ret
+
+Maze_HudHeadingTiles:
+  db $F1,$F4,$F2,$F3
+
+; HL points at one packed group and A selects one of its 9-bit entries.
+; Returns the value in DE. Groups are padded so reading HL+A+1 is safe.
+Maze_Read9:
+  push bc
+  ld c,a
+  ld b,0
+  add hl,bc
+  ld e,(hl)
+  inc hl
+  ld d,(hl)
+  ld a,c
+  or a
+  jr z,Maze_Read9Mask
+Maze_Read9Shift:
+  srl d
+  rr e
+  dec a
+  jr nz,Maze_Read9Shift
+Maze_Read9Mask:
+  ld a,d
+  and 1
+  ld d,a
+  pop bc
+  ret
+
+Maze_DrawView:
+  ; State = ((z * 16 + x) * 4 + heading), seven packed bytes each.
+  ld a,(AMY_UVAR_ViewZ)
+  ld h,0
+  ld l,a
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  ld a,(AMY_UVAR_ViewX)
+  ld e,a
+  ld d,0
+  add hl,de
+  add hl,hl
+  add hl,hl
+  ld a,(AMY_UVAR_ViewHeading)
+  ld e,a
+  ld d,0
+  add hl,de
+  push hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  pop de
+  or a
+  sbc hl,de
+  ld de,MazeViews
+  add hl,de
+  ld a,(AMY_UVAR_ViewSub)
+  call Maze_Read9
+
+  ; Each image stores eight 9-bit row indices in exactly nine bytes.
+  ex de,hl
+  push hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  pop de
+  add hl,de
+  ld de,MazeImageRows
+  add hl,de
+  ld (AMY_UVAR_MazeImagePointer),hl
+  xor a
+  ld (AMY_UVAR_MazeRowNumber),a
+
+Maze_DrawRow:
+  ld hl,(AMY_UVAR_MazeImagePointer)
+  ld a,(AMY_UVAR_MazeRowNumber)
+  call Maze_Read9
+  ex de,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  push hl
+  ld a,(AMY_UVAR_MazeRowNumber)
+  add a,a
+  ld e,a
+  ld d,0
+  ld hl,Maze_RowOffsets
+  add hl,de
+  ld e,(hl)
+  inc hl
+  ld d,(hl)
+  pop hl
+  add hl,de
+  ld de,MazeRows
+  add hl,de
+  ; Resolve eight source tiles through the dictionary for this screen third.
+  ld de,MazeTileMapTop
+  ld a,(AMY_UVAR_MazeRowNumber)
+  cp 2
+  jr c,Maze_DrawMapReady
+  ld de,MazeTileMapMiddle
+  cp 6
+  jr c,Maze_DrawMapReady
+  ld de,MazeTileMapBottom
+Maze_DrawMapReady:
+  ld ix,AMY_UVAR_MazeNameTop
+  ld iy,AMY_UVAR_MazeNameBottom
+  ld b,8
+Maze_DrawMapTile:
+  ld a,(hl)
+  inc hl
+  push hl
+  cp $FF
+  jr nz,Maze_DrawMappedTile
+  ld hl,Maze_SkyQuadrants
+  jr Maze_DrawMapCopy
+Maze_DrawMappedTile:
+  ld l,a
+  ld h,0
+  add hl,hl
+  add hl,hl
+  add hl,de
+Maze_DrawMapCopy:
+  ld a,(hl)
+  ld (ix+0),a
+  inc hl
+  ld a,(hl)
+  ld (ix+1),a
+  inc hl
+  ld a,(hl)
+  ld (iy+0),a
+  inc hl
+  ld a,(hl)
+  ld (iy+1),a
+Maze_DrawMappedTileReady:
+  pop hl
+  inc ix
+  inc ix
+  inc iy
+  inc iy
+  djnz Maze_DrawMapTile
+
+  ; The 16x16 viewport starts at NAME row 4, column 8.
+  ld a,(AMY_UVAR_MazeRowNumber)
+  ld l,a
+  ld h,0
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  add hl,hl
+  ld de,$1888
+  add hl,de
+  ex de,hl
+  push de
+  ld hl,AMY_UVAR_MazeNameTop
+  ld bc,16
+  call AMY_COPY_BYTES_TO_VRAM
+  pop de
+  ld a,e
+  add a,32
+  ld e,a
+  jr nc,Maze_DrawBottomAddressReady
+  inc d
+Maze_DrawBottomAddressReady:
+  ld hl,AMY_UVAR_MazeNameBottom
+  ld bc,16
+  call AMY_COPY_BYTES_TO_VRAM
+
+  ld a,(AMY_UVAR_MazeRowNumber)
+  inc a
+  ld (AMY_UVAR_MazeRowNumber),a
+  cp 8
+  jp nz,Maze_DrawRow
+  ret
+
+Maze_SkyTile equ 1
+Maze_SkyQuadrants:
+  ds 4,Maze_SkyTile
+
+}

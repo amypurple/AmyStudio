@@ -21,6 +21,24 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "3d-maze-escape",
+    "label": "3D Maze Escape",
+    "detail": "Escape a magnified first-person TMS9918A maze using three permanent ZX0 tile dictionaries, NAME-only animation, a locator HUD, footsteps, timer, and result sequence.",
+    "projectName": "3d-maze-escape",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "game",
+      "maze",
+      "3d",
+      "tms9918a",
+      "zx0",
+      "sprites"
+    ]
+  },
+  {
     "id": "solar-system-encyclopedia",
     "label": "3D Solar System",
     "detail": "Eleven animated celestial bodies with shared sprite masks, ZX0 graphics, facts, and a CRT-safe menu.",
