@@ -25,7 +25,7 @@ import {
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260802-open-rom-no-compile11";
 import { loadColecoBiosFromBrowser, saveColecoBiosToBrowser } from "./core/colecoBiosStorage.js?v=20260805-local-bios";
-import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260918-deterministic-video-export";
+import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260920-record-from-boot";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
