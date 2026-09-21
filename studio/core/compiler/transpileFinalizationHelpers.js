@@ -357,7 +357,7 @@ function optimizeGeneratedDecAndBranch(lines) {
   }
   return optimized;
 }
-function optimizeGeneratedMemoryLoads(lines) {
+export function optimizeGeneratedMemoryLoads(lines) {
   const directLoadA = /^\s*ld\s+a,\s*\(([A-Za-z_][A-Za-z0-9_]*)\)\s*$/i;
   const directLoadHL = /^\s*ld\s+hl,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
   const anyLoadHL = /^\s*ld\s+hl\s*,/i;
@@ -369,7 +369,7 @@ function optimizeGeneratedMemoryLoads(lines) {
   const conditionalBranch = /^\s*(?:jr|jp)\s+[a-z]{1,2}\s*,/i;
   const hardBarrier = /^\s*(?:call|ret|reti|retn)\b/i;
   const hlClobber = /^\s*(?:ld\s+hl,|inc\s+hl|dec\s+hl|add\s+hl,|adc\s+hl,|sbc\s+hl,|pop\s+hl|ex\s+de\s*,\s*hl|ex\s+\(sp\)\s*,\s*hl)\b/i;
-  const aClobber = /^\s*(?:ld\s+a\s*,|inc\s+a\b|dec\s+a\b|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|rlca\b|rla\b|rrca\b|rra\b)/i;
+  const aClobber = /^\s*(?:ld\s+a\s*,|inc\s+a\b|dec\s+a\b|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|daa\b|rld\b|rrd\b|ex\s+af\s*,\s*af'(?:\s|$)|rlca\b|rla\b|rrca\b|rra\b|(?:rlc|rl|rrc|rr|sla|sra|srl|res\s+\d+\s*,|set\s+\d+\s*,)\s*a\b)/i;
   const memoryAtHlMutation = /^\s*(?:inc|dec)\s+\(hl\)\s*$/i;
 
   function findKnownHlSymbolBefore(sourceLines, startIndex) {
