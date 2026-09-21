@@ -147,6 +147,8 @@ const tests = [
   { file: "test-rom-test-case.mjs", area: "debugger-test-cases", evidence: "unit", suite: "studio" },
   { file: "test-rom-test-case-replay.mjs", area: "debugger-replay", evidence: "unit", suite: "studio" },
   { file: "test-rom-test-recorder.mjs", area: "debugger-recorder", evidence: "unit", suite: "studio" },
+  { file: "test-gameplay-video-export.mjs", area: "debugger-video-container", evidence: "unit", suite: "studio" },
+  { file: "test-gameplay-video-export-core.mjs", area: "debugger-video-export", evidence: "runtime", suite: "emulator", requires: ["studio/bios/colecovision.rom", "build/rom-tests/warrior-dan2-fire-visual-test.rom"] },
   { file: "test-routine-cycle-profiler.mjs", area: "debugger-cycle-profiler", evidence: "unit", suite: "studio" },
   { file: "test-source-breakpoints.mjs", area: "source-breakpoints", evidence: "unit", suite: "studio" },
   { file: "test-source-debug-map.mjs", area: "source-debug-map", evidence: "unit", suite: "studio" },
