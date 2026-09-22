@@ -1,10 +1,14 @@
 project "Where On Earth"
-' cartridge "WHERE ON EARTH?/AMY BIENVENU/2026"
+cartridge "WHERE ON EARTH?/AMY BIENVENU/2026"
 memory "colecovision_legacy_sdcc"
 
+' Graphics II stores Pattern and Color in three consecutive 2 KB banks. Packing
+' each complete 6 KB table as one ZX0 stream finds repetitions across all thirds.
 asset GlobePattern from "@project/globe.pattern.zx0" codec zx0
 asset GlobeColor from "@project/globe.color.zx0" codec zx0
+' The circular mask, crosshair and city marker share one compressed sprite set.
 asset GlobeSprites from "@project/globe-mask-sprites.zx0" codec zx0
+' VoxPCM is split into RAM-safe segments. The sequence table is in the ASM file.
 asset GlobeTitleVoicePart1 from "@project/globe-title-1.voxpcm"
 asset GlobeTitleVoicePart2 from "@project/globe-title-2.voxpcm"
 asset GlobeTitleVoicePart3 from "@project/globe-title-3.voxpcm"
@@ -41,6 +45,7 @@ sub start:
   screen off
   bitmap screen
   backdrop black
+  ' Keep the display disabled while permanent graphics are written to VRAM.
   fill 1 count 768 to vram.name
   decompress zx0 GlobePattern to vram.pattern
   decompress zx0 GlobeColor to vram.color
@@ -64,6 +69,7 @@ sub start:
   set sprite 12 to 155,136,44,1
   call asm GlobeShowModeMenu
   screen on
+  ' Speech blocks normal game code but remains synchronized by the NMI player.
   play voxpcm GlobeTitleVoice
   GlobeKey = 1
   choose menu 1 to 4 into GlobeKey cursor $D7 at 2,16 step 1 clear $01 sleep after 10 seconds
@@ -83,6 +89,7 @@ sub start:
   play song GlobeThemeSong
   screen off
   fill 1 count 768 to vram.name
+  ' A round selects a city; its location is resolved for the current globe view.
   choose_target
   call asm GlobeInitHud
   draw_view
@@ -95,6 +102,7 @@ sub start:
 game_loop:
   wait
   update_sfx
+  ' Moving near an edge rotates or tilts the globe instead of losing the cursor.
   if GlobeInputDelay > 0 then GlobeInputDelay -= 1
   if GlobeInputDelay = 0 then
     if joypad(1).left then
@@ -193,6 +201,8 @@ game_loop:
   goto game_loop
 
 sub view_changed:
+  ' The view index is tilt * 16 + longitude. Only the 16x16 NAME rectangle changes;
+  ' Pattern and Color remain resident in VRAM for every one of the 48 viewpoints.
   GlobeView = GlobeTilt << 4
   GlobeView += GlobeLongitude
   draw_view
@@ -207,11 +217,14 @@ sub draw_view:
   return
 
 sub choose_target:
+  ' Both packs contain twenty entries. GlobePack selects their table half.
   GlobeTarget = random(0,19)
   if GlobePack then GlobeTarget += 20
   return
 
 sub easy_hint:
+  ' Assisted mode rotates to a marker-safe view but deliberately leaves the city
+  ' away from the center, so it provides direction without revealing the answer.
   GlobeCursorX = 64
   GlobeCursorY = 64
   if GlobeEasyMode = 0 then return
