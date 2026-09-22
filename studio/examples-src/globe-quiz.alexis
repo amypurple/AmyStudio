@@ -1,0 +1,345 @@
+project "Where On Earth"
+' cartridge "WHERE ON EARTH?/AMY BIENVENU/2026"
+memory "colecovision_legacy_sdcc"
+
+asset GlobePatternTop from "@project/globe-bank-0.pattern.zx0" codec zx0
+asset GlobePatternMiddle from "@project/globe-bank-1.pattern.zx0" codec zx0
+asset GlobePatternBottom from "@project/globe-bank-2.pattern.zx0" codec zx0
+asset GlobeColorTop from "@project/globe-bank-0.color.zx0" codec zx0
+asset GlobeColorMiddle from "@project/globe-bank-1.color.zx0" codec zx0
+asset GlobeColorBottom from "@project/globe-bank-2.color.zx0" codec zx0
+asset GlobeSprites from "@project/globe-mask-sprites.bin" codec raw
+asset GlobeTitleVoicePart1 from "@project/globe-title-1.voxpcm"
+asset GlobeTitleVoicePart2 from "@project/globe-title-2.voxpcm"
+asset GlobeTitleVoicePart3 from "@project/globe-title-3.voxpcm"
+asset GlobeTitleVoicePart4 from "@project/globe-title-4.voxpcm"
+
+u8 GlobeLongitude = 8
+u8 GlobeTilt = 1
+u8 GlobeView = 24
+u8 GlobeCursorX = 64
+u8 GlobeCursorY = 64
+u8 GlobeTarget = 0
+u8 GlobeTargetX = 64
+u8 GlobeTargetY = 64
+u8 GlobeRound = 1
+u8 GlobeResultShown = 0
+u8 GlobeInputDelay = 0
+u8 GlobeKey = 255
+u8 GlobePack = 0
+u8 GlobeEasyMode = 0
+u8 GlobeEasyView = 24
+u8 GlobeEasyLongitude = 8
+u8 GlobeEasyTilt = 1
+u8 GlobeEasyDelta = 0
+u8 GlobeSfxTimer = 0
+u8 GlobeSfxKind = 0
+u16 GlobeScore = 0
+u16 GlobeLastKm = 0
+u16 GlobeLastPoints = 0
+u16 GlobeNumberDestination = 0
+
+sub start:
+  screen off
+  bitmap screen
+  backdrop black
+  fill 1 count 768 to vram.name
+  decompress zx0 GlobePatternTop to vram.pattern
+  decompress zx0 GlobePatternMiddle to vram.pattern + $0800
+  decompress zx0 GlobePatternBottom to vram.pattern + $1000
+  decompress zx0 GlobeColorTop to vram.color
+  decompress zx0 GlobeColorMiddle to vram.color + $0800
+  decompress zx0 GlobeColorBottom to vram.color + $1000
+  copy GlobeSprites count 448 to vram.spr_pat
+  set sound table GlobeSoundTable areas 2
+  sprites 16x16
+  sprites double
+  set sprite count 14
+  set sprite 0 to 81,114,48,15
+  set sprite 1 to 55,64,0,1
+  set sprite 2 to 55,160,4,1
+  set sprite 3 to 103,64,8,1
+  set sprite 4 to 103,160,12,1
+  set sprite 5 to 23,72,16,1
+  set sprite 6 to 23,152,20,1
+  set sprite 7 to 135,72,24,1
+  set sprite 8 to 135,152,28,1
+  set sprite 9 to 3,104,32,1
+  set sprite 10 to 3,136,36,1
+  set sprite 11 to 155,104,40,1
+  set sprite 12 to 155,136,44,1
+  call asm GlobeShowModeMenu
+  screen on
+  play voxpcm GlobeTitleVoice
+  GlobeKey = 1
+  choose menu 1 to 4 into GlobeKey cursor $D7 at 2,16 step 1 clear $01 sleep after 10 seconds
+  if GlobeKey = 1 then
+    GlobePack = 0
+    GlobeEasyMode = 0
+  elseif GlobeKey = 2 then
+    GlobePack = 0
+    GlobeEasyMode = 1
+  elseif GlobeKey = 3 then
+    GlobePack = 1
+    GlobeEasyMode = 0
+  elseif GlobeKey = 4 then
+    GlobePack = 1
+    GlobeEasyMode = 1
+  end if
+  play song GlobeThemeSong
+  screen off
+  fill 1 count 768 to vram.name
+  choose_target
+  call asm GlobeInitHud
+  draw_view
+  update_crosshair
+  hide sprite 13
+  update sprites
+  screen on
+  easy_hint
+
+game_loop:
+  wait
+  update_sfx
+  if GlobeInputDelay > 0 then GlobeInputDelay -= 1
+  if GlobeInputDelay = 0 then
+    if joypad(1).left then
+      if GlobeCursorX <= 18 then
+        GlobeLongitude -= 1
+        GlobeLongitude &= 15
+        view_changed
+        GlobeInputDelay = 8
+      else
+        GlobeCursorX -= 2
+        GlobeInputDelay = 2
+      end if
+    elseif joypad(1).right then
+      if GlobeCursorX >= 110 then
+        GlobeLongitude += 1
+        GlobeLongitude &= 15
+        view_changed
+        GlobeInputDelay = 8
+      else
+        GlobeCursorX += 2
+        GlobeInputDelay = 2
+      end if
+    elseif joypad(1).up then
+      if GlobeCursorY <= 18 then
+        if GlobeTilt < 2 then
+          GlobeTilt += 1
+          view_changed
+        end if
+        GlobeInputDelay = 8
+      else
+        GlobeCursorY -= 2
+        GlobeInputDelay = 2
+      end if
+    elseif joypad(1).down then
+      if GlobeCursorY >= 106 then
+        if GlobeTilt > 0 then
+          GlobeTilt -= 1
+          view_changed
+        end if
+        GlobeInputDelay = 8
+      else
+        GlobeCursorY += 2
+        GlobeInputDelay = 2
+      end if
+    end if
+  end if
+  GlobeKey = keypad(1)
+  if GlobeKey = 4 then
+    GlobeLongitude -= 1
+    GlobeLongitude &= 15
+    view_changed
+    wait_key_release
+  elseif GlobeKey = 6 then
+    GlobeLongitude += 1
+    GlobeLongitude &= 15
+    view_changed
+    wait_key_release
+  elseif GlobeKey = 2 then
+    if GlobeTilt < 2 then GlobeTilt += 1
+    view_changed
+    wait_key_release
+  elseif GlobeKey = 8 then
+    if GlobeTilt > 0 then GlobeTilt -= 1
+    view_changed
+    wait_key_release
+  elseif joypad(1).button1 then
+    if GlobeResultShown = 0 then
+      call asm GlobeCalculateResult
+      GlobeScore += GlobeLastPoints
+      GlobeResultShown = 1
+      call asm GlobeUpdateScore
+      call asm GlobeUpdateTargetSprite
+      call asm GlobeShowResult
+      if GlobeLastPoints >= 800 then
+        good_answer_sound
+      else
+        wrong_answer_sound
+      end if
+    else
+      GlobeRound += 1
+      if GlobeRound = 10 then
+        game_over
+      else
+        choose_target
+        GlobeResultShown = 0
+        hide sprite 13
+        call asm GlobeUpdateHud
+        easy_hint
+      end if
+    end if
+    update sprites
+    wait_fire_release
+  end if
+  update_crosshair
+  update sprites
+  goto game_loop
+
+sub view_changed:
+  GlobeView = GlobeTilt << 4
+  GlobeView += GlobeLongitude
+  draw_view
+  if GlobeResultShown then
+    call asm GlobeLocateTarget
+    call asm GlobeUpdateTargetSprite
+  end if
+  return
+
+sub draw_view:
+  call asm GlobeDrawView
+  return
+
+sub choose_target:
+  GlobeTarget = random(0,19)
+  if GlobePack then GlobeTarget += 20
+  return
+
+sub easy_hint:
+  GlobeCursorX = 64
+  GlobeCursorY = 64
+  if GlobeEasyMode = 0 then return
+  call asm GlobeGetEasyView
+  GlobeEasyLongitude = GlobeEasyView & 15
+  GlobeEasyTilt = GlobeEasyView >> 4
+easy_tilt_loop:
+  if GlobeTilt = GlobeEasyTilt then goto easy_longitude_loop
+  if GlobeTilt < GlobeEasyTilt then
+    GlobeTilt += 1
+  else
+    GlobeTilt -= 1
+  end if
+  view_changed
+  wait
+  wait
+  wait
+  goto easy_tilt_loop
+easy_longitude_loop:
+  if GlobeLongitude = GlobeEasyLongitude then return
+  GlobeEasyDelta = GlobeEasyLongitude - GlobeLongitude
+  GlobeEasyDelta &= 15
+  if GlobeEasyDelta < 9 then
+    GlobeLongitude += 1
+  else
+    GlobeLongitude -= 1
+  end if
+  GlobeLongitude &= 15
+  view_changed
+  wait
+  wait
+  wait
+  goto easy_longitude_loop
+
+sub update_crosshair:
+  set sprite 0 to GlobeCursorY + 17,GlobeCursorX + 50,48,15
+  return
+
+sub wrong_answer_sound:
+  GlobeSfxTimer = 18
+  GlobeSfxKind = 1
+  psg tone 2,620
+  psg volume 2,3
+  return
+
+sub good_answer_sound:
+  GlobeSfxTimer = 30
+  GlobeSfxKind = 2
+  psg tone 2,120
+  psg volume 2,3
+  return
+
+sub update_sfx:
+  if GlobeSfxTimer = 0 then return
+  GlobeSfxTimer -= 1
+  if GlobeSfxKind = 1 then
+    if GlobeSfxTimer = 12 then
+      psg volume 2,6
+    end if
+    if GlobeSfxTimer = 6 then
+      psg volume 2,10
+    end if
+  else
+    if GlobeSfxTimer = 24 then
+      psg volume 2,15
+    end if
+    if GlobeSfxTimer = 20 then
+      psg tone 2,100
+      psg volume 2,4
+    end if
+    if GlobeSfxTimer = 14 then
+      psg volume 2,15
+    end if
+    if GlobeSfxTimer = 10 then
+      psg tone 2,80
+      psg volume 2,5
+    end if
+    if GlobeSfxTimer = 4 then
+      psg volume 2,15
+    end if
+  end if
+  if GlobeSfxTimer = 0 then
+    psg volume 2,15
+    GlobeSfxKind = 0
+  end if
+  return
+
+sub wait_key_release:
+  wait
+  if keypad(1) <> 255 then goto wait_key_release
+  return
+
+sub wait_fire_release:
+  wait
+  if joypad(1).button1 then goto wait_fire_release
+  return
+
+sub game_over:
+  stop song
+  mute all
+  call asm GlobeShowGameOver
+  hide sprite 13
+  update sprites
+  wait_fire_release
+game_over_wait:
+  wait
+  if not joypad(1).button1 then goto game_over_wait
+game_over_release:
+  wait
+  if joypad(1).button1 then goto game_over_release
+  GlobeScore = 0
+  GlobeRound = 1
+  GlobeResultShown = 0
+  choose_target
+  call asm GlobeUpdateHud
+  play song GlobeThemeSong
+  easy_hint
+  goto game_loop
+
+include "@project/globe-views.asm"
+include "@project/globe-font.asm"
+include "@project/globe-city-data.asm"
+include "@project/globe-sound.asm"
+include "@project/globe-title-voice.asm"
+include "@project/globe-runtime.asm"
