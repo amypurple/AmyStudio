@@ -387,7 +387,8 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
 
 function sourceHintsTinySound(sourceText) {
   const text = sourceText || "";
-  return /\bsndtiny_[12]\b/i.test(text)
+  return /\bplay\s+song\b/i.test(text)
+    || /\bsndtiny_[12]\b/i.test(text)
     || /\bSPECIAL-04\b/i.test(text)
     || /include\s+"[^"]*(?:snddata_tiny|tinymusic|sndtiny|tiny_sound|tiny[-_ ]?music)[^"]*"/i.test(text);
 }

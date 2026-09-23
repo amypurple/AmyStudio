@@ -102,6 +102,21 @@ try {
   const globeTiles = [...core.readVram(0x1800 + 4 * 32 + 8, 16 * 16)];
   assert.ok(globeTiles.some((tile) => tile > 1), "globe NAME table is empty or corrupt");
   assertCurrentView();
+  const cursorXAddress = symbol("AMY_UVAR_GlobeCursorX");
+  const cursorYAddress = symbol("AMY_UVAR_GlobeCursorY");
+  const spriteTableAddress = symbol("AMY_SPRITE_TABLE");
+  const idleCursor = [
+    core.readRam(cursorXAddress, 1)[0],
+    core.readRam(cursorYAddress, 1)[0]
+  ];
+  const idleSprites = [...core.readRam(spriteTableAddress, 14 * 4)];
+  run(600);
+  assert.deepEqual([
+    core.readRam(cursorXAddress, 1)[0],
+    core.readRam(cursorYAddress, 1)[0]
+  ], idleCursor, "crosshair coordinates drifted without player input");
+  assert.deepEqual([...core.readRam(spriteTableAddress, 14 * 4)], idleSprites,
+    "sprite attributes drifted without player input");
   for (let step = 0; step < 6; step += 1) {
     pulse(INPUT.KEYPAD_6, 3, 3);
     run(5);
