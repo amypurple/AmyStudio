@@ -573,7 +573,7 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Define an Amy ADAM target: EOS memory map, non-cartridge output, and disk/data-pack packaging | Architecture study | High | Large | High |
+| 1 | Define an Amy ADAM target: EOS memory map, non-cartridge output, and disk/data-pack packaging | Architecture started; verified target contract in `docs/amy-adam-target-architecture.md` | High | Large | High |
 | 2 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
 | 3 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
 | 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
