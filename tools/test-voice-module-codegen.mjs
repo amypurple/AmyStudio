@@ -4,6 +4,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { inferAmyMemoryCapabilities } from "../studio/core/compilerFrontend.js";
+import { sourceHintsTinySound } from "../studio/core/optimization.js";
+import { getRamLayout } from "../studio/ramLayouts.js";
 
 const root = resolve(import.meta.dirname, "..");
 const temp = mkdtempSync(join(tmpdir(), "amy-voice-module-"));
@@ -32,6 +35,17 @@ function addressOf(asm, symbol) {
 }
 
 try {
+  const voiceCaps = inferAmyMemoryCapabilities(`
+voice start phrase using module
+voice speaking into speaking
+voice stop
+`, sourceHintsTinySound);
+  const voiceLayout = getRamLayout("colecovision_legacy_sdcc", voiceCaps);
+  assert.equal(voiceCaps.needsVoiceQueue, true,
+    "voice queue commands must reserve their state during source analysis");
+  assert.ok(voiceLayout.reserved.some((region) => region.label === "Amy SP0256 voice queue state"),
+    "source-inferred voice queue state is absent from the RAM layout");
+
   const asm = compile("voice-api", `
 u8 module = 0
 u8 ready = 0
