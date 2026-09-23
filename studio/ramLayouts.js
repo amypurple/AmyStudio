@@ -47,7 +47,10 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needs120c = !!caps.needs120c;
   const needsBackdropShadow = !!caps.needsBackdropShadow;
   const needsSleepState = !!caps.needsSleepState;
-  const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound;
+  // External song tables are resolved after Amy variables are allocated. A
+  // `play song` project can therefore reveal sndtiny_1/2 too late for the
+  // transpiler unless music conservatively reserves both Tiny Sound slots.
+  const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound || needsMusic;
   const needsExomizer = !!caps.needsExomizer;
   const needsVoiceQueue = !!caps.needsVoiceQueue;
   const needsRuntimeState =

@@ -23,4 +23,16 @@ assert.ok(sleepState, "choose menu sleep clause did not reserve its runtime stat
 assert.ok(layout.userRamStart >= sleepState.endExclusive,
   "user RAM overlaps the choose-menu sleep counter");
 
+const lateSongLayout = getRamLayout("colecovision_legacy_sdcc", {
+  needsMusic: true,
+  needsSound: true,
+  soundAreaCount: 2
+});
+const lateSongSlots = lateSongLayout.reserved.find((region) =>
+  region.label.startsWith("Amy tiny sound state"));
+assert.ok(lateSongSlots,
+  "music discovered before its external song table must reserve Tiny Sound slots");
+assert.ok(lateSongLayout.userRamStart >= lateSongSlots.endExclusive,
+  "late-resolved song tables overlap user RAM");
+
 console.log("Tiny Sound user RAM layout PASS");
