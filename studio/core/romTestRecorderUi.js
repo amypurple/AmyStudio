@@ -182,6 +182,8 @@ function ensureStyles() {
     .rom-recorder__screen-wrap { position:relative; width:auto; max-width:100%; aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; border:1px solid #31424c; overflow:hidden; }
     .rom-recorder__screen { max-width:100%; image-rendering:pixelated; background:#000; border:1px solid #31424c; outline:none; }
     .rom-recorder__screen-wrap .rom-recorder__screen { border:0; }
+    .rom-recorder__screen-wrap:fullscreen { width:100vw !important; height:100vh; max-width:none; aspect-ratio:auto; border:0; background:#000; cursor:none; }
+    .rom-recorder__screen-wrap:fullscreen .rom-recorder__screen { width:min(100vw,133.333vh) !important; height:min(100vh,75vw) !important; max-width:none; }
     .rom-recorder__bios-missing { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:12px; padding:24px; box-sizing:border-box; text-align:center; color:#e8edf0; background:radial-gradient(circle at 50% 38%,#17242b 0,#090e12 58%,#030405 100%); }
     .rom-recorder__bios-missing[hidden] { display:none; }
     .rom-recorder__bios-wordmark { font-weight:700; font-size:clamp(17px,3vw,28px); letter-spacing:.12em; text-shadow:0 2px #000; }
@@ -256,7 +258,7 @@ function buildDialog() {
   dialog.innerHTML = `
     <div class="rom-recorder__head">
       <h2>ROM TEST &amp; DEBUG</h2>
-      <div class="rom-recorder__head-actions"><button class="rom-recorder__icon-button" type="button" data-action="fullscreen" title="Toggle fullscreen" aria-label="Toggle fullscreen">&#x26F6;</button><button class="rom-recorder__icon-button" type="button" data-action="close" title="Close emulator" aria-label="Close emulator">&#x2715;</button></div>
+      <div class="rom-recorder__head-actions"><button class="rom-recorder__icon-button" type="button" data-action="fullscreen" title="Play fullscreen (Alt+Enter)" aria-label="Play emulator fullscreen">&#x26F6;</button><button class="rom-recorder__icon-button" type="button" data-action="close" title="Close emulator" aria-label="Close emulator">&#x2715;</button></div>
     </div>
     <div class="rom-recorder__body">
       <div class="rom-recorder__stage">
@@ -1402,9 +1404,22 @@ export function createRomTestRecorderUi({
         setRecorderStatus(error.message || String(error));
       }
     });
-    action("fullscreen").addEventListener("click", async () => {
+    const screenWrap = dialog.querySelector(".rom-recorder__screen-wrap");
+    async function toggleGameFullscreen() {
       if (document.fullscreenElement) await document.exitFullscreen();
-      else await dialog.requestFullscreen();
+      else {
+        await screenWrap.requestFullscreen();
+        dialog.querySelector("canvas").focus();
+      }
+    }
+    action("fullscreen").addEventListener("click", toggleGameFullscreen);
+    screenWrap.addEventListener("dblclick", toggleGameFullscreen);
+    document.addEventListener("fullscreenchange", () => {
+      const active = document.fullscreenElement === screenWrap;
+      action("fullscreen").setAttribute("aria-pressed", String(active));
+      action("fullscreen").title = active ? "Exit fullscreen (Esc)" : "Play fullscreen (Alt+Enter)";
+      action("fullscreen").setAttribute("aria-label", active ? "Exit emulator fullscreen" : "Play emulator fullscreen");
+      if (!active) applyScale();
     });
     action("play").addEventListener("click", () => {
       if (!playing) stoppedCheckpoint = null;
@@ -1763,6 +1778,11 @@ export function createRomTestRecorderUi({
     });
     window.addEventListener("blur", () => { pressedKeys.clear(); clearMouseFireButtons(); });
     dialog.addEventListener("keydown", (event) => {
+      if (event.altKey && event.key === "Enter") {
+        event.preventDefault();
+        toggleGameFullscreen();
+        return;
+      }
       if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(event.target.tagName)) return;
       if (!controllerSetup.isKeyMapped(event.code)) return;
       event.preventDefault();
