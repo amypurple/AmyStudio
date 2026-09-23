@@ -3,7 +3,7 @@ import { warriorDan2FireTestProjectFiles } from "./examples-picture-assets.js?v=
 import { warriorBenchmarkProjectFiles } from "./examples-benchmark-assets.js";
 import { trainTrackPuzzleProjectFiles } from "./examples-train-track-assets.generated.js";
 import { earthGlobeProjectFiles } from "./examples-earth-globe-assets.generated.js";
-import { globeQuizProjectFiles } from "./examples-globe-quiz-assets.generated.js";
+import { globeQuizProjectFiles } from "./examples-globe-quiz-assets.generated.js?v=20260923-runtime-verified";
 import { spaceTaxiVoiceProjectFiles } from "./examples-voxpcm-assets.generated.js";
 import { solarSystemEncyclopediaProjectFiles } from "./examples-solar-system-assets.generated.js";
 import { mazeEscapeProjectFiles } from "./examples-maze-assets.generated.js";

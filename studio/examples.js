@@ -4,7 +4,7 @@ let projectFilesModulePromise = null;
 
 async function loadExampleProjectFilesById(id) {
   if (!projectFilesModulePromise) {
-    projectFilesModulePromise = import("./examples-project-files.js?v=20260912-editable-animation-layouts");
+    projectFilesModulePromise = import("./examples-project-files.js?v=20260923-globe-runtime-assets");
   }
   const module = await projectFilesModulePromise;
   return module.projectFilesById?.[id] || [];
