@@ -427,6 +427,31 @@ export class GearcolecoTestCore {
     };
   }
 
+  getAdamMioc() {
+    this.assertAlive();
+    return this.module._gcw_get_adam_mioc();
+  }
+
+  getAdamNetSummary() {
+    this.assertAlive();
+    const words = 12 + (15 * 5);
+    const bytes = this.withOutputBytes(words * 4, (pointer) => {
+      return this.module._gcw_get_adam_net_summary(pointer, words) * 4;
+    });
+    const data = new Uint32Array(bytes.buffer, bytes.byteOffset, words);
+    return {
+      controllerState: data[0], pcbAddress: data[1], pcbStatus: data[2], dcbCount: data[3],
+      transfer: {
+        active: Boolean(data[4]), command: data[5], error: data[6], device: data[7],
+        block: data[8], buffer: data[9], length: data[10], cyclesUntilEvent: data[11]
+      },
+      dcbs: Array.from({ length: 15 }, (_, index) => {
+        const base = 12 + index * 5;
+        return { status: data[base], device: data[base + 1], block: data[base + 2], buffer: data[base + 3], length: data[base + 4] };
+      })
+    };
+  }
+
   disassemble(address) {
     const bytes = this.withOutputBytes(73, (pointer, capacity) => {
       return this.module._gcw_disassemble(address & 0xFFFF, pointer, capacity);
