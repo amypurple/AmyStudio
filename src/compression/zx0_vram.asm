@@ -38,11 +38,14 @@ zx0s_literals:
         ; nop                          ; judged redundant: large setup cost follows before first OUTI
 
         ; Copy BC bytes from (HL) -> VRAM(DE)
-        ; Use per-byte loop to avoid clobbering C (BC is our counter)
+        ; Split BC into one partial page plus B=0 full 256-byte pages.
         pop     bc
         ld      a, c
         ld      c, b
+        or      a
+        jr      z, zx0_lit_pages
         inc     c
+zx0_lit_pages:
         ld      b, a
 zx0_lit_loop:
         push    bc
