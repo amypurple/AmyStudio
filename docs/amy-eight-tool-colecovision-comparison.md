@@ -442,12 +442,12 @@ independent selection criteria.
 | Stock 1 KB RAM focus | Core design, RAM estimates, overlays | Yes, global/static model | Configurable CRT/C runtime | Backend manages runtime/resources | SDCC/static library model | SDCC/static library model |
 | Dead helper elimination | Capability-driven generation | Compiler-generated runtime | Linker sections/libraries | Deploy-on-use modules and target optimizer | Linker library extraction | Linker library extraction |
 | Optimizer | Five profiles plus runtime corpus | Z80 optimizer and peepholes | sccz80/zsdcc optimizers | Coleco-specific optimizer source | SDCC optimizer/peepholes | SDCC size optimization |
-| Beyond 32 KB | Deliberately excluded | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
+| Beyond 32 KB | MegaCart target model exists; bank-aware assembly and packaging remain open | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
 | Debug-aware RAM names | Yes, including overlay aliases | Assembly labels | Map/debug symbols | Generated symbols | Map symbols | Map symbols |
 
-Banking is an established capability in CVBasic, z88dk, devkitSMS, and PVColLib. Amy Studio keeps
-stock, unbanked cartridges as its current release baseline; MegaCart support is documented as a
-future architecture project and is not counted in these measurements.
+Banking is established in CVBasic, z88dk, devkitSMS, and PVColLib. Amy Studio now models 128-1,024
+KB MegaCart targets and their memory policy, but still needs bank-aware assembly, packaging,
+source maps, and runtime validation. Stock unbanked cartridges remain the release baseline.
 
 ### Stock baseline versus expanded hardware
 
@@ -461,7 +461,7 @@ is credited separately because it changes the machine available to the programme
 | F18A | PVColLib provides APIs and examples; Amy's GearColeco 1.7.0 debugger can emulate F18A video | Debug validation is available in Amy, but first-class Amy language APIs remain future work |
 | SGM / AY-3-8910-compatible sound | CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
 | SP0256 voice modules | Amy provides Lundy/EVE commands and debugger-selectable module emulation | Optional external hardware; excluded from the stock sound ranking |
-| Coleco ADAM | Amy's GearColeco debugger accepts browser-local OS7, EOS, and WP firmware and exposes ADAM emulation | Emulator support is present; an Amy ADAM program target, EOS memory map, and media packaging are not yet complete |
+| Coleco ADAM | Amy builds and mounts a bootable 160 KiB disk with boot code, loader, and selectable WEPK files in GearColeco | Working project pipeline; general EOS APIs, data-pack output, and broader runtime oracles remain open |
 | Extra RAM | Available through SGM, ADAM, and compatible clones depending on the tool/runtime | Report separately; never count it as stock 1 KB RAM |
 
 This separation lets every solution show its extended-hardware strengths without weakening Amy
@@ -608,11 +608,15 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Define an Amy ADAM target: EOS memory map, non-cartridge output, and disk/data-pack packaging | Architecture started; verified target contract in `docs/amy-adam-target-architecture.md` | High | Large | High |
-| 2 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
-| 3 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
-| 4 | Decide whether to support ROM banking | Architecture decision | High for large games | Large | High |
+| 1 | Complete MegaCart banking: physical sections, capacity checks, mapper runtime, image packaging, and bank-aware debug symbols | Target and memory model implemented; assembler/linker prototype is next | High for large games | Large | High |
+| 2 | Generalize the working ADAM disk pipeline with EOS file APIs, data-pack output, and reusable runtime oracles | Bootable disk, loader, WEPK files, browser download, and GearColeco mounting work | High | Large | High |
+| 3 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
+| 4 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
 | 5 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
+
+MegaCart is the next implementation target. Its first gate is a development-only 128 KB image
+whose fixed final bank selects two switchable banks, reads distinct signatures, rejects overflow,
+and preserves bank identity in source maps and GearColeco debugging.
 
 The codec study starts from the verified `libcv` RLE+Huffman path in PkK's devkit without copying its format into Amy.
 It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
@@ -623,7 +627,7 @@ decoder bytes, CPU RAM, GearColeco cycles, and a first-use ROM win over Amy's ex
 
 Completed and runtime-guarded:
 
-- exact eight-tool metasprite, state-update, and tile-animation runtime oracles, plus native
+- exact nine-tool metasprite, state-update, and tile-animation runtime oracles, plus native
   metasprites, protected-priority flicker, and editable graphics;
 - complete 2D arrays and record/overlay fields with bounds diagnostics and five-profile proof;
 - fifteen direct-to-VRAM codecs with round trips, decoder cost, cycles, RAM, and 42-picture ranks;
