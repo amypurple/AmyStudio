@@ -58,10 +58,9 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
-These are the most size-oriented **native settings successfully validated in this study**. They
-are not claims about every release or possible project configuration. No other toolchain's output
-passed through Amy's optimizer or MDL. Amy Experimental serves this size test; Balanced remains
-its default.
+These are the most size-oriented **native settings validated in this study**, not claims about
+every release or project configuration. No other toolchain passed through Amy's optimizer or MDL.
+Experimental serves this size test; Balanced remains Amy's default.
 
 ### Real occupied size, excluding cartridge padding
 
@@ -75,8 +74,7 @@ its default.
 | Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
 | **Six-sample total*** | **5,126** | **7,878** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
 
-`Pure ASM` is a diagnostic lower-level baseline, not a ninth high-level toolchain. Its State Update
-fixture validates the complete headless workload but omits Amy Studio's additional status display.
+`*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
