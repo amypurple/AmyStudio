@@ -455,21 +455,6 @@ function currentExamplesRevision() {
   return pageVersion || "20260811-dacman2-graphics";
 }
 
-function preloadExamplesCatalog() {
-  debugExampleBrowser("preload:before");
-  loadExamplesModule({ forceFresh: true })
-    .then(() => {
-      refreshExampleBrowserUi();
-      debugExampleBrowser("preload:after");
-    })
-    .catch((error) => {
-      const message = error?.message || String(error);
-      debugExampleBrowser("preload:error", { message, stack: error?.stack || "" });
-      console.error(`[Amy Studio examples] preload:error ${message}`, error);
-      setStatus(`Examples catalog failed to load: ${message}`);
-    });
-}
-
 function loadExamplesModule({ forceFresh = false } = {}) {
   if (!forceFresh && examplesModulePromise) {
     debugExampleBrowser("load:reuse", { revision: examplesModuleRevision });
@@ -1396,7 +1381,6 @@ bindEvents();
 })();
 
 syncUiFromProject();
-preloadExamplesCatalog();
 setView("studio");
 setStatus(`Ready. ${codecStatusLine()}\nTip: Generate ASM, then compile the ROM in Amy.`);
 const savedColecoBios = loadColecoBiosFromBrowser();
