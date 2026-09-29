@@ -332,7 +332,7 @@ median, and least-compressible corpus pictures. Run `node tools/benchmark-codec-
 | 4 | BitBuster | 166 | 2,534,837 | 2,200,323-2,848,558 | 42.43 | 35.52 |
 | 5 | ZX2 | 115 | 2,640,553 | 2,523,782-2,813,703 | 44.20 | 37.00 |
 | 6 | ZX1 | 127 | 2,649,233 | 2,542,465-2,824,788 | 44.35 | 37.12 |
-| 7 | ZX0 | 133 | 2,776,094 | 2,593,812-2,917,877 | 46.47 | 38.90 |
+| 7 | ZX0 | 136 | 2,776,094 | 2,593,812-2,917,877 | 46.47 | 38.90 |
 | 8 | aPLib Compact | 244 | 2,882,985 | 2,038,419-3,910,905 | 48.26 | 40.40 |
 | 9 | Pletter | 212 | 3,011,986 | 2,593,248-3,420,132 | 50.42 | 42.21 |
 | 10 | ZX7 | 136 | 3,045,957 | 2,646,525-3,421,800 | 50.99 | 42.68 |
@@ -433,7 +433,7 @@ for differential testing and is not redistributed.
 
 The first reproducible size results and the rules for the cross-tool runtime comparison are in
 `competition/benchmarks/compression/README.md`. On two real 12,288-byte TMS9918 pictures, ZX0 has
-the smallest Amy first-use ROM total after its current 133-byte decompressor estimate is included.
+the smallest Amy first-use ROM total after its current 136-byte decompressor estimate is included.
 The separate GearColeco cycle benchmark supplies the speed evidence; size and speed remain
 independent selection criteria.
 
