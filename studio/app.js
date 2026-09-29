@@ -25,7 +25,6 @@ import {
 } from "./core/emulatorBackends.js";
 import { createEmulatorShellHelpers } from "./core/emulatorShell.js?v=20260802-open-rom-no-compile11";
 import { loadColecoBiosFromBrowser, saveColecoBiosToBrowser } from "./core/colecoBiosStorage.js?v=20260805-local-bios";
-import { createRomTestRecorderUi } from "./core/romTestRecorderUi.js?v=20260920-record-from-boot";
 import { createExamplePickerHelpers } from "./core/examplePicker.js?v=20260707-live-examples-index";
 import {
   inferAmyMemoryCapabilities,
@@ -814,23 +813,50 @@ const {
   defaultBiosCandidates: DEFAULT_BIOS_CANDIDATES
 });
 
-const { open: openRomTestRecorder, syncSourceBreakpoints: syncRecorderSourceBreakpoints, biosChanged: notifyRecorderBiosChanged } = createRomTestRecorderUi({
-  getCompiledRom: () => compiledRom,
-  getCompiledMemoryMap: () => compiledMemoryMap,
-  getCompiledSymbols: () => compiledSymbols,
-  getCompiledMetadata: () => compiledMetadata,
-  getEmulatorBios: () => emulatorBios,
-  requestEmulatorBios: () => {
-    if (els.biosImport) els.biosImport.value = "";
-    els.biosImport?.click();
-  },
-  getProject: () => project,
-  setStatus,
-  onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
-});
-function openDebuggerWithBiosPrompt() {
+let romTestRecorderUi = null;
+let romTestRecorderUiPromise = null;
+async function ensureRomTestRecorderUi() {
+  if (romTestRecorderUi) return romTestRecorderUi;
+  if (!romTestRecorderUiPromise) {
+    romTestRecorderUiPromise = import("./core/romTestRecorderUi.js?v=20260928-lazy-recorder1")
+      .then(({ createRomTestRecorderUi }) => {
+        romTestRecorderUi = createRomTestRecorderUi({
+          getCompiledRom: () => compiledRom,
+          getCompiledMemoryMap: () => compiledMemoryMap,
+          getCompiledSymbols: () => compiledSymbols,
+          getCompiledMetadata: () => compiledMetadata,
+          getEmulatorBios: () => emulatorBios,
+          requestEmulatorBios: () => {
+            if (els.biosImport) els.biosImport.value = "";
+            els.biosImport?.click();
+          },
+          getProject: () => project,
+          setStatus,
+          onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
+        });
+        return romTestRecorderUi;
+      })
+      .catch((error) => {
+        romTestRecorderUiPromise = null;
+        throw error;
+      });
+  }
+  return romTestRecorderUiPromise;
+}
+function syncRecorderSourceBreakpoints() {
+  romTestRecorderUi?.syncSourceBreakpoints();
+}
+function notifyRecorderBiosChanged() {
+  romTestRecorderUi?.biosChanged();
+}
+async function openDebuggerWithBiosPrompt() {
   els.btnRomTestRecorder?.closest("details")?.removeAttribute("open");
-  openRomTestRecorder();
+  try {
+    const recorderUi = await ensureRomTestRecorderUi();
+    recorderUi.open();
+  } catch (error) {
+    setStatus(`Unable to load ROM Test & Debug: ${error.message || error}`);
+  }
 }
 els.btnRomTestRecorder?.addEventListener("click", openDebuggerWithBiosPrompt);
 const transpileSource = (sourceLang, sourceText) => transpileAmySource({
