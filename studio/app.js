@@ -1372,6 +1372,7 @@ bindEvents();
   const layout = els.layoutEl;
   const STORAGE_KEY = "amy_asm_panel_collapsed";
   function setCollapsed(collapsed) {
+    document.documentElement.classList.toggle("asm-panel-expanded", !collapsed);
     layout.classList.toggle("layout--asm-collapsed", collapsed);
     try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch (_) {}
   }
