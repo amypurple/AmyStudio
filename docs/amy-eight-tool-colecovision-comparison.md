@@ -14,7 +14,7 @@ This comparison separates four kinds of evidence:
 Amy Studio combines a language and IDE; the others are mainly compilers or C kits. IDE-only
 features are listed separately from language capabilities.
 
-## The eight solutions
+## The eight toolchains and ASM baseline
 
 | Solution | Primary approach | ColecoVision position |
 |---|---|---|
@@ -29,7 +29,7 @@ features are listed separately from language capabilities.
 
 ## Reproducible six-sample ROM suite
 
-The suite builds six runnable programs with all eight solutions:
+The suite builds six runnable programs with all eight toolchains, plus matched Pure ASM baselines:
 
 1. a visible Hello World;
 2. the Warrior Graphics II bitmap picture;
@@ -41,7 +41,7 @@ The suite builds six runnable programs with all eight solutions:
 A **metasprite** combines hardware sprites into one actor. This test overlaps three 16x16 layers
 (white, yellow, black), below the four-sprites-per-scanline limit.
 
-The build scripts create 48 ROMs, grouped under `build/competition`.
+The build scripts create 54 ROMs, grouped under `build/competition`.
 `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; dedicated GearColeco tests verify
 the bitmap, controller, metasprite, and deterministic state-update oracles.
 
@@ -481,35 +481,32 @@ Studio's deliberate original-hardware target.
 | Optional hardware setup | Voice-module selection plus browser-local Coleco/ADAM firmware | External emulator | External emulator | External emulator | External emulator | External emulator |
 | Automated ROM tests | Corpus, checkpoints, runtime harness | Not integrated | Buildable manually | Not established | Not established | Not established |
 
-This is a measured distinction of Amy Studio's current workflow. A fair comparison should still label command-line-only
-Amy scripts separately from features directly accessible in the IDE.
+Amy Studio integrates this workflow; command-line-only Amy scripts remain labelled separately from
+features available directly in the IDE.
 
 ### Amy Studio emphasizes ColecoVision integration
 
-Amy Studio's principal distinction in this study is not one isolated keyword. It connects source editing, asset
-conversion, compression, assembly optimization, ROM execution, external-ROM drag-and-drop,
-source breakpoints, rewind, memory and VRAM inspection, controller and optional-hardware
-configuration, profiling, and automated tests in one ColecoVision-focused workflow. Its
-universal graphics editor follows TMS9918 sprite priority and scanline rules while previewing
-tile/sprite composites. Its overlays, typed state machines, BCD, fixed-point support,
-runtime-checked wide integers, collision helpers, and BIOS-aware input selection are also
-substantial language-level strengths.
+Amy Studio connects source editing, assets, compression, assembly optimization, ROM execution,
+external-ROM loading, breakpoints, rewind, memory/VRAM inspection, hardware configuration,
+profiling, and automated tests in one ColecoVision workflow. Its graphics editor follows TMS9918
+sprite priority and scanline rules while previewing tile/sprite composites. Records, overlays,
+typed state machines, BCD, fixed-point and checked wide integers, collision helpers, and BIOS-aware
+input are additional language-level strengths.
 
 ### CVBasic emphasizes portability and established BASIC simplicity
 
-CVBasic has a compact QBasic-like surface, a mature ColecoVision backend, many complete game
-examples, spinner support, sprite flicker support, music commands, and optional ROM banking. It
-also targets many related machines. It does not offer Amy's records, overlays, wide numeric
-model, integrated debugger, or asset/debug pipeline.
+CVBasic combines a compact QBasic-like surface with a mature ColecoVision backend, complete game
+examples, spinner and sprite-flicker support, music commands, optional ROM banking, and several
+related targets. It does not offer Amy's records, overlays, wide numeric model, integrated debugger,
+or asset/debug pipeline.
 
 Official source: [nanochess/CVBasic](https://github.com/nanochess/CVBasic)
 
 ### z88dk emphasizes general C and toolchain breadth
 
-z88dk provides full C data structures, pointers, mature compilers, assemblers, linkers, libraries,
-compression utilities, and many Z80 targets. This flexibility also exposes more low-level choices
-to the programmer. Its generic graphics or library facilities must not be mistaken for an
-Amy-style ColecoVision game API without target-specific proof.
+z88dk provides C data structures and pointers, mature compilers, assemblers, linkers, libraries,
+compression utilities, and many Z80 targets. Its flexibility exposes more low-level choices;
+generic facilities require target-specific proof before comparison with Amy's ColecoVision APIs.
 
 Official source: [z88dk/z88dk](https://github.com/z88dk/z88dk)
 
