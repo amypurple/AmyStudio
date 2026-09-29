@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-09-18
+Updated: 2026-09-28
 
 ## Method
 
@@ -65,15 +65,18 @@ its default.
 
 ### Real occupied size, excluding cartridge padding
 
-| Sample | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **238** | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
-| Warrior bitmap | **3,254** | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
-| Controller Visual | **595** | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
-| Sprite Metasprite | **983** | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| Gameplay State Update* | 1,460 | **1,253** | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
-| Tile Animation | 1,378 | **1,376** | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
-| **Six-sample total*** | **7,908** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
+| Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Hello World | **184** | 238 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
+| Warrior bitmap | **3,066** | 3,254 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
+| Controller Visual | **264** | 595 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
+| Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
+| Gameplay State Update* | **508** | 1,460 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
+| Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
+| **Six-sample total*** | **5,126** | **7,905** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
+
+`Pure ASM` is a diagnostic lower-level baseline, not a ninth high-level toolchain. Its State Update
+fixture validates the complete headless workload but omits Amy Studio's additional status display.
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
@@ -91,12 +94,12 @@ assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), gene
 
 | Sample | Runtime result | Verdict |
 |---|---|---|
-| Hello World | Eight ROMs complete 180 GearColeco frames | Stable startup |
-| Warrior bitmap | Eight native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
-| Controller Visual | Seven pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
-| Sprite Metasprite | Eight pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
-| Gameplay State Update | Eight match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
-| Tile Animation | Eight continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
+| Hello World | Nine ROMs complete 180 GearColeco frames | Stable startup |
+| Warrior bitmap | Nine native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
+| Controller Visual | Eight pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
+| Sprite Metasprite | Nine pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
+| Gameplay State Update | Nine match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
+| Tile Animation | Nine continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
 
 The State Update row is behavior-validated but not yet a strict code-size comparison: Amy Studio
 also draws a title, progress text, score, and checksum, while the current NewColeco fixture runs
@@ -105,6 +108,40 @@ a code-generator ranking, until matched headless and visible variants are built.
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
+
+### BIOS-assisted pure Z80 assembly baseline
+
+Amy Bienvenu published this TNIASM-style `HELLO WORLD!` tutorial on AtariAge in 2010 under the
+name Daniel Bienvenu; she is also the author of NewColeco. Amy's assembler builds it without
+optimization, and GearColeco verifies the exact twelve Name Table bytes after BIOS startup. The
+program occupies **184 bytes**, measured by `tools/test-pure-asm-hello.mjs`.
+
+The historical listing is compact because it reuses the BIOS font and VDP routines. Matching
+hand-written ASM implementations now exist for all six fixtures, use the same assets and observable
+behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
+
+| Sample | Pure ASM | Amy Studio | ASM difference |
+|---|---:|---:|---:|
+| Hello World | 184 | 238 | -54 |
+| Warrior bitmap | 3,066 | 3,254 | -188 |
+| Controller Visual | 264 | 595 | -331 |
+| Sprite Metasprite | 343 | 983 | -640 |
+| Gameplay State Update | 508 | 1,460 | -952 |
+| Tile Animation | 761 | 1,375 | -614 |
+| **Six-sample total** | **5,126** | **7,905** | **-2,779** |
+
+The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
+decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for
+joystick/left FIRE and once for keypad/right FIRE, removes the lookup table, and stores only the
+final display color. It passes neutral, keypad, held direction, FIRE, and release tests. BIOS
+`POLLER` remains useful when its two-sample debounce is required, but its 12-byte result contract
+and 83-91 executed BIOS instructions per call are not a free size optimization; one `DECODER`
+segment takes 29 instructions.
+
+The ASM total is a lower-level baseline, not evidence that assembly is universally preferable.
+It measures the price of language/runtime convenience and identifies concrete optimization
+opportunities. The State Update caveat still applies: its ASM fixture validates the complete
+headless state workload but does not reproduce Amy's extra status display.
 
 Native bitmap paths are Amy/z88dk ZX0, CVBasic Pletter, ugBASIC resources, devkitSMS aPLib,
 PVColLib RLE, PkK's devkit using `libcv` RLE+Huffman, and NewColeco DAN2. All framebuffers are exact despite equivalent internal table
