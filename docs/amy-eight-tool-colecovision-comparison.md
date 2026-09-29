@@ -68,12 +68,12 @@ its default.
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **184** | 238 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
-| Warrior bitmap | **3,066** | 3,254 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
+| Warrior bitmap | **3,066** | 3,262 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
 | Controller Visual | **264** | 595 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
 | Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| Gameplay State Update* | **508** | 1,460 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
+| Gameplay State Update* | **508** | 1,430 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
 | Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
-| **Six-sample total*** | **5,126** | **7,905** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
+| **Six-sample total*** | **5,126** | **7,883** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
 
 `Pure ASM` is a diagnostic lower-level baseline, not a ninth high-level toolchain. Its State Update
 fixture validates the complete headless workload but omits Amy Studio's additional status display.
@@ -123,12 +123,12 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 | Sample | Pure ASM | Amy Studio | ASM difference |
 |---|---:|---:|---:|
 | Hello World | 184 | 238 | -54 |
-| Warrior bitmap | 3,066 | 3,254 | -188 |
+| Warrior bitmap | 3,066 | 3,262 | -196 |
 | Controller Visual | 264 | 595 | -331 |
 | Sprite Metasprite | 343 | 983 | -640 |
-| Gameplay State Update | 508 | 1,460 | -952 |
+| Gameplay State Update | 508 | 1,430 | -922 |
 | Tile Animation | 761 | 1,375 | -614 |
-| **Six-sample total** | **5,126** | **7,905** | **-2,779** |
+| **Six-sample total** | **5,126** | **7,883** | **-2,757** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for
@@ -190,7 +190,7 @@ The PDF shows every converted image. Complete per-picture ratios, decoder sizes,
 ### Observations supported by this suite
 
 - Amy produces the smallest measured ROM for Hello, Controller, and this exact bitmap fixture
-  (3,254 versus CVBasic's 4,948 bytes for the bitmap).
+  (3,262 versus CVBasic's 4,948 bytes for the bitmap).
 - Portable C/BASIC runtimes add visible fixed cost, but complete games may scale differently.
 - Cartridge length includes packaging; a padded 32 KB file is not necessarily a 32 KB program.
 - Smaller results count only after runtime validation; this finite suite cannot establish a
