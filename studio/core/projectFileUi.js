@@ -1,7 +1,7 @@
 import { createProjectFileCreationAddon } from "./addons/projectFileCreationAddon.js";
 import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js?v=20260918-files-audit";
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
-import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
+import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260811-smart-tile-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260912-song-timeline";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoSoundCommand, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";

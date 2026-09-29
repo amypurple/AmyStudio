@@ -17,7 +17,7 @@ import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
   stripGeneratedSourceMarkers
-} from "./core/editor/sourceBreakpoints.js?v=20260928-lighthouse1";
+} from "./core/editor/sourceBreakpoints.js?v=20260928-lighthouse2";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
@@ -91,7 +91,7 @@ import {
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260918-files-audit";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260928-lighthouse2";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
