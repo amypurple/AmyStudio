@@ -77,6 +77,7 @@ export function createProjectTabs({
     if (!container) return;
     container.textContent = "";
     for (const tab of tabs) {
+      const dirty = isDirty(tab);
       const item = document.createElement("div");
       item.className = `project-tab${tab.id === activeId ? " project-tab--active" : ""}`;
       item.dataset.projectTabId = tab.id;
@@ -84,9 +85,9 @@ export function createProjectTabs({
       const activate = document.createElement("button");
       activate.type = "button";
       activate.className = "project-tab__activate";
-      activate.title = `${tab.project.projectName || "Untitled project"}${isDirty(tab) ? " (modified)" : ""}`;
+      activate.title = `${tab.project.projectName || "Untitled project"}${dirty ? " (modified)" : ""}`;
       activate.setAttribute("aria-label", `Open ${tab.project.projectName || "Untitled project"}`);
-      activate.textContent = `${isDirty(tab) ? "● " : ""}${tab.project.projectName || "Untitled"}`;
+      activate.textContent = `${dirty ? "● " : ""}${tab.project.projectName || "Untitled"}`;
       activate.addEventListener("click", () => activateTab(tab.id));
 
       const close = document.createElement("button");

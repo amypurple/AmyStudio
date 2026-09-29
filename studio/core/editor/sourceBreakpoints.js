@@ -58,7 +58,12 @@ export function breakpointEligibleLineNumbers(sourceText) {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index].trim();
     if (block) {
-      if ((block === "asm" && line === "}") || new RegExp(`^end\\s+${block}\\b`, "i").test(line)) block = "";
+      if (
+        (block === "asm" && line === "}")
+        || (block === "record" && /^end\s+record\b/i.test(line))
+        || (block === "enum" && /^end\s+enum\b/i.test(line))
+        || (block === "data" && /^end\s+data\b/i.test(line))
+      ) block = "";
       continue;
     }
     if (/^asm\s*\{$/i.test(line)) { block = "asm"; continue; }
@@ -218,7 +223,7 @@ export function createSourceBreakpointController({
   function render() {
     const lines = editor.value.split(/\r?\n/);
     const byLine = new Map(breakpoints().map((entry) => [entry.line, entry]));
-    gutterLines.replaceChildren();
+    const fragment = document.createDocumentFragment();
     const lineHeight = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22.4;
     const paddingTop = Number.parseFloat(getComputedStyle(editor).paddingTop) || 0;
     const eligibleLines = breakpointEligibleLineNumbers(editor.value);
@@ -244,19 +249,31 @@ export function createSourceBreakpointController({
       const number = document.createElement("span");
       number.textContent = String(line);
       button.append(number);
-      button.addEventListener("click", (event) => {
-        if (event.shiftKey) {
-          event.preventDefault();
-          addAtLine(line, { edit: true, button });
-        } else toggleAtLine(line);
-      });
-      button.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        addAtLine(line, { edit: true, button });
-      });
-      gutterLines.append(button);
+      fragment.append(button);
     }
+    gutterLines.replaceChildren(fragment);
   }
+
+  function breakpointButtonFromEvent(event) {
+    const button = event.target.closest?.(".source-breakpoint-gutter__line");
+    return button && gutterLines.contains(button) ? button : null;
+  }
+
+  gutterLines.addEventListener("click", (event) => {
+    const button = breakpointButtonFromEvent(event);
+    if (!button || button.disabled) return;
+    const line = Number(button.dataset.line);
+    if (event.shiftKey) {
+      event.preventDefault();
+      addAtLine(line, { edit: true, button });
+    } else toggleAtLine(line);
+  });
+  gutterLines.addEventListener("contextmenu", (event) => {
+    const button = breakpointButtonFromEvent(event);
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    addAtLine(Number(button.dataset.line), { edit: true, button });
+  });
 
   editor.addEventListener("scroll", () => {
     gutterLines.style.transform = `translateY(${-editor.scrollTop}px)`;

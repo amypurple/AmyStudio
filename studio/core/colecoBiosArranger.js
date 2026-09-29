@@ -1,4 +1,4 @@
-import { scheduleColecoSoundSequence, sliceColecoPreviewEvents } from "./colecoSoundPreview.js";
+import { scheduleColecoSoundSequence, sliceColecoPreviewEvents } from "./colecoSoundPreview.js?v=20260907-selection";
 
 function eventFrames(event) {
   if (["end", "repeat", "tiny"].includes(event?.type)) return 0;

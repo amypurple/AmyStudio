@@ -1,4 +1,4 @@
-import { readTinySoundLabel } from "./colecoTinySound.js?v=20260906-tiny-import-scan";
+import { readTinySoundLabel } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
 
 const AREA_BASE = 0x702b;
 const AREA_STRIDE = 10;

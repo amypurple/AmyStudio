@@ -17,7 +17,7 @@ import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
   stripGeneratedSourceMarkers
-} from "./core/editor/sourceBreakpoints.js?v=20260731-source-step-structural";
+} from "./core/editor/sourceBreakpoints.js?v=20260928-lighthouse1";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,

@@ -1,7 +1,7 @@
 import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
-import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js";
+import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
 
 export function pathToLabel(path) {
   const base = path.split("/").pop() || "asset";

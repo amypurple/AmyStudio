@@ -1,5 +1,5 @@
 import { decodeColecoSoundStream } from "./colecoSoundNotes.js";
-import { decodeTinySoundSource } from "./colecoTinySound.js";
+import { decodeTinySoundSource } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
 import { inspectColecoMusicSongs } from "./colecoMusicSong.js";
 
 function stripComment(line) {
