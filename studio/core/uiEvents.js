@@ -107,7 +107,7 @@ export function bindTopUiEvents(ctx) {
     ctx.setExampleSearchFilter(els.exampleSearchInput.value || "");
     renderExamplePicker();
   });
-  els.btnOpenExamples?.addEventListener("click", async () => {
+  const openExamples = async () => {
     closeTopbarMenu();
     if (typeof ensureExamplesLoaded === "function") {
       try {
@@ -119,7 +119,9 @@ export function bindTopUiEvents(ctx) {
       }
     }
     els.examplesDialog?.showModal();
-  });
+  };
+  els.btnOpenExamples?.addEventListener("click", openExamples);
+  els.btnOpenExamplesMenu?.addEventListener("click", openExamples);
   els.exampleSelect.addEventListener("change", () => {
     renderExampleMeta(els.exampleSelect.value);
   });

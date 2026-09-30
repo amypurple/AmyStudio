@@ -35,12 +35,22 @@ export function createStatusAsmUiHelpers({
   function summarizeStatusText(text) {
     const normalized = String(text || "").replace(/\r\n/g, "\n").trim();
     if (!normalized) return "Ready.";
-    const firstLine = normalized.split("\n").find((line) => line.trim())?.trim() || "Ready.";
-    if (firstLine.startsWith("Compile OK:")) {
-      const firstSentence = firstLine.split(". ")[0].trim();
-      return firstSentence.length <= 150 ? firstSentence : `${firstSentence.slice(0, 147)}...`;
+    const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+    const firstLine = lines[0] || "Ready.";
+    if (/compile failed/i.test(firstLine)) {
+      const useful = lines.find((line) => /(?:\[error\]|\berror\b|line\s+\d+)/i.test(line) && !/^compile failed\.?$/i.test(line));
+      const message = useful ? useful.replace(/^\[error\]\s*/i, "") : firstLine;
+      return `Failed: ${message.replace(/^compile failed[:.]?\s*/i, "")}`.slice(0, 96);
     }
-    return firstLine.length <= 150 ? firstLine : `${firstLine.slice(0, 147)}...`;
+    if (firstLine.startsWith("Compile OK:")) {
+      const size = firstLine.match(/Compile OK:\s*([\d,]+\s+bytes)/i)?.[1];
+      const warnings = normalized.match(/Hints:\s*(\d+)/i)?.[1];
+      return `Built${size ? ` · ${size}` : ""}${warnings ? ` · ${warnings} hint${warnings === "1" ? "" : "s"}` : ""}`;
+    }
+    const simple = firstLine
+      .replace(/^Compiling with AmysCVAssembly\.\.\.$/i, "Compiling…")
+      .replace(/^No project open\.\s*/i, "No project · ");
+    return simple.length <= 92 ? simple : `${simple.slice(0, 89)}...`;
   }
 
   function renderLibraryResolution() {
@@ -149,6 +159,10 @@ export function createStatusAsmUiHelpers({
       const statusKind = classifyStatusText(statusText || ramLine);
       els.statusSummary.textContent = statusText ? summarizeStatusText(statusText) : ramLine;
       els.statusSummary.className = `status-summary status-summary--${statusKind}`;
+      if (els.projectPortraitStatus) {
+        els.projectPortraitStatus.textContent = els.statusSummary.textContent;
+        els.projectPortraitStatus.title = els.statusSummary.textContent;
+      }
     }
     if (els.statusDetails) {
       const statusKind = classifyStatusText(statusText || "");

@@ -171,6 +171,7 @@ export function createSourceBreakpointController({
   let previousText = editor.value;
   let editingId = "";
   let currentLine = 0;
+  let scrollRenderFrame = 0;
 
   function breakpoints() {
     const project = getProject();
@@ -224,12 +225,18 @@ export function createSourceBreakpointController({
     const lines = editor.value.split(/\r?\n/);
     const byLine = new Map(breakpoints().map((entry) => [entry.line, entry]));
     const fragment = document.createDocumentFragment();
-    const lineHeight = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22.4;
-    const paddingTop = Number.parseFloat(getComputedStyle(editor).paddingTop) || 0;
+    const editorStyle = getComputedStyle(editor);
+    const lineHeight = Number.parseFloat(editorStyle.lineHeight) || 22.4;
+    const paddingTop = Number.parseFloat(editorStyle.paddingTop) || 0;
     const eligibleLines = breakpointEligibleLineNumbers(editor.value);
-    gutterLines.style.paddingTop = `${paddingTop}px`;
+    gutterLines.style.paddingTop = "0px";
+    gutterLines.style.height = `${Math.max(editor.clientHeight, lines.length * lineHeight + paddingTop)}px`;
     gutterLines.style.transform = `translateY(${-editor.scrollTop}px)`;
-    for (let index = 0; index < lines.length; index += 1) {
+    const overscan = 8;
+    const firstVisible = Math.max(0, Math.floor((editor.scrollTop - paddingTop) / lineHeight) - overscan);
+    const visibleCount = Math.ceil(editor.clientHeight / lineHeight) + overscan * 2;
+    const lastVisible = Math.min(lines.length, firstVisible + visibleCount);
+    for (let index = firstVisible; index < lastVisible; index += 1) {
       const line = index + 1;
       const breakpoint = byLine.get(line);
       const eligible = eligibleLines.has(line);
@@ -237,6 +244,7 @@ export function createSourceBreakpointController({
       button.type = "button";
       button.className = "source-breakpoint-gutter__line";
       button.style.height = `${lineHeight}px`;
+      button.style.top = `${paddingTop + index * lineHeight}px`;
       button.dataset.line = String(line);
       if (breakpoint) button.dataset.breakpoint = breakpoint.condition ? "conditional" : "active";
       if (line === currentLine) button.classList.add("is-current");
@@ -277,6 +285,11 @@ export function createSourceBreakpointController({
 
   editor.addEventListener("scroll", () => {
     gutterLines.style.transform = `translateY(${-editor.scrollTop}px)`;
+    if (scrollRenderFrame) return;
+    scrollRenderFrame = requestAnimationFrame(() => {
+      scrollRenderFrame = 0;
+      render();
+    });
   });
   function sourceChanged() {
     const nextText = editor.value;

@@ -36,13 +36,17 @@ export function createProjectTabs({
           .filter((tab) => tab?.project && typeof tab.project === "object")
           .map((tab) => {
             const project = migrateProject(tab.project);
+            const cleanFingerprint = tab.cleanFingerprintVersion === FINGERPRINT_VERSION
+              ? String(tab.cleanFingerprint || "")
+              : fingerprint(snapshotProject(project));
             return {
               id: String(tab.id || makeId()),
               project,
-              cleanFingerprint: tab.cleanFingerprintVersion === FINGERPRINT_VERSION
-                ? String(tab.cleanFingerprint || "")
-                : fingerprint(snapshotProject(project)),
+              cleanFingerprint,
               cleanFingerprintVersion: FINGERPRINT_VERSION,
+              dirty: typeof tab.dirty === "boolean"
+                ? tab.dirty
+                : fingerprint(snapshotProject(project)) !== cleanFingerprint,
               viewState: tab.viewState && typeof tab.viewState === "object" ? tab.viewState : {}
             };
           });
@@ -51,7 +55,7 @@ export function createProjectTabs({
     } catch (_) {}
     if (!tabs.length && !restoredSession) {
       const project = initialProject;
-      tabs = [{ id: makeId(), project, cleanFingerprint: fingerprint(snapshotProject(project)), cleanFingerprintVersion: FINGERPRINT_VERSION, viewState: {} }];
+      tabs = [{ id: makeId(), project, cleanFingerprint: fingerprint(snapshotProject(project)), cleanFingerprintVersion: FINGERPRINT_VERSION, dirty: false, viewState: {} }];
       activeId = tabs[0].id;
     }
   }
@@ -61,7 +65,9 @@ export function createProjectTabs({
   }
 
   function isDirty(tab) {
-    return fingerprint(snapshotProject(tab.project)) !== tab.cleanFingerprint;
+    if (typeof tab.dirty === "boolean") return tab.dirty;
+    tab.dirty = fingerprint(snapshotProject(tab.project)) !== tab.cleanFingerprint;
+    return tab.dirty;
   }
 
   function persist() {
@@ -145,6 +151,7 @@ export function createProjectTabs({
       project,
       cleanFingerprint: clean ? fingerprint(snapshotProject(project)) : "",
       cleanFingerprintVersion: FINGERPRINT_VERSION,
+      dirty: !clean,
       viewState: {},
       transientState: {}
     };
@@ -169,6 +176,7 @@ export function createProjectTabs({
           existing.project = project;
           existing.cleanFingerprint = clean ? fingerprint(snapshotProject(project)) : "";
           existing.cleanFingerprintVersion = FINGERPRINT_VERSION;
+          existing.dirty = !clean;
           existing.viewState = {};
           existing.transientState = {};
           activeId = existing.id;
@@ -211,6 +219,8 @@ export function createProjectTabs({
   }
 
   function projectChanged() {
+    const tab = activeTab();
+    if (tab) tab.dirty = true;
     persist();
     render();
   }
@@ -220,6 +230,7 @@ export function createProjectTabs({
     if (!tab) return;
     tab.cleanFingerprint = fingerprint(snapshotProject(tab.project));
     tab.cleanFingerprintVersion = FINGERPRINT_VERSION;
+    tab.dirty = false;
     persist();
     render();
   }

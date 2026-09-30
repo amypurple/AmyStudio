@@ -17,7 +17,7 @@ import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
   stripGeneratedSourceMarkers
-} from "./core/editor/sourceBreakpoints.js?v=20260928-lighthouse2";
+} from "./core/editor/sourceBreakpoints.js?v=20260929-lighthouse3";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
@@ -158,6 +158,7 @@ const els = {
   optimizationSummary: document.getElementById("optimizationSummary"),
   optimizationChoices: document.querySelectorAll("[data-opt-level]"),
   btnOpenExamples: document.getElementById("btnOpenExamples"),
+  btnOpenExamplesMenu: document.getElementById("btnOpenExamplesMenu"),
   examplesDialog: document.getElementById("examplesDialog"),
   currentExampleSummary: document.getElementById("currentExampleSummary"),
   exampleSearchInput: document.getElementById("exampleSearchInput"),
@@ -220,6 +221,9 @@ const els = {
   emulatorFrame: document.getElementById("emulatorFrame"),
   btnRomTestRecorder: document.getElementById("btnRomTestRecorder"),
   statusSummary: document.getElementById("statusSummary"),
+  projectPanel: document.getElementById("projectPanel"),
+  projectPortraitStatus: document.getElementById("projectPortraitStatus"),
+  sourcePanel: document.getElementById("sourcePanel"),
   statusDetails: document.getElementById("statusDetails"),
   status: document.getElementById("status"),
   fileImport: document.getElementById("fileImport"),
@@ -1379,6 +1383,34 @@ bindEvents();
   if (els.btnToggleAsm) els.btnToggleAsm.addEventListener("click", () => setCollapsed(true));
   if (els.btnShowAsm) els.btnShowAsm.addEventListener("click", () => setCollapsed(false));
   try { if (localStorage.getItem(STORAGE_KEY) !== "0") setCollapsed(true); } catch (_) {}
+})();
+
+(function setupPortraitPanelFocus() {
+  const portrait = window.matchMedia("(max-width: 1100px) and (orientation: portrait)");
+  const projectTabs = [
+    els.projectPanelTabProject,
+    els.projectPanelTabFiles,
+    els.projectPanelTabDocs,
+    els.projectPanelTabAssistant
+  ].filter(Boolean);
+  function focusProject() {
+    if (!portrait.matches) return;
+    els.layoutEl.classList.add("layout--project-focused");
+    els.projectPanel.classList.add("project-panel--focused");
+  }
+  function focusSource() {
+    els.layoutEl.classList.remove("layout--project-focused");
+    els.projectPanel.classList.remove("project-panel--focused");
+  }
+  for (const tab of projectTabs) tab.addEventListener("click", focusProject);
+  const sourceBar = els.sourcePanel?.querySelector(".panel-bar");
+  sourceBar?.addEventListener("click", focusSource);
+  sourceBar?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    focusSource();
+  });
+  portrait.addEventListener?.("change", (event) => { if (!event.matches) focusSource(); });
 })();
 
 syncUiFromProject();
