@@ -4,9 +4,11 @@
 //   node tools/amyc.mjs path/to/program.alexis            # transpile + assemble, report size
 //   node tools/amyc.mjs prog.alexis --asm [out.asm]       # also write the generated ASM
 //   node tools/amyc.mjs prog.alexis --rom [out.rom]       # also write the ROM binary
+//   node tools/amyc.mjs prog.alexis --symbols [out.sym]   # write debugger symbols
 //   node tools/amyc.mjs prog.alexis --optimized-asm out   # write post-optimizer ASM
 //   node tools/amyc.mjs prog.alexis --opt balanced        # optimization level (default: balanced)
 //   node tools/amyc.mjs prog.alexis --project-dir dir     # resolve @project/... includes from dir
+//   node tools/amyc.mjs prog.alexis --hardware sgm1       # enable optional target hardware
 //
 // Reuses the exact Studio compiler wiring, so it matches what the browser builds.
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -26,6 +28,7 @@ import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtim
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "../studio/core/compiler/addressHelpers.js";
 import { handleArrayBulkStatement } from "../studio/core/compiler/arrayBulkStatementHelpers.js";
+import { handleAdamStatement } from "../studio/core/compiler/adamStatementHelpers.js";
 import { createAssignmentArithmeticHelpers } from "../studio/core/compiler/assignmentArithmeticHelpers.js";
 import { createFx16Helpers } from "../studio/core/compiler/fx16Helpers.js";
 import { createByteLoadHelpers } from "../studio/core/compiler/byteLoadHelpers.js";
@@ -68,6 +71,7 @@ import { transpileAmyCore } from "../studio/core/compiler/transpileAmyCore.js";
 import { getOptimizationProfile, sourceHintsTinySound } from "../studio/core/optimization.js";
 import { lexZ80Source, summarizeTokens } from "../studio/core/amyscvassembly.js";
 import { generateAsm } from "../studio/core/project.js";
+import { getBuildContextDefines, resolveAmyBuildContext } from "../studio/core/projectTargets.js";
 import { newProject, defaultSourceText } from "../studio/core/projectLifecycle.js";
 import { manifest } from "../studio/manifest.js";
 import { alexisLibrarySources } from "../studio/core/alexisLibrarySources.generated.js";
@@ -100,7 +104,7 @@ const DEPS = {
   createControlFlowHelpers, createCompilerShellHelpers, createDataHelpers, createLoadStoreHelpers,
   createByteLoadHelpers, createAddressHelpers, createU32Helpers, createFx16Helpers, createSimpleArithmeticHelpers,
   createAssignmentArithmeticHelpers, scanAmyFirstPass, handleDataMetaStatement, handleDeclarationStatement,
-  handleProcFunctionStatement, handleDisplayGraphicsSpriteStatement, handleSoundSpinnerStatement,
+  handleProcFunctionStatement, handleDisplayGraphicsSpriteStatement, handleSoundSpinnerStatement, handleAdamStatement,
   handleVramTextStatement, handlePrintFormatStatement, handleVramPixelInputStatement, handleDataCursorStatement,
   handleWhileStatement, handleDoStatement, handleIfStatement, handleSelectCaseStatement, handleForStatement,
   handleRandomBounceStatement, handleSpecialIfGotoStatement, handleDispatchLabelStatement, handleRoutineStatement,
@@ -109,14 +113,19 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, opt: "balanced", projectDir: null };
+  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--asm") opts.asm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--optimized-asm") opts.optimizedAsm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--rom") opts.rom = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
+    else if (a === "--symbols") opts.symbols = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--opt") opts.opt = argv[++i] || "balanced";
     else if (a === "--project-dir") opts.projectDir = argv[++i] || null;
+    else if (a === "--target") opts.target = argv[++i] || "colecovision-cartridge";
+    else if (a === "--medium") opts.medium = argv[++i] || null;
+    else if (a === "--memory-profile") opts.memoryProfile = argv[++i] || null;
+    else if (a === "--hardware") opts.hardware.push(argv[++i] || "");
     else if (!opts.file && !a.startsWith("--")) opts.file = a;
   }
   return opts;
@@ -179,7 +188,7 @@ function buildAssemblyFiles(asm, projectDir) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (!opts.file) {
-    console.error("usage: node tools/amyc.mjs <file.alexis> [--asm [out]] [--rom [out]] [--opt level] [--project-dir dir]");
+    console.error("usage: node tools/amyc.mjs <file.alexis> [--asm [out]] [--rom [out]] [--opt level] [--target platform] [--medium dsk|ddp] [--memory-profile profile] [--project-dir dir]");
     process.exit(2);
   }
   const srcPath = path.resolve(opts.file);
@@ -203,9 +212,21 @@ async function main() {
   project.sourceText = sourceText;
   project.projectName = path.basename(base);
   project.projectFiles = collectProjectDirAsmFiles(opts.projectDir);
+  project.target = { platform: opts.target, ...(opts.medium ? { medium: opts.medium } : {}), ...(opts.hardware.length ? { hardware: opts.hardware.filter(Boolean) } : {}) };
+  if (opts.memoryProfile) project.memoryProfile = opts.memoryProfile;
+  const buildContext = resolveAmyBuildContext(project, { target: project.target });
+  project.memoryProfile = buildContext.memoryProfile || project.memoryProfile;
 
-  const transpiled = transpileAmySource({ sourceLang: "amy", sourceText, transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude }), lexZ80Source, summarizeTokens });
+  const transpiled = transpileAmySource({
+    sourceLang: "amy",
+    sourceText,
+    options: { buildContext },
+    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: getBuildContextDefines(buildContext) }),
+    lexZ80Source,
+    summarizeTokens
+  });
   if (!transpiled?.ok) { console.error("Transpile failed: " + (transpiled?.log || "unknown error")); process.exit(1); }
+  transpiled.metadata = { ...(transpiled.metadata || {}), buildTarget: buildContext };
   const staticAbiRam = transpiled.ramUsage?.staticAbi;
   if (staticAbiRam?.routineCount > 0) {
     console.log(`ABI  ${staticAbiRam.totalBytes} RAM bytes (${staticAbiRam.parameterBytes} params + ${staticAbiRam.localBytes} locals) across ${staticAbiRam.routineCount} frameless routine(s)`);
@@ -224,7 +245,7 @@ async function main() {
   const profile = getOptimizationProfile(opts.opt, generatedAsm);
   const files = buildAssemblyFiles(generatedAsm, opts.projectDir);
   const assembled = await assembleAmysCVAssembly(files, "main.asm", {
-    outputFilename: path.basename(base) + ".rom", outputMode: "binary", targetPlatform: "coleco",
+    outputFilename: path.basename(base) + (buildContext.machine === "adam" ? ".bin" : ".rom"), outputMode: "binary", targetPlatform: buildContext.machine === "adam" ? "raw" : "coleco",
     optimizerEnabled: profile.optimizerEnabled, optimizerConfig: profile.optimizerConfig
   });
   if (!assembled.ok) {
@@ -243,6 +264,11 @@ async function main() {
     const romPath = typeof opts.rom === "string" ? path.resolve(opts.rom) : base + ".rom";
     writeFileSync(romPath, rom);
     console.log("ROM  -> " + romPath);
+  }
+  if (opts.symbols !== undefined) {
+    const symbolsPath = typeof opts.symbols === "string" ? path.resolve(opts.symbols) : base + ".sym";
+    writeFileSync(symbolsPath, assembled.symbolsText || "", "utf8");
+    console.log("SYM  -> " + symbolsPath);
   }
 }
 

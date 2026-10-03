@@ -1,7 +1,7 @@
 import { createProjectFileCreationAddon } from "./addons/projectFileCreationAddon.js";
 import { createProjectFileDsoundAddon } from "./addons/projectFileDsoundAddon.js?v=20260918-files-audit";
 import { isGraphicsEditorsProjectFile, parseGraphicsEditorsConfig } from "./graphicsEditorMetadata.js?v=20260808-inline-byte-data";
-import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260811-smart-tile-colors";
+import { TMS9918_PALETTE, drawTmsTileToContext } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 import { isEditableProjectTextPath, openProjectTextEditor } from "./projectFileTextEditor.js?v=20260729-project-asm-editor";
 import { inspectProjectSoundFile, inspectSoundTableSource } from "./soundTableInspector.js?v=20260912-song-timeline";
 import { buildColecoBassNote, buildColecoEchoTone, buildColecoNoise, buildColecoSoundCommand, buildColecoToneNote, COLECO_NOISE_MODES, describeColecoSoundEvent } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";
@@ -22,6 +22,7 @@ export function createProjectFileUiHelpers({
   saveProjectToStorage,
   insertTextIntoSource,
   commitProjectSourceText,
+  openProjectSourceFile,
   setStatus,
   ensureProjectFilePathCandidate,
   assetNameFromProjectPath,
@@ -467,8 +468,8 @@ export function createProjectFileUiHelpers({
         throw new Error("Tile editor needs raw/decompressed pattern=2048, color=2048, name=768 bytes.");
       }
       await createTileEditorDialog({
-        pattern: pattern.slice(0, 2048),
-        color: color.slice(0, 2048),
+        pattern: pattern.slice(0, pattern.length >= 6144 ? 6144 : 2048),
+        color: color.slice(0, color.length >= 6144 ? 6144 : 2048),
         name: name.slice(0, 768),
         group
       });
@@ -614,6 +615,9 @@ export function createProjectFileUiHelpers({
       screenPanel.appendChild(screenWrap);
       screenPanel.appendChild(screenHoverLabel);
       const charsetPanel = makeEditorPanel("Charset / PATTERN table", "ICVGM layout: 32 columns by 8 rows, 256 characters total.");
+      const charsetBanks = document.createElement("div");
+      charsetBanks.className = "tile-editor-bank-tabs";
+      charsetPanel.appendChild(charsetBanks);
       charsetPanel.appendChild(gridCanvas);
       left.appendChild(screenPanel);
       bottom.appendChild(charsetPanel);
@@ -718,12 +722,22 @@ export function createProjectFileUiHelpers({
       body.appendChild(left);
       body.appendChild(right);
       body.appendChild(bottom);
+      const statusBar = document.createElement("div");
+      statusBar.className = "tile-editor-statusbar";
+      const statusPosition = document.createElement("span");
+      const statusTile = document.createElement("span");
+      const statusColors = document.createElement("span");
+      const statusTool = document.createElement("span");
+      statusBar.append(statusPosition, statusTile, statusColors, statusTool);
       panel.appendChild(body);
+      panel.appendChild(statusBar);
       panel.appendChild(actions);
       overlay.appendChild(panel);
       document.body.appendChild(overlay);
 
       let selectedTile = name[0] || 0;
+      const bankCount = pattern.length >= 6144 && color.length >= 6144 ? 3 : 1;
+      let selectedBank = 0;
       let selectedRow = 0;
       let drawTool = "toggle";
       let mapTool = "select";
@@ -732,6 +746,9 @@ export function createProjectFileUiHelpers({
       let lineStart = null;
       let drawActionActive = false;
       let mapActionActive = false;
+      let statusArea = "Screen";
+      let statusCol = 0;
+      let statusLine = 0;
       const undoStack = [];
       const redoStack = [];
       let dirty = false;
@@ -745,7 +762,8 @@ export function createProjectFileUiHelpers({
         return button;
       };
 
-      const patternHexForTile = (tile) => Array.from(pattern.slice(tile * 8, tile * 8 + 8))
+      const tableTile = (tile = selectedTile) => selectedBank * 256 + tile;
+      const patternHexForTile = (tile) => Array.from(pattern.slice(tableTile(tile) * 8, tableTile(tile) * 8 + 8))
         .map((value) => `$${value.toString(16).padStart(2, "0").toUpperCase()}`)
         .join("\n");
 
@@ -768,7 +786,7 @@ export function createProjectFileUiHelpers({
           const clean = token.replace(/^0x/i, "").replace(/^\$/, "");
           return parseInt(clean, 16) & 0xFF;
         });
-        const base = selectedTile * 8;
+        const base = tableTile() * 8;
         if (bytes.every((value, index) => pattern[base + index] === value)) {
           renderHexEditor();
           return;
@@ -784,6 +802,7 @@ export function createProjectFileUiHelpers({
         color: color.slice(),
         name: name.slice(),
         selectedTile,
+        selectedBank,
         selectedRow
       });
 
@@ -792,6 +811,7 @@ export function createProjectFileUiHelpers({
         color.set(snapshot.color);
         name.set(snapshot.name);
         selectedTile = snapshot.selectedTile;
+        selectedBank = snapshot.selectedBank || 0;
         selectedRow = snapshot.selectedRow;
         lineStart = null;
         dirty = true;
@@ -934,25 +954,25 @@ export function createProjectFileUiHelpers({
         opsGroup.appendChild(redoButton);
         opsGroup.appendChild(makeToolButton("Clear", "Clear the selected tile pattern.", () => {
           pushUndo();
-          pattern.fill(0, selectedTile * 8, selectedTile * 8 + 8);
+          pattern.fill(0, tableTile() * 8, tableTile() * 8 + 8);
           dirty = true;
           renderAll();
         }));
         opsGroup.appendChild(makeToolButton("Inv", "Invert the selected tile pattern.", () => {
           pushUndo();
-          for (let row = 0; row < 8; row += 1) pattern[selectedTile * 8 + row] ^= 0xFF;
+          for (let row = 0; row < 8; row += 1) pattern[tableTile() * 8 + row] ^= 0xFF;
           dirty = true;
           renderAll();
         }));
         opsGroup.appendChild(makeToolButton("Flip H", "Mirror the selected tile horizontally.", () => {
           pushUndo();
-          for (let row = 0; row < 8; row += 1) pattern[selectedTile * 8 + row] = reverseByteBits(pattern[selectedTile * 8 + row]);
+          for (let row = 0; row < 8; row += 1) pattern[tableTile() * 8 + row] = reverseByteBits(pattern[tableTile() * 8 + row]);
           dirty = true;
           renderAll();
         }));
         opsGroup.appendChild(makeToolButton("Flip V", "Mirror the selected tile vertically.", () => {
           pushUndo();
-          const base = selectedTile * 8;
+          const base = tableTile() * 8;
           for (let row = 0; row < 4; row += 1) {
             const tmp = pattern[base + row];
             pattern[base + row] = pattern[base + 7 - row];
@@ -963,14 +983,14 @@ export function createProjectFileUiHelpers({
         }));
         opsGroup.appendChild(makeToolButton("Rot 90", "Rotate the selected tile pattern clockwise.", () => {
           pushUndo();
-          rotateTilePatternClockwise(pattern, selectedTile);
+          rotateTilePatternClockwise(pattern, tableTile());
           dirty = true;
           renderAll();
         }));
         opsGroup.appendChild(makeToolButton("Copy", "Copy selected tile pattern and colors.", () => {
           tileClipboard = {
-            pattern: pattern.slice(selectedTile * 8, selectedTile * 8 + 8),
-            color: color.slice(selectedTile * 8, selectedTile * 8 + 8)
+            pattern: pattern.slice(tableTile() * 8, tableTile() * 8 + 8),
+            color: color.slice(tableTile() * 8, tableTile() * 8 + 8)
           };
           setStatus(`Copied tile ${selectedTile}.`);
           renderToolControls();
@@ -978,8 +998,8 @@ export function createProjectFileUiHelpers({
         const pasteButton = makeToolButton("Paste", "Paste copied tile pattern and colors into selected tile.", () => {
           if (!tileClipboard) return;
           pushUndo();
-          pattern.set(tileClipboard.pattern, selectedTile * 8);
-          color.set(tileClipboard.color, selectedTile * 8);
+          pattern.set(tileClipboard.pattern, tableTile() * 8);
+          color.set(tileClipboard.color, tableTile() * 8);
           dirty = true;
           renderAll();
         });
@@ -995,7 +1015,8 @@ export function createProjectFileUiHelpers({
         ctx.clearRect(0, 0, screenCanvas.width, screenCanvas.height);
         for (let row = 0; row < 24; row += 1) {
           for (let col = 0; col < 32; col += 1) {
-            drawTileToContext(ctx, pattern, color, name[row * 32 + col] || 0, col * 16, row * 16, 2);
+            const tile = name[row * 32 + col] || 0;
+            drawTileToContext(ctx, pattern, color, Math.min(bankCount - 1, row >> 3) * 256 + tile, col * 16, row * 16, 2);
           }
         }
       };
@@ -1006,7 +1027,7 @@ export function createProjectFileUiHelpers({
         for (let tile = 0; tile < 256; tile += 1) {
           const x = (tile & 31) * 16;
           const y = (tile >> 5) * 16;
-          drawTileToContext(ctx, pattern, color, tile, x, y, 2);
+          drawTileToContext(ctx, pattern, color, tableTile(tile), x, y, 2);
           if (tile === selectedTile) {
             ctx.strokeStyle = "#ffd15c";
             ctx.lineWidth = 3;
@@ -1016,7 +1037,7 @@ export function createProjectFileUiHelpers({
       };
 
       const renderEditor = () => {
-        const packed = color[selectedTile * 8 + selectedRow] ?? 0xF0;
+        const packed = color[tableTile() * 8 + selectedRow] ?? 0xF0;
         selectedLabel.textContent = "";
         const nav = document.createElement("div");
         nav.className = "tile-editor-nav";
@@ -1050,7 +1071,7 @@ export function createProjectFileUiHelpers({
         selectedLabel.appendChild(nav);
         const ctx = editCanvas.getContext("2d");
         ctx.clearRect(0, 0, editCanvas.width, editCanvas.height);
-        drawTileToContext(ctx, pattern, color, selectedTile, 0, 0, 32);
+        drawTileToContext(ctx, pattern, color, tableTile(), 0, 0, 32);
         ctx.strokeStyle = "#ffd15c";
         ctx.lineWidth = 4;
         ctx.strokeRect(0, selectedRow * 32 + 2, 256, 28);
@@ -1058,7 +1079,7 @@ export function createProjectFileUiHelpers({
 
       const renderPalette = () => {
         colorStrip.textContent = "";
-        const packed = color[selectedTile * 8 + selectedRow] ?? 0xF0;
+        const packed = color[tableTile() * 8 + selectedRow] ?? 0xF0;
         const currentFg = (packed >> 4) & 15;
         const currentBg = packed & 15;
         topFgButton.style.background = TMS_PALETTE[currentFg] || "#000";
@@ -1073,7 +1094,7 @@ export function createProjectFileUiHelpers({
           swatch.title = `TMS color ${i} for selected row ${paletteTarget.toUpperCase()}`;
           swatch.style.background = TMS_PALETTE[i] || "#000";
           swatch.addEventListener("click", () => {
-            const base = selectedTile * 8 + selectedRow;
+            const base = tableTile() * 8 + selectedRow;
             const oldPacked = color[base] ?? 0xF0;
             pushUndo();
             color[base] = paletteTarget === "fg"
@@ -1096,8 +1117,8 @@ export function createProjectFileUiHelpers({
       });
       const applySelectedRowColorsToTile = () => {
         pushUndo();
-        const rowColor = color[selectedTile * 8 + selectedRow] ?? 0xF0;
-        color.fill(rowColor, selectedTile * 8, selectedTile * 8 + 8);
+        const rowColor = color[tableTile() * 8 + selectedRow] ?? 0xF0;
+        color.fill(rowColor, tableTile() * 8, tableTile() * 8 + 8);
         dirty = true;
         renderAll();
       };
@@ -1106,7 +1127,7 @@ export function createProjectFileUiHelpers({
 
       const renderRows = () => {
         rowControls.textContent = "";
-        const base = selectedTile * 8;
+        const base = tableTile() * 8;
         for (let row = 0; row < 8; row += 1) {
           const packed = color[base + row] ?? 0xF0;
           const line = document.createElement("div");
@@ -1149,6 +1170,17 @@ export function createProjectFileUiHelpers({
       };
 
       const renderAll = () => {
+        charsetBanks.textContent = "";
+        if (bankCount > 1) {
+          for (let bank = 0; bank < bankCount; bank += 1) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = `Tileset ${bank + 1} · rows ${bank * 8}-${bank * 8 + 7}`;
+            button.classList.toggle("is-active", bank === selectedBank);
+            button.addEventListener("click", () => { selectedBank = bank; renderAll(); });
+            charsetBanks.appendChild(button);
+          }
+        }
         renderToolControls();
         renderScreen();
         renderGrid();
@@ -1156,6 +1188,11 @@ export function createProjectFileUiHelpers({
         renderHexEditor();
         renderPalette();
         renderRows();
+        const packed = color[tableTile() * 8 + selectedRow] ?? 0xF0;
+        statusPosition.textContent = `${statusArea}  X=${statusCol}  Y=${statusLine}`;
+        statusTile.textContent = `Bank ${selectedBank + 1}  Tile ${selectedTile} ($${selectedTile.toString(16).padStart(2, "0").toUpperCase()})  Row ${selectedRow}`;
+        statusColors.textContent = `FG ${(packed >> 4) & 15}  BG ${packed & 15}`;
+        statusTool.textContent = `Map: ${mapTool}  Pixel: ${drawTool}`;
       };
 
       const screenPointerToCell = (event) => {
@@ -1177,6 +1214,7 @@ export function createProjectFileUiHelpers({
           dirty = stampTileAt(col, row) || dirty;
         } else {
           selectedTile = name[row * 32 + col] || 0;
+          selectedBank = Math.min(bankCount - 1, row >> 3);
           selectedRow = 0;
           setStatus(`Picked screen ${col},${row}: character ${selectedTile} ($${selectedTile.toString(16).padStart(2, "0").toUpperCase()}) for editing.`);
         }
@@ -1186,6 +1224,11 @@ export function createProjectFileUiHelpers({
       const handleScreenHover = (event) => {
         const { col, row } = screenPointerToCell(event);
         const tile = name[row * 32 + col] || 0;
+        statusArea = "Screen";
+        statusCol = col;
+        statusLine = row;
+        statusPosition.textContent = `Screen  X=${col}  Y=${row}`;
+        statusTile.textContent = `Tile ${tile} ($${tile.toString(16).padStart(2, "0").toUpperCase()})`;
         screenHoverLabel.textContent = `Screen ${col},${row} -> C=${tile} ($${tile.toString(16).padStart(2, "0").toUpperCase()})`;
       };
 
@@ -1218,7 +1261,21 @@ export function createProjectFileUiHelpers({
         const row = Math.max(0, Math.min(7, Math.floor(((event.clientY - rect.top) / rect.height) * 8)));
         selectedTile = row * 32 + col;
         selectedRow = 0;
+        statusArea = "Charset";
+        statusCol = col;
+        statusLine = row;
         renderAll();
+      });
+      gridCanvas.addEventListener("mousemove", (event) => {
+        const rect = gridCanvas.getBoundingClientRect();
+        const col = Math.max(0, Math.min(31, Math.floor(((event.clientX - rect.left) / rect.width) * 32)));
+        const row = Math.max(0, Math.min(7, Math.floor(((event.clientY - rect.top) / rect.height) * 8)));
+        const tile = row * 32 + col;
+        statusArea = "Charset";
+        statusCol = col;
+        statusLine = row;
+        statusPosition.textContent = `Charset  X=${col}  Y=${row}`;
+        statusTile.textContent = `Tile ${tile} ($${tile.toString(16).padStart(2, "0").toUpperCase()})`;
       });
 
       const editPointerToPixel = (event) => {
@@ -1238,7 +1295,7 @@ export function createProjectFileUiHelpers({
             return;
           }
           pushUndo();
-          drawPatternLine(selectedTile, lineStart.bit, lineStart.row, bit, row, 1);
+          drawPatternLine(tableTile(), lineStart.bit, lineStart.row, bit, row, 1);
           lineStart = null;
         } else {
           if (!drawActionActive) {
@@ -1246,9 +1303,9 @@ export function createProjectFileUiHelpers({
             drawActionActive = true;
           }
           const value = drawTool === "erase" ? 0 : 1;
-          if (drawTool === "fill") floodFillPattern(selectedTile, bit, row, value);
-          else if (drawTool === "toggle") setPatternPixel(selectedTile, bit, row, getPatternPixel(selectedTile, bit, row) ? 0 : 1);
-          else setPatternPixel(selectedTile, bit, row, value);
+          if (drawTool === "fill") floodFillPattern(tableTile(), bit, row, value);
+          else if (drawTool === "toggle") setPatternPixel(tableTile(), bit, row, getPatternPixel(tableTile(), bit, row) ? 0 : 1);
+          else setPatternPixel(tableTile(), bit, row, value);
         }
         selectedRow = row;
         dirty = true;
@@ -1263,7 +1320,7 @@ export function createProjectFileUiHelpers({
       });
       const shiftSelectedTile = (dx, dy) => {
         pushUndo();
-        shiftTilePattern(selectedTile, dx, dy);
+        shiftTilePattern(tableTile(), dx, dy);
         dirty = true;
         renderAll();
       };
@@ -2100,6 +2157,10 @@ export function createProjectFileUiHelpers({
   }
 
   function openProjectFileTextEditor(entry) {
+    if (isEditableProjectTextPath(entry?.path) && openProjectSourceFile) {
+      openProjectSourceFile(entry);
+      return;
+    }
     openProjectTextEditor({
       entry,
       text: projectFileText(entry),
@@ -2231,7 +2292,7 @@ export function createProjectFileUiHelpers({
   let graphicsEditorUiPromise = null;
   function loadGraphicsEditorUi() {
     if (!graphicsEditorUiPromise) {
-      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260918-universal-composition").then((module) => module.createGraphicsEditorUi({
+      graphicsEditorUiPromise = import("./graphicsEditors.js?v=20260916-scenery-path-fix").then((module) => module.createGraphicsEditorUi({
         TMS_PALETTE,
         getProject,
         normalizeProjectFilePath,
@@ -2294,6 +2355,61 @@ export function createProjectFileUiHelpers({
     });
     setStatus(statusText || "Updated editors.json.");
     return { ...(existing || {}), path: existing?.path || "editors.json", kind: existing?.kind || "editor-config", base64: bytesToBase64(bytes) };
+  }
+
+  function createNewAmySourceFile() {
+    const project = getProject();
+    const requested = window.prompt("Amy source file name", "src/module.amy");
+    if (requested === null) return;
+    const clean = String(requested).trim().replace(/\\/g, "/");
+    if (!clean) {
+      setStatus("Amy source file creation cancelled: enter a file name.");
+      return;
+    }
+    const withExtension = /\.(?:amy|alexis)$/i.test(clean) ? clean : `${clean}.amy`;
+    const path = normalizeProjectFilePath(withExtension);
+    if ((project.projectFiles || []).some((entry) => normalizeProjectFilePath(entry.path).toLowerCase() === path.toLowerCase())) {
+      setStatus(`Cannot create ${path}: that project file already exists.`);
+      return;
+    }
+    const base = path.split("/").pop().replace(/\.(?:amy|alexis)$/i, "");
+    const symbol = base.replace(/[^A-Za-z0-9]+/g, "_").replace(/^\d/, "_$&") || "Module";
+    const source = [`' ${base} Amy module`, `sub ${symbol}_Init:`, "  return", "end sub", ""].join("\n");
+    upsertProjectFile({
+      path,
+      base64: bytesToBase64(new TextEncoder().encode(source)),
+      kind: "amy-source",
+      source: "created"
+    });
+    insertTextIntoSource(`include amy "${path}"`, { beforeProcedures: true });
+    openProjectSourceFile?.({ path });
+    setStatus(`Created ${path} and included it in the main Amy source.`);
+  }
+
+  function renameProjectFile(entry) {
+    const project = getProject();
+    const oldPath = normalizeProjectFilePath(entry.path);
+    const requested = window.prompt("Rename project file", oldPath.slice("@project/".length));
+    if (requested === null) return;
+    const newPath = normalizeProjectFilePath(requested);
+    if (!newPath || newPath.toLowerCase() === oldPath.toLowerCase()) return;
+    if ((project.projectFiles || []).some((candidate) => normalizeProjectFilePath(candidate.path).toLowerCase() === newPath.toLowerCase())) {
+      setStatus(`Cannot rename ${oldPath}: ${newPath} already exists.`);
+      return;
+    }
+    const nextFiles = (project.projectFiles || []).map((candidate) =>
+      normalizeProjectFilePath(candidate.path).toLowerCase() === oldPath.toLowerCase()
+        ? { ...candidate, path: newPath, kind: fileKindFromPath(newPath) }
+        : candidate);
+    setProjectFiles(normalizeProjectFiles(nextFiles));
+    const escaped = oldPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    project.sourceText = String(project.sourceText || "").replace(new RegExp(`([\"'])${escaped}\\1`, "gi"), `"${newPath}"`);
+    if (els.sourceEditor) els.sourceEditor.value = project.sourceText;
+    clearCompiledArtifacts();
+    saveProjectToStorage(project);
+    renderProjectFiles();
+    dispatchProjectFileUpdated(newPath);
+    setStatus(`Renamed ${oldPath} to ${newPath}.`);
   }
 
   function sourceReferencesProjectFile(entry) {
@@ -5041,29 +5157,76 @@ export function createProjectFileUiHelpers({
     const totalBytes = files.reduce((sum, entry) => sum + projectFileBytes(entry).length, 0);
     els.projectFilesSummary.textContent = `${files.length} embedded file${files.length === 1 ? "" : "s"} · ${formatByteSize(totalBytes)} · reference with "@project/..."`;
     const editorBindings = graphicsEditorBindings(files);
-    for (const entry of files) {
+    const sortedFiles = [...files].sort((left, right) => normalizeProjectFilePath(left.path).localeCompare(normalizeProjectFilePath(right.path), undefined, { sensitivity: "base" }));
+    const renderedFolders = new Set();
+    const appendFolderRows = (entryPath) => {
+      const bare = normalizeProjectFilePath(entryPath).slice("@project/".length);
+      const parts = bare.split("/").slice(0, -1);
+      let folderPath = "";
+      parts.forEach((part, index) => {
+        folderPath = folderPath ? `${folderPath}/${part}` : part;
+        if (renderedFolders.has(folderPath.toLowerCase())) return;
+        renderedFolders.add(folderPath.toLowerCase());
+        const folder = document.createElement("div");
+        folder.className = "project-file-folder";
+        folder.style.setProperty("--tree-depth", String(index));
+        const marker = document.createElement("span");
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = "▾";
+        const label = document.createElement("strong");
+        label.textContent = part;
+        folder.append(marker, label);
+        els.projectFilesList.appendChild(folder);
+      });
+      return parts.length;
+    };
+    const fileRole = (entry, kind) => {
+      const lower = String(entry.path || "").toLowerCase();
+      if (/\.(?:amy|alexis)$/.test(lower)) return "Amy module · compiled from MAIN include";
+      if (/\.asm$/.test(lower)) return "Z80 source · assembler input";
+      if (/\.(?:s|inc)$/.test(lower)) return "Z80 include · assembler dependency";
+      if (/editors\.json$/.test(lower)) return "Editor configuration";
+      if (/\.json$/.test(lower)) return "Project data/configuration";
+      if (/\.(?:md|txt)$/.test(lower)) return "Project documentation";
+      if (["dsound", "tripcm", "voxpcm"].includes(kind)) return "Audio resource";
+      if (isPictureProjectFile?.(entry)) return "TMS9918 graphics resource";
+      if (entry.codec && entry.codec !== "raw") return `${String(entry.codec).toUpperCase()} compressed resource`;
+      return `${kind} resource`;
+    };
+    const outputTargets = (entry) => {
+      const bare = normalizeProjectFilePath(entry.path).slice("@project/".length).toLowerCase();
+      return (project.outputs || []).filter((output) => (output.sources || []).some((source) => {
+        const normalized = String(source || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase();
+        return normalized === bare;
+      })).map((output) => output.name).filter(Boolean);
+    };
+    for (const entry of sortedFiles) {
+      const depth = appendFolderRows(entry.path);
       const row = document.createElement("div");
       row.className = "project-file";
+      row.style.setProperty("--tree-depth", String(depth));
 
       const top = document.createElement("div");
       top.className = "project-file__top";
 
       const name = document.createElement("div");
       name.className = "project-file__name";
-      name.textContent = entry.path;
+      name.textContent = normalizeProjectFilePath(entry.path).split("/").pop();
+      name.title = normalizeProjectFilePath(entry.path);
       top.appendChild(name);
 
       const meta = document.createElement("div");
       meta.className = "project-file__meta";
-      meta.textContent = `${entry.kind || fileKindFromPath(entry.path)} · ${formatByteSize(projectFileBytes(entry).length)}`;
+      const detectedKind = fileKindFromPath(entry.path);
+      const kind = detectedKind === "voxpcm" ? detectedKind : (entry.kind || detectedKind);
+      const targets = outputTargets(entry);
+      meta.textContent = `${fileRole(entry, kind)} · ${formatByteSize(projectFileBytes(entry).length)}${targets.length ? ` · → ${targets.join(", ")}` : ""}`;
       top.appendChild(meta);
       row.appendChild(top);
 
       const actions = document.createElement("div");
       actions.className = "project-file__actions";
 
-      const detectedKind = fileKindFromPath(entry.path);
-      const kind = detectedKind === "voxpcm" ? detectedKind : (entry.kind || detectedKind);
       const entryCodec = String(entry.codec || detectCodecFromName?.(entry.path) || "raw").toLowerCase();
       const directlyPlayableAsset = ["dsound", "tripcm", "voxpcm"].includes(kind) && entryCodec === "raw";
       const boundEditors = editorBindings.byPath.get(normalizeProjectFilePath(entry.path).toLowerCase()) || [];
@@ -5107,6 +5270,12 @@ export function createProjectFileUiHelpers({
         setProjectFileActionIcon(editTextButton, "edit", `Edit ${entry.path}`);
         editTextButton.addEventListener("click", () => openProjectFileTextEditor(entry));
         actions.appendChild(editTextButton);
+
+        const renameButton = document.createElement("button");
+        renameButton.type = "button";
+        renameButton.textContent = "Rename";
+        renameButton.addEventListener("click", () => renameProjectFile(entry));
+        actions.appendChild(renameButton);
 
         const soundAnalysis = soundInspectionForEntry(entry);
         if (soundAnalysis) {
@@ -5155,7 +5324,6 @@ export function createProjectFileUiHelpers({
           editBitmapButton.addEventListener("click", () => void openProjectBitmapEditor(entry));
             verifiedActions.appendChild(editBitmapButton);
           }
-
           if (capabilities.tiles) {
           const tileButton = document.createElement("button");
           tileButton.type = "button";
@@ -5173,7 +5341,6 @@ export function createProjectFileUiHelpers({
           });
             verifiedActions.appendChild(exportDatButton);
           }
-
           if (capabilities.exportPc) {
           const exportPcButton = document.createElement("button");
           exportPcButton.type = "button";
@@ -5425,6 +5592,7 @@ export function createProjectFileUiHelpers({
     insertProjectFilePlaySnippet,
     createNewTileSetProjectFiles: creationAddon.createNewTileSetProjectFiles,
     createNewBitmapProjectFiles: creationAddon.createNewBitmapProjectFiles,
+    createNewAmySourceFile,
     previewProjectFileDsound: dsoundAddon.previewProjectFileDsound,
     previewProjectFilePicture,
     openGraphicsEditorsFromProject,

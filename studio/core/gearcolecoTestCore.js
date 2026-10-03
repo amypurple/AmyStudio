@@ -525,6 +525,20 @@ export class GearcolecoTestCore {
     };
   }
 
+  getAdamPrinterData() {
+    this.assertAlive();
+    const required = this.module._gcw_get_adam_printer_data(0, 0);
+    if (!required) return new Uint8Array(0);
+    return this.withOutputBytes(required, (pointer, capacity) => {
+      return this.module._gcw_get_adam_printer_data(pointer, capacity);
+    });
+  }
+
+  clearAdamPrinterData() {
+    this.assertAlive();
+    this.module._gcw_clear_adam_printer_data();
+  }
+
   disassemble(address) {
     const bytes = this.withOutputBytes(73, (pointer, capacity) => {
       return this.module._gcw_disassemble(address & 0xFFFF, pointer, capacity);

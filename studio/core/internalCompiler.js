@@ -1,5 +1,5 @@
 import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260731-source-marker-alignment";
-import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260828-sleep-service";
+import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260802-crt-safe-pause";
 
 const textEncoder = new TextEncoder();
 
@@ -74,6 +74,20 @@ function shortHash(bytes) {
   return (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
 }
 
+function enforceTargetBinaryCapacity(result, options = {}) {
+  if (!result?.ok || !result.binary) return result;
+  const target = String(options.amyTarget || "").toLowerCase();
+  if (target !== "colecovision-cartridge") return result;
+  const capacity = 32 * 1024;
+  if (result.binary.length <= capacity) return result;
+  const overflow = result.binary.length - capacity;
+  return {
+    ...result,
+    ok: false,
+    log: `${result.log || ""}\n[error] ColecoVision cartridge exceeds its 32 KiB mapped ROM window: ${result.binary.length} / ${capacity} bytes (${overflow} bytes over). Optimize the project or select a MegaCart target.`.trim()
+  };
+}
+
 export async function expandAsmIncludes(asmText, options = {}) {
   const embeddedProjectFiles = buildEmbeddedProjectFileMap(options.projectFiles || []);
   const seen = new Set();
@@ -145,12 +159,12 @@ export async function compileGeneratedAsm(asmText, mainFile = "main.asm", option
     });
   }
 
-  const optimized = await assembleAmysCVAssembly(files, mainFile, {
+  const assembled = await assembleAmysCVAssembly(files, mainFile, {
     ...assembleOptions,
     optimizerEnabled,
     optimizerConfig
   });
-
+  const optimized = enforceTargetBinaryCapacity(assembled, options);
   if (baseline?.ok && optimized?.ok) {
     const rawSize = baseline.binary?.length ?? 0;
     const optimizedSize = optimized.binary?.length ?? 0;

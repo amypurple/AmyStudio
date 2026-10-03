@@ -4,7 +4,7 @@ let projectFilesModulePromise = null;
 
 async function loadExampleProjectFilesById(id) {
   if (!projectFilesModulePromise) {
-    projectFilesModulePromise = import("./examples-project-files.js?v=20260923-globe-runtime-assets");
+    projectFilesModulePromise = import("./examples-project-files.js?v=20260926-adam-quebec16");
   }
   const module = await projectFilesModulePromise;
   return module.projectFilesById?.[id] || [];
@@ -77,6 +77,8 @@ const rawExampleCatalog = exampleManifestData.map((entry) => ({
   detail: entry.detail || "",
   projectName: entry.projectName || entry.id,
   sourceLang: entry.sourceLang || "amy",
+  ...(entry.memoryProfile ? { memoryProfile: entry.memoryProfile } : {}),
+  ...(entry.buildTarget ? { buildTarget: { ...entry.buildTarget } } : {}),
   ...(entry.funFact ? { funFact: entry.funFact } : {}),
   ...(entry.selectedAsmLibs ? { selectedAsmLibs: entry.selectedAsmLibs } : {}),
   selectedLibs: [],
@@ -177,6 +179,8 @@ export const exampleManifest = exampleCatalog.map((example) => {
     detail: example.detail,
     projectName: example.projectName,
     sourceLang: example.sourceLang,
+    ...(example.memoryProfile ? { memoryProfile: example.memoryProfile } : {}),
+    ...(example.buildTarget ? { buildTarget: { ...example.buildTarget } } : {}),
     editorialTrack: example.editorialTrack,
     category,
     tags

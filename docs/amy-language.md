@@ -1779,6 +1779,10 @@ nmi on
 `screen off/on` is the normal combined path (display + interrupt).  
 `display off/on` changes only the visible display bit.  
 `nmi off/on` changes only the VDP interrupt-enable bit.
+
+`screen off` already disables NMI. A directly following `nmi off` is redundant
+and is omitted from release ASM; debug builds retain explicitly marked commands
+as breakpoint locations.
 In normal Amy code, prefer `screen on/off`.
 
 Per-VBlank Amy hook:
@@ -2636,8 +2640,17 @@ when NMI is enabled it waits through `NMI_FLAG`, and when NMI is disabled it
 polls the VDP status register directly instead of hanging on `halt`.
 `wait N frame(s)` is the same safe wait for explicit 16-bit frame counts;
 constant `0` waits are ignored.
+Native EOS programs use a separate polling backend through the stable EOS
+`$FD23` VDP-status service. It keeps NMI disabled and accepts constant or
+calculated 16-bit counts on DSK and DDP. This polled wait does not run an
+`on vblank` hook or other NMI-owned background work.
 `wait N frame(s) or press` waits up to a 16-bit frame count but exits early
 when any action button is pressed. Without `on joypad N`, either controller can interrupt.
+Native EOS also supports `wait fire`, `wait no fire`, and this timed action-button
+wait. They poll frames through EOS `$FD23` and controller state through `$FD3E`;
+they do not enable NMI. Higher-level `choose menu`, `choose keypad`, keypad waits,
+and CRT-sleep pauses remain unavailable for native EOS until their timing and
+display ownership are adapted explicitly.
 
 ### Choose (menu selection)
 
@@ -3715,3 +3728,253 @@ Fast-code style:
   switch to explicit mode/upload commands when timing or visual transitions matter
 - keep every callable `sub` visibly terminated; future readers should see the
   Z80 control flow without reverse-engineering it
+## MegaCart ROM banks
+
+MegaCart declarations intentionally follow the established CVBasic vocabulary so ports do not need a second spelling:
+
+```amy
+bank rom 128
+
+sub start:
+  bank select 1
+end sub
+```
+
+`bank rom` accepts `64`, `128`, `256`, `512`, or `1024` KB and may appear only once. `bank select n` requires a constant logical bank number; logical bank 1 selects physical bank 0 through a protected read from `$FFC0`. Amy validates the bank against the declared ROM size. The 64 KB form is an emulator-compatible compact MegaCart variant; 128 KB remains the recommended minimum for broadly compatible physical MegaCart production.
+
+## Native ADAM media files
+
+Native `adam-native-program` projects can access files from their selected DSK
+or DDP medium without embedding a device number in source code:
+
+```basic
+u8 IoStatus = 255
+u8 EntryCount = 0
+u32 LargeSaveSize = 70000
+u8 LevelData[1024]
+
+LevelData = read "LEVEL1" count 1024 status IoStatus
+create "SAVE" 1024 status IoStatus
+create "LARGE" LargeSaveSize status IoStatus
+Exists = exists "SAVE" status IoStatus
+EosFile FileInfo
+Found = find "SAVE" as FileInfo status IoStatus
+u32 SaveSize = 0
+SaveSize = size FileInfo
+SaveSize = size "SAVE" status IoStatus
+write "SAVE" from LevelData count 128 status IoStatus
+rename "SAVE" to "BACKUP" status IoStatus
+delete "SAVE" status IoStatus
+LevelData = read block 3 status IoStatus
+block write 3 from LevelData status IoStatus
+EosDirectory Directory
+EntryCount = catalog Directory status IoStatus
+```
+
+Status is `0` on success and `1` on failure. Named operations always close the
+file. `create "SAVE" Bytes` accepts an ordinary 16-bit expression or a `u32` size.
+The wider form passes all four size bytes to EOS and is runtime-verified with a
+70,000-byte allocation. Add `status IoStatus` only when the program needs the
+normalized EOS result; omitting it discards the status. `write` overwrites bytes within an existing
+allocation; it does not enlarge that allocation. Creation, writing, and deletion
+require writable media. `rename` changes the directory name without copying
+the file payload and also requires writable media. Both `rename` and `delete`
+accept an optional `status` variable; without it, their normalized EOS result
+is discarded.
+EOS names contain at most ten visible base/extension characters. A period in
+Amy source is translated to EOS's native base/extension separator.
+
+`Exists = exists "SAVE"` returns `1` when the name exists and `0` when it
+does not. The optional status remains `0` for both of those normal outcomes;
+it becomes `1` only for an actual EOS/media error. This makes existence checks
+safe for ordinary conditional logic without treating a missing save as a fault.
+
+`Found = find "SAVE" as FileInfo [status IoStatus]` fills the built-in
+23-byte `EosFile` record returned by EOS `$FCCC`. The record exposes `Name`,
+`Attributes`, `StartBlock`, `Reserved`, `AllocatedBlocks`, `UsedBlocks`, and
+`LastBlockBytes`. A missing name is a normal false result with status zero and
+a cleared record; an actual media error returns status one and also clears it.
+`SaveSize = size FileInfo` derives the same `u32` logical byte length from an
+existing `EosFile` entirely in RAM, avoiding another directory search.
+The result, status, and record may all be dynamically indexed array elements:
+`Found[I] = find "SAVE" as Files[I] status Statuses[I]` followed by
+`Sizes[I] = size Files[I]`. Amy preserves the EOS filename pointer while
+calculating the indexed record address.
+
+`Size = size "SAVE" status IoStatus` reads the logical byte length into a
+`u32` variable. The destination must be `u32` because EOS directory metadata can
+describe sizes wider than 16 bits. An empty file returns size zero and status
+zero; an absent or inaccessible file returns size zero and status one. Amy
+derives the value from EOS's used-block count and final-block length, rather
+than exposing the directory-entry layout to source code.
+
+Raw block operations always transfer exactly 1,024 bytes. `block write`
+requires writable media and can overwrite boot, directory, allocation, or file
+content structures. Prefer named-file commands for ordinary game data and saves;
+raw writes are intended for media tools and formats whose block ownership is
+already known.
+
+`EntryCount = catalog Directory [status IoStatus]` reads logical block 1
+directly into a packed 1,024-byte `EosDirectory`. Fields can then be read as
+`Directory.Entries[I].Name[C]`, `Directory.Entries[I].Attributes`,
+`Directory.Entries[I].StartBlock`, `Directory.Entries[I].AllocatedBlocks`,
+`Directory.Entries[I].UsedBlocks`, and `Directory.Entries[I].LastBlockBytes`.
+The record's `Tail[10]` completes the block after its 39 entries. Status is
+optional and normalized to 0/1.
+
+`EosDate`, `EosFile`, `EosDirectoryEntry`, and `EosDirectory` are built-in record types
+for every native EOS ADAM project. They require no declaration or include and
+cannot be redefined. `EosFile` is the 23-byte result returned by EOS `$FCCC`.
+`EosDirectoryEntry` adds the three trailing media metadata bytes for a packed
+26-byte entry. `EosDirectory` contains `EosDirectoryEntry Entries[39]` followed
+by `u8 Tail[10]`.
+
+Directory searches are noticeably slower on sequential DDP media than on disk,
+especially when a requested name is absent. Load or validate resources between
+scenes rather than repeatedly querying missing names in a frame loop.
+
+EOS-capable projects can read and set the firmware date through the typed
+three-byte `EosDate` record:
+
+```basic
+EosDate Today
+u8 DateStatus = 0
+
+Today.Year = 86
+Today.Month = 10
+Today.Day = 2
+set date Today
+
+Today = date status DateStatus
+```
+
+`set date` calls EOS `$FCD8`; the assigned `date` query calls `$FCDB`.
+The year uses EOS's two-digit `83..99` convention. The optional status is zero
+on success and one when EOS reports that no date has been set. On failure Amy
+clears all three fields. These forms are rejected by OS7-only projects.
+
+Earlier experimental `adam ...`, `... into ...`, `read file`, `file write`, `file create ... size`, `file delete`, and `file rename` spellings
+were removed before release. Only the modern forms documented above are
+accepted. Target capability checks reject them outside native ADAM code.
+
+## Native ADAM devices
+
+EOS-capable native and hybrid projects can query and reset an AdamNet device by
+its byte ID:
+
+```basic
+u8 Device = 1
+u8 Flags = 0
+u8 Code = 0
+u8 Result = 0
+
+Flags = device status Device status Result
+Code = device result Device status Result
+reset device Device status Result
+```
+
+`device status` calls EOS `$FC7E`, waits for the status request, and returns
+the device-dependent flags from the DCB. `device result` calls `$FC75` and
+returns the raw completion byte from the device's current DCB, such as `$80`
+for completion or a device error such as `$96/$9B`. `reset device` performs an
+EOS `$FC90` soft reset. The final `status` destination is optional and always
+uses Amy's normalized `0` success / `1` failure convention; it is distinct from
+the raw completion code and device-dependent flags. Device IDs and result
+destinations may be byte expressions. OS7-only projects reject all three forms.
+
+## Native ADAM keyboard
+
+An `adam-native-program` can deliberately wait for one key from the full ADAM
+keyboard:
+
+```basic
+u8 KeyCode = 0
+u8 KeyStatus = 255
+
+KeyCode = await key status KeyStatus
+```
+
+`KeyCode = await key` is the short form when the program does not need an EOS
+status. Adding `status KeyStatus` returns `0` on success and `1` on failure.
+This is a blocking EOS `$FC6C` read: execution stops until the keyboard supplies
+a character or EOS reports an error. `KeyCode` receives the EOS character code;
+on failure it receives zero. `await key` states the blocking behavior directly;
+the earlier experimental `get key into ...` and `adam read key into ...` forms
+were removed rather than carried as permanent aliases.
+
+Games and other continuously updating programs can use the explicit asynchronous
+form instead:
+
+```basic
+u8 KeyRequest = 0
+u8 KeyCode = 0
+u8 KeyStatus = 255
+
+key reset status KeyStatus
+KeyRequest = key start status KeyStatus
+
+MainLoop:
+KeyCode = key poll KeyRequest status KeyStatus
+if KeyStatus = 1 goto KeepUpdating
+' KeyStatus 0: KeyCode is ready. KeyStatus 2: EOS reported an error.
+
+KeepUpdating:
+' Update the game, then poll again on a later iteration.
+goto MainLoop
+```
+
+`key reset` calls EOS `$FC93` to release keyboard lock/modifier state.
+`start` stores the EOS request token. `poll` returns status `0` with a character,
+`1` while pending, or `2` on an EOS completion error. It never waits for the key.
+The status on `key reset` and `key start` is optional; `key poll` requires it
+because pending is a normal result that must be distinguished from completion.
+
+## Native ADAM printer
+
+Native EOS projects can send text or one byte to the standard AdamNet printer:
+
+```basic
+u8 PrintStatus = 255
+u8 Character = 13
+
+print "SCORE: 9000" to printer status PrintStatus
+print Character to printer
+```
+
+The string form accepts a compile-time literal. The byte form accepts an Amy
+byte expression. EOS `$FC66` targets AdamNet device `$02` and handles the
+printer-busy retry internally. The optional status is `0` when every character
+was accepted and `1` on failure. `print` does not append a carriage return;
+send byte `13` explicitly when one is required. This command is rejected for
+OS7 cartridge targets rather than silently changing screen output semantics.
+
+The reserved `bank n` section boundary is not yet linkable inside one monolithic Amy source. Switchable bank sources must currently be assigned to `switchable-bank` outputs in `project.amy.json`. Amy reports an error instead of silently placing them in the fixed ROM.
+
+## Super Game Module AY sound
+
+A project that declares `target.hardware: ["sgm1"]` gains the `sgm-ay`,
+`sgm-ram-upper`, and `sgm-ram-lower` capabilities. The New Project dialog can
+create this configuration as **ColecoVision + SGM**. MegaCart projects may add
+the same hardware declaration; MegaCart banking and SGM are independent.
+
+The first AY-3-8910 commands expose all chip registers without imposing a music
+format:
+
+```basic
+u8 Envelope = 10
+u8 PortValue = 0
+
+ay write 0, $40
+ay write 1, 1
+ay write 7, $3E
+ay write 8, Envelope
+ay read 14, PortValue
+ay mute
+```
+
+`ay write Register, Value` accepts byte expressions. `ay read Register, Value`
+stores a register read in a byte destination. `ay mute` writes zero to volume
+registers 8, 9, and 10. These commands use the SGM ports `$50` (register), `$51`
+(write), and `$52` (read), and are rejected when the project does not declare
+SGM hardware. Existing PSG, BIOS sound, Tiny Sound, and VoxPCM commands retain
+their original SN76489 behavior.

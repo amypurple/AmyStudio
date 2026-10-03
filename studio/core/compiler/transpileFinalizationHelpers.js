@@ -537,9 +537,12 @@ export function finalizeAmyTranspile({
     romData,
     assets,
     cartridgeMeta,
+    megaCartRomSizeKb,
+    megaCartSelectedBanks,
     onFrameHook,
     amyTimers,
     hasExternalAsmInclude,
+    buildContext,
     nextRamAddress,
     overlayLayouts,
     ramLayout,
@@ -1072,6 +1075,9 @@ export function finalizeAmyTranspile({
       layoutLines.push(`; User RAM window: ${formatHex16(ramLayout.userRamStart)}-${formatHex16(ramLayout.userRamEndExclusive - 1)}`);
       layoutLines.push(`AMY_RAM_BASE EQU ${formatHex16(ramLayout.userRamStart)}`);
       layoutLines.push(`AMY_RAM_LIMIT EQU ${formatHex16(ramLayout.userRamEndExclusive)}`);
+      if (buildContext?.platform === "adam-native-program") {
+        layoutLines.push(`AMY_RAM_USED_END EQU ${formatHex16(Math.max(ramLayout.userRamStart + 1, nextRamAddress))}`);
+      }
     } else {
       layoutLines.push("AMY_RAM_BASE EQU $7100");
     }
@@ -1306,6 +1312,13 @@ export function finalizeAmyTranspile({
     warnings: Array.isArray(compilerWarnings) ? [...compilerWarnings] : [],
     metadata: {
       cartridge: cartridgeMeta,
+      ...(megaCartRomSizeKb != null ? {
+        megaCart: {
+          romSizeKb: megaCartRomSizeKb,
+          bankSizeKb: 16,
+          selectedLogicalBanks: [...megaCartSelectedBanks].sort((a, b) => a - b)
+        }
+      } : {}),
       onFrameHook,
       amyTimers: amyTimers ? [...amyTimers.values()] : [],
       ...(normalizedOverlayLayouts.length

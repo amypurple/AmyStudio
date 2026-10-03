@@ -12,6 +12,7 @@ export function createProcHelpers({
   procAsmSymbols,
   procFrames,
   runtimeVars,
+  nativeEos = false,
 }) {
   function ensureProcLocalMap(procName) {
     if (!ensureProcLocalMapStorage.has(procName)) ensureProcLocalMapStorage.set(procName, new Map());
@@ -264,23 +265,38 @@ export function createProcHelpers({
     currentProcRef.set("Start");
     currentFunctionRef.set(null);
     body.push(`${ensureProcAsmSymbol("Start")}:`);
-    if (inferredMemoryCaps.needsNmi) {
+    if (inferredMemoryCaps.needsNmi && !nativeEos) {
       body.push("    im 1");
       body.push("    ei");
     }
-    body.push("    call TURN_OFF_SOUND");
-    body.push("    call MODE_1");
+    if (!nativeEos) {
+      body.push("    call TURN_OFF_SOUND");
+      body.push("    call MODE_1");
+    }
     if (hasRuntimeRamDeclarationsRef.get()) {
-      body.push("    xor a");
-      body.push("    ld hl,AMY_RAM_BASE");
-      body.push("    ld de,AMY_RAM_BASE+1");
-      body.push("    ld bc,AMY_RAM_LIMIT-AMY_RAM_BASE-1");
-      body.push("    ld (hl),a");
-      body.push("    ldir");
+      if (nativeEos) {
+        body.push("    xor a");
+        body.push("    ld hl,AMY_RAM_BASE");
+        body.push("    ld (hl),a");
+        body.push("    ld bc,AMY_RAM_USED_END-AMY_RAM_BASE-1");
+        body.push("    ld a,b");
+        body.push("    or c");
+        body.push("    jr z,AMY_NATIVE_RAM_CLEAR_DONE");
+        body.push("    ld de,AMY_RAM_BASE+1");
+        body.push("    ldir");
+        body.push("AMY_NATIVE_RAM_CLEAR_DONE:");
+      } else {
+        body.push("    xor a");
+        body.push("    ld hl,AMY_RAM_BASE");
+        body.push("    ld de,AMY_RAM_BASE+1");
+        body.push("    ld bc,AMY_RAM_LIMIT-AMY_RAM_BASE-1");
+        body.push("    ld (hl),a");
+        body.push("    ldir");
+      }
     }
     startRuntimeInitInsertIndexRef.set(body.length);
     body.push("; AMY_RUNTIME_INIT_INSERT");
-    if (inferredMemoryCaps.needsNmi) {
+    if (inferredMemoryCaps.needsNmi && !nativeEos) {
       body.push("    xor a");
       body.push("    ld (NO_NMI),a");
     }

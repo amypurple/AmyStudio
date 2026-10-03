@@ -1,5 +1,5 @@
 export function isEditableProjectTextPath(path) {
-  return /\.(?:asm|s|inc)$/i.test(String(path || "").trim());
+  return /\.(?:amy|alexis|asm|s|inc|json|md|txt|csv|tsv)$/i.test(String(path || "").trim());
 }
 
 export function replaceTextSelection(value, start, end, insertion) {

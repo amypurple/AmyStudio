@@ -159,6 +159,10 @@ export function createStatusAsmUiHelpers({
       const statusKind = classifyStatusText(statusText || ramLine);
       els.statusSummary.textContent = statusText ? summarizeStatusText(statusText) : ramLine;
       els.statusSummary.className = `status-summary status-summary--${statusKind}`;
+      if (els.projectCompactStatus) {
+        els.projectCompactStatus.textContent = els.statusSummary.textContent;
+        els.projectCompactStatus.title = els.statusSummary.textContent;
+      }
       if (els.projectPortraitStatus) {
         els.projectPortraitStatus.textContent = els.statusSummary.textContent;
         els.projectPortraitStatus.title = els.statusSummary.textContent;

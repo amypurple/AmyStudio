@@ -10,6 +10,8 @@ export function createAddressHelpers(ctx) {
     symbolOrValue,
     tryEvaluateConstantExpression,
     tryEvaluateCompileTimeNumericExpression,
+    parseArrayRef,
+    emitLoadArrayAddressIntoHL,
     dataWordTables
   } = ctx;
 
@@ -76,6 +78,11 @@ export function createAddressHelpers(ctx) {
     const wordTableRef = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/);
     if (wordTableRef && getWordTableInfo(wordTableRef[1])) {
       return emitLoadWordTableEntryIntoHL(wordTableRef[1], wordTableRef[2]);
+    }
+    const arrayRef = parseArrayRef(normalized);
+    if (arrayRef) {
+      const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+      if (loadAddress) return loadAddress;
     }
     const offsetExpr = normalized.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\+\s*(.+)$/);
     if (!offsetExpr) {

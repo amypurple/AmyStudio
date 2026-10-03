@@ -12,7 +12,8 @@ export function handleDisplayGraphicsSpriteStatement({
   tryEvaluateConstantExpression,
   formatHex16,
   makeGeneratedLabel,
-  usesSpriteFlicker = false
+  usesSpriteFlicker = false,
+  supportsNmi = true
 }) {
   const _dep = checkDisplayGraphicsDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -33,7 +34,7 @@ export function handleDisplayGraphicsSpriteStatement({
     return {
       ok: true,
       handled: true,
-      lines: ["    ld a,($73C4)", "    and $BF", "    ld ($73C4),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
+      lines: ["    ld a,(VDP_R1_SHADOW)", "    and $BF", "    ld (VDP_R1_SHADOW),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
     };
   }
 
@@ -41,7 +42,7 @@ export function handleDisplayGraphicsSpriteStatement({
     return {
       ok: true,
       handled: true,
-      lines: ["    ld a,($73C4)", "    or $40", "    ld ($73C4),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
+      lines: ["    ld a,(VDP_R1_SHADOW)", "    or $40", "    ld (VDP_R1_SHADOW),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
     };
   }
 
@@ -78,7 +79,7 @@ export function handleDisplayGraphicsSpriteStatement({
         "    ld de,$0800",
         "    ld a,$F0",
         "    call FILL_VRAM",
-        "    ld hl,($73F6)",
+        "    ld hl,(VDP_NAME_SHADOW)",
         "    ld de,$0300",
         "    ld a,$20",
         "    call FILL_VRAM"
@@ -118,6 +119,13 @@ export function handleDisplayGraphicsSpriteStatement({
   }
 
   if (/^screen\s+on$/i.test(line)) {
+    if (!supportsNmi) {
+      return {
+        ok: false,
+        handled: true,
+        log: `screen on requires an OS7 NMI backend; native EOS currently supports screen on no nmi: ${rawLine}`
+      };
+    }
     return { ok: true, handled: true, lines: ["    call AMY_SCREEN_ON_NMI"] };
   }
 
@@ -132,6 +140,13 @@ export function handleDisplayGraphicsSpriteStatement({
   }
 
   if (/^nmi\s+on$/i.test(line)) {
+    if (!supportsNmi) {
+      return {
+        ok: false,
+        handled: true,
+        log: `nmi on requires an OS7 NMI backend and is not yet supported by native EOS: ${rawLine}`
+      };
+    }
     return { ok: true, handled: true, lines: ["    call AMY_ENABLE_NMI"] };
   }
 
@@ -162,7 +177,7 @@ export function handleDisplayGraphicsSpriteStatement({
     }
     return {
       ok: true, handled: true,
-      lines: ["    ld hl,($73F6)", "    ld de,$0300", "    ld a,$20", "    call FILL_VRAM"]
+      lines: ["    ld hl,(VDP_NAME_SHADOW)", "    ld de,$0300", "    ld a,$20", "    call FILL_VRAM"]
     };
   }
 

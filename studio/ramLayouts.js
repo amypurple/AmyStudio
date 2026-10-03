@@ -15,6 +15,28 @@ const ramLayouts = {
       { start: 0x7112, endExclusive: 0x7132, label: "Amy tiny sound state (2 x 16-byte slots)" },
       { start: 0x73C4, endExclusive: 0x73FC, label: "BIOS/getput11 shadow state" }
     ]
+  },
+  "adam-eos-application": {
+    id: "adam-eos-application",
+    label: "ADAM Native EOS Application",
+    userRamStart: 0x2100,
+    userRamEndExclusive: 0x2F00,
+    reserved: [
+      { start: 0x2000, endExclusive: 0x2020, label: "AMY_BUFFER32 native EOS scratch" },
+      { start: 0x2020, endExclusive: 0x2100, label: "Amy native EOS runtime state" },
+      { start: 0x2F00, endExclusive: 0x3000, label: "Amy native EOS stack page (SP starts at $2FF0)" }
+    ]
+  },
+  "adam-os7-eos-drivers": {
+    id: "adam-os7-eos-drivers",
+    label: "ADAM OS7 + EOS Hybrid",
+    userRamStart: 0x2100,
+    userRamEndExclusive: 0x4000,
+    reserved: [
+      { start: 0x2000, endExclusive: 0x2100, label: "ADAM hybrid loader/runtime reserve" },
+      { start: 0x4000, endExclusive: 0x4D00, label: "EOS named-file FCB and workspace" },
+      { start: 0x7000, endExclusive: 0x7400, label: "OS7 and Amy compatibility runtime state" }
+    ]
   }
 };
 
@@ -247,8 +269,30 @@ function buildColecoLegacyLayout(capabilities = null) {
 }
 
 export function getRamLayout(profileId, capabilities = null) {
-  if (profileId === "colecovision_legacy_sdcc") {
+  if (profileId === "colecovision_legacy_sdcc"
+    || profileId === "colecovision-cartridge"
+    || profileId === "colecovision-megacart") {
     return buildColecoLegacyLayout(capabilities);
+  }
+  if (profileId === "adam-eos-application") {
+    const layout = cloneLayout(ramLayouts[profileId]);
+    const needsExomizer = !!capabilities?.needsExomizer;
+    if (needsExomizer) {
+      layout.reserved.push({ start: 0x2100, endExclusive: 0x219c, label: "Exomizer 2 temporary table" });
+      layout.userRamStart = 0x219c;
+    }
+    return {
+      ...layout,
+      runtimeAddresses: {
+        buffer32: 0x2000,
+        ...(needsExomizer ? { exomizerTable: 0x2100 } : {}),
+        vdpRegister1Shadow: 0xFD62,
+        spritePatternShadow: 0xFD66,
+        nameTableShadow: 0xFD68,
+        patternTableShadow: 0xFD6A,
+        colorTableShadow: 0xFD6C
+      }
+    };
   }
   return ramLayouts[profileId] ? cloneLayout(ramLayouts[profileId]) : null;
 }

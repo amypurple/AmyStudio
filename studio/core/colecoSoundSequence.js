@@ -1,4 +1,4 @@
-import { decodeColecoSoundStream, encodeColecoSoundEvents, formatColecoSoundBytes } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";
+import { decodeColecoSoundStream, encodeColecoSoundEvents, formatColecoSoundBytes } from "./colecoSoundNotes.js";
 
 function withoutComment(line) {
   return String(line || "").replace(/;.*/, "");

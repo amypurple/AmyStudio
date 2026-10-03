@@ -1,4 +1,4 @@
-import { parseBreakpointCondition } from "../breakpointConditions.js?v=20260803-asm-step-conditional-breakpoints";
+import { parseBreakpointCondition } from "../breakpointConditions.js?v=20260731-conditional-breakpoints";
 
 const BREAKPOINT_PREFIX = "ui_";
 const SOURCE_MARKER_PREFIX = "; @amy-source-line ";
@@ -53,6 +53,7 @@ export function isBreakpointEligibleLine(rawLine) {
 export function breakpointEligibleLineNumbers(sourceText) {
   const lines = String(sourceText || "").split(/\r?\n/);
   const eligible = new Set();
+  const aggregateTypes = new Set();
   let block = "";
   let inRoutine = false;
   for (let index = 0; index < lines.length; index += 1) {
@@ -67,7 +68,12 @@ export function breakpointEligibleLineNumbers(sourceText) {
       continue;
     }
     if (/^asm\s*\{$/i.test(line)) { block = "asm"; continue; }
-    if (/^record\b/i.test(line)) { block = "record"; continue; }
+    const recordStart = line.match(/^record\s+([A-Za-z_][A-Za-z0-9_]*)/i);
+    if (recordStart) {
+      aggregateTypes.add(recordStart[1].toLowerCase());
+      block = "record";
+      continue;
+    }
     if (/^enum\b/i.test(line)) { block = "enum"; continue; }
     if (/^data\b/i.test(line) && !/=/.test(line)) { block = "data"; continue; }
     if (/^(?:sub|function)\b/i.test(line)) {
@@ -77,7 +83,8 @@ export function breakpointEligibleLineNumbers(sourceText) {
     }
     if (/^end\s+(?:sub|function)\b/i.test(line)) { inRoutine = false; continue; }
     if (!isBreakpointEligibleLine(line)) continue;
-    const looksLikeTopLevelDeclaration = /^[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\[|\s*=|\s*$)/.test(line);
+    const declaration = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\[|\s*=|\s*$)/);
+    const looksLikeTopLevelDeclaration = Boolean(declaration && aggregateTypes.has(declaration[1].toLowerCase()));
     if (inRoutine || !looksLikeTopLevelDeclaration) eligible.add(index + 1);
   }
   return eligible;

@@ -186,7 +186,7 @@ function analyzeFrame(samples, sampleRate, center, windowSize, maxTones) {
   };
 }
 
-function speechToneCandidates(analysis, limit) {
+function speechToneCandidates(analysis, limit, strategy = "peaks") {
   const candidates = [];
   const foldIntoSpeechRange = (frequency) => {
     let folded = frequency;
@@ -202,7 +202,15 @@ function speechToneCandidates(analysis, limit) {
       amplitude: clamp(analysis.rms * (0.8 + analysis.pitchConfidence), 0, 1)
     });
   }
-  for (const tone of analysis.tones) {
+  const spectralTones = strategy === "bands"
+    ? [
+        analysis.tones.find((tone) => tone.frequency >= 250 && tone.frequency < 1100),
+        analysis.tones.find((tone) => tone.frequency >= 1100 && tone.frequency < 3000),
+        analysis.tones.find((tone) => tone.frequency >= 3000 && tone.frequency < 5200),
+        ...analysis.tones
+      ].filter(Boolean)
+    : analysis.tones;
+  for (const tone of spectralTones) {
     const candidate = { ...tone, frequency: foldIntoSpeechRange(tone.frequency) };
     if (candidates.some((other) => Math.abs(Math.log2(candidate.frequency / other.frequency)) < 0.12)) continue;
     candidates.push(candidate);
@@ -211,7 +219,7 @@ function speechToneCandidates(analysis, limit) {
   return candidates;
 }
 
-function assignToneTracks(candidates, previousPeriods, region, count) {
+function assignToneTracks(candidates, previousPeriods, region, count, continuityOctaves = 0.6) {
   const remaining = candidates.map((tone) => ({
     ...tone,
     period: frequencyToPsgPeriod(tone.frequency, region)
@@ -228,7 +236,7 @@ function assignToneTracks(candidates, previousPeriods, region, count) {
         best = index;
       }
     }
-    if (bestDistance < 0.6) assigned[track] = remaining.splice(best, 1)[0];
+    if (bestDistance < continuityOctaves) assigned[track] = remaining.splice(best, 1)[0];
   }
   remaining.sort((left, right) => left.period - right.period);
   for (let track = 0; track < count && remaining.length; track += 1) {
@@ -389,11 +397,28 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
   variableNoise = true,
   speechMode = false,
   analysisFrames = 2,
+  speechGainTarget = 0.12,
+  speechNoiseFlatness = 0.12,
+  speechNoiseHighBandRatio = 0.28,
+  speechNoiseGain = 2.2,
+  toneContinuityOctaves = 0.6,
+  speechFormantStrategy = "peaks",
   simplifyEdges = true
 } = {}) {
   let peak = 0;
-  for (const sample of samples) peak = Math.max(peak, Math.abs(sample || 0));
-  const inputGain = peak > 0.001 && peak < 0.7 ? 0.8 / peak : 1;
+  let inputSquareSum = 0;
+  for (const sample of samples) {
+    peak = Math.max(peak, Math.abs(sample || 0));
+    inputSquareSum += (sample || 0) ** 2;
+  }
+  const inputRms = Math.sqrt(inputSquareSum / Math.max(1, samples.length));
+  // Speech often has a short consonant spike followed by a much quieter
+  // vowel. Peak-only normalization left words such as "up" almost silent.
+  const inputGain = speechMode && inputRms > 0.001
+    ? clamp(clamp(speechGainTarget, 0.04, 0.3) / inputRms, 1, 4)
+    : peak > 0.001 && peak < 0.7
+      ? 0.8 / peak
+      : 1;
   const analysisSamples = inputGain === 1
     ? samples
     : Float32Array.from(samples, (sample) => clamp(sample * inputGain, -1, 1));
@@ -406,17 +431,26 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
   const analyses = [];
   let noiseFrames = 0;
   for (let frame = 0; frame < frameCount; frame += 1) {
-    const analysis = analyzeFrame(analysisSamples, sampleRate, (frame + 0.5) * frameSamples, windowSize, voiceLimit);
+    const analysis = analyzeFrame(
+      analysisSamples,
+      sampleRate,
+      (frame + 0.5) * frameSamples,
+      windowSize,
+      speechMode && speechFormantStrategy === "bands" ? 8 : voiceLimit
+    );
     analysis.useNoise = allowNoise && analysis.rms >= 0.01 && (
-      analysis.flatness >= (speechMode ? 0.12 : 0.34)
-      || (speechMode && analysis.highBandRatio >= 0.28 && analysis.flatness >= 0.02)
+      analysis.flatness >= (speechMode ? clamp(speechNoiseFlatness, 0.02, 0.5) : 0.34)
+      || (speechMode && analysis.highBandRatio >= clamp(speechNoiseHighBandRatio, 0.05, 0.8) && analysis.flatness >= 0.02)
     );
     if (analysis.useNoise) noiseFrames += 1;
     analyses.push(analysis);
   }
   const useNoiseTrack = allowNoise && noiseFrames >= Math.max(2, Math.ceil(frameCount * (speechMode ? 0.025 : 0.08)));
   const activeNoiseAnalyses = analyses.filter((frame) => frame.useNoise);
-  const whiteNoise = median(activeNoiseAnalyses.map((frame) => frame.pitchConfidence || 0)) < 0.58;
+  // Speech consonants are better represented by white noise. Classifying an
+  // entire phrase as periodic can create a pitched chirp during its release.
+  const whiteNoise = (speechMode && noiseFrames < Math.ceil(frameCount * 0.5))
+    || median(activeNoiseAnalyses.map((frame) => frame.pitchConfidence || 0)) < 0.58;
   const periodicPitch = median(activeNoiseAnalyses.map((frame) => frame.pitch).filter(Boolean));
   const inferredNoiseClock = !whiteNoise && periodicPitch <= 280
       && median(activeNoiseAnalyses.map((frame) => frame.centroid)) > 2100
@@ -436,9 +470,20 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
     }
   }
   const fixedNoiseError = Math.abs(fixedNoiseClocks[fixedNoiseRate] - inferredNoiseClock) / fixedNoiseClocks[fixedNoiseRate];
-  const useVariableNoise = variableNoise === true || (variableNoise === "auto" && fixedNoiseError > 0.16);
-  const pureNoiseTrack = useNoiseTrack && noiseFrames >= Math.ceil(frameCount * 0.5);
-  const toneTrackCount = pureNoiseTrack ? 0 : Math.max(0, voiceLimit - (useNoiseTrack ? 1 : 0));
+  // A short spoken word can contain more noisy consonant frames than voiced
+  // vowel frames. It is still speech, not a pure-noise effect: dropping all
+  // tone tracks made words such as "up" and "please" nearly disappear.
+  const pureNoiseTrack = !speechMode && useNoiseTrack && noiseFrames >= Math.ceil(frameCount * 0.5);
+  // Variable noise consumes Tone 3. With three-voice speech, a third formant
+  // contributes more intelligibility than precise noise-clock tracking.
+  const preserveSpeechFormants = speechMode && voiceLimit === 3 && useNoiseTrack && !pureNoiseTrack;
+  const useVariableNoise = !preserveSpeechFormants
+    && (variableNoise === true || (variableNoise === "auto" && fixedNoiseError > 0.16));
+  const toneTrackCount = pureNoiseTrack
+    ? 0
+    : preserveSpeechFormants
+      ? voiceLimit
+      : Math.max(0, voiceLimit - (useNoiseTrack ? 1 : 0));
   const toneFrames = Array.from({ length: toneTrackCount }, () => []);
   const noise = [];
   const noiseClock = [];
@@ -451,11 +496,17 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
 
   for (const analysis of analyses) {
     const candidates = speechMode
-      ? speechToneCandidates(analysis, toneTrackCount)
+      ? speechToneCandidates(analysis, toneTrackCount, speechFormantStrategy)
       : analysis.useNoise
         ? analysis.tones.filter((_, index) => index === 0 && analysis.flatness < 0.55)
         : analysis.tones;
-    const assigned = assignToneTracks(candidates, previousPeriods, normalizedRegion, toneTrackCount);
+    const assigned = assignToneTracks(
+      candidates,
+      previousPeriods,
+      normalizedRegion,
+      toneTrackCount,
+      clamp(toneContinuityOctaves, 0.1, 2)
+    );
     for (let track = 0; track < toneTrackCount; track += 1) {
       const tone = assigned[track];
       if (tone) previousPeriods[track] = tone.period;
@@ -468,7 +519,9 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
       noise.push({
         noiseRate,
         white: whiteNoise,
-        attenuation: analysis.useNoise ? amplitudeToAttenuation(Math.min(1, analysis.rms * 2.2)) : 15
+        attenuation: analysis.useNoise
+          ? amplitudeToAttenuation(Math.min(1, analysis.rms * clamp(speechMode ? speechNoiseGain : 2.2, 0.5, 6)))
+          : 15
       });
       if (useVariableNoise) {
         if (analysis.useNoise && analysis.centroid > 1414) {
@@ -523,11 +576,19 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
       noiseFrames,
       useNoiseTrack,
       inputGain,
+      inputRms,
+      speechGainTarget,
+      speechNoiseFlatness,
+      speechNoiseHighBandRatio,
+      speechNoiseGain,
+      toneContinuityOctaves,
+      speechFormantStrategy,
       noiseCentroids: analyses.filter((frame) => frame.useNoise).map((frame) => frame.centroid),
       noiseFlatness: analyses.filter((frame) => frame.useNoise).map((frame) => frame.flatness),
       noisePitchConfidence: analyses.filter((frame) => frame.useNoise).map((frame) => frame.pitchConfidence || 0),
       inferredNoiseClock,
-      fixedNoiseError
+      fixedNoiseError,
+      preserveSpeechFormants
     }
   };
 }

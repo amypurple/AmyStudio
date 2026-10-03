@@ -89,6 +89,8 @@ const manifest = index.map((entry) => {
     detail: entry.detail || "",
     projectName: entry.projectName || entry.id,
     sourceLang: entry.sourceLang || "amy",
+    ...(entry.memoryProfile ? { memoryProfile: entry.memoryProfile } : {}),
+    ...(entry.buildTarget ? { buildTarget: entry.buildTarget } : {}),
     editorialTrack: entry.editorialTrack || classifyEditorialTrack(entry.id)
   };
   item.category = entry.category || categorizeExample(item.id);

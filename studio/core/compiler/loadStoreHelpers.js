@@ -12,6 +12,7 @@ export function createLoadStoreHelpers(ctx) {
     scopedRuntimeName,
     symbolOrValue,
     emitLoadInt8Into,
+    emitLoadInt16IntoHL,
     makeGeneratedLabel
   } = ctx;
 
@@ -21,6 +22,19 @@ export function createLoadStoreHelpers(ctx) {
     if (scale === 2) return ["    add a,a", "    ld e,a", "    ld d,0"];
     const bits = scale.toString(2).slice(1);
     const lines = ["    ld e,a", "    ld d,0", "    ld l,e", "    ld h,d"];
+    for (const bit of bits) {
+      lines.push("    add hl,hl");
+      if (bit === "1") lines.push("    add hl,de");
+    }
+    lines.push("    ex de,hl");
+    return lines;
+  }
+
+  function emitScaleUnsignedWordHLIntoDE(scale) {
+    if (!Number.isInteger(scale) || scale < 1) return null;
+    if (scale === 1) return ["    ex de,hl"];
+    const bits = scale.toString(2).slice(1);
+    const lines = ["    ld e,l", "    ld d,h"];
     for (const bit of bits) {
       lines.push("    add hl,hl");
       if (bit === "1") lines.push("    add hl,de");
@@ -46,6 +60,13 @@ export function createLoadStoreHelpers(ctx) {
         return lines;
       }
       const indexType = resolveValueType(normalizedIndex);
+      if (indexType === "int16") {
+        const loadIndex = emitLoadInt16IntoHL(normalizedIndex);
+        const scale = emitScaleUnsignedWordHLIntoDE(fieldInfo.elementSize);
+        const lines = emitLoadRecordFieldAddressIntoHL(name);
+        if (!loadIndex || !scale || !lines) return null;
+        return [...lines, "    push hl", ...loadIndex, ...scale, "    pop hl", "    add hl,de"];
+      }
       if (indexType && indexType !== "int8") return null;
       const loadIndex = emitLoadInt8Into("a", normalizedIndex);
       const scale = emitScaleUnsignedByteAIntoDE(fieldInfo.elementSize);
@@ -89,6 +110,20 @@ export function createLoadStoreHelpers(ctx) {
         return [`    ld hl,${formatHex16(base + numericIndex * stride)}`];
       }
       const indexType = resolveValueType(normalizedIndex);
+      if (indexType === "int16") {
+        const lines = emitLoadInt16IntoHL(normalizedIndex);
+        const scaleLines = emitScaleUnsignedWordHLIntoDE(stride);
+        if (!lines || !scaleLines) return null;
+        lines.push(...scaleLines);
+        if (usesStackBase) {
+          lines.push("    push ix", "    pop hl");
+          if (info.offset !== 0) lines.push(`    ld bc,${info.offset}`, "    add hl,bc");
+        } else {
+          lines.push(`    ld hl,${formatHex16(base)}`);
+        }
+        lines.push("    add hl,de");
+        return lines;
+      }
       if (indexType && indexType !== "int8") return null;
       const lines = emitLoadInt8Into("a", normalizedIndex);
       if (!lines) return null;
@@ -108,7 +143,22 @@ export function createLoadStoreHelpers(ctx) {
       lines.push("    add hl,de");
       return lines;
     }
-    if (indexInfo.kind === "array" || indexInfo.type !== "int8") return null;
+    if (indexInfo.kind === "array") return null;
+    if (indexInfo.type === "int16") {
+      const lines = emitLoadInt16IntoHL(normalizedIndex);
+      const scaleLines = emitScaleUnsignedWordHLIntoDE(stride);
+      if (!lines || !scaleLines) return null;
+      lines.push(...scaleLines);
+      if (usesStackBase) {
+        lines.push("    push ix", "    pop hl");
+        if (info.offset !== 0) lines.push(`    ld bc,${info.offset}`, "    add hl,bc");
+      } else {
+        lines.push(`    ld hl,${formatHex16(base)}`);
+      }
+      lines.push("    add hl,de");
+      return lines;
+    }
+    if (indexInfo.type !== "int8") return null;
     const lines = [...emitLoadInt8Into("a", normalizedIndex)];
     const scaleLines = emitScaleUnsignedByteAIntoDE(stride);
     if (!scaleLines) return null;

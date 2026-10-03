@@ -22,6 +22,7 @@ function splitTopLevelCommaExpressions(text) {
 export function handleSoundSpinnerStatement({
   line,
   rawLine,
+  buildContext,
   emitLoadInt8Into,
   emitLoadInt8ValueInto,
   emitLoadInt16IntoHL,
@@ -43,6 +44,51 @@ export function handleSoundSpinnerStatement({
     }
     return null;
   };
+
+  const requireCapability = (capability, feature) => {
+    if (!buildContext || buildContext.capabilities?.includes(capability)) return null;
+    return `${feature} requires an SGM project with '${capability}' support: ${rawLine}`;
+  };
+
+  const ayWrite = line.match(/^ay\s+write\s+(.+?)\s*,\s*(.+)$/i);
+  if (ayWrite) {
+    const capabilityError = requireCapability("sgm-ay", "AY sound");
+    if (capabilityError) return { ok: false, handled: true, log: capabilityError };
+    const loadRegister = emitLoadInt8Into("b", ayWrite[1]);
+    const loadValue = emitLoadInt8Into("c", ayWrite[2]);
+    if (!loadRegister || !loadValue) return { ok: false, handled: true, log: `ay write requires byte register and value expressions: ${rawLine}` };
+    return {
+      ok: true,
+      handled: true,
+      lines: [...loadRegister, ...loadValue, "    ld a,b", "    out (SGM_AY_REG_PORT),a", "    ld a,c", "    out (SGM_AY_WRITE_PORT),a"]
+    };
+  }
+
+  const ayRead = line.match(/^ay\s+read\s+(.+?)\s*,\s*(.+)$/i);
+  if (ayRead) {
+    const capabilityError = requireCapability("sgm-ay", "AY sound");
+    if (capabilityError) return { ok: false, handled: true, log: capabilityError };
+    const loadRegister = emitLoadInt8Into("a", ayRead[1]);
+    const store = emitStoreInt8FromA?.(ayRead[2].trim());
+    if (!loadRegister || !store) return { ok: false, handled: true, log: `ay read requires a byte register expression and byte destination: ${rawLine}` };
+    return { ok: true, handled: true, lines: [...loadRegister, "    out (SGM_AY_REG_PORT),a", "    in a,(SGM_AY_READ_PORT)", ...store] };
+  }
+
+  if (/^ay\s+mute$/i.test(line)) {
+    const capabilityError = requireCapability("sgm-ay", "AY sound");
+    if (capabilityError) return { ok: false, handled: true, log: capabilityError };
+    const loopLabel = makeGeneratedLabel("AyMuteLoop");
+    return {
+      ok: true,
+      handled: true,
+      lines: [
+        "    xor a", "    ld c,a", "    ld b,8",
+        `${loopLabel}:`,
+        "    ld a,b", "    out (SGM_AY_REG_PORT),a", "    ld a,c", "    out (SGM_AY_WRITE_PORT),a",
+        "    inc b", "    ld a,b", "    cp 11", `    jp c,${loopLabel}`
+      ]
+    };
+  }
 
   const psgTone = line.match(/^psg\s+tone\s+(.+?)\s*,\s*(.+)$/i);
   if (psgTone) {
@@ -303,10 +349,10 @@ export function handleSoundSpinnerStatement({
       lines: [
         "    ld a,1",
         "    ld (NO_NMI),a",
-        "    ld a,($73C4)",
+        "    ld a,(VDP_R1_SHADOW)",
         "    push af",
         "    and $DF",
-        "    ld ($73C4),a",
+        "    ld (VDP_R1_SHADOW),a",
         "    ld c,a",
         "    ld b,1",
         "    call WRITE_REGISTER",
@@ -315,7 +361,7 @@ export function handleSoundSpinnerStatement({
         `    ld c,${step}`,
         "    call AMY_PLAY_DSOUND",
         "    pop af",
-        "    ld ($73C4),a",
+        "    ld (VDP_R1_SHADOW),a",
         "    push af",
         "    ld c,a",
         "    ld b,1",
@@ -336,18 +382,14 @@ export function handleSoundSpinnerStatement({
     };
   }
 
-  const playTriPcm = line.match(/^play\s+tripcm(?:\s+(compact|sequence))?\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const playTriPcm = line.match(/^play\s+tripcm\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   const playVoxPcmIndexed = line.match(/^play\s+voxpcm\s+([A-Za-z_][A-Za-z0-9_]*)\[(.+)\]$/i);
   const playVoxPcm = line.match(/^play\s+voxpcm\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (playTriPcm || playVoxPcm || playVoxPcmIndexed) {
-    const dataSymbol = playVoxPcmIndexed?.[1] || playVoxPcm?.[1] || playTriPcm[2];
+    const dataSymbol = playVoxPcmIndexed?.[1] || playVoxPcm?.[1] || playTriPcm[1];
     const player = playVoxPcm || playVoxPcmIndexed
       ? "AMY_PLAY_TRIPCM_SEQUENCE"
-      : playTriPcm[1]?.toLowerCase() === "sequence"
-        ? "AMY_PLAY_TRIPCM_SEQUENCE"
-        : playTriPcm[1]
-          ? "AMY_PLAY_TRIPCM_COMPACT"
-          : "AMY_PLAY_TRIPCM";
+      : "AMY_PLAY_TRIPCM";
     const nmiOffLabel = makeGeneratedLabel("TriPcmNmiWasOff");
     const doneLabel = makeGeneratedLabel("TriPcmDone");
     const indexedLoad = playVoxPcmIndexed
@@ -370,16 +412,29 @@ export function handleSoundSpinnerStatement({
           "    ex de,hl"
         ]
       : [`    ld hl,${resolveAddressSymbol(dataSymbol)}`];
+    const nativeEos = !!buildContext?.capabilities?.includes("eos")
+      && !buildContext.capabilities.includes("os7");
+    if (nativeEos) {
+      return {
+        ok: true,
+        handled: true,
+        lines: [
+          "    di",
+          ...loadSequence,
+          `    call ${player}`
+        ]
+      };
+    }
     return {
       ok: true,
       handled: true,
       lines: [
         "    ld a,1",
         "    ld (NO_NMI),a",
-        "    ld a,($73C4)",
+        "    ld a,(VDP_R1_SHADOW)",
         "    push af",
         "    and $DF",
-        "    ld ($73C4),a",
+        "    ld (VDP_R1_SHADOW),a",
         "    ld c,a",
         "    ld b,1",
         "    call WRITE_REGISTER",
@@ -387,7 +442,7 @@ export function handleSoundSpinnerStatement({
         ...loadSequence,
         `    call ${player}`,
         "    pop af",
-        "    ld ($73C4),a",
+        "    ld (VDP_R1_SHADOW),a",
         "    push af",
         "    ld c,a",
         "    ld b,1",

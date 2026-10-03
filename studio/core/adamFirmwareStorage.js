@@ -19,14 +19,11 @@ function decodeBase64(value) {
 export function normalizeAdamFirmware(images) {
   return { os7: normalizeImage(images?.os7, "os7"), eos: normalizeImage(images?.eos, "eos"), smartwriter: normalizeImage(images?.smartwriter, "smartwriter") };
 }
-export function saveAdamFirmwareToBrowser(images, names = {}, storage = globalThis.localStorage) {
+export function saveAdamFirmwareToBrowser(images, storage = globalThis.localStorage) {
   const firmware = normalizeAdamFirmware(images);
   storage.setItem(ADAM_FIRMWARE_STORAGE_KEY, JSON.stringify({
     version: 1,
-    images: Object.fromEntries(Object.entries(firmware).map(([kind, bytes]) => [kind, {
-      name: String(names[kind] || (kind === "smartwriter" ? "WP.ROM" : `${kind.toUpperCase()}.ROM`)),
-      base64: encodeBase64(bytes)
-    }]))
+    images: Object.fromEntries(Object.entries(firmware).map(([kind, bytes]) => [kind, encodeBase64(bytes)]))
   }));
   return firmware;
 }
@@ -34,15 +31,7 @@ export function loadAdamFirmwareFromBrowser(storage = globalThis.localStorage) {
   try {
     const saved = JSON.parse(storage.getItem(ADAM_FIRMWARE_STORAGE_KEY) || "null");
     if (!saved) return null;
-    const firmware = normalizeAdamFirmware(Object.fromEntries(Object.entries(saved.images || {}).map(([kind, value]) => [kind, decodeBase64(value?.base64 ?? value)])));
-    return {
-      ...firmware,
-      names: {
-        os7: String(saved.images.os7?.name || "OS7.ROM"),
-        eos: String(saved.images.eos?.name || "EOS.ROM"),
-        smartwriter: String(saved.images.smartwriter?.name || "WP.ROM")
-      }
-    };
+    return normalizeAdamFirmware(Object.fromEntries(Object.entries(saved.images || {}).map(([kind, value]) => [kind, decodeBase64(value)])));
   } catch { return null; }
 }
 export function clearAdamFirmwareFromBrowser(storage = globalThis.localStorage) {

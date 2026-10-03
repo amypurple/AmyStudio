@@ -2,6 +2,13 @@ import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
 import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
+import { EOS_PUBLIC_VECTORS } from "./firmwareMaps.js";
+
+function isColecoOs7MemoryProfile(memoryProfile) {
+  return memoryProfile === "colecovision_legacy_sdcc"
+    || memoryProfile === "colecovision-cartridge"
+    || memoryProfile === "adam-os7-eos-drivers";
+}
 
 export function pathToLabel(path) {
   const base = path.split("/").pop() || "asset";
@@ -19,7 +26,7 @@ function assetLabelForPath(path, assetDeclarations = []) {
 function withRequiredAlexisLibs(project, libs, asmBody) {
   const resolved = new Set(libs || []);
   const sourceText = project.sourceText || "";
-  if (project.memoryProfile === "colecovision_legacy_sdcc") {
+  if (isColecoOs7MemoryProfile(project.memoryProfile)) {
     resolved.add("include/coleco_io.inc");
   }
   // Granular math module detection — only include what the program actually uses.
@@ -300,6 +307,556 @@ function injectSystemInitInline(asmBody, caps) {
   return lines.join("\n");
 }
 
+function injectNativeEosInitInline(asmBody, capabilities = {}) {
+  const lines = String(asmBody || "").split("\n");
+  const startIndex = lines.findIndex((line) => line.trim() === "Start:");
+  if (startIndex === -1) return asmBody;
+  const init = [
+    "        di",
+    "        ld sp,$2FF0",
+    "; Native programs do not own $0066: preserve display state but disable VDP NMI.",
+    "        ld a,(VDP_R1_SHADOW)",
+    "        and $DF",
+    "        ld (VDP_R1_SHADOW),a",
+    "        ld c,a",
+    "        ld b,1",
+    "        call WRITE_REGISTER"
+  ];
+  if (capabilities.needsGraphicsTablePointers) {
+    init.push(
+      "        ld hl,VRAM_PATTERN",
+      "        ld (VDP_PATTERN_SHADOW),hl",
+      "        ld hl,VRAM_COLOR",
+      "        ld (VDP_COLOR_SHADOW),hl"
+    );
+  }
+  if (capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound) {
+    init.push("        xor a", "        ld (AMY_EOS_FRAME_BUSY),a");
+  }
+  if (capabilities.needsTinySound) {
+    init.push(
+      "        xor a",
+      "        ld hl,AMY_TINYSOUND_SLOT_1",
+      "        ld de,AMY_TINYSOUND_SLOT_1+1",
+      "        ld bc,$000F",
+      "        ld (hl),a",
+      "        ldir",
+      "        ld hl,AMY_TINYSOUND_SLOT_2",
+      "        ld de,AMY_TINYSOUND_SLOT_2+1",
+      "        ld bc,$000F",
+      "        ld (hl),a",
+      "        ldir"
+    );
+  }
+  lines.splice(startIndex + 1, 0, ...init);
+  return lines.join("\n");
+}
+
+function relocateNativeEosRamReferences(text, capabilities = {}) {
+  const replacements = new Map([
+    ["$7000", "$2000"],
+    ["$7087", "$202E"],
+    ["$7091", "$2030"],
+    ["$7092", "$2031"],
+    ["$73BA", "$23BA"],
+    ["$73EB", "$FE58"],
+    ["$73EC", "$FE59"],
+    ["$73C4", "$FD62"],
+    ["$73F4", "$FD66"],
+    ["$73F6", "$FD68"],
+    ["$73F8", "$FD6A"],
+    ["$73FA", "$FD6C"]
+  ]);
+  const relocated = String(text || "").replace(/\$[0-9A-F]{4}/gi, (value) => {
+    const address = Number.parseInt(value.slice(1), 16);
+    const soundAreaOffset = address - 0x702B;
+    if (soundAreaOffset >= 0 && soundAreaOffset % 10 === 0 && soundAreaOffset < 32 * 10) {
+      return `$${(0x3000 + soundAreaOffset).toString(16).toUpperCase().padStart(4, "0")}`;
+    }
+    return replacements.get(value.toUpperCase()) || value;
+  });
+  return adaptNativeEosVramRuntime(relocated, capabilities);
+}
+
+function adaptNativeEosVramRuntime(text, capabilities = {}) {
+  const replaceRoutine = (source, label, body) => source.replace(
+    new RegExp(`^${label}:\\r?\\n[\\s\\S]*?(?=\\r?\\n\\r?\\n|(?![\\s\\S]))`, "m"),
+    `${label}:\n${body.join("\n")}`
+  );
+  let adapted = String(text || "");
+  adapted = replaceRoutine(adapted, "AMY_COPY_BYTES_TO_VRAM", [
+    "    jp WRITE_VRAM"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_GET_VRAM", [
+    "    jp READ_VRAM"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_VPOKE", [
+    "    ld (AMY_BUFFER32),a",
+    "    ex de,hl",
+    "    ld hl,AMY_BUFFER32",
+    "    ld bc,1",
+    "    jp WRITE_VRAM"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_VPEEK", [
+    "    ex de,hl",
+    "    ld hl,AMY_BUFFER32",
+    "    ld bc,1",
+    "    call READ_VRAM",
+    "    ld a,(AMY_BUFFER32)",
+    "    ret"
+  ]);
+  adapted = adapted.replace(
+    /^AMY_WAIT_FRAMES_SAFE:\r?\n[\s\S]*?^\s*jr\s+AMY_WAIT_FRAMES_SAFE_NMI_OFF_CHECK\s*$/mi,
+    ["AMY_WAIT_FRAMES_SAFE:",
+    "    ld a,h",
+    "    or l",
+    "    ret z",
+    "    ld d,h",
+    "    ld e,l",
+    "    call READ_REGISTER",
+    "AMY_WAIT_FRAMES_SAFE_EOS_NEXT:",
+    "    call READ_REGISTER",
+    "    rlca",
+    "    jr nc,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
+    ...(capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound ? ["    call AMY_EOS_FRAME_TICK"] : []),
+    "    dec de",
+    "    ld a,d",
+    "    or e",
+    "    jr nz,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
+    "    ret"].join("\n")
+  );
+  if (capabilities.needsTinySound) {
+    adapted = adapted
+      .replace(/\bcall\s+\$012F\b/gi, "call AMY_EOS_TINY_ATN_SWEEP")
+      .replace(/\bjp\s+\$00FC\b/gi, "jp AMY_EOS_TINY_FREQ_SWEEP");
+  }
+  if (capabilities.needsMusic) {
+    adapted = adapted.replace(/^\s*jp\s+\$0295\s*$/gim, "    ret");
+  }
+  return adapted;
+}
+
+function routeNativeEosControllerReads(text) {
+  return String(text || "").replace(
+    /^(\s*)ld\s+a,\((JOYPAD_[12]|KEYPAD_[12])\)\s*$/gim,
+    "$1call AMY_EOS_POLL_CONTROLLERS\n$1ld a,($2)"
+  );
+}
+
+function routeNativeEosFrameHalts(text) {
+  return String(text || "").replace(
+    /^(\s*)halt\s*$/gim,
+    "$1push hl\n$1ld hl,1\n$1call AMY_WAIT_FRAMES_SAFE\n$1pop hl"
+  );
+}
+
+function routeNativeEosSpriteUpdates(text) {
+  return String(text || "").replace(
+    /^(\s*)call\s+AMY_UPDATE_SPRITES\s*$/gim,
+    "$1call AMY_EOS_UPDATE_SPRITES"
+  );
+}
+
+function routeNativeEosSpinnerReads(text) {
+  return String(text || "")
+    .replace(/^([ \t]*)call\s+AMY_ENABLE_SPINNER\s*$/gim, "$1call AMY_EOS_ENABLE_SPINNER")
+    .replace(
+      /^([ \t]*)di\s*\r?\n\s*ld\s+hl,(SPINNER_[12])\s*\r?\n\s*ld\s+a,\(hl\)\s*\r?\n\s*ld\s+\(hl\),0\s*\r?\n\s*ei\s*$/gim,
+      "$1di\n$1xor a\n$1out ($C0),a\n$1call EOS_SPINNER\n$1out ($80),a\n$1ld hl,$2\n$1ld a,(hl)\n$1ld (hl),0"
+    );
+}
+
+export function buildNativeEosPreamble(capabilities = {}) {
+  const eos = (name) => `$${EOS_PUBLIC_VECTORS[name].toString(16).toUpperCase().padStart(4, "0")}`;
+  const nativeRamLayout = getRamLayout("adam-eos-application", capabilities);
+  const lines = [
+    "; --- Native ADAM EOS boot program ---",
+    "        org $C800",
+    "        jp Start",
+    "",
+    "VRAM_PATTERN EQU $0000",
+    "VRAM_NAME EQU $1800",
+    "VRAM_SPR_ATTR EQU $1B00",
+    "VRAM_COLOR EQU $2000",
+    "VRAM_SPR_PAT EQU $3800",
+    "_buffer32 EQU $2000",
+    "AMY_BUFFER32 EQU _buffer32",
+    "VDP_R1_SHADOW EQU $FD62",
+    "VDP_SPR_ATTR_SHADOW EQU $FD64",
+    "VDP_SPR_PAT_SHADOW EQU $FD66",
+    "VDP_NAME_SHADOW EQU $FD68",
+    "VDP_PATTERN_SHADOW EQU $FD6A",
+    "VDP_COLOR_SHADOW EQU $FD6C",
+    "VDP_DATA_PORT EQU $BE",
+    "VDP_CTRL_PORT EQU $BF",
+    "SGM_AY_REG_PORT EQU $50",
+    "SGM_AY_WRITE_PORT EQU $51",
+    "SGM_AY_READ_PORT EQU $52",
+    `WRITE_VRAM EQU ${eos("WRITE_VRAM")}`,
+    `READ_VRAM EQU ${eos("READ_VRAM")}`,
+    `WRITE_REGISTER EQU ${eos("WRITE_REGISTER")}`,
+    `READ_REGISTER EQU ${eos("READ_REGISTER")}`,
+    `FILL_VRAM EQU ${eos("FILL_VRAM")}`,
+    `INIT_TABLE EQU ${eos("INIT_TABLE")}`,
+    `LOAD_ASCII EQU ${eos("LOAD_ASCII")}`,
+    "",
+    "; D=row, E=column; return DE=row*32+column while preserving HL and BC.",
+    "CALC_OFFSET:",
+    "        ld a,e",
+    "        ld e,d",
+    "        ld d,0",
+    "        sla e",
+    "        rl d",
+    "        sla e",
+    "        rl d",
+    "        sla e",
+    "        rl d",
+    "        sla e",
+    "        rl d",
+    "        sla e",
+    "        rl d",
+    "        add a,e",
+    "        ld e,a",
+    "        ret nc",
+    "        inc d",
+    "        ret",
+    ""
+  ];
+  if (nativeRamLayout.runtimeAddresses?.exomizerTable !== undefined) {
+    lines.push(
+      `AMY_EXOMIZER_TABLE EQU $${nativeRamLayout.runtimeAddresses.exomizerTable.toString(16).toUpperCase().padStart(4, "0")}`,
+      ""
+    );
+  }
+  if (capabilities.needsBackdropShadow) {
+    lines.push(
+      "; Amy-owned VDP R7 shadow, outside EOS state and native user RAM.",
+      "AMY_VDP_R7_SHADOW EQU $20E0",
+      ""
+    );
+  }
+  if (capabilities.needsFrameCounter) {
+    lines.push(
+      "; Amy-owned cooperative frame counter, below native user RAM.",
+      "AMY_FRAME_COUNTER EQU $20DD",
+      ""
+    );
+  }
+  if (capabilities.needsTinySound) {
+    lines.push(
+      "; Two 16-byte TinySound scheduler slots, outside EOS-owned state.",
+      "AMY_TINYSOUND_SLOT_1 EQU $20B1",
+      "AMY_TINYSOUND_SLOT_2 EQU $20E1",
+      "",
+      "; Native replacements for private OS-7 ATN_SWEEP ($012F) and FREQ_SWEEP ($00FC).",
+      "AMY_EOS_TINY_DEC_LOW_NIBBLE:",
+      "        xor a",
+      "        rrd",
+      "        sub 1",
+      "        push af",
+      "        rld",
+      "        pop af",
+      "        ret",
+      "AMY_EOS_TINY_RELOAD_LOW_NIBBLE:",
+      "        ld a,(hl)",
+      "        and $F0",
+      "        ld b,a",
+      "        rrca",
+      "        rrca",
+      "        rrca",
+      "        rrca",
+      "        or b",
+      "        ld (hl),a",
+      "        ret",
+      "AMY_EOS_TINY_ADD_SIGNED_PERIOD:",
+      "        ld b,0",
+      "        bit 7,a",
+      "        jr z,AMY_EOS_TINY_ADD_SIGNED_READY",
+      "        ld b,$FF",
+      "AMY_EOS_TINY_ADD_SIGNED_READY:",
+      "        add a,(hl)",
+      "        ld (hl),a",
+      "        inc hl",
+      "        ld a,(hl)",
+      "        adc a,b",
+      "        ld (hl),a",
+      "        dec hl",
+      "        ret",
+      "AMY_EOS_TINY_ATN_SWEEP:",
+      "        ld a,(ix+8)",
+      "        or a",
+      "        ret z",
+      "        push ix",
+      "        pop hl",
+      "        ld de,9",
+      "        add hl,de",
+      "        call AMY_EOS_TINY_DEC_LOW_NIBBLE",
+      "        ret nz",
+      "        call AMY_EOS_TINY_RELOAD_LOW_NIBBLE",
+      "        dec hl",
+      "        call AMY_EOS_TINY_DEC_LOW_NIBBLE",
+      "        jr z,AMY_EOS_TINY_ATN_DISABLE",
+      "        ld a,(hl)",
+      "        and $F0",
+      "        ld e,a",
+      "        dec hl",
+      "        dec hl",
+      "        dec hl",
+      "        dec hl",
+      "        ld a,(hl)",
+      "        and $F0",
+      "        add a,e",
+      "        ld e,a",
+      "        ld a,(hl)",
+      "        and $0F",
+      "        or e",
+      "        ld (hl),a",
+      "        or $FF",
+      "        ret",
+      "AMY_EOS_TINY_ATN_DISABLE:",
+      "        ld (hl),0",
+      "        ret",
+      "AMY_EOS_TINY_FREQ_SWEEP:",
+      "        ld a,(ix+7)",
+      "        or a",
+      "        jr nz,AMY_EOS_TINY_FREQ_TWANG",
+      "        ld a,(ix+5)",
+      "        dec a",
+      "        ret z",
+      "        ld (ix+5),a",
+      "        ret",
+      "AMY_EOS_TINY_FREQ_TWANG:",
+      "        push ix",
+      "        pop hl",
+      "        ld de,6",
+      "        add hl,de",
+      "        call AMY_EOS_TINY_DEC_LOW_NIBBLE",
+      "        ret nz",
+      "        call AMY_EOS_TINY_RELOAD_LOW_NIBBLE",
+      "        dec hl",
+      "        ld a,(hl)",
+      "        dec a",
+      "        ret z",
+      "        ld (hl),a",
+      "        dec hl",
+      "        dec hl",
+      "        ld a,(ix+7)",
+      "        call AMY_EOS_TINY_ADD_SIGNED_PERIOD",
+      "        inc hl",
+      "        res 2,(hl)",
+      "        or $FF",
+      "        ret",
+      ""
+    );
+  }
+  if (capabilities.needsControllers) {
+    lines.push(
+      "EOS_CONTROLLER_TABLE EQU $2020",
+      "JOYPAD_1 EQU $202A",
+      "KEYPAD_1 EQU $202B",
+      "JOYPAD_2 EQU $202C",
+      "KEYPAD_2 EQU $202D",
+      "",
+      "; Poll both EOS controllers and translate its 2 x 5-byte table to Amy state.",
+      "; EOS table order is opposite Amy/GearColeco controller numbering.",
+      "AMY_EOS_POLL_CONTROLLERS:",
+      "        push af",
+      "        push bc",
+      "        push de",
+      "        push hl",
+      "        push ix",
+      "        ld ix,EOS_CONTROLLER_TABLE",
+      "        ld a,3",
+      `        call ${eos("POLLER")}`,
+      "        ld hl,EOS_CONTROLLER_TABLE+5",
+      "        ld de,JOYPAD_1",
+      "        call AMY_EOS_TRANSLATE_CONTROLLER",
+      "        ld hl,EOS_CONTROLLER_TABLE",
+      "        ld de,JOYPAD_2",
+      "        call AMY_EOS_TRANSLATE_CONTROLLER",
+      "        pop ix",
+      "        pop hl",
+      "        pop de",
+      "        pop bc",
+      "        pop af",
+      "        ret",
+      "AMY_EOS_TRANSLATE_CONTROLLER:",
+      "        ld a,(hl)",
+      "        ld b,a",
+      "        inc hl",
+      "        ld a,(hl)",
+      "        and $40",
+      "        rlca",
+      "        or b",
+      "        ld b,a",
+      "        inc hl",
+      "        ld a,(hl)",
+      "        and $40",
+      "        or b",
+      "        ld (de),a",
+      "        inc de",
+      "        inc hl",
+      "        ld a,(hl)",
+      "        cp $0F",
+      "        jr nz,AMY_EOS_KEYPAD_READY",
+      "        ld a,$FF",
+      "AMY_EOS_KEYPAD_READY:",
+      "        ld (de),a",
+      "        ret",
+      ""
+    );
+  }
+  if (capabilities.needsSprites) {
+    lines.push(
+      "AMY_SPRITE_COUNT EQU $2030",
+      "AMY_SPRITE_TABLE EQU $2031",
+      `EOS_WR_SPR_ATTRIBUTE EQU ${eos("WR_SPR_ATTRIBUTE")}`,
+      "",
+      "; Upload Amy's logical sprite shadow through EOS in identity priority order.",
+      "AMY_EOS_UPDATE_SPRITES:",
+      "        ld hl,VRAM_SPR_ATTR",
+      "        ld (VDP_SPR_ATTR_SHADOW),hl",
+      "        ld a,(AMY_SPRITE_COUNT)",
+      "        or a",
+      "        jr z,AMY_EOS_UPDATE_SPRITES_TERMINATOR",
+      "        ld b,a",
+      "        ld hl,AMY_SPRITE_TABLE+3",
+      "AMY_EOS_MASK_SPRITE_COLORS:",
+      "        ld a,(hl)",
+      "        and $8F",
+      "        ld (hl),a",
+      "        inc hl",
+      "        inc hl",
+      "        inc hl",
+      "        inc hl",
+      "        djnz AMY_EOS_MASK_SPRITE_COLORS",
+      "        ld a,(AMY_SPRITE_COUNT)",
+      "        ld de,AMY_SPRITE_TABLE",
+      "        ld hl,AMY_EOS_SPRITE_ORDER_DATA",
+      "        call EOS_WR_SPR_ATTRIBUTE",
+      "AMY_EOS_UPDATE_SPRITES_TERMINATOR:",
+      "        ld a,(AMY_SPRITE_COUNT)",
+      "        add a,a",
+      "        add a,a",
+      "        ld l,a",
+      "        ld h,$1B",
+      "        ld a,l",
+      "        out (VDP_CTRL_PORT),a",
+      "        ld a,h",
+      "        or $40",
+      "        out (VDP_CTRL_PORT),a",
+      "        ld a,$D0",
+      "        out (VDP_DATA_PORT),a",
+      "        ret",
+      "AMY_EOS_SPRITE_ORDER_DATA:",
+      "        db 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+      "        db 16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31",
+      ""
+    );
+  }
+  if (capabilities.needsSpinner) {
+    lines.push(
+      "; Native Amy polls EOS spinner state cooperatively at $FE58/$FE59.",
+      "SPINNER_ENABLED EQU $202E",
+      "SPINNER_1 EQU $FE58",
+      "SPINNER_2 EQU $FE59",
+      `EOS_SPINNER EQU ${eos("SPINNER")}`,
+      "AMY_EOS_ENABLE_SPINNER:",
+      "        push af",
+      "        di",
+      "        or $FF",
+      "        ld (SPINNER_ENABLED),a",
+      "        pop af",
+      "        ret",
+      ""
+    );
+  }
+  if (capabilities.needsSound) {
+    lines.push(
+      "AMY_SOUND_ENABLED EQU $20D0",
+      "AMY_MUSIC_ENABLED EQU $20D1",
+      "AMY_MUSIC_POINTER EQU $20D2",
+      "AMY_MUSIC_COUNTER EQU $20D4",
+      "AMY_SOUND_AREA_COUNT EQU $20D6",
+      "AMY_SOUND_TABLE_POINTER EQU $20D7",
+      "AMY_SCREEN_VIEW_POINTER EQU $20D9",
+      "AMY_EOS_SOUND_AREAS EQU $3000",
+      `SET_SOUND_TABLE EQU ${eos("SOUND_INIT")}`,
+      `TURN_OFF_SOUND EQU ${eos("TURN_OFF_SOUND")}`,
+      `PLAY_SOUND_SLOT EQU ${eos("PLAY_IT")}`,
+      `PLAY_SOUNDS EQU ${eos("SOUNDS")}`,
+      "UPDATE_SOUND_ADDR EQU AMY_EOS_SOUND_UPDATE_DONE",
+      "AMY_EOS_SOUND_UPDATE_DONE:",
+      "        ret",
+      "AMY_SOUND_TABLE_DUMMY:",
+      "        dw AMY_SOUND_DUMMY,$3000",
+      "AMY_SOUND_DUMMY:",
+      "        db $FF",
+      ""
+    );
+    if (capabilities.needsMusic) {
+      lines.push(
+        "AMY_NO_MUSIC_TRACK:",
+        "        dw 0",
+        ""
+      );
+    }
+  }
+  if (capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound) {
+    lines.push(
+      "AMY_EOS_FRAME_BUSY EQU $20DF",
+      "AMY_EOS_FRAME_TICK:",
+      "        ld a,(AMY_EOS_FRAME_BUSY)",
+      "        or a",
+      "        ret nz",
+      "        inc a",
+      "        ld (AMY_EOS_FRAME_BUSY),a",
+      "        push af",
+      "        push bc",
+      "        push de",
+      "        push hl",
+      "        push ix",
+      "        push iy",
+      "        ex af,af'",
+      "        push af",
+      "        exx",
+      "        push bc",
+      "        push de",
+      "        push hl"
+    );
+    if (capabilities.needsFrameCounter) {
+      lines.push("        ld hl,AMY_FRAME_COUNTER", "        inc (hl)", "        jr nz,AMY_EOS_FRAME_COUNTER_DONE", "        inc hl", "        inc (hl)", "AMY_EOS_FRAME_COUNTER_DONE:");
+    }
+    if (capabilities.needsMusic) {
+      lines.push(
+        "        ld a,(AMY_MUSIC_ENABLED)",
+        "        or a",
+        "        jr z,AMY_EOS_FRAME_MUSIC_DONE",
+        "        call AMY_UPDATE_MUSIC",
+        "AMY_EOS_FRAME_MUSIC_DONE:"
+      );
+    }
+    if (capabilities.needsSound) {
+      lines.push(
+        "        ld a,(AMY_SOUND_ENABLED)",
+        "        or a",
+        "        jr z,AMY_EOS_FRAME_SOUND_DONE",
+        "        call PLAY_SOUNDS",
+        "AMY_EOS_FRAME_SOUND_DONE:"
+      );
+    }
+    if (capabilities.needsAmyTimers) emitAmyTimerUpdate(lines, capabilities.amyTimers);
+    if (capabilities.needsUserFrameHook && capabilities.userFrameHookLabel) lines.push(`        call ${capabilities.userFrameHookLabel}`);
+    lines.push(
+      "        pop hl", "        pop de", "        pop bc", "        exx",
+      "        pop af", "        ex af,af'", "        pop iy", "        pop ix",
+      "        pop hl", "        pop de", "        pop bc", "        pop af",
+      "        xor a", "        ld (AMY_EOS_FRAME_BUSY),a", "        ret", ""
+    );
+  }
+  return lines;
+}
+
 function routeWaitsThroughJoypadEdgeCapture(asmBody, caps) {
   if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2 && !caps.usesJoypadReleased1 && !caps.usesJoypadReleased2) return asmBody;
   return String(asmBody || "").replace(
@@ -441,9 +998,9 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
   const sourceControllerBackend = inferControllerBackendFromSource(sourceText);
   const needsGeneralControllerFallback = sourceMemoryCaps.needsControllers && !sourceControllerBackend;
   const usesJoypad1 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsJoypad1) || /\bJOYPAD_1\b/.test(controllerUsageText) || usesJoypadPressed1 || usesJoypadReleased1 || usesSleepService;
-  const usesKeypad1 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsKeypad1) || /\bKEYPAD_1\b/.test(controllerUsageText) || usesSleepService;
+  const usesKeypad1 = Boolean(sourceControllerBackend?.decoderNeedsKeypad1) || /\bKEYPAD_1\b/.test(asmBody);
   const usesJoypad2 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsJoypad2) || /\bJOYPAD_2\b/.test(controllerUsageText) || usesJoypadPressed2 || usesJoypadReleased2 || usesSleepService;
-  const usesKeypad2 = needsGeneralControllerFallback || Boolean(sourceControllerBackend?.decoderNeedsKeypad2) || /\bKEYPAD_2\b/.test(controllerUsageText) || usesSleepService;
+  const usesKeypad2 = Boolean(sourceControllerBackend?.decoderNeedsKeypad2) || /\bKEYPAD_2\b/.test(asmBody);
   const usesJoypadVars = usesJoypad1 || usesKeypad1 || usesJoypad2 || usesKeypad2;
   const usesSpinner = /\bAMY_(ENABLE_SPINNER|DISABLE_SPINNER|RESET_SPINNER1|RESET_SPINNER2|RESET_SPINNERS)\b/.test(asmBody)
     || /\bspinner\b/i.test(sourceText);
@@ -477,6 +1034,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
   const needsRandomSeed = usesRandom;
   const needs120c = uses120c;
   const needsBackdropShadow = /\bAMY_VDP_R7_SHADOW\b/.test(asmBody);
+  const needsGraphicsTablePointers = /\bAMY_SET_(?:BITMAP_GRAPHICS_MODE|GRAPHICS_MODE[123]_(?:TEXT|BITMAP|MULTICOLOR))\b/.test(asmBody);
   const needsSleepState = /\bAMY_SLEEP_IDLE_TICKS\b/.test(asmBody);
   const needsExomizer = /\b(?:exomizer_decompress|AMY_EXOMIZER_TABLE)\b/.test(asmBody)
     || /\b(?:decompress\s+exomizer|codec\s+exomizer)\b/i.test(sourceText);
@@ -503,6 +1061,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     needsRandomSeed,
     needs120c,
     needsBackdropShadow,
+    needsGraphicsTablePointers,
     needsSleepState,
     needsExomizer,
     needsVoiceQueue,
@@ -690,6 +1249,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
     lines.push(`AMY_FRAME_COUNTER EQU ${hex16(addr.frame_counter)}`);
   }
   lines.push("");
+  lines.push("VDP_R1_SHADOW       EQU $73C4");
   lines.push("VDP_SPR_PAT_SHADOW  EQU $73F4");
   lines.push("VDP_NAME_SHADOW     EQU $73F6");
   lines.push("VDP_PATTERN_SHADOW  EQU $73F8");
@@ -700,6 +1260,8 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   lines.push("VRAM_SPR_ATTR       EQU $1B00");
   lines.push("VRAM_COLOR          EQU $2000");
   lines.push("VRAM_SPR_PAT        EQU $3800");
+  if (referencesSymbol("VDP_DATA_PORT")) lines.push("VDP_DATA_PORT       EQU $BE");
+  if (referencesSymbol("VDP_CTRL_PORT")) lines.push("VDP_CTRL_PORT       EQU $BF");
   lines.push("");
   lines.push("; ColecoVision BIOS entry points");
   lines.push("PX_TO_PTRN_POS  EQU $07E8");
@@ -1461,10 +2023,26 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     runtimeCaps.needsNmi = true;
     runtimeCaps.needsNmiAckOnly = false;
   }
-  const asmBodyWithRuntimeInitBase = project.memoryProfile === "colecovision_legacy_sdcc"
+  const nativeEos = metadata?.buildTarget?.platform === "adam-native-program";
+  const asmBodyWithRuntimeInitBase = isColecoOs7MemoryProfile(project.memoryProfile)
     ? injectSystemInitInline(asmBodyBase, runtimeCaps)
-    : asmBodyBase;
-  const asmBodyWithRuntimeInit = routeWaitsThroughJoypadEdgeCapture(asmBodyWithRuntimeInitBase, runtimeCaps);
+    : nativeEos ? injectNativeEosInitInline(asmBodyBase, runtimeCaps) : asmBodyBase;
+  const asmBodyWithRuntimeInitRaw = routeWaitsThroughJoypadEdgeCapture(asmBodyWithRuntimeInitBase, runtimeCaps);
+  const asmBodyWithNativeFrameHalts = nativeEos
+    ? routeNativeEosFrameHalts(asmBodyWithRuntimeInitRaw)
+    : asmBodyWithRuntimeInitRaw;
+  const asmBodyWithNativeControllers = nativeEos
+    ? routeNativeEosControllerReads(asmBodyWithNativeFrameHalts)
+    : asmBodyWithNativeFrameHalts;
+  const asmBodyWithNativeSprites = nativeEos
+    ? routeNativeEosSpriteUpdates(asmBodyWithNativeControllers)
+    : asmBodyWithNativeControllers;
+  const asmBodyWithNativeSpinner = nativeEos
+    ? routeNativeEosSpinnerReads(asmBodyWithNativeSprites)
+    : asmBodyWithNativeSprites;
+  const asmBodyWithRuntimeInit = nativeEos
+    ? relocateNativeEosRamReferences(asmBodyWithNativeSpinner, runtimeCaps)
+    : asmBodyWithNativeSpinner;
   const asmBodyWithRuntimeInitForDependencyScan = `${stripSourceMarkersForScan(asmBodyWithRuntimeInit)}\n${projectAsmDependencyText}`;
   const libResolution = resolveSelectedLibModulesDetailed(project.selectedLibs || [], asmBodyWithRuntimeInitForDependencyScan);
   const selectedLibs = libResolution.paths;
@@ -1489,10 +2067,13 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const excludedRuntimeSourcePaths = expandCoveredLibrarySourcePaths(libCodeIncludes);
   // If a concrete .asm library file is already included, do not auto-emit runtime helpers
   // sourced from that same file. This avoids duplicate symbol bodies and silent address drift.
-  const alexisRuntime = renderAlexisRuntime(asmBodyForDependencyScan, {
+  const alexisRuntimeRaw = renderAlexisRuntime(nativeEos ? asmBodyWithRuntimeInitForDependencyScan : asmBodyForDependencyScan, {
     forceTinySound,
     excludedSourcePaths: excludedRuntimeSourcePaths
   });
+  const alexisRuntime = nativeEos
+    ? relocateNativeEosRamReferences(alexisRuntimeRaw, runtimeCaps)
+    : alexisRuntimeRaw;
   const dependencyScanText = `${project.sourceText || ""}\n${asmBodyWithRuntimeInitForDependencyScan}`;
   const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText, assetDeclarations);
   const compIncludes = [...new Set([...comps.map(normalizeAsmIncludePath), ...inferredCompression.map(normalizeAsmIncludePath)])];
@@ -1511,7 +2092,9 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   lines.push("; ----------------------------------------------");
   lines.push("");
 
-  if (project.memoryProfile === "colecovision_legacy_sdcc") {
+  if (nativeEos) lines.push(...buildNativeEosPreamble(runtimeCaps));
+
+  if (isColecoOs7MemoryProfile(project.memoryProfile)) {
     lines.push(...buildLegacyGeneratedHeaders(
       {
         ...runtimeCaps,
@@ -1526,7 +2109,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   for (const inc of headerIncludes) lines.push(`include "${inc}"`);
   if (headerIncludes.length) lines.push("");
 
-  if (project.memoryProfile === "colecovision_legacy_sdcc") {
+  if (isColecoOs7MemoryProfile(project.memoryProfile)) {
     lines.push("; --- ColecoVision header ---");
     lines.push("        org     $8000");
     lines.push("");

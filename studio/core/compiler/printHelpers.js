@@ -576,14 +576,14 @@ export function createPrintHelpers(ctx) {
     const lines = [];
     if (constY !== null && constX !== null) {
       lines.push(`    ld de,${formatHex16(((constY << 5) + constX) & 0xFFFF)}`);
-      lines.push("    ld hl,($73F6)");
+      lines.push("    ld hl,(VDP_NAME_SHADOW)");
       lines.push("    add hl,de");
     } else {
       lines.push(...loadY);
       lines.push(...loadX);
       lines.push("    call CALC_OFFSET");
       lines.push("    push de");
-      lines.push("    ld hl,($73F6)");
+      lines.push("    ld hl,(VDP_NAME_SHADOW)");
       lines.push("    pop de");
       lines.push("    add hl,de");
     }

@@ -1,6 +1,6 @@
-export function transpileAmySource({ sourceLang, sourceText, transpileAmy }) {
+export function transpileAmySource({ sourceLang, sourceText, transpileAmy, options = {} }) {
   if (sourceLang === "amy") {
-    return transpileAmy(sourceText);
+    return transpileAmy(sourceText, options);
   }
 
   if (sourceLang === "z80_asm") {

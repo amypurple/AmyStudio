@@ -1,5 +1,29 @@
 # Amy Optimization Cookbook
 
+## Choose the target before optimizing
+
+Amy can build a ColecoVision OS7 cartridge, a native Coleco ADAM EOS program,
+an OS7+EOS hybrid, or a banked MegaCart. Select the real target first: replacing
+an EOS file operation with cartridge-specific assembly may save a few bytes but
+silently removes DSK/DDP support.
+
+For native EOS data that must survive between sessions, use the filesystem
+commands instead of embedding a private directory parser:
+
+```amy
+u8 Status = 255
+u8 SaveData[16]
+
+create "SAVE" 1024 status Status
+write "SAVE" from SaveData count 16 status Status
+SaveData = read "SAVE" count 16 status Status
+```
+
+The compiler routes these operations through EOS, keeps the OS7 cartridge
+runtime out of a native build, and accepts calculated buffer addresses and
+counts. Use `EosFile` and `EosDirectory` records for directory traversal rather
+than duplicating the firmware's 23-byte and 26-byte layouts manually.
+
 ## Calling Z80 without an accidental ABI
 
 Prefer `call asm` over a large inline block when a reusable Z80 routine has a clear register

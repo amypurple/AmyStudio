@@ -16,7 +16,8 @@ export function handleVramPixelInputStatement({
   makeGeneratedLabel,
   currentGraphicsMode,
   tryEvaluateConstantExpression,
-  nmiKnownOff = false
+  nmiKnownOff = false,
+  nativeEos = false
 }) {
   const _dep = checkVramPixelDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -389,6 +390,13 @@ export function handleVramPixelInputStatement({
       return { handled: true, ok: false, log: `choose menu could not compute its cursor position: ${rawLine}` };
     }
 
+    if (seconds) {
+      body.push(
+        "    xor a",
+        "    ld (AMY_SLEEP_IDLE_TICKS),a",
+        "    ld (AMY_SLEEP_IDLE_TICKS+1),a"
+      );
+    }
     body.push(
       ...drawLines,
       `    call ${waitReleaseRoutineLabel}`,
@@ -502,6 +510,33 @@ export function handleVramPixelInputStatement({
         `    ld a,${chooseKeypad[4] || 0}`,
         "    call AMY_CHOICE_KEYPAD_RANGE_BLANK"
       );
+    } else if (nativeEos) {
+      const waitLabel = makeGeneratedLabel("ChooseKeypadWait");
+      const pad2Label = makeGeneratedLabel("ChooseKeypadPad2");
+      const takeLabel = makeGeneratedLabel("ChooseKeypadTake");
+      const releaseLabel = makeGeneratedLabel("ChooseKeypadRelease");
+      const selectedPad = chooseKeypad[4] || null;
+      body.push(`${waitLabel}:`, "    halt");
+      if (selectedPad) {
+        body.push(`    ld a,(KEYPAD_${selectedPad})`);
+      } else {
+        body.push("    ld a,(KEYPAD_1)", "    cp $FF", `    jr nz,${pad2Label}`, "    ld a,(KEYPAD_2)", `${pad2Label}:`);
+      }
+      body.push(
+        "    cp b", `    jr c,${waitLabel}`,
+        "    cp c", `    jr z,${takeLabel}`, `    jr nc,${waitLabel}`,
+        `${takeLabel}:`, "    push af",
+        `${releaseLabel}:`, "    halt"
+      );
+      if (selectedPad) {
+        body.push(`    ld a,(KEYPAD_${selectedPad})`, "    cp $FF", `    jr nz,${releaseLabel}`);
+      } else {
+        body.push(
+          "    ld a,(KEYPAD_1)", "    cp $FF", `    jr nz,${releaseLabel}`,
+          "    ld a,(KEYPAD_2)", "    cp $FF", `    jr nz,${releaseLabel}`
+        );
+      }
+      body.push("    pop af");
     } else {
       body.push("    call AMY_CHOICE_KEYPAD_RANGE");
     }

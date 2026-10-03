@@ -1,7 +1,7 @@
 import { matchAmyPhraseRanges } from "./amyGrammar.js";
 
 const KEYWORDS = new Set([
-  "and", "animation", "as", "asm", "asset", "at", "between", "bind", "bitmap", "by", "call", "cartridge",
+  "and", "animation", "as", "asm", "asset", "at", "bank", "between", "bind", "bitmap", "by", "call", "cartridge",
   "case", "choose", "clear", "cls", "codec", "const", "continue", "copy", "data",
   "decompress", "define", "disable", "display", "do", "downto",
   "each", "else", "elseif", "enable", "end", "enter", "exit", "false", "fill", "fire",
@@ -24,7 +24,7 @@ const BUILTINS = new Set([
   "str", "whole"
 ]);
 
-const METADATA = new Set(["project", "cartridge", "memory"]);
+const METADATA = new Set(["project", "cartridge", "memory", "bank"]);
 
 const STATEMENT_KEYWORDS = new Set([
   "animation", "backdrop", "dispatch", "duplicate", "load", "merge", "timer"

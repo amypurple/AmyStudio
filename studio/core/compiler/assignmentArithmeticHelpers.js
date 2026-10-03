@@ -1017,6 +1017,10 @@ export function createAssignmentArithmeticHelpers({
         const storeExpression = emitStoreWideExpression(valueToken, scratch.leftLabel, targetType);
         const storeTarget = emitStoreMemory32ToTarget(scratch.leftLabel, target);
         if (storeExpression && storeTarget) return [...storeExpression, ...storeTarget];
+        if (parseRecordFieldRef(target)) {
+          const storeValue = emitStoreExtended32(valueToken, scratch.leftLabel, true, targetType);
+          if (storeValue && storeTarget) return [...storeValue, ...storeTarget];
+        }
         const isCompatibleWideOperand = (token) => {
           if (resolveValueType(token) === targetType) return true;
           if (resolveValueType(token)) return false;

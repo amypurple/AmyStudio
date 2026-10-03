@@ -35,6 +35,7 @@ export function transpileAmyCore(sourceText, deps) {
     handleProcFunctionStatement,
     handleDisplayGraphicsSpriteStatement,
     handleSoundSpinnerStatement,
+    handleAdamStatement = () => ({ ok: true, handled: false, lines: [] }),
     handleVramTextStatement,
     handlePrintFormatStatement,
     handleVramPixelInputStatement,
@@ -53,12 +54,14 @@ export function transpileAmyCore(sourceText, deps) {
     handleArrayBulkStatement,
     createInlineStatementCompiler,
     finalizeAmyTranspile,
-    stripAmyInlineComment
+    stripAmyInlineComment,
+    buildContext = null,
+    predefinedSymbols = []
   } = deps;
 
   function preprocessCompileTimeConditionals(rawLines) {
     const result = [...rawLines];
-    const definedSymbols = new Set();
+    const definedSymbols = new Set([...predefinedSymbols].map((name) => String(name).toLowerCase()));
     const stack = [];
     const isActive = () => stack.every((entry) => entry.active);
     const strippedLine = (index) => stripAmyInlineComment(rawLines[index]).trim();
@@ -913,6 +916,11 @@ export function transpileAmyCore(sourceText, deps) {
     const arrays = new Map();
     const localArrays = new Map();
     const recordArrays = new Map();
+    if (buildContext?.capabilities?.includes("eos")) {
+      recordArrays.set("eosfile", new Map());
+      recordArrays.set("eosdirectoryentry", new Map());
+      recordArrays.set("eosdirectory", new Map());
+    }
     const constants = collectEarlyNumericConstants(rawLines);
     const dimensionToken = "(?:\\d+|\\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)";
     const declarationPattern = new RegExp(`^(\\s*)(u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*,\\s*(${dimensionToken})\\s*\\](.*)$`, "i");
@@ -1331,7 +1339,7 @@ export function transpileAmyCore(sourceText, deps) {
   let inAsm = false;
   let inData = null;
   let asmBuffer = [];
-  let selectedMemoryProfile = "colecovision_legacy_sdcc";
+  let selectedMemoryProfile = buildContext?.memoryProfile || "colecovision_legacy_sdcc";
   let ramLayout = getRamLayout(selectedMemoryProfile, inferredMemoryCaps);
   let nextRamAddress = ramLayout?.userRamStart ?? 0x7100;
   let nextTextLabel = 0;
@@ -1395,6 +1403,8 @@ export function transpileAmyCore(sourceText, deps) {
   let emitFp5DivideOp = null;
   let emitLoadFp5SourceToFpa = null;
   let cartridgeMeta = null;
+  let megaCartRomSizeKb = null;
+  const megaCartSelectedBanks = new Set();
   let onFrameHook = null;
   let sawExplicitRestore = false;
   let nextBoolBit = 8;
@@ -1730,7 +1740,7 @@ export function transpileAmyCore(sourceText, deps) {
     "goto", "return", "exit", "continue",
     "sub", "function",
     "const",
-    "data", "restore", "read", "memory", "asset", "codec", "picture", "bitmap", "sprite16", "cartridge", "overlay",
+    "data", "restore", "read", "memory", "asset", "codec", "picture", "bitmap", "sprite16", "cartridge", "bank", "overlay",
     "screen", "display", "nmi", "graphics", "text", "cls", "print", "put", "fill",
     "vpoke", "vpeek", "vram", "decompress", "copy", "define", "show",
     "sprites", "sprite", "hitbox", "hide", "clear", "update", "swap", "wipe",
@@ -2041,8 +2051,116 @@ export function transpileAmyCore(sourceText, deps) {
     ensureProcLocalMapStorage: procLocals,
     procAsmSymbols,
     procFrames,
-    runtimeVars
+    runtimeVars,
+    nativeEos: buildContext?.platform === "adam-native-program"
   }));
+
+  function installNativeEosRecordTypes() {
+    if (!buildContext?.capabilities?.includes("eos")) return;
+    const makeField = (name, declaredType, offset, size, options = {}) => ({
+      name,
+      declaredType,
+      type: options.type || declaredType,
+      offset,
+      size,
+      isArray: options.length != null,
+      length: options.length ?? null,
+      elementSize: options.elementSize || size,
+      ...options
+    });
+    const eosDateFields = [
+      makeField("Year", "u8", 0, 1, { type: "int8" }),
+      makeField("Month", "u8", 1, 1, { type: "int8" }),
+      makeField("Day", "u8", 2, 1, { type: "int8" })
+    ];
+    recordTypes.set("EosDate", {
+      name: "EosDate",
+      fields: new Map(eosDateFields.map((field) => [field.name, field])),
+      orderedFields: eosDateFields,
+      byteSize: 3,
+      system: true
+    });
+    const fileFields = [
+      makeField("Name", "u8", 0, 12, { type: "int8", length: 12, elementSize: 1 }),
+      makeField("Attributes", "u8", 12, 1, { type: "int8" }),
+      makeField("StartBlock", "u16", 13, 2, { type: "int16" }),
+      makeField("Reserved", "u8", 15, 2, { type: "int8", length: 2, elementSize: 1 }),
+      makeField("AllocatedBlocks", "u16", 17, 2, { type: "int16" }),
+      makeField("UsedBlocks", "u16", 19, 2, { type: "int16" }),
+      makeField("LastBlockBytes", "u16", 21, 2, { type: "int16" })
+    ];
+    const eosFile = {
+      name: "EosFile",
+      fields: new Map(fileFields.map((field) => [field.name, field])),
+      orderedFields: fileFields,
+      byteSize: 23,
+      system: true
+    };
+    recordTypes.set(eosFile.name, eosFile);
+    const entryFields = [
+      ...fileFields,
+      makeField("Metadata", "u8", 23, 3, { type: "int8", length: 3, elementSize: 1 })
+    ];
+    const eosDirectoryEntry = {
+      name: "EosDirectoryEntry",
+      fields: new Map(entryFields.map((field) => [field.name, field])),
+      orderedFields: entryFields,
+      byteSize: 26,
+      system: true
+    };
+    recordTypes.set(eosDirectoryEntry.name, eosDirectoryEntry);
+    const directoryFields = [
+      makeField("Entries", "EosDirectoryEntry", 0, 1014, {
+        type: "record",
+        length: 39,
+        elementSize: 26,
+        recordTypeName: eosDirectoryEntry.name,
+        recordInfo: eosDirectoryEntry
+      }),
+      makeField("Tail", "u8", 1014, 10, { type: "int8", length: 10, elementSize: 1 })
+    ];
+    recordTypes.set("EosDirectory", {
+      name: "EosDirectory",
+      fields: new Map(directoryFields.map((field) => [field.name, field])),
+      orderedFields: directoryFields,
+      byteSize: 1024,
+      system: true
+    });
+    const adamNetPcbFields = [
+      makeField("CommandStatus", "u8", 0, 1, { type: "int8" }),
+      makeField("Address", "u16", 1, 2, { type: "int16" }),
+      makeField("DeviceCount", "u8", 3, 1, { type: "int8" })
+    ];
+    recordTypes.set("AdamNetPcb", {
+      name: "AdamNetPcb",
+      fields: new Map(adamNetPcbFields.map((field) => [field.name, field])),
+      orderedFields: adamNetPcbFields,
+      byteSize: 4,
+      system: true
+    });
+    const adamNetDcbFields = [
+      makeField("CommandStatus", "u8", 0, 1, { type: "int8" }),
+      makeField("BufferAddress", "u16", 1, 2, { type: "int16" }),
+      makeField("BufferLength", "u16", 3, 2, { type: "int16" }),
+      makeField("Block", "u32", 5, 4, { type: "u32" }),
+      makeField("SecondaryId", "u8", 9, 1, { type: "int8" }),
+      makeField("Reserved", "u8", 10, 4, { type: "int8", length: 4, elementSize: 1 }),
+      makeField("RetryCount", "u16", 14, 2, { type: "int16" }),
+      makeField("AddressCode", "u8", 16, 1, { type: "int8" }),
+      makeField("MaximumLength", "u16", 17, 2, { type: "int16" }),
+      makeField("DeviceType", "u8", 19, 1, { type: "int8" }),
+      makeField("NodeStatus", "u8", 20, 1, { type: "int8" })
+    ];
+    recordTypes.set("AdamNetDcb", {
+      name: "AdamNetDcb",
+      fields: new Map(adamNetDcbFields.map((field) => [field.name, field])),
+      orderedFields: adamNetDcbFields,
+      byteSize: 21,
+      system: true
+    });
+  }
+
+  installNativeEosRecordTypes();
 
   function parseRecordDefinitions() {
     const simpleRecordFieldRe = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[\s*(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s*\])?$/i;
@@ -2534,16 +2652,16 @@ export function transpileAmyCore(sourceText, deps) {
     return [
       "    ld a,1",
       "    ld (NO_NMI),a",
-      "    ld a,($73C4)",
+      "    ld a,(VDP_R1_SHADOW)",
       "    push af",
       "    and $DF",
-      "    ld ($73C4),a",
+      "    ld (VDP_R1_SHADOW),a",
       "    ld c,a",
       "    ld b,1",
       "    call WRITE_REGISTER",
       ...lines,
       "    pop af",
-      "    ld ($73C4),a",
+      "    ld (VDP_R1_SHADOW),a",
       "    push af",
       "    ld c,a",
       "    ld b,1",
@@ -3649,6 +3767,7 @@ export function transpileAmyCore(sourceText, deps) {
     scopedRuntimeName,
     symbolOrValue,
     emitLoadInt8Into: (...args) => emitLoadInt8Into(...args),
+    emitLoadInt16IntoHL: (...args) => emitLoadInt16IntoHL(...args),
     makeGeneratedLabel
   }));
   ({
@@ -3904,6 +4023,8 @@ export function transpileAmyCore(sourceText, deps) {
     symbolOrValue,
     tryEvaluateConstantExpression,
     tryEvaluateCompileTimeNumericExpression,
+    parseArrayRef,
+    emitLoadArrayAddressIntoHL,
     dataWordTables
   }));
   ({
@@ -4208,6 +4329,24 @@ export function transpileAmyCore(sourceText, deps) {
       continue;
     }
 
+    const nativeEosWithoutNmi = !!buildContext?.capabilities?.includes("eos")
+      && !buildContext.capabilities.includes("os7");
+    const nativeEosPollingWait = /^wait(?:\s+.+?\s+frames?)?$/i.test(line);
+    const nativeEosPollingInputWait = /^wait\s+(?:no\s+)?fire(?:\s+on\s+joypad\s+[12])?$/i.test(line)
+      || /^wait\s+.+?\s+frames?\s+or\s+press(?:\s+on\s+joypad\s+[12])?$/i.test(line)
+      || /^wait\s+key(?:\s*[0-9]|\s+release)(?:\s+on\s+keypad\s+[12])?$/i.test(line);
+    const nativeEosPollingChoice = /^choose\s+(?:menu|keypad)\b/i.test(line) && !/\bsleep\s+after\b/i.test(line);
+    const nativeEosCooperativeFrameService = /^(?:timer\s+|(?:start|stop)\s+timer\b|on\s+vblank\b|play\s+song\b|stop\s+song\b|next\s+song\b)/i.test(line);
+    const needsOs7FrameService = /^(?:pause\s|sleep\s+after\b|choose\s+(?:menu|keypad)\b|wipe\s+(?:screen|bitmap)\s+(?:up|down)\b|120\s+colors\s+(?:on|off)\b|play\s+song\b|timer\s+|(?:start|stop)\s+timer\b|on\s+vblank\b)/i.test(line) && !nativeEosPollingChoice && !nativeEosCooperativeFrameService
+      || (/^wait\b/i.test(line) && !nativeEosPollingWait && !nativeEosPollingInputWait);
+    if (nativeEosWithoutNmi && needsOs7FrameService) {
+      return {
+        ok: false,
+        asmBody: "",
+        log: `Line ${sourceLineNumber + 1}: '${rawLine.trim()}' requires the OS7 frame/NMI service. Native EOS currently supports explicit polling, await key, direct PSG, and screen on no nmi instead.`
+      };
+    }
+
     const currentVdpR1Classification = classifyVdpR1SemanticStatement(line);
     if (!currentVdpR1Classification && line) {
       flushBufferedVdpR1PureModifiers();
@@ -4251,6 +4390,41 @@ export function transpileAmyCore(sourceText, deps) {
       }
     }
     {
+      const bankRom = line.match(/^bank\s+rom\s+(64|128|256|512|1024)(?:\s*kb)?$/i);
+      if (bankRom) {
+        if (megaCartRomSizeKb != null) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: BANK ROM may appear only once.` };
+        }
+        megaCartRomSizeKb = Number(bankRom[1]);
+        continue;
+      }
+      const bankSelect = line.match(/^bank\s+select\s+(\d+)$/i);
+      if (bankSelect) {
+        if (megaCartRomSizeKb == null) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: BANK SELECT requires BANK ROM first.` };
+        }
+        const logicalBank = Number(bankSelect[1]);
+        const bankCount = megaCartRomSizeKb / 16;
+        if (logicalBank < 1 || logicalBank >= bankCount) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: BANK SELECT must be 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        }
+        ensureImplicitStartForExecutable();
+        body.push(`    call AMY_MEGACART_SELECT_BANK_${logicalBank}`);
+        if (!megaCartSelectedBanks.has(logicalBank)) {
+          megaCartSelectedBanks.add(logicalBank);
+          const physicalBank = logicalBank - 1;
+          romData.push(`AMY_MEGACART_SELECT_BANK_${logicalBank}:`);
+          romData.push("    push af");
+          romData.push(`    ld a,($${(0xFFC0 + physicalBank).toString(16).toUpperCase()})`);
+          romData.push("    pop af");
+          romData.push("    ret");
+        }
+        continue;
+      }
+      const bankSection = line.match(/^bank\s+(\d+)$/i);
+      if (bankSection) {
+        return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: BANK ${bankSection[1]} is a bank-output boundary. Put that section in a switchable-bank project file until bank-aware linking is enabled.` };
+      }
       const byteDataDeclaration = line.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+bytes(?:\s|$)/i);
       if (byteDataDeclaration && !mapHasInsensitive(dataBlocks, byteDataDeclaration[1])) {
         const provisionalName = [...dataLengths.keys()].find((name) => lowerName(name) === lowerName(byteDataDeclaration[1]));
@@ -4787,7 +4961,8 @@ export function transpileAmyCore(sourceText, deps) {
         tryEvaluateConstantExpression,
         formatHex16,
         makeGeneratedLabel,
-        usesSpriteFlicker
+        usesSpriteFlicker,
+        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7")
       });
       if (displayGraphicsSpriteStmt.handled) {
         if (!displayGraphicsSpriteStmt.ok) return { ok: false, asmBody: "", log: displayGraphicsSpriteStmt.log };
@@ -4833,9 +5008,32 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const adamStmt = handleAdamStatement({
+        line,
+        rawLine,
+        buildContext,
+        emitLoadInt16IntoHL,
+        emitLoadInt8TermIntoA,
+        emitLoadInt8ValueInto,
+        emitLoadSourceAddressIntoHL,
+        emitStoreInt8FromA,
+        resolveValueType,
+        resolveWholeRecord: resolveStaticWholeRecord,
+        getRuntimeInfo: (token) => getRuntimeInfo(normalizeExpression(token)),
+        makeGeneratedLabel
+      });
+      if (adamStmt.handled) {
+        if (!adamStmt.ok) return { ok: false, asmBody: "", log: adamStmt.log };
+        body.push(...adamStmt.lines);
+        continue;
+      }
+    }
+
+    {
       const soundSpinnerStmt = handleSoundSpinnerStatement({
         line,
         rawLine,
+        buildContext,
         emitLoadInt8Into,
         emitLoadInt8ValueInto,
         emitLoadInt16IntoHL,
@@ -5026,7 +5224,8 @@ export function transpileAmyCore(sourceText, deps) {
         makeGeneratedLabel,
         currentGraphicsMode,
         tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
-        nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0
+        nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0,
+        nativeEos: !!buildContext?.capabilities?.includes("eos") && !buildContext.capabilities.includes("os7")
       });
       if (vramPixelInputStmt.handled) {
         if (!vramPixelInputStmt.ok) return { ok: false, asmBody: "", log: vramPixelInputStmt.log };
@@ -5139,7 +5338,8 @@ export function transpileAmyCore(sourceText, deps) {
         tryEvaluateConstantExpression,
         formatHex16,
         makeGeneratedLabel,
-        usesSpriteFlicker
+        usesSpriteFlicker,
+        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7")
       })
     });
 
@@ -5698,9 +5898,12 @@ export function transpileAmyCore(sourceText, deps) {
       romData,
       assets,
       cartridgeMeta,
+      megaCartRomSizeKb,
+      megaCartSelectedBanks,
       onFrameHook,
       amyTimers,
       hasExternalAsmInclude,
+      buildContext,
       nextRamAddress,
       overlayLayouts,
       ramLayout,

@@ -158,7 +158,7 @@ export function createInlineStatementCompiler(ctx) {
                 ...loadX,
                 "    call CALC_OFFSET",
                 "    push de",
-                "    ld hl,($73F6)",
+                "    ld hl,(VDP_NAME_SHADOW)",
                 "    pop de",
                 "    add hl,de",
                 "    ex de,hl",
@@ -257,14 +257,14 @@ export function createInlineStatementCompiler(ctx) {
             inlineLines = [];
             if (constY !== null && constX !== null) {
               inlineLines.push(`    ld de,${formatHex16(((constY << 5) + constX) & 0xFFFF)}`);
-              inlineLines.push("    ld hl,($73F6)");
+              inlineLines.push("    ld hl,(VDP_NAME_SHADOW)");
               inlineLines.push("    add hl,de");
             } else {
               inlineLines.push(...loadY);
               inlineLines.push(...loadX);
               inlineLines.push("    call CALC_OFFSET");
               inlineLines.push("    push de");
-              inlineLines.push("    ld hl,($73F6)");
+              inlineLines.push("    ld hl,(VDP_NAME_SHADOW)");
               inlineLines.push("    pop de");
               inlineLines.push("    add hl,de");
             }

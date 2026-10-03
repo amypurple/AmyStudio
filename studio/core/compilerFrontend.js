@@ -44,14 +44,16 @@ export function inferControllerBackendFromSource(sourceText) {
   };
   for (const rawLine of codeText.split(/\r?\n/)) {
     const line = rawLine.trim();
-    if (/^wait\s+(?:no\s+)?fire\b/i.test(line) || /^wait\s+.+?\s+frames?\s+or\s+press\b/i.test(line) || /^pause\s+until\s+press\b/i.test(line)) {
+    if (/^pause\s+until\s+press\b/i.test(line)) {
+      addImplicitPorts(line, true, true, true, false);
+    } else if (/^wait\s+(?:no\s+)?fire\b/i.test(line) || /^wait\s+.+?\s+frames?\s+or\s+press\b/i.test(line)) {
       addImplicitPorts(line, true, true, true);
     } else if (/^sleep\s+after\b/i.test(line)) {
       addImplicitPorts(line, true, true, true, true);
     } else if (/^wait\s+key(?:\s*[0-9]|\s+release)\b/i.test(line) || /^choose\s+keypad\b/i.test(line)) {
       addImplicitPorts(line, /^choose\s+keypad\b/i.test(line), false, true, true);
     } else if (/^choose\s+menu\b/i.test(line)) {
-      addImplicitPorts(line, false, true, true, true);
+      addImplicitPorts(line, false, true, true, false);
       const explicit = line.match(/\bon\s+joypad\s+([12])\b/i);
       addStandardFire(explicit ? Number(explicit[1]) : 1);
     }

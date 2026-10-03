@@ -17,7 +17,7 @@ import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
   stripGeneratedSourceMarkers
-} from "./core/editor/sourceBreakpoints.js?v=20260929-lighthouse3";
+} from "./core/editor/sourceBreakpoints.js?v=20260928-lighthouse1";
 import {
   DEFAULT_BIOS_CANDIDATES,
   getActiveEmulatorBackend,
@@ -37,6 +37,7 @@ import { emitSafeCall as emitSafeCallCore } from "./core/compiler/runtimeCallHel
 import { createBcdHelpers } from "./core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "./core/compiler/addressHelpers.js";
 import { handleArrayBulkStatement } from "./core/compiler/arrayBulkStatementHelpers.js";
+import { handleAdamStatement } from "./core/compiler/adamStatementHelpers.js";
 import { createAssignmentArithmeticHelpers } from "./core/compiler/assignmentArithmeticHelpers.js";
 import { createFx16Helpers } from "./core/compiler/fx16Helpers.js";
 import { createByteLoadHelpers } from "./core/compiler/byteLoadHelpers.js?v=20260712-preserve-loader";
@@ -90,11 +91,13 @@ import {
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
-import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260928-lighthouse2";
+import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260918-files-audit";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
 import { createProjectTabs } from "./core/projectTabs.js";
+import { createProjectFromTemplate } from "./core/newProjectTemplates.js?v=20260929-new-project-wizard1";
+import { getBuildContextDefines, resolveAmyBuildContext } from "./core/projectTargets.js";
 import {
   buildProjectFromExample as buildProjectFromExampleCore,
   defaultSourceText as defaultSourceTextCore,
@@ -109,10 +112,11 @@ import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260802-keypad-blank";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260911-tripcm";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260926-adam-quebec16";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
+import { bundleAmySource } from "./core/amySourceBundle.js";
 import { bytesToDataUrl } from "./core/utils/dataUrls.js";
 import { downloadBinary, downloadText } from "./core/utils/downloads.js";
 import { formatHex16, formatRamBytes } from "./core/utils/formatters.js";
@@ -127,6 +131,12 @@ import {
 
 const els = {
   btnNew: document.getElementById("btnNew"),
+  newProjectDialog: document.getElementById("newProjectDialog"),
+  newProjectName: document.getElementById("newProjectName"),
+  newProjectMediumField: document.getElementById("newProjectMediumField"),
+  newProjectMedium: document.getElementById("newProjectMedium"),
+  newProjectSupportNote: document.getElementById("newProjectSupportNote"),
+  btnCreateProject: document.getElementById("btnCreateProject"),
   projectTabs: document.getElementById("projectTabs"),
   btnOpen: document.getElementById("btnOpen"),
   btnSave: document.getElementById("btnSave"),
@@ -189,6 +199,7 @@ const els = {
   assistantStatus: document.getElementById("assistantStatus"),
   assistantOutput: document.getElementById("assistantOutput"),
   btnAddProjectFile: document.getElementById("btnAddProjectFile"),
+  btnNewAmyFile: document.getElementById("btnNewAmyFile"),
   btnNewTileSet: document.getElementById("btnNewTileSet"),
   btnNewBitmap: document.getElementById("btnNewBitmap"),
   btnProjectAudio: document.getElementById("btnProjectAudio"),
@@ -202,6 +213,8 @@ const els = {
   optimizationHint: document.getElementById("optimizationHint"),
   projectGraph: document.getElementById("projectGraph"),
   sourceEditor: document.getElementById("sourceEditor"),
+  sourcePanelTitle: document.getElementById("sourcePanelTitle"),
+  sourceDocumentTabs: document.getElementById("sourceDocumentTabs"),
   btnToggleAutocomplete: document.getElementById("btnToggleAutocomplete"),
   btnToggleSyntaxColors: document.getElementById("btnToggleSyntaxColors"),
   sourceAutocomplete: document.getElementById("sourceAutocomplete"),
@@ -221,11 +234,13 @@ const els = {
   emulatorFrame: document.getElementById("emulatorFrame"),
   btnRomTestRecorder: document.getElementById("btnRomTestRecorder"),
   statusSummary: document.getElementById("statusSummary"),
-  projectPanel: document.getElementById("projectPanel"),
-  projectPortraitStatus: document.getElementById("projectPortraitStatus"),
-  sourcePanel: document.getElementById("sourcePanel"),
   statusDetails: document.getElementById("statusDetails"),
   status: document.getElementById("status"),
+  projectPanel: document.getElementById("projectPanel"),
+  projectCompactStatus: document.getElementById("projectCompactStatus"),
+  projectPortraitStatus: document.getElementById("projectPortraitStatus"),
+  btnToggleProjectCompact: document.getElementById("btnToggleProjectCompact"),
+  sourcePanel: document.getElementById("sourcePanel"),
   fileImport: document.getElementById("fileImport"),
   projectFileImport: document.getElementById("projectFileImport"),
   biosImport: document.getElementById("biosImport"),
@@ -297,6 +312,7 @@ const LEGACY_WARRIOR_TEMPLATE_MARKER = "project \"RLE Picture Demo\"";
 const STUDIO_SOURCE_LANG = "amy";
 const STUDIO_MEMORY_PROFILE = manifest.defaults?.memoryProfile || "colecovision_legacy_sdcc";
 let compiledRom = null;
+let compiledAdamDisk = null;
 let compiledMemoryMap = "";
 let compiledSymbols = "";
 let compiledListing = "";
@@ -641,11 +657,11 @@ const autocompleteController = createAutocompleteController({
   },
   onSourceMutated: (nextText) => {
     sourceBreakpointController.sourceChanged();
-    project.sourceText = nextText;
+    updateActiveSourceDocument(nextText);
     expandedAsm = "";
     asmViewMode = "generated";
     clearCompiledArtifacts();
-    refreshSourceCartridgeMeta(project.sourceText);
+    if (!activeSourceFilePath) refreshSourceCartridgeMeta(project.sourceText);
     saveProjectToStorage(project);
   },
   onScheduleInsightsRefresh: () => {
@@ -803,59 +819,70 @@ const {
 });
 
 let romTestRecorderUi = null;
-let romTestRecorderUiPromise = null;
+let romTestRecorderPromise = null;
 async function ensureRomTestRecorderUi() {
   if (romTestRecorderUi) return romTestRecorderUi;
-  if (!romTestRecorderUiPromise) {
-    romTestRecorderUiPromise = import("./core/romTestRecorderUi.js?v=20261002-adam-serial1")
-      .then(({ createRomTestRecorderUi }) => {
-        romTestRecorderUi = createRomTestRecorderUi({
-          getCompiledRom: () => compiledRom,
-          getCompiledMemoryMap: () => compiledMemoryMap,
-          getCompiledSymbols: () => compiledSymbols,
-          getCompiledMetadata: () => compiledMetadata,
-          getEmulatorBios: () => emulatorBios,
-          requestEmulatorBios: () => {
-            if (els.biosImport) els.biosImport.value = "";
-            els.biosImport?.click();
-          },
-          getProject: () => project,
-          setStatus,
-          onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
-        });
-        return romTestRecorderUi;
-      })
-      .catch((error) => {
-        romTestRecorderUiPromise = null;
-        throw error;
-      });
+  if (!romTestRecorderPromise) {
+    romTestRecorderPromise = import("./core/romTestRecorderUi.js?v=20261002-adam-media-autodetect1")
+      .then(({ createRomTestRecorderUi }) => createRomTestRecorderUi({
+        getCompiledRom: () => compiledRom,
+        getCompiledAdamDisk: () => compiledAdamDisk,
+        getCompiledMemoryMap: () => compiledMemoryMap,
+        getCompiledSymbols: () => compiledSymbols,
+        getCompiledMetadata: () => compiledMetadata,
+        getEmulatorBios: () => emulatorBios,
+        requestEmulatorBios: () => {
+          if (els.biosImport) els.biosImport.value = "";
+          els.biosImport?.click();
+        },
+        getProject: () => project,
+        setStatus,
+        onSourceBreakpointHit: (line) => sourceBreakpointController.revealLine(line)
+      }))
+      .then((ui) => (romTestRecorderUi = ui));
   }
-  return romTestRecorderUiPromise;
+  return romTestRecorderPromise;
 }
 function syncRecorderSourceBreakpoints() {
-  romTestRecorderUi?.syncSourceBreakpoints();
+  romTestRecorderUi?.syncSourceBreakpoints?.();
 }
 function notifyRecorderBiosChanged() {
-  romTestRecorderUi?.biosChanged();
+  romTestRecorderUi?.biosChanged?.();
 }
 async function openDebuggerWithBiosPrompt() {
   els.btnRomTestRecorder?.closest("details")?.removeAttribute("open");
+  setStatus("Loading ROM debugger...");
   try {
-    const recorderUi = await ensureRomTestRecorderUi();
-    recorderUi.open();
+    (await ensureRomTestRecorderUi()).open();
   } catch (error) {
-    setStatus(`Unable to load ROM Test & Debug: ${error.message || error}`);
+    setStatus(`Cannot open ROM debugger: ${error?.message || error}`);
   }
 }
 els.btnRomTestRecorder?.addEventListener("click", openDebuggerWithBiosPrompt);
-const transpileSource = (sourceLang, sourceText) => transpileAmySource({
+const transpileSource = (sourceLang, sourceText, options = {}) => transpileAmySource({
   sourceLang,
   sourceText,
-  transpileAmy
+  transpileAmy,
+  options
 });
+function activeBuildManifest() {
+  const entry = (project?.projectFiles || []).find((file) => normalizeProjectFilePath(file?.path).toLowerCase() === "project.amy.json");
+  if (!entry) return null;
+  try { return JSON.parse(new TextDecoder().decode(projectFileBytes(entry))); }
+  catch { return null; }
+}
 function transpileAmy(sourceText, options = {}) {
-  const effectiveSource = options.sourceMarkers ? instrumentAmySourceWithSourceMarkers(sourceText) : sourceText;
-  return transpileAmyCore(effectiveSource, {
+  let bundled;
+  try {
+    bundled = bundleAmySource(sourceText, project?.projectFiles || []);
+  } catch (error) {
+    return { ok: false, asmBody: "", assets: [], metadata: {}, ramUsage: null, log: String(error?.message || error) };
+  }
+  const effectiveSource = options.sourceMarkers ? instrumentAmySourceWithSourceMarkers(bundled.sourceText) : bundled.sourceText;
+  const buildContext = options.buildContext || resolveAmyBuildContext(project, activeBuildManifest());
+  const result = transpileAmyCore(effectiveSource, {
+    buildContext,
+    predefinedSymbols: getBuildContextDefines(buildContext),
     resolveStaticAbiInclude: (includePath) => {
       const normalized = normalizeProjectFilePath(includePath);
       const entry = (project?.projectFiles || []).find((file) => normalizeProjectFilePath(file?.path).toLowerCase() === normalized.toLowerCase());
@@ -893,6 +920,7 @@ function transpileAmy(sourceText, options = {}) {
     handleProcFunctionStatement,
     handleDisplayGraphicsSpriteStatement,
     handleSoundSpinnerStatement,
+    handleAdamStatement,
     handleVramTextStatement,
     handlePrintFormatStatement,
     handleVramPixelInputStatement,
@@ -913,6 +941,8 @@ function transpileAmy(sourceText, options = {}) {
     finalizeAmyTranspile,
     stripAmyInlineComment
   });
+  result.metadata = { ...(result.metadata || {}), buildTarget: buildContext };
+  return result;
 }
 
 function buildSourceMarkedAsm(projectToBuild, normalAsm, normalTranspile) {
@@ -953,6 +983,148 @@ async function copyText(text) {
 }
 
 let project = loadProject();
+let activeSourceFilePath = "";
+
+function findActiveSourceFile(path = activeSourceFilePath) {
+  const target = normalizeProjectFilePath(path).toLowerCase();
+  return (project.projectFiles || []).find((entry) => normalizeProjectFilePath(entry.path).toLowerCase() === target) || null;
+}
+
+function renderSourceDocumentTabs() {
+  if (!els.sourceDocumentTabs) return;
+  els.sourceDocumentTabs.textContent = "";
+  const groupOrder = ["AMY SOURCE", "ASSEMBLY", "DATA PACKS", "PROJECT", "OTHER TEXT"];
+  const documents = [
+    { path: "", label: "MAIN", group: "MAIN", depth: 0, kind: "AMY" },
+    ...(project.projectFiles || [])
+      .filter((entry) => /\.(?:amy|alexis|asm|s|inc|json|md|txt|csv|tsv)$/i.test(entry.path || ""))
+      .map((entry) => {
+        const path = normalizeProjectFilePath(entry.path);
+        const label = path.slice("@project/".length);
+        const extension = label.split(".").pop().toLowerCase();
+        const group = ["amy", "alexis"].includes(extension) ? "AMY SOURCE"
+          : (["asm", "s", "inc"].includes(extension) ? "ASSEMBLY"
+            : (label.startsWith("packs/") ? "DATA PACKS"
+              : (/^(?:project\.amy|editors)\.json$/i.test(label) ? "PROJECT" : "OTHER TEXT")));
+        return { path, label, group, depth: Math.max(0, label.split("/").length - 1), kind: extension.toUpperCase() };
+      })
+      .sort((left, right) => groupOrder.indexOf(left.group) - groupOrder.indexOf(right.group) || left.label.localeCompare(right.label))
+  ];
+
+  const active = documents.find((entry) => entry.path.toLowerCase() === activeSourceFilePath.toLowerCase()) || documents[0];
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "source-document-picker__trigger";
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.title = active.path || "Main Amy source";
+  trigger.innerHTML = `<span class="source-document-picker__caption">FILE</span><span class="source-document-picker__current"></span><span class="source-document-picker__chevron" aria-hidden="true">&#x25BE;</span>`;
+  trigger.querySelector(".source-document-picker__current").textContent = active.label;
+
+  const popup = document.createElement("div");
+  popup.className = "source-document-picker__popup hidden";
+  popup.setAttribute("role", "menu");
+  popup.setAttribute("aria-label", "Project files");
+  let previousGroup = "";
+  for (const sourceDocument of documents) {
+    if (sourceDocument.group !== previousGroup) {
+      const heading = document.createElement("div");
+      heading.className = "source-document-picker__group";
+      heading.textContent = sourceDocument.group;
+      popup.appendChild(heading);
+      previousGroup = sourceDocument.group;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "source-document-picker__item";
+    button.classList.toggle("source-document-picker__item--active", sourceDocument.path.toLowerCase() === activeSourceFilePath.toLowerCase());
+    button.setAttribute("role", "menuitemradio");
+    button.setAttribute("aria-checked", String(sourceDocument.path.toLowerCase() === activeSourceFilePath.toLowerCase()));
+    button.style.setProperty("--source-depth", sourceDocument.depth);
+    button.title = sourceDocument.path || "Main Amy source";
+    const name = document.createElement("span");
+    name.className = "source-document-picker__name";
+    name.textContent = sourceDocument.label;
+    const kind = document.createElement("span");
+    kind.className = "source-document-picker__kind";
+    kind.textContent = sourceDocument.kind;
+    button.append(name, kind);
+    button.addEventListener("click", () => {
+      popup.classList.add("hidden");
+      openSourceDocument(sourceDocument.path);
+    });
+    popup.appendChild(button);
+  }
+  trigger.addEventListener("click", () => {
+    const opening = popup.classList.contains("hidden");
+    popup.classList.toggle("hidden", !opening);
+    trigger.setAttribute("aria-expanded", String(opening));
+    if (opening) popup.querySelector(".source-document-picker__item--active")?.focus();
+  });
+  popup.addEventListener("keydown", (event) => {
+    const items = [...popup.querySelectorAll(".source-document-picker__item")];
+    const index = items.indexOf(document.activeElement);
+    if (event.key === "Escape") {
+      popup.classList.add("hidden");
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.focus();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      items[(index + step + items.length) % items.length]?.focus();
+    }
+  });
+  els.sourceDocumentTabs.append(trigger, popup);
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (!els.sourceDocumentTabs || els.sourceDocumentTabs.contains(event.target)) return;
+  const popup = els.sourceDocumentTabs.querySelector(".source-document-picker__popup");
+  const trigger = els.sourceDocumentTabs.querySelector(".source-document-picker__trigger");
+  popup?.classList.add("hidden");
+  trigger?.setAttribute("aria-expanded", "false");
+});
+
+function openSourceDocument(path = "") {
+  const normalized = path ? normalizeProjectFilePath(path) : "";
+  const entry = normalized ? findActiveSourceFile(normalized) : null;
+  if (normalized && !entry) {
+    setStatus(`Cannot open ${normalized}: project file not found.`);
+    return;
+  }
+  activeSourceFilePath = normalized;
+  const extension = normalized.split(".").pop().toLowerCase();
+  const language = !normalized || ["amy", "alexis"].includes(extension) ? "AMY"
+    : (["asm", "s", "inc"].includes(extension) ? "Z80 ASM" : extension.toUpperCase());
+  if (els.sourcePanelTitle) els.sourcePanelTitle.textContent = `SOURCE · ${language}`;
+  els.sourceEditor.value = entry ? new TextDecoder().decode(projectFileBytes(entry)) : String(project.sourceText || "");
+  els.sourceEditor.scrollTop = 0;
+  els.sourceEditor.scrollLeft = 0;
+  sourceSyntaxOverlay.refresh();
+  sourceBreakpointController?.sync?.();
+  closeAutocomplete();
+  renderSourceDocumentTabs();
+  els.sourceEditor.focus();
+  setStatus(entry ? `Editing ${normalized} in the Amy source editor.` : "Editing main Amy source.");
+}
+
+function updateActiveSourceDocument(nextText) {
+  if (!activeSourceFilePath) {
+    project.sourceText = nextText;
+    refreshSourceCartridgeMeta(project.sourceText);
+    return;
+  }
+  const entry = findActiveSourceFile();
+  if (!entry) return;
+  const replacement = {
+    ...entry,
+    path: activeSourceFilePath,
+    kind: "amy-source",
+    base64: bytesToBase64(new TextEncoder().encode(nextText))
+  };
+  project.projectFiles = normalizeProjectFiles((project.projectFiles || []).map((candidate) =>
+    normalizeProjectFilePath(candidate.path).toLowerCase() === activeSourceFilePath.toLowerCase() ? replacement : candidate));
+}
 
 const projectFileAddons = createProjectFileAddonBundle();
 
@@ -961,6 +1133,7 @@ const {
   insertProjectFilePlaySnippet,
   createNewTileSetProjectFiles,
   createNewBitmapProjectFiles,
+  createNewAmySourceFile,
   openGraphicsEditorsFromProject,
   createEditorsJsonProjectFile,
   scanEditorsJsonProjectFile,
@@ -979,6 +1152,7 @@ const {
   saveProjectToStorage,
   insertTextIntoSource: (...args) => insertTextIntoSource(...args),
   commitProjectSourceText: (...args) => commitProjectSourceText(...args),
+  openProjectSourceFile: (entry) => openSourceDocument(entry.path),
   setStatus: (...args) => setStatus(...args),
   ensureProjectFilePathCandidate,
   assetNameFromProjectPath,
@@ -996,6 +1170,7 @@ const {
   compressBytes,
   ...projectFileAddons
 });
+els.btnNewAmyFile?.addEventListener("click", () => createNewAmySourceFile());
 
 els.btnInspectSourceSounds?.addEventListener("click", () => {
   const analysis = inspectSourceSoundTables(els.sourceEditor.value);
@@ -1132,7 +1307,10 @@ const sourceBreakpointController = createSourceBreakpointController({
 });
 
 function syncUiFromProject() {
+  activeSourceFilePath = "";
+  if (els.sourcePanelTitle) els.sourcePanelTitle.textContent = "SOURCE · AMY";
   syncProjectEditorUi();
+  renderSourceDocumentTabs();
   sourceBreakpointController.sync();
 }
 
@@ -1274,12 +1452,16 @@ function bindEvents() {
         saveProjectToStorage,
         updateOptimizationHint,
         scheduleEditorInsightsRefresh,
+        updateActiveSourceDocument,
+        getActiveSourceFilePath: () => activeSourceFilePath,
+        isActiveAmySource: () => !activeSourceFilePath || /\.(?:amy|alexis)$/i.test(activeSourceFilePath),
         syncUiFromProject,
         openProjectInTab,
         openExampleInTab,
         markActiveProjectClean: () => projectTabsController.markActiveClean(),
         setStatus: (...args) => setStatus(...args),
         newProject,
+        createProjectFromTemplate,
         expandAsmIncludes,
         syncAsmEditor,
         importProjectObject,
@@ -1337,8 +1519,9 @@ function bindEvents() {
         setExampleSearchFilter: (next) => { exampleSearchFilter = next; },
         setSourceCartridgeMeta: (next) => { sourceCartridgeMeta = next; },
         getSourceCartridgeMeta: () => sourceCartridgeMeta,
-        setCompiledOutputs: ({ compiledRom: nextRom, compiledMemoryMap: nextMap, compiledSymbols: nextSymbols, compiledListing: nextListing, compiledColecoHeaderInfo: nextHeader, compiledMetadata: nextMetadata }) => {
+        setCompiledOutputs: ({ compiledRom: nextRom, compiledAdamDisk: nextAdamDisk = null, compiledMemoryMap: nextMap, compiledSymbols: nextSymbols, compiledListing: nextListing, compiledColecoHeaderInfo: nextHeader, compiledMetadata: nextMetadata }) => {
           compiledRom = nextRom;
+          compiledAdamDisk = nextAdamDisk;
           compiledMemoryMap = nextMap;
           compiledSymbols = nextSymbols;
           compiledListing = nextListing;
@@ -1385,8 +1568,23 @@ bindEvents();
   try { if (localStorage.getItem(STORAGE_KEY) !== "0") setCollapsed(true); } catch (_) {}
 })();
 
+(function setupPortraitProjectToggle() {
+  const panel = els.projectPanel;
+  const button = els.btnToggleProjectCompact;
+  if (!panel || !button) return;
+  function setCompact(compact) {
+    panel.classList.toggle("project-panel--compact", compact);
+    button.setAttribute("aria-expanded", compact ? "false" : "true");
+    button.title = compact ? "Expand project summary" : "Collapse project summary";
+  }
+  button.addEventListener("click", () => setCompact(!panel.classList.contains("project-panel--compact")));
+})();
+
 (function setupPortraitPanelFocus() {
   const portrait = window.matchMedia("(max-width: 1100px) and (orientation: portrait)");
+  const layout = els.layoutEl;
+  const projectPanel = els.projectPanel;
+  const sourcePanel = els.sourcePanel;
   const projectTabs = [
     els.projectPanelTabProject,
     els.projectPanelTabFiles,
@@ -1395,15 +1593,15 @@ bindEvents();
   ].filter(Boolean);
   function focusProject() {
     if (!portrait.matches) return;
-    els.layoutEl.classList.add("layout--project-focused");
-    els.projectPanel.classList.add("project-panel--focused");
+    layout.classList.add("layout--project-focused");
+    projectPanel.classList.add("project-panel--focused");
   }
   function focusSource() {
-    els.layoutEl.classList.remove("layout--project-focused");
-    els.projectPanel.classList.remove("project-panel--focused");
+    layout.classList.remove("layout--project-focused");
+    projectPanel.classList.remove("project-panel--focused");
   }
   for (const tab of projectTabs) tab.addEventListener("click", focusProject);
-  const sourceBar = els.sourcePanel?.querySelector(".panel-bar");
+  const sourceBar = sourcePanel?.querySelector(".panel-bar");
   sourceBar?.addEventListener("click", focusSource);
   sourceBar?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;

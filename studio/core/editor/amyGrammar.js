@@ -8,6 +8,7 @@ export const AMY_FIXED_PHRASES = Object.freeze([
   ["sound runtime on","keyword"],["sound runtime off","keyword"],["stop all","keyword"],["mute all","keyword"],["loop forever","keyword"],
   ["voice detect into","keyword"],["voice speak","keyword"],["voice start","keyword"],["voice stop","keyword"],["voice speaking into","keyword"],["voice allophone","keyword"],["voice ready","keyword"],["voice reset","keyword"],
   ["psg tone","keyword"],["psg volume","keyword"],["psg noise","keyword"],
+  ["ay write","keyword"],["ay read","keyword"],["ay mute","keyword"],
   ["state machine","keyword"],["end state machine","keyword"],["on enter","keyword"],["on frame","keyword"],
   ["end sub","keyword"],["end if","keyword"],["end select","keyword"],["end with","keyword"],["end record","keyword"],["end overlay","keyword"],["end scene","keyword"],["end data","keyword"],["end picture","keyword"]
 ].map(([phrase,type]) => ({ phrase, words: phrase.split(" "), type })));

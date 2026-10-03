@@ -1,6 +1,6 @@
-import { decodeColecoSoundStream } from "./colecoSoundNotes.js?v=20260905-sfx-sweeps";
+import { decodeColecoSoundStream } from "./colecoSoundNotes.js";
 import { decodeTinySoundSource } from "./colecoTinySound.js?v=20260911-tiny-rhythm";
-import { inspectColecoMusicSongs } from "./colecoMusicSong.js?v=20260912-song-timeline";
+import { inspectColecoMusicSongs } from "./colecoMusicSong.js";
 
 function stripComment(line) {
   return String(line || "").replace(/;.*/, "");

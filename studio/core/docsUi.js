@@ -10,6 +10,26 @@ export const DOCS = [
     path: "../docs/amy-optimization-cookbook.md"
   },
   {
+    id: "os7-eos-support",
+    label: "OS7 / EOS Command Support",
+    path: "../docs/amy-os7-eos-command-support.md"
+  },
+  {
+    id: "adam-project-forms",
+    label: "ADAM Project Forms",
+    path: "../docs/adam-project-forms-reference-2026-09-29.md"
+  },
+  {
+    id: "eos-os7-routines",
+    label: "EOS / OS7 Routine Map",
+    path: "../docs/eos-os7-routine-comparison-2026-09-29.md"
+  },
+  {
+    id: "adam-modem-map",
+    label: "ADAM Modem Interface Map",
+    path: "../docs/adam-modem-interface-map-2026-09-30.md"
+  },
+  {
     id: "deterministic-validation",
     label: "Deterministic Validation",
     path: "../docs/amy-deterministic-validation.md"

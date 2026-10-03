@@ -1,6 +1,10 @@
 import { getEditorAdapter } from "./editor/editorAdapter.js";
 import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260907-selection";
 import { buildPsgSoundAsm, convertSamplesToPsgSound, psgSoundToPreviewEvents } from "./wavToPsgSound.js";
+import { buildAdamBootDataPack, buildAdamBootDisk, buildAdamExpansionDataPack, buildAdamExpansionDisk, buildAdamNativeProgramDataPack, buildAdamNativeProgramDisk } from "./adamDiskImage.js?v=20261001-native-multiblock1";
+import { projectFileBytes } from "./utils/projectFiles.js";
+import { buildMegaCartProject } from "./megaCartProjectBuild.js?v=20260929-project-build1";
+import { resolveAmyBuildContext } from "./projectTargets.js";
 
 export const PROJECT_FILE_PATTERN = /(?:\.amy)?\.json(?:\.gz)?$/i;
 
@@ -62,6 +66,7 @@ export function bindTopUiEvents(ctx) {
     syncUiFromProject,
     setStatus,
     newProject,
+    createProjectFromTemplate,
     openProjectInTab,
     openExampleInTab,
     getProject,
@@ -112,7 +117,7 @@ export function bindTopUiEvents(ctx) {
     if (typeof ensureExamplesLoaded === "function") {
       try {
         setStatus("Loading examples...");
-        await ensureExamplesLoaded({ forceFresh: true });
+        await ensureExamplesLoaded({ forceFresh: false });
         setStatus("Examples ready.");
       } catch (error) {
         setStatus(`Cannot load examples: ${error?.message || error}`);
@@ -152,13 +157,16 @@ export function bindTopUiEvents(ctx) {
 
   els.sourceEditor.addEventListener("input", () => {
     const project = getProject();
-    project.sourceText = sourceEditor.getText();
+    const nextText = sourceEditor.getText();
+    if (ctx.getActiveSourceFilePath?.()) ctx.updateActiveSourceDocument?.(nextText);
+    else project.sourceText = nextText;
     setExpandedAsm("");
     setAsmViewMode("generated");
     clearCompiledArtifacts();
-    refreshSourceCartridgeMeta(project.sourceText);
+    if (!ctx.getActiveSourceFilePath?.()) refreshSourceCartridgeMeta(project.sourceText);
     scheduleSourceAutosave(project);
-    updateAutocomplete();
+    if (ctx.isActiveAmySource?.() !== false) updateAutocomplete();
+    else closeAutocomplete();
     updateOptimizationHint();
     scheduleEditorInsightsRefresh();
   });
@@ -195,6 +203,7 @@ export function bindTopUiEvents(ctx) {
     }
     if (event.ctrlKey && event.code === "Space") {
       event.preventDefault();
+      if (ctx.isActiveAmySource?.() === false) return;
       updateAutocomplete({ force: true });
       return;
     }
@@ -237,12 +246,42 @@ export function bindTopUiEvents(ctx) {
     setTimeout(() => closeAutocomplete(), 100);
   });
 
+  function selectedNewProjectTarget() {
+    return els.newProjectDialog?.querySelector('input[name="newProjectTarget"]:checked')?.value || "cartridge";
+  }
+  function updateNewProjectDialog() {
+    const target = selectedNewProjectTarget();
+    const adam = target.startsWith("adam-");
+    els.newProjectMediumField.hidden = !adam;
+    els.newProjectSupportNote.textContent = adam
+      ? "Experimental ADAM target: the project structure is preserved, but native build coverage is still expanding."
+      : target === "megacart"
+        ? "Experimental bank-switched cartridge target."
+        : target === "sgm"
+          ? "Experimental Super Game Module target with AY-3-8910 sound and expanded RAM capabilities."
+          : "Creates a regular ColecoVision cartridge project.";
+  }
+  els.newProjectDialog?.querySelectorAll('input[name="newProjectTarget"]').forEach((input) => {
+    input.addEventListener("change", updateNewProjectDialog);
+  });
   els.btnNew.addEventListener("click", () => {
-    openProjectInTab(newProject(), { clean: true });
-    refreshSourceCartridgeMeta(getProject().sourceText);
-    setStatus("New project.");
-    syncUiFromProject();
+    els.newProjectName.value = "amy-project";
+    updateNewProjectDialog();
+    els.newProjectDialog?.showModal();
     closeTopbarMenu();
+  });
+  els.btnCreateProject?.addEventListener("click", () => {
+    const templateId = selectedNewProjectTarget();
+    const next = createProjectFromTemplate(newProject(), {
+      templateId,
+      projectName: els.newProjectName.value,
+      medium: els.newProjectMedium.value
+    });
+    openProjectInTab(next, { clean: true });
+    refreshSourceCartridgeMeta(next.sourceText);
+    syncUiFromProject();
+    els.newProjectDialog.close();
+    setStatus(`New ${templateId.startsWith("adam-") ? "ADAM" : "ColecoVision"} project: ${next.projectName}.`);
   });
 
   els.btnOpen.addEventListener("click", () => {
@@ -293,6 +332,8 @@ export function bindTopUiEvents(ctx) {
 }
 
 export function bindStudioRuntimeEvents(ctx) {
+  let compiledAdamDisk = null;
+  let compiledAdamExtension = ".dsk";
   const {
     els,
     importProjectObject,
@@ -755,7 +796,15 @@ export function bindStudioRuntimeEvents(ctx) {
 
   const rebuildAsmFromSource = () => {
     const project = getProject();
-    const res = transpileSource(STUDIO_SOURCE_LANG, project.sourceText);
+    const manifest = projectBuildManifest(project);
+    let buildContext;
+    try {
+      buildContext = resolveAmyBuildContext(project, manifest);
+    } catch (error) {
+      setStatus(error.message || String(error));
+      return null;
+    }
+    const res = transpileSource(STUDIO_SOURCE_LANG, project.sourceText, { buildContext });
     if (!res.ok) {
       setStatus(res.log);
       return null;
@@ -769,8 +818,39 @@ export function bindStudioRuntimeEvents(ctx) {
     if (!els.layoutEl?.classList.contains("layout--asm-collapsed")) syncAsmEditor();
     renderLibraryResolution();
     saveProjectToStorage(project);
-    return { project, res };
+    return { project, res, buildContext };
   };
+
+  function projectFile(project, path) {
+    const wanted = String(path).replace(/^@project\//i, "").toLowerCase();
+    return (project.projectFiles || []).find((file) => String(file.path || "").replace(/^@project\//i, "").toLowerCase() === wanted) || null;
+  }
+
+  function adamDiskManifest(project) {
+    const file = projectFile(project, "project.amy.json");
+    if (!file) return null;
+    try {
+      const manifest = JSON.parse(new TextDecoder().decode(projectFileBytes(file)));
+      return ["adam-disk", "adam-data-pack"].includes(manifest?.target?.platform) ? manifest : null;
+    } catch { return null; }
+  }
+
+  function projectBuildManifest(project) {
+    const file = projectFile(project, "project.amy.json");
+    if (!file) return null;
+    try {
+      return JSON.parse(new TextDecoder().decode(projectFileBytes(file)));
+    } catch {
+      return null;
+    }
+  }
+
+  function hasAdamDiskSources(project) {
+    return Boolean(projectFile(project, "src/boot.asm")
+      && projectFile(project, "src/expansion-loader.asm")
+      && projectFile(project, "packs/history.wepk")
+      && projectFile(project, "packs/milestones.wepk"));
+  }
 
   els.btnTranspile.addEventListener("click", () => {
     const built = rebuildAsmFromSource();
@@ -792,10 +872,12 @@ export function bindStudioRuntimeEvents(ctx) {
     const built = rebuildAsmFromSource();
     if (!built) return;
     const project = built.project;
+      const buildContext = built.buildContext;
     refreshProjectGraph();
     const asm = project.generatedAsm.trimEnd();
 
     clearCompiledArtifacts();
+    compiledAdamDisk = null;
     setStatus("Compiling with AmysCVAssembly...");
 
     try {
@@ -815,20 +897,126 @@ export function bindStudioRuntimeEvents(ctx) {
         {
           optimizerEnabled: optimizationProfile.optimizerEnabled,
           optimizerConfig: optimizationProfile.optimizerConfig,
-          projectFiles: project.projectFiles || []
+          projectFiles: project.projectFiles || [],
+          amyTarget: buildContext.platform,
+          memoryProfile: buildContext.memoryProfile
         }
       );
       if (!result.ok) {
         setStatus(`Compile failed.\n${result.log}`);
         return;
       }
-      const compiledRom = result.binary;
+      let compiledRom = result.binary;
       const compiledMemoryMap = result.memoryMap || "";
       const compiledSymbols = result.symbolsText || "";
       const compiledListing = result.listing || "";
-      const compiledColecoHeaderInfo = inspectColecoBinary(compiledRom);
+      const buildManifest = projectBuildManifest(project);
+      const megaCartBuild = await buildMegaCartProject({
+        project,
+        manifest: buildManifest,
+        fixedBank: compiledRom,
+        compileAsm: async (source, filename) => {
+          const assembled = await compileGeneratedAsm(source, filename, {
+            optimizerEnabled: false,
+            optimizerConfig: null,
+            projectFiles: project.projectFiles || []
+          });
+          if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
+          return assembled.binary;
+        }
+      });
+      let megaCartNote = "";
+      if (megaCartBuild) {
+        compiledRom = megaCartBuild.image;
+        megaCartNote = ` MegaCart ready: ${megaCartBuild.layout.sizeKb} KB, ${megaCartBuild.layout.bankCount} banks.`;
+      }
+      const nativeEosBuild = buildContext.platform === "adam-native-program";
+      const compiledColecoHeaderInfo = nativeEosBuild ? null : inspectColecoBinary(compiledRom);
       setCompiledOutputs({
         compiledRom,
+        compiledAdamDisk: null,
+        compiledMemoryMap,
+        compiledSymbols,
+        compiledListing,
+        compiledColecoHeaderInfo,
+        compiledMetadata: built.res.metadata || {}
+      });
+      const diskManifest = adamDiskManifest(project) || (hasAdamDiskSources(project) ? { target: { platform: "adam-disk" } } : null);
+      let diskNote = "";
+      if (nativeEosBuild) {
+        const dataPackTarget = project?.target?.medium === "ddp" || buildManifest?.target?.medium === "ddp";
+        const volume = project.projectName || "AMY EOS";
+        const assembleNativeLoader = async (source, filename) => {
+          const assembled = await compileGeneratedAsm(source, filename, {
+            optimizerEnabled: false,
+            optimizerConfig: null,
+            projectFiles: project.projectFiles || []
+          });
+          if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
+          return assembled.binary;
+        };
+        const builtMedia = compiledRom.length <= 1024
+          ? (dataPackTarget
+              ? buildAdamBootDataPack({ boot: compiledRom, volume })
+              : buildAdamBootDisk({ boot: compiledRom, volume }))
+          : await (dataPackTarget ? buildAdamNativeProgramDataPack : buildAdamNativeProgramDisk)({
+              program: compiledRom,
+              volume,
+              assemble: assembleNativeLoader
+            });
+        compiledAdamDisk = builtMedia.media;
+        compiledAdamExtension = builtMedia.extension;
+        const programNote = builtMedia.programBlocks
+          ? `; program ${builtMedia.programBytes} bytes in ${builtMedia.programBlocks} blocks`
+          : "";
+        diskNote = ` Native EOS ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; boot ${builtMedia.bootBytes} bytes${programNote}.`;
+        els.btnDownloadRom.textContent = "↓";
+        els.btnDownloadRom.title = `Download bootable native EOS media (${compiledAdamExtension})`;
+        els.btnDownloadRom.setAttribute("aria-label", `Download bootable native EOS media (${compiledAdamExtension})`);
+      } else if (diskManifest) {
+        const bootFile = projectFile(project, "src/boot.asm");
+        const loaderFile = projectFile(project, "src/expansion-loader.asm");
+        const famousFile = projectFile(project, "packs/famous.wepk");
+        const capitalsFile = projectFile(project, "packs/capitals.wepk");
+        const historyFile = projectFile(project, "packs/history.wepk");
+        const milestonesFile = projectFile(project, "packs/milestones.wepk");
+        if (!bootFile || !loaderFile || !famousFile || !capitalsFile || !historyFile || !milestonesFile) {
+          throw new Error("ADAM disk target requires its boot, loader, and four WEPK files.");
+        }
+        const dataPackTarget = diskManifest.target?.platform === "adam-data-pack";
+        const buildMedia = dataPackTarget ? buildAdamExpansionDataPack : buildAdamExpansionDisk;
+        const builtDisk = await buildMedia({
+          rom: compiledRom,
+          famous: projectFileBytes(famousFile),
+          capitals: projectFileBytes(capitalsFile),
+          history: projectFileBytes(historyFile),
+          milestones: projectFileBytes(milestonesFile),
+          bootSource: new TextDecoder().decode(projectFileBytes(bootFile)),
+          loaderSource: new TextDecoder().decode(projectFileBytes(loaderFile)),
+          assemble: async (source, filename) => {
+            const assembled = await compileGeneratedAsm(source, filename, {
+              optimizerEnabled: false,
+              optimizerConfig: null,
+              projectFiles: project.projectFiles || []
+            });
+            if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
+            return assembled.binary;
+          }
+        });
+        compiledAdamDisk = builtDisk.disk;
+        compiledAdamExtension = builtDisk.extension;
+        els.btnDownloadRom.textContent = "↓";
+        els.btnDownloadRom.title = `Download bootable ADAM media (${compiledAdamExtension})`;
+        els.btnDownloadRom.setAttribute("aria-label", `Download bootable ADAM media (${compiledAdamExtension})`);
+        diskNote = ` ADAM ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; ${builtDisk.packs.map((pack) => `${pack.name} ${pack.bytes}`).join("; ")} bytes.`;
+      } else {
+        els.btnDownloadRom.textContent = "⤓";
+        els.btnDownloadRom.title = "Download .col";
+        els.btnDownloadRom.setAttribute("aria-label", "Download .col");
+      }
+      setCompiledOutputs({
+        compiledRom,
+        compiledAdamDisk,
         compiledMemoryMap,
         compiledSymbols,
         compiledListing,
@@ -847,7 +1035,8 @@ export function bindStudioRuntimeEvents(ctx) {
       const previewNote = compiledColecoHeaderInfo?.valid && compiledColecoHeaderInfo?.usesDefaultScreen
         ? " BIOS previews available."
         : "";
-      setStatus(appendCartridgeNormalizationWarning(`Compile OK: ${compiledRom.length} bytes, ${symbols} symbols${optimizationNote}.${previewNote}${sourceMapNote}${buildTranspileWarningNote(built.res)}`, getSourceCartridgeMeta()));
+      const targetNote = ` Target: ${buildContext.platform}${buildContext.warnings.length ? ` (${buildContext.warnings.join(" ")})` : ""}.`;
+      setStatus(appendCartridgeNormalizationWarning(`Compile OK: ${compiledRom.length} bytes, ${symbols} symbols${optimizationNote}.${targetNote}${previewNote}${megaCartNote}${diskNote}${sourceMapNote}${buildTranspileWarningNote(built.res)}`, getSourceCartridgeMeta()));
       closeTopbarMenu();
     } catch (e) {
       setStatus(`Compile failed: ${String(e.message || e)}`);
@@ -906,6 +1095,13 @@ export function bindStudioRuntimeEvents(ctx) {
   });
 
   els.btnDownloadRom.addEventListener("click", () => {
+    if (compiledAdamDisk) {
+      const filename = `${getProject().projectName || "amy"}${compiledAdamExtension}`;
+      downloadBinary(filename, compiledAdamDisk);
+      setStatus(`Downloaded ${filename} (${compiledAdamDisk.length} bytes).`);
+      closeTopbarMenu();
+      return;
+    }
     const compiledRom = getCompiledRom();
     if (!compiledRom) {
       setStatus("No compiled ROM yet. Click Compile ROM first.");
