@@ -1,21 +1,17 @@
 import {
   GearcolecoTestCore,
+  GEARCOLECO_ADAM_MEDIA,
+  GEARCOLECO_ADAM_SLOT,
+  GEARCOLECO_MACHINE,
   GEARCOLECO_TEST_INPUT,
-  GEARCOLECO_TEST_REGION,
-  GEARCOLECO_VIDEO_CHIP
-} from "./gearcolecoTestCore.js?v=20260817-framebuffer-view";
-import {
-  clearAdamFirmwareFromBrowser,
-  loadAdamFirmwareFromBrowser,
-  saveAdamFirmwareToBrowser
-} from "./adamFirmwareStorage.js";
+  GEARCOLECO_TEST_REGION
+} from "./gearcolecoTestCore.js?v=20261002-adam-serial1";
+import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAdamFirmware, saveAdamFirmwareToBrowser } from "./adamFirmwareStorage.js?v=20260925-adam-local-firmware2";
 import { RomTestRecorder } from "./romTestRecorder.js";
-import { GameplayRecordingSession } from "./gameplayRecordingSession.js?v=20260918-unbounded-input-log";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
-import {
-  downloadGameplayVideo,
-  exportGameplaySession
-} from "./romGameplayVideoExport.js?v=20260918-deterministic-avi";
+import { GameplayRecordingSession } from "./gameplayRecordingSession.js?v=20260918-unbounded-input-log";
+import { downloadGameplayVideo, exportGameplaySession } from "./romGameplayVideoExport.js?v=20260918-deterministic-avi";
+import { createDevelopmentRouteStore, expandRouteInputs } from "./developmentCheckpointRoutes.js?v=20260919-route-replay";
 import {
   createRomTestCase,
   listAmyCheckpoints,
@@ -47,6 +43,7 @@ import {
   resolveProfileTarget
 } from "./routineCycleProfiler.js?v=20260801-profile-readable";
 import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260805-steering-combined";
+import { detectEmulatorMedia, EMULATOR_MEDIA_KIND, isKnownEmulatorMediaName } from "./emulatorMediaDetection.js?v=20261002-adam-media-autodetect1";
 
 const SEED = 0x19770527;
 const PLAYBACK_MAX_CATCHUP_FRAMES = 4;
@@ -55,6 +52,19 @@ const INSPECTOR_REFRESH_MS = 250;
 const framebufferRenderCache = new WeakMap();
 const rgb5To8 = Uint8Array.from({ length: 32 }, (_, value) => value * 255 / 31);
 const rgb6To8 = Uint8Array.from({ length: 64 }, (_, value) => value * 255 / 63);
+
+export function formatAdamPrinterText(bytes) {
+  let text = "";
+  for (const value of bytes || []) {
+    if (value === 0x0D) text += "\n";
+    else if (value === 0x0A) {
+      if (!text.endsWith("\n")) text += "\n";
+    }
+    else if (value === 0x09 || (value >= 0x20 && value <= 0x7E)) text += String.fromCharCode(value);
+    else text += `\\x${value.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return text;
+}
 
 export function consumeMouseSpinnerTicks(accumulated, limit = 127) {
   const value = Number.isFinite(accumulated) ? accumulated : 0;
@@ -196,13 +206,21 @@ function ensureStyles() {
     .rom-recorder__side select,.rom-recorder__side input { width:100%; box-sizing:border-box; }
     .rom-recorder__tools { display:flex; flex-wrap:wrap; gap:6px; }
     .rom-recorder__tools > * { flex:1 1 auto; }
-    .rom-recorder__settings { display:grid; grid-template-columns:minmax(60px,.8fr) minmax(90px,1fr) minmax(100px,1.3fr) minmax(54px,.7fr) repeat(3,34px); gap:6px; align-items:end; }
+    .rom-recorder__settings { display:grid; grid-template-columns:minmax(58px,.65fr) minmax(76px,.85fr) minmax(52px,.55fr) minmax(104px,1.15fr) minmax(104px,1.15fr); gap:6px; align-items:end; }
+    .rom-recorder__settings-actions { grid-column:1 / -1; display:flex; justify-content:flex-end; gap:6px; }
+    .rom-recorder__region-toggle { min-height:32px; color:#65dbef; font-weight:700; letter-spacing:.06em; }
     .rom-recorder__compact-action[aria-pressed="true"] { color:#081014; background:#65dbef; }
     .rom-recorder__record-action { color:#fff; background:#7c1720; border-color:#db4452; font-weight:700; }
     .rom-recorder__record-action.is-recording { background:#d51f2f; box-shadow:0 0 0 2px rgba(213,31,47,.25),0 0 14px rgba(213,31,47,.65); }
     .rom-recorder__settings .rom-recorder__compact-action { align-self:end; }
-    .rom-recorder__controller { display:grid; grid-template-columns:repeat(6,minmax(34px,1fr)); gap:4px; width:100%; }
+    .rom-recorder__controller { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:10px; width:100%; }
+    .rom-recorder__controller-group { display:grid; grid-template-columns:repeat(3,minmax(34px,1fr)); gap:4px; }
     .rom-recorder__controller button { min-height:29px; touch-action:none; }
+    .rom-recorder__capture { width:100%; }
+    .rom-recorder__development { display:grid; grid-template-columns:minmax(130px,.8fr) minmax(180px,1.2fr); gap:6px; padding:7px; border:1px solid #26343c; background:#091015; }
+    .rom-recorder__development-actions { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px; }
+    .rom-recorder__development-actions button { flex:1 1 auto; }
+    .rom-recorder__auto-route[aria-pressed="true"] { color:#081014; background:#65dbef; }
     .rom-recorder__debug { grid-column:2; grid-row:2; display:grid; grid-template-rows:auto minmax(0,1fr); min-height:0; overflow:hidden; border:1px solid #26343c; background:#0d1419; }
     .rom-recorder__tabs { display:flex; gap:3px; padding:6px; border-bottom:1px solid #26343c; overflow:auto; }
     .rom-recorder__tabs button[aria-selected="true"] { color:#081014; background:#65dbef; }
@@ -277,43 +295,45 @@ function buildDialog() {
           <input data-field="timeline" type="range" min="0" max="0" value="0" aria-label="Recorded frame timeline"><span class="rom-recorder__frame" data-field="frame" title="Recorded frame">F 0</span><button type="button" data-action="reset" title="Reset recording" aria-label="Reset recording">&#x21BA;</button>
         </div>
         <div class="rom-recorder__controller" aria-label="ColecoVision controller">
-          <button data-input="UP" title="Up" aria-label="Up">↑</button><button data-input="FIRE_LEFT" title="Left fire" aria-label="Left fire">L</button><button data-input="FIRE_RIGHT" title="Right fire" aria-label="Right fire">R</button><button data-input="KEYPAD_1">1</button><button data-input="KEYPAD_2">2</button><button data-input="KEYPAD_3">3</button>
-          <button data-input="LEFT" title="Left" aria-label="Left">←</button><button data-input="DOWN" title="Down" aria-label="Down">↓</button><button data-input="RIGHT" title="Right" aria-label="Right">→</button><button data-input="KEYPAD_4">4</button><button data-input="KEYPAD_5">5</button><button data-input="KEYPAD_6">6</button>
-          <span></span><span></span><span></span><button data-input="KEYPAD_7">7</button><button data-input="KEYPAD_8">8</button><button data-input="KEYPAD_9">9</button>
-          <span></span><span></span><span></span><button data-input="KEYPAD_ASTERISK">*</button><button data-input="KEYPAD_0">0</button><button data-input="KEYPAD_HASH">#</button>
+          <div class="rom-recorder__controller-group" aria-label="Direction and fire"><button data-input="UP" title="Up" aria-label="Up">↑</button><button data-input="FIRE_LEFT" title="Left fire" aria-label="Left fire">L</button><button data-input="FIRE_RIGHT" title="Right fire" aria-label="Right fire">R</button><button data-input="LEFT" title="Left" aria-label="Left">←</button><button data-input="DOWN" title="Down" aria-label="Down">↓</button><button data-input="RIGHT" title="Right" aria-label="Right">→</button></div>
+          <div class="rom-recorder__controller-group" aria-label="Numeric keypad"><button data-input="KEYPAD_1">1</button><button data-input="KEYPAD_2">2</button><button data-input="KEYPAD_3">3</button><button data-input="KEYPAD_4">4</button><button data-input="KEYPAD_5">5</button><button data-input="KEYPAD_6">6</button><button data-input="KEYPAD_7">7</button><button data-input="KEYPAD_8">8</button><button data-input="KEYPAD_9">9</button><button data-input="KEYPAD_ASTERISK">*</button><button data-input="KEYPAD_0">0</button><button data-input="KEYPAD_HASH">#</button></div>
         </div>
+        <div class="rom-recorder__tools rom-recorder__capture" aria-label="Deterministic video recording"><button class="rom-recorder__record-action" type="button" data-action="recordBoot" title="Reset and record from the first boot frame">&#x25CF; RECORD BOOT</button><button class="rom-recorder__record-action" type="button" data-action="recordVideo" title="Start recording from the current frame">&#x25CF; RECORD NOW</button><button type="button" data-action="stopVideo" title="Stop gameplay recording" disabled>&#x25A0; STOP</button><button class="button--primary" type="button" data-action="exportVideo" title="Replay the recording and export Motion-JPEG video with PCM audio" disabled>Export AVI</button></div>
       </div>
       <div class="rom-recorder__side">
         <div class="rom-recorder__settings">
-          <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">ADAM SmartWriter</option><option value="adam-cartridge">ADAM Cartridge</option></select></label>
-          <label>Video<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A</option></select></label>
+          <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">ADAM disk/data pack</option></select></label>
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
-          <label>Region<select data-field="region"><option value="-1" selected>Auto (BIOS)</option><option value="0">NTSC 60 Hz</option><option value="1">PAL 50 Hz</option></select></label>
+          <label>Region<button class="rom-recorder__region-toggle" type="button" data-field="region" value="-1" title="Cycle video region">AUTO</button></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
+          <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
-          <button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button>
-          <button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button>
-          <button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button>
+          <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option></select></label>
+          <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
+        </div>
+        <div class="rom-recorder__development" aria-label="Development checkpoints">
+          <label>Checkpoint<select data-field="checkpoint"><option value="">No checkpoints</option></select></label>
+          <label>Recorded route<select data-field="developmentRoute"><option value="">No recorded routes</option></select></label>
+          <div class="rom-recorder__development-actions"><button type="button" data-action="arm" title="Arm checkpoint and continue playing">Arm</button><button type="button" data-action="recordRoute" title="Reset and record how you play to this checkpoint">Record route</button><button type="button" data-action="replayRoute" title="Fast replay the selected route">Fast replay</button><button class="rom-recorder__auto-route" type="button" data-action="autoRoute" title="Return here automatically after recompiling" aria-pressed="false">After compile</button><button type="button" data-action="deleteRoute" title="Delete selected route">Delete</button></div>
         </div>
         <div class="rom-recorder__tools"><button type="button" data-action="loadAdamFirmware">Configure ADAM firmware...</button><button type="button" data-action="clearAdamFirmware">Forget ADAM firmware</button></div>
         <input data-field="adamFirmwareFiles" type="file" accept=".rom,application/octet-stream" multiple hidden>
-        <label>Target<select data-field="checkpoint"><option value="">Current frame</option></select></label>
-        <div class="rom-recorder__tools"><button class="rom-recorder__compact-action" type="button" data-action="loadRom" title="Open external ROM" aria-label="Open external ROM">&#x21E7;</button><button class="rom-recorder__compact-action" type="button" data-action="useCompiledRom" title="Return to compiled Amy ROM" aria-label="Return to compiled Amy ROM">&#x21A9;</button><button class="rom-recorder__compact-action" type="button" data-action="arm" title="Run to checkpoint" aria-label="Run to checkpoint">&#x25B6;</button><button class="rom-recorder__compact-action" type="button" data-action="create" title="Save test JSON" aria-label="Save test JSON">&#x21E9;</button><button class="rom-recorder__compact-action" type="button" data-action="replay" title="Open and replay test" aria-label="Open and replay test">&#x21BB;</button></div>
-        <div class="rom-recorder__tools" aria-label="Deterministic video recording"><button class="rom-recorder__record-action" type="button" data-action="recordBoot" title="Reset and record from the first boot frame">&#x25CF; RECORD BOOT</button><button class="rom-recorder__record-action" type="button" data-action="recordVideo" title="Start recording from the current frame">&#x25CF; RECORD NOW</button><button type="button" data-action="stopVideo" title="Stop gameplay recording" disabled>&#x25A0; STOP</button><button class="button--primary" type="button" data-action="exportVideo" title="Replay the recording and export Motion-JPEG video with PCM audio" disabled>Export AVI</button></div>
+        <div class="rom-recorder__tools"><button class="rom-recorder__compact-action" type="button" data-action="loadRom" title="Open external ROM or ADAM media" aria-label="Open external ROM or ADAM media">&#x21E7;</button><button class="rom-recorder__compact-action" type="button" data-action="useCompiledRom" title="Return to compiled Amy output" aria-label="Return to compiled Amy output">&#x21A9;</button><button class="rom-recorder__compact-action" type="button" data-action="create" title="Save test JSON at the current frame" aria-label="Save test JSON at current frame">&#x21E9;</button><button class="rom-recorder__compact-action" type="button" data-action="replay" title="Open and replay test" aria-label="Open and replay test">&#x21BB;</button></div>
         <label title="Allow a recompiled ROM with a different hash"><span>ROM &#x0394;</span><input data-field="allowRebuilt" type="checkbox" aria-label="Allow ROM hash change"></label>
-        <input data-field="romFile" type="file" accept=".rom,.col" hidden>
+        <input data-field="romFile" type="file" accept=".rom,.col,.dsk,.ddp" hidden>
         <input data-field="testFile" type="file" accept=".amy-rom-test.json,application/json" hidden>
         <div class="rom-recorder__status" data-field="status">Ready.</div>
       </div>
       <section class="rom-recorder__debug">
         <div class="rom-recorder__tabs" role="tablist">
-          <button data-tab="state" aria-selected="true">CPU / VDP</button><button data-tab="asm" aria-selected="false" title="Z80 execution and stack">ASM</button><button data-tab="ram" aria-selected="false" title="CPU memory">RAM</button><button data-tab="vram" aria-selected="false">VRAM</button><button data-tab="map" aria-selected="false" title="Memory map">MAP</button><button data-tab="breakpoints" aria-selected="false" title="Breakpoints">BP</button><button data-tab="profiler" aria-selected="false">Cycles</button>
+          <button data-tab="state" aria-selected="true">CPU / VDP</button><button data-tab="asm" aria-selected="false" title="Z80 execution and stack">ASM</button><button data-tab="ram" aria-selected="false" title="CPU memory">RAM</button><button data-tab="vram" aria-selected="false">VRAM</button><button data-tab="map" aria-selected="false" title="Memory map">MAP</button><button data-tab="adam" aria-selected="false" title="ADAMnet devices and printer output">ADAM</button><button data-tab="breakpoints" aria-selected="false" title="Breakpoints">BP</button><button data-tab="profiler" aria-selected="false">Cycles</button>
         </div>
         <div class="rom-recorder__pane is-active" data-pane="state"><div data-field="machineState"></div></div>
         <div class="rom-recorder__pane" data-pane="asm"><div class="rom-recorder__memory-controls rom-recorder__memory-controls--asm"><button class="rom-recorder__compact-action" data-action="stepInto" title="Step into: execute one Z80 instruction" aria-label="Step into one Z80 instruction">&#x2193;</button><button class="rom-recorder__compact-action" data-action="stepOver" title="Step over CALL or RST" aria-label="Step over Z80 call">&#x21B7;</button><span title="Instruction stepping does not modify the ROM">Z80 instruction</span></div><pre class="rom-recorder__dump" data-field="asmDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="ram"><div class="rom-recorder__memory-controls"><input data-field="ramAddress" value="$7000" aria-label="CPU memory address"><select data-field="ramLength"><option>64</option><option>128</option><option>256</option><option selected>384</option><option>512</option></select><button class="rom-recorder__compact-action" data-action="refreshRam" title="Refresh CPU memory" aria-label="Refresh CPU memory">&#x21BB;</button></div><pre class="rom-recorder__dump" data-field="ramDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="vram"><div class="rom-recorder__memory-controls"><input data-field="vramAddress" value="$0000" aria-label="VRAM address"><select data-field="vramLength"><option>64</option><option>128</option><option>256</option><option selected>384</option><option>512</option></select><button class="rom-recorder__compact-action" data-action="refreshVram" title="Refresh VRAM" aria-label="Refresh VRAM">&#x21BB;</button></div><pre class="rom-recorder__dump" data-field="vramDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="map"><input data-field="symbolFilter" placeholder="Filter symbols or address, e.g. Player or $70" aria-label="Filter symbols"><div class="rom-recorder__symbol-list" data-field="symbolList"></div><details><summary>Raw linker memory map</summary><pre class="rom-recorder__raw-map" data-field="rawMap"></pre></details></div>
+        <div class="rom-recorder__pane" data-pane="adam"><div class="rom-recorder__memory-controls"><button class="rom-recorder__compact-action" data-action="refreshAdam" title="Refresh ADAMnet state" aria-label="Refresh ADAMnet state">&#x21BB;</button><button class="rom-recorder__compact-action" data-action="clearAdamPrinter" title="Clear captured printer output" aria-label="Clear captured printer output">Clear printer</button></div><div data-field="adamState"></div><pre class="rom-recorder__dump" data-field="adamPrinterOutput">ADAM machine not running.</pre></div>
         <div class="rom-recorder__pane" data-pane="breakpoints"><div class="rom-recorder__memory-controls rom-recorder__memory-controls--breakpoint"><input data-field="breakpointAddress" placeholder="Code symbol or $8000" aria-label="Breakpoint code address"><input data-field="breakpointCondition" placeholder="Optional: Score >= 5" aria-label="Optional RAM breakpoint condition"><select data-field="breakpointValueType" aria-label="Condition value type"><option value="auto">auto</option><option value="u8">u8</option><option value="i8">i8</option><option value="u16">u16</option><option value="i16">i16</option></select><button class="rom-recorder__compact-action" data-action="addBreakpoint" title="Add execute breakpoint, optionally conditional" aria-label="Add execute breakpoint">+</button></div><div class="rom-recorder__memory-controls rom-recorder__memory-controls--watch"><input data-field="watchCondition" placeholder="RAM watch: Lives = 0" aria-label="RAM watch condition"><select data-field="watchValueType" aria-label="RAM watch value type"><option value="auto">auto</option><option value="u8">u8</option><option value="i8">i8</option><option value="u16">u16</option><option value="i16">i16</option></select><button class="rom-recorder__compact-action" data-action="addWatch" title="Add RAM watch" aria-label="Add RAM watch">+</button></div><div class="rom-recorder__breakpoints" data-field="breakpointList"></div><button class="rom-recorder__compact-action" data-action="clearBreakpoints" title="Clear all breakpoints and RAM watches" aria-label="Clear all breakpoints and RAM watches">&#x00D7;</button></div>
         <div class="rom-recorder__pane" data-pane="profiler"><div class="rom-recorder__profiler-controls"><input data-field="profileTarget" list="rom-recorder-profile-targets" placeholder="Amy sub, symbol, or $8000" aria-label="Routine to profile"><datalist id="rom-recorder-profile-targets" data-field="profileTargets"></datalist><button class="rom-recorder__compact-action" data-action="profileRoutine" title="Profile next routine entry" aria-label="Profile next routine entry">&#x25B6;</button><button class="rom-recorder__compact-action" data-action="clearProfiles" title="Clear profiles" aria-label="Clear profiles">&#x00D7;</button></div><div class="rom-recorder__profiler-results" data-field="profileResults"></div><p class="rom-recorder__profiler-note" title="Runs include nested calls and recursion. Main execution excludes NMI and IRQ cycles. Own range is diagnostic, not exclusive self-time. Profiling does not modify the ROM.">Inclusive · main excludes NMI/IRQ · ROM unchanged</p></div>
       </section>
@@ -324,6 +344,7 @@ function buildDialog() {
 
 export function createRomTestRecorderUi({
   getCompiledRom,
+  getCompiledAdamDisk = () => null,
   getCompiledMemoryMap = () => "",
   getCompiledSymbols,
   getCompiledMetadata = () => ({}),
@@ -346,8 +367,12 @@ export function createRomTestRecorderUi({
   let playbackRate = 1;
   let playbackAccumulator = 0;
   let loadedRom = null;
+  let loadedAdamMedia = null;
   let externalRom = null;
   let externalRomName = "";
+  let externalAdamMedia = null;
+  let externalAdamMediaType = null;
+  let adamFirmware = loadAdamFirmwareFromBrowser();
   let lastInspectorRefresh = 0;
   let symbols = [];
   const activeBreakpoints = new Map();
@@ -363,9 +388,11 @@ export function createRomTestRecorderUi({
   let profileRequest = null;
   let profileRunToken = 0;
   const profileStats = new Map();
-  let adamFirmware = loadAdamFirmwareFromBrowser();
   const gameplayRecording = new GameplayRecordingSession();
   let videoExporting = false;
+  const developmentRoutes = createDevelopmentRouteStore(window.localStorage);
+  let routeRecording = null;
+  let routeReplayActive = false;
 
   const field = (name) => dialog.querySelector(`[data-field="${name}"]`);
   const action = (name) => dialog.querySelector(`[data-action="${name}"]`);
@@ -374,45 +401,9 @@ export function createRomTestRecorderUi({
     field("status").textContent = message;
   }
 
-  function selectedMachineNeedsAdam() {
-    return field("machine").value.startsWith("adam-");
-  }
-
-  function updateFirmwareActions() {
-    const configured = Boolean(adamFirmware);
-    action("clearAdamFirmware").disabled = !configured;
-    action("loadAdamFirmware").textContent = configured
-      ? "Replace ADAM firmware..."
-      : "Configure ADAM firmware...";
-    const needsColecoBios = !selectedMachineNeedsAdam();
-    field("biosMissing").hidden = needsColecoBios ? Boolean(getEmulatorBios()) : configured;
-    field("biosMissing").querySelector("strong").textContent = needsColecoBios
-      ? "ColecoVision BIOS missing"
-      : "ADAM firmware missing";
-    field("biosMissing").querySelector("p").textContent = needsColecoBios
-      ? "Amy Studio cannot distribute the system BIOS. Add your own 8 KiB BIOS; it remains stored only in this browser."
-      : "Select your OS7.ROM, EOS.ROM, and WP.ROM files. They remain stored only in this browser.";
-    const button = action("loadBios");
-    button.textContent = needsColecoBios ? "Add ColecoVision BIOS..." : "Add ADAM firmware...";
-  }
-
-  async function importAdamFirmware(files) {
-    const selected = new Map(Array.from(files || []).map((file) => [file.name.toLowerCase(), file]));
-    const os7File = selected.get("os7.rom");
-    const eosFile = selected.get("eos.rom");
-    const wpFile = selected.get("wp.rom");
-    if (!os7File || !eosFile || !wpFile) {
-      throw new Error("Select OS7.ROM, EOS.ROM, and WP.ROM together.");
-    }
-    const [os7, eos, smartwriter] = await Promise.all([
-      os7File.arrayBuffer(), eosFile.arrayBuffer(), wpFile.arrayBuffer()
-    ]);
-    const images = { os7: new Uint8Array(os7), eos: new Uint8Array(eos), smartwriter: new Uint8Array(smartwriter) };
-    saveAdamFirmwareToBrowser(images, {
-      os7: os7File.name, eos: eosFile.name, smartwriter: wpFile.name
-    });
-    adamFirmware = loadAdamFirmwareFromBrowser();
-    updateFirmwareActions();
+  function developmentProjectId() {
+    const project = getProject() || {};
+    return project.projectName || project.name || "untitled-project";
   }
 
   function parseAddressField(name, max = 0xFFFF) {
@@ -430,7 +421,7 @@ export function createRomTestRecorderUi({
         <div class="rom-recorder__card"><strong>Execution</strong>${playing ? "Running" : "Paused"} · ${core.getRegionName()} ${core.getFramesPerSecond()} Hz</div>
         <div class="rom-recorder__card"><strong>VDP mode</strong>${vdp.mode} · screen ${vdp.displayEnabled ? "on" : "off"} · NMI ${vdp.nmiEnabled ? "on" : "off"}</div>
         <div class="rom-recorder__card"><strong>Sprites</strong>${vdp.sprites16 ? "16×16" : "8×8"}${vdp.spritesMagnified ? " magnified" : ""} · backdrop ${vdp.backdrop}</div>
-        <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 voice module ${field("voiceModule").value}</div>
+        <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 ${field("voiceModule").value} · serial ${field("adamSerial").value}</div>
         <div class="rom-recorder__card"><strong>Name / pattern / color</strong>${formatHex(vdp.nameTable)} / ${formatHex(vdp.patternTable)} / ${formatHex(vdp.colorTable)}</div>
         <div class="rom-recorder__card"><strong>Sprite attributes / patterns</strong>${formatHex(vdp.spriteAttributeTable)} / ${formatHex(vdp.spritePatternTable)}</div>
       </div>
@@ -674,6 +665,44 @@ export function createRomTestRecorderUi({
     field("region").disabled = locked;
   }
 
+  function refreshAdamState() {
+    const state = field("adamState");
+    const output = field("adamPrinterOutput");
+    if (!core || core.getMachine() !== GEARCOLECO_MACHINE.ADAM) {
+      state.innerHTML = '<div class="rom-recorder__card"><strong>ADAM hardware</strong>Select ADAM disk/data pack and boot ADAM media to inspect AdamNet.</div>';
+      output.textContent = "No ADAM printer output.";
+      return;
+    }
+    try {
+      const mioc = core.getAdamMioc();
+      const summary = core.getAdamNetSummary();
+      const transfer = summary.transfer;
+      const activeDcbs = summary.dcbs.filter((dcb) => dcb.status || dcb.device || dcb.length);
+      const printer = core.getAdamPrinterData();
+      state.innerHTML = `<div class="rom-recorder__summary">
+        <div class="rom-recorder__card"><strong>MIOC</strong>${formatHex(mioc, 2)}</div>
+        <div class="rom-recorder__card"><strong>AdamNet controller</strong>state ${formatHex(summary.controllerState, 2)} · PCB ${formatHex(summary.pcbAddress)} · status ${formatHex(summary.pcbStatus, 2)}</div>
+        <div class="rom-recorder__card"><strong>Device control blocks</strong>${activeDcbs.length} active of ${summary.dcbCount}</div>
+        <div class="rom-recorder__card"><strong>Transfer</strong>${transfer.active ? `device ${formatHex(transfer.device, 2)} · command ${formatHex(transfer.command, 2)} · block ${transfer.block} · ${transfer.length} bytes` : "idle"}${transfer.error ? ` · error ${formatHex(transfer.error, 2)}` : ""}</div>
+      </div>`;
+      const text = formatAdamPrinterText(printer);
+      output.textContent = `PRINTER SPOOL (${printer.length} bytes)\n${text || "(empty)"}\n\nRAW BYTES\n${printer.length ? formatHexDump(printer, 0) : "(empty)"}`;
+    } catch (error) {
+      state.textContent = error.message || String(error);
+      output.textContent = "Unable to read ADAM printer output.";
+    }
+  }
+
+  function renderRegionToggle() {
+    const button = field("region");
+    const labels = { "-1": "AUTO", "0": "NTSC", "1": "PAL" };
+    button.textContent = labels[button.value] || "AUTO";
+    button.title = button.value === "-1"
+      ? "Video region follows the BIOS; click for NTSC"
+      : `Forced ${button.textContent} video region; click to change`;
+    button.setAttribute("aria-label", `Video region: ${button.textContent}`);
+  }
+
   function setProfileButtonState(cancelling) {
     const button = action("profileRoutine");
     const label = cancelling ? "Cancel routine profile" : "Profile next routine entry";
@@ -693,8 +722,115 @@ export function createRomTestRecorderUi({
   function updateCheckpointAction() {
     const checkpoint = field("checkpoint").value;
     action("arm").disabled = !checkpoint;
-    action("arm").title = checkpoint ? `Run to ${checkpoint}` : "Select a symbolic checkpoint to run to";
+    action("recordRoute").disabled = !checkpoint || routeReplayActive;
+    action("arm").title = checkpoint ? `Arm ${checkpoint} and continue playing` : "Add a test checkpoint to the Amy source first";
     action("arm").setAttribute("aria-label", action("arm").title);
+    updateDevelopmentRouteActions();
+  }
+
+  function selectedDevelopmentRoute() {
+    return developmentRoutes.get(developmentProjectId(), field("developmentRoute").value);
+  }
+
+  function updateDevelopmentRouteActions() {
+    if (!dialog) return;
+    const route = selectedDevelopmentRoute();
+    const autoRouteId = developmentRoutes.getAutoRouteId(developmentProjectId());
+    action("replayRoute").disabled = !route || routeReplayActive;
+    action("deleteRoute").disabled = !route || routeReplayActive;
+    action("autoRoute").disabled = !route || routeReplayActive;
+    action("autoRoute").setAttribute("aria-pressed", String(Boolean(route && route.id === autoRouteId)));
+    action("autoRoute").textContent = route && route.id === autoRouteId ? "After compile: ON" : "After compile";
+  }
+
+  function refreshDevelopmentRoutes(preferredRouteId = "") {
+    const select = field("developmentRoute");
+    const routes = developmentRoutes.list(developmentProjectId());
+    select.replaceChildren(new Option(routes.length ? "Select a route" : "No recorded routes", ""));
+    for (const route of routes) {
+      select.add(new Option(`${route.name} (${route.frameCount} frames)`, route.id));
+    }
+    const selectedId = preferredRouteId || select.value || developmentRoutes.getAutoRouteId(developmentProjectId());
+    if (routes.some((route) => route.id === selectedId)) select.value = selectedId;
+    updateDevelopmentRouteActions();
+  }
+
+  function armDevelopmentCheckpoint(checkpoint) {
+    const resolved = resolveAmyCheckpoint(getCompiledSymbols(), checkpoint);
+    core.clearAllBreakpoints();
+    activeBreakpoints.clear();
+    core.setExecuteBreakpoint(resolved.address);
+    activeBreakpoints.set(resolved.address, { label: resolved.symbol });
+    renderBreakpointList();
+    stoppedCheckpoint = null;
+    return resolved;
+  }
+
+  async function beginRouteRecording() {
+    const checkpoint = field("checkpoint").value;
+    if (!checkpoint) throw new Error("Select a symbolic checkpoint before recording a route.");
+    await startCore();
+    const resolved = armDevelopmentCheckpoint(checkpoint);
+    const existingCount = developmentRoutes.list(developmentProjectId())
+      .filter((route) => route.checkpoint === checkpoint).length;
+    routeRecording = {
+      checkpoint,
+      name: existingCount ? `${checkpoint} route ${existingCount + 1}` : checkpoint,
+      inputs: []
+    };
+    playing = true;
+    setRecorderStatus(`Recording route to ${resolved.symbol}. Play normally; recording stops at the checkpoint.`);
+  }
+
+  function completeRouteRecording() {
+    if (!routeRecording) return null;
+    const completed = routeRecording;
+    routeRecording = null;
+    const route = developmentRoutes.save(developmentProjectId(), {
+      ...completed,
+      environment: {
+        region: field("region").value,
+        videoChip: field("videoChip").value,
+        voiceModule: field("voiceModule").value,
+        adamSerial: field("adamSerial").value
+      }
+    });
+    refreshDevelopmentRoutes(route.id);
+    return route;
+  }
+
+  async function fastReplayDevelopmentRoute(route) {
+    if (!route) throw new Error("Select a recorded route first.");
+    routeReplayActive = true;
+    updateDevelopmentRouteActions();
+    try {
+      await startCore();
+      playing = false;
+      audioSink.flush();
+      const resolved = armDevelopmentCheckpoint(route.checkpoint);
+      const inputs = expandRouteInputs(route.inputRuns);
+      setRecorderStatus(`Fast replaying ${route.name}: 0/${inputs.length} frames...`);
+      let reached = false;
+      for (let index = 0; index < inputs.length; ++index) {
+        const result = recorder.runFrame(inputs[index]);
+        if (result.breakpointHit) {
+          reached = result.pc === resolved.address;
+          if (!reached) throw new Error(`Route stopped at unexpected address ${formatHex(result.pc)}.`);
+          break;
+        }
+        if (index > 0 && (index % 600) === 0) {
+          setRecorderStatus(`Fast replaying ${route.name}: ${index}/${inputs.length} frames...`);
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+      }
+      if (!reached) throw new Error(`Route ended before reaching ${resolved.symbol}. Record it again for the recompiled game.`);
+      stoppedCheckpoint = route.checkpoint;
+      render({ forceInspector: true });
+      setRecorderStatus(`Returned to ${route.checkpoint} using ${route.frameCount} recorded frames.`);
+    } finally {
+      routeReplayActive = false;
+      updateCheckpointAction();
+    }
   }
   function renderMouseSpinnerButton() {
     const button = action("mouseSpinner");
@@ -893,6 +1029,7 @@ export function createRomTestRecorderUi({
     if (active === "asm") refreshAssembly();
     if (active === "ram") refreshMemory("ram");
     if (active === "vram") refreshMemory("vram");
+    if (active === "adam") refreshAdamState();
   }
 
   function applyScale() {
@@ -941,6 +1078,9 @@ export function createRomTestRecorderUi({
     const result = replaying
       ? recorder.replayFrame()
       : recorder.runFrame({ controllerMasks: effectiveMasks, spinnerDeltas });
+    if (routeRecording && !replaying) {
+      routeRecording.inputs.push({ controllerMasks: [...effectiveMasks], spinnerDeltas: [...spinnerDeltas] });
+    }
     if (replaying && gameplayRecording.recording) {
       gameplayRecording.stop();
       action("recordVideo").classList.remove("is-recording");
@@ -1004,6 +1144,15 @@ export function createRomTestRecorderUi({
         : breakpoint?.label || stoppedCheckpoint || "breakpoint";
       const valueNote = conditionResult ? `; value ${conditionResult.actual} ${conditionResult.operator} ${conditionResult.expected}` : "";
       setRecorderStatus(`Stopped at ${label} (${formatHex(result.pc)}${valueNote}).`);
+      if (routeRecording) {
+        try {
+          const route = completeRouteRecording();
+          setRecorderStatus(`Route ${route.name} recorded: ${route.frameCount} frames to ${route.checkpoint}.`);
+        } catch (error) {
+          routeRecording = null;
+          setRecorderStatus(`Checkpoint reached, but the route could not be saved: ${error.message || error}`);
+        }
+      }
       const sourceLine = matchedSourceMember?.line || breakpoint?.sourceLine;
       if (sourceLine) onSourceBreakpointHit(sourceLine);
     }
@@ -1273,20 +1422,35 @@ export function createRomTestRecorderUi({
 
   async function startCore(romOverride = null, { recordGameplayFromBoot = false } = {}) {
     stopCore();
+    routeRecording = null;
     const rom = romOverride || externalRom || getCompiledRom();
     const bios = getEmulatorBios();
-    const machine = field("machine").value;
-    const adam = machine.startsWith("adam-");
+    const adam = field("machine").value === "adam-computer";
+    if (adam && !adamFirmware) {
+      try { adamFirmware = await loadLocalAdamFirmware(); }
+      catch { throw new Error("Configure OS7.ROM, EOS.ROM, and WP.ROM before starting ADAM."); }
+    }
+    const adamMediaBytes = externalAdamMedia || getCompiledAdamDisk();
+    if (adam && !adamMediaBytes) throw new Error("Compile, open, or drop an ADAM .dsk or .ddp file first.");
     if (!adam && (!rom || !bios)) throw new Error("Compile or open a ROM and load a BIOS first.");
-    if (adam && !adamFirmware) throw new Error("Configure OS7.ROM, EOS.ROM, and WP.ROM first.");
-    if (machine === "adam-cartridge" && !rom) throw new Error("Compile or open a cartridge ROM first.");
     core = await GearcolecoTestCore.create({ seed: SEED });
     loadedRom = rom;
+    loadedAdamMedia = adam ? adamMediaBytes : null;
     core.setVideoChip(field("videoChip").value);
+    const serialSetting = field("adamSerial").value;
+    const serialProfile = serialSetting.split("-")[0];
+    core.setAdamSerialProfile(serialProfile);
+    core.setAdamSerialLoopback(serialSetting.endsWith("-loopback"));
+    core.setAdamSerialCarrier(serialSetting.endsWith("-loopback"));
     if (adam) {
       core.loadAdamFirmware(adamFirmware);
-      if (machine === "adam-cartridge") core.loadRom(rom, { region: Number(field("region").value) });
-      core.startAdam({ cartridge: machine === "adam-cartridge" });
+      core.startAdam();
+      core.loadAdamMedia(adamMediaBytes, {
+        slot: externalAdamMediaType === GEARCOLECO_ADAM_MEDIA.DATA_PACK ? GEARCOLECO_ADAM_SLOT.DATA_PACK_1 : GEARCOLECO_ADAM_SLOT.DISK_1,
+        type: externalAdamMediaType,
+        writeProtected: true
+      });
+      core.reset();
     } else {
       core.loadBios(bios);
       core.loadRom(rom, { region: Number(field("region").value) });
@@ -1294,8 +1458,6 @@ export function createRomTestRecorderUi({
     core.setVoiceModuleProfile(field("voiceModule").value);
     recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
     recorder.start();
-    controllerMasks[0] = 0;
-    controllerMasks[1] = 0;
     gameplayRecording.clear();
     action("recordVideo").classList.remove("is-recording");
     action("recordVideo").disabled = false;
@@ -1312,6 +1474,8 @@ export function createRomTestRecorderUi({
     }
     if (!externalRom) installSourceBreakpoints();
     playing = true;
+    controllerMasks[0] = 0;
+    controllerMasks[1] = 0;
     pressedKeys.clear();
     stoppedCheckpoint = null;
     playbackAccumulator = 0;
@@ -1330,6 +1494,7 @@ export function createRomTestRecorderUi({
     if (name === "ram") refreshMemory("ram");
     if (name === "vram") refreshMemory("vram");
     if (name === "state") refreshMachineState();
+    if (name === "adam") refreshAdamState();
     if (name === "map") renderSymbolList();
     if (name === "profiler") renderProfileResults();
   }
@@ -1356,34 +1521,32 @@ export function createRomTestRecorderUi({
   }
 
   async function loadExternalRomFile(file) {
-    const extension = String(file?.name || "").toLowerCase().match(/\.[^.]+$/)?.[0] || "";
-    if (extension !== ".rom" && extension !== ".col") {
-      throw new Error("External ROM must be an uncompressed .rom or .col file. ZIP and GZ archives are not supported yet.");
-    }
     setRecorderStatus(`Loading ${file.name}...`);
-    externalRom = new Uint8Array(await file.arrayBuffer());
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const media = detectEmulatorMedia(file?.name, bytes);
+    if (!media) throw new Error("Open an uncompressed .rom, .col, .dsk, or .ddp file. Standard 160 KiB DSK and 256 KiB DDP images are auto-detected.");
+    const adamMedia = media.kind !== EMULATOR_MEDIA_KIND.ROM;
+    externalRom = adamMedia ? null : bytes;
+    externalAdamMedia = adamMedia ? bytes : null;
+    externalAdamMediaType = media.kind === EMULATOR_MEDIA_KIND.ADAM_DATA_PACK ? GEARCOLECO_ADAM_MEDIA.DATA_PACK
+      : (media.kind === EMULATOR_MEDIA_KIND.ADAM_DISK ? GEARCOLECO_ADAM_MEDIA.DISK : null);
+    field("machine").value = adamMedia ? "adam-computer" : "colecovision";
     externalRomName = file.name;
     symbols = [];
     profileStats.clear();
     field("checkpoint").replaceChildren(new Option("Current frame", ""));
     field("rawMap").textContent = "External ROM: no Amy linker map.";
     await startCore(externalRom);
-    action("useCompiledRom").disabled = !getCompiledRom();
+    action("useCompiledRom").disabled = !(getCompiledRom() || getCompiledAdamDisk());
     renderSymbolList();
     renderBreakpointList();
-    setRecorderStatus(`Running external ROM ${externalRomName}. Mouse spinner deltas are recorded per frame.`);
+    const detection = media.detectedBy === "geometry" ? " (type auto-detected)" : "";
+    setRecorderStatus(adamMedia ? `Running ADAM media ${externalRomName}${detection}.` : `Running external ROM ${externalRomName}. Mouse spinner deltas are recorded per frame.`);
   }
 
   function bindDialog() {
     action("close").addEventListener("click", () => dialog.close());
-    action("loadBios").addEventListener("click", () => {
-      if (selectedMachineNeedsAdam()) {
-        field("adamFirmwareFiles").value = "";
-        field("adamFirmwareFiles").click();
-      } else {
-        requestEmulatorBios();
-      }
-    });
+    action("loadBios").addEventListener("click", requestEmulatorBios);
     action("loadAdamFirmware").addEventListener("click", () => {
       field("adamFirmwareFiles").value = "";
       field("adamFirmwareFiles").click();
@@ -1391,18 +1554,24 @@ export function createRomTestRecorderUi({
     action("clearAdamFirmware").addEventListener("click", () => {
       clearAdamFirmwareFromBrowser();
       adamFirmware = null;
-      stopCore();
-      updateFirmwareActions();
       setRecorderStatus("ADAM firmware removed from this browser.");
     });
     field("adamFirmwareFiles").addEventListener("change", async () => {
       try {
-        await importAdamFirmware(field("adamFirmwareFiles").files);
-        setRecorderStatus("ADAM firmware stored only in this browser. Starting ADAM...");
-        if (selectedMachineNeedsAdam()) await startCore();
-      } catch (error) {
-        setRecorderStatus(error.message || String(error));
-      }
+        const images = {};
+        for (const file of [...field("adamFirmwareFiles").files]) {
+          const name = file.name.toLowerCase();
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          if (name === "os7.rom") images.os7 = bytes;
+          else if (name === "eos.rom") images.eos = bytes;
+          else if (name === "wp.rom") images.smartwriter = bytes;
+          else if (bytes.length === 32768 && !images.smartwriter) images.smartwriter = bytes;
+          else if (bytes.length === 8192 && !images.os7) images.os7 = bytes;
+          else if (bytes.length === 8192 && !images.eos) images.eos = bytes;
+        }
+        adamFirmware = saveAdamFirmwareToBrowser(images);
+        setRecorderStatus("ADAM firmware stored locally in this browser. Drop a .dsk or .ddp file.");
+      } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     const screenWrap = dialog.querySelector(".rom-recorder__screen-wrap");
     async function toggleGameFullscreen() {
@@ -1516,10 +1685,23 @@ export function createRomTestRecorderUi({
       audioSink.setPlaybackRate(playbackRate);
     });
     field("scale").addEventListener("change", applyScale);
-    field("region").addEventListener("change", async () => {
+    field("region").addEventListener("click", async () => {
+      const regions = ["-1", "0", "1"];
+      field("region").value = regions[(regions.indexOf(field("region").value) + 1) % regions.length];
+      renderRegionToggle();
       setRecorderStatus("Restarting in the selected video region...");
       try { await startCore(); setRecorderStatus(`Running in ${core.getRegionName()} at ${core.getFramesPerSecond()} Hz.`); }
       catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
+    field("videoChip").addEventListener("change", async () => {
+      const chip = field("videoChip").selectedOptions[0]?.textContent || field("videoChip").value;
+      setRecorderStatus(`Restarting with video hardware: ${chip}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`Video hardware is ${chip}; recording restarted.`);
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
     });
     field("voiceModule").addEventListener("change", async () => {
       const profile = field("voiceModule").selectedOptions[0]?.textContent || field("voiceModule").value;
@@ -1527,6 +1709,16 @@ export function createRomTestRecorderUi({
       try {
         await startCore();
         setRecorderStatus(`Voice hardware is ${profile}; recording restarted for hardware detection.`);
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
+    });
+    field("adamSerial").addEventListener("change", async () => {
+      const profile = field("adamSerial").selectedOptions[0]?.textContent || field("adamSerial").value;
+      setRecorderStatus(`Restarting with ADAM serial hardware: ${profile}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`ADAM serial hardware is ${profile}; recording restarted.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       }
@@ -1572,6 +1764,13 @@ export function createRomTestRecorderUi({
       }
     });
     field("checkpoint").addEventListener("change", updateCheckpointAction);
+    field("developmentRoute").addEventListener("change", () => {
+      const route = selectedDevelopmentRoute();
+      if (route && [...field("checkpoint").options].some((option) => option.value === route.checkpoint)) {
+        field("checkpoint").value = route.checkpoint;
+      }
+      updateCheckpointAction();
+    });
     action("reset").addEventListener("click", async () => {
       setRecorderStatus("Resetting...");
       try { await startCore(); setRecorderStatus("Recording from reset."); }
@@ -1587,6 +1786,16 @@ export function createRomTestRecorderUi({
     for (const button of dialog.querySelectorAll("[data-tab]")) button.addEventListener("click", () => selectTab(button.dataset.tab));
     action("refreshRam").addEventListener("click", () => refreshMemory("ram"));
     action("refreshVram").addEventListener("click", () => refreshMemory("vram"));
+    action("refreshAdam").addEventListener("click", refreshAdamState);
+    action("clearAdamPrinter").addEventListener("click", () => {
+      if (!core || core.getMachine() !== GEARCOLECO_MACHINE.ADAM) {
+        setRecorderStatus("Start ADAM media before clearing its printer spool.");
+        return;
+      }
+      core.clearAdamPrinterData();
+      refreshAdamState();
+      setRecorderStatus("ADAM printer spool cleared.");
+    });
     field("symbolFilter").addEventListener("input", renderSymbolList);
     for (const button of dialog.querySelectorAll("[data-input]")) bindInputButton(button);
 
@@ -1623,16 +1832,35 @@ export function createRomTestRecorderUi({
     action("arm").addEventListener("click", () => {
       const checkpoint = field("checkpoint").value;
       if (!checkpoint) { setRecorderStatus("Select a symbolic checkpoint first."); return; }
-      core.clearAllBreakpoints();
-      activeBreakpoints.clear();
-      const resolved = resolveAmyCheckpoint(getCompiledSymbols(), checkpoint);
-      core.setExecuteBreakpoint(resolved.address);
-      activeBreakpoints.set(resolved.address, { label: resolved.symbol });
-      renderBreakpointList();
-      stoppedCheckpoint = null;
+      const resolved = armDevelopmentCheckpoint(checkpoint);
       playing = true;
       setRecorderStatus(`Running to ${resolved.symbol}...`);
       render();
+    });
+    action("recordRoute").addEventListener("click", async () => {
+      try { await beginRouteRecording(); }
+      catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
+    action("replayRoute").addEventListener("click", async () => {
+      try { await fastReplayDevelopmentRoute(selectedDevelopmentRoute()); }
+      catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
+    action("autoRoute").addEventListener("click", () => {
+      const route = selectedDevelopmentRoute();
+      if (!route) return;
+      const current = developmentRoutes.getAutoRouteId(developmentProjectId());
+      developmentRoutes.setAutoRouteId(developmentProjectId(), current === route.id ? "" : route.id);
+      updateDevelopmentRouteActions();
+      setRecorderStatus(current === route.id
+        ? "Automatic replay after compile disabled."
+        : `${route.name} will be replayed when the recompiled ROM is opened.`);
+    });
+    action("deleteRoute").addEventListener("click", () => {
+      const route = selectedDevelopmentRoute();
+      if (!route) return;
+      developmentRoutes.remove(developmentProjectId(), route.id);
+      refreshDevelopmentRoutes();
+      setRecorderStatus(`Deleted development route ${route.name}.`);
     });
     action("create").addEventListener("click", async () => {
       try {
@@ -1678,13 +1906,6 @@ export function createRomTestRecorderUi({
         setRecorderStatus(error.message || String(error));
       }
     });
-    for (const name of ["machine", "videoChip"]) field(name).addEventListener("change", async () => {
-      updateFirmwareActions();
-      const profile = field("machine").selectedOptions[0]?.textContent || field("machine").value;
-      setRecorderStatus(`Starting ${profile}...`);
-      try { await startCore(); setRecorderStatus(`${profile} is running.`); }
-      catch (error) { stopCore(); setRecorderStatus(error.message || String(error)); }
-    });
     let romDragDepth = 0;
     dialog.addEventListener("dragenter", (event) => {
       if (!event.dataTransfer?.types?.includes("Files")) return;
@@ -1708,9 +1929,9 @@ export function createRomTestRecorderUi({
       romDragDepth = 0;
       dialog.classList.remove("is-rom-dragover");
       const files = [...event.dataTransfer.files];
-      const romFile = files.find((file) => /\.(?:rom|col)$/i.test(file.name || ""));
+      const romFile = files.find((file) => isKnownEmulatorMediaName(file.name)) || (files.length === 1 ? files[0] : null);
       if (!romFile) {
-        setRecorderStatus("Drop one uncompressed .rom or .col file here. ZIP and GZ archives are not supported yet.");
+        setRecorderStatus("Drop one uncompressed .rom, .col, .dsk, or .ddp file here.");
         return;
       }
       try {
@@ -1723,18 +1944,22 @@ export function createRomTestRecorderUi({
     });
     action("useCompiledRom").addEventListener("click", async () => {
       const compiledRom = getCompiledRom();
-      if (!compiledRom) {
-        setRecorderStatus("No compiled Amy ROM is available. Compile the project or open an external ROM.");
+      const compiledDisk = getCompiledAdamDisk();
+      if (!compiledRom && !compiledDisk) {
+        setRecorderStatus("No compiled Amy output is available. Compile the project or open external media.");
         return;
       }
       externalRom = null;
       externalRomName = "";
+      externalAdamMedia = null;
+      externalAdamMediaType = compiledDisk ? GEARCOLECO_ADAM_MEDIA.DISK : null;
+      field("machine").value = compiledDisk ? "adam-computer" : "colecovision";
       symbols = annotateOverlaySymbols(parseAmySymbols(getCompiledSymbols()), getCompiledMetadata()?.ramOverlays);
-      setRecorderStatus("Loading compiled Amy ROM...");
+      setRecorderStatus(compiledDisk ? "Mounting compiled Amy ADAM disk..." : "Loading compiled Amy ROM...");
       try {
         await startCore(compiledRom);
         renderSymbolList();
-        setRecorderStatus("Running compiled Amy ROM.");
+        setRecorderStatus(compiledDisk ? "Running compiled Amy ADAM disk." : "Running compiled Amy ROM.");
       } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     action("replay").addEventListener("click", () => { field("testFile").value = ""; field("testFile").click(); });
@@ -1750,9 +1975,11 @@ export function createRomTestRecorderUi({
         const bios = getEmulatorBios();
         core = await GearcolecoTestCore.create({ seed: testCase.environment?.seed >>> 0 });
         loadedRom = rom;
+        core.setVideoChip(testCase.environment?.videoChip || field("videoChip").value);
         core.loadBios(bios);
         const replayRegion = testCase.environment?.region === "pal" ? GEARCOLECO_TEST_REGION.PAL : GEARCOLECO_TEST_REGION.NTSC;
         field("region").value = String(replayRegion);
+        renderRegionToggle();
         core.loadRom(rom, { region: replayRegion });
         const result = await replayRomTestCase(core, testCase, { biosBytes: bios, romBytes: rom, symbolsText: getCompiledSymbols(), allowRebuiltRom: field("allowRebuilt").checked });
         recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
@@ -1796,6 +2023,7 @@ export function createRomTestRecorderUi({
   }
 
   async function open() {
+    const compiledDisk = getCompiledAdamDisk();
     if (!dialog) {
       dialog = buildDialog();
       controllerSetup = createControllerSetupUi({
@@ -1814,13 +2042,22 @@ export function createRomTestRecorderUi({
       bindDialog();
     }
     symbols = externalRom ? [] : annotateOverlaySymbols(parseAmySymbols(getCompiledSymbols()), getCompiledMetadata()?.ramOverlays);
+    if (!externalRom && getCompiledAdamDisk()) {
+      externalAdamMedia = null;
+      externalAdamMediaType = GEARCOLECO_ADAM_MEDIA.DISK;
+      field("machine").value = "adam-computer";
+    }
     if (loadedRom && loadedRom !== getCompiledRom()) profileStats.clear();
     const checkpoints = listAmyCheckpoints(getCompiledSymbols());
     const select = field("checkpoint");
-    select.replaceChildren(new Option("Current frame", ""));
+    const previousCheckpoint = select.value;
+    select.replaceChildren(new Option(checkpoints.length ? "Select checkpoint" : "No checkpoints in source", ""));
     for (const checkpoint of checkpoints) select.add(new Option(checkpoint, checkpoint));
+    if (checkpoints.includes(previousCheckpoint)) select.value = previousCheckpoint;
+    refreshDevelopmentRoutes();
     field("rawMap").textContent = getCompiledMemoryMap() || "No linker memory map was generated.";
     updateCheckpointAction();
+    renderRegionToggle();
     renderAudioButton();
     const profileTargets = field("profileTargets");
     profileTargets.replaceChildren();
@@ -1834,20 +2071,23 @@ export function createRomTestRecorderUi({
     renderSymbolList();
     renderBreakpointList();
     applyScale();
-    action("useCompiledRom").disabled = !getCompiledRom();
+    action("useCompiledRom").disabled = !(getCompiledRom() || compiledDisk);
     dialog.showModal();
-    updateFirmwareActions();
-    const missingSystemFirmware = selectedMachineNeedsAdam() ? !adamFirmware : !getEmulatorBios();
-    if (missingSystemFirmware) {
+    // ADAM firmware is resolved from browser storage or the local ignored ROM folder in startCore().
+    field("biosMissing").hidden = Boolean(compiledDisk || getEmulatorBios());
+    if (!compiledDisk && !getEmulatorBios()) {
       playing = false;
       playbackAccumulator = 0;
-      setRecorderStatus(selectedMachineNeedsAdam()
-        ? "ADAM firmware missing. Add OS7.ROM, EOS.ROM, and WP.ROM to start emulation."
-        : "ColecoVision BIOS missing. Add your own 8 KiB BIOS to start emulation.");
+      setRecorderStatus("ColecoVision BIOS missing. Add your own 8 KiB BIOS to start emulation.");
       action("loadBios").focus();
       return;
     }
-    const canResume = Boolean(core && recorder && (loadedRom === getCompiledRom() || loadedRom === externalRom));
+    const requestedAdamMedia = externalAdamMedia || compiledDisk;
+    const canResume = Boolean(core && recorder && (
+      requestedAdamMedia
+        ? loadedAdamMedia === requestedAdamMedia
+        : loadedRom === (externalRom || getCompiledRom())
+    ));
     if (canResume) {
       playing = false;
       playbackAccumulator = 0;
@@ -1857,7 +2097,7 @@ export function createRomTestRecorderUi({
       dialog.querySelector("canvas").focus();
       return;
     }
-    if (!getCompiledRom() && !externalRom && field("machine").value !== "adam-computer") {
+    if (!getCompiledRom() && !externalRom) {
       playing = false;
       playbackAccumulator = 0;
       setRecorderStatus("Open a .rom, .col, or .bin with ⇧. No Amy compilation is required.");
@@ -1865,7 +2105,12 @@ export function createRomTestRecorderUi({
       return;
     }
     setRecorderStatus("Loading deterministic GearColeco core...");
-    try { await startCore(); setRecorderStatus("Running."); }
+    try {
+      await startCore();
+      const autoRoute = developmentRoutes.get(developmentProjectId(), developmentRoutes.getAutoRouteId(developmentProjectId()));
+      if (autoRoute && !externalRom) await fastReplayDevelopmentRoute(autoRoute);
+      else setRecorderStatus("Running.");
+    }
     catch (error) { stopCore(); setRecorderStatus(error.message || String(error)); }
   }
 

@@ -807,7 +807,7 @@ let romTestRecorderUiPromise = null;
 async function ensureRomTestRecorderUi() {
   if (romTestRecorderUi) return romTestRecorderUi;
   if (!romTestRecorderUiPromise) {
-    romTestRecorderUiPromise = import("./core/romTestRecorderUi.js?v=20260928-lazy-recorder1")
+    romTestRecorderUiPromise = import("./core/romTestRecorderUi.js?v=20261002-adam-serial1")
       .then(({ createRomTestRecorderUi }) => {
         romTestRecorderUi = createRomTestRecorderUi({
           getCompiledRom: () => compiledRom,

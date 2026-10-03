@@ -1,9 +1,41 @@
 # Automated ColecoVision ROM testing
 
-Amy Studio uses GearColeco's headless MCP interface as its primary runtime test runner. The compiler audit and emulator test are separate gates:
+Amy Studio has two related but distinct runtime surfaces:
+
+- **Open ROM / Debugger in the browser** is the interactive programmer workspace for compiled or external ROMs. It provides rewind, frame and instruction stepping, source breakpoints, conditional watches, CPU/VDP state, RAM/VRAM, symbols, controller setup, recorded tests, and routine cycle profiles.
+- **GearColeco automation from the CLI** is the repository regression runner for repeatable checkpoints, expected symbols/bytes, screenshots, VRAM/VDP baselines, and optimizer audits.
+
+The browser debugger does not expose every repository-maintainer command, and the CLI runner is not an Amy Studio button. Compilation and emulator execution remain separate gates:
 
 1. `node tools/check-examples.mjs --assemble` transpiles and assembles every example.
 2. `node tools/run-rom-tests.mjs` builds selected self-tests, executes them in GearColeco, and checks named RAM symbols.
+
+## Interactive browser debugger
+
+Compile a project, then choose **Open ROM / Debugger** or the run control. The
+debugger can also load an external `.rom`, `.col`, `.dsk`, or `.ddp` without
+compiling an Amy project first. Drop the file anywhere on the debugger or use
+its upload button. DSK selects ADAM disk drive 1; DDP selects data-pack drive 1,
+and the machine changes to ADAM automatically. Standard 160 KiB DSK and 256 KiB
+DDP images are also recognized by geometry when their extension is absent or
+incorrect. Because a 256 KiB MegaCart has the same size as a DDP, a Coleco
+`AA 55` or `55 AA` header takes precedence and loads it as a cartridge. ZIP
+(`PK`) and GZip signatures are rejected even when the extension is misleading.
+
+The user must provide an 8192-byte ColecoVision BIOS for cartridges. ADAM media
+requires OS7.ROM, EOS.ROM, and WP.ROM. Amy Studio stores firmware locally in
+browser storage and does not download or distribute it.
+
+For ADAM communication software, the debugger can emulate AdamLink,
+Eve/Orphanware, or MicroInnovations serial hardware in deterministic offline or
+loopback mode. The selected profile owns its documented I/O ports before shared
+ColecoVision peripherals, preventing AdamLink `$44/$45` from being mistaken for
+the Lundy voice module. Serial profile, carrier, registers, and RX/TX queues are
+preserved by save states.
+
+Changing breakpoints does not patch the ROM. Source-line locations come from zero-byte source metadata. Changing Amy source or project files invalidates the build and its source map, so recompilation is then required.
+
+Recorded `.amy-rom-test.json` scenarios can replay controller input and checkpoints in the browser. Repository `tools/rom-tests.json` and GearColeco baselines remain the stronger automated maintainer suite described below.
 
 ## Install GearColeco
 

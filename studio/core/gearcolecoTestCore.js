@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20260916-gearcoleco-170-adam-f18a-voice",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261002-adam-serial1",
   import.meta.url
 );
 
@@ -342,6 +342,67 @@ export class GearcolecoTestCore {
     }
     if (this.module._gcw_set_video_chip(value) !== 1) {
       throw new Error("GearColeco could not select the video chip.");
+    }
+  }
+
+  setAdamSerialProfile(profile) {
+    this.assertAlive();
+    const profiles = { none: 0, adamlink: 1, eve: 2, micro: 3, microinnovations: 3 };
+    const value = typeof profile === "number" ? profile : profiles[String(profile).toLowerCase()];
+    if (!Number.isInteger(value) || value < 0 || value > 3) {
+      throw new RangeError(`Unknown ADAM serial profile '${profile}'.`);
+    }
+    if (this.module._gcw_set_adam_serial_profile(value) !== 1) {
+      throw new Error("GearColeco could not configure the ADAM serial profile.");
+    }
+  }
+
+  setAdamSerialLoopback(enabled) {
+    this.assertAlive();
+    if (this.module._gcw_set_adam_serial_loopback(enabled ? 1 : 0) !== 1) {
+      throw new Error("GearColeco could not configure ADAM serial loopback.");
+    }
+  }
+
+  setAdamSerialCarrier(present) {
+    this.assertAlive();
+    if (this.module._gcw_set_adam_serial_carrier(present ? 1 : 0) !== 1) {
+      throw new Error("GearColeco could not configure the ADAM serial carrier.");
+    }
+  }
+
+  injectAdamSerialReceive(bytes) {
+    this.assertAlive();
+    return this.withInputBytes(bytes, "ADAM serial receive data", (pointer, size) => {
+      if (this.module._gcw_inject_adam_serial_rx(pointer, size) !== 1) {
+        throw new Error("GearColeco could not inject ADAM serial data.");
+      }
+      return size;
+    });
+  }
+
+  readAdamSerialTransmit(consume = true) {
+    this.assertAlive();
+    const size = this.module._gcw_read_adam_serial_tx(0, 0, 0) >>> 0;
+    if (size === 0) return new Uint8Array(0);
+    const pointer = this.module._malloc(size);
+    try {
+      const count = this.module._gcw_read_adam_serial_tx(pointer, size, consume ? 1 : 0) >>> 0;
+      return this.module.HEAPU8.slice(pointer, pointer + count);
+    } finally {
+      this.module._free(pointer);
+    }
+  }
+
+  debugAdamPortIn(port) {
+    this.assertAlive();
+    return this.module._gcw_debug_adam_port_in(port) | 0;
+  }
+
+  debugAdamPortOut(port, value) {
+    this.assertAlive();
+    if (this.module._gcw_debug_adam_port_out(port, value) !== 1) {
+      throw new RangeError(`Invalid ADAM port write ${port}:${value}.`);
     }
   }
 
