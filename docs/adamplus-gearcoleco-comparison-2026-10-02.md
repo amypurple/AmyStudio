@@ -80,6 +80,17 @@ considered only after an explicit compatibility matrix identifies features not
 already covered by F18A and after browser/WASM cost is measured. It must not delay
 core ADAM/EOS and ADAMnet correctness.
 
+## Startup sprite compatibility finding
+
+ADAM+ explicitly writes a `$D0` sprite terminator after switching to ADAM mode.
+Chess Champ demonstrates why: its loader displays a title while register 5
+places the sprite attribute table on top of the pattern table and leaves the
+list unterminated. GearColeco reproduces the useful behavior with a narrower,
+deterministic startup rule rather than suppressing sprites globally. The rule
+requires ADAM mode, TMS9918A output, an active display, identical pattern and
+sprite-table bases, and no existing terminator. A regression test confirms the
+clean title and the unchanged game screen.
+
 ## Black-box comparison plan
 
 Use identical locally supplied BIOS files and media in both emulators. Never add

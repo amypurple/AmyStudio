@@ -140,6 +140,32 @@ the document explicitly identifies the XMODEM patch and its EOS disk/Data Pack
 workflow. This is strong protocol-discovery evidence, but still not emulator
 execution evidence for the absent serial card.
 
+## Chess Champ expansion-RAM loader display
+
+`Chess Champ (1988) (Digital Express Inc.) [ExpRAM].dsk` exposes a loader
+compatibility case rather than a default-register defect. At frame 81 the
+loader enables Graphics I with registers `00 E0 02 2C 00 00 00 0E`, selecting
+NAME `$0800`, COLOR `$0B00`, PATTERN `$0000`, and sprite attributes `$0000`.
+The pattern and sprite-attribute tables therefore overlap, and the program
+does not place a `$D0` terminator in the sprite list. A strict TMS9918A renderer
+interprets pattern bytes as sprite attributes and draws stray glyphs over the
+otherwise correct title.
+
+ADAM+ independently handles this class of old software by terminating the
+current sprite list after an ADAM mode transition. GearColeco now applies a
+narrow equivalent compatibility rule during the first 180 ADAM startup
+frames: only after display becomes active, only on the TMS9918A backend, only
+when PATTERN and sprite-attribute bases are identical, and only when all 32
+sprite entries lack a terminator. Normal ColecoVision rendering and valid ADAM
+sprite lists are unchanged. The TMS9918A renderer also uses the hardware sprite
+height when deciding whether encoded Y coordinates wrap above the screen.
+
+`tools/test-chess-champ-adam-compatibility.mjs` keeps the proprietary DSK
+external, verifies the inserted `$D0`, pins the clean title framebuffer, waits
+through its timed presentation, and confirms that the later chess display is
+byte-for-byte unchanged. `tools/capture-adam-disk.mjs` reports every VDP
+register transition and can dump RAM/VRAM for similar investigations.
+
 ## Printer and serial triage
 
 The files `PRINTERA`, `printertipA`, `PRINTERFANH`, and `PRINTERFIXA` were
@@ -246,3 +272,18 @@ document files, rather than embedding every asset into the program image.
 `tools/analyze-adam-media.mjs` now supports both interleaved 160 KiB DSK images
 and linear block-oriented DDP images. Auto-AID v1 is therefore catalogued by
 the same analyzer instead of being reported as an unsupported geometry.
+
+### Chess Champ VDP-memory transition
+
+`Chess Champ (1988) (Digital Express Inc.) [ExpRAM].dsk` prepares its title
+VRAM before setting the TMS9918A 16K-memory bit in register 1. ADAM+ 2.0.09.26
+preserves that VRAM and shows the title immediately. GearColeco previously
+permuted all 16K whenever the bit changed, exposing a corrupted Graphics I
+screen until the game rebuilt VRAM. The ADAM/ColecoVision hardware has 16K of
+physical VRAM, so the register transition must not move existing bytes.
+
+ADAM+ models media readiness through ten service passes (`DELAY_IO = 10`),
+while GearColeco currently models explicit DSK/DDP device latency. Those are
+not equivalent timing units, so the media timings remain unchanged until they
+can be calibrated independently. `tools/test-chess-champ-adam-compatibility.mjs`
+locks the stable loader-title and game-screen frame hashes.

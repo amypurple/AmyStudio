@@ -44,8 +44,10 @@ try {
 
   runToFrame(120);
   assert.deepEqual([...core.getVdpRegisters()], [0x00, 0xE0, 0x02, 0x2C, 0x00, 0x00, 0x00, 0x0E]);
+  assert.equal(core.readVram(0x0000, 1)[0], 0xD0,
+    "ADAM startup compatibility did not terminate the overlapping sprite list");
   const loaderTitleHash = framebufferHash(core.getFramebuffer());
-  assert.equal(loaderTitleHash, "c4357837f403fc3e2fca560ef9193fa07d074b0472848c16ed8871ec8661432a",
+  assert.equal(loaderTitleHash, "9bb3db5ea41d7e5891d8ef78d57f4ad4bd80284a11f4067fa303a15f64d78382",
     `unexpected Chess Champ loader title ${loaderTitleHash}`);
 
   runToFrame(300, 120);
