@@ -128,7 +128,7 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | Arithmetic and comparisons | `Score += 10` | `SHARED` | `SHARED` | `SHARED` | No firmware dependency after RAM allocation. |
 | Control flow | `if`, `for`, `do`, `select case` | `SHARED` | `SHARED` | `SHARED` | No firmware dependency. |
 | Procedures and functions | `sub Update:` | `SHARED` | `SHARED` | `SHARED` | ABI remains Amy-owned. |
-| Raw ASM call | `call asm Routine` | `VERIFIED` | `VERIFIED` | `COMPILES` | Programmer owns target ABI; namespaces must remain explicit. |
+| Raw ASM call | `call asm Routine` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Programmer owns target ABI; namespaces must remain explicit. A hybrid DSK runtime test passes calculated byte/word scalars and a global address through A/HL/DE, boots through EOS into OS7, and verifies both writes in RAM. |
 | Screen enable without NMI | `screen on no nmi` | `VERIFIED` | `VERIFIED` | `VERIFIED` | A native Amy boot was runtime-tested from DSK and DDP. This explicit form does not claim a firmware-safe NMI hook. |
 | Screen control without NMI | `screen off` / `screen on no nmi` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native DSK/DDP tests verify EOS `$FD62` against physical VDP R1. NMI-enabled `screen on` remains planned. |
 | NMI enable | `screen on` / `nmi on` | `VERIFIED` | `VERIFIED` | `REJECT` | This is a limitation of Amy's current native loader, not of EOS or ADAM hardware. EOS publishes a default `RETN` NMI vector, and a program with writable low RAM may install its own `$0066` owner before enabling VDP R1 bit 5. Amy currently fails closed because its loader does not yet guarantee that mapping and ownership contract. |
