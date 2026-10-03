@@ -357,6 +357,18 @@ export class GearcolecoTestCore {
     }
   }
 
+  setAdamSoundExpansion(profile) {
+    this.assertAlive();
+    const profiles = { none: 0, enhancer: 1, "sound-enhancer": 1, sgm: 2, "opcode-sgm": 2 };
+    const value = typeof profile === "number" ? profile : profiles[String(profile).toLowerCase()];
+    if (!Number.isInteger(value) || value < 0 || value > 2) {
+      throw new RangeError(`Unknown ADAM sound expansion '${profile}'.`);
+    }
+    if (this.module._gcw_set_adam_sound_expansion(value) !== 1) {
+      throw new Error("GearColeco could not configure the ADAM sound expansion.");
+    }
+  }
+
   setAdamSerialLoopback(enabled) {
     this.assertAlive();
     if (this.module._gcw_set_adam_serial_loopback(enabled ? 1 : 0) !== 1) {

@@ -308,6 +308,7 @@ function buildDialog() {
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
+          <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option></select></label>
           <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
         </div>
@@ -421,7 +422,7 @@ export function createRomTestRecorderUi({
         <div class="rom-recorder__card"><strong>Execution</strong>${playing ? "Running" : "Paused"} · ${core.getRegionName()} ${core.getFramesPerSecond()} Hz</div>
         <div class="rom-recorder__card"><strong>VDP mode</strong>${vdp.mode} · screen ${vdp.displayEnabled ? "on" : "off"} · NMI ${vdp.nmiEnabled ? "on" : "off"}</div>
         <div class="rom-recorder__card"><strong>Sprites</strong>${vdp.sprites16 ? "16×16" : "8×8"}${vdp.spritesMagnified ? " magnified" : ""} · backdrop ${vdp.backdrop}</div>
-        <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 ${field("voiceModule").value} · serial ${field("adamSerial").value}</div>
+        <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 ${field("voiceModule").value} · ADAM sound ${field("adamSound").value} · serial ${field("adamSerial").value}</div>
         <div class="rom-recorder__card"><strong>Name / pattern / color</strong>${formatHex(vdp.nameTable)} / ${formatHex(vdp.patternTable)} / ${formatHex(vdp.colorTable)}</div>
         <div class="rom-recorder__card"><strong>Sprite attributes / patterns</strong>${formatHex(vdp.spriteAttributeTable)} / ${formatHex(vdp.spritePatternTable)}</div>
       </div>
@@ -792,6 +793,7 @@ export function createRomTestRecorderUi({
         region: field("region").value,
         videoChip: field("videoChip").value,
         voiceModule: field("voiceModule").value,
+        adamSound: field("adamSound").value,
         adamSerial: field("adamSerial").value
       }
     });
@@ -1438,6 +1440,7 @@ export function createRomTestRecorderUi({
     loadedAdamMedia = adam ? adamMediaBytes : null;
     core.setVideoChip(field("videoChip").value);
     const serialSetting = field("adamSerial").value;
+    core.setAdamSoundExpansion(field("adamSound").value);
     const serialProfile = serialSetting.split("-")[0];
     core.setAdamSerialProfile(serialProfile);
     core.setAdamSerialLoopback(serialSetting.endsWith("-loopback"));
@@ -1719,6 +1722,16 @@ export function createRomTestRecorderUi({
       try {
         await startCore();
         setRecorderStatus(`ADAM serial hardware is ${profile}; recording restarted.`);
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
+    });
+    field("adamSound").addEventListener("change", async () => {
+      const profile = field("adamSound").selectedOptions[0]?.textContent || field("adamSound").value;
+      setRecorderStatus(`Restarting with ADAM sound hardware: ${profile}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`ADAM sound hardware is ${profile}; recording restarted.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       }

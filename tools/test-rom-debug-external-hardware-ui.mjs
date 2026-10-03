@@ -14,6 +14,11 @@ assert.match(source, /core\.setVoiceModuleProfile\(field\("voiceModule"\)\.value
 assert.match(source, /field\("voiceModule"\)\.addEventListener\("change"/,
   "changing external hardware does not restart detection");
 assert.match(source, /data-field="adamSerial"/, "debugger is missing the ADAM serial selector");
+assert.match(source, /data-field="adamSound"/, "debugger is missing the ADAM sound selector");
+assert.match(source, /Sound Enhancer/, "debugger is missing the ADAM Sound Enhancer profile");
+assert.match(source, /Opcode SGM/, "debugger is missing the Opcode SGM profile");
+assert.match(source, /core\.setAdamSoundExpansion\(field\("adamSound"\)\.value\)/,
+  "selected ADAM sound expansion is not applied before boot");
 assert.match(source, /AdamLink loopback/, "debugger is missing AdamLink loopback mode");
 assert.match(source, /Eve\/Orphanware loopback/, "debugger is missing Eve\/Orphanware loopback mode");
 assert.match(source, /MicroInnovations loopback/, "debugger is missing MicroInnovations loopback mode");
