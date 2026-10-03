@@ -11,7 +11,7 @@ try {
   const profiles = [
     { name: "adamlink", data: 0x5f, status: 0x5e, txReady: 0x01, noCarrier: 0xc0 },
     { name: "eve", data: 0x44, status: 0x45, txReady: 0x01, noCarrier: 0xc0 },
-    { name: "micro", data: 0x1b, status: 0x19, txReady: 0x08 }
+    { name: "micro", data: 0x1b, status: 0x19, txReady: 0x08, carrierPort: 0x1d, carrier: 0x20 }
   ];
 
   for (const profile of profiles) {
@@ -39,8 +39,8 @@ try {
 
     core.setAdamSerialCarrier(true);
     assert.equal(
-      core.debugAdamPortIn(profile.status),
-      profile.txReady | (profile.carrier || 0),
+      core.debugAdamPortIn(profile.carrierPort || profile.status),
+      profile.carrierPort ? profile.carrier : profile.txReady | (profile.carrier || 0),
       `${profile.name} active-carrier status`
     );
   }

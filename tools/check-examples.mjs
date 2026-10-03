@@ -72,6 +72,7 @@ import {
 import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtimeCallHelpers.js";
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "../studio/core/compiler/addressHelpers.js";
+import { handleAdamStatement } from "../studio/core/compiler/adamStatementHelpers.js";
 import { handleArrayBulkStatement } from "../studio/core/compiler/arrayBulkStatementHelpers.js";
 import { createAssignmentArithmeticHelpers } from "../studio/core/compiler/assignmentArithmeticHelpers.js";
 import { createFx16Helpers } from "../studio/core/compiler/fx16Helpers.js";
@@ -116,8 +117,10 @@ import { getOptimizationProfile, sourceHintsTinySound } from "../studio/core/opt
 import { generateAsm } from "../studio/core/project.js";
 import { newProject, defaultSourceText } from "../studio/core/projectLifecycle.js";
 import { manifest } from "../studio/manifest.js";
+import { getBuildContextDefines, resolveAmyBuildContext } from "../studio/core/projectTargets.js";
 import { alexisLibrarySources } from "../studio/core/alexisLibrarySources.generated.js";
 import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compilerCore.js";
+import { bundleAmySource } from "../studio/core/amySourceBundle.js";
 
 function stripAmyInlineComment(rawLine) {
   const text = String(rawLine || "");
@@ -189,12 +192,13 @@ const DEPS = {
   handleMutateStatement,
   handleMathBitStatement,
   handleArrayBulkStatement,
+  handleAdamStatement,
   createInlineStatementCompiler,
   finalizeAmyTranspile,
   stripAmyInlineComment
 };
 
-function transpileAmy(sourceText, projectFiles = []) {
+function transpileAmy(sourceText, projectFiles = [], buildTarget = null, memoryProfile = null) {
   const files = new Map(projectFiles.map((file) => [
     String(file?.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase(),
     file
@@ -204,7 +208,19 @@ function transpileAmy(sourceText, projectFiles = []) {
     const file = files.get(key);
     return file?.base64 ? Buffer.from(file.base64, "base64").toString("utf8") : null;
   };
-  return transpileAmyCore(sourceText, { ...DEPS, resolveStaticAbiInclude });
+  try {
+    const bundled = bundleAmySource(sourceText, projectFiles);
+    const buildContext = buildTarget
+      ? resolveAmyBuildContext({ target: buildTarget, memoryProfile }, { target: buildTarget, memoryProfile })
+      : null;
+    return transpileAmyCore(bundled.sourceText, {
+      ...DEPS,
+      resolveStaticAbiInclude,
+      ...(buildContext ? { buildContext, predefinedSymbols: getBuildContextDefines(buildContext) } : {})
+    });
+  } catch (error) {
+    return { ok: false, log: error?.message || String(error) };
+  }
 }
 
 function buildExampleAssemblyFiles(ex, generatedAsm) {
@@ -486,7 +502,7 @@ const hashes = {};
 const romAudit = [];
 
 for (const ex of amyExamples) {
-  const result = transpileAmy(ex.sourceText, ex.projectFiles);
+  const result = transpileAmy(ex.sourceText, ex.projectFiles, ex.buildTarget, ex.memoryProfile);
   if (result.ok) {
     const validationIssues = validateExampleAsm(ex, result);
     if (validationIssues.length) {

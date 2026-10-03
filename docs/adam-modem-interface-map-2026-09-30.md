@@ -25,7 +25,7 @@ hardware manuals. The table below uses the documented hardware mapping.
 | --- | --- | --- | --- | --- | --- |
 | `0` | Coleco AdamLink | `$5F` | `$5E` | SCN2651: TxRDY `$01`, RxRDY `$02`, DCD `$40` active-low | same pair |
 | `1` | Orphanware/Eve serial port 1, A block | `$44` | `$45` | SCN2651: TxRDY `$01`, RxRDY `$02`, DCD `$40` active-low | mode/command `$46`, `$47` |
-| `2` | Micro Innovations serial port 1 | `$1B` | `$19` | 2681: RxRDY `$01`, TxRDY `$04`, TxEMT `$08` | writes `$18`, `$19`, `$1A`, `$1E`; modem inputs read at `$1D` |
+| `2` | Micro Innovations serial port 1 | `$1B` | `$19` | 2681: RxRDY `$01`, TxRDY `$04`, TxEMT `$08`; DCD is input-port `$1D` bit 5 | writes `$18`, `$19`, `$1A`, `$1E`; modem inputs read at `$1D` |
 | `3` | Local game | none | none | none | none |
 
 The SCN2651 meanings are confirmed by the chip data sheet. Orphanware hardware
@@ -71,18 +71,15 @@ Serial interfaces and modems are not equivalent to ordinary AdamNet block
 devices. Amy needs a target-independent serial capability with separate
 hardware backends, followed by an optional Hayes/AdamLink modem layer.
 
-Provisional operations, not language syntax commitments:
+The first Amy byte-I/O layer now uses these operations:
 
 | Operation | Purpose |
 | --- | --- |
-| `serial.present` | Detect whether the selected backend can be used. |
-| `serial.configure` | Select backend, port, baud, framing, and handshake. |
-| `serial.read_ready` | Non-blocking receive-status query. |
-| `serial.read` | Receive one byte with explicit timeout/error result. |
-| `serial.write_ready` | Non-blocking transmit-status query. |
-| `serial.write` | Send one byte with explicit timeout/error result. |
-| `serial.carrier` | Report carrier/handshake state where hardware supports it. |
-| `modem.command` | Send Hayes commands or an AdamLink-specific equivalent. |
+| `Ready = serial readable` | Non-blocking receive-status query. |
+| `Byte = serial read` | Receive one byte after the application observes readiness. |
+| `Ready = serial writable` | Non-blocking transmit-status query. |
+| `serial write Byte` | Send one byte after the application observes readiness. |
+| `Connected = serial carrier` | Report SCN2651 active-low DCD on AdamLink/Eve or MIB3 input-port bit 5. |
 
 The first implementation should expose status and errors instead of silently
 waiting forever. ModemTank's blank wait state when an absent interface is
@@ -102,10 +99,10 @@ cards. With no profile selected, the overlapping AdamLink ports remain open
 instead of impersonating hardware.
 
 The MIB3 status model deliberately does not synthesize carrier in status bit
-`$20`: the SCN2681 defines that bit as parity error. MIB3 modem signals belong
-to the separate input-port register at `$1D`; their board-specific wiring and
-polarity remain to be established before Amy exposes a carrier predicate for
-that profile.
+`$20`: the SCN2681 defines that status bit as parity error. The MIB3 manual
+maps serial port 1 Carrier Detect to bit 5 of the separate input-port register
+at `$1D`. GearColeco now reflects its configured carrier state there, and Amy
+uses that register for the Micro Innovations `serial carrier` predicate.
 
 Primary references used for the correction:
 
@@ -126,8 +123,10 @@ Save-state version 109 preserves the selected profile, loopback and carrier
 flags, configuration registers, and complete RX/TX queues. Older ADAM states
 remain loadable and resume with no serial card selected.
 
-Amy serial syntax remains intentionally deferred until those runtime traces
-confirm the public status/error contract.
+Amy keeps hardware selection in `target.hardware`, not in every statement.
+`adamlink`, `eve-serial`, and `micro-serial` therefore compile the same source
+to their verified ports and status masks. Presence detection, UART setup,
+timeouts, and modem commands remain deferred.
 
 ## Reproduction
 
@@ -139,6 +138,7 @@ node tools/test-adam-modemtank-interfaces.mjs build/adam-device-study/ModemTank-
 node tools/test-gearcoleco-adam-serial.mjs
 node tools/test-gearcoleco-adam-serial-state.mjs OS7.ROM EOS.ROM WP.ROM
 node tools/probe-adamlink3-serial.mjs
+node tools/test-native-eos-amy-serial.mjs
 node tools/trace-adam-firmware-services.mjs "...E.O.S. Files.dsk" 1800 --adam-keys=700:56
 ```
 

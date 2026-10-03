@@ -191,9 +191,28 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | Generic ADAMnet devices | `submit Request to Slot [status Result]` | `REJECT` | `VERIFIED` | `VERIFIED` | `Request` must be an `AdamNetDcb`; `Slot` may be a byte expression and must be below the live PCB `DeviceCount`. Amy copies the 21-byte record to `$FEC4 + Slot*21`, waits for AdamNet's response bit, copies the completed DCB back, and reports normalized status 0/1. GearColeco verifies the known absent-device responses `$96/$9B` and continued execution; EOS may change which one appears after rebuilding its active DCB table. |
 | ADAMnet device inspection/reset | `Flags = device status Device [status Result]`; `Code = device result Device [status Result]`; `reset device Device [status Result]` | `REJECT` | `VERIFIED` | `VERIFIED` | Device IDs may be byte expressions. `$FC7E` returns device-dependent flags, `$FC75` returns the raw DCB completion code, and `$FC90` performs a soft reset; each preserves firmware register ownership and optionally reports normalized Amy status. Native DSK/DDP and the real OS7+EOS hybrid loader verify keyboard `$80` completion, status/reset, generic absent-device completion, and continued execution. Stock OS7 rejects all three commands. |
 | ADAM printer | `print "AMY" to printer [status S]` | `REJECT` | `VERIFIED` | `VERIFIED` | Amy lowers a string literal to one ETX-terminated EOS `$FC63` transfer; a scalar byte uses `$FC66`. Both services handle AdamNet busy `$86`. GearColeco verifies the exact `AMY` plus CR spool, status 0, and continuation on DSK/DDP. |
-| ADAM serial/modem interfaces | target API pending | `N/A` | `PARTIAL` | `PARTIAL` | GearColeco has deterministic AdamLink, Orphanware/Eve, and Micro Innovations profiles with RX/TX queues, injection, capture, loopback, and save states. Primary manuals corrected ADAMLink to status/control `$5E`, data `$5F`, and Orphanware A-block to `$44-$47`; SCN2651 ready/carrier bits follow the chip specification. Untouched AdamLink III now emits initialization traffic and consumes scripted RX only with the corrected ADAMLink profile. XMODEM, MIB3 carrier wiring, baud timing, and Amy syntax remain open. |
+| ADAM serial byte I/O | `Ready = serial readable`; `Byte = serial read`; `serial write Byte`; `Connected = serial carrier` | `N/A` | `VERIFIED` | `VERIFIED` | `target.hardware` selects `adamlink`, `eve-serial`, or `micro-serial`; source code remains port-independent. Native execution verifies normalized RX/TX readiness, injected receive, captured transmit, continuation, SCN2651 active-low carrier for AdamLink/Eve, and MIB3 SCN2681 input-port bit 5 carrier. |
+| ADAM modem protocols | application layer pending | `N/A` | `PARTIAL` | `PARTIAL` | GearColeco provides deterministic RX/TX queues, injection, capture, loopback, carrier for all three profiles, and save states. Hayes commands, XMODEM, baud/framing setup, transmission timing, and hardware presence detection remain open. |
 
 ## Engineering progress log
+
+### 2026-10-03: native serial byte I/O
+
+- Added explicit ADAM hardware profiles `adamlink`, `eve-serial`, and
+  `micro-serial`; each enables the common `AMY_HAS_SERIAL` capability.
+- Added non-blocking `serial readable`, `serial writable`, `serial read`, and
+  `serial write` operations. AdamLink and Eve/Orphanware also support
+  `serial carrier` with the verified active-low SCN2651 DCD bit.
+- Kept all port addresses and status masks out of Amy game code. Recompiling
+  the same source for another declared interface selects its backend.
+- Runtime-tested all three profiles through a native EOS boot disk, AdamLink
+  through DDP, and AdamLink through the real hybrid loader: byte `$41` is
+  received, byte `$42` is captured from transmit, readiness is normalized,
+  and Amy execution continues. OS7 cartridge output fails closed.
+- MIB3 Carrier Detect is now verified from the board manual as input-port
+  `$1D` bit 5 and runtime-tested through raw I/O and compiled Amy code.
+- UART configuration, blocking timeouts, Hayes commands, hardware presence,
+  and file-transfer protocols remain deliberately outside this first layer.
 
 ### 2026-10-03: generic AdamNet device inspection
 

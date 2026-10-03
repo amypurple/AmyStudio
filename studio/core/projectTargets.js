@@ -223,6 +223,18 @@ export function resolveAmyBuildContext(project = {}, manifest = null) {
   if (hardware.has("adam-sound-enhancer")) {
     capabilities.add("sgm-ay");
   }
+  if (hardware.has("adamlink")) {
+    capabilities.add("serial");
+    capabilities.add("serial-adamlink");
+  }
+  if (hardware.has("eve-serial") || hardware.has("orphanware-serial")) {
+    capabilities.add("serial");
+    capabilities.add("serial-eve");
+  }
+  if (hardware.has("micro-serial") || hardware.has("microinnovations-serial")) {
+    capabilities.add("serial");
+    capabilities.add("serial-micro");
+  }
   if (memoryProfile === "adam-eos-application" || memoryProfile === "adam-eos-boot-block") {
     for (const capability of ["adam", "eos", "adamnet", "adam-keyboard", "controller", "vdp", "psg", "file-io"]) {
       capabilities.add(capability);
@@ -261,6 +273,7 @@ export function getBuildContextDefines(context) {
   if (capabilities.has("file-io")) defines.push("AMY_HAS_FILE_IO");
   if (capabilities.has("sgm")) defines.push("AMY_HAS_SGM");
   if (capabilities.has("sgm-ay")) defines.push("AMY_HAS_SGM_AY");
+  if (capabilities.has("serial")) defines.push("AMY_HAS_SERIAL");
   return Object.freeze(defines);
 }
 

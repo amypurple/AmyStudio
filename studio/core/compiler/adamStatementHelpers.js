@@ -13,6 +13,57 @@ export function handleAdamStatement({
   makeGeneratedLabel
 }) {
   const supportsEos = buildContext?.capabilities?.includes("eos");
+  const capabilities = new Set(buildContext?.capabilities || []);
+  const serialProfile = buildContext?.machine === "adam" && capabilities.has("serial-adamlink")
+    ? { name: "AdamLink", data: "$5F", status: "$5E", readable: "$02", writable: "$01", carrier: "$40" }
+    : buildContext?.machine === "adam" && capabilities.has("serial-eve")
+      ? { name: "Eve/Orphanware", data: "$44", status: "$45", readable: "$02", writable: "$01", carrier: "$40" }
+      : buildContext?.machine === "adam" && capabilities.has("serial-micro")
+        ? { name: "Micro Innovations", data: "$1B", status: "$19", readable: "$01", writable: "$08", carrier: "$20", carrierPort: "$1D" }
+        : null;
+  const emitBooleanFromMask = (port, mask, invert = false) => {
+    const falseLabel = makeGeneratedLabel("AdamSerialFalse");
+    const doneLabel = makeGeneratedLabel("AdamSerialDone");
+    return [
+      `    in a,(${port})`,
+      `    and ${mask}`,
+      `    jr ${invert ? "nz" : "z"},${falseLabel}`,
+      "    ld a,1",
+      `    jr ${doneLabel}`,
+      `${falseLabel}:`,
+      "    xor a",
+      `${doneLabel}:`
+    ];
+  };
+  const serialQuery = line.match(/^(.+?)\s*=\s*serial\s+(readable|writable|read|carrier)$/i);
+  if (serialQuery) {
+    if (!serialProfile) {
+      return { ok: false, handled: true, log: `serial I/O requires target.hardware adamlink, eve-serial, or micro-serial: ${rawLine}` };
+    }
+    const operation = serialQuery[2].toLowerCase();
+    const store = emitStoreInt8FromA(serialQuery[1].trim());
+    if (!store) {
+      return { ok: false, handled: true, log: `serial ${operation} requires a byte destination: ${rawLine}` };
+    }
+    const read = operation === "read"
+      ? [`    in a,(${serialProfile.data})`]
+      : operation === "carrier"
+        ? emitBooleanFromMask(serialProfile.carrierPort || serialProfile.status, serialProfile.carrier, !serialProfile.carrierPort)
+        : emitBooleanFromMask(serialProfile.status, serialProfile[operation]);
+    return { ok: true, handled: true, lines: [...read, ...store] };
+  }
+
+  const serialWrite = line.match(/^serial\s+write\s+(.+)$/i);
+  if (serialWrite) {
+    if (!serialProfile) {
+      return { ok: false, handled: true, log: `serial I/O requires target.hardware adamlink, eve-serial, or micro-serial: ${rawLine}` };
+    }
+    const loadValue = emitLoadInt8ValueInto?.("a", serialWrite[1].trim()) || emitLoadInt8TermIntoA?.(serialWrite[1].trim());
+    if (!loadValue) {
+      return { ok: false, handled: true, log: `serial write requires a byte value: ${rawLine}` };
+    }
+    return { ok: true, handled: true, lines: [...loadValue, `    out (${serialProfile.data}),a`] };
+  }
   const resolveRecordInfo = (token) => {
     const resolved = resolveWholeRecord?.(token);
     if (resolved) return resolved;

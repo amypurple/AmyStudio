@@ -3948,6 +3948,33 @@ was accepted and `1` on failure. `print` does not append a carriage return;
 send byte `13` explicitly when one is required. This command is rejected for
 OS7 cartridge targets rather than silently changing screen output semantics.
 
+## Native ADAM serial interfaces
+
+Select one interface in `project.amy.json` with `target.hardware`:
+`"adamlink"`, `"eve-serial"`, or `"micro-serial"`. The Amy source then stays
+independent of its port addresses:
+
+```basic
+u8 Ready = 0
+u8 Byte = 0
+u8 Connected = 0
+
+Ready = serial readable
+if Ready then Byte = serial read
+Ready = serial writable
+if Ready then serial write Byte
+Connected = serial carrier
+```
+
+All operations are non-blocking. `serial readable` and `serial writable`
+normalize the selected UART status to `0` or `1`; `serial read` and
+`serial write` transfer one byte. `serial carrier` is available for AdamLink
+and Eve/Orphanware through the SCN2651 DCD flag. For Micro Innovations it
+reads the MIB3 SCN2681 input port `$1D`, where modem Carrier Detect is bit 5.
+Serial syntax is restricted to ADAM targets and requires an explicit hardware declaration.
+Protocols, timeouts, baud configuration, and Hayes commands remain application
+logic for now.
+
 The reserved `bank n` section boundary is not yet linkable inside one monolithic Amy source. Switchable bank sources must currently be assigned to `switchable-bank` outputs in `project.amy.json`. Amy reports an error instead of silently placing them in the fixed ROM.
 
 ## Super Game Module AY sound

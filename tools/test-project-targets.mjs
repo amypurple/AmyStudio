@@ -62,6 +62,19 @@ assert.ok(!adamSoundEnhancerContext.capabilities.includes("sgm"));
 assert.ok(!adamSoundEnhancerContext.capabilities.includes("sgm-ram-upper"));
 assert.ok(!adamSoundEnhancerContext.capabilities.includes("sgm-ram-lower"));
 assert.deepEqual(getBuildContextDefines(adamSoundEnhancerContext), ["AMY_TARGET_ADAM", "AMY_HAS_EOS", "AMY_HAS_ADAMNET", "AMY_HAS_FILE_IO", "AMY_HAS_SGM_AY"]);
+for (const [hardware, backend] of [
+  ["adamlink", "serial-adamlink"],
+  ["eve-serial", "serial-eve"],
+  ["micro-serial", "serial-micro"]
+]) {
+  const serialContext = resolveAmyBuildContext({
+    target: { platform: "adam-native-program", medium: "dsk", hardware: [hardware] },
+    memoryProfile: "adam-eos-application"
+  });
+  assert.ok(serialContext.capabilities.includes("serial"));
+  assert.ok(serialContext.capabilities.includes(backend));
+  assert.ok(getBuildContextDefines(serialContext).includes("AMY_HAS_SERIAL"));
+}
 const hybridContext = resolveAmyBuildContext({
   target: { platform: "adam-disk", medium: "dsk" },
   memoryProfile: "adam-os7-eos-drivers"

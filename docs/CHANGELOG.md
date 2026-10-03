@@ -1,3 +1,13 @@
+## 2026-10-03 - Native ADAM serial byte I/O
+
+- Added target-selected AdamLink, Eve/Orphanware, and Micro Innovations serial
+  backends with common non-blocking `serial readable`, `serial writable`,
+  `serial read`, and `serial write` syntax.
+- Added verified carrier detection for the two SCN2651 interfaces and the MIB3
+  SCN2681 input-port wiring (`$1D`, bit 5).
+- Runtime-tested receive and transmit on native EOS DSK/DDP and the OS7+EOS
+  hybrid loader, while keeping ColecoVision cartridge builds isolated.
+
 ## 2026-09-11 - Completed Sound Workspace v1
 
 - Added complete animated previews for the benchmark's layered metasprite and 3x2 tile ship.
