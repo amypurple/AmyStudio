@@ -353,7 +353,7 @@ export class Z80Optimizer {
                 const target = String(regName || '').toLowerCase();
                 const mnem = token.mnemonic.toLowerCase();
                 if (target === 'a' &&
-                    ['adc', 'add', 'and', 'cp', 'cpl', 'daa', 'neg', 'or', 'rla', 'rlca', 'rra', 'rrca', 'sbc', 'sub', 'xor'].includes(mnem)) {
+                    ['adc', 'add', 'and', 'cp', 'cpl', 'daa', 'neg', 'or', 'rla', 'rlca', 'rra', 'rrca', 'rld', 'rrd', 'sbc', 'sub', 'xor'].includes(mnem)) {
                     // Many Z80 ALU opcodes read A implicitly even when A is not
                     // listed as an operand, for example "cp 30". Register
                     // liveness must treat those as real A uses.
@@ -406,7 +406,7 @@ export class Z80Optimizer {
                     return operandWritesTarget(ops[0]) || (ops.length < 2 && writesA());
                 }
 
-                if (['sub', 'and', 'or', 'xor', 'neg', 'cpl', 'daa', 'rla', 'rra', 'rlca', 'rrca'].includes(mnem)) {
+                if (['sub', 'and', 'or', 'xor', 'neg', 'cpl', 'daa', 'rla', 'rra', 'rlca', 'rrca', 'rld', 'rrd'].includes(mnem)) {
                     return writesA();
                 }
 
@@ -1539,6 +1539,11 @@ export class Z80Optimizer {
                 const instructionCanClobberRegister = (inst, regName) => {
                     if (!(inst instanceof Instruction)) return false;
                     const m = inst.mnemonic.toLowerCase();
+                    // RLD/RRD have no explicit register operand, but both rewrite A
+                    // and S/Z/PV/H/N flags. AF preservation around them is semantic.
+                    if (String(regName).toLowerCase() === 'af' && ['rld', 'rrd'].includes(m)) {
+                        return true;
+                    }
                     if (['call', 'rst', 'inir', 'indr', 'otir', 'otdr', 'ldi', 'ldir', 'ldd', 'lddr', 'ini', 'ind', 'outi', 'outd'].includes(m)) {
                         return true;
                     }
@@ -1552,6 +1557,9 @@ export class Z80Optimizer {
                 const instructionSafeBetweenPushPop = (inst, savedPair, allowReadOnlyPairUse = false) => {
                     if (!(inst instanceof Instruction) || inst.label) return false;
                     const m = inst.mnemonic.toLowerCase();
+                    if (savedPair === 'af' && ['rld', 'rrd'].includes(m)) {
+                        return false;
+                    }
                     if (['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt', 'push', 'pop', 'ex', 'exx'].includes(m)) {
                         return false;
                     }
