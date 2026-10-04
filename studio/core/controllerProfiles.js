@@ -1,4 +1,5 @@
 export const CONTROLLER_STORAGE_KEY = "amyStudio.controllerProfiles.v1";
+const NO_KEYS_PRESSED = new Set();
 
 export const CONTROLLER_DEVICE_TYPES = Object.freeze([
   { id: "standard", label: "Standard Controller" },
@@ -253,7 +254,8 @@ export function buildControllerFrame(config, {
   pressedKeys = new Set(),
   gamepads = [],
   inputBits,
-  deadzone = 0.45
+  deadzone = 0.45,
+  keyboardPort = null
 } = {}) {
   const normalized = normalizeControllerConfig(config);
   const controllerMasks = [0, 0];
@@ -261,16 +263,17 @@ export function buildControllerFrame(config, {
   for (let portIndex = 0; portIndex < 2; ++portIndex) {
     const port = normalized.ports[portIndex];
     const gamepad = findGamepad(port, gamepads);
+    const portKeys = keyboardPort === null || keyboardPort === portIndex ? pressedKeys : NO_KEYS_PRESSED;
     for (const action of CONTROLLER_ACTIONS) {
       const mask = inputBits?.[action.id];
       if (!mask || !isControllerActionVisible(port.type, action)) continue;
-      if (actionActive(port, action.id, pressedKeys, gamepad, deadzone)) {
+      if (actionActive(port, action.id, portKeys, gamepad, deadzone)) {
         controllerMasks[portIndex] |= mask;
       }
     }
     if (port.type !== "standard") {
-      const negative = spinnerActionValue(port, "SPINNER_NEG", pressedKeys, gamepad, deadzone);
-      const positive = spinnerActionValue(port, "SPINNER_POS", pressedKeys, gamepad, deadzone);
+      const negative = spinnerActionValue(port, "SPINNER_NEG", portKeys, gamepad, deadzone);
+      const positive = spinnerActionValue(port, "SPINNER_POS", portKeys, gamepad, deadzone);
       spinnerDeltas[portIndex] = Math.round((positive - negative) * port.sensitivity);
     }
   }

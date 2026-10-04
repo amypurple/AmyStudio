@@ -10,7 +10,7 @@ import {
   saveControllerConfig,
   setControllerBinding,
   setControllerDeviceType
-} from "./controllerProfiles.js?v=20260805-steering-pair";
+} from "./controllerProfiles.js?v=20261004-keyboard-port-routing1";
 
 function ensureStyles() {
   if (document.querySelector("#controllerSetupStyles")) return;
@@ -396,16 +396,18 @@ export function createControllerSetupUi({
     if (!dialog.open) dialog.showModal();
   }
 
-  function getFrameInput(keys = pressedKeys) {
+  function getFrameInput(keys = pressedKeys, { keyboardPort = null } = {}) {
     return buildControllerFrame(config, {
       pressedKeys: keys,
       gamepads: getGamepads(),
-      inputBits
+      inputBits,
+      keyboardPort
     });
   }
 
-  function isKeyMapped(code) {
-    return config.ports.some((port) => {
+  function isKeyMapped(code, selectedPort = null) {
+    return config.ports.some((port, portIndex) => {
+      if (selectedPort !== null && selectedPort !== portIndex) return false;
       return CONTROLLER_ACTIONS.some((action) => {
         if (!isControllerActionVisible(port.type, action)) return false;
         return (port.bindings[action.id] || []).some((binding) => binding.kind === "key" && binding.code === code);

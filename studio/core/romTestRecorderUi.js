@@ -42,7 +42,7 @@ import {
   NTSC_CYCLES_PER_FRAME,
   resolveProfileTarget
 } from "./routineCycleProfiler.js?v=20260801-profile-readable";
-import { createControllerSetupUi } from "./controllerSetupUi.js?v=20260805-steering-combined";
+import { createControllerSetupUi } from "./controllerSetupUi.js?v=20261004-keyboard-port-routing1";
 import { detectEmulatorMedia, EMULATOR_MEDIA_KIND, isKnownEmulatorMediaName } from "./emulatorMediaDetection.js?v=20261002-adam-media-autodetect1";
 
 const SEED = 0x19770527;
@@ -347,6 +347,7 @@ function buildDialog() {
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<button class="rom-recorder__region-toggle" type="button" data-field="region" value="-1" title="Cycle video region">AUTO</button></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
+          <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
@@ -442,6 +443,18 @@ export function createRomTestRecorderUi({
       for (const key of new Set(pressedAdamCodes.values())) core.setAdamKey(key, false);
     }
     pressedAdamCodes.clear();
+  }
+
+  function keyboardJoystickPort() {
+    const target = field("keyboardTarget")?.value;
+    if (target === "joy1") return 0;
+    if (target === "joy2") return 1;
+    return field("machine")?.value === "adam-computer" ? -1 : null;
+  }
+
+  function releaseComputerKeyboard() {
+    pressedKeys.clear();
+    releaseAdamKeyboard();
   }
   let routeReplayActive = false;
 
@@ -1112,7 +1125,9 @@ export function createRomTestRecorderUi({
 
   function runOneFrame({ renderNow = true } = {}) {
     const timeline = recorder.getTimeline();
-    const mappedInput = controllerSetup?.getFrameInput(pressedKeys) || {
+    const mappedInput = controllerSetup?.getFrameInput(pressedKeys, {
+      keyboardPort: keyboardJoystickPort()
+    }) || {
       controllerMasks: [0, 0],
       spinnerDeltas: [0, 0]
     };
@@ -2085,7 +2100,15 @@ export function createRomTestRecorderUi({
       }
       setMouseSpinnerEnabled(false);
     });
-    window.addEventListener("blur", () => { pressedKeys.clear(); releaseAdamKeyboard(); clearMouseFireButtons(); });
+    field("keyboardTarget").addEventListener("change", () => {
+      releaseComputerKeyboard();
+      const target = field("keyboardTarget").value;
+      setRecorderStatus(target === "adam"
+        ? "Computer keyboard controls the ADAM keyboard."
+        : `Computer keyboard controls joystick ${target === "joy2" ? "P2" : "P1"}.`);
+      dialog.querySelector("canvas")?.focus();
+    });
+    window.addEventListener("blur", () => { releaseComputerKeyboard(); clearMouseFireButtons(); });
     dialog.addEventListener("keydown", (event) => {
       if (event.altKey && event.key === "Enter") {
         event.preventDefault();
@@ -2094,7 +2117,7 @@ export function createRomTestRecorderUi({
       }
       if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(event.target.tagName)) return;
       const canvas = dialog.querySelector("canvas.rom-recorder__screen");
-      if (field("machine").value === "adam-computer" && document.activeElement === canvas) {
+      if (field("machine").value === "adam-computer" && field("keyboardTarget").value === "adam" && document.activeElement === canvas) {
         const adamKey = adamKeyFromKeyboardCode(event.code);
         if (adamKey !== null) {
           event.preventDefault();
@@ -2105,7 +2128,8 @@ export function createRomTestRecorderUi({
           return;
         }
       }
-      if (!controllerSetup.isKeyMapped(event.code)) return;
+      const keyboardPort = keyboardJoystickPort();
+      if (!controllerSetup.isKeyMapped(event.code, keyboardPort)) return;
       event.preventDefault();
       pressedKeys.add(event.code);
     });
@@ -2117,7 +2141,8 @@ export function createRomTestRecorderUi({
         if (![...pressedAdamCodes.values()].includes(adamKey)) core?.setAdamKey(adamKey, false);
         return;
       }
-      if (!controllerSetup.isKeyMapped(event.code)) return;
+      const keyboardPort = keyboardJoystickPort();
+      if (!controllerSetup.isKeyMapped(event.code, keyboardPort)) return;
       event.preventDefault();
       pressedKeys.delete(event.code);
     });

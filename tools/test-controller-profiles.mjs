@@ -76,6 +76,15 @@ assert.equal(frame.controllerMasks[0], INPUT.UP | INPUT.BLUE);
 assert.equal(frame.controllerMasks[1], INPUT.FIRE_RIGHT);
 assert.deepEqual(frame.spinnerDeltas, [0, 0]);
 
+frame = buildControllerFrame(config, {
+  pressedKeys: new Set(["ArrowUp", "KeyE"]),
+  inputBits: INPUT,
+  gamepads: [],
+  keyboardPort: 1
+});
+assert.equal(frame.controllerMasks[0], 0, "Keyboard routing to P2 must not leak into P1");
+assert.equal(frame.controllerMasks[1], INPUT.FIRE_RIGHT, "Keyboard routing to P2 must preserve P2 mappings");
+
 const gamepad = {
   id: "Test Pad",
   index: 1,
@@ -84,7 +93,8 @@ const gamepad = {
 };
 frame = buildControllerFrame(config, {
   inputBits: INPUT,
-  gamepads: [gamepad]
+  gamepads: [gamepad],
+  keyboardPort: 0
 });
 assert.equal(frame.spinnerDeltas[1], -8, "analog wheel movement must preserve magnitude");
 
