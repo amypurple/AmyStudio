@@ -9,8 +9,8 @@ const core = await GearcolecoTestCore.create({ moduleUrl });
 
 try {
   const profiles = [
-    { name: "adamlink", data: 0x5f, status: 0x5e, txReady: 0x01, noCarrier: 0xc0 },
-    { name: "eve", data: 0x44, status: 0x45, txReady: 0x01, noCarrier: 0xc0 },
+    { name: "adamlink", data: 0x5e, status: 0x5f, txReady: 0x05, dsr: 0x80, noCarrier: 0x40 },
+    { name: "eve", data: 0x44, status: 0x45, txReady: 0x05, dsr: 0x80, noCarrier: 0x40 },
     { name: "micro", data: 0x1b, status: 0x19, txReady: 0x08, carrierPort: 0x1d, carrier: 0x20 }
   ];
 
@@ -18,16 +18,16 @@ try {
     core.setAdamSerialProfile(profile.name);
     core.setAdamSerialLoopback(false);
     core.setAdamSerialCarrier(false);
-    assert.equal(core.debugAdamPortIn(profile.status), profile.txReady | (profile.noCarrier || 0), `${profile.name} idle status`);
+    assert.equal(core.debugAdamPortIn(profile.status), profile.txReady | (profile.dsr || 0) | (profile.noCarrier || 0), `${profile.name} idle status`);
 
     core.injectAdamSerialReceive(Uint8Array.of(0x41));
     assert.equal(
       core.debugAdamPortIn(profile.status),
-      profile.txReady | (profile.name === "micro" ? 0x01 : 0x02) | (profile.noCarrier || 0),
+      profile.txReady | (profile.name === "micro" ? 0x01 : 0x02) | (profile.dsr || 0) | (profile.noCarrier || 0),
       `${profile.name} receive-ready status`
     );
     assert.equal(core.debugAdamPortIn(profile.data), 0x41, `${profile.name} received byte`);
-    assert.equal(core.debugAdamPortIn(profile.status), profile.txReady | (profile.noCarrier || 0), `${profile.name} receive queue drained`);
+    assert.equal(core.debugAdamPortIn(profile.status), profile.txReady | (profile.dsr || 0) | (profile.noCarrier || 0), `${profile.name} receive queue drained`);
 
     core.debugAdamPortOut(profile.data, 0x42);
     assert.deepEqual([...core.readAdamSerialTransmit()], [0x42], `${profile.name} transmitted byte`);
@@ -40,7 +40,7 @@ try {
     core.setAdamSerialCarrier(true);
     assert.equal(
       core.debugAdamPortIn(profile.carrierPort || profile.status),
-      profile.carrierPort ? profile.carrier : profile.txReady | (profile.carrier || 0),
+      profile.carrierPort ? profile.carrier : profile.txReady | (profile.dsr || 0) | (profile.carrier || 0),
       `${profile.name} active-carrier status`
     );
   }

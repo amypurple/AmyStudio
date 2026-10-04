@@ -5,7 +5,7 @@ import {
   GEARCOLECO_MACHINE,
   GEARCOLECO_TEST_INPUT,
   GEARCOLECO_TEST_REGION
-} from "./gearcolecoTestCore.js?v=20261002-adam-serial1";
+} from "./gearcolecoTestCore.js?v=20261004-adam-scn2651-txemt2";
 import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAdamFirmware, saveAdamFirmwareToBrowser } from "./adamFirmwareStorage.js?v=20260925-adam-local-firmware2";
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
@@ -180,6 +180,15 @@ function downloadJson(filename, value) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function downloadBytes(filename, bytes) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 async function sha256(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const digest = await crypto.subtle.digest("SHA-256", view);
@@ -341,7 +350,7 @@ function buildDialog() {
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
-          <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option></select></label>
+          <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
           <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
         </div>
         <div class="rom-recorder__development" aria-label="Development checkpoints">
@@ -366,7 +375,7 @@ function buildDialog() {
         <div class="rom-recorder__pane" data-pane="ram"><div class="rom-recorder__memory-controls"><input data-field="ramAddress" value="$7000" aria-label="CPU memory address"><select data-field="ramLength"><option>64</option><option>128</option><option>256</option><option selected>384</option><option>512</option></select><button class="rom-recorder__compact-action" data-action="refreshRam" title="Refresh CPU memory" aria-label="Refresh CPU memory">&#x21BB;</button></div><pre class="rom-recorder__dump" data-field="ramDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="vram"><div class="rom-recorder__memory-controls"><input data-field="vramAddress" value="$0000" aria-label="VRAM address"><select data-field="vramLength"><option>64</option><option>128</option><option>256</option><option selected>384</option><option>512</option></select><button class="rom-recorder__compact-action" data-action="refreshVram" title="Refresh VRAM" aria-label="Refresh VRAM">&#x21BB;</button></div><pre class="rom-recorder__dump" data-field="vramDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="map"><input data-field="symbolFilter" placeholder="Filter symbols or address, e.g. Player or $70" aria-label="Filter symbols"><div class="rom-recorder__symbol-list" data-field="symbolList"></div><details><summary>Raw linker memory map</summary><pre class="rom-recorder__raw-map" data-field="rawMap"></pre></details></div>
-        <div class="rom-recorder__pane" data-pane="adam"><div class="rom-recorder__memory-controls"><button class="rom-recorder__compact-action" data-action="refreshAdam" title="Refresh ADAMnet state" aria-label="Refresh ADAMnet state">&#x21BB;</button><button class="rom-recorder__compact-action" data-action="clearAdamPrinter" title="Clear captured printer output" aria-label="Clear captured printer output">Clear printer</button></div><div data-field="adamState"></div><pre class="rom-recorder__dump" data-field="adamPrinterOutput">ADAM machine not running.</pre></div>
+        <div class="rom-recorder__pane" data-pane="adam"><div class="rom-recorder__memory-controls"><button class="rom-recorder__compact-action" data-action="refreshAdam" title="Refresh ADAMnet state" aria-label="Refresh ADAMnet state">&#x21BB;</button><button class="rom-recorder__compact-action" data-action="clearAdamPrinter" title="Clear captured printer output" aria-label="Clear captured printer output">Clear printer</button><button class="rom-recorder__compact-action" data-action="saveAdamMedia" title="Download the current writable DSK or DDP image" aria-label="Save modified ADAM media">Save media</button></div><div data-field="adamState"></div><pre class="rom-recorder__dump" data-field="adamPrinterOutput">ADAM machine not running.</pre></div>
         <div class="rom-recorder__pane" data-pane="breakpoints"><div class="rom-recorder__memory-controls rom-recorder__memory-controls--breakpoint"><input data-field="breakpointAddress" placeholder="Code symbol or $8000" aria-label="Breakpoint code address"><input data-field="breakpointCondition" placeholder="Optional: Score >= 5" aria-label="Optional RAM breakpoint condition"><select data-field="breakpointValueType" aria-label="Condition value type"><option value="auto">auto</option><option value="u8">u8</option><option value="i8">i8</option><option value="u16">u16</option><option value="i16">i16</option></select><button class="rom-recorder__compact-action" data-action="addBreakpoint" title="Add execute breakpoint, optionally conditional" aria-label="Add execute breakpoint">+</button></div><div class="rom-recorder__memory-controls rom-recorder__memory-controls--watch"><input data-field="watchCondition" placeholder="RAM watch: Lives = 0" aria-label="RAM watch condition"><select data-field="watchValueType" aria-label="RAM watch value type"><option value="auto">auto</option><option value="u8">u8</option><option value="i8">i8</option><option value="u16">u16</option><option value="i16">i16</option></select><button class="rom-recorder__compact-action" data-action="addWatch" title="Add RAM watch" aria-label="Add RAM watch">+</button></div><div class="rom-recorder__breakpoints" data-field="breakpointList"></div><button class="rom-recorder__compact-action" data-action="clearBreakpoints" title="Clear all breakpoints and RAM watches" aria-label="Clear all breakpoints and RAM watches">&#x00D7;</button></div>
         <div class="rom-recorder__pane" data-pane="profiler"><div class="rom-recorder__profiler-controls"><input data-field="profileTarget" list="rom-recorder-profile-targets" placeholder="Amy sub, symbol, or $8000" aria-label="Routine to profile"><datalist id="rom-recorder-profile-targets" data-field="profileTargets"></datalist><button class="rom-recorder__compact-action" data-action="profileRoutine" title="Profile next routine entry" aria-label="Profile next routine entry">&#x25B6;</button><button class="rom-recorder__compact-action" data-action="clearProfiles" title="Clear profiles" aria-label="Clear profiles">&#x00D7;</button></div><div class="rom-recorder__profiler-results" data-field="profileResults"></div><p class="rom-recorder__profiler-note" title="Runs include nested calls and recursion. Main execution excludes NMI and IRQ cycles. Own range is diagnostic, not exclusive self-time. Profiling does not modify the ROM.">Inclusive · main excludes NMI/IRQ · ROM unchanged</p></div>
       </section>
@@ -718,6 +727,7 @@ export function createRomTestRecorderUi({
       const mioc = core.getAdamMioc();
       const summary = core.getAdamNetSummary();
       const transfer = summary.transfer;
+      const serial = summary.serial;
       const activeDcbs = summary.dcbs.filter((dcb) => dcb.status || dcb.device || dcb.length);
       const printer = core.getAdamPrinterData();
       state.innerHTML = `<div class="rom-recorder__summary">
@@ -725,6 +735,7 @@ export function createRomTestRecorderUi({
         <div class="rom-recorder__card"><strong>AdamNet controller</strong>state ${formatHex(summary.controllerState, 2)} · PCB ${formatHex(summary.pcbAddress)} · status ${formatHex(summary.pcbStatus, 2)}</div>
         <div class="rom-recorder__card"><strong>Device control blocks</strong>${activeDcbs.length} active of ${summary.dcbCount}</div>
         <div class="rom-recorder__card"><strong>Transfer</strong>${transfer.active ? `device ${formatHex(transfer.device, 2)} · command ${formatHex(transfer.command, 2)} · block ${transfer.block} · ${transfer.length} bytes` : "idle"}${transfer.error ? ` · error ${formatHex(transfer.error, 2)}` : ""}</div>
+        <div class="rom-recorder__card"><strong>Serial / modem</strong>${serial.profile ? `profile ${serial.profile} · RX ${serial.rxSize} · TX ${serial.txSize} · carrier ${serial.carrier ? "on" : "off"}${serial.hayes ? ` · Hayes${serial.commandLength ? ` (${serial.commandLength} pending)` : ""}` : serial.loopback ? " · loopback" : ""}` : "not installed"}</div>
       </div>`;
       const text = formatAdamPrinterText(printer);
       output.textContent = `PRINTER SPOOL (${printer.length} bytes)\n${text || "(empty)"}\n\nRAW BYTES\n${printer.length ? formatHexDump(printer, 0) : "(empty)"}`;
@@ -1484,6 +1495,7 @@ export function createRomTestRecorderUi({
     const serialProfile = serialSetting.split("-")[0];
     core.setAdamSerialProfile(serialProfile);
     core.setAdamSerialLoopback(serialSetting.endsWith("-loopback"));
+    core.setAdamSerialHayes(serialSetting.endsWith("-hayes"));
     core.setAdamSerialCarrier(serialSetting.endsWith("-loopback"));
     if (adam) {
       core.loadAdamFirmware(adamFirmware);
@@ -1491,7 +1503,7 @@ export function createRomTestRecorderUi({
       core.loadAdamMedia(adamMediaBytes, {
         slot: externalAdamMediaType === GEARCOLECO_ADAM_MEDIA.DATA_PACK ? GEARCOLECO_ADAM_SLOT.DATA_PACK_1 : GEARCOLECO_ADAM_SLOT.DISK_1,
         type: externalAdamMediaType,
-        writeProtected: true
+        writeProtected: false
       });
       core.reset();
     } else {
@@ -1685,7 +1697,6 @@ export function createRomTestRecorderUi({
       playing = false;
       playbackAccumulator = 0;
       audioSink.flush();
-      releaseAdamKeyboard();
       try {
         if (gameplayRecording.recording) gameplayRecording.stop();
         action("recordVideo").classList.remove("is-recording");
@@ -1849,6 +1860,20 @@ export function createRomTestRecorderUi({
       core.clearAdamPrinterData();
       refreshAdamState();
       setRecorderStatus("ADAM printer spool cleared.");
+    });
+    action("saveAdamMedia").addEventListener("click", () => {
+      try {
+        if (!core || core.getMachine() !== GEARCOLECO_MACHINE.ADAM) {
+          throw new Error("Start ADAM media before saving it.");
+        }
+        const dataPack = externalAdamMediaType === GEARCOLECO_ADAM_MEDIA.DATA_PACK;
+        const slot = dataPack ? GEARCOLECO_ADAM_SLOT.DATA_PACK_1 : GEARCOLECO_ADAM_SLOT.DISK_1;
+        const extension = dataPack ? ".ddp" : ".dsk";
+        const sourceName = externalRomName || getProject()?.projectName || getProject()?.name || "amy-adam";
+        const stem = sourceName.replace(/\.(?:dsk|ddp)$/i, "");
+        downloadBytes(`${stem}-saved${extension}`, core.readAdamMedia(slot));
+        setRecorderStatus(`Saved writable ADAM media as ${stem}-saved${extension}.`);
+      } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     field("symbolFilter").addEventListener("input", renderSymbolList);
     for (const button of dialog.querySelectorAll("[data-input]")) bindInputButton(button);
@@ -2049,6 +2074,7 @@ export function createRomTestRecorderUi({
       playing = false;
       playbackAccumulator = 0;
       audioSink.flush();
+      releaseAdamKeyboard();
       controllerMasks[0] = 0;
       controllerMasks[1] = 0;
       if (core) {

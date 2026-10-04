@@ -23,8 +23,8 @@ hardware manuals. The table below uses the documented hardware mapping.
 
 | Selector | Interface | Data | Status/control | Observed status masks | Other initialization ports |
 | --- | --- | --- | --- | --- | --- |
-| `0` | Coleco AdamLink | `$5F` | `$5E` | SCN2651: TxRDY `$01`, RxRDY `$02`, DCD `$40` active-low | same pair |
-| `1` | Orphanware/Eve serial port 1, A block | `$44` | `$45` | SCN2651: TxRDY `$01`, RxRDY `$02`, DCD `$40` active-low | mode/command `$46`, `$47` |
+| `0` | Coleco AdamLink | `$5E` | `$5F` | SCN2651: TxRDY `$01`, RxRDY `$02`, DCD `$40` active-low, DSR `$80` asserted | same pair |
+| `1` | Orphanware/Eve serial port 1, A block | `$44` | `$45` | SCN2651: TxRDY `$01`, RxRDY `$02`, DCD `$40` active-low, DSR `$80` asserted | mode/command `$46`, `$47` |
 | `2` | Micro Innovations serial port 1 | `$1B` | `$19` | 2681: RxRDY `$01`, TxRDY `$04`, TxEMT `$08`; DCD is input-port `$1D` bit 5 | writes `$18`, `$19`, `$1A`, `$1E`; modem inputs read at `$1D` |
 | `3` | Local game | none | none | none | none |
 
@@ -35,28 +35,44 @@ fixed ADAMLink `$5E/$5F` pair.
 
 ## Behavioral evidence
 
-- Receive dispatch in the studied software used conflicting inferred labels.
-  Primary documentation resolves ADAMLink as control/status `$5E` and data
-  `$5F`, while the Orphanware A block uses data `$44`, status `$45`, and
-  mode/command `$46/$47`.
+- Earlier inferred labels had the AdamLink pair reversed. The untouched
+  AdamLink III executable resolves data as `$5E` and status/control as `$5F`:
+  its receive loop tests `$5F` RxRDY before reading `$5E`, and its transmit
+  loop tests `$5F` TxRDY before writing `$5E`. The Orphanware A block remains
+  data `$44`, status `$45`, and mode/command `$46/$47`.
 - Transmit dispatch waits on the corresponding status register before writing
   the outgoing byte to the selected data register.
 - Orphanware/Eve setup also reads and writes the block's mode/command ports.
 - MicroInnovations baud setup writes divisor/configuration values through
   `$18`, `$19`, `$1A`, and `$1E`, and reads `$1D`; observed cases include
   values associated with 300, 1200, and 2400-baud menu choices.
-- ADAMLink setup writes its SCN2651 command sequence through `$5E`.
+- ADAMLink setup writes its SCN2651 mode/command sequence through `$5F`.
 - Local play reaches EOS controller polling without touching a modem port.
 
 An independent `ADAMLINK` executable from `ANN Disk - 2024-04 - AdamLink III`
 contains repeated direct reads and writes at `$5E/$5F`. Its runtime uses EOS
 asynchronous keyboard services and exposes XMODEM send/receive commands. This
 corroborates the documented ADAMLink pair rather than relying only on
-ModemTank's inferred labels. With the corrected GearColeco ADAMLink profile,
-the untouched disk emits six initialization bytes and consumes an injected
-terminal byte. The same executable neither transmits nor consumes that byte
-under the Orphanware A-block profile. The XMODEM transfer path has not yet
-been executed under automation.
+ModemTank's inferred labels. With the corrected GearColeco AdamLink profile,
+the untouched disk writes its initialization sequence to the control port,
+consumes an injected terminal byte from the data port, and emits only actual
+terminal output into the transmit queue. The same executable does not consume that byte
+under the Orphanware A-block profile. Separating DSR bit 7 from active-low DCD
+bit 6 fixes AdamLink III's false `Carrier lost` result and produces its real
+`Modem online. Connected` state. Automation then reaches XMODEM SEND, DISK I,
+enters the real `ADAMLINK` directory name at main RAM `$D034`, terminates it
+with space/ETX, and reaches the A/H file-type screen. A complete XMODEM packet
+exchange has not yet been executed under automation.
+
+An instrumented boot also established the program's interrupt ownership. Once
+loaded, AdamLink III runs with MIOC `$01`, replaces the writable NMI vector at
+`$0066` with `JP $3C00`, and enables VDP NMI while continuing to use EOS
+keyboard and block-device services. This proves that an EOS application can
+own asynchronous VBlank. Amy's independent DSK/DDP feasibility test now also
+proves the relevant memory contract: MIOC `$01` maps main RAM in both halves,
+so writable `$0066` and Amy's resident `$C800-$DFFF` application remain visible
+together while EOS block I/O continues. Amy therefore uses the same ownership
+principle without copying AdamLink's implementation.
 
 Rechecking the original 2024 ANN ZIP gives exact static counts in the 21,504-
 byte executable: `$5E` is read twice and written twice; `$5F` is read seven
@@ -115,19 +131,12 @@ Primary references used for the correction:
 
 Still required before claiming complete modem emulation:
 
-1. Execute AdamLink III and ModemTank against each matching profile and refine
-   remaining setup semantics from traces rather than names inferred from polling.
-2. Add serial state and captured traffic to the ADAM debugger inspector.
-3. Model transmission timing and framing where software depends on baud rate.
-
-Save-state version 109 preserves the selected profile, loopback and carrier
-flags, configuration registers, and complete RX/TX queues. Older ADAM states
-remain loadable and resume with no serial card selected.
-
-Amy keeps hardware selection in `target.hardware`, not in every statement.
-`adamlink`, `eve-serial`, and `micro-serial` therefore compile the same source
-to their verified ports and status masks. Open-bus presence detection is now
-verified; UART setup, timeouts, and modem commands remain deferred.
+1. The state-driven scripted peer now completes XMODEM send: it reaches FILE,
+   DISK I and filename/type selection, reads the selected 2,560-byte EOS
+   document, initiates with NAK, validates and ACKs 20 blocks, compares every
+   payload byte, receives EOT and supplies the final ACK. This proved AdamLink
+   waits on SCN2651 TxEMT (`$04`) as well as TxRDY (`$01`); GearColeco now
+   exposes both bits.
 
 Modem Master 1.5 provides a second independent AdamLink implementation. Its
 SmartBASIC loader contains injected Z80 routines using data port `$5E` and
@@ -135,6 +144,42 @@ status/control port `$5F`, including receive-ready, transmit-ready and carrier
 tests. Its application menus cover direct dialing, terminal use, ASCII
 XON/XOFF transfer and XMODEM. This makes it a useful end-to-end keyboard and
 serial test without redistributing the original disk image.
+GearColeco now boots this disk to its main menu and an automated SmartKey V
+event reaches its real FILE TRANSFER menu, proving keyboard DCB input through a
+second modem application. Protocol traffic itself remains the next boundary.
+2. XMODEM receive is now verified as well: AdamLink requests CRC mode, accepts
+   two CRC-16 packets, ACKs EOT, creates EOS file `RXTESTA`, and the exported
+   mounted DSK contains the exact 256-byte payload. The media-export bridge is
+   read-only from the host's perspective and also enables future debugger
+   downloads of modified DSK/DDP images.
+3. Error handling now covers bad-CRC NAK/retry, duplicate-block ACK without
+   duplication, and double-CAN cancellation. AdamLink preserves the requested
+   EOS filename with zero length when cancellation occurs before its first
+   1 KiB EOS block is committed.
+4. Mid-transfer save-state restoration is verified across UART state, protocol
+   state and writable media. No-peer timeout is pinned at five total `C`
+   requests, five NAK retries and CAN over 4,135 NTSC frames; AdamLink reports
+   failure and closes the named partial EOS file at zero length.
+5. Hayes command/result traffic is now deterministic: `AT`, `ATD`, and `ATH`
+   produce `OK`, `CONNECT 1200`, and `NO CARRIER`; unknown commands produce
+   `ERROR`. Carrier follows connect/hang-up, lowercase input is accepted, and
+   a save state captured halfway through a dial command resumes correctly.
+   Baud/framing timing remains to be verified.
+6. ROM TEST & DEBUG now exposes the core's serial profile, carrier,
+   RX/TX queue sizes, Hayes/loopback mode, and unfinished command length.
+   Full captured-byte browsing remains optional future debugger work.
+
+Save-state version 111 preserves the selected profile, loopback, carrier and
+Hayes flags, partial Hayes command, configuration registers, and complete
+RX/TX queues. Older ADAM states remain loadable and initialize newer serial
+fields safely.
+
+Amy keeps hardware selection in `target.hardware`, not in every statement.
+`adamlink`, `eve-serial`, and `micro-serial` therefore compile the same source
+to their verified ports and status masks. Open-bus presence detection, byte
+I/O, readiness, carrier, loopback, captured traffic, and save states are now
+verified. Deterministic Hayes traffic and real AdamLink III XMODEM are also
+verified. UART setup and baud-sensitive framing remain the unfinished layer.
 
 ## Reproduction
 
@@ -145,7 +190,10 @@ node tools/extract-adam-eos-file.mjs "...E.O.S. Files.dsk" Tank build/adam-devic
 node tools/test-adam-modemtank-interfaces.mjs build/adam-device-study/ModemTank-Tank.bin build/adam-device-study/AdamLink3.bin
 node tools/test-gearcoleco-adam-serial.mjs
 node tools/test-gearcoleco-adam-serial-state.mjs OS7.ROM EOS.ROM WP.ROM
+node tools/test-gearcoleco-adam-hayes.mjs OS7.ROM EOS.ROM WP.ROM
 node tools/probe-adamlink3-serial.mjs
+node tools/probe-adamlink3-ui.mjs
+node tools/test-modem-master-keyboard.mjs "Modem Master 1.5 (1989) (ADAMagic Software).dsk"
 node tools/test-native-eos-amy-serial.mjs
 node tools/trace-adam-firmware-services.mjs "...E.O.S. Files.dsk" 1800 --adam-keys=700:56
 ```

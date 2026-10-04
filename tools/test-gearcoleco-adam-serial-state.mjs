@@ -33,7 +33,7 @@ try {
   core.setAdamSerialProfile("none");
 
   core.loadState(state);
-  assert.equal(core.debugAdamPortIn(0x45), 0x03, "restored SCN2651 RX-ready, TX-ready, and active carrier");
+  assert.equal(core.debugAdamPortIn(0x45), 0x87, "restored SCN2651 RX-ready, TX-ready/empty, DSR, and active carrier");
   assert.equal(core.debugAdamPortIn(0x44), 0x52, "restored first RX byte");
   assert.equal(core.debugAdamPortIn(0x44), 0x58, "restored second RX byte");
   assert.deepEqual([...core.readAdamSerialTransmit()], [0x54, 0x58], "restored TX queue");

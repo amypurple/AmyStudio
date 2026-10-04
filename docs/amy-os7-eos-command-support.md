@@ -131,7 +131,7 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | Raw ASM call | `call asm Routine` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Programmer owns target ABI; namespaces must remain explicit. A hybrid DSK runtime test passes calculated byte/word scalars and a global address through A/HL/DE, boots through EOS into OS7, and verifies both writes in RAM. |
 | Screen enable without NMI | `screen on no nmi` | `VERIFIED` | `VERIFIED` | `VERIFIED` | A native Amy boot was runtime-tested from DSK and DDP. This explicit form does not claim a firmware-safe NMI hook. |
 | Screen control without NMI | `screen off` / `screen on no nmi` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native DSK/DDP tests verify EOS `$FD62` against physical VDP R1. NMI-enabled `screen on` remains planned. |
-| NMI enable | `screen on` / `nmi on` | `VERIFIED` | `VERIFIED` | `REJECT` | This is a limitation of Amy's current native loader, not of EOS or ADAM hardware. EOS publishes a default `RETN` NMI vector, and a program with writable low RAM may install its own `$0066` owner before enabling VDP R1 bit 5. Amy currently fails closed because its loader does not yet guarantee that mapping and ownership contract. |
+| NMI enable | `screen on` / `nmi on` | `VERIFIED` | `VERIFIED` | `VERIFIED` | The native loader's MIOC `$01` contract maps writable low RAM and the resident `$C800-$DFFF` program simultaneously. Amy installs `JP AMY_EOS_NMI` at `$0066`, acknowledges the VDP directly, and preserves maskable-interrupt ownership. DSK/DDP tests prove asynchronous VBlank and a concurrent EOS block read. `screen on no nmi` retains the polling backend. |
 | Display-only control | `display on` / `display off` | `VERIFIED` | `VERIFIED` | `VERIFIED` | DSK/DDP runtime tests prove EOS `$FD62/$FD20` preserve the disabled-NMI bit while toggling only display enable. |
 | Text screen | `text screen` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native lowering uses EOS `$FD20/$FD29/$FD38`; DSK/DDP tests also verify the authoritative NAME-table pointer at `$FD68=$1800`. |
 | Graphics II tile screen | `tile screen` | `VERIFIED` | `VERIFIED` | `VERIFIED` | DSK/DDP tests verify R0-R6, EOS table pointers, NAME output, the 2 KiB R3=`$9F` text-style color table, and all three duplicated pattern thirds. |
@@ -153,10 +153,12 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | VoxPCM | `play voxpcm Voice`; `play voxpcm Voices[Index]` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS removes the OS7 NMI/VDP wrapper, keeps interrupts disabled, and uses the same cycle-balanced stock-PSG decoder. A 664-byte program plays direct and dynamically indexed sequences from DSK/DDP, returns to Amy code, remains in the native bank, and produces nonzero PCM. An optional SGM AY backend remains separate research. |
 | SGM/ADAM Sound Enhancer AY register access | `ay write Register, Value`; `ay read Register, Value`; `ay mute` | `VERIFIED` with `target.hardware: ["sgm1"]` | `VERIFIED` with explicit hardware | `VERIFIED` with `target.hardware: ["adam-sound-enhancer"]` | Uses SGM-compatible ports `$50/$51/$52`; an unexpanded target rejects it. GearColeco and ROM TEST & DEBUG provide separate `ADAM Sound Enhancer` and `Opcode SGM` profiles. The 89-byte native Amy program boots from DSK with Sound Enhancer and DDP with Opcode SGM; the OS7+EOS build boots through the real hybrid DSK loader. All runs verify AY register state and nonzero PCM. The Sound Enhancer grants only `sgm-ay`; it deliberately does not grant or map SGM RAM over ADAM's MIOC memory. |
 | Frame/VBlank timing | `wait` / `wait 4 frames` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS uses the stable EOS `$FD23` VDP-status service and polls bit 7 without enabling NMI or executing `HALT`. Constant and calculated 16-bit counts resume correctly from DSK and DDP while physical VDP R1 remains display-on with NMI disabled. |
-| Blocking action-button waits | `wait fire` / `wait no fire` / `wait 180 frames or press` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS lowers each generated frame delay to EOS `$FD23` polling and samples controllers through `$FD3E`. DSK/DDP tests cover idle endurance, release/press debounce, both controllers, and early exit from a 16-bit timed wait. |
+| Blocking action-button waits | `wait fire`; `wait no fire`; `wait 180 frames or press`; `pause until press [and release]` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS lowers each generated frame delay to EOS `$FD23` polling and samples controllers through `$FD3E`. DSK/DDP tests cover idle endurance, both controllers, immediate press completion, and press-and-release consumption while NMI stays disabled. |
 | Blocking menu and keypad choices | `choose menu ...`; `choose keypad ...`; `wait key 5`; `wait key release` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS lowers each frame to EOS `$FD23` polling and each input sample to `$FD3E`. DSK/DDP tests navigate down/up/down/down, confirm with FIRE, select keypad 2, then wait for keypad-2 key 5 and its release. Tile cursor output and NMI-disabled execution are verified. |
-| CRT-safe choices and pauses | `choose ... sleep after 10 seconds`; `pause until press` | `VERIFIED` | `VERIFIED` | `REJECT` | CRT blanking and pause helpers still depend on OS-7/NMI-owned state. Native EOS fails closed; ordinary choices, key/action-button waits, and asynchronous keyboard requests are available. |
-| Amy timers and VBlank hook | `timer Pulse every 4 ticks` / `on vblank Update` | `VERIFIED` | `VERIFIED` | `PARTIAL` | Native EOS runs the timer service and hook once per VBlank consumed by Amy `wait`, without enabling NMI. DSK/DDP tests verify 10 hook calls and a repeating timer. This is cooperative: callbacks do not advance while user code runs without `wait`. |
+| CRT-safe pause | `pause until press and release sleep after 10 seconds` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS uses cooperative `$FD23` VBlank polling and `$FD3E` controller reads without enabling NMI. DSK/DDP tests verify timeout blanking, backdrop restoration, wake-only first press, release consumption, and second-press confirmation. Stock ADAM timing uses the NTSC counter. |
+| CRT-safe menu choice | `choose menu ... sleep after 10 seconds` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS counts cooperative menu frames, resets on any selected-controller activity, blanks through EOS, then restores the display and consumes the wake input without selecting an entry. A 1,269-byte multiblock program verifies the complete sequence on DSK/DDP. |
+| CRT-safe keypad choice | `choose keypad ... sleep after 10 seconds` | `VERIFIED` | `VERIFIED` | `VERIFIED` | Native EOS uses a self-contained `$FD23`/`$FD3E` backend. DSK/DDP tests verify timeout blanking, backdrop restoration, wake-key release consumption without selection, a subsequent valid choice, and NMI remaining disabled. |
+| Amy timers and VBlank hook | `timer Pulse every 4 ticks` / `on vblank Update` | `VERIFIED` | `VERIFIED` | `VERIFIED` | With `screen on`, native EOS advances timers and `on vblank` from Amy's asynchronous `$0066` owner. DSK/DDP tests verify a repeating timer, callbacks during `wait`, and continued callbacks in a mainline busy loop. The explicit `screen on no nmi` form retains cooperative polling semantics. |
 | ZX0 compression to VRAM | `decompress zx0 Data to vram.color` | `VERIFIED` | `VERIFIED` | `VERIFIED` | A 717-byte native program decodes a project asset to 6 KiB of VRAM on DSK/DDP, byte-identical to the software reference decoder. |
 | ZX1 compression to VRAM | `decompress zx1 Data to vram.pattern` | `VERIFIED` | `VERIFIED` | `VERIFIED` | A multiblock native program expands independently generated pattern and color streams on DSK/DDP; GearColeco compares all 12 KiB of VRAM byte-for-byte with the source data. |
 | Pletter compression to VRAM | `decompress pletter Data to vram.pattern` | `VERIFIED` | `VERIFIED` | `VERIFIED` | A native multiblock program expands 6 KiB pattern and 6 KiB color streams on DSK/DDP. GearColeco verifies all output byte-for-byte, including Pletter's timing-sensitive VRAM read/write copyback path. |
@@ -191,10 +193,29 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | Generic ADAMnet devices | `submit Request to Slot [status Result]` | `REJECT` | `VERIFIED` | `VERIFIED` | `Request` must be an `AdamNetDcb`; `Slot` may be a byte expression and must be below the live PCB `DeviceCount`. Amy copies the 21-byte record to `$FEC4 + Slot*21`, waits for AdamNet's response bit, copies the completed DCB back, and reports normalized status 0/1. GearColeco verifies the known absent-device responses `$96/$9B` and continued execution; EOS may change which one appears after rebuilding its active DCB table. |
 | ADAMnet device inspection/reset | `Flags = device status Device [status Result]`; `Code = device result Device [status Result]`; `reset device Device [status Result]` | `REJECT` | `VERIFIED` | `VERIFIED` | Device IDs may be byte expressions. `$FC7E` returns device-dependent flags, `$FC75` returns the raw DCB completion code, and `$FC90` performs a soft reset; each preserves firmware register ownership and optionally reports normalized Amy status. Native DSK/DDP and the real OS7+EOS hybrid loader verify keyboard `$80` completion, status/reset, generic absent-device completion, and continued execution. Stock OS7 rejects all three commands. |
 | ADAM printer | `print "AMY" to printer [status S]` | `REJECT` | `VERIFIED` | `VERIFIED` | Amy lowers a string literal to one ETX-terminated EOS `$FC63` transfer; a scalar byte uses `$FC66`. Both services handle AdamNet busy `$86`. GearColeco verifies the exact `AMY` plus CR spool, status 0, and continuation on DSK/DDP. |
-| ADAM serial byte I/O | `Present = serial present`; `Ready = serial readable`; `Byte = serial read`; `serial write Byte`; `Connected = serial carrier` | `N/A` | `VERIFIED` | `VERIFIED` | `target.hardware` selects `adamlink`, `eve-serial`, or `micro-serial`; source code remains port-independent. Native execution verifies open-bus absence, normalized RX/TX readiness, injected receive, captured transmit, continuation, SCN2651 active-low carrier for AdamLink/Eve, and MIB3 SCN2681 input-port bit 5 carrier. |
-| ADAM modem protocols | application layer pending | `N/A` | `PARTIAL` | `PARTIAL` | GearColeco provides deterministic RX/TX queues, injection, capture, loopback, carrier for all three profiles, and save states. Hayes commands, XMODEM, baud/framing setup, transmission timing, and hardware presence detection remain open. |
+| ADAM serial byte I/O | `Present = serial present`; `Ready = serial readable`; `Byte = serial read`; `serial write Byte`; `Connected = serial carrier` | `N/A` | `VERIFIED` | `VERIFIED` | `target.hardware` selects `adamlink`, `eve-serial`, or `micro-serial`; source remains port-independent. Native execution verifies absence, readiness, RX/TX, continuation and carrier. Real AdamLink III corrected an earlier reversed assumption: data is `$5E`, status/control is `$5F`; its initialization no longer pollutes TX, and it consumes injected data. The SCN2651 model now distinguishes asserted DSR bit 7 from active-low DCD bit 6. Eve remains `$44/$45`; MIB3 carrier is input `$1D` bit 5. |
+| ADAM modem protocols | emulator hardware option | `N/A` | `PARTIAL` | `PARTIAL` | The underlying Amy serial API is verified, including hardware presence, readiness, RX/TX, carrier, three hardware profiles, loopback, and save states. Untouched AdamLink III completes both directions against scripted peers. SEND transfers a real 2,560-byte EOS file as 20 checksum packets through EOT; RECEIVE requests CRC mode, accepts two CRC-16 packets, ACKs EOT, creates `RXTESTA`, and writes the exact 256-byte payload into a new EOS block. Error tests prove bad-CRC NAK/retry, idempotent duplicate-block ACK and double-CAN handling. A mid-transfer save state resumes into a byte-identical EOS file. No-peer timeout retries `C`, falls back to NAK, sends CAN, reports failure and closes a zero-length partial file. The optional deterministic Hayes backend handles `AT`, `ATD`, `ATH`, `OK`, `CONNECT`, `NO CARRIER`, and `ERROR`, including mid-command save-state restoration. Baud/framing timing remains open. |
 
 ## Engineering progress log
+
+### 2026-10-04: native EOS asynchronous VBlank ownership
+
+- Proved the loader's actual MIOC `$01` mapping with an isolated assembly boot:
+  writable `$0066`, the resident `$C800` program, and EOS remain accessible at
+  the same time. DSK and DDP both complete EOS `$FCF3` block reads while VDP
+  NMI continues asynchronously.
+- Added the native Amy NMI owner and enabled `screen on` / `nmi on` for EOS.
+  The handler acknowledges VDP status directly, preserves both register sets
+  through the frame service, and does not enable the incompatible maskable
+  `$0038` path.
+- Split frame waits by explicit display contract. NMI-enabled programs use
+  `HALT`; `screen on no nmi`, menus, and input-only programs retain EOS `$FD23`
+  polling. This avoids both double frame ticks and a dead wait after the NMI
+  handler has consumed VDP status.
+- Runtime-verified asynchronous timers and `on vblank` callbacks on DSK/DDP,
+  including progress after Amy enters a busy loop. Existing no-NMI waits,
+  action waits, menus, keypad choices, TinySound, and BIOS sound regressions
+  remain green.
 
 ### 2026-10-03: native serial byte I/O
 
@@ -213,8 +234,8 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
   and Amy execution continues. OS7 cartridge output fails closed.
 - MIB3 Carrier Detect is now verified from the board manual as input-port
   `$1D` bit 5 and runtime-tested through raw I/O and compiled Amy code.
-- UART configuration, blocking timeouts, Hayes commands, hardware presence,
-  and file-transfer protocols remain deliberately outside this first layer.
+- UART configuration and baud/framing timing remain outside this first layer;
+  hardware presence, Hayes commands and XMODEM are now covered below.
 
 ### 2026-10-03: generic AdamNet device inspection
 
@@ -309,6 +330,23 @@ Completed:
 - Routed `wait key N` and `wait key release` through the same EOS frame and
   controller polling backend. Player-2 key 5 and release are runtime-tested on
   DSK and DDP.
+- Routed plain `pause until press` and `pause until press and release` through
+  the same cooperative EOS backend. DSK/DDP tests verify immediate press,
+  held-button blocking for the release form, both controllers, and NMI staying
+  disabled.
+- Added a native CRT-safe timed pause without claiming `$0066`. On stock ADAM
+  timing it blanks through EOS while preserving NMI-off state, restores the
+  display and backdrop on the first post-timeout press, consumes its release,
+  and requires a second press-and-release to confirm. DSK and DDP execute the
+  complete timeout/wake/confirm sequence.
+- Added the cooperative native `choose menu ... sleep after` backend. Its
+  DSK/DDP test crosses the one-block boundary, boots through the real
+  multiblock loader, blanks after inactivity, wakes without selecting, and
+  resumes ordinary directional navigation.
+- Added the native `choose keypad ... sleep after` backend and made its runtime
+  dependency explicit so a keypad-only program links correctly. DSK/DDP tests
+  blank after inactivity, consume the first keypad wake without selecting,
+  restore the backdrop, and accept the next in-range key with NMI still off.
 - Added a native EOS cooperative frame owner. Every VBlank consumed by Amy
   `wait` now updates declared timers and invokes `on vblank` while preserving
   both Z80 register sets and preventing callback re-entry. DSK/DDP execution
@@ -391,8 +429,29 @@ In progress or still open:
 - TinySound and BIOS-format sound now have semantic scheduler/state parity and
   nonzero PCM evidence. Exhaustive sample-level waveform equivalence remains
   open because OS7 updates from NMI while native EOS advances cooperatively.
-- Native EOS timers and VBlank callbacks advance during Amy `wait`; fully
-  asynchronous semantics and CRT-safe pauses remain open.
+- Native EOS timers and VBlank callbacks now have asynchronous semantics when
+  `screen on` enables NMI. CRT-safe pause, menu, and keypad forms remain
+  verified through cooperative EOS polling when the source explicitly keeps
+  NMI disabled.
+- Real AdamLink III now provides executable modem evidence rather than only
+  menu reachability. The deterministic probe aliases an existing 2,560-byte
+  EOS ASCII document in a private media copy, selects it through AdamLink's
+  FILE/XMODEM/DISK I/A workflow, synchronizes on the program's UART-ready poll,
+  injects NAK, validates and acknowledges all 20 packets, compares the complete
+  2,560-byte payload with the selected EOS file, and acknowledges EOT.
+  GearColeco's SCN2651 status now exposes both TxRDY and TxEMT.
+- AdamLink XMODEM receive is also verified end to end. The peer observes the
+  initial `C` request, supplies two CRC-16/XMODEM packets and EOT, and verifies
+  every ACK. A new read-only media-export bridge then confirms EOS created
+  `RXTESTA` and persisted the exact 256-byte payload in the mounted DSK image.
+- Its receive error path is deterministic: corrupt CRC yields NAK, a corrected
+  retransmission yields ACK, a duplicate block is ACKed without duplication,
+  and double CAN leaves a named zero-length EOS file when accepted data had not
+  yet filled AdamLink's 1 KiB disk buffer.
+- A state captured after block 1 restores the live protocol and writable DSK;
+  block 2 and EOT then create byte-identical `RXSAVEA`. With no peer, AdamLink
+  emits five total `C` requests, five NAK retries and CAN over 4,135 NTSC
+  frames (about 69 seconds), reports failure, and closes `RXTIMEA` at zero bytes.
 - Native EOS VoxPCM now executes direct and indexed stock-PSG sequences from
   DSK/DDP with nonzero PCM. Perceptual comparison with OS7 remains research.
   AY is not part of an unexpanded ADAM, but GearColeco now emulates separate
@@ -400,9 +459,21 @@ In progress or still open:
   register state, and nonzero PCM are verified for native DSK/DDP and the
   OS7+EOS hybrid DSK path.
 - Generic AdamNet device requests are runtime-verified on native DSK/DDP and
-  hybrid media. Serial/modem hardware profiles are emulated and tested, while
-  a public Amy serial API remains intentionally pending further real-software
-  validation.
+  hybrid media. The public Amy serial API and all three hardware profiles are
+  runtime-verified. Real AdamLink XMODEM send and receive are verified end to
+  end. Deterministic Hayes command/result traffic is verified; physical
+  baud/framing timing remains pending.
+- ROM TEST & DEBUG now reads serial state directly from GearColeco and displays
+  the selected interface, carrier, RX/TX queue sizes, Hayes/loopback mode, and
+  the length of an unfinished Hayes command. The same exported state is covered
+  while `ATD` is partially entered, so the inspector cannot silently diverge
+  from the save-state-capable emulator core.
+
+The remaining `PARTIAL` row has an explicit completion criterion:
+
+1. Modem protocols become `VERIFIED` after baud/framing timing joins the
+   completed Hayes and real-software XMODEM send, receive, retry,
+   cancellation, timeout and in-flight save-state proofs.
 
 ## Regression gates
 
@@ -414,6 +485,10 @@ is two deliberate seven-byte initializations of the CRT-safe menu inactivity
 counter in Where On Earth? and 3D Solar System. This prevents stale RAM from
 blanking either menu prematurely; all other OS7 examples remain byte-identical.
 Detailed local audits are written under `build/` and are not release artifacts.
+The 2026-10-04 post-NMI audit assembles the current 234-example Alexis catalog
+with 0 failures and 1,183,773 balanced-profile bytes. The catalog gained one
+example since the earlier 233-example snapshot; the EOS-only NMI backend does
+not alter the OS7 generation path.
 
 Every backend change must run:
 

@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261002-adam-serial1",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261004-adam-serial-inspector2",
   import.meta.url
 );
 
@@ -326,6 +326,15 @@ export class GearcolecoTestCore {
     this.module._gcw_eject_adam_media(slot);
   }
 
+  readAdamMedia(slot) {
+    this.assertAlive();
+    const required = this.module._gcw_read_adam_media(slot, 0, 0) >>> 0;
+    if (!required) throw new Error("No ADAM media is mounted in that slot.");
+    return this.withOutputBytes(required, (pointer, capacity) => {
+      return this.module._gcw_read_adam_media(slot, pointer, capacity) >>> 0;
+    });
+  }
+
   setAdamKey(key, pressed) {
     this.assertAlive();
     if (this.module._gcw_adam_key(key, pressed ? 1 : 0) !== 1) {
@@ -380,6 +389,13 @@ export class GearcolecoTestCore {
     this.assertAlive();
     if (this.module._gcw_set_adam_serial_carrier(present ? 1 : 0) !== 1) {
       throw new Error("GearColeco could not configure the ADAM serial carrier.");
+    }
+  }
+
+  setAdamSerialHayes(enabled) {
+    this.assertAlive();
+    if (this.module._gcw_set_adam_serial_hayes(enabled ? 1 : 0) !== 1) {
+      throw new Error("GearColeco could not configure Hayes modem emulation.");
     }
   }
 
@@ -507,7 +523,8 @@ export class GearcolecoTestCore {
 
   getAdamNetSummary() {
     this.assertAlive();
-    const words = 12 + (15 * 5);
+    const serialBase = 12 + (15 * 5);
+    const words = serialBase + 16;
     const bytes = this.withOutputBytes(words * 4, (pointer) => {
       return this.module._gcw_get_adam_net_summary(pointer, words) * 4;
     });
@@ -521,7 +538,14 @@ export class GearcolecoTestCore {
       dcbs: Array.from({ length: 15 }, (_, index) => {
         const base = 12 + index * 5;
         return { status: data[base], device: data[base + 1], block: data[base + 2], buffer: data[base + 3], length: data[base + 4] };
-      })
+      }),
+      serial: {
+        profile: data[serialBase], soundExpansion: data[serialBase + 1],
+        loopback: Boolean(data[serialBase + 2]), carrier: Boolean(data[serialBase + 3]),
+        hayes: Boolean(data[serialBase + 4]), rxSize: data[serialBase + 5],
+        txSize: data[serialBase + 6], commandLength: data[serialBase + 7],
+        registers: Array.from(data.slice(serialBase + 8, serialBase + 16))
+      }
     };
   }
 
@@ -573,6 +597,18 @@ getMasterClockCycles() {
   readRam(address, size) {
     return this.withOutputBytes(size, (pointer, capacity) => {
       return this.module._gcw_read_ram(address & 0xFFFF, pointer, capacity);
+    });
+  }
+
+  readAdamMainRam(address, size) {
+    return this.withOutputBytes(size, (pointer, capacity) => {
+      return this.module._gcw_read_adam_main_ram(address & 0xFFFF, pointer, capacity);
+    });
+  }
+
+  readAdamExpansionRam(address, size) {
+    return this.withOutputBytes(size, (pointer, capacity) => {
+      return this.module._gcw_read_adam_expansion_ram(address & 0xFFFF, pointer, capacity);
     });
   }
 
