@@ -482,7 +482,6 @@ export function createRomTestRecorderUi({
     field("machineState").innerHTML = `
       <div class="rom-recorder__summary">
         <div class="rom-recorder__card"><strong>Program counter</strong>${formatHex(pc)} · ${findNearestSymbol(pc, symbols) || "no symbol"}</div>
-        <div class="rom-recorder__card"><strong>Execution</strong>${playing ? "Running" : "Paused"} · ${core.getRegionName()} ${core.getFramesPerSecond()} Hz</div>
         <div class="rom-recorder__card"><strong>VDP mode</strong>${vdp.mode} · screen ${vdp.displayEnabled ? "on" : "off"} · NMI ${vdp.nmiEnabled ? "on" : "off"}</div>
         <div class="rom-recorder__card"><strong>Sprites</strong>${vdp.sprites16 ? "16×16" : "8×8"}${vdp.spritesMagnified ? " magnified" : ""} · backdrop ${vdp.backdrop}</div>
         <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 ${field("voiceModule").value} · ADAM sound ${field("adamSound").value} · serial ${field("adamSerial").value}</div>
