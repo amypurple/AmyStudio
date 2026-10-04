@@ -2648,9 +2648,11 @@ calculated 16-bit counts on DSK and DDP. This polled wait does not run an
 when any action button is pressed. Without `on joypad N`, either controller can interrupt.
 Native EOS also supports `wait fire`, `wait no fire`, and this timed action-button
 wait. They poll frames through EOS `$FD23` and controller state through `$FD3E`;
-they do not enable NMI. Higher-level `choose menu`, `choose keypad`, keypad waits,
-and CRT-sleep pauses remain unavailable for native EOS until their timing and
-display ownership are adapted explicitly.
+they do not enable NMI. Native EOS also supports `choose menu`, `choose keypad`,
+keypad waits, and their CRT-sleep forms through the same cooperative services.
+Timeout blanking preserves the entry display state, restores the tracked backdrop,
+and consumes the wake input before returning to the menu. Stock ADAM uses the
+60 Hz timeout count because its video timing is NTSC.
 
 ### Choose (menu selection)
 
@@ -2663,7 +2665,7 @@ choose menu 1 to 4 into Choice cursor sprite 0 at 48,71 step 16
 
 Waits for a keypad digit in the given range and stores it.
 
-Computed bounds are also accepted. An optional `on keypad N` restricts input to one controller. `sleep after N seconds` uses the same PAL/NTSC-aware, NMI-preserving CRT protection, consumes the selected key release, and requires NMI enabled:
+Computed bounds are also accepted. An optional `on keypad N` restricts input to one controller. `sleep after N seconds` uses the same CRT protection and consumes the selected key release. OS7 preserves its active NMI service and uses PAL/NTSC-aware timing. Native EOS instead polls `$FD23` cooperatively with NMI disabled and uses stock ADAM's 60 Hz timing:
 
 ```basic
 const KeyReplay = 10  ' *
@@ -3977,8 +3979,11 @@ normalize the selected UART status to `0` or `1`; `serial read` and
 and Eve/Orphanware through the SCN2651 DCD flag. For Micro Innovations it
 reads the MIB3 SCN2681 input port `$1D`, where modem Carrier Detect is bit 5.
 Serial syntax is restricted to ADAM targets and requires an explicit hardware declaration.
-Protocols, timeouts, baud configuration, and Hayes commands remain application
-logic for now.
+Amy deliberately keeps protocols above these non-blocking byte operations.
+GearColeco can nevertheless provide deterministic Hayes responses for testing,
+and real AdamLink III XMODEM send/receive, retry, cancellation, timeout, and
+in-flight save-state restoration are verified. Baud and framing configuration
+remain hardware-profile work rather than implicit behavior of `serial write`.
 
 The reserved `bank n` section boundary is not yet linkable inside one monolithic Amy source. Switchable bank sources must currently be assigned to `switchable-bank` outputs in `project.amy.json`. Amy reports an error instead of silently placing them in the fixed ROM.
 

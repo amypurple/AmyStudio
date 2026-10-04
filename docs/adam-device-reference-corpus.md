@@ -32,8 +32,9 @@ independently.
 | --- | --- | --- | --- |
 | Disk and Data Pack | Alcazar DSK/DDP; Where on Earth DSK/DDP | Device `$04` versus `$08`, blocks, retry behavior and equivalent media payloads are already traced. | Read/write block and named-file backend. |
 | ADAM keyboard | EOS-native applications and games selected after input tracing | Reveals debounce, modifiers, repeat and application-facing character codes. | `keyboard` state and key-event syntax. |
+| Brain Games | Local `Brain Games (1987) (ADAMagic Software).dsk` | GearColeco accepts keyboard digit `1`, loads Othello from disk, and accepts `Y` at its play-mode prompt. | End-to-end keyboard DCB test covering digits, letters, menus and chained disk loading. |
 | ADAM modem | `ANN Disk - 1992-02b` / `ADAMODEMA`; `1992-06b` / `xtrnlmodemA`; `1999-02b` / `ModemTankA` | Multiple generations expose initialization, carrier/status checks, transfer loops and failure paths. | Optional modem capability and byte-stream API. |
-| Modem Master 1.5 | Local `Modem Master 1.5 (1989) (ADAMagic Software).dsk` | SmartBASIC loader installs direct `$5E/$5F` AdamLink routines; the application exposes terminal, dialing, carrier wait, ASCII transfer and XMODEM menus. | Independent keyboard plus AdamLink integration oracle; commercial media remains outside the repository. |
+| Modem Master 1.5 | Local `Modem Master 1.5 (1989) (ADAMagic Software).dsk` | SmartBASIC loader installs direct `$5E/$5F` AdamLink routines; the application exposes terminal, dialing, carrier wait, ASCII transfer and XMODEM menus. GearColeco boots it and SmartKey V reaches its transfer menu through the emulated keyboard DCB. | Independent keyboard plus AdamLink integration oracle; commercial media remains outside the repository. |
 | Eve serial interface | `ANN Disk - 1992-03a` / `Adam_EveH`; `2019-06` / `eveserialH` | Independent examples can distinguish Eve conventions from generic AdamNet behavior. | Named Eve serial backend. |
 | 8250 serial interface | `ANN Disk - 2019-06` / `8250serialH` and `8250_DOCH` | Provides a non-Eve UART comparison and likely documents registers and baud setup. | Optional 8250 serial backend, separate from AdamNet. |
 | Printer | `ANN Disk - 2019-06 (2)` / `SWriter2`; printer articles `PRINTERA`, `printertipA`, `PRINTERFANH`, and `PRINTERFIXA` | `SWriter2` is an executable electronic typewriter suitable for runtime tracing. The other files are documentation and repair articles, useful only as historical context. | Printer presence/status and character output. |
@@ -62,10 +63,10 @@ unchanged regression gate.
 | AdamNet printer `$02` | `AMY VERIFIED` | Exact bytes reach GearColeco's printer spool through EOS `$FC63` for ETX strings and `$FC66` for scalar characters on DSK/DDP. | Rich printer-control protocols remain outside the current command. |
 | AdamNet disk/data pack `$04/$08` | `AMY VERIFIED` | Raw blocks, files, loaders, timing, status and DSK/DDP device selection execute in GearColeco. | Second drives and generic arbitrary-device submission. |
 | Generic PCB/DCB access | `AMY VERIFIED` | Reserved records have exact 4-byte and 21-byte layouts, including a working `u32` block field. `submit Request to Slot` checks the live PCB count, copies a DCB into the PCB, waits for completion, and copies the response back. Tests preserve the observed absent-device responses `$96` from DSK and `$9B` from DDP and verify continued Amy execution. | Successful transfers for additional physical device classes remain device-specific work. |
-| AdamLink `$5E/$5F` | `RUNTIME VERIFIED` | The hardware manual and SmartWriter source identify the fixed SCN2651 pair. Untouched AdamLink III emits initialization traffic and consumes injected terminal data only under this profile. | Execute the XMODEM path against a scripted peer and add baud timing. |
+| AdamLink `$5E/$5F` | `RUNTIME VERIFIED` | Untouched AdamLink III proves the corrected ports and completes XMODEM send and receive against scripted peers, including retry, duplicate packets, cancellation, timeout, exact writable-media output and mid-transfer save-state restoration. Its SCN2651 status keeps DSR asserted while DCD alone tracks carrier. | Add its fixed 300-baud line timing without imposing that clock on configurable serial boards. |
 | Orphanware/Eve configurable SCN2651 block | `EMULATED` | The hardware manual documents A `$44-$47`, B `$54-$57`, C `$4C-$4F`, and D `$5C-$5F`; GearColeco currently models A to avoid ADAMLink overlap. | Validate terminal software on A and decide whether selectable B/C/D blocks are needed. |
 | MicroInnovations `$18-$1E` | `EMULATED` | ModemTank contains distinct setup, status, data and baud-dependent paths. Deterministic RX/TX/carrier/loopback and save-state support now exist. | Find independent hardware evidence and verify baud-dependent timing. |
-| Hayes/XMODEM behavior | `IDENTIFIED` | AdamLink III documentation describes send, receive, cancellation, partial-file preservation and media selection. | Scripted byte-stream peer and end-to-end transfer test. |
+| Hayes/XMODEM behavior | `RUNTIME VERIFIED` | Deterministic Hayes `AT`/dial/hang-up/result traffic and untouched AdamLink III XMODEM transfers are tested end to end. The debugger exposes profile, carrier, Hayes mode, pending command length and RX/TX queue sizes. | Model selectable physical line clocks and framing delays. |
 
 `VERIFIED` for `AdamNetPcb`/`AdamNetDcb` must not be read as verification
 of every possible AdamNet device. It proves the records and generic submission
@@ -129,9 +130,18 @@ calls `$FC93` to release keyboard lock/modifier state before interactive input.
 Static I/O evidence independently finds repeated reads and writes at `$5E` and
 `$5F`, corroborating the Orphanware/Eve port family found in ModemTank. The
 documentation describes XMODEM send/receive integrated with EOS disk or Data
-Pack files, including cancellation and partial-file preservation. The XMODEM
-menu path still needs a scripted runtime trace before its file-write sequence
-is treated as verified.
+Pack files, including cancellation and partial-file preservation. A scripted
+runtime probe now proves that Wild Card reaches AdamLink's actual `CP $90`
+dispatch and that Smart Keys I-VI produce VRAM changes distinct from a
+deterministic no-key control. Wild Card itself does not change VRAM or VDP
+registers in that state; an earlier fixed-frame capture had incorrectly
+attributed a later mode transition to the key. The state-driven trace now maps
+Smart VI to FILE state `$10`, Smart III/IV to the XMODEM send/receive choices,
+and the following drive selector to state `$01`; Smart III there selects DISK I
+and reaches filename-entry state `$0B`. Completing filename/type entry requires
+observing expansion RAM while AdamLink temporarily maps it through MIOC, which
+the current post-frame RAM reader cannot expose. The actual packet transfer
+therefore remains unverified.
 
 The 2024 ANN archive was re-opened directly rather than relying on the earlier
 extraction. Its EOS directory reports `ADAMLINK` as a 21-block/21,504-byte
@@ -176,7 +186,7 @@ printer implementations. They must not be used as runtime evidence.
 `SWriter2` on `ANN Disk - 2019-06 (2).DSK` is a 32 KiB electronic typewriter
 with print options. Its executable contains a concrete port sequence using
 `$5E` for output and `$5F` for status input, matching the independently traced
-Orphanware/Eve serial interface. Under the current GearColeco build it loads
+AdamLink interface. Under the current GearColeco build it loads
 but remains on a blank blue display in its initialization delay. This is a
 useful failure-path fixture for the missing optional serial-device emulation.
 

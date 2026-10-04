@@ -1,7 +1,7 @@
 # ADAM modem and serial interface map
 
-Status: deterministic emulator backend implemented; real-software validation in progress; Amy API not implemented  
-Last verified: 2026-10-02
+Status: byte I/O, deterministic Hayes, real XMODEM, writable media and debugger state verified; physical line timing in progress
+Last verified: 2026-10-04
 
 ## Reference program
 
@@ -28,7 +28,9 @@ hardware manuals. The table below uses the documented hardware mapping.
 | `2` | Micro Innovations serial port 1 | `$1B` | `$19` | 2681: RxRDY `$01`, TxRDY `$04`, TxEMT `$08`; DCD is input-port `$1D` bit 5 | writes `$18`, `$19`, `$1A`, `$1E`; modem inputs read at `$1D` |
 | `3` | Local game | none | none | none | none |
 
-The SCN2651 meanings are confirmed by the chip data sheet. Orphanware hardware
+The SCN2651 meanings are confirmed by the chip data sheet. Its asynchronous
+multiplier and character framing come from mode registers, but the effective
+baud also depends on the selected internal/external clock. Orphanware hardware
 can be jumpered to A `$44-$47`, B `$54-$57`, C `$4C-$4F`, or D `$5C-$5F`;
 the emulator currently models the A block so it does not collide with the
 fixed ADAMLink `$5E/$5F` pair.
@@ -62,7 +64,18 @@ bit 6 fixes AdamLink III's false `Carrier lost` result and produces its real
 `Modem online. Connected` state. Automation then reaches XMODEM SEND, DISK I,
 enters the real `ADAMLINK` directory name at main RAM `$D034`, terminates it
 with space/ETX, and reaches the A/H file-type screen. A complete XMODEM packet
-exchange has not yet been executed under automation.
+exchange is now executed under automation in both directions.
+
+## Timing model boundary
+
+AdamLink is a fixed 300-baud modem. Its normal asynchronous character time can
+therefore be modeled independently from configurable serial cards. Eve and
+Orphanware software may select different baud rates and SCN2651 framing, while
+Micro Innovations uses a different UART and divisor path. GearColeco must not
+silently apply AdamLink's 300-baud delay to those profiles. The next timing
+step is consequently an explicit per-profile line clock plus decoded framing;
+the existing instant scripted bridge remains available for deterministic tests
+that intentionally operate above physical line timing.
 
 An instrumented boot also established the program's interrupt ownership. Once
 loaded, AdamLink III runs with MIOC `$01`, replaces the writable NMI vector at
