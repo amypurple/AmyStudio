@@ -5,6 +5,8 @@ the examples, and [the Amy Language Reference](amy-language.md) define the curre
 surface. Historical `v2.1`, proposed `v2.2`, and `v3` documents are not compatibility
 promises.
 
+Last reconciled with the compiler and OS7/EOS support matrix: **2026-10-04**.
+
 ## Normative sources
 
 - [Amy Language Reference](amy-language.md): user-facing syntax and semantics
@@ -16,6 +18,17 @@ instruction sequences are non-normative unless the language reference explicitly
 otherwise.
 
 ## Current language surface
+
+### Project targets
+
+Amy Studio currently distinguishes four relevant execution contracts:
+
+- normal ColecoVision OS7 cartridge projects;
+- banked ColecoVision MegaCart projects using `bank rom` and `bank select`;
+- native Coleco ADAM EOS applications packaged on DSK or DDP;
+- OS7+EOS hybrid ADAM projects that retain the cartridge-style game runtime while using selected EOS services.
+
+MegaCart banking is not ADAM memory mapping. Project metadata selects the memory profile, firmware contract, output builder, and available hardware capabilities. Target conditionals such as `if defined AMY_HAS_EOS` and `if defined AMY_HAS_MEGACART` let shared source select valid implementations at compile time.
 
 ### Procedures and data
 
@@ -74,15 +87,49 @@ possible; calculated indexes intentionally have no implicit runtime bounds check
 - Sound Workspace v1 for BIOS table/SFX editing and two-channel Tiny Sound creation, import,
   sequencing, multi-area BIOS arrangement, playback, source write-back, and Web MIDI capture
 
+### Coleco ADAM and expanded hardware
+
+Native EOS and hybrid projects have modern Amy forms for named files, directories, raw blocks, the ADAM keyboard, printer, AdamNet devices, and serial interfaces. Built-in packed records include `EosDate`, `EosFile`, `EosDirectoryEntry`, and `EosDirectory`.
+
+Representative forms include:
+
+```basic
+u8 IoStatus = 0
+u8 Found = 0
+u8 EntryCount = 0
+u8 KeyStatus = 0
+u8 KeyCode = 0
+u8 PrintStatus = 0
+u8 Present = 0
+u8 Byte = 0
+u32 FileSize = 0
+EosFile FileInfo
+EosDirectory Directory
+
+FileSize = size "SAVE" status IoStatus
+Found = find "SAVE" as FileInfo status IoStatus
+EntryCount = catalog Directory status IoStatus
+KeyCode = await key status KeyStatus
+print "READY" to printer status PrintStatus
+Present = serial present
+if Present then serial write Byte
+```
+
+The compiler selects OS7 or EOS implementations for shared graphics, VRAM, input, timing, sprite, sound, decompression, and VoxPCM operations according to the project target. The detailed runtime evidence and remaining hardware qualifications live in [OS7 / EOS Command Support](amy-os7-eos-command-support.md).
+
+Expanded targets can declare SP0256 voice adapters, SGM-compatible AY sound, the ADAM Sound Enhancer, and supported serial interfaces through project hardware metadata. Direct AY access uses `ay write`, `ay read`, and `ay mute`; unsupported targets reject those commands instead of silently emitting unusable I/O.
+
 ### Development and testing
 
-Amy Studio supports colorized Amy source with native textarea editing semantics, source
-breakpoints, symbolic ROM-test checkpoints, generated source maps, GearColeco-backed ROM
-assertions, and full example assembly. Syntax coloring is presentation-only: compilation,
+Amy Studio supports colorized Amy source with native textarea editing semantics, editable
+multi-file projects, source breakpoints, symbolic ROM-test checkpoints, generated source maps,
+GearColeco-backed ROM and ADAM-media assertions, and full example assembly. Syntax coloring is presentation-only: compilation,
 selection, autocomplete, breakpoints, and source text continue to use the underlying editor.
 
 The compact `AC` switch disables or enables autocomplete independently from syntax
 colouring. The preference persists locally and does not alter project files.
+
+ROM TEST & DEBUG accepts compiled output and external `.rom`, `.col`, `.dsk`, and `.ddp` media. It supports record-from-boot and record-now video capture, deterministic AVI export, rewind, source/Z80 stepping, conditional watches, cycle profiling, writable ADAM media export, recorded development routes, and fast replay after recompilation. In ADAM mode, the computer keyboard can be routed to the native keyboard, joystick port 1, or joystick port 2.
 The highlighting convention is semantic and deliberately uses the TMS9918A palette:
 
 - control-flow and general Amy grammar use cyan
@@ -95,7 +142,7 @@ The highlighting convention is semantic and deliberately uses the TMS9918A palet
 - the compact black switch in the SOURCE bar enables syntax colors when desired; its tooltip uses `color` for US browsers and `colour` elsewhere, new browsers start with legacy monochrome source, and the disabled state performs no tokenization
 
 
-Run the targeted language gate with:
+Run the registered release-gate matrix with:
 
 ```text
 node tools/amy-feature-matrix.mjs
@@ -113,7 +160,7 @@ After fixing a late failure, resume from that test with:
 node tools/amy-feature-matrix.mjs --from test-name.mjs
 ```
 
-The runner validates its manifest before starting, reports `RUN`/`PASS` progress, and
+The runner validates its registered manifest before starting, reports `RUN`/`PASS` progress, and
 stops a test that exceeds two minutes.
 
 BIOS-backed tests use a private BIOS path from `AMY_COLECO_BIOS`. Without one, those tests
