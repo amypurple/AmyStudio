@@ -3732,6 +3732,11 @@ Fast-code style:
   Z80 control flow without reverse-engineering it
 ## MegaCart ROM banks
 
+For complete starter layouts, see **Choose the correct Coleco project form**
+in `amy-optimization-cookbook.md`. The examples browser includes native EOS
+and OS7+EOS hybrid programs; `studio/examples-src/megacart-bank-demo.amy.json`
+is the multi-output MegaCart reference.
+
 MegaCart declarations intentionally follow the established CVBasic vocabulary so ports do not need a second spelling:
 
 ```amy

@@ -345,6 +345,36 @@ Code that runs once at level load should favor correctness and compactness. Code
 Use the routine cycle profiler to identify the hot path before rewriting it. Its result is inclusive of nested calls; separate main execution from NMI/IRQ time and compare the total against both NTSC and PAL frame budgets.
 
 For repeatable before/after compiler measurements, use the commands in [Deterministic validation](amy-deterministic-validation.md). ROM size alone never replaces runtime and visual verification.
+## Choose the correct Coleco project form
+
+Do not treat cartridge banking and ADAM memory mapping as interchangeable.
+
+| Goal | Project form | Start with |
+| --- | --- | --- |
+| Standalone ColecoVision game | OS7 cartridge | Any cartridge example |
+| Large cartridge with 16 KiB switchable ROM banks | MegaCart | `megacart-bank-demo.amy.json` plus its fixed and bank ASM files |
+| ADAM program using EOS, keyboard and media | Native EOS DSK/DDP | **ADAM Native EOS Filesystem** |
+| ColecoVision-style game enhanced by ADAM storage | OS7+EOS hybrid | **ADAM OS7 + EOS Hybrid Storage** |
+
+Native EOS projects use `adam-eos-application`; they boot from DSK/DDP and may
+use `await key`, named files, catalog records, raw blocks, printer and AdamNet.
+They are not cartridges and do not assume the OS7 RAM map.
+
+Hybrid projects use `adam-os7-eos-drivers`. Keep ordinary gameplay compatible
+with OS7, then isolate EOS file/device operations behind the ADAM path. The
+example creates and writes `HYBRID` while retaining OS7-style display code.
+
+MegaCart projects use `colecovision-megacart`. Code that must always remain
+visible belongs in the fixed `$8000-$BFFF` output. Each `switchable-bank`
+output occupies `$C000-$FFBF`; select it with `bank select n`. Never return to
+code in a bank after switching that bank away. The sample manifest and
+`megacart-bank-demo-fixed.asm`, `-bank1.asm`, and `-bank2.asm` demonstrate the
+required separation.
+
+Use **New Project** to select the form first. Changing only the output filename
+does not convert a cartridge into an EOS disk or a monolithic ROM into a
+MegaCart image.
+
 ## Replacing repeated decisions with lookup tables
 
 A chain that selects constants from a small, fixed mapping often costs more ROM than its data:

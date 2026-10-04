@@ -44,6 +44,29 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "adam-os7-eos-hybrid-storage",
+    "label": "ADAM OS7 + EOS Hybrid Storage",
+    "detail": "Keeps an OS7-style game runtime while using EOS writable media for an optional save file.",
+    "projectName": "adam-os7-eos-hybrid-storage",
+    "sourceLang": "amy",
+    "memoryProfile": "adam-os7-eos-drivers",
+    "buildTarget": {
+      "platform": "adam-disk",
+      "medium": "dsk",
+      "memoryProfile": "adam-os7-eos-drivers"
+    },
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "adam",
+      "os7",
+      "eos",
+      "hybrid",
+      "filesystem"
+    ]
+  },
+  {
     "id": "globe-quiz",
     "label": "Where On Earth?",
     "detail": "Find world cities on a rotatable 3D globe with famous-city and capital packs, normal and assisted modes, distance scoring, music, effects, and a VoxPCM title voice.",
