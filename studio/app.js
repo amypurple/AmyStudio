@@ -823,7 +823,7 @@ let romTestRecorderPromise = null;
 async function ensureRomTestRecorderUi() {
   if (romTestRecorderUi) return romTestRecorderUi;
   if (!romTestRecorderPromise) {
-    romTestRecorderPromise = import("./core/romTestRecorderUi.js?v=20261002-adam-media-autodetect1")
+    romTestRecorderPromise = import("./core/romTestRecorderUi.js?v=20261003-adam-keyboard1")
       .then(({ createRomTestRecorderUi }) => createRomTestRecorderUi({
         getCompiledRom: () => compiledRom,
         getCompiledAdamDisk: () => compiledAdamDisk,

@@ -53,6 +53,38 @@ const framebufferRenderCache = new WeakMap();
 const rgb5To8 = Uint8Array.from({ length: 32 }, (_, value) => value * 255 / 31);
 const rgb6To8 = Uint8Array.from({ length: 64 }, (_, value) => value * 255 / 63);
 
+const ADAM_KEY = Object.freeze({
+  SPACE: 36, MINUS: 37, PLUS: 38, CARET: 39, SEMICOLON: 40, QUOTE: 41,
+  OPEN_BRACKET: 42, CLOSE_BRACKET: 43, BACKSLASH: 44, COMMA: 45, PERIOD: 46, SLASH: 47,
+  RETURN: 48, ESCAPE: 49, BACKSPACE: 50, TAB: 51, HOME: 52,
+  SMART_1: 53, SMART_2: 54, SMART_3: 55, SMART_4: 56, SMART_5: 57, SMART_6: 58,
+  WILD_CARD: 59, UNDO: 60, MOVE: 61, STORE: 62, INSERT: 63, PRINT: 64, CLEAR: 65,
+  DELETE: 66, UP: 67, RIGHT: 68, DOWN: 69, LEFT: 70, SHIFT: 71, CONTROL: 72, LOCK: 73
+});
+
+const ADAM_KEY_BY_CODE = Object.freeze({
+  Space: ADAM_KEY.SPACE, Minus: ADAM_KEY.MINUS, Equal: ADAM_KEY.PLUS, Backquote: ADAM_KEY.CARET,
+  Semicolon: ADAM_KEY.SEMICOLON, Quote: ADAM_KEY.QUOTE, BracketLeft: ADAM_KEY.OPEN_BRACKET,
+  BracketRight: ADAM_KEY.CLOSE_BRACKET, Backslash: ADAM_KEY.BACKSLASH, Comma: ADAM_KEY.COMMA,
+  Period: ADAM_KEY.PERIOD, Slash: ADAM_KEY.SLASH, Enter: ADAM_KEY.RETURN,
+  NumpadEnter: ADAM_KEY.RETURN, Escape: ADAM_KEY.ESCAPE, Backspace: ADAM_KEY.BACKSPACE,
+  Tab: ADAM_KEY.TAB, Home: ADAM_KEY.HOME, F1: ADAM_KEY.SMART_1, F2: ADAM_KEY.SMART_2,
+  F3: ADAM_KEY.SMART_3, F4: ADAM_KEY.SMART_4, F5: ADAM_KEY.SMART_5, F6: ADAM_KEY.SMART_6,
+  F7: ADAM_KEY.UNDO, F8: ADAM_KEY.WILD_CARD, PageUp: ADAM_KEY.MOVE, PageDown: ADAM_KEY.STORE,
+  Insert: ADAM_KEY.INSERT, PrintScreen: ADAM_KEY.PRINT, End: ADAM_KEY.CLEAR,
+  Delete: ADAM_KEY.DELETE, ArrowUp: ADAM_KEY.UP, ArrowRight: ADAM_KEY.RIGHT,
+  ArrowDown: ADAM_KEY.DOWN, ArrowLeft: ADAM_KEY.LEFT, ShiftLeft: ADAM_KEY.SHIFT,
+  ShiftRight: ADAM_KEY.SHIFT, ControlLeft: ADAM_KEY.CONTROL, ControlRight: ADAM_KEY.CONTROL,
+  CapsLock: ADAM_KEY.LOCK
+});
+
+export function adamKeyFromKeyboardCode(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.charCodeAt(3) - 65;
+  if (/^Digit[0-9]$/.test(code)) return 26 + Number(code.slice(5));
+  if (/^Numpad[0-9]$/.test(code)) return 26 + Number(code.slice(6));
+  return ADAM_KEY_BY_CODE[code] ?? null;
+}
+
 export function formatAdamPrinterText(bytes) {
   let text = "";
   for (const value of bytes || []) {
@@ -281,7 +313,7 @@ function buildDialog() {
     <div class="rom-recorder__body">
       <div class="rom-recorder__stage">
         <div class="rom-recorder__screen-wrap">
-          <canvas class="rom-recorder__screen" width="256" height="192" tabindex="0"></canvas>
+          <canvas class="rom-recorder__screen" width="256" height="192" tabindex="0" aria-label="Emulator display; click to capture controller or ADAM keyboard input" title="Click here to use the controller or ADAM keyboard. F1-F6: SmartKeys; F7: Undo; F8: Wild Card."></canvas>
           <div class="rom-recorder__bios-missing" data-field="biosMissing" hidden>
             <div class="rom-recorder__bios-wordmark" aria-hidden="true"><span>C</span><span>O</span><span>L</span><span>E</span><span>C</span><span>O</span><span>V</span><span>ISION</span></div>
             <strong>ColecoVision BIOS missing</strong>
@@ -363,6 +395,7 @@ export function createRomTestRecorderUi({
   let playing = true;
   const controllerMasks = [0, 0];
   const pressedKeys = new Set();
+  const pressedAdamCodes = new Map();
   let controllerSetup = null;
   let stoppedCheckpoint = null;
   let playbackRate = 1;
@@ -393,6 +426,13 @@ export function createRomTestRecorderUi({
   let videoExporting = false;
   const developmentRoutes = createDevelopmentRouteStore(window.localStorage);
   let routeRecording = null;
+
+  function releaseAdamKeyboard() {
+    if (core) {
+      for (const key of new Set(pressedAdamCodes.values())) core.setAdamKey(key, false);
+    }
+    pressedAdamCodes.clear();
+  }
   let routeReplayActive = false;
 
   const field = (name) => dialog.querySelector(`[data-field="${name}"]`);
@@ -1645,6 +1685,7 @@ export function createRomTestRecorderUi({
       playing = false;
       playbackAccumulator = 0;
       audioSink.flush();
+      releaseAdamKeyboard();
       try {
         if (gameplayRecording.recording) gameplayRecording.stop();
         action("recordVideo").classList.remove("is-recording");
@@ -2016,7 +2057,7 @@ export function createRomTestRecorderUi({
       }
       setMouseSpinnerEnabled(false);
     });
-    window.addEventListener("blur", () => { pressedKeys.clear(); clearMouseFireButtons(); });
+    window.addEventListener("blur", () => { pressedKeys.clear(); releaseAdamKeyboard(); clearMouseFireButtons(); });
     dialog.addEventListener("keydown", (event) => {
       if (event.altKey && event.key === "Enter") {
         event.preventDefault();
@@ -2024,11 +2065,30 @@ export function createRomTestRecorderUi({
         return;
       }
       if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(event.target.tagName)) return;
+      const canvas = dialog.querySelector("canvas.rom-recorder__screen");
+      if (field("machine").value === "adam-computer" && document.activeElement === canvas) {
+        const adamKey = adamKeyFromKeyboardCode(event.code);
+        if (adamKey !== null) {
+          event.preventDefault();
+          if (!pressedAdamCodes.has(event.code)) {
+            core?.setAdamKey(adamKey, true);
+            pressedAdamCodes.set(event.code, adamKey);
+          }
+          return;
+        }
+      }
       if (!controllerSetup.isKeyMapped(event.code)) return;
       event.preventDefault();
       pressedKeys.add(event.code);
     });
     dialog.addEventListener("keyup", (event) => {
+      const adamKey = pressedAdamCodes.get(event.code);
+      if (adamKey !== undefined) {
+        event.preventDefault();
+        pressedAdamCodes.delete(event.code);
+        if (![...pressedAdamCodes.values()].includes(adamKey)) core?.setAdamKey(adamKey, false);
+        return;
+      }
       if (!controllerSetup.isKeyMapped(event.code)) return;
       event.preventDefault();
       pressedKeys.delete(event.code);

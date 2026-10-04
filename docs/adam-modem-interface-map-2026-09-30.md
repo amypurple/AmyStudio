@@ -129,6 +129,13 @@ Amy keeps hardware selection in `target.hardware`, not in every statement.
 to their verified ports and status masks. Open-bus presence detection is now
 verified; UART setup, timeouts, and modem commands remain deferred.
 
+Modem Master 1.5 provides a second independent AdamLink implementation. Its
+SmartBASIC loader contains injected Z80 routines using data port `$5E` and
+status/control port `$5F`, including receive-ready, transmit-ready and carrier
+tests. Its application menus cover direct dialing, terminal use, ASCII
+XON/XOFF transfer and XMODEM. This makes it a useful end-to-end keyboard and
+serial test without redistributing the original disk image.
+
 ## Reproduction
 
 Extract the files and trace the program with:
