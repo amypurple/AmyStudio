@@ -75,6 +75,7 @@ The first Amy byte-I/O layer now uses these operations:
 
 | Operation | Purpose |
 | --- | --- |
+| `Present = serial present` | Detect an absent selected interface through its open-bus `$FF` status. |
 | `Ready = serial readable` | Non-blocking receive-status query. |
 | `Byte = serial read` | Receive one byte after the application observes readiness. |
 | `Ready = serial writable` | Non-blocking transmit-status query. |
@@ -125,8 +126,8 @@ remain loadable and resume with no serial card selected.
 
 Amy keeps hardware selection in `target.hardware`, not in every statement.
 `adamlink`, `eve-serial`, and `micro-serial` therefore compile the same source
-to their verified ports and status masks. Presence detection, UART setup,
-timeouts, and modem commands remain deferred.
+to their verified ports and status masks. Open-bus presence detection is now
+verified; UART setup, timeouts, and modem commands remain deferred.
 
 ## Reproduction
 

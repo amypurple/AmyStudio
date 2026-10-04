@@ -3,6 +3,7 @@
 - Added target-selected AdamLink, Eve/Orphanware, and Micro Innovations serial
   backends with common non-blocking `serial readable`, `serial writable`,
   `serial read`, and `serial write` syntax.
+- Added `serial present` so optional hardware can fail safely when absent.
 - Added verified carrier detection for the two SCN2651 interfaces and the MIB3
   SCN2681 input-port wiring (`$1D`, bit 5).
 - Runtime-tested receive and transmit on native EOS DSK/DDP and the OS7+EOS

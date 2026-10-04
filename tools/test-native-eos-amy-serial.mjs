@@ -16,15 +16,23 @@ const firmware = {
   smartwriter: fs.readFileSync(path.join(firmwareRoot, "WP.ROM"))
 };
 const profiles = [
-  { name: "adamlink", hardware: "adamlink", source: "adam-native-eos-serial-smoke.alexis", expected: [1, 1, 0x41, 1, 1] },
-  { name: "eve", hardware: "eve-serial", source: "adam-native-eos-serial-smoke.alexis", expected: [1, 1, 0x41, 1, 1] },
-  { name: "micro", hardware: "micro-serial", source: "adam-native-eos-serial-micro-smoke.alexis", expected: [1, 1, 0x41, 1, 1] }
+  { name: "adamlink", hardware: "adamlink", source: "adam-native-eos-serial-smoke.alexis", expected: [1, 1, 1, 0x41, 1, 1] },
+  { name: "eve", hardware: "eve-serial", source: "adam-native-eos-serial-smoke.alexis", expected: [1, 1, 1, 0x41, 1, 1] },
+  { name: "micro", hardware: "micro-serial", source: "adam-native-eos-serial-micro-smoke.alexis", expected: [1, 1, 1, 0x41, 1, 1] }
 ];
 
 const fixtures = profiles.map((profile) => ({
   ...profile,
   media: buildAdamBootDisk({ boot: compile(profile), files: [], volume: "AMY SERIAL" }).media
 }));
+fixtures.push({
+  ...profiles[0],
+  name: "adamlink absent",
+  emulatorProfile: "none",
+  expected: [0, 0, 0, 0, 0, 1],
+  expectedTransmit: [],
+  media: buildAdamBootDisk({ boot: compile(profiles[0]), files: [], volume: "AMY SERIAL" }).media
+});
 fixtures.push({
   ...profiles[0],
   name: "adamlink DDP",
@@ -50,13 +58,13 @@ for (const profile of fixtures) {
       type: profile.type || GEARCOLECO_ADAM_MEDIA.DISK
     });
     core.reset();
-    core.setAdamSerialProfile(profile.name.split(" ")[0]);
+    core.setAdamSerialProfile(profile.emulatorProfile || profile.name.split(" ")[0]);
     core.setAdamSerialCarrier(true);
     core.injectAdamSerialReceive(Uint8Array.of(0x41));
     for (let frame = 0; frame < (profile.name.includes("hybrid") ? 1200 : 180); frame += 1) core.runFrame();
     assert.deepEqual([...core.readRam(0x2100, profile.expected.length)], profile.expected,
       `${profile.name} Amy serial results`);
-    assert.deepEqual([...core.readAdamSerialTransmit()], [0x42], `${profile.name} Amy serial transmit`);
+    assert.deepEqual([...core.readAdamSerialTransmit()], profile.expectedTransmit || [0x42], `${profile.name} Amy serial transmit`);
   } finally {
     core.destroy();
   }
@@ -65,7 +73,7 @@ for (const profile of fixtures) {
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
-console.log("Amy ADAM serial: PASS (native DSK/DDP, three interfaces; hybrid AdamLink)");
+console.log("Amy ADAM serial: PASS (native DSK/DDP, three interfaces, absent hardware; hybrid AdamLink)");
 
 function compile(profile, memoryProfile = "adam-eos-application") {
   const romPath = path.join(temp, `${profile.name}-${memoryProfile}.bin`);

@@ -91,6 +91,7 @@ const AMY_AUTOCOMPLETE_V21_ADDITIONS = [
   ["print Character to printer", "Send one byte to the native ADAM printer"],
   ["submit Request to Slot status SubmitStatus", "Run an AdamNetDcb through live DCB slot 0..14, copy its response back, and report success or failure"],
   ["Ready = serial readable", "Test whether the configured ADAM serial interface has a byte ready"],
+  ["Present = serial present", "Detect whether the configured ADAM serial interface responds"],
   ["Ready = serial writable", "Test whether the configured ADAM serial interface can transmit"],
   ["Byte = serial read", "Read one byte from the configured ADAM serial interface"],
   ["serial write Byte", "Write one byte to the configured ADAM serial interface"],

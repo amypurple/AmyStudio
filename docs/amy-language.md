@@ -3958,7 +3958,9 @@ independent of its port addresses:
 u8 Ready = 0
 u8 Byte = 0
 u8 Connected = 0
+u8 Present = 0
 
+Present = serial present
 Ready = serial readable
 if Ready then Byte = serial read
 Ready = serial writable
@@ -3966,7 +3968,10 @@ if Ready then serial write Byte
 Connected = serial carrier
 ```
 
-All operations are non-blocking. `serial readable` and `serial writable`
+All operations are non-blocking. `serial present` reports `0` when the
+selected interface status port behaves as an open bus (`$FF`), allowing one
+binary to fail safely when its declared optional hardware is absent.
+`serial readable` and `serial writable`
 normalize the selected UART status to `0` or `1`; `serial read` and
 `serial write` transfer one byte. `serial carrier` is available for AdamLink
 and Eve/Orphanware through the SCN2651 DCD flag. For Micro Innovations it

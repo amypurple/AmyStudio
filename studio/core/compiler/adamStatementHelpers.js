@@ -35,7 +35,21 @@ export function handleAdamStatement({
       `${doneLabel}:`
     ];
   };
-  const serialQuery = line.match(/^(.+?)\s*=\s*serial\s+(readable|writable|read|carrier)$/i);
+  const emitSerialPresent = (port) => {
+    const absentLabel = makeGeneratedLabel("AdamSerialAbsent");
+    const doneLabel = makeGeneratedLabel("AdamSerialPresentDone");
+    return [
+      `    in a,(${port})`,
+      "    cp $FF",
+      `    jr z,${absentLabel}`,
+      "    ld a,1",
+      `    jr ${doneLabel}`,
+      `${absentLabel}:`,
+      "    xor a",
+      `${doneLabel}:`
+    ];
+  };
+  const serialQuery = line.match(/^(.+?)\s*=\s*serial\s+(present|readable|writable|read|carrier)$/i);
   if (serialQuery) {
     if (!serialProfile) {
       return { ok: false, handled: true, log: `serial I/O requires target.hardware adamlink, eve-serial, or micro-serial: ${rawLine}` };
@@ -45,7 +59,9 @@ export function handleAdamStatement({
     if (!store) {
       return { ok: false, handled: true, log: `serial ${operation} requires a byte destination: ${rawLine}` };
     }
-    const read = operation === "read"
+    const read = operation === "present"
+      ? emitSerialPresent(serialProfile.status)
+      : operation === "read"
       ? [`    in a,(${serialProfile.data})`]
       : operation === "carrier"
         ? emitBooleanFromMask(serialProfile.carrierPort || serialProfile.status, serialProfile.carrier, !serialProfile.carrierPort)
