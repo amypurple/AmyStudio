@@ -194,7 +194,7 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | ADAMnet device inspection/reset | `Flags = device status Device [status Result]`; `Code = device result Device [status Result]`; `reset device Device [status Result]` | `REJECT` | `VERIFIED` | `VERIFIED` | Device IDs may be byte expressions. `$FC7E` returns device-dependent flags, `$FC75` returns the raw DCB completion code, and `$FC90` performs a soft reset; each preserves firmware register ownership and optionally reports normalized Amy status. Native DSK/DDP and the real OS7+EOS hybrid loader verify keyboard `$80` completion, status/reset, generic absent-device completion, and continued execution. Stock OS7 rejects all three commands. |
 | ADAM printer | `print "AMY" to printer [status S]` | `REJECT` | `VERIFIED` | `VERIFIED` | Amy lowers a string literal to one ETX-terminated EOS `$FC63` transfer; a scalar byte uses `$FC66`. Both services handle AdamNet busy `$86`. GearColeco verifies the exact `AMY` plus CR spool, status 0, and continuation on DSK/DDP. |
 | ADAM serial byte I/O | `Present = serial present`; `Ready = serial readable`; `Byte = serial read`; `serial write Byte`; `Connected = serial carrier` | `N/A` | `VERIFIED` | `VERIFIED` | `target.hardware` selects `adamlink`, `eve-serial`, or `micro-serial`; source remains port-independent. Native execution verifies absence, readiness, RX/TX, continuation and carrier. Real AdamLink III corrected an earlier reversed assumption: data is `$5E`, status/control is `$5F`; its initialization no longer pollutes TX, and it consumes injected data. The SCN2651 model now distinguishes asserted DSR bit 7 from active-low DCD bit 6. Eve remains `$44/$45`; MIB3 carrier is input `$1D` bit 5. |
-| ADAM modem protocols | emulator hardware option | `N/A` | `PARTIAL` | `PARTIAL` | The underlying Amy serial API is verified, including hardware presence, readiness, RX/TX, carrier, three hardware profiles, loopback, and save states. Untouched AdamLink III completes both directions against scripted peers. SEND transfers a real 2,560-byte EOS file as 20 checksum packets through EOT; RECEIVE requests CRC mode, accepts two CRC-16 packets, ACKs EOT, creates `RXTESTA`, and writes the exact 256-byte payload into a new EOS block. Error tests prove bad-CRC NAK/retry, idempotent duplicate-block ACK and double-CAN handling. A mid-transfer save state resumes into a byte-identical EOS file. No-peer timeout retries `C`, falls back to NAK, sends CAN, reports failure and closes a zero-length partial file. The optional deterministic Hayes backend handles `AT`, `ATD`, `ATH`, `OK`, `CONNECT`, `NO CARRIER`, and `ERROR`, including mid-command save-state restoration. Baud/framing timing remains open. |
+| ADAM modem protocols | emulator hardware option | `N/A` | `VERIFIED` | `VERIFIED` | The serial API, three hardware profiles, Hayes command/result traffic, writable media and save states are verified. Untouched AdamLink III completes XMODEM send and receive, retry, duplicate handling, cancellation and timeout. Explicit instant, 300, 1200, 2400, 9600 and 19200-baud 8N1 line modes now drive TxRDY/TxEMT from measured character time; the 300-baud regression proves the transmitter remains busy across video frames. |
 
 ## Engineering progress log
 
@@ -234,8 +234,8 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
   and Amy execution continues. OS7 cartridge output fails closed.
 - MIB3 Carrier Detect is now verified from the board manual as input-port
   `$1D` bit 5 and runtime-tested through raw I/O and compiled Amy code.
-- UART configuration and baud/framing timing remain outside this first layer;
-  hardware presence, Hayes commands and XMODEM are now covered below.
+- UART timing is an explicit emulator line setting; hardware presence, Hayes
+  commands and XMODEM are covered below.
 
 ### 2026-10-03: generic AdamNet device inspection
 
@@ -461,19 +461,14 @@ In progress or still open:
 - Generic AdamNet device requests are runtime-verified on native DSK/DDP and
   hybrid media. The public Amy serial API and all three hardware profiles are
   runtime-verified. Real AdamLink XMODEM send and receive are verified end to
-  end. Deterministic Hayes command/result traffic is verified; physical
-  baud/framing timing remains pending.
+  end. Deterministic Hayes traffic and selectable 8N1 line timing are verified.
 - ROM TEST & DEBUG now reads serial state directly from GearColeco and displays
   the selected interface, carrier, RX/TX queue sizes, Hayes/loopback mode, and
   the length of an unfinished Hayes command. The same exported state is covered
   while `ATD` is partially entered, so the inspector cannot silently diverge
   from the save-state-capable emulator core.
 
-The remaining `PARTIAL` row has an explicit completion criterion:
-
-1. Modem protocols become `VERIFIED` after baud/framing timing joins the
-   completed Hayes and real-software XMODEM send, receive, retry,
-   cancellation, timeout and in-flight save-state proofs.
+There are no remaining `PARTIAL` command rows in this matrix.
 
 ## Regression gates
 

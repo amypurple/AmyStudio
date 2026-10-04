@@ -351,6 +351,7 @@ function buildDialog() {
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
+          <label>Serial line<select data-field="adamSerialBaud"><option value="0">Instant test bridge</option><option value="300">300 baud 8N1</option><option value="1200">1200 baud 8N1</option><option value="2400">2400 baud 8N1</option><option value="9600">9600 baud 8N1</option><option value="19200">19200 baud 8N1</option></select></label>
           <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
         </div>
         <div class="rom-recorder__development" aria-label="Development checkpoints">
@@ -1496,6 +1497,7 @@ export function createRomTestRecorderUi({
     core.setAdamSerialProfile(serialProfile);
     core.setAdamSerialLoopback(serialSetting.endsWith("-loopback"));
     core.setAdamSerialHayes(serialSetting.endsWith("-hayes"));
+    core.setAdamSerialTiming(Number(field("adamSerialBaud").value), 10);
     core.setAdamSerialCarrier(serialSetting.endsWith("-loopback"));
     if (adam) {
       core.loadAdamFirmware(adamFirmware);

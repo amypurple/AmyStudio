@@ -32,9 +32,20 @@ try {
   core.setAdamSerialLoopback(false);
   core.setAdamSerialHayes(true);
   core.setAdamSerialCarrier(false);
+  core.setAdamSerialTiming(300, 10);
   core.startAdam();
 
   writeCommand("at");
+  assert.equal(core.debugAdamPortIn(0x5F) & 0x05, 0, "300-baud transmit must remain busy for one character frame");
+  core.runFrame();
+  assert.equal(core.debugAdamPortIn(0x5F) & 0x05, 0, "300-baud 8N1 needs about two NTSC frames");
+  let timingFrames = 1;
+  while ((core.debugAdamPortIn(0x5F) & 0x05) === 0 && timingFrames < 12) {
+    core.runFrame();
+    timingFrames += 1;
+  }
+  assert.equal(core.debugAdamPortIn(0x5F) & 0x05, 0x05, "transmitter should become ready after the measured frame time");
+  assert.ok(timingFrames >= 2 && timingFrames <= 8, `unexpected 300-baud frame time: ${timingFrames} video frames`);
   let summary = core.getAdamNetSummary();
   assert.equal(summary.serial.profile, 1);
   assert.equal(summary.serial.hayes, true);
@@ -64,7 +75,7 @@ try {
   core.setAdamSerialHayes(false);
   writeCommand("AT");
   assert.equal(readResponse(), "", "raw serial mode must not synthesize Hayes responses");
-  console.log(`GearColeco deterministic Hayes modem: PASS (${state.byteLength} byte state)`);
+  console.log(`GearColeco deterministic Hayes modem: PASS (${state.byteLength} byte state, 300-baud character=${timingFrames} video frames)`);
 } finally {
   core.destroy();
 }

@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261004-adam-serial-inspector2",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261004-adam-serial-timing3",
   import.meta.url
 );
 
@@ -397,6 +397,11 @@ export class GearcolecoTestCore {
     if (this.module._gcw_set_adam_serial_hayes(enabled ? 1 : 0) !== 1) {
       throw new Error("GearColeco could not configure Hayes modem emulation.");
     }
+  }
+
+  setAdamSerialTiming(baud = 0, frameBits = 10) {
+    this.assertAlive();
+    if (this.module._gcw_set_adam_serial_timing(baud, frameBits) !== 1) throw new Error("GearColeco could not configure serial timing.");
   }
 
   injectAdamSerialReceive(bytes) {
