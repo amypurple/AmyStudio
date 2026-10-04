@@ -330,6 +330,7 @@ function isIxIyDisplacementOperandText(value) {
                 this.externalRefs = []; // {symbol, location, addressType}
                 this.relocations = []; // {location, type, segment}
                 this.moduleName = '';
+                this.gasm80Compatibility = false;
             }
 
             setBreakpoints(breakpointsSet) {
@@ -974,6 +975,18 @@ function isIxIyDisplacementOperandText(value) {
                             }
                         }
 
+                        // gasm80 commonly expresses ROM alignment as
+                        // TIMES (($+boundary-1)&mask)-$ DB $ff. Pass 1 has no
+                        // location counter yet, so preserve its intent as ALIGN.
+                        if (this.gasm80Compatibility && restOfLine.toUpperCase() === 'DB $FF') {
+                            const alignMatch = countExpr.replace(/\s+/g, '').match(/^\(\(\$\+\$([0-9a-f]+)\)&\$[0-9a-f]+\)-\$$/i);
+                            if (alignMatch) {
+                                const boundary = parseInt(alignMatch[1], 16) + 1;
+                                expandedSource += `ALIGN ${boundary}\n`;
+                                continue;
+                            }
+                        }
+
                         // Evaluate the count expression
                         let count = 0;
                         try {
@@ -1049,6 +1062,10 @@ function isIxIyDisplacementOperandText(value) {
                         currentConditionState = this.calculateCurrentConditionState(conditionalStack);
                     } else if (mnemonic === 'endif') {
                         if (conditionalStack.length === 0) {
+                            if (this.gasm80Compatibility) {
+                                log(`Ignoring unmatched ENDIF at line ${lineIdx + 1} in gasm80 compatibility mode`, 'warn');
+                                continue;
+                            }
                             throw new Error(`ENDIF without matching IF at line ${lineIdx + 1}`);
                         }
                         conditionalStack.pop();
@@ -1873,6 +1890,19 @@ function isIxIyDisplacementOperandText(value) {
                                         if (!inBSSSection) romPC += dsSize;
                                     }
                                     break;
+                                case 'RB': case 'RW':
+                                    // gasm80 RAM reservations advance the logical address only.
+                                    {
+                                        this.currentSection = 'BSS';
+                                        inBSSSection = true;
+                                        const unitSize = token.name === 'RW' ? 2 : 1;
+                                        const reserveSize = this.evaluateExpression(token.operands[0]) * unitSize;
+                                        if (reserveSize < 0 || reserveSize > 65536) {
+                                            throw new Error(`${token.name} size out of range: ${reserveSize}`);
+                                        }
+                                        this.pc += reserveSize;
+                                    }
+                                    break;
                                 case 'BLOCK':
                                     // BLOCK count [, fill] - reserve space filled with value (default 0)
                                     // Similar to DS but fill value defaults to 0 instead of requiring BSS
@@ -2549,6 +2579,19 @@ function isIxIyDisplacementOperandText(value) {
                                         }
                                         // In BSS, just advance PC without output
                                         this.pc += dsSize;
+                                    }
+                                    break;
+                                case 'RB': case 'RW':
+                                    // gasm80 RAM reservations never emit bytes.
+                                    {
+                                        this.currentSection = 'BSS';
+                                        inBSSSection = true;
+                                        const unitSize = token.name === 'RW' ? 2 : 1;
+                                        const reserveSize = this.evaluateExpression(token.operands[0]) * unitSize;
+                                        if (reserveSize < 0 || reserveSize > 65536) {
+                                            throw new Error(`${token.name} size out of range: ${reserveSize}`);
+                                        }
+                                        this.pc += reserveSize;
                                     }
                                     break;
                                 case 'BLOCK':
@@ -3541,7 +3584,7 @@ function isIxIyDisplacementOperandText(value) {
 
                     // Handle > operator (high byte) - must be at start or after non-letter
                     // >$1234 -> high byte of 0x1234
-                    parsedExpr = parsedExpr.replace(/(^|[^a-zA-Z])>([0-9x]+)/gi, (match, prefix, num) => {
+                    parsedExpr = parsedExpr.replace(/(^|[^a-zA-Z<>])>(?![=>])([0-9x]+)/gi, (match, prefix, num) => {
                         try {
                             const val = parseInt(num, num.startsWith('0x') || num.startsWith('0X') ? 16 : 10);
                             return prefix + ((val >> 8) & 0xFF).toString();
@@ -3552,7 +3595,7 @@ function isIxIyDisplacementOperandText(value) {
 
                     // Handle < operator (low byte) - must be at start or after non-letter
                     // <$1234 -> low byte of 0x1234
-                    parsedExpr = parsedExpr.replace(/(^|[^a-zA-Z])<([0-9x]+)/gi, (match, prefix, num) => {
+                    parsedExpr = parsedExpr.replace(/(^|[^a-zA-Z<>])<(?![<=])([0-9x]+)/gi, (match, prefix, num) => {
                         try {
                             const val = parseInt(num, num.startsWith('0x') || num.startsWith('0X') ? 16 : 10);
                             return prefix + (val & 0xFF).toString();
@@ -3834,6 +3877,7 @@ export async function assembleAmysCVAssembly(files, mainFile = "main.asm", optio
   };
   compilerUiState.targetPlatform = options.targetPlatform || "raw";
   const assembler = new Assembler(files);
+  assembler.gasm80Compatibility = !!options.gasm80Compatibility;
   assembler.outputMode = options.outputMode || "binary";
   assembler.moduleName = options.moduleName || extractFilename(mainFile).replace(/\.(asm|z80|s)$/i, "").toUpperCase();
   const binary = await assembler.assemble(mainFile);

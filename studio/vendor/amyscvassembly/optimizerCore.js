@@ -1013,17 +1013,40 @@ export class Z80Optimizer {
                 let pc = this.assembler.firstOrg || 0;
                 const newSymbolTable = {};
                 let timingSensitiveRegion = false;
+                let currentGlobalLabel = '';
+                const qualifyLabel = value => {
+                    const name = String(value ?? '');
+                    return name.startsWith('.') && currentGlobalLabel ? currentGlobalLabel + name : name;
+                };
+                const rememberLabel = (label, address) => {
+                    if (label) newSymbolTable[qualifyLabel(label)] = address;
+                };
+                const resolveBranchTarget = operand => {
+                    if (!operand) return null;
+                    if (operand.type === 'immediate') return operand.value;
+                    if (operand.type !== 'symbol' && operand.type !== 'label') return null;
+                    const value = String(operand.value ?? '');
+                    const pcRelative = value.replace(/\s+/g, '').match(/^\$([+-]\d+)?$/);
+                    if (pcRelative) return pc + Number(pcRelative[1] || 0);
+                    const key = qualifyLabel(value);
+                    if (newSymbolTable[key] !== undefined) return newSymbolTable[key];
+                    if (this.symbolTable[key] !== undefined) return this.symbolTable[key];
+                    return this.resolveAddress(operand);
+                };
 
                 // DEBUG: Log initial PC
                 optimizerLog(`  Optimizer starting PC: 0x${pc.toString(16)} (firstOrg: ${this.assembler.firstOrg ? '0x' + this.assembler.firstOrg.toString(16) : 'null'})`, 'debug');
 
                 for (let idx = 0; idx < tokens.length; idx++) {
                     const token = tokens[idx];
+                    if (token.label && !String(token.label).startsWith('.') && !['+', '-', '/'].includes(token.label)) {
+                        currentGlobalLabel = String(token.label);
+                    }
                     // Handle ORG directives to update PC
                     if (token instanceof Directive && token.name === 'ORG') {
                         pc = this.assembler.evaluateExpression(token.operands[0]);
                         optimized.push(token);
-                        if (token.label) { newSymbolTable[token.label] = pc; }
+                        rememberLabel(token.label, pc);
                         continue;
                     }
 
@@ -1032,7 +1055,7 @@ export class Z80Optimizer {
                         timingSensitiveRegion = true;
                     }
                     if (timingSensitiveRegion && token instanceof Instruction) {
-                        if (token.label) newSymbolTable[token.label] = pc;
+                        rememberLabel(token.label, pc);
                         optimized.push(token);
                         pc += this.estimateTokenByteSize(token);
                         if (/^AMY_OPTIMIZER_TIMING_END_/i.test(timingLabel)) {
@@ -1050,9 +1073,9 @@ export class Z80Optimizer {
                                 const equVal = token.operands.length > 0
                                     ? this.assembler.evaluateExpression(token.operands[0])
                                     : undefined;
-                                newSymbolTable[token.label] = equVal !== undefined ? equVal : pc;
+                                rememberLabel(token.label, equVal !== undefined ? equVal : pc);
                             } else {
-                                newSymbolTable[token.label] = pc;
+                                rememberLabel(token.label, pc);
                             }
                         }
 
@@ -1126,9 +1149,7 @@ export class Z80Optimizer {
                                 // Use NEW symbol table if target has been processed, otherwise use old.
                                 // Compute this before policy checks so immediate-resolved operands can
                                 // still be mapped back to timing-sensitive labels.
-                                const targetAddr = lastOp.type === 'symbol' && newSymbolTable[lastOp.value] !== undefined
-                                    ? newSymbolTable[lastOp.value]
-                                    : this.resolveAddress(lastOp);
+                                const targetAddr = resolveBranchTarget(lastOp);
                                 const targetNamesForPolicy = [targetLabel, String(lastOp.value || ''), token.sourceLine || ''];
                                 if (targetAddr !== null && targetAddr !== undefined) {
                                     for (const [name, addr] of Object.entries(newSymbolTable || {})) {
@@ -1189,9 +1210,7 @@ export class Z80Optimizer {
                     if (this.config.peephole && mnem === 'djnz' && token.operands.length === 1) {
                         const targetOp = token.operands[0];
                         if (targetOp.type === 'symbol' || targetOp.type === 'immediate') {
-                            const targetAddr = targetOp.type === 'symbol' && newSymbolTable[targetOp.value] !== undefined
-                                ? newSymbolTable[targetOp.value]
-                                : this.resolveAddress(targetOp);
+                            const targetAddr = resolveBranchTarget(targetOp);
                             if (targetAddr !== undefined && !this.canUseRelativeJump(pc, targetAddr, 2)) {
                                 const pcAfter = pc + 2;
                                 const offset = targetAddr - pcAfter;
@@ -1200,7 +1219,7 @@ export class Z80Optimizer {
                                 const jpNz = new Instruction(null, 'jp', [new Operand('condition', 'nz'), targetOp], token.lineNumber);
                                 optimized.push(decB);
                                 optimized.push(jpNz);
-                                if (token.label) { newSymbolTable[token.label] = pc; }
+                                rememberLabel(token.label, pc);
                                 this.stats.djnzExpanded++;
                                 // Net +1 byte vs DJNZ (was 2, now 4)
                                 pc += 4;
@@ -1214,15 +1233,13 @@ export class Z80Optimizer {
                     if (this.config.peephole && mnem === 'jr' && token.operands.length >= 1) {
                         const lastOp = token.operands[token.operands.length - 1];
                         if (lastOp.type === 'symbol' || lastOp.type === 'immediate') {
-                            const targetAddr = lastOp.type === 'symbol' && newSymbolTable[lastOp.value] !== undefined
-                                ? newSymbolTable[lastOp.value]
-                                : this.resolveAddress(lastOp);
+                            const targetAddr = resolveBranchTarget(lastOp);
                             if (targetAddr !== undefined && !this.canUseRelativeJump(pc, targetAddr, 2)) {
                                 const pcAfter = pc + 2;
                                 const offset = targetAddr - pcAfter;
                                 const jpToken = new Instruction(token.label, 'jp', token.operands, token.lineNumber);
                                 optimized.push(jpToken);
-                                if (token.label) { newSymbolTable[token.label] = pc; }
+                                rememberLabel(token.label, pc);
                                 this.stats.jrExpanded++;
                                 // Net +1 byte vs JR (was 2, now 3)
                                 pc += 3;
@@ -1248,7 +1265,7 @@ export class Z80Optimizer {
                             src.value === 0) {
                             if (!this.canReplaceLdAZeroWithXor(tokens, idx)) {
                                 optimized.push(token);
-                                if (token.label) { newSymbolTable[token.label] = pc; }
+                                rememberLabel(token.label, pc);
                                 pc += 2;
                                 continue;
                             }
@@ -1261,7 +1278,7 @@ export class Z80Optimizer {
                                 token.lineNumber
                             );
                             optimized.push(newToken);
-                            if (token.label) { newSymbolTable[token.label] = pc; }
+                            rememberLabel(token.label, pc);
                             this.stats.ldToXor++;
                             this.stats.bytesSaved++; // XOR A is 1 byte vs LD A,0 is 2 bytes
                             pc += 1; // XOR A
@@ -1277,7 +1294,7 @@ export class Z80Optimizer {
 
                     // No optimization applied, keep original
                     optimized.push(token);
-                    if (token.label) { newSymbolTable[token.label] = pc; }
+                    rememberLabel(token.label, pc);
 
                     // Update PC for next instruction
                     const key = this.assembler.getOpcodeKey(token);
@@ -5336,7 +5353,9 @@ export class Z80Optimizer {
                             } else {
                                 const jpToken = new Instruction(token.label, 'jp', token.operands, token.lineNumber);
                                 optimized.push(jpToken);
-                                i += isLabelThenRet ? 2 : 1; // consume label+RET or RET
+                                // A labeled RET can be an independent branch target. Keep it and
+                                // consume only an immediately adjacent, unlabeled RET.
+                                if (isDirectRet) i++;
                                 this.stats.callRetToJp++;
                                 this.stats.bytesSaved++;
                                 optimizerLog(`  CALL+RET → JP at line ${token.lineNumber}`, 'debug');

@@ -131,7 +131,7 @@ export class Lexer {
         this.code = code;
         this.tokens = [];
         this.numberParser = new NumberParser();
-        this.directives = ['CPU', 'FNAME', 'EQU', 'EVAL', 'CONSTANT', 'ORG', 'DW', 'DEFW', 'WORD', 'DS', 'DEFS', 'BLOCK', 'DB', 'DEFB', 'DEFM', 'ASCII', 'TEXT', 'BYTE', 'INCLUDE', 'INCBIN', 'MACRO', 'ENDM', 'REPT', 'ENDR', 'IF', 'IFDEF', 'IFNDEF', 'ENDIF', 'ELSE', 'ELIF', 'COND', 'ENDC', 'SECTION', 'ENDSECTION', 'RADIX', 'INTSYNTAX', 'RELAXED', 'PADDING', 'END', 'PUBLIC', 'GLOBAL', 'GLOBL', 'ENTRY', 'EXTERN', 'EXT', 'EXTRN', 'CSEG', 'DSEG', 'ASEG', 'COMMON', 'AREA', 'MODULE', 'TIMES', 'ALIGN', 'ASSERT', 'STRUCT', 'ENDSTRUCT', 'PRINT', 'FAIL', 'STOP', 'LET', 'REPEAT', 'REND', 'WHILE', 'WEND', 'ENDW', 'SWITCH', 'CASE', 'DEFAULT', 'ENDSWITCH'];
+        this.directives = ['CPU', 'FNAME', 'EQU', 'EVAL', 'CONSTANT', 'ORG', 'DW', 'DEFW', 'WORD', 'DS', 'DEFS', 'RB', 'RW', 'BLOCK', 'DB', 'DEFB', 'DEFM', 'ASCII', 'TEXT', 'BYTE', 'INCLUDE', 'INCBIN', 'MACRO', 'ENDM', 'REPT', 'ENDR', 'IF', 'IFDEF', 'IFNDEF', 'ENDIF', 'ELSE', 'ELIF', 'COND', 'ENDC', 'SECTION', 'ENDSECTION', 'RADIX', 'INTSYNTAX', 'RELAXED', 'PADDING', 'END', 'PUBLIC', 'GLOBAL', 'GLOBL', 'ENTRY', 'EXTERN', 'EXT', 'EXTRN', 'CSEG', 'DSEG', 'ASEG', 'COMMON', 'AREA', 'MODULE', 'TIMES', 'ALIGN', 'ASSERT', 'STRUCT', 'ENDSTRUCT', 'PRINT', 'FAIL', 'STOP', 'LET', 'REPEAT', 'REND', 'WHILE', 'WEND', 'ENDW', 'SWITCH', 'CASE', 'DEFAULT', 'ENDSWITCH'];
         this.tempSymbolCounters = {
             named: 0,
             plus: 0,
