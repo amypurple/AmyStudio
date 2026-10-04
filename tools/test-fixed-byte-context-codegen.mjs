@@ -219,6 +219,19 @@ check("fractional constants are encoded as fixed 8.8 words", () => {
   assert.match(String(fixedConstResult.asmBody || ""), /AMY_UCONST_Decel EQU \$0008/,
     "0.03125 must compile to fixed 8.8 value $0008");
 });
+const fixedExpressionCompare = transpileAmy(`ufixed PlayerX = 11.0
+ufixed AimX = 17.0
+u8 Miss = 0
+if PlayerX + 14.0 < AimX then Miss = 1
+loop forever
+`);
+check("fixed expressions preserve decimal literal scale in comparisons", () => {
+  assert.equal(fixedExpressionCompare.ok, true, fixedExpressionCompare.log || "transpile failed");
+  assert.match(String(fixedExpressionCompare.asmBody || ""), /ld hl,\$0E00/,
+    "14.0 in a ufixed expression must compile as fixed 8.8 value $0E00");
+  assert.doesNotMatch(String(fixedExpressionCompare.asmBody || ""), /ld hl,14\.0/,
+    "decimal literals must not leak into Z80 assembly");
+});
 if (process.env.DUMP_ASM) console.log(asm);
 
 check("fixed declaration literals are encoded as 8.8 values", () => {
@@ -455,6 +468,7 @@ const BIOS_STUBS = [
   "VRAM_COLOR EQU $2000",
   "VRAM_SPR_PAT EQU $3800",
   "VRAM_SPR_ATTR EQU $1B00",
+  "VDP_NAME_SHADOW EQU $73F6",
   "WRITE_VRAM EQU $1FDF",
   "CALC_OFFSET EQU $9200",
   "AMY_SPRITE_TABLE EQU $7100",

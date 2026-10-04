@@ -141,7 +141,8 @@ try {
     const rebuiltNoise = rebuilt.streams.find((stream) => stream.type === "noise");
     assert.ok(rebuiltNoise, `${item.name}: reconstructed ROM must still produce noise`);
     assert.deepEqual([...new Set(rebuiltNoise.events.filter((event) => event.attenuation < 15)
-      .map((event) => event.white === false ? "periodic" : "white"))], [expectedKind]);
+      .map((event) => event.white === false ? "periodic" : "white"))], [expectedKind],
+      `${item.name}: reconstructed noise kind changed`);
     assert.deepEqual([...new Set(rebuiltNoise.events.filter((event) => event.attenuation < 15)
       .map((event) => event.noiseRate))], [expectedRate]);
     const rebuiltEnvelope = recoveredEnvelope(rebuiltNoise);

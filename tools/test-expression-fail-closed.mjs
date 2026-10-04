@@ -62,6 +62,19 @@ for (const profile of profiles) {
   const result = await runCase("dynamic-spinner", dynamicSpinnerBody, profile, true);
   assert.equal(result.status, 0, `${profile} dynamic spinner: ${result.output}`);
 }
+const wideArrayIndexBody = `
+u8 Values[4]
+u16 Wide = 1
+u8 X = 0
+sub start:
+  Values[Wide] = 7
+  X = Values[Wide]
+  loop forever
+end sub`;
+for (const profile of profiles) {
+  const result = await runCase("wide-array-index", wideArrayIndexBody, profile, true);
+  assert.equal(result.status, 0, `${profile} wide array index: ${result.output}`);
+}
 const invalidCases = [
   ["removed-read-joypad", `u8 X = 0\nsub start:\n  read joypad 1 into X\n  loop forever\nend sub`, /read target must be/],
   ["removed-read-keypad", `u8 X = 0\nsub start:\n  read keypad 1 into X\n  loop forever\nend sub`, /read target must be/],
@@ -72,7 +85,6 @@ const invalidCases = [
   ["pget-word-target", `u16 X = 0\nsub start:\n  multicolor screen\n  X = pget 2,2\n  loop forever\nend sub`, /pget target must be a u8\/i8 variable/],
   ["replace-frame-word-count", `u8 Area[4]\nu16 Count = 0\nsub start:\n  replace 1 with 0 in Area frame size 2,2 into Count\n  loop forever\nend sub`, /replace .* frame into Count requires a byte variable/],
   ["get-char-word-target", `u16 Value = 0\nsub start:\n  Value = get char at 0,0\n  loop forever\nend sub`, /get char assignment target must be a byte RAM variable/],
-  ["wide-array-index", `u8 Values[4]\nu16 Wide = 1\nu8 X = 0\nsub start:\n  X = Values[Wide]\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["random-no-arg-u8", `u8 X = 0\nsub start:\n  X = random()\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["unknown-symbol", `u8 X = 0\nsub start:\n  X = mysteryVar + 1\n  loop forever\nend sub`, /Invalid runtime assignment/],
   ["unknown-call", `u8 X = 0\nsub start:\n  X = frobnicate(2)\n  loop forever\nend sub`, /Invalid runtime assignment/],

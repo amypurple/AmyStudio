@@ -1,5 +1,6 @@
 const CLOCKS = Object.freeze({ NTSC: 3579545, PAL: 3546893 });
 const FRAME_RATES = Object.freeze({ NTSC: 60, PAL: 50 });
+const NOISE_CAPTURE_ATTENUATION_BIAS = 6;
 
 function clamp(value, low, high) {
   return Math.max(low, Math.min(high, value));
@@ -449,8 +450,9 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
   const activeNoiseAnalyses = analyses.filter((frame) => frame.useNoise);
   // Speech consonants are better represented by white noise. Classifying an
   // entire phrase as periodic can create a pitched chirp during its release.
-  const whiteNoise = (speechMode && noiseFrames < Math.ceil(frameCount * 0.5))
-    || median(activeNoiseAnalyses.map((frame) => frame.pitchConfidence || 0)) < 0.58;
+  const noisePitchConfidence = median(activeNoiseAnalyses.map((frame) => frame.pitchConfidence || 0));
+  const whiteNoise = noisePitchConfidence < 0.58
+    || (speechMode && noiseFrames < Math.ceil(frameCount * 0.5) && noisePitchConfidence < 0.68);
   const periodicPitch = median(activeNoiseAnalyses.map((frame) => frame.pitch).filter(Boolean));
   const inferredNoiseClock = !whiteNoise && periodicPitch <= 280
       && median(activeNoiseAnalyses.map((frame) => frame.centroid)) > 2100
@@ -473,7 +475,10 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
   // A short spoken word can contain more noisy consonant frames than voiced
   // vowel frames. It is still speech, not a pure-noise effect: dropping all
   // tone tracks made words such as "up" and "please" nearly disappear.
-  const pureNoiseTrack = !speechMode && useNoiseTrack && noiseFrames >= Math.ceil(frameCount * 0.5);
+  const pureNoiseTrack = useNoiseTrack && (
+    (!speechMode && noiseFrames >= Math.ceil(frameCount * 0.5))
+    || noiseFrames >= Math.ceil(frameCount * 0.9)
+  );
   // Variable noise consumes Tone 3. With three-voice speech, a third formant
   // contributes more intelligibility than precise noise-clock tracking.
   const preserveSpeechFormants = speechMode && voiceLimit === 3 && useNoiseTrack && !pureNoiseTrack;
@@ -520,7 +525,9 @@ export function convertSamplesToPsgSound(samples, sampleRate, {
         noiseRate,
         white: whiteNoise,
         attenuation: analysis.useNoise
-          ? amplitudeToAttenuation(Math.min(1, analysis.rms * clamp(speechMode ? speechNoiseGain : 2.2, 0.5, 6)))
+          ? clamp(amplitudeToAttenuation(Math.min(1,
+              analysis.rms * clamp(speechMode ? speechNoiseGain : 2.2, 0.5, 6)))
+              - NOISE_CAPTURE_ATTENUATION_BIAS, 0, 15)
           : 15
       });
       if (useVariableNoise) {

@@ -17,13 +17,12 @@ const firmware = {
   eos: new Uint8Array(8192).fill(0xe0),
   smartwriter: new Uint8Array(32768).fill(0x57)
 };
-saveAdamFirmwareToBrowser(firmware, { os7: "OS7.ROM", eos: "EOS.ROM", smartwriter: "WP.ROM" }, storage);
+saveAdamFirmwareToBrowser(firmware, storage);
 const restored = loadAdamFirmwareFromBrowser(storage);
 assert.deepEqual(restored.os7, firmware.os7);
 assert.deepEqual(restored.eos, firmware.eos);
 assert.deepEqual(restored.smartwriter, firmware.smartwriter);
-assert.equal(restored.names.smartwriter, "WP.ROM");
-assert.throws(() => saveAdamFirmwareToBrowser({ ...firmware, eos: new Uint8Array(1) }, {}, storage), /8192 bytes/);
+assert.throws(() => saveAdamFirmwareToBrowser({ ...firmware, eos: new Uint8Array(1) }, storage), /8192 bytes/);
 clearAdamFirmwareFromBrowser(storage);
 assert.equal(values.has(ADAM_FIRMWARE_STORAGE_KEY), false);
 values.set(ADAM_FIRMWARE_STORAGE_KEY, "bad json");

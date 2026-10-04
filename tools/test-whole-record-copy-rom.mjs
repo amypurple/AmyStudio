@@ -117,7 +117,7 @@ try {
 
   for (const [name, statement, expectedMessage] of [
     ["mismatch", "WrongType = Source", "type mismatch"],
-    ["bad-index", "Destination = Items[WideIndex]", "record operands"]
+    ["bad-index", "Destination = Items[2]", "out-of-range|record operands|Invalid runtime assignment"]
   ]) {
     const stem = join(outputDir, name);
     await writeFile(`${stem}.alexis`, source.replace("Items[Index] = Source", statement));

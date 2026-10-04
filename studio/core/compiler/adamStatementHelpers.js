@@ -15,7 +15,7 @@ export function handleAdamStatement({
   const supportsEos = buildContext?.capabilities?.includes("eos");
   const capabilities = new Set(buildContext?.capabilities || []);
   const serialProfile = buildContext?.machine === "adam" && capabilities.has("serial-adamlink")
-    ? { name: "AdamLink", data: "$5F", status: "$5E", readable: "$02", writable: "$01", carrier: "$40" }
+    ? { name: "AdamLink", data: "$5E", status: "$5F", readable: "$02", writable: "$01", carrier: "$40" }
     : buildContext?.machine === "adam" && capabilities.has("serial-eve")
       ? { name: "Eve/Orphanware", data: "$44", status: "$45", readable: "$02", writable: "$01", carrier: "$40" }
       : buildContext?.machine === "adam" && capabilities.has("serial-micro")
