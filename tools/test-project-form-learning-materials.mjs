@@ -22,8 +22,15 @@ for (const file of ["megacart-bank-demo-fixed.asm", "megacart-bank-demo-bank1.as
 
 const language = fs.readFileSync(path.join(root, "docs", "amy-language.md"), "utf8");
 const cookbook = fs.readFileSync(path.join(root, "docs", "amy-optimization-cookbook.md"), "utf8");
+const eosMatrix = fs.readFileSync(path.join(root, "docs", "amy-os7-eos-command-support.md"), "utf8");
+const workflow = fs.readFileSync(path.join(root, "docs", "studio-workflow.md"), "utf8");
 for (const phrase of ["ADAM Native EOS Filesystem", "ADAM OS7 + EOS Hybrid Storage", "megacart-bank-demo.amy.json"]) {
   assert.ok(cookbook.includes(phrase), `cookbook must reference ${phrase}`);
 }
 assert.ok(language.includes("amy-optimization-cookbook.md"));
+assert.ok(!language.includes("pass-by-reference or explicit out-parameter support"), "implemented ref parameters must not remain listed as planned");
+assert.ok(!eosMatrix.includes("NMI-enabled `screen on` remains planned"), "verified native EOS NMI must not remain documented as planned");
+for (const phrase of ["colecovision-megacart", "adam-eos-application", "joystick port 2", "RECORD BOOT"]) {
+  assert.ok(workflow.includes(phrase), `Studio workflow must document ${phrase}`);
+}
 console.log("EOS, hybrid, and MegaCart learning materials: PASS");

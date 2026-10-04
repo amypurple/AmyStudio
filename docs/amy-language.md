@@ -3635,7 +3635,7 @@ These are the most plausible next language extensions. They are not implemented 
 
 - broader local-array support for wide integer element types
 - richer mixed-width conversions where signedness and overflow behavior can remain explicit
-- pass-by-reference or explicit out-parameter support for routines that need to mutate caller-owned data naturally
+- broader `ref` support where additional aggregate or indexed destinations can preserve a clear, compact ABI
 - richer fixed-point helpers for smoother movement and gameplay math beyond `whole`, `fraction`, `highbyte`, and `lowbyte`
 - stronger optimizer awareness of Amy-generated flow so language improvements do not regress into fragile branch layouts
 

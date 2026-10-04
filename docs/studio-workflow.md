@@ -1,18 +1,28 @@
 # Amy Studio Workflow
 
 ## Goal
-Use `studio/index.html` as the main Amy Studio environment for authoring source, generating ASM, compiling ROMs, managing embedded project assets, and testing the resulting cartridge.
+Use `studio/index.html` as the main Amy Studio environment for authoring source, generating ASM, building cartridge or ADAM media, managing embedded project assets, and testing the result.
 
 ## Steps
 1. On Windows, run `tools\serve-studio.cmd`. On macOS/Linux, run `python3 -m http.server 8080` from the repository root.
 2. Open `http://localhost:8080/studio/` in your browser.
-3. Write Amy source in the main editor.
-4. Optionally add embedded project files in the `Files` tab.
-5. Reference embedded files from source with the `@project/...` path prefix.
-6. Use `Transpile`, `Generate ASM`, or `Compile ROM` according to the verification required.
-7. Run the compiled cartridge in `Open ROM / Debugger` when behavior, graphics, input, sound, or timing matters.
+3. Create or import the correct project target: ColecoVision cartridge, MegaCart, native ADAM EOS, or OS7+EOS hybrid.
+4. Write Amy source in the main editor and use the source-file picker for additional editable Amy/ASM/text project files.
+5. Optionally add embedded project files in the `Files` tab.
+6. Reference embedded files from source with the `@project/...` path prefix.
+7. Compile the project; the selected target determines whether Studio builds a ROM/MegaCart image or ADAM DSK/DDP media.
+8. Run the compiled output in `Open ROM / Debugger` when behavior, graphics, input, sound, storage, or timing matters.
 
-`Transpile` validates Amy and emits generated assembly. `Generate ASM` prepares the assembly views and artifacts. `Compile ROM` assembles and links a runnable cartridge. A transpile success is not proof that the ROM boots or behaves correctly.
+Compilation validates Amy, emits generated assembly, and assembles the selected project form. Cartridge targets produce ROM output; native and hybrid ADAM targets can produce bootable DSK/DDP media with multiple project files. A successful compile is not proof that the resulting ROM or media boots and behaves correctly.
+
+## Project Targets And Outputs
+
+- `colecovision-cartridge`: normal OS7 cartridge ROM.
+- `colecovision-megacart`: banked MegaCart ROM with fixed and switchable 16 KiB regions.
+- `adam-eos-application`: native EOS application packaged on DSK or DDP.
+- OS7+EOS hybrid: an ADAM boot path that keeps OS7 game compatibility while using selected EOS services.
+
+MegaCart banking and ADAM memory mapping are different hardware contracts. `bank rom` and `bank select` describe cartridge banks; they do not select EOS RAM or firmware mappings. An ADAM project may contain several Amy, ASM, data, and pack files. Select editable sources with the source-file picker above the editor; edits update the project and invalidate its previous build.
 
 ## Project Import And Export
 
@@ -156,3 +166,9 @@ Converted tiny-music data can also live in the `Files` tab and be referenced
 with `@project/...` from an `asset` statement or an included ASM source. Prefer
 embedded files for demos that should compile in the browser without a local
 filesystem layout.
+
+## ROM Test And Debug
+
+The debugger runs compiled Amy output or external `.rom`, `.col`, `.dsk`, and `.ddp` media. ColecoVision requires a user-supplied 8 KiB BIOS; ADAM mode requires the corresponding user-supplied firmware. Amy Studio does not distribute firmware.
+
+The debugger provides CPU/VDP and ADAMnet inspection, RAM/VRAM views, source and Z80 stepping, breakpoints, watches, cycle profiling, controller configuration, writable ADAM media export, and deterministic recording. In ADAM mode, the `Keys` control routes the computer keyboard to the native ADAM keyboard, joystick port 1, or joystick port 2. `RECORD BOOT` captures from reset; recorded development routes can return quickly to a checkpoint after recompilation.
