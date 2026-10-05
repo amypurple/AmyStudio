@@ -41,7 +41,8 @@ The suite builds six runnable programs with all eight toolchains, plus matched P
 A **metasprite** combines hardware sprites into one actor. This test overlaps three 16x16 layers
 (white, yellow, black), below the four-sprites-per-scanline limit.
 
-The build scripts create 54 ROMs, grouped under `build/competition`.
+The current evidence package contains 62 complete, runtime-verified ROMs, grouped under
+`build/competition` and packaged with their sources and measurements.
 `tools/report-five-tool-sample-sizes.ps1` records occupied sizes; dedicated GearColeco tests verify
 the bitmap, controller, metasprite, and deterministic state-update oracles.
 
@@ -69,10 +70,10 @@ Experimental serves this size test; Balanced remains Amy's default.
 | Hello World | **184** | 238 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 1,707 |
 | Warrior bitmap | **3,066** | 3,257 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 16,322 |
 | Controller Visual | **264** | 595 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 2,370 |
-| Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 6,094 |
-| Gameplay State Update* | **508** | 1,430 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 6,297 |
+| Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,607 | 6,065 |
+| Gameplay State Update* | **508** | 1,430 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 4,455 |
 | Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,385 |
-| **Six-sample total*** | **5,126** | **7,878** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **35,175** |
+| **Six-sample total*** | **5,126** | **7,878** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,057** | **33,304** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -91,10 +92,9 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated code+data
 (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
-All six programs were rebuilt cleanly with official ugBASIC 1.18.1 `main` (2026-10-05) and
-`PRINT RAW` for text-only output. Changes versus 1.18 are Hello -3,538, Warrior -1,712,
-Controller -3,517, Sprite -1,624, State -4,182, and Tile -4,120 bytes; the total is
-35,175 (-34.7%).
+Official ugBASIC 1.18.1 `main` (2026-10-05) rebuilt all six programs cleanly, using `PRINT RAW`
+for text-only output. State Update caches record fields; Sprite Metasprite uses nested movement
+guards, while z88dk groups its pattern and SAT transfers. Totals are 33,304 and 21,057 bytes.
 
 ### Runtime and comparability verdict
 
@@ -231,7 +231,7 @@ documented separately below from their measured fixtures and inspected APIs.
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound and voice | BIOS tables, Tiny Sound, DSOUND, VoxPCM, and SP0256 Lundy/EVE modules | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
 | Direct-to-VRAM compression | Fifteen active codecs, including Exomizer 2 and MegaLZ | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
-| ROM banking | Intentionally no | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
+| ROM banking | Verified 64/128 KB MegaCart images and `bank select`; arbitrary banked Amy linking remains open | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
 | Graphics editors and project assets | Integrated bitmap, tile, sprite, frame, tilemap, and composite editors | Separate tools | Separate tools | Conversion-oriented IDE/tools | Separate asset tools | `gfx2col` and separate asset tools |
@@ -305,14 +305,6 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 | Digital samples | DSOUND and adaptive VoxPCM, including WAV conversion and preview | No first-class support | Manual/custom | Pending | No first-class support found | No first-class support found |
 | Speech hardware | SP0256-AL2 Lundy and EVE detection, state, queueing, timing, and debugger emulation | Manual I/O/custom | Manual I/O/custom | Not established | Manual I/O/custom | Manual I/O/custom |
 | Authoring | Integrated table/SFX editors, two-channel Tiny Sound sequencer, MIDI capture, and WAV-to-VoxPCM workflow | Note-oriented BASIC source | External VGM/tools | Source/resource conversion | External PSG tools | External table/asset tools |
-
-Amy Studio exposes the widest set of playback formats examined in this study, while CVBasic keeps
-a particularly concise music source syntax. Amy Studio can inspect and edit BIOS sound tables,
-audition steady/fade/echo envelopes, and capture note, velocity, and duration from Web MIDI. Its
-two-channel Tiny Sound sequencer edits notes, duration, tempo, envelopes, vibrato, and arpeggios
-with byte-exact project write-back. VoxPCM supplies adaptive software speech on stock hardware;
-the separate SP0256 path supports Lundy and EVE voice modules with asynchronous allophone queues.
-Remaining work is workflow polish and broader browser-versus-hardware fidelity measurement.
 
 ## Compression evidence
 
@@ -450,7 +442,7 @@ independent selection criteria.
 | Stock 1 KB RAM focus | Core design, RAM estimates, overlays | Yes, global/static model | Configurable CRT/C runtime | Backend manages runtime/resources | SDCC/static library model | SDCC/static library model |
 | Dead helper elimination | Capability-driven generation | Compiler-generated runtime | Linker sections/libraries | Deploy-on-use modules and target optimizer | Linker library extraction | Linker library extraction |
 | Optimizer | Five profiles plus runtime corpus | Z80 optimizer and peepholes | sccz80/zsdcc optimizers | Coleco-specific optimizer source | SDCC optimizer/peepholes | SDCC size optimization |
-| Beyond 32 KB | MegaCart target model exists; bank-aware assembly and packaging remain open | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
+| Beyond 32 KB | MegaCart images and mapper selection verified; arbitrary banked linking and bank-aware debug symbols remain open | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
 | Debug-aware RAM names | Yes, including overlay aliases | Assembly labels | Map/debug symbols | Generated symbols | Map symbols | Map symbols |
 
 Banking is established in CVBasic, z88dk, devkitSMS, and PVColLib. Amy Studio now models 128-1,024
@@ -469,7 +461,7 @@ is credited separately because it changes the machine available to the programme
 | F18A | PVColLib provides APIs and examples; Amy's GearColeco 1.7.0 debugger can emulate F18A video | Debug validation is available in Amy, but first-class Amy language APIs remain future work |
 | SGM / AY-3-8910-compatible sound | CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
 | SP0256 voice modules | Amy provides Lundy/EVE commands and debugger-selectable module emulation | Optional external hardware; excluded from the stock sound ranking |
-| Coleco ADAM | Amy builds and mounts a bootable 160 KiB disk with boot code, loader, and selectable WEPK files in GearColeco | Working project pipeline; general EOS APIs, data-pack output, and broader runtime oracles remain open |
+| Coleco ADAM | Amy builds native EOS and OS7+EOS hybrid programs on DSK/DDP, with target-aware graphics, input, sound, compression, files, ADAMnet, serial, and modem services | Broad DSK/DDP runtime coverage; applications beyond the resident 6 KiB window and optional-EOS cartridge services remain architectural work |
 | Extra RAM | Available through SGM, ADAM, and compatible clones depending on the tool/runtime | Report separately; never count it as stock 1 KB RAM |
 
 This separation lets every solution show its extended-hardware strengths without weakening Amy
@@ -613,15 +605,15 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Complete MegaCart banking: physical sections, capacity checks, mapper runtime, image packaging, and bank-aware debug symbols | Target and memory model implemented; assembler/linker prototype is next | High for large games | Large | High |
-| 2 | Generalize the working ADAM disk pipeline with EOS file APIs, data-pack output, and reusable runtime oracles | Bootable disk, loader, WEPK files, browser download, and GearColeco mounting work | High | Large | High |
-| 3 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
-| 4 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
-| 5 | Research a compact shared-codebook bitmap codec | Evidence plan | Medium | Medium | Medium |
+| 1 | Complete arbitrary MegaCart linking: physical sections, cross-bank calls, bank-qualified source maps, and debugger symbols | 64/128 KB images, mapper selection, capacity policy, and runtime tests work | High for large games | Large | High |
+| 2 | Extend native EOS programs beyond the resident `$C800-$DFFF` window | Native/hybrid DSK/DDP, EOS APIs, files, ADAMnet, serial, and modem paths are runtime verified | High for larger ADAM software | Large | High |
+| 3 | Add optional EOS services to otherwise stock OS7 cartridges | Requires safe detection, low-RAM trampoline, MIOC restoration, and stock-console fallback | High for saves and shared releases | Large | High |
+| 4 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
+| 5 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
 
-MegaCart is the next implementation target. Its first gate is a development-only 128 KB image
-whose fixed final bank selects two switchable banks, reads distinct signatures, rejects overflow,
-and preserves bank identity in source maps and GearColeco debugging.
+MegaCart's image and mapper gate now passes with 64 KB and 128 KB fixtures. The remaining gate is
+bank-aware assembly/linking: repeated logical addresses must retain physical-bank identity through
+cross-bank calls, source maps, breakpoints, profiling, and capacity diagnostics.
 
 The codec study starts from the verified `libcv` RLE+Huffman path in PkK's devkit without copying its format into Amy.
 It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
@@ -639,8 +631,9 @@ Completed and runtime-guarded:
 - corrected indexed `put frame`, sound inspection/editing, playback, undo, import, and Web MIDI;
 - adaptive VoxPCM conversion, preview, reusable-word playback, Space Taxi/Solar System demos, and
   SP0256-AL2 Lundy/EVE commands, timing, queues, and debugger emulation;
-- GearColeco 1.7.0 with F18A/ADAM emulation and browser-local OS7/EOS/WP firmware, while the
-  unfinished Amy ADAM software target remains explicit;
+- GearColeco 1.7.0 with F18A/ADAM emulation and browser-local OS7/EOS/WP firmware; native EOS and
+  OS7+EOS hybrid DSK/DDP targets now have runtime-tested graphics, input, sound, compression,
+  filesystem, ADAMnet, printer, serial, and modem paths;
 - `.rom`/`.col` drag-and-drop and universal graphics editors with TMS9918 priority and scanline
   preview, tilemaps, frames, and tile/sprite composites;
 - 155 five-profile display tests; adaptive `u8` saves 212 corpus bytes without ROM growth, while
