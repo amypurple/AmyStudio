@@ -110,8 +110,10 @@ function defaultPortTwo() {
 
 export function createDefaultControllerConfig() {
   return {
-    version: 1,
+    version: 2,
     rollerMode: "trackball",
+    rollerControllers: ["standard", "standard"],
+    wheelCompanionType: "standard",
     ports: [defaultPortOne(), defaultPortTwo()]
   };
 }
@@ -121,7 +123,7 @@ export function setControllerDeviceType(config, portIndex, type) {
   if (type === "wheel") {
     // The Expansion Module #2 wheel occupies P1; its companion controller is P2.
     next.ports[0].type = "wheel";
-    next.ports[1].type = "standard";
+    next.ports[1].type = next.wheelCompanionType;
     return next;
   }
   if (type === "roller-x") {
@@ -157,8 +159,12 @@ export function normalizeControllerConfig(value) {
   const defaults = createDefaultControllerConfig();
   const sourcePorts = Array.isArray(value?.ports) ? value.ports : [];
   return {
-    version: 1,
+    version: 2,
     rollerMode: value?.rollerMode === "joystick" ? "joystick" : "trackball",
+    rollerControllers: [0, 1].map((portIndex) =>
+      value?.rollerControllers?.[portIndex] === "super-action" ? "super-action" : "standard"
+    ),
+    wheelCompanionType: value?.wheelCompanionType === "super-action" ? "super-action" : "standard",
     ports: defaults.ports.map((fallback, portIndex) => {
       const source = sourcePorts[portIndex] || {};
       const bindings = {};
@@ -203,6 +209,7 @@ export function describeControllerBinding(binding) {
 }
 
 export function isControllerActionVisible(type, action) {
+  if (type === "wheel") return action.group === "spinner" || action.id === "FIRE_LEFT";
   if (action.group === "super") return type === "super-action";
   if (action.group === "spinner") return type !== "standard";
   return true;
@@ -260,13 +267,17 @@ export function buildControllerFrame(config, {
   const normalized = normalizeControllerConfig(config);
   const controllerMasks = [0, 0];
   const spinnerDeltas = [0, 0];
+  const roller = normalized.ports[0].type === "roller-x" || normalized.ports[1].type === "roller-y";
   for (let portIndex = 0; portIndex < 2; ++portIndex) {
     const port = normalized.ports[portIndex];
     const gamepad = findGamepad(port, gamepads);
     const portKeys = keyboardPort === null || keyboardPort === portIndex ? pressedKeys : NO_KEYS_PRESSED;
     for (const action of CONTROLLER_ACTIONS) {
       const mask = inputBits?.[action.id];
-      if (!mask || !isControllerActionVisible(port.type, action)) continue;
+      const visibleType = roller && action.group !== "spinner"
+        ? normalized.rollerControllers[portIndex]
+        : port.type;
+      if (!mask || !isControllerActionVisible(visibleType, action)) continue;
       if (actionActive(port, action.id, portKeys, gamepad, deadzone)) {
         controllerMasks[portIndex] |= mask;
       }
@@ -277,7 +288,6 @@ export function buildControllerFrame(config, {
       spinnerDeltas[portIndex] = Math.round((positive - negative) * port.sensitivity);
     }
   }
-  const roller = normalized.ports[0].type === "roller-x" || normalized.ports[1].type === "roller-y";
   if (roller && normalized.rollerMode === "joystick") {
     const horizontal = spinnerDeltas[0];
     const vertical = spinnerDeltas[1];

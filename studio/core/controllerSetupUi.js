@@ -109,7 +109,7 @@ function rollerFireMarkup(config) {
   ).join("")}</div>`;
 }
 
-function deviceMarkup(port, { hideFire = false, targetPort = null } = {}) {
+function deviceMarkup(port, { hideFire = false, targetPort = null, forceSpinner = false } = {}) {
   const mappedButton = (actionId, label, sourcePort = port) => buttonMarkup(actionId, label, sourcePort, targetPort);
   const arrows = [
     ["UP", "&#x2191;", "up"],
@@ -127,7 +127,7 @@ function deviceMarkup(port, { hideFire = false, targetPort = null } = {}) {
         return mappedButton(action, label, port).replace("<button ", `<button class="${className}" `);
       }).join("")}</div>`
     : "";
-  const spinner = port.type !== "standard"
+  const spinner = port.type !== "standard" || forceSpinner
     ? `<div class="controller-setup__spinner">${mappedButton("SPINNER_NEG", "&#x21BA;", port)}<div class="controller-setup__spinner-core" aria-hidden="true"></div>${mappedButton("SPINNER_POS", "&#x21BB;", port)}</div>`
     : "";
   return `
@@ -135,8 +135,8 @@ function deviceMarkup(port, { hideFire = false, targetPort = null } = {}) {
       ${port.type === "super-action" || hideFire ? "" : mappedButton("FIRE_LEFT", "LEFT<br>FIRE", port).replace("<button ", '<button class="controller-setup__fire controller-setup__fire--left" ')}
       ${port.type === "super-action" || hideFire ? "" : mappedButton("FIRE_RIGHT", port.type === "wheel" ? "GAS<br>PEDAL" : "RIGHT<br>FIRE", port).replace("<button ", '<button class="controller-setup__fire controller-setup__fire--right" ')}
       <div class="controller-setup__stick">${arrows}<div class="disc" aria-hidden="true"></div></div>
-      <div class="controller-setup__keypad">${keypad}</div>
       ${superButtons}
+      <div class="controller-setup__keypad">${keypad}</div>
       ${spinner}
     </div>`;
 }
@@ -183,6 +183,9 @@ export function createControllerSetupUi({
       <aside class="controller-setup__sidebar">
         <div class="controller-setup__ports"><button type="button" data-port="0">PORT 1</button><button type="button" data-port="1">PORT 2</button></div>
         <label>Controller type<select data-field="type"></select></label>
+        <label data-wheel-companion>P2 hand controller<select data-field="wheelCompanion"><option value="standard">Standard Controller</option><option value="super-action">Super Action Controller</option></select></label>
+        <label data-roller-p1>P1 inserted controller<select data-field="rollerP1"><option value="standard">Standard Controller</option><option value="super-action">Super Action Controller</option></select></label>
+        <label data-roller-p2>P2 inserted controller<select data-field="rollerP2"><option value="standard">Standard Controller</option><option value="super-action">Super Action Controller</option></select></label>
         <label data-roller-mode>Roller mode<select data-field="rollerMode"><option value="trackball">Trackball</option><option value="joystick">Joystick</option></select></label>
         <label data-gamepad-setting>Gamepad<select data-field="gamepad"></select></label>
         <label data-spinner-setting>Wheel / roller sensitivity<input data-field="sensitivity" type="range" min="1" max="32"></label>
@@ -243,6 +246,12 @@ export function createControllerSetupUi({
     typeSelect.disabled = wheelCompanion;
     field("rollerMode").value = config.rollerMode || "trackball";
     dialog.querySelector("[data-roller-mode]").hidden = !roller;
+    field("wheelCompanion").value = config.wheelCompanionType || "standard";
+    dialog.querySelector("[data-wheel-companion]").hidden = !wheelActive;
+    field("rollerP1").value = config.rollerControllers?.[0] || "standard";
+    field("rollerP2").value = config.rollerControllers?.[1] || "standard";
+    dialog.querySelector("[data-roller-p1]").hidden = !roller;
+    dialog.querySelector("[data-roller-p2]").hidden = !roller;
     field("sensitivity").value = String(port.sensitivity);
     dialog.querySelector("[data-spinner-setting]").hidden = port.type === "standard";
     field("note").textContent = roller
@@ -259,7 +268,7 @@ export function createControllerSetupUi({
     field("device").innerHTML = wheelActive
       ? buildWheelDeviceMarkup(config)
       : roller
-        ? rollerFireMarkup(config) + deviceMarkup(port, { hideFire: true })
+        ? rollerFireMarkup(config) + deviceMarkup({ ...port, type: config.rollerControllers[portIndex] }, { hideFire: true, forceSpinner: true })
         : deviceMarkup(port);
     refreshGamepads();
   }
@@ -342,6 +351,19 @@ export function createControllerSetupUi({
     persist();
     render();
   });
+  field("wheelCompanion").addEventListener("change", () => {
+    config.wheelCompanionType = field("wheelCompanion").value === "super-action" ? "super-action" : "standard";
+    config.ports[1].type = config.wheelCompanionType;
+    persist();
+    render();
+  });
+  for (const [fieldName, portIndex] of [["rollerP1", 0], ["rollerP2", 1]]) {
+    field(fieldName).addEventListener("change", () => {
+      config.rollerControllers[portIndex] = field(fieldName).value === "super-action" ? "super-action" : "standard";
+      persist();
+      render();
+    });
+  }
   field("gamepad").addEventListener("change", () => {
     const selected = connectedGamepads(getGamepads()).find((gamepad) => String(gamepad.index) === field("gamepad").value);
     config.ports[portIndex].gamepadId = selected?.id || "";
@@ -406,10 +428,14 @@ export function createControllerSetupUi({
   }
 
   function isKeyMapped(code, selectedPort = null) {
+    const roller = config.ports[0].type === "roller-x" || config.ports[1].type === "roller-y";
     return config.ports.some((port, portIndex) => {
       if (selectedPort !== null && selectedPort !== portIndex) return false;
       return CONTROLLER_ACTIONS.some((action) => {
-        if (!isControllerActionVisible(port.type, action)) return false;
+        const visibleType = roller && action.group !== "spinner"
+          ? config.rollerControllers[portIndex]
+          : port.type;
+        if (!isControllerActionVisible(visibleType, action)) return false;
         return (port.bindings[action.id] || []).some((binding) => binding.kind === "key" && binding.code === code);
       });
     });

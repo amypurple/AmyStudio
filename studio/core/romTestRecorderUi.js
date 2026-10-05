@@ -254,9 +254,68 @@ function ensureStyles() {
     .rom-recorder__record-action { color:#fff; background:#7c1720; border-color:#db4452; font-weight:700; }
     .rom-recorder__record-action.is-recording { background:#d51f2f; box-shadow:0 0 0 2px rgba(213,31,47,.25),0 0 14px rgba(213,31,47,.65); }
     .rom-recorder__settings .rom-recorder__compact-action { align-self:end; }
-    .rom-recorder__controller { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:10px; width:100%; }
-    .rom-recorder__controller-group { display:grid; grid-template-columns:repeat(3,minmax(34px,1fr)); gap:4px; }
-    .rom-recorder__controller button { min-height:29px; touch-action:none; }
+    .rom-recorder__controller { display:flex; justify-content:center; width:100%; padding:3px 0; }
+    .rom-recorder__controller-display { display:grid; justify-items:center; gap:5px; }
+    .rom-recorder__controller-shell { position:relative; display:grid; grid-template-rows:74px auto; gap:5px; width:116px; padding:7px 11px 10px; border:1px solid #52616b; border-radius:8px 8px 14px 14px; background:linear-gradient(145deg,#69747a 0%,#343d43 48%,#20282d 100%); box-shadow:inset 1px 1px 0 #8f9ba0,inset -2px -2px 3px #11171a,0 5px 10px #0008; }
+    .rom-recorder__controller-stick { position:relative; width:66px; height:66px; margin:0 auto; border:3px solid #929da2; border-radius:50%; background:radial-gradient(circle at 38% 32%,#eef1f1 0 8%,#aab1b3 10% 28%,#515b60 31% 47%,#1b2226 50% 100%); box-shadow:inset 0 0 0 2px #151b1e,0 2px 4px #000a; }
+    .rom-recorder__controller-stick button { position:absolute; display:grid; place-items:center; width:22px; min-width:22px; height:20px; min-height:20px; padding:0; border-color:#6f7d84; background:#151d22d9; font-size:11px; line-height:1; }
+    .rom-recorder__controller-stick [data-input="UP"] { top:-5px; left:22px; }
+    .rom-recorder__controller-stick [data-input="DOWN"] { bottom:-5px; left:22px; }
+    .rom-recorder__controller-stick [data-input="LEFT"] { top:23px; left:-7px; }
+    .rom-recorder__controller-stick [data-input="RIGHT"] { top:23px; right:-7px; }
+    .rom-recorder__controller-stick [data-input-combo="UP LEFT"] { top:2px; left:1px; }
+    .rom-recorder__controller-stick [data-input-combo="UP RIGHT"] { top:2px; right:1px; }
+    .rom-recorder__controller-stick [data-input-combo="DOWN LEFT"] { bottom:2px; left:1px; }
+    .rom-recorder__controller-stick [data-input-combo="DOWN RIGHT"] { right:1px; bottom:2px; }
+    .rom-recorder__controller-stick [data-input-combo] { width:18px; min-width:18px; height:17px; min-height:17px; font-size:9px; }
+    .rom-recorder__fire { position:absolute; top:52px; width:18px; min-width:18px; height:27px; min-height:27px; padding:0; border-color:#9b9b8a; border-radius:3px; background:linear-gradient(#e6e2c8,#8d8c7e); color:#111; font-size:9px; font-weight:900; box-shadow:inset 1px 1px 0 #fff8,0 1px 2px #000b; }
+    .rom-recorder__fire--left { left:-7px; }
+    .rom-recorder__fire--right { right:-7px; }
+    .rom-recorder__keypad { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; padding:5px; border:1px solid #151b1e; border-radius:3px; background:#242d32; box-shadow:inset 0 2px 5px #000a; }
+    .rom-recorder__keypad button { min-width:0; min-height:18px; padding:0; border:1px solid #8c969a; border-radius:2px; background:linear-gradient(#f0f1ee,#aeb4b4); color:#15191b; font:700 9px/1 monospace; box-shadow:inset 1px 1px 0 #fff,0 1px 1px #000a; touch-action:none; }
+    .rom-recorder__controller-profile { position:absolute; top:5px; left:25px; right:25px; z-index:2; color:#d7e1e4; font:700 8px/1 ui-monospace,Consolas,monospace; text-align:center; letter-spacing:.08em; text-transform:uppercase; text-shadow:0 1px #000; pointer-events:none; }
+    .rom-recorder__super-buttons { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; margin-top:5px; }
+    .rom-recorder__super-buttons button { min-width:0; min-height:19px; padding:0; border-radius:50%; color:transparent; }
+    .rom-recorder__super-buttons [data-input="FIRE_LEFT"] { background:#e2ca2f; }
+    .rom-recorder__super-buttons [data-input="FIRE_RIGHT"] { background:#c84242; }
+    .rom-recorder__super-buttons [data-input="PURPLE"] { background:#9255b7; }
+    .rom-recorder__super-buttons [data-input="BLUE"] { background:#4a9deb; }
+    .rom-recorder__super-spinner { display:grid; grid-template-columns:24px 1fr 24px; align-items:center; gap:4px; margin-top:4px; }
+    .rom-recorder__super-spinner button { min-width:24px; min-height:20px; padding:0; font-size:11px; }
+    .rom-recorder__super-spinner span { height:22px; border:3px solid #8e999d; border-radius:50%; background:radial-gradient(circle at 38% 32%,#e9ece8,#737d81 54%,#171d20 58%); box-shadow:0 1px 2px #000; }
+    .rom-recorder__controller-shell[data-profile="super-action"] { width:122px; grid-template-rows:74px auto auto; }
+    .rom-recorder__controller-shell[data-profile="super-action"] > .rom-recorder__fire { display:none; }
+    .rom-recorder__controller-shell[data-profile="wheel"] .rom-recorder__controller-stick { border-radius:44% 44% 50% 50%; background:radial-gradient(circle,#111 0 28%,#9da7aa 30% 38%,#161d21 40% 68%,#879297 70% 76%,#111 78%); }
+    .rom-recorder__controller-shell[data-profile="wheel"] { width:178px; border-radius:16px 16px 8px 8px; }
+    .rom-recorder__controller-shell[data-profile="roller"] { width:210px; border-radius:13px; background:linear-gradient(#343d42,#161d21); }
+    .rom-recorder__controller-shell[data-profile="roller"] .rom-recorder__controller-stick { background:radial-gradient(circle at 38% 32%,#f0ead4 0 15%,#aaa48e 30%,#55584f 49%,#151b1f 52%); }
+    .rom-recorder__controller-shell[data-profile="roller"] > .rom-recorder__fire { border-color:#7f2727; background:linear-gradient(#e34b43,#8c211f); color:#fff; }
+    .rom-recorder__controller-shell:not([data-profile="super-action"]) .rom-recorder__super-buttons { display:none; }
+    .rom-recorder__controller-ports { display:grid; grid-template-columns:1fr 1fr; gap:4px; width:100%; }
+    .rom-recorder__controller-ports button { min-width:0; padding:4px 7px; border-color:#43545e; color:#8fa2ac; background:#11191e; font:700 9px/1.2 ui-monospace,Consolas,monospace; text-transform:uppercase; }
+    .rom-recorder__controller-ports button[aria-selected="true"] { border-color:#65dbef; color:#071014; background:#65dbef; }
+    .rom-recorder__controller-display { display:flex; align-items:flex-start; justify-content:center; gap:22px; width:100%; }
+    .rom-recorder__controller-unit { display:grid; justify-items:center; gap:3px; }
+    .rom-recorder__controller-unit > strong { color:#9fb0b8; font:700 9px/1.2 ui-monospace,Consolas,monospace; letter-spacing:.06em; text-transform:uppercase; }
+    .rom-recorder__controller-unit[aria-selected="true"] > strong { color:#65dbef; }
+    .rom-recorder__controller-unit .rom-recorder__controller-shell { width:116px; padding-inline:11px; cursor:pointer; }
+    .rom-recorder__controller-unit[aria-selected="true"] .rom-recorder__controller-shell { outline:2px solid #65dbef; outline-offset:1px; }
+    .rom-recorder__wheel-set { display:grid; grid-template-columns:280px 88px; align-items:end; gap:8px; }
+    .rom-recorder__wheel-console { position:relative; width:280px; height:190px; box-sizing:border-box; padding:8px; border:2px solid #606b70; border-radius:8px; background:linear-gradient(145deg,#465158,#151b1f 72%); box-shadow:inset 2px 2px #879196,0 5px 9px #0009; }
+    .rom-recorder__wheel-console > strong,.rom-recorder__roller-panel > strong { display:block; color:#d3dcdf; font:700 9px/1.2 ui-monospace,Consolas,monospace; text-align:center; text-transform:uppercase; }
+    .rom-recorder__wheel-console > .rom-recorder__controller-unit { position:absolute; top:19px; right:16px; transform:scale(.72); transform-origin:top right; }
+    .rom-recorder__wheel-rim { position:absolute; top:28px; left:31px; width:118px; height:118px; border:12px solid #111719; border-radius:50%; background:radial-gradient(circle,#69757a 0 13%,#171d20 15% 22%,transparent 24%),conic-gradient(transparent 0 13%,#8e9698 14% 18%,transparent 19% 47%,#8e9698 48% 52%,transparent 53% 80%,#8e9698 81% 85%,transparent 86%); box-shadow:0 2px 5px #000,inset 0 0 0 2px #657176; }
+    .rom-recorder__wheel-rim button { position:absolute; min-width:23px; width:23px; min-height:20px; height:20px; padding:0; font-size:10px; }
+    .rom-recorder__wheel-rim [data-input="UP"] { top:-5px; left:47px; }.rom-recorder__wheel-rim [data-input="DOWN"] { bottom:-5px; left:47px; }.rom-recorder__wheel-rim [data-input="LEFT"] { top:46px; left:-5px; }.rom-recorder__wheel-rim [data-input="RIGHT"] { top:46px; right:-5px; }
+    .rom-recorder__pedal { display:grid; align-content:end; height:128px; padding:8px; border:2px solid #59656a; border-radius:5px; background:repeating-linear-gradient(0deg,#21292d 0 10px,#4b565b 11px 14px); box-shadow:0 5px 8px #0009; }
+    .rom-recorder__pedal button { min-width:0; padding:6px 2px; font-size:9px; }
+    .rom-recorder__roller-panel { position:relative; display:grid; grid-template-columns:116px 116px; justify-content:space-between; gap:96px; width:348px; padding:9px; border:2px solid #5f6b70; border-radius:8px; background:linear-gradient(#3c464b,#151b1e); box-shadow:inset 2px 2px #879196,0 5px 9px #0009; }
+    .rom-recorder__roller-panel > strong { position:absolute; top:8px; left:122px; width:124px; }
+    .rom-recorder__roller-trackball { position:absolute; top:31px; left:141px; width:66px; height:66px; border:7px solid #11181c; border-radius:50%; background:radial-gradient(circle at 38% 32%,#f4efd8,#b5af95 48%,#6e6b5d 70%); box-shadow:0 2px 5px #000; }
+    .rom-recorder__roller-actions { position:absolute; top:112px; left:123px; display:grid; grid-template-columns:repeat(2,43px); gap:7px 16px; }
+    .rom-recorder__roller-actions button { min-width:43px; min-height:24px; padding:0; border-color:#8e2b27; background:#d6463e; color:#fff; font-size:9px; }
+    @media(max-width:760px) { .rom-recorder__wheel-set { grid-template-columns:280px 68px; }.rom-recorder__wheel-rim { left:24px; }.rom-recorder__wheel-console > .rom-recorder__controller-unit { right:12px; transform:scale(.68); }.rom-recorder__roller-panel { transform:scale(.9); transform-origin:top center; margin-bottom:-22px; } }
+    .rom-recorder__controller button:active,.rom-recorder__controller button.is-active { transform:translateY(1px); filter:brightness(.75); }
     .rom-recorder__capture { width:100%; }
     .rom-recorder__development { display:grid; grid-template-columns:minmax(130px,.8fr) minmax(180px,1.2fr); gap:6px; padding:7px; border:1px solid #26343c; background:#091015; }
     .rom-recorder__development-actions { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px; }
@@ -336,8 +395,7 @@ function buildDialog() {
           <input data-field="timeline" type="range" min="0" max="0" value="0" aria-label="Recorded frame timeline"><span class="rom-recorder__frame" data-field="frame" title="Recorded frame">F 0</span><button type="button" data-action="reset" title="Reset recording" aria-label="Reset recording">&#x21BA;</button>
         </div>
         <div class="rom-recorder__controller" aria-label="ColecoVision controller">
-          <div class="rom-recorder__controller-group" aria-label="Direction and fire"><button data-input="UP" title="Up" aria-label="Up">↑</button><button data-input="FIRE_LEFT" title="Left fire" aria-label="Left fire">L</button><button data-input="FIRE_RIGHT" title="Right fire" aria-label="Right fire">R</button><button data-input="LEFT" title="Left" aria-label="Left">←</button><button data-input="DOWN" title="Down" aria-label="Down">↓</button><button data-input="RIGHT" title="Right" aria-label="Right">→</button></div>
-          <div class="rom-recorder__controller-group" aria-label="Numeric keypad"><button data-input="KEYPAD_1">1</button><button data-input="KEYPAD_2">2</button><button data-input="KEYPAD_3">3</button><button data-input="KEYPAD_4">4</button><button data-input="KEYPAD_5">5</button><button data-input="KEYPAD_6">6</button><button data-input="KEYPAD_7">7</button><button data-input="KEYPAD_8">8</button><button data-input="KEYPAD_9">9</button><button data-input="KEYPAD_ASTERISK">*</button><button data-input="KEYPAD_0">0</button><button data-input="KEYPAD_HASH">#</button></div>
+          <div class="rom-recorder__controller-display" data-field="controllerDisplay"></div>
         </div>
         <div class="rom-recorder__tools rom-recorder__capture" aria-label="Deterministic video recording"><button class="rom-recorder__record-action" type="button" data-action="recordBoot" title="Reset and record from the first boot frame">&#x25CF; RECORD BOOT</button><button class="rom-recorder__record-action" type="button" data-action="recordVideo" title="Start recording from the current frame">&#x25CF; RECORD NOW</button><button type="button" data-action="stopVideo" title="Stop gameplay recording" disabled>&#x25A0; STOP</button><button class="button--primary" type="button" data-action="exportVideo" title="Replay the recording and export Motion-JPEG video with PCM audio" disabled>Export AVI</button></div>
       </div>
@@ -916,6 +974,67 @@ export function createRomTestRecorderUi({
         : `Enable mouse spinner for P${port}`;
     button.setAttribute("aria-label", button.title);
     button.setAttribute("aria-pressed", mouseSpinnerEnabled ? "true" : "false");
+  }
+
+  function renderControllerVisual() {
+    const selectedPort = Number(field("controller").value) || 0;
+    const config = controllerSetup?.getConfig();
+    const isWheel = config?.ports?.[0]?.type === "wheel";
+    const isRoller = config?.ports?.[0]?.type === "roller-x" || config?.ports?.[1]?.type === "roller-y";
+    const display = field("controllerDisplay");
+    const describePort = (portIndex, type = config?.ports?.[portIndex]?.type || "standard") => {
+      if (isWheel) return portIndex === 0 ? "Steering wheel" : type === "super-action" ? "Super Action" : "Hand controller";
+      if (isRoller) return type === "super-action" ? "Super Action" : "Standard";
+      if (type === "super-action") return "Super Action";
+      return "Standard";
+    };
+    const input = (port, name, text, title = text) => `<button data-input="${name}" data-input-port="${port}" title="${title}" aria-label="${title}">${text}</button>`;
+    const diagonal = (port, names, text, title) => `<button data-input-combo="${names}" data-input-port="${port}" title="${title}" aria-label="${title}">${text}</button>`;
+    const keypad = (port) => ["1","2","3","4","5","6","7","8","9","ASTERISK","0","HASH"].map((key) =>
+      input(port, `KEYPAD_${key}`, key === "ASTERISK" ? "*" : key === "HASH" ? "#" : key)
+    ).join("");
+    const controllerUnit = (port, forcedType = null, hideSideFire = false) => {
+      const type = forcedType || config?.ports?.[port]?.type || "standard";
+      const profile = type === "roller-x" || type === "roller-y" || type === "wheel" ? "standard" : type;
+      return `<div class="rom-recorder__controller-unit" data-controller-port="${port}" aria-selected="${port === selectedPort}">
+        <strong>P${port + 1}</strong>
+        <div class="rom-recorder__controller-shell" data-profile="${profile}">
+          ${hideSideFire ? "" : `<button class="rom-recorder__fire rom-recorder__fire--left" data-input="FIRE_LEFT" data-input-port="${port}" title="Left fire">L</button>`}
+          <div class="rom-recorder__controller-stick" aria-label="P${port + 1} eight-way joystick">${input(port,"UP","↑","Up")}${diagonal(port,"UP LEFT","↖","Up-left")}${diagonal(port,"UP RIGHT","↗","Up-right")}${input(port,"LEFT","←","Left")}${input(port,"RIGHT","→","Right")}${diagonal(port,"DOWN LEFT","↙","Down-left")}${diagonal(port,"DOWN RIGHT","↘","Down-right")}${input(port,"DOWN","↓","Down")}</div>
+          ${hideSideFire ? "" : `<button class="rom-recorder__fire rom-recorder__fire--right" data-input="FIRE_RIGHT" data-input-port="${port}" title="Right fire">R</button>`}
+          <div class="rom-recorder__super-buttons" aria-label="P${port + 1} Super Action buttons">${input(port,"FIRE_LEFT","Y","Yellow button")}${input(port,"FIRE_RIGHT","R","Red button")}${input(port,"PURPLE","P","Purple button")}${input(port,"BLUE","B","Blue button")}</div>
+          <div class="rom-recorder__keypad" aria-label="P${port + 1} numeric keypad">${keypad(port)}</div>
+          ${profile === "super-action" ? `<div class="rom-recorder__super-spinner" aria-label="P${port + 1} speed roller"><button data-spinner-port="${port}" data-spinner-direction="-1" title="Roll spinner left">↺</button><span aria-hidden="true"></span><button data-spinner-port="${port}" data-spinner-direction="1" title="Roll spinner right">↻</button></div>` : ""}
+        </div></div>`;
+    };
+    if (isWheel) {
+      display.innerHTML = `<div class="rom-recorder__wheel-set">
+        <div class="rom-recorder__wheel-console"><strong>P1</strong>${controllerUnit(1,config?.wheelCompanionType || "standard",true)}<div class="rom-recorder__wheel-rim" title="Analog steering; configure keys, gamepad axis, or mouse spinner"></div></div>
+        <div class="rom-recorder__pedal"><button data-input="FIRE_LEFT" data-input-port="0" title="Accelerator pedal (controller port 1, game-visible left fire)">P1<br>PEDAL</button></div></div>`;
+    } else if (isRoller) {
+      display.innerHTML = `<div class="rom-recorder__roller-panel"><strong>P1 + P2</strong>
+        ${controllerUnit(0,config?.rollerControllers?.[0] || "standard",true)}<div class="rom-recorder__roller-trackball" aria-label="Trackball"></div>${controllerUnit(1,config?.rollerControllers?.[1] || "standard",true)}
+        <div class="rom-recorder__roller-actions">${input(0,"FIRE_LEFT","P1 L")}${input(0,"FIRE_RIGHT","P1 R")}${input(1,"FIRE_LEFT","P2 L")}${input(1,"FIRE_RIGHT","P2 R")}</div></div>`;
+    } else {
+      display.innerHTML = controllerUnit(0) + controllerUnit(1);
+    }
+    display.querySelectorAll("[data-input],[data-input-combo]").forEach(bindInputButton);
+    display.querySelectorAll("[data-spinner-port]").forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        const port = Number(button.dataset.spinnerPort) || 0;
+        const direction = Number(button.dataset.spinnerDirection) < 0 ? -1 : 1;
+        const sensitivity = controllerSetup?.getConfig()?.ports?.[port]?.sensitivity || 6;
+        mouseSpinnerAccum[port] += direction * sensitivity;
+      });
+    });
+    display.querySelectorAll("[data-controller-port]").forEach((element) => {
+      element.addEventListener("click", (event) => {
+        if (event.target.closest("[data-input],[data-input-combo]")) return;
+        field("controller").value = element.dataset.controllerPort;
+        field("controller").dispatchEvent(new Event("change"));
+      });
+    });
   }
 
   function clearMouseFireButtons() {
@@ -1571,10 +1690,13 @@ export function createRomTestRecorderUi({
   }
 
   function bindInputButton(button) {
-    const mask = GEARCOLECO_TEST_INPUT[button.dataset.input];
+    const inputNames = button.dataset.inputCombo?.split(/\s+/).filter(Boolean) || [button.dataset.input];
+    const mask = inputNames.reduce((combined, name) => combined | (GEARCOLECO_TEST_INPUT[name] || 0), 0);
     const press = (event) => {
       event.preventDefault();
-      const controller = Number(field("controller").value) || 0;
+      const controller = button.dataset.inputPort === undefined
+        ? Number(field("controller").value) || 0
+        : Number(button.dataset.inputPort) || 0;
       controllerMasks[controller] |= mask;
       button.dataset.activeController = String(controller);
       button.setPointerCapture?.(event.pointerId);
@@ -1807,6 +1929,7 @@ export function createRomTestRecorderUi({
     field("controller").addEventListener("change", () => {
       controllerMasks[0] = 0;
       controllerMasks[1] = 0;
+      renderControllerVisual();
       renderMouseSpinnerButton();
     });
     action("controllerSetup").addEventListener("click", () => {
@@ -1892,7 +2015,6 @@ export function createRomTestRecorderUi({
       } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     field("symbolFilter").addEventListener("input", renderSymbolList);
-    for (const button of dialog.querySelectorAll("[data-input]")) bindInputButton(button);
 
     action("addBreakpoint").addEventListener("click", () => {
       try {
@@ -2159,11 +2281,13 @@ export function createRomTestRecorderUi({
           mouseJoystickMask = 0;
           clearMouseFireButtons();
           field("controller").value = String(preferredControllerUiPort(controllerSetup?.getConfig(), field("controller").value));
+          renderControllerVisual();
           renderMouseSpinnerButton();
           dialog?.querySelector("canvas")?.focus();
         }
       });
       field("controller").value = String(preferredControllerUiPort(controllerSetup.getConfig(), field("controller").value));
+      renderControllerVisual();
       bindDialog();
     }
     symbols = externalRom ? [] : annotateOverlaySymbols(parseAmySymbols(getCompiledSymbols()), getCompiledMetadata()?.ramOverlays);

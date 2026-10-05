@@ -54,7 +54,8 @@ const storage = {
 
 let config = createDefaultControllerConfig();
 config.ports[0].type = "super-action";
-config.ports[1].type = "wheel";
+config.ports[1].type = "roller-y";
+config.rollerControllers = ["super-action", "standard"];
 config.ports[1].sensitivity = 10;
 config = setControllerBinding(config, 0, "BLUE", { kind: "key", code: "KeyC" });
 config = setControllerBinding(config, 1, "FIRE_RIGHT", { kind: "key", code: "KeyE" });
@@ -115,6 +116,8 @@ assert.equal(frame.spinnerDeltas[1], 0, "standard controllers must ignore spinne
 assert.equal(isControllerActionVisible("super-action", { group: "super" }), true);
 assert.equal(isControllerActionVisible("standard", { group: "super" }), false);
 assert.equal(isControllerActionVisible("roller-x", { group: "spinner" }), true);
+assert.equal(isControllerActionVisible("wheel", { id: "LEFT", group: "stick" }), false, "wheel rotation must not masquerade as a digital direction");
+assert.equal(isControllerActionVisible("wheel", { id: "FIRE_LEFT", group: "fire" }), true, "wheel pedal must remain available");
 
 config = setControllerBinding(config, 0, "UP", null);
 frame = buildControllerFrame(config, {
@@ -153,6 +156,14 @@ assert.equal(
 );
 assert.deepEqual(frame.spinnerDeltas, [0, 0], "Roller joystick mode must not emit spinner ticks");
 
+rollerConfig.rollerMode = "trackball";
+rollerConfig.rollerControllers[0] = "super-action";
+frame = buildControllerFrame(rollerConfig, {
+  pressedKeys: new Set(["KeyC"]),
+  inputBits: INPUT
+});
+assert.equal(frame.controllerMasks[0], INPUT.BLUE, "a Super Action controller inserted in the Roller P1 bay must retain its blue trigger");
+
 const wheelConfig = setControllerDeviceType(createDefaultControllerConfig(), 1, "wheel");
 const wheelMarkup = buildWheelDeviceMarkup(wheelConfig);
 assert.match(wheelMarkup, /PORT 1 · STEERING \+ PEDAL/);
@@ -167,7 +178,15 @@ frame = buildControllerFrame(wheelConfig, {
 });
 assert.equal(frame.spinnerDeltas[0], 6, "Steering Wheel ticks must use the Port 1 spinner channel");
 assert.equal(frame.spinnerDeltas[1], 0);
-assert.equal(frame.controllerMasks[0], INPUT.FIRE_LEFT, "The gas pedal must use Port 1 Left Fire (hardware pin 6)");
+assert.equal(frame.controllerMasks[0], INPUT.FIRE_LEFT, "The gas pedal must use Port 1 Left Fire as exposed to games");
 assert.equal(frame.controllerMasks[1], INPUT.UP | INPUT.KEYPAD_3, "Port 2 must retain gear and keypad input");
+
+wheelConfig.wheelCompanionType = "super-action";
+wheelConfig.ports[1].type = "super-action";
+frame = buildControllerFrame(wheelConfig, {
+  pressedKeys: new Set(["KeyR"]),
+  inputBits: INPUT
+});
+assert.equal(frame.controllerMasks[1], INPUT.BLUE, "a Super Action controller used beside the wheel must retain its blue trigger");
 
 console.log("Controller profiles PASS");

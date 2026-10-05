@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-09-28
+Updated: 2026-10-05
 
 ## Method
 
@@ -52,7 +52,7 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | Amy Studio | Experimental | Saved 1 byte on Bitmap and 2 on Controller versus Balanced; Hello was unchanged |
 | CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
 | z88dk | `+coleco -O3`; ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; ZX7, MDKRLE, and raw baselines remain measured |
-| ugBASIC 1.18 | Default maximum of 16 peephole passes | Explicit 32- and 64-pass builds produced the same Hello binary |
+| ugBASIC 1.18.1 `main` (2026-10-05) | Default maximum of 16 peephole passes | October cold fix substantially reduced the ColecoVision text runtime |
 | devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
@@ -66,20 +66,22 @@ Experimental serves this size test; Balanced remains Amy's default.
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 238 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 5,245 |
-| Warrior bitmap | **3,066** | 3,257 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 18,034 |
-| Controller Visual | **264** | 595 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 5,887 |
-| Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 7,718 |
-| Gameplay State Update* | **508** | 1,430 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 10,479 |
-| Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 6,505 |
-| **Six-sample total*** | **5,126** | **7,878** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **53,868** |
+| Hello World | **184** | 238 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 1,707 |
+| Warrior bitmap | **3,066** | 3,257 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 15,904 |
+| Controller Visual | **264** | 595 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 2,673 |
+| Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,902 | 6,094 |
+| Gameplay State Update* | **508** | 1,430 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 6,297 |
+| Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,480 |
+| **Six-sample total*** | **5,126** | **7,878** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,352** | **35,155** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
-ugBASIC's `COMPRESSED` and `NONE` Warrior builds are identical at 18,034 bytes: MSC1 was discarded,
-and its RLE image branch is C128-only.
+The ugBASIC 1.18.1 `main` Warrior source occupies 15,904 bytes and is pixel-exact. It retains
+`LOAD IMAGE` conversion but uses a short Coleco Graphics II transfer bridge because generated code
+truncates the 16-bit `CURRENTTILESWIDTHX8` value 256 and omits the required repeated Name Table.
+The current `COMPRESSED` form exceeds the target memory budget; its RLE branch remains C128-only.
 
 Legacy payloads are MDKRLE 3,687, DAN1 2,903, DAN2 2,897, and DAN3 2,891 bytes. DAN2 stays linked:
 DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to end.
@@ -88,12 +90,17 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated code+data
 (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
+All six programs were rebuilt cleanly with official ugBASIC 1.18.1 `main` (2026-10-05) and
+`PRINT RAW` for text-only output. Changes versus 1.18 are Hello -3,538, Warrior -2,130,
+Controller -3,214, Sprite -1,624, State -4,182, and Tile -4,025 bytes; the total is
+35,155 (-34.7%).
+
 ### Runtime and comparability verdict
 
 | Sample | Runtime result | Verdict |
 |---|---|---|
 | Hello World | Nine ROMs complete 180 GearColeco frames | Stable startup |
-| Warrior bitmap | Nine native pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
+| Warrior bitmap | Nine current pipelines render the same 256x192 image | `0 / 49,152` pixels differ |
 | Controller Visual | Eight pass injected neutral, keypad, UP, FIRE, and release states | Partial: ugBASIC does not update VDP R7 |
 | Sprite Metasprite | Nine pass the same VRAM and sprite-table checks | Exact patterns, layers, and priority |
 | Gameplay State Update | Nine match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
