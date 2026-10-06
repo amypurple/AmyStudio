@@ -920,21 +920,27 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/alexis_lib/coleco_120c.asm",
     "asm": "AMY_120C_UPDATE:"
   },
+  "AMY_TRIPCM_CORE": {
+    "group": "sound",
+    "sourcePath": "src/alexis_lib/coleco_tripcm_core.asm",
+    "asm": "AMY_TRIPCM_CORE:"
+  },
   "AMY_PLAY_TRIPCM": {
     "group": "sound",
     "sourcePath": "src/alexis_lib/coleco_tripcm.asm",
-    "asm": "AMY_PLAY_TRIPCM:"
+    "asm": "AMY_PLAY_TRIPCM:",
+    "deps": ["AMY_TRIPCM_CORE"]
   },
   "AMY_PLAY_TRIPCM_COMPACT": {
     "group": "sound",
     "sourcePath": "src/alexis_lib/coleco_tripcm_compact.asm",
     "asm": "AMY_PLAY_TRIPCM_COMPACT:",
-    "deps": ["AMY_PLAY_TRIPCM"]
+    "deps": ["AMY_TRIPCM_CORE"]
   },
   "AMY_PLAY_TRIPCM_SEQUENCE": {
     "group": "sound",
     "sourcePath": "src/alexis_lib/coleco_tripcm_sequence.asm",
     "asm": "AMY_PLAY_TRIPCM_SEQUENCE:",
-    "deps": ["AMY_PLAY_TRIPCM_COMPACT"]
+    "deps": ["AMY_TRIPCM_CORE"]
   }
 };

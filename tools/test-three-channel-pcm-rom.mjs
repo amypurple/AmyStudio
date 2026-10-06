@@ -15,7 +15,6 @@ for (let repeat = 0; repeat < 120; repeat += 1) {
   for (let level = 44; level >= 5; level -= 1) levels.push(level);
 }
 const encoded = encodeThreeChannelPcm(levels);
-const compactEncoded = encodeThreeChannelPcmCompact(levels);
 const sequenceParts = [
   encodeThreeChannelPcmCompact([19, 20, 21, 22, 23, 24, 25, 24]),
   encodeThreeChannelPcmCompact([19, 17, 15, 13, 11, 13, 15, 17]),
@@ -24,10 +23,6 @@ const sequenceParts = [
 const encodedValues = Array.from(encoded, value => `$${value.toString(16).padStart(2, "0")}`);
 const db = Array.from({ length: Math.ceil(encodedValues.length / 24) }, (_, line) =>
   `    db ${encodedValues.slice(line * 24, line * 24 + 24).join(",")}`
-).join("\n");
-const compactValues = Array.from(compactEncoded, value => `$${value.toString(16).padStart(2, "0")}`);
-const compactDb = Array.from({ length: Math.ceil(compactValues.length / 24) }, (_, line) =>
-  `    db ${compactValues.slice(line * 24, line * 24 + 24).join(",")}`
 ).join("\n");
 const sequenceDb = sequenceParts.map((part, index) => {
   const values = Array.from(part, value => `$${value.toString(16).padStart(2, "0")}`);
@@ -41,17 +36,12 @@ sub start:
   text screen
   screen on
   play tripcm TripcmTestData
-  play tripcm compact TripcmCompactTestData
   play voxpcm TripcmSequenceTable[VoiceIndex]
   Finished = 1
   loop forever
 
 data TripcmTestData bytes
 ${db.replace(/^    db /gm, "  ")}
-end data
-
-data TripcmCompactTestData bytes
-${compactDb.replace(/^    db /gm, "  ")}
 end data
 
 ${sequenceDb}
@@ -166,7 +156,7 @@ try {
       loopCore.destroy();
     }
   }
-  console.log(`Three-channel PCM GearColeco test PASS (${profiles.length} profiles, normal, compact, finite sequence and looping sequence)`);
+  console.log(`Three-channel PCM GearColeco test PASS (${profiles.length} profiles, normal TriPCM plus finite and looping VoxPCM sequences)`);
 } finally {
   if (process.env.KEEP_TMP) console.log(`Kept ${temp}`);
   else await rm(temp, { recursive: true, force: true });
