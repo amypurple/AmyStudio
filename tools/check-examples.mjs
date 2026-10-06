@@ -9,6 +9,7 @@
 //   --rom-dir <directory>   write assembled ROM and symbol files to this directory
 //   --optimization <level>  ROM assembly profile: off, safe, balanced, aggressive, experimental
 //   --disable-optimizer-option <name>  force one optimizer config option off; repeatable
+//   --disable-semantic-optimization <name>  disable one transpiler optimization for differential tests
 //   --audit-json <file>     write per-example ROM size and optimized-ASM hashes
 //   --project-files-overlay <file>  replace project files by example id for variant audits
 import { createHash } from "node:crypto";
@@ -20,7 +21,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SNAPSHOT = resolve(__dir, "examples-baseline.json");
 
 const args = process.argv.slice(2);
-const options = { only: null, assemble: false, romDir: null, optimization: "balanced", disabledOptimizerOptions: [], auditJson: null, projectFilesOverlay: null };
+const options = { only: null, assemble: false, romDir: null, optimization: "balanced", disabledOptimizerOptions: [], disabledSemanticOptimizations: [], auditJson: null, projectFilesOverlay: null };
 let mode = "run";
 let snapshotFile = DEFAULT_SNAPSHOT;
 for (let index = 0; index < args.length; index += 1) {
@@ -46,6 +47,9 @@ for (let index = 0; index < args.length; index += 1) {
   } else if (arg === "--disable-optimizer-option") {
     options.assemble = true;
     options.disabledOptimizerOptions.push(args[++index] || "");
+  } else if (arg === "--disable-semantic-optimization") {
+    options.assemble = true;
+    options.disabledSemanticOptimizations.push(args[++index] || "");
   } else if (arg === "--audit-json") {
     options.assemble = true;
     options.auditJson = resolve(args[++index] || "");
@@ -216,6 +220,9 @@ function transpileAmy(sourceText, projectFiles = [], buildTarget = null, memoryP
     return transpileAmyCore(bundled.sourceText, {
       ...DEPS,
       resolveStaticAbiInclude,
+      semanticOptimizerOptions: {
+        sharedCoordinateIndex: !options.disabledSemanticOptimizations.includes("shared-coordinate-index")
+      },
       ...(buildContext ? { buildContext, predefinedSymbols: getBuildContextDefines(buildContext) } : {})
     });
   } catch (error) {

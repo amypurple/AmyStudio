@@ -244,6 +244,132 @@ export function createCompilerShellHelpers({
     return optimized;
   }
 
+  function optimizeSharedAdjacentArrayIndex(lines) {
+    const optimized = [];
+    const loadIndex = /^\s*ld\s+a,\(([^)]+)\)\s*$/i;
+    const loadBase = /^\s*ld\s+hl,([^\s;]+)\s*$/i;
+    for (let index = 0; index < lines.length; index += 1) {
+      const part = lines.slice(index, index + 13);
+      const firstIndex = String(part[0] || "").match(loadIndex);
+      const secondIndex = String(part[7] || "").match(loadIndex);
+      const matches = firstIndex && secondIndex
+        && firstIndex[1].toLowerCase() === secondIndex[1].toLowerCase()
+        && /^\s*ld\s+e,a\s*$/i.test(part[1] || "")
+        && /^\s*ld\s+d,0\s*$/i.test(part[2] || "")
+        && loadBase.test(part[3] || "")
+        && /^\s*add\s+hl,de\s*$/i.test(part[4] || "")
+        && /^\s*ld\s+a,\(hl\)\s*$/i.test(part[5] || "")
+        && /^\s*ld\s+b,a\s*$/i.test(part[6] || "")
+        && /^\s*ld\s+e,a\s*$/i.test(part[8] || "")
+        && /^\s*ld\s+d,0\s*$/i.test(part[9] || "")
+        && loadBase.test(part[10] || "")
+        && /^\s*add\s+hl,de\s*$/i.test(part[11] || "")
+        && /^\s*ld\s+a,\(hl\)\s*$/i.test(part[12] || "");
+      if (!matches) {
+        optimized.push(lines[index]);
+        continue;
+      }
+      optimized.push(...lines.slice(index, index + 7));
+      optimized.push(lines[index + 10], lines[index + 11], lines[index + 12]);
+      index += 12;
+    }
+    return optimized;
+  }
+
+  function optimizePutFrameSharedCoordinateIndex(lines) {
+    const optimized = [];
+    const loadIndex = /^\s*ld\s+a,\(([^)]+)\)\s*$/i;
+    const loadBase = /^\s*ld\s+hl,([^\s;]+)\s*$/i;
+    for (let index = 0; index < lines.length; index += 1) {
+      const part = lines.slice(index, index + 16);
+      const firstIndex = String(part[0] || "").match(loadIndex);
+      const secondIndex = String(part[8] || "").match(loadIndex);
+      const yBase = String(part[3] || "").match(loadBase);
+      const xBase = String(part[11] || "").match(loadBase);
+      const matches = firstIndex && secondIndex && yBase && xBase
+        && firstIndex[1].toLowerCase() === secondIndex[1].toLowerCase()
+        && /^\s*ld\s+e,a\s*$/i.test(part[1] || "")
+        && /^\s*ld\s+d,0\s*$/i.test(part[2] || "")
+        && /^\s*add\s+hl,de\s*$/i.test(part[4] || "")
+        && /^\s*ld\s+a,\(hl\)\s*$/i.test(part[5] || "")
+        && /^\s*ld\s+d,a\s*$/i.test(part[6] || "")
+        && /^\s*push\s+de\s*$/i.test(part[7] || "")
+        && /^\s*ld\s+e,a\s*$/i.test(part[9] || "")
+        && /^\s*ld\s+d,0\s*$/i.test(part[10] || "")
+        && /^\s*add\s+hl,de\s*$/i.test(part[12] || "")
+        && /^\s*ld\s+a,\(hl\)\s*$/i.test(part[13] || "")
+        && /^\s*pop\s+de\s*$/i.test(part[14] || "")
+        && /^\s*ld\s+e,a\s*$/i.test(part[15] || "");
+      if (!matches) {
+        optimized.push(lines[index]);
+        continue;
+      }
+      optimized.push(lines[index], lines[index + 1], lines[index + 2]);
+      optimized.push(lines[index + 3], lines[index + 4], lines[index + 5]);
+      optimized.push("    push af");
+      optimized.push(lines[index + 11], lines[index + 12]);
+      optimized.push("    ld e,(hl)");
+      optimized.push("    pop af", "    ld d,a", "    ld a,e");
+      index += 15;
+    }
+    return optimized;
+  }
+
+  function optimizeFactoredHlBranchTails(lines) {
+    const output = [];
+    const conditional = /^\s*(?:jp|jr)\s+(z|nz),\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
+    const jumpEnd = /^\s*(?:jp|jr)\s+(AMY_IF_END_[0-9]+)\s*$/i;
+    const hlSource = /^\s*ld\s+hl,([^\s;]+)\s*$/i;
+    const labelAt = (line, label) => String(line || "").trim().toLowerCase() === `${label.toLowerCase()}:`;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const branch = String(lines[index] || "").match(conditional);
+      if (!branch) {
+        output.push(lines[index]);
+        continue;
+      }
+
+      let split = index + 1;
+      while (split < lines.length && !jumpEnd.test(String(lines[split] || ""))) split += 1;
+      const endJump = String(lines[split] || "").match(jumpEnd);
+      if (!endJump || !labelAt(lines[split + 1], branch[2])) {
+        output.push(lines[index]);
+        continue;
+      }
+      let end = split + 2;
+      while (end < lines.length && !labelAt(lines[end], endJump[1])) end += 1;
+      if (end >= lines.length) {
+        output.push(lines[index]);
+        continue;
+      }
+
+      const left = lines.slice(index + 1, split);
+      const right = lines.slice(split + 2, end);
+      const leftSource = String(left[0] || "").match(hlSource);
+      const rightSource = String(right[0] || "").match(hlSource);
+      if (
+        !leftSource || !rightSource ||
+        left.length !== right.length || left.length < 2 ||
+        !left.slice(1).every((line, offset) => line === right[offset + 1])
+      ) {
+        output.push(lines[index]);
+        continue;
+      }
+
+      const sharedTail = makeGeneratedLabel("FactoredTail");
+      output.push(lines[index]);
+      output.push(lines[index + 1]);
+      output.push(`    jp ${sharedTail}`);
+      output.push(lines[split + 1]);
+      output.push(lines[split + 2]);
+      output.push(`${sharedTail}:`);
+      output.push(...left.slice(1));
+      output.push(lines[end]);
+      index = end;
+    }
+    return output;
+  }
+
   function reserveRam(name, size, rawLine) {
     const limit = state.getRamLayout()?.userRamEndExclusive ?? 0x7400;
     if (state.getNextRamAddress() + size > limit) {
@@ -471,6 +597,9 @@ export function createCompilerShellHelpers({
     makeGeneratedLabel,
     optimizeTransientDrawCoordinateTemps,
     optimizeSharedRecordPutCharLoads,
+    optimizeSharedAdjacentArrayIndex,
+    optimizePutFrameSharedCoordinateIndex,
+    optimizeFactoredHlBranchTails,
     optimizeSequentialAbsoluteByteStores,
     optimizeRedundantImmediateLoads,
     reserveRam,

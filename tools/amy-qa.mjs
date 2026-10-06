@@ -6,6 +6,9 @@ import { dirname, resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const quickTests = [
+  "test-semantic-optimization-equivalence.mjs",
+  "test-branch-tail-factoring.mjs",
+  "test-put-frame-coordinate-index-reuse.mjs",
   "test-expression-fail-closed.mjs",
   "test-array-store-layout-rom.mjs",
   "test-call-asm-abi-rom.mjs",

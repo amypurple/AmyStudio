@@ -72,8 +72,8 @@ Experimental serves this size test; Balanced remains Amy's default.
 | Controller Visual | **264** | 595 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 2,370 |
 | Sprite Metasprite | **343** | 983 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,607 | 6,065 |
 | Gameplay State Update* | **508** | 1,430 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 4,455 |
-| Tile Animation | **761** | 1,375 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,385 |
-| **Six-sample total*** | **5,126** | **7,878** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,057** | **33,304** |
+| Tile Animation | **761** | 1,316 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,385 |
+| **Six-sample total*** | **5,126** | **7,819** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,057** | **33,304** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -133,8 +133,8 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 | Controller Visual | 264 | 595 | -331 |
 | Sprite Metasprite | 343 | 983 | -640 |
 | Gameplay State Update | 508 | 1,430 | -922 |
-| Tile Animation | 761 | 1,375 | -614 |
-| **Six-sample total** | **5,126** | **7,878** | **-2,752** |
+| Tile Animation | 761 | 1,316 | -555 |
+| **Six-sample total** | **5,126** | **7,819** | **-2,693** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for

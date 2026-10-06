@@ -1,3 +1,10 @@
+## 2026-10-05 - Verified semantic code-size optimizations
+
+- Reused adjacent array indexes and shared `put frame` coordinate indexes without crossing mutation barriers.
+- Factored identical branch tails while preserving branch-specific source addresses.
+- Added five-profile compile, ROM, RAM, and VRAM equivalence tests for the new transformations.
+- Rebuilt the six Amy comparison samples; Tile Animation fell from 1,375 to 1,316 occupied bytes.
+
 ## 2026-10-03 - Native ADAM serial byte I/O
 
 - Added target-selected AdamLink, Eve/Orphanware, and Micro Innovations serial

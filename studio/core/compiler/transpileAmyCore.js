@@ -56,7 +56,8 @@ export function transpileAmyCore(sourceText, deps) {
     finalizeAmyTranspile,
     stripAmyInlineComment,
     buildContext = null,
-    predefinedSymbols = []
+    predefinedSymbols = [],
+    semanticOptimizerOptions = {}
   } = deps;
 
   function preprocessCompileTimeConditionals(rawLines) {
@@ -1484,6 +1485,9 @@ export function transpileAmyCore(sourceText, deps) {
   let makeGeneratedLabel = null;
   let optimizeTransientDrawCoordinateTemps = null;
   let optimizeSharedRecordPutCharLoads = null;
+  let optimizeSharedAdjacentArrayIndex = null;
+  let optimizePutFrameSharedCoordinateIndex = null;
+  let optimizeFactoredHlBranchTails = null;
   let optimizeSequentialAbsoluteByteStores = null;
   let optimizeRedundantImmediateLoads = null;
   let reserveRam = null;
@@ -3330,6 +3334,9 @@ export function transpileAmyCore(sourceText, deps) {
     makeGeneratedLabel,
     optimizeTransientDrawCoordinateTemps,
     optimizeSharedRecordPutCharLoads,
+    optimizeSharedAdjacentArrayIndex,
+    optimizePutFrameSharedCoordinateIndex,
+    optimizeFactoredHlBranchTails,
     optimizeSequentialAbsoluteByteStores,
     optimizeRedundantImmediateLoads,
     reserveRam,
@@ -3347,6 +3354,9 @@ export function transpileAmyCore(sourceText, deps) {
     parseNumericLiteral: (...args) => parseNumericLiteral(...args),
     parseFixedPointLiteral32: (...args) => parseFixedPointLiteral32(...args)
   }));
+  if (semanticOptimizerOptions.sharedCoordinateIndex === false) {
+    optimizePutFrameSharedCoordinateIndex = (lines) => lines;
+  }
 
   function ensureFp5ReturnScratch() {
     if (fp5ReturnScratch) return fp5ReturnScratch;
@@ -5933,6 +5943,9 @@ export function transpileAmyCore(sourceText, deps) {
       removeDeadReturnsAfterJumps,
       optimizeTransientDrawCoordinateTemps,
       optimizeSharedRecordPutCharLoads,
+      optimizeSharedAdjacentArrayIndex,
+      optimizePutFrameSharedCoordinateIndex,
+      optimizeFactoredHlBranchTails,
       optimizeSequentialAbsoluteByteStores,
       optimizeRedundantImmediateLoads,
       optimizeRepeatedBitTestLoads
