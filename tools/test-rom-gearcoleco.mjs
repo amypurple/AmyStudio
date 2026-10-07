@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GearColecoMcpClient } from "./lib/gearcolecoMcpClient.mjs";
+import { normalizeGearcolecoTraceLog } from "../studio/core/romInstructionTrace.js";
 
 const defaultGearColeco = resolve(process.env.LOCALAPPDATA || "", "AmyStudio", "emulators", "gearcoleco-1.6.8", "Gearcoleco.exe");
 const options = {
@@ -220,7 +221,7 @@ try {
       throw new Error(`Checkpoint ${checkpoint.symbol} was not reached within ${options.frames} frames.`);
     }
     if (options.traceLastFrames) {
-      trace = await client.callTool("get_trace_log", { start: 0, count: 1000 });
+      trace = normalizeGearcolecoTraceLog(await client.callTool("get_trace_log", { start: 0, count: 1000 }));
       await client.callTool("set_trace_log", { enabled: false, flags: 68 });
       if (options.traceOutput) {
         mkdirSync(dirname(options.traceOutput), { recursive: true });
