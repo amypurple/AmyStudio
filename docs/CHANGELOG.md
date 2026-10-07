@@ -8,6 +8,31 @@
 - Added runtime tests for the ADAM MIOC `$00`/`$0F` reset transition and UI
   coverage for both controls.
 
+## 2026-10-07 - Completed MegaCart and advanced project workflows
+
+- Added editable 64 KB through 1 MB MegaCart projects with Amy modules in
+  switchable banks, explicit exports, safe cross-bank calls, and banked data
+  copied or decompressed to RAM and VRAM.
+- Made linker maps, symbols, breakpoints, traces, rewind, save states, and cycle
+  profiling bank-aware, preserving `(bank, address)` identity throughout the
+  debugger.
+- Added incremental multi-file builds with dependency fingerprints and FILES
+  states for modified, stale, compiled, and failed sources. Unchanged MegaCart
+  banks and ADAM BOOT/loader objects are reused while clean and incremental
+  builds remain byte-identical.
+- Added complete project starters and visual guides for MegaCart, native EOS,
+  and generic OS7+EOS hybrid software. Native and hybrid DSK/DDP builds now
+  have permanent assembly and GearColeco runtime tests.
+- Added named development checkpoints, recorded input routes, and fast replay
+  after recompilation, plus deterministic animated GIF export alongside AVI
+  gameplay capture.
+- Reworked the on-screen standard, Super Action, steering-wheel, and Roller
+  Controller layouts while retaining two-port input and profile selection.
+- Completed the release plan with a full clean-repository audit: 81/81 public
+  examples compile, 80 flat ROMs assemble to 310,670 balanced-profile bytes,
+  the MegaCart project passes its target-specific validator, and every
+  registered feature test passes.
+
 ## 2026-10-05 - Verified semantic code-size optimizations
 
 - Reused adjacent array indexes and shared `put frame` coordinate indexes without crossing mutation barriers.
