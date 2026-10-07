@@ -28,6 +28,22 @@ function makeEditorsProjectFile(editors) {
 
 
 const derivedProjectFilesById = {
+  "megacart-bank-demo": [
+    {
+      path: "project.amy.json", kind: "json", source: "example",
+      base64: encodeUtf8Base64(JSON.stringify({
+        version: 2, projectName: "MegaCart Bank Demo",
+        target: { platform: "colecovision-megacart", medium: "rom", romSizeKb: 128 },
+        outputs: [
+          { name: "FIXED", type: "fixed-bank", sources: [{ path: "main.amy", kind: "amy" }] },
+          { name: "BANK1", type: "switchable-bank", bank: 1, sources: [{ path: "banks/bank1.asm", kind: "asm" }] },
+          { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Setup", "Bank2Data", "Bank2Compressed"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
+        ]
+      }, null, 2))
+    },
+    { path: "banks/bank1.asm", kind: "asm-source", source: "example", base64: encodeUtf8Base64("; Logical bank 1 remains available for another scene or resource set.\norg $C000\nBank1Data: db \"BANK ONE\"\n") },
+    { path: "banks/bank2.amy", kind: "amy-source", source: "example", base64: encodeUtf8Base64("' Bank-local Amy permits procedures and ROM data, but no top-level execution.\nsub Bank2Setup:\n  return\nend sub\n\ndata Bank2Data bytes = 66,65,78,75,32,84,87,79\n\n' MDK-RLE raw block: 8 bytes followed by the stream terminator.\ndata Bank2Compressed bytes = 7,67,79,77,80,82,69,83,83,$FF\n") }
+  ],
   "globe-quiz": globeQuizProjectFiles,
   "3d-maze-escape": mazeEscapeProjectFiles,
   "solar-system-encyclopedia": solarSystemEncyclopediaProjectFiles,

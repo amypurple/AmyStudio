@@ -21,6 +21,29 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "megacart-bank-demo",
+    "label": "MegaCart Banked Data",
+    "detail": "A complete 128 KB MegaCart project with editable Amy banks, explicit exports, a safe banked procedure call, raw VRAM/RAM copies, and direct banked decompression.",
+    "projectName": "MegaCart Bank Demo",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "buildTarget": {
+      "platform": "colecovision-megacart",
+      "medium": "rom",
+      "romSizeKb": 128
+    },
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "colecovision",
+      "megacart",
+      "banks",
+      "mdkrle",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "adam-eos-filesystem-demo",
     "label": "ADAM Native EOS Filesystem",
     "detail": "Creates, writes, reads, and deletes a named EOS file on writable DSK or DDP media using modern Amy syntax.",

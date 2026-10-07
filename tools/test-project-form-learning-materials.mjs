@@ -16,9 +16,14 @@ const mega = JSON.parse(fs.readFileSync(path.join(examples, "megacart-bank-demo.
 assert.equal(mega.target.platform, "colecovision-megacart");
 assert.equal(mega.target.romSizeKb, 128);
 assert.deepEqual(mega.outputs.map(({ type }) => type), ["fixed-bank", "switchable-bank", "switchable-bank"]);
+assert.equal(mega.outputs[0].sources[0].kind, "amy");
+assert.deepEqual(mega.outputs[2].exports, ["Bank2Setup", "Bank2Data", "Bank2Compressed"]);
 for (const file of ["megacart-bank-demo-fixed.asm", "megacart-bank-demo-bank1.asm", "megacart-bank-demo-bank2.asm"]) {
   assert.ok(fs.statSync(path.join(examples, file)).size > 0, `${file} must be present`);
 }
+const megaCatalog = byId.get("megacart-bank-demo");
+assert.equal(megaCatalog?.buildTarget?.platform, "colecovision-megacart");
+assert.ok(fs.statSync(path.join(examples, "megacart-bank-demo.alexis")).size > 0);
 
 const language = fs.readFileSync(path.join(root, "docs", "amy-language.md"), "utf8");
 const cookbook = fs.readFileSync(path.join(root, "docs", "amy-optimization-cookbook.md"), "utf8");
