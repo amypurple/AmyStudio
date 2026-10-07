@@ -77,6 +77,7 @@ export function createDevelopmentRouteStore(storage, { prefix = DEFAULT_PREFIX }
         id: String(route.id || `route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
         name: String(route.name || route.checkpoint || "Route").trim(),
         checkpoint: String(route.checkpoint || "").trim(),
+        checkpointBank: route.checkpointBank == null ? null : Number(route.checkpointBank),
         createdAt: route.createdAt || new Date().toISOString(),
         frameCount: route.inputs?.length || route.frameCount || 0,
         inputRuns: route.inputRuns || compressRouteInputs(route.inputs),

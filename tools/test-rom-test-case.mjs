@@ -12,6 +12,14 @@ assert.deepEqual(listAmyCheckpoints(before), ["ready"]);
 assert.equal(resolveAmyCheckpoint(before, "ready").address, 0x8123);
 assert.equal(resolveAmyCheckpoint(rebuilt, "ready").address, 0x8ABC);
 assert.equal(resolveAmyCheckpoint("AMY_ULBL_TEST_web: equ $8FED", "web").address, 0x8FED);
+const banked = "01:C000 AMY_ULBL_TEST_ready\n02:C000 AMY_ULBL_TEST_ready";
+assert.throws(() => resolveAmyCheckpoint(banked, "ready"), /ambiguous/i);
+assert.deepEqual(resolveAmyCheckpoint(banked, "ready", 2), {
+  name: "ready",
+  symbol: "AMY_ULBL_TEST_ready",
+  address: 0xC000,
+  bank: 2
+});
 
 const inputs = [
   { controllerMasks: [0, 0], spinnerDeltas: [0, 0] },
@@ -26,7 +34,7 @@ const testCase = createRomTestCase({
   biosSha256: "bios",
   romSha256: "rom",
   inputs,
-  checkpoint: { name: "AMY_ULBL_TEST_ready", occurrence: 2 },
+  checkpoint: { name: "AMY_ULBL_TEST_ready", bank: 2, occurrence: 2 },
   assertions: {
     framebufferSha256: "frame",
     vramSha256: "vram",
@@ -35,6 +43,7 @@ const testCase = createRomTestCase({
 });
 assert.equal(testCase.target.name, "ready");
 assert.equal(testCase.target.occurrence, 2);
+assert.equal(testCase.target.bank, 2);
 assert.equal(createRomTestCase({ inputs }).target.frame, inputs.length);
 assert.equal(testCase.inputRuns.length, 3);
 assert.deepEqual(decodeRomTestInputs(testCase.inputRuns), inputs);

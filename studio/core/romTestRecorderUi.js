@@ -470,6 +470,7 @@ export function createRomTestRecorderUi({
   const pressedAdamCodes = new Map();
   let controllerSetup = null;
   let stoppedCheckpoint = null;
+  let stoppedCheckpointBank = null;
   let playbackRate = 1;
   let playbackAccumulator = 0;
   let loadedRom = null;
@@ -754,8 +755,8 @@ export function createRomTestRecorderUi({
       const card = document.createElement("div");
       card.className = "rom-recorder__card";
       const heading = document.createElement("strong");
-      heading.textContent = name.replace(/^AMY_UPROC_/i, "");
-      heading.title = name;
+      heading.textContent = (stats.targetName || name).replace(/^AMY_UPROC_/i, "");
+      heading.title = `${formatBankAddress(stats.targetStart, stats.targetBank)} ${stats.targetName || name}`;
       card.append(heading);
 
       const regionName = core?.getRegionName() || "NTSC";
@@ -890,14 +891,15 @@ export function createRomTestRecorderUi({
     updateDevelopmentRouteActions();
   }
 
-  function armDevelopmentCheckpoint(checkpoint) {
-    const resolved = resolveAmyCheckpoint(getCompiledSymbols(), checkpoint);
+  function armDevelopmentCheckpoint(checkpoint, bank = null) {
+    const resolved = resolveAmyCheckpoint(getCompiledSymbols(), checkpoint, bank);
     core.clearAllBreakpoints();
     activeBreakpoints.clear();
     core.setExecuteBreakpoint(resolved.address);
-    activeBreakpoints.set(resolved.address, { label: resolved.symbol });
+    activeBreakpoints.set(resolved.address, { label: resolved.symbol, bank: resolved.bank });
     renderBreakpointList();
     stoppedCheckpoint = null;
+    stoppedCheckpointBank = null;
     return resolved;
   }
 
@@ -910,6 +912,7 @@ export function createRomTestRecorderUi({
       .filter((route) => route.checkpoint === checkpoint).length;
     routeRecording = {
       checkpoint,
+      checkpointBank: resolved.bank,
       name: existingCount ? `${checkpoint} route ${existingCount + 1}` : checkpoint,
       inputs: []
     };
@@ -943,14 +946,14 @@ export function createRomTestRecorderUi({
       await startCore();
       playing = false;
       audioSink.flush();
-      const resolved = armDevelopmentCheckpoint(route.checkpoint);
+      const resolved = armDevelopmentCheckpoint(route.checkpoint, route.checkpointBank);
       const inputs = expandRouteInputs(route.inputRuns);
       setRecorderStatus(`Fast replaying ${route.name}: 0/${inputs.length} frames...`);
       let reached = false;
       for (let index = 0; index < inputs.length; ++index) {
         const result = recorder.runFrame(inputs[index]);
         if (result.breakpointHit) {
-          reached = result.pc === resolved.address;
+          reached = result.pc === resolved.address && breakpointMatchesBank(resolved, currentLogicalBank(result.pc));
           if (!reached) throw new Error(`Route stopped at unexpected address ${formatHex(result.pc)}.`);
           break;
         }
@@ -961,6 +964,7 @@ export function createRomTestRecorderUi({
       }
       if (!reached) throw new Error(`Route ended before reaching ${resolved.symbol}. Record it again for the recompiled game.`);
       stoppedCheckpoint = route.checkpoint;
+      stoppedCheckpointBank = resolved.bank;
       render({ forceInspector: true });
       setRecorderStatus(`Returned to ${route.checkpoint} using ${route.frameCount} recorded frames.`);
     } finally {
@@ -1125,7 +1129,8 @@ export function createRomTestRecorderUi({
   }
 
   function finishRoutineProfile(sample) {
-    profileStats.set(sample.target.name, appendRoutineProfileSample(profileStats.get(sample.target.name), sample));
+    const profileKey = formatBankAddress(sample.target.start, sample.target.bank) + ":" + sample.target.name;
+    profileStats.set(profileKey, appendRoutineProfileSample(profileStats.get(profileKey), sample));
     profileRequest = null;
     setProfileButtonState(false);
     setProfilerTransportLocked(false);
@@ -1295,7 +1300,8 @@ export function createRomTestRecorderUi({
     if (!replaying) mouseJoystickMask = 0;
     if (audioSink.acceptsFrames()) audioSink.push(core.getAudioFrame());
     if (result.breakpointHit) {
-      if (profileRequest?.waiting && result.pc === profileRequest.target.start) {
+      if (profileRequest?.waiting && result.pc === profileRequest.target.start
+          && breakpointMatchesBank(profileRequest.target, currentLogicalBank(result.pc))) {
         beginRoutineProfile();
         if (renderNow) render({ forceInspector: true });
         return result;
@@ -1339,6 +1345,7 @@ export function createRomTestRecorderUi({
       }
       playing = false;
       stoppedCheckpoint = field("checkpoint").value || null;
+      stoppedCheckpointBank = stoppedCheckpoint ? currentLogicalBank(result.pc) : null;
       const label = matchedSourceMember?.line
         ? `source line ${matchedSourceMember.line}`
         : breakpoint?.label || stoppedCheckpoint || "breakpoint";
@@ -2112,7 +2119,7 @@ export function createRomTestRecorderUi({
           biosSha256: await sha256(bios),
           romSha256: await sha256(rom),
           inputs,
-          checkpoint: stoppedCheckpoint ? { name: stoppedCheckpoint, occurrence: 1 } : null,
+          checkpoint: stoppedCheckpoint ? { name: stoppedCheckpoint, bank: stoppedCheckpointBank, occurrence: 1 } : null,
           assertions: {
             framebufferSha256: await sha256(frameBytes),
             vramSha256: await sha256(core.readVram(0, 0x4000)),

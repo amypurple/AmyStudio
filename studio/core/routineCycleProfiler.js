@@ -3,18 +3,26 @@ export const PAL_CYCLES_PER_FRAME = 228 * 313;
 
 export function resolveProfileTarget(symbols, nameOrAddress) {
   const text = String(nameOrAddress || "").trim();
-  const numeric = text.match(/^\$([0-9a-f]{1,4})$/i) || text.match(/^0x([0-9a-f]{1,4})$/i);
+  const qualified = text.match(/^(?:bank:)?(\d+):(.+)$/i);
+  const requestedBank = qualified ? Number(qualified[1]) : null;
+  const reference = qualified ? qualified[2].trim() : text;
+  const numeric = reference.match(/^\$([0-9a-f]{1,4})$/i) || reference.match(/^0x([0-9a-f]{1,4})$/i);
   const address = numeric ? Number.parseInt(numeric[1], 16) & 0xFFFF : null;
-  const matching = address == null
-    ? (symbols || []).find((symbol) => {
+  const matches = (symbols || []).filter((symbol) => {
+    if (requestedBank != null && symbol.bank !== requestedBank) return false;
+    if (address != null) return symbol.address === address;
       const name = symbol.name.toLowerCase();
-      return name === text.toLowerCase() || name.replace(/^amy_uproc_/i, "") === text.toLowerCase();
-    })
-    : (symbols || []).find((symbol) => symbol.address === address);
+      return name === reference.toLowerCase() || name.replace(/^amy_uproc_/i, "") === reference.toLowerCase();
+  });
+  if (matches.length > 1 && new Set(matches.map((symbol) => symbol.bank)).size > 1) {
+    throw new Error(`Ambiguous routine or address '${text}'; qualify it with bank:n:.`);
+  }
+  const matching = matches[0];
   const start = matching?.address ?? address;
   if (start == null) throw new Error(`Unknown routine or address '${text}'.`);
+  const bank = matching?.bank ?? requestedBank;
   const boundarySymbols = matching && /^AMY_UPROC_/i.test(matching.name)
-    ? (symbols || []).filter((symbol) => /^AMY_UPROC_/i.test(symbol.name))
+    ? (symbols || []).filter((symbol) => /^AMY_UPROC_/i.test(symbol.name) && (symbol.bank ?? null) === (bank ?? null))
     : (symbols || []);
   const next = boundarySymbols
     .map((symbol) => symbol.address)
@@ -22,6 +30,7 @@ export function resolveProfileTarget(symbols, nameOrAddress) {
     .sort((left, right) => left - right)[0] ?? 0x10000;
   return {
     name: matching?.name || `$${start.toString(16).toUpperCase().padStart(4, "0")}`,
+    bank: bank ?? null,
     start,
     end: next
   };
@@ -131,6 +140,9 @@ export function appendRoutineProfileSample(previous, sample) {
   const middle = Math.floor(samples.length / 2);
   const median = samples.length % 2 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
   return {
+    targetName: sample.target?.name || previous?.targetName || "",
+    targetBank: sample.target?.bank ?? previous?.targetBank ?? null,
+    targetStart: sample.target?.start ?? previous?.targetStart ?? null,
     count,
     total,
     last: sample.inclusiveCycles,

@@ -41,7 +41,7 @@ export async function replayRomTestCase(core, testCase, {
         "Checkpoint occurrences above 1 require the future exact-resume API."
       );
     }
-    checkpoint = resolveAmyCheckpoint(symbolsText, target.name);
+    checkpoint = resolveAmyCheckpoint(symbolsText, target.name, target.bank);
     core.setExecuteBreakpoint(checkpoint.address);
   }
 
@@ -56,6 +56,10 @@ export async function replayRomTestCase(core, testCase, {
     }
     const result = core.runFrame();
     if (!result.breakpointHit) continue;
+    const activeBank = result.pc >= 0xC000 && typeof core.getRomBank === "function"
+      ? core.getRomBank() + 1
+      : 0;
+    if (checkpoint && checkpoint.bank != null && checkpoint.bank !== activeBank) continue;
     if (!checkpoint || result.pc !== checkpoint.address) {
       throw new Error(`Unexpected breakpoint at $${result.pc.toString(16)}.`);
     }

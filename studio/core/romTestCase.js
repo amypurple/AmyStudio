@@ -14,21 +14,44 @@ export function parseAmySymbols(symbolsText) {
   return symbols;
 }
 
+function parseAmySymbolEntries(symbolsText) {
+  const entries = [];
+  for (const line of String(symbolsText || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const addressFirst = trimmed.match(/^(?:([0-9A-Fa-f]{2}):)?([0-9A-Fa-f]{4})\s+([A-Za-z_.$?][A-Za-z0-9_.$?]*)$/);
+    const equ = trimmed.match(/^([A-Za-z_.$?][A-Za-z0-9_.$?]*)\s*:\s*equ\s+(?:\$|0x)?([0-9A-Fa-f]{1,4})$/i);
+    if (addressFirst) {
+      entries.push({
+        bank: addressFirst[1] == null ? null : Number.parseInt(addressFirst[1], 16),
+        address: Number.parseInt(addressFirst[2], 16),
+        name: addressFirst[3]
+      });
+    } else if (equ) {
+      entries.push({ bank: null, address: Number.parseInt(equ[2], 16), name: equ[1] });
+    }
+  }
+  return entries;
+}
+
 export function listAmyCheckpoints(symbolsText) {
-  return [...parseAmySymbols(symbolsText).keys()]
+  return [...new Set(parseAmySymbolEntries(symbolsText).map((entry) => entry.name))]
     .filter((name) => name.startsWith("AMY_ULBL_TEST_"))
     .map((name) => name.slice("AMY_ULBL_TEST_".length))
     .sort();
 }
 
-export function resolveAmyCheckpoint(symbolsText, checkpointName) {
+export function resolveAmyCheckpoint(symbolsText, checkpointName, requestedBank = null) {
   const normalized = normalizeCheckpointName(checkpointName);
   const symbol = `AMY_ULBL_TEST_${normalized}`;
-  const address = parseAmySymbols(symbolsText).get(symbol);
-  if (!Number.isInteger(address)) {
+  const matches = parseAmySymbolEntries(symbolsText)
+    .filter((entry) => entry.name === symbol && (requestedBank == null || entry.bank === Number(requestedBank)));
+  if (!matches.length) {
     throw new Error(`Checkpoint symbol not found: ${symbol}`);
   }
-  return { name: normalized, symbol, address };
+  if (matches.length > 1) {
+    throw new Error(`Checkpoint symbol is ambiguous across banks: ${symbol}`);
+  }
+  return { name: normalized, symbol, address: matches[0].address, bank: matches[0].bank };
 }
 
 function sameInput(left, right) {
@@ -97,6 +120,7 @@ export function createRomTestCase({
   const normalizedCheckpoint = checkpoint
     ? {
         name: normalizeCheckpointName(checkpoint.name),
+        bank: checkpoint.bank == null ? null : Number(checkpoint.bank),
         occurrence: Math.max(1, checkpoint.occurrence | 0)
       }
     : null;

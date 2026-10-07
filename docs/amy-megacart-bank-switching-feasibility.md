@@ -55,6 +55,10 @@ usage, and qualified symbols without changing the emitted cartridge image.
   MegaCart bank. ROM Test & Debug converts it to Amy's logical-bank convention,
   shows bank-qualified execution addresses and symbols, and filters coincident
   16-bit execute breakpoints by the active bank.
+- Saved ROM tests and development routes preserve a checkpoint bank, while
+  legacy unbanked files remain valid. Routine profiling accepts qualified
+  targets such as `bank:2:Draw` and keeps same-named bank-local measurements
+  separate.
 - `docs/research/mario-brothers-2009-mapper-analysis-2026-10-02.md` records a
   64 KB production ROM with a fixed-bank `55 AA` header and MegaCart mapper
   reads. It contains no identified SGM I/O.
@@ -63,11 +67,11 @@ usage, and qualified symbols without changing the emitted cartridge image.
 
 Amy's assembler understands a logical `ORG`, but it has no independent file
 origin such as CVBasic's emitted `FORG`. Reusing `ORG $C000` is interpreted as
-a backward/BSS transition instead of a new 16 KB ROM page. Profiler samples,
-traces, checkpoints, and development routes still persist a 16-bit address
-without a bank field. The project builder can safely assemble a MegaCart image
-from one fixed output and bank-local ASM/binary outputs. It cannot yet link
-arbitrary Amy procedures across banks.
+a backward/BSS transition instead of a new 16 KB ROM page. Instruction trace
+exports still persist a 16-bit address without a bank field. The project
+builder can safely assemble a MegaCart image from one fixed output and
+bank-local ASM/binary outputs. It cannot yet link arbitrary Amy procedures
+across banks.
 
 ## Required Foundation
 
@@ -82,9 +86,8 @@ arbitrary Amy procedures across banks.
    compiler-generated sequences.
 7. Teach optimizer symbol analysis not to merge or reorder across bank
    boundaries.
-8. Extend the implemented `(bank, address)` debugger model from symbols and
-   execution breakpoints to profiler samples, traces, checkpoints, and saved
-   development routes.
+8. Extend the implemented `(bank, address)` debugger model to instruction trace
+   exports and any future exact-resume state.
 9. Package exact 128/256/512/1,024 KB images with deterministic fill bytes.
 
 ## Mandatory Capacity Diagnostics

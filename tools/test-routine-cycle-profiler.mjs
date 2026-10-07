@@ -15,8 +15,22 @@ const symbols = [
 const target = resolveProfileTarget(symbols, "Test");
 assert.deepEqual(target, {
   name: "AMY_UPROC_Test",
+  bank: null,
   start: 0x8000,
   end: 0x8100
+});
+const bankedSymbols = [
+  { name: "AMY_UPROC_Draw", bank: 1, address: 0xC000 },
+  { name: "AMY_UPROC_Next", bank: 1, address: 0xC080 },
+  { name: "AMY_UPROC_Draw", bank: 2, address: 0xC000 },
+  { name: "AMY_UPROC_Next", bank: 2, address: 0xC100 }
+];
+assert.throws(() => resolveProfileTarget(bankedSymbols, "Draw"), /ambiguous/i);
+assert.deepEqual(resolveProfileTarget(bankedSymbols, "bank:2:Draw"), {
+  name: "AMY_UPROC_Draw",
+  bank: 2,
+  start: 0xC000,
+  end: 0xC100
 });
 
 const session = createRoutineProfileSession({
