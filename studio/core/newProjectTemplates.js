@@ -20,7 +20,7 @@ const TEMPLATES = Object.freeze({
     memoryProfile: "colecovision_legacy_sdcc",
     medium: "rom",
     experimental: true,
-    source: ["' MegaCart project", "bank rom 128", "' Safe calls resolve an exported no-argument sub in the selected bank.", "call bank 2, Bank2Setup", "text screen", "print at 9,11, \"MEGACART PROJECT\"", "screen on"].join("\n")
+    source: ["' MegaCart project: fixed code safely consumes exported bank data.", "bank rom 128", "u8 BankBuffer[8]", "text screen", "call bank 2, Bank2Setup", "copy Bank2Data from bank 2 count 8 to vram.name + 328", "decompress mdkrle Bank2Compressed from bank 2 to vram.name + 360", "copy Bank2Data from bank 2 count 8 to BankBuffer", "print at 7,9, \"MEGACART PROJECT\"", "screen on"].join("\n")
   },
   "adam-eos": {
     label: "ADAM Native EOS",
@@ -80,12 +80,12 @@ export function createProjectFromTemplate(baseProject, { templateId = "cartridge
       outputs: [
         { name: "FIXED", type: "fixed-bank", sources: [{ path: "main.amy", kind: "amy" }] },
         { name: "BANK1", type: "switchable-bank", bank: 1, sources: [{ path: "banks/bank1.asm", kind: "asm" }] },
-        { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Setup", "Bank2Data"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
+        { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Setup", "Bank2Data", "Bank2Compressed"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
       ]
     };
     project.projectFiles.push(textProjectFile("project.amy.json", JSON.stringify(manifest, null, 2), "json"));
     project.projectFiles.push(textProjectFile("banks/bank1.asm", "; Logical BANK 1 is visible at $C000 after BANK SELECT 1\norg $C000\nBank1Data: db \"BANK ONE\"", "asm-source"));
-    project.projectFiles.push(textProjectFile("banks/bank2.amy", "' Bank-local Amy files contain procedures and ROM data only.\nsub Bank2Setup:\n  return\nend sub\n\ndata Bank2Data bytes = 66,65,78,75,32,84,87,79", "amy-source"));
+    project.projectFiles.push(textProjectFile("banks/bank2.amy", "' Bank-local Amy files contain procedures and ROM data only.\nsub Bank2Setup:\n  return\nend sub\n\ndata Bank2Data bytes = 66,65,78,75,32,84,87,79\n\n' MDK-RLE raw block: length byte 7 means 8 following bytes, then $FF ends.\ndata Bank2Compressed bytes = 7,67,79,77,80,82,69,83,83,$FF", "amy-source"));
   } else if (target.platform.startsWith("adam-")) {
     const manifest = {
       version: 2,
