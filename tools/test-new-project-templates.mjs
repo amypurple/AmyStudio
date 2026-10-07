@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createProjectFromTemplate, listNewProjectTemplates } from "../studio/core/newProjectTemplates.js";
 import { validateAmyBuildProject } from "../studio/core/projectTargets.js";
 import { transpileAmyForTest } from "./lib/transpile-amy-test.mjs";
+
+const styles = readFileSync(new URL("../studio/styles.css", import.meta.url), "utf8");
+assert.match(styles, /\.new-project-dialog__medium\[hidden\]\s*\{\s*display:\s*none;/);
 
 const base = { version: 2, sourceLang: "amy", projectFiles: [], generatedAsm: "old" };
 assert.equal(listNewProjectTemplates().length, 6);

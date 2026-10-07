@@ -24,6 +24,26 @@ Compilation validates Amy, emits generated assembly, and assembles the selected 
 
 MegaCart banking and ADAM memory mapping are different hardware contracts. `bank rom` and `bank select` describe cartridge banks; they do not select EOS RAM or firmware mappings. An ADAM project may contain several Amy, ASM, data, and pack files. Select editable sources with the source-file picker above the editor; edits update the project and invalidate its previous build.
 
+### Creating an advanced target
+
+1. Select **New Project**.
+2. Choose **ColecoVision MegaCart**, **ADAM Native EOS**, or **ADAM OS7 + EOS Hybrid**.
+3. For an ADAM target, choose `.dsk` or `.ddp`; cartridge and MegaCart targets always produce ROM media and therefore hide this selector.
+4. Create the project, then open **FILES** to inspect the generated manifest and target-specific sources.
+5. Compile once before editing. This establishes the fingerprints used by the FILES build-state indicators.
+
+A MegaCart starter contains `project.amy.json`, an ASM bank, and a restricted
+bank-local Amy file. Native EOS and hybrid starters use their manifest to select
+the memory profile and media builder. Do not copy `bank select` into an ADAM
+project: MegaCart mapper reads and ADAM MIOC/EOS memory configuration are
+different mechanisms.
+
+After a successful build, `COMPILED` means that a file still matches the build,
+`MODIFIED` identifies directly edited bytes, and `STALE` identifies an unchanged
+textual dependent or declared output that must be rebuilt. Incremental caches
+last only for the current Studio session; a page reload gives a clean reference
+build.
+
 ## Project Import And Export
 
 The preferred exported project name ends in `.amy.json`. Amy Studio also recognizes older `.json` projects by validated content and accepts gzip-compressed `.amy.json.gz` or `.json.gz` projects. Files may be selected through **Import Project** or dropped directly onto the Studio page.

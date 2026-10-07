@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-10-06
+Updated: 2026-10-07
 
 ## Method
 
@@ -231,7 +231,7 @@ documented separately below from their measured fixtures and inspected APIs.
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound and voice | BIOS tables, Tiny Sound, DSOUND, VoxPCM, and SP0256 Lundy/EVE modules | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
 | Direct-to-VRAM compression | Fifteen active codecs, including Exomizer 2 and MegaLZ | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
-| ROM banking | Verified 64/128 KB MegaCart images and `bank select`; arbitrary banked Amy linking remains open | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
+| ROM banking | Verified 64 KB-1 MB MegaCart outputs, safe fixed-bank calls/data access, and bank-aware debugging; relocatable monolithic bank sections remain open | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
 | Graphics editors and project assets | Integrated bitmap, tile, sprite, frame, tilemap, and composite editors | Separate tools | Separate tools | Conversion-oriented IDE/tools | Separate asset tools | `gfx2col` and separate asset tools |
@@ -442,12 +442,14 @@ independent selection criteria.
 | Stock 1 KB RAM focus | Core design, RAM estimates, overlays | Yes, global/static model | Configurable CRT/C runtime | Backend manages runtime/resources | SDCC/static library model | SDCC/static library model |
 | Dead helper elimination | Capability-driven generation | Compiler-generated runtime | Linker sections/libraries | Deploy-on-use modules and target optimizer | Linker library extraction | Linker library extraction |
 | Optimizer | Five profiles plus runtime corpus | Z80 optimizer and peepholes | sccz80/zsdcc optimizers | Coleco-specific optimizer source | SDCC optimizer/peepholes | SDCC size optimization |
-| Beyond 32 KB | MegaCart images and mapper selection verified; arbitrary banked linking and bank-aware debug symbols remain open | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
+| Beyond 32 KB | MegaCart images, declared bank outputs, fixed trampolines, bank-qualified symbols/maps, breakpoints, trace, rewind, and profiling verified from 64 KB through 1 MB | MegaCart up to 1 MB | Coleco banking/toolchain | Target support not yet proven | MegaCart and banked functions documented | MegaCart tools and example verified |
 | Debug-aware RAM names | Yes, including overlay aliases | Assembly labels | Map/debug symbols | Generated symbols | Map symbols | Map symbols |
 
-Banking is established in CVBasic, z88dk, devkitSMS, and PVColLib. Amy Studio now models 128-1,024
-KB MegaCart targets and their memory policy, but still needs bank-aware assembly, packaging,
-source maps, and runtime validation. Stock unbanked cartridges remain the release baseline.
+Banking is established in CVBasic, z88dk, devkitSMS, and PVColLib. Amy Studio now builds and
+runtime-validates 64-1,024 KB MegaCart projects with separate fixed and switchable outputs,
+bank-qualified source maps, and bank-aware debugging. Ordinary `include amy` files remain one
+textual compilation unit; relocatable monolithic bank sections are a separate future ABI. Stock
+unbanked cartridges remain the size-ranking baseline.
 
 ### Stock baseline versus expanded hardware
 
@@ -605,15 +607,17 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 
 | Rank | Open work | Status | Value | Effort | Risk |
 |---:|---|---|---|---|---|
-| 1 | Complete arbitrary MegaCart linking: physical sections, cross-bank calls, bank-qualified source maps, and debugger symbols | 64/128 KB images, mapper selection, capacity policy, and runtime tests work | High for large games | Large | High |
+| 1 | Extend the completed declared-output MegaCart model with relocatable monolithic bank sections and parameter/return ABI | 64 KB-1 MB packaging, fixed trampolines, data access, bank-qualified maps, breakpoints, trace, rewind, and profiling are verified | Medium for ports that cannot separate bank files | Large | High |
 | 2 | Extend native EOS programs beyond the resident `$C800-$DFFF` window | Native/hybrid DSK/DDP, EOS APIs, files, ADAMnet, serial, and modem paths are runtime verified | High for larger ADAM software | Large | High |
 | 3 | Add optional EOS services to otherwise stock OS7 cartridges | Requires safe detection, low-RAM trampoline, MIOC restoration, and stock-console fallback | High for saves and shared releases | Large | High |
 | 4 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
 | 5 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
 
-MegaCart's image and mapper gate now passes with 64 KB and 128 KB fixtures. The remaining gate is
-bank-aware assembly/linking: repeated logical addresses must retain physical-bank identity through
-cross-bank calls, source maps, breakpoints, profiling, and capacity diagnostics.
+MegaCart's image, mapper, linker, and debugger gates pass at 64, 128, 256, 512, and 1,024 KB.
+Repeated logical addresses retain physical-bank identity through fixed-bank calls, source maps,
+breakpoints, trace, rewind, profiling, and capacity diagnostics. The remaining optional extension
+is a relocatable-object ABI for monolithic `bank n` sections and richer parameter/return calls;
+declared independent bank outputs do not depend on that extension.
 
 The codec study starts from the verified `libcv` RLE+Huffman path in PkK's devkit without copying its format into Amy.
 It will test a compact canonical or fixed shared codebook plus project-level escape analysis across

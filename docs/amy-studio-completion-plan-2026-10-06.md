@@ -139,6 +139,23 @@ than depending on ad hoc invocation.
 
 Status: features exist; presentation is incomplete.
 
+Validated so far:
+
+- The comparison and MegaCart guides now describe the completed bank-qualified
+  linker/debugger rather than the obsolete pre-linker limitation.
+- The workflow documents target creation, target-specific media, generated
+  files, and incremental FILES states.
+- A browser walkthrough verified the MegaCart starter manifest and bank files;
+  it also found and fixed the CSS rule that exposed the irrelevant DSK/DDP
+  selector for cartridge targets.
+
+Remaining:
+
+- Capture stable browser screenshots after the loading-overlay capture issue is
+  resolved; do not publish screenshots that show an intermediate loading layer.
+- Add the project creation, FILES, build output, emulator setup, checkpoint,
+  replay, and recording images to the workflow guide.
+
 - Document native EOS, OS7+EOS hybrid, MegaCart, firmware, DSK, and DDP workflows.
 - Add screenshots for project creation, build outputs, emulator setup, checkpoint routes, fast replay, and AVI recording.
 - Remove experimental labels from native EOS and hybrid templates only after browser-level build-and-run tests pass.
