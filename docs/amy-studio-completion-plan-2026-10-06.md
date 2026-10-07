@@ -151,14 +151,14 @@ Validated so far:
 - Deterministic Chromium capture now waits for Studio startup and publishes
   focused New Project and MegaCart FILES images. The FILES capture exposed and
   fixed narrow-panel filename wrapping and metadata overflow.
+- The guide now contains verified build-output and live GearColeco debugger
+  captures covering firmware/hardware setup, symbolic checkpoints, route
+  recording, fast replay, boot/current-frame recording, AVI export, and debug
+  panes.
 
 Remaining:
 
-- Add build-output, emulator-setup, checkpoint, replay, and recording images to
-  the workflow guide.
-
 - Document native EOS, OS7+EOS hybrid, MegaCart, firmware, DSK, and DDP workflows.
-- Add screenshots for project creation, build outputs, emulator setup, checkpoint routes, fast replay, and AVI recording.
 - Remove experimental labels from native EOS and hybrid templates only after browser-level build-and-run tests pass.
 - Decide separately whether animated GIF export is worth its implementation and CPU cost.
 

@@ -76,8 +76,30 @@ The status box is intentionally compact. A successful compile reports the ROM
 size, symbol count, selected optimization profile, main byte savings, and
 whether BIOS previews or emulator actions are available.
 
+![Successful build summary](media/amy-studio-build-output.png)
+
 Compiler hints are summarized as `Hints: N` in the small status box. Use the
 generated ASM/log output when you need the full diagnostic text.
+
+## Debug, Replay, And Recording
+
+Open **ROM / Debugger** after a successful compile. Configure the machine,
+firmware, controllers, video chip, and optional hardware in the upper-right
+controls. A source statement such as `test checkpoint "input_expression_before"`
+appears in the **Checkpoint** selector after compilation.
+
+Select a checkpoint and use **Record route** while playing normally. When the
+checkpoint is reached, Amy Studio saves the input path. **Fast replay** returns
+to it after a rebuild, and **After compile** performs that replay automatically.
+Routes are tied to symbolic checkpoints rather than fragile instruction
+addresses.
+
+Use **Record Boot** to reset and capture from the first emulated frame, or
+**Record Now** to begin at the current frame. Stop the capture before using
+**Export AVI**. The CPU/VDP, ASM, RAM, VRAM, map, ADAM, breakpoint, and cycle
+tabs remain available during development.
+
+![ROM debugger checkpoints, replay, and recording](media/amy-studio-debugger-workflow.png)
 
 ## Embedded Files
 Amy Studio can keep binary and text assets inside the exported `.amy.json` project file instead of requiring a separate disk path at compile time.

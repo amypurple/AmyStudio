@@ -50,10 +50,17 @@ class DevToolsClient {
   constructor(url) {
     this.nextId = 1;
     this.pending = new Map();
+    this.events = [];
     this.socket = new WebSocket(url);
     this.socket.addEventListener("message", ({ data }) => {
       const message = JSON.parse(data);
-      if (!message.id) return;
+      if (!message.id) {
+        if (["Runtime.exceptionThrown", "Runtime.consoleAPICalled", "Log.entryAdded"].includes(message.method)) {
+          this.events.push({ method: message.method, params: message.params });
+          if (this.events.length > 12) this.events.shift();
+        }
+        return;
+      }
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
@@ -96,7 +103,15 @@ async function waitFor(expression, description, attempts = 100) {
     if (await evaluate(expression)) return;
     await delay(100);
   }
-  throw new Error(`Timed out waiting for ${description}.`);
+  const pageState = await evaluate(`({
+    readyState: document.readyState,
+    url: location.href,
+    splashClass: document.getElementById("studioLoading")?.className || null,
+    sourceLength: document.getElementById("sourceEditor")?.value?.length || 0,
+    resources: performance.getEntriesByType("resource").slice(-12).map((entry) => entry.name)
+  })`);
+  const diagnostics = JSON.stringify(client?.events || []).slice(-3000);
+  throw new Error(`Timed out waiting for ${description}. Page state: ${JSON.stringify(pageState)}.${diagnostics ? ` Browser events: ${diagnostics}` : ""}`);
 }
 
 let client;
@@ -114,13 +129,54 @@ try {
   await client.send("Page.navigate", { url: studioUrl });
   await waitFor(
     `document.readyState === "complete" && document.getElementById("projectPanelTabDocs")`,
-    "Amy Studio shell"
+    "Amy Studio shell",
+    300
   );
   await waitFor(
     `document.getElementById("studioLoading") === null`,
-    "Amy Studio startup"
+    "Amy Studio startup",
+    300
   );
-  if (view === "new-project-megacart" || view === "megacart-files") {
+  if (view === "build-output" || view === "debugger-workflow") {
+    await evaluate(`(async () => {
+      const response = await fetch("./examples-src/amy-runtime-input-expression-test.alexis");
+      if (!response.ok) throw new Error("Cannot load checkpoint example source.");
+      const editor = document.getElementById("sourceEditor");
+      editor.value = await response.text();
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    })()`);
+    await waitFor(
+      `document.getElementById("sourceEditor")?.value.includes('test checkpoint "input_expression_before"') === true`,
+      "checkpoint example"
+    );
+    await evaluate(`document.getElementById("btnCompile")?.click()`);
+    await waitFor(
+      `/Compile OK/.test((document.getElementById("statusSummary")?.textContent || "") + (document.getElementById("status")?.textContent || ""))`,
+      "compiled checkpoint example",
+      300
+    );
+    if (view === "build-output") {
+      await evaluate(`document.getElementById("projectPanelTabProject")?.click()`);
+    } else {
+      await evaluate(`document.getElementById("btnRomTestRecorder")?.click()`);
+      await waitFor(`document.querySelector("dialog.rom-recorder")?.open === true`, "ROM debugger", 300);
+      await waitFor(
+        `Array.from(document.querySelectorAll('dialog.rom-recorder [data-field="checkpoint"] option')).some((option) => option.value === "input_expression_before")`,
+        "debugger checkpoints",
+        300
+      );
+      await evaluate(`(() => {
+        const checkpoint = document.querySelector('dialog.rom-recorder [data-field="checkpoint"]');
+        checkpoint.value = "input_expression_before";
+        checkpoint.dispatchEvent(new Event("change", { bubbles: true }));
+      })()`);
+      await waitFor(
+        `!/Loading deterministic/.test(document.querySelector('dialog.rom-recorder [data-field="status"]')?.textContent || "")`,
+        "deterministic GearColeco core",
+        600
+      );
+    }
+  } else if (view === "new-project-megacart" || view === "megacart-files") {
     await evaluate(`document.getElementById("btnNew")?.click()`);
     await waitFor(`document.getElementById("newProjectDialog")?.open === true`, "new-project dialog");
     await evaluate(`(() => {
@@ -184,7 +240,9 @@ try {
   }
   const layout = await evaluate(`(() => {
     const view = ${JSON.stringify(view)};
-    const element = view === "megacart-files"
+    const element = view === "debugger-workflow"
+      ? document.querySelector("dialog.rom-recorder")
+      : view === "build-output" || view === "megacart-files"
       ? document.getElementById("projectPanel")
       : document.querySelector(".sound-sequence-editor-modal") || document.querySelector(".sound-table-creator-modal") || document.querySelector(".sound-table-inspector-modal") || document.querySelector("#newProjectDialog[open]") || document.getElementById("projectPanelFiles") || document.getElementById("projectPanelDocs");
     const close = element?.querySelector("button[aria-label^='Close']");
@@ -199,7 +257,7 @@ try {
       closeVisible: !close || (close.getBoundingClientRect().top >= 0 && close.getBoundingClientRect().bottom <= innerHeight)
     };
   })()`);
-  const focusedWorkflowView = view === "new-project-megacart" || view === "megacart-files";
+  const focusedWorkflowView = ["new-project-megacart", "megacart-files", "build-output"].includes(view);
   const captureOptions = {
     format: "png",
     captureBeyondViewport: false

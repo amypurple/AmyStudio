@@ -251,7 +251,7 @@ function ensureStyles() {
     .rom-recorder__side select,.rom-recorder__side input { width:100%; box-sizing:border-box; }
     .rom-recorder__tools { display:flex; flex-wrap:wrap; gap:6px; }
     .rom-recorder__tools > * { flex:1 1 auto; }
-    .rom-recorder__settings { display:grid; grid-template-columns:minmax(58px,.65fr) minmax(76px,.85fr) minmax(52px,.55fr) minmax(104px,1.15fr) minmax(104px,1.15fr); gap:6px; align-items:end; }
+    .rom-recorder__settings { display:grid; grid-template-columns:minmax(126px,1.1fr) minmax(70px,.65fr) minmax(58px,.6fr) minmax(70px,.75fr) minmax(116px,1fr); gap:6px; align-items:end; }
     .rom-recorder__settings-actions { grid-column:1 / -1; display:flex; justify-content:flex-end; gap:6px; }
     .rom-recorder__region-toggle { min-height:32px; color:#65dbef; font-weight:700; letter-spacing:.06em; }
     .rom-recorder__compact-action[aria-pressed="true"] { color:#081014; background:#65dbef; }
@@ -321,7 +321,7 @@ function ensureStyles() {
     @media(max-width:760px) { .rom-recorder__wheel-set { grid-template-columns:280px 68px; }.rom-recorder__wheel-rim { left:24px; }.rom-recorder__wheel-console > .rom-recorder__controller-unit { right:12px; transform:scale(.68); }.rom-recorder__roller-panel { transform:scale(.9); transform-origin:top center; margin-bottom:-22px; } }
     .rom-recorder__controller button:active,.rom-recorder__controller button.is-active { transform:translateY(1px); filter:brightness(.75); }
     .rom-recorder__capture { width:100%; }
-    .rom-recorder__development { display:grid; grid-template-columns:minmax(130px,.8fr) minmax(180px,1.2fr); gap:6px; padding:7px; border:1px solid #26343c; background:#091015; }
+    .rom-recorder__development { display:grid; grid-template-columns:minmax(220px,.9fr) minmax(160px,1.1fr); gap:6px; padding:7px; border:1px solid #26343c; background:#091015; }
     .rom-recorder__development-actions { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px; }
     .rom-recorder__development-actions button { flex:1 1 auto; }
     .rom-recorder__auto-route[aria-pressed="true"] { color:#081014; background:#65dbef; }
