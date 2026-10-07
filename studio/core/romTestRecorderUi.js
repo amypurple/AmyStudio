@@ -367,6 +367,7 @@ function ensureStyles() {
     .rom-recorder__frame { min-width:72px; color:#65dbef; }
     .rom-recorder__status { min-height:1.5em; color:#a7b4bb; }
     .rom-recorder__compact-action { display:inline-grid; place-items:center; width:34px; min-width:34px; height:34px; padding:0; font-size:15px; line-height:1; }
+    .rom-recorder__settings-actions[hidden] { display:none; }
     .rom-recorder.is-rom-dragover { outline:3px solid #65dbef; outline-offset:-5px; }
     @media(max-width:1080px) { .rom-recorder__body { display:block; height:auto; max-height:calc(96vh - 52px); overflow:auto; } .rom-recorder__stage,.rom-recorder__side,.rom-recorder__debug { margin-bottom:10px; } .rom-recorder__transport { grid-template-columns:repeat(6,auto); } .rom-recorder__transport input[type=range] { grid-column:1 / -1; } }
   `;
@@ -405,7 +406,7 @@ function buildDialog() {
       </div>
       <div class="rom-recorder__side">
         <div class="rom-recorder__settings">
-          <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">ADAM disk/data pack</option></select></label>
+          <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">Coleco ADAM</option></select></label>
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<button class="rom-recorder__region-toggle" type="button" data-field="region" value="-1" title="Cycle video region">AUTO</button></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
@@ -416,6 +417,7 @@ function buildDialog() {
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
           <label>Serial line<select data-field="adamSerialBaud"><option value="0">Instant test bridge</option><option value="300">300 baud 8N1</option><option value="1200">1200 baud 8N1</option><option value="2400">2400 baud 8N1</option><option value="9600">9600 baud 8N1</option><option value="19200">19200 baud 8N1</option></select></label>
           <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
+          <div class="rom-recorder__settings-actions" data-field="adamResetActions" hidden><button type="button" data-action="resetAdam" title="Operate the ADAM computer-reset switch and boot EOS">RESET ADAM</button><button type="button" data-action="resetColecoVision" title="Operate the ColecoVision-reset switch and boot the inserted cartridge through OS7">RESET CV</button></div>
         </div>
         <div class="rom-recorder__development" aria-label="Development checkpoints">
           <label>Checkpoint<select data-field="checkpoint"><option value="">No checkpoints</option></select></label>
@@ -526,6 +528,12 @@ export function createRomTestRecorderUi({
 
   function setRecorderStatus(message) {
     field("status").textContent = message;
+  }
+
+  function updateAdamResetActions() {
+    const adam = field("machine")?.value === "adam-computer";
+    field("adamResetActions").hidden = !adam;
+    action("resetColecoVision").disabled = !adam || !(externalRom || loadedRom || getCompiledRom());
   }
 
   function developmentProjectId() {
@@ -1649,7 +1657,7 @@ export function createRomTestRecorderUi({
       catch { throw new Error("Configure OS7.ROM, EOS.ROM, and WP.ROM before starting ADAM."); }
     }
     const adamMediaBytes = externalAdamMedia || getCompiledAdamDisk();
-    if (adam && !adamMediaBytes) throw new Error("Compile, open, or drop an ADAM .dsk or .ddp file first.");
+    if (adam && !adamMediaBytes && !rom) throw new Error("Open an ADAM .dsk/.ddp or insert a .rom/.col cartridge first.");
     if (!adam && (!rom || !bios)) throw new Error("Compile or open a ROM and load a BIOS first.");
     core = await GearcolecoTestCore.create({ seed: SEED });
     loadedRom = rom;
@@ -1665,13 +1673,16 @@ export function createRomTestRecorderUi({
     core.setAdamSerialCarrier(serialSetting.endsWith("-loopback"));
     if (adam) {
       core.loadAdamFirmware(adamFirmware);
-      core.startAdam();
-      core.loadAdamMedia(adamMediaBytes, {
-        slot: externalAdamMediaType === GEARCOLECO_ADAM_MEDIA.DATA_PACK ? GEARCOLECO_ADAM_SLOT.DATA_PACK_1 : GEARCOLECO_ADAM_SLOT.DISK_1,
-        type: externalAdamMediaType,
-        writeProtected: false
-      });
-      core.reset();
+      if (rom) core.loadRom(rom, { region: Number(field("region").value) });
+      core.startAdam({ cartridge: !adamMediaBytes && Boolean(rom) });
+      if (adamMediaBytes) {
+        core.loadAdamMedia(adamMediaBytes, {
+          slot: externalAdamMediaType === GEARCOLECO_ADAM_MEDIA.DATA_PACK ? GEARCOLECO_ADAM_SLOT.DATA_PACK_1 : GEARCOLECO_ADAM_SLOT.DISK_1,
+          type: externalAdamMediaType,
+          writeProtected: false
+        });
+        core.resetAdam();
+      }
     } else {
       core.loadBios(bios);
       core.loadRom(rom, { region: Number(field("region").value) });
@@ -1705,6 +1716,24 @@ export function createRomTestRecorderUi({
     audioSink.setPlaybackRate(playbackRate);
     await audioSink.resume();
     startPlaybackTimer();
+    render({ forceInspector: true });
+    updateAdamResetActions();
+    dialog.querySelector("canvas").focus();
+  }
+
+  function restartRecorderAfterAdamReset() {
+    recorder = new RomTestRecorder(core, { keyframeInterval: 30, maxKeyframes: 120 });
+    recorder.start();
+    gameplayRecording.clear();
+    routeRecording = null;
+    stoppedCheckpoint = null;
+    stoppedCheckpointBank = null;
+    controllerMasks[0] = 0;
+    controllerMasks[1] = 0;
+    pressedKeys.clear();
+    audioSink.flush();
+    playing = true;
+    playbackAccumulator = 0;
     render({ forceInspector: true });
     dialog.querySelector("canvas").focus();
   }
@@ -1921,6 +1950,12 @@ export function createRomTestRecorderUi({
       audioSink.setPlaybackRate(playbackRate);
     });
     field("scale").addEventListener("change", applyScale);
+    field("machine").addEventListener("change", async () => {
+      updateAdamResetActions();
+      setRecorderStatus(`Restarting as ${field("machine").selectedOptions[0]?.textContent || "selected machine"}...`);
+      try { await startCore(); setRecorderStatus("Running."); }
+      catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
     field("region").addEventListener("click", async () => {
       const regions = ["-1", "0", "1"];
       field("region").value = regions[(regions.indexOf(field("region").value) + 1) % regions.length];
@@ -2022,6 +2057,22 @@ export function createRomTestRecorderUi({
       setRecorderStatus("Resetting...");
       try { await startCore(); setRecorderStatus("Recording from reset."); }
       catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
+    action("resetAdam").addEventListener("click", () => {
+      try {
+        if (!core || core.getMachine() !== GEARCOLECO_MACHINE.ADAM) throw new Error("Start Coleco ADAM before using RESET ADAM.");
+        core.resetAdam();
+        restartRecorderAfterAdamReset();
+        setRecorderStatus("RESET ADAM: booting the computer through EOS.");
+      } catch (error) { setRecorderStatus(error.message || String(error)); }
+    });
+    action("resetColecoVision").addEventListener("click", () => {
+      try {
+        if (!core || core.getMachine() !== GEARCOLECO_MACHINE.ADAM) throw new Error("Start Coleco ADAM before using RESET CV.");
+        core.resetAdam({ cartridge: true });
+        restartRecorderAfterAdamReset();
+        setRecorderStatus("RESET CV: booting the inserted cartridge through OS7 on ADAM hardware.");
+      } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     field("timeline").addEventListener("input", () => {
       playing = false;
@@ -2367,6 +2418,7 @@ export function createRomTestRecorderUi({
     renderSymbolList();
     renderBreakpointList();
     applyScale();
+    updateAdamResetActions();
     action("useCompiledRom").disabled = !(getCompiledRom() || compiledDisk);
     dialog.showModal();
     // ADAM firmware is resolved from browser storage or the local ignored ROM folder in startCore().

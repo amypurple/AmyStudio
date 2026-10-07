@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261004-adam-serial-timing3",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261007-adam-dual-reset1",
   import.meta.url
 );
 
@@ -307,6 +307,20 @@ export class GearcolecoTestCore {
     if (this.module._gcw_start_adam(cartridge ? 1 : 0) !== 1) {
       throw new Error("GearColeco could not start Coleco ADAM.");
     }
+  }
+
+  resetAdam({ cartridge = false } = {}) {
+    this.assertAlive();
+    if (this.module._gcw_reset_adam(cartridge ? GEARCOLECO_ADAM_BOOT.CARTRIDGE : GEARCOLECO_ADAM_BOOT.COMPUTER) !== 1) {
+      throw new Error(cartridge
+        ? "GearColeco could not reset ADAM in ColecoVision cartridge mode."
+        : "GearColeco could not reset ADAM in computer mode.");
+    }
+  }
+
+  getAdamBootMode() {
+    this.assertAlive();
+    return this.module._gcw_get_adam_boot_mode() | 0;
   }
 
   getMachine() {

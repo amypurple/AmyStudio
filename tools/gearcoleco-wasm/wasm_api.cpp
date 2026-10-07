@@ -188,6 +188,33 @@ extern "C"
         return g_core->StartAdam(static_cast<GC_AdamBootMode>(boot_mode)) ? 1 : 0;
     }
 
+    GCW_EXPORT int gcw_reset_adam(int boot_mode)
+    {
+        if (!IsReady() || g_core->GetMachine() != GC_MACHINE_ADAM ||
+            boot_mode < GC_ADAM_BOOT_COMPUTER || boot_mode > GC_ADAM_BOOT_CARTRIDGE)
+            return 0;
+
+        if (boot_mode == GC_ADAM_BOOT_CARTRIDGE)
+        {
+            if (!g_core->GetCartridge()->IsReady())
+                return 0;
+            g_core->ResetAdamCartridge();
+        }
+        else
+        {
+            g_core->ResetAdamComputer();
+        }
+        ResetControllerMasks();
+        return g_core->GetAdamBootMode() == static_cast<GC_AdamBootMode>(boot_mode) ? 1 : 0;
+    }
+
+    GCW_EXPORT int gcw_get_adam_boot_mode()
+    {
+        if (!IsReady() || g_core->GetMachine() != GC_MACHINE_ADAM)
+            return -1;
+        return static_cast<int>(g_core->GetAdamBootMode());
+    }
+
     GCW_EXPORT int gcw_get_machine()
     {
         return IsReady() ? static_cast<int>(g_core->GetMachine()) : -1;

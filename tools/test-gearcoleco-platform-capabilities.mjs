@@ -17,7 +17,7 @@ assert.deepEqual(GEARCOLECO_ADAM_SLOT, { DISK_1: 0, DISK_2: 1, DATA_PACK_1: 2, D
 
 const core = await GearcolecoTestCore.create({ seed: 0x170 });
 try {
-  for (const method of ["loadAdamFirmware", "startAdam", "getMachine", "loadAdamMedia",
+  for (const method of ["loadAdamFirmware", "startAdam", "resetAdam", "getAdamBootMode", "getMachine", "loadAdamMedia",
     "ejectAdamMedia", "setAdamKey", "getAdamMioc", "getAdamNetSummary",
     "setVideoChip", "getVideoChip", "getRomBank", "getCartridgeType", "isMegaCart"]) {
     assert.equal(typeof core[method], "function", `${method} is unavailable`);

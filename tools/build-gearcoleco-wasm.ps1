@@ -88,6 +88,8 @@ $exported = @(
     "_gcw_load_bios",
     "_gcw_load_adam_firmware",
     "_gcw_start_adam",
+    "_gcw_reset_adam",
+    "_gcw_get_adam_boot_mode",
     "_gcw_get_machine",
     "_gcw_get_adam_mioc",
     "_gcw_get_adam_net_summary",
@@ -197,6 +199,7 @@ $versionFile = Join-Path $OutputDir "BUILD.txt"
     "sp0256_voice_modules=lundy_43_44_45,eve_48_49_4a_4b"
     "video_chips=tms9918a,f18a_v1.9"
     "adam=firmware,adamnet,keyboard,ddp,disk,media_export,printer,64k_expansion_ram"
+    "adam_reset=eos_computer,os7_cartridge_on_adam_hardware"
     "adam_serial=adamlink,eve_orphanware,microinnovations,offline,loopback,hayes,scripted_rx,tx_capture,debug_inspector,selectable_8n1_timing,scn2651_txrdy_txemt,savestate_v112"
     "adam_video_compatibility=startup_unterminated_overlapping_sprite_table"
 ) | Set-Content -LiteralPath $versionFile -Encoding ascii
