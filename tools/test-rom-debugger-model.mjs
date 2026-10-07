@@ -6,6 +6,7 @@ import {
   decodeVdpRegisters,
   filterSymbols,
   findNearestSymbol,
+  formatBankAddress,
   formatHexDump,
   inspectOverlaySymbolDebugState,
   listAmyDebugBreakpoints,
@@ -13,6 +14,7 @@ import {
   listAmySourceMarkers,
   parseAmySymbols,
   resolveAmySourceBreakpoints,
+  resolveSymbolReference,
   resolveSymbolOrAddress
 } from "../studio/core/romDebuggerModel.js";
 
@@ -62,6 +64,38 @@ const poisonState = inspectOverlaySymbolDebugState(
 assert.equal(poisonState.active, true);
 assert.equal(poisonState.poisoned, true);
 assert.equal(resolveSymbolOrAddress("Nmi", symbols), 0x8021);
+const bankedSymbols = parseAmySymbols(`
+01:C000 SharedData
+02:C000 SharedData
+02:C010 BankTwoOnly
+`);
+assert.deepEqual(bankedSymbols.map(({ bank, address, name }) => ({ bank, address, name })), [
+  { bank: 1, address: 0xC000, name: "SharedData" },
+  { bank: 2, address: 0xC000, name: "SharedData" },
+  { bank: 2, address: 0xC010, name: "BankTwoOnly" }
+]);
+assert.deepEqual(resolveSymbolReference("1:SharedData", bankedSymbols), {
+  bank: 1,
+  address: 0xC000,
+  symbol: bankedSymbols[0]
+});
+assert.deepEqual(resolveSymbolReference("02:C010", bankedSymbols), { bank: 2, address: 0xC010 });
+assert.equal(resolveSymbolOrAddress("bank:2:SharedData", bankedSymbols), 0xC000);
+assert.equal(findNearestSymbol(0xC012, bankedSymbols, 2), "BankTwoOnly+$02");
+assert.equal(formatBankAddress(0xC010, 2), "2:$C010");
+assert.equal(formatBankAddress(0x8123), "$8123");
+assert.equal(filterSymbols(bankedSymbols, "2:$c010")[0].name, "BankTwoOnly");
+assert.throws(() => resolveSymbolOrAddress("SharedData", bankedSymbols), /Ambiguous symbol/);
+const bankedMarkers = listAmySourceMarkers(parseAmySymbols(`
+01:C000 AMY_SOURCE_LINE_20
+02:C000 AMY_SOURCE_LINE_20
+`));
+const bankedBreakpoints = resolveAmySourceBreakpoints([{ line: 20, enabled: true }], bankedMarkers);
+assert.deepEqual(bankedBreakpoints.groups.map(({ bank, address }) => ({ bank, address })), [
+  { bank: 1, address: 0xC000 },
+  { bank: 2, address: 0xC000 }
+]);
+assert.equal(chooseAmySourceMarker(bankedMarkers, { bank: 2 }).bank, 2);
 const sourceMarkers = listAmySourceMarkers(parseAmySymbols(`
 AMY_SOURCE_LINE_10: equ $8123
 AMY_SOURCE_LINE_11: equ $8123

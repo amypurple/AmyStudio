@@ -1,8 +1,12 @@
-const ADDRESS_FIRST_SYMBOL = /^\s*(?:[0-9A-Fa-f]{2}:)?([0-9A-Fa-f]{4})\s+([A-Za-z_.$?][\w.$?]*)\s*$/;
+const ADDRESS_FIRST_SYMBOL = /^\s*(?:([0-9A-Fa-f]{1,2}):)?([0-9A-Fa-f]{4})\s+([A-Za-z_.$?][\w.$?]*)\s*$/;
 const EQU_SYMBOL = /^\s*([A-Za-z_.$?][\w.$?]*)\s*:\s*equ\s+(?:\$|0x)?([0-9A-Fa-f]{1,4})\s*$/i;
 
 export function formatHex(value, width = 4) {
   return `$${(Number(value) >>> 0).toString(16).toUpperCase().padStart(width, "0")}`;
+}
+
+export function formatBankAddress(address, bank = null) {
+  return bank == null ? formatHex(address) : `${Number(bank)}:${formatHex(address)}`;
 }
 
 export function parseAmySymbols(text) {
@@ -12,33 +16,54 @@ export function parseAmySymbols(text) {
     const addressFirst = line.match(ADDRESS_FIRST_SYMBOL);
     const equ = line.match(EQU_SYMBOL);
     if (!addressFirst && !equ) continue;
-    const address = Number.parseInt(addressFirst ? addressFirst[1] : equ[2], 16) & 0xFFFF;
-    const name = addressFirst ? addressFirst[2] : equ[1];
-    const key = `${address}:${name.toLowerCase()}`;
+    const address = Number.parseInt(addressFirst ? addressFirst[2] : equ[2], 16) & 0xFFFF;
+    const name = addressFirst ? addressFirst[3] : equ[1];
+    const bank = addressFirst?.[1] == null ? null : Number.parseInt(addressFirst[1], 16);
+    const key = `${bank ?? ""}:${address}:${name.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    symbols.push({ address, name });
+    symbols.push(bank == null ? { address, name } : { address, name, bank });
   }
-  return symbols.sort((left, right) => left.address - right.address || left.name.localeCompare(right.name));
+  return symbols.sort((left, right) => left.address - right.address
+    || (left.bank ?? -1) - (right.bank ?? -1)
+    || left.name.localeCompare(right.name));
 }
 
-export function resolveSymbolOrAddress(value, symbols) {
+export function resolveSymbolReference(value, symbols, { bank = null } = {}) {
   const source = String(value || "").trim();
   if (!source) throw new Error("Enter a symbol or address.");
+  const bankedNumeric = source.match(/^([0-9a-f]{1,2}):(?:\$|0x)?([0-9a-f]{1,4})$/i);
+  if (bankedNumeric) {
+    return { bank: Number.parseInt(bankedNumeric[1], 16), address: Number.parseInt(bankedNumeric[2], 16) & 0xFFFF };
+  }
   const numeric = source.match(/^\$([0-9a-f]+)$/i)
     || source.match(/^0x([0-9a-f]+)$/i)
     || source.match(/^([0-9a-f]{1,4})$/i);
-  if (numeric) return Number.parseInt(numeric[1], 16) & 0xFFFF;
-  const symbol = symbols.find((entry) => entry.name.toLowerCase() === source.toLowerCase()
-    || entry.overlay?.qualifiedName?.toLowerCase() === source.toLowerCase());
-  if (!symbol) throw new Error(`Unknown symbol "${source}".`);
-  return symbol.address;
+  if (numeric) return { bank, address: Number.parseInt(numeric[1], 16) & 0xFFFF };
+  const bankQualified = source.match(/^bank:([0-9]+):(.+)$/i) || source.match(/^([0-9]+):([A-Za-z_.$?].*)$/);
+  const requestedBank = bankQualified ? Number(bankQualified[1]) : bank;
+  const requestedName = bankQualified ? bankQualified[2] : source;
+  const matches = symbols.filter((entry) => (
+    entry.name.toLowerCase() === requestedName.toLowerCase()
+    || entry.qualifiedName?.toLowerCase() === source.toLowerCase()
+    || entry.overlay?.qualifiedName?.toLowerCase() === requestedName.toLowerCase()
+  ) && (requestedBank == null || entry.bank == null || entry.bank === requestedBank));
+  if (!matches.length) throw new Error(`Unknown symbol "${source}".`);
+  if (matches.length > 1) throw new Error(`Ambiguous symbol "${source}"; qualify it with a bank.`);
+  return { bank: matches[0].bank ?? requestedBank, address: matches[0].address, symbol: matches[0] };
 }
 
-export function findNearestSymbol(address, symbols) {
+export function resolveSymbolOrAddress(value, symbols, options) {
+  return resolveSymbolReference(value, symbols, options).address;
+}
+
+export function findNearestSymbol(address, symbols, bank = null) {
   const target = Number(address) & 0xFFFF;
   let nearest = null;
-  for (const symbol of symbols) {
+  const candidates = bank == null
+    ? symbols.filter((symbol) => symbol.bank == null || symbol.bank === 0)
+    : symbols.filter((symbol) => symbol.bank == null || symbol.bank === Number(bank));
+  for (const symbol of candidates.sort((left, right) => left.address - right.address)) {
     if (symbol.address > target) break;
     nearest = symbol;
   }
@@ -205,8 +230,9 @@ function findAmyProcedureSourceRange(sourceText, procedureName) {
   return start >= 0 ? { start, end: lines.length } : null;
 }
 
-export function chooseAmySourceMarker(markers, { address, symbols, sourceText } = {}) {
+export function chooseAmySourceMarker(markers, { address, bank = null, symbols, sourceText } = {}) {
   let candidates = Array.isArray(markers) ? markers.filter(Boolean) : [];
+  if (bank != null) candidates = candidates.filter((marker) => marker.bank == null || marker.bank === Number(bank));
   if (!candidates.length) return null;
 
   const procedureRanges = (symbols || [])
@@ -246,10 +272,13 @@ export function resolveAmySourceBreakpoints(configured, markers) {
     }
 
     for (const marker of matches) {
-      let group = groupsByAddress.get(marker.address);
+      const groupKey = `${marker.bank ?? ""}:${marker.address}`;
+      let group = groupsByAddress.get(groupKey);
       if (!group) {
-        group = { address: marker.address, members: [] };
-        groupsByAddress.set(marker.address, group);
+        group = marker.bank == null
+          ? { address: marker.address, members: [] }
+          : { bank: marker.bank, address: marker.address, members: [] };
+        groupsByAddress.set(groupKey, group);
       }
       group.members.push({
         line: breakpoint.line,
@@ -261,7 +290,8 @@ export function resolveAmySourceBreakpoints(configured, markers) {
   }
 
   return {
-    groups: [...groupsByAddress.values()].sort((left, right) => left.address - right.address),
+    groups: [...groupsByAddress.values()].sort((left, right) => (left.bank ?? -1) - (right.bank ?? -1)
+      || left.address - right.address),
     unresolved
   };
 }
@@ -271,6 +301,8 @@ export function filterSymbols(symbols, query, limit = 300) {
   const filtered = needle
     ? symbols.filter((entry) => entry.name.toLowerCase().includes(needle)
       || entry.overlay?.qualifiedName?.toLowerCase().includes(needle)
+      || entry.qualifiedName?.toLowerCase().includes(needle)
+      || formatBankAddress(entry.address, entry.bank).toLowerCase().includes(needle)
       || formatHex(entry.address).toLowerCase().includes(needle))
     : symbols;
   return filtered.slice(0, limit);

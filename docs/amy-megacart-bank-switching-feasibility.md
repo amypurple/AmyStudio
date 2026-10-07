@@ -47,6 +47,9 @@ usage, and qualified symbols without changing the emitted cartridge image.
 - `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
   `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
   physical offsets.
+- `studio/core/romDebuggerModel.js` now preserves `bank:address` symbol input,
+  resolves `bank:2:Symbol` and `2:$C000`, rejects ambiguous unqualified names,
+  and keeps source breakpoints at the same address separated by bank.
 - `docs/research/mario-brothers-2009-mapper-analysis-2026-10-02.md` records a
   64 KB production ROM with a fixed-bank `55 AA` header and MegaCart mapper
   reads. It contains no identified SGM I/O.
@@ -76,7 +79,9 @@ breakpoint addresses.
 7. Teach optimizer symbol analysis not to merge or reorder across bank
    boundaries.
 8. Teach ROM Test & Debug to identify execution as `(bank, address)` and read
-   the active MegaCart bank.
+   the active MegaCart bank. The JavaScript model is bank-aware; the bundled
+   GearColeco WASM bridge still needs an active-bank export before the UI may
+   safely install bank-conditional execution breakpoints.
 9. Package exact 128/256/512/1,024 KB images with deterministic fill bytes.
 
 ## Mandatory Capacity Diagnostics
