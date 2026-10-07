@@ -32,6 +32,17 @@ MegaCart banking and ADAM memory mapping are different hardware contracts. `bank
 4. Create the project, then open **FILES** to inspect the generated manifest and target-specific sources.
 5. Compile once before editing. This establishes the fingerprints used by the FILES build-state indicators.
 
+Select the target card in **New Project**. The media selector appears only for
+ADAM targets, because cartridge and MegaCart projects always produce ROM media.
+
+![Selecting the ColecoVision MegaCart target](media/amy-studio-new-megacart.png)
+
+After creation, select **FILES**. The generated tree keeps the fixed program,
+switchable banks, and `project.amy.json` manifest visible without crowding the
+source-file selector.
+
+![Generated MegaCart files](media/amy-studio-megacart-files.png)
+
 A MegaCart starter contains `project.amy.json`, an ASM bank, and a restricted
 bank-local Amy file. Native EOS and hybrid starters use their manifest to select
 the memory profile and media builder. Do not copy `bank select` into an ADAM

@@ -7,6 +7,8 @@ import { transpileAmyForTest } from "./lib/transpile-amy-test.mjs";
 
 const styles = readFileSync(new URL("../studio/styles.css", import.meta.url), "utf8");
 assert.match(styles, /\.new-project-dialog__medium\[hidden\]\s*\{\s*display:\s*none;/);
+assert.match(styles, /\.project-file__name\s*\{[^}]*flex:\s*none;[^}]*white-space:\s*nowrap;[^}]*text-overflow:\s*ellipsis;/s);
+assert.match(styles, /\.project-file__meta\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/s);
 
 const base = { version: 2, sourceLang: "amy", projectFiles: [], generatedAsm: "old" };
 assert.equal(listNewProjectTemplates().length, 6);

@@ -148,13 +148,14 @@ Validated so far:
 - A browser walkthrough verified the MegaCart starter manifest and bank files;
   it also found and fixed the CSS rule that exposed the irrelevant DSK/DDP
   selector for cartridge targets.
+- Deterministic Chromium capture now waits for Studio startup and publishes
+  focused New Project and MegaCart FILES images. The FILES capture exposed and
+  fixed narrow-panel filename wrapping and metadata overflow.
 
 Remaining:
 
-- Capture stable browser screenshots after the loading-overlay capture issue is
-  resolved; do not publish screenshots that show an intermediate loading layer.
-- Add the project creation, FILES, build output, emulator setup, checkpoint,
-  replay, and recording images to the workflow guide.
+- Add build-output, emulator-setup, checkpoint, replay, and recording images to
+  the workflow guide.
 
 - Document native EOS, OS7+EOS hybrid, MegaCart, firmware, DSK, and DDP workflows.
 - Add screenshots for project creation, build outputs, emulator setup, checkpoint routes, fast replay, and AVI recording.

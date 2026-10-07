@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import path from "node:path";
 
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
@@ -8,8 +9,11 @@ const studioUrl = process.argv[3] || "http://localhost:8081/studio/";
 const outputPath = path.resolve(process.argv[4] || `docs/images/studio-${view}.png`);
 const viewportWidth = Number(process.argv[5] || 1440);
 const viewportHeight = Number(process.argv[6] || 1000);
-const debuggingPort = 9333;
-const profilePath = path.resolve(".tmp/studio-gallery-edge");
+const portProbe = createServer();
+await new Promise((resolve) => portProbe.listen(0, "127.0.0.1", resolve));
+const debuggingPort = portProbe.address().port;
+await new Promise((resolve) => portProbe.close(resolve));
+const profilePath = path.resolve(`.tmp/studio-gallery-edge-${process.pid}-${view}`);
 
 await mkdir(path.dirname(outputPath), { recursive: true });
 await mkdir(profilePath, { recursive: true });
@@ -116,7 +120,25 @@ try {
     `document.getElementById("studioLoading") === null`,
     "Amy Studio startup"
   );
-  if (view === "gallery") {
+  if (view === "new-project-megacart" || view === "megacart-files") {
+    await evaluate(`document.getElementById("btnNew")?.click()`);
+    await waitFor(`document.getElementById("newProjectDialog")?.open === true`, "new-project dialog");
+    await evaluate(`(() => {
+      const target = document.querySelector('input[name="newProjectTarget"][value="megacart"]');
+      target.checked = true;
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("newProjectName").value = "megacart-guide";
+    })()`);
+    if (view === "megacart-files") {
+      await evaluate(`document.getElementById("btnCreateProject")?.click()`);
+      await waitFor(`document.getElementById("newProjectDialog")?.open === false`, "MegaCart project creation");
+      await evaluate(`document.getElementById("projectPanelTabFiles")?.click()`);
+      await waitFor(
+        `Boolean(document.querySelector('#projectFilesList .project-file__name[title*="banks/bank2.amy"]'))`,
+        "MegaCart project files"
+      );
+    }
+  } else if (view === "gallery") {
     await evaluate(`document.getElementById("projectPanelTabDocs")?.click()`);
     await waitFor(
       `Array.from(document.getElementById("docsSelect")?.options || []).some((option) => option.value === "studio-tools")`,
@@ -161,22 +183,38 @@ try {
     throw new Error(`Unknown capture view: ${view}`);
   }
   const layout = await evaluate(`(() => {
-    const element = document.querySelector(".sound-sequence-editor-modal") || document.querySelector(".sound-table-creator-modal") || document.querySelector(".sound-table-inspector-modal") || document.getElementById("projectPanelDocs");
+    const view = ${JSON.stringify(view)};
+    const element = view === "megacart-files"
+      ? document.getElementById("projectPanel")
+      : document.querySelector(".sound-sequence-editor-modal") || document.querySelector(".sound-table-creator-modal") || document.querySelector(".sound-table-inspector-modal") || document.querySelector("#newProjectDialog[open]") || document.getElementById("projectPanelFiles") || document.getElementById("projectPanelDocs");
     const close = element?.querySelector("button[aria-label^='Close']");
     if (!element) return null;
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return {
+      left: Math.round(rect.left), top: Math.round(rect.top),
       width: Math.round(rect.width), height: Math.round(rect.height),
       scrollWidth: element.scrollWidth, scrollHeight: element.scrollHeight,
       overflowX: style.overflowX, overflowY: style.overflowY,
       closeVisible: !close || (close.getBoundingClientRect().top >= 0 && close.getBoundingClientRect().bottom <= innerHeight)
     };
   })()`);
-  const capture = await client.send("Page.captureScreenshot", {
+  const focusedWorkflowView = view === "new-project-megacart" || view === "megacart-files";
+  const captureOptions = {
     format: "png",
     captureBeyondViewport: false
-  });
+  };
+  if (focusedWorkflowView && layout) {
+    const margin = 12;
+    captureOptions.clip = {
+      x: Math.max(0, layout.left - margin),
+      y: Math.max(0, layout.top - margin),
+      width: Math.min(viewportWidth - Math.max(0, layout.left - margin), layout.width + margin * 2),
+      height: Math.min(viewportHeight - Math.max(0, layout.top - margin), layout.height + margin * 2),
+      scale: 1
+    };
+  }
+  const capture = await client.send("Page.captureScreenshot", captureOptions);
   await writeFile(outputPath, Buffer.from(capture.data, "base64"));
   console.log(`Captured ${outputPath}`);
   console.log(`Layout ${JSON.stringify(layout)}`);
