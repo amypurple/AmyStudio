@@ -138,7 +138,10 @@ addresses.
 
 Use **RECORD BOOT** to reset and capture from the first emulated frame, or
 **RECORD NOW** to begin at the current frame. Stop the capture before using
-**EXPORT AVI**. The CPU/VDP, ASM, RAM, VRAM, map, ADAM, breakpoint, and cycle
+**EXPORT AVI** for full-frame Motion-JPEG video with PCM audio. **EXPORT GIF**
+replays the same deterministic route at roughly 15 frames per second using a
+compact 256-color palette; GIF is silent by design. The CPU/VDP, ASM, RAM,
+VRAM, map, ADAM, breakpoint, and cycle
 tabs remain available during development.
 
 ![ROM debugger checkpoints, replay, and recording](media/amy-studio-debugger-workflow.png)
@@ -283,7 +286,7 @@ Current debugging tools include:
 - controller, gamepad, spinner, Roller Controller, Super Action Controller, and steering-wheel setup;
 - explicit computer-keyboard routing to the native ADAM keyboard, joystick port 1, or joystick port 2;
 - writable ADAM media export after a test session;
-- record-from-boot and record-now gameplay capture with deterministic AVI export;
+- record-from-boot and record-now gameplay capture with deterministic AVI and animated GIF export;
 - named development checkpoints, recorded routes, and fast replay after recompilation;
 - recorded controller scenarios and replayable `.amy-rom-test.json` files.
 

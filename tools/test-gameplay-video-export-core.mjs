@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
 import { GameplayRecordingSession } from "../studio/core/gameplayRecordingSession.js";
-import { exportGameplaySession } from "../studio/core/romGameplayVideoExport.js";
+import { exportGameplayGifSession, exportGameplaySession } from "../studio/core/romGameplayVideoExport.js";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const [bios, rom] = await Promise.all([
@@ -67,7 +67,22 @@ try {
   assert.ok(sessionResult.sampleRate > 0);
   const bytes = new Uint8Array(await sessionResult.blob.arrayBuffer());
   assert.equal(new TextDecoder().decode(bytes.subarray(0, 4)), "RIFF");
-  console.log("GearColeco independent gameplay video export PASS", sessionResult.frameCount);
+  const cpuBeforeGif = core.getCpuState();
+  const ramBeforeGif = hash(core.readRam(0, 0x10000));
+  const vramBeforeGif = hash(core.readVram(0, 0x4000));
+  const registersBeforeGif = [...core.getVdpRegisters()];
+  const gifResult = await exportGameplayGifSession({ core, session });
+  assert.equal(gifResult.frameCount, 150);
+  assert.equal(gifResult.sourceFrameCount, 600);
+  assert.equal(gifResult.fps, 15);
+  assert.deepEqual(core.getCpuState(), cpuBeforeGif, "GIF export must restore CPU state");
+  assert.equal(hash(core.readRam(0, 0x10000)), ramBeforeGif, "GIF export must restore RAM");
+  assert.equal(hash(core.readVram(0, 0x4000)), vramBeforeGif, "GIF export must restore VRAM");
+  assert.deepEqual([...core.getVdpRegisters()], registersBeforeGif, "GIF export must restore VDP registers");
+  assert.equal(hash(new Uint8Array(core.getFramebuffer().pixels.buffer)), expectedFrames.at(-1), "GIF export must restore the visible framebuffer");
+  const gifBytes = new Uint8Array(await gifResult.blob.arrayBuffer());
+  assert.equal(new TextDecoder().decode(gifBytes.subarray(0, 6)), "GIF89a");
+  console.log(`GearColeco independent gameplay video export PASS (${sessionResult.frameCount} AVI frames, ${gifResult.frameCount} GIF frames)`);
 } finally {
   core.destroy();
 }

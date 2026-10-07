@@ -10,7 +10,7 @@ import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAda
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
 import { GameplayRecordingSession } from "./gameplayRecordingSession.js?v=20260918-unbounded-input-log";
-import { downloadGameplayVideo, exportGameplaySession } from "./romGameplayVideoExport.js?v=20260918-deterministic-avi";
+import { downloadGameplayVideo, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261007-animated-gif1";
 import { createDevelopmentRouteStore, expandRouteInputs } from "./developmentCheckpointRoutes.js?v=20260919-route-replay";
 import {
   createRomTestCase,
@@ -401,7 +401,7 @@ function buildDialog() {
         <div class="rom-recorder__controller" aria-label="ColecoVision controller">
           <div class="rom-recorder__controller-display" data-field="controllerDisplay"></div>
         </div>
-        <div class="rom-recorder__tools rom-recorder__capture" aria-label="Deterministic video recording"><button class="rom-recorder__record-action" type="button" data-action="recordBoot" title="Reset and record from the first boot frame">&#x25CF; RECORD BOOT</button><button class="rom-recorder__record-action" type="button" data-action="recordVideo" title="Start recording from the current frame">&#x25CF; RECORD NOW</button><button type="button" data-action="stopVideo" title="Stop gameplay recording" disabled>&#x25A0; STOP</button><button class="button--primary" type="button" data-action="exportVideo" title="Replay the recording and export Motion-JPEG video with PCM audio" disabled>Export AVI</button></div>
+        <div class="rom-recorder__tools rom-recorder__capture" aria-label="Deterministic video recording"><button class="rom-recorder__record-action" type="button" data-action="recordBoot" title="Reset and record from the first boot frame">&#x25CF; RECORD BOOT</button><button class="rom-recorder__record-action" type="button" data-action="recordVideo" title="Start recording from the current frame">&#x25CF; RECORD NOW</button><button type="button" data-action="stopVideo" title="Stop gameplay recording" disabled>&#x25A0; STOP</button><button class="button--primary" type="button" data-action="exportVideo" title="Replay all frames and export Motion-JPEG video with PCM audio" disabled>Export AVI</button><button type="button" data-action="exportGif" title="Replay the recording and export a silent animated GIF at about 15 frames per second" disabled>Export GIF</button></div>
       </div>
       <div class="rom-recorder__side">
         <div class="rom-recorder__settings">
@@ -1300,6 +1300,7 @@ export function createRomTestRecorderUi({
       action("recordBoot").disabled = false;
       action("stopVideo").disabled = true;
       action("exportVideo").disabled = gameplayRecording.inputs.length === 0;
+      action("exportGif").disabled = gameplayRecording.inputs.length === 0;
       setRecorderStatus("Video recording stopped because the rewind timeline was used.");
     } else if (!replaying && recorder.frame > frameBefore) {
       gameplayRecording.append({ controllerMasks: effectiveMasks, spinnerDeltas });
@@ -1685,6 +1686,7 @@ export function createRomTestRecorderUi({
     action("recordBoot").disabled = false;
     action("stopVideo").disabled = true;
     action("exportVideo").disabled = true;
+    action("exportGif").disabled = true;
     if (recordGameplayFromBoot) {
       gameplayRecording.start(core, { controllerMasks });
       action("recordBoot").classList.add("is-recording");
@@ -1842,6 +1844,7 @@ export function createRomTestRecorderUi({
       action("recordBoot").disabled = true;
       action("stopVideo").disabled = false;
       action("exportVideo").disabled = true;
+      action("exportGif").disabled = true;
       setRecorderStatus("Gameplay video recording started. The rewind buffer no longer limits its duration.");
     });
     action("stopVideo").addEventListener("click", () => {
@@ -1852,13 +1855,15 @@ export function createRomTestRecorderUi({
       action("recordBoot").disabled = false;
       action("stopVideo").disabled = true;
       action("exportVideo").disabled = frames === 0;
+      action("exportGif").disabled = frames === 0;
       setRecorderStatus(`Gameplay video recording stopped after ${frames} frames.`);
     });
-    action("exportVideo").addEventListener("click", async () => {
+    async function exportRecording(format) {
       if (videoExporting) return;
       videoExporting = true;
-      const exportButton = action("exportVideo");
-      exportButton.disabled = true;
+      const exportButton = action(format === "gif" ? "exportGif" : "exportVideo");
+      action("exportVideo").disabled = true;
+      action("exportGif").disabled = true;
       const screenCanvas = dialog.querySelector("canvas.rom-recorder__screen");
       const screenContext = screenCanvas.getContext("2d", { alpha: false });
       const screenSnapshot = screenContext.getImageData(0, 0, screenCanvas.width, screenCanvas.height);
@@ -1872,27 +1877,35 @@ export function createRomTestRecorderUi({
         action("recordBoot").classList.remove("is-recording");
         action("recordBoot").disabled = false;
         action("stopVideo").disabled = true;
-        const result = await exportGameplaySession({
+        const result = await (format === "gif" ? exportGameplayGifSession : exportGameplaySession)({
           core,
           session: gameplayRecording,
           restoreControllerMasks: recorder?.controllerMasks || controllerMasks,
-          onProgress({ completed, total }) {
-            setRecorderStatus(`Encoding deterministic video ${completed}/${total} frames...`);
+          onProgress({ completed, total, encoded }) {
+            setRecorderStatus(format === "gif"
+              ? `Encoding animated GIF ${completed}/${total} source frames (${encoded || 0} kept)...`
+              : `Encoding deterministic video ${completed}/${total} frames...`);
           }
         });
         const sourceName = externalRomName || getProject()?.name || "amy-studio-gameplay";
         const stem = sourceName.replace(/\.[^.]+$/, "").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "amy-studio-gameplay";
-        downloadGameplayVideo(result.blob, `${stem}-${result.frameCount}-frames.avi`);
-        setRecorderStatus(`Exported ${result.frameCount} frames at ${result.fps} Hz with ${result.sampleRate} Hz PCM audio.`);
+        downloadGameplayVideo(result.blob, `${stem}-${result.frameCount}-frames.${format}`);
+        setRecorderStatus(format === "gif"
+          ? `Exported ${result.frameCount} GIF frames at ${result.fps.toFixed(2)} Hz (silent).`
+          : `Exported ${result.frameCount} frames at ${result.fps} Hz with ${result.sampleRate} Hz PCM audio.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       } finally {
         videoExporting = false;
-        exportButton.disabled = false;
+        const hasRecording = gameplayRecording.inputs.length > 0;
+        action("exportVideo").disabled = !hasRecording;
+        action("exportGif").disabled = !hasRecording;
         render({ forceInspector: true });
         screenContext.putImageData(screenSnapshot, 0, 0);
       }
-    });
+    }
+    action("exportVideo").addEventListener("click", () => exportRecording("avi"));
+    action("exportGif").addEventListener("click", () => exportRecording("gif"));
     action("sourceStep").addEventListener("click", stepSourceLine);
     action("stepInto").addEventListener("click", stepAsmInstruction);
     action("stepOver").addEventListener("click", stepAsmOver);

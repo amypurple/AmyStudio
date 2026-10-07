@@ -164,7 +164,8 @@ Validated so far:
 
 Remaining:
 
-- Decide separately whether animated GIF export is worth its implementation and CPU cost.
+- No implementation milestone remains open. Continue treating new optimizer,
+  target, and hardware work as separately gated additions.
 
 ## Continuous gates
 

@@ -1,4 +1,5 @@
 import { buildMjpegPcmAvi } from "./mjpegPcmAvi.js";
+import { AnimatedGifEncoder, rgb565ToRgb332 } from "./animatedGif.js";
 
 const rgb5To8 = Uint8Array.from({ length: 32 }, (_, value) => Math.round(value * 255 / 31));
 const rgb6To8 = Uint8Array.from({ length: 64 }, (_, value) => Math.round(value * 255 / 63));
@@ -141,6 +142,41 @@ export async function exportGameplaySession({ core, session, restoreControllerMa
       fps: recording.framesPerSecond || core.getFramesPerSecond(),
       sampleRate
     };
+  } finally {
+    core.loadState(restoreState, { controllerMasks: restoreControllerMasks });
+  }
+}
+
+export async function exportGameplayGifSession({ core, session, restoreControllerMasks = [0, 0], targetFps = 15, onProgress = () => {}, signal }) {
+  if (!core) throw new Error("Start the debugger before exporting GIF.");
+  const recording = typeof session?.snapshot === "function" ? session.snapshot() : session;
+  if (!recording?.initialState || !recording?.inputs?.length) throw new Error("Record at least one gameplay frame before exporting GIF.");
+  const restoreState = core.saveState();
+  const sourceFps = recording.framesPerSecond || core.getFramesPerSecond();
+  const stride = Math.max(1, Math.round(sourceFps / targetFps));
+  let gif = null;
+  let frameCount = 0;
+  try {
+    core.loadState(recording.initialState, { controllerMasks: recording.initialControllerMasks });
+    for (let index = 0; index < recording.inputs.length; ++index) {
+      if (signal?.aborted) throw new DOMException("GIF export cancelled.", "AbortError");
+      const input = recording.inputs[index];
+      for (let port = 0; port < 2; ++port) {
+        core.setControllerMask(port, input.controllerMasks[port]);
+        if (input.spinnerDeltas[port]) core.setSpinner(port, input.spinnerDeltas[port]);
+      }
+      const result = core.runFrame();
+      if (result.breakpointHit) throw new Error(`A breakpoint interrupted GIF export at frame ${index}.`);
+      if ((index % stride) === 0) {
+        const framebuffer = core.getFramebufferView();
+        gif ||= new AnimatedGifEncoder({ width: framebuffer.width, height: framebuffer.height, fps: sourceFps / stride });
+        gif.addFrame(rgb565ToRgb332(framebuffer.pixels));
+        frameCount += 1;
+      }
+      onProgress({ completed: index + 1, total: recording.inputs.length, encoded: frameCount });
+      if ((index % 8) === 7) await nextTask();
+    }
+    return { blob: gif.finish(), frameCount, sourceFrameCount: recording.inputs.length, fps: sourceFps / stride };
   } finally {
     core.loadState(restoreState, { controllerMasks: restoreControllerMasks });
   }
