@@ -17,12 +17,16 @@ Compilation validates Amy, emits generated assembly, and assembles the selected 
 
 ## Project Targets And Outputs
 
-- `colecovision-cartridge`: normal OS7 cartridge ROM.
-- `colecovision-megacart`: banked MegaCart ROM with fixed and switchable 16 KiB regions.
-- `adam-eos-application`: native EOS application packaged on DSK or DDP.
+Choose the target when creating the project rather than treating every build as a cartridge:
+
+- `colecovision-cartridge`: normal OS7 cartridge ROM;
+- `colecovision-megacart`: banked MegaCart ROM with fixed and switchable 16 KiB regions;
+- `adam-eos-application`: native EOS application packaged on DSK or DDP;
 - OS7+EOS hybrid: an ADAM boot path that keeps OS7 game compatibility while using selected EOS services.
 
-MegaCart banking and ADAM memory mapping are different hardware contracts. `bank rom` and `bank select` describe cartridge banks; they do not select EOS RAM or firmware mappings. An ADAM project may contain several Amy, ASM, data, and pack files. Select editable sources with the source-file picker above the editor; edits update the project and invalidate its previous build.
+MegaCart banking and ADAM memory mapping are different hardware contracts. `bank rom` and `bank select` describe cartridge banks; they do not select EOS RAM or firmware mappings. Native EOS projects use their project manifest, boot source, media files, and EOS-aware Amy commands instead.
+
+An ADAM project may contain several Amy, ASM, data, and pack files. Select an editable source from the source-file picker above the editor. Edits update the project file itself, invalidate the previous build, and are included in the next exported `.amy.json` project.
 
 ### Creating an advanced target
 
@@ -54,6 +58,44 @@ After a successful build, `COMPILED` means that a file still matches the build,
 textual dependent or declared output that must be rebuilt. Incremental caches
 last only for the current Studio session; a page reload gives a clean reference
 build.
+
+### Native EOS media
+
+Choose **ADAM Native EOS** when the program calls EOS directly and does not need
+the ColecoVision OS7 runtime. Choose DSK for disk device `$04` or DDP for data
+pack device `$08`; Amy derives the device from the selected medium. The builder
+generates BOOT and loader objects, places the program in the media directory,
+and currently accepts a resident program of at most 6 KiB in `$C800-$DFFF`.
+
+The compact status reports the program size. Expand **Details** to verify the
+target, final 163,840-byte DSK or 262,144-byte DDP image, boot size, RAM window,
+and incremental objects reused by later builds.
+
+![Native EOS DSK build](media/amy-studio-adam-native-build.png)
+
+### OS7 and EOS hybrid media
+
+Choose **ADAM OS7 + EOS Hybrid** when the game remains an OS7/ColecoVision
+program but should boot from ADAM media and may use EOS storage or devices. The
+starter contains editable `src/boot.asm` and `src/expansion-loader.asm` files.
+The generic loader reads the padded 32 KiB game through EOS, copies it into
+expansion RAM, switches the MIOC to console mode, and enters OS7 at `$0000`.
+
+Optional `.wepk` files embedded anywhere in the project are placed after the
+game and listed in the EOS directory; a generic hybrid needs none. MegaCart
+`bank select` is not used for this transition because ADAM MIOC mapping and
+MegaCart ROM paging are different hardware mechanisms.
+
+![OS7 and EOS hybrid DSK build](media/amy-studio-adam-hybrid-build.png)
+
+### Firmware and media testing
+
+Open **ROM / Debugger**, choose **Coleco ADAM**, then use **Configure ADAM
+firmware** to provide the required EOS and WP ROMs. Amy Studio stores local
+firmware in browser storage but never includes copyrighted firmware in a project
+export or repository. Drop a `.dsk` or `.ddp` onto the debugger to test external
+media; use the compiled-output return button to switch back to the current Amy
+build. Writable media state participates in save states and deterministic tests.
 
 ## Project Import And Export
 
@@ -94,9 +136,9 @@ to it after a rebuild, and **After compile** performs that replay automatically.
 Routes are tied to symbolic checkpoints rather than fragile instruction
 addresses.
 
-Use **Record Boot** to reset and capture from the first emulated frame, or
-**Record Now** to begin at the current frame. Stop the capture before using
-**Export AVI**. The CPU/VDP, ASM, RAM, VRAM, map, ADAM, breakpoint, and cycle
+Use **RECORD BOOT** to reset and capture from the first emulated frame, or
+**RECORD NOW** to begin at the current frame. Stop the capture before using
+**EXPORT AVI**. The CPU/VDP, ASM, RAM, VRAM, map, ADAM, breakpoint, and cycle
 tabs remain available during development.
 
 ![ROM debugger checkpoints, replay, and recording](media/amy-studio-debugger-workflow.png)
@@ -220,8 +262,31 @@ with `@project/...` from an `asset` statement or an included ASM source. Prefer
 embedded files for demos that should compile in the browser without a local
 filesystem layout.
 
+## Graphics Editors
+
+The Studio menu provides **Graphics Editors**, **Create editors.json**, and **Scan/init editors.json**. The project-local `editors.json` file describes charsets, tilemaps, metatiles/frames, sprites, and bitmap screens. It is exported with the project.
+
+Use the scanner for recognizable data, then edit the JSON when the Studio cannot safely infer animation order, layered sprites, blank-tile meaning, or which sources compose one visual object. See [Amy Studio Graphics Editors](amy-graphics-editors-guide.md) and [Amy Studio Graphics Workflow](graphics-workflow.md).
+
 ## ROM Test And Debug
 
-The debugger runs compiled Amy output or external `.rom`, `.col`, `.dsk`, and `.ddp` media. ColecoVision requires a user-supplied 8 KiB BIOS; ADAM mode requires the corresponding user-supplied firmware. Amy Studio does not distribute firmware.
+The integrated debugger can run compiled Amy output or external `.rom`, `.col`, `.dsk`, and `.ddp` media. ColecoVision requires a user-supplied 8 KiB BIOS. ADAM mode requires the corresponding user-supplied firmware set. Firmware remains local to the browser or local ignored firmware folder; Amy Studio does not distribute it.
 
-The debugger provides CPU/VDP and ADAMnet inspection, RAM/VRAM views, source and Z80 stepping, breakpoints, watches, cycle profiling, controller configuration, writable ADAM media export, and deterministic recording. In ADAM mode, the `Keys` control routes the computer keyboard to the native ADAM keyboard, joystick port 1, or joystick port 2. `RECORD BOOT` captures from reset; recorded development routes can return quickly to a checkpoint after recompilation.
+Current debugging tools include:
+
+- play/pause, frame stepping, rewind, timeline, and playback speed;
+- Amy source-line stepping and Z80 step-into/step-over;
+- CPU and VDP state plus ADAMnet/media/printer inspection in ADAM mode;
+- RAM, VRAM, symbols, linker map, and stack/ASM context;
+- source/address breakpoints, conditional breakpoints, and RAM watches;
+- inclusive routine cycle profiling with NMI/IRQ separation;
+- controller, gamepad, spinner, Roller Controller, Super Action Controller, and steering-wheel setup;
+- explicit computer-keyboard routing to the native ADAM keyboard, joystick port 1, or joystick port 2;
+- writable ADAM media export after a test session;
+- record-from-boot and record-now gameplay capture with deterministic AVI export;
+- named development checkpoints, recorded routes, and fast replay after recompilation;
+- recorded controller scenarios and replayable `.amy-rom-test.json` files.
+
+Changing only a breakpoint does not modify ROM bytes. Changing source or project files makes the existing source map and compiled ROM stale and requires a rebuild.
+
+Repository-wide automated ROM tests remain a CLI maintainer feature. See [Automated ColecoVision ROM Testing](rom-runtime-testing.md).

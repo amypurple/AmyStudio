@@ -255,8 +255,12 @@ export function bindTopUiEvents(ctx) {
     const target = selectedNewProjectTarget();
     const adam = target.startsWith("adam-");
     els.newProjectMediumField.hidden = !adam;
-    els.newProjectSupportNote.textContent = adam
-      ? "Experimental ADAM target: the project structure is preserved, but native build coverage is still expanding."
+    els.newProjectSupportNote.textContent = target === "adam-eos"
+      ? "Native EOS project with validated DSK and DDP build and runtime coverage."
+      : target === "adam-hybrid"
+        ? "Validated OS7 game runtime loaded by EOS from DSK or DDP."
+        : adam
+          ? "Experimental ADAM compatibility target: build coverage is still expanding."
       : target === "megacart"
         ? "Experimental bank-switched cartridge target."
         : target === "sgm"
@@ -852,9 +856,7 @@ export function bindStudioRuntimeEvents(ctx) {
 
   function hasAdamDiskSources(project) {
     return Boolean(projectFile(project, "src/boot.asm")
-      && projectFile(project, "src/expansion-loader.asm")
-      && projectFile(project, "packs/history.wepk")
-      && projectFile(project, "packs/milestones.wepk"));
+      && projectFile(project, "src/expansion-loader.asm"));
   }
 
   els.btnTranspile.addEventListener("click", () => {
@@ -1047,21 +1049,18 @@ export function bindStudioRuntimeEvents(ctx) {
       } else if (diskManifest) {
         const bootFile = projectFile(project, "src/boot.asm");
         const loaderFile = projectFile(project, "src/expansion-loader.asm");
-        const famousFile = projectFile(project, "packs/famous.wepk");
-        const capitalsFile = projectFile(project, "packs/capitals.wepk");
-        const historyFile = projectFile(project, "packs/history.wepk");
-        const milestonesFile = projectFile(project, "packs/milestones.wepk");
-        if (!bootFile || !loaderFile || !famousFile || !capitalsFile || !historyFile || !milestonesFile) {
-          throw new Error("ADAM disk target requires its boot, loader, and four WEPK files.");
+        if (!bootFile || !loaderFile) {
+          throw new Error("ADAM hybrid media requires src/boot.asm and src/expansion-loader.asm.");
         }
+        const packs = (project.projectFiles || [])
+          .filter((file) => /\.wepk$/i.test(String(file.path || "")))
+          .slice(0, 4)
+          .map((file) => [String(file.path).split(/[\\/]/).pop().replace(/\.wepk$/i, "").toUpperCase(), projectFileBytes(file)]);
         const dataPackTarget = diskManifest.target?.platform === "adam-data-pack";
         const buildMedia = dataPackTarget ? buildAdamExpansionDataPack : buildAdamExpansionDisk;
         const builtDisk = await buildMedia({
           rom: compiledRom,
-          famous: projectFileBytes(famousFile),
-          capitals: projectFileBytes(capitalsFile),
-          history: projectFileBytes(historyFile),
-          milestones: projectFileBytes(milestonesFile),
+          packs,
           bootSource: new TextDecoder().decode(projectFileBytes(bootFile)),
           loaderSource: new TextDecoder().decode(projectFileBytes(loaderFile)),
           incrementalCache: adamMediaIncrementalCache,
@@ -1083,7 +1082,10 @@ export function bindStudioRuntimeEvents(ctx) {
         els.btnDownloadRom.setAttribute("aria-label", `Download bootable ADAM media (${compiledAdamExtension})`);
         const reused = builtDisk.incremental?.reusedOutputs || [];
         const reuseNote = reused.length ? ` Reused: ${reused.join(", ")}.` : "";
-        diskNote = ` ADAM ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; ${builtDisk.packs.map((pack) => `${pack.name} ${pack.bytes}`).join("; ")} bytes.${reuseNote}`;
+        const packNote = builtDisk.packs.length
+          ? ` Packs: ${builtDisk.packs.map((pack) => `${pack.name} ${pack.bytes} bytes`).join("; ")}.`
+          : "";
+        diskNote = ` ADAM ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes.${packNote}${reuseNote}`;
       } else {
         els.btnDownloadRom.textContent = "⤓";
         els.btnDownloadRom.title = "Download .col";

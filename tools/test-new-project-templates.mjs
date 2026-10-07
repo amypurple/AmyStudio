@@ -11,7 +11,10 @@ assert.match(styles, /\.project-file__name\s*\{[^}]*flex:\s*none;[^}]*white-spac
 assert.match(styles, /\.project-file__meta\s*\{[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/s);
 
 const base = { version: 2, sourceLang: "amy", projectFiles: [], generatedAsm: "old" };
-assert.equal(listNewProjectTemplates().length, 6);
+const templates = listNewProjectTemplates();
+assert.equal(templates.length, 6);
+assert.equal(templates.find(({ id }) => id === "adam-eos").experimental, false);
+assert.equal(templates.find(({ id }) => id === "adam-hybrid").experimental, false);
 const cartridge = createProjectFromTemplate(base, { templateId: "cartridge", projectName: "Test" });
 assert.equal(cartridge.target.platform, "colecovision-cartridge");
 assert.equal(cartridge.target.medium, "rom");
@@ -58,4 +61,9 @@ assert.equal(manifest.outputs[0].memoryProfile, "adam-eos-boot-block");
 const hybrid = createProjectFromTemplate(base, { templateId: "adam-hybrid", medium: "ddp" });
 assert.equal(hybrid.target.platform, "adam-data-pack");
 assert.equal(hybrid.memoryProfile, "adam-os7-eos-drivers");
+assert.deepEqual(hybrid.projectFiles.map((file) => file.path), [
+  "project.amy.json", "src/boot.asm", "src/expansion-loader.asm"
+]);
+assert.match(Buffer.from(hybrid.projectFiles[1].base64, "base64").toString("utf8"), /\{\{LOADER_BYTES\}\}/);
+assert.match(Buffer.from(hybrid.projectFiles[2].base64, "base64").toString("utf8"), /ADAM_MEDIA_DEVICE equ \{\{ADAM_DEVICE\}\}/);
 console.log("New project templates: PASS");

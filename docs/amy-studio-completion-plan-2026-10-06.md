@@ -48,10 +48,10 @@ Completed evidence:
 - Their target-specific project, packaging, and bundled-emulator tests are present in the clean matrix.
 - The generic catalogue auditor no longer misassembles multi-output MegaCart projects as flat ROMs.
 
-- Port the relevant native EOS runtime tests, ADAM project-form test, and MegaCart tests.
-- Port the MegaCart feasibility document.
-- Add one audited native EOS example, one hybrid example, and one MegaCart example to the public test surface.
-- Keep experimental-only research tools out of the clean repository.
+- Relevant native EOS runtime tests, the ADAM project-form test, and MegaCart tests are ported.
+- The MegaCart feasibility document is ported.
+- Audited native EOS, hybrid, and MegaCart examples are on the public test surface.
+- Experimental-only research tools remain outside the clean repository.
 
 Exit criteria:
 
@@ -155,11 +155,15 @@ Validated so far:
   captures covering firmware/hardware setup, symbolic checkpoints, route
   recording, fast replay, boot/current-frame recording, AVI export, and debug
   panes.
+- Native EOS and OS7+EOS hybrid creation are documented with real browser DSK
+  builds. The generic hybrid starter now supplies editable BOOT/loader sources,
+  compiles without Where on Earth assets, and treats up to four WEPK files as
+  optional media content. Permanent DSK/DDP assembly and GearColeco runtime
+  tests guard it. Both media forms enter the compiled Amy OS7 program through
+  EOS, so Native EOS and OS7+EOS Hybrid no longer carry experimental labels.
 
 Remaining:
 
-- Document native EOS, OS7+EOS hybrid, MegaCart, firmware, DSK, and DDP workflows.
-- Remove experimental labels from native EOS and hybrid templates only after browser-level build-and-run tests pass.
 - Decide separately whether animated GIF export is worth its implementation and CPU cost.
 
 ## Continuous gates

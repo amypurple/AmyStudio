@@ -27,7 +27,7 @@ const TEMPLATES = Object.freeze({
     platform: "adam-native-program",
     memoryProfile: "adam-eos-application",
     medium: "dsk",
-    experimental: true,
+    experimental: false,
     source: ["' Native Coleco ADAM EOS project", "' BOOT and GAME are separate outputs; OS7 is not assumed.", "sub start:", "  ' Add native EOS application code in the project source files.", "end sub"].join("\n")
   },
   "adam-hybrid": {
@@ -35,7 +35,7 @@ const TEMPLATES = Object.freeze({
     platform: "adam-disk",
     memoryProfile: "adam-os7-eos-drivers",
     medium: "dsk",
-    experimental: true,
+    experimental: false,
     source: ["' ADAM hybrid project", "' OS7 supplies the game runtime; EOS supplies storage and ADAM devices.", "text screen", "print at 8,11, \"OS7 + EOS PROJECT\"", "screen on"].join("\n")
   },
   "adam-compatibility": {
@@ -95,6 +95,10 @@ export function createProjectFromTemplate(baseProject, { templateId = "cartridge
       outputs: defaultAdamOutputs(templateId, template.memoryProfile)
     };
     project.projectFiles.push(textProjectFile("project.amy.json", JSON.stringify(manifest, null, 2), "json"));
+    if (templateId === "adam-hybrid" || templateId === "adam-compatibility") {
+      project.projectFiles.push(textProjectFile("src/boot.asm", genericHybridBootSource(), "asm-source"));
+      project.projectFiles.push(textProjectFile("src/expansion-loader.asm", genericHybridLoaderSource(), "asm-source"));
+    }
   }
   return project;
 }
@@ -120,4 +124,64 @@ function textProjectFile(path, text, kind) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return { path, kind, source: "generated", base64: btoa(binary) };
+}
+
+function genericHybridBootSource() {
+  return `; EOS loads this one-block bootstrap at $C800.
+org $C800
+    di
+    ld sp,$2FF0
+    ld hl,LoaderImage
+    ld de,$2000
+    ld bc,LoaderEnd-LoaderImage
+    ldir
+    jp $2000
+LoaderImage:
+    db {{LOADER_BYTES}}
+LoaderEnd:`;
+}
+
+function genericHybridLoaderSource() {
+  return `; Load the padded 32 KB OS7 image into expansion RAM, then enter console mode.
+org $2000
+ADAM_MEDIA_DEVICE equ {{ADAM_DEVICE}}
+    di
+    ld sp,$2FF0
+    ld hl,3
+    ld (NextBlock),hl
+    ld ix,$8000
+    ld a,{{PROGRAM_BLOCKS}}
+    ld (BlocksLeft),a
+LoadNext:
+    ld de,(NextBlock)
+    ld bc,0
+    ld hl,$3000
+    ld a,ADAM_MEDIA_DEVICE
+ReadRetry:
+    call $FCF3
+    jr nz,ReadRetry
+    ld hl,(NextBlock)
+    inc hl
+    ld (NextBlock),hl
+    ld a,$0B
+    out ($7F),a
+    ld hl,$3000
+    push ix
+    pop de
+    ld bc,$0400
+    ldir
+    ld bc,$0400
+    add ix,bc
+    ld a,$03
+    out ($7F),a
+    ld a,(BlocksLeft)
+    dec a
+    ld (BlocksLeft),a
+    jr nz,LoadNext
+{{PAD_PROGRAM_WINDOW}}
+    ld a,$0B
+    out ($7F),a
+    jp $0000
+NextBlock: dw 0
+BlocksLeft: db 0`;
 }

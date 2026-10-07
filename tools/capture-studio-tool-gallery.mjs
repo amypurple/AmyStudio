@@ -137,7 +137,30 @@ try {
     "Amy Studio startup",
     300
   );
-  if (view === "build-output" || view === "debugger-workflow") {
+  if (view === "adam-native-build" || view === "adam-hybrid-build") {
+    const targetId = view === "adam-native-build" ? "adam-eos" : "adam-hybrid";
+    const projectName = view === "adam-native-build" ? "native-eos-guide" : "hybrid-os7-eos-guide";
+    await evaluate(`document.getElementById("btnNew")?.click()`);
+    await waitFor(`document.getElementById("newProjectDialog")?.open === true`, "new-project dialog");
+    await evaluate(`(() => {
+      const target = document.querySelector('input[name="newProjectTarget"][value=${JSON.stringify(targetId)}]');
+      target.checked = true;
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("newProjectName").value = ${JSON.stringify(projectName)};
+      document.getElementById("newProjectMedium").value = "dsk";
+      document.getElementById("btnCreateProject").click();
+    })()`);
+    await waitFor(`document.getElementById("newProjectDialog")?.open === false`, "ADAM project creation");
+    await evaluate(`document.getElementById("btnCompile")?.click()`);
+    await waitFor(
+      `/Compile OK/.test((document.getElementById("statusSummary")?.textContent || "") + (document.getElementById("status")?.textContent || ""))`,
+      "compiled ADAM project",
+      600
+    );
+    await waitFor(`/\.dsk/i.test(document.getElementById("btnDownloadRom")?.title || "")`, "bootable ADAM DSK action");
+    await evaluate(`document.getElementById("projectPanelTabProject")?.click()`);
+    await evaluate(`document.querySelector(".status-details:not([open]) summary")?.click()`);
+  } else if (view === "build-output" || view === "debugger-workflow") {
     await evaluate(`(async () => {
       const response = await fetch("./examples-src/amy-runtime-input-expression-test.alexis");
       if (!response.ok) throw new Error("Cannot load checkpoint example source.");
@@ -242,7 +265,7 @@ try {
     const view = ${JSON.stringify(view)};
     const element = view === "debugger-workflow"
       ? document.querySelector("dialog.rom-recorder")
-      : view === "build-output" || view === "megacart-files"
+      : ["build-output", "megacart-files", "adam-native-build", "adam-hybrid-build"].includes(view)
       ? document.getElementById("projectPanel")
       : document.querySelector(".sound-sequence-editor-modal") || document.querySelector(".sound-table-creator-modal") || document.querySelector(".sound-table-inspector-modal") || document.querySelector("#newProjectDialog[open]") || document.getElementById("projectPanelFiles") || document.getElementById("projectPanelDocs");
     const close = element?.querySelector("button[aria-label^='Close']");
@@ -257,7 +280,7 @@ try {
       closeVisible: !close || (close.getBoundingClientRect().top >= 0 && close.getBoundingClientRect().bottom <= innerHeight)
     };
   })()`);
-  const focusedWorkflowView = ["new-project-megacart", "megacart-files", "build-output"].includes(view);
+  const focusedWorkflowView = ["new-project-megacart", "megacart-files", "build-output", "adam-native-build", "adam-hybrid-build"].includes(view);
   const captureOptions = {
     format: "png",
     captureBeyondViewport: false
