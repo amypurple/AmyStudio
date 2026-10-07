@@ -399,17 +399,19 @@ export function handleVramTextStatement({
       return { ok: false, handled: true, log: `reflect pattern Source to Dest count N vertical|horizontal requires word-sized pattern indexes and count: ${rawLine}` };
     }
     const routine = reflectPattern[4].toLowerCase() === "vertical"
-      ? "AMY_REFLECT_PATTERN_VERTICAL"
-      : "AMY_REFLECT_PATTERN_HORIZONTAL";
+      ? "AMY_REFLECT_PATTERN_HORIZONTAL"
+      : "AMY_REFLECT_PATTERN_VERTICAL";
     return {
       ok: true,
       handled: true,
       lines: [
+        "    call AMY_VRAM_BEGIN",
         ...loadSource,
         "    ex de,hl",
         ...loadDest,
         ...loadCount,
-        `    call ${routine}`
+        `    call ${routine}`,
+        "    call AMY_VRAM_END"
       ]
     };
   }
@@ -426,11 +428,36 @@ export function handleVramTextStatement({
       ok: true,
       handled: true,
       lines: [
+        "    call AMY_VRAM_BEGIN",
         ...loadSource,
         "    ex de,hl",
         ...loadDest,
         ...loadCount,
-        "    call AMY_ROTATE_PATTERN_90"
+        "    call AMY_ROTATE_PATTERN_90",
+        "    call AMY_VRAM_END"
+      ]
+    };
+  }
+
+  const enlargePattern = line.match(/^enlarge\s+pattern\s+(.+?)\s+to\s+(.+?)\s+count\s+(.+)$/i);
+  if (enlargePattern) {
+    const loadSource = emitLoadInt16IntoHL(enlargePattern[1]);
+    const loadDest = emitLoadInt16IntoHL(enlargePattern[2]);
+    const loadCount = emitLoadCountIntoBC(enlargePattern[3]);
+    if (!loadSource || !loadDest || !loadCount) {
+      return { ok: false, handled: true, log: `enlarge pattern Source to Dest count N requires word-sized pattern indexes and count: ${rawLine}` };
+    }
+    return {
+      ok: true,
+      handled: true,
+      lines: [
+        "    call AMY_VRAM_BEGIN",
+        ...loadSource,
+        "    ex de,hl",
+        ...loadDest,
+        ...loadCount,
+        "    call AMY_ENLARGE_PATTERN",
+        "    call AMY_VRAM_END"
       ]
     };
   }

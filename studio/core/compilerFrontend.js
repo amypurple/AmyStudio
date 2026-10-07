@@ -100,6 +100,8 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const needsTinySound = usesTinySound;
   const needsExomizer = /\b(?:decompress\s+exomizer|exomizer_decompress|codec\s+exomizer)\b/i.test(codeText);
   const needsVoiceQueue = /^\s*voice\s+(?:start|stop|speaking)\b/im.test(codeText);
+  const needsEnlargePattern = /\bAMY_ENLARGE_PATTERN\b/i.test(text) ||
+    /^\s*enlarge\s+pattern\b/im.test(codeText);
   const usesHalt = /\bhalt\b/i.test(text);
   const usesWaitVblank = /^\s*wait\s*(?:'.*)?$/im.test(text) ||
     /\bwait\s+vblanks?\b/i.test(text) ||
@@ -154,6 +156,8 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     usesHalt ||
     usesWaitVblank ||
     usesWipeWithHalt ||
+    /^\s*(?:reflect|rotate)\s+pattern\b/im.test(codeText) ||
+    needsEnlargePattern ||
     needsSound ||
     needsControllers ||
     needsSpinner ||
@@ -183,6 +187,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsTinySound,
     needsExomizer,
     needsVoiceQueue,
+    needsEnlargePattern,
     usesTinySound,
     usesHalt,
     usesWaitVblank,

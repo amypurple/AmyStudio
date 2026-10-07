@@ -75,6 +75,10 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound || needsMusic;
   const needsExomizer = !!caps.needsExomizer;
   const needsVoiceQueue = !!caps.needsVoiceQueue;
+  const needsEnlargePattern = !!caps.needsEnlargePattern;
+  if (needsEnlargePattern && needsSound) {
+    throw new Error("OS7 ENLARGE needs a 40-byte BIOS work buffer that overlaps the fixed $7020 sound pointer; this combination is not supported yet");
+  }
   const needsRuntimeState =
     needsControllers ||
     needsSpinner ||
@@ -92,13 +96,14 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
 
   const needsSoundState = !!caps.needsSoundState || needsSound || needsMusic;
 
+  const workBufferEnd = needsEnlargePattern ? 0x7028 : 0x7020;
   const reserved = [
-    { start: 0x7000, endExclusive: 0x7020, label: "_buffer32" }
+    { start: 0x7000, endExclusive: workBufferEnd, label: needsEnlargePattern ? "OS7 ENLARGE work buffer (40 bytes)" : "_buffer32" }
   ];
   const addresses = {
     buffer32: 0x7000
   };
-  let current = 0x7020;
+  let current = workBufferEnd;
 
   if (needsSound) {
     const soundAreaCount = Math.max(8, Math.min(32, Number.isInteger(caps.soundAreaCount) ? caps.soundAreaCount : 0));

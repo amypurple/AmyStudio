@@ -4,6 +4,7 @@
 
 ; Direct screen control that preserves existing sprite size/zoom bits in VDP R1.
 AMY_SCREEN_OFF_NO_NMI:
+    di
     ld a,($73C4)
     and $9F
     ld ($73C4),a

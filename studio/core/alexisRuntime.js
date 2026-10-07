@@ -7,6 +7,7 @@ function collectUsedAlexisSymbols(asmBody, options = {}) {
     if (alexisRuntimeCatalog[symbol]) used.add(symbol);
   }
   if (/\bAMY_SLEEP_SERVICE\b/.test(asmBody)) used.add("AMY_PAUSE_PRESS_RELEASE_BLANK");
+  if (/\bAMY_CHOICE_KEYPAD_RANGE_BLANK\b/.test(asmBody)) used.add("AMY_WAIT_FRAMES_SAFE");
   if (/\bsndtiny_[12]\b/.test(asmBody) || options.forceTinySound) used.add("AMY_TINY_SOUND");
   return used;
 }
@@ -67,9 +68,12 @@ const runtimeOrder = [
   "AMY_MODE3_HLINE",
   "AMY_MODE3_LINE",
   "AMY_MODE3_BOX",
+  "AMY_VRAM_BEGIN",
+  "AMY_VRAM_END",
   "AMY_REFLECT_PATTERN_VERTICAL",
   "AMY_REFLECT_PATTERN_HORIZONTAL",
   "AMY_ROTATE_PATTERN_90",
+  "AMY_ENLARGE_PATTERN",
   "AMY_PUT_VRAM",
   "AMY_GET_VRAM",
   "AMY_RLE_TO_VRAM",

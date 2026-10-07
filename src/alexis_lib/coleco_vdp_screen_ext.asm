@@ -6,6 +6,7 @@
 ; Turn screen on while forcing NMI disabled.
 ; Sets VDP R1 bit 6 (screen enable), clears bit 5 (no-NMI-override).
 AMY_SCREEN_ON_NO_NMI:
+    di
     ld a,($73C4)
     or $40
     and $DF

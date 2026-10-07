@@ -244,7 +244,10 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_SET_SCREEN_PAGES: abi({ inputs: { a: "page config" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SWAP_SCREEN_PAGES: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_MERGE_BYTES_TO_VRAM: abi({ inputs: { hl: "source bytes", bc: "byte count", d: "AND mask", e: "XOR value" }, clobbers: ["af", "bc", "de", "hl"] }),
-  AMY_ROTATE_PATTERN_90: abi({ clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_REFLECT_PATTERN_VERTICAL: abi({ inputs: { de: "source pattern index", hl: "destination pattern index", bc: "pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Preserves IX/IY around the BIOS transform; caller must own a VRAM critical section." }),
+  AMY_REFLECT_PATTERN_HORIZONTAL: abi({ inputs: { de: "source pattern index", hl: "destination pattern index", bc: "pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Preserves IX/IY around the BIOS transform; caller must own a VRAM critical section." }),
+  AMY_ROTATE_PATTERN_90: abi({ inputs: { de: "source pattern index", hl: "destination pattern index", bc: "pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Preserves IX/IY around the BIOS transform; caller must own a VRAM critical section." }),
+  AMY_ENLARGE_PATTERN: abi({ inputs: { de: "source pattern index", hl: "first of four destination pattern indexes", bc: "source pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "OS7 wrapper. Preserves IX/IY; caller must own a VRAM critical section." }),
 
   // Sprite mode R1 helpers.
   AMY_SET_SPRITES8X8: abi({ clobbers: ["af", "bc"] }),

@@ -12,6 +12,7 @@
 
 AMY_VRAM_BEGIN:
     pop hl                  ; caller return address
+    di
     ld a,($73C4)
     push af                 ; saved original R1 shadow for AMY_VRAM_END
     push hl
@@ -33,6 +34,7 @@ AMY_VRAM_END:
     call WRITE_REGISTER
     pop hl
     pop af
+    ld a,($73C4)
     and $20
     jr z,AMY_VRAM_END_DONE
     push hl

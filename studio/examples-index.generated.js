@@ -21,6 +21,23 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "amy-vdp-pattern-tools-lab",
+    "label": "OS7 Pattern Transform Lab",
+    "detail": "Visual comparison of an eight-color tile with BIOS left/right and top/bottom flips, clockwise rotation, 2x pattern/color enlargement, and explicit Graphics II thirds.",
+    "projectName": "amy-vdp-pattern-tools-lab",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "colecovision",
+      "os7",
+      "graphics",
+      "patterns",
+      "colors"
+    ]
+  },
+  {
     "id": "megacart-bank-demo",
     "label": "MegaCart Banked Data",
     "detail": "A complete 128 KB MegaCart project with editable Amy banks, explicit exports, a safe banked procedure call, raw VRAM/RAM copies, and direct banked decompression.",

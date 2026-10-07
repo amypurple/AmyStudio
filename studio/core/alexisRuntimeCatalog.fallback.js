@@ -869,17 +869,36 @@ export const alexisRuntimeCatalog = {
   "AMY_REFLECT_PATTERN_VERTICAL": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_pattern_transform.asm",
+    "deps": ["AMY_VRAM_BEGIN", "AMY_VRAM_END"],
     "asm": "AMY_REFLECT_PATTERN_VERTICAL:\n    push ix\n    ld a,3\n    call $1F6A\n    pop ix\n    ret"
   },
   "AMY_REFLECT_PATTERN_HORIZONTAL": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_pattern_transform.asm",
+    "deps": ["AMY_VRAM_BEGIN", "AMY_VRAM_END"],
     "asm": "AMY_REFLECT_PATTERN_HORIZONTAL:\n    push ix\n    ld a,3\n    call $1F6D\n    pop ix\n    ret"
   },
   "AMY_ROTATE_PATTERN_90": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_pattern_transform.asm",
+    "deps": ["AMY_VRAM_BEGIN", "AMY_VRAM_END"],
     "asm": "AMY_ROTATE_PATTERN_90:\n    push ix\n    ld a,3\n    call ROTATE_90\n    pop ix\n    ret"
+  },
+  "AMY_ENLARGE_PATTERN": {
+    "group": "vdp",
+    "sourcePath": "src/alexis_lib/coleco_pattern_transform.asm",
+    "deps": ["AMY_VRAM_BEGIN", "AMY_VRAM_END"],
+    "asm": "AMY_ENLARGE_PATTERN:\n    push ix\n    push iy\n    ld a,3\n    call $1F73\n    pop iy\n    pop ix\n    ret"
+  },
+  "AMY_VRAM_BEGIN": {
+    "group": "vdp",
+    "sourcePath": "src/alexis_lib/coleco_vram_upload.asm",
+    "asm": "AMY_VRAM_BEGIN:\n    pop hl\n    ld a,($73C4)\n    push af\n    push hl\n    and $DF\n    ld ($73C4),a\n    ld c,a\n    ld b,1\n    call WRITE_REGISTER\n    ret"
+  },
+  "AMY_VRAM_END": {
+    "group": "vdp",
+    "sourcePath": "src/alexis_lib/coleco_vram_upload.asm",
+    "asm": "AMY_VRAM_END:\n    pop hl\n    pop af\n    ld ($73C4),a\n    push af\n    push hl\n    ld c,a\n    ld b,1\n    call WRITE_REGISTER\n    pop hl\n    pop af\n    ld a,($73C4)\n    and $20\n    jr z,AMY_VRAM_END_DONE\n    push hl\n    call READ_REGISTER\n    ei\n    pop hl\nAMY_VRAM_END_DONE:\n    jp (hl)"
   },
   "AMY_U8_TO_ASCII1_MOD": {
     "group": "math",

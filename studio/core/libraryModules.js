@@ -252,6 +252,7 @@ const splitLibraryCatalog = {
     { path: "src/alexis_lib/coleco_vdp_screen_ext.asm", symbols: ["AMY_SCREEN_ON_NO_NMI"] },
     { path: "src/alexis_lib/coleco_nmi.asm", symbols: ["AMY_DISABLE_NMI", "AMY_ENABLE_NMI"] },
     { path: "src/alexis_lib/coleco_vdp_rw.asm", symbols: ["AMY_COPY_BYTES_TO_VRAM", "AMY_VPOKE", "AMY_VPEEK"] },
+    { path: "src/alexis_lib/coleco_vram_upload.asm", symbols: ["AMY_VRAM_BEGIN", "AMY_VRAM_END"] },
     { path: "src/alexis_lib/coleco_vdp_merge.asm", symbols: ["AMY_MERGE_BYTES_TO_VRAM"] },
     {
       path: "src/alexis_lib/coleco_vdp_screen_pages.asm",
@@ -276,7 +277,7 @@ const splitLibraryCatalog = {
     },
     {
       path: "src/alexis_lib/coleco_pattern_transform.asm",
-      symbols: ["AMY_REFLECT_PATTERN_VERTICAL", "AMY_REFLECT_PATTERN_HORIZONTAL", "AMY_ROTATE_PATTERN_90"]
+      symbols: ["AMY_REFLECT_PATTERN_VERTICAL", "AMY_REFLECT_PATTERN_HORIZONTAL", "AMY_ROTATE_PATTERN_90", "AMY_ENLARGE_PATTERN"]
     },
     {
       path: "src/alexis_lib/coleco_mode1_line.asm",

@@ -2142,15 +2142,73 @@ set sprite pattern table vram.spr_pat
 reflect pattern 0 to 16 count 1 vertical
 reflect pattern 16 to 17 count 1 horizontal
 rotate pattern 17 to 18 count 1 90
+enlarge pattern 18 to 32 count 1
 ```
 
 `define chars ... at N` copies 8-byte character patterns into all three Mode 2 pattern thirds automatically. A source may use a constant byte offset (`Source + Offset`) when an explicit `count` is supplied.
 `define colors ... at N` copies 8-byte color rows into all three Mode 2 color thirds automatically. `fill mode 2 color thirds` fills the same tile range in all three COLOR thirds without repeating three VRAM commands.
 
-`reflect pattern` and `rotate pattern` use Coleco BIOS pattern transforms.
+`reflect pattern`, `rotate pattern`, and `enlarge pattern` use Coleco BIOS
+pattern transforms.
 Source and destination are pattern indexes, not byte addresses. `vertical`
-reflects left to right; `horizontal` reflects top to bottom. Amy intentionally
+flips top to bottom; `horizontal` flips left to right. Amy intentionally
 does not expose the old BIOS numeric table-code parameter here.
+
+Parameter reference:
+
+| Parameter | Meaning |
+| --- | --- |
+| `Src` | Index of the first 8x8 source pattern in the selected Graphics II third. It is not a VRAM byte address. |
+| `Dst` | Index of the first destination pattern. Reflect and rotate consume one destination per source; enlarge consumes four. |
+| `count N` | Number of consecutive 8x8 source patterns to process. Each source is transformed independently. |
+| `vertical` | Flip every 8x8 source top-to-bottom, including reversal of its eight Graphics II COLOR rows. |
+| `horizontal` | Flip every 8x8 source left-to-right. COLOR rows remain in the same order and their foreground/background nibbles are not exchanged. |
+| `90` | Rotate every 8x8 PATTERN clockwise. OS7 copies the original eight COLOR rows because arbitrary rotated Graphics II colors cannot always be represented with only one foreground/background pair per row. |
+
+`count` does not describe an image width, height, or number of pixels. For
+example, `count 4` may refer to four unrelated tiles, a 32x8 strip, or the four
+tiles of a 16x16 picture. The BIOS transforms their internal 8x8 pixels but
+does not rearrange their positions in the NAME table. A complete multi-tile
+flip or rotation must therefore also reorder the tile indexes in the picture.
+
+```basic
+' Four independent 8x8 results at patterns 64..67.
+reflect pattern 32 to 64 count 4 horizontal
+
+' Four source patterns each become a separate 16x16 result.
+' Destination groups are 64..67, 68..71, 72..75, and 76..79.
+enlarge pattern 32 to 64 count 4
+```
+
+Stock OS7 contains a defect in its Graphics II top-bottom color path: it
+reverses the eight COLOR bytes into `WORK_BUFFER+8`, then `PUT_COLOR` uploads
+the unchanged bytes at `WORK_BUFFER`. Amy corrects this by applying the same
+BIOS flip directly to table code 4 after transforming the pattern. A
+top-bottom flip therefore reverses both PATTERN rows and COLOR rows; a
+left-right flip keeps the row colors in their original order.
+
+`enlarge pattern` converts each 8x8 source into four consecutive patterns for
+a 16x16 result. In Graphics II it also expands the corresponding color rows.
+The BIOS output order is top-left, bottom-left, top-right, bottom-right. This
+means each source color row is repeated twice vertically, then copied to both
+output columns. For example, `$F1,$E1,...,$81` becomes
+`$F1,$F1,$E1,$E1,...,$81,$81` in both left and right tiles. The OS7 Pattern
+Transform Lab displays eight distinct row colors and verifies all 32 generated
+COLOR bytes at runtime.
+
+Larger results are compositions rather than a larger BIOS primitive. Enlarging
+the four tiles of a 16x16 picture provides enough transformed tiles for a
+32x32 picture, but Amy currently leaves their NAME-table placement to the
+program. For each source, place `Dst` and `Dst+2` on the upper row and `Dst+1`
+and `Dst+3` on the lower row. Repeat that mapping for every source tile in its
+proper enlarged position.
+
+The operation reserves the BIOS 40-byte work area at `$7000-$7027`; it is currently
+rejected in OS7 projects that also use the fixed sound pointer at `$7020`.
+Graphics II keeps independent PATTERN and COLOR storage for each vertical screen
+third. Transform index `N`, `N + 256`, and `N + 512` when the same generated
+tile must be visible in all three thirds. The OS7 Pattern Transform Lab shows
+this explicitly.
 
 ### Bitmap mode drawing (Graphics Mode 1)
 
@@ -3319,6 +3377,7 @@ Current expression engine notes:
 | `set sprite pattern table vram.*` | Set sprite pattern base |
 | `reflect pattern Src to Dst count N vertical/horizontal` | Reflect pattern-table entries |
 | `rotate pattern Src to Dst count N 90` | Rotate pattern-table entries clockwise |
+| `enlarge pattern Src to Dst count N` | Expand each pattern and its Graphics II colors into four tiles |
 | `pset X,Y [color C]` | Set pixel (mode 1) |
 | `pset multicolor X,Y color C` | Set a Mode 3 multicolor pixel |
 | `Var = pget multicolor X,Y` | Read a Mode 3 multicolor pixel |
