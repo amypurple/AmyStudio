@@ -232,6 +232,8 @@ const tests = [
   { file: "test-adam-project-forms.mjs", area: "adam-project-forms", evidence: "runtime", suite: "emulator" },
   { file: "test-megacart-image.mjs", area: "megacart-image", evidence: "unit", suite: "examples" },
   { file: "test-megacart-project-build.mjs", area: "megacart-project-build", evidence: "runtime", suite: "examples" },
+  { file: "test-check-examples-project-targets.mjs", area: "project-target-audit-routing", evidence: "unit", suite: "examples" },
+  { file: "test-os7-size-regression-gate.mjs", area: "os7-size-regression-gate", evidence: "unit", suite: "examples" },
   { file: "test-megacart-bank-demo.mjs", area: "megacart-bank-runtime", evidence: "runtime", suite: "examples" },
   { file: "test-megacart-link-map.mjs", area: "megacart-bank-qualified-link-map", evidence: "unit", suite: "examples" },
   { file: "test-new-project-templates.mjs", area: "new-project-templates", evidence: "unit", suite: "studio" },

@@ -504,6 +504,7 @@ let passed = 0;
 let failed = 0;
 let assembledCount = 0;
 let assembledBytes = 0;
+let delegatedProjectCount = 0;
 const failures = [];
 const hashes = {};
 const romAudit = [];
@@ -516,6 +517,20 @@ for (const ex of amyExamples) {
       failed += 1;
       hashes[ex.id] = null;
       failures.push({ id: ex.id, log: validationIssues.join("; ") });
+    } else if (options.assemble && ex.buildTarget?.platform === "colecovision-megacart") {
+      // A MegaCart is a linked multi-output project, not a flat ROM. Its dedicated
+      // project builder and GearColeco test provide the assembly/runtime oracle.
+      passed += 1;
+      delegatedProjectCount += 1;
+      hashes[ex.id] = sha256(result.asmBody);
+      romAudit.push({
+        id: ex.id,
+        ok: true,
+        delegated: true,
+        buildTarget: ex.buildTarget.platform,
+        validator: "tools/test-megacart-project-build.mjs",
+        ramUsage: result.ramUsage || null
+      });
     } else if (options.assemble) {
       const assembled = await assembleExampleRom(ex, result);
       if (!assembled.ok) {
@@ -595,6 +610,7 @@ console.log(`\nResults: ${passed} passed, ${failed} failed out of ${amyExamples.
 if (options.assemble) {
   const disabled = options.disabledOptimizerOptions.length ? `; disabled: ${options.disabledOptimizerOptions.join(", ")}` : "";
   console.log(`ROMs: ${assembledCount} assembled, ${assembledBytes} total bytes (${options.optimization}${disabled}).`);
+  if (delegatedProjectCount) console.log(`Projects: ${delegatedProjectCount} delegated to target-specific build/runtime validators.`);
 }
 if (options.romDir) console.log(`ROM output: ${options.romDir}`);
 if (options.auditJson) {

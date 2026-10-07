@@ -4,11 +4,11 @@ This plan turns the current Alexis-Z80 research into a reproducible clean-reposi
 
 ## Current baseline
 
-- Alexis-Z80: 235/235 examples assemble with the balanced profile, totaling 1,183,205 bytes.
-- Clean repository: 80/80 examples assemble with the balanced profile, totaling 310,670 bytes.
+- Alexis-Z80: 236/236 examples compile; 235 flat ROMs assemble with the balanced profile, totaling 1,183,205 bytes, and one MegaCart project is delegated to its target-specific builder/runtime validator.
+- Clean repository: 81/81 examples compile; 80 flat ROMs assemble with the balanced profile, totaling 310,670 bytes, and one MegaCart project is delegated likewise.
 - The OS7/EOS matrix has no remaining `PARTIAL` command rows.
 - Native EOS DSK/DDP, OS7+EOS hybrid media, and current MegaCart project packaging have runtime evidence in Alexis-Z80.
-- The clean repository does not yet contain the complete Alexis EOS, ADAM project-form, and MegaCart evidence suites.
+- The clean repository contains the promoted EOS, ADAM project-form, and MegaCart evidence suites used by the public examples.
 
 ## Historical implementation evidence
 
@@ -18,7 +18,13 @@ Amy Studio must reimplement the learned behavior in maintainable original code. 
 
 ## Milestone 1 - Trustworthy audit gate
 
-Status: in progress.
+Status: complete.
+
+Completed evidence:
+
+- Child-process launch failures are reported distinctly and fail the matrix.
+- Catalogue audits generate exact counts, flat-ROM byte totals, and delegated project counts.
+- `check-os7-size-regressions.mjs` protects six representative OS7 programs; savings pass visibly and unexplained growth fails.
 
 - Make the feature-matrix runner fail clearly when a child test cannot launch.
 - Record environment failures separately from semantic test failures.
@@ -34,7 +40,13 @@ Exit criteria:
 
 ## Milestone 2 - Clean-repository evidence parity
 
-Status: ready to start after milestone 1.
+Status: complete for the promoted public surface.
+
+Completed evidence:
+
+- Native EOS, OS7+EOS hybrid, and MegaCart examples are public and editable.
+- Their target-specific project, packaging, and bundled-emulator tests are present in the clean matrix.
+- The generic catalogue auditor no longer misassembles multi-output MegaCart projects as flat ROMs.
 
 - Port the relevant native EOS runtime tests, ADAM project-form test, and MegaCart tests.
 - Port the MegaCart feasibility document.
@@ -49,7 +61,7 @@ Exit criteria:
 
 ## Milestone 3 - Bank-aware linker
 
-Status: design partially established; implementation incomplete.
+Status: core linker and runtime path implemented; bank-aware debugger identity remains incomplete.
 
 - Represent file offsets separately from Z80 logical addresses.
 - Qualify sections and symbols by bank.
