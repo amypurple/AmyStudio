@@ -13,6 +13,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const examples = path.join(root, "studio", "examples-src");
 const fixedSource = fs.readFileSync(path.join(examples, "megacart-bank-demo-fixed.asm"), "utf8");
 const mdkrleSource = fs.readFileSync(path.join(root, "src", "compression", "mdkrle_vram.asm"), "utf8");
+const vdpRwSource = fs.readFileSync(path.join(root, "src", "alexis_lib", "coleco_vdp_rw.asm"), "utf8");
 const fixed = await assemble(fixedSource, "fixed.asm");
 const files = [
   textFile("banks/bank1.asm", fs.readFileSync(path.join(examples, "megacart-bank-demo-bank1.asm"), "utf8")),
@@ -48,6 +49,7 @@ const built = await buildMegaCartProject({
     const trampoline = buildMegaCartImportTrampolines({
       imports: [
         { bank: 2, name: "MarkBankCall", kind: "procedure", trampolineLabel: "AMY_MEGACART_CALL_BANK_2_MarkBankCall" },
+        { bank: 2, name: "Bank2Text", kind: "data", operation: "copy-vram", trampolineLabel: "AMY_MEGACART_COPY_BANK_2_Bank2Text_TO_VRAM" },
         { bank: 2, name: "Bank2Compressed", kind: "data", operation: "decompress-vram", codec: "mdkrle", trampolineLabel: "AMY_MEGACART_DECOMPRESS_MDKRLE_BANK_2_Bank2Compressed" }
       ],
       currentBankLabel: "AMY_MEGACART_CURRENT_BANK",
@@ -56,8 +58,8 @@ const built = await buildMegaCartProject({
     const source = fixedSource
       .replace("org $8000", "AMY_MEGACART_CURRENT_BANK equ $7003\norg $8000")
       .replace("ld a,($FFC1)\n    ld hl,$C000", `ld a,($FFC1)\n    ld hl,$${bank2Text.address.toString(16).toUpperCase()}`)
-      .replace("Forever:\n", "    ld a,1\n    ld (AMY_MEGACART_CURRENT_BANK),a\n    ld a,($FFC0)\n    call AMY_MEGACART_CALL_BANK_2_MarkBankCall\n    ld de,$1A00\n    call AMY_MEGACART_DECOMPRESS_MDKRLE_BANK_2_Bank2Compressed\nForever:\n");
-    return assemble(`${source}\n${trampoline}\n${mdkrleSource}`, "fixed-linked.asm");
+      .replace("Forever:\n", "    ld a,1\n    ld (AMY_MEGACART_CURRENT_BANK),a\n    ld a,($FFC0)\n    call AMY_MEGACART_CALL_BANK_2_MarkBankCall\n    ld de,$1A00\n    call AMY_MEGACART_DECOMPRESS_MDKRLE_BANK_2_Bank2Compressed\n    ld de,$1A40\n    ld bc,16\n    call AMY_MEGACART_COPY_BANK_2_Bank2Text_TO_VRAM\nForever:\n");
+    return assemble(`${source}\n${trampoline}\n${mdkrleSource}\nVDP_DATA_PORT equ $BE\nVDP_CTRL_PORT equ $BF\nAMY_BUFFER32 equ $7020\n${vdpRwSource}`, "fixed-linked.asm");
   }
 });
 assert.equal(built.image.length, 128 * 1024);
@@ -97,6 +99,7 @@ try {
   assert.equal(String.fromCharCode(...core.readVram(0x1968, 16)), "DATA FROM BANK 2");
   assert.equal(core.readRam(0x7002, 1)[0], 0x42);
   assert.equal(String.fromCharCode(...core.readVram(0x1A00, 17)), "BANKED DECOMPRESS");
+  assert.equal(String.fromCharCode(...core.readVram(0x1A40, 16)), "DATA FROM BANK 2");
   assert.equal(core.getRomBank(), 0);
 } finally {
   core.destroy();

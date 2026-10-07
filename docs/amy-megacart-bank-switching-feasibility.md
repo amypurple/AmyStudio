@@ -59,6 +59,10 @@ usage, and qualified symbols without changing the emitted cartridge image.
   direct-to-VRAM decompressor, and restores the caller's bank. Procedure/data
   type mismatches fail closed. The GearColeco runtime test verifies the
   decompressed VRAM bytes and restored physical bank.
+- `copy Data from bank n count Count to vram.target` provides the corresponding
+  uncompressed path. The fixed bank owns the shared VRAM-copy helper; the
+  generated trampoline resolves the exported data only while its bank is
+  visible. Constant and calculated byte/word counts are accepted.
 - `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
   `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
   physical offsets.
@@ -145,6 +149,6 @@ Before designing final Amy syntax, build a development-only 128 KB fixture:
 7. bank-aware breakpoint and source-map verification.
 
 This gate now passes for fixed startup, explicit bank selection, exported
-no-argument procedures, and exported compressed data written directly to
+no-argument procedures, and exported compressed or raw data written directly to
 VRAM. Automatic bank selection remains limited to these operations; hidden
 switching around arbitrary code is deliberately unsupported.

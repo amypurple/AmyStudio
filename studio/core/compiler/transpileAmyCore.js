@@ -4440,6 +4440,28 @@ export function transpileAmyCore(sourceText, deps) {
         megaCartSelectedBanks.add(logicalBank);
         continue;
       }
+      const bankCopy = line.match(/^copy\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+bank\s+(\d+)\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
+      if (bankCopy) {
+        if (megaCartRomSizeKb == null) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY requires BANK ROM first.` };
+        const publicName = bankCopy[1];
+        const logicalBank = Number(bankCopy[2]);
+        const countToken = bankCopy[3];
+        const targetExpr = bankCopy[4].trim();
+        const bankCount = megaCartRomSizeKb / 16;
+        if (logicalBank < 1 || logicalBank >= bankCount) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        const targetCode = emitLoadVramAddressIntoDE(targetExpr);
+        const countCode = emitLoadCountIntoBC(countToken);
+        if (!targetCode || !countCode) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid banked COPY count or VRAM destination: ${rawLine}` };
+        ensureMegaCartCurrentBank();
+        const trampolineLabel = `AMY_MEGACART_COPY_BANK_${logicalBank}_${publicName}_TO_VRAM`;
+        ensureImplicitStartForExecutable();
+        body.push(...wrapVramUploadLines([...targetCode, ...countCode, `    call ${trampolineLabel}`]));
+        if (!megaCartImports.some((entry) => entry.kind === "data" && entry.operation === "copy-vram" && entry.bank === logicalBank && entry.name.toLowerCase() === publicName.toLowerCase())) {
+          megaCartImports.push({ bank: logicalBank, name: publicName, kind: "data", operation: "copy-vram", trampolineLabel });
+        }
+        megaCartSelectedBanks.add(logicalBank);
+        continue;
+      }
       const bankCall = line.match(/^call\s+bank\s+(\d+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
       if (bankCall) {
         if (megaCartRomSizeKb == null) {

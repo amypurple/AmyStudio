@@ -1997,8 +1997,11 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     .join("\n");
 
   const asmBodyBase = asmBody;
+  const megaCartRuntimeHints = (metadata?.megaCart?.imports || []).some((entry) => entry?.operation === "copy-vram")
+    ? "\nAMY_COPY_BYTES_TO_VRAM\n"
+    : "";
   const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project, `${project.sourceText || ""}\n${asmBodyBase}`);
-  const asmBodyForDependencyScan = `${stripSourceMarkersForScan(asmBodyBase)}\n${projectAsmDependencyText}`;
+  const asmBodyForDependencyScan = `${stripSourceMarkersForScan(asmBodyBase)}\n${projectAsmDependencyText}${megaCartRuntimeHints}`;
   const cartridge = metadata?.cartridge || null;
   const romTitleStart = 0x8024;
   const romCodeStart = cartridge ? romTitleStart + cartridge.bytes.length + 1 : romTitleStart;

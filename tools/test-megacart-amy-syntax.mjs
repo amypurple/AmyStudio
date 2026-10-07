@@ -72,6 +72,29 @@ const bankDecompressAsm = generateAsm({
 }, bankDecompress.asmBody, [], bankDecompress.metadata);
 assert.match(bankDecompressAsm, /include "src\/compression\/zx0_vram\.asm"/);
 
+const bankCopy = transpileAmy("bank rom 128\ncopy LevelMap from bank 2 count 768 to vram.name + 32");
+assert.equal(bankCopy.ok, true, bankCopy.log);
+assert.match(bankCopy.asmBody, /ld de,VRAM_NAME \+ 32/);
+assert.match(bankCopy.asmBody, /ld bc,768/);
+assert.match(bankCopy.asmBody, /call AMY_MEGACART_COPY_BANK_2_LevelMap_TO_VRAM/);
+assert.deepEqual(bankCopy.metadata.megaCart.imports, [{
+  bank: 2, name: "LevelMap", kind: "data", operation: "copy-vram",
+  trampolineLabel: "AMY_MEGACART_COPY_BANK_2_LevelMap_TO_VRAM"
+}]);
+const bankCopyAsm = generateAsm({
+  sourceText: "bank rom 128\ncopy LevelMap from bank 2 count 768 to vram.name",
+  projectName: "MegaCart banked copy selftest", memoryProfile: "colecovision_legacy_sdcc",
+  selectedLibs: [], selectedBundles: [], selectedCompression: [], selectedAssets: [], projectFiles: []
+}, bankCopy.asmBody, [], bankCopy.metadata);
+assert.match(bankCopyAsm, /AMY_COPY_BYTES_TO_VRAM:/);
+
+const missingCopyDeclaration = transpileAmy("copy LevelMap from bank 2 count 32 to vram.name");
+assert.equal(missingCopyDeclaration.ok, false);
+assert.match(missingCopyDeclaration.log, /requires BANK ROM/i);
+const outOfRangeCopy = transpileAmy("bank rom 64\ncopy LevelMap from bank 4 count 32 to vram.name");
+assert.equal(outOfRangeCopy.ok, false);
+assert.match(outOfRangeCopy.log, /bank 1-3/i);
+
 const missingCallDeclaration = transpileAmy("call bank 2, DrawLevel");
 assert.equal(missingCallDeclaration.ok, false);
 assert.match(missingCallDeclaration.log, /requires BANK ROM/i);

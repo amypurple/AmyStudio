@@ -24,8 +24,8 @@ export function buildMegaCartImportTrampolines({ imports = [], currentBankLabel,
     }
     if (kind === "data" && !/^AMY_UDATA_/i.test(exported.symbol)) throw new Error(`MegaCart import '${name}' must resolve to Amy data; '${exported.symbol}' is not valid banked data.`);
     if (kind !== "procedure" && kind !== "data") throw new Error(`Unsupported MegaCart import kind '${kind}'.`);
-    if (kind === "data" && operation !== "decompress-vram") throw new Error(`Unsupported MegaCart data operation '${operation}'.`);
-    if (kind === "data" && !/^(?:zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble)$/.test(codec)) throw new Error(`Unsupported MegaCart decompression codec '${codec}'.`);
+    if (kind === "data" && !/^(?:decompress-vram|copy-vram)$/.test(operation)) throw new Error(`Unsupported MegaCart data operation '${operation}'.`);
+    if (kind === "data" && operation === "decompress-vram" && !/^(?:zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble)$/.test(codec)) throw new Error(`Unsupported MegaCart decompression codec '${codec}'.`);
     lines.push(`${trampolineLabel}:`);
     lines.push(`    ld a,(${currentBankLabel})`);
     lines.push("    push af");
@@ -36,7 +36,7 @@ export function buildMegaCartImportTrampolines({ imports = [], currentBankLabel,
     lines.push("    pop af");
     if (kind === "data") {
       lines.push(`    ld hl,$${exported.address.toString(16).toUpperCase().padStart(4, "0")}`);
-      lines.push(`    call ${codec}_decompress`);
+      lines.push(operation === "copy-vram" ? "    call AMY_COPY_BYTES_TO_VRAM" : `    call ${codec}_decompress`);
     } else {
       lines.push(`    call $${exported.address.toString(16).toUpperCase().padStart(4, "0")}`);
     }

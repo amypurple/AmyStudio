@@ -389,6 +389,7 @@ export const AMY_AUTOCOMPLETE = [
   ["read X, Y, Tile", "DATA cursor: read several items from the active ROM data block in sequence"],
   ["copy Charset to vram.pattern", "Copy a ROM/RAM byte block to VRAM"],
   ["copy Charset + Offset count 8 to vram.pattern + 128", "Copy a byte slice from a ROM/RAM table to a VRAM offset"],
+  ["copy LevelMap from bank 2 count 768 to vram.name", "Copy exported MegaCart bank data directly to VRAM"],
   ["copy vram.name to Buffer count 64", "Read back a VRAM block into a byte array buffer"],
   ["replace solid with EmptyTile in FrameBuf frame size 3,3", "Replace tile values or tile types inside a RAM frame buffer"],
   ["replace coin with EmptyTile in FrameBuf frame size 5,5 into CoinsFound", "Replace tiles in a RAM frame buffer and store the replacement count"],

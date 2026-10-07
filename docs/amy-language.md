@@ -4038,6 +4038,18 @@ VRAM destinations supported by ordinary `decompress` are accepted. A data
 export cannot be used by `call bank`, and a procedure export cannot be used as
 compressed data; both mistakes fail during linking.
 
+Raw exported data can be copied directly from a bank to VRAM when compression
+is unnecessary or undesirable:
+
+```amy
+copy LevelMap from bank 2 count 768 to vram.name
+```
+
+The count may use the same constant or byte/word variable forms as an ordinary
+VRAM copy. Amy keeps the shared copy routine in the fixed bank, loads the
+exported source address only after selecting bank 2, and restores the caller's
+bank when the transfer is complete.
+
 ## Super Game Module AY sound
 
 A project that declares `target.hardware: ["sgm1"]` gains the `sgm-ay`,
