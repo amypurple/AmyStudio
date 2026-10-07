@@ -43,7 +43,37 @@ function normalizedSourceMap(sourceMap, section) {
   return Object.freeze({ ...sourceMap, bank: section.logicalBank, entries: Object.freeze(entries) });
 }
 
-function makeSection({ id, kind, logicalBank, physicalBank, logicalStart, capacity, used, symbols, sourceMap }) {
+function normalizedExports(exports, symbols, section) {
+  const seen = new Set();
+  return (exports || []).map((rawName) => {
+    const publicName = String(rawName || "").trim();
+    if (!publicName) throw new Error(`MegaCart ${section.id} contains an unnamed export.`);
+    const key = publicName.toLowerCase();
+    if (seen.has(key)) throw new Error(`Duplicate export '${publicName}' in MegaCart ${section.id}.`);
+    seen.add(key);
+    const candidates = [
+      publicName,
+      `AMY_UPROC_${publicName}`,
+      `AMY_UFUNC_${publicName}`,
+      `AMY_UDATA_${publicName}`
+    ].map((name) => name.toLowerCase());
+    const matches = symbols.filter((symbol) => candidates.includes(symbol.name.toLowerCase()));
+    if (!matches.length) throw new Error(`MegaCart ${section.id} export '${publicName}' does not match a bank-local symbol.`);
+    if (matches.length > 1) {
+      throw new Error(`MegaCart ${section.id} export '${publicName}' is ambiguous: ${matches.map((symbol) => symbol.name).join(", ")}.`);
+    }
+    const symbol = matches[0];
+    return Object.freeze({
+      name: publicName,
+      symbol: symbol.name,
+      address: symbol.address,
+      bank: section.logicalBank,
+      qualifiedName: `${section.namespace}:${publicName}`
+    });
+  });
+}
+
+function makeSection({ id, kind, logicalBank, physicalBank, logicalStart, capacity, used, symbols, exports, sourceMap }) {
   if (!Number.isInteger(used) || used < 0 || used > capacity) {
     throw new RangeError(`MegaCart ${id} overflow: ${used} / ${capacity} bytes.`);
   }
@@ -61,9 +91,11 @@ function makeSection({ id, kind, logicalBank, physicalBank, logicalStart, capaci
     used,
     free: capacity - used
   };
+  const resolvedSymbols = normalizedSymbols(symbols, section);
   return Object.freeze({
     ...section,
-    symbols: normalizedSymbols(symbols, section),
+    symbols: resolvedSymbols,
+    exports: normalizedExports(exports, resolvedSymbols, section),
     sourceMap: normalizedSourceMap(sourceMap, section)
   });
 }
@@ -98,11 +130,19 @@ export function buildMegaCartLinkMap({ sizeKb, fixedBank, switchableBanks = [] }
       capacity: MEGACART_SWITCHABLE_BYTES,
       used: Number(entry.bytes?.length ?? entry.length ?? 0),
       symbols: entry.symbols,
+      exports: entry.exports,
       sourceMap: entry.sourceMap
     }));
   }
   const symbols = sections.flatMap((section) => section.symbols);
-  return Object.freeze({ layout, sections: Object.freeze(sections), symbols: Object.freeze(symbols) });
+  const exports = sections.flatMap((section) => section.exports);
+  const publicNames = new Set();
+  for (const entry of exports) {
+    const key = entry.name.toLowerCase();
+    if (publicNames.has(key)) throw new Error(`Duplicate MegaCart export '${entry.name}' across banks.`);
+    publicNames.add(key);
+  }
+  return Object.freeze({ layout, sections: Object.freeze(sections), symbols: Object.freeze(symbols), exports: Object.freeze(exports) });
 }
 
 export function resolveMegaCartSymbol(linkMap, name, bank = null) {
@@ -113,4 +153,9 @@ export function resolveMegaCartSymbol(linkMap, name, bank = null) {
   });
   if (matches.length > 1) throw new Error(`Ambiguous MegaCart symbol '${name}'; qualify it with a bank.`);
   return matches[0] || null;
+}
+
+export function resolveMegaCartExport(linkMap, name) {
+  const wanted = String(name || "").trim().toLowerCase();
+  return (linkMap?.exports || []).find((entry) => entry.name.toLowerCase() === wanted || entry.qualifiedName.toLowerCase() === wanted) || null;
 }

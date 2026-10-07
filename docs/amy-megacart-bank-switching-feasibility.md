@@ -45,6 +45,10 @@ usage, and qualified symbols without changing the emitted cartridge image.
   ROM offsets and permits the same symbol address in independent bank
   namespaces. It rejects duplicate local symbols, mapper-area symbols, invalid
   bank numbers, and capacity overflow.
+- Switchable outputs declare public `exports` in `project.amy.json`. Plain Amy
+  names resolve to generated procedure, function, or data symbols and become
+  qualified `bank:n:Name` entries. Missing, ambiguous, and duplicate public
+  exports fail the build before a trampoline can reference them.
 - `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
   `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
   physical offsets.

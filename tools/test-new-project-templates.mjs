@@ -19,7 +19,7 @@ const megaCart = createProjectFromTemplate(base, { templateId: "megacart", proje
 assert.equal(megaCart.target.platform, "colecovision-megacart");
 assert.equal(megaCart.target.romSizeKb, 128);
 assert.deepEqual(megaCart.projectFiles.map((file) => file.path), [
-  "project.amy.json", "banks/bank1.asm", "banks/bank2.asm"
+  "project.amy.json", "banks/bank1.asm", "banks/bank2.amy"
 ]);
 const megaCartManifest = JSON.parse(Buffer.from(megaCart.projectFiles[0].base64, "base64").toString("utf8"));
 assert.equal(megaCartManifest.outputs[1].type, "switchable-bank");

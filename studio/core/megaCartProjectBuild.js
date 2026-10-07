@@ -79,7 +79,15 @@ export async function buildMegaCartProject({ project, manifest, fixedBank, fixed
       bytes.set(chunk, offset);
       offset += chunk.length;
     }
-    switchableBanks.push({ bank: logicalBank - 1, logicalBank, id: output.name || `bank ${logicalBank}`, bytes, symbols, sourceMap });
+    switchableBanks.push({
+      bank: logicalBank - 1,
+      logicalBank,
+      id: output.name || `bank ${logicalBank}`,
+      bytes,
+      symbols,
+      exports: Array.isArray(output.exports) ? output.exports : [],
+      sourceMap
+    });
   }
 
   const built = buildMegaCartImage({ sizeKb, fixedBank: normalizedFixed.bytes, switchableBanks });

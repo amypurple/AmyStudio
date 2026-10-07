@@ -3992,6 +3992,25 @@ remain hardware-profile work rather than implicit behavior of `serial write`.
 
 The reserved `bank n` section boundary is not yet linkable inside one monolithic Amy source. Switchable sources are assigned to `switchable-bank` outputs in `project.amy.json`. Such an output may contain ASM, binary assets, or Amy files restricted to procedures and ROM `data`; bank-local Amy rejects top-level execution, global runtime initialization, and external Amy assets. Cross-bank calls and references are not implicit and remain unsupported until explicit imports and safe trampolines are implemented.
 
+Bank-local symbols intended for another output must be declared explicitly in
+the project manifest. Public names resolve automatically to Amy procedure,
+function, or data labels; a missing, ambiguous, or duplicate export stops the
+build:
+
+```json
+{
+  "name": "LEVEL2",
+  "type": "switchable-bank",
+  "bank": 2,
+  "exports": ["DrawLevel", "LevelMap"],
+  "sources": [{ "path": "banks/level2.amy", "kind": "amy" }]
+}
+```
+
+This creates qualified link-map entries such as `bank:2:DrawLevel`; it does not
+yet make an ordinary direct call across banks. That distinction prevents an
+inactive `$C000` window from being mistaken for a normal globally linked symbol.
+
 ## Super Game Module AY sound
 
 A project that declares `target.hardware: ["sgm1"]` gains the `sgm-ay`,

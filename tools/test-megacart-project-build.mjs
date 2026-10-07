@@ -20,7 +20,7 @@ const manifest = {
   outputs: [
     { name: "FIXED", type: "fixed-bank", sources: [{ path: "main.amy", kind: "amy" }] },
     { name: "BANK1", type: "switchable-bank", bank: 1, sources: [{ path: "banks/bank1.asm", kind: "asm" }] },
-    { name: "BANK2", type: "switchable-bank", bank: 2, sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
+    { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Text"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
   ]
 };
 const built = await buildMegaCartProject({
@@ -48,6 +48,13 @@ assert.deepEqual(built.linkMap.sections.map((section) => section.fileOffset), [7
 assert.deepEqual(built.linkMap.sections.slice(1).map((section) => section.logicalStart), [0xC000, 0xC000]);
 assert.equal(built.linkMap.sections[1].symbols.some((symbol) => symbol.name === "Bank1Text"), true);
 assert.equal(built.linkMap.sections[2].symbols.some((symbol) => symbol.name === "AMY_UDATA_Bank2Text"), true);
+assert.deepEqual(built.linkMap.exports, [{
+  name: "Bank2Text",
+  symbol: "AMY_UDATA_Bank2Text",
+  address: 0xC000,
+  bank: 2,
+  qualifiedName: "bank:2:Bank2Text"
+}]);
 
 const firmware = process.env.AMY_COLECO_BIOS || path.join(root, "studio", "bios", "colecovision.rom");
 const core = await GearcolecoTestCore.create({ seed: 0x4d43 });

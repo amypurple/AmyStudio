@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { buildMegaCartLinkMap, resolveMegaCartSymbol } from "../studio/core/megaCartLinkMap.js";
+import { buildMegaCartLinkMap, resolveMegaCartExport, resolveMegaCartSymbol } from "../studio/core/megaCartLinkMap.js";
 import { MEGACART_SWITCHABLE_BYTES } from "../studio/core/megaCartImage.js";
 
 const linkMap = buildMegaCartLinkMap({
@@ -10,7 +10,8 @@ const linkMap = buildMegaCartLinkMap({
     {
       logicalBank: 1,
       bytes: new Uint8Array(12),
-      symbols: [{ name: "Shared", address: 0xC000 }],
+      symbols: [{ name: "Shared", address: 0xC000 }, { name: "AMY_UPROC_Draw", address: 0xC004 }],
+      exports: ["Draw"],
       sourceMap: { version: 1, entries: [{ sourceLine: 3, addresses: [0xC000, 0xC005], optimizedAway: false }] }
     },
     { logicalBank: 2, bytes: new Uint8Array(MEGACART_SWITCHABLE_BYTES), symbols: [{ name: "Shared", address: 0xC000 }] }
@@ -31,6 +32,10 @@ assert.equal(resolveMegaCartSymbol(linkMap, "fixed:Start").address, 0x8000);
 assert.equal(resolveMegaCartSymbol(linkMap, "Shared", 1).qualifiedName, "bank:1:Shared");
 assert.equal(resolveMegaCartSymbol(linkMap, "bank:2:Shared").bank, 2);
 assert.throws(() => resolveMegaCartSymbol(linkMap, "Shared"), /Ambiguous/);
+assert.deepEqual(resolveMegaCartExport(linkMap, "Draw"), {
+  name: "Draw", symbol: "AMY_UPROC_Draw", address: 0xC004, bank: 1, qualifiedName: "bank:1:Draw"
+});
+assert.equal(resolveMegaCartExport(linkMap, "bank:1:Draw").address, 0xC004);
 assert.throws(() => buildMegaCartLinkMap({
   sizeKb: 128,
   fixedBank: new Uint8Array(2),
@@ -48,5 +53,18 @@ assert.throws(() => buildMegaCartLinkMap({
   fixedBank: new Uint8Array(2),
   switchableBanks: [{ logicalBank: 1, bytes: new Uint8Array(2), symbols: [{ name: "Mapper", address: 0xFFC0 }] }]
 }), /outside/);
+assert.throws(() => buildMegaCartLinkMap({
+  sizeKb: 128,
+  fixedBank: new Uint8Array(2),
+  switchableBanks: [{ logicalBank: 1, bytes: new Uint8Array(2), symbols: [], exports: ["Missing"] }]
+}), /does not match/);
+assert.throws(() => buildMegaCartLinkMap({
+  sizeKb: 128,
+  fixedBank: new Uint8Array(2),
+  switchableBanks: [
+    { logicalBank: 1, bytes: new Uint8Array(2), symbols: [{ name: "One", address: 0xC000 }], exports: ["One"] },
+    { logicalBank: 2, bytes: new Uint8Array(2), symbols: [{ name: "One", address: 0xC000 }], exports: ["One"] }
+  ]
+}), /Duplicate MegaCart export/);
 
-console.log("MegaCart link map: PASS (bank-qualified symbols, physical offsets, exact capacity, fail-closed diagnostics)");
+console.log("MegaCart link map: PASS (bank-qualified symbols and exports, physical offsets, exact capacity, fail-closed diagnostics)");
