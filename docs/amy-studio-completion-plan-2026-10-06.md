@@ -9,7 +9,10 @@ This plan turns the current Alexis-Z80 research into a reproducible clean-reposi
 - The OS7/EOS matrix has no remaining `PARTIAL` command rows.
 - Native EOS DSK/DDP, OS7+EOS hybrid media, and current MegaCart project packaging have runtime evidence in Alexis-Z80.
 - The clean repository contains the promoted EOS, ADAM project-form, and MegaCart evidence suites used by the public examples.
-- The clean repository full release audit passed on 2026-10-07 in 1,044,119 ms: every registered feature test passed, 81/81 public examples compiled, 80 flat ROMs assembled to 310,670 bytes, and the MegaCart project was delegated to its target-specific runtime validator.
+- The clean repository full release audit passed again after the dual-reset work
+  on 2026-10-07 in 1,045,622 ms: every registered feature test passed, 81/81
+  public examples compiled, 80 flat ROMs assembled to 310,670 bytes, and the
+  MegaCart project was delegated to its target-specific runtime validator.
 - Post-plan hardware work now models the physical ADAM boot selector with
   separate EOS/computer and OS7/cartridge resets. Runtime evidence verifies
   MIOC `$00`/`$0F` selection and distinct `$6000`/`$6400` RAM bytes during an
