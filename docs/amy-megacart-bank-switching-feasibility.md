@@ -8,6 +8,10 @@ tests for compact 64 KB and standard 128 KB images. Full bank-aware Amy linking
 and debugging remain the architectural work; bank-local project outputs are
 currently ASM or binary assets.
 
+The first linker foundation is now implemented as a bank-qualified link map.
+It records logical bank, physical ROM bank, CPU address, file offset, capacity,
+usage, and qualified symbols without changing the emitted cartridge image.
+
 ## Verified ColecoVision Model
 
 - The final physical 16 KB bank is fixed at `$8000-$BFFF` and contains shared
@@ -36,6 +40,13 @@ currently ASM or binary assets.
   addresses, limits, and fail-closed diagnostics.
 - `tools/test-megacart-bank-demo.mjs` executes 64 KB and 128 KB images in
   GearColeco and verifies two independently selected banks.
+- `studio/core/megaCartLinkMap.js` separates logical addresses from physical
+  ROM offsets and permits the same symbol address in independent bank
+  namespaces. It rejects duplicate local symbols, mapper-area symbols, invalid
+  bank numbers, and capacity overflow.
+- `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
+  `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
+  physical offsets.
 - `docs/research/mario-brothers-2009-mapper-analysis-2026-10-02.md` records a
   64 KB production ROM with a fixed-bank `55 AA` header and MegaCart mapper
   reads. It contains no identified SGM I/O.
@@ -53,8 +64,9 @@ breakpoint addresses.
 
 ## Required Foundation
 
-1. Track logical Z80 address and physical ROM offset independently.
-2. Add bank-aware sections to the assembler/linker and emitted source map.
+1. Feed the implemented logical-address/physical-offset link map from real
+   assembler symbol and source-map output.
+2. Add bank-aware sections to the assembler and emitted source map.
 3. Permit repeated logical addresses in distinct bank namespaces.
 4. Keep fixed code, NMI handlers, mapper helpers, and shared runtime data in
    bank 0 unless a proven trampoline makes access safe.

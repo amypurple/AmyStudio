@@ -233,6 +233,7 @@ const tests = [
   { file: "test-megacart-image.mjs", area: "megacart-image", evidence: "unit", suite: "examples" },
   { file: "test-megacart-project-build.mjs", area: "megacart-project-build", evidence: "runtime", suite: "examples" },
   { file: "test-megacart-bank-demo.mjs", area: "megacart-bank-runtime", evidence: "runtime", suite: "examples" },
+  { file: "test-megacart-link-map.mjs", area: "megacart-bank-qualified-link-map", evidence: "unit", suite: "examples" },
   { file: "test-new-project-templates.mjs", area: "new-project-templates", evidence: "unit", suite: "studio" },
   { file: "test-project-form-learning-materials.mjs", area: "project-learning-materials", evidence: "unit", suite: "studio" },
   { file: "test-project-targets.mjs", area: "project-targets", evidence: "unit", suite: "studio" },
