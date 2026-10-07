@@ -539,6 +539,7 @@ export function createRomTestRecorderUi({
 
   function currentLogicalBank(address = core?.getPc()) {
     if (!core || !Number.isInteger(address)) return null;
+    if (!core.isMegaCart()) return null;
     if ((address & 0xFFFF) < 0xC000) return 0;
     const physicalBank = core.getRomBank();
     return physicalBank == null ? null : physicalBank + 1;

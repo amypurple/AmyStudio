@@ -52,9 +52,10 @@ usage, and qualified symbols without changing the emitted cartridge image.
   resolves `bank:2:Symbol` and `2:$C000`, rejects ambiguous unqualified names,
   and keeps source breakpoints at the same address separated by bank.
 - The bundled GearColeco WASM bridge exports the currently selected physical
-  MegaCart bank. ROM Test & Debug converts it to Amy's logical-bank convention,
-  shows bank-qualified execution addresses and symbols, and filters coincident
-  16-bit execute breakpoints by the active bank.
+  MegaCart bank and cartridge type. ROM Test & Debug converts it to Amy's
+  logical-bank convention only for an actual MegaCart, shows bank-qualified
+  execution addresses and symbols, and filters coincident 16-bit execute
+  breakpoints by the active bank.
 - Saved ROM tests and development routes preserve a checkpoint bank, while
   legacy unbanked files remain valid. Routine profiling accepts qualified
   targets such as `bank:2:Draw` and keeps same-named bank-local measurements
@@ -63,6 +64,10 @@ usage, and qualified symbols without changing the emitted cartridge image.
   CPU entries to logical `{bank, address}` locations. A backward-compatible MCP
   source patch adds structured address/physical-bank entries, but the desktop
   executable still requires a native rebuild before that richer form ships.
+- Rewind keyframes and gameplay-recording initial states capture PC, logical
+  bank, and physical bank. Restoring a MegaCart keyframe validates that the
+  mapper state returned to the exact saved execution location; ordinary ROMs
+  remain explicitly unbanked.
 - `docs/research/mario-brothers-2009-mapper-analysis-2026-10-02.md` records a
   64 KB production ROM with a fixed-bank `55 AA` header and MegaCart mapper
   reads. It contains no identified SGM I/O.
@@ -88,7 +93,8 @@ ASM/binary outputs. It cannot yet link arbitrary Amy procedures across banks.
    compiler-generated sequences.
 7. Teach optimizer symbol analysis not to merge or reorder across bank
    boundaries.
-8. Preserve `(bank, address)` in any future exact-resume state.
+8. Extend exact-resume metadata only when a persisted save-state workflow is
+   introduced; current in-session rewind and recording state is bank-aware.
 9. Package exact 128/256/512/1,024 KB images with deterministic fill bytes.
 
 ## Mandatory Capacity Diagnostics

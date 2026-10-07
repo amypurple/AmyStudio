@@ -19,7 +19,7 @@ const core = await GearcolecoTestCore.create({ seed: 0x170 });
 try {
   for (const method of ["loadAdamFirmware", "startAdam", "getMachine", "loadAdamMedia",
     "ejectAdamMedia", "setAdamKey", "getAdamMioc", "getAdamNetSummary",
-    "setVideoChip", "getVideoChip", "getRomBank"]) {
+    "setVideoChip", "getVideoChip", "getRomBank", "getCartridgeType", "isMegaCart"]) {
     assert.equal(typeof core[method], "function", `${method} is unavailable`);
   }
 
@@ -29,6 +29,8 @@ try {
   assert.equal(core.getVideoChip(), GEARCOLECO_VIDEO_CHIP.TMS9918A);
   assert.throws(() => core.setVideoChip("unknown"), /Unknown video chip/);
   assert.equal(core.getRomBank(), 0, "standard mapper should expose bank zero");
+  assert.equal(core.getCartridgeType(), 4, "an unloaded core should report unsupported/no cartridge");
+  assert.equal(core.isMegaCart(), false, "an unloaded core must not be mistaken for MegaCart");
   console.log("GearColeco 1.7 platform capabilities: PASS");
 } finally {
   core.destroy();

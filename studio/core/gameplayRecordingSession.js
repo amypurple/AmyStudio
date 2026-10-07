@@ -1,3 +1,5 @@
+import { captureExecutionLocation } from "./romExecutionLocation.js";
+
 function cloneInput(input) {
   return {
     controllerMasks: [input.controllerMasks[0] >>> 0, input.controllerMasks[1] >>> 0],
@@ -14,6 +16,7 @@ export class GameplayRecordingSession {
     this.recording = false;
     this.initialState = null;
     this.initialControllerMasks = [0, 0];
+    this.initialLocation = null;
     this.inputs = [];
     this.framesPerSecond = 0;
   }
@@ -21,6 +24,7 @@ export class GameplayRecordingSession {
   start(core, { controllerMasks = [0, 0] } = {}) {
     if (!core) throw new Error("Start the debugger before recording gameplay.");
     this.initialState = core.saveState();
+    this.initialLocation = captureExecutionLocation(core);
     this.initialControllerMasks = [controllerMasks[0] >>> 0, controllerMasks[1] >>> 0];
     this.inputs = [];
     this.framesPerSecond = core.getFramesPerSecond();
@@ -42,9 +46,11 @@ export class GameplayRecordingSession {
     }
     return {
       initialState: this.initialState.slice(),
+      initialLocation: this.initialLocation ? { ...this.initialLocation } : null,
       initialControllerMasks: [...this.initialControllerMasks],
       inputs: this.inputs.map(cloneInput),
       framesPerSecond: this.framesPerSecond
     };
   }
 }
+

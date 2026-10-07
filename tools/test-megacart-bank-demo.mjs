@@ -21,6 +21,7 @@ for (const sizeKb of [64, 128]) {
   assert.equal(String.fromCharCode(...core.readVram(0x1928, 16)), "DATA FROM BANK 1");
   assert.equal(String.fromCharCode(...core.readVram(0x1968, 16)), "DATA FROM BANK 2");
   assert.equal(core.getRomBank(), 1, "logical bank 2 should leave physical MegaCart bank 1 selected");
+  assert.equal(core.isMegaCart(), true, "runtime must identify the MegaCart mapper explicitly");
   console.log(`MegaCart ${sizeKb}K runtime PASS: fixed code selected and read two independent 16 KB banks.`);
  } finally {
    core.destroy();

@@ -1,3 +1,5 @@
+import { assertExecutionLocation, captureExecutionLocation } from "./romExecutionLocation.js";
+
 function normalizeControllerMasks(value) {
   const masks = value || [0, 0];
   return [masks[0] >>> 0, masks[1] >>> 0];
@@ -59,6 +61,7 @@ export class RomTestRecorder {
     return {
       frame,
       state: this.core.saveState(),
+      location: captureExecutionLocation(this.core),
       controllerMasks: [...this.controllerMasks]
     };
   }
@@ -154,6 +157,7 @@ export class RomTestRecorder {
     this.core.loadState(keyframe.state, {
       controllerMasks: keyframe.controllerMasks
     });
+    assertExecutionLocation(this.core, keyframe.location, `Keyframe ${keyframe.frame}`);
     this.controllerMasks = [...keyframe.controllerMasks];
     this.frame = keyframe.frame;
     this.pendingInput = null;
@@ -191,7 +195,9 @@ export class RomTestRecorder {
       frame: this.frame,
       latestFrame: this.latestFrame,
       firstAvailableFrame: this.firstAvailableFrame,
-      keyframes: this.keyframes.map(({ frame }) => frame)
+      keyframes: this.keyframes.map(({ frame }) => frame),
+      keyframeLocations: this.keyframes.map(({ frame, location }) => ({ frame, ...location }))
     };
   }
 }
+

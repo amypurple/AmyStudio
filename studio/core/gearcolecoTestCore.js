@@ -19,6 +19,7 @@ export const GEARCOLECO_MACHINE = Object.freeze({ AUTO: 0, COLECOVISION: 1, ADAM
 export const GEARCOLECO_ADAM_BOOT = Object.freeze({ COMPUTER: 0, CARTRIDGE: 1 });
 export const GEARCOLECO_ADAM_MEDIA = Object.freeze({ DATA_PACK: 1, DISK: 2 });
 export const GEARCOLECO_ADAM_SLOT = Object.freeze({ DISK_1: 0, DISK_2: 1, DATA_PACK_1: 2, DATA_PACK_2: 3 });
+export const GEARCOLECO_CARTRIDGE_TYPE = Object.freeze({ STANDARD: 0, MEGACART: 1, ACTIVISION: 2, OCM: 3, UNSUPPORTED: 4 });
 
 export function detectColecoRegionFromBios(bytes) {
   const bios = requireBytes(bytes, "BIOS");
@@ -501,6 +502,17 @@ export class GearcolecoTestCore {
     if (typeof this.module._gcw_get_rom_bank !== "function") return null;
     const bank = this.module._gcw_get_rom_bank() | 0;
     return bank < 0 ? null : bank;
+  }
+
+  getCartridgeType() {
+    this.assertAlive();
+    if (typeof this.module._gcw_get_cartridge_type !== "function") return null;
+    const type = this.module._gcw_get_cartridge_type() | 0;
+    return type < 0 ? null : type;
+  }
+
+  isMegaCart() {
+    return this.getCartridgeType() === GEARCOLECO_CARTRIDGE_TYPE.MEGACART;
   }
 
   getSp() {
