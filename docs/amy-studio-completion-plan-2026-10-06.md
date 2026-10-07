@@ -104,11 +104,15 @@ Validated so far:
 - Incremental and explicit clean builds produce byte-identical MegaCart media.
 - The FILES tree derives `MODIFIED`, `STALE`, `COMPILED`, and `FAILED` states
   from compiled fingerprints instead of adding source-tab buttons.
+- Native EOS and hybrid DSK/DDP builds reuse unchanged loader and BOOT objects;
+  edited program bytes and packs still force complete media regeneration.
+- Incremental native and hybrid media are byte-identical to explicit clean
+  builds, and the native DSK/DDP runtime test still renders its full ZX0 image.
 
 Remaining:
 
-- Extend dependency objects and reuse to native EOS and hybrid multi-output
-  projects without caching firmware- or media-dependent work incorrectly.
+- Extend object reuse to independently compilable Amy modules; current native
+  EOS and hybrid main programs remain intentionally monolithic.
 - Persist no binary cache in project JSON until cache versioning and storage
   limits are defined; the current cache deliberately lasts one Studio session.
 

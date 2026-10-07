@@ -1,6 +1,7 @@
 import { buildMegaCartImage } from "./megaCartImage.js";
 import { buildMegaCartLinkMap } from "./megaCartLinkMap.js";
 import { projectFileBytes } from "./utils/projectFiles.js";
+import { fingerprintBuildInputs } from "./incrementalBuildCache.js";
 
 function normalizedPath(value) {
   return String(value || "").replace(/\\/g, "/").replace(/^@project\//i, "");
@@ -28,46 +29,29 @@ function normalizedAssembly(result, logicalStart, logicalEnd) {
   return { bytes, symbols, sourceMap: result?.sourceDebugMap || result?.sourceMap || null };
 }
 
-function hashByte(hash, value) {
-  return BigInt.asUintN(64, (hash ^ BigInt(value & 0xFF)) * 0x100000001B3n);
-}
-
-function hashText(hash, value) {
-  const bytes = new TextEncoder().encode(String(value ?? ""));
-  for (const byte of bytes) hash = hashByte(hash, byte);
-  return hashByte(hash, 0);
-}
-
 export function projectFileContentFingerprint(entry) {
-  let hash = 0xCBF29CE484222325n;
-  for (const byte of projectFileBytes(entry)) hash = hashByte(hash, byte);
-  return hash.toString(16).padStart(16, "0");
+  return fingerprintBuildInputs(projectFileBytes(entry));
 }
 
 export function megaCartOutputFingerprint({ output, project, sizeKb, buildSignature = "" }) {
-  let hash = 0xCBF29CE484222325n;
-  hash = hashText(hash, sizeKb);
-  hash = hashText(hash, buildSignature);
-  hash = hashText(hash, JSON.stringify({
+  const parts = [sizeKb, buildSignature, JSON.stringify({
     name: output.name || "",
     type: output.type || "",
     bank: Number(output.bank),
     exports: Array.isArray(output.exports) ? output.exports : [],
     sources: (output.sources || []).map((source) => sourceDescriptor(source))
-  }));
+  })];
   for (const rawSource of output.sources || []) {
     const source = sourceDescriptor(rawSource);
     const file = findProjectFile(project, source.path);
-    hash = hashText(hash, normalizedPath(source.path).toLowerCase());
-    hash = hashText(hash, source.kind || "");
+    parts.push(normalizedPath(source.path).toLowerCase(), source.kind || "");
     if (!file) {
-      hash = hashText(hash, "missing");
+      parts.push("missing");
       continue;
     }
-    hash = hashText(hash, projectFileContentFingerprint(file));
-    hash = hashByte(hash, 0);
+    parts.push(projectFileBytes(file));
   }
-  return hash.toString(16).padStart(16, "0");
+  return fingerprintBuildInputs(...parts);
 }
 
 function outputCacheKey(output) {

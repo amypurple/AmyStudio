@@ -1,3 +1,5 @@
+import { cachedBuildStep, fingerprintBuildInputs } from "./incrementalBuildCache.js";
+
 const BLOCK_SIZE = 1024;
 const DISK_BLOCK_COUNT = 160;
 const DATA_PACK_BLOCK_COUNT = 256;
@@ -30,7 +32,7 @@ export async function buildAdamNativeProgramDataPack(options) {
   return buildAdamNativeProgramMedia({ ...options, mediaType: "data-pack" });
 }
 
-export async function buildAdamNativeProgramMedia({ program, assemble, volume = "AMY NATIVE", mediaType = "disk" }) {
+export async function buildAdamNativeProgramMedia({ program, assemble, volume = "AMY NATIVE", mediaType = "disk", incrementalCache = null, buildSignature = "" }) {
   if (typeof assemble !== "function") throw new Error("Native program media requires an assembler callback.");
   const bytes = asBytes(program);
   const blocks = Math.ceil(bytes.length / BLOCK_SIZE);
@@ -39,16 +41,40 @@ export async function buildAdamNativeProgramMedia({ program, assemble, volume = 
   const device = mediaType === "data-pack" ? 8 : mediaType === "disk" ? 4 : 0;
   if (!device) throw new Error(`Unsupported ADAM media type '${mediaType}'.`);
 
-  const loader = asBytes(await assemble(renderNativeProgramLoader(device, blocks), "native-loader.asm"));
+  const rebuiltOutputs = [];
+  const reusedOutputs = [];
+  const loaderSource = renderNativeProgramLoader(device, blocks);
+  const loaderStep = await cachedBuildStep(
+    incrementalCache,
+    `native:${mediaType}:loader`,
+    fingerprintBuildInputs(buildSignature, loaderSource),
+    async () => asBytes(await assemble(loaderSource, "native-loader.asm"))
+  );
+  const loader = asBytes(loaderStep.value);
+  (loaderStep.reused ? reusedOutputs : rebuiltOutputs).push("LOADER");
   const loaderBytes = [...loader].map((value) => `$${value.toString(16).padStart(2, "0")}`).join(",");
-  const boot = asBytes(await assemble(renderNativeProgramBoot(loaderBytes), "boot.asm"));
+  const bootSource = renderNativeProgramBoot(loaderBytes);
+  const bootStep = await cachedBuildStep(
+    incrementalCache,
+    `native:${mediaType}:boot`,
+    fingerprintBuildInputs(buildSignature, bootSource),
+    async () => asBytes(await assemble(bootSource, "boot.asm"))
+  );
+  const boot = asBytes(bootStep.value);
+  (bootStep.reused ? reusedOutputs : rebuiltOutputs).push("BOOT");
   const built = buildAdamBootMedia({
     boot,
     files: [{ name: "PROGRAM", bytes }],
     volume,
     mediaType
   });
-  return { ...built, programBytes: bytes.length, programBlocks: blocks, loaderBytes: loader.length };
+  return {
+    ...built,
+    programBytes: bytes.length,
+    programBlocks: blocks,
+    loaderBytes: loader.length,
+    incremental: { rebuiltOutputs, reusedOutputs }
+  };
 }
 
 export function buildAdamBootMedia({ boot, files = [], volume = "AMY EOS", mediaType = "disk" }) {
@@ -84,7 +110,7 @@ export function buildAdamBootMedia({ boot, files = [], volume = "AMY EOS", media
   };
 }
 
-async function buildAdamExpansionMedia({ rom, famous, capitals, history, milestones, packs, bootSource, loaderSource, assemble, mediaType }) {
+async function buildAdamExpansionMedia({ rom, famous, capitals, history, milestones, packs, bootSource, loaderSource, assemble, mediaType, incrementalCache = null, buildSignature = "" }) {
   const dataPack = mediaType === "data-pack";
   const blockCount = dataPack ? DATA_PACK_BLOCK_COUNT : DISK_BLOCK_COUNT;
   const mediaDevice = dataPack ? 8 : 4;
@@ -104,17 +130,32 @@ async function buildAdamExpansionMedia({ rom, famous, capitals, history, milesto
   if (diskPacks.length > 4) throw new Error("An ADAM game disk supports at most four WEPK files.");
   if (nextPackBlock > blockCount) throw new Error(`WEPK files exceed the ADAM ${dataPack ? "data-pack" : "disk"} capacity.`);
   const programUsedBlocks = PROGRAM_BLOCKS;
-  const loader = asBytes(await assemble(
-    loaderSource
+  const rebuiltOutputs = [];
+  const reusedOutputs = [];
+  const renderedLoaderSource = loaderSource
       .replaceAll("{{ADAM_DEVICE}}", String(mediaDevice))
       .replace("{{PROGRAM_BLOCKS}}", String(programUsedBlocks))
-      .replace("{{PAD_PROGRAM_WINDOW}}", programPaddingAssembly(programUsedBlocks)),
-    "expansion-loader.asm"
-  ));
+      .replace("{{PAD_PROGRAM_WINDOW}}", programPaddingAssembly(programUsedBlocks));
+  const loaderStep = await cachedBuildStep(
+    incrementalCache,
+    `hybrid:${mediaType}:loader`,
+    fingerprintBuildInputs(buildSignature, renderedLoaderSource),
+    async () => asBytes(await assemble(renderedLoaderSource, "expansion-loader.asm"))
+  );
+  const loader = asBytes(loaderStep.value);
+  (loaderStep.reused ? reusedOutputs : rebuiltOutputs).push("LOADER");
   const loaderBytes = [...loader].map((value) => `$${value.toString(16).padStart(2, "0")}`).join(",");
   const token = "{{LOADER_BYTES}}";
   if (!bootSource.includes(token)) throw new Error(`boot.asm is missing ${token}.`);
-  const boot = asBytes(await assemble(bootSource.replace(token, loaderBytes), "boot.asm"));
+  const renderedBootSource = bootSource.replace(token, loaderBytes);
+  const bootStep = await cachedBuildStep(
+    incrementalCache,
+    `hybrid:${mediaType}:boot`,
+    fingerprintBuildInputs(buildSignature, renderedBootSource),
+    async () => asBytes(await assemble(renderedBootSource, "boot.asm"))
+  );
+  const boot = asBytes(bootStep.value);
+  (bootStep.reused ? reusedOutputs : rebuiltOutputs).push("BOOT");
   if (boot.length > BLOCK_SIZE) throw new Error(`BOOT exceeds one block: ${boot.length} bytes.`);
 
   const fill = dataPack ? 0xe5 : 0xff;
@@ -131,7 +172,8 @@ async function buildAdamExpansionMedia({ rom, famous, capitals, history, milesto
     extension: dataPack ? ".ddp" : ".dsk",
     bootBytes: boot.length,
     loaderBytes: loader.length,
-    packs: diskPacks.map(({ name, bytes }) => ({ name, bytes: bytes.length }))
+    packs: diskPacks.map(({ name, bytes }) => ({ name, bytes: bytes.length })),
+    incremental: { rebuiltOutputs, reusedOutputs }
   };
 }
 

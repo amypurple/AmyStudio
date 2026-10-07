@@ -335,6 +335,7 @@ export function bindTopUiEvents(ctx) {
 
 export function bindStudioRuntimeEvents(ctx) {
   const megaCartIncrementalCache = new Map();
+  const adamMediaIncrementalCache = new Map();
   let compiledAdamDisk = null;
   let compiledAdamExtension = ".dsk";
   const {
@@ -1028,14 +1029,18 @@ export function bindStudioRuntimeEvents(ctx) {
           : await (dataPackTarget ? buildAdamNativeProgramDataPack : buildAdamNativeProgramDisk)({
               program: compiledRom,
               volume,
-              assemble: assembleNativeLoader
+              assemble: assembleNativeLoader,
+              incrementalCache: adamMediaIncrementalCache,
+              buildSignature: "adam-native-media-v1"
             });
         compiledAdamDisk = builtMedia.media;
         compiledAdamExtension = builtMedia.extension;
         const programNote = builtMedia.programBlocks
           ? `; program ${builtMedia.programBytes} bytes in ${builtMedia.programBlocks} blocks`
           : "";
-        diskNote = ` Native EOS ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; boot ${builtMedia.bootBytes} bytes${programNote}.`;
+        const reused = builtMedia.incremental?.reusedOutputs || [];
+        const reuseNote = reused.length ? `; reused ${reused.join(", ")}` : "";
+        diskNote = ` Native EOS ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; boot ${builtMedia.bootBytes} bytes${programNote}${reuseNote}.`;
         els.btnDownloadRom.textContent = "↓";
         els.btnDownloadRom.title = `Download bootable native EOS media (${compiledAdamExtension})`;
         els.btnDownloadRom.setAttribute("aria-label", `Download bootable native EOS media (${compiledAdamExtension})`);
@@ -1059,6 +1064,8 @@ export function bindStudioRuntimeEvents(ctx) {
           milestones: projectFileBytes(milestonesFile),
           bootSource: new TextDecoder().decode(projectFileBytes(bootFile)),
           loaderSource: new TextDecoder().decode(projectFileBytes(loaderFile)),
+          incrementalCache: adamMediaIncrementalCache,
+          buildSignature: "adam-hybrid-media-v1",
           assemble: async (source, filename) => {
             const assembled = await compileGeneratedAsm(source, filename, {
               optimizerEnabled: false,
@@ -1074,7 +1081,9 @@ export function bindStudioRuntimeEvents(ctx) {
         els.btnDownloadRom.textContent = "↓";
         els.btnDownloadRom.title = `Download bootable ADAM media (${compiledAdamExtension})`;
         els.btnDownloadRom.setAttribute("aria-label", `Download bootable ADAM media (${compiledAdamExtension})`);
-        diskNote = ` ADAM ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; ${builtDisk.packs.map((pack) => `${pack.name} ${pack.bytes}`).join("; ")} bytes.`;
+        const reused = builtDisk.incremental?.reusedOutputs || [];
+        const reuseNote = reused.length ? ` Reused: ${reused.join(", ")}.` : "";
+        diskNote = ` ADAM ${dataPackTarget ? "data pack" : "disk"} ready: ${compiledAdamDisk.length} bytes; ${builtDisk.packs.map((pack) => `${pack.name} ${pack.bytes}`).join("; ")} bytes.${reuseNote}`;
       } else {
         els.btnDownloadRom.textContent = "⤓";
         els.btnDownloadRom.title = "Download .col";
