@@ -89,8 +89,10 @@ Validated evidence:
 
 ## Milestone 4 - Incremental multi-file builds
 
-Status: in progress. Independent MegaCart switchable-bank outputs are cached by
-content and build configuration; fixed-bank relinking remains conservative.
+Status: complete at the declared-output boundary. Independent MegaCart
+switchable-bank outputs and ADAM loader/BOOT objects are cached by content and
+build configuration; fixed-bank relinking and final media generation remain
+conservative.
 
 - Compile changed Amy and ASM sources into reusable objects.
 - Track source, generated asset, and binary dependencies.
@@ -115,7 +117,7 @@ Validated so far:
   declarations and compiler state; they are not misrepresented as relocatable
   objects.
 
-Remaining:
+Deliberately deferred beyond this milestone:
 
 - Define an explicit module ABI and manifest output boundary before extending
   object reuse beyond bank-local Amy outputs; current native EOS and hybrid
@@ -128,6 +130,10 @@ Exit criteria:
 - Editing one independent bank does not recompile unrelated banks.
 - Incremental and clean builds produce byte-identical media.
 - The FILES tree shows modified, stale, compiled, and failed states without adding a row of source buttons.
+
+All three exit criteria are validated. The dependency, incremental-build, and
+bank-aware trace tests are registered in the permanent feature matrix rather
+than depending on ad hoc invocation.
 
 ## Milestone 5 - Release workflow and documentation
 

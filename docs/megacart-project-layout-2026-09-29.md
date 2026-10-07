@@ -14,7 +14,7 @@ The reference uses separate fixed and switchable output files. Amy accepts
 helper that survives every optimization level. A switchable output may contain
 ASM, binary data, or restricted bank-local Amy procedures and ROM `data`.
 
-`bank n` is reserved as the section-boundary syntax chosen in the earlier architecture study. Until the bank-aware linker can maintain repeated `$C000` symbols, Amy rejects it with a specific diagnostic and requires switchable banks to remain separate project outputs. This avoids creating a flat ROM that only appears banked.
+`bank n` is reserved as the section-boundary syntax chosen in the earlier architecture study. The linker, debugger, symbols, breakpoints, trace, and profiler now preserve repeated `$C000` identities as `(bank,address)`. Amy still rejects monolithic `bank n` sections because ordinary Amy source has no relocatable-object ABI; switchable banks must remain separate declared project outputs. This avoids creating a flat ROM that only appears banked.
 
 The project manifest remains authoritative for bank-file ownership and final IDE packaging.
 
@@ -45,3 +45,17 @@ decompress mdkrle Bank2Compressed from bank 2 to vram.name + 32
 These operations use fixed-bank trampolines and restore the caller's bank.
 Parameters, function returns, and arbitrary implicit cross-bank references are
 still rejected rather than being simulated with unsafe flat addresses.
+
+## Incremental bank builds
+
+Studio fingerprints each declared switchable output from its manifest entry,
+source bytes, ROM size, and build configuration. Recompiling an unchanged
+project reuses unchanged switchable banks. Editing one bank rebuilds that bank
+without recompiling unrelated banks, then conservatively relinks the fixed
+bank and packages a fresh final image.
+
+The FILES panel shows the source as `MODIFIED` when its bytes changed and its
+output as `STALE` when a dependency changed. The cache lasts for the current
+Studio session only. A reload or explicit clean environment remains the
+reference build, and automated tests require its ROM to be byte-identical to
+the incremental result.

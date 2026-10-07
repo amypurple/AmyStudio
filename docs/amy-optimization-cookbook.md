@@ -375,6 +375,33 @@ Use **New Project** to select the form first. Changing only the output filename
 does not convert a cartridge into an EOS disk or a monolithic ROM into a
 MegaCart image.
 
+## Understand incremental multi-file builds
+
+Amy Studio tracks source content, declared outputs, and build configuration for
+the current browser session. The FILES panel reports:
+
+| State | Meaning |
+| --- | --- |
+| `COMPILED` | This source still matches the last successful build. |
+| `MODIFIED` | This file changed since that build. |
+| `STALE` | A dependency changed, so this unchanged file belongs to an output that must be rebuilt. |
+| `FAILED` | The last attempted project build failed. |
+
+`include amy` is a textual include. Included files share declarations, globals,
+types, procedures, and compiler state with MAIN, so changing one invalidates its
+textual dependents. Amy Studio tracks that dependency graph but does not pretend
+that each include is an independently linkable object.
+
+MegaCart `switchable-bank` outputs are independent build units. An unchanged
+bank may be reused while another bank is rebuilt; the fixed bank is still
+relinked conservatively. Native EOS and hybrid media similarly reuse unchanged
+loader and BOOT objects, but always regenerate the final DSK/DDP so current
+program and pack bytes are present. Incremental and clean builds are tested for
+byte-identical final media.
+
+The cache is deliberately session-local. Reloading Studio performs a clean
+build; no generated object code is stored in `project.amy.json`.
+
 ## Replacing repeated decisions with lookup tables
 
 A chain that selects constants from a small, fixed mapping often costs more ROM than its data:
