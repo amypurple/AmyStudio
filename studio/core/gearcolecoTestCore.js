@@ -496,6 +496,13 @@ export class GearcolecoTestCore {
     return this.module._gcw_get_pc() & 0xFFFF;
   }
 
+  getRomBank() {
+    this.assertAlive();
+    if (typeof this.module._gcw_get_rom_bank !== "function") return null;
+    const bank = this.module._gcw_get_rom_bank() | 0;
+    return bank < 0 ? null : bank;
+  }
+
   getSp() {
     this.assertAlive();
     return this.module._gcw_get_sp() & 0xFFFF;

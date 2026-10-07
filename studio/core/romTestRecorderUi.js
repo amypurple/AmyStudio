@@ -5,7 +5,7 @@ import {
   GEARCOLECO_MACHINE,
   GEARCOLECO_TEST_INPUT,
   GEARCOLECO_TEST_REGION
-} from "./gearcolecoTestCore.js?v=20261004-adam-scn2651-txemt2";
+} from "./gearcolecoTestCore.js?v=20261006-megacart-active-bank1";
 import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAdamFirmware, saveAdamFirmwareToBrowser } from "./adamFirmwareStorage.js?v=20260925-adam-local-firmware2";
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
@@ -20,6 +20,7 @@ import {
 import { replayRomTestCase } from "./romTestCaseRunner.js";
 import {
   annotateOverlaySymbols,
+  breakpointMatchesBank,
   chooseAmySourceMarker,
   classifyAddress,
   decodeVdpRegisters,
@@ -28,13 +29,15 @@ import {
   listAmySourceMarkers,
   listAmyProcedureSourceMarkers,
   resolveAmySourceBreakpoints,
+  formatBankAddress,
   formatHex,
   formatHexDump,
   inspectOverlaySymbolDebugState,
   listAmyDebugBreakpoints,
   parseAmySymbols,
-  resolveSymbolOrAddress
-} from "./romDebuggerModel.js?v=20260825-scene-poison-diagnostics";
+  resolveSymbolOrAddress,
+  resolveSymbolReference
+} from "./romDebuggerModel.js?v=20261006-megacart-bank-debug1";
 import { evaluateBreakpointCondition, parseBreakpointCondition } from "./breakpointConditions.js?v=20260803-asm-step-conditional-breakpoints";
 import {
   appendRoutineProfileSample,
@@ -533,13 +536,20 @@ export function createRomTestRecorderUi({
     return value & max;
   }
 
+  function currentLogicalBank(address = core?.getPc()) {
+    if (!core || !Number.isInteger(address)) return null;
+    if ((address & 0xFFFF) < 0xC000) return 0;
+    const physicalBank = core.getRomBank();
+    return physicalBank == null ? null : physicalBank + 1;
+  }
+
   function refreshMachineState() {
     if (!core) return;
     const pc = core.getPc();
     const vdp = decodeVdpRegisters(core.getVdpRegisters());
     field("machineState").innerHTML = `
       <div class="rom-recorder__summary">
-        <div class="rom-recorder__card"><strong>Program counter</strong>${formatHex(pc)} · ${findNearestSymbol(pc, symbols) || "no symbol"}</div>
+        <div class="rom-recorder__card"><strong>Program counter</strong>${formatBankAddress(pc, currentLogicalBank(pc))} · ${findNearestSymbol(pc, symbols, currentLogicalBank(pc)) || "no symbol"}</div>
         <div class="rom-recorder__card"><strong>VDP mode</strong>${vdp.mode} · screen ${vdp.displayEnabled ? "on" : "off"} · NMI ${vdp.nmiEnabled ? "on" : "off"}</div>
         <div class="rom-recorder__card"><strong>Sprites</strong>${vdp.sprites16 ? "16×16" : "8×8"}${vdp.spritesMagnified ? " magnified" : ""} · backdrop ${vdp.backdrop}</div>
         <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 ${field("voiceModule").value} · ADAM sound ${field("adamSound").value} · serial ${field("adamSerial").value}</div>
@@ -575,7 +585,9 @@ export function createRomTestRecorderUi({
       const line = (instruction) => {
         const marker = instruction.address === cpu.pc ? ">" : " ";
         const bytes = instruction.opcodes.map((value) => value.toString(16).toUpperCase().padStart(2, "0")).join(" ").padEnd(20);
-        const symbol = symbols.find((entry) => entry.address === instruction.address)?.name;
+        const instructionBank = currentLogicalBank(instruction.address);
+        const symbol = symbols.find((entry) => entry.address === instruction.address
+          && (entry.bank == null || entry.bank === instructionBank))?.name;
         return marker + " " + formatHex(instruction.address) + "  " + bytes + " " + instruction.text + (symbol ? "  ; " + symbol : "");
       };
       const stackBytes = core.readRam(cpu.sp, 16);
@@ -661,7 +673,7 @@ export function createRomTestRecorderUi({
       breakpoint.addEventListener("click", () => {
         if (!core) return;
         core.setExecuteBreakpoint(symbol.address);
-        activeBreakpoints.set(symbol.address, { label: symbol.name });
+        activeBreakpoints.set(symbol.address, { label: symbol.name, bank: symbol.bank ?? null });
         renderBreakpointList();
         setRecorderStatus(`Execute breakpoint added at ${symbol.name} (${formatHex(symbol.address)}).`);
       });
@@ -682,7 +694,7 @@ export function createRomTestRecorderUi({
       const sourceLabel = sourceMembers.length
         ? `source ${sourceMembers.map((member) => `line ${member.line}${member.condition ? ` when ${member.condition}` : ""}`).join(", ")}${sourceMembers.length > 1 ? " (shared address)" : ""}`
         : `${info.label}${info.condition ? `  when ${info.condition}` : ""}`;
-      text.textContent = `${formatHex(address)}  ${sourceLabel}`;
+      text.textContent = `${formatBankAddress(address, info.bank)}  ${sourceLabel}`;
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "rom-recorder__compact-action";
@@ -1295,7 +1307,8 @@ export function createRomTestRecorderUi({
       const candidates = Array.isArray(breakpoint?.sourceMembers)
         ? breakpoint.sourceMembers
         : [breakpoint].filter(Boolean);
-      for (const candidate of candidates) {
+      const activeBank = currentLogicalBank(result.pc);
+      for (const candidate of candidates.filter((entry) => breakpointMatchesBank(entry, activeBank))) {
         if (!candidate.condition) {
           matchedSourceMember = candidate;
           break;
@@ -1587,10 +1600,13 @@ export function createRomTestRecorderUi({
     unresolvedSourceBreakpoints = resolved.unresolved;
     for (const group of resolved.groups) {
       core.setExecuteBreakpoint(group.address);
+      const existing = activeBreakpoints.get(group.address);
+      const existingMembers = Array.isArray(existing?.sourceMembers) ? existing.sourceMembers : [];
+      const sourceMembers = [...existingMembers, ...group.members];
       activeBreakpoints.set(group.address, {
-        label: `source line ${group.members[0].line}`,
-        sourceLine: group.members[0].line,
-        sourceMembers: group.members,
+        label: `source line ${sourceMembers[0].line}`,
+        sourceLine: sourceMembers[0].line,
+        sourceMembers,
         sourceMarker: true
       });
     }
@@ -2022,9 +2038,10 @@ export function createRomTestRecorderUi({
         const condition = field("breakpointCondition").value.trim();
         const valueType = field("breakpointValueType").value || "auto";
         if (condition) parseBreakpointCondition(condition);
-        const address = resolveSymbolOrAddress(input, symbols);
+        const resolved = resolveSymbolReference(input, symbols);
+        const address = resolved.address;
         core.setExecuteBreakpoint(address);
-        activeBreakpoints.set(address, { label: input || formatHex(address), condition, valueType });
+        activeBreakpoints.set(address, { label: input || formatHex(address), bank: resolved.bank ?? null, condition, valueType });
         renderBreakpointList();
         setRecorderStatus(`Execute breakpoint added at ${formatHex(address)}${condition ? ` when ${condition} (${valueType})` : ""}.`);
       } catch (error) { setRecorderStatus(error.message || String(error)); }

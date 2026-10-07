@@ -4,9 +4,10 @@
 
 MegaCart support now has a target descriptor, memory policy, deterministic
 image builder, public `bank rom` / `bank select` syntax, and GearColeco runtime
-tests for compact 64 KB and standard 128 KB images. Full bank-aware Amy linking
-and debugging remain the architectural work; bank-local project outputs are
-currently ASM or binary assets.
+tests for compact 64 KB and standard 128 KB images. Bank-qualified link maps and
+execution breakpoints are implemented; arbitrary cross-bank Amy linking remains
+architectural work, so bank-local project outputs are currently ASM or binary
+assets.
 
 The first linker foundation is now implemented as a bank-qualified link map.
 It records logical bank, physical ROM bank, CPU address, file offset, capacity,
@@ -50,6 +51,10 @@ usage, and qualified symbols without changing the emitted cartridge image.
 - `studio/core/romDebuggerModel.js` now preserves `bank:address` symbol input,
   resolves `bank:2:Symbol` and `2:$C000`, rejects ambiguous unqualified names,
   and keeps source breakpoints at the same address separated by bank.
+- The bundled GearColeco WASM bridge exports the currently selected physical
+  MegaCart bank. ROM Test & Debug converts it to Amy's logical-bank convention,
+  shows bank-qualified execution addresses and symbols, and filters coincident
+  16-bit execute breakpoints by the active bank.
 - `docs/research/mario-brothers-2009-mapper-analysis-2026-10-02.md` records a
   64 KB production ROM with a fixed-bank `55 AA` header and MegaCart mapper
   reads. It contains no identified SGM I/O.
@@ -58,12 +63,11 @@ usage, and qualified symbols without changing the emitted cartridge image.
 
 Amy's assembler understands a logical `ORG`, but it has no independent file
 origin such as CVBasic's emitted `FORG`. Reusing `ORG $C000` is interpreted as
-a backward/BSS transition instead of a new 16 KB ROM page. Symbols, source
-maps, breakpoints, and profiler ranges currently identify code by a 16-bit
-address only. The project builder can safely assemble a MegaCart image from one
-fixed output and bank-local ASM/binary outputs. It cannot yet link arbitrary
-Amy procedures across banks or represent bank-qualified source-map and
-breakpoint addresses.
+a backward/BSS transition instead of a new 16 KB ROM page. Profiler samples,
+traces, checkpoints, and development routes still persist a 16-bit address
+without a bank field. The project builder can safely assemble a MegaCart image
+from one fixed output and bank-local ASM/binary outputs. It cannot yet link
+arbitrary Amy procedures across banks.
 
 ## Required Foundation
 
@@ -78,10 +82,9 @@ breakpoint addresses.
    compiler-generated sequences.
 7. Teach optimizer symbol analysis not to merge or reorder across bank
    boundaries.
-8. Teach ROM Test & Debug to identify execution as `(bank, address)` and read
-   the active MegaCart bank. The JavaScript model is bank-aware; the bundled
-   GearColeco WASM bridge still needs an active-bank export before the UI may
-   safely install bank-conditional execution breakpoints.
+8. Extend the implemented `(bank, address)` debugger model from symbols and
+   execution breakpoints to profiler samples, traces, checkpoints, and saved
+   development routes.
 9. Package exact 128/256/512/1,024 KB images with deterministic fill bytes.
 
 ## Mandatory Capacity Diagnostics

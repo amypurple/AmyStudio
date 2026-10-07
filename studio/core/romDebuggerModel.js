@@ -9,6 +9,10 @@ export function formatBankAddress(address, bank = null) {
   return bank == null ? formatHex(address) : `${Number(bank)}:${formatHex(address)}`;
 }
 
+export function breakpointMatchesBank(breakpoint, activeBank) {
+  return breakpoint?.bank == null || (activeBank != null && breakpoint.bank === Number(activeBank));
+}
+
 export function parseAmySymbols(text) {
   const symbols = [];
   const seen = new Set();
@@ -281,6 +285,7 @@ export function resolveAmySourceBreakpoints(configured, markers) {
         groupsByAddress.set(groupKey, group);
       }
       group.members.push({
+        ...(marker.bank == null ? {} : { bank: marker.bank }),
         line: breakpoint.line,
         instance: marker.instance,
         condition: breakpoint.condition || "",

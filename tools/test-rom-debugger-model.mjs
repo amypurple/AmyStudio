@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   annotateOverlaySymbols,
+  breakpointMatchesBank,
   chooseAmySourceMarker,
   classifyAddress,
   decodeVdpRegisters,
@@ -85,6 +86,10 @@ assert.equal(findNearestSymbol(0xC012, bankedSymbols, 2), "BankTwoOnly+$02");
 assert.equal(formatBankAddress(0xC010, 2), "2:$C010");
 assert.equal(formatBankAddress(0x8123), "$8123");
 assert.equal(filterSymbols(bankedSymbols, "2:$c010")[0].name, "BankTwoOnly");
+assert.equal(breakpointMatchesBank({ bank: 2 }, 2), true);
+assert.equal(breakpointMatchesBank({ bank: 2 }, 1), false);
+assert.equal(breakpointMatchesBank({ bank: 2 }, null), false);
+assert.equal(breakpointMatchesBank({ label: "ordinary" }, 2), true);
 assert.throws(() => resolveSymbolOrAddress("SharedData", bankedSymbols), /Ambiguous symbol/);
 const bankedMarkers = listAmySourceMarkers(parseAmySymbols(`
 01:C000 AMY_SOURCE_LINE_20

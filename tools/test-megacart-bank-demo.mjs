@@ -20,6 +20,7 @@ for (const sizeKb of [64, 128]) {
   assert.equal(core.readRam(0x7001, 1)[0], 0x21, "bank 2 code path did not execute");
   assert.equal(String.fromCharCode(...core.readVram(0x1928, 16)), "DATA FROM BANK 1");
   assert.equal(String.fromCharCode(...core.readVram(0x1968, 16)), "DATA FROM BANK 2");
+  assert.equal(core.getRomBank(), 1, "logical bank 2 should leave physical MegaCart bank 1 selected");
   console.log(`MegaCart ${sizeKb}K runtime PASS: fixed code selected and read two independent 16 KB banks.`);
  } finally {
    core.destroy();

@@ -19,7 +19,7 @@ const core = await GearcolecoTestCore.create({ seed: 0x170 });
 try {
   for (const method of ["loadAdamFirmware", "startAdam", "getMachine", "loadAdamMedia",
     "ejectAdamMedia", "setAdamKey", "getAdamMioc", "getAdamNetSummary",
-    "setVideoChip", "getVideoChip"]) {
+    "setVideoChip", "getVideoChip", "getRomBank"]) {
     assert.equal(typeof core[method], "function", `${method} is unavailable`);
   }
 
@@ -28,6 +28,7 @@ try {
   core.setVideoChip("tms9918a");
   assert.equal(core.getVideoChip(), GEARCOLECO_VIDEO_CHIP.TMS9918A);
   assert.throws(() => core.setVideoChip("unknown"), /Unknown video chip/);
+  assert.equal(core.getRomBank(), 0, "standard mapper should expose bank zero");
   console.log("GearColeco 1.7 platform capabilities: PASS");
 } finally {
   core.destroy();
