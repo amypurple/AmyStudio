@@ -188,6 +188,7 @@ export class GearcolecoTestCore {
       if (this.module._gcw_profile_begin(
         target.start >>> 0,
         target.end >>> 0,
+        target.bank == null ? -1 : target.bank | 0,
         entrySp & 0xFFFF,
         returnAddress & 0xFFFF,
         pointer,

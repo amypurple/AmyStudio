@@ -21,6 +21,7 @@ import { replayRomTestCase } from "./romTestCaseRunner.js";
 import {
   annotateOverlaySymbols,
   breakpointMatchesBank,
+  mergeBreakpointCandidates,
   chooseAmySourceMarker,
   classifyAddress,
   decodeVdpRegisters,
@@ -675,7 +676,10 @@ export function createRomTestRecorderUi({
       breakpoint.addEventListener("click", () => {
         if (!core) return;
         core.setExecuteBreakpoint(symbol.address);
-        activeBreakpoints.set(symbol.address, { label: symbol.name, bank: symbol.bank ?? null });
+        activeBreakpoints.set(symbol.address, mergeBreakpointCandidates(
+          activeBreakpoints.get(symbol.address),
+          { label: symbol.name, bank: symbol.bank ?? null }
+        ));
         renderBreakpointList();
         setRecorderStatus(`Execute breakpoint added at ${symbol.name} (${formatHex(symbol.address)}).`);
       });
@@ -1157,7 +1161,9 @@ export function createRomTestRecorderUi({
       return;
     }
     const exitAddresses = [...new Set(symbols
-      .filter((symbol) => /^AMY_UPROC_/i.test(symbol.name) && symbol.address !== request.target.start)
+      .filter((symbol) => /^AMY_UPROC_/i.test(symbol.name)
+        && symbol.address !== request.target.start
+        && (request.target.bank == null || symbol.bank === request.target.bank))
       .map((symbol) => symbol.address))];
     core.beginRoutineProfile({
       target: request.target,
@@ -2049,7 +2055,10 @@ export function createRomTestRecorderUi({
         const resolved = resolveSymbolReference(input, symbols);
         const address = resolved.address;
         core.setExecuteBreakpoint(address);
-        activeBreakpoints.set(address, { label: input || formatHex(address), bank: resolved.bank ?? null, condition, valueType });
+        activeBreakpoints.set(address, mergeBreakpointCandidates(
+          activeBreakpoints.get(address),
+          { label: input || formatHex(address), bank: resolved.bank ?? null, condition, valueType }
+        ));
         renderBreakpointList();
         setRecorderStatus(`Execute breakpoint added at ${formatHex(address)}${condition ? ` when ${condition} (${valueType})` : ""}.`);
       } catch (error) { setRecorderStatus(error.message || String(error)); }

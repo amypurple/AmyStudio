@@ -5,11 +5,14 @@ It does not use undocumented EmulatorJS runtime objects.
 
 ## Toolchain
 
-The reproducible build uses Emscripten 4.0.10. Install that SDK under
-`%TEMP%\amy-studio-emsdk` or pass another root:
+The reproducible build uses Emscripten 4.0.10 and GearColeco 1.7.0 sources.
+Install the SDK under `%TEMP%\amy-studio-emsdk`; place a GearColeco source
+checkout under `studio/vendor/Gearcoleco-main` or pass its path explicitly:
 
 ```powershell
-pwsh tools/build-gearcoleco-wasm.ps1 -EmsdkRoot C:\path\to\emsdk
+pwsh tools/build-gearcoleco-wasm.ps1 `
+  -EmsdkRoot C:\path\to\emsdk `
+  -GearRoot C:\path\to\Gearcoleco-1.7.0
 ```
 
 Generated files are written to:

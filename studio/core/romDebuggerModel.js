@@ -13,6 +13,26 @@ export function breakpointMatchesBank(breakpoint, activeBank) {
   return breakpoint?.bank == null || (activeBank != null && breakpoint.bank === Number(activeBank));
 }
 
+export function mergeBreakpointCandidates(existing, candidate) {
+  const members = [
+    ...(Array.isArray(existing?.sourceMembers) ? existing.sourceMembers : existing ? [existing] : []),
+    ...(Array.isArray(candidate?.sourceMembers) ? candidate.sourceMembers : candidate ? [candidate] : [])
+  ];
+  const unique = [];
+  const seen = new Set();
+  for (const member of members) {
+    const key = `${member.bank ?? "*"}:${member.line ?? ""}:${member.label ?? ""}:${member.condition ?? ""}:${member.valueType ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(member);
+  }
+  if (unique.length <= 1) return unique[0] || null;
+  return {
+    label: unique.map((member) => member.label || (member.line ? `source line ${member.line}` : "breakpoint")).join(" / "),
+    sourceMembers: unique
+  };
+}
+
 export function parseAmySymbols(text) {
   const symbols = [];
   const seen = new Set();

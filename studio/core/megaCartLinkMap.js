@@ -159,3 +159,19 @@ export function resolveMegaCartExport(linkMap, name) {
   const wanted = String(name || "").trim().toLowerCase();
   return (linkMap?.exports || []).find((entry) => entry.name.toLowerCase() === wanted || entry.qualifiedName.toLowerCase() === wanted) || null;
 }
+
+export function formatMegaCartDebuggerSymbols(baseSymbolsText, linkMap) {
+  const lines = String(baseSymbolsText || "").trimEnd().split(/\r?\n/).filter(Boolean);
+  const seen = new Set(lines.map((line) => line.trim().toLowerCase()));
+  for (const symbol of linkMap?.symbols || []) {
+    const bank = Number(symbol.bank);
+    const address = Number(symbol.address);
+    if (!Number.isInteger(bank) || bank < 0 || bank > 0xFF || !Number.isInteger(address)) continue;
+    const line = `${bank.toString(16).toUpperCase().padStart(2, "0")}:${(address & 0xFFFF).toString(16).toUpperCase().padStart(4, "0")} ${symbol.name}`;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(line);
+  }
+  return lines.length ? `${lines.join("\n")}\n` : "";
+}

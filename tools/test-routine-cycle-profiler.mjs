@@ -33,6 +33,17 @@ assert.deepEqual(resolveProfileTarget(bankedSymbols, "bank:2:Draw"), {
   end: 0xC100
 });
 
+const bankedSession = createRoutineProfileSession({
+  target: resolveProfileTarget(bankedSymbols, "bank:2:Draw"),
+  entrySp: 0x7000,
+  returnAddress: 0x9000,
+  startCycles: 0
+});
+bankedSession.record({ pc: 0xC010, pcAfter: 0xC011, bank: 1, spBefore: 0x7000, spAfter: 0x7000, cyclesBefore: 0, cyclesAfter: 10 });
+bankedSession.record({ pc: 0xC010, pcAfter: 0xC011, bank: 2, spBefore: 0x7000, spAfter: 0x7000, cyclesBefore: 10, cyclesAfter: 22 });
+assert.equal(bankedSession.result().inclusiveCycles, 22);
+assert.equal(bankedSession.result().inRangeCycles, 12, "same logical address in another bank must not count as in-range");
+
 const session = createRoutineProfileSession({
   target,
   entrySp: 0x7FFE,

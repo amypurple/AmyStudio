@@ -69,7 +69,7 @@ export function createRoutineProfileSession({
     get state() {
       return { ...state, interruptStack: state.interruptStack.map((entry) => ({ ...entry })) };
     },
-    record({ pc, pcAfter, spBefore, spAfter, cyclesBefore, cyclesAfter, interruptType = 0 }) {
+    record({ pc, pcAfter, spBefore, spAfter, cyclesBefore, cyclesAfter, interruptType = 0, bank = null }) {
       if (state.complete) return this.result();
       const before = Number(cyclesBefore);
       const after = Number(cyclesAfter);
@@ -82,7 +82,8 @@ export function createRoutineProfileSession({
       const nextSp = spAfter & 0xFFFF;
       state.instructions += 1;
       state.inclusiveCycles += delta;
-      if (address >= target.start && address < target.end) state.inRangeCycles += delta;
+      const bankMatches = target.bank == null || (bank != null && Number(bank) === Number(target.bank));
+      if (bankMatches && address >= target.start && address < target.end) state.inRangeCycles += delta;
 
       if (interruptType === 1 || interruptType === 2) {
         state.interruptStack.push({

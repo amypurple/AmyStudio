@@ -61,7 +61,8 @@ Exit criteria:
 
 ## Milestone 3 - Bank-aware linker
 
-Status: core linker and runtime path implemented; bank-aware debugger identity remains incomplete.
+Status: complete. The linker, runtime, debugger, trace, breakpoint, rewind, and
+native profiler paths preserve `(bank, address)` identity.
 
 - Represent file offsets separately from Z80 logical addresses.
 - Qualify sections and symbols by bank.
@@ -76,6 +77,15 @@ Exit criteria:
 - Two banks may use the same logical address without symbol collision.
 - Cross-bank calls restore the previous bank and preserve the documented ABI.
 - 64 KB through 1 MB MegaCart runtime tests pass.
+
+Validated evidence:
+
+- Two exports at `$C000` in different banks remain distinct in symbols,
+  source maps, and simultaneous breakpoint candidates.
+- GearColeco stops in the bank 2 Amy procedure and the native cycle profiler
+  attributes only bank 2 instructions to that procedure.
+- Runtime fixtures pass at 64, 128, 256, 512, and 1,024 KB while selecting two
+  independent switchable banks and returning safely to fixed code.
 
 ## Milestone 4 - Incremental multi-file builds
 

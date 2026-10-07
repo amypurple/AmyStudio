@@ -13,6 +13,7 @@ import {
   listAmyDebugBreakpoints,
   listAmyProcedureSourceMarkers,
   listAmySourceMarkers,
+  mergeBreakpointCandidates,
   parseAmySymbols,
   resolveAmySourceBreakpoints,
   resolveSymbolReference,
@@ -90,6 +91,12 @@ assert.equal(breakpointMatchesBank({ bank: 2 }, 2), true);
 assert.equal(breakpointMatchesBank({ bank: 2 }, 1), false);
 assert.equal(breakpointMatchesBank({ bank: 2 }, null), false);
 assert.equal(breakpointMatchesBank({ label: "ordinary" }, 2), true);
+const sharedAddressBreakpoints = mergeBreakpointCandidates(
+  { label: "bank:1:SharedData", bank: 1 },
+  { label: "bank:2:SharedData", bank: 2 }
+);
+assert.deepEqual(sharedAddressBreakpoints.sourceMembers.map(({ bank }) => bank), [1, 2]);
+assert.equal(sharedAddressBreakpoints.sourceMembers.filter((entry) => breakpointMatchesBank(entry, 2))[0].label, "bank:2:SharedData");
 assert.throws(() => resolveSymbolOrAddress("SharedData", bankedSymbols), /Ambiguous symbol/);
 const bankedMarkers = listAmySourceMarkers(parseAmySymbols(`
 01:C000 AMY_SOURCE_LINE_20

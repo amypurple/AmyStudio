@@ -8,7 +8,7 @@ import { GearcolecoTestCore } from "../studio/core/gearcolecoTestCore.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 await import("./build-megacart-bank-demo.mjs");
 const firmware = process.env.AMY_COLECO_BIOS || path.join(root, "studio", "bios", "colecovision.rom");
-for (const sizeKb of [64, 128]) {
+for (const sizeKb of [64, 128, 256, 512, 1024]) {
  const rom = fs.readFileSync(path.join(root, "build", "megacart-bank-demo", `megacart-bank-demo-${sizeKb}k.rom`));
  const core = await GearcolecoTestCore.create({ seed: 0x4d43 + sizeKb });
  try {

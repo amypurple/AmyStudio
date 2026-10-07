@@ -39,8 +39,8 @@ usage, and qualified symbols without changing the emitted cartridge image.
   invalid headers, unsupported sizes, and bank overflow.
 - `tools/test-megacart-image.mjs` verifies placement, fill bytes, selection
   addresses, limits, and fail-closed diagnostics.
-- `tools/test-megacart-bank-demo.mjs` executes 64 KB and 128 KB images in
-  GearColeco and verifies two independently selected banks.
+- `tools/test-megacart-bank-demo.mjs` executes 64, 128, 256, 512, and 1,024 KB
+  images in GearColeco and verifies two independently selected banks.
 - `studio/core/megaCartLinkMap.js` separates logical addresses from physical
   ROM offsets and permits the same symbol address in independent bank
   namespaces. It rejects duplicate local symbols, mapper-area symbols, invalid
@@ -152,6 +152,6 @@ Before designing final Amy syntax, build a development-only 128 KB fixture:
 7. bank-aware breakpoint and source-map verification.
 
 This gate now passes for fixed startup, explicit bank selection, exported
-no-argument procedures, and exported compressed or raw data written directly to
-VRAM. Automatic bank selection remains limited to these operations; hidden
+no-argument procedures, and exported compressed or raw data written directly
+to VRAM. Automatic bank selection remains limited to these operations; hidden
 switching around arbitrary code is deliberately unsupported.

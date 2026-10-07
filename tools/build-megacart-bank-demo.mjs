@@ -13,7 +13,7 @@ fs.mkdirSync(output, { recursive: true });
 const fixed = await assemble("megacart-bank-demo-fixed.asm");
 const bank1 = await assemble("megacart-bank-demo-bank1.asm");
 const bank2 = await assemble("megacart-bank-demo-bank2.asm");
-for (const sizeKb of [64, 128]) {
+for (const sizeKb of [64, 128, 256, 512, 1024]) {
   const { image, layout } = buildMegaCartImage({
     sizeKb,
     fixedBank: fixed,

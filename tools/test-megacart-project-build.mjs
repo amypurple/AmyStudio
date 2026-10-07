@@ -82,11 +82,13 @@ assert.equal(built.linkMap.exports[2].name, "Bank2Compressed");
 
 assert.throws(() => buildMegaCartImportTrampolines({
   imports: [{ bank: 2, name: "MarkBankCall", kind: "data", operation: "decompress-vram", codec: "mdkrle", trampolineLabel: "BAD_DATA" }],
-  currentBankLabel: "AMY_MEGACART_CURRENT_BANK", linkMap: built.linkMap
+  currentBankLabel: "AMY_MEGACART_CURRENT_BANK",
+  linkMap: built.linkMap
 }), /must resolve to Amy data/i);
 assert.throws(() => buildMegaCartImportTrampolines({
   imports: [{ bank: 2, name: "Bank2Compressed", kind: "procedure", trampolineLabel: "BAD_CALL" }],
-  currentBankLabel: "AMY_MEGACART_CURRENT_BANK", linkMap: built.linkMap
+  currentBankLabel: "AMY_MEGACART_CURRENT_BANK",
+  linkMap: built.linkMap
 }), /must resolve to an Amy sub procedure/i);
 
 const firmware = process.env.AMY_COLECO_BIOS || path.join(root, "studio", "bios", "colecovision.rom");
@@ -95,6 +97,32 @@ try {
   core.loadBios(fs.readFileSync(firmware));
   core.loadRom(built.image);
   core.reset();
+  const markBankCall = built.linkMap.exports.find((entry) => entry.name === "MarkBankCall");
+  const bankTwoSymbols = built.linkMap.symbols
+    .filter((entry) => entry.bank === markBankCall.bank && entry.address > markBankCall.address)
+    .sort((left, right) => left.address - right.address);
+  core.setExecuteBreakpoint(markBankCall.address);
+  let stoppedAtBankCall = false;
+  for (let frame = 0; frame < 30 && !stoppedAtBankCall; frame++) {
+    const run = core.runFrame();
+    stoppedAtBankCall = run.breakpointHit && run.pc === markBankCall.address && core.getRomBank() + 1 === markBankCall.bank;
+  }
+  assert.equal(stoppedAtBankCall, true, "bank 2 Amy procedure breakpoint must preserve bank identity");
+  core.clearExecuteBreakpoint(markBankCall.address);
+  const entrySp = core.getSp();
+  const returnBytes = core.readRam(entrySp, 2);
+  core.beginRoutineProfile({
+    target: {
+      bank: markBankCall.bank,
+      start: markBankCall.address,
+      end: bankTwoSymbols[0]?.address || markBankCall.address + 16
+    },
+    entrySp,
+    returnAddress: returnBytes[0] | (returnBytes[1] << 8)
+  });
+  const profile = core.runRoutineProfileBatch(1000);
+  assert.equal(profile.complete, true);
+  assert.ok(profile.inRangeCycles > 0, "native profiler must attribute bank 2 procedure cycles to bank 2");
   for (let frame = 0; frame < 180; frame++) core.runFrame();
   assert.equal(String.fromCharCode(...core.readVram(0x1928, 16)), "DATA FROM BANK 1");
   assert.equal(String.fromCharCode(...core.readVram(0x1968, 16)), "DATA FROM BANK 2");
@@ -106,7 +134,7 @@ try {
 } finally {
   core.destroy();
 }
-console.log("MegaCart project build: PASS (bank-qualified map, manifest outputs, packaging, and GearColeco switching)");
+console.log("MegaCart project build: PASS (bank-qualified map/debugger/profiler, packaging, and GearColeco switching)");
 
 async function assemble(source, filename) {
   const result = await assembleAmysCVAssembly({ [filename]: source }, filename, {

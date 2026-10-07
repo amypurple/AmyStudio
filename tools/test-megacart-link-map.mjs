@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { buildMegaCartLinkMap, resolveMegaCartExport, resolveMegaCartSymbol } from "../studio/core/megaCartLinkMap.js";
+import { buildMegaCartLinkMap, formatMegaCartDebuggerSymbols, resolveMegaCartExport, resolveMegaCartSymbol } from "../studio/core/megaCartLinkMap.js";
 import { MEGACART_SWITCHABLE_BYTES } from "../studio/core/megaCartImage.js";
 
 const linkMap = buildMegaCartLinkMap({
@@ -67,4 +67,10 @@ assert.throws(() => buildMegaCartLinkMap({
   ]
 }), /Duplicate MegaCart export/);
 
-console.log("MegaCart link map: PASS (bank-qualified symbols and exports, physical offsets, exact capacity, fail-closed diagnostics)");
+const debuggerSymbols = formatMegaCartDebuggerSymbols("00:8000 Start\n00:7000 WorkRam\n", linkMap);
+assert.match(debuggerSymbols, /^00:8000 Start$/m);
+assert.match(debuggerSymbols, /^01:C000 Shared$/m);
+assert.match(debuggerSymbols, /^02:C000 Shared$/m);
+assert.equal((debuggerSymbols.match(/^00:8000 Start$/gm) || []).length, 1);
+
+console.log("MegaCart link map: PASS (bank-qualified symbols/debug output, physical offsets, exact capacity, fail-closed diagnostics)");

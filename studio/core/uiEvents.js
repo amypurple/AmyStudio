@@ -5,6 +5,7 @@ import { buildAdamBootDataPack, buildAdamBootDisk, buildAdamExpansionDataPack, b
 import { projectFileBytes } from "./utils/projectFiles.js";
 import { buildMegaCartProject } from "./megaCartProjectBuild.js?v=20260929-project-build1";
 import { buildMegaCartImportTrampolines } from "./megaCartTrampolines.js?v=20261006-bank-imports1";
+import { formatMegaCartDebuggerSymbols } from "./megaCartLinkMap.js?v=20261007-bank-debug-symbols1";
 import { resolveAmyBuildContext } from "./projectTargets.js";
 
 export const PROJECT_FILE_PATTERN = /(?:\.amy)?\.json(?:\.gz)?$/i;
@@ -969,7 +970,9 @@ export function bindStudioRuntimeEvents(ctx) {
       }
       let compiledRom = megaCartBuild?.image || result.binary;
       const compiledMemoryMap = result.memoryMap || "";
-      const compiledSymbols = result.symbolsText || "";
+      const compiledSymbols = megaCartBuild
+        ? formatMegaCartDebuggerSymbols(result.symbolsText || "", megaCartBuild.linkMap)
+        : result.symbolsText || "";
       const compiledListing = result.listing || "";
       let megaCartNote = "";
       if (megaCartBuild) {
