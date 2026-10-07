@@ -28,15 +28,82 @@ function normalizedAssembly(result, logicalStart, logicalEnd) {
   return { bytes, symbols, sourceMap: result?.sourceDebugMap || result?.sourceMap || null };
 }
 
-export async function buildMegaCartProject({ project, manifest, fixedBank, fixedSymbols = [], fixedSourceMap = null, compileAsm, compileAmyBank = null, compileFixed = null }) {
+function hashByte(hash, value) {
+  return BigInt.asUintN(64, (hash ^ BigInt(value & 0xFF)) * 0x100000001B3n);
+}
+
+function hashText(hash, value) {
+  const bytes = new TextEncoder().encode(String(value ?? ""));
+  for (const byte of bytes) hash = hashByte(hash, byte);
+  return hashByte(hash, 0);
+}
+
+export function projectFileContentFingerprint(entry) {
+  let hash = 0xCBF29CE484222325n;
+  for (const byte of projectFileBytes(entry)) hash = hashByte(hash, byte);
+  return hash.toString(16).padStart(16, "0");
+}
+
+export function megaCartOutputFingerprint({ output, project, sizeKb, buildSignature = "" }) {
+  let hash = 0xCBF29CE484222325n;
+  hash = hashText(hash, sizeKb);
+  hash = hashText(hash, buildSignature);
+  hash = hashText(hash, JSON.stringify({
+    name: output.name || "",
+    type: output.type || "",
+    bank: Number(output.bank),
+    exports: Array.isArray(output.exports) ? output.exports : [],
+    sources: (output.sources || []).map((source) => sourceDescriptor(source))
+  }));
+  for (const rawSource of output.sources || []) {
+    const source = sourceDescriptor(rawSource);
+    const file = findProjectFile(project, source.path);
+    hash = hashText(hash, normalizedPath(source.path).toLowerCase());
+    hash = hashText(hash, source.kind || "");
+    if (!file) {
+      hash = hashText(hash, "missing");
+      continue;
+    }
+    hash = hashText(hash, projectFileContentFingerprint(file));
+    hash = hashByte(hash, 0);
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+function outputCacheKey(output) {
+  return `${Number(output.bank)}:${String(output.name || "").toLowerCase()}`;
+}
+
+export async function buildMegaCartProject({
+  project,
+  manifest,
+  fixedBank,
+  fixedSymbols = [],
+  fixedSourceMap = null,
+  compileAsm,
+  compileAmyBank = null,
+  compileFixed = null,
+  incrementalCache = null,
+  buildSignature = ""
+}) {
   if (manifest?.target?.platform !== "colecovision-megacart") return null;
   const sizeKb = Number(manifest.target.romSizeKb || project?.target?.romSizeKb || 128);
   const outputs = Array.isArray(manifest.outputs) ? manifest.outputs : [];
   const fixedOutputs = outputs.filter((output) => output.type === "fixed-bank");
   if (fixedOutputs.length !== 1) throw new Error("MegaCart project requires exactly one fixed-bank output.");
   const switchableBanks = [];
+  const rebuiltOutputs = [];
+  const reusedOutputs = [];
   for (const output of outputs.filter((entry) => entry.type === "switchable-bank")) {
     const logicalBank = Number(output.bank);
+    const cacheKey = outputCacheKey(output);
+    const fingerprint = megaCartOutputFingerprint({ output, project, sizeKb, buildSignature });
+    const cached = incrementalCache instanceof Map ? incrementalCache.get(cacheKey) : null;
+    if (cached?.fingerprint === fingerprint) {
+      switchableBanks.push(cached.bank);
+      reusedOutputs.push(output.name || `bank ${logicalBank}`);
+      continue;
+    }
     const chunks = [];
     let symbols = [];
     let sourceMap = null;
@@ -75,7 +142,7 @@ export async function buildMegaCartProject({ project, manifest, fixedBank, fixed
       bytes.set(chunk, offset);
       offset += chunk.length;
     }
-    switchableBanks.push({
+    const bank = {
       bank: logicalBank - 1,
       logicalBank,
       id: output.name || `bank ${logicalBank}`,
@@ -83,7 +150,10 @@ export async function buildMegaCartProject({ project, manifest, fixedBank, fixed
       symbols,
       exports: Array.isArray(output.exports) ? output.exports : [],
       sourceMap
-    });
+    };
+    switchableBanks.push(bank);
+    rebuiltOutputs.push(output.name || `bank ${logicalBank}`);
+    if (incrementalCache instanceof Map) incrementalCache.set(cacheKey, { fingerprint, bank });
   }
 
   const preliminaryLinkMap = buildMegaCartLinkMap({
@@ -104,5 +174,20 @@ export async function buildMegaCartProject({ project, manifest, fixedBank, fixed
     fixedBank: { bytes: normalizedFixed.bytes, symbols: resolvedFixedSymbols, sourceMap: resolvedFixedSourceMap },
     switchableBanks
   });
-  return { ...built, linkMap };
+  return {
+    ...built,
+    linkMap,
+    incremental: {
+      rebuiltOutputs: [fixedOutputs[0].name || "fixed", ...rebuiltOutputs],
+      reusedOutputs,
+      outputFingerprints: Object.fromEntries(outputs
+        .filter((output) => output.type === "switchable-bank")
+        .map((output) => [output.name || `bank ${Number(output.bank)}`, megaCartOutputFingerprint({
+          output,
+          project,
+          sizeKb,
+          buildSignature
+        })]))
+    }
+  };
 }

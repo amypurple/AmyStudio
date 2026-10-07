@@ -89,12 +89,28 @@ Validated evidence:
 
 ## Milestone 4 - Incremental multi-file builds
 
-Status: editing and project manifests exist; object reuse is not implemented.
+Status: in progress. Independent MegaCart switchable-bank outputs are cached by
+content and build configuration; fixed-bank relinking remains conservative.
 
 - Compile changed Amy and ASM sources into reusable objects.
 - Track source, generated asset, and binary dependencies.
 - Relink only affected outputs and banks.
 - Retain full rebuild as the reference correctness path.
+
+Validated so far:
+
+- An unchanged second build reuses both independent switchable banks.
+- Editing BANK1 recompiles BANK1 but reuses BANK2, then relinks the fixed bank.
+- Incremental and explicit clean builds produce byte-identical MegaCart media.
+- The FILES tree derives `MODIFIED`, `STALE`, `COMPILED`, and `FAILED` states
+  from compiled fingerprints instead of adding source-tab buttons.
+
+Remaining:
+
+- Extend dependency objects and reuse to native EOS and hybrid multi-output
+  projects without caching firmware- or media-dependent work incorrectly.
+- Persist no binary cache in project JSON until cache versioning and storage
+  limits are defined; the current cache deliberately lasts one Studio session.
 
 Exit criteria:
 

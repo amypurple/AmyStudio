@@ -97,6 +97,7 @@ export function bindStudioShellEvents({
     renderLibraryResolution: helpers.renderLibraryResolution,
     saveProjectToStorage: helpers.saveProjectToStorage,
     refreshProjectGraph: helpers.refreshProjectGraph,
+    renderProjectFiles: helpers.renderProjectFiles,
     appendCartridgeNormalizationWarning: helpers.appendCartridgeNormalizationWarning,
     getSourceCartridgeMeta: runtime.getSourceCartridgeMeta,
     getExpandedAsm: runtime.getExpandedAsm,

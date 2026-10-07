@@ -1448,6 +1448,7 @@ function bindEvents() {
         syncAutocompleteSelection,
         applyAutocomplete,
         refreshProjectGraph,
+        renderProjectFiles,
         refreshSourceCartridgeMeta,
         saveProjectToStorage,
         updateOptimizationHint,

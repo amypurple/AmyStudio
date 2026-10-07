@@ -3,7 +3,7 @@ import { previewColecoSoundEvents } from "./colecoSoundPreview.js?v=20260907-sel
 import { buildPsgSoundAsm, convertSamplesToPsgSound, psgSoundToPreviewEvents } from "./wavToPsgSound.js";
 import { buildAdamBootDataPack, buildAdamBootDisk, buildAdamExpansionDataPack, buildAdamExpansionDisk, buildAdamNativeProgramDataPack, buildAdamNativeProgramDisk } from "./adamDiskImage.js?v=20261001-native-multiblock1";
 import { projectFileBytes } from "./utils/projectFiles.js";
-import { buildMegaCartProject } from "./megaCartProjectBuild.js?v=20260929-project-build1";
+import { buildMegaCartProject, projectFileContentFingerprint } from "./megaCartProjectBuild.js?v=20261007-incremental-bank1";
 import { buildMegaCartImportTrampolines } from "./megaCartTrampolines.js?v=20261006-bank-imports1";
 import { formatMegaCartDebuggerSymbols } from "./megaCartLinkMap.js?v=20261007-bank-debug-symbols1";
 import { resolveAmyBuildContext } from "./projectTargets.js";
@@ -334,6 +334,7 @@ export function bindTopUiEvents(ctx) {
 }
 
 export function bindStudioRuntimeEvents(ctx) {
+  const megaCartIncrementalCache = new Map();
   let compiledAdamDisk = null;
   let compiledAdamExtension = ".dsk";
   const {
@@ -360,6 +361,7 @@ export function bindStudioRuntimeEvents(ctx) {
     renderLibraryResolution,
     saveProjectToStorage,
     refreshProjectGraph,
+    renderProjectFiles,
     appendCartridgeNormalizationWarning,
     getSourceCartridgeMeta,
     getExpandedAsm,
@@ -930,6 +932,8 @@ export function bindStudioRuntimeEvents(ctx) {
           project,
           manifest: buildManifest,
           fixedBank: null,
+          incrementalCache: megaCartIncrementalCache,
+          buildSignature: `megacart-bank-v1:${buildContext.memoryProfile || ""}`,
           compileFixed,
           compileAmyBank: async (source, filename, bankInfo) => {
             const bankContext = {
@@ -977,7 +981,20 @@ export function bindStudioRuntimeEvents(ctx) {
       let megaCartNote = "";
       if (megaCartBuild) {
         compiledRom = megaCartBuild.image;
-        megaCartNote = ` MegaCart ready: ${megaCartBuild.layout.sizeKb} KB, ${megaCartBuild.layout.bankCount} banks.`;
+        const buildSignature = `megacart-bank-v1:${buildContext.memoryProfile || ""}`;
+        project.incrementalBuildState = {
+          failed: false,
+          buildSignature,
+          outputFingerprints: megaCartBuild.incremental?.outputFingerprints || {},
+          fileFingerprints: Object.fromEntries((project.projectFiles || []).map((entry) => [
+            String(entry.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase().replace(/^/, "@project/"),
+            projectFileContentFingerprint(entry)
+          ]))
+        };
+        renderProjectFiles?.();
+        const reused = megaCartBuild.incremental?.reusedOutputs || [];
+        const cacheNote = reused.length ? ` Reused: ${reused.join(", ")}.` : "";
+        megaCartNote = ` MegaCart ready: ${megaCartBuild.layout.sizeKb} KB, ${megaCartBuild.layout.bankCount} banks.${cacheNote}`;
       }
       const nativeEosBuild = buildContext.platform === "adam-native-program";
       const compiledColecoHeaderInfo = nativeEosBuild ? null : inspectColecoBinary(compiledRom);
@@ -1088,6 +1105,11 @@ export function bindStudioRuntimeEvents(ctx) {
       setStatus(appendCartridgeNormalizationWarning(`Compile OK: ${compiledRom.length} bytes, ${symbols} symbols${optimizationNote}.${targetNote}${previewNote}${megaCartNote}${diskNote}${sourceMapNote}${buildTranspileWarningNote(built.res)}`, getSourceCartridgeMeta()));
       closeTopbarMenu();
     } catch (e) {
+      const failedProject = getProject();
+      if (failedProject?.target?.platform === "colecovision-megacart") {
+        failedProject.incrementalBuildState = { ...(failedProject.incrementalBuildState || {}), failed: true };
+        renderProjectFiles?.();
+      }
       setStatus(`Compile failed: ${String(e.message || e)}`);
     }
   });

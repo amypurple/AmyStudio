@@ -13,6 +13,7 @@ import { addColecoSoundToTableSource, buildColecoSoundTableSource, buildTinySoun
 import { buildColecoBiosArrangement, colecoBiosArrangementFrames, scheduleColecoBiosArrangement } from "./colecoBiosArranger.js?v=20260911-offsets";
 import { scheduleColecoMusicSong } from "./colecoMusicSong.js?v=20260912-song-timeline";
 import { initialAnimationFrameBytes } from "./graphicsEditorBuilder.js?v=20260912-guided-editor-builder";
+import { megaCartOutputFingerprint, projectFileContentFingerprint } from "./megaCartProjectBuild.js?v=20261007-incremental-bank1";
 
 export function createProjectFileUiHelpers({
   els,
@@ -5196,9 +5197,30 @@ export function createProjectFileUiHelpers({
     const outputTargets = (entry) => {
       const bare = normalizeProjectFilePath(entry.path).slice("@project/".length).toLowerCase();
       return (project.outputs || []).filter((output) => (output.sources || []).some((source) => {
-        const normalized = String(source || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase();
+        const sourcePath = typeof source === "string" ? source : source?.path;
+        const normalized = String(sourcePath || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase();
         return normalized === bare;
       })).map((output) => output.name).filter(Boolean);
+    };
+    const fileBuildState = (entry, targets) => {
+      const buildState = project.incrementalBuildState;
+      if (!buildState || !targets.length) return "";
+      if (buildState.failed) return "failed";
+      const path = normalizeProjectFilePath(entry.path).toLowerCase();
+      const compiledFileFingerprint = buildState.fileFingerprints?.[path];
+      if (compiledFileFingerprint && compiledFileFingerprint !== projectFileContentFingerprint(entry)) return "modified";
+      for (const targetName of targets) {
+        const output = (project.outputs || []).find((candidate) => candidate.name === targetName);
+        if (!output || output.type !== "switchable-bank") continue;
+        const current = megaCartOutputFingerprint({
+          output,
+          project,
+          sizeKb: Number(project.target?.romSizeKb || 128),
+          buildSignature: buildState.buildSignature || ""
+        });
+        if (buildState.outputFingerprints?.[targetName] !== current) return "stale";
+      }
+      return "compiled";
     };
     for (const entry of sortedFiles) {
       const depth = appendFolderRows(entry.path);
@@ -5220,7 +5242,9 @@ export function createProjectFileUiHelpers({
       const detectedKind = fileKindFromPath(entry.path);
       const kind = detectedKind === "voxpcm" ? detectedKind : (entry.kind || detectedKind);
       const targets = outputTargets(entry);
-      meta.textContent = `${fileRole(entry, kind)} · ${formatByteSize(projectFileBytes(entry).length)}${targets.length ? ` · → ${targets.join(", ")}` : ""}`;
+      const buildState = fileBuildState(entry, targets);
+      if (buildState) row.classList.add(`project-file--${buildState}`);
+      meta.textContent = `${fileRole(entry, kind)} · ${formatByteSize(projectFileBytes(entry).length)}${targets.length ? ` · → ${targets.join(", ")}` : ""}${buildState ? ` · ${buildState.toUpperCase()}` : ""}`;
       top.appendChild(meta);
       row.appendChild(top);
 
