@@ -4462,6 +4462,31 @@ export function transpileAmyCore(sourceText, deps) {
         megaCartSelectedBanks.add(logicalBank);
         continue;
       }
+      const bankCopyRam = line.match(/^copy\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+bank\s+(\d+)\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (bankCopyRam) {
+        if (megaCartRomSizeKb == null) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY requires BANK ROM first.` };
+        const publicName = bankCopyRam[1];
+        const logicalBank = Number(bankCopyRam[2]);
+        const countToken = bankCopyRam[3];
+        const targetName = bankCopyRam[4];
+        const bankCount = megaCartRomSizeKb / 16;
+        if (logicalBank < 1 || logicalBank >= bankCount) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        const targetInfo = getByteArrayBufferInfo(targetName, 1);
+        const targetCode = targetInfo ? emitLoadArrayAddressIntoHL(targetName, "0") : null;
+        const countCode = emitLoadCountIntoBC(countToken);
+        if (!targetInfo || !targetCode || !countCode) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY to RAM requires a byte-array destination and valid count: ${rawLine}` };
+        const constantCount = tryEvaluateConstantExpression(normalizeExpression(countToken));
+        if (Number.isInteger(constantCount) && constantCount > targetInfo.length) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY count ${constantCount} exceeds ${targetName}[${targetInfo.length}].` };
+        ensureMegaCartCurrentBank();
+        const trampolineLabel = `AMY_MEGACART_COPY_BANK_${logicalBank}_${publicName}_TO_RAM`;
+        ensureImplicitStartForExecutable();
+        body.push(...targetCode, "    ex de,hl", ...countCode, `    call ${trampolineLabel}`);
+        if (!megaCartImports.some((entry) => entry.kind === "data" && entry.operation === "copy-ram" && entry.bank === logicalBank && entry.name.toLowerCase() === publicName.toLowerCase())) {
+          megaCartImports.push({ bank: logicalBank, name: publicName, kind: "data", operation: "copy-ram", trampolineLabel });
+        }
+        megaCartSelectedBanks.add(logicalBank);
+        continue;
+      }
       const bankCall = line.match(/^call\s+bank\s+(\d+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
       if (bankCall) {
         if (megaCartRomSizeKb == null) {

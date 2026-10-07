@@ -4050,6 +4050,19 @@ VRAM copy. Amy keeps the shared copy routine in the fixed bank, loads the
 exported source address only after selecting bank 2, and restores the caller's
 bank when the transfer is complete.
 
+The destination may instead be an Amy byte array when the game needs mutable
+data in RAM:
+
+```amy
+u8 LevelBuffer[768]
+copy LevelMap from bank 2 count 768 to LevelBuffer
+```
+
+Constant counts larger than the destination are rejected. A calculated byte or
+word count is accepted under the same caller-owned bounds contract as ordinary
+Amy buffer copies. The transfer uses `LDIR` while the selected bank is visible,
+then restores the previous bank.
+
 ## Super Game Module AY sound
 
 A project that declares `target.hardware: ["sgm1"]` gains the `sgm-ay`,

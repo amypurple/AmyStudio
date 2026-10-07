@@ -63,6 +63,9 @@ usage, and qualified symbols without changing the emitted cartridge image.
   uncompressed path. The fixed bank owns the shared VRAM-copy helper; the
   generated trampoline resolves the exported data only while its bank is
   visible. Constant and calculated byte/word counts are accepted.
+- The same syntax accepts an Amy byte-array destination for bank-to-RAM level,
+  script, or table loading. Constant overflows and non-byte destinations are
+  rejected; GearColeco verifies both copied RAM bytes and mapper restoration.
 - `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
   `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
   physical offsets.

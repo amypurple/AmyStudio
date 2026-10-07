@@ -95,6 +95,21 @@ const outOfRangeCopy = transpileAmy("bank rom 64\ncopy LevelMap from bank 4 coun
 assert.equal(outOfRangeCopy.ok, false);
 assert.match(outOfRangeCopy.log, /bank 1-3/i);
 
+const bankCopyRam = transpileAmy("bank rom 128\nu8 LevelBuffer[64]\ncopy LevelMap from bank 2 count 64 to LevelBuffer");
+assert.equal(bankCopyRam.ok, true, bankCopyRam.log);
+assert.match(bankCopyRam.asmBody, /AMY_UVAR_LevelBuffer EQU \$7020[\s\S]*ld hl,\$7020/);
+assert.match(bankCopyRam.asmBody, /ex de,hl[\s\S]*ld bc,64[\s\S]*call AMY_MEGACART_COPY_BANK_2_LevelMap_TO_RAM/);
+assert.deepEqual(bankCopyRam.metadata.megaCart.imports, [{
+  bank: 2, name: "LevelMap", kind: "data", operation: "copy-ram",
+  trampolineLabel: "AMY_MEGACART_COPY_BANK_2_LevelMap_TO_RAM"
+}]);
+const bankCopyRamOverflow = transpileAmy("bank rom 128\nu8 LevelBuffer[8]\ncopy LevelMap from bank 2 count 9 to LevelBuffer");
+assert.equal(bankCopyRamOverflow.ok, false);
+assert.match(bankCopyRamOverflow.log, /count 9 exceeds LevelBuffer\[8\]/i);
+const bankCopyRamWrongType = transpileAmy("bank rom 128\nu16 LevelBuffer[8]\ncopy LevelMap from bank 2 count 8 to LevelBuffer");
+assert.equal(bankCopyRamWrongType.ok, false);
+assert.match(bankCopyRamWrongType.log, /requires a byte-array destination/i);
+
 const missingCallDeclaration = transpileAmy("call bank 2, DrawLevel");
 assert.equal(missingCallDeclaration.ok, false);
 assert.match(missingCallDeclaration.log, /requires BANK ROM/i);
