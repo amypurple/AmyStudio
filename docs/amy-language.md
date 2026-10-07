@@ -3990,7 +3990,7 @@ and real AdamLink III XMODEM send/receive, retry, cancellation, timeout, and
 in-flight save-state restoration are verified. Baud and framing configuration
 remain hardware-profile work rather than implicit behavior of `serial write`.
 
-The reserved `bank n` section boundary is not yet linkable inside one monolithic Amy source. Switchable bank sources must currently be assigned to `switchable-bank` outputs in `project.amy.json`. Amy reports an error instead of silently placing them in the fixed ROM.
+The reserved `bank n` section boundary is not yet linkable inside one monolithic Amy source. Switchable sources are assigned to `switchable-bank` outputs in `project.amy.json`. Such an output may contain ASM, binary assets, or Amy files restricted to procedures and ROM `data`; bank-local Amy rejects top-level execution, global runtime initialization, and external Amy assets. Cross-bank calls and references are not implicit and remain unsupported until explicit imports and safe trampolines are implemented.
 
 ## Super Game Module AY sound
 

@@ -915,6 +915,21 @@ export function bindStudioRuntimeEvents(ctx) {
         project,
         manifest: buildManifest,
         fixedBank: compiledRom,
+        compileAmyBank: async (source, filename, bankInfo) => {
+          const bankContext = {
+            platform: "colecovision-megacart-bank",
+            memoryProfile: buildContext.memoryProfile,
+            capabilities: ["os7", "megacart", "bank-local"],
+            romSizeKb: buildContext.romSizeKb,
+            bank: bankInfo.bank
+          };
+          const transpiled = transpileAmy(source, { buildContext: bankContext });
+          if (!transpiled.ok) throw new Error(`${filename} failed:\n${transpiled.log}`);
+          if (transpiled.assets?.length) {
+            throw new Error(`${filename} uses external Amy assets. Bank-local asset placement is not available yet; place binary assets directly in the bank output.`);
+          }
+          return `org $C000\n${transpiled.asmBody}`;
+        },
         compileAsm: async (source, filename) => {
           const assembled = await compileGeneratedAsm(source, filename, {
             optimizerEnabled: false,
@@ -922,7 +937,11 @@ export function bindStudioRuntimeEvents(ctx) {
             projectFiles: project.projectFiles || []
           });
           if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
-          return assembled.binary;
+          return {
+            bytes: assembled.binary,
+            symbols: assembled.symbols,
+            sourceDebugMap: assembled.sourceDebugMap
+          };
         }
       });
       let megaCartNote = "";

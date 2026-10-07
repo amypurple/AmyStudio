@@ -622,21 +622,29 @@ export function finalizeAmyTranspile({
     runtimeInit.unshift(`    ld hl,${resolveAddressSymbol(firstBlock)}`, `    ld (${dataCursorName}),hl`);
   }
 
-  // A function-only prefix may leave Start creation until finalization. Open it
-  // before resolving the initializer marker so global initializers cannot be lost.
-  if (!body.includes("Start:")) {
+  const bankLocalModule = buildContext?.platform === "colecovision-megacart-bank";
+  if (bankLocalModule && (body.includes("Start:") || hasRuntimeInit || runtimeInit.length)) {
+    return {
+      ok: false,
+      asmBody: "",
+      log: "MegaCart bank-local Amy files may contain procedures and ROM data, but not top-level executable statements or global runtime initialization."
+    };
+  }
+
+  // A function-only prefix may leave Start creation until finalization. Bank-local
+  // modules deliberately have no cartridge entry point or implicit startup loop.
+  if (!bankLocalModule && !body.includes("Start:")) {
     openStartProc();
   }
 
   const stackFrames = [...procFrames.entries()]
-    .filter(([, frame]) => frame.usesIxFrame || frame.size > 0)
+    .filter(([, frame]) => frame.usesIxFrame || frame.usesIxAlias || frame.size > 0)
     .sort((a, b) => b[1].insertIndex - a[1].insertIndex);
   for (const [, frame] of stackFrames) {
-    const prologue = [
-      "    push ix",
-      "    ld ix,0",
-      "    add ix,sp"
-    ];
+    const prologue = ["    push ix"];
+    if (!frame.usesIxAlias || frame.usesIxFrame || frame.size > 0) {
+      prologue.push("    ld ix,0", "    add ix,sp");
+    }
     if (frame.size > 0) {
       prologue.push(`    ld hl,-${frame.size}`);
       prologue.push("    add hl,sp");

@@ -282,7 +282,8 @@ function isIxIyDisplacementOperandText(value) {
                 this.symbolInfo = {};
                 this.pc = 0;
                 this.output = [];
-                this.firstOrg = null;                
+                this.firstOrg = null;
+                this.usesPhysicalOrigins = false;
                 this.currentPass = 0;
                 this.currentFile = '';
                 this.currentLine = 0;
@@ -622,7 +623,10 @@ function isIxIyDisplacementOperandText(value) {
                     const platformConfig = getPlatformConfig();
                     const cfg = platformConfig.packager || { mode: null };
 
-                    if (cfg.mode) {
+                    if (this.usesPhysicalOrigins) {
+                        compiledBinary = new Uint8Array(this.output);
+                        log(`Generated physical-layout binary: ${compiledBinary.length} bytes`, 'info');
+                    } else if (cfg.mode) {
                         compiledBinary = this.buildImage(cfg);
                         log(`Packaged for ${document.getElementById('target-platform').value}: ${platformConfig.description}`, 'info');
                     } else {
@@ -2407,6 +2411,7 @@ function isIxIyDisplacementOperandText(value) {
             generateCode(tokens) {
                 this.pc = 0;
                 this.output = [];
+                this.usesPhysicalOrigins = false;
                 this.lastNonTempSymbol = '';  // Reset for Pass 3
                 const shadowRegisterUsages = []; // Track shadow register usage for consolidated warning
                 let inBSSSection = false;  // Track if we're in BSS section (for label fill logic)
@@ -2483,6 +2488,18 @@ function isIxIyDisplacementOperandText(value) {
 
                         if (token instanceof Directive) {
                             switch (token.name) {
+                                case 'FORG': {
+                                    const physicalOffset = this.evaluateExpression(token.operands[0]);
+                                    if (!Number.isInteger(physicalOffset) || physicalOffset < 0) {
+                                        throw new Error(`FORG requires a non-negative physical offset, got ${physicalOffset}`);
+                                    }
+                                    if (physicalOffset < this.output.length) {
+                                        throw new Error(`FORG cannot move backward from $${this.output.length.toString(16).toUpperCase()} to $${physicalOffset.toString(16).toUpperCase()}`);
+                                    }
+                                    this.usesPhysicalOrigins = true;
+                                    while (this.output.length < physicalOffset) this.output.push(0xFF);
+                                    break;
+                                }
                                 case 'ORG':
                                     const oldPC = this.pc;
                                     const oldOutputLen = this.output.length;
@@ -3881,6 +3898,10 @@ export async function assembleAmysCVAssembly(files, mainFile = "main.asm", optio
   assembler.outputMode = options.outputMode || "binary";
   assembler.moduleName = options.moduleName || extractFilename(mainFile).replace(/\.(asm|z80|s)$/i, "").toUpperCase();
   const binary = await assembler.assemble(mainFile);
+  const memoryMap = assembler.buildMemoryMapReport();
+  const listing = assembler.generateListingFile();
+  const symbolsText = assembler.generateDebuggerSymbolFile();
+  const sourceDebugMap = assembler.buildSourceDebugMap();
   return {
     ok: !!binary,
     binary,
@@ -3889,10 +3910,10 @@ export async function assembleAmysCVAssembly(files, mainFile = "main.asm", optio
     symbolInfo: assembler.symbolInfo,
     stats: assembler.compilationStats,
     fileMap: assembler.fileMap,
-    memoryMap: assembler.buildMemoryMapReport(),
-    listing: assembler.generateListingFile(),
-    symbolsText: assembler.generateDebuggerSymbolFile(),
-    sourceDebugMap: assembler.buildSourceDebugMap(),
+    memoryMap,
+    listing,
+    symbolsText,
+    sourceDebugMap,
     optimizedAsm: assembler.optimizedSource || "",
     log: compileLog.map((entry) => `[${entry.level}] ${entry.message}`).join("\n")
   };

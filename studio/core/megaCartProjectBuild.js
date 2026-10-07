@@ -28,7 +28,7 @@ function normalizedAssembly(result, logicalStart, logicalEnd) {
   return { bytes, symbols, sourceMap: result?.sourceDebugMap || result?.sourceMap || null };
 }
 
-export async function buildMegaCartProject({ project, manifest, fixedBank, fixedSymbols = [], fixedSourceMap = null, compileAsm }) {
+export async function buildMegaCartProject({ project, manifest, fixedBank, fixedSymbols = [], fixedSourceMap = null, compileAsm, compileAmyBank = null }) {
   if (manifest?.target?.platform !== "colecovision-megacart") return null;
   const sizeKb = Number(manifest.target.romSizeKb || project?.target?.romSizeKb || 128);
   const outputs = Array.isArray(manifest.outputs) ? manifest.outputs : [];
@@ -50,9 +50,14 @@ export async function buildMegaCartProject({ project, manifest, fixedBank, fixed
       const file = findProjectFile(project, source.path);
       if (!file) throw new Error(`MegaCart ${output.name} cannot find '${source.path}'.`);
       if (source.kind === "amy") {
-        throw new Error(`MegaCart ${output.name} uses Amy source '${source.path}'. Bank-local Amy linking is not available yet; use ASM or binary assets.`);
-      }
-      if (source.kind === "asm") asmParts.push(new TextDecoder().decode(projectFileBytes(file)));
+        if (typeof compileAmyBank !== "function") {
+          throw new Error(`MegaCart ${output.name} uses Amy source '${source.path}', but no bank-local Amy compiler is available.`);
+        }
+        asmParts.push(await compileAmyBank(new TextDecoder().decode(projectFileBytes(file)), source.path, {
+          bank: logicalBank,
+          outputName: output.name || `bank${logicalBank}`
+        }));
+      } else if (source.kind === "asm") asmParts.push(new TextDecoder().decode(projectFileBytes(file)));
       else chunks.push(projectFileBytes(file));
     }
     if (asmParts.length) {

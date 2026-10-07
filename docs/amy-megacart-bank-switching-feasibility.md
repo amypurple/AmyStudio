@@ -5,9 +5,9 @@
 MegaCart support now has a target descriptor, memory policy, deterministic
 image builder, public `bank rom` / `bank select` syntax, and GearColeco runtime
 tests for compact 64 KB and standard 128 KB images. Bank-qualified link maps and
-execution breakpoints are implemented; arbitrary cross-bank Amy linking remains
-architectural work, so bank-local project outputs are currently ASM or binary
-assets.
+execution breakpoints are implemented. Switchable outputs may now compile
+bank-local Amy procedure/data modules as well as ASM and binary assets;
+arbitrary cross-bank Amy linking remains architectural work.
 
 The first linker foundation is now implemented as a bank-qualified link map.
 It records logical bank, physical ROM bank, CPU address, file offset, capacity,
@@ -74,18 +74,19 @@ usage, and qualified symbols without changing the emitted cartridge image.
 
 ## Remaining Amy Limitation
 
-Amy's assembler understands a logical `ORG`, but it has no independent file
-origin such as CVBasic's emitted `FORG`. Reusing `ORG $C000` is interpreted as
-a backward/BSS transition instead of a new 16 KB ROM page. The project builder
-can safely assemble a MegaCart image from one fixed output and bank-local
-ASM/binary outputs. It cannot yet link arbitrary Amy procedures across banks.
+AmySCVAssembly now implements independent `FORG` and `ORG` counters with
+forward `$FF` fill and backward-physical-origin rejection. The project builder
+can safely assemble one fixed output plus bank-local Amy, ASM, and binary
+outputs. A bank-local Amy file deliberately permits only procedures and ROM
+data: top-level execution, global runtime initialization, and external Amy
+assets fail closed. Calls and data references across banks still require an
+explicit bank-aware linker/trampoline design.
 
 ## Required Foundation
 
-1. Feed the implemented logical-address/physical-offset link map from real
-   assembler symbol and source-map output.
-2. Add bank-aware sections to the assembler and emitted source map.
-3. Permit repeated logical addresses in distinct bank namespaces.
+1. Preserve real assembler symbols and source maps for every bank-local output.
+2. Add explicit imports/exports between fixed and switchable outputs.
+3. Generate safe cross-bank trampolines while preserving the caller's bank.
 4. Keep fixed code, NMI handlers, mapper helpers, and shared runtime data in
    bank 0 unless a proven trampoline makes access safe.
 5. Generate bank-selection operations from cartridge size and bank number.
@@ -95,7 +96,7 @@ ASM/binary outputs. It cannot yet link arbitrary Amy procedures across banks.
    boundaries.
 8. Extend exact-resume metadata only when a persisted save-state workflow is
    introduced; current in-session rewind and recording state is bank-aware.
-9. Package exact 128/256/512/1,024 KB images with deterministic fill bytes.
+9. Continue packaging exact 64/128/256/512/1,024 KB images with deterministic fill bytes.
 
 ## Mandatory Capacity Diagnostics
 

@@ -23,17 +23,17 @@ file position and `ORG` for the logical Z80 address. Its bank footer reserves
 `$FFBF-$FFFF`; byte `$FFBF` identifies the bank and the last `$40` bytes remain
 `$FF`, allowing reads in the mapper selection range.
 
-### Required assembler foundation
+### Implemented assembler foundation
 
-AmySCVAssembly needs two independent location counters:
+AmySCVAssembly provides two independent location counters:
 
 - `ORG address`: changes the logical Z80 address used by labels and fixups.
 - `FORG offset`: advances the physical output position without changing the
   logical address and fills skipped bytes with `$FF`.
 
-The assembler must reject backward physical movement and overlapping physical
-ranges. Debug metadata must include both logical address and physical bank,
-because every switchable bank reuses `$C000-$FFFF`.
+The assembler rejects backward physical movement and fills forward gaps with
+`$FF`. MegaCart project outputs add bank-qualified debug metadata because every
+switchable bank reuses `$C000-$FFFF`.
 
 ### Amy source syntax
 
@@ -273,12 +273,13 @@ GearColeco core.
 
 ## Delivery order
 
-1. Finish and test `FORG` without changing ordinary 8/16/24/32 KB cartridges.
-2. Add a low-level 128 KB MegaCart assembly fixture and emulator regression test.
-3. Add bank-aware assembler/debug symbols and mapper inspection in DEBUG.
-4. Implement `bank rom`, `bank`, and `bank select` in Amy with strict diagnostics.
-5. Add safe banked calls, data decompression, and TinySound integration.
-6. Add MegaCart project examples and documentation, then port the validated work
+1. Completed: implement and test `FORG` without changing ordinary cartridges.
+2. Completed: add 64/128 KB MegaCart fixtures and emulator regression tests.
+3. Completed: add bank-aware debug symbols, breakpoints, traces, and mapper inspection.
+4. In progress: `bank rom` and `bank select` are public; project outputs now
+   accept restricted bank-local Amy modules, while monolithic `bank n` remains reserved.
+5. Next: add explicit imports/exports, safe banked calls, data decompression, and TinySound integration.
+6. Continue MegaCart project examples and documentation, then port validated work
    to the clean repository.
 7. Define the ADAM project manifest and media builder independently.
 8. Add native EOS file and keyboard APIs, followed by multi-file examples.
