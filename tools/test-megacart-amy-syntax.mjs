@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { transpileAmyForTest as transpileAmy } from "./lib/transpile-amy-test.mjs";
 import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compilerCore.js";
 import { getOptimizationProfile } from "../studio/core/optimization.js";
+import { generateAsm } from "../studio/core/project.js";
 
 const valid = transpileAmy([
   "bank rom 128",
@@ -43,8 +44,33 @@ assert.equal(bankCall.ok, true, bankCall.log);
 assert.match(bankCall.asmBody, /call AMY_MEGACART_CALL_BANK_2_DrawLevel/);
 assert.match(bankCall.asmBody, /AMY_MEGACART_CURRENT_BANK EQU \$[0-9A-F]{4}/);
 assert.deepEqual(bankCall.metadata.megaCart.imports, [{
-  bank: 2, name: "DrawLevel", trampolineLabel: "AMY_MEGACART_CALL_BANK_2_DrawLevel"
+  bank: 2, name: "DrawLevel", kind: "procedure", trampolineLabel: "AMY_MEGACART_CALL_BANK_2_DrawLevel"
 }]);
+
+const bankDecompress = transpileAmy("bank rom 128\ndecompress zx0 LevelPicture from bank 3 to vram.pattern + 32");
+assert.equal(bankDecompress.ok, true, bankDecompress.log);
+assert.match(bankDecompress.asmBody, /ld de,VRAM_PATTERN \+ 32/);
+assert.match(bankDecompress.asmBody, /call AMY_MEGACART_DECOMPRESS_ZX0_BANK_3_LevelPicture/);
+assert.deepEqual(bankDecompress.metadata.megaCart.imports, [{
+  bank: 3, name: "LevelPicture", kind: "data", operation: "decompress-vram", codec: "zx0",
+  trampolineLabel: "AMY_MEGACART_DECOMPRESS_ZX0_BANK_3_LevelPicture"
+}]);
+
+const missingDecompressDeclaration = transpileAmy("decompress zx0 LevelPicture from bank 3 to vram.pattern");
+assert.equal(missingDecompressDeclaration.ok, false);
+assert.match(missingDecompressDeclaration.log, /requires BANK ROM/i);
+
+const outOfRangeDecompress = transpileAmy("bank rom 64\ndecompress zx0 LevelPicture from bank 4 to vram.pattern");
+assert.equal(outOfRangeDecompress.ok, false);
+assert.match(outOfRangeDecompress.log, /bank 1-3/i);
+
+const bankDecompressAsm = generateAsm({
+  sourceText: "bank rom 128\ndecompress zx0 LevelPicture from bank 3 to vram.pattern",
+  projectName: "MegaCart banked compression selftest",
+  memoryProfile: "colecovision_legacy_sdcc",
+  selectedLibs: [], selectedBundles: [], selectedCompression: [], selectedAssets: [], projectFiles: []
+}, bankDecompress.asmBody, [], bankDecompress.metadata);
+assert.match(bankDecompressAsm, /include "src\/compression\/zx0_vram\.asm"/);
 
 const missingCallDeclaration = transpileAmy("call bank 2, DrawLevel");
 assert.equal(missingCallDeclaration.ok, false);

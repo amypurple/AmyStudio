@@ -907,6 +907,11 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
   }
+  const bankedPattern = /^\s*decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+from\s+bank\s+\d+\s+to\s+(?:vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))\s*$/gim;
+  while ((match = bankedPattern.exec(sourceText)) !== null) {
+    const codec = match[1].toLowerCase() === "rle" ? "mdkrle" : match[1].toLowerCase();
+    found.add(codecToInclude[codec]);
+  }
   const inferredAssetDecompressPattern = /^\s*decompress\s+([A-Za-z_][A-Za-z0-9_]*)\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
   while ((match = inferredAssetDecompressPattern.exec(sourceText)) !== null) {
     const codec = assetCodecByName.get(match[1].toLowerCase());

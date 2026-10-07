@@ -1408,6 +1408,15 @@ export function transpileAmyCore(sourceText, deps) {
   const megaCartSelectedBanks = new Set();
   const megaCartImports = [];
   let megaCartCurrentBankLabel = null;
+  function ensureMegaCartCurrentBank() {
+    if (megaCartCurrentBankLabel) return megaCartCurrentBankLabel;
+    megaCartCurrentBankLabel = "AMY_MEGACART_CURRENT_BANK";
+    const address = reserveRam(megaCartCurrentBankLabel, 1, "MegaCart active logical bank");
+    runtimeDeclarations.push(`${megaCartCurrentBankLabel} EQU ${formatHex16(address)}`);
+    runtimeInit.push("    ld a,1", `    ld (${megaCartCurrentBankLabel}),a`);
+    hasRuntimeInit = true;
+    return megaCartCurrentBankLabel;
+  }
   let onFrameHook = null;
   let sawExplicitRestore = false;
   let nextBoolBit = 8;
@@ -4410,6 +4419,27 @@ export function transpileAmyCore(sourceText, deps) {
         megaCartRomSizeKb = Number(bankRom[1]);
         continue;
       }
+      const bankDecompress = line.match(/^decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+bank\s+(\d+)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
+      if (bankDecompress) {
+        if (megaCartRomSizeKb == null) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS requires BANK ROM first.` };
+        const codec = bankDecompress[1].toLowerCase() === "rle" ? "mdkrle" : bankDecompress[1].toLowerCase();
+        const publicName = bankDecompress[2];
+        const logicalBank = Number(bankDecompress[3]);
+        const targetExpr = bankDecompress[4].trim();
+        const bankCount = megaCartRomSizeKb / 16;
+        if (logicalBank < 1 || logicalBank >= bankCount) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        const targetCode = emitLoadVramAddressIntoDE(targetExpr);
+        if (!targetCode) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid VRAM decompression destination: ${rawLine}` };
+        ensureMegaCartCurrentBank();
+        const trampolineLabel = `AMY_MEGACART_DECOMPRESS_${codec.toUpperCase()}_BANK_${logicalBank}_${publicName}`;
+        ensureImplicitStartForExecutable();
+        body.push(...wrapVramUploadLines([...targetCode, `    call ${trampolineLabel}`]));
+        if (!megaCartImports.some((entry) => entry.kind === "data" && entry.bank === logicalBank && entry.name.toLowerCase() === publicName.toLowerCase() && entry.codec === codec)) {
+          megaCartImports.push({ bank: logicalBank, name: publicName, kind: "data", operation: "decompress-vram", codec, trampolineLabel });
+        }
+        megaCartSelectedBanks.add(logicalBank);
+        continue;
+      }
       const bankCall = line.match(/^call\s+bank\s+(\d+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
       if (bankCall) {
         if (megaCartRomSizeKb == null) {
@@ -4421,18 +4451,12 @@ export function transpileAmyCore(sourceText, deps) {
           return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: CALL BANK must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
         }
         const publicName = bankCall[2];
-        if (!megaCartCurrentBankLabel) {
-          megaCartCurrentBankLabel = "AMY_MEGACART_CURRENT_BANK";
-          const address = reserveRam(megaCartCurrentBankLabel, 1, "MegaCart active logical bank");
-          runtimeDeclarations.push(`${megaCartCurrentBankLabel} EQU ${formatHex16(address)}`);
-          runtimeInit.push("    ld a,1", `    ld (${megaCartCurrentBankLabel}),a`);
-          hasRuntimeInit = true;
-        }
+        ensureMegaCartCurrentBank();
         const trampolineLabel = `AMY_MEGACART_CALL_BANK_${logicalBank}_${publicName}`;
         ensureImplicitStartForExecutable();
         body.push(`    call ${trampolineLabel}`);
-        if (!megaCartImports.some((entry) => entry.bank === logicalBank && entry.name.toLowerCase() === publicName.toLowerCase())) {
-          megaCartImports.push({ bank: logicalBank, name: publicName, trampolineLabel });
+        if (!megaCartImports.some((entry) => entry.kind === "procedure" && entry.bank === logicalBank && entry.name.toLowerCase() === publicName.toLowerCase())) {
+          megaCartImports.push({ bank: logicalBank, name: publicName, kind: "procedure", trampolineLabel });
         }
         megaCartSelectedBanks.add(logicalBank);
         continue;
@@ -4447,13 +4471,7 @@ export function transpileAmyCore(sourceText, deps) {
         if (logicalBank < 1 || logicalBank >= bankCount) {
           return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: BANK SELECT must be 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
         }
-        if (!megaCartCurrentBankLabel) {
-          megaCartCurrentBankLabel = "AMY_MEGACART_CURRENT_BANK";
-          const address = reserveRam(megaCartCurrentBankLabel, 1, "MegaCart active logical bank");
-          runtimeDeclarations.push(`${megaCartCurrentBankLabel} EQU ${formatHex16(address)}`);
-          runtimeInit.push("    ld a,1", `    ld (${megaCartCurrentBankLabel}),a`);
-          hasRuntimeInit = true;
-        }
+        ensureMegaCartCurrentBank();
         ensureImplicitStartForExecutable();
         body.push(`    call AMY_MEGACART_SELECT_BANK_${logicalBank}`);
         if (!megaCartSelectedBanks.has(logicalBank)) {

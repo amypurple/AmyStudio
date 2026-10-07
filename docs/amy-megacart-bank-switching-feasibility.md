@@ -54,6 +54,11 @@ usage, and qualified symbols without changing the emitted cartridge image.
   bank in one RAM byte, and restores the caller's bank after return. Mapper
   reads remain live under every optimizer profile. Parameter and function ABIs
   are deliberately not claimed yet.
+- `decompress codec Data from bank n to vram.target` resolves an explicitly
+  exported Amy data block, selects its bank, invokes the fixed bank's existing
+  direct-to-VRAM decompressor, and restores the caller's bank. Procedure/data
+  type mismatches fail closed. The GearColeco runtime test verifies the
+  decompressed VRAM bytes and restored physical bank.
 - `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
   `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
   physical offsets.
@@ -139,7 +144,7 @@ Before designing final Amy syntax, build a development-only 128 KB fixture:
 6. GearColeco verification in every optimizer profile;
 7. bank-aware breakpoint and source-map verification.
 
-Only after this passes should concise syntax such as `megacart 128K`, `bank 1`,
-`use bank 1`, or `call Routine in bank 2` be evaluated. Automatic bank
-selection is appropriate for simple asset operations; hidden switching around
-arbitrary code is not.
+This gate now passes for fixed startup, explicit bank selection, exported
+no-argument procedures, and exported compressed data written directly to
+VRAM. Automatic bank selection remains limited to these operations; hidden
+switching around arbitrary code is deliberately unsupported.

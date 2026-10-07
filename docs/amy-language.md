@@ -4023,6 +4023,21 @@ cross-bank references remain rejected until their ABI and return-value rules
 are implemented. This distinction prevents an inactive `$C000` window from
 being mistaken for a normal globally linked symbol.
 
+Compressed data can remain in a switchable bank and be expanded directly to
+VRAM without first occupying RAM:
+
+```amy
+bank rom 128
+decompress zx0 LevelPicture from bank 3 to vram.pattern
+```
+
+`LevelPicture` must be listed in bank 3's `exports`. Amy resolves it as banked
+`data`, selects bank 3, passes its address to the normal ZX0-to-VRAM routine,
+and restores the previously active bank. The same explicit codec names and
+VRAM destinations supported by ordinary `decompress` are accepted. A data
+export cannot be used by `call bank`, and a procedure export cannot be used as
+compressed data; both mistakes fail during linking.
+
 ## Super Game Module AY sound
 
 A project that declares `target.hardware: ["sgm1"]` gains the `sgm-ay`,

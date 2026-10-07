@@ -12,17 +12,18 @@ import { transpileAmyForTest } from "./lib/transpile-amy-test.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const examples = path.join(root, "studio", "examples-src");
 const fixedSource = fs.readFileSync(path.join(examples, "megacart-bank-demo-fixed.asm"), "utf8");
+const mdkrleSource = fs.readFileSync(path.join(root, "src", "compression", "mdkrle_vram.asm"), "utf8");
 const fixed = await assemble(fixedSource, "fixed.asm");
 const files = [
   textFile("banks/bank1.asm", fs.readFileSync(path.join(examples, "megacart-bank-demo-bank1.asm"), "utf8")),
-  textFile("banks/bank2.amy", "sub MarkBankCall:\n  asm {\n    ld a,$42\n    ld ($7002),a\n  }\nend sub\ndata Bank2Text bytes = 68,65,84,65,32,70,82,79,77,32,66,65,78,75,32,50")
+  textFile("banks/bank2.amy", "sub MarkBankCall:\n  asm {\n    ld a,$42\n    ld ($7002),a\n  }\nend sub\ndata Bank2Text bytes = 68,65,84,65,32,70,82,79,77,32,66,65,78,75,32,50\ndata Bank2Compressed bytes = 16,66,65,78,75,69,68,32,68,69,67,79,77,80,82,69,83,83,255")
 ];
 const manifest = {
   target: { platform: "colecovision-megacart", romSizeKb: 128 },
   outputs: [
     { name: "FIXED", type: "fixed-bank", sources: [{ path: "main.amy", kind: "amy" }] },
     { name: "BANK1", type: "switchable-bank", bank: 1, sources: [{ path: "banks/bank1.asm", kind: "asm" }] },
-    { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Text", "MarkBankCall"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
+    { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Text", "MarkBankCall", "Bank2Compressed"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
   ]
 };
 const built = await buildMegaCartProject({
@@ -45,15 +46,18 @@ const built = await buildMegaCartProject({
   compileFixed: async ({ linkMap }) => {
     const bank2Text = linkMap.exports.find((entry) => entry.name === "Bank2Text");
     const trampoline = buildMegaCartImportTrampolines({
-      imports: [{ bank: 2, name: "MarkBankCall", trampolineLabel: "AMY_MEGACART_CALL_BANK_2_MarkBankCall" }],
+      imports: [
+        { bank: 2, name: "MarkBankCall", kind: "procedure", trampolineLabel: "AMY_MEGACART_CALL_BANK_2_MarkBankCall" },
+        { bank: 2, name: "Bank2Compressed", kind: "data", operation: "decompress-vram", codec: "mdkrle", trampolineLabel: "AMY_MEGACART_DECOMPRESS_MDKRLE_BANK_2_Bank2Compressed" }
+      ],
       currentBankLabel: "AMY_MEGACART_CURRENT_BANK",
       linkMap
     });
     const source = fixedSource
       .replace("org $8000", "AMY_MEGACART_CURRENT_BANK equ $7003\norg $8000")
       .replace("ld a,($FFC1)\n    ld hl,$C000", `ld a,($FFC1)\n    ld hl,$${bank2Text.address.toString(16).toUpperCase()}`)
-      .replace("Forever:\n", "    ld a,1\n    ld (AMY_MEGACART_CURRENT_BANK),a\n    ld a,($FFC0)\n    call AMY_MEGACART_CALL_BANK_2_MarkBankCall\nForever:\n");
-    return assemble(`${source}\n${trampoline}`, "fixed-linked.asm");
+      .replace("Forever:\n", "    ld a,1\n    ld (AMY_MEGACART_CURRENT_BANK),a\n    ld a,($FFC0)\n    call AMY_MEGACART_CALL_BANK_2_MarkBankCall\n    ld de,$1A00\n    call AMY_MEGACART_DECOMPRESS_MDKRLE_BANK_2_Bank2Compressed\nForever:\n");
+    return assemble(`${source}\n${trampoline}\n${mdkrleSource}`, "fixed-linked.asm");
   }
 });
 assert.equal(built.image.length, 128 * 1024);
@@ -71,6 +75,16 @@ assert.deepEqual(built.linkMap.exports[0], {
   qualifiedName: "bank:2:Bank2Text"
 });
 assert.equal(built.linkMap.exports[1].name, "MarkBankCall");
+assert.equal(built.linkMap.exports[2].name, "Bank2Compressed");
+
+assert.throws(() => buildMegaCartImportTrampolines({
+  imports: [{ bank: 2, name: "MarkBankCall", kind: "data", operation: "decompress-vram", codec: "mdkrle", trampolineLabel: "BAD_DATA" }],
+  currentBankLabel: "AMY_MEGACART_CURRENT_BANK", linkMap: built.linkMap
+}), /must resolve to Amy data/i);
+assert.throws(() => buildMegaCartImportTrampolines({
+  imports: [{ bank: 2, name: "Bank2Compressed", kind: "procedure", trampolineLabel: "BAD_CALL" }],
+  currentBankLabel: "AMY_MEGACART_CURRENT_BANK", linkMap: built.linkMap
+}), /must resolve to an Amy sub procedure/i);
 
 const firmware = process.env.AMY_COLECO_BIOS || path.join(root, "studio", "bios", "colecovision.rom");
 const core = await GearcolecoTestCore.create({ seed: 0x4d43 });
@@ -82,6 +96,7 @@ try {
   assert.equal(String.fromCharCode(...core.readVram(0x1928, 16)), "DATA FROM BANK 1");
   assert.equal(String.fromCharCode(...core.readVram(0x1968, 16)), "DATA FROM BANK 2");
   assert.equal(core.readRam(0x7002, 1)[0], 0x42);
+  assert.equal(String.fromCharCode(...core.readVram(0x1A00, 17)), "BANKED DECOMPRESS");
   assert.equal(core.getRomBank(), 0);
 } finally {
   core.destroy();
