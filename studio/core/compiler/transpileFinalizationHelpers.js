@@ -539,6 +539,8 @@ export function finalizeAmyTranspile({
     cartridgeMeta,
     megaCartRomSizeKb,
     megaCartSelectedBanks,
+    megaCartImports,
+    megaCartCurrentBankLabel,
     onFrameHook,
     amyTimers,
     hasExternalAsmInclude,
@@ -1333,7 +1335,9 @@ export function finalizeAmyTranspile({
         megaCart: {
           romSizeKb: megaCartRomSizeKb,
           bankSizeKb: 16,
-          selectedLogicalBanks: [...megaCartSelectedBanks].sort((a, b) => a - b)
+          selectedLogicalBanks: [...megaCartSelectedBanks].sort((a, b) => a - b),
+          imports: (megaCartImports || []).map((entry) => ({ ...entry })),
+          currentBankLabel: megaCartCurrentBankLabel || null
         }
       } : {}),
       onFrameHook,

@@ -4,6 +4,7 @@ import { buildPsgSoundAsm, convertSamplesToPsgSound, psgSoundToPreviewEvents } f
 import { buildAdamBootDataPack, buildAdamBootDisk, buildAdamExpansionDataPack, buildAdamExpansionDisk, buildAdamNativeProgramDataPack, buildAdamNativeProgramDisk } from "./adamDiskImage.js?v=20261001-native-multiblock1";
 import { projectFileBytes } from "./utils/projectFiles.js";
 import { buildMegaCartProject } from "./megaCartProjectBuild.js?v=20260929-project-build1";
+import { buildMegaCartImportTrampolines } from "./megaCartTrampolines.js?v=20261006-bank-imports1";
 import { resolveAmyBuildContext } from "./projectTargets.js";
 
 export const PROJECT_FILE_PATTERN = /(?:\.amy)?\.json(?:\.gz)?$/i;
@@ -891,59 +892,85 @@ export function bindStudioRuntimeEvents(ctx) {
       } else {
         sourceMapNote = " Source debugging is unavailable for this unknown optimization profile.";
       }
-      const result = await compileGeneratedAsm(
-        asmForCompile,
-        `${project.projectName || "main"}.asm`,
-        {
+      const fixedCompileOptions = {
           optimizerEnabled: optimizationProfile.optimizerEnabled,
           optimizerConfig: optimizationProfile.optimizerConfig,
           projectFiles: project.projectFiles || [],
           amyTarget: buildContext.platform,
           memoryProfile: buildContext.memoryProfile
+      };
+      const buildManifest = projectBuildManifest(project);
+      const isMegaCartBuild = buildManifest?.target?.platform === "colecovision-megacart";
+      let result = null;
+      let megaCartBuild = null;
+      const compileFixed = async ({ linkMap } = {}) => {
+        const imports = built.res.metadata?.megaCart?.imports || [];
+        const trampolines = isMegaCartBuild
+          ? buildMegaCartImportTrampolines({
+              imports,
+              currentBankLabel: built.res.metadata?.megaCart?.currentBankLabel,
+              linkMap
+            })
+          : "";
+        result = await compileGeneratedAsm(
+          `${asmForCompile}${trampolines}`,
+          `${project.projectName || "main"}.asm`,
+          fixedCompileOptions
+        );
+        if (!result.ok) throw new Error(result.log);
+        return {
+          bytes: result.binary,
+          symbols: result.symbols,
+          sourceDebugMap: result.sourceDebugMap
+        };
+      };
+      if (isMegaCartBuild) {
+        megaCartBuild = await buildMegaCartProject({
+          project,
+          manifest: buildManifest,
+          fixedBank: null,
+          compileFixed,
+          compileAmyBank: async (source, filename, bankInfo) => {
+            const bankContext = {
+              platform: "colecovision-megacart-bank",
+              memoryProfile: buildContext.memoryProfile,
+              capabilities: ["os7", "megacart", "bank-local"],
+              romSizeKb: buildContext.romSizeKb,
+              bank: bankInfo.bank
+            };
+            const transpiled = transpileAmy(source, { buildContext: bankContext });
+            if (!transpiled.ok) throw new Error(`${filename} failed:\n${transpiled.log}`);
+            if (transpiled.assets?.length) {
+              throw new Error(`${filename} uses external Amy assets. Bank-local asset placement is not available yet; place binary assets directly in the bank output.`);
+            }
+            return `org $C000\n${transpiled.asmBody}`;
+          },
+          compileAsm: async (source, filename) => {
+            const assembled = await compileGeneratedAsm(source, filename, {
+              optimizerEnabled: false,
+              optimizerConfig: null,
+              projectFiles: project.projectFiles || []
+            });
+            if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
+            return { bytes: assembled.binary, symbols: assembled.symbols, sourceDebugMap: assembled.sourceDebugMap };
+          }
+        });
+      } else {
+        try {
+          await compileFixed();
+        } catch (error) {
+          setStatus(`Compile failed.\n${error?.message || error}`);
+          return;
         }
-      );
-      if (!result.ok) {
-        setStatus(`Compile failed.\n${result.log}`);
+      }
+      if (!result?.ok) {
+        setStatus(`Compile failed.\n${result?.log || "No fixed output was produced."}`);
         return;
       }
-      let compiledRom = result.binary;
+      let compiledRom = megaCartBuild?.image || result.binary;
       const compiledMemoryMap = result.memoryMap || "";
       const compiledSymbols = result.symbolsText || "";
       const compiledListing = result.listing || "";
-      const buildManifest = projectBuildManifest(project);
-      const megaCartBuild = await buildMegaCartProject({
-        project,
-        manifest: buildManifest,
-        fixedBank: compiledRom,
-        compileAmyBank: async (source, filename, bankInfo) => {
-          const bankContext = {
-            platform: "colecovision-megacart-bank",
-            memoryProfile: buildContext.memoryProfile,
-            capabilities: ["os7", "megacart", "bank-local"],
-            romSizeKb: buildContext.romSizeKb,
-            bank: bankInfo.bank
-          };
-          const transpiled = transpileAmy(source, { buildContext: bankContext });
-          if (!transpiled.ok) throw new Error(`${filename} failed:\n${transpiled.log}`);
-          if (transpiled.assets?.length) {
-            throw new Error(`${filename} uses external Amy assets. Bank-local asset placement is not available yet; place binary assets directly in the bank output.`);
-          }
-          return `org $C000\n${transpiled.asmBody}`;
-        },
-        compileAsm: async (source, filename) => {
-          const assembled = await compileGeneratedAsm(source, filename, {
-            optimizerEnabled: false,
-            optimizerConfig: null,
-            projectFiles: project.projectFiles || []
-          });
-          if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
-          return {
-            bytes: assembled.binary,
-            symbols: assembled.symbols,
-            sourceDebugMap: assembled.sourceDebugMap
-          };
-        }
-      });
       let megaCartNote = "";
       if (megaCartBuild) {
         compiledRom = megaCartBuild.image;

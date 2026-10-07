@@ -49,6 +49,11 @@ usage, and qualified symbols without changing the emitted cartridge image.
   names resolve to generated procedure, function, or data symbols and become
   qualified `bank:n:Name` entries. Missing, ambiguous, and duplicate public
   exports fail the build before a trampoline can reference them.
+- `call bank n, Procedure` resolves an explicitly exported no-argument Amy
+  `sub`, emits its trampoline into the fixed bank, tracks the active logical
+  bank in one RAM byte, and restores the caller's bank after return. Mapper
+  reads remain live under every optimizer profile. Parameter and function ABIs
+  are deliberately not claimed yet.
 - `tools/test-megacart-link-map.mjs` verifies exact-capacity banks, repeated
   `$C000` addresses, qualified symbol resolution, ambiguity diagnostics, and
   physical offsets.

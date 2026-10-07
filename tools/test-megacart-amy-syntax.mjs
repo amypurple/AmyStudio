@@ -38,6 +38,18 @@ const section = transpileAmy("bank rom 128\nbank 1");
 assert.equal(section.ok, false);
 assert.match(section.log, /bank-output boundary/i);
 
+const bankCall = transpileAmy("bank rom 128\ncall bank 2, DrawLevel");
+assert.equal(bankCall.ok, true, bankCall.log);
+assert.match(bankCall.asmBody, /call AMY_MEGACART_CALL_BANK_2_DrawLevel/);
+assert.match(bankCall.asmBody, /AMY_MEGACART_CURRENT_BANK EQU \$[0-9A-F]{4}/);
+assert.deepEqual(bankCall.metadata.megaCart.imports, [{
+  bank: 2, name: "DrawLevel", trampolineLabel: "AMY_MEGACART_CALL_BANK_2_DrawLevel"
+}]);
+
+const missingCallDeclaration = transpileAmy("call bank 2, DrawLevel");
+assert.equal(missingCallDeclaration.ok, false);
+assert.match(missingCallDeclaration.log, /requires BANK ROM/i);
+
 const bankContext = {
   buildContext: {
     platform: "colecovision-megacart-bank",
@@ -57,7 +69,7 @@ assert.equal(bankMain.ok, false);
 assert.match(bankMain.log, /not top-level executable statements or global runtime initialization/i);
 
 for (const level of ["safe", "balanced", "aggressive", "experimental"]) {
-  const helper = `org $8000\n${valid.asmBody.match(/AMY_MEGACART_SELECT_BANK_1:[\s\S]*?ret/)[0]}`;
+  const helper = `AMY_MEGACART_CURRENT_BANK equ $7000\norg $8000\n${valid.asmBody.match(/AMY_MEGACART_SELECT_BANK_1:[\s\S]*?ret/)[0]}`;
   const profile = getOptimizationProfile(level, helper);
   const assembled = await assembleAmysCVAssembly({ "main.asm": helper }, "main.asm", {
     outputFilename: `megacart-select-${level}.bin`, outputMode: "binary", targetPlatform: "raw",

@@ -28,16 +28,12 @@ function normalizedAssembly(result, logicalStart, logicalEnd) {
   return { bytes, symbols, sourceMap: result?.sourceDebugMap || result?.sourceMap || null };
 }
 
-export async function buildMegaCartProject({ project, manifest, fixedBank, fixedSymbols = [], fixedSourceMap = null, compileAsm, compileAmyBank = null }) {
+export async function buildMegaCartProject({ project, manifest, fixedBank, fixedSymbols = [], fixedSourceMap = null, compileAsm, compileAmyBank = null, compileFixed = null }) {
   if (manifest?.target?.platform !== "colecovision-megacart") return null;
   const sizeKb = Number(manifest.target.romSizeKb || project?.target?.romSizeKb || 128);
   const outputs = Array.isArray(manifest.outputs) ? manifest.outputs : [];
   const fixedOutputs = outputs.filter((output) => output.type === "fixed-bank");
   if (fixedOutputs.length !== 1) throw new Error("MegaCart project requires exactly one fixed-bank output.");
-  const normalizedFixed = normalizedAssembly(fixedBank, 0x8000, 0xC000);
-  const resolvedFixedSymbols = fixedSymbols.length ? fixedSymbols : normalizedFixed.symbols;
-  const resolvedFixedSourceMap = fixedSourceMap || normalizedFixed.sourceMap;
-
   const switchableBanks = [];
   for (const output of outputs.filter((entry) => entry.type === "switchable-bank")) {
     const logicalBank = Number(output.bank);
@@ -89,6 +85,18 @@ export async function buildMegaCartProject({ project, manifest, fixedBank, fixed
       sourceMap
     });
   }
+
+  const preliminaryLinkMap = buildMegaCartLinkMap({
+    sizeKb,
+    fixedBank: { bytes: new Uint8Array(0), symbols: [], sourceMap: null },
+    switchableBanks
+  });
+  const resolvedFixedBank = typeof compileFixed === "function"
+    ? await compileFixed({ linkMap: preliminaryLinkMap })
+    : fixedBank;
+  const normalizedFixed = normalizedAssembly(resolvedFixedBank, 0x8000, 0xC000);
+  const resolvedFixedSymbols = fixedSymbols.length ? fixedSymbols : normalizedFixed.symbols;
+  const resolvedFixedSourceMap = fixedSourceMap || normalizedFixed.sourceMap;
 
   const built = buildMegaCartImage({ sizeKb, fixedBank: normalizedFixed.bytes, switchableBanks });
   const linkMap = buildMegaCartLinkMap({

@@ -1406,6 +1406,8 @@ export function transpileAmyCore(sourceText, deps) {
   let cartridgeMeta = null;
   let megaCartRomSizeKb = null;
   const megaCartSelectedBanks = new Set();
+  const megaCartImports = [];
+  let megaCartCurrentBankLabel = null;
   let onFrameHook = null;
   let sawExplicitRestore = false;
   let nextBoolBit = 8;
@@ -4408,6 +4410,33 @@ export function transpileAmyCore(sourceText, deps) {
         megaCartRomSizeKb = Number(bankRom[1]);
         continue;
       }
+      const bankCall = line.match(/^call\s+bank\s+(\d+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (bankCall) {
+        if (megaCartRomSizeKb == null) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: CALL BANK requires BANK ROM first.` };
+        }
+        const logicalBank = Number(bankCall[1]);
+        const bankCount = megaCartRomSizeKb / 16;
+        if (logicalBank < 1 || logicalBank >= bankCount) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: CALL BANK must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        }
+        const publicName = bankCall[2];
+        if (!megaCartCurrentBankLabel) {
+          megaCartCurrentBankLabel = "AMY_MEGACART_CURRENT_BANK";
+          const address = reserveRam(megaCartCurrentBankLabel, 1, "MegaCart active logical bank");
+          runtimeDeclarations.push(`${megaCartCurrentBankLabel} EQU ${formatHex16(address)}`);
+          runtimeInit.push("    ld a,1", `    ld (${megaCartCurrentBankLabel}),a`);
+          hasRuntimeInit = true;
+        }
+        const trampolineLabel = `AMY_MEGACART_CALL_BANK_${logicalBank}_${publicName}`;
+        ensureImplicitStartForExecutable();
+        body.push(`    call ${trampolineLabel}`);
+        if (!megaCartImports.some((entry) => entry.bank === logicalBank && entry.name.toLowerCase() === publicName.toLowerCase())) {
+          megaCartImports.push({ bank: logicalBank, name: publicName, trampolineLabel });
+        }
+        megaCartSelectedBanks.add(logicalBank);
+        continue;
+      }
       const bankSelect = line.match(/^bank\s+select\s+(\d+)$/i);
       if (bankSelect) {
         if (megaCartRomSizeKb == null) {
@@ -4418,6 +4447,13 @@ export function transpileAmyCore(sourceText, deps) {
         if (logicalBank < 1 || logicalBank >= bankCount) {
           return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: BANK SELECT must be 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
         }
+        if (!megaCartCurrentBankLabel) {
+          megaCartCurrentBankLabel = "AMY_MEGACART_CURRENT_BANK";
+          const address = reserveRam(megaCartCurrentBankLabel, 1, "MegaCart active logical bank");
+          runtimeDeclarations.push(`${megaCartCurrentBankLabel} EQU ${formatHex16(address)}`);
+          runtimeInit.push("    ld a,1", `    ld (${megaCartCurrentBankLabel}),a`);
+          hasRuntimeInit = true;
+        }
         ensureImplicitStartForExecutable();
         body.push(`    call AMY_MEGACART_SELECT_BANK_${logicalBank}`);
         if (!megaCartSelectedBanks.has(logicalBank)) {
@@ -4426,6 +4462,10 @@ export function transpileAmyCore(sourceText, deps) {
           romData.push(`AMY_MEGACART_SELECT_BANK_${logicalBank}:`);
           romData.push("    push af");
           romData.push(`    ld a,($${(0xFFC0 + physicalBank).toString(16).toUpperCase()})`);
+          romData.push("    push af");
+          romData.push(`    ld a,${logicalBank}`);
+          romData.push(`    ld (${megaCartCurrentBankLabel}),a`);
+          romData.push("    pop af");
           romData.push("    pop af");
           romData.push("    ret");
         }
@@ -5910,6 +5950,8 @@ export function transpileAmyCore(sourceText, deps) {
       cartridgeMeta,
       megaCartRomSizeKb,
       megaCartSelectedBanks,
+      megaCartImports,
+      megaCartCurrentBankLabel,
       onFrameHook,
       amyTimers,
       hasExternalAsmInclude,

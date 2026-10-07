@@ -4008,8 +4008,20 @@ build:
 ```
 
 This creates qualified link-map entries such as `bank:2:DrawLevel`; it does not
-yet make an ordinary direct call across banks. That distinction prevents an
-inactive `$C000` window from being mistaken for a normal globally linked symbol.
+make an ordinary direct call across banks. A fixed-bank program can call an
+exported no-argument Amy `sub` safely and explicitly:
+
+```amy
+bank rom 128
+call bank 2, DrawLevel
+```
+
+Amy records the import, resolves it only against bank 2's explicit exports,
+generates a fixed-bank trampoline, selects bank 2, calls the resolved address,
+then restores the previously active bank. Parameters, functions, and implicit
+cross-bank references remain rejected until their ABI and return-value rules
+are implemented. This distinction prevents an inactive `$C000` window from
+being mistaken for a normal globally linked symbol.
 
 ## Super Game Module AY sound
 
