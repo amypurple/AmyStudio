@@ -26,6 +26,18 @@ The user must provide an 8192-byte ColecoVision BIOS for cartridges. ADAM media
 requires OS7.ROM, EOS.ROM, and WP.ROM. Amy Studio stores firmware locally in
 browser storage and does not download or distribute it.
 
+When **Machine** is set to **Coleco ADAM**, two reset controls reproduce the
+computer's physical boot selector rather than guessing from the loaded file:
+
+- **RESET ADAM** selects the EOS computer boot path and MIOC map `$00`.
+- **RESET CV** selects the OS7 cartridge boot path and MIOC map `$0F`, while
+  keeping the emulated machine as an ADAM.
+
+This distinction matters for cartridges that inspect the expanded, non-mirrored
+ADAM RAM or enable extra behavior only when they detect ADAM hardware. Loading a
+`.rom` or `.col` does not force the machine back to plain ColecoVision when the
+user has explicitly selected Coleco ADAM.
+
 For ADAM communication software, the debugger can emulate AdamLink,
 Eve/Orphanware, or MicroInnovations serial hardware in deterministic offline or
 loopback mode. The selected profile owns its documented I/O ports before shared

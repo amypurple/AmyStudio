@@ -129,7 +129,7 @@ selection, autocomplete, breakpoints, and source text continue to use the underl
 The compact `AC` switch disables or enables autocomplete independently from syntax
 colouring. The preference persists locally and does not alter project files.
 
-ROM TEST & DEBUG accepts compiled output and external `.rom`, `.col`, `.dsk`, and `.ddp` media. It supports record-from-boot and record-now video capture, deterministic AVI export, rewind, source/Z80 stepping, conditional watches, cycle profiling, writable ADAM media export, recorded development routes, and fast replay after recompilation. In ADAM mode, the computer keyboard can be routed to the native keyboard, joystick port 1, or joystick port 2.
+ROM TEST & DEBUG accepts compiled output and external `.rom`, `.col`, `.dsk`, and `.ddp` media. It supports record-from-boot and record-now video capture, deterministic AVI export, rewind, source/Z80 stepping, conditional watches, cycle profiling, writable ADAM media export, recorded development routes, and fast replay after recompilation. In ADAM mode, the computer keyboard can be routed to the native keyboard, joystick port 1, or joystick port 2. Its separate **RESET ADAM** and **RESET CV** controls model the computer's physical boot selector: the former boots EOS, while the latter boots an inserted OS7 cartridge without replacing the ADAM hardware model with a plain ColecoVision.
 The highlighting convention is semantic and deliberately uses the TMS9918A palette:
 
 - control-flow and general Amy grammar use cyan

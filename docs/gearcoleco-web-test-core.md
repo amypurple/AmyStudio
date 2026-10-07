@@ -30,6 +30,8 @@ studio/vendor/gearcoleco-test-core/
 - Single-threaded WebAssembly.
 - BIOS supplied by the user.
 - RNG seed applied before initialization and every reset.
+- Separate ADAM computer/EOS and ColecoVision cartridge/OS7 reset paths without
+  changing the selected machine away from ADAM.
 - Deterministic builds serialize the complete SN76489 oscillator and stereo
   resampler state; audio after a rewind is sample-identical.
 
@@ -86,6 +88,8 @@ node tools/check-examples.mjs --assemble --only warrior-dan2-fire-visual-test --
 node tools/test-gearcoleco-web-desktop-parity.mjs
 node tools/test-gearcoleco-web-rewind.mjs --rom build/rom-tests/warrior-dan2-fire-visual-test.rom
 node tools/test-gearcoleco-web-audio.mjs
+node tools/test-gearcoleco-adam-reset-switch.mjs
+node tools/test-rom-debug-adam-reset-ui.mjs
 node tools/test-rom-test-audio-sink.mjs
 node tools/test-rom-debugger-model.mjs
 node tools/test-rom-test-recorder.mjs

@@ -1,3 +1,13 @@
+## 2026-10-07 - Separate ADAM and ColecoVision reset switches
+
+- Added distinct **RESET ADAM** and **RESET CV** controls to ROM TEST & DEBUG.
+- `RESET ADAM` selects the EOS computer boot map; `RESET CV` selects the OS7
+  cartridge map while retaining ADAM hardware and its non-mirrored memory.
+- Allowed `.rom` and `.col` cartridges to run explicitly on Coleco ADAM instead
+  of forcing cartridge input back to plain ColecoVision emulation.
+- Added runtime tests for the ADAM MIOC `$00`/`$0F` reset transition and UI
+  coverage for both controls.
+
 ## 2026-10-05 - Verified semantic code-size optimizations
 
 - Reused adjacent array indexes and shared `put frame` coordinate indexes without crossing mutation barriers.
