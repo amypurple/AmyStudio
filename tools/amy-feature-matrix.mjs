@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
+const childNodeExecutable = process.env.AMY_TEST_NODE || process.execPath;
 const full = process.argv.includes("--full");
 const fromIndex = process.argv.indexOf("--from");
 const fromFile = fromIndex >= 0 ? process.argv[fromIndex + 1] : null;
@@ -228,6 +229,10 @@ const tests = [
   { file: "test-native-eos-amy-serial.mjs", area: "native-eos-serial", evidence: "runtime", suite: "emulator" },
   { file: "test-native-eos-generator.mjs", area: "native-eos-generator", evidence: "runtime", suite: "emulator" },
   { file: "test-native-eos-system-records.mjs", area: "native-eos-system-records", evidence: "compile+assemble" },
+  { file: "test-adam-project-forms.mjs", area: "adam-project-forms", evidence: "runtime", suite: "emulator" },
+  { file: "test-megacart-image.mjs", area: "megacart-image", evidence: "unit", suite: "examples" },
+  { file: "test-megacart-project-build.mjs", area: "megacart-project-build", evidence: "runtime", suite: "examples" },
+  { file: "test-megacart-bank-demo.mjs", area: "megacart-bank-runtime", evidence: "runtime", suite: "examples" },
   { file: "test-new-project-templates.mjs", area: "new-project-templates", evidence: "unit", suite: "studio" },
   { file: "test-project-form-learning-materials.mjs", area: "project-learning-materials", evidence: "unit", suite: "studio" },
   { file: "test-project-targets.mjs", area: "project-targets", evidence: "unit", suite: "studio" },
@@ -345,15 +350,23 @@ for (const test of selectedTests) {
   }
   console.log(`RUN  ${file}`);
   const started = Date.now();
-  const result = spawnSync(process.execPath, [resolve(root, "tools", file), ...args], {
+  const result = spawnSync(childNodeExecutable, [resolve(root, "tools", file), ...args], {
     cwd: root,
     encoding: "utf8",
     timeout: 120_000
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
-  results.push({ test: file, area, evidence, passed: result.status === 0, elapsedMs: Date.now() - started });
+  results.push({
+    test: file,
+    area,
+    evidence,
+    passed: result.status === 0 && !result.error,
+    launchError: result.error?.message || null,
+    elapsedMs: Date.now() - started
+  });
   if (output) process.stdout.write(`${output}\n`);
-  if (result.status !== 0) {
+  if (result.error || result.status !== 0) {
+    if (result.error) process.stderr.write(`${file} could not start: ${result.error.message}\n`);
     if (result.error?.code === "ETIMEDOUT") process.stderr.write(`${file} exceeded the 120 second test limit.\n`);
     process.stderr.write(`Amy feature matrix stopped at ${file}.\n`);
     process.exit(result.status ?? 1);
@@ -363,14 +376,22 @@ for (const test of selectedTests) {
 
 if (full) {
   const started = Date.now();
-  const result = spawnSync(process.execPath, [resolve(root, "tools", "check-examples.mjs"), "--assemble", "--optimization", "balanced"], {
+  const result = spawnSync(childNodeExecutable, [resolve(root, "tools", "check-examples.mjs"), "--assemble", "--optimization", "balanced"], {
     cwd: root,
     encoding: "utf8"
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
-  results.push({ test: "check-examples.mjs --assemble --optimization balanced", area: "catalogue", evidence: "compile+assemble", passed: result.status === 0, elapsedMs: Date.now() - started });
+  results.push({
+    test: "check-examples.mjs --assemble --optimization balanced",
+    area: "catalogue",
+    evidence: "compile+assemble",
+    passed: result.status === 0 && !result.error,
+    launchError: result.error?.message || null,
+    elapsedMs: Date.now() - started
+  });
   if (output) process.stdout.write(`${output}\n`);
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.error) process.stderr.write(`check-examples.mjs could not start: ${result.error.message}\n`);
+  if (result.error || result.status !== 0) process.exit(result.status ?? 1);
 }
 
 const elapsedMs = results.reduce((sum, item) => sum + item.elapsedMs, 0);

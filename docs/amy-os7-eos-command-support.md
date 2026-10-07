@@ -485,6 +485,13 @@ with 0 failures and 1,183,773 balanced-profile bytes. The catalog gained one
 example since the earlier 233-example snapshot; the EOS-only NMI backend does
 not alter the OS7 generation path.
 
+The 2026-10-06 baseline refresh assembles 235/235 Alexis examples with 0
+failures and 1,183,205 balanced-profile bytes. The clean repository separately
+assembles 80/80 examples with 0 failures and 310,670 balanced-profile bytes.
+These current totals supersede the older counts for regression comparisons;
+the earlier figures remain above to document why their deliberate changes
+occurred.
+
 Every backend change must run:
 
 ```text

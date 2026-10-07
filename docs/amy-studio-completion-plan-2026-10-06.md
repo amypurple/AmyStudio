@@ -1,0 +1,100 @@
+# Amy Studio completion plan - 2026-10-06
+
+This plan turns the current Alexis-Z80 research into a reproducible clean-repository release. Work moves forward only when OS7 behavior, ROM sizes, and existing examples remain protected.
+
+## Current baseline
+
+- Alexis-Z80: 235/235 examples assemble with the balanced profile, totaling 1,183,205 bytes.
+- Clean repository: 80/80 examples assemble with the balanced profile, totaling 310,670 bytes.
+- The OS7/EOS matrix has no remaining `PARTIAL` command rows.
+- Native EOS DSK/DDP, OS7+EOS hybrid media, and current MegaCart project packaging have runtime evidence in Alexis-Z80.
+- The clean repository does not yet contain the complete Alexis EOS, ADAM project-form, and MegaCart evidence suites.
+
+## Historical implementation evidence
+
+Published ADAM and ColecoVision software from the 1980s may be studied when documentation is incomplete. The useful evidence includes firmware entry points, memory maps, device-control blocks, media layouts, boot sequences, VDP initialization, timing, and observable hardware behavior.
+
+Amy Studio must reimplement the learned behavior in maintainable original code. Tests should identify the reference software and the behavior being reproduced. Code should not be copied when a behavioral specification or a small independently derived routine is sufficient.
+
+## Milestone 1 - Trustworthy audit gate
+
+Status: in progress.
+
+- Make the feature-matrix runner fail clearly when a child test cannot launch.
+- Record environment failures separately from semantic test failures.
+- Regenerate example counts and byte totals instead of maintaining estimates.
+- Add an explicit size-regression report for representative OS7 programs.
+- Preserve a known-good revision before promoting optimizer or backend work.
+
+Exit criteria:
+
+- A deliberately missing child executable produces a nonzero result and a clear diagnostic.
+- A normal matrix smoke test succeeds.
+- Both repository catalogue audits pass and publish their exact totals.
+
+## Milestone 2 - Clean-repository evidence parity
+
+Status: ready to start after milestone 1.
+
+- Port the relevant native EOS runtime tests, ADAM project-form test, and MegaCart tests.
+- Port the MegaCart feasibility document.
+- Add one audited native EOS example, one hybrid example, and one MegaCart example to the public test surface.
+- Keep experimental-only research tools out of the clean repository.
+
+Exit criteria:
+
+- The clean repository compiles every public example.
+- Its promoted EOS, hybrid, and MegaCart tests execute successfully in the bundled emulator.
+- Documentation commands match files that actually ship.
+
+## Milestone 3 - Bank-aware linker
+
+Status: design partially established; implementation incomplete.
+
+- Represent file offsets separately from Z80 logical addresses.
+- Qualify sections and symbols by bank.
+- Generate fixed-bank trampolines for explicit cross-bank calls.
+- Diagnose per-bank capacity and illegal cross-bank references.
+- Extend source maps, breakpoints, traces, and profiling to `(bank, address)`.
+- Finalize Amy bank syntax only after the linker model is proven.
+
+Exit criteria:
+
+- A multi-file Amy project can place procedures and data in independent banks.
+- Two banks may use the same logical address without symbol collision.
+- Cross-bank calls restore the previous bank and preserve the documented ABI.
+- 64 KB through 1 MB MegaCart runtime tests pass.
+
+## Milestone 4 - Incremental multi-file builds
+
+Status: editing and project manifests exist; object reuse is not implemented.
+
+- Compile changed Amy and ASM sources into reusable objects.
+- Track source, generated asset, and binary dependencies.
+- Relink only affected outputs and banks.
+- Retain full rebuild as the reference correctness path.
+
+Exit criteria:
+
+- Editing one independent bank does not recompile unrelated banks.
+- Incremental and clean builds produce byte-identical media.
+- The FILES tree shows modified, stale, compiled, and failed states without adding a row of source buttons.
+
+## Milestone 5 - Release workflow and documentation
+
+Status: features exist; presentation is incomplete.
+
+- Document native EOS, OS7+EOS hybrid, MegaCart, firmware, DSK, and DDP workflows.
+- Add screenshots for project creation, build outputs, emulator setup, checkpoint routes, fast replay, and AVI recording.
+- Remove experimental labels from native EOS and hybrid templates only after browser-level build-and-run tests pass.
+- Decide separately whether animated GIF export is worth its implementation and CPU cost.
+
+## Continuous gates
+
+Every milestone must preserve:
+
+- OS7 compile and runtime behavior.
+- Existing ROM-size baselines unless a reviewed correctness fix explains a change.
+- Safe, balanced, aggressive, and experimental optimizer semantics where supported.
+- Native EOS DSK and DDP execution.
+- Hybrid operation when EOS is present and graceful OS7-only operation when it is absent.
