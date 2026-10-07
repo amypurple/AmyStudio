@@ -1104,6 +1104,17 @@ export function bindStudioRuntimeEvents(ctx) {
       if (getAsmViewMode() === "optimized" || getAsmViewMode() === "memoryMap") syncAsmEditor();
       updatePreviewActions();
       updateEmulatorUi();
+      if (!megaCartBuild && built.res.sourceDependencyGraph) {
+        project.incrementalBuildState = {
+          failed: false,
+          sourceDependencyGraph: built.res.sourceDependencyGraph,
+          fileFingerprints: Object.fromEntries((project.projectFiles || []).map((entry) => [
+            String(entry.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase().replace(/^/, "@project/"),
+            projectFileContentFingerprint(entry)
+          ]))
+        };
+        renderProjectFiles?.();
+      }
       refreshProjectGraph();
       const symbols = result.stats?.symbolCount ?? Object.keys(result.symbols || {}).length;
       const optimizationNote = `, ${optimizationProfile.note}`;

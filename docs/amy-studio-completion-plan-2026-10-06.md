@@ -108,11 +108,18 @@ Validated so far:
   edited program bytes and packs still force complete media regeneration.
 - Incremental native and hybrid media are byte-identical to explicit clean
   builds, and the native DSK/DDP runtime test still renders its full ZX0 image.
+- Amy textual includes now expose a tested dependency graph with direct and
+  transitive fingerprints. FILES can distinguish a directly modified source
+  from stale dependent sources while leaving unrelated branches compiled.
+- Ordinary `include amy` files remain one compilation unit because they share
+  declarations and compiler state; they are not misrepresented as relocatable
+  objects.
 
 Remaining:
 
-- Extend object reuse to independently compilable Amy modules; current native
-  EOS and hybrid main programs remain intentionally monolithic.
+- Define an explicit module ABI and manifest output boundary before extending
+  object reuse beyond bank-local Amy outputs; current native EOS and hybrid
+  main programs remain intentionally monolithic.
 - Persist no binary cache in project JSON until cache versioning and storage
   limits are defined; the current cache deliberately lasts one Studio session.
 

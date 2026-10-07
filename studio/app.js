@@ -942,6 +942,7 @@ function transpileAmy(sourceText, options = {}) {
     stripAmyInlineComment
   });
   result.metadata = { ...(result.metadata || {}), buildTarget: buildContext };
+  result.sourceDependencyGraph = bundled.dependencyGraph;
   return result;
 }
 

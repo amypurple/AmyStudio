@@ -14,6 +14,7 @@ import { buildColecoBiosArrangement, colecoBiosArrangementFrames, scheduleColeco
 import { scheduleColecoMusicSong } from "./colecoMusicSong.js?v=20260912-song-timeline";
 import { initialAnimationFrameBytes } from "./graphicsEditorBuilder.js?v=20260912-guided-editor-builder";
 import { megaCartOutputFingerprint, projectFileContentFingerprint } from "./megaCartProjectBuild.js?v=20261007-incremental-bank1";
+import { affectedAmySourcePaths } from "./amySourceBundle.js";
 
 export function createProjectFileUiHelpers({
   els,
@@ -5204,11 +5205,24 @@ export function createProjectFileUiHelpers({
     };
     const fileBuildState = (entry, targets) => {
       const buildState = project.incrementalBuildState;
-      if (!buildState || !targets.length) return "";
+      if (!buildState) return "";
       if (buildState.failed) return "failed";
       const path = normalizeProjectFilePath(entry.path).toLowerCase();
       const compiledFileFingerprint = buildState.fileFingerprints?.[path];
       if (compiledFileFingerprint && compiledFileFingerprint !== projectFileContentFingerprint(entry)) return "modified";
+      if (/\.(?:amy|alexis)$/i.test(path) && buildState.sourceDependencyGraph) {
+        const graphPaths = new Set(buildState.sourceDependencyGraph.nodes?.map((node) => String(node.path || "").toLowerCase()) || []);
+        if (!graphPaths.has(path)) return "";
+        const changedPaths = (project.projectFiles || [])
+          .map((file) => normalizeProjectFilePath(file.path).toLowerCase())
+          .filter((filePath) => buildState.fileFingerprints?.[filePath]
+            && buildState.fileFingerprints[filePath] !== projectFileContentFingerprint(
+              (project.projectFiles || []).find((file) => normalizeProjectFilePath(file.path).toLowerCase() === filePath)
+            ));
+        const affected = new Set(affectedAmySourcePaths(buildState.sourceDependencyGraph, changedPaths).map((affectedPath) => affectedPath.toLowerCase()));
+        return affected.has(path) ? "stale" : "compiled";
+      }
+      if (!targets.length) return "";
       for (const targetName of targets) {
         const output = (project.outputs || []).find((candidate) => candidate.name === targetName);
         if (!output || output.type !== "switchable-bank") continue;
