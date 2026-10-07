@@ -9,6 +9,7 @@ This plan turns the current Alexis-Z80 research into a reproducible clean-reposi
 - The OS7/EOS matrix has no remaining `PARTIAL` command rows.
 - Native EOS DSK/DDP, OS7+EOS hybrid media, and current MegaCart project packaging have runtime evidence in Alexis-Z80.
 - The clean repository contains the promoted EOS, ADAM project-form, and MegaCart evidence suites used by the public examples.
+- The clean repository full release audit passed on 2026-10-07 in 1,044,119 ms: every registered feature test passed, 81/81 public examples compiled, 80 flat ROMs assembled to 310,670 bytes, and the MegaCart project was delegated to its target-specific runtime validator.
 
 ## Historical implementation evidence
 
@@ -137,7 +138,7 @@ than depending on ad hoc invocation.
 
 ## Milestone 5 - Release workflow and documentation
 
-Status: features exist; presentation is incomplete.
+Status: complete for the promoted public surface.
 
 Validated so far:
 
@@ -155,6 +156,10 @@ Validated so far:
   captures covering firmware/hardware setup, symbolic checkpoints, route
   recording, fast replay, boot/current-frame recording, AVI export, and debug
   panes.
+- The debugger exports deterministic animated GIF captures as well as MJPEG/PCM
+  AVI recordings. Core tests verify frame selection, replay determinism, LZW
+  dictionary-width transitions, and restoration of CPU, RAM, VRAM, VDP, and
+  framebuffer state after export.
 - Native EOS and OS7+EOS hybrid creation are documented with real browser DSK
   builds. The generic hybrid starter now supplies editable BOOT/loader sources,
   compiles without Where on Earth assets, and treats up to four WEPK files as
@@ -166,6 +171,9 @@ Remaining:
 
 - No implementation milestone remains open. Continue treating new optimizer,
   target, and hardware work as separately gated additions.
+- Optional future work, such as a persistent cross-session object cache or a
+  relocatable Amy module ABI, must begin as a new plan rather than silently
+  extending this completed release scope.
 
 ## Continuous gates
 
