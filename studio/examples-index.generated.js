@@ -401,6 +401,19 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "coleco-bios-options",
+    "label": "Coleco BIOS Options",
+    "detail": "Displays the stock eight-choice OS7 screen, then uses Amy's menu input to return the selected option.",
+    "projectName": "coleco-bios-options",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "collision-minimal",
     "label": "Collision Minimal",
     "detail": "Moves a sprite through another and shows the VDP coincidence bit state.",

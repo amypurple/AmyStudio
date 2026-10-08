@@ -450,6 +450,7 @@ export const AMY_AUTOCOMPLETE = [
   ["pause until press", "Wait for all action buttons to be released, then accept a new press on either controller"],
   ["pause until press and release", "Wait for a new action press, then consume its release"],
   ["sleep after 5 seconds", "Nonblocking menu idle service; any control wakes and returns to the menu"],
+  ["show coleco options", "Show the stock eight-choice Coleco BIOS screen, then restore Amy display and NMI service"],
   ["pause until press and release sleep after 5 seconds", "Sleep after a region-correct timeout; first action wakes, second confirms"],
   ["pause until press on joypad 1", "Release, then accept either side/action button on one joypad"],
   ["wait 180 frames or press", "Wait up to N frames, but stop early on any action button"],

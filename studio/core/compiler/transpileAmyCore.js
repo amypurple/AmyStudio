@@ -1617,6 +1617,9 @@ export function transpileAmyCore(sourceText, deps) {
     if (/^tile\s+screen$/i.test(line)) {
       return { kind: "authoritative", label: "tile screen" };
     }
+    if (/^show\s+coleco\s+options$/i.test(line)) {
+      return { kind: "authoritative", label: "coleco options" };
+    }
     if (/^sprites\s+8x8$/i.test(line)) {
       return { kind: "modifier", label: "sprites 8x8", category: "sprite_size" };
     }
@@ -1660,6 +1663,7 @@ export function transpileAmyCore(sourceText, deps) {
     const applyKnownEffect = () => {
       if (classification.kind === "authoritative") {
         if (classification.label === "multicolor screen") return 0x8A;
+        if (classification.label === "coleco options") return 0xE0;
         return 0x82;
       }
       if (knownBefore === null) return null;
@@ -5077,7 +5081,8 @@ export function transpileAmyCore(sourceText, deps) {
         formatHex16,
         makeGeneratedLabel,
         usesSpriteFlicker,
-        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7")
+        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7"),
+        supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
       });
       if (displayGraphicsSpriteStmt.handled) {
         if (!displayGraphicsSpriteStmt.ok) return { ok: false, asmBody: "", log: displayGraphicsSpriteStmt.log };
@@ -5454,7 +5459,8 @@ export function transpileAmyCore(sourceText, deps) {
         formatHex16,
         makeGeneratedLabel,
         usesSpriteFlicker,
-        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7")
+        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7"),
+        supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
       })
     });
 

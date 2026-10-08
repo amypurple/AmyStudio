@@ -13,7 +13,8 @@ export function handleDisplayGraphicsSpriteStatement({
   formatHex16,
   makeGeneratedLabel,
   usesSpriteFlicker = false,
-  supportsNmi = true
+  supportsNmi = true,
+  supportsColecoBios = true
 }) {
   const _dep = checkDisplayGraphicsDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -24,6 +25,21 @@ export function handleDisplayGraphicsSpriteStatement({
 
   if (/^120\s+colors\s+off$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_120C_OFF"] };
+  }
+
+  if (/^show\s+coleco\s+options$/i.test(line)) {
+    if (!supportsColecoBios) {
+      return {
+        ok: false,
+        handled: true,
+        log: `show coleco options requires an OS7-compatible target: ${rawLine}`
+      };
+    }
+    return {
+      ok: true,
+      handled: true,
+      lines: ["    call $1F7C", "    call AMY_SCREEN_ON_NMI"]
+    };
   }
 
   if (/^screen\s+off(\s+no\s+nmi)?$/i.test(line)) {

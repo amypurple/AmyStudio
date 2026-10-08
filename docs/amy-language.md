@@ -2712,6 +2712,27 @@ Timeout blanking preserves the entry display state, restores the tracked backdro
 and consumes the wake input before returning to the menu. Stock ADAM uses the
 60 Hz timeout count because its video timing is NTSC.
 
+### Coleco BIOS option screen
+
+```basic
+u8 Choice = 1
+
+show coleco options
+choose menu 1 to 8 into Choice cursor $3E at 2,6 step 2
+```
+
+`show coleco options` calls the public OS7 `GAME_OPT` service to display the
+fixed blue ColecoVision screen containing skill 1-4 for one or two players.
+The BIOS operation clears all 16 KiB of VRAM and replaces the current screen,
+font, table layout, and colors. Amy then restores display and NMI service so a
+following `choose menu`, frame wait, sound update, or VBlank hook can operate.
+
+The command only presents the historical screen; it does not read a controller
+or select an option. Initialize the choice to `1`, then use the ordinary Amy
+menu command as shown above. The stock entries begin at tile `(2,6)` with a
+two-row step. This command is available only for OS7-compatible cartridge and
+hybrid targets. Native EOS projects must draw their own menu.
+
 ### Choose (menu selection)
 
 ```basic
@@ -3475,6 +3496,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
 | `choose menu min to max into Var cursor Tile at X,Y step N [clear Tile] [on joypad N] [sleep after N seconds]` | Complete vertical cursor menu |
 | `choose menu min to max into Var cursor sprite I at X,Y step Pixels [on joypad N] [sleep after N seconds]` | Vertical menu using a configured sprite cursor |
+| `show coleco options` | Replace VRAM with the fixed OS7 eight-choice screen and restore Amy NMI service |
 | `halt` | Halt until NMI |
 
 ### Sound

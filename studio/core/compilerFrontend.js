@@ -53,7 +53,9 @@ export function inferControllerBackendFromSource(sourceText) {
     } else if (/^wait\s+key(?:\s*[0-9]|\s+release)\b/i.test(line) || /^choose\s+keypad\b/i.test(line)) {
       addImplicitPorts(line, /^choose\s+keypad\b/i.test(line), false, true, true);
     } else if (/^choose\s+menu\b/i.test(line)) {
-      addImplicitPorts(line, false, true, true, false);
+      // choose menu accepts direct keypad digits in addition to directions and
+      // FIRE, so its compact controller layout must reserve keypad state too.
+      addImplicitPorts(line, false, true, true, true);
       const explicit = line.match(/\bon\s+joypad\s+([12])\b/i);
       addStandardFire(explicit ? Number(explicit[1]) : 1);
     }
