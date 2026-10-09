@@ -39,9 +39,7 @@ AMY_MODE3_PSET_FAST:
     and $0F
     ld e,a
     call AMY_MODE3_CALC_COLOR_ADDRESS
-    push hl
     call AMY_VPEEK
-    pop hl
     ld d,a
     ld a,d
     bit 0,b

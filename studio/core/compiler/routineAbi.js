@@ -179,7 +179,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_COPY_BYTES_TO_VRAM: abi({ inputs: { hl: "RAM source", de: "VRAM destination", bc: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "WRITE_VRAM count-fix wrapper." }),
   AMY_GET_VRAM: abi({ inputs: { de: "VRAM source", hl: "RAM destination", bc: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "READ_VRAM count-fix wrapper." }),
   AMY_VPOKE: abi({ inputs: { hl: "VRAM address", a: "value" }, clobbers: ["af", "hl"] }),
-  AMY_VPEEK: abi({ inputs: { hl: "VRAM address" }, outputs: { a: "value" }, clobbers: ["af", "hl"] }),
+  AMY_VPEEK: abi({ inputs: { hl: "VRAM address" }, outputs: { a: "value" }, clobbers: ["af"], notes: "Preserves the input VRAM address in HL." }),
   AMY_PUT_AT: abi({ inputs: { hl: "RAM source", d: "row", e: "column", b: "byte count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Copies exactly B bytes; C is not an input." }),
   AMY_PUT_CHAR_AT: abi({ inputs: { d: "row", e: "column", a: "tile" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_GET_CHAR_AT: abi({ inputs: { d: "row", e: "column" }, outputs: { a: "tile" }, clobbers: ["af", "bc", "de", "hl"] }),

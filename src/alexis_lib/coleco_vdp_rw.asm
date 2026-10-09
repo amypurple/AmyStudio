@@ -28,7 +28,7 @@ AMY_VPOKE:
     ld ($701F),a
     ret
 
-; Read one byte from VRAM. Input: HL=VRAM address. Output: A=value.
+; Read one byte from VRAM. Input: HL=VRAM address. Output: A=value. HL is preserved.
 AMY_VPEEK:
     ld a,$A5
     ld ($701F),a
