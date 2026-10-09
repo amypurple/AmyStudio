@@ -14,7 +14,7 @@ export const alexisRuntimeCatalog = {
   "AMY_SET_BITMAP_GRAPHICS_MODE": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
-    "asm": "AMY_SET_BITMAP_GRAPHICS_MODE:\n    ld bc,$0182\n    call WRITE_REGISTER\n    ld a,$82\n    ld ($73C4),a\n    ld bc,$0002\n    call WRITE_REGISTER\n    ld a,2\n    ld hl,VRAM_NAME\n    call INIT_TABLE\n    ld bc,$03FF\n    call WRITE_REGISTER\n    ld bc,$0403\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld bc,$0701\n    jp WRITE_REGISTER\n\n; Configure Graphics II text-style layout inspired by getput11/gpscrmo1.s.\n; This keeps the Mode 2 pattern generator setup but uses R3=$9F instead of\n; R3=$FF, matching the old text-oriented helper. Sprite helpers expect the\n; standard Coleco sprite tables at VRAM_SPR_ATTR=$1B00 and VRAM_SPR_PAT=$3800.\n; Display stays blanked until screen on is called.",
+    "asm": "AMY_SET_BITMAP_GRAPHICS_MODE:\n    ld bc,$0182\n    call WRITE_REGISTER\n    ld bc,$0002\n    call WRITE_REGISTER\n    ld a,2\n    ld hl,VRAM_NAME\n    call INIT_TABLE\n    ld bc,$03FF\n    call WRITE_REGISTER\n    ld bc,$0403\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld bc,$0701\n    jp WRITE_REGISTER\n\n; Configure Graphics II text-style layout inspired by getput11/gpscrmo1.s.\n; This keeps the Mode 2 pattern generator setup but uses R3=$9F instead of\n; R3=$FF, matching the old text-oriented helper. Sprite helpers expect the\n; standard Coleco sprite tables at VRAM_SPR_ATTR=$1B00 and VRAM_SPR_PAT=$3800.\n; Display stays blanked until screen on is called.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_vdp_modes.asm",
     "extractedFromLabel": "AMY_SET_BITMAP_GRAPHICS_MODE"
@@ -22,7 +22,7 @@ export const alexisRuntimeCatalog = {
   "AMY_SET_GRAPHICS_MODE2_TEXT": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
-    "asm": "AMY_SET_GRAPHICS_MODE2_TEXT:\n    ld bc,$0182\n    call WRITE_REGISTER\n    ld a,$82\n    ld ($73C4),a\n    ld bc,$039F\n    call WRITE_REGISTER\n    ld bc,$0403\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld bc,$0002\n    call WRITE_REGISTER\n    ld a,2\n    ld hl,VRAM_NAME\n    jp INIT_TABLE\n\n; Configure standard text mode (Mode 1) with the default name table at $1800.\n; Display remains blanked until screen on is called.",
+    "asm": "AMY_SET_GRAPHICS_MODE2_TEXT:\n    ld bc,$0182\n    call WRITE_REGISTER\n    ld bc,$039F\n    call WRITE_REGISTER\n    ld bc,$0403\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld bc,$0002\n    call WRITE_REGISTER\n    ld a,2\n    ld hl,VRAM_NAME\n    jp INIT_TABLE\n\n; Configure standard text mode (Mode 1) with the default name table at $1800.\n; Display remains blanked until screen on is called.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_vdp_modes.asm",
     "extractedFromLabel": "AMY_SET_GRAPHICS_MODE2_TEXT"
@@ -33,7 +33,7 @@ export const alexisRuntimeCatalog = {
     "deps": [
       "AMY_SET_DEFAULT_NAME_TABLE"
     ],
-    "asm": "AMY_SET_GRAPHICS_MODE1_TEXT:\n    ld bc,$0000\n    call WRITE_REGISTER\n    ld bc,$0182\n    call WRITE_REGISTER\n    ld a,$82\n    ld ($73C4),a\n    ld bc,$0380\n    call WRITE_REGISTER\n    ld bc,$0400\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld hl,VRAM_NAME\n    call AMY_SET_DEFAULT_NAME_TABLE\n    ld de,$0300\n    ld a,$20\n    jp FILL_VRAM\n\n; Configure multicolor mode (Mode 3) and initialize the name table so each\n; 4-row band points at the same 32 pattern entries.\n; Display stays blanked until screen on is called.",
+    "asm": "AMY_SET_GRAPHICS_MODE1_TEXT:\n    ld bc,$0000\n    call WRITE_REGISTER\n    ld bc,$0182\n    call WRITE_REGISTER\n    ld bc,$0380\n    call WRITE_REGISTER\n    ld bc,$0400\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld hl,VRAM_NAME\n    call AMY_SET_DEFAULT_NAME_TABLE\n    ld de,$0300\n    ld a,$20\n    jp FILL_VRAM\n\n; Configure multicolor mode (Mode 3) and initialize the name table so each\n; 4-row band points at the same 32 pattern entries.\n; Display stays blanked until screen on is called.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_vdp_modes.asm",
     "extractedFromLabel": "AMY_SET_GRAPHICS_MODE1_TEXT"
@@ -56,7 +56,7 @@ export const alexisRuntimeCatalog = {
     "deps": [
       "AMY_SET_DEFAULT_NAME_TABLE"
     ],
-    "asm": "AMY_SET_GRAPHICS_MODE3_MULTICOLOR:\n    ld bc,$0000\n    call WRITE_REGISTER\n    ld bc,$018A\n    call WRITE_REGISTER\n    ld a,$8A\n    ld ($73C4),a\n    ld bc,$0380\n    call WRITE_REGISTER\n    ld bc,$0400\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld hl,VRAM_NAME\n    call AMY_SET_DEFAULT_NAME_TABLE\n    jp LOAD_MULTICOLOR_NAME_TABLE\n\nLOAD_MULTICOLOR_NAME_TABLE:\n    xor a\n    out (VDP_CTRL_PORT),a\n    ld a,$58\n    out (VDP_CTRL_PORT),a\n    xor a\n    ld h,$06\nLOAD_MULTICOLOR_NAME_BAND:\n    ld d,$04\nLOAD_MULTICOLOR_NAME_ROW:\n    ld e,$20\nLOAD_MULTICOLOR_NAME_BYTE:\n    out (VDP_DATA_PORT),a\n    nop\n    inc a\n    dec e\n    jr nz,LOAD_MULTICOLOR_NAME_BYTE\n    ld e,$E0\n    add a,e\n    dec d\n    jr nz,LOAD_MULTICOLOR_NAME_ROW\n    ld e,$20\n    add a,e\n    dec h\n    jr nz,LOAD_MULTICOLOR_NAME_BAND\n    ret\n\n; Configure the CVBasic-style bitmap drawing surface used by MODE 1 on Coleco.\n; Input: A = full color-table byte, typically $F0.",
+    "asm": "AMY_SET_GRAPHICS_MODE3_MULTICOLOR:\n    ld bc,$0000\n    call WRITE_REGISTER\n    ld bc,$018A\n    call WRITE_REGISTER\n    ld bc,$0380\n    call WRITE_REGISTER\n    ld bc,$0400\n    call WRITE_REGISTER\n    ld bc,$0536\n    call WRITE_REGISTER\n    ld bc,$0607\n    call WRITE_REGISTER\n    ld hl,VRAM_NAME\n    call AMY_SET_DEFAULT_NAME_TABLE\n    jp LOAD_MULTICOLOR_NAME_TABLE\n\nLOAD_MULTICOLOR_NAME_TABLE:\n    xor a\n    out (VDP_CTRL_PORT),a\n    ld a,$58\n    out (VDP_CTRL_PORT),a\n    xor a\n    ld h,$06\nLOAD_MULTICOLOR_NAME_BAND:\n    ld d,$04\nLOAD_MULTICOLOR_NAME_ROW:\n    ld e,$20\nLOAD_MULTICOLOR_NAME_BYTE:\n    out (VDP_DATA_PORT),a\n    nop\n    inc a\n    dec e\n    jr nz,LOAD_MULTICOLOR_NAME_BYTE\n    ld e,$E0\n    add a,e\n    dec d\n    jr nz,LOAD_MULTICOLOR_NAME_ROW\n    ld e,$20\n    add a,e\n    dec h\n    jr nz,LOAD_MULTICOLOR_NAME_BAND\n    ret\n\n; Configure the CVBasic-style bitmap drawing surface used by MODE 1 on Coleco.\n; Input: A = full color-table byte, typically $F0.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_vdp_modes.asm",
     "extractedFromLabel": "AMY_SET_GRAPHICS_MODE3_MULTICOLOR"
@@ -502,7 +502,7 @@ export const alexisRuntimeCatalog = {
   "AMY_CLEAR_SPRITES": {
     "group": "sprites",
     "sourcePath": "src/alexis_lib/coleco_sprite.asm",
-    "asm": "AMY_CLEAR_SPRITES:\n    xor a\n    ld hl,AMY_SPRITE_COUNT\n    ld (hl),a\n    inc hl\n    ld b,$20\nAMY_CLEAR_SPRITES_LOOP:\n    ld (hl),$CF\n    inc hl\n    xor a\n    ld (hl),a\n    inc hl\n    ld (hl),a\n    inc hl\n    ld (hl),a\n    inc hl\n    djnz AMY_CLEAR_SPRITES_LOOP\n    ret\n\n; Upload the active sprite shadow entries to the VDP sprite attribute table.\n; Inputs:\n;   - AMY_SPRITE_COUNT = number of active entries\n;   - AMY_SPRITE_TABLE = 32 * 4 byte shadow table",
+    "asm": "AMY_CLEAR_SPRITES:\n    xor a\n    ld hl,AMY_SPRITE_COUNT\n    ld (hl),a\n    inc hl\n    ld b,$20\nAMY_CLEAR_SPRITES_LOOP:\n    ld (hl),$CF\n    inc hl\n    ld (hl),a\n    inc hl\n    ld (hl),a\n    inc hl\n    ld (hl),a\n    inc hl\n    djnz AMY_CLEAR_SPRITES_LOOP\n    ret\n\n; Upload the active sprite shadow entries to the VDP sprite attribute table.\n; Inputs:\n;   - AMY_SPRITE_COUNT = number of active entries\n;   - AMY_SPRITE_TABLE = 32 * 4 byte shadow table",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_sprite_table.asm",
     "extractedFromLabel": "AMY_CLEAR_SPRITES"
@@ -629,7 +629,7 @@ export const alexisRuntimeCatalog = {
   "AMY_U16_TO_ASCII5": {
     "group": "math",
     "sourcePath": "src/alexis_lib/coleco_math_format.asm",
-    "asm": "AMY_U16_TO_ASCII5:\n    ld bc,$2710\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld bc,$03E8\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld bc,$0064\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld c,$0A\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld a,l\n    add a,$30\n    ld (de),a\n    ret\n\nAMY_U16_TO_ASCII5_COUNT_SUB:\n    xor a\nAMY_U16_TO_ASCII5_COUNT_SUB_LOOP:\n    sbc hl,bc\n    inc a\n    jr nc,AMY_U16_TO_ASCII5_COUNT_SUB_LOOP\n    dec a\n    add hl,bc\n    add a,$30\n    ld (de),a\n    inc de\n    ret\n\n; other format routines are in separate files:\n;   coleco_math_format_u8.asm   - AMY_U8_TO_ASCII3\n;   coleco_math_format_u8_1.asm - AMY_U8_TO_ASCII1_MOD\n;   coleco_math_format_u8_2.asm - AMY_U8_TO_ASCII2 (used by fixed-point print)\n;   coleco_math_format_u8_2_mod.asm - AMY_U8_TO_ASCII2_MOD\n;   coleco_math_format_i16.asm  — AMY_I16_TO_ASCII6\n;   coleco_math_format_u32.asm  — AMY_U32_TO_ASCII10\n;   coleco_math_format_i32.asm  — AMY_I32_TO_ASCII11\n;   coleco_math_format_fx.asm   — AMY_FX8_8_FRAC_TO_HUNDREDTHS, AMY_FX8_8_TO_ASCII6",
+    "asm": "AMY_U16_TO_ASCII5:\n    ld bc,$2710\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld bc,$03E8\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld bc,$0064\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld c,$0A\n    call AMY_U16_TO_ASCII5_COUNT_SUB\n    ld a,l\n    add a,$30\n    ld (de),a\n    ret\n\nAMY_U16_TO_ASCII5_COUNT_SUB:\n    ld a,$2F\n    or a\nAMY_U16_TO_ASCII5_COUNT_SUB_LOOP:\n    inc a\n    sbc hl,bc\n    jr nc,AMY_U16_TO_ASCII5_COUNT_SUB_LOOP\n    add hl,bc\n    ld (de),a\n    inc de\n    ret\n\n; other format routines are in separate files:\n;   coleco_math_format_u8.asm   - AMY_U8_TO_ASCII3\n;   coleco_math_format_u8_1.asm - AMY_U8_TO_ASCII1_MOD\n;   coleco_math_format_u8_2.asm - AMY_U8_TO_ASCII2 (used by fixed-point print)\n;   coleco_math_format_u8_2_mod.asm - AMY_U8_TO_ASCII2_MOD\n;   coleco_math_format_i16.asm  — AMY_I16_TO_ASCII6\n;   coleco_math_format_u32.asm  — AMY_U32_TO_ASCII10\n;   coleco_math_format_i32.asm  — AMY_I32_TO_ASCII11\n;   coleco_math_format_fx.asm   — AMY_FX8_8_FRAC_TO_HUNDREDTHS, AMY_FX8_8_TO_ASCII6",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_math_format.asm",
     "extractedFromLabel": "AMY_U16_TO_ASCII5"
@@ -648,7 +648,7 @@ export const alexisRuntimeCatalog = {
   "AMY_U8_TO_ASCII3": {
     "group": "math",
     "sourcePath": "src/alexis_lib/coleco_math_format_u8.asm",
-    "asm": "AMY_U8_TO_ASCII3:\n    ld b,0\nAMY_U8_TO_ASCII3_HUNDREDS:\n    cp 100\n    jr c,AMY_U8_TO_ASCII3_HUNDREDS_DONE\n    sub 100\n    inc b\n    jr AMY_U8_TO_ASCII3_HUNDREDS\nAMY_U8_TO_ASCII3_HUNDREDS_DONE:\n    ld c,a\n    ld a,b\n    add a,$30\n    ld (de),a\n    inc de\n    ld a,c\n    ld b,0\nAMY_U8_TO_ASCII3_TENS:\n    cp 10\n    jr c,AMY_U8_TO_ASCII3_TENS_DONE\n    sub 10\n    inc b\n    jr AMY_U8_TO_ASCII3_TENS\nAMY_U8_TO_ASCII3_TENS_DONE:\n    ld c,a\n    ld a,b\n    add a,$30\n    ld (de),a\n    inc de\n    ld a,c\n    add a,$30\n    ld (de),a\n    ret",
+    "asm": "AMY_U8_TO_ASCII3:\n    ld b,$30\nAMY_U8_TO_ASCII3_HUNDREDS:\n    cp 100\n    jr c,AMY_U8_TO_ASCII3_HUNDREDS_DONE\n    sub 100\n    inc b\n    jr AMY_U8_TO_ASCII3_HUNDREDS\nAMY_U8_TO_ASCII3_HUNDREDS_DONE:\n    ld c,a\n    ld a,b\n    ld (de),a\n    inc de\n    ld a,c\n    ld b,$30\nAMY_U8_TO_ASCII3_TENS:\n    cp 10\n    jr c,AMY_U8_TO_ASCII3_TENS_DONE\n    sub 10\n    inc b\n    jr AMY_U8_TO_ASCII3_TENS\nAMY_U8_TO_ASCII3_TENS_DONE:\n    ld c,a\n    ld a,b\n    ld (de),a\n    inc de\n    ld a,c\n    add a,$30\n    ld (de),a\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_math_format_u8.asm",
     "extractedFromLabel": "AMY_U8_TO_ASCII3"
@@ -656,7 +656,7 @@ export const alexisRuntimeCatalog = {
   "AMY_U8_TO_ASCII2": {
     "group": "math",
     "sourcePath": "src/alexis_lib/coleco_math_format_u8_2.asm",
-    "asm": "AMY_U8_TO_ASCII2:\n    ld b,0\nAMY_U8_TO_ASCII2_TENS:\n    cp 10\n    jr c,AMY_U8_TO_ASCII2_TENS_DONE\n    sub 10\n    inc b\n    jr AMY_U8_TO_ASCII2_TENS\nAMY_U8_TO_ASCII2_TENS_DONE:\n    ld c,a\n    ld a,b\n    add a,$30\n    ld (de),a\n    inc de\n    ld a,c\n    add a,$30\n    ld (de),a\n    ret",
+    "asm": "AMY_U8_TO_ASCII2:\n    ld b,$30\nAMY_U8_TO_ASCII2_TENS:\n    cp 10\n    jr c,AMY_U8_TO_ASCII2_TENS_DONE\n    sub 10\n    inc b\n    jr AMY_U8_TO_ASCII2_TENS\nAMY_U8_TO_ASCII2_TENS_DONE:\n    ld c,a\n    ld a,b\n    ld (de),a\n    inc de\n    ld a,c\n    add a,$30\n    ld (de),a\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_math_format_u8_2.asm",
     "extractedFromLabel": "AMY_U8_TO_ASCII2"

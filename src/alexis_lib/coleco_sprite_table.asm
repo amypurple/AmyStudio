@@ -22,7 +22,6 @@ AMY_CLEAR_SPRITES:
 AMY_CLEAR_SPRITES_LOOP:
     ld (hl),$CF
     inc hl
-    xor a
     ld (hl),a
     inc hl
     ld (hl),a

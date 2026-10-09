@@ -7,7 +7,7 @@
 ;         DE = destination buffer (2 bytes)
 ; Output: writes zero-padded decimal digits. DE after return is unspecified.
 AMY_U8_TO_ASCII2:
-    ld b,0
+    ld b,$30
 AMY_U8_TO_ASCII2_TENS:
     cp 10
     jr c,AMY_U8_TO_ASCII2_TENS_DONE
@@ -17,7 +17,6 @@ AMY_U8_TO_ASCII2_TENS:
 AMY_U8_TO_ASCII2_TENS_DONE:
     ld c,a
     ld a,b
-    add a,$30
     ld (de),a
     inc de
     ld a,c

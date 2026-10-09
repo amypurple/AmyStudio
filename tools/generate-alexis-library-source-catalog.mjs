@@ -7,6 +7,7 @@ const libDir = path.join(repoRoot, "src", "alexis_lib");
 const compressionDir = path.join(repoRoot, "src", "compression");
 const includeDir = path.join(repoRoot, "include");
 const outPath = path.join(repoRoot, "studio", "core", "alexisLibrarySources.generated.js");
+const checkOnly = process.argv.slice(2).includes("--check");
 
 function toPosix(relPath) {
   return relPath.split(path.sep).join("/");
@@ -42,5 +43,15 @@ const banner = [
 ].join("\n");
 
 const output = `${banner}\nexport const alexisLibrarySources = ${JSON.stringify(entries, null, 2)};\n`;
+if (checkOnly) {
+  const current = fs.existsSync(outPath) ? fs.readFileSync(outPath, "utf8") : "";
+  if (current !== output) {
+    console.error(`Stale generated library catalog: ${outPath}`);
+    console.error("Run: node tools/generate-alexis-library-source-catalog.mjs");
+    process.exit(1);
+  }
+  console.log(`Library source catalog is current (${Object.keys(entries).length} sources).`);
+  process.exit(0);
+}
 fs.writeFileSync(outPath, output, "utf8");
 console.log(`Wrote ${outPath}`);

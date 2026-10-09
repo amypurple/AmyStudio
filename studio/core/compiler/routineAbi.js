@@ -25,8 +25,9 @@ export const ROUTINE_ABI = Object.freeze({
   FILL_VRAM: abi({
     kind: "bios",
     inputs: { hl: "VRAM destination", de: "byte count", a: "fill byte" },
-    clobbers: ["af", "bc", "de", "hl"],
-    notes: "BIOS VRAM fill primitive."
+    clobbers: ["af", "bc", "de"],
+    preserves: ["hl", "ix", "iy"],
+    notes: "BIOS VRAM fill primitive. HL is preserved; C receives the fill byte, DE reaches zero, and B is preserved although BC-family liveness remains conservative."
   }),
   WRITE_VRAM: abi({
     kind: "bios",
@@ -43,57 +44,119 @@ export const ROUTINE_ABI = Object.freeze({
   WRITE_REGISTER: abi({
     kind: "bios",
     inputs: { b: "VDP register", c: "value" },
-    clobbers: ["af", "bc"],
-    notes: "Updates BIOS VDP shadows for register writes."
+    clobbers: ["af"],
+    preserves: ["bc", "de", "hl", "ix", "iy"],
+    notes: "Updates BIOS VDP shadows for R0/R1 and preserves the BC input pair."
   }),
   READ_REGISTER: abi({
     kind: "bios",
-    inputs: { a: "VDP register" },
-    outputs: { a: "register value" },
+    outputs: { a: "VDP status byte" },
     clobbers: ["af"],
-    notes: "BIOS VDP register read helper."
+    preserves: ["bc", "de", "hl", "ix", "iy"],
+    notes: "Reads and acknowledges the VDP status port; this does not read an indexed VDP register."
   }),
   INIT_TABLE: abi({
     kind: "bios",
     inputs: { a: "table id", hl: "VRAM base" },
-    clobbers: ["af", "bc", "de", "hl"],
-    notes: "BIOS VDP table initializer/shadow updater."
+    clobbers: ["af", "bc", "hl", "ix", "iy"],
+    preserves: ["de"],
+    notes: "BIOS VDP table initializer/shadow updater for ids 0..4. IY is preserved only on the Graphics II pattern/color special paths, so the general ABI treats it as clobbered."
   }),
   LOAD_ASCII: abi({
     kind: "bios",
-    clobbers: ["af", "bc", "de", "hl"],
-    notes: "Uploads Coleco BIOS ASCII font."
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "Uploads blank glyph $00 and stock glyphs $1D-$7C. The production BIOS count is $60; $7D-$7F are omitted despite existing in ROM."
   }),
   TURN_OFF_SOUND: abi({
     kind: "bios",
-    clobbers: ["af", "bc"],
-    notes: "Silences PSG through BIOS routine."
+    clobbers: ["af"],
+    preserves: ["bc", "de", "hl", "ix", "iy"],
+    notes: "Writes the four PSG attenuation-off bytes and changes only AF."
   }),
   SET_SOUND_TABLE: abi({
     kind: "bios",
     inputs: { hl: "sound table", b: "sound area count" },
-    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
-    notes: "BIOS sound table setup. IX/IY are conservative because sound BIOS internals use indexed state."
+    clobbers: ["af", "bc", "de", "hl"],
+    preserves: ["ix", "iy"],
+    notes: "BIOS sound table setup. B reaches zero, C is preserved, DE reaches 10, and HL reaches the silent continuation handler."
   }),
   PLAY_SOUND_SLOT: abi({
     kind: "bios",
     inputs: { b: "sound index" },
     clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
-    notes: "BIOS sound trigger. Amy wrapper preserves IX/IY around this call."
+    notes: "BIOS sound trigger. Function-command streams use IY as an execution pointer; Amy's wrapper preserves IX/IY around this call."
+  }),
+  UPDATE_SOUND_ADDR: abi({
+    kind: "bios",
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "BIOS sound-stream manager. Active function-command streams can replace IY while IX walks the sound areas."
   }),
   PLAY_SOUNDS: abi({
     kind: "bios",
-    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
-    notes: "BIOS per-frame sound update."
+    clobbers: ["af", "bc", "de", "hl", "ix"],
+    preserves: ["iy"],
+    notes: "BIOS PSG-output pass. IY is preserved on idle and active paths; IX retains an internal sound-area pointer."
   }),
   GET_RANDOM: abi({
     kind: "bios",
     outputs: { hl: "updated/random seed component" },
-    clobbers: ["af", "bc", "de", "hl"],
-    notes: "Amy mixes returned L with R for legacy random expressions."
+    clobbers: ["af", "hl"],
+    preserves: ["bc", "de", "ix", "iy"],
+    notes: "Stock BIOS LFSR updates $73C8 and returns its low byte in A. Amy mixes returned L with R for legacy random expressions."
   }),
-  UPDATE_CONTROLLERS: abi({ kind: "bios", clobbers: ["af", "bc", "de", "hl"] }),
-  UPDATE_SPINNER: abi({ kind: "bios", clobbers: ["af", "bc", "de", "hl"] }),
+  UPDATE_CONTROLLERS: abi({
+    kind: "bios",
+    clobbers: ["af"],
+    preserves: ["bc", "de", "hl", "ix", "iy"],
+    notes: "Raw CONT_SCAN refreshes $73EE-$73F1 and changes only AF; decoded Amy state is a separate step."
+  }),
+  DECODER: abi({
+    kind: "bios",
+    inputs: { h: "controller port: 0 left, 1 right", l: "mode: 0 joystick/left fire, 1 keypad/right fire" },
+    outputs: { h: "fire bit $40 or zero", l: "direction bits or keypad code", e: "consumed spinner count in joystick mode" },
+    clobbers: ["af", "bc", "de", "hl"],
+    preserves: ["ix", "iy"],
+    notes: "OS7 ReadCtl performs an immediate non-debounced read. Joystick mode consumes and clears the selected pulse counter."
+  }),
+  POLLER: abi({
+    kind: "bios",
+    inputs: { memory: "controller-state pointer from cartridge header word $8008" },
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "OS7 ReadCtlState scans and debounces both controllers. Despite an official source comment, active paths do not preserve HL; IX/IY become internal state pointers."
+  }),
+  UPDATE_SPINNER: abi({
+    kind: "bios",
+    clobbers: ["af", "hl"],
+    preserves: ["bc", "de", "ix", "iy"],
+    notes: "Reads raw spinner pulse/direction lines and conditionally updates $73EB/$73EC. HL finishes at one of those counters."
+  }),
+  INIT_SPR_ORDER: abi({
+    kind: "bios",
+    inputs: { a: "sprite count; zero wraps to 256 entries", memory: "sprite-order pointer from cartridge header word $8004" },
+    clobbers: ["af", "bc", "hl"],
+    preserves: ["de", "ix", "iy"],
+    notes: "Writes ascending indices at the header-selected RAM table. B receives the count, C is preserved, and HL advances by the effective count."
+  }),
+  WR_SPR_NM_TBL: abi({
+    kind: "bios",
+    inputs: { a: "sprite count; zero wraps to 256 entries", memory: "attribute/order pointers from header $8002/$8004 and VRAM destination from $73F2" },
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "Copies four bytes per indirect sprite index. Does not append a $D0 terminator; callers must manage the remaining sprite table."
+  }),
+  PX_TO_PTRN_POS: abi({
+    kind: "bios",
+    inputs: { de: "signed pixel displacement" },
+    outputs: { de: "signed floor(displacement / 8), saturated to -128..127" },
+    clobbers: ["af", "de"],
+    preserves: ["bc", "hl", "ix", "iy"],
+    notes: "A is preserved, but flags change. Negative values use arithmetic shifts, so fractions round toward negative infinity."
+  }),
+  ROTATE_90: abi({
+    kind: "bios",
+    inputs: { a: "VDP table id", bc: "entry count", de: "source table index", hl: "destination table index" },
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "Raw OS7 graphics transform. Internal block VRAM services replace IX/IY; callers must prevent concurrent VRAM access."
+  }),
   PUT_FRAME: abi({
     kind: "bios",
     inputs: { hl: "RAM frame buffer", b: "height", c: "width", d: "row", e: "column" },
@@ -123,7 +186,10 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_FILL_AT: abi({ inputs: { d: "row", e: "column", a: "tile", b: "count" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_TEXT_CALC_NAME_ADDRESS: abi({ inputs: { d: "row", e: "column" }, outputs: { hl: "name table VRAM address" }, clobbers: ["af", "de", "hl"] }),
   AMY_CLEAR_NAME_TABLE: abi({ clobbers: ["af", "bc", "de", "hl"] }),
-  AMY_LOAD_DEFAULT_ASCII: abi({ clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_LOAD_DEFAULT_ASCII: abi({
+    clobbers: ["af", "bc", "de", "hl", "ix", "iy"],
+    notes: "Calls stock OS7 LOAD_ASCII, then uploads the three omitted BIOS glyphs $7D-$7F to the active pattern table."
+  }),
   AMY_LOAD_DEFAULT_ASCII_STYLE: abi({ inputs: { a: "style flags" }, clobbers: ["af", "bc", "de", "hl"] }),
 
   // VDP modes and screen state.
@@ -134,6 +200,8 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_SET_GRAPHICS_MODE3_MULTICOLOR: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FILL_MODE2_TEXT_COLOR_FULL: abi({ inputs: { a: "color byte" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_DEFINE_MODE2_THIRDS: abi({ inputs: { hl: "RAM source", de: "first-third VRAM destination", bc: "byte count" }, clobbers: ["af"], notes: "Preserves BC, DE, and HL around each WRITE_VRAM call." }),
+  AMY_FILL_MODE2_COLOR_THIRDS: abi({ inputs: { hl: "first-third VRAM destination", de: "byte count", a: "fill byte" }, clobbers: ["af", "bc"], notes: "Preserves DE and HL while advancing H between thirds." }),
   AMY_LOAD_MODE2_TEXT_COLORS_32: abi({ inputs: { hl: "32-byte compact Mode 2 text color table" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_DUPLICATE_PATTERN_THIRDS: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_DUPLICATE_COLOR_THIRDS: abi({ clobbers: ["af", "bc", "de", "hl"] }),
@@ -167,6 +235,8 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_UPDATE_SPRITES: abi({ clobbers: ["af", "de", "hl"] }),
   AMY_UPDATE_SPRITES_PARTIAL: abi({ inputs: { a: "count" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SET_SPRITE_COUNT: abi({ inputs: { a: "count" }, clobbers: ["af", "hl"] }),
+  AMY_SPRITE_FLICKER_ON: abi({ clobbers: ["af"] }),
+  AMY_SPRITE_FLICKER_OFF: abi({ clobbers: ["af"] }),
   AMY_CHECK_COLLISION_RAW: abi({ outputs: { hl: "0 or 1" }, clobbers: ["af", "bc", "de", "hl", "ix"] }),
   AMY_CHECK_SPRITE_COLLISION_BOX: abi({ inputs: { a: "sprite1 index", b: "sprite2 index", c: "box width", d: "box height" }, outputs: { a: "boolean" }, clobbers: ["af", "bc", "de", "hl", "ix", "iy"] }),
   AMY_CHECK_SPRITE_COLLISION_RECT: abi({ inputs: { a: "sprite1 index", b: "sprite2 index", c: "x offset", d: "y offset", e: "box width", l: "box height" }, outputs: { a: "boolean" }, clobbers: ["af", "bc", "de", "hl", "ix", "iy"] }),
@@ -200,9 +270,10 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_I16_TO_ASCII6: abi({ inputs: { hl: "value", de: "destination buffer" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_U32_TO_ASCII10: abi({ inputs: { hl: "source pointer", de: "destination buffer" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_I32_TO_ASCII11: abi({ inputs: { hl: "source pointer", de: "destination buffer" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_NUMERIC_DEFAULT_WIDTH: abi({ inputs: { hl: "ASCII buffer", b: "character count" }, clobbers: ["af", "bc", "hl"] }),
 
   // Sound, timers, input.
-  AMY_SET_SOUND_TABLE: abi({ inputs: { hl: "sound table", a: "area count shadow input via AMY_SOUND_AREA_COUNT" }, clobbers: ["af", "bc", "de", "hl", "ix", "iy"] }),
+  AMY_SET_SOUND_TABLE: abi({ inputs: { hl: "sound table", a: "area count shadow input via AMY_SOUND_AREA_COUNT" }, clobbers: ["af", "bc", "de", "hl"], preserves: ["ix", "iy"], notes: "Tail-calls the stock BIOS SET_SOUND_TABLE routine, which preserves IX/IY." }),
   AMY_PLAY_SOUND: abi({ inputs: { b: "sound index" }, clobbers: ["af", "bc", "de", "hl"], notes: "Wrapper preserves IX/IY around PLAY_SOUND_SLOT." }),
   AMY_STOP_SOUND: abi({ inputs: { b: "sound index" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_STOP_SONG: abi({ clobbers: ["af", "bc", "de", "hl"] }),
@@ -225,6 +296,8 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_PLAY_TRIPCM: abi({ inputs: { hl: "tripcm data" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PLAY_TRIPCM_COMPACT: abi({ inputs: { hl: "compact tripcm data" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PLAY_TRIPCM_SEQUENCE: abi({ inputs: { hl: "compact tripcm sequence table" }, clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_120C_ON: abi({ clobbers: ["af", "bc"] }),
+  AMY_120C_OFF: abi({ clobbers: ["af", "bc"] }),
   AMY_WAIT_FRAMES_SAFE: abi({ inputs: { hl: "frame count" }, clobbers: ["af", "de"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK_RESUME: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
@@ -247,7 +320,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_REFLECT_PATTERN_VERTICAL: abi({ inputs: { de: "source pattern index", hl: "destination pattern index", bc: "pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Preserves IX/IY around the BIOS transform; caller must own a VRAM critical section." }),
   AMY_REFLECT_PATTERN_HORIZONTAL: abi({ inputs: { de: "source pattern index", hl: "destination pattern index", bc: "pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Preserves IX/IY around the BIOS transform; caller must own a VRAM critical section." }),
   AMY_ROTATE_PATTERN_90: abi({ inputs: { de: "source pattern index", hl: "destination pattern index", bc: "pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Preserves IX/IY around the BIOS transform; caller must own a VRAM critical section." }),
-  AMY_ENLARGE_PATTERN: abi({ inputs: { de: "source pattern index", hl: "first of four destination pattern indexes", bc: "source pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "OS7 wrapper. Preserves IX/IY; caller must own a VRAM critical section." }),
+  AMY_ENLARGE_PATTERN: abi({ inputs: { de: "source pattern index", hl: "first of four destination pattern indexes", bc: "source pattern count" }, clobbers: ["af", "bc", "de", "hl"], notes: "Internal OS7 exploration wrapper. Preserves IX/IY; caller must own a VRAM critical section." }),
 
   // Sprite mode R1 helpers.
   AMY_SET_SPRITES8X8: abi({ clobbers: ["af", "bc"] }),
@@ -275,6 +348,8 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_FP5_CMP_FPA1_FPA2: abi({ outputs: { flags: "compare result" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FP5_MUL_FPA1_FPA2: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FP5_DIV_FPA1_FPA2: abi({ clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_FP5_ADD_FPA1_TO_FPA2: abi({ clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_FP5_SUB_FPA1_FROM_FPA2: abi({ clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FP5_TO_FX16_16: abi({ inputs: { hl: "fp5 source pointer", de: "fixed32 destination pointer" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FP5_ABS_MEM: abi({ inputs: { hl: "fp5 in/out pointer" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_FP5_EXP_MEM: abi({ inputs: { hl: "fp5 in/out pointer" }, clobbers: ["af", "bc", "de", "hl"] }),
@@ -287,11 +362,15 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_FX16_16_RND: abi({ inputs: { hl: "fixed32 destination pointer" }, clobbers: ["af", "bc", "de", "hl"] }),
 
   // BIOS timers, for future Amy timer backend usage.
-  INIT_TIMER: abi({ kind: "bios", inputs: { hl: "timer table", de: "timer data block" }, clobbers: ["de", "hl"] }),
-  TIME_MGR: abi({ kind: "bios", clobbers: ["af", "de", "hl"] }),
-  REQUEST_SIGNAL: abi({ kind: "bios", inputs: { hl: "timer length", a: "repeat flag" }, outputs: { a: "signal number" }, clobbers: ["af", "bc", "de", "hl"] }),
-  TEST_SIGNAL: abi({ kind: "bios", inputs: { a: "signal number" }, outputs: { a: "true/false", flags: "Z reflects A" }, clobbers: ["af", "bc", "de", "hl"] }),
-  FREE_SIGNAL: abi({ kind: "bios", inputs: { a: "signal number" }, clobbers: ["af", "bc", "de", "hl"] })
+  INIT_TIMER: abi({ kind: "bios", inputs: { hl: "timer table", de: "timer auxiliary storage" }, clobbers: ["de", "hl"], preserves: ["af", "bc", "ix", "iy"], notes: "OS7 INIT_TIMERS vector: initializes an inactive end marker, stores both pointers, and exchanges DE/HL." }),
+  TIME_MGR: abi({ kind: "bios", clobbers: ["af", "de", "hl"], preserves: ["bc", "ix", "iy"], notes: "OS7 RUN_TIMERS vector: must be called once per desired timer tick." }),
+  REQUEST_SIGNAL: abi({ kind: "bios", inputs: { hl: "timer length", a: "repeat flag" }, outputs: { a: "timer index" }, clobbers: ["af", "bc", "de", "hl"], preserves: ["ix", "iy"], notes: "Historical internal name for OS7 START_TIMER; dynamic table growth is not interrupt-safe." }),
+  TEST_SIGNAL: abi({ kind: "bios", inputs: { a: "timer index" }, outputs: { a: "true/false", flags: "Z reflects A" }, clobbers: ["af", "bc", "de", "hl"], preserves: ["ix", "iy"], notes: "Historical internal name for OS7 TEST_TIMER; consumes the expired flag." }),
+  FREE_SIGNAL: abi({ kind: "bios", inputs: { a: "timer index" }, clobbers: ["af", "bc", "de", "hl"], preserves: ["ix", "iy"], notes: "Historical internal name for OS7 STOP_TIMER; may compact auxiliary word-timer storage." }),
+
+  // Generated control-flow helpers.
+  AMY_SCENE_DEBUG_POISON: abi({ clobbers: ["af", "bc", "de", "hl"] }),
+  AMY_START_FOREVER: abi({ clobbers: [], notes: "Non-returning generated sink." })
 });
 
 export const ROUTINE_CLOBBERS = Object.freeze(Object.fromEntries(
@@ -313,4 +392,25 @@ export function getRoutineInputs(name) {
 
 export function getRoutineOutputs(name) {
   return getRoutineAbi(name)?.outputs || {};
+}
+
+const REGISTER_FAMILIES = Object.freeze({
+  a: "af", f: "af", af: "af",
+  b: "bc", c: "bc", bc: "bc",
+  d: "de", e: "de", de: "de",
+  h: "hl", l: "hl", hl: "hl",
+  ixh: "ix", ixl: "ix", ix: "ix",
+  iyh: "iy", iyl: "iy", iy: "iy",
+  sp: "sp"
+});
+
+export function getRegisterFamily(register) {
+  return REGISTER_FAMILIES[String(register || "").trim().toLowerCase()] || null;
+}
+
+export function routineClobbersRegister(name, register) {
+  const abi = getRoutineAbi(name);
+  const family = getRegisterFamily(register);
+  if (!abi || !family) return true;
+  return abi.clobbers.some((clobber) => getRegisterFamily(clobber) === family);
 }

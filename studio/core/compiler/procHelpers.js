@@ -26,6 +26,7 @@ export function createProcHelpers({
         init: [],
         insertIndex: body.length,
         usesIxFrame: false,
+        usesIxAlias: false,
         boolPackOffset: null,
         boolPackBits: 0
       });
@@ -53,7 +54,9 @@ export function createProcHelpers({
       return ["    jp AMY_START_FOREVER"];
     }
     const lines = [];
-    if (frame && (frame.usesIxFrame || frame.size > 0)) {
+    if (frame?.usesIxAlias && !frame.usesIxFrame && frame.size === 0) {
+      lines.push("    pop ix");
+    } else if (frame && (frame.usesIxFrame || frame.size > 0)) {
       lines.push("    ld sp,ix");
       lines.push("    pop ix");
     }

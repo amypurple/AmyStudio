@@ -11,6 +11,7 @@ export function createByteLoadHelpers(ctx) {
     isIndexedByteReadable,
     emitLoadArrayAddressIntoHL,
     emitLoadRecordFieldAddressIntoHL,
+    getRecordAliasIxOperand,
     getDirectRecordFieldAddress,
     emitFunctionInvocation,
     parseFix8_8Component,
@@ -115,6 +116,11 @@ export function createByteLoadHelpers(ctx) {
         const lines = [...loadHL, "    ld a,h"];
         if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
         return lines;
+      }
+      const ixOperand = getRecordAliasIxOperand?.(token);
+      if (ixOperand) {
+        if (register.toLowerCase() === "a") return [`    ld a,(${ixOperand})`];
+        return [`    ld a,(${ixOperand})`, `    ld ${register},a`];
       }
       const directAddress = getDirectRecordFieldAddress?.(token);
       if (directAddress) {

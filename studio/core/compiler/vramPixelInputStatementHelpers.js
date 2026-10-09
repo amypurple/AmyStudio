@@ -222,7 +222,7 @@ export function handleVramPixelInputStatement({
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
       return { handled: true, ok: false, log: `CRT-safe pause requires a compile-time constant timeout from 1 to 1092 seconds: ${rawLine}` };
     }
-    if (nmiKnownOff) {
+    if (nmiKnownOff && !nativeEos) {
       return { handled: true, ok: false, log: `CRT-safe pause requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
     }
     body.push(
@@ -337,7 +337,7 @@ export function handleVramPixelInputStatement({
       if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
         return { handled: true, ok: false, log: `CRT-safe menu choice requires a compile-time constant timeout from 1 to 1092 seconds: ${rawLine}` };
       }
-      if (nmiKnownOff) {
+      if (nmiKnownOff && !nativeEos) {
         return { handled: true, ok: false, log: `CRT-safe menu choice requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
       }
     }
@@ -501,7 +501,7 @@ export function handleVramPixelInputStatement({
       if (!Number.isInteger(seconds) || seconds < 1 || seconds > 1092) {
         return { handled: true, ok: false, log: `CRT-safe keypad choice requires a compile-time constant timeout from 1 to 1092 seconds: ${rawLine}` };
       }
-      if (nmiKnownOff) {
+      if (nmiKnownOff && !nativeEos) {
         return { handled: true, ok: false, log: `CRT-safe keypad choice requires NMI enabled; the current VDP state proves NMI is off: ${rawLine}` };
       }
       body.push(

@@ -14,8 +14,6 @@
 AMY_SET_BITMAP_GRAPHICS_MODE:
     ld bc,$0182
     call WRITE_REGISTER
-    ld a,$82
-    ld ($73C4),a
     ld bc,$0002
     call WRITE_REGISTER
     ld a,2
@@ -40,8 +38,6 @@ AMY_SET_BITMAP_GRAPHICS_MODE:
 AMY_SET_GRAPHICS_MODE2_TEXT:
     ld bc,$0182
     call WRITE_REGISTER
-    ld a,$82
-    ld ($73C4),a
     ld bc,$039F
     call WRITE_REGISTER
     ld bc,$0403
@@ -63,8 +59,6 @@ AMY_SET_GRAPHICS_MODE1_TEXT:
     call WRITE_REGISTER
     ld bc,$0182
     call WRITE_REGISTER
-    ld a,$82
-    ld ($73C4),a
     ld bc,$0380
     call WRITE_REGISTER
     ld bc,$0400
@@ -87,8 +81,6 @@ AMY_SET_GRAPHICS_MODE3_MULTICOLOR:
     call WRITE_REGISTER
     ld bc,$018A
     call WRITE_REGISTER
-    ld a,$8A
-    ld ($73C4),a
     ld bc,$0380
     call WRITE_REGISTER
     ld bc,$0400

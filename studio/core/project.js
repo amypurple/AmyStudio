@@ -314,7 +314,7 @@ function injectNativeEosInitInline(asmBody, capabilities = {}) {
   const init = [
     "        di",
     "        ld sp,$2FF0",
-    "; Native programs do not own $0066: preserve display state but disable VDP NMI.",
+    "; Keep VDP NMI disabled until the native handler and Amy state are ready.",
     "        ld a,(VDP_R1_SHADOW)",
     "        and $DF",
     "        ld (VDP_R1_SHADOW),a",
@@ -322,6 +322,15 @@ function injectNativeEosInitInline(asmBody, capabilities = {}) {
     "        ld b,1",
     "        call WRITE_REGISTER"
   ];
+  if (capabilities.needsNmi) {
+    init.push(
+      "; MIOC $01 maps writable low RAM and the resident $C800 program together.",
+      "        ld a,$C3",
+      "        ld ($0066),a",
+      "        ld hl,AMY_EOS_NMI",
+      "        ld ($0067),hl"
+    );
+  }
   if (capabilities.needsGraphicsTablePointers) {
     init.push(
       "        ld hl,VRAM_PATTERN",
@@ -384,6 +393,32 @@ function adaptNativeEosVramRuntime(text, capabilities = {}) {
     `${label}:\n${body.join("\n")}`
   );
   let adapted = String(text || "");
+  adapted = replaceRoutine(adapted, "AMY_DISABLE_NMI", [
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $DF",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    ld b,1",
+    "    jp WRITE_REGISTER"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_ENABLE_NMI", [
+    "    call READ_REGISTER",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    or $20",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    ld b,1",
+    "    jp WRITE_REGISTER"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_SCREEN_ON_NMI", [
+    "    call READ_REGISTER",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    or $60",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    ld b,1",
+    "    jp WRITE_REGISTER"
+  ]);
   adapted = replaceRoutine(adapted, "AMY_COPY_BYTES_TO_VRAM", [
     "    jp WRITE_VRAM"
   ]);
@@ -405,25 +440,336 @@ function adaptNativeEosVramRuntime(text, capabilities = {}) {
     "    ld a,(AMY_BUFFER32)",
     "    ret"
   ]);
-  adapted = adapted.replace(
-    /^AMY_WAIT_FRAMES_SAFE:\r?\n[\s\S]*?^\s*jr\s+AMY_WAIT_FRAMES_SAFE_NMI_OFF_CHECK\s*$/mi,
-    ["AMY_WAIT_FRAMES_SAFE:",
+  adapted = replaceRoutine(adapted, "AMY_PAUSE_PRESS_RELEASE_BLANK", [
+    "    ld e,a                   ; controller selector",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $40",
+    "    ld d,a                   ; original display-enable bit",
+    "    ld b,0                   ; nonzero after CRT blanking",
+    "AMY_EOS_PAUSE_INITIAL_RELEASE:",
+    "    call AMY_EOS_PAUSE_FRAME",
+    "    call AMY_EOS_PAUSE_READ_ACTIONS",
+    "    or a",
+    "    jr nz,AMY_EOS_PAUSE_INITIAL_RELEASE",
+    "AMY_EOS_PAUSE_FRESH_PRESS:",
+    "    call AMY_EOS_PAUSE_FRAME",
+    "    call AMY_EOS_PAUSE_READ_ACTIONS",
+    "    or a",
+    "    jr nz,AMY_EOS_PAUSE_GOT_PRESS",
     "    ld a,h",
     "    or l",
+    "    jr z,AMY_EOS_PAUSE_FRESH_PRESS",
+    "    dec hl",
+    "    ld a,h",
+    "    or l",
+    "    jr nz,AMY_EOS_PAUSE_FRESH_PRESS",
+    "    call AMY_EOS_PAUSE_BLANK_DISPLAY",
+    "    ld b,1",
+    "    jr AMY_EOS_PAUSE_FRESH_PRESS",
+    "AMY_EOS_PAUSE_GOT_PRESS:",
+    "    ld a,b",
+    "    or a",
+    "    jr z,AMY_EOS_PAUSE_FINAL_RELEASE",
+    "    call AMY_EOS_PAUSE_RESTORE_DISPLAY",
+    "AMY_EOS_PAUSE_WAKE_RELEASE:",
+    "    call AMY_EOS_PAUSE_FRAME",
+    "    call AMY_EOS_PAUSE_READ_ACTIONS",
+    "    or a",
+    "    jr nz,AMY_EOS_PAUSE_WAKE_RELEASE",
+    "    jr AMY_EOS_PAUSE_FRESH_PRESS",
+    "AMY_EOS_PAUSE_FINAL_RELEASE:",
+    "    call AMY_EOS_PAUSE_FRAME",
+    "    call AMY_EOS_PAUSE_READ_ACTIONS",
+    "    or a",
+    "    jr nz,AMY_EOS_PAUSE_FINAL_RELEASE",
+    "    ld a,b",
+    "    or a",
     "    ret z",
-    "    ld d,h",
-    "    ld e,l",
-    "    call READ_REGISTER",
-    "AMY_WAIT_FRAMES_SAFE_EOS_NEXT:",
-    "    call READ_REGISTER",
-    "    rlca",
-    "    jr nc,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
-    ...(capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound ? ["    call AMY_EOS_FRAME_TICK"] : []),
-    "    dec de",
-    "    ld a,d",
-    "    or e",
-    "    jr nz,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
-    "    ret"].join("\n")
+    "AMY_EOS_PAUSE_RESTORE_DISPLAY:",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $BF",
+    "    or d",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    push bc",
+    "    ld b,1",
+    "    call WRITE_REGISTER",
+    "    ld a,(AMY_VDP_R7_SHADOW)",
+    "    ld c,a",
+    "    ld b,7",
+    "    call WRITE_REGISTER",
+    "    pop bc",
+    "    ld b,0",
+    "    ret",
+    "AMY_EOS_PAUSE_BLANK_DISPLAY:",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $BF",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    push bc",
+    "    ld b,1",
+    "    call WRITE_REGISTER",
+    "    ld c,$01",
+    "    ld b,7",
+    "    call WRITE_REGISTER",
+    "    pop bc",
+    "    ret",
+    "AMY_EOS_PAUSE_FRAME:",
+    "    push bc",
+    "    push de",
+    "    push hl",
+    "    ld hl,1",
+    "    call AMY_WAIT_FRAMES_SAFE",
+    "    call AMY_EOS_POLL_CONTROLLERS",
+    "    pop hl",
+    "    pop de",
+    "    pop bc",
+    "    ret",
+    "AMY_EOS_PAUSE_READ_ACTIONS:",
+    "    ld a,e",
+    "    or a",
+    "    jr z,AMY_EOS_PAUSE_READ_BOTH",
+    "    dec a",
+    "    jr z,AMY_EOS_PAUSE_READ_ONE",
+    "    ld a,(JOYPAD_2)",
+    "    and $F0",
+    "    ret",
+    "AMY_EOS_PAUSE_READ_ONE:",
+    "    ld a,(JOYPAD_1)",
+    "    and $F0",
+    "    ret",
+    "AMY_EOS_PAUSE_READ_BOTH:",
+    "    ld a,(JOYPAD_1)",
+    "    and $F0",
+    "    ld c,a",
+    "    ld a,(JOYPAD_2)",
+    "    and $F0",
+    "    or c",
+    "    ret"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_SLEEP_SERVICE", [
+    "    ld e,a                   ; controller selector",
+    "    call AMY_EOS_SLEEP_READ_INPUTS",
+    "    or a",
+    "    jr nz,AMY_EOS_SLEEP_RESET",
+    "    ld b,h",
+    "    ld c,l                   ; native ADAM uses the NTSC timeout",
+    "    ld hl,(AMY_SLEEP_IDLE_TICKS)",
+    "    inc hl",
+    "    ld (AMY_SLEEP_IDLE_TICKS),hl",
+    "    or a",
+    "    sbc hl,bc",
+    "    ret c",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $40",
+    "    ld d,a",
+    "    call AMY_EOS_PAUSE_BLANK_DISPLAY",
+    "AMY_EOS_SLEEP_WAIT_INPUT:",
+    "    call AMY_EOS_PAUSE_FRAME",
+    "    call AMY_EOS_SLEEP_READ_INPUTS",
+    "    or a",
+    "    jr z,AMY_EOS_SLEEP_WAIT_INPUT",
+    "    call AMY_EOS_PAUSE_RESTORE_DISPLAY",
+    "AMY_EOS_SLEEP_WAIT_RELEASE:",
+    "    call AMY_EOS_PAUSE_FRAME",
+    "    call AMY_EOS_SLEEP_READ_INPUTS",
+    "    or a",
+    "    jr nz,AMY_EOS_SLEEP_WAIT_RELEASE",
+    "AMY_EOS_SLEEP_RESET:",
+    "    xor a",
+    "    ld (AMY_SLEEP_IDLE_TICKS),a",
+    "    ld (AMY_SLEEP_IDLE_TICKS+1),a",
+    "    ret",
+    "AMY_EOS_SLEEP_READ_INPUTS:",
+    "    ld a,e",
+    "    or a",
+    "    jr z,AMY_EOS_SLEEP_READ_BOTH",
+    "    dec a",
+    "    jr z,AMY_EOS_SLEEP_READ_ONE",
+    "    ld a,(JOYPAD_2)",
+    "    or a",
+    "    ret nz",
+    "    ld a,(KEYPAD_2)",
+    "    inc a",
+    "    ret",
+    "AMY_EOS_SLEEP_READ_ONE:",
+    "    ld a,(JOYPAD_1)",
+    "    or a",
+    "    ret nz",
+    "    ld a,(KEYPAD_1)",
+    "    inc a",
+    "    ret",
+    "AMY_EOS_SLEEP_READ_BOTH:",
+    "    ld a,(JOYPAD_1)",
+    "    ld c,a",
+    "    ld a,(JOYPAD_2)",
+    "    or c",
+    "    ret nz",
+    "    ld a,(KEYPAD_1)",
+    "    inc a",
+    "    ret nz",
+    "    ld a,(KEYPAD_2)",
+    "    inc a",
+    "    ret"
+  ]);
+  adapted = replaceRoutine(adapted, "AMY_CHOICE_KEYPAD_RANGE_BLANK", [
+    "    ld e,a                   ; keypad selector",
+    "    ld (AMY_SLEEP_IDLE_TICKS),hl ; preserve the native timeout",
+    "    xor a",
+    "    ld (AMY_BUFFER32),a       ; display-blanked flag",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $40",
+    "    ld d,a                   ; original display-enable bit",
+    "AMY_EOS_CHOICE_KEYPAD_INITIAL_RELEASE:",
+    "    call AMY_EOS_CHOICE_KEYPAD_FRAME",
+    "    call AMY_EOS_CHOICE_KEYPAD_READ",
+    "    cp $FF",
+    "    jr nz,AMY_EOS_CHOICE_KEYPAD_INITIAL_RELEASE",
+    "    ld hl,(AMY_SLEEP_IDLE_TICKS)",
+    "AMY_EOS_CHOICE_KEYPAD_WAIT:",
+    "    call AMY_EOS_CHOICE_KEYPAD_FRAME",
+    "    call AMY_EOS_CHOICE_KEYPAD_READ",
+    "    cp b",
+    "    jr c,AMY_EOS_CHOICE_KEYPAD_IDLE",
+    "    cp c",
+    "    jr z,AMY_EOS_CHOICE_KEYPAD_TAKE",
+    "    jr c,AMY_EOS_CHOICE_KEYPAD_TAKE",
+    "AMY_EOS_CHOICE_KEYPAD_IDLE:",
+    "    ld a,h",
+    "    or l",
+    "    jr z,AMY_EOS_CHOICE_KEYPAD_WAIT",
+    "    dec hl",
+    "    ld a,h",
+    "    or l",
+    "    jr nz,AMY_EOS_CHOICE_KEYPAD_WAIT",
+    "    call AMY_EOS_CHOICE_KEYPAD_BLANK_DISPLAY",
+    "    ld a,1",
+    "    ld (AMY_BUFFER32),a",
+    "AMY_EOS_CHOICE_KEYPAD_WAKE:",
+    "    call AMY_EOS_CHOICE_KEYPAD_FRAME",
+    "    call AMY_EOS_CHOICE_KEYPAD_READ",
+    "    cp $FF",
+    "    jr z,AMY_EOS_CHOICE_KEYPAD_WAKE",
+    "    call AMY_EOS_CHOICE_KEYPAD_RESTORE_DISPLAY",
+    "AMY_EOS_CHOICE_KEYPAD_WAKE_RELEASE:",
+    "    call AMY_EOS_CHOICE_KEYPAD_FRAME",
+    "    call AMY_EOS_CHOICE_KEYPAD_READ",
+    "    cp $FF",
+    "    jr nz,AMY_EOS_CHOICE_KEYPAD_WAKE_RELEASE",
+    "    xor a",
+    "    ld (AMY_BUFFER32),a",
+    "    ld hl,(AMY_SLEEP_IDLE_TICKS)",
+    "    jr AMY_EOS_CHOICE_KEYPAD_WAIT",
+    "AMY_EOS_CHOICE_KEYPAD_TAKE:",
+    "    ld (AMY_BUFFER32+1),a",
+    "AMY_EOS_CHOICE_KEYPAD_FINAL_RELEASE:",
+    "    call AMY_EOS_CHOICE_KEYPAD_FRAME",
+    "    call AMY_EOS_CHOICE_KEYPAD_READ",
+    "    cp $FF",
+    "    jr nz,AMY_EOS_CHOICE_KEYPAD_FINAL_RELEASE",
+    "    ld a,(AMY_BUFFER32)",
+    "    or a",
+    "    call nz,AMY_EOS_CHOICE_KEYPAD_RESTORE_DISPLAY",
+    "    ld a,(AMY_BUFFER32+1)",
+    "    ret",
+    "AMY_EOS_CHOICE_KEYPAD_READ:",
+    "    ld a,e",
+    "    or a",
+    "    jr z,AMY_EOS_CHOICE_KEYPAD_READ_BOTH",
+    "    dec a",
+    "    jr z,AMY_EOS_CHOICE_KEYPAD_READ_ONE",
+    "    ld a,(KEYPAD_2)",
+    "    ret",
+    "AMY_EOS_CHOICE_KEYPAD_READ_ONE:",
+    "    ld a,(KEYPAD_1)",
+    "    ret",
+    "AMY_EOS_CHOICE_KEYPAD_READ_BOTH:",
+    "    ld a,(KEYPAD_1)",
+    "    cp $FF",
+    "    ret nz",
+    "    ld a,(KEYPAD_2)",
+    "    ret",
+    "AMY_EOS_CHOICE_KEYPAD_FRAME:",
+    "    push bc",
+    "    push de",
+    "    push hl",
+    ...(capabilities.usesScreenOnNmi
+      ? ["    halt"]
+      : [
+          "    call READ_REGISTER",
+          "AMY_EOS_CHOICE_KEYPAD_FRAME_WAIT:",
+          "    call READ_REGISTER",
+          "    rlca",
+          "    jr nc,AMY_EOS_CHOICE_KEYPAD_FRAME_WAIT"
+        ]),
+    ...(!capabilities.needsNmi && (capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound) ? ["    call AMY_EOS_FRAME_TICK"] : []),
+    "    call AMY_EOS_POLL_CONTROLLERS",
+    "    pop hl",
+    "    pop de",
+    "    pop bc",
+    "    ret",
+    "AMY_EOS_CHOICE_KEYPAD_BLANK_DISPLAY:",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $BF",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    push bc",
+    "    ld b,1",
+    "    call WRITE_REGISTER",
+    "    ld c,$01",
+    "    ld b,7",
+    "    call WRITE_REGISTER",
+    "    pop bc",
+    "    ret",
+    "AMY_EOS_CHOICE_KEYPAD_RESTORE_DISPLAY:",
+    "    ld a,(VDP_R1_SHADOW)",
+    "    and $BF",
+    "    or d",
+    "    ld (VDP_R1_SHADOW),a",
+    "    ld c,a",
+    "    push bc",
+    "    ld b,1",
+    "    call WRITE_REGISTER",
+    "    ld a,(AMY_VDP_R7_SHADOW)",
+    "    ld c,a",
+    "    ld b,7",
+    "    call WRITE_REGISTER",
+    "    pop bc",
+    "    ret"
+  ]);
+  adapted = adapted.replace(
+    /^AMY_WAIT_FRAMES_SAFE:\r?\n[\s\S]*?^\s*jr\s+AMY_WAIT_FRAMES_SAFE_NMI_OFF_CHECK\s*$/mi,
+    (capabilities.usesScreenOnNmi
+      ? ["AMY_WAIT_FRAMES_SAFE:",
+          "    ld a,h",
+          "    or l",
+          "    ret z",
+          "    ld d,h",
+          "    ld e,l",
+          "AMY_WAIT_FRAMES_SAFE_EOS_NEXT:",
+          "    halt",
+          "    dec de",
+          "    ld a,d",
+          "    or e",
+          "    jr nz,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
+          "    ret"]
+      : ["AMY_WAIT_FRAMES_SAFE:",
+          "    ld a,h",
+          "    or l",
+          "    ret z",
+          "    ld d,h",
+          "    ld e,l",
+          "    call READ_REGISTER",
+          "AMY_WAIT_FRAMES_SAFE_EOS_NEXT:",
+          "    call READ_REGISTER",
+          "    rlca",
+          "    jr nc,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
+          ...(capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound ? ["    call AMY_EOS_FRAME_TICK"] : []),
+          "    dec de",
+          "    ld a,d",
+          "    or e",
+          "    jr nz,AMY_WAIT_FRAMES_SAFE_EOS_NEXT",
+          "    ret"]).join("\n")
   );
   if (capabilities.needsTinySound) {
     adapted = adapted
@@ -443,7 +789,8 @@ function routeNativeEosControllerReads(text) {
   );
 }
 
-function routeNativeEosFrameHalts(text) {
+function routeNativeEosFrameHalts(text, capabilities = {}) {
+  if (capabilities.usesScreenOnNmi) return String(text || "");
   return String(text || "").replace(
     /^(\s*)halt\s*$/gim,
     "$1push hl\n$1ld hl,1\n$1call AMY_WAIT_FRAMES_SAFE\n$1pop hl"
@@ -499,7 +846,24 @@ export function buildNativeEosPreamble(capabilities = {}) {
     `FILL_VRAM EQU ${eos("FILL_VRAM")}`,
     `INIT_TABLE EQU ${eos("INIT_TABLE")}`,
     `LOAD_ASCII EQU ${eos("LOAD_ASCII")}`,
-    "",
+    ""
+  ];
+  if (capabilities.needsNmi) {
+    lines.push(
+      "; Native EOS VDP owner. The loader leaves MIOC at $01, so both this",
+      "; resident high-RAM handler and its writable $0066 vector stay mapped.",
+      "AMY_EOS_NMI:",
+      "        push af",
+      "        in a,(VDP_CTRL_PORT)",
+      ...(capabilities.needsAmyTimers || capabilities.needsUserFrameHook || capabilities.needsFrameCounter || capabilities.needsSound || capabilities.needsTinySound
+        ? ["        call AMY_EOS_FRAME_TICK"]
+        : []),
+      "        pop af",
+      "        retn",
+      ""
+    );
+  }
+  lines.push(
     "; D=row, E=column; return DE=row*32+column while preserving HL and BC.",
     "CALC_OFFSET:",
     "        ld a,e",
@@ -521,7 +885,7 @@ export function buildNativeEosPreamble(capabilities = {}) {
     "        inc d",
     "        ret",
     ""
-  ];
+  );
   if (nativeRamLayout.runtimeAddresses?.exomizerTable !== undefined) {
     lines.push(
       `AMY_EXOMIZER_TABLE EQU $${nativeRamLayout.runtimeAddresses.exomizerTable.toString(16).toUpperCase().padStart(4, "0")}`,
@@ -532,6 +896,15 @@ export function buildNativeEosPreamble(capabilities = {}) {
     lines.push(
       "; Amy-owned VDP R7 shadow, outside EOS state and native user RAM.",
       "AMY_VDP_R7_SHADOW EQU $20E0",
+      ""
+    );
+  }
+  if (capabilities.needsSleepState) {
+    lines.push(
+      "; Native CRT/menu inactivity counter, outside EOS state and user RAM.",
+      "AMY_SLEEP_IDLE_TICKS EQU $20A0",
+      "; Link-only flag for unused OS7 pause-library paths; native waits poll EOS.",
+      "NMI_FLAG EQU $20A2",
       ""
     );
   }
@@ -988,6 +1361,7 @@ function inferControllerBackend(sourceText, asmBody, { usesKeypad1, usesKeypad2,
 
 function inferRuntimeCapabilities(project, asmBody, controllerUsageText = project.sourceText || "") {
   const sourceText = project.sourceText || "";
+  const nativeEosTarget = project.memoryProfile === "adam-eos-application";
   const sourceMemoryCaps = inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound);
   const usesSleepService = /\bsleep\s+after\s+(?:[0-9]+|\$[0-9A-F]+|[A-Za-z_][A-Za-z0-9_]*)\s+seconds?(?:\s+on\s+joypad\s+[12])?/i.test(sourceText);
   const usesJoypadPressed1 = sourceMemoryCaps.usesJoypadPressed1 || /\bJOYPAD_PRESSED_1\b/.test(controllerUsageText);
@@ -1020,7 +1394,8 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     /\bread\s+frame\s+into\s+[A-Za-z_][A-Za-z0-9_]*\b/i.test(sourceText) ||
     /\bAMY_FRAME_COUNTER\b/.test(asmBody) ||
     /\bframe\b(?!\s+size)/i.test(codeText);
-  const usesScreenOnNmi = /\bAMY_SCREEN_ON_NMI\b/.test(asmBody);
+  const usesScreenOnNmi = /^\s*(?:screen\s+on|nmi\s+on)\s*$/im.test(sourceText)
+    || /\bAMY_SCREEN_ON_NMI\b/.test(controllerUsageText);
   const uses120c = /\bAMY_120C_(?:ON|OFF)\b/.test(asmBody);
   const usesHalt = /^\s*halt\s*$/gim.test(asmBody);
   const usesWaitFrames = /\bAMY_WAIT_FRAMES_SAFE\b/.test(asmBody) || /^\s*wait\b/gim.test(sourceText);
@@ -1031,16 +1406,16 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
   const needsControllers = usesJoypadVars;
   const needsSpinner = usesSpinner;
   const needsFrameCounter = usesFrameCounter || usesTinySound;
-  const needsNmiFlagShadow = usesNmiFlagShadow;
+  const needsNmiFlagShadow = !nativeEosTarget && usesNmiFlagShadow;
   const needsVdpStatusShadow = usesVdpStatusShadow;
   const needsSound = usesSoundApi || usesMusicApi;
   const needsMusic = usesMusicApi;
   const needsTinySound = usesTinySound;
   const needsRandomSeed = usesRandom;
   const needs120c = uses120c;
-  const needsBackdropShadow = /\bAMY_VDP_R7_SHADOW\b/.test(asmBody);
+  const needsBackdropShadow = /\b(?:AMY_VDP_R7_SHADOW|AMY_PAUSE_PRESS_RELEASE_BLANK|AMY_SLEEP_SERVICE)\b/.test(asmBody);
   const needsGraphicsTablePointers = /\bAMY_SET_(?:BITMAP_GRAPHICS_MODE|GRAPHICS_MODE[123]_(?:TEXT|BITMAP|MULTICOLOR))\b/.test(asmBody);
-  const needsSleepState = /\bAMY_SLEEP_IDLE_TICKS\b/.test(asmBody);
+  const needsSleepState = /\b(?:AMY_SLEEP_IDLE_TICKS|AMY_PAUSE_PRESS_RELEASE_BLANK|AMY_CHOICE_KEYPAD_RANGE_BLANK)\b/.test(asmBody);
   const needsExomizer = /\b(?:exomizer_decompress|AMY_EXOMIZER_TABLE)\b/.test(asmBody)
     || /\b(?:decompress\s+exomizer|codec\s+exomizer)\b/i.test(sourceText);
   const needsVoiceQueue = sourceMemoryCaps.needsVoiceQueue || /\bAMY_VOICE_(?:START|UPDATE|STOP|SPEAKING)\b/.test(asmBody);
@@ -1058,6 +1433,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     needsSpinner,
     needsFrameCounter,
     needsNmi,
+    usesScreenOnNmi,
     needsNmiFlagShadow,
     needsVdpStatusShadow,
     needsSound,
@@ -2037,7 +2413,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     : nativeEos ? injectNativeEosInitInline(asmBodyBase, runtimeCaps) : asmBodyBase;
   const asmBodyWithRuntimeInitRaw = routeWaitsThroughJoypadEdgeCapture(asmBodyWithRuntimeInitBase, runtimeCaps);
   const asmBodyWithNativeFrameHalts = nativeEos
-    ? routeNativeEosFrameHalts(asmBodyWithRuntimeInitRaw)
+    ? routeNativeEosFrameHalts(asmBodyWithRuntimeInitRaw, runtimeCaps)
     : asmBodyWithRuntimeInitRaw;
   const asmBodyWithNativeControllers = nativeEos
     ? routeNativeEosControllerReads(asmBodyWithNativeFrameHalts)
@@ -2080,7 +2456,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     excludedSourcePaths: excludedRuntimeSourcePaths
   });
   const alexisRuntime = nativeEos
-    ? relocateNativeEosRamReferences(alexisRuntimeRaw, runtimeCaps)
+    ? routeNativeEosControllerReads(routeNativeEosFrameHalts(relocateNativeEosRamReferences(alexisRuntimeRaw, runtimeCaps), runtimeCaps))
     : alexisRuntimeRaw;
   const dependencyScanText = `${project.sourceText || ""}\n${asmBodyWithRuntimeInitForDependencyScan}`;
   const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText, assetDeclarations);

@@ -14,10 +14,15 @@ export function handleDisplayGraphicsSpriteStatement({
   makeGeneratedLabel,
   usesSpriteFlicker = false,
   supportsNmi = true,
-  supportsColecoBios = true
+  supportsColecoBios = true,
+  needsCompleteDefaultAscii = false
 }) {
   const _dep = checkDisplayGraphicsDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
+  const automaticAsciiRoutine = supportsColecoBios && needsCompleteDefaultAscii
+    ? "AMY_LOAD_DEFAULT_ASCII"
+    : "LOAD_ASCII";
+  const explicitAsciiRoutine = supportsColecoBios ? "AMY_LOAD_DEFAULT_ASCII" : "LOAD_ASCII";
 
   if (/^120\s+colors\s+on$/i.test(line)) {
     return { ok: true, handled: true, lines: ["    call AMY_120C_ON"] };
@@ -89,7 +94,7 @@ export function handleDisplayGraphicsSpriteStatement({
       handled: true,
       lines: [
         "    call AMY_SET_GRAPHICS_MODE2_TEXT",
-        "    call LOAD_ASCII",
+        `    call ${automaticAsciiRoutine}`,
         "    call AMY_DUPLICATE_PATTERN_THIRDS",
         "    ld hl,VRAM_COLOR",
         "    ld de,$0800",
@@ -121,7 +126,7 @@ export function handleDisplayGraphicsSpriteStatement({
       handled: true,
       lines: [
         "    call AMY_SET_GRAPHICS_MODE1_TEXT",
-        "    call LOAD_ASCII",
+        `    call ${automaticAsciiRoutine}`,
         "    ld a,$F0",
         "    ld hl,VRAM_COLOR",
         "    ld de,$0020",
@@ -139,7 +144,7 @@ export function handleDisplayGraphicsSpriteStatement({
       return {
         ok: false,
         handled: true,
-        log: `screen on requires an OS7 NMI backend; native EOS currently supports screen on no nmi: ${rawLine}`
+        log: `screen on requires an OS7 or EOS NMI backend: ${rawLine}`
       };
     }
     return { ok: true, handled: true, lines: ["    call AMY_SCREEN_ON_NMI"] };
@@ -160,7 +165,7 @@ export function handleDisplayGraphicsSpriteStatement({
       return {
         ok: false,
         handled: true,
-        log: `nmi on requires an OS7 NMI backend and is not yet supported by native EOS: ${rawLine}`
+        log: `nmi on requires an OS7 or EOS NMI backend: ${rawLine}`
       };
     }
     return { ok: true, handled: true, lines: ["    call AMY_ENABLE_NMI"] };
@@ -201,7 +206,7 @@ export function handleDisplayGraphicsSpriteStatement({
   if (loadDefaultAscii) {
     const style = (loadDefaultAscii[1] || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!style) {
-      return { ok: true, handled: true, lines: ["    call LOAD_ASCII"] };
+      return { ok: true, handled: true, lines: [`    call ${explicitAsciiRoutine}`] };
     }
     const styleFlags = style === "normal" ? "$00"
       : style === "italic" ? "$01"

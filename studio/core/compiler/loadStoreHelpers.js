@@ -218,6 +218,15 @@ export function createLoadStoreHelpers(ctx) {
         }
         return appendArrayFieldOffset(lines);
       }
+      if (info.isIxAlias) {
+        const lines = ["    push ix", "    pop hl"];
+        if (fieldRef.totalOffset > 0 && fieldRef.totalOffset <= 3) {
+          for (let i = 0; i < fieldRef.totalOffset; i += 1) lines.push("    inc hl");
+        } else if (fieldRef.totalOffset) {
+          lines.push(`    ld de,${fieldRef.totalOffset}`, "    add hl,de");
+        }
+        return appendArrayFieldOffset(lines);
+      }
       if (info.isRef) {
         const lines = [
           `    ld l,(${formatIxOffset(info.offset)})`,
@@ -247,11 +256,21 @@ export function createLoadStoreHelpers(ctx) {
     return appendArrayFieldOffset(lines);
   }
 
+  function getRecordAliasIxOperand(token) {
+    const fieldRef = parseRecordFieldRef(token);
+    if (!fieldRef || fieldRef.baseKind !== "scalar") return null;
+    if (fieldRef.arrayFieldOffsets?.length || fieldRef.arrayFieldIndex) return null;
+    const info = getRuntimeInfo(fieldRef.name);
+    if (!info?.isIxAlias || info.kind !== "record") return null;
+    if (!Number.isInteger(fieldRef.totalOffset) || fieldRef.totalOffset < -128 || fieldRef.totalOffset > 127) return null;
+    return formatIxOffset(fieldRef.totalOffset);
+  }
+
   function getDirectRecordFieldAddress(token) {
     const fieldRef = parseRecordFieldRef(token);
     if (!fieldRef) return null;
     const info = getRuntimeInfo(fieldRef.name);
-    if (!info || info.storage === "stack" || info.isAliasPointer || info.isDynamicRecordAlias) return null;
+    if (!info || info.storage === "stack" || info.isAliasPointer || info.isDynamicRecordAlias || info.isIxAlias) return null;
     if (fieldRef.baseKind === "scalar") {
       if (info.kind !== "record") return null;
       if (fieldRef.arrayFieldOffsets?.length || fieldRef.arrayFieldIndex) return null;
@@ -296,6 +315,8 @@ export function createLoadStoreHelpers(ctx) {
     const recordField = parseRecordFieldRef(target);
     if (recordField) {
       if (recordField.fieldInfo.type !== "int8") return null;
+      const ixOperand = getRecordAliasIxOperand(target);
+      if (ixOperand) return [`    ld (${ixOperand}),a`];
       const directAddress = getDirectRecordFieldAddress(target);
       if (directAddress) return [`    ld (${directAddress}),a`];
       const loadAddress = emitLoadRecordFieldAddressIntoHL(target);
@@ -387,6 +408,7 @@ export function createLoadStoreHelpers(ctx) {
   return {
     emitLoadArrayAddressIntoHL,
     emitLoadRecordFieldAddressIntoHL,
+    getRecordAliasIxOperand,
     getDirectRecordFieldAddress,
     getByteArrayBufferInfo,
     emitStoreInt8FromA,

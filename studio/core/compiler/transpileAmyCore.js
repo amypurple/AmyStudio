@@ -814,10 +814,13 @@ export function transpileAmyCore(sourceText, deps) {
       const declaration = line.match(new RegExp(`^([A-Za-z_][A-Za-z0-9_]*)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\[\\s*(${dimensionToken})\\s*\\]`, "i"));
       if (declaration) {
         const primitive = /^(?:u8|i8|byte|bool|boolean|u16|i16|word|fixed|ufixed|fx16|ufx16|u32|i32|fp5)$/i.test(declaration[1]);
-        arrayLengths.set(declaration[2].toLowerCase(), {
-          length: resolveEarlyNumericConstant(declaration[3], constants),
-          recordLike: !primitive
-        });
+        const recordLike = recordArrayFields.has(declaration[1].toLowerCase());
+        if (primitive || recordLike) {
+          arrayLengths.set(declaration[2].toLowerCase(), {
+            length: resolveEarlyNumericConstant(declaration[3], constants),
+            recordLike
+          });
+        }
       }
     }
     for (const part of overlayParts) {
@@ -1317,6 +1320,7 @@ export function transpileAmyCore(sourceText, deps) {
   const procLocals = new Map();
   const staticLocalProcCandidates = new Set();
   const staticAbiProcCandidates = new Set();
+  const recordIxProcCandidates = new Set();
   const staticAbiParams = new Map();
   const procFrames = new Map();
   const runtimeDeclarations = [];
@@ -1504,6 +1508,7 @@ export function transpileAmyCore(sourceText, deps) {
   let reserveRam = null;
   let isZeroInitializer = null;
   let emitLoadRecordFieldAddressIntoHL = null;
+  let getRecordAliasIxOperand = null;
   let getDirectRecordFieldAddress = null;
   let formatIxOffset = null;
   let normalizeDataToken = null;
@@ -1953,6 +1958,7 @@ export function transpileAmyCore(sourceText, deps) {
     let scanProc = null;
     let scanProcHasParams = false;
     let scanProcIsFunction = false;
+    let scanProcHasAsm = false;
     let scanBody = [];
 
     const finishProc = () => {
@@ -1962,9 +1968,22 @@ export function transpileAmyCore(sourceText, deps) {
         isFunction: scanProcIsFunction,
         body: scanBody
       });
+      if (deps.experimentalRecordIx && !scanProcHasParams && !scanProcIsFunction && !scanProcHasAsm) {
+        const meaningful = scanBody.map((entry) => stripAmyInlineComment(entry).trim()).filter(Boolean);
+        const aliasCount = meaningful.filter((entry) => /^with\s+each\b/i.test(entry)).length;
+        const forbidden = meaningful.some((entry) => {
+          const invocation = entry.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s*$/i);
+          return /^(?:asm\s*\{|include\b|goto\b|on\s+frame\b|print\b|play\b|sound\b|music\b|wait\b|screen\b|v(?:poke|peek)\b|put\b|get\b|copy\b|fill\b|randomize\b)/i.test(entry)
+            || /\b(?:peek|random|min|max|abs|absdiff)\s*\(/i.test(entry)
+            || /(?:\*|\/|\bmod\b)/i.test(entry)
+            || (invocation && procSignatures.has(invocation[1]));
+        });
+        if (aliasCount === 1 && !forbidden) recordIxProcCandidates.add(scanProc);
+      }
       scanProc = null;
       scanProcHasParams = false;
       scanProcIsFunction = false;
+      scanProcHasAsm = false;
       scanBody = [];
     };
 
@@ -1972,7 +1991,11 @@ export function transpileAmyCore(sourceText, deps) {
       if (recordDefinitionLineNumbers?.has(lineIndex)) continue;
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
-      if (/^asm\s*\{$/i.test(trimmed)) { scanInAsm = true; continue; }
+      if (/^asm\s*\{$/i.test(trimmed)) {
+        if (scanProc) scanProcHasAsm = true;
+        scanInAsm = true;
+        continue;
+      }
       if (trimmed === "}" && scanInAsm) { scanInAsm = false; continue; }
       if (scanInAsm) continue;
 
@@ -3775,6 +3798,7 @@ export function transpileAmyCore(sourceText, deps) {
   ({
     emitLoadArrayAddressIntoHL,
     emitLoadRecordFieldAddressIntoHL,
+    getRecordAliasIxOperand,
     getDirectRecordFieldAddress,
     getByteArrayBufferInfo,
     emitStoreInt8FromA,
@@ -3826,6 +3850,7 @@ export function transpileAmyCore(sourceText, deps) {
     getRuntimeInfo,
     emitLoadArrayAddressIntoHL: (...args) => emitLoadArrayAddressIntoHL(...args),
     emitLoadRecordFieldAddressIntoHL: (...args) => emitLoadRecordFieldAddressIntoHL(...args),
+    getRecordAliasIxOperand: (...args) => getRecordAliasIxOperand(...args),
     getDirectRecordFieldAddress: (...args) => getDirectRecordFieldAddress(...args),
     emitFunctionInvocation: (...args) => emitFunctionInvocation(...args),
     resolveDeclaredValueType: (...args) => resolveDeclaredValueType(...args),
@@ -3881,6 +3906,7 @@ export function transpileAmyCore(sourceText, deps) {
     isIndexedByteReadable,
     emitLoadArrayAddressIntoHL: (...args) => emitLoadArrayAddressIntoHL(...args),
     emitLoadRecordFieldAddressIntoHL: (...args) => emitLoadRecordFieldAddressIntoHL(...args),
+    getRecordAliasIxOperand: (...args) => getRecordAliasIxOperand(...args),
     getDirectRecordFieldAddress: (...args) => getDirectRecordFieldAddress(...args),
     emitFunctionInvocation,
     parseFix8_8Component,
@@ -4359,10 +4385,13 @@ export function transpileAmyCore(sourceText, deps) {
     const nativeEosPollingWait = /^wait(?:\s+.+?\s+frames?)?$/i.test(line);
     const nativeEosPollingInputWait = /^wait\s+(?:no\s+)?fire(?:\s+on\s+joypad\s+[12])?$/i.test(line)
       || /^wait\s+.+?\s+frames?\s+or\s+press(?:\s+on\s+joypad\s+[12])?$/i.test(line)
-      || /^wait\s+key(?:\s*[0-9]|\s+release)(?:\s+on\s+keypad\s+[12])?$/i.test(line);
+      || /^wait\s+key(?:\s*[0-9]|\s+release)(?:\s+on\s+keypad\s+[12])?$/i.test(line)
+      || /^pause\s+until\s+press(?:\s+and\s+release)?(?:\s+on\s+joypad\s+[12])?$/i.test(line);
+    const nativeEosCrtPause = /^pause\s+until\s+press\s+and\s+release(?:\s+on\s+joypad\s+[12])?\s+sleep\s+after\s+.+?\s+seconds?$/i.test(line);
+    const nativeEosCrtChoice = /^choose\s+(?:menu|keypad)\b.*\bsleep\s+after\s+.+?\s+seconds?$/i.test(line);
     const nativeEosPollingChoice = /^choose\s+(?:menu|keypad)\b/i.test(line) && !/\bsleep\s+after\b/i.test(line);
     const nativeEosCooperativeFrameService = /^(?:timer\s+|(?:start|stop)\s+timer\b|on\s+vblank\b|play\s+song\b|stop\s+song\b|next\s+song\b)/i.test(line);
-    const needsOs7FrameService = /^(?:pause\s|sleep\s+after\b|choose\s+(?:menu|keypad)\b|wipe\s+(?:screen|bitmap)\s+(?:up|down)\b|120\s+colors\s+(?:on|off)\b|play\s+song\b|timer\s+|(?:start|stop)\s+timer\b|on\s+vblank\b)/i.test(line) && !nativeEosPollingChoice && !nativeEosCooperativeFrameService
+    const needsOs7FrameService = /^(?:pause\s|sleep\s+after\b|choose\s+(?:menu|keypad)\b|wipe\s+(?:screen|bitmap)\s+(?:up|down)\b|120\s+colors\s+(?:on|off)\b|play\s+song\b|timer\s+|(?:start|stop)\s+timer\b|on\s+vblank\b)/i.test(line) && !nativeEosPollingInputWait && !nativeEosCrtPause && !nativeEosCrtChoice && !nativeEosPollingChoice && !nativeEosCooperativeFrameService
       || (/^wait\b/i.test(line) && !nativeEosPollingWait && !nativeEosPollingInputWait);
     if (nativeEosWithoutNmi && needsOs7FrameService) {
       return {
@@ -4425,15 +4454,21 @@ export function transpileAmyCore(sourceText, deps) {
       }
       const bankDecompress = line.match(/^decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+bank\s+(\d+)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
       if (bankDecompress) {
-        if (megaCartRomSizeKb == null) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS requires BANK ROM first.` };
+        if (megaCartRomSizeKb == null) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS requires BANK ROM first.` };
+        }
         const codec = bankDecompress[1].toLowerCase() === "rle" ? "mdkrle" : bankDecompress[1].toLowerCase();
         const publicName = bankDecompress[2];
         const logicalBank = Number(bankDecompress[3]);
         const targetExpr = bankDecompress[4].trim();
         const bankCount = megaCartRomSizeKb / 16;
-        if (logicalBank < 1 || logicalBank >= bankCount) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        if (logicalBank < 1 || logicalBank >= bankCount) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS must use bank 1-${bankCount - 1} for a ${megaCartRomSizeKb} KB MegaCart.` };
+        }
         const targetCode = emitLoadVramAddressIntoDE(targetExpr);
-        if (!targetCode) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid VRAM decompression destination: ${rawLine}` };
+        if (!targetCode) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid VRAM decompression destination: ${rawLine}` };
+        }
         ensureMegaCartCurrentBank();
         const trampolineLabel = `AMY_MEGACART_DECOMPRESS_${codec.toUpperCase()}_BANK_${logicalBank}_${publicName}`;
         ensureImplicitStartForExecutable();
@@ -4480,7 +4515,9 @@ export function transpileAmyCore(sourceText, deps) {
         const countCode = emitLoadCountIntoBC(countToken);
         if (!targetInfo || !targetCode || !countCode) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY to RAM requires a byte-array destination and valid count: ${rawLine}` };
         const constantCount = tryEvaluateConstantExpression(normalizeExpression(countToken));
-        if (Number.isInteger(constantCount) && constantCount > targetInfo.length) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY count ${constantCount} exceeds ${targetName}[${targetInfo.length}].` };
+        if (Number.isInteger(constantCount) && constantCount > targetInfo.length) {
+          return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked COPY count ${constantCount} exceeds ${targetName}[${targetInfo.length}].` };
+        }
         ensureMegaCartCurrentBank();
         const trampolineLabel = `AMY_MEGACART_COPY_BANK_${logicalBank}_${publicName}_TO_RAM`;
         ensureImplicitStartForExecutable();
@@ -4990,22 +5027,36 @@ export function transpileAmyCore(sourceText, deps) {
         if (!loadAddress) {
           return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid record-array index in ${rawLine.trim()}` };
         }
-        const pointerAddress = staticAliasSafe ? reserveRam(`record alias ${aliasName}`, 2, rawLine.trim()) : null;
-        if (staticAliasSafe) body.push(...loadAddress, `    ld (${formatHex16(pointerAddress)}),hl`);
+        const useIxAlias = staticAliasSafe
+          && currentProc !== "Start"
+          && recordIxProcCandidates.has(currentProc)
+          && recordAliasStack.length === 0;
+        const pointerAddress = staticAliasSafe && !useIxAlias ? reserveRam(`record alias ${aliasName}`, 2, rawLine.trim()) : null;
+        if (useIxAlias) {
+          const frame = procFrames.get(currentProc);
+          if (!frame || frame.usesIxFrame || frame.size > 0) {
+            return { ok: false, asmBody: "", log: `Internal error: IX record alias conflicts with the stack frame in ${currentProc}` };
+          }
+          frame.usesIxAlias = true;
+          body.push(...loadAddress, "    push hl", "    pop ix");
+        } else if (staticAliasSafe) {
+          body.push(...loadAddress, `    ld (${formatHex16(pointerAddress)}),hl`);
+        }
         runtimeVars.set(aliasName, {
           kind: "record",
           type: "record",
           declaredType: arrayInfo.recordTypeName,
           recordTypeName: arrayInfo.recordTypeName,
           recordSize: arrayInfo.recordSize,
-          storage: staticAliasSafe ? "alias_pointer" : "dynamic_record_alias",
-          isAliasPointer: staticAliasSafe,
+          storage: useIxAlias ? "ix_alias" : (staticAliasSafe ? "alias_pointer" : "dynamic_record_alias"),
+          isAliasPointer: staticAliasSafe && !useIxAlias,
+          isIxAlias: useIxAlias,
           isDynamicRecordAlias: !staticAliasSafe,
           aliasArrayName: arrayName,
           aliasIndexToken: indexToken,
           pointerAddress
         });
-        recordAliasStack.push({ name: aliasName, pointerAddress });
+        recordAliasStack.push({ name: aliasName, pointerAddress, useIxAlias });
         continue;
       }
     }
@@ -5081,7 +5132,8 @@ export function transpileAmyCore(sourceText, deps) {
         formatHex16,
         makeGeneratedLabel,
         usesSpriteFlicker,
-        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7"),
+        needsCompleteDefaultAscii: inferredMemoryCaps.needsCompleteDefaultAscii,
+        supportsNmi: !buildContext || ["os7", "eos"].some((capability) => buildContext.capabilities?.includes(capability)),
         supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
       });
       if (displayGraphicsSpriteStmt.handled) {
@@ -5459,7 +5511,8 @@ export function transpileAmyCore(sourceText, deps) {
         formatHex16,
         makeGeneratedLabel,
         usesSpriteFlicker,
-        supportsNmi: !buildContext || !!buildContext.capabilities?.includes("os7"),
+        needsCompleteDefaultAscii: inferredMemoryCaps.needsCompleteDefaultAscii,
+        supportsNmi: !buildContext || ["os7", "eos"].some((capability) => buildContext.capabilities?.includes(capability)),
         supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
       })
     });

@@ -61,13 +61,14 @@ try {
   assert.match(native, /VDP_NAME_SHADOW\s+EQU \$FD68/i);
   assert.match(native, /WRITE_REGISTER\s+EQU \$FD20/i);
   assert.doesNotMatch(native, /\$73C4|\$73F6/i);
-  const nativeNmi = compileResult("native-nmi", "text screen\nscreen on\nloop forever\n", [
+  const nativeNmi = compile("native-nmi", "text screen\nscreen on\nloop forever\n", [
     "--target", "adam-native-program",
     "--medium", "dsk",
     "--memory-profile", "adam-eos-application"
   ]);
-  assert.notEqual(nativeNmi.status, 0, "native EOS accepted screen on without a safe NMI backend");
-  assert.match(nativeNmi.output, /screen on no nmi/i);
+  assert.match(nativeNmi, /^AMY_EOS_NMI:/mi, "native EOS screen on omitted its resident NMI backend");
+  assert.match(nativeNmi, /ld \(\$0066\),a[\s\S]*ld \(\$0067\),hl/i, "native EOS screen on omitted NMI vector installation");
+  assert.match(nativeNmi, /call AMY_SCREEN_ON_NMI/i, "native EOS screen on did not enable the safe NMI backend");
   const nativeWait = compile("native-wait", "wait 2 frames\nloop forever\n", [
     "--target", "adam-native-program",
     "--medium", "dsk",
@@ -126,19 +127,21 @@ loop forever
   assert.match(nativeMusic, /AMY_EOS_TINY_ATN_SWEEP/i);
   assert.match(nativeMusic, /call AMY_UPDATE_MUSIC/i);
   assert.doesNotMatch(nativeMusic, /(?:call|jp)\s+\$(?:012F|00FC|0295)\b/i);
-  for (const [name, statement] of [
-    ["menu-sleep", "choose keypad 1 to 3 into Choice sleep after 10 seconds"],
-    ["pause", "pause until press"]
-  ]) {
-    const declarations = name === "menu-sleep" ? "u8 Choice = 1\n" : "";
-    const rejected = compileResult(`native-${name}`, `${declarations}${statement}\nloop forever\n`, [
-      "--target", "adam-native-program",
-      "--medium", "dsk",
-      "--memory-profile", "adam-eos-application"
-    ]);
-    assert.notEqual(rejected.status, 0, `native EOS accepted ${statement}`);
-    assert.match(rejected.output, /OS7 frame\/NMI service/i);
-  }
+  const nativePause = compile("native-pause", "pause until press and release on joypad 1\nloop forever\n", [
+    "--target", "adam-native-program",
+    "--medium", "dsk",
+    "--memory-profile", "adam-eos-application"
+  ]);
+  assert.match(nativePause, /call AMY_EOS_POLL_CONTROLLERS/i);
+  assert.doesNotMatch(nativePause, /^\s*halt\s*$/mi);
+
+  const nativeCrtKeypad = compile("native-keypad-sleep", "u8 Choice = 1\nchoose keypad 1 to 3 into Choice sleep after 10 seconds\nloop forever\n", [
+    "--target", "adam-native-program",
+    "--medium", "dsk",
+    "--memory-profile", "adam-eos-application"
+  ]);
+  assert.match(nativeCrtKeypad, /AMY_CHOICE_KEYPAD_RANGE_BLANK/i);
+  assert.doesNotMatch(nativeCrtKeypad, /^\s*halt\s*$/mi);
 
   const hybrid = compile("hybrid", `
 EosDirectory Directory

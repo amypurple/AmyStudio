@@ -22,14 +22,13 @@ AMY_U16_TO_ASCII5:
     ret
 
 AMY_U16_TO_ASCII5_COUNT_SUB:
-    xor a
+    ld a,$2F
+    or a
 AMY_U16_TO_ASCII5_COUNT_SUB_LOOP:
-    sbc hl,bc
     inc a
+    sbc hl,bc
     jr nc,AMY_U16_TO_ASCII5_COUNT_SUB_LOOP
-    dec a
     add hl,bc
-    add a,$30
     ld (de),a
     inc de
     ret
