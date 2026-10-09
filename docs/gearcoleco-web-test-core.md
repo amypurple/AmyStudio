@@ -26,7 +26,10 @@ studio/vendor/gearcoleco-test-core/
 - GearColeco debugger enabled.
 - `PERFORMANCE` batching disabled so execute breakpoints are checked after
   every Z80 instruction.
-- Deterministic save-state header selected so states contain no timestamp.
+- Deterministic validation excludes the desktop save-state header timestamp.
+  The recorder validation oracle still compares every serialized emulator-state
+  byte, plus the framebuffer, VRAM, and VDP registers; only the eight metadata
+  bytes produced by `time(NULL)` are normalized before hashing.
 - Single-threaded WebAssembly.
 - BIOS supplied by the user.
 - RNG seed applied before initialization and every reset.
