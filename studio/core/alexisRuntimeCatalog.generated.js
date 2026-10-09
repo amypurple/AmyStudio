@@ -189,7 +189,7 @@ export const alexisRuntimeCatalog = {
       "AMY_VPEEK",
       "AMY_VPOKE"
     ],
-    "asm": "AMY_MODE2_PSET:\n    ld a,c\n    cp 192\n    ret nc\n    call AMY_MODE2_CALC_ADDRESS_MASK\n    ld b,a\n    push bc\n    push hl\n    call AMY_VPEEK\n    pop hl\n    pop bc\n    or b\n    jp AMY_VPOKE\n\n; Input: B=x, C=y. Clears one pixel in the Mode 2 bitmap surface.",
+    "asm": "AMY_MODE2_PSET:\n    ld a,c\n    cp 192\n    ret nc\n    call AMY_MODE2_CALC_ADDRESS_MASK\n    ld b,a\n    push hl\n    call AMY_VPEEK\n    pop hl\n    or b\n    jp AMY_VPOKE\n\n; Input: B=x, C=y. Clears one pixel in the Mode 2 bitmap surface.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_mode2_pset.asm",
     "extractedFromLabel": "AMY_MODE2_PSET"
@@ -202,7 +202,7 @@ export const alexisRuntimeCatalog = {
       "AMY_VPEEK",
       "AMY_VPOKE"
     ],
-    "asm": "AMY_MODE2_PRESET:\n    ld a,c\n    cp 192\n    ret nc\n    call AMY_MODE2_CALC_ADDRESS_MASK\n    cpl\n    ld b,a\n    push bc\n    push hl\n    call AMY_VPEEK\n    pop hl\n    pop bc\n    and b\n    jp AMY_VPOKE\n\n; Input: A=color nibble, B=x, C=y. Sets one pixel and writes a row color byte.",
+    "asm": "AMY_MODE2_PRESET:\n    ld a,c\n    cp 192\n    ret nc\n    call AMY_MODE2_CALC_ADDRESS_MASK\n    cpl\n    ld b,a\n    push hl\n    call AMY_VPEEK\n    pop hl\n    and b\n    jp AMY_VPOKE\n\n; Input: A=color nibble, B=x, C=y. Sets one pixel and writes a row color byte.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_mode2_pset.asm",
     "extractedFromLabel": "AMY_MODE2_PRESET"
@@ -215,7 +215,7 @@ export const alexisRuntimeCatalog = {
       "AMY_VPEEK",
       "AMY_VPOKE"
     ],
-    "asm": "AMY_MODE2_PSET_COLOR:\n    push af\n    ld a,c\n    cp 192\n    jr c,AMY_MODE2_PSET_COLOR_INRANGE\n    pop af\n    ret\nAMY_MODE2_PSET_COLOR_INRANGE:\n    call AMY_MODE2_CALC_ADDRESS_MASK\n    ld b,a\n    push bc\n    push hl\n    call AMY_VPEEK\n    pop hl\n    pop bc\n    or b\n    call AMY_VPOKE\n    ld a,h\n    add a,$20\n    ld h,a\n    pop af\n    and $0F\n    add a,a\n    add a,a\n    add a,a\n    add a,a\n    jp AMY_VPOKE\n\n; Input: HL = signed X, DE = signed Y. Plot only if on-screen.",
+    "asm": "AMY_MODE2_PSET_COLOR:\n    push af\n    ld a,c\n    cp 192\n    jr c,AMY_MODE2_PSET_COLOR_INRANGE\n    pop af\n    ret\nAMY_MODE2_PSET_COLOR_INRANGE:\n    call AMY_MODE2_CALC_ADDRESS_MASK\n    ld b,a\n    push hl\n    call AMY_VPEEK\n    pop hl\n    or b\n    call AMY_VPOKE\n    ld a,h\n    add a,$20\n    ld h,a\n    pop af\n    and $0F\n    add a,a\n    add a,a\n    add a,a\n    add a,a\n    jp AMY_VPOKE\n\n; Input: HL = signed X, DE = signed Y. Plot only if on-screen.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_mode2_pset.asm",
     "extractedFromLabel": "AMY_MODE2_PSET_COLOR"
@@ -387,7 +387,7 @@ export const alexisRuntimeCatalog = {
   "AMY_SET_SCREEN_PAGES": {
     "group": "vdp",
     "sourcePath": "src/vendor/cvdevkit_sdcc/getput11/gpscreen.s",
-    "asm": "AMY_SET_SCREEN_PAGES:\n    push de\n    ld bc,AMY_SCREEN_VIEW_POINTER\n    ld a,l\n    ld (bc),a\n    inc bc\n    ld a,h\n    ld (bc),a\n    push ix\n    push iy\n    ld a,2\n    call INIT_TABLE\n    pop iy\n    pop ix\n    pop de\n    ld ($73F6),de\n    ret\n\n; Swap the viewed and edit name tables configured by AMY_SET_SCREEN_PAGES.",
+    "asm": "AMY_SET_SCREEN_PAGES:\n    ld bc,AMY_SCREEN_VIEW_POINTER\n    ld a,l\n    ld (bc),a\n    inc bc\n    ld a,h\n    ld (bc),a\n    push ix\n    push iy\n    ld a,2\n    call INIT_TABLE\n    pop iy\n    pop ix\n    ld ($73F6),de\n    ret\n\n; Swap the viewed and edit name tables configured by AMY_SET_SCREEN_PAGES.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_vdp_screen_pages.asm",
     "extractedFromLabel": "AMY_SET_SCREEN_PAGES"
@@ -993,7 +993,7 @@ export const alexisRuntimeCatalog = {
   "AMY_WIPE_SCREEN_UP": {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
-    "asm": "AMY_WIPE_SCREEN_UP:\n    ld hl,($73F6)\n    ld de,$02E0\n    add hl,de\n    ld b,24\nAMY_WIPE_SCREEN_UP_ROW:\n    push bc\n    halt\n    push hl\n    ld de,32\n    ld a,$20\n    call FILL_VRAM\n    pop hl\n    ld de,$FFE0\n    add hl,de\n    pop bc\n    djnz AMY_WIPE_SCREEN_UP_ROW\n    ret\n\n; Blank name table rows top-to-bottom, one row per frame (24 frames total).",
+    "asm": "AMY_WIPE_SCREEN_UP:\n    ld hl,($73F6)\n    ld de,$02E0\n    add hl,de\n    ld b,24\nAMY_WIPE_SCREEN_UP_ROW:\n    halt\n    ld de,32\n    ld a,$20\n    call FILL_VRAM\n    ld de,$FFE0\n    add hl,de\n    djnz AMY_WIPE_SCREEN_UP_ROW\n    ret\n\n; Blank name table rows top-to-bottom, one row per frame (24 frames total).",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_text_wipe.asm",
     "extractedFromLabel": "AMY_WIPE_SCREEN_UP"
@@ -1001,7 +1001,7 @@ export const alexisRuntimeCatalog = {
   "AMY_WIPE_SCREEN_DOWN": {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
-    "asm": "AMY_WIPE_SCREEN_DOWN:\n    ld hl,($73F6)\n    ld b,24\nAMY_WIPE_SCREEN_DOWN_ROW:\n    push bc\n    halt\n    push hl\n    ld de,32\n    ld a,$20\n    call FILL_VRAM\n    pop hl\n    ld de,32\n    add hl,de\n    pop bc\n    djnz AMY_WIPE_SCREEN_DOWN_ROW\n    ret",
+    "asm": "AMY_WIPE_SCREEN_DOWN:\n    ld hl,($73F6)\n    ld b,24\nAMY_WIPE_SCREEN_DOWN_ROW:\n    halt\n    ld de,32\n    ld a,$20\n    call FILL_VRAM\n    ld de,32\n    add hl,de\n    djnz AMY_WIPE_SCREEN_DOWN_ROW\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_text_wipe.asm",
     "extractedFromLabel": "AMY_WIPE_SCREEN_DOWN"
@@ -1165,7 +1165,7 @@ export const alexisRuntimeCatalog = {
       "AMY_MODE3_CALC_COLOR_ADDRESS",
       "AMY_VPEEK"
     ],
-    "asm": "AMY_MODE3_PGET:\n    ; Read one Mode 3 multicolor pixel nibble.\n    ; Input: B = x, C = y. Output: A = color nibble.\n    push bc\n    call AMY_MODE3_CALC_COLOR_ADDRESS\n    call AMY_VPEEK\n    pop bc\n    bit 0,b\n    jr nz,MODE3_PGET_LOW\n    rrca\n    rrca\n    rrca\n    rrca\nMODE3_PGET_LOW:\n    and $0F\n    ret",
+    "asm": "AMY_MODE3_PGET:\n    ; Read one Mode 3 multicolor pixel nibble.\n    ; Input: B = x, C = y. Output: A = color nibble.\n    call AMY_MODE3_CALC_COLOR_ADDRESS\n    call AMY_VPEEK\n    bit 0,b\n    jr nz,MODE3_PGET_LOW\n    rrca\n    rrca\n    rrca\n    rrca\nMODE3_PGET_LOW:\n    and $0F\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_mode3_pixel.asm",
     "extractedFromLabel": "AMY_MODE3_PGET"
@@ -1178,7 +1178,7 @@ export const alexisRuntimeCatalog = {
       "AMY_VPEEK",
       "AMY_VPOKE"
     ],
-    "asm": "AMY_MODE3_PSET_FAST:\n    ; Set one Mode 3 multicolor pixel nibble. No bounds check — caller guarantees x<64, y<48.\n    ; Input: B = x, C = y, A = color nibble.\n    and $0F\n    push af\n    push bc\n    call AMY_MODE3_CALC_COLOR_ADDRESS\n    push hl\n    call AMY_VPEEK\n    pop hl\n    pop bc\n    ld d,a\n    pop af\n    ld e,a\n    ld a,d\n    bit 0,b\n    jr nz,MODE3_PSET_LOW\n    and $0F\n    ld d,a\n    ld a,e\n    add a,a\n    add a,a\n    add a,a\n    add a,a\n    or d\n    jp AMY_VPOKE\nMODE3_PSET_LOW:\n    and $F0\n    or e\n    jp AMY_VPOKE",
+    "asm": "AMY_MODE3_PSET_FAST:\n    ; Set one Mode 3 multicolor pixel nibble. No bounds check — caller guarantees x<64, y<48.\n    ; Input: B = x, C = y, A = color nibble.\n    and $0F\n    ld e,a\n    call AMY_MODE3_CALC_COLOR_ADDRESS\n    push hl\n    call AMY_VPEEK\n    pop hl\n    ld d,a\n    ld a,d\n    bit 0,b\n    jr nz,MODE3_PSET_LOW\n    and $0F\n    ld d,a\n    ld a,e\n    add a,a\n    add a,a\n    add a,a\n    add a,a\n    or d\n    jp AMY_VPOKE\nMODE3_PSET_LOW:\n    and $F0\n    or e\n    jp AMY_VPOKE",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_mode3_pixel.asm",
     "extractedFromLabel": "AMY_MODE3_PSET_FAST"

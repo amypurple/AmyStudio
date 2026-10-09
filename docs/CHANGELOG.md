@@ -1,5 +1,9 @@
 ## 2026-10-09 - Reduced runtime stack traffic
 
+- Removed additional redundant stack saves from Mode 2 and Mode 3 pixel
+  operations, double-buffer screen-page selection, and text-screen wipes.
+- Added five-profile runtime checks for packed Mode 3 pixel nibbles, Mode 2
+  pattern/color writes, and viewed/edit page register preservation.
 - Removed redundant register saves around OS7 VDP register calls used by VRAM
   upload completion, CRT-safe pause, menu sleep, and keypad timeouts.
 - Reduced stack traffic in the SP0256 allophone, blocking-phrase, and

@@ -36,11 +36,9 @@ AMY_MODE2_PSET:
     ret nc
     call AMY_MODE2_CALC_ADDRESS_MASK
     ld b,a
-    push bc
     push hl
     call AMY_VPEEK
     pop hl
-    pop bc
     or b
     jp AMY_VPOKE
 
@@ -52,11 +50,9 @@ AMY_MODE2_PRESET:
     call AMY_MODE2_CALC_ADDRESS_MASK
     cpl
     ld b,a
-    push bc
     push hl
     call AMY_VPEEK
     pop hl
-    pop bc
     and b
     jp AMY_VPOKE
 
@@ -71,11 +67,9 @@ AMY_MODE2_PSET_COLOR:
 AMY_MODE2_PSET_COLOR_INRANGE:
     call AMY_MODE2_CALC_ADDRESS_MASK
     ld b,a
-    push bc
     push hl
     call AMY_VPEEK
     pop hl
-    pop bc
     or b
     call AMY_VPOKE
     ld a,h

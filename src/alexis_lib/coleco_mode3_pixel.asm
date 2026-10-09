@@ -37,16 +37,12 @@ AMY_MODE3_PSET_FAST:
     ; Set one Mode 3 multicolor pixel nibble. No bounds check — caller guarantees x<64, y<48.
     ; Input: B = x, C = y, A = color nibble.
     and $0F
-    push af
-    push bc
+    ld e,a
     call AMY_MODE3_CALC_COLOR_ADDRESS
     push hl
     call AMY_VPEEK
     pop hl
-    pop bc
     ld d,a
-    pop af
-    ld e,a
     ld a,d
     bit 0,b
     jr nz,MODE3_PSET_LOW
@@ -67,10 +63,8 @@ MODE3_PSET_LOW:
 AMY_MODE3_PGET:
     ; Read one Mode 3 multicolor pixel nibble.
     ; Input: B = x, C = y. Output: A = color nibble.
-    push bc
     call AMY_MODE3_CALC_COLOR_ADDRESS
     call AMY_VPEEK
-    pop bc
     bit 0,b
     jr nz,MODE3_PGET_LOW
     rrca

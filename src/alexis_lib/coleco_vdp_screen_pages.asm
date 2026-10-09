@@ -5,7 +5,6 @@
 
 ; Select viewed HL and edit DE name tables for double-buffered text screens.
 AMY_SET_SCREEN_PAGES:
-    push de
     ld bc,AMY_SCREEN_VIEW_POINTER
     ld a,l
     ld (bc),a
@@ -18,7 +17,6 @@ AMY_SET_SCREEN_PAGES:
     call INIT_TABLE
     pop iy
     pop ix
-    pop de
     ld ($73F6),de
     ret
 
