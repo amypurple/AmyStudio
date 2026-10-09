@@ -37,8 +37,11 @@ assert.match(runtime, /AMY_SLEEP_SERVICE:[\s\S]*?call AMY_SLEEP_READ_INPUTS[\s\S
   "menu sleep must return while awake and blank only after its persistent idle counter expires");
 assert.match(runtime, /AMY_SLEEP_READ_INPUTS:[\s\S]*?JOYPAD_1[\s\S]*?KEYPAD_1[\s\S]*?JOYPAD_2[\s\S]*?KEYPAD_2/,
   "menu sleep must recognize directions, actions, and keypad input on both ports");
-assert.match(runtime, /call AMY_PAUSE_RESTORE_DISPLAY\s+pop de\s+AMY_SLEEP_WAIT_RELEASE:[\s\S]*?jr nz,AMY_SLEEP_WAIT_RELEASE[\s\S]*?AMY_SLEEP_RESET:/,
+assert.match(runtime, /call AMY_PAUSE_RESTORE_DISPLAY\s+AMY_SLEEP_WAIT_RELEASE:[\s\S]*?jr nz,AMY_SLEEP_WAIT_RELEASE[\s\S]*?AMY_SLEEP_RESET:/,
   "menu wake must restore the display, consume release, and reset inactivity");
+const sleepWake = runtime.slice(runtime.indexOf("AMY_SLEEP_SERVICE:"), runtime.indexOf("AMY_SLEEP_ACTIVITY:"));
+assert.doesNotMatch(sleepWake, /push de|pop de/,
+  "menu sleep must not save DE around routines whose ABI preserves it");
 
 const backdropCaps = inferAmyMemoryCapabilities("backdrop black\nu8 Sentinel = 0", () => false);
 assert.equal(backdropCaps.needsBackdropShadow, true,

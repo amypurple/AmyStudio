@@ -110,9 +110,7 @@ AMY_VOICE_ALLOPHONE:
     cp $02
     ret nz
 AMY_VOICE_ALLOPHONE_WAIT:
-    push bc
     call AMY_VOICE_READY
-    pop bc
     or a
     jr z,AMY_VOICE_ALLOPHONE_WAIT
     ld a,b
@@ -143,11 +141,7 @@ AMY_VOICE_SPEAK_NEXT:
     ret z
     inc hl
     ld c,a
-    push hl
-    push bc
     call AMY_VOICE_ALLOPHONE
-    pop bc
-    pop hl
     jr AMY_VOICE_SPEAK_NEXT
 
 ; Begin asynchronous playback. B=module, HL=$FF-terminated phrase.
@@ -171,9 +165,7 @@ AMY_VOICE_UPDATE:
     ret z
     ld a,(AMY_VOICE_MODULE)
     ld b,a
-    push hl
     call AMY_VOICE_READY
-    pop hl
     or a
     ret z
     ld a,(hl)

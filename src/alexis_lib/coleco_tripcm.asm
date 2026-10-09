@@ -6,9 +6,7 @@
 ; The caller must disable NMI before playback and restore it afterward.
 
 AMY_PLAY_TRIPCM:
-    push hl
     call AMY_TRIPCM_PREPARE
-    pop hl
     exx
     ld hl,AMY_TRIPCM_LEVELS+(19*3)
     ld d,0

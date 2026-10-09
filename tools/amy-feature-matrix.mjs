@@ -186,6 +186,7 @@ const tests = [
   { file: "test-diamond-dash-melody-roundtrip-rom.mjs", area: "melody-roundtrip", evidence: "rom", suite: "audio" },
   { file: "test-dsound-cycle-balance.mjs", area: "dsound-cycle-balance", evidence: "unit", suite: "audio" },
   { file: "test-sp0256-voice-module.mjs", area: "sp0256-emulation", evidence: "unit", suite: "audio" },
+  { file: "test-voice-allophone-abi-runtime.mjs", area: "sp0256-runtime-abi", evidence: "rom", suite: "audio" },
   { file: "test-voice-module-codegen.mjs", area: "voice-module-codegen", evidence: "compile+assemble", suite: "audio" },
   { file: "test-voxpcm-codec.mjs", area: "voxpcm-codec", evidence: "unit", suite: "audio" },
   { file: "test-wav-spectral-noise-modes-rom.mjs", area: "wav-noise-modes", evidence: "rom", suite: "audio" },

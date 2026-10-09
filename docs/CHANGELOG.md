@@ -1,3 +1,17 @@
+## 2026-10-09 - Reduced runtime stack traffic
+
+- Removed redundant register saves around OS7 VDP register calls used by VRAM
+  upload completion, CRT-safe pause, menu sleep, and keypad timeouts.
+- Reduced stack traffic in the SP0256 allophone, blocking-phrase, and
+  asynchronous playback paths, with a new Lundy/EVE runtime ABI oracle.
+- Removed setup-only saves from DSOUND and normal TriPCM playback. Their
+  cycle-calibrated sample loops are unchanged, and DSOUND RAW/RLE cadence
+  remains identical under all five optimization profiles.
+- Passed the complete feature matrix, including EOS, MegaCart, VDP, voice,
+  audio, and runtime tests. The public balanced catalogue validates 83/83
+  examples and assembles 82 flat ROMs totaling 311,744 bytes; one project is
+  delegated to its target-specific validator.
+
 ## 2026-10-07 - Separate ADAM and ColecoVision reset switches
 
 - Added distinct **RESET ADAM** and **RESET CV** controls to ROM TEST & DEBUG.

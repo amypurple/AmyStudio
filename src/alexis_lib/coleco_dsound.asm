@@ -8,9 +8,7 @@
 AMY_PLAY_DSOUND:
     inc c
     push bc
-    push hl
     call AMY_DSOUND_QUIET
-    pop hl
     pop bc
 AMY_DSOUND_LOOP1:
     ld a,(hl)

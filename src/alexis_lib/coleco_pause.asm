@@ -90,7 +90,6 @@ AMY_SLEEP_REGION_SELECTED:
     ld a,($73C4)
     and $40
     ld d,a
-    push de
     ld a,($73C4)
     and $BF
     ld ($73C4),a
@@ -100,16 +99,13 @@ AMY_SLEEP_REGION_SELECTED:
     ld c,$01
     ld b,7
     call WRITE_REGISTER
-    pop de
 
 AMY_SLEEP_WAIT_INPUT:
     call AMY_SLEEP_WAIT_VBLANK
     call AMY_SLEEP_READ_INPUTS
     or a
     jr z,AMY_SLEEP_WAIT_INPUT
-    push de
     call AMY_PAUSE_RESTORE_DISPLAY
-    pop de
 AMY_SLEEP_WAIT_RELEASE:
     call AMY_SLEEP_WAIT_VBLANK
     call AMY_SLEEP_READ_INPUTS
@@ -202,8 +198,6 @@ AMY_PAUSE_VBLANK_WAIT:
     ld a,b
     or a
     ret nz
-    push hl
-    push de
     ld a,($73C4)
     and $BF                  ; Display off, NMI remains unchanged.
     ld ($73C4),a
@@ -213,8 +207,6 @@ AMY_PAUSE_VBLANK_WAIT:
     ld c,$01
     ld b,7             ; Uniform black while the display is blanked.
     call WRITE_REGISTER
-    pop de
-    pop hl
     ld b,1
     ret
 
@@ -316,8 +308,6 @@ AMY_CHOICE_KEYPAD_VBLANK_WAIT:
     or l
     ret nz
     push bc
-    push de
-    push hl
     ld a,($73C4)
     and $BF
     ld ($73C4),a
@@ -327,8 +317,6 @@ AMY_CHOICE_KEYPAD_VBLANK_WAIT:
     ld c,$01
     ld b,7
     call WRITE_REGISTER
-    pop hl
-    pop de
     pop bc
     ret
 
