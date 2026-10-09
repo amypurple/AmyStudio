@@ -60,6 +60,72 @@ export function transpileAmyCore(sourceText, deps) {
     semanticOptimizerOptions = {}
   } = deps;
 
+  function inferRoutineGraphicsModes(sourceLines) {
+    const routines = new Map([["start", []]]);
+    let active = "start";
+    for (const rawLine of sourceLines) {
+      const line = stripAmyInlineComment(rawLine).trim();
+      const declaration = line.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (declaration) {
+        active = declaration[1].toLowerCase();
+        if (!routines.has(active)) routines.set(active, []);
+        continue;
+      }
+      if (/^end\s+sub$/i.test(line) || /^end\s+function$/i.test(line)) {
+        active = "start";
+        continue;
+      }
+      routines.get(active).push(line);
+    }
+
+    const names = new Set(routines.keys());
+    const incoming = new Map([...names].map((name) => [name, new Set()]));
+    incoming.get("start").add("unknown");
+    const modeForLine = (line) => {
+      if (/^text\s+screen$/i.test(line) || /^graphics\s+mode\s+1\s+text$/i.test(line)) return "mode1_text";
+      if (/^tile\s+screen$/i.test(line)) return "mode2_tiles";
+      if (/^(?:mode\s+2\s+screen|graphics\s+mode\s+2(?:\s+text|\s+screen)?)$/i.test(line)) return "mode2_text";
+      if (/^(?:picture\s+screen|graphics\s+(?:mode\s+)?bitmap|graphics\s+mode\s+2\s+bitmap)$/i.test(line)) return "mode2_bitmap";
+      if (/^bitmap\s+screen(?:\s+color\s+.+)?$/i.test(line)) return "mode1_bitmap";
+      if (/^(?:multicolor\s+screen|graphics\s+(?:mode\s+3\s+)?multicolor|graphics\s+mode\s+3)$/i.test(line)) return "multicolor";
+      return null;
+    };
+    const isControlBoundary = (line) => /^(?:if\b|else\b|end\s+if\b|for\b|next\b|while\b|wend\b|do\b|loop\b|select\b|case\b|goto\b|label\b|on\b|dispatch\b)|^[A-Za-z_][A-Za-z0-9_]*:$/i.test(line);
+    const calledRoutine = (line) => {
+      const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(.*\))?$/);
+      const name = match?.[1]?.toLowerCase();
+      return name && names.has(name) ? name : null;
+    };
+
+    for (let pass = 0; pass < routines.size + 1; pass += 1) {
+      let changed = false;
+      for (const [name, bodyLines] of routines) {
+        for (const entryMode of incoming.get(name)) {
+          let mode = entryMode;
+          for (const line of bodyLines) {
+            if (!line) continue;
+            const explicitMode = modeForLine(line);
+            if (explicitMode) { mode = explicitMode; continue; }
+            if (isControlBoundary(line)) { mode = "unknown"; continue; }
+            const callee = calledRoutine(line);
+            if (!callee) continue;
+            const target = incoming.get(callee);
+            if (!target.has(mode)) { target.add(mode); changed = true; }
+            mode = "unknown";
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    const result = new Map();
+    for (const [name, modes] of incoming) {
+      const concrete = [...modes].filter((mode) => mode !== "unknown");
+      if (!modes.has("unknown") && concrete.length === 1) result.set(name, concrete[0]);
+      else if (name !== "start" && concrete.length > 1) result.set(name, "ambiguous");
+    }
+    return result;
+  }
+
   function preprocessCompileTimeConditionals(rawLines) {
     const result = [...rawLines];
     const definedSymbols = new Set([...predefinedSymbols].map((name) => String(name).toLowerCase()));
@@ -1260,6 +1326,7 @@ export function transpileAmyCore(sourceText, deps) {
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);
+  const inferredRoutineGraphicsModes = inferRoutineGraphicsModes(lines);
   const usesCustomNumericTiles = lines.some((candidateRaw) =>
     /^set\s+number\s+(?:digits|pad)\s+(?:tile|tiles|char|to)\s+/i.test(stripAmyInlineComment(candidateRaw).trim())
   );
@@ -1352,6 +1419,7 @@ export function transpileAmyCore(sourceText, deps) {
   let currentProc = null;
   let currentFunction = null;
   let currentGraphicsMode = null;
+  let currentClsModeAmbiguous = false;
   let numericDigitBaseName = null;
   let numericPadCharName = null;
   let needsNumericPostprocessHelpers = false;
@@ -4834,7 +4902,13 @@ export function transpileAmyCore(sourceText, deps) {
       if (procFunctionStmt.handled) {
         if (!procFunctionStmt.ok) return { ok: false, asmBody: "", log: procFunctionStmt.log };
         resetVdpR1SemanticTracking();
-        currentGraphicsMode = null;
+        const inferredRoutineMode = currentProc
+          ? inferredRoutineGraphicsModes.get(currentProc.toLowerCase())
+          : null;
+        currentClsModeAmbiguous = inferredRoutineMode === "ambiguous";
+        currentGraphicsMode = inferredRoutineMode && inferredRoutineMode !== "ambiguous"
+          ? inferredRoutineMode
+          : null;
         continue;
       }
     }
@@ -5132,6 +5206,7 @@ export function transpileAmyCore(sourceText, deps) {
         formatHex16,
         makeGeneratedLabel,
         usesSpriteFlicker,
+        clsModeAmbiguous: currentClsModeAmbiguous,
         needsCompleteDefaultAscii: inferredMemoryCaps.needsCompleteDefaultAscii,
         supportsNmi: !buildContext || ["os7", "eos"].some((capability) => buildContext.capabilities?.includes(capability)),
         supportsColecoBios: !buildContext || buildContext.capabilities?.includes("os7")
@@ -5144,13 +5219,17 @@ export function transpileAmyCore(sourceText, deps) {
           currentGraphicsMode = "mode1_text";
         } else if (/^graphics\s+mode\s*1(?:\s+color\s+.+)?$/i.test(line) || /^bitmap\s+screen(?:\s+color\s+.+)?$/i.test(line)) {
           currentGraphicsMode = "mode1_bitmap";
+        } else if (/^tile\s+screen$/i.test(line)) {
+          currentGraphicsMode = "mode2_tiles";
         } else if (/^graphics\s+mode\s+2\s+text$/i.test(line)
           || /^mode\s+2\s+screen$/i.test(line)
-          || /^graphics\s+mode\s+2\s+screen$/i.test(line)
-          || /^tile\s+screen$/i.test(line)) {
+          || /^graphics\s+mode\s+2\s+screen$/i.test(line)) {
           currentGraphicsMode = "mode2_text";
         } else if (/^graphics\s+(?:mode\s+)?bitmap$/i.test(line) || /^graphics\s+mode\s+2\s+bitmap$/i.test(line) || /^picture\s+screen$/i.test(line)) {
           currentGraphicsMode = "mode2_bitmap";
+        }
+        if (/^(?:text\s+screen|tile\s+screen|multicolor\s+screen|picture\s+screen|bitmap\s+screen|mode\s+2\s+screen|graphics\s+)/i.test(line)) {
+          currentClsModeAmbiguous = false;
         }
         const vdpR1WarningResult = trackVdpR1SemanticWarning(line, sourceLineNumber + 1);
         if (currentVdpR1Classification?.kind === "authoritative") {

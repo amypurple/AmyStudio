@@ -13,6 +13,7 @@ export function handleDisplayGraphicsSpriteStatement({
   formatHex16,
   makeGeneratedLabel,
   usesSpriteFlicker = false,
+  clsModeAmbiguous = false,
   supportsNmi = true,
   supportsColecoBios = true,
   needsCompleteDefaultAscii = false
@@ -171,7 +172,23 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: ["    call AMY_ENABLE_NMI"] };
   }
 
-  if (/^cls$/i.test(line)) {
+  const cls = line.match(/^cls(?:\s+with\s+(.+))?$/i);
+  if (cls) {
+    if (cls[1]) {
+      const loadTile = emitLoadInt8ValueInto("a", cls[1]);
+      if (!loadTile) return { ok: false, handled: true, log: `cls with requires a byte-sized tile value: ${rawLine}` };
+      return {
+        ok: true, handled: true,
+        lines: ["    ld hl,(VDP_NAME_SHADOW)", "    ld de,$0300", ...loadTile, "    call FILL_VRAM"]
+      };
+    }
+    if (clsModeAmbiguous) {
+      return {
+        ok: false,
+        handled: true,
+        log: `cls is reached from incompatible or unproven screen modes; use cls with Tile or separate the mode-specific routine: ${rawLine}`
+      };
+    }
     if (currentGraphicsMode === "multicolor") {
       return {
         ok: true, handled: true,
@@ -194,6 +211,12 @@ export function handleDisplayGraphicsSpriteStatement({
           "    ld hl,VRAM_PATTERN", "    ld de,$1800", "    xor a", "    call FILL_VRAM",
           "    ld hl,VRAM_COLOR", "    ld de,$1800", "    ld a,$F0", "    call FILL_VRAM"
         ]
+      };
+    }
+    if (currentGraphicsMode === "mode2_tiles") {
+      return {
+        ok: true, handled: true,
+        lines: ["    ld hl,(VDP_NAME_SHADOW)", "    ld de,$0300", "    xor a", "    call FILL_VRAM"]
       };
     }
     return {

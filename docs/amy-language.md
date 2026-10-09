@@ -2242,8 +2242,18 @@ multicolor screen
 cls
 ```
 
-In multicolor mode, `cls` compiles to a pattern-table clear. In text modes, it
-keeps the usual name-table clear behavior.
+`cls` preserves the active mode. In multicolor mode it clears the visible
+pattern bytes; bitmap modes clear their pixels and restore the default color.
+Text mode fills the NAME table with `$20`, while `tile screen` fills it with
+tile `$00`. Use `cls with Tile` to fill the current NAME table with an explicit
+byte value, for example `cls with $20` or `cls with EmptyTile`.
+
+Inside a subroutine, Amy conservatively propagates screen modes through direct
+call chains. If every proven caller uses the same mode, plain `cls` receives
+that mode-specific implementation without runtime state. Callers proven to use
+incompatible modes produce an error and should use `cls with Tile` or separate
+routines. Control-flow paths that cannot yet be proven preserve the historical
+text-compatible `$20` fallback rather than silently specializing the routine.
 
 `plot` was removed; use `pset`.
 
@@ -3375,7 +3385,7 @@ Current expression engine notes:
 | `multicolor screen` | Multicolor mode surface |
 | `backdrop Color` | Set VDP register 7 backdrop/border color |
 | `set text colors F [on B] [at N] [count M]` | Fill standard text color groups; omitted background is transparent |
-| `cls` | Clear the current screen surface |
+| `cls [with Tile]` | Clear the current screen surface, optionally with an explicit NAME-table tile |
 | `load default ascii` | Load BIOS font |
 | `load default ascii bold` / `italic` / `bold italic` | Load BIOS font with legacy styling |
 | `wipe screen up` / `wipe screen down` | Scroll wipe (text mode, name table rows) |

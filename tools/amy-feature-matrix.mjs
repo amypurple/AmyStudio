@@ -38,6 +38,8 @@ const tests = [
   { file: "test-text-color-codegen.mjs", area: "text-color-codegen", evidence: "compile+assemble" },
   { file: "test-wait-codegen.mjs", area: "wait-codegen", evidence: "compile+assemble" },
   { file: "test-tile-screen-codegen.mjs", area: "tile-screen-codegen", evidence: "compile+assemble" },
+  { file: "test-cls-mode-inference.mjs", area: "cls-mode-inference", evidence: "compile+assemble" },
+  { file: "test-cls-mode-runtime.mjs", area: "cls-mode-runtime", evidence: "rom" },
   { file: "test-vram-workspace-codegen.mjs", area: "vram-workspace", evidence: "compile+assemble" },
   { file: "test-sound-area-layout.mjs", area: "sound-ram-layout", evidence: "unit", suite: "audio" },
   { file: "test-wait-or-press-codegen.mjs", area: "timed-input-wait", evidence: "compile+assemble" },

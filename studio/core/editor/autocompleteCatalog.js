@@ -201,6 +201,7 @@ export const AMY_AUTOCOMPLETE = [
   ["fill mode 2 text color with $F0", "Advanced: fill and duplicate Mode 2 color thirds"],
   ["load mode 2 text colors ColorTable", "Load a legacy 32-byte Mode 2 text color table"],
   ["cls", "Clear the current screen surface (name table in text modes, pattern bytes in multicolor)"],
+  ["cls with $00", "Clear the current NAME table with an explicit tile value"],
   ["print at 8,8, \"HELLO\"", "Print one or more items starting at one position"],
   ["print at 1,1, \"HP:\", Hp", "Print mixed text and typed values on one HUD line"],
   ["print \"HELLO\" at 8,8", "Print a zero-terminated string"],
