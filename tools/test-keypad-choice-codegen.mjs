@@ -72,6 +72,10 @@ assert.match(menuChoice.body.join("\n"), /call AMY_SLEEP_SERVICE/);
 assert.match(menuChoice.body.join("\n"), /ld a,\(KEYPAD_1\)/);
 assert.match(menuChoice.body.join("\n"), /ld a,\(JOYPAD_1\)/);
 assert.match(menuChoice.body.join("\n"), /and \$C0/);
+const gappedMenuChoice = compile("choose menu 1 to 8 into Choice cursor $3E at 3,6 step 2 gap 1 after 4");
+assert.equal(gappedMenuChoice.ok, true);
+assert.match(gappedMenuChoice.body.join("\n"), /cp 5/);
+assert.match(gappedMenuChoice.body.join("\n"), /add a,1/);
 assert.match(
   compile("choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds", { nmiKnownOff: true }).log,
   /requires NMI enabled/
@@ -83,6 +87,10 @@ assert.match(spriteMenuChoice.body.join("\n"), /ld \(AMY_SPRITE_TABLE\+9\),a/);
 assert.match(spriteMenuChoice.body.join("\n"), /ld \(AMY_SPRITE_TABLE\+8\),a/);
 assert.match(spriteMenuChoice.body.join("\n"), /call AMY_UPDATE_SPRITES/);
 assert.doesNotMatch(spriteMenuChoice.body.join("\n"), /call AMY_PUT_CHAR_AT/);
+const gappedSpriteMenuChoice = compile("choose menu 1 to 8 into Choice cursor sprite 2 at 16,48 step 16 gap 8 after 4");
+assert.equal(gappedSpriteMenuChoice.ok, true);
+assert.match(gappedSpriteMenuChoice.body.join("\n"), /cp 5/);
+assert.match(gappedSpriteMenuChoice.body.join("\n"), /add a,8/);
 assert.match(
   compile("choose menu 1 to 4 into Choice cursor sprite CursorIndex at 48,71 step 16").log,
   /constant sprite index from 0 to 31/

@@ -312,15 +312,17 @@ export function handleVramPixelInputStatement({
   }
 
   const qualifiedByteTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
-  const chooseSpriteMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
-  const chooseTileMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const chooseSpriteMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+gap\\s+(${constantToken})\\s+after\\s+(${constantToken}))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const chooseTileMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+gap\\s+(${constantToken})\\s+after\\s+(${constantToken}))?(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   const chooseMenu = chooseSpriteMenu || chooseTileMenu;
   if (chooseMenu) {
     const spriteCursor = Boolean(chooseSpriteMenu);
     const [, minToken, maxToken, target, cursorToken, xToken, yToken, stepToken] = chooseMenu;
-    const clearToken = spriteCursor ? null : (chooseMenu[8] || "$20");
-    const padToken = (spriteCursor ? chooseMenu[8] : chooseMenu[9]) || "1";
-    const secondsToken = spriteCursor ? chooseMenu[9] : chooseMenu[10];
+    const gapToken = chooseMenu[8];
+    const gapAfterToken = chooseMenu[9];
+    const clearToken = spriteCursor ? null : (chooseMenu[10] || "$20");
+    const padToken = (spriteCursor ? chooseMenu[10] : chooseMenu[11]) || "1";
+    const secondsToken = spriteCursor ? chooseMenu[11] : chooseMenu[12];
     const targetType = resolveValueType(target);
     const byteLoads = [minToken, maxToken, cursorToken, xToken, yToken, stepToken, ...(clearToken ? [clearToken] : [])]
       .map((token) => emitLoadInt8ValueInto("a", token));
@@ -330,6 +332,12 @@ export function handleVramPixelInputStatement({
     const spriteIndex = spriteCursor ? tryEvaluateConstantExpression?.(cursorToken) : null;
     if (spriteCursor && (!Number.isInteger(spriteIndex) || spriteIndex < 0 || spriteIndex > 31)) {
       return { handled: true, ok: false, log: `choose menu sprite cursor requires a constant sprite index from 0 to 31: ${rawLine}` };
+    }
+    const gap = gapToken ? tryEvaluateConstantExpression?.(gapToken) : 0;
+    const gapAfter = gapAfterToken ? tryEvaluateConstantExpression?.(gapAfterToken) : 0;
+    if ((gapToken || gapAfterToken) && (!Number.isInteger(gap) || gap < 1 || gap > 255
+      || !Number.isInteger(gapAfter) || gapAfter < 0 || gapAfter > 254)) {
+      return { handled: true, ok: false, log: `choose menu gap requires constant byte values: ${rawLine}` };
     }
     let seconds = 0;
     if (secondsToken) {
@@ -357,6 +365,7 @@ export function handleVramPixelInputStatement({
     const drawRoutineLabel = makeGeneratedLabel("ChooseMenuDrawCursor");
     const waitReleaseRoutineLabel = makeGeneratedLabel("ChooseMenuWaitRelease");
     const doneLabel = makeGeneratedLabel("ChooseMenuDone");
+    const gapDoneLabel = makeGeneratedLabel("ChooseMenuGapDone");
     const cursorY = `(${yToken}) + ((${target}) - (${minToken})) * (${stepToken})`;
     const emitDrawCall = (tile) => spriteCursor
       ? [`    call ${drawRoutineLabel}`]
@@ -367,6 +376,15 @@ export function handleVramPixelInputStatement({
           ...(emitLoadInt8ValueInto("e", xToken) || []),
           ...(emitLoadInt8ValueIntoPreserving("d", cursorY, ["e"]) || [])
         ];
+        if (gap) loadInputs.push(
+          ...(emitLoadInt8ValueIntoPreserving("a", target, ["d", "e"]) || []),
+          `    cp ${gapAfter + 1}`,
+          `    jr c,${gapDoneLabel}`,
+          "    ld a,d",
+          `    add a,${gap}`,
+          "    ld d,a",
+          `${gapDoneLabel}:`
+        );
         return [
           ...loadInputs,
           "    ld a,e",
@@ -381,6 +399,15 @@ export function handleVramPixelInputStatement({
         ...(emitLoadInt8ValueInto("e", xToken) || []),
         ...(emitLoadInt8ValueIntoPreserving("d", cursorY, ["e"]) || [])
       ];
+      if (gap) loadInputs.push(
+        ...(emitLoadInt8ValueIntoPreserving("a", target, ["d", "e"]) || []),
+        `    cp ${gapAfter + 1}`,
+        `    jr c,${gapDoneLabel}`,
+        "    ld a,d",
+        `    add a,${gap}`,
+        "    ld d,a",
+        `${gapDoneLabel}:`
+      );
       return ["    push af", ...loadInputs, "    pop af", "    call AMY_PUT_CHAR_AT", "    ret"];
     };
     const eraseLines = spriteCursor ? [] : emitDrawCall(clearToken);

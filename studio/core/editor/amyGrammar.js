@@ -4,7 +4,7 @@ export const AMY_FIXED_PHRASES = Object.freeze([
   ["swap screens","vdp"],["sprites simple","vdp"],["sprites double","vdp"],["sprites magnified","vdp"],
   ["sprites flicker on","vdp"],["sprites flicker off","vdp"],["sprites stable","vdp"],
   ["set metasprite","vdp"],["update animation","vdp"],
-  ["wait fire","keyword"],["wait no fire","keyword"],["pause until press","keyword"],["pause until press and release","keyword"],["sleep after","keyword"],["show coleco options","keyword"],["choose menu","keyword"],["choose keypad","keyword"],
+  ["wait fire","keyword"],["wait no fire","keyword"],["pause until press","keyword"],["pause until press and release","keyword"],["sleep after","keyword"],["show coleco options","keyword"],["choose menu","keyword"],["choose keypad","keyword"],["gap","keyword"],
   ["sound runtime on","keyword"],["sound runtime off","keyword"],["stop all","keyword"],["mute all","keyword"],["loop forever","keyword"],
   ["voice detect into","keyword"],["voice speak","keyword"],["voice start","keyword"],["voice stop","keyword"],["voice speaking into","keyword"],["voice allophone","keyword"],["voice ready","keyword"],["voice reset","keyword"],
   ["psg tone","keyword"],["psg volume","keyword"],["psg noise","keyword"],

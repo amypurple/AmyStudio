@@ -2718,7 +2718,7 @@ and consumes the wake input before returning to the menu. Stock ADAM uses the
 u8 Choice = 1
 
 show coleco options
-choose menu 1 to 8 into Choice cursor $3E at 2,6 step 2
+choose menu 1 to 8 into Choice cursor $3E at 3,6 step 2 gap 1 after 4
 ```
 
 `show coleco options` calls the public OS7 `GAME_OPT` service to display the
@@ -2765,6 +2765,10 @@ selection in the target. `at X,Y` is the first cursor position and `step` is the
 vertical distance between entries. The default erased tile is `$20` and the
 default controller is 1; use `clear Tile` or `on joypad 2` to override them.
 The optional `sleep after` timeout provides the same PAL/NTSC-aware CRT protection.
+Use `gap Rows after Choice` when a later group starts farther down the screen.
+The added distance applies in both directions. For example, `gap 1 after 4`
+matches the blank row between BIOS options 4 and 5. With a sprite cursor, the
+gap and step are pixel distances instead of tile rows.
 
 The sprite form moves an already configured sprite in pixel coordinates. Set its
 pattern, color, active sprite count, and initial position before `choose menu`.
@@ -3494,8 +3498,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `wait key N [on keypad N]` | Wait for keypad digit |
 | `wait key release [on keypad N]` | Wait for keypad release |
 | `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
-| `choose menu min to max into Var cursor Tile at X,Y step N [clear Tile] [on joypad N] [sleep after N seconds]` | Complete vertical cursor menu |
-| `choose menu min to max into Var cursor sprite I at X,Y step Pixels [on joypad N] [sleep after N seconds]` | Vertical menu using a configured sprite cursor |
+| `choose menu min to max into Var cursor Tile at X,Y step N [gap Rows after Choice] [clear Tile] [on joypad N] [sleep after N seconds]` | Complete vertical cursor menu |
+| `choose menu min to max into Var cursor sprite I at X,Y step Pixels [gap Pixels after Choice] [on joypad N] [sleep after N seconds]` | Vertical menu using a configured sprite cursor |
 | `show coleco options` | Replace VRAM with the fixed OS7 eight-choice screen and restore Amy NMI service |
 | `halt` | Halt until NMI |
 

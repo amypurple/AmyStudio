@@ -12,7 +12,7 @@ const source = `u8 Choice = 0
 
 show coleco options
 Choice = 1
-choose menu 1 to 8 into Choice cursor $3E at 2,6 step 2
+choose menu 1 to 8 into Choice cursor $3E at 3,6 step 2 gap 1 after 4
 loop forever
 `;
 
@@ -37,6 +37,13 @@ function addressOf(asm, name) {
   const match = asm.match(new RegExp(`^AMY_UVAR_${name}\\s+EQU\\s+\\$([0-9A-Fa-f]{4})$`, "m"));
   assert(match, `missing ${name} address`);
   return Number.parseInt(match[1], 16);
+}
+
+function tap(core, input) {
+  core.setControllerMask(0, input);
+  for (let frame = 0; frame < 3; frame += 1) core.runFrame();
+  core.setControllerMask(0, 0);
+  for (let frame = 0; frame < 3; frame += 1) core.runFrame();
 }
 
 const temp = await mkdtemp(join(tmpdir(), "amy-coleco-options-"));
@@ -64,7 +71,12 @@ try {
       for (let frame = 0; frame < 180; frame += 1) core.runFrame();
       assert.equal(core.getVdpRegisters()[1] & 0x60, 0x60, `${profile}: display/NMI contract was not restored`);
       const nameBase = (core.getVdpRegisters()[2] & 0x0F) << 10;
-      assert.equal(core.readVram(nameBase + 6 * 32 + 2, 1)[0], 0x3E, `${profile}: cursor is not aligned with BIOS option 1`);
+      assert.equal(core.readVram(nameBase + 6 * 32 + 3, 1)[0], 0x3E, `${profile}: cursor is not aligned with BIOS option 1`);
+      for (let choice = 2; choice <= 5; choice += 1) tap(core, INPUT.DOWN);
+      assert.equal(core.readVram(nameBase + 15 * 32 + 3, 1)[0], 0x3E, `${profile}: cursor did not cross the BIOS row gap at option 5`);
+      assert.notEqual(core.readVram(nameBase + 14 * 32 + 3, 1)[0], 0x3E, `${profile}: cursor ignored the BIOS row gap`);
+      tap(core, INPUT.UP);
+      assert.equal(core.readVram(nameBase + 12 * 32 + 3, 1)[0], 0x3E, `${profile}: cursor did not cross the BIOS row gap upward`);
       core.setControllerMask(0, INPUT.KEYPAD_3);
       for (let frame = 0; frame < 4; frame += 1) core.runFrame();
       core.setControllerMask(0, 0);
