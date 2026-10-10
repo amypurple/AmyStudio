@@ -405,6 +405,7 @@ export const AMY_AUTOCOMPLETE = [
   ["copy TextLine1 to vram.name + $00C8", "Copy a text/data block to a VRAM offset"],
   ["decompress PatternAsset to vram.pattern", "Decompress a declared asset using its codec metadata"],
   ["decompress mdkrle Pattern to vram.pattern", "Explicit codec form for raw/data labels"],
+  ["decompress msc1 Pattern to vram.pattern", "Fast four-byte sequence decompression directly to VRAM"],
   ["decompress zx0 LevelPicture from bank 2 to vram.pattern", "Decompress exported MegaCart bank data directly to VRAM"],
   ["decompress zx1 Pattern to vram.pattern", "Official ZX1 stream directly to ColecoVision VRAM"],
   ["decompress zx2 Pattern to vram.pattern", "Official ZX2 stream through a compact direct-to-VRAM decoder"],

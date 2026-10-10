@@ -2589,7 +2589,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   function parsePictureDefinitions() {
-    const codecRe = "(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
+    const codecRe = "(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle|raw)";
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
@@ -4520,7 +4520,7 @@ export function transpileAmyCore(sourceText, deps) {
         megaCartRomSizeKb = Number(bankRom[1]);
         continue;
       }
-      const bankDecompress = line.match(/^decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+bank\s+(\d+)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
+      const bankDecompress = line.match(/^decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+([A-Za-z_][A-Za-z0-9_]*)\s+from\s+bank\s+(\d+)\s+to\s+(vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*.+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))$/i);
       if (bankDecompress) {
         if (megaCartRomSizeKb == null) {
           return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: banked DECOMPRESS requires BANK ROM first.` };

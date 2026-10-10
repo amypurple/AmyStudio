@@ -15,6 +15,7 @@ const DEFAULT_ROUTINE_BYTES = {
   aplib: 244,
   megalz: 162,
   exomizer: 226,
+  msc1: 68,
   zx7: 136,
   dan1: 205,
   dan2: 212,

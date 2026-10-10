@@ -32,6 +32,7 @@ const CODEC_FILE_EXTENSIONS = {
   dan2: "dan2",
   dan3: "dan3",
   mdkrle: "rle",
+  msc1: "msc1",
   rle: "rle",
   nibble: "nibble",
   pletter: "pletter",

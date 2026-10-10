@@ -116,6 +116,17 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
+        msc1: {
+            name: 'MSC1',
+            author: 'Marco Spedaletti; independent Amy Studio browser encoder',
+            year: '2021 / 2026',
+            description: 'Fast four-byte sequence codec used by ugBASIC, with a compact direct-to-VRAM decoder.',
+            extensions: ['.msc1'],
+            module: './codecs/msc1.js',
+            className: 'MSC1Codec',
+            enabled: true,
+            category: 'lz77'
+        },
         zx1: {
             name: 'ZX1',
             author: 'Einar Saukas',
@@ -185,7 +196,7 @@ export const CODEC_CONFIG = {
     settings: {
         maxFileSize: 256 * 1024, // 256KB
         enableDebugMode: false,
-        defaultCompressionOrder: ['zx0', 'zx1', 'zx2', 'aplib', 'megalz', 'exomizer', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
+        defaultCompressionOrder: ['zx0', 'zx1', 'zx2', 'aplib', 'megalz', 'exomizer', 'msc1', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
     }
 };
 

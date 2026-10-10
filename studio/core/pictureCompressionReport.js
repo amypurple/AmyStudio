@@ -8,6 +8,7 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "aplib", label: "aPLib Compact", description: "Strong aPPack-compatible compression with a compact direct-VRAM routine." },
   { codec: "megalz", label: "MegaLZ", description: "DEC40-compatible compression with a compact direct-VRAM routine." },
   { codec: "exomizer", label: "Exomizer 2", description: "Strong compression; needs a 226-byte ROM decoder and 156 bytes of CPU RAM reserved by Amy Studio." },
+  { codec: "msc1", label: "MSC1", description: "Fast four-byte sequence compression with no VRAM back-copy reads." },
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
   { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco bitmap data." },
   { codec: "dan1", label: "DAN1", description: "Legacy DAN family baseline." },
@@ -29,6 +30,7 @@ export const PICTURE_DECOMPRESSOR_ROUTINE_BYTES = {
   aplib: 244,
   megalz: 162,
   exomizer: 226,
+  msc1: 68,
   zx7: 136,
   dan1: 205,
   dan2: 212,
@@ -88,6 +90,11 @@ const PICTURE_Z80_RUNTIME_INFO = {
     rank: 4,
     label: "table-driven LZ VRAM back-copy",
     note: "Uses 156 bytes of CPU RAM. Amy Studio reserves the aligned workspace; its generated address must not be hard-coded or overlapped."
+  },
+  msc1: {
+    rank: 2,
+    label: "fast ROM/RAM->VRAM sequence copy",
+    note: "Four-byte matches are reread from the compressed stream, avoiding VRAM reads."
   },
   zx7: {
     rank: 3,

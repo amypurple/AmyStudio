@@ -23,7 +23,7 @@ export function projectFileBytes(entry) {
 
 export function assetNameFromProjectPath(path) {
   const base = normalizeProjectFilePath(path).slice(PROJECT_FILE_PREFIX.length).split("/").pop() || "Asset";
-  const withoutCodec = base.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+  const withoutCodec = base.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
   const stem = /\.(pattern|pat|chr|color|col|clr|name|nam|pc|sprpat|sprcolor|sprattr)$/i.test(withoutCodec)
     ? withoutCodec
     : withoutCodec.replace(/\.[^.]+$/, "");
@@ -42,10 +42,10 @@ export function fileKindFromPath(path) {
   if (/\.(?:asm|s|inc)$/.test(lower)) return "asm-source";
   if (lower.endsWith(".dsound")) return "dsound";
   if (lower.endsWith(".tripcm")) return "tripcm";
-  if (/\.voxpcm(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "voxpcm";
-  if (/\.(sprpat|sprcolor|sprattr)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "sprite";
-  if (/\.(pc|pattern|pat|chr|color|col|clr|name|nam)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "picture";
-  if (/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/.test(lower)) return "compressed";
+  if (/\.voxpcm(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "voxpcm";
+  if (/\.(sprpat|sprcolor|sprattr)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "sprite";
+  if (/\.(pc|pattern|pat|chr|color|col|clr|name|nam)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble))?$/.test(lower)) return "picture";
+  if (/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/.test(lower)) return "compressed";
   if (/\.(bin|dat|raw)$/.test(lower)) return "binary";
   return "asset";
 }
