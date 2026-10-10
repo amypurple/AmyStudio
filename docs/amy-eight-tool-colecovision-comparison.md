@@ -81,8 +81,8 @@ Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and 
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
 The 9,733-byte ugBASIC Warrior uses native `BITMAP ENABLE(16)`, `CLS BLACK`,
 `LOAD IMAGE ... EXACT COMPRESSED`, and `PUT IMAGE`. The oracle finds 450 Pattern-byte and 1,322
-Color-byte differences caused by equivalent foreground/background encodings, while all 49,152
-rendered pixels match. The MSC1 direct-to-VRAM result is pixel-exact.
+Color-byte differences from equivalent foreground/background encodings, while all 49,152 rendered
+pixels match. The MSC1 direct-to-VRAM result is pixel-exact.
 
 Legacy payloads are MDKRLE 3,687, DAN1 2,903, DAN2 2,897, and DAN3 2,891 bytes. DAN2 stays linked:
 DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to end.
@@ -91,10 +91,10 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated `code_user`
 ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
-ugBASIC `main` `e35e6df` (2026-10-10) rebuilt all six samples cleanly. Its published 1,419-byte Hello
-figure is the highest occupied offset (`tail - head - 1`); the linker's exclusive tail yields 1,420
-ROM bytes including the required final `$C9` `RET`. This explains the one-byte difference for all
-six samples. The 184-byte RAM reservation is excluded. Totals are 25,079 for ugBASIC and 21,057 for z88dk.
+ugBASIC `main` `e35e6df` (2026-10-10) rebuilt all six samples. Its published 1,419-byte Hello is the
+highest occupied offset (`tail - head - 1`); the exclusive linker tail gives 1,420 ROM bytes including
+the required final `$C9` `RET`. This explains all six one-byte differences. The 184-byte RAM reservation
+is excluded. Totals: ugBASIC 25,079; z88dk 21,057.
 
 ### Runtime and comparability verdict
 
