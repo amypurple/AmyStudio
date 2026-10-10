@@ -147,12 +147,12 @@ export class Z80Optimizer {
                 const mnem = token.mnemonic.toLowerCase();
                 if ((mnem === 'jr' || mnem === 'jp' || mnem === 'call') &&
                     token.operands.length > 1 &&
-                    token.operands[0].type === 'condition') {
+                    ['z', 'nz', 'c', 'nc', 'm', 'p', 'pe', 'po'].includes(String(token.operands[0].value).toLowerCase())) {
                     return true;
                 }
                 if (mnem === 'ret' &&
                     token.operands.length === 1 &&
-                    token.operands[0].type === 'condition') {
+                    ['z', 'nz', 'c', 'nc', 'm', 'p', 'pe', 'po'].includes(String(token.operands[0].value).toLowerCase())) {
                     return true;
                 }
                 if (mnem === 'push' &&
@@ -211,7 +211,7 @@ export class Z80Optimizer {
                 const ops = token.operands || [];
                 if ((mnem === 'jr' || mnem === 'jp' || mnem === 'call' || mnem === 'ret') &&
                     ops.length > 0 &&
-                    ops[0].type === 'condition') {
+                    ((mnem === 'ret' && ops.length === 1) || (mnem !== 'ret' && ops.length > 1))) {
                     const cond = String(ops[0].value).toLowerCase();
                     return cond === 'c' || cond === 'nc';
                 }
@@ -2554,6 +2554,52 @@ export class Z80Optimizer {
                             this.stats.peepholeOpts++;
                             this.stats.bytesSaved += 3;
                             optimizerLog(`  Folded indexed LD/ADD/STORE into SLA ${token.operands[1].value} at line ${token.lineNumber}`, 'debug');
+                            continue;
+                        }
+                    }
+
+                    // === PHASE 1.1d2: Indexed byte +=/-= 1 via direct memory INC/DEC ===
+                    // LD A,(IX+d) / ADD A,1 / LD (IX+d),A can become INC (IX+d),
+                    // and likewise for SUB/DEC. INC/DEC do not preserve Carry and no
+                    // longer leave the result in A, so require both values to be dead.
+                    if (this.config.flagLivenessPeepholes &&
+                        mnem === 'ld' && i + 2 < tokens.length && !token.label &&
+                        isLdAFromMem(token) &&
+                        typeof token.operands[1]?.value === 'string' &&
+                        parseIndexedDisplacement(token.operands[1].value)) {
+                        const arithmetic = tokens[i + 1];
+                        const store = tokens[i + 2];
+                        const isIncrement = arithmetic instanceof Instruction &&
+                            !arithmetic.label &&
+                            arithmetic.mnemonic.toLowerCase() === 'add' &&
+                            arithmetic.operands.length === 2 &&
+                            arithmetic.operands[0].type === 'register' &&
+                            String(arithmetic.operands[0].value).toLowerCase() === 'a' &&
+                            arithmetic.operands[1].type === 'immediate' &&
+                            Number(arithmetic.operands[1].value) === 1;
+                        const isDecrement = arithmetic instanceof Instruction &&
+                            !arithmetic.label &&
+                            arithmetic.mnemonic.toLowerCase() === 'sub' &&
+                            arithmetic.operands.length === 1 &&
+                            arithmetic.operands[0].type === 'immediate' &&
+                            Number(arithmetic.operands[0].value) === 1;
+                        if ((isIncrement || isDecrement) &&
+                            store instanceof Instruction &&
+                            !store.label &&
+                            isLdMemA(store, token.operands[1].value) &&
+                            isDeadOrClobberedBeforeAnyReadInBlock(tokens, i + 2, 'a') &&
+                            this.isCarryDeadBeforeNextUse(tokens, i + 2)) {
+                            optimized.push(new Instruction(
+                                token.label,
+                                isIncrement ? 'inc' : 'dec',
+                                [new Operand('memory', token.operands[1].value)],
+                                token.lineNumber,
+                                token.sourceLine
+                            ));
+                            i += 2;
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved += getInstructionSize(token) + getInstructionSize(arithmetic) + getInstructionSize(store) - 3;
+                            optimizerLog(`  Folded indexed byte ${isIncrement ? 'increment' : 'decrement'} at line ${token.lineNumber}`, 'debug');
                             continue;
                         }
                     }

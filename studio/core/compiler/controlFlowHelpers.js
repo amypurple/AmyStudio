@@ -527,6 +527,24 @@ export function createControlFlowHelpers(ctx) {
       }
       return emitSignedInt8CompareGoto(leftToken, effectiveOperator, rightToken, asmLabel);
     }
+    const leftZero = tryEvaluateConstantExpression(leftToken) === 0;
+    const rightZero = tryEvaluateConstantExpression(rightToken) === 0;
+    const leftUnsignedByte = leftDeclared === "u8" || leftDeclared === "boolean";
+    const rightUnsignedByte = rightDeclared === "u8" || rightDeclared === "boolean";
+    const zeroBoundedByteToken = rightZero && leftUnsignedByte
+      ? { token: leftToken, operator: effectiveOperator }
+      : leftZero && rightUnsignedByte
+        ? { token: rightToken, operator: invertOperator(effectiveOperator) }
+        : null;
+    if (zeroBoundedByteToken && (zeroBoundedByteToken.operator === ">" || zeroBoundedByteToken.operator === "<=")) {
+      const loadValue = emitLoadInt8ValueInto("a", zeroBoundedByteToken.token);
+      if (!loadValue) return null;
+      return [
+        ...loadValue,
+        "    or a",
+        `    jp ${zeroBoundedByteToken.operator === ">" ? "nz" : "z"},${asmLabel}`
+      ];
+    }
     if (leftType === "int16" || rightType === "int16") {
       if (rightType && rightType !== "int16") return null;
       const loadLeft = emitLoadInt16IntoHL(leftToken);

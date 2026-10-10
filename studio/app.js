@@ -111,7 +111,7 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20260802-keypad-blank";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261010-record-iterator1";
 import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260926-adam-quebec16";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
@@ -880,8 +880,10 @@ function transpileAmy(sourceText, options = {}) {
   }
   const effectiveSource = options.sourceMarkers ? instrumentAmySourceWithSourceMarkers(bundled.sourceText) : bundled.sourceText;
   const buildContext = options.buildContext || resolveAmyBuildContext(project, activeBuildManifest());
+  const optimizationProfile = getOptimizationProfile(project?.optimizationLevel || "auto", sourceText || "");
   const result = transpileAmyCore(effectiveSource, {
     buildContext,
+    experimentalRecordIx: optimizationProfile.effectiveLevel === "experimental",
     predefinedSymbols: getBuildContextDefines(buildContext),
     resolveStaticAbiInclude: (includePath) => {
       const normalized = normalizeProjectFilePath(includePath);

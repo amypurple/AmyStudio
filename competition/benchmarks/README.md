@@ -32,9 +32,9 @@ The latest generated measurements are also kept in the repository as
 | Hello World | 233 | 1,466 | 3,687 | 1,420 | 1,507 | 1,106 | 795 | 1,001 |
 | Warrior bitmap | 3,214 | 4,948 | 4,976 | 9,733 | 4,713 | 4,525 | 3,643 | 4,691 |
 | Controller Visual | 590 | 1,695 | 4,016 | 2,025 | 1,430 | 1,194 | 932 | 812 |
-| Sprite Metasprite | 978 | 1,845 | 2,607 | 5,797 | 1,681 | 1,304 | 1,142 | 1,413 |
-| State Update | 1,422 | 2,453 | 2,878 | 4,013 | 2,126 | 1,308 | 1,253 | 1,291 |
-| Tile Animation | 1,312 | 2,982 | 2,893 | 2,091 | 1,888 | 1,530 | 1,376 | 1,627 |
+| Sprite Metasprite | 972 | 1,845 | 2,607 | 5,797 | 1,681 | 1,304 | 1,142 | 1,413 |
+| State Update | 1,290 | 2,453 | 2,878 | 4,013 | 2,126 | 1,308 | 1,253 | 1,291 |
+| Tile Animation | 1,306 | 2,982 | 2,893 | 2,091 | 1,888 | 1,530 | 1,376 | 1,627 |
 
 These figures include each program's cartridge header, runtime, code, and ROM
 data, but exclude cartridge padding. Amy uses Experimental optimization, z88dk

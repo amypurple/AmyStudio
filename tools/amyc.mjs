@@ -113,7 +113,7 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [] };
+  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [], experimentalRecordIx: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--asm") opts.asm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
@@ -126,6 +126,7 @@ function parseArgs(argv) {
     else if (a === "--medium") opts.medium = argv[++i] || null;
     else if (a === "--memory-profile") opts.memoryProfile = argv[++i] || null;
     else if (a === "--hardware") opts.hardware.push(argv[++i] || "");
+    else if (a === "--experimental-record-ix") opts.experimentalRecordIx = true;
     else if (!opts.file && !a.startsWith("--")) opts.file = a;
   }
   return opts;
@@ -221,7 +222,7 @@ async function main() {
     sourceLang: "amy",
     sourceText,
     options: { buildContext },
-    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: getBuildContextDefines(buildContext) }),
+    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: getBuildContextDefines(buildContext), experimentalRecordIx: opts.experimentalRecordIx || opts.opt === "experimental" }),
     lexZ80Source,
     summarizeTokens
   });

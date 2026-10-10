@@ -220,6 +220,7 @@ function transpileAmy(sourceText, projectFiles = [], buildTarget = null, memoryP
     return transpileAmyCore(bundled.sourceText, {
       ...DEPS,
       resolveStaticAbiInclude,
+      experimentalRecordIx: options.optimization === "experimental",
       semanticOptimizerOptions: {
         sharedCoordinateIndex: !options.disabledSemanticOptimizations.includes("shared-coordinate-index")
       },

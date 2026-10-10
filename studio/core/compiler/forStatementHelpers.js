@@ -168,6 +168,14 @@ export function handleForStatement({
     if (loop.smallU8) {
       lines.push(`    ld hl,${loop.smallU8.asmName}`);
       lines.push("    inc (hl)");
+      if (loop.recordIxIterator) {
+        if (loop.recordIxIterator.recordSize <= 2) {
+          for (let offset = 0; offset < loop.recordIxIterator.recordSize; offset += 1) lines.push("    inc ix");
+        } else {
+          lines.push(`    ld de,${loop.recordIxIterator.recordSize}`);
+          lines.push("    add ix,de");
+        }
+      }
       lines.push("    ld a,(hl)");
       lines.push(`    cp ${loop.smallU8.exclusiveEnd}`);
       lines.push(`    jp c,${loop.loopLabel}`);
@@ -226,6 +234,14 @@ export function handleForStatement({
         lines.push("    add hl,de");
       }
       lines.push(...emitStoreInt16FromHL(loop.name));
+    }
+    if (loop.recordIxIterator) {
+      if (loop.recordIxIterator.recordSize <= 2) {
+        for (let offset = 0; offset < loop.recordIxIterator.recordSize; offset += 1) lines.push("    inc ix");
+      } else {
+        lines.push(`    ld de,${loop.recordIxIterator.recordSize}`);
+        lines.push("    add ix,de");
+      }
     }
     lines.push(`    jp ${loop.loopLabel}`);
     lines.push(`${loop.exitLabel}:`);

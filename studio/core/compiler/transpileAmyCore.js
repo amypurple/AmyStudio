@@ -950,9 +950,14 @@ export function transpileAmyCore(sourceText, deps) {
         const indexName = open[2] || makeHiddenIndexName();
         const indent = rawLine.slice(0, rawLine.search(/\S|$/));
         if (!open[2]) result.push(`${indent}u8 ${indexName} = 0`);
-        result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
         const nativeAlias = arrayEntry.recordLike && !arrayEntry.qualified;
-        if (nativeAlias) result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
+        if (nativeAlias) {
+          result.push(`${indent}__amy_record_iterator ${arrayName}, ${indexName}, ${elementName}`);
+        }
+        result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
+        if (nativeAlias) {
+          result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
+        }
         const alias = { elementName, indexName, arrayName, native: nativeAlias };
         aliasStack.push(alias);
         controlStack.push({ kind: "each", alias });
@@ -1435,6 +1440,7 @@ export function transpileAmyCore(sourceText, deps) {
   const selectStack = [];
   const ifStack = [];
   const recordAliasStack = [];
+  let pendingRecordIxIterator = null;
   let dataCursorName = null;
   let compareScratch32 = null;
   let fp5ReturnScratch = null;
@@ -2022,6 +2028,12 @@ export function transpileAmyCore(sourceText, deps) {
 
   function analyzeStaticLocalProcCandidates() {
     const procBodies = new Map();
+    const declaredRoutineNames = new Set();
+    for (const candidateRaw of lines) {
+      const candidate = stripAmyInlineComment(candidateRaw).trim();
+      const declaration = candidate.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (declaration) declaredRoutineNames.add(lowerName(declaration[1]));
+    }
     let scanInAsm = false;
     let scanProc = null;
     let scanProcHasParams = false;
@@ -2041,10 +2053,16 @@ export function transpileAmyCore(sourceText, deps) {
         const aliasCount = meaningful.filter((entry) => /^with\s+each\b/i.test(entry)).length;
         const forbidden = meaningful.some((entry) => {
           const invocation = entry.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s*$/i);
+          const invokesDeclaredRoutine = [...declaredRoutineNames].some((name) => {
+            const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            return new RegExp(`\\b${escaped}\\s*\\(`, "i").test(entry)
+              || new RegExp(`^${escaped}\\s*$`, "i").test(entry);
+          });
           return /^(?:asm\s*\{|include\b|goto\b|on\s+frame\b|print\b|play\b|sound\b|music\b|wait\b|screen\b|v(?:poke|peek)\b|put\b|get\b|copy\b|fill\b|randomize\b)/i.test(entry)
             || /\b(?:peek|random|min|max|abs|absdiff)\s*\(/i.test(entry)
             || /(?:\*|\/|\bmod\b)/i.test(entry)
-            || (invocation && procSignatures.has(invocation[1]));
+            || invokesDeclaredRoutine
+            || (invocation && declaredRoutineNames.has(lowerName(invocation[1])));
         });
         if (aliasCount === 1 && !forbidden) recordIxProcCandidates.add(scanProc);
       }
@@ -5073,6 +5091,38 @@ export function transpileAmyCore(sourceText, deps) {
     ensureImplicitStartForExecutable();
 
     {
+      const recordIterator = line.match(/^__amy_record_iterator\s+([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (recordIterator) {
+        pendingRecordIxIterator = null;
+        const arrayName = recordIterator[1];
+        const indexName = recordIterator[2];
+        const aliasName = recordIterator[3];
+        const arrayInfo = getRuntimeInfo(arrayName);
+        const frame = procFrames.get(currentProc);
+        const canPrepareIx = arrayInfo?.kind === "record_array"
+          && currentProc !== "Start"
+          && recordIxProcCandidates.has(currentProc)
+          && recordAliasStack.length === 0
+          && frame
+          && !frame.usesIxFrame
+          && frame.size === 0;
+        if (canPrepareIx) {
+          const loadAddress = emitLoadArrayAddressIntoHL(arrayName, "0");
+          if (!loadAddress) {
+            return { ok: false, asmBody: "", log: `Internal error: invalid record iterator base for ${arrayName}` };
+          }
+          frame.usesIxAlias = true;
+          pendingRecordIxIterator = {
+            arrayName: lowerName(arrayName),
+            indexName: lowerName(indexName),
+            aliasName: lowerName(aliasName),
+            recordSize: arrayInfo.recordSize,
+            loadAddress
+          };
+        }
+        continue;
+      }
+
       if (/^end\s+with$/i.test(line)) {
         const alias = recordAliasStack.pop();
         if (!alias) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: end with without a matching with` };
@@ -5101,10 +5151,19 @@ export function transpileAmyCore(sourceText, deps) {
         if (!loadAddress) {
           return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: invalid record-array index in ${rawLine.trim()}` };
         }
+        const ixAliasFrame = procFrames.get(currentProc);
         const useIxAlias = staticAliasSafe
           && currentProc !== "Start"
           && recordIxProcCandidates.has(currentProc)
-          && recordAliasStack.length === 0;
+          && recordAliasStack.length === 0
+          && ixAliasFrame
+          && !ixAliasFrame.usesIxFrame
+          && ixAliasFrame.size === 0;
+        const preparedIxIterator = useIxAlias
+          && forStack[forStack.length - 1]?.recordIxIterator
+          && forStack[forStack.length - 1].recordIxIterator.arrayName === lowerName(arrayName)
+          && forStack[forStack.length - 1].recordIxIterator.indexName === lowerName(indexToken)
+          && forStack[forStack.length - 1].recordIxIterator.aliasName === lowerName(aliasName);
         const pointerAddress = staticAliasSafe && !useIxAlias ? reserveRam(`record alias ${aliasName}`, 2, rawLine.trim()) : null;
         if (useIxAlias) {
           const frame = procFrames.get(currentProc);
@@ -5112,7 +5171,7 @@ export function transpileAmyCore(sourceText, deps) {
             return { ok: false, asmBody: "", log: `Internal error: IX record alias conflicts with the stack frame in ${currentProc}` };
           }
           frame.usesIxAlias = true;
-          body.push(...loadAddress, "    push hl", "    pop ix");
+          if (!preparedIxIterator) body.push(...loadAddress, "    push hl", "    pop ix");
         } else if (staticAliasSafe) {
           body.push(...loadAddress, `    ld (${formatHex16(pointerAddress)}),hl`);
         }
@@ -5700,6 +5759,16 @@ export function transpileAmyCore(sourceText, deps) {
       });
       if (forStmt.handled) {
         if (!forStmt.ok) return { ok: false, asmBody: "", log: forStmt.log };
+        if (pendingRecordIxIterator) {
+          const loop = forStack[forStack.length - 1];
+          if (!loop || lowerName(loop.name) !== pendingRecordIxIterator.indexName) {
+            return { ok: false, asmBody: "", log: `Internal error: record iterator was not followed by its generated for loop` };
+          }
+          const { loadAddress, ...iterator } = pendingRecordIxIterator;
+          loop.recordIxIterator = iterator;
+          body.push(...loadAddress, "    push hl", "    pop ix");
+          pendingRecordIxIterator = null;
+        }
         resetVdpR1SemanticTracking();
         body.push(...forStmt.lines);
         continue;

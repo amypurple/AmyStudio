@@ -70,10 +70,10 @@ Experimental serves this size test; Balanced remains Amy's default.
 | Hello World | **184** | 233 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 1,420 |
 | Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 9,733 |
 | Controller Visual | **264** | 590 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 2,025 |
-| Sprite Metasprite | **343** | 978 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,607 | 5,797 |
-| Gameplay State Update* | **508** | 1,422 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 4,013 |
-| Tile Animation | **761** | 1,312 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,091 |
-| **Six-sample total*** | **5,126** | **7,749** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,057** | **25,079** |
+| Sprite Metasprite | **343** | 972 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,607 | 5,797 |
+| Gameplay State Update* | **508** | 1,290 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 4,013 |
+| Tile Animation | **761** | 1,306 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,091 |
+| **Six-sample total*** | **5,126** | **7,605** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,057** | **25,079** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -81,8 +81,8 @@ Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and 
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
 The 9,733-byte ugBASIC Warrior uses native `BITMAP ENABLE(16)`, `CLS BLACK`,
 `LOAD IMAGE ... EXACT COMPRESSED`, and `PUT IMAGE`. The oracle finds 450 Pattern-byte and 1,322
-Color-byte differences from equivalent foreground/background encodings, while all 49,152 rendered
-pixels match. The MSC1 direct-to-VRAM result is pixel-exact.
+Color-byte differences caused by equivalent foreground/background encodings, while all 49,152
+rendered pixels match. The MSC1 direct-to-VRAM result is pixel-exact.
 
 Legacy payloads are MDKRLE 3,687, DAN1 2,903, DAN2 2,897, and DAN3 2,891 bytes. DAN2 stays linked:
 DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to end.
@@ -91,10 +91,10 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated `code_user`
 ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
-ugBASIC `main` `e35e6df` (2026-10-10) rebuilt all six samples. Its published 1,419-byte Hello is the
-highest occupied offset (`tail - head - 1`); the exclusive linker tail gives 1,420 ROM bytes including
-the required final `$C9` `RET`. This explains all six one-byte differences. The 184-byte RAM reservation
-is excluded. Totals: ugBASIC 25,079; z88dk 21,057.
+ugBASIC `main` `e35e6df` (2026-10-10) rebuilt all six samples cleanly. Its published 1,419-byte Hello
+figure is the highest occupied offset (`tail - head - 1`); the linker's exclusive tail yields 1,420
+ROM bytes including the required final `$C9` `RET`. This explains the one-byte difference across
+all six samples; the 184-byte RAM reservation is excluded.
 
 ### Runtime and comparability verdict
 
@@ -108,9 +108,11 @@ is excluded. Totals: ugBASIC 25,079; z88dk 21,057.
 | Tile Animation | Nine continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
 
 The State Update row is behavior-validated but not yet a strict code-size comparison: Amy Studio
-also draws a title, progress text, score, and checksum, while the current NewColeco fixture runs
-the state simulation without equivalent display output. Its sizes remain evidence artifacts, not
-a code-generator ranking, until matched headless and visible variants are built.
+also draws a title, progress text, score, and checksum. The NewColeco, PVColLib, and PkK/libcv
+fixtures share the same C engine and run it without equivalent display output. Their sizes remain
+evidence artifacts, not a code-generator ranking, until matched headless and visible variants are
+built. Amy's verified headless engine is 817 bytes, smaller than NewColeco (1,253), PkK/libcv
+(1,291), and PVColLib (1,308).
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
 controller logic and occupied size are unchanged.
@@ -131,10 +133,10 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 | Hello World | 184 | 233 | -49 |
 | Warrior bitmap | 3,066 | 3,214 | -148 |
 | Controller Visual | 264 | 590 | -326 |
-| Sprite Metasprite | 343 | 978 | -635 |
-| Gameplay State Update | 508 | 1,422 | -914 |
-| Tile Animation | 761 | 1,312 | -551 |
-| **Six-sample total** | **5,126** | **7,749** | **-2,623** |
+| Sprite Metasprite | 343 | 972 | -629 |
+| Gameplay State Update | 508 | 1,290 | -782 |
+| Tile Animation | 761 | 1,306 | -545 |
+| **Six-sample total** | **5,126** | **7,605** | **-2,479** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for
