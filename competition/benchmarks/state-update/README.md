@@ -24,7 +24,7 @@ score 425, and checksum 1478. Sizes are occupied bytes, excluding cartridge padd
 | Amy Experimental | 1,290 | 3,510 | 4,629 |
 | Amy Aggressive | 1,420 | 5,461 | 6,788 |
 | Amy Balanced | 1,424 | 5,466 | 6,791 |
-| z88dk `+coleco -O2` | 2,878 | 6,848 | 9,249 |
+| z88dk zsdcc size | 2,724 | 8,181 | 10,266 |
 | NewColeco legacy SDCC | 1,253 | 7,922 | 10,563 |
 | PVColLib / SDCC | 1,308 | 7,988 | 9,932 |
 | CVBasic 0.9.2 | 2,453 | 8,373 | 15,680 |

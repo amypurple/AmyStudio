@@ -52,9 +52,9 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 |---|---|---|
 | Amy Studio | Experimental | Saved 1 byte on Bitmap and 2 on Controller versus Balanced; Hello was unchanged |
 | CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
-| z88dk | `+coleco -O3`; ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; ZX7, MDKRLE, and raw baselines remain measured |
-| ugBASIC `main` `e35e6df` (2026-10-10) | Default maximum of 16 peephole passes; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | Current source reduces all six samples; the native compressed bitmap is pixel-exact |
-| devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 100000` on the program and SGlib | Saved 60 bytes on Bitmap; Hello and Controller were unchanged |
+| z88dk | zsdcc size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
+| ugBASIC `main` `e35e6df` (2026-10-10) | Default maximum of 16 peephole passes; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | All six rebuilt; MSC1 is pixel-exact; published sizes report the highest offset, one below occupied length |
+| devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 200000`; `NO_FRAME_INT_HOOK`; `MAXSPRITES=3`; brief VRAM copies/fills | Removed an unused interrupt callback from all six ROMs; specialized VRAM operations further reduced Hello and Tile Animation |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
@@ -67,13 +67,13 @@ Experimental serves this size test; Balanced remains Amy's default.
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 233 | 795 | 1,001 | 1,106 | 1,507 | 1,466 | 3,687 | 1,420 |
-| Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,713 | 4,948 | 4,976 | 9,733 |
-| Controller Visual | **264** | 590 | 932 | 812 | 1,194 | 1,430 | 1,695 | 4,016 | 2,025 |
-| Sprite Metasprite | **343** | 972 | 1,142 | 1,413 | 1,304 | 1,681 | 1,845 | 2,607 | 5,797 |
-| Gameplay State Update* | **508** | 1,290 | 1,253 | 1,291 | 1,308 | 2,126 | 2,453 | 2,878 | 4,013 |
-| Tile Animation | **761** | 1,306 | 1,376 | 1,627 | 1,530 | 1,888 | 2,982 | 2,893 | 2,091 |
-| **Six-sample total*** | **5,126** | **7,605** | **9,141** | **10,835** | **10,967** | **13,345** | **15,389** | **21,057** | **25,079** |
+| Hello World | **184** | 233 | 795 | 1,001 | 1,106 | 1,399 | 1,466 | 1,980 | 1,420 |
+| Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,678 | 4,948 | 4,976 | 9,733 |
+| Controller Visual | **264** | 590 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
+| Sprite Metasprite | **343** | 972 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
+| Gameplay State Update* | **508** | 1,290 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
+| Tile Animation | **761** | 1,306 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
+| **Six-sample total*** | **5,126** | **7,605** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -90,11 +90,6 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 `Occupied` includes header, runtime, code, and data, but excludes cartridge padding. Sources are:
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated `code_user`
 ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
-
-ugBASIC `main` `e35e6df` (2026-10-10) rebuilt all six samples cleanly. Its published 1,419-byte Hello
-figure is the highest occupied offset (`tail - head - 1`); the linker's exclusive tail yields 1,420
-ROM bytes including the required final `$C9` `RET`. This explains the one-byte difference across
-all six samples; the 184-byte RAM reservation is excluded.
 
 ### Runtime and comparability verdict
 
