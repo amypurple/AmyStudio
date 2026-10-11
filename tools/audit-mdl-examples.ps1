@@ -52,7 +52,7 @@ if ($LASTEXITCODE -ne 0) {
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $results = @()
 
-foreach ($example in $manifest.examples) {
+foreach ($example in @($manifest.examples | Where-Object { !$_.delegated })) {
   $result = [ordered]@{
     id = $example.id
     label = $example.label

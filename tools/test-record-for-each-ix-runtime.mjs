@@ -17,7 +17,11 @@ writeFileSync(sourcePath, `record Actor:
   u8 X
   u8 Hits
 end record
+record Motion:
+  u8 Delta
+end record
 Actor Actors[4]
+Motion Motions[4]
 u8 I = 0
 u8 Passed = 0
 sub Touch(ref Actor Current):
@@ -39,15 +43,27 @@ sub CallBarrier:
   next Current
   return
 end sub
+sub PairedRecords:
+  for each Current, I in Actors
+    Current.Hits += Motions[I].Delta
+  next Current
+  return
+end sub
+Motions[0].Delta = 1
+Motions[1].Delta = 2
+Motions[2].Delta = 3
+Motions[3].Delta = 4
 SafeLoop
 CallBarrier
+PairedRecords
 if Actors[0].X = 1 then Passed += 1
 if Actors[1].X = 1 then Passed += 1
 if Actors[2].X = 11 then Passed += 1
 if Actors[3].X = 0 then Passed += 1
-if Actors[0].Hits = 2 then Passed += 1
-if Actors[1].Hits = 0 then Passed += 1
-if Actors[2].Hits = 2 then Passed += 1
+if Actors[0].Hits = 3 then Passed += 1
+if Actors[1].Hits = 2 then Passed += 1
+if Actors[2].Hits = 5 then Passed += 1
+if Actors[3].Hits = 4 then Passed += 1
 record_ix_done:
 loop forever
 `);
@@ -66,9 +82,15 @@ try {
     return asm.slice(start, next >= 0 ? start + 1 + next : asm.length);
   };
   const safe = routine("SafeLoop");
-  assert.equal((safe.match(/push hl\s+pop ix/gi) || []).length, 1, "iterator base should load once");
+  assert.equal((safe.match(/ld ix,[^\r\n]+/gi) || []).length, 1, "static iterator base should load directly once");
+  assert.doesNotMatch(safe, /push hl\s+pop ix/i, "static iterator base should not transfer through HL");
   assert.match(safe, /\(ix\+\d+\)[\s\S]*(?:add ix,de|inc ix\s+inc ix)[\s\S]*pop ix\s+ret/i,
     "safe loop should use and advance IX");
+  const paired = routine("PairedRecords");
+  assert.match(paired, /ld ix,[^\r\n]+[\s\S]*\(ix\+\d+\)/i,
+    "primary record iterator should retain IX while a second record array uses HL");
+  assert.equal((paired.match(/ld ix,[^\r\n]+/gi) || []).length, 1,
+    "parallel record access must not replace the primary IX iterator");
   const callLoop = asm.match(/AMY_FOR_LOOP_5:[\s\S]*?AMY_FOR_EXIT_6:/i)?.[0] || "";
   assert.ok(callLoop, "missing inlined call-bearing loop");
   assert.doesNotMatch(callLoop, /\(ix[+-]/i, "call-bearing loop must retain fallback lowering");
@@ -87,7 +109,7 @@ try {
       if (result.breakpointHit && result.pc === done) { reached = true; break; }
     }
     assert.equal(reached, true, "completion label not reached");
-    assert.equal(core.readRam(passed, 1)[0], 7, "record iterator changed program behavior");
+    assert.equal(core.readRam(passed, 1)[0], 8, "record iterator changed program behavior");
   } finally {
     core.destroy();
   }

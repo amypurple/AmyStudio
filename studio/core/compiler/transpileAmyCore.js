@@ -1577,6 +1577,7 @@ export function transpileAmyCore(sourceText, deps) {
   let optimizeSharedAdjacentArrayIndex = null;
   let optimizePutFrameSharedCoordinateIndex = null;
   let optimizeFactoredHlBranchTails = null;
+  let optimizeUnsignedCompareElseIfTails = null;
   let optimizeSequentialAbsoluteByteStores = null;
   let optimizeRedundantImmediateLoads = null;
   let reserveRam = null;
@@ -3461,6 +3462,7 @@ export function transpileAmyCore(sourceText, deps) {
     optimizeSharedAdjacentArrayIndex,
     optimizePutFrameSharedCoordinateIndex,
     optimizeFactoredHlBranchTails,
+    optimizeUnsignedCompareElseIfTails,
     optimizeSequentialAbsoluteByteStores,
     optimizeRedundantImmediateLoads,
     reserveRam,
@@ -4440,6 +4442,14 @@ export function transpileAmyCore(sourceText, deps) {
     return { ok: false, asmBody: "", log: staticLocalProcScanError };
   }
 
+  function emitLoadAddressIntoIX(loadAddress) {
+    const direct = loadAddress.length === 1
+      ? String(loadAddress[0]).match(/^\s*ld\s+hl,\s*([^;]+?)\s*$/i)
+      : null;
+    if (direct && !/^\(/.test(direct[1].trim())) return [`    ld ix,${direct[1].trim()}`];
+    return [...loadAddress, "    push hl", "    pop ix"];
+  }
+
   for (let sourceLineNumber = 0; sourceLineNumber < lines.length; sourceLineNumber += 1) {
     const overlayDefinition = overlayDefinitions.get(sourceLineNumber);
     if (overlayDefinition) {
@@ -5171,7 +5181,7 @@ export function transpileAmyCore(sourceText, deps) {
             return { ok: false, asmBody: "", log: `Internal error: IX record alias conflicts with the stack frame in ${currentProc}` };
           }
           frame.usesIxAlias = true;
-          if (!preparedIxIterator) body.push(...loadAddress, "    push hl", "    pop ix");
+          if (!preparedIxIterator) body.push(...emitLoadAddressIntoIX(loadAddress));
         } else if (staticAliasSafe) {
           body.push(...loadAddress, `    ld (${formatHex16(pointerAddress)}),hl`);
         }
@@ -5766,7 +5776,7 @@ export function transpileAmyCore(sourceText, deps) {
           }
           const { loadAddress, ...iterator } = pendingRecordIxIterator;
           loop.recordIxIterator = iterator;
-          body.push(...loadAddress, "    push hl", "    pop ix");
+          body.push(...emitLoadAddressIntoIX(loadAddress));
           pendingRecordIxIterator = null;
         }
         resetVdpR1SemanticTracking();
@@ -6260,6 +6270,7 @@ export function transpileAmyCore(sourceText, deps) {
       optimizeSharedAdjacentArrayIndex,
       optimizePutFrameSharedCoordinateIndex,
       optimizeFactoredHlBranchTails,
+      optimizeUnsignedCompareElseIfTails,
       optimizeSequentialAbsoluteByteStores,
       optimizeRedundantImmediateLoads,
       optimizeRepeatedBitTestLoads

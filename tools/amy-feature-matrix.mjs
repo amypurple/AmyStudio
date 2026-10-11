@@ -142,6 +142,7 @@ const tests = [
   { file: "test-optimizer-aggressive-redundant-push-pop.mjs", area: "optimizer-redundant-push-pop", evidence: "compile+assemble" },
   { file: "test-semantic-optimization-equivalence.mjs", area: "semantic-optimizer-equivalence-and-barriers", evidence: "rom" },
   { file: "test-branch-tail-factoring.mjs", area: "semantic-optimizer-branch-factoring", evidence: "compile+assemble" },
+  { file: "test-unsigned-compare-elseif-optimization.mjs", area: "semantic-optimizer-compare-reuse", evidence: "unit" },
   { file: "test-put-frame-coordinate-index-reuse.mjs", area: "semantic-optimizer-put-frame-coordinate-index", evidence: "compile+assemble" },
   { file: "test-indexed-put-codegen.mjs", area: "indexed-put-source", evidence: "compile+assemble" },
   { file: "test-global-initializers-rom.mjs", area: "layout-and-wide-integers", evidence: "rom" },

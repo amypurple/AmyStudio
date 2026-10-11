@@ -1,3 +1,19 @@
+## 2026-10-10 - Smaller record-heavy state updates
+
+- Kept eligible static record iterators directly in `IX`, including loops that
+  also access a second record type through the normal `HL` path.
+- Reused flags for the exact unsigned `<` then `>` `elseif` lowering without
+  carrying values across calls or intervening instructions.
+- Reduced the displayed State Update benchmark from 1,290 to 1,151 bytes and
+  its verified engine-only form from 817 to 678 bytes. All five profiles still
+  finish at state 1, 13 collisions, score 425, and checksum 1478.
+- Restored the complete external-optimizer audit helpers in the clean repo and
+  excluded delegated MegaCart projects from flat-ROM oracle passes.
+- Rebuilt the comparison page, chart, PDF, and evidence ZIP. The six-sample Amy
+  total is now 7,466 bytes.
+- Passed 83/83 example builds, 80/80 post-built-in oracles, 3/3 ROM runtime
+  tests, the MDL ROM self-test, and the dedicated MegaCart validator.
+
 ## 2026-10-09 - Reduced runtime stack traffic
 
 - Removed additional redundant stack saves from Mode 2 and Mode 3 pixel

@@ -579,6 +579,7 @@ export function finalizeAmyTranspile({
     optimizeSharedAdjacentArrayIndex,
     optimizePutFrameSharedCoordinateIndex,
     optimizeFactoredHlBranchTails,
+    optimizeUnsignedCompareElseIfTails,
     optimizeSequentialAbsoluteByteStores,
     optimizeRedundantImmediateLoads,
     optimizeRepeatedBitTestLoads
@@ -1232,11 +1233,13 @@ export function finalizeAmyTranspile({
     removeDeadReturnsAfterJumps(
       optimizeRedundantImmediateLoads(
         optimizeSequentialAbsoluteByteStores(
-          optimizeFactoredHlBranchTails(
-            optimizePutFrameSharedCoordinateIndex(
-              optimizeSharedAdjacentArrayIndex(
-                optimizeSharedRecordPutCharLoads(
-                  optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(sourceMarkerPlan.clean)))
+          optimizeUnsignedCompareElseIfTails(
+            optimizeFactoredHlBranchTails(
+              optimizePutFrameSharedCoordinateIndex(
+                optimizeSharedAdjacentArrayIndex(
+                  optimizeSharedRecordPutCharLoads(
+                    optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(sourceMarkerPlan.clean)))
+                  )
                 )
               )
             )

@@ -21,9 +21,9 @@ score 425, and checksum 1478. Sizes are occupied bytes, excluding cartridge padd
 
 | Toolchain | Bytes | Average cycles | Worst update |
 |---|---:|---:|---:|
-| Amy Experimental | 1,290 | 3,510 | 4,629 |
-| Amy Aggressive | 1,420 | 5,461 | 6,788 |
-| Amy Balanced | 1,424 | 5,466 | 6,791 |
+| Amy Experimental | 1,151 | 3,152 | 4,178 |
+| Amy Aggressive | 1,299 | 5,041 | 6,244 |
+| Amy Balanced | 1,303 | 5,043 | 6,247 |
 | z88dk zsdcc size | 2,724 | 8,181 | 10,266 |
 | NewColeco legacy SDCC | 1,253 | 7,922 | 10,563 |
 | PVColLib / SDCC | 1,308 | 7,988 | 9,932 |
@@ -40,7 +40,7 @@ region. This also removes startup-policy differences from the timing comparison.
 
 The C fixtures do not draw the benchmark title, labels, or final decimal values. Removing only
 that presentation from Amy while retaining the same update code, markers, final RAM oracle, and
-runtime verification produces an 817-byte Experimental ROM. The displayed Amy ROM is 473 bytes
+runtime verification produces a 678-byte Experimental ROM. The displayed Amy ROM is 473 bytes
 larger because it includes text-mode setup, strings, decimal formatting, and screen output.
 
 The current measured split is 147 bytes for text-screen/display initialization and 326 additional bytes
@@ -55,7 +55,7 @@ separate presentation costs to measure.
 
 | Comparable core | Occupied bytes |
 |---|---:|
-| Amy Experimental, engine only | 817 |
+| Amy Experimental, engine only | 678 |
 | NewColeco legacy SDCC | 1,253 |
 | libcv / SDCC | 1,291 |
 | PVColLib / SDCC | 1,308 |

@@ -370,6 +370,44 @@ export function createCompilerShellHelpers({
     return output;
   }
 
+  function optimizeUnsignedCompareElseIfTails(lines) {
+    const optimized = [...lines];
+    const branchToFalse = /^\s*(?:jp|jr)\s+nc,\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
+    const branchCarry = /^\s*(?:jp|jr)\s+c,\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
+    const branchZero = /^\s*(?:jp|jr)\s+z,\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
+    const normalize = (line) => String(line || "").trim().toLowerCase();
+
+    for (let index = 4; index < optimized.length; index += 1) {
+      const firstBranch = String(optimized[index] || "").match(branchToFalse);
+      if (!firstBranch) continue;
+
+      const falseLabel = `${firstBranch[1]}:`.toLowerCase();
+      let falseIndex = index + 1;
+      while (falseIndex < optimized.length && normalize(optimized[falseIndex]) !== falseLabel) falseIndex += 1;
+      if (falseIndex >= optimized.length) continue;
+
+      const firstCompare = optimized.slice(index - 4, index).map(normalize);
+      const repeatedCompare = optimized.slice(falseIndex + 1, falseIndex + 5).map(normalize);
+      const carryBranch = String(optimized[falseIndex + 5] || "").match(branchCarry);
+      const zeroBranch = String(optimized[falseIndex + 6] || "").match(branchZero);
+      if (
+        firstCompare.length !== 4 || repeatedCompare.length !== 4 ||
+        !firstCompare.every((line, offset) => line === repeatedCompare[offset]) ||
+        !/^ld\s+a,/.test(firstCompare[0]) ||
+        firstCompare[1] !== "ld b,a" ||
+        !/^ld\s+a,/.test(firstCompare[2]) ||
+        firstCompare[3] !== "cp b" ||
+        !carryBranch || !zeroBranch ||
+        carryBranch[1].toLowerCase() !== zeroBranch[1].toLowerCase()
+      ) continue;
+
+      // The taken NC branch preserves the first CP flags. Since carry is known
+      // clear here, equality is the only remaining false case for the > arm.
+      optimized.splice(falseIndex + 1, 6, optimized[falseIndex + 6]);
+    }
+    return optimized;
+  }
+
   function reserveRam(name, size, rawLine) {
     const limit = state.getRamLayout()?.userRamEndExclusive ?? 0x7400;
     if (state.getNextRamAddress() + size > limit) {
@@ -600,6 +638,7 @@ export function createCompilerShellHelpers({
     optimizeSharedAdjacentArrayIndex,
     optimizePutFrameSharedCoordinateIndex,
     optimizeFactoredHlBranchTails,
+    optimizeUnsignedCompareElseIfTails,
     optimizeSequentialAbsoluteByteStores,
     optimizeRedundantImmediateLoads,
     reserveRam,

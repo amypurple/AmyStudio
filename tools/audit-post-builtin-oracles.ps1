@@ -192,6 +192,7 @@ if ($LASTEXITCODE -ne 0) {
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $examples = @($manifest.examples | Where-Object {
   ($_.status -eq "ok") -and
+  !$_.delegated -and
   (($onlyList.Count -gt 0 -and $onlyList -contains $_.id) -or
    ($onlyList.Count -eq 0 -and $AllAmyExamples -and $_.sourceLang -eq "amy") -or
    ($onlyList.Count -eq 0 -and !$AllAmyExamples -and $_.id -match $IdRegex))

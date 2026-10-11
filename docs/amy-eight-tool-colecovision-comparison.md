@@ -71,9 +71,9 @@ Experimental serves this size test; Balanced remains Amy's default.
 | Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,678 | 4,948 | 4,976 | 9,733 |
 | Controller Visual | **264** | 590 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
 | Sprite Metasprite | **343** | 972 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
-| Gameplay State Update* | **508** | 1,290 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
+| Gameplay State Update* | **508** | 1,151 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
 | Tile Animation | **761** | 1,306 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
-| **Six-sample total*** | **5,126** | **7,605** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
+| **Six-sample total*** | **5,126** | **7,466** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -106,7 +106,7 @@ The State Update row is behavior-validated but not yet a strict code-size compar
 also draws a title, progress text, score, and checksum. The NewColeco, PVColLib, and PkK/libcv
 fixtures share the same C engine and run it without equivalent display output. Their sizes remain
 evidence artifacts, not a code-generator ranking, until matched headless and visible variants are
-built. Amy's verified headless engine is 817 bytes, smaller than NewColeco (1,253), PkK/libcv
+built. Amy's verified headless engine is 678 bytes, smaller than NewColeco (1,253), PkK/libcv
 (1,291), and PVColLib (1,308).
 
 PVColLib and NewColeco use `$F0` transparent-background text so VDP R7 changes remain visible;
@@ -129,9 +129,9 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 | Warrior bitmap | 3,066 | 3,214 | -148 |
 | Controller Visual | 264 | 590 | -326 |
 | Sprite Metasprite | 343 | 972 | -629 |
-| Gameplay State Update | 508 | 1,290 | -782 |
+| Gameplay State Update | 508 | 1,151 | -643 |
 | Tile Animation | 761 | 1,306 | -545 |
-| **Six-sample total** | **5,126** | **7,605** | **-2,479** |
+| **Six-sample total** | **5,126** | **7,466** | **-2,340** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for

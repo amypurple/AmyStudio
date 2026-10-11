@@ -24,8 +24,10 @@ const results = [];
 
 if (coreOnly) {
   const coreSource = fs.readFileSync(source, "utf8")
-    .replace(/text screen\r?\n[\s\S]*?screen on\r?\n\r?\nfor ActorIndex/, "for ActorIndex")
-    .replace(/\r?\nprint at 5,8,[\s\S]*?\r?\n\r?\nStateUpdateDone:/, "\n\nStateUpdateDone:");
+    .split(/\r?\n/)
+    .filter(line => !/^\s*(?:text\s+screen|screen\s+on|print\b)/i.test(line))
+    .join("\n");
+  assert.doesNotMatch(coreSource, /^\s*(?:text\s+screen|screen\s+on|print\b)/im, "Core-only source still contains display work");
   source = path.join(temp, "amy-state-update-core.alexis");
   fs.writeFileSync(source, coreSource);
 }

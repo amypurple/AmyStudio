@@ -214,6 +214,8 @@ async function main() {
       label: example.label,
       projectName: example.projectName,
       sourceLang: example.sourceLang || manifest.defaults.sourceLang,
+      targetPlatform: example.buildTarget?.platform || "colecovision",
+      delegated: example.buildTarget?.platform === "colecovision-megacart",
       status: "pending",
       asmPath: null,
       error: null

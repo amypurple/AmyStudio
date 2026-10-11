@@ -8,6 +8,7 @@ const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const quickTests = [
   "test-semantic-optimization-equivalence.mjs",
   "test-branch-tail-factoring.mjs",
+  "test-unsigned-compare-elseif-optimization.mjs",
   "test-put-frame-coordinate-index-reuse.mjs",
   "test-expression-fail-closed.mjs",
   "test-array-store-layout-rom.mjs",
