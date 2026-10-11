@@ -23,7 +23,7 @@ export const exampleManifest = [
   {
     "id": "amy-chess",
     "label": "Amy Chess",
-    "detail": "Complete FIDE-aware chess for one or two human or CPU players, with BLITZ and NORMAL play, varied openings, ZX0 graphics, VoxPCM personality and a 32,767-byte cartridge build.",
+    "detail": "Complete FIDE-aware chess for one or two human or CPU players, with BLITZ and NORMAL play, varied openings, stronger tactical search, ZX0 graphics, VoxPCM personality and a 31,463-byte cartridge build.",
     "projectName": "Amy Chess",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
