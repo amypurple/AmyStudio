@@ -22,6 +22,17 @@ export function handleVramPixelInputStatement({
   const _dep = checkVramPixelDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
+  const poke = line.match(/^poke\s*\(\s*(.+?)\s*,\s*(.+)\s*\)$/i);
+  if (poke) {
+    const loadAddress = emitLoadInt16IntoHL(poke[1]);
+    const loadValue = emitLoadInt8ValueInto("a", poke[2]);
+    if (!loadAddress || !loadValue) {
+      return { handled: true, ok: false, log: `poke requires a 16-bit address and byte value: ${rawLine}` };
+    }
+    body.push(...loadAddress, "    push hl", ...loadValue, "    pop hl", "    ld (hl),a");
+    return { handled: true, ok: true };
+  }
+
   const vpoke = line.match(/^vpoke\s+(.+)\s*,\s*(.+)$/i);
   if (vpoke) {
     const loadAddress = emitLoadVramAddressIntoHL(vpoke[1]);

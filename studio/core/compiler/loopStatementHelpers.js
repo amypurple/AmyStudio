@@ -10,18 +10,13 @@ export function handleWhileStatement({
   const _dep = checkWhileDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
 
-  const whileDecl = line.match(/^while\s+(?:(signed|unsigned)\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?)\s*(==|!=|<>|<=|>=|<|>)\s*([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]+\])?|-?\$[0-9A-Fa-f]+|-?[0-9]+)$/i);
+  const whileDecl = line.match(/^while\s+(.+)$/i);
   if (whileDecl) {
     const loopLabel = makeGeneratedLabel("WhileLoop");
     const continueLabel = makeGeneratedLabel("WhileContinue");
     const exitLabel = makeGeneratedLabel("WhileExit");
     whileStack.push({ loopLabel, continueLabel, exitLabel });
-    const signednessPrefix = whileDecl[1] ? `${whileDecl[1].toLowerCase()} ` : "";
-    const code = emitConditionalJump(
-      `${signednessPrefix}${whileDecl[2]} ${whileDecl[3] === "<>" ? "!=" : whileDecl[3]} ${whileDecl[4]}`,
-      exitLabel,
-      true
-    );
+    const code = emitConditionalJump(whileDecl[1].trim(), exitLabel, true);
     if (!code.ok) return { ok: false, handled: true, log: `Unsupported while comparison: ${rawLine}` };
     return {
       ok: true,

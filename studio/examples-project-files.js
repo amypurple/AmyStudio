@@ -7,6 +7,7 @@ import { globeQuizProjectFiles } from "./examples-globe-quiz-assets.generated.js
 import { spaceTaxiVoiceProjectFiles } from "./examples-voxpcm-assets.generated.js";
 import { solarSystemEncyclopediaProjectFiles } from "./examples-solar-system-assets.generated.js";
 import { mazeEscapeProjectFiles } from "./examples-maze-assets.generated.js";
+import { amyChessProjectFiles } from "./examples-amy-chess-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -50,6 +51,7 @@ const derivedProjectFilesById = {
   "space-taxi-voice-demo": spaceTaxiVoiceProjectFiles,
   "earth-globe-demo": earthGlobeProjectFiles,
   "train-track-puzzle": trainTrackPuzzleProjectFiles,
+  "amy-chess": amyChessProjectFiles,
   "sprite-minimal": [
     {
       "path": "editors.json",

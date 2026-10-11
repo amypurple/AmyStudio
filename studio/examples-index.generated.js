@@ -21,6 +21,26 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
+    "id": "amy-chess",
+    "label": "Amy Chess",
+    "detail": "Complete FIDE-aware chess for one or two human or CPU players, with BLITZ and NORMAL play, varied openings, ZX0 graphics, VoxPCM personality and a 32,767-byte cartridge build.",
+    "projectName": "Amy Chess",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "colecovision",
+      "chess",
+      "fide",
+      "game",
+      "voxpcm",
+      "zx0",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-vdp-pattern-tools-lab",
     "label": "OS7 Pattern Transform Lab",
     "detail": "Visual comparison of an eight-color tile with BIOS left/right and top/bottom flips, clockwise rotation, 2x pattern/color enlargement, and explicit Graphics II thirds.",
