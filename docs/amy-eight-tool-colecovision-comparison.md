@@ -452,9 +452,9 @@ is credited separately because it changes the machine available to the programme
 
 | Extension | Verified or documented advantage | Scope in this comparison |
 |---|---|---|
-| MegaCart / bank switching | CVBasic, z88dk, devkitSMS, and PVColLib can exceed the normal cartridge space | Valid capability; excluded from stock-ROM size ranking |
+| MegaCart / bank switching | Amy builds editable 64 KB-1 MB projects with fixed trampolines and bank-aware debugging; CVBasic, z88dk, devkitSMS, and PVColLib also provide banking paths | Valid capability; excluded from stock-ROM size ranking |
 | F18A | PVColLib provides APIs and examples; Amy's GearColeco 1.7.0 debugger can emulate F18A video | Debug validation is available in Amy, but first-class Amy language APIs remain future work |
-| SGM / AY-3-8910-compatible sound | CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
+| SGM / AY-3-8910-compatible sound | Amy provides an SGM project profile and direct AY commands; CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
 | SP0256 voice modules | Amy provides Lundy/EVE commands and debugger-selectable module emulation | Optional external hardware; excluded from the stock sound ranking |
 | Coleco ADAM | Amy builds native EOS and OS7+EOS hybrid programs on DSK/DDP, with target-aware graphics, input, sound, compression, files, ADAMnet, serial, and modem services | Broad DSK/DDP runtime coverage; applications beyond the resident 6 KiB window and optional-EOS cartridge services remain architectural work |
 | Extra RAM | Available through SGM, ADAM, and compatible clones depending on the tool/runtime | Report separately; never count it as stock 1 KB RAM |
@@ -467,23 +467,27 @@ Studio's deliberate original-hardware target.
 | Area | Amy Studio | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib |
 |---|---|---|---|---|---|---|
 | Browser IDE | Integrated | No official integrated IDE | No | IDE/web options advertised | No | No |
+| Multi-file and incremental builds | Editable project tree; dependency states and target-output reuse | External build workflow | Build-system dependent | IDE/build dependent | Build-system dependent | Build-system dependent |
 | Source breakpoints | Yes | External emulator | External debugger | IDE-dependent/unverified | External emulator | External emulator |
-| ASM stepping/rewind | Integrated GearColeco 1.7.0 workflow | External | External | External | External | External |
-| RAM/VRAM/symbol inspection | Integrated | External | External | External | External | External/map symbols |
+| ASM stepping/rewind | Integrated GearColeco 1.7.0 workflow, including banked ROMs | External | External | External | External | External |
+| RAM/VRAM/symbol inspection | Integrated, including bank-qualified maps | External | External | External | External | External/map symbols |
 | Cycle profiling | Integrated | External/manual | External/manual | Unverified | External/manual | External/manual |
 | Project graphics editors | Configurable `editors.json`; bitmap, tile, sprite, frame, tilemap, and composite previews | Separate tools | Separate tools | Resource conversion/IDE | Separate tools | `gfx2col`/separate tools |
-| External ROM loading | Drag-and-drop `.rom` and `.col` into Debug | External emulator | External emulator | External emulator | External emulator | External emulator |
-| Optional hardware setup | Voice-module selection plus browser-local Coleco/ADAM firmware | External emulator | External emulator | External emulator | External emulator | External emulator |
-| Automated ROM tests | Corpus, checkpoints, runtime harness | Not integrated | Buildable manually | Not established | Not established | Not established |
+| External media loading | Drag-and-drop `.rom`, `.col`, `.dsk`, and `.ddp` into Debug | External emulator | External emulator | External emulator | External emulator | External emulator |
+| Optional hardware setup | Browser-local Coleco/ADAM firmware; controllers, voice, SGM/AY, ADAM sound and serial profiles | External emulator | External emulator | External emulator | External emulator | External emulator |
+| Automated runtime tests | Corpus, checkpoints, scripted inputs, recorded routes, and fast replay after recompilation | Not integrated | Buildable manually | Not established | Not established | Not established |
+| Capture and export | Record from boot or now; deterministic AVI and animated GIF export | External tools | External tools | External tools | External tools | External tools |
+| Expanded outputs | MegaCart 64 KB-1 MB; native EOS and OS7+EOS DSK/DDP | MegaCart/SGM | Banking/toolchain | Target dependent | Banked functions | MegaCart tools |
 
 Amy Studio integrates this workflow; command-line-only Amy scripts remain labelled separately from
 features available directly in the IDE.
 
 ### Amy Studio emphasizes ColecoVision integration
 
-Amy Studio connects source editing, assets, compression, assembly optimization, ROM execution,
-external-ROM loading, breakpoints, rewind, memory/VRAM inspection, hardware configuration,
-profiling, and automated tests in one ColecoVision workflow. Its graphics editor follows TMS9918
+Amy Studio connects multi-file source editing, incremental target builds, assets, compression,
+assembly optimization, ROM/DSK/DDP execution, breakpoints, rewind, memory/VRAM inspection,
+hardware configuration, profiling, recorded routes, capture export, and automated tests in one
+ColecoVision and ADAM workflow. Its graphics editor follows TMS9918
 sprite priority and scanline rules while previewing tile/sprite composites. Records, overlays,
 typed state machines, BCD, fixed-point and checked wide integers, collision helpers, and BIOS-aware
 input are additional language-level strengths.
@@ -624,14 +628,14 @@ Completed and runtime-guarded:
 - exact nine-tool metasprite, state-update, and tile-animation runtime oracles, plus native
   metasprites, protected-priority flicker, and editable graphics;
 - complete 2D arrays and record/overlay fields with bounds diagnostics and five-profile proof;
-- fifteen direct-to-VRAM codecs with round trips, decoder cost, cycles, RAM, and 42-picture ranks;
+- sixteen direct-to-VRAM codecs with round trips, decoder cost, cycles, RAM, and 42-picture ranks;
 - corrected indexed `put frame`, sound inspection/editing, playback, undo, import, and Web MIDI;
 - adaptive VoxPCM conversion, preview, reusable-word playback, Space Taxi/Solar System demos, and
   SP0256-AL2 Lundy/EVE commands, timing, queues, and debugger emulation;
 - GearColeco 1.7.0 with F18A/ADAM emulation and browser-local OS7/EOS/WP firmware; native EOS and
   OS7+EOS hybrid DSK/DDP targets now have runtime-tested graphics, input, sound, compression,
   filesystem, ADAMnet, printer, serial, and modem paths;
-- `.rom`/`.col` drag-and-drop and universal graphics editors with TMS9918 priority and scanline
-  preview, tilemaps, frames, and tile/sprite composites;
+- `.rom`/`.col`/`.dsk`/`.ddp` drag-and-drop, writable ADAM media, and universal graphics editors
+  with TMS9918 priority and scanline preview, tilemaps, frames, and tile/sprite composites;
 - 155 five-profile display tests; adaptive `u8` saves 212 corpus bytes without ROM growth, while
   explicit Amy digits match hand-written Z80 at 498 bytes and 1,905 cycles.
