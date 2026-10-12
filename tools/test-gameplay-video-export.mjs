@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { buildMjpegPcmAvi } from "../studio/core/mjpegPcmAvi.js";
-import { normalizeVideoExportRange } from "../studio/core/romGameplayVideoExport.js";
+import { normalizeVideoExportRange, videoExportQualityProfile } from "../studio/core/romGameplayVideoExport.js";
 
 const ascii = (bytes, offset, length) => new TextDecoder().decode(bytes.subarray(offset, offset + length));
 const fakeJpeg = Uint8Array.from([0xFF, 0xD8, 0xFF, 0xD9]);
@@ -24,6 +24,10 @@ assert.deepEqual(
   normalizeVideoExportRange({ firstAvailableFrame: 10, latestFrame: 80 }, 25, 25),
   { from: 25, to: 26, frameCount: 1 }
 );
+assert.deepEqual(videoExportQualityProfile("standard"), { id: "standard", label: "Standard 1x", scale: 1, jpegQuality: 0.92 });
+assert.deepEqual(videoExportQualityProfile("high"), { id: "high", label: "High 2x", scale: 2, jpegQuality: 0.98 });
+assert.deepEqual(videoExportQualityProfile("archive"), { id: "archive", label: "Archive 4x", scale: 4, jpegQuality: 1 });
+assert.equal(videoExportQualityProfile("invalid").id, "high");
 console.log("Gameplay video AVI export PASS", bytes.byteLength);
 
 // Record from Boot UI contract: reset, snapshot frame zero, then start playback.

@@ -13,6 +13,8 @@ const [bios, rom] = await Promise.all([
 ]);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fakeJpeg = Uint8Array.from([0xFF, 0xD8, 0xFF, 0xD9]);
+const encodedFrameSizes = [];
+const encodedQualities = [];
 globalThis.document = {
   createElement(name) {
     assert.equal(name, "canvas");
@@ -25,7 +27,12 @@ globalThis.document = {
           putImageData() {}
         };
       },
-      toBlob(callback) { callback(new Blob([fakeJpeg], { type: "image/jpeg" })); }
+      toBlob(callback, type, quality) {
+        assert.equal(type, "image/jpeg");
+        encodedFrameSizes.push([this.width, this.height]);
+        encodedQualities.push(quality);
+        callback(new Blob([fakeJpeg], { type: "image/jpeg" }));
+      }
     };
   }
 };
@@ -61,6 +68,11 @@ try {
     }
   });
   assert.equal(sessionResult.frameCount, 600);
+  assert.equal(sessionResult.videoQuality, "high");
+  assert.equal(sessionResult.width, 512);
+  assert.equal(sessionResult.height, 384);
+  assert.deepEqual(encodedFrameSizes[0], [512, 384]);
+  assert.equal(encodedQualities[0], 0.98);
   assert.deepEqual(replayedFrames, expectedFrames, "every replayed video framebuffer must match the original recording");
   assert.equal(hash(new Uint8Array(core.getFramebuffer().pixels.buffer)), expectedFrames.at(-1), "export must restore the visible framebuffer");
   assert.equal(sessionResult.fps, 60);

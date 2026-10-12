@@ -4,6 +4,16 @@ import { AnimatedGifEncoder, rgb565ToRgb332 } from "./animatedGif.js";
 const rgb5To8 = Uint8Array.from({ length: 32 }, (_, value) => Math.round(value * 255 / 31));
 const rgb6To8 = Uint8Array.from({ length: 64 }, (_, value) => Math.round(value * 255 / 63));
 
+export const VIDEO_EXPORT_QUALITY_PROFILES = Object.freeze({
+  standard: Object.freeze({ id: "standard", label: "Standard 1x", scale: 1, jpegQuality: 0.92 }),
+  high: Object.freeze({ id: "high", label: "High 2x", scale: 2, jpegQuality: 0.98 }),
+  archive: Object.freeze({ id: "archive", label: "Archive 4x", scale: 4, jpegQuality: 1 })
+});
+
+export function videoExportQualityProfile(value = "high") {
+  return VIDEO_EXPORT_QUALITY_PROFILES[String(value).toLowerCase()] || VIDEO_EXPORT_QUALITY_PROFILES.high;
+}
+
 function canvasToJpeg(canvas, quality) {
   return new Promise((resolve, reject) => {
     canvas.toBlob(async (blob) => {
@@ -13,18 +23,30 @@ function canvasToJpeg(canvas, quality) {
   });
 }
 
-function renderFramebuffer(canvas, framebuffer) {
-  if (canvas.width !== framebuffer.width) canvas.width = framebuffer.width;
-  if (canvas.height !== framebuffer.height) canvas.height = framebuffer.height;
+function renderFramebuffer(canvas, framebuffer, scale = 1) {
+  const width = framebuffer.width * scale;
+  const height = framebuffer.height * scale;
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
   const context = canvas.getContext("2d", { alpha: false });
-  const image = context.createImageData(framebuffer.width, framebuffer.height);
+  const image = context.createImageData(width, height);
   for (let index = 0; index < framebuffer.pixels.length; ++index) {
     const pixel = framebuffer.pixels[index];
-    const offset = index * 4;
-    image.data[offset] = rgb5To8[(pixel >>> 11) & 0x1F];
-    image.data[offset + 1] = rgb6To8[(pixel >>> 5) & 0x3F];
-    image.data[offset + 2] = rgb5To8[pixel & 0x1F];
-    image.data[offset + 3] = 255;
+    const red = rgb5To8[(pixel >>> 11) & 0x1F];
+    const green = rgb6To8[(pixel >>> 5) & 0x3F];
+    const blue = rgb5To8[pixel & 0x1F];
+    const sourceX = index % framebuffer.width;
+    const sourceY = Math.trunc(index / framebuffer.width);
+    for (let repeatY = 0; repeatY < scale; repeatY += 1) {
+      let offset = ((sourceY * scale + repeatY) * width + sourceX * scale) * 4;
+      for (let repeatX = 0; repeatX < scale; repeatX += 1) {
+        image.data[offset] = red;
+        image.data[offset + 1] = green;
+        image.data[offset + 2] = blue;
+        image.data[offset + 3] = 255;
+        offset += 4;
+      }
+    }
   }
   context.putImageData(image, 0, 0);
 }
@@ -44,7 +66,8 @@ export async function exportRecordedGameplay({
   core,
   from,
   to,
-  quality = 0.9,
+  quality,
+  videoQuality = "high",
   onProgress = () => {},
   signal
 }) {
@@ -56,6 +79,8 @@ export async function exportRecordedGameplay({
   const range = normalizeVideoExportRange(timeline, from, to);
   const restoreFrame = timeline.frame;
   const canvas = document.createElement("canvas");
+  const profile = videoExportQualityProfile(videoQuality);
+  const jpegQuality = Number.isFinite(quality) ? quality : profile.jpegQuality;
   const frames = [];
   let sampleRate = 0;
   try {
@@ -65,14 +90,14 @@ export async function exportRecordedGameplay({
       const result = recorder.replayFrame();
       if (result.breakpointHit) throw new Error(`A breakpoint interrupted video export at frame ${recorder.frame}.`);
       const framebuffer = core.getFramebufferView();
-      renderFramebuffer(canvas, framebuffer);
+      renderFramebuffer(canvas, framebuffer, profile.scale);
       const audio = core.getAudioFrame();
       if (!sampleRate) sampleRate = audio.sampleRate;
       if (audio.sampleRate !== sampleRate || audio.channels !== 2) {
         throw new Error("GearColeco changed audio format during video export.");
       }
       frames.push({
-        jpeg: await canvasToJpeg(canvas, quality),
+        jpeg: await canvasToJpeg(canvas, jpegQuality),
         audio: audio.samples
       });
       onProgress({ completed: index + 1, total: range.frameCount });
@@ -81,8 +106,8 @@ export async function exportRecordedGameplay({
     const first = core.getFramebufferView();
     return {
       blob: buildMjpegPcmAvi({
-        width: first.width,
-        height: first.height,
+        width: first.width * profile.scale,
+        height: first.height * profile.scale,
         fps: core.getFramesPerSecond(),
         sampleRate,
         channels: 2,
@@ -90,14 +115,17 @@ export async function exportRecordedGameplay({
       }),
       ...range,
       fps: core.getFramesPerSecond(),
-      sampleRate
+      sampleRate,
+      videoQuality: profile.id,
+      width: first.width * profile.scale,
+      height: first.height * profile.scale
     };
   } finally {
     recorder.seek(restoreFrame);
   }
 }
 
-export async function exportGameplaySession({ core, session, restoreControllerMasks = [0, 0], quality = 0.9, onProgress = () => {}, onFrame = () => {}, signal }) {
+export async function exportGameplaySession({ core, session, restoreControllerMasks = [0, 0], quality, videoQuality = "high", onProgress = () => {}, onFrame = () => {}, signal }) {
   if (!core) throw new Error("Start the debugger before exporting video.");
   const recording = typeof session?.snapshot === "function" ? session.snapshot() : session;
   if (!recording?.initialState || !recording?.inputs?.length) {
@@ -105,6 +133,8 @@ export async function exportGameplaySession({ core, session, restoreControllerMa
   }
   const restoreState = core.saveState();
   const canvas = document.createElement("canvas");
+  const profile = videoExportQualityProfile(videoQuality);
+  const jpegQuality = Number.isFinite(quality) ? quality : profile.jpegQuality;
   const frames = [];
   let sampleRate = 0;
   try {
@@ -120,19 +150,19 @@ export async function exportGameplaySession({ core, session, restoreControllerMa
       if (result.breakpointHit) throw new Error(`A breakpoint interrupted video export at frame ${index}.`);
       const framebuffer = core.getFramebufferView();
       onFrame({ index, framebuffer });
-      renderFramebuffer(canvas, framebuffer);
+      renderFramebuffer(canvas, framebuffer, profile.scale);
       const audio = core.getAudioFrame();
       if (!sampleRate) sampleRate = audio.sampleRate;
       if (audio.sampleRate !== sampleRate || audio.channels !== 2) throw new Error("GearColeco changed audio format during video export.");
-      frames.push({ jpeg: await canvasToJpeg(canvas, quality), audio: audio.samples });
+      frames.push({ jpeg: await canvasToJpeg(canvas, jpegQuality), audio: audio.samples });
       onProgress({ completed: index + 1, total: recording.inputs.length });
       if ((index % 8) === 7) await nextTask();
     }
     const framebuffer = core.getFramebufferView();
     return {
       blob: buildMjpegPcmAvi({
-        width: framebuffer.width,
-        height: framebuffer.height,
+        width: framebuffer.width * profile.scale,
+        height: framebuffer.height * profile.scale,
         fps: recording.framesPerSecond || core.getFramesPerSecond(),
         sampleRate,
         channels: 2,
@@ -140,7 +170,10 @@ export async function exportGameplaySession({ core, session, restoreControllerMa
       }),
       frameCount: frames.length,
       fps: recording.framesPerSecond || core.getFramesPerSecond(),
-      sampleRate
+      sampleRate,
+      videoQuality: profile.id,
+      width: framebuffer.width * profile.scale,
+      height: framebuffer.height * profile.scale
     };
   } finally {
     core.loadState(restoreState, { controllerMasks: restoreControllerMasks });

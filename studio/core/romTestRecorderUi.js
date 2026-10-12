@@ -10,7 +10,7 @@ import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAda
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
 import { GameplayRecordingSession } from "./gameplayRecordingSession.js?v=20260918-unbounded-input-log";
-import { downloadGameplayVideo, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261007-animated-gif1";
+import { downloadGameplayVideo, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261012-avi-quality1";
 import { createDevelopmentRouteStore, expandRouteInputs } from "./developmentCheckpointRoutes.js?v=20260919-route-replay";
 import {
   createRomTestCase,
@@ -409,6 +409,7 @@ function buildDialog() {
           <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">Coleco ADAM</option></select></label>
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<button class="rom-recorder__region-toggle" type="button" data-field="region" value="-1" title="Cycle video region">AUTO</button></label>
+          <label>AVI quality<select data-field="videoQuality" title="Higher profiles enlarge pixels before JPEG encoding to prevent color bleeding"><option value="standard">Standard 1x</option><option value="high" selected>High 2x</option><option value="archive">Archive 4x</option></select></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
           <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
@@ -1910,6 +1911,7 @@ export function createRomTestRecorderUi({
           core,
           session: gameplayRecording,
           restoreControllerMasks: recorder?.controllerMasks || controllerMasks,
+          videoQuality: field("videoQuality").value,
           onProgress({ completed, total, encoded }) {
             setRecorderStatus(format === "gif"
               ? `Encoding animated GIF ${completed}/${total} source frames (${encoded || 0} kept)...`
@@ -1921,7 +1923,7 @@ export function createRomTestRecorderUi({
         downloadGameplayVideo(result.blob, `${stem}-${result.frameCount}-frames.${format}`);
         setRecorderStatus(format === "gif"
           ? `Exported ${result.frameCount} GIF frames at ${result.fps.toFixed(2)} Hz (silent).`
-          : `Exported ${result.frameCount} frames at ${result.fps} Hz with ${result.sampleRate} Hz PCM audio.`);
+          : `Exported ${result.frameCount} frames at ${result.width}x${result.height}, ${result.fps} Hz with ${result.sampleRate} Hz PCM audio.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       } finally {
