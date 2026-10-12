@@ -65,6 +65,12 @@ node tools/optimize-tms9918-bitmap.mjs --help
 
 Lossless mode preserves every rendered color index. Controlled mode is explicitly lossy and uses visible pixel and color-distance limits. Equal-size or larger candidates are rejected.
 
+## Refine Graphics Compression
+
+After editing a Graphics II bitmap or tile-screen charset, use `Graphics` > `Mode 2 Repacker`. It compares visually equivalent TMS9918 row encodings using the project's existing compression codec. Apply is enabled only when every displayed color index is identical and the compressed PATTERN plus COLOR total is smaller.
+
+Tile screens retain their normal 2,048-byte 256-character pattern and color tables plus a separate NAME table. The repacker optimizes the compact charset directly; it never expands it into three bitmap thirds.
+
 ## Verify The Result
 
 1. Compile the real project at its intended optimization level.

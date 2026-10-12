@@ -92,6 +92,7 @@ import {
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
 import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
 import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260918-files-audit";
+import { createMode2RepackerUi } from "./core/mode2RepackerUi.js?v=20261012-mode2-repacker1";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
 import { createProjectEditorUiHelpers } from "./core/projectEditorUi.js?v=20260708-bunny-v2-aliases";
 import { createProjectBridgeHelpers } from "./core/projectBridgeHelpers.js";
@@ -247,6 +248,7 @@ const els = {
   studioView: document.getElementById("studioView"),
   btnWavConverter: document.getElementById("btnWavConverter"),
   btnOpenGraphicsEditors: document.getElementById("btnOpenGraphicsEditors"),
+  btnMode2Repacker: document.getElementById("btnMode2Repacker"),
   btnCreateEditorsJson: document.getElementById("btnCreateEditorsJson"),
   btnScanEditorsJson: document.getElementById("btnScanEditorsJson"),
   wavConverterDialog: document.getElementById("wavConverterDialog"),
@@ -1191,6 +1193,19 @@ window.__amyStudioGraphicsEditors = {
   create: createEditorsJsonProjectFile,
   scan: scanEditorsJsonProjectFile
 };
+
+createMode2RepackerUi({
+  button: els.btnMode2Repacker,
+  getProject: () => project,
+  projectFileBytes,
+  detectCodecFromName,
+  decompressBytes,
+  compressBytes,
+  upsertProjectFile,
+  bytesToBase64,
+  closeTopbarMenu,
+  setStatus: (...args) => setStatus(...args)
+});
 
 let docsUiPromise = null;
 function ensureDocsUi() {

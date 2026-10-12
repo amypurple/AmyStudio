@@ -69,6 +69,14 @@ Open the main burger menu, then choose the graphics or picture import workflow.
 | `.pc` | Import paired Coleco/MSX pattern and color data when the file structure is recognized. |
 | Existing project bitmap files | Preview first, then open the bitmap editor from `FILES`. |
 
+### Mode 2 Repacker
+
+Open `Graphics` > `Mode 2 Repacker` to compare lossless encodings of any matching project `.pattern` and `.color` pair. The tool understands compressed project files, measures every candidate with each file's current codec, and previews both representations before it enables replacement.
+
+The TMS9918 can display the same eight pixels with complemented pattern bits and exchanged foreground/background nibbles. A single-color row has still more equivalent encodings. The repacker searches these legal alternatives to make PATTERN and COLOR streams more repetitive. It does not reduce colors, merge tiles, alter the NAME table, or accept an approximate image: applying a result requires zero changed color-index pixels and a strictly smaller compressed total.
+
+Both 6,144-byte Graphics II bitmap tables and compact 2,048-byte tile-screen charsets are supported. A compact charset remains compact; the tool never expands it into three bitmap thirds.
+
 The importer shows codec choices and must compare both compressed payload and required decompressor cost. A smaller compressed file does not necessarily produce a smaller ROM.
 
 ## Compression
