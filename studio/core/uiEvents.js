@@ -276,7 +276,7 @@ export function bindTopUiEvents(ctx) {
     els.newProjectDialog?.showModal();
     closeTopbarMenu();
   });
-  els.btnCreateProject?.addEventListener("click", () => {
+  function createSelectedProject() {
     const templateId = selectedNewProjectTarget();
     const next = createProjectFromTemplate(newProject(), {
       templateId,
@@ -288,7 +288,19 @@ export function bindTopUiEvents(ctx) {
     syncUiFromProject();
     els.newProjectDialog.close();
     setStatus(`New ${templateId.startsWith("adam-") ? "ADAM" : "ColecoVision"} project: ${next.projectName}.`);
+  }
+  els.newProjectForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    createSelectedProject();
   });
+  els.newProjectName?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    els.newProjectForm?.requestSubmit();
+  });
+  const cancelNewProject = () => els.newProjectDialog?.close();
+  els.btnCancelNewProjectTop?.addEventListener("click", cancelNewProject);
+  els.btnCancelNewProject?.addEventListener("click", cancelNewProject);
 
   els.btnOpen.addEventListener("click", () => {
     els.fileImport.value = "";
