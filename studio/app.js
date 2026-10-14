@@ -114,7 +114,7 @@ import { exportProject as exportProjectCore, importProjectObject as importProjec
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261010-record-iterator1";
 import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20261013-megacart-transpiler1";
-import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
+import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20261013-megacart-transpiler2";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
 import { bundleAmySource } from "./core/amySourceBundle.js";

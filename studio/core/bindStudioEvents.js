@@ -87,6 +87,7 @@ export function bindStudioShellEvents({
     exportProject: helpers.exportProject,
     downloadText: helpers.downloadText,
     transpileSource: helpers.transpileSource,
+    transpileAmy: helpers.transpileAmy,
     STUDIO_SOURCE_LANG: constants.studioSourceLang,
     analyzeLibraryResolution: helpers.analyzeLibraryResolution,
     setLastLibResolution: runtime.setLastLibResolution,
