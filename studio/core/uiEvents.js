@@ -356,6 +356,7 @@ export function bindStudioRuntimeEvents(ctx) {
     exportProject,
     downloadText,
     transpileSource,
+    transpileAmy,
     STUDIO_SOURCE_LANG,
     analyzeLibraryResolution,
     setLastLibResolution,

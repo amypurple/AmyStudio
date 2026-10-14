@@ -113,7 +113,7 @@ import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
 import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261010-record-iterator1";
-import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260926-adam-quebec16";
+import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20261013-megacart-transpiler1";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";
 import { getCartridgeNormalizationWarning, appendCartridgeNormalizationWarning } from "./core/utils/cartridgeMeta.js";
@@ -1487,6 +1487,7 @@ function bindEvents() {
         exportProject,
         downloadText,
         transpileSource: (...args) => transpileSource(...args),
+        transpileAmy: (...args) => transpileAmy(...args),
         analyzeLibraryResolution,
         updatePreviewActions,
         generateAsm,

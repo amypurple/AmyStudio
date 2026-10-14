@@ -11,6 +11,12 @@ import { transpileAmyForTest } from "./lib/transpile-amy-test.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const examples = path.join(root, "studio", "examples-src");
+const studioAppSource = fs.readFileSync(path.join(root, "studio", "app.js"), "utf8");
+const uiEventsSource = fs.readFileSync(path.join(root, "studio", "core", "uiEvents.js"), "utf8");
+assert.match(studioAppSource, /transpileAmy:\s*\(\.\.\.args\)\s*=>\s*transpileAmy\(\.\.\.args\)/,
+  "Studio runtime events must receive the bank-local Amy transpiler");
+assert.match(uiEventsSource, /downloadText,\s*transpileSource,\s*transpileAmy,\s*STUDIO_SOURCE_LANG/,
+  "MegaCart compilation must destructure the injected Amy transpiler");
 const fixedSource = fs.readFileSync(path.join(examples, "megacart-bank-demo-fixed.asm"), "utf8");
 const mdkrleSource = fs.readFileSync(path.join(root, "src", "compression", "mdkrle_vram.asm"), "utf8");
 const vdpRwSource = fs.readFileSync(path.join(root, "src", "alexis_lib", "coleco_vdp_rw.asm"), "utf8");
