@@ -16,13 +16,13 @@ export const amyChessProjectFiles = [
     "path": "assets/amy-chess-board.pattern.zx0",
     "kind": "compressed",
     "source": "example",
-    "base64": "gf8BJv78+IL8AQcDJvjw/2Z/Px+CP4DgwCYfD/8u/NXu9Pz/6/jD4OL+P4+KD8CI4OIPB4I++vnLtX8DBwfBgj7/9/LAwP/yjc3+48CK/08Pl+DowQYqAQ0PBw9/f8GgBql/sPDg8P5/wH/4/vl/wKQDqx+f+n/AwB7+ugEM2AOAEGiAUNfAEAZI58OZmYGZngOZg+/qA/HBK5+fw+jgmWYBnYeOnQHwfo3xSIM7PyEzg/+U/6OAx+fu/6BzDvPPnYHhKIGzmfOZJvPjw5OB82+dg/nAv59B8aHgn7nz58/P55vgpbqDpZBo4fPziTOHawiTh4eTCfwP4iUQTjkRASk5OSEqGImRvxiQ3P/At4PhmeCHk8n+6pDBC8P5+YP7/6f/PKWhmfj06MPnYCY5KQERTbvX79e7/5iBGJ3LZgFz5/0gu9z44jCRiQtm7v36/kFA1VVg"
+    "base64": "gf8BJv78+IL8AQcDJvjw/2Z/Px+CP4DgwCYfD/8u/NXu9Pz/6/jD4OL+P4+KD8CI4OIPB4I++vnLtX8DBwfBgj7/9/LAwP/yjc3+48CK/08Pl+DhwQep/tI1Hw8P/n/BhXp/tKww/vBBf8Ah7/j+8uHgvL+YwHsff0+HB7zjv8Cv/gHP3cWAQaAtFoDgaR81wcBAoOAkiefDmZmBme4DmYPvA/GiwZ+fvsPghploAZ2H5p0B8CKfD0iDOz8hM4P/lP+jgMfn7v+gcw7zz52B4SiBs5nzmSbz48OTgfNvnYP5wL+fQfGh4J+58+fPz+eb4KW6g6WQaOHz84kzh2sIk4eHkwn8D+IlEE45EQEpOTkhKhiJkb8YkNz/wLeD4Zngh5PJ/uqQwQvD+fmD+/+n/zyloZn49OjD52AmOSkBEU271+/Xu/+YgRidy2YBc+f9ILvc+OIwkYkLZu79+v5BQNVVYA=="
   },
   {
     "path": "assets/amy-chess-board.color.zx0",
     "kind": "compressed",
     "source": "example",
-    "base64": "lRFVoH9WO+f3/MTg+qB+RpD3/9zgB/7r/uAX3mz6+e/gpX535H7/4FL7V/5H7vx1/h/gX/68dMApV0/dweD/6/6F4Pdsvvrv4Ed35OH/4G7P/hSO7Pz88eA+oJHOpPw/3MHg/+v+heD3bL767+Bpzl3f5P+U4L5c/vtM/MWH/tfg7/7EwApcU/Dd4H/r/uHgfWzv+u+R4N3k+P/gWx/E/laH8YFwWxGQ/kV1VVg="
+    "base64": "lRFVoH9WO+f3/MTg+qB+RpD3/9zgB/7r/uBH/1fs5rnn4KX3P/7OuuBS+1f+R+78df4f4F/+vHTAKVdP3cHg/+v+keC5dAT++9XgE97+2nniP8Xg6P/PFY7s/Pzx4D6gkc6k/D/cweD/6/6R4P9X7O7m7OBp/E/+87qU4L5c/vtM/MWH/tfg7/7EwApcU/Dd4H/r/uTgbsQEf/vVhOD3/s/a/n266f8fFArxHnAFbhH+QRXVVWA="
   },
   {
     "path": "assets/amy-chess-cursor.sprpat",
