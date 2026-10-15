@@ -1,0 +1,6689 @@
+project "Amy Chess v1.2"
+memory "colecovision_legacy_sdcc"
+define CHESS_GAME
+define CHESS_COMPACT_PST
+define CHESS_FUSED_ENDGAME_PAWN_PST
+define CHESS_COMPACT_MATERIAL
+define CHESS_COMPACT_LOOSE_PENALTY
+define CHESS_COMPACT_FIND_KINGS
+define CHESS_COMPACT_CLEAR_BOARD
+define CHESS_COMPACT_INSUFFICIENT
+define CHESS_COMPACT_MOVE_DISPATCH
+define CHESS_COMPACT_WINNING_REPETITION
+define CHESS_COMPACT_SEARCH_FRAME
+define CHESS_INCREMENTAL_MATERIAL_CACHE
+define CHESS_INCREMENTAL_MATERIAL_DELTA
+define CHESS_COMPACT_POSITION_SIGNATURE
+define CHESS_COMPACT_ATTACK_TEST
+
+const Empty = 0
+const WhitePawn = 1
+const WhiteKnight = 2
+const WhiteBishop = 3
+const WhiteRook = 4
+const WhiteQueen = 5
+const WhiteKing = 6
+const BlackPawn = 9
+const BlackKnight = 10
+const BlackBishop = 11
+const BlackRook = 12
+const BlackQueen = 13
+const BlackKing = 14
+const FlagEnPassant = 1
+const FlagCastleKing = 2
+const FlagCastleQueen = 4
+const FlagDoublePawn = 8
+const DefaultMinimaxNodeBudget = 2048
+const MateTwoNodeBudget = 448
+const QuietThreatNodeBudget = 256
+const ChessHistoryNameOffset = $0400
+const ChessHistoryRam = $7400
+
+#ifdef CHESS_GAME
+#ifdef CHESS_ENGINE_LAB
+#else
+picture ChessTitlePicture:
+  pattern from "@project/assets/amy-chess-title.pattern.zx0" codec zx0
+  color from "@project/assets/amy-chess-title.color.zx0" codec zx0
+end picture
+#endif
+asset ChessBoardPatterns from "@project/assets/amy-chess-board.pattern.zx0" codec zx0
+asset ChessBoardColors from "@project/assets/amy-chess-board.color.zx0" codec zx0
+asset ChessCursorPattern from "@project/assets/amy-chess-cursor.sprpat" codec raw
+asset ChessVoiceMeowPart1 from "@project/assets/amy-chess-voice-meow-1.voxpcm"
+asset ChessVoiceMeowPart2 from "@project/assets/amy-chess-voice-meow-2.voxpcm"
+asset ChessVoiceMeowPart3 from "@project/assets/amy-chess-voice-meow-3.voxpcm"
+asset ChessVoiceDrawPart1 from "@project/assets/amy-chess-voice-draw-1.voxpcm"
+asset ChessVoiceDrawPart2 from "@project/assets/amy-chess-voice-draw-2.voxpcm"
+asset ChessVoiceWhitePart1 from "@project/assets/amy-chess-voice-white-1.voxpcm"
+asset ChessVoiceWhitePart2 from "@project/assets/amy-chess-voice-white-2.voxpcm"
+asset ChessVoiceWhitePart3 from "@project/assets/amy-chess-voice-white-3.voxpcm"
+asset ChessVoiceBlackPart1 from "@project/assets/amy-chess-voice-black-1.voxpcm"
+asset ChessVoiceBlackPart2 from "@project/assets/amy-chess-voice-black-2.voxpcm"
+asset ChessVoiceBlackPart3 from "@project/assets/amy-chess-voice-black-3.voxpcm"
+asset ChessVoiceBlackPart4 from "@project/assets/amy-chess-voice-black-4.voxpcm"
+asset ChessVoiceWinsPart1 from "@project/assets/amy-chess-voice-wins-1.voxpcm"
+asset ChessVoiceWinsPart2 from "@project/assets/amy-chess-voice-wins-2.voxpcm"
+asset ChessVoiceWinsPart3 from "@project/assets/amy-chess-voice-wins-3.voxpcm"
+asset ChessVoiceWinsPart4 from "@project/assets/amy-chess-voice-wins-4.voxpcm"
+#endif
+
+record ChessSearchFrame:
+  u8 MoveFrom
+  u8 MoveTo
+  u8 MovePromotion
+  u8 MoveFlags
+  u8 UndoPiece
+  u8 UndoCaptured
+  u8 UndoCapturedSquare
+  u8 UndoCastling
+  u8 UndoEnPassant
+  u8 UndoHalfmove
+  u8 UndoFullmove
+  u8 GenerateFrom
+  u8 GenerateRow
+  u8 GenerateColumn
+  u8 ScanRow
+  u8 ScanColumn
+  u8 RayDone
+  u8 WhiteKingSquare
+  u8 BlackKingSquare
+  u8 LegalMoveCount
+end record
+
+u8 Board[64]
+u8 Side = 0
+u8 Castling = 15
+u8 EnPassant = 255
+u8 Halfmove = 0
+u8 Fullmove = 1
+u8 MoveFrom = 0
+u8 MoveTo = 0
+u8 MovePromotion = 0
+u8 MoveFlags = 0
+u8 UndoPiece = 0
+u8 UndoCaptured = 0
+u8 UndoCapturedSquare = 0
+u8 UndoCastling = 0
+u8 UndoEnPassant = 0
+u8 UndoHalfmove = 0
+u8 UndoFullmove = 0
+#ifdef CHESS_SELF_TEST
+u8 TestResult = 0
+#endif
+#ifdef CHESS_STALL_TEST
+u8 StallTestFinished = 0
+u8 StallTestFrom = 255
+u8 StallTestTo = 255
+#endif
+#ifdef CHESS_PAWN_BLUNDER_TEST
+u8 PawnBlunderTestFinished = 0
+i16 PawnBlunderScoreBefore = 0
+i16 PawnBlunderScoreAfter = 0
+u8 PawnBlunderAttack = 0
+#endif
+#ifdef CHESS_EXPERT_HANG_TEST
+u8 ExpertHangTestFinished = 0
+u8 ExpertHangTestFrom = 255
+u8 ExpertHangTestTo = 255
+u8 ExpertMateSafetyFrom = 255
+u8 ExpertMateSafetyTo = 255
+u8 ExpertMateReplyCount = 0
+u8 ExpertMateReplyFrom = 255
+u8 ExpertMateReplyTo = 255
+u8 ExpertMateQueenLegal = 0
+u8 SkilledQueenTestFrom = 255
+u8 SkilledQueenTestTo = 255
+u8 PawnScoreStart = 0
+u8 PawnScoreAdvanced = 0
+u8 SkilledPawnTestFrom = 255
+u8 SkilledPawnTestTo = 255
+u8 SkilledPolicyDepth = 0
+u8 ExpertPolicyDepth = 0
+#endif
+#ifdef CHESS_STOCKFISH_TACTICAL_TEST
+u8 StockfishTacticalFinished = 0
+u8 StockfishTacticalFrom[10]
+u8 StockfishTacticalTo[10]
+u8 StockfishTacticalPromotion[10]
+u8 StockfishTacticalBudget[10]
+i16 StockfishTacticalNodes[10]
+u8 StockfishTacticalQuietFound[10]
+i16 StockfishTacticalQuietNodes[10]
+u8 StockfishTacticalDeepFrom[10]
+u8 StockfishTacticalDeepTo[10]
+u8 StockfishTacticalDeepPromotion[10]
+u8 StockfishTacticalDeepBudget[10]
+i16 StockfishTacticalDeepNodes[10]
+#endif
+#ifdef CHESS_LEVEL_MATCH_TEST
+u8 MatchWhiteLevel = 0
+u8 MatchBlackLevel = 0
+u8 MatchFinished = 0
+u8 MatchReason = 0
+u8 MatchPly = 0
+u8 MatchFrom[80]
+u8 MatchTo[80]
+u8 MatchPromotion[80]
+u8 MatchFlags[80]
+#endif
+#ifdef CHESS_KQK_PLAY_TEST
+u8 KqkPlayTestFinished = 0
+u8 KqkPlayTestResult = 0
+u8 KqkPlayTestPlies = 0
+u8 KqkPlayFrom[100]
+u8 KqkPlayTo[100]
+#endif
+u8 I = 0
+u8 AttackSquare = 0
+u8 AttackSide = 0
+u8 AttackResult = 0
+u8 AttackRow = 0
+u8 AttackColumn = 0
+u8 ScanRow = 0
+u8 ScanColumn = 0
+u8 ScanSquare = 0
+u8 ScanPiece = 0
+u8 MovingSide = 0
+u8 KingSquare = 255
+u8 LegalMoveCount = 0
+u8 GenerateFrom = 0
+u8 GenerateRow = 0
+u8 GenerateColumn = 0
+#ifdef CHESS_SELF_TEST
+u8 PendingResult = 0
+u8 MateTwoTestCount = 0
+u8 MateTwoTestFrom = 255
+u8 MateTwoTestTo = 255
+u16 MateTwoTestNodes = 0
+u8 MateTwoTestBudget = 0
+#endif
+u8 RayDone = 0
+#ifdef CHESS_SELF_TEST
+u8 InitialLegalCount = 0
+u8 PinnedLegalCount = 0
+u8 QueenLegalCount = 0
+u8 RookLegalCount = 0
+#endif
+#ifdef CHESS_SELF_TEST
+u8 FenLegalCount = 0
+u8 FenStarted = 0
+u8 FenFinished = 0
+#endif
+u8 WhiteKingSquare = 255
+u8 BlackKingSquare = 255
+u8 FindMateMode = 0
+u8 RootSide = 0
+u8 MateMoveCount = 0
+u8 BestMoveFrom = 255
+u8 BestMoveTo = 255
+u8 BestMoveFlags = 0
+u8 BestMovePromotion = 0
+#ifdef CHESS_SELF_TEST
+u8 FenBestMoveFrom = 255
+u8 FenBestMoveTo = 255
+u8 FenMateMoveCount = 0
+u8 KrkBestMoveFrom = 255
+u8 KrkBestMoveTo = 255
+u8 KbbkBestMoveFrom = 255
+u8 KbbkBestMoveTo = 255
+u8 KbnkBestMoveFrom = 255
+u8 KbnkBestMoveTo = 255
+u8 KqkBestMoveFrom = 255
+u8 KqkBestMoveTo = 255
+u8 RookCaptureTestFrom = 255
+u8 RookCaptureTestTo = 255
+i16 RookClosedFileScore = 0
+i16 RookSemiOpenFileScore = 0
+i16 RookOpenFileScore = 0
+i16 ColorMirrorWhiteScore = 0
+i16 ColorMirrorBlackScore = 0
+u8 PromotionChoiceTestFrom = 255
+u8 PromotionChoiceTestTo = 255
+u8 PromotionChoiceTestPiece = 0
+u8 PromotionPositionTestFrom = 255
+u8 PromotionPositionTestTo = 255
+u8 PromotionPositionTestPiece = 0
+u8 PromotionDepthTwoTestFrom = 255
+u8 PromotionDepthTwoTestTo = 255
+u8 PromotionDepthTwoTestPiece = 0
+i16 PromotionDepthTwoTestScore = 0
+i16 PromotionDepthThreeSeedTestScore = 0
+i16 PromotionDepthThreeFinalTestScore = 0
+#endif
+u8 MaterialMinorCount = 0
+u8 InsufficientMaterial = 0
+u8 BishopOnlyMaterial = 0
+u8 BishopSquareColor = 255
+u8 BishopColorMismatch = 0
+#ifdef CHESS_SELF_TEST
+u8 PromotionApproachCount = 0
+u8 KpkBestMoveFrom = 255
+u8 KpkBestMoveTo = 255
+u8 KeyPawnSquare = 255
+u8 KeyPawnRow = 0
+u8 KeyPawnColumn = 0
+u8 KeyTargetRow = 0
+u8 KeyCandidateRow = 0
+u8 KeyCandidateColumn = 0
+u8 KeyRowDistance = 0
+u8 KeyColumnDistance = 0
+u8 KeyCandidateScore = 255
+u8 KeyBestScore = 255
+u8 KeyBestMoveFrom = 255
+u8 KeyBestMoveTo = 255
+#endif
+i16 MaterialBalance = 0
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+u8 MaterialCacheValid = 0
+#endif
+i16 MinimaxRootMaterialBalance = 0
+#ifdef CHESS_SELF_TEST
+u8 CaptureMoveCount = 0
+u8 MaterialScanCount = 0
+u8 MaterialCacheTestResult = 0
+u8 CaptureBestMoveFrom = 255
+u8 CaptureBestMoveTo = 255
+u8 CaptureBestMoveFlags = 0
+u8 CaptureBestMovePromotion = 0
+i16 ExchangeStaticBalance = 0
+i16 ExchangeQuietBalance = 0
+u8 ExchangeReplyCount = 0
+#endif
+i16 RecaptureBestScore = -30000
+u8 RecaptureTarget = 0
+u8 RecaptureRow = 0
+u8 RecaptureColumn = 0
+u8 RecaptureMinimize = 0
+#ifdef CHESS_SELF_TEST
+u8 HorizonCaptureFrom = 255
+u8 HorizonCaptureTo = 255
+u8 RecaptureTestResult = 0
+u8 PromotionLegalCount = 0
+u8 CastleOpenCount = 0
+u8 CastleTransitCount = 0
+#endif
+u8 RepetitionLength = 0
+u8 RepetitionCount = 0
+u8 CanClaimThreefold = 0
+u8 AutomaticFivefold = 0
+u8 EffectiveEnPassant = 255
+u16 PositionHashA = 0
+u16 PositionHashB = 0
+u8 HistoryIndex = 0
+u16 HistoryAddress = 0
+u8 HistoryByte = 0
+u16 HistoryReadA = 0
+u16 HistoryReadB = 0
+u8 ExpandedRam = 0
+u8 MirrorSaveLow = 0
+u8 MirrorSaveHigh = 0
+#ifdef CHESS_SELF_TEST
+u8 RepetitionThreeTest = 0
+u8 RepetitionFiveTest = 0
+u8 RepetitionCycle = 0
+#endif
+u8 AnnouncedThreefold = 0
+u8 AnnouncedFiftyMove = 0
+u8 AnnouncedRepetitionCount = 0
+#ifdef CHESS_SELF_TEST
+u8 AnnouncedThreefoldTest = 0
+u8 AnnouncedFiftyMoveTest = 0
+u8 PreferredMateFrom = 255
+u8 PreferredMateTo = 255
+#endif
+u8 SelectedMoveFrom = 255
+u8 SelectedMoveTo = 255
+u8 SelectedMoveFlags = 0
+u8 SelectedMovePromotion = 0
+u8 RequestedMoveFrom = 255
+u8 RequestedMoveTo = 255
+u8 RequestedMovePromotion = 0
+u8 RequestedMoveLegal = 0
+u8 RequestedMoveFlags = 0
+u16 SelfPlayPly = 0
+u8 SelfPlayFinished = 0
+u8 SelfPlayReason = 0
+u8 CanClaimFiftyMove = 0
+u8 AutomaticSeventyFiveMove = 0
+u8 SavedLegalMoveCount = 0
+u8 SavedMoveFrom = 0
+u8 SavedMoveTo = 0
+u8 SavedMovePromotion = 0
+u8 SavedMoveFlags = 0
+u8 SavedUndoPiece = 0
+u8 SavedUndoCaptured = 0
+u8 SavedUndoCapturedSquare = 0
+u8 SavedUndoCastling = 0
+u8 SavedUndoEnPassant = 0
+u8 SavedUndoHalfmove = 0
+u8 SavedUndoFullmove = 0
+u8 OpponentInCheck = 0
+u16 MateTwoNodes = 0
+u16 MateTwoNodeLimit = MateTwoNodeBudget
+u8 MateTwoBudgetReached = 0
+u8 MateTwoSearchActive = 0
+u8 MateTwoAllRepliesWin = 0
+u8 MateTwoReplyCount = 0
+u8 MateTwoCandidateFrom = 255
+u8 MateTwoCandidateTo = 255
+u8 MateTwoCandidateFlags = 0
+u8 MateTwoCandidatePromotion = 0
+u8 MateFrameBase = 0
+u16 QuietThreatNodes = 0
+u8 QuietThreatCandidateFound = 0
+#ifdef CHESS_SELF_TEST
+u8 MateSearchStarted = 0
+u8 MateSearchFinished = 0
+#endif
+u8 SavedGenerateFrom = 0
+u8 SavedGenerateRow = 0
+u8 SavedGenerateColumn = 0
+u8 SavedScanRow = 0
+u8 SavedScanColumn = 0
+u8 SavedRayDone = 0
+u8 StopAfterFirstLegal = 0
+u8 SavedStopAfterFirstLegal = 0
+u8 StopAfterFirstMate = 0
+u8 PositionalBestFrom = 255
+u8 PositionalBestTo = 255
+u8 PositionalBestFlags = 0
+u8 PositionalBestPromotion = 0
+i16 PositionalBestScore = -30000
+i16 PositionScore = 0
+u8 CenterValue = 0
+u8 EndgamePieceCount = 0
+u8 MinimaxRootPieceCount = 0
+u8 PieceSquare = 0
+u8 PieceSquareKind = 0
+u16 PieceSquareIndex = 0
+i8 PieceSquareValue = 0
+u8 EndgameKingRowDistance = 0
+u8 EndgameKingColumnDistance = 0
+u8 EndgameKingDistance = 0
+u8 MovedPieceValue = 0
+u8 MovedPieceAttacked = 0
+u8 SavedAttackSquare = 0
+u8 SavedAttackSide = 0
+u8 SavedAttackRow = 0
+u8 SavedAttackColumn = 0
+u8 SavedScanSquare = 0
+u8 SavedScanPiece = 0
+u8 MoveVariation = 0
+u8 PositionalTieCount = 0
+#ifdef CHESS_SELF_TEST
+u8 OpeningBestFrom = 255
+u8 OpeningBestTo = 255
+u8 OpeningFastFrom = 255
+u8 OpeningFastTo = 255
+u8 OpeningVariantFrom = 255
+u8 OpeningVariantTo = 255
+#endif
+u8 SafeMoveCount = 0
+#ifdef CHESS_SELF_TEST
+u8 OpeningSafeCount = 0
+#endif
+i16 MinimaxWorstScore = 30000
+i16 MinimaxBestScore = -30000
+i16 MinimaxContinuationBestScore = -30000
+u8 MinimaxReplyCount = 0
+u8 MinimaxBestFrom = 255
+u8 MinimaxBestTo = 255
+u8 MinimaxBestFlags = 0
+u8 MinimaxBestPromotion = 0
+u8 MinimaxRootSide = 0
+u8 MinimaxRootTarget = 0
+u8 MinimaxRootPiece = 0
+u8 MinimaxDepth = 2
+u8 MinimaxQuietThreat = 0
+#ifdef CHESS_SELF_TEST
+u8 OpeningMinimaxFrom = 255
+u8 OpeningMinimaxTo = 255
+u8 OpeningCutFrom = 255
+u8 OpeningCutTo = 255
+u16 QuietThreatTestNodes = 0
+u8 QuietThreatTestDetected = 0
+u8 NestedSafetyTestFrom = 255
+u8 NestedSafetyTestTo = 255
+u8 QuietThreatTestFrom = 255
+u8 QuietThreatTestTo = 255
+u8 QuietThreatTestPieceCount = 255
+u8 QuietThreatTestCalls = 0
+u8 QuietThreatTestBudgetReached = 0
+#endif
+u8 MinimaxUseCutoff = 1
+u16 MinimaxNodes = 0
+u16 MinimaxNodeBudget = DefaultMinimaxNodeBudget
+u8 MinimaxBudgetReached = 0
+u8 MinimaxCutoffs = 0
+#ifdef CHESS_GAME
+u8 MinimaxRandomTie = 0
+u8 ChessRandomState = 165
+#endif
+u8 MinimaxTieCount = 0
+u8 MinimaxExactFrom = 255
+u8 MinimaxExactTo = 255
+u8 MinimaxExactFlags = 0
+u8 MinimaxExactPromotion = 0
+u8 MinimaxRootFullmove = 1
+#ifdef CHESS_SELF_TEST
+u16 OpeningFullNodes = 0
+u16 OpeningCutNodes = 0
+i16 OpeningFullScore = 0
+i16 OpeningCutScore = 0
+#endif
+u8 ChessLevel = 1
+u8 MinimaxSeedEnabled = 1
+u8 MinimaxSeedFrom = 255
+u8 MinimaxSeedTo = 255
+u8 MinimaxSeedFlags = 0
+u8 MinimaxSeedPromotion = 0
+u8 DepthThreeSeedFrom = 255
+u8 DepthThreeSeedTo = 255
+u8 DepthThreeSeedFlags = 0
+u8 DepthThreeSeedPromotion = 0
+u8 MinimaxExcludeEnabled = 0
+u8 MinimaxExcludeFrom = 255
+u8 MinimaxExcludeTo = 255
+u8 MinimaxExcludeFlags = 0
+u8 MinimaxExcludePromotion = 0
+ChessSearchFrame SearchStack[5]
+u8 WhiteCpuLastFrom = 255
+u8 WhiteCpuLastTo = 255
+u8 BlackCpuLastFrom = 255
+u8 BlackCpuLastTo = 255
+#ifdef CHESS_GAME
+u8 GameReady = 0
+u8 BoardDrawRow = 0
+u8 BoardDrawColumn = 0
+u8 BoardDrawPiece = 0
+u8 BoardDrawKind = 0
+u8 BoardDrawTile = 0
+u8 CursorSquare = 48
+u8 SelectedSquare = 255
+u8 CursorColor = 7
+u8 WhiteControl = 0
+u8 BlackControl = 1
+u8 GameCpuMoves = 0
+u8 GameEndReason = 0
+u8 GameWinner = 255
+u8 GameMoveFrom = 0
+u8 GameMoveTo = 0
+u8 GameMoveFlags = 0
+u8 GameMoveCapture = 0
+u8 GameMovePromotion = 0
+u8 LastMoveValid = 0
+u8 MoveNotationColumn = 18
+u8 MainMenuChoice = 1
+u8 WhiteMenuChoice = 1
+u8 BlackMenuChoice = 2
+u8 VoiceMenuChoice = 1
+u8 PromotionMenuChoice = 1
+#endif
+
+data InitialBoard bytes
+  12,10,11,13,14,11,10,12,
+  9,9,9,9,9,9,9,9,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  1,1,1,1,1,1,1,1,
+  4,2,3,5,6,3,2,4
+end data
+
+' BEGIN GENERATED CHESS PIECE-SQUARE TABLES
+' Exact compact representation of all twelve piece-square tables. Pawns keep
+' rank-sensitive tables; symmetric pieces use their seven possible center
+' values. Middle-game rook seventh-rank scoring is handled by the evaluator.
+data ChessPawnBonus bytes
+  72,73,74,75,75,74,73,72,
+  61,62,63,64,64,63,62,61,
+  50,51,52,53,53,52,51,50,
+  39,40,41,42,42,41,40,39,
+  27,28,29,30,30,29,28,27,
+  14,15,16,17,17,16,15,14,
+  1,2,3,4,4,3,2,1,
+  -12,-11,-10,-9,-9,-10,-11,-12,
+  12,12,12,12,12,12,12,12,
+  10,10,10,10,10,10,10,10,
+  8,8,8,8,8,8,8,8,
+  6,6,6,6,6,6,6,6,
+  4,4,4,4,4,4,4,4,
+  2,2,2,2,2,2,2,2,
+  0,0,0,0,0,0,0,0,
+  -2,-2,-2,-2,-2,-2,-2,-2
+end data
+data ChessCenterOffsets bytes
+  0,0,0,8,0,16,24,
+  0,0,32,40,48,56,64
+end data
+data ChessCenterBonus bytes
+  0,16,32,48,64,80,96,0,
+  0,12,24,36,48,60,72,0,
+  0,8,16,24,32,40,48,0,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  0,7,14,21,28,35,42,0,
+  0,0,0,0,0,0,0,0,
+  0,3,6,9,12,15,18,0
+end data
+#ifdef CHESS_COMPACT_MATERIAL
+' Signed i16 material values indexed directly by the internal piece code.
+data ChessMaterialValueWords bytes
+  0,0, 100,0, 64,1, 74,1, 244,1, 132,3, 0,0, 0,0,
+  0,0, 156,255, 192,254, 182,254, 12,254, 124,252, 0,0
+end data
+#endif
+' END GENERATED CHESS PIECE-SQUARE TABLES
+
+' Distance from the edge, used only to confine the losing king in won endings.
+data ChessKingConfinement bytes
+  0,0,0,0,0,0,0,0,
+  0,1,1,1,1,1,1,0,
+  0,1,2,2,2,2,1,0,
+  0,1,2,3,3,2,1,0,
+  0,1,2,3,3,2,1,0,
+  0,1,2,2,2,2,1,0,
+  0,1,1,1,1,1,1,0,
+  0,0,0,0,0,0,0,0
+end data
+
+' Four compact opening families selected by MoveVariation. Each family stores
+' eight from/to pairs (four full moves). Legal-move generation and minimax can
+' always reject a preference that does not fit the current position.
+data ChessOpeningBook bytes
+  52,36, 12,28, 62,45, 1,18, 61,34, 6,21, 51,43, 5,26,
+  51,35, 11,27, 62,45, 6,21, 50,34, 12,20, 57,42, 5,12,
+  62,45, 6,21, 54,46, 14,22, 61,54, 5,14, 60,62, 4,6,
+  50,34, 10,26, 57,42, 1,18, 62,45, 6,21, 54,46, 14,22
+end data
+
+#ifdef CHESS_GAME
+data ChessPieceKinds bytes 0,1,2,3,4,5,6,0,0,7,8,9,10,11,12
+data ChessTextCheckmate bytes 138,143,140,138,154,156,136,163,140
+data ChessTextStalemate bytes 162,163,136,155,140,156,136,163,140
+data ChessTextDraw bytes 139,161,136,166
+data ChessTextWhiteWins bytes 166,143,152,163,140,0,166,152,157,162
+data ChessTextBlackWins bytes 137,155,136,138,154,0,166,152,157,162
+data ChessTextPressFire bytes 159,161,140,162,162,0,141,152,161,140
+data ChessTextAmyChess bytes 136,156,168,0,138,143,140,162,162
+data ChessTextWhiteTurn bytes 166,143,152,163,140,0,163,164,161,157
+data ChessTextBlackTurn bytes 137,155,136,138,154,0,163,164,161,157
+data ChessTextLastMove bytes 155,136,162,163,0,156,158,165,140
+#endif
+
+sub start:
+  ChessDetectExpandedRam
+#ifdef CHESS_SELF_TEST
+  ChessKernelSelfTest
+#endif
+#ifdef CHESS_STALL_TEST
+  ChessReportedStallTest
+#endif
+#ifdef CHESS_PAWN_BLUNDER_TEST
+  ChessPawnBlunderTest
+#endif
+#ifdef CHESS_EXPERT_HANG_TEST
+  ChessExpertHangTest
+#endif
+#ifdef CHESS_STOCKFISH_TACTICAL_TEST
+  ChessStockfishTacticalTest
+#endif
+#ifdef CHESS_LEVEL_MATCH_TEST
+  ChessLevelMatchTest
+#endif
+#ifdef CHESS_KQK_PLAY_TEST
+  ChessKqkPlayTest
+#endif
+
+#ifdef CHESS_EXPERT_HANG_TEST
+sub ChessExpertHangTest:
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[4] = BlackKing
+  Board[5] = BlackKnight
+  Board[7] = BlackRook
+  Board[12] = BlackKnight
+  Board[16] = BlackPawn
+  Board[17] = BlackQueen
+  Board[21] = BlackPawn
+  Board[27] = BlackPawn
+  Board[28] = BlackPawn
+  Board[30] = BlackPawn
+  Board[31] = BlackPawn
+  Board[42] = WhitePawn
+  Board[43] = WhiteKnight
+  Board[48] = WhitePawn
+  Board[49] = WhitePawn
+  Board[51] = WhitePawn
+  Board[52] = WhiteQueen
+  Board[53] = WhitePawn
+  Board[54] = WhitePawn
+  Board[55] = WhitePawn
+  Board[56] = WhiteRook
+  Board[58] = WhiteBishop
+  Board[61] = WhiteRook
+  Board[62] = WhiteKing
+  Side = 0
+  Castling = 12
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 17
+  ChessLevel = 2
+  ChessFindKings
+  ChessFindPreferredMove
+  ExpertHangTestFrom = SelectedMoveFrom
+  ExpertHangTestTo = SelectedMoveTo
+
+  ' Chess Challenger level 2, ply 97: choose a rook move that avoids mate in one.
+  ChessClearBoard
+  Board[9] = BlackKing
+  Board[28] = BlackRook
+  Board[29] = BlackPawn
+  Board[35] = BlackPawn
+  Board[39] = BlackPawn
+  Board[46] = BlackQueen
+  Board[47] = WhitePawn
+  Board[50] = WhiteRook
+  Board[54] = WhitePawn
+  Board[62] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 49
+  ChessLevel = 2
+  ChessFindKings
+  ChessFindPreferredMove
+  ExpertMateSafetyFrom = SelectedMoveFrom
+  ExpertMateSafetyTo = SelectedMoveTo
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MoveFlags = SelectedMoveFlags
+  MovePromotion = SelectedMovePromotion
+  MovingSide = Side
+  ChessApplyMove
+  ChessFindMateInOne
+  ExpertMateReplyCount = MateMoveCount
+  ExpertMateReplyFrom = BestMoveFrom
+  ExpertMateReplyTo = BestMoveTo
+  RequestedMoveFrom = 46
+  RequestedMoveTo = 60
+  RequestedMovePromotion = 0
+  ChessValidateRequestedMove
+  ExpertMateQueenLegal = RequestedMoveLegal
+
+  ' r2qkb1r/ppp1pppp/2n1bn2/2Bp4/8/2NPQN2/PPP1PPPP/2KR1B1R w k - 10 9
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[3] = BlackQueen
+  Board[4] = BlackKing
+  Board[5] = BlackBishop
+  Board[7] = BlackRook
+  Board[8] = BlackPawn
+  Board[9] = BlackPawn
+  Board[10] = BlackPawn
+  Board[12] = BlackPawn
+  Board[13] = BlackPawn
+  Board[14] = BlackPawn
+  Board[15] = BlackPawn
+  Board[18] = BlackKnight
+  Board[19] = BlackPawn
+  Board[20] = BlackBishop
+  Board[21] = BlackKnight
+  Board[26] = WhiteBishop
+  Board[42] = WhiteKnight
+  Board[43] = WhitePawn
+  Board[44] = WhiteQueen
+  Board[45] = WhiteKnight
+  Board[48] = WhitePawn
+  Board[49] = WhitePawn
+  Board[50] = WhitePawn
+  Board[52] = WhitePawn
+  Board[53] = WhitePawn
+  Board[54] = WhitePawn
+  Board[55] = WhitePawn
+  Board[58] = WhiteKing
+  Board[59] = WhiteRook
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 8
+  EnPassant = 255
+  Halfmove = 10
+  Fullmove = 9
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  SkilledQueenTestFrom = SelectedMoveFrom
+  SkilledQueenTestTo = SelectedMoveTo
+
+  ' Pawn advancement must become more valuable near promotion.
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[51] = WhitePawn
+  Board[60] = WhiteKing
+  Side = 0
+  ChessFindKings
+  MovingSide = 0
+  ChessEvaluatePosition
+  PawnScoreStart = PositionScore
+  Board[51] = Empty
+  Board[11] = WhitePawn
+  ChessEvaluatePosition
+  PawnScoreAdvanced = PositionScore
+
+  ' A practical black pawn must advance instead of inviting king drift.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[27] = WhiteKnight
+  Board[28] = WhiteQueen
+  Board[36] = WhitePawn
+  Board[39] = BlackPawn
+  Board[42] = WhitePawn
+  Board[45] = WhitePawn
+  Board[48] = WhitePawn
+  Board[49] = WhitePawn
+  Board[56] = WhiteRook
+  Board[61] = WhiteRook
+  Board[62] = WhiteKing
+  Side = 1
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 37
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  SkilledPawnTestFrom = SelectedMoveFrom
+  SkilledPawnTestTo = SelectedMoveTo
+  SkilledPolicyDepth = MinimaxDepth
+  ChessLevel = 2
+  ChessFindPreferredMove
+  ExpertPolicyDepth = MinimaxDepth
+  ExpertHangTestFinished = 1
+  return
+#endif
+#ifdef CHESS_STOCKFISH_TACTICAL_TEST
+sub ChessRecordStockfishTacticalResult:
+  StockfishTacticalFrom[I] = SelectedMoveFrom
+  StockfishTacticalTo[I] = SelectedMoveTo
+  StockfishTacticalPromotion[I] = SelectedMovePromotion
+  StockfishTacticalBudget[I] = MinimaxBudgetReached
+  StockfishTacticalNodes[I] = MinimaxNodes
+  StockfishTacticalQuietFound[I] = QuietThreatCandidateFound
+  StockfishTacticalQuietNodes[I] = QuietThreatNodes
+  return
+
+sub ChessRecordStockfishTacticalDeepResult:
+  StockfishTacticalDeepFrom[I] = SelectedMoveFrom
+  StockfishTacticalDeepTo[I] = SelectedMoveTo
+  StockfishTacticalDeepPromotion[I] = SelectedMovePromotion
+  StockfishTacticalDeepBudget[I] = MinimaxBudgetReached
+  StockfishTacticalDeepNodes[I] = MinimaxNodes
+  return
+
+sub ChessStockfishTacticalTest:
+  ' Stockfish 19: avoid 11.b4 in favour of Qd4/g3 in this exposed position.
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[2] = BlackBishop
+  Board[3] = BlackQueen
+  Board[4] = BlackKing
+  Board[5] = BlackBishop
+  Board[7] = BlackRook
+  Board[8] = BlackPawn
+  Board[9] = BlackPawn
+  Board[10] = BlackPawn
+  Board[21] = BlackPawn
+  Board[23] = BlackPawn
+  Board[27] = WhiteKnight
+  Board[32] = WhitePawn
+  Board[36] = BlackKnight
+  Board[38] = BlackPawn
+  Board[39] = WhitePawn
+  Board[44] = WhiteBishop
+  Board[49] = WhitePawn
+  Board[50] = WhitePawn
+  Board[52] = WhitePawn
+  Board[53] = WhitePawn
+  Board[54] = WhitePawn
+  Board[56] = WhiteRook
+  Board[59] = WhiteQueen
+  Board[60] = WhiteKing
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 15
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 11
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 0
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 0
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Stockfish 19: avoid 14.f4; preserve the position with Rb1/Q moves.
+  ChessClearBoard
+  Board[3] = BlackQueen
+  Board[4] = BlackKing
+  Board[5] = BlackBishop
+  Board[7] = BlackRook
+  Board[9] = BlackPawn
+  Board[10] = BlackPawn
+  Board[20] = BlackBishop
+  Board[21] = BlackPawn
+  Board[23] = BlackPawn
+  Board[24] = BlackRook
+  Board[27] = WhiteKnight
+  Board[32] = WhitePawn
+  Board[34] = WhitePawn
+  Board[36] = BlackKnight
+  Board[38] = BlackPawn
+  Board[39] = WhitePawn
+  Board[44] = WhiteBishop
+  Board[52] = WhitePawn
+  Board[53] = WhitePawn
+  Board[54] = WhitePawn
+  Board[56] = WhiteRook
+  Board[59] = WhiteQueen
+  Board[60] = WhiteKing
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 7
+  EnPassant = 255
+  Halfmove = 1
+  Fullmove = 14
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 1
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 1
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Stockfish 19: 15.Ne4 is required; the historical engine chose Bc4.
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[1] = BlackKnight
+  Board[2] = BlackBishop
+  Board[3] = BlackQueen
+  Board[4] = BlackKing
+  Board[7] = BlackRook
+  Board[12] = BlackBishop
+  Board[15] = BlackPawn
+  Board[16] = BlackPawn
+  Board[19] = BlackPawn
+  Board[27] = WhitePawn
+  Board[29] = BlackPawn
+  Board[30] = WhiteKnight
+  Board[35] = BlackPawn
+  Board[36] = BlackPawn
+  Board[38] = BlackPawn
+  Board[43] = WhiteBishop
+  Board[48] = WhitePawn
+  Board[49] = WhitePawn
+  Board[50] = WhitePawn
+  Board[53] = WhitePawn
+  Board[54] = WhitePawn
+  Board[55] = WhitePawn
+  Board[56] = WhiteRook
+  Board[58] = WhiteBishop
+  Board[59] = WhiteQueen
+  Board[60] = WhiteRook
+  Board[62] = WhiteKing
+  Side = 0
+  Castling = 12
+  EnPassant = 255
+  Halfmove = 2
+  Fullmove = 15
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 2
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 2
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Stockfish 19: g8=Q wins; the tournament exposed a losing g8=B choice.
+  ChessClearBoard
+  Board[9] = WhiteRook
+  Board[14] = WhitePawn
+  Board[20] = BlackKing
+  Board[24] = BlackPawn
+  Board[28] = WhitePawn
+  Board[31] = WhitePawn
+  Board[32] = WhitePawn
+  Board[34] = WhitePawn
+  Board[35] = BlackPawn
+  Board[36] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 2
+  Fullmove = 38
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 3
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 3
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Genuine horizon case: 70.Qb1 holds; Be2 allows a forced mate.
+  ChessClearBoard
+  Board[16] = WhitePawn
+  Board[19] = BlackPawn
+  Board[21] = BlackBishop
+  Board[22] = BlackKing
+  Board[26] = BlackPawn
+  Board[27] = WhitePawn
+  Board[29] = BlackPawn
+  Board[33] = BlackPawn
+  Board[35] = BlackPawn
+  Board[37] = WhitePawn
+  Board[39] = BlackPawn
+  Board[41] = WhiteQueen
+  Board[43] = WhiteBishop
+  Board[46] = BlackPawn
+  Board[51] = WhitePawn
+  Board[54] = WhiteKing
+  Board[56] = BlackQueen
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 14
+  Fullmove = 70
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 4
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 4
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Genuine horizon case: a queen or bishop defence holds; 74.d3 loses.
+  ChessClearBoard
+  Board[6] = BlackKing
+  Board[16] = WhitePawn
+  Board[19] = BlackPawn
+  Board[21] = BlackBishop
+  Board[25] = WhiteBishop
+  Board[26] = BlackPawn
+  Board[27] = WhitePawn
+  Board[29] = BlackPawn
+  Board[33] = BlackPawn
+  Board[35] = BlackPawn
+  Board[37] = WhitePawn
+  Board[39] = BlackPawn
+  Board[41] = WhiteQueen
+  Board[46] = BlackPawn
+  Board[51] = WhitePawn
+  Board[54] = WhiteKing
+  Board[56] = BlackQueen
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 22
+  Fullmove = 74
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 5
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 5
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Genuine horizon case: a queen defence holds; 76.a7 allows forced mate.
+  ChessClearBoard
+  Board[3] = BlackBishop
+  Board[6] = BlackKing
+  Board[16] = WhitePawn
+  Board[19] = BlackPawn
+  Board[26] = BlackPawn
+  Board[27] = WhitePawn
+  Board[29] = BlackPawn
+  Board[32] = WhiteBishop
+  Board[33] = BlackPawn
+  Board[35] = BlackPawn
+  Board[37] = WhitePawn
+  Board[39] = BlackPawn
+  Board[41] = WhiteQueen
+  Board[43] = WhitePawn
+  Board[46] = BlackPawn
+  Board[54] = WhiteKing
+  Board[56] = BlackQueen
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 3
+  Fullmove = 76
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 6
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 6
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Tournament white-midgame weakness: Stockfish prefers 29.Bh7+ to 29.Re4.
+  ChessClearBoard
+  Board[3] = BlackQueen
+  Board[6] = BlackKing
+  Board[8] = BlackRook
+  Board[17] = BlackPawn
+  Board[24] = BlackPawn
+  Board[26] = BlackPawn
+  Board[28] = WhiteRook
+  Board[30] = BlackPawn
+  Board[32] = WhitePawn
+  Board[34] = WhitePawn
+  Board[37] = BlackPawn
+  Board[38] = BlackBishop
+  Board[41] = WhitePawn
+  Board[43] = WhiteBishop
+  Board[45] = BlackPawn
+  Board[51] = WhiteQueen
+  Board[53] = WhitePawn
+  Board[62] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 2
+  Fullmove = 29
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 7
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 7
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Promotion horizon: do not prefer b8=R over a queen by static accident.
+  ChessClearBoard
+  Board[9] = WhitePawn
+  Board[12] = BlackKing
+  Board[26] = BlackPawn
+  Board[28] = WhitePawn
+  Board[29] = BlackPawn
+  Board[31] = WhitePawn
+  Board[33] = BlackPawn
+  Board[36] = BlackPawn
+  Board[37] = WhitePawn
+  Board[38] = WhiteRook
+  Board[41] = WhitePawn
+  Board[44] = WhitePawn
+  Board[50] = WhitePawn
+  Board[59] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 21
+  Halfmove = 0
+  Fullmove = 31
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 8
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 8
+  ChessRecordStockfishTacticalDeepResult
+
+  ' Quiet mating attack: Stockfish 19 finds 1.Qb5!, forcing mate in five.
+  ChessClearBoard
+  Board[9] = WhiteBishop
+  Board[12] = BlackKing
+  Board[14] = BlackBishop
+  Board[20] = BlackPawn
+  Board[22] = BlackPawn
+  Board[28] = WhitePawn
+  Board[29] = BlackPawn
+  Board[31] = BlackRook
+  Board[35] = WhiteRook
+  Board[37] = WhitePawn
+  Board[38] = BlackPawn
+  Board[39] = WhitePawn
+  Board[46] = WhiteKing
+  Board[52] = WhiteQueen
+  Board[53] = WhiteBishop
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 1
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  I = 9
+  ChessRecordStockfishTacticalResult
+  ChessFindDepthThreeMove
+  I = 9
+  ChessRecordStockfishTacticalDeepResult
+  StockfishTacticalFinished = 1
+  return
+#endif
+#ifdef CHESS_LEVEL_MATCH_TEST
+sub ChessLevelMatchTest:
+  ChessInitialPosition
+  ChessResetRepetitionHistory
+  MatchFinished = 0
+  MatchReason = 0
+  MatchPly = 0
+  while MatchPly < 80 and MatchFinished = 0
+    if Side = 0 then ChessLevel = MatchWhiteLevel else ChessLevel = MatchBlackLevel
+    ChessFindPreferredMove
+    ChessAvoidWinningRepetition
+    if SelectedMoveFrom = 255 then
+      ChessFindKings
+      if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+      AttackSide = 1 - Side
+      ChessIsSquareAttacked
+      if AttackResult = 1 then MatchReason = 1 else MatchReason = 2
+      MatchFinished = 1
+    else
+      MatchFrom[MatchPly] = SelectedMoveFrom
+      MatchTo[MatchPly] = SelectedMoveTo
+      MatchPromotion[MatchPly] = SelectedMovePromotion
+      MatchFlags[MatchPly] = SelectedMoveFlags
+      MoveFrom = SelectedMoveFrom
+      MoveTo = SelectedMoveTo
+      MovePromotion = SelectedMovePromotion
+      MoveFlags = SelectedMoveFlags
+      MovingSide = Side
+      ChessApplyMove
+      ChessRecordPosition
+      MatchPly += 1
+      ChessClassifyInsufficientMaterial
+      ChessClassifyRepetition
+      if InsufficientMaterial = 1 then MatchReason = 3
+      if AutomaticFivefold = 1 then MatchReason = 4
+      if Halfmove >= 150 then MatchReason = 5
+      if MatchReason <> 0 then MatchFinished = 1
+    end if
+  end while
+  if MatchFinished = 0 then MatchReason = 6
+  MatchFinished = 1
+  return
+#endif
+#ifdef CHESS_GAME
+  ChessGameStart
+#endif
+ChessKernelDone:
+  goto ChessKernelDone
+end sub
+
+#ifdef CHESS_GAME
+sub ChessGameStart:
+#ifdef CHESS_ENGINE_LAB
+  text screen
+  backdrop black
+  cls
+  print centered at 8, "AMY CHESS V1.2"
+  print centered at 12, "ENGINE LAB"
+  print centered at 16, "PRESS FIRE"
+  screen on
+#else
+  show picture ChessTitlePicture
+  play voxpcm ChessVoiceMeow
+#endif
+  pause until press and release on joypad 1
+  ' Mix the complete frame counter with persistent state. Using only frame & 3
+  ' made similarly timed CPU-vs-CPU games repeat the same move sequence.
+  asm {
+    ld hl,(AMY_FRAME_COUNTER)
+    ld a,(AMY_UVAR_ChessRandomState)
+    xor h
+    add a,l
+    ld e,a
+    ld a,r
+    xor e
+    or a
+    jr nz,AMY_CHESS_RANDOM_SEEDED
+    ld a,$A5
+AMY_CHESS_RANDOM_SEEDED:
+    ld (AMY_UVAR_ChessRandomState),a
+    ld b,a
+    rrca
+    rrca
+    xor b
+    and 3
+    ld (AMY_UVAR_MoveVariation),a
+  }
+  set sound table ChessMoveSoundTable areas 3
+  screen off
+  ChessMainMenu
+  ChessConfigurationMenu
+  ChessInitialPosition
+  ChessResetRepetitionHistory
+  WhiteCpuLastFrom = 255
+  WhiteCpuLastTo = 255
+  BlackCpuLastFrom = 255
+  BlackCpuLastTo = 255
+  ChessPrepareBoardGraphics
+  ChessRenderBoard
+  LastMoveValid = 0
+  ChessRenderMoveNotation
+  ChessDrawCursor
+  GameReady = 0
+  ChessEvaluateGameEnd
+  if GameEndReason = 0 then GameReady = 1
+  screen on
+  ChessHumanInputLoop
+  ChessGameOverScreen
+  goto ChessGameStart
+
+sub ChessMainMenu:
+  MainMenuChoice = 2
+  while MainMenuChoice == 2
+    text screen
+    backdrop black
+    cls
+    print centered at 1, "AMY CHESS V1.2"
+    print centered at 3, "OPTIONS"
+    print at 11,8, "PLAY GAME"
+    print at 11,10, "TEST VOICES"
+    screen on
+    MainMenuChoice = 1
+    choose menu 1 to 2 into MainMenuChoice cursor $3E at 9,8 step 2
+    if MainMenuChoice = 2 then ChessVoiceTestMenu
+  end while
+  screen off
+  return
+
+sub ChessVoiceTestMenu:
+  VoiceMenuChoice = 1
+  while VoiceMenuChoice <> 6
+    text screen
+    backdrop black
+    cls
+    print centered at 1, "AMY CHESS V1.2"
+    print centered at 3, "VOICES"
+    print at 12,5, "DRAW"
+    print at 12,7, "WHITE"
+    print at 12,9, "BLACK"
+    print at 12,11, "WINS"
+    print at 12,13, "MEOW"
+    print at 12,15, "BACK"
+    screen on
+    choose menu 1 to 6 into VoiceMenuChoice cursor $3E at 10,5 step 2
+    if VoiceMenuChoice = 1 then
+      play voxpcm ChessVoiceDraw
+    end if
+    if VoiceMenuChoice = 2 then
+      play voxpcm ChessVoiceWhite
+    end if
+    if VoiceMenuChoice = 3 then
+      play voxpcm ChessVoiceBlack
+    end if
+    if VoiceMenuChoice = 4 then
+      play voxpcm ChessVoiceWins
+    end if
+    if VoiceMenuChoice = 5 then
+      play voxpcm ChessVoiceMeow
+    end if
+    mute all
+  end while
+  screen off
+  return
+
+sub ChessConfigurationMenu:
+#ifdef CHESS_ELO_WHITE
+#ifdef CHESS_ELO_BLITZ
+  WhiteControl = 1
+  ChessLevel = 0
+#else
+  WhiteControl = 2
+  ChessLevel = 1
+#endif
+  BlackControl = 0
+  screen off
+  return
+#endif
+#ifdef CHESS_ELO_BLACK
+  WhiteControl = 0
+#ifdef CHESS_ELO_BLITZ
+  BlackControl = 1
+  ChessLevel = 0
+#else
+  BlackControl = 2
+  ChessLevel = 1
+#endif
+  screen off
+  return
+#endif
+  text screen
+  backdrop black
+  cls
+  print centered at 1, "AMY CHESS V1.2"
+  print centered at 3, "LEVEL SELECTION"
+  print at 7,6, "WHITE"
+  print at 7,8, "HUMAN"
+  print at 7,9, "BLITZ"
+  print at 7,10, "NORMAL"
+  print at 19,6, "BLACK"
+  print at 19,8, "HUMAN"
+  print at 19,9, "BLITZ"
+  print at 19,10, "NORMAL"
+  screen on
+  choose menu 1 to 3 into WhiteMenuChoice cursor $3E at 5,8 step 1
+  choose menu 1 to 3 into BlackMenuChoice cursor $3E at 17,8 step 1
+  WhiteControl = WhiteMenuChoice - 1
+  BlackControl = BlackMenuChoice - 1
+  screen off
+  return
+
+sub ChessPrepareBoardGraphics:
+  tile screen
+  sprites 16x16
+  sprites simple
+  decompress zx0 ChessBoardPatterns to vram.pattern
+  decompress zx0 ChessBoardColors to vram.color
+  decompress zx0 ChessBoardColors to vram.color + $0800
+  decompress zx0 ChessBoardColors to vram.color + $1000
+  duplicate mode 2 text patterns
+  copy ChessCursorPattern count 32 to vram.spr_pat
+  cls with 0
+  clear sprites
+  set sprite count 1
+  return
+
+sub ChessRenderBoard:
+  for BoardDrawRow = 0 to 7
+    for BoardDrawColumn = 0 to 7
+      I = (BoardDrawRow << 3) + BoardDrawColumn
+      ChessRenderSquare
+    next
+  next
+  ChessRenderCoordinates
+  ChessRenderGameHud
+  return
+
+sub ChessRenderGameHud:
+  for I = 0 to 8
+    put char ChessTextAmyChess[I] at 12 + I,0
+    put char ChessTextLastMove[I] at 12 + I,21
+  next
+  ChessRenderTurn
+  return
+
+sub ChessRenderTurn:
+  for I = 0 to 31
+    put char 0 at I,1
+  next
+  if Side = 0 then
+    for I = 0 to 9
+      put char ChessTextWhiteTurn[I] at 11 + I,1
+    next
+  else
+    for I = 0 to 9
+      put char ChessTextBlackTurn[I] at 11 + I,1
+    next
+  end if
+  return
+
+sub ChessRenderCoordinates:
+  for BoardDrawColumn = 0 to 7
+    BoardDrawTile = 136 + BoardDrawColumn
+    ScanColumn = 8 + (BoardDrawColumn << 1)
+    put char BoardDrawTile at ScanColumn,3
+    put char BoardDrawTile at ScanColumn,20
+  next
+  for BoardDrawRow = 0 to 7
+    BoardDrawTile = 151 - BoardDrawRow
+    ScanRow = 4 + (BoardDrawRow << 1)
+    put char BoardDrawTile at 7,ScanRow
+    put char BoardDrawTile at 24,ScanRow
+  next
+  return
+
+sub ChessRenderSquare:
+  BoardDrawRow = I >> 3
+  BoardDrawColumn = I & 7
+  BoardDrawPiece = Board[I]
+  BoardDrawKind = ChessPieceKinds[BoardDrawPiece]
+  if ((BoardDrawRow + BoardDrawColumn) & 1) = 1 then BoardDrawKind += 13
+  BoardDrawTile = 32 + (BoardDrawKind << 2)
+  ScanColumn = 8 + (BoardDrawColumn << 1)
+  ScanRow = 4 + (BoardDrawRow << 1)
+  put char BoardDrawTile at ScanColumn,ScanRow
+  put char BoardDrawTile + 1 at ScanColumn,ScanRow + 1
+  put char BoardDrawTile + 2 at ScanColumn + 1,ScanRow
+  put char BoardDrawTile + 3 at ScanColumn + 1,ScanRow + 1
+  return
+
+sub ChessRenderChangedSquares:
+  wait 1 frame
+  I = GameMoveFrom
+  ChessRenderSquare
+  I = GameMoveTo
+  ChessRenderSquare
+  if GameMoveFlags & FlagEnPassant then
+    if Side = 1 then I = GameMoveTo + 8 else I = GameMoveTo - 8
+    ChessRenderSquare
+  end if
+  if GameMoveFlags & FlagCastleKing then
+    if Side = 1 then
+      I = 63
+      ChessRenderSquare
+      I = 61
+      ChessRenderSquare
+    else
+      I = 7
+      ChessRenderSquare
+      I = 5
+      ChessRenderSquare
+    end if
+  end if
+  if GameMoveFlags & FlagCastleQueen then
+    if Side = 1 then
+      I = 56
+      ChessRenderSquare
+      I = 59
+      ChessRenderSquare
+    else
+      I = 0
+      ChessRenderSquare
+      I = 3
+      ChessRenderSquare
+    end if
+  end if
+  LastMoveValid = 1
+  ChessRenderMoveNotation
+  ChessRenderTurn
+  return
+
+sub ChessRenderMoveNotation:
+  for I = 0 to 31
+    put char 0 at I,22
+  next
+  MoveNotationColumn = 18
+  if LastMoveValid = 0 then return
+  if GameMoveFlags & FlagCastleKing then
+    put char 158 at 14,22
+    put char 170 at 15,22
+    put char 158 at 16,22
+    MoveNotationColumn = 17
+    return
+  end if
+  if GameMoveFlags & FlagCastleQueen then
+    put char 158 at 12,22
+    put char 170 at 13,22
+    put char 158 at 14,22
+    put char 170 at 15,22
+    put char 158 at 16,22
+    MoveNotationColumn = 17
+    return
+  end if
+  put char 136 + (GameMoveFrom & 7) at 13,22
+  put char 151 - (GameMoveFrom >> 3) at 14,22
+  if GameMoveCapture = 0 then
+    put char 170 at 15,22
+  else
+    put char 167 at 15,22
+  end if
+  put char 136 + (GameMoveTo & 7) at 16,22
+  put char 151 - (GameMoveTo >> 3) at 17,22
+  if GameMovePromotion = WhiteQueen or GameMovePromotion = BlackQueen then
+    put char 160 at 18,22
+  end if
+  if GameMovePromotion = WhiteRook or GameMovePromotion = BlackRook then
+    put char 161 at 18,22
+  end if
+  if GameMovePromotion = WhiteBishop or GameMovePromotion = BlackBishop then
+    put char 137 at 18,22
+  end if
+  if GameMovePromotion = WhiteKnight or GameMovePromotion = BlackKnight then
+    put char 157 at 18,22
+  end if
+  if GameMovePromotion <> 0 then MoveNotationColumn = 19
+  return
+
+sub ChessDrawCursor:
+  BoardDrawRow = CursorSquare >> 3
+  BoardDrawColumn = CursorSquare & 7
+  ScanColumn = 64 + (BoardDrawColumn << 4)
+  ScanRow = 31 + (BoardDrawRow << 4)
+  CursorColor = 13
+  set sprite 0 to ScanRow,ScanColumn,0,CursorColor
+  update sprites
+  return
+
+sub ChessHumanInputLoop:
+  while GameReady = 1
+    wait 1 frame
+    if Side = 0 and WhiteControl > 0 then
+      ChessLevel = WhiteControl - 1
+      ChessRunCpuTurn
+    elseif Side = 1 and BlackControl > 0 then
+      ChessLevel = BlackControl - 1
+      ChessRunCpuTurn
+    else
+      if keypad(1) = 11 then ChessClaimDraw
+      if joypad(1).up.pressed and CursorSquare >= 8 then CursorSquare -= 8
+      if joypad(1).down.pressed and CursorSquare < 56 then CursorSquare += 8
+      if joypad(1).left.pressed and (CursorSquare & 7) > 0 then CursorSquare -= 1
+      if joypad(1).right.pressed and (CursorSquare & 7) < 7 then CursorSquare += 1
+      if joypad(1).fire.pressed then ChessHandleHumanFire
+    end if
+    if GameReady = 1 then ChessDrawCursor
+  end while
+  clear sprites
+  update sprites
+  return
+
+sub ChessRunCpuTurn:
+  ChessClaimDrawIfUseful
+  if GameReady = 0 then return
+  ChessFindPreferredMove
+  ChessAvoidWinningRepetition
+  ChessAvoidCpuMoveShuffle
+  if SelectedMoveFrom = 255 then
+    GameReady = 0
+    return
+  end if
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MovePromotion = SelectedMovePromotion
+  MoveFlags = SelectedMoveFlags
+  GameMoveFrom = MoveFrom
+  GameMoveTo = MoveTo
+  GameMoveFlags = MoveFlags
+  GameMoveCapture = Board[MoveTo]
+  if MoveFlags & FlagEnPassant then GameMoveCapture = BlackPawn
+  GameMovePromotion = MovePromotion
+  if Side = 0 then
+    WhiteCpuLastFrom = MoveFrom
+    WhiteCpuLastTo = MoveTo
+  else
+    BlackCpuLastFrom = MoveFrom
+    BlackCpuLastTo = MoveTo
+  end if
+  ChessCommitMove
+  CursorSquare = GameMoveTo
+  SelectedSquare = 255
+  ChessRenderChangedSquares
+  ChessEvaluateGameEnd
+  ChessAnnounceCheck
+  GameCpuMoves += 1
+  return
+
+sub ChessClaimDraw:
+  if CanClaimThreefold = 1 then GameEndReason = 6
+  if GameEndReason = 0 and CanClaimFiftyMove = 1 then GameEndReason = 7
+  if GameEndReason <> 0 then GameReady = 0
+  return
+
+sub ChessClaimDrawIfUseful:
+  ChessEvaluateMaterial
+  if Side = 0 and MaterialBalance <= 0 then ChessClaimDraw
+  if Side = 1 and MaterialBalance >= 0 then ChessClaimDraw
+  return
+
+sub ChessHandleHumanFire:
+  if SelectedSquare = 255 then
+    BoardDrawPiece = Board[CursorSquare]
+    if Side = 0 and BoardDrawPiece >= WhitePawn and BoardDrawPiece <= WhiteKing then SelectedSquare = CursorSquare
+    if Side = 1 and BoardDrawPiece >= BlackPawn and BoardDrawPiece <= BlackKing then SelectedSquare = CursorSquare
+    return
+  end if
+
+  if CursorSquare = SelectedSquare then
+    SelectedSquare = 255
+    return
+  end if
+
+  RequestedMoveFrom = SelectedSquare
+  RequestedMoveTo = CursorSquare
+  RequestedMovePromotion = 0
+  if Side = 0 and Board[SelectedSquare] = WhitePawn and CursorSquare < 8 then ChessChoosePromotion
+  if Side = 1 and Board[SelectedSquare] = BlackPawn and CursorSquare >= 56 then ChessChoosePromotion
+  ChessValidateRequestedMove
+  if RequestedMoveLegal = 1 then
+    MoveFrom = RequestedMoveFrom
+    MoveTo = RequestedMoveTo
+    MovePromotion = RequestedMovePromotion
+    MoveFlags = RequestedMoveFlags
+    GameMoveFrom = MoveFrom
+    GameMoveTo = MoveTo
+    GameMoveFlags = MoveFlags
+    GameMoveCapture = Board[MoveTo]
+    if MoveFlags & FlagEnPassant then GameMoveCapture = WhitePawn
+    GameMovePromotion = MovePromotion
+    ChessCommitMove
+    CursorSquare = GameMoveTo
+    SelectedSquare = 255
+    ChessRenderChangedSquares
+    ChessEvaluateGameEnd
+    ChessAnnounceCheck
+  end if
+  return
+
+sub ChessChoosePromotion:
+  screen off
+  clear sprites
+  text screen
+  backdrop black
+  cls
+  print centered at 5, "PROMOTE TO"
+  print at 11,8, "QUEEN"
+  print at 11,10, "ROOK"
+  print at 11,12, "BISHOP"
+  print at 11,14, "KNIGHT"
+  screen on
+  PromotionMenuChoice = 1
+  choose menu 1 to 4 into PromotionMenuChoice cursor $3E at 9,8 step 2
+  if Side = 0 then
+    RequestedMovePromotion = WhiteQueen
+    if PromotionMenuChoice = 2 then RequestedMovePromotion = WhiteRook
+    if PromotionMenuChoice = 3 then RequestedMovePromotion = WhiteBishop
+    if PromotionMenuChoice = 4 then RequestedMovePromotion = WhiteKnight
+  else
+    RequestedMovePromotion = BlackQueen
+    if PromotionMenuChoice = 2 then RequestedMovePromotion = BlackRook
+    if PromotionMenuChoice = 3 then RequestedMovePromotion = BlackBishop
+    if PromotionMenuChoice = 4 then RequestedMovePromotion = BlackKnight
+  end if
+  screen off
+  ChessPrepareBoardGraphics
+  ChessRenderBoard
+  ChessDrawCursor
+  screen on
+  return
+
+sub ChessEvaluateGameEnd:
+  GameEndReason = 0
+  GameWinner = 255
+  ChessClassifyInsufficientMaterial
+  ChessClassifyRepetition
+  ChessClassifyMoveCountDraw
+  if InsufficientMaterial = 1 then GameEndReason = 3
+  if AutomaticFivefold = 1 then GameEndReason = 4
+  if AutomaticSeventyFiveMove = 1 then GameEndReason = 5
+  if GameEndReason = 0 then
+    StopAfterFirstLegal = 1
+    FindMateMode = 0
+    ChessCountLegalMoves
+    StopAfterFirstLegal = 0
+    if LegalMoveCount = 0 then
+      ChessFindKings
+      if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+      AttackSide = 1 - Side
+      ChessIsSquareAttacked
+      if AttackResult = 1 then
+        GameEndReason = 1
+        GameWinner = 1 - Side
+      else
+        GameEndReason = 2
+      end if
+    end if
+  end if
+  if GameEndReason <> 0 then GameReady = 0
+  return
+
+sub ChessAnnounceCheck:
+  if GameEndReason = 1 then
+    put char 172 at MoveNotationColumn,22
+    return
+  end if
+  if GameEndReason <> 0 then return
+  ChessFindKings
+  if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+  AttackSide = 1 - Side
+  ChessIsSquareAttacked
+  if AttackResult = 1 then
+    put char 172 at MoveNotationColumn,22
+    play sound 3
+    return
+  end if
+  if GameMoveCapture <> 0 then
+    play sound 2
+  else
+    play sound 1
+  end if
+  return
+
+sub ChessGameOverScreen:
+  clear sprites
+  update sprites
+  for I = 0 to 31
+    put char 0 at I,0
+    put char 0 at I,1
+    put char 0 at I,2
+  next
+  if GameEndReason = 1 then
+    for I = 0 to 8
+      put char ChessTextCheckmate[I] at 11 + I,0
+    next
+    if GameWinner = 0 then
+      for I = 0 to 9
+        put char ChessTextWhiteWins[I] at 11 + I,1
+      next
+    end if
+    if GameWinner = 1 then
+      for I = 0 to 9
+        put char ChessTextBlackWins[I] at 11 + I,1
+      next
+    end if
+  elseif GameEndReason = 2 then
+    for I = 0 to 8
+      put char ChessTextStalemate[I] at 11 + I,0
+    next
+  else
+    for I = 0 to 3
+      put char ChessTextDraw[I] at 14 + I,0
+    next
+  end if
+  for I = 0 to 31
+    put char 0 at I,23
+  next
+  for I = 0 to 9
+    put char ChessTextPressFire[I] at 11 + I,23
+  next
+  if GameEndReason = 1 then
+    if GameWinner = 0 then
+      play voxpcm ChessVoiceWhite
+    else
+      play voxpcm ChessVoiceBlack
+    end if
+    play voxpcm ChessVoiceWins
+  else
+    play voxpcm ChessVoiceDraw
+  end if
+  pause until press and release on joypad 1
+  mute all
+  return
+
+asm {
+ChessMoveSoundTable:
+    dw ChessRegularMove,$702B
+    dw ChessMoveCapture,$7035
+    dw ChessMoveCheck,$703F
+
+ChessRegularMove:
+    db $43,$25,$72,$04,$11,$C8,$11,$DE
+    db $50
+
+ChessMoveCapture:
+    db $80,$DB,$31,$01
+    db $80,$7B,$22,$01
+    db $80,$F0,$31,$01
+    db $80,$2C,$52,$01
+    db $80,$4C,$72,$01
+    db $80,$98,$92,$01
+    db $90
+
+ChessMoveCheck:
+    db $C0,$CC,$60,$01
+    db $C0,$DC,$20,$01
+    db $C1,$3F,$41,$06,$11,$48
+    db $ED
+    db $C0,$BB,$B0,$01
+    db $C0,$B8,$A0,$01
+    db $C1,$3D,$A1,$03,$11,$48
+    db $C0,$B1,$B3,$01
+    db $D0
+}
+
+include "@project/assets/amy-chess-voices.asm"
+#endif
+
+sub ChessDetectExpandedRam:
+  MirrorSaveLow = peek($7200)
+  MirrorSaveHigh = peek($7600)
+  poke($7200, $5A)
+  poke($7600, $A5)
+  ExpandedRam = 0
+  if peek($7200) = $5A and peek($7600) = $A5 then ExpandedRam = 1
+  poke($7200, MirrorSaveLow)
+  poke($7600, MirrorSaveHigh)
+  return
+
+#ifdef CHESS_STALL_TEST
+sub ChessReportedStallTest:
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[2] = BlackBishop
+  Board[3] = BlackQueen
+  Board[4] = BlackKing
+  Board[5] = BlackBishop
+  Board[7] = BlackRook
+  for I = 8 to 15
+    Board[I] = BlackPawn
+  next
+  Board[41] = WhitePawn
+  Board[48] = WhitePawn
+  for I = 50 to 55
+    Board[I] = WhitePawn
+  next
+  Board[56] = WhiteRook
+  Board[58] = WhiteBishop
+  Board[59] = WhiteQueen
+  Board[60] = WhiteKing
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 1
+  Castling = 15
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 6
+  ChessLevel = 1
+  test checkpoint "reported_stall_start"
+  ChessFindPreferredMove
+  StallTestFrom = SelectedMoveFrom
+  StallTestTo = SelectedMoveTo
+  StallTestFinished = 1
+  return
+
+#endif
+
+#ifdef CHESS_KQK_PLAY_TEST
+sub ChessKqkPlayTest:
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[18] = WhiteKing
+  Board[59] = WhiteQueen
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 1
+  ChessLevel = 1
+  KqkPlayTestResult = 0
+  KqkPlayTestPlies = 0
+  ChessResetRepetitionHistory
+  ChessClassifyRepetition
+  while KqkPlayTestPlies < 100 and KqkPlayTestResult = 0
+    ChessFindPreferredMove
+    ChessAvoidWinningRepetition
+    if SelectedMoveFrom = 255 then
+      ChessFindKings
+      if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+      AttackSide = 1 - Side
+      ChessIsSquareAttacked
+      if AttackResult = 1 then KqkPlayTestResult = 1 else KqkPlayTestResult = 2
+    else
+      KqkPlayFrom[KqkPlayTestPlies] = SelectedMoveFrom
+      KqkPlayTo[KqkPlayTestPlies] = SelectedMoveTo
+      MoveFrom = SelectedMoveFrom
+      MoveTo = SelectedMoveTo
+      MoveFlags = SelectedMoveFlags
+      MovePromotion = SelectedMovePromotion
+      ChessApplyMove
+      ChessRecordPosition
+      ChessClassifyRepetition
+      KqkPlayTestPlies += 1
+    end if
+  end while
+  if KqkPlayTestResult = 0 then KqkPlayTestResult = 3
+  KqkPlayTestFinished = 1
+  return
+
+#endif
+
+sub ChessAvoidWinningRepetition:
+  ' BLITZ stays pragmatic and cheap. NORMAL has the cartridge's active
+  ' personality: it refuses a voluntary threefold when another move exists.
+  if ChessLevel = 0 or SelectedMoveFrom = 255 then return
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MoveFlags = SelectedMoveFlags
+  MovePromotion = SelectedMovePromotion
+  ChessClassifyAnnouncedMove
+  ' Break the cycle when this move would complete a claimable threefold.
+  ' NORMAL may repeat a motif once, but never loops merely to avoid a loss.
+  if AnnouncedThreefold = 0 then return
+  SavedMoveFrom = SelectedMoveFrom
+  SavedMoveTo = SelectedMoveTo
+  SavedMoveFlags = SelectedMoveFlags
+  SavedMovePromotion = SelectedMovePromotion
+  MinimaxExcludeEnabled = 1
+  MinimaxExcludeFrom = SelectedMoveFrom
+  MinimaxExcludeTo = SelectedMoveTo
+  MinimaxExcludeFlags = SelectedMoveFlags
+  MinimaxExcludePromotion = SelectedMovePromotion
+  ChessFindDepthTwoMove
+  MinimaxExcludeEnabled = 0
+  if SelectedMoveFrom = 255 then
+    SelectedMoveFrom = SavedMoveFrom
+    SelectedMoveTo = SavedMoveTo
+    SelectedMoveFlags = SavedMoveFlags
+    SelectedMovePromotion = SavedMovePromotion
+  end if
+  return
+
+sub ChessAvoidCpuMoveShuffle:
+  if ChessLevel = 0 or SelectedMoveFrom = 255 then return
+  if Board[SelectedMoveTo] <> Empty then return
+  if Side = 0 then
+    if SelectedMoveFrom <> WhiteCpuLastTo or SelectedMoveTo <> WhiteCpuLastFrom then return
+  else
+    if SelectedMoveFrom <> BlackCpuLastTo or SelectedMoveTo <> BlackCpuLastFrom then return
+  end if
+
+  SavedMoveFrom = SelectedMoveFrom
+  SavedMoveTo = SelectedMoveTo
+  SavedMoveFlags = SelectedMoveFlags
+  SavedMovePromotion = SelectedMovePromotion
+  MinimaxExcludeEnabled = 1
+  MinimaxExcludeFrom = SelectedMoveFrom
+  MinimaxExcludeTo = SelectedMoveTo
+  MinimaxExcludeFlags = SelectedMoveFlags
+  MinimaxExcludePromotion = SelectedMovePromotion
+  ChessFindDepthTwoMove
+  MinimaxExcludeEnabled = 0
+  if SelectedMoveFrom = 255 then
+    SelectedMoveFrom = SavedMoveFrom
+    SelectedMoveTo = SavedMoveTo
+    SelectedMoveFlags = SavedMoveFlags
+    SelectedMovePromotion = SavedMovePromotion
+  end if
+  return
+
+#ifdef CHESS_PAWN_BLUNDER_TEST
+sub ChessPawnBlunderTest:
+  ChessClearBoard
+  Board[3] = BlackRook
+  Board[7] = BlackKing
+  Board[27] = BlackBishop
+  Board[34] = WhitePawn
+  Board[63] = WhiteKing
+  Side = 0
+  MovingSide = 1
+  MoveTo = 27
+  ChessFindKings
+  ChessEvaluatePosition
+  PawnBlunderScoreBefore = PositionScore
+  ChessPenalizeLooseMovedPiece
+  PawnBlunderScoreAfter = PositionScore
+  PawnBlunderAttack = MovedPieceAttacked
+  PawnBlunderTestFinished = 1
+  return
+#endif
+
+sub ChessClearBoard:
+#ifdef CHESS_COMPACT_CLEAR_BOARD
+  asm {
+    xor a
+    ld hl,AMY_UVAR_Board
+    ld de,AMY_UVAR_Board+1
+    ld bc,63
+    ld (hl),a
+    ldir
+    dec a
+    ld (AMY_UVAR_WhiteKingSquare),a
+    ld (AMY_UVAR_BlackKingSquare),a
+  }
+#else
+  for I = 0 to 63
+    Board[I] = Empty
+  next
+  WhiteKingSquare = 255
+  BlackKingSquare = 255
+#endif
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+  MaterialCacheValid = 0
+#endif
+  return
+
+sub ChessClassifyInsufficientMaterial:
+#ifdef CHESS_COMPACT_INSUFFICIENT
+  asm {
+    ld a,1
+    ld (AMY_UVAR_InsufficientMaterial),a
+    ld (AMY_UVAR_BishopOnlyMaterial),a
+    xor a
+    ld (AMY_UVAR_MaterialMinorCount),a
+    ld (AMY_UVAR_BishopColorMismatch),a
+    dec a
+    ld (AMY_UVAR_BishopSquareColor),a
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld bc,$4000
+AMY_CHESS_INSUFFICIENT_LOOP:
+    ld a,(ix+0)
+    and 7
+    cp AMY_UCONST_WhitePawn
+    jr z,AMY_CHESS_INSUFFICIENT_MAJOR
+    cp AMY_UCONST_WhiteRook
+    jr z,AMY_CHESS_INSUFFICIENT_MAJOR
+    cp AMY_UCONST_WhiteQueen
+    jr z,AMY_CHESS_INSUFFICIENT_MAJOR
+    cp AMY_UCONST_WhiteKnight
+    jr z,AMY_CHESS_INSUFFICIENT_KNIGHT
+    cp AMY_UCONST_WhiteBishop
+    jr nz,AMY_CHESS_INSUFFICIENT_NEXT
+    ld a,(AMY_UVAR_MaterialMinorCount)
+    inc a
+    ld (AMY_UVAR_MaterialMinorCount),a
+    ld a,c
+    ld d,a
+    rrca
+    rrca
+    rrca
+    xor d
+    and 1
+    ld d,a
+    ld a,(AMY_UVAR_BishopSquareColor)
+    cp 255
+    jr nz,AMY_CHESS_INSUFFICIENT_BISHOP_COMPARE
+    ld a,d
+    ld (AMY_UVAR_BishopSquareColor),a
+    jr AMY_CHESS_INSUFFICIENT_NEXT
+AMY_CHESS_INSUFFICIENT_BISHOP_COMPARE:
+    cp d
+    jr z,AMY_CHESS_INSUFFICIENT_NEXT
+    ld a,1
+    ld (AMY_UVAR_BishopColorMismatch),a
+    jr AMY_CHESS_INSUFFICIENT_NEXT
+AMY_CHESS_INSUFFICIENT_KNIGHT:
+    ld a,(AMY_UVAR_MaterialMinorCount)
+    inc a
+    ld (AMY_UVAR_MaterialMinorCount),a
+    xor a
+    ld (AMY_UVAR_BishopOnlyMaterial),a
+    jr AMY_CHESS_INSUFFICIENT_NEXT
+AMY_CHESS_INSUFFICIENT_MAJOR:
+    xor a
+    ld (AMY_UVAR_InsufficientMaterial),a
+AMY_CHESS_INSUFFICIENT_NEXT:
+    inc ix
+    inc c
+    djnz AMY_CHESS_INSUFFICIENT_LOOP
+    pop ix
+    ld a,(AMY_UVAR_MaterialMinorCount)
+    cp 2
+    ret c
+    ld a,(AMY_UVAR_BishopOnlyMaterial)
+    or a
+    jr z,AMY_CHESS_INSUFFICIENT_FORCE_FALSE
+    ld a,(AMY_UVAR_BishopColorMismatch)
+    or a
+    ret z
+AMY_CHESS_INSUFFICIENT_FORCE_FALSE:
+    xor a
+    ld (AMY_UVAR_InsufficientMaterial),a
+  }
+#else
+  InsufficientMaterial = 1
+  MaterialMinorCount = 0
+  BishopOnlyMaterial = 1
+  BishopSquareColor = 255
+  BishopColorMismatch = 0
+  for I = 0 to 63
+    if Board[I] = WhitePawn or Board[I] = BlackPawn then InsufficientMaterial = 0
+    if Board[I] = WhiteRook or Board[I] = BlackRook then InsufficientMaterial = 0
+    if Board[I] = WhiteQueen or Board[I] = BlackQueen then InsufficientMaterial = 0
+    if Board[I] = WhiteKnight or Board[I] = BlackKnight then
+      MaterialMinorCount += 1
+      BishopOnlyMaterial = 0
+    end if
+    if Board[I] = WhiteBishop or Board[I] = BlackBishop then
+      MaterialMinorCount += 1
+      if BishopSquareColor = 255 then BishopSquareColor = ((I >> 3) + (I & 7)) & 1
+      if BishopSquareColor <> (((I >> 3) + (I & 7)) & 1) then BishopColorMismatch = 1
+    end if
+  next
+  if MaterialMinorCount > 1 and (BishopOnlyMaterial = 0 or BishopColorMismatch = 1) then InsufficientMaterial = 0
+#endif
+  return
+
+sub ChessClassifyMoveCountDraw:
+  CanClaimFiftyMove = 0
+  AutomaticSeventyFiveMove = 0
+  if Halfmove >= 100 then CanClaimFiftyMove = 1
+  if Halfmove >= 150 then AutomaticSeventyFiveMove = 1
+  return
+
+sub ChessFindEffectiveEnPassant:
+  EffectiveEnPassant = 255
+  if EnPassant = 255 then return
+  ChessFindKings
+  MoveTo = EnPassant
+  MovePromotion = 0
+  MoveFlags = FlagEnPassant
+  if Side = 0 then
+    if (EnPassant & 7) > 0 and Board[EnPassant + 7] = WhitePawn then
+      MoveFrom = EnPassant + 7
+      KingSquare = WhiteKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+    if EffectiveEnPassant = 255 and (EnPassant & 7) < 7 and Board[EnPassant + 9] = WhitePawn then
+      MoveFrom = EnPassant + 9
+      KingSquare = WhiteKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+  else
+    if (EnPassant & 7) > 0 and Board[EnPassant - 9] = BlackPawn then
+      MoveFrom = EnPassant - 9
+      KingSquare = BlackKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+    if EffectiveEnPassant = 255 and (EnPassant & 7) < 7 and Board[EnPassant - 7] = BlackPawn then
+      MoveFrom = EnPassant - 7
+      KingSquare = BlackKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+  end if
+  MoveFlags = 0
+  return
+
+sub ChessComputePositionSignature:
+  ChessFindEffectiveEnPassant
+#ifdef CHESS_COMPACT_POSITION_SIGNATURE
+  asm {
+    push ix
+    ld hl,5381
+    ld de,257
+    ld ix,AMY_UVAR_Board
+    ld bc,$4001
+AMY_CHESS_SIGNATURE_BOARD_LOOP:
+    push bc
+    ld b,h
+    ld c,l
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,bc
+    pop bc
+    ld a,(ix+0)
+    inc ix
+    inc a
+    add a,l
+    ld l,a
+    jr nc,AMY_CHESS_SIGNATURE_A_READY
+    inc h
+AMY_CHESS_SIGNATURE_A_READY:
+    ld a,d
+    add a,e
+    ld d,a
+    ld a,(ix-1)
+    add a,c
+    add a,e
+    ld e,a
+    jr nc,AMY_CHESS_SIGNATURE_B_READY
+    inc d
+AMY_CHESS_SIGNATURE_B_READY:
+    inc c
+    djnz AMY_CHESS_SIGNATURE_BOARD_LOOP
+    ld (AMY_UVAR_PositionHashB),de
+
+    ld b,h
+    ld c,l
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,bc
+    ld a,(AMY_UVAR_Castling)
+    add a,a
+    ld e,a
+    ld d,0
+    ld a,(AMY_UVAR_Side)
+    add a,e
+    ld e,a
+    jr nc,AMY_CHESS_SIGNATURE_A_SIDE_READY
+    inc d
+AMY_CHESS_SIGNATURE_A_SIDE_READY:
+    ld a,(AMY_UVAR_EffectiveEnPassant)
+    add a,e
+    ld e,a
+    jr nc,AMY_CHESS_SIGNATURE_A_EXTRA_READY
+    inc d
+AMY_CHESS_SIGNATURE_A_EXTRA_READY:
+    add hl,de
+    ld (AMY_UVAR_PositionHashA),hl
+
+    ld hl,(AMY_UVAR_PositionHashB)
+    ld a,h
+    add a,l
+    ld h,a
+    ld a,(AMY_UVAR_Castling)
+    ld c,a
+    ld b,0
+    ld e,a
+    ld d,0
+    sla e
+    rl d
+    sla e
+    rl d
+    sla e
+    rl d
+    sla e
+    rl d
+    sla e
+    rl d
+    ld a,e
+    sub c
+    ld e,a
+    ld a,d
+    sbc a,b
+    ld d,a
+    ld a,(AMY_UVAR_Side)
+    or a
+    jr z,AMY_CHESS_SIGNATURE_B_SIDE_READY
+    ld a,e
+    add a,17
+    ld e,a
+    jr nc,AMY_CHESS_SIGNATURE_B_SIDE_READY
+    inc d
+AMY_CHESS_SIGNATURE_B_SIDE_READY:
+    ld a,(AMY_UVAR_EffectiveEnPassant)
+    add a,e
+    ld e,a
+    jr nc,AMY_CHESS_SIGNATURE_B_EXTRA_READY
+    inc d
+AMY_CHESS_SIGNATURE_B_EXTRA_READY:
+    add hl,de
+    ld (AMY_UVAR_PositionHashB),hl
+    pop ix
+  }
+#else
+  PositionHashA = 5381
+  PositionHashB = 257
+  for I = 0 to 63
+    PositionHashA = PositionHashA * 33 + Board[I] + 1
+    PositionHashB = PositionHashB * 257 + Board[I] + I + 1
+  next
+  PositionHashA = PositionHashA * 33 + Side + Castling * 2 + EffectiveEnPassant
+  PositionHashB = PositionHashB * 257 + Side * 17 + Castling * 31 + EffectiveEnPassant
+#endif
+  return
+
+sub ChessResetRepetitionHistory:
+  RepetitionLength = 0
+  ChessComputePositionSignature
+  HistoryIndex = 0
+  ChessWriteHistoryEntry
+  RepetitionLength = 1
+  return
+
+sub ChessWriteHistoryEntry:
+  if ExpandedRam = 1 then
+    HistoryAddress = ChessHistoryRam + HistoryIndex * 4
+    HistoryByte = PositionHashA & 255
+    poke(HistoryAddress, HistoryByte)
+    HistoryByte = PositionHashA >> 8
+    poke(HistoryAddress + 1, HistoryByte)
+    HistoryByte = PositionHashB & 255
+    poke(HistoryAddress + 2, HistoryByte)
+    HistoryByte = PositionHashB >> 8
+    poke(HistoryAddress + 3, HistoryByte)
+  else
+    HistoryAddress = ChessHistoryNameOffset + HistoryIndex * 4
+    HistoryByte = PositionHashA & 255
+    vpoke vram.name + HistoryAddress, HistoryByte
+    HistoryByte = PositionHashA >> 8
+    vpoke vram.name + HistoryAddress + 1, HistoryByte
+    HistoryByte = PositionHashB & 255
+    vpoke vram.name + HistoryAddress + 2, HistoryByte
+    HistoryByte = PositionHashB >> 8
+    vpoke vram.name + HistoryAddress + 3, HistoryByte
+  end if
+  return
+
+sub ChessReadHistoryEntry:
+  if ExpandedRam = 1 then
+    HistoryAddress = ChessHistoryRam + HistoryIndex * 4
+    HistoryReadA = peek(HistoryAddress)
+    HistoryByte = peek(HistoryAddress + 1)
+    HistoryReadA += HistoryByte << 8
+    HistoryReadB = peek(HistoryAddress + 2)
+    HistoryByte = peek(HistoryAddress + 3)
+    HistoryReadB += HistoryByte << 8
+  else
+    HistoryAddress = ChessHistoryNameOffset + HistoryIndex * 4
+    vpeek vram.name + HistoryAddress into HistoryByte
+    HistoryReadA = HistoryByte
+    vpeek vram.name + HistoryAddress + 1 into HistoryByte
+    HistoryReadA += HistoryByte << 8
+    vpeek vram.name + HistoryAddress + 2 into HistoryByte
+    HistoryReadB = HistoryByte
+    vpeek vram.name + HistoryAddress + 3 into HistoryByte
+    HistoryReadB += HistoryByte << 8
+  end if
+  return
+
+sub ChessRecordPosition:
+  if Halfmove = 0 then
+    ChessResetRepetitionHistory
+    return
+  end if
+  ChessComputePositionSignature
+  if RepetitionLength < 150 then
+    HistoryIndex = RepetitionLength
+    ChessWriteHistoryEntry
+    RepetitionLength += 1
+  end if
+  return
+
+sub ChessCommitMove:
+  ChessApplyMove
+  ChessRecordPosition
+  return
+
+sub ChessClassifyRepetition:
+  ChessComputePositionSignature
+  RepetitionCount = 0
+  for HistoryIndex = 0 to RepetitionLength - 1
+    ChessReadHistoryEntry
+    if HistoryReadA = PositionHashA and HistoryReadB = PositionHashB then RepetitionCount += 1
+  next
+  CanClaimThreefold = 0
+  AutomaticFivefold = 0
+  if RepetitionCount >= 3 then CanClaimThreefold = 1
+  if RepetitionCount >= 5 then AutomaticFivefold = 1
+  return
+
+sub ChessClassifyAnnouncedMove:
+  AnnouncedThreefold = 0
+  AnnouncedFiftyMove = 0
+  AnnouncedRepetitionCount = 0
+  ChessApplyMove
+  SavedMoveFrom = MoveFrom
+  SavedMoveTo = MoveTo
+  SavedMovePromotion = MovePromotion
+  SavedMoveFlags = MoveFlags
+  SavedUndoPiece = UndoPiece
+  SavedUndoCaptured = UndoCaptured
+  SavedUndoCapturedSquare = UndoCapturedSquare
+  SavedUndoCastling = UndoCastling
+  SavedUndoEnPassant = UndoEnPassant
+  SavedUndoHalfmove = UndoHalfmove
+  SavedUndoFullmove = UndoFullmove
+  ChessComputePositionSignature
+  for HistoryIndex = 0 to RepetitionLength - 1
+    ChessReadHistoryEntry
+    if HistoryReadA = PositionHashA and HistoryReadB = PositionHashB then AnnouncedRepetitionCount += 1
+  next
+  AnnouncedRepetitionCount += 1
+  if AnnouncedRepetitionCount >= 3 then AnnouncedThreefold = 1
+  if Halfmove >= 100 then AnnouncedFiftyMove = 1
+  MoveFrom = SavedMoveFrom
+  MoveTo = SavedMoveTo
+  MovePromotion = SavedMovePromotion
+  MoveFlags = SavedMoveFlags
+  UndoPiece = SavedUndoPiece
+  UndoCaptured = SavedUndoCaptured
+  UndoCapturedSquare = SavedUndoCapturedSquare
+  UndoCastling = SavedUndoCastling
+  UndoEnPassant = SavedUndoEnPassant
+  UndoHalfmove = SavedUndoHalfmove
+  UndoFullmove = SavedUndoFullmove
+  ChessUndoMove
+  return
+
+sub ChessInitialPosition:
+  copy InitialBoard to Board count 64
+  Side = 0
+  Castling = 15
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 1
+  WhiteKingSquare = 60
+  BlackKingSquare = 4
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+  MaterialCacheValid = 0
+#endif
+  return
+
+sub ChessFindKings:
+#ifdef CHESS_COMPACT_FIND_KINGS
+  asm {
+    push bc
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld bc,$4000
+    ld de,$FFFF
+AMY_CHESS_FIND_KINGS_LOOP:
+    ld a,(ix+0)
+    cp AMY_UCONST_WhiteKing
+    jr nz,AMY_CHESS_FIND_KINGS_BLACK
+    ld d,c
+    jr AMY_CHESS_FIND_KINGS_NEXT
+AMY_CHESS_FIND_KINGS_BLACK:
+    cp AMY_UCONST_BlackKing
+    jr nz,AMY_CHESS_FIND_KINGS_NEXT
+    ld e,c
+AMY_CHESS_FIND_KINGS_NEXT:
+    inc ix
+    inc c
+    djnz AMY_CHESS_FIND_KINGS_LOOP
+    ld a,d
+    ld (AMY_UVAR_WhiteKingSquare),a
+    ld a,e
+    ld (AMY_UVAR_BlackKingSquare),a
+    pop ix
+    pop bc
+  }
+#else
+  WhiteKingSquare = 255
+  BlackKingSquare = 255
+  for I = 0 to 63
+    if Board[I] = WhiteKing then WhiteKingSquare = I
+    if Board[I] = BlackKing then BlackKingSquare = I
+  next
+#endif
+  return
+
+sub ChessIsSquareAttacked:
+#ifdef CHESS_COMPACT_ATTACK_TEST
+  asm {
+    push ix
+    xor a
+    ld (AMY_UVAR_AttackResult),a
+    ld a,(AMY_UVAR_AttackSquare)
+    ld e,a
+    ld d,0
+    ld ix,AMY_UVAR_Board
+    add ix,de
+    ld a,e
+    and 7
+    ld c,a
+    ld a,e
+    rrca
+    rrca
+    rrca
+    and 7
+    ld b,a
+    ld (AMY_UVAR_AttackRow),a
+    ld a,c
+    ld (AMY_UVAR_AttackColumn),a
+    ld a,(AMY_UVAR_AttackSide)
+    add a,a
+    add a,a
+    add a,a
+    ld d,a
+
+    ; Pawns use attack directions rather than push directions.
+    ld a,d
+    or a
+    jr nz,AMY_CHESS_ATTACK_BLACK_PAWNS
+    ld a,b
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KNIGHTS
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_WHITE_PAWN_RIGHT
+    ld a,(ix+7)
+    cp AMY_UCONST_WhitePawn
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_WHITE_PAWN_RIGHT:
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KNIGHTS
+    ld a,(ix+9)
+    cp AMY_UCONST_WhitePawn
+    jp z,AMY_CHESS_ATTACK_HIT
+    jr AMY_CHESS_ATTACK_KNIGHTS
+AMY_CHESS_ATTACK_BLACK_PAWNS:
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_KNIGHTS
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_BLACK_PAWN_RIGHT
+    ld a,(ix-9)
+    cp AMY_UCONST_BlackPawn
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_BLACK_PAWN_RIGHT:
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KNIGHTS
+    ld a,(ix-7)
+    cp AMY_UCONST_BlackPawn
+    jp z,AMY_CHESS_ATTACK_HIT
+
+AMY_CHESS_ATTACK_KNIGHTS:
+    ld a,d
+    add a,AMY_UCONST_WhiteKnight
+    ld e,a
+    ld a,b
+    cp 2
+    jr c,AMY_CHESS_ATTACK_KNIGHT_UP_ONE
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_KNIGHT_UP_TWO_RIGHT
+    ld a,(ix-17)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_UP_TWO_RIGHT:
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KNIGHT_UP_ONE
+    ld a,(ix-15)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_UP_ONE:
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_KNIGHT_DOWN_ONE
+    ld a,c
+    cp 2
+    jr c,AMY_CHESS_ATTACK_KNIGHT_UP_ONE_RIGHT
+    ld a,(ix-10)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_UP_ONE_RIGHT:
+    ld a,c
+    cp 6
+    jr nc,AMY_CHESS_ATTACK_KNIGHT_DOWN_ONE
+    ld a,(ix-6)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_DOWN_ONE:
+    ld a,b
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KNIGHT_DOWN_TWO
+    ld a,c
+    cp 2
+    jr c,AMY_CHESS_ATTACK_KNIGHT_DOWN_ONE_RIGHT
+    ld a,(ix+6)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_DOWN_ONE_RIGHT:
+    ld a,c
+    cp 6
+    jr nc,AMY_CHESS_ATTACK_KNIGHT_DOWN_TWO
+    ld a,(ix+10)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_DOWN_TWO:
+    ld a,b
+    cp 6
+    jr nc,AMY_CHESS_ATTACK_KINGS
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_KNIGHT_DOWN_TWO_RIGHT
+    ld a,(ix+15)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KNIGHT_DOWN_TWO_RIGHT:
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KINGS
+    ld a,(ix+17)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+
+AMY_CHESS_ATTACK_KINGS:
+    ld a,d
+    add a,AMY_UCONST_WhiteKing
+    ld e,a
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_KING_SIDES
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_KING_UP
+    ld a,(ix-9)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KING_UP:
+    ld a,(ix-8)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KING_SIDES
+    ld a,(ix-7)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KING_SIDES:
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_KING_RIGHT
+    ld a,(ix-1)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KING_RIGHT:
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_KING_DOWN
+    ld a,(ix+1)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KING_DOWN:
+    ld a,b
+    cp 7
+    jr z,AMY_CHESS_ATTACK_RAYS
+    ld a,c
+    or a
+    jr z,AMY_CHESS_ATTACK_KING_DOWN_CENTER
+    ld a,(ix+7)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_KING_DOWN_CENTER:
+    ld a,(ix+8)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+    ld a,c
+    cp 7
+    jr z,AMY_CHESS_ATTACK_RAYS
+    ld a,(ix+9)
+    cp e
+    jp z,AMY_CHESS_ATTACK_HIT
+
+    ; The first occupied square on each ray decides the attack.
+AMY_CHESS_ATTACK_RAYS:
+    ld a,d
+    add a,AMY_UCONST_WhiteQueen
+    ld (AMY_UVAR_ScanColumn),a
+    ld a,d
+    add a,AMY_UCONST_WhiteRook
+    ld c,a
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_DOWN
+    push ix
+    pop hl
+    ld de,-8
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_DOWN:
+    ld a,7
+    ld b,a
+    ld a,(AMY_UVAR_AttackRow)
+    ld e,a
+    ld a,b
+    sub e
+    jr z,AMY_CHESS_ATTACK_LEFT
+    ld b,a
+    push ix
+    pop hl
+    ld de,8
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_LEFT:
+    ld a,(AMY_UVAR_AttackColumn)
+    or a
+    jr z,AMY_CHESS_ATTACK_RIGHT
+    ld b,a
+    push ix
+    pop hl
+    ld de,-1
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_RIGHT:
+    ld a,7
+    ld b,a
+    ld a,(AMY_UVAR_AttackColumn)
+    ld e,a
+    ld a,b
+    sub e
+    jr z,AMY_CHESS_ATTACK_DIAGONALS
+    ld b,a
+    push ix
+    pop hl
+    ld de,1
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+
+AMY_CHESS_ATTACK_DIAGONALS:
+    ld a,(AMY_UVAR_AttackSide)
+    add a,a
+    add a,a
+    add a,a
+    add a,AMY_UCONST_WhiteBishop
+    ld c,a
+    ld a,(AMY_UVAR_AttackRow)
+    ld b,a
+    ld a,(AMY_UVAR_AttackColumn)
+    cp b
+    jr nc,AMY_CHESS_ATTACK_NW_COUNT
+    ld b,a
+AMY_CHESS_ATTACK_NW_COUNT:
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_NE
+    push ix
+    pop hl
+    ld de,-9
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_NE:
+    ld a,7
+    ld b,a
+    ld a,(AMY_UVAR_AttackColumn)
+    ld e,a
+    ld a,b
+    sub e
+    ld b,a
+    ld a,(AMY_UVAR_AttackRow)
+    cp b
+    jr nc,AMY_CHESS_ATTACK_NE_COUNT
+    ld b,a
+AMY_CHESS_ATTACK_NE_COUNT:
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_SW
+    push ix
+    pop hl
+    ld de,-7
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_SW:
+    ld a,7
+    ld b,a
+    ld a,(AMY_UVAR_AttackRow)
+    ld e,a
+    ld a,b
+    sub e
+    ld b,a
+    ld a,(AMY_UVAR_AttackColumn)
+    cp b
+    jr nc,AMY_CHESS_ATTACK_SW_COUNT
+    ld b,a
+AMY_CHESS_ATTACK_SW_COUNT:
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_SE
+    push ix
+    pop hl
+    ld de,7
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+AMY_CHESS_ATTACK_SE:
+    ld a,7
+    ld b,a
+    ld a,(AMY_UVAR_AttackRow)
+    ld e,a
+    ld a,b
+    sub e
+    ld b,a
+    ld a,7
+    ld h,a
+    ld a,(AMY_UVAR_AttackColumn)
+    ld e,a
+    ld a,h
+    sub e
+    cp b
+    jr nc,AMY_CHESS_ATTACK_SE_COUNT
+    ld b,a
+AMY_CHESS_ATTACK_SE_COUNT:
+    ld a,b
+    or a
+    jr z,AMY_CHESS_ATTACK_DONE
+    push ix
+    pop hl
+    ld de,9
+    call AMY_CHESS_ATTACK_RAY
+    jp c,AMY_CHESS_ATTACK_HIT
+    jr AMY_CHESS_ATTACK_DONE
+
+AMY_CHESS_ATTACK_RAY:
+    add hl,de
+    ld a,(hl)
+    or a
+    jr nz,AMY_CHESS_ATTACK_RAY_OCCUPIED
+    djnz AMY_CHESS_ATTACK_RAY
+    or a
+    ret
+AMY_CHESS_ATTACK_RAY_OCCUPIED:
+    cp c
+    jr z,AMY_CHESS_ATTACK_RAY_HIT
+    ld a,(AMY_UVAR_ScanColumn)
+    cp (hl)
+    jr z,AMY_CHESS_ATTACK_RAY_HIT
+    or a
+    ret
+AMY_CHESS_ATTACK_RAY_HIT:
+    scf
+    ret
+
+AMY_CHESS_ATTACK_HIT:
+    ld a,1
+    ld (AMY_UVAR_AttackResult),a
+AMY_CHESS_ATTACK_DONE:
+    pop ix
+  }
+#else
+  AttackResult = 0
+  AttackRow = AttackSquare >> 3
+  AttackColumn = AttackSquare & 7
+
+  ' Pawn attacks are deliberately different from pawn pushes.
+  if AttackSide = 0 and AttackRow < 7 then
+    if AttackColumn > 0 and Board[AttackSquare + 7] = WhitePawn then AttackResult = 1
+    if AttackColumn < 7 and Board[AttackSquare + 9] = WhitePawn then AttackResult = 1
+  elseif AttackSide = 1 and AttackRow > 0 then
+    if AttackColumn > 0 and Board[AttackSquare - 9] = BlackPawn then AttackResult = 1
+    if AttackColumn < 7 and Board[AttackSquare - 7] = BlackPawn then AttackResult = 1
+  end if
+
+  if AttackRow > 1 and AttackColumn > 0 then
+    ScanPiece = Board[AttackSquare - 17]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow > 1 and AttackColumn < 7 then
+    ScanPiece = Board[AttackSquare - 15]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow > 0 and AttackColumn > 1 then
+    ScanPiece = Board[AttackSquare - 10]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow > 0 and AttackColumn < 6 then
+    ScanPiece = Board[AttackSquare - 6]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow < 7 and AttackColumn > 1 then
+    ScanPiece = Board[AttackSquare + 6]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow < 7 and AttackColumn < 6 then
+    ScanPiece = Board[AttackSquare + 10]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow < 6 and AttackColumn > 0 then
+    ScanPiece = Board[AttackSquare + 15]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+  if AttackRow < 6 and AttackColumn < 7 then
+    ScanPiece = Board[AttackSquare + 17]
+    if AttackSide = 0 and ScanPiece = WhiteKnight then AttackResult = 1
+    if AttackSide = 1 and ScanPiece = BlackKnight then AttackResult = 1
+  end if
+
+  ' Adjacent enemy king, using the position cache maintained by move generation.
+  if AttackSide = 0 then ScanSquare = WhiteKingSquare else ScanSquare = BlackKingSquare
+  if ScanSquare <> 255 then
+    ScanRow = ScanSquare >> 3
+    ScanColumn = ScanSquare & 7
+    if ScanRow + 1 >= AttackRow and ScanRow <= AttackRow + 1 and ScanColumn + 1 >= AttackColumn and ScanColumn <= AttackColumn + 1 and ScanSquare <> AttackSquare then AttackResult = 1
+  end if
+
+  ' Orthogonal rays: first occupied square decides the attack.
+  ScanRow = AttackRow
+  while ScanRow > 0
+    ScanRow -= 1
+    ScanSquare = ScanRow * 8 + AttackColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteRook or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackRook or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  ScanRow = AttackRow
+  while ScanRow < 7
+    ScanRow += 1
+    ScanSquare = ScanRow * 8 + AttackColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteRook or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackRook or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  ScanColumn = AttackColumn
+  while ScanColumn > 0
+    ScanColumn -= 1
+    ScanSquare = AttackRow * 8 + ScanColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteRook or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackRook or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  ScanColumn = AttackColumn
+  while ScanColumn < 7
+    ScanColumn += 1
+    ScanSquare = AttackRow * 8 + ScanColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteRook or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackRook or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+
+  ' Diagonal rays.
+  ScanRow = AttackRow
+  ScanColumn = AttackColumn
+  while ScanRow > 0 and ScanColumn > 0
+    ScanRow -= 1
+    ScanColumn -= 1
+    ScanSquare = ScanRow * 8 + ScanColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteBishop or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackBishop or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  ScanRow = AttackRow
+  ScanColumn = AttackColumn
+  while ScanRow > 0 and ScanColumn < 7
+    ScanRow -= 1
+    ScanColumn += 1
+    ScanSquare = ScanRow * 8 + ScanColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteBishop or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackBishop or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  ScanRow = AttackRow
+  ScanColumn = AttackColumn
+  while ScanRow < 7 and ScanColumn > 0
+    ScanRow += 1
+    ScanColumn -= 1
+    ScanSquare = ScanRow * 8 + ScanColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteBishop or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackBishop or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  ScanRow = AttackRow
+  ScanColumn = AttackColumn
+  while ScanRow < 7 and ScanColumn < 7
+    ScanRow += 1
+    ScanColumn += 1
+    ScanSquare = ScanRow * 8 + ScanColumn
+    ScanPiece = Board[ScanSquare]
+    if ScanPiece <> Empty then
+      if AttackSide = 0 and (ScanPiece = WhiteBishop or ScanPiece = WhiteQueen) then AttackResult = 1
+      if AttackSide = 1 and (ScanPiece = BlackBishop or ScanPiece = BlackQueen) then AttackResult = 1
+      exit while
+    end if
+  end while
+  return
+#endif
+  return
+
+sub ChessTryLegalMove:
+  MovingSide = Side
+  if MovingSide = 0 then KingSquare = WhiteKingSquare else KingSquare = BlackKingSquare
+  if Board[MoveFrom] = WhiteKing or Board[MoveFrom] = BlackKing then KingSquare = MoveTo
+  ChessApplyMove
+  AttackResult = 1
+  if KingSquare <> 255 then
+    AttackSquare = KingSquare
+    AttackSide = Side
+    ChessIsSquareAttacked
+  end if
+  if AttackResult = 0 and FindMateMode = 1 then ChessEvaluateAppliedMoveForMate
+#ifdef CHESS_SELF_TEST
+  if AttackResult = 0 and FindMateMode = 3 then ChessEvaluateAppliedMoveForPromotionApproach
+  if AttackResult = 0 and FindMateMode = 4 then ChessEvaluateAppliedMoveForKeySquare
+  if AttackResult = 0 and FindMateMode = 5 then ChessEvaluateAppliedCapture
+  if AttackResult = 0 and FindMateMode = 6 then ChessSelectAppliedMove
+#endif
+  if AttackResult = 0 and FindMateMode = 7 then ChessEvaluateAppliedMovePosition
+  if AttackResult = 0 and FindMateMode = 8 then ChessEvaluateAppliedMoveSafety
+  if AttackResult = 0 and FindMateMode = 9 then ChessEvaluateMinimaxReply
+  if AttackResult = 0 and FindMateMode = 10 then
+    if MoveFrom <> MinimaxSeedFrom or MoveTo <> MinimaxSeedTo or MoveFlags <> MinimaxSeedFlags or MovePromotion <> MinimaxSeedPromotion then
+      if MinimaxExcludeEnabled = 0 or MoveFrom <> MinimaxExcludeFrom or MoveTo <> MinimaxExcludeTo or MoveFlags <> MinimaxExcludeFlags or MovePromotion <> MinimaxExcludePromotion then ChessEvaluateMinimaxRoot
+    end if
+  end if
+  if AttackResult = 0 and FindMateMode = 11 then ChessMatchRequestedMove
+  if AttackResult = 0 and FindMateMode = 12 then ChessEvaluateRecapture
+  if AttackResult = 0 and FindMateMode = 13 then ChessEvaluateMinimaxContinuation
+  if AttackResult = 0 and FindMateMode = 14 then ChessEvaluateMateInTwoRoot
+  if AttackResult = 0 and FindMateMode = 15 then ChessEvaluateMateInTwoReply
+  ChessUndoMove
+  if AttackResult = 0 then
+    LegalMoveCount += 1
+    if StopAfterFirstLegal = 1 then StopAfterFirstLegal = 2
+  end if
+  return
+
+sub ChessGeneratePawnMoves:
+  GenerateRow = GenerateFrom >> 3
+  GenerateColumn = GenerateFrom & 7
+  MoveFrom = GenerateFrom
+  MovePromotion = 0
+  MoveFlags = 0
+  if Side = 0 then
+    if GenerateRow > 0 then
+      MoveTo = GenerateFrom - 8
+    end if
+    if GenerateRow > 0 and Board[MoveTo] = Empty then
+      if GenerateRow = 1 then ChessTryWhitePromotions else ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then return
+      if GenerateRow = 6 and Board[GenerateFrom - 16] = Empty then
+        MoveTo = GenerateFrom - 16
+        MoveFlags = FlagDoublePawn
+        ChessTryLegalMove
+        MoveFlags = 0
+  if StopAfterFirstLegal = 2 then return
+      end if
+    end if
+    if GenerateColumn > 0 then
+      MoveTo = GenerateFrom - 9
+      if Board[MoveTo] >= BlackPawn then
+        if GenerateRow = 1 then ChessTryWhitePromotions else ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then return
+      end if
+      if MoveTo = EnPassant then
+        MoveFlags = FlagEnPassant
+        ChessTryLegalMove
+        MoveFlags = 0
+  if StopAfterFirstLegal = 2 then return
+      end if
+    end if
+    if GenerateColumn < 7 then
+      MoveTo = GenerateFrom - 7
+      if Board[MoveTo] >= BlackPawn then
+        if GenerateRow = 1 then ChessTryWhitePromotions else ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then return
+      end if
+      if MoveTo = EnPassant then
+        MoveFlags = FlagEnPassant
+        ChessTryLegalMove
+        MoveFlags = 0
+  if StopAfterFirstLegal = 2 then return
+      end if
+    end if
+  else
+    if GenerateRow < 7 then
+      MoveTo = GenerateFrom + 8
+    end if
+    if GenerateRow < 7 and Board[MoveTo] = Empty then
+      if GenerateRow = 6 then ChessTryBlackPromotions else ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then return
+      if GenerateRow = 1 and Board[GenerateFrom + 16] = Empty then
+        MoveTo = GenerateFrom + 16
+        MoveFlags = FlagDoublePawn
+        ChessTryLegalMove
+        MoveFlags = 0
+  if StopAfterFirstLegal = 2 then return
+      end if
+    end if
+    if GenerateColumn > 0 then
+      MoveTo = GenerateFrom + 7
+      if Board[MoveTo] > Empty and Board[MoveTo] < BlackPawn then
+        if GenerateRow = 6 then ChessTryBlackPromotions else ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then return
+      end if
+      if MoveTo = EnPassant then
+        MoveFlags = FlagEnPassant
+        ChessTryLegalMove
+        MoveFlags = 0
+  if StopAfterFirstLegal = 2 then return
+      end if
+    end if
+    if GenerateColumn < 7 then
+      MoveTo = GenerateFrom + 9
+      if Board[MoveTo] > Empty and Board[MoveTo] < BlackPawn then
+        if GenerateRow = 6 then ChessTryBlackPromotions else ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then return
+      end if
+      if MoveTo = EnPassant then
+        MoveFlags = FlagEnPassant
+        ChessTryLegalMove
+        MoveFlags = 0
+  if StopAfterFirstLegal = 2 then return
+      end if
+    end if
+  end if
+  return
+
+sub ChessTryWhitePromotions:
+  MovePromotion = WhiteQueen
+  ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then
+    MovePromotion = 0
+    return
+  end if
+  MovePromotion = WhiteRook
+  ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then
+    MovePromotion = 0
+    return
+  end if
+  MovePromotion = WhiteBishop
+  ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then
+    MovePromotion = 0
+    return
+  end if
+  MovePromotion = WhiteKnight
+  ChessTryLegalMove
+  MovePromotion = 0
+  return
+
+sub ChessTryBlackPromotions:
+  MovePromotion = BlackQueen
+  ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then
+    MovePromotion = 0
+    return
+  end if
+  MovePromotion = BlackRook
+  ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then
+    MovePromotion = 0
+    return
+  end if
+  MovePromotion = BlackBishop
+  ChessTryLegalMove
+  if StopAfterFirstLegal = 2 then
+    MovePromotion = 0
+    return
+  end if
+  MovePromotion = BlackKnight
+  ChessTryLegalMove
+  MovePromotion = 0
+  return
+
+sub ChessTryKnightTarget:
+  ScanPiece = Board[MoveTo]
+  if Side = 0 and (ScanPiece = Empty or ScanPiece >= BlackPawn) then ChessTryLegalMove
+  if Side = 1 and ScanPiece < BlackPawn then ChessTryLegalMove
+  return
+
+sub ChessGenerateKnightMoves:
+  GenerateRow = GenerateFrom >> 3
+  GenerateColumn = GenerateFrom & 7
+  MoveFrom = GenerateFrom
+  MovePromotion = 0
+  MoveFlags = 0
+  if GenerateRow > 1 and GenerateColumn > 0 then
+    MoveTo = GenerateFrom - 17
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow > 1 and GenerateColumn < 7 then
+    MoveTo = GenerateFrom - 15
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow > 0 and GenerateColumn > 1 then
+    MoveTo = GenerateFrom - 10
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow > 0 and GenerateColumn < 6 then
+    MoveTo = GenerateFrom - 6
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow < 7 and GenerateColumn > 1 then
+    MoveTo = GenerateFrom + 6
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow < 7 and GenerateColumn < 6 then
+    MoveTo = GenerateFrom + 10
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow < 6 and GenerateColumn > 0 then
+    MoveTo = GenerateFrom + 15
+    ChessTryKnightTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateRow < 6 and GenerateColumn < 7 then
+    MoveTo = GenerateFrom + 17
+    ChessTryKnightTarget
+  end if
+  return
+
+#ifdef CHESS_SELF_TEST
+sub ChessCountPawnKnightLegalMoves:
+  LegalMoveCount = 0
+  ChessFindKings
+  for GenerateFrom = 0 to 63
+    ScanPiece = Board[GenerateFrom]
+    if Side = 0 and ScanPiece = WhitePawn then ChessGeneratePawnMoves
+    if Side = 1 and ScanPiece = BlackPawn then ChessGeneratePawnMoves
+    if Side = 0 and ScanPiece = WhiteKnight then ChessGenerateKnightMoves
+    if Side = 1 and ScanPiece = BlackKnight then ChessGenerateKnightMoves
+  next
+  return
+#endif
+
+sub ChessTrySlidingTarget:
+  RayDone = 0
+  ScanPiece = Board[MoveTo]
+  if ScanPiece = Empty then
+    ChessTrySlidingLegalMove(ScanRow, ScanColumn)
+  else
+    RayDone = 1
+    if Side = 0 and ScanPiece >= BlackPawn and ScanPiece <> BlackKing then
+      ChessTrySlidingLegalMove(ScanRow, ScanColumn)
+    end if
+    if Side = 1 and ScanPiece > Empty and ScanPiece < BlackPawn and ScanPiece <> WhiteKing then
+      ChessTrySlidingLegalMove(ScanRow, ScanColumn)
+    end if
+  end if
+  if StopAfterFirstLegal = 2 then RayDone = 1
+  return
+
+sub ChessTrySlidingLegalMove(u8 SavedRow, u8 SavedColumn):
+  ChessTryLegalMove
+  ScanRow = SavedRow
+  ScanColumn = SavedColumn
+  return
+
+sub ChessGenerateOrthogonalMoves:
+  MoveFrom = GenerateFrom
+  MovePromotion = 0
+  MoveFlags = 0
+  GenerateRow = GenerateFrom >> 3
+  GenerateColumn = GenerateFrom & 7
+
+  ScanRow = GenerateRow
+  RayDone = 0
+  while ScanRow > 0 and RayDone = 0
+    ScanRow -= 1
+    MoveTo = ScanRow * 8 + GenerateColumn
+    ChessTrySlidingTarget
+  end while
+  if StopAfterFirstLegal = 2 then return
+  ScanRow = GenerateRow
+  RayDone = 0
+  while ScanRow < 7 and RayDone = 0
+    ScanRow += 1
+    MoveTo = ScanRow * 8 + GenerateColumn
+    ChessTrySlidingTarget
+  end while
+  if StopAfterFirstLegal = 2 then return
+  ScanColumn = GenerateColumn
+  RayDone = 0
+  while ScanColumn > 0 and RayDone = 0
+    ScanColumn -= 1
+    MoveTo = GenerateRow * 8 + ScanColumn
+    ChessTrySlidingTarget
+  end while
+  if StopAfterFirstLegal = 2 then return
+  ScanColumn = GenerateColumn
+  RayDone = 0
+  while ScanColumn < 7 and RayDone = 0
+    ScanColumn += 1
+    MoveTo = GenerateRow * 8 + ScanColumn
+    ChessTrySlidingTarget
+  end while
+  return
+
+sub ChessGenerateDiagonalMoves:
+  MoveFrom = GenerateFrom
+  MovePromotion = 0
+  MoveFlags = 0
+  GenerateRow = GenerateFrom >> 3
+  GenerateColumn = GenerateFrom & 7
+
+  ScanRow = GenerateRow
+  ScanColumn = GenerateColumn
+  RayDone = 0
+  while ScanRow > 0 and ScanColumn > 0 and RayDone = 0
+    ScanRow -= 1
+    ScanColumn -= 1
+    MoveTo = ScanRow * 8 + ScanColumn
+    ChessTrySlidingTarget
+  end while
+  if StopAfterFirstLegal = 2 then return
+  ScanRow = GenerateRow
+  ScanColumn = GenerateColumn
+  RayDone = 0
+  while ScanRow > 0 and ScanColumn < 7 and RayDone = 0
+    ScanRow -= 1
+    ScanColumn += 1
+    MoveTo = ScanRow * 8 + ScanColumn
+    ChessTrySlidingTarget
+  end while
+  if StopAfterFirstLegal = 2 then return
+  ScanRow = GenerateRow
+  ScanColumn = GenerateColumn
+  RayDone = 0
+  while ScanRow < 7 and ScanColumn > 0 and RayDone = 0
+    ScanRow += 1
+    ScanColumn -= 1
+    MoveTo = ScanRow * 8 + ScanColumn
+    ChessTrySlidingTarget
+  end while
+  if StopAfterFirstLegal = 2 then return
+  ScanRow = GenerateRow
+  ScanColumn = GenerateColumn
+  RayDone = 0
+  while ScanRow < 7 and ScanColumn < 7 and RayDone = 0
+    ScanRow += 1
+    ScanColumn += 1
+    MoveTo = ScanRow * 8 + ScanColumn
+    ChessTrySlidingTarget
+  end while
+  return
+
+#ifdef CHESS_SELF_TEST
+sub ChessCountSlidingLegalMoves:
+  LegalMoveCount = 0
+  ChessFindKings
+  for GenerateFrom = 0 to 63
+    if Side = 0 and (Board[GenerateFrom] = WhiteRook or Board[GenerateFrom] = WhiteQueen) then ChessGenerateOrthogonalMoves
+    if Side = 1 and (Board[GenerateFrom] = BlackRook or Board[GenerateFrom] = BlackQueen) then ChessGenerateOrthogonalMoves
+    if Side = 0 and (Board[GenerateFrom] = WhiteBishop or Board[GenerateFrom] = WhiteQueen) then ChessGenerateDiagonalMoves
+    if Side = 1 and (Board[GenerateFrom] = BlackBishop or Board[GenerateFrom] = BlackQueen) then ChessGenerateDiagonalMoves
+  next
+  return
+#endif
+
+sub ChessTryKingTarget:
+  ScanPiece = Board[MoveTo]
+  if Side = 0 and (ScanPiece = Empty or (ScanPiece >= BlackPawn and ScanPiece <> BlackKing)) then ChessTryLegalMove
+  if Side = 1 and ScanPiece <> BlackKing and ScanPiece < BlackPawn and ScanPiece <> WhiteKing then ChessTryLegalMove
+  return
+
+sub ChessGenerateKingMoves:
+  GenerateRow = GenerateFrom >> 3
+  GenerateColumn = GenerateFrom & 7
+  MoveFrom = GenerateFrom
+  MovePromotion = 0
+  MoveFlags = 0
+  if GenerateRow > 0 then
+    MoveTo = GenerateFrom - 8
+    ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+    if GenerateColumn > 0 then
+      MoveTo = GenerateFrom - 9
+      ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+    end if
+    if GenerateColumn < 7 then
+      MoveTo = GenerateFrom - 7
+      ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+    end if
+  end if
+  if GenerateRow < 7 then
+    MoveTo = GenerateFrom + 8
+    ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+    if GenerateColumn > 0 then
+      MoveTo = GenerateFrom + 7
+      ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+    end if
+    if GenerateColumn < 7 then
+      MoveTo = GenerateFrom + 9
+      ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+    end if
+  end if
+  if GenerateColumn > 0 then
+    MoveTo = GenerateFrom - 1
+    ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+  if GenerateColumn < 7 then
+    MoveTo = GenerateFrom + 1
+    ChessTryKingTarget
+  if StopAfterFirstLegal = 2 then return
+  end if
+
+  ' Castling is the only move whose intermediate square must also be safe.
+  if Side = 0 and GenerateFrom = 60 then
+    AttackSide = 1
+    AttackSquare = 60
+    ChessIsSquareAttacked
+    if AttackResult = 0 and Castling & 1 and Board[61] = Empty and Board[62] = Empty and Board[63] = WhiteRook then
+      AttackSquare = 61
+      ChessIsSquareAttacked
+      if AttackResult = 0 then
+        MoveTo = 62
+        MoveFlags = FlagCastleKing
+        ChessTryLegalMove
+        MoveFlags = 0
+      end if
+    end if
+    AttackSquare = 60
+    ChessIsSquareAttacked
+    if AttackResult = 0 and Castling & 2 and Board[59] = Empty and Board[58] = Empty and Board[57] = Empty and Board[56] = WhiteRook then
+      AttackSquare = 59
+      ChessIsSquareAttacked
+      if AttackResult = 0 then
+        MoveTo = 58
+        MoveFlags = FlagCastleQueen
+        ChessTryLegalMove
+        MoveFlags = 0
+      end if
+    end if
+  elseif Side = 1 and GenerateFrom = 4 then
+    AttackSide = 0
+    AttackSquare = 4
+    ChessIsSquareAttacked
+    if AttackResult = 0 and Castling & 4 and Board[5] = Empty and Board[6] = Empty and Board[7] = BlackRook then
+      AttackSquare = 5
+      ChessIsSquareAttacked
+      if AttackResult = 0 then
+        MoveTo = 6
+        MoveFlags = FlagCastleKing
+        ChessTryLegalMove
+        MoveFlags = 0
+      end if
+    end if
+    AttackSquare = 4
+    ChessIsSquareAttacked
+    if AttackResult = 0 and Castling & 8 and Board[3] = Empty and Board[2] = Empty and Board[1] = Empty and Board[0] = BlackRook then
+      AttackSquare = 3
+      ChessIsSquareAttacked
+      if AttackResult = 0 then
+        MoveTo = 2
+        MoveFlags = FlagCastleQueen
+        ChessTryLegalMove
+        MoveFlags = 0
+      end if
+    end if
+  end if
+  return
+
+sub ChessCountLegalMoves:
+#ifdef CHESS_COMPACT_MOVE_DISPATCH
+  LegalMoveCount = 0
+  ChessFindKings
+  asm {
+    ld a,(AMY_UVAR_MinimaxQuietThreat)
+    or a
+    jr z,AMY_CHESS_MOVE_DISPATCH_FORWARD_START
+    ld a,63
+    jr AMY_CHESS_MOVE_DISPATCH_START_READY
+AMY_CHESS_MOVE_DISPATCH_FORWARD_START:
+    xor a
+AMY_CHESS_MOVE_DISPATCH_START_READY:
+    ld (AMY_UVAR_GenerateFrom),a
+AMY_CHESS_MOVE_DISPATCH_LOOP:
+    ld a,(AMY_UVAR_GenerateFrom)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Board
+    add hl,de
+    ld b,(hl)
+    ld a,(AMY_UVAR_Side)
+    or a
+    jr nz,AMY_CHESS_MOVE_DISPATCH_BLACK
+    ld a,b
+    or a
+    jr z,AMY_CHESS_MOVE_DISPATCH_AFTER
+    cp AMY_UCONST_BlackPawn
+    jr nc,AMY_CHESS_MOVE_DISPATCH_AFTER
+    jr AMY_CHESS_MOVE_DISPATCH_KIND
+AMY_CHESS_MOVE_DISPATCH_BLACK:
+    ld a,b
+    cp AMY_UCONST_BlackPawn
+    jr c,AMY_CHESS_MOVE_DISPATCH_AFTER
+    sub 8
+AMY_CHESS_MOVE_DISPATCH_KIND:
+    cp AMY_UCONST_WhitePawn
+    jr z,AMY_CHESS_MOVE_DISPATCH_PAWN
+    cp AMY_UCONST_WhiteKnight
+    jr z,AMY_CHESS_MOVE_DISPATCH_KNIGHT
+    cp AMY_UCONST_WhiteBishop
+    jr z,AMY_CHESS_MOVE_DISPATCH_BISHOP
+    cp AMY_UCONST_WhiteRook
+    jr z,AMY_CHESS_MOVE_DISPATCH_ROOK
+    cp AMY_UCONST_WhiteQueen
+    jr z,AMY_CHESS_MOVE_DISPATCH_QUEEN
+    cp AMY_UCONST_WhiteKing
+    jr z,AMY_CHESS_MOVE_DISPATCH_KING
+    jr AMY_CHESS_MOVE_DISPATCH_AFTER
+AMY_CHESS_MOVE_DISPATCH_PAWN:
+    call AMY_UPROC_ChessGeneratePawnMoves
+    jr AMY_CHESS_MOVE_DISPATCH_AFTER
+AMY_CHESS_MOVE_DISPATCH_KNIGHT:
+    call AMY_UPROC_ChessGenerateKnightMoves
+    jr AMY_CHESS_MOVE_DISPATCH_AFTER
+AMY_CHESS_MOVE_DISPATCH_BISHOP:
+    call AMY_UPROC_ChessGenerateDiagonalMoves
+    jr AMY_CHESS_MOVE_DISPATCH_AFTER
+AMY_CHESS_MOVE_DISPATCH_ROOK:
+    call AMY_UPROC_ChessGenerateOrthogonalMoves
+    jr AMY_CHESS_MOVE_DISPATCH_AFTER
+AMY_CHESS_MOVE_DISPATCH_QUEEN:
+    call AMY_UPROC_ChessGenerateOrthogonalMoves
+    call AMY_UPROC_ChessGenerateDiagonalMoves
+    jr AMY_CHESS_MOVE_DISPATCH_AFTER
+AMY_CHESS_MOVE_DISPATCH_KING:
+    call AMY_UPROC_ChessGenerateKingMoves
+AMY_CHESS_MOVE_DISPATCH_AFTER:
+    ld a,(AMY_UVAR_StopAfterFirstLegal)
+    cp 2
+    jr z,AMY_CHESS_MOVE_DISPATCH_DONE
+    ld a,(AMY_UVAR_StopAfterFirstMate)
+    cp 1
+    jr nz,AMY_CHESS_MOVE_DISPATCH_REQUESTED
+    ld a,(AMY_UVAR_MateMoveCount)
+    or a
+    jr nz,AMY_CHESS_MOVE_DISPATCH_DONE
+AMY_CHESS_MOVE_DISPATCH_REQUESTED:
+    ld a,(AMY_UVAR_FindMateMode)
+    cp 11
+    jr nz,AMY_CHESS_MOVE_DISPATCH_NEXT
+    ld a,(AMY_UVAR_RequestedMoveLegal)
+    cp 1
+    jr z,AMY_CHESS_MOVE_DISPATCH_DONE
+AMY_CHESS_MOVE_DISPATCH_NEXT:
+    ld a,(AMY_UVAR_GenerateFrom)
+    ld c,a
+    ld a,(AMY_UVAR_MinimaxQuietThreat)
+    or a
+    ld a,c
+    jr z,AMY_CHESS_MOVE_DISPATCH_FORWARD_NEXT
+    dec a
+    ld (AMY_UVAR_GenerateFrom),a
+    cp 255
+    jp nz,AMY_CHESS_MOVE_DISPATCH_LOOP
+    jr AMY_CHESS_MOVE_DISPATCH_DONE
+AMY_CHESS_MOVE_DISPATCH_FORWARD_NEXT:
+    inc a
+    ld (AMY_UVAR_GenerateFrom),a
+    cp 64
+    jp c,AMY_CHESS_MOVE_DISPATCH_LOOP
+AMY_CHESS_MOVE_DISPATCH_DONE:
+  }
+#else
+  LegalMoveCount = 0
+  ChessFindKings
+  for GenerateFrom = 0 to 63
+    if Side = 0 and Board[GenerateFrom] = WhitePawn then ChessGeneratePawnMoves
+    if Side = 1 and Board[GenerateFrom] = BlackPawn then ChessGeneratePawnMoves
+    if Side = 0 and Board[GenerateFrom] = WhiteKnight then ChessGenerateKnightMoves
+    if Side = 1 and Board[GenerateFrom] = BlackKnight then ChessGenerateKnightMoves
+    if Side = 0 and (Board[GenerateFrom] = WhiteRook or Board[GenerateFrom] = WhiteQueen) then ChessGenerateOrthogonalMoves
+    if Side = 1 and (Board[GenerateFrom] = BlackRook or Board[GenerateFrom] = BlackQueen) then ChessGenerateOrthogonalMoves
+    if Side = 0 and (Board[GenerateFrom] = WhiteBishop or Board[GenerateFrom] = WhiteQueen) then ChessGenerateDiagonalMoves
+    if Side = 1 and (Board[GenerateFrom] = BlackBishop or Board[GenerateFrom] = BlackQueen) then ChessGenerateDiagonalMoves
+    if Side = 0 and Board[GenerateFrom] = WhiteKing then ChessGenerateKingMoves
+    if Side = 1 and Board[GenerateFrom] = BlackKing then ChessGenerateKingMoves
+    if StopAfterFirstLegal = 2 then exit for
+    if StopAfterFirstMate = 1 and MateMoveCount > 0 then exit for
+    if FindMateMode = 11 and RequestedMoveLegal = 1 then exit for
+  next
+#endif
+  return
+
+sub ChessMatchRequestedMove:
+  if MoveFrom = RequestedMoveFrom and MoveTo = RequestedMoveTo and MovePromotion = RequestedMovePromotion then
+    RequestedMoveLegal = 1
+    RequestedMoveFlags = MoveFlags
+  end if
+  return
+
+sub ChessValidateRequestedMove:
+  RequestedMoveLegal = 0
+  RequestedMoveFlags = 0
+  FindMateMode = 11
+  ChessCountLegalMoves
+  FindMateMode = 0
+  return
+
+sub ChessEvaluateAppliedMoveForMate:
+  if MateTwoSearchActive = 1 then
+    if MateTwoNodes >= MateTwoNodeLimit then
+      MateTwoBudgetReached = 1
+      StopAfterFirstLegal = 1
+      return
+    end if
+    MateTwoNodes += 1
+  end if
+  SavedLegalMoveCount = LegalMoveCount
+  SavedMoveFrom = MoveFrom
+  SavedMoveTo = MoveTo
+  SavedMovePromotion = MovePromotion
+  SavedMoveFlags = MoveFlags
+  SavedUndoPiece = UndoPiece
+  SavedUndoCaptured = UndoCaptured
+  SavedUndoCapturedSquare = UndoCapturedSquare
+  SavedUndoCastling = UndoCastling
+  SavedUndoEnPassant = UndoEnPassant
+  SavedUndoHalfmove = UndoHalfmove
+  SavedUndoFullmove = UndoFullmove
+  SavedGenerateFrom = GenerateFrom
+  SavedGenerateRow = GenerateRow
+  SavedGenerateColumn = GenerateColumn
+  SavedScanRow = ScanRow
+  SavedScanColumn = ScanColumn
+  SavedRayDone = RayDone
+  SavedStopAfterFirstLegal = StopAfterFirstLegal
+
+  ChessFindKings
+  if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+  AttackSide = RootSide
+  ChessIsSquareAttacked
+  OpponentInCheck = AttackResult
+
+  if OpponentInCheck = 1 then
+    FindMateMode = 2
+    StopAfterFirstLegal = 1
+    ChessCountLegalMoves
+    if LegalMoveCount = 0 then
+      MateMoveCount += 1
+      BestMoveFrom = SavedMoveFrom
+      BestMoveTo = SavedMoveTo
+      BestMoveFlags = SavedMoveFlags
+      BestMovePromotion = SavedMovePromotion
+    end if
+  end if
+  FindMateMode = 1
+  StopAfterFirstLegal = SavedStopAfterFirstLegal
+
+  LegalMoveCount = SavedLegalMoveCount
+  MoveFrom = SavedMoveFrom
+  MoveTo = SavedMoveTo
+  MovePromotion = SavedMovePromotion
+  MoveFlags = SavedMoveFlags
+  UndoPiece = SavedUndoPiece
+  UndoCaptured = SavedUndoCaptured
+  UndoCapturedSquare = SavedUndoCapturedSquare
+  UndoCastling = SavedUndoCastling
+  UndoEnPassant = SavedUndoEnPassant
+  UndoHalfmove = SavedUndoHalfmove
+  UndoFullmove = SavedUndoFullmove
+  GenerateFrom = SavedGenerateFrom
+  GenerateRow = SavedGenerateRow
+  GenerateColumn = SavedGenerateColumn
+  ScanRow = SavedScanRow
+  ScanColumn = SavedScanColumn
+  RayDone = SavedRayDone
+  MovingSide = RootSide
+  AttackResult = 0
+  return
+
+sub ChessFindMateInOne:
+  RootSide = Side
+  MateMoveCount = 0
+  BestMoveFrom = 255
+  BestMoveTo = 255
+  BestMoveFlags = 0
+  BestMovePromotion = 0
+  FindMateMode = 1
+  ChessCountLegalMoves
+  FindMateMode = 0
+  return
+
+sub ChessEvaluateMateInTwoReply:
+  MateTwoReplyCount += 1
+  ChessSaveSearchFrame(SearchStack[MateFrameBase + 1])
+  StopAfterFirstLegal = 0
+  StopAfterFirstMate = 1
+  MateTwoSearchActive = 1
+  ChessFindMateInOne
+  MateTwoSearchActive = 0
+  StopAfterFirstMate = 0
+  ChessRestoreSearchFrame(SearchStack[MateFrameBase + 1])
+  FindMateMode = 15
+  if MateMoveCount = 0 or MateTwoBudgetReached = 1 then
+    MateTwoAllRepliesWin = 0
+    StopAfterFirstLegal = 1
+  else
+    StopAfterFirstLegal = 0
+  end if
+  return
+
+sub ChessEvaluateMateInTwoRoot:
+  ChessFindKings
+  if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+  AttackSide = RootSide
+  ChessIsSquareAttacked
+  if AttackResult = 0 then return
+
+  MateTwoCandidateFrom = MoveFrom
+  MateTwoCandidateTo = MoveTo
+  MateTwoCandidateFlags = MoveFlags
+  MateTwoCandidatePromotion = MovePromotion
+  ChessSaveSearchFrame(SearchStack[MateFrameBase])
+  MateTwoAllRepliesWin = 1
+  MateTwoReplyCount = 0
+  StopAfterFirstLegal = 0
+  FindMateMode = 15
+  ChessCountLegalMoves
+  ChessRestoreSearchFrame(SearchStack[MateFrameBase])
+  FindMateMode = 14
+  if MateTwoReplyCount > 0 and MateTwoAllRepliesWin = 1 and MateTwoBudgetReached = 0 then
+    MateMoveCount = 1
+    BestMoveFrom = MateTwoCandidateFrom
+    BestMoveTo = MateTwoCandidateTo
+    BestMoveFlags = MateTwoCandidateFlags
+    BestMovePromotion = MateTwoCandidatePromotion
+    StopAfterFirstLegal = 1
+  else
+    StopAfterFirstLegal = 0
+  end if
+  AttackResult = 0
+  return
+
+sub ChessFindMateInTwo:
+  RootSide = Side
+  MateMoveCount = 0
+  MateTwoNodes = 0
+  MateTwoBudgetReached = 0
+  MateTwoSearchActive = 0
+  BestMoveFrom = 255
+  BestMoveTo = 255
+  BestMoveFlags = 0
+  BestMovePromotion = 0
+  StopAfterFirstLegal = 0
+  FindMateMode = 14
+  ChessCountLegalMoves
+  FindMateMode = 0
+  StopAfterFirstLegal = 0
+  return
+
+#ifdef CHESS_SELF_TEST
+sub ChessEvaluateAppliedMoveForPromotionApproach:
+  if MovingSide = 0 and Board[MoveTo] = WhitePawn and MoveTo >= 8 and MoveTo <= 15 then
+    PromotionApproachCount += 1
+    BestMoveFrom = MoveFrom
+    BestMoveTo = MoveTo
+  end if
+  if MovingSide = 1 and Board[MoveTo] = BlackPawn and MoveTo >= 48 and MoveTo <= 55 then
+    PromotionApproachCount += 1
+    BestMoveFrom = MoveFrom
+    BestMoveTo = MoveTo
+  end if
+  return
+
+sub ChessFindPromotionApproachMoves:
+  PromotionApproachCount = 0
+  BestMoveFrom = 255
+  BestMoveTo = 255
+  FindMateMode = 3
+  ChessCountLegalMoves
+  FindMateMode = 0
+  return
+
+sub ChessEvaluateAppliedMoveForKeySquare:
+  if MovingSide = 0 and Board[MoveTo] = WhiteKing then
+    KeyCandidateRow = MoveTo >> 3
+    KeyCandidateColumn = MoveTo & 7
+    if KeyCandidateRow > KeyTargetRow then KeyRowDistance = KeyCandidateRow - KeyTargetRow else KeyRowDistance = KeyTargetRow - KeyCandidateRow
+    KeyColumnDistance = 0
+    if KeyCandidateColumn + 1 < KeyPawnColumn then KeyColumnDistance = KeyPawnColumn - 1 - KeyCandidateColumn
+    if KeyCandidateColumn > KeyPawnColumn + 1 then KeyColumnDistance = KeyCandidateColumn - KeyPawnColumn - 1
+    KeyCandidateScore = KeyRowDistance
+    if KeyColumnDistance > KeyCandidateScore then KeyCandidateScore = KeyColumnDistance
+    if KeyCandidateScore < KeyBestScore then
+      KeyBestScore = KeyCandidateScore
+      KeyBestMoveFrom = MoveFrom
+      KeyBestMoveTo = MoveTo
+    end if
+  end if
+  return
+
+sub ChessFindWhiteKeySquareMove:
+  KeyPawnSquare = 255
+  for I = 0 to 63
+    if Board[I] = WhitePawn then KeyPawnSquare = I
+  next
+  KeyBestScore = 255
+  KeyBestMoveFrom = 255
+  KeyBestMoveTo = 255
+  if KeyPawnSquare < 64 then
+    KeyPawnRow = KeyPawnSquare >> 3
+    KeyPawnColumn = KeyPawnSquare & 7
+    if KeyPawnRow >= 2 then KeyTargetRow = KeyPawnRow - 2 else KeyTargetRow = 0
+    FindMateMode = 4
+    ChessCountLegalMoves
+    FindMateMode = 0
+  end if
+  return
+#endif
+
+#ifdef CHESS_SELF_TEST
+sub ChessEvaluateAppliedCapture:
+  if UndoCaptured <> Empty or MoveFlags & FlagEnPassant then
+    CaptureMoveCount += 1
+    CaptureBestMoveFrom = MoveFrom
+    CaptureBestMoveTo = MoveTo
+    CaptureBestMoveFlags = MoveFlags
+    CaptureBestMovePromotion = MovePromotion
+  end if
+  return
+
+sub ChessFindLegalCaptures:
+  CaptureMoveCount = 0
+  CaptureBestMoveFrom = 255
+  CaptureBestMoveTo = 255
+  CaptureBestMoveFlags = 0
+  CaptureBestMovePromotion = 0
+  FindMateMode = 5
+  ChessCountLegalMoves
+  FindMateMode = 0
+  return
+#endif
+
+#ifdef CHESS_SELF_TEST
+sub ChessSelectAppliedMove:
+  if SelectedMoveFrom = 255 then
+    SelectedMoveFrom = MoveFrom
+    SelectedMoveTo = MoveTo
+    SelectedMoveFlags = MoveFlags
+    SelectedMovePromotion = MovePromotion
+  end if
+  return
+
+sub ChessFindFirstLegalMove:
+  SelectedMoveFrom = 255
+  SelectedMoveTo = 255
+  SelectedMoveFlags = 0
+  SelectedMovePromotion = 0
+  StopAfterFirstLegal = 1
+  FindMateMode = 6
+  ChessCountLegalMoves
+  FindMateMode = 0
+  StopAfterFirstLegal = 0
+  return
+#endif
+
+sub ChessEvaluatePosition:
+  ChessEvaluateMaterial
+  PositionScore = MaterialBalance
+  for I = 0 to 63
+    if Board[I] <> Empty then
+      PieceSquare = I
+      PieceSquareKind = Board[I]
+      if PieceSquareKind >= BlackPawn then
+        PieceSquareKind -= 8
+        PieceSquare = I ^ 56
+      end if
+#ifdef CHESS_COMPACT_PST
+      asm {
+        ld a,(AMY_UVAR_PieceSquareKind)
+        cp AMY_UCONST_WhitePawn
+        jr z,AMY_CHESS_PST_PAWN
+        ld c,a
+        ld a,(AMY_UVAR_EndgamePieceCount)
+        cp 17
+        jr c,AMY_CHESS_PST_END_OFFSET
+        ld a,c
+        cp AMY_UCONST_WhiteRook
+        jr z,AMY_CHESS_PST_MIDDLE_ROOK
+        ld hl,ChessCenterOffsets
+        jr AMY_CHESS_PST_OFFSET
+AMY_CHESS_PST_END_OFFSET:
+        ld a,c
+        add a,7
+        ld hl,ChessCenterOffsets
+AMY_CHESS_PST_OFFSET:
+        ld e,a
+        ld d,0
+        add hl,de
+        ld b,(hl)
+        ld a,(AMY_UVAR_PieceSquare)
+        ld c,a
+        and 7
+        cp 4
+        jr c,AMY_CHESS_PST_COLUMN_READY
+        xor 7
+AMY_CHESS_PST_COLUMN_READY:
+        ld e,a
+        ld a,c
+        rrca
+        rrca
+        rrca
+        and 7
+        cp 4
+        jr c,AMY_CHESS_PST_ROW_READY
+        xor 7
+AMY_CHESS_PST_ROW_READY:
+        add a,e
+        add a,b
+        ld e,a
+        ld d,0
+        ld hl,ChessCenterBonus
+        add hl,de
+        ld c,(hl)
+        ld a,(AMY_UVAR_EndgamePieceCount)
+        cp 17
+        jr c,AMY_CHESS_PST_CENTER_STORE
+        ld a,(AMY_UVAR_PieceSquareKind)
+        cp AMY_UCONST_WhiteKing
+        jr nz,AMY_CHESS_PST_CENTER_STORE
+        ld a,(AMY_UVAR_PieceSquare)
+        cp 58
+        jr z,AMY_CHESS_PST_CASTLED_KING
+        cp 62
+        jr nz,AMY_CHESS_PST_CENTER_STORE
+AMY_CHESS_PST_CASTLED_KING:
+        ld a,c
+        add a,40
+        jr AMY_CHESS_PST_STORE
+AMY_CHESS_PST_CENTER_STORE:
+        ld a,c
+        jr AMY_CHESS_PST_STORE
+AMY_CHESS_PST_MIDDLE_ROOK:
+        ld a,(AMY_UVAR_PieceSquare)
+        and $38
+        ld c,0
+        cp 8
+        jr nz,AMY_CHESS_PST_CENTER_STORE
+        ld c,14
+        jr AMY_CHESS_PST_CENTER_STORE
+AMY_CHESS_PST_PAWN:
+        ld a,(AMY_UVAR_PieceSquare)
+        ld e,a
+        ld a,(AMY_UVAR_EndgamePieceCount)
+        cp 17
+#ifdef CHESS_FUSED_ENDGAME_PAWN_PST
+        jr nc,AMY_CHESS_PST_PAWN_MIDDLE
+        ld a,e
+        add a,64
+        ld e,a
+        ld d,0
+        ld hl,ChessPawnBonus
+        add hl,de
+        ld c,(hl)
+        ld a,(AMY_UVAR_PieceSquare)
+        and $38
+        ld b,a
+        ld a,48
+        sub b
+        add a,c
+        jr AMY_CHESS_PST_STORE
+AMY_CHESS_PST_PAWN_MIDDLE:
+        ld d,0
+        ld hl,ChessPawnBonus
+        add hl,de
+        ld a,(hl)
+#else
+        jr nc,AMY_CHESS_PST_PAWN_OFFSET_READY
+        ld a,e
+        add a,64
+        ld e,a
+AMY_CHESS_PST_PAWN_OFFSET_READY:
+        ld d,0
+        ld hl,ChessPawnBonus
+        add hl,de
+        ld a,(hl)
+#endif
+AMY_CHESS_PST_STORE:
+        ld (AMY_UVAR_PieceSquareValue),a
+      }
+#else
+      PieceSquareIndex = PieceSquareKind - 1
+      PieceSquareIndex <<= 6
+      PieceSquareIndex += PieceSquare
+      if EndgamePieceCount <= 11 then PieceSquareIndex += 384
+      asm {
+        ld hl,ChessPieceSquareBonus
+        ld bc,(AMY_UVAR_PieceSquareIndex)
+        add hl,bc
+        ld a,(hl)
+        ld (AMY_UVAR_PieceSquareValue),a
+      }
+#endif
+      if Board[I] >= BlackPawn then
+        PositionScore -= PieceSquareValue
+      else
+        PositionScore += PieceSquareValue
+      end if
+    end if
+  next
+  asm {
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld bc,$4000
+AMY_CHESS_ROOK_FILE_NEXT:
+    ld a,(ix+0)
+    cp AMY_UCONST_WhiteRook
+    jr z,AMY_CHESS_ROOK_FILE_WHITE
+    cp AMY_UCONST_BlackRook
+    jr z,AMY_CHESS_ROOK_FILE_BLACK
+AMY_CHESS_ROOK_FILE_ADVANCE:
+    inc ix
+    inc c
+    djnz AMY_CHESS_ROOK_FILE_NEXT
+    pop ix
+    jr AMY_CHESS_ROOK_FILE_DONE
+AMY_CHESS_ROOK_FILE_WHITE:
+    ld d,AMY_UCONST_WhitePawn
+    ld e,AMY_UCONST_BlackPawn
+    jr AMY_CHESS_ROOK_FILE_SCAN_START
+AMY_CHESS_ROOK_FILE_BLACK:
+    ld d,AMY_UCONST_BlackPawn
+    ld e,AMY_UCONST_WhitePawn
+AMY_CHESS_ROOK_FILE_SCAN_START:
+    push bc
+    push ix
+    ld a,c
+    and 7
+    ld l,a
+    ld h,0
+    ld bc,AMY_UVAR_Board
+    add hl,bc
+    push hl
+    pop ix
+    ld b,8
+    ld c,0
+AMY_CHESS_ROOK_FILE_SCAN:
+    ld a,(ix+0)
+    cp d
+    jr z,AMY_CHESS_ROOK_FILE_BLOCKED
+    cp e
+    jr nz,AMY_CHESS_ROOK_FILE_SCAN_NEXT
+    ld c,1
+AMY_CHESS_ROOK_FILE_SCAN_NEXT:
+    ; Z80 has no ADD IX,HL; DD 29 means ADD IX,IX.
+    inc ix
+    inc ix
+    inc ix
+    inc ix
+    inc ix
+    inc ix
+    inc ix
+    inc ix
+    djnz AMY_CHESS_ROOK_FILE_SCAN
+    ld a,c
+    ld hl,(AMY_UVAR_PositionScore)
+    ld bc,4
+    ld e,a
+    ld a,d
+    cp AMY_UCONST_WhitePawn
+    jr z,AMY_CHESS_ROOK_FILE_ADD
+    or a
+    sbc hl,bc
+    ld a,e
+    or a
+    jr nz,AMY_CHESS_ROOK_FILE_STORE
+    or a
+    sbc hl,bc
+    jr AMY_CHESS_ROOK_FILE_STORE
+AMY_CHESS_ROOK_FILE_ADD:
+    add hl,bc
+    ld a,e
+    or a
+    jr nz,AMY_CHESS_ROOK_FILE_STORE
+    add hl,bc
+AMY_CHESS_ROOK_FILE_STORE:
+    ld (AMY_UVAR_PositionScore),hl
+AMY_CHESS_ROOK_FILE_BLOCKED:
+    pop ix
+    pop bc
+    jr AMY_CHESS_ROOK_FILE_ADVANCE
+AMY_CHESS_ROOK_FILE_DONE:
+  }
+#ifndef CHESS_FUSED_ENDGAME_PAWN_PST
+  if EndgamePieceCount <= 11 then
+    asm {
+      push ix
+      ld ix,AMY_UVAR_Board
+      ld hl,0
+      ld b,8
+      ld c,48
+AMY_CHESS_PAWN_ROW:
+      push bc
+      ld b,8
+AMY_CHESS_PAWN_SQUARE:
+      ld a,(ix+0)
+      inc ix
+      cp AMY_UCONST_WhitePawn
+      jr z,AMY_CHESS_PAWN_WHITE
+      cp AMY_UCONST_BlackPawn
+      jr nz,AMY_CHESS_PAWN_NEXT
+      ld a,c
+      sub 40
+      ld e,a
+      ld d,0
+      bit 7,e
+      jr z,AMY_CHESS_PAWN_ADD
+      dec d
+      jr AMY_CHESS_PAWN_ADD
+AMY_CHESS_PAWN_WHITE:
+      ld e,c
+      ld d,0
+AMY_CHESS_PAWN_ADD:
+      add hl,de
+AMY_CHESS_PAWN_NEXT:
+      djnz AMY_CHESS_PAWN_SQUARE
+      pop bc
+      ld a,c
+      sub 8
+      ld c,a
+      djnz AMY_CHESS_PAWN_ROW
+      ld de,(AMY_UVAR_PositionScore)
+      add hl,de
+      ld (AMY_UVAR_PositionScore),hl
+      pop ix
+    }
+  end if
+#endif
+  if EndgamePieceCount <= 11 and (MaterialBalance >= 400 or MaterialBalance <= -400) then
+    EndgameKingRowDistance = WhiteKingSquare >> 3
+    CenterValue = BlackKingSquare >> 3
+    if EndgameKingRowDistance > CenterValue then EndgameKingRowDistance -= CenterValue else EndgameKingRowDistance = CenterValue - EndgameKingRowDistance
+    EndgameKingColumnDistance = WhiteKingSquare & 7
+    CenterValue = BlackKingSquare & 7
+    if EndgameKingColumnDistance > CenterValue then EndgameKingColumnDistance -= CenterValue else EndgameKingColumnDistance = CenterValue - EndgameKingColumnDistance
+    EndgameKingDistance = EndgameKingRowDistance
+    if EndgameKingColumnDistance > EndgameKingDistance then EndgameKingDistance = EndgameKingColumnDistance
+    if MaterialBalance >= 400 then
+      CenterValue = ChessKingConfinement[BlackKingSquare]
+      PositionScore += (6 - CenterValue) * 14
+      PositionScore -= CenterValue * 22
+      CenterValue = ChessKingConfinement[WhiteKingSquare]
+      PositionScore += CenterValue * 22
+      PositionScore += (7 - EndgameKingDistance) * 50
+    else
+      CenterValue = ChessKingConfinement[WhiteKingSquare]
+      PositionScore -= (6 - CenterValue) * 14
+      PositionScore += CenterValue * 22
+      CenterValue = ChessKingConfinement[BlackKingSquare]
+      PositionScore -= CenterValue * 22
+      PositionScore -= (7 - EndgameKingDistance) * 50
+    end if
+  end if
+  if MovingSide = 1 then PositionScore = 0 - PositionScore
+  return
+
+sub ChessApplyOpeningPrior:
+  ' Register contract: HL=score, A=fullmove, B=piece, C=side,
+  ' D=from, E=to. Return the adjusted score in HL.
+  asm {
+    push af
+    cp 11
+    jr nc,AMY_CHESS_OPENING_EDGE_DONE
+    ld a,b
+    and 7
+    cp AMY_UCONST_WhitePawn
+    jr nz,AMY_CHESS_OPENING_EDGE_DONE
+    ld a,e
+    and 7
+    jr z,AMY_CHESS_OPENING_EDGE_PENALTY
+    cp 7
+    jr nz,AMY_CHESS_OPENING_EDGE_DONE
+AMY_CHESS_OPENING_EDGE_PENALTY:
+    ld a,l
+    sub 16
+    ld l,a
+    jr nc,AMY_CHESS_OPENING_EDGE_DONE
+    dec h
+AMY_CHESS_OPENING_EDGE_DONE:
+    pop af
+    cp 5
+    jr nc,AMY_CHESS_OPENING_PRIOR_DONE
+    dec a
+    add a,a
+    add a,c
+    add a,a
+    ld c,a
+    ld a,(AMY_UVAR_MoveVariation)
+    and 3
+    rlca
+    rlca
+    rlca
+    rlca
+    add a,c
+    ld c,a
+    ld b,0
+    push hl
+    ld hl,ChessOpeningBook
+    add hl,bc
+    ld b,(hl)
+    inc hl
+    ld c,(hl)
+    pop hl
+    ld a,d
+    cp b
+    jr nz,AMY_CHESS_OPENING_PRIOR_DONE
+    ld a,e
+    cp c
+    jr nz,AMY_CHESS_OPENING_PRIOR_DONE
+    ld a,l
+    add a,24
+    ld l,a
+    jr nc,AMY_CHESS_OPENING_PRIOR_DONE
+    inc h
+AMY_CHESS_OPENING_PRIOR_DONE:
+  }
+  return
+
+sub ChessEvaluateAppliedMovePosition:
+  ChessEvaluatePosition
+  ChessPenalizeLooseMovedPiece
+#ifndef CHESS_NO_OPENING_REPERTOIRE
+#ifndef CHESS_NO_OPENING_PAWN_PRIOR
+  asm {
+    ld hl,(AMY_UVAR_PositionScore)
+    ld a,(AMY_UVAR_UndoPiece)
+    ld b,a
+    ld a,(AMY_UVAR_MovingSide)
+    ld c,a
+    ld a,(AMY_UVAR_MoveFrom)
+    ld d,a
+    ld a,(AMY_UVAR_MoveTo)
+    ld e,a
+    ld a,(AMY_UVAR_UndoFullmove)
+    call AMY_UPROC_ChessApplyOpeningPrior
+    ld (AMY_UVAR_PositionScore),hl
+  }
+#endif
+#endif
+  asm {
+    ld hl,(AMY_UVAR_PositionScore)
+    ld de,(AMY_UVAR_PositionalBestScore)
+    ld a,h
+    xor $80
+    ld b,a
+    ld a,d
+    xor $80
+    ld c,a
+    ld a,b
+    cp c
+    jr c,AMY_CHESS_POSITION_KEEP_BEST
+    jr nz,AMY_CHESS_POSITION_NEW_BEST
+    ld a,l
+    cp e
+    jr c,AMY_CHESS_POSITION_KEEP_BEST
+    jr nz,AMY_CHESS_POSITION_NEW_BEST
+    ld hl,AMY_UVAR_PositionalTieCount
+    inc (hl)
+    ld a,(AMY_UVAR_ChessLevel)
+    or a
+    jr nz,AMY_CHESS_POSITION_KEEP_BEST
+    ld a,(AMY_UVAR_MoveVariation)
+    cp (hl)
+    jr nz,AMY_CHESS_POSITION_KEEP_BEST
+    jr AMY_CHESS_POSITION_COPY_MOVE
+AMY_CHESS_POSITION_NEW_BEST:
+    ld hl,(AMY_UVAR_PositionScore)
+    ld (AMY_UVAR_PositionalBestScore),hl
+    xor a
+    ld (AMY_UVAR_PositionalTieCount),a
+AMY_CHESS_POSITION_COPY_MOVE:
+    ld a,(AMY_UVAR_MoveFrom)
+    ld (AMY_UVAR_PositionalBestFrom),a
+    ld a,(AMY_UVAR_MoveTo)
+    ld (AMY_UVAR_PositionalBestTo),a
+    ld a,(AMY_UVAR_MoveFlags)
+    ld (AMY_UVAR_PositionalBestFlags),a
+    ld a,(AMY_UVAR_MovePromotion)
+    ld (AMY_UVAR_PositionalBestPromotion),a
+AMY_CHESS_POSITION_KEEP_BEST:
+  }
+  return
+
+sub ChessPenalizeLooseMovedPiece:
+#ifdef CHESS_COMPACT_LOOSE_PENALTY
+  asm {
+    ld a,(AMY_UVAR_MoveTo)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Board
+    add hl,de
+    ld a,(hl)
+    and 7
+    ld b,0
+    or a
+    jr z,AMY_CHESS_LOOSE_VALUE_READY
+    cp AMY_UCONST_WhiteKing
+    jr z,AMY_CHESS_LOOSE_VALUE_READY
+    ld b,255
+    cp AMY_UCONST_WhitePawn
+    jr nz,AMY_CHESS_LOOSE_VALUE_READY
+    ld b,100
+AMY_CHESS_LOOSE_VALUE_READY:
+    ld a,b
+    ld (AMY_UVAR_MovedPieceValue),a
+  }
+#else
+  MovedPieceValue = 0
+  if Board[MoveTo] = WhitePawn or Board[MoveTo] = BlackPawn then MovedPieceValue = 100
+  if Board[MoveTo] = WhiteKnight or Board[MoveTo] = BlackKnight then MovedPieceValue = 255
+  if Board[MoveTo] = WhiteBishop or Board[MoveTo] = BlackBishop then MovedPieceValue = 255
+  if Board[MoveTo] = WhiteRook or Board[MoveTo] = BlackRook then MovedPieceValue = 255
+  if Board[MoveTo] = WhiteQueen or Board[MoveTo] = BlackQueen then MovedPieceValue = 255
+#endif
+  if MovedPieceValue = 0 then return
+
+  SavedAttackSquare = AttackSquare
+  SavedAttackSide = AttackSide
+  SavedAttackRow = AttackRow
+  SavedAttackColumn = AttackColumn
+  SavedScanRow = ScanRow
+  SavedScanColumn = ScanColumn
+  SavedScanSquare = ScanSquare
+  SavedScanPiece = ScanPiece
+  SavedRayDone = RayDone
+
+  AttackSquare = MoveTo
+  AttackSide = Side
+  ChessIsSquareAttacked
+  MovedPieceAttacked = AttackResult
+  if MovedPieceAttacked = 1 then
+    PositionScore -= MovedPieceValue
+    if Board[MoveTo] = WhiteRook or Board[MoveTo] = BlackRook then PositionScore -= 255
+    if Board[MoveTo] = WhiteQueen or Board[MoveTo] = BlackQueen then PositionScore -= 765
+  end if
+
+  AttackSquare = SavedAttackSquare
+  AttackSide = SavedAttackSide
+  AttackRow = SavedAttackRow
+  AttackColumn = SavedAttackColumn
+  ScanRow = SavedScanRow
+  ScanColumn = SavedScanColumn
+  ScanSquare = SavedScanSquare
+  ScanPiece = SavedScanPiece
+  RayDone = SavedRayDone
+  AttackResult = 0
+  return
+
+sub ChessFindPositionalMove:
+  PositionalBestScore = -30000
+  PositionalTieCount = 0
+  PositionalBestFrom = 255
+  PositionalBestTo = 255
+  PositionalBestFlags = 0
+  PositionalBestPromotion = 0
+  FindMateMode = 7
+  ChessCountLegalMoves
+  FindMateMode = 0
+  SelectedMoveFrom = PositionalBestFrom
+  SelectedMoveTo = PositionalBestTo
+  SelectedMoveFlags = PositionalBestFlags
+  SelectedMovePromotion = PositionalBestPromotion
+  return
+
+sub ChessEvaluateAppliedMoveSafety:
+  ChessSaveSearchFrame(SearchStack[0])
+
+  ' A minimax cutoff must not truncate the opponent's mate-in-one scan.
+  StopAfterFirstLegal = 0
+  StopAfterFirstMate = 1
+  ChessFindMateInOne
+  StopAfterFirstMate = 0
+
+  ChessRestoreSearchFrame(SearchStack[0])
+  MovingSide = 1 - Side
+  FindMateMode = 8
+
+  if MateMoveCount = 0 then
+    SafeMoveCount += 1
+    ChessEvaluateAppliedMovePosition
+  end if
+  return
+
+sub ChessSaveSearchFrame(ref ChessSearchFrame Context):
+#ifdef CHESS_COMPACT_SEARCH_FRAME
+  asm {
+    ; Context is the ref argument at IX+4. The first eleven fields match the
+    ; contiguous move/undo variables, so one LDIR replaces eleven assignments.
+    ld e,(ix+4)
+    ld d,(ix+5)
+    ld hl,AMY_UVAR_MoveFrom
+    ld bc,11
+    ldir
+    ld a,(AMY_UVAR_GenerateFrom)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_GenerateRow)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_GenerateColumn)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_ScanRow)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_ScanColumn)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_RayDone)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_WhiteKingSquare)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_BlackKingSquare)
+    ld (de),a
+    inc de
+    ld a,(AMY_UVAR_LegalMoveCount)
+    ld (de),a
+  }
+#else
+  Context.MoveFrom = MoveFrom
+  Context.MoveTo = MoveTo
+  Context.MovePromotion = MovePromotion
+  Context.MoveFlags = MoveFlags
+  Context.UndoPiece = UndoPiece
+  Context.UndoCaptured = UndoCaptured
+  Context.UndoCapturedSquare = UndoCapturedSquare
+  Context.UndoCastling = UndoCastling
+  Context.UndoEnPassant = UndoEnPassant
+  Context.UndoHalfmove = UndoHalfmove
+  Context.UndoFullmove = UndoFullmove
+  Context.GenerateFrom = GenerateFrom
+  Context.GenerateRow = GenerateRow
+  Context.GenerateColumn = GenerateColumn
+  Context.ScanRow = ScanRow
+  Context.ScanColumn = ScanColumn
+  Context.RayDone = RayDone
+  Context.WhiteKingSquare = WhiteKingSquare
+  Context.BlackKingSquare = BlackKingSquare
+  Context.LegalMoveCount = LegalMoveCount
+#endif
+  return
+
+sub ChessRestoreSearchFrame(ref ChessSearchFrame Context):
+#ifdef CHESS_COMPACT_SEARCH_FRAME
+  asm {
+    ld l,(ix+4)
+    ld h,(ix+5)
+    ld de,AMY_UVAR_MoveFrom
+    ld bc,11
+    ldir
+    ld a,(hl)
+    ld (AMY_UVAR_GenerateFrom),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_GenerateRow),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_GenerateColumn),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_ScanRow),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_ScanColumn),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_RayDone),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_WhiteKingSquare),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_BlackKingSquare),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_LegalMoveCount),a
+  }
+#else
+  MoveFrom = Context.MoveFrom
+  MoveTo = Context.MoveTo
+  MovePromotion = Context.MovePromotion
+  MoveFlags = Context.MoveFlags
+  UndoPiece = Context.UndoPiece
+  UndoCaptured = Context.UndoCaptured
+  UndoCapturedSquare = Context.UndoCapturedSquare
+  UndoCastling = Context.UndoCastling
+  UndoEnPassant = Context.UndoEnPassant
+  UndoHalfmove = Context.UndoHalfmove
+  UndoFullmove = Context.UndoFullmove
+  GenerateFrom = Context.GenerateFrom
+  GenerateRow = Context.GenerateRow
+  GenerateColumn = Context.GenerateColumn
+  ScanRow = Context.ScanRow
+  ScanColumn = Context.ScanColumn
+  RayDone = Context.RayDone
+  WhiteKingSquare = Context.WhiteKingSquare
+  BlackKingSquare = Context.BlackKingSquare
+  LegalMoveCount = Context.LegalMoveCount
+#endif
+  return
+
+sub ChessFindAnySafePositionalMove:
+  SafeMoveCount = 0
+  PositionalBestScore = -30000
+  PositionalTieCount = 0
+  PositionalBestFrom = 255
+  PositionalBestTo = 255
+  PositionalBestFlags = 0
+  PositionalBestPromotion = 0
+  FindMateMode = 8
+  ChessCountLegalMoves
+  FindMateMode = 0
+  if SafeMoveCount = 0 then
+    ChessFindPositionalMove
+  else
+    SelectedMoveFrom = PositionalBestFrom
+    SelectedMoveTo = PositionalBestTo
+    SelectedMoveFlags = PositionalBestFlags
+    SelectedMovePromotion = PositionalBestPromotion
+  end if
+  return
+
+sub ChessFindSafePositionalMove:
+  ChessFindPositionalMove
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MoveFlags = SelectedMoveFlags
+  MovePromotion = SelectedMovePromotion
+  MovingSide = Side
+  ChessApplyMove
+  SafeMoveCount = 0
+  ChessEvaluateAppliedMoveSafety
+  ChessUndoMove
+  if SafeMoveCount = 0 then ChessFindAnySafePositionalMove
+  return
+
+sub ChessEvaluateMinimaxReply:
+  MinimaxReplyCount += 1
+  if MinimaxDepth = 2 then
+    if MinimaxNodes >= MinimaxNodeBudget then
+      MinimaxBudgetReached = 1
+      StopAfterFirstLegal = 1
+      return
+    end if
+    MinimaxNodes += 1
+    MovingSide = MinimaxRootSide
+    ChessEvaluatePosition
+    ChessPenalizeAttackedMinimaxRootPiece
+    if UndoCaptured <> Empty or MoveFlags & FlagEnPassant then
+      RecaptureBestScore = PositionScore
+      RecaptureTarget = MoveTo
+      RecaptureMinimize = 0
+      ChessSaveSearchFrame(SearchStack[1])
+      ChessFindShortRangeRecaptures
+      ChessRestoreSearchFrame(SearchStack[1])
+      FindMateMode = 9
+      MovingSide = MinimaxRootSide
+      PositionScore = RecaptureBestScore
+    end if
+    ' Extend only checking replies. A static depth-two leaf cannot distinguish
+    ' an ordinary check from mate or evaluate the root side's forced escape.
+    ChessFindKings
+    if MinimaxRootSide = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+    AttackSide = 1 - MinimaxRootSide
+    ChessIsSquareAttacked
+    if AttackResult = 1 then
+      ChessSaveSearchFrame(SearchStack[1])
+      SavedStopAfterFirstLegal = StopAfterFirstLegal
+      StopAfterFirstLegal = 0
+      MinimaxContinuationBestScore = -30000
+      FindMateMode = 13
+      ChessCountLegalMoves
+      if LegalMoveCount = 0 then MinimaxContinuationBestScore = -29000
+      ChessRestoreSearchFrame(SearchStack[1])
+      StopAfterFirstLegal = SavedStopAfterFirstLegal
+      if MinimaxBudgetReached = 1 then
+        StopAfterFirstLegal = 1
+        return
+      end if
+      MovingSide = MinimaxRootSide
+      FindMateMode = 9
+      PositionScore = MinimaxContinuationBestScore
+    end if
+    AttackResult = 0
+  else
+    ChessSaveSearchFrame(SearchStack[1])
+    SavedStopAfterFirstLegal = StopAfterFirstLegal
+    StopAfterFirstLegal = 0
+    MinimaxContinuationBestScore = -30000
+    if MinimaxQuietThreat = 1 then SafeMoveCount = 1
+    FindMateMode = 13
+    ChessCountLegalMoves
+    if LegalMoveCount = 0 then
+      ChessFindKings
+      if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+      AttackSide = 1 - MinimaxRootSide
+      ChessIsSquareAttacked
+      if AttackResult = 1 then MinimaxContinuationBestScore = -29000 else MinimaxContinuationBestScore = 0
+    end if
+    if MinimaxQuietThreat = 1 and LegalMoveCount > 0 and SafeMoveCount = 1 then QuietThreatCandidateFound = 1
+    ChessRestoreSearchFrame(SearchStack[1])
+    StopAfterFirstLegal = SavedStopAfterFirstLegal
+    if MinimaxBudgetReached = 1 then
+      StopAfterFirstLegal = 1
+      return
+    end if
+    MovingSide = MinimaxRootSide
+    FindMateMode = 9
+    PositionScore = MinimaxContinuationBestScore
+  end if
+  if PositionScore < MinimaxWorstScore then MinimaxWorstScore = PositionScore
+  if MinimaxQuietThreat = 1 and QuietThreatCandidateFound = 1 then
+    StopAfterFirstLegal = 1
+  end if
+  if MinimaxUseCutoff = 1 and MinimaxWorstScore <= MinimaxBestScore then
+    if MinimaxWorstScore < MinimaxBestScore or MinimaxRootFullmove > 4 then
+      StopAfterFirstLegal = 1
+      MinimaxCutoffs += 1
+    end if
+  end if
+  return
+
+sub ChessPenalizeAttackedMinimaxRootPiece:
+  if Board[MinimaxRootTarget] <> MinimaxRootPiece then return
+  MovedPieceValue = 0
+  if MinimaxRootPiece = WhiteQueen or MinimaxRootPiece = BlackQueen then MovedPieceValue = 255
+  if MovedPieceValue = 0 then return
+
+  SavedAttackSquare = AttackSquare
+  SavedAttackSide = AttackSide
+  SavedAttackRow = AttackRow
+  SavedAttackColumn = AttackColumn
+  SavedScanRow = ScanRow
+  SavedScanColumn = ScanColumn
+  SavedScanSquare = ScanSquare
+  SavedScanPiece = ScanPiece
+  SavedRayDone = RayDone
+  AttackSquare = MinimaxRootTarget
+  AttackSide = 1 - MinimaxRootSide
+  ChessIsSquareAttacked
+  if AttackResult = 1 then PositionScore -= MovedPieceValue
+  AttackSquare = SavedAttackSquare
+  AttackSide = SavedAttackSide
+  AttackRow = SavedAttackRow
+  AttackColumn = SavedAttackColumn
+  ScanRow = SavedScanRow
+  ScanColumn = SavedScanColumn
+  ScanSquare = SavedScanSquare
+  ScanPiece = SavedScanPiece
+  RayDone = SavedRayDone
+  AttackResult = 0
+  return
+
+sub ChessEvaluateMinimaxContinuation:
+  if MinimaxNodes >= MinimaxNodeBudget then
+    MinimaxBudgetReached = 1
+    StopAfterFirstLegal = 1
+    return
+  end if
+  MinimaxNodes += 1
+  MovingSide = MinimaxRootSide
+  ChessEvaluatePosition
+  if MinimaxQuietThreat = 1 then
+    if QuietThreatNodes < QuietThreatNodeBudget then
+      ChessSaveSearchFrame(SearchStack[2])
+      MateFrameBase = 3
+      MateTwoNodeLimit = QuietThreatNodeBudget - QuietThreatNodes
+      ChessFindMateInTwo
+      QuietThreatNodes += MateTwoNodes
+      MateTwoNodeLimit = MateTwoNodeBudget
+      MateFrameBase = 0
+      ChessRestoreSearchFrame(SearchStack[2])
+      FindMateMode = 13
+      MovingSide = MinimaxRootSide
+      if MateMoveCount = 0 or MateTwoBudgetReached = 1 then
+        SafeMoveCount = 0
+        StopAfterFirstLegal = 1
+      elseif MateMoveCount > 0 then
+        PositionScore = -29000
+      end if
+    else
+      SafeMoveCount = 0
+      StopAfterFirstLegal = 1
+    end if
+  end if
+  if UndoCaptured <> Empty or MoveFlags & FlagEnPassant then
+    RecaptureBestScore = PositionScore
+    RecaptureTarget = MoveTo
+    RecaptureMinimize = 1
+    ChessSaveSearchFrame(SearchStack[2])
+    ChessFindShortRangeRecaptures
+    ChessRestoreSearchFrame(SearchStack[2])
+    FindMateMode = 13
+    MovingSide = MinimaxRootSide
+    PositionScore = RecaptureBestScore
+    RecaptureMinimize = 0
+  end if
+  if PositionScore > MinimaxContinuationBestScore then MinimaxContinuationBestScore = PositionScore
+  if MinimaxQuietThreat = 0 and MinimaxUseCutoff = 1 and MinimaxContinuationBestScore >= MinimaxWorstScore then StopAfterFirstLegal = 1
+  return
+
+sub ChessEvaluateRecapture:
+  MovingSide = MinimaxRootSide
+  ChessEvaluatePosition
+  if RecaptureMinimize = 1 then
+    if PositionScore < RecaptureBestScore then RecaptureBestScore = PositionScore
+  else
+    if PositionScore > RecaptureBestScore then RecaptureBestScore = PositionScore
+  end if
+  return
+
+
+sub ChessTryRecaptureCandidate:
+  MoveTo = RecaptureTarget
+  MoveFlags = 0
+  MovePromotion = 0
+  if Side = 0 and Board[MoveFrom] = WhitePawn and RecaptureTarget < 8 then MovePromotion = WhiteQueen
+  if Side = 1 and Board[MoveFrom] = BlackPawn and RecaptureTarget >= 56 then MovePromotion = BlackQueen
+  FindMateMode = 12
+  ChessTryLegalMove
+  return
+
+sub ChessTryKnightRecapture:
+  if Side = 0 and Board[MoveFrom] = WhiteKnight then ChessTryRecaptureCandidate
+  if Side = 1 and Board[MoveFrom] = BlackKnight then ChessTryRecaptureCandidate
+  return
+
+sub ChessFindShortRangeRecaptures:
+  RecaptureRow = RecaptureTarget >> 3
+  RecaptureColumn = RecaptureTarget & 7
+
+  if Side = 0 and RecaptureRow < 7 then
+    if RecaptureColumn > 0 and Board[RecaptureTarget + 7] = WhitePawn then
+      MoveFrom = RecaptureTarget + 7
+      ChessTryRecaptureCandidate
+    end if
+    if RecaptureColumn < 7 and Board[RecaptureTarget + 9] = WhitePawn then
+      MoveFrom = RecaptureTarget + 9
+      ChessTryRecaptureCandidate
+    end if
+  elseif Side = 1 and RecaptureRow > 0 then
+    if RecaptureColumn > 0 and Board[RecaptureTarget - 9] = BlackPawn then
+      MoveFrom = RecaptureTarget - 9
+      ChessTryRecaptureCandidate
+    end if
+    if RecaptureColumn < 7 and Board[RecaptureTarget - 7] = BlackPawn then
+      MoveFrom = RecaptureTarget - 7
+      ChessTryRecaptureCandidate
+    end if
+  end if
+
+  if RecaptureRow > 1 and RecaptureColumn > 0 then
+    MoveFrom = RecaptureTarget - 17
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow > 1 and RecaptureColumn < 7 then
+    MoveFrom = RecaptureTarget - 15
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow > 0 and RecaptureColumn > 1 then
+    MoveFrom = RecaptureTarget - 10
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow > 0 and RecaptureColumn < 6 then
+    MoveFrom = RecaptureTarget - 6
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow < 7 and RecaptureColumn > 1 then
+    MoveFrom = RecaptureTarget + 6
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow < 7 and RecaptureColumn < 6 then
+    MoveFrom = RecaptureTarget + 10
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow < 6 and RecaptureColumn > 0 then
+    MoveFrom = RecaptureTarget + 15
+    ChessTryKnightRecapture
+  end if
+  if RecaptureRow < 6 and RecaptureColumn < 7 then
+    MoveFrom = RecaptureTarget + 17
+    ChessTryKnightRecapture
+  end if
+
+  if Side = 0 then MoveFrom = WhiteKingSquare else MoveFrom = BlackKingSquare
+  if MoveFrom <> 255 then
+    ScanRow = MoveFrom >> 3
+    ScanColumn = MoveFrom & 7
+    if ScanRow + 1 >= RecaptureRow and ScanRow <= RecaptureRow + 1 and ScanColumn + 1 >= RecaptureColumn and ScanColumn <= RecaptureColumn + 1 and MoveFrom <> RecaptureTarget then ChessTryRecaptureCandidate
+  end if
+  ChessFindSlidingRecaptures
+  return
+
+sub ChessTryOrthogonalRecapture:
+  ScanPiece = Board[MoveFrom]
+  if Side = 0 and (ScanPiece = WhiteRook or ScanPiece = WhiteQueen) then ChessTryRecaptureCandidate
+  if Side = 1 and (ScanPiece = BlackRook or ScanPiece = BlackQueen) then ChessTryRecaptureCandidate
+  return
+
+sub ChessTryDiagonalRecapture:
+  ScanPiece = Board[MoveFrom]
+  if Side = 0 and (ScanPiece = WhiteBishop or ScanPiece = WhiteQueen) then ChessTryRecaptureCandidate
+  if Side = 1 and (ScanPiece = BlackBishop or ScanPiece = BlackQueen) then ChessTryRecaptureCandidate
+  return
+
+sub ChessFindSlidingRecaptures:
+  ScanRow = RecaptureRow
+  while ScanRow > 0
+    ScanRow -= 1
+    MoveFrom = ScanRow * 8 + RecaptureColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryOrthogonalRecapture
+      exit while
+    end if
+  end while
+  ScanRow = RecaptureRow
+  while ScanRow < 7
+    ScanRow += 1
+    MoveFrom = ScanRow * 8 + RecaptureColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryOrthogonalRecapture
+      exit while
+    end if
+  end while
+  ScanColumn = RecaptureColumn
+  while ScanColumn > 0
+    ScanColumn -= 1
+    MoveFrom = RecaptureRow * 8 + ScanColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryOrthogonalRecapture
+      exit while
+    end if
+  end while
+  ScanColumn = RecaptureColumn
+  while ScanColumn < 7
+    ScanColumn += 1
+    MoveFrom = RecaptureRow * 8 + ScanColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryOrthogonalRecapture
+      exit while
+    end if
+  end while
+
+  ScanRow = RecaptureRow
+  ScanColumn = RecaptureColumn
+  while ScanRow > 0 and ScanColumn > 0
+    ScanRow -= 1
+    ScanColumn -= 1
+    MoveFrom = ScanRow * 8 + ScanColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryDiagonalRecapture
+      exit while
+    end if
+  end while
+  ScanRow = RecaptureRow
+  ScanColumn = RecaptureColumn
+  while ScanRow > 0 and ScanColumn < 7
+    ScanRow -= 1
+    ScanColumn += 1
+    MoveFrom = ScanRow * 8 + ScanColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryDiagonalRecapture
+      exit while
+    end if
+  end while
+  ScanRow = RecaptureRow
+  ScanColumn = RecaptureColumn
+  while ScanRow < 7 and ScanColumn > 0
+    ScanRow += 1
+    ScanColumn -= 1
+    MoveFrom = ScanRow * 8 + ScanColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryDiagonalRecapture
+      exit while
+    end if
+  end while
+  ScanRow = RecaptureRow
+  ScanColumn = RecaptureColumn
+  while ScanRow < 7 and ScanColumn < 7
+    ScanRow += 1
+    ScanColumn += 1
+    MoveFrom = ScanRow * 8 + ScanColumn
+    if Board[MoveFrom] <> Empty then
+      ChessTryDiagonalRecapture
+      exit while
+    end if
+  end while
+  return
+
+sub ChessEvaluateMinimaxRoot:
+  MinimaxRootTarget = MoveTo
+  MinimaxRootPiece = UndoPiece
+  MinimaxRootFullmove = Fullmove
+  MinimaxRootSide = MovingSide
+  ' Keep this candidate's state: deeper evaluations overwrite these globals.
+  ChessEvaluateMaterial
+  MinimaxRootMaterialBalance = MaterialBalance
+  MinimaxRootPieceCount = EndgamePieceCount
+  ChessSaveSearchFrame(SearchStack[0])
+  MinimaxRootSide = MovingSide
+  MinimaxWorstScore = 30000
+  SavedStopAfterFirstLegal = StopAfterFirstLegal
+  StopAfterFirstLegal = 0
+  MinimaxReplyCount = 0
+  FindMateMode = 9
+  ChessCountLegalMoves
+  if MinimaxReplyCount = 0 then
+    ChessFindKings
+    if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+    AttackSide = MinimaxRootSide
+    ChessIsSquareAttacked
+    if AttackResult = 1 then MinimaxWorstScore = 29000 else MinimaxWorstScore = 0
+  end if
+  ChessRestoreSearchFrame(SearchStack[0])
+  StopAfterFirstLegal = SavedStopAfterFirstLegal
+  if MinimaxBudgetReached = 1 then
+    StopAfterFirstLegal = 1
+    return
+  end if
+  MovingSide = MinimaxRootSide
+  FindMateMode = 10
+  if MinimaxRootPieceCount <= 6 then
+    if MinimaxRootSide = 0 and MinimaxRootMaterialBalance >= 400 then MinimaxWorstScore -= MinimaxReplyCount * 20
+    if MinimaxRootSide = 1 and MinimaxRootMaterialBalance <= -400 then MinimaxWorstScore -= MinimaxReplyCount * 20
+  end if
+  ' Do not let the horizon postpone a safe promotion that it can merely
+  ' recover as the final continuation move one ply later.
+  asm {
+    ld a,(AMY_UVAR_MovePromotion)
+    and 7
+    cp AMY_UCONST_WhiteQueen
+    jr nz,AMY_CHESS_QUEEN_PROMOTION_BONUS_DONE
+    ld hl,(AMY_UVAR_MinimaxWorstScore)
+    inc h
+    ld (AMY_UVAR_MinimaxWorstScore),hl
+AMY_CHESS_QUEEN_PROMOTION_BONUS_DONE:
+  }
+  ' In the opening, make a second knight move earn back its lost tempo.
+#ifndef CHESS_NO_OPENING_KNIGHT_TEMPO
+  asm {
+    ld a,(AMY_UVAR_MinimaxRootFullmove)
+    cp 11
+    jr nc,AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE
+    ld a,(AMY_UVAR_MinimaxRootPiece)
+    and 7
+    cp AMY_UCONST_WhiteKnight
+    jr nz,AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE
+    ld a,(AMY_UVAR_MoveFrom)
+    cp 1
+    jr z,AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE
+    cp 6
+    jr z,AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE
+    cp 57
+    jr z,AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE
+    cp 62
+    jr z,AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE
+    ld hl,(AMY_UVAR_MinimaxWorstScore)
+    ld de,16
+    or a
+    sbc hl,de
+    ld (AMY_UVAR_MinimaxWorstScore),hl
+AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE:
+  }
+#endif
+#ifndef CHESS_NO_OPENING_REPERTOIRE
+#ifndef CHESS_NO_OPENING_PAWN_PRIOR
+  asm {
+    ld a,(AMY_UVAR_MinimaxRootPiece)
+    ld b,a
+    ld a,(AMY_UVAR_MinimaxRootSide)
+    ld c,a
+    ld a,(AMY_UVAR_MoveFrom)
+    ld d,a
+    ld a,(AMY_UVAR_MoveTo)
+    ld hl,(AMY_UVAR_MinimaxWorstScore)
+    ld e,a
+    ld a,(AMY_UVAR_MinimaxRootFullmove)
+    call AMY_UPROC_ChessApplyOpeningPrior
+    ld (AMY_UVAR_MinimaxWorstScore),hl
+  }
+#endif
+#endif
+  ' KQK/KRK use the dedicated king-confinement evaluation below four pieces.
+  if MinimaxRootPieceCount >= 4 and MinimaxRootPieceCount <= 18 then
+    if MinimaxRootSide = 0 and MinimaxRootMaterialBalance >= 400 then
+      ChessSaveSearchFrame(SearchStack[1])
+      ChessMeasureEnemyKingPressure
+      ChessRestoreSearchFrame(SearchStack[1])
+      MinimaxWorstScore += MovedPieceValue
+    elseif MinimaxRootSide = 1 and MinimaxRootMaterialBalance <= -400 then
+      ChessSaveSearchFrame(SearchStack[1])
+      ChessMeasureEnemyKingPressure
+      ChessRestoreSearchFrame(SearchStack[1])
+      MinimaxWorstScore += MovedPieceValue
+    end if
+  end if
+  if MinimaxWorstScore > MinimaxBestScore then
+    MinimaxBestScore = MinimaxWorstScore
+    MinimaxTieCount = 1
+    MinimaxBestFrom = MoveFrom
+    MinimaxBestTo = MoveTo
+    MinimaxBestFlags = MoveFlags
+    MinimaxBestPromotion = MovePromotion
+    MovedPieceAttacked = MinimaxRootPiece
+    MinimaxExactFrom = MoveFrom
+    MinimaxExactTo = MoveTo
+    MinimaxExactFlags = MoveFlags
+    MinimaxExactPromotion = MovePromotion
+  elseif MinimaxWorstScore = MinimaxBestScore then
+    PieceSquareKind = MinimaxRootPiece & 7
+    PieceSquare = MovedPieceAttacked & 7
+    if MinimaxRootPieceCount >= 4 and MinimaxRootPieceCount <= 18 and (MinimaxRootMaterialBalance >= 400 or MinimaxRootMaterialBalance <= -400) and PieceSquareKind >= WhiteRook and PieceSquareKind <= WhiteQueen and PieceSquare < WhiteRook then
+      MinimaxBestFrom = MoveFrom
+      MinimaxBestTo = MoveTo
+      MinimaxBestFlags = MoveFlags
+      MinimaxBestPromotion = MovePromotion
+      MovedPieceAttacked = MinimaxRootPiece
+      MinimaxExactFrom = MoveFrom
+      MinimaxExactTo = MoveTo
+      MinimaxExactFlags = MoveFlags
+      MinimaxExactPromotion = MovePromotion
+#ifdef CHESS_GAME
+#ifndef CHESS_FIXED_MINIMAX_TIES
+    ' Queen is generated first. Randomness must not replace an equal queen
+    ' promotion with a weaker piece; underpromotion still wins a strict score.
+    elseif MovePromotion = 0 and MinimaxRootFullmove <= 4 then
+      ' Reservoir sampling gives every equal-scoring move the same probability.
+      asm {
+        ld a,(AMY_UVAR_MinimaxTieCount)
+        inc a
+        ld (AMY_UVAR_MinimaxTieCount),a
+        ld b,a
+        ld a,(AMY_UVAR_ChessRandomState)
+        or a
+        jr nz,AMY_CHESS_RANDOM_TIE_SHIFT
+        ld a,$A5
+AMY_CHESS_RANDOM_TIE_SHIFT:
+        srl a
+        jr nc,AMY_CHESS_RANDOM_TIE_STORE
+        xor $B8
+AMY_CHESS_RANDOM_TIE_STORE:
+        ld (AMY_UVAR_ChessRandomState),a
+AMY_CHESS_MINIMAX_TIE_MODULO:
+        cp b
+        jr c,AMY_CHESS_MINIMAX_TIE_READY
+        sub b
+        jr AMY_CHESS_MINIMAX_TIE_MODULO
+AMY_CHESS_MINIMAX_TIE_READY:
+        ld (AMY_UVAR_MinimaxRandomTie),a
+      }
+      if MinimaxRandomTie = 0 then
+        MinimaxBestFrom = MoveFrom
+        MinimaxBestTo = MoveTo
+        MinimaxBestFlags = MoveFlags
+        MinimaxBestPromotion = MovePromotion
+      end if
+    end if
+#else
+    end if
+#endif
+#else
+    end if
+#endif
+  end if
+  return
+
+sub ChessScoreKingPressureSquare:
+  AttackSquare = SavedAttackSquare
+  AttackSide = MinimaxRootSide
+  ChessIsSquareAttacked
+  if AttackResult = 1 then MovedPieceValue += 12
+  return
+
+sub ChessMeasureEnemyKingPressure:
+  if MinimaxRootSide = 0 then SavedAttackSquare = BlackKingSquare else SavedAttackSquare = WhiteKingSquare
+  SavedAttackRow = SavedAttackSquare >> 3
+  SavedAttackColumn = SavedAttackSquare & 7
+  MovedPieceValue = 0
+  if SavedAttackRow > 0 then
+    if SavedAttackColumn > 0 then
+      SavedAttackSquare -= 9
+      ChessScoreKingPressureSquare
+      SavedAttackSquare += 9
+    end if
+    SavedAttackSquare -= 8
+    ChessScoreKingPressureSquare
+    SavedAttackSquare += 8
+    if SavedAttackColumn < 7 then
+      SavedAttackSquare -= 7
+      ChessScoreKingPressureSquare
+      SavedAttackSquare += 7
+    end if
+  end if
+  if SavedAttackColumn > 0 then
+    SavedAttackSquare -= 1
+    ChessScoreKingPressureSquare
+    SavedAttackSquare += 1
+  end if
+  if SavedAttackColumn < 7 then
+    SavedAttackSquare += 1
+    ChessScoreKingPressureSquare
+    SavedAttackSquare -= 1
+  end if
+  if SavedAttackRow < 7 then
+    if SavedAttackColumn > 0 then
+      SavedAttackSquare += 7
+      ChessScoreKingPressureSquare
+      SavedAttackSquare -= 7
+    end if
+    SavedAttackSquare += 8
+    ChessScoreKingPressureSquare
+    SavedAttackSquare -= 8
+    if SavedAttackColumn < 7 then
+      SavedAttackSquare += 9
+      ChessScoreKingPressureSquare
+      SavedAttackSquare -= 9
+    end if
+  end if
+  return
+
+
+sub ChessVerifyRandomMinimaxTie:
+  if MinimaxBestFrom = 255 or MinimaxExactFrom = 255 then return
+  if MinimaxBestFrom = MinimaxExactFrom and MinimaxBestTo = MinimaxExactTo and MinimaxBestFlags = MinimaxExactFlags and MinimaxBestPromotion = MinimaxExactPromotion then return
+
+  SelectedMoveFrom = MinimaxBestFrom
+  SelectedMoveTo = MinimaxBestTo
+  SelectedMoveFlags = MinimaxBestFlags
+  SelectedMovePromotion = MinimaxBestPromotion
+
+  ' Keep the last fully searched strict improvement as the safe fallback.
+  MinimaxBestFrom = MinimaxExactFrom
+  MinimaxBestTo = MinimaxExactTo
+  MinimaxBestFlags = MinimaxExactFlags
+  MinimaxBestPromotion = MinimaxExactPromotion
+  MinimaxTieCount = 1
+
+  ' Verify only the randomly nominated bound, with an independent node budget.
+  MinimaxUseCutoff = 0
+  MinimaxNodes = 0
+  MinimaxBudgetReached = 0
+  MinimaxSeedFrom = 255
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MoveFlags = SelectedMoveFlags
+  MovePromotion = SelectedMovePromotion
+  FindMateMode = 10
+  ChessTryLegalMove
+  FindMateMode = 0
+  MinimaxUseCutoff = 1
+
+  if MinimaxBudgetReached = 0 and MinimaxWorstScore >= MinimaxBestScore then
+    MinimaxBestFrom = SelectedMoveFrom
+    MinimaxBestTo = SelectedMoveTo
+    MinimaxBestFlags = SelectedMoveFlags
+    MinimaxBestPromotion = SelectedMovePromotion
+  else
+    MinimaxBestFrom = MinimaxExactFrom
+    MinimaxBestTo = MinimaxExactTo
+    MinimaxBestFlags = MinimaxExactFlags
+    MinimaxBestPromotion = MinimaxExactPromotion
+  end if
+  return
+
+sub ChessFindDepthTwoMove:
+  MinimaxDepth = 2
+  MinimaxBestScore = -30000
+  MinimaxBestFrom = 255
+  MinimaxBestTo = 255
+  MinimaxBestFlags = 0
+  MinimaxBestPromotion = 0
+  MinimaxTieCount = 0
+  MinimaxExactFrom = 255
+  MinimaxNodes = 0
+  MinimaxBudgetReached = 0
+  MinimaxCutoffs = 0
+  MinimaxSeedFrom = 255
+  MinimaxSeedTo = 255
+  MinimaxSeedFlags = 0
+  MinimaxSeedPromotion = 0
+  if MinimaxSeedEnabled = 1 then
+    ChessFindPositionalMove
+    MoveFrom = SelectedMoveFrom
+    MoveTo = SelectedMoveTo
+    MoveFlags = SelectedMoveFlags
+    MovePromotion = SelectedMovePromotion
+    FindMateMode = 10
+    ChessTryLegalMove
+    MinimaxSeedFrom = SelectedMoveFrom
+    MinimaxSeedTo = SelectedMoveTo
+    MinimaxSeedFlags = SelectedMoveFlags
+    MinimaxSeedPromotion = SelectedMovePromotion
+    if MinimaxBudgetReached = 1 then
+      SelectedMoveFrom = MinimaxSeedFrom
+      SelectedMoveTo = MinimaxSeedTo
+      SelectedMoveFlags = MinimaxSeedFlags
+      SelectedMovePromotion = MinimaxSeedPromotion
+      FindMateMode = 0
+      StopAfterFirstLegal = 0
+      return
+    end if
+  end if
+  FindMateMode = 10
+  ChessCountLegalMoves
+  FindMateMode = 0
+  ChessVerifyRandomMinimaxTie
+  ' A completed candidate is stronger evidence than the positional seed when
+  ' the node budget expires partway through the root scan.
+  if MinimaxBestFrom <> 255 then
+    SelectedMoveFrom = MinimaxBestFrom
+    SelectedMoveTo = MinimaxBestTo
+    SelectedMoveFlags = MinimaxBestFlags
+    SelectedMovePromotion = MinimaxBestPromotion
+  else
+    SelectedMoveFrom = MinimaxSeedFrom
+    SelectedMoveTo = MinimaxSeedTo
+    SelectedMoveFlags = MinimaxSeedFlags
+    SelectedMovePromotion = MinimaxSeedPromotion
+  end if
+  StopAfterFirstLegal = 0
+  return
+
+sub ChessFindDepthThreeMove:
+  MinimaxBestScore = -30000
+  MinimaxBestFrom = 255
+  MinimaxBestTo = 255
+  MinimaxBestFlags = 0
+  MinimaxBestPromotion = 0
+  MinimaxTieCount = 0
+  MinimaxNodes = 0
+  MinimaxBudgetReached = 0
+  MinimaxCutoffs = 0
+  MinimaxSeedFrom = 255
+  MinimaxSeedTo = 255
+  MinimaxSeedFlags = 0
+  MinimaxSeedPromotion = 0
+  if MinimaxSeedEnabled = 1 then
+    ChessFindDepthTwoMove
+    if MinimaxBudgetReached = 1 then
+      StopAfterFirstLegal = 0
+      return
+    end if
+    MinimaxSeedFrom = SelectedMoveFrom
+    MinimaxSeedTo = SelectedMoveTo
+    MinimaxSeedFlags = SelectedMoveFlags
+    MinimaxSeedPromotion = SelectedMovePromotion
+    DepthThreeSeedFrom = SelectedMoveFrom
+    DepthThreeSeedTo = SelectedMoveTo
+    DepthThreeSeedFlags = SelectedMoveFlags
+    DepthThreeSeedPromotion = SelectedMovePromotion
+    MinimaxBestScore = -30000
+    MinimaxBestFrom = 255
+    MinimaxBestTo = 255
+    MinimaxBestFlags = 0
+    MinimaxBestPromotion = 0
+    MinimaxTieCount = 0
+    MinimaxExactFrom = 255
+    MinimaxNodes = 0
+    MinimaxBudgetReached = 0
+    MinimaxCutoffs = 0
+  end if
+  MinimaxDepth = 3
+  if MinimaxSeedFrom <> 255 then
+    MoveFrom = DepthThreeSeedFrom
+    MoveTo = DepthThreeSeedTo
+    MoveFlags = DepthThreeSeedFlags
+    MovePromotion = DepthThreeSeedPromotion
+    ' Evaluate the seed once now; the later complete scan skips it.
+    MinimaxSeedFrom = 255
+    FindMateMode = 10
+    ChessTryLegalMove
+#ifdef CHESS_SELF_TEST
+    PromotionDepthThreeSeedTestScore = MinimaxBestScore
+#endif
+    MinimaxSeedFrom = DepthThreeSeedFrom
+    MinimaxSeedTo = DepthThreeSeedTo
+    MinimaxSeedFlags = DepthThreeSeedFlags
+    MinimaxSeedPromotion = DepthThreeSeedPromotion
+  end if
+  FindMateMode = 10
+  ChessCountLegalMoves
+  FindMateMode = 0
+  ChessVerifyRandomMinimaxTie
+  if MinimaxBestFrom <> 255 then
+    SelectedMoveFrom = MinimaxBestFrom
+    SelectedMoveTo = MinimaxBestTo
+    SelectedMoveFlags = MinimaxBestFlags
+    SelectedMovePromotion = MinimaxBestPromotion
+  else
+    SelectedMoveFrom = DepthThreeSeedFrom
+    SelectedMoveTo = DepthThreeSeedTo
+    SelectedMoveFlags = DepthThreeSeedFlags
+    SelectedMovePromotion = DepthThreeSeedPromotion
+  end if
+  StopAfterFirstLegal = 0
+  return
+
+sub ChessEnsureSelectedMoveSafe:
+  if SelectedMoveFrom = 255 then return
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MoveFlags = SelectedMoveFlags
+  MovePromotion = SelectedMovePromotion
+  MovingSide = Side
+  ChessApplyMove
+  SafeMoveCount = 0
+  ChessEvaluateAppliedMoveSafety
+  ChessUndoMove
+  if SafeMoveCount = 0 then ChessFindAnySafePositionalMove
+  return
+
+sub ChessAvoidQuietMateThreat:
+#ifdef CHESS_SELF_TEST
+  QuietThreatTestCalls += 1
+#endif
+  if SelectedMoveFrom = 255 then return
+  MinimaxExcludeFrom = SelectedMoveFrom
+  MinimaxExcludeTo = SelectedMoveTo
+  MinimaxExcludeFlags = SelectedMoveFlags
+  MinimaxExcludePromotion = SelectedMovePromotion
+  MinimaxDepth = 3
+  MinimaxBestScore = -28999
+  MinimaxNodes = 0
+  MinimaxBudgetReached = 0
+  QuietThreatNodes = 0
+  QuietThreatCandidateFound = 0
+  MinimaxSeedFrom = 255
+  MinimaxQuietThreat = 1
+  MoveFrom = MinimaxExcludeFrom
+  MoveTo = MinimaxExcludeTo
+  MoveFlags = MinimaxExcludeFlags
+  MovePromotion = MinimaxExcludePromotion
+  FindMateMode = 10
+  ChessTryLegalMove
+  MinimaxQuietThreat = 0
+  FindMateMode = 0
+  StopAfterFirstLegal = 0
+  if QuietThreatCandidateFound = 0 then
+    SelectedMoveFrom = MinimaxExcludeFrom
+    SelectedMoveTo = MinimaxExcludeTo
+    SelectedMoveFlags = MinimaxExcludeFlags
+    SelectedMovePromotion = MinimaxExcludePromotion
+    return
+  end if
+  MinimaxExcludeEnabled = 1
+  ChessFindDepthTwoMove
+  MinimaxExcludeEnabled = 0
+  if SelectedMoveFrom = 255 then
+    SelectedMoveFrom = MinimaxExcludeFrom
+    SelectedMoveTo = MinimaxExcludeTo
+    SelectedMoveFlags = MinimaxExcludeFlags
+    SelectedMovePromotion = MinimaxExcludePromotion
+  end if
+  return
+
+sub ChessFindPreferredMove:
+  ChessFindMateInOne
+  if MateMoveCount = 0 and ChessLevel = 1 then ChessFindMateInTwo
+  if MateMoveCount > 0 then
+    SelectedMoveFrom = BestMoveFrom
+    SelectedMoveTo = BestMoveTo
+    SelectedMoveFlags = BestMoveFlags
+    SelectedMovePromotion = BestMovePromotion
+  else
+    if ChessLevel = 0 then
+      ChessFindPositionalMove
+    else
+      MovingSide = Side
+      ChessEvaluatePosition
+      if EndgamePieceCount <= 11 then
+        ChessFindDepthThreeMove
+      else
+        ChessFindDepthTwoMove
+      end if
+      if MinimaxRootPieceCount <= 18 then ChessAvoidQuietMateThreat
+      if SelectedMoveFrom = 255 then ChessFindSafePositionalMove else ChessEnsureSelectedMoveSafe
+    end if
+  end if
+  return
+
+#ifdef CHESS_SELF_TEST
+sub ChessRunDeterministicSelfPlay:
+  ChessInitialPosition
+  ChessResetRepetitionHistory
+  SelfPlayPly = 0
+  SelfPlayFinished = 0
+  SelfPlayReason = 0
+  while SelfPlayPly < 300 and SelfPlayFinished = 0
+    ChessFindFirstLegalMove
+    if SelectedMoveFrom = 255 then
+      SelfPlayFinished = 1
+      SelfPlayReason = 1
+    else
+      MoveFrom = SelectedMoveFrom
+      MoveTo = SelectedMoveTo
+      MoveFlags = SelectedMoveFlags
+      MovePromotion = SelectedMovePromotion
+      ChessApplyMove
+      ChessRecordPosition
+      SelfPlayPly += 1
+      ChessClassifyInsufficientMaterial
+      ChessClassifyRepetition
+      if InsufficientMaterial = 1 then
+        SelfPlayFinished = 1
+        SelfPlayReason = 2
+      elseif AutomaticFivefold = 1 then
+        SelfPlayFinished = 1
+        SelfPlayReason = 5
+      elseif Halfmove >= 150 then
+        SelfPlayFinished = 1
+        SelfPlayReason = 3
+      end if
+    end if
+  end while
+  if SelfPlayFinished = 0 then SelfPlayReason = 4
+  return
+#endif
+
+sub ChessEvaluateMaterial:
+#ifdef CHESS_COMPACT_MATERIAL
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+  if MaterialCacheValid = 1 then return
+#endif
+#ifdef CHESS_SELF_TEST
+  MaterialScanCount += 1
+#endif
+  asm {
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld hl,0
+    ld bc,$4000
+AMY_CHESS_MATERIAL_LOOP:
+    ld a,(ix+0)
+    inc ix
+    or a
+    jr z,AMY_CHESS_MATERIAL_NEXT
+    inc c
+    add a,a
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,ChessMaterialValueWords
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    pop hl
+    add hl,de
+AMY_CHESS_MATERIAL_NEXT:
+    djnz AMY_CHESS_MATERIAL_LOOP
+    ld (AMY_UVAR_MaterialBalance),hl
+    ld a,c
+    ld (AMY_UVAR_EndgamePieceCount),a
+    pop ix
+  }
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+  MaterialCacheValid = 1
+#endif
+#else
+  MaterialBalance = 0
+  EndgamePieceCount = 0
+  for I = 0 to 63
+    if Board[I] <> Empty then EndgamePieceCount += 1
+    if Board[I] = WhitePawn then MaterialBalance += 100
+    if Board[I] = WhiteKnight then MaterialBalance += 320
+    if Board[I] = WhiteBishop then MaterialBalance += 330
+    if Board[I] = WhiteRook then MaterialBalance += 500
+    if Board[I] = WhiteQueen then MaterialBalance += 900
+    if Board[I] = BlackPawn then MaterialBalance -= 100
+    if Board[I] = BlackKnight then MaterialBalance -= 320
+    if Board[I] = BlackBishop then MaterialBalance -= 330
+    if Board[I] = BlackRook then MaterialBalance -= 500
+    if Board[I] = BlackQueen then MaterialBalance -= 900
+  next
+#endif
+  return
+
+#ifdef CHESS_INCREMENTAL_MATERIAL_DELTA
+' Input A: internal piece code. Output DE: signed material value.
+' BC is preserved for the running material balance.
+sub ChessLoadMaterialValue:
+  asm {
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,ChessMaterialValueWords
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+  }
+  return
+
+sub ChessApplyMaterialDelta:
+  if MaterialCacheValid = 0 then return
+  asm {
+    xor a
+    jr AMY_CHESS_MATERIAL_DELTA_COMMON
+  }
+  return
+
+sub ChessUndoMaterialDelta:
+  if MaterialCacheValid = 0 then return
+  asm {
+    ld a,1
+AMY_CHESS_MATERIAL_DELTA_COMMON:
+    push af
+    ld bc,0
+    ld a,(AMY_UVAR_UndoCaptured)
+    or a
+    jr z,AMY_CHESS_MATERIAL_DELTA_PROMOTION
+    call AMY_UPROC_ChessLoadMaterialValue
+    ld a,c
+    sub e
+    ld c,a
+    ld a,b
+    sbc a,d
+    ld b,a
+AMY_CHESS_MATERIAL_DELTA_PROMOTION:
+    ld a,(AMY_UVAR_MovePromotion)
+    or a
+    jr z,AMY_CHESS_MATERIAL_DELTA_DIRECTION
+    push af
+    ld a,(AMY_UVAR_UndoPiece)
+    call AMY_UPROC_ChessLoadMaterialValue
+    ld a,c
+    sub e
+    ld c,a
+    ld a,b
+    sbc a,d
+    ld b,a
+    pop af
+    call AMY_UPROC_ChessLoadMaterialValue
+    ld h,b
+    ld l,c
+    add hl,de
+    ld b,h
+    ld c,l
+AMY_CHESS_MATERIAL_DELTA_DIRECTION:
+    pop af
+    ld e,a
+    or a
+    jr z,AMY_CHESS_MATERIAL_DELTA_ADD
+    xor a
+    sub c
+    ld c,a
+    sbc a,a
+    sub b
+    ld b,a
+AMY_CHESS_MATERIAL_DELTA_ADD:
+    ld hl,(AMY_UVAR_MaterialBalance)
+    add hl,bc
+    ld (AMY_UVAR_MaterialBalance),hl
+    ld a,(AMY_UVAR_UndoCaptured)
+    or a
+    ret z
+    ld hl,AMY_UVAR_EndgamePieceCount
+    ld a,e
+    or a
+    jr nz,AMY_CHESS_MATERIAL_DELTA_RESTORE_COUNT
+    dec (hl)
+    ret
+AMY_CHESS_MATERIAL_DELTA_RESTORE_COUNT:
+    inc (hl)
+  }
+  return
+#endif
+
+#ifdef CHESS_SELF_TEST
+sub ChessProfileEndgameEvaluation:
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[7] = BlackRook
+  Board[14] = BlackPawn
+  Board[23] = BlackPawn
+  Board[40] = WhitePawn
+  Board[49] = WhitePawn
+  Board[56] = WhiteRook
+  Board[60] = WhiteKing
+  Side = 0
+  MovingSide = 0
+  ChessEvaluatePosition
+  return
+
+sub ChessEvaluateForcedCaptureExchange:
+  ExchangeStaticBalance = 0
+  ExchangeQuietBalance = 0
+  ExchangeReplyCount = 0
+  ChessFindLegalCaptures
+  if CaptureMoveCount = 1 then
+    MoveFrom = CaptureBestMoveFrom
+    MoveTo = CaptureBestMoveTo
+    MoveFlags = CaptureBestMoveFlags
+    MovePromotion = CaptureBestMovePromotion
+    ChessApplyMove
+    ChessEvaluateMaterial
+    ExchangeStaticBalance = MaterialBalance
+
+    SavedMoveFrom = MoveFrom
+    SavedMoveTo = MoveTo
+    SavedMovePromotion = MovePromotion
+    SavedMoveFlags = MoveFlags
+    SavedUndoPiece = UndoPiece
+    SavedUndoCaptured = UndoCaptured
+    SavedUndoCapturedSquare = UndoCapturedSquare
+    SavedUndoCastling = UndoCastling
+    SavedUndoEnPassant = UndoEnPassant
+    SavedUndoHalfmove = UndoHalfmove
+    SavedUndoFullmove = UndoFullmove
+
+    ChessFindLegalCaptures
+    ExchangeReplyCount = CaptureMoveCount
+    if CaptureMoveCount = 1 then
+      MoveFrom = CaptureBestMoveFrom
+      MoveTo = CaptureBestMoveTo
+      MoveFlags = CaptureBestMoveFlags
+      MovePromotion = CaptureBestMovePromotion
+      ChessApplyMove
+      ChessEvaluateMaterial
+      ExchangeQuietBalance = MaterialBalance
+      ChessUndoMove
+    end if
+
+    MoveFrom = SavedMoveFrom
+    MoveTo = SavedMoveTo
+    MovePromotion = SavedMovePromotion
+    MoveFlags = SavedMoveFlags
+    UndoPiece = SavedUndoPiece
+    UndoCaptured = SavedUndoCaptured
+    UndoCapturedSquare = SavedUndoCapturedSquare
+    UndoCastling = SavedUndoCastling
+    UndoEnPassant = SavedUndoEnPassant
+    UndoHalfmove = SavedUndoHalfmove
+    UndoFullmove = SavedUndoFullmove
+    ChessUndoMove
+  end if
+  return
+#endif
+
+sub ChessApplyMove:
+  UndoPiece = Board[MoveFrom]
+  UndoCaptured = Board[MoveTo]
+  UndoCapturedSquare = MoveTo
+  UndoCastling = Castling
+  UndoEnPassant = EnPassant
+  UndoHalfmove = Halfmove
+  UndoFullmove = Fullmove
+  EnPassant = 255
+
+  if UndoPiece = WhiteKing then Castling = Castling & 12
+  if UndoPiece = BlackKing then Castling = Castling & 3
+  if UndoPiece = WhiteRook and MoveFrom = 63 then Castling = Castling & 14
+  if UndoPiece = WhiteRook and MoveFrom = 56 then Castling = Castling & 13
+  if UndoPiece = BlackRook and MoveFrom = 7 then Castling = Castling & 11
+  if UndoPiece = BlackRook and MoveFrom = 0 then Castling = Castling & 7
+  if UndoCaptured = WhiteRook and MoveTo = 63 then Castling = Castling & 14
+  if UndoCaptured = WhiteRook and MoveTo = 56 then Castling = Castling & 13
+  if UndoCaptured = BlackRook and MoveTo = 7 then Castling = Castling & 11
+  if UndoCaptured = BlackRook and MoveTo = 0 then Castling = Castling & 7
+
+  if MoveFlags & FlagEnPassant then
+    if Side = 0 then UndoCapturedSquare = MoveTo + 8 else UndoCapturedSquare = MoveTo - 8
+    UndoCaptured = Board[UndoCapturedSquare]
+    Board[UndoCapturedSquare] = Empty
+  end if
+
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+#ifdef CHESS_INCREMENTAL_MATERIAL_DELTA
+  if UndoCaptured <> Empty or MovePromotion <> 0 then ChessApplyMaterialDelta
+#else
+  if UndoCaptured <> Empty or MovePromotion <> 0 then MaterialCacheValid = 0
+#endif
+#endif
+
+  Board[MoveFrom] = Empty
+  if MovePromotion <> 0 then Board[MoveTo] = MovePromotion else Board[MoveTo] = UndoPiece
+
+  if MoveFlags & FlagCastleKing then
+    if Side = 0 then
+      Board[61] = Board[63]
+      Board[63] = Empty
+    else
+      Board[5] = Board[7]
+      Board[7] = Empty
+    end if
+  elseif MoveFlags & FlagCastleQueen then
+    if Side = 0 then
+      Board[59] = Board[56]
+      Board[56] = Empty
+    else
+      Board[3] = Board[0]
+      Board[0] = Empty
+    end if
+  end if
+
+  if MoveFlags & FlagDoublePawn then EnPassant = (MoveFrom + MoveTo) >> 1
+  if UndoPiece = WhitePawn or UndoPiece = BlackPawn or UndoCaptured <> Empty then Halfmove = 0 else Halfmove += 1
+  if Side = 1 then Fullmove += 1
+  Side = 1 - Side
+  return
+
+sub ChessUndoMove:
+#ifdef CHESS_INCREMENTAL_MATERIAL_CACHE
+#ifdef CHESS_INCREMENTAL_MATERIAL_DELTA
+  if UndoCaptured <> Empty or MovePromotion <> 0 then ChessUndoMaterialDelta
+#else
+  if UndoCaptured <> Empty or MovePromotion <> 0 then MaterialCacheValid = 0
+#endif
+#endif
+  Side = 1 - Side
+  Castling = UndoCastling
+  EnPassant = UndoEnPassant
+  Halfmove = UndoHalfmove
+  Fullmove = UndoFullmove
+
+  if MoveFlags & FlagCastleKing then
+    if Side = 0 then
+      Board[63] = Board[61]
+      Board[61] = Empty
+    else
+      Board[7] = Board[5]
+      Board[5] = Empty
+    end if
+  elseif MoveFlags & FlagCastleQueen then
+    if Side = 0 then
+      Board[56] = Board[59]
+      Board[59] = Empty
+    else
+      Board[0] = Board[3]
+      Board[3] = Empty
+    end if
+  end if
+
+  Board[MoveFrom] = UndoPiece
+  Board[MoveTo] = Empty
+  Board[UndoCapturedSquare] = UndoCaptured
+  return
+
+#ifdef CHESS_SELF_TEST
+sub ChessKernelSelfTest:
+  ChessProfileEndgameEvaluation
+  TestResult = 0
+  PendingResult = 0
+  MoveFrom = 17
+  UndoCaptured = BlackQueen
+  GenerateColumn = 6
+  RayDone = 1
+  WhiteKingSquare = 41
+  BlackKingSquare = 22
+  ChessSaveSearchFrame(SearchStack[1])
+  MoveFrom = 0
+  UndoCaptured = 0
+  GenerateColumn = 0
+  RayDone = 0
+  WhiteKingSquare = 0
+  BlackKingSquare = 0
+  ChessRestoreSearchFrame(SearchStack[1])
+  if MoveFrom = 17 and UndoCaptured = BlackQueen and GenerateColumn = 6 and RayDone = 1 and WhiteKingSquare = 41 and BlackKingSquare = 22 then TestResult += 1
+  ChessInitialPosition
+  MoveFrom = 52
+  MoveTo = 36
+  MovePromotion = 0
+  MoveFlags = FlagDoublePawn
+  ChessApplyMove
+  if Board[36] = WhitePawn and Board[52] = Empty and EnPassant = 44 and Side = 1 then TestResult += 1
+  ChessUndoMove
+  if Board[52] = WhitePawn and Board[36] = Empty and EnPassant = 255 and Side = 0 then TestResult += 1
+
+  ' Material scans are reusable across quiet make/unmake, but captures must
+  ' invalidate both the child and restored parent positions.
+  MaterialCacheTestResult = 0
+  MaterialScanCount = 0
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[18] = BlackKnight
+  Board[42] = WhiteKnight
+  Board[60] = WhiteKing
+  Side = 0
+  ChessEvaluateMaterial
+  ChessEvaluateMaterial
+  if MaterialScanCount = 1 and MaterialBalance = 0 and EndgamePieceCount = 4 then MaterialCacheTestResult += 1
+  MoveFrom = 42
+  MoveTo = 25
+  MovePromotion = 0
+  MoveFlags = 0
+  ChessApplyMove
+  ChessEvaluateMaterial
+  ChessUndoMove
+  ChessEvaluateMaterial
+  if MaterialScanCount = 1 and MaterialBalance = 0 and EndgamePieceCount = 4 then MaterialCacheTestResult += 1
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[28] = BlackRook
+  Board[36] = WhiteQueen
+  Board[60] = WhiteKing
+  Side = 0
+  ChessEvaluateMaterial
+  MoveFrom = 36
+  MoveTo = 28
+  MovePromotion = 0
+  MoveFlags = 0
+  ChessApplyMove
+  ChessEvaluateMaterial
+  if MaterialBalance = 900 and EndgamePieceCount = 3 then MaterialCacheTestResult += 1
+  ChessUndoMove
+  ChessEvaluateMaterial
+  if MaterialScanCount = 2 and MaterialBalance = 400 and EndgamePieceCount = 4 and Board[28] = BlackRook and Board[36] = WhiteQueen then MaterialCacheTestResult += 1
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[1] = BlackRook
+  Board[8] = WhitePawn
+  Board[60] = WhiteKing
+  Side = 0
+  ChessEvaluateMaterial
+  MoveFrom = 8
+  MoveTo = 1
+  MovePromotion = WhiteQueen
+  MoveFlags = 0
+  ChessApplyMove
+  ChessEvaluateMaterial
+  if MaterialScanCount = 3 and MaterialBalance = 900 and EndgamePieceCount = 3 and Board[1] = WhiteQueen then MaterialCacheTestResult += 1
+  ChessUndoMove
+  ChessEvaluateMaterial
+  if MaterialScanCount = 3 and MaterialBalance = -400 and EndgamePieceCount = 4 and Board[1] = BlackRook and Board[8] = WhitePawn then MaterialCacheTestResult += 1
+  MovePromotion = 0
+  MoveFlags = 0
+
+  ChessClearBoard
+  Board[60] = WhiteKing
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 3
+  MoveFrom = 60
+  MoveTo = 62
+  MoveFlags = FlagCastleKing
+  ChessApplyMove
+  if Board[62] = WhiteKing and Board[61] = WhiteRook and Board[63] = Empty and Castling = 0 then TestResult += 1
+  ChessUndoMove
+  if Board[60] = WhiteKing and Board[63] = WhiteRook and Board[61] = Empty then TestResult += 1
+
+  ChessClearBoard
+  Board[28] = WhitePawn
+  Board[27] = BlackPawn
+  Side = 0
+  EnPassant = 19
+  MoveFrom = 28
+  MoveTo = 19
+  MovePromotion = 0
+  MoveFlags = FlagEnPassant
+  ChessEvaluateMaterial
+  ChessApplyMove
+  ChessEvaluateMaterial
+  if MaterialScanCount = 4 and MaterialBalance = 100 and EndgamePieceCount = 1 then MaterialCacheTestResult += 1
+  if Board[19] = WhitePawn and Board[27] = Empty then TestResult += 1
+  ChessUndoMove
+  ChessEvaluateMaterial
+  if MaterialScanCount = 4 and MaterialBalance = 0 and EndgamePieceCount = 2 then MaterialCacheTestResult += 1
+  if Board[28] = WhitePawn and Board[27] = BlackPawn and Board[19] = Empty then TestResult += 1
+
+  ChessClearBoard
+  Board[8] = WhitePawn
+  Side = 0
+  MoveFrom = 8
+  MoveTo = 0
+  MovePromotion = WhiteQueen
+  MoveFlags = 0
+  ChessApplyMove
+  if Board[0] = WhiteQueen and Board[8] = Empty then TestResult += 1
+  ChessUndoMove
+  if Board[8] = WhitePawn and Board[0] = Empty then TestResult += 1
+
+  ChessClearBoard
+  AttackSquare = 28
+  AttackSide = 0
+  Board[35] = WhitePawn
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  ChessClearBoard
+  AttackSide = 1
+  Board[21] = BlackPawn
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  ChessClearBoard
+  AttackSide = 0
+  Board[11] = WhiteKnight
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  ChessClearBoard
+  Board[27] = WhiteKing
+  ChessFindKings
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  ChessClearBoard
+  Board[4] = WhiteRook
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  Board[20] = BlackPawn
+  ChessIsSquareAttacked
+  if AttackResult = 0 then TestResult += 1
+
+  ChessClearBoard
+  Board[1] = WhiteBishop
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  ChessClearBoard
+  Board[55] = WhiteQueen
+  ChessIsSquareAttacked
+  if AttackResult = 1 then TestResult += 1
+
+  ChessInitialPosition
+  ChessCountPawnKnightLegalMoves
+  InitialLegalCount = LegalMoveCount
+  if LegalMoveCount = 20 then PendingResult += 1
+
+  ChessClearBoard
+  Board[60] = WhiteKing
+  Board[52] = WhiteKnight
+  Board[4] = BlackRook
+  Board[0] = BlackKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  ChessCountPawnKnightLegalMoves
+  PinnedLegalCount = LegalMoveCount
+  if LegalMoveCount = 0 then PendingResult += 1
+
+  ChessClearBoard
+  Board[62] = WhiteKing
+  Board[1] = BlackKing
+  Board[27] = WhiteQueen
+  Side = 0
+  ChessCountSlidingLegalMoves
+  QueenLegalCount = LegalMoveCount
+  if LegalMoveCount = 27 then PendingResult += 1
+
+  ChessClearBoard
+  Board[62] = WhiteKing
+  Board[1] = BlackKing
+  Board[27] = WhiteRook
+  Board[25] = WhitePawn
+  Board[29] = BlackPawn
+  Side = 0
+  ChessCountSlidingLegalMoves
+  RookLegalCount = LegalMoveCount
+  if LegalMoveCount = 10 then PendingResult += 1
+
+  ' FEN: k1KQ4/8/8/8/8/8/8/8 w - - 0 1
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[2] = WhiteKing
+  Board[3] = WhiteQueen
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  FenStarted = 1
+  test checkpoint "fen_count_start"
+  ChessCountLegalMoves
+  test checkpoint "fen_count_done"
+  FenFinished = 1
+  FenLegalCount = LegalMoveCount
+  if LegalMoveCount = 20 then PendingResult += 1
+  MateSearchStarted = 1
+  ChessFindMateInOne
+  MateSearchFinished = 1
+  FenBestMoveFrom = BestMoveFrom
+  FenBestMoveTo = BestMoveTo
+  FenMateMoveCount = MateMoveCount
+  if MateMoveCount = 1 and BestMoveFrom = 3 and BestMoveTo = 24 then PendingResult += 1
+  ChessFindPreferredMove
+  PreferredMateFrom = SelectedMoveFrom
+  PreferredMateTo = SelectedMoveTo
+  if PreferredMateFrom = 3 and PreferredMateTo = 24 then PendingResult += 1
+
+  ' The compact evaluator applies the seeded e-pawn opening preference rather
+  ' than selecting an arbitrary equal-score edge move.
+  ChessInitialPosition
+  ChessFindAnySafePositionalMove
+  OpeningBestFrom = SelectedMoveFrom
+  OpeningBestTo = SelectedMoveTo
+  OpeningSafeCount = SafeMoveCount
+  if OpeningBestFrom = 52 and OpeningBestTo = 36 and OpeningSafeCount = 20 then PendingResult += 1
+
+  ChessInitialPosition
+  ChessLevel = 0
+  ChessFindPreferredMove
+  ChessLevel = 1
+  OpeningFastFrom = SelectedMoveFrom
+  OpeningFastTo = SelectedMoveTo
+  if OpeningFastFrom = 52 and OpeningFastTo = 36 then PendingResult += 1
+
+  ' BLITZ may vary only between candidates carrying the same positional score.
+  ChessInitialPosition
+  ChessLevel = 0
+  MoveVariation = 1
+  ChessFindPreferredMove
+  OpeningVariantFrom = SelectedMoveFrom
+  OpeningVariantTo = SelectedMoveTo
+  if OpeningVariantFrom <> OpeningFastFrom or OpeningVariantTo <> OpeningFastTo then PendingResult += 1
+  RequestedMoveFrom = OpeningVariantFrom
+  RequestedMoveTo = OpeningVariantTo
+  RequestedMovePromotion = 0
+  ChessValidateRequestedMove
+  if RequestedMoveLegal = 1 then PendingResult += 1
+  MoveVariation = 0
+
+  ChessInitialPosition
+  MinimaxUseCutoff = 0
+  MinimaxSeedEnabled = 1
+  ChessFindDepthTwoMove
+  OpeningMinimaxFrom = SelectedMoveFrom
+  OpeningMinimaxTo = SelectedMoveTo
+  OpeningFullNodes = MinimaxNodes
+  OpeningFullScore = MinimaxBestScore
+  ChessInitialPosition
+  MinimaxUseCutoff = 1
+  MinimaxSeedEnabled = 1
+  ChessFindDepthTwoMove
+  OpeningCutFrom = SelectedMoveFrom
+  OpeningCutTo = SelectedMoveTo
+  OpeningCutNodes = MinimaxNodes
+  OpeningCutScore = MinimaxBestScore
+  if OpeningMinimaxFrom = OpeningCutFrom and OpeningMinimaxTo = OpeningCutTo and OpeningFullScore = OpeningCutScore and OpeningCutNodes <= OpeningFullNodes and MinimaxCutoffs > 0 then PendingResult += 1
+
+  ' A rook receives +4 on a file without its own pawn and another +4 when
+  ' the file contains no opposing pawn. Mirrored pawn squares keep every
+  ' material, rank and piece-square term identical across the three cases.
+  ChessClearBoard
+  Board[1] = BlackKnight
+  Board[4] = BlackKing
+  Board[8] = BlackPawn
+  Board[48] = WhitePawn
+  Board[56] = WhiteRook
+  Board[57] = WhiteKnight
+  Board[60] = WhiteKing
+  Side = 0
+  MovingSide = 0
+  ChessFindKings
+  ChessEvaluatePosition
+  RookClosedFileScore = PositionScore
+  Board[48] = Empty
+  Board[55] = WhitePawn
+  ChessEvaluatePosition
+  RookSemiOpenFileScore = PositionScore
+  if RookSemiOpenFileScore = RookClosedFileScore + 4 then PendingResult += 1
+  Board[8] = Empty
+  Board[15] = BlackPawn
+  ChessEvaluatePosition
+  RookOpenFileScore = PositionScore
+  if RookOpenFileScore = RookSemiOpenFileScore + 4 then PendingResult += 1
+
+  ' Syzygy DTM 1: 5K1k/8/8/8/8/8/2R5/8 w - - 0 1, Rh2#.
+  ChessClearBoard
+  Board[5] = WhiteKing
+  Board[7] = BlackKing
+  Board[50] = WhiteRook
+  Side = 0
+  ChessFindMateInOne
+  KrkBestMoveFrom = BestMoveFrom
+  KrkBestMoveTo = BestMoveTo
+  if MateMoveCount = 1 and BestMoveFrom = 50 and BestMoveTo = 55 then PendingResult += 1
+
+  ' Syzygy DTM 1: k7/8/K7/4B3/8/8/B7/8 w - - 0 1, Bd5#.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[16] = WhiteKing
+  Board[28] = WhiteBishop
+  Board[48] = WhiteBishop
+  Side = 0
+  ChessFindMateInOne
+  KbbkBestMoveFrom = BestMoveFrom
+  KbbkBestMoveTo = BestMoveTo
+  if MateMoveCount = 1 and BestMoveFrom = 48 and BestMoveTo = 27 then PendingResult += 1
+
+  ' Syzygy DTM 1: 1B6/8/8/8/1N6/8/8/k1K5 w - - 0 1, Be5#.
+  ChessClearBoard
+  Board[1] = WhiteBishop
+  Board[33] = WhiteKnight
+  Board[56] = BlackKing
+  Board[58] = WhiteKing
+  Side = 0
+  ChessFindMateInOne
+  KbnkBestMoveFrom = BestMoveFrom
+  KbnkBestMoveTo = BestMoveTo
+  if MateMoveCount = 1 and BestMoveFrom = 1 and BestMoveTo = 28 then PendingResult += 1
+
+  ' Syzygy DTM 1: k7/8/1K6/8/8/3Q4/8/8 w - - 0 1, Qd8#.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[17] = WhiteKing
+  Board[43] = WhiteQueen
+  Side = 0
+  ChessFindMateInOne
+  KqkBestMoveFrom = BestMoveFrom
+  KqkBestMoveTo = BestMoveTo
+  if MateMoveCount = 1 and BestMoveFrom = 43 and BestMoveTo = 3 then PendingResult += 1
+
+  ' Automatic FIDE draws: KK, KBK, and KNK cannot produce checkmate.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[56] = WhiteKing
+  ChessClassifyInsufficientMaterial
+  if InsufficientMaterial = 1 then PendingResult += 1
+
+  Board[57] = WhiteBishop
+  ChessClassifyInsufficientMaterial
+  if InsufficientMaterial = 1 then PendingResult += 1
+
+  Board[57] = WhiteKnight
+  ChessClassifyInsufficientMaterial
+  if InsufficientMaterial = 1 then PendingResult += 1
+
+  Board[58] = WhiteBishop
+  ChessClassifyInsufficientMaterial
+  if InsufficientMaterial = 0 then PendingResult += 1
+
+  Board[58] = Empty
+  Board[57] = WhiteBishop
+  Board[43] = BlackBishop
+  ChessClassifyInsufficientMaterial
+  if InsufficientMaterial = 1 then PendingResult += 1
+
+  ' Wikipedia KPK rule-one exception. d7 is the sole tablebase win.
+  ChessClearBoard
+  Board[3] = BlackKing
+  Board[18] = WhiteKing
+  Board[19] = WhitePawn
+  Side = 0
+  ChessFindPromotionApproachMoves
+  KpkBestMoveFrom = BestMoveFrom
+  KpkBestMoveTo = BestMoveTo
+  if PromotionApproachCount = 1 and BestMoveFrom = 19 and BestMoveTo = 11 then PendingResult += 1
+
+  ' Wikipedia: Kc5 is the sole tablebase win by reaching a key square.
+  ChessClearBoard
+  Board[20] = BlackKing
+  Board[34] = WhitePawn
+  Board[35] = WhiteKing
+  Side = 0
+  ChessFindWhiteKeySquareMove
+  if KeyBestScore = 1 and KeyBestMoveFrom = 35 and KeyBestMoveTo = 26 then PendingResult += 1
+
+  ' Horizon fixture: Rxa8+ is legal but Black can answer Kxa8.
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[1] = BlackKing
+  Board[56] = WhiteRook
+  Board[63] = WhiteKing
+  Side = 0
+  ChessFindLegalCaptures
+  HorizonCaptureFrom = CaptureBestMoveFrom
+  HorizonCaptureTo = CaptureBestMoveTo
+  if CaptureMoveCount = 1 and CaptureBestMoveFrom = 56 and CaptureBestMoveTo = 0 then PendingResult += 1
+
+  ChessEvaluateForcedCaptureExchange
+  if ExchangeStaticBalance = 500 and ExchangeQuietBalance = 0 and ExchangeReplyCount = 1 then PendingResult += 1
+  if Board[0] = BlackRook and Board[1] = BlackKing and Board[56] = WhiteRook and Board[63] = WhiteKing and Side = 0 then PendingResult += 1
+
+  ' The targeted recapture probe tests only geometrical short-range attackers,
+  ' validates king safety, scores the capture and restores the board.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[36] = BlackRook
+  Board[53] = WhiteKnight
+  Board[63] = WhiteKing
+  Side = 0
+  ChessFindKings
+  RecaptureTarget = 36
+  RecaptureBestScore = -180
+  MinimaxRootSide = 0
+  LegalMoveCount = 0
+  ChessFindShortRangeRecaptures
+  RecaptureTestResult = 0
+  if RecaptureBestScore > -180 then RecaptureTestResult += 1
+  if LegalMoveCount = 1 then RecaptureTestResult += 2
+  if Board[36] = BlackRook and Board[53] = WhiteKnight then RecaptureTestResult += 4
+  if Side = 0 then RecaptureTestResult += 8
+  if RecaptureTestResult = 15 then PendingResult += 1
+
+#ifdef CHESS_ENGINE_LAB
+  ' Stockfish mate in two: Qh5 forces the only reply and then mate.
+  ' FEN: 1n1qkbnr/4p3/7p/rp2Nb2/3ppp1P/8/P1PP4/R1BQKB1R w KQk - 0 13
+  ChessClearBoard
+  Board[1] = BlackKnight
+  Board[3] = BlackQueen
+  Board[4] = BlackKing
+  Board[5] = BlackBishop
+  Board[6] = BlackKnight
+  Board[7] = BlackRook
+  Board[12] = BlackPawn
+  Board[23] = BlackPawn
+  Board[24] = BlackRook
+  Board[25] = BlackPawn
+  Board[28] = WhiteKnight
+  Board[29] = BlackBishop
+  Board[35] = BlackPawn
+  Board[36] = BlackPawn
+  Board[37] = BlackPawn
+  Board[39] = WhitePawn
+  Board[48] = WhitePawn
+  Board[50] = WhitePawn
+  Board[51] = WhitePawn
+  Board[56] = WhiteRook
+  Board[58] = WhiteBishop
+  Board[59] = WhiteQueen
+  Board[60] = WhiteKing
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 7
+  EnPassant = 255
+  ChessLevel = 1
+  ChessFindPreferredMove
+  MateTwoTestCount = MateMoveCount
+  MateTwoTestFrom = SelectedMoveFrom
+  MateTwoTestTo = SelectedMoveTo
+  MateTwoTestNodes = MateTwoNodes
+  MateTwoTestBudget = MateTwoBudgetReached
+  if MateTwoTestCount = 1 and MateTwoTestFrom = 59 and MateTwoTestTo = 31 and MateTwoTestBudget = 0 and MateTwoTestNodes > 0 and MateTwoTestNodes <= MateTwoNodeBudget then PendingResult += 1
+  MateTwoNodeLimit = 1
+  ChessFindMateInTwo
+  if MateMoveCount = 0 and MateTwoBudgetReached = 1 and StopAfterFirstLegal = 0 then PendingResult += 1
+  MateTwoNodeLimit = MateTwoNodeBudget
+
+  ' Evaluation must not favour one color. Swap every piece color, reflect the
+  ' board vertically, and evaluate from the corresponding side to move.
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[14] = BlackPawn
+  Board[18] = BlackBishop
+  Board[40] = WhiteRook
+  Board[49] = WhitePawn
+  Board[60] = WhiteKing
+  Side = 0
+  MovingSide = 0
+  Castling = 1
+  ChessFindKings
+  ChessEvaluatePosition
+  ColorMirrorWhiteScore = PositionScore
+
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[9] = BlackPawn
+  Board[16] = BlackRook
+  Board[42] = WhiteBishop
+  Board[54] = WhitePawn
+  Board[60] = WhiteKing
+  Side = 1
+  MovingSide = 1
+  Castling = 4
+  ChessFindKings
+  ChessEvaluatePosition
+  ColorMirrorBlackScore = PositionScore
+  if ColorMirrorWhiteScore = ColorMirrorBlackScore then PendingResult += 1
+
+  ' A deliberately tiny search budget must return the prevalidated positional
+  ' seed instead of stalling, and it must leave the move generator reusable.
+  ChessInitialPosition
+  MinimaxNodeBudget = 1
+  MinimaxUseCutoff = 1
+  MinimaxSeedEnabled = 1
+  ChessFindDepthTwoMove
+  RequestedMoveFrom = SelectedMoveFrom
+  RequestedMoveTo = SelectedMoveTo
+  RequestedMovePromotion = SelectedMovePromotion
+  ChessValidateRequestedMove
+  if MinimaxBudgetReached = 1 and MinimaxNodes = 1 and RequestedMoveLegal = 1 and StopAfterFirstLegal = 0 then PendingResult += 1
+  MinimaxNodeBudget = DefaultMinimaxNodeBudget
+
+  ' A sliding rook must be included in the bounded recapture extension.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[36] = BlackRook
+  Board[60] = WhiteRook
+  Board[63] = WhiteKing
+  Side = 0
+  ChessFindKings
+  RecaptureTarget = 36
+  RecaptureBestScore = -600
+  MinimaxRootSide = 0
+  LegalMoveCount = 0
+  ChessFindShortRangeRecaptures
+  RecaptureTestResult = 0
+  if RecaptureBestScore > -600 then RecaptureTestResult += 1
+  if LegalMoveCount = 1 then RecaptureTestResult += 2
+  if Board[36] = BlackRook and Board[60] = WhiteRook then RecaptureTestResult += 4
+  if Side = 0 then RecaptureTestResult += 8
+  if RecaptureTestResult = 15 then PendingResult += 1
+
+  ' An opponent recapture minimizes Amy's score rather than maximizing it.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[32] = BlackRook
+  Board[36] = WhiteQueen
+  Board[63] = WhiteKing
+  Side = 1
+  ChessFindKings
+  RecaptureTarget = 36
+  RecaptureBestScore = 900
+  RecaptureMinimize = 1
+  MinimaxRootSide = 0
+  LegalMoveCount = 0
+  ChessFindShortRangeRecaptures
+  RecaptureMinimize = 0
+  RecaptureTestResult = 0
+  if RecaptureBestScore < 900 then RecaptureTestResult += 1
+  if LegalMoveCount = 1 then RecaptureTestResult += 2
+  if Board[32] = BlackRook and Board[36] = WhiteQueen then RecaptureTestResult += 4
+  if Side = 1 then RecaptureTestResult += 8
+  if RecaptureTestResult = 15 then PendingResult += 1
+
+#endif
+
+  ' All four FIDE promotion choices are distinct legal moves.
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[8] = WhitePawn
+  Board[60] = WhiteKing
+  Side = 0
+  ChessCountLegalMoves
+  PromotionLegalCount = LegalMoveCount
+  if PromotionLegalCount = 9 then PendingResult += 1
+
+  ' A king must take a genuinely undefended rook instead of making a quiet move.
+  ChessClearBoard
+  Board[0] = BlackKing
+  Board[28] = BlackRook
+  Board[36] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPreferredMove
+  RookCaptureTestFrom = SelectedMoveFrom
+  RookCaptureTestTo = SelectedMoveTo
+  if SelectedMoveFrom = 36 and SelectedMoveTo = 28 then PendingResult += 1
+
+  ' A safe immediate queen promotion outranks unrelated king moves.
+  ChessClearBoard
+  Board[7] = BlackKing
+  Board[9] = WhitePawn
+  Board[63] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  ChessLevel = 1
+  ChessFindKings
+  ChessFindPositionalMove
+  PromotionPositionTestFrom = SelectedMoveFrom
+  PromotionPositionTestTo = SelectedMoveTo
+  PromotionPositionTestPiece = SelectedMovePromotion
+  ChessFindDepthTwoMove
+  PromotionDepthTwoTestFrom = SelectedMoveFrom
+  PromotionDepthTwoTestTo = SelectedMoveTo
+  PromotionDepthTwoTestPiece = SelectedMovePromotion
+  PromotionDepthTwoTestScore = MinimaxBestScore
+  ChessFindPreferredMove
+  PromotionChoiceTestFrom = SelectedMoveFrom
+  PromotionChoiceTestTo = SelectedMoveTo
+  PromotionChoiceTestPiece = SelectedMovePromotion
+  PromotionDepthThreeFinalTestScore = MinimaxBestScore
+  if SelectedMoveFrom = 9 and SelectedMoveTo = 1 and SelectedMovePromotion = WhiteQueen then PendingResult += 1
+
+  ChessRunDeterministicSelfPlay
+
+  ' Both white castling moves are legal on an otherwise empty back rank.
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[56] = WhiteRook
+  Board[60] = WhiteKing
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 3
+  ChessCountLegalMoves
+  CastleOpenCount = LegalMoveCount
+  if CastleOpenCount = 26 then PendingResult += 1
+
+  ' A rook attacking f1 forbids O-O but must not forbid O-O-O.
+  Board[5] = BlackRook
+  ChessCountLegalMoves
+  CastleTransitCount = LegalMoveCount
+  if CastleTransitCount = 23 then PendingResult += 1
+
+  ' Two reversible knight cycles create a threefold claim; four make the
+  ' fifth occurrence an automatic FIDE draw.
+  ChessInitialPosition
+  ChessResetRepetitionHistory
+  for RepetitionCycle = 1 to 2
+    MoveFrom = 62
+    MoveTo = 45
+    MoveFlags = 0
+    MovePromotion = 0
+    ChessCommitMove
+    MoveFrom = 6
+    MoveTo = 21
+    ChessCommitMove
+    MoveFrom = 45
+    MoveTo = 62
+    ChessCommitMove
+    MoveFrom = 21
+    MoveTo = 6
+    ChessCommitMove
+  next
+  ChessClassifyRepetition
+  RepetitionThreeTest = RepetitionCount
+  if RepetitionCount = 3 and CanClaimThreefold = 1 and AutomaticFivefold = 0 then PendingResult += 1
+  for RepetitionCycle = 1 to 2
+    MoveFrom = 62
+    MoveTo = 45
+    ChessCommitMove
+    MoveFrom = 6
+    MoveTo = 21
+    ChessCommitMove
+    MoveFrom = 45
+    MoveTo = 62
+    ChessCommitMove
+    MoveFrom = 21
+    MoveTo = 6
+    ChessCommitMove
+  next
+  ChessClassifyRepetition
+  RepetitionFiveTest = RepetitionCount
+  if RepetitionCount = 5 and CanClaimThreefold = 1 and AutomaticFivefold = 1 then PendingResult += 1
+
+  ' A player may claim before announcing the move that creates occurrence 3.
+  ChessInitialPosition
+  ChessResetRepetitionHistory
+  MoveFrom = 62
+  MoveTo = 45
+  MoveFlags = 0
+  MovePromotion = 0
+  ChessCommitMove
+  MoveFrom = 6
+  MoveTo = 21
+  ChessCommitMove
+  MoveFrom = 45
+  MoveTo = 62
+  ChessCommitMove
+  MoveFrom = 21
+  MoveTo = 6
+  ChessCommitMove
+  MoveFrom = 62
+  MoveTo = 45
+  ChessCommitMove
+  MoveFrom = 6
+  MoveTo = 21
+  ChessCommitMove
+  MoveFrom = 45
+  MoveTo = 62
+  ChessCommitMove
+  MoveFrom = 21
+  MoveTo = 6
+  ChessClassifyAnnouncedMove
+  AnnouncedThreefoldTest = AnnouncedThreefold
+  if AnnouncedThreefold = 1 and AnnouncedRepetitionCount = 3 and Board[21] = BlackKnight and Board[6] = Empty and Side = 1 then PendingResult += 1
+
+  ' The same prospective operation recognizes the announced 100th halfmove.
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[56] = WhiteRook
+  Board[60] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 99
+  ChessResetRepetitionHistory
+  MoveFrom = 56
+  MoveTo = 57
+  MoveFlags = 0
+  MovePromotion = 0
+  ChessClassifyAnnouncedMove
+  AnnouncedFiftyMoveTest = AnnouncedFiftyMove
+  if AnnouncedFiftyMove = 1 and Halfmove = 99 and Board[56] = WhiteRook and Board[57] = Empty and Side = 0 then PendingResult += 1
+
+  Halfmove = 99
+  ChessClassifyMoveCountDraw
+  if CanClaimFiftyMove = 0 and AutomaticSeventyFiveMove = 0 then PendingResult += 1
+  Halfmove = 100
+  ChessClassifyMoveCountDraw
+  if CanClaimFiftyMove = 1 and AutomaticSeventyFiveMove = 0 then PendingResult += 1
+  Halfmove = 149
+  ChessClassifyMoveCountDraw
+  if CanClaimFiftyMove = 1 and AutomaticSeventyFiveMove = 0 then PendingResult += 1
+  Halfmove = 150
+  ChessClassifyMoveCountDraw
+  if CanClaimFiftyMove = 1 and AutomaticSeventyFiveMove = 1 then PendingResult += 1
+
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[60] = WhiteKing
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 1
+  EnPassant = 255
+  RequestedMoveFrom = 60
+  RequestedMoveTo = 62
+  RequestedMovePromotion = 0
+  ChessValidateRequestedMove
+  if RequestedMoveLegal = 1 and RequestedMoveFlags = FlagCastleKing then PendingResult += 1
+
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[60] = WhiteKing
+  Board[28] = WhitePawn
+  Board[27] = BlackPawn
+  Side = 0
+  Castling = 0
+  EnPassant = 19
+  RequestedMoveFrom = 28
+  RequestedMoveTo = 19
+  RequestedMovePromotion = 0
+  ChessValidateRequestedMove
+  if RequestedMoveLegal = 1 and RequestedMoveFlags = FlagEnPassant then PendingResult += 1
+
+  ChessClearBoard
+  Board[7] = BlackKing
+  Board[56] = WhiteKing
+  Board[8] = WhitePawn
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  RequestedMoveFrom = 8
+  RequestedMoveTo = 0
+  RequestedMovePromotion = WhiteQueen
+  ChessValidateRequestedMove
+  if RequestedMoveLegal = 1 and RequestedMoveFlags = 0 then PendingResult += 1
+
+  ' Nested safety search must restore king locations before testing the next root move.
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[4] = BlackKing
+  Board[7] = BlackRook
+  Board[8] = BlackPawn
+  Board[9] = BlackPawn
+  Board[10] = BlackPawn
+  for I = 12 to 15
+    Board[I] = BlackPawn
+  next
+  Board[48] = WhiteKing
+  Board[50] = BlackQueen
+  Board[52] = WhitePawn
+  Board[54] = WhitePawn
+  Board[55] = WhitePawn
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 0
+  Castling = 12
+  EnPassant = 255
+  Halfmove = 2
+  Fullmove = 18
+  ChessLevel = 1
+  ChessFindSafePositionalMove
+  NestedSafetyTestFrom = SelectedMoveFrom
+  NestedSafetyTestTo = SelectedMoveTo
+  if SelectedMoveFrom = 48 and (SelectedMoveTo = 40 or SelectedMoveTo = 56) then PendingResult += 1
+
+  ' Regression: mate-threat search must not flag one losing continuation as
+  ' forced when another defence exists; the shuffle guard rejects ...Rh6.
+  ChessClearBoard
+  Board[0] = BlackRook
+  Board[3] = BlackQueen
+  Board[6] = BlackKing
+  Board[9] = BlackPawn
+  Board[22] = BlackRook
+  Board[28] = WhiteQueen
+  Board[31] = BlackPawn
+  Board[32] = WhitePawn
+  Board[33] = WhiteBishop
+  Board[34] = WhitePawn
+  Board[36] = WhitePawn
+  Board[39] = WhitePawn
+  Board[44] = WhitePawn
+  Board[47] = WhitePawn
+  Board[55] = WhiteKing
+  Board[56] = WhiteRook
+  Board[61] = WhiteBishop
+  Board[63] = WhiteRook
+  Side = 1
+  Castling = 0
+  EnPassant = 255
+  Halfmove = 2
+  Fullmove = 23
+  ChessLevel = 1
+  WhiteCpuLastFrom = 255
+  WhiteCpuLastTo = 255
+  BlackCpuLastFrom = 23
+  BlackCpuLastTo = 22
+  QuietThreatTestCalls = 0
+  ChessFindPreferredMove
+  QuietThreatTestNodes = QuietThreatNodes
+  QuietThreatTestDetected = QuietThreatCandidateFound
+  QuietThreatTestFrom = SelectedMoveFrom
+  QuietThreatTestTo = SelectedMoveTo
+  QuietThreatTestPieceCount = MinimaxRootPieceCount
+  QuietThreatTestBudgetReached = MinimaxBudgetReached
+  if QuietThreatCandidateFound = 0 and SelectedMoveFrom = 22 and SelectedMoveTo = 23 then PendingResult += 1
+  ChessAvoidCpuMoveShuffle
+  if SelectedMoveFrom <> 22 or SelectedMoveTo <> 23 then PendingResult += 1
+
+  ' The forcing tail after ...Rh6, Rg1, ...Rg6 is Rxg6+ and Qg7#.
+  Board[22] = BlackRook
+  Board[23] = Empty
+  Board[62] = WhiteRook
+  Board[63] = Empty
+  Side = 0
+  Halfmove = 9
+  Fullmove = 27
+  MateFrameBase = 0
+  MateTwoNodeLimit = MateTwoNodeBudget
+  MinimaxQuietThreat = 0
+  ChessFindMateInTwo
+  if MateMoveCount = 1 and BestMoveFrom = 62 and BestMoveTo = 22 then PendingResult += 1
+
+  ' Preserve the original externally inspected completion fixture.
+  ChessClearBoard
+  Board[8] = WhitePawn
+  Side = 0
+  Castling = 3
+  EnPassant = 19
+  TestResult += PendingResult
+  return
+#endif

@@ -9,6 +9,7 @@ import { solarSystemEncyclopediaProjectFiles } from "./examples-solar-system-ass
 import { mazeEscapeProjectFiles } from "./examples-maze-assets.generated.js";
 import { amyChessProjectFiles } from "./examples-amy-chess-assets.generated.js";
 import { amyChessProjectFiles as amyChessV11ProjectFiles } from "./examples-amy-chess-v1-1-assets.generated.js";
+import { amyChessProjectFiles as amyChessV12ProjectFiles } from "./examples-amy-chess-v1-2-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -54,6 +55,7 @@ const derivedProjectFilesById = {
   "train-track-puzzle": trainTrackPuzzleProjectFiles,
   "amy-chess": amyChessProjectFiles,
   "amy-chess-v1-1": amyChessV11ProjectFiles,
+  "amy-chess-v1-2": amyChessV12ProjectFiles,
   "sprite-minimal": [
     {
       "path": "editors.json",

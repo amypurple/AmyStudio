@@ -62,6 +62,26 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "amy-chess-v1-2",
+    "label": "Amy Chess v1.2",
+    "detail": "Amy Chess v1.2 with Human/CPU controls, BLITZ and NORMAL play, varied openings, stronger endgame momentum, corrected quiet-threat search, ZX0 graphics, VoxPCM personality and a 31,969-byte aggressive cartridge build.",
+    "projectName": "Amy Chess v1.2",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "colecovision",
+      "chess",
+      "fide",
+      "game",
+      "voxpcm",
+      "zx0",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-vdp-pattern-tools-lab",
     "label": "OS7 Pattern Transform Lab",
     "detail": "Visual comparison of an eight-color tile with BIOS left/right and top/bottom flips, clockwise rotation, 2x pattern/color enlargement, and explicit Graphics II thirds.",
