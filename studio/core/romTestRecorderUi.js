@@ -48,6 +48,7 @@ import {
 } from "./routineCycleProfiler.js?v=20260801-profile-readable";
 import { createControllerSetupUi } from "./controllerSetupUi.js?v=20261004-keyboard-port-routing1";
 import { detectEmulatorMedia, EMULATOR_MEDIA_KIND, isKnownEmulatorMediaName } from "./emulatorMediaDetection.js?v=20261002-adam-media-autodetect1";
+import { renderCrtTelevision } from "./crtTelevisionRenderer.js?v=20261015-crt-left19";
 
 const SEED = 0x19770527;
 const PLAYBACK_MAX_CATCHUP_FRAMES = 4;
@@ -228,26 +229,31 @@ function ensureStyles() {
     .rom-recorder::backdrop { background:rgba(0,0,0,.82); }
     .rom-recorder__head,.rom-recorder__bar { display:flex; align-items:center; gap:8px; padding:9px 12px; }
     .rom-recorder__head { justify-content:space-between; border-bottom:1px solid #26343c; }
-    .rom-recorder__head h2 { margin:0; color:#65dbef; font-size:16px; letter-spacing:.08em; }
+    .rom-recorder__head h2 { margin:0; color:#65dbef; font-size:15px; letter-spacing:.08em; }
     .rom-recorder__head-actions { display:flex; gap:7px; align-items:center; }
-    .rom-recorder__icon-button { width:34px; min-width:34px; height:32px; padding:0; display:grid; place-items:center; font-size:17px; line-height:1; }
+    .rom-recorder__icon-button { width:34px; min-width:34px; height:32px; padding:0; display:grid; place-items:center; font-size:16px; line-height:1; }
     .rom-recorder .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .rom-recorder__body { display:grid; grid-template-columns:minmax(530px,2fr) minmax(510px,1fr); grid-template-rows:auto minmax(0,1fr); gap:8px 10px; padding:4px; height:calc(95vh - 44px); overflow:hidden; box-sizing:border-box; }
     .rom-recorder__stage { grid-row:1 / span 2; display:grid; align-content:start; justify-items:center; gap:6px; min-width:0; min-height:0; }
-    .rom-recorder__screen-wrap { position:relative; width:auto; max-width:100%; aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; border:1px solid #31424c; overflow:hidden; }
-    .rom-recorder__screen { max-width:100%; image-rendering:pixelated; background:#000; border:1px solid #31424c; outline:none; }
+    .rom-recorder__screen-wrap { position:relative; width:auto; max-width:100%; aspect-ratio:4 / 3; display:grid; place-items:center; background:#050607; overflow:hidden; }
+    .rom-recorder__screen,.rom-recorder__crt-screen { max-width:100%; background:#000; border:1px solid #31424c; outline:none; }
+    .rom-recorder__screen { image-rendering:pixelated; }
     .rom-recorder__screen-wrap .rom-recorder__screen { border:0; }
+    .rom-recorder__crt-screen { display:none; width:100%; height:auto; border:0; image-rendering:auto; }
+    .rom-recorder__screen-wrap.is-crt .rom-recorder__screen { position:absolute; width:1px !important; height:1px !important; opacity:0; pointer-events:none; }
+    .rom-recorder__screen-wrap.is-crt .rom-recorder__crt-screen { display:block; }
     .rom-recorder__screen-wrap:fullscreen { width:100vw !important; height:100vh; max-width:none; aspect-ratio:auto; border:0; background:#000; cursor:none; }
     .rom-recorder__screen-wrap:fullscreen .rom-recorder__screen { width:min(100vw,133.333vh) !important; height:min(100vh,75vw) !important; max-width:none; }
+    .rom-recorder__screen-wrap:fullscreen.is-crt .rom-recorder__crt-screen { width:min(100vw,142.857vh) !important; height:min(100vh,70vw) !important; max-width:none; }
     .rom-recorder__bios-missing { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:12px; padding:24px; box-sizing:border-box; text-align:center; color:#e8edf0; background:radial-gradient(circle at 50% 38%,#17242b 0,#090e12 58%,#030405 100%); }
     .rom-recorder__bios-missing[hidden] { display:none; }
-    .rom-recorder__bios-wordmark { font-weight:700; font-size:clamp(17px,3vw,28px); letter-spacing:.12em; text-shadow:0 2px #000; }
+    .rom-recorder__bios-wordmark { font-weight:700; font-size:clamp(16px,2.8vw,26px); letter-spacing:.12em; text-shadow:0 2px #000; }
     .rom-recorder__bios-wordmark span:nth-child(1) { color:#58d6c7; } .rom-recorder__bios-wordmark span:nth-child(2) { color:#65dbef; } .rom-recorder__bios-wordmark span:nth-child(3) { color:#6487dd; } .rom-recorder__bios-wordmark span:nth-child(4) { color:#b46bc7; } .rom-recorder__bios-wordmark span:nth-child(5) { color:#d66378; } .rom-recorder__bios-wordmark span:nth-child(6) { color:#d98a58; } .rom-recorder__bios-wordmark span:nth-child(7) { color:#d6c85c; } .rom-recorder__bios-wordmark span:nth-child(8) { color:#78c86a; }
-    .rom-recorder__bios-missing strong { color:#fff; font-size:15px; letter-spacing:.05em; }
-    .rom-recorder__bios-missing p { max-width:360px; margin:0; color:#a7b4bb; font-size:12px; line-height:1.5; }
+    .rom-recorder__bios-missing strong { color:#fff; font-size:14px; letter-spacing:.05em; }
+    .rom-recorder__bios-missing p { max-width:360px; margin:0; color:#a7b4bb; font-size:11px; line-height:1.5; }
     .rom-recorder__bios-missing button { color:#081014; background:#65dbef; border-color:#8ee7f5; }
     .rom-recorder__side { grid-column:2; grid-row:1; display:grid; align-content:start; gap:6px; min-width:0; }
-    .rom-recorder__side label { display:grid; gap:4px; color:#99aab4; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+    .rom-recorder__side label { display:grid; gap:4px; color:#99aab4; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
     .rom-recorder__side select,.rom-recorder__side input { width:100%; box-sizing:border-box; }
     .rom-recorder__tools { display:flex; flex-wrap:wrap; gap:6px; }
     .rom-recorder__tools > * { flex:1 1 auto; }
@@ -262,7 +268,7 @@ function ensureStyles() {
     .rom-recorder__controller-display { display:grid; justify-items:center; gap:5px; }
     .rom-recorder__controller-shell { position:relative; display:grid; grid-template-rows:74px auto; gap:5px; width:116px; padding:7px 11px 10px; border:1px solid #52616b; border-radius:8px 8px 14px 14px; background:linear-gradient(145deg,#69747a 0%,#343d43 48%,#20282d 100%); box-shadow:inset 1px 1px 0 #8f9ba0,inset -2px -2px 3px #11171a,0 5px 10px #0008; }
     .rom-recorder__controller-stick { position:relative; width:66px; height:66px; margin:0 auto; border:3px solid #929da2; border-radius:50%; background:radial-gradient(circle at 38% 32%,#eef1f1 0 8%,#aab1b3 10% 28%,#515b60 31% 47%,#1b2226 50% 100%); box-shadow:inset 0 0 0 2px #151b1e,0 2px 4px #000a; }
-    .rom-recorder__controller-stick button { position:absolute; display:grid; place-items:center; width:22px; min-width:22px; height:20px; min-height:20px; padding:0; border-color:#6f7d84; background:#151d22d9; font-size:11px; line-height:1; }
+    .rom-recorder__controller-stick button { position:absolute; display:grid; place-items:center; width:22px; min-width:22px; height:20px; min-height:20px; padding:0; border-color:#6f7d84; background:#151d22d9; font-size:10px; line-height:1; }
     .rom-recorder__controller-stick [data-input="UP"] { top:-5px; left:22px; }
     .rom-recorder__controller-stick [data-input="DOWN"] { bottom:-5px; left:22px; }
     .rom-recorder__controller-stick [data-input="LEFT"] { top:23px; left:-7px; }
@@ -271,8 +277,8 @@ function ensureStyles() {
     .rom-recorder__controller-stick [data-input-combo="UP RIGHT"] { top:2px; right:1px; }
     .rom-recorder__controller-stick [data-input-combo="DOWN LEFT"] { bottom:2px; left:1px; }
     .rom-recorder__controller-stick [data-input-combo="DOWN RIGHT"] { right:1px; bottom:2px; }
-    .rom-recorder__controller-stick [data-input-combo] { width:18px; min-width:18px; height:17px; min-height:17px; font-size:9px; }
-    .rom-recorder__fire { position:absolute; top:52px; width:18px; min-width:18px; height:27px; min-height:27px; padding:0; border-color:#9b9b8a; border-radius:3px; background:linear-gradient(#e6e2c8,#8d8c7e); color:#111; font-size:9px; font-weight:900; box-shadow:inset 1px 1px 0 #fff8,0 1px 2px #000b; }
+    .rom-recorder__controller-stick [data-input-combo] { width:18px; min-width:18px; height:17px; min-height:17px; font-size:8px; }
+    .rom-recorder__fire { position:absolute; top:52px; width:18px; min-width:18px; height:27px; min-height:27px; padding:0; border-color:#9b9b8a; border-radius:3px; background:linear-gradient(#e6e2c8,#8d8c7e); color:#111; font-size:8px; font-weight:900; box-shadow:inset 1px 1px 0 #fff8,0 1px 2px #000b; }
     .rom-recorder__fire--left { left:-7px; }
     .rom-recorder__fire--right { right:-7px; }
     .rom-recorder__keypad { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; padding:5px; border:1px solid #151b1e; border-radius:3px; background:#242d32; box-shadow:inset 0 2px 5px #000a; }
@@ -285,7 +291,7 @@ function ensureStyles() {
     .rom-recorder__super-buttons [data-input="PURPLE"] { background:#9255b7; }
     .rom-recorder__super-buttons [data-input="BLUE"] { background:#4a9deb; }
     .rom-recorder__super-spinner { display:grid; grid-template-columns:24px 1fr 24px; align-items:center; gap:4px; margin-top:4px; }
-    .rom-recorder__super-spinner button { min-width:24px; min-height:20px; padding:0; font-size:11px; }
+    .rom-recorder__super-spinner button { min-width:24px; min-height:20px; padding:0; font-size:10px; }
     .rom-recorder__super-spinner span { height:22px; border:3px solid #8e999d; border-radius:50%; background:radial-gradient(circle at 38% 32%,#e9ece8,#737d81 54%,#171d20 58%); box-shadow:0 1px 2px #000; }
     .rom-recorder__controller-shell[data-profile="super-action"] { width:122px; grid-template-rows:74px auto auto; }
     .rom-recorder__controller-shell[data-profile="super-action"] > .rom-recorder__fire { display:none; }
@@ -309,15 +315,15 @@ function ensureStyles() {
     .rom-recorder__wheel-console > strong,.rom-recorder__roller-panel > strong { display:block; color:#d3dcdf; font:700 9px/1.2 ui-monospace,Consolas,monospace; text-align:center; text-transform:uppercase; }
     .rom-recorder__wheel-console > .rom-recorder__controller-unit { position:absolute; top:19px; right:16px; transform:scale(.72); transform-origin:top right; }
     .rom-recorder__wheel-rim { position:absolute; top:28px; left:31px; width:118px; height:118px; border:12px solid #111719; border-radius:50%; background:radial-gradient(circle,#69757a 0 13%,#171d20 15% 22%,transparent 24%),conic-gradient(transparent 0 13%,#8e9698 14% 18%,transparent 19% 47%,#8e9698 48% 52%,transparent 53% 80%,#8e9698 81% 85%,transparent 86%); box-shadow:0 2px 5px #000,inset 0 0 0 2px #657176; }
-    .rom-recorder__wheel-rim button { position:absolute; min-width:23px; width:23px; min-height:20px; height:20px; padding:0; font-size:10px; }
+    .rom-recorder__wheel-rim button { position:absolute; min-width:23px; width:23px; min-height:20px; height:20px; padding:0; font-size:9px; }
     .rom-recorder__wheel-rim [data-input="UP"] { top:-5px; left:47px; }.rom-recorder__wheel-rim [data-input="DOWN"] { bottom:-5px; left:47px; }.rom-recorder__wheel-rim [data-input="LEFT"] { top:46px; left:-5px; }.rom-recorder__wheel-rim [data-input="RIGHT"] { top:46px; right:-5px; }
     .rom-recorder__pedal { display:grid; align-content:end; height:128px; padding:8px; border:2px solid #59656a; border-radius:5px; background:repeating-linear-gradient(0deg,#21292d 0 10px,#4b565b 11px 14px); box-shadow:0 5px 8px #0009; }
-    .rom-recorder__pedal button { min-width:0; padding:6px 2px; font-size:9px; }
+    .rom-recorder__pedal button { min-width:0; padding:6px 2px; font-size:8px; }
     .rom-recorder__roller-panel { position:relative; display:grid; grid-template-columns:116px 116px; justify-content:space-between; gap:96px; width:348px; padding:9px; border:2px solid #5f6b70; border-radius:8px; background:linear-gradient(#3c464b,#151b1e); box-shadow:inset 2px 2px #879196,0 5px 9px #0009; }
     .rom-recorder__roller-panel > strong { position:absolute; top:8px; left:122px; width:124px; }
     .rom-recorder__roller-trackball { position:absolute; top:31px; left:141px; width:66px; height:66px; border:7px solid #11181c; border-radius:50%; background:radial-gradient(circle at 38% 32%,#f4efd8,#b5af95 48%,#6e6b5d 70%); box-shadow:0 2px 5px #000; }
     .rom-recorder__roller-actions { position:absolute; top:112px; left:123px; display:grid; grid-template-columns:repeat(2,43px); gap:7px 16px; }
-    .rom-recorder__roller-actions button { min-width:43px; min-height:24px; padding:0; border-color:#8e2b27; background:#d6463e; color:#fff; font-size:9px; }
+    .rom-recorder__roller-actions button { min-width:43px; min-height:24px; padding:0; border-color:#8e2b27; background:#d6463e; color:#fff; font-size:8px; }
     @media(max-width:760px) { .rom-recorder__wheel-set { grid-template-columns:280px 68px; }.rom-recorder__wheel-rim { left:24px; }.rom-recorder__wheel-console > .rom-recorder__controller-unit { right:12px; transform:scale(.68); }.rom-recorder__roller-panel { transform:scale(.9); transform-origin:top center; margin-bottom:-22px; } }
     .rom-recorder__controller button:active,.rom-recorder__controller button.is-active { transform:translateY(1px); filter:brightness(.75); }
     .rom-recorder__capture { width:100%; }
@@ -333,7 +339,7 @@ function ensureStyles() {
     .rom-recorder__pane[data-pane="asm"].is-active,.rom-recorder__pane[data-pane="ram"].is-active,.rom-recorder__pane[data-pane="vram"].is-active,.rom-recorder__pane[data-pane="map"].is-active { display:flex; flex-direction:column; overflow:hidden; }
     .rom-recorder__summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:7px; }
     .rom-recorder__card { padding:8px; border:1px solid #26343c; background:#091015; }
-    .rom-recorder__card strong { display:block; color:#65dbef; font-size:11px; text-transform:uppercase; }
+    .rom-recorder__card strong { display:block; color:#65dbef; font-size:10px; text-transform:uppercase; }
     .rom-recorder__registers { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
     .rom-recorder__registers code { padding:4px 6px; border:1px solid #26343c; }
     .rom-recorder__memory-controls { display:grid; grid-template-columns:140px 90px auto; gap:7px; margin-bottom:8px; }
@@ -349,24 +355,24 @@ function ensureStyles() {
     .rom-recorder__symbol-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .rom-recorder__symbol-row--poison .rom-recorder__symbol { background:rgba(255,202,76,.09); }
     .rom-recorder__symbol-row--poison .rom-recorder__symbol > span:nth-child(2) { color:#ffca4c; }
-    .rom-recorder__symbol-breakpoint { width:26px; min-width:26px; height:26px; align-self:center; justify-self:center; padding:0; color:#ff7777; font-size:16px; line-height:1; }
+    .rom-recorder__symbol-breakpoint { width:26px; min-width:26px; height:26px; align-self:center; justify-self:center; padding:0; color:#ff7777; font-size:15px; line-height:1; }
     .rom-recorder__symbol:hover { background:#17252d; }
     .rom-recorder__breakpoints { display:grid; gap:5px; margin-top:8px; }
     .rom-recorder__breakpoint { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 7px; border:1px solid #26343c; }
     .rom-recorder__profiler-controls { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:8px; min-width:0; }
     .rom-recorder__profiler-results { display:grid; gap:7px; }
-    .rom-recorder__profiler-note { color:#8fa2ac; font-size:11px; line-height:1.4; }
+    .rom-recorder__profiler-note { color:#8fa2ac; font-size:10px; line-height:1.4; }
     .rom-recorder__profiler-controls input { flex:1 1 170px; min-width:0; }
     .rom-recorder__profiler-results,.rom-recorder__profiler-results .rom-recorder__card { min-width:0; max-width:100%; box-sizing:border-box; }
     .rom-recorder__profile-value { font-variant-numeric:tabular-nums; white-space:normal; overflow-wrap:anywhere; }
     .rom-recorder__profile-active { color:#ffd36a; }
     .rom-recorder__transport { display:grid; grid-template-columns:repeat(7,auto) minmax(120px,1fr) auto auto; align-items:center; gap:5px; width:min(100%,720px); padding:6px; box-sizing:border-box; border:1px solid #26343c; background:#0d1419; }
-    .rom-recorder__transport button { min-width:34px; padding:5px 7px; font-size:15px; }
+    .rom-recorder__transport button { min-width:34px; padding:5px 7px; font-size:14px; }
     .rom-recorder__transport input[type=range] { min-width:90px; width:100%; }
     .rom-recorder__transport select { min-width:66px; }
     .rom-recorder__frame { min-width:72px; color:#65dbef; }
     .rom-recorder__status { min-height:1.5em; color:#a7b4bb; }
-    .rom-recorder__compact-action { display:inline-grid; place-items:center; width:34px; min-width:34px; height:34px; padding:0; font-size:15px; line-height:1; }
+    .rom-recorder__compact-action { display:inline-grid; place-items:center; width:34px; min-width:34px; height:34px; padding:0; font-size:14px; line-height:1; }
     .rom-recorder__settings-actions[hidden] { display:none; }
     .rom-recorder.is-rom-dragover { outline:3px solid #65dbef; outline-offset:-5px; }
     @media(max-width:1080px) { .rom-recorder__body { display:block; height:auto; max-height:calc(96vh - 52px); overflow:auto; } .rom-recorder__stage,.rom-recorder__side,.rom-recorder__debug { margin-bottom:10px; } .rom-recorder__transport { grid-template-columns:repeat(6,auto); } .rom-recorder__transport input[type=range] { grid-column:1 / -1; } }
@@ -387,6 +393,7 @@ function buildDialog() {
       <div class="rom-recorder__stage">
         <div class="rom-recorder__screen-wrap">
           <canvas class="rom-recorder__screen" width="256" height="192" tabindex="0" aria-label="Emulator display; click to capture controller or ADAM keyboard input" title="Click here to use the controller or ADAM keyboard. F1-F6: SmartKeys; F7: Undo; F8: Wild Card."></canvas>
+          <canvas class="rom-recorder__crt-screen" width="640" height="448" tabindex="0" aria-label="Emulator display in a simulated Coleco ADAM CRT monitor"></canvas>
           <div class="rom-recorder__bios-missing" data-field="biosMissing" hidden>
             <div class="rom-recorder__bios-wordmark" aria-hidden="true"><span>C</span><span>O</span><span>L</span><span>E</span><span>C</span><span>O</span><span>V</span><span>ISION</span></div>
             <strong>ColecoVision BIOS missing</strong>
@@ -417,7 +424,7 @@ function buildDialog() {
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
           <label>Serial line<select data-field="adamSerialBaud"><option value="0">Instant test bridge</option><option value="300">300 baud 8N1</option><option value="1200">1200 baud 8N1</option><option value="2400">2400 baud 8N1</option><option value="9600">9600 baud 8N1</option><option value="19200">19200 baud 8N1</option></select></label>
-          <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
+          <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="crtView" title="Simulate overscan on a Coleco ADAM CRT monitor" aria-label="Coleco ADAM CRT monitor view" aria-pressed="false">CRT</button><button class="rom-recorder__compact-action" type="button" data-action="captureScreen" title="Download the displayed screen as PNG" aria-label="Capture displayed screen">PNG</button><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
           <div class="rom-recorder__settings-actions" data-field="adamResetActions" hidden><button type="button" data-action="resetAdam" title="Operate the ADAM computer-reset switch and boot EOS">RESET ADAM</button><button type="button" data-action="resetColecoVision" title="Operate the ColecoVision-reset switch and boot the inserted cartridge through OS7">RESET CV</button></div>
         </div>
         <div class="rom-recorder__development" aria-label="Development checkpoints">
@@ -493,6 +500,7 @@ export function createRomTestRecorderUi({
   const audioSink = new RomTestAudioSink();
   let audioMuted = false;
   let mouseSpinnerEnabled = false;
+  let crtViewEnabled = false;
   const mouseSpinnerAccum = [0, 0];
   let mouseJoystickMask = 0;
   const SPINNER_DELTA_LIMIT = 127;
@@ -1251,17 +1259,61 @@ export function createRomTestRecorderUi({
   }
 
   function applyScale() {
-    const canvas = dialog.querySelector("canvas");
+    const canvas = dialog.querySelector("canvas.rom-recorder__screen");
     const screenWrap = dialog.querySelector(".rom-recorder__screen-wrap");
     const scale = field("scale").value;
-    screenWrap.style.width = scale === "fit" ? "100%" : `${256 * Number(scale)}px`;
+    const baseWidth = crtViewEnabled ? 320 : 256;
+    screenWrap.style.width = scale === "fit" ? "100%" : `${baseWidth * Number(scale)}px`;
+    screenWrap.style.aspectRatio = crtViewEnabled ? "10 / 7" : "4 / 3";
     canvas.style.width = "100%";
     canvas.style.height = "100%";
   }
 
+  function activeDisplayCanvas() {
+    return dialog.querySelector(crtViewEnabled
+      ? "canvas.rom-recorder__crt-screen"
+      : "canvas.rom-recorder__screen");
+  }
+
+  function focusGameCanvas() {
+    dialog.querySelector("canvas.rom-recorder__screen")?.focus();
+  }
+
+  function renderCrtViewButton() {
+    const button = action("crtView");
+    button.setAttribute("aria-pressed", String(crtViewEnabled));
+    button.title = crtViewEnabled
+      ? "Use the raw pixel display"
+      : "Simulate overscan on a Coleco ADAM CRT monitor";
+  }
+
+  function downloadCanvasPng(canvas, filename) {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setRecorderStatus("The browser could not encode the PNG capture.");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  }
+
+  function renderCrtDisplay() {
+    renderCrtTelevision(dialog.querySelector("canvas.rom-recorder__crt-screen"), dialog.querySelector("canvas.rom-recorder__screen"), {
+      backdropIndex: core?.getVdpRegisters()?.[7] & 0x0F,
+      region: core && core.getFramesPerSecond() < 55 ? "pal" : "ntsc",
+      cabinet: "adam"
+    });
+  }
+
   function render({ forceInspector = false } = {}) {
-    const screenCanvas = dialog.querySelector("canvas");
+    const screenCanvas = dialog.querySelector("canvas.rom-recorder__screen");
     renderRgb565(screenCanvas, core.getFramebufferView());
+    if (crtViewEnabled) renderCrtDisplay();
     const timeline = recorder.getTimeline();
     const slider = field("timeline");
     slider.min = String(timeline.firstAvailableFrame);
@@ -1658,7 +1710,6 @@ export function createRomTestRecorderUi({
       catch { throw new Error("Configure OS7.ROM, EOS.ROM, and WP.ROM before starting ADAM."); }
     }
     const adamMediaBytes = externalAdamMedia || getCompiledAdamDisk();
-    if (adam && !adamMediaBytes && !rom) throw new Error("Open an ADAM .dsk/.ddp or insert a .rom/.col cartridge first.");
     if (!adam && (!rom || !bios)) throw new Error("Compile or open a ROM and load a BIOS first.");
     core = await GearcolecoTestCore.create({ seed: SEED });
     loadedRom = rom;
@@ -1675,7 +1726,9 @@ export function createRomTestRecorderUi({
     if (adam) {
       core.loadAdamFirmware(adamFirmware);
       if (rom) core.loadRom(rom, { region: Number(field("region").value) });
-      core.startAdam({ cartridge: !adamMediaBytes && Boolean(rom) });
+      // Selecting the ADAM machine operates the computer-reset side of the
+      // physical switch. An inserted cartridge remains available to RESET CV.
+      core.startAdam({ cartridge: false });
       if (adamMediaBytes) {
         core.loadAdamMedia(adamMediaBytes, {
           slot: externalAdamMediaType === GEARCOLECO_ADAM_MEDIA.DATA_PACK ? GEARCOLECO_ADAM_SLOT.DATA_PACK_1 : GEARCOLECO_ADAM_SLOT.DISK_1,
@@ -2015,6 +2068,28 @@ export function createRomTestRecorderUi({
     action("controllerSetup").addEventListener("click", () => {
       controllerSetup.open(Number(field("controller").value) || 0);
     });
+    action("crtView").addEventListener("click", () => {
+      crtViewEnabled = !crtViewEnabled;
+      const screenWrap = dialog.querySelector(".rom-recorder__screen-wrap");
+      screenWrap.classList.toggle("is-crt", crtViewEnabled);
+      renderCrtViewButton();
+      applyScale();
+      if (crtViewEnabled) renderCrtDisplay();
+      if (core && recorder) render();
+      focusGameCanvas();
+      setRecorderStatus(crtViewEnabled
+        ? "Coleco ADAM CRT monitor enabled: rounded picture, overscan and analogue edge effects."
+        : "Raw pixel display enabled.");
+    });
+    action("captureScreen").addEventListener("click", () => {
+      if (crtViewEnabled) {
+        renderCrtDisplay();
+      }
+      const sourceName = externalRomName || getProject()?.name || "amy-studio";
+      const stem = sourceName.replace(/\.[^.]+$/, "").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "amy-studio";
+      downloadCanvasPng(activeDisplayCanvas(), `${stem}-${crtViewEnabled ? "adam-crt" : "screen"}.png`);
+      setRecorderStatus(`Captured ${crtViewEnabled ? "Coleco ADAM CRT monitor" : "raw screen"} PNG.`);
+    });
     action("muteAudio").addEventListener("click", () => {
       audioMuted = !audioMuted;
       audioSink.setMuted(audioMuted);
@@ -2023,7 +2098,7 @@ export function createRomTestRecorderUi({
     });
 
     action("mouseSpinner").addEventListener("click", async () => {
-      const canvas = dialog.querySelector("canvas");
+      const canvas = activeDisplayCanvas();
       const enabled = !mouseSpinnerEnabled;
       setMouseSpinnerEnabled(enabled);
       if (enabled) canvas.focus();
@@ -2035,12 +2110,17 @@ export function createRomTestRecorderUi({
         document.exitPointerLock?.();
       }
     });
-    const spinnerCanvas = dialog.querySelector("canvas");
-    spinnerCanvas.addEventListener("mousedown", (event) => setMouseFireButton(event, true));
+    const spinnerCanvases = dialog.querySelectorAll("canvas.rom-recorder__screen,canvas.rom-recorder__crt-screen");
+    for (const spinnerCanvas of spinnerCanvases) {
+      spinnerCanvas.addEventListener("mousedown", (event) => {
+        focusGameCanvas();
+        setMouseFireButton(event, true);
+      });
+      spinnerCanvas.addEventListener("contextmenu", (event) => {
+        if (mouseSpinnerEnabled) event.preventDefault();
+      });
+    }
     document.addEventListener("mouseup", (event) => setMouseFireButton(event, false));
-    spinnerCanvas.addEventListener("contextmenu", (event) => {
-      if (mouseSpinnerEnabled) event.preventDefault();
-    });
     document.addEventListener("mousemove", addMouseSpinnerMovement);
     document.addEventListener("pointerlockchange", () => {
       if (mouseSpinnerEnabled && !document.pointerLockElement) {
@@ -2408,6 +2488,7 @@ export function createRomTestRecorderUi({
     updateCheckpointAction();
     renderRegionToggle();
     renderAudioButton();
+    renderCrtViewButton();
     const profileTargets = field("profileTargets");
     profileTargets.replaceChildren();
     const routines = symbols.filter((symbol) => /^AMY_UPROC_/i.test(symbol.name));

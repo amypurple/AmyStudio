@@ -12,10 +12,10 @@ for (const fragment of [
   'data-action="resetColecoVision"',
   'core.resetAdam();',
   'core.resetAdam({ cartridge: true });',
-  'core.startAdam({ cartridge: !adamMediaBytes && Boolean(rom) });'
+  'core.startAdam({ cartridge: false });'
 ]) {
   assert.ok(source.includes(fragment), `ROM debugger is missing ${fragment}`);
 }
 
-assert.match(source, /Open an ADAM \.dsk\/\.ddp or insert a \.rom\/\.col cartridge first/);
+assert.doesNotMatch(source, /Open an ADAM \.dsk\/\.ddp or insert a \.rom\/\.col cartridge first/);
 console.log("ROM TEST & DEBUG ADAM dual-reset UI: PASS");
