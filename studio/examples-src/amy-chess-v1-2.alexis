@@ -250,6 +250,10 @@ u8 PromotionDepthTwoTestPiece = 0
 i16 PromotionDepthTwoTestScore = 0
 i16 PromotionDepthThreeSeedTestScore = 0
 i16 PromotionDepthThreeFinalTestScore = 0
+u8 PromotionSafetyBlitzFrom = 255
+u8 PromotionSafetyBlitzTo = 255
+u8 PromotionSafetyNormalFrom = 255
+u8 PromotionSafetyNormalTo = 255
 #endif
 u8 MaterialMinorCount = 0
 u8 InsufficientMaterial = 0
@@ -322,6 +326,8 @@ u8 MirrorSaveHigh = 0
 u8 RepetitionThreeTest = 0
 u8 RepetitionFiveTest = 0
 u8 RepetitionCycle = 0
+u8 RepetitionBlitzFrom = 255
+u8 RepetitionBlitzTo = 255
 #endif
 u8 AnnouncedThreefold = 0
 u8 AnnouncedFiftyMove = 0
@@ -458,8 +464,9 @@ u8 MinimaxBudgetReached = 0
 u8 MinimaxCutoffs = 0
 #ifdef CHESS_GAME
 u8 MinimaxRandomTie = 0
-u8 ChessRandomState = 165
+u8 ChessGameSequence = 0
 #endif
+u8 ChessRandomState = 165
 u8 MinimaxTieCount = 0
 u8 MinimaxExactFrom = 255
 u8 MinimaxExactTo = 255
@@ -1228,6 +1235,7 @@ end sub
 
 #ifdef CHESS_GAME
 sub ChessGameStart:
+  ChessGameSequence += 1
 #ifdef CHESS_ENGINE_LAB
   text screen
   backdrop black
@@ -1248,6 +1256,9 @@ sub ChessGameStart:
     ld a,(AMY_UVAR_ChessRandomState)
     xor h
     add a,l
+    ld e,a
+    ld a,(AMY_UVAR_ChessGameSequence)
+    xor e
     ld e,a
     ld a,r
     xor e
@@ -1943,9 +1954,9 @@ sub ChessKqkPlayTest:
 #endif
 
 sub ChessAvoidWinningRepetition:
-  ' BLITZ stays pragmatic and cheap. NORMAL has the cartridge's active
-  ' personality: it refuses a voluntary threefold when another move exists.
-  if ChessLevel = 0 or SelectedMoveFrom = 255 then return
+  ' Refuse a voluntary threefold when another move exists. BLITZ uses the
+  ' positional selector for its replacement so this safeguard stays cheap.
+  if SelectedMoveFrom = 255 then return
   MoveFrom = SelectedMoveFrom
   MoveTo = SelectedMoveTo
   MoveFlags = SelectedMoveFlags
@@ -1963,7 +1974,7 @@ sub ChessAvoidWinningRepetition:
   MinimaxExcludeTo = SelectedMoveTo
   MinimaxExcludeFlags = SelectedMoveFlags
   MinimaxExcludePromotion = SelectedMovePromotion
-  ChessFindDepthTwoMove
+  if ChessLevel = 0 then ChessFindPositionalMove else ChessFindDepthTwoMove
   MinimaxExcludeEnabled = 0
   if SelectedMoveFrom = 255 then
     SelectedMoveFrom = SavedMoveFrom
@@ -1974,7 +1985,7 @@ sub ChessAvoidWinningRepetition:
   return
 
 sub ChessAvoidCpuMoveShuffle:
-  if ChessLevel = 0 or SelectedMoveFrom = 255 then return
+  if SelectedMoveFrom = 255 then return
   if Board[SelectedMoveTo] <> Empty then return
   if Side = 0 then
     if SelectedMoveFrom <> WhiteCpuLastTo or SelectedMoveTo <> WhiteCpuLastFrom then return
@@ -1991,7 +2002,7 @@ sub ChessAvoidCpuMoveShuffle:
   MinimaxExcludeTo = SelectedMoveTo
   MinimaxExcludeFlags = SelectedMoveFlags
   MinimaxExcludePromotion = SelectedMovePromotion
-  ChessFindDepthTwoMove
+  if ChessLevel = 0 then ChessFindPositionalMove else ChessFindDepthTwoMove
   MinimaxExcludeEnabled = 0
   if SelectedMoveFrom = 255 then
     SelectedMoveFrom = SavedMoveFrom
@@ -3118,7 +3129,7 @@ sub ChessGeneratePawnMoves:
     end if
     if GenerateColumn > 0 then
       MoveTo = GenerateFrom - 9
-      if Board[MoveTo] >= BlackPawn then
+      if Board[MoveTo] >= BlackPawn and Board[MoveTo] <> BlackKing then
         if GenerateRow = 1 then ChessTryWhitePromotions else ChessTryLegalMove
   if StopAfterFirstLegal = 2 then return
       end if
@@ -3131,7 +3142,7 @@ sub ChessGeneratePawnMoves:
     end if
     if GenerateColumn < 7 then
       MoveTo = GenerateFrom - 7
-      if Board[MoveTo] >= BlackPawn then
+      if Board[MoveTo] >= BlackPawn and Board[MoveTo] <> BlackKing then
         if GenerateRow = 1 then ChessTryWhitePromotions else ChessTryLegalMove
   if StopAfterFirstLegal = 2 then return
       end if
@@ -3159,7 +3170,7 @@ sub ChessGeneratePawnMoves:
     end if
     if GenerateColumn > 0 then
       MoveTo = GenerateFrom + 7
-      if Board[MoveTo] > Empty and Board[MoveTo] < BlackPawn then
+      if Board[MoveTo] > Empty and Board[MoveTo] < BlackPawn and Board[MoveTo] <> WhiteKing then
         if GenerateRow = 6 then ChessTryBlackPromotions else ChessTryLegalMove
   if StopAfterFirstLegal = 2 then return
       end if
@@ -3172,7 +3183,7 @@ sub ChessGeneratePawnMoves:
     end if
     if GenerateColumn < 7 then
       MoveTo = GenerateFrom + 9
-      if Board[MoveTo] > Empty and Board[MoveTo] < BlackPawn then
+      if Board[MoveTo] > Empty and Board[MoveTo] < BlackPawn and Board[MoveTo] <> WhiteKing then
         if GenerateRow = 6 then ChessTryBlackPromotions else ChessTryLegalMove
   if StopAfterFirstLegal = 2 then return
       end if
@@ -4294,6 +4305,9 @@ AMY_CHESS_OPENING_PRIOR_DONE:
   return
 
 sub ChessEvaluateAppliedMovePosition:
+  if MinimaxExcludeEnabled = 1 then
+    if MoveFrom = MinimaxExcludeFrom and MoveTo = MinimaxExcludeTo and MoveFlags = MinimaxExcludeFlags and MovePromotion = MinimaxExcludePromotion then return
+  end if
   ChessEvaluatePosition
   ChessPenalizeLooseMovedPiece
 #ifndef CHESS_NO_OPENING_REPERTOIRE
@@ -4336,8 +4350,25 @@ sub ChessEvaluateAppliedMovePosition:
     ld a,(AMY_UVAR_ChessLevel)
     or a
     jr nz,AMY_CHESS_POSITION_KEEP_BEST
-    ld a,(AMY_UVAR_MoveVariation)
-    cp (hl)
+    ld b,(hl)
+    inc b
+    ld a,(AMY_UVAR_ChessRandomState)
+    or a
+    jr nz,AMY_CHESS_POSITION_RANDOM_SHIFT
+    ld a,$A5
+AMY_CHESS_POSITION_RANDOM_SHIFT:
+    srl a
+    jr nc,AMY_CHESS_POSITION_RANDOM_STORE
+    xor $B8
+AMY_CHESS_POSITION_RANDOM_STORE:
+    ld (AMY_UVAR_ChessRandomState),a
+AMY_CHESS_POSITION_RANDOM_MODULO:
+    cp b
+    jr c,AMY_CHESS_POSITION_RANDOM_READY
+    sub b
+    jr AMY_CHESS_POSITION_RANDOM_MODULO
+AMY_CHESS_POSITION_RANDOM_READY:
+    or a
     jr nz,AMY_CHESS_POSITION_KEEP_BEST
     jr AMY_CHESS_POSITION_COPY_MOVE
 AMY_CHESS_POSITION_NEW_BEST:
@@ -4969,6 +5000,7 @@ sub ChessFindSlidingRecaptures:
 sub ChessEvaluateMinimaxRoot:
   MinimaxRootTarget = MoveTo
   MinimaxRootPiece = UndoPiece
+  if MovePromotion <> 0 then MinimaxRootPiece = MovePromotion
   MinimaxRootFullmove = Fullmove
   MinimaxRootSide = MovingSide
   ' Keep this candidate's state: deeper evaluations overwrite these globals.
@@ -5002,18 +5034,28 @@ sub ChessEvaluateMinimaxRoot:
     if MinimaxRootSide = 0 and MinimaxRootMaterialBalance >= 400 then MinimaxWorstScore -= MinimaxReplyCount * 20
     if MinimaxRootSide = 1 and MinimaxRootMaterialBalance <= -400 then MinimaxWorstScore -= MinimaxReplyCount * 20
   end if
-  ' Do not let the horizon postpone a safe promotion that it can merely
-  ' recover as the final continuation move one ply later.
-  asm {
-    ld a,(AMY_UVAR_MovePromotion)
-    and 7
-    cp AMY_UCONST_WhiteQueen
-    jr nz,AMY_CHESS_QUEEN_PROMOTION_BONUS_DONE
-    ld hl,(AMY_UVAR_MinimaxWorstScore)
-    inc h
-    ld (AMY_UVAR_MinimaxWorstScore),hl
-AMY_CHESS_QUEEN_PROMOTION_BONUS_DONE:
-  }
+  ' Preserve the useful promotion horizon bonus only when every searched
+  ' reply leaves the new piece on its square. If a reply captures it, apply
+  ' the opposite correction so promotion cannot hide that immediate loss.
+  if MovePromotion <> 0 then
+    SafeMoveCount = 0
+    PieceSquare = MinimaxRootTarget
+    if MinimaxRootSide = 0 then CenterValue = BlackKingSquare else CenterValue = WhiteKingSquare
+    EndgameKingRowDistance = PieceSquare >> 3
+    EndgameKingColumnDistance = CenterValue >> 3
+    if EndgameKingRowDistance > EndgameKingColumnDistance then EndgameKingRowDistance -= EndgameKingColumnDistance else EndgameKingRowDistance = EndgameKingColumnDistance - EndgameKingRowDistance
+    EndgameKingColumnDistance = PieceSquare & 7
+    CenterValue &= 7
+    if EndgameKingColumnDistance > CenterValue then EndgameKingColumnDistance -= CenterValue else EndgameKingColumnDistance = CenterValue - EndgameKingColumnDistance
+    if EndgameKingRowDistance <= 1 and EndgameKingColumnDistance <= 1 then
+      AttackSquare = MinimaxRootTarget
+      AttackSide = MinimaxRootSide
+      ChessIsSquareAttacked
+      if AttackResult = 0 then SafeMoveCount = 1
+      AttackResult = 0
+    end if
+    if SafeMoveCount = 1 then MinimaxWorstScore -= 1024 else MinimaxWorstScore += 256
+  end if
   ' In the opening, make a second knight move earn back its lost tempo.
 #ifndef CHESS_NO_OPENING_KNIGHT_TEMPO
   asm {
@@ -5102,7 +5144,7 @@ AMY_CHESS_OPENING_KNIGHT_TEMPO_DONE:
 #ifndef CHESS_FIXED_MINIMAX_TIES
     ' Queen is generated first. Randomness must not replace an equal queen
     ' promotion with a weaker piece; underpromotion still wins a strict score.
-    elseif MovePromotion = 0 and MinimaxRootFullmove <= 4 then
+    elseif MovePromotion = 0 then
       ' Reservoir sampling gives every equal-scoring move the same probability.
       asm {
         ld a,(AMY_UVAR_MinimaxTieCount)
@@ -6446,6 +6488,29 @@ sub ChessKernelSelfTest:
   PromotionDepthThreeFinalTestScore = MinimaxBestScore
   if SelectedMoveFrom = 9 and SelectedMoveTo = 1 and SelectedMovePromotion = WhiteQueen then PendingResult += 1
 
+  ' An unprotected promotion beside the enemy king loses the new queen at
+  ' once. Both levels must prefer another legal move when one is available.
+  ChessClearBoard
+  Board[4] = BlackKing
+  Board[11] = WhitePawn
+  Board[16] = WhitePawn
+  Board[60] = WhiteKing
+  Side = 0
+  Castling = 0
+  EnPassant = 255
+  Fullmove = 34
+  ChessLevel = 0
+  ChessFindKings
+  ChessFindPreferredMove
+  PromotionSafetyBlitzFrom = SelectedMoveFrom
+  PromotionSafetyBlitzTo = SelectedMoveTo
+  if SelectedMoveFrom <> 11 then PendingResult += 1
+  ChessLevel = 1
+  ChessFindPreferredMove
+  PromotionSafetyNormalFrom = SelectedMoveFrom
+  PromotionSafetyNormalTo = SelectedMoveTo
+  if SelectedMoveFrom <> 11 then PendingResult += 1
+
   ChessRunDeterministicSelfPlay
 
   ' Both white castling moves are legal on an otherwise empty back rank.
@@ -6538,6 +6603,15 @@ sub ChessKernelSelfTest:
   ChessClassifyAnnouncedMove
   AnnouncedThreefoldTest = AnnouncedThreefold
   if AnnouncedThreefold = 1 and AnnouncedRepetitionCount = 3 and Board[21] = BlackKnight and Board[6] = Empty and Side = 1 then PendingResult += 1
+  ChessLevel = 0
+  SelectedMoveFrom = 21
+  SelectedMoveTo = 6
+  SelectedMoveFlags = 0
+  SelectedMovePromotion = 0
+  ChessAvoidWinningRepetition
+  RepetitionBlitzFrom = SelectedMoveFrom
+  RepetitionBlitzTo = SelectedMoveTo
+  if SelectedMoveFrom <> 21 or SelectedMoveTo <> 6 then PendingResult += 1
 
   ' The same prospective operation recognizes the announced 100th halfmove.
   ChessClearBoard

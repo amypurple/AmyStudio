@@ -285,10 +285,14 @@ export class Z80Optimizer {
                     }
                     const mnem = candidate.mnemonic.toLowerCase();
                     if ((mnem === 'ret' || mnem === 'reti' || mnem === 'retn') && candidate.operands.length === 0) {
-                        return true;
+                        // Carry, zero, and the other flags may be part of the routine ABI.
+                        // They remain observable by the caller after an unconditional return.
+                        return false;
                     }
                     if ((mnem === 'jp' || mnem === 'jr') && candidate.operands.length === 1) {
-                        return true;
+                        // A terminal jump can forward a flag result to a shared return block
+                        // or implement a tail call whose caller observes those flags.
+                        return false;
                     }
                 }
                 return false;
@@ -492,10 +496,12 @@ export class Z80Optimizer {
                     }
                     const mnem = candidate.mnemonic.toLowerCase();
                     if ((mnem === 'ret' || mnem === 'reti' || mnem === 'retn') && candidate.operands.length === 0) {
-                        return true;
+                        // Flags may be part of the routine ABI and remain observable by the caller.
+                        return false;
                     }
                     if ((mnem === 'jp' || mnem === 'jr') && candidate.operands.length === 1) {
-                        return true;
+                        // A terminal jump can forward flags to a shared return block or tail call.
+                        return false;
                     }
                 }
                 return false;
@@ -2050,8 +2056,9 @@ export class Z80Optimizer {
                 for (let i = 0; i < tokens.length; i++) {
                     const token = tokens[i];
 
-                    // Preserve hand-timed hardware code exactly. Logical deadness is
-                    // irrelevant when instruction duration is observable behaviour.
+                    // Zero-byte labels delimit hand-timed hardware code. Preserve every
+                    // instruction in the region exactly; logical deadness is irrelevant
+                    // when instruction duration is part of the observable behaviour.
                     const timingLabel = String(token?.label || '');
                     if (/^AMY_OPTIMIZER_TIMING_BEGIN_/i.test(timingLabel)) {
                         timingSensitiveRegion = true;
@@ -6530,11 +6537,11 @@ export class Z80Optimizer {
                     if (mnem === 'ex' &&
                         token.operands.length === 2 &&
                         !token.label) {
+                        const buffered = [];
+                        let cancelIndex = -1;
                         const exchangeTouchesAf = token.operands.some((operand) =>
                             String(operand.value).replace(/[()']/g, '').toLowerCase() === 'af'
                         );
-                        const buffered = [];
-                        let cancelIndex = -1;
                         for (let j = i + 1; j < tokens.length && j <= i + 4; j++) {
                             const midTok = tokens[j];
                             if (!(midTok instanceof Instruction) || midTok.label) break;
