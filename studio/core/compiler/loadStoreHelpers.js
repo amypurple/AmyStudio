@@ -13,7 +13,8 @@ export function createLoadStoreHelpers(ctx) {
     symbolOrValue,
     emitLoadInt8Into,
     emitLoadInt16IntoHL,
-    makeGeneratedLabel
+    makeGeneratedLabel,
+    getActiveArrayIxIterator
   } = ctx;
 
   function emitScaleUnsignedByteAIntoDE(scale) {
@@ -44,6 +45,12 @@ export function createLoadStoreHelpers(ctx) {
   }
 
   function emitLoadArrayAddressIntoHL(name, indexToken) {
+    const activeIterator = typeof getActiveArrayIxIterator === "function" ? getActiveArrayIxIterator() : null;
+    if (activeIterator
+      && String(name).toLowerCase() === activeIterator.arrayName
+      && normalizeExpression(indexToken).toLowerCase() === activeIterator.indexName) {
+      return ["    push ix", "    pop hl"];
+    }
     const qualifiedField = parseRecordFieldRef(name);
     if (qualifiedField?.isWholeArray) {
       const fieldInfo = qualifiedField.fieldInfo;

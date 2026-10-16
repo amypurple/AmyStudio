@@ -560,7 +560,8 @@ export function finalizeAmyTranspile({
     fp5FriendlyFirstIntName,
     fp5FriendlyDotName,
     fp5FriendlyLastFracName,
-    compilerWarnings
+    compilerWarnings,
+    activeSourceText
   } = state;
 
   const {
@@ -577,6 +578,7 @@ export function finalizeAmyTranspile({
     optimizeTransientDrawCoordinateTemps,
     optimizeSharedRecordPutCharLoads,
     optimizeSharedAdjacentArrayIndex,
+    optimizeRepeatedArrayReadComparisons,
     optimizePutFrameSharedCoordinateIndex,
     optimizeFactoredHlBranchTails,
     optimizeUnsignedCompareElseIfTails,
@@ -1236,9 +1238,11 @@ export function finalizeAmyTranspile({
           optimizeUnsignedCompareElseIfTails(
             optimizeFactoredHlBranchTails(
               optimizePutFrameSharedCoordinateIndex(
-                optimizeSharedAdjacentArrayIndex(
-                  optimizeSharedRecordPutCharLoads(
-                    optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(sourceMarkerPlan.clean)))
+                optimizeRepeatedArrayReadComparisons(
+                  optimizeSharedAdjacentArrayIndex(
+                    optimizeSharedRecordPutCharLoads(
+                      optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(sourceMarkerPlan.clean)))
+                    )
                   )
                 )
               )
@@ -1334,6 +1338,7 @@ export function finalizeAmyTranspile({
     warnings: Array.isArray(compilerWarnings) ? [...compilerWarnings] : [],
     metadata: {
       cartridge: cartridgeMeta,
+      activeSourceText,
       ...(megaCartRomSizeKb != null ? {
         megaCart: {
           romSizeKb: megaCartRomSizeKb,

@@ -33,7 +33,7 @@ The latest generated measurements are also kept in the repository as
 | Warrior bitmap | 3,214 | 4,948 | 4,976 | 9,733 | 4,678 | 4,525 | 3,643 | 4,691 |
 | Controller Visual | 590 | 1,695 | 2,272 | 2,025 | 1,401 | 1,194 | 932 | 812 |
 | Sprite Metasprite | 972 | 1,845 | 2,491 | 5,797 | 1,652 | 1,304 | 1,142 | 1,413 |
-| State Update | 1,151 | 2,453 | 2,724 | 4,013 | 2,097 | 1,308 | 1,253 | 1,291 |
+| State Update | 1,162 | 2,453 | 2,724 | 4,013 | 2,097 | 1,308 | 1,253 | 1,291 |
 | Tile Animation | 1,306 | 2,982 | 2,733 | 2,091 | 1,836 | 1,530 | 1,376 | 1,627 |
 
 These figures include each program's cartridge header, runtime, code, and ROM

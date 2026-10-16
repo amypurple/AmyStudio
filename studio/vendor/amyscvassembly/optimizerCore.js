@@ -74,26 +74,48 @@ export class Z80Optimizer {
             isSafeInlineRoutine(labelName, routine) {
                 const bodyTokens = routine.tokens.slice(0, -1);
                 if (!bodyTokens.length) return false;
-                if (bodyTokens.length > 6) return false;
 
                 let bodyBytes = 0;
                 for (let idx = 0; idx < bodyTokens.length; idx++) {
                     const token = bodyTokens[idx];
                     if (idx > 0 && token.label) return false;
+                    if (idx === 0 && token instanceof Directive && token.name === 'LABEL' && token.label === labelName) {
+                        continue;
+                    }
+                    if (!(token instanceof Instruction)) return false;
                     bodyBytes += this.estimateTokenByteSize(token);
-                    if (token instanceof Instruction) {
-                        const mnem = token.mnemonic.toLowerCase();
-                        if (['call', 'jp', 'jr', 'djnz', 'ret', 'reti', 'retn', 'rst', 'halt'].includes(mnem)) {
-                            return false;
-                        }
-                        const operandText = (token.operands || []).map(op => String(op.value || '').toLowerCase()).join(',');
-                        if (operandText.includes('ix') || operandText.includes('iy') || operandText.includes('sp')) {
-                            return false;
-                        }
+                    const mnem = token.mnemonic.toLowerCase();
+                    if ([
+                        'call', 'jp', 'jr', 'djnz', 'ret', 'reti', 'retn', 'rst', 'halt',
+                        'push', 'pop', 'ex', 'exx', 'di', 'ei', 'im',
+                        'in', 'out', 'ini', 'inir', 'ind', 'indr', 'outi', 'otir', 'outd', 'otdr',
+                        'ldi', 'ldir', 'ldd', 'lddr'
+                    ].includes(mnem)) {
+                        return false;
+                    }
+                    const operandText = (token.operands || []).map(op => String(op.value || '').toLowerCase()).join(',');
+                    if (operandText.includes('ix') || operandText.includes('iy') || operandText.includes('sp')) {
+                        return false;
+                    }
+                    if (token.operands?.some(op => ['r', 'i'].includes(String(op.value || '').toLowerCase()))) {
+                        return false;
                     }
                 }
 
                 return bodyBytes <= 8;
+            }
+
+            tokenReferencesSymbol(token, symbolName) {
+                const target = String(symbolName || '');
+                if (!target) return false;
+                const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const symbolPattern = new RegExp(`(^|[^A-Za-z0-9_.$@?])${escaped}([^A-Za-z0-9_.$@?]|$)`, 'i');
+                return (token.operands || []).some(operand => {
+                    if (operand?.type === 'symbol' && String(operand.value).toLowerCase() === target.toLowerCase()) {
+                        return true;
+                    }
+                    return typeof operand?.value === 'string' && symbolPattern.test(operand.value);
+                });
             }
 
             // Phase 1: Optimizations that don't depend on accurate final addresses
@@ -848,21 +870,15 @@ export class Z80Optimizer {
                     // Only inline if:
                     // - Called exactly once
                     // - Is a leaf routine (doesn't call other routines) OR we're doing iterative passes
-                    // - Not too large (arbitrary limit to prevent code bloat)
-                    if (count === 1 && routine.size <= 20) {
-                        // Check that routine is not referenced by JP (only CALL)
-                        let hasJpRef = false;
-                        tokens.forEach(token => {
-                            if (token instanceof Instruction &&
-                                ['jp', 'jr'].includes(token.mnemonic.toLowerCase())) {
-                                const target = token.operands[token.operands.length - 1];
-                                if (target.type === 'symbol' && target.value === labelName) {
-                                    hasJpRef = true;
-                                }
-                            }
-                        });
+                    // - Has no address/data/branch references beyond that one CALL.
+                    // The encoded-byte check in isSafeInlineRoutine is the size limit;
+                    // token counts are not a reliable proxy for Z80 code size.
+                    if (count === 1) {
+                        const soleCallSite = callSites.get(labelName)[0];
+                        const hasOtherReference = tokens.some((token, tokenIdx) =>
+                            tokenIdx !== soleCallSite && this.tokenReferencesSymbol(token, labelName));
 
-                        if (!hasJpRef && this.isSafeInlineRoutine(labelName, routine)) {
+                        if (!hasOtherReference && this.isSafeInlineRoutine(labelName, routine)) {
                             inlineCandidates.push({
                                 labelName,
                                 routine,
@@ -876,48 +892,43 @@ export class Z80Optimizer {
                     return { tokens, inlinedCount: 0 };
                 }
 
-                // Step 5: Perform inlining (process in reverse order to maintain indices)
-                // Sort by call site index descending so we don't invalidate indices
-                inlineCandidates.sort((a, b) => b.callSiteIdx - a.callSiteIdx);
-
-                let newTokens = [...tokens];
-                let inlinedCount = 0;
-
-                for (const candidate of inlineCandidates) {
-                    const { labelName, routine, callSiteIdx } = candidate;
-
-                    // Get the routine body (without the label on first token, without final RET)
-                    const bodyTokens = routine.tokens.slice(0, -1).map(t => {
-                        // Clone token without the label (label stays at original location for now)
-                        if (t.label === labelName) {
-                            // Clone without label
-                            if (t instanceof Instruction) {
-                                return new Instruction(null, t.mnemonic, [...t.operands], t.lineNumber);
-                            } else if (t instanceof Directive) {
-                                return new Directive(null, t.name, [...t.operands], t.lineNumber);
-                            }
+                // Step 5: Rebuild once from original indices. This simultaneously
+                // replaces each CALL and removes the now-unreferenced label...RET
+                // interval, so the advertised four-byte win is real and indices from
+                // one candidate cannot invalidate another candidate.
+                const replacements = new Map();
+                const removedIndices = new Set();
+                for (const { labelName, routine, callSiteIdx } of inlineCandidates) {
+                    const bodyTokens = routine.tokens.slice(0, -1).map(token => {
+                        if (token instanceof Directive && token.name === 'LABEL' && token.label === labelName) {
+                            return null;
                         }
-                        return t;
-                    });
-
-                    // Replace CALL with routine body
-                    // The CALL instruction is at callSiteIdx
-                    newTokens.splice(callSiteIdx, 1, ...bodyTokens);
-
-                    // Mark original routine for removal by adding a special marker
-                    // We'll remove it in a cleanup pass
-                    // For now, just mark the routine's label with a prefix
-                    const routineStart = routine.startIdx;
-                    if (newTokens[routineStart] && newTokens[routineStart].label === labelName) {
-                        // Add comment to mark as inlined (will be removed by dead code elimination)
-                        // Actually, let's just leave it - dead code elimination will remove it
+                        if (token.label !== labelName) return token;
+                        if (token instanceof Instruction) {
+                            return new Instruction(null, token.mnemonic, [...token.operands], token.lineNumber);
+                        }
+                        if (token instanceof Directive) {
+                            return new Directive(null, token.name, [...token.operands], token.lineNumber);
+                        }
+                        return token;
+                    }).filter(Boolean);
+                    replacements.set(callSiteIdx, bodyTokens);
+                    for (let idx = routine.startIdx; idx <= routine.endIdx; idx++) {
+                        removedIndices.add(idx);
                     }
-
-                    inlinedCount++;
                     optimizerLog(`    Inlined routine '${labelName}' (${routine.size} tokens) at call site`, 'debug');
                 }
 
-                return { tokens: newTokens, inlinedCount };
+                const newTokens = [];
+                for (let idx = 0; idx < tokens.length; idx++) {
+                    if (replacements.has(idx)) {
+                        newTokens.push(...replacements.get(idx));
+                    } else if (!removedIndices.has(idx)) {
+                        newTokens.push(tokens[idx]);
+                    }
+                }
+
+                return { tokens: newTokens, inlinedCount: inlineCandidates.length };
             }
 
             // NEW: Simple RST optimization - just replace CALL with RST, header patching is post-compilation

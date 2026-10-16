@@ -276,6 +276,38 @@ export function createCompilerShellHelpers({
     return optimized;
   }
 
+  function optimizeRepeatedArrayReadComparisons(lines) {
+    const optimized = [];
+    const loadIndex = /^\s*ld\s+a,\([^)]+\)\s*$/i;
+    const compare = /^\s*cp\s+[^;]+$/i;
+    const conditionalJump = /^\s*(?:jp|jr)\s+(?:z|nz|c|nc|pe|po|p|m),\s*[A-Za-z_][A-Za-z0-9_]*\s*$/i;
+    const normalized = (line) => String(line || "").trim().toLowerCase();
+    const isByteArrayRead = (part) => part.length === 6
+      && loadIndex.test(part[0] || "")
+      && /^\s*ld\s+e,a\s*$/i.test(part[1] || "")
+      && /^\s*ld\s+d,0\s*$/i.test(part[2] || "")
+      && /^\s*ld\s+hl,[^\s;]+\s*$/i.test(part[3] || "")
+      && /^\s*add\s+hl,de\s*$/i.test(part[4] || "")
+      && /^\s*ld\s+a,\(hl\)\s*$/i.test(part[5] || "");
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const firstRead = lines.slice(index, index + 6);
+      const secondRead = lines.slice(index + 8, index + 14);
+      const matches = isByteArrayRead(firstRead)
+        && compare.test(lines[index + 6] || "")
+        && conditionalJump.test(lines[index + 7] || "")
+        && isByteArrayRead(secondRead)
+        && firstRead.every((line, offset) => normalized(line) === normalized(secondRead[offset]));
+      if (!matches) {
+        optimized.push(lines[index]);
+        continue;
+      }
+      optimized.push(...firstRead, lines[index + 6], lines[index + 7]);
+      index += 13;
+    }
+    return optimized;
+  }
+
   function optimizePutFrameSharedCoordinateIndex(lines) {
     const optimized = [];
     const loadIndex = /^\s*ld\s+a,\(([^)]+)\)\s*$/i;
@@ -636,6 +668,7 @@ export function createCompilerShellHelpers({
     optimizeTransientDrawCoordinateTemps,
     optimizeSharedRecordPutCharLoads,
     optimizeSharedAdjacentArrayIndex,
+    optimizeRepeatedArrayReadComparisons,
     optimizePutFrameSharedCoordinateIndex,
     optimizeFactoredHlBranchTails,
     optimizeUnsignedCompareElseIfTails,

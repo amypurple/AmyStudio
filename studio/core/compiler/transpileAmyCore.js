@@ -951,14 +951,18 @@ export function transpileAmyCore(sourceText, deps) {
         const indent = rawLine.slice(0, rawLine.search(/\S|$/));
         if (!open[2]) result.push(`${indent}u8 ${indexName} = 0`);
         const nativeAlias = arrayEntry.recordLike && !arrayEntry.qualified;
+        let primitiveMarkerIndex = null;
         if (nativeAlias) {
           result.push(`${indent}__amy_record_iterator ${arrayName}, ${indexName}, ${elementName}`);
+        } else if (!arrayEntry.qualified) {
+          primitiveMarkerIndex = result.length;
+          result.push(`${indent}__amy_array_iterator ${arrayName}, ${indexName}`);
         }
         result.push(`${indent}for ${indexName} = 0 to ${length - 1}`);
         if (nativeAlias) {
           result.push(`${indent}  with each ${arrayName}[${indexName}] as ${elementName}`);
         }
-        const alias = { elementName, indexName, arrayName, native: nativeAlias };
+        const alias = { elementName, indexName, arrayName, native: nativeAlias, primitiveMarkerIndex };
         aliasStack.push(alias);
         controlStack.push({ kind: "each", alias });
         continue;
@@ -975,6 +979,19 @@ export function transpileAmyCore(sourceText, deps) {
           const indent = rawLine.slice(0, rawLine.search(/\S|$/));
           if (current.native) result.push(`${indent}  end with`);
           result.push(`${indent}next ${current.indexName}`);
+          if (!current.native) {
+            const escapedIndex = current.indexName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const writesIndex = current.primitiveMarkerIndex !== null && result
+              .slice(current.primitiveMarkerIndex + 1)
+              .some((candidateLine) => {
+                const candidate = stripAmyInlineComment(candidateLine).trim();
+                return new RegExp(`^${escapedIndex}\\s*(?:=|\\+=|-=|\\*=|\\/=|&=|\\|=|\\^=)`, "i").test(candidate)
+                  || new RegExp(`\\bthen\\s+${escapedIndex}\\s*(?:=|\\+=|-=|\\*=|\\/=|&=|\\|=|\\^=)`, "i").test(candidate)
+                  || new RegExp(`^(?:inc|dec|increment|decrement|set|add|subtract|multiply|divide|toggle)\\s+${escapedIndex}\\b`, "i").test(candidate);
+              });
+            if (writesIndex) result[current.primitiveMarkerIndex] = "";
+            else result.push(`${indent}__amy_end_array_iterator`);
+          }
         } else {
           result.push(lowerAliases(rawLine));
         }
@@ -1441,6 +1458,8 @@ export function transpileAmyCore(sourceText, deps) {
   const ifStack = [];
   const recordAliasStack = [];
   let pendingRecordIxIterator = null;
+  let pendingArrayIxIterator = null;
+  let activeArrayIxIterator = null;
   let dataCursorName = null;
   let compareScratch32 = null;
   let fp5ReturnScratch = null;
@@ -1575,6 +1594,7 @@ export function transpileAmyCore(sourceText, deps) {
   let optimizeTransientDrawCoordinateTemps = null;
   let optimizeSharedRecordPutCharLoads = null;
   let optimizeSharedAdjacentArrayIndex = null;
+  let optimizeRepeatedArrayReadComparisons = null;
   let optimizePutFrameSharedCoordinateIndex = null;
   let optimizeFactoredHlBranchTails = null;
   let optimizeUnsignedCompareElseIfTails = null;
@@ -2051,7 +2071,7 @@ export function transpileAmyCore(sourceText, deps) {
       });
       if (deps.experimentalRecordIx && !scanProcHasParams && !scanProcIsFunction && !scanProcHasAsm) {
         const meaningful = scanBody.map((entry) => stripAmyInlineComment(entry).trim()).filter(Boolean);
-        const aliasCount = meaningful.filter((entry) => /^with\s+each\b/i.test(entry)).length;
+        const aliasCount = meaningful.filter((entry) => /^(?:with\s+each\b|__amy_array_iterator\b)/i.test(entry)).length;
         const forbidden = meaningful.some((entry) => {
           const invocation = entry.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s*$/i);
           const invokesDeclaredRoutine = [...declaredRoutineNames].some((name) => {
@@ -3460,6 +3480,7 @@ export function transpileAmyCore(sourceText, deps) {
     optimizeTransientDrawCoordinateTemps,
     optimizeSharedRecordPutCharLoads,
     optimizeSharedAdjacentArrayIndex,
+    optimizeRepeatedArrayReadComparisons,
     optimizePutFrameSharedCoordinateIndex,
     optimizeFactoredHlBranchTails,
     optimizeUnsignedCompareElseIfTails,
@@ -3482,6 +3503,9 @@ export function transpileAmyCore(sourceText, deps) {
   }));
   if (semanticOptimizerOptions.sharedCoordinateIndex === false) {
     optimizePutFrameSharedCoordinateIndex = (lines) => lines;
+  }
+  if (!deps.experimentalRecordIx || semanticOptimizerOptions.repeatedArrayRead === false) {
+    optimizeRepeatedArrayReadComparisons = (lines) => lines;
   }
 
   function ensureFp5ReturnScratch() {
@@ -3905,7 +3929,8 @@ export function transpileAmyCore(sourceText, deps) {
     symbolOrValue,
     emitLoadInt8Into: (...args) => emitLoadInt8Into(...args),
     emitLoadInt16IntoHL: (...args) => emitLoadInt16IntoHL(...args),
-    makeGeneratedLabel
+    makeGeneratedLabel,
+    getActiveArrayIxIterator: () => activeArrayIxIterator
   }));
   ({
     emitLoadInt16IntoHL,
@@ -5133,6 +5158,44 @@ export function transpileAmyCore(sourceText, deps) {
         continue;
       }
 
+      const arrayIterator = line.match(/^__amy_array_iterator\s+([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (arrayIterator) {
+        pendingArrayIxIterator = null;
+        const arrayName = arrayIterator[1];
+        const indexName = arrayIterator[2];
+        const arrayInfo = getRuntimeInfo(arrayName);
+        const frame = procFrames.get(currentProc);
+        const canPrepareIx = arrayInfo?.kind === "array"
+          && arrayInfo.elementType === "int8"
+          && currentProc !== "Start"
+          && recordIxProcCandidates.has(currentProc)
+          && recordAliasStack.length === 0
+          && !activeArrayIxIterator
+          && frame
+          && !frame.usesIxFrame
+          && frame.size === 0;
+        if (canPrepareIx) {
+          const loadAddress = emitLoadArrayAddressIntoHL(arrayName, "0");
+          if (!loadAddress) {
+            return { ok: false, asmBody: "", log: `Internal error: invalid byte-array iterator base for ${arrayName}` };
+          }
+          frame.usesIxAlias = true;
+          pendingArrayIxIterator = {
+            arrayName: lowerName(arrayName),
+            indexName: lowerName(indexName),
+            recordSize: 1,
+            loadAddress
+          };
+        }
+        continue;
+      }
+
+      if (/^__amy_end_array_iterator$/i.test(line)) {
+        activeArrayIxIterator = null;
+        pendingArrayIxIterator = null;
+        continue;
+      }
+
       if (/^end\s+with$/i.test(line)) {
         const alias = recordAliasStack.pop();
         if (!alias) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: end with without a matching with` };
@@ -5779,6 +5842,17 @@ export function transpileAmyCore(sourceText, deps) {
           body.push(...emitLoadAddressIntoIX(loadAddress));
           pendingRecordIxIterator = null;
         }
+        if (pendingArrayIxIterator) {
+          const loop = forStack[forStack.length - 1];
+          if (!loop || lowerName(loop.name) !== pendingArrayIxIterator.indexName) {
+            return { ok: false, asmBody: "", log: `Internal error: array iterator was not followed by its generated for loop` };
+          }
+          const { loadAddress, ...iterator } = pendingArrayIxIterator;
+          loop.recordIxIterator = iterator;
+          body.push(...emitLoadAddressIntoIX(loadAddress));
+          activeArrayIxIterator = iterator;
+          pendingArrayIxIterator = null;
+        }
         resetVdpR1SemanticTracking();
         body.push(...forStmt.lines);
         continue;
@@ -6252,7 +6326,8 @@ export function transpileAmyCore(sourceText, deps) {
       numericDigitBaseName,
       fp5FriendlyFirstIntName,
       fp5FriendlyDotName,
-      fp5FriendlyLastFracName
+      fp5FriendlyLastFracName,
+      activeSourceText: conditionalPrepass.lines.join("\n")
     },
     helpers: {
       emitCurrentProcReturnLines,
@@ -6268,6 +6343,7 @@ export function transpileAmyCore(sourceText, deps) {
       optimizeTransientDrawCoordinateTemps,
       optimizeSharedRecordPutCharLoads,
       optimizeSharedAdjacentArrayIndex,
+      optimizeRepeatedArrayReadComparisons,
       optimizePutFrameSharedCoordinateIndex,
       optimizeFactoredHlBranchTails,
       optimizeUnsignedCompareElseIfTails,

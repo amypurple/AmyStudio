@@ -222,7 +222,8 @@ function transpileAmy(sourceText, projectFiles = [], buildTarget = null, memoryP
       resolveStaticAbiInclude,
       experimentalRecordIx: options.optimization === "experimental",
       semanticOptimizerOptions: {
-        sharedCoordinateIndex: !options.disabledSemanticOptimizations.includes("shared-coordinate-index")
+        sharedCoordinateIndex: !options.disabledSemanticOptimizations.includes("shared-coordinate-index"),
+        repeatedArrayRead: !options.disabledSemanticOptimizations.includes("repeated-array-read")
       },
       ...(buildContext ? { buildContext, predefinedSymbols: getBuildContextDefines(buildContext) } : {})
     });

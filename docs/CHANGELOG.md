@@ -1,3 +1,18 @@
+## 2026-10-15 - Proven semantic optimization promotion
+
+- Added guarded pointer traversal for eligible primitive and record `for each`
+  loops while retaining indexed lowering for unsafe or mutable-index cases.
+- Reused identical byte-array reads only inside adjacent condition terms with no
+  call, write, label, or other invalidating instruction between them.
+- Hardened encoded-size-aware single-call routine inlining with complete symbol
+  reference checks, explicit body removal, and stack, I/O, interrupt, index-register,
+  and refresh-register barriers.
+- Revalidated State Update under all five profiles for 48 ticks. Experimental now
+  occupies 1,162 bytes, averages 3,186 cycles, and preserves the exact
+  state/collision/score/checksum oracle; its engine-only form occupies 689 bytes.
+- Rebuilt all six comparison ROMs at 7,477 bytes combined and updated the public
+  comparison page, PDF, and evidence archive.
+
 ## 2026-10-10 - Smaller record-heavy state updates
 
 - Kept eligible static record iterators directly in `IX`, including loops that
