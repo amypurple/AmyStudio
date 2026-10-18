@@ -1,0 +1,412 @@
+cartridge "JUMPING JACK/PRESENTS PAUL BURGER'S/1983"
+
+' JUMPING JACK by Paul Burger
+' Originally published in COMPUTE! magazine, Issue 36 (Vol. 5, No. 5),
+' May 1983, with versions for the unexpanded VIC-20, Atari 400/800,
+' Commodore 64 and TI-99/4A. This port follows "Program 4: TI-99/4A Version".
+' All game design credit belongs to Paul Burger.
+'
+' Historical context (summary of the original article):
+' Jack runs along platforms and climbs down ladders to reach the bottom of
+' the screen. The catch, in the author's words: "these platforms are not
+' very sturdy at all", and holes can open anywhere. Pressing the space bar
+' at the right moment makes Jack jump the hole and land on his feet;
+' otherwise he falls in. A press just after Jack passes over the hole still
+' gives a "saving jump", which scores no points but keeps Jack alive, and
+' can carry him across two holes in a row. Each game runs through several
+' levels; the Atari version had nine skill levels.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' TI rows/columns are 1-based; Amy X,Y are 0-based (X = col - 1, Y = row - 1).
+' Controls: fire button (either side) replaces the space bar.
+
+const BlankTile = 32
+const FloorTile = 96
+const LadderTile = 104
+const JackRight = 112
+const JackLeft = 114
+const CaughtTile = 116
+const HoleTile = 120
+const FallenTile = 121
+const BonusTile = 128
+
+' TI BASIC paced the game by interpreter speed; this sets the step rate.
+const StepFrames = 8
+
+' Sound table slots
+const SndHole = 1
+const SndStep = 2
+const SndChirp = 3
+const SndFall = 7
+const SndMiss = 10
+
+u8 Diff = 1
+i16 Score = 0
+u16 ShownScore = 0
+bool HalfPoint = false
+bool GoingRight = true
+
+u8 JackX = 0
+u8 JackY = 0
+u8 OldX = 0
+u8 OldY = 0
+u8 JackFrame = JackRight
+u8 Tile = 0
+u8 Below = 0
+u8 BelowY = 0
+u8 AboveY = 0
+u8 FloorY = 0
+u8 LadderX = 0
+u8 PrevLadderX = 0
+u8 LadderY = 0
+u8 HoleX = 0
+u8 HoleY = 0
+u8 Roll = 0
+u8 RungIndex = 0
+u8 Choice = 0
+
+  text screen
+  set sound table JackSoundTable areas 4
+  LoadCharacters
+  screen on
+
+title_screen:
+  backdrop white
+  cls
+  print centered at 5, "JUMPING JACK"
+  print centered at 7, "BY PAUL BURGER"
+  print centered at 10, "COMPUTE! ISSUE 36, MAY 1983"
+  print centered at 11, "TI-99/4A VERSION"
+  print centered at 14, "COLECOVISION PORT"
+  print centered at 15, "AMY BIENVENU, 2026"
+  print centered at 19, "PRESS FIRE TO START"
+  pause until press
+  wait no fire
+
+new_game:
+  Diff = 1
+  Score = 0
+  HalfPoint = false
+
+new_level:
+  backdrop white
+  cls
+  print at 2,22, "LEVEL:" + width$(Diff, 3)
+  BuildLevel
+
+  ' Jack starts top left, walking right
+  JackX = 1
+  JackY = 0
+  OldX = 0
+  OldY = 0
+  JackFrame = JackRight
+  GoingRight = true
+
+step_loop:
+  put char BlankTile at OldX,OldY
+  MaybeAddHole
+  Tile = JackFrame
+  if not GoingRight then Tile += 2
+  put char Tile at JackX,JackY
+  play sound SndStep
+  wait StepFrames frames
+  if JackY > 19 then goto level_done
+  OldX = JackX
+  OldY = JackY
+  if GoingRight then
+    inc JackX
+  else
+    dec JackX
+  end if
+
+check_bounds:
+  ' A u8 column below 0 wraps to 255, so one test covers both walls
+  if JackX > 31 then
+    if GoingRight then
+      dec JackX
+    else
+      inc JackX
+    end if
+    JackY += 4
+    toggle GoingRight
+    goto step_loop
+  end if
+  BelowY = JackY + 1
+  Below = get char at JackX,BelowY
+  if joypad(1).fire then goto try_jump
+  if Below = HoleTile then goto last_chance
+
+walk_on:
+  if Below = LadderTile then
+    toggle GoingRight
+    JackY += 4
+  end if
+  JackFrame = 225 - JackFrame
+  ' Original adds 0.5 per step; keep the half point as a flag
+  toggle HalfPoint
+  if not HalfPoint then Score += 1
+  goto step_loop
+
+try_jump:
+  if Below <> HoleTile then goto wasted_jump
+  put char BlankTile at OldX,OldY
+  AboveY = JackY - 1
+  Tile = JackRight
+  if not GoingRight then Tile = JackLeft
+  put char Tile at JackX,AboveY
+  play sound SndChirp
+  wait 6 frames
+  put char BonusTile at JackX,AboveY
+  Score += 25
+  play sounds 4, 5, 6
+  wait 30 frames
+  put char BlankTile at JackX,AboveY
+  if GoingRight then
+    inc JackX
+  else
+    dec JackX
+  end if
+  goto check_bounds
+
+wasted_jump:
+  play sound SndMiss
+  wait 22 frames
+  Score -= 25
+  goto walk_on
+
+last_chance:
+  ' TI BASIC read the keyboard twice, a few milliseconds apart
+  wait 2 frames
+  if joypad(1).fire then goto walk_on
+  put char BlankTile at OldX,OldY
+  put char CaughtTile at JackX,JackY
+  play sound SndFall
+  wait 60 frames
+  put char BlankTile at JackX,JackY
+  put char FallenTile at JackX,BelowY
+  play sounds 8, 9
+  wait 60 frames
+
+game_over:
+  cls
+  backdrop light yellow
+  if Score < 0 then
+    print at 2,20, "YOUR SCORE WAS:" + str$(Score)
+  else
+    ShownScore = Score
+    print at 2,20, "YOUR SCORE WAS:" + width$(ShownScore, 5)
+  end if
+  print at 2,22, "PLAY AGAIN? 1=YES 2=NO"
+  choose keypad 1 to 2 into Choice
+  if Choice = 1 then goto new_game
+  cls
+  print at 2,22, "THANKS FOR PLAYING"
+  loop forever
+
+level_done:
+  inc Diff
+  Score += 50
+  goto new_level
+
+' --- Lines 190-270: floors every 4 rows, zigzag ladders ---
+sub BuildLevel:
+  GoingRight = true
+  PrevLadderX = 0
+  for FloorY = 1 to 21 step 4
+    fill FloorTile count 32 at 0,FloorY
+    if FloorY < 20 then
+      PickLadder
+      for RungIndex = 0 to 3
+        LadderY = FloorY + RungIndex
+        put char LadderTile at LadderX,LadderY
+      next
+      PrevLadderX = LadderX
+      toggle GoingRight
+    end if
+  next
+  return
+end sub
+
+' Each ladder must lie on the side Jack walks toward on that floor
+sub PickLadder:
+pick_again:
+  LadderX = random(3, 28)
+  if GoingRight then
+    LadderX += 1
+    if LadderX <= PrevLadderX then goto pick_again
+  else
+    LadderX -= 1
+    if LadderX >= PrevLadderX then goto pick_again
+  end if
+  return
+end sub
+
+' --- Lines 360-420: random hole, more frequent at higher levels ---
+sub MaybeAddHole:
+  Roll = random(0, 9)
+  if Roll >= Diff then return
+  HoleY = random(0, 3)
+  HoleY <<= 2
+  HoleY += 5
+  HoleX = random(0, 31)
+  Tile = get char at HoleX,HoleY
+  if Tile = LadderTile then return
+  put char HoleTile at HoleX,HoleY
+  play sound SndHole
+  return
+end sub
+
+' --- Lines 1080-1310: CALL CHAR and CALL COLOR ---
+sub LoadCharacters:
+  copy FloorPattern count 8 to vram.pattern + 768
+  copy LadderPattern count 8 to vram.pattern + 832
+  copy JackPatterns count 40 to vram.pattern + 896
+  copy HolePatterns count 16 to vram.pattern + 960
+  copy BonusPattern count 8 to vram.pattern + 1024
+  ' TI default text: black on transparent
+  set text colors black count 32
+  ' TI color sets 9-13 are VDP color groups 12-16
+  set text colors light blue at 12 count 1
+  set text colors light green at 13 count 1
+  set text colors magenta at 14 count 1
+  set text colors light red at 15 count 1
+  set text colors light yellow at 16 count 1
+  return
+end sub
+
+' Char 96: FF422418182442FF
+data FloorPattern bitmap8
+  "XXXXXXXX"
+  ".X....X."
+  "..X..X.."
+  "...XX..."
+  "...XX..."
+  "..X..X.."
+  ".X....X."
+  "XXXXXXXX"
+end data
+
+' Char 104: 7E427E427E427E42
+data LadderPattern bitmap8
+  ".XXXXXX."
+  ".X....X."
+  ".XXXXXX."
+  ".X....X."
+  ".XXXXXX."
+  ".X....X."
+  ".XXXXXX."
+  ".X....X."
+end data
+
+' Chars 112-116: Jack right (2 frames), Jack left (2 frames), Jack caught
+data JackPatterns bitmap8
+  "...X...."
+  "..X.X..."
+  "..XX...."
+  "..X..X.."
+  ".XXXX..."
+  "X.XXX..."
+  "..X..X.."
+  ".X....X."
+  "...X...."
+  "..X.X..."
+  "..XX...."
+  "X.X...X."
+  ".XXXXX.."
+  ".XXXX..."
+  "..X..X.."
+  ".X..X..."
+  "...X...."
+  "..X.X..."
+  "...XX..."
+  ".X..X..."
+  "..XXXX.."
+  "..XXX.X."
+  ".X..X..."
+  "X....X.."
+  "...X...."
+  "..X.X..."
+  "...XX..."
+  ".X..X..."
+  "..XXXX.."
+  "..XXXX.."
+  ".X..X..."
+  "..X..X.."
+  "........"
+  "...XXX.."
+  ".X.XXX.X"
+  "..X.X.X."
+  "...XXX.."
+  "...XXX.."
+  "...X.X.."
+  "..X...X."
+end data
+
+' Chars 120-121: hole, hole with fallen Jack
+data HolePatterns bitmap8
+  "X......X"
+  "X......X"
+  ".X....X."
+  "..X...X."
+  "..X..X.."
+  "..X..X.."
+  "........"
+  "XX....XX"
+  "X.XXXX.X"
+  "X.XXXX.X"
+  ".X.XX.X."
+  "..X...X."
+  "..X..X.."
+  "..X..X.."
+  "........"
+  "XX....XX"
+end data
+
+' Char 128: tiny "25" bonus marker
+data BonusPattern bitmap8
+  "........"
+  ".XXX.XXX"
+  "...X.X.."
+  ".XXX.XXX"
+  ".X.....X"
+  ".XXX.XXX"
+  "........"
+  "........"
+end data
+
+' CALL SOUND translations. TI and Coleco share the 3.579545 MHz / 32 PSG
+' divider, so period = 111861 / Hz. TI volume 0-30 becomes attenuation 0-15.
+asm {
+HoleSfx:                        ; SOUND(100,-1,4) periodic noise
+    db $00,$00,$20,$06,$10
+StepSfx:                        ; SOUND(-5,-7,4) white noise tick
+    db $00,$00,$26,$01,$10
+ChirpSfx:                       ; SOUND(5,250/200/300,10)
+    db $40,$BF,$51,$02,$40,$2F,$52,$02,$40,$75,$51,$02,$50
+BonusLow:                       ; SOUND(-500,500,1,510,10,520,20) chord
+    db $40,$E0,$00,$1E,$50
+BonusMid:
+    db $80,$DB,$50,$1E,$90
+BonusHigh:
+    db $C0,$D7,$A0,$1E,$D0
+FallWarble:                     ; SOUND(-1,1000..1020,0) loop
+    db $40,$70,$00,$14,$40,$6F,$00,$14,$40,$6E,$00,$14,$50
+FallNoise:                      ; SOUND(1000,-2,4,110,4)
+    db $00,$00,$21,$3C,$10
+FallBass:
+    db $80,$F9,$23,$3C,$90
+MissBuzz:                       ; SOUND(-1,150..140,1) loop
+    db $41,$EA,$02,$0B,$22,$05,$50
+
+JackSoundTable:
+    dw HoleSfx,$702B            ; 1  noise area
+    dw StepSfx,$702B            ; 2
+    dw ChirpSfx,$7035           ; 3  tone 1 area
+    dw BonusLow,$7035           ; 4
+    dw BonusMid,$703F           ; 5  tone 2 area
+    dw BonusHigh,$7049          ; 6  tone 3 area
+    dw FallWarble,$7035         ; 7
+    dw FallNoise,$702B          ; 8
+    dw FallBass,$703F           ; 9
+    dw MissBuzz,$7035           ; 10
+}

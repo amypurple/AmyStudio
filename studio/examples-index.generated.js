@@ -1263,6 +1263,105 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "jumping-jack",
+    "label": "Jumping Jack (TI-99/4A Port)",
+    "detail": "Paul Burger's platform game, adapted from the 1983 TI-99/4A listing with joystick movement, jumping and sound.",
+    "projectName": "jumping-jack",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "gold-miner",
+    "label": "Gold Miner (TI-99/4A Port)",
+    "detail": "Joseph Weber and James Dunn's mine exploration game with animated digging, charges, gold and joystick controls.",
+    "projectName": "gold-miner",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "first-math",
+    "label": "First Math (TI-99/4A Port)",
+    "detail": "Steve Hamilton's arithmetic tutor adapted to the ColecoVision keypad with selectable operations and difficulty ranges.",
+    "projectName": "first-math",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "educational",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "southern-states",
+    "label": "Southern States (TI-99/4A Port)",
+    "detail": "C. Regena's map quiz with a ColecoVision keypad build and an OS7+EOS hybrid ADAM keyboard build.",
+    "projectName": "southern-states",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "adam",
+      "educational",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "diamond-drop",
+    "label": "Diamond Drop (TI-99/4A Port)",
+    "detail": "Matt Giwer and Patrick Parrish's falling-diamond action game with fixed-point sprite motion and packed BCD scoring.",
+    "projectName": "diamond-drop",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "sprites",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "mystery-spell",
+    "label": "Mystery Spell (TI-99/4A Port)",
+    "detail": "Doug Hapeman's animated spelling game with 318 cartridge words and ADAM keyboard, custom-list and media support.",
+    "projectName": "mystery-spell",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "adam",
+      "educational",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",

@@ -1,0 +1,580 @@
+cartridge "FIRST MATH/PRESENTS STEVE HAMILTON'S/1983"
+
+' FIRST MATH by Steve Hamilton
+' Originally published in COMPUTE! magazine, Issue 39, August 1983, with
+' versions for the VIC-20, Commodore 64, TI-99/4A, Radio Shack Color
+' Computer and Apple. This port follows "Program 3: First Math -
+' TI-99/4A Version". All game design credit belongs to Steve Hamilton.
+'
+' Historical context (summary of the original article):
+' A math drill for young children with graphics, color and sound. The
+' author bought a VIC-20 partly for his two boys, and wrote this exercise
+' for the older one, who was ready for the computer much sooner than
+' expected. The player picks addition, subtraction, multiplication or
+' division, then the highest and lowest numbers to use; the random number
+' pairs stay within those limits, which sets the difficulty. A wrong answer
+' shows the correct one, and ten correct answers in a row earn a small
+' fanfare.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' TI rows are 1-based (Y = row - 1); the TI print routine at line 140
+' writes the first character at COL + 1, so X = COL.
+' Controls (keypad on controller 1 replaces the TI keyboard):
+'   menu: 1 = add, 2 = subtract, 3 = multiply, 4 = divide
+'   numbers: digits, * = minus sign (first key only), # = ENTER
+
+const BlankTile = 32
+const KeyStar = 10
+const KeyPound = 11
+
+' Sound table slots
+const SndFanfareLow = 1
+const SndSweepBase = 3
+
+u8 Op = 0               ' A: 43 +, 45 -, 120 x, 47 /
+u8 Choice = 0
+u8 D = 0                ' correct answers in a row
+bool Correct = false
+u16 UL = 0              ' highest number
+u16 LL = 0              ' lowest number
+u16 Swap16 = 0
+i32 B
+i32 C
+i32 F
+i32 Typed
+i32 Rem32
+i32 Digit32
+bool Negative = false
+
+' Random range helper
+u16 R16 = 0
+u16 Lo16 = 0
+u16 Span = 0
+u8 RandHi = 0
+u8 RandLo = 0
+
+' Keypad number entry
+u8 Key = 0
+u8 K = 0
+u8 EntryX = 0
+u8 EntryY = 0
+u8 MaxKeys = 0
+u16 Entry16 = 0
+u16 Key16 = 0
+i16 Key1616 = 0
+
+' Left-aligned number output (the TI used STR$)
+i32 NumValue
+u8 NumBuf[12]
+u8 NumFirst = 0
+u8 NumCount = 0
+u8 OutX = 0
+u8 OutY = 0
+u8 Ch = 0
+u8 Level = 0
+u8 Shade = 0
+u8 SndIndex = 0
+
+  text screen
+  set sound table MathSoundTable areas 3
+  LoadCharacters
+  screen on
+
+  ' --- Lines 350-470: title and fanfare ---
+  backdrop light green
+  cls
+  print at 5,11, "F I R S T    M A T H"
+  play sounds 1, 2, 3
+  wait 150 frames
+
+menu:
+  ' --- Lines 480-630 ---
+  cls
+  D = 0
+  backdrop light yellow
+  print at 2,3, "TO ADD            :KEY 1 +"
+  print at 2,5, "TO SUBTRACT       :KEY 2 -"
+  print at 2,7, "TO MULTIPLY       :KEY 3 x"
+  print at 2,9, "TO DIVIDE         :KEY 4 /"
+  print at 7,11, "YOUR CHOICE ? "
+  choose keypad 1 to 4 into Choice
+  select case Choice
+    case 1
+      Op = 43
+    case 2
+      Op = 45
+    case 3
+      Op = 120
+    case else
+      Op = 47
+  end select
+  put char Op at 21,11
+  print at 2,15, "HIGHEST NUMBER ? "
+  EntryX = 19
+  EntryY = 15
+  ReadLimit
+  UL = Entry16
+  print at 2,18, "LOWEST NUMBER ? "
+  EntryX = 18
+  EntryY = 18
+  ReadLimit
+  LL = Entry16
+  ' TI tolerated LOWEST > HIGHEST through a negative range; swap instead
+  if LL > UL then
+    Swap16 = UL
+    UL = LL
+    LL = Swap16
+  end if
+  ' Division needs a non-zero divisor; the TI version hangs on 0..0
+  if Op = 47 then
+    if UL = 0 then UL = 1
+  end if
+
+new_problem:
+  ' --- Lines 650-780 ---
+  RandomPick
+  C = R16
+  RandomPick
+  B = R16
+  select case Op
+    case 43
+      F = B + C
+    case 45
+      F = B - C
+    case 120
+      F = B * C
+    case else
+      if C = 0 then goto new_problem
+      Rem32 = B % C
+      if Rem32 <> 0 then goto new_problem
+      F = B / C
+  end select
+
+show_problem:
+  ' --- Lines 790-940 ---
+  cls
+  backdrop light red
+  print at 2,2, "CORRECT ANSWERS IN A ROW ="
+  NumValue = D
+  OutX = 29
+  OutY = 2
+  PutNumber
+  wait 10 frames
+  if D = 10 then goto celebrate
+  OutX = 6
+  OutY = 5
+  NumValue = B
+  PutNumber
+  PutChar(Op)
+  NumValue = C
+  PutNumber
+  PutChar(61)
+  PutChar(63)
+
+  ' --- Lines 950-1090: keypad answer entry ---
+  ReadAnswer
+
+  ' --- Lines 1100-1380 ---
+  if Typed = F then
+    Correct = true
+    DrawFace
+    print at 11,14, "C O R R E C T ! !"
+    wait 40 frames
+    inc D
+    if D = 10 then goto show_problem
+    goto new_problem
+  end if
+  Correct = false
+  DrawFace
+  print at 9,14, " SORRY, BUT "
+  OutX = 13
+  OutY = 18
+  NumValue = B
+  PutNumber
+  PutChar(Op)
+  NumValue = C
+  PutNumber
+  PutChar(BlankTile)
+  PutChar(61)
+  PutChar(BlankTile)
+  NumValue = F
+  PutNumber
+  PutChar(46)
+  wait 150 frames
+  D = 0
+  ' Same problem again, as in the original
+  goto show_problem
+
+celebrate:
+  ' --- Lines 1390-1550: up and down sound with flashing screen ---
+  cls
+  for Level = 16 downto 1
+    FlashStep
+  next
+  for Level = 1 to 16
+    FlashStep
+  next
+  backdrop medium green
+  print at 4,18, "Y O U   D I D   I T ! !"
+  print at 4,22, "TRY AGAIN? 1=YES 2=NO"
+  choose keypad 1 to 2 into Choice
+  if Choice = 1 then goto menu
+  cls
+  loop forever
+
+' One step of the sweep: TI SCREEN(I) is VDP backdrop I - 1
+sub FlashStep:
+  SndIndex = Level + SndSweepBase
+  play sound SndIndex
+  Shade = Level - 1
+  ' Same register write as "backdrop", with a runtime color
+  asm {
+    ld a,(AMY_UVAR_Shade)
+    ld (AMY_VDP_R7_SHADOW),a
+    ld c,a
+    ld b,7
+    call WRITE_REGISTER
+  }
+  wait 3 frames
+  return
+end sub
+
+' --- Lines 190-320: happy or sad face ---
+sub DrawFace:
+  put char 128 at 4,13
+  put char 129 at 5,13
+  put char 130 at 6,13
+  put char 142 at 7,13
+  put char 131 at 4,14
+  put char 132 at 5,14
+  put char 133 at 6,14
+  put char 141 at 7,14
+  put char 143 at 8,14
+  if Correct then
+    put char 134 at 4,15
+    put char 135 at 5,15
+    put char 136 at 6,15
+  else
+    put char 137 at 4,15
+    put char 138 at 5,15
+    put char 139 at 6,15
+  end if
+  put char 140 at 7,15
+  return
+end sub
+
+' Uniform pick in LL..UL from two random bytes
+sub RandomPick:
+  RandHi = random(0, 255)
+  RandLo = random(0, 255)
+  R16 = RandHi
+  R16 <<= 8
+  Lo16 = RandLo
+  R16 += Lo16
+  Span = UL - LL
+  Span += 1
+  R16 = R16 % Span
+  R16 += LL
+  return
+end sub
+
+' Up to 3 digits, # = ENTER (replaces TI INPUT)
+sub ReadLimit:
+  Entry16 = 0
+  K = 0
+limit_key:
+  choose keypad 0 to 11 into Key
+  if Key = KeyPound then
+    if K > 0 then return
+    goto limit_key
+  end if
+  if Key > 9 then goto limit_key
+  if K = 3 then goto limit_key
+  Entry16 *= 10
+  Key16 = Key
+  Entry16 += Key16
+  Ch = Key + 48
+  put char Ch at EntryX,EntryY
+  inc EntryX
+  inc K
+  goto limit_key
+end sub
+
+' TI lines 950-1090: an invalid key clears the field (line 110)
+sub ReadAnswer:
+answer_restart:
+  fill BlankTile count 10 at 17,5
+  Typed = 0
+  Negative = false
+  K = 0
+answer_key:
+  choose keypad 0 to 11 into Key
+  if Key = KeyPound then
+    if K = 0 then goto answer_key
+    if Negative then
+      if K = 1 then goto answer_key
+      Typed = 0 - Typed
+    end if
+    return
+  end if
+  inc K
+  EntryX = 18 + K
+  if Key = KeyStar then
+    if K > 1 then goto answer_restart
+    Negative = true
+    put char 45 at EntryX,5
+    goto answer_key
+  end if
+  if K > 8 then
+    dec K
+    goto answer_key
+  end if
+  Typed *= 10
+  Key1616 = Key
+  Digit32 = Key1616
+  Typed += Digit32
+  Ch = Key + 48
+  put char Ch at EntryX,5
+  goto answer_key
+end sub
+
+sub PutChar(u8 Code):
+  put char Code at OutX,OutY
+  inc OutX
+  return
+end sub
+
+' Prints NumValue left-aligned at OutX,OutY and advances OutX
+sub PutNumber:
+  NumBuf = str$(NumValue)
+  if NumBuf[0] = 45 then PutChar(45)
+  NumFirst = 1
+  do while NumFirst < 10
+    if NumBuf[NumFirst] <> 48 then exit do
+    inc NumFirst
+  loop
+  NumCount = 11 - NumFirst
+  put NumBuf + NumFirst count NumCount at OutX,OutY
+  OutX += NumCount
+  return
+end sub
+
+' --- Lines 1560-1700 and 360-380: CALL CHAR and CALL COLOR ---
+sub LoadCharacters:
+  copy SmallX count 8 to vram.pattern + 960
+  copy FacePatterns count 128 to vram.pattern + 1024
+  ' TI default text: black on transparent
+  set text colors black count 32
+  ' TI sets 5-8 (chars 64-95): white on dark blue
+  set text colors white on dark blue at 8 count 4
+  ' TI sets 13-14 (chars 128-143): magenta face
+  set text colors magenta at 16 count 2
+  return
+end sub
+
+' Char 120: lowercase x, drawn like the TI small capital
+data SmallX bitmap8
+  "........"
+  "........"
+  ".X...X.."
+  "..X.X..."
+  "...X...."
+  "..X.X..."
+  ".X...X.."
+  "........"
+end data
+
+' Chars 128-143: the face (DATA lines 1610-1660)
+data FacePatterns bitmap8
+  "......XX"
+  "....XXXX"
+  "...XXXXX"
+  "..XXXXXX"
+  ".XXXXXXX"
+  ".XXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXX."
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "..XXXXX."
+  "XXXX...."
+  "XXXXXX.."
+  "XXXXXXX."
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "..XXXXXX"
+  "XXXXXXX."
+  "XXXXXXX."
+  "XXXXXXX."
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "..XXXXX."
+  "..XXXXX."
+  "..XXXXX."
+  "XXXXXXXX"
+  "XXXX.XXX"
+  "XXX.XXXX"
+  "XX.XXXXX"
+  "XXX...XX"
+  "..XXXXXX"
+  "..XXXXXX"
+  "..XXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXX..X"
+  ".XXXXX.."
+  "..XXXXX."
+  "...XXXXX"
+  "....XXXX"
+  ".....XXX"
+  ".......X"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  ".XXXXXXX"
+  "........"
+  "X......."
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXX.."
+  "XXXXX..X"
+  "XXXX..XX"
+  "XXXX.XXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXX..."
+  "XXXXXXXX"
+  "XXXXXXXX"
+  ".XXXXXX."
+  "..XXXX.."
+  "...XXX.X"
+  "....XXXX"
+  ".....XXX"
+  ".......X"
+  "XXXXXXXX"
+  "........"
+  "........"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  ".XXXXXXX"
+  "..XXXXXX"
+  "X..XXXXX"
+  "XX.XXXXX"
+  "XXXXXXXX"
+  "XXXXXXXX"
+  "XXXXX..."
+  "XXXXX..."
+  "XXXX...."
+  "XXX....."
+  "XX......"
+  "X......."
+  "........"
+  "........"
+  "........"
+  "XXXXXX.."
+  "X..XXXX."
+  ".XX.XXXX"
+  "XXX.XXXX"
+  "XXX.XXXX"
+  "...XXXXX"
+  "XXXXXXX."
+  "XXXXXX.."
+  "........"
+  "........"
+  "........"
+  "X......."
+  "XX......"
+  "XXX....."
+  "XXXX...."
+  "XXXXX..."
+  "........"
+  "........"
+  "X......."
+  "XXXXX..."
+  "XX......"
+  "X......."
+  "........"
+  "........"
+end data
+
+' CALL SOUND translations (period = 111861 / Hz, attenuation = TI volume / 2)
+asm {
+FanfareLow:    ; SOUND(500..800,262/247,2) voice 1
+    db $40,$AB,$11,$1E,$40,$AB,$11,$1E,$40,$AB,$11,$1E,$40,$C5,$11,$1E,$40,$AB,$11,$30,$50
+FanfareMid:    ; voice 2
+    db $80,$53,$11,$1E,$80,$41,$11,$1E,$80,$53,$11,$1E,$80,$41,$11,$1E,$80,$53,$11,$30,$90
+FanfareHigh:   ; voice 3
+    db $C0,$1D,$11,$1E,$C0,$FE,$10,$1E,$C0,$1D,$11,$1E,$C0,$1D,$11,$1E,$C0,$1D,$11,$30,$D0
+Sweep1:        ; SOUND(2,110,6)
+    db $40,$F9,$33,$03,$50
+Sweep2:        ; SOUND(2,160,6)
+    db $40,$BB,$32,$03,$50
+Sweep3:        ; SOUND(2,210,6)
+    db $40,$15,$32,$03,$50
+Sweep4:        ; SOUND(2,260,6)
+    db $40,$AE,$31,$03,$50
+Sweep5:        ; SOUND(2,310,6)
+    db $40,$69,$31,$03,$50
+Sweep6:        ; SOUND(2,360,6)
+    db $40,$37,$31,$03,$50
+Sweep7:        ; SOUND(2,410,6)
+    db $40,$11,$31,$03,$50
+Sweep8:        ; SOUND(2,460,6)
+    db $40,$F3,$30,$03,$50
+Sweep9:        ; SOUND(2,510,6)
+    db $40,$DB,$30,$03,$50
+Sweep10:       ; SOUND(2,560,6)
+    db $40,$C8,$30,$03,$50
+Sweep11:       ; SOUND(2,610,6)
+    db $40,$B7,$30,$03,$50
+Sweep12:       ; SOUND(2,660,6)
+    db $40,$A9,$30,$03,$50
+Sweep13:       ; SOUND(2,710,6)
+    db $40,$9E,$30,$03,$50
+Sweep14:       ; SOUND(2,760,6)
+    db $40,$93,$30,$03,$50
+Sweep15:       ; SOUND(2,810,6)
+    db $40,$8A,$30,$03,$50
+Sweep16:       ; SOUND(2,860,6)
+    db $40,$82,$30,$03,$50
+
+MathSoundTable:
+    dw FanfareLow,$702B         ; 1  tone 1 area
+    dw FanfareMid,$7035         ; 2  tone 2 area
+    dw FanfareHigh,$703F        ; 3  tone 3 area
+    dw Sweep1,$702B             ; 4
+    dw Sweep2,$702B             ; 5
+    dw Sweep3,$702B             ; 6
+    dw Sweep4,$702B             ; 7
+    dw Sweep5,$702B             ; 8
+    dw Sweep6,$702B             ; 9
+    dw Sweep7,$702B             ; 10
+    dw Sweep8,$702B             ; 11
+    dw Sweep9,$702B             ; 12
+    dw Sweep10,$702B            ; 13
+    dw Sweep11,$702B            ; 14
+    dw Sweep12,$702B            ; 15
+    dw Sweep13,$702B            ; 16
+    dw Sweep14,$702B            ; 17
+    dw Sweep15,$702B            ; 18
+    dw Sweep16,$702B            ; 19
+}

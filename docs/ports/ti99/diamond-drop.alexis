@@ -1,0 +1,476 @@
+cartridge "DIAMOND DROP/PRESENTS GIWER AND PARRISH'S/1983"
+
+' DIAMOND DROP
+' Original Atari game by Matt Giwer; TI-99/4A Extended BASIC version
+' ("Program 5") by Patrick Parrish, Editorial Programmer.
+' COMPUTE! magazine, Issue 40, September 1983, page 76.
+' All game design credit belongs to Matt Giwer and Patrick Parrish.
+'
+' Historical context (summary of the TI-99/4A version notes):
+' Extended BASIC's sprites give the TI version quick, smooth action. You
+' catch colorful diamonds falling from the top of the screen with a stack of
+' paddles moved by the S and D keys (a joystick variant was suggested, but
+' its extra subroutine call slowed the paddle). Two skill levels set the
+' drop speed, which rises after every cleared screen. Diamonds may fall at a
+' random angle, and the paddles wrap around the screen, so a wrong move
+' costs dearly: only ten misses are allowed. Higher rows, later screens,
+' skill level two and steeper angles all score more. The notes also warn
+' that CALL COINC only sees sprites that overlap at the moment it runs.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick left/right (replaces S and D); keypad answers prompts.
+' TI sprite motion (XB velocity v = v/16 pixel per frame) is reproduced with
+' 8.8 fixed-point positions updated every frame. Adaptation liberty: a short
+' chirp when a diamond is caught (the TI version is silent there).
+' TI rows/columns are 1-based; Amy X,Y are 0-based (X = col - 1, Y = row - 1).
+
+const BlankTile = 32
+const FloorTile = 30
+const PaddleColor = 4         ' TI color 5, dark blue
+const PaddleY = 148           ' TI dot-row 150
+const PaddleStartX = 115      ' TI dot-column (VDP X = 114)
+const CatchRow = 155          ' TI dot-row where the catch test runs
+const PaddleSpeed = 960       ' TI MOTION 60, in 8.8 pixels per frame
+
+' Sound table slots
+const SndRow = 1
+const SndFanfare = 2
+const SndMiss = 3
+const SndCatch = 4
+
+u8 Skill = 1                  ' SK
+u8 ScreenNo = 0                ' SCR
+u8 Chances = 10               ' CH
+bcd digits 7 Score           ' S, packed BCD arcade score
+bcd digits 7 HighScore       ' HS
+u8 RepSkill = 0
+u8 RepScreen = 0
+u8 RepSlant = 0
+u8 DropRate = 25              ' DROP
+bool Angle = false            ' ANG
+
+u8 J = 0                      ' current diamond row (TI rows 3..6)
+u8 DiamondRow = 41            ' TI ROW: dot-row of the current row
+u8 PaddlePattern = 4          ' sprite pattern: 4 = three bars, 8 = two
+u8 Cols[28]                   ' columns not yet dropped in this row
+u8 Remaining = 0              ' TI N
+u8 Pick = 0
+u8 Col = 0                    ' TI X (1-based)
+u8 DiamondColor = 0
+i8 Slant = 0                  ' TI B, -30..30
+
+u16 PadX16 = 0                ' 8.8 fixed point
+u16 DX16 = 0
+u16 DY16 = 0
+i16 DXStep = 0
+u16 DYStep = 0
+u8 PadX = 0
+u8 DX = 0
+u8 DY = 0
+u8 Gap = 0
+u8 SlantSize = 0
+u8 Choice = 0
+u8 Row = 0
+u8 I = 0
+u8 Tile = 0
+u8 BannerY = 0
+u16 Tmp16 = 0
+
+  text screen
+  set sound table DropSoundTable areas 2
+  sprites 16x16
+  sprites double
+  copy SpritePatterns count 96 to vram.spr_pat
+  copy SmallDiamond count 8 to vram.pattern + 768
+  copy SmallDiamond count 8 to vram.pattern + 832
+  copy SmallDiamond count 8 to vram.pattern + 896
+  copy SmallDiamond count 8 to vram.pattern + 960
+  copy FloorPattern count 8 to vram.pattern + 240
+  ' Lines 660-690: TI color sets 9-12 are VDP groups 12-15
+  set text colors black count 32
+  set text colors medium green at 12 count 1
+  set text colors light red at 13 count 1
+  set text colors dark yellow at 14 count 1
+  set text colors magenta at 15 count 1
+  screen on
+
+  ' Editorial pages, shown once at power-on (adaptation, after the
+  ' magazine article "Diamond Drop" by Matt Giwer)
+  backdrop white
+  EditorialPage1
+  EditorialPage2
+
+new_game:
+  ' --- Lines 170-280: title, skill and angle ---
+  ScreenNo = 0
+  Chances = 10
+  Score = 0
+  clear sprites
+  update sprites
+  backdrop white
+  cls
+  print at 10,3, "D I A M O N D"
+  for Row = 3 to 6
+    BannerY = Row + 1
+    fill BlankTile count 20 at 5,BannerY
+    DrawBanner
+    wait 8 frames
+  next
+  print at 4,23, "COLECOVISION PORT, 2026"
+  print at 5,17, "SKILL LEVEL (1,2) ?"
+  choose keypad 1 to 2 into Skill
+  Tile = Skill + 48
+  put char Tile at 25,17
+  DropRate = 25
+  if Skill = 2 then DropRate = 40
+  print at 3,20, "DROP WITH ANGLE?"
+  print at 3,21, "1=YES 2=NO"
+  choose keypad 1 to 2 into Choice
+  Angle = false
+  if Choice = 1 then Angle = true
+
+new_screen:
+  ' --- Lines 290-340 ---
+  inc ScreenNo
+  cls
+  ShowStatus
+  for Row = 2 to 5
+    Tile = Row - 2
+    Tile <<= 3
+    Tile += 96
+    fill Tile count 28 at 2,Row
+  next
+  fill FloorTile count 32 at 0,23
+  PaddlePattern = 4
+  PadX16 = PaddleStartX
+  PadX16 <<= 8
+  set sprite count 2
+  HideDiamond
+  DrawPaddle
+  update sprites
+
+  ' --- Lines 350-560: rows 6 to 3, every column once, in random order ---
+  DiamondRow = 41
+  for J = 6 downto 3
+    for I = 0 to 27
+      Cols[I] = I + 3
+    next
+    Remaining = 28
+    do while Remaining > 0
+      ' Lines 380-390: pick a column not yet dropped
+      Pick = random(Remaining)
+      Col = Cols[Pick]
+      dec Remaining
+      Cols[Pick] = Cols[Remaining]
+      DropOne
+      if Chances = 0 then goto game_over
+    loop
+    ' Lines 530-550
+    DiamondRow -= 8
+    PaddlePattern = 4
+    if J < 6 then PaddlePattern = 8
+    play sound SndRow
+    wait 18 frames
+    PadX16 = PaddleStartX
+    PadX16 <<= 8
+    DrawPaddle
+    update sprites
+  next
+  play sound SndFanfare
+  wait 54 frames
+  DropRate += 3
+  goto new_screen
+
+game_over:
+  ' --- Lines 570-620 ---
+  backdrop magenta
+  if Score > HighScore then HighScore = Score
+  clear sprites
+  update sprites
+  cls
+  print at 6,7, "YOUR SCORE:"
+  print Score at 18,7
+  print at 6,10, "HIGH SCORE:"
+  print HighScore at 18,10
+  print at 6,15, "PLAY AGAIN?"
+  print at 6,16, "1=YES 2=NO"
+  choose keypad 1 to 2 into Choice
+  if Choice = 1 then goto new_game
+  cls
+  print centered at 11, "THANKS FOR PLAYING"
+  loop forever
+
+' Lines 400-520: one diamond, from release to catch or miss
+sub DropOne:
+  ' Line 400: random slant when angles are on
+  Slant = 0
+  if Angle then
+    Pick = random(0, 60)
+    Slant = Pick
+    Slant -= 30
+  end if
+  ' Line 410: remove the tile and start the sprite on it
+  Row = J - 1
+  Tile = Col - 1
+  put char BlankTile at Tile,Row
+  DiamondColor = DiamondColors[J]
+  DY16 = DiamondRow
+  DY16 <<= 8
+  DX16 = Col - 1
+  DX16 <<= 3
+  DX16 -= 2
+  DX16 <<= 8
+  DYStep = DropRate
+  DYStep <<= 4
+  DXStep = Slant
+  DXStep <<= 4
+drop_loop:
+  wait
+  ' Lines 420-440: the paddle moves only while the stick is held
+  if joypad(1).right then
+    PadX16 += PaddleSpeed
+  elseif joypad(1).left then
+    PadX16 -= PaddleSpeed
+  end if
+  DY16 += DYStep
+  DX16 += DXStep
+  DrawDiamond
+  DrawPaddle
+  update sprites
+  ' Line 450: CALL COINC(ALL)
+  if any collision goto caught
+  ' Lines 460-470: the last-chance test at dot-row 155
+  Tmp16 = DY16
+  Tmp16 >>= 8
+  DY = Tmp16
+  if DY < CatchRow then goto drop_loop
+  Tmp16 = DX16
+  Tmp16 >>= 8
+  DX = Tmp16
+  Tmp16 = PadX16
+  Tmp16 >>= 8
+  PadX = Tmp16
+  Gap = DX - PadX
+  if Gap < 16 then goto caught
+  if Gap > 248 then goto caught
+
+  ' Lines 480-500: missed
+  HideDiamond
+  update sprites
+  dec Chances
+  backdrop dark yellow
+  play sound SndMiss
+  wait 24 frames
+  backdrop white
+  ShowStatus
+  return
+
+caught:
+  ' Line 510: (60/J) * SK * SCR * (1 + INT(ABS(B)/15))
+  HideDiamond
+  update sprites
+  play sound SndCatch
+  ' Let the VDP coincidence flag clear before the next diamond is tested
+  wait 2 frames
+  SlantSize = Slant
+  if Slant < 0 then SlantSize = 0 - Slant
+  SlantSize /= 15
+  inc SlantSize
+  ' BCD has no multiply: add 60/J once per unit of SK * SCR * slant factor
+  for RepSkill = 1 to Skill
+    for RepScreen = 1 to ScreenNo
+      for RepSlant = 1 to SlantSize
+        AddRowValue
+      next
+    next
+  next
+  ShowStatus
+  return
+end sub
+
+' 60/J for the current row
+sub AddRowValue:
+  select case J
+    case 3
+      Score += 20
+    case 4
+      Score += 15
+    case 5
+      Score += 12
+    case else
+      Score += 10
+  end select
+  return
+end sub
+
+sub EditorialPage1:
+  cls
+  DiamondBorder
+  print centered at 2, "DIAMOND DROP"
+  print centered at 4, "BY MATT GIWER"
+  print centered at 5, "COMPUTE! SEPTEMBER 1983"
+  print at 2,8, "WRITTEN FOR THE ATARI AND"
+  print at 2,9, "ITS PADDLE CONTROLLER, THE"
+  print at 2,10, "GAME RAN IN PLAIN BASIC,"
+  print at 2,11, "NO MACHINE LANGUAGE, IN"
+  print at 2,12, "LESS THAN 7K OF MEMORY."
+  print at 2,14, "IT USED PLAYER/MISSILE"
+  print at 2,15, "GRAPHICS AND THE ATARI'S"
+  print at 2,16, "FAST STRING HANDLING."
+  print at 2,18, "VERSIONS FOLLOWED FOR THE"
+  print at 2,19, "TI-99/4A, THE VIC AND 64."
+  print at 19,22, "PRESS FIRE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+sub EditorialPage2:
+  cls
+  DiamondBorder
+  print centered at 2, "THE ATARI ORIGINAL"
+  print at 2,4, "FIVE TRAYS CATCH FOUR ROWS"
+  print at 2,5, "OF FALLING DIAMONDS."
+  print at 2,7, "EACH DIAMOND         10"
+  print at 2,8, "ROW CLEARED         100"
+  print at 2,9, "ALL FOUR ROWS       250"
+  print at 2,10, "A MISS COSTS ONE TRAY."
+  print at 2,12, "NO PATTERN TO LEARN:"
+  print at 2,13, "COLUMNS 05 TO 34 ARE KEPT"
+  print at 2,14, "AS PAIRS OF DIGITS IN ONE"
+  print at 2,15, "STRING, THEN 30 RANDOM"
+  print at 2,16, "SWAPS SHUFFLE THEM, SO"
+  print at 2,17, "EACH COLUMN FALLS ONCE."
+  print at 2,19, "THIS PORT FOLLOWS PATRICK"
+  print at 2,20, "PARRISH'S TI-99/4A VERSION."
+  print at 19,22, "PRESS FIRE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Diamonds in the four row colors along the top and bottom, columns 2..29
+sub DiamondBorder:
+  fill 96 count 7 at 2,0
+  fill 104 count 7 at 9,0
+  fill 112 count 7 at 16,0
+  fill 120 count 7 at 23,0
+  fill 120 count 7 at 2,23
+  fill 112 count 7 at 9,23
+  fill 104 count 7 at 16,23
+  fill 96 count 7 at 23,23
+  return
+end sub
+
+' Lines 300 and 520
+sub ShowStatus:
+  fill BlankTile count 32 at 0,0
+  ' Columns 2..29 only: CRT overscan hides columns 0, 1 and 31
+  print at 3,0, "CHANCES:"
+  print Chances at 12,0 digits 2
+  print at 16,0, "SCORE:"
+  print Score at 23,0
+  return
+end sub
+
+' TI dot-row R is VDP Y = R - 2; dot-column C is VDP X = C - 1
+sub DrawDiamond:
+  Tmp16 = DY16
+  Tmp16 >>= 8
+  DY = Tmp16
+  Tmp16 = DX16
+  Tmp16 >>= 8
+  DX = Tmp16
+  DY -= 2
+  DX -= 1
+  set sprite 1 to DY,DX,0,DiamondColor
+  return
+end sub
+
+sub HideDiamond:
+  hide sprite 1
+  return
+end sub
+
+sub DrawPaddle:
+  Tmp16 = PadX16
+  Tmp16 >>= 8
+  PadX = Tmp16
+  PadX -= 1
+  set sprite 0 to PaddleY,PadX,PaddlePattern,PaddleColor
+  return
+end sub
+
+' Lines 190-220: the six-row "DROP" banner in the four diamond colors
+sub DrawBanner:
+  inc BannerY
+  put BannerTop count 20 at 7,BannerY
+  inc BannerY
+  put BannerA count 20 at 7,BannerY
+  inc BannerY
+  put BannerB count 20 at 7,BannerY
+  inc BannerY
+  put BannerC count 20 at 7,BannerY
+  inc BannerY
+  put BannerD count 20 at 7,BannerY
+  inc BannerY
+  put BannerBottom count 20 at 7,BannerY
+  return
+end sub
+
+data BannerTop chars
+  "{96}{96}{96}  {96}{96}{96}   {96}{96}  {96}{96}{96}  "
+end data
+data BannerA chars
+  "{104}  {104} {104}  {104} {104}  {104} {104}  {104} "
+end data
+data BannerB chars
+  "{112}  {112} {112}  {112} {112}  {112} {112}  {112} "
+end data
+data BannerC chars
+  "{120}  {120} {120}{120}{120}  {120}  {120} {120}{120}{120}  "
+end data
+data BannerD chars
+  "{104}  {104} {104}  {104} {104}  {104} {104}    "
+end data
+data BannerBottom chars
+  "{96}{96}{96}  {96}  {96}  {96}{96}  {96}    "
+end data
+
+' Line 700-710: KOLOR(3..6) = TI 3,10,11,14, as VDP colors
+data DiamondColors bytes 0,0,0,2,9,10,13
+
+' Line 650: small diamond, chars 96, 104, 112, 120
+data SmallDiamond bytes $10,$38,$7C,$FE,$7C,$38,$10,$00
+
+' Char 30, the XB cursor block used for the floor
+data FloorPattern bytes $00,$7E,$7E,$7E,$7E,$7E,$7E,$00
+
+' Lines 140-160: 16x16 sprite patterns (TL, BL, TR, BR)
+' 0 = diamond (char 108), 4 = three paddles (char 128), 8 = two (char 132)
+data SpritePatterns bytes
+  $10,$38,$7C,$FE,$7C,$38,$10,$00, $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00, $00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$00,$00,$FF,$FF, $FF,$FF,$00,$00,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$00,$00,$FF,$FF, $FF,$FF,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FF,$FF, $FF,$FF,$00,$00,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$FF,$FF, $FF,$FF,$00,$00,$FF,$FF,$FF,$FF
+end data
+
+' CALL SOUND translations (period = 111861 / Hz, attenuation = TI volume / 2)
+asm {
+RowSfx:       ; SOUND(-300,1500,0..30)
+    db $42,$4B,$00,$06,$36,$33,$50
+FanfareSfx:   ; SOUND(100,600..1400,1)
+    db $40,$BA,$00,$06,$40,$A0,$00,$06,$40,$8C,$00,$06,$40,$7C,$00,$06,$40,$70,$00,$06,$40,$66,$00,$06,$40,$5D,$00,$06,$40,$56,$00,$06,$40,$50,$00,$06,$50
+MissSfx:      ; SOUND(-200,-5,0..25)
+    db $02,$04,$18,$26,$44,$10
+CatchSfx:     ; adaptation: catch chirp
+    db $80,$5D,$30,$04,$90
+
+DropSoundTable:
+    dw RowSfx,$702B             ; 1  tone 1 area
+    dw FanfareSfx,$702B         ; 2
+    dw MissSfx,$7035            ; 3  noise area
+    dw CatchSfx,$7035           ; 4
+}

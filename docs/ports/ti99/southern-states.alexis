@@ -1,0 +1,709 @@
+cartridge "SOUTHERN STATES/PRESENTS C. REGENA'S/1983"
+
+' SOUTHERN STATES by C. Regena
+' Originally published in C. Regena's "Programming The TI" column,
+' COMPUTE! magazine, Issue 39, August 1983, as "Program 3: Southern States"
+' for the TI-99/4A. All design credit belongs to C. Regena.
+'
+' Historical context (summary of the original column):
+' A map of the United States is drawn with redefined characters, then one of
+' eleven southern states is outlined at random. The player types the name of
+' the state and, if correct, its capital city. Names must be spelled
+' correctly; a second mistake shows the right answer. Each state's DATA holds
+' its own outline characters, their screen positions, and how to erase them,
+' mostly with the plain yellow square so repetitions can be used. Readers
+' could also order the program on cassette or diskette from the author.
+'
+' ColecoVision / Coleco ADAM adaptation in Amy by Amy Bienvenu, 2026.
+' One source, two builds:
+' - ADAM (OS7+EOS hybrid): answers are typed on the ADAM keyboard, as on the TI.
+' - ColecoVision cartridge: answers are chosen on the keypad (1-4) from four
+'   names, because the controller has no alphabetic keyboard.
+' Adaptation liberties: dark blue ocean backdrop instead of TI cyan, white
+' title text, answer text drawn on the yellow answer band, BACKSPACE on ADAM.
+' TI rows/columns are 1-based; Amy X,Y are 0-based (X = col - 1, Y = row - 1).
+
+const SeaTile = 32
+const LandTile = 96
+const OutlineBase = 128
+const StateCount = 11
+
+' Sound table slots
+const SndPrompt = 1
+const SndEnter = 2
+const SndUhOh = 3
+const SndArpeggio = 4
+
+' Answer band layout (TI rows 21 and 23; columns 11 and 13 for the fields)
+if defined AMY_HAS_EOS
+const StateY = 20
+const CapitalY = 22
+else defined
+const StateY = 19
+const CapitalY = 20
+end defined
+const StateField = 10
+const CapitalField = 12
+
+u8 Found[11]            ' 1 when the state and capital were both identified
+u8 Solved = 0
+u8 R = 0                ' current state index (TI R)
+u8 Tries = 0            ' TI T
+bool AnswerOk = false
+bool AskCapital = false
+
+' DATA walking (TI READ)
+u16 P = 0
+u16 EraseP = 0
+u16 Bytes16 = 0
+u8 N = 0
+u8 I = 0
+u8 X = 0
+u8 Y = 0
+u8 G = 0
+u8 J = 0
+
+' Text output
+u16 TextP = 0
+u8 TextLen = 0
+u8 TextX = 0
+u8 TextY = 0
+u8 Ch = 0
+u8 K = 0
+
+' Typed answer (ADAM) or chosen answer (ColecoVision)
+u8 Typed[16]
+u8 TypedLen = 0
+u8 KeyStatus = 0
+u8 Slot[4]
+u8 RightSlot = 0
+u8 Pick = 0
+u8 S = 0
+u8 Choice = 0
+u16 AnswerP = 0
+u8 FieldX = 0
+
+  text screen
+  set sound table SouthSoundTable areas 1
+  copy MapPatterns count 224 to vram.pattern + 768
+  backdrop dark blue
+  screen on
+
+  ' --- Lines 180-210: title ---
+  TitleColors
+  cls
+  print at 4,2, "***********************"
+  print at 4,3, "*                     *"
+  print at 4,4, "* IDENTIFY THE STATES *"
+  print at 4,5, "*                     *"
+  print at 4,6, "***********************"
+  print at 8,10, "SOUTHERN STATES"
+  print centered at 13, "BY C. REGENA"
+  print centered at 14, "COMPUTE! ISSUE 39, AUGUST 1983"
+  print centered at 17, "ADAPTATION"
+  print centered at 18, "AMY BIENVENU, 2026"
+  wait 180 frames
+
+new_game:
+  ' --- Lines 400-460: instructions ---
+  TitleColors
+  cls
+  print at 2,1, "ONE OF THE UNITED STATES"
+  print at 2,3, "WILL BE OUTLINED."
+if defined AMY_HAS_EOS
+  print at 2,6, "TYPE THE NAME OF THE STATE"
+  print at 2,8, "THEN PRESS <RETURN>."
+  print at 2,11, "IF THE STATE IS CORRECT,"
+  print at 2,13, "TYPE THE CAPITAL CITY"
+  print at 2,15, "THEN PRESS <RETURN>."
+  print at 2,18, "NAMES MUST BE SPELLED"
+  print at 2,20, "CORRECTLY TO BE ACCEPTED."
+  print at 14,22, "PRESS <RETURN>"
+  WaitReturn
+else defined
+  print at 2,6, "PICK THE NAME OF THE STATE"
+  print at 2,8, "WITH KEYPAD KEYS 1 TO 4."
+  print at 2,11, "IF THE STATE IS CORRECT,"
+  print at 2,13, "PICK THE CAPITAL CITY."
+  print at 2,16, "TWO TRIES PER QUESTION."
+  print at 18,22, "PRESS FIRE"
+  pause until press
+  wait no fire
+end defined
+
+  ' --- Lines 470-510: the map ---
+  cls
+  MapColors
+  put MapTiles frame size 28,17 at 2,1
+  fill array Found with 0
+  Solved = 0
+
+next_state:
+  ' --- Lines 530-570: random state not yet identified ---
+  Tries = 0
+pick_state:
+  R = random(0, 10)
+  if Found[R] = 1 then goto pick_state
+
+  ' --- Lines 580-680: answer band, outline characters, outline ---
+  fill LandTile count 160 at 0,19
+  P = StateData[R]
+  N = peek(P)
+  P += 1
+  Bytes16 = N
+  Bytes16 <<= 3
+  UploadPatterns
+  P += Bytes16
+  N = peek(P)
+  P += 1
+  for I = 1 to N
+    X = peek(P)
+    Y = peek(P + 1)
+    G = peek(P + 2)
+    put char G at X,Y
+    P += 3
+  next
+  EraseP = P
+
+  ' --- Lines 690-950: the state ---
+  AskCapital = false
+  AskAnswer
+  if not AnswerOk then goto missed
+
+  ' --- Lines 960-1240: the capital ---
+  AskCapital = true
+  Tries = 0
+  AskAnswer
+  if not AnswerOk then goto missed
+  Found[R] = 1
+  inc Solved
+  goto erase_state
+
+missed:
+  ' Lines 920-940: the right answer stays on screen until the player continues
+  ShowPressPrompt
+
+erase_state:
+  ' --- Lines 1250-1290 ---
+  P = EraseP
+  N = peek(P)
+  P += 1
+  for I = 1 to N
+    X = peek(P)
+    Y = peek(P + 1)
+    G = peek(P + 2)
+    J = peek(P + 3)
+    fill G count J at X,Y
+    P += 4
+  next
+  if Solved < StateCount then goto next_state
+
+  ' --- Lines 1310-1370: try again ---
+  fill LandTile count 96 at 0,20
+  TextP = Messages[3]
+  TextX = 2
+  TextY = 21
+  PutText
+if defined AMY_HAS_EOS
+again_key:
+  K = await key status KeyStatus
+  if K >= 97 then K -= 32
+  if K = 89 then goto new_game
+  if K <> 78 then goto again_key
+else defined
+  choose keypad 1 to 2 into Choice
+  if Choice = 1 then goto new_game
+end defined
+  TitleColors
+  cls
+  print centered at 11, "SOUTHERN STATES"
+  print centered at 13, "THANKS FOR PLAYING"
+  loop forever
+
+' Asks for the state (AskCapital false) or its capital (true), two tries.
+sub AskAnswer:
+  if AskCapital then
+    AnswerP = CapNames[R]
+    TextY = CapitalY
+    FieldX = CapitalField
+    TextP = Messages[1]
+  else
+    AnswerP = StNames[R]
+    TextY = StateY
+    FieldX = StateField
+    TextP = Messages[0]
+  end if
+  TextX = 2
+  PutText
+  ClearField
+if defined AMY_HAS_EOS
+  ' Lines 720-910: typed answer
+try_again:
+  TypedAnswer
+else defined
+  ' Keypad adaptation: four names, one is right
+  BuildChoices
+try_again:
+  ChosenAnswer
+end defined
+  play sound SndEnter
+  wait 6 frames
+  if AnswerOk then
+if not defined AMY_HAS_EOS
+    ClearChoices
+    ShowRightAnswer
+end defined
+    play sound SndArpeggio
+    wait 30 frames
+    return
+  end if
+  play sound SndUhOh
+  wait 12 frames
+  inc Tries
+  if Tries < 2 then goto try_again
+if not defined AMY_HAS_EOS
+  ClearChoices
+end defined
+  ShowRightAnswer
+  return
+end sub
+
+
+if defined AMY_HAS_EOS
+' --- ADAM keyboard entry (TI lines 720-810 and 1000-1090) ---
+sub TypedAnswer:
+  ClearField
+  play sound SndPrompt
+  TypedLen = 0
+type_key:
+  K = await key status KeyStatus
+  if KeyStatus <> 0 then goto type_key
+  if K = 13 then goto type_done
+  if K = 8 then
+    if TypedLen > 0 then
+      dec TypedLen
+      X = FieldX + TypedLen
+      put char LandTile at X,TextY
+    end if
+    goto type_key
+  end if
+  if K >= 97 then
+    if K <= 122 then K -= 32
+  end if
+  if K < 32 then goto type_key
+  if K > 95 then goto type_key
+  if TypedLen = 15 then goto type_key
+  Typed[TypedLen] = K
+  X = FieldX + TypedLen
+  Ch = K
+  if Ch = SeaTile then Ch = LandTile
+  put char Ch at X,TextY
+  inc TypedLen
+  goto type_key
+type_done:
+  ' Lines 830 and 1110: exact spelling
+  AnswerOk = false
+  TextLen = peek(AnswerP)
+  if TextLen <> TypedLen then return
+  for I = 1 to TextLen
+    Ch = peek(AnswerP + I)
+    J = I - 1
+    if Typed[J] <> Ch then return
+  next
+  AnswerOk = true
+  return
+end sub
+else defined
+' --- ColecoVision keypad adaptation ---
+' Slot[0..3] hold four different state indexes; one of them is R.
+sub BuildChoices:
+  RightSlot = random(0, 3)
+  for S = 0 to 3
+    if S = RightSlot then
+      Slot[S] = R
+    else
+pick_other:
+      Pick = random(0, 10)
+      if Pick = R then goto pick_other
+      for J = 0 to 3
+        if J <> S then
+          if J < S then
+            if Slot[J] = Pick then goto pick_other
+          end if
+        end if
+      next
+      Slot[S] = Pick
+    end if
+  next
+  ' Each slot is checked against all earlier ones, so no duplicates
+  DrawChoices
+  return
+end sub
+
+sub DrawChoices:
+  for S = 0 to 3
+    Pick = Slot[S]
+    if AskCapital then
+      TextP = CapNames[Pick]
+    else
+      TextP = StNames[Pick]
+    end if
+    TextX = 1
+    if S = 1 then TextX = 17
+    if S = 3 then TextX = 17
+    TextY = 23
+    if S < 2 then TextY = 22
+    Ch = S + 49
+    put char Ch at TextX,TextY
+    inc TextX
+    PutText
+  next
+  return
+end sub
+
+sub ClearChoices:
+  fill LandTile count 64 at 0,22
+  return
+end sub
+
+sub ChosenAnswer:
+  play sound SndPrompt
+  choose keypad 1 to 4 into Choice
+  dec Choice
+  AnswerOk = false
+  if Choice = RightSlot then
+    AnswerOk = true
+    return
+  end if
+  ' Grey out the wrong choice so the second try is a real choice
+  TextX = 1
+  if Choice = 1 then TextX = 17
+  if Choice = 3 then TextX = 17
+  TextY = 23
+  if Choice < 2 then TextY = 22
+  fill LandTile count 15 at TextX,TextY
+  return
+end sub
+end defined
+
+' Lines 880-910 and 1160-1190: show the correct spelling
+sub ShowRightAnswer:
+  ClearField
+  TextP = AnswerP
+  TextX = FieldX
+  PutText
+  return
+end sub
+
+' Clears the answer field after the prompt (TI HCHAR(...,96,15))
+sub ClearField:
+  fill LandTile count 15 at FieldX,TextY
+  return
+end sub
+
+' Lines 1380-1440: PRESS ENTER at the bottom right
+sub ShowPressPrompt:
+if defined AMY_HAS_EOS
+  TextP = Messages[2]
+  TextX = 20
+  TextY = 23
+  PutText
+  WaitReturn
+else defined
+  TextP = Messages[2]
+  TextX = 21
+  TextY = 23
+  PutText
+  pause until press
+  wait no fire
+end defined
+  fill LandTile count 11 at 20,23
+  return
+end sub
+
+if defined AMY_HAS_EOS
+sub WaitReturn:
+wait_return:
+  K = await key status KeyStatus
+  if K <> 13 then goto wait_return
+  return
+end sub
+end defined
+
+' Writes a length-prefixed string at TextX,TextY; spaces become land tiles
+sub PutText:
+  TextLen = peek(TextP)
+  for I = 1 to TextLen
+    Ch = peek(TextP + I)
+    if Ch = SeaTile then Ch = LandTile
+    put char Ch at TextX,TextY
+    inc TextX
+  next
+  return
+end sub
+
+' WRITE_VRAM: HL = source, DE = VRAM destination, BC = byte count
+sub UploadPatterns:
+  asm {
+    ld hl,(AMY_UVAR_P)
+    ld de,VRAM_PATTERN + 1024
+    ld bc,(AMY_UVAR_Bytes16)
+    call WRITE_VRAM
+  }
+  return
+end sub
+
+' Title and instruction screens: white text on the blue backdrop
+sub TitleColors:
+  set text colors white count 12
+  return
+end sub
+
+' Map screen: land and outline colors (TI lines 120-170), answer text
+' black on the yellow band
+sub MapColors:
+  set text colors white at 4 count 1
+  set text colors black on light yellow at 5 count 7
+  set text colors light yellow at 12 count 4
+  set text colors transparent on light yellow at 16 count 2
+  return
+end sub
+
+data MsgState bytes 7,83,84,65,84,69,32,63
+data MsgCapital bytes 9,67,65,80,73,84,65,76,32,63
+if defined AMY_HAS_EOS
+data MsgPress bytes 12,80,82,69,83,83,32,82,69,84,85,82,78
+data MsgAgain bytes 16,84,82,89,32,65,71,65,73,78,63,32,40,89,47,78,41
+else defined
+data MsgPress bytes 10,80,82,69,83,83,32,70,73,82,69
+data MsgAgain bytes 21,84,82,89,32,65,71,65,73,78,63,32,49,61,89,69,83,32,50,61,78,79
+end defined
+
+data Messages words
+  @MsgState, @MsgCapital, @MsgPress, @MsgAgain
+end data
+
+' Chars 96-123: map pieces (TI lines 230-310)
+data MapPatterns bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $3F,$1F,$0F,$07,$07,$03,$03,$01
+  $7F,$3F,$1F,$0F,$00,$00,$00,$00
+  $FF,$FF,$7F,$7F,$3F,$3F,$3F,$3F
+  $FF,$FF,$F3,$C0,$00,$00,$00,$00
+  $F0,$F0,$F0,$E0,$E0,$C0,$C0,$80
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$07,$07,$03,$03,$01,$01
+  $01,$01,$03,$03,$07,$07,$0F,$0F
+  $0F,$0F,$0F,$0F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$7F,$1F,$07,$01
+  $FF,$3F,$0F,$03,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$0F,$0F
+  $F8,$FC,$FE,$FE,$7F,$3E,$00,$00
+  $FF,$FF,$FF,$FF,$FE,$FC,$F8,$F0
+  $F0,$F8,$F8,$FC,$FC,$FE,$FE,$FF
+  $00,$80,$80,$C0,$C0,$E0,$E0,$F0
+  $F0,$E0,$C0,$80,$00,$00,$00,$00
+  $FC,$FC,$F8,$F8,$F0,$F0,$F0,$F0
+  $80,$80,$C0,$C0,$E0,$E0,$F0,$F0
+  $0F,$1F,$3F,$7F,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$03,$0F,$3F,$FF
+  $00,$00,$00,$00,$00,$01,$03,$07
+  $E0,$E0,$E0,$F0,$F8,$FC,$FE,$FF
+  $00,$00,$00,$00,$00,$80,$C0,$E0
+  $00,$E0,$F0,$FE,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$E0,$F8,$FE
+  $E0,$E0,$E1,$E3,$FF,$FF,$FE,$FC
+end data
+
+' Map name-table tiles, 28 x 17 (TI lines 480-510)
+data MapTiles bytes
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$74,$73
+  $20,$69,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$79,$7A,$20,$20,$20,$20,$20,$20,$20,$75,$60,$65
+  $20,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$79,$78,$20,$20,$20,$74,$60,$72,$20
+  $68,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$77,$20,$76,$74,$60,$60,$7B,$20
+  $66,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$20,$74,$60,$60,$6E,$71,$20
+  $66,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$74,$60,$60,$60,$20,$20,$20
+  $66,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$78,$20,$20
+  $66,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$65,$20,$20
+  $67,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$20,$20,$20
+  $20,$63,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$6E,$20,$20,$20
+  $20,$67,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$6E,$71,$20,$20,$20
+  $20,$20,$6A,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$65,$20,$20,$20,$20
+  $20,$20,$20,$20,$6B,$6A,$60,$60,$6C,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$60,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$61,$60,$60,$60,$60,$60,$60,$60,$60,$6E,$64,$6A,$60,$60,$70,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$62,$64,$63,$60,$6E,$64,$64,$64,$6D,$20,$20,$20,$63,$6F,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$61,$60,$20,$20,$20,$20,$20,$20,$20,$20,$61,$60,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$62,$20,$20,$20,$20,$20,$20,$20,$20,$20,$62,$20,$20,$20,$20
+end data
+
+' TEXAS (TI line 1510): patterns, outline X,Y,char, erase X,Y,char,count
+data State0 bytes
+  $0B,$00,$00,$00,$1F,$10,$F0,$C0,$C0,$00,$00,$00,$FF,$00,$00,$00
+  $00,$80,$80,$80,$80,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80
+  $80,$FF,$80,$80,$80,$80,$80,$80,$80,$F8,$08,$08,$08,$08,$08,$08
+  $08,$08,$08,$06,$01,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$38,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$F0
+  $0C,$02,$02,$01,$01,$01,$01,$01,$01,$0C,$0B,$0D,$80,$0C,$0D,$81
+  $0D,$0D,$82,$0D,$0C,$83,$0D,$0B,$84,$0E,$0B,$85,$0E,$0C,$86,$0F
+  $0C,$87,$10,$0C,$88,$11,$0C,$89,$11,$0D,$8A,$11,$0E,$8A,$04,$0D
+  $0B,$60,$02,$0D,$0C,$60,$05,$0B,$0D,$60,$07,$11,$0E,$60,$01
+end data
+
+' OKLAHOMA (TI line 1580): patterns, outline X,Y,char, erase X,Y,char,count
+data State1 bytes
+  $0A,$00,$00,$00,$FF,$80,$80,$80,$80,$00,$00,$00,$FF,$00,$00,$00
+  $00,$00,$00,$00,$FC,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$00,$00,$00,$00,$C0,$38,$07,$00,$08,$08,$06,$01,$00,$00,$00
+  $00,$F8,$08,$08,$08,$08,$08,$08,$08,$FF,$00,$00,$00,$00,$00,$00
+  $00,$0C,$0D,$0A,$80,$0D,$0B,$89,$0E,$0A,$81,$0E,$0B,$88,$0E,$0C
+  $87,$0F,$0A,$81,$0F,$0C,$86,$10,$0A,$81,$10,$0C,$85,$11,$0A,$82
+  $11,$0B,$83,$11,$0C,$84,$03,$0D,$0A,$60,$05,$0D,$0B,$60,$05,$0E
+  $0C,$60,$04
+end data
+
+' ARKANSAS (TI line 1640): patterns, outline X,Y,char, erase X,Y,char,count
+data State2 bytes
+  $09,$00,$00,$00,$00,$01,$F1,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$00,$00,$00,$00,$00,$F8,$04,$04,$08,$08,$0F,$01,$01,$01,$01
+  $02,$04,$04,$08,$08,$10,$10,$10,$10,$20,$20,$E0,$00,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00,$00,$1C,$02,$01,$00,$00,$00,$00
+  $00,$10,$10,$10,$10,$10,$10,$10,$10,$0A,$11,$0A,$80,$12,$0A,$81
+  $13,$0A,$82,$13,$0B,$83,$13,$0C,$84,$13,$0D,$85,$12,$0D,$86,$11
+  $0D,$87,$11,$0C,$88,$11,$0B,$88,$04,$11,$0A,$60,$03,$11,$0B,$60
+  $03,$11,$0C,$60,$03,$11,$0D,$60,$03
+end data
+
+' LOUISIANA (TI line 1700): patterns, outline X,Y,char, erase X,Y,char,count
+data State3 bytes
+  $05,$00,$00,$FF,$80,$80,$80,$80,$80,$00,$00,$F0,$10,$10,$08,$08
+  $08,$08,$08,$04,$03,$00,$00,$00,$00,$00,$00,$00,$E0,$11,$0B,$0F
+  $0F,$40,$40,$40,$40,$80,$80,$80,$80,$05,$12,$0D,$80,$13,$0D,$81
+  $13,$0E,$82,$14,$0E,$83,$12,$0E,$84,$03,$12,$0D,$60,$02,$12,$0E
+  $60,$02,$14,$0E,$6E,$01
+end data
+
+' TENNESSEE (TI line 1740): patterns, outline X,Y,char, erase X,Y,char,count
+data State4 bytes
+  $07,$00,$00,$00,$0F,$10,$10,$20,$40,$00,$3F,$C0,$00,$00,$00,$00
+  $00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$FF,$02,$04,$04,$08,$10
+  $E0,$01,$01,$02,$FC,$00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00
+  $00,$40,$80,$80,$FF,$00,$00,$00,$00,$09,$12,$0A,$80,$13,$0A,$81
+  $14,$0A,$82,$15,$0A,$82,$16,$0A,$83,$15,$0B,$84,$14,$0B,$85,$13
+  $0B,$85,$12,$0B,$86,$02,$12,$0A,$60,$05,$12,$0B,$60,$04
+end data
+
+' MISSISSIPPI (TI line 1790): patterns, outline X,Y,char, erase X,Y,char,count
+data State5 bytes
+  $09,$00,$00,$00,$01,$01,$01,$02,$04,$00,$00,$00,$FF,$00,$00,$00
+  $00,$00,$00,$00,$F0,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$FF,$FF,$FF,$FF,$00,$00,$F0,$10,$11,$13,$17
+  $0F,$20,$20,$3F,$00,$00,$00,$00,$00,$08,$08,$08,$08,$08,$10,$20
+  $20,$08,$08,$08,$08,$10,$10,$10,$10,$0A,$13,$0B,$80,$14,$0B,$81
+  $15,$0B,$82,$15,$0C,$83,$15,$0D,$83,$15,$0E,$84,$14,$0E,$85,$13
+  $0E,$86,$13,$0D,$87,$13,$0C,$88,$06,$13,$0B,$60,$03,$13,$0C,$60
+  $03,$13,$0D,$60,$03,$13,$0E,$60,$01,$14,$0E,$6E,$01,$15,$0E,$64
+  $01
+end data
+
+' ALABAMA (TI line 1850): patterns, outline X,Y,char, erase X,Y,char,count
+data State6 bytes
+  $06,$00,$00,$00,$7F,$40,$40,$40,$40,$00,$00,$00,$F0,$10,$08,$08
+  $04,$04,$04,$04,$02,$02,$02,$01,$01,$02,$02,$02,$01,$01,$01,$01
+  $FF,$44,$44,$44,$44,$FF,$FF,$FF,$FF,$40,$40,$40,$40,$40,$40,$40
+  $40,$07,$15,$0B,$80,$16,$0B,$81,$16,$0C,$82,$16,$0D,$83,$15,$0E
+  $84,$15,$0D,$85,$15,$0C,$85,$04,$15,$0B,$60,$02,$15,$0C,$60,$02
+  $15,$0D,$60,$02,$15,$0E,$64,$01
+end data
+
+' FLORIDA (TI line 1900): patterns, outline X,Y,char, erase X,Y,char,count
+data State7 bytes
+  $05,$0F,$08,$08,$08,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$C0,$F0,$FC
+  $FF,$00,$FF,$00,$00,$00,$00,$06,$0E,$00,$F9,$06,$00,$00,$00,$00
+  $00,$EF,$DF,$BF,$00,$BF,$DF,$EF,$FF,$05,$15,$0E,$80,$16,$0E,$81
+  $17,$0E,$82,$18,$0E,$83,$1A,$0F,$84,$04,$15,$0E,$64,$01,$16,$0E
+  $6A,$01,$17,$0E,$60,$02,$1A,$0F,$20,$01
+end data
+
+' GEORGIA (TI line 1940): patterns, outline X,Y,char, erase X,Y,char,count
+data State8 bytes
+  $07,$00,$00,$00,$1F,$10,$08,$08,$04,$00,$00,$00,$F8,$08,$04,$02
+  $03,$80,$40,$20,$20,$18,$04,$02,$02,$00,$F9,$06,$00,$00,$00,$00
+  $00,$80,$FF,$00,$00,$00,$00,$06,$0E,$02,$02,$02,$01,$01,$01,$01
+  $01,$04,$04,$04,$02,$02,$02,$01,$01,$07,$16,$0B,$80,$17,$0B,$81
+  $18,$0C,$82,$18,$0E,$83,$17,$0E,$84,$16,$0D,$85,$16,$0C,$86,$04
+  $16,$0B,$60,$02,$16,$0C,$60,$03,$16,$0D,$60,$01,$17,$0E,$60,$02
+end data
+
+' SOUTH CAROLINA (TI line 1990): patterns, outline X,Y,char, erase X,Y,char,count
+data State9 bytes
+  $04,$00,$00,$03,$0C,$08,$04,$02,$03,$00,$3C,$C3,$00,$00,$00,$00
+  $00,$10,$EC,$04,$02,$01,$01,$03,$07,$80,$40,$20,$20,$18,$04,$02
+  $02,$04,$17,$0B,$80,$18,$0B,$81,$19,$0B,$82,$18,$0C,$83,$03,$17
+  $0B,$60,$02,$19,$0B,$6E,$01,$18,$0C,$60,$01
+end data
+
+' NORTH CAROLINA (TI line 2030): patterns, outline X,Y,char, erase X,Y,char,count
+data State10 bytes
+  $08,$00,$01,$02,$04,$04,$08,$10,$E0,$00,$FF,$00,$00,$00,$00,$00
+  $00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$10,$EC,$01,$02,$01,$01,$03,$07,$00,$3C,$C3,$00,$00,$00,$00
+  $00,$00,$00,$03,$FC,$00,$00,$00,$00,$01,$01,$02,$07,$00,$00,$00
+  $00,$08,$17,$0A,$80,$18,$0A,$81,$19,$0A,$82,$1A,$09,$83,$19,$0B
+  $84,$18,$0B,$85,$17,$0B,$86,$16,$0B,$87,$04,$17,$0A,$60,$03,$1A
+  $09,$60,$01,$16,$0B,$60,$03,$19,$0B,$6E,$01
+end data
+
+data StateData words
+  @State0, @State1, @State2, @State3, @State4, @State5, @State6, @State7, @State8, @State9, @State10
+end data
+
+' Names (TI lines 370-390): length byte, then ASCII
+data StName0 bytes 5,84,69,88,65,83
+data StName1 bytes 8,79,75,76,65,72,79,77,65
+data StName2 bytes 8,65,82,75,65,78,83,65,83
+data StName3 bytes 9,76,79,85,73,83,73,65,78,65
+data StName4 bytes 9,84,69,78,78,69,83,83,69,69
+data StName5 bytes 11,77,73,83,83,73,83,83,73,80,80,73
+data StName6 bytes 7,65,76,65,66,65,77,65
+data StName7 bytes 7,70,76,79,82,73,68,65
+data StName8 bytes 7,71,69,79,82,71,73,65
+data StName9 bytes 14,83,79,85,84,72,32,67,65,82,79,76,73,78,65
+data StName10 bytes 14,78,79,82,84,72,32,67,65,82,79,76,73,78,65
+data StNames words
+  @StName0, @StName1, @StName2, @StName3, @StName4, @StName5, @StName6, @StName7, @StName8, @StName9, @StName10
+end data
+
+data CapName0 bytes 6,65,85,83,84,73,78
+data CapName1 bytes 13,79,75,76,65,72,79,77,65,32,67,73,84,89
+data CapName2 bytes 11,76,73,84,84,76,69,32,82,79,67,75
+data CapName3 bytes 11,66,65,84,79,78,32,82,79,85,71,69
+data CapName4 bytes 9,78,65,83,72,86,73,76,76,69
+data CapName5 bytes 7,74,65,67,75,83,79,78
+data CapName6 bytes 10,77,79,78,84,71,79,77,69,82,89
+data CapName7 bytes 11,84,65,76,76,65,72,65,83,83,69,69
+data CapName8 bytes 7,65,84,76,65,78,84,65
+data CapName9 bytes 8,67,79,76,85,77,66,73,65
+data CapName10 bytes 7,82,65,76,69,73,71,72
+data CapNames words
+  @CapName0, @CapName1, @CapName2, @CapName3, @CapName4, @CapName5, @CapName6, @CapName7, @CapName8, @CapName9, @CapName10
+end data
+
+
+' CALL SOUND translations (period = 111861 / Hz, attenuation = TI volume / 2)
+asm {
+PromptBeep:   ; SOUND(150,1397,2)
+    db $40,$50,$10,$09,$50
+EnterBeep:    ; SOUND(100,880,2)
+    db $40,$7F,$10,$06,$50
+UhOh:         ; SOUND(100,330,2) SOUND(100,262,2)
+    db $40,$53,$11,$06,$40,$AB,$11,$06,$50
+Arpeggio:     ; lines 1450-1480
+    db $40,$AB,$11,$06,$40,$53,$11,$06,$40,$1D,$11,$06,$40,$D6,$10,$0C,$50
+
+SouthSoundTable:
+    dw PromptBeep,$702B         ; 1
+    dw EnterBeep,$702B          ; 2
+    dw UhOh,$702B               ; 3
+    dw Arpeggio,$702B           ; 4
+}

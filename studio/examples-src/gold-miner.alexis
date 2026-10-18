@@ -1,0 +1,576 @@
+cartridge "GOLD MINER/PRESENTS WEBER AND DUNN'S/1983"
+
+' GOLD MINER
+' Original VIC-20 game by Joseph Weber, COMPUTE! magazine, July 1982.
+' TI-99/4A translation by James Dunn, "Gold Miner For TI-99/4A",
+' COMPUTE! Issue 39, August 1983, page 113.
+' All game design credit belongs to Joseph Weber and James Dunn.
+'
+' Historical context (summary of the TI article):
+' Dig into the Lost Mine and search for gold. The TI version runs in plain
+' TI BASIC (about 5K) but not in Extended BASIC, because it defines
+' character 144. James Dunn translated it from the VIC-20 version, rewriting
+' the score and charges display with string manipulation and HCHAR, since
+' TI BASIC can only PRINT at the bottom of a scrolling screen. He also
+' designed an animated pickaxe miner that appears to chop through the mine.
+' Speed does not matter in this game; in his words, "you can walk away from
+' the game", and pick it up again later. Hold the joystick or fire button
+' until the program reads it.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' TI rows/columns are 1-based; Amy X,Y are 0-based (X = col - 1, Y = row - 1).
+' Controls: joystick 1 moves (no diagonals), fire button blasts.
+
+const BlankTile = 32
+const WallTile = 35
+const BlastTile = 88
+const DirtTile = 126
+const PickFirst = 128
+const MinerTile = 131
+const OfficeTile = 136
+const DeadTile = 144
+const GoldTile = 152
+
+const DirNone = 0
+const DirRight = 1
+const DirLeft = 2
+const DirUp = 3
+const DirDown = 4
+
+' TI BASIC was paced by the interpreter; these set the step rate.
+const AnimFrames = 3
+const StepFrames = 6
+
+' Sound table slots
+const SndDig = 1
+const SndBlast = 2
+const SndGold = 3
+const SndStep = 4
+const SndTally = 5
+const SndGetOut = 6
+
+' Game state (TI names in comments)
+u8 Lives = 4            ' M
+i8 Charges = 10         ' C
+i16 Carried = 0         ' S, gold carried by the current miner
+i16 Wealth = 0          ' W, gold banked at the assay office
+u8 Timer = 250          ' T, GET OUT counter
+u8 MinerX = 14          ' A - 1
+u8 MinerY = 3           ' B - 1
+u8 Dir = DirNone        ' JOYST X,Y
+bool FireHeld = false   ' RV = 18
+bool GameOver = false
+bool Squashed = false
+
+' Scratch
+u8 Q = 0
+u8 PrevX = 0
+u8 PrevY = 0
+u8 NX = 0
+u8 NY = 0
+u8 CX = 0
+u8 CY = 0
+u8 K = 0
+u8 Z = 0
+u8 Pressed = 0
+u8 Reserve = 0
+u8 Choice = 0
+
+' Left-aligned number printing (the TI used STR$ and SEG$ for this)
+i16 NumValue = 0
+u16 NumMag = 0
+u8 NumX = 0
+u8 NumY = 0
+u8 NumDigit = 0
+u8 NumCount = 0
+u8 NumBuf[6]
+
+  text screen
+  set sound table GoldSoundTable areas 2
+  LoadCharacters
+  backdrop cyan
+  screen on
+  ShowCredits
+  ShowInstructions
+
+new_game:
+  Lives = 4
+  Carried = 0
+  Wealth = 0
+  GameOver = false
+  Dir = DirNone
+  FireHeld = false
+  cls
+  DrawBoard
+
+new_turn:
+  Timer = 250
+
+main_loop:
+  put char BlankTile at MinerX,MinerY
+  ' Lines 160-450: dig right or up; move left or down only into open space
+  select case Dir
+    case DirRight
+      inc MinerX
+      Q = get char at MinerX,MinerY
+      if Q = WallTile then dec MinerX
+    case DirLeft
+      dec MinerX
+      Q = get char at MinerX,MinerY
+      if Q = DirtTile or Q = WallTile then
+        inc MinerX
+        goto check_blast
+      end if
+    case DirUp
+      dec MinerY
+      Q = get char at MinerX,MinerY
+      if Q = WallTile then inc MinerY
+    case DirDown
+      inc MinerY
+      Q = get char at MinerX,MinerY
+      if Q = DirtTile or Q = WallTile then
+        dec MinerY
+        goto check_blast
+      end if
+  end select
+
+  ' Lines 460-590: what is under the miner
+  Q = get char at MinerX,MinerY
+  if Q = DirtTile then
+    play sound SndDig
+    wait 8 frames
+  elseif Q = GoldTile then
+    Carried += 1
+    play sound SndGold
+  elseif Q = DeadTile then
+    Carried += 1
+  elseif Q = OfficeTile then
+    TallyGold
+    if GameOver then goto game_over
+  end if
+
+check_blast:
+  ' Lines 600-630
+  if FireHeld then
+    Explosion
+    CaveIn
+    if GameOver then goto game_over
+    if Squashed then
+      FireHeld = false
+      goto main_loop
+    end if
+    PrintStatus
+  end if
+
+  ' Lines 640-670: spin the pickaxe
+  for Z = PickFirst to MinerTile
+    put char Z at MinerX,MinerY
+    wait AnimFrames frames
+  next
+  play sound SndStep
+  wait StepFrames frames
+  ReadInput
+
+  ' Lines 690-720 and 2390-2560: out of charges
+  if Charges < 1 then
+    if Timer < 128 then
+      put char BlankTile at MinerX,MinerY
+      dec Lives
+      if Lives = 0 then goto game_over
+      PlaceMiners
+      PrintStatus
+      fill BlankTile count 10 at 3,1
+      goto new_turn
+    end if
+    print at 3,1, "GET OUT"
+    play sound SndGetOut
+    Timer -= 4
+    FireHeld = false
+  end if
+  goto main_loop
+
+game_over:
+  ' Lines 2570-2700
+  PrintStatus
+  wait 180 frames
+  cls
+  print at 2,21, "PLAY AGAIN?"
+  print at 2,22, "1=YES 2=NO"
+  choose keypad 1 to 2 into Choice
+  if Choice = 1 then goto new_game
+  cls
+  loop forever
+
+' --- Lines 1020-1080: joystick, diagonals ignored ---
+sub ReadInput:
+  Dir = DirNone
+  Pressed = 0
+  if joypad(1).right then
+    Dir = DirRight
+    inc Pressed
+  end if
+  if joypad(1).left then
+    Dir = DirLeft
+    inc Pressed
+  end if
+  if joypad(1).up then
+    Dir = DirUp
+    inc Pressed
+  end if
+  if joypad(1).down then
+    Dir = DirDown
+    inc Pressed
+  end if
+  if Pressed <> 1 then Dir = DirNone
+  if joypad(1).fire then
+    FireHeld = true
+  else
+    FireHeld = false
+  end if
+  return
+end sub
+
+' --- Lines 1090-1330 ---
+sub DrawBoard:
+  fill WallTile count 28 at 2,0
+  fill WallTile count 11 at 3,4
+  fill WallTile count 14 at 15,4
+  fill WallTile count 26 at 3,23
+  for NY = 0 to 23
+    put char WallTile at 2,NY
+    put char WallTile at 29,NY
+  next
+  for NY = 1 to 3
+    put char WallTile at 13,NY
+  next
+  put char WallTile at 15,2
+  put char WallTile at 15,3
+  put char WallTile at 16,2
+  put char WallTile at 17,1
+  put char WallTile at 17,2
+  for NY = 5 to 22
+    fill DirtTile count 26 at 3,NY
+  next
+  for K = 1 to 180
+    NX = random(3, 28)
+    NY = random(5, 22)
+    put char GoldTile at NX,NY
+  next
+  PlaceMiners
+  PrintStatus
+  fill BlankTile count 12 at 3,5
+  return
+end sub
+
+' --- Lines 1340-1440 ---
+sub PlaceMiners:
+  if Lives < 1 then
+    GameOver = true
+    return
+  end if
+  fill BlankTile count 5 at 6,2
+  if Lives > 1 then
+    Reserve = Lives - 1
+    fill MinerTile count Reserve at 7,2
+  end if
+  put char MinerTile at 14,3
+  Charges = 10
+  Carried = 0
+  put char OfficeTile at 15,1
+  MinerX = 14
+  MinerY = 3
+  return
+end sub
+
+' --- Lines 1450-1640 ---
+sub PrintStatus:
+  print at 18,1, "CHARGES="
+  NumValue = Charges
+  NumX = 26
+  NumY = 1
+  PutNumber
+  print at 16,3, "GOLD=$"
+  NumValue = Wealth
+  NumX = 22
+  NumY = 3
+  PutNumber
+  return
+end sub
+
+' Prints NumValue left-aligned at NumX,NumY, like TI STR$
+sub PutNumber:
+  if NumValue < 0 then
+    put char 45 at NumX,NumY
+    inc NumX
+    NumValue = 0 - NumValue
+  end if
+  NumMag = NumValue
+  NumCount = 0
+  do
+    NumDigit = NumMag % 10
+    NumDigit += 48
+    NumBuf[NumCount] = NumDigit
+    inc NumCount
+    NumMag /= 10
+  loop until NumMag = 0
+  do
+    dec NumCount
+    NumDigit = NumBuf[NumCount]
+    put char NumDigit at NumX,NumY
+    inc NumX
+  loop until NumCount = 0
+  return
+end sub
+
+' --- Lines 1650-1800: gold times remaining charges (at least 1) ---
+sub TallyGold:
+  fill BlankTile count 11 at 18,1
+  fill BlankTile count 13 at 16,3
+  play sound SndTally
+  wait 30 frames
+  if Charges = 0 then Charges = 1
+  if Charges > 0 then
+    do
+      Wealth += Carried
+      dec Charges
+    loop until Charges = 0
+  else
+    do
+      Wealth -= Carried
+      inc Charges
+    loop until Charges = 0
+  end if
+  dec Lives
+  PlaceMiners
+  if GameOver then return
+  PrintStatus
+  fill BlankTile count 10 at 3,1
+  return
+end sub
+
+' --- Lines 1810-2130 ---
+sub Explosion:
+  put char MinerTile at MinerX,MinerY
+  play sound SndBlast
+  wait 42 frames
+  SetNeighbors(88)
+  wait 8 frames
+  SetNeighbors(32)
+  dec Charges
+  fill BlankTile count 11 at 18,1
+  return
+end sub
+
+' Writes NewTile on the four neighbors that are not walls
+sub SetNeighbors(u8 NewTile):
+  PrevX = MinerX
+  PrevY = MinerY
+  NX = PrevX
+  NY = PrevY + 1
+  Q = get char at NX,NY
+  if Q <> WallTile then
+    put char NewTile at NX,NY
+  end if
+  NY = PrevY - 1
+  Q = get char at NX,NY
+  if Q <> WallTile then
+    put char NewTile at NX,NY
+  end if
+  NX = PrevX + 1
+  NY = PrevY
+  Q = get char at NX,NY
+  if Q <> WallTile then
+    put char NewTile at NX,NY
+  end if
+  NX = PrevX - 1
+  Q = get char at NX,NY
+  if Q <> WallTile then
+    put char NewTile at NX,NY
+  end if
+  return
+end sub
+
+' --- Lines 2190-2380: ten random cells fill back with dirt ---
+sub CaveIn:
+  Squashed = false
+  for K = 1 to 10
+    CY = random(5, 21)
+    CX = random(3, 27)
+    Q = get char at CX,CY
+    if Q = GoldTile then continue for
+    if Q = MinerTile then
+      ' Squash miner
+      dec Lives
+      put char DeadTile at MinerX,MinerY
+      PlaceMiners
+      Squashed = true
+      return
+    end if
+    put char DirtTile at CX,CY
+  next
+  return
+end sub
+
+' --- Lines 880-1010 ---
+sub ShowInstructions:
+  cls
+  print at 10,2, "GOLD MINER"
+  put char MinerTile at 5,6
+  print at 6,6, "= MINER"
+  put char GoldTile at 5,8
+  print at 6,8, "= GOLD"
+  put char DeadTile at 5,10
+  print at 6,10, "= DEAD MINER"
+  put char DirtTile at 5,12
+  print at 6,12, "= DIRT"
+  put char OfficeTile at 5,14
+  print at 6,14, "= ASSAY OFFICE"
+  print at 2,17, "USE FIRE BUTTON TO BLAST"
+  print at 2,19, "PRESS FIRE TO PLAY"
+  pause until press
+  wait no fire
+  return
+end sub
+
+sub ShowCredits:
+  cls
+  print centered at 3, "GOLD MINER"
+  print centered at 6, "ORIGINAL VIC-20 GAME"
+  print centered at 7, "BY JOSEPH WEBER"
+  print centered at 8, "COMPUTE! JULY 1982"
+  print centered at 11, "TI-99/4A VERSION"
+  print centered at 12, "BY JAMES DUNN"
+  print centered at 13, "COMPUTE! ISSUE 39, AUGUST 1983"
+  print centered at 16, "COLECOVISION PORT"
+  print centered at 17, "AMY BIENVENU, 2026"
+  print centered at 21, "PRESS FIRE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' --- Lines 730-870: CALL CHAR and CALL COLOR ---
+sub LoadCharacters:
+  copy DirtPattern count 8 to vram.pattern + 1008
+  copy PickPatterns count 32 to vram.pattern + 1024
+  copy OfficePattern count 8 to vram.pattern + 1088
+  copy DeadPattern count 8 to vram.pattern + 1152
+  copy GoldPattern count 8 to vram.pattern + 1216
+  ' TI default text: black on transparent
+  set text colors black count 32
+  ' TI color set N is VDP color group N + 3; TI color C is VDP color C - 1
+  set text colors gray at 15 count 1
+  set text colors dark blue at 16 count 1
+  set text colors dark green at 17 count 1
+  set text colors black at 18 count 1
+  set text colors light yellow at 19 count 1
+  return
+end sub
+
+' Char 126: AA55AA55AA55AA55
+data DirtPattern bitmap8
+  "X.X.X.X."
+  ".X.X.X.X"
+  "X.X.X.X."
+  ".X.X.X.X"
+  "X.X.X.X."
+  ".X.X.X.X"
+  "X.X.X.X."
+  ".X.X.X.X"
+end data
+
+' Chars 128-131: pickaxe up, right, down, left (131 is the miner)
+data PickPatterns bitmap8
+  "..XXX..."
+  ".X.X.X.."
+  "X..X..X."
+  "...X...."
+  "...X...."
+  "........"
+  "........"
+  "........"
+  "........"
+  ".....X.."
+  "......X."
+  ".......X"
+  "...XXXXX"
+  ".......X"
+  "......X."
+  ".....X.."
+  "........"
+  "........"
+  "........"
+  "...X...."
+  "...X...."
+  "X..X..X."
+  ".X.X.X.."
+  "..XXX..."
+  "..X....."
+  ".X......"
+  "X......."
+  "XXXXX..."
+  "X......."
+  ".X......"
+  "..X....."
+  "........"
+end data
+
+' Char 136: 000000E742427E18
+data OfficePattern bitmap8
+  "........"
+  "........"
+  "........"
+  "XXX..XXX"
+  ".X....X."
+  ".X....X."
+  ".XXXXXX."
+  "...XX..."
+end data
+
+' Char 144: 00107C1010101010
+data DeadPattern bitmap8
+  "........"
+  "...X...."
+  ".XXXXX.."
+  "...X...."
+  "...X...."
+  "...X...."
+  "...X...."
+  "...X...."
+end data
+
+' Char 152: 00183C7E7E3C1800
+data GoldPattern bitmap8
+  "........"
+  "...XX..."
+  "..XXXX.."
+  ".XXXXXX."
+  ".XXXXXX."
+  "..XXXX.."
+  "...XX..."
+  "........"
+end data
+
+' CALL SOUND translations (period = 111861 / Hz, attenuation = TI volume / 2)
+asm {
+DigSfx:                         ; SOUND(20,-1,0..30) periodic noise fade
+    db $02,$00,$08,$27,$11,$10
+BlastSfx:                       ; SOUND(100,-5,0..30) white noise fade
+    db $02,$04,$2A,$27,$66,$10
+GoldSfx:                        ; SOUND(50,4000,0)
+    db $40,$1C,$00,$03,$50
+StepSfx:                        ; SOUND(100,200,0)
+    db $40,$2F,$02,$06,$50
+TallySfx:                       ; SOUND(500,500,0)
+    db $40,$E0,$00,$1E,$50
+GetOutSfx:                      ; SOUND(-50,300,0)
+    db $40,$75,$01,$03,$50
+
+GoldSoundTable:
+    dw DigSfx,$702B             ; 1  noise area
+    dw BlastSfx,$702B           ; 2
+    dw GoldSfx,$7035            ; 3  tone 1 area
+    dw StepSfx,$7035            ; 4
+    dw TallySfx,$7035           ; 5
+    dw GetOutSfx,$7035          ; 6
+}

@@ -1,0 +1,1441 @@
+cartridge "MYSTERY SPELL/PRESENTS DOUG HAPEMAN'S/1983"
+
+' MYSTERY SPELL by Doug Hapeman
+' Originally published in COMPUTE! magazine, Issue 40, September 1983,
+' page 112: "Program 1: Mystery Spell - TI-99 Extended BASIC". VIC version
+' by Gregg Peele, Commodore 64 version by Eric Brandon.
+' All game design credit belongs to Doug Hapeman.
+'
+' Historical context (summary of the original article):
+' A spelling game in the spirit of Hangman, minus the gallows: a happy face
+' lives in a little hut among trees, the secret word shows as blanks near
+' the top and the alphabet near the bottom. Each pick sends the happy face
+' to the letter. A right letter launches a colored balloon that carries it
+' up into the word; a wrong one brings a blackbird down onto the landscape.
+' Easy allows six wrong guesses, difficult only four. Twenty words were
+' built in, and parents or teachers could type their own 20-word lists and
+' save them to tape or disk, making it a teaching aid for any grade.
+'
+' ColecoVision / Coleco ADAM adaptation in Amy by Amy Bienvenu, 2026.
+' One source, two builds:
+' - ADAM (OS7+EOS hybrid): letters, name and word lists are typed on the
+'   ADAM keyboard; custom lists save to the ADAM medium in three slots.
+' - ColecoVision cartridge: a cursor picks letters with the joystick and
+'   fire button; menus use the keypad.
+' Adaptation liberties: vocabulary grown from 20 to 318 words in eight
+' topics; balloons change color; the face moves faster than in XB; cyan
+' backdrop; editorial pages at power-on; text kept inside columns 2-29.
+' TI rows/columns are 1-based; Amy X,Y are 0-based. XB DISPLAY AT(R,C)
+' lands on Amy X = C + 1, Y = R - 1. XB sprite dot-row R, dot-column C
+' become sprite Y = R - 2, X = C - 1.
+
+const SpaceTile = 32
+const GroundTile = 33
+const LineTile = 95
+const WordY = 4
+const TopRowY = 18            ' letters A-M (TI row 19)
+const BottomRowY = 22         ' letters N-Z (TI row 23)
+
+' Sprite slots and patterns
+const FaceSlot = 0
+const BalloonSlot = 1
+const SunSlot = 2
+const BirdSlot = 3            ' TI #3, the bird crossing the sky
+const FirstBird = 4           ' TI #5..#13 are slots 4..12
+const CursorSlot = 13
+const FacePat = 0
+const HappyPat = 4
+const SadPat = 8
+const BalloonPat = 12
+const SunPat = 16
+const FlyPat = 20
+const PerchPat = 24
+const CursorPat = 28
+const FaceHomeX = 120         ' TI (78,121)
+const FaceHomeY = 76
+
+' Sound table slots
+const SndRise = 4
+const SndFall = 5
+const SndBeep = 6
+const SndOops = 7
+const ThemeFrames = 786
+
+' Game state (TI names in comments)
+u8 Topic = 0                  ' 0..7, 8 = all topics, 9 = own list (ADAM)
+u8 Word[13]                   ' W$
+u8 WordLen = 0                ' F
+u8 Found = 0                  ' Y
+u8 Chances = 7                ' ER
+u8 NextBird = 13              ' SP
+u8 Letter = 0                 ' K
+u8 LetterIdx = 0
+u8 LetterX = 0
+u8 LetterY = 0
+u8 NameBuf[14]                ' L$
+u8 NameLen = 0
+u16 LastWord = 0
+u8 BalloonColor = 0
+
+' Sprite motion (8.8 fixed point; XB velocity v = v/16 pixel per frame)
+bool Flying = false
+bool SkyOn = false              ' sun, bird and face shown only on the play screen
+u16 SunX16 = 32768
+u16 BirdX16 = 32768
+u16 FlockX16[9]
+u8 FaceX = FaceHomeX
+u8 FaceY = FaceHomeY
+u8 FacePattern = FacePat
+u8 ObjSlot = 0
+u8 ObjPat = 0
+u8 ObjColor = 0
+u8 ObjX = 0
+u8 ObjY = 0
+u8 ObjTX = 0
+u8 ObjTY = 0
+u8 ObjFrames = 0
+u16 ObjX16 = 0
+u16 ObjY16 = 0
+i16 ObjDX = 0
+i16 ObjDY = 0
+i16 Delta = 0
+
+' Scratch
+u16 P = 0
+u16 Tmp16 = 0
+u16 Len16 = 0
+u8 N = 0
+u8 I = 0
+u8 J = 0
+u8 X = 0
+u8 Y = 0
+u8 Ch = 0
+u8 Choice = 0
+u8 Pick = 0
+u8 Hit = 0
+u8 Ticks = 0
+u16 Ticks16 = 0
+
+if defined AMY_HAS_EOS
+u8 KeyReq = 0
+u8 KeyStat = 0
+u8 IoStat = 0
+u8 OwnList[280]               ' B$(1..20): 20 x (length + 13 letters)
+bool OwnReady = false
+u8 Slot = 0
+u8 Typed = 0
+else defined
+u8 Cursor = 0
+end defined
+
+  text screen
+  set sound table SpellSoundTable areas 3
+  LoadGraphics
+  backdrop cyan
+  sprites 16x16
+  sprites simple
+  set sprite count 14
+  HideAll
+  screen on
+
+  DefaultName
+  ' Editorial pages, once at power-on (adaptation)
+  EditorialPages
+
+main_menu:
+  ' --- Lines 150-170 ---
+  HideAll
+  cls
+  print at 2,6, "PRESS   FOR:"
+  print at 2,9, "  1  =  INSTRUCTIONS"
+  print at 2,11, "  2  =  MYSTERY SPELL"
+  print at 2,13, "  3  =  FINISH MYSTERY SPELL"
+  play sound SndBeep
+  ReadDigit(1, 3)
+  if Choice = 1 then
+    Instructions
+    goto main_menu
+  end if
+  if Choice = 3 then goto finish
+
+choose_list:
+  ' --- Lines 190-220: word list (now eight topics) ---
+  cls
+  print at 2,1, "CHOOSE A WORD LIST:"
+  print at 3,3, "1 = FRUITS AND VEGGIES"
+  print at 3,5, "2 = ANIMALS"
+  print at 3,7, "3 = COLORS AND SHAPES"
+  print at 3,9, "4 = NATURE AND WEATHER"
+  print at 3,11, "5 = HOME AND SCHOOL"
+  print at 3,13, "6 = BODY AND CLOTHES"
+  print at 3,15, "7 = SPACE AND SCIENCE"
+  print at 3,17, "8 = TRAVEL AND JOBS"
+  print at 3,19, "9 = ALL THE WORDS"
+if defined AMY_HAS_EOS
+  print at 3,21, "0 = CREATE YOUR OWN"
+  play sound SndBeep
+  ReadDigit(0, 9)
+  if Choice = 0 then
+    OwnListMenu
+    if not OwnReady then goto choose_list
+    Topic = 9
+    goto play_scene
+  end if
+else defined
+  play sound SndBeep
+  ReadDigit(1, 9)
+end defined
+  Topic = Choice - 1
+
+play_scene:
+  ' --- Lines 230-280: the landscape, the hut, the sky ---
+  DrawScene
+  SkyOn = true
+  FaceX = FaceHomeX
+  FaceY = FaceHomeY
+  FacePattern = FacePat
+  print at 10,WordY, "MYSTERY SPELL"
+  Theme
+if defined AMY_HAS_EOS
+  ' Lines 260-270: name
+  ShowBand(TopRowY)
+  print at 2,TopRowY, " WHAT IS YOUR NAME, PLEASE?"
+  ShowBand(BottomRowY)
+  print at 2,BottomRowY, "TYPE NAME, THEN PRESS RETURN"
+  play sound SndBeep
+  fill SpaceTile count 14 at 10,WordY
+  TypeName
+  fill SpaceTile count 22 at 6,WordY
+else defined
+  fill SpaceTile count 28 at 2,WordY
+end defined
+
+choose_level:
+  ' --- Lines 290-300 ---
+  ShowBand(TopRowY)
+  print at 2,TopRowY, " CHOOSE THE LEVEL OF PLAY"
+  ShowBand(BottomRowY)
+  print at 2,BottomRowY, "   1 EASY   2 DIFFICULT"
+  play sound SndBeep
+  ReadDigit(1, 2)
+  Chances = 7
+  if Choice = 2 then Chances = 5
+
+  ' --- Lines 310-330: new word ---
+  Flying = false
+  for I = FirstBird to 12
+    hide sprite I
+  next
+  NextBird = 13
+  ShowBand(TopRowY)
+  print at 2,TopRowY, " A B C D E F G H I J K L M"
+  ShowBand(BottomRowY)
+  print at 2,BottomRowY, " N O P Q R S T U V W X Y Z"
+  fill SpaceTile count 28 at 2,WordY
+  PickWord
+  for I = 0 to WordLen - 1
+    WordCol
+    put char LineTile at X,WordY
+  next
+  Found = 0
+if not defined AMY_HAS_EOS
+  Cursor = 0
+end defined
+
+next_letter:
+  ' --- Lines 340-360 ---
+  GetLetter
+  LetterIdx = Letter - 65
+  if LetterIdx < 13 then
+    LetterY = TopRowY
+    LetterX = LetterIdx
+  else
+    LetterY = BottomRowY
+    LetterX = LetterIdx - 13
+  end if
+  LetterX <<= 1
+  LetterX += 3
+  Ch = get char at LetterX,LetterY
+  if Ch = SpaceTile then
+    ' Lines 370-380: tried already
+    play sound SndOops
+    X = NameLen + 7
+    X >>= 1
+    X = 16 - X
+    print at X,15, "OOPS, "
+    X += 6
+    put NameBuf count NameLen at X,15
+    X += NameLen
+    put char 44 at X,15
+    ShowBand(16)
+    print at 2,16, " YOU TRIED THAT ONE ALREADY"
+    Idle(60)
+    fill GroundTile count 64 at 0,15
+    goto next_letter
+  end if
+
+  ' --- Lines 390-410: the face walks down, then across ---
+  if LetterY = TopRowY then
+    MoveFaceY(126)
+  else
+    MoveFaceY(158)
+  end if
+  X = LetterX << 3
+  X -= 5
+  MoveFaceX(X)
+
+  ' --- Lines 420-460: remove the letter, check the word ---
+  put char SpaceTile at LetterX,LetterY
+  Hit = 0
+  for I = 0 to WordLen - 1
+    if Word[I] = Letter then
+      Hit = 1
+      FacePattern = HappyPat
+      LaunchBalloon
+      FacePattern = FacePat
+      WordCol
+      put char Letter at X,WordY
+      inc Found
+    end if
+  next
+  if Hit = 0 then
+    FacePattern = SadPat
+    LandBlackbird
+    FacePattern = FacePat
+  end if
+
+  ' --- Lines 470-500: back home, then win, lose or next letter ---
+  MoveFaceX(FaceHomeX)
+  MoveFaceY(FaceHomeY)
+  if Found = WordLen then goto player_wins
+  if Chances = 1 then goto blackbirds_win
+  goto next_letter
+
+blackbirds_win:
+  ' --- Lines 710-720 ---
+  ShowBand(TopRowY)
+  CenterNameLine(2)
+  ShowBand(BottomRowY)
+  print at 2,BottomRowY, "THE BLACKBIRDS WIN THIS TIME"
+  play sound SndBeep
+  RevealWord
+  goto another_word
+
+player_wins:
+  ' --- Lines 740-750 ---
+  ShowBand(TopRowY)
+  CenterNameLine(1)
+  ShowBand(BottomRowY)
+  print at 2,BottomRowY, "   THAT'S THE SECRET WORD"
+  RevealWord
+
+another_word:
+  ' --- Lines 510-530 ---
+  ShowBand(BottomRowY)
+if defined AMY_HAS_EOS
+  print at 2,BottomRowY, "     ANOTHER WORD? (Y/N)"
+  play sound SndBeep
+  ReadYesNo
+else defined
+  print at 2,BottomRowY, "   ANOTHER WORD? 1=YES 2=NO"
+  play sound SndBeep
+  ReadDigit(1, 2)
+end defined
+  if Choice = 1 then goto choose_level
+  goto main_menu
+
+finish:
+  ' --- Line 170 ---
+  HideAll
+  cls
+  print at 5,11, "THANKS FOR PLAYING,"
+  X = NameLen >> 1
+  X = 15 - X
+  put NameBuf count NameLen at X,13
+  loop forever
+
+' ---------------------------------------------------------------------------
+' Sprites and timing
+' ---------------------------------------------------------------------------
+
+' One frame: XB moved sprites by interrupt; here the sky moves every frame
+sub Tick:
+  wait
+  if not SkyOn then return
+  SunX16 += 16
+  Tmp16 = SunX16 >> 8
+  X = Tmp16
+  set sprite SunSlot to 6,X,SunPat,15
+  BirdX16 -= 32
+  Tmp16 = BirdX16 >> 8
+  X = Tmp16
+  set sprite BirdSlot to 6,X,FlyPat,1
+  if Flying then
+    Y = 6
+    for J = 0 to 8
+      FlockX16[J] += 192
+      Tmp16 = FlockX16[J] >> 8
+      X = Tmp16
+      Ch = FirstBird + J
+      set sprite Ch to Y,X,FlyPat,1
+      Y += 12
+    next
+  end if
+  set sprite FaceSlot to FaceY,FaceX,FacePattern,1
+  update sprites
+  return
+end sub
+
+sub Idle(u8 Count):
+  for Ticks = 1 to Count
+    Tick
+  next
+  return
+end sub
+
+sub HideAll:
+  SkyOn = false
+  Flying = false
+  ' clear sprites also resets the active count to zero
+  clear sprites
+  set sprite count 14
+  update sprites
+  return
+end sub
+
+' The face moves two pixels per frame (XB used about 0.75)
+sub MoveFaceY(u8 Target):
+  do while FaceY <> Target
+    if FaceY < Target then
+      FaceY += 2
+    else
+      FaceY -= 2
+    end if
+    Tick
+  loop
+  return
+end sub
+
+sub MoveFaceX(u8 Target):
+  do while FaceX <> Target
+    if FaceX < Target then
+      inc FaceX
+      if FaceX <> Target then inc FaceX
+    else
+      dec FaceX
+      if FaceX <> Target then dec FaceX
+    end if
+    Tick
+  loop
+  return
+end sub
+
+' Glides sprite ObjSlot from ObjX,ObjY to ObjTX,ObjTY in ObjFrames frames
+' (ObjFrames is 64 or 128, so the step is a shift of the distance)
+sub GlideObject:
+  ObjX16 = ObjX
+  ObjX16 <<= 8
+  ObjY16 = ObjY
+  ObjY16 <<= 8
+  ObjDX = ObjTX
+  Delta = ObjX
+  ObjDX -= Delta
+  ObjDY = ObjTY
+  Delta = ObjY
+  ObjDY -= Delta
+  if ObjFrames = 64 then
+    ObjDX <<= 2
+    ObjDY <<= 2
+  else
+    ObjDX <<= 1
+    ObjDY <<= 1
+  end if
+  for Ticks = 1 to ObjFrames
+    ObjX16 += ObjDX
+    ObjY16 += ObjDY
+    Tmp16 = ObjX16 >> 8
+    X = Tmp16
+    Tmp16 = ObjY16 >> 8
+    Y = Tmp16
+    set sprite ObjSlot to Y,X,ObjPat,ObjColor
+    Tick
+  next
+  set sprite ObjSlot to ObjTY,ObjTX,ObjPat,ObjColor
+  update sprites
+  return
+end sub
+
+' Lines 570-600: a balloon carries letter I up into the word
+sub LaunchBalloon:
+  ObjSlot = BalloonSlot
+  ObjPat = BalloonPat
+  ObjColor = BalloonColors[BalloonColor]
+  inc BalloonColor
+  if BalloonColor = 6 then BalloonColor = 0
+  ObjX = FaceX
+  ObjY = FaceY
+  WordCol
+  ObjTX = X << 3
+  ObjTX -= 3
+  ObjTY = 30
+  ObjFrames = 64
+  play sound SndRise
+  GlideObject
+  hide sprite BalloonSlot
+  update sprites
+  return
+end sub
+
+' Lines 610-690: a blackbird lands on a tree or the hut
+sub LandBlackbird:
+  dec NextBird
+  dec Chances
+  ObjTY = 48                  ' TI dot-row 50
+  if Chances > 4 then ObjTY = 78
+  select case Chances
+    case 6, 4
+      ObjTX = 51
+    case 5, 1
+      ObjTX = 187
+    case 3
+      ObjTX = 109
+    case else
+      ObjTX = 131
+  end select
+  ObjSlot = NextBird - 1
+  ObjPat = FlyPat
+  ObjColor = 1
+  ObjX = 119
+  ObjY = 0
+  ObjFrames = 128
+  play sound SndFall
+  GlideObject
+  set sprite ObjSlot to ObjTY,ObjTX,PerchPat,1
+  update sprites
+  return
+end sub
+
+' Lines 1050-1600: blackbirds take off and the theme plays
+sub Theme:
+  Y = 6
+  for J = 0 to 8
+    X = random(0, 239)
+    FlockX16[J] = X
+    FlockX16[J] <<= 8
+  next
+  Flying = true
+  play sounds 1, 2, 3
+  for Ticks16 = 1 to ThemeFrames
+    Tick
+    ' Adaptation: fire skips the melody
+    if joypad(1).fire then
+      mute all
+      wait no fire
+      return
+    end if
+  next
+  return
+end sub
+
+' Lines 760: spell the word, then the theme
+sub RevealWord:
+  fill SpaceTile count 28 at 2,WordY
+  for I = 0 to WordLen - 1
+    WordCol
+    Ch = Word[I]
+    put char Ch at X,WordY
+  next
+  Theme
+  return
+end sub
+
+' X = screen column of word letter I (XB column 2*I+14-F)
+sub WordCol:
+  X = I << 1
+  X += 17
+  X -= WordLen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Screen
+' ---------------------------------------------------------------------------
+
+' Lines 930-960: ground, hut, ladder and two trees
+sub DrawScene:
+  HideAll
+  cls
+  fill GroundTile count 192 to vram.name + 480
+  fill GroundTile count 96 to vram.name + 672
+  put Roof at 13,8
+  put Walls at 13,9
+  put Walls at 13,10
+  put Walls at 13,11
+  put Ladder at 15,12
+  put Ladder at 15,13
+  put Ladder at 15,14
+  put TreeTop at 6,8
+  put TreeMid at 5,9
+  put TreeMid at 5,10
+  put TreeLow at 6,11
+  put char 98 at 7,12
+  put char 97 at 7,13
+  put char 97 at 7,14
+  put TreeTop at 23,8
+  put TreeMid at 22,9
+  put TreeMid at 22,10
+  put TreeLow at 23,11
+  put char 97 at 24,12
+  put char 99 at 24,13
+  put char 97 at 24,14
+  return
+end sub
+
+' XB DISPLAY AT(R,1) clears its 28-column field: a cyan band on the ground
+sub ShowBand(u8 Row):
+  fill SpaceTile count 28 at 2,Row
+  return
+end sub
+
+' "GREAT, NAME," (Which = 1) or "SORRY, NAME," (2) centered on the top band
+sub CenterNameLine(u8 Which):
+  X = NameLen + 8
+  X >>= 1
+  X = 16 - X
+  if Which = 1 then
+    print at X,TopRowY, "GREAT, "
+  else
+    print at X,TopRowY, "SORRY, "
+  end if
+  X += 7
+  put NameBuf count NameLen at X,TopRowY
+  X += NameLen
+  put char 44 at X,TopRowY
+  return
+end sub
+
+' Lines 780-800: colors and characters
+sub LoadGraphics:
+  load default ascii
+  copy Chars91 count 24 to vram.pattern + 728
+  copy Chars95 count 40 to vram.pattern + 760
+  copy Chars105 count 40 to vram.pattern + 840
+  copy Chars112 count 40 to vram.pattern + 896
+  copy Chars33 count 8 to vram.pattern + 264
+  copy SpritePatterns count 256 to vram.spr_pat
+  ' TI sets 0-9: black on cyan; set 1 (the ground): dark green on cyan;
+  ' set 10 (trees): medium green; set 11 (hut): dark yellow
+  set text colors black on cyan count 32
+  set text colors dark green on cyan at 4 count 1
+  set text colors medium green on cyan at 13 count 1
+  set text colors dark yellow on cyan at 14 count 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Words
+' ---------------------------------------------------------------------------
+
+' Random word from the topic (line 330), never the same word twice in a row
+sub PickWord:
+if defined AMY_HAS_EOS
+  if Topic = 9 then
+    Pick = random(0, 19)
+    P = @OwnList
+    Tmp16 = Pick
+    Tmp16 *= 14
+    P += Tmp16
+    goto copy_word
+  end if
+end defined
+pick_again:
+  Pick = Topic
+  if Topic = 8 then Pick = random(0, 7)
+  P = Topics[Pick]
+  N = peek(P)
+  P += 1
+  Pick = random(N)
+  for I = 1 to Pick
+    Len16 = peek(P)
+    P += Len16
+    P += 1
+  next
+  if P = LastWord then goto pick_again
+  LastWord = P
+copy_word:
+  WordLen = peek(P)
+  for I = 0 to WordLen - 1
+    P += 1
+    Word[I] = peek(P)
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Input
+' ---------------------------------------------------------------------------
+
+if defined AMY_HAS_EOS
+
+' ADAM keyboard, read without stopping the sky (EOS asynchronous request)
+sub GetKey:
+  KeyReq = key start status KeyStat
+key_wait:
+  Tick
+  Ch = key poll KeyReq status KeyStat
+  if KeyStat = 1 then goto key_wait
+  if KeyStat = 2 then
+    KeyReq = key start status KeyStat
+    goto key_wait
+  end if
+  if Ch >= 97 then
+    if Ch <= 122 then Ch -= 32
+  end if
+  return
+end sub
+
+sub ReadDigit(u8 Low, u8 High):
+digit_wait:
+  GetKey
+  if Ch < 48 then goto digit_wait
+  Choice = Ch - 48
+  if Choice < Low then goto digit_wait
+  if Choice > High then goto digit_wait
+  return
+end sub
+
+sub ReadYesNo:
+yes_wait:
+  GetKey
+  Choice = 1
+  if Ch = 89 then return
+  Choice = 2
+  if Ch <> 78 then goto yes_wait
+  return
+end sub
+
+' Lines 340: a letter from the keyboard
+sub GetLetter:
+letter_wait:
+  GetKey
+  if Ch < 65 then goto letter_wait
+  if Ch > 90 then goto letter_wait
+  Letter = Ch
+  return
+end sub
+
+sub WaitAnyKey:
+  GetKey
+  return
+end sub
+
+' Line 270: ACCEPT AT(5,9) SIZE(14)
+sub TypeName:
+  NameLen = 0
+name_key:
+  GetKey
+  if Ch = 13 then goto name_done
+  if Ch = 8 then
+    if NameLen > 0 then
+      dec NameLen
+      X = 10 + NameLen
+      put char SpaceTile at X,WordY
+    end if
+    goto name_key
+  end if
+  if Ch < 32 then goto name_key
+  if Ch > 90 then goto name_key
+  if NameLen = 14 then goto name_key
+  NameBuf[NameLen] = Ch
+  X = 10 + NameLen
+  put char Ch at X,WordY
+  inc NameLen
+  goto name_key
+name_done:
+  if NameLen = 0 then DefaultName
+  return
+end sub
+
+else defined
+
+' Keypad digit, polled so the sky keeps moving (255 = no key)
+sub ReadDigit(u8 Low, u8 High):
+digit_release:
+  Tick
+  Choice = keypad(1)
+  if Choice <> 255 then goto digit_release
+digit_wait:
+  Tick
+  Choice = keypad(1)
+  if Choice = 255 then goto digit_wait
+  if Choice < Low then goto digit_wait
+  if Choice > High then goto digit_wait
+  return
+end sub
+
+' Joystick cursor over the alphabet (replaces CALL KEY)
+sub GetLetter:
+  wait no fire
+cursor_loop:
+  if Cursor < 13 then
+    Y = TopRowY
+    X = Cursor
+  else
+    Y = BottomRowY
+    X = Cursor - 13
+  end if
+  X <<= 1
+  X += 3
+  X <<= 3
+  Y <<= 3
+  Y -= 17
+  set sprite CursorSlot to Y,X,CursorPat,15
+  Tick
+  if joypad(1).fire then
+    hide sprite CursorSlot
+    wait no fire
+    Letter = Cursor + 65
+    return
+  end if
+  if joypad(1).right then
+    inc Cursor
+    if Cursor = 13 then Cursor = 0
+    if Cursor = 26 then Cursor = 13
+    Idle(7)
+  elseif joypad(1).left then
+    if Cursor = 0 then
+      Cursor = 13
+    elseif Cursor = 13 then
+      Cursor = 26
+    end if
+    dec Cursor
+    Idle(7)
+  elseif joypad(1).down then
+    if Cursor < 13 then Cursor += 13
+    Idle(7)
+  elseif joypad(1).up then
+    if Cursor >= 13 then Cursor -= 13
+    Idle(7)
+  end if
+  goto cursor_loop
+end sub
+
+sub WaitAnyKey:
+  pause until press
+  wait no fire
+  return
+end sub
+
+end defined
+
+sub DefaultName:
+  NameBuf[0] = 70
+  NameBuf[1] = 82
+  NameBuf[2] = 73
+  NameBuf[3] = 69
+  NameBuf[4] = 78
+  NameBuf[5] = 68
+  NameLen = 6
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Instructions and editorial pages
+' ---------------------------------------------------------------------------
+
+' Lines 980-1030
+sub Instructions:
+  cls
+  print at 10,1, "MYSTERY SPELL"
+  print at 2,3, "   THE OBJECT OF MYSTERY"
+  print at 2,4, "SPELL IS TO GUESS THE"
+  print at 2,5, "SECRET WORD."
+if defined AMY_HAS_EOS
+  print at 2,7, "WHEN YOU TYPE A LETTER, THE"
+else defined
+  print at 2,7, "WHEN YOU PICK A LETTER, THE"
+end defined
+  print at 2,8, "HAPPY FACE WILL MOVE TO THE"
+  print at 2,9, "SELECTED LETTER AND LET YOU"
+  print at 2,10, "KNOW WHETHER YOU MADE A"
+  print at 2,11, "RIGHT OR WRONG CHOICE."
+  print at 2,13, "   A CORRECT CHOICE LAUNCHES"
+  print at 2,14, "A BALLOON. AN INCORRECT ONE"
+  print at 2,15, "CAUSES A BLACKBIRD TO LAND."
+  print at 2,17, "IF TOO MANY BLACKBIRDS LAND,"
+  print at 2,18, "YOU WILL LOSE THE GAME."
+  print at 2,19, "EASY PERMITS 6 INCORRECT"
+  print at 2,20, "GUESSES, HARD ONLY 4."
+if defined AMY_HAS_EOS
+  print at 6,22, "**PRESS ANY KEY**"
+else defined
+  print at 2,21, "PICK WITH JOYSTICK AND FIRE."
+  print at 8,23, "**PRESS FIRE**"
+end defined
+  WaitAnyKey
+  return
+end sub
+
+sub PageFooter:
+if defined AMY_HAS_EOS
+  print at 9,23, "PRESS ANY KEY"
+else defined
+  print at 10,23, "PRESS FIRE"
+end defined
+  WaitAnyKey
+  return
+end sub
+
+sub EditorialPages:
+  cls
+  print at 9,1, "MYSTERY SPELL"
+  print at 8,3, "BY DOUG HAPEMAN"
+  print at 4,4, "COMPUTE! SEPTEMBER 1983"
+  print at 2,7, "HANGMAN WITH A TWIST: NO"
+  print at 2,8, "GALLOWS, BUT COLORFUL"
+  print at 2,9, "BALLOONS, FLYING BLACKBIRDS,"
+  print at 2,10, "CHEERFUL MUSIC AND A HAPPY"
+  print at 2,11, "FACE LIVING IN A LITTLE HUT."
+  print at 2,13, "WRITTEN FOR THE TI-99/4A IN"
+  print at 2,14, "EXTENDED BASIC AS A SPELLING"
+  print at 2,15, "AID FOR HOMES AND SCHOOLS:"
+  print at 2,16, "TYPE THIS WEEK'S WORDS, SAVE"
+  print at 2,17, "THEM TO TAPE OR DISK, PLAY."
+  print at 2,19, "VIC VERSION: GREGG PEELE"
+  print at 2,20, "64 VERSION: ERIC BRANDON"
+  PageFooter
+
+  cls
+  print at 7,1, "HOW THE TI DID IT"
+  print at 2,3, "CENTERING A TITLE WORKS LIKE"
+  print at 2,4, "A TYPEWRITER: START AT THE"
+  print at 2,5, "MIDDLE, BACK UP HALF ITS"
+  print at 2,6, "LENGTH. IN EXTENDED BASIC:"
+  print at 5,7, "COLUMN = 14 - LEN/2"
+  print at 2,9, "LETTERS LIVE ON A 32 X 24"
+  print at 2,10, "GRID, 768 PLACES. SPRITES"
+  print at 2,11, "MOVE BY DOTS ON 256 X 192,"
+  print at 2,12, "49,152 PLACES: THE FACE,"
+  print at 2,13, "BALLOONS AND BIRDS GLIDE."
+  print at 2,15, "KEYS A TO Z ARE ASCII 65 TO"
+  print at 2,16, "90. BELOW 78 (N) THE FACE"
+  print at 2,17, "HEADS FOR THE TOP ROW, ELSE"
+  print at 2,18, "THE BOTTOM ONE. GCHAR TELLS"
+  print at 2,19, "IF A LETTER IS ALREADY GONE."
+  PageFooter
+
+  cls
+  print at 9,1, "THIS EDITION"
+if defined AMY_HAS_EOS
+  print at 3,3, "COLECO ADAM ADAPTATION"
+else defined
+  print at 4,3, "COLECOVISION ADAPTATION"
+end defined
+  print at 6,4, "AMY BIENVENU, 2026"
+  print at 2,7, "THE 20 ORIGINAL WORDS ARE"
+  print at 2,8, "STILL HERE, JOINED BY NEARLY"
+  print at 2,9, "300 MORE IN EIGHT TOPICS:"
+  print at 2,11, "FRUITS AND VEGGIES, ANIMALS,"
+  print at 2,12, "COLORS AND SHAPES, NATURE"
+  print at 2,13, "AND WEATHER, HOME AND"
+  print at 2,14, "SCHOOL, BODY AND CLOTHES,"
+  print at 2,15, "SPACE AND SCIENCE, TRAVEL"
+  print at 2,16, "AND JOBS."
+if defined AMY_HAS_EOS
+  print at 2,18, "TYPE LETTERS ON THE ADAM"
+  print at 2,19, "KEYBOARD, AND SAVE YOUR OWN"
+  print at 2,20, "WORD LISTS ON DISK OR TAPE."
+else defined
+  print at 2,18, "PICK LETTERS WITH THE"
+  print at 2,19, "JOYSTICK AND FIRE BUTTON."
+end defined
+  PageFooter
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' ADAM: your own word list (lines 1610-1830)
+' ---------------------------------------------------------------------------
+
+if defined AMY_HAS_EOS
+
+sub OwnListMenu:
+  cls
+  print at 5,1, "WORD LIST INSTRUCTIONS"
+  print at 2,4, "   HERE YOU MAY EITHER"
+  print at 2,5, "CREATE A WORD LIST OR LOAD"
+  print at 2,6, "ONE SAVED ON THE ADAM DISK"
+  print at 2,7, "OR DATA PACK."
+  print at 2,9, "   WHEN CREATING A LIST,"
+  print at 2,10, "TYPE EACH WORD, THEN PRESS"
+  print at 2,11, "RETURN. MAXIMUM WORD LENGTH"
+  print at 2,12, "IS 13 LETTERS. 20 WORDS"
+  print at 2,13, "MAKE A LIST."
+  print at 2,15, "   A LIST CAN BE SAVED IN"
+  print at 2,16, "ONE OF THREE SLOTS FOR"
+  print at 2,17, "FUTURE USE."
+  print at 6,22, "**PRESS ANY KEY**"
+  WaitAnyKey
+own_menu:
+  cls
+  print at 2,6, "PRESS   TO:"
+  print at 2,9, "  1  =  CREATE A WORD LIST"
+  print at 2,11, "  2  =  LOAD A WORD LIST"
+  print at 2,13, "  3  =  EXIT"
+  play sound SndBeep
+  ReadDigit(1, 3)
+  if Choice = 3 then return
+  if Choice = 2 then
+    AskSlot
+    LoadList
+    if IoStat <> 0 then
+      print at 2,20, "COULD NOT LOAD THAT LIST."
+      Idle(120)
+      goto own_menu
+    end if
+    OwnReady = true
+    goto offer_view
+  end if
+  ' Lines 1690-1730
+create_list:
+  cls
+  print at 5,0, "ENTER THE WORD LIST:"
+  for J = 0 to 19
+    TypeWord
+  next
+  print at 2,23, "CORRECT OR CHANGE ANY? (Y/N)"
+  play sound SndBeep
+  ReadYesNo
+  if Choice = 1 then goto create_list
+  OwnReady = true
+  fill SpaceTile count 28 at 2,23
+  print at 2,23, "SAVE THIS LIST? (Y/N)"
+  ReadYesNo
+  if Choice = 1 then
+    AskSlot
+    SaveList
+    if IoStat <> 0 then
+      print at 2,21, "COULD NOT SAVE THE LIST."
+      Idle(120)
+    end if
+  end if
+offer_view:
+  ' Lines 1760-1790
+  cls
+  print at 5,11, "DO YOU WISH TO SEE"
+  print at 5,12, "THE WORD LIST? (Y/N)"
+  ReadYesNo
+  if Choice = 2 then return
+  cls
+  print at 9,0, "WORD LIST"
+  for J = 0 to 19
+    ListPos
+    P = @OwnList
+    Tmp16 = J
+    Tmp16 *= 14
+    P += Tmp16
+    N = peek(P)
+    P += 1
+    for I = 1 to N
+      Ch = peek(P)
+      put char Ch at X,Y
+      inc X
+      P += 1
+    next
+  next
+  print at 2,23, "PRESS ANY KEY WHEN FINISHED"
+  WaitAnyKey
+  return
+end sub
+
+' X,Y of word J in the two-column list (TI rows 3-21, columns 1 and 15)
+sub ListPos:
+  Y = J >> 1
+  Y <<= 1
+  Y += 2
+  X = 2
+  if J % 2 = 1 then X = 16
+  return
+end sub
+
+' Line 1710: ACCEPT AT(R,C) SIZE(-13), letters only, RETURN ends the word
+sub TypeWord:
+  ListPos
+  fill SpaceTile count 13 at X,Y
+  Typed = 0
+  P = @OwnList
+  Tmp16 = J
+  Tmp16 *= 14
+  P += Tmp16
+word_key:
+  GetKey
+  if Ch = 13 then
+    if Typed > 0 then goto word_done
+    goto word_key
+  end if
+  if Ch = 8 then
+    if Typed > 0 then
+      dec Typed
+      Ch = X + Typed
+      put char SpaceTile at Ch,Y
+    end if
+    goto word_key
+  end if
+  if Ch < 65 then goto word_key
+  if Ch > 90 then goto word_key
+  if Typed = 13 then goto word_key
+  Pick = X + Typed
+  put char Ch at Pick,Y
+  inc Typed
+  P += 1
+  PokeP
+  goto word_key
+word_done:
+  ' Length byte first
+  P = @OwnList
+  Tmp16 = J
+  Tmp16 *= 14
+  P += Tmp16
+  Ch = Typed
+  PokeP
+  return
+end sub
+
+' Writes Ch to the RAM byte at address P (Amy has peek but no poke)
+sub PokeP:
+  asm {
+    ld hl,(AMY_UVAR_P)
+    ld a,(AMY_UVAR_Ch)
+    ld (hl),a
+  }
+  return
+end sub
+
+sub AskSlot:
+  fill SpaceTile count 28 at 2,21
+  print at 2,21, "WHICH SLOT? (1, 2 OR 3)"
+  ReadDigit(1, 3)
+  Slot = Choice
+  return
+end sub
+
+sub SaveList:
+  select case Slot
+    case 1
+      create "SPELL1" 1024 status IoStat
+      write "SPELL1" from OwnList count 280 status IoStat
+    case 2
+      create "SPELL2" 1024 status IoStat
+      write "SPELL2" from OwnList count 280 status IoStat
+    case else
+      create "SPELL3" 1024 status IoStat
+      write "SPELL3" from OwnList count 280 status IoStat
+  end select
+  return
+end sub
+
+sub LoadList:
+  select case Slot
+    case 1
+      OwnList = read "SPELL1" count 280 status IoStat
+    case 2
+      OwnList = read "SPELL2" count 280 status IoStat
+    case else
+      OwnList = read "SPELL3" count 280 status IoStat
+  end select
+  return
+end sub
+
+end defined
+
+data Roof bytes 96,91,97,97,92,93
+data Walls bytes 113,114,114,114,114,112
+data Ladder bytes 115,116
+data TreeTop bytes 105,105,105
+data TreeMid bytes 108,106,106,106,109
+data TreeLow bytes 107,106,107
+' Balloon colors: magenta (TI 14) first, then a few more (adaptation)
+data BalloonColors bytes 13,8,4,11,9,5
+
+' Lines 850-910: face, happy face, sad face, balloon, sun, blackbird, perched blackbird; plus the joystick cursor (adaptation)
+data SpritePatterns bytes
+  $07,$18,$20,$40,$4C,$88,$80,$81,$80,$88,$84,$43,$40,$20,$18,$07
+  $E0,$18,$0C,$02,$32,$11,$01,$81,$01,$11,$21,$C2,$02,$04,$18,$E0
+  $07,$18,$20,$40,$4C,$88,$80,$81,$80,$9F,$90,$48,$44,$23,$18,$07
+  $E0,$18,$0C,$02,$32,$11,$01,$81,$01,$F9,$09,$12,$22,$C4,$18,$E0
+  $07,$18,$20,$40,$4C,$88,$80,$81,$80,$83,$84,$48,$40,$20,$18,$07
+  $E0,$18,$0C,$02,$32,$11,$01,$81,$01,$C1,$21,$12,$02,$04,$18,$E0
+  $03,$0F,$1F,$3F,$3F,$3F,$3F,$1F,$0F,$07,$03,$01,$01,$02,$04,$08
+  $80,$E0,$F0,$F8,$F8,$F8,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $03,$0F,$3F,$7F,$7F,$3F,$FF,$FF,$FF,$FF,$3F,$7F,$7F,$37,$07,$01
+  $00,$C0,$CC,$FE,$FE,$FC,$FF,$FF,$FF,$FF,$FC,$FE,$FE,$EC,$E0,$80
+  $00,$00,$00,$00,$00,$00,$18,$3D,$47,$83,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$BC,$E2,$C1,$80,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$00,$01,$03,$03,$07,$07,$07,$03,$01,$00,$01,$01
+  $C0,$E0,$F0,$D0,$C0,$E0,$F0,$F0,$F8,$F8,$F8,$F0,$E0,$C0,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7C,$7C,$38,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' Chars 91-93 (lines 810-840)
+data Chars91 bytes
+  $1F,$3F,$7F,$FF,$FF,$FF,$FF,$FF
+  $F8,$FC,$FE,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$C0,$F0,$FC,$FF
+end data
+
+' Chars 95-99 (lines 810-840)
+data Chars95 bytes
+  $00,$00,$00,$00,$00,$00,$00,$7E
+  $00,$00,$00,$00,$03,$0F,$3F,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$EF,$C7,$83,$83,$C7,$EF
+  $7F,$3F,$1E,$3C,$78,$FC,$FE,$FF
+end data
+
+' Chars 105-109 (lines 810-840)
+data Chars105 bytes
+  $18,$3C,$3C,$7E,$7E,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$7E,$7E,$3C,$3C,$18
+  $07,$1F,$7F,$FF,$FF,$7F,$1F,$07
+  $C0,$F0,$FE,$FF,$FF,$FE,$F0,$C0
+end data
+
+' Chars 112-116 (lines 810-840)
+data Chars112 bytes
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $C0,$C0,$C0,$FF,$FF,$C0,$C0,$C0
+  $03,$03,$03,$FF,$FF,$03,$03,$03
+end data
+
+' Chars 33-33 (lines 810-840)
+data Chars33 bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+
+' Vocabulary: per topic, a word count, then length-prefixed words
+' (topic 1 starts with the 20 words of lines 1850-1860)
+' 1. FRUITS AND VEGGIES: 48 words
+data Topic0 bytes
+  $30,$07,$42,$41,$4E,$41,$4E,$41,$53,$07,$43,$41,$52,$52,$4F,$54,$53,$07,$52,$48
+  $55,$42,$41,$52,$42,$07,$43,$41,$42,$42,$41,$47,$45,$06,$54,$55,$52,$4E,$49,$50
+  $05,$42,$45,$41,$4E,$53,$04,$43,$4F,$52,$4E,$06,$43,$45,$4C,$45,$52,$59,$0A,$57
+  $41,$54,$45,$52,$4D,$45,$4C,$4F,$4E,$07,$4F,$52,$41,$4E,$47,$45,$53,$06,$41,$50
+  $50,$4C,$45,$53,$07,$50,$45,$41,$43,$48,$45,$53,$09,$4D,$55,$53,$48,$52,$4F,$4F
+  $4D,$53,$06,$4F,$4E,$49,$4F,$4E,$53,$08,$50,$4F,$54,$41,$54,$4F,$45,$53,$08,$54
+  $4F,$4D,$41,$54,$4F,$45,$53,$06,$47,$52,$41,$50,$45,$53,$07,$50,$55,$4D,$50,$4B
+  $49,$4E,$06,$53,$51,$55,$41,$53,$48,$06,$4C,$45,$4D,$4F,$4E,$53,$05,$50,$45,$41
+  $52,$53,$05,$50,$4C,$55,$4D,$53,$08,$43,$48,$45,$52,$52,$49,$45,$53,$0A,$53,$54
+  $52,$41,$57,$42,$45,$52,$52,$59,$09,$42,$4C,$55,$45,$42,$45,$52,$52,$59,$09,$52
+  $41,$53,$50,$42,$45,$52,$52,$59,$09,$50,$49,$4E,$45,$41,$50,$50,$4C,$45,$05,$4D
+  $41,$4E,$47,$4F,$04,$4B,$49,$57,$49,$07,$43,$4F,$43,$4F,$4E,$55,$54,$07,$41,$50
+  $52,$49,$43,$4F,$54,$07,$41,$56,$4F,$43,$41,$44,$4F,$08,$42,$52,$4F,$43,$43,$4F
+  $4C,$49,$07,$53,$50,$49,$4E,$41,$43,$48,$07,$4C,$45,$54,$54,$55,$43,$45,$08,$43
+  $55,$43,$55,$4D,$42,$45,$52,$07,$50,$45,$50,$50,$45,$52,$53,$04,$50,$45,$41,$53
+  $06,$52,$41,$44,$49,$53,$48,$0B,$43,$41,$55,$4C,$49,$46,$4C,$4F,$57,$45,$52,$08
+  $5A,$55,$43,$43,$48,$49,$4E,$49,$06,$47,$41,$52,$4C,$49,$43,$05,$42,$45,$45,$54
+  $53,$05,$4C,$49,$4D,$45,$53,$04,$46,$49,$47,$53,$05,$4D,$45,$4C,$4F,$4E,$0A,$43
+  $41,$4E,$54,$41,$4C,$4F,$55,$50,$45,$09,$4E,$45,$43,$54,$41,$52,$49,$4E,$45
+end data
+
+' 2. ANIMALS: 48 words
+data Topic1 bytes
+  $30,$08,$45,$4C,$45,$50,$48,$41,$4E,$54,$07,$47,$49,$52,$41,$46,$46,$45,$05,$5A
+  $45,$42,$52,$41,$05,$54,$49,$47,$45,$52,$04,$4C,$49,$4F,$4E,$06,$4D,$4F,$4E,$4B
+  $45,$59,$08,$4B,$41,$4E,$47,$41,$52,$4F,$4F,$07,$50,$45,$4E,$47,$55,$49,$4E,$07
+  $44,$4F,$4C,$50,$48,$49,$4E,$05,$57,$48,$41,$4C,$45,$07,$4F,$43,$54,$4F,$50,$55
+  $53,$06,$54,$55,$52,$54,$4C,$45,$06,$52,$41,$42,$42,$49,$54,$08,$53,$51,$55,$49
+  $52,$52,$45,$4C,$06,$42,$45,$41,$56,$45,$52,$05,$4D,$4F,$4F,$53,$45,$04,$42,$45
+  $41,$52,$04,$57,$4F,$4C,$46,$03,$46,$4F,$58,$03,$4F,$57,$4C,$05,$45,$41,$47,$4C
+  $45,$06,$50,$41,$52,$52,$4F,$54,$09,$43,$52,$4F,$43,$4F,$44,$49,$4C,$45,$0C,$48
+  $49,$50,$50,$4F,$50,$4F,$54,$41,$4D,$55,$53,$0A,$52,$48,$49,$4E,$4F,$43,$45,$52
+  $4F,$53,$05,$43,$41,$4D,$45,$4C,$05,$48,$4F,$52,$53,$45,$03,$43,$4F,$57,$05,$53
+  $48,$45,$45,$50,$04,$47,$4F,$41,$54,$03,$50,$49,$47,$07,$43,$48,$49,$43,$4B,$45
+  $4E,$04,$44,$55,$43,$4B,$05,$47,$4F,$4F,$53,$45,$04,$46,$52,$4F,$47,$09,$42,$55
+  $54,$54,$45,$52,$46,$4C,$59,$06,$53,$50,$49,$44,$45,$52,$07,$4C,$41,$44,$59,$42
+  $55,$47,$0B,$43,$41,$54,$45,$52,$50,$49,$4C,$4C,$41,$52,$08,$48,$45,$44,$47,$45
+  $48,$4F,$47,$07,$52,$41,$43,$43,$4F,$4F,$4E,$05,$53,$4B,$55,$4E,$4B,$09,$42,$4C
+  $41,$43,$4B,$42,$49,$52,$44,$07,$4F,$53,$54,$52,$49,$43,$48,$08,$46,$4C,$41,$4D
+  $49,$4E,$47,$4F,$09,$4A,$45,$4C,$4C,$59,$46,$49,$53,$48,$08,$53,$45,$41,$48,$4F
+  $52,$53,$45,$06,$57,$41,$4C,$52,$55,$53
+end data
+
+' 3. COLORS AND SHAPES: 39 words
+data Topic2 bytes
+  $27,$03,$52,$45,$44,$04,$42,$4C,$55,$45,$05,$47,$52,$45,$45,$4E,$06,$59,$45,$4C
+  $4C,$4F,$57,$06,$4F,$52,$41,$4E,$47,$45,$06,$50,$55,$52,$50,$4C,$45,$04,$50,$49
+  $4E,$4B,$05,$42,$52,$4F,$57,$4E,$05,$42,$4C,$41,$43,$4B,$05,$57,$48,$49,$54,$45
+  $04,$47,$52,$41,$59,$04,$47,$4F,$4C,$44,$06,$53,$49,$4C,$56,$45,$52,$09,$54,$55
+  $52,$51,$55,$4F,$49,$53,$45,$07,$4D,$41,$47,$45,$4E,$54,$41,$06,$43,$49,$52,$43
+  $4C,$45,$06,$53,$51,$55,$41,$52,$45,$08,$54,$52,$49,$41,$4E,$47,$4C,$45,$09,$52
+  $45,$43,$54,$41,$4E,$47,$4C,$45,$04,$4F,$56,$41,$4C,$07,$44,$49,$41,$4D,$4F,$4E
+  $44,$04,$53,$54,$41,$52,$05,$48,$45,$41,$52,$54,$07,$48,$45,$58,$41,$47,$4F,$4E
+  $08,$50,$45,$4E,$54,$41,$47,$4F,$4E,$07,$4F,$43,$54,$41,$47,$4F,$4E,$04,$43,$55
+  $42,$45,$06,$53,$50,$48,$45,$52,$45,$08,$43,$59,$4C,$49,$4E,$44,$45,$52,$07,$50
+  $59,$52,$41,$4D,$49,$44,$04,$43,$4F,$4E,$45,$04,$4C,$49,$4E,$45,$05,$43,$55,$52
+  $56,$45,$05,$41,$4E,$47,$4C,$45,$07,$43,$52,$49,$4D,$53,$4F,$4E,$07,$53,$43,$41
+  $52,$4C,$45,$54,$06,$56,$49,$4F,$4C,$45,$54,$06,$49,$4E,$44,$49,$47,$4F,$05,$42
+  $45,$49,$47,$45
+end data
+
+' 4. NATURE AND WEATHER: 40 words
+data Topic3 bytes
+  $28,$07,$52,$41,$49,$4E,$42,$4F,$57,$07,$54,$48,$55,$4E,$44,$45,$52,$09,$4C,$49
+  $47,$48,$54,$4E,$49,$4E,$47,$09,$53,$4E,$4F,$57,$46,$4C,$41,$4B,$45,$05,$43,$4C
+  $4F,$55,$44,$08,$53,$55,$4E,$53,$48,$49,$4E,$45,$07,$54,$4F,$52,$4E,$41,$44,$4F
+  $09,$48,$55,$52,$52,$49,$43,$41,$4E,$45,$06,$42,$52,$45,$45,$5A,$45,$03,$46,$4F
+  $47,$04,$48,$41,$49,$4C,$08,$42,$4C,$49,$5A,$5A,$41,$52,$44,$08,$4D,$4F,$55,$4E
+  $54,$41,$49,$4E,$07,$56,$4F,$4C,$43,$41,$4E,$4F,$05,$52,$49,$56,$45,$52,$05,$4F
+  $43,$45,$41,$4E,$06,$44,$45,$53,$45,$52,$54,$06,$46,$4F,$52,$45,$53,$54,$06,$4A
+  $55,$4E,$47,$4C,$45,$06,$49,$53,$4C,$41,$4E,$44,$09,$57,$41,$54,$45,$52,$46,$41
+  $4C,$4C,$06,$4D,$45,$41,$44,$4F,$57,$06,$56,$41,$4C,$4C,$45,$59,$06,$43,$41,$4E
+  $59,$4F,$4E,$07,$47,$4C,$41,$43,$49,$45,$52,$04,$4C,$41,$4B,$45,$05,$42,$45,$41
+  $43,$48,$06,$53,$50,$52,$49,$4E,$47,$06,$53,$55,$4D,$4D,$45,$52,$06,$41,$55,$54
+  $55,$4D,$4E,$06,$57,$49,$4E,$54,$45,$52,$06,$46,$4C,$4F,$57,$45,$52,$04,$54,$52
+  $45,$45,$04,$4C,$45,$41,$46,$05,$41,$43,$4F,$52,$4E,$06,$50,$45,$42,$42,$4C,$45
+  $08,$53,$45,$41,$53,$48,$45,$4C,$4C,$07,$42,$4C,$4F,$53,$53,$4F,$4D,$09,$53,$55
+  $4E,$46,$4C,$4F,$57,$45,$52,$04,$50,$4F,$4E,$44
+end data
+
+' 5. HOME AND SCHOOL: 37 words
+data Topic4 bytes
+  $25,$07,$4B,$49,$54,$43,$48,$45,$4E,$07,$42,$45,$44,$52,$4F,$4F,$4D,$06,$57,$49
+  $4E,$44,$4F,$57,$04,$44,$4F,$4F,$52,$05,$54,$41,$42,$4C,$45,$05,$43,$48,$41,$49
+  $52,$06,$50,$49,$4C,$4C,$4F,$57,$07,$42,$4C,$41,$4E,$4B,$45,$54,$04,$4C,$41,$4D
+  $50,$05,$43,$4C,$4F,$43,$4B,$09,$54,$45,$4C,$45,$50,$48,$4F,$4E,$45,$0A,$54,$45
+  $4C,$45,$56,$49,$53,$49,$4F,$4E,$08,$43,$4F,$4D,$50,$55,$54,$45,$52,$06,$50,$45
+  $4E,$43,$49,$4C,$06,$43,$52,$41,$59,$4F,$4E,$06,$45,$52,$41,$53,$45,$52,$08,$4E
+  $4F,$54,$45,$42,$4F,$4F,$4B,$08,$42,$41,$43,$4B,$50,$41,$43,$4B,$07,$54,$45,$41
+  $43,$48,$45,$52,$07,$4C,$49,$42,$52,$41,$52,$59,$08,$41,$4C,$50,$48,$41,$42,$45
+  $54,$08,$53,$43,$49,$53,$53,$4F,$52,$53,$05,$52,$55,$4C,$45,$52,$08,$43,$41,$4C
+  $45,$4E,$44,$41,$52,$06,$4D,$41,$47,$4E,$45,$54,$05,$47,$4C,$4F,$42,$45,$0A,$44
+  $49,$43,$54,$49,$4F,$4E,$41,$52,$59,$08,$48,$4F,$4D,$45,$57,$4F,$52,$4B,$06,$52
+  $45,$43,$45,$53,$53,$08,$53,$50,$45,$4C,$4C,$49,$4E,$47,$06,$53,$54,$41,$49,$52
+  $53,$07,$42,$41,$54,$48,$54,$55,$42,$07,$43,$55,$52,$54,$41,$49,$4E,$0A,$50,$41
+  $49,$4E,$54,$42,$52,$55,$53,$48,$0A,$43,$48,$41,$4C,$4B,$42,$4F,$41,$52,$44,$09
+  $42,$4F,$4F,$4B,$53,$48,$45,$4C,$46,$0A,$50,$4C,$41,$59,$47,$52,$4F,$55,$4E,$44
+end data
+
+' 6. BODY AND CLOTHES: 34 words
+data Topic5 bytes
+  $22,$04,$48,$45,$41,$44,$09,$53,$48,$4F,$55,$4C,$44,$45,$52,$53,$05,$4B,$4E,$45
+  $45,$53,$05,$45,$4C,$42,$4F,$57,$06,$46,$49,$4E,$47,$45,$52,$05,$54,$48,$55,$4D
+  $42,$05,$41,$4E,$4B,$4C,$45,$04,$4E,$4F,$53,$45,$05,$4D,$4F,$55,$54,$48,$05,$54
+  $45,$45,$54,$48,$06,$54,$4F,$4E,$47,$55,$45,$07,$53,$54,$4F,$4D,$41,$43,$48,$08
+  $53,$4B,$45,$4C,$45,$54,$4F,$4E,$05,$42,$52,$41,$49,$4E,$07,$45,$59,$45,$42,$52
+  $4F,$57,$07,$4D,$49,$54,$54,$45,$4E,$53,$07,$53,$57,$45,$41,$54,$45,$52,$06,$4A
+  $41,$43,$4B,$45,$54,$05,$53,$43,$41,$52,$46,$05,$42,$4F,$4F,$54,$53,$08,$53,$4E
+  $45,$41,$4B,$45,$52,$53,$07,$50,$41,$4A,$41,$4D,$41,$53,$08,$52,$41,$49,$4E,$43
+  $4F,$41,$54,$05,$53,$4F,$43,$4B,$53,$05,$53,$48,$49,$52,$54,$08,$54,$52,$4F,$55
+  $53,$45,$52,$53,$05,$44,$52,$45,$53,$53,$06,$48,$45,$4C,$4D,$45,$54,$08,$53,$4C
+  $49,$50,$50,$45,$52,$53,$06,$47,$4C,$4F,$56,$45,$53,$04,$42,$45,$4C,$54,$06,$42
+  $55,$54,$54,$4F,$4E,$06,$5A,$49,$50,$50,$45,$52,$06,$50,$4F,$43,$4B,$45,$54
+end data
+
+' 7. SPACE AND SCIENCE: 35 words
+data Topic6 bytes
+  $23,$06,$50,$4C,$41,$4E,$45,$54,$06,$52,$4F,$43,$4B,$45,$54,$09,$41,$53,$54,$52
+  $4F,$4E,$41,$55,$54,$06,$47,$41,$4C,$41,$58,$59,$05,$43,$4F,$4D,$45,$54,$06,$4D
+  $45,$54,$45,$4F,$52,$09,$54,$45,$4C,$45,$53,$43,$4F,$50,$45,$09,$53,$41,$54,$45
+  $4C,$4C,$49,$54,$45,$07,$4D,$45,$52,$43,$55,$52,$59,$05,$56,$45,$4E,$55,$53,$05
+  $45,$41,$52,$54,$48,$04,$4D,$41,$52,$53,$07,$4A,$55,$50,$49,$54,$45,$52,$06,$53
+  $41,$54,$55,$52,$4E,$06,$55,$52,$41,$4E,$55,$53,$07,$4E,$45,$50,$54,$55,$4E,$45
+  $04,$4D,$4F,$4F,$4E,$05,$4F,$52,$42,$49,$54,$07,$47,$52,$41,$56,$49,$54,$59,$04
+  $41,$54,$4F,$4D,$08,$4D,$4F,$4C,$45,$43,$55,$4C,$45,$06,$4F,$58,$59,$47,$45,$4E
+  $07,$43,$52,$59,$53,$54,$41,$4C,$06,$46,$4F,$53,$53,$49,$4C,$08,$44,$49,$4E,$4F
+  $53,$41,$55,$52,$0A,$4D,$49,$43,$52,$4F,$53,$43,$4F,$50,$45,$0A,$45,$58,$50,$45
+  $52,$49,$4D,$45,$4E,$54,$06,$45,$4E,$45,$52,$47,$59,$0B,$45,$4C,$45,$43,$54,$52
+  $49,$43,$49,$54,$59,$07,$4D,$41,$47,$4E,$49,$46,$59,$08,$41,$53,$54,$45,$52,$4F
+  $49,$44,$07,$45,$43,$4C,$49,$50,$53,$45,$07,$42,$41,$54,$54,$45,$52,$59,$0B,$54
+  $48,$45,$52,$4D,$4F,$4D,$45,$54,$45,$52,$0A,$4C,$41,$42,$4F,$52,$41,$54,$4F,$52
+  $59
+end data
+
+' 8. TRAVEL AND JOBS: 37 words
+data Topic7 bytes
+  $25,$08,$41,$49,$52,$50,$4C,$41,$4E,$45,$0A,$48,$45,$4C,$49,$43,$4F,$50,$54,$45
+  $52,$09,$53,$55,$42,$4D,$41,$52,$49,$4E,$45,$07,$42,$49,$43,$59,$43,$4C,$45,$05
+  $54,$52,$41,$49,$4E,$03,$42,$55,$53,$05,$54,$52,$55,$43,$4B,$07,$54,$52,$41,$43
+  $54,$4F,$52,$08,$53,$41,$49,$4C,$42,$4F,$41,$54,$05,$43,$41,$4E,$4F,$45,$09,$41
+  $4D,$42,$55,$4C,$41,$4E,$43,$45,$06,$44,$4F,$43,$54,$4F,$52,$05,$4E,$55,$52,$53
+  $45,$07,$44,$45,$4E,$54,$49,$53,$54,$06,$46,$41,$52,$4D,$45,$52,$05,$42,$41,$4B
+  $45,$52,$05,$50,$49,$4C,$4F,$54,$0B,$46,$49,$52,$45,$46,$49,$47,$48,$54,$45,$52
+  $09,$43,$41,$52,$50,$45,$4E,$54,$45,$52,$07,$50,$4C,$55,$4D,$42,$45,$52,$08,$4D
+  $55,$53,$49,$43,$49,$41,$4E,$06,$41,$52,$54,$49,$53,$54,$09,$53,$43,$49,$45,$4E
+  $54,$49,$53,$54,$09,$4C,$49,$42,$52,$41,$52,$49,$41,$4E,$08,$4D,$45,$43,$48,$41
+  $4E,$49,$43,$04,$43,$48,$45,$46,$08,$45,$4E,$47,$49,$4E,$45,$45,$52,$0A,$50,$52
+  $4F,$47,$52,$41,$4D,$4D,$45,$52,$07,$48,$49,$47,$48,$57,$41,$59,$06,$42,$52,$49
+  $44,$47,$45,$07,$41,$49,$52,$50,$4F,$52,$54,$08,$50,$41,$53,$53,$50,$4F,$52,$54
+  $08,$53,$55,$49,$54,$43,$41,$53,$45,$06,$54,$49,$43,$4B,$45,$54,$07,$43,$4F,$4D
+  $50,$41,$53,$53,$07,$43,$41,$50,$54,$41,$49,$4E,$06,$54,$41,$49,$4C,$4F,$52
+end data
+
+data Topics words
+  @Topic0, @Topic1, @Topic2, @Topic3, @Topic4, @Topic5, @Topic6, @Topic7
+end data
+
+
+' CALL SOUND translations (period = 111861 / Hz, attenuation = TI volume / 2)
+asm {
+ThemeA:       ; lines 1060-1600, voice 1
+    db $40,$7F,$02,$0C,$40,$41,$01,$0C,$40,$BF,$00,$0C,$40,$D6,$00,$18,$40,$BF,$00,$0C,$40,$D6,$00,$18
+    db $40,$3B,$02,$0C,$40,$53,$01,$0C,$40,$BF,$00,$0C,$40,$D6,$00,$18,$40,$BF,$00,$0C,$40,$D6,$00,$18
+    db $40,$FC,$11,$0C,$40,$D6,$00,$0C,$40,$68,$11,$0C,$40,$D6,$00,$0C,$40,$7C,$11,$0C,$40,$E2,$00,$0C
+    db $40,$94,$11,$0C,$40,$F0,$00,$0C,$40,$FE,$00,$0C,$40,$D6,$00,$0C,$40,$BF,$00,$0C,$40,$A0,$00,$0C
+    db $40,$AA,$00,$18,$40,$8F,$00,$18,$40,$7F,$00,$0C,$40,$87,$00,$0C,$40,$7F,$00,$0C,$40,$6B,$00,$0C
+    db $40,$6B,$00,$0C,$40,$7F,$00,$0C,$40,$8F,$00,$0C,$40,$A0,$00,$0C,$40,$8F,$00,$0C,$40,$A0,$00,$0C
+    db $40,$BF,$00,$0C,$40,$A0,$00,$0C,$40,$A0,$00,$0C,$40,$BF,$00,$0C,$40,$D6,$00,$0C,$40,$FE,$00,$0C
+    db $40,$1D,$01,$0C,$40,$8F,$00,$0C,$40,$A0,$00,$0C,$40,$AA,$00,$0C,$40,$BF,$00,$0C,$40,$FE,$00,$0C
+    db $40,$FE,$00,$0C,$40,$E2,$00,$0C,$40,$D6,$00,$0C,$40,$BF,$00,$0C,$40,$AA,$00,$18,$40,$A0,$00,$24
+    db $42,$A0,$00,$1E,$1F,$22,$50
+ThemeB:       ; lines 1060-1600, voice 2
+    db $80,$E8,$F3,$0C,$80,$7F,$12,$0C,$80,$7F,$12,$0C,$80,$FE,$00,$18,$80,$7F,$12,$0C,$80,$FE,$00,$18
+    db $80,$E8,$F3,$0C,$80,$3B,$12,$0C,$80,$3B,$12,$0C,$80,$F0,$00,$18,$80,$3B,$12,$0C,$80,$F0,$00,$18
+    db $80,$E8,$F3,$0C,$80,$FE,$00,$0C,$80,$E8,$F3,$0C,$80,$FE,$00,$0C,$80,$E8,$F3,$0C,$80,$0E,$01,$0C
+    db $80,$E8,$F3,$0C,$80,$1D,$01,$0C,$80,$AB,$11,$0C,$80,$AB,$11,$0C,$80,$C5,$11,$0C,$80,$C5,$11,$0C
+    db $80,$E0,$11,$18,$80,$AA,$00,$18,$80,$7F,$12,$0C,$80,$7F,$12,$0C,$80,$AB,$11,$0C,$80,$AB,$11,$0C
+    db $80,$FC,$11,$0C,$80,$FC,$11,$0C,$80,$AB,$11,$0C,$80,$AB,$11,$0C,$80,$E0,$11,$0C,$80,$E0,$11,$0C
+    db $80,$7C,$11,$0C,$80,$7C,$11,$0C,$80,$FC,$11,$0C,$80,$FC,$11,$0C,$80,$AB,$11,$0C,$80,$AB,$11,$0C
+    db $80,$C5,$11,$0C,$80,$C5,$11,$0C,$80,$7C,$11,$0C,$80,$7C,$11,$0C,$80,$3B,$12,$0C,$80,$3B,$12,$0C
+    db $80,$E0,$11,$0C,$80,$E0,$11,$0C,$80,$7F,$12,$0C,$80,$7F,$12,$0C,$80,$AB,$11,$18,$80,$AB,$11,$24
+    db $82,$AB,$01,$1E,$1F,$22,$90
+ThemeC:       ; lines 1060-1600, voice 3
+    db $C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$7F,$12,$18,$C0,$E8,$F3,$0C,$C0,$5D,$12,$18
+    db $C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$3B,$12,$18,$C0,$E8,$F3,$0C,$C0,$1A,$12,$18
+    db $C0,$E8,$F3,$0C,$C0,$FC,$11,$0C,$C0,$E8,$F3,$0C,$C0,$68,$11,$0C,$C0,$E8,$F3,$0C,$C0,$7C,$11,$0C
+    db $C0,$E8,$F3,$0C,$C0,$94,$11,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C
+    db $C0,$E8,$F3,$18,$C0,$56,$13,$18,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$41,$11,$0C,$C0,$41,$11,$0C
+    db $C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$41,$11,$0C,$C0,$41,$11,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C
+    db $C0,$41,$11,$0C,$C0,$41,$11,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$41,$11,$0C,$C0,$41,$11,$0C
+    db $C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$41,$11,$0C,$C0,$41,$11,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C
+    db $C0,$41,$11,$0C,$C0,$41,$11,$0C,$C0,$FC,$11,$0C,$C0,$FC,$11,$0C,$C0,$E8,$F3,$18,$C0,$7F,$02,$24
+    db $C2,$7F,$02,$1E,$1F,$22,$D0
+RiseSfx:      ; line 590: balloon
+    db $40,$E0,$01,$02,$40,$C5,$01,$02,$40,$AC,$01,$02,$40,$94,$01,$02,$40,$7D,$01,$02,$40,$68,$01,$02
+    db $40,$53,$01,$02,$40,$40,$01,$02,$40,$2E,$01,$02,$40,$1D,$01,$02,$40,$0D,$01,$02,$40,$FE,$00,$02
+    db $40,$F0,$00,$02,$40,$E2,$00,$02,$40,$D6,$00,$02,$40,$CA,$00,$02,$40,$BE,$00,$02,$40,$B4,$00,$02
+    db $40,$AA,$00,$02,$40,$A0,$00,$02,$40,$97,$00,$02,$40,$8F,$00,$02,$40,$87,$00,$02,$40,$7F,$00,$02
+    db $40,$78,$00,$02,$50
+FallSfx:      ; line 680: blackbird
+    db $40,$3C,$00,$02,$40,$40,$00,$02,$40,$43,$00,$02,$40,$47,$00,$02,$40,$4C,$00,$02,$40,$50,$00,$02
+    db $40,$55,$00,$02,$40,$5A,$00,$02,$40,$5F,$00,$02,$40,$65,$00,$02,$40,$6B,$00,$02,$40,$71,$00,$02
+    db $40,$78,$00,$02,$40,$7F,$00,$02,$40,$87,$00,$02,$40,$8F,$00,$02,$40,$97,$00,$02,$40,$A0,$00,$02
+    db $40,$AA,$00,$02,$40,$B4,$00,$02,$40,$BE,$00,$02,$40,$CA,$00,$02,$40,$D6,$00,$02,$40,$E2,$00,$02
+    db $40,$F0,$00,$02,$50
+BeepSfx:      ; XB BEEP
+    db $40,$50,$10,$08,$50
+OopsSfx:      ; XB error tone
+    db $40,$FC,$11,$0C,$50
+
+SpellSoundTable:
+    dw ThemeA,$702B             ; 1  tone areas 1-3: theme
+    dw ThemeB,$7035             ; 2
+    dw ThemeC,$703F             ; 3
+    dw RiseSfx,$702B            ; 4
+    dw FallSfx,$702B            ; 5
+    dw BeepSfx,$702B            ; 6
+    dw OopsSfx,$702B            ; 7
+}
