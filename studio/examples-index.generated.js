@@ -1379,6 +1379,23 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "balloon-crazy",
+    "label": "Balloon Crazy (TI-99/4A Port)",
+    "detail": "Joseph Russ and Patrick Parrish's balloon-catching game with fixed-point sprite motion, animated balloon strings and BCD scoring.",
+    "projectName": "balloon-crazy",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "sprites",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",

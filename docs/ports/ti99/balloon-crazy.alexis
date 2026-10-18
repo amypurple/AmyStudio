@@ -1,0 +1,448 @@
+cartridge "BALLOON CRAZY/PRESENTS JOSEPH RUSS'/1985"
+
+' BALLOON CRAZY by Joseph Russ
+' COMPUTE! magazine, Issue 67, December 1985. Originally written for Atari
+' computers; Apple II, Commodore 64, IBM PC/PCjr and TI-99/4A versions were
+' added. This port follows "Program 5: TI-99/4A Balloon Crazy", version by
+' Patrick Parrish, Programming Supervisor.
+' All game design credit belongs to Joseph Russ and Patrick Parrish.
+'
+' Historical context (summary of the original article):
+' A whimsical game children can enjoy, with higher levels that challenge
+' adults: zip back and forth on a skateboard and catch falling balloons on
+' your head. Blue balloons fall slowly and are worth the least, green ones
+' fall faster, red ones are the swiftest. On the TI, a caught balloon takes
+' the skateboarder's color and is popped at once for points; balloons fall
+' faster and are worth more at higher levels; three misses end the game.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' XB sprite motion (velocity v = v/16 pixel per frame) is reproduced in 8.8
+' fixed point. Controls: joystick left/right (replaces S and D).
+' Adaptation liberties: balloon, floor and life-icon tiles moved off the
+' ASCII range; the skateboarder stays inside the visible screen instead of
+' wrapping through the CRT overscan; the popped balloon clears after a
+' moment with a short pop noise; the sky balloons are fuller and their
+' strings sway; the score is a zero-padded BCD counter.
+' XB DISPLAY AT(R,C) lands on Amy X = C + 1, Y = R - 1. XB sprite dot-row R,
+' dot-column C become sprite Y = R - 2, X = C - 1.
+
+const SpaceTile = 32
+const BlueTile = 144          ' TI char 96
+const GreenTile = 152         ' TI char 104
+const RedTile = 160           ' TI char 112
+const FloorTile = 168         ' TI char 122
+const LifeTile = 176          ' TI char 128
+const ManPat = 0              ' TI 136
+const PopManPat = 4           ' TI 140
+const BalloonPat = 8          ' TI 100
+const PopPat = 12             ' TI 124
+const ManSlot = 0             ' TI #1
+const BalloonSlot = 1         ' TI #2
+const HeadSlot = 2            ' TI #3
+const ManY = 148              ' TI dot-row 150
+const ManSpeed = 960          ' TI MOTION 60 in 8.8
+const ManMinX = 4
+const ManMaxX = 220
+
+' Sound table slots
+const SndPop = 1
+const SndLevel = 2
+const SndBang = 3
+
+u8 Level = 0
+bcd digits 6 Score
+bcd digits 6 HighScore
+u16 Score2 = 0                ' SC2, toward an extra player every 1000
+u8 Men = 3
+u8 Balls = 0
+u8 Drop[3]                    ' DROP(0..2)
+u8 BalloonRow = 0             ' BR (TI row 3..6)
+u8 BalloonCol = 0             ' BC (TI column)
+u8 Kind = 0                   ' POINT: 0 blue, 1 green, 2 red
+u8 Tile = 0
+u8 Points = 0
+u16 ManX16 = 0
+u16 BalY16 = 0
+u16 BalStep = 0
+u8 ManX = 0
+u8 BalX = 0
+u8 BalY = 0
+u8 Dist = 0
+u8 Pick = 0
+u8 Row = 0
+u8 Col = 0
+u8 I = 0
+u8 Ticks = 0
+u8 Choice = 0
+u8 ColA = 3
+u8 ColB = 4
+u8 ColC = 6
+u8 ColT = 0
+u16 Tmp16 = 0
+u8 AnimTick = 0
+bool SwayRight = false
+
+  text screen
+  set sound table BalloonSoundTable areas 2
+  sprites 16x16
+  sprites double
+  copy SpritePatterns count 128 to vram.spr_pat
+  copy SmallBalloon count 8 to vram.pattern + 1152
+  copy SmallBalloon count 8 to vram.pattern + 1216
+  copy SmallBalloon count 8 to vram.pattern + 1280
+  copy FloorPattern count 8 to vram.pattern + 1344
+  copy LifePattern count 8 to vram.pattern + 1408
+  HideAll
+  screen on
+  EditorialPage
+
+new_game:
+  ' --- Lines 160-200: title with color-cycling balloons ---
+  HideAll
+  Level = 0
+  Score = 0
+  Score2 = 0
+  Men = 3
+  set text colors black count 32
+  backdrop white
+  cls
+  for Row = 0 to 23 step 23
+    for Col = 2 to 26 step 3
+      put char BlueTile at Col,Row
+      Tile = Col + 1
+      put char GreenTile at Tile,Row
+      Tile += 1
+      put char RedTile at Tile,Row
+    next
+  next
+  print at 9,9, "B A L L O O N"
+  print at 10,11, "C R A Z Y !"
+  print at 6,15, "COLECOVISION PORT 2026"
+  ColA = 3
+  ColB = 4
+  ColC = 6
+  for I = 1 to 50
+    BalloonColors
+    ColT = ColA
+    ColA = ColB
+    ColB = ColC
+    ColC = ColT
+    if I = 30 then ManX16 = 0
+    if I >= 30 then
+      ' Line 190: the skateboarder rolls across (MOTION 31)
+      for Ticks = 1 to 6
+        ManX16 += 496
+        Tmp16 = ManX16 >> 8
+        ManX = Tmp16
+        set sprite ManSlot to ManY,ManX,ManPat,13
+        wait
+        update sprites
+      next
+    else
+      for Ticks = 1 to 6
+        wait
+        SwayBalloons
+      next
+    end if
+  next
+  HideAll
+  Drop[0] = 15
+  Drop[1] = 20
+  Drop[2] = 25
+
+new_level:
+  ' --- Lines 220-250 ---
+  HideAll
+  cls
+  ' Lines 490-510: balloon colors dark blue, medium green, dark red;
+  ' floor dark green, life icons magenta
+  set text colors black count 32
+  set text colors dark blue at 18 count 1
+  set text colors medium green at 19 count 1
+  set text colors dark red at 20 count 1
+  set text colors dark green at 21 count 1
+  set text colors magenta at 22 count 1
+  inc Level
+  Balls = 24
+  ShowLives
+  print at 7,0, "LEVEL:"
+  print at 18,0, "SCORE:"
+  ShowStatus
+  for Row = 2 to 5
+    for Col = 3 to 28 step 5
+      Pick = random(0, 2)
+      Tile = Pick << 3
+      Tile += BlueTile
+      put char Tile at Col,Row
+    next
+  next
+  fill FloorTile count 32 at 0,23
+  ManX16 = 114 << 8
+  DrawMan
+  update sprites
+
+next_balloon:
+  ' --- Lines 260-290 ---
+  if Balls = 0 then goto level_done
+  dec Balls
+pick_column:
+  BalloonRow = 6
+  Pick = random(0, 5)
+  BalloonCol = Pick * 5
+  BalloonCol += 4
+find_balloon:
+  MoveMan
+  Row = BalloonRow - 1
+  Col = BalloonCol - 1
+  Tile = get char at Col,Row
+  if Tile = SpaceTile then
+    dec BalloonRow
+    if BalloonRow = 2 then goto pick_column
+    goto find_balloon
+  end if
+  Kind = Tile - BlueTile
+  Kind >>= 3
+  put char SpaceTile at Col,Row
+  ' Dot-row 41 - (6 - BR) * 8, dot-column 8 * (BC - 2) - 2
+  Row = 6 - BalloonRow
+  Row <<= 3
+  Row = 41 - Row
+  BalY16 = Row - 2
+  BalY16 <<= 8
+  BalX = BalloonCol - 2
+  BalX <<= 3
+  BalX -= 3
+  BalStep = Drop[Kind]
+  BalStep <<= 4
+
+fall:
+  ' --- Lines 300-320 ---
+  MoveMan
+  BalY16 += BalStep
+  Tmp16 = BalY16 >> 8
+  BalY = Tmp16
+  ColT = KindColors[Kind]
+  set sprite BalloonSlot to BalY,BalX,BalloonPat,ColT
+  update sprites
+  ' CALL COINC(#1,#2,15): both positions within 15 dots
+  Dist = absdiff(BalY, ManY)
+  if Dist <= 15 then
+    Dist = absdiff(BalX, ManX)
+    if Dist <= 15 then goto caught
+  end if
+  if BalY < 153 then goto fall
+  Dist = BalX - ManX
+  if Dist < 16 then goto caught
+  if Dist > 248 then goto caught
+
+  ' --- Line 330: missed ---
+  hide sprite BalloonSlot
+  hide sprite HeadSlot
+  update sprites
+  dec Men
+  play sound SndPop
+  wait 36 frames
+  if Men = 0 then goto game_over
+  ShowLives
+  ShowStatus
+  goto next_balloon
+
+caught:
+  ' --- Lines 340-400 ---
+  hide sprite BalloonSlot
+  Points = Kind + 1
+  for I = 1 to Level
+    for Ticks = 1 to Points
+      Score += 5
+      Score2 += 5
+    next
+  next
+  if Score2 >= 1000 then
+    Score2 = 0
+    if Men < 3 then inc Men
+    ShowLives
+  end if
+  ' The balloon turns the player's color on his head, then pops
+  set sprite HeadSlot to 116,ManX,BalloonPat,13
+  update sprites
+  wait 15 frames
+  set sprite ManSlot to ManY,ManX,PopManPat,13
+  set sprite HeadSlot to 116,ManX,PopPat,13
+  update sprites
+  play sound SndBang
+  wait 15 frames
+  hide sprite HeadSlot
+  DrawMan
+  update sprites
+  ShowStatus
+  goto next_balloon
+
+level_done:
+  ' --- Lines 410-420 ---
+  hide sprite ManSlot
+  update sprites
+  play sound SndLevel
+  wait 60 frames
+  for I = 0 to 2
+    Drop[I] += 2
+  next
+  goto new_level
+
+game_over:
+  ' --- Lines 430-470 ---
+  HideAll
+  backdrop dark yellow
+  if Score > HighScore then HighScore = Score
+  cls
+  print at 6,7, "YOUR SCORE: "
+  print Score at 18,7
+  print at 6,10, "HIGH SCORE: "
+  print HighScore at 18,10
+  print at 6,15, "PLAY AGAIN?"
+  print at 6,17, "FIRE OR 1 = YES  2 = NO"
+  wait no fire
+again_wait:
+  wait
+  if joypad(1).fire then goto new_game
+  Choice = keypad(1)
+  if Choice = 1 then goto new_game
+  if Choice <> 2 then goto again_wait
+  cls
+  print at 9,11, "THANKS FOR PLAYING"
+  loop forever
+
+' ---------------------------------------------------------------------------
+
+' Lines 120-130: one frame of skateboarding; the stick sets MOTION 60
+sub MoveMan:
+  wait
+  SwayBalloons
+  if joypad(1).left then
+    ManX16 -= ManSpeed
+  elseif joypad(1).right then
+    ManX16 += ManSpeed
+  end if
+  if ManX16 < 1024 then ManX16 = 1024
+  if ManX16 > 56320 then ManX16 = 56320
+  DrawMan
+  return
+end sub
+
+' Adaptation: every 16 frames the balloon strings sway left or right
+sub SwayBalloons:
+  inc AnimTick
+  if AnimTick < 16 then return
+  AnimTick = 0
+  toggle SwayRight
+  if SwayRight then
+    copy BalloonSwayB count 8 to vram.pattern + 1152
+    copy BalloonSwayB count 8 to vram.pattern + 1216
+    copy BalloonSwayB count 8 to vram.pattern + 1280
+  else
+    copy SmallBalloon count 8 to vram.pattern + 1152
+    copy SmallBalloon count 8 to vram.pattern + 1216
+    copy SmallBalloon count 8 to vram.pattern + 1280
+  end if
+  return
+end sub
+
+sub DrawMan:
+  Tmp16 = ManX16 >> 8
+  ManX = Tmp16
+  set sprite ManSlot to ManY,ManX,ManPat,13
+  return
+end sub
+
+' Line 570 and 400: one icon per player at the top left
+sub ShowLives:
+  fill SpaceTile count 3 at 2,0
+  fill LifeTile count Men at 2,0
+  return
+end sub
+
+sub ShowStatus:
+  print Level at 13,0 digits 2
+  print Score at 24,0
+  return
+end sub
+
+' Line 190: rotate the three balloon colors on the title
+sub BalloonColors:
+  ColT = ColA << 4
+  vpoke vram.color + 18, ColT
+  ColT = ColB << 4
+  vpoke vram.color + 19, ColT
+  ColT = ColC << 4
+  vpoke vram.color + 20, ColT
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 3
+  update sprites
+  return
+end sub
+
+' Adaptation: one editorial page at power-on
+sub EditorialPage:
+  set text colors black count 32
+  backdrop white
+  cls
+  print at 9,1, "BALLOON CRAZY"
+  print at 8,3, "BY JOSEPH RUSS"
+  print at 4,4, "COMPUTE! DECEMBER 1985"
+  print at 2,7, "FIRST WRITTEN FOR ATARI"
+  print at 2,8, "COMPUTERS WITH 16K, THEN"
+  print at 2,9, "ADDED FOR THE APPLE II, 64,"
+  print at 2,10, "IBM PC, PCJR AND TI-99/4A."
+  print at 2,12, "A GAME CHILDREN ENJOY, WITH"
+  print at 2,13, "HIGHER LEVELS THAT CHALLENGE"
+  print at 2,14, "ADULTS: CATCH THE BALLOONS"
+  print at 2,15, "ON YOUR HEAD. BLUE FALL"
+  print at 2,16, "SLOWLY, GREEN FASTER, RED"
+  print at 2,17, "SWIFTEST OF ALL."
+  print at 2,19, "TI VERSION: PATRICK PARRISH"
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Balloon colors for KOLOR(0..2) = TI 5, 3, 7
+data KindColors bytes 4,2,6
+
+' Line 160 had a small 5-dot balloon ($00387C7C7C381000); adaptation: a
+' fuller balloon with a knot and a string, in two sway frames
+data SmallBalloon bytes $3C,$7E,$7E,$7E,$3C,$18,$10,$08
+data BalloonSwayB bytes $3C,$7E,$7E,$7E,$3C,$18,$08,$10
+' Line 550: floor (char 122) and life icon (char 128)
+data FloorPattern bytes $49,$49,$49,$49,$49,$49,$49,$49
+data LifePattern bytes $38,$3C,$38,$38,$10,$38,$7C,$BA
+
+' Lines 150, 540, 520, 530: 16x16 sprites (TL, BL, TR, BR), magnified
+data SpritePatterns bytes
+  $03,$03,$03,$03,$01,$03,$07,$0B,$0B,$0B,$07,$02,$02,$02,$0F,$04
+  $80,$C0,$80,$80,$00,$80,$C0,$A0,$90,$80,$80,$80,$80,$80,$F0,$20
+  $03,$03,$03,$03,$01,$03,$07,$0B,$0B,$0B,$07,$02,$02,$02,$0F,$04
+  $90,$D0,$90,$90,$10,$A0,$C0,$80,$80,$80,$80,$80,$80,$80,$F0,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$00,$40,$10,$40,$00
+  $10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$00,$40,$00,$00,$00
+end data
+
+' CALL SOUND translations
+asm {
+PopSfx:       ; line 560: SOUND(-200,-5,0..25) white noise fade
+    db $02,$04,$24,$26,$66,$10
+BangSfx:      ; adaptation: short loud pop
+    db $02,$04,$06,$35,$12,$10
+LevelSfx:     ; line 410: SOUND(100,300..1200,1)
+    db $40,$75,$01,$06,$40,$18,$01,$06,$40,$E0,$00,$06,$40,$BA,$00,$06,$40,$A0,$00,$06,$40,$8C,$00,$06,$40,$7C,$00,$06,$40,$70,$00,$06,$40,$66,$00,$06,$40,$5D,$00,$06,$50
+
+BalloonSoundTable:
+    dw PopSfx,$702B             ; 1  noise area
+    dw LevelSfx,$7035           ; 2  tone area
+    dw BangSfx,$702B            ; 3  noise area
+}
