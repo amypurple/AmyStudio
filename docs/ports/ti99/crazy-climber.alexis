@@ -1,0 +1,762 @@
+cartridge "CRAZY CLIMBER/PRESENTS TED REYNOLDS'/1983"
+
+' CRAZY CLIMBER
+' Original VIC game by Ted Reynolds, COMPUTE! magazine, Issue 42 (Vol. 5,
+' No. 11), November 1983, page 80, where it was the cover story ("Climber:
+' A Fast-paced Game For VIC-20, TI-99/4A, And Commodore 64"); the cover
+' shows the climber clinging to a brick wall while a hand pushes a
+' flowerpot off a window ledge. Also a 64 version by Ted Reynolds. This port
+' follows "Program 4: Crazy Climber For The TI-99/4A", Extended BASIC
+' version by Pat Parrish, Programming Supervisor.
+' All game design credit belongs to Ted Reynolds and Pat Parrish.
+'
+' Historical context (summary of the TI-99/4A version notes):
+' You scramble up the face of a building while a relentless, sinister
+' fellow appears briefly at the windows and hurls a piano, an iron, a broom,
+' a safe or barbells down at you; nobody knows why, it is a quirk. He strikes
+' more often as the game goes on. Crossing the top of the screen earns 100
+' points, crossing the bottom costs 100, and each object thrown is worth 10.
+' You may climb over windows, but if the villain appears while you are in
+' one, he pushes you out. Luckily the climber carries a parachute. The TI
+' version said "UH OH" through the TI Speech Synthesizer.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick (replaces the E, S, D and X keys).
+' XB sprite motion (velocity v = v/16 pixel per frame) is reproduced in 8.8
+' fixed point; CALL COINC(ALL) becomes the VDP coincidence flag.
+' Speech: "uh-oh" was made with a small formant synthesizer (two vowels,
+' glottal stop, falling pitch) and encoded as Amy VoxPCM, so every
+' ColecoVision says it, with or without a voice module.
+' Adaptation liberties: wall and window tiles moved off the ASCII range;
+' the climber stays in columns 3-25 (the TI let him reach column 1, inside
+' the CRT overscan); falling objects tumble; the parachute sways; the
+' villain stays at the window for 8 frames; two editorial pages at power-on.
+' TI rows/columns are 1-based. Tiles: Amy X = col - 1, Y = row - 1.
+' Sprites: TI dot-row R, dot-column C become Y = R - 2, X = C - 1.
+
+const BrickA = 144            ' TI char 120 "x"
+const BrickB = 145            ' TI char 121 "y"
+const WindowTile = 152        ' TI char 100
+const ObjSlot = 0             ' TI #1
+const ClimbSlot = 1           ' TI #2
+const ChuteSlot = 2           ' TI #3
+const ManSlot = 3             ' TI #4
+const ManPat = 0
+const ChutePat = 4
+const FallPat = 8
+const ClimbPatA = 12
+const ClimbPatB = 16
+const ObjPatBase = 20
+const TickFrames = 6          ' about one XB main-loop pass
+
+' Sound table slots
+const SndStepNoise = 1
+const SndStepTone = 2
+const SndCrash = 3
+const SndWhistle = 4
+const SndWhistleShort = 5
+
+u8 Row = 13                   ' ROW
+u8 Col = 15                   ' COL
+u8 ClimbPat = ClimbPatA       ' B
+bool StepTone = false         ' Z
+i16 Score = 0                 ' SC
+i16 HighScore = 0             ' HS
+u8 Chance = 10                ' U, in percent per pass
+bool ObjOn = false            ' Q
+u8 ManTimer = 0               ' R
+u8 Win = 0                    ' V
+u8 ObjKind = 0
+u8 ObjColor = 0
+u8 ObjX = 0
+u16 ObjY16 = 0
+u8 Tumble = 0
+u8 TumbleTick = 0
+u8 Tick = 0
+bool Demo = false             ' TP
+u16 ClimbY16 = 0
+u16 ChuteY16 = 0
+u8 Sway = 0
+u8 SwayTick = 0
+u8 X = 0
+u8 Y = 0
+u8 N = 0
+u8 I = 0
+u8 Choice = 0
+i16 Mag = 0
+u16 MagU = 0
+u16 Tmp16 = 0
+
+  text screen
+  set sound table ClimberSoundTable areas 2
+  sprites 16x16
+  sprites double
+  copy SpritePatterns count 800 to vram.spr_pat
+  copy BrickPatterns count 16 to vram.pattern + 1152
+  fill 0 count 8 to vram.pattern + 1216
+  set text colors black count 32
+  HideAll
+  screen on
+  EditorialPage
+  ' --- Line 160 ---
+  TitlePage
+
+new_game:
+  ' --- Lines 170-190 ---
+  DrawWall
+  Chance = 10
+  ObjOn = false
+  ManTimer = 0
+  Score = 0
+  ClimbPat = ClimbPatA
+  StepTone = false
+  Row = 13
+  Col = 15
+  Tick = 0
+  DrawClimber
+
+main_loop:
+  ' --- Lines 200-310 ---
+  wait
+  if ObjOn then MoveObject
+  if ManTimer > 0 then
+    dec ManTimer
+    ' Line 200: the villain throws and leaves; 10 points per object
+    if ManTimer = 0 then ThrowObject
+  end if
+  inc Tick
+  if Tick >= TickFrames then
+    Tick = 0
+    ' Line 210: the villain appears at a random window
+    if not ObjOn then
+      if ManTimer = 0 then
+        N = random(0, 99)
+        if N < Chance then ShowVillain
+      end if
+    end if
+    ' Lines 220-280
+    ReadStick
+  end if
+  update sprites
+  ' Line 290: CALL COINC(ALL)
+  if any collision goto knocked_off
+  goto main_loop
+
+knocked_off:
+  ' --- Lines 320-400 ---
+  Demo = false
+  FallWithParachute
+  ' --- Lines 410-470 ---
+  HideAll
+  wait 30 frames
+  cls
+  backdrop 13
+  if Score > HighScore then HighScore = Score
+  print at 6,9, "YOUR SCORE : "
+  Mag = Score
+  X = 19
+  Y = 9
+  PutScore
+  print at 6,12, "HIGH SCORE : "
+  Mag = HighScore
+  Y = 12
+  PutScore
+  print at 6,15, "PLAY AGAIN ?"
+  print at 6,17, "FIRE OR 1 = YES  2 = NO"
+  wait no fire
+again_wait:
+  wait
+  if joypad(1).fire then goto new_game
+  Choice = keypad(1)
+  if Choice = 1 then goto new_game
+  if Choice <> 2 then goto again_wait
+  cls
+  print at 8,11, "THANKS FOR PLAYING"
+  loop forever
+
+' ---------------------------------------------------------------------------
+
+' Lines 220-280: one step per pass while the stick is held
+sub ReadStick:
+  if joypad(1).up then
+    if Row = 0 then
+      Row = 23
+      Score += 100
+      if Chance < 100 then Chance += 5
+    else
+      dec Row
+    end if
+    goto stepped
+  end if
+  if joypad(1).left then
+    if Col > 3 then Col -= 2
+    goto stepped
+  end if
+  if joypad(1).right then
+    if Col < 25 then Col += 2
+    goto stepped
+  end if
+  if joypad(1).down then
+    if Row = 23 then
+      Row = 0
+      Score -= 100
+    else
+      inc Row
+    end if
+    goto stepped
+  end if
+  return
+stepped:
+  ' Line 280: alternate the two climbing frames and the two step sounds
+  if ClimbPat = ClimbPatA then
+    ClimbPat = ClimbPatB
+  else
+    ClimbPat = ClimbPatA
+  end if
+  toggle StepTone
+  if StepTone then
+    play sound SndStepTone
+  else
+    play sound SndStepNoise
+  end if
+  DrawClimber
+  return
+end sub
+
+sub DrawClimber:
+  Y = Row << 3
+  dec Y
+  X = Col << 3
+  set sprite ClimbSlot to Y,X,ClimbPat,1
+  return
+end sub
+
+' Line 130
+sub ShowVillain:
+  Win = random(0, 7)
+  Y = WinRow[Win]
+  Y <<= 3
+  dec Y
+  X = WinCol[Win]
+  X <<= 3
+  set sprite ManSlot to Y,X,ManPat,1
+  ManTimer = 8
+  return
+end sub
+
+' Line 200: a random object, a random color, motion 15 down
+sub ThrowObject:
+  hide sprite ManSlot
+  ObjKind = random(0, 4)
+  ObjColor = random(2, 15)
+  Y = WinRow[Win] + 4
+  Y <<= 3
+  inc Y
+  ObjY16 = Y
+  ObjY16 <<= 8
+  ObjX = WinCol[Win]
+  ObjX <<= 3
+  Tumble = 0
+  TumbleTick = 0
+  ObjOn = true
+  Score += 10
+  DrawObject
+  return
+end sub
+
+' Lines 300-310, plus the tumbling (adaptation)
+sub MoveObject:
+  ObjY16 += 240
+  inc TumbleTick
+  if TumbleTick >= 6 then
+    TumbleTick = 0
+    inc Tumble
+    if Tumble = 4 then Tumble = 0
+  end if
+  Tmp16 = ObjY16 >> 8
+  Y = Tmp16
+  if Y >= 180 then
+    hide sprite ObjSlot
+    ObjOn = false
+    return
+  end if
+  DrawObject
+  return
+end sub
+
+sub DrawObject:
+  Tmp16 = ObjY16 >> 8
+  Y = Tmp16
+  Y -= 2
+  N = ObjKind << 4
+  I = Tumble << 2
+  N += I
+  N += ObjPatBase
+  set sprite ObjSlot to Y,ObjX,N,ObjColor
+  return
+end sub
+
+' Lines 320-390: "UH OH", the fall, the parachute, the whistle
+sub FallWithParachute:
+  hide sprite ObjSlot
+  hide sprite ManSlot
+  update sprites
+  play voxpcm UhOhVoice
+  ' Line 340: motion 25 down, then 10
+  ClimbY16 = Row << 3
+  inc ClimbY16
+  ClimbY16 <<= 8
+  for I = 1 to 24
+    ClimbY16 += 400
+    DrawFalling
+    wait
+    update sprites
+  next
+  ' Line 350: the parachute opens two rows below where he was
+  play sound SndCrash
+  ChuteY16 = Row + 2
+  ChuteY16 <<= 3
+  inc ChuteY16
+  ChuteY16 <<= 8
+  if Demo then
+    play sound SndWhistleShort
+  else
+    play sound SndWhistle
+  end if
+  Sway = 0
+  SwayTick = 0
+chute_loop:
+  ClimbY16 += 160
+  ChuteY16 += 160
+  inc SwayTick
+  if SwayTick >= 16 then
+    SwayTick = 0
+    toggle Sway
+  end if
+  DrawFalling
+  Tmp16 = ChuteY16 >> 8
+  Y = Tmp16
+  if Y > 165 then goto landed
+  Y -= 2
+  X = Col << 3
+  X += Sway
+  set sprite ChuteSlot to Y,X,ChutePat,15
+  wait
+  update sprites
+  goto chute_loop
+landed:
+  mute all
+  hide sprite ClimbSlot
+  hide sprite ChuteSlot
+  update sprites
+  return
+end sub
+
+sub DrawFalling:
+  Tmp16 = ClimbY16 >> 8
+  Y = Tmp16
+  if Y >= 196 then
+    hide sprite ClimbSlot
+    return
+  end if
+  Y -= 2
+  X = Col << 3
+  X += Sway
+  set sprite ClimbSlot to Y,X,FallPat,1
+  return
+end sub
+
+' Lines 670-780: the wall appears all at once
+sub DrawWall:
+  HideAll
+  set text colors transparent at 18 count 1
+  set text colors transparent at 19 count 1
+  cls
+  backdrop black
+  for Y = 0 to 23
+    N = Y & 1
+    if N = 0 then
+      put BrickRowA count 28 at 2,Y
+    else
+      put BrickRowB count 28 at 2,Y
+    end if
+  next
+  for Y = 2 to 5
+    WindowRow
+  next
+  for Y = 18 to 21
+    WindowRow
+  next
+  for Y = 10 to 13
+    fill WindowTile count 4 at 9,Y
+    fill WindowTile count 4 at 19,Y
+  next
+  set text colors gray on dark red at 18 count 1
+  set text colors transparent on dark yellow at 19 count 1
+  return
+end sub
+
+' Windows at columns 5, 15 and 25 (Amy X 4, 14, 24) on row Y
+sub WindowRow:
+  fill WindowTile count 4 at 4,Y
+  fill WindowTile count 4 at 14,Y
+  fill WindowTile count 4 at 24,Y
+  return
+end sub
+
+' Lines 790-930: title, demo climb and fall, instructions
+sub TitlePage:
+  HideAll
+  cls
+  backdrop gray
+  set text colors gray on gray at 18 count 1
+  for Y = 6 to 23
+    N = Y & 1
+    if N = 0 then
+      put BrickRowA count 12 at 2,Y
+    else
+      put BrickRowB count 12 at 2,Y
+    end if
+  next
+  set text colors gray on dark red at 18 count 1
+  print at 20,5, "T H E"
+  print at 18,7, "C R A Z Y"
+  print at 16,9, "C L I M B E R"
+  wait 20 frames
+  ClimbPat = ClimbPatB
+  StepTone = true
+  Row = 19
+  Col = 6
+title_climb:
+  DrawClimber
+  update sprites
+  if StepTone then
+    play sound SndStepTone
+  else
+    play sound SndStepNoise
+  end if
+  if ClimbPat = ClimbPatA then
+    ClimbPat = ClimbPatB
+  else
+    ClimbPat = ClimbPatA
+  end if
+  toggle StepTone
+  dec Row
+  wait 9 frames
+  if Row > 1 then goto title_climb
+  ' Line 900: the demo fall
+  Demo = true
+  FallWithParachute
+  Demo = false
+  print at 14,15, "USE THE JOYSTICK"
+  print at 14,16, "TO AVOID FALLING"
+  print at 14,17, "OBJECTS."
+  print at 17,19, "GOOD LUCK!"
+  wait 180 frames
+  HideAll
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 4
+  update sprites
+  return
+end sub
+
+' Prints Mag with a sign and five digits at X,Y (the score can go negative)
+sub PutScore:
+  if Mag < 0 then
+    Mag = 0 - Mag
+    MagU = Mag
+    print at X,Y, "-" + digits$(MagU, 5)
+  else
+    MagU = Mag
+    print at X,Y, " " + digits$(MagU, 5)
+  end if
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  backdrop white
+  cls
+  print at 9,1, "CRAZY CLIMBER"
+  print at 8,3, "BY TED REYNOLDS"
+  print at 4,4, "COMPUTE! NOVEMBER 1983"
+  print at 2,6, "A VIC GAME, WITH VERSIONS"
+  print at 2,7, "FOR THE 64 AND TI-99/4A."
+  print at 2,9, "ON THE TI, PAT PARRISH ADDED"
+  print at 2,10, "A SINISTER FELLOW WHO HURLS"
+  print at 2,11, "A PIANO, AN IRON, A BROOM, A"
+  print at 2,12, "SAFE OR BARBELLS FROM THE"
+  print at 2,13, "WINDOWS. NO ONE KNOWS WHY;"
+  print at 2,14, "IT'S A QUIRK."
+  print at 2,16, "THE TI SAID UH OH WITH ITS"
+  print at 2,17, "SPEECH SYNTHESIZER. HERE IT"
+  print at 2,18, "IS SYNTHESIZED SPEECH PLAYED"
+  print at 2,19, "BY THE SOUND CHIP ITSELF."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  cls
+  print at 7,1, "THE COVER STORY"
+  print at 4,3, "COMPUTE! ISSUE 42"
+  print at 4,4, "VOL. 5, NO. 11, $2.50"
+  print at 2,7, "CLIMBER WAS THE COVER GAME:"
+  print at 2,8, "A FAST-PACED GAME FOR THE"
+  print at 2,9, "VIC-20, TI-99/4A AND 64."
+  print at 2,11, "THE COVER ART SHOWS THE"
+  print at 2,12, "CLIMBER HANGING FROM A BRICK"
+  print at 2,13, "WALL WHILE A HAND PUSHES A"
+  print at 2,14, "FLOWERPOT OFF A LEDGE."
+  print at 2,16, "ON THE VIC, FLOWERPOTS FALL"
+  print at 2,17, "AND BIRDS ATTACK. THE TI"
+  print at 2,18, "TRADED THEM FOR A VILLAIN"
+  print at 2,19, "AT THE WINDOWS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Lines 760-770: window rows D(V) and columns E(V)
+data WinRow bytes 2,2,2,10,10,18,18,18
+data WinCol bytes 4,14,24,9,19,4,14,24
+
+' Line 530: bricks; line 690: ROW$ and ROW2$
+data BrickPatterns bytes $FF,$80,$80,$80,$80,$80,$80,$80,$FF,$01,$01,$01,$01,$01,$01,$01
+data BrickRowA bytes 144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145
+data BrickRowB bytes 145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144,145,144
+
+' Sprite patterns (16x16: left column bytes, then right column)
+' 0 villain (96), 4 parachute (104), 8 falling climber (108),
+' 12/16 climber (112/116), 20.. objects (124-140) in four tumble phases
+data SpritePatterns bytes
+  $00,$00,$00,$00,$00,$00,$1C,$1C,$0E,$0E,$06,$07,$07,$03,$81,$C1
+  $F2,$73,$F7,$FF,$FF,$FF,$FF,$37,$2F,$1F,$03,$0F,$1F,$3F,$7F,$FF
+  $01,$07,$0F,$1F,$1F,$15,$10,$08,$08,$04,$04,$02,$02,$01,$01,$00
+  $80,$E0,$F0,$F8,$F8,$58,$08,$10,$10,$20,$20,$40,$40,$80,$80,$00
+  $02,$04,$05,$07,$01,$01,$01,$01,$02,$02,$02,$06,$00,$00,$00,$00
+  $80,$40,$40,$C0,$80,$80,$80,$80,$40,$40,$40,$60,$00,$00,$00,$00
+  $03,$23,$23,$21,$27,$3F,$03,$03,$03,$03,$06,$08,$10,$00,$80,$40
+  $98,$08,$08,$00,$C0,$E0,$90,$88,$90,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$00,$03,$07,$09,$11,$09,$01,$01,$01,$01,$01,$01,$01
+  $C0,$C4,$C4,$84,$E4,$FC,$C0,$C0,$C0,$C0,$60,$10,$08,$10,$20,$90
+  $20,$70,$FF,$70,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $04,$0E,$FF,$0E,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$70,$FF,$70,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $04,$0E,$FF,$0E,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$70,$FF,$70,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$0E,$FF,$0E,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20,$70,$FF,$70,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$0E,$FF,$0E,$04
+  $00,$00,$00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$30,$30
+  $00,$00,$00,$00,$F8,$F8,$F9,$DA,$FC,$F8,$F8,$F8,$F8,$18,$18,$00
+  $00,$00,$00,$00,$1F,$1F,$9F,$5B,$3F,$1F,$1F,$1F,$1F,$18,$18,$00
+  $00,$00,$00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$0C,$0C
+  $00,$18,$18,$1F,$1F,$1F,$1F,$3F,$5B,$9F,$1F,$1F,$00,$00,$00,$00
+  $0C,$0C,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00,$00,$00
+  $30,$30,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00,$00,$00
+  $00,$18,$18,$F8,$F8,$F8,$F8,$FC,$DA,$F9,$F8,$F8,$00,$00,$00,$00
+  $00,$00,$01,$01,$03,$05,$09,$11,$27,$3F,$3F,$12,$12,$10,$10,$10
+  $00,$00,$C0,$E0,$F0,$F8,$FC,$FE,$FE,$FA,$F2,$12,$12,$10,$10,$10
+  $00,$00,$03,$07,$0F,$1F,$3F,$7F,$7F,$5F,$4F,$48,$48,$08,$08,$08
+  $00,$00,$80,$80,$C0,$A0,$90,$88,$E4,$FC,$FC,$48,$48,$08,$08,$08
+  $08,$08,$08,$48,$48,$4F,$5F,$7F,$7F,$3F,$1F,$0F,$07,$03,$00,$00
+  $08,$08,$08,$48,$48,$FC,$FC,$E4,$88,$90,$A0,$C0,$80,$80,$00,$00
+  $10,$10,$10,$12,$12,$3F,$3F,$27,$11,$09,$05,$03,$01,$01,$00,$00
+  $10,$10,$10,$12,$12,$F2,$FA,$FE,$FE,$FC,$F8,$F0,$E0,$C0,$00,$00
+  $03,$00,$00,$F0,$F0,$F1,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$20,$20,$E0,$F0,$F0,$F8,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $07,$04,$04,$07,$0F,$0F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$00,$00,$0F,$0F,$8F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$1F,$0F,$0F,$07,$04,$04,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$8F,$0F,$0F,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F1,$F0,$F0,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$F0,$F0,$E0,$20,$20,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$1E,$3C,$7C,$FC,$F8,$70
+  $01,$03,$06,$0C,$18,$30,$60,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$60,$30,$18,$0C,$06,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$78,$3C,$3E,$3F,$1F,$0E
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$06,$0C,$18,$30,$60,$C0,$80
+  $0E,$1F,$3F,$3E,$3C,$78,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $70,$F8,$FC,$7C,$3C,$1E,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$60,$30,$18,$0C,$06,$03,$01
+end data
+
+asm {
+StepNoise:    ; SOUND(10,-3,2) periodic noise
+    db $00,$00,$12,$01,$10
+StepToneSfx:  ; SOUND(10,200,2)
+    db $40,$2F,$12,$01,$50
+CrashNoise:   ; SOUND(-50,-7,2) white noise
+    db $00,$00,$16,$03,$10
+WhistleLong:  ; SOUND(80,5000-T*40,2), T = 1 onward
+    db $40,$17,$10,$05,$40,$17,$10,$05,$40,$17,$10,$05,$40,$17,$10,$05,$40,$17,$10,$05,$40,$18,$10,$05
+    db $40,$18,$10,$05,$40,$18,$10,$05,$40,$18,$10,$05,$40,$18,$10,$05,$40,$19,$10,$05,$40,$19,$10,$05
+    db $40,$19,$10,$05,$40,$19,$10,$05,$40,$19,$10,$05,$40,$1A,$10,$05,$40,$1A,$10,$05,$40,$1A,$10,$05
+    db $40,$1A,$10,$05,$40,$1B,$10,$05,$40,$1B,$10,$05,$40,$1B,$10,$05,$40,$1B,$10,$05,$40,$1C,$10,$05
+    db $40,$1C,$10,$05,$40,$1C,$10,$05,$40,$1D,$10,$05,$40,$1D,$10,$05,$40,$1D,$10,$05,$40,$1D,$10,$05
+    db $40,$1E,$10,$05,$40,$1E,$10,$05,$40,$1E,$10,$05,$40,$1F,$10,$05,$40,$1F,$10,$05,$40,$1F,$10,$05
+    db $40,$20,$10,$05,$40,$20,$10,$05,$40,$21,$10,$05,$40,$21,$10,$05,$40,$21,$10,$05,$40,$22,$10,$05
+    db $40,$22,$10,$05,$40,$23,$10,$05,$40,$23,$10,$05,$40,$23,$10,$05,$40,$24,$10,$05,$40,$24,$10,$05
+    db $40,$25,$10,$05,$40,$25,$10,$05,$40,$26,$10,$05,$40,$26,$10,$05,$40,$27,$10,$05,$40,$27,$10,$05
+    db $40,$28,$10,$05,$40,$29,$10,$05,$40,$29,$10,$05,$40,$2A,$10,$05,$40,$2A,$10,$05,$40,$2B,$10,$05
+    db $40,$2C,$10,$05,$40,$2C,$10,$05,$40,$2D,$10,$05,$40,$2E,$10,$05,$40,$2F,$10,$05,$40,$2F,$10,$05
+    db $40,$30,$10,$05,$40,$31,$10,$05,$40,$32,$10,$05,$40,$33,$10,$05,$40,$34,$10,$05,$40,$35,$10,$05
+    db $40,$36,$10,$05,$40,$37,$10,$05,$40,$38,$10,$05,$40,$39,$10,$05,$40,$3A,$10,$05,$40,$3C,$10,$05
+    db $40,$3D,$10,$05,$40,$3E,$10,$05,$40,$40,$10,$05,$40,$41,$10,$05,$40,$43,$10,$05,$40,$44,$10,$05
+    db $40,$46,$10,$05,$40,$48,$10,$05,$40,$4A,$10,$05,$40,$4C,$10,$05,$40,$4E,$10,$05,$40,$50,$10,$05
+    db $40,$52,$10,$05,$40,$55,$10,$05,$40,$57,$10,$05,$40,$5A,$10,$05,$40,$5D,$10,$05,$40,$60,$10,$05
+    db $40,$64,$10,$05,$40,$68,$10,$05,$40,$6C,$10,$05,$40,$70,$10,$05,$40,$75,$10,$05,$40,$7A,$10,$05
+    db $40,$7F,$10,$05,$40,$85,$10,$05,$40,$8C,$10,$05,$40,$93,$10,$05,$40,$9B,$10,$05,$40,$A5,$10,$05
+    db $40,$AF,$10,$05,$40,$BA,$10,$05,$40,$C8,$10,$05,$40,$D7,$10,$05,$40,$E9,$10,$05,$40,$FE,$10,$05
+    db $40,$18,$11,$05,$40,$37,$11,$05,$40,$5E,$11,$05,$40,$90,$11,$05,$40,$D2,$11,$05,$40,$2F,$12,$05
+    db $40,$BB,$12,$05,$40,$A4,$13,$05,$50
+WhistleShort: ; same from T = 40 (title demo)
+    db $40,$21,$10,$05,$40,$21,$10,$05,$40,$22,$10,$05,$40,$22,$10,$05,$40,$23,$10,$05,$40,$23,$10,$05
+    db $40,$23,$10,$05,$40,$24,$10,$05,$40,$24,$10,$05,$40,$25,$10,$05,$40,$25,$10,$05,$40,$26,$10,$05
+    db $40,$26,$10,$05,$40,$27,$10,$05,$40,$27,$10,$05,$40,$28,$10,$05,$40,$29,$10,$05,$40,$29,$10,$05
+    db $40,$2A,$10,$05,$40,$2A,$10,$05,$40,$2B,$10,$05,$40,$2C,$10,$05,$40,$2C,$10,$05,$40,$2D,$10,$05
+    db $40,$2E,$10,$05,$40,$2F,$10,$05,$40,$2F,$10,$05,$40,$30,$10,$05,$40,$31,$10,$05,$40,$32,$10,$05
+    db $40,$33,$10,$05,$40,$34,$10,$05,$40,$35,$10,$05,$40,$36,$10,$05,$40,$37,$10,$05,$40,$38,$10,$05
+    db $40,$39,$10,$05,$40,$3A,$10,$05,$40,$3C,$10,$05,$40,$3D,$10,$05,$40,$3E,$10,$05,$40,$40,$10,$05
+    db $40,$41,$10,$05,$40,$43,$10,$05,$40,$44,$10,$05,$40,$46,$10,$05,$40,$48,$10,$05,$40,$4A,$10,$05
+    db $40,$4C,$10,$05,$40,$4E,$10,$05,$40,$50,$10,$05,$40,$52,$10,$05,$40,$55,$10,$05,$40,$57,$10,$05
+    db $40,$5A,$10,$05,$40,$5D,$10,$05,$40,$60,$10,$05,$40,$64,$10,$05,$40,$68,$10,$05,$40,$6C,$10,$05
+    db $40,$70,$10,$05,$40,$75,$10,$05,$40,$7A,$10,$05,$40,$7F,$10,$05,$40,$85,$10,$05,$40,$8C,$10,$05
+    db $40,$93,$10,$05,$40,$9B,$10,$05,$40,$A5,$10,$05,$40,$AF,$10,$05,$40,$BA,$10,$05,$40,$C8,$10,$05
+    db $40,$D7,$10,$05,$40,$E9,$10,$05,$40,$FE,$10,$05,$40,$18,$11,$05,$40,$37,$11,$05,$40,$5E,$11,$05
+    db $40,$90,$11,$05,$40,$D2,$11,$05,$40,$2F,$12,$05,$40,$BB,$12,$05,$40,$A4,$13,$05,$50
+
+ClimberSoundTable:
+    dw StepNoise,$702B          ; 1  noise area
+    dw StepToneSfx,$7035          ; 2  tone area
+    dw CrashNoise,$702B         ; 3
+    dw WhistleLong,$7035        ; 4
+    dw WhistleShort,$7035       ; 5
+
+; "Uh-oh" (formant synthesis, VoxPCM)
+UhOhVoice:
+  dw UhOhPart1
+  db 12,4
+  dw UhOhPart2
+  db 22,15
+  dw UhOhPart3
+  db 27,21
+  dw 0,0
+UhOhPart1:              ; high, 1183 bytes
+  db $1D,$02,$E0,$60,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B
+  db $01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$17,$21,$02,$03,$40,$04,$02,$00,$01,$40
+  db $03,$40,$04,$00,$02,$60,$02,$00,$02,$06,$08,$04,$27,$03,$00,$01,$04,$20,$01,$04,$01,$03,$05,$03
+  db $00,$24,$00,$02,$20,$04,$23,$02,$01,$08,$14,$00,$11,$0C,$03,$24,$01,$02,$01,$04,$0A,$02,$09,$25
+  db $04,$06,$01,$00,$03,$04,$20,$23,$02,$04,$0E,$1E,$00,$1D,$0F,$03,$01,$08,$01,$20,$06,$08,$00,$0C
+  db $09,$00,$01,$24,$02,$00,$21,$02,$03,$05,$00,$06,$13,$1E,$35,$0C,$02,$06,$04,$01,$02,$01,$0A,$06
+  db $47,$00,$24,$01,$03,$01,$00,$04,$02,$03,$05,$01,$06,$1B,$13,$1D,$11,$07,$01,$08,$01,$02,$00,$06
+  db $08,$04,$09,$0C,$02,$00,$06,$04,$00,$02,$00,$04,$00,$03,$05,$02,$00,$0E,$1E,$08,$1D,$12,$03,$04
+  db $06,$01,$02,$01,$04,$0E,$02,$0C,$09,$03,$44,$02,$20,$04,$02,$23,$02,$06,$17,$1E,$1A,$19,$0C,$00
+  db $26,$20,$01,$06,$0A,$07,$0C,$05,$02,$26,$20,$02,$21,$43,$00,$08,$1E,$1E,$3D,$07,$01,$06,$21,$02
+  db $04,$0B,$04,$09,$0C,$05,$01,$04,$06,$22,$04,$00,$04,$25,$02,$00,$10,$1E,$06,$1D,$11,$05,$04,$06
+  db $01,$02,$00,$06,$0B,$00,$0C,$09,$03,$44,$02,$20,$04,$00,$05,$03,$02,$04,$1B,$16,$1F,$12,$09,$01
+  db $08,$04,$22,$01,$08,$06,$27,$05,$01,$24,$00,$22,$01,$20,$03,$02,$00,$0E,$1E,$00,$1F,$0F,$05,$26
+  db $01,$20,$04,$0B,$02,$0C,$07,$03,$44,$00,$02,$00,$04,$02,$43,$08,$1B,$1E,$1D,$1A,$09,$01,$06,$04
+  db $00,$02,$04,$08,$06,$09,$27,$01,$06,$04,$00,$02,$00,$01,$00,$23,$02,$04,$10,$1E,$0C,$1A,$0D,$02
+  db $06,$04,$01,$02,$01,$06,$0A,$03,$0C,$07,$00,$24,$01,$22,$01,$04,$03,$02,$03,$02,$0A,$1E,$0B,$1D
+  db $11,$05,$01,$0A,$20,$02,$06,$08,$00,$27,$03,$00,$08,$00,$01,$02,$00,$21,$05,$03,$02,$06,$13,$1E
+  db $1A,$12,$0C,$01,$26,$22,$01,$0A,$04,$05,$0C,$03,$00,$04,$06,$00,$02,$00,$21,$05,$03,$02,$04,$0B
+  db $1E,$03,$1F,$0C,$03,$04,$08,$20,$02,$08,$0A,$03,$0C,$05,$02,$01,$06,$01,$22,$21,$00,$23,$00,$08
+  db $18,$0E,$1F,$11,$05,$01,$08,$21,$03,$04,$0A,$00,$05,$09,$03,$01,$04,$01,$20,$02,$04,$00,$02,$05
+  db $00,$06,$17,$14,$1C,$11,$07,$01,$26,$00,$03,$04,$26,$09,$25,$00,$26,$02,$03,$00,$21,$02,$05,$00
+  db $04,$16,$1E,$1D,$19,$07,$01,$06,$04,$40,$0A,$08,$0C,$09,$03,$02,$08,$06,$42,$01,$04,$43,$04,$10
+  db $1E,$0D,$1A,$0C,$02,$26,$00,$02,$01,$06,$0A,$03,$0C,$07,$02,$06,$24,$03,$02,$01,$04,$02,$05,$22
+  db $10,$1E,$05,$1C,$0C,$05,$28,$00,$02,$03,$08,$0B,$03,$09,$07,$02,$01,$06,$01,$22,$00,$04,$00,$23
+  db $00,$0E,$1E,$05,$1C,$0D,$02,$26,$04,$03,$02,$06,$08,$02,$07,$09,$00,$04,$06,$01,$03,$02,$00,$04
+  db $00,$23,$02,$10,$1E,$04,$1D,$11,$05,$04,$0A,$01,$00,$02,$04,$0A,$02,$09,$07,$03,$01,$0A,$20,$02
+  db $00,$01,$00,$05,$03,$00,$0E,$1E,$0A,$1D,$15,$03,$01,$0A,$20,$02,$04,$0E,$00,$09,$0C,$03,$44,$22
+  db $41,$03,$05,$00,$0B,$16,$03,$15,$0C,$03,$06,$08,$00,$22,$06,$08,$02,$09,$05,$02,$44,$03,$02,$01
+  db $20,$02,$03,$00,$10,$1E,$07,$1C,$0D,$03,$06,$08,$04,$03,$00,$04,$08,$00,$0C,$05,$03,$04,$06,$01
+  db $00,$22,$04,$00,$05,$02,$00,$14,$18,$0F,$15,$0C,$02,$06,$08,$02,$20,$06,$08,$05,$27,$02,$06,$08
+  db $22,$00,$02,$06,$23,$02,$00,$13,$1E,$0D,$1A,$0C,$03,$0A,$04,$01,$02,$00,$04,$0B,$05,$09,$07,$00
+  db $24,$01,$22,$21,$00,$03,$05,$06,$13,$1E,$1C,$12,$09,$00,$0A,$04,$00,$02,$00,$08,$06,$47,$04,$01
+  db $08,$22,$03,$04,$01,$02,$03,$02,$06,$1B,$0E,$1F,$11,$05,$01,$06,$08,$22,$00,$0B,$00,$27,$05,$04
+  db $01,$06,$00,$22,$04,$00,$02,$03,$02,$08,$18,$04,$1A,$0D,$03,$04,$0A,$01,$03,$02,$01,$0A,$01,$07
+  db $09,$02,$01,$06,$01,$22,$01,$00,$01,$02,$05,$04,$0E,$13,$0D,$0F,$0C,$01,$26,$01,$03,$00,$06,$04
+  db $03,$07,$05,$01,$24,$00,$03,$01,$02,$04,$02,$03,$02,$06,$18,$0A,$1A,$0F,$05,$01,$08,$04,$00,$02
+  db $01,$08,$01,$27,$03,$01,$04,$21,$22,$21,$02,$05,$00,$0A,$1B,$00,$19,$0F,$03,$04,$06,$04,$00,$02
+  db $01,$0A,$00,$09,$07,$02,$01,$06,$20,$02,$21,$00,$02,$05,$01,$14,$10,$11,$0F,$09,$01,$06,$0A,$03
+  db $22,$08,$06,$07,$05,$07,$01,$08,$04,$00,$03,$02,$01,$20,$03,$02,$0A,$1B,$00,$1A,$0D,$03,$04,$06
+  db $04,$00,$02,$01,$0B,$02,$09,$07,$03,$04,$06,$04,$02,$03,$21,$22,$03,$00,$13,$16,$0C,$19,$09,$02
+  db $08,$06,$00,$02,$00,$04,$08,$03,$07,$05,$02,$04,$06,$02,$00,$02,$21,$00,$23,$08,$14,$06,$15,$0C
+  db $05,$04,$08,$04,$22,$00,$0A,$02,$25,$03,$04,$01,$06,$03,$02,$01,$40,$03,$01,$0A,$13,$0C,$0D,$09
+  db $00,$08,$01,$04,$03,$00,$04,$06,$03,$07,$03,$00,$01,$06,$00,$02,$00,$02,$04,$42,$06,$0E,$01,$0D
+  db $09,$02,$01,$06,$01,$00,$02,$01,$04,$00,$05,$02,$03,$01,$04,$01,$22,$00,$21,$02,$03,$06,$08,$04
+  db $07,$09,$03,$01,$24,$00,$02,$41,$43,$01,$04,$01,$00,$22,$04,$02,$00,$03,$01,$08,$06,$03,$07,$23
+  db $06,$04,$00,$02,$00,$21,$00,$23,$00,$01,$04,$02,$20,$02,$04,$22,$00,$04,$06,$01,$07,$23,$21,$04
+  db $00,$02,$00,$04,$00,$03,$02,$40,$04,$02,$80,$02,$01,$04,$01,$02,$23,$00,$04,$40,$01,$02,$04,$02
+  db $03,$20,$01,$E0,$00,$21,$62,$04,$01,$02,$20,$01,$02,$01,$22,$01,$E0,$40,$01,$00,$22,$01,$C0,$01
+  db $02,$00,$02,$01,$00,$01,$02,$FE,$00,$1E,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00
+  db $1B,$01,$02,$FE,$00,$16,$FF
+UhOhPart2:              ; compact, 827 bytes
+  db $1D,$02,$E0,$60,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B
+  db $01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$17,$01,$02,$00,$02
+  db $01,$20,$01,$02,$00,$01,$02,$00,$02,$00,$01,$00,$01,$02,$00,$02,$04,$00,$01,$00,$05,$02,$21,$00
+  db $01,$00,$02,$01,$00,$42,$41,$02,$00,$02,$21,$24,$05,$07,$02,$21,$04,$01,$02,$00,$01,$22,$03,$20
+  db $04,$00,$01,$03,$01,$02,$08,$0A,$03,$29,$00,$01,$08,$01,$02,$01,$02,$01,$02,$23,$00,$24,$00,$02
+  db $00,$02,$00,$08,$06,$00,$09,$07,$02,$01,$06,$01,$20,$21,$43,$00,$24,$00,$22,$00,$01,$08,$06,$03
+  db $09,$07,$00,$04,$06,$20,$01,$40,$05,$03,$00,$04,$01,$40,$02,$01,$04,$0A,$00,$29,$02,$01,$04,$06
+  db $02,$00,$21,$02,$23,$02,$41,$60,$04,$08,$00,$07,$09,$02,$01,$06,$04,$02,$00,$01,$00,$22,$03,$02
+  db $04,$01,$40,$02,$00,$04,$06,$04,$03,$09,$03,$02,$06,$21,$00,$01,$20,$03,$02,$03,$01,$04,$40,$02
+  db $01,$00,$04,$08,$00,$09,$07,$02,$24,$21,$02,$01,$02,$00,$03,$02,$00,$04,$40,$02,$20,$01,$28,$03
+  db $0C,$05,$03,$06,$01,$06,$02,$01,$00,$01,$43,$21,$00,$04,$02,$00,$02,$01,$04,$06,$01,$27,$03,$01
+  db $24,$01,$02,$01,$00,$22,$05,$01,$00,$04,$01,$00,$22,$20,$04,$08,$04,$27,$05,$01,$04,$21,$20,$01
+  db $00,$02,$05,$00,$01,$00,$01,$00,$02,$01,$02,$01,$06,$04,$01,$05,$09,$03,$21,$06,$00,$01,$00,$01
+  db $02,$23,$02,$41,$40,$01,$02,$01,$06,$01,$07,$05,$03,$24,$21,$02,$20,$01,$05,$00,$02,$21,$20,$02
+  db $01,$02,$21,$08,$01,$05,$07,$05,$21,$06,$00,$01,$02,$04,$03,$02,$03,$20,$04,$00,$01,$02,$00,$02
+  db $00,$01,$06,$04,$02,$07,$05,$00,$04,$21,$02,$00,$04,$00,$02,$03,$00,$02,$04,$02,$01,$02,$00,$01
+  db $20,$04,$06,$01,$27,$03,$01,$04,$06,$22,$04,$20,$23,$02,$04,$01,$40,$02,$01,$20,$04,$08,$03,$07
+  db $05,$00,$01,$04,$01,$00,$02,$04,$00,$22,$03,$00,$21,$00,$02,$01,$00,$02,$21,$08,$01,$05,$07,$03
+  db $02,$06,$21,$20,$04,$22,$05,$20,$04,$80,$02,$00,$26,$00,$05,$07,$02,$61,$02,$21,$00,$03,$02,$00
+  db $02,$04,$02,$01,$00,$02,$04,$22,$06,$24,$27,$02,$00,$24,$00,$02,$04,$01,$02,$23,$20,$04,$A0,$02
+  db $01,$0A,$00,$03,$09,$02,$41,$20,$21,$00,$02,$03,$02,$01,$00,$01,$02,$01,$02,$04,$02,$20,$26,$05
+  db $07,$03,$00,$01,$06,$00,$02,$04,$20,$02,$03,$02,$00,$01,$04,$02,$00,$02,$01,$20,$02,$04,$0A,$00
+  db $09,$05,$02,$00,$06,$20,$01,$00,$04,$02,$03,$22,$21,$02,$01,$02,$21,$22,$01,$26,$03,$09,$03,$00
+  db $24,$02,$20,$04,$01,$23,$02,$01,$20,$01,$80,$02,$04,$08,$00,$05,$07,$02,$00,$06,$40,$04,$00,$01
+  db $05,$22,$00,$04,$20,$02,$04,$02,$00,$02,$00,$04,$08,$01,$27,$02,$01,$04,$00,$02,$21,$04,$02,$03
+  db $02,$40,$01,$02,$01,$00,$01,$22,$00,$04,$06,$04,$27,$02,$04,$00,$01,$20,$41,$05,$22,$21,$02,$01
+  db $02,$21,$22,$00,$04,$06,$04,$07,$05,$03,$00,$04,$01,$20,$04,$01,$22,$03,$02,$01,$00,$01,$02,$01
+  db $20,$01,$03,$00,$01,$08,$04,$05,$07,$22,$04,$01,$40,$04,$01,$02,$05,$00,$02,$04,$02,$01,$02,$21
+  db $02,$00,$02,$00,$08,$04,$00,$07,$05,$02,$01,$04,$00,$02,$04,$00,$04,$02,$03,$22,$21,$00,$02,$01
+  db $20,$01,$03,$02,$04,$08,$04,$25,$03,$02,$04,$01,$00,$02,$01,$04,$01,$02,$05,$20,$01,$00,$02,$01
+  db $02,$21,$42,$04,$08,$01,$02,$07,$05,$01,$04,$02,$01,$02,$01,$04,$01,$03,$22,$20,$01,$00,$02,$01
+  db $40,$02,$00,$04,$06,$01,$03,$07,$22,$04,$01,$02,$61,$23,$20,$01,$00,$02,$00,$01,$40,$02,$00,$01
+  db $08,$01,$03,$05,$03,$00,$01,$00,$01,$02,$04,$21,$23,$20,$01,$02,$01,$02,$01,$00,$01,$03,$01,$03
+  db $44,$01,$07,$03,$02,$00,$04,$02,$00,$01,$04,$20,$02,$03,$01,$02,$00,$01,$02,$00,$21,$22,$00,$01
+  db $00,$0A,$00,$03,$07,$02,$00,$01,$20,$01,$FF
+UhOhPart3:              ; tiny, 583 bytes
+  db $1D,$04,$22,$03,$20,$01,$02,$00,$21,$02,$00,$02,$00,$08,$04,$25,$02,$01,$00,$01,$02,$04,$01,$00
+  db $03,$02,$01,$02,$01,$02,$01,$40,$02,$01,$02,$26,$03,$07,$00,$02,$21,$20,$04,$00,$42,$40,$01,$00
+  db $01,$02,$00,$02,$00,$01,$08,$00,$05,$03,$60,$41,$00,$03,$02,$00,$01,$00,$02,$01,$40,$02,$01,$02
+  db $06,$21,$07,$22,$04,$02,$00,$01,$04,$00,$22,$00,$02,$01,$02,$00,$21,$02,$00,$02,$00,$01,$24,$02
+  db $05,$03,$01,$00,$01,$02,$21,$04,$03,$22,$01,$02,$20,$21,$02,$00,$02,$00,$04,$01,$04,$43,$01,$20
+  db $01,$00,$04,$00,$42,$01,$02,$00,$01,$40,$02,$01,$02,$21,$06,$02,$05,$22,$04,$02,$00,$01,$04,$00
+  db $42,$01,$02,$00,$01,$02,$04,$00,$22,$00,$01,$00,$06,$01,$03,$05,$00,$02,$21,$02,$04,$01,$00,$02
+  db $03,$01,$02,$01,$02,$00,$21,$02,$00,$02,$01,$02,$06,$04,$23,$02,$40,$01,$00,$21,$42,$00,$01,$02
+  db $01,$02,$04,$02,$20,$02,$00,$01,$06,$01,$43,$01,$00,$01,$02,$01,$04,$00,$03,$00,$02,$01,$02,$01
+  db $02,$21,$22,$01,$02,$00,$04,$01,$04,$02,$05,$03,$01,$40,$04,$00,$04,$23,$01,$02,$01,$02,$01,$02
+  db $04,$02,$20,$02,$01,$02,$08,$00,$02,$23,$21,$02,$00,$04,$00,$01,$02,$03,$01,$00,$02,$01,$02,$04
+  db $02,$20,$02,$20,$21,$06,$00,$05,$03,$02,$01,$20,$41,$22,$40,$02,$20,$04,$02,$60,$02,$01,$04,$01
+  db $02,$23,$04,$02,$20,$01,$04,$00,$22,$00,$02,$01,$02,$00,$01,$00,$01,$22,$01,$00,$02,$04,$01,$04
+  db $05,$03,$20,$01,$02,$00,$01,$04,$00,$03,$40,$02,$00,$01,$80,$02,$01,$02,$01,$06,$01,$03,$05,$80
+  db $01,$04,$00,$22,$20,$02,$20,$21,$02,$20,$02,$01,$02,$01,$04,$01,$02,$03,$02,$00,$01,$02,$00,$41
+  db $22,$20,$02,$01,$02,$01,$80,$02,$01,$02,$24,$00,$23,$00,$01,$02,$20,$04,$00,$01,$03,$40,$02,$01
+  db $02,$01,$00,$01,$22,$01,$00,$02,$21,$04,$00,$05,$02,$00,$01,$02,$20,$06,$02,$20,$02,$20,$02,$00
+  db $01,$A0,$02,$00,$01,$04,$01,$02,$03,$00,$02,$40,$21,$40,$02,$00,$02,$01,$02,$01,$A0,$02,$00,$21
+  db $04,$00,$05,$00,$02,$00,$01,$03,$04,$01,$40,$02,$40,$02,$00,$01,$A0,$02,$01,$00,$04,$20,$03,$02
+  db $01,$02,$20,$04,$40,$02,$40,$02,$01,$C0,$02,$01,$02,$04,$01,$00,$42,$01,$02,$00,$01,$00,$01,$20
+  db $02,$20,$02,$01,$E0,$02,$01,$20,$04,$00,$03,$20,$02,$01,$02,$01,$00,$01,$02,$01,$02,$40,$02,$01
+  db $E0,$02,$01,$00,$04,$02,$00,$22,$01,$00,$02,$01,$00,$01,$02,$01,$02,$60,$02,$01,$E0,$40,$01,$00
+  db $02,$20,$02,$01,$60,$01,$02,$FE,$00,$14,$01,$02,$20,$02,$04,$02,$FE,$00,$17,$01,$02,$FE,$00,$1B
+  db $01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1B,$01,$02,$FE,$00,$1A,$01,$02,$FE,$00
+  db $1B,$01,$02,$FE,$00,$17,$FF
+}

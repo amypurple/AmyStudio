@@ -1379,6 +1379,41 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "crazy-climber",
+    "label": "Crazy Climber (TI-99/4A Port)",
+    "detail": "Ted Reynolds and Pat Parrish's climbing game with falling objects, parachute animation and compact VoxPCM speech.",
+    "projectName": "crazy-climber",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "sprites",
+      "voxpcm",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "get-the-gold",
+    "label": "Get the Gold (TI-99/4A Port)",
+    "detail": "Frank Elsesser's 128-room dungeon adventure with a visible exploration map and separate ColecoVision and ADAM controls.",
+    "projectName": "get-the-gold",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "adam",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "balloon-crazy",
     "label": "Balloon Crazy (TI-99/4A Port)",
     "detail": "Joseph Russ and Patrick Parrish's balloon-catching game with fixed-point sprite motion, animated balloon strings and BCD scoring.",

@@ -13,16 +13,18 @@ available, the source BASIC listing used as the historical reference.
 | Diamond Drop | ColecoVision | Matt Giwer / Patrick Parrish, 1983 | 5,122 bytes |
 | Mystery Spell | ColecoVision and OS7+EOS hybrid | Doug Hapeman, 1983 | 11,669 bytes |
 | Runway 180 | ColecoVision | James Dunn, 1983 | 7,240 bytes |
+| Crazy Climber | ColecoVision | Ted Reynolds / Pat Parrish, 1983 | 9,542 bytes |
+| Get the Gold | ColecoVision and OS7+EOS hybrid | Frank Elsesser, 1983 | 18,337 bytes |
 | Balloon Crazy | ColecoVision | Joseph Russ / Patrick Parrish, 1985 | 4,249 bytes |
 | Beethoven Medley | ColecoVision | C. Regena, 1983 | 6,391 bytes |
 
-The nine cartridge builds compile with the Safe, Balanced and Aggressive
-profiles. Their combined assembled sizes are 52,388, 51,335 and 51,282 bytes,
+The eleven cartridge builds compile with the Safe, Balanced and Aggressive
+profiles. Their combined assembled sizes are 80,521, 79,214 and 79,146 bytes,
 respectively. `tools/test-ti99-ports-runtime.mjs` boots every cartridge through
 the real OS7 delay, advances its opening controls and verifies multiple nonblank
 rendered states. `tools/test-ti99-adam-ports-runtime.mjs` additionally builds
-writable expansion DSK images for Southern States and Mystery Spell, boots them
-through EOS and verifies that both hybrid programs reach their own screens.
+writable expansion DSK images for Southern States, Mystery Spell and Get the
+Gold, boots them through EOS and verifies that all three reach their own screens.
 
 These tests establish compilation, boot and initial interaction. They do not
 yet claim complete gameplay parity: score progression, every answer path,
@@ -56,6 +58,16 @@ range. Its ColecoVision adaptation uses bounded fixed-point sprite motion, a
 two-frame swaying balloon string and separate miss/capture noises. The historical
 TI listing is retained beside the Amy source so these adaptation choices remain
 auditable.
+
+Crazy Climber preserves its fixed-point sprite motion, collision-driven fall,
+parachute sequence and increasing object frequency. Its compact VoxPCM "uh-oh"
+recreates the TI speech moment through the standard ColecoVision sound chip. The
+historical BASIC listing is retained beside the Amy source.
+
+Get the Gold combines the original two-program adventure in one source. The
+ColecoVision build uses joystick and keypad controls; the OS7+EOS hybrid build
+uses the ADAM keyboard while retaining the cartridge start-up path. Both builds
+add a bounded 8 by 8 exploration map without changing the 128-room dungeon.
 
 Beethoven Medley was historically distributed as `LUDWIG`. The browser title
 describes its actual content while the original title remains in the source and

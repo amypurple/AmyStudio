@@ -20,6 +20,8 @@ const cases = [
   { id: "southern-states", inputs: [fire] },
   { id: "diamond-drop", inputs: [fire, fire, GEARCOLECO_TEST_INPUT.KEYPAD_1] },
   { id: "mystery-spell", inputs: [fire, fire, GEARCOLECO_TEST_INPUT.KEYPAD_2] },
+  { id: "crazy-climber", inputs: [fire, fire] },
+  { id: "get-the-gold", inputs: [fire, fire, GEARCOLECO_TEST_INPUT.KEYPAD_2] },
 ];
 
 function screenSignature(core) {

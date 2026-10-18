@@ -1,0 +1,1716 @@
+cartridge "GET THE GOLD/PRESENTS FRANK ELSESSER'S/1983"
+
+' GET THE GOLD by Frank Elsesser
+' COMPUTE! magazine, Issue 43, December 1983, page 132, for the TI-99/4A.
+' All game design credit belongs to Frank Elsesser.
+'
+' Historical context (summary of the original article):
+' A TI-99 version of the classic dungeon adventure: a two-level dungeon of
+' 128 chambers, with monsters, cunning thieves, trap doors and eerie sound
+' effects. You may come out rich, or not come out at all. Because the game
+' was long, it came in two programs saved one after the other on cassette:
+' the instructions (Program 1) and the game itself (Program 2).
+'
+' ColecoVision / Coleco ADAM adaptation in Amy by Amy Bienvenu, 2026.
+' One cartridge-style program holds both of the original programs.
+' One source, two builds:
+' - ADAM (OS7+EOS hybrid): keyboard play as on the TI: type your name, type
+'   your answer to the monsters, N S E W U G Q to act.
+' - ColecoVision: joystick to move, fire to climb a stairway, keypad 1 for
+'   your gold, * to quit; names and answers are chosen on the keypad.
+' Adaptation liberties: a mini-map of the chambers you have seen (beside a
+' status panel), a scrolling text window inside the visible columns 2-29,
+' the "super key" notice shown once per level instead of every turn after
+' 140/level moves, and editorial pages at power-on.
+' Quirks of the 1983 listing kept on purpose: the BUS monster checks your
+' name instead of your answer for "IN BAG" (line 4560), so only "BAG"
+' satisfies him; the super key never actually locks a stairway (line 2370
+' tests K>-1, which is always true).
+' TI rows/columns are 1-based; Amy X,Y are 0-based.
+
+const Blank = 32
+const TopTextY = 13
+const BottomTextY = 21
+const MapX = 21               ' first map column (cells at 21..28)
+const MapY = 3                ' first map row (cells at 3..10)
+const UnknownTile = 136
+const PlayerTile = 160
+
+' Rooms (TI P(X,Y,Z) values)
+const RoomEmpty = 1
+const RoomSmokey = 2
+const RoomThief = 5
+const RoomNS = 6
+const RoomEW = 7
+const RoomTrap = 8
+const RoomStairs = 9
+
+u8 Rooms[128]                 ' P(C,D,L1), index (L1-1)*64 + (D-1)*8 + (C-1)
+u8 Seen[128]
+u8 C = 1                      ' column 1..8 (east is +1)
+u8 D = 1                      ' row 1..8 (south is +1)
+u8 L1 = 2                     ' 2 = bottom level, 1 = upper level
+u8 RoomType = 0               ' A
+u8 Idx = 0
+i16 Gold = 1000               ' G
+i16 G4 = 0
+u8 Answers = 0                     ' correct answers
+u16 M1 = 1                    ' turns
+u8 K = 0
+bool KeyNoticed = false
+u8 Act = 0                    ' the action key, as TI ASCII
+u8 PlayerName[10]
+u8 NameLen = 0
+
+' Text and numbers
+i32 NumValue
+i32 Rating
+i32 Part
+u8 NumBuf[12]
+u8 NumFirst = 0
+u8 NumCount = 0
+u8 OutX = 0
+u8 OutY = BottomTextY
+u8 X = 0
+u8 Y = 0
+u8 N = 0
+u8 I = 0
+u8 Pick = 0
+u8 Choice = 0
+u8 Ch = 0
+u16 R16 = 0
+u16 Max16 = 0
+u16 Lo16 = 0
+u8 RandHi = 0
+u8 RandLo = 0
+u8 Blink = 0
+bool BlinkOn = false
+
+if defined AMY_HAS_EOS
+u8 KeyReq = 0
+u8 KeyStat = 0
+u8 Typed[12]
+u8 TypedLen = 0
+else defined
+u8 Slot[4]
+u8 RightA = 0
+u8 RightB = 0
+end defined
+
+  text screen
+  set sound table GoldSoundTable areas 4
+  LoadTiles
+  backdrop black
+  set text colors white count 32
+  screen on
+  EditorialPages
+
+title:
+  ' --- Program 2, lines 100-370 ---
+  cls
+  backdrop light yellow
+  set text colors dark blue count 16
+  print at 9,8, "GET THE GOLD!"
+  print at 4,10, "AN ENCHANTED ADVENTURE"
+  print at 7,13, "BY FRANK ELSESSER"
+  SfxTitle
+if defined AMY_HAS_EOS
+  print at 5,17, "1 = INSTRUCTIONS"
+  print at 5,18, "2 = PLAY THE GAME"
+else defined
+  print at 5,17, "KEYPAD 1 = INSTRUCTIONS"
+  print at 5,18, "KEYPAD 2 = PLAY THE GAME"
+end defined
+  ReadDigit(1, 2)
+  if Choice = 1 then Instructions
+
+new_game:
+  ' --- Lines 380-560 ---
+  cls
+  backdrop magenta
+  set text colors white count 16
+  print at 2,10, "YOU WILL BE TAKEN TO"
+  print at 2,11, "THE DUNGEON"
+  Delay
+  cls
+  print at 2,6, "WHO ART THOU?"
+  AskName
+  ' --- Lines 620-700 ---
+  cls
+  backdrop dark red
+  print at 2,8, "YOU CARRY 1000 GOLD PIECES"
+  print at 2,9, "WITH YOU"
+  Delay
+  put PlayerName count NameLen at 2,11
+  print at 2,12, ". . . OFF YOU GO . . ."
+  Delay
+  MakeDungeon
+  ' --- Lines 720-840 ---
+  cls
+  backdrop black
+  print at 2,4, "YOU HAVE ARRIVED AT . . ."
+  print at 2,6, "THE DUNGEON . . BOTTOM LEVEL"
+  print at 2,8, "YOU WILL COME ACROSS"
+  print at 2,10, "MONSTERS,"
+  print at 2,12, "THIEVES, AND GOLD. . . BUT"
+  print at 2,13, "WATCH"
+  print at 2,15, "YOUR STEP . . . . . . . ."
+  print at 2,17, "TRAP DOORS CAN BE COSTLY."
+  wait 240 frames or press
+  wait no fire
+  DrawPlayScreen
+
+enter_room:
+  ' --- Lines 1900-1930 ---
+  ClearText
+  Idx = L1 - 1
+  Idx <<= 6
+  N = D - 1
+  N <<= 3
+  Idx += N
+  Idx += C - 1
+  RoomType = Rooms[Idx]
+  Seen[Idx] = 1
+  DrawMap
+  ShowStatus
+  Delay
+  select case RoomType
+    case RoomEmpty
+      RoomEmptyText
+    case RoomSmokey
+      RoomSmokeyText
+    case 3, 4
+      MonsterRoom
+    case RoomThief
+      ThiefRoom
+    case RoomNS
+      TunnelNS
+    case RoomEW
+      TunnelEW
+    case RoomTrap
+      TrapDoor
+    case else
+      StairwayRoom
+  end select
+  ' A trap door may have changed the level
+  DrawMap
+  ShowStatus
+
+action_prompt:
+  ' --- Lines 1940-2110 ---
+  if Gold <= 0 then goto lost_all
+  ShowPrompt
+  GetAction
+  inc M1
+  ShowStatus
+  ' Line 2030: the super key notice (adaptation: once per level)
+  N = 70
+  if L1 = 1 then N = 140
+  if M1 >= N then
+    if not KeyNoticed then
+      KeyNoticed = true
+      ClearText
+      SuperKeyText
+    end if
+  end if
+  select case Act
+    case 78
+      goto go_north
+    case 69
+      goto go_east
+    case 83
+      goto go_south
+    case 87
+      goto go_west
+    case 85
+      goto go_up
+    case 71
+      goto show_gold
+    case else
+      goto quit_game
+  end select
+
+go_north:
+  if RoomType = RoomEW then goto only_east_west
+  if D = 1 then
+    WallText(1)
+    goto action_prompt
+  end if
+  dec D
+  goto enter_room
+
+go_east:
+  if RoomType = RoomNS then goto only_north_south
+  if C = 8 then
+    WallText(2)
+    goto action_prompt
+  end if
+  inc C
+  goto enter_room
+
+go_south:
+  if RoomType = RoomEW then goto only_east_west
+  if D = 8 then
+    WallText(3)
+    goto action_prompt
+  end if
+  inc D
+  goto enter_room
+
+go_west:
+  if RoomType = RoomNS then goto only_north_south
+  if C = 1 then
+    WallText(4)
+    goto action_prompt
+  end if
+  dec C
+  goto enter_room
+
+only_east_west:
+  ' --- Lines 2470-2500 ---
+  ClearText
+  NewLine
+  print at 2,21, "YOU ARE IN AN EAST-WEST"
+  NewLine
+  print at 2,21, "TUNNEL"
+  NewLine
+  print at 2,21, "YOU CAN ONLY GO EAST OR WEST"
+  goto action_prompt
+
+only_north_south:
+  ' --- Lines 2530-2560 ---
+  ClearText
+  NewLine
+  print at 2,21, "YOU ARE IN A NORTH-SOUTH"
+  NewLine
+  print at 2,21, "TUNNEL"
+  NewLine
+  print at 2,21, "YOU CAN ONLY GO NORTH OR"
+  NewLine
+  print at 2,21, "SOUTH"
+  goto action_prompt
+
+go_up:
+  ' --- Lines 2350-2440 ---
+  ClearText
+  if RoomType = RoomStairs then goto walk_up
+  NewLine
+  print at 2,21, "YOU ARE NOT AT A STAIRWAY"
+  Delay
+  goto show_gold_text
+
+show_gold:
+  ClearText
+show_gold_text:
+  NewLine
+  print at 2,21, "YOU HAVE "
+  OutX = 11
+  NumValue = Gold
+  PutNum
+  print at OutX,21, " GOLD PIECES"
+  goto action_prompt
+
+walk_up:
+  ' --- Lines 1160-1600 (K>-1 is always true) ---
+  dec L1
+  NewLine
+  print at 2,21, "YOU WALK UP THE STAIRWAY...."
+  SfxSteps
+  NewLine
+  NewLine
+  print at 2,21, "YOU PUT THE SUPER KEY INTO"
+  NewLine
+  print at 2,21, "THE LOCK . . . . . . . . ."
+  Delay
+  NewLine
+  print at 2,21, "THE DOOR IS OPEN"
+  SfxDoor
+  Delay
+  if L1 = 0 then goto escaped
+  K = 0
+  KeyNoticed = false
+  NewLine
+  print at 2,21, "YOU ARE AT . . . THE UPPER"
+  NewLine
+  print at 2,21, "LEVEL"
+  Delay
+  goto enter_room
+
+escaped:
+  ' --- Lines 1620-1750 ---
+  L1 = 1
+  NewLine
+  print at 2,21, "YOU FOUND YOUR WAY . . ."
+  NewLine
+  print at 2,21, "OUT OF THE DUNGEON"
+  SfxEscape
+  NewLine
+  print at 2,21, "YOU HAVE ACQUIRED "
+  OutX = 20
+  NumValue = Gold
+  PutNum
+  print at OutX,21, " GOLD"
+  NewLine
+  print at 2,21, "PIECES."
+  SfxTune
+  ShowRating
+  goto another_game
+
+lost_all:
+  ' --- Lines 2570-2690 ---
+  Delay
+  NewLine
+  SfxTrap
+  NewLine
+  print at 2,21, "YOU LOST ALL YOUR GOLD AND"
+  NewLine
+  print at 2,21, ". . . UNABLE TO ESCAPE THE"
+  NewLine
+  print at 2,21, "DUNGEON IN TIME."
+  NewLine
+  print at 2,21, "MAYBE NEXT TIME"
+  Delay
+  ShowRating
+
+another_game:
+  ' --- Lines 2700-2750 ---
+  Delay
+  ClearText
+  NewLine
+  print at 2,21, "ANOTHER GAME?"
+if defined AMY_HAS_EOS
+  NewLine
+  print at 2,21, "ENTER '1'-YES  '0'-NO"
+  ReadDigit(0, 1)
+else defined
+  NewLine
+  print at 2,21, "KEYPAD 1 = YES   2 = NO"
+  ReadDigit(1, 2)
+  if Choice = 2 then Choice = 0
+end defined
+  if Choice = 1 then goto new_game
+
+quit_game:
+  ' --- Line 2120: END ---
+  clear sprites
+  cls
+  backdrop black
+  set text colors white count 16
+  print at 9,11, "GET THE GOLD"
+  print at 10,13, "FAREWELL"
+  loop forever
+
+' ---------------------------------------------------------------------------
+' Rooms
+' ---------------------------------------------------------------------------
+
+' Line 2960
+sub RoomEmptyText:
+  NewLine
+  print at 2,21, "YOU ARE IN A . . . . . . ."
+  NewLine
+  print at 2,21, " . . . . EMPTY CHAMBER"
+  return
+end sub
+
+' Line 3010
+sub RoomSmokeyText:
+  NewLine
+  print at 2,21, "YOU ARE IN A SMOKEY . . ."
+  NewLine
+  print at 2,21, " . . . . . . . EMPTY CHAMBER"
+  return
+end sub
+
+' Lines 3060-3120 and 4410-4810
+sub MonsterRoom:
+  ' Lines 5220-5250
+  NewLine
+  print at 2,21, "YOU DISTURBED A MONSTER IN"
+  NewLine
+  print at 2,21, "HIS CHAMBER"
+  Delay
+  NewLine
+  print at 2,21, "AND HE SPEAKS . . . . . . ."
+  Delay
+  SfxMonster
+  Pick = random(1, 10)
+  N = MonsterOf[Pick]
+  select case N
+    case 1
+      NewLine
+      print at 2,21, "HALT *** I AM DRA"
+      AskQuestion
+      ' Lines 4450-4460: "BAG" or "IN BAG"
+      if Choice >= 1 then
+        Reward
+      else
+        Lie
+      end if
+    case 2
+      NewLine
+      print at 2,21, "STOP *** I AM BUS"
+      AskQuestion
+      ' Line 4560 checks the name, not the answer: only "BAG" counts
+      if Choice = 1 then
+        Reward
+      else
+        Lie
+      end if
+    case 3
+      NewLine
+      print at 2,21, "HALT *** I AM LUM!!!"
+      AskQuestion
+      if Choice = 1 then
+        Reward
+      else
+        Lie
+      end if
+    case else
+      NewLine
+      print at 2,21, "BEWARE  OF TRAP DOORS"
+      SfxBeware
+  end select
+  return
+end sub
+
+' Lines 4930-5040
+sub Reward:
+  NewLine
+  print at 2,21, "GOOD,YOU MUST BE REWARDED.."
+  NewLine
+  Max16 = 400
+  if L1 = 2 then Max16 = 200
+  Rand16
+  G4 = R16
+  G4 += 25
+  K = 1
+  Gold += G4
+  Delay
+  NewLine
+  print at 2,21, "YOU WIN "
+  OutX = 10
+  NumValue = G4
+  PutNum
+  print at OutX,21, " GOLD PIECES"
+  Rooms[Idx] = RoomEmpty
+  inc Answers
+  ShowStatus
+  return
+end sub
+
+' Lines 5080-5160
+sub Lie:
+  NewLine
+  NewLine
+  print at 2,21, "YOU LIE"
+  NewLine
+  print at 2,21, "NO REWARD FOR YOU"
+  NewLine
+  Max16 = 350
+  if L1 = 2 then Max16 = 175
+  Rand16
+  G4 = R16
+  G4 += 1
+  Delay
+  Gold -= G4
+  NewLine
+  print at 2,21, "I WIN "
+  OutX = 8
+  NumValue = G4
+  PutNum
+  print at OutX,21, " GOLD PIECES"
+  ShowStatus
+  return
+end sub
+
+' Lines 3140-3710
+sub ThiefRoom:
+  NewLine
+  print at 2,21, "THERE'S A THIEF IN THIS ROOM"
+  SfxThief
+  Rooms[Idx] = RoomSmokey
+  Delay
+  Max16 = 350
+  if L1 = 2 then Max16 = 175
+  Rand16
+  G4 = R16
+  G4 += 1
+  Pick = random(1, 8)
+  if Pick <= 5 then goto you_surprise
+  ' Lines 3260-3320
+  NewLine
+  NewLine
+  print at 2,21, " . . . . . HE SURPRISES YOU."
+  Delay
+  NewLine
+  print at 2,21, "AS HE QUICKLY RUNS BY HE"
+  NewLine
+  print at 2,21, "STEALS . . . "
+  OutX = 15
+  NumValue = G4
+  PutNum
+  print at OutX,21, " GOLD"
+  NewLine
+  print at 2,21, "PIECES"
+  Gold -= G4
+  ShowStatus
+  Delay
+  SearchRoom
+  return
+you_surprise:
+  ' Lines 3600-3710
+  NewLine
+  print at 2,21, "YOU SURPRISED THE THIEF . ."
+  Delay
+  NewLine
+  print at 2,21, "AS HE RUNS OUT HE DROPS . ."
+  NewLine
+  print at 2,21, " . . . . "
+  OutX = 11
+  NumValue = G4
+  PutNum
+  print at OutX,21, " GOLD PIECES"
+  NewLine
+  print at 2,21, "YOU PICK UP THE GOLD PIECES"
+  Gold += G4
+  ShowStatus
+  if M1 = 1 then return
+  Pick = random(1, 4)
+  if M1 <= 2 then Pick = 1
+  if Pick = 1 then
+    Delay
+    SearchRoom
+  end if
+  return
+end sub
+
+' Lines 3340-3590
+sub SearchRoom:
+  NewLine
+  print at 2,21, "YOU SEARCH THE ROOM AND FIND"
+  Pick = random(1, 14)
+  N = FindOf[Pick]
+  NewLine
+  select case N
+    case 1
+      print at 2,21, "A DEAD MAN"
+    case 2
+      print at 2,21, "A MOLDY COFFIN"
+    case 3
+      print at 2,21, "A ROACH"
+    case 4
+      print at 2,21, "A SLAIN MONSTER"
+    case 5
+      print at 2,21, "A PIECE OF BREAD"
+    case 6
+      print at 2,21, "A TREASURE CHEST"
+      Delay
+      NewLine
+      print at 2,21, "YOU OPEN THE LID........"
+      Delay
+      Max16 = 2000
+      Rand16
+      G4 = R16
+      G4 += 1
+      NewLine
+      print at 2,21, "AND FIND "
+      OutX = 11
+      NumValue = G4
+      PutNum
+      print at OutX,21, " GOLD PIECES."
+      Gold += G4
+      if Gold > 30000 then Gold = 30000
+    case 7
+      print at 2,21, "A TI HOME COMPUTER"
+    case 8
+      print at 2,21, "AN OLD SWORD"
+    case 9
+      print at 2,21, "A CANDLE"
+    case else
+      print at 2,21, "THE WIZARDS REWARD-1,000"
+      NewLine
+      print at 2,21, "GOLD PIECES"
+      Gold += 1000
+      if Gold > 30000 then Gold = 30000
+  end select
+  ShowStatus
+  return
+end sub
+
+' Lines 3730-3780 with 5400-5470
+sub TunnelNS:
+  NewLine
+  SecretDoorText
+  NewLine
+  print at 2,21, " . . . ENTER A NORTH-SOUTH"
+  NewLine
+  print at 2,21, "TUNNEL"
+  DoorLocksText
+  return
+end sub
+
+sub TunnelEW:
+  NewLine
+  SecretDoorText
+  NewLine
+  print at 2,21, " . . . ENTER AN EAST-WEST"
+  NewLine
+  print at 2,21, "TUNNEL"
+  DoorLocksText
+  return
+end sub
+
+sub SecretDoorText:
+  NewLine
+  print at 2,21, "YOU OPEN A SECRET DOOR AND"
+  SfxSecret
+  return
+end sub
+
+sub DoorLocksText:
+  NewLine
+  print at 2,21, "THE DOOR CLOSES AND LOCKS"
+  NewLine
+  print at 2,21, "BEHIND YOU"
+  SfxSecret
+  return
+end sub
+
+' Lines 3860-4150 and 5310-5370
+sub TrapDoor:
+  SfxTrap
+  NewLine
+  print at 2,21, "YOU STEPPED ON A . . . ."
+  NewLine
+  print at 2,21, " . . TRAP DOOR"
+  Delay
+  Pick = random(1, 4)
+  if Pick < 3 then
+    NewLine
+    NewLine
+    print at 2,21, "BUT . . YOU CAUGHT YOURSELF"
+    return
+  end if
+  if L1 = 2 then
+    NewLine
+    print at 2,21, "YOU FELL INTO A DEEP . . PIT"
+    Delay
+    NewLine
+    print at 2,21, "YOU'RE LUCKY . . . . . . ."
+    NewLine
+    print at 2,21, "YOU DIDN'T GET HURT"
+    Delay
+    NewLine
+    print at 2,21, "BUT IN CLIMBING OUT . . ."
+    Gold = 100
+    Delay
+    NewLine
+    NewLine
+    print at 2,21, "YOU . . . . DROPPED"
+    NewLine
+    print at 2,21, "MOST OF YOUR GOLD PIECES."
+    NewLine
+    print at 2,21, "YOU HAVE . . 100 GOLD PIECES"
+    NewLine
+    print at 2,21, "LEFT."
+    return
+  end if
+  L1 = 2
+  K = 1
+  KeyNoticed = false
+  NewLine
+  print at 2,21, "YOU FELL THRU TO THE . ."
+  NewLine
+  print at 2,21, " . . BOTTOM LEVEL . . . AND"
+  Gold = 100
+  Delay
+  NewLine
+  print at 2,21, "YOU LOST MOST OF YOUR GOLD"
+  NewLine
+  print at 2,21, "PIECES."
+  NewLine
+  print at 2,21, "YOU HAVE . . . 100 GOLD"
+  NewLine
+  print at 2,21, "PIECES LEFT."
+  NewLine
+  print at 2,21, "BUT, YOU STILL HAVE YOUR KEY"
+  ' The map now shows the bottom level, where you landed
+  Idx = D - 1
+  Idx <<= 3
+  Idx += C + 63
+  Seen[Idx] = 1
+  return
+end sub
+
+' Lines 4170-4280
+sub StairwayRoom:
+  NewLine
+  print at 2,21, "YOU ARE AT A STAIRWAY"
+  NewLine
+  print at 2,21, " . . . . . GOING UP . . ."
+  SfxStair
+  return
+end sub
+
+' Lines 2780-2950: Which = 1 north, 2 east, 3 south, 4 west
+sub WallText(u8 Which):
+  ClearText
+  NewLine
+  select case Which
+    case 1
+      print at 2,21, "YOU ARE AT THE NORTH WALL"
+    case 2
+      print at 2,21, "YOU ARE AT THE EAST WALL"
+    case 3
+      print at 2,21, "YOU ARE AT THE SOUTH WALL"
+    case else
+      print at 2,21, "YOU ARE AT THE WEST WALL"
+  end select
+  SfxWall
+  NewLine
+  print at 2,21, "YOU CANNOT PASS THROUGH"
+  NewLine
+  print at 2,21, "TRY ANOTHER DIRECTION."
+  return
+end sub
+
+' Lines 5180-5200
+sub SuperKeyText:
+  NewLine
+  print at 2,21, "YOU HAVE FOUND THE SUPER KEY"
+  Delay
+  return
+end sub
+
+' Lines 1760-1830: R = INT((G+100)*Answers-7000+1)/M1)
+sub ShowRating:
+  Rating = Gold
+  Rating += 100
+  Part = Answers
+  Rating *= Part
+  Rating -= 6999
+  Part = M1
+  Rating /= Part
+  NewLine
+  NewLine
+  print at 2,21, "YOUR RATING IS "
+  OutX = 17
+  NumValue = Rating
+  PutNum
+  NewLine
+  NewLine
+  print at 2,21, "IT TOOK YOU "
+  OutX = 14
+  NumValue = M1
+  PutNum
+  print at OutX,21, " TURNS TO"
+  NewLine
+  print at 2,21, "FIND THE WAY OUT"
+  return
+end sub
+
+' Lines 900-1150 and 1840-1890: fill both levels, then place the player
+sub MakeDungeon:
+  for I = 0 to 127
+    Pick = random(1, 7)
+    Rooms[I] = Pick
+    Seen[I] = 0
+  next
+  ' Trap doors: the same count H on both levels
+  N = random(1, 3)
+  for L1 = 0 to 1
+    for I = 1 to N
+      PlaceRoom
+      Rooms[Idx] = RoomTrap
+    next
+  next
+  ' Stairways: the same count S on both levels
+  N = random(2, 5)
+  for L1 = 0 to 1
+    for I = 1 to N
+      PlaceRoom
+      Rooms[Idx] = RoomStairs
+    next
+  next
+  Gold = 1000
+  Answers = 0
+  M1 = 1
+  K = 0
+  KeyNoticed = false
+  C = random(1, 8)
+  D = random(1, 8)
+  L1 = 2
+  Idx = D - 1
+  Idx <<= 3
+  Idx += C + 63
+  Rooms[Idx] = RoomSmokey
+  return
+end sub
+
+' Random chamber on level L1 (0 or 1 here)
+sub PlaceRoom:
+  Idx = L1 << 6
+  Pick = random(0, 63)
+  Idx += Pick
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Screen
+' ---------------------------------------------------------------------------
+
+' Status panel (columns 2-18), map (columns 20-29), text window (rows 13-21)
+sub DrawPlayScreen:
+  cls
+  backdrop black
+  set text colors white count 16
+  set text colors dark yellow at 6 count 1
+  print at 2,2, "GET THE GOLD"
+  print at 2,4, "LEVEL"
+  print at 2,5, "GOLD"
+  print at 2,6, "MOVES"
+  put char 152 at 2,8
+  print at 4,8, "STAIRWAY"
+  put char 146 at 2,9
+  print at 4,9, "DANGER"
+  put char 160 at 2,10
+  print at 4,10, "YOU"
+  put char UnknownTile at 2,11
+  print at 4,11, "UNEXPLORED"
+  fill 128 count 10 at 20,2
+  fill 128 count 10 at 20,11
+  for Y = 3 to 10
+    put char 128 at 20,Y
+    put char 128 at 29,Y
+  next
+  fill 129 count 28 at 2,12
+  return
+end sub
+
+' Mini-map of the current level: seen rooms by type, the rest unknown
+sub DrawMap:
+  N = L1 - 1
+  N <<= 6
+  for Y = 0 to 7
+    for X = 0 to 7
+      Pick = N + X
+      Ch = Y << 3
+      Pick += Ch
+      Ch = UnknownTile
+      if Seen[Pick] = 1 then
+        Ch = Rooms[Pick]
+        Ch = RoomTiles[Ch]
+      end if
+      OutX = MapX + X
+      OutY = MapY + Y
+      put char Ch at OutX,OutY
+    next
+  next
+  OutX = MapX + C - 1
+  OutY = MapY + D - 1
+  put char PlayerTile at OutX,OutY
+  OutY = BottomTextY
+  return
+end sub
+
+sub ShowStatus:
+  if L1 = 2 then
+    print at 9,4, "BOTTOM"
+  else
+    print at 9,4, "UPPER "
+  end if
+  fill Blank count 8 at 9,5
+  OutX = 9
+  OutY = 5
+  NumValue = Gold
+  PutNum
+  fill Blank count 8 at 9,6
+  OutX = 9
+  OutY = 6
+  NumValue = M1
+  PutNum
+  OutY = BottomTextY
+  return
+end sub
+
+sub ShowPrompt:
+  fill Blank count 28 at 2,22
+  print at 2,22, "WHAT NOW, "
+  put PlayerName count NameLen at 12,22
+  X = 12 + NameLen
+  put char 63 at X,22
+if defined AMY_HAS_EOS
+  print at 2,23, "N S E W  U)P G)OLD Q)UIT"
+else defined
+  print at 2,23, "STICK MOVE FIRE UP 1 GOLD"
+end defined
+  return
+end sub
+
+' Text window: the TI scrolled the whole screen; here only rows 13-21 scroll
+sub NewLine:
+  copy vram.name + 450 count 28 to vram.name + 418
+  copy vram.name + 482 count 28 to vram.name + 450
+  copy vram.name + 514 count 28 to vram.name + 482
+  copy vram.name + 546 count 28 to vram.name + 514
+  copy vram.name + 578 count 28 to vram.name + 546
+  copy vram.name + 610 count 28 to vram.name + 578
+  copy vram.name + 642 count 28 to vram.name + 610
+  copy vram.name + 674 count 28 to vram.name + 642
+  fill Blank count 28 at 2,21
+  wait 2 frames
+  return
+end sub
+
+sub ClearText:
+  for Y = TopTextY to BottomTextY
+    fill Blank count 28 at 2,Y
+  next
+  fill Blank count 28 at 2,22
+  fill Blank count 28 at 2,23
+  return
+end sub
+
+' GOSUB 860: a pause (fire skips it)
+sub Delay:
+  wait 40 frames or press
+  return
+end sub
+
+' Prints NumValue left-aligned at OutX,OutY and advances OutX
+sub PutNum:
+  NumBuf = str$(NumValue)
+  if NumBuf[0] = 45 then
+    put char 45 at OutX,OutY
+    inc OutX
+  end if
+  NumFirst = 1
+  do while NumFirst < 10
+    if NumBuf[NumFirst] <> 48 then exit do
+    inc NumFirst
+  loop
+  NumCount = 11 - NumFirst
+  put NumBuf + NumFirst count NumCount at OutX,OutY
+  OutX += NumCount
+  return
+end sub
+
+' R16 = random 0..Max16-1
+sub Rand16:
+  RandHi = random(0, 255)
+  RandLo = random(0, 255)
+  R16 = RandHi
+  R16 <<= 8
+  Lo16 = RandLo
+  R16 += Lo16
+  R16 = R16 % Max16
+  return
+end sub
+
+' The player blinks on the map while the game waits
+sub Animate:
+  inc Blink
+  if Blink < 15 then return
+  Blink = 0
+  toggle BlinkOn
+  if BlinkOn then
+    vpoke vram.color + 20, $B0
+  else
+    vpoke vram.color + 20, $F0
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Input
+' ---------------------------------------------------------------------------
+
+if defined AMY_HAS_EOS
+
+sub GetKey:
+  KeyReq = key start status KeyStat
+key_wait:
+  wait
+  Animate
+  Ch = key poll KeyReq status KeyStat
+  if KeyStat = 1 then goto key_wait
+  if KeyStat = 2 then
+    KeyReq = key start status KeyStat
+    goto key_wait
+  end if
+  if Ch >= 97 then
+    if Ch <= 122 then Ch -= 32
+  end if
+  return
+end sub
+
+sub ReadDigit(u8 Low, u8 High):
+digit_wait:
+  GetKey
+  if Ch < 48 then goto digit_wait
+  Choice = Ch - 48
+  if Choice < Low then goto digit_wait
+  if Choice > High then goto digit_wait
+  return
+end sub
+
+' Line 1990: N, E, S, W, U, G or Q
+sub GetAction:
+action_key:
+  GetKey
+  select case Ch
+    case 78, 69, 83, 87, 85, 71, 81
+      Act = Ch
+      return
+  end select
+  goto action_key
+end sub
+
+' Typed line into Typed[], shown at X,Y; RETURN ends it
+sub TypeLine(u8 Limit):
+  TypedLen = 0
+type_key:
+  GetKey
+  if Ch = 13 then
+    if TypedLen > 0 then return
+    goto type_key
+  end if
+  if Ch = 8 then
+    if TypedLen > 0 then
+      dec TypedLen
+      N = X + TypedLen
+      put char Blank at N,Y
+    end if
+    goto type_key
+  end if
+  if Ch < 32 then goto type_key
+  if Ch > 90 then goto type_key
+  if TypedLen = Limit then goto type_key
+  Typed[TypedLen] = Ch
+  N = X + TypedLen
+  put char Ch at N,Y
+  inc TypedLen
+  goto type_key
+end sub
+
+' Line 560: INPUT A$
+sub AskName:
+  print at 2,8, "? "
+  X = 4
+  Y = 8
+  TypeLine(10)
+  NameLen = TypedLen
+  for I = 0 to NameLen - 1
+    PlayerName[I] = Typed[I]
+  next
+  return
+end sub
+
+' Lines 4860-4880 and INPUT P$: Choice = 1 "BAG", 2 "IN BAG", 0 anything else
+sub AskQuestion:
+  QuestionText
+  NewLine
+  print at 2,21, "? "
+  X = 4
+  Y = 21
+  TypeLine(12)
+  Choice = 0
+  if TypedLen = 3 then
+    if Typed[0] = 66 then
+      if Typed[1] = 65 then
+        if Typed[2] = 71 then Choice = 1
+      end if
+    end if
+  end if
+  if TypedLen = 6 then
+    if Typed[0] = 73 then
+      if Typed[1] = 78 then
+        if Typed[2] = 32 then
+          if Typed[3] = 66 then
+            if Typed[4] = 65 then
+              if Typed[5] = 71 then Choice = 2
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub WaitPage:
+  print at 2,23, "PRESS ANY KEY TO CONTINUE..."
+  GetKey
+  return
+end sub
+
+else defined
+
+' Keypad digit, polled so the map keeps blinking (255 = no key)
+sub ReadDigit(u8 Low, u8 High):
+digit_release:
+  wait
+  Choice = keypad(1)
+  if Choice <> 255 then goto digit_release
+digit_wait:
+  wait
+  Animate
+  Choice = keypad(1)
+  if Choice = 255 then goto digit_wait
+  if Choice < Low then goto digit_wait
+  if Choice > High then goto digit_wait
+  return
+end sub
+
+' Joystick = N E S W, fire = U, keypad 1 = G, * = Q
+sub GetAction:
+release:
+  wait
+  if joypad(1).up then goto release
+  if joypad(1).down then goto release
+  if joypad(1).left then goto release
+  if joypad(1).right then goto release
+  if joypad(1).fire then goto release
+  if keypad(1) <> 255 then goto release
+choose_action:
+  wait
+  Animate
+  if joypad(1).up then
+    Act = 78
+    return
+  end if
+  if joypad(1).right then
+    Act = 69
+    return
+  end if
+  if joypad(1).down then
+    Act = 83
+    return
+  end if
+  if joypad(1).left then
+    Act = 87
+    return
+  end if
+  if joypad(1).fire then
+    Act = 85
+    return
+  end if
+  Choice = keypad(1)
+  if Choice = 1 then
+    Act = 71
+    return
+  end if
+  if Choice = 10 then
+    Act = 81
+    return
+  end if
+  goto choose_action
+end sub
+
+' Line 560: names to choose from instead of typing
+sub AskName:
+  print at 4,9, "1 ARTHUR"
+  print at 4,10, "2 MORGANA"
+  print at 4,11, "3 MERLIN"
+  print at 4,12, "4 GUINEVERE"
+  ReadDigit(1, 4)
+  Pick = Choice - 1
+  Pick *= 10
+  NameLen = NameLens[Choice]
+  for I = 0 to 9
+    N = Pick + I
+    Ch = NameChars[N]
+    PlayerName[I] = Ch
+  next
+  return
+end sub
+
+' The question as four choices; Choice = 1 "BAG", 2 "IN BAG", 0 otherwise
+sub AskQuestion:
+  QuestionText
+  ' Slot holds 1 BAG, 2 IN BAG, 3 and 4 two wrong answers, shuffled
+  Slot[0] = 1
+  Slot[1] = 2
+  Pick = random(0, 5)
+  Slot[2] = Pick + 3
+pick_wrong:
+  Pick = random(0, 5)
+  Pick += 3
+  if Pick = Slot[2] then goto pick_wrong
+  Slot[3] = Pick
+  for I = 0 to 3
+    Pick = random(0, 3)
+    N = Slot[I]
+    Slot[I] = Slot[Pick]
+    Slot[Pick] = N
+  next
+  for I = 0 to 3
+    NewLine
+    Ch = I + 49
+    put char Ch at 2,21
+    N = Slot[I]
+    select case N
+      case 1
+        print at 4,21, "BAG"
+      case 2
+        print at 4,21, "IN BAG"
+      case 3
+        print at 4,21, "IN MY BOOTS"
+      case 4
+        print at 4,21, "UNDER A ROCK"
+      case 5
+        print at 4,21, "IN THE BANK"
+      case 6
+        print at 4,21, "IN MY HAT"
+      case 7
+        print at 4,21, "BURIED IN THE GARDEN"
+      case else
+        print at 4,21, "WITH THE WIZARD"
+    end select
+  next
+  ReadDigit(1, 4)
+  Pick = Choice - 1
+  Choice = Slot[Pick]
+  if Choice > 2 then Choice = 0
+  return
+end sub
+
+sub WaitPage:
+  print at 2,23, "PRESS FIRE TO CONTINUE..."
+  pause until press
+  wait no fire
+  return
+end sub
+
+end defined
+
+' Lines 4860-4880
+sub QuestionText:
+  Delay
+  NewLine
+  print at 2,21, "*** YOU MAY NOT PASS"
+  NewLine
+  print at 2,21, "    THROUGH UNTIL"
+  NewLine
+  print at 2,21, "*** YOU TELL ME WHERE THE"
+  NewLine
+  print at 2,21, "    GOLD IS"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Program 1: the instructions, now part of the same program
+' ---------------------------------------------------------------------------
+
+sub InstructPage:
+  cls
+  backdrop dark blue
+  set text colors white count 16
+  return
+end sub
+
+sub Instructions:
+  ' --- Program 1, lines 100-250 ---
+  InstructPage
+  print at 8,3, "GET THE GOLD"
+  print at 2,8, "INSTRUCTIONS..............."
+  SfxTune
+  ' Lines 270-280
+  InstructPage
+  print at 2,2, "GET THE GOLD IS AN ADVENTURE"
+  print at 2,3, "GAME, WHERE THE PLAYER MUST"
+  print at 2,5, "ANSWER CERTAIN QUESTIONS AS"
+  print at 2,7, "HE WANDERS THROUGH THE"
+  print at 2,9, "CHAMBERS AND TUNNELS OF A"
+  print at 2,11, "TWO-LEVEL MAZE."
+  WaitPage
+  ' Lines 330-420
+  InstructPage
+  print at 2,1, "THE PROGRAM"
+  print at 2,2, "--- -------"
+  print at 2,4, "YOU ARE GIVEN 1,000 GOLD"
+  print at 2,5, "PIECES, AND THEN TRANSPORTED"
+  print at 2,6, "TO THE LOWER LEVEL OF A 128-"
+  print at 2,7, "CHAMBER, TWO-LEVEL DUNGEON"
+  print at 2,8, "(64 CHAMBERS PER LEVEL)."
+  print at 2,10, "YOUR GOAL IS TO ESCAPE WITH"
+  print at 2,11, "AS MUCH GOLD AS POSSIBLE."
+  print at 2,13, "GOLD PIECES ARE ACQUIRED BY"
+  print at 2,14, "ANSWERING THE QUESTION ASKED"
+  print at 2,15, "BY THE MONSTERS THAT INHABIT"
+  print at 2,16, "THE DUNGEON."
+  print at 2,18, "EACH TIME AN ANSWER IS"
+  print at 2,19, "CORRECT, GOLD IS GIVEN AS A"
+  print at 2,20, "REWARD. IF THE ANSWER IS"
+  print at 2,21, "INCORRECT, THEN GOLD IS"
+  print at 2,22, "TAKEN AWAY."
+  WaitPage
+  ' Lines 460-530
+  InstructPage
+  print at 2,1, "THE QUESTION"
+  print at 2,2, "--- --------"
+  print at 2,4, "THE MONSTERS WILL ASK YOU"
+  print at 2,6, "ONE SPECIAL QUESTION AS YOU"
+  print at 2,8, "TRAVEL THROUGH THE DUNGEON:"
+  print at 2,11, "WHERE IS THE GOLD?"
+  print at 2,14, "HINT: WHERE WOULD YOU PUT"
+  print at 2,16, "1,000 GOLD PIECES IF YOU"
+  print at 2,18, "WERE CARRYING THEM?"
+  WaitPage
+  ' Lines 550-650
+  InstructPage
+  print at 2,1, "MOVES"
+  print at 2,2, "-----"
+  print at 2,4, "AS YOU MOVE THROUGH THE"
+  print at 2,5, "DUNGEON YOU WILL ENCOUNTER"
+  print at 2,6, "MONSTERS, THIEVES, EMPTY"
+  print at 2,7, "CHAMBERS, TRAP DOORS, SECRET"
+  print at 2,8, "DOORS LEADING INTO NORTH-"
+  print at 2,9, "SOUTH AND EAST-WEST TUNNELS"
+  print at 2,10, "AND SUPER KEYS."
+if defined AMY_HAS_EOS
+  print at 2,12, "TO MOVE, ENTER THE LETTER IN"
+  print at 2,13, "PARENTHESES FOR THE DESIRED"
+  print at 2,14, "MOVE OR ACTION:"
+  print at 2,16, "1- (N)ORTH     2- (E)AST"
+  print at 2,17, "3- (S)OUTH     4- (W)EST"
+  print at 2,18, "5- (Q)UIT [ENDS GAME]"
+  print at 2,19, "6- (G)OLD [GIVES GOLD COUNT]"
+  print at 2,20, "7- (U)P [USED AT STAIRWAYS]"
+else defined
+  print at 2,12, "PUSH THE JOYSTICK TO MOVE"
+  print at 2,13, "NORTH, EAST, SOUTH OR WEST."
+  print at 2,15, "FIRE: GO UP A STAIRWAY"
+  print at 2,16, "KEYPAD 1: GOLD COUNT"
+  print at 2,17, "KEYPAD *: QUIT (ENDS GAME)"
+  print at 2,19, "THE MONSTERS' QUESTION IS"
+  print at 2,20, "ANSWERED WITH KEYPAD 1 TO 4."
+end defined
+  WaitPage
+  ' Lines 680-750
+  InstructPage
+  print at 2,1, "GAME RATING"
+  print at 2,2, "---- ------"
+  print at 2,4, "AFTER YOU COMPLETE THE GAME,"
+  print at 2,5, "A GAME RATING IS DISPLAYED,"
+  print at 2,6, "ALONG WITH THE NUMBER OF"
+  print at 2,8, "GOLD PIECES ACQUIRED AND"
+  print at 2,9, "NUMBER OF TURNS IT TOOK YOU"
+  print at 2,10, "TO FIND YOUR WAY OUT."
+  print at 2,12, "THE RATING WILL BE SOMEWHERE"
+  print at 2,13, "BETWEEN -500 AND +1000. THE"
+  print at 2,14, "HIGHER THE NUMBER, THE"
+  print at 2,15, "BETTER THE RATING. A"
+  print at 2,16, "NEGATIVE NUMBER INDICATES A"
+  print at 2,17, "POOR RATING."
+  print at 2,19, "THE MAP SHOWS THE CHAMBERS"
+  print at 2,20, "YOU HAVE SEEN. GOOD LUCK!!!!"
+  WaitPage
+  return
+end sub
+
+' Adaptation: editorial pages at power-on
+sub EditorialPages:
+  backdrop black
+  cls
+  print at 9,1, "GET THE GOLD"
+  print at 7,3, "BY FRANK ELSESSER"
+  print at 4,4, "COMPUTE! DECEMBER 1983"
+  print at 2,7, "A TI-99 DUNGEON ADVENTURE:"
+  print at 2,8, "TWO LEVELS, 128 CHAMBERS,"
+  print at 2,9, "PERFIDIOUS MONSTERS, CUNNING"
+  print at 2,10, "THIEVES, TRAP DOORS AND SOME"
+  print at 2,11, "PRETTY EERIE SOUND EFFECTS."
+  print at 2,13, "THE GAME WAS SO LONG THAT IT"
+  print at 2,14, "CAME IN TWO PROGRAMS SAVED"
+  print at 2,15, "ONE AFTER THE OTHER ON TAPE:"
+  print at 2,16, "THE INSTRUCTIONS, THEN THE"
+  print at 2,17, "GAME. HERE THEY ARE ONE."
+  WaitPage
+  cls
+  print at 9,1, "THIS EDITION"
+if defined AMY_HAS_EOS
+  print at 5,3, "COLECO ADAM VERSION"
+else defined
+  print at 4,3, "COLECOVISION VERSION"
+end defined
+  print at 6,4, "AMY BIENVENU, 2026"
+  print at 2,7, "NEW: A MAP OF THE CHAMBERS"
+  print at 2,8, "YOU HAVE SEEN, BESIDE YOUR"
+  print at 2,9, "GOLD AND YOUR MOVES."
+  print at 2,11, "KEPT FROM 1983: ONE MONSTER"
+  print at 2,12, "LISTENS TO YOUR NAME, NOT TO"
+  print at 2,13, "YOUR ANSWER, SO ONLY ONE"
+  print at 2,14, "REPLY PLEASES HIM; AND THE"
+  print at 2,15, "SUPER KEY OPENS EVERY"
+  print at 2,16, "STAIRWAY, WITH OR WITHOUT"
+  print at 2,17, "THE KEY. THE CODE SAID SO."
+  WaitPage
+  return
+end sub
+
+sub LoadTiles:
+  copy MapTiles count 16 to vram.pattern + 1024
+  copy RoomPatterns count 64 to vram.pattern + 1088
+  copy DangerPatterns count 24 to vram.pattern + 1152
+  copy StairsPattern count 8 to vram.pattern + 1216
+  copy PlayerPattern count 8 to vram.pattern + 1280
+  ' Map colors: frame light blue, rooms gray, danger light red,
+  ' stairs dark yellow, the player white
+  set text colors light blue at 16 count 1
+  set text colors gray at 17 count 1
+  set text colors light red at 18 count 1
+  set text colors dark yellow at 19 count 1
+  set text colors white at 20 count 1
+  return
+end sub
+
+' Map tiles: 128 frame, 129 separator line
+data MapTiles bytes $FF,$81,$BD,$A5,$A5,$BD,$81,$FF,$00,$00,$00,$FF,$FF,$00,$00,$00
+' 136 unknown, 137 empty, 138 smokey, 139 N-S tunnel, 140 E-W tunnel
+data RoomPatterns bytes
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$7E,$42,$42,$42,$42,$7E,$00
+  $00,$7E,$4A,$52,$4A,$52,$7E,$00
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $00,$00,$FF,$00,$00,$FF,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+' 144 monster, 145 thief, 146 trap door
+data DangerPatterns bytes
+  $3C,$7E,$5A,$7E,$7E,$3C,$24,$00
+  $00,$3C,$7E,$DB,$7E,$3C,$18,$00
+  $00,$7E,$66,$5A,$5A,$66,$7E,$00
+end data
+' 152 stairway, 160 the player
+data StairsPattern bytes $03,$03,$0F,$0F,$3F,$3F,$FF,$FF
+data PlayerPattern bytes $18,$3C,$18,$7E,$18,$24,$42,$00
+
+' Room type -> map tile (index 0 unused)
+data RoomTiles bytes 136,137,138,144,144,145,139,140,146,152
+' Line 3110: M4 -> 1 DRA, 2 BUS, 3 LUM, 4 BEWARE
+data MonsterOf bytes 0,1,2,3,4,1,3,2,2,1,4
+' Line 3370: ZZZ -> 1 dead man ... 10 wizard
+data FindOf bytes 0,1,6,2,3,4,5,6,6,7,1,8,9,10,6
+
+if not defined AMY_HAS_EOS
+data NameLens bytes 0,6,7,6,9
+data NameChars bytes 65,82,84,72,85,82,32,32,32,32,77,79,82,71,65,78,65,32,32,32,77,69,82,76,73,78,32,32,32,32,71,85,73,78,69,86,69,82,69,32
+end defined
+
+sub SfxTitle:
+  play sounds 1, 2, 3
+  wait 384 frames
+  return
+end sub
+
+sub SfxTune:
+  play sounds 4, 5, 6
+  wait 109 frames
+  return
+end sub
+
+sub SfxMonster:
+  play sounds 7, 8, 9
+  wait 124 frames
+  return
+end sub
+
+sub SfxDoor:
+  play sounds 10, 11
+  wait 265 frames
+  return
+end sub
+
+sub SfxSteps:
+  play sound 12
+  wait 93 frames
+  return
+end sub
+
+sub SfxStair:
+  play sound 13
+  wait 94 frames
+  return
+end sub
+
+sub SfxWall:
+  play sounds 14, 15, 16, 17
+  wait 30 frames
+  return
+end sub
+
+sub SfxTrap:
+  play sound 18
+  wait 62 frames
+  return
+end sub
+
+sub SfxThief:
+  play sound 19
+  wait 160 frames
+  return
+end sub
+
+sub SfxBeware:
+  play sounds 20, 21, 22
+  wait 45 frames
+  return
+end sub
+
+sub SfxSecret:
+  play sounds 23, 24, 25, 26
+  wait 60 frames
+  return
+end sub
+
+sub SfxEscape:
+  play sounds 27, 28, 29
+  wait 120 frames
+  return
+end sub
+
+asm {
+TitleT1:
+    db $40,$56,$03,$0C,$40,$F9,$02,$0C,$40,$56,$03,$0C,$40,$CD,$02,$0C,$40,$56,$03,$0C,$40,$CD,$02,$0C
+    db $40,$56,$03,$18,$40,$CD,$02,$0C,$40,$8D,$03,$0C,$40,$56,$03,$0C,$40,$CD,$02,$0C,$40,$56,$03,$0C
+    db $40,$CD,$02,$0C,$40,$56,$03,$18,$40,$56,$03,$0C,$40,$F9,$02,$0C,$40,$56,$03,$0C,$40,$CD,$02,$0C
+    db $40,$56,$03,$0C,$40,$CD,$02,$0C,$40,$56,$03,$18,$40,$CD,$02,$0C,$40,$8D,$03,$0C,$40,$56,$03,$0C
+    db $40,$CD,$02,$0C,$40,$56,$03,$0C,$40,$CD,$02,$0C,$40,$56,$03,$18,$50
+TitleT2:
+    db $80,$AB,$21,$0C,$80,$7C,$21,$0C,$80,$68,$21,$0C,$80,$68,$21,$0C,$80,$7C,$21,$0C,$80,$7C,$21,$0C
+    db $80,$AB,$21,$18,$80,$AB,$21,$0C,$80,$7C,$21,$0C,$80,$68,$21,$0C,$80,$1D,$21,$0C,$80,$7C,$21,$0C
+    db $80,$68,$21,$0C,$80,$AB,$21,$18,$80,$AB,$21,$0C,$80,$7C,$21,$0C,$80,$68,$21,$0C,$80,$68,$21,$0C
+    db $80,$7C,$21,$0C,$80,$7C,$21,$0C,$80,$AB,$21,$18,$80,$AB,$21,$0C,$80,$7C,$21,$0C,$80,$68,$21,$0C
+    db $80,$1D,$21,$0C,$80,$7C,$21,$0C,$80,$68,$21,$0C,$80,$AB,$21,$18,$90
+TitleT3:
+    db $C0,$D6,$20,$0C,$C0,$BF,$20,$0C,$C0,$B4,$20,$0C,$C0,$B4,$20,$0C,$C0,$BF,$20,$0C,$C0,$BF,$20,$0C
+    db $C0,$D6,$20,$18,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C
+    db $C0,$E8,$F3,$0C,$C0,$E8,$F3,$18,$C0,$D6,$20,$0C,$C0,$BF,$20,$0C,$C0,$B4,$20,$0C,$C0,$B4,$20,$0C
+    db $C0,$BF,$20,$0C,$C0,$BF,$20,$0C,$C0,$D6,$20,$18,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C
+    db $C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$0C,$C0,$E8,$F3,$18,$D0
+TuneT1:
+    db $40,$AB,$01,$08,$40,$7C,$01,$08,$40,$CD,$02,$0F,$40,$F9,$02,$0F,$40,$AB,$01,$0F,$40,$AB,$01,$06
+    db $40,$7C,$01,$06,$40,$68,$01,$06,$40,$1D,$01,$06,$40,$7C,$01,$06,$40,$68,$01,$06,$40,$56,$03,$0C
+    db $50
+TuneT2:
+    db $80,$56,$03,$08,$80,$56,$03,$08,$80,$56,$03,$0F,$80,$56,$03,$0F,$80,$56,$03,$0F,$80,$56,$03,$06
+    db $80,$8D,$03,$06,$80,$56,$03,$06,$80,$56,$03,$06,$80,$56,$03,$06,$80,$56,$03,$06,$80,$AB,$21,$0C
+    db $90
+TuneT3:
+    db $C0,$E8,$F3,$08,$C0,$E8,$F3,$08,$C0,$E8,$F3,$0F,$C0,$E8,$F3,$0F,$C0,$E8,$F3,$0F,$C0,$E8,$F3,$06
+    db $C0,$E8,$F3,$06,$C0,$E8,$F3,$06,$C0,$E8,$F3,$06,$C0,$E8,$F3,$06,$C0,$E8,$F3,$06,$C0,$D6,$20,$0C
+    db $D0
+MonsterT1:
+    db $40,$F9,$02,$0F,$40,$F9,$02,$0B,$40,$F9,$02,$05,$40,$F9,$02,$0F,$40,$7F,$02,$0B,$40,$A6,$02,$05
+    db $40,$A6,$02,$0B,$40,$F9,$02,$05,$40,$F9,$02,$0B,$40,$56,$03,$05,$40,$F9,$02,$1E,$50
+MonsterT2:
+    db $80,$7C,$01,$0F,$80,$7C,$01,$0B,$80,$7C,$01,$05,$80,$7C,$11,$0F,$80,$41,$01,$0B,$80,$53,$01,$05
+    db $80,$53,$01,$0B,$80,$7C,$11,$05,$80,$7C,$01,$0B,$80,$AB,$01,$05,$80,$7C,$01,$1E,$90
+MonsterT3:
+    db $C0,$E8,$F3,$0F,$C0,$E8,$F3,$0B,$C0,$E8,$F3,$05,$C0,$E8,$F3,$0F,$C0,$E8,$F3,$0B,$C0,$E8,$F3,$05
+    db $C0,$E8,$F3,$0B,$C0,$E8,$F3,$05,$C0,$E8,$F3,$0B,$C0,$E8,$F3,$05,$C0,$BF,$00,$1E,$D0
+DoorT1:
+    db $40,$56,$03,$08,$40,$F9,$02,$08,$40,$A6,$02,$1E,$40,$A6,$02,$0F,$40,$A6,$02,$0F,$40,$F9,$02,$0F
+    db $40,$A6,$02,$0F,$40,$7F,$02,$2D,$40,$A6,$02,$1E,$40,$A0,$00,$06,$40,$A0,$30,$06,$40,$A0,$50,$06
+    db $40,$A0,$80,$06,$40,$A0,$A0,$06,$40,$A0,$D0,$06,$40,$A0,$F0,$06,$40,$CA,$00,$06,$40,$CA,$30,$06
+    db $40,$CA,$50,$06,$40,$CA,$80,$06,$40,$CA,$A0,$06,$40,$CA,$D0,$06,$40,$CA,$F0,$06,$50
+DoorT2:
+    db $80,$E8,$F3,$08,$80,$E8,$F3,$08,$80,$E8,$F3,$1E,$80,$E8,$F3,$0F,$80,$E8,$F3,$0F,$80,$E8,$F3,$0F
+    db $80,$E8,$F3,$0F,$80,$E8,$F3,$2D,$80,$E8,$F3,$1E,$80,$3A,$00,$06,$80,$3A,$30,$06,$80,$3A,$50,$06
+    db $80,$3A,$80,$06,$80,$3A,$A0,$06,$80,$3A,$D0,$06,$80,$3A,$F0,$06,$80,$49,$00,$06,$80,$49,$30,$06
+    db $80,$49,$50,$06,$80,$49,$80,$06,$80,$49,$A0,$06,$80,$49,$D0,$06,$80,$49,$F0,$06,$90
+StepsN:
+    db $00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$A6,$04,$00,$00,$F6,$03,$00,$00,$32,$01
+    db $00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$32,$01
+    db $00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$A6,$04
+    db $00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02
+    db $00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02
+    db $00,$00,$F6,$03,$00,$00,$A6,$04,$00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03
+    db $00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03,$00,$00,$32,$01,$00,$00,$A6,$02,$00,$00,$F6,$03
+    db $10
+StairT1:
+    db $40,$A0,$00,$01,$40,$9E,$00,$01,$40,$9B,$00,$01,$40,$99,$00,$01,$40,$97,$00,$01,$40,$95,$00,$01
+    db $40,$93,$00,$01,$40,$91,$00,$01,$40,$8F,$00,$01,$40,$8E,$00,$01,$40,$8C,$00,$01,$40,$8A,$00,$01
+    db $40,$88,$00,$01,$40,$87,$00,$01,$40,$85,$00,$01,$40,$84,$00,$01,$40,$82,$00,$01,$40,$81,$00,$01
+    db $40,$7F,$00,$01,$40,$7E,$00,$01,$40,$7C,$00,$01,$40,$7C,$00,$01,$40,$7D,$00,$01,$40,$7F,$00,$01
+    db $40,$80,$00,$01,$40,$81,$00,$01,$40,$82,$00,$01,$40,$83,$00,$01,$40,$85,$00,$01,$40,$86,$00,$01
+    db $40,$87,$00,$01,$40,$88,$00,$01,$40,$8A,$00,$01,$40,$8B,$00,$01,$40,$8D,$00,$01,$40,$8E,$00,$01
+    db $40,$8F,$00,$01,$40,$91,$00,$01,$40,$92,$00,$01,$40,$94,$00,$01,$40,$96,$00,$01,$40,$97,$00,$01
+    db $40,$99,$00,$01,$40,$9B,$00,$01,$40,$9C,$00,$01,$40,$9E,$00,$01,$40,$A0,$00,$01,$40,$A0,$00,$01
+    db $40,$9E,$00,$01,$40,$9B,$00,$01,$40,$99,$00,$01,$40,$97,$00,$01,$40,$95,$00,$01,$40,$93,$00,$01
+    db $40,$91,$00,$01,$40,$8F,$00,$01,$40,$8E,$00,$01,$40,$8C,$00,$01,$40,$8A,$00,$01,$40,$88,$00,$01
+    db $40,$87,$00,$01,$40,$85,$00,$01,$40,$84,$00,$01,$40,$82,$00,$01,$40,$81,$00,$01,$40,$7F,$00,$01
+    db $40,$7E,$00,$01,$40,$7C,$00,$01,$40,$7C,$00,$01,$40,$7D,$00,$01,$40,$7F,$00,$01,$40,$80,$00,$01
+    db $40,$81,$00,$01,$40,$82,$00,$01,$40,$83,$00,$01,$40,$85,$00,$01,$40,$86,$00,$01,$40,$87,$00,$01
+    db $40,$88,$00,$01,$40,$8A,$00,$01,$40,$8B,$00,$01,$40,$8D,$00,$01,$40,$8E,$00,$01,$40,$8F,$00,$01
+    db $40,$91,$00,$01,$40,$92,$00,$01,$40,$94,$00,$01,$40,$96,$00,$01,$40,$97,$00,$01,$40,$99,$00,$01
+    db $40,$9B,$00,$01,$40,$9C,$00,$01,$40,$9E,$00,$01,$40,$A0,$00,$01,$50
+WallT1:
+    db $40,$18,$11,$1E,$50
+WallT2:
+    db $80,$0B,$F0,$1E,$90
+WallT3:
+    db $C0,$18,$F1,$1E,$D0
+WallN:
+    db $00,$00,$13,$1E,$10
+TrapT1:
+    db $40,$25,$13,$0F,$40,$38,$10,$01,$40,$25,$13,$0F,$40,$38,$10,$01,$40,$5D,$12,$1E,$50
+ThiefT1:
+    db $40,$F9,$13,$02,$40,$53,$11,$1E,$40,$F9,$13,$02,$40,$53,$11,$1E,$40,$F9,$13,$02,$40,$53,$11,$1E
+    db $40,$F9,$13,$02,$40,$53,$11,$1E,$40,$F9,$13,$02,$40,$53,$11,$1E,$50
+BewareT1:
+    db $40,$FC,$01,$1E,$40,$53,$01,$0F,$50
+BewareT2:
+    db $80,$53,$01,$1E,$80,$FE,$00,$0F,$90
+BewareT3:
+    db $C0,$FE,$00,$1E,$C0,$CB,$00,$0F,$D0
+SecretT1:
+    db $40,$0E,$F0,$3C,$50
+SecretT2:
+    db $80,$0D,$F0,$3C,$90
+SecretT3:
+    db $C0,$E0,$F0,$3C,$D0
+SecretN:
+    db $00,$00,$37,$3C,$10
+EscapeT1:
+    db $40,$AB,$11,$3C,$40,$41,$11,$3C,$50
+EscapeT2:
+    db $80,$53,$11,$3C,$80,$1D,$11,$3C,$90
+EscapeT3:
+    db $C0,$1D,$11,$3C,$C0,$FE,$10,$3C,$D0
+
+GoldSoundTable:
+    dw TitleT1,$7035
+    dw TitleT2,$703F
+    dw TitleT3,$7049
+    dw TuneT1,$7035
+    dw TuneT2,$703F
+    dw TuneT3,$7049
+    dw MonsterT1,$7035
+    dw MonsterT2,$703F
+    dw MonsterT3,$7049
+    dw DoorT1,$7035
+    dw DoorT2,$703F
+    dw StepsN,$702B
+    dw StairT1,$7035
+    dw WallT1,$7035
+    dw WallT2,$703F
+    dw WallT3,$7049
+    dw WallN,$702B
+    dw TrapT1,$7035
+    dw ThiefT1,$7035
+    dw BewareT1,$7035
+    dw BewareT2,$703F
+    dw BewareT3,$7049
+    dw SecretT1,$7035
+    dw SecretT2,$703F
+    dw SecretT3,$7049
+    dw SecretN,$702B
+    dw EscapeT1,$7035
+    dw EscapeT2,$703F
+    dw EscapeT3,$7049
+}

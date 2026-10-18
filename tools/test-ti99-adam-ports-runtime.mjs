@@ -20,6 +20,7 @@ const captureDir = process.argv.includes("--artifacts") ? join(root, "artifacts"
 const cases = [
   { id: "southern-states", expected: "IDENTIFY THE STATES" },
   { id: "mystery-spell", expected: "COMPUTE! SEPTEMBER 1983" },
+  { id: "get-the-gold", expected: "GET THE GOLD" },
 ];
 
 const base = { version: 2, sourceLang: "amy", projectFiles: [], generatedAsm: "" };
