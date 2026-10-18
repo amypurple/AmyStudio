@@ -1362,6 +1362,23 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "runway-180",
+    "label": "Runway 180 (TI-99/4A Port)",
+    "detail": "James Dunn's 1983 jet-landing game, adapted with deterministic fixed-point sprite motion, runway hazards and ColecoVision controls.",
+    "projectName": "runway-180",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "sprites",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",

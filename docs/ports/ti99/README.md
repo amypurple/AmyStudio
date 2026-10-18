@@ -12,9 +12,10 @@ available, the source BASIC listing used as the historical reference.
 | Southern States | ColecoVision and OS7+EOS hybrid | C. Regena, 1983 | 5,120 bytes |
 | Diamond Drop | ColecoVision | Matt Giwer / Patrick Parrish, 1983 | 5,122 bytes |
 | Mystery Spell | ColecoVision and OS7+EOS hybrid | Doug Hapeman, 1983 | 11,669 bytes |
+| Runway 180 | ColecoVision | James Dunn, 1983 | 7,240 bytes |
 
-The six cartridge builds compile with the Safe, Balanced and Aggressive
-profiles. Their combined assembled sizes are 34,047, 33,455 and 33,420 bytes,
+The seven cartridge builds compile with the Safe, Balanced and Aggressive
+profiles. Their combined assembled sizes are 41,408, 40,695 and 40,650 bytes,
 respectively. `tools/test-ti99-ports-runtime.mjs` boots every cartridge through
 the real OS7 delay, advances its opening controls and verifies multiple nonblank
 rendered states. `tools/test-ti99-adam-ports-runtime.mjs` additionally builds
@@ -42,3 +43,8 @@ must carry a magic value and version so malformed dictionaries fail safely back
 to the built-in words. The proposed binary contract is recorded in
 `mystery-spell-eos-dictionary.md`; it is a design for the next implementation,
 not a claim that arbitrary external dictionaries are already accepted.
+
+Runway 180 uses tiles 128 and 136 for sky and ground rather than redefining the
+printable `!` and `*` glyphs. This preserves the playfield when the standard ASCII
+font is restored for instructions and end screens. Its crash route also keeps the
+original BASIC listing's clear-screen operation before the replay prompt.

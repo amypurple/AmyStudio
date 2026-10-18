@@ -1,0 +1,710 @@
+cartridge "RUNWAY 180/PRESENTS JAMES DUNN'S/1983"
+
+' RUNWAY 180 by James Dunn
+' "Runway 180: Using Sprites In TI Extended BASIC", COMPUTE! magazine,
+' Issue 41, October 1983, page 208. All game design credit belongs to
+' James Dunn.
+'
+' Historical context (summary of the original article):
+' The game was written to teach the eleven sprite commands of TI Extended
+' BASIC. The runway stripe and the plane move by CALL MOTION ("relative"
+' motion, independent of the program), while the stall and new-approach
+' sequences step the plane with CALL LOCATE ("absolute" motion). CALL
+' PATTERN swaps the plane for its gear-down and debris shapes. The author
+' warned that CALL COINC only samples positions when the program runs it,
+' so each test needs a tolerance tuned by trial and error, and concluded
+' that true arcade speed still needed machine language.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' The XB sprite motion (velocity v = v/16 pixel per frame) is reproduced in
+' 8.8 fixed point and tested every frame, so the COINC tolerance windows
+' are kept but can no longer be missed. The joystick is read eight times
+' a second, close to the speed of the XB main loop.
+' Controls: joystick left = accelerate, right = brake, up = less sink,
+' down = more sink; fire = landing gear down (up again during a stall).
+' XB DISPLAY AT(R,C) lands on Amy X = C + 1, Y = R - 1. XB sprite dot-row R,
+' dot-column C become sprite Y = R - 2, X = C - 1.
+
+' Sky and ground use chars 128 and 136 (TI used 33 and 42) so a reloaded
+' ASCII font can never erase them
+const SkyTile = 128
+const GroundTile = 136
+const SpaceTile = 32
+const RunwayPat = 0
+const PlanePat = 4
+const GearPat = 8
+const DebrisPat = 12
+const TowerPat = 16
+const PlaneSlot = 0           ' TI #2, in front of the tower
+const TowerSlot = 1           ' TI #3
+const RunwaySlot = 2          ' TI #1
+const PlaneCol = 40           ' TI dot-column of the plane
+const PollFrames = 8
+
+' Sound table slots
+const SndJet = 1
+const SndCrash = 2
+const SndBeep = 3
+
+i8 SinkA = 0                  ' A, sink rate (vertical motion)
+i8 SpeedB = -75               ' B, airspeed (runway motion, negative)
+bool Gear = false             ' LG
+u8 Attempt = 1                ' A1
+u8 Remain = 0                 ' RE, yards to the end of the runway
+bool TowerCounted = false
+
+bool PlaneMoving = false
+bool GroundMoving = false
+u16 PlaneR16 = 0              ' TI dot-row, 8.8
+u8 PlaneC = PlaneCol
+u8 PlanePattern = PlanePat
+u16 RunC16 = 0
+u16 TowerC16 = 0
+i16 Step16 = 0
+u16 Tmp16 = 0
+u16 Score = 0
+u8 Row = 0
+u8 Col = 0
+u8 Poll = 0
+u8 Stick = 0
+i8 StickX = 0
+i8 StickY = 0
+u8 Fx = 0
+u8 Ticks = 0
+u8 X = 0
+u8 Y = 0
+i16 Num = 0
+u8 Choice = 0
+u8 Pick = 0
+
+  text screen
+  set sound table RunwaySoundTable areas 2
+  sprites 16x16
+  sprites double
+  copy SpritePatterns count 160 to vram.spr_pat
+  TextMode
+  HideAll
+  screen on
+
+  ' --- Lines 130-210: title ---
+  backdrop dark blue
+  cls
+  print at 10,9, "RUNWAY 180"
+  play sound SndJet
+  wait 100 frames
+  EditorialPages
+
+title_menu:
+  backdrop dark blue
+  cls
+  print at 10,9, "PRESS"
+  print at 10,11, "1-FOR INSTRUCTIONS"
+  print at 15,13, "OR"
+  print at 10,15, "2-FOR GAME"
+  print at 10,17, "(OR FIRE)"
+  wait no fire
+title_wait:
+  wait
+  if joypad(1).fire then goto new_game
+  Choice = keypad(1)
+  if Choice = 2 then goto new_game
+  if Choice <> 1 then goto title_wait
+  Instructions
+
+new_game:
+  ' --- Line 330 ---
+  Attempt = 1
+
+approach:
+  ' --- Lines 350-640: the field, the runway, the tower, the plane ---
+  SinkA = 0
+  SpeedB = -75
+  Gear = false
+  TowerCounted = false
+  PlayMode
+  backdrop black
+  for Row = 0 to 15
+    fill SkyTile count 32 at 0,Row
+  next
+  for Row = 16 to 19
+    fill GroundTile count 32 at 0,Row
+  next
+  for Row = 20 to 23
+    fill SpaceTile count 32 at 0,Row
+  next
+  RunC16 = 1 << 8
+  TowerC16 = 250 << 8
+  PlaneR16 = 10 << 8
+  PlaneC = 245
+  PlanePattern = PlanePat
+  PlaneMoving = false
+  GroundMoving = true
+  for Col = 1 to PlaneCol
+    PlaneC = Col
+    Tick
+  next
+  ShowAttempt
+  Poll = 0
+
+main_loop:
+  ' --- Lines 650-770 ---
+  PlaneMoving = true
+main_tick:
+  Tick
+  inc Poll
+  if Poll >= PollFrames then
+    Poll = 0
+    ' Lines 1120-1180: joystick and landing gear
+    if joypad(1).fire then
+      if not Gear then
+        PlanePattern = GearPat
+        SinkA += 3
+        SpeedB += 20
+        Gear = true
+        goto check_stall
+      end if
+    end if
+    ReadStick
+    if Stick = 0 then
+      Complications
+    else
+      ' Line 1150: A = A - Y/4, B = B + X/4
+      SpeedB += StickX
+      SinkA -= StickY
+check_stall:
+      ClampSpeeds
+      ShowGauges
+      if SpeedB > -50 then goto stall
+    end if
+    ShowGauges
+  end if
+  ' Line 690: touchdown window, dot-row 170 +/- 9
+  Row = PlaneRow
+  if Row >= 161 then
+    if Row <= 179 then goto touchdown
+  end if
+  ' Line 710: off the top of the screen
+  if Row >= 231 then
+    if Row <= 249 then
+      SinkA = 1
+      ShowGauges
+    end if
+  end if
+  ' Line 700: tower at the left side, dot-column 1 +/- 4
+  if TowerCol <= 5 then goto new_approach
+  goto main_tick
+
+touchdown:
+  ' --- Lines 740-770 ---
+  PlaneMoving = false
+  if SinkA > 1 then
+    Message(6)
+    print at 6,6, "SINK RATE TOO HIGH"
+    play sound SndBeep
+    Message(8)
+    print at 6,8, "CRASH LANDING"
+    goto crash
+  end if
+  if not Gear then
+    Message(8)
+    print at 6,8, "CRASH LANDING"
+    goto crash
+  end if
+  ' --- Lines 1760-1870: roll out, brake, or touch and go ---
+  ClearLine(6)
+  Message(8)
+  print at 6,8, "TOUCH DOWN"
+  if SpeedB < -53 then
+    ' Lines 1940-1960: bounce
+    SinkA -= 2
+    PlaneMoving = true
+    Message(6)
+    print at 6,6, "AIRSPEED TOO HIGH"
+    play sound SndBeep
+    Message(8)
+    print at 6,8, "BOUNCE"
+    Idle(20)
+    SinkA += 2
+    ClearLine(6)
+    ClearLine(8)
+    ' XB returns to line 650, which reads the joystick first
+    Poll = PollFrames - 1
+    goto main_loop
+  end if
+  Poll = 0
+rollout:
+  Tick
+  ' Lines 1810-1820: the end of the runway
+  if TowerCol <= 5 then
+    Remain = 0
+    ShowRunwayEnds
+    goto crash
+  end if
+  inc Poll
+  if Poll < PollFrames then goto rollout
+  Poll = 0
+  ' Line 1780: brake (right) or accelerate (left), twice as hard
+  ReadStick
+  SpeedB += StickX
+  SpeedB += StickX
+  ClampSpeeds
+  if SpeedB > -1 then goto stopped
+  ' Lines 1830-1840: distance from the tower to the left edge
+  Remain = TowerCol - 1
+  ShowRunwayEnds
+  ShowAirspeed
+  ' Line 1850: touch and go
+  if joypad(1).fire then
+    if SpeedB < -60 then
+      Message(8)
+      print at 6,8, "LIFT OFF"
+      ClearLine(10)
+      SinkA -= 2
+      PlaneMoving = true
+      Idle(60)
+      Poll = PollFrames - 1
+      goto main_loop
+    end if
+  end if
+  goto rollout
+
+stall:
+  ' --- Lines 1430-1650 ---
+  Message(6)
+  print at 6,6, "STALL WARNING!"
+  play sound SndBeep
+  PlaneMoving = false
+  Poll = 0
+stall_tick:
+  ' Line 1510: the plane drops 4 dots per XB loop, about half a dot a frame
+  PlaneR16 += 128
+  Tick
+  Row = PlaneRow
+  if Row >= 168 then
+    if Row <= 191 then goto crash
+  end if
+  ' Line 1490: the tower passes during the stall
+  if TowerCol <= 3 then
+    if not TowerCounted then
+      TowerCounted = true
+      inc Attempt
+      ShowAttempt
+      if Attempt > 4 then goto five_passes
+    end if
+  else
+    TowerCounted = false
+  end if
+  inc Poll
+  if Poll < PollFrames then goto stall_tick
+  Poll = 0
+  if joypad(1).fire then
+    if Gear then
+      ' Lines 1610-1630: gear up for less drag
+      PlanePattern = PlanePat
+      SinkA -= 3
+      SpeedB -= 22
+      Gear = false
+      ClampSpeeds
+      goto stall_check
+    end if
+  end if
+  ReadStick
+  if Stick = 0 then goto stall_tick
+  SpeedB += StickX
+  ClampSpeeds
+stall_check:
+  if SpeedB < -60 then
+    ClearLine(6)
+    goto main_loop
+  end if
+  ShowGauges
+  goto stall_tick
+
+new_approach:
+  ' --- Lines 1320-1390 ---
+  PlaneMoving = false
+  if Attempt > 4 then goto five_passes
+  GroundMoving = false
+  hide sprite TowerSlot
+  hide sprite RunwaySlot
+  cls
+  print at 11,2, "END OF RUNWAY"
+  print at 11,4, "NEW APPROACH"
+  print at 11,6, "NECESSARY"
+  PlanePattern = PlanePat
+  ' Line 1380: climb away to the right, shedding 1/215 of the height a step
+  do while PlaneC < 255
+    inc PlaneC
+    Tmp16 = PlaneR16
+    Tmp16 /= 215
+    PlaneR16 -= Tmp16
+    Tick
+  loop
+  inc Attempt
+  goto approach
+
+five_passes:
+  ' --- Lines 1400-1420 and 1090-1100 ---
+  HideAll
+  TextMode
+  cls
+  print at 2,3, "THAT'S 5 PASSES AT THE"
+  print at 2,5, "RUNWAY. TURN IN YOUR"
+  print at 2,7, "PILOT LICENSE AND PUT"
+  print at 2,9, "SOMEONE ELSE IN THE"
+  print at 2,11, "COCKPIT."
+  wait 240 frames
+  goto play_again
+
+crash:
+  ' --- Lines 1660-1750 ---
+  PlaneMoving = false
+  GroundMoving = false
+  play sound SndCrash
+  for Pick = 1 to 10
+    backdrop black
+    Idle(3)
+    backdrop white
+    Idle(3)
+  next
+  backdrop black
+  PlanePattern = DebrisPat
+  Idle(120)
+  HideAll
+  ' Line 1980: CALL CLEAR before the prompt
+  cls
+  goto play_again
+
+stopped:
+  ' --- Lines 1880-1930: scoring ---
+  HideAll
+  TextMode
+  cls
+  print at 2,3, "CONGRATULATIONS !"
+  ' (RE / A1) * 10, kept as a whole number
+  Score = Remain
+  Score *= 10
+  Tmp16 = Attempt
+  Score /= Tmp16
+  print at 2,5, "YOUR SCORE IS : " + str$(Score)
+
+play_again:
+  ' --- Lines 1970-2050 ---
+  TextMode
+  print at 2,9, "PLAY AGAIN?"
+  print at 2,11, "1 OR FIRE = YES   2 = NO"
+  wait no fire
+again_wait:
+  wait
+  if joypad(1).fire then goto new_game
+  Choice = keypad(1)
+  if Choice = 1 then goto new_game
+  if Choice <> 2 then goto again_wait
+  cls
+  print at 9,11, "HAPPY LANDINGS"
+  loop forever
+
+' ---------------------------------------------------------------------------
+
+' One frame of XB sprite motion: plane by A, runway by B, tower by -2
+sub Tick:
+  wait
+  if PlaneMoving then
+    Step16 = SinkA
+    Step16 <<= 4
+    PlaneR16 += Step16
+  end if
+  if GroundMoving then
+    Step16 = SpeedB
+    Step16 <<= 4
+    RunC16 += Step16
+    TowerC16 -= 32
+  end if
+  Tmp16 = PlaneR16 >> 8
+  Y = Tmp16
+  Y -= 2
+  if Y = 208 then Y = 207
+  X = PlaneC - 1
+  set sprite PlaneSlot to Y,X,PlanePattern,6
+  if GroundMoving then
+    X = TowerCol - 1
+    set sprite TowerSlot to 108,X,TowerPat,1
+    Tmp16 = RunC16 >> 8
+    X = Tmp16
+    X -= 1
+    set sprite RunwaySlot to 178,X,RunwayPat,15
+  end if
+  update sprites
+  return
+end sub
+
+sub Idle(u8 Count):
+  for Ticks = 1 to Count
+    Tick
+  next
+  return
+end sub
+
+function PlaneRow as u8
+  Tmp16 = PlaneR16 >> 8
+  Fx = Tmp16
+  return Fx
+
+function TowerCol as u8
+  Tmp16 = TowerC16 >> 8
+  Fx = Tmp16
+  return Fx
+
+' JOYST(1,X,Y) divided by 4: StickX -1 left / +1 right, StickY +1 up /
+' -1 down; Stick = 0 when centered
+sub ReadStick:
+  StickX = 0
+  StickY = 0
+  if joypad(1).left then StickX = -1
+  if joypad(1).right then StickX = 1
+  if joypad(1).up then StickY = 1
+  if joypad(1).down then StickY = -1
+  Stick = 0
+  if StickX <> 0 then Stick = 1
+  if StickY <> 0 then Stick = 1
+  return
+end sub
+
+' Lines 1210-1310: wind shifts while the stick is centered
+sub Complications:
+  Pick = random(0, 15)
+  select case Pick
+    case 1
+      dec SpeedB
+    case 6
+      inc SpeedB
+    case 10
+      dec SinkA
+    case 15
+      inc SinkA
+  end select
+  ClampSpeeds
+  return
+end sub
+
+' Lines 1160 and 1300 (B is also kept inside a byte here)
+sub ClampSpeeds:
+  if SinkA > 120 then SinkA = 120
+  if SinkA < -120 then SinkA = -120
+  if SpeedB < -127 then SpeedB = -127
+  if SpeedB > 0 then SpeedB = 0
+  return
+end sub
+
+' Lines 870-900: instruments, fields cut at column 29 for the CRT overscan
+sub ShowAttempt:
+  fill SpaceTile count 19 at 11,0
+  print at 11,0, "ATTEMPT NO. "
+  Num = Attempt
+  X = 23
+  Y = 0
+  PutNum
+  return
+end sub
+
+sub ShowGauges:
+  fill SpaceTile count 19 at 11,2
+  print at 11,2, "SINK RATE: "
+  Num = SinkA
+  X = 22
+  Y = 2
+  PutNum
+  ShowAirspeed
+  return
+end sub
+
+sub ShowAirspeed:
+  fill SpaceTile count 19 at 11,4
+  print at 11,4, "AIRSPEED: "
+  Num = 0 - SpeedB
+  X = 21
+  Y = 4
+  PutNum
+  return
+end sub
+
+' Lines 1000-1010
+sub ShowRunwayEnds:
+  Message(8)
+  print at 6,8, "WARNING"
+  Message(10)
+  print at 6,10, "RUNWAY ENDS"
+  Num = Remain
+  X = 18
+  Y = 10
+  PutNum
+  print at 22,10, "YDS"
+  return
+end sub
+
+' XB IMAGE "###": Num right-aligned in three columns at X,Y
+sub PutNum:
+  if Num < -99 then
+    print at X,Y, "***"
+    return
+  end if
+  if Num < 0 then
+    Num = 0 - Num
+    print at X,Y, "-" + width$(Num, 2)
+  else
+    print at X,Y, width$(Num, 3)
+  end if
+  return
+end sub
+
+' DISPLAY AT(R,5) SIZE(20): a black field on the sky
+sub Message(u8 Line):
+  fill SpaceTile count 20 at 6,Line
+  return
+end sub
+
+' CALL HCHAR(R,5,33,27): give the sky back (char 128 here)
+sub ClearLine(u8 Line):
+  fill SkyTile count 27 at 4,Line
+  return
+end sub
+
+sub HideAll:
+  PlaneMoving = false
+  GroundMoving = false
+  clear sprites
+  set sprite count 3
+  update sprites
+  return
+end sub
+
+' Play screen: char 128 is the sky block (cyan), char 136 the ground (green)
+sub PlayMode:
+  copy SolidBlock count 8 to vram.pattern + 1024
+  copy SolidBlock count 8 to vram.pattern + 1088
+  set text colors white count 32
+  set text colors cyan at 16 count 1
+  set text colors dark green at 17 count 1
+  return
+end sub
+
+' Text screens: all white (the font itself is never redefined)
+sub TextMode:
+  set text colors white count 32
+  return
+end sub
+
+sub WaitFire:
+  print at 4,23, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Lines 220-320
+sub Instructions:
+  cls
+  print at 2,1, "YOU ARE PILOTING A JET"
+  print at 2,3, "AIRCRAFT WHICH HAS BEEN"
+  print at 2,5, "CLEARED TO LAND ON"
+  print at 2,7, "RUNWAY 180."
+  WaitFire
+  cls
+  print at 2,1, "USE YOUR JOYSTICK TO CONTROL"
+  print at 2,3, "SINK RATE AND AIRSPEED."
+  print at 2,6, "JOYSTICK CONTROL-"
+  print at 2,8, "LEFT: ACCELERATE"
+  print at 2,9, "RIGHT: BRAKE"
+  print at 2,10, "UP: DECREASE SINK RATE"
+  print at 2,11, "DOWN: INCREASE SINK RATE"
+  print at 2,13, "FIREBUTTON CONTROLS LANDING"
+  print at 2,15, "GEAR."
+  WaitFire
+  cls
+  print at 2,1, "TO RECOVER FROM A STALL"
+  print at 2,3, "INCREASE AIRSPEED ABOVE 60."
+  print at 2,5, "IF YOU CANNOT STOP BEFORE"
+  print at 2,7, "TOWER REACHES LEFT SIDE OF"
+  print at 2,9, "SCREEN, INCREASE AIRSPEED"
+  print at 2,11, "TO 60 AND LIFT OFF FOR"
+  print at 2,13, "ANOTHER PASS."
+  WaitFire
+  cls
+  print at 2,1, "YOU MAY HAVE FOUR PASSES"
+  print at 2,3, "AT THE RUNWAY....."
+  print at 2,5, "BEWARE OF THE WIND SHIFTS!"
+  print at 2,7, "GOOD LUCK!!!!"
+  WaitFire
+  return
+end sub
+
+' Adaptation: two editorial pages at power-on
+sub EditorialPages:
+  cls
+  print at 10,1, "RUNWAY 180"
+  print at 9,3, "BY JAMES DUNN"
+  print at 3,4, "COMPUTE! OCTOBER 1983"
+  print at 2,7, "THIS LANDING GAME WAS"
+  print at 2,8, "WRITTEN TO TEACH THE ELEVEN"
+  print at 2,9, "SPRITE COMMANDS OF TI"
+  print at 2,10, "EXTENDED BASIC: CHAR, COLOR,"
+  print at 2,11, "SPRITE, PATTERN, MAGNIFY,"
+  print at 2,12, "MOTION, POSITION, LOCATE,"
+  print at 2,13, "DISTANCE, COINC, DELSPRITE."
+  print at 2,15, "MOTION SLIDES THE RUNWAY AND"
+  print at 2,16, "SINKS THE PLANE ON ITS OWN;"
+  print at 2,17, "LOCATE STEPS THE PLANE IN A"
+  print at 2,18, "STALL. PATTERN DROPS THE"
+  print at 2,19, "GEAR, OR TURNS IT TO DEBRIS."
+  WaitFire
+  cls
+  print at 6,1, "THE COINC PROBLEM"
+  print at 2,3, "XB TESTS A COLLISION ONLY"
+  print at 2,4, "WHEN THE PROGRAM ASKS, AND"
+  print at 2,5, "THE SPRITES KEEP MOVING IN"
+  print at 2,6, "BETWEEN. EACH TEST NEEDS A"
+  print at 2,7, "TOLERANCE: TOO BIG FIRES"
+  print at 2,8, "EARLY, TOO SMALL MISSES."
+  print at 2,9, "THE AUTHOR TUNED THEM BY"
+  print at 2,10, "TRIAL AND ERROR."
+  print at 2,13, "THIS COLECOVISION PORT"
+  print at 2,14, "(AMY BIENVENU, 2026) KEEPS"
+  print at 2,15, "THE SAME WINDOWS BUT CHECKS"
+  print at 2,16, "THEM EVERY FRAME, SO NO"
+  print at 2,17, "LANDING CAN SLIP THROUGH."
+  WaitFire
+  return
+end sub
+
+data SolidBlock bytes $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+
+' Lines 420-580: 16x16 sprite patterns (TL, BL, TR, BR), shown magnified
+' 0 = runway stripe (char 96), 4 = plane (120), 8 = plane with gear (124),
+' 12 = debris (128), 16 = tower (104)
+data SpritePatterns bytes
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF, $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$FF,$FF,$FF,$FF, $FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $00,$30,$18,$1C,$3F,$1F,$07,$00, $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FC,$FF,$80,$00, $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$30,$18,$1C,$3F,$1F,$07,$05, $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$FC,$FF,$88,$84, $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$1F,$3B,$00, $00,$00,$00,$00,$E5,$6E,$30,$00
+  $00,$00,$00,$00,$00,$00,$00,$00, $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$1F,$15,$1F, $02,$03,$03,$02,$03,$03,$02,$03
+  $00,$00,$80,$80,$E0,$F8,$A8,$F8, $C0,$40,$C0,$C0,$40,$C0,$C0,$C0
+end data
+
+' CALL SOUND translations
+asm {
+JetSfx:       ; line 150: noise fading from volume 0 to 30
+    db $02,$05,$5A,$1F,$66,$10
+CrashSfx:     ; line 1680: SOUND(1000,-7,0)
+    db $00,$00,$06,$3C,$10
+BeepSfx:      ; XB BEEP
+    db $40,$50,$10,$08,$50
+
+RunwaySoundTable:
+    dw JetSfx,$702B             ; 1  noise area
+    dw CrashSfx,$702B           ; 2
+    dw BeepSfx,$7035            ; 3  tone area
+}
