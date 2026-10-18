@@ -14,9 +14,10 @@ available, the source BASIC listing used as the historical reference.
 | Mystery Spell | ColecoVision and OS7+EOS hybrid | Doug Hapeman, 1983 | 11,669 bytes |
 | Runway 180 | ColecoVision | James Dunn, 1983 | 7,240 bytes |
 | Balloon Crazy | ColecoVision | Joseph Russ / Patrick Parrish, 1985 | 4,249 bytes |
+| Beethoven Medley | ColecoVision | C. Regena, 1983 | 6,391 bytes |
 
-The eight cartridge builds compile with the Safe, Balanced and Aggressive
-profiles. Their combined assembled sizes are 45,741, 44,944 and 44,895 bytes,
+The nine cartridge builds compile with the Safe, Balanced and Aggressive
+profiles. Their combined assembled sizes are 52,388, 51,335 and 51,282 bytes,
 respectively. `tools/test-ti99-ports-runtime.mjs` boots every cartridge through
 the real OS7 delay, advances its opening controls and verifies multiple nonblank
 rendered states. `tools/test-ti99-adam-ports-runtime.mjs` additionally builds
@@ -55,3 +56,8 @@ range. Its ColecoVision adaptation uses bounded fixed-point sprite motion, a
 two-frame swaying balloon string and separate miss/capture noises. The historical
 TI listing is retained beside the Amy source so these adaptation choices remain
 auditable.
+
+Beethoven Medley was historically distributed as `LUDWIG`. The browser title
+describes its actual content while the original title remains in the source and
+documentation. Four Beethoven excerpts drive a frame-synchronized drawing; the
+port adds subtle note, blossom and star animation without changing the score.

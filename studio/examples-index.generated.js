@@ -1396,6 +1396,23 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "beethoven-medley",
+    "label": "Beethoven Medley (TI-99/4A Port)",
+    "detail": "C. Regena's historical Ludwig program: four Beethoven excerpts synchronized with a progressively drawn and gently animated scene.",
+    "projectName": "beethoven-medley",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Music",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "music",
+      "graphics",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",
