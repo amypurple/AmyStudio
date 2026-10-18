@@ -3824,7 +3824,7 @@ export function transpileAmyCore(sourceText, deps) {
     normalizeExpression,
     parseExpressionAst,
     renderExpressionAst,
-    tryEvaluateConstantExpression,
+    tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
     getRuntimeInfo,
     getRecordTypeInfo,
     functionReturnTypes,

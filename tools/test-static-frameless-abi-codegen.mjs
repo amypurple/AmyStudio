@@ -96,4 +96,37 @@ const asmTargetEnd = asmEntryAsm.indexOf("\nAMY_UPROC_", asmTargetStart + 1);
 const asmTargetBlock = asmEntryAsm.slice(asmTargetStart, asmTargetEnd >= 0 ? asmTargetEnd : asmEntryAsm.length);
 assert.match(asmTargetBlock, /push ix|\(ix\+4\)/i, "ASM-called parameterized routine must retain the IX stack ABI");
 
+const namedConstantSourcePath = path.join(temp, "named-constant.alexis");
+const namedConstantAsmPath = path.join(temp, "named-constant.asm");
+const namedConstantRomPath = path.join(temp, "named-constant.rom");
+fs.writeFileSync(namedConstantSourcePath, `
+project "Static ABI Named Constant Arguments"
+memory "colecovision_legacy_sdcc"
+
+const Home = 76
+enum Rows:
+  Top = 12
+end enum
+
+sub start:
+  SetSpot(Home)
+  SetSpot(Top)
+  loop forever
+end sub
+
+sub SetSpot(u8 Target):
+  return
+end sub
+`);
+const namedConstantResult = spawnSync(
+  process.execPath,
+  [path.join(repo, "tools", "amyc.mjs"), namedConstantSourcePath, "--asm", namedConstantAsmPath, "--rom", namedConstantRomPath, "--opt", "balanced"],
+  { cwd: repo, encoding: "utf8" }
+);
+assert.equal(namedConstantResult.status, 0, `named-constant compile failed:\n${namedConstantResult.stdout}\n${namedConstantResult.stderr}`);
+const namedConstantAsm = fs.readFileSync(namedConstantAsmPath, "utf8");
+assert.match(namedConstantAsm, /ld a,76\s+ld \(AMY_SPARM_SetSpot_Target\),a/i, "const u8 argument must load A before its static parameter store");
+assert.match(namedConstantAsm, /ld a,12\s+ld \(AMY_SPARM_SetSpot_Target\),a/i, "enum u8 argument must load A before its static parameter store");
+assert.doesNotMatch(namedConstantAsm, /ld hl,[^\r\n]+\s+ld \(AMY_SPARM_SetSpot_Target\),a/i, "named u8 constants must not leave their value only in HL");
+
 console.log("test-static-frameless-abi-codegen: PASS");
