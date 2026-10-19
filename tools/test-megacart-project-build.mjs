@@ -26,6 +26,7 @@ assert.match(uiEventsSource, /downloadText,\s*transpileSource,\s*transpileAmy,\s
 const fixedSource = fs.readFileSync(path.join(examples, "megacart-bank-demo-fixed.asm"), "utf8");
 const mdkrleSource = fs.readFileSync(path.join(root, "src", "compression", "mdkrle_vram.asm"), "utf8");
 const vdpRwSource = fs.readFileSync(path.join(root, "src", "alexis_lib", "coleco_vdp_rw.asm"), "utf8");
+const vdpGuardSource = fs.readFileSync(path.join(root, "src", "alexis_lib", "coleco_vdp_guard.asm"), "utf8");
 const fixed = await assemble(fixedSource, "fixed.asm");
 const files = [
   textFile("banks/bank1.asm", fs.readFileSync(path.join(examples, "megacart-bank-demo-bank1.asm"), "utf8")),
@@ -72,7 +73,7 @@ const built = await buildMegaCartProject({
       .replace("org $8000", "AMY_MEGACART_CURRENT_BANK equ $7003\norg $8000")
       .replace("ld a,($FFC1)\n    ld hl,$C000", `ld a,($FFC1)\n    ld hl,$${bank2Text.address.toString(16).toUpperCase()}`)
       .replace("Forever:\n", "    ld a,1\n    ld (AMY_MEGACART_CURRENT_BANK),a\n    ld a,($FFC0)\n    call AMY_MEGACART_CALL_BANK_2_MarkBankCall\n    ld de,$1A00\n    call AMY_MEGACART_DECOMPRESS_MDKRLE_BANK_2_Bank2Compressed\n    ld de,$1A40\n    ld bc,16\n    call AMY_MEGACART_COPY_BANK_2_Bank2Text_TO_VRAM\n    ld de,$7004\n    ld bc,16\n    call AMY_MEGACART_COPY_BANK_2_Bank2Text_TO_RAM\nForever:\n");
-    return assemble(`${source}\n${trampoline}\n${mdkrleSource}\nVDP_DATA_PORT equ $BE\nVDP_CTRL_PORT equ $BF\nAMY_BUFFER32 equ $7020\n${vdpRwSource}`, "fixed-linked.asm");
+    return assemble(`${source}\n${trampoline}\n${mdkrleSource}\nVDP_DATA_PORT equ $BE\nVDP_CTRL_PORT equ $BF\nNMI_FLAG equ $73C4\nVDP_STATUS equ $73C5\nAMY_BUFFER32 equ $7020\n${vdpGuardSource}\n${vdpRwSource}`, "fixed-linked.asm");
   }
 });
 assert.equal(built.image.length, 128 * 1024);

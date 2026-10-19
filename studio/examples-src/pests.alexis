@@ -1,0 +1,831 @@
+cartridge "PESTS/PRESENTS KEVIN WORAM'S/1984"
+
+' PESTS
+' By Kevin Woram, COMPUTE! magazine, June 1984, pages 36-44: written for the
+' Commodore 64, with versions for the VIC-20 and the IBM PC and PCjr (notes
+' by Kevin Martin, Editorial Programmer). All credit belongs to Kevin Woram.
+'
+' Historical context (summary of the article):
+' Weeds and blight are choking Joe's garden. With a sprayer he destroys the
+' weeds where they appear and fumigates his yellow daisies, blue daisies
+' and roses against disease; a fumigated flower turns white. Every flower
+' must be treated to finish a level, but not every weed must die. Weeds
+' grow in three stages, seed, sprout and adult, and adults spread seeds
+' that grow in turn: let too many take root and the game ends with TOO MANY
+' WEEDS. Joe has two minutes, plus fifteen seconds more on each level; time
+' left over becomes bonus points, and running out ends the game with TIME'S
+' UP. Yellow daisies are worth 10 points, blue daisies 20, roses 40 and
+' weeds 5. The highest score is kept between games.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick moves Joe in eight directions and aims the sprayer;
+' fire sprays the cell he faces (any port-1 or port-2 joystick).
+' The rules follow the 64 listing: blank cells only can be walked on
+' (line 4010), the spray hits the neighbouring cell in the facing direction
+' (lines 5500-5560, 5800-5870), the weed stages advance on a timer (lines
+' 100-110, 4020) and adults spread new seeds at random (lines 300-315).
+' Adaptation liberties: the weeds are tracked cell by cell (the listing
+' moved them in batches that never quite matched its own counts); each
+' adult drops one seed per growth step, and fresh seeds blow in on every
+' step even when the garden is clear; flower counts, weed limit and
+' growth speed per level are explicit tables instead of the listing's
+' D, QW and WL arithmetic; Joe keeps facing his last direction when the
+' stick is released (the listing turned him north); the clock counts down;
+' a weed counter is shown; Graphics II garden (daisies with gold centres,
+' roses with leaves, weeds that turn from seeds to sprouts to thorny
+' adults, a wooden fence); Joe is a three-layer sprite with a separate
+' spray wand that points the way he aims; an original title tune (Tiny
+' Sound); the frame loop is protected from the NMI; an editorial page.
+' Screen: status on rows 1-2, fence on rows 3 and 22 and columns 2 and 29,
+' garden on rows 4-21, columns 3-28.
+
+const RailTile = 128
+const PostTile = 129
+const CornerTile = 130
+const YellowTile = 134
+const BlueTile = 135
+const RoseTile = 136
+const WhiteTile = 137
+const SeedTile = 138
+const SproutTile = 139
+const WeedTile = 140
+const MistTile = 141
+const FloorTile = 143
+const TickN = 8                ' frames per move (one BASIC pass)
+const GlideStep = 256          ' 8 pixels in 8 frames, 8.8 fixed point
+
+' Sound table slots (pe/s.mjs)
+const SndSpray = 1
+const SndKillA = 2
+const SndKillB = 3
+const SndFume = 4
+const SndGrow = 5
+const SndLevel = 6
+const SndOver = 7
+const SndBeep = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+bcd digits 5 Score             ' SC
+bcd digits 5 HighScore         ' HS
+u8 LV = 1                      ' level
+u8 JX = 3                      ' Joe's cell
+u8 JY = 4
+u8 Face = 5                    ' 1 up ... 8 up-left (clockwise)
+u8 Stride = 0
+u16 GX16 = 0                   ' Joe's sprite position, 8.8
+u16 GY16 = 0
+u8 Flowers = 0                 ' QF, flowers to fumigate
+u8 Fumed = 0                   ' FI
+u8 Weeds = 0                   ' weeds in the garden
+u8 WeedLimit = 20              ' WL
+u16 TimeLeft = 120
+u8 SecTick = 0
+u16 GrowTimer = 0
+u16 GrowFrames = 480
+u8 ScanRow = 0                 ' 0 = no growth scan running
+u8 Spawn = 0
+u8 MistX = 0
+u8 MistY = 0
+u8 MistAfter = 0
+u8 MistTimer = 0
+u8 Tick = 0
+u8 Dir = 0
+u8 NX = 0
+u8 NY = 0
+u8 T = 0
+u8 N = 0
+u8 M = 0
+u8 I = 0
+u8 K = 0
+u8 X = 0
+u8 Y = 0
+u8 F = 0
+u8 Choice = 0
+u8 Why = 0                     ' 1 too many weeds, 2 time's up
+bool Over = false
+bool LevelDone = false
+bool Firing = false
+u16 Tmp16 = 0
+u16 Sub16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table PestsSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy JoeSprites count 96 to vram.spr_pat
+  HideAll
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  ' --- Lines 10000-10140: the title screen and scoring table ---
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Score = 0
+  LV = 1
+
+new_level:
+  ' --- Lines 23-90: the garden for this level ---
+  SetupLevel
+  DrawGarden
+  PlantGarden
+  ShowStatus
+  ' Adaptation: a banner before each garden
+  nmi on
+  fill 32 count 28 at 2,1
+  NumU = LV
+  print at 9,1, "LEVEL " + digits$(NumU, 2) + " - GO!"
+  play sound SndBeep
+  wait 90 frames
+  ShowStatus
+  Over = false
+  LevelDone = false
+  Tick = 0
+  SecTick = 0
+  ScanRow = 0
+  MistTimer = 0
+  GrowTimer = GrowFrames
+
+main_loop:
+  FrameUpdate
+  if Over then goto game_over
+  if LevelDone then goto level_done
+  inc Tick
+  if Tick < TickN then goto main_loop
+  Tick = 0
+  PlayerTurn
+  if Over then goto game_over
+  if LevelDone then goto level_done
+  goto main_loop
+
+' --- Lines 7000-7040: level completed ---
+level_done:
+  nmi on
+  wait 20 frames
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,2
+  NumU = LV
+  print at 6,1, "LEVEL " + digits$(NumU, 2) + " COMPLETED"
+  print at 8,2, "TIME BONUS"
+  NumU = TimeLeft
+  print at 19,2, digits$(NumU, 3)
+  play sound SndLevel
+  wait 40 frames
+  ' The time bonus, counted into the score
+  F = 0
+bonus_loop:
+  if TimeLeft > 0 then
+    dec TimeLeft
+    Score += 1
+    inc F
+    N = F & 3
+    if N = 0 then
+      NumU = TimeLeft
+      print at 19,2, digits$(NumU, 3)
+      ShowScoreOnly
+      wait
+    end if
+    goto bonus_loop
+  end if
+  NumU = 0
+  print at 19,2, digits$(NumU, 3)
+  ShowScoreOnly
+  wait 90 frames
+  if LV < 99 then inc LV
+  goto new_level
+
+' --- Lines 8000-9030: too many weeds, or time's up ---
+game_over:
+  nmi on
+  play sound SndOver
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,2
+  if Why = 1 then
+    print at 9,1, "TOO MANY WEEDS!"
+  else
+    print at 11,1, "TIME'S UP!"
+  end if
+  wait 120 frames
+  if Score > HighScore then HighScore = Score
+  HideAll
+  fill mode 2 text color with $F0
+  cls
+  backdrop black
+  print at 10,6, "HIGH SCORE:"
+  print HighScore at 22,6
+  print at 7,9, "YOUR SCORE WAS"
+  print Score at 22,9
+  print at 6,12, "YOU ACHIEVED LEVEL"
+  NumU = LV
+  print at 25,12, digits$(NumU, 2)
+  print at 4,18, "PRESS FIRE TO PLAY AGAIN"
+  wait no fire
+  pause until press
+  wait no fire
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 4000-4030: one pass. The trigger sprays the cell Joe faces, then the
+' stick moves him one cell (blank cells only) and turns him
+sub PlayerTurn:
+  ReadStick
+  if Firing then Spray
+  if Dir = 0 then return
+  Face = Dir
+  NX = DirDX[Dir]
+  NX += JX
+  NX -= 1
+  NY = DirDY[Dir]
+  NY += JY
+  NY -= 1
+  T = get char at NX,NY
+  if T <> FloorTile then return
+  JX = NX
+  JY = NY
+  Stride ^= 1
+  return
+end sub
+
+' Dir 1-8 clockwise from up, 0 = centre; either joystick
+sub ReadStick:
+  Dir = 0
+  Firing = false
+  if joypad(1).fire then Firing = true
+  if joypad(2).fire then Firing = true
+  N = 0
+  if joypad(1).up then N |= 1
+  if joypad(2).up then N |= 1
+  if joypad(1).down then N |= 2
+  if joypad(2).down then N |= 2
+  if joypad(1).left then N |= 4
+  if joypad(2).left then N |= 4
+  if joypad(1).right then N |= 8
+  if joypad(2).right then N |= 8
+  Dir = StickDir[N]
+  return
+end sub
+
+' Lines 5500-5560 and 5900-5905: the spray hits the cell Joe faces
+sub Spray:
+  if MistTimer > 0 then return
+  NX = DirDX[Face]
+  NX += JX
+  NX -= 1
+  NY = DirDY[Face]
+  NY += JY
+  NY -= 1
+  T = get char at NX,NY
+  ' The fence and the score line are not affected (line 5505)
+  if T < YellowTile then return
+  if T > FloorTile then return
+  play sound SndSpray
+  MistAfter = T
+  if T = YellowTile then
+    Score += 10
+    FlowerDone
+  end if
+  if T = BlueTile then
+    Score += 20
+    FlowerDone
+  end if
+  if T = RoseTile then
+    Score += 40
+    FlowerDone
+  end if
+  if T >= SeedTile then
+    if T <= WeedTile then
+      ' Line 5560: a weed of any stage is destroyed, 5 points
+      Score += 5
+      if Weeds > 0 then dec Weeds
+      MistAfter = FloorTile
+      play sounds SndKillA, SndKillB
+    end if
+  end if
+  if T = MistTile then return
+  MistX = NX
+  MistY = NY
+  MistTimer = 8
+  put char MistTile at NX,NY
+  ShowStatus
+  return
+end sub
+
+sub FlowerDone:
+  MistAfter = WhiteTile
+  play sound SndFume
+  inc Fumed
+  if Fumed >= Flowers then LevelDone = true
+  return
+end sub
+
+' One video frame. The game runs with the VDP interrupt off and turns it
+' on only to wait for the next frame.
+sub FrameUpdate:
+  nmi on
+  wait
+  nmi off
+  ' The spray mist clears
+  if MistTimer > 0 then
+    dec MistTimer
+    if MistTimer = 0 then
+      put char MistAfter at MistX,MistY
+    end if
+  end if
+  ' Lines 4020-4025: the clock
+  inc SecTick
+  if SecTick >= 60 then
+    SecTick = 0
+    if TimeLeft > 0 then dec TimeLeft
+    ShowTime
+    if TimeLeft = 0 then
+      Why = 2
+      Over = true
+    end if
+  end if
+  ' Lines 100-110, 4020: the weeds grow a stage on a timer; one garden row
+  ' is examined per frame
+  if ScanRow = 0 then
+    dec GrowTimer
+    if GrowTimer = 0 then
+      GrowTimer = GrowFrames
+      ScanRow = 4
+      Spawn = 0
+    end if
+  else
+    GrowRow
+  end if
+  PlaceJoe
+  update sprites
+  return
+end sub
+
+' Seeds become sprouts, sprouts become adults, and each adult drops a seed
+sub GrowRow:
+  Y = ScanRow
+  for X = 3 to 28
+    T = get char at X,Y
+    if T = SeedTile then
+      put char SproutTile at X,Y
+    end if
+    if T = SproutTile then
+      put char WeedTile at X,Y
+    end if
+    if T = WeedTile then inc Spawn
+  next
+  inc ScanRow
+  if ScanRow <= 21 then return
+  ScanRow = 0
+  ' Lines 103, 300-315: new seeds blow in on every growth step, even when
+  ' every weed has been destroyed (the listing always added E + 1 seeds),
+  ' more on later levels, plus one seed for each adult weed
+  M = LV / 3
+  M += 2
+  Spawn += M
+  ' Lines 300-315: the new seeds land at random in empty soil
+  if Spawn > 0 then
+    play sound SndGrow
+  end if
+  for K = 1 to Spawn
+    PlantWeed
+  next
+  ShowStatus
+  ' Line 310: IF H > WL THEN 8000
+  if Weeds > WeedLimit then
+    Why = 1
+    Over = true
+  end if
+  return
+end sub
+
+' A seed in a random empty cell (not under Joe)
+sub PlantWeed:
+  for I = 1 to 20
+    X = random(3, 28)
+    Y = random(4, 21)
+    T = get char at X,Y
+    if T = FloorTile then
+      if X = JX then
+        if Y = JY then goto plant_next
+      end if
+      put char SeedTile at X,Y
+      inc Weeds
+      return
+    end if
+plant_next:
+  next
+  return
+end sub
+
+' Joe glides from cell to cell; the wand sits on the side he faces
+sub PlaceJoe:
+  N = JX << 3
+  Tmp16 = N << 8
+  Dst16 = GX16
+  GlideTo
+  GX16 = Dst16
+  N = JY << 3
+  dec N
+  Tmp16 = N << 8
+  Dst16 = GY16
+  GlideTo
+  GY16 = Dst16
+  Tmp16 = GX16 >> 8
+  X = Tmp16
+  Tmp16 = GY16 >> 8
+  Y = Tmp16
+  set sprite 1 to Y,X,Stride,6
+  set sprite 2 to Y,X,2,9
+  set sprite 3 to Y,X,3,11
+  ' The wand, five pixels toward the facing direction
+  M = WandDX[Face]
+  X += M
+  X -= 5
+  M = WandDY[Face]
+  Y += M
+  Y -= 5
+  N = Face + 3
+  set sprite 0 to Y,X,N,14
+  return
+end sub
+
+' Moves Dst16 toward Tmp16 by one glide step (snaps on big jumps)
+sub GlideTo:
+  if Dst16 < Tmp16 then
+    Sub16 = Tmp16 - Dst16
+    if Sub16 > 3072 then
+      Dst16 = Tmp16
+      return
+    end if
+    if Sub16 > GlideStep then
+      Dst16 += GlideStep
+    else
+      Dst16 = Tmp16
+    end if
+  else
+    Sub16 = Dst16 - Tmp16
+    if Sub16 > 3072 then
+      Dst16 = Tmp16
+      return
+    end if
+    if Sub16 > GlideStep then
+      Dst16 -= GlideStep
+    else
+      Dst16 = Tmp16
+    end if
+  end if
+  return
+end sub
+
+' Lines 23 and 7010-7037, as explicit tables (see the header)
+sub SetupLevel:
+  N = LV
+  if N > 10 then N = 10
+  Flowers = YellowPerLevel[N]
+  M = BluePerLevel[N]
+  Flowers += M
+  M = RosesPerLevel[N]
+  Flowers += M
+  Fumed = 0
+  Weeds = 0
+  M = LV + 19
+  if M > 40 then M = 40
+  WeedLimit = M
+  ' Two minutes, fifteen seconds more per level
+  TimeLeft = 105
+  for I = 1 to LV
+    TimeLeft += 15
+    if TimeLeft > 600 then TimeLeft = 600
+  next
+  ' Growth every 8 seconds on level 1, a little faster each level
+  GrowFrames = 420
+  for I = 2 to LV
+    if GrowFrames > 240 then GrowFrames -= 20
+  next
+  ' Joe at the top left (line 90: OP = 1105)
+  JX = 3
+  JY = 4
+  Face = 5
+  Stride = 0
+  N = JX << 3
+  GX16 = N << 8
+  N = JY << 3
+  dec N
+  GY16 = N << 8
+  return
+end sub
+
+' Lines 25-36: the fence and the soil
+sub DrawGarden:
+  nmi off
+  HideAll
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  put char CornerTile at 2,3
+  fill RailTile count 26 at 3,3
+  put char CornerTile at 29,3
+  for Y = 4 to 21
+    put char PostTile at 2,Y
+    fill FloorTile count 26 at 3,Y
+    put char PostTile at 29,Y
+  next
+  put char CornerTile at 2,22
+  fill RailTile count 26 at 3,22
+  put char CornerTile at 29,22
+  return
+end sub
+
+' Lines 39-90: the flowers, then the first weed seeds (line 90: GOSUB 300)
+sub PlantGarden:
+  N = LV
+  if N > 10 then N = 10
+  K = YellowPerLevel[N]
+  T = YellowTile
+  PlantFlowers
+  K = BluePerLevel[N]
+  T = BlueTile
+  PlantFlowers
+  K = RosesPerLevel[N]
+  T = RoseTile
+  PlantFlowers
+  M = LV + 2
+  if M > 12 then M = 12
+  for K = 1 to M
+    PlantWeed
+  next
+  return
+end sub
+
+' K flowers of tile T, never in the two cells next to Joe's start
+sub PlantFlowers:
+  if K = 0 then return
+  for F = 1 to K
+flower_try:
+    X = random(3, 28)
+    Y = random(4, 21)
+    if X < 6 then
+      if Y < 7 then goto flower_try
+    end if
+    M = get char at X,Y
+    if M <> FloorTile then goto flower_try
+    put char T at X,Y
+  next
+  return
+end sub
+
+' Status lines (adaptation of line 31: SCORE, LEVEL, TIME, plus weeds)
+sub ShowStatus:
+  print at 2,1, "SCORE"
+  ShowScoreOnly
+  print at 20,1, "LEVEL"
+  NumU = LV
+  print at 26,1, digits$(NumU, 2)
+  ShowTime
+  ' Flowers still to fumigate, and weeds against the limit
+  put char YellowTile at 12,2
+  N = Flowers - Fumed
+  NumU = N
+  print at 13,2, digits$(NumU, 2)
+  put char 32 at 15,2
+  put char WeedTile at 18,2
+  NumU = Weeds
+  print at 19,2, digits$(NumU, 2)
+  put char 47 at 21,2
+  NumU = WeedLimit
+  print at 22,2, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScoreOnly:
+  print Score at 8,1
+  return
+end sub
+
+sub ShowTime:
+  print at 2,2, "TIME"
+  NumU = TimeLeft
+  print at 7,2, digits$(NumU, 3)
+  return
+end sub
+
+' Graphics II: tiles 128-143 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for F = 0 to 2
+    copy TilePat count 128 to vram.pattern + Dst16
+    copy TileCol count 128 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 4
+  update sprites
+  return
+end sub
+
+' Lines 10000-10140: instructions and the scoring table, with the tiles
+sub TitlePage:
+  nmi on
+  HideAll
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 13,1, "PESTS"
+  print at 2,3, "GOAL: FUMIGATE EVERY FLOWER"
+  print at 2,4, "BEFORE THE TIME RUNS OUT."
+  put char YellowTile at 3,6
+  put char BlueTile at 4,6
+  put char RoseTile at 5,6
+  print at 7,6, "AIM, PRESS FIRE: THEY"
+  print at 7,7, "TURN WHITE."
+  put char SeedTile at 3,8
+  put char SproutTile at 4,8
+  put char WeedTile at 5,8
+  print at 7,8, "SPRAY THE WEEDS BEFORE"
+  print at 7,9, "THEY TAKE OVER."
+  print at 8,10, "SCORING TABLE"
+  put char WeedTile at 8,12
+  print at 11,12, "WEED          5"
+  put char YellowTile at 8,14
+  print at 11,14, "YELLOW DAISY 10"
+  put char BlueTile at 8,16
+  print at 11,16, "BLUE DAISY   20"
+  put char RoseTile at 8,18
+  print at 11,18, "ROSE         40"
+  print at 3,19, "TOO MANY WEEDS OR NO TIME"
+  print at 3,20, "LEFT, AND THE GAME IS OVER."
+  print at 5,22, "PRESS FIRE TO BEGIN"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideAll
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 13,1, "PESTS"
+  print at 7,3, "BY KEVIN WORAM"
+  print at 5,4, "COMPUTE! JUNE 1984"
+  print at 2,6, "A COMMODORE 64 GAME, WITH"
+  print at 2,7, "VERSIONS FOR THE VIC-20 AND"
+  print at 2,8, "THE IBM PC AND PCJR."
+  print at 2,10, "POOR JOE: WEEDS AND BLIGHT"
+  print at 2,11, "ARE CHOKING HIS FLOWERS."
+  print at 2,12, "SPRAY THE WEEDS BEFORE THEY"
+  print at 2,13, "SPREAD, AND FUMIGATE EVERY"
+  print at 2,14, "FLOWER: IT TURNS WHITE."
+  print at 2,16, "TWO MINUTES PER GARDEN, AND"
+  print at 2,17, "15 SECONDS MORE EACH LEVEL."
+  print at 2,18, "TIME LEFT IS BONUS POINTS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Stick bits (1 up, 2 down, 4 left, 8 right) to directions 1-8 clockwise
+' from up; opposite bits cancel (lines 3010-3050, JP and CS tables)
+data StickDir bytes 0,1,5,0,7,8,6,7,3,2,4,3,0,1,5,0
+' Cell steps for directions 0-8, stored + 1 (0 = -1, 1 = 0, 2 = +1)
+data DirDX bytes 1,1,2,2,2,1,0,0,0
+data DirDY bytes 1,0,0,1,2,2,2,1,0
+' Wand offset in pixels for directions 0-8, stored + 5
+data WandDX bytes 5,5,10,10,10,5,0,0,0
+data WandDY bytes 5,0,0,5,10,10,10,5,0
+' Flowers per level 1-10 (index 0 unused)
+data YellowPerLevel bytes 0,6,7,8,9,10,11,12,12,13,14
+data BluePerLevel bytes 0,3,4,4,5,5,6,6,7,7,8
+data RosesPerLevel bytes 0,1,2,2,3,3,4,4,5,5,6
+
+' Tiles 128-143: fence rail, post, corner, -, -, -, yellow daisy, blue
+' daisy, rose, fumigated (white) flower, weed seed, sprout, adult weed,
+' spray mist, -, garden floor
+data TilePat bytes
+  $00,$FF,$FF,$00,$00,$FF,$FF,$00
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$FF,$FF,$3C,$3C,$FF,$FF,$3C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $28,$7C,$38,$7C,$28,$10,$58,$10
+  $28,$7C,$38,$7C,$28,$10,$58,$10
+  $18,$3C,$7E,$3C,$18,$10,$58,$10
+  $28,$7C,$38,$7C,$28,$10,$58,$10
+  $00,$00,$00,$00,$24,$00,$48,$00
+  $00,$00,$00,$28,$14,$10,$10,$38
+  $92,$54,$38,$D6,$7C,$38,$54,$92
+  $54,$AA,$55,$AA,$54,$AA,$55,$2A
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$00,$08,$00,$00,$22,$00
+end data
+
+' Their colors, one byte per pixel row (Graphics II)
+data TileCol bytes
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $BC,$BC,$AC,$BC,$BC,$3C,$3C,$3C
+  $5C,$5C,$AC,$5C,$5C,$3C,$3C,$3C
+  $9C,$8C,$6C,$8C,$6C,$3C,$3C,$3C
+  $FC,$FC,$EC,$FC,$FC,$EC,$EC,$EC
+  $AC,$AC,$AC,$AC,$AC,$AC,$AC,$AC
+  $3C,$3C,$3C,$3C,$2C,$2C,$2C,$6C
+  $AC,$AC,$AC,$6C,$6C,$6C,$1C,$1C
+  $FC,$EC,$FC,$EC,$FC,$EC,$FC,$EC
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+end data
+
+' Sprites: Joe's hat and trousers (two strides), face and hands, shirt,
+' then the spray wand pointing up, up-right, right ... up-left
+data JoeSprites bytes
+  $3C,$7E,$00,$00,$00,$00,$24,$66
+  $3C,$7E,$00,$00,$00,$00,$66,$42
+  $00,$00,$3C,$3C,$00,$81,$00,$00
+  $00,$00,$00,$00,$7E,$7E,$00,$00
+  $30,$10,$10,$10,$10,$00,$00,$00
+  $03,$03,$04,$08,$10,$00,$00,$00
+  $00,$00,$01,$1F,$00,$00,$00,$00
+  $00,$00,$00,$10,$08,$04,$03,$03
+  $00,$00,$00,$10,$10,$10,$10,$30
+  $00,$00,$00,$08,$10,$20,$C0,$C0
+  $00,$00,$80,$F8,$00,$00,$00,$00
+  $C0,$C0,$20,$10,$08,$00,$00,$00
+end data
+
+asm {
+SprayN:
+    db $00,$00,$13,$03,$00,$00,$33,$03,$00,$00,$53,$03,$00,$00,$73,$03,$10
+KillT1:
+    db $40,$E8,$F3,$02,$40,$FC,$21,$03,$50
+KillN:
+    db $00,$00,$01,$02,$00,$00,$F0,$03,$10
+FumeT1:
+    db $40,$8F,$10,$02,$40,$71,$10,$02,$40,$5F,$10,$04,$50
+GrowT1:
+    db $40,$FF,$43,$04,$50
+LevelT1:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$12,$50
+OverT1:
+    db $40,$BA,$10,$02,$40,$BF,$10,$02,$40,$C4,$10,$02,$40,$CA,$10,$02,$40,$CF,$10,$02,$40,$D5,$10,$02
+    db $40,$DB,$10,$02,$40,$E2,$10,$02,$40,$E9,$10,$02,$40,$F1,$10,$02,$40,$F9,$10,$02,$40,$01,$11,$02
+    db $40,$0A,$11,$02,$40,$14,$11,$02,$40,$1F,$11,$02,$40,$2A,$11,$02,$40,$37,$11,$02,$40,$44,$11,$02
+    db $40,$53,$11,$02,$40,$63,$11,$02,$40,$75,$11,$02,$40,$88,$11,$02,$40,$9E,$11,$02,$40,$B7,$11,$02
+    db $40,$D2,$11,$02,$40,$F1,$11,$02,$40,$15,$12,$02,$40,$3E,$12,$02,$40,$6D,$12,$02,$40,$A6,$12,$02
+    db $40,$EA,$12,$02,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+PestsSoundTable:
+    dw SprayN,$702B
+    dw KillT1,$7035
+    dw KillN,$702B
+    dw FumeT1,$7035
+    dw GrowT1,$7035
+    dw LevelT1,$7035
+    dw OverT1,$7035
+    dw BeepT1,$7035
+    dw PestsTuneMel,$703F
+    dw PestsTuneBass,$7049
+; Title tune (original for this port): two Tiny Sound channels
+PestsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$20,$1A,$21
+    db $1F,$1C,$18,$1C,$1F,$00,$1C,$00,$21,$1F,$1C,$18,$1A,$00,$00,$00
+    db $1C,$1A,$18,$1A,$1C,$00,$18,$00,$1A,$1C,$1A,$17,$13,$00,$00,$00
+    db $1F,$1C,$18,$1C,$1F,$00,$21,$00,$23,$21,$1F,$1C,$1A,$00,$00,$00
+    db $1C,$1F,$1A,$1C,$18,$00,$17,$00,$18,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+PestsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$50,$18,$32
+    db $0C,$00,$13,$00,$0C,$00,$13,$00,$11,$00,$0C,$00,$13,$00,$0B,$00
+    db $0C,$00,$13,$00,$0C,$00,$10,$00,$13,$00,$0E,$00,$07,$00,$0B,$00
+    db $0C,$00,$13,$00,$0C,$00,$10,$00,$11,$00,$0C,$00,$13,$00,$0B,$00
+    db $0C,$00,$13,$00,$07,$00,$0B,$00,$0C,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+}

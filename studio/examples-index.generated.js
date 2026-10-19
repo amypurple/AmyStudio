@@ -1465,6 +1465,24 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "pests",
+    "label": "Pests",
+    "detail": "Kevin Woram's 1984 garden game adapted with eight-direction movement, spreading weeds, flower fumigation, layered sprites and Tiny Sound music.",
+    "projectName": "pests",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "commodore-64",
+      "port",
+      "game",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",
