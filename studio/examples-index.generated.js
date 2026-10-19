@@ -1483,6 +1483,98 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "bunny-hop",
+    "label": "Bunny Hop",
+    "detail": "Adam Cybanski's 1984 cloud-jumping game with smooth scrolling clouds, carrots, jumper rounds and fixed-point sprite movement.",
+    "projectName": "bunny-hop",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "vic-20",
+      "atari",
+      "port",
+      "game",
+      "sprites",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "jackpot",
+    "label": "Jackpot",
+    "detail": "Rick Rothstein's 1984 slot-machine simulation with three odds levels, animated reels, keypad controls and faithful TI-99/4A graphics.",
+    "projectName": "jackpot",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "sprites",
+      "keypad",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "devastator",
+    "label": "Devastator",
+    "detail": "David R. Arnold and Patrick Parrish's 1984 crosshair action game with fixed-point motion, two skill levels and animated destruction sequences.",
+    "projectName": "devastator",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "sprites",
+      "fixed-point",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "olympiad",
+    "label": "Olympiad",
+    "detail": "Kevin Woram and Mike Buhidar Jr.'s enchanted arena duel with two-player controls, a computer opponent, arrows, teleport grids and Tiny Sound music.",
+    "projectName": "olympiad",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "commodore-64",
+      "atari",
+      "port",
+      "game",
+      "two-player",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "pentominos",
+    "label": "Pentominos",
+    "detail": "Jim Butterfield's twelve-piece rectangle solver, adapted from the 1984 TI-99/4A listing with four board sizes, visible backtracking and three search speeds.",
+    "projectName": "pentominos",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "puzzle",
+      "solver",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",

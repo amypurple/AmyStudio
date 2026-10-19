@@ -43,6 +43,13 @@ feature belongs in the language rather than in one game.
    service. A ROM test forces this exact interleaving in all five optimization
    profiles and verifies the destination byte, resumed frames, and cleared
    guard. The `NO_NMI` check remains a separate user-hook reentrancy guard.
+7. **Global scratch clobber diagnostics** - high priority. Bunny Hop,
+   Blueberries and Olympiad independently reused a scalar global after calling
+   a routine that also writes it. The downloaded games are corrected, but the
+   compiler should warn about a write-call-read sequence when its transitive
+   routine-effect graph proves that the intervening call writes the same plain
+   scalar. Arrays, record fields, indirect ASM effects and aliasing remain out
+   of scope for the first diagnostic so useful warnings do not become noise.
 
 ## Valuable, bounded additions
 
@@ -60,6 +67,10 @@ feature belongs in the language rather than in one game.
   synthesis implementation.
 - **Screen-on analysis and named keypad constants** are small, useful compiler
   diagnostics/documentation changes.
+- **Routine side-effect summaries** can expose transitive scalar writes in the
+  outline after the clobber warning is reliable. Documentation should recommend
+  `local` scratch variables and state their RAM/stack cost rather than treating
+  globals as implicit temporaries.
 
 ## Longer-term design work
 

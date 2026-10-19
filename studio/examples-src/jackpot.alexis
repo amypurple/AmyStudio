@@ -1,0 +1,626 @@
+cartridge "JACKPOT/PRESENTS RICK ROTHSTEIN'S/1984"
+
+' JACKPOT
+' By Rick Rothstein, COMPUTE! magazine, August 1984 (versions for the
+' TI-99/4A with Extended BASIC, Commodore 64, VIC-20, Atari and IBM PC/PCjr).
+' This port follows "Program 1: TI-99/4A Jackpot". All credit belongs to
+' Rick Rothstein.
+'
+' Historical context (summary of the article):
+' A trip to Atlantic City, and a losing streak at the one-arm bandits,
+' inspired this simulation: all the lights and suspense of a slot machine,
+' none of the risk. Three windows show cherries, limes, plums, bells, bars
+' or lucky sevens, each picked from a 20-stop wheel. How often a symbol
+' appears on each wheel sets the odds: level one pays like a real casino,
+' level two leans your way, and level three, in the long run, hands you the
+' casino. The TI version redefines all 112 Extended BASIC characters, fills
+' the screen with a recolored cursor character for a background that no
+' other character can disturb, builds the pictures as strings for fast
+' DISPLAY AT statements, and uses three magnified sprites, invisible during
+' play, to show the level number in the windows.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: fire plays (TI key P); keypad * changes the level (TI AID);
+' keypad # resets the money to even (TI REDO). While choosing a level,
+' keypad 1-3 or the joystick picks it (TI space bar) and fire starts
+' (TI ENTER). The TI S key, which ended the program, is not needed.
+' Adaptation liberties: the 112 TI characters live at codes 144-255 (TI
+' code + 112) and the background uses tile 136, so nothing depends on the
+' ASCII font; the reels spin and slow down before each clunk instead of
+' popping up; a soft click while they turn; the money line moves up one
+' row, out of the bottom overscan; the key help line is rewritten for the
+' controller; an editorial page at power-on.
+' TI rows/columns are 1-based. DISPLAY AT(R,C): Amy X = C + 1, Y = R - 1.
+' Sprites: dot-row R, dot-column C become Y = R - 2, X = C - 1.
+
+const BackTile = 136           ' TI char 30, the recolored cursor
+const StatusY = 22             ' TI row 24, moved up one row
+
+' Sound table slots (jp/s.mjs)
+const SndSpin = 1
+const SndClunk = 2
+const SndTick = 3
+const SndCoinA = 4
+const SndCoinB = 5
+const SndCoinC = 6
+const SndSirenUp = 7
+const SndSirenDown = 8
+const SndBeep = 9
+
+u8 Level = 1                   ' LEVEL - 48
+i16 Total = 0                  ' TOTAL
+u8 Coins = 0                   ' COINS
+u8 Pick[3]                     ' PICK(1-3)
+u8 T[3]                        ' strip row at the top of each window
+u8 Left[3]                     ' strip rows still to turn
+u8 Slow[3]
+u8 K = 0
+u8 I = 0
+u8 J = 0
+u8 R = 0
+u8 P = 0
+u8 X = 0
+u8 Y = 0
+u8 N = 0
+u8 Line = 0
+u8 Off = 0
+u8 WB = 0
+u8 Tg = 0
+u8 Need = 0
+u8 Running = 0
+u8 TickT = 0
+u8 Choice = 0
+u8 Len = 0
+u8 Half = 0
+u16 Mag = 0
+u8 Dg[6]
+
+  text screen
+  set sound table JackpotSoundTable areas 4
+  sprites 8x8
+  sprites double
+  copy LevelSprites count 24 to vram.spr_pat
+  copy TiChars count 896 to vram.pattern + 1152
+  fill 0 count 8 to vram.pattern + 1088
+  HideLevel
+  screen on
+  EditorialPage
+
+  ' --- Lines 100-130 ---
+  set text colors black count 32
+  backdrop light yellow
+  fill BackTile count 768 to vram.name
+  vpoke vram.color + 17, $BB
+  ' Lines 110-120: the colors of TI sets 1-14
+  for I = 0 to 13
+    vpoke vram.color + 18 + I, SetColors[I]
+  next
+  ' Black on white for the controller help (ASCII)
+  set text colors black on white at 4 count 8
+  Level = 1
+  Total = 0
+  T[0] = 119
+  T[1] = 119
+  T[2] = 119
+  ' --- Lines 640-710 ---
+  put BorderRow count 25 at 3,0
+  ClearWindows
+  put BorderRow count 25 at 3,8
+  Off = 0
+  for Y = 10 to 20
+    put ChartRows + Off count 25 at 3,Y
+    Off += 25
+  next
+  print at 3,21, "FIRE=PLAY *=LEVEL #=RESET"
+  ' Line 730: KEY=1 :: GOTO 160, the game starts by asking for a level
+  goto choose_level
+
+' --- Lines 140-160 ---
+main_wait:
+  wait no fire
+key_wait:
+  wait
+  if joypad(1).fire then goto play_round
+  Choice = keypad(1)
+  if Choice = 10 then goto choose_level   ' * (TI AID)
+  if Choice = 11 then                     ' # (TI REDO)
+    Total = 0
+    ShowMoney
+    play sound SndBeep
+    wait 15 frames
+  end if
+  goto key_wait
+
+' --- Lines 170-190 ---
+choose_level:
+  ClearWindows
+  ShowLevel
+  fill BackTile count 28 at 2,StatusY
+  print at 3,StatusY, "PICK LEVEL 1-3, THEN FIRE"
+  play sound SndBeep
+  wait no fire
+level_wait:
+  wait
+  if joypad(1).fire then goto level_done
+  Choice = keypad(1)
+  if Choice >= 1 then
+    if Choice <= 3 then
+      if Choice <> Level then
+        Level = Choice
+        LevelChanged
+      end if
+    end if
+  end if
+  if joypad(1).right.pressed then
+    ' Line 190: LEVEL=LEVEL+1+3*(LEVEL>50)
+    inc Level
+    if Level > 3 then Level = 1
+    LevelChanged
+  end if
+  if joypad(1).left.pressed then
+    dec Level
+    if Level = 0 then Level = 3
+    LevelChanged
+  end if
+  goto level_wait
+level_done:
+  ' --- Lines 780-800: new shapes in the windows, money back to even ---
+  HideLevel
+  update sprites
+  Total = 0
+  fill BackTile count 28 at 2,StatusY
+  SpinReels
+  ShowMoney
+  goto main_wait
+
+' --- Lines 200-300 ---
+play_round:
+  Total -= 1
+  ShowMoney
+  play sound SndSpin
+  SpinReels
+  ' Lines 230-260
+  Coins = 0
+  if Pick[0] = 1 then
+    Coins = 2
+    if Pick[1] = 1 then Coins = 5
+    goto pay
+  end if
+  if Pick[0] <> Pick[1] then goto main_wait
+  ' Line 240: a bar in the third window is wild, except for sevens
+  if Pick[2] = 5 then
+    if Pick[1] = 6 then goto main_wait
+  else
+    if Pick[1] <> Pick[2] then goto main_wait
+    if Pick[1] = 5 then goto main_wait
+  end if
+  if Pick[0] < 5 then
+    Coins = Pick[0] << 2
+    Coins += 2
+    goto pay
+  end if
+  if Pick[0] = 5 then
+    ' Line 280: $100, five dollars at a time
+    for I = 1 to 20
+      Total += 5
+      ShowMoney
+      play sounds SndCoinA, SndCoinB, SndCoinC
+      wait 4 frames
+    next
+    goto main_wait
+  end if
+  ' Lines 290-300: $200, forty dollars per siren
+  for I = 1 to 5
+    play sound SndSirenUp
+    wait 42 frames
+    Total += 40
+    ShowMoney
+    play sound SndSirenDown
+    wait 32 frames
+  next
+  goto main_wait
+pay:
+  ' Line 270: one dollar at a time
+  for I = 1 to Coins
+    Total += 1
+    ShowMoney
+    play sounds SndCoinA, SndCoinB, SndCoinC
+    wait 4 frames
+  next
+  goto main_wait
+
+' ---------------------------------------------------------------------------
+
+sub LevelChanged:
+  ShowLevel
+  play sound SndBeep
+  return
+end sub
+
+' Line 720: the level number in the three windows (TI sprites #1-#3)
+sub ShowLevel:
+  N = Level - 1
+  set sprite 0 to 27,52,N,1
+  set sprite 1 to 27,116,N,1
+  set sprite 2 to 27,180,N,1
+  update sprites
+  return
+end sub
+
+sub HideLevel:
+  clear sprites
+  set sprite count 3
+  update sprites
+  return
+end sub
+
+' Line 770: blank windows
+sub ClearWindows:
+  for Y = 1 to 7
+    put WindowRow count 25 at 3,Y
+  next
+  return
+end sub
+
+' Lines 200-220 and 780-800 (adaptation: the reels spin). Each reel picks a
+' random stop, INT(20*RND+1), then turns until that stop fills its window.
+sub SpinReels:
+  WB = Level - 1
+  WB *= 60
+  for K = 0 to 2
+    P = random(0, 19)
+    Off = WB + P
+    Pick[K] = Wheels[Off]
+    WB += 20
+    ' Stop P is shown when the window's top row is strip row 6 * P - 1
+    Tg = P * 6
+    if Tg = 0 then
+      Tg = 119
+    else
+      dec Tg
+    end if
+    if T[K] >= Tg then
+      Need = T[K] - Tg
+    else
+      Need = T[K] + 120
+      Need -= Tg
+    end if
+    ' At least 50, 75 and 100 rows for the three reels
+    N = K * 25
+    N += 50
+    if Need < N then Need += 120
+    if Need < N then Need += 120
+    Left[K] = Need
+    Slow[K] = 0
+  next
+  TickT = 0
+spin_loop:
+  wait
+  Running = 0
+  for K = 0 to 2
+    if Left[K] > 0 then
+      inc Running
+      StepReel
+    end if
+  next
+  if Running = 0 then return
+  inc TickT
+  if TickT >= 6 then
+    TickT = 0
+    play sound SndTick
+  end if
+  goto spin_loop
+end sub
+
+' One reel moves down one strip row (slower over the last six rows)
+sub StepReel:
+  if Left[K] <= 6 then
+    inc Slow[K]
+    if Slow[K] < 3 then return
+    Slow[K] = 0
+  end if
+  if T[K] = 0 then
+    T[K] = 119
+  else
+    dec T[K]
+  end if
+  dec Left[K]
+  DrawReel
+  if Left[K] = 0 then
+    play sound SndClunk
+  end if
+  return
+end sub
+
+' Draws window K (rows 1-7) from its 120-row reel strip: each of the 20
+' stops is a five-row shape followed by one blank row
+sub DrawReel:
+  X = K << 3
+  X += 5
+  WB = Level - 1
+  WB *= 60
+  N = K * 20
+  WB += N
+  R = T[K]
+  for Y = 1 to 7
+    Line = Mod6[R]
+    if Line = 5 then
+      put BlankRow count 5 at X,Y
+    else
+      P = Div6[R]
+      Off = WB + P
+      N = Wheels[Off]
+      Off = ShapeBase[N]
+      N = Line * 5
+      Off += N
+      put ShapeRows + Off count 5 at X,Y
+    end if
+    inc R
+    if R >= 120 then R = 0
+  next
+  return
+end sub
+
+' --- Lines 810-840 ---
+sub ShowMoney:
+  fill BackTile count 28 at 2,StatusY
+  if Total = 0 then
+    put MsgEven count 16 at 7,StatusY
+    return
+  end if
+  if Total > 0 then
+    Mag = Total
+  else
+    Mag = 0 - Total
+  end if
+  ' TOTAL$ = STR$(ABS(TOTAL)) in the TI digits (chars 48-57 + 112)
+  Len = 0
+  do
+    N = Mag % 10
+    Dg[Len] = N + 160
+    Mag /= 10
+    inc Len
+  loop while Mag > 0
+  ' COLUMN = 6 + (TOTAL > 0) - INT(.5 + LENGTH / 2), text after CHR$(30)
+  Half = Len + 1
+  Half >>= 1
+  if Total > 0 then
+    X = 7 - Half
+    put MsgWin count 17 at X,StatusY
+    X += 17
+  else
+    X = 8 - Half
+    put MsgLose count 16 at X,StatusY
+    X += 16
+  end if
+  do
+    dec Len
+    put char Dg[Len] at X,StatusY
+    inc X
+  loop while Len > 0
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  set text colors black count 32
+  backdrop white
+  cls
+  print at 12,1, "JACKPOT"
+  print at 7,3, "BY RICK ROTHSTEIN"
+  print at 5,4, "COMPUTE! AUGUST 1984"
+  print at 2,6, "A SLOT MACHINE WITHOUT THE"
+  print at 2,7, "RISK. EACH WINDOW STOPS ON"
+  print at 2,8, "ONE OF 20 PLACES OF ITS"
+  print at 2,9, "WHEEL; HOW OFTEN A SYMBOL"
+  print at 2,10, "APPEARS SETS THE ODDS."
+  print at 2,12, "LEVEL 1: REAL CASINO ODDS"
+  print at 2,13, "LEVEL 2: TILTED YOUR WAY"
+  print at 2,14, "LEVEL 3: YOU OWN THE CASINO"
+  print at 2,16, "FIRE PLAYS ONE DOLLAR."
+  print at 2,17, "KEYPAD *  CHANGES THE LEVEL"
+  print at 2,18, "KEYPAD #  RESETS THE MONEY"
+  print at 4,21, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  cls
+  return
+end sub
+
+' Lines 110-120: CALL COLOR for TI sets 1-14 (VDP color = TI color - 1)
+data SetColors bytes $4F,$6F,$1F,$1F,$1F,$6F,$1F,$6F,$CF,$DF,$DF,$4F,$CF,$CF
+
+' Offset of each shape (1-6) in ShapeRows
+data ShapeBase bytes 0,0,25,50,75,100,125
+
+' TI characters 32-143 (lines 310-560), loaded as chars 144-255
+data TiChars bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$18,$18,$18,$18,$18,$18,$18,$FF
+  $01,$03,$07,$07,$0F,$0F,$0F,$0F,$80,$C0,$E0,$E0,$F0,$F0,$F0,$F0
+  $0F,$1F,$1F,$1F,$1F,$1F,$3F,$3F,$F0,$F8,$F8,$F8,$F8,$F8,$FC,$FC
+  $00,$00,$00,$00,$00,$03,$0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$1C,$3E,$7F,$00,$00,$00,$00,$78,$FC,$FE,$FE
+  $7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$C0,$F0,$F8,$F8,$FC,$FC,$FC,$FC
+  $03,$0F,$1F,$1F,$3F,$3F,$3F,$3F,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE
+  $7F,$3F,$3F,$0F,$03,$00,$00,$00,$F8,$F8,$F0,$E0,$80,$00,$00,$00
+  $00,$38,$44,$44,$44,$44,$38,$00,$00,$10,$30,$10,$10,$10,$38,$00
+  $00,$38,$44,$08,$10,$20,$7C,$00,$00,$38,$44,$18,$04,$44,$38,$00
+  $00,$08,$18,$28,$48,$7C,$08,$00,$00,$7C,$40,$78,$04,$44,$38,$00
+  $00,$38,$40,$78,$44,$44,$38,$00,$00,$7C,$04,$08,$10,$20,$20,$00
+  $00,$38,$44,$38,$44,$44,$38,$00,$00,$38,$44,$44,$3C,$04,$78,$00
+  $00,$00,$00,$00,$00,$3F,$3F,$3F,$00,$00,$00,$00,$00,$FC,$FC,$FC
+  $3F,$3F,$3F,$00,$00,$00,$00,$00,$FC,$FC,$FC,$00,$00,$00,$00,$00
+  $00,$38,$54,$30,$18,$54,$38,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$38,$10,$10,$10,$10,$38,$00,$00,$38,$44,$44,$7C,$44,$44,$00
+  $00,$3C,$22,$3C,$22,$22,$3C,$00,$00,$44,$64,$54,$54,$4C,$44,$00
+  $00,$78,$44,$44,$44,$44,$78,$00,$00,$7C,$40,$78,$40,$40,$7C,$00
+  $00,$40,$40,$40,$40,$40,$7C,$00,$00,$38,$44,$40,$4C,$44,$38,$00
+  $1F,$1F,$0F,$03,$00,$00,$00,$00,$FC,$F8,$F0,$C0,$00,$00,$00,$00
+  $18,$3C,$7E,$7E,$7E,$3C,$18,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$07,$07,$04,$00,$00,$00,$00,$00,$F8,$F8,$18,$30,$30,$60
+  $00,$00,$00,$01,$01,$01,$00,$00,$60,$C0,$C0,$80,$80,$80,$00,$00
+  $00,$78,$44,$44,$78,$40,$40,$00,$00,$44,$44,$28,$10,$10,$10,$00
+  $00,$78,$44,$44,$78,$48,$44,$00,$00,$38,$44,$30,$08,$44,$38,$00
+  $00,$7C,$10,$10,$10,$10,$10,$00,$00,$44,$44,$44,$44,$44,$38,$00
+  $00,$44,$44,$44,$44,$28,$10,$00,$00,$44,$44,$44,$54,$54,$28,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$F8,$F8,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FE,$FC,$01,$01,$03,$07,$07,$0F,$1F,$1F
+  $FC,$F8,$F0,$E0,$C0,$C0,$80,$80,$3F,$3F,$3F,$3E,$7E,$7E,$7E,$7C
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00
+  $FF,$7F,$1F,$07,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$00,$00,$00
+  $FF,$FE,$F8,$E0,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$03,$0F,$1F,$1F,$3F,$7F,$00,$00,$C0,$F0,$F8,$F8,$FC,$FE
+  $7F,$3F,$1F,$1F,$0F,$03,$00,$00,$FE,$FC,$F8,$F8,$F0,$C0,$00,$00
+  $00,$03,$0F,$1F,$3F,$7F,$FF,$FF,$00,$C0,$F0,$F8,$FC,$FE,$FF,$FF
+  $01,$01,$01,$03,$03,$07,$07,$07,$80,$80,$80,$C0,$C0,$E0,$E0,$E0
+  $07,$0F,$0F,$0F,$0F,$0F,$0F,$07,$E0,$F0,$F0,$F0,$F0,$F0,$F0,$E0
+  $07,$07,$07,$03,$03,$01,$01,$01,$E0,$E0,$E0,$C0,$C0,$80,$80,$80
+  $FF,$FF,$7F,$3F,$1F,$0F,$03,$00,$FF,$FF,$FE,$FC,$F8,$F0,$C0,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$01,$07,$0F,$0F,$1F,$1F
+  $00,$00,$80,$E0,$F0,$F0,$F8,$F8,$1F,$1F,$0F,$0F,$07,$01,$00,$00
+  $F8,$F8,$F0,$F0,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$C0,$F0,$F8
+  $00,$01,$01,$01,$01,$03,$07,$07,$00,$80,$80,$80,$80,$C0,$E0,$E0
+  $07,$07,$0F,$1F,$3F,$3F,$00,$00,$E0,$E0,$F0,$F8,$FC,$FC,$00,$00
+  $C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00
+  $00,$01,$06,$08,$10,$20,$40,$80,$3F,$C1,$03,$02,$04,$04,$08,$08
+  $01,$02,$02,$04,$04,$08,$08,$08,$10,$10,$20,$20,$40,$40,$40,$40
+  $40,$20,$20,$10,$08,$04,$02,$01,$00,$00,$00,$00,$01,$02,$04,$08
+  $00,$00,$64,$88,$10,$20,$20,$10,$00,$00,$00,$00,$07,$1F,$7F,$FF
+  $00,$00,$00,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$E0,$F8,$FE,$FF
+  $01,$03,$03,$07,$07,$0F,$0F,$1F,$80,$C0,$C0,$E0,$E0,$F0,$F0,$F8
+  $1F,$3F,$FF,$FF,$FF,$FF,$3F,$1F,$F8,$FC,$FF,$FF,$FF,$FF,$FC,$F8
+  $1F,$0F,$0F,$07,$07,$03,$03,$01,$F8,$F0,$F0,$E0,$E0,$C0,$C0,$80
+end data
+
+' Lines 570-630: SHAPE$(1-6,1-5), five tiles per row
+data ShapeRows bytes
+  231,231,240,241,231,231,242,231,243,231,152,243,231,244,153,154,155,231,156,157,158,159,231,184,185
+  231,247,248,249,231,250,211,211,211,251,252,211,211,211,253,254,211,211,211,255,231,208,209,210,231
+  231,216,226,217,231,218,226,226,226,219,220,226,226,226,221,222,226,226,226,223,231,224,226,225,231
+  231,231,145,231,231,231,146,144,147,231,231,148,144,149,231,150,151,144,232,233,151,144,144,144,232
+  231,231,231,231,231,175,175,175,175,175,175,178,177,194,175,175,175,175,175,175,231,231,231,231,231
+  231,200,201,202,231,231,231,203,204,231,231,231,205,231,231,231,231,206,231,231,231,231,207,231,231
+end data
+
+' Line 770: a row of the three windows
+data WindowRow bytes
+  187,231,231,231,231,231,231,231,187,231,231,231,231,231,231,231,187,231,231,231,231,231,231,231,187
+end data
+
+' Lines 640: RPT$("K",25)
+data BorderRow bytes
+  187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187,187
+end data
+
+' Lines 650-710: the payout chart, rows 11-21
+data ChartRows bytes
+  231,231,231,160,179,181,231,180,160,182,182,177,194,231,192,181,194,231,192,182,177,193,231,231,231
+  231,245,246,231,231,231,231,231,231,231,231,231,231,227,228,227,228,227,228,231,231,231,231,231,231
+  231,186,186,231,238,231,238,231,174,231,162,231,231,229,230,229,230,229,230,231,174,231,161,164,231
+  231,245,246,245,246,231,231,231,231,231,231,231,231,234,235,234,235,170,171,231,231,231,231,231,231
+  231,186,186,186,186,231,238,231,174,231,165,231,231,236,237,236,237,172,173,231,174,231,161,168,231
+  231,212,213,212,213,170,171,231,231,231,231,231,231,234,235,234,235,234,235,231,231,231,231,231,231
+  231,214,215,214,215,172,173,231,174,161,160,231,231,236,237,236,237,236,237,231,174,231,161,168,231
+  231,212,213,212,213,212,213,231,231,231,231,231,231,170,171,170,171,170,171,231,231,231,231,231,231
+  231,214,215,214,215,214,215,231,174,161,160,231,231,172,173,172,173,172,173,231,174,161,160,160,231
+  231,227,228,227,228,170,171,231,231,231,231,231,231,188,189,188,189,188,189,231,231,231,231,231,231
+  231,229,230,229,230,172,173,231,174,161,164,231,231,190,191,190,191,190,191,231,174,162,160,160,231
+end data
+
+' Lines 740-760: WHEEL$(level,reel), 20 stops each
+data Wheels bytes
+  2,5,3,1,2,3,6,4,2,4,5,3,1,4,2,5,3,2,3,4
+  1,4,2,1,6,3,1,3,1,5,6,4,2,5,2,1,3,1,3,2
+  2,3,4,2,4,3,2,5,4,2,4,3,6,4,2,3,4,3,2,4
+  1,2,6,5,3,1,2,4,1,3,5,1,2,4,3,1,5,2,4,6
+  6,2,5,4,3,5,1,2,1,3,6,4,2,3,1,4,6,3,5,2
+  2,4,3,5,2,4,6,3,5,2,3,4,2,3,5,4,2,3,6,4
+  5,2,1,3,4,6,4,6,1,2,1,5,3,1,5,3,6,2,4,1
+  5,6,2,3,1,5,3,4,1,4,6,2,1,3,1,2,5,6,4,5
+  2,3,4,5,6,2,4,6,3,5,6,2,5,4,3,5,2,6,3,4
+end data
+
+' Reel strip helpers: stop number and line of strip row R
+data Div6 bytes
+  0,0,0,0,0,0,1,1,1,1,1,1,2,2,2,2,2,2,3,3
+  3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,6,6,6,6
+  6,6,7,7,7,7,7,7,8,8,8,8,8,8,9,9,9,9,9,9
+  10,10,10,10,10,10,11,11,11,11,11,11,12,12,12,12,12,12,13,13
+  13,13,13,13,14,14,14,14,14,14,15,15,15,15,15,15,16,16,16,16
+  16,16,17,17,17,17,17,17,18,18,18,18,18,18,19,19,19,19,19,19
+end data
+
+
+data Mod6 bytes
+  0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5,0,1
+  2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3
+  4,5,0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5
+  0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5,0,1
+  2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3
+  4,5,0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5
+end data
+
+' Five blank tiles (TI char w)
+data BlankRow bytes
+  231,231,231,231,231
+end data
+
+' Line 810: YOU ARE NOW EVEN (in the TI program's own letters)
+data MsgEven bytes
+  193,160,197,231,177,194,181,231,179,160,199,231,181,198,181,179
+end data
+
+' Line 830: YOU ARE WINNING $
+data MsgWin bytes
+  193,160,197,231,177,194,181,231,199,176,179,179,176,179,183,231,174
+end data
+
+' Line 840: YOU ARE LOSING $
+data MsgLose bytes
+  193,160,197,231,177,194,181,231,182,160,195,176,179,183,231,174
+end data
+
+' Line 720: the level digits (TI chars 49-51) as magnified sprites
+data LevelSprites bytes
+  $00,$10,$30,$10,$10,$10,$38,$00
+  $00,$38,$44,$08,$10,$20,$7C,$00
+  $00,$38,$44,$18,$04,$44,$38,$00
+end data
+
+asm {
+SpinN:
+    db $00,$00,$01,$03,$10
+ClunkN:
+    db $00,$00,$05,$03,$10
+TickN:
+    db $00,$00,$62,$01,$10
+CoinT1:
+    db $40,$70,$00,$02,$50
+CoinT2:
+    db $80,$22,$00,$02,$90
+CoinT3:
+    db $C0,$11,$00,$02,$D0
+SirenUpT1:
+    db $40,$A0,$00,$02,$40,$9E,$00,$02,$40,$9B,$00,$02,$40,$99,$00,$02,$40,$97,$00,$02,$40,$95,$00,$02
+    db $40,$93,$00,$02,$40,$91,$00,$02,$40,$8F,$00,$02,$40,$8E,$00,$02,$40,$8C,$00,$02,$40,$8A,$00,$02
+    db $40,$88,$00,$02,$40,$87,$00,$02,$40,$85,$00,$02,$40,$84,$00,$02,$40,$82,$00,$02,$40,$81,$00,$02
+    db $40,$7F,$00,$02,$40,$7E,$00,$02,$40,$7C,$00,$02,$50
+SirenDownT1:
+    db $40,$7C,$00,$02,$40,$7F,$00,$02,$40,$82,$00,$02,$40,$85,$00,$02,$40,$88,$00,$02,$40,$8C,$00,$02
+    db $40,$8F,$00,$02,$40,$93,$00,$02,$40,$97,$00,$02,$40,$9B,$00,$02,$40,$A0,$00,$0C,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+JackpotSoundTable:
+    dw SpinN,$702B
+    dw ClunkN,$702B
+    dw TickN,$702B
+    dw CoinT1,$7035
+    dw CoinT2,$703F
+    dw CoinT3,$7049
+    dw SirenUpT1,$7035
+    dw SirenDownT1,$7035
+    dw BeepT1,$7035
+}
+

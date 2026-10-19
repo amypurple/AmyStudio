@@ -1,0 +1,1094 @@
+cartridge "BUNNY HOP/PRESENTS ADAM CYBANSKI'S/1984"
+
+' BUNNY HOP
+' By Adam Cybanski, COMPUTE! magazine, July 1984, pages 72-78: versions for
+' the Commodore 64, the VIC-20 and the Atari 400/800. All credit belongs to
+' Adam Cybanski.
+'
+' Historical context (summary of the article):
+' It is harvest time in the great carrot patch in the sky. A fluke of
+' nature and some very bad air pollution keep the carrots floating in
+' midair, and Copernicus, a hungry rabbit, hops from cloud to cloud and onto
+' platforms scattered across the sky for no reason at all. Landing in the
+' brier patch below costs him one of his transport passes. Once in a while
+' he swallows a jumping bean disguised as a carrot and hops non-stop: every
+' fifth level is such a jumper round. Each carrot is worth 20 points, a new
+' rabbit comes every tenth level, and the 60-second clock pays a bonus.
+' When it runs out the clouds speed up, and thirty seconds later clouds
+' and platforms start to vanish. On the 64 and the VIC a short machine
+' language routine moves the clouds; the goal is 10,000 points.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' The game logic follows the VIC-20 and Atari listings line by line (cell
+' by cell moves, the 7 - 2W jump counter, falling onto carrots, being pushed
+' down by a cloud, the clock, the interlevel features of lines 600-635).
+' The screen follows the VIC layout, widened from 22 to 28 columns: cloud
+' rows 8 and 14 and 20 drift left, rows 10 and 16 drift right; platforms
+' follow the Atari listing (lines 115-116) plus the VIC's top row.
+' Controls: joystick left and right; fire or joystick up jumps.
+' Adaptation liberties: the clouds scroll smoothly pixel by pixel (eight
+' pre-shifted tile patterns replace the machine language routine), and
+' Copernicus is a sprite that glides between cells and has a hopping
+' frame; the screen uses Graphics II (a color per pixel row) at codes
+' 128-175: green-topped carrots (the VIC carrot looked like a fish), red
+' thorns on the briers (the VIC ones looked like grass), shaded clouds and
+' platforms; a level or JUMPER ROUND banner starts each board; landing in
+' the briers replays the same level with a new layout (the listings also advanced the level and added a carrot);
+' the level-clear hop runs at most three times (the article's own
+' suggestion for high levels); the play-again question is a joystick
+' menu; an editorial page at power-on.
+' Rows: VIC row R is Amy row R (rows 0-2 hold the score line, moved to rows
+' 1-2); VIC column C becomes Amy column C + 2 with 28 columns in play.
+
+const CloudLeft = 128          ' tiles 129-131 / 137-139: left-moving rows
+const CloudRight = 132         ' tiles 133-135 / 141-143: right-moving rows
+const CarrotTile = 144         ' VIC char 37
+const PlatTile = 152           ' VIC char 183
+const BrierTile = 160          ' VIC char 36
+const LifeTile = 168           ' VIC char 33
+const StartX = 0               ' Atari line 155: X=0, Y=11
+const StartY = 11
+const TopRow = 3
+const BrierRow = 22
+
+' Cell types
+const Blank = 0
+const Cloud = 1
+const Plat = 2
+const Carrot = 3
+const Brier = 4
+
+' Sound table slots (bh/s.mjs)
+const SndJump = 1
+const SndThud = 2
+const SndMunch = 3
+const SndDeath = 4
+const SndBoing = 5
+const SndBonus = 6
+const SndBeep = 7
+
+bcd digits 5 Score             ' SC
+u8 LE = 0                      ' level
+u8 LI = 3                      ' spare rabbits
+u8 CT = 4                      ' carrots on the next board
+u8 C = 0                       ' carrots left
+u8 L = 14                      ' cloud pieces per row
+u8 W = 0                       ' heavy rabbit (level 20 and up)
+bool V = false                 ' jumper round
+bool Z = false                 ' fast clouds
+bool Retry = false
+bool Dead = false
+bool Done = false
+bool TimerOn = false
+u8 X = 0                       ' rabbit cell, column 0-27
+u8 Y = 0                       ' rabbit cell, row
+u8 D = 0                       ' 0 facing right, 1 facing left
+bool Grounded = true           ' standing on a cloud, a platform or the briers
+u16 PY16 = 0                   ' rabbit top in pixels, 8.8 fixed point
+u16 VY = 0                     ' vertical speed, 8.8, two's complement
+u16 V0 = 0                     ' take-off speed
+u16 Gv = 0                     ' gravity per frame
+u16 VMax = 0                   ' fastest fall (and walking glide) per frame
+u16 SX16 = 0                   ' rabbit sprite X, 8.8
+u16 HSpeed = 0
+u16 Tmp16 = 0
+u8 Py = 0                      ' rabbit top in pixels
+u8 EX = 0                      ' carrot being eaten
+u8 EY = 0
+u8 TickN = 10                  ' frames per BASIC loop (FOR C=1 TO I)
+u8 TickCount = 0
+u8 CloudSpeed = 6              ' 1/16 pixel per frame
+u8 CloudSub = 0
+u8 OffL = 0                    ' pixel offset of the left-moving rows
+u8 OffR = 0                    ' pixel offset of the right-moving rows
+u8 SetL = 0                    ' 0 or 8: which of the two tile sets the left rows use
+u8 SetR = 0
+u8 F = 0                       ' loop counter for loops that call FrameUpdate
+u16 Off16 = 0
+u16 Dst16 = 0
+u8 Elapsed = 0                 ' TI$ in seconds
+u8 SecTick = 0
+u8 T = 0
+u8 SX = 16                     ' rabbit sprite position
+u8 SY = 87
+u8 TX = 0
+u8 TY = 0
+u8 CX = 0
+u8 CY = 0
+u8 Cell = 0
+u8 Idx = 0
+u8 Base = 0
+u8 TB = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 M = 0
+u8 P = 0
+u8 Q = 0
+u8 R = 0
+u8 Try = 0
+u8 Choice = 0
+u16 NumU = 0
+u8 Names[140]                  ' rows 8, 10, 14, 16, 20: tile of each cell pair
+u8 RowStart[5]                    ' stored cell shown in the first column of each row
+u8 RowBuf[28]
+
+  tile screen
+  set sound table BunnySoundTable areas 3
+  sprites 8x8
+  sprites simple
+  copy RabbitSprites count 32 to vram.spr_pat
+  HideAll
+  screen on
+
+start:
+  EditorialPage
+
+new_game:
+  ' --- Line 25: L, CT, LI, then GOSUB 600 ---
+  Score = 0
+  LE = 0
+  LI = 3
+  CT = 4
+  L = 14
+  NextLevel
+  Retry = false
+
+new_board:
+  ' --- Lines 100-155 ---
+  DrawBoard
+  X = StartX
+  Y = StartY
+  D = 0
+  Grounded = true
+  VY = 0
+  Py = StartY << 3
+  PY16 = Py << 8
+  SX16 = 16 << 8
+  Dead = false
+  Done = false
+  Intro
+  Elapsed = 0
+  SecTick = 0
+  TickCount = 0
+  ShowTime
+  TimerOn = true
+
+main_loop:
+  FrameUpdate
+  Physics
+  if Dead then goto rabbit_lost
+  if Done then goto level_clear
+  inc TickCount
+  if TickCount < TickN then goto main_loop
+  TickCount = 0
+  LogicTick
+  if Dead then goto rabbit_lost
+  if Done then goto level_clear
+  ' --- Lines 275, 400-410: the clock ---
+  if Elapsed >= 60 then
+    if not Z then
+      Z = true
+      CloudSpeed <<= 1
+    end if
+    if Elapsed >= 90 then ErasePiece
+  end if
+  goto main_loop
+
+' --- Lines 800-840: all carrots gathered ---
+level_clear:
+  nmi on
+  TimerOn = false
+  T = 0
+  if Elapsed < 60 then T = 60 - Elapsed
+  ' Adaptation: a banner explains the celebration
+  fill 32 count 16 at 8,2
+  print at 10,2, "ALL CARROTS!"
+  ' Lines 800-825: rabbits bounce along the bottom (at most three times)
+  N = LE
+  if N > 3 then N = 3
+  for K = 1 to N
+    BounceAcross
+  next
+  ' Lines 830-835: the time bonus, SC = SC + T for each second left
+  if T > 0 then
+    J = T
+bonus_loop:
+    NumU = J
+    print at 3,2, digits$(NumU, 2)
+    for I = 1 to T
+      Score += 1
+    next
+    ShowScore
+    play sound SndBonus
+    wait 3 frames
+    if J > 0 then
+      dec J
+      goto bonus_loop
+    end if
+  end if
+  wait 30 frames
+  NextLevel
+  Retry = false
+  goto new_board
+
+' --- Lines 900-905: the brier patch ---
+rabbit_lost:
+  nmi on
+  TimerOn = false
+  N = LE
+  if N > 2 then N = 2
+  for K = 1 to N
+    play sound SndDeath
+    for I = 1 to 36
+      N = I & 4
+      if N <> 0 then
+        set sprite 0 color to 9
+      else
+        set sprite 0 color to 15
+      end if
+      update sprites
+      wait
+    next
+  next
+  set sprite 0 color to 15
+  ' Line 600: IF LI < 0 THEN 500
+  if LI = 0 then goto game_over
+  dec LI
+  Retry = true
+  goto new_board
+
+' --- Lines 500-520 ---
+game_over:
+  nmi on
+  wait 30 frames
+  HideAll
+  for Y = 10 to 14
+    fill 32 count 20 at 6,Y
+  next
+  print at 11,10, "GAME OVER"
+  print at 10,11, "PLAY AGAIN ?"
+  print at 14,12, "YES"
+  print at 14,13, "NO"
+  play sound SndBeep
+  wait no fire
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 12,12 step 1
+  if Choice = 1 then goto new_game
+  goto start
+
+' ---------------------------------------------------------------------------
+
+' One BASIC pass, lines 200-265
+sub LogicTick:
+  ' Lines 200-215: one cell left or right per pass (riding a cloud is done
+  ' when it moves). The vertical part of lines 225-260 is in Physics.
+  if joypad(1).right then
+    if X < 27 then inc X
+    D = 0
+  end if
+  if joypad(1).left then
+    if X > 0 then dec X
+    D = 1
+  end if
+  return
+end sub
+
+' Adaptation: the jump of lines 225-260 as a ballistic arc, every frame.
+' The listings rise one row per pass for three passes (two from level 20),
+' then fall one row per pass. Here the take-off speed and gravity are set
+' so the arc peaks at the same height (24 or 16 pixels) after the same
+' time (three or two passes), and the fall never goes faster than one row
+' per pass. Landing, bumping into a cloud from below, falling onto a carrot
+' and being pushed down by a cloud follow the same cell rules as lines
+' 230-260.
+sub Physics:
+  if Grounded then
+    CellBelow
+    if Cell = Brier then
+      Dead = true
+      return
+    end if
+    if Cell = Blank then
+      Grounded = false
+      VY = 0
+    else
+      if Cell = Carrot then
+        Grounded = false
+        VY = 0
+      else
+        ' Line 225: fire, up, or a jumper round
+        N = 0
+        if joypad(1).fire then N = 1
+        if joypad(1).up then N = 1
+        if V then N = 1
+        if N = 1 then
+          VY = 0 - V0
+          Grounded = false
+          play sound SndJump
+        end if
+      end if
+    end if
+  end if
+  if not Grounded then
+    VY += Gv
+    if VY < 32768 then
+      if VY > VMax then VY = VMax
+    end if
+    PY16 += VY
+    Tmp16 = PY16 >> 8
+    Py = Tmp16
+    if VY >= 32768 then
+      ' Rising: the top of the playfield, or a cloud or platform overhead
+      if Py < 24 then
+        Py = 24
+        PY16 = Py << 8
+        VY = 0
+      end if
+      Y = Py >> 3
+      CellHere
+      if Cell = Cloud then BumpHead
+      if Cell = Plat then BumpHead
+    else
+      ' Falling: land on the first solid cell below (line 230)
+      Y = Py >> 3
+      CellBelow
+      if Cell <> Blank then
+        if Cell <> Carrot then
+          Py = Y << 3
+          PY16 = Py << 8
+          VY = 0
+          Grounded = true
+          if Cell = Brier then
+            Dead = true
+            return
+          end if
+        end if
+      end if
+    end if
+  end if
+  Y = Py >> 3
+  ' Lines 240 and 260: a carrot in the rabbit's cell, or in the cell he is
+  ' sliding into
+  CellHere
+  if Cell = Carrot then
+    EX = X
+    EY = Y
+    EatCarrot
+  end if
+  N = Py & 7
+  if N <> 0 then
+    CellBelow
+    if Cell = Carrot then
+      EX = X
+      EY = Y + 1
+      EatCarrot
+    end if
+  end if
+  ' Line 250: a cloud slid into the rabbit, or he stepped into something
+  CellHere
+  if Cell = Cloud then PushDown
+  if Cell = Plat then PushDown
+  return
+end sub
+
+sub BumpHead:
+  Py = Y + 1
+  Py <<= 3
+  PY16 = Py << 8
+  VY = 0
+  Y = Py >> 3
+  play sound SndThud
+  return
+end sub
+
+sub PushDown:
+  Py = Y + 1
+  Py <<= 3
+  PY16 = Py << 8
+  VY = 0
+  Grounded = false
+  Y = Py >> 3
+  play sound SndThud
+  return
+end sub
+
+' Line 700: 20 points, one at a time
+sub EatCarrot:
+  CX = EX + 2
+  put char 32 at CX,EY
+  for F = 1 to 20
+    Score += 1
+    ShowScore
+    N = F & 1
+    if N = 0 then
+      play sound SndMunch
+    end if
+    FrameUpdate
+  next
+  ' Line 705
+  dec C
+  if C = 0 then Done = true
+  return
+end sub
+
+' Lines 600-635 (GOSUB 600 after a cleared board)
+sub NextLevel:
+  inc LE
+  W = 0
+  V = false
+  if LE > 19 then W = 1
+  M = LE % 10
+  if M = 0 then
+    inc LI
+    CT = 4
+  end if
+  M = LE % 5
+  if M = 0 then V = true
+  dec L
+  if L < 3 then L = 13
+  ' Line 110: I = I - 3, the game speeds up level after level
+  N = LE - 1
+  N /= 7
+  if N > 5 then N = 5
+  TickN = 10 - N
+  ' The jump arc for this speed; from level 20 (line 610, W = 1) the
+  ' heavier rabbit only reaches two rows
+  N = V0Tab[TickN]
+  V0 = N
+  V0 <<= 2
+  if W = 1 then
+    N = G1Tab[TickN]
+  else
+    N = G0Tab[TickN]
+  end if
+  Gv = N
+  N = VMaxTab[TickN]
+  VMax = N
+  VMax <<= 1
+  return
+end sub
+
+' Lines 100-155: a new board
+sub DrawBoard:
+  nmi off
+  HideAll
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  ' Line 100
+  print at 2,1, "TIME"
+  print at 11,1, "BUNNY HOP"
+  print at 25,1, "SCORE"
+  ShowScore
+  ' Line 105: the brier patch
+  fill BrierTile count 28 at 2,BrierRow
+  ' Line 115: the platforms
+  fill PlatTile count 2 at 2,6
+  fill PlatTile count 2 at 15,6
+  fill PlatTile count 2 at 28,6
+  fill PlatTile count 2 at 2,12
+  fill PlatTile count 2 at 28,12
+  fill PlatTile count 2 at 2,18
+  fill PlatTile count 2 at 28,18
+  ' Lines 120-125: L cloud pieces at random places in each cloud row
+  for Idx = 0 to 4
+    for I = 0 to 27
+      RowBuf[I] = Blank
+    next
+    for I = 1 to L
+      N = random(0, 27)
+      RowBuf[N] = Cloud
+    next
+    ' Each stored tile shows a cell and its right neighbour: tile base + 2 *
+    ' cell + neighbour (base 128 left rows, 132 right rows; the second tile
+    ' set is the same code xor 8)
+    Base = RowBase[Idx]
+    TB = CloudLeft
+    N = Idx & 1
+    if N = 1 then TB = CloudRight
+    for I = 0 to 27
+      K = RowBuf[I]
+      K <<= 1
+      J = I + 1
+      if J = 28 then J = 0
+      K += RowBuf[J]
+      K += TB
+      N = Base + I
+      Names[N] = K
+    next
+    RowStart[Idx] = 0
+  next
+  OffL = 0
+  OffR = 0
+  SetL = 0
+  SetR = 0
+  CloudSub = 0
+  Off16 = 0
+  CopyLeft
+  CopyRight
+  for Idx = 0 to 4
+    UploadRow
+  next
+  ' Lines 130-150: CT carrots in empty cells, never in a cloud row or on
+  ' the starting cell
+  C = CT
+  for K = 1 to C
+place_carrot:
+    CY = random(4, 19)
+    Idx = RowIdx[CY]
+    if Idx <> 255 then goto place_carrot
+    CX = random(0, 27)
+    if CY = StartY then
+      if CX = StartX then goto place_carrot
+    end if
+    CellAt
+    if Cell <> Blank then goto place_carrot
+    N = CX + 2
+    put char CarrotTile at N,CY
+  next
+  if not Retry then inc CT
+  ' Line 610: Z = 0, slow clouds
+  Z = false
+  CloudSpeed = SpeedTab[TickN]
+  return
+end sub
+
+' Adaptation: a banner before each board, then the spare rabbits (line 605)
+sub Intro:
+  fill 32 count 16 at 8,2
+  if Retry then
+    print at 11,2, "TRY AGAIN"
+  else
+    if V then
+      print at 10,2, "JUMPER ROUND"
+    else
+      NumU = LE
+      print at 12,2, "LEVEL " + digits$(NumU, 2)
+    end if
+  end if
+  for F = 1 to 90
+    FrameUpdate
+  next
+  fill 32 count 16 at 8,2
+  N = LI
+  if N > 9 then N = 9
+  if N > 0 then
+    M = N >> 1
+    M = 16 - M
+    fill LifeTile count N at M,2
+  end if
+  return
+end sub
+
+' One video frame: the clouds drift, the rabbit sprite glides, the clock runs
+sub FrameUpdate:
+  ' The game runs with the VDP interrupt off and turns it on only to wait
+  ' for the next frame: if a frame's work ever runs long, the NMI cannot
+  ' land in the middle of a VRAM address sequence
+  nmi on
+  wait
+  nmi off
+  CloudSub += CloudSpeed
+  if CloudSub >= 16 then
+    CloudSub -= 16
+    StepClouds
+    if CloudSub >= 16 then
+      CloudSub -= 16
+      StepClouds
+    end if
+  end if
+  PlaceRabbit
+  update sprites
+  if TimerOn then
+    inc SecTick
+    if SecTick >= 60 then
+      SecTick = 0
+      if Elapsed < 250 then inc Elapsed
+      ShowTime
+    end if
+  end if
+  return
+end sub
+
+' The machine language routine (SYS 7380), one pixel at a time: left rows
+' move left, right rows move right; a rabbit standing on a cloud that
+' completes a cell is carried along (lines 205 and 215)
+sub StepClouds:
+  inc OffL
+  if OffL = 8 then
+    OffL = 0
+    CarryCheck
+    ' Adaptation: the rows advance one cell by moving their start index; the
+    ' names use the other tile set, already drawn at offset 0, so no tile
+    ' ever shows the wrong offset
+    SetL ^= 8
+    Off16 = 0
+    CopyLeft
+    for Idx = 0 to 4 step 2
+      N = RowStart[Idx]
+      inc N
+      if N = 28 then N = 0
+      RowStart[Idx] = N
+      UploadRow
+    next
+    if Q = 1 then
+      if X > 0 then dec X
+    end if
+  else
+    Off16 = OffL * 24
+    CopyLeft
+  end if
+  if OffR = 0 then
+    OffR = 7
+    CarryCheck
+    SetR ^= 8
+    Off16 = 168
+    CopyRight
+    for Idx = 1 to 3 step 2
+      N = RowStart[Idx]
+      if N = 0 then
+        N = 27
+      else
+        dec N
+      end if
+      RowStart[Idx] = N
+      UploadRow
+    next
+    if Q = 2 then
+      if X < 27 then inc X
+    end if
+  else
+    dec OffR
+    Off16 = OffR * 24
+    CopyRight
+  end if
+  return
+end sub
+
+' Patterns for offset Off16 / 24 into the left rows' current tile set
+sub CopyLeft:
+  ' Cloud rows 8-20 sit in the second and third Graphics II thirds
+  if SetL = 0 then
+    copy ComboPat + Off16 count 24 to vram.pattern + 3080
+    copy ComboPat + Off16 count 24 to vram.pattern + 5128
+  else
+    copy ComboPat + Off16 count 24 to vram.pattern + 3144
+    copy ComboPat + Off16 count 24 to vram.pattern + 5192
+  end if
+  return
+end sub
+
+sub CopyRight:
+  if SetR = 0 then
+    copy ComboPat + Off16 count 24 to vram.pattern + 3112
+    copy ComboPat + Off16 count 24 to vram.pattern + 5160
+  else
+    copy ComboPat + Off16 count 24 to vram.pattern + 3176
+    copy ComboPat + Off16 count 24 to vram.pattern + 5224
+  end if
+  return
+end sub
+
+' Graphics II: every custom tile, with a color per pixel row, in all three
+' screen thirds (tiles 128-175)
+sub LoadTiles:
+  Dst16 = 1024
+  for F = 0 to 2
+    fill 0 count 384 to vram.pattern + Dst16
+    for I = 0 to 15
+      Tmp16 = I << 3
+      Tmp16 += Dst16
+      copy CloudCol count 8 to vram.color + Tmp16
+    next
+    Tmp16 = Dst16 + 128
+    copy CarrotPat count 8 to vram.pattern + Tmp16
+    copy CarrotCol count 8 to vram.color + Tmp16
+    Tmp16 = Dst16 + 192
+    copy PlatPat count 8 to vram.pattern + Tmp16
+    copy PlatCol count 8 to vram.color + Tmp16
+    Tmp16 = Dst16 + 256
+    copy BrierPat count 8 to vram.pattern + Tmp16
+    copy BrierCol count 8 to vram.color + Tmp16
+    Tmp16 = Dst16 + 320
+    copy LifePat count 8 to vram.pattern + Tmp16
+    copy WhiteCol count 8 to vram.color + Tmp16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+' Q = 1 when the rabbit stands on a left-moving cloud, 2 on a right-moving one
+sub CarryCheck:
+  Q = 0
+  if not Grounded then return
+  R = Y + 1
+  M = RowIdx[R]
+  if M = 255 then return
+  Idx = M
+  CX = X
+  CloudCell
+  if Cell <> Cloud then return
+  N = M & 1
+  Q = N + 1
+  return
+end sub
+
+' Writes cloud row Idx in two pieces (the stored row is circular), with the
+' current tile set
+sub UploadRow:
+  Base = RowBase[Idx]
+  J = RowStart[Idx]
+  N = Idx & 1
+  if N = 1 then
+    TB = SetR
+  else
+    TB = SetL
+  end if
+  R = CloudRowY[Idx]
+  Dst16 = R << 5
+  Dst16 += 2
+  P = Base + J
+  K = 28 - J
+  if TB = 0 then
+    put Names + P count K at 2,R
+  else
+    merge Names + P count K to vram.name + Dst16 mask $FF xor $08
+  end if
+  if J = 0 then return
+  Dst16 += K
+  K += 2
+  if TB = 0 then
+    put Names + Base count J at K,R
+  else
+    merge Names + Base count J to vram.name + Dst16 mask $FF xor $08
+  end if
+  return
+end sub
+
+' Cell = Cloud or Blank for screen cell CX of cloud row Idx
+sub CloudCell:
+  J = RowStart[Idx]
+  J += CX
+  if J >= 28 then J -= 28
+  N = RowBase[Idx]
+  N += J
+  Cell = Names[N]
+  Cell >>= 1
+  Cell &= 1
+  return
+end sub
+
+' The rabbit sprite glides toward its cell (and rides the cloud offset)
+sub PlaceRabbit:
+  TX = X + 2
+  TX <<= 3
+  CarryCheck
+  if Q = 1 then TX -= OffL
+  if Q = 2 then TX -= OffR
+  ' Horizontal glide: one cell per pass, at a steady speed
+  HSpeed = VMax
+  if Z then HSpeed <<= 1
+  Tmp16 = TX << 8
+  if SX16 < Tmp16 then
+    Off16 = Tmp16 - SX16
+    if Off16 > 3072 then
+      SX16 = Tmp16
+    else
+      if Off16 > HSpeed then
+        SX16 += HSpeed
+      else
+        SX16 = Tmp16
+      end if
+    end if
+  else
+    Off16 = SX16 - Tmp16
+    if Off16 > 3072 then
+      SX16 = Tmp16
+    else
+      if Off16 > HSpeed then
+        SX16 -= HSpeed
+      else
+        SX16 = Tmp16
+      end if
+    end if
+  end if
+  Tmp16 = SX16 >> 8
+  SX = Tmp16
+  SY = Py - 1
+  ' Hopping frame while in the air
+  P = D << 1
+  if not Grounded then inc P
+  set sprite 0 to SY,SX,P,15
+  return
+end sub
+
+sub CellHere:
+  CX = X
+  CY = Y
+  CellAt
+  return
+end sub
+
+sub CellBelow:
+  CX = X
+  CY = Y + 1
+  CellAt
+  return
+end sub
+
+' PEEK of the VIC screen: the type of cell CX (0-27), row CY
+sub CellAt:
+  Cell = Blank
+  if CY >= BrierRow then
+    Cell = Brier
+    return
+  end if
+  Idx = RowIdx[CY]
+  if Idx <> 255 then
+    CloudCell
+    return
+  end if
+  N = CX + 2
+  M = get char at N,CY
+  if M = CarrotTile then Cell = Carrot
+  if M = PlatTile then Cell = Plat
+  return
+end sub
+
+' Lines 405-410: after 90 seconds, pieces of cloud and platform vanish
+sub ErasePiece:
+  for Try = 1 to 30
+    CY = random(3, 21)
+    CX = random(0, 27)
+    CellAt
+    if Cell = Carrot then goto erase_next
+    if Cell = Blank then
+      N = random(0, 9)
+      if N < 5 then return
+      goto erase_next
+    end if
+    if Cell = Cloud then
+      ' Clear the cell in its own tile and in the tile to its left
+      Names[N] &= 253
+      if J = 0 then
+        J = 27
+      else
+        dec J
+      end if
+      N = RowBase[Idx]
+      N += J
+      Names[N] &= 254
+      UploadRow
+      return
+    end if
+    N = CX + 2
+    put char 32 at N,CY
+    return
+erase_next:
+  next
+  return
+end sub
+
+' Lines 800-825: a rabbit hops along the bottom row, six columns a hop
+sub BounceAcross:
+  P = 0
+  for TX = 16 to 230 step 2
+    M = TX - 16
+    M >>= 1
+    N = M % 24
+    if N = 0 then
+      play sound SndBoing
+    end if
+    TY = HopArc[N]
+    TY = 167 - TY
+    set sprite 1 to TY,TX,P,15
+    update sprites
+    wait
+  next
+  hide sprite 1
+  update sprites
+  return
+end sub
+
+sub ShowTime:
+  T = 0
+  if Elapsed < 60 then T = 60 - Elapsed
+  NumU = T
+  print at 3,2, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowScore:
+  print Score at 25,2
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 2
+  update sprites
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideAll
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 11,1, "BUNNY HOP"
+  print at 7,3, "BY ADAM CYBANSKI"
+  print at 6,4, "COMPUTE! JULY 1984"
+  print at 2,6, "WRITTEN FOR THE COMMODORE"
+  print at 2,7, "64, THE VIC-20 AND THE ATARI"
+  print at 2,9, "COPERNICUS HOPS FROM CLOUD"
+  print at 2,10, "TO CLOUD AFTER CARROTS THAT"
+  print at 2,11, "FLOAT IN THE SKY. AVOID THE"
+  print at 2,12, "BRIER PATCH BELOW. EVERY"
+  print at 2,13, "FIFTH LEVEL HE ATE A JUMPING"
+  print at 2,14, "BEAN AND CANNOT STOP HOPPING"
+  print at 2,16, "60 SECONDS PER BOARD, THEN"
+  print at 2,17, "THE SKY STARTS TO CRUMBLE."
+  print at 2,19, "STICK: MOVE. FIRE/UP: JUMP"
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Rows of the five cloud rows, their offsets in Names, and the reverse
+' lookup (255 = not a cloud row) for rows 0-23
+data CloudRowY bytes 8,10,14,16,20
+data RowBase bytes 0,28,56,84,112
+data RowIdx bytes 255,255,255,255,255,255,255,255,0,255,1,255,255,255,2,255,3,255,255,255,4,255,255,255
+
+' Jump arc by frames per pass (index 5-10), 8.8 fixed point: take-off
+' speed / 4 (2 * height / rise time), gravity for three and two rows, and
+' the fall limit / 2 (one row per pass)
+data V0Tab bytes 0,0,0,0,0,205,171,146,128,114,102
+data G0Tab bytes 0,0,0,0,0,55,38,28,21,17,14
+data G1Tab bytes 0,0,0,0,0,82,57,42,32,25,20
+data VMaxTab bytes 0,0,0,0,0,205,171,146,128,114,102
+' Cloud speed in 1/16 pixel per frame: one cell every two passes (line 220)
+data SpeedTab bytes 0,0,0,0,0,13,11,9,8,7,6
+
+' Sprites 0-3: Copernicus right, right hopping, left, left hopping (char 33/34)
+data RabbitSprites bytes
+  $08,$0C,$06,$BD,$7F,$7C,$38,$46
+  $08,$0C,$06,$BD,$7F,$3E,$60,$C0
+  $10,$30,$60,$BD,$FE,$3E,$1C,$62
+  $10,$30,$60,$BD,$FE,$7C,$06,$03
+end data
+
+' Cloud tiles for smooth scrolling: for pixel offset 0-7, the pairs
+' (blank,cloud), (cloud,blank), (cloud,cloud) of VIC char 35
+data ComboPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$66,$FF,$FF,$66,$00,$00,$00
+  $00,$66,$FF,$FF,$66,$00,$00,$00
+  $00,$00,$01,$01,$00,$00,$00,$00
+  $00,$CC,$FE,$FE,$CC,$00,$00,$00
+  $00,$CC,$FF,$FF,$CC,$00,$00,$00
+  $00,$01,$03,$03,$01,$00,$00,$00
+  $00,$98,$FC,$FC,$98,$00,$00,$00
+  $00,$99,$FF,$FF,$99,$00,$00,$00
+  $00,$03,$07,$07,$03,$00,$00,$00
+  $00,$30,$F8,$F8,$30,$00,$00,$00
+  $00,$33,$FF,$FF,$33,$00,$00,$00
+  $00,$06,$0F,$0F,$06,$00,$00,$00
+  $00,$60,$F0,$F0,$60,$00,$00,$00
+  $00,$66,$FF,$FF,$66,$00,$00,$00
+  $00,$0C,$1F,$1F,$0C,$00,$00,$00
+  $00,$C0,$E0,$E0,$C0,$00,$00,$00
+  $00,$CC,$FF,$FF,$CC,$00,$00,$00
+  $00,$19,$3F,$3F,$19,$00,$00,$00
+  $00,$80,$C0,$C0,$80,$00,$00,$00
+  $00,$99,$FF,$FF,$99,$00,$00,$00
+  $00,$33,$7F,$7F,$33,$00,$00,$00
+  $00,$00,$80,$80,$00,$00,$00,$00
+  $00,$33,$FF,$FF,$33,$00,$00,$00
+end data
+
+' Carrot (adaptation: VIC char 37 read as a fish; redrawn diagonal with a leafy top)
+data CarrotPat bytes
+  $09,$06,$1E,$3C,$78,$70,$60,$80
+end data
+
+' Graphics II colors, one per pixel row: green leaves, orange body with darker ridges
+data CarrotCol bytes
+  $30,$C0,$90,$90,$60,$90,$90,$60
+end data
+
+' VIC char 183 (reversed graphic): platform piece, with a lit top edge
+data PlatPat bytes
+  $00,$00,$FF,$FF,$7E,$24,$00,$00
+end data
+
+
+data PlatCol bytes
+  $A0,$A0,$B0,$A0,$A0,$60,$A0,$A0
+end data
+
+' Brier patch (adaptation: VIC char 36 read as grass; redrawn as thorns)
+data BrierPat bytes
+  $11,$11,$33,$AA,$55,$EE,$77,$FF
+end data
+
+' Red thorns on a tangle of dark green stems
+data BrierCol bytes
+  $90,$90,$60,$C0,$60,$C0,$60,$C0
+end data
+
+' Spare rabbit icon (VIC char 33)
+data LifePat bytes
+  $08,$0C,$06,$BD,$7F,$7C,$38,$46
+end data
+
+
+data WhiteCol bytes
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+end data
+
+' Clouds: white tops, gray undersides
+data CloudCol bytes
+  $F0,$F0,$F0,$F0,$E0,$E0,$F0,$F0
+end data
+
+' Level-clear hop: height in pixels over a 48-pixel (six column) hop
+data HopArc bytes 0,4,7,10,13,16,18,20,21,22,23,24,24,24,23,22,21,20,18,16,13,10,7,4
+
+asm {
+JumpT1:
+    db $40,$D6,$10,$03,$40,$AA,$10,$03,$40,$8F,$10,$03,$50
+ThudN:
+    db $00,$00,$25,$03,$10
+MunchN:
+    db $00,$00,$32,$01,$10
+DeathT1:
+    db $40,$5D,$10,$01,$40,$60,$10,$01,$40,$62,$10,$01,$40,$65,$10,$01,$40,$68,$10,$01,$40,$6B,$10,$01
+    db $40,$6E,$10,$01,$40,$71,$10,$01,$40,$75,$10,$01,$40,$78,$10,$01,$40,$7C,$10,$01,$40,$81,$10,$01
+    db $40,$85,$10,$01,$40,$8A,$10,$01,$40,$8F,$10,$01,$40,$95,$10,$01,$40,$9B,$10,$01,$40,$A2,$10,$01
+    db $40,$A9,$10,$01,$40,$B2,$10,$01,$40,$BA,$10,$01,$40,$C4,$10,$01,$40,$CF,$10,$01,$40,$DB,$10,$01
+    db $40,$E9,$10,$01,$40,$F9,$10,$01,$40,$0A,$11,$01,$40,$1F,$11,$01,$40,$37,$11,$01,$40,$53,$11,$01
+    db $40,$75,$11,$01,$40,$9E,$11,$01,$40,$D2,$11,$01,$40,$15,$12,$01,$40,$6D,$12,$01,$40,$EA,$12,$01
+    db $50
+BoingT1:
+    db $40,$1D,$11,$02,$40,$F0,$10,$02,$40,$D6,$20,$03,$50
+BonusT1:
+    db $40,$6B,$20,$01,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+BunnySoundTable:
+    dw JumpT1,$7035
+    dw ThudN,$702B
+    dw MunchN,$702B
+    dw DeathT1,$7035
+    dw BoingT1,$7035
+    dw BonusT1,$7035
+    dw BeepT1,$7035
+}
+

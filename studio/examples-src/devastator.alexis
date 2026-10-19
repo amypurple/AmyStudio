@@ -1,0 +1,883 @@
+cartridge "DEVASTATOR/PRESENTS DAVID R. ARNOLD'S/1984"
+
+' DEVASTATOR
+' Original VIC-20 game by David R. Arnold, COMPUTE! magazine, Issue 51,
+' August 1984 (with versions for the Commodore 64, Color Computer,
+' TI-99/4A, Apple II and IBM PC/PCjr). This port follows "Program 4:
+' Devastator - TI-99/4A (Extended BASIC) Version" by Patrick Parrish,
+' Programming Supervisor. All game design credit belongs to David R.
+' Arnold and Patrick Parrish.
+'
+' Historical context (summary of the article and the TI-99/4A notes):
+' A colossal alien vessel, the Devastator, is closing in on Earth. Its
+' guardian ships must fall first: shoot down at least ten of them in about
+' thirty seconds so that your comrades can attack the giant itself. Fail,
+' and the Devastator fires its laser at Earth. On the TI there is no fire
+' button: a guardian is destroyed as soon as the crosshair covers it. Skill
+' level 1 uses magnified sprites, level 2 small ones that demand a steadier
+' hand. Two tricks made the TI version look smooth: the playfield is drawn
+' in black on black and revealed with a few CALL COLOR statements, and the
+' colors of the Devastator's three character sets rotate on every pass of
+' the main loop, so the trench seems to rush toward you.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick moves the crosshair; the skill level and the
+' play-again question are joystick menus (fire, or keypad 1 or 2).
+' XB sprite motion (velocity v = v/16 pixel per frame) is reproduced in 8.8
+' fixed point. One XB pass of the main loop (lines 450-510) is 9 frames, so
+' W > 200 lasts 30 seconds, as the article says. CALL COINC(#1,#2,TOL)
+' compares the two sprite corners within TOL pixels, as on the TI, but
+' with a tighter TOL (TolLarge, TolSmall): the TI's 30 of 32 pixels let a
+' mere brush destroy a ship, while the article speaks of positioning the
+' cross hairs over them.
+' Adaptation liberties: all graphics moved off the ASCII range (TI char
+' + 64, stars on chars 128-129); the stars twinkle; the crosshair and the
+' guardian stay inside columns 2-29 (the guardian bounces instead of
+' wrapping); joystick menus replace the keyboard questions; a guardian
+' bursts into an explosion; the debris tumbles; a heads-up line shows ships and seconds left; the laser
+' bolt restores the stars it crossed and the whole Earth is erased (the TI
+' left one column); the end screen says whether Earth survived; an
+' editorial page at power-on.
+' TI rows/columns are 1-based. DISPLAY AT(R,C): Amy X = C + 1, Y = R - 1.
+' HCHAR(R,C): X = C - 1, Y = R - 1. Sprites: dot-row R, dot-column C
+' become Y = R - 2, X = C - 1.
+
+const StarTile = 128           ' TI char 46
+const SparkTile = 129
+const BoltTile = 152           ' TI char 95
+const CursorTile = 153
+const DebrisTile = 197         ' TI char 133
+const CrossSlot = 0            ' TI #1
+const AlienSlot = 1            ' TI #2
+const AlienPat = 0
+const CrossPat = 4
+const BoomPatA = 8
+const BoomPatB = 12
+const TickFrames = 9           ' one XB main-loop pass
+' CALL COINC tolerance in pixels (TI: 30 magnified, 15 small). Raise these
+' values to make hits easier, lower them to demand better aim.
+const TolLarge = 10
+const TolSmall = 5
+
+' Sound table slots (dv/sounds.mjs)
+const SndSwell = 1
+const SndHit = 2
+const SndRoarTone = 3
+const SndRoarNoise = 4
+const SndDebrisTone = 5
+const SndDebrisNoise = 6
+const SndBeep = 7
+
+u8 Level = 1                   ' skill 1 or 2 (TI LEVEL = 5 - skill)
+u8 Tol = TolLarge              ' TOL
+u8 MinX = 16                   ' sprite box kept out of the CRT overscan
+u8 MinY = 8
+u8 MaxX = 224
+u8 MaxY = 160
+u16 CrossX16 = 0
+u16 CrossY16 = 0
+u16 AlienX16 = 0
+u16 AlienY16 = 0
+u16 AlienVX = 0                ' two's complement 8.8 velocities
+u16 AlienVY = 0
+u8 CrossX = 0
+u8 CrossY = 0
+u8 AlienX = 0
+u8 AlienY = 0
+u8 D = 0                       ' D, ships destroyed
+u8 HD = 0                      ' HD, best round
+u8 W = 0                       ' W, main-loop passes
+u8 Tick = 0
+u8 Secs = 30
+u8 SecTick = 0
+u8 GA = 20                     ' A, B, C: color groups of TI sets 9-11
+u8 GB = 21
+u8 GC = 22
+u8 GT = 0
+u8 SparkX = 0
+u8 SparkY = 0
+bool SparkOn = false
+u8 SparkTick = 0
+u8 Tumble = 0
+u8 TumbleTick = 0
+bool Tumbling = false
+u8 PauseN = 0
+u8 J = 0
+u8 I = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 Choice = 0
+u16 Tmp16 = 0
+u16 Off = 0
+i16 DX = 0
+i16 DY = 0
+u16 NumU = 0
+u8 BoltSave[9]
+
+  text screen
+  set sound table DevSoundTable areas 2
+  sprites 16x16
+  copy SpritePatterns count 128 to vram.spr_pat
+  copy StarPatterns count 16 to vram.pattern + 1024
+  copy BoltPatterns count 16 to vram.pattern + 1216
+  copy ShipPatterns count 192 to vram.pattern + 1280
+  copy EarthPatterns count 192 to vram.pattern + 1472
+  set text colors black count 32
+  backdrop black
+  HideAll
+  screen on
+
+start:
+  EditorialPage
+  ' --- Lines 170-190 ---
+  TitlePage
+
+new_round:
+  ' --- Lines 200-440 ---
+  DrawPlayfield
+  D = 0
+  W = 0
+  Tick = 0
+  Secs = 30
+  SecTick = 0
+  ShowHud
+  ' Line 410: the guardian at dot-row 80, column 80, dark yellow
+  AlienY16 = 78 << 8
+  AlienX16 = 79 << 8
+  NewAlienMotion
+  ' Line 420: CALL MAGNIFY(LEVEL), TOL
+  if Level = 1 then
+    sprites double
+    Tol = TolLarge
+    MaxX = 208
+    MaxY = 152
+  else
+    sprites simple
+    Tol = TolSmall
+    MaxX = 224
+    MaxY = 168
+  end if
+  ' Line 430: the crosshair at dot-row 100, column 110
+  CrossY16 = 98 << 8
+  CrossX16 = 109 << 8
+  DrawCross
+  DrawAlien
+  update sprites
+  GA = 20
+  GB = 21
+  GC = 22
+  RotateColors
+
+main_loop:
+  ' --- Lines 450-510 ---
+  wait
+  ReadStick
+  MoveAlien
+  update sprites
+  ' Line 490: CALL COINC(#1,#2,TOL,G): the two sprite corners within TOL
+  ' pixels. Adaptation: TOL is tighter than the TI's 30 and 15, which let a
+  ' mere brush destroy a ship; see TolLarge and TolSmall.
+  DX = CrossX
+  DX -= AlienX
+  if DX < 0 then DX = 0 - DX
+  if DX <= Tol then
+    DY = CrossY
+    DY -= AlienY
+    if DY < 0 then DY = 0 - DY
+    if DY <= Tol then AlienDestroyed
+  end if
+  Twinkle
+  inc SecTick
+  if SecTick >= 60 then
+    SecTick = 0
+    if Secs > 0 then dec Secs
+    ShowHud
+  end if
+  inc Tick
+  if Tick < TickFrames then goto main_loop
+  Tick = 0
+  ' Lines 450-470: rotate the colors, a new random dart for the guardian
+  RotateColors
+  NewAlienMotion
+  ' Line 500
+  inc W
+  if W <= 200 then goto main_loop
+  ' --- Lines 770-780 ---
+  if D < 10 then EarthDestroyed
+
+  ' --- Lines 950-1020 ---
+  wait 20 frames
+  HideAll
+  set text colors black count 32
+  cls
+  backdrop black
+  set text colors white at 4 count 8
+  if D >= 10 then
+    print at 6,4, "EARTH IS SAFE, CAPTAIN!"
+  else
+    print at 4,4, "EARTH HAS BEEN DESTROYED."
+  end if
+  NumU = D
+  print at 2,7, "ALIEN SHIPS DESTROYED: " + digits$(NumU, 2)
+  if D > HD then HD = D
+  NumU = HD
+  print at 7,12, "BEST ROUND: " + digits$(NumU, 2)
+  print at 2,16, "PLAY AGAIN, CAPTAIN (Y/N)?"
+  ' Adaptation: a joystick menu (fire or keypad 1-2) replaces CALL KEY
+  print at 6,18, "YES"
+  print at 6,20, "NO"
+  wait no fire
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 4,18 step 2
+  if Choice = 1 then goto new_round
+  ' Clear the menu before line 1020's farewell
+  fill 32 count 28 at 2,18
+  fill 32 count 28 at 2,20
+  print at 7,20, "SO LONG"
+  wait 120 frames
+  wait no fire
+  pause until press
+  wait no fire
+  goto start
+
+' ---------------------------------------------------------------------------
+
+' Line 480: CALL JOYST, CALL MOTION(#1,-Y1*SPEED,X1*SPEED): 2 pixels a frame
+sub ReadStick:
+  if joypad(1).up then
+    CrossY16 -= 512
+    Tmp16 = MinY << 8
+    if CrossY16 < Tmp16 then CrossY16 = Tmp16
+  end if
+  if joypad(1).down then
+    CrossY16 += 512
+    Tmp16 = MaxY << 8
+    if CrossY16 > Tmp16 then CrossY16 = Tmp16
+  end if
+  if joypad(1).left then
+    CrossX16 -= 512
+    Tmp16 = MinX << 8
+    if CrossX16 < Tmp16 then CrossX16 = Tmp16
+  end if
+  if joypad(1).right then
+    CrossX16 += 512
+    Tmp16 = MaxX << 8
+    if CrossX16 > Tmp16 then CrossX16 = Tmp16
+  end if
+  DrawCross
+  return
+end sub
+
+sub DrawCross:
+  Tmp16 = CrossY16 >> 8
+  CrossY = Tmp16
+  Tmp16 = CrossX16 >> 8
+  CrossX = Tmp16
+  set sprite CrossSlot to CrossY,CrossX,CrossPat,15
+  return
+end sub
+
+' Line 470: CALL MOTION(#2,INT(RND*40-20),INT(RND*40-20))
+sub NewAlienMotion:
+  AlienVY = random(0, 39)
+  AlienVY <<= 4
+  AlienVY -= 320
+  AlienVX = random(0, 39)
+  AlienVX <<= 4
+  AlienVX -= 320
+  return
+end sub
+
+' Adaptation: the TI guardian wrapped around the whole sprite plane, into
+' the CRT overscan; here it bounces inside the same box as the crosshair
+sub MoveAlien:
+  AlienX16 += AlienVX
+  Tmp16 = AlienX16 >> 8
+  X = Tmp16
+  if X < MinX then
+    AlienX16 = MinX << 8
+    AlienVX = 0 - AlienVX
+  end if
+  if X > MaxX then
+    ' a step below 0 wraps to 255, so the direction decides the side
+    if AlienVX >= 32768 then
+      AlienX16 = MinX << 8
+    else
+      AlienX16 = MaxX << 8
+    end if
+    AlienVX = 0 - AlienVX
+  end if
+  AlienY16 += AlienVY
+  Tmp16 = AlienY16 >> 8
+  Y = Tmp16
+  if Y < MinY then
+    AlienY16 = MinY << 8
+    AlienVY = 0 - AlienVY
+  end if
+  if Y > MaxY then
+    if AlienVY >= 32768 then
+      AlienY16 = MinY << 8
+    else
+      AlienY16 = MaxY << 8
+    end if
+    AlienVY = 0 - AlienVY
+  end if
+  DrawAlien
+  return
+end sub
+
+sub DrawAlien:
+  Tmp16 = AlienY16 >> 8
+  AlienY = Tmp16
+  Tmp16 = AlienX16 >> 8
+  AlienX = Tmp16
+  Y = AlienY
+  ' Y = 208 would end the sprite list
+  if Y = 208 then Y = 207
+  set sprite AlienSlot to Y,AlienX,AlienPat,10
+  return
+end sub
+
+' Lines 450-460: A, B and C trade places, then get dark blue, magenta and
+' dark red backgrounds behind black lines
+sub RotateColors:
+  GT = GA
+  GA = GB
+  GB = GC
+  GC = GT
+  vpoke vram.color + GA, $14
+  vpoke vram.color + GB, $1D
+  vpoke vram.color + GC, $16
+  return
+end sub
+
+' --- Lines 700-760 ---
+sub AlienDestroyed:
+  play sound SndHit
+  backdrop gray
+  set sprite AlienSlot to AlienY,AlienX,BoomPatA,11
+  update sprites
+  wait 3 frames
+  backdrop light red
+  set sprite AlienSlot to AlienY,AlienX,BoomPatB,9
+  update sprites
+  wait 3 frames
+  backdrop black
+  for I = 1 to 4
+    set sprite AlienSlot to AlienY,AlienX,BoomPatA,15
+    update sprites
+    wait 3 frames
+    set sprite AlienSlot to AlienY,AlienX,BoomPatB,6
+    update sprites
+    wait 3 frames
+  next
+  hide sprite AlienSlot
+  update sprites
+  wait 6 frames
+  inc D
+  ShowHud
+  ' Line 750: a new guardian at a random place (inside the safe box)
+  Y = random(0, 160)
+  Y += MinY
+  if Y > MaxY then Y = MaxY
+  AlienY16 = Y
+  AlienY16 <<= 8
+  X = random(0, 208)
+  X += MinX
+  if X > MaxX then X = MaxX
+  AlienX16 = X
+  AlienX16 <<= 8
+  DrawAlien
+  update sprites
+  return
+end sub
+
+' --- Lines 800-940 ---
+sub EarthDestroyed:
+  ' Line 810: the laser bolt, from the Devastator to Earth
+  play sound SndSwell
+  I = 8
+bolt_draw:
+  X = 24 - I
+  Y = 6 + I
+  BoltSave[I] = get char at X,Y
+  put char BoltTile at X,Y
+  C = random(8, 15)
+  C <<= 4
+  vpoke vram.color + 19, C
+  PauseN = 3
+  Pause
+  if I > 0 then
+    dec I
+    goto bolt_draw
+  end if
+  ' Line 820
+  PauseN = 15
+  Pause
+  ' Line 830: the bolt fades in the same order
+  I = 8
+bolt_erase:
+  X = 24 - I
+  Y = 6 + I
+  put char BoltSave[I] at X,Y
+  PauseN = 3
+  Pause
+  if I > 0 then
+    dec I
+    goto bolt_erase
+  end if
+  ' Line 840
+  Flash
+  play sounds SndRoarTone, SndRoarNoise
+  PauseN = 35
+  Pause
+  Flash
+  ' Line 110: Earth goes black; line 140: and is erased
+  vpoke vram.color + 23, $10
+  vpoke vram.color + 24, $10
+  vpoke vram.color + 25, $10
+  for Y = 1 to 6
+    fill 32 count 8 at 21,Y
+  next
+  ' Lines 850-930: the debris, drawn twice (J = 0, then J = 1)
+  Tumbling = true
+  J = 0
+debris_pass:
+  put char DebrisTile at 24 + J,0
+  put char DebrisTile at 27 + J,0
+  X = 23 + J
+  fill DebrisTile count 2 at X,1
+  X = 27 + J
+  fill DebrisTile count 2 at X,1
+  X = 22 + J
+  fill DebrisTile count 2 at X,2
+  X = 26 + J
+  fill DebrisTile count 3 at X,3
+  X = 23 + J
+  fill DebrisTile count 2 at X,4
+  X = 26 + J
+  fill DebrisTile count 2 at X,4
+  Flash
+  put char DebrisTile at 26 + J,5
+  put char DebrisTile at 24 + J,6
+  put char DebrisTile at 28 + J,6
+  X = 23 + J
+  fill DebrisTile count 2 at X,7
+  Y = 8 + J
+  fill DebrisTile count 2 at 25,Y
+  ' Line 920: the debris glows red
+  vpoke vram.color + 24, $80
+  Flash
+  play sounds SndDebrisTone, SndDebrisNoise
+  PauseN = 60
+  Pause
+  if J = 0 then
+    ' Line 930
+    J = 1
+    vpoke vram.color + 24, $10
+    Flash
+    goto debris_pass
+  end if
+  ' Line 940
+  PauseN = 30
+  Pause
+  Tumbling = false
+  return
+end sub
+
+' Waits PauseN frames while the guardian keeps flying and the debris tumbles
+sub Pause:
+pause_loop:
+  wait
+  MoveAlien
+  update sprites
+  if Tumbling then
+    inc TumbleTick
+    if TumbleTick >= 4 then
+      TumbleTick = 0
+      inc Tumble
+      Tumble &= 3
+      Off = Tumble << 3
+      copy DebrisFrames + Off count 8 to vram.pattern + 1576
+    end if
+  end if
+  dec PauseN
+  if PauseN > 0 then goto pause_loop
+  return
+end sub
+
+' Line 120: CALL SCREEN(10) to CALL SCREEN(16), then black
+sub Flash:
+  backdrop light red
+  wait 2 frames
+  backdrop dark yellow
+  wait 2 frames
+  backdrop light yellow
+  wait 2 frames
+  backdrop dark green
+  wait 2 frames
+  backdrop magenta
+  wait 2 frames
+  backdrop gray
+  wait 2 frames
+  backdrop white
+  wait 2 frames
+  backdrop black
+  return
+end sub
+
+' Adaptation: one star at a time sparkles
+sub Twinkle:
+  inc SparkTick
+  if SparkTick < 10 then return
+  SparkTick = 0
+  if SparkOn then
+    N = get char at SparkX,SparkY
+    if N = SparkTile then
+      put char StarTile at SparkX,SparkY
+    end if
+    SparkOn = false
+  end if
+  for I = 1 to 6
+    X = random(2, 29)
+    Y = random(0, 10)
+    N = get char at X,Y
+    if N = StarTile then
+      put char SparkTile at X,Y
+      SparkX = X
+      SparkY = Y
+      SparkOn = true
+      return
+    end if
+  next
+  return
+end sub
+
+' Adaptation: ships destroyed and seconds left
+sub ShowHud:
+  NumU = D
+  print at 2,1, "SHIPS " + digits$(NumU, 2)
+  NumU = Secs
+  print at 12,1, "TIME " + digits$(NumU, 2)
+  return
+end sub
+
+' --- Lines 200-400 ---
+sub DrawPlayfield:
+  HideAll
+  ' Line 200: everything black on black while the field is drawn
+  set text colors black on black count 32
+  cls
+  backdrop black
+  ' Line 210: four stars on each of rows 1-11, columns 3-30
+  for Y = 0 to 10
+    for J = 1 to 4
+      X = random(2, 29)
+      put char StarTile at X,Y
+    next
+  next
+  ' Lines 220-320: the Devastator
+  Off = 0
+  for Y = 12 to 23
+    put ShipRows + Off count 28 at 2,Y
+    Off += 28
+  next
+  ' Line 330: stars seen through the trench
+  for Y = 11 to 13
+    for J = 1 to 2
+      X = random(13, 18)
+      put char StarTile at X,Y
+    next
+  next
+  ' Lines 340-380: Earth
+  put EarthRow1 count 2 at 25,1
+  put EarthRow2 count 4 at 24,2
+  put EarthRow3 count 6 at 23,3
+  put EarthRow4 count 6 at 23,4
+  put EarthRow5 count 4 at 24,5
+  put EarthRow6 count 2 at 25,6
+  copy DebrisFrames count 8 to vram.pattern + 1576
+  SparkOn = false
+  ' Lines 390-400: the reveal
+  set text colors black count 32
+  vpoke vram.color + 16, $F0
+  vpoke vram.color + 23, $50
+  vpoke vram.color + 24, $50
+  vpoke vram.color + 25, $25
+  set text colors white at 4 count 8
+  return
+end sub
+
+' --- Lines 1030-1170 ---
+sub TitlePage:
+  HideAll
+  set text colors black count 32
+  cls
+  backdrop black
+  ' Line 1030: the text is printed in black, then revealed
+  ScrollUp
+  print at 6,22, "D E V A S T A T O R"
+  ScrollUp
+  ScrollUp
+  ScrollUp
+  print at 2,22, "YOUR MISSION IS TO PROTECT"
+  ScrollUp
+  print at 2,22, "EARTH FROM THE APPROACHING"
+  ScrollUp
+  print at 2,22, "DEVASTATOR. SHOOT DOWN AT"
+  ScrollUp
+  print at 2,22, "LEAST 10 GUARDIAN SHIPS TO"
+  ScrollUp
+  print at 2,22, "ENABLE YOUR COMRADES TO"
+  ScrollUp
+  print at 2,22, "DESTROY THE DEVASTATOR."
+  ScrollUp
+  ScrollUp
+  print at 2,22, "YOU HAVE ONLY LIMITED TIME"
+  ScrollUp
+  print at 2,22, "IN WHICH TO COMPLETE YOUR"
+  ScrollUp
+  print at 2,22, "MISSION. POSITION YOUR"
+  ScrollUp
+  print at 2,22, "CROSSHAIR WITH THE JOYSTICK."
+  ' Line 1100: gray
+  wait 20 frames
+  set text colors gray at 4 count 8
+  vpoke vram.color + 19, $E0
+  wait 30 frames
+  ' Line 1110
+  ScrollTitle
+  ScrollTitle
+  print at 2,22, "ENTER YOUR SKILL LEVEL(1,2),"
+  ScrollTitle
+  print at 2,22, "CAPTAIN?"
+  ' Adaptation: a joystick menu (fire or keypad 1-2) replaces ACCEPT
+  ScrollTitle
+  print at 4,22, "1 LARGE GUARDIAN SHIPS"
+  ScrollTitle
+  print at 4,22, "2 SMALL GUARDIAN SHIPS"
+  play sound SndBeep
+  Choice = Level
+  choose menu 1 to 2 into Choice cursor $3E at 2,21 step 1
+  Level = Choice
+  ' Line 1130
+  play sound SndSwell
+  wait 30 frames
+  ' Lines 1140-1150
+  ScrollTitle
+  ScrollTitle
+  print at 2,22, "THE DEVASTATOR IS APPROACH-"
+  ScrollTitle
+  print at 2,22, "ING. GRAB YOUR JOYSTICK,"
+  ScrollTitle
+  print at 2,22, "AND PREPARE TO DO BATTLE."
+  ' Line 1160
+  wait 150 frames
+  return
+end sub
+
+' A visible PRINT scroll
+sub ScrollTitle:
+  wait 6 frames
+  ScrollUp
+  return
+end sub
+
+' TI PRINT: rows 1-23 move up one line, columns 3-30
+sub ScrollUp:
+  copy vram.name + 34 count 28 to vram.name + 2
+  copy vram.name + 66 count 28 to vram.name + 34
+  copy vram.name + 98 count 28 to vram.name + 66
+  copy vram.name + 130 count 28 to vram.name + 98
+  copy vram.name + 162 count 28 to vram.name + 130
+  copy vram.name + 194 count 28 to vram.name + 162
+  copy vram.name + 226 count 28 to vram.name + 194
+  copy vram.name + 258 count 28 to vram.name + 226
+  copy vram.name + 290 count 28 to vram.name + 258
+  copy vram.name + 322 count 28 to vram.name + 290
+  copy vram.name + 354 count 28 to vram.name + 322
+  copy vram.name + 386 count 28 to vram.name + 354
+  copy vram.name + 418 count 28 to vram.name + 386
+  copy vram.name + 450 count 28 to vram.name + 418
+  copy vram.name + 482 count 28 to vram.name + 450
+  copy vram.name + 514 count 28 to vram.name + 482
+  copy vram.name + 546 count 28 to vram.name + 514
+  copy vram.name + 578 count 28 to vram.name + 546
+  copy vram.name + 610 count 28 to vram.name + 578
+  copy vram.name + 642 count 28 to vram.name + 610
+  copy vram.name + 674 count 28 to vram.name + 642
+  copy vram.name + 706 count 28 to vram.name + 674
+  copy vram.name + 738 count 28 to vram.name + 706
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 2
+  update sprites
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideAll
+  set text colors black count 32
+  backdrop white
+  cls
+  print at 10,1, "DEVASTATOR"
+  print at 7,3, "BY DAVID R. ARNOLD"
+  print at 5,4, "COMPUTE! AUGUST 1984"
+  print at 2,6, "A VIC-20 GAME, ALSO WRITTEN"
+  print at 2,7, "FOR THE 64, COLOR COMPUTER,"
+  print at 2,8, "APPLE II, IBM PC AND TI."
+  print at 2,10, "PATRICK PARRISH WROTE THE TI"
+  print at 2,11, "VERSION: CENTER THE CROSS-"
+  print at 2,12, "HAIR ON A GUARDIAN SHIP TO"
+  print at 2,13, "DESTROY IT. TEN IN THIRTY"
+  print at 2,14, "SECONDS, OR EARTH IS LOST."
+  print at 2,16, "WATCH THE TRENCH: ITS COLORS"
+  print at 2,17, "ROTATE TO FAKE THE MOTION."
+  print at 2,19, "MENUS: STICK, THEN FIRE."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Lines 340-380: Earth (TI chars + 64)
+data EarthRow1 bytes 184,185
+data EarthRow2 bytes 186,200,201,187
+data EarthRow3 bytes 188,189,202,203,189,190
+data EarthRow4 bytes 191,189,204,205,189,192
+data EarthRow5 bytes 193,206,207,194
+data EarthRow6 bytes 195,196
+
+' Sprite patterns (16x16: left column bytes, then right column)
+' 0 guardian ship (TI char 108), 4 crosshair (TI char 100),
+' 8 and 12 explosion (adaptation)
+data SpritePatterns bytes
+  $00,$07,$3F,$E2,$E2,$E2,$FF,$FF,$66,$7F,$0C,$1C,$00,$00,$00,$00
+  $00,$E0,$FC,$47,$47,$47,$FF,$FF,$66,$FE,$30,$38,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$04,$08,$08,$FF,$08,$08,$04,$03,$00,$00,$00
+  $00,$80,$80,$80,$E0,$90,$88,$88,$FF,$88,$88,$90,$E0,$80,$80,$80
+  $00,$00,$02,$11,$0B,$07,$1F,$3F,$1F,$07,$0B,$11,$02,$00,$00,$00
+  $00,$00,$40,$88,$D0,$E0,$F8,$F8,$F8,$E0,$D0,$88,$40,$00,$00,$00
+  $81,$41,$20,$02,$08,$10,$00,$C1,$00,$10,$08,$02,$20,$41,$81,$00
+  $01,$02,$04,$40,$10,$08,$00,$83,$00,$08,$10,$40,$04,$02,$01,$00
+end data
+
+' Chars 160-183 (TI sets 9-11, chars 96-119): blank, / and \ in each set
+data ShipPatterns bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$04,$08,$10,$20,$40,$80
+  $80,$40,$20,$10,$08,$04,$02,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$04,$08,$10,$20,$40,$80
+  $80,$40,$20,$10,$08,$04,$02,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$04,$08,$10,$20,$40,$80
+  $80,$40,$20,$10,$08,$04,$02,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' Chars 184-207 (TI chars 120-133 and 136-143, lines 590-660)
+data EarthPatterns bytes
+  $00,$00,$00,$00,$00,$00,$0F,$7F,$00,$00,$00,$00,$00,$00,$F0,$FE
+  $01,$03,$0F,$1F,$3F,$7F,$FF,$FF,$80,$C0,$F0,$F8,$FC,$FE,$FF,$FF
+  $00,$01,$01,$01,$03,$03,$03,$03,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$80,$80,$80,$C0,$C0,$C0,$C0,$03,$03,$03,$03,$01,$01,$01,$00
+  $C0,$C0,$C0,$C0,$80,$80,$80,$00,$FF,$7F,$3F,$3F,$1F,$0F,$07,$03
+  $FF,$FE,$FC,$FC,$F8,$F0,$E0,$C0,$7F,$0F,$00,$00,$00,$00,$00,$00
+  $FE,$F0,$00,$00,$00,$00,$00,$00,$08,$00,$66,$7C,$18,$66,$68,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$F0,$7F,$7F,$7F,$FF,$FF,$FF,$08,$18,$F8,$F8,$F0,$F8,$F0,$F0
+  $7F,$7F,$7F,$3D,$1C,$0E,$02,$01,$F0,$F0,$90,$80,$00,$18,$00,$00
+  $03,$07,$0F,$0F,$0F,$07,$07,$03,$F0,$FF,$FF,$FE,$FC,$FC,$F8,$F0
+  $03,$03,$01,$01,$01,$01,$01,$01,$E0,$C0,$C0,$C0,$80,$80,$80,$00
+end data
+
+' TI char 133 (debris) in four tumbling orientations (adaptation)
+data DebrisFrames bytes
+  $08,$00,$66,$7C,$18,$66,$68,$10,$10,$00,$66,$3E,$18,$66,$16,$08
+  $08,$16,$66,$18,$3E,$66,$00,$10,$10,$68,$66,$18,$7C,$66,$00,$08
+end data
+
+' Chars 128-129: star (TI char 46) and its sparkle (adaptation)
+data StarPatterns bytes
+  $00,$00,$00,$10,$00,$00,$00,$00,$00,$10,$10,$6C,$10,$10,$00,$00
+end data
+
+' Chars 152-153: laser bolt (TI char 95 = B$) and ACCEPT cursor
+data BoltPatterns bytes
+  $01,$02,$04,$08,$10,$20,$40,$80,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+end data
+
+' Lines 220-320: the Devastator, rows 13-24 (TI chars + 64)
+data ShipRows bytes
+  160,160,160,160,160,160,160,160,160,160,161,32,32,32,32,32,32,162,160,160,160,160,160,160,160,160,160,160
+  168,168,168,168,168,168,168,168,168,169,160,32,32,32,32,32,32,160,170,168,168,168,168,168,168,168,168,168
+  176,176,176,176,176,176,176,176,177,168,160,32,32,32,32,32,32,160,168,178,176,176,176,176,176,176,176,176
+  176,176,176,176,176,176,176,177,176,168,161,160,160,160,160,160,160,162,168,176,178,176,176,176,176,176,176,176
+  160,160,160,160,160,160,161,176,176,169,168,168,168,168,168,168,168,168,170,176,176,162,160,160,160,160,160,160
+  160,160,160,160,160,161,160,176,177,176,176,176,176,176,176,176,176,176,176,178,176,160,162,160,160,160,160,160
+  168,168,168,168,169,160,160,177,176,176,176,176,176,176,176,176,176,176,176,176,178,160,160,170,168,168,168,168
+  168,168,168,169,168,160,161,160,160,160,160,160,160,160,160,160,160,160,160,160,160,162,160,168,170,168,168,168
+  168,168,169,168,168,161,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,162,168,168,170,168,168
+  176,177,168,168,169,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,170,168,168,178,176
+  177,176,168,169,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,170,168,176,178
+  176,176,169,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,168,170,176,176
+end data
+
+asm {
+SwellN:
+    db $00,$00,$F4,$02,$00,$00,$E4,$02,$00,$00,$D4,$02,$00,$00,$C4,$02,$00,$00,$B4,$02,$00,$00,$A4,$02
+    db $00,$00,$94,$02,$00,$00,$84,$02,$00,$00,$74,$02,$00,$00,$64,$02,$00,$00,$54,$02,$00,$00,$44,$02
+    db $00,$00,$34,$02,$00,$00,$24,$02,$00,$00,$14,$3C,$10
+HitN:
+    db $00,$00,$16,$06,$00,$00,$36,$06,$00,$00,$56,$06,$00,$00,$76,$06,$00,$00,$96,$06,$00,$00,$B6,$06
+    db $10
+RoarT1:
+    db $40,$F9,$13,$01,$40,$F9,$13,$01,$40,$F9,$23,$01,$40,$F9,$23,$01,$40,$F9,$33,$01,$40,$F9,$33,$01
+    db $40,$F9,$43,$01,$40,$F9,$43,$01,$40,$F9,$53,$01,$40,$F9,$53,$01,$40,$F9,$63,$01,$40,$F9,$63,$01
+    db $40,$F9,$73,$01,$40,$F9,$73,$01,$40,$F9,$83,$01,$40,$F9,$83,$01,$40,$F9,$93,$01,$40,$F9,$93,$01
+    db $40,$F9,$A3,$01,$40,$F9,$A3,$01,$40,$F9,$B3,$01,$40,$F9,$B3,$01,$40,$F9,$C3,$01,$40,$F9,$C3,$01
+    db $40,$F9,$D3,$01,$40,$F9,$D3,$01,$40,$F9,$E3,$01,$40,$F9,$E3,$01,$40,$F9,$F3,$01,$40,$F9,$F3,$06
+    db $50
+RoarN:
+    db $00,$00,$15,$01,$00,$00,$15,$01,$00,$00,$25,$01,$00,$00,$25,$01,$00,$00,$35,$01,$00,$00,$35,$01
+    db $00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$55,$01,$00,$00,$55,$01,$00,$00,$65,$01,$00,$00,$65,$01
+    db $00,$00,$75,$01,$00,$00,$75,$01,$00,$00,$85,$01,$00,$00,$85,$01,$00,$00,$95,$01,$00,$00,$95,$01
+    db $00,$00,$A5,$01,$00,$00,$A5,$01,$00,$00,$B5,$01,$00,$00,$B5,$01,$00,$00,$C5,$01,$00,$00,$C5,$01
+    db $00,$00,$D5,$01,$00,$00,$D5,$01,$00,$00,$E5,$01,$00,$00,$E5,$01,$00,$00,$F5,$01,$00,$00,$F5,$06
+    db $10
+DebrisT1:
+    db $40,$F9,$13,$02,$40,$F9,$13,$02,$40,$F9,$23,$02,$40,$F9,$23,$02,$40,$F9,$33,$02,$40,$F9,$33,$02
+    db $40,$F9,$43,$02,$40,$F9,$43,$02,$40,$F9,$53,$02,$40,$F9,$53,$02,$40,$F9,$63,$02,$40,$F9,$63,$02
+    db $40,$F9,$73,$02,$40,$F9,$73,$02,$40,$F9,$83,$02,$40,$F9,$83,$02,$40,$F9,$93,$02,$40,$F9,$93,$02
+    db $40,$F9,$A3,$02,$40,$F9,$A3,$02,$40,$F9,$B3,$02,$40,$F9,$B3,$02,$40,$F9,$C3,$02,$40,$F9,$C3,$02
+    db $40,$F9,$D3,$02,$40,$F9,$D3,$02,$40,$F9,$E3,$02,$40,$F9,$E3,$02,$40,$F9,$F3,$02,$40,$F9,$F3,$02
+    db $50
+DebrisN:
+    db $00,$00,$15,$02,$00,$00,$15,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$35,$02,$00,$00,$35,$02
+    db $00,$00,$45,$02,$00,$00,$45,$02,$00,$00,$55,$02,$00,$00,$55,$02,$00,$00,$65,$02,$00,$00,$65,$02
+    db $00,$00,$75,$02,$00,$00,$75,$02,$00,$00,$85,$02,$00,$00,$85,$02,$00,$00,$95,$02,$00,$00,$95,$02
+    db $00,$00,$A5,$02,$00,$00,$A5,$02,$00,$00,$B5,$02,$00,$00,$B5,$02,$00,$00,$C5,$02,$00,$00,$C5,$02
+    db $00,$00,$D5,$02,$00,$00,$D5,$02,$00,$00,$E5,$02,$00,$00,$E5,$02,$00,$00,$F5,$02,$00,$00,$F5,$02
+    db $10
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+DevSoundTable:
+    dw SwellN,$702B
+    dw HitN,$702B
+    dw RoarT1,$7035
+    dw RoarN,$702B
+    dw DebrisT1,$7035
+    dw DebrisN,$702B
+    dw BeepT1,$7035
+}
+

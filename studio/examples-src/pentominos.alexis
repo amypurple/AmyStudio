@@ -1,0 +1,840 @@
+cartridge "PENTOMINOS/PRESENTS JIM BUTTERFIELD'S/1984"
+
+' PENTOMINOS - A PUZZLE-SOLVING PROGRAM
+' By Jim Butterfield, Associate Editor, COMPUTE! magazine, May 1984, pages
+' 106-112: written for all Commodore computers, with versions for the
+' Atari, IBM PC and PCjr, TI-99/4A, Radio Shack Color Computer and Apple.
+' This port follows the TI-99/4A listing. All credit belongs to Jim
+' Butterfield.
+'
+' Historical context (summary of the article):
+' Pentominos are like dominos made of five squares instead of two; counting
+' rotations and flips as the same, there are twelve of them, and many look
+' like letters. Their 60 squares can fill a rectangle of 3 x 20, 4 x 15,
+' 5 x 12 or 6 x 10 - a famous puzzle that Arthur C. Clarke's characters
+' discuss at length in the novel Imperial Earth. The program solves it the
+' way a person would, only without intuition: it always fills the
+' upper-leftmost empty square, tries each unused piece in each rotation,
+' and backs a piece out when it reaches a dead end, showing every move on
+' the screen. Only four squares of each rotation need to be stored, as
+' offsets from the starting square. It can take minutes or hours to find a
+' solution; the author suggested leaving it to run overnight, and noted
+' that a compiled version would be much faster. Solutions come in fours,
+' since each one can be flipped left to right or top to bottom.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026: the compiled version the
+' article imagined.
+' Controls: menus with the joystick and fire. While solving, keypad *
+' returns to the menu.
+' The search follows the TI listing line by line (lines 1140-2080: find
+' the first unused piece and the first empty square column by column, fit
+' each rotation, place, back out, rotate, try the next piece), with its
+' rotation data (lines 110-860).
+' Correction: line 730 is misprinted (1,-1,1,0,2,-2,-1,2 is not a P
+' pentomino and repeats no square of it); the missing P rotation is
+' 1,-1,1,0,2,-1,2,0, found by checking all eight P orientations.
+' Adaptation liberties: three speeds (watch each move, normal, fast); the
+' pieces are colored blocks, doubled in size on the 5 x 12 and 6 x 10
+' boards; the attempts and solutions are counted; a chime at each
+' solution; menus instead of INPUT and Y/N; an original title tune (Tiny
+' Sound); the search runs with the VDP interrupt off between frames; an
+' editorial page.
+' Screen: status on rows 1-2, the board centred on rows 4-19, menus on
+' rows 21-22.
+
+const EmptyTile = 128
+const BigBase = 144            ' 2 x 2 tiles: 144 + piece * 4
+
+' Sound table slots (pm/s.mjs)
+const SndPlace = 1
+const SndRemove = 2
+const SndSolved = 3
+const SndDone = 4
+const SndBeep = 5
+const SndTuneA = 6
+const SndTuneB = 7
+
+u8 W1 = 6                      ' rows
+u8 W2 = 10                     ' columns
+u8 Speed = 2                   ' 1 watch, 2 normal, 3 fast
+u8 Scale = 2
+u8 BX = 0                      ' board origin on screen
+u8 BY = 0
+u8 Board[120]                  ' B(Y,X), index (Y-1) * 20 + (X-1)
+u8 TT[13]                      ' current rotation of each piece, 0 = unused
+u8 X2[13]                      ' where each piece was placed
+u8 Y2[13]
+u8 UU[13]                      ' pieces in the order placed
+u8 X1s[5]                      ' squares of the rotation being tried
+u8 Y1s[5]
+u8 P = 0
+u8 P1 = 0
+u8 J = 0
+u8 R = 0
+u8 X = 0
+u8 Y = 0
+u8 X1 = 0
+u8 Y1 = 0
+u8 B = 0
+u8 N = 0
+u8 M = 0
+u8 K = 0
+u8 SX = 0
+u8 SY = 0
+u8 Tile = 0
+u8 PaceCount = 0
+u8 Choice = 1
+bcd digits 7 Tries
+bcd digits 4 Solutions
+bool Abort = false
+u8 Idx = 0
+u8 Idx16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table PentoSoundTable areas 4
+  HideSprites
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+' --- Lines 1040-1120: choose the rectangle ---
+menu:
+  nmi on
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 10,2, "PENTOMINOS"
+  ShowPieceRow
+  print at 7,8, "CHOOSE THE BOARD:"
+  print at 10,10, "3 BY 20"
+  print at 10,11, "4 BY 15"
+  print at 10,12, "5 BY 12"
+  print at 10,13, "6 BY 10"
+  wait no fire
+  choose menu 3 to 6 into W1 cursor $3E at 8,10 step 1
+  W2 = 60 / W1
+  print at 7,16, "SPEED:"
+  print at 10,17, "WATCH EACH MOVE"
+  print at 10,18, "NORMAL"
+  print at 10,19, "FAST"
+  play sound SndBeep
+  wait no fire
+  choose menu 1 to 3 into Speed cursor $3E at 8,17 step 1
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+
+' --- Lines 870-1130: a clear board ---
+new_puzzle:
+  for J = 0 to 119
+    Board[J] = 0
+  next
+  for J = 0 to 12
+    TT[J] = 0
+    UU[J] = 0
+  next
+  P1 = 0
+  Tries = 0
+  Solutions = 0
+  DrawScreen
+  nmi off
+
+' --- Line 1140: find a new space to fill ---
+find_space:
+  FirstUnused
+  P = J
+  FirstEmpty
+  if X1 > W2 then goto board_filled
+
+' --- Line 1190: get a new piece ---
+new_piece:
+  N = FirstRot[P]
+  TT[P] = N
+  ShowTrying
+
+' --- Line 1250: try fitting the piece ---
+try_fit:
+  Tries += 1
+  inc PaceCount
+  if Speed = 3 then
+    if PaceCount = 0 then
+      Pace
+      if Abort then goto back_to_menu
+    end if
+  end if
+  X1s[0] = X1
+  Y1s[0] = Y1
+  R = TT[P]
+  Idx = R << 2
+  for J = 1 to 4
+    X = OffX[Idx]
+    X += X1
+    X -= 3
+    Y = OffY[Idx]
+    Y += Y1
+    Y -= 3
+    inc Idx
+    X1s[J] = X
+    Y1s[J] = Y
+    if X < 1 then goto rotate
+    if Y < 1 then goto rotate
+    if X > W2 then goto rotate
+    if Y > W1 then goto rotate
+    BoardAt
+    if Board[Idx16] <> 0 then goto rotate
+  next
+
+  ' --- Line 1370: it fits - put the piece in place ---
+  B = P
+  for J = 0 to 4
+    X = X1s[J]
+    Y = Y1s[J]
+    SetCell
+  next
+  X2[P] = X1
+  Y2[P] = Y1
+  inc P1
+  UU[P1] = P
+  if Speed < 3 then
+    play sound SndPlace
+    Pace
+    if Abort then goto back_to_menu
+  end if
+  goto find_space
+
+' --- Lines 1830-1850: rotate the piece ---
+rotate:
+  R = TT[P]
+  inc R
+  TT[P] = R
+  N = RotPiece[R]
+  if N = P then goto try_fit
+  ' Line 1870: give up on this piece
+  TT[P] = 0
+
+' --- Lines 1880-1920: look for a new piece ---
+next_piece:
+  inc P
+  if P > 12 then goto undraw
+  if TT[P] <> 0 then goto next_piece
+  goto new_piece
+
+' --- Lines 1620-1820: take the last piece back out ---
+undraw:
+  if P1 = 0 then goto all_done
+  P = UU[P1]
+  UU[P1] = 0
+  dec P1
+  B = 0
+  X1 = X2[P]
+  Y1 = Y2[P]
+  X = X1
+  Y = Y1
+  SetCell
+  R = TT[P]
+  Idx = R << 2
+  for J = 1 to 4
+    X = OffX[Idx]
+    X += X1
+    X -= 3
+    Y = OffY[Idx]
+    Y += Y1
+    Y -= 3
+    inc Idx
+    SetCell
+  next
+  if Speed < 3 then
+    if Speed = 1 then
+      play sound SndRemove
+    end if
+    Pace
+    if Abort then goto back_to_menu
+  end if
+  goto rotate
+
+' --- Lines 1490-1610: board filled ---
+board_filled:
+  nmi on
+  Solutions += 1
+  ShowCounts
+  fill 32 count 28 at 2,1
+  print at 2,1, "SOLUTION"
+  print Solutions at 11,1
+  play sound SndSolved
+  print at 6,21, "FIND ANOTHER SOLUTION"
+  print at 6,22, "NEW PUZZLE"
+  wait no fire
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 4,21 step 1
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  if Choice = 2 then goto back_to_menu
+  ShowTitleLine
+  nmi off
+  goto undraw
+
+' --- Line 1670: THAT'S ALL ---
+all_done:
+  nmi on
+  ShowCounts
+  fill 32 count 28 at 2,1
+  print at 2,1, "THAT'S ALL: EVERY SOLUTION"
+  play sound SndDone
+  print at 6,21, "PRESS FIRE"
+  wait no fire
+  pause until press
+  wait no fire
+
+back_to_menu:
+  nmi on
+  Choice = 1
+  play sounds SndTuneA, SndTuneB
+  goto menu
+
+' ---------------------------------------------------------------------------
+
+' Lines 1930-1960: J = the first piece not on the board (13 when none)
+sub FirstUnused:
+  for J = 1 to 12
+    if TT[J] = 0 then return
+  next
+  J = 13
+  return
+end sub
+
+' Lines 1970-2020: the first empty square, column by column (X1 = W2 + 1
+' when the board is full)
+sub FirstEmpty:
+  for X1 = 1 to W2
+    for Y1 = 1 to W1
+      X = X1
+      Y = Y1
+      BoardAt
+      if Board[Idx16] = 0 then return
+    next
+  next
+  X1 = W2 + 1
+  return
+end sub
+
+' Idx16 = the Board index of square X,Y
+sub BoardAt:
+  M = Y - 1
+  Idx16 = M * 20
+  N = X - 1
+  Idx16 += N
+  return
+end sub
+
+' Lines 2030-2080: square X,Y gets piece B, on the board and on the screen
+sub SetCell:
+  BoardAt
+  Board[Idx16] = B
+  N = X - 1
+  M = Y - 1
+  if Scale = 1 then
+    SX = BX + N
+    SY = BY + M
+    Tile = EmptyTile + B
+    put char Tile at SX,SY
+    return
+  end if
+  N <<= 1
+  M <<= 1
+  SX = BX + N
+  SY = BY + M
+  Tile = B << 2
+  Tile += BigBase
+  put char Tile at SX,SY
+  inc Tile
+  inc SX
+  put char Tile at SX,SY
+  inc Tile
+  dec SX
+  inc SY
+  put char Tile at SX,SY
+  inc Tile
+  inc SX
+  put char Tile at SX,SY
+  return
+end sub
+
+' Waits according to the speed; in fast mode one frame every 256 attempts.
+' The search runs with the VDP interrupt off, so the NMI never interrupts
+' a VRAM write; it is turned on only to wait.
+sub Pace:
+  nmi on
+  if Speed = 1 then
+    wait 8 frames
+  else
+    wait
+  end if
+  ShowCounts
+  Choice = keypad(1)
+  if Choice = 10 then Abort = true
+  nmi off
+  return
+end sub
+
+sub DrawScreen:
+  Abort = false
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  Scale = 1
+  if W2 <= 12 then Scale = 2
+  N = W2 * Scale
+  M = 28 - N
+  M >>= 1
+  BX = M + 2
+  N = W1 * Scale
+  M = 16 - N
+  M >>= 1
+  BY = M + 4
+  B = 0
+  for Y = 1 to W1
+    for X = 1 to W2
+      SetCell
+    next
+  next
+  ShowTitleLine
+  ShowCounts
+  print at 5,22, "KEYPAD * : BACK TO MENU"
+  return
+end sub
+
+sub ShowTitleLine:
+  fill 32 count 28 at 2,1
+  print at 2,1, "PENTOMINOS"
+  NumU = W1
+  print at 13,1, digits$(NumU, 1) + " X "
+  NumU = W2
+  print at 17,1, digits$(NumU, 2)
+  print at 21,1, "TRYING"
+  return
+end sub
+
+' Line 1240: the letter (and color) of the piece being tried
+sub ShowTrying:
+  N = PieceName[P]
+  put char N at 28,1
+  Tile = EmptyTile + P
+  put char Tile at 29,1
+  return
+end sub
+
+sub ShowCounts:
+  print at 2,2, "TRIES"
+  print Tries at 8,2
+  print at 17,2, "SOLUTIONS"
+  print Solutions at 26,2
+  return
+end sub
+
+' The twelve pieces in their colors, for the menu
+sub ShowPieceRow:
+  for P = 1 to 12
+    N = P << 1
+    N += 3
+    Tile = EmptyTile + P
+    put char Tile at N,4
+    M = PieceName[P]
+    put char M at N,5
+  next
+  return
+end sub
+
+' Graphics II: the board tiles with their colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 544 to vram.pattern + Dst16
+    copy TileCol count 544 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 0
+  update sprites
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,1, "PENTOMINOS"
+  print at 6,2, "A PUZZLE-SOLVING PROGRAM"
+  print at 6,4, "BY JIM BUTTERFIELD"
+  print at 6,5, "COMPUTE! MAY 1984"
+  print at 2,7, "TWELVE PIECES OF FIVE"
+  print at 2,8, "SQUARES CAN FILL A 3 X 20,"
+  print at 2,9, "4 X 15, 5 X 12 OR 6 X 10"
+  print at 2,10, "RECTANGLE. THE COMPUTER"
+  print at 2,11, "SEARCHES LIKE A PERSON:"
+  print at 2,12, "FILL THE UPPER-LEFTMOST"
+  print at 2,13, "HOLE, TRY EVERY PIECE IN"
+  print at 2,14, "EVERY ROTATION, BACK OUT AT"
+  print at 2,15, "A DEAD END."
+  print at 2,17, "IN BASIC IT COULD TAKE ALL"
+  print at 2,18, "NIGHT. THIS IS THE COMPILED"
+  print at 2,19, "VERSION IT IMAGINED."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Lines 110-860: the four other squares of each rotation 1-63, column
+' offsets + 3 (row 0 unused); line 730 corrected (see the header)
+data OffX bytes
+  0,0,0,0
+  3,3,3,3
+  4,5,6,7
+  4,4,5,4
+  3,3,4,5
+  3,3,4,5
+  4,5,5,5
+  4,5,5,5
+  3,3,4,5
+  4,4,5,4
+  4,5,4,4
+  5,5,5,4
+  3,4,4,5
+  4,4,5,5
+  3,4,4,5
+  4,4,5,5
+  3,4,4,4
+  5,3,4,5
+  3,4,5,5
+  4,3,3,4
+  3,4,4,5
+  4,5,4,4
+  4,4,4,5
+  4,4,5,5
+  3,4,4,5
+  4,4,5,4
+  4,4,5,5
+  4,4,5,4
+  4,5,6,6
+  3,3,3,4
+  4,4,4,4
+  4,5,6,6
+  4,5,6,3
+  3,3,3,4
+  3,4,5,6
+  4,4,4,4
+  3,3,3,4
+  4,5,6,4
+  4,4,4,4
+  4,4,5,6
+  3,3,3,4
+  4,5,6,5
+  4,4,4,4
+  4,5,6,5
+  3,4,5,5
+  4,4,4,5
+  4,4,4,5
+  5,4,5,3
+  3,4,4,5
+  4,3,4,3
+  3,4,4,4
+  4,3,4,5
+  4,4,5,5
+  4,4,3,4
+  3,3,4,4
+  4,5,4,5
+  3,3,4,4
+  4,5,5,6
+  4,4,5,6
+  4,4,3,3
+  3,4,4,4
+  4,4,5,6
+  4,5,5,6
+  4,4,4,3
+end data
+
+' Row offsets + 3
+data OffY bytes
+  0,0,0,0
+  4,5,6,7
+  3,3,3,3
+  2,3,3,4
+  4,5,3,3
+  4,5,5,5
+  3,3,4,5
+  3,3,2,1
+  4,5,4,4
+  3,4,3,5
+  3,3,2,1
+  2,3,4,3
+  4,4,5,5
+  3,4,4,5
+  4,2,3,2
+  2,3,1,2
+  5,3,4,5
+  3,4,4,4
+  4,3,3,4
+  3,4,5,5
+  4,2,3,3
+  2,2,3,4
+  2,3,4,4
+  2,3,3,4
+  4,4,5,4
+  3,4,4,5
+  3,4,2,3
+  1,2,2,3
+  3,3,3,4
+  4,5,6,6
+  0,1,2,3
+  3,3,3,2
+  3,3,3,4
+  4,5,6,3
+  4,4,4,4
+  3,4,5,6
+  4,5,6,4
+  3,3,3,4
+  2,3,4,5
+  2,3,3,3
+  4,5,6,5
+  3,3,3,4
+  1,2,3,4
+  3,3,3,2
+  4,4,4,5
+  3,4,5,5
+  1,2,3,1
+  2,3,3,4
+  4,3,4,3
+  3,4,4,5
+  4,3,4,5
+  3,4,4,4
+  2,3,2,3
+  2,3,4,4
+  4,5,4,5
+  3,3,4,4
+  4,5,5,6
+  3,3,4,4
+  2,3,2,2
+  2,3,4,5
+  4,4,5,6
+  3,4,4,4
+  3,2,3,2
+  1,2,3,4
+end data
+
+' PP(rotation): the piece of each rotation 1-63, 0 after the last
+data RotPiece bytes
+  0,1,1,2,3,3,3,3,4,4,4,4,5,5,5,5
+  6,6,6,6,7,7,7,7,7,7,7,7,8,8,8,8
+  8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10
+  11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12
+  0
+end data
+
+' SS(piece): first rotation of pieces 1-12
+data FirstRot bytes
+  0,1,3,4,8,12,16,20,28,36,44,48,56
+end data
+
+' PP$(piece): the letters of the listing (R is the piece often called N)
+data PieceName bytes
+  32,73,88,86,84,87,85,70,76,89,90,80,82
+end data
+
+' Tiles 128-140: empty cell and the twelve pieces; 144-195 the same as
+' 2 x 2 blocks (top left, top right, bottom left, bottom right)
+data TilePat bytes
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+end data
+
+' Their colors, one byte per pixel row (Graphics II)
+data TileCol bytes
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $50,$50,$50,$50,$50,$50,$50,$50
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+end data
+
+asm {
+PlaceT1:
+    db $40,$7F,$30,$01,$50
+RemoveT1:
+    db $40,$53,$51,$01,$50
+SolvedT1:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$55,$10,$18,$50
+DoneT1:
+    db $40,$1D,$11,$0C,$40,$53,$11,$0C,$40,$AB,$11,$1E,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+PentoSoundTable:
+    dw PlaceT1,$7035
+    dw RemoveT1,$7035
+    dw SolvedT1,$7035
+    dw DoneT1,$7035
+    dw BeepT1,$7035
+    dw PentoTuneMel,$703F
+    dw PentoTuneBass,$7049
+; Title tune (original for this port): two Tiny Sound channels
+PentoTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$20,$1A,$21
+    db $17,$1A,$1F,$1A,$17,$1A,$1F,$1A,$18,$1C,$1F,$1C,$18,$1C,$1F,$1C
+    db $15,$1A,$1E,$1A,$15,$1A,$1E,$1A,$17,$1A,$1F,$1A,$17,$00,$00,$00
+    db $1C,$1F,$23,$1F,$1C,$1F,$23,$1F,$18,$1C,$21,$1C,$18,$1C,$21,$1C
+    db $1A,$1E,$21,$1E,$1A,$1E,$21,$1E,$1F,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+PentoTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$50,$18,$32
+    db $07,$00,$00,$00,$00,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00
+    db $0E,$00,$00,$00,$00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00
+    db $10,$00,$00,$00,$00,$00,$00,$00,$09,$00,$00,$00,$00,$00,$00,$00
+    db $0E,$00,$00,$00,$00,$00,$00,$00,$07,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+}
+

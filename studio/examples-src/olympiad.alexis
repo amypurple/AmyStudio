@@ -1,0 +1,1096 @@
+cartridge "OLYMPIAD/PRESENTS WORAM AND BUHIDAR'S/1984"
+
+' OLYMPIAD
+' By Kevin Woram and Mike Buhidar, Jr., COMPUTE! magazine, June 1984, pages
+' 50-60: written for the Commodore 64, with versions for the VIC-20 and the
+' Atari (notes by Chris Poer, Editorial Programmer). All credit belongs to
+' Kevin Woram and Mike Buhidar, Jr.
+'
+' Historical context (summary of the article):
+' Admar, a magician of great power, served the king of Denbar as an adviser
+' in matters of war. The king grew to fear him and plotted his death; the
+' loyal Admar fled with a legion of his own warriors, and the war that
+' followed cost both sides dearly. So it was agreed that an enchanted arena
+' would be built where the king's Black Knights would fight mock battles
+' with Admar's Red Knights. Two players move their knights in eight
+' directions and shoot magical arrows, twenty to a quiver, which travel only
+' a short distance; a knight who has used all his arrows can only run.
+' Three enchanted teleportation grids send whoever steps on them to a
+' random place in the arena. A knight struck by an arrow falls and a new
+' round begins; the side that loses three knights loses the contest. If
+' both quivers run dry, the round starts again with fresh arrows.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick 1 for the Red Knight, joystick 2 for the Black Knight;
+' fire shoots an arrow the way the knight faces. One player can fight the
+' computer, which commands the Black Knight.
+' The rules follow the Atari and 64 listings: one cell per move (lines
+' 61-95), arrows of up to 13 cells that stop at walls and grids (lines
+' 100-140), grids that teleport (lines 4000-4120), three knights per side
+' (lines 300-340), fresh quivers when both are empty (line 60).
+' Adaptation liberties: the arena is redrawn for 28 columns with the same
+' rounded walls, central enclosure and three grids, symmetrical so neither
+' side is favoured; the arrows fly while the knights keep moving (in the
+' listings the game stopped until an arrow landed); a knight can shoot an
+' enemy standing right next to him (the listings refused the shot but
+' still spent the arrow); the knights glide between cells and wear a white
+' visor slit that shows where they face (one sprite per knight, so
+' knights and arrows never pass four on a line); a victory march or a
+' lament before the end screen; a ROUND banner opens each round; a
+' computer opponent; the options are a joystick menu; an original title
+' tune (Tiny Sound); the frame loop is protected from the NMI; an editorial
+' page at power-on.
+' Screen: status on row 1, the arena on rows 2-22, columns 2-29.
+
+const IconRed = 128
+const GridTile = 129
+const ArrowIcon = 130
+const IconBlack = 131
+const FloorTile = 32
+const TickN = 7                ' frames per move (one BASIC pass)
+const GlideStep = 293          ' 8 pixels in 7 frames, 8.8 fixed point
+const ArrowRange = 13          ' Atari line 120: FOR A=1 TO 13
+const Quiver = 20
+const CpuAim = 60              ' computer: chance in 100 to shoot when lined up
+
+' Sound table slots (ol/s.mjs)
+const SndShoot = 1
+const SndThunk = 2
+const SndTeleport = 3
+const SndFall = 4
+const SndReady = 5
+const SndFanfare = 6
+const SndBeep = 9
+const SndVictory = 7
+const SndLament = 8
+const SndTuneA = 10
+const SndTuneB = 11
+
+u8 Mode = 1                    ' 1 two players, 2 against the computer
+u8 RN = 1                      ' round
+u8 KX[2]                       ' knight cells (screen columns and rows)
+u8 KY[2]
+u8 Face[2]                     ' 1 up ... 8 up-left, clockwise
+u8 Arrows[2]                   ' NA, AT
+u8 Lost[2]                     ' LR, LB
+u16 GX[2]                      ' knight sprite positions, 8.8
+u16 GY[2]
+bool AOn0 = false              ' arrow in flight, red
+bool AOn1 = false              ' arrow in flight, black
+u8 AX[2]
+u8 AY[2]
+u8 AD[2]
+u8 AR[2]                       ' cells left to fly
+u8 ATick = 0
+u8 P = 0                       ' current knight
+u8 E = 0                       ' his enemy
+u8 V = 0                       ' the knight who fell
+u8 Port = 1
+u8 Dir = 0
+u8 NX = 0
+u8 NY = 0
+u8 T = 0
+u8 N = 0
+u8 M = 0
+u8 I = 0
+u8 K = 0
+u8 F = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 GridTick = 0
+u8 GridPhase = 0
+u8 Choice = 1
+u8 Best = 0
+u8 BestDir = 0
+u8 Cost = 0
+u8 Try = 0
+bool Ok = false
+bool WantFire = false
+bool Hit = false
+bool Aligned = false
+i16 DX = 0
+i16 DY = 0
+i16 ADX = 0
+i16 ADY = 0
+u16 Tmp16 = 0
+u16 Sub16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table OlympiadSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy KnightSprites count 160 to vram.spr_pat
+  HideAll
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+options:
+  nmi on
+  HideAll
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  print at 11,3, "OLYMPIAD"
+  print at 5,5, "THE ENCHANTED ARENA"
+  put char IconRed at 9,7
+  print at 11,7, "RED KNIGHTS"
+  put char IconBlack at 9,8
+  print at 11,8, "BLACK KNIGHTS"
+  print at 7,11, "TWO PLAYERS"
+  print at 7,13, "ONE PLAYER VS CPU"
+  print at 7,15, "HOW TO PLAY"
+  print at 4,19, "STICK UP/DOWN, THEN FIRE"
+  play sound SndBeep
+  wait no fire
+  choose menu 1 to 3 into Choice cursor $3E at 5,11 step 2
+  if Choice = 3 then
+    HowToPage
+    goto options
+  end if
+  Mode = Choice
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+
+new_game:
+  Lost[0] = 0
+  Lost[1] = 0
+  RN = 1
+
+new_round:
+  ' --- Lines 34, 400-410: the arena, the knights, full quivers ---
+  StartRound
+
+main_loop:
+  FrameUpdate
+  if Hit then goto knight_falls
+  inc Tick
+  if Tick < TickN then goto main_loop
+  Tick = 0
+  for P = 0 to 1
+    E = 1 - P
+    TakeTurn
+  next
+  if Hit then goto knight_falls
+  ' Line 60: both quivers empty and no arrow in the air
+  if Arrows[0] = 0 then
+    if Arrows[1] = 0 then
+      if not AOn0 then
+        if not AOn1 then goto quivers_empty
+      end if
+    end if
+  end if
+  goto main_loop
+
+quivers_empty:
+  nmi on
+  fill 32 count 28 at 2,1
+  print at 8,1, "QUIVERS EMPTY!"
+  wait 90 frames
+  goto new_round
+
+' --- Lines 300-340, 600-630: a knight falls ---
+knight_falls:
+  nmi on
+  AOn0 = false
+  AOn1 = false
+  hide sprite 0
+  hide sprite 1
+  I = V + 2
+  play sound SndFall
+  X = KX[V] << 3
+  Y = KY[V] << 3
+  dec Y
+  for F = 0 to 44
+    N = F / 5
+    N = N % 3
+    N += 17
+    M = F & 2
+    if M = 0 then
+      set sprite I to Y,X,N,15
+    else
+      set sprite I to Y,X,N,11
+    end if
+    update sprites
+    wait
+  next
+  hide sprite I
+  update sprites
+  N = Lost[V]
+  inc N
+  Lost[V] = N
+  ShowStatus
+  wait 40 frames
+  ' ShowStatus uses N: read the count again
+  N = Lost[V]
+  if N >= 3 then goto game_over
+  inc RN
+  goto new_round
+
+' --- Lines 6000-6070: the end ---
+game_over:
+  ' The contest is over: a march for the winner (a lament when the computer
+  ' wins), on the arena, before the end screen
+  fill 32 count 28 at 2,1
+  print at 10,1, "VICTORY!"
+  N = 0
+  if Mode = 2 then
+    if V = 0 then N = 1
+  end if
+  if N = 1 then
+    play sound SndLament
+    wait 145 frames
+  else
+    play sound SndVictory
+    wait 135 frames
+  end if
+  wait 20 frames
+  HideAll
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  if V = 1 then
+    print at 13,5, "THE"
+    put char IconRed at 9,7
+    print at 11,7, "RED KNIGHTS"
+    print at 7,9, "DEFEATED THE"
+    put char IconBlack at 8,11
+    print at 10,11, "BLACK KNIGHTS"
+  else
+    print at 13,5, "THE"
+    put char IconBlack at 8,7
+    print at 10,7, "BLACK KNIGHTS"
+    print at 7,9, "DEFEATED THE"
+    put char IconRed at 9,11
+    print at 11,11, "RED KNIGHTS"
+  end if
+  NumU = RN
+  print at 9,13, "IN " + digits$(NumU, 2) + " ROUNDS"
+  if Mode = 2 then
+    if V = 1 then
+      print at 9,15, "WELL FOUGHT!"
+    else
+      print at 8,15, "THE KING WINS."
+    end if
+  end if
+  print at 7,18, "FIGHT AGAIN"
+  print at 7,20, "OPTIONS"
+  wait 60 frames
+  wait no fire
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 5,18 step 2
+  if Choice = 1 then goto new_game
+  Choice = Mode
+  play sounds SndTuneA, SndTuneB
+  goto options
+
+' ---------------------------------------------------------------------------
+
+' Lines 61-95 for knight P: one cell per pass
+sub TakeTurn:
+  WantFire = false
+  if Mode = 2 then
+    if P = 1 then
+      CpuThink
+      goto turn_act
+    end if
+  end if
+  Port = P + 1
+  ReadStick
+  if joypad(Port).fire then WantFire = true
+turn_act:
+  if WantFire then Shoot
+  if Dir = 0 then return
+  Face[P] = Dir
+  TryMove
+  if not Ok then return
+  T = get char at NX,NY
+  KX[P] = NX
+  KY[P] = NY
+  ' Lines 68, 4000-4120: the teleportation grids
+  if T = GridTile then Teleport
+  ' A knight who walks into an arrow is struck too
+  CheckArrowHit
+  return
+end sub
+
+' Ok when knight P can step from his cell in direction Dir: the cell must be
+' floor or a grid, and not the other knight's
+sub TryMove:
+  Ok = false
+  NX = DirDX[Dir]
+  NX += KX[P]
+  NX -= 1
+  NY = DirDY[Dir]
+  NY += KY[P]
+  NY -= 1
+  if NX = KX[E] then
+    if NY = KY[E] then return
+  end if
+  T = get char at NX,NY
+  if T = FloorTile then Ok = true
+  if T = GridTile then Ok = true
+  return
+end sub
+
+sub Teleport:
+  play sound SndTeleport
+  for Try = 1 to 60
+    X = random(3, 28)
+    Y = random(3, 21)
+    T = get char at X,Y
+    if T = FloorTile then
+      if X <> KX[E] then
+        KX[P] = X
+        KY[P] = Y
+        return
+      end if
+      if Y <> KY[E] then
+        KX[P] = X
+        KY[P] = Y
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' Lines 100-115: an arrow leaves in the direction the knight faces
+sub Shoot:
+  if Arrows[P] = 0 then return
+  if P = 0 then
+    if AOn0 then return
+    AOn0 = true
+  else
+    if AOn1 then return
+    AOn1 = true
+  end if
+  N = Arrows[P]
+  dec N
+  Arrows[P] = N
+  AX[P] = KX[P]
+  AY[P] = KY[P]
+  AD[P] = Face[P]
+  AR[P] = ArrowRange
+  play sound SndShoot
+  ShowStatus
+  return
+end sub
+
+' Lines 120-140: each arrow advances one cell every two frames
+sub MoveArrows:
+  for P = 0 to 1
+    E = 1 - P
+    Ok = false
+    if P = 0 then
+      if AOn0 then Ok = true
+    else
+      if AOn1 then Ok = true
+    end if
+    if Ok then StepArrow
+  next
+  return
+end sub
+
+sub StepArrow:
+  Dir = AD[P]
+  NX = DirDX[Dir]
+  NX += AX[P]
+  NX -= 1
+  NY = DirDY[Dir]
+  NY += AY[P]
+  NY -= 1
+  ' Line 300: the arrow strikes the enemy knight
+  if NX = KX[E] then
+    if NY = KY[E] then
+      V = E
+      Hit = true
+      return
+    end if
+  end if
+  T = get char at NX,NY
+  if T <> FloorTile then
+    EndArrow
+    play sound SndThunk
+    return
+  end if
+  AX[P] = NX
+  AY[P] = NY
+  N = AR[P]
+  dec N
+  AR[P] = N
+  if N = 0 then EndArrow
+  return
+end sub
+
+sub EndArrow:
+  if P = 0 then
+    AOn0 = false
+  else
+    AOn1 = false
+  end if
+  hide sprite P
+  return
+end sub
+
+' Knight P has just moved: is the enemy's arrow in his cell?
+sub CheckArrowHit:
+  Ok = false
+  if E = 0 then
+    if AOn0 then Ok = true
+  else
+    if AOn1 then Ok = true
+  end if
+  if not Ok then return
+  if AX[E] <> KX[P] then return
+  if AY[E] <> KY[P] then return
+  V = P
+  Hit = true
+  return
+end sub
+
+' Dir 1-8 clockwise from up, 0 = centre, from joystick Port
+sub ReadStick:
+  N = 0
+  if joypad(Port).up then N |= 1
+  if joypad(Port).down then N |= 2
+  if joypad(Port).left then N |= 4
+  if joypad(Port).right then N |= 8
+  Dir = StickDir[N]
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Adaptation: the computer commands the Black Knight. Each pass it shoots
+' when the Red Knight is lined up in one of the eight directions within
+' arrow range with nothing in between; it steps aside from an arrow flying
+' at it; otherwise it walks to line up a shot (or, with an empty quiver,
+' to stay out of line).
+
+sub CpuThink:
+  Dir = 0
+  DX = KX[0]
+  DX -= KX[1]
+  DY = KY[0]
+  DY -= KY[1]
+  ' Dodge: the red arrow is flying toward this knight
+  if AOn0 then
+    CpuDodge
+    if Dir <> 0 then return
+  end if
+  ' Shoot when lined up with a clear path
+  if not AOn1 then
+    if Arrows[1] > 0 then
+      LineOfFire
+      if Aligned then
+        N = random(0, 99)
+        if N < CpuAim then
+          Face[1] = BestDir
+          WantFire = true
+          return
+        end if
+      end if
+    end if
+  end if
+  ' Move: score each legal step and take the best (a random one now and then)
+  N = random(0, 99)
+  if N < 12 then
+    for Try = 1 to 4
+      Dir = random(1, 8)
+      TryMove
+      if Ok then
+        T = get char at NX,NY
+        if T = FloorTile then return
+      end if
+    next
+    Dir = 0
+    return
+  end if
+  Best = 255
+  BestDir = 0
+  for K = 1 to 8
+    Dir = K
+    TryMove
+    if Ok then
+      T = get char at NX,NY
+      if T = FloorTile then
+        ScoreCell
+        if Cost < Best then
+          Best = Cost
+          BestDir = K
+        end if
+        if Cost = Best then
+          N = random(0, 1)
+          if N = 0 then BestDir = K
+        end if
+      end if
+    end if
+  next
+  Dir = BestDir
+  return
+end sub
+
+' Cost of standing at NX,NY: how far from lining up with the Red Knight, and
+' how far from a comfortable range of about 6 cells (reversed when the
+' quiver is empty)
+sub ScoreCell:
+  ADX = KX[0]
+  ADX -= NX
+  if ADX < 0 then ADX = 0 - ADX
+  ADY = KY[0]
+  ADY -= NY
+  if ADY < 0 then ADY = 0 - ADY
+  ' Misalignment: the smallest of |dx|, |dy|, ||dx| - |dy||
+  Tmp16 = ADX
+  if ADY < ADX then Tmp16 = ADY
+  Sub16 = ADX - ADY
+  if ADY > ADX then Sub16 = ADY - ADX
+  if Sub16 < Tmp16 then Tmp16 = Sub16
+  if Tmp16 > 15 then Tmp16 = 15
+  M = Tmp16
+  ' Range: the larger of |dx| and |dy|
+  Sub16 = ADX
+  if ADY > ADX then Sub16 = ADY
+  if Sub16 > 30 then Sub16 = 30
+  N = Sub16
+  if Arrows[1] = 0 then
+    Cost = 15 - M
+    Cost <<= 2
+    Cost += 30
+    Cost -= N
+    return
+  end if
+  Cost = M << 2
+  if N > 6 then
+    N -= 6
+  else
+    N = 6 - N
+  end if
+  Cost += N
+  return
+end sub
+
+' Aligned and BestDir when the Red Knight is on one of the eight lines from
+' the Black Knight, within range, with only floor in between
+sub LineOfFire:
+  Aligned = false
+  ADX = DX
+  if ADX < 0 then ADX = 0 - ADX
+  ADY = DY
+  if ADY < 0 then ADY = 0 - ADY
+  N = 0
+  if ADX = 0 then N = 1
+  if ADY = 0 then N = 1
+  if ADX = ADY then N = 1
+  if N = 0 then return
+  Sub16 = ADX
+  if ADY > ADX then Sub16 = ADY
+  if Sub16 > ArrowRange then return
+  if Sub16 = 0 then return
+  ' Direction from the signs
+  N = 4
+  if DX < 0 then N = 1
+  if DX > 0 then N = 7
+  if DY < 0 then N -= 1
+  if DY > 0 then inc N
+  BestDir = SignDir[N]
+  X = KX[1]
+  Y = KY[1]
+  M = Sub16
+  for K = 1 to M
+    X += DirDX[BestDir]
+    X -= 1
+    Y += DirDY[BestDir]
+    Y -= 1
+    if K = M then
+      Aligned = true
+      return
+    end if
+    T = get char at X,Y
+    if T <> FloorTile then return
+  next
+  return
+end sub
+
+' A side step when the red arrow's path runs through the Black Knight
+sub CpuDodge:
+  Dir = 0
+  K = AD[0]
+  X = AX[0]
+  Y = AY[0]
+  M = AR[0]
+  if M > 6 then M = 6
+  for I = 1 to M
+    X += DirDX[K]
+    X -= 1
+    Y += DirDY[K]
+    Y -= 1
+    if X = KX[1] then
+      if Y = KY[1] then goto dodge_now
+    end if
+  next
+  return
+dodge_now:
+  ' Try the two perpendicular directions, then the diagonals beside them
+  for I = 0 to 3
+    N = DodgeOrder[I]
+    N += K
+    if N > 8 then N -= 8
+    Dir = N
+    TryMove
+    if Ok then return
+  next
+  Dir = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+' One video frame. The game runs with the VDP interrupt off and turns it on
+' only to wait for the next frame.
+sub FrameUpdate:
+  nmi on
+  wait
+  nmi off
+  ' Human shots are read every frame so the trigger feels immediate
+  for P = 0 to 1
+    E = 1 - P
+    Ok = true
+    if Mode = 2 then
+      if P = 1 then Ok = false
+    end if
+    if Ok then
+      Port = P + 1
+      if joypad(Port).fire then Shoot
+    end if
+  next
+  inc ATick
+  if ATick >= 2 then
+    ATick = 0
+    MoveArrows
+  end if
+  ' The grids shimmer
+  inc GridTick
+  if GridTick >= 6 then
+    GridTick = 0
+    inc GridPhase
+    GridPhase &= 3
+    Tmp16 = GridPhase << 3
+    copy GridColors + Tmp16 count 8 to vram.color + 1032
+    copy GridColors + Tmp16 count 8 to vram.color + 3080
+    copy GridColors + Tmp16 count 8 to vram.color + 5128
+  end if
+  PlaceSprites
+  update sprites
+  return
+end sub
+
+' Knights glide to their cells; arrows are drawn half a cell ahead between
+' steps
+sub PlaceSprites:
+  for P = 0 to 1
+    N = KX[P] << 3
+    Tmp16 = N << 8
+    Dst16 = GX[P]
+    GlideTo
+    GX[P] = Dst16
+    N = KY[P] << 3
+    dec N
+    Tmp16 = N << 8
+    Dst16 = GY[P]
+    GlideTo
+    GY[P] = Dst16
+    Tmp16 = GX[P] >> 8
+    X = Tmp16
+    Tmp16 = GY[P] >> 8
+    Y = Tmp16
+    ' One sprite per knight (and one per arrow): never more than four on a
+    ' line
+    I = P + 2
+    N = Face[P]
+    if P = 0 then
+      set sprite I to Y,X,N,8
+    else
+      set sprite I to Y,X,N,1
+    end if
+    Ok = false
+    if P = 0 then
+      if AOn0 then Ok = true
+    else
+      if AOn1 then Ok = true
+    end if
+    if Ok then
+      K = AD[P]
+      X = AX[P] << 3
+      Y = AY[P] << 3
+      dec Y
+      if ATick = 1 then
+        X += WandDX[K]
+        X -= 4
+        Y += WandDY[K]
+        Y -= 4
+      end if
+      N = K + 8
+      if P = 0 then
+        set sprite 0 to Y,X,N,6
+      else
+        set sprite 1 to Y,X,N,1
+      end if
+    end if
+  next
+  return
+end sub
+
+' Moves Dst16 toward Tmp16 by one glide step (snaps on big jumps)
+sub GlideTo:
+  if Dst16 < Tmp16 then
+    Sub16 = Tmp16 - Dst16
+    if Sub16 > 3072 then
+      Dst16 = Tmp16
+      return
+    end if
+    if Sub16 > GlideStep then
+      Dst16 += GlideStep
+    else
+      Dst16 = Tmp16
+    end if
+  else
+    Sub16 = Dst16 - Tmp16
+    if Sub16 > 3072 then
+      Dst16 = Tmp16
+      return
+    end if
+    if Sub16 > GlideStep then
+      Dst16 -= GlideStep
+    else
+      Dst16 = Tmp16
+    end if
+  end if
+  return
+end sub
+
+' Lines 34, 400-410, 3000-3260: a new round
+sub StartRound:
+  nmi off
+  HideAll
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  Tmp16 = 0
+  for Y = 2 to 22
+    put ArenaRows + Tmp16 count 28 at 2,Y
+    Tmp16 += 28
+  next
+  ' Red Knight top left, Black Knight bottom right, facing each other
+  KX[0] = 3
+  KY[0] = 3
+  Face[0] = 3
+  KX[1] = 28
+  KY[1] = 21
+  Face[1] = 7
+  for P = 0 to 1
+    N = KX[P] << 3
+    Tmp16 = N << 8
+    GX[P] = Tmp16
+    N = KY[P] << 3
+    dec N
+    Tmp16 = N << 8
+    GY[P] = Tmp16
+    Arrows[P] = Quiver
+  next
+  AOn0 = false
+  AOn1 = false
+  Hit = false
+  Tick = 0
+  ATick = 0
+  PlaceSprites
+  update sprites
+  nmi on
+  fill 32 count 28 at 2,1
+  NumU = RN
+  print at 11,1, "ROUND " + digits$(NumU, 2)
+  play sound SndReady
+  wait 90 frames
+  ShowStatus
+  wait no fire
+  return
+end sub
+
+' Status line: knights left and arrows left for each side
+sub ShowStatus:
+  fill 32 count 28 at 2,1
+  N = 3 - Lost[0]
+  if N > 0 then
+    fill IconRed count N at 2,1
+  end if
+  put char ArrowIcon at 6,1
+  NumU = Arrows[0]
+  print at 7,1, digits$(NumU, 2)
+  print at 11,1, "OLYMPIAD"
+  NumU = Arrows[1]
+  print at 21,1, digits$(NumU, 2)
+  put char ArrowIcon at 23,1
+  N = 3 - Lost[1]
+  if N > 0 then
+    M = 30 - N
+    fill IconBlack count N at M,1
+  end if
+  return
+end sub
+
+' Graphics II: walls, icons and grid with their colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for F = 0 to 2
+    copy IconPat count 24 to vram.pattern + Dst16
+    copy IconColors count 24 to vram.color + Dst16
+    Tmp16 = Dst16 + 24
+    copy IconPat count 8 to vram.pattern + Tmp16
+    copy IconBlackCol count 8 to vram.color + Tmp16
+    Tmp16 = Dst16 + 128
+    copy WallPat count 176 to vram.pattern + Tmp16
+    fill $40 count 176 to vram.color + Tmp16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 4
+  update sprites
+  return
+end sub
+
+sub HowToPage:
+  HideAll
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  print at 10,1, "HOW TO PLAY"
+  print at 2,3, "MOVE YOUR KNIGHT WITH THE"
+  print at 2,4, "JOYSTICK. FIRE SHOOTS AN"
+  print at 2,5, "ARROW THE WAY HE FACES."
+  put char ArrowIcon at 2,7
+  print at 4,7, "20 ARROWS PER ROUND. THEY"
+  print at 4,8, "FLY A SHORT DISTANCE ONLY."
+  put char GridTile at 2,10
+  print at 4,10, "GRIDS TELEPORT YOU TO A"
+  print at 4,11, "RANDOM PLACE."
+  put char IconRed at 2,13
+  put char IconBlack at 3,13
+  print at 5,13, "AN ARROW FELLS A KNIGHT."
+  print at 5,14, "LOSE THREE AND YOUR SIDE"
+  print at 5,15, "LOSES THE CONTEST."
+  print at 2,17, "BOTH QUIVERS EMPTY? THE"
+  print at 2,18, "ROUND STARTS OVER."
+  print at 4,21, "PRESS FIRE TO CONTINUE"
+  wait 30 frames
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideAll
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 11,1, "OLYMPIAD"
+  print at 7,3, "BY KEVIN WORAM AND"
+  print at 7,4, "MIKE BUHIDAR, JR."
+  print at 5,5, "COMPUTE! JUNE 1984"
+  print at 2,7, "A COMMODORE 64 GAME, WITH"
+  print at 2,8, "VERSIONS FOR THE VIC-20 AND"
+  print at 2,9, "THE ATARI."
+  print at 2,11, "THE KING OF DENBAR FEARED"
+  print at 2,12, "HIS MAGICIAN ADMAR. AFTER A"
+  print at 2,13, "COSTLY WAR THEY AGREED TO"
+  print at 2,14, "SETTLE IT IN AN ENCHANTED"
+  print at 2,15, "ARENA: THE KING'S BLACK"
+  print at 2,16, "KNIGHTS AGAINST ADMAR'S RED"
+  print at 2,17, "KNIGHTS, WITH MAGIC ARROWS."
+  print at 4,21, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Stick bits (1 up, 2 down, 4 left, 8 right) to directions 1-8 clockwise
+' from up; opposite bits cancel
+data StickDir bytes 0,1,5,0,7,8,6,7,3,2,4,3,0,1,5,0
+' Cell steps for directions 0-8, stored + 1 (0 = -1, 1 = 0, 2 = +1)
+data DirDX bytes 1,1,2,2,2,1,0,0,0
+data DirDY bytes 1,0,0,1,2,2,2,1,0
+' Half-cell offsets in pixels for directions 0-8, stored + 4
+data WandDX bytes 4,4,8,8,8,4,0,0,0
+data WandDY bytes 4,0,0,4,8,8,8,4,0
+' Direction from the signs of dx, dy: index (sx + 1) * 3 + (sy + 1)
+data SignDir bytes 8,7,6,1,0,5,2,3,4
+' Dodge: right angles first, then the diagonals beside them
+data DodgeOrder bytes 2,6,1,7
+' Icon colors: red knight, grid, arrow; then the black knight icon
+data IconColors bytes $80,$80,$80,$80,$80,$80,$80,$80,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$10,$10,$10,$10,$10,$10,$10,$10
+data IconBlackCol bytes $10,$10,$10,$10,$10,$10,$10,$10
+' The grid shimmers through four color sets
+data GridColors bytes $F4,$F4,$4F,$4F,$F4,$F4,$4F,$4F,$EF,$EF,$FE,$FE,$EF,$EF,$FE,$FE,$4F,$4F,$F4,$F4,$4F,$4F,$F4,$F4,$FE,$FE,$EF,$EF,$FE,$FE,$EF,$EF
+
+' Arena wall tiles 144-165: outlines of the rounded walls, cut from a
+' pixel drawing of the whole arena (gen.py)
+data WallPat bytes
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $00,$00,$00,$00,$00,$00,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $1F,$3F,$70,$E0,$E0,$70,$3F,$1F
+  $FF,$FF,$00,$00,$00,$00,$FF,$FF
+  $F8,$FC,$0E,$07,$07,$0E,$FC,$F8
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $F8,$FC,$0E,$07,$03,$03,$03,$03
+  $03,$03,$03,$03,$07,$0E,$FC,$F8
+  $1F,$3F,$70,$E0,$C0,$C0,$C1,$C3
+  $F8,$FC,$0E,$07,$03,$03,$83,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$E7,$7E,$3C,$18
+  $18,$3C,$7E,$E7,$C3,$C3,$C3,$C3
+  $C3,$C1,$C0,$C0,$E0,$70,$3F,$1F
+  $C3,$83,$03,$03,$07,$0E,$FC,$F8
+  $1F,$3F,$70,$E0,$C0,$C0,$C0,$C0
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$E0,$70,$3F,$1F
+  $FF,$FF,$00,$00,$00,$00,$00,$00
+end data
+
+const WallCount = 22
+
+' The arena, 28 x 21 tiles (screen columns 2-29, rows 2-22): 32 floor,
+' 129 teleportation grid, 144 and up walls
+data ArenaRows bytes
+  144,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,145,146
+  147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,129,148
+  147,32,32,149,150,150,151,32,32,149,150,150,151,32,32,149,150,150,151,32,32,149,150,150,151,32,32,148
+  147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,148
+  152,153,32,32,149,150,150,150,151,32,32,32,149,150,150,151,32,32,32,149,150,150,150,151,32,32,32,148
+  32,147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,148
+  144,154,32,32,149,150,151,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,150,151,32,32,32,148
+  147,32,32,32,32,32,32,32,32,155,150,150,151,32,32,149,150,150,156,32,32,32,32,32,32,32,32,148
+  147,32,32,149,150,150,151,32,32,157,32,32,32,32,32,32,32,32,157,32,32,149,150,150,151,32,32,148
+  147,32,32,32,32,32,32,32,32,158,32,32,32,32,32,32,32,32,158,32,32,32,32,32,32,32,32,148
+  147,32,32,32,32,32,32,32,32,32,32,32,32,129,129,32,32,32,32,32,32,32,32,32,32,32,32,148
+  147,32,32,32,32,32,32,32,32,159,32,32,32,32,32,32,32,32,159,32,32,32,32,32,32,32,32,148
+  147,32,32,149,150,150,151,32,32,157,32,32,32,32,32,32,32,32,157,32,32,149,150,150,151,32,32,148
+  147,32,32,32,32,32,32,32,32,160,150,150,151,32,32,149,150,150,161,32,32,32,32,32,32,32,32,148
+  147,32,32,32,149,150,151,32,32,32,32,32,32,32,32,32,32,32,32,32,32,149,150,151,32,32,162,163
+  147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,148,32
+  147,32,32,32,149,150,150,150,151,32,32,32,149,150,150,151,32,32,32,149,150,150,150,151,32,32,164,146
+  147,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,148
+  147,32,32,149,150,150,151,32,32,149,150,150,151,32,32,149,150,150,151,32,32,149,150,150,151,32,32,148
+  147,129,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,148
+  152,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,163
+end data
+
+' Tiles 128-130: knight icon, teleportation grid (TI DATA 2065), arrow icon
+data IconPat bytes
+  $18,$3C,$7E,$5A,$7E,$3C,$24,$66
+  $CC,$CC,$33,$33,$CC,$CC,$33,$33
+  $00,$04,$02,$FF,$02,$04,$00,$00
+end data
+
+' Sprites: 0 knight body; 1-8 knight with a visor slit facing up, up-right ... up-left;
+' 9-16 arrows in the same order (Atari chars 105-112); 17-19 the burst
+' when a knight falls (Atari chars 113-115)
+data KnightSprites bytes
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
+  $3C,$66,$E7,$FF,$FF,$FF,$7E,$3C
+  $3C,$78,$F9,$FF,$FF,$FF,$7E,$3C
+  $3C,$7E,$FF,$F9,$F9,$FF,$7E,$3C
+  $3C,$7E,$FF,$FF,$FF,$F9,$78,$3C
+  $3C,$7E,$FF,$FF,$FF,$E7,$66,$3C
+  $3C,$7E,$FF,$FF,$FF,$9F,$1E,$3C
+  $3C,$7E,$FF,$9F,$9F,$FF,$7E,$3C
+  $3C,$1E,$9F,$FF,$FF,$FF,$7E,$3C
+  $10,$38,$54,$10,$10,$10,$10,$28
+  $07,$03,$05,$08,$10,$E0,$20,$20
+  $00,$84,$42,$3F,$42,$84,$00,$00
+  $20,$20,$E0,$10,$08,$05,$03,$07
+  $44,$28,$10,$10,$10,$10,$54,$38
+  $04,$04,$07,$08,$10,$A0,$C0,$E0
+  $00,$21,$42,$FC,$42,$21,$00,$00
+  $E0,$C0,$A0,$10,$08,$07,$04,$04
+  $00,$00,$08,$10,$04,$10,$00,$00
+  $00,$00,$14,$0A,$20,$14,$00,$00
+  $44,$09,$20,$84,$01,$28,$82,$11
+end data
+
+asm {
+ShootN:
+    db $00,$00,$12,$02,$00,$00,$42,$02,$00,$00,$72,$02,$10
+ThunkN:
+    db $00,$00,$35,$03,$10
+TeleportT1:
+    db $40,$18,$21,$01,$40,$D7,$20,$01,$40,$AF,$20,$01,$40,$93,$20,$01,$40,$7F,$20,$01,$40,$70,$20,$01
+    db $40,$64,$20,$01,$40,$5A,$20,$01,$40,$52,$20,$01,$40,$4C,$20,$01,$40,$46,$20,$01,$40,$41,$20,$01
+    db $50
+FallN:
+    db $00,$00,$04,$03,$00,$00,$14,$03,$00,$00,$24,$03,$00,$00,$34,$03,$00,$00,$44,$03,$00,$00,$54,$03
+    db $00,$00,$64,$03,$00,$00,$74,$03,$00,$00,$84,$03,$00,$00,$94,$03,$00,$00,$A4,$03,$00,$00,$B4,$03
+    db $00,$00,$C4,$03,$00,$00,$D4,$03,$00,$00,$E4,$03,$10
+ReadyT1:
+    db $40,$1D,$11,$08,$40,$D6,$10,$08,$50
+FanfareT1:
+    db $40,$D6,$10,$08,$40,$D6,$10,$08,$40,$D6,$10,$08,$40,$AA,$10,$14,$40,$BF,$10,$08,$40,$8F,$10,$1E
+    db $50
+VictoryT1:
+    db $40,$1D,$11,$0A,$40,$1D,$11,$0A,$40,$D6,$10,$0A,$40,$AA,$10,$14,$40,$BF,$10,$0A,$40,$D6,$10,$0A
+    db $40,$BF,$10,$0A,$40,$AA,$10,$0A,$40,$8F,$10,$28,$50
+LamentT1:
+    db $40,$FE,$10,$14,$40,$0E,$11,$14,$40,$1D,$11,$14,$40,$2E,$11,$14,$40,$7C,$21,$3C,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+OlympiadSoundTable:
+    dw ShootN,$702B
+    dw ThunkN,$702B
+    dw TeleportT1,$7035
+    dw FallN,$702B
+    dw ReadyT1,$7035
+    dw FanfareT1,$7035
+    dw VictoryT1,$7035
+    dw LamentT1,$7035
+    dw BeepT1,$7035
+    dw OlympiadTuneMel,$703F
+    dw OlympiadTuneBass,$7049
+; Title tune (original for this port): two Tiny Sound channels
+OlympiadTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$20,$1A,$21
+    db $15,$00,$1C,$00,$21,$00,$1F,$1C,$1A,$00,$1C,$00,$15,$00,$00,$00
+    db $18,$1A,$1C,$00,$1D,$1C,$1A,$18,$17,$00,$15,$00,$17,$00,$00,$00
+    db $15,$00,$1C,$00,$21,$00,$23,$21,$1F,$00,$1C,$00,$1A,$00,$1C,$00
+    db $18,$00,$17,$15,$13,$00,$17,$00,$15,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+OlympiadTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$50,$18,$32
+    db $09,$00,$10,$00,$09,$00,$10,$00,$0C,$00,$13,$00,$09,$00,$10,$00
+    db $05,$00,$0C,$00,$05,$00,$0C,$00,$07,$00,$0E,$00,$10,$00,$0B,$00
+    db $09,$00,$10,$00,$09,$00,$10,$00,$0C,$00,$13,$00,$0E,$00,$15,$00
+    db $05,$00,$0C,$00,$07,$00,$10,$00,$09,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+}
+
