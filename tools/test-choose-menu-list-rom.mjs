@@ -89,4 +89,3 @@ try {
   if (process.env.AMY_KEEP_TEST_TEMP) console.log(`Kept test files: ${temp}`);
   else rmSync(temp, { recursive: true, force: true });
 }
-
