@@ -220,6 +220,7 @@ const tests = [
   { file: "test-balloon-crazy-runtime.mjs", area: "balloon-crazy-runtime", evidence: "rom", suite: "examples" },
   { file: "test-beethoven-medley-runtime.mjs", area: "beethoven-medley-runtime", evidence: "rom", suite: "examples" },
   { file: "test-blueberries-runtime.mjs", area: "blueberries-runtime", evidence: "rom", suite: "examples" },
+  { file: "test-porting-guide-language-contracts.mjs", area: "porting-guide-language-contracts", evidence: "unit", suite: "language" },
   { file: "test-runway-180-runtime.mjs", area: "runway-180-runtime", evidence: "rom", suite: "examples" },
   { file: "test-ti99-ports-runtime.mjs", area: "ti99-ports-runtime", evidence: "rom", suite: "examples" },
   { file: "test-ti99-adam-ports-runtime.mjs", area: "ti99-adam-ports-runtime", evidence: "rom", suite: "examples" },

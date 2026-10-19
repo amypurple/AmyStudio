@@ -35,7 +35,8 @@ cartridge "BLUEBERRIES/PRESENTS BILL ROOT'S/1984"
 ' farmhands are shown at the bottom, and a how-to-play page explains
 ' them; one player sees his best score in
 ' Farmer Bob's place; the options are a joystick menu; an editorial page
-' at power-on; a computer opponent for Farmer Bob.
+' at power-on; a computer opponent for Farmer Bob; the seed bag shows full,
+' half empty or empty; an original title tune (Tiny Sound, two channels).
 ' Screen: score lines on rows 1-2, field 1 on rows 4-10, field 2 on rows
 ' 13-19 (columns 3-28 inside a border of bushes), status on row 21.
 
@@ -46,8 +47,11 @@ const BlueTile = 131
 const RedTile = 132
 const WhiteTile = 133
 const HandTile = 134
-const BagTile = 135
+const BagTile = 135              ' full
+const BagHalfTile = 136
+const BagEmptyTile = 138
 const SoilTile = 137
+const CropMax = 10             ' computer: largest crop it will tend
 const TickN = 7                ' frames per move (one BASIC pass)
 const GlideStep = 293          ' 8 pixels in 7 frames, 8.8 fixed point
 
@@ -62,6 +66,8 @@ const SndPickRed = 7
 const SndSick = 8
 const SndWin = 9
 const SndBeep = 10
+const SndTuneA = 11            ' title tune, Tiny Sound melody
+const SndTuneB = 12            ' title tune, Tiny Sound bass
 
 u8 Players = 2                 ' 1, 2, or 3 = Farmer Bob played by the computer
 u8 HandsOpt = 3                ' HANDS 3 or 5
@@ -108,6 +114,9 @@ u8 Flash = 0
 u16 Dst16 = 0
 u8 NumBuf[12]
 bool CpuTurn = false
+bool DirSafe = false
+u8 Crop[2]                     ' seeds and berries growing in each field
+bool TunePlaying = true
 bool CpuPlant = false
 bool AllowSeeds = false
 u8 BfsOn = 0                   ' 0 start a search, 1 searching, 2 done
@@ -125,25 +134,29 @@ u8 SC = 0
 u8 D = 0
 u8 TD = 0
 u8 K = 0
-u8 WR = 255                    ' sowing goal (255 = none)
-u8 WC = 0
+u8 WI = 255                    ' sowing goal cell (255 = none)
 u8 Dist[182]
 u8 Queue[182]
 
   tile screen
-  set sound table BerrySoundTable areas 3
+  set sound table BerrySoundTable areas 4
   sprites 8x8
   sprites simple
   copy FarmerSprites count 40 to vram.spr_pat
   LoadTiles
   HideAll
   screen on
+  play sounds SndTuneA, SndTuneB
   EditorialPage
   HowToPage
 
 ' --- Lines 1300-1600: the options (OPTION, SELECT, START) ---
 options:
   nmi on
+  if not TunePlaying then
+    play sounds SndTuneA, SndTuneB
+  end if
+  TunePlaying = true
   HideAll
   fill mode 2 text color with $F0
   LoadTiles
@@ -187,6 +200,10 @@ opt_loop:
 
 ' --- Lines 1000-1260: the farm ---
 new_game:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  TunePlaying = false
   SetLimit
   Score1 = 0
   Score2 = 0
@@ -199,10 +216,12 @@ new_game:
     StartPos
   next
   Over = false
+  Crop[0] = 0
+  Crop[1] = 0
   SickP = 255
   BfsOn = 0
   AllowSeeds = false
-  WR = 255
+  WI = 255
   GrowAcc = 0
   GrowStep = 96
   Tick = 0
@@ -329,6 +348,9 @@ sub MovePlayer:
     N = Seeds[P]
     if N > 0 then
       put char SeedTile at OX,OY
+      M = Crop[P]
+      inc M
+      Crop[P] = M
       dec N
       Seeds[P] = N
       Pts = 10
@@ -344,6 +366,13 @@ sub MovePlayer:
   Stride[P] = N
   ' Lines 310-370: what the farmer walked into
   put char SoilTile at NX,NY
+  if T >= SeedTile then
+    if T <= RedTile then
+      M = Crop[P]
+      if M > 0 then dec M
+      Crop[P] = M
+    end if
+  end if
   if T = SeedTile then
     Pts = -5
     AddPoints
@@ -385,13 +414,13 @@ sub BfsStart:
   FirstDir = 0
   ' A sowing goal when the bag is not empty
   if Seeds[1] > 0 then
-    if WR = 255 then PickWander
+    if WI = 255 then PickWander
   end if
   return
 end sub
 
 sub BfsStep:
-  for K = 1 to 20
+  for K = 1 to 12
     if QH = QT then
       ' Nothing reachable: try again walking over seeds, then give up
       if AllowSeeds then
@@ -404,32 +433,30 @@ sub BfsStep:
     end if
     CI = Queue[QH]
     inc QH
-    CR = CI / 26
-    CC = CI % 26
+    CR = RowOf[CI]
+    CC = ColOf[CI]
     for D = 1 to 4
-      NR = CR
-      NC = CC
       if D = 1 then
-        if NR = 0 then goto bfs_next
-        dec NR
+        if CR = 0 then goto bfs_next
+        NI = CI - 26
       end if
       if D = 2 then
-        if NR = 6 then goto bfs_next
-        inc NR
+        if CR = 6 then goto bfs_next
+        NI = CI + 26
       end if
       if D = 3 then
-        if NC = 0 then goto bfs_next
-        dec NC
+        if CC = 0 then goto bfs_next
+        NI = CI - 1
       end if
       if D = 4 then
-        if NC = 25 then goto bfs_next
-        inc NC
+        if CC = 25 then goto bfs_next
+        NI = CI + 1
       end if
-      NI = NR * 26
-      NI += NC
       if Dist[NI] <> 255 then goto bfs_next
-      X = NC + 3
-      Y = NR + 13
+      X = ColOf[NI]
+      X += 3
+      Y = RowOf[NI]
+      Y += 13
       T = get char at X,Y
       ' Goals
       if T = BlueTile then goto bfs_found
@@ -439,9 +466,7 @@ sub BfsStep:
         goto bfs_next
       end if
       if T = SoilTile then
-        if NR = WR then
-          if NC = WC then goto bfs_found
-        end if
+        if NI = WI then goto bfs_found
         Dist[NI] = D
         Queue[QT] = NI
         inc QT
@@ -463,8 +488,6 @@ bfs_found:
   ' direction seen is the first step
   TD = D
 bfs_trace:
-  CI = CR * 26
-  CI += CC
   D = Dist[CI]
   if D = 0 then
     FirstDir = TD
@@ -472,10 +495,10 @@ bfs_trace:
     return
   end if
   TD = D
-  if D = 1 then inc CR
-  if D = 2 then dec CR
-  if D = 3 then inc CC
-  if D = 4 then dec CC
+  if D = 1 then CI += 26
+  if D = 2 then CI -= 26
+  if D = 3 then inc CI
+  if D = 4 then dec CI
   goto bfs_trace
 end sub
 
@@ -488,8 +511,8 @@ sub PickWander:
     Y = NR + 13
     T = get char at X,Y
     if T = SoilTile then
-      WR = NR
-      WC = NC
+      WI = NR * 26
+      WI += NC
       return
     end if
   next
@@ -504,10 +527,27 @@ sub CpuDecide:
   if BfsOn <> 2 then return
   Dir = FirstDir
   if Dir = 0 then Dir = random(1, 4)
-  ' Sow about two steps in three while the bag has seeds
+  ' The search is a few frames old: never step onto a berry that has just
+  ' rotted, nor into a bush; try the other directions, else wait
+  SafeCheck
+  if not DirSafe then
+    for D = 1 to 4
+      Dir = D
+      SafeCheck
+      if DirSafe then goto cpu_safe
+    next
+    Dir = 0
+    BfsOn = 0
+    return
+  end if
+cpu_safe:
+  ' Sow only while the crop in his field stays small enough to harvest
+  ' before it rots: at most CropMax seeds and berries growing at once
   if Seeds[1] > 0 then
-    N = random(0, 2)
-    if N <> 0 then CpuPlant = true
+    if Crop[1] < CropMax then
+      N = random(0, 2)
+      if N <> 0 then CpuPlant = true
+    end if
   end if
   ' Next pass, a fresh search; a new sowing goal once this one is reached
   BfsOn = 0
@@ -520,10 +560,30 @@ sub CpuDecide:
   if Dir = 2 then inc NR
   if Dir = 3 then dec NC
   if Dir = 4 then inc NC
-  if NR = WR then
-    if NC = WC then WR = 255
+  NI = NR * 26
+  NI += NC
+  if NI = WI then WI = 255
+  if Seeds[1] = 0 then WI = 255
+  return
+end sub
+
+' DirSafe when the cell in direction Dir from Farmer Bob is not a bush or a
+' whiteberry (a shed is fine when his bag is empty)
+sub SafeCheck:
+  DirSafe = false
+  X = PX[1]
+  Y = PY[1]
+  if Dir = 1 then dec Y
+  if Dir = 2 then inc Y
+  if Dir = 3 then dec X
+  if Dir = 4 then inc X
+  T = get char at X,Y
+  if T = BushTile then return
+  if T = WhiteTile then return
+  if T = ShedTile then
+    if Seeds[1] > 0 then return
   end if
-  if Seeds[1] = 0 then WR = 255
+  DirSafe = true
   return
 end sub
 
@@ -598,6 +658,8 @@ sub FarmhandSick:
   PlaceFarmers
   update sprites
   wait 20 frames
+  ' Line 2060: no farmhands left ends the game
+  N = Hands[P]
   if N = 0 then Over = true
   nmi off
   return
@@ -684,6 +746,14 @@ sub GrowOne:
   if T > RedTile then return
   inc T
   put char T at X,Y
+  ' A redberry that rots leaves the crop
+  if T = WhiteTile then
+    M = 0
+    if Y >= 13 then M = 1
+    N = Crop[M]
+    if N > 0 then dec N
+    Crop[M] = N
+  end if
   return
 end sub
 
@@ -846,23 +916,35 @@ sub ShowStatus:
     if N > 0 then
       fill HandTile count N at 2,21
     end if
-    put char BagTile at 8,21
     N = Seeds[0]
-    Tmp16 = N
-    print at 9,21, digits$(Tmp16, 3)
+    BagIcon
+    put char N at 8,21
   else
     if Players = 1 then return
     fill 32 count 10 at 20,21
     N = Seeds[1]
-    Tmp16 = N
-    print at 20,21, digits$(Tmp16, 3)
-    put char BagTile at 23,21
+    BagIcon
+    put char N at 23,21
     N = Hands[1]
     if N > 0 then
       M = 30 - N
       fill HandTile count N at M,21
     end if
   end if
+  return
+end sub
+
+' Adaptation: the bag looks full, half empty or empty instead of a number
+sub BagIcon:
+  if N = 0 then
+    N = BagEmptyTile
+    return
+  end if
+  if N < 40 then
+    N = BagHalfTile
+    return
+  end if
+  N = BagTile
   return
 end sub
 
@@ -913,8 +995,8 @@ end sub
 sub LoadTiles:
   Dst16 = 1024
   for F = 0 to 2
-    copy TilePat count 80 to vram.pattern + Dst16
-    copy TileCol count 80 to vram.color + Dst16
+    copy TilePat count 88 to vram.pattern + Dst16
+    copy TileCol count 88 to vram.color + Dst16
     Dst16 += 2048
   next
   return
@@ -939,8 +1021,11 @@ sub HowToPage:
   print at 4,3, "WALK INTO A SHED TO FILL"
   print at 4,4, "YOUR BAG WITH SEEDS."
   put char BagTile at 2,6
-  print at 4,6, "THE NUMBER NEXT TO THE BAG"
-  print at 4,7, "IS HOW MANY SEEDS ARE LEFT"
+  put char BagHalfTile at 2,7
+  put char BagEmptyTile at 2,8
+  print at 4,6, "YOUR SEED BAG: FULL, HALF"
+  print at 4,7, "EMPTY OR EMPTY. NO SEEDS?"
+  print at 4,8, "BACK TO THE SHED!"
   put char SeedTile at 2,9
   print at 4,9, "HOLD FIRE WHILE WALKING TO"
   print at 4,10, "PLANT: +10. STEP ON A SEED"
@@ -990,7 +1075,7 @@ sub EditorialPage:
 end sub
 
 ' Tiles 128-137: bush, shed, seed, blueberry, redberry, whiteberry,
-' farmhand icon, seed bag icon, (unused), soil
+' farmhand icon, seed bag (full), seed bag (half), soil, seed bag (empty)
 data TilePat bytes
   $6C,$FE,$7B,$DF,$F6,$7F,$DB,$76
   $18,$3C,$7E,$FF,$7E,$66,$66,$66
@@ -1000,8 +1085,9 @@ data TilePat bytes
   $18,$6C,$FE,$FE,$6C,$36,$7F,$36
   $3C,$7E,$3C,$3C,$7E,$FF,$3C,$24
   $18,$24,$18,$7E,$FF,$FF,$FF,$7E
-  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$24,$7E,$FF,$FF,$7E
   $00,$20,$00,$02,$00,$40,$00,$08
+  $00,$00,$00,$00,$00,$30,$7E,$FF
 end data
 
 ' Their colors, one byte per pixel row (foreground, background)
@@ -1014,8 +1100,9 @@ data TileCol bytes
   $E0,$F0,$F0,$E0,$E0,$F0,$E0,$E0
   $A0,$A0,$90,$90,$80,$80,$40,$40
   $A0,$60,$A0,$A0,$A0,$A0,$A0,$60
-  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$A0,$60,$A0,$A0,$A0,$60
   $60,$60,$60,$60,$60,$60,$60,$60
+  $00,$00,$00,$00,$00,$60,$A0,$60
 end data
 
 ' Farmer sprites, four layers: hat, face and hands, shirt, overalls (two strides)
@@ -1045,6 +1132,10 @@ data FieldRows bytes
   $89,$89,$80,$80,$80,$89,$80,$80,$89,$80,$80,$80,$80,$89,$89,$89,$89,$80,$80,$80,$89,$80,$80,$80,$80,$89
   $81,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$80,$80,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
 end data
+
+' Row and column of each field cell 0-181 (cell = row * 26 + column)
+data RowOf bytes 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+data ColOf bytes 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25
 
 asm {
 BumpN:
@@ -1085,4 +1176,27 @@ BerrySoundTable:
     dw SickT1,$7035
     dw WinT1,$7035
     dw BeepT1,$7035
+    dw BerryTuneMel,$703F
+    dw BerryTuneBass,$7049
+; Title tune (original for this port): two Tiny Sound channels
+BerryTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$20,$1A,$21
+    db $1A,$1A,$17,$1A,$1C,$00,$1A,$00,$17,$15,$13,$15,$17,$00,$00,$00
+    db $1A,$1A,$17,$1A,$1C,$00,$1F,$00,$1E,$1C,$1A,$1C,$1A,$00,$00,$00
+    db $1F,$00,$1E,$1C,$1A,$00,$17,$00,$18,$1A,$1C,$18,$17,$00,$15,$00
+    db $17,$1A,$1F,$1E,$1C,$00,$21,$00,$1F,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+BerryTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$50,$18,$32
+    db $07,$00,$0E,$00,$0C,$00,$07,$00,$07,$00,$0E,$00,$07,$00,$0E,$00
+    db $07,$00,$0E,$00,$0C,$00,$10,$00,$0E,$00,$09,$00,$0E,$00,$12,$00
+    db $07,$00,$0B,$00,$07,$00,$0E,$00,$0C,$00,$07,$00,$07,$00,$0E,$00
+    db $07,$00,$0B,$00,$0C,$00,$0E,$00,$07,$00,$00,$00,$00,$01,$01,$01
+    db $FF
 }
