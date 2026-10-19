@@ -16,6 +16,8 @@ export function handleVramPixelInputStatement({
   makeGeneratedLabel,
   currentGraphicsMode,
   tryEvaluateConstantExpression,
+  resolveAddressSymbol = (name) => name,
+  getDataByteLength = () => null,
   nmiKnownOff = false,
   nativeEos = false
 }) {
@@ -323,19 +325,30 @@ export function handleVramPixelInputStatement({
   }
 
   const qualifiedByteTargetPattern = "([A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*)";
+  const chooseSpriteListMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+list\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
+  const chooseTileListMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+(.+?)\\s+at\\s+list\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   const chooseSpriteMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+sprite\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+gap\\s+(${constantToken})\\s+after\\s+(${constantToken}))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
   const chooseTileMenu = line.match(new RegExp(`^choose\\s+menu\\s+(.+?)\\s+to\\s+(.+?)\\s+into\\s+${qualifiedByteTargetPattern}\\s+cursor\\s+(.+?)\\s+at\\s+(.+?)\\s*,\\s*(.+?)\\s+step\\s+(.+?)(?:\\s+gap\\s+(${constantToken})\\s+after\\s+(${constantToken}))?(?:\\s+clear\\s+(.+?))?(?:\\s+on\\s+joypad\\s+([12]))?(?:\\s+sleep\\s+after\\s+(${constantToken})\\s+seconds?)?$`, "i"));
-  const chooseMenu = chooseSpriteMenu || chooseTileMenu;
+  const chooseMenu = chooseSpriteListMenu || chooseTileListMenu || chooseSpriteMenu || chooseTileMenu;
   if (chooseMenu) {
-    const spriteCursor = Boolean(chooseSpriteMenu);
-    const [, minToken, maxToken, target, cursorToken, xToken, yToken, stepToken] = chooseMenu;
-    const gapToken = chooseMenu[8];
-    const gapAfterToken = chooseMenu[9];
-    const clearToken = spriteCursor ? null : (chooseMenu[10] || "$20");
-    const padToken = (spriteCursor ? chooseMenu[10] : chooseMenu[11]) || "1";
-    const secondsToken = spriteCursor ? chooseMenu[11] : chooseMenu[12];
+    const listPositions = Boolean(chooseSpriteListMenu || chooseTileListMenu);
+    const spriteCursor = Boolean(chooseSpriteListMenu || chooseSpriteMenu);
+    const [, minToken, maxToken, target, cursorToken] = chooseMenu;
+    const listToken = listPositions ? chooseMenu[5] : null;
+    const xToken = listPositions ? null : chooseMenu[5];
+    const yToken = listPositions ? null : chooseMenu[6];
+    const stepToken = listPositions ? null : chooseMenu[7];
+    const gapToken = listPositions ? null : chooseMenu[8];
+    const gapAfterToken = listPositions ? null : chooseMenu[9];
+    const clearToken = spriteCursor ? null : (listPositions ? (chooseMenu[6] || "$20") : (chooseMenu[10] || "$20"));
+    const padToken = (listPositions
+      ? (spriteCursor ? chooseMenu[6] : chooseMenu[7])
+      : (spriteCursor ? chooseMenu[10] : chooseMenu[11])) || "1";
+    const secondsToken = listPositions
+      ? (spriteCursor ? chooseMenu[7] : chooseMenu[8])
+      : (spriteCursor ? chooseMenu[11] : chooseMenu[12]);
     const targetType = resolveValueType(target);
-    const byteLoads = [minToken, maxToken, cursorToken, xToken, yToken, stepToken, ...(clearToken ? [clearToken] : [])]
+    const byteLoads = [minToken, maxToken, cursorToken, ...(!listPositions ? [xToken, yToken, stepToken] : []), ...(clearToken ? [clearToken] : [])]
       .map((token) => emitLoadInt8ValueInto("a", token));
     if (targetType !== "int8" || byteLoads.some((lines) => !lines)) {
       return { handled: true, ok: false, log: `choose menu requires byte-sized bounds, target, cursor, coordinates, and step: ${rawLine}` };
@@ -343,6 +356,20 @@ export function handleVramPixelInputStatement({
     const spriteIndex = spriteCursor ? tryEvaluateConstantExpression?.(cursorToken) : null;
     if (spriteCursor && (!Number.isInteger(spriteIndex) || spriteIndex < 0 || spriteIndex > 31)) {
       return { handled: true, ok: false, log: `choose menu sprite cursor requires a constant sprite index from 0 to 31: ${rawLine}` };
+    }
+    if (listPositions) {
+      const min = tryEvaluateConstantExpression?.(minToken);
+      const max = tryEvaluateConstantExpression?.(maxToken);
+      const byteLength = getDataByteLength(listToken);
+      if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min || max > 255) {
+        return { handled: true, ok: false, log: `choose menu at list requires constant byte bounds: ${rawLine}` };
+      }
+      if (!Number.isInteger(byteLength)) {
+        return { handled: true, ok: false, log: `choose menu at list requires a byte data table named '${listToken}': ${rawLine}` };
+      }
+      if (byteLength !== (max - min + 1) * 2) {
+        return { handled: true, ok: false, log: `choose menu at list '${listToken}' requires ${(max - min + 1) * 2} X,Y bytes for ${max - min + 1} choices, but contains ${byteLength}: ${rawLine}` };
+      }
     }
     const gap = gapToken ? tryEvaluateConstantExpression?.(gapToken) : 0;
     const gapAfter = gapAfterToken ? tryEvaluateConstantExpression?.(gapAfterToken) : 0;
@@ -377,11 +404,37 @@ export function handleVramPixelInputStatement({
     const waitReleaseRoutineLabel = makeGeneratedLabel("ChooseMenuWaitRelease");
     const doneLabel = makeGeneratedLabel("ChooseMenuDone");
     const gapDoneLabel = makeGeneratedLabel("ChooseMenuGapDone");
-    const cursorY = `(${yToken}) + ((${target}) - (${minToken})) * (${stepToken})`;
+    const cursorY = listPositions ? null : `(${yToken}) + ((${target}) - (${minToken})) * (${stepToken})`;
     const emitDrawCall = (tile) => spriteCursor
       ? [`    call ${drawRoutineLabel}`]
       : [...(emitLoadInt8ValueInto("a", tile) || []), `    call ${drawRoutineLabel}`];
     const emitDrawRoutine = () => {
+      if (listPositions) {
+        const listLabel = resolveAddressSymbol(listToken);
+        const loadInputs = [
+          ...(emitLoadInt8ValueInto("a", target) || []),
+          ...(emitLoadInt8ValueIntoPreserving("b", minToken, ["a"]) || []),
+          "    sub b",
+          "    add a,a",
+          "    ld e,a",
+          "    ld d,0",
+          `    ld hl,${listLabel}`,
+          "    add hl,de",
+          "    ld e,(hl)",
+          "    inc hl",
+          "    ld d,(hl)"
+        ];
+        if (spriteCursor) return [
+          ...loadInputs,
+          "    ld a,e",
+          `    ld (AMY_SPRITE_TABLE+${spriteIndex * 4 + 1}),a`,
+          "    ld a,d",
+          `    ld (AMY_SPRITE_TABLE+${spriteIndex * 4}),a`,
+          "    call AMY_UPDATE_SPRITES",
+          "    ret"
+        ];
+        return ["    push af", ...loadInputs, "    pop af", "    call AMY_PUT_CHAR_AT", "    ret"];
+      }
       if (spriteCursor) {
         const loadInputs = [
           ...(emitLoadInt8ValueInto("e", xToken) || []),
@@ -467,8 +520,12 @@ export function handleVramPixelInputStatement({
       `    ld a,(JOYPAD_${padToken})`,
       "    bit 0,a",
       `    jr nz,${upLabel}`,
+      "    bit 1,a",
+      `    jr nz,${downLabel}`,
       "    bit 2,a",
       `    jr nz,${downLabel}`,
+      "    bit 3,a",
+      `    jr nz,${upLabel}`,
       "    and $C0",
       `    jr nz,${confirmLabel}`,
       `    jr ${waitLabel}`,

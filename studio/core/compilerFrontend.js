@@ -169,7 +169,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsVoiceQueue;
   let controllerBackend = inferControllerBackendFromSource(codeText);
   if (controllerBackend?.controllerBackend === "bios_cont_scan_compact" &&
-      (needsSound || needsSpinner || needsFrameCounter)) {
+      (needsSound || needsSpinner || needsFrameCounter || needsSleepState)) {
     controllerBackend = null;
   }
   return {

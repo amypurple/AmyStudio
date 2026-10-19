@@ -112,6 +112,7 @@ function amyLineContextTypes(line) {
   when(/^\s*animation\b.*\busing\b.*\bevery\b/i, ["animation", "using", "every"]);
   when(/^\s*update\s+animation\b.*\busing\s+sprite\b/i, ["update", "animation", "to", "using", "sprite"], "vdp");
   when(/^\s*play\s+sounds\b/i, ["sounds"]);
+  when(/^\s*choose\s+menu\b.*\bat\s+list\b/i, ["list"]);
   return types;
 }
 
@@ -252,6 +253,7 @@ export function tokenizeAmyLine(sourceLine, previousState = {}) {
         countQualifier
         || (lowerWord === "at" && ["print", "put", "set"].includes(firstWord))
         || (lowerWord === "at" && chooseMenu)
+        || (lowerWord === "list" && chooseMenu)
         || (lowerWord === "from" && ["asset", "copy", "load"].includes(firstWord))
         || (lowerWord === "into" && firstWord === "choose")
         || (lowerWord === "cursor" && chooseMenu)

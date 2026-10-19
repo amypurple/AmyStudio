@@ -461,6 +461,7 @@ export const AMY_AUTOCOMPLETE = [
   ["choose keypad 1 to 3 into Speed", "Wait for a keypad choice in range"],
   ["choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds", "Circular cursor menu with keypad, directions, FIRE, debounce, and CRT sleep"],
   ["choose menu 1 to 8 into Choice cursor $3E at 3,6 step 2 gap 1 after 4", "Cursor menu with an extra row after choice 4, matching the Coleco BIOS options screen"],
+  ["choose menu 1 to 3 into Choice cursor $3E at list MenuSpots sleep after 10 seconds", "Menu using arbitrary X,Y cursor positions with built-in CRT sleep"],
   ["choose menu 1 to 4 into Choice cursor sprite 0 at 48,71 step 16", "Circular menu using an already configured sprite cursor"],
   ["with ArcadeRam.Game as G", "Begin a pointer-free lexical alias for one RAM-overlay part"],
   ["with Player as P", "Begin a pointer-free lexical alias for one global record"],

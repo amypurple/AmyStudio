@@ -2761,6 +2761,7 @@ choose keypad 1 to 3 into Speed
 choose keypad KeyReplay to KeyMenu into Choice sleep after 5 seconds
 choose menu 1 to 4 into Choice cursor $3E at 6,9 step 2 sleep after 10 seconds
 choose menu 1 to 4 into Choice cursor sprite 0 at 48,71 step 16
+choose menu 1 to 3 into Choice cursor $3E at list MenuSpots sleep after 10 seconds
 ```
 
 Waits for a keypad digit in the given range and stores it.
@@ -2780,7 +2781,7 @@ Computed bounds are also accepted:
 choose keypad MinChoice() to MaxChoice() into Speed
 ```
 
-`choose menu` handles a complete vertical menu: it draws the cursor, wraps UP/DOWN,
+`choose menu` handles a complete menu: it draws the cursor, wraps through the choices,
 accepts FIRE or a keypad value in range, consumes the release, and returns the
 selection in the target. `at X,Y` is the first cursor position and `step` is the
 vertical distance between entries. The default erased tile is `$20` and the
@@ -2790,6 +2791,29 @@ Use `gap Rows after Choice` when a later group starts farther down the screen.
 The added distance applies in both directions. For example, `gap 1 after 4`
 matches the blank row between BIOS options 4 and 5. With a sprite cursor, the
 gap and step are pixel distances instead of tile rows.
+
+For horizontal, irregular, or artistic menus, `at list DataName` reads one X,Y
+byte pair per choice from ROM. LEFT and UP select the preceding entry; RIGHT and
+DOWN select the following entry. Navigation wraps, while FIRE and in-range keypad
+digits retain the ordinary menu behavior. The compiler verifies that the table
+contains exactly two bytes per choice, including when the data is declared later
+in the source. Because this is still `choose menu`, `clear`, `on joypad`, and
+`sleep after` work without a hand-written input loop:
+
+```basic
+u8 Choice = 1
+
+data MenuSpots bytes 4,21, 12,21, 21,21
+choose menu 1 to 3 into Choice cursor $3E at list MenuSpots sleep after 10 seconds
+
+' Sprite cursor positions use pixels rather than tiles.
+data MenuSpotsPx bytes 32,168, 96,168, 168,168
+choose menu 1 to 3 into Choice cursor sprite 0 at list MenuSpotsPx
+```
+
+The browser example **Runway 180** uses the tile-list form for its horizontal
+play-again menu. It replaces a manual keypad/FIRE polling loop while adding
+directional navigation, input-release handling, and CRT sleep behavior.
 
 The sprite form moves an already configured sprite in pixel coordinates. Set its
 pattern, color, active sprite count, and initial position before `choose menu`.
@@ -3521,6 +3545,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
 | `choose menu min to max into Var cursor Tile at X,Y step N [gap Rows after Choice] [clear Tile] [on joypad N] [sleep after N seconds]` | Complete vertical cursor menu |
 | `choose menu min to max into Var cursor sprite I at X,Y step Pixels [gap Pixels after Choice] [on joypad N] [sleep after N seconds]` | Vertical menu using a configured sprite cursor |
+| `choose menu min to max into Var cursor Tile at list Positions [clear Tile] [on joypad N] [sleep after N seconds]` | Arbitrary tile-position menu; `Positions` contains one X,Y byte pair per choice |
+| `choose menu min to max into Var cursor sprite I at list Positions [on joypad N] [sleep after N seconds]` | Arbitrary pixel-position menu using a configured sprite cursor |
 | `show coleco options` | Replace VRAM with the fixed OS7 eight-choice screen and restore Amy NMI service |
 | `halt` | Halt until NMI |
 
@@ -3629,6 +3655,7 @@ comparison, addition, subtraction, multiplication, and division preserve signed
 | Poll controller | `if joypad(1).button1 then ...` |
 | Wait for input | `pause until press` / `wait key1` / `wait key release` |
 | Menu selection | `choose menu 1 to N into Var cursor Tile at X,Y step Rows` |
+| Irregular menu | `choose menu 1 to N into Var cursor Tile at list Positions` |
 | Hardware collision | `if any collision goto Label` |
 | Gameplay collision | `if sprite A hitbox PlayerHitbox collides with sprite B hitbox EnemyHitbox goto Label` |
 | Tile feet collision | `if tile under PlayerX + 4,PlayerY + 15 is solid goto OnGround` |

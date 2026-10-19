@@ -1361,8 +1361,8 @@ function inferControllerBackend(sourceText, asmBody, { usesKeypad1, usesKeypad2,
   return backend;
 }
 
-function inferRuntimeCapabilities(project, asmBody, controllerUsageText = project.sourceText || "") {
-  const sourceText = project.sourceText || "";
+function inferRuntimeCapabilities(project, asmBody, controllerUsageText = project.sourceText || "", sourceTextOverride = null) {
+  const sourceText = sourceTextOverride ?? project.sourceText ?? "";
   const nativeEosTarget = project.memoryProfile === "adam-eos-application";
   const sourceMemoryCaps = inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound);
   const usesSleepService = /\bsleep\s+after\s+(?:[0-9]+|\$[0-9A-F]+|[A-Za-z_][A-Za-z0-9_]*)\s+seconds?(?:\s+on\s+joypad\s+[12])?/i.test(sourceText);
@@ -2376,7 +2376,8 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const megaCartRuntimeHints = (metadata?.megaCart?.imports || []).some((entry) => entry?.operation === "copy-vram")
     ? "\nAMY_COPY_BYTES_TO_VRAM\n"
     : "";
-  const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project, `${project.sourceText || ""}\n${asmBodyBase}`);
+  const activeSourceText = metadata?.activeSourceText ?? project.sourceText ?? "";
+  const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project, `${activeSourceText}\n${asmBodyBase}`);
   const asmBodyForDependencyScan = `${stripSourceMarkersForScan(asmBodyBase)}\n${projectAsmDependencyText}${megaCartRuntimeHints}`;
   const cartridge = metadata?.cartridge || null;
   const romTitleStart = 0x8024;
@@ -2388,7 +2389,8 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const runtimeCaps = inferRuntimeCapabilities(
     project,
     `${asmBodyForDependencyScan}\n${alexisRuntimeForCaps || ""}`,
-    `${project.sourceText || ""}\n${projectAsmDependencyText}`
+    `${activeSourceText}\n${projectAsmDependencyText}`,
+    activeSourceText
   );
   if (metadata?.needsFrameCounter) {
     runtimeCaps.needsFrameCounter = true;
@@ -2458,7 +2460,11 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   const alexisRuntime = nativeEos
     ? routeNativeEosControllerReads(routeNativeEosFrameHalts(relocateNativeEosRamReferences(alexisRuntimeRaw, runtimeCaps), runtimeCaps))
     : alexisRuntimeRaw;
-  const dependencyScanText = `${project.sourceText || ""}\n${asmBodyWithRuntimeInitForDependencyScan}`;
+  // The transpiler has already removed inactive compile-time branches. Scanning the
+  // original source here would resurrect codec dependencies from disabled pictures
+  // or decompress statements; the generated ASM and active asset declarations are
+  // the authoritative inputs for final runtime selection.
+  const dependencyScanText = asmBodyWithRuntimeInitForDependencyScan;
   const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText, assetDeclarations);
   const compIncludes = [...new Set([...comps.map(normalizeAsmIncludePath), ...inferredCompression.map(normalizeAsmIncludePath)])];
 

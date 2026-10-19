@@ -214,8 +214,13 @@ async function main() {
   project.projectName = path.basename(base);
   project.projectFiles = collectProjectDirAsmFiles(opts.projectDir);
   project.target = { platform: opts.target, ...(opts.medium ? { medium: opts.medium } : {}), ...(opts.hardware.length ? { hardware: opts.hardware.filter(Boolean) } : {}) };
-  if (opts.memoryProfile) project.memoryProfile = opts.memoryProfile;
-  const buildContext = resolveAmyBuildContext(project, { target: project.target });
+  const sourceMemoryProfile = sourceText.match(/^\s*memory\s+["']([^"']+)["']/im)?.[1] || null;
+  const requestedMemoryProfile = opts.memoryProfile || sourceMemoryProfile;
+  if (requestedMemoryProfile) project.memoryProfile = requestedMemoryProfile;
+  const buildContext = resolveAmyBuildContext(project, {
+    target: project.target,
+    ...(requestedMemoryProfile ? { memoryProfile: requestedMemoryProfile } : {})
+  });
   project.memoryProfile = buildContext.memoryProfile || project.memoryProfile;
 
   const transpiled = transpileAmySource({
