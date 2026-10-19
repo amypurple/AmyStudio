@@ -19,9 +19,7 @@ AMY_PUT_CHAR_AT:
     ld a,c
     out (VDP_DATA_PORT),a
     nop
-    xor a
-    ld ($701F),a
-    ret
+    jp AMY_RELEASE_VDP_GUARD
 
 ; Read one character from the name table.
 ; Input: D = y, E = x
@@ -36,8 +34,7 @@ AMY_GET_CHAR_AT:
     call AMY_GET_VRAM
     ld a,(AMY_BUFFER32+31)
     push af
-    xor a
-    ld ($701F),a
+    call AMY_RELEASE_VDP_GUARD
     pop af
     ret
 
@@ -55,9 +52,7 @@ AMY_FILL_AT:
     ld ($701F),a
     ld a,c
     call FILL_VRAM
-    xor a
-    ld ($701F),a
-    ret
+    jp AMY_RELEASE_VDP_GUARD
 
 ; Print a zero-terminated string in the name table.
 ; Input: D = y, E = x, HL = string pointer
@@ -80,6 +75,4 @@ AMY_PRINT_AT_LOOP:
     inc hl
     jr AMY_PRINT_AT_LOOP
 AMY_PRINT_AT_DONE:
-    xor a
-    ld ($701F),a
-    ret
+    jp AMY_RELEASE_VDP_GUARD

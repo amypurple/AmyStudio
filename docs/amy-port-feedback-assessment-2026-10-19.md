@@ -35,6 +35,14 @@ feature belongs in the language rather than in one game.
    -32768, -128, -1, 0, 127, 255, 256, 32767, and 65535 in all five optimizer
    profiles; a second matrix covers `u32`, `i32`, and `fixed32` against zero in
    both operand orders.
+6. **NMI/VDP critical-section ordering** - implemented and runtime-validated.
+   Generated NMI paths now inspect the `$701F` VDP guard before reading the
+   status port. If an NMI lands inside a split VDP address sequence, it records
+   a pending acknowledgement without resetting the latch; the guarded helper
+   acknowledges status after its final VDP access and resumes normal frame
+   service. A ROM test forces this exact interleaving in all five optimization
+   profiles and verifies the destination byte, resumed frames, and cleared
+   guard. The `NO_NMI` check remains a separate user-hook reentrancy guard.
 
 ## Valuable, bounded additions
 

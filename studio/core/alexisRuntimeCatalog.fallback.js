@@ -109,14 +109,25 @@ export const alexisRuntimeCatalog = {
     ],
     "asm": "; Copy BC bytes from ROM/RAM at HL to VRAM address DE.\nAMY_COPY_BYTES_TO_VRAM:\n    ld a,e\n    out (VDP_CTRL_PORT),a\n    ld a,d\n    or $40\n    out (VDP_CTRL_PORT),a\nAMY_COPY_BYTES_TO_VRAM_LOOP:\n    ld a,b\n    or c\n    ret z\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    dec bc\n    jr AMY_COPY_BYTES_TO_VRAM_LOOP"
   },
+  "AMY_RELEASE_VDP_GUARD": {
+    "group": "vdp",
+    "sourcePath": "src/alexis_lib/coleco_vdp_guard.asm",
+    "asm": "AMY_RELEASE_VDP_GUARD:\n    ld a,($701F)\n    cp $5A\n    jr nz,AMY_RELEASE_VDP_GUARD_CLEAR\n    in a,(VDP_CTRL_PORT)\n    ld (NMI_FLAG),a\n    ld (VDP_STATUS),a\nAMY_RELEASE_VDP_GUARD_CLEAR:\n    xor a\n    ld ($701F),a\n    ret"
+  },
   "AMY_VPOKE": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
+    "deps": [
+      "AMY_RELEASE_VDP_GUARD"
+    ],
     "asm": "; Write one byte to VRAM. Input: HL=VRAM address, A=value.\nAMY_VPOKE:\n    ld e,a\n    ld a,l\n    out (VDP_CTRL_PORT),a\n    ld a,h\n    or $40\n    out (VDP_CTRL_PORT),a\n    ld a,e\n    out (VDP_DATA_PORT),a\n    nop\n    ret"
   },
   "AMY_VPEEK": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_vdp.asm",
+    "deps": [
+      "AMY_RELEASE_VDP_GUARD"
+    ],
     "asm": "; Read one byte from VRAM. Input: HL=VRAM address. Output: A=value.\nAMY_VPEEK:\n    ld a,l\n    out (VDP_CTRL_PORT),a\n    ld a,h\n    and $3F\n    out (VDP_CTRL_PORT),a\n    ex (sp),hl\n    ex (sp),hl\n    in a,(VDP_DATA_PORT)\n    ret"
   },
   "AMY_MODE2_CALC_ADDRESS_MASK": {
@@ -708,7 +719,8 @@ export const alexisRuntimeCatalog = {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
     "deps": [
-      "AMY_TEXT_CALC_NAME_ADDRESS"
+      "AMY_TEXT_CALC_NAME_ADDRESS",
+      "AMY_RELEASE_VDP_GUARD"
     ],
     "clobbers": [
       "af",
@@ -723,7 +735,8 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/alexis_lib/coleco_text.asm",
     "deps": [
       "AMY_TEXT_CALC_NAME_ADDRESS",
-      "AMY_GET_VRAM"
+      "AMY_GET_VRAM",
+      "AMY_RELEASE_VDP_GUARD"
     ],
     "clobbers": [
       "af",
@@ -740,7 +753,8 @@ export const alexisRuntimeCatalog = {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
     "deps": [
-      "AMY_TEXT_CALC_NAME_ADDRESS"
+      "AMY_TEXT_CALC_NAME_ADDRESS",
+      "AMY_RELEASE_VDP_GUARD"
     ],
     "asm": "AMY_FILL_AT:\n    ld c,a\n    ld a,b\n    or a\n    ret z\n    ld a,c\n    call AMY_TEXT_CALC_NAME_ADDRESS\n    ld a,l\n    out (VDP_CTRL_PORT),a\n    ld a,h\n    or $40\n    out (VDP_CTRL_PORT),a\n    ld a,c\nAMY_FILL_AT_LOOP:\n    out (VDP_DATA_PORT),a\n    djnz AMY_FILL_AT_LOOP\n    ret\n\n; Print a zero-terminated string in the name table.\n; Input: D = y, E = x, HL = string pointer"
   },
@@ -748,7 +762,8 @@ export const alexisRuntimeCatalog = {
     "group": "text",
     "sourcePath": "src/alexis_lib/coleco_text.asm",
     "deps": [
-      "AMY_TEXT_CALC_NAME_ADDRESS"
+      "AMY_TEXT_CALC_NAME_ADDRESS",
+      "AMY_RELEASE_VDP_GUARD"
     ],
     "asm": "AMY_PRINT_AT:\n    push hl\n    call AMY_TEXT_CALC_NAME_ADDRESS\n    ld a,l\n    out (VDP_CTRL_PORT),a\n    ld a,h\n    or $40\n    out (VDP_CTRL_PORT),a\n    pop hl\nAMY_PRINT_AT_LOOP:\n    ld a,(hl)\n    or a\n    ret z\n    out (VDP_DATA_PORT),a\n    inc hl\n    jr AMY_PRINT_AT_LOOP"
   },

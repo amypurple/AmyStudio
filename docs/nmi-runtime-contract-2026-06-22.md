@@ -23,6 +23,8 @@ Nmi:
         ld a,($701F)
         cp $A5
         jr nz,AMY_NMI_ACK_ONLY_READ_STATUS
+        ld a,$5A
+        ld ($701F),a
         pop af
         ret
 AMY_NMI_ACK_ONLY_READ_STATUS:
@@ -37,7 +39,12 @@ Important: `$701F` is not `NO_NMI`. It is the last byte of `AMY_BUFFER32` and is
 used as a temporary VDP I/O guard. Helpers that perform fragile VDP address/data
 port sequences set `$701F = $A5` before the sequence and clear it after the
 sequence. If NMI fires during that window, the generated NMI returns without
-reading VDP status, avoiding disruption of the VDP address latch.
+reading VDP status, avoiding disruption of the VDP address latch. Before it
+returns, the NMI changes the marker to `$5A`, meaning that a VBlank status
+acknowledgement is pending. `AMY_RELEASE_VDP_GUARD` performs that status read
+only after the protected VDP sequence has finished, updates `NMI_FLAG` and
+`VDP_STATUS`, and then clears the marker. This prevents both latch corruption
+and a permanently stalled `wait` after a deferred NMI.
 
 ### 2. Hook-only NMI
 
@@ -68,6 +75,8 @@ Nmi:
         ld a,($701F)
         cp $A5
         jr nz,AMY_NMI_READ_STATUS
+        ld a,$5A
+        ld ($701F),a
         pop af
         ret
 AMY_NMI_READ_STATUS:
@@ -140,6 +149,9 @@ The key difference is that legacy `crtcv.s` had an explicit user hook and used
 ## Current Risks
 
 - The `$701F = $A5` VDP I/O guard must not be mistaken for `NO_NMI`.
+- Every helper that sets `$701F = $A5` must exit through
+  `AMY_RELEASE_VDP_GUARD`; directly clearing the byte would lose a deferred
+  VBlank acknowledgement marked by `$5A`.
 - A user hook that also needs controllers, timers, music, sound, frame counter, or spinner support must use the full NMI wrapper. A hook-only program uses the smaller hook-only NMI path.
 - A user hook must not run while `$701F = $A5`, because reading VDP status or
   performing additional VDP I/O in the hook could corrupt the active VDP latch
@@ -180,3 +192,8 @@ Implementation rules:
 ## Short-Term Verdict
 
 Amy keeps using plain `ret` for NMI exits because this project has validated it on real ColecoVision hardware and it is smaller than `retn`. The runtime preserves `HL` in the places that matter, `wait` has safe NMI-on/NMI-off behavior, and `on vblank` uses either the hook-only path or the full wrapper with the `NO_NMI` guard described above.
+
+The guard ordering is runtime-validated in all five optimization profiles by
+forcing an NMI between the two VDP control-port address bytes. The test checks
+that the write still reaches the requested VRAM address, the pending status is
+acknowledged after release, later frames resume, and `$701F` returns to zero.

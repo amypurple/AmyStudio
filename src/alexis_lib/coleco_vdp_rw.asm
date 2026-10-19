@@ -11,7 +11,7 @@ AMY_COPY_BYTES_TO_VRAM:
     inc b
     jp WRITE_VRAM
 
-; Write one byte to VRAM. Input: HL=VRAM address, A=value.
+; Write one byte to VRAM. Input: HL=VRAM address, A=value. HL is preserved; E is clobbered.
 AMY_VPOKE:
     ld e,a
     ld a,$A5
@@ -24,9 +24,7 @@ AMY_VPOKE:
     ld a,e
     out (VDP_DATA_PORT),a
     nop
-    xor a
-    ld ($701F),a
-    ret
+    jp AMY_RELEASE_VDP_GUARD
 
 ; Read one byte from VRAM. Input: HL=VRAM address. Output: A=value. HL is preserved.
 AMY_VPEEK:
@@ -41,7 +39,6 @@ AMY_VPEEK:
     ex (sp),hl
     in a,(VDP_DATA_PORT)
     push af
-    xor a
-    ld ($701F),a
+    call AMY_RELEASE_VDP_GUARD
     pop af
     ret

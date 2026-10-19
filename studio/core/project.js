@@ -1832,6 +1832,16 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ret");
     lines.push(`${continueLabel}:`);
   };
+  const emitVdpGuardEarlyReturn = (continueLabel) => {
+    lines.push("        ld a,($701F)");
+    lines.push("        cp $A5");
+    lines.push(`        jr nz,${continueLabel}`);
+    lines.push("        ld a,$5A");
+    lines.push("        ld ($701F),a");
+    lines.push("        pop af");
+    lines.push("        ret");
+    lines.push(`${continueLabel}:`);
+  };
   const emitJoypadPressedWaitWrapper = () => {
     if (!caps.usesJoypadPressed1 && !caps.usesJoypadPressed2 && !caps.usesJoypadReleased1 && !caps.usesJoypadReleased2) return;
     lines.push("AMY_WAIT_FRAMES_WITH_PRESSED:");
@@ -1904,7 +1914,8 @@ function emitLegacyRuntime(lines, caps) {
   lines.push("Nmi:");
   if (caps.needsNmiAckOnly) {
     lines.push("        push af");
-    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
+    emitVdpGuardEarlyReturn("AMY_NMI_ACK_ONLY_CHECK_REENTRANCY");
+    emitNoNmiEarlyReturn("AMY_NMI_ACK_ONLY_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -1912,11 +1923,6 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
-    lines.push("        ld a,($701F)");
-    lines.push("        cp $A5");
-    lines.push("        jr nz,AMY_NMI_ACK_ONLY_CONTINUE");
-    lines.push("        pop af");
-    lines.push("        ret");
     lines.push("AMY_NMI_ACK_ONLY_CONTINUE:");
     if (caps.needsSpinner) {
       lines.push("        ld a,(SPINNER_ENABLED)");
@@ -1954,7 +1960,8 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyUserHook) {
     lines.push("        push af");
-    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
+    emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CHECK_REENTRANCY");
+    emitNoNmiEarlyReturn("AMY_NMI_COMPACT_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -1962,11 +1969,6 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
-    lines.push("        ld a,($701F)");
-    lines.push("        cp $A5");
-    lines.push("        jr nz,AMY_NMI_COMPACT_CONTINUE");
-    lines.push("        pop af");
-    lines.push("        ret");
     lines.push("AMY_NMI_COMPACT_CONTINUE:");
     lines.push("        push bc");
     lines.push("        push de");
@@ -2008,7 +2010,8 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyCompactControllers) {
     lines.push("        push af");
-    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
+    emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_CHECK_REENTRANCY");
+    emitNoNmiEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");
@@ -2016,11 +2019,6 @@ function emitLegacyRuntime(lines, caps) {
     if (caps.needsVdpStatusShadow) {
       lines.push("        ld (VDP_STATUS),a");
     }
-    lines.push("        ld a,($701F)");
-    lines.push("        cp $A5");
-    lines.push("        jr nz,AMY_NMI_COMPACT_CONTROLLERS_CONTINUE");
-    lines.push("        pop af");
-    lines.push("        ret");
     lines.push("AMY_NMI_COMPACT_CONTROLLERS_CONTINUE:");
     lines.push("        push bc");
     lines.push("        push de");
@@ -2159,7 +2157,8 @@ function emitLegacyRuntime(lines, caps) {
   }
 
   lines.push("        push af");
-    emitNoNmiEarlyReturn("AMY_NMI_DO_WORK");
+    emitVdpGuardEarlyReturn("AMY_NMI_CHECK_REENTRANCY");
+    emitNoNmiEarlyReturn("AMY_NMI_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
   if (caps.needsControllers || caps.needsNmiFlagShadow) {
     lines.push("        ld (NMI_FLAG),a");
@@ -2167,11 +2166,6 @@ function emitLegacyRuntime(lines, caps) {
   if (caps.needsControllers || caps.needsVdpStatusShadow) {
     lines.push("        ld (VDP_STATUS),a");
   }
-  lines.push("        ld a,($701F)");
-  lines.push("        cp $A5");
-  lines.push("        jr nz,AMY_NMI_CONTINUE");
-  lines.push("        pop af");
-  lines.push("        ret");
   lines.push("AMY_NMI_CONTINUE:");
   lines.push("        push bc");
   lines.push("        push de");

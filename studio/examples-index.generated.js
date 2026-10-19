@@ -1448,6 +1448,23 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "blueberries",
+    "label": "Blueberries (TI-99/4A Port)",
+    "detail": "Bill Root's two-player farming game with editorial, help, options, and independent controller play.",
+    "projectName": "blueberries",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "ti99",
+      "port",
+      "game",
+      "controllers",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "amy-runtime-input-expression-test",
     "label": "Amy Runtime Input Expression Test",
     "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",

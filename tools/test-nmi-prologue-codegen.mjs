@@ -16,4 +16,16 @@ assert.doesNotMatch(
 assert.match(projectJs, /lines\.push\("        ld \(NMI_FLAG\),a"\)/);
 assert.match(projectJs, /lines\.push\("        ld \(VDP_STATUS\),a"\)/);
 
+for (const pair of [
+  ['emitVdpGuardEarlyReturn("AMY_NMI_ACK_ONLY_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_ACK_ONLY_READ_STATUS")'],
+  ['emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_COMPACT_READ_STATUS")'],
+  ['emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_READ_STATUS")'],
+  ['emitVdpGuardEarlyReturn("AMY_NMI_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_READ_STATUS")']
+]) {
+  const guardIndex = projectJs.indexOf(pair[0]);
+  const reentrancyIndex = projectJs.indexOf(pair[1]);
+  assert.ok(guardIndex >= 0 && reentrancyIndex > guardIndex,
+    `VDP guard must precede reentrancy/status handling for ${pair[0]}`);
+}
+
 console.log("nmi prologue codegen: PASS");

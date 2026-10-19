@@ -1,0 +1,1088 @@
+cartridge "BLUEBERRIES/PRESENTS BILL ROOT'S/1984"
+
+' BLUEBERRIES
+' By Bill Root, COMPUTE! magazine, July 1984, pages 80-90: written for Atari
+' computers with at least 16K, with versions for the Commodore 64 and the
+' IBM PC/PCjr. All credit belongs to Bill Root.
+'
+' Historical context (summary of the article):
+' Picking blueberries sounds like a lazy summer task, but not here. Two
+' farmers, Farmer Jack on the upper field and Farmer Bob on the lower one,
+' fetch seeds from the sheds in the corners of their fields, plant them by
+' walking with the fire button held down, and pick the berries that grow.
+' Growth is random: the oldest seeds do not necessarily ripen first. A
+' blueberry left too long turns into a redberry, worth less, and a redberry
+' rots into a whiteberry: a farmhand who picks one falls ill and retreats
+' to the farmhouse. Each seed planted earns 10 points, a blueberry 50, a
+' redberry 25; trampling a seed costs 5 and a whiteberry 200 and a
+' farmhand. The game ends when a player loses all his farmhands or reaches
+' the chosen limit. The 64 and PC versions grow every berry on the screen
+' at once and pay 25 for an unripe one; this port follows the Atari rules.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick 1 moves Farmer Jack, joystick 2 Farmer Bob; hold fire
+' while walking to plant. Keypad * returns to the options (Atari START).
+' One player: Farmer Jack, with either joystick; or against the computer,
+' which plays Farmer Bob (PLAYERS: VS CPU).
+' Adaptation liberties: the fields are redrawn for 28 columns (the
+' listings used 40), as a symmetrical pair, every open cell reachable;
+' Graphics II tiles with a color per pixel row (leafy bushes, sheds,
+' berries with leaves, soil); the farmers are four-layer sprites that
+' glide from cell to cell and stride; a diagonal push moves vertically
+' (the listings ignored diagonals); seeds can only be planted while
+' moving and only into the cell being left (standing still or pushing a
+' bush planted for free in the listings); seeds left in the bag and the
+' farmhands are shown at the bottom, and a how-to-play page explains
+' them; one player sees his best score in
+' Farmer Bob's place; the options are a joystick menu; an editorial page
+' at power-on; a computer opponent for Farmer Bob.
+' Screen: score lines on rows 1-2, field 1 on rows 4-10, field 2 on rows
+' 13-19 (columns 3-28 inside a border of bushes), status on row 21.
+
+const BushTile = 128
+const ShedTile = 129
+const SeedTile = 130
+const BlueTile = 131
+const RedTile = 132
+const WhiteTile = 133
+const HandTile = 134
+const BagTile = 135
+const SoilTile = 137
+const TickN = 7                ' frames per move (one BASIC pass)
+const GlideStep = 293          ' 8 pixels in 7 frames, 8.8 fixed point
+
+' Sound table slots (bb/s.mjs)
+const SndBump = 1
+const SndRazzA = 2
+const SndRazzB = 3
+const SndPlant = 4
+const SndSquash = 5
+const SndPick = 6
+const SndPickRed = 7
+const SndSick = 8
+const SndWin = 9
+const SndBeep = 10
+
+u8 Players = 2                 ' 1, 2, or 3 = Farmer Bob played by the computer
+u8 HandsOpt = 3                ' HANDS 3 or 5
+u8 LimIdx = 0                  ' NO LIMIT, 5000 ... 500000
+i32 Limit = 0
+i32 Score1 = 0                 ' SC1
+i32 Score2 = 0                 ' SC2
+i32 Best = 0
+i32 Pts = 0
+i32 Tmp32 = 0
+i32 Sub32 = 0
+u8 PX[2]                       ' farmer cells (screen columns and rows)
+u8 PY[2]
+u8 Seeds[2]                    ' SD, SD1
+u8 Hands[2]                    ' L1, L
+u8 Stride[2]
+u16 GX[2]                      ' sprite positions, 8.8
+u16 GY[2]
+u8 P = 0
+u8 Port = 1
+u8 Dir = 0
+u8 OX = 0
+u8 OY = 0
+u8 NX = 0
+u8 NY = 0
+u8 T = 0
+u8 N = 0
+u8 M = 0
+u8 I = 0
+u8 F = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 SecTick = 0
+u8 Choice = 5
+u8 SickP = 255
+bool Planting = false
+bool Over = false
+u16 GrowAcc = 0
+u16 GrowStep = 96
+u16 Tmp16 = 0
+u16 Sub16 = 0
+u8 Flash = 0
+u16 Dst16 = 0
+u8 NumBuf[12]
+bool CpuTurn = false
+bool CpuPlant = false
+bool AllowSeeds = false
+u8 BfsOn = 0                   ' 0 start a search, 1 searching, 2 done
+u8 FirstDir = 0
+u8 QH = 0
+u8 QT = 0
+u8 CI = 0
+u8 NI = 0
+u8 CR = 0
+u8 CC = 0
+u8 NR = 0
+u8 NC = 0
+u8 SR = 0
+u8 SC = 0
+u8 D = 0
+u8 TD = 0
+u8 K = 0
+u8 WR = 255                    ' sowing goal (255 = none)
+u8 WC = 0
+u8 Dist[182]
+u8 Queue[182]
+
+  tile screen
+  set sound table BerrySoundTable areas 3
+  sprites 8x8
+  sprites simple
+  copy FarmerSprites count 40 to vram.spr_pat
+  LoadTiles
+  HideAll
+  screen on
+  EditorialPage
+  HowToPage
+
+' --- Lines 1300-1600: the options (OPTION, SELECT, START) ---
+options:
+  nmi on
+  HideAll
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 10,3, "BLUEBERRIES"
+  print at 9,5, "BY BILL ROOT"
+  fill BushTile count 28 at 2,7
+  put char BlueTile at 8,3
+  put char RedTile at 22,3
+  print at 9,10, "PLAYERS"
+  print at 9,12, "HANDS"
+  print at 9,14, "LIMIT"
+  print at 9,16, "HOW TO PLAY"
+  print at 9,18, "START"
+  fill BushTile count 28 at 2,20
+  print at 4,21, "STICK UP/DOWN, THEN FIRE"
+opt_loop:
+  ShowOptions
+  play sound SndBeep
+  wait no fire
+  choose menu 1 to 5 into Choice cursor $3E at 7,10 step 2
+  if Choice = 1 then
+    inc Players
+    if Players = 4 then Players = 1
+    goto opt_loop
+  end if
+  if Choice = 2 then
+    HandsOpt = 8 - HandsOpt
+    goto opt_loop
+  end if
+  if Choice = 3 then
+    inc LimIdx
+    if LimIdx = 6 then LimIdx = 0
+    goto opt_loop
+  end if
+  if Choice = 4 then
+    HowToPage
+    goto options
+  end if
+
+' --- Lines 1000-1260: the farm ---
+new_game:
+  SetLimit
+  Score1 = 0
+  Score2 = 0
+  Hands[0] = HandsOpt
+  Hands[1] = HandsOpt
+  Seeds[0] = 0
+  Seeds[1] = 0
+  DrawFarm
+  for P = 0 to 1
+    StartPos
+  next
+  Over = false
+  SickP = 255
+  BfsOn = 0
+  AllowSeeds = false
+  WR = 255
+  GrowAcc = 0
+  GrowStep = 96
+  Tick = 0
+  SecTick = 0
+  ShowAll
+
+main_loop:
+  FrameUpdate
+  Choice = keypad(1)
+  if Choice = 10 then goto back_to_options
+  inc Tick
+  if Tick < TickN then goto main_loop
+  Tick = 0
+  P = 0
+  MovePlayer
+  if Players <> 1 then
+    P = 1
+    MovePlayer
+  end if
+  if SickP <> 255 then FarmhandSick
+  if Over then goto game_over
+  goto main_loop
+
+back_to_options:
+  Choice = 5
+  goto options
+
+' --- Lines 2100-2210: the end ---
+game_over:
+  nmi on
+  wait 30 frames
+  if Players = 1 then
+    if Score1 > Best then Best = Score1
+    ShowScores
+  end if
+  play sound SndWin
+  wait no fire
+  F = 0
+end_wait:
+  wait
+  inc F
+  ' Line 2120: the winner flashes
+  N = F & 31
+  if N = 0 then ShowWinner
+  if N = 16 then
+    fill 32 count 28 at 2,22
+  end if
+  if joypad(1).fire then goto end_done
+  if joypad(2).fire then goto end_done
+  goto end_wait
+end_done:
+  Choice = 5
+  goto options
+
+' ---------------------------------------------------------------------------
+
+sub ShowWinner:
+  if Players = 1 then
+    print at 9,22, "FINAL SCORE"
+    return
+  end if
+  if Score1 > Score2 then
+    print at 8,22, "FARMER JACK WINS"
+    return
+  end if
+  if Score2 > Score1 then
+    print at 8,22, "FARMER BOB WINS"
+    return
+  end if
+  print at 13,22, "A TIE!"
+  return
+end sub
+
+' Lines 100-380 for farmer P: one cell per pass
+sub MovePlayer:
+  CpuTurn = false
+  if Players = 3 then
+    if P = 1 then CpuTurn = true
+  end if
+  if CpuTurn then
+    CpuDecide
+  else
+    Port = P + 1
+    ReadStick
+    if Players = 1 then
+      if Dir = 0 then
+        Port = 2
+        ReadStick
+      end if
+    end if
+  end if
+  if Dir = 0 then return
+  OX = PX[P]
+  OY = PY[P]
+  NX = OX
+  NY = OY
+  if Dir = 1 then dec NY
+  if Dir = 2 then inc NY
+  if Dir = 3 then dec NX
+  if Dir = 4 then inc NX
+  T = get char at NX,NY
+  ' Lines 210-220: a bush stops the farmer, with a noise
+  if T = BushTile then
+    play sound SndBump
+    return
+  end if
+  ' Lines 250-260: the shed refills the seed bag (GOSUB 800/850) and puts
+  ' the farmer back outside
+  if T = ShedTile then
+    GetSeeds
+    play sounds SndRazzA, SndRazzB
+    ShowStatus
+    return
+  end if
+  ' Lines 130-180: with fire held and seeds in the bag, a seed is left in
+  ' the cell behind
+  Planting = false
+  if CpuTurn then
+    if CpuPlant then Planting = true
+  else
+    if joypad(Port).fire then Planting = true
+  end if
+  if Planting then
+    N = Seeds[P]
+    if N > 0 then
+      put char SeedTile at OX,OY
+      dec N
+      Seeds[P] = N
+      Pts = 10
+      AddPoints
+      play sound SndPlant
+      ShowStatus
+    end if
+  end if
+  PX[P] = NX
+  PY[P] = NY
+  N = Stride[P]
+  N ^= 1
+  Stride[P] = N
+  ' Lines 310-370: what the farmer walked into
+  put char SoilTile at NX,NY
+  if T = SeedTile then
+    Pts = -5
+    AddPoints
+    play sound SndSquash
+  end if
+  if T = BlueTile then
+    Pts = 50
+    AddPoints
+    play sound SndPick
+  end if
+  if T = RedTile then
+    Pts = 25
+    AddPoints
+    play sound SndPickRed
+  end if
+  if T = WhiteTile then SickP = P
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Adaptation: Farmer Bob played by the computer. A breadth-first search
+' over field 2, spread over the frames of one move (20 cells a frame),
+' finds the nearest goal: a blueberry or redberry to pick, the shed when
+' the bag is empty, or a random patch of soil to sow on the way to. Bushes,
+' whiteberries and (if possible) his own seeds are avoided. Cells are
+' numbered row * 26 + column; Dist holds the direction that reached a cell.
+
+sub BfsStart:
+  fill array Dist with 255
+  SR = PY[1] - 13
+  SC = PX[1] - 3
+  CI = SR * 26
+  CI += SC
+  Dist[CI] = 0
+  Queue[0] = CI
+  QH = 0
+  QT = 1
+  BfsOn = 1
+  FirstDir = 0
+  ' A sowing goal when the bag is not empty
+  if Seeds[1] > 0 then
+    if WR = 255 then PickWander
+  end if
+  return
+end sub
+
+sub BfsStep:
+  for K = 1 to 20
+    if QH = QT then
+      ' Nothing reachable: try again walking over seeds, then give up
+      if AllowSeeds then
+        BfsOn = 2
+        return
+      end if
+      AllowSeeds = true
+      BfsStart
+      return
+    end if
+    CI = Queue[QH]
+    inc QH
+    CR = CI / 26
+    CC = CI % 26
+    for D = 1 to 4
+      NR = CR
+      NC = CC
+      if D = 1 then
+        if NR = 0 then goto bfs_next
+        dec NR
+      end if
+      if D = 2 then
+        if NR = 6 then goto bfs_next
+        inc NR
+      end if
+      if D = 3 then
+        if NC = 0 then goto bfs_next
+        dec NC
+      end if
+      if D = 4 then
+        if NC = 25 then goto bfs_next
+        inc NC
+      end if
+      NI = NR * 26
+      NI += NC
+      if Dist[NI] <> 255 then goto bfs_next
+      X = NC + 3
+      Y = NR + 13
+      T = get char at X,Y
+      ' Goals
+      if T = BlueTile then goto bfs_found
+      if T = RedTile then goto bfs_found
+      if T = ShedTile then
+        if Seeds[1] = 0 then goto bfs_found
+        goto bfs_next
+      end if
+      if T = SoilTile then
+        if NR = WR then
+          if NC = WC then goto bfs_found
+        end if
+        Dist[NI] = D
+        Queue[QT] = NI
+        inc QT
+        goto bfs_next
+      end if
+      if T = SeedTile then
+        if AllowSeeds then
+          Dist[NI] = D
+          Queue[QT] = NI
+          inc QT
+        end if
+      end if
+bfs_next:
+    next
+  next
+  return
+bfs_found:
+  ' Walk back from the cell before the goal to the farmer: the last
+  ' direction seen is the first step
+  TD = D
+bfs_trace:
+  CI = CR * 26
+  CI += CC
+  D = Dist[CI]
+  if D = 0 then
+    FirstDir = TD
+    BfsOn = 2
+    return
+  end if
+  TD = D
+  if D = 1 then inc CR
+  if D = 2 then dec CR
+  if D = 3 then inc CC
+  if D = 4 then dec CC
+  goto bfs_trace
+end sub
+
+' A random patch of soil in field 2 to walk to, sowing on the way
+sub PickWander:
+  for K = 1 to 12
+    NR = random(0, 6)
+    NC = random(0, 25)
+    X = NC + 3
+    Y = NR + 13
+    T = get char at X,Y
+    if T = SoilTile then
+      WR = NR
+      WC = NC
+      return
+    end if
+  next
+  return
+end sub
+
+' The computer's move for this pass: the first step of the search, or a
+' random one when it found nothing (or is still thinking: then it waits)
+sub CpuDecide:
+  Dir = 0
+  CpuPlant = false
+  if BfsOn <> 2 then return
+  Dir = FirstDir
+  if Dir = 0 then Dir = random(1, 4)
+  ' Sow about two steps in three while the bag has seeds
+  if Seeds[1] > 0 then
+    N = random(0, 2)
+    if N <> 0 then CpuPlant = true
+  end if
+  ' Next pass, a fresh search; a new sowing goal once this one is reached
+  BfsOn = 0
+  AllowSeeds = false
+  OX = PX[1]
+  OY = PY[1]
+  NR = OY - 13
+  NC = OX - 3
+  if Dir = 1 then dec NR
+  if Dir = 2 then inc NR
+  if Dir = 3 then dec NC
+  if Dir = 4 then inc NC
+  if NR = WR then
+    if NC = WC then WR = 255
+  end if
+  if Seeds[1] = 0 then WR = 255
+  return
+end sub
+
+' Lines 110-120: pure directions only in the listings; here a diagonal
+' moves vertically
+sub ReadStick:
+  Dir = 0
+  if joypad(Port).up then Dir = 1
+  if joypad(Port).down then Dir = 2
+  if Dir = 0 then
+    if joypad(Port).left then Dir = 3
+    if joypad(Port).right then Dir = 4
+  end if
+  return
+end sub
+
+' Lines 800-870: 51 to 100 seeds, fewer as your own score grows and more
+' as your opponent's grows; never fewer than 25
+sub GetSeeds:
+  N = random(51, 100)
+  Tmp32 = N
+  if P = 0 then
+    Sub32 = Score1
+  else
+    Sub32 = Score2
+  end if
+  Sub32 /= 5000
+  Tmp32 -= Sub32
+  if P = 0 then
+    Sub32 = Score2
+  else
+    Sub32 = Score1
+  end if
+  Sub32 /= 1000
+  Tmp32 += Sub32
+  if Tmp32 < 25 then
+    N = random(51, 100)
+    Tmp32 = N
+  end if
+  if Tmp32 > 199 then Tmp32 = 199
+  Tmp16 = lowword Tmp32
+  N = Tmp16
+  Seeds[P] = N
+  return
+end sub
+
+' Lines 2000-2060: a whiteberry; the farmhand retreats to the farmhouse
+sub FarmhandSick:
+  P = SickP
+  SickP = 255
+  nmi on
+  play sound SndSick
+  for F = 1 to 36
+    N = F & 4
+    I = P << 2
+    I += 2
+    if N = 0 then
+      set sprite I color to 3
+    else
+      set sprite I color to 15
+    end if
+    update sprites
+    wait
+  next
+  StartPos
+  Pts = -200
+  AddPoints
+  N = Hands[P]
+  if N > 0 then dec N
+  Hands[P] = N
+  ShowStatus
+  PlaceFarmers
+  update sprites
+  wait 20 frames
+  if N = 0 then Over = true
+  nmi off
+  return
+end sub
+
+' The farmer back at his corner, next to the shed (lines 1250, 2040-2050)
+sub StartPos:
+  if P = 0 then
+    PX[0] = 4
+    PY[0] = 10
+  else
+    PX[1] = 27
+    PY[1] = 13
+  end if
+  N = PX[P]
+  N <<= 3
+  Tmp16 = N << 8
+  GX[P] = Tmp16
+  N = PY[P]
+  N <<= 3
+  dec N
+  Tmp16 = N << 8
+  GY[P] = Tmp16
+  Stride[P] = 0
+  return
+end sub
+
+' Score changes, then the LIMIT check (line 410)
+sub AddPoints:
+  if P = 0 then
+    Score1 += Pts
+  else
+    Score2 += Pts
+  end if
+  ShowScores
+  if Limit = 0 then return
+  if Score1 >= Limit then Over = true
+  if Score2 >= Limit then Over = true
+  return
+end sub
+
+' One video frame: the berries grow and the farmers glide. The game runs
+' with the VDP interrupt off and turns it on only to wait for the frame.
+sub FrameUpdate:
+  nmi on
+  wait
+  nmi off
+  ' The Atari VBI routine: one random cell of the farm grows a stage, more
+  ' often as the scores climb (line 420)
+  GrowAcc += GrowStep
+  if GrowAcc >= 256 then
+    GrowAcc -= 256
+    GrowOne
+  end if
+  inc SecTick
+  if SecTick >= 60 then
+    SecTick = 0
+    Tmp32 = Score1 + Score2
+    if Tmp32 < 0 then Tmp32 = 0
+    Tmp32 /= 250
+    if Tmp32 > 160 then Tmp32 = 160
+    Tmp16 = lowword Tmp32
+    GrowStep = Tmp16 + 96
+  end if
+  if Players = 3 then
+    if BfsOn = 0 then BfsStart
+    if BfsOn = 1 then BfsStep
+  end if
+  PlaceFarmers
+  update sprites
+  return
+end sub
+
+sub GrowOne:
+  N = random(0, 13)
+  if N < 7 then
+    Y = N + 4
+  else
+    Y = N + 6
+  end if
+  X = random(3, 28)
+  T = get char at X,Y
+  if T < SeedTile then return
+  if T > RedTile then return
+  inc T
+  put char T at X,Y
+  return
+end sub
+
+' Four sprite layers per farmer: hat, face and hands, shirt, overalls
+sub PlaceFarmers:
+  for P = 0 to 1
+    N = PX[P]
+    N <<= 3
+    Tmp16 = N << 8
+    Glide
+    GX[P] = Dst16
+    N = PY[P]
+    N <<= 3
+    dec N
+    Tmp16 = N << 8
+    Dst16 = GY[P]
+    GlideTo
+    GY[P] = Dst16
+    Tmp16 = GX[P] >> 8
+    X = Tmp16
+    Tmp16 = GY[P] >> 8
+    Y = Tmp16
+    I = P << 2
+    M = Stride[P]
+    M += 3
+    if P = 0 then
+      set sprite I to Y,X,0,10
+      inc I
+      set sprite I to Y,X,1,9
+      inc I
+      set sprite I to Y,X,2,8
+      inc I
+      set sprite I to Y,X,M,4
+    else
+      if Players <> 1 then
+        set sprite I to Y,X,0,14
+        inc I
+        set sprite I to Y,X,1,9
+        inc I
+        set sprite I to Y,X,2,7
+        inc I
+        set sprite I to Y,X,M,4
+      end if
+    end if
+  next
+  return
+end sub
+
+' Moves GX[P] toward Tmp16 (result in Dst16)
+sub Glide:
+  Dst16 = GX[P]
+  GlideTo
+  return
+end sub
+
+' Moves Dst16 toward Tmp16 by one glide step (snaps on big jumps)
+sub GlideTo:
+  if Dst16 < Tmp16 then
+    Sub16 = Tmp16 - Dst16
+    if Sub16 > 3072 then
+      Dst16 = Tmp16
+      return
+    end if
+    if Sub16 > GlideStep then
+      Dst16 += GlideStep
+    else
+      Dst16 = Tmp16
+    end if
+  else
+    Sub16 = Dst16 - Tmp16
+    if Sub16 > 3072 then
+      Dst16 = Tmp16
+      return
+    end if
+    if Sub16 > GlideStep then
+      Dst16 -= GlideStep
+    else
+      Dst16 = Tmp16
+    end if
+  end if
+  return
+end sub
+
+' Lines 1000-1260: the two fields between rows of bushes
+sub DrawFarm:
+  nmi off
+  HideAll
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 2,1, "JACK"
+  print at 13,1, "PICKIN'"
+  if Players <> 1 then
+    print at 27,1, "BOB"
+  else
+    print at 26,1, "BEST"
+  end if
+  print at 10,2, "BLUEBERRIES"
+  fill BushTile count 28 at 2,3
+  Tmp16 = 0
+  for I = 0 to 6
+    Y = I + 4
+    put char BushTile at 2,Y
+    put FieldRows + Tmp16 count 26 at 3,Y
+    put char BushTile at 29,Y
+    Tmp16 += 26
+  next
+  fill BushTile count 28 at 2,11
+  fill BushTile count 28 at 2,12
+  for I = 0 to 6
+    Y = I + 13
+    put char BushTile at 2,Y
+    put FieldRows + Tmp16 count 26 at 3,Y
+    put char BushTile at 29,Y
+    Tmp16 += 26
+  next
+  fill BushTile count 28 at 2,20
+  return
+end sub
+
+sub ShowAll:
+  ShowScores
+  P = 0
+  ShowStatus
+  P = 1
+  ShowStatus
+  return
+end sub
+
+' Line 390: the scores, six digits with a sign
+sub ShowScores:
+  NumBuf = str$(Score1)
+  X = 2
+  PutScore
+  if Players <> 1 then
+    NumBuf = str$(Score2)
+  else
+    NumBuf = str$(Best)
+  end if
+  X = 23
+  PutScore
+  return
+end sub
+
+sub PutScore:
+  N = NumBuf[0]
+  if N <> 45 then N = 32
+  put char N at X,2
+  inc X
+  put NumBuf + 5 count 6 at X,2
+  return
+end sub
+
+' Adaptation: farmhands and seeds left, on row 21
+sub ShowStatus:
+  if P = 0 then
+    fill 32 count 10 at 2,21
+    N = Hands[0]
+    if N > 0 then
+      fill HandTile count N at 2,21
+    end if
+    put char BagTile at 8,21
+    N = Seeds[0]
+    Tmp16 = N
+    print at 9,21, digits$(Tmp16, 3)
+  else
+    if Players = 1 then return
+    fill 32 count 10 at 20,21
+    N = Seeds[1]
+    Tmp16 = N
+    print at 20,21, digits$(Tmp16, 3)
+    put char BagTile at 23,21
+    N = Hands[1]
+    if N > 0 then
+      M = 30 - N
+      fill HandTile count N at M,21
+    end if
+  end if
+  return
+end sub
+
+sub ShowOptions:
+  fill 32 count 8 at 17,10
+  if Players = 3 then
+    print at 17,10, "VS CPU"
+  else
+    Tmp16 = Players
+    print at 17,10, digits$(Tmp16, 1)
+  end if
+  Tmp16 = HandsOpt
+  print at 17,12, digits$(Tmp16, 1)
+  fill 32 count 8 at 17,14
+  if LimIdx = 0 then
+    print at 17,14, "NONE"
+  end if
+  if LimIdx = 1 then
+    print at 17,14, "5000"
+  end if
+  if LimIdx = 2 then
+    print at 17,14, "10000"
+  end if
+  if LimIdx = 3 then
+    print at 17,14, "50000"
+  end if
+  if LimIdx = 4 then
+    print at 17,14, "100000"
+  end if
+  if LimIdx = 5 then
+    print at 17,14, "500000"
+  end if
+  return
+end sub
+
+' Lines 1400-1450: the limits
+sub SetLimit:
+  Limit = 0
+  if LimIdx = 1 then Limit = 5000
+  if LimIdx = 2 then Limit = 10000
+  if LimIdx = 3 then Limit = 50000
+  if LimIdx = 4 then Limit = 100000
+  if LimIdx = 5 then Limit = 500000
+  return
+end sub
+
+' Graphics II: tiles 128-137 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for F = 0 to 2
+    copy TilePat count 80 to vram.pattern + Dst16
+    copy TileCol count 80 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 8
+  update sprites
+  return
+end sub
+
+' Adaptation: a how-to-play page with the game's own tiles
+sub HowToPage:
+  HideAll
+  fill mode 2 text color with $F0
+  LoadTiles
+  backdrop black
+  cls
+  print at 10,1, "HOW TO PLAY"
+  put char ShedTile at 2,3
+  print at 4,3, "WALK INTO A SHED TO FILL"
+  print at 4,4, "YOUR BAG WITH SEEDS."
+  put char BagTile at 2,6
+  print at 4,6, "THE NUMBER NEXT TO THE BAG"
+  print at 4,7, "IS HOW MANY SEEDS ARE LEFT"
+  put char SeedTile at 2,9
+  print at 4,9, "HOLD FIRE WHILE WALKING TO"
+  print at 4,10, "PLANT: +10. STEP ON A SEED"
+  print at 4,11, "LATER AND IT IS LOST: -5."
+  put char BlueTile at 2,13
+  print at 4,13, "SEEDS GROW AT RANDOM. PICK"
+  print at 4,14, "A BLUEBERRY: +50."
+  put char RedTile at 2,16
+  print at 4,16, "WAIT TOO LONG: REDBERRY,"
+  print at 4,17, "+25. THEN IT ROTS..."
+  put char WhiteTile at 2,19
+  print at 4,19, "WHITEBERRY: -200 AND THE"
+  print at 4,20, "FARMHAND GETS SICK."
+  put char HandTile at 2,21
+  print at 4,21, "FARMHANDS LEFT. NONE: END."
+  wait 30 frames
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideAll
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,1, "BLUEBERRIES"
+  print at 9,3, "BY BILL ROOT"
+  print at 5,4, "COMPUTE! JULY 1984"
+  print at 2,6, "AN ATARI GAME, WITH VERSIONS"
+  print at 2,7, "FOR THE 64 AND THE IBM PC."
+  print at 2,9, "PLANT SEEDS BY WALKING WITH"
+  print at 2,10, "FIRE HELD, THEN PICK THE"
+  print at 2,11, "BERRIES. BLUE: 50. RED: 25."
+  print at 2,12, "A WHITE ONE IS ROTTEN AND"
+  print at 2,13, "MAKES A FARMHAND SICK."
+  print at 2,15, "SEEDS ARE IN THE SHEDS IN"
+  print at 2,16, "THE CORNERS OF EACH FIELD."
+  print at 2,18, "JOYSTICK 1: JACK, ABOVE"
+  print at 2,19, "JOYSTICK 2: BOB, BELOW"
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Tiles 128-137: bush, shed, seed, blueberry, redberry, whiteberry,
+' farmhand icon, seed bag icon, (unused), soil
+data TilePat bytes
+  $6C,$FE,$7B,$DF,$F6,$7F,$DB,$76
+  $18,$3C,$7E,$FF,$7E,$66,$66,$66
+  $00,$02,$04,$08,$10,$20,$00,$00
+  $18,$6C,$FE,$FE,$6C,$36,$7F,$36
+  $18,$6C,$FE,$FE,$6C,$36,$7F,$36
+  $18,$6C,$FE,$FE,$6C,$36,$7F,$36
+  $3C,$7E,$3C,$3C,$7E,$FF,$3C,$24
+  $18,$24,$18,$7E,$FF,$FF,$FF,$7E
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$02,$00,$40,$00,$08
+end data
+
+' Their colors, one byte per pixel row (foreground, background)
+data TileCol bytes
+  $3C,$3C,$2C,$2C,$2C,$2C,$C1,$C1
+  $60,$60,$60,$60,$A0,$A0,$A0,$A0
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $20,$50,$50,$40,$40,$50,$40,$40
+  $20,$90,$90,$80,$80,$90,$80,$80
+  $E0,$F0,$F0,$E0,$E0,$F0,$E0,$E0
+  $A0,$A0,$90,$90,$80,$80,$40,$40
+  $A0,$60,$A0,$A0,$A0,$A0,$A0,$60
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$60,$60,$60,$60,$60,$60,$60
+end data
+
+' Farmer sprites, four layers: hat, face and hands, shirt, overalls (two strides)
+data FarmerSprites bytes
+  $3C,$7E,$00,$00,$00,$00,$00,$00
+  $00,$00,$3C,$00,$81,$00,$00,$00
+  $00,$00,$00,$7E,$7E,$00,$00,$00
+  $00,$00,$00,$00,$00,$3C,$24,$66
+  $00,$00,$00,$00,$00,$3C,$66,$42
+end data
+
+' The two fields, 26 x 7 each (field 2 is field 1 turned around): bushes,
+' sheds in the upper right and lower left corners, soil
+data FieldRows bytes
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$80,$80,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$81
+  $89,$80,$80,$80,$80,$89,$80,$80,$80,$89,$89,$89,$89,$80,$80,$80,$80,$89,$80,$80,$89,$80,$80,$80,$89,$89
+  $89,$80,$89,$89,$80,$89,$89,$89,$80,$89,$80,$80,$89,$80,$89,$89,$89,$89,$80,$89,$89,$89,$80,$89,$89,$89
+  $89,$89,$89,$80,$80,$89,$80,$89,$80,$89,$89,$89,$89,$80,$89,$80,$80,$89,$80,$89,$80,$89,$80,$80,$80,$89
+  $89,$80,$89,$89,$89,$89,$80,$89,$89,$89,$80,$80,$89,$89,$89,$89,$89,$89,$80,$89,$80,$89,$89,$89,$89,$89
+  $89,$80,$80,$80,$80,$89,$80,$80,$80,$89,$80,$80,$89,$80,$80,$80,$80,$89,$89,$89,$80,$80,$80,$80,$89,$89
+  $81,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$81
+  $89,$89,$80,$80,$80,$80,$89,$89,$89,$80,$80,$80,$80,$89,$80,$80,$89,$80,$80,$80,$89,$80,$80,$80,$80,$89
+  $89,$89,$89,$89,$89,$80,$89,$80,$89,$89,$89,$89,$89,$89,$80,$80,$89,$89,$89,$80,$89,$89,$89,$89,$80,$89
+  $89,$80,$80,$80,$89,$80,$89,$80,$89,$80,$80,$89,$80,$89,$89,$89,$89,$80,$89,$80,$89,$80,$80,$89,$89,$89
+  $89,$89,$89,$80,$89,$89,$89,$80,$89,$89,$89,$89,$80,$89,$80,$80,$89,$80,$89,$89,$89,$80,$89,$89,$80,$89
+  $89,$89,$80,$80,$80,$89,$80,$80,$89,$80,$80,$80,$80,$89,$89,$89,$89,$80,$80,$80,$89,$80,$80,$80,$80,$89
+  $81,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$80,$80,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+end data
+
+asm {
+BumpN:
+    db $00,$00,$21,$04,$10
+RazzT1:
+    db $40,$F9,$13,$0C,$50
+RazzN:
+    db $00,$00,$45,$0C,$10
+PlantT1:
+    db $40,$3B,$22,$02,$50
+SquashT1:
+    db $40,$56,$23,$03,$50
+PickT1:
+    db $40,$AA,$10,$02,$40,$71,$10,$03,$50
+PickRedT1:
+    db $40,$FE,$10,$02,$40,$AA,$10,$03,$50
+SickT1:
+    db $40,$7C,$10,$01,$40,$7F,$10,$01,$40,$82,$10,$01,$40,$85,$10,$01,$40,$88,$10,$01,$40,$8C,$10,$01
+    db $40,$8F,$10,$01,$40,$93,$10,$01,$40,$97,$10,$01,$40,$9B,$10,$01,$40,$A0,$10,$01,$40,$A5,$10,$01
+    db $40,$A9,$10,$01,$40,$AF,$10,$01,$40,$B4,$10,$01,$40,$BA,$10,$01,$40,$C1,$10,$01,$40,$C8,$10,$01
+    db $40,$CF,$10,$01,$40,$D7,$10,$01,$40,$E0,$10,$01,$40,$E9,$10,$01,$40,$F3,$10,$01,$40,$FE,$10,$01
+    db $40,$0A,$11,$01,$40,$18,$11,$01,$40,$26,$11,$01,$40,$37,$11,$01,$40,$49,$11,$01,$40,$5E,$11,$01
+    db $40,$75,$11,$01,$40,$90,$11,$01,$40,$AE,$11,$01,$40,$D2,$11,$01,$40,$FC,$11,$01,$40,$2F,$12,$01
+    db $50
+WinT1:
+    db $40,$D6,$10,$08,$40,$AA,$10,$08,$40,$8F,$10,$08,$40,$6B,$10,$14,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+BerrySoundTable:
+    dw BumpN,$702B
+    dw RazzT1,$7035
+    dw RazzN,$702B
+    dw PlantT1,$7035
+    dw SquashT1,$7035
+    dw PickT1,$7035
+    dw PickRedT1,$7035
+    dw SickT1,$7035
+    dw WinT1,$7035
+    dw BeepT1,$7035
+}

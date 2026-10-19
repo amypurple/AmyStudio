@@ -1,3 +1,20 @@
+## 2026-10-19 - Blueberries and VDP-safe NMI deferral
+
+- Added the complete **Blueberries** TI-99/4A conversion to the browser example
+  catalogue, with runtime coverage for its editorial, help, options, dual
+  controllers, and farm gameplay.
+- Corrected every generated ColecoVision NMI shape to inspect the `$701F` VDP
+  critical-section guard before reading VDP status, preserving split VDP
+  address writes when a frame overruns.
+- Added deferred VBlank acknowledgement: an interrupted guarded helper now
+  acknowledges status immediately after its last VDP access, updates the NMI
+  shadows, clears the guard, and allows later `wait` calls to continue.
+- Added a five-profile GearColeco regression that forces NMI between the two
+  VDP address bytes and verifies the destination byte, resumed frames, and
+  cleared guard.
+- Re-ran the complete language audit and assembled all 99 browser examples at
+  Balanced optimization with no failures.
+
 ## 2026-10-19 - Numeric comparison promotion and operand order
 
 - Replaced generic 32-bit scratch comparisons for mixed 8/16-bit integer
