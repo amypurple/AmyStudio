@@ -1836,7 +1836,8 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ld a,($701F)");
     lines.push("        cp $A5");
     lines.push(`        jr nz,${continueLabel}`);
-    lines.push("        ld a,$5A");
+    // CP preserves A, and $A5 complemented is the deferred-ack marker $5A.
+    lines.push("        cpl");
     lines.push("        ld ($701F),a");
     lines.push("        pop af");
     lines.push("        ret");
@@ -1914,8 +1915,11 @@ function emitLegacyRuntime(lines, caps) {
   lines.push("Nmi:");
   if (caps.needsNmiAckOnly) {
     lines.push("        push af");
-    emitVdpGuardEarlyReturn("AMY_NMI_ACK_ONLY_CHECK_REENTRANCY");
-    emitNoNmiEarlyReturn("AMY_NMI_ACK_ONLY_READ_STATUS");
+    const needsAckOnlySuppression = caps.needsSpinner || caps.needsFrameCounter;
+    emitVdpGuardEarlyReturn(needsAckOnlySuppression
+      ? "AMY_NMI_ACK_ONLY_CHECK_REENTRANCY"
+      : "AMY_NMI_ACK_ONLY_READ_STATUS");
+    if (needsAckOnlySuppression) emitNoNmiEarlyReturn("AMY_NMI_ACK_ONLY_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
       lines.push("        ld (NMI_FLAG),a");

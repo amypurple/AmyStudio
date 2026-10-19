@@ -12,8 +12,12 @@
 - Added a five-profile GearColeco regression that forces NMI between the two
   VDP address bytes and verifies the destination byte, resumed frames, and
   cleared guard.
-- Re-ran the complete language audit and assembled all 99 browser examples at
-  Balanced optimization with no failures.
+- Re-ran the release audit across 105/105 browser examples, assembling 104 ROMs
+  at Balanced optimization with no failures and delegating the MegaCart project
+  to its target-specific validator.
+- Rebuilt the six comparison ROMs at 7,483 occupied bytes. Hello World is now
+  227 bytes and Gameplay State Update 1,156 bytes; the 6-byte net increase over
+  the prior suite is the measured cost of the required VDP-safe NMI fix.
 
 ## 2026-10-19 - Numeric comparison promotion and operand order
 

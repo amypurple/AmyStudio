@@ -66,8 +66,10 @@ try {
     assert.equal(build.status, 0, `${profile}: ${build.error?.stack || ""}${build.stdout || ""}${build.stderr || ""}`);
     const assembly = readFileSync(asm, "utf8");
     assert.match(assembly,
-      /Nmi:\s+push af\s+ld a,\(\$701F\)\s+cp \$A5\s+jr nz,AMY_NMI_[A-Z_]*CHECK_REENTRANCY\s+ld a,\$5A\s+ld \(\$701F\),a\s+pop af\s+ret\s+AMY_NMI_[A-Z_]*CHECK_REENTRANCY:\s+ld a,\(NO_NMI\)[\s\S]*?AMY_NMI_[A-Z_]*READ_STATUS:\s+in a,\(VDP_CTRL_PORT\)/i,
+      /Nmi:\s+push af\s+ld a,\(\$701F\)\s+cp \$A5\s+jr nz,AMY_NMI_[A-Z_]*READ_STATUS\s+cpl\s+ld \(\$701F\),a\s+pop af\s+ret\s+AMY_NMI_[A-Z_]*READ_STATUS:\s+in a,\(VDP_CTRL_PORT\)/i,
       `${profile}: NMI must test the VDP guard before reading status`);
+    assert.doesNotMatch(assembly, /AMY_NMI_ACK_ONLY_CHECK_REENTRANCY/,
+      `${profile}: ack-only NMI without periodic work must not retain a redundant NO_NMI branch`);
   }
 
   const assembly = readFileSync(join(temp, "balanced.asm"), "utf8");

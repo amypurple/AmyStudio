@@ -50,7 +50,7 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 
 | Solution | Setting used | Observation |
 |---|---|---|
-| Amy Studio | Experimental | Saved 1 byte on Bitmap and 2 on Controller versus Balanced; Hello was unchanged |
+| Amy Studio | Experimental | All six runtime oracles pass; current sizes include VDP-safe NMI deferral |
 | CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
 | z88dk | zsdcc size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
 | ugBASIC `main` `e35e6df` (2026-10-10) | Default maximum of 16 peephole passes; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | All six rebuilt; MSC1 is pixel-exact; published sizes report the highest offset, one below occupied length |
@@ -67,13 +67,13 @@ Experimental serves this size test; Balanced remains Amy's default.
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 233 | 795 | 1,001 | 1,106 | 1,399 | 1,466 | 1,980 | 1,420 |
+| Hello World | **184** | 227 | 795 | 1,001 | 1,106 | 1,399 | 1,466 | 1,980 | 1,420 |
 | Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,678 | 4,948 | 4,976 | 9,733 |
-| Controller Visual | **264** | 590 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
-| Sprite Metasprite | **343** | 972 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
-| Gameplay State Update* | **508** | 1,162 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
-| Tile Animation | **761** | 1,306 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
-| **Six-sample total*** | **5,126** | **7,477** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
+| Controller Visual | **264** | 594 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
+| Sprite Metasprite | **343** | 976 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
+| Gameplay State Update* | **508** | 1,156 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
+| Tile Animation | **761** | 1,316 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
+| **Six-sample total*** | **5,126** | **7,483** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -125,13 +125,13 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 
 | Sample | Pure ASM | Amy Studio | ASM difference |
 |---|---:|---:|---:|
-| Hello World | 184 | 233 | -49 |
+| Hello World | 184 | 227 | -43 |
 | Warrior bitmap | 3,066 | 3,214 | -148 |
-| Controller Visual | 264 | 590 | -326 |
-| Sprite Metasprite | 343 | 972 | -629 |
-| Gameplay State Update | 508 | 1,162 | -654 |
-| Tile Animation | 761 | 1,306 | -545 |
-| **Six-sample total** | **5,126** | **7,477** | **-2,351** |
+| Controller Visual | 264 | 594 | -330 |
+| Sprite Metasprite | 343 | 976 | -633 |
+| Gameplay State Update | 508 | 1,156 | -648 |
+| Tile Animation | 761 | 1,316 | -555 |
+| **Six-sample total** | **5,126** | **7,483** | **-2,357** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for

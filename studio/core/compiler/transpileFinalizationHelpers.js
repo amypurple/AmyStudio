@@ -1,3 +1,5 @@
+import { callClobbersRegister } from "./optimizerEffectHelpers.js";
+
 function pruneDeadInitRecords(records, runtimeVars, body) {
   if (!records.length) return records;
 
@@ -367,7 +369,7 @@ export function optimizeGeneratedMemoryLoads(lines) {
   const label = /^[A-Za-z_][A-Za-z0-9_]*:\s*$/;
   const branch = /^\s*(?:jr|jp|djnz)\b/i;
   const conditionalBranch = /^\s*(?:jr|jp)\s+[a-z]{1,2}\s*,/i;
-  const hardBarrier = /^\s*(?:call|ret|reti|retn)\b/i;
+  const hardBarrier = /^\s*(?:ret|reti|retn)\b/i;
   const hlClobber = /^\s*(?:ld\s+hl,|inc\s+hl|dec\s+hl|add\s+hl,|adc\s+hl,|sbc\s+hl,|pop\s+hl|ex\s+de\s*,\s*hl|ex\s+\(sp\)\s*,\s*hl)\b/i;
   const aClobber = /^\s*(?:ld\s+a\s*,|inc\s+a\b|dec\s+a\b|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|daa\b|rld\b|rrd\b|ex\s+af\s*,\s*af'(?:\s|$)|rlca\b|rla\b|rrca\b|rra\b|(?:rlc|rl|rrc|rr|sla|sra|srl|res\s+\d+\s*,|set\s+\d+\s*,)\s*a\b)/i;
   const memoryAtHlMutation = /^\s*(?:inc|dec)\s+\(hl\)\s*$/i;
@@ -418,6 +420,15 @@ export function optimizeGeneratedMemoryLoads(lines) {
     }
     if (label.test(text) || hardBarrier.test(text)) {
       knownHL = null;
+      knownA = null;
+      optimized.push(line);
+      continue;
+    }
+
+    if (/^\s*call\b/i.test(text)) {
+      if (callClobbersRegister(text, "hl")) knownHL = null;
+      // A preserved accumulator does not prove that the referenced memory was
+      // unchanged, so every call invalidates the cached byte value.
       knownA = null;
       optimized.push(line);
       continue;

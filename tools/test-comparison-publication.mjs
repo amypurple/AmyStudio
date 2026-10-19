@@ -102,7 +102,7 @@ if (publicRoot) {
     requireText(html, `<td>${display(codec["Decoder bytes"])}</td>`, `${htmlPath} decoder/${codec.Codec}`);
   }
   rejectText(html, /all 48 ROMs[^.]*passed|\b1,?387\b|\b7,?917\b|ZX0 (?:Classic|Modern)|DAN3 Best/i, htmlPath);
-  requireText(html, "all nine controller ROMs pass, including Pure ASM and ugBASIC", htmlPath);
+  requireText(html, "All nine principal controller ROMs pass, including Pure ASM and ugBASIC", htmlPath);
 }
 
 console.log(`PASS comparison publication: ${sizes.length} ROM sizes, ${tools.length} totals, ${aggregate.length} codecs`);

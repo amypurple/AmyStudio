@@ -15,9 +15,13 @@ assert.doesNotMatch(
 );
 assert.match(projectJs, /lines\.push\("        ld \(NMI_FLAG\),a"\)/);
 assert.match(projectJs, /lines\.push\("        ld \(VDP_STATUS\),a"\)/);
+assert.match(
+  projectJs,
+  /const needsAckOnlySuppression = caps\.needsSpinner \|\| caps\.needsFrameCounter;[\s\S]*if \(needsAckOnlySuppression\) emitNoNmiEarlyReturn\("AMY_NMI_ACK_ONLY_READ_STATUS"\)/,
+  "ack-only NMI must omit the NO_NMI branch when there is no periodic work to suppress"
+);
 
 for (const pair of [
-  ['emitVdpGuardEarlyReturn("AMY_NMI_ACK_ONLY_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_ACK_ONLY_READ_STATUS")'],
   ['emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_COMPACT_READ_STATUS")'],
   ['emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_READ_STATUS")'],
   ['emitVdpGuardEarlyReturn("AMY_NMI_CHECK_REENTRANCY")', 'emitNoNmiEarlyReturn("AMY_NMI_READ_STATUS")']

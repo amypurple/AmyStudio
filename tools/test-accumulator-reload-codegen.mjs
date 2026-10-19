@@ -30,6 +30,18 @@ for (const instruction of mutations) {
     `${instruction}: transformed A must invalidate cached Source:\n${output}`);
 }
 
+const preservedHlCall = optimizeGeneratedMemoryLoads([
+  "    ld hl,Source", "    call AMY_DISABLE_NMI", "    ld a,(Source)",
+]).join("\n");
+assert.match(preservedHlCall, /call AMY_DISABLE_NMI\s+ld a,\(hl\)/i,
+  `known ABI-preserved HL should be reused:\n${preservedHlCall}`);
+
+const unknownCall = optimizeGeneratedMemoryLoads([
+  "    ld hl,Source", "    call UNKNOWN_ROUTINE", "    ld a,(Source)",
+]).join("\n");
+assert.match(unknownCall, /call UNKNOWN_ROUTINE\s+ld a,\(Source\)/i,
+  `unknown call must invalidate HL:\n${unknownCall}`);
+
 const directory = mkdtempSync(join(tmpdir(), "amy-accumulator-reload-"));
 try {
   for (const [name, expression] of cases) {
