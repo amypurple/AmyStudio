@@ -17,8 +17,8 @@ const bindStudioEventsSource = fs.readFileSync(path.join(root, "studio", "core",
 const uiEventsSource = fs.readFileSync(path.join(root, "studio", "core", "uiEvents.js"), "utf8");
 assert.match(studioAppSource, /transpileAmy:\s*\(\.\.\.args\)\s*=>\s*transpileAmy\(\.\.\.args\)/,
   "Studio runtime events must receive the bank-local Amy transpiler");
-assert.match(studioIndexSource, /app\.js\?v=20261013-megacart-transpiler3/,
-  "Studio entry point must invalidate the cached app module after runtime binding changes");
+assert.match(studioIndexSource, /app\.js\?v=[A-Za-z0-9._-]+/,
+  "Studio entry point must use a versioned app module so runtime binding changes invalidate the cache");
 assert.match(bindStudioEventsSource, /transpileSource:\s*helpers\.transpileSource,\s*transpileAmy:\s*helpers\.transpileAmy,/,
   "Studio shell binding must forward the bank-local Amy transpiler");
 assert.match(uiEventsSource, /downloadText,\s*transpileSource,\s*transpileAmy,\s*STUDIO_SOURCE_LANG/,

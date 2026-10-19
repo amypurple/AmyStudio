@@ -17,7 +17,7 @@ async function optimize(body) {
   return result.optimizedAsm;
 }
 
-const deadValues = await optimize(`
+const returnedCarry = await optimize(`
 Routine:
     ld a,(ix+3)
     add a,1
@@ -27,8 +27,20 @@ Routine:
     ld (iy-2),a
     ret
 `);
-assert.match(deadValues, /inc \(ix\+3\)/i, "dead increment should use indexed INC");
-assert.match(deadValues, /dec \(iy-2\)/i, "dead decrement should use indexed DEC");
+assert.match(returnedCarry, /inc \(ix\+3\)/i, "the later SUB makes the increment flags dead");
+assert.match(returnedCarry, /ld a,\(iy-2\)\s+sub 1\s+ld \(iy-2\),a\s+ret/i,
+  "the decrement must preserve Carry when RET exposes it to the caller");
+
+const deadValues = await optimize(`
+Routine:
+    ld a,(iy-2)
+    sub 1
+    ld (iy-2),a
+    xor a
+    ret
+`);
+assert.match(deadValues, /dec \(iy-2\)\s+xor a\s+ret/i,
+  "indexed DEC remains valid when a later instruction fully replaces the flags");
 
 const liveA = await optimize(`
 Routine:
@@ -38,8 +50,8 @@ Routine:
     ld (iy-2),a
     ret
 `);
-assert.match(liveA, /ld a,\(ix\+3\)\s+inc a\s+ld \(ix\+3\),a\s+ld \(iy-2\),a/i,
-  "indexed increment must preserve A when a later instruction reads it");
+assert.match(liveA, /ld a,\(ix\+3\)\s+add a,1\s+ld \(ix\+3\),a\s+ld \(iy-2\),a/i,
+  "indexed increment must preserve both A and returned Carry");
 
 const liveCarry = await optimize(`
 Routine:
