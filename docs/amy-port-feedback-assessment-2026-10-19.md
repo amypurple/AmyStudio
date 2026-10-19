@@ -46,10 +46,12 @@ feature belongs in the language rather than in one game.
 7. **Global scratch clobber diagnostics** - high priority. Bunny Hop,
    Blueberries and Olympiad independently reused a scalar global after calling
    a routine that also writes it. The downloaded games are corrected, but the
-   compiler should warn about a write-call-read sequence when its transitive
-   routine-effect graph proves that the intervening call writes the same plain
-   scalar. Arrays, record fields, indirect ASM effects and aliasing remain out
-   of scope for the first diagnostic so useful warnings do not become noise.
+   compiler now warns when a short BASIC-style scratch scalar controls a
+   decision after an intervening call whose transitive effects write the same
+   scalar. The deliberately narrow first pass catches the historical `N`/`M`
+   failures without confusing descriptive globals intentionally used as routine
+   outputs. Arrays, records, ASM effects and general output inference remain out
+   of scope until Amy can express routine effects explicitly.
 
 ## Valuable, bounded additions
 

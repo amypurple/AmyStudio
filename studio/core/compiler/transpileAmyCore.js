@@ -1,5 +1,111 @@
 import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js?v=20260730-static-abi-v11";
 
+export function analyzeGlobalScratchClobbers(sourceText, stripComment = (line) => line) {
+  const rawLines = String(sourceText || "").split(/\r?\n/);
+  const lines = rawLines.map((line) => stripComment(line).trim());
+  const routineNames = new Set(["start"]);
+  for (const line of lines) {
+    const match = line.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+    if (match) routineNames.add(match[1].toLowerCase());
+  }
+
+  const globals = new Map();
+  let declarationRoutine = "start";
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const routine = line.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+    if (routine) { declarationRoutine = routine[1].toLowerCase(); continue; }
+    if (/^end\s+(?:sub|function)$/i.test(line)) { declarationRoutine = "start"; continue; }
+    if (declarationRoutine !== "start" || /^(?:local|const|data|record|type)\b/i.test(line)) continue;
+    const declaration = line.match(/^(?:u8|i8|u16|i16|u32|i32|fix8_8|ufix8_8|fix16_16|fp5|bcd|bool|boolean)\s+([A-Za-z_][A-Za-z0-9_]*)(?!\s*\[)/i);
+    if (declaration && !line.slice(declaration[0].length).trimStart().startsWith("[")) {
+      const name = declaration[1];
+      if (name.length <= 2) globals.set(name.toLowerCase(), { name, line: index + 1 });
+    }
+  }
+
+  const bodies = new Map([...routineNames].map((name) => [name, []]));
+  let active = "start";
+  let inAsm = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^asm\s*\{$/i.test(line)) { inAsm = true; continue; }
+    if (inAsm) { if (line === "}") inAsm = false; continue; }
+    const routine = line.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+    if (routine) { active = routine[1].toLowerCase(); continue; }
+    if (/^end\s+(?:sub|function)$/i.test(line)) { active = "start"; continue; }
+    bodies.get(active)?.push({ line, lineNumber: index + 1 });
+  }
+
+  const callFor = (line) => {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(.*\))?$/);
+    const name = match?.[1]?.toLowerCase();
+    return name && routineNames.has(name) ? name : null;
+  };
+  const directWrites = new Map([...routineNames].map((name) => [name, new Set()]));
+  const calls = new Map([...routineNames].map((name) => [name, new Set()]));
+  const writeFor = (line) => {
+    const match = line.match(/^(?:inc|dec|toggle)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i)
+      || line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/);
+    const name = match?.[1]?.toLowerCase();
+    return name && globals.has(name) ? name : null;
+  };
+  for (const [name, body] of bodies) {
+    for (const entry of body) {
+      const called = callFor(entry.line);
+      if (called) calls.get(name).add(called);
+      const written = writeFor(entry.line);
+      if (written) directWrites.get(name).add(written);
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const name of routineNames) {
+      for (const called of calls.get(name)) {
+        for (const variable of directWrites.get(called)) {
+          if (!directWrites.get(name).has(variable)) { directWrites.get(name).add(variable); changed = true; }
+        }
+      }
+    }
+  }
+
+  const warnings = [];
+  const boundary = /^(?:[A-Za-z_][A-Za-z0-9_]*:|else\b|end\s+if\b|for\b|next\b|while\b|wend\b|do\b|loop\b|select\b|case\b|goto\b|return\b|dispatch\b|on\b)/i;
+  for (const body of bodies.values()) {
+    const live = new Set();
+    const clobbered = new Map();
+    for (const entry of body) {
+      const { line, lineNumber } = entry;
+      if (!line) continue;
+      const called = callFor(line);
+      if (called) {
+        for (const variable of directWrites.get(called)) {
+          if (live.has(variable)) clobbered.set(variable, { called, lineNumber });
+        }
+        continue;
+      }
+      const written = writeFor(line);
+      const rhs = written && line.includes("=") ? line.slice(line.indexOf("=") + 1) : line;
+      const decisionRead = /^(?:if|elseif|while|until)\b/i.test(line);
+      if (decisionRead) {
+        for (const [key, info] of clobbered) {
+          if (new RegExp(`\\b${globals.get(key).name}\\b`, "i").test(rhs)) {
+            warnings.push(`line ${lineNumber}: ${globals.get(key).name} controls a decision after a call to ${info.called} at line ${info.lineNumber}, which may also write it; re-read it or use a local scratch variable`);
+            clobbered.delete(key);
+          }
+        }
+      }
+      for (const [key, info] of globals) {
+        if (new RegExp(`\\b${info.name}\\b`, "i").test(rhs)) live.add(key);
+      }
+      if (written) { live.add(written); clobbered.delete(written); }
+      if (/^if\b/i.test(line) || boundary.test(line)) { live.clear(); clobbered.clear(); }
+    }
+  }
+  return warnings;
+}
+
 export function transpileAmyCore(sourceText, deps) {
   const {
     resolveStaticAbiInclude,
@@ -3744,6 +3850,38 @@ export function transpileAmyCore(sourceText, deps) {
     setInData: (value) => { inData = value; }
   }));
 
+  function getDeclaredDataByteLength(name) {
+    const knownLength = dataLengths.get(name);
+    if (Number.isInteger(knownLength)) return knownLength;
+    const escapedName = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const inlinePattern = new RegExp(`^data\\s+${escapedName}\\s+bytes(?:\\s*=\\s*|\\s+)(.+)$`, "i");
+    const blockPattern = new RegExp(`^data\\s+${escapedName}\\s+bytes$`, "i");
+    for (let index = 0; index < lines.length; index += 1) {
+      const declaration = stripAmyInlineComment(lines[index]).trim();
+      const inline = declaration.match(inlinePattern);
+      const block = { name, values: [] };
+      try {
+        if (inline) {
+          appendDataTokens(block, inline[1], declaration);
+        } else if (blockPattern.test(declaration)) {
+          for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+            const row = stripAmyInlineComment(lines[cursor]).trim();
+            if (!row) continue;
+            if (/^end\s+data$/i.test(row)) break;
+            if (!looksLikeDataTokens(row)) return null;
+            appendDataTokens(block, row, row);
+          }
+        } else {
+          continue;
+        }
+        return block.values.reduce((length, value) => length + expandDataValueToken(value, name).length, 0);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   let decimalToBcdBytes;
   let getBcdDigitCount;
   let doesDecimalFitBcdDigits;
@@ -5607,6 +5745,8 @@ export function transpileAmyCore(sourceText, deps) {
         makeGeneratedLabel,
         currentGraphicsMode,
         tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
+        resolveAddressSymbol,
+        getDataByteLength: getDeclaredDataByteLength,
         nmiKnownOff: knownVdpR1Value !== null && (knownVdpR1Value & 0x20) === 0,
         nativeEos: !!buildContext?.capabilities?.includes("eos") && !buildContext.capabilities.includes("os7")
       });
@@ -6273,6 +6413,10 @@ export function transpileAmyCore(sourceText, deps) {
       machineName: binding.machine.name
     };
     if (binding.internalSelector) layout.scenes = sceneParsing.scenes.map((scene) => ({ ...scene }));
+  }
+
+  for (const warning of analyzeGlobalScratchClobbers(conditionalPrepass.lines.join("\n"), stripAmyInlineComment)) {
+    addCompilerWarning(warning);
   }
 
   return finalizeAmyTranspile({
