@@ -1460,5 +1460,20 @@ export const exampleManifest = [
       "selftest",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-numeric-comparison-selftest",
+    "label": "Amy Numeric Comparison Selftest",
+    "detail": "Self-checking mixed-width, signed, fixed, wide, FP5, BCD, and reversed-operand comparison matrix.",
+    "projectName": "amy-numeric-comparison-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "numeric",
+      "selftest",
+      "manual-canon"
+    ]
   }
 ];

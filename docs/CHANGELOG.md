@@ -1,3 +1,22 @@
+## 2026-10-19 - Numeric comparison promotion and operand order
+
+- Replaced generic 32-bit scratch comparisons for mixed 8/16-bit integer
+  operands with direct promoted word comparisons, including signed/unsigned
+  boundary handling.
+- Added compact direct zero comparisons for scalar `u32`, `i32`, and `fixed32`
+  values without hidden comparison RAM.
+- Fixed constant-left comparisons that confused operand reversal with logical
+  negation, affecting forms such as `0 = Value` and `0 < Value` across byte,
+  fixed-point, and wide numeric paths.
+- Preserved dedicated full-precision rules for `fixed`/`ufixed`, `fixed32`, BCD,
+  and FP5 rather than applying integer shortcuts to their representations.
+- Added the browser-visible `Amy Numeric Comparison Selftest`, with 48 Amy-level
+  assertions spanning every current numeric family.
+- Added five-profile GearColeco matrices covering 84 mixed-width, 96 wide-zero,
+  and 48 source-level self-test comparisons.
+- Re-ran the complete `language` feature-matrix suite; every compiler, runtime,
+  ABI, optimizer, numeric, array, record, and overlay regression passed.
+
 ## 2026-10-15 - Proven semantic optimization promotion
 
 - Added guarded pointer traversal for eligible primitive and record `for each`

@@ -804,7 +804,7 @@ FP5 note:
 - `fixed32` to `ufixed` remains invalid because negative-value handling requires an
   explicit saturation or rejection policy
 
-Current implemented comparison rule:
+Comparison signedness is inferred from operand types:
 
 ```basic
 if signed Delta < 0 then ...
@@ -812,12 +812,20 @@ if unsigned Score > Limit then ...
 while signed VelocityY <= 0
 ```
 
-Planned canonical rule:
-- typed comparisons should infer signedness automatically from the operand types
-- explicit `signed` / `unsigned` should remain available only as an override or ambiguity breaker
-- until that ships, use explicit `signed` / `unsigned` for `<`, `<=`, `>`, `>=`
-  whenever signedness matters. Treat plain relational compares as machine-level
-  compares, not as a promise of high-level signed inference.
+- same-width signed operands use signed comparisons; unsigned operands use
+  unsigned comparisons
+- mixed 8/16-bit integer operands are promoted without truncation; a signed and
+  unsigned mixture preserves the mathematical values, so `i16 -1 < u8 255`
+  is true while `u16 65535 > i8 -1` is also true
+- `fixed` and `ufixed` comparisons retain all 8 fractional bits; `fixed32`
+  retains all 16 fractional bits
+- BCD and FP5 use their numeric comparators, not their raw byte ordering
+- explicit `signed` / `unsigned` remains available as an intentional override
+  or ambiguity breaker
+
+The compiler may exchange the operands to use a smaller instruction sequence.
+This preserves `=` and `<>` and reverses relational direction (`0 < X` becomes
+`X > 0`); it never changes the truth condition.
 
 ### Expression Precedence
 
