@@ -1,3 +1,12 @@
+## 2026-10-20 - Record iterator optimization promoted
+
+- Promoted the proven record-array `for each` IX iterator to Balanced and
+  Aggressive builds while retaining conservative barriers for unsafe cases.
+- Reduced Gameplay State Update from 1,299 to 1,159 bytes in Balanced builds
+  and reduced its measured average update cost from 5,093 to 3,189 cycles.
+- Validated identical runtime results across five profiles, the complete
+  language matrix, Amy Chess runtime oracles, and all 258 browser examples.
+
 ## 2026-10-19 - Blueberries and VDP-safe NMI deferral
 
 - Added the complete **Blueberries** TI-99/4A conversion to the browser example

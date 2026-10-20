@@ -117,7 +117,7 @@ import { finalizeAmyTranspile } from "../studio/core/compiler/transpileFinalizat
 import { handleVramTextStatement } from "../studio/core/compiler/vramTextStatementHelpers.js";
 import { handleVramPixelInputStatement } from "../studio/core/compiler/vramPixelInputStatementHelpers.js";
 import { transpileAmyCore } from "../studio/core/compiler/transpileAmyCore.js";
-import { getOptimizationProfile, sourceHintsTinySound } from "../studio/core/optimization.js";
+import { getOptimizationProfile, optimizationUsesRecordIx, sourceHintsTinySound } from "../studio/core/optimization.js";
 import { generateAsm } from "../studio/core/project.js";
 import { newProject, defaultSourceText } from "../studio/core/projectLifecycle.js";
 import { manifest } from "../studio/manifest.js";
@@ -220,7 +220,7 @@ function transpileAmy(sourceText, projectFiles = [], buildTarget = null, memoryP
     return transpileAmyCore(bundled.sourceText, {
       ...DEPS,
       resolveStaticAbiInclude,
-      experimentalRecordIx: options.optimization === "experimental",
+      experimentalRecordIx: optimizationUsesRecordIx(options.optimization),
       semanticOptimizerOptions: {
         sharedCoordinateIndex: !options.disabledSemanticOptimizations.includes("shared-coordinate-index"),
         repeatedArrayRead: !options.disabledSemanticOptimizations.includes("repeated-array-read")

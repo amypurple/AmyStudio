@@ -80,6 +80,7 @@ import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang
 import {
   getOptimizationProfile,
   normalizeOptimizationLevel,
+  optimizationUsesRecordIx,
   OPTIMIZATION_LEVELS,
   sourceHintsTinySound
 } from "./core/optimization.js";
@@ -887,7 +888,7 @@ function transpileAmy(sourceText, options = {}) {
   const optimizationProfile = getOptimizationProfile(project?.optimizationLevel || "auto", sourceText || "");
   const result = transpileAmyCore(effectiveSource, {
     buildContext,
-    experimentalRecordIx: optimizationProfile.effectiveLevel === "experimental",
+    experimentalRecordIx: optimizationUsesRecordIx(optimizationProfile.effectiveLevel),
     predefinedSymbols: getBuildContextDefines(buildContext),
     resolveStaticAbiInclude: (includePath) => {
       const normalized = normalizeProjectFilePath(includePath);

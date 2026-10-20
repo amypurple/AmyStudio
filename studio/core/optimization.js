@@ -62,6 +62,10 @@ export function sourceHintsTinySound(sourceText) {
     || /include\s+"[^"]*(?:snddata_tiny|tinymusic|sndtiny|tiny_sound|tiny[-_ ]?music)[^"]*"/i.test(text);
 }
 
+export function optimizationUsesRecordIx(level) {
+  return level === "balanced" || level === "aggressive" || level === "experimental";
+}
+
 export function getOptimizationProfile(level, sourceText = "") {
   const normalized = normalizeOptimizationLevel(level);
   const hasTinySound = sourceHintsTinySound(sourceText || "");

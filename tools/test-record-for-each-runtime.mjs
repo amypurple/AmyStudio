@@ -176,6 +176,7 @@ function labelAddress(asm, label) {
 try {
   const bios = readFileSync(process.env.AMY_COLECO_BIOS || join(root, "studio", "bios", "colecovision.rom"));
   for (const profile of profiles) {
+    const expectsRecordIx = experimentalRecordIx || ["balanced", "aggressive", "experimental"].includes(profile);
     const asmPath = join(temp, `${profile}.asm`);
     const symbolsPath = join(temp, `${profile}.sym`);
     const romPath = join(temp, `${profile}.rom`);
@@ -188,7 +189,7 @@ try {
     assert.equal(compile.status, 0, `${profile} compile failed:\n${compile.stdout || ""}${compile.stderr || ""}`);
 
     const asm = readFileSync(asmPath, "utf8");
-    if (experimentalRecordIx) {
+    if (expectsRecordIx) {
       const routineBody = (name) => {
         const startMatch = new RegExp(`^AMY_UPROC_${name}:`, "im").exec(asm);
         const start = startMatch?.index ?? -1;
@@ -212,6 +213,12 @@ try {
       assert.equal((earlyExit.match(/ld ix,[^\r\n]+/gi) || []).length, 1, "Safe static alias routine should load its record base once");
       assert.doesNotMatch(earlyExit, /push hl\s+pop ix/i, "A static record base should use direct LD IX instead of an HL transfer");
       assert.doesNotMatch(routineBody("LocalRecords"), /\(ix\+0\)/i, "A local stack frame must retain the RAM-pointer alias path");
+    } else {
+      assert.doesNotMatch(
+        asm,
+        /ld ix,AMY_UVAR_(?:Actors|Others|Single|Motions)/i,
+        `${profile} must retain the conservative record alias path`
+      );
     }
     const symbols = readFileSync(symbolsPath, "utf8");
     const done = labelAddress(symbols, "record_for_each_done");

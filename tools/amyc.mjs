@@ -68,7 +68,7 @@ import { finalizeAmyTranspile } from "../studio/core/compiler/transpileFinalizat
 import { handleVramTextStatement } from "../studio/core/compiler/vramTextStatementHelpers.js";
 import { handleVramPixelInputStatement } from "../studio/core/compiler/vramPixelInputStatementHelpers.js";
 import { transpileAmyCore } from "../studio/core/compiler/transpileAmyCore.js";
-import { getOptimizationProfile, sourceHintsTinySound } from "../studio/core/optimization.js";
+import { getOptimizationProfile, optimizationUsesRecordIx, sourceHintsTinySound } from "../studio/core/optimization.js";
 import { lexZ80Source, summarizeTokens } from "../studio/core/amyscvassembly.js";
 import { generateAsm } from "../studio/core/project.js";
 import { getBuildContextDefines, resolveAmyBuildContext } from "../studio/core/projectTargets.js";
@@ -227,7 +227,7 @@ async function main() {
     sourceLang: "amy",
     sourceText,
     options: { buildContext },
-    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: getBuildContextDefines(buildContext), experimentalRecordIx: opts.experimentalRecordIx || opts.opt === "experimental" }),
+    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: getBuildContextDefines(buildContext), experimentalRecordIx: opts.experimentalRecordIx || optimizationUsesRecordIx(opts.opt) }),
     lexZ80Source,
     summarizeTokens
   });
