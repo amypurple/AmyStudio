@@ -79,6 +79,22 @@ try {
       const biosInput = tap(core, GEARCOLECO_TEST_INPUT.KEYPAD_1);
       const signatures = new Set();
       const observations = [biosFire, biosInput];
+      if (testCase.id === "roader") {
+        tap(core, fire);
+        tap(core, fire);
+        let spriteTable = core.readVram(0x1b00, 8);
+        for (let frame = 0; frame < 180 && spriteTable[0] === 207; frame += 1) {
+          core.runFrame();
+          spriteTable = core.readVram(0x1b00, 8);
+        }
+        assert.notEqual(spriteTable[0], 207, "roader never displayed the car after selecting a skill");
+        const beforeSteer = spriteTable[1];
+        core.setControllerMask(0, GEARCOLECO_TEST_INPUT.RIGHT);
+        runFrames(core, 8);
+        core.setControllerMask(0, 0);
+        const afterSteer = core.readVram(0x1b00, 8)[1];
+        assert.ok(afterSteer > beforeSteer, `roader ignored right steering: ${beforeSteer} -> ${afterSteer}`);
+      }
       for (let phase = 0; phase < 4; phase += 1) {
         runFrames(core, 90);
         signatures.add(screenSignature(core));

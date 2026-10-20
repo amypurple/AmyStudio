@@ -78,6 +78,9 @@
 
 ## 2026-10-20 - Indexed compound multiplication and new ports
 
+- Fixed Roader's initial road builder reusing an iterator inside `NextRow`,
+  which prevented initialization from finishing, and widened its car position
+  before shifting it into 8.8 fixed-point form.
 - Added Barrier Battle, Roader, TI Mozart and Worm of Bemer to the example
   catalogue after Balanced compilation and GearColeco runtime validation.
 - Fixed `u16 *= Array[Index]`, which could overwrite the left operand while
