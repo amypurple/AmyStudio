@@ -87,6 +87,8 @@
   the race now ends only when the scrolling finish line reaches the car.
 - Adapted Roader's TI obstacle density for its larger ColecoVision car by
   enforcing a three-row gap and reducing new obstacle attempts to 25 percent.
+- Redrew Roader's obstacle as an irregular grayscale boulder, replacing the
+  round yellow-and-red pattern that resembled a human face.
 - Added Barrier Battle, Roader, TI Mozart and Worm of Bemer to the example
   catalogue after Balanced compilation and GearColeco runtime validation.
 - Fixed `u16 *= Array[Index]`, which could overwrite the left operand while
