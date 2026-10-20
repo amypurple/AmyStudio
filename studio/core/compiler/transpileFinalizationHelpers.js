@@ -1261,13 +1261,31 @@ export function finalizeAmyTranspile({
           )
         )
       )
-    )
+    ),
+    { preserveStartSink: hasExternalAsmInclude }
   );
   // External ASM includes can legally call AMY_UPROC_* labels. The compiler
   // cannot see those references before assembly-time include expansion, so
   // user-procedure inlining must stay off to preserve exported labels.
   const generatedBody = hasExternalAsmInclude ? preInlineBody : inlineSingleCallUserProcedures(preInlineBody);
-  const reachableBody = removeUnreachableAfterTerminators(generatedBody);
+  const runtimeInitCallIndexes = [];
+  for (let index = 0; index < generatedBody.length; index += 1) {
+    if (/^\s*call\s+AMY_INIT_RAM\s*$/i.test(String(generatedBody[index] || ""))) {
+      runtimeInitCallIndexes.push(index);
+    }
+  }
+  const inlineGeneratedRuntimeInit = effectiveHasRuntimeInit &&
+    !hasExternalAsmInclude &&
+    runtimeInitCallIndexes.length === 1;
+  const generatedBodyWithInit = inlineGeneratedRuntimeInit
+    ? [
+        ...generatedBody.slice(0, runtimeInitCallIndexes[0]),
+        ...runtimeInitLines,
+        ...runtimeInit,
+        ...generatedBody.slice(runtimeInitCallIndexes[0] + 1)
+      ]
+    : generatedBody;
+  const reachableBody = removeUnreachableAfterTerminators(generatedBodyWithInit);
   // Run memory-load tracking once, after control-flow rewrites. Reapplying it
   // to its own output can discard the load that originally invalidated A.
   const optimizedBody = optimizeGeneratedMemoryLoads(
@@ -1330,7 +1348,12 @@ export function finalizeAmyTranspile({
   const runtimeMarkers = needsFrameCounter
     ? ["; AMY runtime requirement: AMY_FRAME_COUNTER"]
     : [];
-  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), initRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, numericDefaultWidthHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
+  const emittedInitRoutine = inlineGeneratedRuntimeInit
+    ? (runtimeInitData.length
+        ? ["; --- Amy runtime RAM init data ---", ...runtimeInitData].join("\n")
+        : "")
+    : initRoutine;
+  const asmBody = [headerBlocks.join("\n\n"), runtimeMarkers.join("\n"), mappedOptimizedBody.join("\n"), emittedInitRoutine, mode2ThirdsHelperBlock, mode2ColorFillHelperBlock, numericHelperBlock, numericDefaultWidthHelperBlock, fp5FriendlyHelperBlock, textDataBlock, romDataBlock].filter(Boolean).join("\n\n");
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length
     ? `\n\nWarnings:\n${compilerWarnings.map((warning) => `- ${warning}`).join("\n")}`

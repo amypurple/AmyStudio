@@ -69,11 +69,11 @@ Experimental serves this size test; Balanced remains Amy's default.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **184** | 227 | 795 | 1,001 | 1,106 | 1,399 | 1,466 | 1,980 | 1,420 |
 | Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,678 | 4,948 | 4,976 | 9,733 |
-| Controller Visual | **264** | 594 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
-| Sprite Metasprite | **343** | 976 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
-| Gameplay State Update* | **508** | 1,156 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
-| Tile Animation | **761** | 1,316 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
-| **Six-sample total*** | **5,126** | **7,483** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
+| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
+| Sprite Metasprite | **343** | 986 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
+| Gameplay State Update* | **508** | 1,152 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
+| Tile Animation | **761** | 1,326 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
+| **Six-sample total*** | **5,126** | **7,509** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -127,11 +127,11 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 |---|---:|---:|---:|
 | Hello World | 184 | 227 | -43 |
 | Warrior bitmap | 3,066 | 3,214 | -148 |
-| Controller Visual | 264 | 594 | -330 |
-| Sprite Metasprite | 343 | 976 | -633 |
-| Gameplay State Update | 508 | 1,156 | -648 |
-| Tile Animation | 761 | 1,316 | -555 |
-| **Six-sample total** | **5,126** | **7,483** | **-2,357** |
+| Controller Visual | 264 | 604 | -340 |
+| Sprite Metasprite | 343 | 986 | -643 |
+| Gameplay State Update | 508 | 1,152 | -644 |
+| Tile Animation | 761 | 1,326 | -565 |
+| **Six-sample total** | **5,126** | **7,509** | **-2,383** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for

@@ -298,7 +298,7 @@ export const ROUTINE_ABI = Object.freeze({
   AMY_PLAY_TRIPCM_SEQUENCE: abi({ inputs: { hl: "compact tripcm sequence table" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_120C_ON: abi({ clobbers: ["af", "bc"] }),
   AMY_120C_OFF: abi({ clobbers: ["af", "bc"] }),
-  AMY_WAIT_FRAMES_SAFE: abi({ inputs: { hl: "frame count" }, clobbers: ["af", "de"] }),
+  AMY_WAIT_FRAMES_SAFE: abi({ inputs: { hl: "frame count" }, clobbers: ["af", "bc", "de"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_PAUSE_PRESS_RELEASE_BLANK_RESUME: abi({ inputs: { a: "controller selector", hl: "NTSC timeout", de: "PAL timeout" }, clobbers: ["af", "bc", "de", "hl"] }),
   AMY_SLEEP_SERVICE: abi({ inputs: { a: "controller selector", hl: "NTSC idle timeout", de: "PAL idle timeout" }, clobbers: ["af", "bc", "de", "hl"] }),

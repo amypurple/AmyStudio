@@ -1,3 +1,20 @@
+## 2026-10-20 - Runtime initialization and frame-wait hardening
+
+- Inlined generated-only RAM initializers at their single call site while
+  preserving the `AMY_INIT_RAM` ABI whenever external ASM may reference it.
+- Removed unreachable generated Start sink loops when no external reference is
+  possible, while retaining the code/data boundary label.
+- Reduced scalar byte `&=`, `|=`, and `^=` mutations by sharing one proven-safe
+  address through `HL`; arrays, references, stack values, and packed booleans
+  keep their conservative paths.
+- Prevented a reproducible `wait` stall by adding a bounded NMI wait followed by
+  VDP-status polling when an expected interrupt is missed.
+- Added dedicated initializer, byte-mutation, WAIT, and NMI runtime regressions;
+  all 105 browser examples compile and all 104 flat ROMs assemble in Balanced.
+- Rebuilt and runtime-validated the six comparison ROMs at 7,509 occupied bytes
+  in both Balanced and Experimental profiles. The 30-byte WAIT safety cost is
+  documented separately from the compiler savings.
+
 ## 2026-10-20 - Record iterator optimization promoted
 
 - Promoted the proven record-array `for each` IX iterator to Balanced and

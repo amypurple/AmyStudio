@@ -235,7 +235,7 @@ check("fixed expressions preserve decimal literal scale in comparisons", () => {
 if (process.env.DUMP_ASM) console.log(asm);
 
 check("fixed declaration literals are encoded as 8.8 values", () => {
-  assert.match(asm, /AMY_INIT_RAM:[\s\S]*ld a,\$08\s*\n\s*ld \(\$[0-9A-Fa-f]+\),a/, "ufixed XInit = 8 should initialize high byte $08 after RAM clear");
+  assert.match(asm, /ldir[\s\S]*ld a,\$08\s*\n\s*ld \(\$[0-9A-Fa-f]+\),a/, "ufixed XInit = 8 should initialize high byte $08 after RAM clear");
 });
 
 check("decimal fixed assignment stores $0180", () => {

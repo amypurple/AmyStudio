@@ -186,7 +186,7 @@ export function createProcHelpers({
     return changed ? current : lines;
   }
 
-  function simplifyStartTailForeverGoto(lines) {
+  function simplifyStartTailForeverGoto(lines, { preserveStartSink = false } = {}) {
     const current = [...lines];
     const getLabelName = (line) => {
       const match = String(line || "").match(/^([A-Za-z_][A-Za-z0-9_]*):$/);
@@ -240,18 +240,31 @@ export function createProcHelpers({
       return refs;
     };
 
+    const startSinkIndex = current.indexOf("AMY_START_FOREVER:");
+    const startSinkTail = String(current[startSinkIndex - 1] || "").trim();
+    const startSinkLoop = String(current[startSinkIndex + 1] || "").trim();
+    if (!preserveStartSink &&
+        startSinkIndex > 0 &&
+        /^(jp|jr)\s+(?!AMY_START_FOREVER\b)[A-Za-z_][A-Za-z0-9_]*$/i.test(startSinkTail) &&
+        /^jr\s+AMY_START_FOREVER$/i.test(startSinkLoop) &&
+        countReferences("AMY_START_FOREVER") === 1) {
+      // Start cannot fall through and the only sink reference is its own loop.
+      // Keep the label as the code/data boundary but omit the unreachable JR.
+      current.splice(startSinkIndex + 1, 1);
+    }
+
     const blocks = getProcBlocks();
     const foreverBlocks = new Map(blocks.filter(isTrivialForeverProc).map((block) => [block.label, block]));
-    if (!foreverBlocks.size) return lines;
+    if (!foreverBlocks.size) return current;
 
     const startForeverIndex = current.indexOf("AMY_START_FOREVER:");
-    if (startForeverIndex < 1) return lines;
+    if (startForeverIndex < 1) return current;
     const tailLine = String(current[startForeverIndex - 1] || "").trim();
     const jumpMatch = tailLine.match(/^(jp|jr)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
-    if (!jumpMatch) return lines;
+    if (!jumpMatch) return current;
     const targetLabel = jumpMatch[2];
     const foreverBlock = foreverBlocks.get(targetLabel);
-    if (!foreverBlock) return lines;
+    if (!foreverBlock) return current;
 
     current.splice(startForeverIndex - 1, 1);
 

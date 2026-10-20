@@ -1146,7 +1146,27 @@ export function createAssignmentArithmeticHelpers({
     if ((opToken === "&=" || opToken === "|=" || opToken === "^=")
       && (targetType === "int8" || targetType === "int16" || targetType === "u32" || targetType === "i32")) {
       const operator = opToken === "&=" ? "and" : opToken === "|=" ? "or" : "xor";
-      if (targetType === "int8") return emitArithInt8Op(target, valueToken, operator);
+      if (targetType === "int8") {
+        const targetInfo = getRuntimeInfo(target);
+        if (constantNumeric !== null &&
+            constantNumeric >= 0 && constantNumeric <= 0xFF &&
+            targetInfo?.type === "int8" &&
+            targetInfo.kind !== "array" &&
+            targetInfo.kind !== "packed_bool" &&
+            targetInfo.storage !== "stack" &&
+            !targetInfo.isRef &&
+            targetInfo.asmName) {
+          // Scalar Amy mutations can share one address; arrays, refs and inline
+          // ASM keep the conservative path.
+          return [
+            `    ld hl,${targetInfo.asmName}`,
+            "    ld a,(hl)",
+            `    ${operator} ${symbolOrValue(valueToken)}`,
+            "    ld (hl),a"
+          ];
+        }
+        return emitArithInt8Op(target, valueToken, operator);
+      }
       if (targetType === "int16") return emitRuntimeStore(target, `${target} ${opToken[0]} (${valueToken})`);
       if (targetType === "u32" || targetType === "i32") return emitArith32Op(target, valueToken, operator);
     }

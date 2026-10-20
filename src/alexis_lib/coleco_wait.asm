@@ -4,10 +4,11 @@
 ; -----------------------------------------------------------------------------
 
 ; Wait HL video frames.
-; If VDP R1 NMI enable is set, wait on NMI_FLAG so normal NMI work runs.
-; If NMI is disabled, poll VDP status directly so the wait cannot hang on HALT.
+; If VDP R1 NMI enable is set, wait on NMI_FLAG so normal NMI work runs. Fall
+; back to VDP polling if no NMI arrives within a bounded interval; if NMI is
+; disabled from the start, poll directly.
 ; Input:  HL = frame count
-; Clobbers: AF, DE
+; Clobbers: AF, BC, DE
 AMY_WAIT_FRAMES_SAFE:
     ld a,h
     or l
@@ -21,10 +22,17 @@ AMY_WAIT_FRAMES_SAFE:
 AMY_WAIT_FRAMES_SAFE_NMI_ON:
     xor a
     ld (NMI_FLAG),a
+    ld bc,$1000
 AMY_WAIT_FRAMES_SAFE_NMI_ON_LOOP:
     ld a,(NMI_FLAG)
     or a
-    jr z,AMY_WAIT_FRAMES_SAFE_NMI_ON_LOOP
+    jr nz,AMY_WAIT_FRAMES_SAFE_NMI_ON_DONE
+    dec bc
+    ld a,b
+    or c
+    jr nz,AMY_WAIT_FRAMES_SAFE_NMI_ON_LOOP
+    jr AMY_WAIT_FRAMES_SAFE_NMI_OFF
+AMY_WAIT_FRAMES_SAFE_NMI_ON_DONE:
     dec de
     ld a,d
     or e
