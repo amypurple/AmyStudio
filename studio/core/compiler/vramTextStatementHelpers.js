@@ -64,7 +64,8 @@ export function handleVramTextStatement({
   emitStoreInt8FromA,
   currentGraphicsMode,
   getTileTypeInfo,
-  makeGeneratedLabel
+  makeGeneratedLabel,
+  nmiExplicitlyOff = false
 }) {
   const _depVramPut = checkVramPutReorderDeprecation(line, rawLine);
   if (_depVramPut.handled) return _depVramPut;
@@ -84,6 +85,9 @@ export function handleVramTextStatement({
   }
 
   function wrapVramUploadLines(lines) {
+    // An explicit `nmi off` is the programmer's critical-section contract.
+    // Do not nest the managed save/disable/restore wrapper inside that region.
+    if (nmiExplicitlyOff) return lines;
     return [
       "    call AMY_VRAM_BEGIN",
       ...lines,

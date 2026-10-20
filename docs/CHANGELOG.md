@@ -24,7 +24,8 @@
   VDP-status polling when an expected interrupt is missed.
 - Added dedicated initializer, byte-mutation, WAIT, and NMI runtime regressions;
   all 105 browser examples compile and all 104 flat ROMs assemble in Balanced.
-- Rebuilt and runtime-validated the six comparison ROMs at 7,509 occupied bytes
+- Rebuilt and runtime-validated the six comparison ROMs at 7,391 occupied bytes
+  after adding explicit bounded NMI/VRAM batches while retaining safe default transfers.
   in both Balanced and Experimental profiles. The 30-byte WAIT safety cost is
   documented separately from the compiler savings.
 

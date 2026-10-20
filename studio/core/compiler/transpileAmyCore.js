@@ -1548,6 +1548,7 @@ export function transpileAmyCore(sourceText, deps) {
   let currentFunction = null;
   let currentGraphicsMode = null;
   let currentClsModeAmbiguous = false;
+  let nmiExplicitlyOff = false;
   let numericDigitBaseName = null;
   let numericPadCharName = null;
   let needsNumericPostprocessHelpers = false;
@@ -5501,6 +5502,11 @@ export function transpileAmyCore(sourceText, deps) {
         if (/^(?:text\s+screen|tile\s+screen|multicolor\s+screen|picture\s+screen|bitmap\s+screen|mode\s+2\s+screen|graphics\s+)/i.test(line)) {
           currentClsModeAmbiguous = false;
         }
+        // Preserve the programmer's explicit critical-section intent even when
+        // the R1 optimizer later proves this particular write redundant.
+        if (/^(?:nmi\s+off|disable\s+nmi)$/i.test(line)) nmiExplicitlyOff = true;
+        if (/^(?:nmi\s+on|enable\s+nmi)$/i.test(line)) nmiExplicitlyOff = false;
+        if (/^screen\s+on$/i.test(line)) nmiExplicitlyOff = false;
         const vdpR1WarningResult = trackVdpR1SemanticWarning(line, sourceLineNumber + 1);
         if (currentVdpR1Classification?.kind === "authoritative") {
           discardBufferedVdpR1PureModifiersBecauseOfAuthoritative(currentVdpR1Classification.label);
@@ -5608,7 +5614,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitStoreInt8FromA,
         currentGraphicsMode,
         getTileTypeInfo,
-        makeGeneratedLabel
+        makeGeneratedLabel,
+        nmiExplicitlyOff
       });
       if (vramTextStmt.handled) {
         if (!vramTextStmt.ok) return { ok: false, asmBody: "", log: vramTextStmt.log };
@@ -5901,7 +5908,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitStoreInt8FromA,
         currentGraphicsMode,
         getTileTypeInfo,
-        makeGeneratedLabel
+        makeGeneratedLabel,
+        nmiExplicitlyOff
       }),
       compileVramPixelInputStatement: (inlineLine, inlineRawLine) => {
         const inlineBody = [];

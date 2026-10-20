@@ -1619,6 +1619,20 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "amy-horse-payoff-selftest",
+    "label": "Amy Horse Payoff Self-Test",
+    "detail": "Runtime regression for the indexed odds and payoff arithmetic used by Horse Racing.",
+    "projectName": "amy-horse-payoff-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "circus",
     "label": "Circus (TI-99/4A Port)",
     "detail": "A trampoline-and-acrobat action game adapted from the 1984 TI-99/4A listing with balloons, birds and title music.",

@@ -1825,6 +1825,23 @@ and is omitted from release ASM; debug builds retain explicitly marked commands
 as breakpoint locations.
 In normal Amy code, prefer `screen on/off`.
 
+An explicit `nmi off` also begins a programmer-owned VRAM batch. Until the next
+`nmi on` or `screen on`, generated bulk VRAM uploads omit their automatic
+`AMY_VRAM_BEGIN` / `AMY_VRAM_END` wrappers. This is an optimization contract,
+not a change to the hardware: the programmer must keep the region bounded and
+must not call `wait`, blocking input, a menu, or an unbounded loop inside it.
+
+```basic
+wait
+nmi off
+copy Patterns count 128 to vram.pattern
+copy Colors count 128 to vram.color
+nmi on
+```
+
+Outside this explicit region, Amy retains the safe automatic wrappers. `di` is
+not a substitute because it does not disable the TMS9918 NMI.
+
 Per-VBlank Amy hook:
 
 ```basic

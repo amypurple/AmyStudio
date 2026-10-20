@@ -80,3 +80,22 @@ Tile screens retain their normal 2,048-byte 256-character pattern and color tabl
 5. Test NTSC and PAL timing when decompression or animation occurs during gameplay.
 
 An editor preview proves the bytes can be interpreted. Emulation proves the game uploaded them to the correct VRAM tables with the correct VDP state.
+
+## Batch consecutive VRAM uploads
+
+Amy protects individual uploads automatically. For several consecutive uploads,
+an experienced programmer can take ownership once and avoid repeated wrappers:
+
+```basic
+wait
+nmi off
+copy Patterns count 128 to vram.pattern
+copy Colors count 128 to vram.color
+copy Map count 768 to vram.name
+nmi on
+```
+
+The transpiler recognizes this explicit region and omits redundant generated
+wrappers inside it. Never place `wait`, blocking input, menus, or unbounded work
+inside the batch. Use short batches during visible play; startup work can end with
+`screen on`, which also closes the region.

@@ -324,6 +324,25 @@ Grouping consecutive RAM or VRAM work can save setup and address calculations, b
 - Perform long VRAM updates with an explicit safe ownership plan.
 - Test both NTSC and PAL when work approaches a frame budget.
 
+Amy's standard is **safe by default, explicitly batched by the programmer**.
+Outside an explicit batch, generated VRAM uploads save the current VDP R1 state,
+disable NMI for the transfer, and restore the state afterward. Inside a source-level
+`nmi off` ... `nmi on` region, the transpiler recognizes that the programmer already
+owns the VDP and omits those redundant wrappers:
+
+```basic
+wait
+nmi off
+copy NewPatterns count 128 to vram.pattern
+copy NewColors count 128 to vram.color
+copy NewMap count 768 to vram.name
+nmi on
+```
+
+Use this only for a deliberately bounded group. Never place `wait`, blocking input,
+menus, or an unbounded loop inside it. `screen on` also enables NMI and closes a
+startup batch. `di` alone is not equivalent: the ColecoVision VDP interrupt is an NMI.
+
 The transpiler can remove some redundant state commands when control flow and inline ASM are understood. The cookbook should not encourage programmers to rely on an optimization that has not been proven for their control-flow path.
 
 ## Protect direct VRAM manipulation

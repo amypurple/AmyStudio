@@ -336,10 +336,10 @@ up fast. Blueberries' computer opponent slowed the whole game down until
 The NMI handler reads the VDP status register. If a frame's work runs past
 the next NMI while a VRAM transfer is in progress, the status read resets
 the VDP address latch and the rest of the transfer lands at a wrong address:
-random characters or corrupted glyphs (Bunny Hop). The generated NMI
-currently reads the status before checking Amy's `$701F` guard (reported in
-`amy-port-feedback-2026-10-19.md`, item 12). Until that changes, protect
-any game whose frame work can grow:
+random characters or corrupted glyphs (Bunny Hop). Amy's generated transfer
+helpers now guard individual VRAM operations. For known, bounded updates,
+explicitly take ownership once instead of paying for a wrapper around every
+consecutive upload:
 
 ```basic
 sub FrameUpdate:
@@ -352,8 +352,9 @@ end sub
 ```
 
 Turn `nmi on` again before any other `wait`, menu, `pause until press` or
-end screen, and use `nmi off` around large redraws. An overrun then costs a
-frame instead of corrupting the screen.
+end screen. Inside the explicit region, the transpiler omits redundant generated
+VRAM wrappers. Keep the batch bounded: an overrun can still delay music, timers,
+controller service and other VBlank work.
 
 ### Reading the generated assembly
 
