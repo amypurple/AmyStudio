@@ -3282,6 +3282,8 @@ export class Z80Optimizer {
                                 leftTarget.base === rightTarget.base &&
                                 leftTarget.offset === 0 &&
                                 rightTarget.offset === 1) {
+                                const consumedEndIndex = i + (hasImmediateReload ? 4 : 3);
+                                const preserveAccumulator = !this.isRegisterDeadBeforeNextUse(tokens, consumedEndIndex, 'a');
                                 optimized.push(new Instruction(
                                     token.label,
                                     'ld',
@@ -3292,9 +3294,21 @@ export class Z80Optimizer {
                                     token.lineNumber,
                                     token.sourceLine
                                 ));
+                                // The split-byte sequence leaves A equal to the high byte.
+                                // LD (nn),rr does not, so reproduce that observable state
+                                // whenever following code still consumes A.
+                                if (preserveAccumulator) {
+                                    optimized.push(new Instruction(
+                                        null,
+                                        'ld',
+                                        [new Operand('register', 'a'), new Operand('register', regHigh)],
+                                        t3.lineNumber,
+                                        t3.sourceLine
+                                    ));
+                                }
                                 i += hasImmediateReload ? 4 : 3;
                                 this.stats.peepholeOpts++;
-                                this.stats.bytesSaved += hasImmediateReload ? 7 : 5;
+                                this.stats.bytesSaved += (hasImmediateReload ? 7 : 5) - (preserveAccumulator ? 1 : 0);
                                 optimizerLog(`  Folded split-byte ${pairName.toUpperCase()} store${hasImmediateReload ? ' and removed immediate reload' : ''} at line ${token.lineNumber}`, 'debug');
                                 continue;
                             }
