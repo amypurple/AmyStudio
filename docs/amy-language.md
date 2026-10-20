@@ -917,6 +917,23 @@ Parameters are passed by value unless prefixed with `ref`. Value parameters supp
 the routine's ABI storage before the call. Both frameless static and IX-stack calls are
 five-profile ROM-tested.
 
+A ROM symbol address may be passed to a `u16` value parameter with `@Label`. This
+is useful for zero-ended text and custom data readers without a global pointer:
+
+```basic
+data Greeting chars "HELLO{0}"
+
+sub ShowText(u16 Address):
+  C = peek(Address)
+  ' ...
+  return
+
+ShowText(@Greeting)
+```
+
+`@Label` is an address, not a byte value, and is therefore rejected for `u8` or
+`i8` parameters. Direct string-literal routine arguments are not supported.
+
 Behavior:
 - `end sub` closes the current subroutine explicitly
 - if a `sub` reaches another `sub` before `end sub`, execution falls through into the next subroutine body
@@ -1652,6 +1669,9 @@ fields, and indexed byte-array fields. Direct scalar forms retain compact in-pla
 qualified or indexed forms use the normal typed address resolver.
 
 `min(A, B)` returns the smaller value. `max(A, B)` returns the larger value.
+They use signed comparison when either operand is `i8`, `i16`, or a negative
+literal; otherwise they use unsigned comparison. Nested calls preserve the same
+rule, including `max(-20, min(120 - X, 20))` for signed `X`.
 The old `min Var with Value` / `max Var with Value` statements were removed.
 
 ### Fill / Copy arrays
@@ -2823,9 +2843,10 @@ data MenuSpotsPx bytes 32,168, 96,168, 168,168
 choose menu 1 to 3 into Choice cursor sprite 0 at list MenuSpotsPx
 ```
 
-The browser example **Runway 180** uses the tile-list form for its horizontal
-play-again menu. It replaces a manual keypad/FIRE polling loop while adding
-directional navigation, input-release handling, and CRT sleep behavior.
+The browser example **421** uses the tile-list form for an irregular four-item
+menu whose choices are numbered `0` through `3`. It replaces a manual keypad
+polling loop while also adding directional navigation, FIRE confirmation,
+input-release handling, and CRT sleep behavior.
 
 The sprite form moves an already configured sprite in pixel coordinates. Set its
 pattern, color, active sprite count, and initial position before `choose menu`.
@@ -2983,6 +3004,8 @@ halt
 data TextLine1 bytes 1,2,3,4,5
 data TextLine2 bytes = 1,2,3,4,5
 
+data ShortText chars "READY{0}"
+
 data MazeMap chars
   "################################"
   "#                              #"
@@ -3031,7 +3054,8 @@ end data
 `data Name bytes ...` and `data Name bytes = ...` are equivalent. Do not use
 `data Name bytes: ...`; `:` is reserved for labels.
 
-Prefer the one-line form for short tables. It needs no `end data` and is also
+Prefer the one-line form for short `bytes`, `words`, or `chars` tables. It needs
+no `end data` and is also
 understood by Amy Studio's graphics editors. Use `end data` when values span
 multiple lines or use a visual layout such as `bitmap8` or `sprite16`.
 
@@ -3631,6 +3655,10 @@ This includes `fixed32` arrays: decimal initialization, indexed assignment,
 comparison, addition, subtraction, multiplication, and division preserve signed
 16.16 semantics for constant or runtime indexes.
 
+Amy supports one- and two-dimensional arrays. Three or more dimensions are a
+compile-time error rather than an assembler error. Whole arrays cannot be routine
+parameters; pass an index, a ROM/RAM address in `u16`, or use a global array.
+
 | Statement | Meaning |
 |---|---|
 | `fill array Arr with Value [count N]` | Fill all or a constant-sized prefix |
@@ -3781,7 +3809,8 @@ Notes:
 - `bcd` `*=` and `/=` are intentionally not implemented.
 - `%=` is available for byte, word, `u32`, and `i32` integer types.
 - Byte and word compound arithmetic accepts indexed array elements on the
-  right, including runtime indexes (`Total *= Values[Index]`).
+  right, including runtime indexes (`Total *= Values[Index]`). The compiler
+  preserves the left operand while calculating the element address.
 - signed integer division truncates toward zero; `int()` on fp5 remains floor-style.
 - fixed/fixed32/fp5 operators use dedicated runtime helpers and may cost more
   ROM than byte/word arithmetic.

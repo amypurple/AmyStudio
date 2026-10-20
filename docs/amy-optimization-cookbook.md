@@ -40,6 +40,49 @@ expression. External ASM may use stable global labels such as `AMY_UVAR_Pixels`,
 on compiler-private `AMY_SPARM_*` or `AMY_LVAR_*` cells. See the **Inline ASM** section of the Amy
 Language Reference for the complete bridge contract.
 
+### Linking an external ASM file to Amy symbols
+
+The prefixes visible in generated assembly describe what the Amy declaration represents:
+
+| Amy declaration | Generated symbol | Use from external ASM |
+| --- | --- | --- |
+| `u8 Score` or `u16 Address` | `AMY_UVAR_Score`, `AMY_UVAR_Address` | Read or write global storage. Respect the declared width. |
+| `const BoardWidth = 8` | `AMY_UCONST_BoardWidth` | Use a compile-time value. |
+| `data Tiles bytes ...` | `AMY_UDATA_Tiles` | Address immutable or table data. |
+| `label Retry:` | `AMY_ULBL_Retry` | Branch to a source-level label only when control flow was designed for it. |
+| `sub DrawBoard:` | `AMY_UPROC_DrawBoard` | Call an Amy routine and return normally. |
+
+These names are linker symbols, not permission to depend on every compiler temporary. Keep the
+Amy declaration global, inspect the expanded ASM after compiling, and restrict external code to
+`AMY_UVAR_*`, `AMY_UCONST_*`, `AMY_UDATA_*`, `AMY_ULBL_*`, and `AMY_UPROC_*`. Never bind reusable
+code to `AMY_SPARM_*`, `AMY_LVAR_*`, optimizer scratch cells, or a register value observed by
+accident: those are private implementation details and may change between builds.
+
+Arrays and records are packed in declaration order. A `u8` or `i8` occupies one byte; a `u16`,
+`i16`, or address occupies two little-endian bytes. Use `address of` when Amy passes a buffer to
+`call asm`; otherwise a scalar argument passes its value. When inline ASM appears in the same Amy
+source, prefer the Amy identifier where the assembler accepts it. Use the generated symbol names
+when a separate `.asm` module must link against Amy-owned storage or routines.
+
+```basic
+u8 Board[64]
+u8 Side = 0
+
+sub EvaluateBoard:
+  asm {
+    ld hl,AMY_UVAR_Board
+    ld a,(AMY_UVAR_Side)
+    ; Compute with a documented register contract.
+  }
+  return
+```
+
+Before replacing readable Amy with assembly, compile both forms behind an experimental define.
+Compare ROM bytes, RAM, cycles on a named breakpoint-to-breakpoint path, and observable results.
+Keep the ASM form only when it preserves all optimization profiles and full-project tests. A few
+saved instructions are not valid if a BIOS call, Amy routine, interrupt, or later peephole can
+invalidate an undocumented register assumption.
+
 For the visual path to each Studio editor, importer, sound tool, compression comparison, and debugger, see the [Studio Tools Gallery](amy-studio-tools-gallery.md). The gallery documents where each tool is reached and the UI checks required before its output is trusted.
 
 Amy encourages readable game code, but the same result can often be expressed with different ROM-size, RAM, and execution-time tradeoffs. This guide shows practical progressions: begin with the clearest form, measure, then select a more data-driven form when it benefits the game.
