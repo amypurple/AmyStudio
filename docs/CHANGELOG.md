@@ -13,6 +13,8 @@
 - Confirmed that the current CVBasic and ugBASIC changes do not affect their
   ColecoVision benchmark output, and that PVColLib remains at its measured
   upstream revision.
+- Kept compact PDF tables on one page, kept headings with their opening
+  paragraphs, and tightened the NewColeco historical summary.
 
 ## 2026-10-20 - Audio workflow corrections
 

@@ -567,18 +567,16 @@ Official source: [alekmaul/pvcollib](https://github.com/alekmaul/pvcollib)
 
 ### NewColeco provides a historical baseline
 
-The recovered SDCC branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Their
-prebuilt ASxxxx objects require the historical stack-parameter ABI, `.o` object naming, and
-first-object linker output convention. The comparison pins SDCC 2.9.0 #5416 (March 2009).
-Modern SDCC 3.8/4.5 builds can link and boot while silently miscalling stack-ABI routines, so only
-behavior-validated NewColeco results count here. Warrior is decompressed directly to VRAM with
-GETPUT's MDK-RLE routine and matches all 12,288 target table bytes and all 49,152 pixels.
+The recovered branch uses Amy's original `CRTCV`, `CVLIB`, and GETPUT 1.1 libraries. Its ASxxxx
+objects require the historical stack ABI and first-object linker convention, so the comparison pins
+SDCC 2.9.0 #5416 (March 2009); newer SDCC versions can boot while silently miscalling these routines.
+Only behavior-validated results count. GETPUT's direct-to-VRAM MDK-RLE path reproduces all 12,288
+Warrior table bytes and all 49,152 pixels.
 
-This is not an unrelated additional competitor: it is the documented historical ancestor of Amy
-Studio. Its 795-byte Hello, 3,643-byte DAN2 bitmap, and 932-byte controller monitor show that the old
-BIOS-aware and link-only-what-is-used philosophy was already effective. Amy Studio adds the Amy
-language, integrated assets, diagnostics, and debugging; this describes an evolution of workflow,
-not a judgment on the earlier kit.
+NewColeco is Amy Studio's documented ancestor, not an unrelated competitor. Its 795-byte Hello,
+3,643-byte DAN2 bitmap, and 932-byte controller monitor already demonstrate the BIOS-aware,
+link-only-what-is-used approach. Amy Studio extends that foundation with the Amy language,
+integrated assets, diagnostics, and debugging.
 
 ### PkK's devkit is compact but deliberately low level
 
