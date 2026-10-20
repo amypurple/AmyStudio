@@ -35,11 +35,13 @@ for (const profile of profiles) {
   ], { cwd: root, encoding: "utf8" });
   assert.equal(result.status, 0, `${profile}: ${result.stdout}${result.stderr}`);
   const asm = readFileSync(asmPath, "utf8");
+  const maskBlock = asm.match(/ld hl,AMY_UVAR_Mask([\s\S]*?)ld hl,AMY_UVAR_SignedMask/i)?.[0] || "";
+  assert.ok(maskBlock, `${profile}: scalar Mask block must keep an address in HL`);
   for (const operation of ["xor 1", "and 254", "or 8"]) {
     assert.match(
-      asm,
-      new RegExp(`ld hl,AMY_UVAR_Mask\\s*\\r?\\n\\s*ld a,\\(hl\\)\\s*\\r?\\n\\s*${operation}\\s*\\r?\\n\\s*ld \\(hl\\),a`, "i"),
-      `${profile}: ${operation} must share one safe scalar address`
+      maskBlock,
+      new RegExp(`ld a,\\(hl\\)\\s*\\r?\\n\\s*${operation}\\s*\\r?\\n\\s*ld \\(hl\\),a`, "i"),
+      `${profile}: ${operation} must read and write through the shared scalar address`
     );
   }
   assert.match(asm, /ld hl,AMY_UVAR_SignedMask\s*\r?\n\s*ld a,\(hl\)\s*\r?\n\s*xor 127\s*\r?\n\s*ld \(hl\),a/i, `${profile}: signed byte XOR must use identical byte semantics`);

@@ -55,6 +55,11 @@ feature belongs in the language rather than in one game.
    failures without confusing descriptive globals intentionally used as routine
    outputs. Arrays, records, ASM effects and general output inference remain out
    of scope until Amy can express routine effects explicitly.
+8. **Indexed compound multiplication** - implemented and runtime-validated.
+   Byte and word `*=` now preserve the left operand while resolving a constant
+   or variable array index on the right. A focused arithmetic ROM and a second
+   Horse Racing payoff ROM validate all five optimization profiles, including
+   the original odds and three-player payout calculations.
 
 ## Valuable, bounded additions
 
