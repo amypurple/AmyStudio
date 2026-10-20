@@ -42,6 +42,10 @@ function screenSignature(core) {
   return hash >>> 0;
 }
 
+function textScreen(core) {
+  return String.fromCharCode(...core.readVram(0x1800, 32 * 24));
+}
+
 function runFrames(core, count) {
   for (let frame = 0; frame < count; frame += 1) core.runFrame();
 }
@@ -94,6 +98,30 @@ try {
         core.setControllerMask(0, 0);
         const afterSteer = core.readVram(0x1b00, 8)[1];
         assert.ok(afterSteer > beforeSteer, `roader ignored right steering: ${beforeSteer} -> ${afterSteer}`);
+
+        let finished = false;
+        for (let frame = 0; frame < 16000 && !finished; frame += 1) {
+          const roadRow = [...core.readVram(0x1800 + 19 * 32, 32)];
+          const drivable = roadRow
+            .map((tile, column) => ({ tile, column }))
+            .filter(cell => cell.tile === 129 || cell.tile === 133);
+          let input = 0;
+          if (drivable.length > 0) {
+            const first = drivable[0].column;
+            const last = drivable[drivable.length - 1].column;
+            const targetX = ((first + last + 1) * 4) - 8;
+            const currentX = core.readVram(0x1b00, 2)[1];
+            if (currentX + 2 < targetX) input = GEARCOLECO_TEST_INPUT.RIGHT;
+            else if (currentX > targetX + 2) input = GEARCOLECO_TEST_INPUT.LEFT;
+          }
+          core.setControllerMask(0, input);
+          core.runFrame();
+          if ((frame % 30) === 0) {
+            finished = textScreen(core).includes("YOU MADE IT");
+          }
+        }
+        core.setControllerMask(0, 0);
+        assert.ok(finished, "roader did not finish when the scrolling finish line reached the car");
       }
       for (let phase = 0; phase < 4; phase += 1) {
         runFrames(core, 90);
