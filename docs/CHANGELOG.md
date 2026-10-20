@@ -1,3 +1,15 @@
+## 2026-10-20 - User-routine clobber inference
+
+- Added conservative register-clobber inference for generated Amy routines,
+  including transitive calls and explicit fail-closed handling for recursion,
+  unknown calls, indirect control flow and opaque ASM.
+- Reused a proven-live `HL` address across calls only when the complete Amy
+  call graph proves that the callee preserves it; cached memory values remain
+  invalidated across every call.
+- Added binary before/after equivalence and barrier tests for the inference.
+- Reduced 12 browser games by 48 bytes combined with no ROM growth and kept
+  all six comparison ROM sizes unchanged.
+
 ## 2026-10-20 - Signed min/max and wide numeric regression promotion
 
 - Made unary negation preserve signed byte/word intent in runtime expressions.

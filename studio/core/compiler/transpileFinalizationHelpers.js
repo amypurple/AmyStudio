@@ -359,7 +359,146 @@ function optimizeGeneratedDecAndBranch(lines) {
   }
   return optimized;
 }
-export function optimizeGeneratedMemoryLoads(lines) {
+const USER_ROUTINE_REGISTER_FAMILIES = Object.freeze(["af", "bc", "de", "hl", "ix", "iy"]);
+
+export function inferGeneratedUserRoutineClobbers(lines) {
+  const routineLabel = /^(AMY_UPROC_[A-Za-z0-9_]+):$/i;
+  const anyTopLevelLabel = /^(?:Start|Nmi|AMY_UPROC_[A-Za-z0-9_]+):$/i;
+  const directCall = /^call(?:\s+[a-z]+\s*,)?\s+([A-Za-z_.$?@][\w.$?@]*)$/i;
+  const routines = new Map();
+  let current = null;
+
+  for (const line of lines) {
+    const text = String(line || "").replace(/;.*$/, "").trim();
+    const routineMatch = text.match(routineLabel);
+    if (routineMatch) {
+      current = { name: routineMatch[1].toUpperCase(), lines: [], calls: new Set(), direct: new Set() };
+      routines.set(current.name, current);
+      continue;
+    }
+    if (anyTopLevelLabel.test(text)) {
+      current = null;
+      continue;
+    }
+    if (current) current.lines.push(text);
+  }
+
+  const markAll = (routine) => {
+    for (const family of USER_ROUTINE_REGISTER_FAMILIES) routine.direct.add(family);
+  };
+  const mark = (routine, ...families) => families.forEach((family) => routine.direct.add(family));
+
+  for (const routine of routines.values()) {
+    for (const text of routine.lines) {
+      if (!text || /^[A-Za-z_.$?@][\w.$?@]*:$/.test(text) || /^\.(?:db|dw|byte|word)\b/i.test(text)) continue;
+      const call = text.match(directCall);
+      if (call) {
+        const target = call[1].toUpperCase();
+        if (target.startsWith("AMY_UPROC_")) routine.calls.add(target);
+        else {
+          for (const family of USER_ROUTINE_REGISTER_FAMILIES) {
+            if (callClobbersRegister(target, family)) routine.direct.add(family);
+          }
+        }
+        continue;
+      }
+      if (/^(?:ret|reti|retn|nop|scf|ccf|di|ei|halt)\b/i.test(text)) {
+        if (/^(?:scf|ccf)\b/i.test(text)) mark(routine, "af");
+        continue;
+      }
+      if (/^(?:jp|jr|djnz)\b/i.test(text)) {
+        if (/^(?:jp|jr)\s*\(/i.test(text)) markAll(routine);
+        if (/^djnz\b/i.test(text)) mark(routine, "bc", "af");
+        continue;
+      }
+      if (/^push\s+(?:af|bc|de|hl|ix|iy)\b/i.test(text)) continue;
+      const pop = text.match(/^pop\s+(af|bc|de|hl|ix|iy)\b/i);
+      if (pop) { mark(routine, pop[1].toLowerCase()); continue; }
+      const ld = text.match(/^ld\s+([^,]+),/i);
+      if (ld) {
+        const destination = ld[1].trim().toLowerCase();
+        if (/^(?:a|f)$/.test(destination)) mark(routine, "af");
+        else if (/^(?:b|c|bc)$/.test(destination)) mark(routine, "bc");
+        else if (/^(?:d|e|de)$/.test(destination)) mark(routine, "de");
+        else if (/^(?:h|l|hl)$/.test(destination)) mark(routine, "hl");
+        else if (/^(?:ix|ixh|ixl)$/.test(destination)) mark(routine, "ix");
+        else if (/^(?:iy|iyh|iyl)$/.test(destination)) mark(routine, "iy");
+        continue;
+      }
+      const incDec = text.match(/^(?:inc|dec)\s+(a|b|c|bc|d|e|de|h|l|hl|ix|iy)\b/i);
+      if (incDec) {
+        const operand = incDec[1].toLowerCase();
+        mark(routine, "af", operand === "a" ? "af" : operand.includes("b") || operand === "c" ? "bc" : operand.includes("d") || operand === "e" ? "de" : operand.startsWith("i") ? operand : "hl");
+        continue;
+      }
+      if (/^(?:cp|bit)\b/i.test(text)) { mark(routine, "af"); continue; }
+      if (/^(?:add|adc|sub|sbc|and|or|xor|neg|cpl|daa|rlca|rla|rrca|rra|rld|rrd)\b/i.test(text)) {
+        mark(routine, "af");
+        if (/^(?:add|adc|sbc)\s+hl\b/i.test(text)) mark(routine, "hl");
+        else if (/^(?:add|adc)\s+ix\b/i.test(text)) mark(routine, "ix");
+        else if (/^(?:add|adc)\s+iy\b/i.test(text)) mark(routine, "iy");
+        continue;
+      }
+      const rotate = text.match(/^(?:rl|rr|rlc|rrc|sla|sra|srl|sll|res\s+\d+\s*,|set\s+\d+\s*,)\s*(a|b|c|d|e|h|l|ixh|ixl|iyh|iyl)\b/i);
+      if (rotate) {
+        const operand = rotate[1].toLowerCase();
+        mark(routine, "af", operand === "a" ? "af" : /^[bc]$/.test(operand) ? "bc" : /^[de]$/.test(operand) ? "de" : /^[hl]$/.test(operand) ? "hl" : operand.startsWith("ix") ? "ix" : "iy");
+        continue;
+      }
+      if (/^exx\b/i.test(text)) { mark(routine, "bc", "de", "hl"); continue; }
+      if (/^ex\s+af\s*,\s*af'/i.test(text)) { mark(routine, "af"); continue; }
+      if (/^ex\s+de\s*,\s*hl/i.test(text)) { mark(routine, "de", "hl"); continue; }
+      if (/^ex\s+\(sp\)\s*,\s*(hl|ix|iy)/i.test(text)) { mark(routine, text.match(/(hl|ix|iy)\s*$/i)[1].toLowerCase()); continue; }
+      if (/^(?:ldi|ldir|ldd|lddr|cpi|cpir|cpd|cpdr)\b/i.test(text)) { mark(routine, "af", "bc", "de", "hl"); continue; }
+      if (/^(?:ini|inir|ind|indr|outi|otir|outd|otdr)\b/i.test(text)) { markAll(routine); continue; }
+      if (/^(?:in|out|rst|im\b|asm\b|__asm|amy_inline_asm)/i.test(text)) { markAll(routine); continue; }
+      markAll(routine);
+    }
+  }
+
+  const visiting = new Set();
+  const visited = new Set();
+  const recursive = new Set();
+  function findCycles(name, path = []) {
+    if (visiting.has(name)) {
+      const cycleStart = path.indexOf(name);
+      for (const member of path.slice(Math.max(0, cycleStart))) recursive.add(member);
+      recursive.add(name);
+      return;
+    }
+    if (visited.has(name)) return;
+    visiting.add(name);
+    const routine = routines.get(name);
+    for (const target of routine?.calls || []) if (routines.has(target)) findCycles(target, [...path, name]);
+    visiting.delete(name);
+    visited.add(name);
+  }
+  for (const name of routines.keys()) findCycles(name);
+  for (const name of recursive) markAll(routines.get(name));
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const routine of routines.values()) {
+      for (const target of routine.calls) {
+        const callee = routines.get(target);
+        if (!callee) {
+          const before = routine.direct.size;
+          markAll(routine);
+          changed ||= routine.direct.size !== before;
+          continue;
+        }
+        for (const family of callee.direct) {
+          if (!routine.direct.has(family)) { routine.direct.add(family); changed = true; }
+        }
+      }
+    }
+  }
+
+  return new Map([...routines].map(([name, routine]) => [name, new Set(routine.direct)]));
+}
+
+export function optimizeGeneratedMemoryLoads(lines, userRoutineClobbers = null) {
   const directLoadA = /^\s*ld\s+a,\s*\(([A-Za-z_][A-Za-z0-9_]*)\)\s*$/i;
   const directLoadHL = /^\s*ld\s+hl,\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/i;
   const anyLoadHL = /^\s*ld\s+hl\s*,/i;
@@ -370,7 +509,7 @@ export function optimizeGeneratedMemoryLoads(lines) {
   const branch = /^\s*(?:jr|jp|djnz)\b/i;
   const conditionalBranch = /^\s*(?:jr|jp)\s+[a-z]{1,2}\s*,/i;
   const hardBarrier = /^\s*(?:ret|reti|retn)\b/i;
-  const hlClobber = /^\s*(?:ld\s+hl,|inc\s+hl|dec\s+hl|add\s+hl,|adc\s+hl,|sbc\s+hl,|pop\s+hl|ex\s+de\s*,\s*hl|ex\s+\(sp\)\s*,\s*hl)\b/i;
+  const hlClobber = /^\s*(?:ld\s+hl,|inc\s+hl|dec\s+hl|add\s+hl,|adc\s+hl,|sbc\s+hl,|pop\s+hl|ex\s+de\s*,\s*hl|ex\s+\(sp\)\s*,\s*hl|ldi\b|ldir\b|ldd\b|lddr\b|cpi\b|cpir\b|cpd\b|cpdr\b|ini\b|inir\b|ind\b|indr\b|outi\b|otir\b|outd\b|otdr\b)/i;
   const aClobber = /^\s*(?:ld\s+a\s*,|inc\s+a\b|dec\s+a\b|add\s+a\s*,|adc\s+a\s*,|sub\b|sbc\s+a\s*,|and\b|or\b|xor\b|in\s+a\s*,|pop\s+af\b|neg\b|cpl\b|daa\b|rld\b|rrd\b|ex\s+af\s*,\s*af'(?:\s|$)|rlca\b|rla\b|rrca\b|rra\b|(?:rlc|rl|rrc|rr|sla|sra|srl|res\s+\d+\s*,|set\s+\d+\s*,)\s*a\b)/i;
   const memoryAtHlMutation = /^\s*(?:inc|dec)\s+\(hl\)\s*$/i;
 
@@ -426,7 +565,9 @@ export function optimizeGeneratedMemoryLoads(lines) {
     }
 
     if (/^\s*call\b/i.test(text)) {
-      if (callClobbersRegister(text, "hl")) knownHL = null;
+      const target = text.match(/^call(?:\s+[a-z]+\s*,)?\s+([A-Za-z_.$?@][\w.$?@]*)$/i)?.[1]?.toUpperCase() || null;
+      const inferred = target?.startsWith("AMY_UPROC_") ? userRoutineClobbers?.get(target) : null;
+      if (inferred ? inferred.has("hl") : callClobbersRegister(text, "hl")) knownHL = null;
       // A preserved accumulator does not prove that the referenced memory was
       // unchanged, so every call invalidates the cached byte value.
       knownA = null;
@@ -436,7 +577,9 @@ export function optimizeGeneratedMemoryLoads(lines) {
 
     if (anyLoadHL.test(text)) {
       const loadHL = text.match(directLoadHL);
-      knownHL = loadHL ? loadHL[1].toLowerCase() : null;
+      const loadedSymbol = loadHL ? loadHL[1].toLowerCase() : null;
+      if (loadedSymbol && knownHL === loadedSymbol) continue;
+      knownHL = loadedSymbol;
       knownA = null;
       optimized.push(line);
       continue;
@@ -1288,8 +1431,7 @@ export function finalizeAmyTranspile({
   const reachableBody = removeUnreachableAfterTerminators(generatedBodyWithInit);
   // Run memory-load tracking once, after control-flow rewrites. Reapplying it
   // to its own output can discard the load that originally invalidated A.
-  const optimizedBody = optimizeGeneratedMemoryLoads(
-    coalesceAdjacentVramUploadGuards(
+  const bodyBeforeMemoryLoads = coalesceAdjacentVramUploadGuards(
       optimizeGeneratedControlFlow(
         optimizeGeneratedTailCalls(
           optimizeGeneratedDecAndBranch(
@@ -1297,7 +1439,12 @@ export function finalizeAmyTranspile({
           )
         )
       )
-    )
+    );
+  const optimizedBody = optimizeGeneratedMemoryLoads(
+    bodyBeforeMemoryLoads,
+    hasExternalAsmInclude || /(^|\n)\s*asm\s*\{/i.test(String(activeSourceText || ""))
+      ? null
+      : inferGeneratedUserRoutineClobbers(bodyBeforeMemoryLoads)
   );
   const needsFrameCounter = optimizedBody.some((line) => /\bAMY_FRAME_COUNTER\b/.test(String(line || "")));
   const needsMode2ThirdsHelper = optimizedBody.some((line) => /\bAMY_DEFINE_MODE2_THIRDS\b/.test(String(line || "")));
