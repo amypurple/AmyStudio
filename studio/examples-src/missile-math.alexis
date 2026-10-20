@@ -1,0 +1,754 @@
+cartridge "MISSILE MATH/PRESENTS GARRY S. WICK'S/1984"
+
+' MISSILE MATH
+' By Garry S. Wick, COMPUTE! magazine, September 1984: written for the
+' Atari, with versions for the VIC-20, Commodore 64, TI-99/4A, Apple and
+' IBM PC/PCjr. This port follows Program 5, the TI-99/4A version. All
+' credit belongs to Garry S. Wick.
+'
+' Historical context (summary of the article):
+' An educational game that rewards correct answers and speed. A joystick
+' menu picks addition and subtraction or multiplication and division,
+' and a slow or fast game, so there is no typing and no wrong entry. A
+' problem appears at the top of the screen, sometimes with the unknown
+' first or in the middle (3 + 4 = ?, 3 + ? = 7, ? + 4 = 7), so the two
+' operations of a menu choice are mixed. Five possible answers are at the
+' bottom, the right one in a random place and the others spaced so it
+' does not stand out. Move the missile gun under the right answer and
+' shoot down the UFO as it crosses the sky at one of three heights: 25
+' points on the first, highest pass, 10 on the second, 5 on the lowest.
+' Hit it over a wrong answer and it changes color with a funny sound and
+' flies on. Three passes without the right hit and the UFO destroys the
+' gun; one of the three spades (guns left) disappears, the right answer
+' blinks and an encouraging message appears. 50 points in a level go on
+' to the next, harder level, with a bonus for speed: 50 points for an
+' average of 25 per problem, 25 points for an average of 10 or more.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the gun from answer to answer; fire
+' launches the missile (either joystick).
+' The rules follow the TI listing: A = INT(RND * 4 + 1) + 4 * (LEVEL - 1),
+' B = INT(RND * LEVEL + 1), C = A + B or A * B (lines 290-300); the
+' unknown is A, B or C (C twice as often, lines 320-350); the answers are
+' ANS + (I - DT) * DEL with DEL = 10 over 90, 5 over 20, else
+' INT(ANS / 10) + 1 (lines 410-460), at columns 5 * I - 1; the gun starts
+' on answer 5 and wraps around (line 490); the UFO flies from right to
+' left at rows 4, 8 and 12 (lines 560-590), one missile per pass (SHT);
+' points 25, 10, 5 (line 790); 50 points in a level to go on, bonus 50
+' when the level's points per problem pass 20 and 25 when they reach 10
+' (lines 550, 800-810); three guns (NP); the messages of lines 670-680;
+' the fanfare of lines 1060-1080.
+' Adaptation liberties: the answers never go below zero (the right answer
+' moves to an earlier place when it would); the UFO speed is 1.5 pixels
+' per frame (slow) or 3 (fast); the guns left are shown as spades; the
+' high score is kept; joystick menus replace the Y/N question; an
+' editorial page. The frame loop is protected from the NMI.
+' Screen: guns and score on row 1, problem on row 4, UFO rows 4-12 (TI
+' rows), gun on row 19, answers on row 22 (TI row 24).
+
+const SpadeTile = 128
+const GroundTile = 129
+const GunY = 149               ' TI line 470: sprite row 150
+
+' Sound table slots (mm/s.mjs)
+const SndFanfare = 1
+const SndLaunch = 2
+const SndHit = 3
+const SndWrongA = 4
+const SndWrongB = 5
+const SndWrongC = 6
+const SndGunA = 7
+const SndGunB = 8
+const SndBlink = 9
+const SndClick = 10
+const SndBeep = 11
+
+bcd digits 5 Score             ' SC
+bcd digits 5 HighScore
+u8 Menu = 1                    ' 1 add/subtract, 2 multiply/divide
+u8 Fast = 1                    ' 1 slow, 2 fast
+u8 Level = 1
+u8 NP = 3                      ' guns left
+u8 SCL = 0                     ' points this level
+u8 PB = 0                      ' problems this level
+u16 A16 = 0
+u16 B16 = 0
+u16 C16 = 0
+u16 Ans = 0
+u16 Del = 0
+u16 CH[5]                      ' the five answers
+u8 DT = 0                      ' place of the right answer, 1-5
+u8 RP = 0
+u8 PF = 5                      ' the gun's answer, 1-5
+u8 Y0 = 4                      ' UFO height in TI rows: 4, 8, 12
+u16 UX16 = 0                   ' UFO X, 8.8
+u16 UStep = 0
+u8 UX = 0
+u8 UY = 0
+u8 UCol = 13
+bool Shot = false              ' SHT: the missile of this pass is used
+bool MOn = false
+u8 MX = 0
+u8 MY = 0
+u8 Result = 0                  ' 0 flying, 1 right hit, 2 pass over
+u8 Stick = 0
+u8 LastStick = 0
+bool Fired = false
+bool WasFired = false
+u8 Pts = 0
+u8 I = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Choice = 0
+u8 Wd = 0
+u16 T16 = 0
+u16 W16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+u8 NX = 0                      ' PutNum position and width
+u8 NY = 0
+u8 NW = 0
+
+  tile screen
+  set sound table MathSoundTable areas 3
+  sprites 16x16
+  copy SpritePat count 128 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  ' --- Lines 840-990: the menus ---
+  MenuPage
+  Score = 0
+  Level = 1
+  NP = 3
+
+new_level:
+  ' --- Lines 260-280: ENTERING LEVEL ---
+  SCL = 0
+  PB = 0
+  nmi on
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  NumU = Level
+  print at 8,11, "ENTERING LEVEL "
+  NX = 8
+  NX += 15
+  NY = 11
+  PutNum
+  play sound SndFanfare
+  wait 220 frames
+
+new_problem:
+  ' --- Lines 290-470: a problem and five answers ---
+  MakeProblem
+  DrawProblem
+  Y0 = 4
+  PF = 5
+
+new_pass:
+  ' --- Lines 480-620: the UFO crosses, the gun moves and shoots ---
+  UX16 = 61440
+  UStep = 384
+  if Fast = 2 then UStep = 768
+  UCol = 12
+  Shot = false
+  MOn = false
+  Result = 0
+  WasFired = true
+  LastStick = 0
+
+pass_loop:
+  nmi on
+  wait
+  nmi off
+  MoveGun
+  MoveMissile
+  if Result = 1 then goto right_hit
+  ' The UFO
+  if UX16 < UStep then goto pass_over
+  UX16 -= UStep
+  DrawSprites
+  goto pass_loop
+
+  ' --- Line 570: the UFO comes back lower ---
+pass_over:
+  Y0 += 4
+  if Y0 <= 12 then goto new_pass
+  goto gun_lost
+
+  ' --- Lines 760-830: a direct hit ---
+right_hit:
+  nmi on
+  play sound SndHit
+  set sprite 2 to 192,0,0,0
+  for K = 0 to 39
+    N = K & 4
+    if N = 0 then
+      backdrop light yellow
+    else
+      backdrop light blue
+    end if
+    set sprite 0 to UY,UX,12,9
+    update sprites
+    wait
+  next
+  backdrop light blue
+  set sprite 0 to 192,0,0,0
+  update sprites
+  N = Y0 >> 2
+  Pts = PointTable[N]
+  Y = Y0 + 1
+  NumU = Pts
+  NX = 10
+  NY = Y
+  PutNum
+  NX += NW
+  print at NX,NY, " POINTS"
+  for K = 1 to Pts
+    Score += 1
+  next
+  SCL += Pts
+  ShowScore
+  wait 90 frames
+  ' Lines 550, 800-810: on to the next level, with the bonus
+  if SCL >= 50 then
+    T16 = SCL
+    W16 = T16 / PB
+    Pts = 0
+    if W16 >= 10 then Pts = 25
+    if W16 > 20 then Pts = 50
+    if Pts > 0 then
+      NumU = Pts
+      NX = 7
+      NY = 16
+      PutNum
+      NX += NW
+      print at NX,NY, " BONUS POINTS"
+      play sound SndFanfare
+      for K = 1 to Pts
+        Score += 1
+      next
+      ShowScore
+      wait 150 frames
+    end if
+    inc Level
+    if Level > 50 then Level = 50
+    goto new_level
+  end if
+  goto new_problem
+
+  ' --- Lines 630-690: the UFO destroys the gun ---
+gun_lost:
+  nmi on
+  play sounds SndGunA, SndGunB
+  N = PF * 5
+  N -= 1
+  X = N * 8
+  X += 4
+  for K = 0 to 29
+    N = K & 2
+    V = 1
+    if N = 0 then V = 9
+    set sprite 1 to GunY,X,4,V
+    update sprites
+    wait
+  next
+  HideSprites
+  dec NP
+  ShowGuns
+  ' Line 650: the right answer blinks
+  N = DT - 1
+  X = N * 5
+  X += 4
+  for K = 1 to 5
+    fill 32 count 4 at X,22
+    play sound SndBlink
+    wait 15 frames
+    NumU = Ans
+    NX = X
+    NY = 22
+    PutNum
+    wait 15 frames
+  next
+  ' Lines 670-680: a word of encouragement
+  N = random(0, 1)
+  if N = 0 then
+    print at 9,15, "KEEP TRYING !"
+  else
+    print at 4,15, "I KNOW YOU CAN DO IT !"
+  end if
+  wait 120 frames
+  if NP > 0 then goto new_problem
+
+  ' --- Lines 700-710: final score ---
+  if Score > HighScore then HighScore = Score
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  print at 9,8, "FINAL SCORE:"
+  print Score at 22,8
+  print at 9,10, "HIGH SCORE:"
+  print HighScore at 22,10
+  NumU = Level
+  print at 9,12, "LEVEL "
+  NX = 9
+  NX += 6
+  NY = 12
+  PutNum
+  print at 9,16, "PLAY AGAIN"
+  print at 9,17, "NEW MENU"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,16 step 1
+  wait no fire
+  if Choice = 1 then
+    Score = 0
+    Level = 1
+    NP = 3
+    goto new_level
+  end if
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 290-460
+sub MakeProblem:
+  inc PB
+  N = random(1, 4)
+  N += Level * 4
+  N -= 4
+  A16 = N
+  N = random(1, Level)
+  B16 = N
+  if Menu = 1 then
+    C16 = A16 + B16
+  else
+    C16 = A16 * B16
+  end if
+  RP = random(1, 4)
+  Ans = C16
+  if RP = 1 then Ans = A16
+  if RP = 2 then Ans = B16
+  ' Lines 410-430
+  if Ans > 90 then
+    Del = 10
+  else
+    if Ans > 20 then
+      Del = 5
+    else
+      Del = Ans / 10
+      inc Del
+    end if
+  end if
+  DT = random(1, 5)
+  ' Adaptation: no answer below zero
+fix_place:
+  if DT > 1 then
+    T16 = DT - 1
+    T16 *= Del
+    if T16 > Ans then
+      dec DT
+      goto fix_place
+    end if
+  end if
+  ' Line 460: CH(I) = ANS + (I - DT) * DEL
+  T16 = DT - 1
+  T16 *= Del
+  W16 = Ans - T16
+  for I = 0 to 4
+    CH[I] = W16
+    W16 += Del
+  next
+  return
+end sub
+
+' Lines 360-470: the problem, the guns, the score and the answers
+sub DrawProblem:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light blue
+  ShowGuns
+  ShowScore
+  ' Line 380: A op B = C, the unknown as "?"
+  X = 10
+  if RP = 1 then
+    print at X,4, "?"
+    inc X
+  else
+    NumU = A16
+    NX = X
+    NY = 4
+    PutNum
+    NumWidth
+    X += Wd
+  end if
+  if Menu = 1 then
+    print at X,4, " + "
+  else
+    print at X,4, " X "
+  end if
+  X += 3
+  if RP = 2 then
+    print at X,4, "?"
+    inc X
+  else
+    NumU = B16
+    NX = X
+    NY = 4
+    PutNum
+    NumWidth
+    X += Wd
+  end if
+  print at X,4, " = "
+  X += 3
+  if RP >= 3 then
+    print at X,4, "?"
+  else
+    NumU = C16
+    NX = X
+    NY = 4
+    PutNum
+  end if
+  fill GroundTile count 28 at 2,21
+  for I = 0 to 4
+    X = I * 5
+    X += 4
+    NumU = CH[I]
+    NX = X
+    NY = 22
+    PutNum
+  next
+  return
+end sub
+
+' Digits in NumU (for placing the problem's parts)
+sub NumWidth:
+  Wd = 1
+  if NumU >= 10 then Wd = 2
+  if NumU >= 100 then Wd = 3
+  if NumU >= 1000 then Wd = 4
+  return
+end sub
+
+sub ShowGuns:
+  fill 32 count 8 at 2,1
+  if NP > 0 then
+    for I = 1 to NP
+      X = I * 2
+      inc X
+      put char SpadeTile at X,1
+    next
+  end if
+  return
+end sub
+
+sub ShowScore:
+  print at 17,1, "SCORE:"
+  print Score at 23,1
+  return
+end sub
+
+' Line 490: the stick moves the gun one answer; it wraps around
+sub MoveGun:
+  Stick = 0
+  Fired = false
+  if joypad(1).fire then Fired = true
+  if joypad(2).fire then Fired = true
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if Stick <> LastStick then
+    if Stick = 1 then
+      dec PF
+      if PF = 0 then PF = 5
+    end if
+    if Stick = 2 then
+      inc PF
+      if PF = 6 then PF = 1
+    end if
+  end if
+  LastStick = Stick
+  ' Line 500: one missile per pass
+  if Fired then
+    if not WasFired then
+      if not Shot then
+        Shot = true
+        MOn = true
+        N = PF * 5
+        N -= 1
+        MX = N * 8
+        MX += 4
+        MY = GunY - 8
+        play sound SndLaunch
+      end if
+    end if
+  end if
+  WasFired = Fired
+  return
+end sub
+
+' The missile rises; lines 510-540, 730-750: the hit, right or wrong
+sub MoveMissile:
+  if not MOn then return
+  if MY < 12 then
+    MOn = false
+    return
+  end if
+  MY -= 6
+  T16 = UX16 >> 8
+  UX = T16
+  UY = Y0 * 8
+  dec UY
+  if MX < UX then
+    N = UX - MX
+  else
+    N = MX - UX
+  end if
+  if N >= 12 then return
+  if MY < UY then
+    N = UY - MY
+  else
+    N = MY - UY
+  end if
+  if N >= 10 then return
+  MOn = false
+  N = PF - 1
+  T16 = CH[N]
+  if T16 = Ans then
+    Result = 1
+    return
+  end if
+  ' Line 740: wrong, the UFO changes color with a funny sound
+  play sounds SndWrongA, SndWrongB, SndWrongC
+  UCol = 2
+  return
+end sub
+
+' Sprite 0 the UFO, 1 the gun, 2 the missile
+sub DrawSprites:
+  T16 = UX16 >> 8
+  UX = T16
+  UY = Y0 * 8
+  dec UY
+  set sprite 0 to UY,UX,0,UCol
+  N = PF * 5
+  N -= 1
+  X = N * 8
+  X += 4
+  set sprite 1 to GunY,X,4,14
+  if MOn then
+    set sprite 2 to MY,MX,8,15
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' Prints NumU at NX,NY with no leading zeros or padding; NW = digits used
+sub PutNum:
+  if NumU >= 10000 then
+    print at NX,NY, digits$(NumU, 5)
+    NW = 5
+    return
+  end if
+  if NumU >= 1000 then
+    print at NX,NY, digits$(NumU, 4)
+    NW = 4
+    return
+  end if
+  if NumU >= 100 then
+    print at NX,NY, digits$(NumU, 3)
+    NW = 3
+    return
+  end if
+  if NumU >= 10 then
+    print at NX,NY, digits$(NumU, 2)
+    NW = 2
+    return
+  end if
+  print at NX,NY, digits$(NumU, 1)
+  NW = 1
+  return
+end sub
+
+' Graphics II: tiles 128-129 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 16 to vram.pattern + Dst16
+    copy TileCol count 16 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 3
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  set sprite 2 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' Lines 840-990: the joystick menus, then lines 220-250: how to play
+sub MenuPage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop light green
+  print at 9,2, "MISSILE MATH"
+  print at 3,4, "GOAL: SHOOT DOWN THE UFO"
+  print at 3,5, "FROM UNDER THE RIGHT ANSWER."
+  print at 3,6, "FIRST PASS 25, THEN 10, 5."
+  print at 3,7, "50 POINTS: NEXT LEVEL."
+  print at 7,10, "ADD & SUBTRACT"
+  print at 7,11, "MULTIPLY & DIVIDE"
+  Choice = Menu
+  play sound SndFanfare
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 5,10 step 1
+  Menu = Choice
+  print at 7,14, "SLOW"
+  print at 7,15, "FAST"
+  Choice = Fast
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 5,14 step 1
+  Fast = Choice
+  wait no fire
+  ' Lines 220-250
+  print at 3,18, "POSITION GUN OVER CORRECT"
+  print at 3,19, "ANSWER AND SHOOT THE UFO."
+  print at 3,20, "BE CAREFUL NOT TO WASTE"
+  print at 3,21, "SHOTS. FIRE TO START."
+  pause until press
+  wait no fire
+  stop sound SndFanfare
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 9,1, "MISSILE MATH"
+  print at 6,3, "BY GARRY S. WICK"
+  print at 4,4, "COMPUTE! SEPTEMBER 1984"
+  print at 2,6, "AN ATARI MATH GAME, WITH"
+  print at 2,7, "VIC-20, 64, TI-99/4A, APPLE"
+  print at 2,8, "AND IBM PC VERSIONS."
+  print at 2,10, "IT REWARDS RIGHT ANSWERS"
+  print at 2,11, "AND SPEED: THE SOONER YOU"
+  print at 2,12, "HIT THE UFO, THE MORE"
+  print at 2,13, "POINTS YOU EARN."
+  print at 2,15, "NO TYPING: THE JOYSTICK"
+  print at 2,16, "PICKS EVERYTHING, SO NO"
+  print at 2,17, "WRONG ENTRY IS POSSIBLE."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Line 790: points for the passes at rows 4, 8, 12 (index Y0 / 4)
+data PointTable bytes 0,25,10,5
+
+' Tiles 128-129: a spade (line 1000, the guns left), the ground
+data TilePat bytes
+  $10,$38,$7C,$FE,$FE,$54,$10,$38
+  $FF,$AA,$55,$AA,$55,$AA,$55,$AA
+end data
+
+data TileCol bytes
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $C0,$C0,$20,$20,$20,$20,$20,$20
+end data
+
+' Sprites (16 x 16): UFO (line 1040), gun (line 990), missile, explosion
+' (lines 1020-1030)
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$0F,$1F,$7F
+  $FF,$DB,$7F,$1F,$04,$08,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$F8,$FE
+  $FF,$6D,$FE,$F8,$20,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $01,$03,$03,$07,$0F,$1F,$3F,$7F
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $80,$C0,$C0,$E0,$F0,$F8,$FC,$FE
+  $00,$01,$03,$03,$03,$03,$03,$07
+  $0D,$09,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$C0,$C0,$C0,$C0,$E0
+  $B0,$90,$00,$00,$00,$00,$00,$00
+  $01,$21,$11,$09,$45,$23,$1F,$FF
+  $1F,$23,$45,$09,$11,$21,$01,$00
+  $00,$08,$10,$20,$44,$88,$F0,$FE
+  $F0,$88,$44,$20,$10,$08,$00,$00
+end data
+
+asm {
+FanfareT1:
+    db $40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01
+    db $40,$D6,$20,$35,$40,$D6,$F0,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01
+    db $40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$F0,$20,$05,$40,$F0,$F0,$01
+    db $40,$FE,$20,$05,$40,$FE,$F0,$01,$40,$1D,$21,$29,$40,$1D,$F1,$01,$40,$03,$F0,$05,$40,$03,$F0,$01
+    db $40,$1D,$21,$15,$40,$1D,$F1,$01,$40,$D6,$20,$23,$40,$D6,$F0,$01,$50
+LaunchT1:
+    db $40,$38,$20,$01,$40,$3B,$20,$01,$40,$3F,$20,$01,$40,$43,$20,$01,$40,$48,$20,$01,$40,$4D,$20,$01
+    db $40,$53,$20,$01,$40,$5B,$20,$01,$40,$64,$20,$01,$40,$6F,$20,$01,$40,$7C,$20,$01,$50
+HitN:
+    db $00,$00,$05,$03,$00,$00,$15,$03,$00,$00,$25,$03,$00,$00,$35,$03,$00,$00,$45,$03,$00,$00,$55,$03
+    db $00,$00,$65,$03,$00,$00,$75,$03,$00,$00,$85,$03,$00,$00,$95,$03,$00,$00,$A5,$03,$00,$00,$B5,$03
+    db $00,$00,$C5,$03,$00,$00,$D5,$03,$00,$00,$E5,$03,$00,$00,$F5,$03,$10
+WrongT1:
+    db $40,$F9,$22,$0C,$40,$25,$23,$06,$40,$56,$23,$0C,$50
+WrongT2:
+    db $80,$BF,$20,$0C,$80,$CA,$20,$06,$80,$D6,$20,$0C,$90
+WrongT3:
+    db $C0,$7C,$21,$0C,$C0,$94,$21,$06,$C0,$AB,$21,$0C,$D0
+GunLostT1:
+    db $40,$5C,$03,$02,$40,$FC,$01,$02,$40,$69,$01,$02,$40,$18,$01,$02,$40,$E4,$00,$02,$40,$C1,$00,$02
+    db $40,$A7,$00,$02,$40,$93,$00,$02,$40,$84,$00,$02,$40,$77,$00,$02,$50
+GunLostN:
+    db $00,$00,$26,$02,$00,$00,$26,$02,$00,$00,$26,$02,$00,$00,$26,$02,$00,$00,$26,$02,$00,$00,$26,$02
+    db $00,$00,$26,$02,$00,$00,$26,$02,$00,$00,$26,$02,$00,$00,$26,$02,$10
+BlinkT1:
+    db $40,$FC,$21,$02,$40,$FE,$20,$02,$50
+ClickT1:
+    db $40,$4B,$30,$01,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+MathSoundTable:
+    dw FanfareT1,$7035
+    dw LaunchT1,$7035
+    dw HitN,$702B
+    dw WrongT1,$7035
+    dw WrongT2,$703F
+    dw WrongT3,$7049
+    dw GunLostT1,$7035
+    dw GunLostN,$702B
+    dw BlinkT1,$7035
+    dw ClickT1,$7035
+    dw BeepT1,$7035
+}

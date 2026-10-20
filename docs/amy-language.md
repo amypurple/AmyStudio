@@ -3780,6 +3780,8 @@ The table below is empirical — compiled and confirmed against the full example
 Notes:
 - `bcd` `*=` and `/=` are intentionally not implemented.
 - `%=` is available for byte, word, `u32`, and `i32` integer types.
+- Byte and word compound arithmetic accepts indexed array elements on the
+  right, including runtime indexes (`Total *= Values[Index]`).
 - signed integer division truncates toward zero; `int()` on fp5 remains floor-style.
 - fixed/fixed32/fp5 operators use dedicated runtime helpers and may cost more
   ROM than byte/word arithmetic.

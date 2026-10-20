@@ -1,3 +1,16 @@
+## 2026-10-20 - Indexed compound multiplication and new ports
+
+- Fixed `u16 *= Array[Index]`, which could overwrite the left operand while
+  calculating the indexed address and multiply the element by itself.
+- Fixed `u8 *= Array[Index]`, which previously reached the assembler as an
+  invalid symbolic expression.
+- Added five-profile GearColeco runtime coverage for constant and dynamic
+  byte/word indexes and boot-tested eleven new game ports.
+- Added Circus, Colorbot, Demons of Osiris, Gotcha!, Horse Racing, Lightsaver,
+  Missile Math, The Number Game, Quatrainment, TI Aquarium and Trident.
+- Regenerated The Number Game's `three` voice with a stronger fricative and
+  longer `th-r` transition so it remains distinct after VoxPCM encoding.
+
 ## 2026-10-20 - Runtime initialization and frame-wait hardening
 
 - Inlined generated-only RAM initializers at their single call site while

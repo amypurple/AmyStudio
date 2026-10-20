@@ -1,0 +1,631 @@
+cartridge "GOTCHA!/PRESENTS DOUG SMOAK'S/1984"
+
+' GOTCHA!
+' By Doug Smoak, COMPUTE! magazine, February 1984: written for the
+' unexpanded VIC-20, with versions for the Commodore 64 and the Atari.
+' All credit belongs to Doug Smoak.
+'
+' Historical context (summary of the article):
+' Grab every dollar you can while staying away from the Collector, who
+' is not after the money: he is after you. The game starts inside a
+' diamond in the middle of the screen with the Collector close behind.
+' The player moves in eight directions; the Collector only runs in
+' straight lines across the screen. Run off one side and you come back on
+' the other, but the Collector knows where you are and comes onto the
+' screen headed straight for you. Clear all the money and the next round
+' has more of it, each dollar worth more, and after the first round the
+' screen becomes a maze that limits your moves and makes you easier to
+' track. Survive eighteen rounds (nobody had) and you can retire.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the player in eight directions (either
+' joystick).
+' The rules follow the 64 listing, the most complete of the three: the
+' player moves only onto blank cells or dollars (line 85), leaves one
+' side of the screen to enter the other, and cannot pass the top or the
+' bottom (lines 81-84); the Collector appears at the edge of the player's
+' row and runs straight across it, one cell per step, erasing what he
+' passes, and after crossing the screen, or when the player wraps
+' around, he comes back on the player's row (lines 2 and 180); each
+' dollar is worth 10 x (round + 1) (line 1050); the round ends when every
+' dollar is gone, taken by the player or by the Collector (lines 3-6,
+' 60); the first round is the diamond (lines 1000-1018), the others the
+' maze (lines 350-460); the high score is kept.
+' Adaptation liberties: the Collector always enters on the side farther
+' from the player (the listing picked a side at random, which could land
+' him on top of a player who had just wrapped around); dollars per round
+' follow the Atari, 30 + 7 x round (the 64's 30 + 20 x round fills the
+' screen); the maze is drawn as walls with diagonal rows of openings, in
+' the spirit of the 64's diagonal pieces; steps speed up a little every
+' three rounds; the player and the Collector glide between cells, and
+' the Collector faces the way he runs; surviving eighteen rounds ends the
+' game with a retirement; an original title tune (Tiny Sound); a menu
+' after the game; an editorial page. The frame loop is protected from the
+' NMI.
+' Screen: score line on row 1; field on columns 2-29, rows 2-22.
+
+const BarTile = 128
+const RampL = 129              ' bar end, rising on the left
+const RampR = 130              ' bar end, falling on the right
+const MoneyTile = 131
+const Blank = 32
+
+' Sound table slots (gc/s.mjs)
+const SndCash = 1
+const SndCaught = 2
+const SndRound = 3
+const SndStep = 4
+const SndHigh = 5
+const SndBeep = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+bcd digits 5 Score             ' SC
+bcd digits 5 HighScore         ' HS
+u8 RD = 0                      ' round, 0-17
+u8 IT = 0                      ' dollars gone this round
+u8 Money = 0                   ' dollars this round
+u8 PX = 15                     ' player cell (ME)
+u8 PY = 12
+u8 OPX = 15
+u8 OPY = 12
+u8 EX = 2                      ' Collector cell (ET)
+u8 EY = 12
+u8 OEX = 2
+u8 CH = 1                      ' Collector direction: 1 right, 255 left
+u8 J = 0                       ' Collector steps across
+u8 Tick = 8
+u8 Frm = 0
+u8 DXs = 1                     ' player step, stored + 1
+u8 DYs = 1
+u8 Stick = 0
+bool Wrapped = false
+bool Caught = false
+u8 I = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 W = 0
+u8 SX = 0
+u8 SY = 0
+u8 Off = 0
+u8 Choice = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table GotchaSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy SpritePat count 40 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  ' --- Lines 1300-1520: the title ---
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Score = 0
+  RD = 0
+
+new_round:
+  ' --- Lines 200-505: the field, the money, the start ---
+  DrawField
+  Money = RD * 7
+  Money += 30
+  IT = 0
+  PlaceMoney
+  ShowScore
+  PX = 15
+  PY = 12
+  OPX = PX
+  OPY = PY
+  Retarget
+  Caught = false
+  Tick = RD / 3
+  Tick = 9 - Tick
+  Frm = 0
+  nmi on
+  DrawSprites
+  wait 60 frames
+
+  ' --- Lines 52-90, 180: the main loop, one step per Tick frames ---
+main_loop:
+  nmi on
+  wait
+  nmi off
+  inc Frm
+  if Frm < Tick then
+    DrawSprites
+    goto main_loop
+  end if
+  Frm = 0
+  OPX = PX
+  OPY = PY
+  OEX = EX
+  MovePlayer
+  MoveCollector
+  ' Gotcha: the same cell, or the two passing through each other
+  if EX = PX then
+    if EY = PY then Caught = true
+  end if
+  if EX = OPX then
+    if OEX = PX then
+      if EY = PY then Caught = true
+    end if
+  end if
+  if Caught then goto gotcha
+  DrawSprites
+  if IT >= Money then goto made_it
+  goto main_loop
+
+  ' --- Line 201: the round is cleared ---
+made_it:
+  nmi on
+  HideSprites
+  play sound SndRound
+  fill 32 count 28 at 2,12
+  print at 10,12, "YOU MADE IT!"
+  wait 120 frames
+  inc RD
+  if RD < 18 then goto new_round
+  goto retire
+
+  ' --- Lines 1100-1130: Gotcha! ---
+gotcha:
+  nmi on
+  play sound SndCaught
+  for K = 0 to 59
+    N = K & 4
+    V = 15
+    if N = 0 then V = 8
+    X = PX * 8
+    Y = PY * 8
+    dec Y
+    set sprite 0 to Y,X,0,V
+    update sprites
+    wait
+  next
+  fill 32 count 28 at 2,12
+  print at 11,12, "GOTCHA!"
+  wait 90 frames
+  goto final_page
+
+  ' --- Adaptation: eighteen rounds survived ---
+retire:
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark green
+  print at 6,8, "EIGHTEEN ROUNDS!"
+  print at 4,10, "NOBODY HAD EVER DONE IT."
+  print at 4,11, "YOU RETIRE RICH."
+  wait 180 frames
+
+final_page:
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 8,4, "SCORE"
+  print Score at 15,4
+  print at 8,6, "HIGH"
+  print HighScore at 15,6
+  print at 8,8, "ROUND"
+  NumU = RD + 1
+  if NumU > 18 then NumU = 18
+  print at 15,8, digits$(NumU, 2)
+  if Score > HighScore then
+    HighScore = Score
+    print HighScore at 15,6
+    print at 6,11, "A NEW HIGH SCORE!"
+    play sound SndHigh
+  end if
+  print at 8,15, "PLAY AGAIN"
+  print at 8,16, "TITLE PAGE"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 6,15 step 1
+  wait no fire
+  if Choice = 1 then
+    Score = 0
+    RD = 0
+    goto new_round
+  end if
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 61-85: the stick moves the player onto a blank cell or a dollar;
+' the sides wrap, the top and bottom stop him
+sub MovePlayer:
+  Wrapped = false
+  ReadStick
+  X = PX + DXs
+  dec X
+  Y = PY + DYs
+  dec Y
+  if X < 2 then
+    X = 29
+    Wrapped = true
+  end if
+  if X > 29 then
+    X = 2
+    Wrapped = true
+  end if
+  if Y < 2 then Y = 2
+  if Y > 22 then Y = 22
+  T = get char at X,Y
+  if T = MoneyTile then
+    ' Line 1050: SC = SC + 10 * (1 + RD)
+    put char Blank at X,Y
+    for I = 0 to RD
+      Score += 10
+    next
+    inc IT
+    play sound SndCash
+    ShowScore
+    T = Blank
+  end if
+  if T = Blank then
+    PX = X
+    PY = Y
+  else
+    Wrapped = false
+  end if
+  return
+end sub
+
+' Lines 2, 180: the Collector runs across the player's row, erasing what
+' he passes, and comes back after crossing or when the player wraps
+sub MoveCollector:
+  if Wrapped then
+    Retarget
+    return
+  end if
+  EX += CH
+  inc J
+  if EX < 2 then
+    Retarget
+    return
+  end if
+  if EX > 29 then
+    Retarget
+    return
+  end if
+  T = get char at EX,EY
+  if T = MoneyTile then inc IT
+  put char Blank at EX,EY
+  play sound SndStep
+  if J >= 28 then Retarget
+  return
+end sub
+
+' He enters on the player's row, on the side farther from him
+sub Retarget:
+  EY = PY
+  J = 0
+  if PX >= 16 then
+    EX = 2
+    CH = 1
+  else
+    EX = 29
+    CH = 255
+  end if
+  OEX = EX
+  T = get char at EX,EY
+  if T = MoneyTile then inc IT
+  put char Blank at EX,EY
+  return
+end sub
+
+' Stick to a step of -1, 0 or +1 (stored + 1)
+sub ReadStick:
+  DXs = 1
+  DYs = 1
+  Stick = 0
+  if joypad(1).up then Stick |= 1
+  if joypad(2).up then Stick |= 1
+  if joypad(1).down then Stick |= 2
+  if joypad(2).down then Stick |= 2
+  if joypad(1).left then Stick |= 4
+  if joypad(2).left then Stick |= 4
+  if joypad(1).right then Stick |= 8
+  if joypad(2).right then Stick |= 8
+  N = Stick & 3
+  if N = 1 then DYs = 0
+  if N = 2 then DYs = 2
+  N = Stick & 12
+  if N = 4 then DXs = 0
+  if N = 8 then DXs = 2
+  return
+end sub
+
+' Sprite 0 the player, sprite 1 the Collector, gliding between cells
+sub DrawSprites:
+  Off = Frm * 8
+  Off /= Tick
+  ' Player
+  X = PX * 8
+  Y = PY * 8
+  if PX <> OPX then
+    if not Wrapped then
+      SX = OPX * 8
+      if PX > OPX then
+        X = SX + Off
+      else
+        X = SX - Off
+      end if
+    end if
+  end if
+  if PY <> OPY then
+    SY = OPY * 8
+    if PY > OPY then
+      Y = SY + Off
+    else
+      Y = SY - Off
+    end if
+  end if
+  dec Y
+  set sprite 0 to Y,X,0,15
+  ' Collector, facing the way he runs
+  X = EX * 8
+  if EX <> OEX then
+    SX = OEX * 8
+    if CH = 1 then
+      X = SX + Off
+    else
+      X = SX - Off
+    end if
+  end if
+  Y = EY * 8
+  dec Y
+  V = 3
+  if CH = 1 then V = 1
+  N = frame
+  N &= 8
+  if N <> 0 then inc V
+  set sprite 1 to Y,X,V,8
+  update sprites
+  return
+end sub
+
+' Lines 470-500: dollars on random blank cells
+sub PlaceMoney:
+  for K = 1 to Money
+place_one:
+    X = random(2, 29)
+    Y = random(2, 22)
+    if X = 15 then
+      if Y = 12 then goto place_one
+    end if
+    T = get char at X,Y
+    if T <> Blank then goto place_one
+    put char MoneyTile at X,Y
+  next
+  return
+end sub
+
+' Lines 1000-1018 (round 1): the diamond; lines 350-460: the maze
+sub DrawField:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  if RD = 0 then
+    ' Ten bars on rows 3-21, 2 to 18 cells wide, centred on columns 15-16
+    for K = 0 to 9
+      W = DiamondW[K]
+      Y = K * 2
+      Y += 3
+      X = W >> 1
+      X = 16 - X
+      fill BarTile count W at X,Y
+      put char RampL at X,Y
+      X += W
+      dec X
+      put char RampR at X,Y
+    next
+  else
+    ' Walls on rows 3-21 with openings that run in diagonals
+    for K = 0 to 9
+      Y = K * 2
+      Y += 3
+      fill BarTile count 28 at 2,Y
+      V = K * 2
+      if K >= 5 then V = 18 - V
+      for X = 2 to 29
+        N = X + V
+        N &= 7
+        if N < 2 then
+          put char Blank at X,Y
+        end if
+      next
+    next
+  end if
+  return
+end sub
+
+sub ShowScore:
+  print at 2,1, "SCORE"
+  print Score at 8,1
+  print at 14,1, "RD"
+  NumU = RD + 1
+  print at 17,1, digits$(NumU, 2)
+  print at 21,1, "HI"
+  print HighScore at 24,1
+  return
+end sub
+
+' Graphics II: tiles 128-131 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 32 to vram.pattern + Dst16
+    copy TileCol count 32 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' Lines 1300-1402: the title page
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  print at 11,2, "GOTCHA!!"
+  print at 3,5, "GOAL: GATHER ALL THE MONEY"
+  print at 3,6, "IN EACH ROUND WITHOUT"
+  print at 3,7, "BEING CAUGHT BY THE"
+  print at 3,8, "COLLECTOR."
+  put char MoneyTile at 4,10
+  print at 6,10, "ONE DOLLAR: 10 POINTS,"
+  print at 6,11, "MORE EACH ROUND."
+  print at 3,13, "HE RUNS STRAIGHT ACROSS"
+  print at 3,14, "YOUR ROW. RUN OFF A SIDE"
+  print at 3,15, "TO COME BACK ON THE OTHER,"
+  print at 3,16, "BUT HE WILL KNOW."
+  print at 3,18, "SURVIVE 18 ROUNDS TO RETIRE."
+  print at 3,20, "HIGH"
+  print HighScore at 8,20
+  print at 5,22, "PRESS FIRE TO BEGIN"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 12,1, "GOTCHA!"
+  print at 8,3, "BY DOUG SMOAK"
+  print at 5,4, "COMPUTE! FEBRUARY 1984"
+  print at 2,6, "WRITTEN FOR THE UNEXPANDED"
+  print at 2,7, "VIC-20, WITH VERSIONS FOR"
+  print at 2,8, "THE 64 AND THE ATARI."
+  print at 2,10, "GRAB THE DOLLARS, DODGE THE"
+  print at 2,11, "COLLECTOR. HE ONLY RUNS IN"
+  print at 2,12, "STRAIGHT LINES, BUT HE"
+  print at 2,13, "ALWAYS KNOWS YOUR ROW."
+  print at 2,15, "AFTER THE DIAMOND OF ROUND"
+  print at 2,16, "ONE, THE SCREEN TURNS INTO"
+  print at 2,17, "A MAZE."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Diamond bar widths, top to bottom
+data DiamondW bytes 2,6,10,14,18,18,14,10,6,2
+
+' Sprites (64 lines 1250-1290, Atari 1250-1260): the player, the Collector
+' facing right (two frames; the Atari's 60,103,126,120,... has its mouth
+' on the right), facing left (two frames)
+data SpritePat bytes
+  $30,$12,$9C,$78,$18,$28,$24,$22
+  $3C,$67,$7E,$78,$78,$7E,$7F,$3E
+  $3C,$67,$7E,$7F,$7F,$7E,$7F,$3E
+  $3C,$E6,$7E,$1E,$1E,$7E,$FE,$7C
+  $3C,$E6,$7E,$FE,$FE,$7E,$FE,$7C
+end data
+
+' Tiles 128-131: bar, left end, right end, dollar
+data TilePat bytes
+  $FF,$FF,$FF,$00,$FF,$FF,$FF,$00
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $10,$7C,$90,$7C,$12,$7C,$10,$00
+end data
+
+data TileCol bytes
+  $A1,$A1,$A1,$A1,$91,$91,$91,$91
+  $A1,$A1,$A1,$A1,$91,$91,$91,$91
+  $A1,$A1,$A1,$A1,$91,$91,$91,$91
+  $31,$31,$31,$31,$31,$31,$31,$31
+end data
+
+asm {
+CashT1:
+    db $40,$5D,$10,$02,$40,$4B,$10,$02,$40,$3E,$10,$02,$40,$35,$10,$02,$40,$2F,$10,$02,$50
+CaughtT1:
+    db $40,$18,$01,$02,$40,$1D,$01,$02,$40,$23,$01,$02,$40,$2A,$01,$02,$40,$30,$01,$02,$40,$37,$01,$02
+    db $40,$3E,$01,$02,$40,$45,$01,$02,$40,$4D,$01,$02,$40,$55,$01,$02,$40,$5E,$01,$02,$40,$67,$01,$02
+    db $40,$70,$01,$02,$40,$7A,$01,$02,$40,$84,$01,$02,$40,$90,$01,$02,$40,$9B,$01,$02,$40,$A8,$01,$02
+    db $40,$B5,$01,$02,$40,$C3,$01,$02,$40,$D2,$01,$02,$40,$E2,$01,$02,$40,$F3,$01,$02,$40,$06,$02,$02
+    db $40,$1A,$02,$02,$40,$2F,$02,$02,$40,$47,$02,$02,$40,$60,$02,$02,$40,$7C,$02,$02,$40,$9A,$02,$02
+    db $40,$BB,$02,$02,$40,$E0,$02,$02,$40,$09,$03,$02,$40,$37,$03,$02,$40,$6A,$03,$02,$40,$A4,$03,$02
+    db $40,$E7,$03,$02,$40,$FF,$03,$02,$40,$FF,$03,$02,$40,$FF,$03,$02,$40,$FF,$03,$02,$40,$FF,$F3,$1E
+    db $50
+RoundT1:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$18
+    db $50
+StepT1:
+    db $40,$F9,$43,$02,$50
+HighT1:
+    db $40,$6B,$10,$05,$40,$55,$10,$05,$40,$6B,$10,$05,$40,$55,$10,$05,$40,$6B,$10,$05,$40,$55,$10,$05
+    db $50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+GotchaSoundTable:
+    dw CashT1,$7035
+    dw CaughtT1,$7035
+    dw RoundT1,$7035
+    dw StepT1,$7035
+    dw HighT1,$7035
+    dw BeepT1,$7035
+    dw GotchaTuneMel,$703F
+    dw GotchaTuneBass,$7049
+; Title tune: a sneaking theme in E minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+GotchaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$17,$01,$1A,$01,$1E,$01,$1C,$1A,$19,$01,$1C,$01
+    db $1F,$01,$1E,$00,$17,$01,$1A,$01,$1E,$01,$23,$21,$1F,$01,$1E,$01
+    db $1C,$00,$00,$01,$02,$10,$1A,$21,$23,$01,$21,$01,$1F,$01,$1E,$01
+    db $1C,$01,$1F,$01,$1E,$00,$00,$01,$02,$30,$1A,$21,$1A,$01,$1E,$01
+    db $21,$01,$1F,$1E,$02,$60,$1A,$21,$1C,$01,$19,$01,$17,$00,$00,$01
+    db $FF
+GotchaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$0B,$00,$12,$00,$0B,$00,$12,$00,$09,$00,$10,$00
+    db $09,$00,$10,$00,$0B,$00,$12,$00,$0B,$00,$12,$00,$10,$00,$0D,$00
+    db $12,$00,$00,$01,$02,$30,$18,$32,$13,$00,$0E,$00,$13,$00,$0E,$00
+    db $15,$00,$10,$00,$12,$00,$00,$01,$02,$50,$18,$32,$0B,$00,$12,$00
+    db $0E,$00,$12,$00,$02,$80,$18,$32,$12,$00,$0D,$00,$0B,$00,$00,$01
+    db $FF
+}

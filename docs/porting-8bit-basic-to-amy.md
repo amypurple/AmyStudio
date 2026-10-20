@@ -280,21 +280,18 @@ For rows of tiles that drift horizontally (Bunny Hop's clouds):
 
 ### Statements
 
-- A single-line `if ... then` accepts assignments, `inc`/`dec`, `goto`,
-  subroutine calls, `print` and `set sprite`. Use the block form for
-  `put char`, `fill`, `play sound` and other unsupported statements. The
-  compiler's porting-guide contract test records the exact boundary.
+- A single-line `if ... then` accepts assignments, `inc`/`dec`, `goto` and
+  subroutine calls, but not `put char`, `print`, `play sound`, `fill`,
+  `set sprite` and similar: use the block form.
 - Reserved names cannot be variables or labels: `play`, `Fire`, `Start`
   (when a label `start:` exists) all failed. Prefer descriptive names
   (`play_round`, `Planting`, `RowStart`).
-- A `u16` can be loaded straight from a `u8` RAM array element. A byte in a
-  ROM data table still needs an intermediate `u8` variable before widening
-  (`Temp = V0Tab[T]`, then `V0 = Temp`).
+- A `u16` cannot be loaded straight from a `u8` array element or a ROM table
+  (`V0 = V0Tab[T]` fails): go through a `u8` variable.
 - `copy Source count N to Array + Offset` (offset destination in RAM) is
   not supported; `copy Array + K count N to Array` is. Variable counts and
   destinations work for `put` and `merge` to VRAM.
-- `random(A, B)` accepts constant or `u8` variable bounds and includes both
-  endpoints. Keep `A <= B`; use byte-sized bounds in hot code.
+- `random(A, B)` with constant bounds is the reliable form.
 - BCD accepts `+=` only with literals or constants: add a variable amount
   with a loop of `Score += 1`.
 - `i32` + `str$` gives an 11-character buffer: sign at index 0, ten digits
@@ -326,9 +323,8 @@ up fast. Blueberries' computer opponent slowed the whole game down until
 `CI / 26`, `CI % 26` and `R * 26` were replaced by two ROM lookup tables and
 ±1 / ±26 neighbour steps. Also:
 
-- Mixed `i16`/`u8` comparisons are promoted directly to the signed 16-bit
-  path. Matching types can still make intent clearer, but are no longer
-  required to avoid a 32-bit helper.
+- Comparisons between an `i16` and a `u8` compile to a 32-bit compare; keep
+  hot comparisons in one type.
 - `get char at` reads VRAM; fine for a few dozen cells per frame, not for
   hundreds.
 - Spread long searches across frames (Blueberries does 12 cells of its
@@ -337,16 +333,13 @@ up fast. Blueberries' computer opponent slowed the whole game down until
 
 ### The frame budget and the NMI
 
-The NMI handler normally reads the VDP status register. If that happened in
-the middle of a VRAM transfer, the read would reset the VDP address latch and
-the rest of the transfer would land at a wrong address: random characters or
-corrupted glyphs (Bunny Hop). Amy now checks its `$701F` VDP guard before
-acknowledging the interrupt. A protected transfer defers the acknowledgement
-until the generated release helper finishes the VDP access, so long transfers
-remain correct even when an NMI arrives.
-
-For predictable frame pacing, a game may still group unusually large redraws
-outside the active NMI interval:
+The NMI handler reads the VDP status register. If a frame's work runs past
+the next NMI while a VRAM transfer is in progress, the status read resets
+the VDP address latch and the rest of the transfer lands at a wrong address:
+random characters or corrupted glyphs (Bunny Hop). The generated NMI
+currently reads the status before checking Amy's `$701F` guard (reported in
+`amy-port-feedback-2026-10-19.md`, item 12). Until that changes, protect
+any game whose frame work can grow:
 
 ```basic
 sub FrameUpdate:
@@ -358,10 +351,9 @@ sub FrameUpdate:
 end sub
 ```
 
-Turn `nmi on` again before any other `wait`, menu, `pause until press` or end
-screen. This is a scheduling technique, not a required corruption workaround;
-ordinary `put`, `copy`, `fill` and generated display operations already use
-the VDP guard.
+Turn `nmi on` again before any other `wait`, menu, `pause until press` or
+end screen, and use `nmi off` around large redraws. An overrun then costs a
+frame instead of corrupting the screen.
 
 ### Reading the generated assembly
 
@@ -375,6 +367,32 @@ and check:
   stack grows down toward the variables. Keep at least about 150 bytes free.
 
 ---
+
+### Naming and colors (January-February 1984 ports)
+
+- Never name a variable like a hex byte (`FC`, `C1`, `BE`): every `$FC` or
+  `$C1` in a `data` block then assembles as that variable and fails far
+  from the cause (TI Aquarium, Circus).
+- `fill mode 2 text color` resets the whole color table, custom tiles
+  included. Call `LoadTiles` right after it on every screen (Trident,
+  Circus, Gotcha!, Quatrainment, Colorbot, TI Aquarium lost their tile
+  colors).
+- `backdrop` takes a color name or a literal, not a variable: use an `if`
+  per color (TI Mozart's `CALL SCREEN(KOL)`).
+- Compare array elements and `i16` values through a scalar copy and a
+  literal: `if FX[I] >= 4096` and `if T < Const` are refused.
+
+### Reading the listing
+
+- Read every line of a pattern routine before modelling it: missing one
+  `GCHAR`/`HCHAR` pair (Quatrainment's corners) changes the whole puzzle.
+  Check the result mathematically when you can (rank of the press table).
+- Zoom into blurred scans before guessing values (Circus's line 50 and its
+  DATA music were readable at 3x).
+- Check which way a shape faces from its bits: the empty side of a
+  "pac-man" row is its mouth (Gotcha!'s Collector).
+- Count what the listing draws against what it waits for: Circus drew 81
+  balloons and waited for 84.
 
 ## 9. Sound and music
 

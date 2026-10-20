@@ -1,0 +1,1003 @@
+cartridge "HORSE RACING/PRESENTS ROBERT ONUFER'S/1984"
+
+' HORSE RACING
+' By Robert Onufer, COMPUTE! magazine, October 1984: written for the
+' TI-99/4A with Extended BASIC, with versions for the Commodore 64 and
+' VIC-20 (Jeff Hamdani), the IBM PC and PCjr (Gregg Peele) and the Apple
+' II (Patrick Parrish). All credit belongs to Robert Onufer and to the
+' translators.
+'
+' Historical context (summary of the article):
+' A race-track betting game for up to nine players, each starting with
+' $500, over five races; the richest player after the fifth race wins.
+' The odds are recalculated before each race from the money wagered, so
+' the favorite always pays less, and the new odds are posted just before
+' the start. Track conditions change from race to race, and each
+' condition gives one horse an advantage, the way long shots can win on
+' a slippery track; it is built into the initial odds too, so that horse
+' is often, but not always, the favorite. On the TI the horses are
+' magnified 16 x 16 sprites, animated by alternating two patterns, their
+' speed changed at random as they run; the horse farthest past the
+' finish line wins, and the payoffs and a summary follow each race.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: all choices with the joystick (either one): left and right
+' change a number, up and down change an amount by 100, fire accepts.
+' This port takes the best of the five versions:
+' - TI: the rules and numbers. Initial odds M(I) = INT(1000 * RND) +
+'   AM(I), AM = 500 for the horse the track condition favors (lines
+'   1080-1140); OD = INT(MT / M(I)), 20 at most; the wagers are added to
+'   M and the odds posted again (lines 1150-1330); bets of $0-999 (SIZE
+'   3), never more than the player's cash; speed INT(5 * RND + AD(I)) with
+'   AD = 0.4 for the favored horse, changed at random during the race
+'   (lines 740-800); the horse farthest along wins (lines 810-870); the
+'   winner shown magnified (lines 900-930); payoff = amount x odds, a lost
+'   bet is taken away (lines 1340-1380); five races, broke players stop
+'   betting, the game ends when everyone is broke (lines 1440-1450); the
+'   track colors change with the condition (lines 710-720); the bugle
+'   call to the post (lines 110-140, 990), played before each race.
+' - 64: horses with riders in the jockey's own colors (multicolor
+'   sprites), "HANOVER DOWNS" over the track.
+' - IBM: the numbered lanes on the side; horse 1 at the bottom, as all
+'   versions say.
+' - Apple: smooth movement (it flipped two hi-res pages); here the horses
+'   move in fractions of a pixel every frame.
+' Adaptation liberties: a three-stride gallop and a bobbing jockey; a
+' grandstand whose crowd waves and roars near the finish; hoofbeats; a
+' cash bell for each winning ticket; the final standings name the
+' richest player; "Camptown Races" (Stephen Foster, 1850) as the title
+' tune (Tiny Sound); the odds paid are the posted odds (20 to 1 at most,
+' as on the board); an editorial page. The frame loop is protected from
+' the NMI.
+' Screen: race line on row 1; grandstand rows 2-5; rails rows 6 and 18;
+' lanes rows 8-17 (horse 1 at the bottom); finish post at column 28.
+
+const RoofTile = 128
+const CrowdA = 129
+const CrowdB = 130
+const RailTile = 131
+const DirtTile = 132
+const GrassTile = 133
+const PostTile = 134
+const HedgeTile = 135
+const SignTile = 136
+const StartX = 24              ' horses' left edge at the gate
+const FinishX = 212            ' a nose at the post (column 28)
+
+' Sound table slots (hr/s.mjs)
+const SndBugle = 1
+const SndHoof = 2
+const SndCrowd = 3
+const SndCashA = 4
+const SndCashB = 5
+const SndBeep = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+u8 NP = 2                      ' N, players
+u16 Cash[9]                    ' CASH(I)
+u8 Bet[9]                      ' H(I), 0 = no bet
+u16 Amt[9]                     ' AMT(I)
+u16 M[5]                       ' M(I), money on each horse
+u16 MT = 0
+u8 OD[5]                       ' odds, "OD TO 1"
+u8 TC = 1                      ' T, the track condition 1-5
+u8 Race = 1                    ' K
+u8 Win = 0                     ' the winning horse, 1-5
+u16 HX16[5]                    ' horse positions, 8.8
+u16 HStep[5]                    ' per-frame steps, 8.8
+u8 Anim[5]                     ' gallop phase
+u8 AnimT[5]
+u8 SpT = 0
+u8 CrowdT = 0
+bool Finished = false
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Choice = 0
+u8 Best = 0
+u16 BestX = 0
+u16 T16 = 0
+u16 W16 = 0
+u16 SelV = 0                   ' joystick number entry
+u16 SelMin = 0
+u16 SelMax = 0
+u8 SelStep = 1
+u8 SelBig = 0
+u8 SelX = 0
+u8 SelY = 0
+u8 SelW = 3
+u8 Hold = 0
+u16 Dst16 = 0
+u16 NumU = 0
+u8 NX = 0                      ' PutNum position and width
+u8 NY = 0
+u8 NW = 0
+
+  tile screen
+  set sound table HorseSoundTable areas 4
+  sprites 16x16
+  copy SpritePat count 160 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  ' --- TI lines 220-330: the title, the players, the rules ---
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  for I = 0 to 8
+    Cash[I] = 500
+  next
+  Race = 1
+
+new_race:
+  ' --- Lines 1000-1070: the track condition ---
+  TC = random(1, 5)
+  ConditionPage
+  ' --- Lines 1080-1140: the initial odds ---
+  MT = 0
+  for I = 0 to 4
+    ' INT(1000 * RND), in two bytes: 4 x (0-249) + (1-4)
+    N = random(0, 249)
+    T16 = N
+    T16 *= 4
+    N = random(1, 4)
+    T16 += N
+    N = I + 1
+    if N = TC then T16 += 500
+    M[I] = T16
+    MT += T16
+  next
+  ComputeOdds
+  ' --- Lines 1150-1330: the bets and the new odds ---
+  BetsPage
+  ComputeOdds
+  NewOddsPage
+  ' --- Lines 390-550: the race ---
+  DrawTrack
+  RunRace
+  ' --- Lines 880-930: the winner ---
+  WinnerPage
+  ' --- Lines 1340-1450: the payoffs and the summary ---
+  Payoffs
+  SummaryPage
+  ' Everyone broke?
+  N = 0
+  for I = 0 to NP - 1
+    if Cash[I] > 0 then N = 1
+  next
+  if N = 0 then goto game_over
+  inc Race
+  if Race <= 5 then goto new_race
+
+game_over:
+  ' --- Lines 1460-1520 ---
+  FinalPage
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' OD(I) = INT(MT / M(I)), at most 20, at least 1
+sub ComputeOdds:
+  MT = 0
+  for I = 0 to 4
+    MT += M[I]
+  next
+  for I = 0 to 4
+    T16 = M[I]
+    W16 = MT / T16
+    if W16 > 20 then W16 = 20
+    if W16 < 1 then W16 = 1
+    OD[I] = W16
+  next
+  return
+end sub
+
+' Lines 1000-1070
+sub ConditionPage:
+  TextPage
+  NumU = Race
+  print at 12,8, "RACE "
+  NX = 12
+  NX += 5
+  NY = 8
+  PutNum
+  print at 6,12, "TRACK CONDITION:"
+  ShowCondition
+  wait 150 frames
+  return
+end sub
+
+sub ShowCondition:
+  if TC = 1 then print at 23,12, "FAST"
+  if TC = 2 then print at 23,12, "GOOD"
+  if TC = 3 then print at 23,12, "SLOW"
+  if TC = 4 then print at 23,12, "MUDDY"
+  if TC = 5 then print at 23,12, "TURF"
+  return
+end sub
+
+' Lines 1160-1270: each player with cash picks a horse and an amount
+sub BetsPage:
+  for J = 0 to NP - 1
+    Bet[J] = 0
+    Amt[J] = 0
+    if Cash[J] > 0 then
+      TextPage
+      OddsTable
+      NumU = J + 1
+      print at 3,12, "PLAYER "
+      NX = 3
+      NX += 7
+      NY = 12
+      PutNum
+      NumU = Cash[J]
+      print at 14,12, "CASH $"
+      NX = 14
+      NX += 6
+      NY = 12
+      PutNum
+      print at 3,14, "BETS ON HORSE"
+      print at 3,16, "AMOUNT $"
+      print at 3,19, "L/R: CHANGE  UP/DOWN: 100"
+      print at 3,20, "FIRE: ACCEPT"
+      SelV = 1
+      SelMin = 1
+      SelMax = 5
+      SelStep = 1
+      SelBig = 0
+      SelX = 18
+      SelY = 14
+      SelW = 1
+      SelectNumber
+      Bet[J] = SelV
+      SelV = 0
+      SelMin = 0
+      SelMax = Cash[J]
+      if SelMax > 999 then SelMax = 999
+      SelStep = 10
+      SelBig = 1
+      SelX = 12
+      SelY = 16
+      SelW = 3
+      SelectNumber
+      Amt[J] = SelV
+      ' Line 1250: the wager joins the money on that horse
+      N = Bet[J] - 1
+      T16 = M[N] + SelV
+      M[N] = T16
+    end if
+  next
+  return
+end sub
+
+' The current odds, horses 1-5
+sub OddsTable:
+  print at 8,2, "CURRENT ODDS"
+  for I = 0 to 4
+    Y = I + 4
+    NumU = I + 1
+    print at 6,Y, "HORSE "
+    NX = 6
+    NX += 6
+    NY = Y
+    PutNum
+    NumU = OD[I]
+    NX = 15
+    NY = Y
+    PutNum
+    NX += NW
+    print at NX,NY, " TO 1"
+  next
+  return
+end sub
+
+' Lines 1280-1330
+sub NewOddsPage:
+  TextPage
+  print at 11,3, "NEW ODDS"
+  for I = 0 to 4
+    Y = I * 2
+    Y += 6
+    NumU = I + 1
+    print at 7,Y, "HORSE "
+    NX = 7
+    NX += 6
+    NY = Y
+    PutNum
+    NumU = OD[I]
+    NX = 16
+    NY = Y
+    PutNum
+    NX += NW
+    print at NX,NY, " TO 1"
+  next
+  print at 7,19, "TRACK:"
+  Y = 19
+  ShowConditionAt
+  print at 6,21, "PRESS FIRE TO RACE"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+sub ShowConditionAt:
+  if TC = 1 then print at 14,Y, "FAST"
+  if TC = 2 then print at 14,Y, "GOOD"
+  if TC = 3 then print at 14,Y, "SLOW"
+  if TC = 4 then print at 14,Y, "MUDDY"
+  if TC = 5 then print at 14,Y, "TURF"
+  return
+end sub
+
+' Lines 560-720: the track, grandstand and sign, colored by condition
+sub DrawTrack:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  ' The text background is transparent: a dark blue backdrop matches the
+  ' sign board, so letters show no boxes
+  backdrop dark blue
+  ShowRaceLine
+  fill RoofTile count 32 at 0,2
+  for Y = 3 to 4
+    for X = 0 to 31
+      N = X + Y
+      N &= 1
+      V = CrowdA + N
+      put char V at X,Y
+    next
+  next
+  fill SignTile count 32 at 0,5
+  print at 9,5, "HANOVER DOWNS"
+  fill RailTile count 32 at 0,6
+  for Y = 7 to 17
+    fill DirtTile count 32 at 0,Y
+    put char PostTile at 28,Y
+  next
+  fill RailTile count 32 at 0,18
+  for Y = 19 to 23
+    fill GrassTile count 32 at 0,Y
+  next
+  fill HedgeTile count 26 at 3,20
+  ' Lane numbers (IBM): horse 1 at the bottom
+  for I = 1 to 5
+    Y = 18 - I * 2
+    N = I + 48
+    put char N at 2,Y
+  next
+  ' Lines 710-720: the track's color
+  N = TC - 1
+  V = DirtCol[N]
+  Dst16 = 1056
+  for K = 0 to 2
+    fill V count 8 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  ' The lane numbers (digits 1-5, rows 8-16: second and third thirds)
+  ' take the track's background, white on dirt
+  V &= 15
+  V |= $F0
+  fill V count 40 to vram.color + 2440
+  fill V count 40 to vram.color + 4488
+  return
+end sub
+
+sub ShowRaceLine:
+  fill 32 count 28 at 2,1
+  NumU = Race
+  print at 2,1, "RACE "
+  NX = 2
+  NX += 5
+  NY = 1
+  PutNum
+  print at 12,1, "TRACK:"
+  Y = 1
+  if TC = 1 then print at 19,Y, "FAST"
+  if TC = 2 then print at 19,Y, "GOOD"
+  if TC = 3 then print at 19,Y, "SLOW"
+  if TC = 4 then print at 19,Y, "MUDDY"
+  if TC = 5 then print at 19,Y, "TURF"
+  return
+end sub
+
+' Lines 430-550: the bugle, then the race
+sub RunRace:
+  for I = 0 to 4
+    T16 = StartX
+    T16 <<= 8
+    HX16[I] = T16
+    Anim[I] = 0
+    AnimT[I] = 0
+  next
+  NewSpeeds
+  DrawHorses
+  play sound SndBugle
+  wait 190 frames
+  fill 32 count 28 at 2,1
+  print at 8,1, "AND THEY'RE OFF!"
+  Finished = false
+  SpT = 0
+  CrowdT = 0
+race_loop:
+  nmi on
+  wait
+  nmi off
+  if SpT = 120 then ShowRaceLine
+  ' Lines 740-800: new random speeds every half second
+  inc SpT
+  N = SpT & 31
+  if N = 0 then NewSpeeds
+  for I = 0 to 4
+    T16 = HX16[I] + HStep[I]
+    HX16[I] = T16
+    ' The gallop runs faster when the horse does
+    inc AnimT[I]
+    T16 = HStep[I] >> 4
+    N = T16
+    V = 14 - N
+    N = AnimT[I]
+    if N >= V then
+      AnimT[I] = 0
+      N = Anim[I] + 1
+      N &= 3
+      Anim[I] = N
+    end if
+    T16 = HX16[I] >> 8
+    if T16 >= FinishX then Finished = true
+  next
+  N = SpT & 7
+  if N = 0 then
+    play sound SndHoof
+  end if
+  ' The crowd waves, faster near the finish
+  inc CrowdT
+  V = 12
+  if BestX >= 160 then V = 5
+  if CrowdT >= V then
+    CrowdT = 0
+    N = SpT & 1
+    if N = 0 then
+      copy CrowdPatB count 16 to vram.pattern + 1032
+    else
+      copy CrowdPatA count 16 to vram.pattern + 1032
+    end if
+  end if
+  ' Who leads?
+  BestX = 0
+  for I = 0 to 4
+    T16 = HX16[I]
+    if T16 > BestX then
+      BestX = T16
+      Best = I
+    end if
+  next
+  T16 = BestX >> 8
+  BestX = T16
+  DrawHorses
+  if not Finished then goto race_loop
+  ' Lines 810-870: the horse farthest along wins
+  Win = Best + 1
+  play sound SndCrowd
+  nmi on
+  for K = 1 to 60
+    wait
+  next
+  return
+end sub
+
+' SP = INT(5 * RND + AD(I)), AD = 0.4 for the favored horse; the step is
+' (SP + 2) x 21 / 256 pixel per frame (0.16 to 0.49)
+sub NewSpeeds:
+  for I = 0 to 4
+    N = random(0, 49)
+    J = I + 1
+    if J = TC then N += 4
+    N /= 10
+    N += 2
+    T16 = N
+    T16 *= 21
+    HStep[I] = T16
+  next
+  return
+end sub
+
+' Jockeys on sprites 0, 2, 4, 6, 8; horses on 1, 3, 5, 7, 9
+sub DrawHorses:
+  for I = 0 to 4
+    T16 = HX16[I] >> 8
+    X = T16
+    N = I * 2
+    N = 15 - N
+    Y = N * 8
+    dec Y
+    N = Anim[I]
+    V = GaitPat[N]
+    K = I * 2
+    J = 12
+    if N = 1 then J = 16
+    if N = 3 then J = 16
+    N = SilkCol[I]
+    set sprite K to Y,X,J,N
+    inc K
+    N = CoatCol[I]
+    set sprite K to Y,X,V,N
+  next
+  update sprites
+  return
+end sub
+
+' Lines 880-930: the winner, magnified, galloping in place
+sub WinnerPage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark green
+  print at 9,4, "THE WINNER IS"
+  NumU = Win
+  print at 12,6, "HORSE # "
+  NX = 12
+  NX += 8
+  NY = 6
+  PutNum
+  sprites double
+  I = Win - 1
+  for K = 0 to 119
+    N = K >> 3
+    N &= 3
+    V = GaitPat[N]
+    J = 12
+    if N = 1 then J = 16
+    if N = 3 then J = 16
+    N = SilkCol[I]
+    set sprite 0 to 95,112,J,N
+    N = CoatCol[I]
+    set sprite 1 to 95,112,V,N
+    update sprites
+    wait
+  next
+  HideSprites
+  sprites simple
+  return
+end sub
+
+' Lines 1340-1380: winners are paid at the posted odds, losers lose
+sub Payoffs:
+  for J = 0 to NP - 1
+    N = Bet[J]
+    if N > 0 then
+      if N = Win then
+        I = Win - 1
+        T16 = OD[I]
+        T16 *= Amt[J]
+        W16 = Cash[J]
+        if W16 < 60000 then W16 += T16
+        Cash[J] = W16
+      else
+        W16 = Cash[J] - Amt[J]
+        Cash[J] = W16
+      end if
+    end if
+  next
+  return
+end sub
+
+' Lines 1380-1430: the summary
+sub SummaryPage:
+  TextPage
+  print at 11,1, "SUMMARY"
+  NumU = Race
+  if Race = 1 then
+    print at 6,3, "AFTER 1 RACE"
+  else
+    print at 6,3, "AFTER "
+    NX = 6
+    NX += 6
+    NY = 3
+    PutNum
+    NX += NW
+    print at NX,NY, " RACES"
+  end if
+  for J = 0 to NP - 1
+    Y = J * 2
+    Y += 5
+    NumU = J + 1
+    print at 3,Y, "PLAYER "
+    NX = 3
+    NX += 7
+    NY = Y
+    PutNum
+    NumU = Cash[J]
+    print at 13,Y, "$"
+    NX = 13
+    NX += 1
+    NY = Y
+    PutNum
+    N = Bet[J]
+    if N > 0 then
+      if N = Win then
+        print at 21,Y, "WON!"
+        play sounds SndCashA, SndCashB
+        wait 20 frames
+      else
+        print at 21,Y, "LOST"
+      end if
+    end if
+  next
+  print at 6,22, "PRESS FIRE TO GO ON"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Lines 1460-1520: game over; adaptation: the richest player wins
+sub FinalPage:
+  TextPage
+  print at 11,2, "GAME OVER"
+  W16 = 0
+  Best = 0
+  for J = 0 to NP - 1
+    Y = J * 2
+    Y += 5
+    NumU = J + 1
+    print at 5,Y, "PLAYER "
+    NX = 5
+    NX += 7
+    NY = Y
+    PutNum
+    NumU = Cash[J]
+    print at 16,Y, "$"
+    NX = 16
+    NX += 1
+    NY = Y
+    PutNum
+    T16 = Cash[J]
+    if T16 > W16 then
+      W16 = T16
+      Best = J + 1
+    end if
+  next
+  if Best > 0 then
+    NumU = Best
+    print at 5,19, "PLAYER "
+    NX = 5
+    NX += 7
+    NY = 19
+    PutNum
+    NX += NW
+    print at NX,NY, " IS THE BIG"
+    print at 5,20, "WINNER AT HANOVER DOWNS!"
+  else
+    print at 5,19, "EVERYONE WENT BROKE!"
+  end if
+  print at 5,22, "PRESS FIRE TO PLAY AGAIN"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' A plain page for text
+sub TextPage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark green
+  return
+end sub
+
+' Left and right change SelV by SelStep, up and down by 100 when SelBig;
+' held, it runs faster; fire accepts
+sub SelectNumber:
+  put char 62 at SelX - 2,SelY
+  Hold = 0
+  wait no fire
+sel_show:
+  fill 32 count SelW at SelX,SelY
+  NumU = SelV
+  NX = SelX
+  NY = SelY
+  PutNum
+sel_loop:
+  wait
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if SelBig = 1 then
+    if joypad(1).down then N = 3
+    if joypad(2).down then N = 3
+    if joypad(1).up then N = 4
+    if joypad(2).up then N = 4
+  end if
+  if joypad(1).fire then goto sel_done
+  if joypad(2).fire then goto sel_done
+  if N = 0 then
+    Hold = 0
+    goto sel_loop
+  end if
+  inc Hold
+  V = 0
+  if Hold = 1 then V = 1
+  if Hold > 20 then
+    K = Hold & 3
+    if K = 0 then V = 1
+  end if
+  if V = 0 then goto sel_loop
+  if Hold > 200 then Hold = 100
+  if N = 1 then
+    if SelV >= SelMin + SelStep then
+      SelV -= SelStep
+    else
+      SelV = SelMin
+    end if
+  end if
+  if N = 2 then
+    SelV += SelStep
+    if SelV > SelMax then SelV = SelMax
+  end if
+  if N = 3 then
+    if SelV >= SelMin + 100 then
+      SelV -= 100
+    else
+      SelV = SelMin
+    end if
+  end if
+  if N = 4 then
+    SelV += 100
+    if SelV > SelMax then SelV = SelMax
+  end if
+  play sound SndBeep
+  goto sel_show
+sel_done:
+  put char 32 at SelX - 2,SelY
+  wait no fire
+  return
+end sub
+
+' Prints NumU at NX,NY with no leading zeros or padding; NW = digits used
+sub PutNum:
+  if NumU >= 10000 then
+    print at NX,NY, digits$(NumU, 5)
+    NW = 5
+    return
+  end if
+  if NumU >= 1000 then
+    print at NX,NY, digits$(NumU, 4)
+    NW = 4
+    return
+  end if
+  if NumU >= 100 then
+    print at NX,NY, digits$(NumU, 3)
+    NW = 3
+    return
+  end if
+  if NumU >= 10 then
+    print at NX,NY, digits$(NumU, 2)
+    NW = 2
+    return
+  end if
+  print at NX,NY, digits$(NumU, 1)
+  NW = 1
+  return
+end sub
+
+' Graphics II: tiles 128-136 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 72 to vram.pattern + Dst16
+    copy TileCol count 72 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  for K = 0 to 9
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' TI lines 220-330
+sub TitlePage:
+  TextPage
+  backdrop dark blue
+  print at 9,2, "HORSE RACING"
+  print at 7,3, "AT HANOVER DOWNS"
+  print at 3,5, "GOAL: HAVE THE MOST MONEY"
+  print at 3,6, "AFTER FIVE RACES."
+  print at 3,8, "EACH PLAYER STARTS WITH"
+  print at 3,9, "$500. BET ON A HORSE; THE"
+  print at 3,10, "ODDS FOLLOW THE MONEY."
+  print at 3,12, "EACH HORSE LOVES ONE KIND"
+  print at 3,13, "OF TRACK: WATCH THE"
+  print at 3,14, "CONDITIONS AND THE ODDS."
+  print at 3,16, "HORSES ARE NUMBERED FROM"
+  print at 3,17, "BOTTOM TO TOP."
+  print at 3,20, "NUMBER OF PLAYERS"
+  SelV = NP
+  SelMin = 1
+  SelMax = 9
+  SelStep = 1
+  SelBig = 0
+  SelX = 24
+  SelY = 20
+  SelW = 1
+  SelectNumber
+  NP = SelV
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 9,1, "HORSE RACING"
+  print at 6,3, "BY ROBERT ONUFER"
+  print at 5,4, "COMPUTE! OCTOBER 1984"
+  print at 2,6, "A TI-99/4A BETTING GAME FOR"
+  print at 2,7, "UP TO NINE PLAYERS, WITH"
+  print at 2,8, "64, VIC-20, APPLE AND IBM"
+  print at 2,9, "PC VERSIONS."
+  print at 2,11, "THIS PORT TAKES THE TI'S"
+  print at 2,12, "RULES, THE 64'S JOCKEYS,"
+  print at 2,13, "THE IBM'S NUMBERED LANES"
+  print at 2,14, "AND THE APPLE'S SMOOTH"
+  print at 2,15, "RUNNING."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' The gallop cycle A B C B, pattern numbers
+data GaitPat bytes 0,4,8,4
+' Jockey silks and horse coats, horses 1-5
+data SilkCol bytes 8,15,5,11,13
+data CoatCol bytes 6,1,6,14,10
+' Lines 710-720: the track's color for FAST, GOOD, SLOW, MUDDY, TURF
+data DirtCol bytes $AB,$A6,$6A,$16,$C2
+
+' The crowd, two poses
+data CrowdPatA bytes $00,$66,$66,$FF,$FF,$66,$66,$00,$00,$66,$66,$FF,$FF,$66,$66,$00
+data CrowdPatB bytes $66,$66,$FF,$FF,$66,$66,$00,$00,$66,$66,$FF,$FF,$66,$66,$00,$00
+
+' Tiles 128-136: roof, crowd (two), rail, dirt, grass, finish post,
+' hedge, sign board
+data TilePat bytes
+  $FF,$FF,$AA,$55,$AA,$55,$00,$00
+  $00,$66,$66,$FF,$FF,$66,$66,$00
+  $00,$66,$66,$FF,$FF,$66,$66,$00
+  $00,$00,$FF,$FF,$24,$24,$24,$24
+  $00,$44,$00,$11,$00,$88,$00,$22
+  $00,$20,$00,$02,$00,$40,$00,$04
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$7E,$FF,$FF,$FF,$7E,$3C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+data TileCol bytes
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $8E,$8E,$BE,$BE,$5E,$5E,$5E,$5E
+  $5E,$5E,$BE,$BE,$8E,$8E,$8E,$8E
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $86,$86,$F6,$F6,$86,$86,$F6,$F6
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+end data
+
+' Sprites (16 x 16): the horse in three strides (gallop cycle A B C B),
+' the jockey, high and low
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$3F,$7F
+  $FF,$BF,$3F,$30,$60,$C0,$80,$00
+  $00,$00,$0C,$1E,$3F,$38,$B8,$F0
+  $F0,$F0,$E0,$60,$30,$18,$08,$00
+  $00,$00,$00,$00,$00,$00,$3F,$7F
+  $FF,$BF,$3F,$30,$30,$60,$40,$00
+  $00,$00,$0C,$1E,$3F,$38,$B8,$F0
+  $F0,$F0,$E0,$60,$30,$48,$44,$00
+  $00,$00,$00,$00,$00,$00,$3F,$7F
+  $FF,$BF,$3F,$18,$18,$30,$21,$00
+  $00,$00,$0C,$1E,$3F,$38,$B8,$F0
+  $F0,$F0,$E0,$C0,$C0,$A0,$10,$00
+  $00,$03,$07,$07,$03,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$40,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$07,$03,$02,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+BugleT1:
+    db $40,$7C,$21,$05,$40,$7C,$F1,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$E2,$20,$05,$40,$E2,$F0,$01
+    db $40,$BF,$20,$08,$40,$BF,$F0,$01,$40,$BF,$20,$02,$40,$BF,$F0,$01,$40,$BF,$20,$05,$40,$BF,$F0,$01
+    db $40,$E2,$20,$08,$40,$E2,$F0,$01,$40,$E2,$20,$02,$40,$E2,$F0,$01,$40,$E2,$20,$05,$40,$E2,$F0,$01
+    db $40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$E2,$20,$05,$40,$E2,$F0,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01
+    db $40,$7C,$21,$12,$40,$7C,$F1,$01,$40,$7C,$21,$05,$40,$7C,$F1,$01,$40,$1D,$21,$05,$40,$1D,$F1,$01
+    db $40,$E2,$20,$05,$40,$E2,$F0,$01,$40,$BF,$20,$08,$40,$BF,$F0,$01,$40,$BF,$20,$02,$40,$BF,$F0,$01
+    db $40,$BF,$20,$05,$40,$BF,$F0,$01,$40,$E2,$20,$08,$40,$E2,$F0,$01,$40,$E2,$20,$02,$40,$E2,$F0,$01
+    db $40,$E2,$20,$05,$40,$E2,$F0,$01,$40,$7C,$21,$05,$40,$7C,$F1,$01,$40,$7C,$21,$05,$40,$7C,$F1,$01
+    db $40,$1D,$21,$12,$40,$1D,$F1,$01,$50
+HoofN:
+    db $00,$00,$41,$01,$00,$00,$71,$02,$10
+CrowdN:
+    db $00,$00,$72,$03,$00,$00,$72,$03,$00,$00,$62,$03,$00,$00,$62,$03,$00,$00,$52,$03,$00,$00,$52,$03
+    db $00,$00,$42,$03,$00,$00,$42,$03,$00,$00,$32,$03,$00,$00,$32,$03,$00,$00,$22,$03,$00,$00,$22,$03
+    db $00,$00,$12,$03,$00,$00,$12,$03,$00,$00,$22,$03,$00,$00,$22,$03,$00,$00,$32,$03,$00,$00,$32,$03
+    db $00,$00,$42,$03,$00,$00,$42,$03,$00,$00,$52,$03,$00,$00,$52,$03,$00,$00,$62,$03,$00,$00,$62,$03
+    db $00,$00,$72,$03,$00,$00,$72,$03,$00,$00,$82,$03,$00,$00,$82,$03,$00,$00,$92,$03,$00,$00,$92,$03
+    db $00,$00,$A2,$03,$00,$00,$A2,$03,$00,$00,$B2,$03,$00,$00,$B2,$03,$00,$00,$C2,$03,$00,$00,$C2,$03
+    db $00,$00,$D2,$03,$00,$00,$D2,$03,$00,$00,$E2,$03,$00,$00,$E2,$03,$00,$00,$F2,$03,$00,$00,$F2,$03
+    db $10
+CashT1:
+    db $40,$55,$10,$03,$40,$55,$30,$0C,$50
+CashT2:
+    db $80,$39,$20,$03,$80,$39,$40,$0C,$90
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+HorseSoundTable:
+    dw BugleT1,$7035
+    dw HoofN,$702B
+    dw CrowdN,$702B
+    dw CashT1,$7035
+    dw CashT2,$703F
+    dw BeepT1,$7035
+    dw HorseTuneMel,$703F
+    dw HorseTuneBass,$7049
+; Title tune: Camptown Races (public domain) (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+HorseTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$26,$26,$23,$26,$28,$26,$23,$00,$23,$21,$00,$00
+    db $23,$21,$00,$00,$26,$26,$23,$26,$28,$26,$23,$00,$21,$00,$23,$21
+    db $1F,$00,$00,$01,$02,$10,$1A,$21,$1F,$00,$1F,$23,$26,$00,$2B,$00
+    db $28,$00,$28,$2B,$28,$00,$26,$00,$02,$30,$1A,$21,$26,$26,$23,$23
+    db $26,$26,$23,$00,$02,$60,$1A,$21,$21,$23,$24,$23,$21,$1F,$00,$01
+    db $FF
+HorseTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$07,$00,$0E,$00,$07,$00,$0E,$00,$0E,$00,$15,$00
+    db $0E,$00,$15,$00,$07,$00,$0E,$00,$07,$00,$0E,$00,$0E,$00,$15,$00
+    db $07,$00,$0E,$00,$02,$30,$18,$32,$07,$00,$0E,$00,$07,$00,$0E,$00
+    db $0C,$00,$13,$00,$07,$00,$0E,$00,$02,$50,$18,$32,$07,$00,$0E,$00
+    db $07,$00,$0E,$00,$02,$80,$18,$32,$0E,$00,$15,$00,$07,$00,$00,$01
+    db $FF
+}

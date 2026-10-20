@@ -109,6 +109,8 @@ const tests = [
   { file: "test-sub-declaration-forms-codegen.mjs", area: "sub-declaration-forms", evidence: "compile+assemble" },
   { file: "test-inline-if-elseif-codegen.mjs", area: "inline-conditionals", evidence: "compile+assemble" },
   { file: "test-compound-while-runtime.mjs", area: "compound-while-runtime", evidence: "rom" },
+  { file: "test-compound-array-arithmetic-runtime.mjs", area: "compound-array-arithmetic", evidence: "rom" },
+  { file: "test-2026-10-20-ports-runtime.mjs", area: "ported-games-runtime-smoke", evidence: "rom" },
   { file: "test-nmi-prologue-codegen.mjs", area: "nmi-prologue", evidence: "compile+assemble" },
   { file: "test-nmi-vdp-guard-runtime.mjs", area: "nmi-vdp-critical-section", evidence: "rom" },
   { file: "test-screen-nmi-codegen.mjs", area: "screen-nmi-state", evidence: "compile+assemble" },

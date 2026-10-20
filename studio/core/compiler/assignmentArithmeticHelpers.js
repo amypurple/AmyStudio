@@ -568,19 +568,19 @@ export function createAssignmentArithmeticHelpers({
     const loadTarget = emitLoadInt8Into("a", target);
     const storeTarget = emitStoreInt8FromA(target);
     if (!loadTarget || !storeTarget) return null;
-    const valueInfo = getRuntimeInfo(valueToken);
+    const loadValue = emitLoadInt8Into("a", valueToken);
+    if (!loadValue) return null;
     const mulLoop = makeGeneratedLabel("MulLoop");
     const mulDone = makeGeneratedLabel("MulDone");
     const lines = [];
-    if (valueInfo) {
-      if (valueInfo.kind === "array" || valueInfo.type !== "int8") return null;
-      lines.push(...emitLoadInt8Into("b", target));
-      lines.push(...emitLoadInt8Into("c", valueToken));
-    } else {
-      lines.push(...loadTarget);
-      lines.push("    ld b,a");
-      lines.push(`    ld c,${symbolOrValue(valueToken)}`);
-    }
+    // Array and record addressing may use BC while loading the right operand.
+    // Preserve the left value on the stack until both loads have completed.
+    lines.push(...loadTarget);
+    lines.push("    push af");
+    lines.push(...loadValue);
+    lines.push("    ld c,a");
+    lines.push("    pop af");
+    lines.push("    ld b,a");
     lines.push("    ld a,c");
     lines.push("    or a");
     lines.push(`    jr z,${mulDone}`);
@@ -611,7 +611,11 @@ export function createAssignmentArithmeticHelpers({
     return [
       ...loadTarget,
       "    ex de,hl",
+      // Indexed word loads use DE while calculating their address. Keep the
+      // multiplicand intact until the multiplier has been loaded into BC.
+      "    push de",
       ...loadCount,
+      "    pop de",
       "    ld hl,0",
       `${mulLoop}:`,
       "    ld a,b",
@@ -1156,8 +1160,9 @@ export function createAssignmentArithmeticHelpers({
             targetInfo.storage !== "stack" &&
             !targetInfo.isRef &&
             targetInfo.asmName) {
-          // Scalar Amy mutations can share one address; arrays, refs and inline
-          // ASM keep the conservative path.
+          // A scalar compound mutation may use one shared address. This is
+          // smaller than two absolute byte accesses and HL is caller-clobbered
+          // across an Amy statement, unlike in arbitrary inline ASM.
           return [
             `    ld hl,${targetInfo.asmName}`,
             "    ld a,(hl)",

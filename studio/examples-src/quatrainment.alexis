@@ -1,0 +1,676 @@
+cartridge "QUATRAINMENT/PRESENTS SEAN PUCKETT'S/1984"
+
+' QUATRAINMENT
+' By Sean Puckett, COMPUTE! magazine, February 1984: written for the Atari
+' with 16K, with versions for the VIC-20, Commodore 64, TI-99/4A, Apple,
+' IBM PC and TRS-80 Color Computer. TI version by Patrick Parrish,
+' Programming Supervisor. All credit belongs to Sean Puckett and Patrick
+' Parrish.
+'
+' Historical context (summary of the article):
+' The player races the clock to make a 4 x 4 board of squares match a
+' master pattern, using as few moves as possible. The board is at the
+' left, the master pattern at the right, with a timer and a move counter.
+' A cursor sits on one square; moving it onto a square and pressing the
+' button changes a group of squares at once, and which group depends on
+' where the square is: a middle square flips itself and its four
+' neighbours (a plus), a corner square flips a triangle reaching across
+' its two edges, and an edge square flips the three squares around it
+' but not itself. When the board matches the master, the game reports the
+' time and the number of moves.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the cursor (it repeats when held); fire
+' presses the square (either joystick).
+' The rules follow the TI listing: the squares each press flips are
+' those of lines 550-1370 (table MoveMask), the board starts at random
+' (lines 1740-1810), and the win test compares every square (lines
+' 1390-1500).
+' Every master pattern can be reached, in exactly one way (the sixteen
+' presses are independent), so the game works out the fewest presses
+' (PAR) with the inverse of the press table (InvMask).
+' Adaptation liberties: three levels build the master by pressing 3, 5 or
+' 8 random squares of the starting board; RANDOM draws it at random as
+' the TI did. A preview at the right shows which squares the cursor's
+' square will flip. The result shows moves, par and seconds, and the best
+' result (fewest moves, then least time) is kept; the TI score,
+' INT(TIME/5) x INT(MOVE/5), is left out. Joystick instead of the TI's
+' E/S/D/X keys and ENTER, as on the Atari; a cursor sprite; Graphics II
+' squares; an original title tune (Tiny Sound); joystick menus; an
+' editorial page. The frame loop is protected from the NMI.
+' Screen: board on columns 2-18 and rows 2-18 (squares of 3 x 3 tiles),
+' master at columns 21-27 rows 3-9, preview at columns 21-27 rows 13-19,
+' counters on rows 20-22.
+
+const GridH = 128
+const GridV = 129
+const GridX = 130
+const LitTile = 131
+const OffTile = 132
+const MiniLit = 133
+const MiniOff = 134
+const MiniFlip = 135
+const MiniSelf = 136
+
+' Sound table slots (qt/s.mjs)
+const SndTick = 1
+const SndFlip = 2
+const SndWin = 3
+const SndBeep = 4
+const SndTuneA = 5
+const SndTuneB = 6
+
+u8 Work[16]                    ' M(I,J), the board
+u8 Master[16]                  ' MASTER(I,J)
+u8 Gen[16]                     ' squares pressed, then squares that differ
+u8 CR = 0                      ' cursor row and column
+u8 CC = 0
+u8 Level = 2
+u8 Presses = 5
+u8 Par = 0
+u8 Moves = 0
+u16 Seconds = 0
+u8 SecTick = 0
+u8 BestMoves = 0
+u16 BestTime = 0
+u8 Stick = 0
+u8 LastStick = 0
+u8 Hold = 0
+bool Fired = false
+bool WasFired = false
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Cell = 0
+u8 Count = 0
+u8 Choice = 0
+u8 Bse = 0
+u8 Idx = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table QuatSoundTable areas 4
+  sprites 16x16
+  sprites double
+  copy CursorSprite count 32 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  ' --- Lines 2010-2140: the title, then the level ---
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+
+new_game:
+  ' --- Lines 1740-1870, 2150-2300: a new board and a master ---
+  MakePuzzle
+  DrawScreen
+  CR = 1
+  CC = 1
+  Moves = 0
+  Seconds = 0
+  SecTick = 0
+  LastStick = 0
+  WasFired = true
+  ShowCounters
+  ShowPreview
+
+  ' --- Lines 240-490: the cursor and the presses ---
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ' Lines 260-300: the timer
+  inc SecTick
+  if SecTick >= 60 then
+    SecTick = 0
+    if Seconds < 999 then inc Seconds
+    ShowTime
+  end if
+  ReadStick
+  ' Lines 350-470: the cursor moves one square (held: every 12 frames)
+  if Stick <> LastStick then
+    Hold = 0
+    LastStick = Stick
+    if Stick <> 0 then MoveCursor
+  else
+    if Stick <> 0 then
+      inc Hold
+      if Hold >= 18 then
+        Hold = 6
+        MoveCursor
+      end if
+    end if
+  end if
+  ' Lines 480-550: fire presses the square
+  if Fired then
+    if not WasFired then
+      PressSquare
+      if Count = 16 then goto you_win
+    end if
+  end if
+  WasFired = Fired
+  DrawCursor
+  goto main_loop
+
+  ' --- Lines 1520-1730: you win ---
+you_win:
+  nmi on
+  HideSprites
+  play sound SndWin
+  print at 21,20, "YOU WIN!"
+  wait 120 frames
+  ' The best result: fewest moves, then least time
+  V = 0
+  if BestMoves = 0 then V = 1
+  if Moves < BestMoves then V = 1
+  if Moves = BestMoves then
+    if Seconds < BestTime then V = 1
+  end if
+  if V = 1 then
+    BestMoves = Moves
+    BestTime = Seconds
+  end if
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  print at 11,2, "YOU WIN!"
+  print at 5,5, "MOVES"
+  NumU = Moves
+  print at 20,5, digits$(NumU, 3)
+  print at 5,6, "PAR (FEWEST)"
+  NumU = Par
+  print at 20,6, digits$(NumU, 3)
+  print at 5,7, "SECONDS"
+  NumU = Seconds
+  print at 20,7, digits$(NumU, 3)
+  if Moves = Par then print at 5,9, "A PERFECT SOLUTION!"
+  print at 5,11, "BEST: "
+  NumU = BestMoves
+  print at 11,11, digits$(NumU, 3) + " MOVES"
+  NumU = BestTime
+  print at 11,12, digits$(NumU, 3) + " SECONDS"
+  if V = 1 then print at 5,13, "A NEW BEST RESULT!"
+  print at 8,16, "AGAIN?"
+  print at 8,18, "YES, SAME LEVEL"
+  print at 8,19, "CHANGE THE LEVEL"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 6,18 step 1
+  wait no fire
+  if Choice = 1 then goto new_game
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 1740-1810: a random board; adaptation: the master is that board
+' after Presses random squares, so it can always be reached
+sub MakePuzzle:
+make_again:
+  for I = 0 to 15
+    Work[I] = random(0, 1)
+    Master[I] = Work[I]
+  next
+  if Presses = 0 then
+    ' Lines 2310-2420 (RANDOM): a master drawn at random
+    for I = 0 to 15
+      Master[I] = random(0, 1)
+    next
+  else
+    for I = 0 to 15
+      Gen[I] = 0
+    next
+    K = 0
+pick_square:
+    ' Each square once: a second press would undo the first
+    Cell = random(0, 15)
+    N = Gen[Cell]
+    if N = 1 then goto pick_square
+    Gen[Cell] = 1
+    Bse = Cell * 16
+    for I = 0 to 15
+      Idx = Bse + I
+      N = MoveMask[Idx]
+      if N = 1 then
+        V = Master[I] ^ 1
+        Master[I] = V
+      end if
+    next
+    inc K
+    if K < Presses then goto pick_square
+  end if
+  ComputePar
+  if Par = 0 then goto make_again
+  return
+end sub
+
+' The fewest presses: press K is needed when the squares that differ,
+' masked by row K of InvMask, are an odd count
+sub ComputePar:
+  for I = 0 to 15
+    V = Work[I] ^ Master[I]
+    Gen[I] = V
+  next
+  Par = 0
+  for K = 0 to 15
+    Bse = K * 16
+    Count = 0
+    for I = 0 to 15
+      Idx = Bse + I
+      N = InvMask[Idx]
+      V = Gen[I]
+      N &= V
+      Count += N
+    next
+    N = Count & 1
+    Par += N
+  next
+  return
+end sub
+
+' Joystick 1 or 2: Stick bits 1 up, 2 down, 4 left, 8 right
+sub ReadStick:
+  Stick = 0
+  Fired = false
+  if joypad(1).fire then Fired = true
+  if joypad(2).fire then Fired = true
+  if joypad(1).up then Stick |= 1
+  if joypad(2).up then Stick |= 1
+  if joypad(1).down then Stick |= 2
+  if joypad(2).down then Stick |= 2
+  if joypad(1).left then Stick |= 4
+  if joypad(2).left then Stick |= 4
+  if joypad(1).right then Stick |= 8
+  if joypad(2).right then Stick |= 8
+  return
+end sub
+
+' Lines 350-470: E, X, S, D moved the cursor within the board
+sub MoveCursor:
+  N = Stick & 1
+  if N <> 0 then
+    if CR > 0 then dec CR
+  end if
+  N = Stick & 2
+  if N <> 0 then
+    if CR < 3 then inc CR
+  end if
+  N = Stick & 4
+  if N <> 0 then
+    if CC > 0 then dec CC
+  end if
+  N = Stick & 8
+  if N <> 0 then
+    if CC < 3 then inc CC
+  end if
+  play sound SndTick
+  ShowPreview
+  return
+end sub
+
+' Lines 480-1500: a press flips its group, then the board is compared
+sub PressSquare:
+  inc Moves
+  ShowMoves
+  play sound SndFlip
+  Cell = CR * 4
+  Cell += CC
+  Bse = Cell * 16
+  for I = 0 to 15
+    Idx = Bse + I
+    N = MoveMask[Idx]
+    if N = 1 then
+      V = Work[I] ^ 1
+      Work[I] = V
+      DrawSquare
+    end if
+  next
+  Count = 0
+  for I = 0 to 15
+    V = Work[I]
+    N = Master[I]
+    if V = N then inc Count
+  next
+  return
+end sub
+
+' Square I of the board, 3 x 3 tiles
+sub DrawSquare:
+  J = I >> 2
+  Y = J * 4
+  Y += 3
+  J = I & 3
+  X = J * 4
+  X += 3
+  V = Work[I]
+  N = OffTile
+  if V = 1 then N = LitTile
+  fill N count 3 at X,Y
+  inc Y
+  fill N count 3 at X,Y
+  inc Y
+  fill N count 3 at X,Y
+  return
+end sub
+
+' The cursor: a doubled 16 x 16 frame around the square
+sub DrawCursor:
+  X = CC * 32
+  X += 16
+  Y = CR * 32
+  Y += 15
+  N = frame
+  N &= 16
+  V = 15
+  if N = 0 then V = 11
+  set sprite 0 to Y,X,0,V
+  update sprites
+  return
+end sub
+
+' Adaptation: the squares the cursor's square will flip
+sub ShowPreview:
+  Cell = CR * 4
+  Cell += CC
+  Bse = Cell * 16
+  for I = 0 to 15
+    Idx = Bse + I
+    N = MoveMask[Idx]
+    V = MiniOff
+    if N = 1 then V = MiniFlip
+    if I = Cell then
+      if N = 0 then V = MiniSelf
+    end if
+    J = I >> 2
+    Y = J * 2
+    Y += 13
+    J = I & 3
+    X = J * 2
+    X += 21
+    put char V at X,Y
+  next
+  return
+end sub
+
+' Lines 1830-1870, 2150-2300: the board, the master and the counters
+sub DrawScreen:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  for K = 0 to 4
+    Y = K * 4
+    Y += 2
+    fill GridH count 17 at 2,Y
+    X = Y
+    for J = 3 to 17
+      put char GridV at X,J
+    next
+  next
+  for K = 0 to 4
+    for J = 0 to 4
+      X = J * 4
+      X += 2
+      Y = K * 4
+      Y += 2
+      put char GridX at X,Y
+    next
+  next
+  for I = 0 to 15
+    DrawSquare
+  next
+  print at 21,2, "MASTER"
+  for I = 0 to 15
+    V = Master[I]
+    N = MiniOff
+    if V = 1 then N = MiniLit
+    J = I >> 2
+    Y = J * 2
+    Y += 3
+    J = I & 3
+    X = J * 2
+    X += 21
+    put char N at X,Y
+  next
+  print at 21,11, "FIRE"
+  print at 21,12, "FLIPS:"
+  print at 2,20, "MOVES"
+  print at 12,20, "PAR"
+  NumU = Par
+  print at 16,20, digits$(NumU, 2)
+  print at 2,21, "TIME"
+  return
+end sub
+
+sub ShowCounters:
+  ShowMoves
+  ShowTime
+  return
+end sub
+
+sub ShowMoves:
+  NumU = Moves
+  print at 8,20, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowTime:
+  NumU = Seconds
+  print at 8,21, digits$(NumU, 3)
+  return
+end sub
+
+' Graphics II: tiles 128-136 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 72 to vram.pattern + Dst16
+    copy TileCol count 72 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' Lines 2010-2140: the title; adaptation: the level menu
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  print at 10,1, "QUATRAINMENT"
+  print at 2,3, "GOAL: MAKE THE BOARD MATCH"
+  print at 2,4, "THE MASTER PATTERN, IN AS"
+  print at 2,5, "FEW MOVES AND AS LITTLE"
+  print at 2,6, "TIME AS POSSIBLE."
+  print at 2,8, "FIRE PRESSES THE SQUARE"
+  print at 2,9, "UNDER THE CURSOR:"
+  print at 3,10, "MIDDLE: A PLUS FLIPS"
+  print at 3,11, "CORNER: A TRIANGLE FLIPS"
+  print at 3,12, "EDGE:   A V AROUND IT"
+  print at 2,13, "THE PREVIEW SHOWS WHICH."
+  print at 2,14, "LEVEL:"
+  print at 8,15, "EASY   (PAR 3)"
+  print at 8,16, "MEDIUM (PAR 5)"
+  print at 8,17, "HARD   (PAR 8)"
+  print at 8,18, "RANDOM (AS IN 1984)"
+  Choice = Level
+  wait no fire
+  choose menu 1 to 4 into Choice cursor $3E at 6,15 step 1
+  wait no fire
+  Level = Choice
+  Presses = 3
+  if Level = 2 then Presses = 5
+  if Level = 3 then Presses = 8
+  if Level = 4 then Presses = 0
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 10,1, "QUATRAINMENT"
+  print at 7,3, "BY SEAN PUCKETT"
+  print at 3,4, "TI VERSION BY PATRICK"
+  print at 3,5, "PARRISH, COMPUTE! FEB 1984"
+  print at 2,7, "AN ATARI PUZZLE, WITH"
+  print at 2,8, "VERSIONS FOR THE VIC-20,"
+  print at 2,9, "64, TI-99/4A, APPLE, IBM PC"
+  print at 2,10, "AND TRS-80 COLOR COMPUTER."
+  print at 2,12, "EACH PRESS FLIPS A GROUP OF"
+  print at 2,13, "SQUARES, AND THE GROUP"
+  print at 2,14, "DEPENDS ON WHERE YOU PRESS."
+  print at 2,16, "EVERY PATTERN HAS ONE BEST"
+  print at 2,17, "SOLUTION; THE GAME TELLS"
+  print at 2,18, "YOU HOW MANY MOVES (PAR)."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' The cursor frame (16 x 16, shown doubled)
+data CursorSprite bytes
+  $FF,$FF,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$FF,$FF
+  $FF,$FF,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$FF,$FF
+end data
+
+' Tiles 128-136: grid across, grid down, grid crossing, lit square, dark
+' square, master lit, master dark, preview flip, preview cursor square
+data TilePat bytes
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$7E,$7E,$7E,$7E,$7E,$7E,$00
+  $00,$7E,$42,$42,$42,$42,$7E,$00
+  $00,$7E,$7E,$7E,$7E,$7E,$7E,$00
+  $00,$7E,$42,$5A,$5A,$42,$7E,$00
+end data
+
+data TileCol bytes
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+end data
+
+' Lines 550-1370: the squares each press toggles, one row of 16 per square
+data MoveMask bytes
+  1,1,1,0,1,1,0,0,1,0,0,0,0,0,0,0
+  1,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0
+  0,1,0,1,0,0,1,0,0,0,0,0,0,0,0,0
+  0,1,1,1,0,0,1,1,0,0,0,1,0,0,0,0
+  1,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0
+  0,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0
+  0,0,1,0,0,1,1,1,0,0,1,0,0,0,0,0
+  0,0,0,1,0,0,1,0,0,0,0,1,0,0,0,0
+  0,0,0,0,1,0,0,0,0,1,0,0,1,0,0,0
+  0,0,0,0,0,1,0,0,1,1,1,0,0,1,0,0
+  0,0,0,0,0,0,1,0,0,1,1,1,0,0,1,0
+  0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,1
+  0,0,0,0,1,0,0,0,1,1,0,0,1,1,1,0
+  0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0
+  0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1
+  0,0,0,0,0,0,0,1,0,0,1,1,0,1,1,1
+end data
+' The inverse of MoveMask over GF(2): press K is part of the shortest
+' solution when the squares I that differ, masked by row K, are odd
+data InvMask bytes
+  1,1,1,0,1,0,1,0,1,1,0,1,0,0,1,0
+  0,0,1,0,1,0,0,1,0,1,0,0,0,1,1,1
+  0,1,0,0,1,0,0,1,0,0,1,0,1,1,1,0
+  0,1,1,1,0,1,0,1,1,0,1,1,0,1,0,0
+  0,1,0,0,0,0,1,1,1,0,0,1,0,1,0,1
+  1,0,0,1,0,1,1,0,0,1,0,0,1,0,0,0
+  1,0,0,1,0,1,1,0,0,0,1,0,0,0,0,1
+  0,0,1,0,1,1,0,0,1,0,0,1,1,0,1,0
+  0,1,0,1,1,0,0,1,0,0,1,1,0,1,0,0
+  1,0,0,0,0,1,0,0,0,1,1,0,1,0,0,1
+  0,0,0,1,0,0,1,0,0,1,1,0,1,0,0,1
+  1,0,1,0,1,0,0,1,1,1,0,0,0,0,1,0
+  0,0,1,0,1,1,0,1,1,0,1,0,1,1,1,0
+  0,1,1,1,0,1,0,0,1,0,0,1,0,0,1,0
+  1,1,1,0,0,0,1,0,1,0,0,1,0,1,0,0
+  0,1,0,0,1,0,1,1,0,1,0,1,0,1,1,1
+end data
+
+asm {
+TickT1:
+    db $40,$40,$30,$02,$50
+FlipT1:
+    db $40,$A9,$10,$02,$40,$7F,$10,$02,$40,$55,$20,$03,$50
+WinT1:
+    db $40,$FC,$11,$03,$40,$BF,$11,$03,$40,$90,$11,$03,$40,$69,$11,$03,$40,$49,$11,$03,$40,$2E,$11,$03
+    db $40,$18,$11,$03,$40,$04,$11,$03,$40,$F3,$10,$03,$40,$E4,$10,$03,$40,$D7,$10,$03,$40,$CB,$10,$03
+    db $40,$C1,$10,$03,$40,$B7,$10,$03,$40,$AF,$10,$03,$40,$A7,$10,$03,$40,$A0,$10,$03,$40,$99,$10,$03
+    db $40,$93,$10,$03,$40,$8E,$10,$03,$40,$88,$10,$03,$40,$84,$10,$03,$40,$7F,$10,$03,$40,$7F,$10,$14
+    db $50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+QuatSoundTable:
+    dw TickT1,$7035
+    dw FlipT1,$7035
+    dw WinT1,$7035
+    dw BeepT1,$7035
+    dw QuatTuneMel,$703F
+    dw QuatTuneBass,$7049
+; Title tune: a puzzle theme in C (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+QuatTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1F,$00,$23,$26,$1F,$00,$23,$26,$1E,$00,$21,$26
+    db $1E,$00,$21,$26,$1C,$00,$1F,$24,$1C,$00,$1F,$24,$1A,$00,$1E,$21
+    db $1A,$00,$00,$01,$02,$10,$1A,$21,$23,$00,$26,$2B,$23,$00,$26,$2B
+    db $21,$00,$24,$28,$21,$00,$24,$28,$02,$30,$1A,$21,$1F,$00,$23,$26
+    db $1E,$00,$21,$26,$02,$60,$1A,$21,$1F,$00,$00,$00,$00,$00,$00,$01
+    db $FF
+QuatTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$07,$00,$00,$00,$0B,$00,$00,$00,$0E,$00,$00,$00
+    db $09,$00,$00,$00,$0C,$00,$00,$00,$10,$00,$00,$00,$0E,$00,$00,$00
+    db $0E,$00,$00,$01,$02,$30,$18,$32,$13,$00,$00,$00,$10,$00,$00,$00
+    db $15,$00,$00,$00,$0C,$00,$00,$00,$02,$50,$18,$32,$0E,$00,$00,$00
+    db $0E,$00,$00,$00,$02,$80,$18,$32,$07,$00,$00,$00,$00,$00,$00,$01
+    db $FF
+}

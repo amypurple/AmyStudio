@@ -1,0 +1,676 @@
+cartridge "COLORBOT/PRESENTS JOHN R. DONDZILA'S/1984"
+
+' COLORBOT
+' By John R. Dondzila, COMPUTE! magazine, January 1984: written for the
+' unexpanded VIC-20, with translations for the Commodore 64 and the Atari
+' by Kevin Martin, Editorial Programmer. All credit belongs to John R.
+' Dondzila and Kevin Martin.
+'
+' Historical context (summary of the article):
+' In 1987 the world is overrun with TVs, video games, home computers and
+' every other electronic device. A genetic experiment has turned the
+' surplus electronics into the Colorbots, a hyper-intelligent race of
+' robots that has decided mankind must be destroyed; they have charged
+' the Earth with a high-voltage proton forcefield that turned all matter
+' into glowing debris. The player, somehow partly immune, fights them with
+' a supply of stolen Electron Frisbees. Three Colorbots chase the player
+' around a field of flashing high-voltage walls, which kill robots and
+' men alike: lead the robots into the walls. Now and then a Colorbot
+' drops a small Colorbot, fatal to walk on. Each robot destroyed, by a
+' frisbee or by its own foolish bravado, is worth ten points and is
+' replaced somewhere else; the more are destroyed, the faster they get.
+' Four men to start, a free man and 100 points at 200 and at 800 points;
+' the walls thin out as the game goes on.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the man in eight directions; hold fire and
+' push the stick to throw an Electron Frisbee that way (either joystick).
+' The rules follow the 64 listing: the man moves one cell per pass and
+' anything he walks into that is not empty is fatal, the flashing border
+' included (lines 120-145, 450-505); one robot in three may step toward
+' him each pass, chosen by R = INT(RND * SL) + 1 (lines 155-185), and may
+' leave a small Colorbot behind with a chance of 1 in S1 (line 165); a
+' robot that steps into a wall is destroyed and scores (line 195); the
+' frisbee flies cell by cell until it meets something (lines 205-265);
+' each robot destroyed gives 10 points and SL and S1 drop by 0.2 (lines
+' 290-315); a man lost removes five walls and the field is drawn again
+' (lines 325-350); a free man at 200 and 800 points (line 415).
+' SL and S1 are kept times five (50 and 25) so they fit in bytes.
+' Adaptation liberties: the frisbee destroys a robot or a small Colorbot
+' and stops at a wall (the listings differ on what the frisbee does to
+' what it hits); robots do not step onto each other; the field is 26 x 19
+' cells inside the border; the high score is kept; Graphics II tiles with
+' the Atari shapes, the walls, mines and border flashing through colors
+' as the VIC's machine language did with the auxiliary color; an original
+' title tune (Tiny Sound); joystick menus instead of Y/N; an editorial
+' page. The frame loop is protected from the NMI.
+' Screen: score on row 1; border on columns 2 and 29, rows 2 and 22;
+' field on columns 3-28, rows 3-21.
+
+const ManA = 128
+const ManB = 129
+const BotTile = 130
+const MineTile = 131
+const WallTile = 132
+const DiscTile = 133
+const EdgeTop = 134
+const EdgeBot = 135
+const EdgeL = 136
+const EdgeR = 137
+const Blank = 32
+const Tick = 8                 ' frames per BASIC pass
+
+' Sound table slots (cb/s.mjs)
+const SndDisc = 1
+const SndZapA = 2
+const SndZapB = 3
+const SndStepA = 4
+const SndStepB = 5
+const SndLostA = 6
+const SndLostB = 7
+const SndExtra = 8
+const SndBeep = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+bcd digits 5 Score             ' SC
+bcd digits 5 HighScore
+u8 MN = 4                      ' men
+u8 SL5 = 50                    ' SL x 5
+u8 S15 = 25                    ' S1 x 5
+u8 S2 = 15                     ' random walls
+u8 X1 = 15                     ' the man (X, Y)
+u8 Y1 = 12
+u8 BX[3]                       ' X(I), Y(I): the robots
+u8 BY[3]
+u8 Kills = 0
+u8 Frm = 0
+u8 Flash = 0
+u8 Stride = 0
+u8 Stick = 0
+u8 DXs = 1                     ' step + 1
+u8 DYs = 1
+bool Fired = false
+bool Dead = false
+u8 R = 0
+u8 I = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 B = 0
+u8 D = 0
+u8 Choice = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table ColorbotSoundTable areas 4
+  sprites 8x8
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  ' --- Line 35: the starting values ---
+  Score = 0
+  MN = 4
+  SL5 = 50
+  S15 = 25
+  S2 = 15
+  Kills = 0
+
+new_field:
+  ' --- Lines 45-115: the field, the man and three robots ---
+  DrawField
+  ShowStatus
+  nmi on
+  wait 60 frames
+  Frm = 0
+  Dead = false
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  FlashColors
+  inc Frm
+  if Frm < Tick then goto main_loop
+  Frm = 0
+  ' Lines 120-145: fire throws, otherwise the man moves
+  ReadStick
+  if Fired then
+    if Stick <> 0 then Throw
+  else
+    if Stick <> 0 then MoveMan
+  end if
+  if Dead then goto man_lost
+  ' Lines 155-200: a robot may step
+  RobotStep
+  if Dead then goto man_lost
+  goto main_loop
+
+  ' --- Lines 325-350: a man is lost ---
+man_lost:
+  nmi on
+  play sounds SndLostA, SndLostB
+  for K = 0 to 83
+    N = K & 4
+    if N = 0 then
+      backdrop light red
+    else
+      backdrop black
+    end if
+    N = K & 2
+    V = ManA
+    if N = 0 then V = 42
+    put char V at X1,Y1
+    wait
+  next
+  backdrop black
+  dec MN
+  ShowStatus
+  if S2 >= 5 then S2 -= 5
+  if MN > 0 then goto new_field
+
+  ' --- Lines 360-400: game over ---
+  nmi on
+  for Y = 3 to 21
+    fill WallTile count 26 at 3,Y
+    for K = 1 to 3
+      FlashColors
+      wait
+    next
+  next
+  if Score > HighScore then HighScore = Score
+  fill 32 count 20 at 6,9
+  fill 32 count 20 at 6,10
+  fill 32 count 20 at 6,11
+  fill 32 count 20 at 6,12
+  fill 32 count 20 at 6,13
+  print at 11,10, "GAME OVER"
+  print at 9,12, "PLAY AGAIN"
+  print at 9,13, "TITLE PAGE"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,12 step 1
+  wait no fire
+  if Choice = 1 then
+    Score = 0
+    MN = 4
+    SL5 = 50
+    S15 = 25
+    S2 = 15
+    Kills = 0
+    goto new_field
+  end if
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 450-505: one cell in the stick's direction; anything there kills
+sub MoveMan:
+  put char Blank at X1,Y1
+  X1 += DXs
+  dec X1
+  Y1 += DYs
+  dec Y1
+  T = get char at X1,Y1
+  if T <> Blank then Dead = true
+  inc Stride
+  N = Stride & 1
+  V = ManA + N
+  put char V at X1,Y1
+  return
+end sub
+
+' Lines 205-280: the Electron Frisbee flies until it meets something
+sub Throw:
+  B = X1
+  D = Y1
+  play sound SndDisc
+throw_step:
+  B += DXs
+  dec B
+  D += DYs
+  dec D
+  T = get char at B,D
+  if T = Blank then
+    put char DiscTile at B,D
+    nmi on
+    wait
+    wait
+    nmi off
+    FlashColors
+    put char Blank at B,D
+    goto throw_step
+  end if
+  if T = MineTile then
+    put char Blank at B,D
+    play sounds SndZapA, SndZapB
+    return
+  end if
+  if T = BotTile then
+    for I = 0 to 2
+      X = BX[I]
+      Y = BY[I]
+      if X = B then
+        if Y = D then RobotDies
+      end if
+    next
+  end if
+  return
+end sub
+
+' Lines 155-200: R = INT(RND * SL) + 1; robot R steps when R <= 3
+sub RobotStep:
+  R = random(1, SL5)
+  if R > 15 then return
+  dec R
+  R /= 5
+  X = BX[R]
+  Y = BY[R]
+  ' Line 165: now and then a small Colorbot is left behind
+  N = random(1, S15)
+  T = Blank
+  if N <= 5 then T = MineTile
+  put char T at X,Y
+  ' Lines 170-185: toward the man
+  if X1 < X then dec X
+  if X1 > X then inc X
+  if Y1 < Y then dec Y
+  if Y1 > Y then inc Y
+  ' Line 190: caught
+  if X = X1 then
+    if Y = Y1 then
+      Dead = true
+      return
+    end if
+  end if
+  T = get char at X,Y
+  ' Adaptation: robots do not step onto each other
+  if T = BotTile then
+    X = BX[R]
+    Y = BY[R]
+    put char BotTile at X,Y
+    return
+  end if
+  N = random(0, 1)
+  if N = 0 then
+    play sound SndStepA
+  else
+    play sound SndStepB
+  end if
+  BX[R] = X
+  BY[R] = Y
+  ' Line 195: into a wall, the robot is destroyed
+  B = X
+  D = Y
+  if T = WallTile then
+    I = R
+    RobotDies
+    put char WallTile at B,D
+    return
+  end if
+  if T = EdgeTop then goto robot_edge
+  if T = EdgeBot then goto robot_edge
+  if T = EdgeL then goto robot_edge
+  if T = EdgeR then goto robot_edge
+  put char BotTile at X,Y
+  return
+robot_edge:
+  V = T
+  I = R
+  RobotDies
+  put char V at B,D
+  return
+end sub
+
+' Lines 290-315: robot I is destroyed and comes back elsewhere
+sub RobotDies:
+  X = BX[I]
+  Y = BY[I]
+  put char Blank at X,Y
+  play sounds SndZapA, SndZapB
+  Score += 10
+  inc Kills
+  ' Line 295: a free man at 200 and 800 points
+  if Kills = 20 then FreeMan
+  if Kills = 80 then FreeMan
+  if SL5 > 5 then dec SL5
+  if S15 > 10 then dec S15
+  PlaceRobot
+  ShowStatus
+  return
+end sub
+
+' Line 415: MN = MN + 1, SC = SC + 100
+sub FreeMan:
+  inc MN
+  Score += 100
+  Kills += 10
+  play sound SndExtra
+  return
+end sub
+
+' Line 290: a robot at a random empty cell, not next to the man
+sub PlaceRobot:
+place_again:
+  X = random(3, 28)
+  Y = random(3, 21)
+  T = get char at X,Y
+  if T <> Blank then goto place_again
+  N = X1 + 2
+  if X <= N then
+    N = X1 - 2
+    if X >= N then
+      N = Y1 + 2
+      if Y <= N then
+        N = Y1 - 2
+        if Y >= N then goto place_again
+      end if
+    end if
+  end if
+  BX[I] = X
+  BY[I] = Y
+  put char BotTile at X,Y
+  return
+end sub
+
+' Stick to steps of -1, 0, +1 (stored + 1)
+sub ReadStick:
+  Stick = 0
+  Fired = false
+  if joypad(1).fire then Fired = true
+  if joypad(2).fire then Fired = true
+  if joypad(1).up then Stick |= 1
+  if joypad(2).up then Stick |= 1
+  if joypad(1).down then Stick |= 2
+  if joypad(2).down then Stick |= 2
+  if joypad(1).left then Stick |= 4
+  if joypad(2).left then Stick |= 4
+  if joypad(1).right then Stick |= 8
+  if joypad(2).right then Stick |= 8
+  DXs = 1
+  DYs = 1
+  N = Stick & 3
+  if N = 1 then DYs = 0
+  if N = 2 then DYs = 2
+  N = Stick & 12
+  if N = 4 then DXs = 0
+  if N = 8 then DXs = 2
+  if DXs = 1 then
+    if DYs = 1 then Stick = 0
+  end if
+  return
+end sub
+
+' Lines 45-115: border, the two L walls, S2 random walls, man, robots
+sub DrawField:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  fill EdgeTop count 28 at 2,2
+  fill EdgeBot count 28 at 2,22
+  for Y = 3 to 21
+    put char EdgeL at 2,Y
+    put char EdgeR at 29,Y
+  next
+  ' Lines 65-70: the two L-shaped walls
+  fill WallTile count 4 at 5,5
+  for Y = 6 to 8
+    put char WallTile at 5,Y
+  next
+  for Y = 15 to 18
+    put char WallTile at 26,Y
+  next
+  fill WallTile count 4 at 23,19
+  ' Line 80: the man in the centre
+  X1 = 15
+  Y1 = 12
+  put char ManA at X1,Y1
+  ' Line 45: random walls
+  if S2 > 0 then
+    for K = 1 to S2
+wall_again:
+      X = random(3, 28)
+      Y = random(3, 21)
+      T = get char at X,Y
+      if T <> Blank then goto wall_again
+      N = X1 + 1
+      if X <= N then
+        N = X1 - 1
+        if X >= N then
+          N = Y1 + 1
+          if Y <= N then
+            N = Y1 - 1
+            if Y >= N then goto wall_again
+          end if
+        end if
+      end if
+      put char WallTile at X,Y
+    next
+  end if
+  ' Line 85: three robots
+  for I = 0 to 2
+    PlaceRobot
+  next
+  return
+end sub
+
+' The VIC's machine language cycled the auxiliary color: walls, small
+' Colorbots and the border flash through the colors
+sub FlashColors:
+  inc Flash
+  N = Flash & 3
+  if N <> 0 then return
+  N = Flash >> 2
+  N &= 7
+  V = FlashCol[N]
+  Dst16 = 1048
+  for K = 0 to 2
+    fill V count 16 to vram.color + Dst16
+    Dst16 += 24
+    fill V count 32 to vram.color + Dst16
+    Dst16 += 2024
+  next
+  return
+end sub
+
+sub ShowStatus:
+  print at 3,1, "SCORE:"
+  print Score at 10,1
+  print at 18,1, "MEN:"
+  NumU = MN
+  print at 23,1, digits$(NumU, 1)
+  return
+end sub
+
+' Graphics II: tiles 128-137 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 80 to vram.pattern + Dst16
+    copy TileCol count 80 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 0
+  update sprites
+  return
+end sub
+
+sub TitlePage:
+  nmi on
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  print at 12,2, "COLORBOT"
+  print at 3,4, "GOAL: DESTROY THE COLORBOTS"
+  print at 3,5, "BEFORE THEY DESTROY ALL OF"
+  print at 3,6, "MANKIND."
+  put char BotTile at 3,8
+  print at 5,8, "COLORBOT: 10 POINTS. LEAD"
+  print at 5,9, "THEM INTO THE WALLS."
+  put char WallTile at 3,11
+  print at 5,11, "HIGH-VOLTAGE WALLS, FATAL"
+  print at 5,12, "TO MEN AND ROBOTS."
+  put char MineTile at 3,14
+  print at 5,14, "SMALL COLORBOT: FATAL TO"
+  print at 5,15, "WALK ON."
+  print at 3,17, "STICK: MOVE. HOLD FIRE AND"
+  print at 3,18, "PUSH: THROW A FRISBEE."
+  print at 3,19, "FREE MAN AT 200 AND 800."
+  print at 3,21, "HIGH"
+  print HighScore at 8,21
+  print at 15,21, "FIRE: START"
+  wait no fire
+title_wait:
+  FlashColors
+  wait
+  if joypad(1).fire then goto title_go
+  if joypad(2).fire then goto title_go
+  goto title_wait
+title_go:
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 12,1, "COLORBOT"
+  print at 5,3, "BY JOHN R. DONDZILA"
+  print at 5,4, "COMPUTE! JANUARY 1984"
+  print at 2,6, "WRITTEN FOR THE UNEXPANDED"
+  print at 2,7, "VIC-20, TRANSLATED FOR THE"
+  print at 2,8, "64 AND THE ATARI BY KEVIN"
+  print at 2,9, "MARTIN."
+  print at 2,11, "1987: SURPLUS ELECTRONICS"
+  print at 2,12, "HAVE MUTATED INTO ROBOTS"
+  print at 2,13, "THAT MEAN TO WIPE OUT MAN."
+  print at 2,14, "ARMED WITH STOLEN ELECTRON"
+  print at 2,15, "FRISBEES, YOU FIGHT BACK."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' The flashing colors (foreground, on black)
+data FlashCol bytes $21,$31,$71,$51,$D1,$61,$A1,$F1
+
+' Tiles 128-137 (Atari lines 2000-2090): the man (two strides), the
+' Colorbot, the small Colorbot, a wall, the frisbee, border top, bottom,
+' left, right
+data TilePat bytes
+  $38,$54,$38,$54,$92,$28,$2C,$60
+  $38,$54,$38,$54,$92,$28,$68,$0C
+  $18,$24,$FF,$FF,$BD,$99,$18,$7E
+  $00,$00,$00,$18,$3C,$18,$00,$00
+  $FF,$FF,$C3,$C3,$C3,$C3,$FF,$FF
+  $00,$00,$00,$18,$66,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$FF
+  $FF,$FF,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+end data
+
+data TileCol bytes
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $31,$31,$E1,$E1,$71,$71,$31,$31
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+end data
+
+asm {
+FrisbeeT1:
+    db $40,$73,$10,$01,$40,$76,$10,$01,$40,$79,$10,$01,$40,$7C,$10,$01,$40,$7F,$10,$01,$40,$83,$10,$01
+    db $40,$86,$10,$01,$40,$8A,$10,$01,$40,$8F,$10,$01,$40,$93,$10,$01,$40,$98,$10,$01,$40,$9D,$10,$01
+    db $40,$A3,$10,$01,$40,$A8,$10,$01,$50
+ZapT1:
+    db $40,$99,$10,$02,$40,$A4,$10,$02,$40,$B0,$10,$02,$40,$BE,$10,$02,$40,$CF,$10,$02,$40,$E3,$10,$02
+    db $40,$FC,$10,$02,$40,$1A,$11,$02,$40,$41,$11,$02,$40,$75,$11,$02,$40,$BC,$11,$02,$40,$24,$12,$02
+    db $40,$CD,$12,$02,$40,$FF,$13,$02,$50
+ZapN:
+    db $00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02
+    db $00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$25,$02
+    db $00,$00,$25,$02,$00,$00,$25,$02,$10
+StepAT1:
+    db $40,$EA,$52,$03,$50
+StepBT1:
+    db $40,$5D,$52,$03,$50
+LostT1:
+    db $40,$10,$01,$04,$40,$64,$00,$04,$40,$B1,$00,$04,$40,$D7,$00,$04,$40,$A7,$00,$04,$40,$E2,$00,$04
+    db $40,$47,$00,$04,$40,$CF,$00,$04,$40,$99,$00,$04,$40,$A6,$00,$04,$40,$9D,$00,$04,$40,$93,$00,$04
+    db $40,$50,$00,$04,$40,$59,$00,$04,$40,$6A,$00,$04,$40,$26,$01,$04,$40,$E8,$F3,$14,$50
+LostN:
+    db $00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04
+    db $00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04
+    db $00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$26,$04,$00,$00,$37,$14,$10
+ExtraT1:
+    db $40,$8F,$10,$05,$40,$6B,$10,$05,$40,$55,$10,$05,$40,$47,$10,$05,$40,$35,$10,$0F,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+ColorbotSoundTable:
+    dw FrisbeeT1,$7035
+    dw ZapT1,$7035
+    dw ZapN,$702B
+    dw StepAT1,$7035
+    dw StepBT1,$7035
+    dw LostT1,$7035
+    dw LostN,$702B
+    dw ExtraT1,$7035
+    dw BeepT1,$7035
+    dw ColorbotTuneMel,$703F
+    dw ColorbotTuneBass,$7049
+; Title tune: a march of robots in A minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+ColorbotTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1C,$00,$1C,$00,$23,$00,$1C,$00,$1F,$00,$1E,$1C
+    db $1A,$00,$17,$00,$1C,$00,$1C,$00,$23,$00,$26,$00,$24,$23,$21,$1F
+    db $1E,$00,$00,$01,$02,$10,$1A,$21,$1F,$00,$23,$00,$28,$00,$23,$00
+    db $21,$00,$24,$00,$28,$00,$24,$00,$02,$30,$1A,$21,$23,$21,$1F,$1E
+    db $1C,$00,$17,$00,$02,$60,$1A,$21,$1C,$00,$00,$00,$00,$01,$01,$01
+    db $FF
+ColorbotTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$10,$00,$0B,$00,$10,$00,$0B,$00,$10,$00,$0B,$00
+    db $10,$00,$0B,$00,$10,$00,$0B,$00,$10,$00,$0B,$00,$09,$00,$0B,$00
+    db $0B,$00,$00,$01,$02,$30,$18,$32,$0C,$00,$13,$00,$0C,$00,$13,$00
+    db $09,$00,$10,$00,$09,$00,$10,$00,$02,$50,$18,$32,$0B,$00,$12,$00
+    db $0B,$00,$12,$00,$02,$80,$18,$32,$10,$00,$0B,$00,$10,$00,$00,$01
+    db $FF
+}

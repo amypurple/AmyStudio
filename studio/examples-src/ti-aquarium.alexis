@@ -1,0 +1,391 @@
+cartridge "TI AQUARIUM/PRESENTS MICHAEL A. COVINGTON'S/1984"
+
+' TI AQUARIUM
+' By Michael A. Covington, COMPUTE! magazine: a short program for the
+' TI-99/4A with Extended BASIC. All credit belongs to Michael A. Covington.
+'
+' Historical context (summary of the article):
+' Watching fish glide around an aquarium is said to be relaxing, and the
+' author offers, tongue in cheek, an aquarium without the expense or the
+' water changes. The program is also a lesson in sprite techniques. Lines
+' 310-330 define one large fish shape. Lines 400-430 read a number from
+' DATA and use it both as the sprite number and as its color, so each fish
+' has its own color. A new sprite starts in the background color
+' (transparent) and is then shown by CALL COLOR, because a fresh sprite
+' may appear for a moment in the wrong place before jumping to where it
+' belongs. The subroutine at line 610 keeps making random changes to the
+' motion of one fish at a time, so the fish bob about naturally instead of
+' moving in straight lines at constant speed. Any key ends the program.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: fire (either joystick) leaves the aquarium for the title page.
+' The rules follow the listing: nine fish in the colors of line 340 (TI
+' color - 1), each entering at the left edge at row 75-105 (line 420),
+' with the TI motion values of lines 420 and 610 (TI velocity v moves v/16
+' pixel per frame; positions are kept in 1/16 pixel); one random fish
+' changes its motion three times after each new fish (lines 440-460), and
+' then continually (lines 540-570).
+' Adaptation liberties: the TI moved sprites by itself; here the frame loop
+' moves them. The fish stay in the water: they turn back at the surface
+' and at the sand instead of wrapping from top to bottom. The hardware
+' shows four sprites per line, as on the TI: the sprite order rotates
+' every frame, so crowded fish flicker instead of vanishing. Added: a sand
+' bottom with rocks and swaying seaweed, two rising bubbles, an original
+' title tune (Tiny Sound), and an editorial page. The 1500-loop pause on
+' the title page became "press fire". The frame loop is protected from
+' the NMI.
+
+const SandTop = 128
+const Sand = 129
+const WeedTile = 130
+const WeedTip = 131
+const Rock = 132
+const FishMax = 9
+const Surface = 160            ' top limit, Y x 16 (row 10)
+const Bottom = 2304            ' bottom limit, Y x 16 (row 144)
+
+u8 FishCount = 0
+i16 FX[FishMax]                ' positions in 1/16 pixel
+i16 FY[FishMax]
+i16 VX[FishMax]                ' TI motion values (1/16 pixel per frame)
+i16 VY[FishMax]
+u8 FishCol[FishMax]                 ' colors
+u8 BX[2]                       ' bubbles
+u8 BY[2]
+u8 I = 0
+u8 J = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+u8 Rot = 0
+u8 Sway = 0
+u8 Pause = 0
+u8 BYJ = 0
+u8 BXJ = 0
+u8 Col = 0
+i16 T = 0
+u16 Dst16 = 0
+bool Quit = false
+
+  tile screen
+  set sound table AquaSoundTable areas 2
+  sprites 16x16
+  copy FishSprite count 64 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds 1, 2
+  EditorialPage
+
+title:
+  ' --- Lines 150-290: the title and the introduction ---
+  TitlePage
+  stop sound 1
+  stop sound 2
+  mute all
+
+  ' --- Lines 290-350: the tank ---
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  cls
+  backdrop black
+  DrawBottom
+  FishCount = 0
+  BX[0] = 60
+  BY[0] = 150
+  BX[1] = 196
+  BY[1] = 100
+  Quit = false
+  Pause = 0
+  restore FishColors
+
+  ' --- Lines 400-480: each fish in turn ---
+add_fish:
+  read N
+  if N = 0 then goto swim
+  I = FishCount
+  FishCol[I] = N - 1
+  FX[I] = 0
+  T = random(75, 105)
+  FY[I] = T * 16
+  T = random(0, 3)
+  VY[I] = T - 3
+  VX[I] = random(1, 5)
+  inc FishCount
+  ' Lines 440-460: three motion changes
+  NewMotion
+  NewMotion
+  NewMotion
+  ' Line 470: a pause before the next fish
+  for J = 1 to 60
+    TankFrame
+    if Quit then goto title
+  next
+  goto add_fish
+
+  ' --- Lines 540-570: the fish swim until a key is pressed ---
+swim:
+  TankFrame
+  if Quit then goto title
+  inc Pause
+  if Pause >= 4 then
+    Pause = 0
+    NewMotion
+  end if
+  goto swim
+
+' ---------------------------------------------------------------------------
+
+' One frame: move every fish and bubble, sway the weed, read fire
+sub TankFrame:
+  nmi on
+  wait
+  nmi off
+  for I = 0 to FishMax - 1
+    if I < FishCount then
+      T = FX[I]
+      T += VX[I]
+      if T >= 4096 then T -= 4096
+      if T < 0 then T += 4096
+      FX[I] = T
+      T = FY[I]
+      T += VY[I]
+      if T < 160 then
+        T = 160
+        VY[I] = 1
+      end if
+      if T > 2304 then
+        T = 2304
+        VY[I] = -1
+      end if
+      FY[I] = T
+    end if
+  next
+  ' The sprite order rotates so crowded fish flicker instead of vanishing
+  inc Rot
+  if Rot >= FishMax then Rot = 0
+  N = Rot
+  for I = 0 to FishMax - 1
+    if I < FishCount then
+      T = FX[I] / 16
+      X = T
+      T = FY[I] / 16
+      Y = T
+      Col = FishCol[I]
+      set sprite N to Y,X,0,Col
+    else
+      set sprite N to 192,0,0,0
+    end if
+    inc N
+    if N >= FishMax then N = 0
+  next
+  ' Two bubbles rise, wobbling, from the weeds
+  for J = 0 to 1
+    BYJ = BY[J]
+    BXJ = BX[J]
+    N = frame
+    N &= 3
+    if N = 0 then
+      dec BYJ
+      N = BYJ & 8
+      if N = 0 then
+        inc BXJ
+      else
+        dec BXJ
+      end if
+    end if
+    if BYJ < 12 then
+      BYJ = 150
+      BXJ = random(24, 224)
+    end if
+    BY[J] = BYJ
+    BX[J] = BXJ
+    N = FishMax + J
+    set sprite N to BYJ,BXJ,4,15
+  next
+  update sprites
+  ' The seaweed sways
+  inc Sway
+  if Sway = 40 then
+    copy WeedLeft count 8 to vram.pattern + 5136
+  end if
+  if Sway = 80 then
+    copy WeedRight count 8 to vram.pattern + 5136
+    Sway = 0
+  end if
+  if joypad(1).fire then Quit = true
+  if joypad(2).fire then Quit = true
+  return
+end sub
+
+' Line 610: a random sprite gets a random motion (the listing picks among
+' sprites 3-13, so some picks fall on no fish and change nothing)
+sub NewMotion:
+  J = random(0, 10)
+  if J < FishCount then
+    T = random(0, 3)
+    VY[J] = T - 2
+    VX[J] = random(2, 6)
+  end if
+  return
+end sub
+
+' Adaptation: sand, rocks and seaweed on rows 21-23
+sub DrawBottom:
+  fill SandTop count 32 at 0,21
+  fill Sand count 64 at 0,22
+  for J = 0 to 5
+    X = random(2, 28)
+    put char Rock at X,21
+  next
+  for J = 0 to 6
+    X = J * 4
+    X += 3
+    Y = random(17, 19)
+    put char WeedTip at X,Y
+    inc Y
+weed_stem:
+    put char WeedTile at X,Y
+    inc Y
+    if Y < 21 then goto weed_stem
+  next
+  return
+end sub
+
+' Graphics II: tiles 128-132 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 40 to vram.pattern + Dst16
+    copy TileCol count 40 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 11
+  for J = 0 to 10
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Lines 180-280: the title page
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  cls
+  backdrop dark blue
+  print at 9,2, "TI AQUARIUM"
+  print at 3,5, "THIS PROGRAM ALLOWS YOU TO"
+  print at 3,6, "USE YOUR COLECOVISION TO"
+  print at 3,7, "ENJOY THE RELAXING SIGHT"
+  print at 3,8, "OF FISH SWIMMING BY,"
+  print at 3,9, "WITHOUT THE EXPENSE AND"
+  print at 3,10, "BOTHER OF A REAL AQUARIUM."
+  print at 3,13, "NOTHING TO WIN: JUST SIT"
+  print at 3,14, "BACK AND WATCH NINE FISH"
+  print at 3,15, "GLIDE AND BOB ABOUT."
+  print at 3,17, "PRESS FIRE IN THE TANK TO"
+  print at 3,18, "COME BACK TO THIS PAGE."
+  print at 5,21, "PRESS FIRE TO BEGIN"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 9,1, "TI AQUARIUM"
+  print at 4,3, "BY MICHAEL A. COVINGTON"
+  print at 7,4, "COMPUTE! MAGAZINE"
+  print at 2,6, "A TI-99/4A EXTENDED BASIC"
+  print at 2,7, "PROGRAM, OFFERED SOMEWHAT"
+  print at 2,8, "TONGUE IN CHEEK: A TANK"
+  print at 2,9, "THAT NEVER NEEDS CLEANING."
+  print at 2,11, "IT ALSO TEACHES SPRITES:"
+  print at 2,12, "EACH FISH NUMBER IS ALSO"
+  print at 2,13, "ITS COLOR, AND SMALL RANDOM"
+  print at 2,14, "CHANGES OF MOTION MAKE THE"
+  print at 2,15, "FISH BOB ABOUT LIKE REAL"
+  print at 2,16, "ONES."
+  print at 2,18, "ADDED HERE: SAND, SEAWEED,"
+  print at 2,19, "BUBBLES AND A TITLE TUNE."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Line 340: sprite numbers and colors (0 ends the list)
+data FishColors bytes 9,6,4,7,8,10,11,12,14,0
+
+' Line 310: the fish (16x16, left column then right column), then a bubble
+data FishSprite bytes
+  $00,$00,$00,$00,$00,$00,$00,$81
+  $C3,$E7,$FF,$FF,$E7,$C3,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$F0
+  $F8,$FC,$FE,$FE,$FC,$F8,$F0,$00
+  $00,$18,$24,$42,$42,$24,$18,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' Tiles 128-132: sand surface, sand, weed stem, weed tip, rock
+data TilePat bytes
+  $00,$00,$00,$18,$7E,$FF,$FF,$FF
+  $FF,$DF,$FF,$FB,$FF,$EF,$FF,$7F
+  $10,$08,$10,$20,$10,$08,$10,$20
+  $00,$10,$38,$10,$10,$08,$10,$20
+  $00,$00,$1C,$3E,$7F,$7F,$FF,$FF
+end data
+
+data TileCol bytes
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $31,$31,$31,$C1,$C1,$C1,$C1,$C1
+  $31,$31,$31,$31,$31,$C1,$C1,$C1
+  $E1,$E1,$E1,$E1,$E1,$EB,$EB,$EB
+end data
+
+' Weed stem, leaning left and right (tile 130 in the bottom third)
+data WeedLeft bytes $20,$10,$20,$40,$20,$10,$20,$40
+data WeedRight bytes $08,$10,$08,$04,$08,$10,$08,$04
+
+asm {
+; Title tune: a slow water theme in three (original for this port)
+AquaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$40,$1A,$21,$23,$00,$00,$26,$00,$00,$2B,$00,$00,$2A,$00,$28
+    db $26,$00,$00,$23,$00,$00,$24,$00,$00,$28,$00,$26,$24,$23,$00,$00
+    db $00,$00,$00,$21,$00,$00,$24,$00,$00,$28,$00,$00,$26,$00,$24,$23
+    db $00,$00,$1F,$00,$00,$21,$00,$02,$70,$1A,$21,$23,$00,$21,$1F,$00
+    db $00,$00,$00,$01
+    db $FF
+AquaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$70,$18,$32,$13,$1A,$17,$13,$1A,$17,$10,$17,$13,$10,$17,$13
+    db $0C,$13,$10,$0C,$13,$10,$13,$1A,$17,$13,$1A,$17,$13,$1A,$17,$13
+    db $00,$00,$0E,$15,$12,$0E,$15,$12,$15,$1C,$18,$15,$1C,$18,$0C,$13
+    db $10,$0C,$13,$10,$02,$90,$18,$32,$13,$1A,$17,$0E,$15,$12,$13,$1A
+    db $17,$13,$00,$01
+    db $FF
+AquaSoundTable:
+    dw AquaTuneMel,$702B
+    dw AquaTuneBass,$7035
+}

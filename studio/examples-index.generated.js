@@ -1602,5 +1602,164 @@ export const exampleManifest = [
       "selftest",
       "manual-canon"
     ]
+  },
+  {
+    "id": "amy-compound-array-arithmetic-selftest",
+    "label": "Amy Compound Array Arithmetic Self-Test",
+    "detail": "Runtime regression for u8 and u16 compound multiplication with constant and variable array indexes.",
+    "projectName": "amy-compound-array-arithmetic-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "numeric",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "circus",
+    "label": "Circus (TI-99/4A Port)",
+    "detail": "A trampoline-and-acrobat action game adapted from the 1984 TI-99/4A listing with balloons, birds and title music.",
+    "projectName": "circus",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "colorbot",
+    "label": "Colorbot",
+    "detail": "John R. Dondzila's robot-survival game with eight-way movement, Electron Frisbees, animated walls and Tiny Sound music.",
+    "projectName": "colorbot",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "demons-of-osiris",
+    "label": "Demons of Osiris",
+    "detail": "A ColecoVision rewrite of Steve Haynal's 1984 base-defense game with evasive attackers, waves and rapid fire.",
+    "projectName": "demons-of-osiris",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "gotcha",
+    "label": "Gotcha!",
+    "detail": "Doug Smoak's wraparound money chase with a pursuing Collector, evolving mazes and smooth sprite movement.",
+    "projectName": "gotcha",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "horse-racing",
+    "label": "Horse Racing (TI-99/4A Port)",
+    "detail": "Robert Onufer's multi-player betting game with calculated odds, animated horses, track conditions and correct indexed payoffs.",
+    "projectName": "horse-racing",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "lightsaver",
+    "label": "Lightsaver",
+    "detail": "Catch falling light bulbs with moving baskets across sixteen skill levels, bonus baskets and an automatic demo.",
+    "projectName": "lightsaver",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "missile-math",
+    "label": "Missile Math",
+    "detail": "Garry S. Wick's arithmetic game with five possible answers, a moving UFO, selectable operations and scoring by speed.",
+    "projectName": "missile-math",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "numeric",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "number-game",
+    "label": "The Number Game",
+    "detail": "Lou Tylee's preschool number-recognition game with large digits, keypad play, counted blocks and compact VoxPCM speech.",
+    "projectName": "number-game",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "quatrainment",
+    "label": "Quatrainment",
+    "detail": "A 4x4 pattern puzzle with selectable difficulty, move previews, par calculation and visible timing.",
+    "projectName": "quatrainment",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "ti-aquarium",
+    "label": "TI Aquarium",
+    "detail": "Michael A. Covington's relaxing sprite aquarium with nine moving fish, bubbles, seaweed and rotating sprite priority.",
+    "projectName": "ti-aquarium",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "trident",
+    "label": "Trident",
+    "detail": "C. O. Dickerson's submarine missile-defense game rebuilt with a Graphics II radar, waves and steerable antimissiles.",
+    "projectName": "trident",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];

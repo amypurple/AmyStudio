@@ -1,0 +1,719 @@
+cartridge "LIGHTSAVER/PRESENTS JON RHEES'/1984"
+
+' LIGHTSAVER
+' By Jon Rhees, COMPUTE! magazine, September 1984: written for the
+' Commodore 64 (BASIC with two machine language routines), with versions
+' for the VIC-20 (Gregg Peele), the Atari (Chris Poer) and the IBM PC and
+' PCjr (Tim Victor). All credit belongs to Jon Rhees and to the
+' translators.
+'
+' Historical context (summary of the article):
+' Technology has backfired: the light fixture in your room has come to
+' life and is trying to rid the world of light bulbs by tossing them to
+' the ground. Only you can save them: catch the bulbs in your baskets
+' before they hit the ground and break. The more bulbs you save, the
+' angrier the lamp becomes and the faster it drops them. You start with
+' three baskets stacked one on top of the other; each bulb you miss costs
+' a basket, and a bonus basket comes every 2000 points (never more than
+' three). Sixteen skill levels: the higher the level, the faster the
+' bulbs and the more points each one is worth. Two basket sizes, the
+' large one twice as wide. A demo mode lets the computer play when left
+' alone. The IBM version, all in BASIC, plays in rounds of 10 to 20 bulbs,
+' each round faster and worth more, and a bulb hitting the rim of the
+' basket breaks.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the baskets left and right (the 64 used a
+' paddle); fire starts a round (either joystick).
+' The game logic of the 64, VIC and Atari is machine language; this port
+' follows the article and the IBM version, which is in BASIC: rounds of
+' 10 to 20 bulbs (line 130, BNUM = INT(RND * 11) + 10), points = level per
+' bulb caught (line 5000), the level rising after each round (line 5005),
+' a bulb on the rim breaks (line 1010), a basket lost for each broken
+' bulb, a bonus basket every 2000 points, three at most (64 lines 226-
+' 232), skill 1-16 and basket size S/L (64 lines 60-62), the demo mode.
+' Rules of this rewrite: bulbs fall at 0.6 to 2.1 pixels per frame
+' (0.6 + 0.1 x level); the lamp drops a bulb every 90 - 4 x level frames
+' (at least 24), one frame sooner for each bulb caught in the round (the
+' lamp's anger); up to four bulbs fall at once; the baskets move 3
+' pixels per frame.
+' Adaptation liberties: the skill and basket size are chosen with the
+' joystick; the demo starts after ten idle seconds on the title page and
+' ends with fire; the high score is kept; an original title tune (Tiny
+' Sound); an editorial page. The frame loop is protected from the NMI.
+' Screen: score line on row 1; the lamp under the ceiling (row 3); the
+' floor on row 22; baskets above it.
+
+const CeilTile = 128
+const FloorTile = 129
+const LampY = 24
+const FloorY = 168             ' a bulb reaching this Y breaks
+const BaseY = 152              ' the bottom basket's Y
+
+' Sound table slots (ls/s.mjs)
+const SndDrop = 1
+const SndCatch = 2
+const SndSmashA = 3
+const SndSmashB = 4
+const SndBonus = 5
+const SndRound = 6
+const SndOver = 7
+const SndBeep = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+bcd digits 6 Score
+bcd digits 6 HighScore
+bcd digits 6 NextBonus
+u8 Skill = 1
+u8 Large = 1                   ' 1 large, 0 small
+u8 Level = 1
+u8 Baskets = 3
+u8 BNum = 0                    ' bulbs this round
+u8 Dropped = 0
+u8 Caught = 0
+u8 PX = 112                    ' baskets' left edge
+u8 W = 32                      ' basket width
+u8 LX = 120                    ' the lamp
+u8 LTarget = 120
+u8 LSpeed = 1
+u8 DropT = 0
+u8 Interval = 90
+u16 VY = 0                     ' fall speed, 8.8
+u8 BOn[4]                      ' the falling bulbs
+u8 BX[4]
+u16 BY16[4]
+u8 SmashT = 0                  ' broken glass on show
+u8 SmashX = 0
+u8 SmashY = 0
+bool Demo = false
+bool Quit = false
+u8 TopY = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Cx = 0
+u8 OldY = 0
+u8 Choice = 0
+u16 T16 = 0
+u16 Idle = 0
+u16 Dst16 = 0
+u16 NumU = 0
+u8 NX = 0                      ' PutNum position and width
+u8 NY = 0
+u8 NW = 0
+
+  tile screen
+  set sound table LightSoundTable areas 4
+  sprites 16x16
+  copy SpritePat count 192 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Score = 0
+  NextBonus = 2000
+  Level = Skill
+  Baskets = 3
+  W = 16
+  if Large = 1 then W = 32
+  PX = 112
+
+new_round:
+  ' --- IBM lines 130-140: a round of 10 to 20 bulbs ---
+  BNum = random(10, 20)
+  Dropped = 0
+  Caught = 0
+  T16 = Level
+  T16 *= 26
+  VY = T16 + 154
+  N = Level * 4
+  Interval = 90 - N
+  if Interval < 24 then Interval = 24
+  LSpeed = Level / 6
+  inc LSpeed
+  DropT = 0
+  SmashT = 0
+  for I = 0 to 3
+    BOn[I] = 0
+  next
+  DrawRoom
+  NumU = Level
+  print at 10,10, "LEVEL "
+  NX = 10
+  NX += 6
+  NY = 10
+  PutNum
+  if Demo then print at 10,12, "DEMO MODE"
+  wait 90 frames
+  fill 32 count 12 at 10,10
+  fill 32 count 12 at 10,12
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  MoveBaskets
+  if Quit then goto title
+  MoveLamp
+  MoveBulbs
+  DrawSprites
+  if Baskets = 0 then goto game_over
+  if Dropped < BNum then goto main_loop
+  N = 0
+  for I = 0 to 3
+    N += BOn[I]
+  next
+  if N > 0 then goto main_loop
+
+  ' --- IBM lines 5000-5030: the round is over, the level rises ---
+  nmi on
+  play sound SndRound
+  print at 8,10, "ROUND COMPLETE"
+  NumU = Caught
+  print at 8,12, "BULBS SAVED "
+  NX = 8
+  NX += 12
+  NY = 12
+  PutNum
+  wait 120 frames
+  if Level < 16 then inc Level
+  goto new_round
+
+game_over:
+  nmi on
+  play sound SndOver
+  HideSprites
+  print at 11,10, "GAME OVER"
+  wait 120 frames
+  if Demo then goto title
+  if Score > HighScore then
+    HighScore = Score
+    print at 8,12, "A NEW HIGH SCORE"
+  end if
+  print at 9,15, "PLAY AGAIN"
+  print at 9,16, "TITLE PAGE"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,15 step 1
+  wait no fire
+  if Choice = 1 then
+    Score = 0
+    NextBonus = 2000
+    Level = Skill
+    Baskets = 3
+    goto new_round
+  end if
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' The paddle became the joystick; in the demo the computer goes for the
+' lowest falling bulb
+sub MoveBaskets:
+  N = 0
+  if Demo then
+    if joypad(1).fire then Quit = true
+    if joypad(2).fire then Quit = true
+    Y = 0
+    X = 0
+    for I = 0 to 3
+      V = BOn[I]
+      if V = 1 then
+        T16 = BY16[I] >> 8
+        V = T16
+        if V >= Y then
+          Y = V
+          X = BX[I]
+        end if
+      end if
+    next
+    if Y > 0 then
+      ' Centre the basket under the bulb
+      V = W >> 1
+      V -= 8
+      if X >= V then
+        X -= V
+      else
+        X = 0
+      end if
+      if PX + 2 < X then N = 2
+      if X + 2 < PX then N = 1
+    end if
+  else
+    if joypad(1).left then N = 1
+    if joypad(2).left then N = 1
+    if joypad(1).right then N = 2
+    if joypad(2).right then N = 2
+  end if
+  if N = 1 then
+    if PX >= 19 then PX -= 3
+  end if
+  if N = 2 then
+    V = 240 - W
+    if PX + 3 <= V then PX += 3
+  end if
+  return
+end sub
+
+' The lamp swings toward a random spot and drops bulbs
+sub MoveLamp:
+  if LX < LTarget then
+    LX += LSpeed
+    if LX > LTarget then LX = LTarget
+  end if
+  if LX > LTarget then
+    if LX >= LSpeed then LX -= LSpeed
+    if LX < LTarget then LX = LTarget
+  end if
+  if LX = LTarget then LTarget = random(20, 220)
+  if Dropped >= BNum then return
+  inc DropT
+  if DropT < Interval then return
+  for I = 0 to 3
+    V = BOn[I]
+    if V = 0 then
+      BOn[I] = 1
+      BX[I] = LX
+      T16 = LampY + 8
+      T16 <<= 8
+      BY16[I] = T16
+      inc Dropped
+      DropT = 0
+      play sound SndDrop
+      return
+    end if
+  next
+  return
+end sub
+
+' Bulbs fall; at the top basket's rim they are caught or broken
+sub MoveBulbs:
+  if SmashT > 0 then dec SmashT
+  N = Baskets - 1
+  N *= 8
+  TopY = BaseY - N
+  for I = 0 to 3
+    V = BOn[I]
+    if V = 1 then
+      T16 = BY16[I] >> 8
+      OldY = T16
+      T16 = BY16[I] + VY
+      BY16[I] = T16
+      T16 >>= 8
+      Y = T16
+      Cx = BX[I] + 8
+      ' The bulb's bottom (Y + 10) crosses the rim
+      V = TopY - 10
+      if OldY < V then
+        if Y >= V then CheckCatch
+      end if
+      V = BOn[I]
+      if V = 1 then
+        if Y >= FloorY then
+          Smash
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Inside the basket: caught; on the rim: broken (IBM line 1010)
+sub CheckCatch:
+  X = PX + 2
+  V = PX + W
+  V -= 3
+  if Cx >= X then
+    if Cx <= V then
+      BOn[I] = 0
+      inc Caught
+      play sound SndCatch
+      for K = 1 to Level
+        Score += 1
+      next
+      ' The lamp grows angrier
+      if Interval > 20 then dec Interval
+      ' A bonus basket every 2000 points, three at most
+      if Score >= NextBonus then
+        NextBonus += 2000
+        if Baskets < 3 then
+          inc Baskets
+          play sound SndBonus
+        end if
+      end if
+      ShowStatus
+      return
+    end if
+  end if
+  X = PX
+  if X >= 2 then X -= 2
+  V += 5
+  if Cx >= X then
+    if Cx <= V then Smash
+  end if
+  return
+end sub
+
+' Bulb I breaks and a basket is lost
+sub Smash:
+  BOn[I] = 0
+  SmashT = 30
+  SmashX = BX[I]
+  T16 = BY16[I] >> 8
+  SmashY = T16
+  play sounds SndSmashA, SndSmashB
+  if Baskets > 0 then dec Baskets
+  ShowStatus
+  return
+end sub
+
+' Sprite 0 the lamp, 1-4 bulbs, 5 broken glass, 6-11 baskets
+sub DrawSprites:
+  set sprite 0 to LampY,LX,0,11
+  for I = 0 to 3
+    K = I + 1
+    V = BOn[I]
+    if V = 1 then
+      T16 = BY16[I] >> 8
+      Y = T16
+      X = BX[I]
+      set sprite K to Y,X,4,10
+    else
+      set sprite K to 192,0,0,0
+    end if
+  next
+  if SmashT > 0 then
+    set sprite 5 to SmashY,SmashX,20,15
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  for J = 0 to 2
+    K = J * 2
+    K += 6
+    if J < Baskets then
+      N = J * 8
+      Y = BaseY - N
+      if Large = 1 then
+        set sprite K to Y,PX,8,9
+        inc K
+        X = PX + 16
+        set sprite K to Y,X,12,9
+      else
+        set sprite K to Y,PX,16,9
+        inc K
+        set sprite K to 192,0,0,0
+      end if
+    else
+      set sprite K to 192,0,0,0
+      inc K
+      set sprite K to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub DrawRoom:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  fill CeilTile count 28 at 2,2
+  fill FloorTile count 28 at 2,22
+  ShowStatus
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,1, "SCORE"
+  print Score at 8,1
+  print at 15,1, "HI"
+  print HighScore at 18,1
+  print at 25,1, "B"
+  NumU = Baskets
+  NX = 26
+  NY = 1
+  PutNum
+  return
+end sub
+
+' Prints NumU at NX,NY with no leading zeros or padding; NW = digits used
+sub PutNum:
+  if NumU >= 10000 then
+    print at NX,NY, digits$(NumU, 5)
+    NW = 5
+    return
+  end if
+  if NumU >= 1000 then
+    print at NX,NY, digits$(NumU, 4)
+    NW = 4
+    return
+  end if
+  if NumU >= 100 then
+    print at NX,NY, digits$(NumU, 3)
+    NW = 3
+    return
+  end if
+  if NumU >= 10 then
+    print at NX,NY, digits$(NumU, 2)
+    NW = 2
+    return
+  end if
+  print at NX,NY, digits$(NumU, 1)
+  NW = 1
+  return
+end sub
+
+' Graphics II: tiles 128-129 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 16 to vram.pattern + Dst16
+    copy TileCol count 16 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 12
+  for K = 0 to 11
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' 64 lines 60-70: skill level and basket size; the demo after ten seconds
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  Demo = false
+  Quit = false
+  print at 11,2, "LIGHTSAVER"
+  print at 3,4, "GOAL: CATCH THE BULBS THE"
+  print at 3,5, "ANGRY LAMP THROWS, BEFORE"
+  print at 3,6, "THEY BREAK ON THE FLOOR."
+  print at 3,8, "EACH BULB LOST COSTS A"
+  print at 3,9, "BASKET. A BONUS BASKET"
+  print at 3,10, "EVERY 2000 POINTS."
+  print at 3,11, "THE RIM BREAKS BULBS TOO!"
+  print at 3,14, "SKILL LEVEL (1-16)"
+  print at 3,16, "BASKET SIZE"
+  print at 3,20, "STICK: SET, FIRE: NEXT"
+  ShowSize
+  NumU = Skill
+  print at 24,14, digits$(NumU, 2)
+  ' Skill
+  put char 62 at 22,14
+  Idle = 0
+skill_loop:
+  wait
+  inc Idle
+  if Idle >= 600 then goto demo_start
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if N > 0 then
+    Idle = 0
+    if N = 1 then
+      if Skill > 1 then dec Skill
+    else
+      if Skill < 16 then inc Skill
+    end if
+    NumU = Skill
+    print at 24,14, digits$(NumU, 2)
+    play sound SndBeep
+    wait 10 frames
+  end if
+  if joypad(1).fire then goto skill_done
+  if joypad(2).fire then goto skill_done
+  goto skill_loop
+skill_done:
+  put char 32 at 22,14
+  wait no fire
+  ' Basket size
+  put char 62 at 22,16
+size_loop:
+  wait
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 1
+  if joypad(2).right then N = 1
+  if N = 1 then
+    Large = 1 - Large
+    ShowSize
+    play sound SndBeep
+    wait 12 frames
+  end if
+  if joypad(1).fire then goto size_done
+  if joypad(2).fire then goto size_done
+  goto size_loop
+size_done:
+  wait no fire
+  return
+demo_start:
+  Demo = true
+  return
+end sub
+
+sub ShowSize:
+  if Large = 1 then
+    print at 24,16, "LARGE"
+  else
+    print at 24,16, "SMALL"
+  end if
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 11,1, "LIGHTSAVER"
+  print at 8,3, "BY JON RHEES"
+  print at 4,4, "COMPUTE! SEPTEMBER 1984"
+  print at 2,6, "A COMMODORE 64 GAME WITH"
+  print at 2,7, "MACHINE LANGUAGE, AND VIC,"
+  print at 2,8, "ATARI AND IBM PC VERSIONS."
+  print at 2,10, "YOUR LIGHT FIXTURE HAS COME"
+  print at 2,11, "TO LIFE AND WANTS TO RID"
+  print at 2,12, "THE WORLD OF LIGHT BULBS."
+  print at 2,13, "ONLY YOU CAN SAVE THEM."
+  print at 2,15, "LEAVE THE TITLE PAGE ALONE"
+  print at 2,16, "AND THE COMPUTER PLAYS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Tiles 128-129: the ceiling, the floor
+data TilePat bytes
+  $FF,$FF,$00,$AA,$55,$00,$00,$00
+  $FF,$AA,$55,$FF,$22,$88,$22,$88
+end data
+
+data TileCol bytes
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $A0,$A0,$A0,$A0,$90,$90,$90,$90
+end data
+
+' Sprites (16 x 16): the lamp, a bulb, a large basket (left and right
+' halves), a small basket, broken glass
+data SpritePat bytes
+  $01,$01,$01,$03,$07,$0F,$1F,$3F
+  $7F,$FF,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$C0,$E0,$F0,$F8,$FC
+  $FE,$FF,$00,$00,$00,$00,$00,$00
+  $03,$07,$0F,$0F,$0F,$07,$03,$01
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$F0,$F0,$F0,$E0,$C0,$80
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$E0,$7F,$7F,$3F,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$07,$FE,$FE,$FC,$FC,$F8
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$7F,$7F,$3F,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$FE,$FE,$FC,$FC,$F8
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$21,$09,$40
+  $12,$00,$A5,$5A,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$20,$02
+  $48,$00,$95,$5A,$00,$00,$00,$00
+end data
+
+asm {
+DropT1:
+    db $40,$2F,$40,$01,$40,$31,$40,$01,$40,$33,$40,$01,$40,$35,$40,$01,$40,$38,$40,$01,$40,$3B,$40,$01
+    db $40,$3E,$40,$01,$40,$42,$40,$01,$40,$46,$40,$01,$40,$4B,$40,$01,$40,$50,$40,$01,$40,$56,$40,$01
+    db $40,$5D,$40,$01,$50
+CatchT1:
+    db $40,$47,$10,$03,$40,$35,$20,$08,$50
+SmashT1:
+    db $40,$25,$20,$02,$40,$27,$30,$02,$40,$29,$40,$02,$40,$2A,$50,$02,$40,$2C,$60,$02,$40,$2F,$70,$02
+    db $40,$31,$80,$02,$40,$34,$90,$02,$40,$37,$A0,$02,$40,$3A,$B0,$02,$40,$3E,$C0,$02,$40,$43,$D0,$02
+    db $40,$48,$E0,$02,$40,$4E,$F0,$02,$40,$55,$F0,$02,$40,$5D,$F0,$02,$50
+SmashN:
+    db $00,$00,$00,$02,$00,$00,$10,$02,$00,$00,$20,$02,$00,$00,$30,$02,$00,$00,$40,$02,$00,$00,$50,$02
+    db $00,$00,$60,$02,$00,$00,$70,$02,$00,$00,$80,$02,$00,$00,$90,$02,$00,$00,$A0,$02,$00,$00,$B0,$02
+    db $00,$00,$C0,$02,$00,$00,$D0,$02,$00,$00,$E0,$02,$00,$00,$F0,$02,$10
+BonusT1:
+    db $40,$D6,$10,$04,$40,$AA,$10,$04,$40,$8F,$10,$04,$40,$6B,$10,$04,$40,$55,$10,$0C,$50
+RoundT1:
+    db $40,$8F,$10,$08,$40,$71,$10,$08,$40,$5F,$10,$08,$40,$47,$10,$14,$50
+OverT1:
+    db $40,$BA,$10,$02,$40,$BF,$10,$02,$40,$C4,$10,$02,$40,$CA,$10,$02,$40,$CF,$10,$02,$40,$D5,$10,$02
+    db $40,$DB,$10,$02,$40,$E2,$10,$02,$40,$E9,$10,$02,$40,$F1,$10,$02,$40,$F9,$10,$02,$40,$01,$11,$02
+    db $40,$0A,$11,$02,$40,$14,$11,$02,$40,$1F,$11,$02,$40,$2A,$11,$02,$40,$37,$11,$02,$40,$44,$11,$02
+    db $40,$53,$11,$02,$40,$63,$11,$02,$40,$75,$11,$02,$40,$88,$11,$02,$40,$9E,$11,$02,$40,$B7,$11,$02
+    db $40,$D2,$11,$02,$40,$F1,$11,$02,$40,$15,$12,$02,$40,$3E,$12,$02,$40,$6D,$12,$02,$40,$A6,$12,$02
+    db $40,$EA,$12,$02,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+LightSoundTable:
+    dw DropT1,$7035
+    dw CatchT1,$7035
+    dw SmashT1,$7035
+    dw SmashN,$702B
+    dw BonusT1,$7035
+    dw RoundT1,$7035
+    dw OverT1,$7035
+    dw BeepT1,$7035
+    dw LightTuneMel,$703F
+    dw LightTuneBass,$7049
+; Title tune: a bright, nervous theme (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+LightTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$23,$1F,$1A,$1F,$23,$00,$26,$00,$24,$21,$1C,$21
+    db $24,$00,$28,$00,$26,$23,$1F,$23,$26,$00,$2B,$00,$2A,$28,$26,$24
+    db $23,$00,$00,$01,$02,$10,$1A,$21,$21,$00,$24,$00,$28,$00,$24,$00
+    db $23,$00,$26,$00,$2B,$00,$00,$01,$02,$30,$1A,$21,$1E,$1F,$21,$23
+    db $24,$23,$21,$1F,$02,$60,$1A,$21,$1E,$00,$1A,$00,$1F,$00,$00,$01
+    db $FF
+LightTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$07,$00,$0E,$00,$13,$00,$0E,$00,$09,$00,$10,$00
+    db $15,$00,$10,$00,$07,$00,$0E,$00,$13,$00,$0E,$00,$0C,$00,$0E,$00
+    db $07,$00,$00,$01,$02,$30,$18,$32,$09,$00,$10,$00,$0C,$00,$10,$00
+    db $07,$00,$0E,$00,$0B,$00,$0E,$00,$02,$50,$18,$32,$0E,$00,$15,$00
+    db $0E,$00,$15,$00,$02,$80,$18,$32,$07,$00,$0E,$00,$07,$00,$00,$01
+    db $FF
+}

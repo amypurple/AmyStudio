@@ -1,0 +1,661 @@
+cartridge "DEMONS OF OSIRIS/PRESENTS STEVE HAYNAL'S/1984"
+
+' DEMONS OF OSIRIS
+' By Steve Haynal, COMPUTE! magazine, January 1984: written for the
+' unexpanded VIC-20, with versions for the Commodore 64 and the Atari
+' (Atari programming notes by John Krause, Assistant Technical Editor).
+' All credit belongs to Steve Haynal and John Krause.
+'
+' Historical context (summary of the article):
+' A fast arcade game in machine language: the player defends a fleet of
+' base ships against wave after wave of lightning-fast Osirian attackers.
+' The Osirians do not come down blindly; they have two moves. On defense
+' they dodge an oncoming missile to the left or the right; on offense they
+' slip to one side of the player's line of fire, never straight above the
+' ship, where they would be easy to hit. They destroy a base ship by
+' reaching the space directly above it, above and to the left, or above
+' and to the right, and at times they trigger a special defensive
+' mechanism, an evasive dance around the missiles. The player picks a
+' speed from 1 (fastest) to 240 and from 1 to 240 base ships, and fights
+' as many as eight Osirians at a time. Keep moving and keep firing; at
+' slow speeds aim, at fast speeds just dodge. The screen flashes red when
+' a ship is lost. The VIC version is 696 bytes of machine language in
+' DATA statements with three lines of BASIC.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the base ship left and right; fire
+' launches a missile (either joystick). Rapid fire (the VIC's SHIFT-LOCK)
+' is a menu option: holding fire then fires again as soon as the missile
+' is gone.
+' The machine language is not translated: the game is rewritten from the
+' article, with the shapes of the Atari listing (lines 130-150: Osirian,
+' missile, base ship) and the Atari's ten points per Osirian.
+' Rules of this rewrite: the Osirians move one cell per step, and a step
+' comes every SPEED / 8 + 1 frames (speed 1: every frame, speed 240:
+' every 31 frames). Each Osirian is given a side of the player's line of
+' fire, two columns away; it slides toward that column and drops toward
+' the ship, one row in three, and never stands in the line of fire. If a
+' missile is coming up its column, it dodges one cell to its side, and
+' one time in four two cells (the special evasive move). On the row just
+' above the ship, an Osirian beside the ship or above it destroys it on
+' its next step. One missile at a time. Waves: wave W keeps W + 2
+' Osirians on the screen (at most 8) and ends after twelve are
+' destroyed. When a ship is lost the Osirians go back to the top.
+' Adaptation liberties: the speed and the number of ships are chosen with
+' the joystick (left/right, held to run faster), not typed; the score,
+' ships left and wave are shown during play; the high score is kept; the
+' sprite order rotates so Osirians on one line flicker instead of
+' vanishing; the Osirians glide between cells instead of jumping; an original title tune (Tiny Sound); an editorial page. The
+' frame loop is protected from the NMI.
+' Screen: score line on row 1; Osirians on columns 3-28, rows 3-20; the
+' base ship on row 21, between pixels 24 and 224 (inside the overscan).
+
+const MaxDemons = 8
+const ShipY = 167              ' sprite Y of the base ship (row 21)
+
+' Sound table slots (do/s.mjs)
+const SndShot = 1
+const SndBoomA = 2
+const SndBoomB = 3
+const SndLostA = 4
+const SndLostB = 5
+const SndWave = 6
+const SndBeep = 7
+const SndTuneA = 8
+const SndTuneB = 9
+
+bcd digits 5 Score
+bcd digits 5 HighScore
+u8 Speed = 60
+u8 Ships = 5
+u8 Rapid = 1                   ' 1 normal fire, 2 rapid fire
+u8 Delay = 0
+u8 StepT = 0
+u8 Wave = 1
+u8 Active = 3                  ' Osirians on the screen
+u8 Downed = 0                  ' destroyed this wave
+u8 DCol[MaxDemons]
+u8 DRow[MaxDemons]
+u8 DSide[MaxDemons]            ' 0 left of the line of fire, 1 right
+u8 DOn[MaxDemons]
+u8 OCol[MaxDemons]             ' the cell before the last step (glide)
+u8 ORow[MaxDemons]
+u8 Off = 0
+u8 SX = 116                    ' base ship X (pixels)
+u8 PC = 15                     ' base ship column
+bool MOn = false               ' the missile
+u8 MX = 0
+u8 MY = 0
+u8 MC = 0
+u8 MR = 0
+bool Fired = false
+bool WasFired = false
+bool Lost = false
+u8 Rot = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Col = 0
+u8 Row = 0
+u8 Tc = 0
+u8 Choice = 0
+u8 SelV = 0
+u8 SelRow = 0
+u8 Hold = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table OsirisSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy SpritePat count 24 to vram.spr_pat
+  HideSprites
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+options:
+  ' --- VIC line 15, Atari lines 50-62: speed and ships ---
+  OptionsPage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Score = 0
+  Wave = 1
+  Delay = Speed / 8
+  inc Delay
+
+new_wave:
+  Active = Wave + 2
+  if Active > MaxDemons then Active = MaxDemons
+  Downed = 0
+  nmi on
+  DrawField
+  NumU = Wave
+  print at 11,12, "WAVE " + digits$(NumU, 2)
+  play sound SndWave
+  wait 60 frames
+  fill 32 count 10 at 11,12
+
+new_ship:
+  SX = 116
+  MOn = false
+  WasFired = true
+  for I = 0 to MaxDemons - 1
+    DOn[I] = 0
+    if I < Active then PlaceDemon
+  next
+  StepT = 0
+  Lost = false
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  MoveShip
+  MoveMissile
+  inc StepT
+  if StepT >= Delay then
+    StepT = 0
+    for I = 0 to MaxDemons - 1
+      N = DOn[I]
+      if N = 1 then DemonStep
+    next
+  end if
+  DrawSprites
+  if Lost then goto ship_lost
+  if Downed >= 12 then
+    inc Wave
+    if Wave > 99 then Wave = 99
+    goto new_wave
+  end if
+  goto main_loop
+
+  ' --- The screen flashes red: a base ship is lost ---
+ship_lost:
+  nmi on
+  play sounds SndLostA, SndLostB
+  for K = 0 to 59
+    N = K & 4
+    if N = 0 then
+      backdrop dark red
+    else
+      backdrop black
+    end if
+    wait
+  next
+  backdrop black
+  dec Ships
+  ShowStatus
+  if Ships > 0 then goto new_ship
+
+  ' --- Atari line 80: the final score ---
+  HideSprites
+  if Score > HighScore then HighScore = Score
+  print at 11,10, "GAME OVER"
+  print at 9,12, "SCORE"
+  print Score at 16,12
+  print at 9,13, "HIGH"
+  print HighScore at 16,13
+  wait 60 frames
+  print at 6,16, "PRESS FIRE"
+  wait no fire
+  pause until press
+  wait no fire
+  play sounds SndTuneA, SndTuneB
+  goto options
+
+' ---------------------------------------------------------------------------
+
+' Ship and fire
+sub MoveShip:
+  Fired = false
+  if joypad(1).fire then Fired = true
+  if joypad(2).fire then Fired = true
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if N = 1 then
+    if SX > 24 then SX -= 2
+  end if
+  if N = 2 then
+    if SX < 216 then SX += 2
+  end if
+  PC = SX + 4
+  PC >>= 3
+  if Fired then
+    if not MOn then
+      V = 0
+      if not WasFired then V = 1
+      if Rapid = 2 then V = 1
+      if V = 1 then
+        MOn = true
+        MX = SX
+        MY = ShipY - 6
+        play sound SndShot
+      end if
+    end if
+  end if
+  WasFired = Fired
+  return
+end sub
+
+' The missile rises 6 pixels a frame and hits an Osirian within 6 pixels
+sub MoveMissile:
+  if not MOn then return
+  if MY < 22 then
+    MOn = false
+    return
+  end if
+  MY -= 6
+  MC = MX + 4
+  MC >>= 3
+  MR = MY + 4
+  MR >>= 3
+  for I = 0 to MaxDemons - 1
+    N = DOn[I]
+    if N = 1 then
+      X = DCol[I] * 8
+      Y = DRow[I] * 8
+      if X < MX then
+        V = MX - X
+      else
+        V = X - MX
+      end if
+      if V < 6 then
+        if Y < MY then
+          V = MY - Y
+        else
+          V = Y - MY
+        end if
+        if V < 7 then
+          MOn = false
+          play sounds SndBoomA, SndBoomB
+          Score += 10
+          inc Downed
+          ShowStatus
+          PlaceDemon
+          return
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' One move of Osirian I: defense, attack, or descent
+sub DemonStep:
+  Col = DCol[I]
+  Row = DRow[I]
+  OCol[I] = Col
+  ORow[I] = Row
+  ' On the row above the ship: beside it or above it, the ship is lost
+  if Row >= 20 then
+    if Col + 1 >= PC then
+      V = PC + 1
+      if Col <= V then
+        Lost = true
+        return
+      end if
+    end if
+  end if
+  ' Defense: a missile coming up this column
+  if MOn then
+    if MC = Col then
+      if MR > Row then
+        N = random(0, 3)
+        V = 1
+        if N = 0 then V = 2
+        T = DSide[I]
+        if T = 0 then
+          Col -= V
+        else
+          Col += V
+        end if
+        if Col < 3 then Col = 3
+        if Col > 28 then Col = 28
+        DCol[I] = Col
+        return
+      end if
+    end if
+  end if
+  ' Attack: slide to the chosen side of the line of fire
+  T = DSide[I]
+  if T = 0 then
+    Tc = 3
+    if PC >= 5 then Tc = PC - 2
+  else
+    Tc = 28
+    if PC <= 26 then Tc = PC + 2
+  end if
+  if Row >= 20 then
+    ' Last row: close in beside the ship
+    if Col < PC then inc Col
+    if Col > PC then dec Col
+    DCol[I] = Col
+    return
+  end if
+  if Col < Tc then inc Col
+  if Col > Tc then dec Col
+  ' Never stand in the line of fire
+  if Col = PC then
+    if T = 0 then
+      dec Col
+    else
+      inc Col
+    end if
+  end if
+  if Col < 3 then Col = 3
+  if Col > 28 then Col = 28
+  N = random(0, 2)
+  if N = 0 then inc Row
+  DCol[I] = Col
+  DRow[I] = Row
+  return
+end sub
+
+' Osirian I appears at the top, on a random side
+sub PlaceDemon:
+  DOn[I] = 1
+  DCol[I] = random(3, 28)
+  DRow[I] = random(3, 5)
+  OCol[I] = DCol[I]
+  ORow[I] = DRow[I]
+  DSide[I] = random(0, 1)
+  return
+end sub
+
+' Sprites 0-7 the Osirians (order rotating), 8 the ship, 9 the missile
+sub DrawSprites:
+  inc Rot
+  if Rot >= MaxDemons then Rot = 0
+  K = Rot
+  ' Adaptation: the Osirians glide from cell to cell during a step
+  Off = StepT * 8
+  Off /= Delay
+  for I = 0 to MaxDemons - 1
+    N = DOn[I]
+    if N = 1 then
+      Col = OCol[I]
+      Row = ORow[I]
+      X = Col * 8
+      Y = Row * 8
+      T = DCol[I]
+      if T > Col then
+        T -= Col
+        T *= Off
+        X += T
+      else
+        if T < Col then
+          T = Col - T
+          T *= Off
+          X -= T
+        end if
+      end if
+      T = DRow[I]
+      if T > Row then Y += Off
+      dec Y
+      V = DemonCol[I]
+      set sprite K to Y,X,0,V
+    else
+      set sprite K to 192,0,0,0
+    end if
+    inc K
+    if K >= MaxDemons then K = 0
+  next
+  set sprite 8 to ShipY,SX,2,7
+  if MOn then
+    set sprite 9 to MY,MX,1,15
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawField:
+  HideSprites
+  fill mode 2 text color with $F0
+  cls
+  backdrop black
+  ' A few stars
+  for K = 1 to 24
+    X = random(2, 29)
+    Y = random(3, 20)
+    put char 46 at X,Y
+  next
+  ShowStatus
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,1, "SCORE"
+  print Score at 8,1
+  print at 14,1, "SHIPS"
+  NumU = Ships
+  print at 20,1, digits$(NumU, 3)
+  print at 24,1, "W"
+  NumU = Wave
+  print at 25,1, digits$(NumU, 2)
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  for K = 0 to 9
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Speed, ships and fire mode, chosen with the joystick
+sub OptionsPage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  cls
+  backdrop dark blue
+  print at 8,2, "DEMONS OF OSIRIS"
+  print at 3,4, "GOAL: DEFEND YOUR FLEET OF"
+  print at 3,5, "BASE SHIPS AGAINST WAVE"
+  print at 3,6, "AFTER WAVE OF OSIRIANS."
+  print at 3,8, "THEY DODGE YOUR MISSILES AND"
+  print at 3,9, "KILL A SHIP FROM ABOVE IT OR"
+  print at 3,10, "BESIDE IT. KEEP MOVING!"
+  print at 3,11, "10 POINTS EACH. HIGH"
+  print HighScore at 24,11
+  print at 3,14, "SPEED (1 FASTEST)"
+  print at 3,16, "BASE SHIPS"
+  print at 3,18, "FIRE"
+  print at 3,21, "STICK: SET, FIRE: NEXT"
+  ShowRapid
+  NumU = Ships
+  print at 22,16, digits$(NumU, 3)
+  SelV = Speed
+  SelRow = 14
+  SelectNumber
+  Speed = SelV
+  SelV = Ships
+  SelRow = 16
+  SelectNumber
+  Ships = SelV
+  ' Fire mode
+  put char 62 at 20,18
+rapid_loop:
+  wait
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(1).right then N = 1
+  if joypad(2).left then N = 1
+  if joypad(2).right then N = 1
+  if N = 1 then
+    Rapid = 3 - Rapid
+    ShowRapid
+    play sound SndBeep
+    wait 12 frames
+  end if
+  if joypad(1).fire then goto rapid_done
+  if joypad(2).fire then goto rapid_done
+  goto rapid_loop
+rapid_done:
+  wait no fire
+  return
+end sub
+
+sub ShowRapid:
+  if Rapid = 1 then
+    print at 22,18, "NORMAL"
+  else
+    print at 22,18, "RAPID "
+  end if
+  return
+end sub
+
+' Left and right change SelV (1-240), faster when held; fire accepts it
+sub SelectNumber:
+  put char 62 at 20,SelRow
+  Hold = 0
+  wait no fire
+sel_show:
+  NumU = SelV
+  print at 22,SelRow, digits$(NumU, 3)
+sel_loop:
+  wait
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if joypad(1).fire then goto sel_done
+  if joypad(2).fire then goto sel_done
+  if N = 0 then
+    Hold = 0
+    goto sel_loop
+  end if
+  inc Hold
+  V = 0
+  if Hold = 1 then V = 1
+  if Hold > 20 then
+    T = Hold & 3
+    if T = 0 then V = 1
+  end if
+  if Hold > 60 then V = 1
+  if V = 0 then goto sel_loop
+  if N = 1 then
+    if SelV > 1 then dec SelV
+  else
+    if SelV < 240 then inc SelV
+  end if
+  goto sel_show
+sel_done:
+  put char 32 at 20,SelRow
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 8,1, "DEMONS OF OSIRIS"
+  print at 7,3, "BY STEVE HAYNAL"
+  print at 5,4, "COMPUTE! JANUARY 1984"
+  print at 2,6, "A MACHINE LANGUAGE GAME FOR"
+  print at 2,7, "THE UNEXPANDED VIC-20, WITH"
+  print at 2,8, "64 AND ATARI VERSIONS."
+  print at 2,10, "THE OSIRIANS DO NOT DESCEND"
+  print at 2,11, "BLINDLY: THEY DODGE YOUR"
+  print at 2,12, "MISSILES AND WAIT BESIDE"
+  print at 2,13, "YOUR LINE OF FIRE."
+  print at 2,15, "THE MACHINE LANGUAGE WAS"
+  print at 2,16, "REWRITTEN HERE FROM THE"
+  print at 2,17, "ARTICLE'S DESCRIPTION."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Osirian colors, one per demon
+data DemonCol bytes 15,11,9,13,3,7,10,14
+
+' Atari lines 130-150: the Osirian, the missile, the base ship
+data SpritePat bytes
+  $18,$7E,$DB,$FF,$7E,$66,$42,$C3
+  $00,$00,$18,$18,$18,$18,$00,$00
+  $18,$18,$18,$3C,$3C,$3C,$7E,$FF
+end data
+
+asm {
+ShotT1:
+    db $40,$3E,$20,$01,$40,$44,$20,$01,$40,$4B,$20,$01,$40,$53,$20,$01,$40,$5D,$20,$01,$40,$6B,$20,$01
+    db $40,$7C,$20,$01,$40,$95,$20,$01,$40,$BA,$20,$01,$50
+BoomT1:
+    db $40,$FC,$01,$02,$40,$1A,$22,$02,$40,$3B,$32,$02,$40,$60,$52,$02,$40,$8A,$62,$02,$40,$BB,$82,$02
+    db $40,$F4,$92,$02,$40,$37,$B3,$02,$40,$86,$C3,$02,$40,$E7,$E3,$02,$40,$FF,$F3,$02,$50
+BoomN:
+    db $00,$00,$04,$02,$00,$00,$24,$02,$00,$00,$34,$02,$00,$00,$54,$02,$00,$00,$64,$02,$00,$00,$84,$02
+    db $00,$00,$94,$02,$00,$00,$B4,$02,$00,$00,$C4,$02,$00,$00,$E4,$02,$00,$00,$F4,$02,$10
+LostT1:
+    db $40,$FF,$03,$03,$40,$FF,$13,$03,$40,$FF,$13,$03,$40,$FF,$23,$03,$40,$FF,$23,$03,$40,$FF,$33,$03
+    db $40,$FF,$33,$03,$40,$FF,$43,$03,$40,$FF,$43,$03,$40,$FF,$53,$03,$40,$FF,$53,$03,$40,$FF,$63,$03
+    db $40,$FF,$63,$03,$40,$FF,$73,$03,$40,$FF,$73,$03,$40,$FF,$83,$03,$40,$FF,$83,$03,$40,$FF,$93,$03
+    db $40,$FF,$93,$03,$40,$FF,$A3,$03,$40,$FF,$A3,$03,$40,$FF,$B3,$03,$40,$FF,$B3,$03,$40,$FF,$C3,$03
+    db $40,$FF,$C3,$03,$40,$FF,$D3,$03,$40,$FF,$D3,$03,$40,$FF,$E3,$03,$40,$FF,$E3,$03,$40,$FF,$F3,$03
+    db $40,$FF,$F3,$03,$50
+LostN:
+    db $00,$00,$07,$03,$00,$00,$17,$03,$00,$00,$17,$03,$00,$00,$27,$03,$00,$00,$27,$03,$00,$00,$37,$03
+    db $00,$00,$37,$03,$00,$00,$47,$03,$00,$00,$47,$03,$00,$00,$57,$03,$00,$00,$57,$03,$00,$00,$67,$03
+    db $00,$00,$67,$03,$00,$00,$77,$03,$00,$00,$77,$03,$00,$00,$87,$03,$00,$00,$87,$03,$00,$00,$97,$03
+    db $00,$00,$97,$03,$00,$00,$A7,$03,$00,$00,$A7,$03,$00,$00,$B7,$03,$00,$00,$B7,$03,$00,$00,$C7,$03
+    db $00,$00,$C7,$03,$00,$00,$D7,$03,$00,$00,$D7,$03,$00,$00,$E7,$03,$00,$00,$E7,$03,$00,$00,$F7,$03
+    db $00,$00,$F7,$03,$10
+WaveT1:
+    db $40,$AA,$10,$05,$40,$A0,$10,$05,$40,$87,$10,$05,$40,$7F,$10,$0F,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+OsirisSoundTable:
+    dw ShotT1,$7035
+    dw BoomT1,$7035
+    dw BoomN,$702B
+    dw LostT1,$7035
+    dw LostN,$702B
+    dw WaveT1,$7035
+    dw BeepT1,$7035
+    dw OsirisTuneMel,$703F
+    dw OsirisTuneBass,$7049
+; Title tune: a temple theme in E (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+OsirisTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$17,$00,$18,$1B,$1C,$00,$1B,$18,$17,$00,$00,$00
+    db $1E,$00,$1C,$00,$1B,$1C,$1E,$1F,$1E,$00,$1C,$00,$1B,$18,$17,$00
+    db $00,$00,$00,$01,$02,$10,$1A,$21,$23,$00,$21,$1F,$1E,$00,$1F,$1E
+    db $1C,$00,$1B,$00,$1C,$00,$00,$01,$02,$30,$1A,$21,$1E,$1F,$1E,$1C
+    db $1B,$00,$18,$00,$02,$60,$1A,$21,$1B,$18,$17,$00,$00,$00,$00,$01
+    db $FF
+OsirisTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$0B,$00,$12,$00,$0B,$00,$12,$00,$0B,$00,$12,$00
+    db $0B,$00,$12,$00,$0C,$00,$13,$00,$0C,$00,$13,$00,$0B,$00,$12,$00
+    db $0B,$00,$00,$01,$02,$30,$18,$32,$10,$00,$0B,$00,$10,$00,$0B,$00
+    db $0C,$00,$13,$00,$0B,$00,$12,$00,$02,$50,$18,$32,$09,$00,$10,$00
+    db $0C,$00,$13,$00,$02,$80,$18,$32,$0B,$00,$12,$00,$0B,$00,$00,$01
+    db $FF
+}

@@ -515,3 +515,104 @@ if N >= 3 then goto game_over   ' N is no longer the loss count
    for scratch values in subroutines" note next to the `local` declaration,
    with the RAM and stack cost, would make it the default habit.
 
+## 14. A variable named like a hex byte breaks `$xx` literals in data (TI Aquarium)
+
+A global `u8 FC[9]` made every `$FC` in a `data ... bytes` block assemble
+as `$AMY_UVAR_FC`, and the assembler stopped with "Invalid expression:
+$AMY_UVAR_FC" on a line far from the declaration. Any one- or two-letter
+name made of hex digits (`FC`, `A`, `BE`, `DD`...) can do this.
+
+### Proposals
+
+1. Never substitute identifiers inside `$`-prefixed hex literals.
+2. Until then, warn at the declaration: "FC is also a hex byte; $FC in
+   data will refer to this variable".
+
+## 15. Comparisons with array elements, and between `i16` and small constants
+
+`if FX[I] >= 4096` and `if T < Surface` (T an `i16`, `const Surface = 160`)
+both fail with "Unsupported comparison". Copying the element to a scalar
+and writing the literal works. A clearer error naming the cause (array
+element, or constant typed as `u8` against `i16`) would save a guess.
+
+## 16. `fill mode 2 text color` silently erases the colors of custom tiles
+
+The statement fills the whole Mode 2 color table, tiles 128-255 included.
+Called after the tiles were loaded (to reset text colors on a new
+screen), it left Trident's radar grid and base, Circus's balloons and the
+Gotcha! maze in the text color. Five ports had the bug before a player
+noticed it.
+
+### Proposals
+
+1. Offer `fill mode 2 text color with X for chars 0 to 127`, or make the
+   default touch only the characters the built-in font uses.
+2. A warning when the statement follows a copy to `vram.color` in the
+   same program flow: "this resets the colors loaded at line N".
+
+Item 14 (hex-named variables) struck again: `u8 C1` broke `$C1` in a
+sprite table.
+
+## 17. `str$(Value)` on a `u16` always writes five zero-padded digits
+
+The manual presents `"SCORE " + str$(Score)` as the plain conversion and
+keeps padding for `digits N` and `width N`, so `str$` reads like BASIC's
+STR$. The generated code calls `AMY_U16_TO_ASCII5` and copies five bytes:
+`"CASH $" + str$(500)` prints `CASH $00500`. Horse Racing, Missile Math
+and Lightsaver showed every amount, level and answer that way.
+
+### Proposals
+
+1. Make `str$(Value)` trim the leading zeros (keep at least one digit),
+   as STR$ does, and let `digits$` and `width$` handle fixed fields.
+2. Or state it in the manual next to the example: "str$ without a
+   format gives the full zero-padded width of the type".
+
+The ports now print numbers with a `PutNum` routine that picks
+`digits$(Value, N)` for the exact number of digits.
+
+## 18. `u16 *= Array[Index]` multiplies the element by itself (Horse Racing payoffs)
+
+Found with a self-test ROM run in the GearColeco test core (stub BIOS,
+values read back from RAM). Files: amy-selftests/ops.alexis, payoff.alexis.
+
+```basic
+T16 = 20
+T16 *= A[1]        ' A[1] = 30: gives 900, should be 600
+```
+
+Generated code (balanced profile):
+
+```
+ld hl,(AMY_UVAR_T16)
+ex de,hl            ; DE = T16
+ld hl,$703C
+ld e,(hl)           ; DE overwritten by the element
+inc hl
+ld d,(hl)
+ld h,d
+ld l,e
+ld b,h              ; BC = element
+ld c,l
+...                 ; HL = DE * BC = element * element
+```
+
+The left operand is loaded into DE and then lost when the element is
+loaded. In Horse Racing every winning ticket paid amount x amount instead
+of odds x amount. Same results with a constant or a variable index.
+
+Checked in the same test and correct: `+=`, `-=`, `/=` with an array
+element (u16, u8, i16), `E = T16 * A[J]` and `E = A[J] * T16`.
+
+Also: `N *= B8[J]` with `u8` operands passes the transpiler and fails in
+the assembler (`ld C, AMY_UVAR_B8[AMY_UVAR_J]` - invalid expression).
+
+The 16-bit multiply is a repeated addition (`add hl,de` / `dec bc`),
+so a multiply by 1000 runs a thousand loops; a shift-and-add routine
+would be far faster.
+
+Workaround in the ports: copy the element to a scalar first
+(`W16 = Amt[J]` then `T16 *= W16`).
+
+Variable names are case-insensitive (`Mt` collides with `MT`); worth one
+line in the manual.

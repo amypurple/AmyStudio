@@ -1,0 +1,795 @@
+cartridge "TRIDENT/PRESENTS C. O. DICKERSON'S/1984"
+
+' TRIDENT
+' By C. O. Dickerson, COMPUTE! magazine: written for the Atari (24K, with
+' three machine language routines inside BASIC strings), with a Commodore
+' 64 version typed in with MLX. All credit belongs to C. O. Dickerson.
+'
+' Historical context (summary of the article):
+' The player is the missile officer of the USS Trident, a new nuclear
+' submarine, when Priority One Channel flashes a red alert: an all-out
+' missile attack. It is really a drill run by the sub's computers, but the
+' officer sees the outside world only through the radar console. Enemy
+' missiles come in waves, more of them and faster with each attack, from
+' every edge of the radar grid toward the base at its centre. Fire
+' releases an antimissile; the joystick steers it toward the nearest
+' threat. Antimissiles fly twice as fast as anything the enemy launches
+' and can also hover in ambush. Clear a wave and the next one is faster;
+' let one missile through and the drill is over. Scoring starts at two
+' points per missile destroyed, one more with each speed level, and each
+' antimissile left unused is a bonus: four missiles stopped with three
+' antimissiles at four points each make (4 + 4 + 4 + 4) + 4 = 20.
+' The BASIC drew the radar and the console; Charles Brannon's Textplot II
+' printed the readouts, D. K. Titchenell's MOVS cleared the player-missile
+' area, and the third routine was the game itself.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: fire (joystick 1 or 2) launches an antimissile from the base;
+' the stick steers it in eight directions, and it hovers when the stick is
+' released.
+' The rules follow the BASIC: missiles appear on a random edge of the grid
+' (lines 285-305), the wave grows from one to four missiles and then the
+' speed rises one level and the wave starts again at one (lines 140-150,
+' ten speed levels, Q from 100 down to 0), and the wave score is
+' (2 x destroyed - launched) x points, with points = 2 + level - 1
+' (line 130, Z = (C - PEEK(1692) + C) * ((120 - Q) / 10)).
+' Adaptation liberties: the machine language routine is rewritten from the
+' article: missiles fly straight at the base; an antimissile is lost when
+' it leaves the grid and keeps flying after a hit, so one antimissile can
+' stop several missiles; a new one can be launched only when none is in
+' flight, and at most two per missile in the wave (so a wave score is
+' never negative; with none left, the base cannot be defended). Missile
+' speeds: 0.25 to 0.95 pixel per frame over the ten levels; antimissile:
+' 2 pixels per frame. Surviving the tenth level ends the drill with a
+' commendation. The console readouts are labelled; the highest score is
+' kept. Radar grid and base in Graphics II tiles, blinking warheads, an
+' original title tune (Tiny Sound), joystick menus, an editorial page;
+' the frame loop is protected from the NMI.
+' Screen: radar on columns 2-21, rows 2-21 (pixels 16-175), base at its
+' centre (pixel 96,96); console on columns 23-29.
+
+const GridTile = 128
+const GridLineH = 129
+const GridLineV = 130
+const GridCross = 131
+const BaseTL = 132
+const BaseTR = 133
+const BaseBL = 134
+const BaseBR = 135
+const FrameH = 136
+const FrameV = 137
+const FrameC = 138
+const PanelTile = 139
+
+' Sound table slots (tr/s.mjs)
+const SndAlert = 1
+const SndLaunchA = 2
+const SndLaunchB = 3
+const SndHit = 4
+const SndBaseA = 5
+const SndBaseB = 6
+const SndClear = 7
+const SndBeep = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+bcd digits 5 Score
+bcd digits 5 HighScore
+u8 Level = 1                   ' speed level 1-10 (Q = 110 - 10 x level)
+u8 WaveN = 1                   ' missiles in this wave, PEEK(1691)
+u8 Kills = 0                   ' C
+u8 Launched = 0                ' PEEK(1692)
+u8 Pts = 0
+u8 Gain = 0
+u16 Speed = 0                  ' missile speed, 8.8 pixels per frame
+u16 MX[4]                      ' missile centres, 8.8
+u16 MY[4]
+u16 VXm[4]                     ' per-frame steps, 8.8, sign apart
+u16 VYm[4]
+u8 SgnX[4]                     ' 0 moves right/down, 1 left/up
+u8 SgnY[4]
+u8 Alive[4]
+u16 AX16 = 0                   ' antimissile centre, 8.8
+u16 AY16 = 0
+bool AFly = false
+bool Lost = false
+bool Fired = false
+u8 Stick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+u8 PX = 0
+u8 PY = 0
+u8 DX = 0
+u8 DY = 0
+u8 Dist = 0
+u8 Choice = 0
+u16 T16 = 0
+u16 W16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table TridentSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy Sprites8 count 24 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  ' --- Lines 345-405: the title, with the instructions on request ---
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Score = 0
+  Level = 1
+  WaveN = 1
+  DrawRadar
+
+  ' --- Lines 15-30: a red alert, then the wave ---
+new_wave:
+  Kills = 0
+  Launched = 0
+  AFly = false
+  Lost = false
+  Pts = Level + 1
+  T16 = Level
+  T16 *= 20
+  Speed = T16 + 44
+  ShowConsole
+  nmi on
+  HideSprites
+  print at 23,20, "RED"
+  print at 23,21, "ALERT"
+  play sound SndAlert
+  for K = 1 to 60
+    N = K & 8
+    if N = 0 then
+      print at 23,20, "RED  "
+      print at 23,21, "ALERT"
+    else
+      fill 32 count 5 at 23,20
+      fill 32 count 5 at 23,21
+    end if
+    wait
+  next
+  fill 32 count 5 at 23,20
+  fill 32 count 5 at 23,21
+  PlaceMissiles
+
+  ' --- Lines 65-110: the main loop ---
+main_loop:
+  nmi on
+  wait
+  nmi off
+  Steer
+  MoveMissiles
+  if Lost then goto base_hit
+  CheckHits
+  DrawSprites
+  if Kills = WaveN then goto wave_done
+  goto main_loop
+
+  ' --- Lines 125-150: the wave is stopped; score, then more or faster ---
+wave_done:
+  nmi on
+  wait 20 frames
+  HideSprites
+  play sound SndClear
+  Gain = Kills * 2
+  Gain -= Launched
+  Gain *= Pts
+  print at 23,20, "+"
+  NumU = Gain
+  print at 24,20, digits$(NumU, 3)
+  wait 30 frames
+add_points:
+  if Gain > 0 then
+    dec Gain
+    Score += 1
+    print Score at 23,7
+    wait
+    goto add_points
+  end if
+  wait 60 frames
+  fill 32 count 5 at 23,20
+  inc WaveN
+  if WaveN < 5 then goto new_wave
+  WaveN = 1
+  inc Level
+  if Level <= 10 then goto new_wave
+  goto drill_won
+
+  ' --- Line 320: a missile got through ---
+base_hit:
+  nmi on
+  HideSprites
+  play sounds SndBaseA, SndBaseB
+  for K = 0 to 89
+    N = K & 4
+    if N = 0 then
+      backdrop light red
+    else
+      backdrop black
+    end if
+    N = K & 7
+    if N = 0 then
+      put char 42 at 11,11
+      put char 42 at 12,12
+    end if
+    if N = 4 then
+      put char BaseTL at 11,11
+      put char BaseBR at 12,12
+    end if
+    wait
+  next
+  backdrop black
+  print at 23,20, "BASE"
+  print at 23,21, "HIT!"
+  wait 60 frames
+  goto debrief
+
+  ' --- Adaptation: all ten speed levels survived ---
+drill_won:
+  nmi on
+  play sound SndClear
+  print at 23,20, "DRILL"
+  print at 23,21, "DONE!"
+  wait 120 frames
+
+debrief:
+  if Score > HighScore then HighScore = Score
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  if Lost then
+    print at 9,3, "DRILL FAILED"
+    print at 4,5, "A MISSILE REACHED THE"
+    print at 4,6, "USS TRIDENT."
+  else
+    print at 7,3, "DRILL COMPLETED"
+    print at 4,5, "ALL TEN SPEED LEVELS"
+    print at 4,6, "HELD. COMMENDATION FROM"
+    print at 4,7, "THE CHIEF OF NAVAL OPS."
+  end if
+  print at 6,10, "YOUR SCORE"
+  print Score at 20,10
+  print at 6,12, "HIGH SCORE"
+  print HighScore at 20,12
+  print at 6,14, "SPEED LEVEL"
+  NumU = Level
+  if NumU > 10 then NumU = 10
+  print at 23,14, digits$(NumU, 2)
+  print at 5,19, "PRESS FIRE FOR ANOTHER"
+  print at 13,20, "DRILL"
+  wait no fire
+  pause until press
+  wait no fire
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 285-305: each missile on a random edge of the grid, aimed at the base
+sub PlaceMissiles:
+  for I = 0 to 3
+    Alive[I] = 0
+    if I < WaveN then
+      Alive[I] = 1
+      K = random(1, 4)
+      X = random(20, 172)
+      Y = random(20, 172)
+      if K = 1 then X = 20
+      if K = 2 then X = 171
+      if K = 3 then Y = 20
+      if K = 4 then Y = 171
+      T16 = X
+      T16 <<= 8
+      MX[I] = T16
+      T16 = Y
+      T16 <<= 8
+      MY[I] = T16
+      ' Direction toward the centre: |dx|, |dy| and their signs
+      if X < 96 then
+        DX = 96 - X
+        SgnX[I] = 0
+      else
+        DX = X - 96
+        SgnX[I] = 1
+      end if
+      if Y < 96 then
+        DY = 96 - Y
+        SgnY[I] = 0
+      else
+        DY = Y - 96
+        SgnY[I] = 1
+      end if
+      ' Distance, approximated as max + min / 2
+      if DX > DY then
+        Dist = DY >> 1
+        Dist += DX
+      else
+        Dist = DX >> 1
+        Dist += DY
+      end if
+      T16 = DX
+      T16 *= Speed
+      W16 = Dist
+      T16 /= W16
+      VXm[I] = T16
+      T16 = DY
+      T16 *= Speed
+      T16 /= W16
+      VYm[I] = T16
+    end if
+  next
+  return
+end sub
+
+' The joystick steers the antimissile, which hovers when the stick is
+' released; fire launches one from the base when none is in flight
+sub Steer:
+  Stick = 0
+  Fired = false
+  if joypad(1).fire then Fired = true
+  if joypad(2).fire then Fired = true
+  if joypad(1).up then Stick |= 1
+  if joypad(2).up then Stick |= 1
+  if joypad(1).down then Stick |= 2
+  if joypad(2).down then Stick |= 2
+  if joypad(1).left then Stick |= 4
+  if joypad(2).left then Stick |= 4
+  if joypad(1).right then Stick |= 8
+  if joypad(2).right then Stick |= 8
+  if not AFly then
+    if Fired then
+      N = WaveN * 2
+      if Launched < N then
+        AFly = true
+        AX16 = 24576
+        AY16 = 24576
+        inc Launched
+        play sounds SndLaunchA, SndLaunchB
+        ShowLaunched
+      end if
+    end if
+    return
+  end if
+  N = Stick & 1
+  if N <> 0 then AY16 -= 512
+  N = Stick & 2
+  if N <> 0 then AY16 += 512
+  N = Stick & 4
+  if N <> 0 then AX16 -= 512
+  N = Stick & 8
+  if N <> 0 then AX16 += 512
+  ' Off the grid, it is lost
+  PX = AX16 >> 8
+  PY = AY16 >> 8
+  if PX < 16 then AFly = false
+  if PX > 175 then AFly = false
+  if PY < 16 then AFly = false
+  if PY > 175 then AFly = false
+  return
+end sub
+
+' The missiles close in; one at the base ends the drill
+sub MoveMissiles:
+  for I = 0 to 3
+    K = Alive[I]
+    if K = 1 then
+      T16 = MX[I]
+      W16 = VXm[I]
+      K = SgnX[I]
+      if K = 0 then
+        T16 += W16
+      else
+        T16 -= W16
+      end if
+      MX[I] = T16
+      X = T16 >> 8
+      T16 = MY[I]
+      W16 = VYm[I]
+      K = SgnY[I]
+      if K = 0 then
+        T16 += W16
+      else
+        T16 -= W16
+      end if
+      MY[I] = T16
+      Y = T16 >> 8
+      if X < 96 then
+        DX = 96 - X
+      else
+        DX = X - 96
+      end if
+      if Y < 96 then
+        DY = 96 - Y
+      else
+        DY = Y - 96
+      end if
+      if DX < 4 then
+        if DY < 4 then Lost = true
+      end if
+    end if
+  next
+  return
+end sub
+
+' An antimissile within 6 pixels of a missile destroys it, and flies on
+sub CheckHits:
+  if not AFly then return
+  PX = AX16 >> 8
+  PY = AY16 >> 8
+  for I = 0 to 3
+    K = Alive[I]
+    if K = 1 then
+      T16 = MX[I]
+      X = T16 >> 8
+      T16 = MY[I]
+      Y = T16 >> 8
+      if X < PX then
+        DX = PX - X
+      else
+        DX = X - PX
+      end if
+      if Y < PY then
+        DY = PY - Y
+      else
+        DY = Y - PY
+      end if
+      if DX < 6 then
+        if DY < 6 then
+          Alive[I] = 0
+          inc Kills
+          play sound SndHit
+          ShowWave
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Sprites 0-3: the missiles (blinking warheads); 4: the antimissile
+sub DrawSprites:
+  N = frame
+  N &= 8
+  N >>= 3
+  for I = 0 to 3
+    K = Alive[I]
+    if K = 1 then
+      T16 = MX[I]
+      X = T16 >> 8
+      X -= 4
+      T16 = MY[I]
+      Y = T16 >> 8
+      Y -= 4
+      set sprite I to Y,X,N,8
+    else
+      set sprite I to 192,0,0,0
+    end if
+  next
+  if AFly then
+    X = AX16 >> 8
+    X -= 4
+    Y = AY16 >> 8
+    Y -= 4
+    set sprite 4 to Y,X,2,15
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' Lines 160-225: the radar grid, the base and the console frame
+sub DrawRadar:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  for Y = 2 to 21
+    for X = 2 to 21
+      N = GridTile
+      J = X & 3
+      K = Y & 3
+      if J = 1 then N = GridLineV
+      if K = 1 then N = GridLineH
+      if J = 1 then
+        if K = 1 then N = GridCross
+      end if
+      put char N at X,Y
+    next
+  next
+  fill FrameH count 22 at 1,1
+  fill FrameH count 22 at 1,22
+  for Y = 2 to 21
+    put char FrameV at 1,Y
+    put char FrameV at 22,Y
+  next
+  put char FrameC at 1,1
+  put char FrameC at 22,1
+  put char FrameC at 1,22
+  put char FrameC at 22,22
+  put char BaseTL at 11,11
+  put char BaseTR at 12,11
+  put char BaseBL at 11,12
+  put char BaseBR at 12,12
+  return
+end sub
+
+' Console indicators, top to bottom: antimissiles launched, score,
+' missiles in the wave and destroyed, speed level
+sub ShowConsole:
+  print at 23,2, "ANTI"
+  print at 23,6, "SCORE"
+  print Score at 23,7
+  print at 23,10, "WAVE"
+  print at 23,14, "SPEED"
+  print at 23,17, "HIGH"
+  print HighScore at 23,18
+  ShowLaunched
+  ShowWave
+  NumU = Level
+  print at 23,15, digits$(NumU, 2)
+  ' The incoming missile speed as a bar, as on the Atari console
+  fill 32 count 5 at 23,16
+  N = Level + 1
+  N >>= 1
+  fill PanelTile count N at 23,16
+  return
+end sub
+
+sub ShowLaunched:
+  NumU = Launched
+  print at 23,3, digits$(NumU, 1)
+  put char 47 at 24,3
+  NumU = WaveN * 2
+  print at 25,3, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowWave:
+  NumU = WaveN
+  print at 23,11, digits$(NumU, 1)
+  NumU = Kills
+  print at 25,11, digits$(NumU, 1)
+  print at 23,12, "IN"
+  print at 25,12, "KO"
+  return
+end sub
+
+' Graphics II: tiles 128-139 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 96 to vram.pattern + Dst16
+    copy TileCol count 96 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Lines 345-405: the title; lines 410-500: the Pentagon message
+sub TitlePage:
+  nmi on
+  HideSprites
+title_again:
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  print at 12,2, "TRIDENT"
+  print at 4,4, "MISSILE OFFICER, USS"
+  print at 4,5, "TRIDENT (SSBN-12)"
+  print at 3,7, "GOAL: STOP EVERY WAVE OF"
+  print at 3,8, "MISSILES BEFORE ONE HITS"
+  print at 3,9, "THE BASE AT THE CENTRE OF"
+  print at 3,10, "THE RADAR."
+  print at 3,12, "FIRE: LAUNCH ANTIMISSILE"
+  print at 3,13, "STICK: STEER IT, OR LET GO"
+  print at 3,14, "TO HOVER IN AMBUSH."
+  print at 3,16, "FEWER LAUNCHES, MORE POINTS."
+  print at 3,17, "HIGH SCORE"
+  print HighScore at 16,17
+  print at 9,20, "BEGIN DRILL"
+  print at 9,21, "READ THE MESSAGE"
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 7,20 step 1
+  wait no fire
+  if Choice = 2 then
+    MessagePage
+    goto title_again
+  end if
+  return
+end sub
+
+sub MessagePage:
+  cls
+  print at 2,1, "STANDBY FOR HIGH PRECEDENCE"
+  print at 2,2, "MESSAGE FROM PENTAGON"
+  print at 2,4, "FM CHIEF OF NAVAL OPS"
+  print at 2,5, "TO USS TRIDENT (SSBN-12)"
+  print at 2,6, "BT  RED ALERT DRILL"
+  print at 2,8, "1. HEAVY MISSILE ATTACK ON"
+  print at 2,9, "USS TRIDENT IS IMMINENT."
+  print at 2,10, "IT WILL COME IN WAVES,"
+  print at 2,11, "MORE MISSILES AND FASTER."
+  print at 2,13, "2. CONSOLE, TOP TO BOTTOM:"
+  print at 2,14, "ANTIMISSILES FIRED, SCORE,"
+  print at 2,15, "MISSILES IN WAVE / KILLED,"
+  print at 2,16, "INCOMING MISSILE SPEED."
+  print at 2,18, "3. EXTRA CREDIT FOR SEVERAL"
+  print at 2,19, "KILLS WITH ONE ANTIMISSILE."
+  print at 2,20, "GOOD LUCK. ADMIRAL IMA"
+  print at 2,21, "COMPUTER SENDS. BT"
+  play sound SndBeep
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 12,1, "TRIDENT"
+  print at 6,3, "BY C. O. DICKERSON"
+  print at 7,4, "COMPUTE! MAGAZINE"
+  print at 2,6, "AN ATARI GAME IN BASIC AND"
+  print at 2,7, "MACHINE LANGUAGE, WITH A"
+  print at 2,8, "COMMODORE 64 VERSION."
+  print at 2,10, "A NAVAL DRILL: FROM THE"
+  print at 2,11, "SUB'S RADAR CONSOLE, STEER"
+  print at 2,12, "ANTIMISSILES INTO WAVES OF"
+  print at 2,13, "INCOMING MISSILES."
+  print at 2,15, "THE MACHINE LANGUAGE PART"
+  print at 2,16, "WAS REWRITTEN HERE FROM THE"
+  print at 2,17, "ARTICLE'S DESCRIPTION."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Sprite patterns: warhead (two blink frames), antimissile
+data Sprites8 bytes
+  $00,$18,$3C,$7E,$7E,$3C,$18,$00
+  $00,$00,$18,$3C,$3C,$18,$00,$00
+  $18,$18,$18,$FF,$FF,$18,$18,$18
+end data
+
+' Tiles 128-139: grid, grid line across, grid line down, grid crossing,
+' base (four quarters), frame across, frame down, frame corner, panel
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$AA,$00,$00,$00,$00
+  $10,$00,$10,$00,$10,$00,$10,$00
+  $10,$00,$10,$FE,$10,$00,$10,$00
+  $00,$01,$03,$07,$0F,$1F,$3F,$7F
+  $00,$80,$C0,$E0,$F0,$F8,$FC,$FE
+  $7F,$3F,$1F,$0F,$07,$03,$01,$00
+  $FE,$FC,$F8,$F0,$E0,$C0,$80,$00
+  $00,$00,$FF,$FF,$FF,$FF,$00,$00
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$3C,$FF,$FF,$FF,$FF,$3C,$3C
+  $00,$00,$FF,$FF,$FF,$FF,$00,$00
+end data
+
+data TileCol bytes
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $71,$71,$71,$71,$51,$51,$51,$51
+  $51,$51,$51,$51,$71,$71,$71,$71
+  $51,$51,$51,$51,$71,$71,$71,$71
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $00,$00,$21,$21,$21,$21,$00,$00
+end data
+
+asm {
+AlertT1:
+    db $40,$75,$11,$01,$40,$49,$11,$01,$40,$26,$11,$01,$40,$0A,$11,$01,$40,$F3,$10,$01,$40,$E0,$10,$01
+    db $40,$CF,$10,$01,$40,$C1,$10,$01,$40,$B4,$10,$01,$40,$A9,$10,$01,$40,$A0,$10,$01,$40,$97,$10,$01
+    db $40,$8F,$10,$01,$40,$88,$10,$01,$40,$82,$10,$01,$40,$7C,$10,$01,$40,$7C,$F0,$04,$40,$75,$11,$01
+    db $40,$49,$11,$01,$40,$26,$11,$01,$40,$0A,$11,$01,$40,$F3,$10,$01,$40,$E0,$10,$01,$40,$CF,$10,$01
+    db $40,$C1,$10,$01,$40,$B4,$10,$01,$40,$A9,$10,$01,$40,$A0,$10,$01,$40,$97,$10,$01,$40,$8F,$10,$01
+    db $40,$88,$10,$01,$40,$82,$10,$01,$40,$7C,$10,$01,$40,$7C,$F0,$04,$40,$75,$11,$01,$40,$49,$11,$01
+    db $40,$26,$11,$01,$40,$0A,$11,$01,$40,$F3,$10,$01,$40,$E0,$10,$01,$40,$CF,$10,$01,$40,$C1,$10,$01
+    db $40,$B4,$10,$01,$40,$A9,$10,$01,$40,$A0,$10,$01,$40,$97,$10,$01,$40,$8F,$10,$01,$40,$88,$10,$01
+    db $40,$82,$10,$01,$40,$7C,$10,$01,$40,$7C,$F0,$04,$50
+LaunchT1:
+    db $40,$5D,$20,$01,$40,$64,$20,$01,$40,$6C,$20,$01,$40,$75,$20,$01,$40,$7F,$20,$01,$40,$8C,$20,$01
+    db $40,$9B,$20,$01,$40,$AF,$20,$01,$40,$C8,$20,$01,$40,$E9,$20,$01,$40,$18,$21,$01,$50
+LaunchN:
+    db $00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01
+    db $00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01,$00,$00,$45,$01,$10
+HitN:
+    db $00,$00,$05,$02,$00,$00,$25,$02,$00,$00,$35,$02,$00,$00,$55,$02,$00,$00,$65,$02,$00,$00,$85,$02
+    db $00,$00,$95,$02,$00,$00,$B5,$02,$00,$00,$C5,$02,$00,$00,$E5,$02,$00,$00,$F5,$02,$10
+BaseT1:
+    db $40,$FF,$03,$04,$40,$FF,$13,$04,$40,$FF,$13,$04,$40,$FF,$23,$04,$40,$FF,$23,$04,$40,$FF,$33,$04
+    db $40,$FF,$33,$04,$40,$FF,$43,$04,$40,$FF,$43,$04,$40,$FF,$53,$04,$40,$FF,$53,$04,$40,$FF,$63,$04
+    db $40,$FF,$63,$04,$40,$FF,$73,$04,$40,$FF,$73,$04,$40,$FF,$83,$04,$40,$FF,$83,$04,$40,$FF,$93,$04
+    db $40,$FF,$93,$04,$40,$FF,$A3,$04,$40,$FF,$A3,$04,$40,$FF,$B3,$04,$40,$FF,$B3,$04,$40,$FF,$C3,$04
+    db $40,$FF,$C3,$04,$40,$FF,$D3,$04,$40,$FF,$D3,$04,$40,$FF,$E3,$04,$40,$FF,$E3,$04,$40,$FF,$F3,$04
+    db $40,$FF,$F3,$04,$50
+BaseN:
+    db $00,$00,$07,$04,$00,$00,$17,$04,$00,$00,$17,$04,$00,$00,$27,$04,$00,$00,$27,$04,$00,$00,$37,$04
+    db $00,$00,$37,$04,$00,$00,$47,$04,$00,$00,$47,$04,$00,$00,$57,$04,$00,$00,$57,$04,$00,$00,$67,$04
+    db $00,$00,$67,$04,$00,$00,$77,$04,$00,$00,$77,$04,$00,$00,$87,$04,$00,$00,$87,$04,$00,$00,$97,$04
+    db $00,$00,$97,$04,$00,$00,$A7,$04,$00,$00,$A7,$04,$00,$00,$B7,$04,$00,$00,$B7,$04,$00,$00,$C7,$04
+    db $00,$00,$C7,$04,$00,$00,$D7,$04,$00,$00,$D7,$04,$00,$00,$E7,$04,$00,$00,$E7,$04,$00,$00,$F7,$04
+    db $00,$00,$F7,$04,$10
+ClearT1:
+    db $40,$8F,$10,$06,$40,$71,$10,$06,$40,$5F,$10,$06,$40,$47,$10,$12,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+TridentSoundTable:
+    dw AlertT1,$7035
+    dw LaunchT1,$7035
+    dw LaunchN,$702B
+    dw HitN,$702B
+    dw BaseT1,$7035
+    dw BaseN,$702B
+    dw ClearT1,$7035
+    dw BeepT1,$7035
+    dw TridentTuneMel,$703F
+    dw TridentTuneBass,$7049
+; Title tune: a naval march in D minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+TridentTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$15,$00,$15,$18,$1C,$00,$00,$1C,$21,$00,$1F,$1D
+    db $1C,$00,$00,$00,$02,$10,$1A,$21,$1D,$00,$1C,$1A,$18,$00,$1A,$1C
+    db $17,$00,$00,$00,$00,$00,$01,$01,$02,$10,$1A,$21,$21,$00,$21,$23
+    db $24,$00,$23,$21,$1F,$00,$1C,$00,$21,$00,$00,$00,$02,$30,$1A,$21
+    db $1D,$1C,$1A,$00,$18,$17,$18,$1A,$02,$60,$1A,$21,$1C,$00,$17,$00
+    db $15,$00,$00,$01
+    db $FF
+TridentTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$09,$00,$10,$00,$09,$00,$10,$00,$0C,$00,$13,$00
+    db $0C,$00,$13,$00,$02,$30,$18,$32,$0E,$00,$15,$00,$10,$00,$17,$00
+    db $10,$00,$14,$00,$10,$00,$00,$01,$02,$30,$18,$32,$09,$00,$10,$00
+    db $11,$00,$0C,$00,$0C,$00,$13,$00,$09,$00,$10,$00,$02,$50,$18,$32
+    db $0E,$00,$15,$00,$10,$00,$17,$00,$02,$80,$18,$32,$09,$00,$10,$00
+    db $09,$00,$00,$01
+    db $FF
+}
