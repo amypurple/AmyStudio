@@ -14,6 +14,10 @@ const root = resolve(import.meta.dirname, "..");
 const bios = readFileSync(resolve(root, "studio/bios/colecovision.rom"));
 const fire = GEARCOLECO_TEST_INPUT.FIRE_LEFT | GEARCOLECO_TEST_INPUT.FIRE_RIGHT;
 const cases = [
+  { id: "barrier-battle", inputs: [fire, GEARCOLECO_TEST_INPUT.KEYPAD_1] },
+  { id: "roader", inputs: [GEARCOLECO_TEST_INPUT.KEYPAD_1, fire] },
+  { id: "ti-mozart", inputs: [fire] },
+  { id: "worm-of-bemer", inputs: [fire, GEARCOLECO_TEST_INPUT.KEYPAD_1] },
   { id: "jumping-jack", inputs: [fire] },
   { id: "gold-miner", inputs: [fire, fire] },
   { id: "first-math", inputs: [GEARCOLECO_TEST_INPUT.KEYPAD_1] },

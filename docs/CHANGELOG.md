@@ -78,6 +78,8 @@
 
 ## 2026-10-20 - Indexed compound multiplication and new ports
 
+- Added Barrier Battle, Roader, TI Mozart and Worm of Bemer to the example
+  catalogue after Balanced compilation and GearColeco runtime validation.
 - Fixed `u16 *= Array[Index]`, which could overwrite the left operand while
   calculating the indexed address and multiply the element by itself.
 - Fixed `u8 *= Array[Index]`, which previously reached the assembler as an

@@ -1794,5 +1794,57 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "barrier-battle",
+    "label": "Barrier Battle",
+    "detail": "Heath Lawrence's two-player barrier-building contest adapted from the 1984 COMPUTE! listings.",
+    "projectName": "barrier-battle",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "roader",
+    "label": "Roader (TI-99/4A Port)",
+    "detail": "Brian Foley's winding-road driving game with hazards, four skill levels and progressively narrower courses.",
+    "projectName": "roader",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "ti-mozart",
+    "label": "TI Mozart",
+    "detail": "A generative TI-99/4A music-and-graphics program adapted from the January 1984 COMPUTE! listing.",
+    "projectName": "ti-mozart",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "worm-of-bemer",
+    "label": "Worm of Bemer (TI-99/4A Port)",
+    "detail": "Guide Nerm through Bemer Castle, eating magic mushrooms while avoiding walls and other hazards.",
+    "projectName": "worm-of-bemer",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];

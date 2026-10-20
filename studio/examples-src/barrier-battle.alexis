@@ -1,0 +1,584 @@
+cartridge "BARRIER BATTLE/PRESENTS HEATH LAWRENCE'S/1984"
+
+' BARRIER BATTLE
+' By Heath Lawrence, COMPUTE! magazine, March 1984, pages 80-88: versions
+' for the VIC-20 (translated by Jeff Hamdani, Editorial Programmer),
+' Commodore 64, TRS-80 Color Computer, Atari and Apple. This port follows
+' the Atari and VIC listings. All credit belongs to Heath Lawrence.
+'
+' Historical context (summary of the article):
+' An article on arcade-style games (COMPUTE!, February 1983) and its
+' technique of POKEing characters into screen memory inspired this simple
+' but challenging game. Two players build barriers as they move and try to
+' cut each other off: whoever runs into a side boundary or any barrier
+' loses. The trigger leaves a hole in your own barrier, five times per
+' game - escape routes become scarce near the end. Tips: claim a large part
+' of the field early; and when you run out of room, press the trigger and
+' move back and forth, which may last long enough for the other player to
+' crash first. The winner jumps for joy in the centre of the screen.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: joystick 1 and joystick 2 (the VIC's second player used the
+' keyboard); fire leaves a hole. One player can face the computer.
+' The rules follow the listings: both players start in the middle and move
+' one cell per pass in the last direction pushed, reversing included
+' (lines 200-240); a side, a wall or a barrier ends the round (lines 302,
+' 308); the trigger leaves the cell blank instead of building, five holes
+' each (lines 304, 312); speed levels 1-4 (line 7513).
+' Adaptation liberties: a match of rounds, first to three; if both crash on
+' the same move the round is a draw (the listings let player 1 win); the
+' heads are drawn brighter than the barriers; a computer opponent; joystick
+' menus; Graphics II tiles; the winner is a jumping sprite; the frame loop
+' is protected from the NMI; an editorial page.
+
+const SideTile = 128
+const Wall1 = 129
+const Wall2 = 130
+const Head1 = 131
+const Head2 = 132
+const HoleIcon = 133
+const Blank = 32
+const WinsNeeded = 3
+
+' Sound table slots (bt/s.mjs)
+const SndMove1 = 1
+const SndMove2 = 2
+const SndHole = 3
+const SndBoomA = 4
+const SndBoomB = 5
+const SndTune = 6
+const SndBeep = 7
+
+u8 Mode = 1                    ' 1 two players, 2 against the computer
+u8 Speed = 2                   ' LEV, 1 fastest
+u8 StepFrames = 5
+u8 X1 = 0
+u8 Y1 = 0
+u8 X2 = 0
+u8 Y2 = 0
+u8 D1 = 1                      ' 1 up, 2 right, 3 down, 4 left
+u8 D2 = 3
+u8 Holes1 = 5                  ' VAL1, VAL2
+u8 Holes2 = 5
+u8 Wins1 = 0
+u8 Wins2 = 0
+u8 N1X = 0
+u8 N1Y = 0
+u8 N2X = 0
+u8 N2Y = 0
+bool Dead1 = false
+bool Dead2 = false
+bool Hole1 = false
+bool Hole2 = false
+u8 Tick = 0
+u8 T = 0
+u8 N = 0
+u8 M = 0
+u8 X = 0
+u8 Y = 0
+u8 I = 0
+u8 F = 0
+u8 K = 0
+u8 Best = 0
+u8 BestD = 0
+u8 Score = 0
+u8 Choice = 1
+u8 Winner = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table BarrierSoundTable areas 3
+  sprites 16x16
+  sprites double
+  copy Jumper count 64 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+' --- Lines 7500-7550: instructions and the speed ---
+options:
+  nmi on
+  HideSprites
+  cls
+  backdrop dark green
+  print at 7,2, "** BARRIER BATTLE **"
+  print at 3,4, "CUT OFF YOUR OPPONENT SO"
+  print at 3,5, "HE RUNS INTO A WALL."
+  put char HoleIcon at 3,7
+  print at 5,7, "FIRE LEAVES A HOLE IN YOUR"
+  print at 5,8, "BARRIER: FIVE PER GAME."
+  put char Head1 at 3,10
+  print at 5,10, "JOYSTICK 1"
+  put char Head2 at 17,10
+  print at 19,10, "JOYSTICK 2"
+opt_loop:
+  fill 32 count 28 at 2,13
+  fill 32 count 28 at 2,15
+  if Mode = 1 then
+    print at 7,13, "TWO PLAYERS"
+  else
+    print at 7,13, "ONE PLAYER VS CPU"
+  end if
+  print at 7,15, "SPEED LEVEL"
+  NumU = Speed
+  print at 20,15, digits$(NumU, 1)
+  print at 7,17, "START"
+  print at 4,21, "STICK UP/DOWN, THEN FIRE"
+  play sound SndTune
+  wait no fire
+  choose menu 1 to 3 into Choice cursor $3E at 5,13 step 2
+  if Choice = 1 then
+    Mode = 3 - Mode
+    goto opt_loop
+  end if
+  if Choice = 2 then
+    inc Speed
+    if Speed > 4 then Speed = 1
+    goto opt_loop
+  end if
+  ' Line 7520: LEV = (SK - 1) * 10
+  StepFrames = Speed << 1
+  inc StepFrames
+  Wins1 = 0
+  Wins2 = 0
+
+new_round:
+  ' --- Lines 94-145, 5000-5008: the field ---
+  DrawField
+  Holes1 = 5
+  Holes2 = 5
+  ' Line 115: both start in the middle, one going up, one going down
+  X1 = 15
+  Y1 = 12
+  X2 = 16
+  Y2 = 12
+  D1 = 1
+  D2 = 3
+  Dead1 = false
+  Dead2 = false
+  put char Head1 at X1,Y1
+  put char Head2 at X2,Y2
+  ShowStatus
+  print at 11,22, "GET READY"
+  wait 90 frames
+  fill SideTile count 28 at 2,22
+  Tick = 0
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ReadSticks
+  inc Tick
+  if Tick < StepFrames then goto main_loop
+  Tick = 0
+  MovePlayers
+  if Dead1 then goto round_over
+  if Dead2 then goto round_over
+  goto main_loop
+
+' --- Lines 6000-6038: the end of a round ---
+round_over:
+  nmi on
+  play sounds SndBoomA, SndBoomB
+  for F = 1 to 40
+    N = F & 4
+    if N = 0 then
+      backdrop dark red
+    else
+      backdrop dark green
+    end if
+    wait
+  next
+  backdrop dark green
+  Winner = 0
+  if Dead2 then
+    if not Dead1 then Winner = 1
+  end if
+  if Dead1 then
+    if not Dead2 then Winner = 2
+  end if
+  if Winner = 1 then inc Wins1
+  if Winner = 2 then inc Wins2
+  ShowStatus
+  ' Line 6002: the winner jumps for joy in the centre
+  fill 32 count 12 at 10,10
+  fill 32 count 12 at 10,11
+  fill 32 count 12 at 10,12
+  fill 32 count 12 at 10,13
+  fill 32 count 12 at 10,14
+  if Winner = 0 then
+    print at 13,12, "DRAW!"
+    wait 120 frames
+  else
+    N = 11
+    if Winner = 2 then N = 7
+    print at 11,10, "PLAYER"
+    M = Winner + 48
+    put char M at 18,10
+    print at 13,14, "WINS"
+    for F = 0 to 89
+      M = F & 8
+      M >>= 1
+      set sprite 0 to 87,112,M,N
+      update sprites
+      wait
+    next
+    HideSprites
+  end if
+  if Wins1 >= WinsNeeded then goto match_over
+  if Wins2 >= WinsNeeded then goto match_over
+  goto new_round
+
+match_over:
+  play sound SndTune
+  HideSprites
+  cls
+  print at 9,8, "MATCH OVER"
+  if Wins1 > Wins2 then
+    print at 8,10, "PLAYER 1 WINS"
+  else
+    if Mode = 2 then
+      print at 6,10, "THE COMPUTER WINS"
+    else
+      print at 8,10, "PLAYER 2 WINS"
+    end if
+  end if
+  NumU = Wins1
+  print at 11,12, digits$(NumU, 1) + " TO "
+  NumU = Wins2
+  print at 16,12, digits$(NumU, 1)
+  print at 7,16, "PLAY AGAIN"
+  print at 7,17, "OPTIONS"
+  wait 60 frames
+  wait no fire
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 5,16 step 1
+  if Choice = 1 then
+    Wins1 = 0
+    Wins2 = 0
+    goto new_round
+  end if
+  goto options
+
+' ---------------------------------------------------------------------------
+
+' Lines 200-240: the last direction pushed (any of the four, reversing too)
+sub ReadSticks:
+  if joypad(1).up then D1 = 1
+  if joypad(1).right then D1 = 2
+  if joypad(1).down then D1 = 3
+  if joypad(1).left then D1 = 4
+  if joypad(1).fire then Hole1 = true
+  if Mode = 1 then
+    if joypad(2).up then D2 = 1
+    if joypad(2).right then D2 = 2
+    if joypad(2).down then D2 = 3
+    if joypad(2).left then D2 = 4
+    if joypad(2).fire then Hole2 = true
+  end if
+  return
+end sub
+
+' Lines 300-312: both players move; a side, a wall or a barrier is fatal
+sub MovePlayers:
+  if Mode = 2 then CpuThink
+  N1X = DirDX[D1]
+  N1X += X1
+  N1X -= 1
+  N1Y = DirDY[D1]
+  N1Y += Y1
+  N1Y -= 1
+  N2X = DirDX[D2]
+  N2X += X2
+  N2X -= 1
+  N2Y = DirDY[D2]
+  N2Y += Y2
+  N2Y -= 1
+  T = get char at N1X,N1Y
+  if T <> Blank then Dead1 = true
+  T = get char at N2X,N2Y
+  if T <> Blank then Dead2 = true
+  ' Head on: both reach the same cell
+  if N1X = N2X then
+    if N1Y = N2Y then
+      Dead1 = true
+      Dead2 = true
+    end if
+  end if
+  if Dead1 then return
+  if Dead2 then return
+  ' The old head becomes barrier, or stays blank if the trigger was pressed
+  if Hole1 then
+    if Holes1 > 0 then
+      put char Blank at X1,Y1
+      dec Holes1
+      play sound SndHole
+      ShowStatus
+    else
+      put char Wall1 at X1,Y1
+    end if
+  else
+    put char Wall1 at X1,Y1
+  end if
+  if Hole2 then
+    if Holes2 > 0 then
+      put char Blank at X2,Y2
+      dec Holes2
+      play sound SndHole
+      ShowStatus
+    else
+      put char Wall2 at X2,Y2
+    end if
+  else
+    put char Wall2 at X2,Y2
+  end if
+  Hole1 = false
+  Hole2 = false
+  X1 = N1X
+  Y1 = N1Y
+  X2 = N2X
+  Y2 = N2Y
+  put char Head1 at X1,Y1
+  put char Head2 at X2,Y2
+  play sound SndMove1
+  return
+end sub
+
+' Adaptation: the computer plays player 2. For straight on, left and right
+' it measures the open corridor ahead (up to 12 cells, plus the free cells
+' beside it) and takes the roomiest, keeping its course on ties; it never
+' turns straight back. Now and then it turns for no reason, like a person.
+sub CpuThink:
+  Best = 0
+  BestD = D2
+  for K = 0 to 2
+    N = TurnOrder[K]
+    N += D2
+    if N > 4 then N -= 4
+    ScoreDir
+    if Score > Best then
+      Best = Score
+      BestD = N
+    end if
+  next
+  N = random(0, 99)
+  if N < 4 then
+    ' A random turn if it is not fatal
+    N = random(1, 2)
+    N = TurnOrder[N]
+    N += D2
+    if N > 4 then N -= 4
+    ScoreDir
+    if Score > 3 then BestD = N
+  end if
+  D2 = BestD
+  return
+end sub
+
+' Score = room in direction N from player 2's head
+sub ScoreDir:
+  Score = 0
+  X = X2
+  Y = Y2
+  for I = 1 to 12
+    X += DirDX[N]
+    X -= 1
+    Y += DirDY[N]
+    Y -= 1
+    T = get char at X,Y
+    if T <> Blank then return
+    ' The cell right next to the other head is dangerous
+    if I = 1 then
+      M = absdiff(X, X1)
+      F = absdiff(Y, Y1)
+      M += F
+      if M <= 1 then return
+    end if
+    Score += 2
+    ' Free cells on both sides of the corridor
+    if N = 1 then
+      ScoreSides
+    end if
+    if N = 3 then
+      ScoreSides
+    end if
+    if N = 2 then
+      ScoreUpDown
+    end if
+    if N = 4 then
+      ScoreUpDown
+    end if
+  next
+  return
+end sub
+
+sub ScoreSides:
+  M = X - 1
+  T = get char at M,Y
+  if T = Blank then inc Score
+  M = X + 1
+  T = get char at M,Y
+  if T = Blank then inc Score
+  return
+end sub
+
+sub ScoreUpDown:
+  M = Y - 1
+  T = get char at X,M
+  if T = Blank then inc Score
+  M = Y + 1
+  T = get char at X,M
+  if T = Blank then inc Score
+  return
+end sub
+
+' Lines 5000-5008: the side boundaries
+sub DrawField:
+  nmi off
+  HideSprites
+  cls
+  backdrop dark green
+  fill SideTile count 28 at 2,2
+  fill SideTile count 28 at 2,22
+  for Y = 3 to 21
+    put char SideTile at 2,Y
+    put char SideTile at 29,Y
+  next
+  nmi on
+  return
+end sub
+
+' Line 5006: "HOLES LEFT" for both, plus the rounds won
+sub ShowStatus:
+  fill 32 count 28 at 2,1
+  put char Head1 at 2,1
+  print at 4,1, "HOLES"
+  NumU = Holes1
+  print at 10,1, digits$(NumU, 1)
+  NumU = Wins1
+  print at 12,1, digits$(NumU, 1)
+  print at 14,1, "WINS"
+  NumU = Wins2
+  print at 19,1, digits$(NumU, 1)
+  print at 21,1, "HOLES"
+  NumU = Holes2
+  print at 27,1, digits$(NumU, 1)
+  put char Head2 at 29,1
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  update sprites
+  return
+end sub
+
+sub LoadTiles:
+  fill mode 2 text color with $F0
+  Dst16 = 1024
+  for F = 0 to 2
+    copy TilePat count 48 to vram.pattern + Dst16
+    copy TileCol count 48 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 8,1, "BARRIER BATTLE"
+  print at 7,3, "BY HEATH LAWRENCE"
+  print at 5,4, "COMPUTE! MARCH 1984"
+  print at 2,6, "FOR THE VIC, 64, COLOR"
+  print at 2,7, "COMPUTER, ATARI AND APPLE."
+  print at 2,9, "BUILD BARRIERS AND CUT OFF"
+  print at 2,10, "YOUR OPPONENT. THE TRIGGER"
+  print at 2,11, "LEAVES A HOLE, FIVE TIMES."
+  print at 2,13, "TIP: CLAIM A BIG PART OF"
+  print at 2,14, "THE FIELD EARLY. WHEN OUT"
+  print at 2,15, "OF ROOM, PRESS THE TRIGGER"
+  print at 2,16, "AND MOVE BACK AND FORTH:"
+  print at 2,17, "YOUR RIVAL MAY CRASH FIRST."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  fill mode 2 text color with $F0
+  LoadTiles
+  return
+end sub
+
+' Steps for directions 0-4 (up, right, down, left), stored + 1
+data DirDX bytes 1,1,2,1,0
+data DirDY bytes 1,0,1,2,1
+' The computer looks straight on, then right, then left (never back)
+data TurnOrder bytes 0,1,3
+
+' Tiles 128-133: side boundary, player 1 wall, player 2 barrier, the two
+' heads, hole icon
+data TilePat bytes
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $FF,$81,$BD,$A5,$A5,$BD,$81,$FF
+  $FF,$81,$BD,$A5,$A5,$BD,$81,$FF
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
+  $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
+  $00,$3C,$42,$42,$42,$42,$3C,$00
+end data
+
+data TileCol bytes
+  $96,$96,$96,$96,$96,$96,$96,$96
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $74,$74,$74,$74,$74,$74,$74,$74
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+end data
+
+' Line 6002: the winner jumping for joy (two frames, 16 x 16)
+data Jumper bytes
+  $03,$03,$23,$11,$0F,$03,$03,$03
+  $02,$06,$04,$0C,$00,$00,$00,$00
+  $C0,$C0,$C4,$88,$F0,$C0,$C0,$C0
+  $40,$60,$20,$30,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$07,$0B
+  $13,$02,$02,$02,$02,$06,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$E0,$D0
+  $C8,$40,$40,$40,$40,$60,$00,$00
+end data
+
+asm {
+Move1T1:
+    db $40,$A0,$60,$01,$50
+Move2T1:
+    db $40,$C8,$60,$01,$50
+HoleT1:
+    db $40,$50,$20,$03,$40,$3E,$30,$03,$50
+BoomT1:
+    db $40,$FF,$13,$03,$40,$FF,$23,$03,$40,$FF,$33,$03,$40,$FF,$43,$03,$40,$FF,$53,$03,$40,$FF,$63,$03
+    db $40,$FF,$73,$03,$40,$FF,$83,$03,$40,$FF,$93,$03,$40,$FF,$A3,$03,$40,$CD,$B3,$03,$40,$9C,$C3,$03
+    db $40,$71,$D3,$03,$40,$49,$E3,$03,$40,$25,$F3,$03,$50
+BoomN:
+    db $00,$00,$05,$03,$00,$00,$15,$03,$00,$00,$25,$03,$00,$00,$35,$03,$00,$00,$45,$03,$00,$00,$55,$03
+    db $00,$00,$65,$03,$00,$00,$75,$03,$00,$00,$85,$03,$00,$00,$95,$03,$00,$00,$A5,$03,$00,$00,$B5,$03
+    db $00,$00,$C5,$03,$00,$00,$D5,$03,$00,$00,$E5,$03,$10
+TuneT1:
+    db $40,$AB,$11,$0A,$40,$53,$11,$0A,$40,$1D,$11,$0A,$40,$53,$11,$0A,$40,$1D,$11,$0A,$40,$D6,$10,$0A
+    db $40,$1D,$11,$14,$40,$D6,$10,$1E,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+BarrierSoundTable:
+    dw Move1T1,$7035
+    dw Move2T1,$7035
+    dw HoleT1,$7035
+    dw BoomT1,$7035
+    dw BoomN,$702B
+    dw TuneT1,$7035
+    dw BeepT1,$7035
+}

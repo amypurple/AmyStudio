@@ -1,0 +1,1271 @@
+cartridge "WORM OF BEMER/PRESENTS STEPHEN D. FULTZ'S/1984"
+
+' WORM OF BEMER
+' By Stephen D. Fultz, COMPUTE! magazine, April 1984, pages 74-..: written
+' for the Atari, with versions for the VIC-20, Commodore 64, TI-99/4A and
+' IBM PC/PCjr. This port follows "Program 5: Worm Of Bemer - TI Version",
+' translation by Patrick Parrish, Programming Supervisor. All credit belongs
+' to Stephen D. Fultz and Patrick Parrish.
+'
+' Historical context (summary of the article):
+' Nerm the worm is lost in Bemer Castle and needs your help to get home.
+' He eats magic mushrooms to keep up his strength; after five in a room the
+' exits open, and eleven rooms lie between him and home. Nobody knows where
+' the next mushroom will grow, and every one makes Nerm longer: touch a wall
+' or his own tail and he loses one of his four lives. 100 points and a
+' bonus per mushroom; a bonus life after the first two rooms and every
+' third room after that. The Atari original used custom display lists, a
+' display list interrupt and four-color characters. The article suggested
+' adding features: saving the high score, more players, sending Nerm to a
+' different room depending on which exit he takes, changing the number of
+' mushrooms, changing his speed.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' The rules follow the TI listing: a step per pass, no turning back
+' (lines 100-135), walls, tail and closed doors kill (lines 158-200, 7500),
+' a mushroom adds 15 + 2 x room segments and 100 + 7 x room points (lines
+' 205-224), five mushrooms open the exits (lines 230-240), length resets to
+' 5 in each room (line 284), bonus lives after rooms 2, 5, 8 (lines 9100-
+' 9150), the eleven room layouts (lines 400-1100), the ranks (lines 11060-
+' 11094) and the melody (lines 11100-11135).
+' The article's "Adding More Features", implemented:
+' - one or two players, taking turns after each lost life;
+' - a castle map: the eleven rooms form a 4 x 3 grid with home in the last
+'   corner, and each exit leads to the neighbouring room on that side. The
+'   way home stays sealed until Nerm has cleared eight different rooms. A
+'   mini-map shows the cleared rooms;
+' - the number of mushrooms per room (3, 5 or 7) and the speed (slow,
+'   normal, fast) are options; Nerm also speeds up as he clears rooms;
+' - the high score is kept for the session (no disk on a cartridge).
+' Other liberties: the rooms are fitted to 26 x 19 cells (the TI used
+' 28 x 19), room 9 is room 4 mirrored (the TI reused room 4); Nerm waits
+' for the joystick when he enters a room; Graphics II tiles (stone walls,
+' doors, a red mushroom with white spots, a two-tone worm whose head shows
+' its direction); the title tune is the game's own melody in Tiny Sound;
+' joystick menus; an editorial page.
+' Screen: status rows 1-2 with the mini-map at columns 27-28, the castle
+' room on rows 3-23, columns 2-29.
+
+const WallTile = 128
+const DoorTile = 129
+const OpenTile = 138            ' 138-141: open door pointing up, right, down, left
+const SealTile = 131
+const MushTile = 132
+const BodyTile = 133
+const HeadTile = 134            ' 134-137: up, right, down, left
+const MapTile = 160             ' 160-163: the mini-map, 2 x 2 tiles
+const FloorTile = 32
+const HomeCell = 11
+const RoomsToHome = 8
+const MaxLen = 180
+const QSize = 180
+
+' Sound table slots (wb/s.mjs)
+const SndTick = 1
+const SndEat = 2
+const SndCrashA = 3
+const SndCrashB = 4
+const SndOpen = 5
+const SndLeave = 6
+const SndBonus = 7
+const SndReady = 8
+const SndOver = 9
+const SndHome = 10
+const SndHigh = 11
+const SndBeep = 12
+const SndTuneA = 13
+const SndTuneB = 14
+
+' Options
+u8 Players = 1
+u8 MushOpt = 5
+u8 SpeedOpt = 2
+u8 Choice = 1
+
+' Per player (0, 1)
+u8 PRoom[2]
+u8 PLives[2]
+u8 PCount[2]                   ' rooms cleared
+u16 PCleared[2]                ' bit per room
+u8 PNext[2]                    ' rooms cleared for the next bonus life
+u8 PEntry[2]                   ' door of entry, 0 = the starting place
+bool PDone0 = false
+bool PDone1 = false
+bcd digits 6 Score
+bcd digits 6 Score1
+bcd digits 6 Score2
+bcd digits 6 HighScore
+
+' The current turn
+u8 P = 0
+u8 Room = 0
+u8 Entry = 0
+u8 Dir = 1                     ' 1 up, 2 right, 3 down, 4 left
+u8 Want = 0
+bool Ready = false
+u8 MushLeft = 5
+u8 Target = 5                  ' WO
+u8 QLen = 0
+u8 QHead = 0
+u8 QX[QSize]
+u8 QY[QSize]
+u8 HX = 0
+u8 HY = 0
+u8 NX = 0
+u8 NY = 0
+u8 StepFrames = 8
+u8 Tick = 0
+u8 Blink = 0
+u8 Map[32]
+bool Crashed = false
+bool Left = false
+bool WonHome = false
+bool Opened = false
+u8 ExitDir = 0
+u8 T = 0
+u8 N = 0
+u8 M = 0
+u8 I = 0
+u8 K = 0
+u8 X = 0
+u8 Y = 0
+u8 F = 0
+u8 L = 0
+u16 Ptr = 0
+u16 Bits = 0
+u16 Dst16 = 0
+u16 NumU = 0
+u16 W16 = 0
+
+  tile screen
+  set sound table WormSoundTable areas 4
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+' --- Lines 10000-10075: title, plus the options ---
+title:
+  nmi on
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+
+' --- Lines 5000-5075: up the game ---
+new_game:
+  for P = 0 to 1
+    PRoom[P] = 0
+    PLives[P] = 4
+    PCount[P] = 0
+    PCleared[P] = 0
+    PNext[P] = 2
+    PEntry[P] = 0
+  next
+  PDone0 = false
+  PDone1 = true
+  if Players = 2 then PDone1 = false
+  Score1 = 0
+  Score2 = 0
+  P = 0
+
+start_turn:
+  ' Load the player's state
+  Room = PRoom[P]
+  Entry = PEntry[P]
+  if P = 0 then
+    Score = Score1
+  else
+    Score = Score2
+  end if
+  ' Lines 5500-5540: GET READY
+  ReadyScreen
+
+enter_room:
+  SetupRoom
+
+play_loop:
+  FrameUpdate
+  if Crashed then goto lost_life
+  if Left then goto left_room
+  goto play_loop
+
+' --- Lines 7000-7060, 270-300: Nerm leaves through a door ---
+left_room:
+  nmi on
+  ' Line 230: the room counts as cleared
+  N = Room
+  MarkCleared
+  LeaveAnimation
+  ' Lines 9100-9150: a bonus life
+  if PCount[P] >= PNext[P] then
+    N = PLives[P]
+    inc N
+    PLives[P] = N
+    N = PNext[P]
+    N += 3
+    PNext[P] = N
+    fill 32 count 26 at 2,1
+    print at 9,1, "BONUS LIFE"
+    play sound SndBonus
+    wait 60 frames
+  end if
+  ' The next room on the castle map
+  N = Room << 2
+  N += ExitDir
+  N = Neighbour[N]
+  if N = HomeCell then goto nerm_home
+  Room = N
+  ' He comes in through the opposite door
+  N = ExitDir + 2
+  if N > 4 then N -= 4
+  Entry = N
+  PRoom[P] = Room
+  PEntry[P] = Entry
+  goto enter_room
+
+' --- Lines 1199-1293: NERM'S HOME ---
+nerm_home:
+  play sound SndHome
+  HideSprites
+  cls
+  backdrop dark green
+  print at 10,8, "NERM'S HOME!"
+  print at 10,11, "THANK YOU!"
+  ' Adaptation: a bonus of 1000 per life left
+  N = PLives[P]
+  for I = 1 to N
+    Score += 1000
+  next
+  wait 180 frames
+  backdrop black
+  PCount[P] = 12
+  KeepScore
+  if P = 0 then
+    PDone0 = true
+  else
+    PDone1 = true
+  end if
+  goto next_player
+
+' --- Lines 200-266, 7500-7600: OOPS ---
+lost_life:
+  nmi on
+  play sounds SndCrashA, SndCrashB
+  for F = 1 to 30
+    N = F & 4
+    if N = 0 then
+      put char BodyTile at HX,HY
+    else
+      put char 88 at HX,HY
+    end if
+    wait
+  next
+  fill 32 count 26 at 2,1
+  print at 12,1, "OOPS"
+  wait 60 frames
+  N = PLives[P]
+  dec N
+  PLives[P] = N
+  KeepScore
+  if N = 0 then
+    if P = 0 then
+      PDone0 = true
+    else
+      PDone1 = true
+    end if
+    PlayerOver
+  end if
+
+next_player:
+  ' Adaptation: players take turns after each life
+  if PDone0 then
+    if PDone1 then goto game_over
+  end if
+  if Players = 2 then
+    P = 1 - P
+    if P = 0 then
+      if PDone0 then P = 1
+    else
+      if PDone1 then P = 0
+    end if
+  end if
+  goto start_turn
+
+' --- Lines 7700-7845: the game ends ---
+game_over:
+  nmi on
+  HideSprites
+  cls
+  backdrop black
+  play sound SndOver
+  print at 9,2, "WORM OF BEMER"
+  P = 0
+  ShowResult
+  if Players = 2 then
+    P = 1
+    ShowResult
+  end if
+  N = 0
+  if Score1 > HighScore then N = 1
+  if Score2 > HighScore then N = 1
+  if Score1 > HighScore then HighScore = Score1
+  if Score2 > HighScore then HighScore = Score2
+  if N = 1 then
+    wait 100 frames
+    print at 8,16, "NEW HIGH SCORE"
+    play sound SndHigh
+  end if
+  print at 7,17, "HIGH SCORE:"
+  print HighScore at 19,17
+  print at 7,20, "PLAY AGAIN"
+  print at 7,21, "OPTIONS"
+  wait 60 frames
+  wait no fire
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor $3E at 5,20 step 1
+  if Choice = 1 then goto new_game
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' One video frame. The game runs with the VDP interrupt off and turns it on
+' only to wait for the next frame.
+sub FrameUpdate:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  if not Ready then
+    if Want <> 0 then
+      Ready = true
+      Tick = StepFrames
+    end if
+  end if
+  inc Blink
+  N = Blink & 15
+  if N = 0 then DrawMap
+  if not Ready then return
+  inc Tick
+  if Tick < StepFrames then return
+  Tick = 0
+  StepWorm
+  return
+end sub
+
+' Lines 100-135: a new direction, never straight back
+sub ReadStick:
+  Want = 0
+  N = P + 1
+  if joypad(N).up then Want = 1
+  if joypad(N).right then Want = 2
+  if joypad(N).down then Want = 3
+  if joypad(N).left then Want = 4
+  if Want = 0 then return
+  N = Dir + 2
+  if N > 4 then N -= 4
+  if Want = N then
+    ' A turn back is ignored, except at the very start when he can face
+    ' any open way
+    if Ready then Want = 0
+  end if
+  return
+end sub
+
+' Lines 140-186: one step
+sub StepWorm:
+  if Want <> 0 then Dir = Want
+  NX = HX
+  NY = HY
+  if Dir = 1 then dec NY
+  if Dir = 2 then inc NX
+  if Dir = 3 then inc NY
+  if Dir = 4 then dec NX
+  T = get char at NX,NY
+  if T >= OpenTile then
+    ' Through the open door on the side he is heading to
+    ExitDir = T - OpenTile
+    inc ExitDir
+    Left = true
+    return
+  end if
+  if T = MushTile then
+    MoveHead
+    EatMushroom
+    return
+  end if
+  if T <> FloorTile then
+    Crashed = true
+    return
+  end if
+  MoveHead
+  play sound SndTick
+  return
+end sub
+
+' The head moves to NX,NY; the tail follows unless Nerm is growing
+sub MoveHead:
+  put char BodyTile at HX,HY
+  HX = NX
+  HY = NY
+  N = HeadTile + Dir
+  dec N
+  put char N at HX,HY
+  inc QHead
+  if QHead >= QSize then QHead = 0
+  QX[QHead] = HX
+  QY[QHead] = HY
+  inc QLen
+  if QLen <= Target then return
+  ' Line 170: the last segment disappears
+  L = 0
+  TailIndex
+  X = QX[N]
+  Y = QY[N]
+  put char FloorTile at X,Y
+  dec QLen
+  return
+end sub
+
+' N = the ring index of segment L counted from the tail (0 = the tail);
+' the sums are done in 16 bits because the ring holds 180 entries
+sub TailIndex:
+  W16 = QHead
+  W16 += QSize
+  W16 += 1
+  W16 -= QLen
+  W16 += L
+  if W16 >= QSize then W16 -= QSize
+  if W16 >= QSize then W16 -= QSize
+  N = W16
+  return
+end sub
+
+' Lines 205-245: a mushroom
+sub EatMushroom:
+  play sound SndEat
+  ' Line 224: 100 + 7 x room points
+  Score += 100
+  N = PCount[P]
+  inc N
+  for I = 1 to N
+    Score += 7
+  next
+  ' Line 210: 15 + 2 x room more segments
+  N <<= 1
+  N += 15
+  M = MaxLen - Target
+  if N > M then N = M
+  Target += N
+  dec MushLeft
+  ShowStatus
+  if MushLeft = 0 then
+    OpenDoors
+  else
+    PlaceMushroom
+  end if
+  return
+end sub
+
+' Lines 216-218, 5174-5190: a mushroom in an empty cell, not right in front
+' of Nerm
+sub PlaceMushroom:
+  for I = 1 to 80
+    X = random(3, 28)
+    Y = random(4, 22)
+    T = get char at X,Y
+    if T = FloorTile then
+      N = absdiff(X, HX)
+      M = absdiff(Y, HY)
+      N += M
+      if N > 2 then
+        put char MushTile at X,Y
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' Lines 232-240: the exits open (the way home only after enough rooms)
+sub OpenDoors:
+  N = Room
+  MarkCleared
+  play sound SndOpen
+  Opened = true
+  for K = 1 to 4
+    DoorAt
+    N = Room << 2
+    N += K
+    N = Neighbour[N]
+    if N <> 255 then
+      if N = HomeCell then
+        if PCount[P] >= RoomsToHome then
+          T = OpenTile + K
+          dec T
+          put char T at X,Y
+        end if
+      else
+        T = OpenTile + K
+        dec T
+        put char T at X,Y
+      end if
+    end if
+  next
+  fill 32 count 26 at 2,2
+  print at 5,2, "THE DOORS ARE OPEN!"
+  return
+end sub
+
+' X,Y = the door on side K (1 top, 2 right, 3 bottom, 4 left)
+sub DoorAt:
+  X = DoorX[K]
+  Y = DoorY[K]
+  return
+end sub
+
+' Room N becomes cleared for player P
+sub MarkCleared:
+  Bits = 1
+  for I = 1 to N
+    Bits <<= 1
+  next
+  Dst16 = PCleared[P]
+  Dst16 &= Bits
+  if Dst16 <> 0 then return
+  Dst16 = PCleared[P]
+  Dst16 |= Bits
+  PCleared[P] = Dst16
+  M = PCount[P]
+  inc M
+  PCount[P] = M
+  return
+end sub
+
+' Lines 7000-7060: Nerm slides out through the door, tail last
+sub LeaveAnimation:
+  put char FloorTile at HX,HY
+  K = QLen
+  for L = 0 to 200
+    if L >= K then goto leave_done
+    TailIndex
+    X = QX[N]
+    Y = QY[N]
+    put char FloorTile at X,Y
+    Score += 5
+    play sound SndLeave
+    wait 2 frames
+  next
+leave_done:
+  QLen = 0
+  ShowStatus
+  return
+end sub
+
+' Lines 5080-5200, 290-300, 1300: draw the room, Nerm at his door
+sub SetupRoom:
+  nmi off
+  HideSprites
+  cls
+  ' The walls of the castle room
+  fill WallTile count 28 at 2,3
+  fill WallTile count 28 at 2,23
+  for Y = 4 to 22
+    put char WallTile at 2,Y
+    put char WallTile at 29,Y
+  next
+  ' Lines 400-1100: the room's own walls
+  Ptr = RoomTable[Room]
+  N = peek(Ptr)
+  Ptr += 1
+  if N > 0 then
+    for I = 1 to N
+      Y = peek(Ptr)
+      Ptr += 1
+      X = peek(Ptr)
+      Ptr += 1
+      M = peek(Ptr)
+      Ptr += 1
+      fill WallTile count M at X,Y
+    next
+  end if
+  ' Doors on the sides that lead somewhere
+  for K = 1 to 4
+    N = Room << 2
+    N += K
+    N = Neighbour[N]
+    if N <> 255 then
+      DoorAt
+      if N = HomeCell then
+        put char SealTile at X,Y
+      else
+        put char DoorTile at X,Y
+      end if
+    end if
+  next
+  ' Nerm at the start (lines 5084-5085: XA=17, YA=18, going up) or just
+  ' inside his door
+  HX = 16
+  HY = 18
+  Dir = 1
+  if Entry <> 0 then
+    K = Entry
+    DoorAt
+    HX = X
+    HY = Y
+    if K = 1 then
+      inc HY
+      Dir = 3
+    end if
+    if K = 2 then
+      dec HX
+      Dir = 4
+    end if
+    if K = 3 then
+      dec HY
+      Dir = 1
+    end if
+    if K = 4 then
+      inc HX
+      Dir = 2
+    end if
+  end if
+  N = HeadTile + Dir
+  dec N
+  put char N at HX,HY
+  QHead = 0
+  QX[0] = HX
+  QY[0] = HY
+  QLen = 1
+  Target = 5
+  MushLeft = MushOpt
+  Ready = false
+  Crashed = false
+  Left = false
+  Opened = false
+  ' Speed: the option, faster every three rooms cleared
+  StepFrames = SpeedFrames[SpeedOpt]
+  N = PCount[P] / 3
+  if StepFrames > N then StepFrames -= N
+  if StepFrames < 3 then StepFrames = 3
+  PlaceMushroom
+  ShowStatus
+  DrawMap
+  ' The way home
+  N = Room << 2
+  for K = 1 to 4
+    inc N
+    M = Neighbour[N]
+    if M = HomeCell then
+      fill 32 count 26 at 2,2
+      if PCount[P] >= RoomsToHome then
+        print at 4,2, "THE WAY HOME IS HERE!"
+      else
+        print at 3,2, "HOME IS SEALED: CLEAR 8"
+      end if
+    end if
+  next
+  nmi on
+  return
+end sub
+
+' Lines 6600-6650: SCORE, ROOM, MUSHROOMS, LIVES (plus the player)
+sub ShowStatus:
+  fill 32 count 25 at 2,1
+  fill 32 count 25 at 2,2
+  if Players = 2 then
+    N = P + 49
+    put char 80 at 2,1
+    put char N at 3,1
+  end if
+  print at 5,1, "SCORE"
+  print Score at 11,1
+  print at 18,1, "ROOM"
+  NumU = Room + 1
+  print at 23,1, digits$(NumU, 2)
+  put char MushTile at 2,2
+  NumU = MushLeft
+  print at 3,2, digits$(NumU, 1)
+  print at 5,2, "CLEARED"
+  NumU = PCount[P]
+  print at 13,2, digits$(NumU, 2)
+  put char HeadTile + 1 at 18,2
+  NumU = PLives[P]
+  print at 19,2, digits$(NumU, 1)
+  return
+end sub
+
+' Adaptation: the castle map, 4 x 3 rooms in 2 x 2 tiles. A cleared room is a
+' full square, an unexplored room a dot, home a little house; the current
+' room blinks.
+sub DrawMap:
+  for I = 0 to 31
+    Map[I] = 0
+  next
+  Bits = PCleared[P]
+  for K = 0 to 11
+    N = K & 3
+    M = MapCol[N]
+    N = K >> 2
+    Y = N << 2
+    Y += 2
+    if N >= 2 then dec Y
+    X = MapMask[N]
+    ' choose the shape
+    L = 1
+    N = Bits & 1
+    if N = 1 then L = 2
+    if K = HomeCell then L = 3
+    if K = Room then
+      N = Blink & 16
+      if N = 0 then L = 0
+    end if
+    N = K & 3
+    X = MapMaskOf[N]
+    if L >= 1 then
+      if L = 1 then
+        I = Y + 1
+        I += M
+        T = MapDot[N]
+        Map[I] |= T
+      end if
+      if L = 2 then
+        for F = 0 to 2
+          I = Y + F
+          I += M
+          Map[I] |= X
+        next
+      end if
+      if L = 3 then
+        I = Y + M
+        T = MapDot[N]
+        Map[I] |= T
+        inc I
+        Map[I] |= X
+        inc I
+        T = MapEdge[N]
+        Map[I] |= T
+      end if
+    end if
+    Bits >>= 1
+  next
+  copy Map count 8 to vram.pattern + 1280
+  copy Map + 16 count 8 to vram.pattern + 1288
+  copy Map + 8 count 8 to vram.pattern + 1296
+  copy Map + 24 count 8 to vram.pattern + 1304
+  put char MapTile at 27,1
+  put char MapTile + 1 at 28,1
+  put char MapTile + 2 at 27,2
+  put char MapTile + 3 at 28,2
+  return
+end sub
+
+' Lines 5500-5540: GET READY
+sub ReadyScreen:
+  nmi on
+  HideSprites
+  cls
+  backdrop black
+  if Players = 2 then
+    N = P + 49
+    print at 12,9, "PLAYER"
+    put char N at 19,9
+  end if
+  print at 10,11, "GET READY!"
+  print at 8,14, "ROOM"
+  NumU = Room + 1
+  print at 13,14, digits$(NumU, 2)
+  print at 16,14, "LIVES"
+  NumU = PLives[P]
+  print at 22,14, digits$(NumU, 1)
+  play sound SndReady
+  wait 90 frames
+  return
+end sub
+
+' Lines 7750-7795: score and rank for player P
+sub ShowResult:
+  Y = P * 6
+  Y += 5
+  if Players = 2 then
+    N = P + 49
+    print at 4,Y, "PLAYER"
+    put char N at 11,Y
+  end if
+  inc Y
+  print at 4,Y, "SCORE:"
+  if P = 0 then
+    print Score1 at 11,Y
+  else
+    print Score2 at 11,Y
+  end if
+  inc Y
+  print at 4,Y, "ROOMS CLEARED:"
+  NumU = PCount[P]
+  if NumU > 11 then NumU = 11
+  print at 19,Y, digits$(NumU, 2)
+  inc Y
+  print at 4,Y, "YOUR RANK IS"
+  N = PCount[P]
+  if N > 9 then N = 9
+  Ptr = RankTable[N]
+  X = 17
+  Y = Y
+rank_loop:
+  M = peek(Ptr)
+  if M = 0 then return
+  put char M at X,Y
+  inc X
+  Ptr += 1
+  goto rank_loop
+end sub
+
+sub PlayerOver:
+  fill 32 count 26 at 2,1
+  if Players = 2 then
+    N = P + 49
+    print at 6,1, "PLAYER"
+    put char N at 13,1
+    print at 15,1, "GAME OVER"
+  else
+    print at 10,1, "GAME OVER"
+  end if
+  wait 90 frames
+  return
+end sub
+
+sub KeepScore:
+  if P = 0 then
+    Score1 = Score
+  else
+    Score2 = Score
+  end if
+  return
+end sub
+
+' Lines 10000-10075 and the options (adaptation)
+sub TitlePage:
+  HideSprites
+  cls
+  backdrop black
+  print at 11,2, "WELCOME TO"
+  print at 9,4, "WORM OF BEMER"
+  ' Lines 10040-10057: Nerm crawls across
+  for F = 3 to 24
+    put char BodyTile at F,6
+    N = F + 1
+    put char HeadTile + 1 at N,6
+    if F >= 8 then
+      N = F - 5
+      put char 32 at N,6
+    end if
+    wait 3 frames
+  next
+  put char MushTile at 27,6
+opt_loop:
+  fill 32 count 28 at 2,9
+  print at 7,9, "PLAYERS"
+  NumU = Players
+  print at 20,9, digits$(NumU, 1)
+  print at 7,11, "MUSHROOMS"
+  NumU = MushOpt
+  print at 20,11, digits$(NumU, 1)
+  fill 32 count 8 at 20,13
+  print at 7,13, "SPEED"
+  if SpeedOpt = 1 then
+    print at 20,13, "SLOW"
+  end if
+  if SpeedOpt = 2 then
+    print at 20,13, "NORMAL"
+  end if
+  if SpeedOpt = 3 then
+    print at 20,13, "FAST"
+  end if
+  print at 7,15, "HOW TO PLAY"
+  print at 7,17, "START"
+  print at 4,21, "STICK UP/DOWN, THEN FIRE"
+  wait no fire
+  choose menu 1 to 5 into Choice cursor $3E at 5,9 step 2
+  play sound SndBeep
+  if Choice = 1 then
+    Players = 3 - Players
+    goto opt_loop
+  end if
+  if Choice = 2 then
+    MushOpt += 2
+    if MushOpt > 7 then MushOpt = 3
+    goto opt_loop
+  end if
+  if Choice = 3 then
+    inc SpeedOpt
+    if SpeedOpt > 3 then SpeedOpt = 1
+    goto opt_loop
+  end if
+  if Choice = 4 then
+    HowToPage
+    goto title_redo
+  end if
+  Choice = 5
+  return
+title_redo:
+  Choice = 4
+  cls
+  print at 11,2, "WELCOME TO"
+  print at 9,4, "WORM OF BEMER"
+  goto opt_loop
+end sub
+
+sub HowToPage:
+  cls
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "GUIDE NERM WITH THE STICK."
+  print at 2,4, "HE CANNOT TURN BACK."
+  put char MushTile at 2,6
+  print at 4,6, "EAT THE MUSHROOMS: THEY"
+  print at 4,7, "MAKE HIM LONGER."
+  put char WallTile at 2,9
+  put char BodyTile at 3,9
+  print at 5,9, "WALLS AND HIS OWN TAIL"
+  print at 5,10, "COST A LIFE."
+  put char DoorTile at 2,12
+  put char OpenTile + 1 at 3,12
+  print at 5,12, "ENOUGH MUSHROOMS OPEN THE"
+  print at 5,13, "DOORS. EACH DOOR LEADS TO"
+  print at 5,14, "THE ROOM ON THAT SIDE."
+  put char SealTile at 2,16
+  print at 4,16, "HOME, IN THE FAR CORNER,"
+  print at 4,17, "OPENS AFTER 8 ROOMS."
+  print at 2,19, "THE MAP AT THE TOP RIGHT"
+  print at 2,20, "SHOWS THE ROOMS CLEARED."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  wait 30 frames
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Graphics II: the tiles with their colors, in all three thirds
+sub LoadTiles:
+  fill mode 2 text color with $F0
+  Dst16 = 1024
+  for F = 0 to 2
+    copy TilePat count 112 to vram.pattern + Dst16
+    copy TileCol count 112 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  ' Mini-map tiles: white on black
+  fill $F0 count 32 to vram.color + 1280
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 0
+  update sprites
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 9,1, "WORM OF BEMER"
+  print at 6,3, "BY STEPHEN D. FULTZ"
+  print at 5,4, "COMPUTE! APRIL 1984"
+  print at 2,6, "AN ATARI GAME, ALSO FOR THE"
+  print at 2,7, "VIC, 64, TI-99/4A AND PC."
+  print at 2,8, "TI VERSION: PATRICK PARRISH"
+  print at 2,10, "NERM THE WORM IS LOST IN"
+  print at 2,11, "BEMER CASTLE. MAGIC"
+  print at 2,12, "MUSHROOMS OPEN THE DOORS."
+  print at 2,14, "THE ARTICLE INVITED READERS"
+  print at 2,15, "TO ADD FEATURES. HERE: TWO"
+  print at 2,16, "PLAYERS, A CASTLE MAP WHERE"
+  print at 2,17, "EACH DOOR LEADS SOMEWHERE"
+  print at 2,18, "ELSE, AND SPEED OPTIONS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  fill mode 2 text color with $F0
+  LoadTiles
+  backdrop black
+  return
+end sub
+
+' The castle map: rooms 0-10 in a 4 x 3 grid, home in cell 11. Neighbour
+' of room R on side K (1 top, 2 right, 3 bottom, 4 left) at R * 4 + K;
+' 255 = no door
+data Neighbour bytes
+  0,255,1,4,255
+  255,2,5,0
+  255,3,6,1
+  255,255,7,2
+  0,5,8,255
+  1,6,9,4
+  2,7,10,5
+  3,255,11,6
+  4,9,255,255
+  5,10,255,8
+  6,11,255,9
+end data
+' Doors: top, right, bottom, left (index 1-4)
+data DoorX bytes 0,16,29,16,2
+data DoorY bytes 0,3,13,23,13
+' Frames per step for SLOW, NORMAL, FAST
+data SpeedFrames bytes 0,10,8,6
+' Mini-map: byte offset of each column (left tiles 0-15, right tiles 16-31)
+' and the masks for a full square, a dot and the house's bottom row
+data MapCol bytes 0,0,16,16
+data MapMask bytes 0,0,0
+data MapMaskOf bytes $E0,$0E,$E0,$0E
+data MapDot bytes $40,$04,$40,$04
+data MapEdge bytes $A0,$0A,$A0,$0A
+
+' Lines 11090-11094: the ranks
+data R0 chars
+  "ZERO{0}"
+end data
+data R1 chars
+  "ROOKIE{0}"
+end data
+data R2 chars
+  "NOVICE{0}"
+end data
+data R3 chars
+  "AVERAGE{0}"
+end data
+data R4 chars
+  "MASTER{0}"
+end data
+data R5 chars
+  "GRAND MASTER{0}"
+end data
+data R6 chars
+  "WIZARD{0}"
+end data
+data R7 chars
+  "GRAND WIZARD{0}"
+end data
+data R8 chars
+  "SUPER STAR{0}"
+end data
+data R9 chars
+  "HALL OF FAME{0}"
+end data
+data RankTable words = @R0, @R1, @R2, @R3, @R4, @R5, @R6, @R7, @R8, @R9
+
+' Tiles 128-137: wall, door closed, door open, door sealed (the way home),
+' mushroom, worm body, worm head up/right/down/left; 138-141 open doors
+' pointing out: up, right, down, left
+data TilePat bytes
+  $FF,$01,$01,$01,$FF,$10,$10,$10
+  $7E,$FF,$DB,$FF,$FB,$FF,$DB,$FF
+  $00,$18,$3C,$7E,$18,$18,$18,$00
+  $7E,$FF,$E7,$C3,$C3,$E7,$FF,$FF
+  $3C,$76,$DF,$FB,$00,$18,$18,$3C
+  $3C,$7E,$F7,$FF,$FF,$FF,$7E,$3C
+  $3C,$7E,$DB,$FF,$FF,$FF,$7E,$3C
+  $3C,$7E,$F7,$FF,$FF,$F7,$7E,$3C
+  $3C,$7E,$FF,$FF,$FF,$DB,$7E,$3C
+  $3C,$7E,$EF,$FF,$FF,$EF,$7E,$3C
+  $18,$3C,$7E,$FF,$18,$18,$18,$18
+  $08,$0C,$FE,$FF,$FF,$FE,$0C,$08
+  $18,$18,$18,$18,$FF,$7E,$3C,$18
+  $10,$30,$7F,$FF,$FF,$7F,$30,$10
+end data
+
+' Their colors, one byte per pixel row (Graphics II)
+data TileCol bytes
+  $E4,$1E,$1E,$1E,$E4,$1E,$1E,$1E
+  $A6,$A6,$1A,$A6,$B6,$A6,$1A,$A6
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $81,$81,$B8,$B8,$B8,$B8,$81,$81
+  $80,$F8,$F8,$F8,$00,$F0,$F0,$E0
+  $30,$30,$3C,$20,$20,$C0,$C0,$C0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+end data
+
+' Lines 400-1100: the walls of rooms 1-11 as runs (count, then row,
+' column, length on screen); room 9 is room 4 mirrored (the TI reused it)
+data Room1 bytes
+  0
+end data
+
+data Room2 bytes
+  1,13,5,22
+end data
+
+data Room3 bytes
+  2,6,5,22,20,5,22
+end data
+
+data Room4 bytes
+  16,7,6,20,8,14,1,9,14,1,10,14,1,11,14
+  1,12,14,1,13,14,1,14,14,1,15,14,1,16,14
+  1,17,14,1,18,14,1,19,14,1,20,14,1,21,14
+  1,22,14,1
+end data
+
+data Room5 bytes
+  2,12,3,12,12,18,11
+end data
+
+data Room6 bytes
+  22,8,7,6,8,17,7,9,7,6,9,17,7,10,7
+  6,10,17,7,11,7,6,11,17,7,12,7,6,12,17
+  7,13,7,6,13,17,7,14,7,6,14,17,7,15,7
+  6,15,17,7,16,7,6,16,17,7,17,7,6,17,17
+  7,18,7,6,18,17,7
+end data
+
+data Room7 bytes
+  3,8,3,12,14,11,18,18,3,12
+end data
+
+data Room8 bytes
+  16,7,14,1,8,14,1,9,6,20,10,14,1,11,14
+  1,12,14,1,13,14,1,14,14,1,15,14,1,16,14
+  1,17,14,1,18,14,1,19,14,1,20,14,1,21,14
+  1,22,14,1
+end data
+
+data Room9 bytes
+  16,7,6,20,8,17,1,9,17,1,10,17,1,11,17
+  1,12,17,1,13,17,1,14,17,1,15,17,1,16,17
+  1,17,17,1,18,17,1,19,17,1,20,17,1,21,17
+  1,22,17,1
+end data
+
+data Room10 bytes
+  17,5,19,9,6,19,9,7,19,9,8,19,9,9,19
+  9,10,19,9,11,19,9,12,19,9,13,19,9,14,19
+  9,15,19,9,16,19,9,17,19,9,18,19,9,19,19
+  9,20,19,9,21,19,9
+end data
+
+data Room11 bytes
+  17,5,22,6,6,22,6,7,22,6,8,22,6,9,22
+  6,10,22,6,11,22,6,12,22,6,13,5,23,14,22
+  6,15,22,6,16,22,6,17,22,6,18,22,6,19,22
+  6,20,22,6,21,22,6
+end data
+
+data RoomTable words = @Room1, @Room2, @Room3, @Room4, @Room5, @Room6, @Room7, @Room8, @Room9, @Room10, @Room11
+
+asm {
+TickT1:
+    db $40,$B4,$60,$01,$50
+EatT1:
+    db $40,$3B,$20,$02,$40,$3B,$30,$02,$40,$3B,$50,$02,$40,$3B,$60,$02,$40,$3B,$80,$02,$40,$3B,$90,$02
+    db $40,$3B,$B0,$02,$40,$3B,$C0,$02,$40,$3B,$E0,$02,$40,$3B,$F0,$02,$50
+CrashT1:
+    db $40,$68,$11,$06,$50
+CrashN:
+    db $00,$00,$15,$06,$10
+OpenT1:
+    db $40,$F9,$13,$01,$40,$14,$13,$01,$40,$83,$12,$01,$40,$1F,$12,$01,$40,$D6,$11,$01,$40,$9E,$11,$01
+    db $40,$72,$11,$01,$40,$4F,$11,$01,$40,$32,$11,$01,$40,$19,$11,$01,$40,$04,$11,$01,$40,$F2,$10,$01
+    db $40,$E2,$10,$01,$40,$D5,$10,$01,$40,$C8,$10,$01,$40,$BE,$10,$01,$40,$B4,$10,$01,$40,$AB,$10,$01
+    db $40,$A3,$10,$01,$40,$9C,$10,$01,$40,$95,$10,$01,$40,$8F,$10,$01,$40,$89,$10,$01,$40,$84,$10,$01
+    db $40,$7F,$10,$01,$50
+LeaveT1:
+    db $40,$FE,$20,$01,$50
+BonusT1:
+    db $40,$5F,$10,$02,$40,$5F,$20,$02,$40,$5F,$30,$02,$40,$5F,$40,$02,$40,$5F,$50,$02,$40,$5F,$60,$02
+    db $40,$5F,$70,$02,$40,$5F,$80,$02,$40,$5F,$90,$02,$40,$5F,$A0,$02,$40,$5F,$B0,$02,$40,$5F,$C0,$02
+    db $40,$5F,$D0,$02,$40,$5F,$E0,$02,$40,$5F,$F0,$02,$50
+ReadyT1:
+    db $40,$AB,$11,$06,$40,$41,$11,$06,$40,$03,$F0,$06,$40,$41,$11,$06,$40,$1D,$11,$06,$40,$03,$F0,$06
+    db $40,$1D,$11,$06,$40,$FE,$10,$06,$40,$D6,$10,$06,$40,$FE,$10,$06,$40,$D6,$10,$06,$40,$FE,$10,$06
+    db $40,$41,$11,$06,$40,$03,$F0,$06,$50
+OverT1:
+    db $40,$41,$11,$06,$40,$03,$F0,$06,$40,$03,$F0,$06,$40,$AB,$11,$06,$40,$C5,$11,$06,$40,$AB,$11,$06
+    db $40,$7C,$11,$06,$40,$7C,$11,$06,$40,$AB,$11,$06,$40,$03,$F0,$06,$40,$03,$F0,$06,$40,$03,$F0,$06
+    db $40,$53,$11,$06,$40,$53,$11,$06,$40,$41,$11,$06,$50
+HomeT1:
+    db $40,$F9,$13,$01,$40,$1F,$13,$01,$40,$92,$12,$01,$40,$2F,$12,$01,$40,$E6,$11,$01,$40,$AE,$11,$01
+    db $40,$82,$11,$01,$40,$5E,$11,$01,$40,$40,$11,$01,$40,$26,$11,$01,$40,$11,$11,$01,$40,$FE,$10,$01
+    db $40,$EE,$10,$01,$40,$E0,$10,$01,$40,$D3,$10,$01,$40,$C8,$10,$01,$40,$BE,$10,$01,$40,$B4,$10,$01
+    db $40,$AC,$10,$01,$40,$A5,$10,$01,$40,$9E,$10,$01,$40,$97,$10,$01,$40,$91,$10,$01,$40,$8C,$10,$01
+    db $40,$87,$10,$01,$40,$82,$10,$01,$40,$7F,$10,$01,$40,$84,$10,$01,$40,$88,$10,$01,$40,$8E,$10,$01
+    db $40,$93,$10,$01,$40,$99,$10,$01,$40,$A0,$10,$01,$40,$A7,$10,$01,$40,$AF,$10,$01,$40,$B7,$10,$01
+    db $40,$C1,$10,$01,$40,$CB,$10,$01,$40,$D7,$10,$01,$40,$E4,$10,$01,$40,$F3,$10,$01,$40,$04,$11,$01
+    db $40,$18,$11,$01,$40,$2E,$11,$01,$40,$49,$11,$01,$40,$69,$11,$01,$40,$90,$11,$01,$40,$BF,$11,$01
+    db $40,$FC,$11,$01,$40,$4D,$12,$01,$40,$BB,$12,$01,$40,$5C,$13,$01,$40,$F9,$13,$01,$40,$1F,$13,$01
+    db $40,$92,$12,$01,$40,$2F,$12,$01,$40,$E6,$11,$01,$40,$AE,$11,$01,$40,$82,$11,$01,$40,$5E,$11,$01
+    db $40,$40,$11,$01,$40,$26,$11,$01,$40,$11,$11,$01,$40,$FE,$10,$01,$40,$EE,$10,$01,$40,$E0,$10,$01
+    db $40,$D3,$10,$01,$40,$C8,$10,$01,$40,$BE,$10,$01,$40,$B4,$10,$01,$40,$AC,$10,$01,$40,$A5,$10,$01
+    db $40,$9E,$10,$01,$40,$97,$10,$01,$40,$91,$10,$01,$40,$8C,$10,$01,$40,$87,$10,$01,$40,$82,$10,$01
+    db $40,$7F,$10,$01,$40,$84,$10,$01,$40,$88,$10,$01,$40,$8E,$10,$01,$40,$93,$10,$01,$40,$99,$10,$01
+    db $40,$A0,$10,$01,$40,$A7,$10,$01,$40,$AF,$10,$01,$40,$B7,$10,$01,$40,$C1,$10,$01,$40,$CB,$10,$01
+    db $40,$D7,$10,$01,$40,$E4,$10,$01,$40,$F3,$10,$01,$40,$04,$11,$01,$40,$18,$11,$01,$40,$2E,$11,$01
+    db $40,$49,$11,$01,$40,$69,$11,$01,$40,$90,$11,$01,$40,$BF,$11,$01,$40,$FC,$11,$01,$40,$4D,$12,$01
+    db $40,$BB,$12,$01,$40,$5C,$13,$01,$40,$F9,$13,$01,$40,$1F,$13,$01,$40,$92,$12,$01,$40,$2F,$12,$01
+    db $40,$E6,$11,$01,$40,$AE,$11,$01,$40,$82,$11,$01,$40,$5E,$11,$01,$40,$40,$11,$01,$40,$26,$11,$01
+    db $40,$11,$11,$01,$40,$FE,$10,$01,$40,$EE,$10,$01,$40,$E0,$10,$01,$40,$D3,$10,$01,$40,$C8,$10,$01
+    db $40,$BE,$10,$01,$40,$B4,$10,$01,$40,$AC,$10,$01,$40,$A5,$10,$01,$40,$9E,$10,$01,$40,$97,$10,$01
+    db $40,$91,$10,$01,$40,$8C,$10,$01,$40,$87,$10,$01,$40,$82,$10,$01,$40,$7F,$10,$01,$40,$84,$10,$01
+    db $40,$88,$10,$01,$40,$8E,$10,$01,$40,$93,$10,$01,$40,$99,$10,$01,$40,$A0,$10,$01,$40,$A7,$10,$01
+    db $40,$AF,$10,$01,$40,$B7,$10,$01,$40,$C1,$10,$01,$40,$CB,$10,$01,$40,$D7,$10,$01,$40,$E4,$10,$01
+    db $40,$F3,$10,$01,$40,$04,$11,$01,$40,$18,$11,$01,$40,$2E,$11,$01,$40,$49,$11,$01,$40,$69,$11,$01
+    db $40,$90,$11,$01,$40,$BF,$11,$01,$40,$FC,$11,$01,$40,$4D,$12,$01,$40,$BB,$12,$01,$40,$5C,$13,$01
+    db $50
+HighT1:
+    db $40,$F9,$13,$01,$40,$BB,$12,$01,$40,$15,$12,$01,$40,$AE,$11,$01,$40,$69,$11,$01,$40,$37,$11,$01
+    db $40,$11,$11,$01,$40,$F3,$10,$01,$40,$DB,$10,$01,$40,$C8,$10,$01,$40,$B7,$10,$01,$40,$A9,$10,$01
+    db $40,$9E,$10,$01,$40,$93,$10,$01,$40,$8A,$10,$01,$40,$82,$10,$01,$40,$7B,$10,$01,$40,$75,$10,$01
+    db $40,$6F,$10,$01,$40,$6A,$10,$01,$40,$65,$10,$01,$40,$60,$10,$01,$40,$5C,$10,$01,$40,$59,$10,$01
+    db $40,$55,$10,$01,$40,$52,$10,$01,$40,$4F,$10,$01,$40,$4D,$10,$01,$40,$4A,$10,$01,$40,$48,$10,$01
+    db $40,$45,$10,$01,$40,$43,$10,$01,$40,$41,$10,$01,$40,$40,$10,$01,$50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+WormSoundTable:
+    dw TickT1,$7035
+    dw EatT1,$7035
+    dw CrashT1,$7035
+    dw CrashN,$702B
+    dw OpenT1,$7035
+    dw LeaveT1,$7035
+    dw BonusT1,$7035
+    dw ReadyT1,$7035
+    dw OverT1,$7035
+    dw HomeT1,$7035
+    dw HighT1,$7035
+    dw BeepT1,$7035
+    dw WormTuneMel,$703F
+    dw WormTuneBass,$7049
+; Title tune: the game's melody (lines 11100-11135, NN(1)-NN(29)) and an
+; answering phrase, with dynamics; Tiny Sound, 9 frames per step
+WormTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$30,$1A,$21,$13,$18,$01,$18,$1A,$01,$1A,$1C,$1F,$1C,$1F,$1C
+    db $18,$01,$18,$01,$01,$13,$12,$13,$15,$15,$13,$01,$01,$01,$17,$17
+    db $18,$01,$01,$01,$02,$10,$1A,$21,$1F,$1C,$18,$1C,$1F,$00,$1D,$1C
+    db $1A,$00,$1C,$1A,$18,$00,$17,$00,$02,$30,$1A,$21,$15,$17,$18,$1A
+    db $1C,$00,$1A,$18,$02,$60,$1A,$21,$17,$00,$13,$00,$18,$00,$00,$01
+    db $FF
+WormTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$50,$18,$32,$0C,$00,$00,$00,$0C,$00,$00,$00,$07,$00,$00,$00
+    db $0C,$00,$00,$00,$05,$00,$00,$00,$0C,$00,$00,$00,$07,$00,$00,$00
+    db $0C,$00,$00,$00,$02,$30,$18,$32,$0C,$00,$13,$00,$0C,$00,$10,$00
+    db $05,$00,$0C,$00,$07,$00,$0E,$00,$02,$50,$18,$32,$05,$00,$00,$00
+    db $0C,$00,$00,$00,$02,$80,$18,$32,$07,$00,$00,$00,$0C,$00,$00,$01
+    db $FF
+}

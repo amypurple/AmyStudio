@@ -1,0 +1,439 @@
+cartridge "TI MOZART/PRESENTS COMPUTE!'S/1984"
+
+' TI MOZART
+' COMPUTE! magazine, January 1984, Program 4: the TI-99/4A version of
+' "Mozart", translated by Gregg Peele, Assistant Programming Supervisor.
+' All credit belongs to the author of the original program and to Gregg
+' Peele.
+'
+' Historical context (summary of the program):
+' "Ticlang Amazius Mozart" plays songs the way the child prodigy Wolfgang
+' Amadeus Mozart might have done: the computer writes them while you
+' listen. Mozart lived from 1756 to 1791 and wrote more than 626 works in
+' 31 years. The program knows fourteen measures in three-four time, each
+' a bass arpeggio under two melody notes per beat. Five pieces are
+' written as a series of measure types; for most types the computer
+' throws its own dice between two or three measures that fit at that
+' point, so every run gives five new pieces. Each piece ends on a long
+' chord, and the screen changes color before the next one.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: none while the music plays; fire on the last page plays five
+' more pieces.
+' The music follows the listing: the measures of lines 370-500 (BIOS
+' sound streams made by mz/s.mjs, 250 ms = 15 frames per note, TI volume
+' 2), the five pieces of lines 520-560, the chances of lines 580-930, the
+' final chord of line 1040 and the pause of line 1060, the random screen
+' color of lines 1070-1080.
+' Interpretations: line 580 sends type 7 to line 640, which only jumps
+' to the player, and type 3's first test (line 750) jumps to the type 4
+' code, so measure 10 could never sound; here type 7 plays measure 13
+' (line 630) and type 3 plays measure 10 or 11. Line 480's 287 Hz is
+' read as 587.
+' Adaptation liberties: a score sheet shows the measures of the piece as
+' they are written; an editorial page; the text of lines 140-280 on the
+' title page.
+
+' Sound table slots (mz/s.mjs): measure Y uses slots 2Y-1 and 2Y
+const SndFinalA = 29
+const SndFinalB = 30
+const SndFinalC = 31
+const SndBeep = 32
+
+u8 RR = 0                      ' measure type
+u8 Y = 0                       ' measure X(Y,...)
+u8 Piece = 0
+u8 Slot = 0
+u8 SA = 0
+u8 SB = 0
+u8 N = 0
+u8 X = 0
+u8 Row = 0
+u8 Col = 0
+u8 Kol = 0
+u16 NumU = 0
+
+  text screen
+  set sound table MozartSoundTable areas 3
+  screen on
+  EditorialPage
+
+title:
+  ' --- Lines 130-310: the introduction ---
+  IntroPage
+  restore Pieces
+  Piece = 1
+  Kol = 13
+
+new_piece:
+  SheetPage
+  Slot = 0
+
+  ' --- Line 570: the next measure type ---
+next_measure:
+  read RR
+  if RR = 8 then goto all_done
+  if RR = 9 then goto final_chord
+  ChooseMeasure
+  ShowMeasure
+  ' Lines 990-1020: the measure, three beats
+  SA = Y * 2
+  SB = SA
+  dec SA
+  play sounds SA, SB
+  wait 90 frames
+  inc Slot
+  goto next_measure
+
+  ' --- Lines 1040-1090: the last chord, a pause, a new color ---
+final_chord:
+  play sounds SndFinalA, SndFinalB, SndFinalC
+  wait 108 frames
+  wait 100 frames
+  Kol = random(7, 14)
+  inc Piece
+  goto new_piece
+
+  ' --- Lines 940-980: the end ---
+all_done:
+  backdrop light yellow
+  set text colors 1 count 32
+  cls
+  print at 8,6, "WELL, THAT'S ALL."
+  print at 8,8, "HOPE YOU LIKED IT!"
+  print at 3,11, "PRESS FIRE AND HEAR FIVE"
+  print at 3,12, "MORE SONGS."
+  wait no fire
+  pause until press
+  wait no fire
+  restore Pieces
+  Piece = 1
+  Kol = 13
+  goto new_piece
+
+' ---------------------------------------------------------------------------
+
+' Lines 580-930: the type becomes a measure, some with the dice
+sub ChooseMeasure:
+  if RR = 1 then
+    ' Lines 650-720
+    Y = 1
+    N = random(0, 99)
+    if N < 35 then Y = 3
+    N = random(0, 99)
+    if N >= 75 then Y = 2
+  end if
+  if RR = 2 then Y = 12
+  if RR = 3 then
+    ' Lines 730-770
+    Y = 10
+    N = random(0, 99)
+    if N < 40 then Y = 11
+  end if
+  if RR = 4 then
+    ' Lines 780-850
+    Y = 4
+    N = random(0, 99)
+    if N < 35 then Y = 5
+    N = random(0, 99)
+    if N >= 75 then Y = 6
+  end if
+  if RR = 5 then Y = 14
+  if RR = 6 then
+    ' Lines 860-930
+    Y = 7
+    N = random(0, 99)
+    if N < 35 then Y = 8
+    N = random(0, 99)
+    if N >= 75 then Y = 9
+  end if
+  if RR = 7 then Y = 13
+  return
+end sub
+
+' The score sheet: up to 24 measures, six per line
+sub SheetPage:
+  SetBackdrop
+  set text colors 1 count 32
+  cls
+  print at 9,2, "AMAZIUS MOZART"
+  print at 9,4, "PIECE"
+  NumU = Piece
+  print at 15,4, digits$(NumU, 1)
+  print at 17,4, "OF 5"
+  print at 3,7, "THE MEASURES, AS WRITTEN:"
+  print at 3,20, "EACH NUMBER IS ONE OF THE"
+  print at 3,21, "FOURTEEN MEASURES."
+  return
+end sub
+
+sub ShowMeasure:
+  N = Slot / 6
+  Row = N * 2
+  Row += 10
+  N = Slot % 6
+  Col = N * 4
+  Col += 4
+  ' The previous measure loses its marker
+  if Slot > 0 then
+    N = Slot - 1
+    X = N % 6
+    X *= 4
+    X += 3
+    N /= 6
+    N *= 2
+    N += 10
+    put char 32 at X,N
+  end if
+  X = Col - 1
+  put char 62 at X,Row
+  NumU = Y
+  print at Col,Row, digits$(NumU, 2)
+  return
+end sub
+
+' Line 1080: CALL SCREEN(KOL), one Coleco color per value
+sub SetBackdrop:
+  if Kol = 7 then
+    backdrop cyan
+  end if
+  if Kol = 8 then
+    backdrop medium red
+  end if
+  if Kol = 9 then
+    backdrop light red
+  end if
+  if Kol = 10 then
+    backdrop dark yellow
+  end if
+  if Kol = 11 then
+    backdrop light yellow
+  end if
+  if Kol = 12 then
+    backdrop dark green
+  end if
+  if Kol = 13 then
+    backdrop magenta
+  end if
+  if Kol = 14 then
+    backdrop gray
+  end if
+  if Kol = 4 then
+    backdrop dark blue
+  end if
+  return
+end sub
+
+' Lines 130-310: the welcome
+sub IntroPage:
+  backdrop light green
+  set text colors 1 count 32
+  cls
+  print at 4,2, "WELCOME! I AM TICLANG"
+  print at 7,3, "AMAZIUS MOZART."
+  print at 2,5, "I PLAY SONGS LIKE THE CHILD"
+  print at 2,6, "PRODIGY, WOLFGANG AMADEUS"
+  print at 2,7, "MOZART MIGHT HAVE DONE."
+  print at 6,9, "MOZART LIVED FROM"
+  print at 9,10, "1756 TO 1791"
+  print at 2,11, "AND WROTE OVER 626 WORKS IN"
+  print at 10,12, "31 YEARS."
+  print at 2,14, "THE 5 PIECES YOU HEAR ARE"
+  print at 2,15, "BEING WRITTEN BY THE"
+  print at 2,16, "COMPUTER AS YOU LISTEN!"
+  print at 5,21, "PRESS FIRE TO LISTEN"
+  play sound SndBeep
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  backdrop white
+  set text colors 1 count 32
+  cls
+  print at 10,1, "TI MOZART"
+  print at 3,3, "COMPUTE! JANUARY 1984,"
+  print at 3,4, "TI VERSION BY GREGG PEELE"
+  print at 2,6, "A COMPUTER COMPOSER: FIVE"
+  print at 2,7, "PIECES IN THREE-FOUR TIME,"
+  print at 2,8, "EACH MEASURE PICKED WITH"
+  print at 2,9, "DICE FROM FOURTEEN THAT FIT,"
+  print at 2,10, "LIKE THE MUSICAL DICE GAMES"
+  print at 2,11, "OF MOZART'S OWN DAY."
+  print at 2,13, "EVERY RUN WRITES FIVE NEW"
+  print at 2,14, "PIECES."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Lines 520-560: the five pieces as measure types (9 ends a piece, 8 ends
+' the program)
+data Pieces bytes
+  1,3,6,2,1,4,6,2,3,4,1,5,1,4,6,7,1,4,6,2,1,3,6,9
+  1,1,4,5,1,4,6,2,3,4,1,5,1,4,1,5,1,4,6,9
+  1,4,6,2,3,6,1,5,1,4,6,7,3,4,6,2,1,4,3,7,1,4,6,9
+  1,4,3,7,1,6,4,5,6,3,6,2,4,6,1,5,1,4,6,9
+  1,4,3,7,6,3,6,2,4,6,1,5,1,3,6,7,3,6,1,5,1,4,6,9,8
+end data
+
+asm {
+Bar1T1:
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01
+    db $40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$FC,$11,$0E,$40,$FC,$F1,$01
+    db $50
+Bar1T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$C5,$11,$0E,$80,$C5,$F1,$01
+    db $80,$C5,$F1,$0E,$80,$C5,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar2T1:
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$7C,$11,$0E,$40,$7C,$F1,$01
+    db $50
+Bar2T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$C5,$11,$0E,$80,$C5,$F1,$01
+    db $80,$C5,$F1,$0E,$80,$C5,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar3T1:
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$7C,$11,$0E,$40,$7C,$F1,$01
+    db $50
+Bar3T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$C5,$11,$0E,$80,$C5,$F1,$01
+    db $80,$C5,$F1,$0E,$80,$C5,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar4T1:
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$AA,$10,$0E,$40,$AA,$F0,$01
+    db $40,$8F,$10,$0E,$40,$8F,$F0,$01,$40,$8F,$10,$0E,$40,$8F,$F0,$01,$40,$AB,$11,$0E,$40,$AB,$F1,$01
+    db $50
+Bar4T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$53,$11,$0E,$80,$53,$F1,$01,$80,$53,$F1,$0E,$80,$53,$F1,$01
+    db $90
+Bar5T1:
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$AA,$10,$0E,$40,$AA,$F0,$01,$40,$AA,$10,$0E,$40,$AA,$F0,$01
+    db $40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$AB,$11,$0E,$40,$AB,$F1,$01
+    db $50
+Bar5T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$53,$11,$0E,$80,$53,$F1,$01,$80,$53,$F1,$0E,$80,$53,$F1,$01
+    db $90
+Bar6T1:
+    db $40,$AA,$10,$0E,$40,$AA,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$1D,$11,$0E,$40,$1D,$F1,$01
+    db $40,$AA,$10,$0E,$40,$AA,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$3B,$12,$0E,$40,$3B,$F2,$01
+    db $50
+Bar6T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$53,$11,$0E,$80,$53,$F1,$01,$80,$53,$F1,$0E,$80,$53,$F1,$01
+    db $90
+Bar7T1:
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$8F,$10,$0E,$40,$8F,$F0,$01
+    db $40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$FC,$11,$0E,$40,$FC,$F1,$01
+    db $50
+Bar7T2:
+    db $80,$FC,$11,$0E,$80,$FC,$F1,$01,$80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar8T1:
+    db $40,$FE,$10,$0E,$40,$FE,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$FE,$10,$0E,$40,$FE,$F0,$01,$40,$FC,$11,$0E,$40,$FC,$F1,$01
+    db $50
+Bar8T2:
+    db $80,$FC,$11,$0E,$80,$FC,$F1,$01,$80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$FC,$11,$0E,$80,$FC,$F1,$01
+    db $80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar9T1:
+    db $40,$AA,$10,$0E,$40,$AA,$F0,$01,$40,$8F,$10,$0E,$40,$8F,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$FC,$11,$0E,$40,$FC,$F1,$01
+    db $50
+Bar9T2:
+    db $80,$FC,$11,$0E,$80,$FC,$F1,$01,$80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar10T1:
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$FE,$10,$0E,$40,$FE,$F0,$01
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$FC,$11,$0E,$40,$FC,$F1,$01
+    db $50
+Bar10T2:
+    db $80,$FC,$11,$0E,$80,$FC,$F1,$01,$80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$53,$11,$0E,$80,$53,$F1,$01,$80,$53,$F1,$0E,$80,$53,$F1,$01
+    db $90
+Bar11T1:
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$FE,$10,$0E,$40,$FE,$F0,$01
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$AB,$11,$0E,$40,$AB,$F1,$01
+    db $50
+Bar11T2:
+    db $80,$FC,$11,$0E,$80,$FC,$F1,$01,$80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$53,$11,$0E,$80,$53,$F1,$01,$80,$53,$F1,$0E,$80,$53,$F1,$01
+    db $90
+Bar12T1:
+    db $40,$E2,$10,$0E,$40,$E2,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01
+    db $40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$7C,$11,$0E,$40,$7C,$F1,$01
+    db $50
+Bar12T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$C5,$11,$0E,$80,$C5,$F1,$01
+    db $80,$C5,$F1,$0E,$80,$C5,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar13T1:
+    db $40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$FE,$10,$0E,$40,$FE,$F0,$01
+    db $40,$FE,$10,$0E,$40,$FE,$F0,$01,$40,$FE,$10,$0E,$40,$FE,$F0,$01,$40,$FC,$11,$0E,$40,$FC,$F1,$01
+    db $50
+Bar13T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$FC,$11,$0E,$80,$FC,$F1,$01
+    db $80,$FC,$F1,$0E,$80,$FC,$F1,$01,$80,$7C,$11,$0E,$80,$7C,$F1,$01,$80,$7C,$F1,$0E,$80,$7C,$F1,$01
+    db $90
+Bar14T1:
+    db $40,$AA,$10,$0E,$40,$AA,$F0,$01,$40,$BF,$10,$0E,$40,$BF,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01
+    db $40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$D6,$10,$0E,$40,$D6,$F0,$01,$40,$AB,$11,$0E,$40,$AB,$F1,$01
+    db $50
+Bar14T2:
+    db $80,$3B,$12,$0E,$80,$3B,$F2,$01,$80,$3B,$F2,$0E,$80,$3B,$F2,$01,$80,$AB,$11,$0E,$80,$AB,$F1,$01
+    db $80,$AB,$F1,$0E,$80,$AB,$F1,$01,$80,$53,$11,$0E,$80,$53,$F1,$01,$80,$53,$F1,$0E,$80,$53,$F1,$01
+    db $90
+FinalT1:
+    db $40,$3B,$12,$6C,$50
+FinalT2:
+    db $80,$E2,$10,$6C,$90
+FinalT3:
+    db $C0,$8F,$10,$6C,$D0
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+MozartSoundTable:
+    dw Bar1T1,$7035
+    dw Bar1T2,$703F
+    dw Bar2T1,$7035
+    dw Bar2T2,$703F
+    dw Bar3T1,$7035
+    dw Bar3T2,$703F
+    dw Bar4T1,$7035
+    dw Bar4T2,$703F
+    dw Bar5T1,$7035
+    dw Bar5T2,$703F
+    dw Bar6T1,$7035
+    dw Bar6T2,$703F
+    dw Bar7T1,$7035
+    dw Bar7T2,$703F
+    dw Bar8T1,$7035
+    dw Bar8T2,$703F
+    dw Bar9T1,$7035
+    dw Bar9T2,$703F
+    dw Bar10T1,$7035
+    dw Bar10T2,$703F
+    dw Bar11T1,$7035
+    dw Bar11T2,$703F
+    dw Bar12T1,$7035
+    dw Bar12T2,$703F
+    dw Bar13T1,$7035
+    dw Bar13T2,$703F
+    dw Bar14T1,$7035
+    dw Bar14T2,$703F
+    dw FinalT1,$7035
+    dw FinalT2,$703F
+    dw FinalT3,$7049
+    dw BeepT1,$7035
+}
