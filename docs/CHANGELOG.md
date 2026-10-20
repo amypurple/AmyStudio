@@ -1,3 +1,15 @@
+## 2026-10-20 - Spiders game port
+
+- Added Joe Rocke's 1984 **Spiders** to the browser game catalogue, based on
+  the VIC-20, Commodore 64, Apple II and IBM PC/PCjr versions described by
+  COMPUTE! magazine.
+- Added swaying formations, diving attackers, missiles, officer bonus rounds,
+  three robot ships, an editorial page and original Tiny Sound title music.
+- Corrected returning attackers so they descend back into their moving
+  formation position instead of converging diagonally on it.
+- Compiled the validated Balanced cartridge at 9,202 occupied bytes and
+  runtime-tested the editorial, title and active playfield in GearColeco.
+
 ## 2026-10-20 - External toolchain benchmark refresh
 
 - Audited the official revisions and release dates used by all eight measured

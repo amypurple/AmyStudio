@@ -1483,6 +1483,25 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "spiders",
+    "label": "Spiders",
+    "detail": "Joe Rocke's 1984 alien-defense game with swaying formations, diving spiders, missiles, officer bonus rounds and Tiny Sound music.",
+    "projectName": "spiders",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "vic-20",
+      "commodore-64",
+      "port",
+      "game",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "bunny-hop",
     "label": "Bunny Hop",
     "detail": "Adam Cybanski's 1984 cloud-jumping game with smooth scrolling clouds, carrots, jumper rounds and fixed-point sprite movement.",

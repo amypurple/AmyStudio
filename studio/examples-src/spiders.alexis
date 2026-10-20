@@ -1,0 +1,977 @@
+cartridge "SPIDERS/PRESENTS JOE ROCKE'S/1984"
+
+' SPIDERS
+' By Joe Rocke, COMPUTE! magazine, November 1984: written for the
+' unexpanded VIC-20 (BASIC with machine language), with versions for the
+' Commodore 64, the Apple II and the IBM PC/PCjr (Tim Victor and Charles
+' Brannon). All credit belongs to Joe Rocke and the translators.
+'
+' Historical context (summary of the article):
+' The Arachnid Empire has left its web-world and is speeding toward the
+' blue sphere of Earth. Klaxons scream; too late for manned fighters, you
+' take the launcher button of the radio-controlled robot fighters of the
+' planetary defense system. Three rows of fighting spiders sway back and
+' forth hypnotically, waiting for the signal; one at a time they break
+' away and careen down, dropping missiles; shoot them, or a missed spider
+' rejoins its comrades. Two Arachnid generals radio orders from the top
+' of the formation, each with a lieutenant beneath; the officers are
+' impervious until every fighter is gone, then attack two at a time,
+' lieutenants first, in a bonus round worth ten times as much: 100
+' points for an officer in formation, 1000 in flight. The bonus round
+' ends when your ship is hit (you do not lose it) or the officers are
+' finished; then a new, harder formation appears. 10 points for a
+' fighter in formation, 100 for an attacking spider; three robot ships.
+' The IBM version is all BASIC and the most colorful: red, yellow and
+' green spiders over a bright Earth.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the robot fighter; fire sends a pulse of
+' energy (either joystick).
+' The game logic of the VIC, 64 and Apple versions is machine language;
+' this port follows the article's rules (VIC, 64) and the IBM's colors.
+' Rules of this rewrite: three rows of eight fighters, two generals and
+' two lieutenants; the formation sways half a cell at a time; a fighter
+' dives every 120 - 15 x WEB frames (at least 30), up to 2 + WEB / 2 at
+' once (at most 4), drifting toward the ship and dropping missiles; one
+' that reaches the bottom drops back in from row 2, straight above its
+' place (following the sway), and rejoins the formation; one
+' pulse at a time.
+' Adaptation liberties: the formation sways in half-cell steps (two tile
+' versions of each spider); the Earth's horizon from the IBM screen; a
+' wave number (WEB) and robots left on the top line; the klaxons at the
+' start of each wave; an original title tune (Tiny Sound); the high score
+' is kept; an editorial page. The frame loop is protected from the NMI.
+' Screen: status row 1; formation rows 3-4 (officers) and 6-8
+' (fighters); the robot fighter on row 19; the Earth rows 21-23.
+
+const EarthTop = 158
+const EarthA = 159
+const EarthB = 160
+const ShipY = 151
+const MaxAtt = 4
+
+' Sound table slots (sp/s.mjs)
+const SndShot = 1
+const SndPop = 2
+const SndBoomA = 3
+const SndBoomB = 4
+const SndShipA = 5
+const SndShipB = 6
+const SndDive = 7
+const SndKlaxA = 8
+const SndKlaxB = 9
+const SndBonus = 10
+const SndBeep = 11
+const SndTuneA = 12
+const SndTuneB = 13
+
+bcd digits 6 Score
+bcd digits 6 HighScore
+u8 Robots = 3
+u8 Web = 1
+u8 Alive[40]                   ' row x 8 + slot: 0 gone, 1 formation, 2 flying
+u8 Fighters = 0                ' fighters left (formation and flying)
+u8 Officers = 0
+bool Bonus = false
+u8 FormHalf = 0                ' sway, in half cells (0-6)
+u8 SwayDir = 1
+u8 SwayT = 0
+u8 Frame2 = 0
+u8 DiveT = 0
+u8 DiveInt = 120
+u8 MaxNow = 2
+u8 SX = 116                    ' the robot fighter
+bool ShotOn = false
+u8 ShX = 0
+u8 ShY = 0
+u8 AOn[MaxAtt]                 ' 1 diving, 2 flying back
+u8 AIdx[MaxAtt]
+u16 AX16[MaxAtt]
+u16 AY16[MaxAtt]
+u8 AWob[MaxAtt]
+u8 MOn[MaxAtt]                 ' missiles
+u8 MX[MaxAtt]
+u8 MY[MaxAtt]
+bool Hit = false
+bool Fired = false
+bool WasFired = false
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 PX = 0
+u8 PY = 0
+u8 Choice = 0
+u16 T16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table SpiderSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy SpritePat count 72 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  play sounds SndTuneA, SndTuneB
+  EditorialPage
+
+title:
+  TitlePage
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Score = 0
+  Robots = 3
+  Web = 1
+
+new_web:
+  ' A new formation
+  for I = 0 to 39
+    Alive[I] = 0
+  next
+  Alive[2] = 1
+  Alive[5] = 1
+  Alive[10] = 1
+  Alive[13] = 1
+  for I = 16 to 39
+    Alive[I] = 1
+  next
+  Fighters = 24
+  Officers = 4
+  Bonus = false
+  N = Web * 15
+  DiveInt = 30
+  if N < 90 then DiveInt = 120 - N
+  MaxNow = Web >> 1
+  MaxNow += 2
+  if MaxNow > MaxAtt then MaxNow = MaxAtt
+  DrawScreen
+  ' The screaming klaxons
+  play sounds SndKlaxA, SndKlaxB
+  NumU = Web
+  print at 11,12, "WEB " + digits$(NumU, 2)
+  wait 70 frames
+  fill 32 count 8 at 11,12
+
+new_robot:
+  SX = 116
+  ShotOn = false
+  for I = 0 to MaxAtt - 1
+    AOn[I] = 0
+    MOn[I] = 0
+  next
+  ' Spiders in flight return to the formation
+  for I = 0 to 39
+    N = Alive[I]
+    if N = 2 then Alive[I] = 1
+  next
+  DrawFormation
+  ShowStatus
+  Hit = false
+  WasFired = true
+  DiveT = 0
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  MoveShip
+  MoveShot
+  ' The formation sways
+  inc SwayT
+  if SwayT >= 12 then
+    SwayT = 0
+    if SwayDir = 1 then
+      inc FormHalf
+      if FormHalf >= 6 then SwayDir = 0
+    else
+      dec FormHalf
+      if FormHalf = 0 then SwayDir = 1
+    end if
+    Frame2 = 1 - Frame2
+    DrawFormation
+  end if
+  ' Dives
+  inc DiveT
+  if DiveT >= DiveInt then
+    DiveT = 0
+    StartDive
+  end if
+  MoveAttackers
+  MoveMissiles
+  DrawSprites
+  if Hit then goto robot_hit
+  ' All fighters gone: the bonus round; all officers gone: a new web
+  if not Bonus then
+    if Fighters = 0 then
+      N = 0
+      for I = 0 to MaxAtt - 1
+        N += AOn[I]
+      next
+      if N = 0 then goto start_bonus
+    end if
+  else
+    if Officers = 0 then goto web_done
+  end if
+  goto main_loop
+
+start_bonus:
+  nmi on
+  Bonus = true
+  play sound SndBonus
+  print at 10,12, "BONUS ROUND"
+  wait 90 frames
+  fill 32 count 12 at 10,12
+  DiveInt = 50
+  MaxNow = 2
+  goto main_loop
+
+web_done:
+  nmi on
+  HideSprites
+  wait 60 frames
+  inc Web
+  if Web > 99 then Web = 99
+  goto new_web
+
+robot_hit:
+  nmi on
+  play sounds SndShipA, SndShipB
+  for K = 0 to 59
+    N = K & 4
+    V = 9
+    if N = 0 then V = 11
+    set sprite 0 to ShipY,SX,8,V
+    X = SX + 8
+    set sprite 1 to ShipY,X,8,V
+    update sprites
+    wait
+  next
+  HideSprites
+  ' In the bonus round the robot is not lost: the round ends
+  if Bonus then goto web_done
+  dec Robots
+  ShowStatus
+  if Robots > 0 then goto new_robot
+  ' Game over: the invaders swarm to the ground
+  if Score > HighScore then HighScore = Score
+  print at 11,12, "GAME OVER"
+  wait 120 frames
+  print at 9,14, "PLAY AGAIN"
+  print at 9,15, "TITLE PAGE"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,14 step 1
+  wait no fire
+  fill 32 count 20 at 7,12
+  fill 32 count 20 at 7,14
+  fill 32 count 20 at 7,15
+  if Choice = 1 then
+    Score = 0
+    Robots = 3
+    Web = 1
+    goto new_web
+  end if
+  play sounds SndTuneA, SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub MoveShip:
+  Fired = false
+  if joypad(1).fire then Fired = true
+  if joypad(2).fire then Fired = true
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if N = 1 then
+    if SX > 18 then SX -= 2
+  end if
+  if N = 2 then
+    if SX < 222 then SX += 2
+  end if
+  if Fired then
+    if not WasFired then
+      if not ShotOn then
+        ShotOn = true
+        ShX = SX + 4
+        ShY = ShipY - 8
+        play sound SndShot
+      end if
+    end if
+  end if
+  WasFired = Fired
+  return
+end sub
+
+' The pulse rises 6 pixels a frame; it hits the formation or a flyer
+sub MoveShot:
+  if not ShotOn then return
+  if ShY < 22 then
+    ShotOn = false
+    return
+  end if
+  ShY -= 6
+  ' Flyers
+  for I = 0 to MaxAtt - 1
+    N = AOn[I]
+    if N > 0 then
+      T16 = AX16[I] >> 8
+      X = T16
+      T16 = AY16[I] >> 8
+      Y = T16
+      if X < ShX then
+        V = ShX - X
+      else
+        V = X - ShX
+      end if
+      if V < 7 then
+        if Y < ShY then
+          V = ShY - Y
+        else
+          V = Y - ShY
+        end if
+        if V < 8 then
+          ShotOn = false
+          KillFlyer
+          return
+        end if
+      end if
+    end if
+  next
+  ' The formation: which row, which slot
+  R = 255
+  for K = 0 to 4
+    Y = FormRowY[K]
+    if ShY >= Y then
+      V = Y + 8
+      if ShY < V then R = K
+    end if
+  next
+  if R = 255 then return
+  T16 = FormHalf * 4
+  T16 += 56
+  X = T16
+  V = ShX + 3
+  if V < X then return
+  V -= X
+  J = V >> 4
+  if J >= 8 then return
+  V &= 15
+  if V >= 8 then return
+  N = R * 8
+  N += J
+  V = Alive[N]
+  if V <> 1 then return
+  ShotOn = false
+  ' Officers are impervious while fighters remain
+  if R < 2 then
+    if not Bonus then
+      play sound SndBeep
+      return
+    end if
+  end if
+  Alive[N] = 0
+  play sound SndPop
+  if R < 2 then
+    for K = 1 to 10
+      Score += 10
+    next
+    dec Officers
+  else
+    Score += 10
+    dec Fighters
+  end if
+  ShowStatus
+  DrawFormation
+  return
+end sub
+
+' Flyer I destroyed: 100 points (1000 for an officer in the bonus round)
+sub KillFlyer:
+  N = AIdx[I]
+  Alive[N] = 0
+  AOn[I] = 0
+  play sounds SndBoomA, SndBoomB
+  if N < 16 then
+    for K = 1 to 10
+      Score += 100
+    next
+    dec Officers
+  else
+    Score += 100
+    dec Fighters
+  end if
+  ShowStatus
+  return
+end sub
+
+' A spider leaves the formation: a fighter, or in the bonus round an
+' officer, lieutenants first
+sub StartDive:
+  N = 0
+  for I = 0 to MaxAtt - 1
+    N += AOn[I]
+  next
+  ' Count flyers, not states
+  V = 0
+  for I = 0 to MaxAtt - 1
+    T = AOn[I]
+    if T > 0 then inc V
+  next
+  if V >= MaxNow then return
+  ' A free flyer slot
+  J = 255
+  for I = 0 to MaxAtt - 1
+    T = AOn[I]
+    if T = 0 then J = I
+  next
+  if J = 255 then return
+  R = 255
+  if Bonus then
+    if Alive[10] = 1 then R = 10
+    if Alive[13] = 1 then R = 13
+    if R = 255 then
+      if Alive[10] = 0 then
+        if Alive[13] = 0 then
+          if Alive[2] = 1 then R = 2
+          if Alive[5] = 1 then R = 5
+        end if
+      end if
+    end if
+  else
+    for K = 1 to 8
+      N = random(16, 39)
+      T = Alive[N]
+      if T = 1 then R = N
+    next
+  end if
+  if R = 255 then return
+  Alive[R] = 2
+  AIdx[J] = R
+  AOn[J] = 1
+  AWob[J] = 0
+  SlotXY
+  T16 = PX
+  T16 <<= 8
+  AX16[J] = T16
+  T16 = PY
+  T16 <<= 8
+  AY16[J] = T16
+  play sound SndDive
+  DrawFormation
+  return
+end sub
+
+' Screen position PX,PY of formation index R
+sub SlotXY:
+  N = R >> 3
+  PY = FormRowY[N]
+  N = R & 7
+  N *= 16
+  N += 56
+  PX = FormHalf * 4
+  PX += N
+  return
+end sub
+
+' Divers drift toward the ship and drop missiles; at the bottom they fly
+' back to their place
+sub MoveAttackers:
+  for I = 0 to MaxAtt - 1
+    N = AOn[I]
+    if N = 1 then
+      ' Dive: down, weaving toward the ship
+      T16 = AY16[I] + 360
+      N = Web
+      if N > 8 then N = 8
+      N *= 24
+      T16 += N
+      AY16[I] = T16
+      T16 = AX16[I] >> 8
+      X = T16
+      inc AWob[I]
+      V = AWob[I] & 32
+      T16 = AX16[I]
+      if X + 8 < SX then T16 += 200
+      if X > SX + 8 then T16 -= 200
+      if V = 0 then
+        T16 += 120
+      else
+        T16 -= 120
+      end if
+      if T16 < 4096 then T16 = 4096
+      if T16 > 59392 then T16 = 59392
+      AX16[I] = T16
+      T16 = AY16[I] >> 8
+      Y = T16
+      ' A missile now and then
+      if Y < 130 then
+        N = random(0, 40)
+        if N = 0 then
+          V = MOn[I]
+          if V = 0 then
+            MOn[I] = 1
+            MX[I] = X
+            MY[I] = Y + 8
+          end if
+        end if
+      end if
+      ' Collision with the robot
+      if Y >= ShipY - 6 then
+        if Y < ShipY + 6 then
+          if X + 7 >= SX then
+            V = SX + 15
+            if X <= V then
+              Hit = true
+              N = AIdx[I]
+              Alive[N] = 0
+              AOn[I] = 0
+              if N < 16 then
+                dec Officers
+              else
+                dec Fighters
+              end if
+            end if
+          end if
+        end if
+      end if
+      if Y >= 176 then
+        AOn[I] = 2
+        T16 = 16
+        T16 <<= 8
+        AY16[I] = T16
+      end if
+    else
+      if N = 2 then
+        ' Back to the formation: it drops in from row 2, straight above
+        ' its place, following the sway, and settles there
+        R = AIdx[I]
+        SlotXY
+        T16 = AY16[I] >> 8
+        Y = T16
+        Y += 3
+        T16 = PX
+        T16 <<= 8
+        AX16[I] = T16
+        if Y >= PY then
+          Alive[R] = 1
+          AOn[I] = 0
+          DrawFormation
+        else
+          T16 = Y
+          T16 <<= 8
+          AY16[I] = T16
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub MoveMissiles:
+  for I = 0 to MaxAtt - 1
+    N = MOn[I]
+    if N = 1 then
+      MY[I] += 3
+      Y = MY[I]
+      if Y > 176 then
+        MOn[I] = 0
+      else
+        if Y >= ShipY then
+          if Y < ShipY + 8 then
+            X = MX[I] + 4
+            if X >= SX then
+              V = SX + 16
+              if X < V then
+                Hit = true
+                MOn[I] = 0
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Sprites: 0-1 the robot, 2 the pulse, 3-6 flyers, 7-10 missiles
+sub DrawSprites:
+  set sprite 0 to ShipY,SX,4,15
+  X = SX + 8
+  set sprite 1 to ShipY,X,5,15
+  if ShotOn then
+    set sprite 2 to ShY,ShX,6,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  for I = 0 to MaxAtt - 1
+    K = I + 3
+    N = AOn[I]
+    if N > 0 then
+      T16 = AX16[I] >> 8
+      X = T16
+      T16 = AY16[I] >> 8
+      Y = T16
+      dec Y
+      R = AIdx[I]
+      V = Frame2
+      N = R >> 3
+      T = TypeCol[N]
+      if R < 16 then V += 2
+      set sprite K to Y,X,V,T
+    else
+      set sprite K to 192,0,0,0
+    end if
+    K += 4
+    N = MOn[I]
+    if N = 1 then
+      X = MX[I]
+      Y = MY[I]
+      set sprite K to Y,X,7,9
+    else
+      set sprite K to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' The formation, row by row, at the current sway (half cells)
+sub DrawFormation:
+  for R = 0 to 4
+    Y = FormRowY[R]
+    Y >>= 3
+    fill 32 count 24 at 6,Y
+    T = TypeOfRow[R]
+    T *= 6
+    T += 128
+    V = Frame2 * 3
+    T += V
+    for J = 0 to 7
+      N = R * 8
+      N += J
+      N = Alive[N]
+      if N = 1 then
+        X = J * 2
+        X += 7
+        N = FormHalf >> 1
+        X += N
+        N = FormHalf & 1
+        if N = 0 then
+          put char T at X,Y
+        else
+          V = T + 1
+          put char V at X,Y
+          inc X
+          inc V
+          put char V at X,Y
+        end if
+      end if
+    next
+  next
+  return
+end sub
+
+sub DrawScreen:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  for K = 1 to 30
+    X = random(2, 29)
+    Y = random(10, 19)
+    put char 46 at X,Y
+  next
+  fill EarthTop count 32 at 0,21
+  for Y = 22 to 23
+    for X = 0 to 31
+      N = X + Y
+      N &= 1
+      V = EarthA + N
+      put char V at X,Y
+    next
+  next
+  ShowStatus
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,1, "ROBOT:"
+  NumU = Robots
+  print at 8,1, digits$(NumU, 1)
+  print Score at 12,1
+  print at 22,1, "WEB:"
+  NumU = Web
+  print at 26,1, digits$(NumU, 2)
+  return
+end sub
+
+' Graphics II: tiles 128-160 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 264 to vram.pattern + Dst16
+    copy TileCol count 264 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 11
+  for K = 0 to 10
+    set sprite K to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 13,2, "SPIDERS"
+  print at 3,4, "GOAL: SAVE THE EARTH FROM"
+  print at 3,5, "WAVE AFTER WAVE OF ALIEN"
+  print at 3,6, "SPIDERS."
+  put char 140 at 4,8
+  print at 6,8, "FIGHTER    10 IN FORMATION"
+  print at 6,9, "          100 ATTACKING"
+  put char 146 at 4,11
+  put char 152 at 5,11
+  print at 7,11, "OFFICERS: SAFE UNTIL ALL"
+  print at 7,12, "FIGHTERS ARE GONE, THEN A"
+  print at 7,13, "BONUS ROUND: 100 / 1000."
+  print at 3,15, "THREE ROBOT FIGHTERS."
+  print at 3,16, "STICK: MOVE  FIRE: SHOOT"
+  print at 3,18, "HIGH SCORE"
+  print HighScore at 15,18
+  print at 5,21, "PRESS FIRE TO BEGIN"
+  wait no fire
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Adaptation: an editorial page at power-on
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 13,1, "SPIDERS"
+  print at 8,3, "BY JOE ROCKE"
+  print at 4,4, "COMPUTE! NOVEMBER 1984"
+  print at 2,6, "A VIC-20 GAME IN BASIC AND"
+  print at 2,7, "MACHINE LANGUAGE, WITH 64,"
+  print at 2,8, "APPLE AND IBM PC VERSIONS."
+  print at 2,10, "THE ARACHNID EMPIRE IS ON"
+  print at 2,11, "ITS WAY TO THE BLUE SPHERE"
+  print at 2,12, "OF EARTH. YOUR ROBOT"
+  print at 2,13, "FIGHTER IS ALL THAT STANDS"
+  print at 2,14, "IN THE WAY."
+  print at 2,16, "RULES FROM THE ARTICLE,"
+  print at 2,17, "COLORS FROM THE IBM PC."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Formation rows (pixel Y): generals, lieutenants, three rows of fighters
+data FormRowY bytes 24,32,48,56,64
+' Spider type per row: 4 general, 3 lieutenant, 2 red, 1 yellow, 0 green
+data TypeOfRow bytes 4,3,2,1,0
+' Sprite color per row (the same as the tiles)
+data TypeCol bytes 13,7,9,11,3
+
+' Tiles 128-157: five spider types x two frames x (whole, left half,
+' right half, for the half-cell sway); 158-160 the Earth
+data TilePat bytes
+  $81,$5A,$3C,$FF,$3C,$5A,$81,$00
+  $08,$05,$03,$0F,$03,$05,$08,$00
+  $10,$A0,$C0,$F0,$C0,$A0,$10,$00
+  $24,$5A,$BD,$7E,$BD,$5A,$24,$00
+  $02,$05,$0B,$07,$0B,$05,$02,$00
+  $40,$A0,$D0,$E0,$D0,$A0,$40,$00
+  $81,$5A,$3C,$FF,$3C,$5A,$81,$00
+  $08,$05,$03,$0F,$03,$05,$08,$00
+  $10,$A0,$C0,$F0,$C0,$A0,$10,$00
+  $24,$5A,$BD,$7E,$BD,$5A,$24,$00
+  $02,$05,$0B,$07,$0B,$05,$02,$00
+  $40,$A0,$D0,$E0,$D0,$A0,$40,$00
+  $81,$5A,$3C,$FF,$3C,$5A,$81,$00
+  $08,$05,$03,$0F,$03,$05,$08,$00
+  $10,$A0,$C0,$F0,$C0,$A0,$10,$00
+  $24,$5A,$BD,$7E,$BD,$5A,$24,$00
+  $02,$05,$0B,$07,$0B,$05,$02,$00
+  $40,$A0,$D0,$E0,$D0,$A0,$40,$00
+  $81,$5A,$3C,$FF,$7E,$DB,$81,$00
+  $08,$05,$03,$0F,$07,$0D,$08,$00
+  $10,$A0,$C0,$F0,$E0,$B0,$10,$00
+  $24,$5A,$BD,$7E,$FF,$DB,$24,$00
+  $02,$05,$0B,$07,$0F,$0D,$02,$00
+  $40,$A0,$D0,$E0,$F0,$B0,$40,$00
+  $5A,$BD,$7E,$FF,$7E,$BD,$42,$81
+  $05,$0B,$07,$0F,$07,$0B,$04,$08
+  $A0,$D0,$E0,$F0,$E0,$D0,$20,$10
+  $5A,$3C,$FF,$7E,$FF,$3C,$A5,$00
+  $05,$03,$0F,$07,$0F,$03,$0A,$00
+  $A0,$C0,$F0,$E0,$F0,$C0,$50,$00
+  $00,$00,$FF,$00,$FF,$FF,$FF,$FF
+  $00,$18,$3C,$1E,$0C,$00,$60,$70
+  $06,$0F,$07,$00,$30,$78,$38,$00
+end data
+
+data TileCol bytes
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $30,$30,$30,$30,$30,$30,$30,$30
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $00,$00,$70,$00,$45,$45,$45,$45
+  $24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24
+end data
+
+' Sprites: spider (two frames), officer (two frames), robot ship (left,
+' right), energy pulse, spider missile, explosion
+data SpritePat bytes
+  $81,$5A,$3C,$FF,$3C,$5A,$81,$00
+  $24,$5A,$BD,$7E,$BD,$5A,$24,$00
+  $5A,$BD,$7E,$FF,$7E,$BD,$42,$81
+  $5A,$3C,$FF,$7E,$FF,$3C,$A5,$00
+  $01,$01,$03,$13,$37,$7F,$FF,$99
+  $80,$80,$C0,$C8,$EC,$FE,$FF,$99
+  $18,$18,$3C,$18,$18,$18,$00,$00
+  $00,$10,$38,$10,$10,$10,$00,$00
+  $91,$52,$24,$C3,$24,$4A,$89,$10
+end data
+
+asm {
+ShotT1:
+    db $40,$46,$20,$01,$40,$3E,$20,$01,$40,$38,$20,$01,$40,$33,$20,$01,$40,$2F,$20,$01,$40,$2B,$20,$01
+    db $40,$28,$20,$01,$40,$25,$20,$01,$40,$23,$20,$01,$50
+PopN:
+    db $00,$00,$05,$02,$00,$00,$35,$02,$00,$00,$55,$02,$00,$00,$85,$02,$00,$00,$A5,$02,$00,$00,$D5,$02
+    db $00,$00,$F5,$02,$10
+BoomT1:
+    db $40,$7C,$00,$02,$40,$82,$10,$02,$40,$88,$20,$02,$40,$8F,$30,$02,$40,$97,$40,$02,$40,$A0,$50,$02
+    db $40,$A9,$60,$02,$40,$B4,$70,$02,$40,$C1,$80,$02,$40,$CF,$90,$02,$40,$E0,$A0,$02,$40,$F3,$B0,$02
+    db $40,$0A,$C1,$02,$40,$26,$D1,$02,$40,$49,$E1,$02,$40,$75,$F1,$02,$50
+BoomN:
+    db $00,$00,$04,$02,$00,$00,$14,$02,$00,$00,$24,$02,$00,$00,$34,$02,$00,$00,$44,$02,$00,$00,$54,$02
+    db $00,$00,$64,$02,$00,$00,$74,$02,$00,$00,$84,$02,$00,$00,$94,$02,$00,$00,$A4,$02,$00,$00,$B4,$02
+    db $00,$00,$C4,$02,$00,$00,$D4,$02,$00,$00,$E4,$02,$00,$00,$F4,$02,$10
+ShipBoomT1:
+    db $40,$FF,$03,$03,$40,$FF,$13,$03,$40,$FF,$13,$03,$40,$FF,$23,$03,$40,$FF,$23,$03,$40,$FF,$33,$03
+    db $40,$FF,$33,$03,$40,$FF,$43,$03,$40,$FF,$43,$03,$40,$FF,$53,$03,$40,$F9,$53,$03,$40,$DE,$63,$03
+    db $40,$C4,$63,$03,$40,$AC,$73,$03,$40,$95,$73,$03,$40,$7F,$83,$03,$40,$6A,$83,$03,$40,$56,$93,$03
+    db $40,$43,$93,$03,$40,$31,$A3,$03,$40,$1F,$A3,$03,$40,$0E,$B3,$03,$40,$FE,$B2,$03,$40,$EF,$C2,$03
+    db $40,$E0,$C2,$03,$40,$D2,$D2,$03,$40,$C4,$D2,$03,$40,$B7,$E2,$03,$40,$AA,$E2,$03,$40,$9E,$F2,$03
+    db $40,$92,$F2,$03,$50
+ShipBoomN:
+    db $00,$00,$07,$03,$00,$00,$17,$03,$00,$00,$17,$03,$00,$00,$27,$03,$00,$00,$27,$03,$00,$00,$37,$03
+    db $00,$00,$37,$03,$00,$00,$47,$03,$00,$00,$47,$03,$00,$00,$57,$03,$00,$00,$57,$03,$00,$00,$67,$03
+    db $00,$00,$67,$03,$00,$00,$77,$03,$00,$00,$77,$03,$00,$00,$87,$03,$00,$00,$87,$03,$00,$00,$97,$03
+    db $00,$00,$97,$03,$00,$00,$A7,$03,$00,$00,$A7,$03,$00,$00,$B7,$03,$00,$00,$B7,$03,$00,$00,$C7,$03
+    db $00,$00,$C7,$03,$00,$00,$D7,$03,$00,$00,$D7,$03,$00,$00,$E7,$03,$00,$00,$E7,$03,$00,$00,$F7,$03
+    db $00,$00,$F7,$03,$10
+DiveT1:
+    db $40,$3E,$50,$01,$40,$40,$50,$01,$40,$42,$50,$01,$40,$44,$50,$01,$40,$46,$50,$01,$40,$48,$50,$01
+    db $40,$4B,$50,$01,$40,$4D,$50,$01,$40,$50,$50,$01,$40,$53,$50,$01,$40,$56,$50,$01,$40,$59,$50,$01
+    db $40,$5D,$50,$01,$40,$61,$50,$01,$40,$66,$50,$01,$40,$6B,$50,$01,$40,$70,$50,$01,$40,$76,$50,$01
+    db $40,$7C,$50,$01,$40,$84,$50,$01,$40,$8C,$50,$01,$40,$95,$50,$01,$40,$A0,$50,$01,$40,$AC,$50,$01
+    db $40,$BA,$50,$01,$40,$CB,$50,$01,$40,$E0,$50,$01,$50
+KlaxonT1:
+    db $40,$FE,$10,$0A,$40,$53,$11,$0A,$40,$FE,$10,$0A,$40,$53,$11,$0A,$40,$FE,$10,$0A,$40,$53,$11,$0A
+    db $50
+KlaxonT2:
+    db $80,$F0,$20,$0A,$80,$41,$21,$0A,$80,$F0,$20,$0A,$80,$41,$21,$0A,$80,$F0,$20,$0A,$80,$41,$21,$0A
+    db $90
+BonusT1:
+    db $40,$8F,$10,$05,$40,$6B,$10,$05,$40,$55,$10,$05,$40,$47,$10,$05,$40,$55,$10,$05,$40,$47,$10,$0F
+    db $50
+BeepT1:
+    db $40,$50,$00,$0C,$50
+
+SpiderSoundTable:
+    dw ShotT1,$7035
+    dw PopN,$702B
+    dw BoomT1,$7035
+    dw BoomN,$702B
+    dw ShipBoomT1,$7035
+    dw ShipBoomN,$702B
+    dw DiveT1,$7035
+    dw KlaxonT1,$7035
+    dw KlaxonT2,$703F
+    dw BonusT1,$7035
+    dw BeepT1,$7035
+    dw SpiderTuneMel,$703F
+    dw SpiderTuneBass,$7049
+; Title tune: a creeping spider theme (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+SpiderTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$15,$00,$18,$00,$1C,$00,$1B,$00,$1C,$00,$21,$00
+    db $20,$00,$21,$00,$1C,$00,$18,$00,$15,$00,$17,$18,$17,$00,$14,$00
+    db $10,$00,$00,$01,$02,$10,$1A,$21,$21,$00,$1F,$00,$1D,$00,$1C,$00
+    db $1A,$00,$1C,$00,$1D,$00,$1F,$00,$02,$30,$1A,$21,$21,$20,$21,$00
+    db $1C,$00,$18,$00,$02,$60,$1A,$21,$17,$00,$14,$00,$15,$00,$00,$01
+    db $FF
+SpiderTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$50,$18,$32,$09,$00,$10,$00,$09,$00,$10,$00,$09,$00,$10,$00
+    db $09,$00,$10,$00,$11,$00,$0C,$00,$10,$00,$0B,$00,$10,$00,$0B,$00
+    db $10,$00,$00,$01,$02,$30,$18,$32,$11,$00,$0C,$00,$11,$00,$0C,$00
+    db $0E,$00,$09,$00,$10,$00,$0B,$00,$02,$50,$18,$32,$09,$00,$10,$00
+    db $09,$00,$10,$00,$02,$80,$18,$32,$10,$00,$0B,$00,$09,$00,$00,$01
+    db $FF
+}
