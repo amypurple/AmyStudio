@@ -1,5 +1,23 @@
 # Audio Workflow
 
+## Calculated PSG effects
+
+Use direct PSG commands when gameplay calculates a tone period or envelope at
+runtime instead of playing a composed sound stream:
+
+```amy
+psg tone 0 period LaserPeriod
+psg volume 0 attenuation LaserAttenuation
+psg noise 1 rate 2
+```
+
+Tone channels are `0..2`, using the native 10-bit period. Volume channels are
+`0..3`, with attenuation `0` loudest and `15` silent. Noise mode `0` is
+periodic; any other value selects white noise, and rate is `0..3`. These
+commands write hardware state immediately and bypass Tiny Sound priority.
+Avoid giving a direct PSG effect and a sound service ownership of the same
+channel at the same time.
+
 ## Choose the sound path
 
 Amy Studio supports four playback families plus one reconstruction workflow. Choose by runtime need rather than treating them as interchangeable:

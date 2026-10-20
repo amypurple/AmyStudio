@@ -1,3 +1,12 @@
+## 2026-10-20 - Audio workflow corrections
+
+- Documented direct calculated PSG effects, their native period/attenuation
+  ranges and the channel-ownership conflict with concurrent sound services.
+- Corrected the historical TriPCM description: its count repeats a delta step
+  to form a ramp rather than holding one reconstructed value as RLE.
+- Kept the experimental WAV-to-PSG speech heuristic out of the clean repo
+  until it has a focused perceptual regression oracle.
+
 ## 2026-10-20 - Debugger RAM-write test API
 
 - Added a bounded GearColeco WASM RAM-write export and JavaScript test-core

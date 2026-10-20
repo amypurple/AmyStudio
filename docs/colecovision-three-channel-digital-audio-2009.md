@@ -38,15 +38,15 @@ The player at `$E71F` uses these ROM tables:
 Each compressed byte is decoded as:
 
 ```text
-bits 7..5: repeat count minus one (1..8 output units)
+bits 7..5: delta-step count minus one (1..8 output units)
 bits 4..0: index into the 32-entry signed-delta table
 ```
 
-The player adds the selected delta to the current amplitude-table pointer,
-then sends the selected three-byte volume triple directly to PSG port `$FF`
-with `OTIR`. A short fixed delay follows each output unit. This is therefore a
-streaming lossy delta codec with a small RLE field, not the existing DSOUND
-format.
+For every counted output unit, the player adds the selected delta again to the
+current amplitude-table pointer, then sends the resulting three bytes directly
+to PSG port `$FF` with `OTIR`. A short fixed delay separates units inside one
+command. The count therefore encodes a constant-slope ramp, not an RLE hold.
+This is a streaming lossy delta codec, not the existing DSOUND format.
 
 The 2009 post reports about 67,000 source attenuation units from a 3.8-second
 44 kHz sample reduced to an approximately 17.5 kHz player rate. The final ROM
@@ -60,24 +60,29 @@ than a DSOUND extension. It should:
 1. Resample input audio to the measured player rate.
 2. Quantize each sample to the nearest of the 46 three-channel amplitudes.
 3. Search the 32 legal deltas while accounting for quantization error.
-4. Encode runs of one to eight identical reconstructed values.
+4. Group one to eight consecutive units when repeatedly applying one delta
+   follows the desired amplitude ramp.
 5. Stream directly to PSG without a decompressed RAM buffer.
 6. Preserve cycle balance for every decoded unit.
 7. Provide NTSC and PAL timing choices even though PSG attenuation itself is
    independent of the video standard.
 8. Mute all three tone channels on stop or malformed input.
 
-The historical stream occasionally moves its pointer before the 46-entry
-amplitude table and emits adjacent code bytes as PSG data. A modern encoder
-must reject, clamp, or choose another legal delta instead. The decoder should
-also fail safely rather than read beyond its amplitude table.
+The historical stream frequently moves outside the 46-entry amplitude table
+and emits adjacent ROM bytes as PSG commands. Across this sample the lookup
+cursor ranges from 117 bytes before the table through 567 bytes after it. This
+makes the old stream dependent on its original ROM layout. A modern encoder
+must reject, clamp, or choose another legal delta instead, and the normal Amy
+decoder fails safely rather than reading outside its table. The development
+example carries the required historical byte context and uses a separately
+reimplemented compatibility player; new `.tripcm` files remain bounded.
 
 ## Development implementation
 
 The development repository now contains a first independent implementation:
 
 - `studio/core/colecoThreeChannelPcm.js`: 46-level quantizer, linear
-  resampling, safe 32-delta selection, 1..8-unit RLE, encoder and strict
+  resampling, safe 32-delta selection, 1..8-unit ramp grouping, encoder and strict
   decoder;
 - `src/alexis_lib/coleco_tripcm.asm`: direct-to-PSG streaming player using the
   historical cadence and table layout;
