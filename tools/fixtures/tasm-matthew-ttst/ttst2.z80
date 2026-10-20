@@ -1,0 +1,267 @@
+; JUST AN EXERCISE TO SEE WHAT IS THE SMALLEST PACKAGE I COULD GET DURING MY LUNCH BREAK.
+; ORIGINAL CODE AND IDEA JESS RAGAN
+; JUNE 16, 2024 CAPTAIN COZMOS disassemble
+; Oscar Toledo CVBASIC
+; tasm conversion removing and replacing some items Matthew Eggleston (implite)
+
+; THIS PROGRAM SEEMS TO WORK WITHOUT THE RST JMP'S.  THEY MAY HAVE TO BE RETURNED FOR ACTUAL HAR.DWARE BUT THE EXERCISE WAS TO GET THE SMALLEST CODE SIZE.
+
+
+DATA_PORT: .EQU $00BE
+CTRL_PORT: .EQU $00BF
+NBR_SPRITES: .equ 3
+
+    .ORG $8000                          ; START OF CARTRIDGE LOCATION
+
+    .DW $AA55                           ; CARTRIDGE PRESENT:  $AA55 = SKIP LOGO, $55AA = COLECOVISION LOGO
+    .DW SprAttrib                       ; POINTER TO THE SPRITE NAME TABLE
+    .DW $7000                            ; POINTER TO THE SPRITE ORDER TABLE
+    .DW $0000                            ; POINTER TO THE WORKING BUFFER FOR WR_SPR_NM_TBL
+    .DW $0000                            ; POINTER TO THE HAND CONTROLLER INPUT AREAS
+    .DW START                           ; ENTRY POINT TO THE USER PROGRAM
+    .DW 0,0
+
+START:                                 ; START OF PROGRAM, USES SYSTEM DEFAULT STACK, NO NEED TO ZERO RAM
+        call    $1f85        ; MODE_1
+		call    $1fd6        ; Turn_Off_Sound
+		ld      hl,0         ; clear VRAM
+		ld      de,$4000
+		xor     a
+		call    $1f82         ; fill_vram
+		ld      de,$3800      ;load sprite pattern
+		ld      hl,star
+		ld      bc,32
+		call    $1fdf         ; write_vram
+		ld      a,NBR_SPRITES ; init sprites order
+		call    $1fc1         ; init_spr_order
+		ld      a,NBR_SPRITES ; Disply sprites
+		call    $1fc4         ; wr_spr_nm_tbl
+		ld      a,$d0
+		out     ($be),a
+		ld      bc,$01c2 	  ;turn on disply
+		call    $1fd9         ; write_Register
+		
+GRAPHICS_MODE_2:                       ; SET SCREEN MODE TO 32 COLUMN TEXT BY SENDING 16 BYTES TO THE VIDEO CONTROL PORT
+	LD C, CTRL_PORT
+	LD B, $10                          ; SEND 16 BYTES
+	LD HL, MODE_2_REGISTERS
+	OTIR
+
+	LD HL, LOGO_PATTERNS               ; THIS PROGRAM ONLY USES 3 ROWS OF GRAPHICS AND ONLY IN THE MIDDLE GRAPHICS AREA SO WHY LOAD PATTERNS AND COLORS TO THE OTHER TWO?
+	LD A, $08                          ; IT ALSO DOES NOT USE ANY OTHER PATTERN BESIDES THE DEFAULT BACKGROUND COLOR WHICH IS PATTERN ZERO SO WHY NOT START ON PATTERN 1
+	OUT (CTRL_PORT), A
+	LD A, $08
+	OR $40
+	OUT (CTRL_PORT), A
+
+	LD B, $78                          ; NUMBER OF PATTERNS 15 PATTERNS * 8 LINES
+	LD C, DATA_PORT
+	OTIR
+
+	LD A, $2C                          ; SET THE 3 ROWS OF TEXT (PATTERNS) TO THE SCREEN 1ST @ $2C, THEN $4C THEN $6C
+	LD HL, TEXT
+	CALL SET_LINES
+	LD A, $4C
+	CALL SET_LINES
+	LD A, $6C
+	CALL SET_LINES
+
+MAIN_LOOP:                             ; START OF MAIN LOOP WHICH RESETS THE COLORS AFTER CYCLING THE COLOR SETS 15*8 THROUGH OTIR
+	LD HL, LOGO_COLORS
+	CALL SET_COLORS
+	CALL SET_COLORS
+	CALL SET_COLORS
+	CALL SET_COLORS
+    JR MAIN_LOOP
+
+TEXT:                                  ; THE THREE LINES OF PATTERN GRAPHIC
+	.DB  $01,$02,$03,$04,$05
+	.DB  $06,$07,$08,$09,$0A
+	.DB  $0B,$0C,$0D,$0E,$0F
+
+LOGO_PATTERNS:
+	.DB $00,$00,$03,$0F,$3F,$7F,$7F,$77 ; PATTERN SET
+	.DB $20,$E0,$F0,$F0,$E0,$80,$81,$C3
+	.DB $00,$00,$00,$01,$00,$0E,$9F,$D8
+	.DB $00,$00,$46,$E6,$F0,$60,$66,$66
+	.DB $0C,$1E,$0E,$06,$0C,$00,$D8,$FC
+	.DB $27,$03,$03,$01,$01,$01,$00,$00
+	.DB $C6,$E7,$E6,$E7,$F3,$F0,$F0,$C0
+	.DB $5C,$CE,$03,$53,$9E,$0C,$00,$00
+	.DB $6C,$6D,$6D,$61,$70,$20,$00,$00
+	.DB $CC,$98,$98,$1A,$0C,$00,$00,$00
+	.DB $00,$18,$38,$18,$18,$18,$3D,$00
+	.DB $00,$03,$04,$01,$03,$06,$57,$00
+	.DB $00,$80,$C0,$80,$00,$00,$D5,$00
+	.DB $00,$38,$4C,$18,$0C,$4C,$38,$00
+	.DB $33,$33,$33,$66,$66,$00,$CC,$CC
+
+LOGO_COLORS:
+	.DB $F1,$F1,$71,$F1,$41,$51,$71,$F1 ; COLOR SET 01
+	.DB $41,$51,$71,$F1,$41,$51,$71,$F1
+	.DB $F1,$F1,$F1,$F1,$F1,$51,$71,$F1
+	.DB $F1,$F1,$71,$F1,$41,$51,$71,$F1
+	.DB $41,$51,$71,$F1,$41,$F1,$71,$F1
+	.DB $41,$51,$71,$F1,$41,$51,$F1,$F1
+	.DB $41,$51,$71,$F1,$41,$51,$71,$F1
+	.DB $41,$51,$71,$F1,$41,$51,$F1,$F1
+	.DB $41,$51,$71,$F1,$41,$51,$F1,$F1
+	.DB $41,$51,$71,$F1,$41,$F1,$F1,$F1
+	.DB $F1,$61,$61,$61,$61,$61,$61,$F1
+	.DB $F1,$41,$41,$41,$41,$41,$41,$F1
+	.DB $F1,$21,$21,$21,$21,$21,$21,$F1
+	.DB $F1,$B1,$B1,$B1,$B1,$B1,$B1,$F1
+	.DB $D1,$D1,$D1,$D1,$D1,$F1,$D1,$D1
+
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71 ; COLOR SET 02
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $F1,$41,$51,$71,$F1,$41,$51,$71
+	.DB $41,$41,$41,$41,$41,$41,$41,$41
+	.DB $21,$21,$21,$21,$21,$21,$21,$21
+	.DB $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+	.DB $61,$61,$61,$61,$61,$61,$61,$61
+	.DB $D1,$D1,$D1,$D1,$D1,$F1,$D1,$D1
+
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51 ; COLOR SET 03
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $71,$F1,$41,$51,$71,$F1,$41,$51
+	.DB $21,$21,$21,$21,$21,$21,$21,$21
+	.DB $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+	.DB $61,$61,$61,$61,$61,$61,$61,$61
+	.DB $41,$41,$41,$41,$41,$41,$41,$41
+	.DB $D1,$D1,$D1,$D1,$D1,$F1,$D1,$D1
+
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41 ; COLOR SET 04
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $51,$71,$F1,$41,$51,$71,$F1,$41
+	.DB $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+	.DB $61,$61,$61,$61,$61,$61,$61,$61
+	.DB $41,$41,$41,$41,$41,$41,$41,$41
+	.DB $21,$21,$21,$21,$21,$21,$21,$21
+	.DB $D1,$D1,$D1,$D1,$D1,$F1,$D1,$D1
+
+MODE_2_REGISTERS:
+	.DB %00000010,128+0  ; REG 0: MODE 2
+	.DB %11000000,128+1  ; REG 1: MODE 2, 16K, NO INTERRUPTS, C0=8X8 C2=16X16 C1=ENLARGED C3=NORMAL
+	.DB %00000110,128+2  ; REG 2: NAME TABLE 1800H
+	.DB %11111111,128+3  ; REG 3: COLOR TABLE 2000H
+	.DB %00000011,128+4  ; REG 4: PATTERN TABLE 0000H
+	.DB %00110110,128+5  ; REG 5: SPRITE ATTRIBUTE TABLE 1B00H
+	.DB %00000111,128+6  ; REG 6: SRITE PATTERN TABLE 3800H
+	.DB %11110000,128+7  ; REG 7: BACKGROUND COLOR
+	
+TheEnd:
+   jp TheEnd
+   .end   
+
+SET_LINES:              ; SET 3 LINES OF PATTERNS TO THE SCREEN IN THE MIDDLE $19  LD A WITH LINE ROW NUMBER AND STARTING COLUMN BEFORE CALLING. B = NUMBER OF PATTERNS
+	OUT (CTRL_PORT), A
+	LD A, $19
+	OR $40
+	OUT (CTRL_PORT), A
+	LD B, $05           ; NUMBER OF TEXT PATTERNS
+	LD C, DATA_PORT
+	OTIR
+    RET
+
+SET_COLORS:             ; ALL COLORS START AT $2808
+	LD A, $08
+	OUT (CTRL_PORT), A
+	LD A, $28
+	OR $40
+	OUT (CTRL_PORT), A
+
+	LD B, $78           ; NUMBER OF PATTERNS (COLOR DATA) 15 PATTERNS * 8 LINES
+	LD C, DATA_PORT
+	OTIR
+
+	LD B, $FF           ; START OF DELAY ROUTINE TO SLOW DOWN THE COLORS
+	LD C, $5D           ; COLOR CYCLE SPEED 
+SLOW_COLORS:
+    DJNZ SLOW_COLORS
+    DEC C
+    JR NZ, SLOW_COLORS
+    RET
+
+
+SprAttrib:
+    .db 60,50,0,15 ; Y=88 x=120 pattern#0, color=10
+    .db 8,20,0,15 ; Y=88 x=120 pattern#0, color=10
+    .db 88,120,0,15 ; Y=88 x=120 pattern#0, color=10
+
+star:
+    .db 00000000b 
+    .db 00001000b 
+    .db 00001100b 
+    .db 00001110b 
+    .db 00001111b 
+    .db 11111111b 
+    .db 00111111b 
+    .db 00011111b 
+    .db 00001111b 
+    .db 00011111b 
+    .db 00111111b 
+    .db 11111111b 
+	.db 00001111b 
+	.db 00001110b 
+	.db 00001100b 
+	.db 00001000b 
+		 
+	.db 00000000b		     
+	.db 00010000b
+	.db 00110000b
+	.db 01110000b
+	.db 11110000b
+	.db 11111111b
+	.db 11111100b
+	.db 11111000b
+	.db 11110000b
+	.db 11111000b
+	.db 11111100b
+	.db 11111111b
+	.db 11110000b
+	.db 01110000b
+	.db 00110000b
+	.db 00010000b
+		
+		
+		
+;colors
+;TRANS          .equ    0
+;BLACK   *       .equ    1
+;MGREEN *        .equ    2
+;LGREEN  *       .equ    3
+;DBLUE          .equ    4
+;LBLUE          .equ    5
+;DRED  *         .equ    6
+;CYAN  *         .equ    7
+;MRED   *        .equ    8
+;LRED   *        .equ    9
+;DYELLOW  *      .equ    10
+;LYELLOW  *      .equ    11
+;DGREEN   *      .equ    12
+;MAGENTA   *     .equ    13
+;GRAY    *       .equ    14
+;WHITE   *       .equ    15		
+

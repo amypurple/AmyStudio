@@ -332,6 +332,7 @@ function isIxIyDisplacementOperandText(value) {
                 this.relocations = []; // {location, type, segment}
                 this.moduleName = '';
                 this.gasm80Compatibility = false;
+                this.tasmCompatibility = false;
             }
 
             setBreakpoints(breakpointsSet) {
@@ -3895,6 +3896,7 @@ export async function assembleAmysCVAssembly(files, mainFile = "main.asm", optio
   compilerUiState.targetPlatform = options.targetPlatform || "raw";
   const assembler = new Assembler(files);
   assembler.gasm80Compatibility = !!options.gasm80Compatibility;
+  assembler.tasmCompatibility = !!options.tasmCompatibility;
   assembler.outputMode = options.outputMode || "binary";
   assembler.moduleName = options.moduleName || extractFilename(mainFile).replace(/\.(asm|z80|s)$/i, "").toUpperCase();
   const binary = await assembler.assemble(mainFile);

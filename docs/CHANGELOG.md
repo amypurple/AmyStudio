@@ -1,3 +1,12 @@
+## 2026-10-20 - TASM command-line compatibility
+
+- Added an explicit `--tasm` dialect mode to the Amy Z80 command-line
+  assembler, mutually exclusive with `--gasm80`.
+- Pinned compatibility to a real ColecoVision TASM source and its original
+  846-byte ROM; the rebuilt output must remain byte-identical.
+- Documented the supported TASM directives, literal forms and strict opcode
+  validation contract.
+
 ## 2026-10-20 - User-routine clobber inference
 
 - Added conservative register-clobber inference for generated Amy routines,

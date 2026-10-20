@@ -22,3 +22,19 @@ Source: [Amy's CV Assembly](https://github.com/amypurple/AmysCVAssembly)
 
 - `parserCore.js`: copied from lines 3264-3667 of `AmysCVAssemblerPro-v2.html`; no DOM dependencies found by `tools/audit-html-js-core.ps1`.
 - `studio/core/amyscvassembly.js`: ALEXIS adapter around the extracted parser/lexer.
+
+## Command-Line Dialects
+
+`tools/amyz80.mjs` exposes mutually exclusive compatibility modes:
+
+```powershell
+node tools/amyz80.mjs game.asm game.rom --gasm80
+node tools/amyz80.mjs game.z80 game.rom --tasm
+```
+
+TASM coverage is pinned by Matthew Eggleston's `TTST2` fixture. The test covers
+dot-prefixed `ORG`, `DB`, `DW`, `EQU`, and `END`, `%binary` and `binaryb`
+literals, labels, expressions, direct port I/O, and OS7 calls, and requires the
+supplied 846-byte ROM to match exactly. Compatibility mode identifies source
+intent and permits future dialect-specific diagnostics; it does not weaken Z80
+opcode validation.

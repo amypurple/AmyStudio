@@ -1,17 +1,24 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compilerCore.js";
 
 function usage() {
-  console.error("usage: node tools/amyz80.mjs <input.asm> [output.bin|-o output.bin] [--gasm80] [--opt]");
+  console.error("usage: node tools/amyz80.mjs <input.asm> [output.bin|-o output.bin] [--gasm80|--tasm] [--opt]");
 }
 
-function parseArgs(argv) {
-  const result = { input: null, output: null, gasm80: false, optimize: false };
+export function parseArgs(argv) {
+  const result = { input: null, output: null, dialect: "native", optimize: false };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
-    if (arg === "--gasm80") result.gasm80 = true;
+    if (arg === "--gasm80" || arg === "--tasm") {
+      const dialect = arg.slice(2);
+      if (result.dialect !== "native" && result.dialect !== dialect) {
+        throw new Error("--gasm80 and --tasm are mutually exclusive");
+      }
+      result.dialect = dialect;
+    }
     else if (arg === "--opt") result.optimize = true;
     else if (arg === "-o" || arg === "--output") result.output = argv[++index] || null;
     else if (!result.input) result.input = arg;
@@ -54,18 +61,23 @@ async function main() {
     outputMode: "binary",
     targetPlatform: "raw",
     optimizerEnabled: options.optimize,
-    gasm80Compatibility: options.gasm80,
+    gasm80Compatibility: options.dialect === "gasm80",
+    tasmCompatibility: options.dialect === "tasm",
   });
   if (!result.ok) {
     console.error(result.log || "Assembly failed.");
     process.exit(1);
   }
   const binary = result.binary || result.bytes || new Uint8Array();
+  mkdirSync(path.dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, binary);
-  console.log(`${outputPath}: ${binary.length} bytes${options.gasm80 ? " (gasm80 compatibility)" : ""}${options.optimize ? " (optimized)" : ""}`);
+  const dialect = options.dialect === "native" ? "" : ` (${options.dialect} compatibility)`;
+  console.log(`${outputPath}: ${binary.length} bytes${dialect}${options.optimize ? " (optimized)" : ""}`);
 }
 
-main().catch(error => {
-  console.error(error?.stack || String(error));
-  process.exit(1);
-});
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+  main().catch(error => {
+    console.error(error?.stack || String(error));
+    process.exit(1);
+  });
+}
