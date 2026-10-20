@@ -247,7 +247,12 @@ export function createTypeInferenceHelpers({
         if (!exprType) return null;
         return exprType;
       }
-      const mergedType = mergeDeclaredTypes(resolveExpressionAstDeclaredType(node.expr), null, preferredDeclaredType);
+      const constantValue = tryEvaluateAstInteger(node);
+      const literalType = constantValue !== null ? inferLiteralDeclaredType(String(constantValue)) : null;
+      let mergedType = mergeDeclaredTypes(literalType || resolveExpressionAstDeclaredType(node.expr), null, preferredDeclaredType);
+      if (node.op === "-" && constantValue === null && !isSignedDeclaredType(mergedType)) {
+        mergedType = declaredTypeForWidth(declaredTypeBitWidth(mergedType) || 8, true, mergedType);
+      }
       return { declaredType: mergedType, runtimeType: runtimeTypeForDeclaredType(mergedType) };
     }
     if (node.kind === "binary") {

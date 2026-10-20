@@ -456,6 +456,8 @@ export function createExpressionComputeHelpers({
         const loadLeft = emitLoadInt8AstIntoA(node.args[0]);
         const loadRight = emitLoadInt8AstIntoA(node.args[1]);
         if (!loadLeft || !loadRight) return null;
+        const resultType = resolveExpressionAstComputationType(node);
+        const signedCompare = isSignedDeclaredType(resultType?.declaredType);
         const doneLabel = makeGeneratedLabel(callName === "min" ? "MinDone" : "MaxDone");
         const keepLeftBranches = callName === "min"
           ? [`    jr c,${doneLabel}`, `    jr z,${doneLabel}`]
@@ -466,7 +468,15 @@ export function createExpressionComputeHelpers({
           ...loadRight,
           "    ld b,a",
           "    pop af",
-          "    cp b",
+          ...(signedCompare ? [
+            "    ld c,a",
+            "    ld a,b",
+            "    xor $80",
+            "    ld d,a",
+            "    ld a,c",
+            "    xor $80"
+          ] : []),
+          ...(signedCompare ? ["    cp d", "    ld a,c"] : ["    cp b"]),
           ...keepLeftBranches,
           "    ld a,b",
           `${doneLabel}:`
@@ -742,6 +752,8 @@ export function createExpressionComputeHelpers({
         const loadLeft = emitLoadInt16AstIntoHL(node.args[0], preferredDeclaredType);
         const loadRight = emitLoadInt16AstIntoHL(node.args[1], preferredDeclaredType);
         if (!loadLeft || !loadRight) return null;
+        const resultType = resolveExpressionAstComputationType(node, preferredDeclaredType);
+        const signedCompare = isSignedDeclaredType(resultType?.declaredType);
         const keepLeftLabel = makeGeneratedLabel(callName === "min" ? "MinKeepLeft" : "MaxKeepLeft");
         const doneLabel = makeGeneratedLabel(callName === "min" ? "MinDone" : "MaxDone");
         const keepLeftBranches = callName === "min"
@@ -754,12 +766,21 @@ export function createExpressionComputeHelpers({
           "    ex de,hl",
           "    pop hl",
           "    push hl",
+          ...(signedCompare ? [
+            "    ld a,h",
+            "    xor $80",
+            "    ld h,a",
+            "    ld a,d",
+            "    xor $80",
+            "    ld d,a"
+          ] : []),
           "    or a",
           "    sbc hl,de",
           ...keepLeftBranches,
           "    pop hl",
           "    ld h,d",
           "    ld l,e",
+          ...(signedCompare ? ["    ld a,h", "    xor $80", "    ld h,a"] : []),
           `    jr ${doneLabel}`,
           `${keepLeftLabel}:`,
           "    pop hl",
@@ -835,6 +856,19 @@ export function createExpressionComputeHelpers({
       }
       const constantValue = tryEvaluateConstantExpression(renderExpressionAst(node));
       if (constantValue !== null) return emitLoadInt16ValueIntoHL(String(constantValue));
+      if (node.op === "-") {
+        const loadExpr = emitLoadInt16AstIntoHL(node.expr, preferredDeclaredType);
+        if (!loadExpr) return null;
+        return [
+          ...loadExpr,
+          "    xor a",
+          "    sub l",
+          "    ld l,a",
+          "    sbc a,a",
+          "    sub h",
+          "    ld h,a"
+        ];
+      }
       return null;
     }
     if (node.kind === "binary") {

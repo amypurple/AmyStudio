@@ -3190,6 +3190,12 @@ export function transpileAmyCore(sourceText, deps) {
       if (String(node.name || "").toLowerCase() === "random" && (node.args.length === 1 || node.args.length === 2)) {
         return { declaredType: "u8", runtimeType: "int8" };
       }
+      if (/^(?:min|max)$/i.test(String(node.name || "")) && node.args.length === 2) {
+        const leftType = resolveExpressionAstComputationType(node.args[0]);
+        const rightType = resolveExpressionAstComputationType(node.args[1]);
+        const declaredType = mergeDeclaredTypes(leftType?.declaredType, rightType?.declaredType, preferredDeclaredType);
+        return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
+      }
       if (String(node.name || "").toLowerCase() === "absdiff" && node.args.length === 2) {
         const leftType = resolveExpressionAstComputationType(node.args[0]);
         const rightType = resolveExpressionAstComputationType(node.args[1]);
@@ -3233,7 +3239,12 @@ export function transpileAmyCore(sourceText, deps) {
         if (!exprType) return null;
         return exprType;
       }
-      const mergedType = mergeDeclaredTypes(resolveExpressionAstDeclaredType(node.expr), null, preferredDeclaredType);
+      const constantValue = tryEvaluateAstInteger(node);
+      const literalType = constantValue !== null ? inferLiteralDeclaredType(String(constantValue)) : null;
+      let mergedType = mergeDeclaredTypes(literalType || resolveExpressionAstDeclaredType(node.expr), null, preferredDeclaredType);
+      if (node.op === "-" && constantValue === null && !isSignedDeclaredType(mergedType)) {
+        mergedType = declaredTypeForWidth(declaredTypeBitWidth(mergedType) || 8, true, mergedType);
+      }
       return { declaredType: mergedType, runtimeType: runtimeTypeForDeclaredType(mergedType) };
     }
     if (node.kind === "binary") {

@@ -3867,7 +3867,7 @@ export class Z80Optimizer {
                                     );
                                 }
 
-                                if (replacement) {
+                                if (replacement && this.isRegisterDeadBeforeNextUse(tokens, i + 4, 'b')) {
                                     optimized.push(replacement);
                                     i += 4;
                                     this.stats.peepholeOpts++;

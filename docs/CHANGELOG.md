@@ -1,3 +1,14 @@
+## 2026-10-20 - Signed min/max and wide numeric regression promotion
+
+- Made unary negation preserve signed byte/word intent in runtime expressions.
+- Made `min()` and `max()` compare signed `i8` and `i16` values correctly,
+  including nested expressions, variable negation and boundary values.
+- Fixed an assembler peephole that could discard a live `B` value after
+  folding a temporary accumulator sequence.
+- Added five-profile runtime coverage for signed/unsigned min/max, wide
+  `u32`/`i32` record fields and the `u32` helper ABI.
+- Kept all six comparison ROMs unchanged at 7,391 occupied bytes.
+
 ## 2026-10-20 - Indexed compound multiplication and new ports
 
 - Fixed `u16 *= Array[Index]`, which could overwrite the left operand while
@@ -25,8 +36,8 @@
 - Added dedicated initializer, byte-mutation, WAIT, and NMI runtime regressions;
   all 105 browser examples compile and all 104 flat ROMs assemble in Balanced.
 - Rebuilt and runtime-validated the six comparison ROMs at 7,391 occupied bytes
-  after adding explicit bounded NMI/VRAM batches while retaining safe default transfers.
-  in both Balanced and Experimental profiles. The 30-byte WAIT safety cost is
+  in both Balanced and Experimental profiles after adding explicit bounded
+  NMI/VRAM batches while retaining safe default transfers. The 30-byte WAIT safety cost is
   documented separately from the compiler savings.
 
 ## 2026-10-20 - Record iterator optimization promoted
