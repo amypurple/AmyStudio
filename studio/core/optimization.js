@@ -21,7 +21,7 @@ export const OPTIMIZATION_LEVELS = {
     label: "Balanced ▲",
     risk: "▲",
     description: "Recommended size and safety balance.",
-    passes: ["peephole", "branchShortening"]
+    passes: ["peephole", "branchShortening", "aZeroToXor"]
   },
   aggressive: {
     label: "Aggressive ⚠",
@@ -97,7 +97,7 @@ export function getOptimizationProfile(level, sourceText = "") {
     blockCopyBcZeroReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     deadCp0Removal: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     deadOrARemoval: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
-    aZeroToXor: normalized === "aggressive" || normalized === "experimental",
+    aZeroToXor: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     flagLivenessPeepholes: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     rstVectors: normalized === "aggressive" || normalized === "experimental",
     speculativeValueReuse: normalized === "aggressive" || normalized === "experimental",

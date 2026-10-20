@@ -2,10 +2,14 @@
 
 - Promoted the proven record-array `for each` IX iterator to Balanced and
   Aggressive builds while retaining conservative barriers for unsafe cases.
+- Promoted flag-liveness-proven `LD A,0` to `XOR A` rewriting to Balanced;
+  observable flag paths remain conservative barriers.
 - Reduced Gameplay State Update from 1,299 to 1,159 bytes in Balanced builds
   and reduced its measured average update cost from 5,093 to 3,189 cycles.
 - Validated identical runtime results across five profiles, the complete
   language matrix, Amy Chess runtime oracles, and all 258 browser examples.
+- Reduced the six-sample Balanced total from 7,642 to 7,494 bytes, only 11
+  bytes above Experimental.
 
 ## 2026-10-19 - Blueberries and VDP-safe NMI deferral
 

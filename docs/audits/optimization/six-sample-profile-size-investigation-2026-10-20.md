@@ -9,15 +9,21 @@ matrix and is promoted to Balanced and Aggressive. It keeps a proven eligible
 record address in `IX`; calls, parameters, recursion, nested aliases, local
 records and inline ASM retain the conservative RAM/HL path.
 
+The remaining 8-byte Balanced-to-Aggressive difference was entirely the
+flag-liveness-proven `LD A,0` to `XOR A` rewrite. Dedicated tests cover
+conditional branches and returns, carry consumers, AF preservation, labels,
+routine returns, tail jumps and proven flag overwrites. This pass is now also
+part of Balanced.
+
 | Sample | Old Balanced | Promoted Balanced | Experimental |
 |---|---:|---:|---:|
 | Hello World | 227 | 227 | 227 |
-| Warrior bitmap | 3,215 | 3,215 | 3,214 |
+| Warrior bitmap | 3,215 | 3,214 | 3,214 |
 | Controller Visual | 596 | 596 | 594 |
-| Sprite Metasprite | 984 | 984 | 976 |
-| Gameplay State Update | 1,299 | 1,159 | 1,156 |
-| Tile Animation | 1,321 | 1,321 | 1,316 |
-| **Total** | **7,642** | **7,502** | **7,483** |
+| Sprite Metasprite | 984 | 982 | 976 |
+| Gameplay State Update | 1,299 | 1,156 | 1,156 |
+| Tile Animation | 1,321 | 1,319 | 1,316 |
+| **Total** | **7,642** | **7,494** | **7,483** |
 
 Gameplay State Update also falls from 5,093 average measured cycles on the
 conservative Safe path to 3,189 cycles in Balanced, while preserving
