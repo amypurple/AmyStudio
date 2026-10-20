@@ -1846,5 +1846,18 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "things-in-the-dark",
+    "label": "Things in the Dark (TI-99/4A Port)",
+    "detail": "Scott Baker's Dark World action game with animated creatures, six levels, spare robots and joystick-controlled movement.",
+    "projectName": "things-in-the-dark",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];

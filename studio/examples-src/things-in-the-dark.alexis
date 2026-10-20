@@ -1,0 +1,1069 @@
+cartridge "THINGS IN THE DARK/PRESENTS SCOTT BAKER'S/1984"
+
+' THINGS IN THE DARK
+' By Scott Baker, COMPUTE! magazine, December 1984: written for the
+' Atari, with versions for the Commodore 64, VIC-20 and IBM PC/PCjr (Kevin
+' Mykytyn), Apple (Rob Terrell) and TI-99/4A (Patrick Parrish, Program
+' 7). This port follows the TI version. All credit belongs to Scott Baker
+' and the translators.
+'
+' Historical context (summary of the article):
+' A strange Dark World is full of bizarre creatures, and your robot must
+' keep it free of gremlins, blockheads, snakes and graps by running over
+' them. The terrible norfs can appear anywhere; they never attack, but
+' bumping into one zaps both it and your robot, and as norfs fill the
+' screen it gets harder to move; you may have to sacrifice a robot to
+' escape a ring of them. A grap is safe while the grap counter (GC) counts
+' down, then changes color, and touching it is like touching a norf (on
+' the TI the graps are cyan, then red). The snake looks for a free space
+' ahead, then below, then above; the grap moves diagonally. A dinit can be
+' crossed for no points, and it repels norfs. You must score before the
+' turn counter (T) reaches zero. A snake appears every 1000 points, a grap
+' after every snake; six levels, advancing every 5000 points unless No
+' Advance is chosen. In the IBM and TI versions the robot moves
+' continuously: the keys only change its direction. On the TI, P pauses
+' and R restarts.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the robot one square per step while it is
+' held (as on the Atari, 64 and VIC); fire freezes and continues the action (either joystick).
+' The TI listing gives: the shapes and colors (lines 1380-1440), the
+' points (lines 1500-1540: gremlin 10, blockhead 100, cyan grap 400,
+' snake 200), the turn counter T = 60 - (LV - 1) x 10 (lines 1170,
+' 2700), the continuous movement with wrap-around (lines 410-450), norfs
+' and red graps costing a robot (lines 2060-2100), the grap counter of 21
+' (line 2600),
+' the music of lines 1660-1780 played on the title page and at the end.
+' From the Atari listing, whose notes explain them: the snake's and the
+' grap's searches (Atari lines 350-695) and the strings of dinits (lines
+' 440-483).
+' Rules of this rewrite: one step every 10 - LEVEL frames; each step may
+' plot one creature at random (more norfs on higher levels); T drops every
+' fourth step and comes back to its full value with any score.
+' From the Atari: the robot moves only while the stick is held, and a
+' spare robot comes every 2500 points (Atari lines 710-740); the TI's
+' continuous movement and single robot were too hard to control.
+' Adaptation liberties: gentle animations: gremlins stomp, blockheads keep
+' the TI shape,
+' snakes slither, graps wave their antennae, norfs blink now and then,
+' dinits (dots) glow, the robot's legs move; each creature type has two tiles,
+' alternated by screen position, so neighbours never move in step; the
+' high score is kept; joystick menus; an editorial page. The frame loop
+' is protected from the NMI.
+' Screen: GC, score and high score on row 1, level and T on row 2; the
+' Dark World on columns 2-29, rows 3-22.
+
+' Creature kinds; kind K uses tiles 128 + 2K and 129 + 2K
+const KGrem = 0
+const KBlock = 1
+const KSnakeL = 2
+const KSnakeR = 3
+const KGrap = 4
+const KRedGrap = 5
+const KNorf = 6
+const KDinit = 7
+const KEmpty = 8
+const Blank = 32
+
+' Sound table slots (td/s.mjs)
+const SndThemeA = 1
+const SndThemeB = 2
+const SndStep = 3
+const SndGrem = 4
+const SndBlock = 5
+const SndSnake = 6
+const SndGrapA = 7
+const SndGrapB = 8
+const SndZapA = 9
+const SndZapB = 10
+const SndBonus = 11
+const SndLevel = 12
+const SndTurn = 13
+
+bcd digits 6 Score
+bcd digits 6 HighScore
+bcd digits 6 SnkAt
+bcd digits 6 LvlAt
+u8 Level = 1
+u8 StartLevel = 1
+u8 Advance = 1
+u8 TC = 60
+u8 LVL = 60
+u8 RX = 16
+u8 RY = 13
+u8 Dir = 0                     ' 0 still, 1 up, 2 down, 3 left, 4 right
+u8 Robots = 1                  ' spare robots
+bcd digits 6 BotAt
+bool SnakeOn = false
+u8 SX = 0
+u8 SY = 0
+u8 SD = 0
+bool GrapOn = false
+u8 GX = 0
+u8 GY = 0
+u8 GD = 0
+u8 GC = 0
+u8 Tick = 0
+u8 StepN = 9
+u8 Steps = 0
+u8 Kind = 0
+bool Dead = false
+' Animation clocks
+u8 AnimT = 0
+u8 WalkF = 0
+u8 SnakeF = 0
+u8 GrapF = 0
+u8 NorfT = 0
+u8 GlowF = 0
+u8 Tl = 0
+u8 F = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Choice = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table DarkSoundTable areas 4
+  sprites 8x8
+  sprites simple
+  copy RobotPat count 16 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  SnkAt = 1000
+  LvlAt = 5000
+  BotAt = 2500
+  Robots = 1
+  Level = StartLevel
+  SetLevel
+  TC = LVL
+  DrawWorld
+  SnakeOn = false
+  GrapOn = false
+  RX = 16
+  RY = 13
+  Dir = 0
+  Steps = 0
+  Tick = 0
+  ShowStatus
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  Animate
+  ReadStick
+  DrawRobot
+  if joypad(1).fire then goto freeze
+  if joypad(2).fire then goto freeze
+  inc Tick
+  if Tick < StepN then goto main_loop
+  Tick = 0
+  inc Steps
+  MoveRobot
+  if Dead then goto zapped
+  MoveSnake
+  N = Steps & 1
+  if N = 0 then MoveGrap
+  if Dead then goto zapped
+  PlotCreature
+  N = Steps & 3
+  if N = 0 then
+    if TC = 0 then goto out_of_turns
+    dec TC
+    ShowStatus
+  end if
+  goto main_loop
+
+freeze:
+  nmi on
+  print at 13,2, "PAUSE"
+  wait no fire
+freeze_wait:
+  wait
+  if joypad(1).fire then goto freeze_go
+  if joypad(2).fire then goto freeze_go
+  goto freeze_wait
+freeze_go:
+  wait no fire
+  fill 32 count 5 at 13,2
+  ShowStatus
+  goto main_loop
+
+  ' --- TI lines 2060-2100: a norf or a red grap ---
+zapped:
+  nmi on
+  play sounds SndZapA, SndZapB
+  for K = 0 to 59
+    N = K & 4
+    V = 14
+    if N = 0 then V = 8
+    X = RX * 8
+    Y = RY * 8
+    dec Y
+    set sprite 0 to Y,X,0,V
+    update sprites
+    wait
+  next
+  put char Blank at RX,RY
+  if Robots = 0 then goto game_over
+  dec Robots
+  RX = 16
+  RY = 13
+  put char Blank at RX,RY
+  Dead = false
+  if GC = 0 then GrapOn = false
+  ShowStatus
+  goto main_loop
+
+out_of_turns:
+  nmi on
+  play sound SndTurn
+  print at 4,12, " YOU FAILED TO SCORE IN "
+  NumU = LVL
+  print at 10,13, " " + digits$(NumU, 2) + " TURNS "
+  wait 120 frames
+
+  ' --- TI lines 2350-2430: the end, with the music ---
+game_over:
+  nmi on
+  HideSprites
+  if Score > HighScore then HighScore = Score
+  print at 10,10, " GAME OVER "
+  ShowStatus
+  play sounds SndThemeA, SndThemeB
+  wait 90 frames
+  print at 9,15, " PLAY AGAIN "
+  print at 9,16, " NEW LEVEL  "
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 8,15 step 1
+  wait no fire
+  stop sound SndThemeA
+  stop sound SndThemeB
+  mute all
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub SetLevel:
+  N = Level - 1
+  N *= 10
+  LVL = 60 - N
+  StepN = 10 - Level
+  return
+end sub
+
+' TI lines 390-450: the keys only change the direction
+sub ReadStick:
+  Dir = 0
+  if joypad(1).up then Dir = 1
+  if joypad(2).up then Dir = 1
+  if joypad(1).down then Dir = 2
+  if joypad(2).down then Dir = 2
+  if joypad(1).left then Dir = 3
+  if joypad(2).left then Dir = 3
+  if joypad(1).right then Dir = 4
+  if joypad(2).right then Dir = 4
+  return
+end sub
+
+' Kind of the creature at X,Y (KEmpty for a blank square)
+sub GetKind:
+  T = get char at X,Y
+  Kind = 255
+  if T = Blank then Kind = KEmpty
+  if T >= 128 then
+    if T < 144 then
+      Kind = T - 128
+      Kind >>= 1
+    end if
+  end if
+  return
+end sub
+
+' Puts kind Kind at X,Y, on the tile of its parity
+sub PutKind:
+  T = Kind * 2
+  T += 128
+  N = X + Y
+  N &= 1
+  T += N
+  put char T at X,Y
+  return
+end sub
+
+' One step in the current direction; the robot wraps around (lines 440-450)
+sub MoveRobot:
+  if Dir = 0 then return
+  if Dir = 1 then
+    dec RY
+    if RY < 3 then RY = 22
+  end if
+  if Dir = 2 then
+    inc RY
+    if RY > 22 then RY = 3
+  end if
+  if Dir = 3 then
+    dec RX
+    if RX < 2 then RX = 29
+  end if
+  if Dir = 4 then
+    inc RX
+    if RX > 29 then RX = 2
+  end if
+  play sound SndStep
+  X = RX
+  Y = RY
+  GetKind
+  if Kind = KNorf then
+    Dead = true
+    return
+  end if
+  if Kind = KRedGrap then
+    Dead = true
+    return
+  end if
+  if Kind = KGrem then
+    put char Blank at X,Y
+    Score += 10
+    play sound SndGrem
+    Scored
+  end if
+  if Kind = KBlock then
+    put char Blank at X,Y
+    Score += 100
+    play sound SndBlock
+    Scored
+  end if
+  if Kind = KSnakeL then EatSnake
+  if Kind = KSnakeR then EatSnake
+  if Kind = KGrap then
+    put char Blank at X,Y
+    GrapOn = false
+    Score += 400
+    play sounds SndGrapA, SndGrapB
+    Scored
+  end if
+  return
+end sub
+
+sub EatSnake:
+  put char Blank at X,Y
+  SnakeOn = false
+  Score += 200
+  play sound SndSnake
+  Scored
+  if not GrapOn then
+    GrapOn = true
+    GC = 21
+    GX = random(2, 29)
+    GY = 3
+    GD = random(0, 1)
+  end if
+  return
+end sub
+
+' Any score: T back to its full value; a level every 5000 points
+sub Scored:
+  TC = LVL
+  if Score >= BotAt then
+    BotAt += 2500
+    if Robots < 9 then inc Robots
+    play sound SndBonus
+  end if
+  if Advance = 1 then
+    if Score >= LvlAt then
+      LvlAt += 5000
+      if Level < 6 then
+        inc Level
+        SetLevel
+        TC = LVL
+        play sound SndLevel
+      end if
+    end if
+  end if
+  ShowStatus
+  return
+end sub
+
+' The snake: ahead, else below, else above (Atari lines 350-434)
+sub MoveSnake:
+  if not SnakeOn then
+    if Score >= SnkAt then
+      SnkAt += 1000
+      SnakeOn = true
+      SY = random(3, 22)
+      SD = random(0, 1)
+      SX = 2
+      if SD = 1 then SX = 29
+      X = SX
+      Y = SY
+      GetKind
+      if Kind <> KEmpty then SnakeOn = false
+      if SX = RX then
+        if SY = RY then SnakeOn = false
+      end if
+    end if
+    if SnakeOn then DrawSnake
+    return
+  end if
+  X = SX
+  if SD = 0 then
+    if X = 29 then
+      SD = 1
+      DrawSnake
+      return
+    end if
+    inc X
+  else
+    if X = 2 then
+      SD = 0
+      DrawSnake
+      return
+    end if
+    dec X
+  end if
+  Y = SY
+  IsFree
+  if V = 0 then
+    X = SX
+    Y = SY + 1
+    if Y > 22 then Y = 255
+    IsFree
+    if V = 0 then
+      Y = SY - 1
+      if Y < 3 then Y = 255
+      IsFree
+      if V = 0 then return
+    end if
+  end if
+  put char Blank at SX,SY
+  SX = X
+  SY = Y
+  DrawSnake
+  return
+end sub
+
+' V = 1 when X,Y is free (not the robot, nothing there)
+sub IsFree:
+  V = 0
+  if Y = 255 then return
+  if X = RX then
+    if Y = RY then return
+  end if
+  T = get char at X,Y
+  if T = Blank then V = 1
+  return
+end sub
+
+sub DrawSnake:
+  X = SX
+  Y = SY
+  Kind = KSnakeL
+  if SD = 0 then Kind = KSnakeR
+  PutKind
+  return
+end sub
+
+' The grap moves diagonally (Atari lines 550-695); GC counts down (TI)
+sub MoveGrap:
+  if not GrapOn then return
+  if GC > 0 then
+    N = Level >> 1
+    inc N
+    if GC > N then
+      GC -= N
+    else
+      GC = 0
+      play sound SndTurn
+    end if
+    ShowStatus
+  end if
+  for K = 0 to 3
+    X = GX
+    Y = GY
+    N = GD & 1
+    if N = 0 then
+      inc X
+    else
+      dec X
+    end if
+    N = GD & 2
+    if N = 0 then
+      inc Y
+    else
+      dec Y
+    end if
+    V = 0
+    if X >= 2 then
+      if X <= 29 then
+        if Y >= 3 then
+          if Y <= 22 then IsFree
+        end if
+      end if
+    end if
+    if V = 1 then goto grap_go
+    N = random(1, 3)
+    GD += N
+    GD &= 3
+  next
+  DrawGrap
+  return
+grap_go:
+  put char Blank at GX,GY
+  GX = X
+  GY = Y
+  DrawGrap
+  return
+end sub
+
+sub DrawGrap:
+  X = GX
+  Y = GY
+  Kind = KGrap
+  if GC = 0 then Kind = KRedGrap
+  PutKind
+  return
+end sub
+
+' Something new in an empty square (TI lines 650-690, more norfs higher up)
+sub PlotCreature:
+  X = random(2, 29)
+  Y = random(3, 22)
+  T = get char at X,Y
+  if T <> Blank then return
+  if X = RX then
+    if Y = RY then return
+  end if
+  N = random(0, 99)
+  V = Level * 3
+  V += 4
+  Kind = 255
+  if N < 55 then Kind = KDinit
+  if N < 52 then Kind = KBlock
+  if N < 40 then Kind = KGrem
+  if N < V then Kind = KNorf
+  if Kind = 255 then return
+  if Kind <> KDinit then
+    PutKind
+    return
+  end if
+  ' A string of dinits (Atari lines 440-483)
+  V = random(3, 8)
+  for K = 1 to V
+    T = get char at X,Y
+    if T = Blank then PutKind
+    inc X
+    if X > 29 then return
+  next
+  return
+end sub
+
+' Adaptation: the animations. Each kind's two tiles show different frames
+sub Animate:
+  inc AnimT
+  N = AnimT % 15
+  if N = 0 then
+    WalkF = 1 - WalkF
+    K = KGrem
+    AnimPair
+    K = KBlock
+    AnimPair
+  end if
+  N = AnimT % 12
+  if N = 0 then
+    inc SnakeF
+    if SnakeF >= 3 then SnakeF = 0
+    for K = KSnakeL to KSnakeR
+      Tl = K * 2
+      Tl += 128
+      F = SnakeF
+      SetFrame
+      inc Tl
+      F = SnakeF + 1
+      if F >= 3 then F = 0
+      SetFrame
+    next
+  end if
+  N = AnimT % 30
+  if N = 0 then
+    GrapF = 1 - GrapF
+    WalkF = GrapF
+    K = KGrap
+    AnimPair
+    K = KRedGrap
+    AnimPair
+    ' The dinits glow
+    GlowF = 1 - GlowF
+    Dst16 = 1136
+    for J = 0 to 2
+      if GlowF = 0 then
+        copy DinitDim count 8 to vram.color + Dst16
+        copy DinitGlow count 8 to vram.color + Dst16 + 8
+      else
+        copy DinitGlow count 8 to vram.color + Dst16
+        copy DinitDim count 8 to vram.color + Dst16 + 8
+      end if
+      Dst16 += 2048
+    next
+  end if
+  ' Norfs blink now and then, the two tiles half a period apart
+  inc NorfT
+  if NorfT >= 180 then NorfT = 0
+  F = 255
+  if NorfT = 0 then F = 1
+  if NorfT = 8 then F = 0
+  if F <> 255 then
+    Tl = 140
+    K = KNorf
+    SetFrame
+  end if
+  F = 255
+  if NorfT = 90 then F = 1
+  if NorfT = 98 then F = 0
+  if F <> 255 then
+    Tl = 141
+    K = KNorf
+    SetFrame
+  end if
+  return
+end sub
+
+' Kind K: frame WalkF on its first tile, the other frame on its second
+sub AnimPair:
+  Tl = K * 2
+  Tl += 128
+  F = WalkF
+  SetFrame
+  inc Tl
+  F = 1 - WalkF
+  SetFrame
+  return
+end sub
+
+' Generated: frame F of creature K into tile Tl, in all three thirds
+sub SetFrame:
+  Dst16 = Tl
+  Dst16 <<= 3
+  for J = 0 to 2
+    if K = 0 then
+      if F = 0 then
+        copy Fr0_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr0_1 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 1 then
+      if F = 0 then
+        copy Fr1_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr1_1 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 2 then
+      if F = 0 then
+        copy Fr2_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr2_1 count 8 to vram.pattern + Dst16
+      end if
+      if F = 2 then
+        copy Fr2_2 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 3 then
+      if F = 0 then
+        copy Fr3_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr3_1 count 8 to vram.pattern + Dst16
+      end if
+      if F = 2 then
+        copy Fr3_2 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 4 then
+      if F = 0 then
+        copy Fr4_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr4_1 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 5 then
+      if F = 0 then
+        copy Fr5_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr5_1 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 6 then
+      if F = 0 then
+        copy Fr6_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr6_1 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    if K = 7 then
+      if F = 0 then
+        copy Fr7_0 count 8 to vram.pattern + Dst16
+      end if
+      if F = 1 then
+        copy Fr7_1 count 8 to vram.pattern + Dst16
+      end if
+    end if
+    Dst16 += 2048
+  next
+  return
+end sub
+
+' The robot; its legs move as it walks
+sub DrawRobot:
+  X = RX * 8
+  Y = RY * 8
+  dec Y
+  N = AnimT >> 3
+  N &= 1
+  if Dir = 0 then N = 0
+  set sprite 0 to Y,X,N,14
+  update sprites
+  return
+end sub
+
+sub DrawWorld:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  for I = 1 to 30
+    PlotCreature
+  next
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,1, "GC="
+  NumU = GC
+  print at 5,1, digits$(NumU, 2)
+  print at 9,1, "SC="
+  print Score at 12,1
+  print at 20,1, "HI"
+  print HighScore at 23,1
+  print at 2,2, "L="
+  NumU = Level
+  print at 4,2, digits$(NumU, 1)
+  print at 8,2, "ROBOTS="
+  NumU = Robots
+  print at 15,2, digits$(NumU, 1)
+  print at 23,2, "T="
+  NumU = TC
+  print at 25,2, digits$(NumU, 2)
+  return
+end sub
+
+' Graphics II: tiles 128-143 (frame 0 of each kind) and their colors
+sub LoadTiles:
+  for K = 0 to 7
+    Tl = K * 2
+    Tl += 128
+    F = 0
+    SetFrame
+    inc Tl
+    SetFrame
+  next
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TileCol count 128 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' TI lines 710-1180: the title, the instructions, Advance and the level
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop black
+  print at 10,1, "T H I N G S"
+  print at 13,2, "IN THE"
+  print at 12,3, "D A R K"
+  X = 3
+  Y = 5
+  print at 5,5, "LAND THE ROBOT ON:"
+  Y = 7
+  Kind = KGrem
+  PutKind
+  print at 5,7, "GREMLINS     10 PTS"
+  Y = 8
+  Kind = KBlock
+  PutKind
+  print at 5,8, "BLOCKHEADS  100 PTS"
+  Y = 9
+  Kind = KSnakeR
+  PutKind
+  print at 5,9, "SNAKES      200 PTS"
+  Y = 10
+  Kind = KGrap
+  PutKind
+  print at 5,10, "CYAN GRAPS  400 PTS"
+  Y = 12
+  Kind = KNorf
+  PutKind
+  print at 5,12, "AVOID THE NORFS!"
+  Y = 13
+  Kind = KRedGrap
+  PutKind
+  print at 5,13, "A RED GRAP (GC=0) TOO."
+  Y = 14
+  Kind = KDinit
+  PutKind
+  print at 5,14, "DINITS REPEL NORFS."
+  print at 3,16, "SCORE BEFORE T REACHES 0."
+  print at 3,17, "A NEW ROBOT EVERY 2500."
+  print at 3,18, "STICK MOVES, FIRE PAUSES."
+  play sounds SndThemeA, SndThemeB
+  print at 3,20, "LEVEL"
+  print at 12,20, "1 2 3 4 5 6"
+  Choice = StartLevel
+  wait no fire
+level_loop:
+  fill 32 count 13 at 11,21
+  X = Choice * 2
+  X += 10
+  put char 94 at X,21
+level_wait:
+  nmi on
+  wait
+  nmi off
+  Animate
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if joypad(1).fire then goto level_done
+  if joypad(2).fire then goto level_done
+  if N = 0 then goto level_wait
+  if N = 1 then
+    if Choice > 1 then dec Choice
+  else
+    if Choice < 6 then inc Choice
+  end if
+  play sound SndStep
+  nmi on
+  wait 10 frames
+  goto level_loop
+level_done:
+  nmi on
+  StartLevel = Choice
+  wait no fire
+  fill 32 count 28 at 2,20
+  fill 32 count 28 at 2,21
+  print at 5,20, "ADVANCE EVERY 5000"
+  print at 5,21, "NO ADVANCE"
+  Choice = Advance
+  choose menu 1 to 2 into Choice cursor $3E at 3,20 step 1
+  Advance = Choice
+  wait no fire
+  stop sound SndThemeA
+  stop sound SndThemeB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 7,1, "THINGS IN THE DARK"
+  print at 8,3, "BY SCOTT BAKER"
+  print at 4,4, "COMPUTE! DECEMBER 1984"
+  print at 2,6, "AN ATARI GAME, WITH 64,"
+  print at 2,7, "VIC-20, APPLE, IBM PC AND"
+  print at 2,8, "TI-99/4A VERSIONS. THIS"
+  print at 2,9, "PORT FOLLOWS THE TI, BY"
+  print at 2,10, "PATRICK PARRISH."
+  print at 2,12, "WREST CONTROL OF THE DARK"
+  print at 2,13, "WORLD FROM THE NORFS: RUN"
+  print at 2,14, "YOUR ROBOT OVER SNAKES,"
+  print at 2,15, "GREMLINS, BLOCKHEADS AND"
+  print at 2,16, "GRAPS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' TI line 1430, character 136: the robot (second frame: legs apart)
+data RobotPat bytes
+  $18,$24,$18,$7E,$5A,$5A,$18,$3C
+  $18,$24,$18,$7E,$5A,$5A,$24,$66
+end data
+
+' Creature frames: frame 0 is the TI shape (lines 1400-1430); the others
+' were drawn for this port (stomping feet, slithering, flapping antennae,
+' blinking eyes)
+data Fr0_0 bytes $18,$24,$18,$3C,$7E,$3C,$42,$C3
+data Fr0_1 bytes $18,$24,$18,$3C,$7E,$3C,$24,$66
+data Fr1_0 bytes $7E,$5A,$7E,$FF,$18,$3C,$24,$66
+data Fr1_1 bytes $7E,$5A,$7E,$FF,$18,$3C,$24,$66
+data Fr2_0 bytes $00,$00,$0C,$9E,$F5,$43,$00,$00
+data Fr2_1 bytes $00,$00,$C8,$DC,$36,$63,$41,$00
+data Fr2_2 bytes $00,$00,$C3,$C7,$6C,$38,$10,$00
+data Fr3_0 bytes $00,$00,$30,$79,$AF,$C2,$00,$00
+data Fr3_1 bytes $00,$00,$13,$3B,$6C,$C6,$82,$00
+data Fr3_2 bytes $00,$00,$C3,$E3,$36,$1C,$08,$00
+data Fr4_0 bytes $42,$7E,$5A,$3C,$E7,$81,$C3,$00
+data Fr4_1 bytes $24,$7E,$5A,$3C,$E7,$81,$66,$00
+data Fr5_0 bytes $42,$7E,$5A,$3C,$E7,$81,$C3,$00
+data Fr5_1 bytes $24,$7E,$5A,$3C,$E7,$81,$66,$00
+data Fr6_0 bytes $7E,$99,$FF,$C3,$5A,$7E,$24,$66
+data Fr6_1 bytes $7E,$FF,$FF,$C3,$5A,$7E,$24,$66
+data Fr7_0 bytes $00,$00,$00,$18,$18,$00,$00,$00
+data Fr7_1 bytes $00,$00,$00,$18,$18,$00,$00,$00
+data TileCol bytes
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41
+end data
+data DinitGlow bytes $51,$51,$51,$51,$51,$51,$51,$51
+data DinitDim bytes $41,$41,$41,$41,$41,$41,$41,$41
+
+asm {
+ThemeT1:
+    db $40,$0E,$11,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$F0,$10,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$D6,$10,$06,$40,$CA,$10,$06,$40,$D6,$10,$06,$40,$CA,$10,$06,$40,$D6,$10,$06,$40,$CA,$10,$06
+    db $40,$D6,$10,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$1D,$11,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$0E,$11,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$F0,$10,$06,$40,$D6,$10,$06,$40,$F0,$10,$06,$40,$D6,$10,$06,$40,$F0,$10,$06,$40,$D6,$10,$06
+    db $40,$F0,$10,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$0E,$11,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$F0,$10,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$D6,$10,$06,$40,$CA,$10,$06,$40,$D6,$10,$06,$40,$CA,$10,$06,$40,$D6,$10,$06,$40,$CA,$10,$06
+    db $40,$D6,$10,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06,$40,$70,$F0,$06
+    db $40,$1D,$11,$06,$40,$70,$F0,$06,$40,$0E,$11,$06,$40,$70,$F0,$06,$40,$F0,$10,$06,$40,$70,$F0,$06
+    db $40,$D6,$10,$06,$40,$D6,$10,$06,$40,$D6,$10,$06,$40,$D6,$10,$06,$40,$F0,$10,$06,$40,$F0,$10,$06
+    db $40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06
+    db $40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06,$40,$0E,$11,$06
+    db $50
+ThemeT2:
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$56,$13,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$56,$13,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$56,$13,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$56,$13,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$56,$13,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$56,$13,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06,$80,$AB,$11,$06,$80,$70,$F0,$06
+    db $80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06
+    db $80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06,$80,$7F,$12,$06
+    db $90
+StepT1:
+    db $40,$69,$51,$01,$50
+GremT1:
+    db $40,$1D,$21,$01,$40,$F7,$20,$01,$40,$DA,$20,$01,$40,$C4,$20,$01,$40,$B1,$20,$01,$40,$A2,$20,$01
+    db $40,$95,$20,$01,$40,$8A,$20,$01,$40,$80,$20,$01,$50
+BlockT1:
+    db $40,$7C,$51,$03,$40,$7C,$31,$03,$40,$7C,$21,$03,$40,$7C,$01,$03,$50
+SnakeN:
+    db $00,$00,$03,$03,$00,$00,$33,$03,$00,$00,$53,$03,$00,$00,$83,$03,$00,$00,$A3,$03,$00,$00,$D3,$03
+    db $00,$00,$F3,$03,$10
+GrapT1:
+    db $40,$5F,$00,$03,$40,$5F,$30,$03,$40,$5F,$50,$03,$40,$5F,$80,$03,$40,$5F,$A0,$03,$40,$5F,$D0,$03
+    db $40,$5F,$F0,$03,$50
+GrapN:
+    db $00,$00,$02,$03,$00,$00,$32,$03,$00,$00,$52,$03,$00,$00,$82,$03,$00,$00,$A2,$03,$00,$00,$D2,$03
+    db $00,$00,$F2,$03,$10
+ZapT1:
+    db $40,$A4,$03,$03,$40,$7F,$13,$03,$40,$5C,$13,$03,$40,$3D,$23,$03,$40,$1F,$23,$03,$40,$03,$33,$03
+    db $40,$EA,$32,$03,$40,$D2,$42,$03,$40,$BB,$42,$03,$40,$A6,$52,$03,$40,$92,$52,$03,$40,$7F,$62,$03
+    db $40,$6D,$62,$03,$40,$5D,$72,$03,$40,$4D,$72,$03,$40,$3E,$82,$03,$40,$2F,$82,$03,$40,$22,$92,$03
+    db $40,$15,$92,$03,$40,$08,$A2,$03,$40,$FC,$A1,$03,$40,$F1,$B1,$03,$40,$E6,$B1,$03,$40,$DC,$C1,$03
+    db $40,$D2,$C1,$03,$40,$C9,$D1,$03,$40,$BF,$D1,$03,$40,$B7,$E1,$03,$40,$AE,$E1,$03,$40,$A6,$F1,$03
+    db $40,$9E,$F1,$03,$50
+ZapN:
+    db $00,$00,$02,$03,$00,$00,$12,$03,$00,$00,$12,$03,$00,$00,$22,$03,$00,$00,$22,$03,$00,$00,$32,$03
+    db $00,$00,$32,$03,$00,$00,$42,$03,$00,$00,$42,$03,$00,$00,$52,$03,$00,$00,$52,$03,$00,$00,$62,$03
+    db $00,$00,$62,$03,$00,$00,$72,$03,$00,$00,$72,$03,$00,$00,$82,$03,$00,$00,$82,$03,$00,$00,$92,$03
+    db $00,$00,$92,$03,$00,$00,$A2,$03,$00,$00,$A2,$03,$00,$00,$B2,$03,$00,$00,$B2,$03,$00,$00,$C2,$03
+    db $00,$00,$C2,$03,$00,$00,$D2,$03,$00,$00,$D2,$03,$00,$00,$E2,$03,$00,$00,$E2,$03,$00,$00,$F2,$03
+    db $00,$00,$F2,$03,$10
+BonusT1:
+    db $40,$55,$10,$03,$40,$40,$10,$03,$40,$55,$10,$03,$40,$40,$10,$03,$40,$55,$10,$03,$40,$40,$10,$03
+    db $40,$55,$10,$03,$40,$40,$10,$03,$40,$55,$10,$03,$40,$40,$10,$03,$50
+LevelT1:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$12,$50
+TurnT1:
+    db $40,$FE,$10,$06,$40,$FC,$11,$0A,$50
+
+DarkSoundTable:
+    dw ThemeT1,$7035
+    dw ThemeT2,$703F
+    dw StepT1,$7035
+    dw GremT1,$7035
+    dw BlockT1,$7035
+    dw SnakeN,$702B
+    dw GrapT1,$7035
+    dw GrapN,$702B
+    dw ZapT1,$7035
+    dw ZapN,$702B
+    dw BonusT1,$7035
+    dw LevelT1,$7035
+    dw TurnT1,$7035
+}

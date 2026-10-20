@@ -78,6 +78,8 @@
 
 ## 2026-10-20 - Indexed compound multiplication and new ports
 
+- Added the revised Things in the Dark port with held-stick movement, spare
+  robots awarded every 2,500 points and corrected recovery after a loss.
 - Fixed Roader's initial road builder reusing an iterator inside `NextRow`,
   which prevented initialization from finishing, and widened its car position
   before shifting it into 8.8 fixed-point form.

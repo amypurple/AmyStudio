@@ -18,6 +18,7 @@ const cases = [
   { id: "roader", inputs: [GEARCOLECO_TEST_INPUT.KEYPAD_1, fire] },
   { id: "ti-mozart", inputs: [fire] },
   { id: "worm-of-bemer", inputs: [fire, GEARCOLECO_TEST_INPUT.KEYPAD_1] },
+  { id: "things-in-the-dark", inputs: [GEARCOLECO_TEST_INPUT.RIGHT, fire] },
   { id: "jumping-jack", inputs: [fire] },
   { id: "gold-miner", inputs: [fire, fire] },
   { id: "first-math", inputs: [GEARCOLECO_TEST_INPUT.KEYPAD_1] },
