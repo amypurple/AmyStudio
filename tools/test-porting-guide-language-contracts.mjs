@@ -9,12 +9,15 @@ function compile(name, source) {
   return result.asmBody || "";
 }
 
-for (const [name, statement, supported] of [
-  ["put char", "put char 65 at 1,1", false],
-  ["print", 'print at 2,2, "OK"', true],
-  ["fill", "fill 32 count 2 at 3,3", false],
-  ["set sprite", "set sprite 0 to 16,16,0,15", true],
-  ["play sound", "play sound Tone in area $7035", false],
+for (const [name, statement, emittedCall] of [
+  ["put char", "put char 65 at 1,1", "AMY_PUT_CHAR_AT"],
+  ["print", 'print at 2,2, "OK"', "WRITE_VRAM"],
+  ["fill", "fill 32 count 2 at 3,3", "AMY_FILL_AT"],
+  ["set sprite", "set sprite 0 to 16,16,0,15", "AMY_SET_SPRITE"],
+  ["play sound", "play sound 1", "AMY_PLAY_SOUND"],
+  ["play sounds", "play sounds 1,2", "AMY_PLAY_SOUND"],
+  ["vpoke", "vpoke vram.name + 1, 65", "AMY_VPOKE"],
+  ["backdrop", "backdrop blue", "WRITE_REGISTER"],
 ]) {
   const result = transpileAmyForTest(`
 u8 Flag = 1
@@ -24,8 +27,8 @@ sub start:
   loop forever
 end sub
 `);
-  assert.equal(result.ok, supported, `inline ${name}: ${result.log || "unexpected compiler result"}`);
-  if (!supported) assert.match(result.log || "", /Unsupported inline statement/i, `inline ${name}`);
+  assert.equal(result.ok, true, `inline ${name}: ${result.log || "unexpected compiler result"}`);
+  assert.match(result.asmBody || "", new RegExp(`call\\s+${emittedCall}`, "i"), `inline ${name}: emitted call`);
 }
 
 const widening = compile("u8 RAM element widening", `

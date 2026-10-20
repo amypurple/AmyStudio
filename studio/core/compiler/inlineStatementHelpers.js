@@ -52,7 +52,10 @@ export function createInlineStatementCompiler(ctx) {
     emitArithInt16Op,
     makeGeneratedLabel,
     formatIxOffset,
-    compileDisplayGraphicsSpriteStatement
+    compileDisplayGraphicsSpriteStatement,
+    compileVramTextStatement,
+    compileVramPixelInputStatement,
+    compileSoundSpinnerStatement
   } = ctx;
 
   return function compileInlineStatement(inlineStmt, rawLineText) {
@@ -65,6 +68,30 @@ export function createInlineStatementCompiler(ctx) {
         return displayResult.ok
           ? { ok: true, lines: displayResult.lines, log: "" }
           : { ok: false, lines: [], log: displayResult.log };
+      }
+    }
+    if (/^(?:put\s+char|fill\s+|backdrop\b)/i.test(inlineStmt)) {
+      const vramTextResult = compileVramTextStatement?.(inlineStmt, rawLineText);
+      if (vramTextResult?.handled) {
+        return vramTextResult.ok
+          ? { ok: true, lines: vramTextResult.lines, log: "" }
+          : { ok: false, lines: [], log: vramTextResult.log };
+      }
+    }
+    if (/^vpoke\b/i.test(inlineStmt)) {
+      const vramPixelResult = compileVramPixelInputStatement?.(inlineStmt, rawLineText);
+      if (vramPixelResult?.handled) {
+        return vramPixelResult.ok
+          ? { ok: true, lines: vramPixelResult.lines, log: "" }
+          : { ok: false, lines: [], log: vramPixelResult.log };
+      }
+    }
+    if (/^play\s+sounds?\b/i.test(inlineStmt)) {
+      const soundResult = compileSoundSpinnerStatement?.(inlineStmt, rawLineText);
+      if (soundResult?.handled) {
+        return soundResult.ok
+          ? { ok: true, lines: soundResult.lines, log: "" }
+          : { ok: false, lines: [], log: soundResult.log };
       }
     }
     if (/^return$/i.test(inlineStmt)) {

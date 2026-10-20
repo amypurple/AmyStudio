@@ -13,10 +13,13 @@ feature belongs in the language rather than in one game.
    covered by code-generation tests; a ROM test exercises all five optimizer
    profiles. This work also found and fixed a pre-existing RAM overlap between
    the menu sleep counter and the first user variables.
-2. **Inline `if` consistency** - high priority. Rejecting otherwise valid
-   standalone statements after `then` is unpredictable and multiplies source
-   lines. This needs a shared single-statement dispatcher plus negative tests;
-   implementing isolated statement exceptions would deepen the inconsistency.
+2. **Inline `if` consistency** - implemented and runtime-validated. Guarded
+   `put char`, `fill`, `play sound(s)`, `vpoke`, and `backdrop` now delegate to
+   the same statement handlers as their standalone forms; existing print,
+   sprite, buffer and assignment forms remain supported. A ROM test proves
+   false/true VRAM and VDP effects in all five optimization profiles, while the
+   porting contract verifies audio compilation. Devastator and Jackpot now show
+   the concise form in real game code.
 3. **Headless ROM execution and screenshots** - high priority for quality,
    though it is tooling rather than language design. Existing GearColeco test
    infrastructure should become a supported `amyc` run mode instead of another

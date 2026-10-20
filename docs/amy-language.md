@@ -1121,7 +1121,17 @@ if Done == 1 then exit sub
 if Skip == 1 then continue for
 if Ready == 1 then Score = 42
 if Ready == 1 then StartRound
+if SparkTile == 42 then put char 32 at SparkX,SparkY
+if NeedsFlash then fill 15 count 4 at 8,10
+if Hit then play sound 2
+if DebugMark then vpoke vram.name + 31, 65
+if Alert then backdrop red
 ```
+
+The guarded statement uses the same compiler implementation as its standalone form.
+This includes `put char`, `put ... count/frame`, `fill`, `print ... at`,
+`play sound`/`play sounds`, `set sprite`/`hide sprite`, `vpoke`, and `backdrop`.
+Only one statement is allowed in each branch; use a block `if` for multiple actions.
 
 One-line `elseif` / `else` chains are supported when each branch contains one inline statement:
 
@@ -1663,7 +1673,9 @@ Current limits: `u8` arrays. `count` and slice values must be compile-time const
 The record array may be global or a record-array field qualified through a record or overlay.
 
 Single-line `if ... then` accepts the same qualified RAM buffers as normal statements
-for `get char`, `get count`, `get frame`, `put ... count`, and `put ... frame`.
+for `get char`, `get count`, `get frame`, `put char`, `put ... count`, `put ... frame`,
+`fill`, `vpoke`, and sprite statements. Sound playback and backdrop changes are also
+valid guarded statements.
 It also accepts qualified scalar and indexed targets for `inc` and `dec`, including
 record fields, overlay fields, and packed BCD values. `toggle` accepts qualified byte
 fields and packed booleans in the same single-line form while preserving neighboring bits.
@@ -3110,6 +3122,14 @@ conditions (`if peek(P) == $FF then`). No runtime helper is emitted, and there
 is no bounds checking — it is the deliberate low-level escape hatch for ROM
 decoders and memory-mapped reads.
 
+`poke(Addr, Value)` is the matching byte-write statement. `Addr` may be any
+`u16` expression and `Value` any byte expression. It emits a direct Z80 memory
+write with no runtime helper or bounds check:
+
+```basic
+poke(P + 1, Code)
+```
+
 ### Asset (compressed ROM)
 
 ```basic
@@ -3387,6 +3407,11 @@ Current expression engine notes:
 | `state machine Name:` ... `State calls Sub` ... `end state machine` | Declare one-based typed state constants and their handlers; zero means inactive |
 | `dispatch StateVar using Name` | Bounded call through the named machine's shared ROM table |
 
+`while`, `do while`, and `loop while` accept the same boolean expressions as
+`if`, including parenthesized `and`, `or`, and `not`. Evaluation is
+short-circuited: the right side of `and` is skipped when the left side is
+false, and the right side of `or` is skipped when the left side is true.
+
 ### Sub / function
 
 | Statement | Meaning |
@@ -3545,8 +3570,8 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `choose keypad min to max into Var [on keypad N] [sleep after N seconds]` | Debounced menu selection with optional CRT-safe sleep |
 | `choose menu min to max into Var cursor Tile at X,Y step N [gap Rows after Choice] [clear Tile] [on joypad N] [sleep after N seconds]` | Complete vertical cursor menu |
 | `choose menu min to max into Var cursor sprite I at X,Y step Pixels [gap Pixels after Choice] [on joypad N] [sleep after N seconds]` | Vertical menu using a configured sprite cursor |
-| `choose menu min to max into Var cursor Tile at list Positions [clear Tile] [on joypad N] [sleep after N seconds]` | Arbitrary tile-position menu; `Positions` contains one X,Y byte pair per choice |
-| `choose menu min to max into Var cursor sprite I at list Positions [on joypad N] [sleep after N seconds]` | Arbitrary pixel-position menu using a configured sprite cursor |
+| `choose menu min to max into Var cursor Tile at list Data [clear Tile] [on joypad N] [sleep after N seconds]` | Arbitrary tile-coordinate menu using X,Y pairs |
+| `choose menu min to max into Var cursor sprite I at list Data [on joypad N] [sleep after N seconds]` | Arbitrary pixel-coordinate menu using X,Y pairs |
 | `show coleco options` | Replace VRAM with the fixed OS7 eight-choice screen and restore Amy NMI service |
 | `halt` | Halt until NMI |
 
@@ -3655,7 +3680,6 @@ comparison, addition, subtraction, multiplication, and division preserve signed
 | Poll controller | `if joypad(1).button1 then ...` |
 | Wait for input | `pause until press` / `wait key1` / `wait key release` |
 | Menu selection | `choose menu 1 to N into Var cursor Tile at X,Y step Rows` |
-| Irregular menu | `choose menu 1 to N into Var cursor Tile at list Positions` |
 | Hardware collision | `if any collision goto Label` |
 | Gameplay collision | `if sprite A hitbox PlayerHitbox collides with sprite B hitbox EnemyHitbox goto Label` |
 | Tile feet collision | `if tile under PlayerX + 4,PlayerY + 15 is solid goto OnGround` |
