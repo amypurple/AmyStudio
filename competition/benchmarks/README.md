@@ -23,18 +23,20 @@ size. `occupied-sizes.csv` is generated from linker facts rather than by
 trimming trailing `$00` or `$FF` bytes.
 
 The latest generated measurements are also kept in the repository as
-`competition/benchmarks/occupied-sizes.csv`.
+`competition/benchmarks/occupied-sizes.csv`. Exact toolchain revisions,
+release or commit dates, and compiler backends are recorded in
+`competition/benchmarks/toolchain-versions.csv`.
 
 ## Optimized occupied sizes
 
 | Sample | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib | NewColeco | libcv |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | 227 | 1,466 | 1,980 | 1,420 | 1,399 | 1,106 | 795 | 1,001 |
-| Warrior bitmap | 3,214 | 4,948 | 4,976 | 9,733 | 4,678 | 4,525 | 3,643 | 4,691 |
-| Controller Visual | 594 | 1,695 | 2,272 | 2,025 | 1,401 | 1,194 | 932 | 812 |
-| Sprite Metasprite | 976 | 1,845 | 2,491 | 5,797 | 1,652 | 1,304 | 1,142 | 1,413 |
-| State Update | 1,156 | 2,453 | 2,724 | 4,013 | 2,097 | 1,308 | 1,253 | 1,291 |
-| Tile Animation | 1,316 | 2,982 | 2,733 | 2,091 | 1,836 | 1,530 | 1,376 | 1,627 |
+| Hello World | 227 | 1,466 | 1,980 | 1,420 | 1,401 | 1,106 | 795 | 1,001 |
+| Warrior bitmap | 3,214 | 4,948 | 4,976 | 9,733 | 4,680 | 4,525 | 3,643 | 4,691 |
+| Controller Visual | 594 | 1,695 | 2,272 | 2,025 | 1,403 | 1,194 | 932 | 812 |
+| Sprite Metasprite | 976 | 1,845 | 2,492 | 5,797 | 1,654 | 1,304 | 1,142 | 1,413 |
+| State Update | 1,156 | 2,453 | 2,712 | 4,013 | 2,099 | 1,308 | 1,253 | 1,291 |
+| Tile Animation | 1,316 | 2,982 | 2,729 | 2,091 | 1,838 | 1,530 | 1,376 | 1,627 |
 
 These figures include each program's cartridge header, runtime, code, and ROM
 data, but exclude cartridge padding. Amy uses Experimental optimization. z88dk uses its
@@ -47,6 +49,9 @@ CVBasic uses its normal compiler and official
 TMSColor/Pletter bitmap pipeline. devkitSMS uses its native aPLib VRAM decoder
 with frame IRQ disabled around decompression; PVColLib uses native RLE. The bitmap
 is the complete 256x192 Warrior picture in every ROM. All toolchains match it pixel for pixel.
+The measured z88dk package is nightly `26587-33d4c333ea-20261020` (2026-10-20), using
+zsdcc 4.6. The measured devkitSMS revision is `533ae572` (2026-09-29), including its
+ColecoVision VDP interrupt acknowledgement, IRQ/NMI vector protection, and bounded static-RAM clear.
 The ugBASIC results use official `main` commit `e35e6df71f311174b3a3fcffdbf6849eecea5ec4`,
 built from source on 2026-10-10. Each sample is compiled in a clean directory.
 Every sample is built in a freshly cleaned, isolated directory. Literal display text uses

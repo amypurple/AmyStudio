@@ -24,11 +24,11 @@ score 425, and checksum 1478. Sizes are occupied bytes, excluding cartridge padd
 | Amy Experimental | 1,162 | 3,186 | 4,278 |
 | Amy Aggressive | 1,302 | 5,045 | 6,256 |
 | Amy Balanced | 1,305 | 5,048 | 6,259 |
-| z88dk zsdcc size | 2,724 | 8,181 | 10,266 |
+| z88dk nightly 2026-10-20, zsdcc 4.6 size | 2,712 | 7,923 | 10,002 |
 | NewColeco legacy SDCC | 1,253 | 7,922 | 10,563 |
 | PVColLib / SDCC | 1,308 | 7,988 | 9,932 |
 | CVBasic 0.9.2 | 2,453 | 8,373 | 15,680 |
-| devkitSMS / SDCC | 2,126 | 8,422 | 10,564 |
+| devkitSMS `533ae572` / SDCC 4.5 | 2,099 | 8,422 | 10,564 |
 | libcv / SDCC | 1,291 | 8,315 | 10,412 |
 | ugBASIC `main` `e35e6df` | 4,013 | 37,080 | 40,460 |
 

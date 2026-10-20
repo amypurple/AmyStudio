@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-10-10
+Updated: 2026-10-20
 
 ## Method
 
@@ -27,6 +27,23 @@ features are listed separately from language capabilities.
 | NewColeco | Historical SDCC C, `CRTCV`, `CVLIB`, and GETPUT 1.1 | Amy's pre-Studio ColecoVision workflow and direct ancestor of current techniques |
 | PkK's devkit | Philipp Klaus Krause's ColecoVision SDCC C devkit, using the `libcv` / `libcvu` libraries | Small link-only runtime with native graphics, input, sprites, and RLE+Huffman assets |
 
+### Versions measured
+
+| Solution | Version or revision | Version date |
+|---|---|---|
+| Amy Studio | `02596a3f` | 2026-10-20 |
+| CVBasic | 0.9.2, tag `e99aede0` | 2026-07-24 |
+| z88dk | nightly `26587-33d4c333ea-20261020`, zsdcc 4.6 | 2026-10-20 |
+| ugBASIC | `main` commit `e35e6df7` | 2026-10-10 |
+| devkitSMS | commit `533ae572`, SDCC 4.5.0 | 2026-09-29 |
+| PVColLib | 1.6.0, commit `f9335847` | 2026-05-31 |
+| NewColeco | historical `CRTCV` / `CVLIB` / GETPUT 1.1 snapshot, SDCC 2.9.0 #5416 | compiler dated 2009-03; snapshot recovered 2026-09-01 |
+| PkK's devkit | libcv 0.28 / libcvu 0.21, rebuilt with SDCC 4.5.0 | 2021-10-01 |
+
+The date identifies the measured release or source revision, not the date this document happened
+to download it. NewColeco is the exception because the recovered package has no single authoritative
+release tag; both its historical compiler date and the evidence-snapshot date are therefore shown.
+
 ## Reproducible six-sample ROM suite
 
 The suite builds six runnable programs with all eight toolchains, plus matched Pure ASM baselines:
@@ -52,9 +69,9 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 |---|---|---|
 | Amy Studio | Experimental | All six runtime oracles pass; current sizes include VDP-safe NMI deferral |
 | CVBasic 0.9.2 | Normal compiler; TMSColor `-z -p2` for Bitmap | No stronger compiler optimization switch was exposed; Pletter is used for its bitmap |
-| z88dk | zsdcc size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
+| z88dk nightly 2026-10-20 | zsdcc 4.6 size profile; direct `cputs`; classic backend + ZX0 for Bitmap | Coleco-safe direct-to-VRAM port of z88dk's ZX0 core; its classic ABI is retained for this hand-written depacker |
 | ugBASIC `main` `e35e6df` (2026-10-10) | Default maximum of 16 peephole passes; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | All six rebuilt; MSC1 is pixel-exact; published sizes report the highest offset, one below occupied length |
-| devkitSMS / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 200000`; `NO_FRAME_INT_HOOK`; `MAXSPRITES=3`; brief VRAM copies/fills | Removed an unused interrupt callback from all six ROMs; specialized VRAM operations further reduced Hello and Tile Animation |
+| devkitSMS 2026-09-29 / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 200000`; `NO_FRAME_INT_HOOK`; `MAXSPRITES=3`; brief VRAM copies/fills | Includes the corrected ColecoVision VDP interrupt acknowledgement, IRQ/NMI vector protection, and bounded static-RAM clearing |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size --max-allocs-per-node 20000` | Official build flags; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
@@ -67,13 +84,13 @@ Experimental serves this size test; Balanced remains Amy's default.
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | devkitSMS | CVBasic | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 227 | 795 | 1,001 | 1,106 | 1,399 | 1,466 | 1,980 | 1,420 |
-| Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,678 | 4,948 | 4,976 | 9,733 |
-| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,401 | 1,695 | 2,272 | 2,025 |
-| Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,652 | 1,845 | 2,491 | 5,797 |
-| Gameplay State Update* | **508** | 1,152 | 1,253 | 1,291 | 1,308 | 2,097 | 2,453 | 2,724 | 4,013 |
-| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 1,836 | 2,982 | 2,733 | 2,091 |
-| **Six-sample total*** | **5,126** | **7,391** | **9,141** | **10,835** | **10,967** | **13,063** | **15,389** | **17,176** | **25,079** |
+| Hello World | **184** | 227 | 795 | 1,001 | 1,106 | 1,401 | 1,466 | 1,980 | 1,420 |
+| Warrior bitmap | **3,066** | 3,214 | 3,643 | 4,691 | 4,525 | 4,680 | 4,948 | 4,976 | 9,733 |
+| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,403 | 1,695 | 2,272 | 2,025 |
+| Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,654 | 1,845 | 2,492 | 5,797 |
+| Gameplay State Update* | **508** | 1,152 | 1,253 | 1,291 | 1,308 | 2,099 | 2,453 | 2,712 | 4,013 |
+| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 1,838 | 2,982 | 2,729 | 2,091 |
+| **Six-sample total*** | **5,126** | **7,391** | **9,141** | **10,835** | **10,967** | **13,075** | **15,389** | **17,161** | **25,079** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 

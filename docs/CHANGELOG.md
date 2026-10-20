@@ -1,3 +1,19 @@
+## 2026-10-20 - External toolchain benchmark refresh
+
+- Audited the official revisions and release dates used by all eight measured
+  ColecoVision toolchains and recorded them in the HTML, Markdown, PDF and CSV
+  evidence.
+- Rebuilt the six z88dk samples with nightly
+  `26587-33d4c333ea-20261020`, reducing their combined occupied size from
+  17,176 to 17,161 bytes while preserving the runtime oracles.
+- Rebuilt devkitSMS against revision `533ae572` (2026-09-29). Its six-sample
+  total is 13,075 bytes, 12 bytes larger because the updated startup code now
+  acknowledges VDP interrupts, protects the interrupt vector and bounds the
+  static-RAM clear.
+- Confirmed that the current CVBasic and ugBASIC changes do not affect their
+  ColecoVision benchmark output, and that PVColLib remains at its measured
+  upstream revision.
+
 ## 2026-10-20 - Audio workflow corrections
 
 - Documented direct calculated PSG effects, their native period/attenuation
