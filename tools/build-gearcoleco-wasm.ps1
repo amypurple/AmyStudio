@@ -143,6 +143,7 @@ $exported = @(
     "_gcw_get_last_step_interrupt",
     "_gcw_get_region",
     "_gcw_read_ram",
+    "_gcw_write_ram",
     "_gcw_read_adam_main_ram",
     "_gcw_read_adam_expansion_ram",
     "_gcw_read_vram",
@@ -187,6 +188,7 @@ $versionFile = Join-Path $OutputDir "BUILD.txt"
     "emscripten=4.0.10"
     "gearcoleco=1.7.0"
     "debugger=enabled"
+    "debug_ram_write=enabled"
     "performance_batching=disabled"
     "save_state_header=deterministic"
     "random_seed=wrapper_to_core"

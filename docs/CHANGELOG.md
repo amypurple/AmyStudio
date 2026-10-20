@@ -1,3 +1,10 @@
+## 2026-10-20 - Debugger RAM-write test API
+
+- Added a bounded GearColeco WASM RAM-write export and JavaScript test-core
+  wrapper for deterministic runtime setup.
+- Test harnesses can now inject board positions and edge-case state directly
+  without changing release ROM code or relying on fragile input playback.
+
 ## 2026-10-20 - TASM command-line compatibility
 
 - Added an explicit `--tasm` dialect mode to the Amy Z80 command-line

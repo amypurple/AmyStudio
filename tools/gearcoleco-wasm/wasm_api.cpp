@@ -893,6 +893,17 @@ extern "C"
         return count;
     }
 
+    GCW_EXPORT u32 gcw_write_ram(u16 address, const u8* input, u32 size)
+    {
+        if (!IsReady() || !input)
+            return 0;
+        const u32 available = 0x10000u - static_cast<u32>(address);
+        const u32 count = size < available ? size : available;
+        for (u32 index = 0; index < count; ++index)
+            g_core->GetMemory()->Write(static_cast<u16>(address + index), input[index]);
+        return count;
+    }
+
     GCW_EXPORT u32 gcw_read_adam_main_ram(u16 address, u8* output, u32 size)
     {
         if (!IsReady() || !output)

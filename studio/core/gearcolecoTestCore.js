@@ -639,6 +639,19 @@ getMasterClockCycles() {
     });
   }
 
+  writeRam(address, bytes) {
+    this.assertAlive();
+    const input = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+    const pointer = this.module._malloc(input.length || 1);
+    try {
+      this.module.HEAPU8.set(input, pointer);
+      const written = this.module._gcw_write_ram(address & 0xFFFF, pointer, input.length);
+      if (written !== input.length) throw new Error(`Could not write ${input.length} RAM bytes at $${(address & 0xFFFF).toString(16)}.`);
+    } finally {
+      this.module._free(pointer);
+    }
+  }
+
   readAdamMainRam(address, size) {
     return this.withOutputBytes(size, (pointer, capacity) => {
       return this.module._gcw_read_adam_main_ram(address & 0xFFFF, pointer, capacity);
