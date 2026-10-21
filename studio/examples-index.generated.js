@@ -252,6 +252,23 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "mickey-120-color-picture",
+    "label": "Mickey 120-Color Picture",
+    "detail": "A verified historical Mickey image demonstrating temporal 120-color display with two ZX0-compressed dual-purpose VRAM banks.",
+    "projectName": "mickey-120-color-picture",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "graphics",
+      "120c",
+      "temporal",
+      "historical",
+      "zx0"
+    ]
+  },
+  {
     "id": "toolchain-benchmark-hello",
     "label": "Toolchain Benchmark: Hello World",
     "detail": "Exact Amy Studio source used by the seven-tool Hello World comparison.",
@@ -1818,6 +1835,24 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "rescue-of-blondell",
+    "label": "Rescue of Blondell",
+    "detail": "Grant Albrecht's scrolling rescue game, adapted from the January 1985 COMPUTE! listing with eight-phase pixel scrolling and shared Graphics II patterns.",
+    "projectName": "rescue-of-blondell",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "port",
+      "game",
+      "scrolling",
+      "graphics",
       "manual-canon"
     ]
   },
