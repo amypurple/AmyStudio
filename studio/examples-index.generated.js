@@ -1841,7 +1841,7 @@ export const exampleManifest = [
   {
     "id": "rescue-of-blondell",
     "label": "Rescue of Blondell",
-    "detail": "Grant Albrecht's scrolling rescue game, adapted from the January 1985 COMPUTE! listing with eight-phase pixel scrolling and shared Graphics II patterns.",
+    "detail": "Grant Albrecht's scrolling rescue game, adapted from the January 1985 COMPUTE! listing with four two-pixel phases and shared Graphics II patterns.",
     "projectName": "rescue-of-blondell",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",

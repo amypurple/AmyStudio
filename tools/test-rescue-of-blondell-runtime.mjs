@@ -36,6 +36,9 @@ try {
   const sourcePath = join(temp, "rescue-of-blondell.alexis");
   const source = readFileSync(resolve(root, "studio/examples-src/rescue-of-blondell.alexis"), "utf8")
     .replace(/^cartridge[^\r\n]*\r?\n/, "");
+  const patternTable = source.match(/data ShiftPat bytes\r?\n([\s\S]*?)\r?\nend data\r?\ndata ShiftCol bytes/);
+  assert.ok(patternTable, "missing compact scrolling pattern table");
+  assert.equal([...patternTable[1].matchAll(/\$[0-9A-F]{2}/gi)].length, 4 * 288, "scrolling table must contain four two-pixel phases");
   writeFileSync(sourcePath, source);
   const build = spawnSync(process.execPath, [
     "tools/amyc.mjs",
@@ -74,9 +77,9 @@ try {
     }
     runFrames(core, 1);
 
-    assert.ok(changes >= 175, `scroll advanced only ${changes} times`);
-    assert.deepEqual([...seenPhases].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7], "not all fine-scroll phases appeared");
-    console.log(`Rescue of Blondell runtime test: PASS (${changes} advances; all eight phases)`);
+    assert.ok(changes >= 140, `scroll advanced only ${changes} times`);
+    assert.deepEqual([...seenPhases].sort((a, b) => a - b), [0, 2, 4, 6], "scrolling must use only the four two-pixel phases");
+    console.log(`Rescue of Blondell runtime test: PASS (${changes} advances; phases 0/2/4/6)`);
   } finally {
     core.destroy();
   }
