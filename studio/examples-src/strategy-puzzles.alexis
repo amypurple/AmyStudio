@@ -1,0 +1,1055 @@
+cartridge "STRATEGY PUZZLES/PRESENTS DISHAROON AND KOHL'S/1984"
+
+' STRATEGY PUZZLES
+' From "41 1/2 Fun Projects for the Atari" by Dale Disharoon and Herbert
+' Kohl (Reston Publishing, 1984), Part IV, Strategy Puzzles: 20 The
+' Pattern Game, 21-22 3 x 3 and 4 x 4 Number Puzzlers, 23 Dozo. All
+' credit belongs to Dale Disharoon and Herbert Kohl.
+'
+' Historical context (summary of the chapter):
+' Games and puzzles decided by thought, not by a spinner or dice.
+' The Pattern Game asks for cooperation in an indirect way: one player
+' makes a hidden pattern of stars on a 4 x 4 grid, a friend reconstructs
+' it, and can ask for a clue that reveals one square; a random pattern
+' makes the game no fun, a regular one makes it a fair challenge.
+' The Number Puzzlers are computer versions of the century-old sliding
+' block puzzles: the computer shuffles the numbers, the empty square is
+' moved with the joystick, and a counter shows how many numbers are
+' already in their place. Not every mix can be solved: Sam Loyd's
+' "14-15 Puzzle" of the 1870s offered $1,000 for a solution that cannot
+' exist, since only an even number of interchanges leaves it solvable.
+' Dozo, used by Japanese GO masters to warm up, is played on a
+' triangle of 28 points with four kinds of pieces that belong to
+' nobody: each player places any piece on any empty point, and the
+' first to complete an equilateral triangle of any size and slant with
+' three identical pieces wins. You play not to lose: every move must
+' avoid handing the opponent a triangle. The computer plays Dozo, and
+' it is hard to beat.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick moves the cursor, fire places or slides; keypad
+' # stands for the Atari's SELECT, * for OPTION; keypad 1-4 choose a
+' Dozo piece.
+' The rules follow the book's listings:
+' - Pattern Game: each press cycles a square through dot, star and
+'   cross (C(1-3), lines 200, 400); SELECT ends the hidden pattern
+'   (line 240), OPTION reveals the square under the cursor and counts a
+'   clue (lines 440, 900-920); the patterns are compared square by
+'   square (line 460), then "YOU DID IT WITH n CLUES".
+' - Number Puzzlers: a random mix, the empty square (**) moved by the
+'   stick, the slide sound (line 310), the score = numbers in place from
+'   the first one on (lines 320-370). Adaptation: a choice between the
+'   book's random mix (half of them cannot be solved, as the chapter
+'   explains) and a mix made by random slides (always solvable), and a
+'   message when the puzzle is solved.
+' - Dozo: the seven-row triangle (lines 8040-8060), the four pieces and
+'   the empty point (lines 8510-8550), at most seven of each kind (CC(),
+'   line 3100), "WILL YOU GO FIRST?", the winner's triangle flashed
+'   (lines 2300-2350). The computer takes a winning move when it has
+'   one, otherwise a random move that gives its opponent no triangle,
+'   otherwise any move (lines 2200-2550, 6400). The triangles, which the
+'   book lists in 756 DATA bytes (lines 9000-9370), are computed here:
+'   126 triangles, stored as pairs for each point.
+' Adaptation liberties: one cartridge with a menu for the three games;
+' framed number blocks; joystick menus for the Y/N questions; an
+' editorial page.
+
+const Empty = 132
+const Star = 141
+const Cross = 142
+const Dot = 143
+
+' Sound table slots (sz/s.mjs)
+const SndSweep = 1
+const SndSlide = 2
+const SndDone = 3
+const SndPlace = 4
+const SndWin = 5
+const SndLose = 6
+const SndBad = 7
+
+u8 P1[16]                      ' Pattern Game: hidden pattern (128 + n: revealed)
+u8 P2[16]                      ' the guess
+u8 Pz[16]                      ' Number Puzzler
+u8 Sz = 3
+u8 PX = 0
+u8 PY = 0
+u8 CX = 0                      ' cursor
+u8 CY = 0
+u8 Clues = 0
+u8 Mix = 2
+u8 Bd[28]                      ' Dozo: 0 empty, 1-4 piece
+u8 Used[4]
+u8 Piece = 1
+u8 Who = 0                     ' 0 player, 1 computer
+u8 Pt = 0
+u8 PA = 0
+u8 PB = 0
+u8 WinA = 0
+u8 WinB = 0
+u8 BestPt = 0
+u8 BestPc = 0
+u8 NSafe = 0
+bool Won = false
+bool Threat = false
+u8 Filled = 0
+u8 Stick = 0
+u8 LastStick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Cnt = 0
+u8 Choice = 1
+u8 FromCell = 0
+u8 ToCell = 0
+u8 OtherPiece = 0
+u16 Moves = 0
+bool Moved = false
+u16 Ptr = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table StratSoundTable areas 2
+  LoadTiles
+  screen on
+  EditorialPage
+
+menu:
+  Page
+  print at 9,2, "STRATEGY PUZZLES"
+  print at 4,4, "THREE CLASSIC LOGIC GAMES"
+  print at 6,6, "THE PATTERN GAME"
+  print at 6,8, "3 X 3 NUMBER PUZZLER"
+  print at 6,10, "4 X 4 NUMBER PUZZLER"
+  print at 6,12, "DOZO"
+  print at 5,16, "FIRE SELECTS A GAME"
+  print at 3,18, "KEYPAD * RETURNS TO MENU"
+  wait no fire
+  choose menu 1 to 4 into Choice cursor $3E at 4,6 step 2
+  wait no fire
+  if Choice = 1 then goto pattern_game
+  if Choice = 4 then goto dozo
+  Sz = Choice + 1
+  goto puzzler
+
+' ---------------------------------------------------------------------------
+' 20 The Pattern Game
+
+pattern_game:
+  Page
+  print at 9,1, "THE PATTERN GAME"
+  print at 4,3, "MAKE YOUR HIDDEN PATTERN"
+  for I = 0 to 15
+    P1[I] = 1
+    P2[I] = 1
+  next
+  Clues = 0
+  X = 9
+  DrawPatternFrame
+  ShowGrid1
+  print at 2,21, "FIRE: DOT, STAR, CROSS"
+  print at 2,22, "PRESS # WHEN YOU'VE FINISHED"
+  CX = 0
+  CY = 0
+pg_make:
+  ReadStepStick
+  N = keypad(1)
+  if N = 11 then goto pg_guess
+  if Stick > 0 then MoveCursor4
+  I = CY * 4
+  I += CX
+  if joypad(1).fire then
+    V = P1[I] + 1
+    if V > 3 then V = 1
+    P1[I] = V
+    play sound SndSweep
+    wait no fire
+  end if
+  X = 9
+  V = P1[I]
+  ShowCell
+  goto pg_make
+
+pg_guess:
+  ' Lines 300-310: the hidden pattern is covered, the guess begins
+  KeyRelease
+  Page
+  print at 4,3, "NOW GUESS THE HIDDEN PATTERN"
+  print at 9,6, "SECRET"
+  print at 20,6, "YOUR COPY"
+  X = 9
+  DrawPatternFrame
+  X = 19
+  DrawPatternFrame
+  for I = 0 to 15
+    X = I & 3
+    X *= 2
+    X += 9
+    Y = I >> 2
+    Y *= 2
+    Y += 8
+    put char 63 at X,Y
+  next
+  X = 19
+  ShowGrid2
+  print at 2,21, "PRESS * TO GET A CLUE."
+  CX = 0
+  CY = 0
+pg_loop:
+  ReadStepStick
+  if Stick > 0 then MoveCursor4
+  I = CY * 4
+  I += CX
+  N = keypad(1)
+  if N = 10 then
+    ' Lines 900-920: a clue: the square under the cursor
+    KeyRelease
+    V = P1[I]
+    if V < 128 then
+      X = I & 3
+      X *= 2
+      X += 9
+      Y = I >> 2
+      Y *= 2
+      Y += 8
+      N = DotTile[V]
+      put char N at X,Y
+      P2[I] = V
+      P1[I] = V + 128
+      inc Clues
+      play sound SndPlace
+    end if
+  end if
+  if joypad(1).fire then
+    V = P2[I] + 1
+    if V > 3 then V = 1
+    P2[I] = V
+    play sound SndSweep
+    wait no fire
+  end if
+  X = 19
+  V = P2[I]
+  ShowCell
+  ' Line 460: compared square by square
+  N = 0
+  for J = 0 to 15
+    V = P1[J] & 127
+    K = P2[J]
+    if V <> K then N = 1
+  next
+  if N = 1 then goto pg_loop
+  play sound SndDone
+  NumU = Clues
+  print at 3,4, "YOU DID IT WITH " + str$(NumU) + " CLUES! "
+  if Clues < 10 then put char 32 at 26,4
+  print at 2,21, "PRESS FIRE                  "
+  wait 60 frames
+  wait no fire
+  pause until press
+  wait no fire
+  goto menu
+
+
+
+
+
+
+' ---------------------------------------------------------------------------
+' 21, 22 The Number Puzzlers
+
+puzzler:
+  Page
+  print at 8,2, "NUMBER PUZZLER"
+  print at 4,6, "BOOK'S RANDOM MIX"
+  print at 4,7, "(MAY BE IMPOSSIBLE!)"
+  print at 4,9, "SOLVABLE MIX"
+  Choice = Mix
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 2,6 step 3
+  Mix = Choice
+  wait no fire
+  N = Sz * Sz
+  for I = 0 to 15
+    Pz[I] = 0
+  next
+  if Mix = 1 then
+    ' Lines 160-210: each number at random, the 0 being the empty square
+    for I = 0 to N - 1
+pz_pick:
+      V = random(0, N - 1)
+      for J = 0 to I
+        if J < I then
+          K = Pz[J]
+          if K = V then goto pz_pick
+        end if
+      next
+      Pz[I] = V
+    next
+  else
+    for I = 0 to N - 2
+      Pz[I] = I + 1
+    next
+    Pz[N - 1] = 0
+    PX = Sz - 1
+    PY = Sz - 1
+    Cnt = 72
+    if Sz = 4 then Cnt = 128
+    for J = 1 to Cnt
+      Stick = random(1, 4)
+      Slide
+    next
+  end if
+  Moves = 0
+  for I = 0 to N - 1
+    V = Pz[I]
+    if V = 0 then
+      PX = I % Sz
+      PY = I / Sz
+    end if
+  next
+  Page
+  print at 8,2, "NUMBER PUZZLER"
+  for I = 0 to N - 1
+    DrawBlock
+  next
+  ShowScore
+pz_loop:
+  ReadStepStick
+  N = keypad(1)
+  if N = 10 then goto menu
+  if Stick = 0 then goto pz_loop
+  Slide
+  if not Moved then goto pz_loop
+  inc Moves
+  I = FromCell
+  DrawBlock
+  I = ToCell
+  DrawBlock
+  play sound SndSlide
+  ShowScore
+  N = Sz * Sz
+  dec N
+  if Cnt = N then
+    play sound SndDone
+    print at 9,21, "SOLVED! PRESS FIRE"
+    wait no fire
+    pause until press
+    wait no fire
+    goto menu
+  end if
+  goto pz_loop
+
+
+
+
+' ---------------------------------------------------------------------------
+' 23 Dozo
+
+dozo:
+  for I = 0 to 27
+    Bd[I] = 0
+  next
+  for I = 0 to 3
+    Used[I] = 0
+  next
+  Filled = 0
+  Piece = 1
+  Page
+  DrawDozoFrame
+  DrawDozo
+  print at 2,1, "WILL YOU GO FIRST?"
+  print at 4,3, "YES"
+  print at 4,4, "NO"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 2,3 step 1
+  wait no fire
+  fill 32 count 20 at 2,1
+  fill 32 count 5 at 2,3
+  fill 32 count 5 at 2,4
+  Who = Choice - 1
+  CY = 6
+  CX = 3
+
+dz_turn:
+  if Filled = 28 then
+    fill 32 count 28 at 2,1
+    print at 2,1, "THE BOARD IS FULL: A DRAW."
+    goto dz_end
+  end if
+  if Who = 1 then goto dz_cpu
+
+  ' Lines 3000-3820: the player's turn
+  fill 32 count 28 at 2,1
+  print at 2,1, "YOUR TURN"
+dz_player:
+  ShowPieces
+  ReadStepStick
+  N = keypad(1)
+  if N = 10 then goto menu
+  if N >= 1 then
+    if N <= 4 then Piece = N
+  end if
+  if Stick > 0 then
+    ' The cursor moves from point to point
+    Pt = CY * 7
+    if Stick = 1 then
+      if CY > 0 then
+        dec CY
+        if CX > CY then CX = CY
+      end if
+    end if
+    if Stick = 2 then
+      if CY < 6 then inc CY
+    end if
+    if Stick = 3 then
+      if CX > 0 then dec CX
+    end if
+    if Stick = 4 then
+      if CX < CY then inc CX
+    end if
+    DrawDozo
+  end if
+  PointOf
+  DozoCursor
+  if not joypad(1).fire then goto dz_player
+  wait no fire
+  V = Bd[Pt]
+  if V <> 0 then goto dz_bad
+  N = Piece - 1
+  V = Used[N]
+  if V >= 7 then goto dz_bad
+  BestPt = Pt
+  BestPc = Piece
+  PlayMove
+  if Won then
+    fill 32 count 28 at 2,1
+    print at 2,1, "YOU WON THE GAME!"
+    play sound SndWin
+    FlashWin
+    goto dz_end
+  end if
+  Who = 1
+  goto dz_turn
+dz_bad:
+  play sound SndBad
+  goto dz_player
+
+  ' Lines 2100-2700, 6400: the computer's turn
+dz_cpu:
+  fill 32 count 28 at 2,1
+  print at 2,1, "MY TURN"
+  wait 30 frames
+  ComputerMove
+  PlayMove
+  if Won then
+    fill 32 count 28 at 2,1
+    print at 2,1, "YIPPEE! I WIN!!!"
+    play sound SndLose
+    FlashWin
+    goto dz_end
+  end if
+  Who = 0
+  goto dz_turn
+
+dz_end:
+  print at 2,23, "PRESS FIRE"
+  wait no fire
+  pause until press
+  wait no fire
+  goto menu
+
+
+
+
+
+
+
+
+
+
+' ---------------------------------------------------------------------------
+
+' ---------------------------------------------------------------------------
+
+' The hidden grid at columns 9-15 (and, with X = 19, the guess)
+sub ShowGrid1:
+  for I = 0 to 15
+    V = P1[I]
+    ShowCellI
+  next
+  return
+end sub
+
+sub ShowGrid2:
+  for I = 0 to 15
+    V = P2[I]
+    ShowCellI
+  next
+  return
+end sub
+
+' A compact 4 x 4 board around the symbols. X is the first cell column.
+sub DrawPatternFrame:
+  print at X - 1,7, "+-+-+-+-+"
+  print at X - 1,8, "| | | | |"
+  print at X - 1,9, "+-+-+-+-+"
+  print at X - 1,10, "| | | | |"
+  print at X - 1,11, "+-+-+-+-+"
+  print at X - 1,12, "| | | | |"
+  print at X - 1,13, "+-+-+-+-+"
+  print at X - 1,14, "| | | | |"
+  print at X - 1,15, "+-+-+-+-+"
+  return
+end sub
+
+' Cell I with value V, the grid's left column in X
+sub ShowCellI:
+  K = I & 3
+  K *= 2
+  K += X
+  Y = I >> 2
+  Y *= 2
+  Y += 8
+  N = DotTile[V]
+  put char N at K,Y
+  return
+end sub
+
+' The cursor's cell, blinking
+sub ShowCell:
+  N = frame
+  N &= 16
+  if N = 0 then
+    ShowCellI
+  else
+    K = I & 3
+    K *= 2
+    K += X
+    Y = I >> 2
+    Y *= 2
+    Y += 8
+    put char 32 at K,Y
+  end if
+  ' Restore the cell left behind
+  if LastStick <> 255 then return
+  return
+end sub
+
+sub MoveCursor4:
+  ' Redraw the cell left as it is
+  I = CY * 4
+  I += CX
+  if X = 9 then
+    V = P1[I]
+  else
+    V = P2[I]
+  end if
+  if Choice = 1 then
+    V &= 127
+  end if
+  ShowCellI
+  if Stick = 1 then
+    if CY > 0 then dec CY
+  end if
+  if Stick = 2 then
+    if CY < 3 then inc CY
+  end if
+  if Stick = 3 then
+    if CX > 0 then dec CX
+  end if
+  if Stick = 4 then
+    if CX < 3 then inc CX
+  end if
+  play sound SndSweep
+  return
+end sub
+
+' Lines 220-300: the empty square moves; the number there moves back
+sub Slide:
+  Moved = false
+  X = PX
+  Y = PY
+  if Stick = 1 then
+    if PY = 0 then return
+    dec PY
+  end if
+  if Stick = 2 then
+    if PY = Sz - 1 then return
+    inc PY
+  end if
+  if Stick = 3 then
+    if PX = 0 then return
+    dec PX
+  end if
+  if Stick = 4 then
+    if PX = Sz - 1 then return
+    inc PX
+  end if
+  FromCell = Y * Sz
+  FromCell += X
+  ToCell = PY * Sz
+  ToCell += PX
+  V = Pz[ToCell]
+  Pz[FromCell] = V
+  Pz[ToCell] = 0
+  Moved = true
+  return
+end sub
+
+' Lines 320-370: the numbers in place, from the first one on
+sub ShowScore:
+  Cnt = 0
+  N = Sz * Sz
+  for I = 0 to N - 1
+    V = Pz[I]
+    if V <> 0 then
+      K = Cnt + 1
+      if V <> K then goto ss_out
+      inc Cnt
+    end if
+  next
+ss_out:
+  print at 6,19, "PLACED:"
+  NumU = Cnt
+  print at 14,19, digits$(NumU, 2)
+  print at 18,19, "MOVES:"
+  NumU = Moves
+  print at 24,19, digits$(NumU, 3)
+  return
+end sub
+
+' Block I as a framed 4 x 3 box
+sub DrawBlock:
+  X = I % Sz
+  X *= 5
+  X += 6
+  if Sz = 3 then X += 2
+  Y = I / Sz
+  Y *= 4
+  Y += 4
+  V = Pz[I]
+  put char 133 at X,Y
+  fill 137 count 2 at X + 1,Y
+  put char 134 at X + 3,Y
+  inc Y
+  put char 139 at X,Y
+  if V = 0 then
+    print at X + 1,Y, "  "
+  else
+    NumU = V
+    print at X + 1,Y, width$(NumU, 2)
+  end if
+  put char 140 at X + 3,Y
+  inc Y
+  put char 135 at X,Y
+  fill 138 count 2 at X + 1,Y
+  put char 136 at X + 3,Y
+  return
+end sub
+
+' Places BestPc at BestPt; Won when it completes a triangle
+sub PlayMove:
+  Pt = BestPt
+  V = BestPc
+  Bd[Pt] = V
+  N = V - 1
+  inc Used[N]
+  inc Filled
+  play sound SndPlace
+  DrawDozo
+  TestPoint
+  return
+end sub
+
+' Won if the piece at Pt makes a triangle (WinA, WinB the other two)
+sub TestPoint:
+  Won = false
+  V = Bd[Pt]
+  Cnt = PairCount[Pt]
+  Ptr = PairBase[Pt]
+  for J = 1 to Cnt
+    PA = peek(Ptr)
+    inc Ptr
+    PB = peek(Ptr)
+    inc Ptr
+    N = Bd[PA]
+    if N = V then
+      N = Bd[PB]
+      if N = V then
+        Won = true
+        WinA = PA
+        WinB = PB
+      end if
+    end if
+  next
+  return
+end sub
+
+' Threat when piece V at empty point Pt would leave a triangle with two
+' identical pieces and its third point empty
+sub TestThreat:
+  Threat = false
+  Cnt = PairCount[Pt]
+  Ptr = PairBase[Pt]
+  for J = 1 to Cnt
+    PA = peek(Ptr)
+    inc Ptr
+    PB = peek(Ptr)
+    inc Ptr
+    N = Bd[PA]
+    OtherPiece = Bd[PB]
+    if N = V then
+      if OtherPiece = 0 then Threat = true
+    end if
+    if OtherPiece = V then
+      if N = 0 then Threat = true
+    end if
+  next
+  return
+end sub
+
+' A winning move, else a random safe move, else any move
+sub ComputerMove:
+  ' A win?
+  for I = 0 to 27
+    N = Bd[I]
+    if N = 0 then
+      for K = 1 to 4
+        N = K - 1
+        N = Used[N]
+        if N < 7 then
+          Pt = I
+          Bd[I] = K
+          TestPoint
+          Bd[I] = 0
+          if Won then
+            BestPt = I
+            BestPc = K
+            return
+          end if
+        end if
+      next
+    end if
+  next
+  ' A safe move, chosen at random among them
+  NSafe = 0
+  BestPt = 255
+  for I = 0 to 27
+    N = Bd[I]
+    if N = 0 then
+      for K = 1 to 4
+        N = K - 1
+        N = Used[N]
+        if N < 7 then
+          Pt = I
+          V = K
+          TestThreat
+          if not Threat then
+            inc NSafe
+            N = random(1, NSafe)
+            if N = 1 then
+              BestPt = I
+              BestPc = K
+            end if
+          end if
+        end if
+      next
+    end if
+  next
+  if BestPt <> 255 then return
+  ' Any move
+  for I = 0 to 27
+    N = Bd[I]
+    if N = 0 then
+      for K = 1 to 4
+        N = K - 1
+        N = Used[N]
+        if N < 7 then
+          BestPt = I
+          BestPc = K
+        end if
+      next
+    end if
+  next
+  return
+end sub
+
+' Point number Pt from row CY and column CX
+sub PointOf:
+  Pt = CY * CY
+  Pt += CY
+  Pt >>= 1
+  Pt += CX
+  return
+end sub
+
+sub DrawDozo:
+  for I = 0 to 27
+    X = PtX[I]
+    Y = PtY[I]
+    V = Bd[I]
+    N = Empty
+    if V > 0 then N = V + 127
+    put char N at X,Y
+  next
+  return
+end sub
+
+' Draw the triangular lattice once; pieces and cursor then replace only
+' the 28 intersection cells without disturbing the connecting lines.
+sub DrawDozoFrame:
+  for CY = 0 to 6
+    for CX = 0 to CY
+      PointOf
+      X = PtX[Pt]
+      Y = PtY[Pt]
+      if CX < CY then put char 45 at X + 1,Y
+      if CY < 6 then
+        put char 47 at X - 1,Y + 1
+        put char 92 at X + 1,Y + 1
+      end if
+    next
+  next
+  print at 2,21, "KEYPAD 1-4: PIECE"
+  print at 2,22, "JOYSTICK: MOVE  FIRE: PLACE"
+  return
+end sub
+
+sub DozoCursor:
+  X = PtX[Pt]
+  Y = PtY[Pt]
+  N = frame
+  N &= 16
+  if N = 0 then
+    V = Bd[Pt]
+    N = Empty
+    if V > 0 then N = V + 127
+    if V = 0 then N = Piece + 127
+  else
+    N = 32
+  end if
+  put char N at X,Y
+  return
+end sub
+
+' The pieces at the left, the chosen one marked, with what is left
+sub ShowPieces:
+  for K = 1 to 4
+    Y = K * 2
+    Y += 5
+    N = K + 127
+    put char N at 3,Y
+    V = 32
+    if K = Piece then V = 62
+    put char V at 2,Y
+    N = K - 1
+    NumU = Used[N]
+    NumU = 7 - NumU
+    print at 5,Y, digits$(NumU, 1)
+  next
+  return
+end sub
+
+sub FlashWin:
+  for K = 1 to 6
+    X = PtX[BestPt]
+    Y = PtY[BestPt]
+    put char 32 at X,Y
+    X = PtX[WinA]
+    Y = PtY[WinA]
+    put char 32 at X,Y
+    X = PtX[WinB]
+    Y = PtY[WinB]
+    put char 32 at X,Y
+    wait 15 frames
+    DrawDozo
+    wait 15 frames
+  next
+  return
+end sub
+
+' One move per push of the stick (Stick 1 up, 2 down, 3 left, 4 right)
+sub ReadStepStick:
+  nmi on
+  wait
+  N = 0
+  if joypad(1).up then N = 1
+  if joypad(1).down then N = 2
+  if joypad(1).left then N = 3
+  if joypad(1).right then N = 4
+  Stick = 0
+  if N <> LastStick then Stick = N
+  LastStick = N
+  return
+end sub
+
+sub KeyRelease:
+kr_loop:
+  wait
+  N = keypad(1)
+  if N <> 255 then goto kr_loop
+  return
+end sub
+
+sub Page:
+  nmi on
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop dark blue
+  return
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 128 to vram.pattern + Dst16
+    copy TileCol count 128 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub EditorialPage:
+  Page
+  backdrop white
+  fill mode 2 text color with $10
+  LoadTiles
+  print at 8,1, "STRATEGY PUZZLES"
+  print at 3,3, "FROM 41 1/2 FUN PROJECTS"
+  print at 3,4, "FOR THE ATARI, BY DALE"
+  print at 3,5, "DISHAROON AND HERBERT KOHL"
+  print at 3,6, "(RESTON, 1984)"
+  print at 2,8, "THREE GAMES OF THOUGHT, NOT"
+  print at 2,9, "LUCK: THE PATTERN GAME, THE"
+  print at 2,10, "NUMBER PUZZLERS OF SAM"
+  print at 2,11, "LOYD'S DAY, AND DOZO, A"
+  print at 2,12, "WARM-UP OF THE GO MASTERS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' C(1-3): dot, star, cross
+data DotTile bytes 32,143,141,142
+
+' Dozo: the 252 equilateral triangles of the 28-point board (the book's
+' DATA lines 9000-9370 list them; computed here), as pairs per point:
+' PairCount[P], then PairBase words to each point's list of (A, B)
+data PairCount bytes 6,11,11,14,15,14,15,17,17,15,14,17,18,17,14,11,15,17,17,15,11,6,11,14,15,14,11,6
+data PairBase words = @DozoPts0, @DozoPts1, @DozoPts2, @DozoPts3, @DozoPts4, @DozoPts5, @DozoPts6, @DozoPts7, @DozoPts8, @DozoPts9, @DozoPts10, @DozoPts11, @DozoPts12, @DozoPts13, @DozoPts14, @DozoPts15, @DozoPts16, @DozoPts17, @DozoPts18, @DozoPts19, @DozoPts20, @DozoPts21, @DozoPts22, @DozoPts23, @DozoPts24, @DozoPts25, @DozoPts26, @DozoPts27
+data DozoPts0 bytes 21,27,3,5,15,20,10,14,6,9,1,2
+data DozoPts1 bytes 5,7,6,8,21,26,3,4,14,16,20,22,15,19,10,13,0,2,2,4,9,11
+data DozoPts2 bytes 15,26,4,5,16,20,11,14,6,13,3,8,7,9,10,19,0,1,1,4,22,27
+data DozoPts3 bytes 0,5,14,23,1,4,10,12,4,7,21,25,2,8,9,17,8,11,6,7,15,18,13,16,5,12,19,22
+data DozoPts4 bytes 2,5,7,8,1,3,3,7,15,25,14,17,9,12,5,8,22,26,16,19,20,23,11,13,1,2,6,12,10,18
+data DozoPts5 bytes 1,7,2,4,0,3,17,20,12,14,4,8,7,13,11,19,8,9,6,18,23,27,3,12,16,26,10,25
+data DozoPts6 bytes 1,8,2,13,21,24,8,17,3,7,12,16,7,11,0,9,5,18,9,24,4,12,13,23,15,17,18,22,10,11
+data DozoPts7 bytes 1,5,4,8,10,17,9,18,3,4,15,24,8,12,19,23,22,25,5,13,16,18,11,12,3,6,6,11,2,9,13,17,14,24
+data DozoPts8 bytes 1,6,4,7,20,24,11,18,10,24,9,13,7,12,4,5,2,3,6,17,23,26,3,11,16,25,14,18,5,9,17,19,12,13
+data DozoPts9 bytes 12,19,7,18,4,12,8,13,17,26,3,17,18,20,2,7,0,6,5,8,6,24,13,14,11,25,24,27,1,11
+data DozoPts10 bytes 21,23,3,12,7,17,0,14,8,24,11,16,2,19,1,13,15,16,17,22,5,25,4,18,12,23,6,11
+data DozoPts11 bytes 13,24,15,23,8,18,2,14,22,24,16,17,12,17,3,8,7,12,5,19,6,7,10,16,4,13,18,23,9,25,6,10,1,9
+data DozoPts12 bytes 14,25,9,19,16,24,3,10,23,25,5,14,4,9,7,8,11,17,17,18,7,11,6,16,13,18,8,13,19,24,3,5,4,6,10,23
+data DozoPts13 bytes 11,24,8,9,2,6,24,26,18,19,5,7,17,25,7,17,14,19,12,18,1,10,4,11,8,12,3,16,9,14,6,23,20,25
+data DozoPts14 bytes 12,25,3,23,19,20,1,16,2,11,0,10,5,12,4,17,8,18,25,27,13,19,18,26,9,13,7,24
+data DozoPts15 bytes 2,26,11,23,0,20,4,25,7,24,1,19,3,18,10,16,16,22,21,22,6,17
+data DozoPts16 bytes 12,24,2,20,1,14,11,17,4,19,7,18,17,23,6,12,8,25,10,11,10,15,15,22,3,13,5,26,22,23
+data DozoPts17 bytes 7,10,11,16,5,20,4,14,9,26,3,9,6,8,11,12,12,18,16,23,13,25,7,13,8,19,18,24,10,22,6,15,23,24
+data DozoPts18 bytes 19,25,8,11,7,9,24,25,13,19,12,17,7,16,9,20,3,15,8,14,12,13,5,6,17,24,14,26,11,23,6,22,4,10
+data DozoPts19 bytes 9,12,14,20,18,25,25,26,1,15,20,26,7,23,13,18,4,16,5,11,13,14,8,17,2,10,12,24,3,22
+data DozoPts20 bytes 14,19,8,24,2,16,0,15,5,17,1,22,19,26,9,18,4,23,26,27,13,25
+data DozoPts21 bytes 0,27,1,26,10,23,3,25,6,24,15,22
+data DozoPts22 bytes 11,24,1,20,4,26,7,25,10,17,15,16,3,19,15,21,2,27,6,18,16,23
+data DozoPts23 bytes 3,14,11,15,10,21,12,25,7,19,8,26,16,17,4,20,5,27,11,18,6,13,17,24,16,22,10,12
+data DozoPts24 bytes 11,13,12,16,8,20,11,22,7,15,18,25,8,10,6,21,13,26,17,18,12,19,6,9,17,23,7,14,9,27
+data DozoPts25 bytes 12,14,18,19,12,23,4,15,19,26,18,24,3,21,7,22,13,17,8,16,14,27,9,11,5,10,13,20
+data DozoPts26 bytes 2,15,1,21,19,25,9,17,19,20,13,24,4,22,8,23,14,18,20,27,5,16
+data DozoPts27 bytes 0,21,14,25,5,23,20,26,2,22,9,24
+data PtX bytes 15,14,16,13,15,17,12,14,16,18,11,13,15,17,19,10,12,14,16,18,20,9,11,13,15,17,19,21
+data PtY bytes 5,7,7,9,9,9,11,11,11,11,13,13,13,13,13,15,15,15,15,15,15,17,17,17,17,17,17,17
+
+' Tiles 128-143: the four Dozo pieces and the empty point (the book's
+' lines 8510-8550), number-block frame, star, cross, dot
+data TilePat bytes
+  $00,$00,$3C,$7E,$18,$7E,$3C,$00
+  $00,$00,$7E,$C3,$BD,$C3,$7E,$00
+  $00,$00,$66,$7E,$18,$7E,$66,$00
+  $00,$00,$18,$7E,$E7,$7E,$18,$00
+  $00,$00,$18,$3C,$7E,$3C,$18,$00
+  $00,$3F,$40,$40,$40,$40,$40,$40
+  $00,$FC,$02,$02,$02,$02,$02,$02
+  $40,$40,$40,$40,$40,$40,$3F,$00
+  $02,$02,$02,$02,$02,$02,$FC,$00
+  $00,$FF,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FF,$00
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $00,$10,$54,$38,$FE,$38,$54,$10
+  $00,$82,$44,$28,$10,$28,$44,$82
+  $00,$00,$00,$18,$18,$00,$00,$00
+end data
+data TileCol bytes
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $70,$70,$70,$70,$70,$70,$70,$70
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+end data
+
+asm {
+SweepT1:
+    db $40,$FF,$43,$01,$40,$FF,$43,$01,$40,$F0,$43,$01,$40,$80,$43,$01,$40,$10,$43,$01,$40,$A0,$42,$01
+    db $40,$30,$42,$01,$40,$C0,$41,$01,$40,$50,$41,$01,$40,$E0,$40,$01,$40,$70,$40,$01,$50
+SlideT1:
+    db $40,$3E,$30,$01,$40,$44,$30,$01,$40,$4C,$30,$01,$40,$55,$30,$01,$40,$60,$30,$01,$40,$70,$30,$01
+    db $40,$3E,$30,$01,$40,$44,$30,$01,$40,$4C,$30,$01,$40,$55,$30,$01,$40,$60,$30,$01,$40,$70,$30,$01
+    db $50
+DoneT1:
+    db $40,$3E,$20,$01,$40,$40,$20,$01,$40,$43,$20,$01,$40,$45,$20,$01,$40,$48,$20,$01,$40,$4B,$20,$01
+    db $40,$4E,$20,$01,$40,$51,$20,$01,$40,$55,$20,$01,$40,$59,$20,$01,$40,$5D,$20,$01,$40,$62,$20,$01
+    db $40,$68,$20,$01,$40,$6E,$20,$01,$40,$75,$20,$01,$40,$7C,$20,$01,$40,$85,$20,$01,$40,$8F,$20,$01
+    db $40,$9B,$20,$01,$40,$A9,$20,$01,$40,$BA,$20,$01,$40,$3E,$20,$01,$40,$40,$20,$01,$40,$43,$20,$01
+    db $40,$45,$20,$01,$40,$48,$20,$01,$40,$4B,$20,$01,$40,$4E,$20,$01,$40,$51,$20,$01,$40,$55,$20,$01
+    db $40,$59,$20,$01,$40,$5D,$20,$01,$40,$62,$20,$01,$40,$68,$20,$01,$40,$6E,$20,$01,$40,$75,$20,$01
+    db $40,$7C,$20,$01,$40,$85,$20,$01,$40,$8F,$20,$01,$40,$9B,$20,$01,$40,$A9,$20,$01,$40,$BA,$20,$01
+    db $40,$3E,$20,$01,$40,$40,$20,$01,$40,$43,$20,$01,$40,$45,$20,$01,$40,$48,$20,$01,$40,$4B,$20,$01
+    db $40,$4E,$20,$01,$40,$51,$20,$01,$40,$55,$20,$01,$40,$59,$20,$01,$40,$5D,$20,$01,$40,$62,$20,$01
+    db $40,$68,$20,$01,$40,$6E,$20,$01,$40,$75,$20,$01,$40,$7C,$20,$01,$40,$85,$20,$01,$40,$8F,$20,$01
+    db $40,$9B,$20,$01,$40,$A9,$20,$01,$40,$BA,$20,$01,$50
+PlaceT1:
+    db $40,$7F,$10,$03,$40,$A9,$20,$05,$50
+WinT1:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$12,$50
+LoseT1:
+    db $40,$1D,$11,$0A,$40,$53,$11,$0A,$40,$AB,$11,$14,$50
+BadT1:
+    db $40,$F9,$13,$08,$50
+
+StratSoundTable:
+    dw SweepT1,$7035
+    dw SlideT1,$7035
+    dw DoneT1,$7035
+    dw PlaceT1,$7035
+    dw WinT1,$7035
+    dw LoseT1,$7035
+    dw BadT1,$7035
+}

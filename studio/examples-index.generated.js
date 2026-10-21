@@ -1857,6 +1857,24 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "strategy-puzzles",
+    "label": "Strategy Puzzles",
+    "detail": "Four restored 1984 logic games: a two-player pattern challenge, solvable 3x3 and 4x4 sliding puzzles, and Dozo on its complete 126-triangle board.",
+    "projectName": "strategy-puzzles",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "atari",
+      "port",
+      "logic",
+      "puzzle",
+      "strategy",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "ti-mozart",
     "label": "TI Mozart",
     "detail": "A generative TI-99/4A music-and-graphics program adapted from the January 1984 COMPUTE! listing.",
