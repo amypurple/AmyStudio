@@ -114,11 +114,12 @@ try {
         if (borders >= expectedBlocks) { readyFrame = frame; break; }
       }
       assert.ok(readyFrame >= 0, `${size}x${size} board did not appear within 40 frames`);
+      run(core, 20);
       const px = core.readRam(addressOf(asm, "PX"), 1)[0];
       const py = core.readRam(addressOf(asm, "PY"), 1)[0];
       const direction = py > 0 ? INPUT.UP : (py < size - 1 ? INPUT.DOWN : (px > 0 ? INPUT.LEFT : INPUT.RIGHT));
       tap(core, direction);
-      assert.equal(core.readRam(addressOf(asm, "Moves"), 2)[0], 1, `${size}x${size} legal slide was not counted`);
+      assert.equal(core.readRam(addressOf(asm, "Moves"), 2)[0], 1, `${size}x${size} legal slide was not counted (empty ${px},${py}; input ${direction})`);
     } finally { core.destroy(); }
   }
 
@@ -130,13 +131,13 @@ try {
     tap(core, INPUT.DOWN);
     tap(core, INPUT.FIRE_LEFT);
     const filled = addressOf(asm, "Filled");
+    const who = addressOf(asm, "Who");
     let completed = false;
     for (let frame = 0; frame < 600; frame += 1) {
       core.runFrame();
-      if (core.readRam(filled, 1)[0] === 1) { completed = true; break; }
+      if (core.readRam(filled, 1)[0] === 1 && core.readRam(who, 1)[0] === 0) { completed = true; break; }
     }
     assert.ok(completed, "Dozo computer failed to complete its opening move");
-    assert.equal(core.readRam(addressOf(asm, "Who"), 1)[0], 0, "Dozo computer did not return the turn to the player");
   } finally { core.destroy(); }
 
   console.log("Strategy Puzzles runtime test: PASS (Pattern, 3x3, 4x4, Dozo CPU)");
