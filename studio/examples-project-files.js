@@ -10,6 +10,7 @@ import { mazeEscapeProjectFiles } from "./examples-maze-assets.generated.js";
 import { amyChessProjectFiles } from "./examples-amy-chess-assets.generated.js";
 import { amyChessProjectFiles as amyChessV11ProjectFiles } from "./examples-amy-chess-v1-1-assets.generated.js";
 import { amyChessProjectFiles as amyChessV12ProjectFiles } from "./examples-amy-chess-v1-2-assets.generated.js";
+import { mickey120cProjectFiles } from "./examples-mickey-120c-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -52,6 +53,7 @@ const derivedProjectFilesById = {
   "solar-system-encyclopedia": solarSystemEncyclopediaProjectFiles,
   "space-taxi-voice-demo": spaceTaxiVoiceProjectFiles,
   "earth-globe-demo": earthGlobeProjectFiles,
+  "mickey-120-color-picture": mickey120cProjectFiles,
   "train-track-puzzle": trainTrackPuzzleProjectFiles,
   "amy-chess": amyChessProjectFiles,
   "amy-chess-v1-1": amyChessV11ProjectFiles,
