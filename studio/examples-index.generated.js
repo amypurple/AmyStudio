@@ -1859,5 +1859,18 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "paratrooper",
+    "label": "Paratrooper (TI-99/4A Port)",
+    "detail": "John Goetz's 1985 one-button parachute game with variable wind and weight, animated boats, two difficulty levels and three landing pads.",
+    "projectName": "paratrooper",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];

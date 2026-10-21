@@ -1,0 +1,542 @@
+cartridge "PARATROOPER/PRESENTS JOHN GOETZ'S/1985"
+
+' PARATROOPER
+' By John Goetz, COMPUTE! magazine, January 1985: written for the
+' TI-99/4A with Extended BASIC, with versions for the Commodore 64 (Gary
+' Black), VIC-20 and Atari (Kevin Mykytyn), Apple (Tim Victor), IBM PC
+' and PCjr (Patrick Parrish) and Commodore Plus/4 and 16. All credit
+' belongs to John Goetz and the translators.
+'
+' Historical context (summary of the article):
+' You control the destiny of ten parachutists: the plane drones across
+' the sky and you give the signal that ejects each one. Far below, three
+' tiny landing pads sit in the water among graceful sailboats; the
+' smaller the pad, the greater the reward (25, 50 or 75 points), and an
+' aquatic landing brings only disgrace. Each jump the plane flies at a
+' new altitude and the trooper's weight and the wind change: a heavy
+' trooper in a light wind drops like a stone, a featherweight in a
+' strong wind drifts a long way. One key or the joystick button is the
+' only control, which makes the game easy to learn yet challenging, even
+' for young children. Novice or Experienced: the same speed, smaller
+' pads for the experienced.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: fire on either joystick (or any keypad key) drops the
+' trooper.
+' The rules follow the TI listing: ten troopers (PARA), the pads worth 75
+' (left), 50 (middle) and 25 (right) at x 49, 121 and 193 (line 360),
+' the plane at a random altitude U = 10-79 for each trooper (line 370),
+' moving right to left (line 380), a weight factor V = 1-9 and a wind L
+' = 1-4 for each jump, shown as WEIGHT V x 25 + 50 and WIND SPEED L x 2
+' (lines 390-410), the trooper falling V down and L sideways (line 440),
+' 10 points lost and a trooper gone for a splash, the trooper kept after
+' a landing (lines 510-600), three sailboats drifting at random speeds
+' (lines 300-320), the tune of lines 920-1010, the game over sounds.
+' Rules of this rewrite: the plane flies 0.75 pixel a frame; a trooper
+' falls 0.2 + 0.1 x V pixel a frame and drifts 0.1 x L; the pads are 2, 3
+' and 4 tiles wide for a novice, 1, 2 and 3 for an expert, at the TI's
+' positions. The plane comes round again if nobody jumps.
+' Adaptation liberties: the plane, trooper, chute, splash and boats are
+' 16 x 16 sprites drawn for this port, never more than two on a line;
+' the trooper falls with a closed chute for a moment before it opens;
+' the pads and waves are tiles; the high score is kept; joystick menus
+' for the level and "play again"; an editorial page. The frame loop is
+' protected from the NMI.
+' Screen: status on row 1 and row 22, sky rows 2-14, waves and pads on
+' row 15, water rows 16-21.
+
+const Wave = 128
+const Water = 129
+const Pad75 = 132
+const Pad50 = 131
+const Pad25 = 130
+const WaterY = 120             ' the top of row 15
+const PlaneSpr = 0
+const ManSpr = 1
+
+' Sound table slots (pt/s.mjs)
+const SndTune = 1
+const SndDroneA = 2
+const SndDroneB = 3
+const SndJump = 4
+const SndLand = 5
+const SndSplashA = 6
+const SndSplashB = 7
+const SndOver = 8
+
+u8 Level = 1                   ' 1 novice, 2 experienced
+u8 Para = 10
+i16 Score = 0
+i16 HighScore = 0
+u8 V = 1                       ' weight factor
+u8 L = 1                       ' wind
+u16 PX16 = 0                   ' plane X, 8.8
+u8 PY = 40
+u16 TX16 = 0                   ' trooper, 8.8
+u16 TY16 = 0
+u16 Fall = 0
+u16 Drift = 0
+u8 State = 0                   ' 0 in the plane, 1 falling
+u8 FallT = 0
+u8 BX[3]                       ' sailboats
+u8 BY[3]
+u8 BS[3]
+u8 BT[3]
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+u8 W = 0
+u8 Pts = 0
+u8 Choice = 0
+u16 T16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+i16 S16 = 0
+
+  tile screen
+  set sound table ParaSoundTable areas 3
+  sprites 16x16
+  copy SpritePat count 192 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Para = 10
+  Score = 0
+  DrawScene
+  ShowStatus
+
+new_plane:
+  ' Lines 370-410: a new altitude, weight and wind
+  T16 = 240
+  T16 <<= 8
+  PX16 = T16
+  PY = random(10, 79)
+  PY += 8
+  V = random(1, 9)
+  L = random(1, 4)
+  State = 0
+  T16 = V
+  T16 *= 26
+  Fall = T16 + 51
+  T16 = L
+  T16 *= 26
+  Drift = T16
+  ShowStatus
+  play sounds SndDroneA, SndDroneB
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  MoveBoats
+  ' The plane
+  if PX16 < 192 then
+    if State = 0 then goto new_plane
+    PX16 = 0
+  else
+    PX16 -= 192
+  end if
+  T16 = PX16 >> 8
+  X = T16
+  if X = 0 then
+    set sprite PlaneSpr to 192,0,0,0
+  else
+    set sprite PlaneSpr to PY,X,0,1
+  end if
+  if State = 0 then
+    ' Line 420: the key or the button drops him
+    N = 0
+    if joypad(1).fire then N = 1
+    if joypad(2).fire then N = 1
+    K = keypad(1)
+    if K <> 255 then N = 1
+    if N = 1 then
+      if X > 16 then
+        if X < 224 then
+          State = 1
+          FallT = 0
+          T16 = X
+          T16 <<= 8
+          TX16 = T16
+          T16 = PY + 6
+          T16 <<= 8
+          TY16 = T16
+          stop sound SndDroneA
+          stop sound SndDroneB
+          play sound SndJump
+        end if
+      end if
+    end if
+    set sprite ManSpr to 192,0,0,0
+  else
+    ' Line 440: he falls and the wind carries him
+    TY16 += Fall
+    TX16 += Drift
+    T16 = TX16 >> 8
+    X = T16
+    T16 = TY16 >> 8
+    Y = T16
+    if X > 232 then
+      X = 232
+    end if
+    inc FallT
+    N = 4
+    if FallT < 20 then N = 12
+    set sprite ManSpr to Y,X,N,15
+    ' The feet at the water line
+    N = Y + 15
+    if N >= WaterY then goto touch_down
+  end if
+  update sprites
+  goto main_loop
+
+touch_down:
+  nmi on
+  ' What is under his feet? (lines 450-500, COINC)
+  X += 8
+  X >>= 3
+  N = get char at X,15
+  Pts = 0
+  if N = Pad75 then Pts = 75
+  if N = Pad50 then Pts = 50
+  if N = Pad25 then Pts = 25
+  T16 = TX16 >> 8
+  X = T16
+  Y = WaterY - 16
+  if Pts > 0 then
+    ' Lines 510-560: MISSION ACCOMPLISHED
+    set sprite ManSpr to Y,X,8,15
+    update sprites
+    play sound SndLand
+    S16 = Pts
+    Score += S16
+    print at 8,13, "MISSION ACCOMPLISHED"
+    ShowStatus
+    wait 120 frames
+    fill 32 count 20 at 8,13
+    goto new_plane
+  end if
+  ' Lines 570-600: YOU MISSED THE DROP ZONE
+  Y += 4
+  set sprite ManSpr to Y,X,16,15
+  update sprites
+  play sounds SndSplashA, SndSplashB
+  Score -= 10
+  dec Para
+  print at 6,13, "YOU MISSED THE DROP ZONE"
+  ShowStatus
+  wait 120 frames
+  fill 32 count 24 at 6,13
+  set sprite ManSpr to 192,0,0,0
+  update sprites
+  if Para > 0 then goto new_plane
+
+  ' --- Lines 630-720: game over ---
+  play sound SndOver
+  if Score > HighScore then HighScore = Score
+  print at 11,8, "GAME OVER"
+  print at 8,10, "YOU HAD"
+  S16 = Score
+  X = 16
+  Y = 10
+  PutSigned
+  print at 21,10, "POINTS"
+  wait 120 frames
+  print at 10,12, "PLAY AGAIN"
+  print at 10,13, "NEW LEVEL"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 8,12 step 1
+  wait no fire
+  fill 32 count 20 at 8,8
+  fill 32 count 24 at 6,10
+  fill 32 count 20 at 8,12
+  fill 32 count 20 at 8,13
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 300-320: three sailboats, sprites 2-4, one per line of water
+sub MoveBoats:
+  for I = 0 to 2
+    inc BT[I]
+    N = BT[I]
+    K = BS[I]
+    if N >= K then
+      BT[I] = 0
+      if I = 1 then
+        dec BX[I]
+      else
+        inc BX[I]
+      end if
+    end if
+    X = BX[I]
+    Y = BY[I]
+    J = I + 2
+    set sprite J to Y,X,20,15
+  next
+  return
+end sub
+
+' The sky, the water, the pads (2, 3, 4 tiles; 1, 2, 3 for an expert)
+sub DrawScene:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop cyan
+  fill Wave count 32 at 0,15
+  for Y = 16 to 21
+    fill Water count 32 at 0,Y
+  next
+  W = 3 - Level
+  ' 75 points: around x 49 (column 6)
+  X = 6 - W / 2
+  N = W + 1
+  N -= 1
+  if N = 0 then N = 1
+  fill Pad75 count N at X,15
+  ' 50 points: around x 121 (column 15)
+  N += 1
+  X = 15
+  X -= N / 2
+  fill Pad50 count N at X,15
+  ' 25 points: around x 193 (column 24)
+  N += 1
+  X = 24
+  X -= N / 2
+  fill Pad25 count N at X,15
+  ' The boats
+  for I = 0 to 2
+    BX[I] = random(20, 220)
+    N = I * 16
+    N += 130
+    BY[I] = N
+    BS[I] = random(2, 6)
+    BT[I] = 0
+  next
+  return
+end sub
+
+' Lines 400-410: the two status lines
+sub ShowStatus:
+  print at 2,1, "TROOPS/LEFT"
+  NumU = Para
+  print at 14,1, width$(NumU, 2)
+  print at 17,1, "SCORE"
+  S16 = Score
+  X = 23
+  Y = 1
+  PutSigned
+  print at 2,22, "WIND SPEED"
+  NumU = L * 2
+  print at 13,22, digits$(NumU, 1)
+  print at 17,22, "WEIGHT"
+  NumU = V
+  NumU *= 25
+  NumU += 50
+  print at 24,22, digits$(NumU, 3)
+  return
+end sub
+
+' S16 at X,Y, right-aligned in five columns, with a minus sign
+sub PutSigned:
+  if S16 < 0 then
+    S16 = 0 - S16
+    NumU = S16
+    print at X,Y, "-" + width$(NumU, 4)
+  else
+    NumU = S16
+    print at X,Y, width$(NumU, 5)
+  end if
+  return
+end sub
+
+' Graphics II: tiles 128-132 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 40 to vram.pattern + Dst16
+    copy TileCol count 40 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Lines 740-910: the instructions and the level
+sub TitlePage:
+  nmi on
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop cyan
+  print at 10,1, "PARATROOPER"
+  print at 2,3, "LAND YOUR PARATROOPERS ON"
+  print at 2,4, "THE DROP PADS WORTH 75, 50"
+  print at 2,5, "OR 25 POINTS. DROP EACH"
+  print at 2,6, "ONE WITH THE FIRE BUTTON."
+  print at 2,8, "IF YOU MISS, YOU WILL DRIFT"
+  print at 2,9, "INTO THE OCEAN AND LOSE 10"
+  print at 2,10, "POINTS. YOU CAN ONLY LOSE"
+  print at 2,11, "10 TROOPERS BEFORE THE GAME"
+  print at 2,12, "ENDS."
+  print at 2,14, "THE WIND SPEED AND WEIGHT"
+  print at 2,15, "OF EACH TROOPER ARE SHOWN"
+  print at 2,16, "AT THE BOTTOM: CONSIDER"
+  print at 2,17, "THEM BEFORE RELEASING."
+  print at 6,19, "NOVICE"
+  print at 6,20, "EXPERIENCED"
+  print at 18,19, "HIGH"
+  S16 = HighScore
+  X = 23
+  Y = 19
+  PutSigned
+  play sound SndTune
+  Choice = Level
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 4,19 step 1
+  Level = Choice
+  wait no fire
+  stop sound SndTune
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 10,1, "PARATROOPER"
+  print at 8,3, "BY JOHN GOETZ"
+  print at 5,4, "COMPUTE! JANUARY 1985"
+  print at 2,6, "WRITTEN FOR THE TI-99/4A,"
+  print at 2,7, "WITH VERSIONS FOR THE 64,"
+  print at 2,8, "VIC-20, ATARI, APPLE, IBM"
+  print at 2,9, "PC AND PCJR, PLUS/4 AND 16."
+  print at 2,11, "TEN PARACHUTISTS, THREE"
+  print at 2,12, "TINY PADS IN THE SEA, AND"
+  print at 2,13, "ONE BUTTON: JUDGE THE"
+  print at 2,14, "WEIGHT AND THE WIND, THEN"
+  print at 2,15, "JUMP AT JUST THE RIGHT"
+  print at 2,16, "MOMENT."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Sprites (16 x 16): plane, trooper under his chute, trooper alone (on
+' the pad), trooper falling (just out of the plane), splash, sailboat
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$3F,$7F,$FF
+  $1F,$0C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$30,$38,$FF,$FF,$FF
+  $FF,$0C,$00,$00,$00,$00,$00,$00
+  $0F,$3F,$7F,$D5,$42,$22,$12,$0A
+  $05,$03,$01,$03,$05,$01,$02,$04
+  $F0,$FC,$FE,$AB,$42,$44,$48,$50
+  $A0,$C0,$80,$C0,$A0,$80,$40,$20
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$03,$05,$01,$02,$04
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$C0,$A0,$80,$40,$20
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $01,$07,$09,$01,$02,$04,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $80,$E0,$90,$80,$40,$20,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $04,$25,$15,$8B,$5D,$3F,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $20,$24,$A8,$D1,$BA,$F8,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $01,$FF,$7F,$3F,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$F8,$FC
+  $00,$FC,$F8,$F0,$00,$00,$00,$00
+end data
+' Tiles 128-132: waves, water, the three pads (light red, dark green,
+' magenta: TI sprites 7, 8 and 9 of line 360)
+data TilePat bytes
+  $00,$00,$00,$66,$FF,$FF,$FF,$FF
+  $FF,$F7,$FF,$FF,$BF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$00,$00,$00
+end data
+data TileCol bytes
+  $47,$47,$47,$57,$54,$54,$54,$54
+  $54,$45,$54,$54,$45,$54,$54,$54
+  $94,$94,$94,$94,$94,$44,$44,$44
+  $C4,$C4,$C4,$C4,$C4,$44,$44,$44
+  $D4,$D4,$D4,$D4,$D4,$44,$44,$44
+end data
+
+asm {
+TuneT1:
+    db $40,$53,$21,$11,$40,$53,$F1,$01,$40,$1D,$21,$11,$40,$1D,$F1,$01,$40,$1D,$21,$11,$40,$1D,$F1,$01
+    db $40,$41,$21,$0B,$40,$41,$F1,$01,$40,$53,$21,$05,$40,$53,$F1,$01,$40,$7C,$21,$0B,$40,$7C,$F1,$01
+    db $40,$53,$21,$11,$40,$53,$F1,$01,$40,$41,$21,$11,$40,$41,$F1,$01,$40,$2E,$21,$11,$40,$2E,$F1,$01
+    db $40,$1D,$21,$11,$40,$1D,$F1,$01,$40,$FE,$20,$0E,$40,$FE,$F0,$01,$40,$D5,$20,$08,$40,$D5,$F0,$01
+    db $40,$D5,$20,$1D,$40,$D5,$F0,$01,$40,$E2,$20,$1D,$40,$E2,$F0,$01,$40,$D6,$20,$05,$40,$D6,$F0,$01
+    db $40,$FE,$20,$0B,$40,$FE,$F0,$01,$40,$1D,$21,$11,$40,$1D,$F1,$01,$50
+DroneT1:
+    db $40,$F9,$73,$FF,$50
+DroneN:
+    db $00,$00,$76,$FF,$10
+JumpN:
+    db $00,$00,$15,$02,$00,$00,$55,$04,$10
+LandT1:
+    db $40,$76,$20,$03,$40,$70,$20,$03,$40,$6B,$20,$03,$40,$66,$20,$03,$40,$61,$20,$03,$40,$5D,$20,$03
+    db $40,$59,$20,$03,$40,$56,$20,$03,$40,$53,$20,$03,$40,$50,$20,$03,$40,$4D,$20,$03,$40,$4B,$20,$03
+    db $50
+SplashT1:
+    db $40,$2F,$02,$03,$40,$47,$12,$03,$40,$60,$22,$03,$40,$7C,$32,$03,$40,$9A,$42,$03,$40,$BB,$52,$03
+    db $40,$E0,$62,$03,$40,$09,$73,$03,$40,$37,$83,$03,$40,$6A,$93,$03,$40,$A4,$A3,$03,$40,$E7,$B3,$03
+    db $40,$FF,$C3,$03,$40,$FF,$D3,$03,$40,$FF,$E3,$03,$40,$FF,$F3,$03,$50
+SplashN:
+    db $00,$00,$03,$03,$00,$00,$13,$03,$00,$00,$23,$03,$00,$00,$33,$03,$00,$00,$43,$03,$00,$00,$53,$03
+    db $00,$00,$63,$03,$00,$00,$73,$03,$00,$00,$83,$03,$00,$00,$93,$03,$00,$00,$A3,$03,$00,$00,$B3,$03
+    db $00,$00,$C3,$03,$00,$00,$D3,$03,$00,$00,$E3,$03,$00,$00,$F3,$03,$10
+OverT1:
+    db $40,$F9,$20,$03,$40,$EB,$20,$03,$40,$E0,$20,$03,$40,$D5,$20,$03,$40,$CB,$20,$03,$40,$C3,$20,$03
+    db $40,$BA,$20,$03,$40,$B3,$20,$03,$40,$AC,$20,$03,$40,$A6,$20,$03,$40,$A0,$20,$03,$40,$9A,$20,$03
+    db $40,$95,$20,$03,$40,$90,$20,$03,$40,$8C,$20,$03,$40,$88,$20,$03,$40,$84,$20,$03,$40,$84,$20,$03
+    db $40,$88,$20,$03,$40,$8C,$20,$03,$40,$90,$20,$03,$40,$95,$20,$03,$40,$9A,$20,$03,$40,$A0,$20,$03
+    db $40,$A6,$20,$03,$40,$AC,$20,$03,$40,$B3,$20,$03,$40,$BA,$20,$03,$40,$C3,$20,$03,$40,$CB,$20,$03
+    db $40,$D5,$20,$03,$40,$E0,$20,$03,$40,$EB,$20,$03,$40,$F9,$20,$03,$50
+
+ParaSoundTable:
+    dw TuneT1,$7035
+    dw DroneT1,$7035
+    dw DroneN,$702B
+    dw JumpN,$702B
+    dw LandT1,$7035
+    dw SplashT1,$7035
+    dw SplashN,$702B
+    dw OverT1,$7035
+}
+
+
