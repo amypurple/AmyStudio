@@ -1,0 +1,600 @@
+cartridge "SPEEDSKI/PRESENTS DUB SCROGGIN'S/1983"
+
+' SPEEDSKI
+' By Dub Scroggin, COMPUTE! magazine: a fast action game for the
+' unexpanded VIC-20, in BASIC. All credit belongs to Dub Scroggin.
+'
+' Historical context (summary of the article):
+' SpeedSki takes VIC BASIC to its limits: every effort short of machine
+' language went into speed. Steer a skier down the slope through the
+' gates while avoiding the trees and fences; the optional jumps improve
+' your time. The score is the elapsed time plus five seconds for each
+' gate missed: the lowest score wins. Each tree hit moves the skier up a
+' line, leaving less time to react to the slope coming up from the
+' bottom (ten, and the run is over); each jump moves him down a line, to
+' three below the centre, and the run gets faster. One to four players,
+' one to five rounds, five skill levels from Beginner to Professional:
+' the higher the level, the more trees and the faster the run. The
+' author's best five-run series was 168; the best possible run, about 29
+' seconds, takes every gate and every jump and hits nothing.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the stick left and right steer the skier; with the stick
+' released he goes straight down (the VIC went left with the key held and
+' right otherwise, lines 350-360).
+' The rules follow the listing: the course scrolls up under the skier
+' (lines 320-470), one new row per step: a gate every 28 rows, a jump
+' halfway between gates, the finish line after nine gates (lines
+' 370-410); trees on the plain rows with the chance (skill + 1) / 10
+' (line 420); a gate passed is credited (line 500), a flag hit gives no
+' credit (line 520), a jump moves the skier down and speeds up the run
+' (lines 530-560), a fence turns him back (line 570), a tree makes a
+' cross, shakes the screen and moves him up a line, and ten is the end
+' of the run (lines 580-630); the score = seconds + 5 x gates missed
+' (lines 510, 650), cumulative per player over the rounds (lines
+' 670-720); the warning tones before the start (line 290).
+' Adaptation liberties: the course is 26 columns wide between the fences
+' (the VIC's 20); a jump is three characters wide (the VIC's one); one
+' step every 9 - skill frames, a jump makes it a frame quicker for the
+' rest of the run (at least two); gates missed = 9 - gates taken (the
+' listing's 10 - H could never be zero with nine gates); the skier is a
+' sprite; the screen shake moves the backdrop color; joystick menus for
+' players, rounds and the slope; an editorial page. The frame loop is
+' protected from the NMI.
+
+const Tree = 128
+const Flag = 129
+const Gap = 130
+const Finish = 131
+const Jump = 132
+const Fence = 133
+const Track = 134
+const Snow = 32
+const Bottom = 21
+
+' Sound table slots (sk/s.mjs)
+const SndReady = 1
+const SndGo = 2
+const SndHiss = 3
+const SndHissB = 4
+const SndGate = 5
+const SndFlag = 6
+const SndJump = 7
+const SndCrashA = 8
+const SndCrashB = 9
+const SndFinish = 10
+
+u8 NP = 1
+u8 NR = 1
+u8 Rnd = 1
+u8 P = 1
+u16 Z[4]                       ' Z(P): cumulative scores
+u8 Skill = 1
+u8 StepN = 8
+u8 Tick = 0
+u8 SX = 15                     ' skier column
+i8 U = 0                       ' lines above the centre
+u8 SR = 12
+u8 D = 1                       ' 1 right, 0 left
+u8 G = 0                       ' rows since the last gate
+u8 E = 0                       ' gates printed
+u8 H = 0                       ' gates taken
+u8 OS = 0                      ' objects hit
+u16 Frames = 0
+u16 TM = 0
+u16 SC = 0
+bool Ended = false
+bool Aborted = false
+u8 I = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 Choice = 1
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table SkiSoundTable areas 3
+  sprites 8x8
+  copy SpritePat count 40 to vram.spr_pat
+  LoadTiles
+  screen on
+  EditorialPage
+
+options:
+  ' --- Lines 70-110 ---
+  TextPage
+  print at 9,2, "S P E E D - S K I"
+  print at 2,4, "YOUR SCORE IS ELAPSED TIME"
+  print at 2,5, "+ 5 FOR EACH GATE MISSED."
+  print at 2,6, "LOWEST SCORE WINS."
+  print at 2,8, "STICK LEFT AND RIGHT TO"
+  print at 2,9, "STEER; LET GO: STRAIGHT."
+  print at 2,11, "PLAYERS"
+  print at 11,11, "1   2   3   4"
+  Choice = NP
+  K = 4
+  C = 12
+  PickNumber
+  NP = Choice
+  print at 2,13, "ROUNDS"
+  print at 11,13, "1   2   3   4   5"
+  Choice = NR
+  K = 5
+  C = 14
+  wait no fire
+  PickNumber
+  NR = Choice
+  for I = 0 to 3
+    Z[I] = 0
+  next
+  Rnd = 1
+  P = 1
+
+next_run:
+  ' --- Lines 130-210: the slope ---
+  TextPage
+  NumU = P
+  print at 9,2, "SKIER # " + digits$(NumU, 1)
+  NumU = Rnd
+  print at 9,3, "ROUND " + digits$(NumU, 1)
+  print at 6,6, "SLOPE DESIRED"
+  print at 8,8, "BEGINNER"
+  print at 8,9, "INTERMEDIATE"
+  print at 8,10, "ADVANCED"
+  print at 8,11, "OLYMPIC"
+  print at 8,12, "PROFESSIONAL"
+  Choice = Skill
+  wait no fire
+  choose menu 1 to 5 into Choice cursor $3E at 6,8 step 1
+  Skill = Choice
+  wait no fire
+retry_run:
+  ' --- Lines 220-310: the course, the first gate, the tones ---
+  StepN = 9 - Skill
+  DrawCourse
+  SX = 15
+  U = 0
+  SR = 12
+  D = 1
+  G = 0
+  E = 0
+  H = 0
+  OS = 0
+  Frames = 0
+  Tick = 0
+  Ended = false
+  Aborted = false
+  DrawSkier
+  for I = 1 to 3
+    play sound SndReady
+    wait 40 frames
+  next
+  play sound SndGo
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  inc Frames
+  if Frames > 59999 then Frames = 59999
+  ' Lines 350-360: left while the stick is held left, else right
+  ' Left goes left, right goes right, nothing held goes straight down
+  D = 2
+  if joypad(1).left then D = 0
+  if joypad(2).left then D = 0
+  if joypad(1).right then D = 1
+  if joypad(2).right then D = 1
+  inc Tick
+  if Tick < StepN then
+    DrawSkier
+    goto main_loop
+  end if
+  Tick = 0
+  ' The track behind him, the slope moves up, a new row at the bottom
+  put char Track at SX,SR
+  nmi on
+  copy vram.name + 130 count 28 to vram.name + 98
+  copy vram.name + 162 count 28 to vram.name + 130
+  copy vram.name + 194 count 28 to vram.name + 162
+  copy vram.name + 226 count 28 to vram.name + 194
+  copy vram.name + 258 count 28 to vram.name + 226
+  copy vram.name + 290 count 28 to vram.name + 258
+  copy vram.name + 322 count 28 to vram.name + 290
+  copy vram.name + 354 count 28 to vram.name + 322
+  copy vram.name + 386 count 28 to vram.name + 354
+  copy vram.name + 418 count 28 to vram.name + 386
+  copy vram.name + 450 count 28 to vram.name + 418
+  copy vram.name + 482 count 28 to vram.name + 450
+  copy vram.name + 514 count 28 to vram.name + 482
+  copy vram.name + 546 count 28 to vram.name + 514
+  copy vram.name + 578 count 28 to vram.name + 546
+  copy vram.name + 610 count 28 to vram.name + 578
+  copy vram.name + 642 count 28 to vram.name + 610
+  copy vram.name + 674 count 28 to vram.name + 642
+  nmi off
+  NewRow
+  ' Lines 460-470: he moves one column
+  if D = 1 then
+    inc SX
+    play sound SndHiss
+  end if
+  if D = 0 then
+    dec SX
+    play sound SndHissB
+  end if
+  N = get char at SX,SR
+  if N <> Snow then
+    if N <> Track then Struck
+  end if
+  if Ended then goto run_done
+  if Aborted then goto try_again
+  DrawSkier
+  goto main_loop
+
+  ' --- Lines 620-630: ten trees, TRY AGAIN ---
+try_again:
+  nmi on
+  print at 10,22, "TRY AGAIN"
+  wait 120 frames
+  goto retry_run
+
+  ' --- Lines 640-720: the finish ---
+run_done:
+  nmi on
+  play sound SndFinish
+  wait 60 frames
+  TM = Frames / 60
+  N = 9 - H
+  SC = N * 5
+  SC += TM
+  TextPage
+  print at 6,3, "OBJECTS HIT"
+  NumU = OS
+  print at 20,3, width$(NumU, 3)
+  print at 6,4, "GATES MISSED"
+  NumU = 9 - H
+  print at 20,4, width$(NumU, 3)
+  print at 6,5, "TIME"
+  NumU = TM
+  print at 20,5, width$(NumU, 3)
+  print at 6,7, "SCORE"
+  NumU = SC
+  print at 20,7, width$(NumU, 3)
+  I = P - 1
+  NumU = Z[I] + SC
+  Z[I] = NumU
+  NumU = Rnd
+  print at 6,10, "ROUND " + digits$(NumU, 1)
+  for I = 1 to NP
+    Y = I + 11
+    NumU = I
+    print at 6,Y, "SKIER # " + digits$(NumU, 1)
+    K = I - 1
+    NumU = Z[K]
+    print at 20,Y, width$(NumU, 4)
+  next
+  print at 6,20, "PRESS FIRE"
+  wait no fire
+  pause until press
+  wait no fire
+  inc P
+  if P <= NP then goto next_run
+  P = 1
+  inc Rnd
+  if Rnd <= NR then goto next_run
+  TextPage
+  print at 11,8, "GAME OVER"
+  for I = 1 to NP
+    Y = I + 10
+    NumU = I
+    print at 8,Y, "SKIER # " + digits$(NumU, 1)
+    K = I - 1
+    NumU = Z[K]
+    print at 20,Y, width$(NumU, 4)
+  next
+  print at 6,20, "PRESS FIRE"
+  wait no fire
+  pause until press
+  wait no fire
+  goto options
+
+' ---------------------------------------------------------------------------
+
+' Lines 500-610: the skier ran into something
+sub Struck:
+  if N = Gap then
+    inc H
+    play sound SndGate
+    return
+  end if
+  if N = Finish then
+    Ended = true
+    return
+  end if
+  if N = Flag then
+    play sound SndFlag
+    return
+  end if
+  if N = Jump then
+    ' Lines 540-560: two columns on, closer to the finish, faster
+    play sound SndJump
+    if D = 1 then SX += 2
+    if D = 0 then SX -= 2
+    if SX < 3 then SX = 3
+    if SX > 28 then SX = 28
+    if StepN > 2 then dec StepN
+    if U > -3 then
+      dec U
+      inc SR
+    end if
+    return
+  end if
+  ' A fence or a tree
+  inc OS
+  play sounds SndCrashA, SndCrashB
+  if N = Fence then
+    if SX > 15 then
+      SX -= 2
+    else
+      SX += 2
+    end if
+  end if
+  if N = Tree then put char 120 at SX,SR
+  DrawSkier
+  ' Line 600: the screen shakes
+  for I = 1 to 6
+    nmi on
+    backdrop gray
+    wait 2 frames
+    backdrop white
+    wait 2 frames
+  next
+  nmi off
+  if N = Tree then
+    put char Snow at SX,SR
+    inc U
+    dec SR
+    if U >= 10 then Aborted = true
+  end if
+  return
+end sub
+
+' Lines 370-440: the new bottom row
+sub NewRow:
+  fill Snow count 26 at 3,Bottom
+  inc G
+  if G >= 28 then
+    G = 0
+    inc E
+    if E = 10 then
+      put char Flag at 3,Bottom
+      fill Finish count 24 at 4,Bottom
+      put char Flag at 28,Bottom
+      return
+    end if
+    if E < 10 then
+      X = random(4, 21)
+      put char Flag at X,Bottom
+      inc X
+      fill Gap count 5 at X,Bottom
+      X += 5
+      put char Flag at X,Bottom
+    end if
+    return
+  end if
+  if G = 10 then
+    X = random(5, 24)
+    fill Jump count 3 at X,Bottom
+    return
+  end if
+  if E >= 10 then return
+  ' Line 420: a tree with the chance (skill + 1) / 10
+  N = random(0, 9)
+  V = Skill + 1
+  if N < V then
+    X = random(3, 28)
+    put char Tree at X,Bottom
+  end if
+  return
+end sub
+
+sub DrawSkier:
+  X = SX * 8
+  Y = SR * 8
+  dec Y
+  N = D
+  if N = 2 then N = 1
+  if Aborted then N = 2
+  set sprite 0 to Y,X,N,1
+  update sprites
+  return
+end sub
+
+' Lines 220-280: the first screen of trees and the first gate
+sub DrawCourse:
+  nmi on
+  clear sprites
+  set sprite count 1
+  update sprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop white
+  for Y = 3 to Bottom
+    put char Fence at 2,Y
+    put char Fence at 29,Y
+    N = random(0, 9)
+    V = Skill + 1
+    if N < V then
+      if Y > 14 then
+        X = random(3, 28)
+        if X < 12 then put char Tree at X,Y
+        if X > 18 then put char Tree at X,Y
+      end if
+    end if
+  next
+  put char Flag at 13,18
+  fill Gap count 5 at 14,18
+  put char Flag at 19,18
+  NumU = P
+  print at 2,1, "SKIER " + digits$(NumU, 1)
+  Y = Skill - 1
+  if Y = 0 then print at 13,1, "BEGINNER"
+  if Y = 1 then print at 13,1, "INTERMEDIATE"
+  if Y = 2 then print at 13,1, "ADVANCED"
+  if Y = 3 then print at 13,1, "OLYMPIC"
+  if Y = 4 then print at 13,1, "PROFESSIONAL"
+  return
+end sub
+
+' Left and right choose 1..N on the line above, fire accepts
+sub PickNumber:
+pn_loop:
+  nmi on
+  wait
+  N = 0
+  if joypad(1).left then N = 1
+  if joypad(2).left then N = 1
+  if joypad(1).right then N = 2
+  if joypad(2).right then N = 2
+  if N = 1 then
+    if Choice > 1 then dec Choice
+  end if
+  if N = 2 then
+    if Choice < K then inc Choice
+  end if
+  fill 32 count 18 at 11,C
+  X = Choice - 1
+  X *= 4
+  X += 11
+  put char 94 at X,C
+  if N > 0 then
+    wait 10 frames
+  end if
+  if joypad(1).fire then goto pn_done
+  if joypad(2).fire then goto pn_done
+  goto pn_loop
+pn_done:
+  wait no fire
+  return
+end sub
+
+sub TextPage:
+  nmi on
+  clear sprites
+  set sprite count 1
+  update sprites
+  fill mode 2 text color with $10
+  LoadTiles
+  cls
+  backdrop white
+  return
+end sub
+
+' Graphics II: tiles 128-135 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for K = 0 to 2
+    copy TilePat count 64 to vram.pattern + Dst16
+    copy TileCol count 64 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub EditorialPage:
+  TextPage
+  print at 12,1, "SPEEDSKI"
+  print at 7,3, "BY DUB SCROGGIN"
+  print at 7,4, "COMPUTE! MAGAZINE"
+  print at 2,6, "A VIC-20 GAME THAT TAKES"
+  print at 2,7, "BASIC TO ITS LIMITS: GATES,"
+  print at 2,8, "TREES, FENCES AND JUMPS ON"
+  print at 2,9, "AN EVER-CHANGING SLOPE."
+  print at 2,11, "THE AUTHOR'S BEST FIVE-RUN"
+  print at 2,12, "SERIES WAS 168. BEAT IT AND"
+  print at 2,13, "YOU ARE THE NEW CHAMPION."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Tiles 128-135: tree, flag, gate gap (snow to the eye, VIC char 52),
+' finish, jump, fence, ski track, snow
+data TilePat bytes
+  $10,$38,$7C,$38,$7C,$FE,$10,$10
+  $40,$70,$7C,$70,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $CC,$CC,$33,$33,$CC,$CC,$33,$33
+  $00,$00,$FF,$00,$FF,$00,$00,$00
+  $81,$42,$24,$18,$81,$42,$24,$18
+  $00,$00,$24,$24,$24,$24,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $CF,$CF,$CF,$CF,$CF,$CF,$6F,$6F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $5F,$5F,$5F,$5F,$5F,$5F,$5F,$5F
+  $6F,$6F,$6F,$6F,$6F,$6F,$6F,$6F
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+' Sprites: skier going left, going right, crashed (a cross), skis left,
+' skis right
+data SpritePat bytes
+  $18,$18,$10,$3C,$5A,$18,$24,$42
+  $18,$18,$08,$3C,$5A,$18,$24,$42
+  $81,$42,$24,$18,$18,$24,$42,$81
+  $00,$C0,$30,$0C,$03,$00,$00,$00
+  $00,$03,$0C,$30,$C0,$00,$00,$00
+end data
+
+asm {
+ReadyT1:
+    db $40,$FE,$10,$0A,$50
+GoT1:
+    db $40,$7F,$10,$14,$50
+HissN:
+    db $00,$00,$52,$02,$10
+HissBN:
+    db $00,$00,$51,$02,$10
+GateT1:
+    db $40,$40,$10,$06,$50
+FlagT1:
+    db $40,$FC,$11,$08,$50
+JumpT1:
+    db $40,$BA,$20,$02,$40,$A0,$20,$02,$40,$8C,$20,$02,$40,$7C,$20,$02,$40,$70,$20,$02,$40,$66,$20,$02
+    db $40,$5D,$20,$02,$40,$56,$20,$02,$40,$50,$20,$02,$40,$4B,$20,$02,$50
+CrashT1:
+    db $40,$F9,$03,$02,$40,$F9,$23,$02,$40,$F9,$33,$02,$40,$F9,$53,$02,$40,$F9,$63,$02,$40,$F9,$83,$02
+    db $40,$F9,$93,$02,$40,$F9,$B3,$02,$40,$F9,$C3,$02,$40,$F9,$E3,$02,$40,$F9,$F3,$02,$50
+CrashN:
+    db $00,$00,$06,$02,$00,$00,$26,$02,$00,$00,$36,$02,$00,$00,$56,$02,$00,$00,$66,$02,$00,$00,$86,$02
+    db $00,$00,$96,$02,$00,$00,$B6,$02,$00,$00,$C6,$02,$00,$00,$E6,$02,$00,$00,$F6,$02,$10
+FinishT1:
+    db $40,$D6,$10,$02,$40,$C0,$10,$02,$40,$AE,$10,$02,$40,$9F,$10,$02,$40,$93,$10,$02,$40,$88,$10,$02
+    db $40,$7F,$10,$02,$40,$77,$10,$02,$40,$70,$10,$02,$40,$69,$10,$02,$40,$64,$10,$02,$40,$5F,$10,$02
+    db $40,$5A,$10,$02,$40,$56,$10,$02,$40,$52,$10,$02,$40,$4F,$10,$02,$40,$4B,$10,$02,$40,$48,$10,$02
+    db $50
+
+SkiSoundTable:
+    dw ReadyT1,$7035
+    dw GoT1,$7035
+    dw HissN,$702B
+    dw HissBN,$702B
+    dw GateT1,$7035
+    dw FlagT1,$7035
+    dw JumpT1,$7035
+    dw CrashT1,$7035
+    dw CrashN,$702B
+    dw FinishT1,$7035
+}
+
+

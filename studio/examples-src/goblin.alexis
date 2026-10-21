@@ -1,0 +1,294 @@
+cartridge "GOBLIN/PRESENTS DAN GOFF'S/1983"
+
+' GOBLIN
+' By Dan Goff, COMPUTE! magazine, July 1983: written for the unexpanded
+' VIC-20, with versions for the Commodore 64, Atari, TI-99/4A and Apple.
+' All credit belongs to Dan Goff.
+'
+' Historical context (summary of the article):
+' Custom characters make a simple yet entertaining game: capture the
+' scowling creatures with your goblin while avoiding the many block-shaped
+' obstacles in your path. The goblin climbs steadily from the bottom of
+' the screen and wraps back to the bottom when it reaches the top; the
+' player controls only its sideways movement, with O and P. Children like
+' the delayed effect of rapid key presses. Each sad face captured adds 25
+' points; clear every face and a new playfield appears, as long as you
+' last. Crash into an obstacle and the round ends: the remaining faces
+' smile at you. The highest score is kept.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the joystick (either one) moves the goblin left and right.
+' The rules follow the TI listing: 80 obstacles and 27 faces at random in
+' rows 6-21, columns 2-31 (lines 430-630); a face sitting on three
+' obstacles cannot be reached and is drawn smiling from the start, and
+' does not count (lines 540-600); the goblin starts at row 23, column 17,
+' climbs one row per step and wraps from row 4 to row 23 (lines 640-700);
+' it moves one column per step, from 3 to 30 (lines 720-760); a face is
+' 25 points (lines 850-870); all faces taken: ALL RIGHT and a new board
+' with the score kept (lines 920-1050); an obstacle: the goblin is
+' crunched and every frown turns into a smile (lines 1060-1110); the
+' sounds of lines 640, 670, 1000-1020 and 1080-1100.
+' Adaptation liberties: one step every 8 frames, a frame quicker on each
+' new board (at least 4); the stick held repeats the move every step,
+' like the VIC's buffered key presses; TI rows and columns map to screen
+' rows and columns minus one, inside the CRT overscan; joystick menu for
+' "play again"; an editorial page. The frame loop is protected from the NMI.
+
+const Goblin = 128
+const Barrier = 129
+const Crunch = 130
+const Frown = 131
+const Smile = 132
+const Space = 32
+
+' Sound table slots (gb/s.mjs)
+const SndStep = 1
+const SndTick = 2
+const SndEat = 3
+const SndClear = 4
+const SndCrash = 5
+
+bcd digits 5 Score
+bcd digits 5 HighScore
+u8 Row = 22                    ' screen row and column (TI minus one)
+u8 Col = 16
+u8 Faces = 0                   ' W: faces to capture this board
+u8 Taken = 0
+u8 StepN = 8
+u8 Tick = 0
+u8 Stick = 0
+u8 I = 0
+u8 J = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+u8 L = 0
+u8 Choice = 0
+u16 Dst16 = 0
+
+  tile screen
+  set sound table GoblinSoundTable areas 2
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  Score = 0
+  StepN = 8
+
+new_board:
+  DrawBoard
+  Row = 22
+  Col = 16
+  Taken = 0
+  Tick = 0
+  put char Goblin at Col,Row
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  Stick = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  inc Tick
+  if Tick < StepN then goto main_loop
+  Tick = 0
+  ' Lines 650-770: up one row (wrapping), sideways with the stick
+  put char Space at Col,Row
+  play sound SndStep
+  dec Row
+  if Row < 3 then Row = 22
+  if Stick = 1 then
+    if Col > 2 then dec Col
+  end if
+  if Stick = 2 then
+    if Col < 29 then inc Col
+  end if
+  L = get char at Col,Row
+  if L = Barrier then goto crashed
+  if L = Frown then
+    ' Lines 850-870
+    Score += 25
+    inc Taken
+    play sound SndEat
+    ShowScore
+  else
+    play sound SndTick
+  end if
+  put char Goblin at Col,Row
+  if Taken >= Faces then goto all_right
+  goto main_loop
+
+  ' --- Lines 920-1050: every face taken ---
+all_right:
+  nmi on
+  print at 6,9, "**** ALL RIGHT! ****"
+  play sound SndClear
+  wait 120 frames
+  if StepN > 4 then dec StepN
+  goto new_board
+
+  ' --- Lines 1060-1250: crashed ---
+crashed:
+  nmi on
+  put char Crunch at Col,Row
+  play sound SndCrash
+  ' Every frown turns into a smile
+  for Y = 5 to 20
+    for X = 1 to 30
+      N = get char at X,Y
+      if N = Frown then put char Smile at X,Y
+    next
+  next
+  wait 60 frames
+  if Score > HighScore then HighScore = Score
+  ShowScore
+  print at 9,21, "PLAY AGAIN"
+  print at 9,22, "STOP"
+  Choice = 1
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,21 step 1
+  wait no fire
+  if Choice = 1 then goto title
+  cls
+  print at 12,11, "SEE YA!"
+  pause until press
+  wait no fire
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Lines 260-630: the title line, 80 obstacles, 27 faces
+sub DrawBoard:
+  nmi on
+  fill mode 2 text color with $F0
+  LoadTiles
+  cls
+  backdrop white
+  print at 8,1, "G O B L I N"
+  ShowScore
+  print at 2,22, "LEFT"
+  print at 24,22, "RIGHT"
+  put char 60 at 7,22
+  put char 62 at 22,22
+  for I = 1 to 80
+place_bar:
+    X = random(1, 30)
+    Y = random(5, 20)
+    L = get char at X,Y
+    if L = Barrier then goto place_bar
+    put char Barrier at X,Y
+  next
+  Faces = 27
+  for I = 1 to 27
+place_face:
+    X = random(1, 30)
+    Y = random(5, 20)
+    L = get char at X,Y
+    if L <> Space then goto place_face
+    ' Lines 550-600: a face on three obstacles smiles and does not count
+    N = 0
+    J = Y + 1
+    L = get char at X - 1,J
+    if L = Barrier then inc N
+    L = get char at X,J
+    if L = Barrier then inc N
+    L = get char at X + 1,J
+    if L = Barrier then inc N
+    if N = 3 then
+      put char Smile at X,Y
+      dec Faces
+    else
+      put char Frown at X,Y
+    end if
+  next
+  return
+end sub
+
+sub ShowScore:
+  print Score at 2,2
+  print at 20,2, "HS:"
+  print HighScore at 24,2
+  return
+end sub
+
+' Graphics II: tiles 128-132 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 40 to vram.pattern + Dst16
+    copy TileCol count 40 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub EditorialPage:
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 13,1, "GOBLIN"
+  print at 9,3, "BY DAN GOFF"
+  print at 6,4, "COMPUTE! JULY 1983"
+  print at 2,6, "AN UNEXPANDED VIC-20 GAME,"
+  print at 2,7, "WITH 64, ATARI, TI-99/4A"
+  print at 2,8, "AND APPLE VERSIONS."
+  print at 2,10, "YOUR GOBLIN CLIMBS ON ITS"
+  print at 2,11, "OWN: STEER IT LEFT AND"
+  print at 2,12, "RIGHT TO CAPTURE THE SAD"
+  print at 2,13, "FACES, 25 POINTS EACH, AND"
+  print at 2,14, "MISS THE BLOCKS."
+  put char Goblin at 4,16
+  put char Frown at 8,16
+  put char Barrier at 12,16
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  pause until press
+  wait no fire
+  return
+end sub
+
+' Tiles 128-132 (TI lines 1290-1370): goblin, barrier, crunched goblin,
+' frown, smile
+data TilePat bytes
+  $7E,$DB,$DB,$FF,$A5,$A5,$A5,$A5
+  $CC,$CC,$33,$33,$CC,$CC,$33,$33
+  $CC,$CC,$33,$33,$7E,$DB,$FF,$BD
+  $3C,$3C,$A5,$81,$99,$A5,$42,$3C
+  $3C,$42,$A5,$81,$A5,$99,$42,$3C
+end data
+data TileCol bytes
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $D0,$D0,$D0,$D0,$D0,$D0,$D0,$D0
+  $D0,$D0,$D0,$D0,$C0,$C0,$C0,$C0
+  $60,$60,$60,$60,$60,$60,$60,$60
+  $40,$40,$40,$40,$40,$40,$40,$40
+end data
+
+asm {
+StepT1:
+    db $40,$E0,$30,$03,$50
+TickT1:
+    db $40,$7F,$20,$01,$50
+EatT1:
+    db $40,$A9,$10,$03,$40,$7F,$10,$03,$40,$55,$10,$05,$50
+ClearT1:
+    db $40,$10,$41,$04,$40,$29,$41,$04,$40,$3B,$41,$04,$40,$74,$41,$04,$40,$20,$41,$04,$40,$57,$41,$04
+    db $40,$1B,$41,$04,$40,$47,$41,$04,$40,$2E,$41,$04,$40,$6A,$41,$04,$40,$33,$41,$04,$40,$18,$41,$04
+    db $40,$50,$41,$04,$40,$60,$41,$04,$40,$26,$41,$04,$50
+CrashN:
+    db $00,$00,$26,$03,$00,$00,$36,$03,$00,$00,$56,$03,$00,$00,$66,$03,$00,$00,$86,$03,$00,$00,$96,$03
+    db $00,$00,$B6,$03,$00,$00,$C6,$03,$00,$00,$E6,$03,$00,$00,$F6,$03,$10
+
+GoblinSoundTable:
+    dw StepT1,$7035
+    dw TickT1,$7035
+    dw EatT1,$7035
+    dw ClearT1,$7035
+    dw CrashN,$702B
+}
+
+

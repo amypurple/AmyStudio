@@ -1872,5 +1872,31 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "goblin",
+    "label": "Goblin (VIC-20 Port)",
+    "detail": "Dan Goff's climbing maze game with randomized barriers, collectible creatures, rising speed and persistent high score.",
+    "projectName": "goblin",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "speedski",
+    "label": "Speed Ski (VIC-20 Port)",
+    "detail": "Dub Scroggin's downhill racing game with gates, jumps, hazards, five slopes, multiple players and cumulative rounds.",
+    "projectName": "speedski",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
   }
 ];
