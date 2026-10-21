@@ -61,7 +61,14 @@ try {
     tap(core, INPUT.FIRE_LEFT);
     runFrames(core, 30);
     tap(core, INPUT.FIRE_LEFT);
-    runFrames(core, 120);
+    runFrames(core, 10);
+
+    const spriteTableAddress = (core.getVdpRegisters()[5] & 0x7f) << 7;
+    const roundMessageSprites = core.readVram(spriteTableAddress, 11 * 4);
+    for (let sprite = 0; sprite < 11; sprite += 1) {
+      assert.equal(roundMessageSprites[sprite * 4], 192, `sprite ${sprite} remained visible during the round message`);
+    }
+    runFrames(core, 110);
 
     assert.equal(core.getVdpRegisters()[4] & 0x03, 0, "Graphics II pattern thirds are not shared");
     const seenPhases = new Set();
