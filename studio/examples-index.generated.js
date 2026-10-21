@@ -21,20 +21,81 @@ export const exampleEditorialTracks = {
 
 export const exampleManifest = [
   {
-    "id": "coleco-bios-options",
-    "label": "Coleco BIOS Options",
-    "detail": "Displays the authentic eight-choice OS7 skill/player screen, then uses Amy's menu command for cursor and input handling.",
-    "projectName": "coleco-bios-options",
+    "id": "amy-chess",
+    "label": "Amy Chess v1.0",
+    "detail": "Amy Chess v1.0 for one or two human or CPU players, with BLITZ and NORMAL play, varied openings, ZX0 graphics, VoxPCM personality and a 31,478-byte cartridge build.",
+    "projectName": "Amy Chess v1.0",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "colecovision",
+      "chess",
+      "fide",
+      "game",
+      "voxpcm",
+      "zx0",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-chess-v1-1",
+    "label": "Amy Chess v1.1",
+    "detail": "Experimental Amy Chess v1.1 with the stronger tournament engine, safer queen promotion, varied openings, ZX0 graphics, VoxPCM personality and a 32,406-byte cartridge build.",
+    "projectName": "Amy Chess v1.1",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "colecovision",
+      "chess",
+      "fide",
+      "game",
+      "experimental",
+      "voxpcm",
+      "zx0",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-chess-v1-2",
+    "label": "Amy Chess v1.2",
+    "detail": "Amy Chess v1.2 with Human/CPU controls, BLITZ and NORMAL play, varied openings, stronger endgame momentum, corrected quiet-threat search, guarded CPU fallback, revised king and queen graphics, ZX0 compression, VoxPCM personality and a 32,033-byte aggressive cartridge build.",
+    "projectName": "Amy Chess v1.2",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "colecovision",
+      "chess",
+      "fide",
+      "game",
+      "voxpcm",
+      "zx0",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-vdp-pattern-tools-lab",
+    "label": "OS7 Pattern Transform Lab",
+    "detail": "Visual comparison of an eight-color tile with BIOS left/right and top/bottom flips, clockwise rotation, 2x pattern/color enlargement, and explicit Graphics II thirds.",
+    "projectName": "amy-vdp-pattern-tools-lab",
+    "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Demos",
     "tags": [
       "amy",
       "colecovision",
       "os7",
-      "bios",
-      "menu"
+      "graphics",
+      "patterns",
+      "colors"
     ]
   },
   {
@@ -107,42 +168,9 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "where-on-earth-adam",
-    "label": "Where On Earth? ADAM Edition",
-    "detail": "Bootable ADAM disk edition with selectable LANDMARKS and MILESTONES WEPK question packs loaded independently from disk.",
-    "projectName": "where-on-earth-adam",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "adam",
-      "multifile",
-      "history",
-      "data-pack",
-      "wepk"
-    ]
-  },
-  {
-    "id": "adam-multifile-adventure-demo",
-    "label": "ADAM Multifile Adventure Lab",
-    "detail": "Original interactive architecture demo with separate Amy files for navigation, encounters, and device services. It currently builds as a ColecoVision compatibility cartridge while the native ADAM backend is developed.",
-    "projectName": "adam-multifile-adventure-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "multifile",
-      "adam",
-      "architecture",
-      "manual-canon"
-    ]
-  },
-  {
     "id": "globe-quiz",
     "label": "Where On Earth?",
-    "detail": "Find world cities on a rotatable 3D globe built from 48 views, three shared Graphics II tile dictionaries, a sprite crosshair, and distance-based scoring.",
+    "detail": "Find world cities on a rotatable 3D globe with famous-city and capital packs, normal and assisted modes, distance scoring, music, effects, and a VoxPCM title voice.",
     "projectName": "globe-quiz",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -154,6 +182,7 @@ export const exampleManifest = [
       "3d",
       "tms9918a",
       "zx0",
+      "voxpcm",
       "sprites"
     ]
   },
@@ -173,22 +202,6 @@ export const exampleManifest = [
       "tms9918a",
       "zx0",
       "sprites"
-    ]
-  },
-  {
-    "id": "sp0256-voice-module-demo",
-    "label": "SP0256 Voice Module",
-    "detail": "Detects the external $43/$44/$45 voice adapter and speaks an asynchronous SP0256-AL2 allophone phrase.",
-    "projectName": "sp0256-voice-module-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "voice",
-      "sp0256",
-      "hardware"
     ]
   },
   {
@@ -226,7 +239,7 @@ export const exampleManifest = [
   {
     "id": "earth-globe-demo",
     "label": "Earth Globe",
-    "detail": "A 12-frame rotating Earth built from compact 8x8 tile maps and a shared Graphics II charset.",
+    "detail": "A rotating tiled Earth with deterministic ZX0 tile-order optimization and a static 12-sprite circular mask.",
     "projectName": "earth-globe-demo",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -235,56 +248,7 @@ export const exampleManifest = [
       "amy",
       "graphics",
       "animation",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "mickey-120-color-picture",
-    "label": "Mickey 120-Color Picture",
-    "detail": "A verified historical Mickey image demonstrating temporal 120-color display with two ZX0-compressed dual-purpose VRAM banks.",
-    "projectName": "mickey-120-color-picture",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "graphics",
-      "120c",
-      "temporal",
-      "historical",
       "zx0"
-    ]
-  },
-  {
-    "id": "tripcm-2009-demo",
-    "label": "TriPCM 2009 Historical Sample",
-    "detail": "The exact three-channel PCM stream extracted from Amy Bienvenu's 2009 result_19 ROM, played by Amy Studio's independent TriPCM runtime.",
-    "projectName": "tripcm-2009-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "tripcm",
-      "historical",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "sglib-putpixel-port",
-    "label": "SGlib PutPixel Port",
-    "detail": "Amy equivalent of sverx's SGlib bitmap demo: six independently colored diagonal pixels and edge-triggered direction changes from either controller.",
-    "projectName": "sglib-putpixel-port",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Ports",
-    "tags": [
-      "amy",
-      "graphics",
-      "bitmap",
-      "controller",
-      "devkitsms"
     ]
   },
   {
@@ -401,236 +365,10 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "amy-timer-lab",
-    "label": "Amy Timer Lab",
-    "detail": "Regression lab for safe named timers: repeating every-N ticks and one-shot after-N ticks started explicitly by game state.",
-    "projectName": "amy-timer-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
     "id": "amy-animation-service",
     "label": "Amy Cooperative Animation",
     "detail": "A compact two-layer metasprite animation with explicit update cadence, two bytes of state, and no hidden scheduler.",
     "projectName": "amy-animation-service",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "train-track-puzzle",
-    "label": "Rails Puzzles",
-    "detail": "ColecoVision railway logic game with nine prevalidated 7x7 puzzles, immutable clues, row and column counts, animated water, and a smoke-trailing victory train.",
-    "projectName": "train-track-puzzle",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "quatro-puzzles",
-    "label": "Quatro Puzzles",
-    "detail": "Four complete ColecoVision puzzle and strategy games sharing one RAM overlay: Explosion, Diamond Dash, Reversi, and Rails Puzzles.",
-    "projectName": "quatro-puzzles",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-overlay-layout-selftest",
-    "label": "Amy RAM Overlay Layout Self-Test",
-    "detail": "Phase-A executable test for record-backed overlay aliases, packed fields, and physical RAM reuse.",
-    "projectName": "amy-overlay-layout-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-arcade-overlay-memory-lab",
-    "label": "Arcade Overlay Memory Lab",
-    "detail": "Models the measured RAM footprints of Explosion, Diamond Dash, and Fly Swatter: 350 logical bytes share 162 physical bytes.",
-    "projectName": "amy-arcade-overlay-memory-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-scenes-overlays-design",
-    "label": "Amy Scenes and Overlays Lab",
-    "detail": "Executable lifecycle lab with three scene-local RAM layouts, compiler-generated frame dispatch, and NMI-safe mainline transitions.",
-    "projectName": "amy-scenes-overlays-design",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-scene-poison-selftest",
-    "label": "Amy Scene Poison Self-Test",
-    "detail": "Debug-only overlay initialization test: initialized bytes replace $CD poison while untouched bytes expose missing scene setup.",
-    "projectName": "amy-scene-poison-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-arcade-trio",
-    "label": "Amy Arcade Trio (Integration Lab)",
-    "detail": "Playable integration baseline containing the complete Explosion, Diamond Dash, and Fly Swatter games behind one menu. Used to validate scene transitions and RAM overlays.",
-    "projectName": "amy-arcade-trio",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-timer-safety-selftest",
-    "label": "Amy Timer Safety Self-Test",
-    "detail": "Executable safety regression for repeating, one-shot, stop, restart, independent timers, one-tick intervals, and NMI-off pause semantics.",
-    "projectName": "amy-timer-safety-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-state-machine-selftest",
-    "label": "Amy State Machine Self-Test",
-    "detail": "Typed four-state machine self-test using qualified one-based state constants and one bounded shared dispatch table.",
-    "projectName": "amy-state-machine-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-record-array-safety-selftest",
-    "label": "Amy Record Array Safety Self-Test",
-    "detail": "Executable regression for typed record copies, dynamic indexing, ref-record mutation, for-each aliases, and expression indexes.",
-    "projectName": "amy-record-array-safety-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-record-array-cost-record",
-    "label": "Amy Record Array Cost Lab",
-    "detail": "Size fixture using a 13-byte actor record array; compare with the equivalent parallel-array fixture.",
-    "projectName": "amy-record-array-cost-record",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-record-array-cost-parallel",
-    "label": "Amy Parallel Array Cost Lab",
-    "detail": "Size fixture using thirteen parallel byte arrays; baseline for the equivalent record-array fixture.",
-    "projectName": "amy-record-array-cost-parallel",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-on-frame-lab",
-    "label": "Amy On Frame Lab",
-    "detail": "Regression lab for on frame SubName: generated NMI calls a parameterless Amy sub once per VBlank.",
-    "projectName": "amy-on-frame-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-conditional-cstyle-lab",
-    "label": "Amy C-Style Conditional Lab",
-    "detail": "Regression lab for #define/#ifdef/#else/#endif plus inactive nested defines: disabled branches must not define symbols or emit duplicate subs.",
-    "projectName": "amy-conditional-cstyle-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-conditional-compile-lab",
-    "label": "Amy Conditional Compile Lab",
-    "detail": "Regression lab for define/ifdef/ifndef: active debug branch compiles, inactive duplicate sub names do not collide or emit code.",
-    "projectName": "amy-conditional-compile-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-surface-coverage",
-    "label": "Amy Surface Coverage",
-    "detail": "Exercises every canonical Amy statement form once, grouped by doc section. Compile failures indicate either a phantom doc claim or a real bug.",
-    "projectName": "amy-surface-coverage",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -654,81 +392,32 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "amy-v22-surface-lab",
-    "label": "Amy v2.2 Surface Lab",
-    "detail": "Exercises the new print/get/put v2.2 text and frame surface directly in Studio.",
-    "projectName": "amy-v22-surface-lab",
+    "id": "sprite-minimal",
+    "label": "Sprite Minimal",
+    "detail": "One sprite on a Mode 2 text bootstrap with minimal setup.",
+    "projectName": "sprite-minimal",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Language",
+    "category": "Minimal",
     "tags": [
       "amy",
-      "v2.2",
+      "minimal",
+      "sprites",
       "manual-canon"
     ]
   },
   {
-    "id": "amy-frame-transpose-lab",
-    "label": "Amy Frame Transpose Lab",
-    "detail": "Visual regression for get frame / put frame dimensions: 21x1 text becomes 7x3, then 3x7, then 21x1 centered.",
-    "projectName": "amy-frame-transpose-lab",
+    "id": "amy-sprite-flicker-selftest",
+    "label": "Sprite Flicker and Stable Layers",
+    "detail": "Eight-sprite scanline stress test with a stable three-layer character and five fairly reordered sprites.",
+    "projectName": "amy-sprite-flicker-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Selftests",
     "tags": [
       "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-multicolor-pixel-lab",
-    "label": "Amy Multicolor Pixel Lab",
-    "detail": "Minimal Graphics Mode 3 example: clear pattern bytes, set multicolor pixels, read one pixel back.",
-    "projectName": "amy-multicolor-pixel-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-mode3-dispatch-lab",
-    "label": "Amy Mode 3 Dispatch Lab",
-    "detail": "Self-checking pset/pget mode-dispatch: plain pset and pget route to Mode 3 after 'multicolor screen'. Verifies on-shape, off-shape, corners, and clipped-edge safety.",
-    "projectName": "amy-mode3-dispatch-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-mode3-line-lab",
-    "label": "Amy Mode 3 Line/Box Lab",
-    "detail": "Self-checking lab: dy=0 line routes to hline, steep/45-deg lines, off-screen endpoint, degenerate x1=x2, and box fill. All verified via pget readback.",
-    "projectName": "amy-mode3-line-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-vdp-pattern-tools-lab",
-    "label": "OS7 Pattern Transform Lab",
-    "detail": "Visual comparison of an eight-color tile with BIOS left/right and top/bottom flips, clockwise rotation, 2x pattern/color enlargement, and explicit Graphics II thirds.",
-    "projectName": "amy-vdp-pattern-tools-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
+      "sprites",
+      "selftest",
       "manual-canon"
     ]
   },
@@ -746,10 +435,23 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "record-array-minimal",
-    "label": "Record Array Minimal",
-    "detail": "Smoke-tests global records plus array-of-record field stride with two text tiles.",
-    "projectName": "record-array-minimal",
+    "id": "train-track-puzzle",
+    "label": "Rails Puzzles",
+    "detail": "ColecoVision railway logic game with nine prevalidated 7x7 puzzles, immutable clues, row and column counts, animated water, and a smoke-trailing victory train.",
+    "projectName": "train-track-puzzle",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "input-loop-minimal",
+    "label": "Input Loop Minimal",
+    "detail": "Moves a text cursor with canonical inline joypad input.",
+    "projectName": "input-loop-minimal",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Minimal",
@@ -760,31 +462,45 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "nested-record-array-minimal",
-    "label": "Nested Record Array Minimal",
-    "detail": "Smoke-tests nested record fields plus array-of-record stride with two text tiles.",
-    "projectName": "nested-record-array-minimal",
+    "id": "coleco-bios-options",
+    "label": "Coleco BIOS Options",
+    "detail": "Displays the stock eight-choice OS7 screen, then uses Amy's menu input to return the selected option.",
+    "projectName": "coleco-bios-options",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Minimal",
+    "category": "Games",
     "tags": [
       "amy",
-      "minimal",
       "manual-canon"
     ]
   },
   {
-    "id": "sprite-minimal",
-    "label": "Sprite Minimal",
-    "detail": "One sprite on a Mode 2 text bootstrap with minimal setup.",
-    "projectName": "sprite-minimal",
+    "id": "collision-minimal",
+    "label": "Collision Minimal",
+    "detail": "Moves a sprite through another and shows the VDP coincidence bit state.",
+    "projectName": "collision-minimal",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Minimal",
     "tags": [
       "amy",
       "minimal",
-      "sprites",
+      "collision",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "collision-box-test",
+    "label": "Collision Box Test",
+    "detail": "Three sprites: one stationary at center, one bouncing on Y (same X), one bouncing on X (same Y). Displays HIT/--- per pair using named sprite hitboxes.",
+    "projectName": "collision-box-test",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "collision",
+      "selftest",
       "manual-canon"
     ]
   },
@@ -829,726 +545,10 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "space-taxi-music-box",
-    "label": "Space Taxi Music Box",
-    "detail": "Speech test A: balanced formants and consonants, with keypad phrases and two FIRE responses.",
-    "projectName": "space-taxi-music-box",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "space-taxi-music-box-formants",
-    "label": "Space Taxi Music Box - Formants",
-    "detail": "Speech test B: steadier and louder vowel formants with quieter consonant noise.",
-    "projectName": "space-taxi-music-box-formants",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "space-taxi-music-box-consonants",
-    "label": "Space Taxi Music Box - Consonants",
-    "detail": "Speech test C: more sensitive consonant detection and stronger noise articulation.",
-    "projectName": "space-taxi-music-box-consonants",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "space-taxi-music-box-hybrid-smooth",
-    "label": "Space Taxi Music Box - Hybrid Smooth",
-    "detail": "Speech test D: keeps the preferred 1, 2, 6, 7 and 9 conversions while smoothing 3, 4, 5 and 8.",
-    "projectName": "space-taxi-music-box-hybrid-smooth",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "space-taxi-music-box-hybrid-sharp",
-    "label": "Space Taxi Music Box - Hybrid Sharp",
-    "detail": "Speech test E: keeps the preferred digits while giving 3, 4, 5 and 8 faster, noisier articulation.",
-    "projectName": "space-taxi-music-box-hybrid-sharp",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "space-taxi-music-box-hybrid-banded",
-    "label": "Space Taxi Music Box - Banded",
-    "detail": "Speech test F: selects low and middle formants from separate vocal frequency bands.",
-    "projectName": "space-taxi-music-box-hybrid-banded",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "space-taxi-music-box-hybrid-banded-tones",
-    "label": "Space Taxi Music Box - Banded 3 Tones",
-    "detail": "Speech test G: replaces consonant noise with a third formant for digits 3, 4, 5 and 8.",
-    "projectName": "space-taxi-music-box-hybrid-banded-tones",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dsound-sample-280",
-    "label": "DSound Sample 280",
-    "detail": "DSOUND sample project using supplied WAV2CV-style C byte data, step 3 and amplification 280%.",
-    "projectName": "dsound-sample-280",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "input-loop-minimal",
-    "label": "Input Loop Minimal",
-    "detail": "Moves a text cursor with canonical inline joypad input.",
-    "projectName": "input-loop-minimal",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Minimal",
-    "tags": [
-      "amy",
-      "minimal",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "collision-minimal",
-    "label": "Collision Minimal",
-    "detail": "Moves a sprite through another and shows the VDP coincidence bit state.",
-    "projectName": "collision-minimal",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Minimal",
-    "tags": [
-      "amy",
-      "minimal",
-      "collision",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "collision-box-test",
-    "label": "Collision Box Test",
-    "detail": "Three sprites: one stationary at center, one bouncing on Y (same X), one bouncing on X (same Y). Displays HIT/--- per pair using named sprite hitboxes.",
-    "projectName": "collision-box-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "collision",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "text-screen-demo",
-    "label": "Text Screen Demo",
-    "detail": "Compatibility demo for the convenience `text screen` bootstrap.",
-    "projectName": "text-screen-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Minimal",
-    "tags": [
-      "amy",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "amy-qbasic-flow-demo",
-    "label": "Amy QBASIC Flow Demo",
-    "detail": "First QBASIC-like syntax demo using label shorthand, IF/ELSE/END IF, and EXIT/CONTINUE across DO, FOR, and WHILE.",
-    "projectName": "amy-qbasic-flow-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Language",
-    "tags": [
-      "amy",
-      "qbasic",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "amy-math-demo",
-    "label": "Amy Math Demo",
-    "detail": "Math formatting, sqrt, u32 chain validation, and BCD output.",
-    "projectName": "amy-math-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-compare-fixed-demo",
-    "label": "Amy Compare Fixed Demo",
-    "detail": "Displays the current numeric families using type-aware print forms.",
-    "projectName": "amy-compare-fixed-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-arithmetic-mix-demo",
-    "label": "Amy Arithmetic Mix Demo",
-    "detail": "Signed, unsigned, and fixed-point arithmetic smoke test with visible PASS/FAIL cells.",
-    "projectName": "amy-arithmetic-mix-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-u16-divide-lab",
-    "label": "Amy U16 Divide Lab",
-    "detail": "Minimal unsigned 16-bit `/=` runtime divide smoke test.",
-    "projectName": "amy-u16-divide-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-i16-divide-lab",
-    "label": "Amy I16 Divide Lab",
-    "detail": "Minimal signed 16-bit `/=` runtime divide smoke test.",
-    "projectName": "amy-i16-divide-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-modulo-lab",
-    "label": "Amy Modulo Lab",
-    "detail": "Self-checking integer `%` and `mod` expression test for u8/u16/i8/i16.",
-    "projectName": "amy-modulo-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-bounce-edge-lab",
-    "label": "Amy Bounce Edge Lab",
-    "detail": "Self-checking bounce edge test for skipped byte bounds and exact bound hits.",
-    "projectName": "amy-bounce-edge-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-u32-multiply-lab",
-    "label": "Amy U32 Multiply Lab",
-    "detail": "Minimal unsigned 32-bit `*=` runtime multiply smoke test.",
-    "projectName": "amy-u32-multiply-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-u32-divide-lab",
-    "label": "Amy U32 Divide Lab",
-    "detail": "Minimal unsigned 32-bit `/=` runtime divide smoke test.",
-    "projectName": "amy-u32-divide-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed-multiply-lab",
-    "label": "Amy Fixed Multiply Lab",
-    "detail": "Minimal fixed 8.8 `*=` runtime multiply smoke test.",
-    "projectName": "amy-fixed-multiply-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed-divide-lab",
-    "label": "Amy Fixed Divide Lab",
-    "detail": "Minimal fixed 8.8 `/=` runtime divide smoke test.",
-    "projectName": "amy-fixed-divide-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-selftest",
-    "label": "Amy Fixed32 Selftest",
-    "detail": "Basic fixed32 add, multiply, negative-result math, whole-value sqrt, and decimal print smoke test.",
-    "projectName": "amy-fixed32-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-numeric-comparison-selftest",
-    "label": "Amy Numeric Comparison Selftest",
-    "detail": "Self-checking mixed-width, signed, fixed, wide, FP5, BCD, and reversed-operand comparison matrix.",
-    "projectName": "amy-numeric-comparison-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-multiply-lab",
-    "label": "Amy Fixed32 Multiply Lab",
-    "detail": "Strategic fixed32 multiply debug screen covering zero, one, halves, and signed combinations.",
-    "projectName": "amy-fixed32-multiply-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-multiply-bytes",
-    "label": "Amy Fixed32 Multiply Bytes",
-    "detail": "Raw-byte fixed32 multiply debug screen showing decimal output plus result bytes [3..0].",
-    "projectName": "amy-fixed32-multiply-bytes",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-divide-lab",
-    "label": "Amy Fixed32 Divide Lab",
-    "detail": "Focused fixed32 divide debug screen covering identity, halves, signed cases, and divide-by-zero behavior.",
-    "projectName": "amy-fixed32-divide-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-abs-lab",
-    "label": "Amy Fixed32 Abs Lab",
-    "detail": "Statement-style fixed32 absolute value lab covering negative, positive, and zero inputs.",
-    "projectName": "amy-fixed32-abs-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-random-lab",
-    "label": "Amy Fixed32 Random Lab",
-    "detail": "Statement-style fixed32 fractional random lab showing 0.0 .. <1.0 samples.",
-    "projectName": "amy-fixed32-random-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-storage-lab",
-    "label": "Amy FP5 Storage Lab",
-    "detail": "Byte-level smoke test for 5-byte fp5 zero-init and fp5-to-fp5 copy.",
-    "projectName": "amy-float-storage-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-convert-lab",
-    "label": "Amy FP5 Convert Lab",
-    "detail": "Byte-level smoke test for u16/i16 to 5-byte fp5 conversion.",
-    "projectName": "amy-float-convert-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-abs-lab",
-    "label": "Amy FP5 Abs Lab",
-    "detail": "Byte-level fp5 absolute-value smoke test using integer and positive sources.",
-    "projectName": "amy-float-abs-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-random-lab",
-    "label": "Amy FP5 Random Lab",
-    "detail": "Byte-level smoke test for fp5 random values in the 0.0 .. <1.0 range.",
-    "projectName": "amy-float-random-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-random-range-lab",
-    "label": "Amy FP5 Random Range Lab",
-    "detail": "Smoke test for fp5 random(min,max), including fp5 variable bounds and negative ranges.",
-    "projectName": "amy-float-random-range-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-print-lab",
-    "label": "Amy FP5 Print Lab",
-    "detail": "Exact-format smoke test for fp5 printing with strict digits 16.",
-    "projectName": "amy-float-print-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-compare-lab",
-    "label": "Amy FP5 Compare Lab",
-    "detail": "Truth-table style fp5 compare test with both expected true and expected false results, including zero, negative, literal-boundary, and fractional cases.",
-    "projectName": "amy-float-compare-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-addsub-lab",
-    "label": "Amy FP5 Add/Sub Lab",
-    "detail": "Human-readable smoke test for fp5 += and -= with positive and negative integer sources.",
-    "projectName": "amy-float-addsub-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-cancellation-lab",
-    "label": "Amy FP5 Cancellation Lab",
-    "detail": "Stress test for near-equal subtraction and subtract-after-divide in fp5.",
-    "projectName": "amy-float-cancellation-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-muldiv-lab",
-    "label": "Amy FP5 Mul/Div Lab",
-    "detail": "Human-readable smoke test for native fp5 *= plus the current bridged fp5 /= path.",
-    "projectName": "amy-float-muldiv-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-divide-truth-lab",
-    "label": "Amy FP5 Divide Truth Lab",
-    "detail": "Division-focused fp5 validation across zero, one, small, large, and signed cases.",
-    "projectName": "amy-float-divide-truth-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-log-lab",
-    "label": "Amy FP5 Log Lab",
-    "detail": "First fp5 log tranche: exact power-of-two anchors, domain clamps, and a first interior approximation.",
-    "projectName": "amy-float-log-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-exp-lab",
-    "label": "Amy FP5 Exp Lab",
-    "detail": "Experimental fp5 exp smoke test: exp(0), exp(1), and log/exp round-trip checks while exp remains backlogged for improvement.",
-    "projectName": "amy-float-exp-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-sign-int-lab",
-    "label": "Amy FP5 Sign / Int Lab",
-    "detail": "Exact fp5 sign classification and floor-style int helper verification on zero, positive, negative, and fractional values.",
-    "projectName": "amy-float-sign-int-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-sqrt-lab",
-    "label": "Amy FP5 Sqrt Lab",
-    "detail": "Human-readable smoke test for fp5 sqrt via the current fixed32 bridge.",
-    "projectName": "amy-float-sqrt-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-sqrt-precision-lab",
-    "label": "Amy FP5 Sqrt Precision Lab",
-    "detail": "Regression case for repeated nested fp5 sqrt followed by repeated self-square recovery near 65535.",
-    "projectName": "amy-float-sqrt-precision-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-sqrt-byte-lab",
-    "label": "Amy FP5 Sqrt Byte Lab",
-    "detail": "Raw-byte diagnostic for sqrt(65535) and the first fp5 self-square recovery.",
-    "projectName": "amy-float-sqrt-byte-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-builtin-surface-lab",
-    "label": "Amy FP5 Builtin Surface Lab",
-    "detail": "End-to-end smoke test for rnd, sqr, sgn, int, str$, and fp5 ^= 2, including exact print vs friendly str$ with fp5 source spelling.",
-    "projectName": "amy-float-builtin-surface-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-float-str-buffer-lab",
-    "label": "Amy FP5 Str$ Buffer Lab",
-    "detail": "Friendly fp5 string smoke test for str$ into 16-byte buffers, displayed with put/count using fp5 declarations.",
-    "projectName": "amy-float-str-buffer-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-numeric-str-lab",
-    "label": "Amy Numeric Str$ Lab",
-    "detail": "Coverage lab proving str$(Value) works for every current numeric family without a general heap/string runtime.",
-    "projectName": "amy-numeric-str-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-format-bytes",
-    "label": "Amy Fixed32 Format Bytes",
-    "detail": "Formatter debug screen showing the raw ASCII byte codes produced by fixed32 digits-11 formatting.",
-    "projectName": "amy-fixed32-format-bytes",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-fixed32-sqrt-lab",
-    "label": "Amy Fixed32 Sqrt Lab",
-    "detail": "Direct fixed32 sqrt checks plus sqrt/sqrt/^2/^2 drift checks to expose rounding bias.",
-    "projectName": "amy-fixed32-sqrt-lab",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-ahl-benchmark-sketch",
-    "label": "Ahl Benchmark",
-    "detail": "Runnable Creative Computing / Ahl benchmark rewrite using current fixed32 statement surfaces.",
-    "projectName": "amy-ahl-benchmark",
+    "id": "rebound-demo",
+    "label": "Rebound Demo",
+    "detail": "Simple arcade-style motion demo for control and rendering comparison.",
+    "projectName": "rebound-demo",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Demos",
@@ -1558,128 +558,58 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "amy-float-ahl-benchmark",
-    "label": "Ahl Float Benchmark",
-    "detail": "Creative Computing / Ahl benchmark using current AMY fp5 surfaces.",
-    "projectName": "amy-float-ahl-benchmark",
+    "id": "warrior-barbarian-slideshow",
+    "label": "Warrior + Barbarian Slideshow",
+    "detail": "Two compressed Mode 2 bitmap pictures shown in sequence with a 250-frame delay.",
+    "projectName": "warrior-barbarian-slideshow",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Numeric",
+    "category": "Demos",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "amy-fixed32-square-lab",
-    "label": "Amy Fixed32 Square Lab",
-    "detail": "Focused fixed32 square debug screen for the new ^= 2 convenience surface.",
-    "projectName": "amy-fixed32-square-lab",
+    "id": "africa-music-box",
+    "label": "Africa Music Box",
+    "detail": "Music-box demo for song-control workflow and source clarity comparison.",
+    "projectName": "africa-music-box",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Numeric",
+    "category": "Music",
     "tags": [
       "amy",
-      "numeric",
+      "audio",
       "manual-canon"
     ]
   },
   {
-    "id": "amy-fixed-ufixed-playground",
-    "label": "Amy Fixed / UFixed Playground",
-    "detail": "Interactive numeric playground for fixed, ufixed, floor, and formula-style operators.",
-    "projectName": "amy-fixed-ufixed-playground",
+    "id": "commando-music-box",
+    "label": "Commando Music Box",
+    "detail": "Title-screen plus keypad music-box demo kept in legacy-compat for its state-machine style.",
+    "projectName": "commando-music-box",
     "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
+    "editorialTrack": "legacy-compat",
+    "category": "Music",
     "tags": [
       "amy",
-      "numeric",
-      "manual-canon"
+      "audio",
+      "legacy-compat"
     ]
   },
   {
-    "id": "amy-numeric-regression-demo",
-    "label": "Amy Numeric Consolidation Demo",
-    "detail": "Covers display, widening casts, mixed compares, and fixed-point addition.",
-    "projectName": "amy-numeric-regression-demo",
+    "id": "commando-tiny-music-box",
+    "label": "Commando Tiny Music",
+    "detail": "Minimal SPECIAL-04 tiny-music playback sample to verify compact old-devkit music support.",
+    "projectName": "commando-tiny-music-box",
     "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
+    "editorialTrack": "legacy-compat",
+    "category": "Music",
     "tags": [
       "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-numeric-edge-cases-demo",
-    "label": "Amy Numeric Edge Cases Demo",
-    "detail": "Boundary-value rendering and comparisons for the main numeric families.",
-    "projectName": "amy-numeric-edge-cases-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-numeric-overflow-demo",
-    "label": "Amy Numeric Overflow Demo",
-    "detail": "Shows wrap, overflow, BCD carry/borrow, and fixed-point edge behavior.",
-    "projectName": "amy-numeric-overflow-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Language",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-numeric-local32-demo",
-    "label": "Amy Numeric Local 32 Demo",
-    "detail": "Regression screen for stack-backed local u32 and i32 values.",
-    "projectName": "amy-numeric-local32-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Numeric",
-    "tags": [
-      "amy",
-      "numeric",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-wide-array-selftest",
-    "label": "Amy Wide Array Self-Test",
-    "detail": "Runtime check for u32 and i32 arrays with variable and expression indexes.",
-    "projectName": "amy-wide-array-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-wide-integer-selftest",
-    "label": "Amy Wide Integer Self-Test",
-    "detail": "Runtime bitwise and shift checks for u16, i16, u32, i32, arrays, records, and overlays.",
-    "projectName": "amy-wide-integer-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
+      "audio",
+      "legacy-compat"
     ]
   },
   {
@@ -1777,7 +707,7 @@ export const exampleManifest = [
   {
     "id": "cvbasic-spinner-port",
     "label": "CVBasic Spinner Port",
-    "detail": "Amy port of CVBasic spinner.bas using signed, consumable spinner deltas directly to steer a 16x16 happy-face sprite.",
+    "detail": "Amy port of CVBasic spinner.bas using spinner deltas to steer a 16x16 happy-face sprite.",
     "projectName": "cvbasic-spinner-port",
     "sourceLang": "amy",
     "editorialTrack": "cvbasic-port",
@@ -1822,38 +752,8 @@ export const exampleManifest = [
   {
     "id": "cvbasic-vector-cube-port",
     "label": "CVBasic Vector Cube Port",
-    "detail": "Amy port of Matthew Eggleston's CVBasic vector cube idea using native bitmap line drawing.",
+    "detail": "Amy adaptation of Matthew Eggleston's CVBasic vector cube demo using native bitmap line drawing.",
     "projectName": "cvbasic-vector-cube-port",
-    "sourceLang": "amy",
-    "editorialTrack": "cvbasic-port",
-    "category": "CVBasic Ports",
-    "tags": [
-      "amy",
-      "cvbasic",
-      "port",
-      "cvbasic-port"
-    ]
-  },
-  {
-    "id": "cvbasic-vgm-player-port",
-    "label": "CVBasic VGM Player Port",
-    "detail": "Amy port of CVBasic vgm.bas using on frame plus a tiny embedded SN76489 VGM stream.",
-    "projectName": "cvbasic-vgm-player-port",
-    "sourceLang": "amy",
-    "editorialTrack": "cvbasic-port",
-    "category": "CVBasic Ports",
-    "tags": [
-      "amy",
-      "cvbasic",
-      "port",
-      "cvbasic-port"
-    ]
-  },
-  {
-    "id": "cvbasic-viboritas-port",
-    "label": "CVBasic Viboritas Port",
-    "detail": "Amy port of Oscar Toledo's Viboritas demo: a 1990 Z80 assembler game revised for CVBasic in Feb 2024.",
-    "projectName": "cvbasic-viboritas-port",
     "sourceLang": "amy",
     "editorialTrack": "cvbasic-port",
     "category": "CVBasic Ports",
@@ -1880,10 +780,37 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "compressed-picture-demo",
-    "label": "Warrior Slideshow",
-    "detail": "Compressed Warrior Mode 2 bitmap slideshow sample for size and render comparison.",
-    "projectName": "warrior-slideshow",
+    "id": "amy-float-ahl-benchmark",
+    "label": "Ahl Float Benchmark",
+    "detail": "Creative Computing / Ahl benchmark using current AMY fp5 surfaces.",
+    "projectName": "amy-float-ahl-benchmark",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Numeric",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "three-sort-algorithms",
+    "label": "Three Sort Algorithms",
+    "detail": "One visual listing comparing bubble, insertion, and selection sort.",
+    "projectName": "three-sort-algorithms",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Algorithms",
+    "tags": [
+      "amy",
+      "algorithms",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "united-states-flag-mode3",
+    "label": "United States Flag Mode 3",
+    "detail": "Atari BASIC flag idea adapted to ColecoVision multicolor mode with boxes and pset multicolor stars.",
+    "projectName": "united-states-flag-mode3",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Demos",
@@ -1893,10 +820,23 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "warrior-nibble",
-    "label": "Warrior Nibble",
-    "detail": "Warrior Mode 2 bitmap using the Nibble codec for preview and runtime decompression.",
-    "projectName": "warrior-nibble",
+    "id": "canada-flag-mode3",
+    "label": "Canada Flag Mode 3",
+    "detail": "Stylized Canadian flag drawn in ColecoVision multicolor mode with boxes and a compact pixel maple leaf.",
+    "projectName": "canada-flag-mode3",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-timer-lab",
+    "label": "Amy Timer Lab",
+    "detail": "Regression lab for safe named timers: repeating every-N ticks and one-shot after-N ticks started explicitly by game state.",
+    "projectName": "amy-timer-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -1906,315 +846,110 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "msx-forest-zx0-benchmark",
-    "label": "MSX Forest ZX0 Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-zx0-benchmark",
+    "id": "amy-timer-safety-selftest",
+    "label": "Amy Timer Safety Self-Test",
+    "detail": "Executable safety regression for repeating, one-shot, stop, restart, independent timers, one-tick intervals, and NMI-off pause semantics.",
+    "projectName": "amy-timer-safety-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-on-frame-lab",
+    "label": "Amy On Frame Lab",
+    "detail": "Regression lab for on frame SubName: generated NMI calls a parameterless Amy sub once per VBlank.",
+    "projectName": "amy-on-frame-lab",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "msx-forest-dan3-benchmark",
-    "label": "MSX Forest DAN3 Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-dan3-benchmark",
+    "id": "amy-conditional-compile-lab",
+    "label": "Amy Conditional Compile Lab",
+    "detail": "Regression lab for define/ifdef/ifndef: active debug branch compiles, inactive duplicate sub names do not collide or emit code.",
+    "projectName": "amy-conditional-compile-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Games",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "msx-forest-dan2-benchmark",
-    "label": "MSX Forest DAN2 Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-dan2-benchmark",
+    "id": "amy-multicolor-pixel-lab",
+    "label": "Amy Multicolor Pixel Lab",
+    "detail": "Minimal Graphics Mode 3 example: clear pattern bytes, set multicolor pixels, read one pixel back.",
+    "projectName": "amy-multicolor-pixel-lab",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Games",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "msx-forest-dan1-benchmark",
-    "label": "MSX Forest DAN1 Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-dan1-benchmark",
+    "id": "explosion",
+    "label": "Explosion",
+    "detail": "Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion board game: overload cells, chain reactions, and legacy CPU move evaluation.",
+    "projectName": "explosion",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Games",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "msx-forest-zx7-benchmark",
-    "label": "MSX Forest ZX7 Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-zx7-benchmark",
+    "id": "space-trainer",
+    "label": "Space Trainer",
+    "detail": "Amy port of Amy Bienvenu / NewColeco's small SDCC Space Trainer sample: two-player inertia, bonus bubble, score race, and original BIOS sound tables.",
+    "projectName": "space-trainer",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Games",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "msx-forest-pletter-benchmark",
-    "label": "MSX Forest Pletter Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-pletter-benchmark",
+    "id": "snake-demo",
+    "label": "Snake Demo",
+    "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
+    "projectName": "snake-demo",
     "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
+    "editorialTrack": "legacy-compat",
     "category": "Demos",
     "tags": [
       "amy",
-      "manual-canon"
+      "legacy-compat"
     ]
   },
   {
-    "id": "msx-forest-bitbuster12-benchmark",
-    "label": "MSX Forest BitBuster 1.2 Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-bitbuster12-benchmark",
+    "id": "cvbasic-viboritas-port",
+    "label": "CVBasic Viboritas Port",
+    "detail": "Amy port of Oscar Toledo's Viboritas demo: a 1990 Z80 assembler game revised for CVBasic in Feb 2024.",
+    "projectName": "cvbasic-viboritas-port",
     "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "editorialTrack": "cvbasic-port",
+    "category": "CVBasic Ports",
     "tags": [
       "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "msx-forest-nibble-benchmark",
-    "label": "MSX Forest Nibble Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-nibble-benchmark",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "msx-forest-lzf-benchmark",
-    "label": "MSX Forest LZF Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-lzf-benchmark",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "msx-forest-mdkrle-benchmark",
-    "label": "MSX Forest MDK-RLE Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-mdkrle-benchmark",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "msx-forest-raw-benchmark",
-    "label": "MSX Forest RAW Benchmark",
-    "detail": "MSX Forest bitmap benchmark measuring PATTERN+COLOR load time with an NMI-driven frame counter.",
-    "projectName": "msx-forest-raw-benchmark",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-zx0-slideshow",
-    "label": "Title Screens ZX0 Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-zx0-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-dan3-slideshow",
-    "label": "Title Screens DAN3 Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-dan3-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-dan2-slideshow",
-    "label": "Title Screens DAN2 Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-dan2-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-dan1-slideshow",
-    "label": "Title Screens DAN1 Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-dan1-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-zx7-slideshow",
-    "label": "Title Screens ZX7 Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-zx7-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-pletter-slideshow",
-    "label": "Title Screens Pletter Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-pletter-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-bitbuster12-slideshow",
-    "label": "Title Screens BitBuster 1.2 Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-bitbuster12-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-nibble-slideshow",
-    "label": "Title Screens Nibble Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-nibble-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-lzf-slideshow",
-    "label": "Title Screens LZF Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-lzf-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "title-screens-mdkrle-slideshow",
-    "label": "Title Screens MDK-RLE Slideshow",
-    "detail": "Four ColecoVision homebrew title screens shown with one compression codec and a final frame-count report.",
-    "projectName": "title-screens-mdkrle-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "barbarian-slideshow",
-    "label": "Barbarian Slideshow",
-    "detail": "Compressed slideshow variant for visual and ROM-size comparison.",
-    "projectName": "barbarian-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "warrior-barbarian-slideshow",
-    "label": "Warrior + Barbarian Slideshow",
-    "detail": "Two compressed Mode 2 bitmap pictures shown in sequence with a 250-frame delay.",
-    "projectName": "warrior-barbarian-slideshow",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "game-variables-demo",
-    "label": "Game Variables Demo",
-    "detail": "Small state-driven demo for u8/u16 mutation and text updates.",
-    "projectName": "game-variables-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
+      "cvbasic",
+      "port",
+      "cvbasic-port"
     ]
   },
   {
@@ -2246,344 +981,10 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "snake-demo",
-    "label": "Snake Demo",
-    "detail": "Gameplay demo kept as a more machine-shaped flow-control comparison sample.",
-    "projectName": "snake-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "rebound-demo",
-    "label": "Rebound Demo",
-    "detail": "Simple arcade-style motion demo for control and rendering comparison.",
-    "projectName": "rebound-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "lottery-ticket-demo",
-    "label": "Lottery Ticket Demo",
-    "detail": "Procedural text-generation demo with multiple label-driven routines.",
-    "projectName": "lottery-ticket-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "cvbasic-vpoke-demo",
-    "label": "CVBasic Vpoke Demo",
-    "detail": "Direct VRAM write demo kept for CVBasic-side comparison.",
-    "projectName": "cvbasic-vpoke-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "cvbasic",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "cvbasic-data-array-demo",
-    "label": "CVBasic Data Array Demo",
-    "detail": "Data-array oriented sample for comparing source ergonomics with CVBasic.",
-    "projectName": "cvbasic-data-array-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "cvbasic",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "wipe-screen-demo",
-    "label": "Wipe Screen Demo",
-    "detail": "Classic screen-transition demo for visual and code-size comparison.",
-    "projectName": "wipe-screen-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "united-states-flag-mode3",
-    "label": "United States Flag Mode 3",
-    "detail": "Atari BASIC flag idea adapted to ColecoVision multicolor mode with boxes and pset multicolor stars.",
-    "projectName": "united-states-flag-mode3",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "canada-flag-mode3",
-    "label": "Canada Flag Mode 3",
-    "detail": "Stylized Canadian flag drawn in ColecoVision multicolor mode with boxes and a compact pixel maple leaf.",
-    "projectName": "canada-flag-mode3",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Demos",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "africa-music-box",
-    "label": "Africa Music Box",
-    "detail": "Music-box demo for song-control workflow and source clarity comparison.",
-    "projectName": "africa-music-box",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "happy-birthday-sound-demo",
-    "label": "Happy Birthday Sound Demo",
-    "detail": "Two-slot sound-table demo for compact audio workflow comparison.",
-    "projectName": "happy-birthday-sound-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "old-devkit-page-flip",
-    "label": "Old Devkit Page Flip",
-    "detail": "Legacy-style double-buffered name-table demo using set screen pages and swap screens.",
-    "projectName": "old-devkit-page-flip",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
     "id": "old-devkit-10years",
     "label": "30th Anniversary Cake",
     "detail": "1996-2026 ColecoVision anniversary version of the 2006 10-years cake demo with Happy Birthday sound playback.",
     "projectName": "amy-30th-anniversary",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "commando-music-box",
-    "label": "Commando Music Box",
-    "detail": "Title-screen plus keypad music-box demo kept in legacy-compat for its state-machine style.",
-    "projectName": "commando-music-box",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "commando-tiny-music-box",
-    "label": "Commando Tiny Music",
-    "detail": "Minimal SPECIAL-04 tiny-music playback sample to verify compact old-devkit music support.",
-    "projectName": "commando-tiny-music-box",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "delta-remix-music-box",
-    "label": "Delta Remix Music Box",
-    "detail": "Unfinished legacy SDCC Delta Remix music sample with two restored sound effects for musicbox testing.",
-    "projectName": "delta-remix-music-box",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "brinquitos-tiny-music-demo",
-    "label": "Brinquitos Tiny Music",
-    "detail": "Converted CVBasic MUSIC blocks played through Amy SPECIAL-04 tiny sound.",
-    "projectName": "brinquitos-tiny-music-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "easter-bunny",
-    "label": "Easter Bunny (Legacy Port)",
-    "detail": "Amy port of Amy Bienvenu / NewColeco's Minigame Compo 2007 Easter Bunny. This preserves the legacy devkit gameplay, graphics, levels, and Coleco BIOS sound data while the port is progressively moved away from inline ASM.",
-    "projectName": "easter-bunny",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "easter-bunny-v2",
-    "label": "Easter Bunny v2 (Amy cleanup)",
-    "detail": "Amy-facing cleanup copy of the Easter Bunny legacy port. The visible source uses Amy setup syntax and keeps the remaining verified engine in a project ASM file while subsystems are ported gradually.",
-    "projectName": "easter-bunny-v2",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "easter-bunny-v3",
-    "label": "Easter Bunny v3 (Rewrite Lab)",
-    "detail": "Protected copy of the playable v2 baseline for gradual native Amy rewrite work. V2 remains stable while v3 becomes the active porting experiment.",
-    "projectName": "easter-bunny-v3",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "brinquitos-game-demo",
-    "label": "Brinquitos Game",
-    "detail": "Amy port of Oscar Toledo's CVBasic Brinquitos jumping game, presented on AtariAge Oct 14 2024; Brinco means jump, Brinquitos means little jumps.",
-    "projectName": "brinquitos-game-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "diamond-dash",
-    "label": "Diamond Dash",
-    "detail": "Amy port of Amy Bienvenu / NewColeco's legacy devkit Diamond Dash game.",
-    "projectName": "diamond-dash",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "portal-demo",
-    "label": "Portal Demo",
-    "detail": "Amy port of old-projects-sdcc-z80/sdcctest/portal: ZX0 graphics, sprite-pattern upload, VBlank equalizer sprites, and original BIOS sound table.",
-    "projectName": "portal-demo",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "smooth-criminal-music",
-    "label": "Smooth Criminal Music",
-    "detail": "Amy port of old-projects-sdcc-z80/sdcctest/smoothc: Smooth Criminal BIOS sound table with VBlank equalizer sprites and ZX0 graphics assets.",
-    "projectName": "smooth-criminal-music",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "subscribers-thank-you-music",
-    "label": "Subscribers Thank You Music",
-    "detail": "Amy port inspired by old-projects-sdcc-z80/sdcctest/subscribers: 2009 newcoleco YouTube subscriber thank-you screen, real icon art, NMI equalizer sprites, and original BIOS music table.",
-    "projectName": "subscribers-thank-you-music",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Music",
-    "tags": [
-      "amy",
-      "audio",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "santas-gift-run",
-    "label": "Santa's Gift Run (Incomplete)",
-    "detail": "Incomplete Amy port of Amy Bienvenu / NewColeco's legacy Santa's Gift Run from old-projects-sdcc-z80/sdcctest/giftrun/main.c. Graphics and BIOS sounds are converted; gift-drop and house behavior still need closer matching.",
-    "projectName": "santas-gift-run",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "421",
-    "label": "421 Dice (Incomplete)",
-    "detail": "Incomplete archival Amy port of Mathieu Proulx and Amy Bienvenu / NewColeco's legacy devkit 421 dice project. The HUD, ICVGM graphics, dice display, and converted BIOS sounds are preserved, but the full game rules are not implemented yet.",
-    "projectName": "421",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -2606,10 +1007,10 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "space-trainer",
-    "label": "Space Trainer",
-    "detail": "Amy port of Amy Bienvenu / NewColeco's small SDCC Space Trainer sample: two-player inertia, bonus bubble, score race, and original BIOS sound tables.",
-    "projectName": "space-trainer",
+    "id": "brinquitos-game-demo",
+    "label": "Brinquitos Game",
+    "detail": "Amy port of Oscar Toledo's CVBasic Brinquitos jumping game, presented on AtariAge Oct 14 2024; Brinco means jump, Brinquitos means little jumps.",
+    "projectName": "brinquitos-game-demo",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -2619,222 +1020,24 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "reversi",
-    "label": "Reversi v1",
-    "detail": "Amy port of the old NewColeco SDCC Reversi board game: original board graphics, legal move hints, simple CPU opponent, and native Amy gameplay logic.",
-    "projectName": "reversi",
+    "id": "smooth-criminal-music",
+    "label": "Smooth Criminal Music",
+    "detail": "",
+    "projectName": "smooth-criminal-music",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Music",
     "tags": [
       "amy",
+      "audio",
       "manual-canon"
     ]
   },
   {
-    "id": "reversi-v2",
-    "label": "Reversi v2 Minimax Lab",
-    "detail": "Experimental Reversi variant using local arrays and recursive depth-2 minimax to validate Amy language porting features.",
-    "projectName": "reversi-v2",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "reversi-v3",
-    "label": "Reversi v3 Compare Lab",
-    "detail": "Reversi comparison lab with selectable 2-player, 1-player, CPU-first, and CPU-vs-CPU modes using simple and minimax AI.",
-    "projectName": "reversi-v3",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "reversi-v4",
-    "label": "Reversi v4 Negamax Lab",
-    "detail": "Reversi comparison lab with Board[] kept pure, Hints[] separated from gameplay state, and a true recursive negamax CPU.",
-    "projectName": "reversi-v4",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "reversi-v5",
-    "label": "Reversi v5",
-    "detail": "Playable Reversi with independent Human, Simple CPU, or Tuned CPU choices for Black and White; tuned play uses iterative depth 2-3 alpha-beta under a 400-node budget.",
-    "projectName": "reversi-v5",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-title-test",
-    "label": "Dacman Title Test",
-    "detail": "Diagnostic slice: only Amy show picture for the Dacman title screen using the same project files as Dacman.",
-    "projectName": "dacman-title-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-info-test",
-    "label": "Dacman Info Test",
-    "detail": "Diagnostic slice: only Amy show picture for the Dacman instructions/info screen.",
-    "projectName": "dacman-info-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-graphics-test",
-    "label": "Dacman Graphics Init Test",
-    "detail": "Diagnostic slice: loads the Dacman game tiles, color table, sprite patterns, and prints a small confirmation.",
-    "projectName": "dacman-graphics-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-board-test",
-    "label": "Dacman Board Test",
-    "detail": "Diagnostic slice: loads the Dacman game graphics and draws board 1 without gameplay logic.",
-    "projectName": "dacman-board-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-startup-diag",
-    "label": "Dacman Startup Diag",
-    "detail": "Diagnostic slice: initializes Dacman game graphics, shows the title and info pictures, and plays the original startup/music/sound table without entering gameplay.",
-    "projectName": "dacman-startup-diag",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman",
-    "label": "Dacman",
-    "detail": "Full Amy port in progress of NewColeco's Dacman legacy SDCC game, including Dacpong bonus game.",
-    "projectName": "dacman",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-2",
-    "label": "DacMan 2",
-    "detail": "Puzzle-focused DacMan sequel foundation with four skill levels, ZX0 level assets, and support for community-created levels.",
-    "projectName": "dacman-2",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-2-no-records",
-    "label": "DacMan 2 - Parallel Arrays",
-    "detail": "DacMan 2 comparison build retaining the original parallel ghost arrays.",
-    "projectName": "dacman-2-no-records",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-2-records",
-    "label": "DacMan 2 - Records",
-    "detail": "DacMan 2 comparison build using an optimized array of GhostActor records.",
-    "projectName": "dacman-2-records",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-2-records-revision-a",
-    "label": "DacMan 2 - Records Revision A",
-    "detail": "Measured DacMan 2 records revision with typed bulk initialization and complete five-ghost handling.",
-    "projectName": "dacman-2-records-revision-a",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "dacman-2-records-revision-b",
-    "label": "DacMan 2 - Records Revision B",
-    "detail": "Revision A evolved with buffered Pac movement and direction-ordered teleporter routing.",
-    "projectName": "dacman-2-records-revision-b",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "explosion",
-    "label": "Explosion",
-    "detail": "Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion board game: overload cells, chain reactions, and a simple CPU opponent.",
-    "projectName": "explosion",
+    "id": "diamond-dash",
+    "label": "Diamond Dash",
+    "detail": "Amy port of Amy Bienvenu / NewColeco's legacy devkit Diamond Dash game.",
+    "projectName": "diamond-dash",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -2870,240 +1073,28 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "cosmo-trainer-port",
-    "label": "Cosmo Trainer Inspired",
-    "detail": "AMY training demo inspired by Marcel de Kogel's Cosmo Trainer, not a source-faithful port.",
-    "projectName": "cosmo-trainer-port",
+    "id": "easter-bunny",
+    "label": "Easter Bunny",
+    "detail": "Playable Amy Studio port of Amy Bienvenu / NewColeco's Minigame Compo 2007 Easter Bunny, now using the native Amy v3 rewrite path with only the required project assets.",
+    "projectName": "easter-bunny",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
       "amy",
-      "port",
       "manual-canon"
     ]
   },
   {
-    "id": "amy-selftest",
-    "label": "Amy Selftest",
-    "detail": "General regression screen that helped expose language gaps during the remake.",
-    "projectName": "amy-selftest",
+    "id": "reversi",
+    "label": "Reversi",
+    "detail": "Complete Amy Studio port of Amy Bienvenu / NewColeco's legacy Reversi, with human, simple, and bounded-negamax tuned players, original graphics, animated flips, and the historical NewColeco logo cue.",
+    "projectName": "reversi",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Selftests",
+    "category": "Games",
     "tags": [
       "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-compound-expression-test",
-    "label": "Amy Compound Expression Test",
-    "detail": "Regression test for compound assignments whose right side contains runtime variables.",
-    "projectName": "amy-compound-expression-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-screen-test",
-    "label": "Amy Screen Test",
-    "detail": "Small display smoke test for bootstrap and print behavior.",
-    "projectName": "amy-screen-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-loop-test",
-    "label": "Amy Loop Test",
-    "detail": "Loop and put-char selftest useful for checking structured flow output.",
-    "projectName": "amy-loop-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-feature-test",
-    "label": "Amy Feature Test",
-    "detail": "Feature regression screen covering arrays, booleans, shifts, and indexed goto/gosub dispatch.",
-    "projectName": "amy-feature-test",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "amy-for-counter-test",
-    "label": "Amy For Counter Test",
-    "detail": "Focused for-loop counter selftest.",
-    "projectName": "amy-for-counter-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-downto-counter-test",
-    "label": "Amy Downto Counter Test",
-    "detail": "Focused downto-loop selftest.",
-    "projectName": "amy-downto-counter-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-for-putchar-test",
-    "label": "Amy For PutChar Test",
-    "detail": "Simple loop-and-render selftest.",
-    "projectName": "amy-for-putchar-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-manual-loop-putchar-test",
-    "label": "Amy Manual Loop PutChar Test",
-    "detail": "Low-level loop comparison screen beside the structured loop variants.",
-    "projectName": "amy-manual-loop-putchar-test",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "amy-bcd-selftest",
-    "label": "Amy BCD Selftest",
-    "detail": "BCD regression screen used to validate the new generic numeric surface.",
-    "projectName": "amy-bcd-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-min-max-expression-test",
-    "label": "Amy Min/Max Expression Test",
-    "detail": "Focused expression selftest for min(A,B) and max(A,B) on byte and word values.",
-    "projectName": "amy-min-max-expression-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-runtime-input-expression-test",
-    "label": "Amy Runtime Input Expression Test",
-    "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",
-    "projectName": "amy-runtime-input-expression-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-random-expression-test",
-    "label": "Amy Random Expression Test",
-    "detail": "Focused expression selftest for random(N) and inclusive random(A,B).",
-    "projectName": "amy-random-expression-test",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-function-selftest",
-    "label": "Amy Function Selftest",
-    "detail": "Exercises nested function calls, function use in IF/PRINT, and local stack arrays.",
-    "projectName": "amy-function-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-recursive-selftest",
-    "label": "Amy Recursive Selftest",
-    "detail": "Exercises recursive function calls with stack-based parameters and locals.",
-    "projectName": "amy-recursive-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-recursive-local-array-restore-selftest",
-    "label": "Amy Recursive Local Array Restore Selftest",
-    "detail": "Regression lab for recursive functions that snapshot a global board into local arrays, mutate it, recurse, and restore it.",
-    "projectName": "amy-recursive-local-array-restore-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
       "manual-canon"
     ]
   },
@@ -3118,90 +1109,6 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "amy-word-table-selftest",
-    "label": "Amy Word Table Selftest",
-    "detail": "Indexable ROM word table (data Frames words + Frames[I]) cycling three 2x2 frames — the Amy answer to C's const pointer arrays.",
-    "projectName": "amy-word-table-selftest",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Selftests",
-    "tags": [
-      "amy",
-      "selftest",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "bubble-sort-bars",
-    "label": "Bubble Sort Bars",
-    "detail": "Visual sorting demo for comparing clarity and generated size against CVBasic.",
-    "projectName": "bubble-sort-bars",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Algorithms",
-    "tags": [
-      "amy",
-      "algorithms",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "insertion-sort-bars",
-    "label": "Insertion Sort Bars",
-    "detail": "Visual insertion sort demo kept for more label-driven comparison flow.",
-    "projectName": "insertion-sort-bars",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Algorithms",
-    "tags": [
-      "amy",
-      "algorithms",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "heap-sort-bars",
-    "label": "Heap Sort Bars",
-    "detail": "Visual heap sort demo kept as a machine-like control-flow sample.",
-    "projectName": "heap-sort-bars",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Algorithms",
-    "tags": [
-      "amy",
-      "algorithms",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "quick-sort-bars",
-    "label": "Quick Sort Bars",
-    "detail": "Visual quicksort demo kept for stack/partition style comparison flow.",
-    "projectName": "quick-sort-bars",
-    "sourceLang": "amy",
-    "editorialTrack": "legacy-compat",
-    "category": "Algorithms",
-    "tags": [
-      "amy",
-      "algorithms",
-      "legacy-compat"
-    ]
-  },
-  {
-    "id": "three-sort-algorithms",
-    "label": "Three Sort Algorithms",
-    "detail": "One visual listing comparing bubble, insertion, and selection sort.",
-    "projectName": "three-sort-algorithms",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Algorithms",
-    "tags": [
-      "amy",
-      "algorithms",
       "manual-canon"
     ]
   },
@@ -3233,24 +1140,38 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "commando-music-box-graphics-lossy",
-    "label": "Commando Music Box - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 21181 -> 21157 bytes (-24), 76 rendered pixels changed under the documented safety limits.",
-    "projectName": "commando-music-box-graphics-lossy",
+    "id": "amy-state-machine-selftest",
+    "label": "Amy State Machine Self-Test",
+    "detail": "Typed four-state machine self-test using qualified one-based state constants and bounded dispatch.",
+    "projectName": "amy-state-machine-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Music",
+    "category": "Selftests",
     "tags": [
       "amy",
-      "audio",
+      "selftest",
       "manual-canon"
     ]
   },
   {
-    "id": "easter-bunny-v2-graphics-lossy",
-    "label": "Easter Bunny v2 (Amy cleanup) - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 5503 -> 5500 bytes (-3), 9 rendered pixels changed under the documented safety limits.",
-    "projectName": "easter-bunny-v2-graphics-lossy",
+    "id": "amy-record-array-safety-selftest",
+    "label": "Amy Record Array Safety Self-Test",
+    "detail": "Executable regression for typed record copies, dynamic indexing, ref-record mutation, for-each aliases, and expression indexes.",
+    "projectName": "amy-record-array-safety-selftest",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-record-array-cost-record",
+    "label": "Amy Record Array Cost Lab",
+    "detail": "Size fixture using a 13-byte actor record array; compare with the equivalent parallel-array fixture.",
+    "projectName": "amy-record-array-cost-record",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -3260,10 +1181,10 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "easter-bunny-v3-graphics-lossy",
-    "label": "Easter Bunny v3 (Rewrite Lab) - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 5952 -> 5949 bytes (-3), 9 rendered pixels changed under the documented safety limits.",
-    "projectName": "easter-bunny-v3-graphics-lossy",
+    "id": "amy-record-array-cost-parallel",
+    "label": "Amy Parallel Array Cost Lab",
+    "detail": "Size fixture using thirteen parallel byte arrays; baseline for the equivalent record-array fixture.",
+    "projectName": "amy-record-array-cost-parallel",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
@@ -3273,54 +1194,71 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "santas-gift-run-graphics-lossy",
-    "label": "Santa's Gift Run (Incomplete) - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 5753 -> 5740 bytes (-13), 256 rendered pixels changed under the documented safety limits.",
-    "projectName": "santas-gift-run-graphics-lossy",
+    "id": "amy-overlay-layout-selftest",
+    "label": "Amy RAM Overlay Layout Self-Test",
+    "detail": "Runtime test for shared overlay aliases, packed record-array fields, physical RAM reuse, and indexed actor access.",
+    "projectName": "amy-overlay-layout-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Selftests",
+    "tags": [
+      "amy",
+      "selftest",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "amy-scenes-overlays-design",
+    "label": "Amy Scenes and Overlays Lab",
+    "detail": "Executable lifecycle lab with three scene-local RAM layouts, compiler-generated frame dispatch, and NMI-safe mainline transitions.",
+    "projectName": "amy-scenes-overlays-design",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Selftests",
     "tags": [
       "amy",
       "manual-canon"
     ]
   },
   {
-    "id": "421-graphics-lossy",
-    "label": "421 Dice (Incomplete) - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 19288 -> 19286 bytes (-2), 21 rendered pixels changed under the documented safety limits.",
-    "projectName": "421-graphics-lossy",
+    "id": "amy-scene-poison-selftest",
+    "label": "Amy Scene Poison Self-Test",
+    "detail": "Debug-only overlay initialization test: initialized bytes replace $CD poison while untouched bytes expose missing scene setup.",
+    "projectName": "amy-scene-poison-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Selftests",
     "tags": [
       "amy",
+      "selftest",
       "manual-canon"
     ]
   },
   {
-    "id": "chateau-du-dragon-graphics-lossy",
-    "label": "Chateau du Dragon - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 8629 -> 8621 bytes (-8), 39 rendered pixels changed under the documented safety limits.",
-    "projectName": "chateau-du-dragon-graphics-lossy",
+    "id": "amy-wide-array-selftest",
+    "label": "Amy Wide Array Self-Test",
+    "detail": "Runtime check for u32 and i32 arrays with variable and expression indexes.",
+    "projectName": "amy-wide-array-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Selftests",
     "tags": [
       "amy",
+      "selftest",
       "manual-canon"
     ]
   },
   {
-    "id": "dragon-castle-graphics-lossy",
-    "label": "Dragon Castle - Controlled Lossy Graphics",
-    "detail": "Comparison variant: controlled lossy TMS9918 graphics; Balanced ROM 8611 -> 8603 bytes (-8), 39 rendered pixels changed under the documented safety limits.",
-    "projectName": "dragon-castle-graphics-lossy",
+    "id": "amy-wide-integer-selftest",
+    "label": "Amy Wide Integer Self-Test",
+    "detail": "Runtime bitwise and shift checks for u16, i16, u32, i32, arrays, records, and overlays.",
+    "projectName": "amy-wide-integer-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Selftests",
     "tags": [
       "amy",
+      "selftest",
       "manual-canon"
     ]
   },
@@ -3511,19 +1449,18 @@ export const exampleManifest = [
   },
   {
     "id": "blueberries",
-    "label": "Blueberries",
-    "detail": "Bill Root's 1984 farming game adapted for one or two players, with seed planting, ripening berries, a computer opponent and layered farmer sprites.",
+    "label": "Blueberries (TI-99/4A Port)",
+    "detail": "Bill Root's two-player farming game with editorial, help, options, and independent controller play.",
     "projectName": "blueberries",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
     "category": "Games",
     "tags": [
       "amy",
-      "atari",
+      "ti99",
       "port",
       "game",
-      "sprites",
-      "two-player",
+      "controllers",
       "manual-canon"
     ]
   },
@@ -3657,40 +1594,31 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "xb-to-amy-demo",
-    "label": "TI Extended BASIC to Amy Lab",
-    "detail": "Executable Moonbeam conversion lab covering sprite motion, collisions, distance checks, joystick input, reference parameters, signed min/max, ROM text addresses, scrolling text and three-channel sound.",
-    "projectName": "XB to Amy Conversion Lab",
+    "id": "amy-runtime-input-expression-test",
+    "label": "Amy Runtime Input Expression Test",
+    "detail": "Runtime selftest for dynamic spinner selectors, atomic consumption, frame, and vdp.status.",
+    "projectName": "amy-runtime-input-expression-test",
     "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
-    "category": "Demos",
+    "category": "Selftests",
     "tags": [
       "amy",
-      "ti99",
-      "extended-basic",
-      "porting",
-      "moonbeam",
+      "selftest",
       "manual-canon"
     ]
   },
   {
-    "id": "amy-chess",
-    "label": "Amy Chess v1.3",
-    "detail": "Amy Chess v1.3 with Human/CPU controls, BLITZ and NORMAL play, bounded opening variation, stronger tactical guards, compact Z80 search routines, ZX0 graphics and VoxPCM personality in a 31,302-byte cartridge build.",
-    "projectName": "Amy Chess v1.3",
+    "id": "amy-numeric-comparison-selftest",
+    "label": "Amy Numeric Comparison Selftest",
+    "detail": "Self-checking mixed-width, signed, fixed, wide, FP5, BCD, and reversed-operand comparison matrix.",
+    "projectName": "amy-numeric-comparison-selftest",
     "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
-    "category": "Games",
+    "category": "Selftests",
     "tags": [
       "amy",
-      "colecovision",
-      "chess",
-      "fide",
-      "game",
-      "voxpcm",
-      "zx0",
+      "numeric",
+      "selftest",
       "manual-canon"
     ]
   },
@@ -3701,12 +1629,11 @@ export const exampleManifest = [
     "projectName": "amy-compound-array-arithmetic-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Self-tests",
+    "category": "Selftests",
     "tags": [
       "amy",
+      "numeric",
       "selftest",
-      "arrays",
-      "arithmetic",
       "manual-canon"
     ]
   },
@@ -3717,13 +1644,10 @@ export const exampleManifest = [
     "projectName": "amy-horse-payoff-selftest",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
-    "category": "Self-tests",
+    "category": "Selftests",
     "tags": [
       "amy",
       "selftest",
-      "arrays",
-      "arithmetic",
-      "horse-racing",
       "manual-canon"
     ]
   },
@@ -3737,10 +1661,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   },
@@ -3754,10 +1674,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "vic-20",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   },
@@ -3771,10 +1687,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "vic-20",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   },
@@ -3788,10 +1700,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "vic-20",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   },
@@ -3805,11 +1713,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "port",
-      "game",
-      "sprites",
-      "arithmetic",
       "manual-canon"
     ]
   },
@@ -3823,10 +1726,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "commodore-64",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   },
@@ -3840,10 +1739,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "port",
-      "educational",
-      "sprites",
+      "numeric",
       "manual-canon"
     ]
   },
@@ -3857,10 +1753,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "port",
-      "educational",
-      "voxpcm",
       "manual-canon"
     ]
   },
@@ -3874,9 +1766,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "port",
-      "puzzle",
       "manual-canon"
     ]
   },
@@ -3890,10 +1779,6 @@ export const exampleManifest = [
     "category": "Demos",
     "tags": [
       "amy",
-      "ti99",
-      "port",
-      "sprites",
-      "graphics",
       "manual-canon"
     ]
   },
@@ -3907,10 +1792,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "atari",
-      "port",
-      "game",
-      "graphics",
       "manual-canon"
     ]
   },
@@ -3924,10 +1805,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
-      "port",
-      "game",
-      "two-player",
       "manual-canon"
     ]
   },
@@ -3941,28 +1818,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "compute",
-      "port",
-      "game",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "rescue-of-blondell",
-    "label": "Rescue of Blondell",
-    "detail": "Grant Albrecht's scrolling rescue game, adapted from the January 1985 COMPUTE! listing with eight-phase pixel scrolling and shared Graphics II patterns.",
-    "projectName": "rescue-of-blondell",
-    "sourceLang": "amy",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "compute",
-      "port",
-      "game",
-      "scrolling",
-      "graphics",
       "manual-canon"
     ]
   },
@@ -3976,11 +1831,6 @@ export const exampleManifest = [
     "category": "Demos",
     "tags": [
       "amy",
-      "ti99",
-      "compute",
-      "port",
-      "music",
-      "graphics",
       "manual-canon"
     ]
   },
@@ -3994,10 +1844,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "compute",
-      "port",
-      "game",
       "manual-canon"
     ]
   },
@@ -4011,11 +1857,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "compute",
-      "port",
-      "game",
-      "graphics",
       "manual-canon"
     ]
   },
@@ -4029,11 +1870,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "ti99",
-      "compute",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   },
@@ -4047,11 +1883,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "vic20",
-      "compute",
-      "port",
-      "game",
-      "graphics",
       "manual-canon"
     ]
   },
@@ -4065,11 +1896,6 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "vic20",
-      "compute",
-      "port",
-      "game",
-      "sprites",
       "manual-canon"
     ]
   }
