@@ -17,8 +17,8 @@ cartridge "IN THE CAVERNS OF CARNAGE/PRESENTS TIMELOST'S/1983"
 ' passages, and a goal: 10,000 points means the couple got through.
 '
 ' ColecoVision port in Amy by Amy Bienvenu, 2026.
-' Controls (either joystick): left and right move Jacque and Erin; fire
-' shoots the positron blaster down the cavern.
+' Controls (either joystick): all four directions move Jacque and Erin;
+' fire shoots the positron blaster down the cavern.
 ' The rules follow the Atari listing: the cavern scrolls up one line at a
 ' time and wanders one column left or right (lines 500-555); a Crusher on
 ' every third line, at a random place across the cavern (lines 502, 545);
@@ -37,17 +37,17 @@ cartridge "IN THE CAVERNS OF CARNAGE/PRESENTS TIMELOST'S/1983"
 ' each scroll offset in one pattern table shared by the three screen
 ' thirds, two name tables shown in turn), getting faster and
 ' narrower as the score grows (cavern 9 columns wide, down to 6); points
-' x10 and 5 points per line travelled; three lives, with a short grace
+' x10 and 5 points per line travelled; five lives, with a short grace
 ' period after each; the couple, shots, creatures and explosions are
 ' 16 x 16 sprites, never more than four on a line; initials picked with
 ' the joystick instead of a typed name; joystick menus; an original title
 ' tune; an editorial page. The frame loop is protected from the NMI.
-' Screen: status on row 0, the cavern on rows 1-23, the couple on row 4.
+' Screen: status on row 0, the cavern on rows 3-23, the couple near row 4.
 
 const PairBase = 128
-const CoupleY = 27
-const FeetY = 39
-const ShotTop = 28
+const FirstCaveRow = 3
+const CoupleYMin = 23
+const CoupleYMax = 39
 const MaxCr = 10
 const Goal = 10000
 
@@ -73,7 +73,7 @@ const SndTuneB = 18
 u16 Score = 0
 u16 HighScore = 2000
 u8 HighName[3]
-u8 Lives = 3
+u8 Lives = 5
 u8 LL[32]                       ' cavern columns LL..LR of each line (ring)
 u8 LR[32]
 u8 PA[32]                       ' side passage columns PA..PB, PA = 0: none
@@ -117,7 +117,9 @@ u8 TrapOpen = 0
 u8 TrapT = 0
 u8 JJP = 14                     ' Jacque's column (Erin is on his right)
 u8 CX = 112
+u8 CY = 27
 u8 MoveT = 0
+u8 MoveYT = 0
 u8 ShotOn = 0
 u8 ShotX = 0
 u8 ShotY = 0
@@ -133,6 +135,7 @@ u8 Dead = 0
 u8 Stick = 0
 u8 Btn = 0
 u8 Up = 0
+u8 Down = 0
 u8 I = 0
 u8 J = 0
 u8 K = 0
@@ -170,7 +173,7 @@ title:
 
 new_game:
   Score = 0
-  Lives = 3
+  Lives = 5
   StartCave
   Rearm
   wait no fire
@@ -225,7 +228,7 @@ lost_one:
   end if
   for Tm = 1 to 40
     BoomX = CX
-    BoomY = 24
+    BoomY = CY - 3
     BoomT = Tm
     DrawSprites
     if Dead = 2 then
@@ -250,8 +253,8 @@ lost_one:
   ' --- The book's goal: 10,000 points and the couple are through ---
 through:
   HideSprites
-  set sprite 0 to CoupleY,CX,0,5
-  set sprite 1 to CoupleY,CX,4,9
+  set sprite 0 to CY,CX,0,5
+  set sprite 1 to CY,CX,4,9
   update sprites from 0 count 14
   play sound SndWinA
   play sound SndWinB
@@ -311,12 +314,15 @@ sub ReadStick:
   Stick = 0
   Btn = 0
   Up = 0
+  Down = 0
   if joypad(1).left then Stick = 1
   if joypad(2).left then Stick = 1
   if joypad(1).right then Stick = 2
   if joypad(2).right then Stick = 2
   if joypad(1).up then Up = 1
   if joypad(2).up then Up = 1
+  if joypad(1).down then Down = 1
+  if joypad(2).down then Down = 1
   if joypad(1).fire then Btn = 1
   if joypad(2).fire then Btn = 1
   return
@@ -347,9 +353,24 @@ sub MoveCouple:
       end if
     end if
     if Stick = 2 then
-      if JJP < 29 then
+      if JJP < 28 then
         inc JJP
         MoveT = 4
+      end if
+    end if
+  end if
+  if MoveYT > 0 then dec MoveYT
+  if MoveYT = 0 then
+    if Up = 1 then
+      if CY > CoupleYMin then
+        dec CY
+        MoveYT = 2
+      end if
+    end if
+    if Down = 1 then
+      if CY < CoupleYMax then
+        inc CY
+        MoveYT = 2
       end if
     end if
   end if
@@ -363,7 +384,7 @@ sub MoveCouple:
   if ShotOn = 1 then return
   ShotOn = 1
   ShotX = CX
-  ShotY = ShotTop
+  ShotY = CY + 1
   play sound SndShot
   return
 end sub
@@ -526,8 +547,8 @@ sub CheckCouple:
   C2 = CX + 13
   C2 >>= 3
   for R = 0 to 1
-    N = 25
-    if R = 1 then N = 31
+    N = CY - 2
+    if R = 1 then N = CY + 4
     N += Scr
     N >>= 3
     ZLine = Base + N
@@ -569,9 +590,11 @@ sub CheckCouple:
           P = CX + 14
           if K <= P then
             K = Y + 10
-            if K >= 28 then
+            P = CY + 1
+            if K >= P then
               P = Y + 3
-              if P <= 40 then Dead = 1
+              K = CY + 13
+              if P <= K then Dead = 1
             end if
           end if
         end if
@@ -610,7 +633,7 @@ sub ScrollCave:
   ZBase = $1800
   if ZShow = 0 then ZBase = $1C00
   HBase = Base + 1
-  ZRow = 1
+  ZRow = FirstCaveRow
 build:
   N = Scr + 1
   N *= 3
@@ -631,8 +654,8 @@ sub GenLine:
     ' The way out: light from wall to wall
     LL[K] = 31
     LR[K] = 0
-    PA[K] = 1
-    PB[K] = 30
+    PA[K] = 2
+    PB[K] = 29
     return
   end if
   ' Narrower as the score grows
@@ -651,11 +674,11 @@ sub GenLine:
       if CaveL > 2 then dec CaveL
     end if
     if P = 2 then
-      R = 29 - CaveW
+      R = 28 - CaveW
       if CaveL < R then inc CaveL
     end if
   end if
-  R = 29 - CaveW
+  R = 28 - CaveW
   if CaveL > R then CaveL = R
   LL[K] = CaveL
   R = CaveL + CaveW
@@ -684,6 +707,7 @@ sub GenLine:
     else
       PA[K] = R + 1
       PB[K] = R + 3
+      if PB[K] > 29 then PB[K] = 29
     end if
     return
   end if
@@ -766,6 +790,8 @@ sub StartCave:
   Gap = 0
   JJP = 13
   CX = 104
+  CY = 27
+  MoveYT = 0
   call asm ZShare
   RebuildBoth
   StatusBoth
@@ -778,13 +804,13 @@ sub RebuildBoth:
   ZBase = $1800
   if ZShow = 1 then ZBase = $1C00
   HBase = Base
-  ZRow = 1
+  ZRow = FirstCaveRow
   ZRowEnd = 24
   call asm ZRows
   ZBase = $1C00
   if ZShow = 1 then ZBase = $1800
   HBase = Base + 1
-  ZRow = 1
+  ZRow = FirstCaveRow
   ZRowEnd = 24
   call asm ZRows
   LastScr = 255
@@ -804,7 +830,7 @@ sub Recover:
     N &= 31
     TD[N] = 0
   next
-  N = FeetY - 8
+  N = CY + 4
   N += Scr
   N >>= 3
   N += Base
@@ -817,6 +843,8 @@ sub Recover:
   if K > 1 then dec K
   JJP = K
   CX = K * 8
+  CY = 27
+  MoveYT = 0
   Grace = 120
   ShotOn = 0
   RebuildBoth
@@ -842,8 +870,8 @@ sub DrawSprites:
     P = 48
     V = 52
   end if
-  set sprite 0 to CoupleY,CX,P,N
-  set sprite 1 to CoupleY,CX,V,K
+  set sprite 0 to CY,CX,P,N
+  set sprite 1 to CY,CX,V,K
   ' 2 the shot
   if ShotOn = 1 then
     set sprite 2 to ShotY,ShotX,8,11
