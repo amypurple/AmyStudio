@@ -1973,6 +1973,26 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "language-barrier",
+    "label": "The Language Barrier",
+    "detail": "An original Timelost audio-visual sequence puzzle: decode Jacque's musical glyph phrases using exact, misplaced and absent-symbol clues.",
+    "projectName": "The Language Barrier",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "book",
+      "original",
+      "game",
+      "puzzle",
+      "sequence",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "pitdemons",
     "label": "Peril of the Pitdemons",
     "detail": "A restored 1983 Timelost action game with four demon types, a Warbird, synchronized Tiny Sound music and a full-screen ZX0 bitmap title.",
