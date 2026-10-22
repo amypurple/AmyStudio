@@ -10,7 +10,11 @@ import {
 
 const root = resolve(import.meta.dirname, "..");
 const rom = resolve(root, "artifacts/caverns/caverns.rom");
+const romBytes = readFileSync(rom);
+assert.ok(romBytes.length <= 16 * 1024, `Caverns ROM exceeds 16 KiB (${romBytes.length} bytes)`);
 const asm = readFileSync(resolve(root, "artifacts/caverns/caverns.asm"), "utf8");
+const pairPattern = readFileSync(resolve(root, "examples/ports/books/caverns/caverns-pairs.pattern.raw"));
+const pairColor = readFileSync(resolve(root, "examples/ports/books/caverns/caverns-pairs.color.raw"));
 const addressOf = (name) => {
   const match = asm.match(new RegExp(`^AMY_UVAR_${name}\\s+EQU\\s+\\$([0-9A-Fa-f]{4})$`, "m"));
   assert.ok(match, `missing address for ${name}`);
@@ -31,7 +35,7 @@ function tap(core, input) {
 const core = await GearcolecoTestCore.create({ seed: 0x1983CAFE });
 try {
     core.loadBios(readFileSync(resolve(root, "studio/bios/colecovision.rom")));
-    core.loadRom(readFileSync(rom), { region: GEARCOLECO_TEST_REGION.NTSC });
+    core.loadRom(romBytes, { region: GEARCOLECO_TEST_REGION.NTSC });
     let titleAudioSamples = 0;
     for (let frame = 0; frame < 240; frame += 1) {
       core.runFrame();
@@ -42,6 +46,18 @@ try {
     assert.ok(titleAudioSamples > 1000, "the title theme must remain audible");
     tap(core, INPUT.FIRE_LEFT);
     runFrames(core, 100);
+
+    for (let frame = 0; frame < 48; frame += 1) {
+      core.runFrame();
+      const scroll = core.readRam(addressOf("LastScr"), 1)[0];
+      const trap = core.readRam(addressOf("LastTrap"), 1)[0];
+      assert.ok(scroll < 8 && trap < 2, `invalid loaded pair state ${scroll}/${trap}`);
+      const offset = scroll * 128 + trap * 1024;
+      assert.deepEqual(Buffer.from(core.readVram(0x0400, 128)), pairPattern.subarray(offset, offset + 128),
+        `pattern pair slice diverged at scroll ${scroll}, trap ${trap}`);
+      assert.deepEqual(Buffer.from(core.readVram(0x2400, 128)), pairColor.subarray(offset, offset + 128),
+        `color pair slice diverged at scroll ${scroll}, trap ${trap}`);
+    }
 
     const initialY = core.readVram(0x1B00, 1)[0];
     runFrames(core, 24, INPUT.DOWN);
@@ -57,6 +73,21 @@ try {
       assert.ok([...topRows].every((value) => value < 128),
         `cave pair tiles leaked into reserved top rows at $${nameBase.toString(16)}`);
     }
+
+    const base = core.readRam(addressOf("Base"), 1)[0];
+    core.writeRam(addressOf("CKind"), [0]);
+    core.writeRam(addressOf("CXp"), [80]);
+    core.writeRam(addressOf("CLn"), [(base + 2) & 255]);
+    runFrames(core, 1);
+    assert.equal(core.readRam(0x7090 + 4 * 4, 1)[0], 192,
+      "a Crusher remained visible in the reserved HUD rows");
+
+    const nextBase = core.readRam(addressOf("Base"), 1)[0];
+    core.writeRam(addressOf("CLn"), [(nextBase + 3) & 255]);
+    runFrames(core, 1);
+    assert.ok(core.readRam(0x7090 + 4 * 4, 1)[0] < 192,
+      "a Crusher disappeared from the first visible cave row");
+
     runFrames(core, 300);
     assert.ok(core.readVram(0x1B00, 1)[0] < 192, "the couple disappeared during ordinary play");
 

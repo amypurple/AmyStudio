@@ -25,4 +25,7 @@ node tools/amyc.mjs examples/ports/books/caverns/caverns.alexis `
 ```
 
 The editable title tables are exposed through `editors.json`; the ROM uses the
-corresponding ZX0-compressed copies.
+corresponding ZX0-compressed copies. The eight scrolling phases and trapdoor
+variants are also stored as two ZX0 streams, expanded once into otherwise unused
+VRAM and copied through a 128-byte RAM staging buffer when the phase changes.
+The balanced cartridge occupies 14,257 bytes, leaving 2,127 bytes below 16 KiB.

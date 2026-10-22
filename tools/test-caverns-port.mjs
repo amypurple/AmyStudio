@@ -13,8 +13,10 @@ assert.doesNotMatch(source, /^cartridge\s+/m, "the BIOS cartridge title must be 
 assert.doesNotMatch(source, /\n  EditorialPage\n/, "the editorial page must not delay startup");
 assert.match(source, /sub TitlePage:[\s\S]*?show picture CavernsTitle[\s\S]*?pause until press/,
   "the title must use the compressed Graphics II picture");
-assert.match(source, /sub StartCave:[\s\S]*?tile screen\s+ClearBoth/,
+assert.match(source, /sub StartCave:[\s\S]*?tile screen\s+call asm ZInitPairs\s+ClearBoth/,
   "gameplay must restore its charset after the bitmap title");
+assert.match(source, /asset CavernPairPatterns[\s\S]*?asset CavernPairColors[\s\S]*?ZInitPairs:[\s\S]*?ZPairs:/,
+  "the scrolling pair tables must use their compact VRAM-backed representation");
 assert.match(source, /sub StartCave:[\s\S]*?RebuildBoth\s+StatusBoth\s+screen on\s+return/,
   "gameplay must enable display only after both scrolling pages are rebuilt");
 assert.match(source, /print at 2,0, "SC"[\s\S]*?print at 5,0, digits\$\(NumU, 5\)[\s\S]*?print at 11,0, "LV"[\s\S]*?print at 17,0, "HI"[\s\S]*?put char HighName\[2\] at 22,0[\s\S]*?print at 24,0, digits\$\(NumU, 5\)/,
@@ -48,6 +50,13 @@ for (const table of ["pattern", "color"]) {
   const raw = readFileSync(resolve(dir, `caverns-title.${table}.raw`));
   assert.deepEqual(Buffer.from(await zx0.decompress(packed)), raw, `${table} ZX0 round-trip`);
   assert.equal(raw.length, 6144);
+}
+
+for (const table of ["pattern", "color"]) {
+  const packed = readFileSync(resolve(dir, `caverns-pairs.${table}.zx0`));
+  const raw = readFileSync(resolve(dir, `caverns-pairs.${table}.raw`));
+  assert.deepEqual(Buffer.from(await zx0.decompress(packed)), raw, `pair ${table} ZX0 round-trip`);
+  assert.equal(raw.length, 2048);
 }
 
 console.log("Caverns port tests passed.");

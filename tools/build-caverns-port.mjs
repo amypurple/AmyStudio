@@ -1,23 +1,35 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 import { rgbaToColecoBitmapTables } from "../studio/core/pictureConvert.js";
 import { compareTms9918Mode2Tables, repackTms9918Mode2, TMS9918_MODE2_REPACK_STRATEGIES } from "../studio/core/tms9918Mode2Repacker.js";
 import { loadCodec } from "../studio/vendor/retrocompress-lite/js/codecConfig.js";
 
 const sourcePath = resolve(process.argv[2] || "examples/ports/books/caverns/caverns-source.alexis");
+const sourceDir = dirname(sourcePath);
 const rgbaPath = resolve(process.argv[3] || "artifacts/caverns/caverns-title.rgba");
 const outputDir = resolve(process.argv[4] || "examples/ports/books/caverns");
 const outputSource = resolve(outputDir, "caverns.alexis");
 const studioSource = resolve("studio/examples-src/caverns.alexis");
 const studioAssets = resolve("studio/examples-caverns-assets.generated.js");
 
-const rgba = new Uint8ClampedArray(readFileSync(rgbaPath));
-if (rgba.length !== 256 * 192 * 4) throw new Error(`Expected 256x192 RGBA, got ${rgba.length} bytes.`);
-
-const converted = rgbaToColecoBitmapTables(rgba, 256, 192, { ditherMode: "none", ditherAmount: 0 });
+let converted;
+if (existsSync(rgbaPath)) {
+  const rgba = new Uint8ClampedArray(readFileSync(rgbaPath));
+  if (rgba.length !== 256 * 192 * 4) throw new Error(`Expected 256x192 RGBA, got ${rgba.length} bytes.`);
+  converted = rgbaToColecoBitmapTables(rgba, 256, 192, { ditherMode: "none", ditherAmount: 0 });
+} else {
+  converted = {
+    pattern: readFileSync(resolve(sourceDir, "caverns-title.pattern.raw")),
+    color: readFileSync(resolve(sourceDir, "caverns-title.color.raw"))
+  };
+}
 const zx0 = await loadCodec("zx0");
+const pairPatternRaw = readFileSync(resolve(sourceDir, "caverns-pairs.pattern.raw"));
+const pairColorRaw = readFileSync(resolve(sourceDir, "caverns-pairs.color.raw"));
+const pairPattern = await zx0.compress(pairPatternRaw);
+const pairColor = await zx0.compress(pairColorRaw);
 const candidates = [];
 for (const strategy of TMS9918_MODE2_REPACK_STRATEGIES) {
   const repacked = repackTms9918Mode2(converted.pattern, converted.color, strategy.id);
@@ -31,6 +43,12 @@ candidates.sort((a, b) => a.total - b.total || a.strategy.id.localeCompare(b.str
 const best = candidates[0];
 
 let source = readFileSync(sourcePath, "utf8").replace(/^\uFEFF/, "");
+source = source.replace(
+  /data PairPat bytes[\s\S]*?end data\s*data PairCol bytes[\s\S]*?end data/,
+  `asset CavernPairPatterns from "@project/caverns-pairs.pattern.zx0" codec zx0
+asset CavernPairColors from "@project/caverns-pairs.color.zx0" codec zx0`
+);
+source = source.replace("u16 Pts = 0", "u16 Pts = 0\nu8 PairBuf[128]");
 source = source.replace(
   /^cartridge\s+"[^"]+"/m,
   'project "In the Caverns of Carnage"\nmemory "colecovision_legacy_sdcc"'
@@ -53,7 +71,46 @@ source = source.replace(
   HideSprites
   ' Restore the text charset after the full-screen Graphics II title.
   tile screen
+  call asm ZInitPairs
   ClearBoth`
+);
+source = source.replace(
+  /; The pair patterns and colors for scroll offset ZOff[\s\S]*?\n\s*ret\n\n; Mode 2 with all three screen thirds/,
+  `; The pair patterns and colors are unpacked once into unused VRAM.
+; Each scroll update stages the selected 128-byte slice through PairBuf.
+ZInitPairs:
+    ld hl,Asset_CavernPairPatterns
+    ld de,$0800
+    call zx0_decompress
+    ld hl,Asset_CavernPairColors
+    ld de,$1000
+    jp zx0_decompress
+
+ZPairs:
+    ld hl,(AMY_UVAR_ZOff)
+    ld de,$0800
+    add hl,de
+    ex de,hl
+    ld hl,AMY_UVAR_PairBuf
+    ld bc,$0080
+    call READ_VRAM
+    ld hl,AMY_UVAR_PairBuf
+    ld de,$0400
+    ld bc,$0080
+    call WRITE_VRAM
+    ld hl,(AMY_UVAR_ZOff)
+    ld de,$1000
+    add hl,de
+    ex de,hl
+    ld hl,AMY_UVAR_PairBuf
+    ld bc,$0080
+    call READ_VRAM
+    ld hl,AMY_UVAR_PairBuf
+    ld de,$2400
+    ld bc,$0080
+    jp WRITE_VRAM
+
+; Mode 2 with all three screen thirds`
 );
 source = source.replace(
   "  RebuildBoth\n  StatusBoth\n  return\nend sub",
@@ -86,10 +143,6 @@ source = source.replace(
   print at 24,0, digits$(NumU, 5)`
 );
 source = source.replace("    PA[K] = 1\n    PB[K] = 30", "    PA[K] = 2\n    PB[K] = 29");
-source = source.replace(
-  "      PA[K] = R + 1\n      PB[K] = R + 3",
-  "      PA[K] = R + 1\n      PB[K] = R + 3\n      if PB[K] > 29 then PB[K] = 29"
-);
 
 const titleStart = source.indexOf("sub TitlePage:");
 const titleEnd = source.indexOf("end sub", titleStart);
@@ -118,6 +171,8 @@ writeFileSync(resolve(outputDir, "caverns-title.pattern.zx0"), best.pattern);
 writeFileSync(resolve(outputDir, "caverns-title.color.zx0"), best.color);
 writeFileSync(resolve(outputDir, "caverns-title.pattern.raw"), best.repacked.pattern);
 writeFileSync(resolve(outputDir, "caverns-title.color.raw"), best.repacked.color);
+writeFileSync(resolve(outputDir, "caverns-pairs.pattern.zx0"), pairPattern);
+writeFileSync(resolve(outputDir, "caverns-pairs.color.zx0"), pairColor);
 writeFileSync(outputSource, source);
 writeFileSync(studioSource, source);
 
@@ -139,6 +194,8 @@ const files = [
   ["caverns-title.color.zx0", "binary", best.color],
   ["caverns-title.pattern.raw", "binary", best.repacked.pattern],
   ["caverns-title.color.raw", "binary", best.repacked.color],
+  ["caverns-pairs.pattern.zx0", "binary", pairPattern],
+  ["caverns-pairs.color.zx0", "binary", pairColor],
   ["editors.json", "editor-config", Buffer.from(editors)]
 ].map(([path, kind, bytes]) => ({ path, kind, source: "example", base64: Buffer.from(bytes).toString("base64") }));
 writeFileSync(studioAssets, `// Generated by tools/build-caverns-port.mjs.\nexport const cavernsProjectFiles = ${JSON.stringify(files)};\n`);
