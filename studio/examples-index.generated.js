@@ -1971,5 +1971,25 @@ export const exampleManifest = [
       "zx0",
       "manual-canon"
     ]
+  },
+  {
+    "id": "caverns",
+    "label": "In the Caverns of Carnage",
+    "detail": "A smooth-scrolling Timelost cavern chase with three creature types, trapdoors, safe passages, music and a ZX0 bitmap title.",
+    "projectName": "In the Caverns of Carnage",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "book",
+      "port",
+      "game",
+      "graphics",
+      "music",
+      "zx0",
+      "manual-canon"
+    ]
   }
 ];

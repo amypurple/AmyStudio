@@ -12,6 +12,7 @@ import { amyChessProjectFiles as amyChessV11ProjectFiles } from "./examples-amy-
 import { amyChessProjectFiles as amyChessV12ProjectFiles } from "./examples-amy-chess-v1-2-assets.generated.js";
 import { mickey120cProjectFiles } from "./examples-mickey-120c-assets.generated.js";
 import { pitdemonsProjectFiles } from "./examples-pitdemons-assets.generated.js";
+import { cavernsProjectFiles } from "./examples-caverns-assets.generated.js";
 
 // GENERATED from clean example catalog; listings live in studio/examples-src/*.alexis.
 
@@ -56,6 +57,7 @@ const derivedProjectFilesById = {
   "earth-globe-demo": earthGlobeProjectFiles,
   "mickey-120-color-picture": mickey120cProjectFiles,
   "pitdemons": pitdemonsProjectFiles,
+  "caverns": cavernsProjectFiles,
   "train-track-puzzle": trainTrackPuzzleProjectFiles,
   "amy-chess": amyChessProjectFiles,
   "amy-chess-v1-1": amyChessV11ProjectFiles,

@@ -1,0 +1,1753 @@
+cartridge "IN THE CAVERNS OF CARNAGE/PRESENTS TIMELOST'S/1983"
+
+' IN THE CAVERNS OF CARNAGE
+' From "Timelost: A Computer Adventure" (Atari version), by Kris Austen
+' Andrews, Arlan Keith Andrews Sr. and Joseph C. Giarratano, Que, 1983,
+' pages 114-125 ("The Cavern Monsters"). All credit belongs to the authors.
+'
+' Historical context (summary of the chapter):
+' Jacque and Erin are trapped in the fearsome Caverns of Carnage and the
+' savage Crusher beasts attack. Nobody has ever survived the Chase. The
+' couple stay near the top of the screen while the narrow, winding cavern
+' scrolls up past them, one Crusher on every third new line. Jacque's
+' positron blaster fires down the cavern; the closer the Crusher when it
+' is disintegrated, the more points. Meet a Crusher head on or touch the
+' cavern wall, and the game is over. The book ends with four ideas: other
+' creatures worth other points, trapdoors in the cavern, safe side
+' passages, and a goal: 10,000 points means the couple got through.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): left and right move Jacque and Erin; fire
+' shoots the positron blaster down the cavern.
+' The rules follow the Atari listing: the cavern scrolls up one line at a
+' time and wanders one column left or right (lines 500-555); a Crusher on
+' every third line, at a random place across the cavern (lines 502, 545);
+' the couple move one column per step (lines 807-815); one shot at a time,
+' fired below Jacque (lines 820-839), stopped by rock (lines 1710-1735);
+' points = 16 minus the rows between the couple and the Crusher (line
+' 1125); touching rock or a Crusher ends the run (lines 1800-1840, 900);
+' the high score with a name (lines 920-965); another game (line 970).
+' The book's four suggestions, all added: the Skitter that runs from wall
+' to wall (from 2,000 points, x2) and the armored Grinder that takes two
+' hits (from 5,000 points, x3); trapdoors that spring open and shut (from
+' 1,500 points); lit side passages where no Crusher or trapdoor ever
+' appears; and at 10,000 points the cavern opens into the light and the
+' couple are through, with a 500-point bonus for each life left.
+' Adaptation liberties: smooth pixel scrolling (pair tiles redrawn for
+' each scroll offset in one pattern table shared by the three screen
+' thirds, two name tables shown in turn), getting faster and
+' narrower as the score grows (cavern 9 columns wide, down to 6); points
+' x10 and 5 points per line travelled; three lives, with a short grace
+' period after each; the couple, shots, creatures and explosions are
+' 16 x 16 sprites, never more than four on a line; initials picked with
+' the joystick instead of a typed name; joystick menus; an original title
+' tune; an editorial page. The frame loop is protected from the NMI.
+' Screen: status on row 0, the cavern on rows 1-23, the couple on row 4.
+
+const PairBase = 128
+const CoupleY = 27
+const FeetY = 39
+const ShotTop = 28
+const MaxCr = 10
+const Goal = 10000
+
+const SndShot = 1
+const SndHit = 2
+const SndClank = 3
+const SndSpark = 4
+const SndCrashN = 5
+const SndCrashT = 6
+const SndFall = 7
+const SndTrap = 8
+const SndSafe = 9
+const SndSkit = 10
+const SndOver = 11
+const SndWinA = 12
+const SndWinB = 13
+const SndGood = 14
+const SndPick = 15
+const SndLose = 16
+const SndTuneA = 17
+const SndTuneB = 18
+
+u16 Score = 0
+u16 HighScore = 2000
+u8 HighName[3]
+u8 Lives = 3
+u8 LL[32]                       ' cavern columns LL..LR of each line (ring)
+u8 LR[32]
+u8 PA[32]                       ' side passage columns PA..PB, PA = 0: none
+u8 PB[32]
+u8 TD[32]                       ' trapdoor column, 0: none
+u8 CLn[10]                      ' creatures: line, x, kind, hits, direction
+u8 CXp[10]
+u8 CKind[10]
+u8 CHits[10]
+u8 CDir[10]
+u8 Base = 0                     ' line shown at the top of the cavern
+u8 Scr = 0                      ' scroll offset 0-7
+u16 Acc16 = 0
+u16 Spd16 = 128
+u8 Adv = 0
+u8 ZShow = 0
+u8 ZOnlyShadow = 0
+u16 ZBase = 0
+u16 ZOff = 0
+u8 LastScr = 255
+u8 LastTrap = 255
+u8 ZRow = 0
+u8 ZRowEnd = 0
+u8 HBase = 0
+u8 KTop[32]
+u8 KBot[32]
+u8 ZLine = 0
+u8 ZCol = 0
+u8 ZRes = 0
+u8 FlipNow = 0
+u8 CaveL = 11                   ' the cavern being dug
+u8 CaveW = 9
+u8 WantW = 9
+u8 Gap = 0
+u8 Spacing = 4
+u8 PassLeft = 0
+u8 PassSide = 0
+u8 Outro = 0
+u8 OutroLine = 0
+u8 TrapOpen = 0
+u8 TrapT = 0
+u8 JJP = 14                     ' Jacque's column (Erin is on his right)
+u8 CX = 112
+u8 MoveT = 0
+u8 ShotOn = 0
+u8 ShotX = 0
+u8 ShotY = 0
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 Grace = 0
+u8 InPass = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 Dirty = 0
+u8 Dead = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 Up = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 Choice = 0
+u8 Tm = 0
+u8 StatT = 0
+u8 StepT = 0
+u8 StepF = 0
+u8 C2 = 0
+u16 Dst16 = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Pts = 0
+
+  tile screen
+  set sound table CaveSoundTable areas 4
+  sprites 16x16
+  copy SpritePat count 448 to vram.spr_pat
+  HideSprites
+  HighName[0] = 84
+  HighName[1] = 76
+  HighName[2] = 83
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Lives = 3
+  StartCave
+  Rearm
+  wait no fire
+  nmi off
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ' Everything the screen shows changes here, right after the frame
+  if FlipNow = 1 then
+    call asm ZFlip
+    FlipNow = 0
+  end if
+  LoadPairs
+  update sprites from 0 count 14
+  ' One frame of play
+  ReadStick
+  MoveCouple
+  MoveShot
+  MoveCreatures
+  Animate
+  if Dead = 0 then CheckCouple
+  if Dead > 0 then goto lost_one
+  ScrollCave
+  ' The status line, at most every 16 frames
+  inc StatT
+  if Dirty > 0 then
+    N = StatT & 15
+    if N = 0 then
+      Dirty = 0
+      StatusBoth
+    end if
+  end if
+  ' The couple reach the light
+  if Outro = 1 then
+    N = Base + 4
+    N -= OutroLine
+    if N < 100 then goto through
+  end if
+  DrawSprites
+  goto main_loop
+
+  ' --- Lines 900-920: Jacque and Erin hit something ---
+lost_one:
+  ShotOn = 0
+  if Dead = 1 then
+    play sound SndCrashN
+    play sound SndCrashT
+  else
+    play sound SndFall
+  end if
+  for Tm = 1 to 40
+    BoomX = CX
+    BoomY = 24
+    BoomT = Tm
+    DrawSprites
+    if Dead = 2 then
+      ' Down the trapdoor
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+    end if
+    Rearm
+    wait
+    nmi off
+    update sprites from 0 count 14
+  next
+  BoomT = 0
+  dec Lives
+  Dirty = 1
+  if Lives = 0 then goto game_over
+  play sound SndLose
+  Recover
+  Dead = 0
+  goto main_loop
+
+  ' --- The book's goal: 10,000 points and the couple are through ---
+through:
+  HideSprites
+  set sprite 0 to CoupleY,CX,0,5
+  set sprite 1 to CoupleY,CX,4,9
+  update sprites from 0 count 14
+  play sound SndWinA
+  play sound SndWinB
+  print at 4,8, "THROUGH THE CAVERNS!"
+  print at 4,10, "LIVES LEFT X 500 BONUS"
+  NumU = Lives
+  NumU *= 500
+  Score += NumU
+  StatusBoth
+  Rearm
+  wait 240 frames
+  nmi off
+  goto final_score
+
+game_over:
+  play sound SndOver
+  print at 8,10, "** GAME OVER **"
+  Rearm
+  wait 150 frames
+  nmi off
+
+final_score:
+  if Score > HighScore then
+    ' Lines 920-965: a new high score
+    HighScore = Score
+    print at 7,12, "GOOD SHOOTING!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  StatusBoth
+  ' Line 970
+  print at 9,18, "ANOTHER GAME"
+  print at 9,19, "TITLE PAGE"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,18 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Up = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' The pair patterns for this scroll offset, trapdoors shut or open
+sub LoadPairs:
+  if Scr = LastScr then
+    if TrapOpen = LastTrap then return
+  end if
+  LastScr = Scr
+  LastTrap = TrapOpen
+  ZOff = Scr
+  ZOff <<= 7
+  if TrapOpen = 1 then ZOff += 1024
+  call asm ZPairs
+  return
+end sub
+
+' Lines 807-839: move one column per step, and fire
+sub MoveCouple:
+  if MoveT > 0 then dec MoveT
+  if MoveT = 0 then
+    if Stick = 1 then
+      if JJP > 1 then
+        dec JJP
+        MoveT = 4
+      end if
+    end if
+    if Stick = 2 then
+      if JJP < 29 then
+        inc JJP
+        MoveT = 4
+      end if
+    end if
+  end if
+  X = JJP * 8
+  if CX < X then
+    CX += 2
+  else
+    if CX > X then CX -= 2
+  end if
+  if Btn = 0 then return
+  if ShotOn = 1 then return
+  ShotOn = 1
+  ShotX = CX
+  ShotY = ShotTop
+  play sound SndShot
+  return
+end sub
+
+' Lines 580-587, 1710-1780: the shot travels down the cavern
+sub MoveShot:
+  if BoomT > 0 then dec BoomT
+  if ShotOn = 0 then return
+  ShotY += 4
+  if ShotY > 184 then
+    ShotOn = 0
+    return
+  end if
+  ' Rock stops it
+  N = ShotY + Scr
+  N -= 2
+  N >>= 3
+  ZLine = Base + N
+  N = ShotX + 4
+  N >>= 3
+  ZCol = N
+  call asm ZKindAt
+  if ZRes = 0 then
+    ShotOn = 0
+    BoomX = ShotX - 4
+    BoomY = ShotY - 4
+    BoomT = 6
+    play sound SndSpark
+    return
+  end if
+  ' A creature?
+  for I = 0 to 9
+    if CKind[I] < 3 then
+      N = CLn[I] - Base
+      if N < 25 then
+        Y = N * 8
+        Y += 8
+        Y -= Scr
+        X = CXp[I]
+        K = ShotX + 5
+        P = X + 3
+        if K >= P then
+          K = ShotX + 3
+          P = X + 12
+          if K <= P then
+            K = ShotY + 7
+            P = Y + 3
+            if K >= P then
+              P = Y + 10
+              K = ShotY + 1
+              if K <= P then
+                HitCreature
+                return
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Line 1125: the closer, the more
+sub HitCreature:
+  ShotOn = 0
+  BoomX = X
+  BoomY = Y
+  BoomT = 16
+  if CKind[I] = 2 then
+    if CHits[I] = 2 then
+      CHits[I] = 1
+      play sound SndClank
+      return
+    end if
+  end if
+  N = Y - 24
+  N >>= 3
+  Pts = 1
+  if N < 15 then
+    Pts = 16 - N
+  end if
+  Pts *= 10
+  if CKind[I] = 1 then Pts += Pts
+  if CKind[I] = 2 then Pts *= 3
+  CKind[I] = 255
+  Score += Pts
+  Dirty = 1
+  play sound SndHit
+  return
+end sub
+
+sub MoveCreatures:
+  for I = 0 to 9
+    if CKind[I] = 1 then
+      ' The Skitter runs from wall to wall of its line
+      N = CLn[I] & 31
+      K = LL[N] * 8
+      K -= 4
+      P = LR[N] * 8
+      P -= 4
+      X = CXp[I]
+      if CDir[I] = 0 then
+        if X >= P then
+          CDir[I] = 1
+          play sound SndSkit
+        else
+          inc X
+        end if
+      else
+        if X <= K then
+          CDir[I] = 0
+          play sound SndSkit
+        else
+          dec X
+        end if
+      end if
+      CXp[I] = X
+    end if
+  next
+  return
+end sub
+
+sub Animate:
+  inc AnimT
+  if AnimT >= 10 then
+    AnimT = 0
+    AnimF = AnimF ^ 4
+  end if
+  if Grace > 0 then dec Grace
+  inc StepT
+  if StepT >= 9 then
+    StepT = 0
+    StepF = StepF ^ 1
+  end if
+  ' The trapdoors spring open and shut
+  inc TrapT
+  if TrapOpen = 0 then
+    if TrapT >= 90 then
+      TrapT = 0
+      TrapOpen = 1
+      if Score >= 1500 then play sound SndTrap
+    end if
+  else
+    if TrapT >= 50 then
+      TrapT = 0
+      TrapOpen = 0
+    end if
+  end if
+  return
+end sub
+
+' Lines 1800-1840: what is under the couple's feet, and who is near
+sub CheckCouple:
+  ' Rock and trapdoors: the columns under the couple as drawn, at the
+  ' waist and at the feet
+  V = 0
+  C = CX + 2
+  C >>= 3
+  C2 = CX + 13
+  C2 >>= 3
+  for R = 0 to 1
+    N = 25
+    if R = 1 then N = 31
+    N += Scr
+    N >>= 3
+    ZLine = Base + N
+    for J = C to C2
+      ZCol = J
+      call asm ZKindAt
+      if ZRes = 0 then Dead = 1
+      if R = 1 then
+        if ZRes = 2 then
+          if TrapOpen = 1 then
+            if Grace = 0 then Dead = 2
+          end if
+        end if
+        if ZRes = 3 then V = 1
+      end if
+    next
+  next
+  if V = 1 then
+    if InPass = 0 then play sound SndSafe
+  end if
+  InPass = V
+  if Dead > 0 then return
+  if Grace > 0 then return
+  if InPass = 1 then return
+  for I = 0 to 9
+    if CKind[I] < 3 then
+      N = CLn[I] - Base
+      if N < 8 then
+        Y = N * 8
+        Y += 8
+        Y -= Scr
+        X = CXp[I]
+        ' The creature's body (columns 4-11, rows 3-10 as shown) against
+        ' the couple's (columns 2-14, rows 28-40)
+        K = X + 11
+        P = CX + 2
+        if K >= P then
+          K = X + 4
+          P = CX + 14
+          if K <= P then
+            K = Y + 10
+            if K >= 28 then
+              P = Y + 3
+              if P <= 40 then Dead = 1
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' The cavern moves up, faster as the score grows
+sub ScrollCave:
+  W16 = Score >> 6
+  Spd16 = W16 + 112
+  if Spd16 > 256 then Spd16 = 256
+  Acc16 += Spd16
+  if Acc16 < 256 then goto build
+  Acc16 -= 256
+  inc Scr
+  if Scr < 8 then goto build
+  ' A whole line has gone by
+  Scr = 0
+  ZRowEnd = 24
+  call asm ZRows
+  ZShow = 1 - ZShow
+  FlipNow = 1
+  inc Base
+  Score += 5
+  Dirty = 1
+  N = Base - 1
+  for I = 0 to 9
+    if CLn[I] = N then CKind[I] = 255
+  next
+  N = Base + 24
+  GenLine
+  ' Start the hidden table for the next line position
+  ZBase = $1800
+  if ZShow = 0 then ZBase = $1C00
+  HBase = Base + 1
+  ZRow = 1
+build:
+  N = Scr + 1
+  N *= 3
+  N += 1
+  if N > 24 then N = 24
+  ZRowEnd = N
+  call asm ZRows
+  return
+end sub
+
+' Lines 500-555: dig line N of the cavern
+sub GenLine:
+  K = N & 31
+  TD[K] = 0
+  PA[K] = 0
+  PB[K] = 0
+  if Outro = 1 then
+    ' The way out: light from wall to wall
+    LL[K] = 31
+    LR[K] = 0
+    PA[K] = 1
+    PB[K] = 30
+    return
+  end if
+  ' Narrower as the score grows
+  WantW = 9
+  if Score >= 2500 then WantW = 8
+  if Score >= 5000 then WantW = 7
+  if Score >= 7500 then WantW = 6
+  if CaveW > WantW then
+    P = random(0, 3)
+    if P = 0 then dec CaveW
+  end if
+  if PassLeft = 0 then
+    ' Line 510: the cavern wanders
+    P = random(0, 2)
+    if P = 0 then
+      if CaveL > 2 then dec CaveL
+    end if
+    if P = 2 then
+      R = 29 - CaveW
+      if CaveL < R then inc CaveL
+    end if
+  end if
+  R = 29 - CaveW
+  if CaveL > R then CaveL = R
+  LL[K] = CaveL
+  R = CaveL + CaveW
+  dec R
+  LR[K] = R
+  ' A safe side passage
+  if PassLeft = 0 then
+    P = random(0, 30)
+    if P = 0 then
+      if CaveL >= 5 then
+        PassLeft = 6
+        PassSide = 0
+      else
+        if R <= 25 then
+          PassLeft = 6
+          PassSide = 1
+        end if
+      end if
+    end if
+  end if
+  if PassLeft > 0 then
+    dec PassLeft
+    if PassSide = 0 then
+      PA[K] = CaveL - 3
+      PB[K] = CaveL - 1
+    else
+      PA[K] = R + 1
+      PB[K] = R + 3
+    end if
+    return
+  end if
+  ' A trapdoor
+  if Score >= 1500 then
+    P = random(0, 7)
+    if P = 0 then
+      P = CaveL + 1
+      R -= 1
+      TD[K] = random(P, R)
+    end if
+  end if
+  ' Line 502: a creature on every third line (every fourth to begin)
+  Spacing = 4
+  if Score >= 3000 then Spacing = 3
+  inc Gap
+  if Gap < Spacing then return
+  Gap = 0
+  for I = 0 to 9
+    if CKind[I] = 255 then goto free_slot
+  next
+  return
+free_slot:
+  CLn[I] = N
+  R = LR[K]
+  C = random(CaveL, R)
+  if C = TD[K] then C = CaveL
+  X = C * 8
+  X -= 4
+  CXp[I] = X
+  P = random(0, 9)
+  V = 0
+  if Score >= 2000 then
+    if P < 3 then V = 1
+  end if
+  if Score >= 5000 then
+    if P >= 7 then V = 2
+  end if
+  CKind[I] = V
+  CHits[I] = 1
+  if V = 2 then CHits[I] = 2
+  CDir[I] = random(0, 1)
+  return
+end sub
+
+' A new run: a straight start, both name tables built
+sub StartCave:
+  nmi off
+  HideSprites
+  ClearBoth
+  for I = 0 to 9
+    CKind[I] = 255
+  next
+  Base = 0
+  Scr = 0
+  Acc16 = 0
+  CaveL = 10
+  CaveW = 9
+  Gap = 0
+  PassLeft = 0
+  Outro = 0
+  TrapOpen = 0
+  TrapT = 0
+  ShotOn = 0
+  BoomT = 0
+  Grace = 0
+  Dead = 0
+  InPass = 0
+  for N = 0 to 24
+    GenLine
+    if N < 14 then
+      K = N & 31
+      LL[K] = 10
+      LR[K] = 18
+    end if
+  next
+  for I = 0 to 9
+    CKind[I] = 255
+  next
+  Gap = 0
+  JJP = 13
+  CX = 104
+  call asm ZShare
+  RebuildBoth
+  StatusBoth
+  return
+end sub
+
+' Both name tables from scratch: the shown one for Base, the hidden one
+' for the next line
+sub RebuildBoth:
+  ZBase = $1800
+  if ZShow = 1 then ZBase = $1C00
+  HBase = Base
+  ZRow = 1
+  ZRowEnd = 24
+  call asm ZRows
+  ZBase = $1C00
+  if ZShow = 1 then ZBase = $1800
+  HBase = Base + 1
+  ZRow = 1
+  ZRowEnd = 24
+  call asm ZRows
+  LastScr = 255
+  LoadPairs
+  return
+end sub
+
+' After a lost life: no creature or trapdoor near the couple, and the
+' couple in the middle of the cavern
+sub Recover:
+  for I = 0 to 9
+    N = CLn[I] - Base
+    if N < 14 then CKind[I] = 255
+  next
+  for J = 0 to 14
+    N = Base + J
+    N &= 31
+    TD[N] = 0
+  next
+  N = FeetY - 8
+  N += Scr
+  N >>= 3
+  N += Base
+  N &= 31
+  K = LL[N]
+  if K > 29 then K = 13
+  P = LR[N]
+  K += P
+  K >>= 1
+  if K > 1 then dec K
+  JJP = K
+  CX = K * 8
+  Grace = 120
+  ShotOn = 0
+  RebuildBoth
+  StatusBoth
+  return
+end sub
+
+sub DrawSprites:
+  ' 0 Jacque, 1 Erin (white while the grace period lasts)
+  N = 5
+  K = 9
+  if Grace > 0 then
+    P = Grace & 8
+    if P = 0 then
+      N = 15
+      K = 15
+    end if
+  end if
+  ' Their feet keep stepping
+  P = 0
+  V = 4
+  if StepF = 1 then
+    P = 48
+    V = 52
+  end if
+  set sprite 0 to CoupleY,CX,P,N
+  set sprite 1 to CoupleY,CX,V,K
+  ' 2 the shot
+  if ShotOn = 1 then
+    set sprite 2 to ShotY,ShotX,8,11
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  ' 3 an explosion
+  if BoomT > 0 then
+    N = BoomT & 4
+    if N = 0 then
+      set sprite 3 to BoomY,BoomX,12,11
+    else
+      set sprite 3 to BoomY,BoomX,16,9
+    end if
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  ' 4-13 the creatures
+  for I = 0 to 9
+    J = I + 4
+    V = CKind[I]
+    N = CLn[I] - Base
+    if V < 3 then
+      if N < 24 then
+        Y = N * 8
+        Y += 8
+        Y -= Scr
+        X = CXp[I]
+        if V = 0 then
+          P = 20 + AnimF
+          set sprite J to Y,X,P,8
+        end if
+        if V = 1 then
+          P = 28 + AnimF
+          set sprite J to Y,X,P,11
+        end if
+        if V = 2 then
+          P = 36 + AnimF
+          K = 14
+          if CHits[I] = 1 then
+            P = 44
+            K = 13
+          end if
+          set sprite J to Y,X,P,K
+        end if
+      else
+        set sprite J to 192,0,0,0
+      end if
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  return
+end sub
+
+' Lines 600-615: the status line, on both name tables
+sub StatusBoth:
+  call asm ZShadow with a = 0
+  ShowStatus
+  call asm ZShadow with a = 1
+  ShowStatus
+  N = ZShow
+  call asm ZShadow with a = N
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,0, "SCORE"
+  NumU = Score
+  print at 8,0, digits$(NumU, 5)
+  print at 14,0, "LIVES"
+  NumU = Lives
+  print at 20,0, digits$(NumU, 1)
+  print at 22,0, "HI"
+  NumU = HighScore
+  print at 25,0, digits$(NumU, 5)
+  ' The goal: once 10,000 points are reached, the way out is near
+  if Outro = 0 then
+    if Score >= Goal then
+      Outro = 1
+      OutroLine = Base + 25
+    end if
+  end if
+  return
+end sub
+
+' Clears both name tables and shows the first
+sub ClearBoth:
+  fill mode 2 text color with $F1
+  backdrop black
+  call asm ZShadow with a = 1
+  cls
+  call asm ZShadow with a = 0
+  cls
+  ZShow = 0
+  call asm ZFlip
+  return
+end sub
+
+' Lines 940-965: three initials with the joystick
+sub EnterName:
+  print at 6,13, "YOUR INITIALS:"
+  print at 5,16, "UP/DOWN, FIRE: NEXT"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,13
+  next
+  X = I + 21
+  fill 32 count 3 at 21,14
+  put char 45 at X,14
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then goto name_done
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  K = 0
+  if joypad(1).down then K = 1
+  if joypad(2).down then K = 1
+  if K = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+name_done:
+  fill 32 count 3 at 21,14
+  fill 32 count 20 at 5,16
+  fill 32 count 20 at 5,13
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 14
+  for J = 0 to 13
+    set sprite J to 192,0,0,0
+  next
+  update sprites from 0 count 14
+  return
+end sub
+
+' Lines 8000-8950: the instructions
+sub TitlePage:
+  nmi off
+  HideSprites
+  ClearBoth
+  print at 6,1, "IN THE CAVERNS OF"
+  print at 9,2, "C A R N A G E"
+  print at 3,4, "THE CAVERN SCROLLS PAST"
+  print at 3,5, "JACQUE AND ERIN. STEER"
+  print at 3,6, "CLEAR OF THE ROCK AND"
+  print at 3,7, "BLAST THE CREATURES BELOW."
+  print at 7,9, "CRUSHER     X1"
+  print at 7,11, "SKITTER     X2"
+  print at 7,13, "GRINDER     X3"
+  print at 3,15, "HIT THEM CLOSE FOR MORE."
+  print at 3,16, "MIND THE TRAPDOORS. BLUE"
+  print at 3,17, "PASSAGES ARE SAFE."
+  print at 3,18, "10,000 POINTS: YOU ARE OUT!"
+  print at 4,20, "HIGH"
+  NumU = HighScore
+  print at 9,20, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 15
+    N = HighName[J]
+    put char N at X,20
+  next
+  print at 6,22, "PRESS FIRE TO PLAY"
+  set sprite 4 to 70,24,20,8
+  set sprite 5 to 86,24,28,11
+  set sprite 6 to 102,24,36,14
+  set sprite 0 to 154,208,0,5
+  set sprite 1 to 154,208,4,9
+  update sprites from 0 count 14
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  ZShow = 0
+  call asm ZFlip
+  cls
+  print at 4,1, "IN THE CAVERNS OF CARNAGE"
+  print at 2,3, "BY KRIS AUSTEN ANDREWS,"
+  print at 2,4, "ARLAN KEITH ANDREWS SR. AND"
+  print at 2,5, "JOSEPH C. GIARRATANO"
+  print at 2,6, "TIMELOST, QUE, 1983"
+  print at 2,8, "THE SECOND CHASE OF THE"
+  print at 2,9, "BOOK: NO ONE HAS EVER"
+  print at 2,10, "COME THROUGH THE CAVERNS."
+  print at 2,12, "THIS VERSION ADDS ALL FOUR"
+  print at 2,13, "OF THE BOOK'S IDEAS: NEW"
+  print at 2,14, "CREATURES, TRAPDOORS, SAFE"
+  print at 2,15, "SIDE PASSAGES, AND A WAY"
+  print at 2,16, "OUT AT 10,000 POINTS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' Pair tiles 128-143 for scroll offsets 0-7: trapdoors shut, then open
+data PairPat bytes
+  $20,$13,$94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18
+  $20,$13,$94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18
+  $00,$02,$00,$20,$00,$00,$04,$80,$00,$02,$00,$20,$00,$00,$04,$80
+  $00,$02,$00,$20,$00,$00,$04,$80,$00,$02,$00,$20,$00,$00,$04,$80
+  $FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00
+  $FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00
+  $00,$40,$08,$00,$02,$20,$00,$08,$00,$40,$08,$00,$02,$20,$00,$08
+  $00,$40,$08,$00,$02,$20,$00,$08,$00,$40,$08,$00,$02,$20,$00,$08
+  $13,$94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00
+  $13,$94,$08,$60,$02,$82,$18,$FF,$13,$94,$08,$60,$02,$82,$18,$00
+  $02,$00,$20,$00,$00,$04,$80,$20,$02,$00,$20,$00,$00,$04,$80,$00
+  $02,$00,$20,$00,$00,$04,$80,$FF,$02,$00,$20,$00,$00,$04,$80,$00
+  $AA,$FF,$AA,$FF,$AA,$FF,$00,$20,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00
+  $AA,$FF,$AA,$FF,$AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00
+  $40,$08,$00,$02,$20,$00,$08,$20,$40,$08,$00,$02,$20,$00,$08,$00
+  $40,$08,$00,$02,$20,$00,$08,$FF,$40,$08,$00,$02,$20,$00,$08,$00
+  $94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02
+  $94,$08,$60,$02,$82,$18,$FF,$AA,$94,$08,$60,$02,$82,$18,$00,$40
+  $00,$20,$00,$00,$04,$80,$20,$13,$00,$20,$00,$00,$04,$80,$00,$02
+  $00,$20,$00,$00,$04,$80,$FF,$AA,$00,$20,$00,$00,$04,$80,$00,$40
+  $FF,$AA,$FF,$AA,$FF,$00,$20,$13,$FF,$AA,$FF,$AA,$FF,$00,$00,$02
+  $FF,$AA,$FF,$AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00,$40
+  $08,$00,$02,$20,$00,$08,$20,$13,$08,$00,$02,$20,$00,$08,$00,$02
+  $08,$00,$02,$20,$00,$08,$FF,$AA,$08,$00,$02,$20,$00,$08,$00,$40
+  $08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00
+  $08,$60,$02,$82,$18,$FF,$AA,$FF,$08,$60,$02,$82,$18,$00,$40,$08
+  $20,$00,$00,$04,$80,$20,$13,$94,$20,$00,$00,$04,$80,$00,$02,$00
+  $20,$00,$00,$04,$80,$FF,$AA,$FF,$20,$00,$00,$04,$80,$00,$40,$08
+  $AA,$FF,$AA,$FF,$00,$20,$13,$94,$AA,$FF,$AA,$FF,$00,$00,$02,$00
+  $AA,$FF,$AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00,$40,$08
+  $00,$02,$20,$00,$08,$20,$13,$94,$00,$02,$20,$00,$08,$00,$02,$00
+  $00,$02,$20,$00,$08,$FF,$AA,$FF,$00,$02,$20,$00,$08,$00,$40,$08
+  $60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20
+  $60,$02,$82,$18,$FF,$AA,$FF,$AA,$60,$02,$82,$18,$00,$40,$08,$00
+  $00,$00,$04,$80,$20,$13,$94,$08,$00,$00,$04,$80,$00,$02,$00,$20
+  $00,$00,$04,$80,$FF,$AA,$FF,$AA,$00,$00,$04,$80,$00,$40,$08,$00
+  $FF,$AA,$FF,$00,$20,$13,$94,$08,$FF,$AA,$FF,$00,$00,$02,$00,$20
+  $FF,$AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00,$40,$08,$00
+  $02,$20,$00,$08,$20,$13,$94,$08,$02,$20,$00,$08,$00,$02,$00,$20
+  $02,$20,$00,$08,$FF,$AA,$FF,$AA,$02,$20,$00,$08,$00,$40,$08,$00
+  $02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20,$00
+  $02,$82,$18,$FF,$AA,$FF,$AA,$FF,$02,$82,$18,$00,$40,$08,$00,$02
+  $00,$04,$80,$20,$13,$94,$08,$60,$00,$04,$80,$00,$02,$00,$20,$00
+  $00,$04,$80,$FF,$AA,$FF,$AA,$FF,$00,$04,$80,$00,$40,$08,$00,$02
+  $AA,$FF,$00,$20,$13,$94,$08,$60,$AA,$FF,$00,$00,$02,$00,$20,$00
+  $AA,$FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00,$40,$08,$00,$02
+  $20,$00,$08,$20,$13,$94,$08,$60,$20,$00,$08,$00,$02,$00,$20,$00
+  $20,$00,$08,$FF,$AA,$FF,$AA,$FF,$20,$00,$08,$00,$40,$08,$00,$02
+  $82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20,$00,$00
+  $82,$18,$FF,$AA,$FF,$AA,$FF,$AA,$82,$18,$00,$40,$08,$00,$02,$20
+  $04,$80,$20,$13,$94,$08,$60,$02,$04,$80,$00,$02,$00,$20,$00,$00
+  $04,$80,$FF,$AA,$FF,$AA,$FF,$AA,$04,$80,$00,$40,$08,$00,$02,$20
+  $FF,$00,$20,$13,$94,$08,$60,$02,$FF,$00,$00,$02,$00,$20,$00,$00
+  $FF,$00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00,$40,$08,$00,$02,$20
+  $00,$08,$20,$13,$94,$08,$60,$02,$00,$08,$00,$02,$00,$20,$00,$00
+  $00,$08,$FF,$AA,$FF,$AA,$FF,$AA,$00,$08,$00,$40,$08,$00,$02,$20
+  $18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20,$00,$00,$04
+  $18,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$18,$00,$40,$08,$00,$02,$20,$00
+  $80,$20,$13,$94,$08,$60,$02,$82,$80,$00,$02,$00,$20,$00,$00,$04
+  $80,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$80,$00,$40,$08,$00,$02,$20,$00
+  $00,$20,$13,$94,$08,$60,$02,$82,$00,$00,$02,$00,$20,$00,$00,$04
+  $00,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$00,$00,$40,$08,$00,$02,$20,$00
+  $08,$20,$13,$94,$08,$60,$02,$82,$08,$00,$02,$00,$20,$00,$00,$04
+  $08,$FF,$AA,$FF,$AA,$FF,$AA,$FF,$08,$00,$40,$08,$00,$02,$20,$00
+  $20,$13,$94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18
+  $20,$13,$94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18
+  $00,$02,$00,$20,$00,$00,$04,$80,$00,$02,$00,$20,$00,$00,$04,$80
+  $00,$02,$00,$20,$00,$00,$04,$80,$00,$02,$00,$20,$00,$00,$04,$80
+  $FF,$81,$81,$81,$81,$81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00
+  $FF,$81,$81,$81,$81,$81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00
+  $00,$40,$08,$00,$02,$20,$00,$08,$00,$40,$08,$00,$02,$20,$00,$08
+  $00,$40,$08,$00,$02,$20,$00,$08,$00,$40,$08,$00,$02,$20,$00,$08
+  $13,$94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00
+  $13,$94,$08,$60,$02,$82,$18,$FF,$13,$94,$08,$60,$02,$82,$18,$00
+  $02,$00,$20,$00,$00,$04,$80,$20,$02,$00,$20,$00,$00,$04,$80,$00
+  $02,$00,$20,$00,$00,$04,$80,$FF,$02,$00,$20,$00,$00,$04,$80,$00
+  $81,$81,$81,$81,$81,$FF,$00,$20,$81,$81,$81,$81,$81,$FF,$00,$00
+  $81,$81,$81,$81,$81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00
+  $40,$08,$00,$02,$20,$00,$08,$20,$40,$08,$00,$02,$20,$00,$08,$00
+  $40,$08,$00,$02,$20,$00,$08,$FF,$40,$08,$00,$02,$20,$00,$08,$00
+  $94,$08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02
+  $94,$08,$60,$02,$82,$18,$FF,$81,$94,$08,$60,$02,$82,$18,$00,$40
+  $00,$20,$00,$00,$04,$80,$20,$13,$00,$20,$00,$00,$04,$80,$00,$02
+  $00,$20,$00,$00,$04,$80,$FF,$81,$00,$20,$00,$00,$04,$80,$00,$40
+  $81,$81,$81,$81,$FF,$00,$20,$13,$81,$81,$81,$81,$FF,$00,$00,$02
+  $81,$81,$81,$81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00,$40
+  $08,$00,$02,$20,$00,$08,$20,$13,$08,$00,$02,$20,$00,$08,$00,$02
+  $08,$00,$02,$20,$00,$08,$FF,$81,$08,$00,$02,$20,$00,$08,$00,$40
+  $08,$60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00
+  $08,$60,$02,$82,$18,$FF,$81,$81,$08,$60,$02,$82,$18,$00,$40,$08
+  $20,$00,$00,$04,$80,$20,$13,$94,$20,$00,$00,$04,$80,$00,$02,$00
+  $20,$00,$00,$04,$80,$FF,$81,$81,$20,$00,$00,$04,$80,$00,$40,$08
+  $81,$81,$81,$FF,$00,$20,$13,$94,$81,$81,$81,$FF,$00,$00,$02,$00
+  $81,$81,$81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00,$40,$08
+  $00,$02,$20,$00,$08,$20,$13,$94,$00,$02,$20,$00,$08,$00,$02,$00
+  $00,$02,$20,$00,$08,$FF,$81,$81,$00,$02,$20,$00,$08,$00,$40,$08
+  $60,$02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20
+  $60,$02,$82,$18,$FF,$81,$81,$81,$60,$02,$82,$18,$00,$40,$08,$00
+  $00,$00,$04,$80,$20,$13,$94,$08,$00,$00,$04,$80,$00,$02,$00,$20
+  $00,$00,$04,$80,$FF,$81,$81,$81,$00,$00,$04,$80,$00,$40,$08,$00
+  $81,$81,$FF,$00,$20,$13,$94,$08,$81,$81,$FF,$00,$00,$02,$00,$20
+  $81,$81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00,$40,$08,$00
+  $02,$20,$00,$08,$20,$13,$94,$08,$02,$20,$00,$08,$00,$02,$00,$20
+  $02,$20,$00,$08,$FF,$81,$81,$81,$02,$20,$00,$08,$00,$40,$08,$00
+  $02,$82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20,$00
+  $02,$82,$18,$FF,$81,$81,$81,$81,$02,$82,$18,$00,$40,$08,$00,$02
+  $00,$04,$80,$20,$13,$94,$08,$60,$00,$04,$80,$00,$02,$00,$20,$00
+  $00,$04,$80,$FF,$81,$81,$81,$81,$00,$04,$80,$00,$40,$08,$00,$02
+  $81,$FF,$00,$20,$13,$94,$08,$60,$81,$FF,$00,$00,$02,$00,$20,$00
+  $81,$FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00,$40,$08,$00,$02
+  $20,$00,$08,$20,$13,$94,$08,$60,$20,$00,$08,$00,$02,$00,$20,$00
+  $20,$00,$08,$FF,$81,$81,$81,$81,$20,$00,$08,$00,$40,$08,$00,$02
+  $82,$18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20,$00,$00
+  $82,$18,$FF,$81,$81,$81,$81,$81,$82,$18,$00,$40,$08,$00,$02,$20
+  $04,$80,$20,$13,$94,$08,$60,$02,$04,$80,$00,$02,$00,$20,$00,$00
+  $04,$80,$FF,$81,$81,$81,$81,$81,$04,$80,$00,$40,$08,$00,$02,$20
+  $FF,$00,$20,$13,$94,$08,$60,$02,$FF,$00,$00,$02,$00,$20,$00,$00
+  $FF,$00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00,$40,$08,$00,$02,$20
+  $00,$08,$20,$13,$94,$08,$60,$02,$00,$08,$00,$02,$00,$20,$00,$00
+  $00,$08,$FF,$81,$81,$81,$81,$81,$00,$08,$00,$40,$08,$00,$02,$20
+  $18,$20,$13,$94,$08,$60,$02,$82,$18,$00,$02,$00,$20,$00,$00,$04
+  $18,$FF,$81,$81,$81,$81,$81,$FF,$18,$00,$40,$08,$00,$02,$20,$00
+  $80,$20,$13,$94,$08,$60,$02,$82,$80,$00,$02,$00,$20,$00,$00,$04
+  $80,$FF,$81,$81,$81,$81,$81,$FF,$80,$00,$40,$08,$00,$02,$20,$00
+  $00,$20,$13,$94,$08,$60,$02,$82,$00,$00,$02,$00,$20,$00,$00,$04
+  $00,$FF,$81,$81,$81,$81,$81,$FF,$00,$00,$40,$08,$00,$02,$20,$00
+  $08,$20,$13,$94,$08,$60,$02,$82,$08,$00,$02,$00,$20,$00,$00,$04
+  $08,$FF,$81,$81,$81,$81,$81,$FF,$08,$00,$40,$08,$00,$02,$20,$00
+end data
+data PairCol bytes
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16
+  $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41
+  $74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54
+  $74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41
+  $16,$A6,$16,$A6,$16,$A6,$16,$E1,$16,$A6,$16,$A6,$16,$A6,$16,$74
+  $41,$41,$41,$41,$41,$41,$41,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$E1,$41,$41,$41,$41,$41,$41,$41,$74
+  $E1,$E1,$E1,$E1,$E1,$E1,$41,$A6,$E1,$E1,$E1,$E1,$E1,$E1,$41,$41
+  $E1,$E1,$E1,$E1,$E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74
+  $54,$74,$54,$74,$54,$74,$54,$A6,$54,$74,$54,$74,$54,$74,$54,$41
+  $54,$74,$54,$74,$54,$74,$54,$E1,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41
+  $A6,$16,$A6,$16,$A6,$16,$E1,$E1,$A6,$16,$A6,$16,$A6,$16,$74,$54
+  $41,$41,$41,$41,$41,$41,$A6,$16,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$E1,$E1,$41,$41,$41,$41,$41,$41,$74,$54
+  $E1,$E1,$E1,$E1,$E1,$41,$A6,$16,$E1,$E1,$E1,$E1,$E1,$41,$41,$41
+  $E1,$E1,$E1,$E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54
+  $74,$54,$74,$54,$74,$54,$A6,$16,$74,$54,$74,$54,$74,$54,$41,$41
+  $74,$54,$74,$54,$74,$54,$E1,$E1,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41
+  $16,$A6,$16,$A6,$16,$E1,$E1,$E1,$16,$A6,$16,$A6,$16,$74,$54,$74
+  $41,$41,$41,$41,$41,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$E1,$E1,$E1,$41,$41,$41,$41,$41,$74,$54,$74
+  $E1,$E1,$E1,$E1,$41,$A6,$16,$A6,$E1,$E1,$E1,$E1,$41,$41,$41,$41
+  $E1,$E1,$E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54,$74
+  $54,$74,$54,$74,$54,$A6,$16,$A6,$54,$74,$54,$74,$54,$41,$41,$41
+  $54,$74,$54,$74,$54,$E1,$E1,$E1,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41
+  $A6,$16,$A6,$16,$E1,$E1,$E1,$E1,$A6,$16,$A6,$16,$74,$54,$74,$54
+  $41,$41,$41,$41,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$E1,$E1,$E1,$E1,$41,$41,$41,$41,$74,$54,$74,$54
+  $E1,$E1,$E1,$41,$A6,$16,$A6,$16,$E1,$E1,$E1,$41,$41,$41,$41,$41
+  $E1,$E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54,$74,$54
+  $74,$54,$74,$54,$A6,$16,$A6,$16,$74,$54,$74,$54,$41,$41,$41,$41
+  $74,$54,$74,$54,$E1,$E1,$E1,$E1,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41
+  $16,$A6,$16,$E1,$E1,$E1,$E1,$E1,$16,$A6,$16,$74,$54,$74,$54,$74
+  $41,$41,$41,$A6,$16,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$E1,$E1,$E1,$E1,$E1,$41,$41,$41,$74,$54,$74,$54,$74
+  $E1,$E1,$41,$A6,$16,$A6,$16,$A6,$E1,$E1,$41,$41,$41,$41,$41,$41
+  $E1,$E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54,$74,$54,$74
+  $54,$74,$54,$A6,$16,$A6,$16,$A6,$54,$74,$54,$41,$41,$41,$41,$41
+  $54,$74,$54,$E1,$E1,$E1,$E1,$E1,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41
+  $A6,$16,$E1,$E1,$E1,$E1,$E1,$E1,$A6,$16,$74,$54,$74,$54,$74,$54
+  $41,$41,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$E1,$E1,$E1,$E1,$E1,$E1,$41,$41,$74,$54,$74,$54,$74,$54
+  $E1,$41,$A6,$16,$A6,$16,$A6,$16,$E1,$41,$41,$41,$41,$41,$41,$41
+  $E1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54,$74,$54,$74,$54
+  $74,$54,$A6,$16,$A6,$16,$A6,$16,$74,$54,$41,$41,$41,$41,$41,$41
+  $74,$54,$E1,$E1,$E1,$E1,$E1,$E1,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41,$41
+  $16,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$16,$74,$54,$74,$54,$74,$54,$74
+  $41,$A6,$16,$A6,$16,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54,$74,$54,$74,$54,$74
+  $41,$A6,$16,$A6,$16,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$74,$54,$74,$54,$74,$54,$74
+  $54,$A6,$16,$A6,$16,$A6,$16,$A6,$54,$41,$41,$41,$41,$41,$41,$41
+  $54,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16
+  $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+  $81,$91,$81,$61,$61,$81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41
+  $81,$91,$81,$61,$61,$81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41
+  $74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54
+  $74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41
+  $16,$A6,$16,$A6,$16,$A6,$16,$81,$16,$A6,$16,$A6,$16,$A6,$16,$74
+  $41,$41,$41,$41,$41,$41,$41,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$81,$41,$41,$41,$41,$41,$41,$41,$74
+  $91,$81,$61,$61,$81,$91,$41,$A6,$91,$81,$61,$61,$81,$91,$41,$41
+  $91,$81,$61,$61,$81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41,$74
+  $54,$74,$54,$74,$54,$74,$54,$A6,$54,$74,$54,$74,$54,$74,$54,$41
+  $54,$74,$54,$74,$54,$74,$54,$81,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41
+  $A6,$16,$A6,$16,$A6,$16,$81,$91,$A6,$16,$A6,$16,$A6,$16,$74,$54
+  $41,$41,$41,$41,$41,$41,$A6,$16,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$81,$91,$41,$41,$41,$41,$41,$41,$74,$54
+  $81,$61,$61,$81,$91,$41,$A6,$16,$81,$61,$61,$81,$91,$41,$41,$41
+  $81,$61,$61,$81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54
+  $74,$54,$74,$54,$74,$54,$A6,$16,$74,$54,$74,$54,$74,$54,$41,$41
+  $74,$54,$74,$54,$74,$54,$81,$91,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41
+  $16,$A6,$16,$A6,$16,$81,$91,$81,$16,$A6,$16,$A6,$16,$74,$54,$74
+  $41,$41,$41,$41,$41,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$81,$91,$81,$41,$41,$41,$41,$41,$74,$54,$74
+  $61,$61,$81,$91,$41,$A6,$16,$A6,$61,$61,$81,$91,$41,$41,$41,$41
+  $61,$61,$81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54,$74
+  $54,$74,$54,$74,$54,$A6,$16,$A6,$54,$74,$54,$74,$54,$41,$41,$41
+  $54,$74,$54,$74,$54,$81,$91,$81,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41
+  $A6,$16,$A6,$16,$81,$91,$81,$61,$A6,$16,$A6,$16,$74,$54,$74,$54
+  $41,$41,$41,$41,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$81,$91,$81,$61,$41,$41,$41,$41,$74,$54,$74,$54
+  $61,$81,$91,$41,$A6,$16,$A6,$16,$61,$81,$91,$41,$41,$41,$41,$41
+  $61,$81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54,$74,$54
+  $74,$54,$74,$54,$A6,$16,$A6,$16,$74,$54,$74,$54,$41,$41,$41,$41
+  $74,$54,$74,$54,$81,$91,$81,$61,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41
+  $16,$A6,$16,$81,$91,$81,$61,$61,$16,$A6,$16,$74,$54,$74,$54,$74
+  $41,$41,$41,$A6,$16,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$81,$91,$81,$61,$61,$41,$41,$41,$74,$54,$74,$54,$74
+  $81,$91,$41,$A6,$16,$A6,$16,$A6,$81,$91,$41,$41,$41,$41,$41,$41
+  $81,$91,$41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54,$74,$54,$74
+  $54,$74,$54,$A6,$16,$A6,$16,$A6,$54,$74,$54,$41,$41,$41,$41,$41
+  $54,$74,$54,$81,$91,$81,$61,$61,$54,$74,$54,$74,$54,$74,$54,$74
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41
+  $A6,$16,$81,$91,$81,$61,$61,$81,$A6,$16,$74,$54,$74,$54,$74,$54
+  $41,$41,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$81,$91,$81,$61,$61,$81,$41,$41,$74,$54,$74,$54,$74,$54
+  $91,$41,$A6,$16,$A6,$16,$A6,$16,$91,$41,$41,$41,$41,$41,$41,$41
+  $91,$41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54,$74,$54,$74,$54
+  $74,$54,$A6,$16,$A6,$16,$A6,$16,$74,$54,$41,$41,$41,$41,$41,$41
+  $74,$54,$81,$91,$81,$61,$61,$81,$74,$54,$74,$54,$74,$54,$74,$54
+  $16,$A6,$16,$A6,$16,$A6,$16,$A6,$16,$41,$41,$41,$41,$41,$41,$41
+  $16,$81,$91,$81,$61,$61,$81,$91,$16,$74,$54,$74,$54,$74,$54,$74
+  $41,$A6,$16,$A6,$16,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54,$74,$54,$74,$54,$74
+  $41,$A6,$16,$A6,$16,$A6,$16,$A6,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$81,$91,$81,$61,$61,$81,$91,$41,$74,$54,$74,$54,$74,$54,$74
+  $54,$A6,$16,$A6,$16,$A6,$16,$A6,$54,$41,$41,$41,$41,$41,$41,$41
+  $54,$81,$91,$81,$61,$61,$81,$91,$54,$74,$54,$74,$54,$74,$54,$74
+end data
+' Sprites 16x16: Jacque, Erin, Shot, BoomA, BoomB, CrushA, CrushB, SkitA, SkitB, GrindA, GrindB, GrindHurt, JacqueB, ErinB
+data SpritePat bytes
+  $38,$38,$10,$38,$7C,$BA,$BA,$3A,$2A,$2A,$28,$28,$6C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$7C,$38,$10,$7C,$BA,$38,$7C,$FE,$28,$28,$6C,$00,$00,$00
+  $08,$1C,$08,$1C,$08,$14,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$09,$05,$13,$0F,$3F,$0F,$13,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$90,$E0,$F8,$E0,$90,$40,$20,$00,$00,$00,$00,$00
+  $80,$20,$08,$00,$02,$A0,$00,$04,$00,$10,$21,$80,$00,$00,$00,$00
+  $81,$84,$08,$00,$80,$0A,$00,$40,$00,$10,$08,$81,$00,$00,$00,$00
+  $00,$00,$03,$07,$01,$07,$09,$03,$05,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$80,$E0,$90,$C0,$A0,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$01,$0F,$05,$03,$02,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$80,$F0,$A0,$C0,$40,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$05,$13,$0F,$13,$04,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$A0,$C8,$F0,$C8,$20,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$0A,$07,$1F,$07,$0A,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$50,$E0,$F8,$E0,$50,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$0B,$0F,$1B,$1F,$15,$0F,$0A,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$D0,$F0,$D8,$F8,$A8,$F0,$50,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$0B,$0F,$1D,$1F,$1A,$0F,$1A,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$D0,$F0,$B8,$F8,$58,$F0,$58,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$09,$0E,$13,$1D,$14,$0D,$0A,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$D0,$F0,$D8,$D8,$A8,$E0,$50,$18,$00,$00,$00,$00,$00,$00
+  $38,$38,$10,$38,$7C,$BA,$BA,$3A,$2A,$44,$44,$84,$82,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$7C,$38,$10,$7C,$BA,$38,$7C,$FE,$48,$84,$84,$00,$00,$00
+end data
+
+asm {
+; ---------------------------------------------------------------------------
+; Vertical software scrolling for the caverns. Each name table cell holds
+; pair tile 128 + 4 x (kind of the line above) + (kind of the line below);
+; the pair patterns are rewritten every frame for the scroll offset, and
+; the hidden name table ($1800 or $1C00) is rebuilt for the next line
+; position a few rows at a time, then shown with one register write.
+; Kinds: 0 rock, 1 cavern floor, 2 trapdoor, 3 side passage.
+; ---------------------------------------------------------------------------
+
+; Kind of line A (ring index) at column C, in A (keeps BC, DE, HL)
+ZType:
+    push de
+    push hl
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_LL
+    add hl,de
+    ld a,c
+    cp (hl)
+    jr c,zt_out
+    ld hl,AMY_UVAR_LR
+    add hl,de
+    ld a,(hl)
+    cp c
+    jr c,zt_out
+    ld hl,AMY_UVAR_TD
+    add hl,de
+    ld a,(hl)
+    cp c
+    ld a,1
+    jr nz,zt_done
+    ld a,2
+    jr zt_done
+zt_out:
+    ld hl,AMY_UVAR_PA
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,zt_rock
+    ld a,c
+    cp (hl)
+    jr c,zt_rock
+    ld hl,AMY_UVAR_PB
+    add hl,de
+    ld a,(hl)
+    cp c
+    jr c,zt_rock
+    ld a,3
+    jr zt_done
+zt_rock:
+    xor a
+zt_done:
+    pop hl
+    pop de
+    ret
+
+; ZRes = kind of line ZLine at column ZCol (for the game code)
+ZKindAt:
+    ld a,(AMY_UVAR_ZCol)
+    ld c,a
+    ld a,(AMY_UVAR_ZLine)
+    and 31
+    call ZType
+    ld (AMY_UVAR_ZRes),a
+    ret
+
+; Kinds of line A (ring index) for all 32 columns into the buffer at HL
+ZFillKinds:
+    push hl
+    ld e,a
+    ld d,0
+    ld b,32
+zf_zero:
+    ld (hl),0
+    inc hl
+    djnz zf_zero
+    pop hl
+    ; side passage
+    push hl
+    ld ix,AMY_UVAR_PA
+    add ix,de
+    ld a,(ix+0)
+    or a
+    jr z,zf_cave
+    ld c,a
+    ld ix,AMY_UVAR_PB
+    add ix,de
+    ld a,(ix+0)
+    sub c
+    jr c,zf_cave
+    inc a
+    ld b,a
+    ld a,c
+    add a,l
+    ld l,a
+    jr nc,zf_p1
+    inc h
+zf_p1:
+    ld (hl),3
+    inc hl
+    djnz zf_p1
+zf_cave:
+    pop hl
+    push hl
+    ld ix,AMY_UVAR_LL
+    add ix,de
+    ld c,(ix+0)
+    ld ix,AMY_UVAR_LR
+    add ix,de
+    ld a,(ix+0)
+    sub c
+    jr c,zf_trap
+    inc a
+    ld b,a
+    ld a,c
+    add a,l
+    ld l,a
+    jr nc,zf_c1
+    inc h
+zf_c1:
+    ld (hl),1
+    inc hl
+    djnz zf_c1
+zf_trap:
+    pop hl
+    ld ix,AMY_UVAR_TD
+    add ix,de
+    ld a,(ix+0)
+    or a
+    ret z
+    add a,l
+    ld l,a
+    jr nc,zf_t1
+    inc h
+zf_t1:
+    ld (hl),2
+    ret
+
+; Rows ZRow to ZRowEnd - 1 of the name table at ZBase, for the line
+; position HBase (row R shows lines HBase + R - 1 and HBase + R)
+ZRows:
+    ld a,(AMY_UVAR_ZRow)
+    ld b,a
+    ld a,(AMY_UVAR_ZRowEnd)
+    cp b
+    ret z
+    ret c
+    ; the first row's upper line
+    ld a,(AMY_UVAR_HBase)
+    add a,b
+    dec a
+    and 31
+    ld hl,AMY_UVAR_KBot
+    call ZFillKinds
+zr_row:
+    ld a,(AMY_UVAR_ZRow)
+    ld b,a
+    ld a,(AMY_UVAR_ZRowEnd)
+    cp b
+    ret z
+    ret c
+    ; last row's lower line becomes this row's upper line (x 4 + 128)
+    ld hl,AMY_UVAR_KBot
+    ld de,AMY_UVAR_KTop
+    ld c,32
+zr_up:
+    ld a,(hl)
+    add a,a
+    add a,a
+    add a,128
+    ld (de),a
+    inc hl
+    inc de
+    dec c
+    jr nz,zr_up
+    ld a,(AMY_UVAR_HBase)
+    add a,b
+    and 31
+    ld hl,AMY_UVAR_KBot
+    call ZFillKinds
+    ld a,(AMY_UVAR_ZRow)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(AMY_UVAR_ZBase)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_KTop
+    ld de,AMY_UVAR_KBot
+    ld b,32
+zr_col:
+    ld a,(de)
+    add a,(hl)
+    out ($BE),a
+    inc hl
+    inc de
+    djnz zr_col
+    ld hl,AMY_UVAR_ZRow
+    inc (hl)
+    jr zr_row
+
+; Shows name table ZShow (0: $1800, 1: $1C00) and points the text
+; routines at it
+ZFlip:
+    ld a,(AMY_UVAR_ZShow)
+ZShadowA:
+    ld hl,$1800
+    ld b,6
+    or a
+    jr z,zf_set
+    ld hl,$1C00
+    ld b,7
+zf_set:
+    ld (VDP_NAME_SHADOW),hl
+    ld a,(AMY_UVAR_ZOnlyShadow)
+    or a
+    ret nz
+    ld a,b
+    out ($BF),a
+    ld a,$82
+    out ($BF),a
+    ret
+
+; Points the text routines at table A (0 or 1) without showing it
+ZShadow:
+    push af
+    ld a,1
+    ld (AMY_UVAR_ZOnlyShadow),a
+    pop af
+    call ZShadowA
+    xor a
+    ld (AMY_UVAR_ZOnlyShadow),a
+    ret
+
+; The pair patterns and colors for scroll offset ZOff (Scr x 128, + 1024
+; with trapdoors open) into tiles 128-143 of all three screen thirds.
+; outi + nop keeps the 8 microsecond gap the VDP needs during display.
+ZPairs:
+    ld de,$0400
+zp_third:
+    ld hl,(AMY_UVAR_ZOff)
+    ld bc,AMY_UDATA_PairPat
+    add hl,bc
+    call zp_copy
+    ld hl,$2000
+    add hl,de
+    ex de,hl
+    ld hl,(AMY_UVAR_ZOff)
+    ld bc,AMY_UDATA_PairCol
+    add hl,bc
+zp_copy:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $40
+    out ($BF),a
+    ld bc,$80BE
+zp_loop:
+    outi
+    nop
+    jr nz,zp_loop
+    ret
+
+; Mode 2 with all three screen thirds sharing one pattern table and one
+; color table (R4 = 0, R3 = $9F), so the pair tiles are written once
+ZShare:
+    xor a
+    out ($BF),a
+    ld a,$84
+    out ($BF),a
+    ld a,$9F
+    out ($BF),a
+    ld a,$83
+    out ($BF),a
+    ret
+CcShot:
+    db $40,$2B,$10,$01,$40,$32,$10,$01,$40,$3D,$10,$01,$40,$4D,$10,$01,$40,$68,$10,$01,$40,$A0,$10,$01
+    db $50
+CcHit:
+    db $00,$00,$04,$03,$00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$66,$04,$00,$00,$A6,$04,$10
+CcClank:
+    db $80,$50,$10,$02,$80,$A0,$20,$02,$80,$66,$40,$03,$80,$66,$F0,$02,$90
+CcSpark:
+    db $00,$00,$22,$02,$00,$00,$63,$02,$10
+CcCrashN:
+    db $00,$00,$04,$04,$00,$00,$05,$06,$00,$00,$26,$08,$00,$00,$56,$0A,$00,$00,$96,$0C,$10
+CcCrashT:
+    db $40,$7C,$10,$02,$40,$85,$10,$02,$40,$8F,$10,$02,$40,$9B,$10,$02,$40,$A9,$10,$02,$40,$BA,$10,$02
+    db $40,$CF,$10,$02,$40,$E9,$10,$02,$40,$0A,$11,$02,$40,$37,$11,$02,$40,$75,$11,$02,$40,$D2,$11,$02
+    db $40,$6D,$12,$02,$40,$A4,$13,$02,$50
+CcFall:
+    db $40,$33,$20,$02,$40,$35,$20,$02,$40,$37,$20,$02,$40,$39,$20,$02,$40,$3C,$20,$02,$40,$3E,$20,$02
+    db $40,$41,$20,$02,$40,$44,$20,$02,$40,$48,$20,$02,$40,$4C,$20,$02,$40,$50,$20,$02,$40,$55,$20,$02
+    db $40,$5A,$20,$02,$40,$60,$20,$02,$40,$68,$20,$02,$40,$70,$20,$02,$40,$7A,$20,$02,$40,$85,$20,$02
+    db $40,$93,$20,$02,$40,$A5,$20,$02,$40,$BA,$20,$02,$40,$D7,$20,$02,$40,$FE,$20,$02,$40,$37,$21,$02
+    db $40,$90,$21,$02,$40,$2F,$22,$02,$50
+CcTrap:
+    db $C0,$FC,$31,$02,$C0,$BB,$52,$02,$C0,$A4,$F3,$02,$D0
+CcSafe:
+    db $80,$6B,$30,$04,$80,$55,$30,$04,$80,$47,$30,$04,$80,$35,$30,$04,$80,$35,$F0,$02,$90
+CcSkit:
+    db $C0,$3B,$60,$01,$C0,$31,$80,$01,$D0
+CcOver:
+    db $40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02,$40,$7C,$21,$0A,$40,$7C,$F1,$02
+    db $40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$C5,$21,$0A,$40,$C5,$F1,$02
+    db $40,$FC,$21,$0A,$40,$FC,$F1,$02,$40,$A6,$22,$28,$40,$A6,$F2,$02,$50
+CcWinA:
+    db $40,$AA,$10,$05,$40,$AA,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01,$40,$71,$10,$05,$40,$71,$F0,$01
+    db $40,$55,$10,$0B,$40,$55,$F0,$01,$40,$71,$10,$05,$40,$71,$F0,$01,$40,$55,$10,$05,$40,$55,$F0,$01
+    db $40,$47,$10,$05,$40,$47,$F0,$01,$40,$55,$10,$05,$40,$55,$F0,$01,$40,$47,$10,$05,$40,$47,$F0,$01
+    db $40,$39,$10,$27,$40,$39,$F0,$01,$50
+CcWinB:
+    db $80,$53,$31,$05,$80,$53,$F1,$01,$80,$1D,$31,$05,$80,$1D,$F1,$01,$80,$E2,$30,$05,$80,$E2,$F0,$01
+    db $80,$AA,$30,$0B,$80,$AA,$F0,$01,$80,$E2,$30,$05,$80,$E2,$F0,$01,$80,$AA,$30,$05,$80,$AA,$F0,$01
+    db $80,$8F,$30,$05,$80,$8F,$F0,$01,$80,$AA,$30,$05,$80,$AA,$F0,$01,$80,$8F,$30,$05,$80,$8F,$F0,$01
+    db $80,$71,$30,$27,$80,$71,$F0,$01,$90
+CcGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+CcPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+CcLose:
+    db $80,$D6,$20,$06,$80,$E2,$20,$06,$80,$F0,$20,$06,$80,$FE,$20,$06,$80,$FE,$F0,$02,$90
+
+CaveSoundTable:
+    dw CcShot,$7035
+    dw CcHit,$702B
+    dw CcClank,$703F
+    dw CcSpark,$702B
+    dw CcCrashN,$702B
+    dw CcCrashT,$7035
+    dw CcFall,$7035
+    dw CcTrap,$7049
+    dw CcSafe,$703F
+    dw CcSkit,$7049
+    dw CcOver,$7035
+    dw CcWinA,$7035
+    dw CcWinB,$703F
+    dw CcGood,$7035
+    dw CcPick,$7049
+    dw CcLose,$703F
+    dw CaveTuneMel,$703F
+    dw CaveTuneBass,$7049
+; Title tune: Carnage, a driving E minor run through the caves (original for this port)
+; two phrases with dynamics; Tiny Sound, 7 frames per step
+CaveTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$23,$00,$23,$26,$25,$00,$23,$00,$1E,$00,$23,$00
+    db $26,$28,$2A,$00,$02,$10,$1A,$21,$2B,$00,$2A,$28,$26,$00,$25,$00
+    db $02,$30,$1A,$21,$23,$00,$22,$00,$23,$00,$00,$01,$02,$40,$1A,$21
+    db $1E,$1F,$1E,$1C,$1A,$1C,$1E,$00,$02,$30,$1A,$21,$26,$00,$26,$2A
+    db $28,$00,$26,$00,$21,$00,$26,$00,$2A,$2B,$2D,$00,$02,$10,$1A,$21
+    db $2F,$00,$2D,$2B,$2A,$00,$28,$00,$02,$30,$1A,$21,$2A,$00,$29,$00
+    db $2A,$00,$00,$01,$02,$10,$1A,$21,$2F,$00,$00,$01,$00,$00,$00,$00
+    db $FF
+CaveTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$50,$18,$32,$0B,$00,$0B,$00,$06,$00,$0B,$00,$0B,$00,$06,$00
+    db $0B,$00,$0E,$00,$07,$00,$07,$00,$0E,$00,$07,$00,$06,$00,$06,$00
+    db $0D,$00,$06,$00,$0B,$00,$0B,$00,$06,$00,$0B,$00,$02,$50,$18,$32
+    db $0B,$00,$0B,$00,$06,$00,$0B,$00,$0E,$00,$0E,$00,$09,$00,$0E,$00
+    db $07,$00,$07,$00,$04,$00,$07,$00,$06,$00,$06,$00,$0D,$00,$06,$00
+    db $02,$30,$18,$32,$0B,$00,$00,$01,$0B,$00,$00,$01
+    db $FF
+}
