@@ -73,6 +73,9 @@ const SndTuneB = 18
 u16 Score = 0
 u16 HighScore = 2000
 u8 HighName[3]
+u16 PreviousScore = 0
+u8 PreviousName[3]
+u8 WorkBuf[128]
 u8 Lives = 5
 u8 LL[32]                       ' cavern columns LL..LR of each line (ring)
 u8 LR[32]
@@ -278,36 +281,50 @@ game_over:
 
 final_score:
   HideSprites
-  ClearBoth
+  call asm ZSaveOverlay
+  ClearOverlay
   if Score > HighScore then
     ' Lines 920-965: a new high score
+    PreviousScore = HighScore
+    for I = 0 to 2
+      PreviousName[I] = HighName[I]
+    next
     HighScore = Score
-    print at 7,12, "GOOD SHOOTING!"
+    print at 9,10, "GOOD SHOOTING!"
+    print at 6,11, "BEAT"
+    for I = 0 to 2
+      X = I + 11
+      put char PreviousName[I] at X,11
+    next
+    NumU = PreviousScore
+    print at 15,11, digits$(NumU, 5)
     play sound SndGood
     Rearm
     wait 60 frames
     nmi off
     EnterName
   end if
-  ' Replace the scrolling playfield with a stable results/menu screen.
-  ClearBoth
-  print at 4,3, "IN THE CAVERNS"
-  print at 8,5, "OF CARNAGE"
-  print at 6,9, "FINAL SCORE"
+  ClearOverlay
+  print at 6,10, "FINAL"
   NumU = Score
-  print at 19,9, digits$(NumU, 5)
-  print at 6,11, "HIGH SCORE"
+  print at 16,10, digits$(NumU, 5)
+  print at 6,11, "BEST"
+  for I = 0 to 2
+    X = I + 11
+    put char HighName[I] at X,11
+  next
   NumU = HighScore
-  print at 19,11, digits$(NumU, 5)
+  print at 16,11, digits$(NumU, 5)
   ' Line 970
-  print at 8,17, "ANOTHER GAME"
-  print at 8,19, "TITLE PAGE"
+  print at 8,12, "PLAY AGAIN"
+  print at 8,13, "TITLE PAGE"
   Choice = 1
   Rearm
   wait no fire
-  choose menu 1 to 2 into Choice cursor $3E at 6,17 step 2
+  choose menu 1 to 2 into Choice cursor $3E at 6,12 step 1
   wait no fire
   nmi off
+  call asm ZRestoreOverlay
   if Choice = 1 then goto new_game
   goto title
 
@@ -985,23 +1002,33 @@ sub ClearBoth:
   return
 end sub
 
+' Covers only the 24x4 result panel. ZSaveOverlay/ZRestoreOverlay preserve the
+' exact cave tiles underneath in WorkBuf.
+sub ClearOverlay:
+  fill 32 count 24 at 4,10
+  fill 32 count 24 at 4,11
+  fill 32 count 24 at 4,12
+  fill 32 count 24 at 4,13
+  return
+end sub
+
 ' Lines 940-965: three initials with the joystick
 sub EnterName:
-  print at 6,13, "YOUR INITIALS:"
-  print at 5,16, "UP/DOWN, FIRE: NEXT"
+  print at 6,12, "INITIALS:"
+  print at 6,13, "UP/DOWN FIRE:NEXT"
   for I = 0 to 2
     HighName[I] = 65
   next
   I = 0
 name_loop:
   for J = 0 to 2
-    X = J + 21
+    X = J + 17
     N = HighName[J]
-    put char N at X,13
+    put char N at X,12
   next
-  X = I + 21
-  fill 32 count 3 at 21,14
-  put char 45 at X,14
+  X = I + 17
+  fill 32 count 3 at 17,13
+  put char 45 at X,13
   Rearm
   wait 8 frames
   nmi off
@@ -1030,9 +1057,6 @@ name_loop:
   HighName[I] = N
   goto name_loop
 name_done:
-  fill 32 count 3 at 21,14
-  fill 32 count 20 at 5,16
-  fill 32 count 20 at 5,13
   return
 end sub
 
@@ -1623,6 +1647,85 @@ zr_col:
     ld hl,AMY_UVAR_ZRow
     inc (hl)
     jr zr_row
+
+; Save and restore the 24x4 result panel at columns 4-27, rows 10-13.
+; The rows are not contiguous in VRAM, so each 24-byte span is transferred
+; separately while the unused tail of WorkBuf remains available.
+ZSaveOverlay:
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$1944
+    or a
+    jr z,zso_base
+    ld de,$1D44
+zso_base:
+    ld hl,AMY_UVAR_WorkBuf
+    ld bc,24
+    call READ_VRAM
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$1964
+    or a
+    jr z,zso_row1
+    ld de,$1D64
+zso_row1:
+    ld hl,AMY_UVAR_WorkBuf+24
+    ld bc,24
+    call READ_VRAM
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$1984
+    or a
+    jr z,zso_row2
+    ld de,$1D84
+zso_row2:
+    ld hl,AMY_UVAR_WorkBuf+48
+    ld bc,24
+    call READ_VRAM
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$19A4
+    or a
+    jr z,zso_row3
+    ld de,$1DA4
+zso_row3:
+    ld hl,AMY_UVAR_WorkBuf+72
+    ld bc,24
+    jp READ_VRAM
+
+ZRestoreOverlay:
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$1944
+    or a
+    jr z,zro_base
+    ld de,$1D44
+zro_base:
+    ld hl,AMY_UVAR_WorkBuf
+    ld bc,24
+    call WRITE_VRAM
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$1964
+    or a
+    jr z,zro_row1
+    ld de,$1D64
+zro_row1:
+    ld hl,AMY_UVAR_WorkBuf+24
+    ld bc,24
+    call WRITE_VRAM
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$1984
+    or a
+    jr z,zro_row2
+    ld de,$1D84
+zro_row2:
+    ld hl,AMY_UVAR_WorkBuf+48
+    ld bc,24
+    call WRITE_VRAM
+    ld a,(AMY_UVAR_ZShow)
+    ld de,$19A4
+    or a
+    jr z,zro_row3
+    ld de,$1DA4
+zro_row3:
+    ld hl,AMY_UVAR_WorkBuf+72
+    ld bc,24
+    jp WRITE_VRAM
 
 ; Shows name table ZShow (0: $1800, 1: $1C00) and points the text
 ; routines at it

@@ -91,19 +91,54 @@ try {
     runFrames(core, 300);
     assert.ok(core.readVram(0x1B00, 1)[0] < 192, "the couple disappeared during ordinary play");
 
+    const shownTable = core.readRam(addressOf("ZShow"), 1)[0] ? 0x1C00 : 0x1800;
+    const beforeFinal = Buffer.from(core.readVram(shownTable, 32 * 24));
+    core.writeRam(addressOf("HighScore"), [0xFF, 0xFF]);
     core.writeRam(addressOf("Lives"), [1]);
     core.writeRam(addressOf("Dead"), [1]);
     runFrames(core, 260);
-    const finalScreen = core.readVram(0x1800, 32 * 24);
+    const finalScreen = Buffer.from(core.readVram(shownTable, 32 * 24));
     const finalText = String.fromCharCode(...finalScreen);
-    assert.match(finalText, /IN THE CAVERNS/);
-    assert.match(finalText, /FINAL SCORE/);
-    assert.match(finalText, /ANOTHER GAME/);
+    assert.match(finalText, /FINAL/);
+    assert.match(finalText, /BEST/);
+    assert.match(finalText, /PLAY AGAIN/);
     assert.match(finalText, /TITLE PAGE/);
-    assert.ok([...finalScreen.slice(32)].every((value) => value < 128),
-      "cave pair tiles remained behind the final menu");
+    for (let row = 0; row < 24; row += 1) {
+      for (let column = 0; column < 32; column += 1) {
+        if (row >= 10 && row <= 13 && column >= 4 && column <= 27) continue;
+        assert.equal(finalScreen[row * 32 + column], beforeFinal[row * 32 + column],
+          `the result panel changed the cave at ${column},${row}`);
+      }
+    }
     assert.equal(core.readVram(0x1B00, 1)[0], 192, "a gameplay sprite remained on the final menu");
-    console.log(`Caverns runtime test: PASS (vertical ${initialY} -> ${downY} -> ${upY}, clean final menu)`);
+    console.log(`Caverns runtime test: PASS (vertical ${initialY} -> ${downY} -> ${upY}, preserved in-game result panel)`);
 } finally {
   core.destroy();
+}
+
+const recordCore = await GearcolecoTestCore.create({ seed: 0x1983CAFE });
+try {
+  recordCore.loadBios(readFileSync(resolve(root, "studio/bios/colecovision.rom")));
+  recordCore.loadRom(romBytes, { region: GEARCOLECO_TEST_REGION.NTSC });
+  runFrames(recordCore, 240);
+  tap(recordCore, INPUT.FIRE_LEFT);
+  runFrames(recordCore, 100);
+  recordCore.writeRam(addressOf("HighScore"), [1, 0]);
+  recordCore.writeRam(addressOf("HighName"), [65, 66, 67]);
+  recordCore.writeRam(addressOf("Score"), [100, 0]);
+  recordCore.writeRam(addressOf("Lives"), [1]);
+  recordCore.writeRam(addressOf("Dead"), [1]);
+  runFrames(recordCore, 330);
+  const shownTable = recordCore.readRam(addressOf("ZShow"), 1)[0] ? 0x1C00 : 0x1800;
+  const recordText = String.fromCharCode(...recordCore.readVram(shownTable, 32 * 24));
+  assert.match(recordText, /GOOD SHOOTING!/);
+  assert.match(recordText, /BEAT ABC 00001/);
+  assert.match(recordText, /INITIALS:\s+AAA/);
+  tap(recordCore, INPUT.FIRE_LEFT);
+  tap(recordCore, INPUT.FIRE_LEFT);
+  tap(recordCore, INPUT.FIRE_LEFT);
+  const menuText = String.fromCharCode(...recordCore.readVram(shownTable, 32 * 24));
+  assert.match(menuText, /BEST AAA\s+00100/);
+} finally {
+  recordCore.destroy();
 }

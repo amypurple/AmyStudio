@@ -48,7 +48,6 @@ source = source.replace(
   `asset CavernPairPatterns from "@project/caverns-pairs.pattern.zx0" codec zx0
 asset CavernPairColors from "@project/caverns-pairs.color.zx0" codec zx0`
 );
-source = source.replace("u16 Pts = 0", "u16 Pts = 0\nu8 PairBuf[128]");
 source = source.replace(
   /^cartridge\s+"[^"]+"/m,
   'project "In the Caverns of Carnage"\nmemory "colecovision_legacy_sdcc"'
@@ -77,7 +76,7 @@ source = source.replace(
 source = source.replace(
   /; The pair patterns and colors for scroll offset ZOff[\s\S]*?\n\s*ret\n\n; Mode 2 with all three screen thirds/,
   `; The pair patterns and colors are unpacked once into unused VRAM.
-; Each scroll update stages the selected 128-byte slice through PairBuf.
+; Each scroll update stages the selected 128-byte slice through WorkBuf.
 ZInitPairs:
     ld hl,Asset_CavernPairPatterns
     ld de,$0800
@@ -91,10 +90,10 @@ ZPairs:
     ld de,$0800
     add hl,de
     ex de,hl
-    ld hl,AMY_UVAR_PairBuf
+    ld hl,AMY_UVAR_WorkBuf
     ld bc,$0080
     call READ_VRAM
-    ld hl,AMY_UVAR_PairBuf
+    ld hl,AMY_UVAR_WorkBuf
     ld de,$0400
     ld bc,$0080
     call WRITE_VRAM
@@ -102,10 +101,10 @@ ZPairs:
     ld de,$1000
     add hl,de
     ex de,hl
-    ld hl,AMY_UVAR_PairBuf
+    ld hl,AMY_UVAR_WorkBuf
     ld bc,$0080
     call READ_VRAM
-    ld hl,AMY_UVAR_PairBuf
+    ld hl,AMY_UVAR_WorkBuf
     ld de,$2400
     ld bc,$0080
     jp WRITE_VRAM

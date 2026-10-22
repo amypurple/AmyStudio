@@ -39,8 +39,12 @@ assert.match(source, /R = 28 - CaveW[\s\S]*?PB\[K\] = R \+ 3\s+if PB\[K\] > 29 t
   "the cave and right side passages must stop at column 29");
 assert.match(source, /Gap = 0\s+' Keep the cavern busy[\s\S]*?P = random\(0, 5\)\s+if P = 0 then return\s+for I = 0 to 9/,
   "creature generation must omit only one prospective spawn in six");
-assert.match(source, /final_score:\s+HideSprites\s+ClearBoth[\s\S]*?ClearBoth\s+print at 4,3, "IN THE CAVERNS"[\s\S]*?choose menu 1 to 2 into Choice cursor \$3E at 6,17 step 2/,
-  "the final choice must use a clean, stable results screen instead of the cave playfield");
+assert.match(source, /final_score:\s+HideSprites\s+call asm ZSaveOverlay\s+ClearOverlay[\s\S]*?print at 8,12, "PLAY AGAIN"[\s\S]*?choose menu 1 to 2 into Choice cursor \$3E at 6,12 step 1[\s\S]*?call asm ZRestoreOverlay/,
+  "the final choice must preserve the cave under a compact result panel");
+assert.match(source, /PreviousScore = HighScore[\s\S]*?PreviousName\[I\] = HighName\[I\][\s\S]*?print at 6,11, "BEAT"/,
+  "a new record must identify the previous champion and score");
+assert.match(source, /ZSaveOverlay:[\s\S]*?AMY_UVAR_WorkBuf\+72[\s\S]*?ZRestoreOverlay:[\s\S]*?AMY_UVAR_WorkBuf\+72/,
+  "the result panel must save and restore all four 24-byte rows");
 assert.match(source, /CaveTuneMel:\s+db \$44\s+dw sndtiny_1\s+db 11[\s\S]*?db \$AF[\s\S]*?CaveTuneBass:\s+db \$84\s+dw sndtiny_2\s+db 11/,
   "the title theme must use 11-frame minor pacing and second-half vibrato");
 

@@ -16,6 +16,11 @@ upper rows unused while reducing each scrolling-page rebuild to 21 rows. Creatur
 spacing remains challenging, with roughly one prospective spawn in six omitted
 to provide occasional breathing room.
 
+Game-over and high-score interaction stays on the final cave view. A compact
+24x4 panel reports the final score, current champion and the previous record
+that was beaten. Its underlying name-table cells are saved in RAM and restored
+exactly before leaving the screen instead of clearing or replacing the playfield.
+
 Build:
 
 ```powershell
