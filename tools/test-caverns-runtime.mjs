@@ -133,7 +133,8 @@ try {
   const recordText = String.fromCharCode(...recordCore.readVram(shownTable, 32 * 24));
   assert.match(recordText, /GOOD SHOOTING!/);
   assert.match(recordText, /BEAT ABC 00001/);
-  assert.match(recordText, /INITIALS:\s+AAA/);
+  assert.match(recordText, /INITIALS:\s+>A A A/);
+  assert.match(recordText, /UP\/DOWN FIRE:NEXT/);
   tap(recordCore, INPUT.FIRE_LEFT);
   tap(recordCore, INPUT.FIRE_LEFT);
   tap(recordCore, INPUT.FIRE_LEFT);
