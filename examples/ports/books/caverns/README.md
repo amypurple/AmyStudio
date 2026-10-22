@@ -12,7 +12,9 @@ safe passages and the book's 10,000-point escape objective.
 Either joystick moves the couple horizontally and through a guarded 16-pixel
 vertical range; fire shoots. Five lives make the opening rounds more forgiving.
 The cave occupies rows 3-23 and columns 2-29, leaving the overscan edges and two
-upper rows unused while reducing each scrolling-page rebuild to 21 rows.
+upper rows unused while reducing each scrolling-page rebuild to 21 rows. Creature
+spacing remains challenging, with roughly one prospective spawn in six omitted
+to provide occasional breathing room.
 
 Build:
 

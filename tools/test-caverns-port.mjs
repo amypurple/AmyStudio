@@ -35,6 +35,8 @@ assert.match(source, /PA\[K\] = 2\s+PB\[K\] = 29/,
   "the final opening must stay inside the CRT-safe playfield");
 assert.match(source, /R = 28 - CaveW[\s\S]*?PB\[K\] = R \+ 3\s+if PB\[K\] > 29 then PB\[K\] = 29/,
   "the cave and right side passages must stop at column 29");
+assert.match(source, /Gap = 0\s+' Keep the cavern busy[\s\S]*?P = random\(0, 5\)\s+if P = 0 then return\s+for I = 0 to 9/,
+  "creature generation must omit only one prospective spawn in six");
 assert.match(source, /final_score:\s+HideSprites\s+ClearBoth[\s\S]*?ClearBoth\s+print at 4,3, "IN THE CAVERNS"[\s\S]*?choose menu 1 to 2 into Choice cursor \$3E at 6,17 step 2/,
   "the final choice must use a clean, stable results screen instead of the cave playfield");
 
