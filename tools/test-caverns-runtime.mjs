@@ -32,7 +32,14 @@ const core = await GearcolecoTestCore.create({ seed: 0x1983CAFE });
 try {
     core.loadBios(readFileSync(resolve(root, "studio/bios/colecovision.rom")));
     core.loadRom(readFileSync(rom), { region: GEARCOLECO_TEST_REGION.NTSC });
-    runFrames(core, 240);
+    let titleAudioSamples = 0;
+    for (let frame = 0; frame < 240; frame += 1) {
+      core.runFrame();
+      for (const sample of core.getAudioFrame().samples) {
+        if (Math.abs(sample) > 24) titleAudioSamples += 1;
+      }
+    }
+    assert.ok(titleAudioSamples > 1000, "the title theme must remain audible");
     tap(core, INPUT.FIRE_LEFT);
     runFrames(core, 100);
 

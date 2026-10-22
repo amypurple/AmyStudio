@@ -39,6 +39,8 @@ assert.match(source, /Gap = 0\s+' Keep the cavern busy[\s\S]*?P = random\(0, 5\)
   "creature generation must omit only one prospective spawn in six");
 assert.match(source, /final_score:\s+HideSprites\s+ClearBoth[\s\S]*?ClearBoth\s+print at 4,3, "IN THE CAVERNS"[\s\S]*?choose menu 1 to 2 into Choice cursor \$3E at 6,17 step 2/,
   "the final choice must use a clean, stable results screen instead of the cave playfield");
+assert.match(source, /CaveTuneMel:\s+db \$44\s+dw sndtiny_1\s+db 11[\s\S]*?db \$AF[\s\S]*?CaveTuneBass:\s+db \$84\s+dw sndtiny_2\s+db 11/,
+  "the title theme must use 11-frame minor pacing and second-half vibrato");
 
 const zx0 = await loadCodec("zx0");
 for (const table of ["pattern", "color"]) {
