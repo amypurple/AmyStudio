@@ -1951,5 +1951,25 @@ export const exampleManifest = [
       "amy",
       "manual-canon"
     ]
+  },
+  {
+    "id": "pitdemons",
+    "label": "Peril of the Pitdemons",
+    "detail": "A restored 1983 Timelost action game with four demon types, a Warbird, synchronized Tiny Sound music and a full-screen ZX0 bitmap title.",
+    "projectName": "Peril of the Pitdemons",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "book",
+      "port",
+      "game",
+      "graphics",
+      "music",
+      "zx0",
+      "manual-canon"
+    ]
   }
 ];

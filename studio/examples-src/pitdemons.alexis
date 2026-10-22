@@ -1,0 +1,1190 @@
+project "Peril of the Pitdemons"
+memory "colecovision_legacy_sdcc"
+
+' PERIL OF THE PITDEMONS
+' From "Timelost: A Computer Adventure" (Atari version), by Kris Austen
+' Andrews, Arlan Keith Andrews Sr. and Joseph C. Giarratano, Que, 1983,
+' pages 102-113. All credit belongs to the authors.
+'
+' Historical context (summary of the chapter):
+' Timelost is a book of stories, each followed by an arcade game to type
+' in. In this episode the Wizard sends his underground creatures against
+' John, Erin, Jacque and their new friend D'reen. You control Jacque's
+' positron blaster as he and Erin stand at the edge of a dark pit and
+' the Pitdemons swarm up toward them. The closer a demon is when your
+' shot finally hits it, the more points you earn. If one reaches the top
+' line, all is lost. Take extra care where the demons climb through the
+' rocks bordering the pit: they are invisible there, but still coming.
+' The book closes with ideas to try: a Warbird attacking from above
+' while the Pitdemons climb, other kinds of creatures worth other
+' points, and Pitdemons that go invisible for extra points.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): left and right move Jacque and Erin; fire
+' shoots down into the pit; up with fire shoots up at the Warbird.
+' The rules follow the Atari listing: one demon at most per column
+' (array M); a 50/50 chance each cycle that one demon climbs, one row
+' and now and then two (lines 420-450); a 50/50 chance of a new demon
+' at the bottom row while there are fewer than the maximum (lines
+' 500-547); the blaster shot falls one row at a time and passes through
+' the rocks (lines 1700-1735); a demon that hops over the shot is hit
+' anyway (line 453); points = bottom row minus the row of the hit, so a
+' close hit is worth the most (line 1775); demons are hidden while in
+' the rocks (lines 455-458); a demon on the couple's row ends the game
+' with M U N C H (lines 460, 900-915); the high score with a name
+' (lines 920-965); another game (line 970); the pit drawn as an arch
+' with a sine curve, then straight walls (lines 257-293).
+' The book's suggestions, added here: the Warbird flies over from wave
+' 2 and drops eggs that stun the couple for a moment, and can be shot
+' down for 500 points; three more creatures: the quick Crawler (wave 2,
+' points x2), the Brute that takes two hits (wave 3, x3) and the Ghost
+' that is visible only now and then (wave 4, x4).
+' Adaptation liberties: waves of 16, 20, 24... demons, each faster (a pit
+' cycle every 11 frames in wave 1, down to 4) with more demons at once; points x10, and doubled for a demon hit while
+' hidden in the rocks; the arch is filled with rock; a heartbeat that
+' speeds up as the nearest demon climbs; animated demons and lava; the
+' couple, shots, Warbird, eggs and explosions are 16 x 16 sprites, never
+' more than four on a line; three initials picked with the joystick
+' instead of a typed name; joystick menus; an original title tune; an
+' editorial page. The frame loop is protected from the NMI.
+' Screen: status on row 0, sky rows 1-4 (the couple on row 4), ground on
+' row 5, the pit on rows 6-22 between columns 3 and 28, lava on row 23.
+
+const Rock0 = 128
+const Ground = 132
+const Star = 133
+const StarDim = 134
+const Cave = 135
+const Pitdemon = 136
+const Lava = 140
+const MoonTL = 141
+const BruteHurt = 145
+const Drip = 146
+const CoupleRow = 4
+const GroundRow = 5
+const PitTop = 6
+const BottomRow = 22
+const LavaRow = 23
+const LeftCol = 3
+const RightCol = 28
+const CoupleY = 27              ' sprite Y: the feet on the ground line
+const BirdY = 8
+const StartWave = 1
+
+const SndShot = 1
+const SndHit = 2
+const SndSpawn = 3
+const SndClimb = 4
+const SndBeat = 5
+const SndBird = 6
+const SndBomb = 7
+const SndStun = 8
+const SndBirdHitN = 9
+const SndBirdHitT = 10
+const SndMunch = 11
+const SndOver = 12
+const SndWaveA = 13
+const SndWaveB = 14
+const SndGood = 15
+const SndPick = 16
+const SndTuneA = 17
+const SndTuneB = 18
+
+u16 Score = 0
+u16 HighScore = 500
+u8 HighName[3]
+u8 Wave = 1
+u8 Kills = 0
+u8 Need = 0
+u8 TickN = 9
+u8 TickT = 0
+u8 MaxM = 6
+u8 NumM = 0
+u8 M[32]                       ' demon row per column, 0 = none
+u8 T[32]                       ' 0 Pitdemon, 1 Crawler, 2 Brute, 3 Ghost
+u8 HP[32]
+u8 JJP = 15                    ' couple column (Jacque; Erin is on his right)
+u8 CX = 120                    ' couple sprite X, slides toward JJP x 8
+u8 MoveT = 0
+u8 StunT = 0
+u8 ShotDir = 0                 ' 0 none, 1 down, 2 up
+u8 ShotY = 0
+u8 ShotX = 0
+u8 ShotCol = 0
+u8 ShotRow = 0
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 BirdOn = 0
+u8 BirdX = 0
+u8 BirdDir = 0
+u8 BirdWait = 0
+u8 BirdWait2 = 0
+u8 EggOn = 0
+u8 EggX = 0
+u8 EggY = 0
+u8 EggDone = 0
+u8 GhostVis = 1
+u8 GhostT = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 BeatT = 0
+u8 MinRow = 0
+u8 Lost = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 Up = 0
+u8 C = 0
+u8 R = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 X = 0
+u8 Y = 0
+u8 V = 0
+u8 Choice = 0
+u16 Dst16 = 0
+u16 NumU = 0
+u16 Pts = 0
+
+picture PitdemonsTitle:
+  pattern from "@project/pitdemons-title.pattern.zx0" codec zx0
+  color from "@project/pitdemons-title.color.zx0" codec zx0
+end picture
+
+  tile screen
+  set sound table PitSoundTable areas 4
+  sprites 16x16
+  copy SpritePat count 320 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 84
+  HighName[1] = 76
+  HighName[2] = 83
+  screen on
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Wave = StartWave
+
+new_wave:
+  Kills = 0
+  Need = Wave * 4
+  Need += 12
+  TickN = 4
+  if Wave < 8 then
+    TickN = 12 - Wave
+  end if
+  MaxM = Wave + 5
+  if MaxM > 12 then MaxM = 12
+  DrawPit
+  for C = 0 to 31
+    M[C] = 0
+  next
+  NumM = 0
+  JJP = 15
+  CX = 120
+  ShotDir = 0
+  StunT = 0
+  BoomT = 0
+  BirdOn = 0
+  EggOn = 0
+  BirdWait = random(150, 250)
+  BirdWait2 = 1
+  Lost = 0
+  MinRow = BottomRow
+  DrawSprites
+  ' The wave banner
+  print at 13,14, "WAVE "
+  NumU = Wave
+  print at 18,14, digits$(NumU, 1)
+  if Wave > 9 then print at 18,14, digits$(NumU, 2)
+  P = 0
+  if Wave = 2 then P = 1
+  if Wave = 3 then P = 2
+  if Wave = 4 then P = 3
+  if P = 1 then print at 6,16, "BEWARE THE CRAWLERS"
+  if P = 2 then print at 6,16, "BRUTES TAKE 2 HITS"
+  if P = 3 then print at 7,16, "GHOSTS HIDE AWAY"
+  if Wave = 2 then print at 6,18, "AND THE WARBIRD!"
+  if Wave > 1 then
+    play sound SndWaveA
+    play sound SndWaveB
+  end if
+  Rearm
+  wait 150 frames
+  nmi off
+  for Y = 14 to 18
+    fill Cave count 26 at LeftCol,Y
+  next
+  Rearm
+  wait no fire
+  nmi off
+  ' Line 300-305: the first demon
+  NewDemon
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  MoveCouple
+  MoveShot
+  if Lost = 1 then goto munch
+  MoveBird
+  Animate
+  ' The heartbeat
+  inc BeatT
+  N = MinRow - CoupleRow
+  N *= 4
+  N += 8
+  if BeatT >= N then
+    BeatT = 0
+    play sound SndBeat
+  end if
+  ' One cycle of the pit (lines 400-690)
+  inc TickT
+  if TickT >= TickN then
+    TickT = 0
+    ' Lines 420-460: a demon may climb
+    N = random(0, 1)
+    if N = 1 then ClimbOne
+    if Lost = 1 then goto munch
+    ' Lines 500-547: a demon may appear
+    N = random(0, 1)
+    if N = 1 then
+      if NumM < MaxM then NewDemon
+    end if
+    if NumM = 0 then NewDemon
+    FindMinRow
+  end if
+  DrawSprites
+  if Kills >= Need then goto wave_done
+  goto main_loop
+
+wave_done:
+  nmi off
+  HideSprites
+  print at 9,13, "WAVE CLEARED!"
+  play sound SndWaveA
+  play sound SndWaveB
+  Rearm
+  wait 120 frames
+  nmi off
+  if Wave < 99 then inc Wave
+  goto new_wave
+
+  ' --- Lines 900-915: M U N C H ---
+munch:
+  nmi off
+  play sound SndMunch
+  ShotDir = 0
+  BoomT = 0
+  BirdOn = 0
+  EggOn = 0
+  set sprite 2 to 192,0,0,0
+  set sprite 3 to 192,0,0,0
+  set sprite 4 to 192,0,0,0
+  set sprite 5 to 192,0,0,0
+  print at 6,1, "**** M U N C H ****"
+  X = C * 8
+  X -= 4
+  P = 0
+munch_approach:
+  if X = CX then goto munch_bite
+  if X < CX then
+    inc X
+  else
+    dec X
+  end if
+  P = P ^ 1
+  Y = 24
+  N = 8
+  if P = 1 then
+    Y = 20
+    N = 9
+  end if
+  set sprite 2 to Y,X,36,N
+  update sprites from 0 count 6
+  K = X & 7
+  if K = 0 then play sound SndMunch
+  Rearm
+  wait 2 frames
+  nmi off
+  goto munch_approach
+munch_bite:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  for I = 1 to 8
+    N = I & 1
+    if N = 0 then
+      set sprite 2 to 24,CX,36,8
+      play sound SndMunch
+    else
+      set sprite 2 to 20,CX,36,9
+    end if
+    update sprites from 0 count 6
+    Rearm
+    wait 8 frames
+    nmi off
+  next
+  set sprite 2 to 192,0,0,0
+  update sprites from 0 count 6
+  play sound SndOver
+  print at 10,8, "GAME OVER"
+  Rearm
+  wait 150 frames
+  nmi off
+  if Score > HighScore then
+    ' Lines 920-965: a new high score
+    HighScore = Score
+    print at 8,10, "GOOD SHOOTING!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  ShowStatus
+  ' Line 970
+  print at 10,13, "ANOTHER GAME"
+  print at 10,14, "TITLE PAGE"
+  Choice = 1
+  Rearm
+  wait no fire
+  Rearm
+  choose menu 1 to 2 into Choice cursor $3E at 8,13 step 1
+  Rearm
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Up = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' Lines 800-839: move, and fire if no shot is out
+sub MoveCouple:
+  if StunT > 0 then
+    dec StunT
+    return
+  end if
+  if MoveT > 0 then dec MoveT
+  if MoveT = 0 then
+    if Stick = 1 then
+      if JJP > LeftCol then
+        dec JJP
+        MoveT = 4
+      end if
+    end if
+    if Stick = 2 then
+      if JJP < RightCol then
+        inc JJP
+        MoveT = 4
+      end if
+    end if
+  end if
+  X = JJP * 8
+  if CX < X then
+    CX += 2
+  else
+    if CX > X then CX -= 2
+  end if
+  if Btn = 0 then return
+  if ShotDir <> 0 then return
+  if CX <> X then return
+  ShotCol = JJP
+  ShotX = CX
+  if Up = 1 then
+    ShotDir = 2
+    ShotY = 20
+  else
+    ShotDir = 1
+    ShotY = 36
+    ShotRow = GroundRow
+    CheckHit
+  end if
+  play sound SndShot
+  return
+end sub
+
+sub MoveShot:
+  if BoomT > 0 then dec BoomT
+  if ShotDir = 0 then return
+  if ShotDir = 2 then
+    ' Up at the Warbird
+    if ShotY < 8 then
+      ShotDir = 0
+      return
+    end if
+    ShotY -= 4
+    if BirdOn = 0 then return
+    if ShotY >= 20 then return
+    N = ShotX + 12
+    if N < BirdX then return
+    N = BirdX + 12
+    if N < ShotX then return
+    ' The Warbird is hit
+    ShotDir = 0
+    BirdOn = 0
+    BoomX = BirdX
+    BoomY = BirdY
+    BoomT = 24
+    Pts = 500
+    AddPoints
+    play sound SndBirdHitN
+    play sound SndBirdHitT
+    return
+  end if
+  ' Down into the pit, one row every two frames
+  ShotY += 4
+  N = ShotY + 4
+  N >>= 3
+  if N = ShotRow then return
+  ShotRow = N
+  if ShotRow > BottomRow then
+    ShotDir = 0
+    return
+  end if
+  CheckHit
+  return
+end sub
+
+' Lines 453 and 1710-1840: a demon at or above the shot in its column
+sub CheckHit:
+  C = ShotCol
+  R = M[C]
+  if R = 0 then return
+  if R > ShotRow then return
+  ShotDir = 0
+  BoomX = C * 8
+  BoomX -= 4
+  BoomY = R * 8
+  BoomY -= 5
+  BoomT = 16
+  ' Line 1775: the closer, the more
+  Pts = 23 - R
+  Pts *= 10
+  N = T[C]
+  if N = 1 then Pts += Pts
+  if N = 2 then Pts *= 3
+  if N = 3 then Pts *= 4
+  K = get char at C,R
+  if K < Cave then Pts += Pts
+  if N = 2 then
+    if HP[C] = 2 then
+      ' A Brute takes two hits
+      HP[C] = 1
+      play sound SndHit
+      if K >= Cave then put char BruteHurt at C,R
+      return
+    end if
+  end if
+  if K >= Cave then put char Cave at C,R
+  M[C] = 0
+  dec NumM
+  inc Kills
+  AddPoints
+  play sound SndHit
+  FindMinRow
+  return
+end sub
+
+sub AddPoints:
+  Score += Pts
+  ShowStatus
+  return
+end sub
+
+' Lines 420-460: one demon climbs
+sub ClimbOne:
+  if NumM = 0 then return
+  C = random(LeftCol, RightCol)
+  for I = 1 to 26
+    if M[C] > 0 then goto found
+    inc C
+    if C > RightCol then C = LeftCol
+  next
+  return
+found:
+  N = 1
+  if T[C] = 1 then N = 2
+  P = random(0, 15)
+  if P = 0 then inc N
+  for J = 1 to N
+    R = M[C]
+    K = get char at C,R
+    if K >= Cave then put char Cave at C,R
+    dec R
+    M[C] = R
+    if R <= CoupleRow then
+      Lost = 1
+      return
+    end if
+    DrawDemon
+    ' Line 453: hopped over the shot
+    if ShotDir = 1 then
+      if ShotCol = C then
+        if R <= ShotRow then
+          CheckHit
+          return
+        end if
+      end if
+    end if
+  next
+  play sound SndClimb
+  return
+end sub
+
+' Lines 455-458: drawn only where the pit is open, hidden in the rocks
+sub DrawDemon:
+  R = M[C]
+  K = get char at C,R
+  if K < Cave then return
+  V = T[C]
+  V += Pitdemon
+  if T[C] = 2 then
+    if HP[C] = 1 then V = BruteHurt
+  end if
+  if T[C] = 3 then
+    if GhostVis = 0 then V = Cave
+  end if
+  put char V at C,R
+  return
+end sub
+
+' Lines 500-547: a new demon in an empty column, on the bottom row
+sub NewDemon:
+  if NumM >= 26 then return
+  C = random(LeftCol, RightCol)
+  for I = 1 to 26
+    if M[C] = 0 then goto empty
+    inc C
+    if C > RightCol then C = LeftCol
+  next
+  return
+empty:
+  M[C] = BottomRow
+  P = random(0, 15)
+  N = 0
+  if Wave >= 2 then
+    if P < 4 then N = 1
+  end if
+  if Wave >= 3 then
+    if P >= 4 then
+      if P < 7 then N = 2
+    end if
+  end if
+  if Wave >= 4 then
+    if P >= 7 then
+      if P < 10 then N = 3
+    end if
+  end if
+  T[C] = N
+  HP[C] = 1
+  if N = 2 then HP[C] = 2
+  inc NumM
+  DrawDemon
+  play sound SndSpawn
+  return
+end sub
+
+sub FindMinRow:
+  MinRow = BottomRow
+  for I = LeftCol to RightCol
+    N = M[I]
+    if N > 0 then
+      if N < MinRow then MinRow = N
+    end if
+  next
+  return
+end sub
+
+' The book's first idea: a Warbird over the pit
+sub MoveBird:
+  if EggOn = 1 then
+    EggY += 2
+    if EggY >= 14 then
+      N = EggY
+      if N < 20 then goto egg_air
+      ' At the couple's height?
+      N = EggX + 10
+      if N >= CX then
+        N = CX + 14
+        if N >= EggX then
+          EggOn = 0
+          if StunT = 0 then
+            StunT = 90
+            play sound SndStun
+          end if
+          goto egg_air
+        end if
+      end if
+      if EggY >= 34 then EggOn = 0
+    end if
+  end if
+egg_air:
+  if Wave < 2 then return
+  if BirdOn = 0 then
+    if BirdWait > 0 then
+      dec BirdWait
+      return
+    end if
+    if BirdWait2 > 0 then
+      dec BirdWait2
+      BirdWait = 100
+      return
+    end if
+    BirdOn = 1
+    EggDone = 0
+    BirdDir = random(0, 1)
+    BirdX = 1
+    if BirdDir = 1 then BirdX = 238
+    BirdWait = random(150, 250)
+    BirdWait2 = 1
+    play sound SndBird
+    return
+  end if
+  N = 1
+  if Wave >= 5 then N = 2
+  if BirdDir = 0 then
+    BirdX += N
+    if BirdX >= 238 then BirdOn = 0
+  else
+    if BirdX <= N then
+      BirdOn = 0
+    else
+      BirdX -= N
+    end if
+  end if
+  if EggDone = 1 then return
+  if EggOn = 1 then return
+  ' Drop an egg right above the couple
+  N = BirdX + 4
+  if N < CX then return
+  N = CX + 4
+  if N < BirdX then return
+  EggDone = 1
+  EggOn = 1
+  EggX = BirdX
+  EggY = BirdY + 4
+  play sound SndBomb
+  return
+end sub
+
+' Demon and lava frames, the Ghosts' blinking
+sub Animate:
+  inc AnimT
+  if AnimT >= 12 then
+    AnimT = 0
+    AnimF = AnimF ^ 1
+    ' Keep each star pixel fixed and pulse only its grey/white color.
+    Dst16 = 1064
+    for J = 0 to 2
+      if AnimF = 0 then
+        copy TileCol + 40 count 8 to vram.color + Dst16
+      else
+        copy TileCol + 48 count 8 to vram.color + Dst16
+      end if
+      Dst16 += 8
+      if AnimF = 0 then
+        copy TileCol + 48 count 8 to vram.color + Dst16
+      else
+        copy TileCol + 40 count 8 to vram.color + Dst16
+      end if
+      Dst16 += 2040
+    next
+    Dst16 = 1088
+    for J = 0 to 2
+      if AnimF = 0 then
+        copy DemonA count 32 to vram.pattern + Dst16
+      else
+        copy DemonB count 32 to vram.pattern + Dst16
+      end if
+      Dst16 += 32
+      if AnimF = 0 then
+        copy LavaA count 8 to vram.pattern + Dst16
+      else
+        copy LavaB count 8 to vram.pattern + Dst16
+      end if
+      Dst16 += 2016
+    next
+  end if
+  if Wave < 4 then return
+  inc GhostT
+  N = 0
+  if GhostT = 30 then N = 1
+  if GhostT >= 45 then
+    GhostT = 0
+    N = 1
+  end if
+  if N = 0 then return
+  GhostVis = GhostVis ^ 1
+  for C = LeftCol to RightCol
+    if M[C] > 0 then
+      if T[C] = 3 then DrawDemon
+    end if
+  next
+  return
+end sub
+
+sub DrawSprites:
+  ' 0 Jacque, 1 Erin
+  Y = CoupleY
+  N = 5
+  K = 9
+  if StunT > 0 then
+    P = StunT & 4
+    if P = 0 then
+      N = 15
+      K = 15
+    end if
+  end if
+  set sprite 0 to Y,CX,0,N
+  set sprite 1 to Y,CX,4,K
+  ' 2 the shot
+  if ShotDir = 0 then
+    set sprite 2 to 192,0,0,0
+  else
+    if ShotDir = 1 then
+      set sprite 2 to ShotY,ShotX,8,11
+    else
+      set sprite 2 to ShotY,ShotX,12,11
+    end if
+  end if
+  ' 3 the Warbird
+  if BirdOn = 1 then
+    N = BirdX & 8
+    if N = 0 then
+      set sprite 3 to BirdY,BirdX,16,13
+    else
+      set sprite 3 to BirdY,BirdX,20,13
+    end if
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  ' 4 the egg
+  if EggOn = 1 then
+    set sprite 4 to EggY,EggX,24,15
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  ' 5 an explosion
+  if BoomT > 0 then
+    N = BoomT & 4
+    if N = 0 then
+      set sprite 5 to BoomY,BoomX,28,11
+    else
+      set sprite 5 to BoomY,BoomX,32,9
+    end if
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  update sprites from 0 count 6
+  return
+end sub
+
+' Lines 250-305: sky, ground, the arch and walls of the pit, the lava
+sub DrawPit:
+  nmi off
+  HideSprites
+  ' The bitmap title replaces all three Graphics II pattern/color thirds.
+  ' Rebuild the text charset before installing the game's custom tiles.
+  tile screen
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  ShowStatus
+  for I = 1 to 9
+    X = random(1, 30)
+    Y = random(1, 3)
+    N = I & 1
+    if N = 0 then
+      put char Star at X,Y
+    else
+      put char StarDim at X,Y
+    end if
+  next
+  put char MoonTL at 2,1
+  put char MoonTL + 1 at 3,1
+  put char MoonTL + 2 at 2,2
+  put char MoonTL + 3 at 3,2
+  fill Ground count 32 at 0,GroundRow
+  for Y = PitTop to BottomRow
+    J = 13
+    if Y < 13 then
+      N = Y - PitTop
+      J = ArchW[N]
+    end if
+    X = 16 - J
+    K = 15 + J
+    for C = 0 to 31
+      N = random(0, 3)
+      N += Rock0
+      if C >= X then
+        if C <= K then N = Cave
+      end if
+      put char N at C,Y
+    next
+  next
+  fill Lava count 32 at 0,LavaRow
+  screen on
+  return
+end sub
+
+sub ShowStatus:
+  ' Columns 0-1 and 31 are outside the conservative CRT-safe area.
+  print at 2,0, "SC"
+  NumU = Score
+  print at 5,0, digits$(NumU, 5)
+  print at 11,0, "WV"
+  NumU = Wave
+  print at 14,0, width$(NumU, 2)
+  print at 17,0, "HI"
+  put char HighName[0] at 20,0
+  put char HighName[1] at 21,0
+  put char HighName[2] at 22,0
+  NumU = HighScore
+  print at 24,0, digits$(NumU, 5)
+  return
+end sub
+
+' Lines 940-965: three initials with the joystick
+sub EnterName:
+  print at 7,12, "YOUR INITIALS:"
+  print at 6,15, "UP/DOWN, FIRE: NEXT"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 22
+    N = HighName[J]
+    put char N at X,12
+  next
+  X = I + 22
+  fill 32 count 3 at 22,13
+  put char 45 at X,13
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then goto name_done
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  K = 0
+  if joypad(1).down then K = 1
+  if joypad(2).down then K = 1
+  if K = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+name_done:
+  fill 32 count 3 at 22,13
+  fill 32 count 20 at 6,15
+  fill 32 count 20 at 6,12
+  return
+end sub
+
+' Graphics II: tiles 128-147 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 160 to vram.pattern + Dst16
+    copy TileCol count 160 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites from 0 count 6
+  return
+end sub
+
+' Lines 8000-8950: the instructions
+sub TitlePage:
+  nmi off
+  HideSprites
+  show picture PitdemonsTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  Rearm
+  pause until press
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 4,1, "PERIL OF THE PITDEMONS"
+  print at 2,3, "BY KRIS AUSTEN ANDREWS,"
+  print at 2,4, "ARLAN KEITH ANDREWS SR. AND"
+  print at 2,5, "JOSEPH C. GIARRATANO"
+  print at 2,6, "TIMELOST, QUE, 1983"
+  print at 2,8, "A STORY BOOK OF TIME TRAVEL"
+  print at 2,9, "WITH A GAME TO TYPE IN"
+  print at 2,10, "AFTER EACH CHAPTER."
+  print at 2,12, "THE WIZARD'S CREATURES"
+  print at 2,13, "CLIMB OUT OF A DARK PIT."
+  print at 2,14, "THIS VERSION ADDS THE"
+  print at 2,15, "BOOK'S OWN IDEAS: THE"
+  print at 2,16, "WARBIRD, NEW CREATURES AND"
+  print at 2,17, "DEMONS THAT VANISH."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+data ArchW bytes = 2, 5, 8, 10, 12, 13, 13
+
+' Tiles 128-147 (patterns, then a color per pattern row)
+data TilePat bytes
+  $20,$10,$13,$94,$08,$00,$02,$82
+  $00,$84,$48,$30,$00,$12,$0C,$00
+  $08,$C1,$21,$12,$0C,$00,$80,$40
+  $00,$20,$50,$88,$07,$00,$10,$00
+  $A5,$FF,$B7,$10,$82,$08,$40,$02
+  $00,$00,$10,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $24,$7E,$DB,$7E,$24,$7E,$A5,$24
+  $00,$BD,$7E,$FE,$5A,$A5,$81,$00
+  $81,$DB,$7E,$BD,$FF,$5A,$7E,$C3
+  $3C,$7E,$DB,$FF,$FF,$FF,$A5,$00
+  $30,$79,$FF,$FF,$DF,$FF,$FB,$FF
+  $00,$1F,$7F,$7B,$FF,$F7,$FF,$FF
+  $00,$E0,$F8,$FC,$DE,$FE,$FF,$FD
+  $FF,$FB,$7F,$7F,$3F,$0F,$00,$00
+  $FE,$FF,$FC,$BC,$FC,$F0,$00,$00
+  $81,$DB,$7C,$B5,$DF,$5A,$3C,$C3
+  $FF,$FF,$6E,$64,$24,$20,$20,$00
+  $6C,$FE,$FE,$FE,$7C,$38,$10,$00
+end data
+data TileCol bytes
+  $A6,$16,$16,$A6,$16,$16,$A6,$16
+  $A6,$16,$16,$A6,$16,$16,$A6,$16
+  $A6,$16,$16,$A6,$16,$16,$A6,$16
+  $A6,$16,$16,$A6,$16,$16,$A6,$16
+  $30,$2C,$C6,$A6,$16,$16,$A6,$16
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $31,$31,$B1,$31,$31,$31,$C1,$C1
+  $B1,$B1,$B1,$A1,$A1,$B1,$B1,$B1
+  $F1,$91,$91,$81,$81,$81,$81,$81
+  $F1,$F1,$51,$71,$71,$71,$51,$51
+  $91,$91,$B8,$98,$B8,$86,$96,$61
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $B0,$B0,$B0,$B0,$B0,$B0,$B0,$B0
+  $F1,$81,$81,$81,$81,$81,$81,$81
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80
+end data
+' Demon animation frames: A then B, 4 demons x 8 bytes each
+data DemonA bytes
+  $24,$7E,$DB,$7E,$24,$7E,$A5,$24
+  $00,$BD,$7E,$FE,$5A,$A5,$81,$00
+  $81,$DB,$7E,$BD,$FF,$5A,$7E,$C3
+  $3C,$7E,$DB,$FF,$FF,$FF,$A5,$00
+end data
+data DemonB bytes
+  $A5,$7E,$DB,$7E,$3C,$5A,$81,$42
+  $00,$7C,$FE,$7E,$A5,$42,$24,$00
+  $C3,$5A,$7E,$BD,$FF,$7E,$24,$66
+  $3C,$7E,$99,$FF,$FF,$FF,$5A,$00
+end data
+data LavaA bytes
+  $30,$79,$FF,$FF,$DF,$FF,$FB,$FF
+end data
+data LavaB bytes
+  $03,$87,$FF,$FF,$FB,$FF,$DF,$FF
+end data
+' Sprites 16x16: Jacque, Erin, ShotDown, ShotUp, BirdA, BirdB, Bomb, BoomA, BoomB, Jaws
+data SpritePat bytes
+  $38,$38,$10,$38,$7C,$BA,$BA,$3A,$2A,$2A,$28,$28,$6C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$7C,$38,$10,$7C,$BA,$38,$7C,$FE,$28,$28,$6C,$00,$00,$00
+  $00,$10,$38,$10,$38,$10,$28,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $10,$28,$10,$38,$10,$38,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$C0,$70,$3C,$1E,$0E,$07,$0F,$1D,$03,$01,$00,$00,$00,$00,$00
+  $01,$03,$0E,$3C,$78,$70,$F8,$FC,$EE,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$3F,$7F,$E3,$C1,$81,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$FC,$FE,$C7,$83,$81,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$0F,$0F,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$09,$05,$13,$0F,$3F,$0F,$13,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$90,$E0,$F8,$E0,$90,$40,$20,$00,$00,$00,$00,$00
+  $80,$20,$08,$00,$02,$A0,$00,$04,$00,$10,$21,$80,$00,$00,$00,$00
+  $81,$84,$08,$00,$80,$0A,$00,$40,$00,$10,$08,$81,$00,$00,$00,$00
+  $92,$DB,$FF,$FF,$80,$98,$98,$80,$80,$FF,$FF,$DB,$92,$00,$00,$00
+  $49,$6D,$FF,$FF,$01,$19,$19,$01,$01,$FF,$FF,$6D,$49,$00,$00,$00
+end data
+
+asm {
+PdShot:
+    db $40,$2F,$10,$01,$40,$35,$10,$01,$40,$3E,$10,$01,$40,$4B,$10,$01,$40,$5D,$10,$01,$40,$7C,$10,$01
+    db $40,$BA,$10,$01,$50
+PdHit:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$26,$03,$00,$00,$46,$04,$00,$00,$66,$04,$00,$00,$96,$04
+    db $10
+PdSpawn:
+    db $80,$FF,$33,$02,$80,$FF,$33,$02,$80,$A4,$33,$02,$80,$3D,$33,$02,$80,$EA,$32,$02,$80,$A6,$32,$02
+    db $80,$6D,$32,$02,$80,$6D,$72,$02,$90
+PdClimb:
+    db $80,$75,$51,$01,$80,$AE,$71,$01,$90
+PdBeat:
+    db $C0,$FF,$13,$03,$C0,$FF,$F3,$03,$C0,$FF,$33,$03,$C0,$FF,$F3,$02,$D0
+PdBird:
+    db $40,$3E,$30,$02,$40,$4B,$30,$02,$40,$3E,$30,$02,$40,$4B,$30,$02,$40,$3E,$30,$02,$40,$4B,$30,$02
+    db $40,$3E,$30,$02,$40,$4B,$30,$02,$40,$3E,$30,$02,$40,$4B,$30,$02,$40,$3E,$30,$02,$40,$4B,$30,$02
+    db $50
+PdBomb:
+    db $80,$38,$40,$02,$80,$3B,$40,$02,$80,$3E,$40,$02,$80,$42,$40,$02,$80,$46,$40,$02,$80,$4B,$40,$02
+    db $80,$50,$40,$02,$80,$56,$40,$02,$80,$5D,$40,$02,$80,$66,$40,$02,$80,$70,$40,$02,$80,$7C,$40,$02
+    db $80,$8C,$40,$02,$80,$A0,$40,$02,$90
+PdStun:
+    db $40,$2F,$22,$03,$40,$EA,$42,$03,$40,$2F,$22,$03,$40,$EA,$42,$03,$40,$2F,$22,$03,$40,$EA,$42,$03
+    db $40,$2F,$22,$03,$40,$EA,$42,$03,$40,$2F,$22,$03,$40,$EA,$42,$03,$40,$2F,$22,$03,$40,$EA,$42,$03
+    db $40,$2F,$22,$03,$40,$EA,$42,$03,$40,$2F,$22,$03,$40,$EA,$42,$03,$50
+PdBirdHitN:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$36,$08,$00,$00,$66,$0A,$00,$00,$A6,$0A,$10
+PdBirdHitT:
+    db $40,$46,$10,$02,$40,$4B,$10,$02,$40,$50,$10,$02,$40,$56,$10,$02,$40,$5D,$10,$02,$40,$66,$10,$02
+    db $40,$70,$10,$02,$40,$7C,$10,$02,$40,$8C,$10,$02,$40,$A0,$10,$02,$40,$BA,$10,$02,$40,$E0,$10,$02
+    db $40,$18,$11,$02,$40,$75,$11,$02,$40,$2F,$12,$02,$50
+PdMunch:
+    db $00,$00,$05,$04,$00,$00,$F7,$04,$00,$00,$05,$04,$00,$00,$F7,$04,$00,$00,$05,$04,$00,$00,$F7,$04
+    db $00,$00,$05,$04,$00,$00,$F7,$04,$10
+PdOver:
+    db $40,$7C,$21,$0A,$40,$7C,$F1,$02,$40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02
+    db $40,$C5,$21,$0A,$40,$C5,$F1,$02,$40,$E0,$21,$0A,$40,$E0,$F1,$02,$40,$FC,$21,$0A,$40,$FC,$F1,$02
+    db $40,$3B,$22,$0A,$40,$3B,$F2,$02,$40,$F9,$22,$28,$40,$F9,$F2,$02,$50
+PdWaveA:
+    db $40,$D6,$10,$05,$40,$D6,$F0,$01,$40,$AA,$10,$05,$40,$AA,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01
+    db $40,$6B,$10,$0B,$40,$6B,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01,$40,$6B,$10,$17,$40,$6B,$F0,$01
+    db $50
+PdWaveB:
+    db $80,$AB,$31,$05,$80,$AB,$F1,$01,$80,$53,$31,$05,$80,$53,$F1,$01,$80,$1D,$31,$05,$80,$1D,$F1,$01
+    db $80,$D6,$30,$0B,$80,$D6,$F0,$01,$80,$1D,$31,$05,$80,$1D,$F1,$01,$80,$D6,$30,$17,$80,$D6,$F0,$01
+    db $90
+PdGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+PdPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+PitSoundTable:
+    dw PdShot,$7035
+    dw PdHit,$702B
+    dw PdSpawn,$703F
+    dw PdClimb,$703F
+    dw PdBeat,$7049
+    dw PdBird,$7035
+    dw PdBomb,$703F
+    dw PdStun,$7035
+    dw PdBirdHitN,$702B
+    dw PdBirdHitT,$7035
+    dw PdMunch,$702B
+    dw PdOver,$7035
+    dw PdWaveA,$7035
+    dw PdWaveB,$703F
+    dw PdGood,$7035
+    dw PdPick,$7049
+    dw PitTuneMel,$703F
+    dw PitTuneBass,$7049
+; Title tune: The Pit, a creeping D minor theme (original for this port)
+; two phrases with dynamics; Tiny Sound, 7 frames per step
+PitTuneMel:
+    db $44
+    dw sndtiny_1
+    db 11
+    db $02,$40,$1A,$21,$09,$00,$0C,$00,$10,$00,$0F,$00,$10,$00,$00,$15
+    db $00,$13,$00,$10,$00,$0F,$00,$10,$00,$00,$01,$02,$30,$1A,$21,$18
+    db $17,$15,$13,$11,$10,$0F,$10,$02,$10,$1A,$21,$15,$00,$00,$01,$00
+    db $00,$00,$00,$02,$40,$1A,$21,$15,$02,$30,$1A,$21,$95,$00,$00,$13
+    db $00,$10,$00,$0C,$00,$10,$11,$10,$00,$0C,$89,$00,$00,$0A,$00,$0C
+    db $00,$0F,$00,$90,$00,$00,$13,$00,$14,$95,$00,$00,$00,$98,$00,$89
+    db $00,$00,$00,$FF
+PitTuneBass:
+    db $84
+    dw sndtiny_2
+    db 11
+    db $02,$60,$18,$32
+    db $09,$00,$10,$00,$09,$00,$10,$00,$09,$00,$10,$00,$09,$00,$10,$00
+    db $05,$00,$0C,$00,$05,$00,$0C,$00,$04,$00,$0B,$00,$04,$00,$08,$00
+    db $09,$00,$10,$00,$04,$00,$0B,$00,$09,$00,$10,$00,$09,$00,$0C,$00
+    db $04,$00,$09,$00,$04,$00,$09,$00,$04,$00,$0B,$00,$09,$00,$00,$01
+    db $06,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+PitTuneEnd:
+}
