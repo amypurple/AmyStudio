@@ -1953,6 +1953,26 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "time-warp",
+    "label": "Time Warp!",
+    "detail": "An original Timelost perspective action game: catch Erin and Jacque, dodge or blast debris, and survive increasingly fast warps through time.",
+    "projectName": "Time Warp!",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "book",
+      "original",
+      "game",
+      "perspective",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "pitdemons",
     "label": "Peril of the Pitdemons",
     "detail": "A restored 1983 Timelost action game with four demon types, a Warbird, synchronized Tiny Sound music and a full-screen ZX0 bitmap title.",
@@ -1989,6 +2009,26 @@ export const exampleManifest = [
       "graphics",
       "music",
       "zx0",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "dungeon-shadows",
+    "label": "Dungeon Shadows",
+    "detail": "An original Timelost stealth game with six rooms, patrolling guards, dynamic lantern light, noise distractions, rescued companions and synthesized voices.",
+    "projectName": "Dungeon Shadows",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "book",
+      "original",
+      "game",
+      "stealth",
+      "sprites",
+      "voice",
       "manual-canon"
     ]
   }

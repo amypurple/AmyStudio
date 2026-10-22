@@ -1,0 +1,3020 @@
+cartridge "DUNGEON SHADOWS/AN ORIGINAL TIMELOST GAME/2026"
+
+' DUNGEON SHADOWS
+' An original stealth game for the Timelost series, imagined from
+' "Timelost: A Computer Adventure" by Kris Austen Andrews, Arlan Keith
+' Andrews Sr. and Joseph C. Giarratano (Que, 1983). The book's chapter
+' "The Dungeon of the Lord-Wizard" locks the heroes in the Warlord's
+' prison; its game, Escape, begins at the river. This game tells the part
+' the book skips: getting from the cells to the river without being seen.
+' The story and the characters belong to the authors.
+'
+' The idea: every Timelost game is meant to bring something new. This one
+' brings stealth, rare in 8-bit games: no weapon, no shooting. Guards walk
+' their rounds with lanterns, and the light of each lantern is drawn on
+' the floor as it sweeps. Stay in the dark, hide in the straw, listen to
+' your heartbeat, and get out.
+'
+' ColecoVision game in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick):
+'   stick       sneak (silent)
+'   left fire   hold to run: faster, but the guards hear you
+'   right fire  throw a pebble: the guards go to look where it lands
+' Rules: find the key to unlock the stairs of each room. If a guard's
+' lantern or a torch shows you to a guard, the eye fills: at the first
+' mark the guard says "HEY?" and comes to look; when it is full: "HALT!".
+' Walking into a guard is also the end. Straw hides you completely, even
+' in the light. Puddles splash and draw the guards. In the guard room and
+' the armory, pull the lever to open Erin's and Jacque's cells; freed, they
+' follow in your steps, and a guard can see them too. Six rooms lead to
+' the water gate and the River of Death; after the river, the next night
+' begins, harder.
+' Points: gem 50, friend freed 500, room 1000, room without being
+' spotted 1000 more.
+'
+' How it works:
+' - Every floor tile has three lit copies at +32, +64 and +96. A lantern
+'   adds 32 to each tile of its cone and takes it back when the guard
+'   moves or turns, so overlapping lanterns add up without any light map
+'   in RAM: the name table itself is the light map.
+' - A cone is up to 6 tiles deep and widens from 2 to 6 tiles; each lane
+'   stops at the first wall, and an outer lane stops when the lane inside
+'   it is blocked, so light does not leak around corners. Bars and water
+'   let the light through.
+' - The two lantern routines (take the light back, light the new cone)
+'   are Z80 code (lights.asm, inside the asm block), driven by a
+'   precomputed table: for each facing, the cone's cells in order with
+'   their lane and their VRAM offset from the corner of the 6 x 6 box in
+'   front of the guard. Only the tiles really lit are read and written,
+'   and each guard's list of them is all LtOff needs. Only one lantern is
+'   relit per frame.
+'   The game holds 60 frames a second with three guards.
+' - Torchlit tiles are lit all the time; there a guard sees you only if he
+'   faces you, within 7 tiles, with nothing in the way between.
+' - Guards follow their rounds, stop and look both ways at the marked
+'   corners, go to investigate a noise or a glimpse, look around, and walk
+'   back along the steps they remember.
+' - Friends replay John's steps from a history of his positions. When a
+'   cell opens and John comes near, the action stops while the friend walks
+'   out to his or her place in the line.
+' - Voices: "HEY?", "HALT!" and "SHH..." are synthesized formant speech,
+'   played as VoxPCM samples on the standard sound chip.
+' Everything stays in columns 2-29, inside the TV overscan. Sprites: John
+' 0 and the guards 1-3 never flicker (at most four on a line); the freed
+' friends and the pebble come after them and take turns (flicker) only
+' when a line holds more than four.
+' The frame loop is protected from the NMI.
+
+const KFloor = 0
+const KTorch = 1
+const KStraw = 2
+const KKey = 3
+const KGem = 4
+const KLever = 5
+const KLeverOn = 6
+const KExit = 7
+const KPuddle = 8
+const KBars = 10
+const TFlame = 145
+const THeart = 149
+const TPeb = 150
+const TBarOff = 151
+const TBarOn = 152
+const TBarHot = 153
+const TEye = 154
+const TKeyIcon = 131
+const TitleRoom = 6
+
+const SndBeat = 1
+const SndStepN = 2
+const SndSplash = 3
+const SndThrow = 4
+const SndClack = 5
+const SndKeyUp = 6
+const SndGem = 7
+const SndLeverN = 8
+const SndLeverT = 9
+const SndJoin = 10
+const SndSting = 11
+const SndCaught = 12
+const SndClearA = 13
+const SndClearB = 14
+const SndEndA = 15
+const SndEndB = 16
+const SndOver = 17
+const SndGood = 18
+const SndPick = 19
+const SndTuneA = 20
+const SndTuneB = 21
+
+u16 Score = 0
+u16 RoomScore = 0
+u16 HighScore = 3000
+u8 HighName[3]
+u8 Lives = 3
+u8 Room = 0
+u8 Night = 1
+u8 Skill = 0
+u8 Hard = 0
+u8 Relit = 0
+u8 CLen = 5
+u8 Tick = 0
+u8 Caught = 0
+u8 RoomDone = 0
+u8 Unseen = 1
+u8 HasK = 0
+u8 HasE = 0
+u8 HasJ = 0
+u8 Peb = 3
+' John
+u8 JX = 0
+u8 JY = 0
+u8 JMv = 255
+u8 JDir = 0
+u8 JAnim = 0
+u8 JHid = 0
+u8 Spd = 1
+u8 NoiseT = 0
+u8 LastTX = 0
+u8 LastTY = 0
+' His steps, for the friends who follow
+u8 HX[48]
+u8 HY[48]
+u8 HD[48]
+u8 HP = 0
+u8 FolN = 0
+u8 Fol[2]
+u8 FPX = 0
+u8 FPY = 0
+u8 FPD = 0
+' A friend still in a cell
+u8 CgWho = 255
+u8 CgX = 0
+u8 CgY = 0
+u8 CgOpen = 0
+u8 CgDir = 0
+u8 CgWalk = 0
+u8 FwX = 0
+u8 FwY = 0
+u8 ExC = 0
+u8 ExR = 0
+' Guards
+u8 NG = 0
+u8 NGm = 0
+u8 FolM = 0
+u8 GX[3]
+u8 GY[3]
+u8 GDir[3]
+u8 GSt[3]
+u8 GWp[3]
+u8 GT[3]
+u8 GLB[3]
+u8 GTX[3]
+u8 GTY[3]
+u8 GSp[3]
+u8 GBase[3]
+u8 GCnt[3]
+u8 GStk[48]
+u16 GC[72]
+u16 LtBase = 0
+u16 LtOfs = 0
+u8 LtRows[6]
+u8 LtRunOK[6]
+u8 LtElOK[6]
+u8 LtCol = 0
+u8 GCN[3]
+u8 GCX[3]
+u8 GCY[3]
+u8 GCD[3]
+u8 Stp[6]
+' The pebble
+u8 PbOn = 0
+u8 PbX = 0
+u8 PbY = 0
+u8 PbD = 0
+u8 PbT = 0
+' Being seen
+u8 Alert = 0
+u8 Spot = 0
+u8 Bars = 255
+u8 NearD = 99
+u8 NearG = 0
+u8 HeartT = 0
+u8 SLit = 0
+u8 STorch = 0
+u8 SHid = 0
+u8 SeeOK = 0
+u8 SX = 0
+u8 SY = 0
+u8 E = 0
+' Input
+u8 Want = 255
+u8 WantH = 255
+u8 WantV = 255
+u8 Bt1 = 0
+u8 Bt2 = 0
+u8 Bt2Was = 0
+u8 AnyFire = 0
+u8 Up = 0
+u8 Dn = 0
+' Scratch
+u8 TX = 0
+u8 TY = 0
+u8 TT = 0
+u8 TK = 0
+u8 TL = 0
+u8 NK = 0
+u8 BX = 0
+u8 BY = 0
+u8 OK = 0
+u8 G = 0
+u8 H = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 D = 0
+u8 Cx0 = 0
+u8 Ry0 = 0
+u8 CI = 0
+u8 Dp = 0
+u8 Ln = 0
+u8 LoI = 0
+u8 HiI = 0
+u8 CBase = 0
+u8 WX = 0
+u8 WY = 0
+u8 Ga = 0
+u8 Gb = 0
+u8 DXa = 0
+u8 DYa = 0
+u8 SXp = 0
+u8 SYp = 0
+u8 NX = 0
+u8 NY = 0
+u8 NR = 0
+u8 Tm = 0
+u8 Choice = 1
+u16 Dst16 = 0
+u16 W16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table DsSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 3
+  sprites flicker on
+  copy SpritePat count 1056 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 65
+  HighName[1] = 77
+  HighName[2] = 89
+  screen on
+  EditorialPage
+  HowToPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Lives = 3
+  Room = 0
+  Night = 1
+  HasE = 0
+  HasJ = 0
+
+room_start:
+  ' Shadow skill and every night after the first make the watch sharper
+  Hard = Skill
+  if Night >= 2 then inc Hard
+  if Hard > 2 then Hard = 2
+  CLen = 5
+  if Hard > 0 then CLen = 6
+  RoomScore = Score
+  DrawRoom
+  RoomCard
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  inc Tick
+  ReadPad
+  MoveJohn
+  Pickups
+  MovePebble
+  MoveGuards
+  Detect
+  Ambience
+  DrawSprites
+  if Caught = 1 then goto got_caught
+  if RoomDone = 1 then goto room_clear
+  goto main_loop
+
+  ' --- HALT! ---
+got_caught:
+  play voxpcm SayHalt
+  nmi off
+  play sound SndCaught
+  ShowBarsNow
+  fill 32 count 28 at 2,22
+  print at 11,22, "CAUGHT!"
+  for Tm = 1 to 90
+    N = Tm & 4
+    K = 7
+    if N = 0 then K = 15
+    Y = JY - 1
+    P = JDir * 8
+    set sprite 0 to Y,JX,P,K
+    update sprites
+    Rearm
+    wait
+    nmi off
+  next
+  dec Lives
+  Score = RoomScore
+  if Lives = 0 then goto game_over
+  goto room_start
+
+  ' --- Down the stairs ---
+room_clear:
+  play sound SndClearA
+  play sound SndClearB
+  HideSprites
+  for I = 0 to 1
+    if I < FolN then
+      if Fol[I] = 0 then HasE = 1
+      if Fol[I] = 1 then HasJ = 1
+    end if
+  next
+  fill 32 count 28 at 2,22
+  W16 = Score
+  Score += 1000
+  if Unseen = 1 then Score += 1000
+  if Score < W16 then Score = 65535
+  ShowStatus
+  print at 2,22, "ROOM CLEAR  +1000"
+  if Unseen = 1 then print at 20,22, "UNSEEN!"
+  Rearm
+  wait 150 frames
+  nmi off
+  inc Room
+  if Room < 6 then goto room_start
+  Ending
+  inc Night
+  if Night > 9 then Night = 9
+  Room = 0
+  if Lives < 5 then inc Lives
+  goto room_start
+
+game_over:
+  ShowStatus
+  HideSprites
+  fill 32 count 28 at 2,22
+  print at 5,22, "THE DUNGEON KEEPS YOU..."
+  play sound SndOver
+  Rearm
+  wait 150 frames
+  nmi off
+  if Score > HighScore then
+    HighScore = Score
+    MsgBox
+    print at 8,10, "NEW HIGH SCORE!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  MsgBox
+  print at 9,10, "TRY AGAIN"
+  print at 9,11, "TITLE PAGE"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,10 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+' The map in VRAM: TileAt reads the tile at TX,TY into TT, its kind (0-31)
+' into TK and its light (0, 32, 64 or 96) into TL; text and blank tiles
+' count as wall. W16 keeps its name-table offset.
+
+sub TileAt:
+  W16 = TY
+  W16 <<= 5
+  W16 += TX
+  vpeek vram.name + W16 into TT
+  if TT < 128 then
+    TK = 16
+    TL = 0
+    return
+  end if
+  TK = TT & 31
+  TL = TT & 96
+  return
+end sub
+
+' Change the kind of TX,TY to NK, keeping its light
+sub SetKind:
+  TileAt
+  TT = TL + 128
+  TT += NK
+  vpoke vram.name + W16, TT
+  return
+end sub
+
+' Can a 2x2 figure stand with its top-left tile at BX,BY?
+sub BlockFree:
+  OK = 0
+  TX = BX
+  TY = BY
+  TileAt
+  if TK > 9 then return
+  inc TX
+  TileAt
+  if TK > 9 then return
+  inc TY
+  TileAt
+  if TK > 9 then return
+  dec TX
+  TileAt
+  if TK > 9 then return
+  OK = 1
+  return
+end sub
+
+' --- Lanterns ---------------------------------------------------------------
+
+' Take guard G's light back, and light his new cone: Z80 routines in
+' lights.asm (the same rules, about ten times faster)
+sub ConeOff:
+  call asm LtOff
+  return
+end sub
+
+sub ConeOn:
+  call asm LtOn
+  return
+end sub
+
+' --- Guards -----------------------------------------------------------------
+
+sub InitGuards:
+  V = Room * 8
+  V += 7
+  NG = RoomInfo[V]
+  NGm = NG - 1
+  for G = 0 to 2
+    GCN[G] = 0
+    GCX[G] = 255
+    V = Room * 3
+    V += G
+    GBase[G] = GStart[V]
+    GCnt[G] = GLen[V]
+    if G < NG then
+      V = GBase[G] * 2
+      X = Route[V]
+      inc V
+      Y = Route[V]
+      Y &= 127
+      X <<= 3
+      Y <<= 3
+      GX[G] = X
+      GY[G] = Y
+      GWp[G] = 1
+      GSt[G] = 0
+      GSp[G] = 0
+      GDir[G] = 3
+    end if
+  next
+  return
+end sub
+
+sub MoveGuards:
+  NearD = 99
+  ' Novice guards rest one frame in four
+  if Hard = 0 then
+    N = Tick & 3
+    if N = 0 then goto guards_light
+  end if
+  for G = 0 to NGm
+    V = GSt[G]
+    if V = 0 then
+      GuardPatrol
+    elseif V = 1 then
+      GuardLook
+    elseif V = 2 then
+      GuardGo
+    elseif V = 3 then
+      GuardSearch
+    else
+      GuardBack
+    end if
+  next
+guards_light:
+  ' Only one lantern is relit per frame: the others wait their turn
+  Relit = 0
+  for G = 0 to NGm
+    ' His tile, rounded, and where he faces: relight if either changed
+    X = GX[G] + 4
+    X >>= 3
+    Y = GY[G] + 4
+    Y >>= 3
+    D = GDir[G]
+    Q = 0
+    if X <> GCX[G] then Q = 1
+    if Y <> GCY[G] then Q = 1
+    if D <> GCD[G] then Q = 1
+    if Relit = 1 then Q = 0
+    if Q = 1 then
+      Relit = 1
+      ConeOff
+      GCX[G] = X
+      GCY[G] = Y
+      GCD[G] = D
+      ConeOn
+    end if
+    ' How near is he? (in tiles)
+    Ga = GX[G]
+    Gb = GY[G]
+    if Ga > JX then
+      DXa = Ga - JX
+    else
+      DXa = JX - Ga
+    end if
+    if Gb > JY then
+      DYa = Gb - JY
+    else
+      DYa = JY - Gb
+    end if
+    if DYa > DXa then DXa = DYa
+    DXa >>= 3
+    if DXa < NearD then
+      NearD = DXa
+      NearG = G
+    end if
+  next
+  return
+end sub
+
+sub StepG:
+  X = GX[G]
+  Y = GY[G]
+  D = GDir[G]
+  if D = 0 then
+    inc Y
+  elseif D = 1 then
+    dec Y
+  elseif D = 2 then
+    dec X
+  else
+    inc X
+  end if
+  GX[G] = X
+  GY[G] = Y
+  return
+end sub
+
+sub GuardPatrol:
+  V = GBase[G] + GWp[G]
+  V *= 2
+  WX = Route[V]
+  inc V
+  WY = Route[V]
+  Q = WY & 128
+  WY &= 127
+  WX <<= 3
+  WY <<= 3
+  X = GX[G]
+  Y = GY[G]
+  if X <> WX then
+    if X < WX then
+      GDir[G] = 3
+    else
+      GDir[G] = 2
+    end if
+    StepG
+    return
+  end if
+  if Y <> WY then
+    if Y < WY then
+      GDir[G] = 0
+    else
+      GDir[G] = 1
+    end if
+    StepG
+    return
+  end if
+  ' At the corner: on to the next one, after a look around if marked
+  V = GWp[G] + 1
+  if V >= GCnt[G] then V = 0
+  GWp[G] = V
+  if Q > 0 then
+    GSt[G] = 1
+    GT[G] = 90
+    GLB[G] = GDir[G]
+  end if
+  return
+end sub
+
+sub GuardLook:
+  V = GT[G]
+  K = GLB[G]
+  if V = 89 then GDir[G] = PerpA[K]
+  if V = 59 then GDir[G] = PerpB[K]
+  if V = 29 then GDir[G] = RevD[K]
+  dec V
+  GT[G] = V
+  if V = 0 then GSt[G] = 0
+  return
+end sub
+
+sub GuardSearch:
+  V = GT[G]
+  N = V & 31
+  if N = 0 then
+    K = GDir[G]
+    GDir[G] = PerpA[K]
+  end if
+  dec V
+  GT[G] = V
+  if V = 0 then GSt[G] = 4
+  return
+end sub
+
+' To the noise or the glimpse, one tile at a time, remembering the way
+sub GuardGo:
+  X = GX[G]
+  Y = GY[G]
+  N = X | Y
+  N &= 7
+  if N <> 0 then
+    StepG
+    return
+  end if
+  WX = GTX[G]
+  WY = GTY[G]
+  if WX > X then
+    DXa = WX - X
+    SXp = 3
+  else
+    DXa = X - WX
+    SXp = 2
+  end if
+  if WY > Y then
+    DYa = WY - Y
+    SYp = 0
+  else
+    DYa = Y - WY
+    SYp = 1
+  end if
+  Q = 0
+  if DXa < 8 then
+    if DYa < 8 then Q = 1
+  end if
+  if GSp[G] >= 16 then Q = 1
+  if Q = 1 then
+    GSt[G] = 3
+    GT[G] = 120
+    return
+  end if
+  ' Try the longer way first, then the other
+  if DXa >= DYa then
+    D = SXp
+    K = SYp
+    P = DYa
+  else
+    D = SYp
+    K = SXp
+    P = DXa
+  end if
+  TryDir
+  if OK = 0 then
+    if P >= 8 then
+      D = K
+      TryDir
+    end if
+  end if
+  if OK = 0 then
+    GSt[G] = 3
+    GT[G] = 120
+    return
+  end if
+  V = G * 16
+  V += GSp[G]
+  GStk[V] = D
+  inc GSp[G]
+  GDir[G] = D
+  StepG
+  return
+end sub
+
+' Is the block one tile away from guard G, in direction D, free?
+sub TryDir:
+  BX = GX[G]
+  BX >>= 3
+  BX += DDX[D]
+  BY = GY[G]
+  BY >>= 3
+  BY += DDY[D]
+  BlockFree
+  return
+end sub
+
+sub GuardBack:
+  X = GX[G]
+  Y = GY[G]
+  N = X | Y
+  N &= 7
+  if N <> 0 then
+    StepG
+    return
+  end if
+  if GSp[G] = 0 then
+    GSt[G] = 0
+    return
+  end if
+  dec GSp[G]
+  V = G * 16
+  V += GSp[G]
+  K = GStk[V]
+  GDir[G] = RevD[K]
+  StepG
+  return
+end sub
+
+' A noise at NX,NY: guards within NR tiles go and look
+sub MakeNoise:
+  for H = 0 to NGm
+    Ga = GX[H]
+    Gb = GY[H]
+    if Ga > NX then
+      DXa = Ga - NX
+    else
+      DXa = NX - Ga
+    end if
+    if Gb > NY then
+      DYa = Gb - NY
+    else
+      DYa = NY - Gb
+    end if
+    if DYa > DXa then DXa = DYa
+    DXa >>= 3
+    if DXa <= NR then
+      X = NX + 4
+      X &= $F8
+      Y = NY + 4
+      Y &= $F8
+      GTX[H] = X
+      GTY[H] = Y
+      GSt[H] = 2
+    end if
+  next
+  return
+end sub
+
+' --- John -------------------------------------------------------------------
+
+sub ReadPad:
+  WantH = 255
+  WantV = 255
+  Up = 0
+  Dn = 0
+  if joypad(1).left then WantH = 2
+  if joypad(2).left then WantH = 2
+  if joypad(1).right then WantH = 3
+  if joypad(2).right then WantH = 3
+  if joypad(1).up then WantV = 1
+  if joypad(2).up then WantV = 1
+  if joypad(1).down then WantV = 0
+  if joypad(2).down then WantV = 0
+  if WantV = 1 then Up = 1
+  if WantV = 0 then Dn = 1
+  Bt1 = 0
+  Bt2 = 0
+  if joypad(1).button1 then Bt1 = 1
+  if joypad(2).button1 then Bt1 = 1
+  if joypad(1).button2 then Bt2 = 1
+  if joypad(2).button2 then Bt2 = 1
+  AnyFire = Bt1 | Bt2
+  ' Both axes held: take the turn
+  Want = WantH
+  if WantV <> 255 then
+    if WantH = 255 then
+      Want = WantV
+    else
+      if JMv >= 2 then Want = WantV
+    end if
+  end if
+  return
+end sub
+
+sub MoveJohn:
+  Spd = 1
+  if Bt1 = 1 then Spd = 2
+  N = JX | JY
+  N &= 7
+  if N = 0 then
+    ' On the grid: choose the way
+    if Want = 255 then
+      JMv = 255
+    else
+      D = Want
+      JTry
+      if OK = 1 then
+        JMv = Want
+      else
+        if JMv <> 255 then
+          D = JMv
+          JTry
+          if OK = 0 then JMv = 255
+        end if
+      end if
+      JDir = Want
+    end if
+  else
+    ' Between tiles: only turning back is allowed
+    if Want <> 255 then
+      if JMv <> 255 then
+        V = RevD[JMv]
+        if Want = V then JMv = Want
+      end if
+    end if
+  end if
+  if JMv = 255 then return
+  JDir = JMv
+  ' Never step past the next tile line
+  if Spd = 2 then
+    N = JX | JY
+    N &= 1
+    if N = 1 then Spd = 1
+  end if
+  for I = 1 to Spd
+    if JMv = 0 then
+      inc JY
+    elseif JMv = 1 then
+      dec JY
+    elseif JMv = 2 then
+      dec JX
+    else
+      inc JX
+    end if
+    ' Remember the step for the friends behind
+    inc HP
+    if HP >= 48 then HP = 0
+    HX[HP] = JX
+    HY[HP] = JY
+    HD[HP] = JMv
+  next
+  inc JAnim
+  ' Running is heard
+  if Spd = 2 then
+    inc NoiseT
+    if NoiseT >= 10 then
+      NoiseT = 0
+      NX = JX
+      NY = JY
+      NR = 4
+      MakeNoise
+    end if
+  end if
+  return
+end sub
+
+sub JTry:
+  BX = JX
+  BX >>= 3
+  BX += DDX[D]
+  BY = JY
+  BY >>= 3
+  BY += DDY[D]
+  BlockFree
+  return
+end sub
+
+' What John is standing on
+sub Pickups:
+  for K = 0 to 3
+    TX = JX + SmpX[K]
+    TX >>= 3
+    TY = JY + SmpY[K]
+    TY >>= 3
+    TileAt
+    if TK = KKey then
+      NK = KFloor
+      SetKind
+      HasK = 1
+      TX = ExC
+      TY = ExR
+      NK = KExit
+      SetKind
+      inc TX
+      SetKind
+      play sound SndKeyUp
+      ShowStatus
+      fill 32 count 28 at 2,22
+      print at 2,22, "THE STAIRS ARE OPEN!"
+    elseif TK = KGem then
+      NK = KFloor
+      SetKind
+      Score += 50
+      play sound SndGem
+      ShowStatus
+    elseif TK = KLever then
+      NK = KLeverOn
+      SetKind
+      OpenBars
+    elseif TK = KExit then
+      RoomDone = 1
+    elseif TK = KPuddle then
+      ' A splash, once per tile
+      X = JX + 4
+      X >>= 3
+      Y = JY + 4
+      Y >>= 3
+      Q = 0
+      if X <> LastTX then Q = 1
+      if Y <> LastTY then Q = 1
+      if Q = 1 then
+        LastTX = X
+        LastTY = Y
+        play sound SndSplash
+        NX = JX
+        NY = JY
+        NR = 6
+        MakeNoise
+      end if
+    end if
+  next
+  ' A friend in an open cell joins when John comes near
+  if CgWho = 255 then return
+  if CgOpen = 0 then return
+  if CgX > JX then
+    DXa = CgX - JX
+  else
+    DXa = JX - CgX
+  end if
+  if CgY > JY then
+    DYa = CgY - JY
+  else
+    DYa = JY - CgY
+  end if
+  if DXa < 26 then
+    if DYa < 26 then
+      Score += 500
+      play sound SndJoin
+      ShowStatus
+      fill 32 count 28 at 2,22
+      print at 2,22, "FREED! STAY TOGETHER."
+      FriendWalks
+      Fol[FolN] = CgWho
+      inc FolN
+      CgWho = 255
+    end if
+  end if
+  return
+end sub
+
+' The action stops while the freed friend walks out of the cell to take
+' her or his place in the line behind John: down or up first (through the
+' opened bars), then across
+sub FriendWalks:
+  I = FolN
+  FolPos
+  FwX = FPX
+  FwY = FPY
+  CgWalk = 1
+fw_loop:
+  if CgY <> FwY then
+    if CgY < FwY then
+      inc CgY
+      CgDir = 0
+    else
+      dec CgY
+      CgDir = 1
+    end if
+  elseif CgX <> FwX then
+    if CgX < FwX then
+      inc CgX
+      CgDir = 3
+    else
+      dec CgX
+      CgDir = 2
+    end if
+  else
+    goto fw_done
+  end if
+  inc Tick
+  DrawSprites
+  Rearm
+  wait
+  nmi off
+  goto fw_loop
+fw_done:
+  CgWalk = 0
+  CgDir = 0
+  return
+end sub
+
+sub OpenBars:
+  play sound SndLeverN
+  play sound SndLeverT
+  for TY = 2 to 21
+    for TX = 2 to 29
+      TileAt
+      if TK = KBars then
+        TT -= KBars
+        vpoke vram.name + W16, TT
+      end if
+    next
+  next
+  CgOpen = 1
+  return
+end sub
+
+' --- The pebble -------------------------------------------------------------
+
+sub MovePebble:
+  if Bt2 = 1 then
+    if Bt2Was = 0 then
+      if PbOn = 0 then
+        if Peb > 0 then
+          dec Peb
+          PbOn = 1
+          PbX = JX
+          PbY = JY
+          PbD = JDir
+          PbT = 0
+          play sound SndThrow
+          ShowStatus
+        end if
+      end if
+    end if
+  end if
+  Bt2Was = Bt2
+  if PbOn = 0 then return
+  if PbOn >= 2 then
+    ' It lies there a moment
+    inc PbOn
+    if PbOn > 40 then PbOn = 0
+    return
+  end if
+  inc PbT
+  X = PbX
+  Y = PbY
+  if PbD = 0 then
+    Y += 3
+  elseif PbD = 1 then
+    Y -= 3
+  elseif PbD = 2 then
+    X -= 3
+  else
+    X += 3
+  end if
+  TX = X + 7
+  TX >>= 3
+  TY = Y + 8
+  TY >>= 3
+  TileAt
+  Q = 0
+  if TK > 11 then
+    Q = 1
+  else
+    PbX = X
+    PbY = Y
+  end if
+  if PbT >= 18 then Q = 1
+  if Q = 0 then return
+  ' Landed: clatter, or a splash in water
+  PbOn = 2
+  if TK = 11 then
+    play sound SndSplash
+  else
+    play sound SndClack
+  end if
+  NX = PbX
+  NY = PbY
+  NR = 7
+  MakeNoise
+  return
+end sub
+
+' --- Friends ------------------------------------------------------------------
+
+' Where follower I stands: FPX, FPY, facing FPD
+sub FolPos:
+  V = I + 1
+  V *= 16
+  if HP >= V then
+    N = HP - V
+  else
+    N = HP + 48
+    N -= V
+  end if
+  FPX = HX[N]
+  FPY = HY[N]
+  FPD = HD[N]
+  return
+end sub
+
+' --- Being seen -------------------------------------------------------------
+
+' Is SX,SY in a lantern (SLit), in torchlight (STorch), in straw (SHid)?
+sub SampleBody:
+  SLit = 0
+  STorch = 0
+  SHid = 0
+  for K = 0 to 3
+    TX = SX + SmpX[K]
+    TX >>= 3
+    TY = SY + SmpY[K]
+    TY >>= 3
+    TileAt
+    if TL > 0 then SLit = 1
+    if TK = KTorch then STorch = 1
+    if K >= 2 then
+      if TK = KStraw then inc SHid
+    end if
+  next
+  if SHid = 2 then
+    SHid = 1
+  else
+    SHid = 0
+  end if
+  return
+end sub
+
+' Does guard G see SX,SY? (facing it, 7 tiles at most, nothing between)
+sub Sees:
+  SeeOK = 0
+  Ga = GX[G] + 8
+  Ga >>= 3
+  NX = GY[G] + 8
+  NX >>= 3
+  Gb = SX + 8
+  Gb >>= 3
+  NY = SY + 8
+  NY >>= 3
+  if Gb >= Ga then
+    DXa = Gb - Ga
+    SXp = 1
+  else
+    DXa = Ga - Gb
+    SXp = 0
+  end if
+  if NY >= NX then
+    DYa = NY - NX
+    SYp = 1
+  else
+    DYa = NX - NY
+    SYp = 0
+  end if
+  if DXa > 7 then return
+  if DYa > 7 then return
+  D = GDir[G]
+  if D < 2 then
+    if DYa = 0 then return
+    if DYa < DXa then return
+    if D = 0 then
+      if SYp = 0 then return
+    else
+      if SYp = 1 then return
+    end if
+  else
+    if DXa = 0 then return
+    if DXa < DYa then return
+    if D = 3 then
+      if SXp = 0 then return
+    else
+      if SXp = 1 then return
+    end if
+  end if
+  ' Walk the line between them
+  N = DXa
+  if DYa > N then N = DYa
+  if N > 1 then
+    Q = N - 1
+    for CI = 1 to Q
+      V = DXa * CI
+      V /= N
+      if SXp = 1 then
+        TX = Ga + V
+      else
+        TX = Ga - V
+      end if
+      V = DYa * CI
+      V /= N
+      if SYp = 1 then
+        TY = NX + V
+      else
+        TY = NX - V
+      end if
+      TileAt
+      if TK > 11 then return
+    next
+  end if
+  SeeOK = 1
+  return
+end sub
+
+' How exposed are John and his friends this frame?
+sub Exposure:
+  SampleBody
+  if SHid = 1 then return
+  if SLit = 1 then
+    if E < 2 then E = 2
+    return
+  end if
+  if STorch = 0 then return
+  for G = 0 to NGm
+    Sees
+    if SeeOK = 1 then
+      if E < 1 then E = 1
+    end if
+  next
+  return
+end sub
+
+sub Detect:
+  E = 0
+  SX = JX
+  SY = JY
+  Exposure
+  JHid = SHid
+  if FolN > 0 then
+    FolM = FolN - 1
+    for I = 0 to FolM
+      FolPos
+      SX = FPX
+      SY = FPY
+      Exposure
+    next
+  end if
+  ' Too close: bumped into, or nearly
+  for G = 0 to NGm
+    Ga = GX[G]
+    Gb = GY[G]
+    if Ga > JX then
+      DXa = Ga - JX
+    else
+      DXa = JX - Ga
+    end if
+    if Gb > JY then
+      DYa = Gb - JY
+    else
+      DYa = JY - Gb
+    end if
+    if DXa < 11 then
+      if DYa < 11 then Caught = 1
+    end if
+    if JHid = 0 then
+      if DXa < 22 then
+        if DYa < 22 then E = 4
+      end if
+    end if
+  next
+  if E > 0 then
+    ' Half steps: lantern 1 a frame, torchlight 1 every other frame,
+    ' a guard at arm's length 2; one half step more for a Shadow
+    E += Hard
+    N = Tick & 1
+    V = E & 1
+    E >>= 1
+    if V = 1 then
+      if N = 1 then inc E
+    end if
+    V = Alert + E
+    if V > 64 then V = 64
+    Alert = V
+  else
+    N = Tick & 3
+    if N = 0 then
+      if Alert > 0 then dec Alert
+    end if
+  end if
+  if Alert >= 64 then Caught = 1
+  if Alert = 0 then Spot = 0
+  if Alert >= 24 then
+    if Spot = 0 then
+      ' "HEY?" The nearest guard comes to look
+      Spot = 1
+      Unseen = 0
+      play sound SndSting
+      ShowBarsNow
+      play voxpcm SayHey
+      nmi off
+      NX = JX
+      NY = JY
+      NR = 99
+      H = NearG
+      X = NX + 4
+      X &= $F8
+      Y = NY + 4
+      Y &= $F8
+      GTX[H] = X
+      GTY[H] = Y
+      GSt[H] = 2
+    end if
+  end if
+  ShowBars
+  return
+end sub
+
+' Heartbeat, footsteps, torch flames
+sub Ambience:
+  ' The heart beats faster as the guards come near and the eye fills
+  Q = 0
+  if NearD <= 9 then Q = 1
+  if Alert > 0 then Q = 1
+  if Q = 1 then
+    V = NearD
+    if V > 9 then V = 9
+    V *= 4
+    V += 14
+    N = Alert >> 2
+    if V > N then
+      V -= N
+    else
+      V = 0
+    end if
+    if V < 9 then V = 9
+    inc HeartT
+    if HeartT >= V then
+      HeartT = 0
+      play sound SndBeat
+    end if
+  end if
+  ' The nearest guard's boots
+  if NearD <= 6 then
+    G = NearG
+    if GSt[G] <> 1 then
+      if GSt[G] <> 3 then
+        N = GX[G] | GY[G]
+        N &= 7
+        if N = 0 then play sound SndStepN
+      end if
+    end if
+  end if
+  ' Flickering torches
+  N = Tick & 7
+  if N = 0 then
+    W16 = Tick & 8
+    Dst16 = TFlame * 8
+    for I = 0 to 2
+      copy Flames + W16 count 8 to vram.pattern + Dst16
+      Dst16 += 2048
+    next
+  end if
+  return
+end sub
+
+' --- Drawing ------------------------------------------------------------------
+
+sub DrawSprites:
+  ' John: blinks in the straw so you can find him
+  P = JDir * 8
+  N = JAnim & 8
+  if N > 0 then P += 4
+  K = 7
+  if JHid = 1 then
+    N = Tick & 16
+    if N = 0 then K = 4
+  end if
+  Y = JY - 1
+  set sprite 0 to Y,JX,P,K
+  ' Friends behind him, or a friend in a cell
+  for I = 0 to 1
+    J = I + 4
+    if I < FolN then
+      FolPos
+      P = FPD * 8
+      if FPD = 255 then P = 0
+      N = JAnim & 8
+      if N > 0 then P += 4
+      if Fol[I] = 0 then
+        P += 32
+        K = 9
+      else
+        P += 64
+        K = 13
+      end if
+      Y = FPY - 1
+      set sprite J to Y,FPX,P,K
+    else
+      Q = FolN
+      if CgWho <> 255 then
+        if I = Q then
+          P = 32
+          K = 9
+          if CgWho = 1 then
+            P = 64
+            K = 13
+          end if
+          V = CgDir * 8
+          P += V
+          N = Tick & 32
+          if CgWalk = 1 then N = Tick & 8
+          if N > 0 then P += 4
+          Y = CgY - 1
+          set sprite J to Y,CgX,P,K
+        else
+          set sprite J to 192,0,0,0
+        end if
+      else
+        set sprite J to 192,0,0,0
+      end if
+    end if
+  next
+  for G = 0 to 2
+    J = G + 1
+    if G < NG then
+      P = GDir[G] * 8
+      P += 96
+      ' A step every 4 pixels: the sum of X and Y changes whichever way he walks
+      N = GX[G] + GY[G]
+      N &= 4
+      if GSt[G] = 1 then N = 0
+      if GSt[G] = 3 then N = 0
+      if N > 0 then P += 4
+      K = 12
+      V = GSt[G]
+      if V >= 2 then
+        if V <= 3 then
+          N = Tick & 4
+          K = 15
+          if N = 0 then K = 8
+        end if
+      end if
+      Y = GY[G] - 1
+      X = GX[G]
+      set sprite J to Y,X,P,K
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if PbOn > 0 then
+    Y = PbY - 1
+    if PbOn = 1 then
+      N = Arc[PbT]
+      Y -= N
+    end if
+    set sprite 6 to Y,PbX,128,14
+  else
+    set sprite 6 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawRoom:
+  nmi off
+  HideSprites
+  cls
+  fill mode 2 text color with $F1
+  backdrop black
+  LoadTiles
+  ' The room, row by row
+  W16 = Room
+  W16 *= 560
+  Dst16 = 66
+  for I = 0 to 19
+    copy RoomMap + W16 count 28 to vram.name + Dst16
+    W16 += 28
+    Dst16 += 32
+  next
+  V = Room * 8
+  JX = RoomInfo[V] * 8
+  inc V
+  JY = RoomInfo[V] * 8
+  inc V
+  CgWho = RoomInfo[V]
+  inc V
+  CgX = RoomInfo[V] * 8
+  inc V
+  CgY = RoomInfo[V] * 8
+  inc V
+  ExC = RoomInfo[V]
+  inc V
+  ExR = RoomInfo[V]
+  ' Friends already freed come along; their cells stay empty
+  FolN = 0
+  if HasE = 1 then
+    Fol[FolN] = 0
+    inc FolN
+  end if
+  if HasJ = 1 then
+    Fol[FolN] = 1
+    inc FolN
+  end if
+  if CgWho = 0 then
+    if HasE = 1 then CgWho = 255
+  end if
+  if CgWho = 1 then
+    if HasJ = 1 then CgWho = 255
+  end if
+  for I = 0 to 47
+    HX[I] = JX
+    HY[I] = JY
+    HD[I] = 0
+  next
+  HP = 0
+  JMv = 255
+  JDir = 0
+  JAnim = 0
+  CgOpen = 0
+  HasK = 0
+  Peb = 3
+  PbOn = 0
+  Alert = 0
+  Spot = 0
+  Bars = 255
+  Caught = 0
+  RoomDone = 0
+  Unseen = 1
+  LastTX = 0
+  InitGuards
+  if Room = TitleRoom then return
+  ShowStatus
+  RoomName
+  return
+end sub
+
+sub RoomCard:
+  MoveGuards
+  DrawSprites
+  fill 32 count 28 at 2,22
+  RoomHint
+  Rearm
+  wait 30 frames
+  wait no fire
+  nmi off
+  for Tm = 1 to 200
+    Rearm
+    wait
+    nmi off
+    if joypad(1).fire then Tm = 200
+    if joypad(2).fire then Tm = 200
+  next
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub RoomName:
+  fill 32 count 28 at 2,1
+  NumU = Room + 1
+  print at 2,1, digits$(NumU, 1)
+  if Room = 0 then
+    print at 4,1, "THE CELL BLOCK"
+  elseif Room = 1 then
+    print at 4,1, "THE GUARD ROOM"
+  elseif Room = 2 then
+    print at 4,1, "THE CRYPT"
+  elseif Room = 3 then
+    print at 4,1, "THE ARMORY"
+  elseif Room = 4 then
+    print at 4,1, "THE GREAT HALL"
+  else
+    print at 4,1, "THE WATER GATE"
+  end if
+  return
+end sub
+
+sub RoomHint:
+  if Room = 0 then
+    print at 2,22, "FIND THE KEY. AVOID LIGHT."
+  elseif Room = 1 then
+    print at 2,22, "PULL THE LEVER: FREE ERIN."
+  elseif Room = 2 then
+    print at 2,22, "PUDDLES SPLASH LOUDLY."
+  elseif Room = 3 then
+    print at 2,22, "FREE JACQUE. USE THE CRATES."
+  elseif Room = 4 then
+    print at 2,22, "TORCHLIGHT GIVES YOU AWAY."
+  else
+    print at 2,22, "BEYOND: THE RIVER OF DEATH."
+  end if
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,0, "SCORE"
+  NumU = Score
+  print at 8,0, digits$(NumU, 5)
+  print at 14,0, "NIGHT"
+  NumU = Night
+  print at 20,0, digits$(NumU, 1)
+  print at 22,0, "HI"
+  NumU = HighScore
+  print at 25,0, digits$(NumU, 5)
+  for I = 0 to 4
+    X = I + 2
+    N = 32
+    if I < Lives then N = THeart
+    put char N at X,23
+  next
+  for I = 0 to 2
+    X = I + 8
+    N = 32
+    if I < Peb then N = TPeb
+    put char N at X,23
+  next
+  N = 32
+  if HasK = 1 then N = TKeyIcon
+  put char N at 12,23
+  put char TEye at 20,23
+  Bars = 255
+  ShowBars
+  return
+end sub
+
+' The eye meter: 8 bars, red from the "HEY?" mark
+sub ShowBars:
+  N = Alert >> 3
+  if N = Bars then return
+  ShowBarsNow
+  return
+end sub
+
+sub ShowBarsNow:
+  N = Alert >> 3
+  Bars = N
+  for I = 0 to 7
+    X = I + 22
+    V = TBarOff
+    if I < Bars then
+      V = TBarOn
+      if Alert >= 24 then V = TBarHot
+    end if
+    put char V at X,23
+  next
+  return
+end sub
+
+sub MsgBox:
+  for Y = 8 to 13
+    fill 32 count 22 at 5,Y
+  next
+  return
+end sub
+
+sub EnterName:
+  MsgBox
+  print at 6,9, "YOUR INITIALS:"
+  print at 6,12, "UP/DOWN, FIRE"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,9
+  next
+  X = I + 21
+  fill 32 count 3 at 21,10
+  put char 45 at X,10
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadPad
+  if AnyFire = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then return
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  if Dn = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+end sub
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 1024 to vram.pattern + Dst16
+    copy TileCol count 1024 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 7
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' --- Pages ------------------------------------------------------------------
+
+sub TitlePage:
+  nmi off
+  Room = TitleRoom
+  CLen = 5
+  Hard = 0
+  DrawRoom
+  JX = 0
+  JY = 200
+  for Y = 18 to 21
+    fill 32 count 28 at 2,Y
+  next
+  print at 7,18, "HIGH"
+  NumU = HighScore
+  print at 12,18, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 18
+    N = HighName[J]
+    put char N at X,18
+  next
+  print at 9,19, "NOVICE"
+  print at 9,20, "SHADOW (HARD)"
+  print at 5,21, "STICK, THEN FIRE TO GO"
+  Choice = 0
+  play voxpcm SayShh
+  nmi off
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+title_loop:
+  inc Tick
+  MoveGuards
+  Ambience
+  DrawSprites
+  set sprite 0 to 192,0,0,0
+  update sprites
+  V = Choice + 19
+  put char 62 at 7,V
+  ' (the other line's cursor is cleared)
+  V = 20 - Choice
+  put char 32 at 7,V
+  Rearm
+  wait
+  nmi off
+  ReadPad
+  if Up = 1 then Choice = 0
+  if Dn = 1 then Choice = 1
+  if AnyFire = 1 then goto title_go
+  goto title_loop
+title_go:
+  play sound SndPick
+  Skill = Choice
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  HideSprites
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 8,1, "DUNGEON SHADOWS"
+  print at 2,3, "AN ORIGINAL GAME FOR THE"
+  print at 2,4, "TIMELOST SERIES BY KRIS"
+  print at 2,5, "AUSTEN ANDREWS, ARLAN KEITH"
+  print at 2,6, "ANDREWS SR. AND JOSEPH C."
+  print at 2,7, "GIARRATANO (QUE, 1983)."
+  print at 2,9, "THE BOOK'S GAME ESCAPE"
+  print at 2,10, "STARTS AT THE RIVER OF"
+  print at 2,11, "DEATH. HOW DID THE HEROES"
+  print at 2,12, "GET OUT OF THE LORD-"
+  print at 2,13, "WIZARD'S DUNGEON? QUIETLY."
+  print at 2,15, "A STEALTH GAME: NO WEAPON,"
+  print at 2,16, "ONLY SHADOWS AND STRAW."
+  print at 2,18, "BY AMY BIENVENU, 2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub HowToPage:
+  cls
+  print at 9,1, "HOW TO SNEAK"
+  print at 2,3, "STICK: WALK, SILENT"
+  print at 2,4, "LEFT FIRE: RUN, NOISY"
+  print at 2,5, "RIGHT FIRE: THROW A PEBBLE"
+  print at 4,6, "THE GUARDS GO TO LOOK."
+  print at 2,8, "STAY OUT OF THE LANTERNS."
+  print at 2,9, "IN TORCHLIGHT, A GUARD WHO"
+  print at 2,10, "FACES YOU SEES YOU."
+  print at 2,11, "STRAW HIDES YOU, EVEN LIT."
+  print at 2,13, "THE EYE FILLS AS YOU ARE"
+  print at 2,14, "SEEN. 'HEY?': RUN AND HIDE."
+  print at 2,15, "FULL: 'HALT!'"
+  print at 2,17, "TAKE THE KEY TO OPEN THE"
+  print at 2,18, "STAIRS. FREE ERIN AND"
+  print at 2,19, "JACQUE ON THE WAY."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub Ending:
+  nmi off
+  HideSprites
+  cls
+  print at 5,3, "THE WATER GATE CREAKS."
+  print at 3,5, "BELOW, THE RIVER OF DEATH"
+  print at 3,6, "ROARS IN THE DARK."
+  print at 3,8, "A HUNDRED PRISONERS STILL"
+  print at 3,9, "WAIT IN THE CELLS..."
+  print at 3,11, "THE ESCAPE GOES ON IN"
+  print at 3,12, "ESCAPE, THE BOOK'S GAME."
+  print at 3,15, "BUT FIRST, THE LORD-WIZARD"
+  print at 3,16, "DOUBLES THE WATCH."
+  NumU = Night + 1
+  print at 9,19, "NIGHT"
+  print at 15,19, digits$(NumU, 1)
+  play sound SndEndA
+  play sound SndEndB
+  Rearm
+  wait 120 frames
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data LaneOrd bytes = 2, 3, 1, 4, 0, 5
+data LaneIn bytes = 1, 2, 255, 255, 3, 4
+data PerpA bytes = 2, 3, 1, 0
+data PerpB bytes = 3, 2, 0, 1
+data RevD bytes = 1, 0, 3, 2
+data DDX bytes = 0, 0, 255, 1
+data DDY bytes = 1, 255, 0, 0
+data SmpX bytes = 3, 12, 3, 12
+data SmpY bytes = 3, 3, 12, 12
+data Arc bytes = 0, 2, 4, 6, 7, 8, 9, 10, 10, 10, 10, 9, 8, 7, 6, 4, 2, 0, 0
+
+data TilePat bytes
+  $00,$20,$00,$04,$00,$80,$02,$00,$88,$22,$88,$22,$88,$22,$88,$22
+  $92,$49,$24,$92,$4A,$24,$91,$48,$00,$60,$9F,$95,$60,$00,$00,$00
+  $00,$10,$38,$7C,$38,$10,$00,$00,$00,$40,$20,$10,$08,$3C,$3C,$00
+  $00,$02,$04,$08,$10,$3C,$3C,$00,$FF,$00,$7F,$00,$3F,$00,$1F,$00
+  $00,$38,$7E,$FF,$7C,$18,$00,$00,$00,$82,$44,$28,$10,$28,$46,$C0
+  $49,$49,$49,$49,$49,$49,$49,$49,$00,$60,$93,$0C,$00,$0C,$D2,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$FF,$08,$08,$08,$FF,$10,$30,$38,$7C,$38,$10,$38,$10
+  $FF,$91,$A1,$C3,$85,$89,$91,$FF,$92,$92,$92,$BA,$AA,$BA,$92,$92
+  $FE,$82,$82,$82,$82,$82,$FE,$00,$00,$6C,$FE,$FE,$7C,$38,$10,$00
+  $00,$00,$30,$78,$78,$30,$00,$00,$00,$00,$FE,$FE,$FE,$FE,$00,$00
+  $00,$00,$FE,$FE,$FE,$FE,$00,$00,$00,$00,$FE,$FE,$FE,$FE,$00,$00
+  $00,$38,$44,$92,$44,$38,$00,$00,$80,$80,$80,$FF,$08,$08,$08,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$04,$00,$80,$02,$00,$88,$22,$88,$22,$88,$22,$88,$22
+  $92,$49,$24,$92,$4A,$24,$91,$48,$00,$60,$9F,$95,$60,$00,$00,$00
+  $00,$10,$38,$7C,$38,$10,$00,$00,$00,$40,$20,$10,$08,$3C,$3C,$00
+  $00,$02,$04,$08,$10,$3C,$3C,$00,$FF,$00,$7F,$00,$3F,$00,$1F,$00
+  $00,$38,$7E,$FF,$7C,$18,$00,$00,$00,$82,$44,$28,$10,$28,$46,$C0
+  $49,$49,$49,$49,$49,$49,$49,$49,$00,$60,$93,$0C,$00,$0C,$D2,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$04,$00,$80,$02,$00,$88,$22,$88,$22,$88,$22,$88,$22
+  $92,$49,$24,$92,$4A,$24,$91,$48,$00,$60,$9F,$95,$60,$00,$00,$00
+  $00,$10,$38,$7C,$38,$10,$00,$00,$00,$40,$20,$10,$08,$3C,$3C,$00
+  $00,$02,$04,$08,$10,$3C,$3C,$00,$FF,$00,$7F,$00,$3F,$00,$1F,$00
+  $00,$38,$7E,$FF,$7C,$18,$00,$00,$00,$82,$44,$28,$10,$28,$46,$C0
+  $49,$49,$49,$49,$49,$49,$49,$49,$00,$60,$93,$0C,$00,$0C,$D2,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$20,$00,$04,$00,$80,$02,$00,$88,$22,$88,$22,$88,$22,$88,$22
+  $92,$49,$24,$92,$4A,$24,$91,$48,$00,$60,$9F,$95,$60,$00,$00,$00
+  $00,$10,$38,$7C,$38,$10,$00,$00,$00,$40,$20,$10,$08,$3C,$3C,$00
+  $00,$02,$04,$08,$10,$3C,$3C,$00,$FF,$00,$7F,$00,$3F,$00,$1F,$00
+  $00,$38,$7E,$FF,$7C,$18,$00,$00,$00,$82,$44,$28,$10,$28,$46,$C0
+  $49,$49,$49,$49,$49,$49,$49,$49,$00,$60,$93,$0C,$00,$0C,$D2,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $41,$41,$41,$41,$41,$41,$41,$41,$61,$61,$61,$61,$61,$61,$61,$61
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $71,$71,$71,$71,$71,$71,$71,$71,$81,$81,$E1,$E1,$E1,$E1,$E1,$E1
+  $31,$31,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $41,$41,$41,$41,$41,$41,$41,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$54,$54,$54,$54,$54,$54,$54,$54
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E,$B6,$B6,$B6,$A6,$96,$61,$E1,$E1
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$16,$16,$16,$B6,$B6,$B6,$16,$16
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$11,$91,$91,$91,$91,$91,$91,$91,$91
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$41,$41,$41,$41,$41,$41,$41,$41
+  $31,$31,$31,$31,$31,$31,$31,$31,$91,$91,$91,$91,$91,$91,$91,$91
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$41,$41,$41,$41,$41,$41,$41,$41
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$8B,$8B,$1B,$1B,$1B,$1B,$1B,$1B
+  $CB,$CB,$1B,$1B,$1B,$1B,$1B,$1B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $5B,$5B,$5B,$5B,$5B,$5B,$5B,$5B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$F5,$F5,$F5,$F5,$F5,$F5,$F5,$F5
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$8B,$8B,$1B,$1B,$1B,$1B,$1B,$1B
+  $CB,$CB,$1B,$1B,$1B,$1B,$1B,$1B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $5B,$5B,$5B,$5B,$5B,$5B,$5B,$5B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$F5,$F5,$F5,$F5,$F5,$F5,$F5,$F5
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$8B,$8B,$1B,$1B,$1B,$1B,$1B,$1B
+  $CB,$CB,$1B,$1B,$1B,$1B,$1B,$1B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $5B,$5B,$5B,$5B,$5B,$5B,$5B,$5B,$6B,$6B,$6B,$6B,$6B,$6B,$6B,$6B
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EB,$F5,$F5,$F5,$F5,$F5,$F5,$F5,$F5
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data Flames bytes
+  $10,$30,$38,$7C,$38,$10,$38,$10,$08,$18,$38,$3C,$38,$10,$38,$10
+end data
+data SpritePat bytes
+  $03,$07,$07,$05,$07,$03,$0F,$1F,$2F,$2F,$2F,$07,$06,$06,$06,$0E
+  $C0,$E0,$E0,$A0,$E0,$C0,$F0,$F8,$F4,$F4,$F4,$E0,$60,$70,$00,$00
+  $03,$07,$07,$05,$07,$03,$0F,$1F,$2F,$2F,$2F,$07,$06,$0E,$00,$00
+  $C0,$E0,$E0,$A0,$E0,$C0,$F0,$F8,$F4,$F4,$F4,$E0,$60,$60,$60,$70
+  $03,$07,$07,$07,$07,$03,$0F,$1F,$2F,$2F,$2F,$07,$06,$06,$06,$0E
+  $C0,$E0,$E0,$E0,$E0,$C0,$F0,$F8,$F4,$F4,$F4,$E0,$60,$70,$00,$00
+  $03,$07,$07,$07,$07,$03,$0F,$1F,$2F,$2F,$2F,$07,$06,$0E,$00,$00
+  $C0,$E0,$E0,$E0,$E0,$C0,$F0,$F8,$F4,$F4,$F4,$E0,$60,$60,$60,$70
+  $07,$0F,$1F,$17,$1F,$07,$07,$0F,$0D,$0D,$0D,$07,$06,$0C,$18,$38
+  $80,$C0,$C0,$C0,$C0,$80,$E0,$E0,$E0,$E0,$E0,$E0,$60,$30,$30,$70
+  $07,$0F,$1F,$17,$1F,$07,$07,$0F,$0D,$0D,$0D,$07,$06,$06,$06,$0F
+  $80,$C0,$C0,$C0,$C0,$80,$E0,$E0,$E0,$E0,$E0,$E0,$60,$C0,$C0,$C0
+  $01,$03,$03,$03,$03,$01,$07,$07,$07,$07,$07,$07,$06,$0C,$0C,$0E
+  $E0,$F0,$F8,$E8,$F8,$E0,$E0,$F0,$B0,$B0,$B0,$E0,$60,$30,$18,$1C
+  $01,$03,$03,$03,$03,$01,$07,$07,$07,$07,$07,$07,$06,$03,$03,$03
+  $E0,$F0,$F8,$E8,$F8,$E0,$E0,$F0,$B0,$B0,$B0,$E0,$60,$60,$60,$F0
+  $03,$0F,$1F,$1D,$1F,$1B,$19,$1B,$27,$23,$27,$0F,$1F,$04,$04,$0C
+  $C0,$F0,$F8,$B8,$F8,$D8,$98,$D8,$E4,$C4,$E4,$F0,$F8,$20,$00,$00
+  $03,$0F,$1F,$1D,$1F,$1B,$19,$1B,$27,$23,$27,$0F,$1F,$04,$00,$00
+  $C0,$F0,$F8,$B8,$F8,$D8,$98,$D8,$E4,$C4,$E4,$F0,$F8,$20,$20,$30
+  $03,$0F,$1F,$1F,$1F,$1F,$1F,$1F,$2F,$23,$27,$0F,$1F,$04,$04,$0C
+  $C0,$F0,$F8,$F8,$F8,$F8,$F8,$F8,$F4,$C4,$E4,$F0,$F8,$20,$00,$00
+  $03,$0F,$1F,$1F,$1F,$1F,$1F,$1F,$2F,$23,$27,$0F,$1F,$04,$00,$00
+  $C0,$F0,$F8,$F8,$F8,$F8,$F8,$F8,$F4,$C4,$E4,$F0,$F8,$20,$20,$30
+  $07,$0F,$1F,$17,$1F,$09,$05,$0F,$0B,$07,$07,$0F,$1F,$3F,$08,$18
+  $80,$E0,$F0,$F0,$F0,$F8,$F8,$EC,$EC,$C8,$E0,$F0,$F8,$FC,$10,$30
+  $07,$0F,$1F,$17,$1F,$09,$05,$0F,$0B,$07,$07,$0F,$1F,$3F,$02,$07
+  $80,$E0,$F0,$F0,$F0,$F8,$F8,$EC,$EC,$C8,$E0,$F0,$F8,$FC,$80,$80
+  $01,$07,$0F,$0F,$0F,$1F,$1F,$37,$37,$13,$07,$0F,$1F,$3F,$08,$0C
+  $E0,$F0,$F8,$E8,$F8,$90,$A0,$F0,$D0,$E0,$E0,$F0,$F8,$FC,$10,$18
+  $01,$07,$0F,$0F,$0F,$1F,$1F,$37,$37,$13,$07,$0F,$1F,$3F,$01,$01
+  $E0,$F0,$F8,$E8,$F8,$90,$A0,$F0,$D0,$E0,$E0,$F0,$F8,$FC,$40,$E0
+  $07,$3F,$07,$05,$07,$0F,$3F,$7F,$6F,$6F,$6F,$0F,$0E,$0E,$0E,$1E
+  $E0,$FC,$E0,$A0,$E0,$F0,$FC,$FE,$F6,$F6,$F6,$F0,$70,$78,$00,$00
+  $07,$3F,$07,$05,$07,$0F,$3F,$7F,$6F,$6F,$6F,$0F,$0E,$1E,$00,$00
+  $E0,$FC,$E0,$A0,$E0,$F0,$FC,$FE,$F6,$F6,$F6,$F0,$70,$70,$70,$78
+  $07,$3F,$07,$07,$07,$0F,$3F,$7F,$6F,$6F,$6F,$0F,$0E,$0E,$0E,$1E
+  $E0,$FC,$E0,$E0,$E0,$F0,$FC,$FE,$F6,$F6,$F6,$F0,$70,$78,$00,$00
+  $07,$3F,$07,$07,$07,$0F,$3F,$7F,$6F,$6F,$6F,$0F,$0E,$1E,$00,$00
+  $E0,$FC,$E0,$E0,$E0,$F0,$FC,$FE,$F6,$F6,$F6,$F0,$70,$70,$70,$78
+  $0F,$3F,$0F,$17,$1F,$1F,$0F,$1F,$1B,$1B,$1B,$0F,$0E,$1C,$38,$78
+  $C0,$F0,$C0,$C0,$C0,$E0,$F0,$F8,$F8,$F8,$F8,$F0,$70,$38,$38,$78
+  $0F,$3F,$0F,$17,$1F,$1F,$0F,$1F,$1B,$1B,$1B,$0F,$0E,$0E,$0E,$1F
+  $C0,$F0,$C0,$C0,$C0,$E0,$F0,$F8,$F8,$F8,$F8,$F0,$70,$E0,$E0,$E0
+  $03,$0F,$03,$03,$03,$07,$0F,$1F,$1F,$1F,$1F,$0F,$0E,$1C,$1C,$1E
+  $F0,$FC,$F0,$E8,$F8,$F8,$F0,$F8,$D8,$D8,$D8,$F0,$70,$38,$1C,$1E
+  $03,$0F,$03,$03,$03,$07,$0F,$1F,$1F,$1F,$1F,$0F,$0E,$07,$07,$07
+  $F0,$FC,$F0,$E8,$F8,$F8,$F0,$F8,$D8,$D8,$D8,$F0,$70,$70,$70,$F8
+  $01,$03,$07,$05,$07,$0B,$1F,$3F,$2F,$2F,$0F,$07,$06,$06,$06,$0E
+  $80,$C0,$E0,$A0,$E0,$D0,$F8,$FC,$F4,$F4,$F0,$E0,$60,$70,$00,$00
+  $01,$03,$07,$05,$07,$0B,$1F,$3F,$2F,$2F,$0F,$07,$06,$0E,$00,$00
+  $80,$C0,$E0,$A0,$E0,$D0,$F8,$FC,$F4,$F4,$F0,$E0,$60,$60,$60,$70
+  $01,$03,$07,$07,$07,$0F,$1F,$3F,$2F,$2F,$0F,$07,$06,$06,$06,$0E
+  $80,$C0,$E0,$E0,$E0,$F0,$F8,$FC,$F4,$F4,$F0,$E0,$60,$70,$00,$00
+  $01,$03,$07,$07,$07,$0F,$1F,$3F,$2F,$2F,$0F,$07,$06,$0E,$00,$00
+  $80,$C0,$E0,$E0,$E0,$F0,$F8,$FC,$F4,$F4,$F0,$E0,$60,$60,$60,$70
+  $01,$03,$07,$0B,$07,$0F,$0F,$0F,$0D,$0D,$0F,$07,$0C,$18,$30,$70
+  $80,$C0,$E0,$E0,$E0,$E0,$F0,$F0,$F0,$F0,$F0,$E0,$60,$30,$30,$70
+  $01,$03,$07,$0B,$07,$0F,$0F,$0F,$0D,$0D,$0F,$07,$06,$06,$06,$0F
+  $80,$C0,$E0,$E0,$E0,$E0,$F0,$F0,$F0,$F0,$F0,$E0,$C0,$C0,$C0,$C0
+  $01,$03,$07,$07,$07,$07,$0F,$0F,$0F,$0F,$0F,$07,$06,$0C,$0C,$0E
+  $80,$C0,$E0,$D0,$E0,$F0,$F0,$F0,$B0,$B0,$F0,$E0,$30,$18,$0C,$0E
+  $01,$03,$07,$07,$07,$07,$0F,$0F,$0F,$0F,$0F,$07,$03,$03,$03,$03
+  $80,$C0,$E0,$D0,$E0,$F0,$F0,$F0,$B0,$B0,$F0,$E0,$60,$60,$60,$F0
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+data RoomMap bytes
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$80,$80,$90,$82,$82,$80,$80,$80,$90,$84,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$83,$90
+  $90,$80,$80,$80,$80,$90,$82,$82,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$84,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90,$90,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90,$90,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$84,$81,$81,$90,$81,$81,$80,$80,$80,$90,$82,$82,$80,$81,$81,$90,$81,$81,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$90,$82,$82,$80,$81,$81,$90,$81,$81,$84,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$80,$81,$81,$91,$81,$81,$80,$80,$80,$90,$80,$80,$80,$81,$81,$91,$81,$81,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$90,$80,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$82,$82,$81,$81,$90,$81,$81,$84,$80,$80,$90,$80,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$90,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$93,$93,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$84,$80,$80,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$80,$83,$80,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$81,$81,$91,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$82,$82,$80,$81,$81,$90,$81,$81,$80,$80,$80,$82,$82,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$81,$81,$80,$80,$80,$82,$82,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$90,$90,$90,$81,$81,$90,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90
+  $90,$80,$80,$80,$90,$80,$80,$90,$8A,$8A,$8A,$8A,$81,$90,$81,$81,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$85,$80,$90,$80,$80,$90,$8A,$80,$80,$8A,$81,$91,$81,$81,$90,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$90,$80,$80,$90,$8A,$80,$80,$8A,$81,$90,$81,$81,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$90,$80,$80,$90,$8A,$8A,$8A,$8A,$81,$90,$81,$81,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$90,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$93,$93,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$80,$89,$90,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$84,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$89,$89,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$90,$80,$80,$82,$82,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$90,$80,$80,$82,$82,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$90,$90,$90,$90,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$90,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$90
+  $90,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$90,$80,$80,$89,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$90
+  $90,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$90,$80,$80,$83,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$90,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$89,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$93,$93,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$80,$80,$80,$80,$92,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$92,$80,$80,$84,$80,$80,$81,$81,$90,$81,$81,$80,$92,$92,$80,$80,$80,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90,$81,$81,$80,$92,$92,$80,$80,$80,$84,$80,$80,$90
+  $90,$82,$82,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$81,$81,$91,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$81,$81,$90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90,$81,$81,$80,$80,$92,$92,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$80,$92,$92,$80,$80,$80,$90,$90,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$80,$80,$90,$90,$90,$90,$90,$90,$90,$81,$81,$90,$80,$80,$90,$90,$90,$90,$90,$80,$80,$90,$90,$90,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$80,$81,$81,$90,$81,$81,$90,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$85,$80,$80,$90,$80,$80,$80,$81,$81,$91,$81,$81,$90,$8A,$8A,$8A,$8A,$90,$80,$80,$80,$83,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$82,$82,$81,$90,$81,$81,$90,$8A,$80,$80,$8A,$90,$80,$80,$92,$92,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$90,$80,$80,$82,$82,$81,$90,$81,$81,$90,$8A,$80,$80,$8A,$90,$80,$80,$92,$92,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$8A,$8A,$8A,$8A,$90,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$93,$93,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$90
+  $90,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$90
+  $90,$80,$80,$82,$82,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$90
+  $90,$81,$81,$82,$82,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$81,$81,$90
+  $90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90
+  $91,$81,$81,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$91
+  $90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90
+  $90,$81,$81,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$81,$81,$90
+  $90,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$92,$92,$80,$80,$80,$80,$80,$90
+  $90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90
+  $90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90
+  $91,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$91
+  $90,$81,$81,$82,$82,$80,$80,$80,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$81,$81,$90
+  $90,$81,$81,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$81,$81,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$83,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$90
+  $90,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90,$90,$93,$93,$90,$90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$90,$80,$80,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$84,$80,$80,$90
+  $90,$82,$82,$80,$80,$80,$8B,$8B,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$90
+  $90,$82,$82,$80,$80,$80,$80,$80,$80,$80,$81,$81,$91,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$90,$81,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$81,$81,$90,$81,$81,$82,$82,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$90
+  $90,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$80,$80,$8B,$8B,$90
+  $90,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$80,$80,$8B,$8B,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$82,$82,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$82,$82,$80,$80,$90
+  $90,$80,$80,$82,$82,$80,$80,$8B,$8B,$80,$80,$80,$83,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$82,$82,$80,$80,$90
+  $90,$80,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$80,$80,$8B,$8B,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$90
+  $90,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$80,$80,$8B,$8B,$8B,$8B,$90
+  $90,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$88,$80,$80,$80,$80,$84,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$93,$93,$90,$90,$90,$90,$90,$90
+  $9B,$94,$94,$9B,$9B,$94,$9B,$94,$9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$94,$94
+  $9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$9B,$9B,$94,$9B,$9B,$9B,$94,$9B,$94,$9B,$94,$9B,$94
+  $9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$94,$9B,$9B,$94,$9B,$94,$9B,$94,$9B,$94
+  $9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$9B,$9B,$94,$9B,$94,$9B,$94,$9B,$94
+  $9B,$94,$94,$9B,$9B,$94,$94,$94,$9B,$94,$9B,$94,$9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$9B,$94
+  $9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B
+  $9B,$94,$94,$94,$9B,$94,$9B,$94,$9B,$94,$94,$94,$9B,$94,$94,$9B,$9B,$94,$94,$94,$9B,$94,$9B,$94,$9B,$94,$94,$94
+  $9B,$94,$9B,$9B,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$9B
+  $9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$94,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$94,$94
+  $9B,$9B,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$94,$94,$9B,$9B,$9B,$94
+  $9B,$94,$94,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$9B,$94,$94,$9B,$9B,$94,$94,$94,$9B,$94,$9B,$94,$9B,$94,$94,$94
+  $90,$90,$90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$91,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$80,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$90
+  $90,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$82,$80,$80,$80,$80,$80,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+  $90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90,$90
+end data
+data RoomInfo bytes
+  $03,$03,$FF,$02,$02,$0F,$15,$01
+  $03,$03,$00,$0B,$0F,$14,$15,$02
+  $03,$03,$FF,$02,$02,$09,$15,$03
+  $03,$03,$01,$12,$11,$0B,$15,$03
+  $03,$03,$FF,$02,$02,$0F,$15,$03
+  $03,$03,$FF,$02,$02,$16,$15,$03
+  $0F,$0E,$FF,$02,$02,$02,$02,$01
+end data
+data Route bytes
+  $03,$89,$1B,$89,$03,$8A,$1A,$8A,$14,$8E,$1A,$0E,$1A,$93,$14,$13
+  $03,$89,$1A,$89,$03,$91,$1A,$91,$0E,$8C,$16,$0C,$16,$8E,$0E,$0E
+  $03,$8A,$1B,$8A,$12,$86,$1B,$86,$16,$8F,$1B,$0F,$1B,$93,$16,$13
+  $05,$83,$1A,$83,$1A,$8D,$05,$8D,$0B,$88,$13,$08,$13,$92,$0B,$12
+  $03,$8C,$1A,$8C,$10,$86,$1A,$86,$03,$93,$1A,$93,$03,$8E,$1B,$8E
+end data
+data GStart bytes
+  $00,$00,$00
+  $02,$04,$00
+  $08,$0A,$0C
+  $10,$12,$14
+  $18,$1A,$1C
+  $20,$22,$24
+  $26,$00,$00
+end data
+data GLen bytes
+  $02,$00,$00
+  $02,$04,$00
+  $02,$02,$04
+  $02,$02,$04
+  $02,$02,$04
+  $02,$02,$02
+  $02,$00,$00
+end data
+
+asm {
+DsBeat:
+    db $C0,$E7,$33,$03,$C0,$E7,$F3,$03,$C0,$FF,$53,$03,$C0,$FF,$F3,$02,$D0
+DsStepN:
+    db $00,$00,$96,$01,$00,$00,$D7,$01,$10
+DsSplash:
+    db $00,$00,$14,$03,$00,$00,$35,$05,$00,$00,$66,$08,$00,$00,$A7,$08,$10
+DsThrow:
+    db $40,$7C,$60,$01,$40,$5D,$60,$01,$40,$4B,$60,$01,$40,$3E,$60,$01,$40,$35,$60,$01,$40,$2F,$60,$01
+    db $50
+DsClack:
+    db $40,$2B,$20,$01,$40,$3E,$50,$02,$40,$2B,$40,$01,$40,$42,$70,$02,$50
+DsKeyUp:
+    db $40,$6B,$20,$03,$40,$55,$20,$03,$40,$47,$20,$03,$40,$35,$20,$06,$40,$35,$F0,$02,$50
+DsGem:
+    db $80,$40,$30,$03,$80,$2A,$30,$06,$80,$2A,$F0,$02,$90
+DsLeverN:
+    db $00,$00,$24,$02,$00,$00,$45,$03,$00,$00,$86,$04,$10
+DsLeverT:
+    db $40,$FC,$21,$03,$40,$A6,$32,$04,$40,$F9,$53,$06,$50
+DsJoin:
+    db $80,$D6,$20,$05,$80,$D6,$F0,$01,$80,$AA,$20,$05,$80,$AA,$F0,$01,$80,$8F,$20,$05,$80,$8F,$F0,$01
+    db $80,$6B,$20,$05,$80,$6B,$F0,$01,$90
+DsSting:
+    db $C0,$40,$20,$02,$C0,$43,$30,$02,$C0,$40,$20,$02,$C0,$43,$30,$02,$C0,$40,$20,$02,$C0,$43,$30,$02
+    db $C0,$40,$20,$02,$C0,$43,$30,$02,$C0,$40,$20,$02,$C0,$43,$30,$02,$C0,$40,$20,$02,$C0,$43,$30,$02
+    db $D0
+DsCaught:
+    db $40,$FE,$20,$07,$40,$FE,$F0,$01,$40,$0E,$21,$07,$40,$0E,$F1,$01,$40,$1D,$21,$07,$40,$1D,$F1,$01
+    db $40,$2E,$21,$07,$40,$2E,$F1,$01,$40,$41,$21,$07,$40,$41,$F1,$01,$40,$53,$21,$07,$40,$53,$F1,$01
+    db $40,$68,$21,$07,$40,$68,$F1,$01,$40,$FC,$21,$28,$40,$FC,$F1,$01,$50
+DsClearA:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$AA,$10,$04,$40,$AA,$F0,$01,$40,$D6,$10,$04,$40,$D6,$F0,$01
+    db $40,$AA,$10,$04,$40,$AA,$F0,$01,$40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$6B,$10,$1D,$40,$6B,$F0,$01
+    db $50
+DsClearB:
+    db $80,$1D,$31,$04,$80,$8F,$F0,$01,$80,$53,$31,$04,$80,$AA,$F0,$01,$80,$AC,$31,$04,$80,$D6,$F0,$01
+    db $80,$53,$31,$04,$80,$AA,$F0,$01,$80,$1D,$31,$04,$80,$8F,$F0,$01,$80,$D6,$30,$1D,$80,$6B,$F0,$01
+    db $90
+DsEndA:
+    db $40,$FE,$10,$07,$40,$FE,$F0,$01,$40,$D6,$10,$07,$40,$D6,$F0,$01,$40,$AA,$10,$07,$40,$AA,$F0,$01
+    db $40,$7F,$10,$0F,$40,$7F,$F0,$01,$40,$8F,$10,$07,$40,$8F,$F0,$01,$40,$AA,$10,$07,$40,$AA,$F0,$01
+    db $40,$A0,$10,$0F,$40,$A0,$F0,$01,$40,$BF,$10,$07,$40,$BF,$F0,$01,$40,$A0,$10,$07,$40,$A0,$F0,$01
+    db $40,$7F,$10,$0F,$40,$7F,$F0,$01,$40,$8F,$10,$07,$40,$8F,$F0,$01,$40,$AA,$10,$07,$40,$AA,$F0,$01
+    db $40,$BF,$10,$07,$40,$BF,$F0,$01,$40,$D6,$10,$07,$40,$D6,$F0,$01,$40,$E2,$10,$0F,$40,$E2,$F0,$01
+    db $40,$FE,$10,$2F,$40,$FE,$F0,$01,$50
+DsEndB:
+    db $80,$FC,$31,$0E,$80,$FC,$F1,$02,$80,$A6,$32,$0E,$80,$A6,$F2,$02,$80,$7F,$32,$0E,$80,$7F,$F2,$02
+    db $80,$F9,$32,$0E,$80,$F9,$F2,$02,$80,$7F,$32,$0E,$80,$7F,$F2,$02,$80,$3B,$32,$0E,$80,$3B,$F2,$02
+    db $80,$A6,$32,$0E,$80,$A6,$F2,$02,$80,$56,$33,$0E,$80,$56,$F3,$02,$80,$F9,$33,$2E,$80,$F9,$F3,$02
+    db $90
+DsOver:
+    db $40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02,$40,$7C,$21,$0A,$40,$7C,$F1,$02
+    db $40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$C5,$21,$0A,$40,$C5,$F1,$02
+    db $40,$FC,$21,$0A,$40,$FC,$F1,$02,$40,$A6,$22,$28,$40,$A6,$F2,$02,$50
+DsGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+DsPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+DsSoundTable:
+    dw DsBeat,$7049
+    dw DsStepN,$702B
+    dw DsSplash,$702B
+    dw DsThrow,$7035
+    dw DsClack,$7035
+    dw DsKeyUp,$7035
+    dw DsGem,$703F
+    dw DsLeverN,$702B
+    dw DsLeverT,$7035
+    dw DsJoin,$703F
+    dw DsSting,$7049
+    dw DsCaught,$7035
+    dw DsClearA,$7035
+    dw DsClearB,$703F
+    dw DsEndA,$7035
+    dw DsEndB,$703F
+    dw DsOver,$7035
+    dw DsGood,$7035
+    dw DsPick,$7049
+    dw DsTuneMel,$703F
+    dw DsTuneBass,$7049
+; Title tune: Tiptoe, a creeping staccato theme in G# minor (original for this game)
+; Tiny Sound, 6 frames per step
+DsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$1A,$21,$1B,$01,$1E,$01,$22,$01,$21,$22,$01,$01,$25,$01
+    db $22,$01,$01,$01,$23,$01,$22,$01,$20,$01,$1E,$01,$1D,$01,$01,$01
+    db $1A,$01,$01,$01,$02,$30,$1A,$21,$1B,$01,$1E,$01,$22,$01,$21,$22
+    db $01,$01,$27,$01,$25,$01,$01,$01,$23,$01,$20,$01,$1D,$01,$1A,$01
+    db $1B,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+DsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0F,$01,$0A,$01,$0F,$01,$0A,$01,$0F,$01,$0A,$01
+    db $12,$01,$11,$01,$08,$01,$0F,$01,$08,$01,$0F,$01,$0A,$01,$11,$01
+    db $0A,$01,$0E,$01,$02,$60,$18,$32,$0F,$01,$0A,$01,$0F,$01,$0A,$01
+    db $0B,$01,$12,$01,$0B,$01,$12,$01,$08,$01,$0F,$01,$0A,$01,$0E,$01
+    db $0F,$01,$0A,$01,$0F,$01,$01,$01
+    db $FF
+; ---------------------------------------------------------------------------
+; Lanterns in Z80 (called with the NMI off).
+; The name table is the light map: a lit tile is its kind + 32 per lantern.
+; A cone lives in a 6 x 6 box in front of the guard. LtTab, precomputed,
+; lists for each facing the cone's cells in order (depth by depth, inner
+; lanes first) with their lane and their VRAM offset from the box's first
+; cell, so lighting is a walk down the table. GC keeps, per guard, the
+; tiles his lantern lit, so LtOff only touches those.
+; Box geometry: run i is a screen row, element j a column.
+;   facing down: row Ry0+2+i, columns Cx0-2.. (run = depth, element = lane)
+;   facing up:   row Ry0-1-i, columns Cx0-2..
+;   facing right: row Ry0-2+i, columns Cx0+2.. (run = lane, element = depth)
+;   facing left:  row Ry0-2+i, columns Cx0-6.. (depth counted from the right)
+; ---------------------------------------------------------------------------
+
+; The box for Cx0, Ry0, D: LtRows, LtRunOK, LtElOK, LtCol
+LtGeom:
+    ld a,(AMY_UVAR_D)
+    ld b,a
+    ld a,(AMY_UVAR_Cx0)
+    sub 2
+    ld c,a                      ; up, down: Cx0 - 2
+    ld a,b
+    cp 3
+    jr nz,lg_notr
+    ld a,c
+    add a,4
+    ld c,a                      ; right: Cx0 + 2
+lg_notr:
+    ld a,b
+    cp 2
+    jr nz,lg_notl
+    ld a,c
+    sub 4
+    ld c,a                      ; left: Cx0 - 6
+lg_notl:
+    ld a,c
+    ld (AMY_UVAR_LtCol),a
+    ld hl,AMY_UVAR_LtElOK
+    ld e,6
+lg_el:
+    ld a,c
+    sub 2
+    cp 28                       ; 2..29 -> 0..27
+    ld a,0
+    adc a,0                     ; carry set: inside
+    ld (hl),a
+    inc hl
+    inc c
+    dec e
+    jr nz,lg_el
+    ; rows
+    ld a,(AMY_UVAR_Ry0)
+    ld c,a
+    ld d,1                      ; step +1
+    ld a,b
+    or a
+    jr nz,lg_n0
+    ld a,c
+    add a,2
+    ld c,a
+    jr lg_rows
+lg_n0:
+    cp 1
+    jr nz,lg_n1
+    dec c
+    ld d,255                    ; step -1
+    jr lg_rows
+lg_n1:
+    dec c
+    dec c
+lg_rows:
+    push ix
+    ld hl,AMY_UVAR_LtRows
+    ld ix,AMY_UVAR_LtRunOK
+    ld e,6
+lg_r:
+    ld (hl),c
+    ld a,c
+    sub 2
+    cp 20                       ; 2..21 -> 0..19
+    ld a,0
+    adc a,0
+    ld (ix+0),a
+    inc hl
+    inc ix
+    ld a,c
+    add a,d
+    ld c,a
+    dec e
+    jr nz,lg_r
+    pop ix
+    ret
+
+; HL = $1800 + row(run B) x 32 + LtCol (LtCol is signed)
+LtAddr:
+    ld hl,AMY_UVAR_LtRows
+    ld e,b
+    ld d,0
+    add hl,de
+    ld l,(hl)
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_LtCol)
+    ld e,a
+    ld d,0
+    bit 7,a
+    jr z,la_pos
+    dec d
+la_pos:
+    add hl,de
+    ld de,$1800
+    add hl,de
+    ret
+
+LtVRd:                          ; A = VRAM byte at HL
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    nop
+    nop
+    in a,($BE)
+    ret
+LtVWr:                          ; write A to VRAM at HL
+    push af
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop af
+    out ($BE),a
+    ret
+LtList:                         ; HL = GC + G x 48
+    ld a,(AMY_UVAR_G)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,de
+    ld de,AMY_UVAR_GC
+    add hl,de
+    ret
+LtLoad:
+    ld a,(AMY_UVAR_G)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_GCX
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Cx0),a
+    ld hl,AMY_UVAR_GCY
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Ry0),a
+    ld hl,AMY_UVAR_GCD
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_D),a
+    ret
+
+; Take guard G's light back: only the tiles it lit, listed in GC
+LtOff:
+    ld a,(AMY_UVAR_G)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_GCN
+    add hl,de
+    ld b,(hl)
+    ld (hl),0
+    ld a,b
+    or a
+    ret z
+    call LtList
+lo_loop:
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    push hl
+    ex de,hl
+    call LtVRd
+    sub 32
+    call LtVWr
+    pop hl
+    djnz lo_loop
+    ret
+
+; HL += A
+LtAddA:
+    add a,l
+    ld l,a
+    ret nc
+    inc h
+    ret
+
+; Light guard G's cone. LtTab lists, for each facing, the cone's cells in
+; order (depth by depth, inner lanes first), precomputed: box cell, run,
+; element, lane, and the lane inside it. 18 cells for a 5-deep lantern,
+; 24 for 6.
+LtOn:
+    call LtLoad
+    call LtGeom
+    ld b,0
+    call LtAddr                 ; VRAM address of the box's first cell
+    ld (AMY_UVAR_LtBase),hl
+    call LtList
+    ld (AMY_UVAR_Dst16),hl
+    xor a
+    ld (AMY_UVAR_N),a
+    ld hl,AMY_UVAR_Stp
+    ld b,6
+lt_clr:
+    ld (hl),a
+    inc hl
+    djnz lt_clr
+    ld a,(AMY_UVAR_D)           ; table: LtTab + D x 144
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de                   ; x 144
+    ld de,LtTab
+    add hl,de
+    ld b,18
+    ld a,(AMY_UVAR_CLen)
+    cp 6
+    jr c,le_loop
+    ld b,24
+le_loop:
+    push bc
+    ld d,(hl)                   ; run
+    inc hl
+    ld e,(hl)                   ; element
+    inc hl
+    ld c,(hl)                   ; lane
+    inc hl
+    ld b,(hl)                   ; lane inside (255: none)
+    inc hl
+    ld a,(hl)                   ; VRAM offset from the box's first cell
+    inc hl
+    ld (AMY_UVAR_LtOfs),a
+    ld a,(hl)
+    inc hl
+    ld (AMY_UVAR_LtOfs+1),a
+    push hl
+    ld a,c
+    ld hl,AMY_UVAR_Stp
+    call LtAddA
+    ld a,(hl)
+    or a
+    jr nz,le_next               ; this lane already hit a wall
+    ld a,b
+    cp 6
+    jr nc,le_noin
+    push hl
+    ld hl,AMY_UVAR_Stp
+    call LtAddA
+    ld a,(hl)
+    pop hl
+    or a
+    jr nz,le_stop               ; the lane inside is blocked: so is this one
+le_noin:
+    push hl
+    ld a,d
+    ld hl,AMY_UVAR_LtRunOK
+    call LtAddA
+    ld a,(hl)
+    or a
+    jr z,le_stop1               ; off the play area
+    ld a,e
+    ld hl,AMY_UVAR_LtElOK
+    call LtAddA
+    ld a,(hl)
+    or a
+    jr z,le_stop1
+    ld hl,(AMY_UVAR_LtBase)
+    ld de,(AMY_UVAR_LtOfs)
+    add hl,de
+    call LtVRd
+    cp 128
+    jr c,le_stop1               ; text: a wall
+    ld b,a
+    and 31
+    cp 12
+    jr nc,le_stop1              ; walls, torches, crates, doors
+    ld a,b
+    and 96
+    cp 96
+    jr z,le_pop                 ; three lanterns already
+    ld a,b
+    add a,32
+    call LtVWr
+    ex de,hl
+    ld hl,(AMY_UVAR_Dst16)
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    inc hl
+    ld (AMY_UVAR_Dst16),hl
+    ld hl,AMY_UVAR_N
+    inc (hl)
+le_pop:
+    pop hl
+    jr le_next
+le_stop1:
+    pop hl
+le_stop:
+    ld (hl),1
+le_next:
+    pop hl
+    pop bc
+    dec b
+    jp nz,le_loop
+    ld a,(AMY_UVAR_G)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_GCN
+    add hl,de
+    ld a,(AMY_UVAR_N)
+    ld (hl),a
+    ret
+LtTab:
+    db 0,2,2,255,2,0,0,3,3,255,3,0,1,2,2,255,34,0
+    db 1,3,3,255,35,0,2,2,2,255,66,0,2,3,3,255,67,0
+    db 2,1,1,2,65,0,2,4,4,3,68,0,3,2,2,255,98,0
+    db 3,3,3,255,99,0,3,1,1,2,97,0,3,4,4,3,100,0
+    db 4,2,2,255,130,0,4,3,3,255,131,0,4,1,1,2,129,0
+    db 4,4,4,3,132,0,4,0,0,1,128,0,4,5,5,4,133,0
+    db 5,2,2,255,162,0,5,3,3,255,163,0,5,1,1,2,161,0
+    db 5,4,4,3,164,0,5,0,0,1,160,0,5,5,5,4,165,0
+    db 0,2,2,255,2,0,0,3,3,255,3,0,1,2,2,255,226,255
+    db 1,3,3,255,227,255,2,2,2,255,194,255,2,3,3,255,195,255
+    db 2,1,1,2,193,255,2,4,4,3,196,255,3,2,2,255,162,255
+    db 3,3,3,255,163,255,3,1,1,2,161,255,3,4,4,3,164,255
+    db 4,2,2,255,130,255,4,3,3,255,131,255,4,1,1,2,129,255
+    db 4,4,4,3,132,255,4,0,0,1,128,255,4,5,5,4,133,255
+    db 5,2,2,255,98,255,5,3,3,255,99,255,5,1,1,2,97,255
+    db 5,4,4,3,100,255,5,0,0,1,96,255,5,5,5,4,101,255
+    db 2,5,2,255,69,0,3,5,3,255,101,0,2,4,2,255,68,0
+    db 3,4,3,255,100,0,2,3,2,255,67,0,3,3,3,255,99,0
+    db 1,3,1,2,35,0,4,3,4,3,131,0,2,2,2,255,66,0
+    db 3,2,3,255,98,0,1,2,1,2,34,0,4,2,4,3,130,0
+    db 2,1,2,255,65,0,3,1,3,255,97,0,1,1,1,2,33,0
+    db 4,1,4,3,129,0,0,1,0,1,1,0,5,1,5,4,161,0
+    db 2,0,2,255,64,0,3,0,3,255,96,0,1,0,1,2,32,0
+    db 4,0,4,3,128,0,0,0,0,1,0,0,5,0,5,4,160,0
+    db 2,0,2,255,64,0,3,0,3,255,96,0,2,1,2,255,65,0
+    db 3,1,3,255,97,0,2,2,2,255,66,0,3,2,3,255,98,0
+    db 1,2,1,2,34,0,4,2,4,3,130,0,2,3,2,255,67,0
+    db 3,3,3,255,99,0,1,3,1,2,35,0,4,3,4,3,131,0
+    db 2,4,2,255,68,0,3,4,3,255,100,0,1,4,1,2,36,0
+    db 4,4,4,3,132,0,0,4,0,1,4,0,5,4,5,4,164,0
+    db 2,5,2,255,69,0,3,5,3,255,101,0,1,5,1,2,37,0
+    db 4,5,4,3,133,0,0,5,0,1,5,0,5,5,5,4,165,0
+; Guard voices: formant-synthesized (voices.py), VoxPCM encoded
+SayHey:
+  dw VoxHey1
+  db 17,9
+  dw VoxHey2
+  db 22,15
+  dw VoxHey3
+  db 27,21
+  dw 0,0
+VoxHey1:
+  db 29,2,224,0,1,2,0,1,2,64,1,2,32,1,2,224,224,2,1,32,1,2,32,1
+  db 2,1,34,33,3,1,32,1,2,0,2,1,32,2,4,0,4,3,2,3,6,2,32,2
+  db 4,2,1,2,1,3,65,0,34,1,0,3,6,5,0,33,2,0,1,32,3,0,4,32
+  db 2,33,5,4,2,0,33,3,64,1,0,1,3,2,4,0,2,32,3,4,1,34,64,1
+  db 2,1,66,10,2,0,2,4,1,5,0,1,4,3,1,3,0,33,0,3,32,2,0,1
+  db 4,34,0,2,1,6,0,8,13,2,6,3,0,2,4,3,0,6,3,2,4,32,5,4
+  db 2,8,3,2,1,0,3,32,1,4,5,2,33,0,1,3,2,6,0,5,4,0,4,5
+  db 33,2,4,34,0,3,4,0,1,2,5,6,4,2,1,5,1,3,1,2,36,35,6,1
+  db 3,128,34,36,32,5,1,4,0,7,1,4,1,3,33,5,2,4,32,4,0,3,0,3
+  db 10,5,0,2,1,4,3,2,4,5,1,4,0,5,33,4,34,32,1,64,1,0,3,1
+  db 32,34,1,0,1,2,64,1,3,4,1,3,6,5,33,66,32,1,4,0,2,32,2,3
+  db 4,1,2,0,1,4,3,32,3,33,34,36,3,0,2,32,3,33,4,2,0,2,96,1
+  db 34,3,32,1,6,4,33,2,5,35,1,0,4,65,66,3,1,2,0,36,0,1,34,3
+  db 0,2,1,0,4,0,1,3,1,34,0,2,0,3,2,0,1,8,6,8,1,2,9,3
+  db 5,2,1,0,36,6,32,5,2,5,1,2,1,4,65,0,3,34,0,2,33,0,33,0
+  db 34,3,5,3,32,8,10,8,11,0,41,7,3,2,0,36,38,1,0,3,7,2,3,2
+  db 1,4,0,6,33,34,3,34,32,97,0,3,37,3,0,4,40,16,8,0,44,7,35,33
+  db 6,8,4,6,35,37,34,65,6,4,32,35,66,65,4,34,7,3,2,0,4,6,43,4
+  db 2,41,7,34,0,4,6,4,8,1,35,5,3,2,32,1,68,0,2,3,2,3,64,4
+  db 0,1,3,5,3,2,1,4,6,8,14,0,2,7,9,35,2,33,38,4,1,2,5,35
+  db 2,32,4,1,36,2,0,35,0,2,0,1,0,4,34,5,3,2,0,8,4,11,10,0
+  db 2,9,7,5,34,1,36,38,0,99,34,4,1,4,33,32,35,0,2,32,4,1,2,67
+  db 2,1,4,8,42,1,5,7,9,3,34,1,4,38,33,35,5,34,32,6,0,6,64,5
+  db 0,3,32,1,0,1,2,5,3,32,4,6,42,1,3,39,5,2,32,36,6,4,32,37
+  db 2,0,2,0,36,33,0,66,3,0,1,2,4,0,2,5,2,3,1,4,6,72,37,7
+  db 5,3,2,255
+VoxHey2:
+  db 29,5,4,8,1,0,3,7,34,0,4,1,36,2,3,66,0,1,0,2,5,2,0,4
+  db 10,8,10,3,39,5,3,1,36,8,1,0,5,35,2,1,0,36,1,0,3,66,1,32
+  db 2,3,5,1,4,8,10,8,0,7,9,5,2,0,1,6,4,6,0,2,7,3,0,2
+  db 33,6,1,0,2,3,2,0,2,1,0,2,35,0,1,8,42,0,5,9,5,3,2,4
+  db 6,36,1,2,5,35,0,33,6,0,4,3,2,3,2,0,1,0,3,5,32,8,6,10
+  db 8,5,39,3,2,0,4,6,36,0,37,34,65,4,1,0,3,66,32,2,5,32,40,10
+  db 6,5,7,9,34,0,4,38,1,0,37,34,0,36,33,0,3,2,3,0,1,0,2,35
+  db 0,1,40,11,0,5,9,5,3,0,1,4,6,4,1,2,5,35,0,33,6,0,1,0
+  db 5,0,3,32,5,0,3,4,6,11,6,8,9,39,3,32,70,0,2,5,3,34,0,68
+  db 32,35,0,2,32,2,5,0,1,4,11,6,8,5,9,37,0,33,38,1,2,3,5,34
+  db 65,36,3,34,3,1,2,3,34,0,4,11,8,6,2,7,9,3,34,70,1,0,5,35
+  db 2,0,4,1,4,1,0,3,66,0,34,3,2,6,8,6,11,0,5,9,7,2,0,1
+  db 4,8,33,2,7,2,3,0,1,4,1,4,0,34,3,2,0,3,2,3,1,38,14,6
+  db 2,9,39,32,1,8,36,0,3,5,3,2,0,1,68,2,3,66,0,35,32,6,42,6
+  db 3,9,7,5,32,4,38,4,35,5,34,0,36,33,0,3,98,3,2,0,1,6,42,4
+  db 5,9,7,3,2,68,8,1,3,5,35,0,33,36,0,66,3,0,2,3,34,38,11,8
+  db 1,9,7,37,33,4,8,4,0,2,7,2,3,0,33,6,1,0,34,3,34,35,1,0
+  db 10,11,10,1,9,7,9,34,1,8,4,6,1,3,5,35,32,4,6,1,32,35,2,67
+  db 36,10,14,10,5,12,9,35,0,4,8,38,35,37,32,1,4,6,0,1,67,0,35,0
+  db 2,6,42,8,2,7,9,5,3,33,70,2,3,5,3,2,0,1,68,34,3,2,35,34
+  db 0,42,11,8,73,3,2,1,4,8,4,6,3,37,3,32,4,1,6,1,2,3,2,35
+  db 2,3,0,4,8,16,10,2,9,12,5,3,0,1,6,8,4,1,2,5,3,5,32,1
+  db 36,1,32,5,3,7,34,1,255
+VoxHey3:
+  db 29,10,14,4,15,12,7,5,1,36,10,6,2,3,7,35,33,68,2,9,5,3,0,4
+  db 8,11,8,4,5,12,37,2,1,4,6,36,1,3,5,3,34,0,33,0,5,32,1,4
+  db 6,4,1,2,35,66,1,0,4,65,34,0,3,32,34,3,2,1,68,6,4,0,2,3
+  db 5,2,3,32,65,4,1,2,1,3,0,2,5,66,0,4,1,8,68,0,3,5,2,35
+  db 64,4,0,4,1,0,1,0,3,5,3,34,0,68,6,36,0,3,5,2,35,64,4,0
+  db 4,1,0,1,2,35,5,0,2,1,4,1,8,36,32,5,2,35,2,32,161,0,35,5
+  db 34,1,0,38,1,8,32,2,5,2,35,32,1,0,4,0,4,1,34,67,2,33,68,6
+  db 1,0,2,5,2,35,1,2,0,4,0,4,1,0,1,3,5,2,3,2,33,4,6,4
+  db 1,4,0,35,2,35,1,2,0,4,1,0,4,0,1,5,2,5,34,1,4,1,6,36
+  db 1,34,35,66,0,33,0,4,1,32,3,5,3,32,1,4,1,6,4,33,3,2,35,0
+  db 3,0,1,0,4,0,33,0,2,5,3,2,32,132,1,3,0,5,98,0,129,0,2,67
+  db 32,1,6,1,68,34,3,2,3,34,1,32,4,0,4,32,3,5,34,32,6,1,4,6
+  db 4,2,0,67,0,3,1,2,1,4,0,33,0,2,5,3,0,3,4,0,6,36,1,4
+  db 2,3,2,3,66,1,2,4,33,0,1,2,5,66,1,4,33,6,0,1,0,3,66,0
+  db 2,0,1,0,33,32,34,3,32,1,0,4,1,0,33,34,0,34,64,1,2,33,2,1
+  db 34,0,2,1,32,33,0,2,1,0,2,1,2,0,2,1,224,255
+SayHalt:
+  dw VoxHalt1
+  db 27,21
+  dw VoxHalt2
+  db 27,21
+  dw VoxHalt3
+  db 27,21
+  dw VoxHalt4
+  db 17,9
+  dw 0,0
+VoxHalt1:
+  db 29,2,224,64,1,2,254,0,26,1,2,254,0,22,1,2,254,0,19,1,2,254,0,28
+  db 1,2,224,128,1,2,224,192,1,2,254,0,32,1,2,192,2,4,2,192,1,2,224,96
+  db 3,0,1,6,0,98,36,2,0,3,0,1,0,1,0,2,0,2,1,0,1,0,3,34
+  db 1,6,8,5,35,2,38,34,5,1,0,4,1,66,0,1,4,98,3,1,6,10,2,7
+  db 5,1,36,1,3,5,0,4,1,4,35,2,4,1,32,3,0,1,35,2,8,20,5,13
+  db 3,2,8,10,0,9,5,0,8,33,3,5,2,8,1,0,35,33,2,7,2,10,27,9
+  db 17,7,1,10,11,2,13,7,6,8,6,37,3,1,8,4,5,3,2,1,4,1,12,7
+  db 8,55,31,13,3,8,14,10,15,12,0,6,11,0,39,0,4,11,3,37,1,6,0,39
+  db 4,22,16,25,13,2,6,11,10,13,9,2,6,10,0,37,3,40,2,5,3,0,36,5
+  db 9,2,14,30,9,25,5,1,8,19,3,17,5,6,40,5,9,2,0,11,1,3,7,0
+  db 1,4,1,12,7,8,22,20,31,15,0,6,14,10,15,12,0,6,11,0,39,2,8,10
+  db 3,37,1,6,4,3,12,5,8,22,27,29,21,2,8,19,6,15,13,1,8,10,0,7
+  db 9,1,6,10,3,37,1,4,8,5,12,5,6,30,22,29,21,2,8,16,10,17,13,1
+  db 6,16,3,9,5,2,10,6,0,9,2,0,4,6,2,13,5,6,30,22,29,21,2,8
+  db 16,10,17,12,2,8,14,0,12,5,2,8,10,2,7,5,1,4,6,0,12,9,1,19
+  db 30,12,28,5,1,48,9,15,7,6,14,6,7,9,3,4,10,4,5,9,33,6,4,7
+  db 12,3,8,27,24,29,255
+VoxHalt2:
+  db 29,13,10,14,8,15,12,2,8,16,2,12,5,2,8,10,2,9,34,8,4,0,12,7
+  db 0,14,30,2,29,9,6,11,14,3,15,9,6,11,8,7,9,3,4,10,4,5,7,2
+  db 4,6,1,3,12,5,6,22,30,29,21,2,6,19,10,15,13,3,11,10,1,9,7,2
+  db 40,1,9,5,0,8,4,0,39,5,8,20,30,29,18,2,10,11,8,12,13,2,8,14
+  db 2,39,2,40,1,12,2,0,4,6,2,3,37,2,11,30,3,26,9,4,10,14,3,13
+  db 5,0,14,4,3,7,3,0,10,6,7,35,6,1,4,3,5,7,2,8,30,8,29,12
+  db 1,43,1,15,9,1,11,8,3,9,3,0,40,37,3,68,2,5,35,0,4,20,10,21
+  db 12,1,40,4,41,1,6,10,3,37,1,4,8,3,5,2,1,4,1,0,5,3,5,0
+  db 11,24,5,25,7,6,42,3,13,3,1,11,4,37,3,1,8,4,37,0,1,6,1,3
+  db 5,2,3,2,10,24,5,18,7,1,11,6,1,13,5,1,10,6,37,3,1,8,4,3
+  db 7,0,1,6,0,2,67,2,10,19,6,21,9,1,8,11,0,12,7,1,40,5,3,5
+  db 1,6,4,2,5,2,1,4,1,0,5,34,3,0,10,22,9,17,5,4,10,8,3,9
+  db 5,4,8,4,3,5,3,36,6,37,1,0,36,5,66,5,4,14,23,21,13,0,38,10
+  db 7,12,2,6,10,2,3,5,2,38,0,5,3,0,36,1,5,2,3,2,3,6,19,10
+  db 15,12,2,1,8,11,5,9,3,0,8,4,0,2,7,2,36,1,0,2,3,2,1,4
+  db 1,2,7,5,0,10,23,1,15,7,5,2,6,11,4,3,7,3,2,0,8,4,1,5
+  db 2,3,2,6,1,4,34,3,0,3,0,2,1,4,11,0,35,5,2,0,6,4,1,2
+  db 0,5,2,0,1,4,0,1,2,0,34,32,1,0,1,0,7,2,0,36,6,0,4,3
+  db 5,2,3,1,0,4,1,4,2,0,3,0,3,1,32,4,32,1,34,0,3,0,3,1
+  db 0,6,1,4,1,34,3,2,0,2,0,97,0,2,0,34,64,1,0,1,32,34,3,2
+  db 4,0,36,1,32,3,66,0,1,0,4,0,1,2,1,3,0,2,32,1,2,4,32,66
+  db 3,4,0,1,6,0,1,0,2,3,2,0,2,0,4,32,4,0,2,0,34,32,1,2
+  db 4,2,255
+VoxHalt3:
+  db 29,0,34,3,2,4,0,36,1,32,3,66,0,1,0,4,32,1,2,0,34,64,33,2
+  db 1,0,2,3,2,32,4,1,4,33,3,34,3,1,2,1,0,4,0,1,2,1,3,0
+  db 2,64,33,32,2,1,5,2,32,1,36,1,32,3,66,0,1,0,4,32,1,0,3,0
+  db 2,32,1,2,4,2,1,32,35,0,2,6,0,36,1,34,3,2,0,2,0,97,2,1
+  db 66,64,1,0,1,64,2,3,2,0,2,6,1,4,1,32,5,0,34,0,33,0,4,32
+  db 3,0,2,32,1,2,4,64,2,0,2,0,34,1,4,0,4,1,130,1,0,65,2,0
+  db 34,1,2,0,4,2,1,0,2,64,2,1,2,64,1,0,33,66,1,2,1,32,1,0
+  db 2,32,2,1,64,1,2,96,2,4,2,32,2,32,1,0,1,32,2,0,2,0,33,2
+  db 1,2,32,2,1,0,1,2,0,1,34,1,64,1,2,254,0,24,1,2,254,0,25,1
+  db 2,254,0,23,1,2,128,2,1,192,1,2,224,0,1,3,4,34,4,2,1,2,128,1
+  db 2,1,3,0,1,128,4,5,0,4,3,1,64,2,1,2,1,0,1,3,4,34,0,1
+  db 34,4,2,0,6,3,32,2,1,96,2,36,0,7,34,6,0,1,0,3,1,2,4,3
+  db 1,32,2,6,0,5,4,0,3,2,6,2,1,2,160,1,66,4,2,4,34,1,32,2
+  db 0,4,0,1,3,64,2,4,0,3,64,1,32,2,1,0,1,32,2,64,4,0,3,64
+  db 2,4,2,1,3,1,4,0,5,4,2,32,4,5,4,3,1,4,2,3,1,2,1,3
+  db 4,0,3,4,1,0,3,1,2,0,1,0,4,3,0,2,4,0,2,4,3,1,3,4
+  db 2,0,4,34,6,3,2,3,6,0,2,1,255
+VoxHalt4:
+  db 29,2,96,1,5,6,3,4,34,4,0,3,33,34,4,34,1,6,7,0,8,5,3,6
+  db 0,2,224,128,4,5,4,34,6,3,2,4,3,6,3,2,1,0,1,2,32,1,2,224
+  db 96,2,4,2,224,1,2,254,0,21,255
+SayShh:
+  dw VoxShh1
+  db 27,21
+  dw VoxShh2
+  db 17,9
+  dw VoxShh3
+  db 22,15
+  dw VoxShh4
+  db 27,21
+  dw 0,0
+VoxShh1:
+  db 29,2,224,1,34,4,2,0,1,34,33,2,1,3,33,3,4,34,1,32,1,34,6,3
+  db 2,0,4,2,64,1,2,0,2,0,1,2,8,5,2,8,7,1,2,6,3,64,1,4
+  db 7,5,6,0,8,12,10,2,5,4,1,9,38,34,4,7,16,17,23,13,7,8,2,33
+  db 7,1,6,7,4,3,4,6,12,8,3,0,5,4,1,2,11,7,3,20,21,8,4,7
+  db 8,5,1,0,2,4,5,19,13,4,9,6,3,8,5,11,17,11,12,8,34,4,3,32
+  db 11,13,0,20,17,4,2,3,4,8,0,9,0,33,5,6,0,9,10,4,9,6,2,1
+  db 2,4,7,6,0,5,8,2,1,7,8,5,2,11,3,9,11,5,1,3,4,2,3,8
+  db 1,4,15,10,34,3,8,5,8,0,9,6,3,36,9,1,20,21,8,5,6,5,4,2
+  db 4,0,4,3,1,9,36,3,0,1,4,7,10,37,36,2,5,1,8,5,4,0,2,0
+  db 2,0,6,0,9,1,6,9,10,3,2,14,12,5,14,7,10,9,64,1,0,3,4,1
+  db 5,2,8,3,33,2,64,2,1,4,3,7,10,3,64,1,3,8,5,2,1,0,8,12
+  db 4,0,8,13,10,7,1,2,6,0,3,0,8,9,1,36,9,4,33,0,5,4,35,6
+  db 2,1,0,2,32,34,6,3,11,9,8,9,4,3,2,10,0,3,2,1,4,12,8,3
+  db 11,12,10,34,3,1,32,5,10,3,8,7,3,4,2,0,4,0,5,1,0,33,2,6
+  db 5,11,7,12,19,37,6,0,34,1,5,0,4,3,6,2,33,12,8,2,1,0,3,8
+  db 5,16,13,2,16,13,2,11,7,3,0,8,5,4,1,12,6,0,2,1,0,2,1,9
+  db 20,9,1,2,0,34,1,2,6,1,3,6,5,4,7,6,1,0,34,1,2,5,11,9
+  db 1,10,7,3,1,32,1,3,33,3,4,6,9,8,3,0,5,4,3,6,10,9,2,1
+  db 0,2,10,7,2,8,7,10,9,0,10,12,4,3,10,5,32,1,3,2,4,10,7,5
+  db 6,3,1,2,1,10,35,5,8,5,0,33,5,8,3,6,34,3,2,1,4,3,4,0
+  db 3,2,8,5,10,3,5,10,0,37,8,66,1,3,11,9,0,33,5,10,9,8,0,6
+  db 3,13,19,13,8,66,6,5,2,0,6,0,3,6,13,22,21,38,2,0,1,3,2,1
+  db 0,255
+VoxShh2:
+  db 29,2,6,12,10,3,0,4,5,11,12,4,7,11,37,8,7,1,6,3,4,32,2,3
+  db 8,5,1,3,10,2,3,0,6,7,33,4,5,4,5,0,6,5,4,8,9,1,5,36
+  db 9,6,2,1,3,8,2,1,2,3,0,4,0,3,4,7,14,5,4,5,0,6,12,14
+  db 7,0,34,1,0,10,12,8,9,11,13,10,5,1,11,12,4,3,0,6,13,19,12,6
+  db 5,10,5,2,6,3,9,11,0,2,3,1,6,3,34,4,5,11,2,0,7,1,32,4
+  db 2,0,1,5,20,17,1,2,0,11,12,0,6,2,5,4,32,5,10,1,13,6,2,6
+  db 7,19,13,0,1,4,2,0,4,3,6,5,34,4,34,4,9,16,5,3,8,5,2,8
+  db 9,16,15,8,4,12,0,10,2,9,4,65,0,7,0,1,2,36,5,11,13,8,3,5
+  db 6,5,10,7,11,3,7,4,2,8,2,12,38,5,0,1,2,6,0,3,6,35,4,0
+  db 2,5,8,3,14,15,20,31,23,13,38,5,34,0,14,9,4,9,8,2,4,3,1,3
+  db 6,3,1,7,36,96,5,8,0,7,2,6,0,3,4,5,33,0,1,6,3,34,8,17
+  db 14,2,0,2,14,18,27,28,11,9,8,7,10,5,6,3,5,10,3,11,12,1,3,6
+  db 9,4,33,7,8,2,0,3,10,35,33,3,10,13,10,7,4,3,6,2,0,4,3,11
+  db 13,36,7,4,2,8,12,10,7,33,5,19,15,8,5,0,6,9,8,5,0,6,3,2
+  db 0,4,7,10,0,2,7,16,7,34,3,10,5,0,8,7,6,5,8,3,2,0,4,7
+  db 6,32,5,11,12,10,7,10,7,1,0,1,7,11,7,6,3,34,6,2,3,19,18,8
+  db 7,4,5,6,3,6,3,4,0,5,8,5,6,2,5,8,6,15,6,14,17,1,8,13
+  db 22,15,6,12,10,0,9,6,32,6,7,8,9,8,9,38,9,10,7,4,1,2,3,32
+  db 10,12,6,2,4,7,14,17,11,32,3,1,2,8,7,1,32,3,2,10,9,1,8,12
+  db 11,9,6,32,7,6,1,3,6,7,8,3,33,7,8,0,3,4,5,2,0,10,12,6
+  db 0,3,1,0,1,0,34,10,7,4,9,19,12,2,8,5,1,3,6,5,6,2,1,2
+  db 0,4,9,8,5,11,9,1,0,3,8,3,2,6,3,4,3,7,8,0,7,11,5,2
+  db 8,7,1,6,5,4,5,10,5,32,1,0,2,3,23,18,65,7,6,5,10,9,6,5
+  db 1,8,13,10,1,3,6,9,11,12,10,7,0,4,1,12,16,12,1,3,6,0,6,7
+  db 5,16,7,0,4,3,0,4,7,8,0,5,14,15,6,3,1,3,10,3,7,6,5,10
+  db 3,0,2,0,8,9,11,12,8,7,8,2,1,3,1,2,3,33,3,6,2,0,4,5
+  db 2,6,0,1,5,11,12,8,3,9,16,12,11,9,2,10,12,8,34,0,8,0,5,7
+  db 11,7,1,0,1,32,1,4,13,10,0,34,1,0,2,4,2,0,2,23,18,5,4,1
+  db 0,34,4,6,9,4,6,5,0,2,1,2,1,5,6,34,36,0,1,7,1,10,13,6
+  db 0,1,3,0,8,7,2,3,10,1,2,7,10,5,2,4,2,0,4,32,9,4,0,33
+  db 0,5,20,21,11,9,4,2,4,7,0,6,10,9,1,5,6,8,12,8,7,6,255
+VoxShh3:
+  db 29,5,1,4,3,4,5,4,3,16,13,4,0,4,7,2,1,8,7,6,5,6,35,6
+  db 2,1,3,0,14,12,0,1,2,32,3,6,1,3,1,2,1,8,1,17,10,3,1,0
+  db 7,4,6,3,2,1,4,5,1,2,1,7,8,4,34,65,12,0,10,4,13,4,1,0
+  db 3,10,2,7,8,7,4,0,4,5,4,0,2,0,6,3,5,16,12,4,9,8,0,1
+  db 5,4,1,5,4,3,32,14,13,3,10,3,4,0,5,3,6,3,2,8,34,6,1,4
+  db 12,8,7,2,4,7,10,3,1,4,3,1,2,64,1,0,66,4,0,3,4,3,0,11
+  db 17,19,9,7,20,13,3,20,15,6,2,0,9,6,8,9,8,3,10,9,4,8,9,1
+  db 5,4,0,2,1,0,4,35,10,9,8,34,6,7,2,10,5,2,1,0,1,36,17,10
+  db 7,10,1,9,8,9,11,9,11,12,16,15,8,5,0,8,12,6,32,6,7,8,5,0
+  db 10,12,0,11,12,2,8,7,11,21,16,5,8,66,1,0,5,6,2,33,7,16,13,4
+  db 8,7,0,4,12,14,3,1,3,1,0,1,5,1,34,6,2,4,3,32,2,14,12,1
+  db 4,3,7,1,11,12,14,9,2,32,6,2,1,7,10,9,11,13,8,32,34,4,0,6
+  db 5,0,4,7,6,7,8,9,20,18,8,12,14,5,4,5,11,13,4,6,5,6,5,10
+  db 12,11,13,4,8,9,8,9,16,5,2,3,6,5,1,3,8,2,1,5,0,6,0,3
+  db 0,6,7,6,2,5,6,32,5,8,5,4,9,10,7,8,32,7,8,4,7,1,5,4
+  db 33,3,1,0,1,0,3,19,21,22,7,17,10,3,6,4,12,11,9,2,10,12,11,7
+  db 2,1,4,1,2,5,2,6,0,1,5,10,12,10,9,8,1,9,8,3,6,1,5,3
+  db 6,5,1,4,5,16,15,4,8,13,11,12,14,2,9,6,3,16,13,4,3,4,5,11
+  db 12,1,6,5,4,3,2,1,0,65,7,8,12,14,15,10,7,23,17,1,2,33,2,4
+  db 9,14,37,6,34,23,25,14,18,8,4,5,1,4,3,0,8,7,6,2,3,1,7,0
+  db 10,0,3,0,14,12,4,9,36,7,6,3,6,4,12,8,2,0,1,3,6,2,5,8
+  db 2,3,1,6,9,10,35,4,3,1,0,2,1,4,2,5,0,1,2,10,7,6,7,0
+  db 8,3,2,1,32,4,0,3,5,4,1,2,8,13,19,9,0,1,9,11,12,10,2,5
+  db 6,3,4,5,8,1,0,5,16,17,8,12,16,7,3,36,0,1,9,8,2,1,9,8
+  db 5,2,10,7,8,3,1,2,32,3,11,9,1,0,3,0,4,6,3,0,9,11,2,0
+  db 2,0,11,9,3,8,12,16,12,4,5,20,17,4,2,1,3,4,3,4,2,33,34,1
+  db 9,11,9,10,5,0,8,9,2,6,2,10,9,255
+VoxShh4:
+  db 29,2,4,5,4,3,32,2,4,0,3,1,32,4,0,2,11,2,1,7,1,5,1,2
+  db 3,4,2,6,2,7,11,5,1,7,16,13,14,17,14,12,6,1,3,4,5,16,17,8
+  db 2,0,1,3,4,5,1,5,14,9,4,8,12,6,5,1,10,1,3,5,2,1,0,1
+  db 3,4,5,4,2,11,13,6,2,8,13,1,14,12,32,6,3,2,8,7,6,5,8,7
+  db 4,0,3,4,2,8,9,4,0,1,7,4,32,2,0,6,0,6,17,16,12,6,0,13
+  db 16,5,0,8,7,8,5,1,5,11,3,11,12,7,6,3,1,8,13,6,8,7,1,0
+  db 5,4,1,9,10,6,12,8,9,4,8,12,11,0,2,9,0,6,1,0,1,7,3,14
+  db 4,3,7,1,128,11,12,5,4,6,7,0,6,5,6,7,1,0,1,6,3,2,11,9
+  db 5,10,0,4,13,19,13,2,10,4,2,9,3,6,0,1,0,2,33,9,36,3,6,3
+  db 6,12,4,2,10,2,3,0,2,6,5,1,7,11,3,6,7,6,2,5,4,2,6,12
+  db 6,33,7,6,32,6,1,7,4,35,6,5,4,10,12,6,7,1,4,3,6,9,10,9
+  db 0,10,3,4,35,6,65,3,0,2,0,5,14,12,0,10,2,9,4,0,4,3,1,9
+  db 10,7,1,11,12,6,34,1,5,11,13,16,7,6,7,1,0,5,10,3,6,5,3,8
+  db 9,16,13,8,7,32,33,2,1,6,7,0,6,2,4,3,2,4,3,0,3,6,1,3
+  db 96,1,3,4,9,8,6,9,4,2,1,32,2,3,8,2,1,34,6,98,6,2,0,2
+  db 1,2,6,3,2,0,1,2,4,34,4,34,1,2,4,2,254,0,17,255
+}

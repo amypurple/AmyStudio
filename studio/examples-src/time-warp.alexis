@@ -1,0 +1,1228 @@
+cartridge "TIME WARP!/AN ORIGINAL TIMELOST GAME/2026"
+
+' TIME WARP!
+' An original game for the Timelost series, imagined from "Timelost: A
+' Computer Adventure" by Kris Austen Andrews, Arlan Keith Andrews Sr. and
+' Joseph C. Giarratano (Que, 1983), pages 12-14: "In an abrupt flash of
+' screaming darkness, the unlikely trio find themselves hurled headlong
+' into the timeless void-between-the-seconds!" The story and the
+' characters belong to the authors; the book has no game for this scene.
+'
+' The idea: the book promises a game for each effect of the machine, so
+' this one adds what the others lack: a view straight into the screen.
+' John tumbles down the spiral of the time warp. Erin and Jacque, swept
+' away with him, come spinning out of the depths: catch them. Debris from
+' Stonehenge (rocks, the stranger's gun handle) and, from the second
+' warp, the Warbird come at him too: dodge them, or blast them with
+' Jacque's gun before they arrive. Three hits and John is lost in time.
+' When the warp meter fills, the past arrives, and the next warp spins
+' faster.
+' Between warps, an interlude: the trio tumbles out of the sky into a
+' forgotten corner of time (the swamp, the edge of the pit, the caverns,
+' the river of death, the cave-in), then the warp takes them again. Each
+' warp tunnel takes the colors of where it leads: blue, green, red, then
+' gold and purple.
+'
+' ColecoVision game in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): the stick moves John around the tunnel;
+' fire shoots down the tunnel.
+' How it works: the tunnel is 8 tiles in a spiral (a checker of two
+' neighbouring colors each); turning their colors makes the spiral turn
+' and rush toward you. Each thing in the warp travels from the heart of
+' the tunnel to its own spot in front of John, growing along a
+' perspective curve and changing between three sizes. A shot travels
+' the other way, shrinking toward the heart, and hits what it meets at
+' the same depth.
+' Everything that matters stays in columns 2-29, inside the TV overscan.
+' The frame loop is protected from the NMI.
+
+const Heart = 137
+const BarOn = 138
+const BarOff = 139
+const MidX = 120                ' sprite X of the tunnel's heart
+const MidY = 88
+const Erin = 0
+const Jacque = 1
+const RockT = 2
+const GunT = 3
+const BirdT = 4
+
+const SndRoar0 = 1
+const SndRoar1 = 2
+const SndRoar2 = 3
+const SndRoar3 = 4
+const SndCatch = 5
+const SndZap = 6
+const SndBoomN = 7
+const SndHurtN = 8
+const SndHurtT = 9
+const SndScream = 10
+const SndLost = 11
+const SndArriveA = 12
+const SndArriveB = 13
+const SndOver = 14
+const SndGood = 15
+const SndPick = 16
+const SndTuneA = 17
+const SndTuneB = 18
+
+u16 Score = 0
+u16 HighScore = 2000
+u8 HighName[3]
+u8 Lives = 3
+u8 Level = 1
+u8 Caught = 0
+u16 WarpT = 0
+u16 WarpLen = 2400
+u8 Bars = 0
+u8 PX = 120                     ' John's sprite position
+u8 PY = 120
+u8 JohnF = 0
+u8 Hurt = 0
+u8 OT[4]                        ' things in the warp: kind (255: none)
+i16 ODX[4]                      ' where they arrive, from the heart
+i16 ODY[4]
+u8 OStep[4]
+u8 OAcc[4]
+u8 OS[4]
+u8 OX[4]
+u8 OY[4]
+u8 OBoom[4]
+u16 OSpd = 180
+u8 SpawnT = 0
+u8 BeamOn = 0
+u8 BmS = 0
+i16 BmDX = 0
+i16 BmDY = 0
+u8 BmX = 0
+u8 BmY = 0
+u8 RotT = 0
+u8 RotDiv = 4
+u8 Rot = 0
+u16 PalOff = 0
+u8 Place = 0
+u8 RoarT = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 BtnWas = 0
+u8 Up = 0
+u8 Dn = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tm = 0
+u8 Choice = 1
+i16 Sv = 0
+i16 Tv = 0
+u16 Dst16 = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Pts = 0
+
+  tile screen
+  set sound table WarpSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 0
+  sprites flicker on
+  copy SpritePat count 672 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 84
+  HighName[1] = 76
+  HighName[2] = 83
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Place = 0
+  Lives = 3
+  Level = 1
+  DrawTunnel
+
+new_warp:
+  nmi off
+  Caught = 0
+  WarpT = 0
+  Bars = 0
+  PX = 120
+  PY = 120
+  Hurt = 0
+  BeamOn = 0
+  for G = 0 to 3
+    OT[G] = 255
+  next
+  SpawnT = 60
+  ' Faster every warp
+  W16 = Level
+  W16 *= 30
+  OSpd = W16 + 150
+  if OSpd > 255 then OSpd = 255
+  ' The tunnel takes the color of where it leads
+  N = Level - 1
+  N &= 3
+  W16 = N
+  W16 <<= 9
+  PalOff = W16
+  RotDiv = 5
+  if Level >= 2 then RotDiv = 4
+  if Level >= 3 then RotDiv = 3
+  if Level >= 5 then RotDiv = 2
+  ShowStatus
+  print at 11,11, "WARP"
+  NumU = Level
+  print at 16,11, digits$(NumU, 2)
+  Rearm
+  wait 60 frames
+  wait no fire
+  nmi off
+  RedrawMiddle
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  Spin
+  ReadStick
+  MoveJohn
+  MoveBeam
+  MoveThings
+  DrawSprites
+  if Lives = 0 then goto lost_in_time
+  ' The warp meter
+  inc WarpT
+  W16 = WarpT
+  W16 *= 8
+  W16 /= WarpLen
+  N = W16
+  if N <> Bars then
+    Bars = N
+    ShowBars
+  end if
+  if WarpT >= WarpLen then goto arrive
+  goto main_loop
+
+  ' --- Out of the warp: the past arrives ---
+arrive:
+  HideSprites
+  play sound SndArriveA
+  play sound SndArriveB
+  print at 5,9, "THE PAST SWIRLS CLOSER..."
+  print at 6,12, "FRIENDS CAUGHT"
+  NumU = Caught
+  print at 21,12, digits$(NumU, 2)
+  print at 6,13, "X 100 BONUS"
+  W16 = Caught
+  W16 *= 100
+  Score += W16
+  for Tm = 1 to 120
+    Spin
+    Rearm
+    wait
+    nmi off
+  next
+  Interlude
+  if Level < 99 then inc Level
+  DrawTunnel
+  goto new_warp
+
+  ' --- Three hits: lost in time ---
+lost_in_time:
+  HideSprites
+  play sound SndOver
+  print at 9,10, "LOST IN TIME"
+  for Tm = 1 to 150
+    Spin
+    Rearm
+    wait
+    nmi off
+  next
+  if Score > HighScore then
+    HighScore = Score
+    print at 8,12, "NEW HIGH SCORE!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  ShowStatus
+  print at 10,15, "ANOTHER WARP"
+  print at 10,16, "TITLE PAGE"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 8,15 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Between warps: where the trio lands, after the book's chapters (the
+' swamp, the pit, the caverns, the prison river, the cave-in)
+sub Interlude:
+  nmi off
+  HideSprites
+  cls
+  ' This place's colors for the four scene tiles
+  W16 = Place
+  W16 <<= 5
+  Dst16 = 1120
+  for J = 0 to 2
+    copy SceneCol + W16 count 32 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  for Y = 2 to 15
+    fill 140 count 32 at 0,Y
+  next
+  for Y = 16 to 21
+    fill 141 count 32 at 0,Y
+  next
+  ' Scenery: posts or trunks with crowns or boulders on top
+  for I = 0 to 5
+    X = I * 5
+    X += 3
+    put char 143 at X,12
+    put char 142 at X,13
+    put char 142 at X,14
+    put char 142 at X,15
+  next
+  if Place = 0 then print at 6,0, "THE SWAMP"
+  if Place = 1 then print at 6,0, "THE EDGE OF THE PIT"
+  if Place = 2 then print at 6,0, "THE CAVERNS OF CARNAGE"
+  if Place = 3 then print at 6,0, "THE RIVER OF DEATH"
+  if Place = 4 then print at 6,0, "THE CAVE-IN"
+  print at 6,1, "A FORGOTTEN CORNER OF TIME"
+  ' The three tumble out of the sky and land
+  play sound SndScream
+  for Tm = 0 to 70
+    ' fall with gravity: y = t x t / 8, then rest on the ground
+    W16 = Tm
+    W16 *= W16
+    W16 >>= 3
+    if W16 > 112 then W16 = 112
+    Y = W16
+    Y += 4
+    if Tm = 30 then play sound SndHurtN
+    N = Tm & 8
+    N >>= 1
+    if W16 >= 112 then N = 0
+    set sprite 0 to Y,104,N,11
+    set sprite 2 to Y,128,16,9
+    K = Y - 6
+    set sprite 3 to K,80,28,7
+    update sprites
+    Rearm
+    wait
+    nmi off
+  next
+  print at 7,22, "WARP AGAIN!"
+  play sound SndArriveA
+  Rearm
+  wait 100 frames
+  nmi off
+  HideSprites
+  inc Place
+  if Place >= 5 then Place = 0
+  return
+end sub
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Up = 0
+  Dn = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).down then Dn = 1
+  if joypad(2).down then Dn = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' The tunnel turns: the eight spiral tiles pass their colors along
+sub Spin:
+  inc RotT
+  if RotT < RotDiv then return
+  RotT = 0
+  Rot += 1
+  Rot &= 7
+  W16 = Rot
+  W16 <<= 6
+  W16 += PalOff
+  Dst16 = 1024
+  for J = 0 to 2
+    copy ColRot + W16 count 64 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  ' The roar of the warp
+  inc RoarT
+  if RoarT >= 6 then
+    RoarT = 0
+    N = Level
+    if N > 4 then N = 4
+    if N = 1 then play sound SndRoar0
+    if N = 2 then play sound SndRoar1
+    if N = 3 then play sound SndRoar2
+    if N = 4 then play sound SndRoar3
+  end if
+  return
+end sub
+
+sub MoveJohn:
+  if Hurt > 0 then dec Hurt
+  if Stick = 1 then
+    if PX > 32 then PX -= 2
+  end if
+  if Stick = 2 then
+    if PX < 208 then PX += 2
+  end if
+  if Up = 1 then
+    if PY > 20 then PY -= 2
+  end if
+  if Dn = 1 then
+    if PY < 160 then PY += 2
+  end if
+  inc JohnF
+  N = 0
+  if Btn = 1 then
+    if BtnWas = 0 then N = 1
+  end if
+  BtnWas = Btn
+  if N = 0 then return
+  if BeamOn = 1 then return
+  ' Jacque's gun fires down the tunnel, from John toward the heart
+  BeamOn = 1
+  BmS = 255
+  Sv = PX
+  Sv -= MidX
+  BmDX = Sv
+  Sv = PY
+  Sv -= MidY
+  BmDY = Sv
+  BmX = PX
+  BmY = PY
+  play sound SndZap
+  return
+end sub
+
+sub MoveBeam:
+  if BeamOn = 0 then return
+  if BmS < 40 then
+    BeamOn = 0
+    return
+  end if
+  BmS -= 12
+  Sv = BmDX * BmS
+  Sv /= 256
+  Sv += MidX
+  BmX = Sv
+  Sv = BmDY * BmS
+  Sv /= 256
+  Sv += MidY
+  BmY = Sv
+  ' Whatever is at the same depth and place
+  for G = 0 to 3
+    if OT[G] < 5 then
+      if OBoom[G] = 0 then
+        N = OS[G]
+        if N > BmS then
+          P = N - BmS
+        else
+          P = BmS - N
+        end if
+        if P < 30 then
+          X = OX[G]
+          if X > BmX then
+            P = X - BmX
+          else
+            P = BmX - X
+          end if
+          if P < 10 then
+            Y = OY[G]
+            if Y > BmY then
+              P = Y - BmY
+            else
+              P = BmY - Y
+            end if
+            if P < 10 then
+              Blasted
+              return
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Blasted:
+  BeamOn = 0
+  OBoom[G] = 16
+  V = OT[G]
+  if V < 2 then
+    ' A friend! Lost in the void, and points taken away
+    if Score >= 50 then
+      Score -= 50
+    else
+      Score = 0
+    end if
+    play sound SndLost
+  else
+    Pts = 25
+    if V = BirdT then Pts = 150
+    Score += Pts
+    play sound SndBoomN
+  end if
+  ShowStatus
+  return
+end sub
+
+' Each thing comes out of the heart of the tunnel to its spot in front of John
+sub MoveThings:
+  ' A new one now and then
+  if SpawnT > 0 then
+    dec SpawnT
+  else
+    for G = 0 to 3
+      if OT[G] = 255 then goto spawn
+    next
+  end if
+  goto travel
+spawn:
+  SpawnT = random(15, 45)
+  N = random(0, 99)
+  V = RockT
+  if N < 15 then V = Erin
+  if N >= 15 then
+    if N < 30 then V = Jacque
+  end if
+  if N >= 55 then
+    if N < 75 then V = GunT
+  end if
+  if N >= 75 then
+    if Level >= 2 then
+      V = BirdT
+      play sound SndScream
+    end if
+  end if
+  OT[G] = V
+  OStep[G] = 0
+  OAcc[G] = 0
+  OBoom[G] = 0
+  ' Its direction and how far out it arrives
+  K = random(0, 31)
+  P = random(0, 90)
+  N = CosT[K]
+  Sv = N
+  if N >= 128 then Sv -= 256
+  Sv = Sv * P
+  Sv /= 100
+  ODX[G] = Sv
+  N = SinT[K]
+  Sv = N
+  if N >= 128 then Sv -= 256
+  Sv = Sv * P
+  Sv /= 100
+  ' (the tunnel is a little flatter than it is wide)
+  Sv *= 3
+  Sv /= 4
+  ODY[G] = Sv
+travel:
+  for G = 0 to 3
+    if OT[G] < 5 then
+      if OBoom[G] > 0 then
+        dec OBoom[G]
+        if OBoom[G] = 0 then OT[G] = 255
+      else
+        W16 = OAcc[G]
+        W16 += OSpd
+        if W16 >= 256 then
+          W16 -= 256
+          inc OStep[G]
+        end if
+        OAcc[G] = W16
+        N = OStep[G]
+        if N >= 64 then
+          Arrived
+        else
+          P = Grow[N]
+          OS[G] = P
+          Sv = ODX[G] * P
+          Sv /= 256
+          Sv += MidX
+          OX[G] = Sv
+          Sv = ODY[G] * P
+          Sv /= 256
+          Sv += MidY
+          OY[G] = Sv
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' It reaches John's plane: caught, hit, or gone past
+sub Arrived:
+  V = OT[G]
+  OT[G] = 255
+  X = OX[G]
+  if X > PX then
+    P = X - PX
+  else
+    P = PX - X
+  end if
+  K = 0
+  if P < 13 then
+    Y = OY[G]
+    if Y > PY then
+      P = Y - PY
+    else
+      P = PY - Y
+    end if
+    if P < 13 then K = 1
+  end if
+  if V < 2 then
+    if K = 1 then
+      ' A friend caught
+      inc Caught
+      Score += 100
+      ShowStatus
+      play sound SndCatch
+    end if
+    return
+  end if
+  if K = 0 then return
+  if Hurt > 0 then return
+  ' Hit by debris or the Warbird
+  dec Lives
+  Hurt = 60
+  ShowStatus
+  play sound SndHurtN
+  play sound SndHurtT
+  return
+end sub
+
+sub DrawSprites:
+  P = JohnF & 16
+  P >>= 2
+  K = 11
+  if Hurt > 0 then
+    N = Hurt & 4
+    if N = 0 then K = 8
+  end if
+  set sprite 0 to PY,PX,P,K
+  if BeamOn = 1 then
+    P = 68
+    if BmS < 128 then P = 72
+    set sprite 1 to BmY,BmX,P,15
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for G = 0 to 3
+    J = G + 2
+    V = OT[G]
+    if V < 5 then
+      X = OX[G]
+      Y = OY[G]
+      if OBoom[G] > 0 then
+        N = OBoom[G] & 4
+        P = 76
+        if N = 0 then P = 80
+        set sprite J to Y,X,P,11
+      else
+        ' Three sizes, by how near it has come
+        N = OS[G]
+        P = V * 12
+        P += 8
+        if N >= 96 then P += 4
+        if N >= 176 then P += 4
+        K = 9
+        if V = Jacque then K = 7
+        if V = RockT then K = 14
+        if V = GunT then K = 10
+        if V = BirdT then K = 11
+        set sprite J to Y,X,P,K
+      end if
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' The spiral tunnel, from the map worked out in art.py
+sub DrawTunnel:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  RedrawMiddle
+  fill 32 count 32 at 0,0
+  fill 32 count 32 at 0,23
+  ShowStatus
+  return
+end sub
+
+' Rows 1-22 of the tunnel (also to wipe messages)
+sub RedrawMiddle:
+  Dst16 = 32
+  for Y = 1 to 22
+    copy RingMap + Dst16 count 32 to vram.name + Dst16
+    Dst16 += 32
+  next
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,0, "SCORE"
+  NumU = Score
+  print at 8,0, digits$(NumU, 5)
+  print at 15,0, "WARP"
+  ShowBars
+  print at 2,23, "LIVES"
+  for J = 0 to 2
+    X = J + 8
+    N = 32
+    if J < Lives then N = Heart
+    put char N at X,23
+  next
+  print at 12,23, "FRIENDS"
+  NumU = Caught
+  print at 20,23, digits$(NumU, 2)
+  print at 23,23, "HI"
+  NumU = HighScore
+  print at 26,23, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowBars:
+  for J = 0 to 7
+    X = J + 20
+    N = BarOff
+    if J < Bars then N = BarOn
+    put char N at X,0
+  next
+  return
+end sub
+
+sub EnterName:
+  print at 6,13, "YOUR INITIALS:"
+  print at 5,16, "UP/DOWN, FIRE: NEXT"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,13
+  next
+  X = I + 21
+  fill 32 count 3 at 21,14
+  put char 45 at X,14
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then goto name_done
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  if Dn = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+name_done:
+  RedrawMiddle
+  return
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 128 to vram.pattern + Dst16
+    copy TileCol count 128 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub TitlePage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  RedrawMiddle
+  fill 32 count 32 at 0,0
+  fill 32 count 32 at 0,23
+  fill 32 count 22 at 5,3
+  print at 10,3, "T I M E   W A R P !"
+  fill 32 count 26 at 3,15
+  fill 32 count 26 at 3,16
+  fill 32 count 26 at 3,17
+  fill 32 count 26 at 3,18
+  fill 32 count 26 at 3,19
+  print at 4,15, "STICK: MOVE JOHN"
+  print at 4,16, "FIRE: JACQUE'S GUN"
+  print at 4,17, "CATCH ERIN AND JACQUE,"
+  print at 4,18, "DODGE OR BLAST THE REST."
+  print at 4,19, "HIGH"
+  NumU = HighScore
+  print at 9,19, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 15
+    N = HighName[J]
+    put char N at X,19
+  next
+  fill 32 count 20 at 6,21
+  print at 7,21, "PRESS FIRE TO WARP"
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+title_spin:
+  Spin
+  Rearm
+  wait
+  nmi off
+  if joypad(1).fire then goto title_go
+  if joypad(2).fire then goto title_go
+  goto title_spin
+title_go:
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 11,1, "TIME WARP!"
+  print at 2,3, "AN ORIGINAL GAME FOR THE"
+  print at 2,4, "TIMELOST SERIES BY KRIS"
+  print at 2,5, "AUSTEN ANDREWS, ARLAN KEITH"
+  print at 2,6, "ANDREWS SR. AND JOSEPH C."
+  print at 2,7, "GIARRATANO (QUE, 1983)."
+  print at 2,9, "PAGE 13: HURLED HEADLONG"
+  print at 2,10, "INTO THE TIMELESS VOID-"
+  print at 2,11, "BETWEEN-THE-SECONDS."
+  print at 2,13, "THE BOOK HAS NO GAME FOR"
+  print at 2,14, "THIS SCENE: HERE IS ONE,"
+  print at 2,15, "SEEN STRAIGHT INTO THE"
+  print at 2,16, "SCREEN. BY AMY BIENVENU,"
+  print at 2,17, "2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' Tunnel tiles 128-136, heart 137, meter 138-139
+data TilePat bytes
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $00,$00,$00,$00,$00,$00,$00,$00,$6C,$FE,$FE,$7C,$38,$10,$00,$00
+  $00,$7E,$7E,$7E,$7E,$7E,$7E,$00,$00,$7E,$42,$42,$42,$42,$7E,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$91,$4A,$00,$22,$54,$00,$88,$42
+  $18,$3C,$3C,$18,$18,$18,$3C,$7E,$3C,$7E,$FF,$FF,$7E,$24,$00,$00
+end data
+data TileCol bytes
+  $14,$14,$14,$14,$14,$14,$14,$14,$45,$45,$45,$45,$45,$45,$45,$45
+  $57,$57,$57,$57,$57,$57,$57,$57,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$75,$75,$75,$75,$75,$75,$75,$75
+  $54,$54,$54,$54,$54,$54,$54,$54,$41,$41,$41,$41,$41,$41,$41,$41
+  $11,$11,$11,$11,$11,$11,$11,$11,$91,$91,$91,$91,$91,$91,$91,$91
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $44,$44,$44,$44,$44,$44,$44,$44,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data ColRot bytes
+  $14,$14,$14,$14,$14,$14,$14,$14,$45,$45,$45,$45,$45,$45,$45,$45
+  $57,$57,$57,$57,$57,$57,$57,$57,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$75,$75,$75,$75,$75,$75,$75,$75
+  $54,$54,$54,$54,$54,$54,$54,$54,$41,$41,$41,$41,$41,$41,$41,$41
+  $45,$45,$45,$45,$45,$45,$45,$45,$57,$57,$57,$57,$57,$57,$57,$57
+  $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
+  $75,$75,$75,$75,$75,$75,$75,$75,$54,$54,$54,$54,$54,$54,$54,$54
+  $41,$41,$41,$41,$41,$41,$41,$41,$14,$14,$14,$14,$14,$14,$14,$14
+  $57,$57,$57,$57,$57,$57,$57,$57,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$75,$75,$75,$75,$75,$75,$75,$75
+  $54,$54,$54,$54,$54,$54,$54,$54,$41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14,$45,$45,$45,$45,$45,$45,$45,$45
+  $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
+  $75,$75,$75,$75,$75,$75,$75,$75,$54,$54,$54,$54,$54,$54,$54,$54
+  $41,$41,$41,$41,$41,$41,$41,$41,$14,$14,$14,$14,$14,$14,$14,$14
+  $45,$45,$45,$45,$45,$45,$45,$45,$57,$57,$57,$57,$57,$57,$57,$57
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$75,$75,$75,$75,$75,$75,$75,$75
+  $54,$54,$54,$54,$54,$54,$54,$54,$41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14,$45,$45,$45,$45,$45,$45,$45,$45
+  $57,$57,$57,$57,$57,$57,$57,$57,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+  $75,$75,$75,$75,$75,$75,$75,$75,$54,$54,$54,$54,$54,$54,$54,$54
+  $41,$41,$41,$41,$41,$41,$41,$41,$14,$14,$14,$14,$14,$14,$14,$14
+  $45,$45,$45,$45,$45,$45,$45,$45,$57,$57,$57,$57,$57,$57,$57,$57
+  $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
+  $54,$54,$54,$54,$54,$54,$54,$54,$41,$41,$41,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$14,$14,$14,$45,$45,$45,$45,$45,$45,$45,$45
+  $57,$57,$57,$57,$57,$57,$57,$57,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$75,$75,$75,$75,$75,$75,$75,$75
+  $41,$41,$41,$41,$41,$41,$41,$41,$14,$14,$14,$14,$14,$14,$14,$14
+  $45,$45,$45,$45,$45,$45,$45,$45,$57,$57,$57,$57,$57,$57,$57,$57
+  $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
+  $75,$75,$75,$75,$75,$75,$75,$75,$54,$54,$54,$54,$54,$54,$54,$54
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $23,$23,$23,$23,$23,$23,$23,$23,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$32,$32,$32,$32,$32,$32,$32,$32
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$23,$23,$23,$23,$23,$23,$23,$23
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+  $32,$32,$32,$32,$32,$32,$32,$32,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $23,$23,$23,$23,$23,$23,$23,$23,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$32,$32,$32,$32,$32,$32,$32,$32
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+  $32,$32,$32,$32,$32,$32,$32,$32,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$23,$23,$23,$23,$23,$23,$23,$23
+  $B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$32,$32,$32,$32,$32,$32,$32,$32
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $23,$23,$23,$23,$23,$23,$23,$23,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $32,$32,$32,$32,$32,$32,$32,$32,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$23,$23,$23,$23,$23,$23,$23,$23
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+  $2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+  $23,$23,$23,$23,$23,$23,$23,$23,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B
+  $B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$32,$32,$32,$32,$32,$32,$32,$32
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$23,$23,$23,$23,$23,$23,$23,$23
+  $3B,$3B,$3B,$3B,$3B,$3B,$3B,$3B,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+  $32,$32,$32,$32,$32,$32,$32,$32,$2C,$2C,$2C,$2C,$2C,$2C,$2C,$2C
+  $16,$16,$16,$16,$16,$16,$16,$16,$68,$68,$68,$68,$68,$68,$68,$68
+  $89,$89,$89,$89,$89,$89,$89,$89,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B
+  $B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$98,$98,$98,$98,$98,$98,$98,$98
+  $86,$86,$86,$86,$86,$86,$86,$86,$61,$61,$61,$61,$61,$61,$61,$61
+  $68,$68,$68,$68,$68,$68,$68,$68,$89,$89,$89,$89,$89,$89,$89,$89
+  $9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $98,$98,$98,$98,$98,$98,$98,$98,$86,$86,$86,$86,$86,$86,$86,$86
+  $61,$61,$61,$61,$61,$61,$61,$61,$16,$16,$16,$16,$16,$16,$16,$16
+  $89,$89,$89,$89,$89,$89,$89,$89,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B
+  $B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$98,$98,$98,$98,$98,$98,$98,$98
+  $86,$86,$86,$86,$86,$86,$86,$86,$61,$61,$61,$61,$61,$61,$61,$61
+  $16,$16,$16,$16,$16,$16,$16,$16,$68,$68,$68,$68,$68,$68,$68,$68
+  $9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $98,$98,$98,$98,$98,$98,$98,$98,$86,$86,$86,$86,$86,$86,$86,$86
+  $61,$61,$61,$61,$61,$61,$61,$61,$16,$16,$16,$16,$16,$16,$16,$16
+  $68,$68,$68,$68,$68,$68,$68,$68,$89,$89,$89,$89,$89,$89,$89,$89
+  $B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$98,$98,$98,$98,$98,$98,$98,$98
+  $86,$86,$86,$86,$86,$86,$86,$86,$61,$61,$61,$61,$61,$61,$61,$61
+  $16,$16,$16,$16,$16,$16,$16,$16,$68,$68,$68,$68,$68,$68,$68,$68
+  $89,$89,$89,$89,$89,$89,$89,$89,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B
+  $98,$98,$98,$98,$98,$98,$98,$98,$86,$86,$86,$86,$86,$86,$86,$86
+  $61,$61,$61,$61,$61,$61,$61,$61,$16,$16,$16,$16,$16,$16,$16,$16
+  $68,$68,$68,$68,$68,$68,$68,$68,$89,$89,$89,$89,$89,$89,$89,$89
+  $9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $86,$86,$86,$86,$86,$86,$86,$86,$61,$61,$61,$61,$61,$61,$61,$61
+  $16,$16,$16,$16,$16,$16,$16,$16,$68,$68,$68,$68,$68,$68,$68,$68
+  $89,$89,$89,$89,$89,$89,$89,$89,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B
+  $B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$98,$98,$98,$98,$98,$98,$98,$98
+  $61,$61,$61,$61,$61,$61,$61,$61,$16,$16,$16,$16,$16,$16,$16,$16
+  $68,$68,$68,$68,$68,$68,$68,$68,$89,$89,$89,$89,$89,$89,$89,$89
+  $9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$B9,$B9,$B9,$B9,$B9,$B9,$B9,$B9
+  $98,$98,$98,$98,$98,$98,$98,$98,$86,$86,$86,$86,$86,$86,$86,$86
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+  $BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+  $AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF
+  $FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$1D,$1D,$1D,$1D,$1D,$1D,$1D,$1D
+  $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $BF,$BF,$BF,$BF,$BF,$BF,$BF,$BF,$FB,$FB,$FB,$FB,$FB,$FB,$FB,$FB
+  $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA,$AD,$AD,$AD,$AD,$AD,$AD,$AD,$AD
+end data
+data SceneCol bytes
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$34,$34,$34,$34,$34,$34,$34,$34
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $11,$11,$11,$11,$11,$11,$11,$11,$61,$61,$61,$61,$61,$61,$61,$61
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$98,$98,$98,$98,$98,$98,$98,$98
+  $11,$11,$11,$11,$11,$11,$11,$11,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $44,$44,$44,$44,$44,$44,$44,$44,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4,$86,$86,$86,$86,$86,$86,$86,$86
+  $11,$11,$11,$11,$11,$11,$11,$11,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+end data
+' Sprites: JohnA, JohnB, Erin1, Erin2, Erin3, Jacque1, Jacque2, Jacque3, Rock1, Rock2, Rock3, Gun1, Gun2, Gun3, Bird1, Bird2, Bird3, Beam, BeamFar, BoomA, BoomB
+data SpritePat bytes
+  $03,$07,$07,$03,$33,$1F,$0F,$03,$03,$06,$0C,$18,$30,$00,$00,$00
+  $C0,$E0,$E0,$C0,$CC,$F8,$F0,$C0,$C0,$60,$30,$18,$0C,$00,$00,$00
+  $00,$30,$1B,$0F,$07,$03,$03,$07,$0D,$19,$30,$01,$03,$00,$00,$00
+  $00,$0C,$D8,$F0,$E0,$C0,$C0,$E0,$B0,$98,$0C,$80,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$03,$07,$03,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$C0,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$03,$03,$0F,$0B,$03,$02,$06,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$E0,$E0,$F0,$E8,$E0,$60,$70,$00,$00,$00,$00
+  $03,$07,$0F,$0D,$0F,$07,$1F,$2F,$4F,$0F,$0C,$0C,$1C,$00,$00,$00
+  $C0,$E0,$F0,$B0,$F0,$E0,$F8,$F4,$F2,$F0,$30,$30,$38,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$03,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$80,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$03,$0F,$17,$03,$03,$02,$06,$00,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$C0,$F8,$F8,$E0,$60,$60,$70,$00,$00,$00,$00
+  $03,$07,$05,$07,$3F,$5F,$9F,$1F,$0F,$0E,$0C,$0C,$1C,$00,$00,$00
+  $C0,$E0,$A0,$E0,$FC,$FA,$F9,$F8,$F0,$70,$30,$30,$38,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$1F,$1F,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F8,$F8,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$07,$1F,$3F,$7F,$7F,$FF,$FF,$7F,$3F,$0F,$00,$00,$00,$00
+  $00,$00,$C0,$F0,$F8,$FC,$FE,$FE,$FE,$FC,$F8,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$07,$07,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0F,$0F,$0F,$00,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$F8,$F8,$F0,$E0,$C0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$3F,$7F,$7F,$3F,$00,$00,$01,$01,$03,$00,$00,$00,$00
+  $00,$00,$00,$FE,$FE,$FF,$FC,$F0,$F0,$E0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$07,$07,$03,$05,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$1D,$0F,$07,$03,$07,$09,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$58,$F0,$F0,$E0,$B0,$D0,$00,$00,$00,$00,$00,$00
+  $80,$C0,$72,$3D,$1D,$0F,$07,$0D,$19,$21,$02,$00,$00,$00,$00,$00
+  $01,$03,$4E,$BC,$B8,$F0,$E0,$B0,$98,$84,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$09,$05,$13,$0F,$3F,$0F,$13,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$90,$E0,$F8,$E0,$90,$40,$20,$00,$00,$00,$00,$00
+  $80,$20,$08,$00,$02,$A0,$00,$04,$00,$10,$21,$80,$00,$00,$00,$00
+  $81,$84,$08,$00,$80,$0A,$00,$40,$00,$10,$08,$81,$00,$00,$00,$00
+end data
+data Grow bytes
+  $20,$20,$20,$21,$21,$22,$22,$23,$23,$24,$25,$25,$26,$26,$27,$28
+  $29,$29,$2A,$2B,$2C,$2D,$2D,$2E,$2F,$30,$31,$32,$34,$35,$36,$37
+  $39,$3A,$3C,$3D,$3F,$41,$43,$45,$47,$49,$4C,$4E,$51,$54,$58,$5B
+  $5F,$63,$68,$6D,$72,$78,$7F,$86,$8F,$98,$A3,$B0,$BF,$D0,$E5,$FF
+end data
+data CosT bytes
+  100, 98, 92, 83, 71, 56, 38, 20, 0, 236, 218, 200, 185, 173, 164, 158, 156, 158, 164, 173, 185, 200, 218, 236, 0, 20, 38, 56, 71, 83, 92, 98
+end data
+data SinT bytes
+  0, 20, 38, 56, 71, 83, 92, 98, 100, 98, 92, 83, 71, 56, 38, 20, 0, 236, 218, 200, 185, 173, 164, 158, 156, 158, 164, 173, 185, 200, 218, 236
+end data
+data RingMap bytes
+  128,128,128,129,129,129,129,130,130,130,131,131,131,131,132,132,132,132,132,132,132,132,132,131,131,131,131,131,131,131,131,130
+  128,128,129,129,129,129,130,130,130,131,131,131,132,132,132,132,132,132,132,132,132,132,132,132,132,132,131,131,131,131,131,131
+  128,128,129,129,129,130,130,130,131,131,131,132,132,133,133,133,133,133,133,133,133,133,133,132,132,132,132,131,131,131,131,131
+  128,128,129,129,129,130,130,130,131,131,132,132,133,133,134,134,134,134,134,134,134,133,133,133,132,132,132,132,132,131,131,131
+  128,129,129,129,129,130,130,131,131,132,132,133,134,134,135,135,135,135,135,135,134,134,134,133,133,133,132,132,132,132,131,131
+  128,129,129,129,130,130,131,131,132,132,133,134,135,135,128,128,129,129,128,128,135,135,134,134,133,133,133,132,132,132,131,131
+  128,129,129,129,130,130,131,131,132,133,134,135,128,129,130,130,131,130,130,129,129,128,135,134,134,133,133,133,132,132,132,131
+  128,129,129,129,130,130,131,132,132,133,135,128,129,131,132,133,134,133,132,131,130,129,128,135,134,134,133,133,132,132,132,132
+  128,129,129,129,130,130,131,132,133,134,135,129,131,133,128,130,130,129,135,133,131,130,129,128,135,134,134,133,133,132,132,132
+  128,129,129,129,130,130,131,132,133,134,128,130,133,129,134,129,130,135,131,135,133,131,129,128,135,135,134,133,133,133,132,132
+  128,129,129,129,130,130,131,132,133,135,128,131,135,133,136,136,136,136,128,130,134,132,130,129,128,135,134,134,133,133,132,132
+  128,129,129,129,130,130,131,132,133,135,129,132,128,128,136,136,136,136,131,132,135,132,130,129,128,135,134,134,133,133,132,132
+  128,128,129,129,130,130,131,132,133,134,128,131,128,135,136,136,136,136,132,132,128,133,131,129,128,135,134,134,133,133,133,132
+  128,128,129,129,130,130,131,132,133,134,128,130,134,132,136,136,136,136,129,131,135,132,131,129,128,135,134,134,133,133,133,132
+  128,128,129,129,129,130,131,131,132,133,135,129,131,135,131,134,133,130,133,129,134,132,130,129,128,135,134,134,133,133,133,132
+  128,128,128,129,129,130,130,131,132,133,134,135,129,131,133,134,134,132,129,135,133,131,130,129,128,135,134,134,133,133,133,132
+  128,128,128,128,129,129,130,130,131,132,133,134,135,128,129,130,129,128,135,133,132,131,129,128,128,135,134,134,133,133,133,132
+  135,128,128,128,129,129,129,130,130,131,132,133,133,134,134,135,134,134,133,132,131,130,129,128,135,135,134,134,133,133,133,132
+  135,135,128,128,128,129,129,129,130,130,131,131,132,132,133,133,132,132,131,131,130,129,128,128,135,135,134,134,133,133,133,132
+  135,135,128,128,128,128,129,129,129,130,130,130,131,131,131,131,131,131,130,130,129,128,128,135,135,134,134,133,133,133,133,132
+  135,135,135,128,128,128,128,128,129,129,129,130,130,130,130,130,130,130,129,129,128,128,135,135,134,134,134,133,133,133,132,132
+  135,135,135,135,135,128,128,128,128,129,129,129,129,129,129,129,129,129,129,128,128,135,135,135,134,134,134,133,133,133,132,132
+  135,135,135,135,135,135,128,128,128,128,128,128,128,128,128,128,128,128,128,128,135,135,135,134,134,134,133,133,133,133,132,132
+  134,135,135,135,135,135,135,135,135,128,128,128,128,128,128,128,128,128,135,135,135,135,134,134,134,133,133,133,133,132,132,132
+end data
+
+asm {
+TwRoar0:
+    db $00,$00,$57,$08,$00,$00,$67,$08,$00,$00,$77,$08,$10
+TwRoar1:
+    db $00,$00,$56,$08,$00,$00,$66,$08,$00,$00,$76,$08,$10
+TwRoar2:
+    db $00,$00,$55,$08,$00,$00,$65,$08,$00,$00,$75,$08,$10
+TwRoar3:
+    db $00,$00,$54,$08,$00,$00,$64,$08,$00,$00,$74,$08,$10
+TwCatch:
+    db $80,$6B,$20,$03,$80,$55,$20,$03,$80,$47,$20,$03,$80,$35,$20,$03,$80,$35,$F0,$02,$90
+TwZap:
+    db $40,$25,$10,$01,$40,$2A,$10,$01,$40,$31,$10,$01,$40,$39,$10,$01,$40,$46,$10,$01,$40,$59,$10,$01
+    db $40,$7C,$10,$01,$40,$CB,$10,$01,$50
+TwBoomN:
+    db $00,$00,$04,$03,$00,$00,$25,$04,$00,$00,$56,$06,$00,$00,$96,$06,$10
+TwHurtN:
+    db $00,$00,$04,$04,$00,$00,$15,$06,$00,$00,$46,$08,$00,$00,$86,$0A,$10
+TwHurtT:
+    db $40,$BA,$10,$02,$40,$C8,$10,$02,$40,$D7,$10,$02,$40,$E9,$10,$02,$40,$FE,$10,$02,$40,$18,$11,$02
+    db $40,$37,$11,$02,$40,$5E,$11,$02,$40,$90,$11,$02,$40,$D2,$11,$02,$40,$2F,$12,$02,$40,$BB,$12,$02
+    db $40,$A4,$13,$02,$50
+TwScream:
+    db $C0,$3B,$30,$02,$C0,$50,$40,$02,$C0,$3F,$30,$02,$C0,$57,$40,$02,$C0,$43,$30,$02,$C0,$60,$40,$02
+    db $C0,$49,$30,$02,$C0,$6C,$40,$02,$C0,$4F,$30,$02,$C0,$7A,$40,$02,$D0
+TwLost:
+    db $C0,$5D,$30,$02,$C0,$62,$30,$02,$C0,$68,$30,$02,$C0,$6E,$30,$02,$C0,$75,$30,$02,$C0,$7C,$30,$02
+    db $C0,$85,$30,$02,$C0,$8F,$30,$02,$C0,$9B,$30,$02,$C0,$A9,$30,$02,$C0,$BA,$30,$02,$C0,$CF,$30,$02
+    db $C0,$E9,$30,$02,$C0,$0A,$31,$02,$C0,$37,$31,$02,$C0,$75,$31,$02,$D0
+TwArriveA:
+    db $40,$1D,$11,$04,$40,$1D,$F1,$01,$40,$E2,$10,$04,$40,$E2,$F0,$01,$40,$BF,$10,$04,$40,$BF,$F0,$01
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$27,$40,$47,$F0,$01,$50
+TwArriveB:
+    db $80,$3B,$32,$04,$80,$1D,$F1,$01,$80,$C5,$31,$04,$80,$E2,$F0,$01,$80,$7D,$31,$04,$80,$BF,$F0,$01
+    db $80,$1D,$31,$04,$80,$8F,$F0,$01,$80,$E2,$30,$04,$80,$71,$F0,$01,$80,$BE,$30,$04,$80,$5F,$F0,$01
+    db $80,$8F,$30,$27,$80,$47,$F0,$01,$90
+TwOver:
+    db $40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02,$40,$7C,$21,$0A,$40,$7C,$F1,$02
+    db $40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$C5,$21,$0A,$40,$C5,$F1,$02
+    db $40,$FC,$21,$0A,$40,$FC,$F1,$02,$40,$A6,$22,$28,$40,$A6,$F2,$02,$50
+TwGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+TwPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+WarpSoundTable:
+    dw TwRoar0,$702B
+    dw TwRoar1,$702B
+    dw TwRoar2,$702B
+    dw TwRoar3,$702B
+    dw TwCatch,$703F
+    dw TwZap,$7035
+    dw TwBoomN,$702B
+    dw TwHurtN,$702B
+    dw TwHurtT,$7035
+    dw TwScream,$7049
+    dw TwLost,$7049
+    dw TwArriveA,$7035
+    dw TwArriveB,$703F
+    dw TwOver,$7035
+    dw TwGood,$7035
+    dw TwPick,$7049
+    dw WarpTuneMel,$703F
+    dw WarpTuneBass,$7049
+; Title tune: Void Between the Seconds, a whirling theme in B minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 6 frames per step
+WarpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$1E,$21,$25,$2A,$28,$25,$21,$1C,$1A,$1E,$21,$26
+    db $25,$21,$1E,$19,$02,$10,$1A,$21,$23,$26,$2A,$2F,$2D,$2A,$26,$23
+    db $25,$29,$2C,$31,$2F,$2C,$29,$25,$02,$30,$1A,$21,$1E,$21,$25,$2A
+    db $28,$25,$21,$1C,$1A,$1E,$21,$26,$28,$25,$21,$20,$02,$10,$1A,$21
+    db $1E,$00,$25,$00,$2A,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+    db $02,$40,$1A,$21,$21,$25,$2A,$2D,$2C,$28,$25,$20,$1E,$21,$26,$2A
+    db $28,$25,$21,$1C,$02,$30,$1A,$21,$26,$2A,$2F,$32,$31,$2D,$2A,$26
+    db $29,$2C,$31,$35,$32,$2F,$2C,$29,$02,$40,$1A,$21,$21,$25,$2A,$2D
+    db $2C,$28,$25,$20,$1E,$21,$26,$2A,$2C,$28,$25,$23,$02,$30,$1A,$21
+    db $21,$00,$28,$00,$2D,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+WarpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$50,$18,$32,$06,$00,$12,$00,$0D,$00,$12,$00,$0E,$00,$0E,$00
+    db $09,$00,$0E,$00,$0B,$00,$0B,$00,$12,$00,$0B,$00,$0D,$00,$0D,$00
+    db $08,$00,$0D,$00,$06,$00,$12,$00,$0D,$00,$12,$00,$0E,$00,$0E,$00
+    db $0D,$00,$0D,$00,$06,$00,$0D,$00,$06,$00,$00,$01,$00,$00,$00,$00
+    db $00,$00,$00,$00,$02,$50,$18,$32,$06,$00,$12,$00,$0D,$00,$12,$00
+    db $0E,$00,$0E,$00,$09,$00,$0E,$00,$0B,$00,$0B,$00,$12,$00,$0B,$00
+    db $0D,$00,$0D,$00,$08,$00,$0D,$00,$06,$00,$12,$00,$0D,$00,$12,$00
+    db $0E,$00,$0E,$00,$0D,$00,$0D,$00,$02,$30,$18,$32,$06,$00,$0D,$00
+    db $06,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+}
