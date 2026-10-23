@@ -1,0 +1,1322 @@
+cartridge "BIKER DAVE/PRESENTS COMPUTE!'S/1986"
+
+' BIKER DAVE
+' From COMPUTE! magazine, November 1986, pages 38-45: "Biker Dave" by
+' David Schwener (Atari 400, 800, XL and XE), with translations by Tim
+' Midkiff, Editorial Programmer, for the Commodore 64, the IBM PC/PCjr
+' and the Amiga. All credit belongs to the authors.
+'
+' Historical context (summary of the article):
+' A motorcycle stunt game. Dave starts in the garage at the upper left,
+' rides down the track, through the tunnels, and toward the final
+' obstacle: a row of cars between a launching ramp and a landing ramp.
+' Hold the button to accelerate. The bike has no brakes. Too fast, and
+' it rises into a wheelie; faster still, and it tips over backwards and
+' crashes. At the ramp you must be fast enough to clear the cars, but not
+' so fast that you miss the landing ramp. Each successful jump, the crew
+' adds a car and moves the launching ramp, and (being somewhat
+' unreliable) may change the ramp's angle slightly, so the same speed
+' will not always work. The score depends on the cars jumped and the
+' attempts made. Rookie and pro levels; at the pro level Dave must also
+' jump through a large hoop midway, which has a launching ramp but no
+' landing ramp, and moves farther from it with every car. The Commodore
+' 64 version set the hoop on fire; the PC and Amiga versions end the game
+' when you have jumped nine cars or wrecked your last bike.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): hold fire to open the throttle; the stick
+' picks the level on the title page.
+' The rules follow the Atari listing and its translations: rookie and
+' pro levels picked with the stick (lines 3100-3190); 5 bikes, 3 cars to
+' start (line 2840); the garage, the tunnels and the obstacle (lines
+' 2820-3060); the button accelerates (lines 130-140, 380-390, 650-670);
+' a wheelie past one speed and a crash past a higher one (lines 340-360,
+' 610-630); the jump from the launching ramp, its length set by the speed
+' and the ramp's angle, which the crew may change a little each time
+' (lines 420-480, 690-750, 1230-1250); short of the landing ramp or past
+' it is a crash (lines 890-1060); a good jump scores the cars times 10,
+' less 5 for every try after the first, doubled at the pro level (lines
+' 1170-1210), and the crew adds a car (lines 1220-1300); the pro hoop and
+' its distance from its ramp growing with every car (lines 90-330; here
+' the hoop moves and the ramp stays, so the run-up stays long enough); the game ends with
+' the last bike wrecked or nine cars jumped, with the listing's messages
+' (lines 1310-1390; nine from the PC and Amiga versions).
+' Adaptation liberties: the course is laid out as two decks joined by a
+' tunnel at the right (the Atari track ran around the screen); the bike
+' disappears into the tunnels, as sprites cannot pass behind tiles on
+' this machine; the hoop burns, after the Commodore 64 version (drawn as
+' a ring of flame, after Konami's Circus Charlie), with a
+' crowd in the stands; the rider cartwheels when he crashes; the engine
+' note rises with the speed; the rider brakes once he has landed; the
+' high score with three initials picked with the joystick; joystick
+' menus; an original title tune; an editorial page. Everything that
+' matters stays in columns 2-29, inside the TV overscan. At most four
+' sprites share a line. The frame loop is protected from the NMI.
+
+const TSky = 128
+const TDeck = 129
+const TGirder = 130
+const TGarWall = 131
+const TGarRoof = 132
+const TGarDoor = 133
+const TMouth = 134
+const TYellow = 135
+const TGreen = 136
+const TCarL = 139
+const TCarR = 140
+const TCarL2 = 141
+const TCarR2 = 142
+const THoopTL = 143
+const THoopTR = 144
+const THoopL = 145
+const THoopR = 146
+const THoopBL = 147
+const THoopBR = 148
+const TFlame = 149
+const TCrowd = 150
+const TCrowd2 = 151
+const TStand = 152
+const TBike = 153
+const TBanner = 155
+const TLowR = 156
+const THighR = 157
+const TLowL = 158
+const THighL = 159
+const UpY = 72                  ' sprite top on the upper deck
+const LowY = 152                ' sprite top on the lower deck
+const TunX = 212                ' the big tunnel down to the lower deck
+const Grav = 3
+
+const SndEng0 = 1
+const SndEng1 = 2
+const SndEng2 = 3
+const SndEng3 = 4
+const SndEng4 = 5
+const SndEng5 = 6
+const SndEng6 = 7
+const SndEng7 = 8
+const SndIdle = 9
+const SndLaunch = 10
+const SndThud = 11
+const SndCheer = 12
+const SndCrashN = 13
+const SndCrashT = 14
+const SndClank = 15
+const SndWhoosh = 16
+const SndDoor = 17
+const SndOver = 18
+const SndFanA = 19
+const SndFanB = 20
+const SndPick = 21
+const SndTuneA = 22
+const SndTuneB = 23
+
+u16 Score = 0
+u16 HighScore = 300
+u8 HighName[3]
+u8 Pro = 0
+u8 Bikes = 5
+u8 Cars = 3
+u8 Jumped = 0
+u8 Tries = 1
+u8 Angle = 32
+u8 Wheelie = 115
+u8 Wreck = 140
+u8 RampR = 14                   ' the hoop's ramp: its high tile's column
+u8 HoopC = 17                   ' the hoop's left column
+u8 HoopX = 144                  ' the hoop's middle
+u8 RampL = 12                   ' the launching ramp: its high tile's column
+u8 St = 0                       ' 0 garage, 1 upper deck, 2 flying (hoop),
+                                ' 3 big tunnel, 4 lower deck, 5 flying (cars),
+                                ' 6 landed, 7 crashed
+u8 Spd = 0
+u8 Dir = 0                      ' 0 right, 1 left
+u16 X16 = 0
+i16 Y16 = 0
+i16 VY = 0
+u16 VX = 0
+u8 BX = 0
+u8 BY = 0
+u8 Hidden = 0
+u8 Hooped = 0
+u8 TunT = 0
+u8 CrT = 0
+u8 CrX = 0
+u8 CrY = 0
+u8 Tick = 0
+u8 EngT = 0
+u8 DragT = 0
+u8 Btn = 0
+u8 Up = 0
+u8 Dn = 0
+u8 Ok = 0
+u8 GroundY = 0
+u8 Done = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tm = 0
+u8 Choice = 1
+i16 Sv = 0
+u16 W16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+u16 Pts = 0
+
+  tile screen
+  set sound table BdSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 1
+  sprites flicker on
+  copy SpritePat count 480 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 68
+  HighName[1] = 65
+  HighName[2] = 86
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Bikes = 5
+  Cars = 3
+  Jumped = 0
+  Tries = 1
+  Done = 0
+  ' Lines 3100-3190: the level
+  Wheelie = 115
+  Wreck = 140
+  if Pro = 1 then
+    Wheelie = 105
+    Wreck = 130
+  end if
+  DrawCourse
+  NewAngle
+
+new_run:
+  ' Lines 590-640: GET READY, from the garage
+  nmi off
+  St = 0
+  Spd = 0
+  Dir = 0
+  X16 = 24 * 16
+  Y16 = UpY * 16
+  BX = 24
+  BY = UpY
+  Hidden = 0
+  Hooped = 0
+  HideSprites
+  ShowStatus
+  CloseDoor
+  DrawSprites
+  fill 32 count 28 at 2,22
+  print at 11,22, "GET READY"
+  Rearm
+  wait 60 frames
+  wait no fire
+  nmi off
+  fill 32 count 28 at 2,22
+  ShowStatus
+  OpenDoor
+  St = 1
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  inc Tick
+  ReadStick
+  Throttle
+  Ride
+  Animate
+  DrawSprites
+  if St = 7 then goto crashed
+  if St = 6 then
+    if Spd = 0 then goto good_jump
+  end if
+  goto main_loop
+
+  ' --- Lines 890-1060: the crash ---
+crashed:
+  play sound SndCrashN
+  play sound SndCrashT
+  for Tm = 1 to 90
+    CrashFrame
+    Rearm
+    wait
+    nmi off
+  next
+  ' Lines 1000-1060: one bike less
+  dec Bikes
+  inc Tries
+  ShowStatus
+  if Bikes = 0 then goto game_over
+  goto new_run
+
+  ' --- Lines 1060-1300: a good jump ---
+good_jump:
+  play sound SndCheer
+  play sound SndFanA
+  play sound SndFanB
+  ' Lines 1170-1210: the cars times 10, less 5 a try after the first
+  W16 = Cars
+  W16 *= 10
+  N = Tries * 5
+  N -= 5
+  Pts = N
+  if W16 > Pts then
+    W16 -= Pts
+  else
+    W16 = 5
+  end if
+  if W16 < 5 then W16 = 5
+  if Pro = 1 then W16 += W16
+  Score += W16
+  Jumped = Cars
+  Tries = 1
+  fill 32 count 28 at 2,22
+  print at 3,22, "GOOD JUMP!"
+  NumU = W16
+  print at 15,22, "+"
+  print at 16,22, digits$(NumU, 3)
+  for Tm = 1 to 120
+    DrawSprites
+    Animate
+    Rearm
+    wait
+    nmi off
+  next
+  if Jumped >= 9 then
+    Done = 1
+    goto game_over
+  end if
+  ' Lines 1220-1300: the crew adds a car and moves the ramps
+  HideSprites
+  inc Cars
+  fill 32 count 28 at 2,22
+  print at 4,22, "THE CREW ADDS A CAR..."
+  play sound SndClank
+  DrawObstacles
+  NewAngle
+  Rearm
+  wait 60 frames
+  nmi off
+  goto new_run
+
+  ' --- Lines 1310-1390: the end ---
+game_over:
+  HideSprites
+  MsgBox
+  if Done = 1 then
+    if Pro = 1 then
+      print at 6,9, "CONSIDER YOURSELF"
+      print at 6,10, "KING BIKER!!"
+    else
+      print at 6,9, "GREAT JUMPING! NOW"
+      print at 6,10, "TRY THE PRO LEVEL."
+    end if
+    play sound SndFanA
+    play sound SndFanB
+  else
+    print at 6,9, "YOU HAVE WRECKED"
+    print at 6,10, "YOUR LAST BIKE!"
+    play sound SndOver
+  end if
+  print at 6,12, "YOU SUCCESSFULLY"
+  print at 6,13, "JUMPED"
+  NumU = Jumped
+  print at 13,13, digits$(NumU, 1)
+  print at 15,13, "CARS."
+  print at 6,15, "FINAL SCORE IS"
+  NumU = Score
+  print at 21,15, digits$(NumU, 5)
+  Rearm
+  wait 180 frames
+  nmi off
+  if Score > HighScore then
+    HighScore = Score
+    MsgBox
+    print at 8,11, "NEW HIGH SCORE!"
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  MsgBox
+  print at 9,11, "ANOTHER RIDE"
+  print at 9,12, "TITLE PAGE"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,11 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Btn = 0
+  Up = 0
+  Dn = 0
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).down then Dn = 1
+  if joypad(2).down then Dn = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' Lines 1230-1250: the crew sets the ramp, not always at the same angle
+sub NewAngle:
+  if Pro = 1 then
+    Angle = random(28, 36)
+  else
+    Angle = random(30, 34)
+  end if
+  return
+end sub
+
+' The button opens the throttle; there are no brakes
+sub Throttle:
+  if St = 7 then return
+  if St = 6 then
+    ' landed: the rider brakes to a stop
+    if Spd > 3 then
+      Spd -= 3
+    else
+      Spd = 0
+    end if
+    return
+  end if
+  if Btn = 1 then
+    ' one and a half miles an hour a frame
+    if Spd < 198 then
+      inc Spd
+      N = Tick & 1
+      if N = 0 then inc Spd
+    end if
+  else
+    inc DragT
+    if DragT >= 24 then
+      DragT = 0
+      if Spd > 0 then dec Spd
+    end if
+  end if
+  ' Lines 340-360: too fast on the ground, he tips over backwards
+  if Spd >= Wreck then
+    if St = 1 then Crash
+    if St = 4 then Crash
+  end if
+  return
+end sub
+
+' The bike's speed in sixteenths of a pixel a frame: 2/3 of the mph
+sub SetVX:
+  W16 = Spd
+  W16 *= 2
+  W16 /= 3
+  VX = W16
+  return
+end sub
+
+sub Ride:
+  SetVX
+  if St = 1 then
+    ' The upper deck, left to right
+    X16 += VX
+    BX = X16 >> 4
+    GroundUp
+    Y16 = GroundY * 16
+    Hidden = 0
+    if BX >= 40 then
+      if BX < 64 then Hidden = 1
+    end if
+    if Hooped = 1 then
+      ' Came down short of the hoop: into its rim
+      if BX >= HoopX then
+        Crash
+        return
+      end if
+    end if
+    if Pro = 1 then
+      ' Off the hoop's ramp
+      N = RampR + 1
+      N *= 8
+      if BX >= N then
+        if Hooped = 0 then Launch
+      end if
+    end if
+    if BX >= TunX then
+      St = 3
+      TunT = 30
+      Hidden = 1
+    end if
+  elseif St = 2 then
+    ' In the air toward the hoop of fire
+    X16 += VX
+    Fly
+    BX = X16 >> 4
+    if Hooped = 1 then
+      if BX >= HoopX then
+        Hooped = 2
+        ' Through the hoop, or into it?
+        Q = 0
+        if BY < 34 then Q = 1
+        if BY > 68 then Q = 1
+        if Q = 1 then
+          Crash
+          return
+        end if
+        play sound SndWhoosh
+      end if
+    end if
+    GroundY = UpY
+    if BY >= GroundY then
+      Y16 = UpY * 16
+      St = 1
+      play sound SndThud
+    end if
+    if BX >= TunX then
+      St = 3
+      TunT = 30
+      Hidden = 1
+    end if
+  elseif St = 3 then
+    ' Down through the big tunnel
+    dec TunT
+    if TunT = 0 then
+      St = 4
+      Dir = 1
+      X16 = TunX * 16
+      Y16 = LowY * 16
+      Hidden = 0
+    end if
+  elseif St = 4 then
+    ' The lower deck, right to left, toward the cars
+    X16 -= VX
+    BX = X16 >> 4
+    GroundLow
+    Y16 = GroundY * 16
+    N = RampL * 8
+    if BX <= N then Launch
+  elseif St = 5 then
+    ' Over the cars
+    X16 -= VX
+    Fly
+    BX = X16 >> 4
+    ' Far past the landing ramp: into the wall
+    if BX <= 18 then
+      Crash
+      return
+    end if
+    ' Back down at the height of the ramps' tops: where is he?
+    N = LowY - 8
+    if BY >= N then
+      ' Lines 890-1060: on the landing ramp, short of it, or past it
+      GroundLow
+      Y16 = GroundY * 16
+      if BX > 44 then
+        Crash
+        return
+      end if
+      if BX < 20 then
+        Crash
+        return
+      end if
+      St = 6
+      play sound SndThud
+    end if
+  elseif St = 6 then
+    if BX > 16 then
+      X16 -= VX
+      BX = X16 >> 4
+      GroundLow
+      Y16 = GroundY * 16
+    end if
+  end if
+  BY = Y16 >> 4
+  return
+end sub
+
+' Off the lip of a ramp: the jump's height from the speed and the angle
+sub Launch:
+  play sound SndLaunch
+  ' The hoop's ramp is steeper and the crew leaves it alone
+  N = Angle
+  if St = 1 then N = 36
+  W16 = VX
+  W16 *= N
+  W16 /= 52
+  Sv = W16
+  VY = 0 - Sv
+  ' from the top of the lip
+  if St = 1 then
+    St = 2
+    Hooped = 1
+    N = UpY - 8
+  else
+    St = 5
+    N = LowY - 8
+  end if
+  W16 = N
+  W16 <<= 4
+  Y16 = W16
+  Y16 += VY
+  BY = Y16 >> 4
+  return
+end sub
+
+sub Fly:
+  Y16 += VY
+  VY += Grav
+  BY = Y16 >> 4
+  return
+end sub
+
+' The deck's height under the bike: flat, or up the hoop's ramp
+sub GroundUp:
+  GroundY = UpY
+  if Pro = 0 then return
+  N = RampR - 1
+  N *= 8
+  if BX < N then return
+  P = BX - N
+  if P >= 16 then return
+  P >>= 1
+  GroundY = UpY - P
+  return
+end sub
+
+' The lower deck: up the launching ramp, or down the landing ramp
+sub GroundLow:
+  GroundY = LowY
+  N = RampL * 8
+  if BX >= N then
+    P = BX - N
+    if P < 16 then
+      P = 16 - P
+      P >>= 1
+      GroundY = LowY - P
+    end if
+  end if
+  ' The landing ramp, columns 3-4, highest next to the cars
+  if BX >= 24 then
+    if BX < 40 then
+      P = BX - 24
+      P >>= 1
+      GroundY = LowY - P
+    end if
+  end if
+  return
+end sub
+
+sub Crash:
+  St = 7
+  CrT = 0
+  CrX = BX
+  CrY = BY
+  Hidden = 0
+  return
+end sub
+
+' The rider cartwheels on, the bike slides, the dust flies
+sub CrashFrame:
+  inc CrT
+  N = CrT >> 2
+  if N < 24 then
+    if Dir = 0 then
+      if CrX < 224 then CrX += 2
+    else
+      if CrX > 20 then CrX -= 2
+    end if
+  end if
+  ' a hop and a fall
+  V = CrT
+  if V > 30 then V = 30
+  N = Arc[V]
+  Y = CrY + N
+  Y -= 14
+  K = Tick & 12
+  P = 32 + K
+  if CrT > 30 then P = 44
+  if Hidden = 0 then
+    Y -= 1
+    set sprite 0 to Y,CrX,P,15
+    ' the bike lies on the deck
+    Y = UpY - 1
+    if Dir = 1 then Y = LowY - 1
+    X = BX - 8
+    set sprite 1 to Y,X,48,9
+    N = CrT & 8
+    P = 52
+    if N > 0 then P = 56
+    if CrT < 40 then
+      set sprite 2 to Y,X,P,14
+    else
+      set sprite 2 to 192,0,0,0
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawSprites:
+  if Hidden = 1 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+    update sprites
+    return
+  end if
+  P = 0
+  if Spd >= Wheelie then
+    if St <> 6 then P = 8
+  end if
+  if St = 2 then P = 8
+  if St = 5 then P = 8
+  if Dir = 1 then P += 16
+  X = BX - 8
+  Y = BY - 1
+  set sprite 0 to Y,X,P,15
+  P += 4
+  set sprite 1 to Y,X,P,9
+  set sprite 2 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' The engine note, and the hoop's flames
+sub Animate:
+  inc EngT
+  if EngT >= 5 then
+    EngT = 0
+    if St <> 7 then
+      if St <> 3 then
+        N = Spd >> 4
+        if Spd = 0 then
+          play sound SndIdle
+        elseif N < 1 then
+          play sound SndEng0
+        elseif N < 3 then
+          play sound SndEng1
+        elseif N < 4 then
+          play sound SndEng2
+        elseif N < 5 then
+          play sound SndEng3
+        elseif N < 6 then
+          play sound SndEng4
+        elseif N < 7 then
+          play sound SndEng5
+        elseif N < 8 then
+          play sound SndEng6
+        else
+          play sound SndEng7
+        end if
+      end if
+    end if
+  end if
+  N = Tick & 3
+  if N = 0 then
+    if Pro = 1 then
+      ' The fire dances: the next of four shapes for its four tiles
+      N = Tick >> 2
+      N = N % 3
+      W16 = N
+      W16 *= 192
+      Dst16 = 1312
+      for J = 0 to 2
+        copy FlameAnim + W16 count 192 to vram.pattern + Dst16
+        Dst16 += 2048
+      next
+    end if
+  end if
+  ' The speedometer
+  N = Tick & 3
+  if N = 0 then
+    if St >= 1 then
+      if St <= 5 then
+        NumU = Spd
+        print at 8,22, digits$(NumU, 3)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' The garage door slides up (lines 590-640)
+sub OpenDoor:
+  play sound SndDoor
+  for Y = 8 to 10
+    put char TSky at 4,Y
+    Rearm
+    wait 6 frames
+    nmi off
+  next
+  return
+end sub
+
+sub CloseDoor:
+  for Y = 8 to 10
+    put char TGarDoor at 4,Y
+  next
+  return
+end sub
+
+' Lines 2820-3060: the course
+sub DrawCourse:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  ' The title banner
+  fill TBanner count 28 at 2,0
+  print at 10,1, "BIKER DAVE"
+  if Pro = 1 then
+    print at 23,1, "PRO"
+  else
+    print at 22,1, "ROOKIE"
+  end if
+  ' The upper deck on its girders
+  fill TDeck count 24 at 2,11
+  fill TGirder count 24 at 2,12
+  ' The garage
+  fill TGarRoof count 3 at 2,7
+  for Y = 8 to 10
+    put char TGarWall at 2,Y
+    put char TSky at 3,Y
+  next
+  ' The first tunnel: yellow and green walls, a dark mouth
+  fill TYellow count 3 at 5,7
+  for Y = 8 to 10
+    put char TYellow at 5,Y
+    put char TMouth at 6,Y
+    put char TGreen at 7,Y
+  next
+  ' The big tunnel down to the lower deck
+  for Y = 7 to 21
+    fill TGreen count 4 at 26,Y
+  next
+  fill TYellow count 4 at 26,7
+  for Y = 8 to 10
+    put char TMouth at 26,Y
+  next
+  for Y = 18 to 20
+    put char TMouth at 26,Y
+  next
+  ' The stands and the crowd between the decks
+  fill TStand count 24 at 2,14
+  fill TCrowd count 24 at 2,15
+  fill TCrowd2 count 24 at 2,16
+  fill TStand count 24 at 2,17
+  ' The lower deck
+  fill TDeck count 24 at 2,21
+  DrawObstacles
+  ShowStatus
+  return
+end sub
+
+' The cars between their ramps, and (pro) the hoop and its ramp
+sub DrawObstacles:
+  ' Clear the lower deck's air and the upper deck's ramp area
+  for Y = 19 to 20
+    fill TSky count 22 at 3,Y
+  next
+  for Y = 2 to 10
+    fill TSky count 18 at 8,Y
+  next
+
+  ' The landing ramp, highest next to the cars
+  put char TLowR at 3,20
+  put char THighR at 4,20
+  ' The cars, from column 5
+  for I = 1 to Cars
+    X = I * 2
+    X += 3
+    N = I & 1
+    V = TCarL
+    K = 160
+    if N = 0 then
+      V = TCarL2
+      K = 162
+    end if
+    put char V at X,19
+    put char K at X,20
+    inc X
+    inc V
+    inc K
+    put char V at X,19
+    put char K at X,20
+  next
+  ' The launching ramp right after them, rising toward the cars
+  RampL = Cars * 2
+  RampL += 6
+  put char THighL at RampL,20
+  X = RampL + 1
+  put char TLowL at X,20
+  ' The hoop moves away from its ramp with every car
+  HoopC = Cars + 14
+  HoopX = HoopC * 8
+  HoopX += 12
+  if Pro = 1 then
+    X = RampR - 1
+    put char TLowR at X,10
+    put char THighR at RampR,10
+    ' The hoop of fire: an oval ring made of flame, 3 x 8 tiles, rows 3-10
+    P = 164
+    for Y = 3 to 10
+      X = HoopC
+      for K = 1 to 3
+        put char P at X,Y
+        inc P
+        inc X
+      next
+    next
+  end if
+  return
+end sub
+
+' Lines 960-980: speed, bikes left, cars jumped, score
+sub ShowStatus:
+  print at 2,22, "SPEED"
+  NumU = Spd
+  print at 8,22, digits$(NumU, 3)
+  print at 12,22, "MPH"
+  print at 17,22, "BIKES"
+  for I = 0 to 4
+    X = I + 23
+    N = 32
+    if I < Bikes then N = TBike
+    put char N at X,22
+  next
+  print at 2,23, "CARS JUMPED"
+  NumU = Jumped
+  print at 14,23, digits$(NumU, 1)
+  print at 17,23, "SCORE"
+  NumU = Score
+  print at 23,23, digits$(NumU, 5)
+  return
+end sub
+
+sub MsgBox:
+  for Y = 8 to 16
+    fill 32 count 24 at 4,Y
+  next
+  return
+end sub
+
+sub EnterName:
+  MsgBox
+  print at 6,10, "YOUR INITIALS:"
+  print at 6,13, "UP/DOWN, FIRE"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,10
+  next
+  X = I + 21
+  fill 32 count 3 at 21,11
+  put char 45 at X,11
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then return
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  if Dn = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 480 to vram.pattern + Dst16
+    copy TileCol count 480 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Lines 3100-3190: the title and the level, picked with the stick
+sub TitlePage:
+  nmi off
+  Pro = 1
+  Cars = 3
+  DrawCourse
+  for Y = 2 to 6
+    fill 32 count 20 at 4,Y
+  next
+  print at 7,3, "B I K E R   D A V E"
+  print at 6,5, "COMPUTE! NOVEMBER 1986"
+  MsgBox
+  print at 6,9, "HOLD FIRE: THROTTLE"
+  print at 6,10, "NO BRAKES!"
+  print at 9,12, "ROOKIE"
+  print at 9,13, "PRO (HOOP OF FIRE)"
+  print at 6,15, "HIGH"
+  NumU = HighScore
+  print at 11,15, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 17
+    N = HighName[J]
+    put char N at X,15
+  next
+  Pro = 1
+  St = 0
+  Choice = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+title_loop:
+  inc Tick
+  Animate
+  V = Choice + 12
+  put char 62 at 7,V
+  V = 13 - Choice
+  put char 32 at 7,V
+  Rearm
+  wait
+  nmi off
+  ReadStick
+  if Up = 1 then Choice = 0
+  if Dn = 1 then Choice = 1
+  if Btn = 1 then goto title_go
+  goto title_loop
+title_go:
+  play sound SndPick
+  Pro = Choice
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,1, "BIKER DAVE"
+  print at 2,3, "BY DAVID SCHWENER, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE,"
+  print at 2,5, "NOVEMBER 1986, WITH THE"
+  print at 2,6, "C64, PC AND AMIGA VERSIONS"
+  print at 2,7, "BY TIM MIDKIFF."
+  print at 2,9, "THE ATARI GAME WAS WRITTEN"
+  print at 2,10, "IN BASIC, WITH PLAYER-"
+  print at 2,11, "MISSILE TRICKS TO KEEP THE"
+  print at 2,12, "BIKE FAST. HERE IT RIDES A"
+  print at 2,13, "COLECOVISION, WITH THE"
+  print at 2,14, "C64'S HOOP OF FIRE AND THE"
+  print at 2,15, "PC'S NINE-CAR FINISH."
+  print at 2,17, "COLECOVISION PORT BY"
+  print at 2,18, "AMY BIENVENU, 2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data Arc bytes = 14, 12, 10, 9, 7, 6, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 14
+data FlameA bytes = $B1, $B1, $A1, $A1, $91, $81, $61, $61
+data FlameB bytes = $91, $B1, $B1, $A1, $A1, $91, $81, $61
+
+' Tiles 128-: Sky, Deck, Girder, GarageWall, GarageRoof, GarageDoor, TunnelMouth, TunnelYellow, TunnelGreen, RampUpRight, RampUpLeft, CarTopL, CarTopR, CarTopL, CarTopR, HoopTL, HoopTR, HoopL, HoopR, HoopBL, HoopBR, Flame, Crowd, Crowd2, Stand, BikeIcon, Finish, Banner, RampLowR, RampHighR, RampLowL, RampHighL, CarBotL, CarBotR, CarBotL, CarBotR, Fire0, Fire1, Fire2, Fire3, Fire4, Fire5, Fire6, Fire7, Fire8, Fire9, Fire10, Fire11, Fire12, Fire13, Fire14, Fire15, Fire16, Fire17, Fire18, Fire19, Fire20, Fire21, Fire22, Fire23
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$FF,$AA,$00,$00,$00,$00,$00,$00
+  $81,$42,$24,$18,$18,$24,$42,$81,$FF,$88,$88,$FF,$22,$22,$22,$FF
+  $00,$03,$0F,$3F,$FF,$FF,$AA,$FF,$FF,$81,$FF,$81,$FF,$81,$FF,$81
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$92,$FF,$49,$FF,$92,$FF,$49
+  $FF,$92,$FF,$49,$FF,$92,$FF,$49,$01,$03,$07,$0F,$1F,$3F,$7F,$FF
+  $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF,$00,$00,$00,$00,$07,$09,$11,$21
+  $00,$00,$00,$00,$F0,$08,$04,$02,$00,$00,$00,$00,$07,$09,$11,$21
+  $00,$00,$00,$00,$F0,$08,$04,$02,$00,$00,$03,$0C,$10,$20,$20,$40
+  $00,$00,$C0,$30,$08,$04,$04,$02,$40,$40,$80,$80,$80,$80,$40,$40
+  $02,$02,$01,$01,$01,$01,$02,$02,$40,$20,$20,$10,$0C,$03,$00,$00
+  $02,$04,$04,$08,$30,$C0,$00,$00,$24,$6C,$7D,$FF,$7E,$3C,$18,$00
+  $66,$F7,$66,$FF,$FF,$B6,$FF,$FF,$33,$77,$33,$FF,$FF,$6D,$FF,$FF
+  $FF,$00,$00,$FF,$00,$00,$FF,$00,$00,$0C,$3C,$66,$A5,$42,$00,$00
+  $AA,$55,$AA,$55,$AA,$55,$AA,$55,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$03,$0F,$3F,$FF,$03,$0F,$3F,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$C0,$F0,$FC,$FF,$C0,$F0,$FC,$FF,$FF,$FF,$FF,$FF
+  $FF,$BF,$FF,$FF,$FF,$38,$7C,$38,$FF,$FF,$FF,$FF,$FF,$1C,$3E,$1C
+  $FF,$BF,$FF,$FF,$FF,$38,$7C,$38,$FF,$FF,$FF,$FF,$FF,$1C,$3E,$1C
+  $18,$15,$09,$0C,$0F,$87,$67,$A7,$FF,$C3,$FF,$FF,$FF,$FF,$E7,$87
+  $A0,$80,$D0,$E8,$A0,$F0,$E0,$E0,$57,$3F,$3E,$7E,$FE,$FF,$7C,$3F
+  $C7,$03,$04,$00,$00,$01,$00,$00,$E2,$FD,$7E,$7B,$7F,$FF,$3E,$3C
+  $D8,$FF,$F8,$F8,$79,$3E,$B8,$B6,$00,$80,$00,$00,$01,$00,$00,$00
+  $19,$1E,$FE,$3D,$FF,$3F,$1F,$0D,$F8,$F2,$FC,$F0,$F0,$F0,$F3,$FC
+  $01,$00,$00,$01,$00,$80,$00,$00,$0F,$CF,$3E,$8F,$6E,$1F,$0F,$0F
+  $78,$F0,$F0,$70,$70,$F0,$70,$F2,$00,$00,$00,$00,$00,$00,$00,$00
+  $0E,$8F,$CE,$FF,$6E,$7E,$3F,$5E,$F4,$3C,$F8,$F8,$3C,$38,$3C,$18
+  $00,$00,$00,$00,$00,$40,$82,$80,$2C,$BF,$5E,$3F,$1C,$5F,$3F,$1F
+  $7C,$FD,$1E,$1E,$7E,$7F,$3F,$1F,$03,$01,$00,$9A,$A1,$1A,$22,$39
+  $BF,$F8,$FF,$7E,$FC,$70,$F8,$FE,$3F,$1F,$17,$0F,$03,$01,$00,$00
+  $9B,$E5,$FB,$FF,$FF,$FE,$2F,$2C,$E0,$F0,$F8,$F0,$C0,$00,$00,$00
+end data
+data TileCol bytes
+  $11,$11,$11,$11,$11,$11,$11,$11,$E1,$E1,$11,$11,$11,$11,$11,$11
+  $41,$41,$41,$41,$41,$41,$41,$41,$16,$16,$16,$16,$16,$16,$16,$16
+  $61,$61,$61,$61,$61,$61,$61,$61,$E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $11,$11,$11,$11,$11,$11,$11,$11,$AB,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+  $91,$91,$91,$91,$91,$91,$91,$91,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $91,$91,$91,$D1,$71,$71,$41,$41,$B1,$B1,$B1,$31,$D1,$D1,$41,$41
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$88,$88,$88,$88,$88,$88,$88,$88
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $91,$91,$91,$91,$91,$E1,$E1,$E1,$91,$91,$91,$91,$91,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$E1,$E1,$E1,$B1,$B1,$B1,$B1,$B1,$E1,$E1,$E1
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+  $81,$91,$81,$81,$91,$81,$61,$81,$81,$91,$81,$81,$91,$81,$61,$81
+end data
+data FlameAnim bytes
+  $18,$15,$09,$0C,$0F,$87,$67,$A7,$FF,$C3,$FF,$FF,$FF,$FF,$E7,$87
+  $A0,$80,$D0,$E8,$A0,$F0,$E0,$E0,$57,$3F,$3E,$7E,$FE,$FF,$7C,$3F
+  $C7,$03,$04,$00,$00,$01,$00,$00,$E2,$FD,$7E,$7B,$7F,$FF,$3E,$3C
+  $D8,$FF,$F8,$F8,$79,$3E,$B8,$B6,$00,$80,$00,$00,$01,$00,$00,$00
+  $19,$1E,$FE,$3D,$FF,$3F,$1F,$0D,$F8,$F2,$FC,$F0,$F0,$F0,$F3,$FC
+  $01,$00,$00,$01,$00,$80,$00,$00,$0F,$CF,$3E,$8F,$6E,$1F,$0F,$0F
+  $78,$F0,$F0,$70,$70,$F0,$70,$F2,$00,$00,$00,$00,$00,$00,$00,$00
+  $0E,$8F,$CE,$FF,$6E,$7E,$3F,$5E,$F4,$3C,$F8,$F8,$3C,$38,$3C,$18
+  $00,$00,$00,$00,$00,$40,$82,$80,$2C,$BF,$5E,$3F,$1C,$5F,$3F,$1F
+  $7C,$FD,$1E,$1E,$7E,$7F,$3F,$1F,$03,$01,$00,$9A,$A1,$1A,$22,$39
+  $BF,$F8,$FF,$7E,$FC,$70,$F8,$FE,$3F,$1F,$17,$0F,$03,$01,$00,$00
+  $9B,$E5,$FB,$FF,$FF,$FE,$2F,$2C,$E0,$F0,$F8,$F0,$C0,$00,$00,$00
+  $09,$04,$2F,$26,$33,$1F,$17,$0F,$FD,$C2,$FF,$FF,$FF,$FF,$8F,$83
+  $F0,$E0,$D0,$EA,$EC,$F0,$F5,$FE,$CF,$6F,$1E,$2E,$7F,$FF,$FF,$FC
+  $83,$67,$02,$01,$82,$C0,$03,$01,$FB,$FE,$7E,$FC,$7C,$F9,$3F,$FF
+  $DF,$FF,$F8,$78,$B8,$7C,$BF,$B8,$C0,$80,$00,$00,$00,$00,$00,$00
+  $1B,$1F,$1F,$1F,$1F,$1F,$1E,$0D,$76,$7C,$F6,$F8,$F8,$7A,$F4,$78
+  $00,$00,$00,$00,$00,$00,$01,$00,$8F,$7E,$0F,$0F,$1F,$4F,$3F,$8E
+  $F0,$F0,$F4,$F8,$F8,$70,$FA,$7C,$00,$00,$00,$00,$00,$00,$00,$00
+  $6F,$7F,$1F,$0F,$0F,$0F,$0F,$0F,$F2,$FA,$FD,$FB,$FE,$FF,$FE,$1A
+  $80,$80,$81,$01,$00,$00,$00,$02,$4F,$DF,$3C,$DF,$BE,$5E,$FC,$7F
+  $7D,$FE,$3D,$FF,$3E,$3F,$0F,$07,$40,$25,$E0,$BC,$42,$DC,$E2,$BB
+  $7F,$38,$BE,$7E,$FC,$FC,$FE,$F8,$0F,$1F,$1F,$0F,$07,$03,$00,$00
+  $FB,$E5,$DB,$FF,$FF,$FE,$79,$5D,$FC,$E0,$F8,$A0,$C0,$C0,$00,$00
+  $03,$06,$03,$0F,$1F,$3F,$97,$9F,$AD,$C0,$FF,$FF,$FF,$F7,$B7,$C7
+  $F0,$E4,$DC,$E6,$CC,$F0,$FC,$F8,$5F,$3F,$3E,$1E,$1F,$3C,$9F,$7C
+  $07,$01,$01,$00,$83,$00,$81,$03,$F2,$FA,$7C,$78,$FB,$FE,$FE,$FD
+  $5E,$F8,$F8,$F8,$FE,$FA,$7C,$B8,$00,$00,$00,$00,$00,$00,$00,$00
+  $1A,$1D,$FF,$FE,$1C,$1D,$3F,$0D,$71,$FE,$F8,$F0,$F0,$70,$70,$F3
+  $00,$00,$00,$00,$00,$00,$80,$80,$1F,$FE,$1F,$0F,$0F,$0F,$0F,$0F
+  $F5,$FE,$FC,$F9,$F2,$F4,$F8,$70,$00,$00,$81,$00,$00,$00,$00,$00
+  $0F,$6E,$1F,$8F,$4F,$3F,$0F,$0F,$F0,$F8,$38,$F8,$38,$F8,$F9,$FB
+  $00,$00,$00,$03,$01,$01,$80,$42,$0F,$5F,$3F,$1F,$5F,$9C,$FC,$FF
+  $FE,$FD,$7F,$1F,$7E,$7F,$0F,$0F,$C2,$81,$80,$82,$86,$33,$17,$55
+  $78,$FE,$7E,$F8,$FF,$7E,$F0,$FC,$1F,$0F,$1B,$0F,$03,$03,$00,$00
+  $F7,$E5,$DB,$FF,$FF,$FF,$7F,$5E,$FC,$F8,$F8,$D0,$C0,$80,$80,$00
+end data
+data SpritePat bytes
+  $03,$07,$07,$03,$07,$0F,$0D,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $80,$C0,$80,$00,$80,$C0,$E0,$20,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$1F,$3C,$42,$99,$42,$3C
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$E0,$E8,$78,$84,$B2,$44,$78
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$1C,$1E,$1E,$FC,$F8,$F8,$FC,$EC,$7C,$50,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$3F,$47,$58,$00,$31
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E8,$78,$30,$9C
+  $01,$03,$01,$00,$01,$03,$07,$04,$03,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$C0,$E0,$F0,$B0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$04,$07,$17,$1E,$21,$4D,$22,$1E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F8,$3C,$42,$99,$42,$3C
+  $00,$00,$00,$38,$78,$78,$3F,$1F,$1F,$3F,$37,$3E,$0A,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$17,$1E,$0C,$39
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$FC,$E2,$1A,$00,$8C
+  $00,$00,$00,$01,$03,$06,$0F,$05,$05,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$D8,$FC,$FC,$DC,$88,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$07,$09,$0F,$07,$03,$01,$03,$07,$03,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$60,$E0,$C0,$80,$C0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$01,$23,$77,$7F,$7E,$37,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$40,$40,$E0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$07,$03,$07,$0F,$0D,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $80,$C0,$80,$00,$80,$C0,$E0,$20,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$7F,$B7,$99,$78
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$B8,$B4,$64,$F0
+  $00,$00,$08,$23,$17,$4F,$2F,$9F,$2F,$4F,$17,$22,$08,$00,$00,$00
+  $00,$00,$40,$10,$A0,$C8,$D0,$E4,$D0,$88,$40,$20,$80,$00,$00,$00
+  $00,$41,$10,$45,$08,$A2,$10,$44,$0A,$82,$10,$44,$00,$00,$00,$00
+  $00,$04,$10,$44,$20,$8A,$10,$44,$A0,$82,$10,$44,$00,$00,$00,$00
+end data
+
+asm {
+BdEng0:
+    db $40,$FF,$33,$02,$40,$FF,$43,$02,$50
+BdEng1:
+    db $40,$F9,$33,$02,$40,$BF,$43,$02,$50
+BdEng2:
+    db $40,$5C,$33,$02,$40,$2C,$43,$02,$50
+BdEng3:
+    db $40,$D2,$32,$02,$40,$A9,$42,$02,$50
+BdEng4:
+    db $40,$5D,$32,$02,$40,$3A,$42,$02,$50
+BdEng5:
+    db $40,$FC,$31,$02,$40,$E0,$41,$02,$50
+BdEng6:
+    db $40,$AE,$31,$02,$40,$96,$41,$02,$50
+BdEng7:
+    db $40,$69,$31,$02,$40,$54,$41,$02,$50
+BdIdle:
+    db $40,$FF,$63,$03,$40,$FF,$73,$03,$50
+BdLaunch:
+    db $80,$75,$31,$01,$80,$11,$31,$01,$80,$D7,$30,$01,$80,$B2,$30,$01,$80,$97,$30,$01,$80,$84,$30,$01
+    db $80,$75,$30,$01,$80,$69,$30,$01,$80,$5F,$30,$01,$80,$57,$30,$01,$80,$50,$30,$01,$90
+BdThud:
+    db $C0,$FF,$13,$03,$C0,$FF,$43,$04,$C0,$FF,$83,$04,$D0
+BdCheer:
+    db $00,$00,$35,$0A,$00,$00,$25,$14,$00,$00,$36,$14,$00,$00,$56,$14,$00,$00,$87,$14,$10
+BdCrashN:
+    db $00,$00,$04,$03,$00,$00,$15,$06,$00,$00,$36,$0A,$00,$00,$66,$0E,$00,$00,$97,$10,$10
+BdCrashT:
+    db $80,$7C,$20,$02,$80,$84,$20,$02,$80,$8C,$20,$02,$80,$95,$20,$02,$80,$A0,$20,$02,$80,$AC,$20,$02
+    db $80,$BA,$20,$02,$80,$CB,$20,$02,$80,$E0,$20,$02,$80,$F9,$20,$02,$80,$18,$21,$02,$80,$40,$21,$02
+    db $80,$75,$21,$02,$80,$BF,$21,$02,$80,$2F,$22,$02,$80,$EA,$22,$02,$80,$FF,$23,$02,$90
+BdClank:
+    db $C0,$D7,$20,$02,$C0,$AE,$41,$03,$C0,$D7,$30,$02,$C0,$2F,$62,$04,$D0
+BdWhoosh:
+    db $00,$00,$24,$04,$00,$00,$44,$06,$00,$00,$75,$08,$10
+BdDoor:
+    db $C0,$EA,$52,$02,$C0,$B2,$52,$02,$C0,$83,$52,$02,$C0,$59,$52,$02,$C0,$35,$52,$02,$C0,$15,$52,$02
+    db $C0,$F8,$51,$02,$C0,$DE,$51,$02,$C0,$C7,$51,$02,$C0,$B2,$51,$02,$D0
+BdOver:
+    db $40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02,$40,$7C,$21,$0A,$40,$7C,$F1,$02
+    db $40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$C5,$21,$0A,$40,$C5,$F1,$02
+    db $40,$FC,$21,$0A,$40,$FC,$F1,$02,$40,$A6,$22,$28,$40,$A6,$F2,$02,$50
+BdFanA:
+    db $40,$D6,$10,$05,$40,$D6,$F0,$01,$40,$AA,$10,$05,$40,$AA,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01
+    db $40,$6B,$10,$0B,$40,$6B,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01,$40,$6B,$10,$23,$40,$6B,$F0,$01
+    db $50
+BdFanB:
+    db $80,$AC,$31,$05,$80,$D6,$F0,$01,$80,$53,$31,$05,$80,$AA,$F0,$01,$80,$1D,$31,$05,$80,$8F,$F0,$01
+    db $80,$D6,$30,$0B,$80,$6B,$F0,$01,$80,$1D,$31,$05,$80,$8F,$F0,$01,$80,$D6,$30,$23,$80,$6B,$F0,$01
+    db $90
+BdPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+BdSoundTable:
+    dw BdEng0,$7035
+    dw BdEng1,$7035
+    dw BdEng2,$7035
+    dw BdEng3,$7035
+    dw BdEng4,$7035
+    dw BdEng5,$7035
+    dw BdEng6,$7035
+    dw BdEng7,$7035
+    dw BdIdle,$7035
+    dw BdLaunch,$703F
+    dw BdThud,$7049
+    dw BdCheer,$702B
+    dw BdCrashN,$702B
+    dw BdCrashT,$703F
+    dw BdClank,$7049
+    dw BdWhoosh,$702B
+    dw BdDoor,$7049
+    dw BdOver,$7035
+    dw BdFanA,$7035
+    dw BdFanB,$703F
+    dw BdPick,$7049
+    dw BdTuneMel,$703F
+    dw BdTuneBass,$7049
+; Title tune: Daredevil, a driving rock tune in A major (original for this port)
+; Tiny Sound, 7 frames per step
+BdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1C,$00,$20,$23,$28,$00,$23,$20,$1E,$00,$21,$25
+    db $2A,$00,$28,$27,$28,$00,$20,$23,$28,$00,$23,$20,$21,$23,$25,$27
+    db $28,$00,$00,$01,$02,$10,$1A,$21,$23,$00,$27,$2A,$2F,$00,$2A,$27
+    db $25,$00,$28,$2C,$31,$00,$2F,$2D,$2C,$00,$28,$00,$2A,$00,$27,$00
+    db $28,$00,$00,$00,$00,$00,$00,$01
+    db $FF
+BdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$50,$18,$32,$10,$10,$17,$10,$10,$10,$17,$10,$09,$09,$10,$09
+    db $09,$09,$10,$09,$10,$10,$17,$10,$10,$10,$17,$10,$09,$09,$0B,$0B
+    db $10,$10,$10,$01,$02,$50,$18,$32,$0B,$0B,$12,$0B,$0B,$0B,$12,$0B
+    db $09,$09,$10,$09,$09,$09,$10,$09,$10,$10,$0B,$0B,$0B,$0B,$0B,$0B
+    db $10,$10,$10,$10,$10,$10,$10,$01
+    db $FF
+}

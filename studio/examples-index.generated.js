@@ -2051,5 +2051,25 @@ export const exampleManifest = [
       "voice",
       "manual-canon"
     ]
+  },
+  {
+    "id": "biker-dave",
+    "label": "Biker Dave",
+    "detail": "A ColecoVision motorcycle stunt game with rookie and pro courses, wheelies, flaming-hoop jumps, variable ramps, high scores and an original title tune.",
+    "projectName": "Biker Dave",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "port",
+      "game",
+      "motorcycle",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
   }
 ];
