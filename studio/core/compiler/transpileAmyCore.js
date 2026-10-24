@@ -4183,7 +4183,7 @@ export function transpileAmyCore(sourceText, deps) {
     makeGeneratedLabel,
     isSafeExpression,
     parseNumericLiteral,
-    tryEvaluateConstantExpression,
+    tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
     resolveExpressionAstValueType,
     dataLengths,
     resolveAddressSymbol
