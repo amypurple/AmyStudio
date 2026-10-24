@@ -1,0 +1,1404 @@
+cartridge "TREASURE DIVER/PRESENTS AN AMY STUDIO/2026"
+
+' TREASURE DIVER
+' A ColecoVision game in the spirit of "Treasure Diver" by Brian Casey,
+' COMPUTE!'s Gazette, May 1988 (Commodore 64, machine language). All
+' credit for the original idea belongs to its author.
+'
+' The original, in a few words: you are a small bubble at the top of the
+' ocean. A treasure chest drifts along the bottom in the current; dive
+' and touch it for 200 points. Blue sharks swim the waters in hunting
+' patterns, and two black sharks, smarter, hunt you down. At the top of
+' the screen, the air indicator runs from safe green through warning
+' yellow to danger red: come up for air before you run out. A shark's
+' bite does permanent damage: you leak air faster, and worse with every
+' bite. The fire button makes you faster, but burns air. A game speed
+' from 1 (fastest) to 4 (slowest); the high score on the screen; a key
+' to pause.
+'
+' This is not a port of the listing (machine code, never seen here) but
+' a new game written from the article, with its rules kept:
+' - The "bubble" is a little bathysphere with a face at its porthole,
+'   after Blair's drawing for the article. Being a bubble, it floats: let
+'   go of the stick and it rises slowly.
+' - At the surface, among the waves, it gulps air back; below, the meter
+'   at the top drains, green, yellow, red, with a beep in the red.
+' - Grey sharks patrol their lanes, weaving; black sharks hunt you, and a
+'   low two-note pulse beats faster as one closes in.
+' - A bite dents the sphere for good (you can see the dents) and it leaks
+'   air faster, trailing bubbles; a moment to get away after each bite.
+' - The chest drifts along the sand in the current; touch it: it bursts
+'   open, 200 points (times the dive number), and a new one sinks in.
+' - Bubbles of air rise from vents in the seabed: catch one for air and
+'   10 points, if the sharks let you.
+' - Air lasts about 21 seconds whole; the leak runs 1, 2, 3, then 5 times
+'   as fast with the bites.
+' - Every third chest takes you deeper: DIVE 2, 3...: one more grey shark
+'   and the second black shark from dive 2, all a little faster.
+' - Out of air, the sphere pops. Three spheres a game.
+' - The game speed, 1 (fastest) to 4 (slowest), from a joystick menu.
+' - Fire: turbo (faster, but three times the air). The second fire
+'   button pauses the game, like SHIFT LOCK did.
+' ColecoVision game in Amy by Amy Bienvenu, 2026.
+' The sea: the sky and rolling waves (animated), shallow water with
+' shimmering light rays (animated), the deep getting darker, swaying
+' seaweed, rocks, vents, sand and shells. An original title tune, a
+' jolly hornpipe; an editorial page. Everything that matters stays in
+' columns 2-29, inside the TV overscan. The sphere's two sprites never
+' flicker; the sharks swim in lanes so no more than four sprites share a
+' line except when the black sharks cross them (then they take turns).
+' The frame loop is protected from the NMI.
+
+const TPanel = 128
+const TSky = 157
+const TCloud = 156
+const TWave = 158
+const TRay = 162
+const TShallow = 163
+const TDeep = 164
+const TSpeck = 165
+const TDark = 166
+const TWeedA = 167
+const TWeedB = 168
+const TWeedBase = 169
+const TRock = 170
+const TVent = 171
+const TSand = 172
+const TSand2 = 173
+const TShell = 174
+const SurfY = 24                ' the sphere's top at the surface
+const BottomY = 150
+const ChestY = 154
+const AirMax = 1280
+
+const SndPulseA = 1
+const SndPulseB = 2
+const SndBiteN = 3
+const SndBiteT = 4
+const SndCoins = 5
+const SndCoinsB = 6
+const SndBlip = 7
+const SndLeak = 8
+const SndGulp = 9
+const SndWarn = 10
+const SndPopN = 11
+const SndPopT = 12
+const SndRush = 13
+const SndDeepA = 14
+const SndDeepB = 15
+const SndOver = 16
+const SndPick = 17
+const SndTuneA = 18
+const SndTuneB = 19
+
+u16 Score = 0
+u16 HighScore = 2000
+u8 Lives = 3
+u8 Dive = 1
+u8 Chests = 0
+u8 SpeedSel = 4
+u16 Air = 1280
+u8 AirPx = 0
+u8 Damage = 0
+u8 Hurt = 0
+u8 PX = 120
+u8 PY = 24
+u8 PFace = 16
+u8 FloatT = 0
+u8 Turbo = 0
+u8 Paused = 0
+u8 Bn2Was = 0
+u8 Up = 0
+u8 Dn = 0
+u8 Lf = 0
+u8 Rt = 0
+u8 Bn1 = 0
+u8 Bn2 = 0
+u8 Tick = 0
+u8 WarnT = 0
+u8 PulseT = 0
+u8 PulseF = 0
+u8 AtSurf = 1
+' Grey sharks: four lanes
+u8 NGrey = 3
+u16 GX[4]
+u8 GLane[4]
+u8 GDir[4]
+u8 GPh[4]
+u8 GY[4]
+u8 GBite[4]
+u8 GSpd = 16
+' Black sharks
+u8 NHunt = 1
+u16 HX[2]
+u16 HY[2]
+u8 HDir[2]
+u8 HBite[2]
+u8 HSpd = 9
+' The chest
+u16 CXf = 0
+u8 CX = 0
+u8 CDir = 0
+u8 CSpd = 3
+u8 Open = 0
+' Rising air bubbles from the vents; leak bubbles
+u8 BubOn = 0
+u8 BubX = 0
+u8 BubY = 0
+u8 BubT = 0
+u8 BubWait = 90
+u8 LeakOn = 0
+u8 LeakX = 0
+u8 LeakY = 0
+u8 LeakT = 0
+u8 Near = 255
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 DX = 0
+u8 DY = 0
+u8 Tm = 0
+u8 M = 0
+u8 Choice = 1
+u8 MoveT = 0
+u8 NG1 = 2
+u8 NH1 = 0
+u16 W2 = 0
+u16 W16 = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table TdSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 1
+  sprites flicker on
+  copy SpritePat count 608 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Lives = 3
+  Dive = 1
+  Chests = 0
+  DrawSea
+  SetDive
+
+new_life:
+  nmi off
+  Air = AirMax
+  Damage = 0
+  Hurt = 0
+  PX = 120
+  PY = SurfY
+  BubOn = 0
+  LeakOn = 0
+  Paused = 0
+  Open = 0
+  ShowAir
+  ShowStatus
+  PlaceSharks
+  NewChest
+  Message
+  print at 11,12, "GET READY!"
+  DrawSprites
+  Rearm
+  wait 90 frames
+  nmi off
+  ClearMessage
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  inc Tick
+  ReadPad
+  if Paused = 1 then goto main_loop
+  MoveSphere
+  Breathe
+  MoveSharks
+  MoveChest
+  MoveBubbles
+  Collide
+  Animate
+  DrawSprites
+  if Air = 0 then goto popped
+  goto main_loop
+
+  ' --- Out of air: pop! ---
+popped:
+  play sound SndPopN
+  play sound SndPopT
+  for Tm = 1 to 50
+    Y = PY - 1
+    set sprite 0 to Y,PX,68,15
+    N = Tm & 4
+    K = 5
+    if N = 0 then K = 15
+    set sprite 1 to Y,PX,68,K
+    update sprites
+    Rearm
+    wait
+    nmi off
+  next
+  dec Lives
+  ShowStatus
+  if Lives > 0 then goto new_life
+  ' Game over
+  play sound SndOver
+  Message
+  print at 11,11, "GAME OVER"
+  if Score > HighScore then
+    HighScore = Score
+    print at 8,13, "NEW HIGH SCORE!"
+    ShowStatus
+  end if
+  Rearm
+  wait 180 frames
+  nmi off
+  Message
+  print at 8,11, "ANOTHER DIVE"
+  print at 8,12, "TITLE PAGE"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 6,11 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadPad:
+  Up = 0
+  Dn = 0
+  Lf = 0
+  Rt = 0
+  Bn1 = 0
+  Bn2 = 0
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).down then Dn = 1
+  if joypad(2).down then Dn = 1
+  if joypad(1).left then Lf = 1
+  if joypad(2).left then Lf = 1
+  if joypad(1).right then Rt = 1
+  if joypad(2).right then Rt = 1
+  if joypad(1).button1 then Bn1 = 1
+  if joypad(2).button1 then Bn1 = 1
+  if joypad(1).button2 then Bn2 = 1
+  if joypad(2).button2 then Bn2 = 1
+  ' The second button pauses (SHIFT LOCK on the 64)
+  if Bn2 = 1 then
+    if Bn2Was = 0 then
+      Paused = 1 - Paused
+      if Paused = 1 then
+        Message
+        print at 10,12, "GAME PAUSED"
+        mute all
+      else
+        ClearMessage
+      end if
+    end if
+  end if
+  Bn2Was = Bn2
+  return
+end sub
+
+' The stick steers; fire is the turbo; let go and the bubble floats up
+sub MoveSphere:
+  Turbo = Bn1
+  N = 1
+  if Turbo = 1 then N = 2
+  if Lf = 1 then
+    V = 16 + N
+    if PX > V then PX -= N
+  end if
+  if Rt = 1 then
+    V = 224 - N
+    if PX < V then PX += N
+  end if
+  if Up = 1 then
+    V = SurfY + N
+    if PY > V then
+      PY -= N
+    else
+      PY = SurfY
+    end if
+  end if
+  if Dn = 1 then
+    if PY < BottomY then PY += N
+  end if
+  if Up = 0 then
+    if Dn = 0 then
+      inc FloatT
+      if FloatT >= 6 then
+        FloatT = 0
+        if PY > SurfY then dec PY
+      end if
+    end if
+  end if
+  if Turbo = 1 then
+    if PY > SurfY then
+      N = Tick & 15
+      if N = 0 then play sound SndRush
+    end if
+  end if
+  return
+end sub
+
+' Air: back at the surface, gulp it in; below, it drains, faster with
+' every bite and with the turbo
+sub Breathe:
+  if PY <= SurfY then
+    if AtSurf = 0 then play sound SndGulp
+    AtSurf = 1
+    W16 = Air + 12
+    if W16 > AirMax then W16 = AirMax
+    Air = W16
+  else
+    AtSurf = 0
+    ' 1, then 2, 3 and 5 a frame as the bites add up
+    N = LeakRate[Damage]
+    if Turbo = 1 then N *= 3
+    W16 = N
+    if Air > W16 then
+      Air -= W16
+    else
+      Air = 0
+    end if
+    ' A warning beep in the red
+    if Air < 320 then
+      inc WarnT
+      if WarnT >= 30 then
+        WarnT = 0
+        play sound SndWarn
+      end if
+    end if
+  end if
+  W16 = Air / 10
+  N = W16
+  if N <> AirPx then ShowAir
+  if Hurt > 0 then dec Hurt
+  return
+end sub
+
+' The meter: 16 tiles, 4 red, 4 yellow, 8 green, a pixel per 10 of air
+sub ShowAir:
+  W16 = Air / 10
+  AirPx = W16
+  for I = 0 to 15
+    V = I * 8
+    N = 0
+    if AirPx > V then
+      N = AirPx - V
+      if N > 8 then N = 8
+    end if
+    K = 129
+    if I >= 4 then K = 138
+    if I >= 8 then K = 147
+    K += N
+    X = I + 6
+    put char K at X,0
+  next
+  return
+end sub
+
+' Grey sharks swim their lanes back and forth, weaving; black ones hunt
+sub MoveSharks:
+  for G = 0 to NG1
+    if GBite[G] > 0 then dec GBite[G]
+    W16 = GX[G]
+    if GDir[G] = 0 then
+      W16 += GSpd
+      if W16 >= 3680 then GDir[G] = 1
+    else
+      if W16 > GSpd then
+        W16 -= GSpd
+      else
+        W16 = 0
+      end if
+      if W16 <= 160 then GDir[G] = 0
+    end if
+    GX[G] = W16
+    N = Tick & 3
+    if N = 0 then
+      V = GPh[G] + 1
+      V &= 15
+      GPh[G] = V
+    end if
+    V = GPh[G]
+    N = Wobble[V]
+    N += GLane[G]
+    GY[G] = N
+  next
+  ' The black sharks: after the sphere when it is under water
+  Near = 255
+  for G = 0 to NH1
+    if HBite[G] > 0 then dec HBite[G]
+    ' Where to: the sphere, or a slow round in the middle when it is up
+    X = PX
+    Y = PY
+    if PY <= 40 then
+      Y = 72
+      N = Tick & 128
+      X = 40
+      if N > 0 then X = 200
+      if G = 1 then X = 240 - X
+    end if
+    W16 = X
+    W16 <<= 4
+    W2 = HX[G]
+    if W2 < W16 then
+      W2 += HSpd
+      HDir[G] = 0
+    else
+      W2 -= HSpd
+      HDir[G] = 1
+    end if
+    HX[G] = W2
+    W16 = Y
+    W16 <<= 4
+    V = HSpd >> 1
+    W2 = HY[G]
+    if W2 < W16 then
+      W2 += V
+    else
+      W2 -= V
+    end if
+    if W2 < 704 then W2 = 704
+    HY[G] = W2
+    ' How near? for the pulse
+    W16 = HX[G] >> 4
+    X = W16
+    W16 = HY[G] >> 4
+    Y = W16
+    if X > PX then
+      DX = X - PX
+    else
+      DX = PX - X
+    end if
+    if Y > PY then
+      DY = Y - PY
+    else
+      DY = PY - Y
+    end if
+    if DY > DX then DX = DY
+    if DX < Near then Near = DX
+  next
+  return
+end sub
+
+' The chest drifts along the sand in the current
+sub MoveChest:
+  if Open > 0 then
+    dec Open
+    if Open = 0 then NewChest
+    return
+  end if
+  W16 = CXf
+  if CDir = 0 then
+    W16 += CSpd
+    if W16 >= 3600 then CDir = 1
+  else
+    W16 -= CSpd
+    if W16 <= 256 then CDir = 0
+  end if
+  CXf = W16
+  W16 >>= 4
+  CX = W16
+  return
+end sub
+
+sub NewChest:
+  N = random(0, 1)
+  CDir = N
+  W16 = random(24, 216)
+  W16 <<= 4
+  CXf = W16
+  W16 >>= 4
+  CX = W16
+  return
+end sub
+
+' Air bubbles rise from the vents now and then; leak bubbles trail a
+' damaged sphere
+sub MoveBubbles:
+  if BubOn = 0 then
+    if BubWait > 0 then
+      dec BubWait
+    else
+      BubOn = 1
+      BubX = 52
+      N = random(0, 1)
+      if N = 1 then BubX = 180
+      BubY = 150
+      BubT = 0
+    end if
+  else
+    N = Tick & 1
+    if N = 0 then dec BubY
+    inc BubT
+    ' a wobble as it rises
+    N = BubT & 31
+    if N < 16 then
+      N = BubT & 3
+      if N = 0 then inc BubX
+    else
+      N = BubT & 3
+      if N = 0 then dec BubX
+    end if
+    if BubY < 40 then
+      BubOn = 0
+      BubWait = random(180, 360)
+    end if
+  end if
+  ' Leaks
+  if Damage > 0 then
+    if PY > SurfY then
+      if LeakOn = 0 then
+        inc LeakT
+        V = Damage * 12
+        N = 50 - V
+        if LeakT >= N then
+          LeakT = 0
+          LeakOn = 1
+          LeakX = PX + 4
+          LeakY = PY
+          play sound SndLeak
+        end if
+      else
+        dec LeakY
+        dec LeakY
+        if LeakY < 30 then LeakOn = 0
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Bites, the chest, and air bubbles caught
+sub Collide:
+  ' Sharks (not while the sphere is still shaking from a bite)
+  if Hurt = 0 then
+    for G = 0 to NG1
+      W16 = GX[G] >> 4
+      X = W16
+      Y = GY[G]
+      Touch
+      if Q = 1 then
+        GBite[G] = 20
+        Bitten
+        return
+      end if
+    next
+    for G = 0 to NH1
+      W16 = HX[G] >> 4
+      X = W16
+      W16 = HY[G] >> 4
+      Y = W16
+      Touch
+      if Q = 1 then
+        HBite[G] = 20
+        Bitten
+        return
+      end if
+    next
+  end if
+  ' The chest
+  if Open = 0 then
+    X = CX
+    Y = ChestY
+    Touch
+    if Q = 1 then
+      Open = 50
+      W16 = 200
+      W16 *= Dive
+      Score += W16
+      play sound SndCoins
+      play sound SndCoinsB
+      ShowStatus
+      inc Chests
+      if Chests >= 3 then
+        Chests = 0
+        if Dive < 99 then inc Dive
+        DeeperDive
+      end if
+    end if
+  end if
+  ' An air bubble
+  if BubOn = 1 then
+    X = BubX
+    Y = BubY
+    Touch
+    if Q = 1 then
+      BubOn = 0
+      BubWait = random(180, 360)
+      W16 = Air + 150
+      if W16 > AirMax then W16 = AirMax
+      Air = W16
+      Score += 10
+      play sound SndBlip
+      ShowStatus
+    end if
+  end if
+  return
+end sub
+
+' Is X, Y (a 16 x 16 shape) touching the sphere? Q = 1 if so
+sub Touch:
+  Q = 0
+  if X > PX then
+    DX = X - PX
+  else
+    DX = PX - X
+  end if
+  if DX >= 12 then return
+  if Y > PY then
+    DY = Y - PY
+  else
+    DY = PY - Y
+  end if
+  if DY >= 10 then return
+  Q = 1
+  return
+end sub
+
+' A bite: a dent for good, a faster leak, a push away, a moment to escape
+sub Bitten:
+  play sound SndBiteN
+  play sound SndBiteT
+  if Damage < 3 then inc Damage
+  Hurt = 90
+  if X > PX then
+    if PX > 32 then PX -= 16
+  else
+    if PX < 208 then PX += 16
+  end if
+  V = SurfY + 12
+  if PY > V then PY -= 12
+  return
+end sub
+
+' Every third chest: deeper and more dangerous
+sub DeeperDive:
+  play sound SndDeepA
+  play sound SndDeepB
+  SetDive
+  Message
+  print at 11,12, "DIVE"
+  NumU = Dive
+  print at 16,12, digits$(NumU, 2)
+  print at 10,13, "DEEPER!"
+  for Tm = 1 to 90
+    inc Tick
+    Animate
+    DrawSprites
+    Rearm
+    wait
+    nmi off
+  next
+  ClearMessage
+  ShowStatus
+  return
+end sub
+
+' The dive's sharks and speeds (and the game speed picked, 1-4)
+sub SetDive:
+  NGrey = 3
+  NHunt = 1
+  if Dive >= 2 then
+    NGrey = 4
+    NHunt = 2
+  end if
+  N = 4 - SpeedSel
+  N *= 4
+  GSpd = 14 + N
+  HSpd = 8 + N
+  N = Dive - 1
+  if N > 8 then N = 8
+  GSpd += N
+  N >>= 1
+  HSpd += N
+  CSpd = 3 + Dive
+  if CSpd > 8 then CSpd = 8
+  NG1 = NGrey - 1
+  NH1 = NHunt - 1
+  return
+end sub
+
+sub PlaceSharks:
+  for G = 0 to 3
+    V = G * 24
+    V += 50
+    GLane[G] = V
+    N = G * 3
+    N += 1
+    W16 = N
+    W16 *= 304
+    GX[G] = W16
+    V = G & 1
+    GDir[G] = V
+    GPh[G] = G * 4
+  next
+  HX[0] = 320
+  HY[0] = 2048
+  HX[1] = 3520
+  HY[1] = 1600
+  HDir[0] = 0
+  HDir[1] = 1
+  return
+end sub
+
+' Waves roll, rays shimmer, weed sways; the hunter's pulse
+sub Animate:
+  N = Tick & 7
+  if N = 0 then
+    ' the waves and the light, four frames
+    W16 = Tick >> 3
+    W16 &= 3
+    W16 <<= 3
+    Dst16 = TWave * 8
+    copy WaveAnim + W16 count 8 to vram.pattern + Dst16
+    Dst16 = TRay * 8
+    copy RayAnim + W16 count 8 to vram.pattern + Dst16
+  end if
+  N = Tick & 31
+  if N = 0 then
+    ' the weed sways: swap its two tiles' places by swapping the patterns
+    N = Tick & 32
+    Dst16 = 4096 + TWeedA * 8
+    if N = 0 then
+      copy WeedL count 8 to vram.pattern + Dst16
+      Dst16 += 8
+      copy WeedR count 8 to vram.pattern + Dst16
+    else
+      copy WeedR count 8 to vram.pattern + Dst16
+      Dst16 += 8
+      copy WeedL count 8 to vram.pattern + Dst16
+    end if
+  end if
+  ' The pulse of a black shark closing in
+  if Near < 80 then
+    inc PulseT
+    N = Near >> 2
+    N += 6
+    if PulseT >= N then
+      PulseT = 0
+      PulseF = 1 - PulseF
+      if PulseF = 0 then
+        play sound SndPulseA
+      else
+        play sound SndPulseB
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  ' The sphere: dented by its bites, flashing after one
+  P = Damage * 4
+  K = 9
+  if Hurt > 0 then
+    N = Hurt & 4
+    if N = 0 then K = 15
+  end if
+  Y = PY - 1
+  if PY <= SurfY then
+    ' bobbing on the waves
+    N = Tick & 32
+    if N > 0 then inc Y
+  end if
+  set sprite 0 to Y,PX,P,K
+  P = 16
+  N = Tick & 127
+  if N < 6 then P = 20
+  if Hurt > 30 then P = 24
+  if Air < 320 then
+    if PY > SurfY then P = 24
+  end if
+  set sprite 1 to Y,PX,P,15
+  ' The chest
+  if Open > 0 then
+    set sprite 2 to ChestY,CX,56,10
+  else
+    set sprite 2 to ChestY,CX,52,10
+  end if
+  ' Grey sharks
+  for G = 0 to 3
+    J = G + 3
+    if G < NGrey then
+      W16 = GX[G] >> 4
+      X = W16
+      Y = GY[G]
+      P = 28
+      N = Tick & 8
+      if N > 0 then P = 32
+      if GBite[G] > 0 then P = 36
+      if GDir[G] = 1 then P += 12
+      set sprite J to Y,X,P,14
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  ' Black sharks
+  for G = 0 to 1
+    J = G + 7
+    if G < NHunt then
+      W16 = HX[G] >> 4
+      X = W16
+      W16 = HY[G] >> 4
+      Y = W16
+      P = 28
+      N = Tick & 4
+      if N > 0 then P = 32
+      if HBite[G] > 0 then P = 36
+      if HDir[G] = 1 then P += 12
+      set sprite J to Y,X,P,1
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  ' The air bubble, a leak bubble, the chest's sparkle
+  if BubOn = 1 then
+    set sprite 9 to BubY,BubX,60,15
+  else
+    set sprite 9 to 192,0,0,0
+  end if
+  if LeakOn = 1 then
+    set sprite 10 to LeakY,LeakX,64,15
+  else
+    set sprite 10 to 192,0,0,0
+  end if
+  if Open > 0 then
+    Y = ChestY - 12
+    N = Open & 4
+    K = 11
+    if N = 0 then K = 15
+    set sprite 11 to Y,CX,72,K
+  else
+    set sprite 11 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+' --- The sea ------------------------------------------------------------------
+
+sub DrawSea:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $17
+  LoadTiles
+  backdrop black
+  cls
+  ' The panel
+  for Y = 0 to 2
+    fill TPanel count 32 at 0,Y
+  next
+  ' Sky and surface
+  fill TSky count 32 at 0,3
+  for I = 1 to 6
+    X = random(2, 28)
+    put char TCloud at X,3
+  next
+  fill TWave count 32 at 0,4
+  ' Shallow water with light rays
+  for Y = 5 to 8
+    for X = 0 to 31
+      N = TShallow
+      V = X + Y
+      V &= 3
+      if V = 0 then N = TRay
+      put char N at X,Y
+    next
+  next
+  ' The deep, darker further down
+  for Y = 9 to 18
+    fill TDeep count 32 at 0,Y
+    for I = 1 to 3
+      X = random(0, 31)
+      N = TSpeck
+      if Y >= 15 then N = TDark
+      put char N at X,Y
+    next
+  next
+  ' Weed, rocks and the two vents
+  fill TDeep count 32 at 0,19
+  fill TDeep count 32 at 0,20
+  for X = 2 to 29
+    N = X % 5
+    if N = 1 then
+      put char TWeedA at X,19
+      put char TWeedBase at X,20
+    elseif N = 3 then
+      put char TWeedB at X,19
+      put char TWeedBase at X,20
+    elseif N = 4 then
+      put char TRock at X,20
+    end if
+  next
+  put char TVent at 7,20
+  put char TVent at 23,20
+  ' Sand and shells
+  for Y = 21 to 23
+    for X = 0 to 31
+      N = TSand
+      V = X * 3
+      V += Y
+      V &= 3
+      if V = 0 then N = TSand2
+      put char N at X,Y
+    next
+  next
+  put char TShell at 12,22
+  put char TShell at 27,21
+  put char TShell at 4,23
+  ShowStatus
+  ShowAir
+  return
+end sub
+
+sub ShowStatus:
+  print at 2,0, "AIR"
+  print at 2,1, "SCORE"
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 2,2, "HI"
+  NumU = HighScore
+  print at 8,2, digits$(NumU, 5)
+  print at 16,1, "DIVE"
+  NumU = Dive
+  print at 21,1, digits$(NumU, 2)
+  print at 16,2, "SPHERES"
+  NumU = Lives
+  print at 24,2, digits$(NumU, 1)
+  print at 24,1, "SPD"
+  NumU = SpeedSel
+  print at 28,1, digits$(NumU, 1)
+  return
+end sub
+
+' A dark band in mid-water for messages
+sub Message:
+  fill 32 count 20 at 6,11
+  fill 32 count 20 at 6,12
+  fill 32 count 20 at 6,13
+  return
+end sub
+
+sub ClearMessage:
+  for Y = 11 to 13
+    fill TDeep count 20 at 6,Y
+  next
+  return
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 392 to vram.pattern + Dst16
+    copy TileCol count 392 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 12
+  for J = 0 to 11
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub TitlePage:
+  nmi off
+  Dive = 1
+  DrawSea
+  for Y = 0 to 2
+    fill TPanel count 32 at 0,Y
+  next
+  print at 8,1, "COMPUTE!'S GAZETTE"
+  print at 11,2, "MAY 1988"
+  ' TREASURE on a gold plate, DIVER in big blocks of gold and red
+  fill 32 count 21 at 5,7
+  print at 7,7, "T R E A S U R E"
+  M = TitleCountB - 1
+  for I = 0 to M
+    J = I * 3
+    X = TitleB[J]
+    X += 4
+    inc J
+    Y = TitleB[J]
+    Y += 3
+    inc J
+    N = TitleB[J]
+    put char N at X,Y
+  next
+  ' The speed, 1 (fastest) to 4 (slowest)
+  print at 4,18, "SPEED  1  2  3  4"
+  print at 4,20, "      FAST    SLOW"
+  fill 32 count 18 at 4,19
+  NumU = HighScore
+  print at 4,22, "HI"
+  print at 7,22, digits$(NumU, 5)
+  print at 15,22, "FIRE: DIVE!"
+  Choice = SpeedSel
+  PlaceSharks
+  SpeedSel = 4
+  SetDive
+  NGrey = 3
+  NHunt = 2
+  NG1 = 2
+  NH1 = 1
+  PX = 120
+  PY = SurfY
+  Air = AirMax
+  Damage = 0
+  Hurt = 0
+  Open = 0
+  CX = 120
+  BubOn = 0
+  LeakOn = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+  MoveT = 0
+title_loop:
+  inc Tick
+  ' The sphere bobs; the sharks swim past
+  MoveSharks
+  Animate
+  DrawSprites
+  set sprite 2 to 192,0,0,0
+  set sprite 11 to 192,0,0,0
+  update sprites
+  ' the speed cursor
+  for I = 1 to 4
+    X = I * 3
+    X += 8
+    N = 32
+    if I = Choice then N = 94
+    put char N at X,19
+  next
+  Rearm
+  wait
+  nmi off
+  ReadPad
+  if MoveT > 0 then
+    dec MoveT
+  else
+    if Lf = 1 then
+      if Choice > 1 then dec Choice
+      MoveT = 10
+      play sound SndPick
+    end if
+    if Rt = 1 then
+      if Choice < 4 then inc Choice
+      MoveT = 10
+      play sound SndPick
+    end if
+  end if
+  Paused = 0
+  if Bn1 = 1 then goto title_go
+  goto title_loop
+title_go:
+  SpeedSel = Choice
+  play sound SndPick
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  HideSprites
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 8,1, "TREASURE DIVER"
+  print at 2,3, "AFTER THE GAME BY BRIAN"
+  print at 2,4, "CASEY IN COMPUTE!'S"
+  print at 2,5, "GAZETTE, MAY 1988, WRITTEN"
+  print at 2,6, "IN MACHINE CODE FOR THE"
+  print at 2,7, "COMMODORE 64."
+  print at 2,9, "A BUBBLE, A CHEST, AN OCEAN"
+  print at 2,10, "OF SHARKS AND NOT MUCH AIR."
+  print at 2,12, "STICK: SWIM. LET GO: FLOAT"
+  print at 2,13, "UP. FIRE: TURBO (USES AIR)."
+  print at 2,14, "BUTTON 2: PAUSE. SURFACE"
+  print at 2,15, "FOR AIR; CATCH THE BUBBLES."
+  print at 2,17, "A NEW COLECOVISION GAME BY"
+  print at 2,18, "AMY BIENVENU, 2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data LeakRate bytes = 1, 2, 3, 5
+data Wobble bytes = 4, 6, 7, 8, 8, 8, 7, 6, 4, 2, 1, 0, 0, 0, 1, 2
+data WeedL bytes = $10, $18, $08, $18, $30, $20, $30, $10
+data WeedR bytes = $08, $18, $10, $18, $0C, $04, $0C, $10
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$F8,$F8,$F8,$F8,$F8,$F8,$00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$00
+  $00,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00,$00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$F8,$F8,$F8,$F8,$F8,$F8,$00
+  $00,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$F8,$F8,$F8,$F8,$F8,$F8,$00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$00
+  $00,$FE,$FE,$FE,$FE,$FE,$FE,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$06,$1E,$7E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$07,$8F,$DF,$FF,$FF,$FF,$00,$08,$1C,$3E,$7F,$FF,$FF,$FF
+  $00,$20,$70,$F8,$FD,$FF,$FF,$FF,$00,$80,$C1,$E3,$F7,$FF,$FF,$FF
+  $40,$81,$01,$06,$0C,$18,$20,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$00,$00,$00,$02,$00
+  $80,$00,$08,$00,$20,$00,$02,$00,$10,$18,$08,$18,$30,$20,$30,$10
+  $08,$18,$10,$18,$0C,$04,$0C,$10,$24,$2C,$68,$4C,$64,$2C,$28,$6C
+  $00,$1C,$3E,$7F,$7E,$FF,$FF,$FF,$00,$3C,$66,$C3,$C3,$E7,$FF,$FF
+  $A4,$45,$28,$89,$52,$94,$42,$95,$00,$24,$00,$42,$08,$00,$22,$00
+  $00,$38,$54,$AA,$FE,$00,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+end data
+data TileCol bytes
+  $17,$17,$17,$17,$17,$17,$17,$17,$81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$31,$31,$31,$31,$31,$31,$31,$31
+  $31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31
+  $31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31
+  $31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31
+  $31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31
+  $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7,$17,$17,$17,$17,$17,$17,$17,$17
+  $57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57
+  $57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$57
+  $75,$75,$75,$75,$75,$75,$75,$75,$15,$15,$15,$15,$15,$15,$15,$15
+  $14,$14,$14,$14,$14,$14,$14,$14,$54,$54,$54,$54,$54,$54,$54,$54
+  $14,$14,$14,$14,$14,$14,$14,$14,$34,$34,$34,$34,$C4,$C4,$C4,$C4
+  $34,$34,$34,$34,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+  $E4,$E4,$E4,$E4,$E4,$4E,$4E,$4E,$E4,$E4,$E4,$E4,$E4,$E1,$E1,$E1
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA,$F4,$B4,$B4,$A4,$A4,$64,$64,$44
+  $F4,$94,$94,$84,$84,$64,$64,$44
+end data
+data WaveAnim bytes
+  $00,$02,$07,$8F,$DF,$FF,$FF,$FF,$00,$08,$1C,$3E,$7F,$FF,$FF,$FF
+  $00,$20,$70,$F8,$FD,$FF,$FF,$FF,$00,$80,$C1,$E3,$F7,$FF,$FF,$FF
+end data
+data RayAnim bytes
+  $40,$81,$01,$06,$0C,$18,$20,$20,$03,$06,$0C,$10,$10,$60,$C0,$81
+  $08,$08,$30,$60,$C0,$01,$03,$04,$30,$60,$80,$81,$02,$02,$0C,$18
+end data
+data SpritePat bytes
+  $03,$04,$1F,$3F,$78,$70,$F0,$F0,$F0,$70,$78,$3F,$1F,$0F,$02,$06
+  $C0,$20,$F8,$FC,$7E,$3E,$3F,$3F,$3F,$3E,$7E,$FC,$F8,$F0,$40,$60
+  $03,$04,$1F,$3F,$78,$70,$F0,$F0,$F0,$70,$78,$0F,$1F,$0F,$02,$06
+  $C0,$20,$F8,$FC,$7E,$3A,$3F,$3F,$3F,$3E,$7E,$FC,$F8,$F0,$40,$60
+  $03,$04,$1F,$3F,$78,$70,$F0,$F0,$F0,$70,$78,$0F,$1F,$09,$02,$06
+  $C0,$20,$F8,$FC,$7E,$3A,$3F,$3F,$3F,$36,$7E,$FC,$F8,$F0,$40,$60
+  $03,$04,$1F,$3F,$78,$70,$90,$F0,$F0,$70,$78,$0F,$1F,$09,$02,$06
+  $C0,$20,$F8,$FC,$7E,$3A,$3F,$3D,$3F,$36,$7E,$FC,$F8,$F0,$40,$60
+  $00,$00,$00,$00,$07,$08,$14,$10,$14,$13,$08,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$A0,$20,$A0,$20,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$08,$10,$17,$10,$13,$08,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$20,$A0,$20,$20,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$07,$08,$14,$10,$13,$14,$08,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$A0,$20,$20,$A0,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$87,$CF,$FF,$FF,$CF,$83,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$F8,$FA,$FF,$FC,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$8F,$DF,$FF,$DF,$83,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$F8,$FA,$FF,$FC,$E0,$80,$00,$00,$00,$00
+  $00,$00,$00,$01,$03,$87,$CF,$FF,$FF,$CF,$83,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$FB,$FA,$F8,$F4,$EF,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$1F,$5F,$FF,$3F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E1,$F3,$FF,$FF,$F3,$C1,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$1F,$5F,$FF,$3F,$07,$01,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E0,$F1,$FB,$FF,$FB,$C1,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$DF,$5F,$1F,$2F,$F7,$03,$00,$00,$00,$00
+  $00,$00,$00,$80,$C0,$E1,$F3,$FF,$FF,$F3,$C1,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$3F,$40,$FF,$83,$FF,$81,$83,$81,$FF,$00,$00
+  $00,$00,$00,$00,$00,$F8,$04,$FE,$82,$FE,$02,$82,$02,$FE,$00,$00
+  $10,$44,$1C,$3E,$5C,$29,$3F,$40,$FF,$83,$FF,$81,$83,$81,$FF,$00
+  $84,$22,$E0,$F4,$EE,$A4,$F8,$04,$FE,$82,$FE,$02,$82,$02,$FE,$00
+  $00,$00,$00,$00,$07,$08,$16,$14,$10,$10,$08,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$40,$20,$20,$20,$20,$40,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$04,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $21,$09,$43,$14,$28,$A0,$28,$14,$43,$09,$21,$00,$00,$00,$00,$00
+  $08,$20,$84,$50,$28,$2A,$28,$50,$84,$20,$08,$00,$00,$00,$00,$00
+  $00,$08,$04,$20,$00,$12,$00,$20,$04,$08,$00,$00,$00,$00,$00,$00
+  $00,$20,$40,$04,$80,$24,$80,$04,$40,$20,$00,$00,$00,$00,$00,$00
+end data
+data TitleA bytes
+  $00,$00,$AF,$01,$00,$AF,$02,$00,$AF,$01,$01,$AF,$01,$02,$AF,$01
+  $03,$AF,$01,$04,$AF,$03,$00,$B0,$04,$00,$B0,$03,$01,$B0,$05,$01
+  $B0,$03,$02,$B0,$04,$02,$B0,$03,$03,$B0,$05,$03,$B0,$03,$04,$B0
+  $05,$04,$B0,$06,$00,$AF,$07,$00,$AF,$08,$00,$AF,$06,$01,$AF,$06
+  $02,$AF,$07,$02,$AF,$06,$03,$AF,$06,$04,$AF,$07,$04,$AF,$08,$04
+  $AF,$09,$00,$B0,$0A,$00,$B0,$0B,$00,$B0,$09,$01,$B0,$0B,$01,$B0
+  $09,$02,$B0,$0A,$02,$B0,$0B,$02,$B0,$09,$03,$B0,$0B,$03,$B0,$09
+  $04,$B0,$0B,$04,$B0,$0C,$00,$AF,$0D,$00,$AF,$0E,$00,$AF,$0C,$01
+  $AF,$0C,$02,$AF,$0D,$02,$AF,$0E,$02,$AF,$0E,$03,$AF,$0C,$04,$AF
+  $0D,$04,$AF,$0E,$04,$AF,$0F,$00,$B0,$11,$00,$B0,$0F,$01,$B0,$11
+  $01,$B0,$0F,$02,$B0,$11,$02,$B0,$0F,$03,$B0,$11,$03,$B0,$0F,$04
+  $B0,$10,$04,$B0,$11,$04,$B0,$12,$00,$AF,$13,$00,$AF,$12,$01,$AF
+  $14,$01,$AF,$12,$02,$AF,$13,$02,$AF,$12,$03,$AF,$14,$03,$AF,$12
+  $04,$AF,$14,$04,$AF,$15,$00,$B0,$16,$00,$B0,$17,$00,$B0,$15,$01
+  $B0,$15,$02,$B0,$16,$02,$B0,$15,$03,$B0,$15,$04,$B0,$16,$04,$B0
+  $17,$04,$B0
+end data
+data TitleB bytes
+  $06,$06,$AF,$07,$06,$AF,$06,$07,$AF,$08,$07,$AF,$06,$08,$AF,$08
+  $08,$AF,$06,$09,$AF,$08,$09,$AF,$06,$0A,$AF,$07,$0A,$AF,$0A,$06
+  $B0,$0B,$06,$B0,$0C,$06,$B0,$0B,$07,$B0,$0B,$08,$B0,$0B,$09,$B0
+  $0A,$0A,$B0,$0B,$0A,$B0,$0C,$0A,$B0,$0E,$06,$AF,$10,$06,$AF,$0E
+  $07,$AF,$10,$07,$AF,$0E,$08,$AF,$10,$08,$AF,$0E,$09,$AF,$10,$09
+  $AF,$0F,$0A,$AF,$12,$06,$B0,$13,$06,$B0,$14,$06,$B0,$12,$07,$B0
+  $12,$08,$B0,$13,$08,$B0,$12,$09,$B0,$12,$0A,$B0,$13,$0A,$B0,$14
+  $0A,$B0,$16,$06,$AF,$17,$06,$AF,$16,$07,$AF,$18,$07,$AF,$16,$08
+  $AF,$17,$08,$AF,$16,$09,$AF,$18,$09,$AF,$16,$0A,$AF,$18,$0A,$AF
+end data
+const TitleCountA = 81
+const TitleCountB = 48
+
+asm {
+TdPulseA:
+    db $C0,$FF,$23,$04,$C0,$FF,$F3,$02,$D0
+TdPulseB:
+    db $C0,$FF,$23,$04,$C0,$FF,$F3,$02,$D0
+TdBiteN:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$46,$04,$00,$00,$76,$06,$10
+TdBiteT:
+    db $40,$3E,$20,$01,$40,$42,$20,$01,$40,$46,$20,$01,$40,$4B,$20,$01,$40,$50,$20,$01,$40,$56,$20,$01
+    db $40,$5D,$20,$01,$40,$66,$20,$01,$40,$70,$20,$01,$40,$7C,$20,$01,$40,$8C,$20,$01,$40,$A0,$20,$01
+    db $40,$BA,$20,$01,$50
+TdCoins:
+    db $40,$6B,$10,$03,$40,$6B,$F0,$01,$40,$55,$10,$03,$40,$55,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01
+    db $40,$35,$10,$03,$40,$35,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01,$40,$35,$10,$03,$40,$35,$F0,$01
+    db $40,$2A,$10,$03,$40,$2A,$F0,$01,$50
+TdCoinsB:
+    db $80,$D6,$30,$05,$80,$D6,$F0,$01,$80,$AA,$30,$05,$80,$AA,$F0,$01,$80,$8F,$30,$05,$80,$8F,$F0,$01
+    db $80,$6B,$30,$05,$80,$6B,$F0,$01,$90
+TdBlip:
+    db $80,$5D,$20,$02,$80,$46,$20,$02,$80,$35,$40,$03,$90
+TdLeak:
+    db $C0,$2F,$90,$01,$C0,$28,$B0,$01,$D0
+TdGulp:
+    db $80,$53,$31,$03,$80,$1D,$41,$03,$80,$AB,$61,$04,$90
+TdWarn:
+    db $40,$40,$20,$04,$40,$40,$F0,$04,$40,$40,$20,$04,$50
+TdPopN:
+    db $00,$00,$04,$02,$00,$00,$24,$03,$00,$00,$55,$06,$00,$00,$86,$0A,$10
+TdPopT:
+    db $40,$BA,$20,$01,$40,$9B,$20,$01,$40,$85,$20,$01,$40,$75,$20,$01,$40,$68,$20,$01,$40,$5D,$20,$01
+    db $40,$55,$20,$01,$40,$4E,$20,$01,$40,$48,$20,$01,$40,$43,$20,$01,$40,$3E,$20,$01,$40,$3A,$20,$01
+    db $40,$37,$20,$01,$40,$34,$20,$01,$40,$31,$20,$01,$40,$2F,$20,$01,$50
+TdRush:
+    db $00,$00,$63,$02,$00,$00,$83,$02,$10
+TdDeepA:
+    db $40,$1D,$11,$04,$40,$1D,$F1,$01,$40,$D6,$10,$04,$40,$D6,$F0,$01,$40,$AA,$10,$04,$40,$AA,$F0,$01
+    db $40,$8F,$10,$09,$40,$8F,$F0,$01,$40,$AA,$10,$04,$40,$AA,$F0,$01,$40,$8F,$10,$04,$40,$8F,$F0,$01
+    db $40,$6B,$10,$1D,$40,$6B,$F0,$01,$50
+TdDeepB:
+    db $80,$3B,$32,$04,$80,$1D,$F1,$01,$80,$AC,$31,$04,$80,$D6,$F0,$01,$80,$53,$31,$04,$80,$AA,$F0,$01
+    db $80,$1D,$31,$09,$80,$8F,$F0,$01,$80,$53,$31,$04,$80,$AA,$F0,$01,$80,$1D,$31,$04,$80,$8F,$F0,$01
+    db $80,$D6,$30,$1D,$80,$6B,$F0,$01,$90
+TdOver:
+    db $40,$1D,$21,$0A,$40,$1D,$F1,$02,$40,$2E,$21,$0A,$40,$2E,$F1,$02,$40,$41,$21,$0A,$40,$41,$F1,$02
+    db $40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02,$40,$7C,$21,$0A,$40,$7C,$F1,$02
+    db $40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$3B,$22,$28,$40,$3B,$F2,$02,$50
+TdPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+TdSoundTable:
+    dw TdPulseA,$7049
+    dw TdPulseB,$7049
+    dw TdBiteN,$702B
+    dw TdBiteT,$7035
+    dw TdCoins,$7035
+    dw TdCoinsB,$703F
+    dw TdBlip,$703F
+    dw TdLeak,$7049
+    dw TdGulp,$703F
+    dw TdWarn,$7035
+    dw TdPopN,$702B
+    dw TdPopT,$7035
+    dw TdRush,$702B
+    dw TdDeepA,$7035
+    dw TdDeepB,$703F
+    dw TdOver,$7035
+    dw TdPick,$7049
+    dw TdTuneMel,$703F
+    dw TdTuneBass,$7049
+; Title tune: Davy Jones's Hornpipe, a jolly sea dance in G major (original for this game)
+; Tiny Sound, 6 frames per step
+TdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$26,$2A,$2D,$2A,$26,$2A,$2D,$32,$31,$2D,$28,$2D
+    db $31,$2D,$28,$25,$26,$2A,$2D,$2A,$2F,$2B,$28,$2B,$2D,$2A,$26,$2A
+    db $28,$25,$21,$01,$02,$10,$1A,$21,$26,$28,$2A,$2B,$2D,$2F,$2D,$2A
+    db $2B,$28,$25,$28,$2D,$2B,$2A,$28,$2A,$26,$21,$26,$2B,$2F,$28,$2B
+    db $2A,$2D,$28,$25,$26,$01,$1A,$01
+    db $FF
+TdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$50,$18,$32,$0E,$15,$0E,$15,$0E,$15,$0E,$15,$09,$10,$09,$10
+    db $09,$10,$09,$10,$0E,$15,$0E,$15,$07,$0E,$07,$0E,$09,$10,$09,$10
+    db $09,$10,$09,$01,$02,$50,$18,$32,$0E,$15,$0E,$15,$07,$0E,$07,$0E
+    db $09,$10,$09,$10,$09,$10,$09,$10,$0E,$15,$0E,$15,$07,$0E,$10,$0B
+    db $09,$10,$09,$10,$0E,$01,$0E,$01
+    db $FF
+}

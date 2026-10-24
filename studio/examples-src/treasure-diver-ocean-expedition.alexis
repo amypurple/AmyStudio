@@ -1,0 +1,1350 @@
+cartridge "TREASURE DIVER/OCEAN EXPEDITION/2026"
+' TREASURE DIVER: OCEAN EXPEDITION
+' An artistic ChatGPT reinterpretation inspired by Brian Casey's
+' Treasure Diver, published in COMPUTE!'s Gazette, May 1988.
+' Its presentation and mechanics deliberately differ from the original.
+' Move in 8 directions. Fire = rechargeable 2x escape boost.
+' Collect chest at seabed, return to surface for air. Avoid sharks.
+const DiverSpr = 0
+const ChestSpr = 1
+const FirstShark = 2
+const LastShark = 6
+const SndMusic = 1
+const SndSwim = 2
+const SndBass = 6
+const SndTreasure = 3
+const SndBite = 4
+const SndOver = 5
+u8 PX = 120
+u8 PY = 24
+u8 TX = 112
+u8 TY = 147
+u8 SX[5]
+u8 SY[5]
+u8 SS[5]
+u8 SD[5]
+u8 LaneGoal[5]
+u8 LaneTick[5]
+u8 I = 0
+u8 V = 0
+u8 T = 0
+u8 Phase = 0
+u8 Moves = 0
+u8 Air = 100
+u8 Energy = 100
+u8 Boost = 0
+u8 BoostArmed = 1
+u8 Leak = 0
+u8 Inv = 0
+u8 Lives = 3
+u8 Got = 0
+u8 Bubbles = 0
+u8 ReefTick = 0
+u8 DiverPat = 0
+u8 Facing = 1
+u8 Moving = 0
+u8 AtSurface = 0
+u8 OldFire = 0
+u8 Mode = 0
+u8 Spawn = 0
+u8 Diff = 0
+u8 Speed = 1
+u8 Tmp = 0
+u8 ChestCol = 0
+u8 ChestDir = 1
+u8 HunterChase = 0
+u8 OldChestCol = 0
+u8 PlantPhase = 0
+u8 HudWarning = 0
+u8 NextWarning = 0
+u8 CollectFlash = 0
+u8 FlashCol = 0
+u16 Frames = 0
+bcd digits 5 Score
+bcd digits 5 Best
+
+' 16x16 submarine: independent mirrored cyan glass and dark solid hull
+ data DiverShape sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ ".....XX........."
+ "..X.XXXXXXXXXXX."
+ "..XXXXXXXXXXXXXX"
+ "..X.XXXXXXXXXXX."
+ ".....XXXXXXXX..."
+ "................"
+ "................"
+ "................"
+ end data
+ data DiverKickA sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ ".X...XX........."
+ ".X..XXXXXXXXXXX."
+ ".XXXXXXXXXXXXXXX"
+ ".X..XXXXXXXXXXX."
+ ".X...XXXXXXXX..."
+ "................"
+ "................"
+ "................"
+ end data
+ data DiverKickB sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ ".X...XX........."
+ ".X..XXXXXXXXXXX."
+ ".XXXXXXXXXXXXXXX"
+ ".X..XXXXXXXXXXX."
+ ".X...XXXXXXXX..."
+ "................"
+ "................"
+ "................"
+ end data
+ data DiverLeftThrust sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ ".........XX...X."
+ ".XXXXXXXXXXX..X."
+ "XXXXXXXXXXXXXXX."
+ ".XXXXXXXXXXX..X."
+ "...XXXXXXXX...X."
+ "................"
+ "................"
+ "................"
+ end data
+ data DiverSurface sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ ".....XX........."
+ "..X.XXXXXXXXXXX."
+ "..XXXXXXXXXXXXXX"
+ "..X.XXXXXXXXXXX."
+ ".....XXXXXXXX..."
+ "................"
+ "................"
+ "................"
+ end data
+
+ data DiverLeftIdle sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ ".........XX....."
+ ".XXXXXXXXXXX.X.."
+ "XXXXXXXXXXXXXX.."
+ ".XXXXXXXXXXX.X.."
+ "...XXXXXXXX....."
+ "................"
+ "................"
+ "................"
+ end data
+ data GlassLeft sprite16
+ "................"
+ "................"
+ "................"
+ ".....XXX........"
+ "....XXX.X......."
+ "...XXXXXXX......"
+ "...XXXXXXX......"
+ "...XXXXXXX......"
+ "...XXXXXX......."
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ end data
+
+ data ChestShape sprite16
+ "................"
+ "....XX.XX.XX...."
+ ".....XXXXXX....."
+ "...XXXXXXXXXX..."
+ "..XXXXXXXXXXXX.."
+ ".XXXXXXXXXXXXXXX"
+ ".XXXXXXXXXXXXXXX"
+ ".XX...........XX"
+ ".XXXXXXXXXXXXXXX"
+ ".XX...XXXX...XXX"
+ ".XX...XXXX...XXX"
+ ".XX...XXXX...XXX"
+ ".XXXXXXXXXXXXXXX"
+ "..XXXXXXXXXXXX.."
+ "................"
+ "................"
+ end data
+ data SharkA sprite16
+ "................"
+ "................"
+ ".........X......"
+ ".........X......"
+ ".X......XXX....."
+ ".XX.....XXX....."
+ "..XXXXXXXXXXX..."
+ "..XXXXXXXXXX.X.."
+ "..XXXXXXXXXXXXXX"
+ "..XXXXXXXXXXXX.."
+ "..XXX..XXXXXX..."
+ ".XX.....XX......"
+ ".X......X......."
+ "................"
+ "................"
+ "................"
+ end data
+ data SharkB sprite16
+ "................"
+ "................"
+ ".........X......"
+ ".........X......"
+ "........XXX....."
+ "........XXX....."
+ "X...XXXXXXXXX..."
+ ".XXXXXXXXXXX.X.."
+ "..XXXXXXXXXXXXXX"
+ ".XXXXXXXXXXXXX.."
+ "X......XXXXXX..."
+ "........XX......"
+ "........X......."
+ "................"
+ "................"
+ "................"
+ end data
+ data SharkC sprite16
+ "................"
+ "................"
+ "......X........."
+ "......X........."
+ ".....XXX......X."
+ ".....XXX.....XX."
+ "...XXXXXXXXXXX.."
+ "..X.XXXXXXXXXX.."
+ "XXXXXXXXXXXXXX.."
+ "..XXXXXXXXXXXX.."
+ "...XXXXXX..XXX.."
+ "......XX.....XX."
+ ".......X......X."
+ "................"
+ "................"
+ "................"
+ end data
+ data SharkD sprite16
+ "................"
+ "................"
+ "......X........."
+ "......X........."
+ ".....XXX........"
+ ".....XXX........"
+ "...XXXXXXXXX...X"
+ "..X.XXXXXXXXXXX."
+ "XXXXXXXXXXXXXX.."
+ "..XXXXXXXXXXXXX."
+ "...XXXXXX......X"
+ "......XX........"
+ ".......X........"
+ "................"
+ "................"
+ "................"
+ end data
+
+ data GlassShape sprite16
+ "................"
+ "................"
+ "................"
+ "........XXX....."
+ ".......X.XXX...."
+ "......XXXXXXX..."
+ "......XXXXXXX..."
+ "......XXXXXXX..."
+ ".......XXXXXX..."
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ end data
+ data TreasureGlint sprite16
+ "................"
+ "................"
+ "................"
+ ".......X........"
+ ".......X........"
+ ".....XXXXX......"
+ ".......X........"
+ ".......X........"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ end data
+ data BubbleShape sprite16
+ "................"
+ "................"
+ "................"
+ "................"
+ ".......XX......."
+ "......X..X......"
+ "......X..X......"
+ ".......XX......."
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ "................"
+ end data
+
+
+' Underwater tile glyphs (Graphics II) inspired by Bunny Hop and Colorbot
+data SeaTiles bytes
+  $00,$00,$00,$08,$24,$42,$10,$00
+  $00,$00,$00,$18,$66,$81,$00,$00
+  $00,$10,$38,$38,$7C,$38,$10,$00
+  $00,$10,$10,$38,$54,$38,$10,$00
+  $00,$04,$14,$18,$10,$30,$10,$00
+  $55,$AA,$55,$AA,$55,$AA,$55,$AA
+  $00,$18,$3C,$7E,$FF,$7E,$3C,$18
+  $00,$00,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$3C,$7E,$FF
+  $00,$00,$00,$00,$00,$18,$3C,$7E
+  $04,$0C,$1C,$38,$78,$58,$18,$18
+  $80,$C0,$E0,$70,$38,$28,$18,$18
+  $00,$00,$00,$01,$03,$07,$0E,$1C
+  $00,$00,$00,$80,$C0,$E0,$70,$38
+  $00,$00,$00,$00,$00,$42,$24,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3F,$40,$FF,$FF,$80,$FF,$00
+  $00,$FC,$02,$FF,$FF,$01,$FF,$00
+  $FF,$81,$A5,$BD,$A5,$81,$FF,$00
+  $FF,$81,$99,$BD,$99,$81,$FF,$00
+  $7E,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$81,$BD,$BD,$BD,$BD,$81,$FF
+  $00,$00,$08,$18,$28,$08,$08,$00
+  $00,$00,$10,$18,$14,$10,$10,$00
+end data
+data SeaColors bytes
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $74,$74,$74,$74,$74,$74,$74,$74
+  $A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4
+  $D4,$D4,$D4,$D4,$D4,$D4,$D4,$D4
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4
+  $94,$94,$94,$94,$94,$94,$94,$94
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $84,$84,$84,$84,$84,$84,$84,$84
+  $84,$84,$84,$84,$84,$84,$84,$84
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $64,$64,$64,$64,$64,$64,$64,$64
+  $64,$64,$64,$64,$64,$64,$64,$64
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4
+  $94,$94,$94,$94,$94,$94,$94,$94
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $34,$34,$34,$34,$34,$34,$34,$34
+end data
+
+data ReefTiles bytes
+  $00,$00,$00,$00,$01,$01,$03,$03
+  $00,$00,$00,$0C,$8C,$88,$18,$98
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$00,$00,$00,$00,$01,$03
+  $B8,$F0,$E0,$C0,$C0,$C0,$C0,$F8
+  $00,$00,$04,$0E,$03,$01,$01,$00
+  $00,$40,$E0,$C0,$C0,$80,$80,$C0
+  $07,$FF,$04,$0E,$04,$FF,$FF,$00
+  $FC,$FE,$FE,$FF,$FF,$FF,$FF,$00
+  $01,$07,$0F,$3F,$FF,$FF,$FF,$00
+  $C0,$C0,$FE,$08,$1C,$08,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$20
+  $03,$03,$62,$66,$36,$34,$3C,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$01,$01,$03,$03,$0F,$1F
+  $F0,$E0,$C0,$80,$00,$00,$80,$C0
+  $18,$18,$08,$3E,$FF,$FF,$FF,$FF
+  $04,$0F,$1F,$04,$0E,$04,$FF,$FF
+  $1F,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $F8,$FF,$FF,$02,$07,$02,$FF,$FF
+end data
+data ReefColors bytes
+  $E4,$E4,$E4,$E4,$34,$34,$34,$34
+  $E4,$E4,$E4,$34,$34,$34,$34,$34
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $34,$34,$E4,$E4,$E4,$E4,$E4,$E4
+  $34,$34,$34,$34,$34,$34,$34,$E4
+  $E4,$E4,$34,$34,$34,$34,$34,$E4
+  $E4,$34,$34,$34,$34,$34,$34,$34
+  $E4,$E4,$B4,$B4,$B4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $34,$34,$E4,$B4,$B4,$B4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$34,$34,$34
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$34
+  $34,$34,$34,$34,$34,$34,$34,$34
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $34,$34,$34,$34,$34,$34,$E4,$E4
+  $34,$34,$34,$34,$E4,$E4,$E4,$E4
+  $34,$34,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$B4,$B4,$B4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$B4,$B4,$B4,$E4,$E4
+end data
+data ReefSwayTiles bytes
+  $00,$00,$00,$00,$02,$02,$03,$03
+  $00,$00,$00,$06,$46,$44,$18,$98
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$07,$03
+  $00,$00,$00,$00,$00,$00,$00,$20
+end data
+data ReefSwayColors bytes
+  $E4,$E4,$E4,$E4,$34,$34,$34,$34
+  $E4,$E4,$E4,$34,$34,$34,$34,$34
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$34,$34,$34
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$34
+end data
+data LightTiles bytes
+  $07,$0C,$03,$06,$01,$07,$00,$03
+  $39,$E7,$9C,$73,$CE,$39,$E7,$9C
+  $0E,$19,$87,$8C,$03,$CE,$01,$C7
+  $00,$00,$00,$80,$80,$00,$80,$00
+  $02,$01,$01,$00,$01,$00,$00,$00
+  $73,$CE,$39,$E7,$9C,$73,$CE,$39
+  $84,$63,$C2,$21,$E3,$90,$71,$C8
+  $C0,$80,$40,$C0,$20,$E0,$80,$70
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $67,$1C,$63,$0C,$31,$06,$18,$23
+  $39,$E1,$18,$60,$8C,$30,$C6,$18
+  $C0,$30,$C0,$18,$60,$88,$30,$44
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$11,$06,$08,$03,$0C,$01,$06
+  $62,$8C,$31,$C6,$18,$63,$8C,$31
+  $18,$60,$0C,$30,$86,$18,$02,$8C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$00,$01,$03,$04,$03,$0E,$09
+  $9C,$73,$CE,$39,$E7,$9C,$73,$CE
+  $E7,$9C,$73,$CE,$39,$E7,$9C,$72
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$1C,$13,$0E,$39,$67,$1C,$73
+  $39,$E7,$9C,$73,$CE,$39,$E7,$9C
+  $CE,$38,$E6,$9C,$72,$CE,$38,$66
+  $00,$00,$00,$01,$00,$01,$06,$00
+  $CE,$39,$C6,$18,$63,$8C,$31,$C6
+  $73,$CE,$30,$C6,$18,$60,$8C,$31
+  $1C,$70,$8C,$30,$C4,$18,$60,$8C
+  $03,$0C,$01,$06,$18,$23,$0C,$31
+  $18,$63,$8C,$31,$C6,$18,$63,$8C
+  $C0,$18,$61,$88,$31,$C2,$10,$63
+  $30,$C4,$18,$60,$88,$30,$C0,$18
+end data
+data LightColors bytes
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54
+end data
+data PickupBurstTiles bytes
+  $00,$00,$00,$10,$08,$05,$03,$07
+  $80,$80,$80,$84,$88,$90,$E0,$E0
+  $FF,$03,$03,$04,$08,$10,$00,$00
+  $FF,$C0,$A0,$90,$88,$84,$80,$80
+  $00,$00,$00,$00,$00,$00,$18,$18
+  $00,$00,$C0,$C0,$00,$06,$06,$00
+  $00,$00,$00,$00,$00,$03,$03,$00
+  $00,$00,$00,$00,$0C,$0C,$00,$00
+end data
+data PickupBurstColors bytes
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+end data
+data WaveShift bytes
+  $00,$00,$00,$30,$CC,$03,$00,$00
+end data
+data WaveShiftColors bytes
+  $74,$74,$74,$74,$74,$74,$74,$74
+end data
+ tile screen
+ backdrop 1
+ fill mode 2 text color with $F1
+ define chars SeaTiles at 128 count 25
+ define colors SeaColors at 128 count 25
+ define chars ReefTiles at 153 count 24
+ define colors ReefColors at 153 count 24
+ define chars ReefSwayTiles at 177 count 8
+ define colors ReefSwayColors at 177 count 8
+ define chars LightTiles at 185 count 32
+ define colors LightColors at 185 count 32
+ define chars PickupBurstTiles at 217 count 8
+ define colors PickupBurstColors at 217 count 8
+ define chars WaveShift at 225 count 1
+ define colors WaveShiftColors at 225 count 1
+ sprites 16x16
+ copy DiverShape to vram.spr_pat
+ copy ChestShape to vram $3820
+ copy SharkA to vram $3840
+ copy SharkB to vram $3860
+ copy SharkC to vram $3880
+ copy SharkD to vram $38A0
+ copy BubbleShape to vram $38C0
+ copy DiverKickA to vram $38E0
+ copy DiverKickB to vram $3900
+ copy GlassShape to vram $3920
+ copy DiverLeftThrust to vram $3960
+ copy DiverSurface to vram $3980
+ copy TreasureGlint to vram $3940
+ copy DiverLeftIdle to vram $39A0
+ copy GlassLeft to vram $39C0
+ clear sprites
+ set sprite count 9
+ set sound table DiverSoundTable areas 3
+ screen on
+ goto title
+
+title:
+ nmi on
+ cls
+ print centered at 2,"TREASURE DIVER"
+ print centered at 4,"OCEAN EXPEDITION"
+ fill 144 count 28 at 2,5
+ fill 129 count 28 at 2,6
+ for I = 7 to 13
+   fill 136 count 28 at 2,I
+ next
+ ' Illustrated title panorama: tile art connected across cell boundaries.
+ put char 185 at 9,7
+ put char 186 at 10,7
+ put char 187 at 11,7
+ put char 188 at 12,7
+ put char 189 at 9,8
+ put char 190 at 10,8
+ put char 191 at 11,8
+ put char 192 at 12,8
+ put char 193 at 9,9
+ put char 194 at 10,9
+ put char 195 at 11,9
+ put char 196 at 12,9
+ put char 197 at 9,10
+ put char 198 at 10,10
+ put char 199 at 11,10
+ put char 200 at 12,10
+ put char 201 at 20,7
+ put char 202 at 21,7
+ put char 203 at 22,7
+ put char 204 at 23,7
+ put char 205 at 20,8
+ put char 206 at 21,8
+ put char 207 at 22,8
+ put char 208 at 23,8
+ put char 209 at 20,9
+ put char 210 at 21,9
+ put char 211 at 22,9
+ put char 212 at 23,9
+ put char 213 at 20,10
+ put char 214 at 21,10
+ put char 215 at 22,10
+ put char 216 at 23,10
+ put char 153 at 3,11
+ put char 154 at 4,11
+ put char 155 at 5,11
+ put char 156 at 6,11
+ put char 157 at 3,12
+ put char 158 at 4,12
+ put char 159 at 5,12
+ put char 160 at 6,12
+ put char 161 at 3,13
+ put char 162 at 4,13
+ put char 163 at 5,13
+ put char 164 at 6,13
+ put char 165 at 25,11
+ put char 166 at 26,11
+ put char 167 at 27,11
+ put char 168 at 28,11
+ put char 169 at 25,12
+ put char 170 at 26,12
+ put char 171 at 27,12
+ put char 172 at 28,12
+ put char 173 at 25,13
+ put char 174 at 26,13
+ put char 175 at 27,13
+ put char 176 at 28,13
+ fill 133 count 28 at 2,13
+ put char 145 at 13,11
+ put char 149 at 14,11
+ put char 146 at 15,11
+ put char 147 at 13,12
+ put char 150 at 14,12
+ put char 148 at 15,12
+ put char 130 at 4,13
+ put char 132 at 27,13
+ put char 134 at 8,13
+ put char 134 at 21,13
+ set sprite 0 to 66,95,0,15
+ set sprite 1 to 66,95,36,7
+ set sprite 2 to 92,160,8,7
+ set sprite 3 to 192,0,0,0
+ update sprites
+ print centered at 15,"HUNT FOR SUNKEN TREASURE"
+ print centered at 18,"SURFACE TO REFILL AIR"
+ print centered at 20,"FIRE: ENERGY BOOST"
+ print centered at 22,"PRESS FIRE TO DIVE"
+ play sounds SndMusic, SndBass
+ wait no fire
+ pause until press
+ stop sound SndMusic
+ stop sound SndBass
+ mute all
+ wait no fire
+ clear sprites
+ update sprites
+ goto new_game
+
+new_game:
+ Score = 0
+ Lives = 3
+ Leak = 0
+ Diff = 0
+ goto new_dive
+
+new_dive:
+ set sprite count 9
+ nmi on
+ cls
+ print at 2,0,"TREASURE DIVER"
+ print at 19,0,"AIR"
+ print at 2,1,"ENG"
+ print at 24,1,"LEAK"
+ print at 2,22,"SCORE"
+ print at 17,22,"LIVES"
+ ' Layered ocean: clear surface, rock shelves and distinct seabed.
+ fill 144 count 28 at 2,2
+ fill 144 count 28 at 2,3
+ for I = 5 to 19
+   fill 136 count 28 at 2,I
+ next
+ fill 129 count 28 at 2,4
+ fill 133 count 28 at 2,20
+ ' Light shafts connected across tiles; no rectangle color seams.
+ put char 185 at 9,5
+ put char 186 at 10,5
+ put char 187 at 11,5
+ put char 188 at 12,5
+ put char 189 at 9,6
+ put char 190 at 10,6
+ put char 191 at 11,6
+ put char 192 at 12,6
+ put char 193 at 9,7
+ put char 194 at 10,7
+ put char 195 at 11,7
+ put char 196 at 12,7
+ put char 197 at 9,8
+ put char 198 at 10,8
+ put char 199 at 11,8
+ put char 200 at 12,8
+ put char 201 at 20,5
+ put char 202 at 21,5
+ put char 203 at 22,5
+ put char 204 at 23,5
+ put char 205 at 20,6
+ put char 206 at 21,6
+ put char 207 at 22,6
+ put char 208 at 23,6
+ put char 209 at 20,7
+ put char 210 at 21,7
+ put char 211 at 22,7
+ put char 212 at 23,7
+ put char 213 at 20,8
+ put char 214 at 21,8
+ put char 215 at 22,8
+ put char 216 at 23,8
+ ' Natural rock formations in background, kept away from action corridor.
+ for I = 5 to 19
+   if I < 9 then
+     put char 136 at 2,I
+     put char 136 at 29,I
+   end if
+   if I >= 9 then
+     put char 140 at 2,I
+     put char 139 at 29,I
+   end if
+ next
+ for I = 6 to 17 step 5
+   put char 128 at 7,I
+   put char 128 at 24,I + 1
+ next
+ for I = 7 to 17 step 4
+   put char 135 at 12,I
+   put char 135 at 21,I + 1
+ next
+ ' Coral, algae and boulders near the seabed.
+ put char 130 at 3,19
+ put char 131 at 4,19
+ put char 131 at 5,19
+ put char 132 at 9,19
+ put char 130 at 10,19
+ put char 131 at 11,19
+ put char 132 at 19,19
+ put char 130 at 20,19
+ put char 131 at 21,19
+ put char 130 at 26,19
+ put char 132 at 27,19
+ put char 134 at 7,18
+ put char 134 at 17,19
+ put char 134 at 24,18
+ ' Continuous 4x3 connected reefs, outside central treasure route.
+ put char 153 at 3,17
+ put char 154 at 4,17
+ put char 155 at 5,17
+ put char 156 at 6,17
+ put char 157 at 3,18
+ put char 158 at 4,18
+ put char 159 at 5,18
+ put char 160 at 6,18
+ put char 161 at 3,19
+ put char 162 at 4,19
+ put char 163 at 5,19
+ put char 164 at 6,19
+ put char 165 at 25,17
+ put char 166 at 26,17
+ put char 167 at 27,17
+ put char 168 at 28,17
+ put char 169 at 25,18
+ put char 170 at 26,18
+ put char 171 at 27,18
+ put char 172 at 28,18
+ put char 173 at 25,19
+ put char 174 at 26,19
+ put char 175 at 27,19
+ put char 176 at 28,19
+ PX = 120
+ PY = 34
+ TX = random(80,168)
+ ChestCol = TX >> 3
+ ChestDir = 1
+ TY = 147
+ Air = 100
+ Energy = 100
+ Boost = 0
+ BoostArmed = 1
+ Got = 0
+ Inv = 0
+ Spawn = 0
+ Phase = 0
+ Frames = 0
+ ReefTick = 0
+ CollectFlash = 0
+ HudWarning = 0
+ NextWarning = 0
+ for I = 0 to 4
+   SX[I] = random(28,213)
+   ' The upper surface is a safe staging area for the player.
+   ' Shark lanes start at Y=64, leaving clear water below the starting craft.
+   SY[I] = 64
+   Tmp = I
+   Tmp *= 18
+   SY[I] += Tmp
+   SS[I] = random(1,3)
+   SD[I] = 0
+   LaneGoal[I] = SY[I]
+   LaneTick[I] = I * 18
+ next
+ ' Draw treasure as a two-column background graphic, sparkle uses sprite
+ put char 145 at ChestCol,18
+ Tmp = ChestCol + 1
+ put char 149 at Tmp,18
+ Tmp = ChestCol + 2
+ put char 146 at Tmp,18
+ put char 147 at ChestCol,19
+ Tmp = ChestCol + 1
+ put char 150 at Tmp,19
+ Tmp = ChestCol + 2
+ put char 148 at Tmp,19
+ goto draw_hud
+
+draw_hud:
+ print Score at 8,22
+ print Lives at 23,22 digits 1
+ print Air at 23,0 digits 3
+ print Energy at 6,1 digits 3
+ print Leak at 29,1 digits 1
+ print at 27,0,"%"
+ goto game_loop
+
+game_loop:
+ nmi on
+ wait 2 frames
+ nmi off
+ Frames += 1
+ Phase += 1
+ Moving = 0
+ ' Boost only while directional input is held. Recharge on release.
+ Boost = 0
+ Speed = 1
+ if joypad(1).fire then
+   if BoostArmed = 1 then
+     if Energy > 0 then
+       if joypad(1).left or joypad(1).right or joypad(1).up or joypad(1).down then
+         Boost = 1
+         Speed = 2
+         if Frames % 22 = 0 then play sound SndSwim
+       end if
+     end if
+   end if
+ else
+   BoostArmed = 1
+ end if
+ ' Cancel boost tone immediately after propulsion is released or energy runs out.
+ if Boost = 0 then
+   stop sound SndSwim
+ end if
+ if Boost = 1 then
+   if Frames % 2 = 0 then
+     Energy -= 1
+     if Energy = 0 then BoostArmed = 0
+   end if
+ else
+   if not joypad(1).fire then
+     if PY <= 35 then
+       if Frames % 2 = 0 then
+         if Energy < 100 then Energy += 1
+       end if
+     else
+       if Frames % 12 = 0 then
+         if Energy < 100 then Energy += 1
+       end if
+     end if
+   end if
+ end if
+ if joypad(1).left then
+   Moving = 1
+   Facing = 0
+   if PX > 28 then PX -= Speed
+   if PX < 28 then PX = 28
+ end if
+ if joypad(1).right then
+   Moving = 1
+   Facing = 1
+   if PX < 205 then PX += Speed
+   if PX > 205 then PX = 205
+ end if
+ if joypad(1).up then
+   Moving = 1
+   if PY > 34 then PY -= Speed
+   if PY < 34 then PY = 34
+ end if
+ if joypad(1).down then
+   Moving = 1
+   if PY < 143 then PY += Speed
+   if PY > 143 then PY = 143
+ end if
+ if Phase >= 3 - Diff then
+   Phase = 0
+   for I = 0 to 4
+     if I < 3 then
+       ' Patrol sharks drift into neighbouring depth lanes. Never invade the safe surface.
+       ' Each shark has its own movement clock; no lane changes are missed.
+       LaneTick[I] += 1
+       if LaneTick[I] >= 76 then
+         LaneTick[I] = 0
+         if I = 0 then
+           if LaneGoal[I] = 64 then LaneGoal[I] = 72 else LaneGoal[I] = 64
+         end if
+         if I = 1 then
+           if LaneGoal[I] = 82 then LaneGoal[I] = 90 else LaneGoal[I] = 82
+         end if
+         if I = 2 then
+           if LaneGoal[I] = 100 then LaneGoal[I] = 108 else LaneGoal[I] = 100
+         end if
+       end if
+       if SY[I] < LaneGoal[I] then SY[I] += 1
+       if SY[I] > LaneGoal[I] then SY[I] -= 1
+       ' Patrol sharks turn around at the screen edges instead of teleporting.
+       if SD[I] = 0 then
+         if SX[I] > 28 + SS[I] then
+           SX[I] -= SS[I]
+         else
+           SX[I] = 28
+           SD[I] = 1
+         end if
+       else
+         if SX[I] < 205 - SS[I] then
+           SX[I] += SS[I]
+         else
+           SX[I] = 205
+           SD[I] = 0
+         end if
+       end if
+     else
+       ' Smart sharks attack in bursts, then break off to patrol. This creates escape windows.
+       V = Frames + I * 41
+       V %= 180
+       HunterChase = 0
+       if V < 64 then HunterChase = 1
+       if HunterChase = 1 then
+         ' Chase at one pixel per update. Boost at 2x can outpace the hunter.
+         if SX[I] + 5 < PX then
+           SX[I] += 1
+           SD[I] = 1
+         end if
+         if SX[I] > PX + 5 then
+           SX[I] -= 1
+           SD[I] = 0
+         end if
+         ' Vertical tracking only every other AI update.
+         if Frames % 2 = 0 then
+           if SY[I] + 6 < PY then
+             if SY[I] < 143 then SY[I] += 1
+           end if
+           if SY[I] > PY + 6 then
+             if SY[I] > 107 then SY[I] -= 1
+           end if
+         end if
+       else
+         ' Search / disengage: continue swimming instead of magnetically following player.
+         if SD[I] = 0 then
+           if SX[I] > 28 then SX[I] -= 1 else SD[I] = 1
+         else
+           if SX[I] < 205 then SX[I] += 1 else SD[I] = 0
+         end if
+         ' Hunters leave the treasure lane during recovery.
+         if I = 3 then
+           if SY[I] > 110 then SY[I] -= 1
+         else
+           if SY[I] > 127 then SY[I] -= 1
+         end if
+       end if
+     end if
+     ' Keep hunter patrol regions disjoint in vertical sprite space.
+     if I = 3 then
+       if SY[I] > 117 then SY[I] = 117
+       if SY[I] < 105 then SY[I] = 105
+     end if
+     if I = 4 then
+       if SY[I] < 135 then SY[I] = 135
+       if SY[I] > 143 then SY[I] = 143
+     end if
+     ' Preserve a safe water layer at the surface throughout gameplay.
+     if SY[I] < 64 then SY[I] = 64
+   next
+ end if
+ if Inv > 0 then Inv -= 1
+ if Air > 0 then
+   if Frames % 10 = 0 then
+     Air -= 1
+     if Leak > 0 then
+       if Air >= Leak then
+         Air -= Leak
+       else
+         Air = 0
+       end if
+     end if
+   end if
+ end if
+ if PY <= 35 then
+   if Air < 98 then
+     Air += 2
+   else
+     Air = 100
+   end if
+ end if
+ if CollectFlash > 0 then
+   CollectFlash -= 1
+   if CollectFlash = 12 then
+     put char 221 at FlashCol,18
+     Tmp = FlashCol + 1
+     put char 222 at Tmp,18
+     put char 223 at FlashCol,19
+     put char 224 at Tmp,19
+   end if
+   if CollectFlash = 0 then
+     put char 136 at FlashCol,18
+     Tmp = FlashCol + 1
+     put char 136 at Tmp,18
+     put char 136 at FlashCol,19
+     put char 136 at Tmp,19
+   end if
+ end if
+ if Got = 1 then
+   if Spawn > 0 then Spawn -= 1
+   if Spawn = 0 then
+     Got = 0
+     put char 145 at ChestCol,18
+ Tmp = ChestCol + 1
+ put char 149 at Tmp,18
+ Tmp = ChestCol + 2
+ put char 146 at Tmp,18
+ put char 147 at ChestCol,19
+ Tmp = ChestCol + 1
+ put char 150 at Tmp,19
+ Tmp = ChestCol + 2
+ put char 148 at Tmp,19
+   end if
+ end if
+ ' Treasure drifts slowly along the seabed. Tile map and collision position move together.
+ if Got = 0 then
+   if Frames % 32 = 0 then
+     put char 136 at ChestCol,18
+     Tmp = ChestCol + 1
+     put char 136 at Tmp,18
+     Tmp = ChestCol + 2
+     put char 136 at Tmp,18
+     put char 136 at ChestCol,19
+     Tmp = ChestCol + 1
+     put char 136 at Tmp,19
+     Tmp = ChestCol + 2
+     put char 136 at Tmp,19
+     if ChestDir = 1 then
+       if ChestCol < 22 then ChestCol += 1 else ChestDir = 0
+     else
+       if ChestCol > 8 then ChestCol -= 1 else ChestDir = 1
+     end if
+     TX = ChestCol * 8
+     put char 145 at ChestCol,18
+     Tmp = ChestCol + 1
+     put char 149 at Tmp,18
+     Tmp = ChestCol + 2
+     put char 146 at Tmp,18
+     put char 147 at ChestCol,19
+     Tmp = ChestCol + 1
+     put char 150 at Tmp,19
+     Tmp = ChestCol + 2
+     put char 148 at Tmp,19
+   end if
+ end if
+ if PY + 14 >= TY then
+   if PY <= TY + 12 then
+     if Got = 0 then
+       if PX + 13 >= ChestCol * 8 then
+         if PX <= ChestCol * 8 + 23 then
+         Got = 1
+         if Diff < 2 then Diff += 1
+         Spawn = 70
+         put char 136 at ChestCol,18
+         Tmp = ChestCol + 1
+         put char 136 at Tmp,18
+         Tmp = ChestCol + 2
+         put char 136 at Tmp,18
+         put char 136 at ChestCol,19
+         Tmp = ChestCol + 1
+         put char 136 at Tmp,19
+         Tmp = ChestCol + 2
+         put char 136 at Tmp,19
+         FlashCol = ChestCol
+         CollectFlash = 24
+         put char 217 at FlashCol,18
+         Tmp = FlashCol + 1
+         put char 218 at Tmp,18
+         put char 219 at FlashCol,19
+         put char 220 at Tmp,19
+         Score += 200
+         print Score at 8,22
+         play sound SndTreasure
+         TX = random(80,168)
+         ChestCol = TX >> 3
+         ChestDir = 1
+         if Score > Best then Best = Score
+         end if
+       end if
+     end if
+   end if
+ end if
+ for I = 0 to 4
+   if Inv = 0 then
+     if PX + 12 >= SX[I] then
+       if PX <= SX[I] + 12 then
+         if PY + 11 >= SY[I] then
+           if PY <= SY[I] + 11 then
+             Leak += 1
+             if Leak > 5 then Leak = 5
+             print Leak at 29,1 digits 1
+             play sound SndBite
+             Inv = 80
+           end if
+         end if
+       end if
+     end if
+   end if
+ next
+ if Air = 0 then goto lose_life
+
+ DiverPat = 0
+ if Facing = 0 then DiverPat = 52
+ if Moving = 1 then
+   if Frames % 12 >= 6 then
+     if Facing = 0 then DiverPat = 44
+     if Facing = 1 then DiverPat = 28
+   end if
+ end if
+ if PY <= 35 then
+   DiverPat = 48
+   if Facing = 0 then DiverPat = 52
+ end if
+ if Inv = 0 then
+   set sprite 0 to PY,PX,DiverPat,1
+ else
+   if Inv % 4 < 2 then
+     set sprite 0 to PY,PX,DiverPat,1
+   else
+     set sprite 0 to 192,0,0,0
+   end if
+ end if
+ if Got = 0 then
+   Tmp = ChestCol * 8
+   Tmp += 5
+   set sprite 2 to 140,Tmp,40,10
+ else
+   set sprite 2 to 192,0,0,0
+ end if
+ for I = 0 to 4
+   ' Stagger swimming animation by shark; never animate all five in lockstep.
+   V = Frames + I * 7
+   V %= 28
+   if SD[I] = 1 then
+     if V < 14 then
+       V = 8
+     else
+       V = 12
+     end if
+   else
+     if V < 14 then
+       V = 16
+     else
+       V = 20
+     end if
+   end if
+   Tmp = I + 3
+   if I >= 3 then
+     set sprite Tmp to SY[I],SX[I],V,8
+   else
+     set sprite Tmp to SY[I],SX[I],V,7
+   end if
+ next
+ Bubbles = Frames >> 2
+ Bubbles &= 127
+ Tmp = 150 - Bubbles
+ set sprite 8 to Tmp,77,24,15
+ Tmp = 36
+ if Facing = 0 then Tmp = 56
+ if Inv = 0 then
+   set sprite 1 to PY,PX,Tmp,7
+ else
+   if Inv % 4 < 2 then
+     set sprite 1 to PY,PX,Tmp,7
+   else
+     set sprite 1 to 192,0,0,0
+   end if
+ end if
+ update sprites
+ ' Background vegetation animation: 8 tile indices; no sprite usage.
+ if Frames % 40 = 0 then
+   if ReefTick = 0 then
+     put char 177 at 3,17
+     put char 178 at 4,17
+     put char 179 at 5,17
+     put char 180 at 6,17
+     put char 181 at 25,17
+     put char 182 at 26,17
+     put char 183 at 27,17
+     put char 184 at 28,17
+     ReefTick = 1
+   else
+     put char 153 at 3,17
+     put char 154 at 4,17
+     put char 155 at 5,17
+     put char 156 at 6,17
+     put char 165 at 25,17
+     put char 166 at 26,17
+     put char 167 at 27,17
+     put char 168 at 28,17
+     ReefTick = 0
+   end if
+ end if
+ if Frames % 48 = 0 then
+   if Frames % 96 = 0 then
+     fill 129 count 28 at 2,4
+   else
+     fill 225 count 28 at 2,4
+   end if
+ end if
+ if Frames % 24 = 0 then
+   PlantPhase = 151
+   if Frames % 48 = 0 then PlantPhase = 152
+   put char PlantPhase at 7,18
+   put char PlantPhase at 24,18
+ end if
+ ' Update warnings only when the state changes to avoid unnecessary VRAM writes.
+ NextWarning = 0
+ if Inv > 0 then NextWarning = 2
+ if Air <= 40 then NextWarning = 1
+ if HudWarning != NextWarning then
+   print at 13,1,"           "
+   if NextWarning = 1 then print at 13,1,"LOW AIR!"
+   if NextWarning = 2 then print at 13,1,"SHARK HIT!"
+   HudWarning = NextWarning
+ end if
+ if Frames % 12 = 0 then
+   print Air at 23,0 digits 3
+   print Energy at 6,1 digits 3
+   print Score at 8,22
+ end if
+ goto game_loop
+
+lose_life:
+ nmi on
+ play sound SndOver
+ dec Lives
+ print at 8,11,"OUT OF AIR!"
+ wait 90 frames
+ if Lives > 0 then goto new_dive
+ goto game_over
+
+game_over:
+ mute all
+ cls
+ clear sprites
+ update sprites
+ print centered at 5,"DIVE COMPLETE"
+ print centered at 9,"YOUR SCORE"
+ print Score at 14,11
+ print centered at 15,"HIGH SCORE"
+ print Best at 14,17
+ print centered at 21,"FIRE TO TRY AGAIN"
+ wait no fire
+ pause until press
+ wait no fire
+ goto title
+
+asm {
+Tune:
+ db $44
+ dw sndtiny_1
+ db 12
+ db $02,$30,$1A,$21
+ db $15,$00,$00,$00,$18,$00,$1C,$00,$00,$00,$1A,$00,$18,$00,$00,$00
+ db $17,$00,$18,$00,$1C,$00,$00,$00,$1F,$00,$00,$00,$1C,$00,$00,$00
+ db $1D,$00,$00,$00,$1C,$00,$1A,$00,$18,$00,$00,$00,$17,$00,$00,$00
+ db $15,$00,$00,$00,$00,$00,$01,$01,$10,$00,$13,$00,$15,$00,$00,$00
+ db $FF
+BassTheme:
+ db $84
+ dw sndtiny_2
+ db 12
+ db $02,$50,$18,$32
+ db $09,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+ db $05,$00,$00,$00,$00,$00,$00,$00,$07,$00,$00,$00,$00,$00,$00,$00
+ db $0E,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+ db $09,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+ db $FF
+Swim:
+ db $40,$F9,$73,$FF,$50
+Treasure:
+ db $40,$76,$20,$08,$40,$61,$20,$08,$40,$53,$20,$10,$50
+Bite:
+ db $40,$2F,$02,$03,$40,$60,$22,$03,$40,$9A,$42,$03,$40,$FF,$73,$03,$50
+Over:
+ db $40,$F9,$20,$06,$40,$E0,$20,$06,$40,$CB,$20,$06,$40,$BA,$20,$06,$50
+DiverSoundTable:
+ dw Tune,$7035
+ dw Swim,$7035
+ dw Treasure,$7035
+ dw Bite,$7035
+ dw Over,$7035
+ dw BassTheme,$7049
+}

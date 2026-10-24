@@ -1,0 +1,2130 @@
+cartridge "LASER STRIKE/PRESENTS COMPUTE!'S/1986"
+
+' LASER STRIKE
+' From COMPUTE! magazine, December 1986, pages 44-55: "Laser Strike" by
+' Barbara Schulak (Commodore 64), with versions for the Apple II and the
+' IBM PC/PCjr by Tim Midkiff, the Amiga by Tim Midkiff, the Atari 400,
+' 800, XL and XE by Tim Midkiff and the Atari ST by Kevin Mykytyn,
+' Editorial Programmers. All credit belongs to the authors.
+'
+' Historical context (summary of the article):
+' A strategy game for one or two players, after the board games, the most
+' famous being Battleship, but in outer space. Each player secretly
+' deploys a space force (an Explorer, a Fighter, a Bomber and a
+' Mothership) on a ten-by-ten galaxy grid, then the players take turns
+' firing laser strikes at the other's grid. A hit is marked in the colour
+' of the ship that was hit; a miss in a neutral colour. The first to find
+' and destroy all the other's ships wins. Leave a name blank and the
+' computer plays that side; leave both blank and it plays the whole game
+' by itself. Ships go horizontally (right) or vertically (down), never
+' across the border or over another ship. The Amiga version spoke.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the stick moves the cursor; fire deploys a ship (then the
+' stick picks right or down) or fires the laser. With two joysticks each
+' player uses his own; with one, both share it.
+' The rules follow the listings: two grids, ten by ten (C64 lines 230-
+' 290); the ships and their lengths, Explorer 2, Fighter 3, Bomber 4,
+' Mothership 5, deployed from the largest (lines 300-360, 1770-1780);
+' HORIZONTAL [RIGHT] OR VERTICAL [DOWN] and INVALID CHOICE (lines 1090-
+' 1250); turns, POSITION AND FIRE LASER (lines 380-440); MISS!, ALREADY
+' HIT, DIRECT HIT! and DESTROYED (lines 1410-1620); the hits left for
+' each ship shown under the grids (lines 270-290); ... HAS FREED THE
+' GALAXY! and PLAY AGAIN (lines 480-590); the computer's own deployment
+' and its laser strikes, at random on alternate squares until it hits,
+' then along the ship it found (lines 610-880).
+' Adaptation liberties: names picked with the joystick (no keypad), and
+' a menu instead of a blank name to choose the computer; a square
+' already hit is refused and another one picked, instead of losing the
+' turn; the laser is a bolt that flies across to its square, and bursts
+' or fizzles; the computer finds a ship's direction from the colour of
+' its hits, as a player would; against the computer your own fleet
+' stays on show; at the end both fleets are shown; "HIT", "MISS" and
+' "DESTROYED" are spoken, after the Amiga version (formant-synthesized
+' speech, VoxPCM samples on the standard sound chip); the big title; an
+' original title tune; an editorial page. Everything that matters stays
+' in columns 2-29, inside the TV overscan. At most four sprites share a
+' line. The frame loop is protected from the NMI.
+
+const TEmpty = 128
+const TMiss = 137
+const TStar = 171
+const TStar2 = 172
+const TBlock = 173
+const TGone = 170
+const GridY = 6
+
+const SndLaser = 1
+const SndBoomN = 2
+const SndBoomT = 3
+const SndFizzle = 4
+const SndSunk = 5
+const SndPlace = 6
+const SndTick = 7
+const SndNope = 8
+const SndWinA = 9
+const SndWinB = 10
+const SndPick = 11
+const SndTuneA = 12
+const SndTuneB = 13
+
+u8 PType[2]                     ' 0 human, 1 computer
+u8 Nm[16]                       ' two names of 8 letters
+u8 Sticks = 1
+u8 Gr[200]                      ' each square: bits 0-2 the ship on it (2-5),
+                                ' bits 3-5 which part of its picture,
+                                ' bit 6 missed, bit 7 hit
+u8 Left[12]                     ' hits each ship can still take
+u8 Tot[2]
+u8 PP = 0                       ' the player whose turn it is
+u8 Opp = 1
+u8 Show0 = 0
+u8 Show1 = 0
+u8 CX = 0
+u8 CY = 0
+u8 TX = 0
+u8 TY = 0
+u8 Shp = 0
+u8 HitShip = 0
+u8 ShipSunk = 0
+u8 Hor = 0
+u8 Bad = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 BtnWas = 0
+u8 Pad = 1
+u8 MoveT = 0
+u8 Tick = 0
+u8 GC = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tm = 0
+u8 Cell = 0
+u8 Best = 0
+u8 Mix = 0
+u8 Choice = 1
+i16 Sx = 0
+i16 Sy = 0
+i16 Dx = 0
+i16 Dy = 0
+i16 Tv = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table LsSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 0
+  sprites flicker on
+  copy SpritePat count 160 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+  Setup
+
+new_game:
+  for I = 0 to 199
+    Gr[I] = 0
+  next
+  for P = 0 to 1
+    Tot[P] = 14
+    for N = 2 to 5
+      V = P * 6
+      V += N
+      Left[V] = N
+    next
+  next
+  ' Against the computer, your own fleet stays on show
+  Show0 = 0
+  Show1 = 0
+  if PType[1] = 1 then Show0 = 1
+  if PType[0] = 1 then Show1 = 1
+  if PType[0] = 1 then
+    if PType[1] = 1 then
+      Show0 = 1
+      Show1 = 1
+    end if
+  end if
+  DrawScreen
+  ' Lines 300-360: each player deploys, in secret
+  for PP = 0 to 1
+    Deploy
+  next
+  DrawScreen
+  PP = 0
+
+  ' --- Lines 380-440: the battle ---
+turn_loop:
+  Opp = 1 - PP
+  Header
+  print at 2,1, "POSITION AND FIRE LASER"
+  ShowLabels
+  if PType[PP] = 0 then
+    AimHuman
+  else
+    AimComputer
+  end if
+  FireLaser
+  if Tot[Opp] = 0 then goto freed
+  Rearm
+  wait 40 frames
+  nmi off
+  PP = Opp
+  goto turn_loop
+
+  ' --- Lines 480-590: one side has freed the galaxy ---
+freed:
+  HideSprites
+  play sound SndWinA
+  play sound SndWinB
+  Show0 = 1
+  Show1 = 1
+  for P = 0 to 1
+    DrawGrid
+  next
+  fill 32 count 28 at 2,0
+  fill 32 count 28 at 2,1
+  P = PP
+  PrintName
+  print at 11,0, "HAS FREED"
+  print at 9,1, "THE GALAXY!"
+  Rearm
+  wait 180 frames
+  nmi off
+  fill 32 count 28 at 2,23
+  print at 6,23, "PLAY AGAIN"
+  print at 18,23, "YES  NO"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 17,23 step 5 horizontal
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' The stick of the player whose turn it is (or either, with one joystick)
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Pad = 0
+  if Sticks = 2 then Pad = PP + 1
+  if Pad <> 2 then
+    if joypad(1).up then Stick = 1
+    if joypad(1).down then Stick = 2
+    if joypad(1).left then Stick = 3
+    if joypad(1).right then Stick = 4
+    if joypad(1).fire then Btn = 1
+  end if
+  if Pad <> 1 then
+    if joypad(2).up then Stick = 1
+    if joypad(2).down then Stick = 2
+    if joypad(2).left then Stick = 3
+    if joypad(2).right then Stick = 4
+    if joypad(2).fire then Btn = 1
+  end if
+  return
+end sub
+
+' Move the cursor on grid P by the stick, a square every 8 frames
+sub MoveCursor:
+  if MoveT > 0 then
+    dec MoveT
+    return
+  end if
+  if Stick = 0 then return
+  if Stick = 1 then
+    if CY > 0 then dec CY
+  elseif Stick = 2 then
+    if CY < 9 then inc CY
+  elseif Stick = 3 then
+    if CX > 0 then dec CX
+  else
+    if CX < 9 then inc CX
+  end if
+  MoveT = 7
+  play sound SndTick
+  return
+end sub
+
+sub DrawCursor:
+  GC = P * 14
+  GC += 3
+  X = GC + CX
+  X *= 8
+  X -= 1
+  Y = CY + GridY
+  Y *= 8
+  Y -= 2
+  K = 15
+  N = Tick & 8
+  if N > 0 then K = 13
+  set sprite 0 to Y,X,0,K
+  update sprites
+  return
+end sub
+
+' --- Deployment ---------------------------------------------------------------
+
+sub Deploy:
+  P = PP
+  if PType[PP] = 1 then
+    ComputerDeploy
+    return
+  end if
+  ' The other player must not watch
+  V = 1 - PP
+  if PType[V] = 0 then
+    HideSprites
+    for P = 0 to 1
+      DrawGrid
+    next
+    P = PP
+    Header
+    print at 2,1, "THE OTHER PLAYER LOOKS"
+    print at 2,2, "AWAY. THEN PRESS FIRE."
+    Rearm
+    wait no fire
+    pause until press
+    wait no fire
+    nmi off
+    fill 32 count 28 at 2,2
+  end if
+  ' Show this fleet while it is placed
+  if PP = 0 then
+    Q = Show0
+    Show0 = 1
+  else
+    Q = Show1
+    Show1 = 1
+  end if
+  CX = 0
+  CY = 0
+  for Shp = 5 to 2 step -1
+deploy_one:
+    Header
+    print at 2,1, "DEPLOY YOUR"
+    ShipName
+    fill 32 count 28 at 2,2
+    ' Pick the square
+    Rearm
+    wait no fire
+    nmi off
+pick_square:
+    inc Tick
+    ReadStick
+    MoveCursor
+    P = PP
+    DrawCursor
+    Rearm
+    wait
+    nmi off
+    if Btn = 0 then goto pick_square
+    ' Lines 1090-1120: which way?
+    play sound SndPick
+    print at 2,2, "HORIZONTAL [RIGHT] OR"
+    print at 2,3, "VERTICAL [DOWN]"
+    Rearm
+    wait no fire
+    nmi off
+which_way:
+    inc Tick
+    ReadStick
+    P = PP
+    DrawCursor
+    Rearm
+    wait
+    nmi off
+    if Stick = 4 then
+      Hor = 1
+    elseif Stick = 2 then
+      Hor = 0
+    else
+      goto which_way
+    end if
+    fill 32 count 28 at 2,2
+    fill 32 count 28 at 2,3
+    TX = CX
+    TY = CY
+    TryPlace
+    if Bad = 1 then
+      ' Lines 1220-1250: INVALID CHOICE
+      play sound SndNope
+      print at 2,2, "INVALID CHOICE"
+      Rearm
+      wait 50 frames
+      nmi off
+      fill 32 count 28 at 2,2
+      goto deploy_one
+    end if
+    play sound SndPlace
+    P = PP
+    DrawGrid
+  next
+  HideSprites
+  Rearm
+  wait 30 frames
+  nmi off
+  ' Hide it again if the other player is a person
+  if PP = 0 then
+    Show0 = Q
+  else
+    Show1 = Q
+  end if
+  P = PP
+  DrawGrid
+  return
+end sub
+
+' Can ship Shp go at TX,TY on grid PP, Hor (1 right, 0 down)? If so, place it
+sub TryPlace:
+  Bad = 0
+  N = Shp - 1
+  if Hor = 1 then
+    V = TX + N
+  else
+    V = TY + N
+  end if
+  if V > 9 then
+    Bad = 1
+    return
+  end if
+  X = TX
+  Y = TY
+  for K = 1 to Shp
+    Cell = Y * 10
+    Cell += X
+    V = PP * 100
+    Cell += V
+    V = Gr[Cell] & 7
+    if V <> 0 then Bad = 1
+    if Hor = 1 then
+      inc X
+    else
+      inc Y
+    end if
+  next
+  if Bad = 1 then return
+  X = TX
+  Y = TY
+  for K = 1 to Shp
+    Cell = Y * 10
+    Cell += X
+    V = PP * 100
+    Cell += V
+    ' its picture: the ends and the middle, across or down
+    V = 1
+    if K = 1 then V = 0
+    if K = Shp then V = 2
+    if Hor = 0 then V += 3
+    V <<= 3
+    V += Shp
+    Gr[Cell] = V
+    if Hor = 1 then
+      inc X
+    else
+      inc Y
+    end if
+  next
+  return
+end sub
+
+' A random square and direction. Successive random() calls repeat in a
+' short cycle here, so one call is spread out with a running offset
+sub RandCell:
+  V = random(0, 199)
+  V += Mix
+  if V >= 200 then V -= 200
+  Mix += 73
+  if Mix >= 200 then Mix -= 200
+  TX = V % 10
+  TY = V / 10
+  Hor = 0
+  if TY >= 10 then
+    TY -= 10
+    Hor = 1
+  end if
+  return
+end sub
+
+' Lines 610-700: the computer's fleet, placed at random
+sub ComputerDeploy:
+  for Shp = 5 to 2 step -1
+cd_try:
+    RandCell
+    TryPlace
+    if Bad = 1 then goto cd_try
+  next
+  P = PP
+  DrawGrid
+  return
+end sub
+
+' --- The battle ---------------------------------------------------------------
+
+' A person picks a square on the other grid
+sub AimHuman:
+  P = Opp
+  Rearm
+  wait no fire
+  nmi off
+aim_loop:
+  inc Tick
+  ReadStick
+  MoveCursor
+  P = Opp
+  DrawCursor
+  Rearm
+  wait
+  nmi off
+  if Btn = 0 then goto aim_loop
+  Cell = CY * 10
+  Cell += CX
+  V = Opp * 100
+  Cell += V
+  V = Gr[Cell] >> 6
+  if V <> 0 then
+    ' ALREADY HIT: pick another
+    play sound SndNope
+    print at 2,23, "ALREADY HIT"
+    Rearm
+    wait 40 frames
+    wait no fire
+    nmi off
+    fill 32 count 28 at 2,23
+    goto aim_loop
+  end if
+  TX = CX
+  TY = CY
+  return
+end sub
+
+' Lines 610-880: the computer's strike: along a ship it has found, or
+' at random on alternate squares
+sub AimComputer:
+  Best = 255
+  ' A ship hit but not destroyed? Its colour tells which one
+  for Shp = 2 to 5
+    V = Opp * 6
+    V += Shp
+    N = Left[V]
+    if N > 0 then
+      if N < Shp then
+        if Best = 255 then Hunt
+      end if
+    end if
+  next
+  if Best = 255 then
+    ' At random, on the squares of one colour of a chequerboard (from a
+    ' random start, the first free one; any free square once those are gone)
+    RandCell
+    G = TY * 10
+    G += TX
+    for J = 0 to 1
+      for I = 0 to 99
+        Q = G + I
+        if Q >= 100 then Q -= 100
+        V = Opp * 100
+        V += Q
+        N = Gr[V] >> 6
+        if N = 0 then
+          TX = Q % 10
+          TY = Q / 10
+          if J = 1 then goto aim_found
+          N = TX + TY
+          N &= 1
+          if N = 0 then goto aim_found
+        end if
+      next
+    next
+aim_found:
+  end if
+  ' The cursor glides there, for the players to follow
+  P = Opp
+  for Tm = 1 to 40
+    inc Tick
+    if CX < TX then inc CX
+    if CX > TX then dec CX
+    if CY < TY then inc CY
+    if CY > TY then dec CY
+    DrawCursor
+    Rearm
+    wait 2 frames
+    nmi off
+  next
+  return
+end sub
+
+' Ship Shp of player Opp has been hit: shoot next to its hits, along
+' their line when there are two or more
+sub Hunt:
+  ' Where are its hits?
+  I = 0
+  K = 0
+  for Cell = 0 to 99
+    V = Opp * 100
+    V += Cell
+    N = Gr[V] >> 6
+    if N = 2 then
+      N = Gr[V] & 7
+      if N = Shp then
+        if I = 0 then
+          X = Cell % 10
+          Y = Cell / 10
+        else
+          ' a second hit: the line is known
+          N = Cell % 10
+          if N = X then
+            K = 2
+          else
+            K = 1
+          end if
+        end if
+        inc I
+      end if
+    end if
+  next
+  ' Walk from the first hit both ways along the line (or all four ways)
+  for J = 0 to 3
+    if K = 1 then
+      if J < 2 then goto hunt_next
+    end if
+    if K = 2 then
+      if J >= 2 then goto hunt_next
+    end if
+    TX = X
+    TY = Y
+hunt_step:
+    if J = 0 then
+      if TY = 0 then goto hunt_next
+      dec TY
+    elseif J = 1 then
+      if TY = 9 then goto hunt_next
+      inc TY
+    elseif J = 2 then
+      if TX = 0 then goto hunt_next
+      dec TX
+    else
+      if TX = 9 then goto hunt_next
+      inc TX
+    end if
+    Cell = TY * 10
+    Cell += TX
+    V = Opp * 100
+    Cell += V
+    V = Gr[Cell] >> 6
+    if V = 0 then
+      Best = 1
+      return
+    end if
+    if V = 2 then
+      V = Gr[Cell] & 7
+      if V = Shp then goto hunt_step
+    end if
+hunt_next:
+  next
+  return
+end sub
+
+' The laser: a bolt from the shooter's grid to the square, then the result
+sub FireLaser:
+  play sound SndLaser
+  ' from the middle of the shooter's grid
+  N = PP * 14
+  N += 8
+  N *= 8
+  Sx = N
+  Sy = 76
+  N = Opp * 14
+  N += 3
+  N += TX
+  N *= 8
+  N -= 4
+  Dx = N
+  Dx -= Sx
+  N = TY + GridY
+  N *= 8
+  N -= 5
+  Dy = N
+  Dy -= Sy
+  for Tm = 0 to 20
+    Tv = Dx * Tm
+    Tv /= 20
+    Tv += Sx
+    X = Tv
+    Tv = Dy * Tm
+    Tv /= 20
+    Tv += Sy
+    Y = Tv
+    set sprite 1 to Y,X,4,11
+    update sprites
+    Rearm
+    wait
+    nmi off
+  next
+  set sprite 1 to 192,0,0,0
+  Cell = TY * 10
+  Cell += TX
+  V = Opp * 100
+  Cell += V
+  fill 32 count 28 at 2,23
+  Shp = Gr[Cell] & 7
+  if Shp = 0 then
+    ' MISS!
+    Gr[Cell] |= 64
+    play sound SndFizzle
+    for Tm = 0 to 20
+      set sprite 1 to Y,X,16,14
+      update sprites
+      Rearm
+      wait
+      nmi off
+    next
+    set sprite 1 to 192,0,0,0
+    update sprites
+    P = Opp
+    DrawGrid
+    print at 2,23, "MISS!"
+    play voxpcm SayMiss
+    nmi off
+    return
+  end if
+  ' DIRECT HIT!
+  Gr[Cell] |= 128
+  play sound SndBoomN
+  play sound SndBoomT
+  for Tm = 0 to 24
+    N = Tm & 4
+    P = 8
+    if N > 0 then P = 12
+    K = 11
+    if Tm > 12 then K = 8
+    set sprite 1 to Y,X,P,K
+    update sprites
+    Rearm
+    wait
+    nmi off
+  next
+  set sprite 1 to 192,0,0,0
+  update sprites
+  P = Opp
+  DrawGrid
+  V = Opp * 6
+  HitShip = Shp
+  V += HitShip
+  dec Left[V]
+  dec Tot[Opp]
+  ShipSunk = 0
+  if Left[V] = 0 then ShipSunk = 1
+  DrawLegend
+  Shp = HitShip
+  if ShipSunk = 1 then
+    ' A fatal hit is announced once, with the destroyed ship identified.
+    play sound SndSunk
+    fill 32 count 28 at 2,23
+    print at 2,23, "DESTROYED"
+    X = 12
+    Y = 23
+    ShipNameAt
+    if Shp = 2 then
+      play voxpcm SayDestroyedExplorer
+    else if Shp = 3 then
+      play voxpcm SayDestroyedFighter
+    else if Shp = 4 then
+      play voxpcm SayDestroyedBomber
+    else
+      play voxpcm SayDestroyedMothership
+    end if
+    nmi off
+  else
+    print at 2,23, "DIRECT HIT!"
+    play voxpcm SayHit
+    nmi off
+  end if
+  return
+end sub
+
+' --- Drawing ------------------------------------------------------------------
+
+sub DrawScreen:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  ' A field of stars
+  for I = 1 to 40
+    X = random(2, 29)
+    Y = random(0, 23)
+    N = I & 1
+    N += TStar
+    put char N at X,Y
+  next
+  for P = 0 to 1
+    DrawBorder
+    DrawGrid
+  next
+  for P = 0 to 1
+    DrawLegend
+  next
+  ' The legend's names, Mothership first
+  print at 10,18, "MOTHERSHIP"
+  print at 12,19, "BOMBER"
+  print at 12,20, "FIGHTER"
+  print at 11,21, "EXPLORER"
+  ShowLabels
+  return
+end sub
+
+sub DrawBorder:
+  GC = P * 14
+  GC += 3
+  X = GC - 1
+  K = GC + 10
+  put char 133 at X,5
+  put char 134 at K,5
+  put char 135 at X,16
+  put char 136 at K,16
+  fill 129 count 10 at GC,5
+  fill 132 count 10 at GC,16
+  for Y = 6 to 15
+    put char 130 at X,Y
+    put char 131 at K,Y
+  next
+  return
+end sub
+
+' Grid P: its shots, and its ships when they are on show
+sub DrawGrid:
+  GC = P * 14
+  GC += 3
+  Q = Show0
+  if P = 1 then Q = Show1
+  Cell = P * 100
+  for Y = 0 to 9
+    for X = 0 to 9
+      G = Gr[Cell]
+      V = G >> 6
+      K = G & 7
+      if V = 1 then
+        N = TMiss
+      elseif V = 2 then
+        N = K + 136
+      else
+        N = TEmpty
+        if Q = 1 then
+          if K > 0 then
+            N = K - 2
+            N *= 6
+            V = G >> 3
+            V &= 7
+            N += V
+            N += 142
+          end if
+        end if
+      end if
+      I = GC + X
+      J = Y + GridY
+      put char N at I,J
+      inc Cell
+    next
+  next
+  return
+end sub
+
+' Lines 270-290: player P's fleet, the squares each ship has left
+sub DrawLegend:
+  for Shp = 2 to 5
+    Y = 23 - Shp
+    V = P * 6
+    V += Shp
+    N = Left[V]
+    for K = 0 to 4
+      X = K + 3
+      if P = 1 then X = 28 - K
+      J = 32
+      if K < Shp then
+        J = TGone
+        if K < N then J = Shp + 164
+      end if
+      put char J at X,Y
+    next
+  next
+  return
+end sub
+
+' GRID 1, GRID 2: the grid under fire stands out
+sub ShowLabels:
+  fill 32 count 28 at 2,4
+  print at 6,4, "GRID 1"
+  print at 20,4, "GRID 2"
+  if PP = 0 then
+    print at 18,4, ">"
+    print at 27,4, "<"
+  else
+    print at 4,4, ">"
+    print at 13,4, "<"
+  end if
+  return
+end sub
+
+' The current player's name on the top line
+sub Header:
+  fill 32 count 28 at 2,0
+  fill 32 count 28 at 2,1
+  P = PP
+  PrintName
+  return
+end sub
+
+sub PrintName:
+  if PType[P] = 1 then
+    print at 2,0, "COMPUTER"
+    return
+  end if
+  for I = 0 to 7
+    V = P * 8
+    V += I
+    N = Nm[V]
+    X = I + 2
+    put char N at X,0
+  next
+  return
+end sub
+
+' The name of ship Shp, after "DEPLOY YOUR" on line 1
+sub ShipName:
+  X = 14
+  Y = 1
+  ShipNameAt
+  return
+end sub
+
+sub ShipNameAt:
+  if Shp = 2 then
+    print at X,Y, "EXPLORER"
+  elseif Shp = 3 then
+    print at X,Y, "FIGHTER"
+  elseif Shp = 4 then
+    print at X,Y, "BOMBER"
+  else
+    print at X,Y, "MOTHERSHIP"
+  end if
+  return
+end sub
+
+' --- Setup --------------------------------------------------------------------
+
+' Who plays, how many joysticks, and the names (lines 160-210)
+sub Setup:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  backdrop black
+  cls
+  LoadTiles
+  print at 9,2, "LASER STRIKE"
+  for P = 0 to 1
+    Y = P * 5
+    Y += 5
+    print at 4,Y, "PLAYER"
+    NumU = P + 1
+    print at 11,Y, digits$(NumU, 1)
+    inc Y
+    print at 8,Y, "PERSON"
+    inc Y
+    print at 8,Y, "COMPUTER"
+    V = Y - 1
+    Choice = 1
+    if P = 1 then Choice = 2
+    Rearm
+    wait no fire
+    choose menu 1 to 2 into Choice cursor $3E at 6,V step 1
+    wait no fire
+    nmi off
+    PType[P] = Choice - 1
+    play sound SndPick
+  next
+  Sticks = 1
+  if PType[0] = 0 then
+    if PType[1] = 0 then
+      print at 4,15, "JOYSTICKS"
+      print at 8,16, "ONE, TO SHARE"
+      print at 8,17, "TWO"
+      Choice = 2
+      Rearm
+      wait no fire
+      choose menu 1 to 2 into Choice cursor $3E at 6,16 step 1
+      wait no fire
+      nmi off
+      Sticks = Choice
+    end if
+  end if
+  ' The names, picked with the stick
+  for P = 0 to 1
+    if PType[P] = 0 then EnterName
+  next
+  return
+end sub
+
+' Up and down change the letter, left and right move, fire is done
+sub EnterName:
+  cls
+  print at 9,6, "PLAYER"
+  NumU = P + 1
+  print at 16,6, digits$(NumU, 1)
+  print at 9,7, "YOUR NAME:"
+  print at 3,14, "STICK: LETTERS, FIRE: DONE"
+  PP = P
+  ' start from "PLAYER 1" or "PLAYER 2"
+  V = P * 8
+  if Nm[V] = 0 then
+    for I = 0 to 7
+      V = P * 8
+      V += I
+      Nm[V] = DefName[I]
+    next
+    V = P * 8
+    V += 7
+    Nm[V] = 49 + P
+  end if
+  I = 0
+  Rearm
+  wait no fire
+  nmi off
+name_loop:
+  for J = 0 to 7
+    X = J + 12
+    V = P * 8
+    V += J
+    N = Nm[V]
+    put char N at X,10
+  next
+  fill 32 count 8 at 12,11
+  X = I + 12
+  put char 94 at X,11
+  Rearm
+  wait 7 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    return
+  end if
+  V = P * 8
+  V += I
+  N = Nm[V]
+  if Stick = 1 then
+    ' A-Z, then a space
+    if N = 32 then
+      N = 65
+    elseif N >= 90 then
+      N = 32
+    else
+      inc N
+    end if
+    play sound SndTick
+  elseif Stick = 2 then
+    if N = 32 then
+      N = 90
+    elseif N <= 65 then
+      N = 32
+    else
+      dec N
+    end if
+    play sound SndTick
+  elseif Stick = 3 then
+    if I > 0 then dec I
+  elseif Stick = 4 then
+    if I < 7 then inc I
+  end if
+  if N < 32 then N = 32
+  if N > 32 then
+    if N < 48 then N = 65
+  end if
+  if N > 57 then
+    if N < 65 then N = 65
+  end if
+  Nm[V] = N
+  goto name_loop
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 376 to vram.pattern + Dst16
+    copy TileCol count 376 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub TitlePage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  for I = 1 to 50
+    X = random(2, 29)
+    Y = random(0, 23)
+    N = I & 1
+    N += TStar
+    put char N at X,Y
+  next
+  ' LASER STRIKE in big blocks
+  for I = 0 to TitleCount - 1
+    J = I * 2
+    X = TitleBlocks[J]
+    X += 4
+    inc J
+    Y = TitleBlocks[J]
+    Y += 3
+    put char TBlock at X,Y
+  next
+  fill 174 count 28 at 2,15
+  print at 8,17, "COMPUTE! DEC. 1986"
+  print at 5,20, "PRESS FIRE TO DEPLOY"
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+  Tm = 0
+title_loop:
+  ' A bolt crosses the sky now and then
+  inc Tm
+  X = Tm * 2
+  set sprite 1 to 116,X,4,11
+  update sprites
+  Rearm
+  wait
+  nmi off
+  if joypad(1).fire then goto title_go
+  if joypad(2).fire then goto title_go
+  goto title_loop
+title_go:
+  play sound SndPick
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  HideSprites
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 9,1, "LASER STRIKE"
+  print at 2,3, "BY BARBARA SCHULAK, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE,"
+  print at 2,5, "DECEMBER 1986, WITH ITS"
+  print at 2,6, "APPLE, PC, AMIGA, ATARI"
+  print at 2,7, "AND ST VERSIONS BY TIM"
+  print at 2,8, "MIDKIFF AND KEVIN MYKYTYN."
+  print at 2,10, "BATTLESHIP, IN OUTER SPACE:"
+  print at 2,11, "HIDE YOUR FLEET, THEN FIND"
+  print at 2,12, "AND VAPORIZE THE OTHER"
+  print at 2,13, "ONE, A LASER STRIKE AT A"
+  print at 2,14, "TIME. LIKE THE AMIGA, THIS"
+  print at 2,15, "ONE TALKS."
+  print at 2,17, "COLECOVISION PORT BY"
+  print at 2,18, "AMY BIENVENU, 2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data DefName bytes = 80, 76, 65, 89, 69, 82, 32, 49
+
+data TilePat bytes
+  $80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$00
+  $02,$02,$02,$02,$02,$02,$02,$02,$40,$40,$40,$40,$40,$40,$40,$40
+  $00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$02
+  $00,$00,$00,$00,$00,$00,$C0,$40,$02,$03,$00,$00,$00,$00,$00,$00
+  $40,$C0,$00,$00,$00,$00,$00,$00,$80,$00,$18,$24,$24,$18,$00,$00
+  $A4,$5A,$BC,$7E,$3D,$5A,$92,$00,$A4,$5A,$BC,$7E,$3D,$5A,$92,$00
+  $A4,$5A,$BC,$7E,$3D,$5A,$92,$00,$A4,$5A,$BC,$7E,$3D,$5A,$92,$00
+  $80,$0F,$3F,$7F,$7F,$3F,$0F,$00,$80,$FF,$DB,$FF,$FF,$DB,$FF,$00
+  $80,$E0,$F8,$FE,$FE,$F8,$E0,$00,$80,$18,$3C,$3C,$7E,$7E,$7E,$7E
+  $80,$7E,$5A,$7E,$7E,$5A,$7E,$7E,$80,$7E,$7E,$7E,$3C,$3C,$18,$00
+  $80,$0F,$3F,$7F,$7F,$3F,$0F,$00,$80,$FF,$DB,$FF,$FF,$DB,$FF,$00
+  $80,$E0,$F8,$FE,$FE,$F8,$E0,$00,$80,$18,$3C,$3C,$7E,$7E,$7E,$7E
+  $80,$7E,$5A,$7E,$7E,$5A,$7E,$7E,$80,$7E,$7E,$7E,$3C,$3C,$18,$00
+  $80,$0F,$3F,$7F,$7F,$3F,$0F,$00,$80,$FF,$DB,$FF,$FF,$DB,$FF,$00
+  $80,$E0,$F8,$FE,$FE,$F8,$E0,$00,$80,$18,$3C,$3C,$7E,$7E,$7E,$7E
+  $80,$7E,$5A,$7E,$7E,$5A,$7E,$7E,$80,$7E,$7E,$7E,$3C,$3C,$18,$00
+  $80,$0F,$3F,$7F,$7F,$3F,$0F,$00,$80,$FF,$DB,$FF,$FF,$DB,$FF,$00
+  $80,$E0,$F8,$FE,$FE,$F8,$E0,$00,$80,$18,$3C,$3C,$7E,$7E,$7E,$7E
+  $80,$7E,$5A,$7E,$7E,$5A,$7E,$7E,$80,$7E,$7E,$7E,$3C,$3C,$18,$00
+  $00,$7E,$7E,$7E,$7E,$7E,$7E,$00,$00,$7E,$7E,$7E,$7E,$7E,$7E,$00
+  $00,$7E,$7E,$7E,$7E,$7E,$7E,$00,$00,$7E,$7E,$7E,$7E,$7E,$7E,$00
+  $00,$42,$24,$18,$18,$24,$42,$00,$00,$00,$00,$10,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$80,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+  $00,$00,$00,$FF,$FF,$00,$00,$00
+end data
+data TileCol bytes
+  $41,$41,$41,$41,$41,$41,$41,$41,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$41,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $71,$71,$71,$71,$71,$71,$71,$71,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$91,$91,$91,$91,$91,$91,$91,$91
+  $41,$71,$71,$71,$71,$71,$71,$71,$41,$71,$71,$71,$71,$71,$71,$71
+  $41,$71,$71,$71,$71,$71,$71,$71,$41,$71,$71,$71,$71,$71,$71,$71
+  $41,$71,$71,$71,$71,$71,$71,$71,$41,$71,$71,$71,$71,$71,$71,$71
+  $41,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$41,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $41,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$41,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $41,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$41,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $41,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$41,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $41,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$41,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $41,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$41,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $41,$91,$91,$91,$91,$91,$91,$91,$41,$91,$91,$91,$91,$91,$91,$91
+  $41,$91,$91,$91,$91,$91,$91,$91,$41,$91,$91,$91,$91,$91,$91,$91
+  $41,$91,$91,$91,$91,$91,$91,$91,$41,$91,$91,$91,$91,$91,$91,$91
+  $71,$71,$71,$71,$71,$71,$71,$71,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$91,$91,$91,$91,$91,$91,$91,$91
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $41,$41,$41,$41,$41,$41,$41,$41,$F1,$D1,$D1,$D1,$D1,$61,$61,$11
+  $11,$11,$11,$F1,$91,$11,$11,$11
+end data
+data SpritePat bytes
+  $DE,$80,$00,$80,$80,$80,$80,$00,$80,$DE,$00,$00,$00,$00,$00,$00
+  $C0,$40,$00,$40,$40,$40,$40,$00,$40,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0C,$1E,$3F,$1E,$0C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$12,$0A,$07,$FF,$07,$0A,$12,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$80,$00,$00,$00,$80,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $11,$44,$10,$82,$08,$82,$10,$44,$11,$00,$00,$00,$00,$00,$00,$00
+  $10,$44,$10,$82,$20,$82,$10,$44,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$24,$42,$42,$24,$18,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleBlocks bytes
+  $00,$00,$00,$01,$00,$02,$00,$03,$00,$04,$01,$04,$02,$04,$04,$00
+  $05,$00,$06,$00,$04,$01,$06,$01,$04,$02,$05,$02,$06,$02,$04,$03
+  $06,$03,$04,$04,$06,$04,$08,$00,$09,$00,$0A,$00,$08,$01,$08,$02
+  $09,$02,$0A,$02,$0A,$03,$08,$04,$09,$04,$0A,$04,$0C,$00,$0D,$00
+  $0E,$00,$0C,$01,$0C,$02,$0D,$02,$0C,$03,$0C,$04,$0D,$04,$0E,$04
+  $10,$00,$11,$00,$10,$01,$12,$01,$10,$02,$11,$02,$10,$03,$12,$03
+  $10,$04,$12,$04,$00,$06,$01,$06,$02,$06,$00,$07,$00,$08,$01,$08
+  $02,$08,$02,$09,$00,$0A,$01,$0A,$02,$0A,$04,$06,$05,$06,$06,$06
+  $05,$07,$05,$08,$05,$09,$05,$0A,$08,$06,$09,$06,$08,$07,$0A,$07
+  $08,$08,$09,$08,$08,$09,$0A,$09,$08,$0A,$0A,$0A,$0C,$06,$0D,$06
+  $0E,$06,$0D,$07,$0D,$08,$0D,$09,$0C,$0A,$0D,$0A,$0E,$0A,$10,$06
+  $12,$06,$10,$07,$12,$07,$10,$08,$11,$08,$10,$09,$12,$09,$10,$0A
+  $12,$0A,$14,$06,$15,$06,$16,$06,$14,$07,$14,$08,$15,$08,$14,$09
+  $14,$0A,$15,$0A,$16,$0A
+end data
+const TitleCount = 107
+
+asm {
+LsLaser:
+    db $40,$23,$10,$01,$40,$25,$10,$01,$40,$26,$10,$01,$40,$28,$10,$01,$40,$2A,$10,$01,$40,$2D,$10,$01
+    db $40,$2F,$10,$01,$40,$32,$10,$01,$40,$36,$10,$01,$40,$3A,$10,$01,$40,$3E,$10,$01,$40,$43,$10,$01
+    db $40,$4A,$10,$01,$40,$51,$10,$01,$40,$5A,$10,$01,$40,$66,$10,$01,$40,$75,$10,$01,$40,$88,$10,$01
+    db $40,$A5,$10,$01,$40,$CF,$10,$01,$40,$18,$11,$01,$50
+LsBoomN:
+    db $00,$00,$04,$03,$00,$00,$15,$05,$00,$00,$36,$08,$00,$00,$66,$0A,$00,$00,$97,$0C,$10
+LsBoomT:
+    db $80,$A4,$13,$03,$80,$FF,$33,$04,$80,$FF,$63,$06,$90
+LsFizzle:
+    db $C0,$7C,$70,$01,$C0,$71,$70,$01,$C0,$68,$70,$01,$C0,$60,$70,$01,$C0,$59,$70,$01,$C0,$53,$70,$01
+    db $C0,$4E,$70,$01,$C0,$49,$70,$01,$C0,$45,$70,$01,$C0,$41,$70,$01,$C0,$3E,$70,$01,$D0
+LsSunk:
+    db $40,$7F,$20,$04,$40,$A9,$40,$04,$40,$93,$20,$04,$40,$C4,$40,$04,$40,$AF,$20,$04,$40,$E9,$40,$04
+    db $40,$D7,$20,$04,$40,$1F,$41,$04,$50
+LsPlace:
+    db $80,$D6,$20,$02,$80,$8F,$20,$02,$80,$6B,$30,$03,$90
+LsTick:
+    db $C0,$40,$60,$01,$D0
+LsNope:
+    db $C0,$F9,$33,$06,$C0,$F9,$F3,$02,$C0,$FF,$33,$06,$D0
+LsWinA:
+    db $40,$D6,$10,$05,$40,$D6,$F0,$01,$40,$AA,$10,$05,$40,$AA,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01
+    db $40,$6B,$10,$0B,$40,$6B,$F0,$01,$40,$7F,$10,$05,$40,$7F,$F0,$01,$40,$6B,$10,$05,$40,$6B,$F0,$01
+    db $40,$55,$10,$23,$40,$55,$F0,$01,$50
+LsWinB:
+    db $80,$AC,$31,$05,$80,$D6,$F0,$01,$80,$53,$31,$05,$80,$AA,$F0,$01,$80,$1D,$31,$05,$80,$8F,$F0,$01
+    db $80,$D6,$30,$0B,$80,$6B,$F0,$01,$80,$FE,$30,$05,$80,$7F,$F0,$01,$80,$D6,$30,$05,$80,$6B,$F0,$01
+    db $80,$AA,$30,$23,$80,$55,$F0,$01,$90
+LsPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+LsSoundTable:
+    dw LsLaser,$7035
+    dw LsBoomN,$702B
+    dw LsBoomT,$703F
+    dw LsFizzle,$7049
+    dw LsSunk,$7035
+    dw LsPlace,$703F
+    dw LsTick,$7049
+    dw LsNope,$7049
+    dw LsWinA,$7035
+    dw LsWinB,$703F
+    dw LsPick,$7049
+    dw LsTuneMel,$703F
+    dw LsTuneBass,$7049
+; Title tune: Star Patrol, a cool pulsing space theme in E minor (original for this port)
+; Tiny Sound, 7 frames per step
+LsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$23,$00,$2A,$00,$26,$00,$25,$23,$21,$00,$23,$00
+    db $1E,$00,$00,$00,$02,$30,$1A,$21,$23,$00,$2A,$00,$2B,$00,$2A,$28
+    db $26,$00,$25,$00,$23,$00,$00,$00,$02,$30,$1A,$21,$26,$00,$2D,$00
+    db $2A,$00,$28,$26,$25,$00,$26,$00,$21,$00,$00,$00,$02,$10,$1A,$21
+    db $23,$00,$2A,$00,$26,$00,$25,$21,$23,$00,$00,$00,$00,$00,$00,$01
+    db $FF
+LsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$0B,$17,$0B,$0B,$0B,$17,$0B,$07,$07,$13,$07
+    db $09,$09,$15,$09,$0B,$0B,$17,$0B,$10,$10,$10,$10,$12,$12,$12,$12
+    db $0B,$0B,$0B,$0B,$02,$60,$18,$32,$0E,$0E,$1A,$0E,$0E,$0E,$1A,$0E
+    db $09,$09,$15,$09,$09,$09,$15,$09,$07,$07,$13,$07,$12,$12,$12,$12
+    db $0B,$0B,$0B,$0B,$0B,$0B,$0B,$01
+    db $FF
+; Clear female speech, adaptively encoded up to VoxPCM high quality.
+SayHit:
+  dw VoxHit1
+  db 22,15
+  dw VoxHit2
+  db 12,4
+  dw VoxHit3
+  db 17,9
+  dw VoxHit4
+  db 17,9
+  dw VoxHit5
+  db 22,15
+  dw 0,0
+VoxHit1:
+  db 29,2,224,96,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0
+  db 26,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,24,1,2,224
+  db 160,1,2,224,0,1,2,1,2,64,2,4,2,64,1,2,128,2,4,2,64,1,3,1
+  db 0,2,1,0,2,33,2,1,3,4,34,1,2,4,2,32,1,2,0,2,1,0,2,1
+  db 2,33,0,2,32,1,0,2,32,2,0,1,2,1,2,1,34,0,1,2,1,0,33,0
+  db 1,2,1,34,1,2,0,2,32,1,3,1,3,0,2,4,0,4,65,32,3,1,3,0
+  db 2,96,1,0,3,2,0,2,0,4,1,36,0,4,2,3,0,3,2,0,2,1,0,1
+  db 0,98,0,1,0,6,1,6,0,1,3,130,1,2,33,32,3,34,0,65,6,65,3,34
+  db 3,32,2,1,0,1,0,255
+VoxHit2:
+  db 29,5,2,0,3,4,2,97,4,33,32,2,0,3,0,66,1,2,1,64,33,2,3,0
+  db 1,5,1,0,1,2,36,1,2,4,32,2,0,66,1,2,0,2,33,2,1,0,1,34
+  db 3,32,3,0,33,0,36,0,4,33,2,3,1,3,34,32,2,1,64,1,0,1,35,1
+  db 2,3,33,0,1,4,1,4,64,1,3,34,1,3,64,2,33,128,5,2,1,2,32,4
+  db 0,4,1,4,1,0,2,32,3,0,3,1,34,1,64,1,32,1,2,35,1,2,32,33
+  db 4,0,36,64,2,0,3,2,0,34,1,2,1,32,1,0,1,2,35,1,0,2,0,1
+  db 4,0,33,4,1,0,2,0,2,0,3,32,2,128,1,2,4,3,2,3,1,0,2,0
+  db 4,0,4,0,4,0,1,32,2,32,34,32,2,64,1,2,1,0,2,5,32,1,2,1
+  db 0,36,0,33,64,3,1,66,0,1,2,32,1,2,1,32,5,34,4,2,0,36,0,4
+  db 0,4,2,1,3,2,32,34,96,1,128,5,34,33,2,1,6,4,32,4,0,2,3,0
+  db 2,1,3,32,1,0,2,0,1,0,2,1,0,2,7,2,6,2,0,4,6,4,2,1
+  db 32,2,3,0,1,2,0,2,1,32,2,1,32,2,0,4,7,5,0,6,2,1,4,6
+  db 1,0,2,1,34,3,1,4,3,2,4,0,3,1,2,1,0,2,1,0,1,9,3,1
+  db 4,3,4,8,6,3,64,2,3,0,6,34,0,4,3,2,0,1,0,2,1,0,1,3
+  db 7,3,6,0,1,6,8,2,0,3,0,34,0,4,1,3,33,3,2,0,1,2,1,0
+  db 1,0,35,7,1,4,0,4,10,1,2,3,0,2,3,1,4,1,2,0,1,3,2,32
+  db 1,32,1,0,2,39,6,1,0,6,10,1,35,2,0,3,1,4,1,0,2,1,35,1
+  db 0,1,0,33,3,0,39,36,0,8,10,0,3,5,0,2,3,4,8,2,0,2,0,2
+  db 3,0,4,0,1,0,1,3,2,37,1,4,0,10,6,1,5,3,2,0,3,38,0,34
+  db 0,3,2,65,2,4,2,3,1,7,5,1,6,2,40,0,3,5,1,34,4,6,2,0
+  db 2,0,5,0,4,32,1,32,3,0,2,9,1,6,2,6,8,1,5,2,0,34,6,4
+  db 3,1,0,3,2,32,1,0,1,0,2,32,7,5,8,2,0,8,6,3,0,2,1,5
+  db 1,6,0,2,4,2,5,0,1,2,0,4,32,2,0,2,9,0,4,0,1,11,2,32
+  db 2,5,1,4,0,65,5,3,1,34,6,2,1,2,1,3,2,7,4,0,2,6,8,3
+  db 1,0,34,0,4,0,1,4,2,3,1,3,2,1,32,1,2,0,34,3,64,6,0,1
+  db 64,2,33,0,4,2,1,0,34,0,2,1,2,1,2,0,66,0,2,33,0,33,2,0
+  db 1,32,33,2,33,2,0,2,1,2,96,34,32,2,0,1,2,0,1,128,1,96,1,64
+  db 2,1,64,2,1,2,32,2,1,2,1,0,2,1,2,1,2,1,0,2,1,224,255
+VoxHit3:
+  db 29,2,224,0,2,1,224,32,1,2,96,2,1,64,2,1,254,0,26,2,4,2,254,0
+  db 26,1,2,96,1,2,254,0,24,1,2,254,0,26,1,2,254,0,59,1,2,254,0,45
+  db 1,2,254,0,42,1,2,224,2,4,2,96,1,2,160,1,2,224,32,1,34,4,2,4
+  db 7,4,64,2,33,2,64,1,34,4,2,192,1,2,32,2,4,2,160,1,2,0,1,34
+  db 4,0,3,1,224,0,1,2,0,2,4,0,34,4,0,2,32,1,34,4,2,96,2,1
+  db 224,0,1,2,224,0,2,4,2,160,2,4,3,4,2,224,1,2,224,0,2,1,128,1
+  db 34,1,0,1,2,0,2,33,3,1,0,1,2,224,1,2,224,0,1,2,254,0,21,1
+  db 2,96,1,2,224,1,2,224,224,2,1,192,1,2,32,1,2,0,1,2,192,2,1,2
+  db 1,32,2,1,32,1,2,0,1,2,32,1,2,64,1,34,1,2,32,1,2,1,2,1
+  db 2,1,32,1,2,1,2,0,1,0,2,1,2,0,1,3,224,1,2,1,96,1,2,1
+  db 32,2,1,0,2,1,3,0,2,32,2,33,2,1,0,1,2,1,32,1,224,0,3,0
+  db 2,255
+VoxHit4:
+  db 29,5,2,33,128,1,0,1,96,1,2,0,2,1,0,3,34,64,1,0,1,32,1,2
+  db 33,32,4,3,1,2,96,34,3,0,2,32,6,2,1,32,1,32,4,1,2,1,34,1
+  db 2,0,2,1,2,5,0,3,1,0,65,96,4,0,4,32,34,1,3,4,34,1,5,2
+  db 3,0,33,0,4,96,4,65,2,0,34,64,2,32,35,0,3,4,1,0,4,0,1,2
+  db 33,4,0,1,2,0,3,32,2,1,34,1,35,2,32,6,2,6,0,2,4,2,4,0
+  db 4,2,1,3,0,34,1,2,0,2,32,3,34,1,0,4,1,4,2,0,1,2,4,1
+  db 32,34,0,34,4,3,1,2,0,1,7,64,1,4,0,6,3,1,2,1,0,4,0,2
+  db 0,3,192,2,1,7,64,36,2,6,3,32,1,0,33,66,32,2,4,2,32,2,1,35
+  db 32,1,6,0,1,0,2,0,1,2,4,32,34,0,2,1,96,2,1,2,3,2,1,0
+  db 1,4,0,4,3,64,33,0,2,0,2,0,2,1,96,2,0,1,7,1,32,4,1,0
+  db 1,2,0,1,2,0,4,0,2,0,3,4,3,1,96,2,1,0,5,1,2,0,1,4
+  db 2,6,3,64,33,2,32,2,224,2,1,0,3,0,2,0,1,4,0,1,2,96,4,2
+  db 32,2,192,2,1,0,2,4,7,1,2,1,0,4,0,4,3,32,2,4,0,1,2,0
+  db 3,4,3,1,0,1,34,1,0,2,1,32,5,1,2,1,4,0,1,2,1,3,1,0
+  db 4,2,32,2,32,2,1,96,2,1,64,34,0,2,4,1,0,1,34,4,3,4,64,2
+  db 224,0,2,1,64,34,64,4,32,1,34,1,0,1,64,2,128,1,34,1,128,3,1,2
+  db 0,33,0,1,34,4,2,0,1,0,1,3,64,1,2,128,2,1,64,2,0,2,0,4
+  db 2,33,2,96,1,2,4,3,1,2,224,0,2,1,32,2,1,34,33,2,33,2,32,1
+  db 2,1,2,1,0,2,1,2,96,2,1,64,2,1,224,0,2,1,0,2,1,224,160,2
+  db 1,0,2,1,128,2,4,2,128,1,2,32,1,2,224,0,2,1,224,192,1,2,128,255
+VoxHit5:
+  db 29,2,254,0,38,1,2,254,0,24,1,2,254,0,29,1,2,254,0,28,1,2,254,0
+  db 39,1,2,254,0,23,1,2,224,32,1,3,1,224,2,4,2,64,1,2,1,2,254,0
+  db 19,1,2,224,32,2,1,64,1,2,32,2,4,2,224,2,33,2,32,1,2,96,2,33
+  db 34,4,2,224,32,1,2,254,0,42,1,2,254,0,27,1,2,254,0,32,1,2,254,0
+  db 32,1,2,254,0,25,1,2,254,0,28,1,2,254,0,27,1,2,254,0,27,1,2,254
+  db 0,27,1,2,224,0,255
+SayMiss:
+  dw VoxMiss1
+  db 22,15
+  dw VoxMiss2
+  db 17,9
+  dw VoxMiss3
+  db 12,4
+  dw VoxMiss4
+  db 12,4
+  dw VoxMiss5
+  db 22,15
+  dw 0,0
+VoxMiss1:
+  db 29,2,224,96,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0
+  db 26,1,2,254,0,27,1,2,254,0,27,1,2,254,0,39,1,2,254,0,36,1,2,224
+  db 64,2,4,2,254,0,51,2,1,96,1,2,224,160,2,1,0,2,1,0,2,1,224,0
+  db 1,2,64,1,3,1,2,64,2,1,64,1,32,1,32,2,1,0,2,1,2,1,2,0
+  db 2,0,2,0,3,1,2,1,0,1,0,4,0,33,0,1,2,32,2,0,2,1,2,0
+  db 98,0,2,0,1,0,65,4,65,2,1,3,1,3,32,2,0,2,0,2,255
+VoxMiss2:
+  db 29,9,2,96,1,0,4,1,0,36,0,1,64,34,32,3,1,3,1,0,98,0,2,0
+  db 2,1,32,4,0,4,65,4,0,1,2,1,3,0,2,0,34,32,2,0,98,0,2,0
+  db 1,32,4,0,4,1,4,0,4,96,2,0,34,0,2,0,2,1,98,0,34,1,0,33
+  db 0,1,4,0,65,2,1,0,2,0,2,0,1,3,1,2,64,3,66,32,1,0,1,0
+  db 65,0,33,2,33,2,1,0,2,1,2,0,34,64,5,2,0,3,33,0,33,0,1,32
+  db 4,0,65,2,1,34,1,34,0,2,32,34,0,3,2,64,6,2,4,32,4,2,1,6
+  db 2,1,0,34,0,2,0,1,3,2,1,3,1,2,1,0,5,32,2,1,4,0,6,0
+  db 2,0,1,0,4,64,34,32,3,4,2,0,2,0,2,1,64,5,1,3,1,4,0,4
+  db 1,0,3,6,3,4,0,1,0,34,0,2,0,1,2,0,2,96,1,0,5,2,0,2
+  db 4,65,64,2,6,0,1,2,1,3,0,2,0,1,2,0,1,3,64,1,2,1,5,34
+  db 0,4,97,3,1,0,65,32,5,1,2,0,1,0,2,0,2,64,1,32,7,1,3,0
+  db 6,0,4,0,2,1,0,2,36,32,3,0,2,32,1,0,2,0,2,0,1,64,2,3
+  db 34,65,4,0,2,1,2,1,4,0,1,0,3,2,1,2,0,1,0,2,0,2,32,1
+  db 64,7,1,3,0,6,0,33,2,0,1,0,65,2,0,3,0,1,2,1,0,34,32,1
+  db 96,5,2,32,1,4,32,1,2,0,33,4,2,32,3,1,2,1,0,2,32,2,0,1
+  db 2,1,32,2,3,2,0,33,0,4,2,0,1,32,4,1,2,0,2,32,2,1,0,2
+  db 1,3,0,1,2,1,0,2,1,3,34,1,0,33,0,1,2,1,32,4,1,2,0,34
+  db 1,64,2,0,2,1,2,0,1,32,66,0,2,4,1,32,1,2,1,0,33,32,2,64
+  db 2,1,0,2,0,2,32,1,32,2,1,3,2,64,4,0,1,2,0,1,0,33,64,34
+  db 1,64,2,0,2,32,1,2,1,0,2,0,3,64,4,32,1,2,1,0,33,32,2,64
+  db 2,1,0,2,0,2,32,1,2,1,0,2,1,5,64,33,0,1,2,0,33,0,1,0
+  db 2,1,2,64,2,1,2,0,2,1,2,0,1,0,2,1,66,32,1,0,33,0,3,4
+  db 0,33,2,1,0,34,1,64,2,32,2,0,1,0,2,1,0,66,1,255
+VoxMiss3:
+  db 29,7,4,64,1,2,1,0,1,0,1,32,2,1,34,4,34,1,0,3,1,0,2,0
+  db 1,2,1,2,1,0,2,1,5,1,2,32,4,32,1,0,2,1,32,1,0,4,3,1
+  db 2,128,2,1,2,0,2,1,2,1,0,2,1,0,2,1,2,1,5,1,2,0,33,64
+  db 1,2,1,0,1,2,4,32,2,1,34,1,64,2,64,2,0,1,2,1,2,1,0,2
+  db 1,66,1,2,1,0,1,0,1,0,2,1,32,1,0,1,0,2,1,2,160,2,64,2
+  db 0,1,2,1,2,1,2,1,34,0,2,1,2,4,64,1,2,0,1,0,1,2,4,0
+  db 2,1,2,224,2,32,2,1,2,1,0,2,1,2,1,3,1,2,0,2,33,64,1,2
+  db 0,1,32,1,64,1,2,224,2,1,3,1,32,2,1,2,1,2,1,66,1,0,2,4
+  db 2,1,0,1,3,33,0,2,4,64,1,2,32,1,2,0,1,2,64,2,1,2,128,2
+  db 1,34,32,2,1,32,1,2,1,128,1,0,1,96,1,2,0,1,2,1,0,2,1,2
+  db 32,2,1,2,128,34,32,2,33,2,32,1,2,1,2,1,0,1,2,33,2,0,1,64
+  db 1,2,1,0,2,1,2,1,2,64,2,1,2,32,2,0,2,1,2,1,2,1,2,1
+  db 2,1,2,1,2,33,2,1,96,1,192,1,2,224,34,1,2,64,2,1,32,2,1,0
+  db 2,1,0,1,2,0,1,96,1,0,2,1,224,32,2,1,0,2,64,2,128,1,34,1
+  db 64,1,0,2,1,2,1,96,1,0,2,1,0,2,1,0,2,33,3,1,0,2,1,0
+  db 3,4,2,96,2,32,1,2,1,2,0,1,2,0,1,2,1,32,2,33,2,32,1,2
+  db 1,0,2,4,2,0,2,1,2,1,2,0,1,2,32,2,1,2,1,2,1,96,2,1
+  db 2,0,1,2,4,34,1,0,2,1,96,2,4,2,1,2,32,2,4,2,0,1,34,1
+  db 2,4,2,64,2,1,0,1,2,1,2,0,2,1,2,1,0,1,2,0,1,2,0,1
+  db 3,1,2,1,0,1,2,0,2,1,64,1,2,1,2,1,2,160,1,2,0,2,33,2
+  db 32,1,3,1,0,2,4,2,224,1,2,224,2,4,2,254,0,24,1,2,96,2,1,160
+  db 1,2,0,1,2,160,1,2,1,2,224,0,1,2,192,1,2,64,1,2,64,2,33,2
+  db 1,2,254,0,17,2,4,2,32,1,3,33,2,0,1,34,1,32,1,2,0,2,1,32
+  db 1,0,2,0,2,4,2,96,2,4,3,4,3,1,0,1,0,2,64,1,2,1,2,0
+  db 255
+VoxMiss4:
+  db 29,2,224,1,3,33,0,2,1,2,96,1,2,96,1,0,2,32,2,33,2,0,1,2
+  db 32,1,2,64,1,3,1,32,2,1,0,2,4,2,128,2,33,2,96,1,2,224,96,1
+  db 2,64,2,1,64,1,2,32,2,4,2,160,1,2,96,1,2,224,0,2,1,64,1,2
+  db 96,2,1,2,1,224,2,1,224,0,1,2,64,1,2,160,2,1,2,1,2,1,64,1
+  db 2,0,1,2,128,1,2,0,1,2,224,1,2,64,2,4,2,0,1,34,1,0,1,2
+  db 1,2,0,2,33,2,1,2,96,2,1,0,2,4,2,32,1,3,4,2,96,2,1,0
+  db 1,0,2,224,0,1,2,1,2,0,2,1,64,1,2,0,2,33,2,1,2,224,2,4
+  db 2,160,1,2,224,32,2,1,0,1,2,224,2,1,0,1,2,96,1,3,4,2,192,2
+  db 33,2,1,2,32,2,4,2,96,2,33,2,128,1,2,96,1,2,224,2,1,32,1,2
+  db 32,1,2,224,0,2,33,2,0,2,4,2,128,2,33,2,64,2,4,2,0,1,2,0
+  db 2,4,2,64,2,1,0,1,2,0,1,3,4,2,128,2,1,224,32,1,2,0,1,2
+  db 0,2,33,2,64,2,1,0,1,2,32,2,4,2,32,1,2,160,2,33,2,32,1,2
+  db 254,0,28,1,34,4,2,224,32,1,3,4,2,224,224,1,2,254,0,25,1,2,254,0
+  db 33,1,2,224,2,4,2,254,0,36,1,2,254,0,18,1,2,254,0,31,1,2,254,0
+  db 38,1,2,254,0,28,1,2,254,0,28,255
+VoxMiss5:
+  db 29,2,224,96,1,2,254,0,28,1,2,254,0,27,1,2,64,255
+SayDestroyedExplorer:
+  dw VoxDestroyedExplorer1
+  db 22,15
+  dw VoxDestroyedExplorer2
+  db 12,4
+  dw VoxDestroyedExplorer3
+  db 17,9
+  dw VoxDestroyedExplorer4
+  db 22,15
+  dw VoxDestroyedExplorer5
+  db 17,9
+  dw VoxDestroyedExplorer6
+  db 22,15
+  dw VoxDestroyedExplorer7
+  db 17,9
+  dw VoxDestroyedExplorer8
+  db 22,15
+  dw 0,0
+VoxDestroyedExplorer1:
+  db 29,2,224,96,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0
+  db 26,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,24,1,2,224
+  db 64,1,2,224,96,1,2,1,2,1,2,0,2,1,64,1,2,160,2,4,2,0,2,4
+  db 0,3,1,0,2,0,1,2,1,0,1,2,0,1,3,1,0,2,1,96,1,34,1,32
+  db 2,0,1,0,1,0,2,1,2,1,2,64,2,32,1,2,1,2,0,2,1,2,1,0
+  db 33,0,1,2,1,34,96,2,1,2,3,1,34,65,4,65,2,0,3,0,3,1,2,64
+  db 1,3,0,34,1,0,4,0,6,33,0,2,0,5,0,34,1,2,33,34,0,3,1,0
+  db 33,36,33,3,0,35,0,2,1,2,33,34,1,3,2,4,0,1,4,33,0,1,3,66
+  db 128,1,66,255
+VoxDestroyedExplorer2:
+  db 29,9,33,0,1,4,0,4,2,4,2,0,2,1,5,64,3,1,96,1,34,32,3,1
+  db 64,1,4,0,65,64,2,32,3,1,34,1,2,64,1,66,32,2,1,32,97,0,33,2
+  db 1,2,1,34,32,2,32,2,1,0,2,0,2,0,2,1,2,64,4,2,4,0,33,160
+  db 2,1,2,0,2,96,2,0,2,64,2,1,32,1,0,1,32,1,64,1,2,33,3,1
+  db 2,64,2,1,34,96,2,1,2,1,2,1,96,1,0,1,128,1,64,3,4,0,2,1
+  db 2,0,3,1,32,2,0,1,3,1,0,4,3,1,32,2,1,0,2,4,3,4,64,1
+  db 34,32,1,2,0,2,0,1,0,2,1,2,32,1,64,1,2,1,2,128,1,2,0,1
+  db 2,1,0,3,1,0,2,1,32,2,1,0,2,33,3,1,0,1,2,1,2,0,2,4
+  db 2,32,1,3,32,4,2,64,3,6,2,64,2,1,0,1,2,192,1,2,4,3,32,2
+  db 0,1,0,1,34,0,1,96,2,1,32,1,2,96,1,0,2,32,2,4,0,2,0,2
+  db 1,2,0,33,34,4,3,65,5,4,34,33,2,32,2,0,33,32,2,0,2,1,0,1
+  db 2,32,2,0,1,0,1,34,1,0,2,4,2,0,2,33,2,160,1,2,32,2,0,4
+  db 2,0,1,34,4,64,2,128,2,0,4,0,3,4,2,3,4,2,33,0,2,1,34,4
+  db 2,1,2,1,34,1,160,2,4,2,0,2,1,32,1,2,0,2,1,0,1,2,0,1
+  db 0,2,1,0,2,0,2,32,1,0,1,2,0,2,1,64,1,2,0,1,2,32,1,2
+  db 32,1,3,1,4,3,0,1,3,0,33,2,1,2,32,2,1,128,1,2,1,0,3,1
+  db 64,1,2,0,2,4,3,0,33,2,160,1,2,32,2,0,4,2,0,1,2,0,2,33
+  db 2,1,2,128,1,2,32,2,4,2,0,1,3,1,0,2,4,2,128,1,2,128,2,33
+  db 2,224,1,3,4,34,4,2,224,128,1,2,254,0,40,1,2,254,0,35,1,2,254,0
+  db 32,1,3,4,2,0,2,4,2,128,1,2,32,2,4,2,224,2,4,2,0,1,3,33
+  db 3,4,2,128,2,6,5,4,2,224,128,2,4,2,32,1,3,4,2,64,1,2,32,2
+  db 4,3,4,2,0,1,3,4,2,0,2,255
+VoxDestroyedExplorer3:
+  db 29,2,1,2,32,2,4,3,4,2,96,2,6,5,1,32,2,4,3,33,3,4,3,4
+  db 3,4,2,96,1,3,4,2,160,2,4,2,32,1,2,0,2,4,0,3,33,3,33,3
+  db 4,2,224,32,2,6,5,1,128,1,2,64,1,2,32,1,2,0,1,2,96,2,1,32
+  db 2,1,0,2,4,128,2,1,3,2,1,3,0,1,0,4,2,33,2,33,2,0,1,2
+  db 0,2,1,2,32,2,5,32,2,33,4,0,36,0,2,1,0,2,0,2,0,2,0,2
+  db 64,5,2,33,2,6,65,0,4,3,1,2,0,3,1,3,1,2,96,5,2,1,2,33
+  db 6,0,4,1,0,1,3,1,2,3,1,3,1,2,96,3,5,33,0,4,1,6,0,1
+  db 32,2,0,34,32,2,1,2,32,1,37,97,36,1,2,1,0,2,0,2,32,34,1,2
+  db 1,2,0,3,5,33,4,0,68,34,32,34,64,2,1,32,2,1,5,3,0,1,4,33
+  db 36,3,0,2,1,3,160,2,1,2,1,7,2,0,1,6,97,0,3,32,2,1,2,32
+  db 2,1,2,1,32,5,3,0,1,6,4,2,4,1,0,5,0,1,0,2,0,1,2,0
+  db 2,1,2,1,2,3,5,1,6,33,4,0,1,2,3,0,1,0,2,128,2,1,0,67
+  db 68,33,0,1,3,2,32,4,3,96,2,1,2,4,7,3,0,1,6,1,4,64,3,32
+  db 1,0,2,0,1,2,32,2,1,0,37,33,8,33,0,1,5,32,1,0,2,1,2,0
+  db 2,1,2,1,0,2,5,3,1,6,4,1,4,0,3,2,32,1,0,2,1,2,0,2
+  db 0,4,2,0,3,5,2,4,6,0,6,1,0,35,33,0,2,4,2,3,1,2,1,2
+  db 33,7,5,1,36,1,4,1,2,5,1,0,1,0,1,0,3,0,2,0,1,2,4,3
+  db 5,3,36,33,8,2,3,2,32,1,0,4,2,3,0,34,65,37,1,0,1,4,6,4
+  db 3,2,0,2,0,33,2,32,3,64,1,0,5,3,33,0,6,4,1,2,0,34,0,1
+  db 0,1,2,0,3,96,1,7,32,1,0,8,4,2,0,1,5,0,1,32,1,66,64,1
+  db 35,0,2,1,4,6,0,4,1,3,2,1,3,1,0,1,3,1,2,3,1,32,3,2
+  db 1,2,1,36,1,4,66,0,2,1,32,2,0,2,1,2,32,5,1,2,0,4,1,4
+  db 33,0,3,0,2,64,1,0,2,32,2,32,5,4,3,0,1,4,1,4,0,1,0,34
+  db 0,2,255
+VoxDestroyedExplorer4:
+  db 29,0,2,32,2,32,5,1,3,4,1,4,6,2,4,3,0,2,0,2,96,2,1,5
+  db 0,2,0,33,68,2,0,66,64,2,1,2,1,7,1,3,33,68,0,4,3,66,0,2
+  db 0,1,2,1,3,0,5,4,3,36,1,8,64,2,3,34,1,2,0,1,98,0,1,0
+  db 6,1,36,2,0,2,3,0,34,32,1,3,1,3,0,2,97,4,33,34,0,3,1,34
+  db 1,0,2,0,2,0,2,1,2,4,0,65,0,2,1,2,0,2,64,2,32,2,1,2
+  db 1,32,1,64,1,96,2,32,2,64,2,1,64,1,0,1,0,2,1,32,2,1,3,1
+  db 2,1,2,0,1,2,1,128,1,2,0,1,2,64,2,0,2,1,0,1,2,33,2,1
+  db 0,2,1,0,2,64,2,32,2,1,0,2,4,32,1,32,2,1,0,2,64,2,1,3
+  db 64,33,32,33,2,32,2,96,2,0,34,1,2,4,0,4,0,33,3,1,2,0,3,1
+  db 0,2,1,34,0,2,32,4,1,4,0,1,0,2,3,32,2,0,1,32,2,0,3,64
+  db 36,1,0,1,2,0,3,0,2,64,33,3,2,0,2,0,4,1,0,6,2,1,3,0
+  db 2,0,2,32,1,32,3,1,5,1,0,1,4,1,4,32,3,0,34,32,1,0,2,4
+  db 5,0,3,1,0,4,1,4,0,1,98,1,2,0,1,64,3,0,3,1,0,1,4,6
+  db 2,4,2,3,0,3,96,1,0,2,0,34,32,1,36,0,4,3,32,3,0,2,64,1
+  db 0,3,1,3,1,2,33,4,2,6,2,32,2,0,2,64,2,1,2,32,2,1,2,0
+  db 4,2,33,160,2,1,2,64,2,1,2,64,1,2,1,192,1,2,32,1,3,1,0,2
+  db 32,1,2,1,128,1,2,32,1,2,128,2,1,254,0,51,1,2,254,0,17,255
+VoxDestroyedExplorer5:
+  db 29,2,254,0,17,1,2,192,2,1,0,1,2,224,96,1,34,4,34,1,96,1,2,32
+  db 2,33,2,64,1,2,0,1,34,4,2,32,1,2,0,1,2,0,2,1,32,2,4,2
+  db 128,1,2,128,2,1,160,1,3,1,0,2,1,0,2,1,0,2,33,2,64,2,1,2
+  db 0,4,3,33,3,1,64,1,3,4,2,192,2,1,32,1,2,33,34,96,1,2,64,2
+  db 1,64,1,34,0,33,2,0,2,0,1,2,1,32,2,1,32,1,2,1,34,1,2,1
+  db 32,2,0,1,0,1,32,2,0,2,0,1,224,1,0,2,64,1,0,2,1,0,2,1
+  db 32,2,1,2,4,2,1,2,0,2,0,1,2,0,2,0,4,2,1,64,2,1,3,32
+  db 1,0,2,1,2,1,2,1,0,1,2,1,2,32,2,0,1,128,1,2,1,96,2,0
+  db 1,0,1,3,32,1,3,1,64,1,64,2,1,2,1,2,192,2,1,32,1,2,32,1
+  db 2,1,96,2,1,2,1,2,32,1,32,2,128,1,2,160,2,4,2,1,2,32,1,0
+  db 2,96,1,34,1,160,2,1,160,1,2,160,1,2,32,1,2,224,0,1,2,224,1,2
+  db 254,0,25,1,2,224,192,1,2,254,0,32,1,2,254,0,29,1,2,254,0,34,1,2
+  db 254,0,30,1,2,254,0,32,1,2,254,0,27,1,2,254,0,37,255
+VoxDestroyedExplorer6:
+  db 29,2,254,0,37,2,4,2,96,1,2,192,2,1,224,32,1,2,192,2,1,2,1,2
+  db 1,192,1,2,0,1,2,32,1,34,0,2,32,1,32,1,32,1,96,2,1,2,1,2
+  db 0,66,32,65,2,6,2,1,2,32,1,34,96,2,3,2,32,4,1,0,4,0,4,0
+  db 2,0,2,32,2,0,2,1,2,0,3,34,1,0,6,0,1,4,33,3,32,34,0,2
+  db 1,2,32,2,3,2,0,36,97,32,3,0,2,1,34,64,1,3,2,3,2,6,36,0
+  db 4,1,32,5,2,0,1,3,96,1,0,5,2,3,36,6,1,32,1,0,3,0,2,64
+  db 2,32,1,0,2,35,2,38,4,1,3,1,0,1,3,32,2,0,2,32,1,0,2,1
+  db 37,1,4,8,4,34,1,0,2,0,3,4,2,0,2,0,1,64,2,3,5,1,38,4
+  db 34,0,1,34,64,2,0,1,96,2,5,2,0,6,8,4,5,2,33,34,0,1,0,3
+  db 2,1,4,2,32,2,35,2,40,4,5,0,2,33,3,0,1,0,34,32,4,2,32,3
+  db 5,2,4,8,6,0,5,1,64,2,1,32,3,2,4,64,2,1,37,0,8,10,0,3
+  db 2,1,32,2,33,2,3,64,1,64,2,5,3,1,40,66,4,34,0,4,0,3,2,0
+  db 33,0,3,1,0,2,7,2,1,11,1,0,3,1,32,2,33,66,0,1,32,2,4,34
+  db 7,2,4,6,8,2,3,1,32,2,33,66,0,1,2,0,33,2,0,7,2,0,4,10
+  db 0,2,64,2,0,4,0,3,2,1,2,1,0,2,4,2,0,3,5,0,1,10,1,2
+  db 0,2,1,2,1,0,1,66,33,2,0,2,4,34,35,0,38,0,2,1,32,2,33,0
+  db 3,0,2,1,0,2,1,64,34,7,1,4,10,34,1,32,2,65,5,96,2,1,32,2
+  db 1,2,3,5,1,10,1,0,2,1,32,2,1,4,255
+VoxDestroyedExplorer7:
+  db 31,3,2,1,0,2,1,2,4,2,0,2,1,0,2,35,2,8,4,1,2,1,0,1
+  db 3,32,4,1,3,0,2,32,2,0,33,34,1,2,1,0,2,3,5,68,32,4,0,3
+  db 32,33,2,64,3,1,2,1,64,2,1,32,2,4,37,0,36,0,4,0,1,3,2,4
+  db 32,1,2,1,2,3,1,0,2,1,96,2,1,64,5,3,0,6,1,2,8,0,66,4
+  db 32,1,0,34,64,2,1,96,2,1,64,2,5,3,6,1,2,38,3,2,32,1,2,4
+  db 32,3,1,2,0,2,1,128,2,0,1,64,5,3,4,1,2,4,6,34,0,1,2,0
+  db 1,4,2,3,1,0,3,1,160,2,1,32,2,4,2,35,0,4,2,36,0,2,96,65
+  db 5,1,0,34,4,2,96,2,0,1,128,35,0,6,2,0,6,0,2,32,2,1,4,0
+  db 2,64,34,4,2,96,2,1,2,1,32,1,66,5,36,3,6,1,0,3,1,0,2,4
+  db 1,32,34,1,3,33,2,64,2,1,0,2,1,0,1,2,32,2,5,0,4,2,1,6
+  db 0,3,1,0,2,33,4,3,0,1,3,32,1,2,64,2,0,1,2,1,160,2,3,2
+  db 4,0,2,6,4,5,0,4,34,4,1,0,2,1,3,32,1,2,1,2,32,2,1,2
+  db 1,160,2,0,3,2,4,32,4,1,3,0,1,2,65,0,2,32,2,0,1,2,0,1
+  db 2,0,2,1,0,2,33,3,1,64,2,3,2,4,2,1,4,0,2,1,0,2,0,4
+  db 1,0,2,32,2,0,1,2,1,32,2,32,2,1,160,2,1,2,5,0,4,2,1,6
+  db 2,3,4,0,2,0,6,0,2,32,2,0,1,0,2,1,0,3,1,32,2,4,2,32
+  db 2,1,64,35,0,4,3,6,1,2,0,1,2,0,65,2,32,2,0,1,64,2,32,2
+  db 1,96,2,1,0,2,4,34,5,1,32,36,2,3,4,2,0,4,0,1,2,32,2,0
+  db 1,2,33,3,32,2,1,160,2,1,64,5,2,4,2,1,4,1,3,0,1,2,1,4
+  db 2,0,1,2,0,2,1,2,1,0,2,64,2,1,32,2,1,32,2,1,32,3,2,0
+  db 1,0,33,2,1,2,1,2,4,32,1,2,0,2,1,2,1,32,2,32,2,1,96,2
+  db 1,32,2,1,66,1,0,33,2,0,1,2,0,4,64,1,34,1,0,2,1,32,2,32
+  db 2,1,96,2,1,2,1,32,5,1,32,255
+VoxDestroyedExplorer8:
+  db 29,34,1,2,0,33,160,2,1,32,2,0,2,1,64,2,1,2,1,34,1,2,0,4
+  db 2,1,2,0,33,96,2,1,96,2,96,2,1,0,2,1,2,1,3,0,1,2,4,2
+  db 0,1,2,4,2,1,224,0,2,128,2,1,2,1,2,1,3,1,2,0,4,3,4,2
+  db 0,1,32,1,96,2,4,2,0,2,1,2,0,1,34,1,0,2,1,34,1,0,2,1
+  db 0,1,2,32,1,0,1,2,1,2,1,224,2,1,2,96,2,224,64,1,128,1,0,2
+  db 1,96,2,1,0,2,1,2,0,2,1,0,2,0,1,2,64,1,2,1,2,1,0,2
+  db 33,2,32,1,2,1,0,2,1,2,1,0,2,64,2,1,32,2,1,2,1,2,1,2
+  db 1,0,2,1,160,1,2,0,1,2,1,2,0,1,2,0,2,1,64,2,1,0,2,1
+  db 32,2,1,160,1,2,64,1,2,0,1,2,160,2,1,96,2,1,224,128,1,2,224,160
+  db 2,1,224,96,1,2,128,1,2,96,2,1,254,0,27,1,2,254,0,35,1,2,254,0
+  db 27,1,2,254,0,27,1,2,254,0,27,1,2,192,255
+SayDestroyedFighter:
+  dw VoxDestroyedFighter1
+  db 22,15
+  dw VoxDestroyedFighter2
+  db 12,4
+  dw VoxDestroyedFighter3
+  db 17,9
+  dw VoxDestroyedFighter4
+  db 22,15
+  dw VoxDestroyedFighter5
+  db 17,9
+  dw VoxDestroyedFighter6
+  db 17,9
+  dw VoxDestroyedFighter7
+  db 22,15
+  dw 0,0
+VoxDestroyedFighter1:
+  db 29,2,224,96,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0
+  db 26,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,24,1,2,224
+  db 64,1,2,224,96,1,2,1,2,1,2,0,2,1,64,1,2,160,2,4,2,0,2,4
+  db 0,3,1,0,2,0,1,2,1,0,1,2,0,1,3,1,0,2,1,96,1,34,1,32
+  db 2,0,1,0,1,0,2,1,2,1,2,64,2,32,1,2,1,2,0,2,1,2,1,0
+  db 33,0,1,2,1,34,96,2,1,2,3,1,34,65,4,65,2,0,3,0,3,1,2,64
+  db 1,3,0,34,1,0,4,0,6,33,0,2,0,5,0,34,1,2,33,34,0,3,1,0
+  db 33,36,33,3,0,35,0,2,1,2,33,34,1,3,2,4,0,1,4,33,0,1,3,66
+  db 128,1,66,255
+VoxDestroyedFighter2:
+  db 29,9,33,0,1,4,0,4,2,4,2,0,2,1,5,64,3,1,96,1,34,32,3,1
+  db 64,1,4,0,65,64,2,32,3,1,34,1,2,64,1,66,32,2,1,32,97,0,33,2
+  db 1,2,1,34,32,2,32,2,1,0,2,0,2,0,2,1,2,64,4,2,4,0,33,160
+  db 2,1,2,0,2,96,2,0,2,64,2,1,32,1,0,1,32,1,64,1,2,33,3,1
+  db 2,64,2,1,34,96,2,1,2,1,2,1,96,1,0,1,128,1,64,3,4,0,2,1
+  db 2,0,3,1,32,2,0,1,3,1,0,4,3,1,32,2,1,0,2,4,3,4,64,1
+  db 34,32,1,2,0,2,0,1,0,2,1,2,32,1,64,1,2,1,2,128,1,2,0,1
+  db 2,1,0,3,1,0,2,1,32,2,1,0,2,33,3,1,0,1,2,1,2,0,2,4
+  db 2,32,1,3,32,4,2,64,3,6,2,64,2,1,0,1,2,192,1,2,4,3,32,2
+  db 0,1,0,1,34,0,1,96,2,1,32,1,2,96,1,0,2,32,2,4,0,2,0,2
+  db 1,2,0,33,34,4,3,65,5,4,34,33,2,32,2,0,33,32,2,0,2,1,0,1
+  db 2,32,2,0,1,0,1,34,1,0,2,4,2,0,2,33,2,160,1,2,32,2,0,4
+  db 2,0,1,34,4,64,2,128,2,0,4,0,3,4,2,3,4,2,33,0,2,1,34,4
+  db 2,1,2,1,34,1,160,2,4,2,0,2,1,32,1,2,0,2,1,0,1,2,0,1
+  db 0,2,1,0,2,0,2,32,1,0,1,2,0,2,1,64,1,2,0,1,2,32,1,2
+  db 32,1,3,1,4,3,0,1,3,0,33,2,1,2,32,2,1,128,1,2,1,0,3,1
+  db 64,1,2,0,2,4,3,0,33,2,160,1,2,32,2,0,4,2,0,1,2,0,2,33
+  db 2,1,2,128,1,2,32,2,4,2,0,1,3,1,0,2,4,2,128,1,2,128,2,33
+  db 2,224,1,3,4,34,4,2,224,128,1,2,254,0,40,1,2,254,0,35,1,2,254,0
+  db 32,1,3,4,2,0,2,4,2,128,1,2,32,2,4,2,224,2,4,2,0,1,3,33
+  db 3,4,2,128,2,6,5,4,2,224,128,2,4,2,32,1,3,4,2,64,1,2,32,2
+  db 4,3,4,2,0,1,3,4,2,0,2,255
+VoxDestroyedFighter3:
+  db 29,2,1,2,32,2,4,3,4,2,96,2,6,5,1,32,2,4,3,33,3,4,3,4
+  db 3,4,2,96,1,3,4,2,160,2,4,2,32,1,2,0,2,4,0,3,33,3,33,3
+  db 4,2,224,32,2,6,5,1,128,1,2,64,1,2,32,1,2,0,1,2,128,2,1,0
+  db 2,1,0,2,4,128,2,1,2,5,4,3,0,1,0,33,0,1,2,33,2,0,1,2
+  db 0,2,1,2,32,2,5,32,2,33,4,0,4,33,64,2,0,2,0,2,0,2,32,2
+  db 3,32,1,2,6,1,0,4,1,32,2,32,34,0,2,128,5,2,1,2,1,4,33,4
+  db 1,0,1,34,0,34,0,2,128,3,5,33,0,4,1,6,0,1,32,2,0,2,0,34
+  db 1,2,32,1,2,3,5,1,4,2,6,0,6,1,2,33,3,2,0,1,3,32,2,1
+  db 2,32,35,2,6,0,1,68,34,32,34,64,2,1,32,2,1,5,3,0,1,4,33,4
+  db 1,0,34,32,2,96,2,1,0,2,1,7,2,0,1,6,1,0,6,0,2,0,3,1
+  db 0,2,96,2,1,0,2,1,5,3,0,1,8,32,4,1,0,5,1,2,1,0,2,64
+  db 2,1,2,1,0,5,3,0,1,6,65,32,34,1,32,2,64,2,1,0,2,1,3,5
+  db 0,1,6,65,32,34,32,1,2,1,2,0,2,1,2,1,0,37,1,68,1,64,3,32
+  db 1,2,1,2,1,34,1,32,2,5,3,1,6,1,36,2,0,34,32,1,0,2,64,2
+  db 1,2,1,3,5,32,8,1,4,0,1,3,2,32,1,0,2,1,2,0,2,0,1,32
+  db 5,3,0,36,1,4,1,2,3,32,1,2,1,32,3,1,2,1,32,2,5,2,0,100
+  db 0,35,33,2,4,2,1,3,0,2,0,1,2,4,3,7,2,4,6,0,4,6,2,5
+  db 96,1,4,3,2,0,2,32,1,0,5,3,1,0,4,1,8,0,34,0,2,0,33,2
+  db 32,2,3,4,2,0,1,7,64,36,6,2,1,3,0,2,1,32,1,66,128,5,32,33
+  db 6,33,2,0,34,1,32,1,2,3,1,2,32,1,5,2,32,1,4,33,6,66,0,2
+  db 33,34,1,3,96,2,3,32,1,4,33,4,2,32,2,96,2,64,34,4,5,2,1,3
+  db 36,1,0,8,3,1,66,1,2,1,0,2,32,2,32,2,3,1,3,4,33,4,33,0
+  db 2,0,2,255
+VoxDestroyedFighter4:
+  db 29,2,128,2,0,3,0,3,1,4,1,4,1,6,3,2,0,3,192,3,66,1,4,1
+  db 4,6,32,3,0,2,3,4,3,1,0,2,1,5,0,2,32,4,1,4,6,64,35,0
+  db 2,32,1,2,1,5,0,34,0,4,1,68,1,0,34,3,34,96,34,0,2,1,0,1
+  db 6,65,0,2,0,3,2,32,2,64,34,1,2,1,0,33,4,32,1,2,0,2,32,34
+  db 1,2,32,2,1,2,0,1,0,1,64,33,2,32,2,1,2,0,2,1,2,128,1,160
+  db 1,2,1,2,96,2,1,0,2,1,2,1,224,1,2,0,2,1,0,2,1,0,2,1
+  db 224,0,1,2,32,2,1,64,2,4,2,192,1,2,64,2,1,32,2,1,224,192,1,34
+  db 4,2,224,128,1,2,96,2,1,254,0,28,1,2,254,0,23,1,2,254,0,21,1,2
+  db 254,0,17,2,4,2,192,1,2,254,0,22,1,2,254,0,31,1,2,254,0,55,1,2
+  db 254,0,35,1,2,254,0,35,1,2,254,0,21,1,2,255
+VoxDestroyedFighter5:
+  db 29,2,224,64,1,2,254,0,31,1,2,254,0,22,1,2,254,0,45,1,2,254,0,29
+  db 1,2,64,2,1,128,1,2,224,192,1,2,128,2,1,2,1,224,1,2,192,35,1,4
+  db 33,0,2,0,2,4,0,1,0,66,1,32,1,34,9,2,4,10,8,2,5,0,3,1
+  db 6,4,0,5,2,3,65,32,35,7,0,8,11,1,67,0,4,6,4,5,35,1,0,4
+  db 1,0,5,0,9,2,1,14,8,3,7,1,3,0,6,10,37,3,4,3,6,1,0,5
+  db 0,2,7,3,11,14,5,2,3,0,3,6,8,1,7,3,64,6,0,3,2,0,37,1
+  db 16,4,5,3,1,5,1,10,4,37,0,1,2,4,1,2,3,0,2,7,2,8,14,5
+  db 34,0,2,4,10,3,7,1,2,0,1,6,35,0,1,3,9,1,42,7,32,5,1,10
+  db 1,5,3,1,2,0,6,0,3,2,0,1,7,5,6,10,1,66,3,4,10,2,5,2
+  db 32,36,5,0,2,0,1,12,0,6,11,3,2,0,3,2,10,4,5,34,0,33,0,34
+  db 0,4,5,9,4,10,4,3,4,5,3,1,11,3,98,6,1,66,0,1,7,5,8,6
+  db 33,35,2,10,2,1,0,3,5,6,1,32,34,0,1,12,0,8,6,2,6,7,3,1
+  db 10,3,1,2,3,2,4,1,0,1,5,0,1,3,9,6,68,1,9,0,4,0,36,7
+  db 3,4,2,4,1,2,3,32,12,4,6,4,1,8,13,0,65,6,7,2,32,36,3,2
+  db 0,3,5,2,6,1,4,10,9,3,1,0,1,6,3,2,0,3,1,6,2,0,34,5
+  db 3,1,4,6,8,5,66,1,8,34,0,5,33,0,4,34,3,9,4,1,6,8,1,7
+  db 0,3,0,6,4,2,0,5,64,4,1,34,12,1,0,4,8,6,5,0,3,2,1,6
+  db 0,1,3,66,4,1,2,4,9,3,32,8,6,0,1,5,2,32,36,66,3,4,2,4
+  db 0,2,7,0,2,1,8,0,8,35,0,3,36,2,1,0,3,34,4,32,5,34,0,1
+  db 38,1,3,1,5,1,0,33,32,3,0,2,32,3,1,3,0,1,4,1,4,255
+VoxDestroyedFighter6:
+  db 29,1,3,64,1,0,1,3,1,3,1,2,0,3,2,0,65,4,0,1,34,0,1,2
+  db 4,3,4,3,32,2,1,7,1,2,0,4,0,4,1,0,1,34,1,2,4,3,4,66
+  db 1,2,3,0,3,97,4,2,4,0,3,4,3,33,2,0,2,1,130,32,33,4,0,33
+  db 2,0,1,2,0,1,2,64,3,1,7,1,2,0,1,0,4,1,0,4,0,2,1,2
+  db 1,0,2,1,2,32,3,66,32,1,0,4,33,32,1,2,1,2,33,2,32,162,1,32
+  db 65,2,1,0,1,2,4,2,1,64,2,0,66,1,2,32,1,128,1,64,1,32,2,1
+  db 2,0,34,1,2,1,2,1,2,1,32,1,32,1,96,2,64,2,1,2,1,0,2,1
+  db 2,32,1,2,1,2,32,2,0,2,4,2,4,32,1,224,32,2,1,2,128,2,1,2
+  db 1,64,5,1,2,32,65,0,1,160,1,2,32,2,32,2,1,2,1,2,1,32,2,1
+  db 64,3,2,0,2,129,64,2,1,32,1,2,0,2,64,2,1,32,2,1,160,2,0,3
+  db 2,32,6,2,4,1,0,2,0,1,2,1,0,1,0,34,1,34,1,64,2,1,2,0
+  db 1,128,3,34,0,1,4,0,33,2,96,33,2,1,34,32,2,4,2,64,2,1,0,2
+  db 1,32,1,2,5,2,4,3,0,8,2,1,32,2,1,32,33,2,1,34,64,1,2,96
+  db 2,1,160,35,1,2,0,6,1,2,1,0,2,0,1,0,33,0,3,4,3,32,1,2
+  db 1,2,64,2,0,1,64,2,1,0,35,1,0,2,6,1,2,1,0,2,0,4,2,33
+  db 0,3,1,0,2,1,32,2,1,34,1,0,2,33,3,1,32,2,0,3,32,2,6,1
+  db 2,1,0,2,0,33,0,1,0,34,1,2,1,0,2,1,2,0,2,1,0,2,1,96
+  db 2,1,0,5,64,1,4,0,2,1,2,1,32,1,0,1,2,32,2,0,1,0,2,1
+  db 34,1,0,2,1,32,2,1,32,2,0,3,1,0,2,4,1,2,1,2,1,2,4,2
+  db 33,0,3,1,0,2,1,32,2,1,34,1,0,2,1,32,2,1,0,2,4,5,2,1
+  db 0,2,4,1,2,1,0,2,1,0,1,2,4,0,3,1,0,2,1,32,2,1,34,1
+  db 0,2,1,32,2,1,64,3,96,33,2,1,2,0,1,32,33,34,1,32,2,1,32,255
+VoxDestroyedFighter7:
+  db 29,2,32,2,1,32,2,1,2,1,3,0,1,3,6,2,0,1,0,2,33,0,1,2
+  db 32,2,4,3,1,0,2,32,2,1,0,2,1,2,1,34,1,2,0,1,0,1,2,1
+  db 2,4,2,1,224,0,2,96,2,1,2,1,2,1,3,0,1,2,1,0,1,2,0,1
+  db 32,1,0,2,1,160,2,1,2,160,2,32,2,1,0,2,33,2,32,1,96,1,32,2
+  db 1,128,2,1,2,1,2,0,2,0,1,3,1,224,1,0,2,4,2,0,1,2,1,64
+  db 2,1,64,2,1,2,32,2,1,2,1,2,64,1,2,0,1,2,1,192,1,2,1,2
+  db 1,0,2,1,2,1,2,0,2,1,32,2,1,2,1,2,1,2,1,0,2,1,192,1
+  db 2,0,1,2,1,2,192,2,1,0,2,1,0,2,1,64,2,4,2,128,1,2,32,1
+  db 2,224,0,2,1,32,2,1,224,128,1,2,224,128,2,1,224,224,1,2,224,32,2,1
+  db 64,2,1,0,2,1,224,64,1,2,32,1,2,224,224,2,4,2,224,96,1,2,254,0
+  db 30,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254
+  db 0,26,1,2,128,255
+SayDestroyedBomber:
+  dw VoxDestroyedBomber1
+  db 22,15
+  dw VoxDestroyedBomber2
+  db 12,4
+  dw VoxDestroyedBomber3
+  db 17,9
+  dw VoxDestroyedBomber4
+  db 22,15
+  dw VoxDestroyedBomber5
+  db 17,9
+  dw VoxDestroyedBomber6
+  db 22,15
+  dw VoxDestroyedBomber7
+  db 22,15
+  dw 0,0
+VoxDestroyedBomber1:
+  db 29,2,224,96,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0
+  db 26,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,24,1,2,224
+  db 64,1,2,224,96,1,2,1,2,1,2,0,2,1,64,1,2,160,2,4,2,0,2,4
+  db 0,3,1,0,2,0,1,2,1,0,1,2,0,1,3,1,0,2,1,96,1,34,1,32
+  db 2,0,1,0,1,0,2,1,2,1,2,64,2,32,1,2,1,2,0,2,1,2,1,0
+  db 33,0,1,2,1,34,96,2,1,2,3,1,34,65,4,65,2,0,3,0,3,1,2,64
+  db 1,3,0,34,1,0,4,0,6,33,0,2,0,5,0,34,1,2,33,34,0,3,1,0
+  db 33,36,33,3,0,35,0,2,1,2,33,34,1,3,2,4,0,1,4,33,0,1,3,66
+  db 128,1,66,255
+VoxDestroyedBomber2:
+  db 29,9,33,0,1,4,0,4,2,4,2,0,2,1,5,64,3,1,96,1,34,32,3,1
+  db 64,1,4,0,65,64,2,32,3,1,34,1,2,64,1,66,32,2,1,32,97,0,33,2
+  db 1,2,1,34,32,2,32,2,1,0,2,0,2,0,2,1,2,64,4,2,4,0,33,160
+  db 2,1,2,0,2,96,2,0,2,64,2,1,32,1,0,1,32,1,64,1,2,33,3,1
+  db 2,64,2,1,34,96,2,1,2,1,2,1,96,1,0,1,128,1,64,3,4,0,2,1
+  db 2,0,3,1,32,2,0,1,3,1,0,4,3,1,32,2,1,0,2,4,3,4,64,1
+  db 34,32,1,2,0,2,0,1,0,2,1,2,32,1,64,1,2,1,2,128,1,2,0,1
+  db 2,1,0,3,1,0,2,1,32,2,1,0,2,33,3,1,0,1,2,1,2,0,2,4
+  db 2,32,1,3,32,4,2,64,3,6,2,64,2,1,0,1,2,192,1,2,4,3,32,2
+  db 0,1,0,1,34,0,1,96,2,1,32,1,2,96,1,0,2,32,2,4,0,2,0,2
+  db 1,2,0,33,34,4,3,65,5,4,34,33,2,32,2,0,33,32,2,0,2,1,0,1
+  db 2,32,2,0,1,0,1,34,1,0,2,4,2,0,2,33,2,160,1,2,32,2,0,4
+  db 2,0,1,34,4,64,2,128,2,0,4,0,3,4,2,3,4,2,33,0,2,1,34,4
+  db 2,1,2,1,34,1,160,2,4,2,0,2,1,32,1,2,0,2,1,0,1,2,0,1
+  db 0,2,1,0,2,0,2,32,1,0,1,2,0,2,1,64,1,2,0,1,2,32,1,2
+  db 32,1,3,1,4,3,0,1,3,0,33,2,1,2,32,2,1,128,1,2,1,0,3,1
+  db 64,1,2,0,2,4,3,0,33,2,160,1,2,32,2,0,4,2,0,1,2,0,2,33
+  db 2,1,2,128,1,2,32,2,4,2,0,1,3,1,0,2,4,2,128,1,2,128,2,33
+  db 2,224,1,3,4,34,4,2,224,128,1,2,254,0,40,1,2,254,0,35,1,2,254,0
+  db 32,1,3,4,2,0,2,4,2,128,1,2,32,2,4,2,224,2,4,2,0,1,3,33
+  db 3,4,2,128,2,6,5,4,2,224,128,2,4,2,32,1,3,4,2,64,1,2,32,2
+  db 4,3,4,2,0,1,3,4,2,0,2,255
+VoxDestroyedBomber3:
+  db 29,2,1,2,32,2,4,3,4,2,96,2,6,5,1,32,2,4,3,33,3,4,3,4
+  db 3,4,2,96,1,3,4,2,160,2,4,2,32,1,2,0,2,4,0,3,33,3,33,3
+  db 4,2,224,32,2,6,5,1,128,1,2,64,1,2,32,1,2,0,1,2,128,2,1,0
+  db 2,1,0,2,4,128,2,1,2,5,4,3,0,1,0,33,0,1,2,33,2,0,1,2
+  db 0,2,1,2,32,2,5,32,2,33,4,0,4,33,64,2,0,2,0,2,0,2,32,2
+  db 3,32,1,2,6,1,0,4,1,32,2,32,3,1,34,128,5,2,1,2,1,4,33,4
+  db 1,0,1,3,1,66,0,2,128,3,5,33,0,4,1,36,2,4,34,0,2,0,34,1
+  db 2,32,1,2,35,0,33,0,6,1,6,3,33,3,2,64,2,0,2,1,2,32,35,2
+  db 36,1,0,6,4,34,1,3,32,2,0,2,1,2,1,32,34,5,2,4,6,0,33,6
+  db 66,32,2,96,2,1,2,1,2,3,5,1,4,1,4,65,0,3,32,2,1,2,64,2
+  db 1,2,1,0,5,3,0,1,6,97,66,1,0,2,32,1,34,1,2,1,0,5,3,0
+  db 1,6,65,32,34,1,2,1,0,2,32,2,1,2,1,0,3,5,2,4,8,0,33,0
+  db 1,5,32,1,2,0,1,2,0,2,1,2,33,7,2,3,36,6,0,33,2,3,32,1
+  db 2,1,0,2,32,2,1,32,3,5,2,36,6,0,33,2,3,32,1,2,1,2,32,2
+  db 1,2,1,0,2,7,2,100,0,1,3,2,32,1,0,2,1,2,0,2,0,1,32,3
+  db 5,0,1,6,4,1,0,1,5,2,4,2,1,64,3,1,2,1,64,7,3,1,4,6
+  db 0,8,0,3,5,1,0,1,0,1,0,3,2,0,1,2,0,4,3,7,0,1,4,0
+  db 8,4,2,5,32,2,1,4,32,3,0,2,32,1,0,3,5,0,4,0,4,8,0,34
+  db 0,2,0,33,2,32,34,64,1,3,5,1,0,4,0,10,0,2,0,34,0,33,2,32
+  db 34,64,1,5,2,32,1,4,6,2,4,0,2,3,0,1,32,1,2,3,1,2,32,1
+  db 5,2,1,2,0,6,4,0,4,0,34,0,2,1,96,3,96,2,3,32,33,4,1,4
+  db 1,3,32,3,1,2,1,0,2,0,2,1,3,1,2,3,1,3,4,1,4,0,8,3
+  db 1,66,1,2,1,0,2,0,1,3,32,2,3,1,3,4,0,4,1,6,2,4,3,255
+VoxDestroyedBomber4:
+  db 31,34,32,1,2,32,2,0,3,0,3,33,36,1,6,3,2,0,3,1,2,96,2,1
+  db 7,1,3,65,6,1,4,0,66,0,34,1,64,2,3,0,3,1,0,4,1,8,0,4
+  db 66,3,0,2,32,1,2,32,5,1,2,0,1,4,1,36,32,130,1,2,0,2,1,5
+  db 1,2,0,1,0,6,0,36,2,32,34,0,2,0,2,32,2,0,2,32,1,0,4,1
+  db 0,1,96,34,96,2,0,2,1,2,32,1,0,33,32,1,0,2,1,3,1,2,0,2
+  db 32,2,0,1,2,1,32,1,32,1,2,1,0,2,1,2,32,2,1,3,1,2,1,0
+  db 2,4,2,1,0,1,32,2,1,0,2,64,2,32,2,1,0,2,4,2,1,32,1,2
+  db 1,0,2,1,2,32,2,1,2,160,1,96,1,2,1,2,0,1,34,1,0,2,64,1
+  db 2,1,2,33,2,0,1,2,0,1,2,64,2,1,2,32,1,2,0,1,160,1,2,0
+  db 1,2,0,2,1,0,2,1,2,1,2,1,2,1,192,1,2,96,2,1,0,2,1,2
+  db 1,224,160,2,1,64,2,1,224,1,2,96,2,1,254,0,65,1,2,254,0,31,1,2
+  db 254,0,34,1,2,254,0,28,1,2,224,192,2,1,192,1,2,96,2,1,64,2,1,2
+  db 1,192,1,0,2,1,2,1,34,32,1,2,1,64,5,2,1,36,64,2,0,33,0,34
+  db 0,2,1,255
+VoxDestroyedBomber5:
+  db 29,2,0,3,7,2,4,8,6,2,1,2,0,3,0,4,6,0,2,35,1,2,32,4
+  db 0,2,39,1,6,10,8,7,0,34,32,8,6,3,7,0,2,32,1,4,34,3,5,3
+  db 0,10,8,1,7,96,38,2,3,5,0,1,0,1,32,66,7,2,1,14,6,3,5,2
+  db 33,0,6,4,3,5,3,4,0,4,34,0,2,0,3,5,2,8,10,1,7,2,0,6
+  db 2,33,4,5,3,0,4,1,34,32,2,0,3,5,2,11,8,2,7,2,36,2,4,1
+  db 0,3,5,4,1,4,3,34,1,2,1,5,35,10,8,0,7,32,6,32,1,4,5,3
+  db 0,36,3,34,1,2,1,3,7,0,6,10,0,7,2,36,32,33,35,33,4,3,34,32
+  db 1,2,7,3,40,4,9,2,1,8,3,65,2,5,33,4,3,34,1,32,2,7,2,4
+  db 10,1,5,3,1,4,1,32,4,2,5,33,4,2,3,2,1,64,37,0,10,6,3,5
+  db 0,6,1,2,1,4,34,3,4,33,35,1,64,2,7,2,4,10,1,7,2,1,6,2
+  db 65,3,2,0,1,4,2,3,2,33,3,1,2,7,3,8,10,0,9,0,1,4,1,2
+  db 4,1,2,3,2,6,1,34,3,33,66,5,2,6,8,0,7,0,4,1,0,2,6,1
+  db 0,5,2,6,1,66,0,1,34,0,7,2,4,8,0,2,3,97,0,4,0,2,3,1
+  db 4,0,66,0,2,1,34,7,33,8,66,4,0,33,4,32,2,32,1,0,2,0,3,32
+  db 2,0,35,32,6,32,2,129,0,4,2,96,2,0,2,32,34,0,5,0,2,4,96,33
+  db 0,4,2,33,96,2,1,34,1,2,0,66,0,2,1,2,1,32,33,0,33,64,1,2
+  db 32,2,64,2,0,1,3,0,2,0,2,1,2,33,32,33,0,33,2,1,2,1,2,0
+  db 2,32,2,1,2,0,2,0,2,0,2,1,2,4,2,33,0,4,64,1,64,2,32,2
+  db 0,2,1,2,1,3,0,2,32,2,1,32,33,0,1,0,1,0,1,2,1,2,1,3
+  db 1,2,32,2,0,1,2,0,34,0,1,3,1,0,1,32,33,0,1,0,1,2,1,0
+  db 2,32,2,32,2,1,2,1,2,0,34,128,1,32,33,32,1,0,1,2,96,2,1,2
+  db 32,2,1,0,34,0,2,64,2,4,2,4,2,33,0,1,2,4,2,0,1,2,0,1
+  db 34,1,2,0,1,3,1,0,3,34,1,32,1,64,33,32,33,2,1,128,2,1,3,1
+  db 2,32,2,1,255
+VoxDestroyedBomber6:
+  db 29,9,32,1,0,4,2,0,97,0,1,2,32,1,34,0,2,0,2,1,2,32,2,5
+  db 1,0,4,0,1,64,6,0,1,0,2,96,2,0,3,1,2,64,2,1,0,3,2,1
+  db 0,4,0,1,2,33,0,4,0,34,1,2,64,34,32,1,2,64,1,35,33,0,4,0
+  db 2,33,0,1,64,2,0,1,34,32,2,32,1,2,32,1,34,3,4,0,1,4,3,1
+  db 32,33,0,2,1,34,1,0,2,1,3,1,2,0,1,2,1,2,1,2,0,5,1,0
+  db 1,4,0,2,0,1,0,33,32,34,1,0,2,1,3,1,0,2,0,1,0,2,1,32
+  db 5,2,33,0,6,3,0,1,2,4,0,1,2,32,2,1,64,34,1,0,2,1,32,2
+  db 1,0,5,2,4,0,1,4,3,0,1,2,4,1,0,2,32,2,1,0,2,1,3,1
+  db 0,2,1,32,2,1,0,2,0,5,4,32,6,3,0,4,3,1,4,2,1,2,0,2
+  db 1,64,34,1,0,2,1,32,2,1,2,1,5,0,1,0,4,0,2,1,2,65,2,1
+  db 34,1,0,2,1,2,0,2,1,2,1,0,2,1,0,2,1,3,2,1,0,33,2,1
+  db 64,4,0,2,1,3,1,0,2,1,2,0,2,1,2,1,2,1,2,0,1,0,3,0
+  db 1,2,1,4,3,1,32,1,32,1,34,1,0,2,96,2,1,2,1,0,2,1,32,34
+  db 0,1,0,1,2,1,0,2,4,2,1,128,2,1,2,0,1,34,1,0,2,1,0,2
+  db 1,2,0,2,32,4,2,0,1,2,0,4,2,1,192,2,1,2,160,2,1,0,3,1
+  db 2,1,96,1,2,1,0,1,2,1,0,2,1,64,2,1,2,0,1,2,32,2,1,0
+  db 2,32,2,1,32,1,2,0,1,2,33,2,0,1,2,1,2,1,0,2,1,2,1,2
+  db 0,1,2,32,2,224,0,1,2,1,2,1,64,1,2,1,2,1,0,2,1,2,1,2
+  db 1,2,1,3,1,0,2,1,2,0,1,2,0,1,2,1,0,2,1,160,1,2,0,1
+  db 2,1,2,1,2,160,2,1,0,2,1,2,1,0,2,1,32,2,1,64,1,2,64,1
+  db 2,0,1,2,32,255
+VoxDestroyedBomber7:
+  db 29,2,32,2,1,32,2,1,32,2,1,224,32,1,2,32,1,2,192,2,1,160,2,1
+  db 192,1,2,254,0,19,2,1,224,2,4,2,224,64,1,2,254,0,39,1,2,254,0,29
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,224,255
+SayDestroyedMothership:
+  dw VoxDestroyedMothership1
+  db 22,15
+  dw VoxDestroyedMothership2
+  db 17,9
+  dw VoxDestroyedMothership3
+  db 17,9
+  dw VoxDestroyedMothership4
+  db 22,15
+  dw VoxDestroyedMothership5
+  db 17,9
+  dw VoxDestroyedMothership6
+  db 12,4
+  dw VoxDestroyedMothership7
+  db 22,15
+  dw VoxDestroyedMothership8
+  db 22,15
+  dw 0,0
+VoxDestroyedMothership1:
+  db 29,2,224,96,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27
+  db 1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0
+  db 26,1,2,254,0,27,1,2,254,0,27,1,2,254,0,27,1,2,254,0,24,1,2,224
+  db 64,1,2,224,96,1,2,1,2,1,2,0,2,1,64,1,2,160,2,4,2,0,2,4
+  db 0,3,1,0,2,0,1,2,1,0,1,2,0,1,3,1,0,2,1,96,1,34,1,32
+  db 2,0,1,0,1,0,2,1,2,1,2,64,2,32,1,2,1,2,0,2,1,2,1,0
+  db 33,0,1,2,1,34,96,2,1,2,3,1,34,65,4,65,2,0,3,0,3,1,2,64
+  db 1,3,0,34,1,0,4,0,6,33,0,2,0,5,0,34,1,2,33,34,0,3,1,0
+  db 33,36,33,3,0,35,0,2,1,2,33,34,1,3,2,4,0,1,4,33,0,1,3,66
+  db 128,1,66,255
+VoxDestroyedMothership2:
+  db 29,9,65,4,0,4,64,2,0,34,0,34,1,32,1,34,0,2,32,2,4,1,0,4
+  db 33,64,2,0,3,1,3,1,2,32,1,34,0,34,1,32,33,0,6,2,4,2,1,2
+  db 32,34,1,34,1,2,1,3,1,3,96,33,0,33,0,1,128,2,32,2,64,3,1,3
+  db 1,96,1,32,33,2,1,0,1,32,2,1,0,2,1,34,0,2,64,2,1,160,1,0
+  db 33,2,1,2,1,2,1,0,2,1,2,96,2,0,2,0,1,0,2,4,3,4,34,1
+  db 2,4,2,1,0,1,2,1,0,2,0,2,64,1,3,1,2,1,192,1,3,1,32,1
+  db 2,1,0,34,4,2,0,2,1,2,1,64,2,33,2,1,2,1,2,1,2,0,1,2
+  db 192,2,33,2,0,1,2,32,1,2,0,1,2,32,2,1,32,1,32,2,32,1,2,1
+  db 2,96,1,2,96,1,2,32,1,2,64,4,2,64,2,32,1,64,2,0,1,32,2,1
+  db 0,1,2,1,3,64,1,32,2,0,2,0,1,96,2,0,4,2,1,2,64,1,2,1
+  db 2,192,2,4,0,2,32,2,1,32,33,34,32,4,0,34,1,2,0,2,4,2,1,34
+  db 32,1,2,1,32,2,0,4,2,1,2,160,1,34,1,32,1,32,3,1,2,1,2,1
+  db 2,1,2,0,1,2,33,2,32,2,1,0,1,2,1,3,0,4,0,1,3,1,2,1
+  db 0,2,0,4,34,0,2,33,2,1,0,3,1,0,1,2,1,2,0,1,3,1,224,0
+  db 2,0,1,96,2,1,160,1,2,32,1,34,4,2,0,2,4,2,1,2,0,2,4,34
+  db 4,32,2,96,2,4,0,3,1,32,2,4,2,64,1,2,192,1,2,224,64,2,4,2
+  db 254,0,32,1,3,4,2,254,0,23,1,2,254,0,24,1,3,1,64,1,2,64,2,4
+  db 2,224,32,1,3,4,2,1,3,33,2,1,3,4,3,4,3,4,3,4,2,96,2,4
+  db 34,4,2,64,2,1,32,1,3,1,32,2,6,5,4,3,4,0,2,255
+VoxDestroyedMothership3:
+  db 29,2,1,2,32,2,4,3,4,2,96,2,6,5,1,32,2,4,3,33,3,4,3,4
+  db 3,4,2,96,1,3,4,2,160,2,4,2,32,1,2,0,2,4,0,3,33,3,33,3
+  db 4,2,224,32,2,6,5,1,128,1,2,64,1,2,32,1,2,0,1,2,128,2,1,0
+  db 2,1,0,2,4,128,2,1,2,5,4,3,0,1,0,33,0,1,2,33,2,0,1,2
+  db 0,2,1,2,32,2,5,32,2,33,4,0,4,33,64,2,0,2,0,2,0,2,32,2
+  db 3,32,1,2,6,1,0,4,1,32,2,32,3,1,34,128,5,2,1,2,1,4,33,4
+  db 1,0,1,3,1,66,0,2,128,3,5,33,0,4,1,36,64,2,0,34,32,2,1,2
+  db 0,1,2,3,5,97,4,1,4,64,2,0,2,32,34,1,2,0,1,2,3,5,33,4
+  db 0,36,1,32,2,0,34,32,2,1,0,2,1,32,5,3,0,1,4,65,6,66,32,2
+  db 96,2,1,2,1,2,3,5,1,4,1,4,65,0,3,32,2,1,2,64,2,1,2,1
+  db 0,5,3,0,1,6,97,66,1,0,2,32,1,34,1,2,1,0,5,3,0,1,6,65
+  db 32,34,1,2,1,0,2,32,2,1,2,1,0,3,5,0,1,4,6,0,1,0,1,5
+  db 32,1,2,0,1,2,0,2,1,2,33,7,2,3,36,6,0,33,2,3,32,1,0,2
+  db 1,2,32,2,1,32,3,5,2,36,6,0,4,2,0,3,32,1,0,2,64,2,1,2
+  db 1,0,2,7,2,100,0,1,3,2,32,1,32,2,32,2,0,33,2,67,68,1,4,0
+  db 35,33,0,2,4,66,0,1,0,2,4,3,7,2,132,0,7,96,4,0,66,32,1,2
+  db 4,2,9,2,36,1,4,6,2,3,2,64,4,0,34,0,2,32,1,32,9,0,33,68
+  db 0,3,32,3,4,0,1,2,0,34,64,1,0,9,1,0,33,6,4,2,0,2,0,2
+  db 0,4,2,0,1,5,0,1,3,33,0,7,64,4,6,1,0,1,66,1,64,1,3,2
+  db 64,1,2,5,1,2,0,1,8,2,6,0,34,1,3,1,64,2,0,2,1,34,4,7
+  db 32,2,36,0,8,1,34,1,5,1,96,2,0,2,0,2,4,7,1,2,0,33,4,1
+  db 4,2,4,3,2,1,3,0,1,0,2,0,2,1,2,0,2,3,1,3,4,0,4,1
+  db 6,2,255
+VoxDestroyedMothership4:
+  db 28,2,0,34,32,1,2,0,2,0,1,7,1,3,4,0,4,6,1,0,2,1,3,0
+  db 2,0,1,3,1,0,2,0,3,2,32,1,36,1,4,0,98,32,2,4,3,1,34,3
+  db 0,2,4,1,4,6,0,4,3,0,3,2,0,2,1,2,0,1,3,1,5,1,2,65
+  db 36,32,1,3,0,3,0,2,1,2,1,34,32,2,32,161,2,32,2,0,2,32,2,0
+  db 2,32,2,32,4,32,4,64,1,2,64,2,64,2,64,2,1,32,1,32,1,0,2,1
+  db 2,1,2,64,2,0,1,2,64,1,2,1,64,1,2,1,2,128,2,1,2,64,1,2
+  db 1,96,1,2,1,2,0,1,34,1,2,1,2,64,1,0,2,33,2,0,1,2,0,1
+  db 2,64,2,1,2,0,1,2,0,1,192,1,2,128,2,1,2,0,1,2,1,32,2,4
+  db 2,64,1,2,64,2,1,2,1,2,1,2,1,0,2,4,2,64,1,2,128,2,1,0
+  db 2,1,32,2,4,2,192,1,34,1,2,1,2,32,1,2,1,0,1,2,0,1,2,0
+  db 1,2,64,2,96,2,1,0,1,2,33,2,1,2,1,0,2,1,2,32,34,96,1,64
+  db 4,2,1,160,2,0,2,0,34,1,2,0,4,2,65,2,1,64,2,1,2,0,34,32
+  db 2,1,2,33,0,33,32,1,0,2,32,2,0,2,0,66,1,32,65,0,33,64,2,64
+  db 3,2,0,2,0,2,0,33,0,33,4,2,1,0,1,3,1,34,0,98,32,1,32,4
+  db 33,0,33,2,0,2,1,98,0,3,1,2,1,32,4,1,0,4,2,1,64,34,1,3
+  db 34,0,3,1,32,33,4,0,65,2,1,34,0,2,0,5,0,34,32,33,0,4,0,33
+  db 0,33,2,1,2,32,5,3,0,34,33,2,4,0,161,2,1,2,0,2,3,7,64,33
+  db 2,0,129,64,1,2,32,3,7,3,6,1,0,1,34,1,6,4,2,1,2,3,255
+VoxDestroyedMothership5:
+  db 29,1,32,66,7,2,4,6,2,0,4,2,3,1,6,4,2,0,1,3,2,33,2,1
+  db 3,0,3,0,5,2,8,1,2,0,6,5,0,36,0,2,4,3,0,2,33,2,0,2
+  db 0,2,3,5,1,6,1,32,1,3,2,8,4,3,33,5,2,4,1,2,32,34,0,3
+  db 5,4,6,2,33,34,0,8,0,2,1,0,3,2,6,2,64,3,0,1,9,2,38,3
+  db 0,8,5,3,6,4,2,0,4,35,1,4,2,32,34,0,1,12,0,8,1,32,4,5
+  db 0,36,2,33,5,32,1,64,34,1,37,1,8,2,33,0,5,36,0,33,3,2,0,1
+  db 2,33,3,2,1,0,7,3,36,0,1,4,3,2,1,4,2,6,0,3,2,0,1,2
+  db 1,0,34,1,2,5,3,1,6,0,4,1,3,2,4,0,1,4,0,3,0,2,32,4
+  db 34,32,3,5,0,65,4,1,3,32,1,4,1,2,0,34,32,1,0,2,0,34,5,0
+  db 65,4,1,3,0,1,0,1,4,0,2,0,3,32,1,2,1,2,0,5,3,2,4,1
+  db 36,2,32,2,1,4,1,32,66,32,1,2,1,35,34,1,0,6,1,32,2,32,33,4
+  db 32,2,0,2,32,2,1,0,5,0,34,1,0,33,96,1,2,32,33,2,4,2,32,1
+  db 3,32,34,1,32,2,33,2,0,1,2,1,224,1,34,1,2,224,1,0,2,4,2,32
+  db 1,2,1,0,2,1,2,32,2,1,0,2,1,2,1,2,1,2,1,0,2,1,160,1
+  db 34,1,2,1,2,1,2,1,32,2,4,2,64,1,2,1,2,0,1,2,32,34,32,1
+  db 64,4,2,0,1,2,1,160,2,64,34,96,1,0,1,0,1,64,1,2,96,2,0,2
+  db 1,98,1,2,36,0,1,4,3,4,34,0,1,34,1,2,0,2,64,5,0,1,3,36
+  db 0,6,1,0,2,4,3,2,1,34,1,34,1,34,4,35,64,1,4,1,36,3,1,0
+  db 3,0,1,3,1,2,32,2,64,2,3,64,1,4,1,6,64,2,0,2,0,2,1,0
+  db 34,1,2,0,1,35,1,3,65,4,1,4,64,3,1,0,3,0,1,3,1,0,2,32
+  db 2,3,1,2,0,65,4,1,0,4,34,0,34,1,2,32,2,0,1,2,0,3,0,2
+  db 0,33,0,36,0,1,0,2,0,2,0,2,1,3,1,0,2,1,0,2,3,2,1,3
+  db 1,4,2,6,65,0,2,32,2,0,1,3,64,2,0,1,35,1,2,0,1,255
+VoxDestroyedMothership6:
+  db 29,3,1,0,4,32,1,2,64,2,1,34,1,2,0,2,1,2,0,66,1,2,0,4
+  db 2,4,1,0,65,2,96,2,1,2,0,2,1,34,1,2,32,3,2,1,2,0,4,2
+  db 1,4,0,1,0,1,0,2,1,0,2,1,2,96,2,64,2,0,3,1,34,0,4,2
+  db 0,6,2,33,32,1,0,2,1,0,2,0,1,2,96,2,0,34,32,3,33,3,4,1
+  db 2,33,32,1,32,1,0,2,1,2,1,0,2,1,2,0,2,1,5,4,3,2,1,2
+  db 0,1,0,2,4,32,1,64,1,96,1,2,1,2,1,2,1,66,1,3,1,2,128,1
+  db 96,1,32,1,2,1,2,4,2,32,2,1,32,3,6,5,0,1,3,1,2,1,0,2
+  db 33,2,0,1,2,1,128,1,0,2,1,2,1,0,2,3,8,7,6,2,3,6,3,0
+  db 1,3,4,2,1,0,2,0,4,3,1,96,1,0,2,0,1,3,6,5,6,3,0,4
+  db 5,8,7,4,1,5,6,5,4,3,4,0,3,1,0,2,0,1,3,6,2,32,2,4
+  db 5,36,7,8,34,1,0,34,4,34,1,4,5,4,34,0,6,5,33,34,4,3,4,3
+  db 33,3,4,2,0,2,6,7,10,12,14,9,0,8,9,6,2,1,3,6,5,8,9,8
+  db 9,8,2,0,1,34,1,32,1,3,6,2,3,6,5,1,0,3,6,3,4,3,10,12
+  db 4,0,3,6,3,8,5,1,3,6,7,6,1,7,8,9,10,5,1,4,7,10,7,0
+  db 4,5,8,3,4,3,1,3,4,34,6,5,4,0,5,8,9,11,7,4,0,34,1,0
+  db 3,8,3,1,2,0,2,4,2,1,3,6,7,8,5,1,2,4,3,8,7,4,34,4
+  db 3,6,5,1,2,0,1,2,6,5,4,0,2,1,3,4,3,33,2,4,5,0,1,3
+  db 6,0,2,1,3,6,3,0,1,34,4,3,4,2,32,2,4,5,4,6,12,19,17,14
+  db 13,11,5,2,6,5,1,2,0,6,5,6,0,7,10,9,8,9,10,5,6,2,0,2
+  db 0,2,1,2,6,5,33,3,1,32,1,3,6,3,1,2,32,2,4,2,128,3,8,7
+  db 11,9,8,7,0,6,9,11,9,8,5,4,3,6,5,1,0,3,10,9,11,12,6,3
+  db 1,2,1,4,7,14,13,10,7,1,0,3,6,3,6,34,1,3,4,3,6,34,0,1
+  db 5,6,3,1,0,2,6,3,1,3,6,9,10,5,0,11,13,14,15,8,5,6,2,0
+  db 4,9,16,17,16,12,11,7,32,2,6,5,4,3,6,7,6,3,0,1,2,6,7,11
+  db 12,10,7,33,5,10,9,6,3,4,2,96,1,2,0,1,2,1,7,11,9,8,5,6
+  db 5,1,0,3,8,3,0,4,5,1,3,6,2,0,1,2,1,0,3,4,5,8,5,1
+  db 32,1,3,1,2,4,3,8,7,4,2,32,2,4,34,33,3,6,5,4,3,4,3,4
+  db 3,1,32,1,3,6,5,4,3,4,3,6,5,1,0,2,4,3,4,2,0,1,2,224
+  db 0,2,1,64,2,1,160,2,1,32,2,1,2,1,2,0,1,224,1,3,0,1,3,1
+  db 2,1,2,33,2,1,0,1,2,1,2,1,2,1,64,2,1,0,2,255
+VoxDestroyedMothership7:
+  db 29,2,32,2,1,2,1,64,5,1,3,1,0,4,0,65,2,0,1,0,2,1,3,1
+  db 34,0,1,2,0,1,2,1,64,5,0,2,0,4,97,2,1,2,1,2,1,34,0,2
+  db 32,1,2,1,2,1,32,1,2,5,0,3,4,33,4,1,0,2,64,1,2,0,2,0
+  db 2,32,1,64,2,1,32,1,7,0,3,4,33,8,3,1,3,1,32,1,2,0,34,32
+  db 1,2,1,32,2,33,2,1,35,2,0,4,1,4,1,34,0,1,2,4,0,66,1,2
+  db 33,3,4,3,1,32,1,2,0,3,34,65,8,3,0,2,0,1,0,1,34,1,3,1
+  db 2,33,3,1,2,1,0,1,2,0,1,5,34,1,6,2,6,3,64,33,2,0,2,32
+  db 2,4,2,32,2,1,2,4,2,96,5,32,1,4,0,1,34,4,2,4,2,32,3,4
+  db 2,96,2,1,192,2,3,32,4,33,2,64,33,0,3,1,2,128,2,1,2,1,128,1
+  db 35,64,4,0,33,2,1,32,1,2,1,34,1,2,0,2,1,2,1,2,1,2,1,2
+  db 1,32,2,1,2,32,1,160,1,2,1,2,1,2,192,2,1,192,2,1,2,64,1,0
+  db 2,4,2,0,1,2,1,2,1,2,224,224,2,1,254,0,17,1,2,224,192,2,4,2
+  db 254,0,41,1,2,224,32,2,4,2,254,0,21,2,4,2,254,0,74,1,2,254,0,19
+  db 255
+VoxDestroyedMothership8:
+  db 29,2,224,160,1,2,254,0,26,1,2,254,0,42,1,2,254,0,17,2,4,2,224,0
+  db 1,2,254,0,34,1,2,254,0,35,1,2,254,0,33,1,2,254,0,27,1,2,254,0
+  db 21,1,2,254,0,25,1,2,254,0,27,1,2,224,128,255
+}

@@ -1,0 +1,956 @@
+cartridge "CHAIN REACTION/PRESENTS COMPUTE!'S/1987"
+
+' CHAIN REACTION
+' From COMPUTE! magazine, January 1987, pages 45-56: "Chain Reaction" by
+' Mark Tuttle (Commodore 64), with versions for the Atari ST, the Amiga,
+' the Apple II series, the Atari 400, 800, XL and XE and the IBM PC/PCjr
+' by Tim Midkiff, Editorial Programmer. All credit belongs to the authors.
+'
+' Historical context (summary of the article):
+' A strategy game for one or two players: wipe out the other player's
+' bombs. The board is a 5 x 6 grid; players take turns placing one bomb
+' in a square that is empty or already theirs. A square that reaches its
+' critical mass explodes and sends one bomb into each square next to it,
+' which take the colour of the exploding bombs; if those are loaded to
+' capacity too, they explode in turn, and the chain can engulf a large
+' part of the board. A corner holds one bomb and explodes with the
+' second, sending two; a border square holds two and explodes with the
+' third; a square in the middle holds three and explodes with the
+' fourth. The lead seesaws; a clever player who spreads his bombs well
+' can survive the chain reactions that would wipe him out. You can play
+' the computer, and let it go first.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls: the stick moves the cursor, fire places a bomb. With two
+' players, each uses his own joystick or both share one.
+' The rules follow the listings: the 5 x 6 board and the critical masses
+' (C64 lines 50-130, DATA 1340-1410); one or two players and COMPUTER
+' FIRST (Y/N)? (lines 100-180); a bomb only on an empty square or one of
+' your own (lines 400-440); the explosions, one square at a time, each
+' adding a bomb to its neighbours and taking them over, until no square
+' is over its limit (lines 540-660); the computer rating every square it
+' may play, the best ones by the listing's rules (explode into an enemy
+' about to blow, explode, stay clear of squares an enemy could take,
+' build up), and picking at random among the equal best, with
+' THINKING... (lines 950-1230); the game over when one side has no bombs
+' left, after each has played (lines 450-470, 700-740).
+' Adaptation liberties: the board drawn as big chequered squares with up
+' to three bombs each, laid out like dice; bombs about to blow glow and
+' flicker; each explosion throws its bombs across to the neighbouring
+' squares, with a blast, and a pop that climbs higher as the chain goes
+' on; the score line counts each side's bombs; joystick menus; the big
+' title; an original title tune; an editorial page. Everything that
+' matters stays in columns 2-29, inside the TV overscan. At most four
+' sprites share a line. The frame loop is protected from the NMI.
+
+const BoardX = 7
+const BoardY = 4
+
+const SndPlace = 1
+const SndTick = 2
+const SndNope = 3
+const SndBoomN = 4
+const SndPop0 = 5
+const SndPop1 = 6
+const SndPop2 = 7
+const SndPop3 = 8
+const SndPop4 = 9
+const SndPop5 = 10
+const SndPop6 = 11
+const SndPop7 = 12
+const SndHiss = 13
+const SndWinA = 14
+const SndWinB = 15
+const SndPick = 16
+const SndTuneA = 17
+const SndTuneB = 18
+
+u8 U[30]                        ' bombs on each square
+u8 Ow[30]                       ' whose: 0 nobody, 1 or 2
+u8 Rt[30]                       ' the computer's rating of each square
+u8 Turn = 1
+u8 Moved[3]
+u8 NP = 1
+u8 CompSide = 2
+u8 Sticks = 1
+u8 CX = 0
+u8 CY = 0
+u8 KX = 2                       ' the cursor
+u8 KY = 2
+u8 CurCell = 14
+u8 M = 0
+u8 TgX = 0
+u8 TgY = 0
+u8 Cell = 0
+u8 Crit = 0
+u8 Won = 0
+u8 Chain = 0
+u8 Cnt1 = 0
+u8 Cnt2 = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 MoveT = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 NX[4]
+u8 NY[4]
+u8 NN = 0
+u8 NI = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tm = 0
+u8 Best = 0
+u8 Choice = 1
+i16 Sx = 0
+i16 Sy = 0
+i16 Tv = 0
+u16 Dst16 = 0
+u16 NumU = 0
+
+data ChainAgainMenuSpots bytes
+  16,22,21,22
+end data
+
+  tile screen
+  set sound table CrSoundTable areas 4
+  sprites 16x16
+  sprites flicker on
+  copy SpritePat count 96 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  for I = 0 to 29
+    U[I] = 0
+    Ow[I] = 0
+  next
+  Moved[1] = 0
+  Moved[2] = 0
+  Turn = 1
+  Won = 0
+  KX = 2
+  KY = 2
+  CurCell = 14
+  DrawBoard
+
+turn_loop:
+  ShowTurn
+  if NP = 1 then
+    if Turn = CompSide then
+      ComputerMove
+      goto placed
+    end if
+  end if
+  HumanMove
+placed:
+  inc Moved[Turn]
+  ' Lines 540-660: the chain reaction
+  Chain = 0
+  Explode
+  CountBombs
+  ' Lines 450-470: one side wiped out, once both have played
+  if Moved[1] > 0 then
+    if Moved[2] > 0 then
+      if Cnt1 = 0 then Won = 2
+      if Cnt2 = 0 then Won = 1
+    end if
+  end if
+  if Won > 0 then goto game_over
+  Turn = 3 - Turn
+  goto turn_loop
+
+game_over:
+  play sound SndWinA
+  play sound SndWinB
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  if NP = 1 then
+    if Won = CompSide then
+      print at 8,21, "THE COMPUTER WINS"
+    else
+      print at 11,21, "YOU WIN!"
+    end if
+  else
+    print at 9,21, "PLAYER"
+    NumU = Won
+    print at 16,21, digits$(NumU, 1)
+    print at 18,21, "WINS!"
+  end if
+  print at 12,22, "GAME OVER"
+  Rearm
+  wait 150 frames
+  nmi off
+  fill 32 count 28 at 2,22
+  print at 5,22, "PLAY AGAIN"
+  print at 17,22, "YES  NO"
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at list ChainAgainMenuSpots
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  N = 0
+  if Sticks = 2 then N = Turn
+  if N <> 2 then
+    if joypad(1).up then Stick = 1
+    if joypad(1).down then Stick = 2
+    if joypad(1).left then Stick = 3
+    if joypad(1).right then Stick = 4
+    if joypad(1).fire then Btn = 1
+  end if
+  if N <> 1 then
+    if joypad(2).up then Stick = 1
+    if joypad(2).down then Stick = 2
+    if joypad(2).left then Stick = 3
+    if joypad(2).right then Stick = 4
+    if joypad(2).fire then Btn = 1
+  end if
+  return
+end sub
+
+' The square at CX, CY, and its critical mass: 2 in a corner, 3 on the
+' border, 4 in the middle
+sub CellOf:
+  Cell = CY * 6
+  Cell += CX
+  Crit = CritT[Cell]
+  return
+end sub
+
+' A person moves the cursor and places a bomb
+sub HumanMove:
+  Rearm
+  wait no fire
+  nmi off
+hm_loop:
+  inc Tick
+  Animate
+  ReadStick
+  if MoveT > 0 then
+    dec MoveT
+  elseif Stick > 0 then
+    if Stick = 1 then
+      if KY > 0 then dec KY
+    elseif Stick = 2 then
+      if KY < 4 then inc KY
+    elseif Stick = 3 then
+      if KX > 0 then dec KX
+    else
+      if KX < 5 then inc KX
+    end if
+    MoveT = 8
+    play sound SndTick
+    MoveCursor
+  end if
+  Rearm
+  wait
+  nmi off
+  if Btn = 0 then goto hm_loop
+  CX = KX
+  CY = KY
+  CellOf
+  V = Ow[Cell]
+  if V <> 0 then
+    if V <> Turn then
+      ' Lines 400-440: not on the other player's square
+      play sound SndNope
+      Rearm
+      wait no fire
+      nmi off
+      goto hm_loop
+    end if
+  end if
+  AddBomb
+  return
+end sub
+
+' A bomb of Turn's colour onto square CX, CY
+sub AddBomb:
+  CellOf
+  inc U[Cell]
+  Ow[Cell] = Turn
+  play sound SndPlace
+  DrawCell
+  return
+end sub
+
+' Lines 540-660: while any square is over its limit, it explodes
+sub Explode:
+ex_scan:
+  for J = 0 to 29
+    if U[J] >= CritT[J] then goto ex_one
+  next
+  return
+ex_one:
+  CY = J / 6
+  CX = J % 6
+  CellOf
+  ' Its bombs leave; the square is emptied of as many as its limit
+  V = U[Cell]
+  V -= Crit
+  U[Cell] = V
+  if V = 0 then Ow[Cell] = 0
+  DrawCell
+  ' Where they go
+  NN = 0
+  if CY > 0 then
+    NX[NN] = CX
+    V = CY - 1
+    NY[NN] = V
+    inc NN
+  end if
+  if CY < 4 then
+    NX[NN] = CX
+    V = CY + 1
+    NY[NN] = V
+    inc NN
+  end if
+  if CX > 0 then
+    V = CX - 1
+    NX[NN] = V
+    NY[NN] = CY
+    inc NN
+  end if
+  if CX < 5 then
+    V = CX + 1
+    NX[NN] = V
+    NY[NN] = CY
+    inc NN
+  end if
+  ' The blast, and the bombs flying across
+  play sound SndBoomN
+  N = Chain
+  if N > 7 then N = 7
+  if N = 0 then
+    play sound SndPop0
+  elseif N = 1 then
+    play sound SndPop1
+  elseif N = 2 then
+    play sound SndPop2
+  elseif N = 3 then
+    play sound SndPop3
+  elseif N = 4 then
+    play sound SndPop4
+  elseif N = 5 then
+    play sound SndPop5
+  elseif N = 6 then
+    play sound SndPop6
+  else
+    play sound SndPop7
+  end if
+  inc Chain
+  X = CX * 24
+  X += 56
+  Y = CY * 24
+  Y += 31
+  Sx = X
+  Sy = Y
+  for Tm = 0 to 10
+    set sprite 0 to Y,X,4,11
+    if Tm > 5 then set sprite 0 to Y,X,8,9
+    for I = 1 to NN
+      K = I - 1
+      Tv = NX[K]
+      Tv *= 24
+      Tv += 56
+      Tv -= Sx
+      Tv *= Tm
+      Tv /= 10
+      Tv += Sx
+      P = Tv
+      Tv = NY[K]
+      Tv *= 24
+      Tv += 31
+      Tv -= Sy
+      Tv *= Tm
+      Tv /= 10
+      Tv += Sy
+      Q = Tv
+      V = 9
+      if Turn = 2 then V = 15
+      set sprite I to Q,P,0,V
+    next
+    update sprites
+    Rearm
+    wait
+    nmi off
+  next
+  HideSprites
+  ' The neighbours take a bomb each, and the exploding colour
+  for NI = 1 to NN
+    K = NI - 1
+    CX = NX[K]
+    CY = NY[K]
+    CellOf
+    inc U[Cell]
+    Ow[Cell] = Turn
+    DrawCell
+  next
+  CountBombs
+  ShowCounts
+  ' Stop when the other side is wiped out, or a full board could go on
+  ' exploding for ever
+  if Moved[1] > 0 then
+    if Moved[2] > 0 then
+      if Cnt1 = 0 then return
+      if Cnt2 = 0 then return
+    end if
+  end if
+  goto ex_scan
+end sub
+
+sub CountBombs:
+  Cnt1 = 0
+  Cnt2 = 0
+  for I = 0 to 29
+    V = Ow[I]
+    if V = 1 then Cnt1 += U[I]
+    if V = 2 then Cnt2 += U[I]
+  next
+  return
+end sub
+
+' Lines 950-1230: the computer rates every square it may play
+'   6: it explodes into an enemy square that is about to explode
+'   5: it explodes
+'   4: an empty corner, or a square of its own, with no enemy next to it
+'      about to explode
+'   3: any other square with no enemy next to it about to explode
+'   2: building up next to an enemy that is not about to explode
+'   1: a square an enemy next to it is about to take
+' and picks at random among the best
+sub ComputerMove:
+  fill 32 count 28 at 2,22
+  print at 11,22, "THINKING..."
+  play sound SndHiss
+  Best = 0
+  for G = 0 to 29
+    Rt[G] = 0
+    V = Ow[G]
+    if V = 0 then RateCell
+    if V = Turn then RateCell
+    if Rt[G] > Best then Best = Rt[G]
+  next
+  ' From a random start, the first square with the best rating
+  V = random(0, 29)
+  V += Mix
+  Mix += 7
+  if Mix >= 30 then Mix -= 30
+  if V >= 30 then V -= 30
+  for I = 0 to 29
+    G = V + I
+    if G >= 30 then G -= 30
+    if Rt[G] = Best then goto cm_pick
+  next
+cm_pick:
+  ' The cursor goes there, for the player to follow
+  TgY = G / 6
+  TgX = G % 6
+  for Tm = 1 to 12
+    N = 0
+    if KX < TgX then
+      inc KX
+      N = 1
+    elseif KX > TgX then
+      dec KX
+      N = 1
+    elseif KY < TgY then
+      inc KY
+      N = 1
+    elseif KY > TgY then
+      dec KY
+      N = 1
+    end if
+    if N = 1 then
+      MoveCursor
+      play sound SndTick
+    end if
+    inc Tick
+    Animate
+    Rearm
+    wait 6 frames
+    nmi off
+  next
+  fill 32 count 28 at 2,22
+  CX = KX
+  CY = KY
+  AddBomb
+  return
+end sub
+
+' The cursor has moved to KX, KY: redraw the square it left and its new one
+sub MoveCursor:
+  V = CurCell
+  CurCell = KY * 6
+  CurCell += KX
+  CY = V / 6
+  CX = V % 6
+  DrawCell
+  CX = KX
+  CY = KY
+  DrawCell
+  return
+end sub
+
+' Rate square G for the computer (Turn)
+sub RateCell:
+  Y = G / 6
+  X = G % 6
+  ' Its neighbours: an enemy about to blow? one next to it at all?
+  P = 0
+  Q = 0
+  for K = 0 to 3
+    N = 255
+    if K = 0 then
+      if Y > 0 then N = G - 6
+    elseif K = 1 then
+      if Y < 4 then N = G + 6
+    elseif K = 2 then
+      if X > 0 then N = G - 1
+    else
+      if X < 5 then N = G + 1
+    end if
+    if N < 30 then
+      V = Ow[N]
+      if V <> 0 then
+        if V <> Turn then
+          Q = 1
+          V = CritT[N]
+          dec V
+          if U[N] = V then P = 1
+        end if
+      end if
+    end if
+  next
+  V = CritT[G]
+  dec V
+  if U[G] = V then
+    Rt[G] = 5
+    if P = 1 then Rt[G] = 6
+    return
+  end if
+  if P = 1 then
+    Rt[G] = 1
+    return
+  end if
+  if Q = 1 then
+    Rt[G] = 2
+    return
+  end if
+  Rt[G] = 3
+  if CritT[G] = 2 then Rt[G] = 4
+  if U[G] > 0 then Rt[G] = 4
+  return
+end sub
+
+' --- Drawing ------------------------------------------------------------------
+
+' Square CX, CY: its colour (chequered, or the cursor's) and its bombs,
+' set out like the spots of a die
+sub DrawCell:
+  CellOf
+  V = CX + CY
+  V &= 1
+  K = V * 5
+  K += 128
+  if Won = 0 then
+    if Cell = CurCell then K = 138
+  end if
+  ' empty, then the bombs
+  X = CX * 3
+  X += BoardX
+  Y = CY * 3
+  Y += BoardY
+  for J = 0 to 2
+    N = Y + J
+    fill K count 3 at X,N
+  next
+  N = U[Cell]
+  if N = 0 then return
+  if N > 3 then N = 3
+  ' the bomb tile: the owner's colour, glowing when one more will blow
+  P = Ow[Cell]
+  P += K
+  V = Crit - 1
+  if U[Cell] >= V then P += 2
+  V = N - 1
+  V *= 6
+  M = N - 1
+  for J = 0 to M
+    Q = V + J
+    Q += J
+    I = Spots[Q]
+    I += X
+    inc Q
+    G = Spots[Q]
+    G += Y
+    put char P at I,G
+  next
+  return
+end sub
+
+sub DrawBoard:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  print at 8,1, "CHAIN REACTION"
+  ' The frame
+  X = BoardX - 1
+  Y = BoardY - 1
+  put char 143 at X,Y
+  put char 144 at 25,Y
+  put char 145 at X,19
+  put char 146 at 25,19
+  fill 147 count 18 at BoardX,Y
+  fill 148 count 18 at BoardX,19
+  for Y = BoardY to 18
+    put char 149 at X,Y
+    put char 150 at 25,Y
+  next
+  for CY = 0 to 4
+    for CX = 0 to 5
+      DrawCell
+    next
+  next
+  CountBombs
+  ShowCounts
+  return
+end sub
+
+' Whose turn: the cursor takes that player's square, and the line says so
+sub ShowTurn:
+  fill 32 count 28 at 2,22
+  if NP = 1 then
+    if Turn = CompSide then
+      print at 10,22, "COMPUTER'S TURN"
+    else
+      print at 12,22, "YOUR TURN"
+    end if
+  else
+    print at 10,22, "PLAYER"
+    NumU = Turn
+    print at 17,22, digits$(NumU, 1)
+  end if
+  P = Turn + 133
+  put char P at 7,22
+  return
+end sub
+
+' Each side's bombs on the board
+sub ShowCounts:
+  put char 134 at 3,21
+  NumU = Cnt1
+  print at 5,21, digits$(NumU, 2)
+  put char 135 at 25,21
+  NumU = Cnt2
+  print at 27,21, digits$(NumU, 2)
+  return
+end sub
+
+' Bombs about to blow flicker
+sub Animate:
+  N = Tick & 7
+  if N <> 0 then return
+  N = Tick & 8
+  Dst16 = 1048
+  for J = 0 to 2
+    for K = 0 to 2
+      V = K * 16
+      if N = 0 then
+        copy HotCol0 + V count 16 to vram.color + Dst16
+      else
+        copy HotCol1 + V count 16 to vram.color + Dst16
+      end if
+      Dst16 += 40
+    next
+    Dst16 += 1928
+  next
+  return
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 192 to vram.pattern + Dst16
+    copy TileCol count 192 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Lines 100-180: how many players, who goes first
+sub TitlePage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  M = TitleCount - 1
+  for I = 0 to M
+    J = I * 2
+    X = TitleBlocks[J]
+    X += 6
+    inc J
+    Y = TitleBlocks[J]
+    Y += 2
+    put char 151 at X,Y
+  next
+  print at 8,8, "R E A C T I O N"
+  print at 8,10, "COMPUTE! JAN. 1987"
+  print at 8,13, "ONE PLAYER"
+  print at 8,14, "TWO PLAYERS"
+  play sound SndTuneA
+  play sound SndTuneB
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 6,13 step 1
+  wait no fire
+  nmi off
+  play sound SndPick
+  NP = Choice
+  Sticks = 1
+  CompSide = 0
+  if NP = 1 then
+    print at 6,16, "COMPUTER FIRST?"
+    print at 8,17, "NO"
+    print at 8,18, "YES"
+    Choice = 1
+    Rearm
+    choose menu 1 to 2 into Choice cursor $3E at 6,17 step 1
+    wait no fire
+    nmi off
+    CompSide = 2
+    if Choice = 2 then CompSide = 1
+  else
+    print at 6,16, "JOYSTICKS"
+    print at 8,17, "ONE, TO SHARE"
+    print at 8,18, "TWO"
+    Choice = 2
+    Rearm
+    choose menu 1 to 2 into Choice cursor $3E at 6,17 step 1
+    wait no fire
+    nmi off
+    Sticks = Choice
+  end if
+  play sound SndPick
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 8,1, "CHAIN REACTION"
+  print at 2,3, "BY MARK TUTTLE, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE, JANUARY"
+  print at 2,5, "1987, WITH ITS ST, AMIGA,"
+  print at 2,6, "APPLE, ATARI AND PC"
+  print at 2,7, "VERSIONS BY TIM MIDKIFF."
+  print at 2,9, "BOMB BEGETS BOMB: FILL A"
+  print at 2,10, "SQUARE TO ITS LIMIT AND IT"
+  print at 2,11, "BLOWS, TAKING ITS"
+  print at 2,12, "NEIGHBOURS. A CORNER BLOWS"
+  print at 2,13, "WITH 2 BOMBS, A BORDER"
+  print at 2,14, "WITH 3, THE MIDDLE WITH 4."
+  print at 2,15, "WIPE OUT THE OTHER COLOUR."
+  print at 2,17, "COLECOVISION PORT BY"
+  print at 2,18, "AMY BIENVENU, 2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' The critical mass of each square (DATA 1340-1410)
+data CritT bytes = 2, 3, 3, 3, 3, 2, 3, 4, 4, 4, 4, 3, 3, 4, 4, 4, 4, 3, 3, 4, 4, 4, 4, 3, 2, 3, 3, 3, 3, 2
+' Where 1, 2 or 3 bombs sit in a square, like the spots of a die
+data Spots bytes = 1, 1, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 1, 0, 0, 2, 2, 2
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$05,$08,$3C,$7E,$6E,$7E,$3C
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$02,$05,$08,$3C,$7E,$6E,$7E,$3C
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$02,$05,$08,$3C,$7E,$6E,$7E,$3C
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$02,$05,$08,$3C,$7E,$6E,$7E,$3C
+  $00,$00,$00,$00,$00,$00,$00,$00,$02,$05,$08,$3C,$7E,$6E,$7E,$3C
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$02,$05,$08,$3C,$7E,$6E,$7E,$3C
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$00,$00,$00,$00,$0F,$10,$20,$20
+  $00,$00,$00,$00,$F0,$08,$04,$04,$20,$20,$10,$0F,$00,$00,$00,$00
+  $04,$04,$08,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00
+  $00,$00,$00,$FF,$00,$00,$00,$00,$20,$20,$20,$20,$20,$20,$20,$20
+  $04,$04,$04,$04,$04,$04,$04,$04,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$00
+end data
+data TileCol bytes
+  $14,$14,$14,$14,$14,$14,$14,$14,$B4,$B4,$E4,$94,$94,$94,$94,$94
+  $B4,$B4,$E4,$F4,$F4,$F4,$F4,$F4,$F4,$B4,$E4,$B4,$B4,$B4,$B4,$B4
+  $F4,$B4,$E4,$B4,$B4,$B4,$B4,$B4,$11,$11,$11,$11,$11,$11,$11,$11
+  $B1,$B1,$E1,$91,$91,$91,$91,$91,$B1,$B1,$E1,$F1,$F1,$F1,$F1,$F1
+  $F1,$B1,$E1,$B1,$B1,$B1,$B1,$B1,$F1,$B1,$E1,$B1,$B1,$B1,$B1,$B1
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$BA,$BA,$EA,$9A,$9A,$9A,$9A,$9A
+  $BA,$BA,$EA,$FA,$FA,$FA,$FA,$FA,$FA,$BA,$EA,$BA,$BA,$BA,$BA,$BA
+  $FA,$BA,$EA,$BA,$BA,$BA,$BA,$BA,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$B1,$B1,$A1,$A1,$91,$91,$61,$11
+end data
+data HotCol0 bytes
+  $F4,$B4,$E4,$B4,$B4,$B4,$B4,$B4,$F4,$B4,$E4,$B4,$B4,$B4,$B4,$B4
+  $F1,$B1,$E1,$B1,$B1,$B1,$B1,$B1,$F1,$B1,$E1,$B1,$B1,$B1,$B1,$B1
+  $FA,$BA,$EA,$BA,$BA,$BA,$BA,$BA,$FA,$BA,$EA,$BA,$BA,$BA,$BA,$BA
+end data
+data HotCol1 bytes
+  $F4,$B4,$E4,$94,$94,$94,$94,$94,$F4,$B4,$E4,$F4,$F4,$F4,$F4,$F4
+  $F1,$B1,$E1,$91,$91,$91,$91,$91,$F1,$B1,$E1,$F1,$F1,$F1,$F1,$F1
+  $FA,$BA,$EA,$9A,$9A,$9A,$9A,$9A,$FA,$BA,$EA,$FA,$FA,$FA,$FA,$FA
+end data
+data SpritePat bytes
+  $02,$05,$08,$3C,$7E,$6E,$7E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $11,$48,$17,$9F,$3F,$7F,$3F,$9F,$17,$48,$11,$00,$00,$00,$00,$00
+  $10,$24,$D0,$F2,$F8,$FC,$F8,$F2,$D0,$24,$10,$00,$00,$00,$00,$00
+  $91,$25,$50,$82,$20,$82,$50,$25,$91,$00,$00,$00,$00,$00,$00,$00
+  $20,$48,$14,$82,$08,$82,$14,$48,$20,$00,$00,$00,$00,$00,$00,$00
+end data
+data TitleBlocks bytes
+  $00,$00,$01,$00,$02,$00,$00,$01,$00,$02,$00,$03,$00,$04,$01,$04
+  $02,$04,$04,$00,$06,$00,$04,$01,$06,$01,$04,$02,$05,$02,$06,$02
+  $04,$03,$06,$03,$04,$04,$06,$04,$08,$00,$09,$00,$0A,$00,$08,$01
+  $0A,$01,$08,$02,$09,$02,$0A,$02,$08,$03,$0A,$03,$08,$04,$0A,$04
+  $0C,$00,$0D,$00,$0E,$00,$0D,$01,$0D,$02,$0D,$03,$0C,$04,$0D,$04
+  $0E,$04,$10,$00,$11,$00,$12,$00,$10,$01,$12,$01,$10,$02,$12,$02
+  $10,$03,$12,$03,$10,$04,$12,$04
+end data
+const TitleCount = 52
+
+asm {
+CrPlace:
+    db $80,$7F,$20,$02,$80,$A9,$40,$03,$90
+CrTick:
+    db $C0,$40,$60,$01,$D0
+CrNope:
+    db $C0,$F9,$33,$06,$C0,$F9,$F3,$02,$C0,$FF,$33,$06,$D0
+CrBoomN:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$06,$00,$00,$66,$08,$00,$00,$97,$08,$10
+CrPop0:
+    db $40,$FE,$10,$02,$40,$FC,$21,$03,$40,$F9,$53,$04,$50
+CrPop1:
+    db $40,$D5,$10,$02,$40,$AB,$21,$03,$40,$56,$53,$04,$50
+CrPop2:
+    db $40,$A9,$10,$02,$40,$53,$21,$03,$40,$A6,$52,$04,$50
+CrPop3:
+    db $40,$8F,$10,$02,$40,$1D,$21,$03,$40,$3B,$52,$04,$50
+CrPop4:
+    db $40,$71,$10,$02,$40,$E2,$20,$03,$40,$C5,$51,$04,$50
+CrPop5:
+    db $40,$5F,$10,$02,$40,$BF,$20,$03,$40,$7D,$51,$04,$50
+CrPop6:
+    db $40,$50,$10,$02,$40,$A0,$20,$03,$40,$41,$51,$04,$50
+CrPop7:
+    db $40,$40,$10,$02,$40,$7F,$20,$03,$40,$FE,$50,$04,$50
+CrHiss:
+    db $00,$00,$93,$06,$00,$00,$B3,$06,$10
+CrWinA:
+    db $40,$D6,$10,$05,$40,$D6,$F0,$01,$40,$AA,$10,$05,$40,$AA,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01
+    db $40,$6B,$10,$0B,$40,$6B,$F0,$01,$40,$7F,$10,$05,$40,$7F,$F0,$01,$40,$6B,$10,$05,$40,$6B,$F0,$01
+    db $40,$55,$10,$23,$40,$55,$F0,$01,$50
+CrWinB:
+    db $80,$AC,$31,$05,$80,$D6,$F0,$01,$80,$53,$31,$05,$80,$AA,$F0,$01,$80,$1D,$31,$05,$80,$8F,$F0,$01
+    db $80,$D6,$30,$0B,$80,$6B,$F0,$01,$80,$FE,$30,$05,$80,$7F,$F0,$01,$80,$D6,$30,$05,$80,$6B,$F0,$01
+    db $80,$AA,$30,$23,$80,$55,$F0,$01,$90
+CrPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+CrSoundTable:
+    dw CrPlace,$703F
+    dw CrTick,$7049
+    dw CrNope,$7049
+    dw CrBoomN,$702B
+    dw CrPop0,$7035
+    dw CrPop1,$7035
+    dw CrPop2,$7035
+    dw CrPop3,$7035
+    dw CrPop4,$7035
+    dw CrPop5,$7035
+    dw CrPop6,$7035
+    dw CrPop7,$7035
+    dw CrHiss,$702B
+    dw CrWinA,$7035
+    dw CrWinB,$703F
+    dw CrPick,$7049
+    dw CrTuneMel,$703F
+    dw CrTuneBass,$7049
+; Title tune: Short Fuse, a bouncy ticking tune in D minor (original for this port)
+; Tiny Sound, 6 frames per step
+CrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$21,$01,$24,$01,$28,$01,$2D,$01,$2B,$28,$26,$24
+    db $23,$01,$01,$01,$02,$40,$1A,$21,$24,$01,$28,$01,$2B,$01,$30,$01
+    db $2F,$2B,$29,$28,$26,$01,$01,$01,$02,$10,$1A,$21,$28,$01,$2D,$01
+    db $28,$01,$24,$01,$26,$28,$29,$26,$28,$01,$01,$01,$02,$30,$1A,$21
+    db $24,$23,$21,$23,$24,$26,$28,$2C,$2D,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+CrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$50,$18,$32,$09,$10,$15,$10,$09,$10,$15,$10,$07,$0E,$13,$0E
+    db $07,$0E,$13,$0E,$0C,$13,$18,$13,$0C,$13,$18,$13,$07,$0E,$13,$0E
+    db $07,$0E,$13,$0E,$02,$50,$18,$32,$09,$10,$15,$10,$0C,$13,$18,$13
+    db $0E,$15,$1A,$15,$10,$17,$1C,$17,$09,$10,$15,$10,$10,$17,$1C,$17
+    db $09,$10,$15,$10,$09,$01,$01,$01
+    db $FF
+}
