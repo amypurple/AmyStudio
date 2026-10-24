@@ -171,7 +171,13 @@ export function createTypeSymbolHelpers(ctx) {
   }
 
   function rewriteUserSymbolsInExpression(expr) {
-    return String(expr).replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name) => resolveNamedAsmSymbol(name) || name);
+    return String(expr).replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name, offset, expression) => {
+      // `$FACE` is a hexadecimal literal, not a reference to a variable named
+      // FACE. A word boundary exists after `$`, so the generic identifier
+      // matcher must explicitly leave that token untouched.
+      if (offset > 0 && expression[offset - 1] === "$") return name;
+      return resolveNamedAsmSymbol(name) || name;
+    });
   }
 
   function symbolOrValue(token) {
