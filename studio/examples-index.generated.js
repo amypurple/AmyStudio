@@ -2147,5 +2147,25 @@ export const exampleManifest = [
       "strategy",
       "chain-reaction"
     ]
+  },
+  {
+    "id": "darkhouse",
+    "label": "The Dark House",
+    "detail": "An original first-person 3D horror game spanning three floors, with flashlight visibility, stealth, wardrobes, collectible notes and a Tenant that hunts by sight and sound.",
+    "projectName": "The Dark House",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "horror",
+      "first-person",
+      "3d",
+      "stealth",
+      "voice"
+    ]
   }
 ];
