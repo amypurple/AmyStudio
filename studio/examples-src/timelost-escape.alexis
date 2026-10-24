@@ -1,0 +1,1067 @@
+if not defined AMY_TIMELOST_ANTHOLOGY
+cartridge "ESCAPE/PRESENTS TIMELOST'S/1983"
+end defined
+
+' ESCAPE
+' From "Timelost: A Computer Adventure" (Atari version), by Kris Austen
+' STATUS: Playable chapter; visual and gameplay refinement is still planned.
+' Andrews, Arlan Keith Andrews Sr. and Joseph C. Giarratano, Que, 1983,
+' pages 126-135 ("The Dungeon of the Lord-Wizard"). All credit belongs to
+' the authors.
+'
+' Historical context (summary of the chapter):
+' Locked in the Warlord's horrible prison, you try to get 100 fellow
+' prisoners out. The only way is down the River of Death, through the
+' Gates of Destruction. Each prisoner gets a boat; the current is so
+' swift that it can never be stopped, so you can only steer left or
+' right. A gate closes across the river one row after another, with an
+' ominous grinding, and crushes any boat in its way; the rocky shore
+' sinks boats too, and the shoreline keeps changing, like a tide covering
+' and uncovering the rocks. Your score is the number of prisoners freed;
+' no one has ever freed all 100. The book ends with three ideas: more than
+' one gate, boats that can stop for a while, and rocks that appear in the
+' water.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): left and right steer the boat; hold fire
+' to drop the anchor and stop for a moment.
+' The rules follow the Atari listing: 100 prisoners (line 25); the river
+' between rows 3 and 20, its half width INT(6 x ABS(SIN(K x (ROW + C))))
+' plus a little, K = 2 pi / 18 (lines 10-12, 100-110); the gate grows a
+' quarter step at a time across the row from the left shore (lines 190-
+' 210), with a sound that rises as it closes (line 215), slams shut
+' (lines 400-420), then moves to the next row, from the bottom back to the
+' top with the shoreline shifted (lines 1000, 1500-1520); the boat starts
+' below the river and rises steadily while it is steered left and right
+' (lines 50, 230, 2000-2100); the shore or the gate sinks it: ANOTHER ONE
+' LOST! (lines 120, 203, 3000-3120); past the top: FREEDOM!!!! (lines
+' 240, 4000-4130); escaped and remaining counts (lines 4310-4330); game
+' over when no prisoner is left (lines 7000-7500).
+' The book's three suggestions, all added: a second gate after 10 freed
+' prisoners and a third after 20; the anchor (hold fire) stops the boat
+' while its meter lasts, and the meter fills again while you row; rocks
+' break the surface at random and sink again later, more of them as more
+' prisoners are freed.
+' Adaptation liberties: pixel-smooth boat and gate (the gate's leading
+' tile closes a pixel at a time); gates and boat a little faster with
+' every prisoner freed; a choice of 100 or 25 prisoners; the record is
+' the most prisoners freed, with three initials picked with the
+' joystick; the boat, its prisoner, the anchor and the splash are 16 x 16
+' sprites; animated water; joystick menus; an original title tune; an
+' editorial page. Everything that matters stays in columns 2-30, inside
+' the TV overscan. The frame loop is protected from the NMI.
+' Screen: status on row 0, the far bank on rows 1-2, the river on rows
+' 3-20, the prison channel on rows 21-22, the prison wall and the anchor
+' meter on row 23.
+
+const ShoreA = 128
+const ShoreB = 129
+const Water = 130
+const Gate0 = 130
+const RiverRock = 139
+const Grass = 140
+const Tree = 141
+const Brick = 142
+const Bars = 143
+const MeterOn = 144
+const MeterOff = 145
+const TopR = 3
+const BotR = 20
+const StartX = 116
+const StartY = 170
+const AnchorMax = 120
+
+const SndGrind0 = 1
+const SndGrind1 = 2
+const SndGrind2 = 3
+const SndGrind3 = 4
+const SndSlam = 5
+const SndLostT = 6
+const SndLostN = 7
+const SndFree = 8
+const SndRock = 9
+const SndDrop = 10
+const SndLift = 11
+const SndLaunch = 12
+const SndOver = 13
+const SndGood = 14
+const SndPick = 15
+const SndTuneA = 16
+const SndTuneB = 17
+
+u8 Total = 100
+u8 Left = 100
+u8 Freed = 0
+u8 Lost = 0
+u8 Best = 0
+u8 BestName[3]
+u8 RL[24]                       ' river columns RL..RR of each row
+u8 RR[24]
+u8 Tide = 0                     ' C in the listing: the shoreline phase
+u8 NG = 1                       ' gates in use
+u8 GRow[3]
+u8 GPx[3]
+u8 GWid[3]
+u8 GSt[3]
+u8 GT[3]
+u8 GAcc[3]
+u16 GSpd = 80
+u8 KRow[4]                      ' rocks in the water: row, column, life
+u8 KCol[4]
+u16 KLife[4]
+u8 RockT = 0
+u8 RockMax = 1
+u8 BX = 116
+u8 BY = 170
+u16 BAcc = 0
+u16 BSpd = 128
+u8 Anchor = 120
+u8 Anchored = 0
+u8 RefillT = 0
+u8 BoomT = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 WaveT = 0
+u8 WaveF = 0
+u8 GrindT = 0
+u8 Hit = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 Up = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 C1 = 0
+u8 C2 = 0
+u8 R1 = 0
+u8 R2 = 0
+u8 Tm = 0
+u8 Want = 1
+u8 Choice = 1
+u16 Dst16 = 0
+u16 W16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table RiverSoundTable areas 4
+  sprites 16x16
+  copy SpritePat count 224 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  BestName[0] = 84
+  BestName[1] = 76
+  BestName[2] = 83
+  Best = 12
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Left = Total
+  Freed = 0
+  Lost = 0
+  Tide = random(0, 17)
+  DrawRiver
+  for G = 0 to 2
+    GSt[G] = 0
+    GPx[G] = 0
+    GAcc[G] = 0
+  next
+  NG = 1
+  G = 0
+  GRow[0] = TopR
+  StartGate
+  for K = 0 to 3
+    KRow[K] = 0
+  next
+  RockT = 200
+
+new_boat:
+  nmi off
+  BX = StartX
+  BY = StartY
+  BAcc = 0
+  Anchor = AnchorMax
+  Anchored = 0
+  BoomT = 0
+  Hit = 0
+  ' Harder with every prisoner freed
+  W16 = Freed
+  BSpd = W16 + 128
+  if BSpd > 224 then BSpd = 224
+  W16 = Freed
+  W16 += W16
+  GSpd = W16 + 80
+  if GSpd > 200 then GSpd = 200
+  ' The book's first idea: more gates
+  Want = 1
+  if Freed >= 10 then Want = 2
+  if Freed >= 20 then Want = 3
+  while NG < Want
+    G = NG
+    inc NG
+    ' A new gate starts near the top, away from the boat and the others
+    GRow[G] = BotR
+    NextGateRow
+    StartGate
+  end while
+  RockMax = Freed / 15
+  RockMax += 1
+  if RockMax > 4 then RockMax = 4
+  ShowStatus
+  ShowMeter
+  play sound SndLaunch
+  DrawSprites
+  Rearm
+  wait 30 frames
+  nmi off
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  MoveBoat
+  MoveGates
+  Rocks
+  Animate
+  CheckBoat
+  DrawSprites
+  if Hit = 1 then goto lost_one
+  ' Line 240: past the top of the river
+  if BY < 18 then goto freedom
+  goto main_loop
+
+  ' --- Lines 3000-3120: ANOTHER ONE LOST! ---
+lost_one:
+  play sound SndLostT
+  play sound SndLostN
+  print at 8,1, "ANOTHER ONE LOST!"
+  for Tm = 1 to 60
+    BoomT = Tm
+    DrawSprites
+    N = Tm & 8
+    if N = 0 then
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+      update sprites from 0 count 4
+    end if
+    Rearm
+    wait
+    nmi off
+  next
+  BoomT = 0
+  inc Lost
+  goto next_one
+
+  ' --- Lines 4000-4130: FREEDOM!!!! ---
+freedom:
+  play sound SndFree
+  print at 10,1, "FREEDOM!!!!"
+  for Tm = 1 to 50
+    if BY > 4 then BY -= 1
+    DrawSprites
+    Rearm
+    wait
+    nmi off
+  next
+  inc Freed
+
+next_one:
+  dec Left
+  DrawBank
+  HideSprites
+  if Left > 0 then goto new_boat
+
+  ' --- Lines 7000-7500: game over ---
+  ShowStatus
+  play sound SndOver
+  print at 8,8, "*** GAME OVER ***"
+  print at 8,10, "FREED"
+  NumU = Freed
+  print at 14,10, digits$(NumU, 3)
+  print at 18,10, "OF"
+  NumU = Total
+  print at 21,10, digits$(NumU, 3)
+  Rearm
+  wait 150 frames
+  nmi off
+  if Freed > Best then
+    Best = Freed
+    print at 8,12, "A NEW RECORD!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  ShowMeter
+  ' Line 7200: care for another game
+  print at 9,15, "ANOTHER GAME"
+if defined AMY_TIMELOST_ANTHOLOGY
+  print at 9,16, "ANTHOLOGY MENU"
+else defined
+  print at 9,16, "TITLE PAGE"
+end defined
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,15 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+if defined AMY_TIMELOST_ANTHOLOGY
+  call asm TimelostReturnToDirector
+  loop forever
+else defined
+  goto title
+end defined
+
+if defined AMY_TIMELOST_ANTHOLOGY
+asm {
+TimelostReturnToDirector:
+    xor a
+    ld ($20F0),a
+    jp $2003
+}
+end defined
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Up = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' Lines 230, 2000-2040: the current carries the boat up; the stick steers
+' it; the anchor (the book's second idea) holds it while the meter lasts
+sub MoveBoat:
+  if Stick = 1 then
+    if BX > 4 then dec BX
+  end if
+  if Stick = 2 then
+    if BX < 236 then inc BX
+  end if
+  N = 0
+  if Btn = 1 then
+    if Anchor > 0 then N = 1
+  end if
+  if N <> Anchored then
+    Anchored = N
+    if N = 1 then
+      play sound SndDrop
+    else
+      play sound SndLift
+    end if
+  end if
+  if Anchored = 1 then
+    dec Anchor
+    N = Anchor & 15
+    if N = 0 then ShowMeter
+    return
+  end if
+  if Anchor < AnchorMax then
+    inc RefillT
+    if RefillT >= 3 then
+      RefillT = 0
+      inc Anchor
+      N = Anchor & 15
+      if N = 0 then ShowMeter
+    end if
+  end if
+  BAcc += BSpd
+  if BAcc >= 256 then
+    BAcc -= 256
+    dec BY
+  end if
+  return
+end sub
+
+' Lines 190-215, 400-420, 1000, 1500-1520: each gate closes across its
+' row, slams, and moves on to the next row
+sub MoveGates:
+  for G = 0 to 2
+    if G < NG then
+      R = GRow[G]
+      if GSt[G] = 0 then
+        W16 = GAcc[G]
+        W16 += GSpd
+        if W16 >= 256 then
+          W16 -= 256
+          N = GPx[G] + 1
+          GPx[G] = N
+          ' The leading tile closes one pixel more
+          dec N
+          C = N >> 3
+          C += RL[R]
+          N &= 7
+          N += 131
+          put char N at C,R
+          ' A rock under the gate is crushed
+          for K = 0 to 3
+            if KRow[K] = R then
+              if KCol[K] = C then KRow[K] = 0
+            end if
+          next
+          N = GWid[G]
+          if GPx[G] >= N then
+            GSt[G] = 1
+            GT[G] = 15
+            play sound SndSlam
+          end if
+        end if
+        GAcc[G] = W16
+        ' Line 215: the grinding rises as the gate closes
+        if G = 0 then
+          inc GrindT
+          if GrindT >= 10 then
+            GrindT = 0
+            N = GPx[0] * 4
+            P = GWid[0]
+            V = 0
+            if N >= P then V = 1
+            P += GWid[0]
+            if N >= P then V = 2
+            P += GWid[0]
+            if N >= P then V = 3
+            if V = 0 then play sound SndGrind0
+            if V = 1 then play sound SndGrind1
+            if V = 2 then play sound SndGrind2
+            if V = 3 then play sound SndGrind3
+          end if
+        end if
+      else
+        dec GT[G]
+        if GT[G] = 0 then
+          ' Line 1500: the gate row turns back to water
+          C = RL[R]
+          N = RR[R] - C
+          inc N
+          fill Water count N at C,R
+          ' Line 1505-1510: the next row; from the bottom back to the top,
+          ' with the shoreline moved on
+          NextGateRow
+          StartGate
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub NextGateRow:
+  R = GRow[G]
+again:
+  inc R
+  if R > BotR then
+    R = TopR
+    inc Tide
+    if Tide >= 18 then Tide = 0
+  end if
+  ' Never two gates on one row
+  for K = 0 to 2
+    if K <> G then
+      if K < NG then
+        if GRow[K] = R then goto again
+      end if
+    end if
+  next
+  GRow[G] = R
+  return
+end sub
+
+' Lines 100-110: a gate starts on its row, redrawn with the present tide
+sub StartGate:
+  R = GRow[G]
+  DrawRow
+  N = RR[R] - RL[R]
+  inc N
+  N *= 8
+  GWid[G] = N
+  GPx[G] = 0
+  GSt[G] = 0
+  GAcc[G] = 0
+  return
+end sub
+
+' Row R of the river: rocky shore, water, rocky shore
+sub DrawRow:
+  N = R + Tide
+  N = N % 18
+  N = RiverHalf[N]
+  C = 16 - N
+  RL[R] = C
+  K = 15 + N
+  RR[R] = K
+  fill ShoreA count C at 0,R
+  N += N
+  fill Water count N at C,R
+  inc K
+  N = 32 - K
+  fill ShoreB count N at K,R
+  ' A rock on this row is washed away
+  for J = 0 to 3
+    if KRow[J] = R then KRow[J] = 0
+  next
+  return
+end sub
+
+' The book's third idea: rocks break the surface, then sink again
+sub Rocks:
+  for K = 0 to 3
+    if KRow[K] > 0 then
+      dec KLife[K]
+      if KLife[K] = 0 then
+        R = KRow[K]
+        C = KCol[K]
+        KRow[K] = 0
+        put char Water at C,R
+      end if
+    end if
+  next
+  if RockT > 0 then
+    dec RockT
+    return
+  end if
+  RockT = random(120, 240)
+  N = 0
+  for K = 0 to 3
+    if KRow[K] > 0 then inc N
+  next
+  if N >= RockMax then return
+  for K = 0 to 3
+    if KRow[K] = 0 then goto free_rock
+  next
+  return
+free_rock:
+  R = random(4, 19)
+  ' Not right in front of the boat
+  N = BY + 8
+  N >>= 3
+  if R >= N then return
+  P = N - R
+  if P < 4 then return
+  for G = 0 to 2
+    if G < NG then
+      if GRow[G] = R then return
+    end if
+  next
+  C1 = RL[R]
+  C2 = RR[R]
+  N = C2 - C1
+  if N < 5 then return
+  inc C1
+  dec C2
+  C = random(C1, C2)
+  KRow[K] = R
+  KCol[K] = C
+  W16 = random(150, 255)
+  W16 += W16
+  KLife[K] = W16
+  put char RiverRock at C,R
+  play sound SndRock
+  return
+end sub
+
+sub Animate:
+  inc AnimT
+  if AnimT >= 12 then
+    AnimT = 0
+    AnimF = AnimF ^ 4
+  end if
+  ' The water ripples
+  inc WaveT
+  if WaveT >= 20 then
+    WaveT = 0
+    WaveF = WaveF ^ 1
+    Dst16 = 1040
+    for J = 0 to 2
+      if WaveF = 0 then
+        copy WaterA count 8 to vram.pattern + Dst16
+      else
+        copy WaterB count 8 to vram.pattern + Dst16
+      end if
+      Dst16 += 2048
+    next
+  end if
+  return
+end sub
+
+' Lines 120, 200-203, 2060-2100: the boat against the shore, the gates and
+' the rocks (the boat's body is columns 3-11, rows 7-12 of its sprite)
+sub CheckBoat:
+  C = BX + 3
+  C1 = C >> 3
+  C = BX + 11
+  C2 = C >> 3
+  N = BY + 7
+  R1 = N >> 3
+  N = BY + 12
+  R2 = N >> 3
+  for R = R1 to R2
+    if R >= TopR then
+      if R <= BotR then
+        if C1 < RL[R] then Hit = 1
+        if C2 > RR[R] then Hit = 1
+        for G = 0 to 2
+          if G < NG then
+            if GRow[G] = R then
+              if GPx[G] > 0 then
+                N = RL[R] * 8
+                N += GPx[G]
+                dec N
+                P = BX + 3
+                if P <= N then Hit = 1
+              end if
+            end if
+          end if
+        next
+        for K = 0 to 3
+          if KRow[K] = R then
+            N = KCol[K]
+            if N >= C1 then
+              if N <= C2 then Hit = 1
+            end if
+          end if
+        next
+      else
+        ' The prison channel
+        if C1 < 12 then Hit = 1
+        if C2 > 19 then Hit = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawSprites:
+  if BoomT > 0 then
+    N = BoomT & 4
+    P = 16
+    if N = 0 then P = 20
+    set sprite 3 to BY,BX,P,15
+  else
+    set sprite 3 to 192,0,0,0
+  end if
+  P = AnimF
+  if Anchored = 1 then P = 0
+  set sprite 0 to BY,BX,P,10
+  P += 8
+  N = 15
+  if Anchored = 1 then N = 7
+  set sprite 1 to BY,BX,P,N
+  if Anchored = 1 then
+    Y = BY + 2
+    X = BX + 8
+    set sprite 2 to Y,X,24,14
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  update sprites from 0 count 4
+  return
+end sub
+
+' The whole picture: far bank, river, prison channel and wall
+sub DrawRiver:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  DrawBank
+  for R = TopR to BotR
+    DrawRow
+  next
+  for R = 21 to 22
+    fill ShoreA count 12 at 0,R
+    fill Water count 8 at 12,R
+    fill ShoreB count 12 at 20,R
+  next
+  fill Brick count 32 at 0,23
+  fill Bars count 8 at 12,23
+  ShowStatus
+  ShowMeter
+  return
+end sub
+
+' Rows 1-2: the far bank, freedom
+sub DrawBank:
+  fill Grass count 32 at 0,1
+  fill Grass count 32 at 0,2
+  put char Tree at 4,1
+  put char Tree at 9,2
+  put char Tree at 22,1
+  put char Tree at 27,2
+  return
+end sub
+
+' Lines 4310-4330: freed, lost and remaining
+sub ShowStatus:
+  print at 2,0, "FREED"
+  NumU = Freed
+  print at 8,0, digits$(NumU, 3)
+  print at 12,0, "LOST"
+  NumU = Lost
+  print at 17,0, digits$(NumU, 3)
+  print at 21,0, "LEFT"
+  NumU = Left
+  print at 26,0, digits$(NumU, 3)
+  return
+end sub
+
+' Row 23: the anchor meter and the record
+sub ShowMeter:
+  print at 2,23, "ANCHOR"
+  N = Anchor / 20
+  for J = 0 to 5
+    X = J + 9
+    if J < N then
+      put char MeterOn at X,23
+    else
+      put char MeterOff at X,23
+    end if
+  next
+  print at 17,23, "BEST"
+  NumU = Best
+  print at 22,23, digits$(NumU, 3)
+  for J = 0 to 2
+    X = J + 26
+    N = BestName[J]
+    put char N at X,23
+  next
+  return
+end sub
+
+' Lines 940-965 style: three initials with the joystick
+sub EnterName:
+  print at 6,13, "YOUR INITIALS:"
+  print at 5,16, "UP/DOWN, FIRE: NEXT"
+  for I = 0 to 2
+    BestName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = BestName[J]
+    put char N at X,13
+  next
+  X = I + 21
+  fill 32 count 3 at 21,14
+  put char 45 at X,14
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then goto name_done
+    goto name_loop
+  end if
+  N = BestName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  K = 0
+  if joypad(1).down then K = 1
+  if joypad(2).down then K = 1
+  if K = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  BestName[I] = N
+  goto name_loop
+name_done:
+  return
+end sub
+
+' Graphics II: tiles 128-147 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 160 to vram.pattern + Dst16
+    copy TileCol count 160 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites from 0 count 4
+  return
+end sub
+
+' Lines 8000-8230: the instructions, and how many prisoners
+sub TitlePage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  print at 11,1, "E S C A P E"
+  print at 3,3, "STEER EACH PRISONER'S BOAT"
+  print at 3,4, "DOWN THE RIVER OF DEATH,"
+  print at 3,5, "THROUGH THE GATES OF"
+  print at 3,6, "DESTRUCTION, TO FREEDOM."
+  print at 3,8, "THE CURRENT CARRIES YOU UP."
+  print at 3,9, "AVOID THE CLOSING GATES,"
+  print at 3,10, "THE SHORE AND THE ROCKS."
+  print at 3,12, "STICK: STEER LEFT/RIGHT"
+  print at 3,13, "HOLD FIRE: DROP ANCHOR"
+  print at 3,15, "YOUR SCORE IS THE NUMBER"
+  print at 3,16, "OF PEOPLE YOU FREE."
+  print at 7,18, "100 PRISONERS"
+  print at 7,19, "25 PRISONERS"
+  print at 3,21, "BEST"
+  NumU = Best
+  print at 8,21, digits$(NumU, 3)
+  for J = 0 to 2
+    X = J + 12
+    N = BestName[J]
+    put char N at X,21
+  next
+  fill Water count 32 at 0,23
+  set sprite 0 to 166,200,0,10
+  set sprite 1 to 166,200,8,15
+  update sprites from 0 count 4
+  play sound SndTuneA
+  play sound SndTuneB
+  Choice = 1
+  if Total = 25 then Choice = 2
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 5,18 step 1
+  wait no fire
+  nmi off
+  Total = 100
+  if Choice = 2 then Total = 25
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 13,1, "ESCAPE"
+  print at 2,3, "BY KRIS AUSTEN ANDREWS,"
+  print at 2,4, "ARLAN KEITH ANDREWS SR. AND"
+  print at 2,5, "JOSEPH C. GIARRATANO"
+  print at 2,6, "TIMELOST, QUE, 1983"
+  print at 2,8, "OUT OF THE WARLORD'S PRISON"
+  print at 2,9, "BY THE RIVER OF DEATH. NO"
+  print at 2,10, "ONE HAS EVER FREED ALL 100."
+  print at 2,12, "THIS VERSION ADDS THE"
+  print at 2,13, "BOOK'S THREE IDEAS: MORE"
+  print at 2,14, "GATES, AN ANCHOR TO STOP"
+  print at 2,15, "THE BOAT, AND ROCKS THAT"
+  print at 2,16, "RISE IN THE WATER."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' Lines 10-12, 100: half the river width for each of 18 phases,
+' INT(6 x ABS(SIN(2 pi x N / 18))) + 2
+data RiverHalf bytes = 2, 4, 5, 7, 7, 7, 7, 5, 4, 2, 4, 5, 7, 7, 7, 7, 5, 4
+
+' Tiles 128-147
+data TilePat bytes
+  $73,$FB,$F7,$66,$DE,$BF,$6E,$00
+  $DC,$DF,$EF,$66,$FD,$FD,$76,$00
+  $00,$60,$90,$00,$0C,$12,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$E0,$C0,$C0,$C0,$C0,$E0,$C0
+  $D0,$F0,$D0,$D0,$D0,$D0,$F0,$D0
+  $D8,$F8,$D8,$D8,$D8,$D8,$F8,$D8
+  $D8,$FC,$D8,$D8,$D8,$D8,$FC,$D8
+  $DA,$FE,$DA,$DA,$DA,$DA,$FE,$DA
+  $DB,$FF,$DB,$DB,$DB,$DB,$FF,$DB
+  $18,$7E,$FF,$DF,$FE,$7C,$A5,$00
+  $91,$4A,$00,$22,$54,$00,$88,$42
+  $3C,$7E,$FF,$7E,$3C,$18,$18,$3C
+  $FF,$10,$10,$FF,$01,$01,$01,$FF
+  $AA,$AA,$FF,$AA,$AA,$AA,$FF,$AA
+  $00,$FE,$FE,$FE,$FE,$FE,$00,$00
+  $00,$FE,$82,$82,$82,$FE,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $38,$78,$F0,$F0,$F0,$78,$38,$00
+end data
+data TileCol bytes
+  $E1,$E1,$A1,$E1,$E1,$A1,$E1,$11
+  $E1,$E1,$A1,$E1,$E1,$A1,$E1,$11
+  $54,$54,$54,$54,$54,$54,$54,$54
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$F4,$E4,$E4,$E4,$E4,$F4,$E4
+  $E4,$E4,$F4,$E4,$E4,$E4,$54,$54
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$3C,$2C,$2C,$3C,$AC,$AC,$AC
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $44,$44,$44,$44,$44,$44,$44,$44
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+end data
+data WaterA bytes = $00, $60, $90, $00, $0C, $12, $00, $00
+data WaterB bytes = $00, $18, $24, $00, $03, $04, $80, $00
+' Sprites: HullA, HullB, ManA, ManB, SplashA, SplashB, Anchor
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$20,$1F,$1F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$08,$E0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$40,$3F,$1F,$0F,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$08,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$03,$07,$8F,$4F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$C4,$C8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$03,$87,$4F,$0F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$84,$C8,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$09,$05,$13,$0F,$3F,$0F,$13,$05,$09,$00,$00,$00,$00
+  $00,$00,$00,$20,$40,$90,$E0,$F8,$E0,$90,$40,$20,$00,$00,$00,$00
+  $80,$20,$08,$00,$02,$A0,$00,$04,$00,$10,$21,$80,$00,$00,$00,$00
+  $81,$84,$08,$00,$80,$0A,$00,$40,$00,$10,$08,$81,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$07,$12,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$80
+end data
+
+asm {
+EsGrind0:
+    db $C0,$18,$41,$03,$C0,$0E,$61,$03,$D0
+EsGrind1:
+    db $C0,$53,$41,$03,$C0,$44,$61,$03,$D0
+EsGrind2:
+    db $C0,$9E,$41,$03,$C0,$88,$61,$03,$D0
+EsGrind3:
+    db $C0,$FC,$41,$03,$C0,$DC,$61,$03,$D0
+EsSlam:
+    db $00,$00,$04,$02,$00,$00,$05,$03,$00,$00,$26,$04,$00,$00,$46,$05,$00,$00,$66,$06,$00,$00,$96,$08
+    db $10
+EsLostT:
+    db $40,$66,$20,$14,$40,$CB,$20,$14,$40,$66,$30,$14,$40,$CB,$40,$14,$40,$CB,$F0,$02,$50
+EsLostN:
+    db $00,$00,$15,$06,$00,$00,$46,$08,$00,$00,$86,$0A,$10
+EsFree:
+    db $40,$6B,$10,$05,$40,$6B,$F0,$01,$40,$55,$10,$05,$40,$55,$F0,$01,$40,$47,$10,$05,$40,$47,$F0,$01
+    db $40,$6B,$10,$05,$40,$6B,$F0,$01,$40,$55,$10,$05,$40,$55,$F0,$01,$40,$47,$10,$05,$40,$47,$F0,$01
+    db $40,$35,$10,$1D,$40,$35,$F0,$01,$50
+EsRock:
+    db $00,$00,$36,$02,$00,$00,$47,$04,$00,$00,$77,$06,$10
+EsDrop:
+    db $80,$75,$21,$02,$80,$2F,$32,$03,$80,$EA,$62,$04,$90
+EsLift:
+    db $80,$EA,$42,$02,$80,$FC,$41,$02,$80,$53,$51,$02,$90
+EsLaunch:
+    db $80,$D6,$30,$04,$80,$AA,$30,$04,$80,$8F,$40,$06,$90
+EsOver:
+    db $40,$1D,$21,$0A,$40,$1D,$F1,$02,$40,$2E,$21,$0A,$40,$2E,$F1,$02,$40,$41,$21,$0A,$40,$41,$F1,$02
+    db $40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02,$40,$7C,$21,$0A,$40,$7C,$F1,$02
+    db $40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$3B,$22,$28,$40,$3B,$F2,$02,$50
+EsGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+EsPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+RiverSoundTable:
+    dw EsGrind0,$7049
+    dw EsGrind1,$7049
+    dw EsGrind2,$7049
+    dw EsGrind3,$7049
+    dw EsSlam,$702B
+    dw EsLostT,$7035
+    dw EsLostN,$702B
+    dw EsFree,$7035
+    dw EsRock,$702B
+    dw EsDrop,$703F
+    dw EsLift,$703F
+    dw EsLaunch,$703F
+    dw EsOver,$7035
+    dw EsGood,$7035
+    dw EsPick,$7049
+    dw RiverTuneMel,$703F
+    dw RiverTuneBass,$7049
+; Title tune: The River of Death, a rowing song in A minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 8 frames per step
+RiverTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1C,$00,$00,$1F,$23,$00,$21,$1F,$1E,$00,$00,$1A
+    db $1C,$00,$00,$01,$02,$30,$1A,$21,$23,$00,$00,$24,$26,$00,$24,$23
+    db $21,$00,$1F,$1E,$1C,$00,$00,$01,$02,$10,$1A,$21,$28,$00,$26,$00
+    db $24,$00,$23,$00,$21,$1F,$1E,$1F,$1C,$00,$00,$01,$02,$40,$1A,$21
+    db $17,$00,$1C,$00,$00,$01,$00,$00,$02,$30,$1A,$21,$1F,$00,$00,$23
+    db $28,$00,$26,$24,$23,$00,$00,$21,$23,$00,$00,$01,$02,$10,$1A,$21
+    db $28,$00,$00,$26,$24,$00,$23,$21,$1F,$00,$1E,$1B,$1C,$00,$00,$01
+    db $02,$30,$1A,$21,$2B,$00,$2A,$00,$28,$00,$27,$00,$28,$23,$1F,$1E
+    db $1C,$00,$00,$01,$02,$60,$1A,$21,$1C,$00,$00,$01,$00,$00,$00,$00
+    db $FF
+RiverTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$10,$00,$0B,$00,$10,$00,$0B,$00,$0E,$00,$09,$00
+    db $0E,$00,$0B,$00,$0C,$00,$07,$00,$0C,$00,$07,$00,$0E,$00,$09,$00
+    db $0B,$00,$0B,$00,$0C,$00,$07,$00,$0E,$00,$09,$00,$10,$00,$0B,$00
+    db $10,$00,$00,$01,$00,$00,$02,$60,$18,$32,$10,$00,$0B,$00,$10,$00
+    db $0B,$00,$0E,$00,$09,$00,$0E,$00,$0B,$00,$0C,$00,$07,$00,$0C,$00
+    db $07,$00,$0B,$00,$12,$00,$0B,$00,$0B,$00,$0C,$00,$07,$00,$0E,$00
+    db $09,$00,$10,$00,$0B,$00,$10,$00,$00,$01,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+}

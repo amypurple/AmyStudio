@@ -1,0 +1,1376 @@
+if not defined AMY_TIMELOST_ANTHOLOGY
+cartridge "SLIME CREATURES 3-D/PRESENTS TIMELOST'S/1983"
+end defined
+
+' ATTACK OF THE SLIME CREATURES 3-D
+' From "Timelost: A Computer Adventure" (Atari version), by Kris Austen
+' Andrews, Arlan Keith Andrews Sr. and Joseph C. Giarratano, Que, 1983,
+' pages 93-101 ("The Slime Creatures"). All credit belongs to the
+' authors.
+'
+' Historical context (summary of the chapter):
+' Hold off the Slime Creatures! They swim underwater toward Jacque on the
+' shore and surface for a moment to attack. A tone warns you first: the
+' longer the tone, the longer the creature stays up, and the higher the
+' pitch, the closer it is. Shoot while it is up; miss, and its next move
+' can be twice as long. If one reaches Jacque, the game is over. The book
+' ends with two ideas: several Slime Creatures at once, with Jacque
+' moving to face the one he wants to shoot, and a limit of 20 creatures
+' and 20 positron blasts per game, with the blasts left on display.
+'
+' ColecoVision version in Amy by Amy Bienvenu, 2026: the same game seen
+' through the hero's eyes, a wizard on the shore whose hand casts the
+' bolts. He looks out over the lake; the creatures come at him out of
+' the night, from tiny shapes near the far tree line to a slimy face
+' filling the screen. They are drawn facing him, a front view made from
+' the book's creature.
+' Controls (either joystick): left and right turn to look along the
+' lake; fire casts a bolt straight ahead, as often as you like.
+' The rules follow the Atari listing, as in the flat port: a creature
+' starts far out (line 590), waits under water (line 600), then a run of
+' beeps, one for each moment it will stay up, their pitch rising as it
+' comes closer (lines 610-650); it surfaces (line 660) and dives again
+' when its time is up (lines 680-690, 750); one bolt at a time (lines
+' 710-760); a hit while it is up is worth 230 minus its distance (lines
+' 770, 890-930, the book's 200 counted from where its creatures start);
+' otherwise it moves 8 to 27 closer, twice that after a miss (lines
+' 790-820); at the shore it attacks and the game is over (lines 830,
+' 940-950); another game (lines 960-1000).
+' The book's suggestions: up to three creatures at once (one more after
+' 4 and 8 hits), each coming from its own direction, with the hero
+' turning to face the one he wants to shoot; 20 creatures per game,
+' stopping them all clears the wave (500 points) and the next wave of 20
+' comes faster: less time under water (6 frames less a wave, up to 24)
+' and longer moves toward the shore (4 more a wave, up to 24); the game
+' goes on until a creature reaches the shore. The limit of 20 blasts is NOT
+' used, on purpose: it made the game unfair; the bottom line counts hits
+' and misses instead.
+' How the 3-D works: the lake is a panorama two screens wide (tree line,
+' moon, its reflection, stumps and lily pads, a reedy bank in front);
+' turning copies a new window of it, a column at a time, in two halves
+' on two frames. A creature keeps its direction and comes straight at
+' the hero, so on screen it only grows and sinks toward the bank: its
+' water line is 72 + 3264 / distance (a perspective divide, precomputed
+' in a table), and it is drawn in five sizes, from 4 to 32 pixels wide
+' (two sprites side by side up close). The bolt does the opposite,
+' shrinking as it flies away. The water swells in three bands, finer
+' toward the horizon, and stops at the bank about three quarters down
+' the screen.
+' Adaptation liberties: the first-person view itself; the wizard's hand
+' instead of Jacque's positron blaster; turning instead of walking along
+' the shore; unlimited bolts; bubbles show where a creature is beeping,
+' and a radar line at the top shows every creature on the lake and the
+' part the hero faces; the slime's face fills the screen when it
+' reaches the shore; one creature beeps at a time, so every warning can
+' be heard; the high score with three initials picked with the
+' joystick; joystick menus; an original title tune; an editorial page.
+' Everything that matters stays in columns 2-29, inside the TV overscan.
+' The hand and sleeve are sprites 0-3, which never flicker; the
+' creatures (two sprites each when close), the bolt and the spark take
+' turns only
+' when a line holds more than four. The frame loop is protected from the NMI.
+
+const TSky = 128
+const TBolt = 150
+const TBoltUsed = 151
+const TRadar = 152
+const TRadarView = 153
+const TRadarUp = 154
+const TRadarBub = 155
+const PanoW = 64
+const ViewMax = 36
+const ShoreD = 48
+const HandY = 132
+const MidX = 120
+
+const SndBeep0 = 1
+const SndBeep1 = 2
+const SndBeep2 = 3
+const SndBeep3 = 4
+const SndBeep4 = 5
+const SndBeep5 = 6
+const SndUp = 7
+const SndDown = 8
+const SndBlast = 9
+const SndHitT = 10
+const SndHitN = 11
+const SndMiss = 12
+const SndSlimed = 13
+const SndWin = 14
+const SndOver = 15
+const SndGood = 16
+const SndPick = 17
+const SndTuneA = 18
+const SndTuneB = 19
+
+u16 Score = 0
+u16 HighScore = 1500
+u8 HighName[3]
+u8 Misses = 0
+u8 Wave = 1
+u8 WHits = 0
+u8 ToCome = 20
+u8 Spawned = 0
+u8 Hits = 0
+u8 View = 14
+u8 TurnT = 0
+u8 Kick = 0
+u8 Flash = 0
+u8 ShotOn = 0
+u8 ShotD = 0
+u8 ShotB = 0
+u8 CrSt[3]                      ' 0 none, 1 under water, 2 beeping, 3 up, 4 melting
+u8 CrB[3]                       ' its direction: panorama column
+u8 CrD[3]                       ' its distance: 48 (the shore) to 230
+u8 CrT[3]
+u8 CrTT[3]
+u8 CrDT[3]
+u8 CrSp[3]
+u8 Beeper = 255
+u8 BeepT = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 WaveT = 0
+u8 WaveF = 0
+u8 RadT = 0
+u8 Slimed = 0
+u8 Lf = 0
+u8 Rt = 0
+u8 Btn = 0
+u8 BtnWas = 0
+u8 Up = 0
+u8 Dn = 0
+u8 Rad[28]
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 Q = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tm = 0
+u8 FI = 0
+u8 Big = 0
+u8 ViewHalf = 0
+u8 Choice = 1
+u16 Dst16 = 0
+u16 Src16 = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Pts = 0
+
+  tile screen
+  set sound table S3SoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 3
+  sprites flicker on
+  copy SpritePat count 736 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 74
+  HighName[1] = 67
+  HighName[2] = 75
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Misses = 0
+  ToCome = 20
+  Spawned = 0
+  Hits = 0
+  WHits = 0
+  Wave = 1
+  View = 14
+  ShotOn = 0
+  Slimed = 0
+  Beeper = 255
+  Kick = 0
+  Flash = 0
+  for G = 0 to 2
+    CrSt[G] = 0
+    CrSp[G] = 0
+  next
+  DrawLake
+  Rearm
+  wait no fire
+  nmi off
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  TurnView
+  Shoot
+  MoveShot
+  Creatures
+  Animate
+  DrawSprites
+  if Slimed = 1 then goto got_slimed
+  if ToCome = 0 then goto all_stopped
+  goto main_loop
+
+  ' --- Lines 830, 940-950: a creature reaches the shore ---
+got_slimed:
+  play sound SndSlimed
+  ' It rises right in front of Jacque
+  for Tm = 1 to 30
+    DrawSprites
+    Rearm
+    wait
+    nmi off
+  next
+  HideSprites
+  ShowFace
+  print at 13,15, "SLIMED!"
+  Rearm
+  wait 90 frames
+  nmi off
+  play sound SndOver
+  print at 12,16, "GAME OVER"
+  Rearm
+  wait 120 frames
+  nmi off
+  goto final_score
+
+  ' --- The book's idea: all twenty stopped ---
+all_stopped:
+  HideSprites
+  play sound SndWin
+  MsgBox
+  print at 8,9, "GOOD SHOOTING!"
+  print at 8,11, "WAVE"
+  NumU = Wave
+  print at 13,11, digits$(NumU, 2)
+  print at 16,11, "CLEAR +500"
+  Score += 500
+  ShowStatus
+  Rearm
+  wait 180 frames
+  nmi off
+  ' The next wave: 20 more, swimming in faster
+  if Wave < 99 then inc Wave
+  ToCome = 20
+  Spawned = 0
+  WHits = 0
+  ShotOn = 0
+  Beeper = 255
+  for G = 0 to 2
+    CrSt[G] = 0
+    CrSp[G] = 0
+  next
+  DrawLake
+  MsgBox
+  print at 11,10, "WAVE"
+  NumU = Wave
+  print at 16,10, digits$(NumU, 2)
+  print at 8,12, "THEY COME FASTER"
+  Rearm
+  wait 120 frames
+  nmi off
+  DrawLake
+  goto main_loop
+
+final_score:
+  if Score > HighScore then
+    HighScore = Score
+    MsgBox
+    print at 8,9, "NEW HIGH SCORE!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  DrawLake
+  MsgBox
+  ' Lines 960-1000: another game
+  print at 10,10, "ANOTHER GAME"
+if defined AMY_TIMELOST_ANTHOLOGY
+  print at 10,11, "ANTHOLOGY MENU"
+else defined
+  print at 10,11, "TITLE PAGE"
+end defined
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 8,10 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+if defined AMY_TIMELOST_ANTHOLOGY
+  call asm TimelostReturnToDirector
+  loop forever
+else defined
+  goto title
+end defined
+
+if defined AMY_TIMELOST_ANTHOLOGY
+asm {
+TimelostReturnToDirector:
+    xor a
+    ld ($20F0),a
+    jp $2003
+}
+end defined
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Btn = 0
+  Up = 0
+  Dn = 0
+  Lf = 0
+  Rt = 0
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).down then Dn = 1
+  if joypad(2).down then Dn = 1
+  if joypad(1).left then Lf = 1
+  if joypad(2).left then Lf = 1
+  if joypad(1).right then Rt = 1
+  if joypad(2).right then Rt = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' The book's idea: Jacque turns to face a creature, a column at a time
+sub TurnView:
+  if ViewHalf = 1 then
+    ViewHalf = 0
+    DrawBottom
+    return
+  end if
+  if TurnT > 0 then
+    dec TurnT
+    return
+  end if
+  N = 0
+  if Lf = 1 then
+    if View > 0 then
+      dec View
+      N = 1
+    end if
+  end if
+  if Rt = 1 then
+    if View < ViewMax then
+      inc View
+      N = 1
+    end if
+  end if
+  if N = 0 then return
+  TurnT = 3
+  ' The new window goes up in two halves on two frames, so a turn never
+  ' makes the game miss a frame
+  ViewHalf = 1
+  DrawTop
+  return
+end sub
+
+sub DrawTop:
+  W16 = View
+  Dst16 = 66
+  for I = 0 to 10
+    copy Pano + W16 count 28 to vram.name + Dst16
+    W16 += PanoW
+    Dst16 += 32
+  next
+  return
+end sub
+
+sub DrawBottom:
+  W16 = View + 704
+  Dst16 = 418
+  for I = 11 to 20
+    copy Pano + W16 count 28 to vram.name + Dst16
+    W16 += PanoW
+    Dst16 += 32
+  next
+  return
+end sub
+
+' Line 680: the wizard casts, one bolt at a time, as often as he likes
+sub Shoot:
+  N = 0
+  if Btn = 1 then
+    if BtnWas = 0 then N = 1
+  end if
+  BtnWas = Btn
+  if N = 0 then return
+  if ShotOn = 1 then return
+  ShotOn = 1
+  ShotD = ShoreD
+  ShotB = View + 13
+  Kick = 6
+  Flash = 4
+  play sound SndBlast
+  return
+end sub
+
+' Lines 710-790: the bolt flies away into the lake
+sub MoveShot:
+  if ShotOn = 0 then return
+  ShotD += 5
+  if ShotD >= 230 then
+    ' Line 790: a miss, so the creature it was aimed at moves twice as far
+    ShotOn = 0
+    for G = 0 to 2
+      if CrSt[G] > 0 then
+        if CrB[G] = ShotB then CrDT[G] = 2
+      end if
+    next
+    inc Misses
+    ShowHits
+    play sound SndMiss
+    return
+  end if
+  for G = 0 to 2
+    if CrSt[G] = 3 then
+      if ShotD >= CrD[G] then
+        ' On target? Big near ones a column either side, far ones exactly
+        X = CrB[G]
+        if X > ShotB then
+          P = X - ShotB
+        else
+          P = ShotB - X
+        end if
+        Q = 0
+        if CrD[G] >= 110 then Q = 1
+        if P <= 1 then
+          if P = 0 then
+            Hit
+            return
+          end if
+          if Q = 0 then
+            Hit
+            return
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Lines 770, 890-930: a hit, 230 minus its distance
+sub Hit:
+  ShotOn = 0
+  CrSt[G] = 4
+  CrT[G] = 24
+  P = 230 - CrD[G]
+  Pts = P
+  Score += Pts
+  inc Hits
+  inc WHits
+  dec ToCome
+  if Beeper = G then Beeper = 255
+  ShowStatus
+  play sound SndHitT
+  play sound SndHitN
+  return
+end sub
+
+' Lines 590-830: each creature waits, beeps, surfaces, dives, comes closer
+sub Creatures:
+  ' How many at once: one more after 4 and after 8 hits (the book's idea)
+  K = 1
+  if WHits >= 4 then K = 2
+  if WHits >= 8 then K = 3
+  N = 0
+  for G = 0 to 2
+    if CrSt[G] > 0 then inc N
+  next
+  if N < K then
+    if Spawned < 20 then NewCreature
+  end if
+  for G = 0 to 2
+    if CrSp[G] > 0 then dec CrSp[G]
+    V = CrSt[G]
+    if V = 1 then
+      ' Line 600: under water
+      if CrT[G] > 0 then
+        dec CrT[G]
+      else
+        if Beeper = 255 then
+          ' Line 610: how long it will be up
+          Beeper = G
+          N = CrD[G] >> 5
+          P = random(0, N)
+          P += 3
+          CrTT[G] = P
+          BeepT = 0
+          CrSt[G] = 2
+        end if
+      end if
+    elseif V = 2 then
+      ' Lines 620-650: one beep for each moment it will be up
+      if BeepT > 0 then
+        dec BeepT
+      else
+        BeepT = 10
+        N = CrD[G]
+        P = 5
+        if N >= 70 then P = 4
+        if N >= 100 then P = 3
+        if N >= 130 then P = 2
+        if N >= 160 then P = 1
+        if N >= 190 then P = 0
+        if P = 0 then
+          play sound SndBeep0
+        elseif P = 1 then
+          play sound SndBeep1
+        elseif P = 2 then
+          play sound SndBeep2
+        elseif P = 3 then
+          play sound SndBeep3
+        elseif P = 4 then
+          play sound SndBeep4
+        else
+          play sound SndBeep5
+        end if
+        dec CrTT[G]
+        if CrTT[G] = 0 then
+          ' Line 660: it surfaces
+          Beeper = 255
+          CrSt[G] = 3
+          CrT[G] = random(50, 90)
+          CrSp[G] = 10
+          play sound SndUp
+        end if
+      end if
+    elseif V = 3 then
+      dec CrT[G]
+      if CrT[G] = 0 then
+        ' Lines 750, 810: it dives and comes 8 to 27 closer (twice after a miss)
+        CrSt[G] = 1
+        CrT[G] = random(30, 80)
+        ' Each wave waits less under water
+        N = Wave - 1
+        N *= 6
+        if N > 24 then N = 24
+        V = CrT[G] - N
+        CrT[G] = V
+        CrSp[G] = 10
+        play sound SndDown
+        N = random(8, 27)
+        ' ...and comes further each time (the book's 8 to 27, +4 a wave)
+        V = Wave - 1
+        if V > 6 then V = 6
+        V *= 4
+        N += V
+        if CrDT[G] = 2 then N += N
+        CrDT[G] = 1
+        X = CrD[G]
+        P = ShoreD + N
+        if X <= P then
+          ' Line 830: at the shore
+          CrD[G] = ShoreD
+          CrSt[G] = 3
+          Beeper = 255
+          Slimed = 1
+          ' Jacque turns to face it
+          N = CrB[G]
+          if N >= 13 then
+            N -= 13
+          else
+            N = 0
+          end if
+          if N > ViewMax then N = ViewMax
+          View = N
+          DrawView
+        else
+          X -= N
+          CrD[G] = X
+        end if
+      end if
+    elseif V = 4 then
+      dec CrT[G]
+      if CrT[G] = 0 then CrSt[G] = 0
+    end if
+  next
+  return
+end sub
+
+' Line 590: a new creature far out, in its own direction (one Jacque can
+' turn to face: columns 13-49 of the panorama)
+sub NewCreature:
+  for G = 0 to 2
+    if CrSt[G] = 0 then goto free_slot
+  next
+  return
+free_slot:
+  for I = 1 to 12
+    R = random(13, 49)
+    K = 0
+    for J = 0 to 2
+      if CrSt[J] > 0 then
+        X = CrB[J]
+        if X > R then
+          P = X - R
+        else
+          P = R - X
+        end if
+        if P < 6 then K = 1
+      end if
+    next
+    if K = 0 then goto dir_ok
+  next
+  return
+dir_ok:
+  CrB[G] = R
+  CrD[G] = random(200, 220)
+  CrSt[G] = 1
+  CrT[G] = random(20, 70)
+  CrDT[G] = 1
+  inc Spawned
+  ShowStatus
+  return
+end sub
+
+' Swells on the water, the bubbles, and the radar
+sub Animate:
+  inc AnimT
+  if AnimT >= 14 then
+    AnimT = 0
+    AnimF = AnimF ^ 4
+  end if
+  inc WaveT
+  if WaveT >= 16 then
+    WaveT = 0
+    WaveF = WaveF ^ 1
+    Dst16 = 1112
+    for J = 0 to 2
+      if WaveF = 0 then
+        copy WaveA count 24 to vram.pattern + Dst16
+      else
+        copy WaveB count 24 to vram.pattern + Dst16
+      end if
+      Dst16 += 2048
+    next
+  end if
+  inc RadT
+  if RadT >= 4 then
+    RadT = 0
+    Radar
+  end if
+  return
+end sub
+
+' The radar line: the whole lake in 28 cells, the part Jacque faces
+' brighter, a creature up or bubbling marked where it is
+sub Radar:
+  for I = 0 to 27
+    X = RadBear[I]
+    V = TRadar
+    if X >= View then
+      N = View + 27
+      if X <= N then V = TRadarView
+    end if
+    Rad[I] = V
+  next
+  for G = 0 to 2
+    V = CrSt[G]
+    if V >= 2 then
+      if V <= 3 then
+        X = CrB[G]
+        I = RadCell[X]
+        N = TRadarUp
+        if V = 2 then
+          N = TRadarBub
+          P = AnimF
+          if P = 0 then N = TRadarView
+        end if
+        Rad[I] = N
+      end if
+    end if
+  next
+  copy Rad count 28 to vram.name + 34
+  return
+end sub
+
+sub DrawSprites:
+  ' The wizard's hand and sleeve, thrust forward as it casts
+  Y = HandY
+  if Kick > 0 then
+    Y -= Kick
+    dec Kick
+  end if
+  set sprite 0 to Y,MidX - 8,56,9
+  set sprite 1 to Y,MidX + 8,60,9
+  Y += 16
+  set sprite 2 to Y,MidX - 8,84,13
+  set sprite 3 to Y,MidX + 8,88,13
+  ' The bolt, smaller as it goes, or the spark at the fingertips
+  if ShotOn = 1 then
+    N = ShotD
+    Y = YofD[N]
+    Y -= 12
+    P = 48
+    if ShotD >= 110 then P = 52
+    if Flash > 0 then
+      dec Flash
+      P = 64
+      Y = HandY - 14
+    end if
+    X = ShotB - View
+    X *= 8
+    X += 16
+    set sprite 4 to Y,X,P,11
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  for G = 0 to 2
+    J = G * 2
+    J += 5
+    Q = 0
+    Big = 0
+    ' Is it in view?
+    X = CrB[G]
+    if X >= View then
+      N = View + 26
+      if X <= N then Q = 1
+    end if
+    V = CrSt[G]
+    if V = 0 then Q = 0
+    if V = 1 then
+      if CrSp[G] = 0 then Q = 0
+    end if
+    if Q = 1 then
+      X -= View
+      X *= 8
+      X += 16
+      N = CrD[G]
+      Y = YofD[N]
+      Y -= 16
+      ' Its size by distance: five sizes, two frames; up close, two sprites
+      P = 0
+      if N < 190 then P = 8
+      if N < 150 then P = 16
+      if N < 110 then P = 24
+      K = 3
+      if V = 3 then
+        if N < 80 then
+          Big = 1
+          P = 68
+        end if
+        P += AnimF
+        if AnimF > 0 then
+          if Big = 1 then P += 4
+        end if
+        if Slimed = 1 then
+          ' Rising out of the water at the shore
+          Y = HandY - 26
+          Big = 1
+          P = 68
+        end if
+      elseif V = 2 then
+        P = 32
+        if N < 110 then P = 36
+        K = 15
+        N = AnimT & 8
+        if N = 0 then Q = 0
+      elseif V = 4 then
+        P = 44
+        K = 2
+      else
+        P = 40
+        K = 15
+      end if
+      if CrSp[G] > 0 then
+        if V <> 4 then
+          P = 40
+          K = 15
+          Big = 0
+        end if
+      end if
+    end if
+    R = J + 1
+    if Q = 1 then
+      if Big = 1 then
+        X -= 8
+        set sprite J to Y,X,P,K
+        X += 16
+        P += 4
+        set sprite R to Y,X,P,K
+      else
+        set sprite J to Y,X,P,K
+        set sprite R to 192,0,0,0
+      end if
+    else
+      set sprite J to 192,0,0,0
+      set sprite R to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' The window of the lake Jacque faces: panorama columns View to View+27
+sub DrawView:
+  W16 = View
+  Dst16 = 66
+  for I = 0 to 20
+    copy Pano + W16 count 28 to vram.name + Dst16
+    W16 += PanoW
+    Dst16 += 32
+  next
+  return
+end sub
+
+sub DrawLake:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  backdrop black
+  cls
+  DrawView
+  ShowStatus
+  Radar
+  return
+end sub
+
+' The slime's face, up close
+sub ShowFace:
+  FI = 0
+  for I = 0 to 11
+    for J = 0 to 19
+      N = Face[FI]
+      if N > 0 then
+        X = J + 6
+        Y = I + 8
+        put char N at X,Y
+      end if
+      inc FI
+    next
+  next
+  return
+end sub
+
+' Line 570: the score, and (the book's idea) the creatures and blasts left
+sub ShowStatus:
+  print at 2,0, "SCORE"
+  NumU = Score
+  print at 8,0, digits$(NumU, 5)
+  print at 14,0, "LEFT"
+  NumU = ToCome
+  print at 19,0, digits$(NumU, 2)
+  print at 22,0, "HI"
+  NumU = HighScore
+  print at 25,0, digits$(NumU, 5)
+  ShowHits
+  return
+end sub
+
+' Hits and misses on the bottom line
+sub ShowHits:
+  print at 2,23, "HITS"
+  NumU = Hits
+  print at 7,23, digits$(NumU, 3)
+  print at 11,23, "MISSES"
+  NumU = Misses
+  print at 18,23, digits$(NumU, 3)
+  print at 22,23, "WAVE"
+  NumU = Wave
+  print at 27,23, digits$(NumU, 2)
+  return
+end sub
+
+sub MsgBox:
+  for Y = 8 to 13
+    fill 32 count 22 at 5,Y
+  next
+  return
+end sub
+
+sub EnterName:
+  MsgBox
+  print at 6,9, "YOUR INITIALS:"
+  print at 6,12, "UP/DOWN, FIRE"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,9
+  next
+  X = I + 21
+  fill 32 count 3 at 21,10
+  put char 45 at X,10
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then return
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  if Dn = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 304 to vram.pattern + Dst16
+    copy TileCol count 304 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 11
+  for J = 0 to 10
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub TitlePage:
+  nmi off
+  View = 22
+  DrawLake
+  for Y = 0 to 1
+    fill 32 count 32 at 0,Y
+  next
+  fill 32 count 32 at 0,23
+  print at 9,2, "ATTACK OF THE"
+  print at 8,3, "SLIME CREATURES"
+  print at 14,5, "3-D"
+  print at 3,22, "STICK: TURN  FIRE: CAST"
+  print at 6,23, "HIGH"
+  NumU = HighScore
+  print at 11,23, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 17
+    N = HighName[J]
+    put char N at X,23
+  next
+  ' A creature comes and goes on the lake while the tune plays
+  CrSt[0] = 3
+  CrB[0] = View + 13
+  CrD[0] = 150
+  CrSp[0] = 0
+  CrSt[1] = 0
+  CrSt[2] = 0
+  ShotOn = 0
+  Slimed = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+  Tm = 0
+title_loop:
+  inc Tm
+  Animate
+  if Tm = 90 then
+    ' it dives and surfaces nearer
+    CrSp[0] = 10
+    CrSt[0] = 1
+  end if
+  if Tm = 150 then
+    CrSt[0] = 3
+    CrSp[0] = 10
+    N = CrD[0]
+    N -= 30
+    if N < 70 then N = 200
+    CrD[0] = N
+    Tm = 0
+  end if
+  if CrSp[0] > 0 then dec CrSp[0]
+  DrawSprites
+  Rearm
+  wait
+  nmi off
+  if joypad(1).fire then goto title_go
+  if joypad(2).fire then goto title_go
+  goto title_loop
+title_go:
+  play sound SndPick
+  Rearm
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  CrSt[0] = 0
+  HideSprites
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 3,1, "ATTACK OF THE SLIME"
+  print at 3,2, "CREATURES 3-D"
+  print at 2,4, "FROM TIMELOST, BY KRIS"
+  print at 2,5, "AUSTEN ANDREWS, ARLAN KEITH"
+  print at 2,6, "ANDREWS SR. AND JOSEPH C."
+  print at 2,7, "GIARRATANO (QUE, 1983),"
+  print at 2,8, "PAGES 93-101."
+  print at 2,10, "THE BOOK'S GAME, SEEN"
+  print at 2,11, "THROUGH JACQUE'S EYES:"
+  print at 2,12, "LISTEN FOR THE BEEPS, TURN"
+  print at 2,13, "TO THE BUBBLES, AND SHOOT"
+  print at 2,14, "WHEN THE CREATURE RISES."
+  print at 2,16, "HIGHER BEEP: IT IS CLOSER."
+  print at 2,17, "MORE BEEPS: IT STAYS UP"
+  print at 2,18, "LONGER."
+  print at 2,20, "BY AMY BIENVENU, 2026."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data RadBear bytes = 0, 2, 4, 6, 9, 11, 13, 16, 18, 20, 22, 25, 27, 29, 32, 34, 36, 38, 41, 43, 45, 48, 50, 52, 54, 57, 59, 61
+data RadCell bytes = 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 7, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 14, 15, 15, 16, 16, 17, 17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 21, 22, 22, 23, 23, 24, 24, 24, 25, 25, 26, 26, 27, 27
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$00,$00,$00,$00
+  $00,$10,$38,$10,$00,$00,$00,$00,$0F,$3F,$7F,$7F,$FF,$FF,$FF,$7F
+  $00,$C0,$E0,$F0,$F0,$F0,$F0,$F0,$7F,$3F,$0F,$00,$00,$00,$00,$00
+  $E0,$C0,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$FF
+  $00,$00,$00,$02,$07,$8F,$DF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$C3,$FF,$00,$00,$C0,$00,$00,$0C,$00,$00
+  $00,$70,$88,$00,$00,$07,$08,$00,$00,$3C,$42,$81,$00,$00,$F0,$08
+  $00,$78,$00,$1E,$00,$38,$00,$0E,$00,$78,$00,$1E,$00,$38,$00,$0E
+  $00,$00,$00,$60,$74,$FC,$78,$78,$3C,$3C,$7E,$3C,$3C,$7E,$FF,$24
+  $00,$00,$00,$38,$7C,$F6,$7C,$00,$88,$89,$A9,$AD,$EF,$FF,$FF,$FF
+  $22,$62,$6B,$EB,$FF,$FF,$FF,$FF,$AA,$55,$AA,$55,$AA,$55,$AA,$55
+  $00,$10,$38,$38,$38,$10,$10,$00,$00,$10,$38,$38,$38,$10,$10,$00
+  $00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$FF,$FF
+  $00,$3C,$7E,$7E,$3C,$00,$FF,$FF,$00,$24,$00,$48,$00,$00,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$20,$00,$02,$00,$40,$08,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7E,$3C,$3C,$18,$18,$00
+  $01,$03,$07,$0F,$1F,$3F,$7F,$FF,$80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+  $FF,$FF,$C3,$81,$00,$00,$00,$00,$00,$22,$50,$02,$80,$12,$40,$08
+end data
+data TileCol bytes
+  $11,$11,$11,$11,$11,$11,$11,$11,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$54,$54,$54,$54,$54,$54,$54,$54
+  $54,$54,$54,$54,$54,$54,$54,$54,$54,$54,$54,$54,$54,$54,$54,$54
+  $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+  $64,$64,$64,$64,$64,$64,$64,$64,$64,$64,$64,$64,$64,$64,$54,$54
+  $24,$24,$24,$24,$24,$24,$24,$24,$31,$31,$21,$21,$C1,$C6,$61,$61
+  $31,$31,$21,$21,$C1,$C6,$61,$61,$61,$61,$61,$61,$61,$61,$61,$61
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$41,$51,$51,$51,$51,$51,$51,$51,$51
+  $31,$31,$31,$31,$31,$31,$51,$51,$F1,$F1,$F1,$F1,$F1,$F1,$51,$51
+  $33,$33,$33,$33,$33,$33,$33,$33,$23,$23,$23,$23,$23,$23,$23,$23
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+  $11,$11,$11,$11,$11,$11,$11,$11,$34,$34,$34,$34,$34,$34,$34,$34
+  $34,$34,$34,$34,$34,$34,$34,$34,$34,$34,$34,$34,$34,$34,$34,$34
+  $34,$34,$34,$34,$34,$34,$34,$34,$C6,$C6,$C6,$C6,$C6,$C6,$C6,$C6
+end data
+data WaveA bytes
+  $00,$00,$C0,$00,$00,$0C,$00,$00,$00,$70,$88,$00,$00,$07,$08,$00
+  $00,$3C,$42,$81,$00,$00,$F0,$08
+end data
+data WaveB bytes
+  $00,$00,$30,$00,$00,$03,$00,$00,$00,$1C,$22,$00,$00,$C0,$20,$00
+  $00,$00,$F0,$08,$00,$3C,$42,$81
+end data
+data Pano bytes
+  $80,$80,$80,$80,$82,$80,$80,$80,$80,$81,$80,$80,$80,$82,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$81,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$81,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$83,$84,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$82,$80,$81,$80,$80,$80,$80,$80,$85,$86,$80,$80
+  $80,$80,$80,$80,$80,$82,$80,$82,$80,$80,$81,$80,$80,$80,$81,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81
+  $80,$80,$80,$80,$80,$80,$80,$81,$80,$80,$80,$82,$80,$80,$80,$80
+  $80,$80,$80,$80,$80,$82,$80,$80,$80,$80,$80,$80,$80,$81,$80,$80
+  $80,$82,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $80,$80,$80,$81,$80,$80,$80,$81,$80,$80,$80,$80,$80,$80,$80,$82
+  $8A,$80,$87,$87,$87,$80,$80,$87,$8A,$87,$87,$80,$88,$8A,$87,$88
+  $87,$88,$80,$88,$88,$88,$8A,$87,$8A,$80,$87,$80,$80,$88,$88,$8A
+  $8A,$87,$87,$80,$8A,$87,$8A,$8A,$87,$88,$87,$80,$8A,$80,$87,$87
+  $88,$88,$88,$8A,$88,$87,$87,$87,$8A,$88,$87,$87,$87,$87,$88,$87
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+  $89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8E,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$90,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$90,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8E,$8B,$8B,$8B
+  $8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$8B,$90,$8B,$8B,$8B,$8B,$8B
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8F,$8F,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$90,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8F,$8F,$8C,$8F,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$91,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8F,$8F,$8F,$92,$8C
+  $8C,$8C,$90,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8F,$8F,$8F,$8F,$8D
+  $8D,$8D,$91,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$90,$8D,$8D
+  $8D,$8D,$8D,$90,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$92,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8F,$8F,$8F,$8F,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$91,$8D,$8D
+  $8D,$8D,$8D,$91,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$92,$8D,$8F,$8F,$8F,$8F,$8D,$8F
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$91,$8D,$8D
+  $8D,$8D,$8D,$91,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$92,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8F,$8D,$8F,$8D,$8F,$8F
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$92,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8F,$8F,$8D,$8F,$8F,$8F
+  $8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D
+  $93,$94,$95,$95,$94,$95,$93,$94,$95,$93,$95,$95,$93,$94,$95,$93
+  $94,$95,$93,$94,$95,$93,$94,$95,$95,$94,$95,$93,$94,$95,$93,$95
+  $95,$93,$94,$95,$93,$94,$95,$93,$94,$95,$93,$94,$95,$95,$94,$95
+  $93,$94,$95,$93,$95,$95,$93,$94,$95,$93,$94,$95,$93,$94,$95,$93
+  $A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5
+  $A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5
+  $A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5
+  $95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95
+  $A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5
+  $A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5
+  $A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5
+  $A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5
+  $95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95
+  $A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5
+  $A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5
+  $A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5,$A5,$95,$A5,$A5,$A5
+end data
+data Face bytes
+  $00,$00,$00,$00,$00,$00,$A2,$9C,$9C,$9C,$9C,$9C,$9C,$A3,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$A2,$9C,$9C,$9D,$9C,$9C,$9C,$9C,$9D,$9C,$9C,$A3,$00,$00,$00,$00
+  $00,$00,$00,$A2,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$A3,$00,$00,$00
+  $00,$00,$A2,$9C,$9C,$9C,$9E,$9E,$9E,$9C,$9C,$9E,$9E,$9E,$9C,$9C,$9C,$9C,$A3,$00
+  $00,$00,$9C,$9C,$9C,$9C,$9E,$9F,$9F,$9E,$9C,$9E,$9F,$9F,$9E,$9C,$9C,$9C,$9C,$00
+  $00,$A2,$9C,$9C,$9C,$9C,$9C,$9E,$9E,$9E,$9C,$9C,$9E,$9E,$9E,$9C,$9C,$9C,$9C,$9C
+  $00,$9C,$9C,$9D,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9D,$9C,$9C
+  $00,$9C,$9C,$9C,$9C,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$9C,$9C,$9C,$9C
+  $00,$9C,$9C,$9C,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$9C,$9C,$9C
+  $00,$9C,$9C,$9C,$9C,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$9C,$9C,$9C,$9C
+  $00,$9C,$9C,$9C,$9C,$9C,$A1,$9C,$9C,$9C,$9C,$9C,$A1,$9C,$9C,$9C,$9C,$9C,$9C,$9C
+  $00,$00,$A1,$00,$00,$00,$A1,$00,$00,$00,$00,$A1,$00,$00,$00,$00,$A1,$00,$00,$00
+end data
+data YofD bytes
+  $99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+  $99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+  $99,$99,$99,$99,$99,$99,$99,$99,$99,$97,$95,$93,$92,$90,$8E,$8D
+  $8C,$8A,$89,$88,$86,$85,$84,$83,$82,$81,$80,$7F,$7E,$7D,$7C,$7B
+  $7B,$7A,$79,$78,$78,$77,$76,$75,$75,$74,$74,$73,$72,$72,$71,$71
+  $70,$70,$6F,$6F,$6E,$6E,$6D,$6D,$6D,$6C,$6C,$6B,$6B,$6B,$6A,$6A
+  $6A,$69,$69,$68,$68,$68,$68,$67,$67,$67,$66,$66,$66,$65,$65,$65
+  $65,$64,$64,$64,$64,$63,$63,$63,$63,$62,$62,$62,$62,$62,$61,$61
+  $61,$61,$61,$60,$60,$60,$60,$60,$60,$5F,$5F,$5F,$5F,$5F,$5E,$5E
+  $5E,$5E,$5E,$5E,$5E,$5D,$5D,$5D,$5D,$5D,$5D,$5D,$5C,$5C,$5C,$5C
+  $5C,$5C,$5C,$5C,$5B,$5B,$5B,$5B,$5B,$5B,$5B,$5B,$5A,$5A,$5A,$5A
+  $5A,$5A,$5A,$5A,$5A,$5A,$59,$59,$59,$59,$59,$59,$59,$59,$59,$59
+  $59,$58,$58,$58,$58,$58,$58,$58,$58,$58,$58,$58,$58,$57,$57,$57
+  $57,$57,$57,$57,$57,$57,$57,$57,$57,$57,$56,$56,$56,$56,$56,$56
+  $56,$56,$56,$56,$56,$56,$56,$56,$56,$56,$55,$55,$55,$55,$55,$55
+  $55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$54,$54,$54,$54
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$05,$07,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$A0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$05,$07,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$A0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$09,$1F,$13,$3F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$98,$FC,$F4,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$09,$1F,$13,$25
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$98,$FC,$F4,$5C
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$1F,$33,$33,$7F,$76,$FF,$91
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$F8,$DC,$AE,$FE,$DB,$FF,$59
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$1F,$33,$33,$7F,$76,$FF,$2A
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$F8,$DC,$AE,$FE,$DB,$FF,$42
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$02,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$14,$09,$20,$50,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$90,$40,$84,$14,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$89,$53,$3B,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$90,$22,$4A,$DC,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$12,$3D,$7F,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$EC,$FF
+  $00,$00,$00,$00,$00,$03,$07,$0F,$0F,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$01,$00,$00
+  $19,$3B,$3B,$3B,$BB,$BB,$BB,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $80,$98,$B8,$B8,$B8,$B8,$B8,$F8,$F8,$F9,$FB,$FF,$FF,$FE,$FC,$FC
+  $00,$00,$00,$00,$00,$00,$30,$70,$E0,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$02,$12,$0B,$4F,$0B,$12,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$40,$48,$D0,$F2,$D0,$48,$40,$00,$00
+  $00,$00,$03,$07,$0F,$1E,$1E,$3F,$3F,$78,$7B,$7F,$FF,$B7,$93,$01
+  $1F,$FF,$FF,$FF,$1F,$0F,$4F,$1F,$FF,$00,$6D,$FF,$FF,$BE,$12,$00
+  $F8,$FF,$FF,$FF,$E3,$C1,$C9,$E3,$FF,$00,$B6,$FF,$FF,$F7,$62,$20
+  $00,$00,$C0,$E0,$F0,$F8,$F8,$FC,$FC,$1E,$DE,$FE,$FF,$DB,$92,$20
+  $00,$00,$03,$07,$0F,$1E,$1E,$3F,$3F,$7C,$7B,$78,$FF,$DB,$49,$20
+  $1F,$FF,$FF,$FF,$1F,$0F,$4F,$1F,$FF,$00,$6D,$00,$FF,$DF,$89,$20
+  $F8,$FF,$FF,$FF,$E3,$C1,$C9,$E3,$FF,$00,$B6,$00,$FF,$7B,$31,$08
+  $00,$00,$C0,$E0,$F0,$F8,$F8,$FC,$FC,$3E,$DE,$1E,$FF,$ED,$49,$10
+  $01,$03,$07,$07,$0F,$0F,$1F,$1F,$3F,$3F,$7F,$7F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $00,$00,$80,$80,$C0,$C0,$E0,$E0,$F0,$F0,$F8,$F8,$FC,$FC,$FC,$FC
+end data
+
+asm {
+S3Beep0:
+    db $80,$6D,$22,$05,$80,$6D,$F2,$03,$90
+S3Beep1:
+    db $80,$AE,$21,$05,$80,$AE,$F1,$03,$90
+S3Beep2:
+    db $80,$37,$21,$05,$80,$37,$F1,$03,$90
+S3Beep3:
+    db $80,$E0,$20,$05,$80,$E0,$F0,$03,$90
+S3Beep4:
+    db $80,$A0,$20,$05,$80,$A0,$F0,$03,$90
+S3Beep5:
+    db $80,$76,$20,$05,$80,$76,$F0,$03,$90
+S3Up:
+    db $00,$00,$46,$03,$00,$00,$57,$04,$00,$00,$87,$05,$10
+S3Down:
+    db $00,$00,$57,$03,$00,$00,$66,$05,$00,$00,$96,$06,$10
+S3Blast:
+    db $40,$28,$10,$01,$40,$2E,$10,$01,$40,$37,$10,$01,$40,$43,$10,$01,$40,$57,$10,$01,$40,$7C,$10,$01
+    db $50
+S3HitT:
+    db $C0,$A4,$13,$04,$C0,$F9,$23,$04,$C0,$FF,$43,$06,$C0,$FF,$73,$08,$D0
+S3HitN:
+    db $00,$00,$13,$04,$00,$00,$34,$06,$00,$00,$66,$08,$10
+S3Miss:
+    db $C0,$2F,$42,$04,$C0,$92,$62,$06,$C0,$92,$F2,$02,$D0
+S3Slimed:
+    db $40,$18,$11,$02,$40,$26,$11,$02,$40,$37,$11,$02,$40,$49,$11,$02,$40,$5E,$11,$02,$40,$75,$11,$02
+    db $40,$90,$11,$02,$40,$AE,$11,$02,$40,$D2,$11,$02,$40,$FC,$11,$02,$40,$2F,$12,$02,$40,$6D,$12,$02
+    db $40,$BB,$12,$02,$40,$1F,$13,$02,$40,$A4,$13,$02,$40,$FF,$13,$02,$40,$FF,$13,$02,$50
+S3Win:
+    db $40,$D6,$10,$05,$40,$D6,$F0,$01,$40,$AA,$10,$05,$40,$AA,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01
+    db $40,$6B,$10,$0B,$40,$6B,$F0,$01,$40,$8F,$10,$05,$40,$8F,$F0,$01,$40,$6B,$10,$05,$40,$6B,$F0,$01
+    db $40,$55,$10,$27,$40,$55,$F0,$01,$50
+S3Over:
+    db $40,$AB,$21,$0A,$40,$AB,$F1,$02,$40,$C5,$21,$0A,$40,$C5,$F1,$02,$40,$E0,$21,$0A,$40,$E0,$F1,$02
+    db $40,$FC,$21,$0A,$40,$FC,$F1,$02,$40,$1A,$22,$0A,$40,$1A,$F2,$02,$40,$3B,$22,$0A,$40,$3B,$F2,$02
+    db $40,$7F,$22,$0A,$40,$7F,$F2,$02,$40,$56,$23,$28,$40,$56,$F3,$02,$50
+S3Good:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+S3Pick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+S3SoundTable:
+    dw S3Beep0,$703F
+    dw S3Beep1,$703F
+    dw S3Beep2,$703F
+    dw S3Beep3,$703F
+    dw S3Beep4,$703F
+    dw S3Beep5,$703F
+    dw S3Up,$702B
+    dw S3Down,$702B
+    dw S3Blast,$7035
+    dw S3HitT,$7049
+    dw S3HitN,$702B
+    dw S3Miss,$7049
+    dw S3Slimed,$7035
+    dw S3Win,$7035
+    dw S3Over,$7035
+    dw S3Good,$7035
+    dw S3Pick,$7049
+    dw S3TuneMel,$703F
+    dw S3TuneBass,$7049
+; Title tune: Moonlight on the Swamp, a slow swaying theme in D minor (original for this game)
+; Tiny Sound, 8 frames per step
+S3TuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$21,$00,$24,$28,$26,$00,$24,$23,$24,$00,$21,$00
+    db $1C,$00,$00,$00,$02,$30,$1A,$21,$1D,$00,$21,$24,$23,$00,$21,$20
+    db $21,$00,$23,$00,$24,$00,$00,$00,$02,$30,$1A,$21,$21,$00,$24,$28
+    db $2B,$00,$29,$28,$26,$00,$24,$00,$23,$00,$00,$00,$02,$10,$1A,$21
+    db $24,$00,$23,$21,$20,$00,$23,$00,$21,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+S3TuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$02,$60,$18,$32,$09,$01,$10,$01,$0C,$01,$10,$01
+    db $0E,$01,$15,$01,$13,$01,$0E,$01,$11,$01,$0C,$01,$10,$01,$0B,$01
+    db $09,$01,$10,$01,$09,$01,$01,$01
+    db $FF
+}

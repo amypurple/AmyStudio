@@ -1,0 +1,776 @@
+if not defined AMY_TIMELOST_ANTHOLOGY
+cartridge "BATTLE AT STONEHENGE/PRESENTS TIMELOST'S/1983"
+end defined
+
+' BATTLE AT STONEHENGE
+' From "Timelost: A Computer Adventure" (Atari version), by Kris Austen
+' Andrews, Arlan Keith Andrews Sr. and Joseph C. Giarratano, Que, 1983,
+' pages 85-92 ("The Mystery of Stonehenge"). All credit belongs to the
+' authors.
+'
+' Historical context (summary of the chapter):
+' Among the standing stones, Jacque holds off the terrible Warbirds of
+' the Wizard with a positron beam. A Warbird drops from the sky at a
+' random place; walk under it and fire before it reaches the ground. The
+' lower the bird when it is hit, the more it is worth. If a Warbird
+' reaches the ground, the game is over. The program was one of the
+' book's player-missile graphics games, with the stones drawn in
+' characters. The book ends with four ideas: Warbirds that zigzag down,
+' 10 points for a hit and 5 taken away for a miss, Warbirds appearing at
+' random heights as well as across, and several Warbirds at once.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): left and right walk; fire shoots the beam
+' straight up.
+' The rules follow the Atari listing: the man's two shapes (lines 230,
+' 280), changing as he walks (line 780), 3 steps a move (lines 750-760);
+' the Warbird shape, double wide (lines 330, 580), starting at a random
+' place across the middle of the sky (lines 640-650) and dropping (line
+' 820); one beam at a time going straight up from the man (lines 870-
+' 890); a hit and its rising sound (lines 920, 970-1000); a Warbird on
+' the ground ends the battle (line 830); the stones (lines 1120-1130);
+' another game (lines 1070-1090).
+' The book's four suggestions, all added: the Warbirds zigzag as they
+' drop; 10 points for every hit and 5 taken away for every miss (the
+' book's own scoring replaces height points); Warbirds start at random
+' heights as well as across; and more of them at once as you hit them,
+' one more for every 8 hits, up to four.
+' Adaptation liberties: smooth movement; the Warbirds get a little faster
+' with every hit and flap their wings; up to six sprites share a line in
+' turn (Amy's sprite flicker), the man always shown; the high score with
+' three initials picked with the joystick; joystick menus; an original
+' title tune; an editorial page. Everything that matters stays in
+' columns 2-29, inside the TV overscan. The frame loop is protected from
+' the NMI.
+
+const Star = 128
+const StarDim = 129
+const Lintel = 130
+const Pillar = 131
+const PillarEdge = 132
+const Grass = 133
+const Earth = 134
+const MoonTL = 135
+const Slab = 141
+const ManY = 143
+const LandY = 147
+const MaxB = 4
+
+const SndBeam = 1
+const SndHitT = 2
+const SndHitN = 3
+const SndMiss = 4
+const SndCry = 5
+const SndLand = 6
+const SndWave = 7
+const SndOver = 8
+const SndGood = 9
+const SndPick = 10
+const SndTuneA = 11
+const SndTuneB = 12
+
+u16 Score = 0
+u16 HighScore = 100
+u8 HighName[3]
+u8 Hits = 0
+u8 Misses = 0
+u8 MX = 120                     ' the man
+u8 Walk = 0
+u8 WalkF = 0
+u8 BeamOn = 0
+u8 BmX = 0
+u8 BmY = 0
+u8 BOn[4]                       ' Warbirds: 1 flying, 2 blown apart
+u8 BXp[4]
+u8 BYp[4]
+u8 BDx[4]
+u8 BZig[4]
+u8 BAcc[4]
+u8 BXAcc[4]
+u8 BBoom[4]
+u8 Want = 1
+u8 SpawnT = 0
+u16 BSpd = 90
+u8 FlapT = 0
+u8 FlapF = 0
+u8 Landed = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 BtnWas = 0
+u8 Up = 0
+u8 G = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 X = 0
+u8 Y = 0
+u8 R = 0
+u8 Tm = 0
+u8 Choice = 1
+u16 Dst16 = 0
+u16 W16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table StoneSoundTable areas 4
+  sprites 16x16
+  sprites stable 0 to 0
+  sprites flicker on
+  copy SpritePat count 224 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 84
+  HighName[1] = 76
+  HighName[2] = 83
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Hits = 0
+  Misses = 0
+  MX = 120
+  BeamOn = 0
+  Landed = 0
+  for G = 0 to 3
+    BOn[G] = 0
+  next
+  SpawnT = 30
+  DrawField
+  Rearm
+  wait no fire
+  nmi off
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  MoveMan
+  MoveBeam
+  MoveBirds
+  DrawSprites
+  if Landed > 0 then goto lost
+  goto main_loop
+
+  ' --- Line 830: a Warbird has reached the ground ---
+lost:
+  play sound SndLand
+  print at 5,7, "A WARBIRD HAS LANDED!"
+  for Tm = 1 to 40
+    DrawSprites
+    Rearm
+    wait
+    nmi off
+  next
+  play sound SndOver
+  print at 10,9, "GAME OVER"
+  Rearm
+  wait 120 frames
+  nmi off
+  if Score > HighScore then
+    HighScore = Score
+    print at 7,11, "NEW HIGH SCORE!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  ShowStatus
+  ' Lines 1070-1090: wish to play again
+  print at 9,12, "ANOTHER GAME"
+if defined AMY_TIMELOST_ANTHOLOGY
+  print at 9,13, "ANTHOLOGY MENU"
+else defined
+  print at 9,13, "TITLE PAGE"
+end defined
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,12 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+if defined AMY_TIMELOST_ANTHOLOGY
+  call asm TimelostReturnToDirector
+  loop forever
+else defined
+  goto title
+end defined
+
+if defined AMY_TIMELOST_ANTHOLOGY
+asm {
+TimelostReturnToDirector:
+    xor a
+    ld ($20F0),a
+    jp $2003
+}
+end defined
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Up = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' Lines 740-800: walk, the two shapes taking turns; lines 690, 870: fire
+sub MoveMan:
+  if Stick = 1 then
+    if MX > 16 then
+      MX -= 2
+      inc Walk
+    end if
+  end if
+  if Stick = 2 then
+    if MX < 224 then
+      MX += 2
+      inc Walk
+    end if
+  end if
+  if Walk >= 3 then
+    Walk = 0
+    WalkF = WalkF ^ 4
+  end if
+  N = 0
+  if Btn = 1 then
+    if BtnWas = 0 then N = 1
+  end if
+  BtnWas = Btn
+  if N = 0 then return
+  if BeamOn = 1 then return
+  BeamOn = 1
+  BmX = MX
+  BmY = 136
+  play sound SndBeam
+  return
+end sub
+
+' Lines 880-1050: the beam rises; a hit, or (the book's idea) a miss
+sub MoveBeam:
+  if BeamOn = 0 then return
+  if BmY < 12 then
+    ' Missed: 5 points taken away
+    BeamOn = 0
+    inc Misses
+    if Score >= 5 then
+      Score -= 5
+    else
+      Score = 0
+    end if
+    ShowStatus
+    play sound SndMiss
+    return
+  end if
+  BmY -= 4
+  for G = 0 to 3
+    if BOn[G] = 1 then
+      ' The beam is columns 6-7 of its sprite; the bird rows 4-11
+      X = BXp[G]
+      N = BmX + 7
+      if N >= X then
+        P = X + 15
+        N = BmX + 6
+        if N <= P then
+          Y = BYp[G]
+          P = Y + 11
+          if BmY <= P then
+            N = BmY + 8
+            P = Y + 4
+            if N >= P then
+              BeamOn = 0
+              BOn[G] = 2
+              BBoom[G] = 20
+              inc Hits
+              Score += 10
+              ShowStatus
+              play sound SndHitT
+              play sound SndHitN
+              ' One more Warbird for every 8 hits
+              N = Hits & 7
+              if N = 0 then
+                if Want < MaxB then
+                  inc Want
+                  play sound SndWave
+                end if
+              end if
+              return
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Lines 640-670, 820-840: the Warbirds drop, zigzagging (the book's ideas)
+sub MoveBirds:
+  inc FlapT
+  if FlapT >= 8 then
+    FlapT = 0
+    FlapF = FlapF ^ 4
+  end if
+  W16 = Hits
+  W16 *= 3
+  BSpd = W16 + 70
+  if BSpd > 250 then BSpd = 250
+  N = 0
+  for G = 0 to 3
+    if BOn[G] = 2 then
+      dec BBoom[G]
+      if BBoom[G] = 0 then BOn[G] = 0
+    end if
+    if BOn[G] > 0 then inc N
+  next
+  ' A new Warbird at a random place, high or low (the book's idea)
+  if SpawnT > 0 then dec SpawnT
+  if N < Want then
+    if SpawnT = 0 then
+      for G = 0 to 3
+        if BOn[G] = 0 then goto spawn
+      next
+    end if
+  end if
+  goto fly
+spawn:
+  BOn[G] = 1
+  BXp[G] = random(24, 216)
+  ' Lower starts as the battle goes on
+  N = Hits * 4
+  N += 20
+  if N > 80 then N = 80
+  BYp[G] = random(16, N)
+  BDx[G] = random(0, 1)
+  BZig[G] = random(20, 60)
+  BAcc[G] = 0
+  BXAcc[G] = 0
+  SpawnT = random(40, 100)
+  play sound SndCry
+fly:
+  for G = 0 to 3
+    if BOn[G] = 1 then
+      ' Down
+      W16 = BAcc[G]
+      W16 += BSpd
+      if W16 >= 256 then
+        W16 -= 256
+        Y = BYp[G] + 1
+        BYp[G] = Y
+        if Y >= LandY then Landed = 1
+      end if
+      BAcc[G] = W16
+      ' Across, turning now and then and at the edges
+      W16 = BXAcc[G]
+      W16 += 160
+      if W16 >= 256 then
+        W16 -= 256
+        X = BXp[G]
+        if BDx[G] = 0 then
+          if X >= 228 then
+            BDx[G] = 1
+          else
+            inc X
+          end if
+        else
+          if X <= 12 then
+            BDx[G] = 0
+          else
+            dec X
+          end if
+        end if
+        BXp[G] = X
+      end if
+      BXAcc[G] = W16
+      dec BZig[G]
+      if BZig[G] = 0 then
+        BZig[G] = random(20, 60)
+        BDx[G] = BDx[G] ^ 1
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawSprites:
+  set sprite 0 to ManY,MX,WalkF,15
+  if BeamOn = 1 then
+    set sprite 1 to BmY,BmX,16,7
+  else
+    set sprite 1 to 192,0,0,0
+  end if
+  for G = 0 to 3
+    J = G + 2
+    X = BXp[G]
+    Y = BYp[G]
+    if BOn[G] = 1 then
+      P = 8 + FlapF
+      set sprite J to Y,X,P,13
+    else
+      if BOn[G] = 2 then
+        N = BBoom[G] & 4
+        P = 20
+        if N = 0 then P = 24
+        set sprite J to Y,X,P,11
+      else
+        set sprite J to 192,0,0,0
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' Lines 1120-1130: Stonehenge under the night sky
+sub DrawField:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  for I = 1 to 18
+    X = random(2, 29)
+    Y = random(2, 13)
+    N = I & 1
+    N += Star
+    put char N at X,Y
+  next
+  put char MoonTL at 24,3
+  put char MoonTL + 1 at 25,3
+  put char MoonTL + 2 at 24,4
+  put char MoonTL + 3 at 25,4
+  ' Three trilithons and fallen stones
+  X = 4
+  DrawTrilithon
+  X = 13
+  DrawTrilithon
+  X = 22
+  DrawTrilithon
+  put char Slab at 2,19
+  put char Slab at 3,19
+  put char Slab at 10,18
+  put char Slab at 19,19
+  put char Slab at 27,18
+  put char Slab at 28,19
+  fill Grass count 32 at 0,20
+  fill Earth count 32 at 0,21
+  fill Earth count 32 at 0,22
+  fill Earth count 32 at 0,23
+  ShowStatus
+  return
+end sub
+
+' A lintel on two uprights, left edge at column X
+sub DrawTrilithon:
+  fill Lintel count 6 at X,14
+  for Y = 15 to 19
+    put char PillarEdge at X,Y
+    N = X + 1
+    put char Pillar at N,Y
+    N += 3
+    put char PillarEdge at N,Y
+    inc N
+    put char Pillar at N,Y
+  next
+  return
+end sub
+
+' Line 960: the score; the hits and the misses (the book's idea)
+sub ShowStatus:
+  print at 2,0, "SCORE"
+  NumU = Score
+  print at 8,0, digits$(NumU, 5)
+  print at 16,0, "HIGH"
+  NumU = HighScore
+  print at 21,0, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 27
+    N = HighName[J]
+    put char N at X,0
+  next
+  print at 2,1, "HITS"
+  NumU = Hits
+  print at 7,1, digits$(NumU, 3)
+  print at 16,1, "MISSES"
+  NumU = Misses
+  print at 23,1, digits$(NumU, 3)
+  return
+end sub
+
+sub EnterName:
+  print at 6,13, "YOUR INITIALS:"
+  print at 5,16, "UP/DOWN, FIRE: NEXT"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,13
+  next
+  X = I + 21
+  fill 32 count 3 at 21,14
+  put char 45 at X,14
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then goto name_done
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  K = 0
+  if joypad(1).down then K = 1
+  if joypad(2).down then K = 1
+  if K = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+name_done:
+  fill 32 count 3 at 21,14
+  fill 32 count 20 at 5,16
+  fill 32 count 20 at 5,13
+  return
+end sub
+
+sub LoadTiles:
+  Dst16 = 1024
+  for J = 0 to 2
+    copy TilePat count 112 to vram.pattern + Dst16
+    copy TileCol count 112 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' Lines 100-130: the directions
+sub TitlePage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  print at 6,2, "BATTLE AT STONEHENGE"
+  print at 2,5, "HOW LONG CAN YOU DEFY THE"
+  print at 2,6, "TERRIBLE WARBIRDS OF THE"
+  print at 2,7, "WIZARD? IF ONE REACHES THE"
+  print at 2,8, "GROUND, THE BATTLE IS LOST."
+  print at 2,10, "STICK: WALK LEFT OR RIGHT"
+  print at 2,11, "FIRE: POSITRON BEAM UP"
+  print at 2,13, "HIT: 10 POINTS"
+  print at 2,14, "MISS: 5 POINTS LOST"
+  print at 4,17, "HIGH"
+  NumU = HighScore
+  print at 9,17, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 15
+    N = HighName[J]
+    put char N at X,17
+  next
+  print at 6,20, "PRESS FIRE TO BEGIN"
+  fill Grass count 32 at 0,23
+  set sprite 0 to 167,216,0,15
+  set sprite 2 to 96,208,8,13
+  update sprites
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 6,1, "BATTLE AT STONEHENGE"
+  print at 2,3, "BY KRIS AUSTEN ANDREWS,"
+  print at 2,4, "ARLAN KEITH ANDREWS SR. AND"
+  print at 2,5, "JOSEPH C. GIARRATANO"
+  print at 2,6, "TIMELOST, QUE, 1983"
+  print at 2,8, "A PLAYER-MISSILE GAME FOR"
+  print at 2,9, "THE ATARI: THE WIZARD'S"
+  print at 2,10, "WARBIRDS DROP ON THE STONES."
+  print at 2,12, "THIS VERSION ADDS THE"
+  print at 2,13, "BOOK'S FOUR IDEAS: ZIGZAG"
+  print at 2,14, "FLIGHT, POINTS LOST FOR A"
+  print at 2,15, "MISS, RANDOM HEIGHTS, AND"
+  print at 2,16, "MANY WARBIRDS AT ONCE."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' Tiles 128-: Star, StarDim, Lintel, Pillar, PillarEdge, Grass, Earth, MoonTL, MoonTR, MoonBL, MoonBR, Mark, Miss, Slab
+data TilePat bytes
+  $00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FE,$FF,$FC,$F8,$7E,$7E,$7E,$7C,$7E,$7E,$7C,$78
+  $FC,$FE,$FE,$FC,$FC,$F8,$FC,$F8,$00,$00,$10,$44,$AA,$FF,$55,$FF
+  $22,$88,$11,$44,$22,$88,$11,$44,$00,$1F,$7F,$7B,$FF,$F7,$FF,$FF
+  $00,$E0,$F8,$FC,$DE,$FE,$FF,$FD,$FF,$FB,$7F,$7F,$3F,$0F,$00,$00
+  $FE,$FF,$FC,$BC,$FC,$F0,$00,$00,$00,$3C,$7E,$7E,$7E,$3C,$00,$00
+  $00,$24,$18,$18,$24,$00,$00,$00,$00,$00,$00,$1E,$7F,$FF,$FF,$FF
+end data
+data TileCol bytes
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$E1,$F1,$E1,$E1,$F1,$F1,$E1,$E1,$F1,$E1,$E1,$E1
+  $F1,$F1,$F1,$E1,$E1,$E1,$E1,$E1,$31,$31,$31,$31,$31,$31,$31,$31
+  $61,$61,$61,$61,$61,$61,$61,$61,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$91,$91,$91,$91,$91,$91,$91,$91
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1,$E1,$E1,$E1,$E1
+end data
+' Sprites: Man, Man2, Bird, Bird2, Beam, BoomA, BoomB
+data SpritePat bytes
+  $00,$00,$00,$3F,$33,$3F,$03,$FF,$CF,$C3,$0F,$0F,$0C,$30,$C0,$C0
+  $00,$00,$00,$F3,$33,$F3,$C3,$FF,$F0,$C0,$F0,$F0,$30,$0C,$03,$03
+  $00,$00,$00,$3F,$33,$3F,$03,$FF,$CF,$C3,$0F,$0F,$0C,$0C,$0C,$0C
+  $00,$00,$00,$F3,$33,$F3,$C3,$FF,$F0,$C0,$F0,$F0,$30,$30,$30,$30
+  $00,$00,$00,$00,$C3,$C3,$33,$33,$0F,$0F,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C3,$C3,$CC,$CC,$F0,$F0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$0F,$0F,$33,$33,$C3,$C3,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$F0,$F0,$CC,$CC,$C3,$C3,$00,$00,$00,$00
+  $03,$03,$07,$03,$03,$03,$03,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$09,$05,$13,$0F,$3F,$0F,$13,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$90,$E0,$F8,$E0,$90,$40,$20,$00,$00,$00,$00,$00
+  $80,$20,$08,$00,$02,$A0,$00,$04,$00,$10,$21,$80,$00,$00,$00,$00
+  $81,$84,$08,$00,$80,$0A,$00,$40,$00,$10,$08,$81,$00,$00,$00,$00
+end data
+
+asm {
+ShBeam:
+    db $40,$BA,$10,$01,$40,$70,$10,$01,$40,$50,$10,$01,$40,$3E,$10,$01,$40,$33,$10,$01,$40,$2B,$10,$01
+    db $40,$25,$10,$01,$50
+ShHitT:
+    db $80,$7C,$40,$02,$80,$68,$30,$02,$80,$59,$20,$02,$80,$4E,$20,$02,$80,$45,$10,$02,$80,$3E,$00,$02
+    db $80,$45,$10,$02,$80,$4E,$20,$02,$80,$59,$20,$02,$80,$68,$30,$02,$80,$7C,$40,$02,$90
+ShHitN:
+    db $00,$00,$04,$03,$00,$00,$25,$04,$00,$00,$46,$05,$00,$00,$86,$06,$10
+ShMiss:
+    db $C0,$6D,$32,$04,$C0,$EA,$52,$06,$C0,$EA,$F2,$02,$D0
+ShCry:
+    db $C0,$3B,$40,$02,$C0,$4B,$40,$02,$C0,$3B,$40,$02,$C0,$4B,$40,$02,$C0,$3B,$40,$02,$C0,$4B,$40,$02
+    db $C0,$3B,$40,$02,$C0,$4B,$40,$02,$D0
+ShLand:
+    db $00,$00,$04,$04,$00,$00,$05,$08,$00,$00,$26,$0A,$00,$00,$56,$0C,$00,$00,$96,$10,$10
+ShWave:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$6B,$F0,$02,$50
+ShOver:
+    db $40,$7C,$21,$0A,$40,$7C,$F1,$02,$40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02
+    db $40,$C5,$21,$0A,$40,$C5,$F1,$02,$40,$E0,$21,$0A,$40,$E0,$F1,$02,$40,$FC,$21,$0A,$40,$FC,$F1,$02
+    db $40,$3B,$22,$0A,$40,$3B,$F2,$02,$40,$F9,$22,$28,$40,$F9,$F2,$02,$50
+ShGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+ShPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+StoneSoundTable:
+    dw ShBeam,$7035
+    dw ShHitT,$703F
+    dw ShHitN,$702B
+    dw ShMiss,$7049
+    dw ShCry,$7049
+    dw ShLand,$702B
+    dw ShWave,$7035
+    dw ShOver,$7035
+    dw ShGood,$7035
+    dw ShPick,$7049
+    dw StoneTuneMel,$703F
+    dw StoneTuneBass,$7049
+; Title tune: The Stones, a solemn march in D minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 9 frames per step
+StoneTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$40,$1A,$21,$21,$00,$00,$1C,$21,$00,$24,$00,$23,$00,$21,$00
+    db $20,$00,$00,$01,$02,$30,$1A,$21,$24,$00,$00,$21,$24,$00,$28,$00
+    db $26,$00,$24,$00,$23,$00,$00,$01,$02,$10,$1A,$21,$28,$00,$26,$24
+    db $23,$00,$21,$00,$1F,$00,$1D,$00,$1C,$00,$00,$01,$02,$30,$1A,$21
+    db $21,$00,$23,$24,$23,$00,$20,$00,$21,$00,$00,$01,$00,$00,$00,$00
+    db $02,$40,$1A,$21,$24,$00,$00,$21,$24,$00,$28,$00,$26,$00,$24,$00
+    db $23,$00,$00,$01,$02,$30,$1A,$21,$28,$00,$00,$24,$28,$00,$2D,$00
+    db $2B,$00,$29,$00,$28,$00,$00,$01,$02,$10,$1A,$21,$2B,$00,$29,$28
+    db $26,$00,$24,$00,$23,$00,$21,$00,$20,$00,$00,$01,$02,$30,$1A,$21
+    db $28,$00,$26,$24,$26,$00,$23,$00,$21,$00,$00,$01,$00,$00,$00,$00
+    db $FF
+StoneTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$18,$32,$09,$00,$10,$00,$09,$00,$10,$00,$09,$00,$10,$00
+    db $10,$00,$00,$01,$09,$00,$10,$00,$09,$00,$10,$00,$11,$00,$0C,$00
+    db $10,$00,$00,$01,$0C,$00,$07,$00,$0C,$00,$07,$00,$0E,$00,$09,$00
+    db $10,$00,$00,$01,$09,$00,$10,$00,$10,$00,$00,$01,$09,$00,$00,$01
+    db $00,$00,$00,$00,$02,$60,$18,$32,$09,$00,$10,$00,$09,$00,$10,$00
+    db $09,$00,$10,$00,$10,$00,$00,$01,$09,$00,$10,$00,$09,$00,$10,$00
+    db $11,$00,$0C,$00,$10,$00,$00,$01,$0C,$00,$07,$00,$0C,$00,$07,$00
+    db $0E,$00,$09,$00,$10,$00,$00,$01,$02,$50,$18,$32,$09,$00,$10,$00
+    db $10,$00,$00,$01,$09,$00,$00,$01,$00,$00,$00,$00
+    db $FF
+}

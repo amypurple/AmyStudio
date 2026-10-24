@@ -1,0 +1,1286 @@
+if not defined AMY_TIMELOST_ANTHOLOGY
+cartridge "ROCKFALL!/PRESENTS TIMELOST'S/1983"
+end defined
+
+' ROCKFALL!
+' From "Timelost: A Computer Adventure" (Atari version), by Kris Austen
+' STATUS: Playable chapter; visual and gameplay refinement is still planned.
+' Andrews, Arlan Keith Andrews Sr. and Joseph C. Giarratano, Que, 1983,
+' pages 136-147 ("Cave-In"). All credit belongs to the authors.
+'
+' Historical context (summary of the chapter):
+' Things are bad: the Wizard's creatures attack and the cave roof is
+' crashing down. A whole row of rocks, with only a few gaps, comes down on
+' Jacque and Erin, while a monster walks in from each side. Jacque's
+' heavy artillery blaster shoots up at the rocks, his hand model shoots
+' left or right at the monsters, and the closer they come before he
+' blasts them, the more points. If a rock lands on Jacque or Erin, or a
+' creature reaches them, the game is over. Each rock row survived brings
+' a harder one: fewer gaps, faster rocks, faster monsters. The book ends
+' with two ideas: creatures that appear and disappear, and colored rocks
+' or Warbirds worth more points.
+'
+' ColecoVision port in Amy by Amy Bienvenu, 2026.
+' Controls (either joystick): left and right move Jacque and Erin; fire
+' shoots up; fire while pushing left or right shoots that way (they
+' stand still while the button is held).
+' The rules follow the Atari listing: the difficulty DMP = 1 + (cycle >
+' 2) + 2 x (cycle > 6) + 4 x (cycle > 10) (line 245); a full row of rocks
+' with 7 - DMP gaps (lines 250-260), starting at row 5 + DMP (line 355)
+' and coming down faster as DMP grows (line 375); one monster from each
+' side, stepping in at random, faster with DMP, and coming back after
+' being shot (lines 330-340, 390-397); one shot up and one shot sideways
+' at a time (lines 820-830); a shot up breaks one rock (lines 1115-1120,
+' 6000-6030); a side shot stops a monster (lines 1100-1110, 1200-1230);
+' a monster reaching the couple: ** MUNCH ** (lines 505-510); the rocks
+' reaching the bottom: ** CRUNCH ** unless both Jacque and Erin are under
+' a gap, then YOU MADE IT and a new cycle (lines 750-780); the high score
+' with a name (lines 762-765); another game (line 765).
+' The book's two suggestions, both added: from cycle 3 the monsters fade
+' out and back in, and a side shot passes through a monster that is not
+' there; colored rocks in the row (worth 50 more points per cycle) and,
+' from cycle 2, a Warbird flying under the roof (shoot it up through a
+' gap for 200 points and more).
+' Adaptation liberties: the rock row comes down a pixel at a time
+' (rock half tiles redrawn for each offset); a 24-column cave, so 6/5 as
+' many gaps; points: a rock is worth 5 x its row, a monster 10 to 70 by
+' how close it came, YOU MADE IT is worth 100 x the cycle; three lives;
+' initials picked with the joystick; the couple, monsters, shot up,
+' Warbird and explosions are 16 x 16 sprites, never more than four on a
+' line (the side shot is a tile); joystick menus; an original title tune;
+' an editorial page. Everything that matters stays in columns 2-29,
+' inside the TV overscan. The frame loop is protected from the NMI.
+' Screen: status on rows 0-1, the roof on row 2, the cave on rows 3-20
+' between columns 4 and 27, the floor on row 21.
+
+const RockUp = 128
+const GemUp = 130
+const Wall = 132
+const Ceiling = 133
+const FloorT = 134
+const Dirt = 135
+const Rubble = 136
+const Heart = 137
+const Bolt0 = 138
+const ArenaL = 4
+const ArenaR = 27
+const CoupleY = 152
+const MonY = 151
+const FloorRow = 20
+const LandY = 148
+
+const SndUp = 1
+const SndSide = 2
+const SndCrumble = 3
+const SndGem = 4
+const SndZapN = 5
+const SndZapT = 6
+const SndRumble = 7
+const SndCrunch = 8
+const SndMunch = 9
+const SndMade = 10
+const SndBird = 11
+const SndFade = 12
+const SndLose = 13
+const SndOver = 14
+const SndGood = 15
+const SndPick = 16
+const SndTuneA = 17
+const SndTuneB = 18
+
+u16 Score = 0
+u16 HighScore = 1000
+u8 HighName[3]
+u8 Lives = 3
+u8 Cycle = 0                    ' TC in the listing
+u8 Dmp = 1
+u8 RK[32]                       ' the falling row: 0 gap, 1 rock, 2 colored
+u8 RY = 40                      ' its top, in pixels
+u8 RRow = 5
+u16 RAcc = 0
+u16 RSpd = 64
+u8 Shift = 0
+u8 LastShift = 255
+u8 JJP = 15
+u8 CX = 120
+u8 MoveT = 0
+u8 Facing = 2
+u8 StepT = 0
+u8 StepF = 0
+u8 UpOn = 0
+u8 UX = 0
+u8 UY = 0
+u8 SideOn = 0
+u8 SX = 0
+u8 SDir = 0
+u8 SCol = 0
+u8 LOn = 0                      ' left monster: 1 walking, 2 exploding
+u8 LX = 0
+u16 LAcc = 0
+u8 LVis = 1
+u8 LVisT = 0
+u8 LBoom = 0
+u8 ROn = 0                      ' right monster
+u8 RX = 0
+u16 RAccM = 0
+u8 RVis = 1
+u8 RVisT = 0
+u8 RBoom = 0
+u16 MSpd = 32
+u8 BirdOn = 0
+u8 BirdX = 0
+u8 BirdDir = 0
+u8 BirdWait = 0
+u8 BirdBoom = 0
+u8 AnimT = 0
+u8 AnimF = 0
+u8 Dead = 0
+u8 Stick = 0
+u8 Btn = 0
+u8 BtnWas = 0
+u8 Up = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 P = 0
+u8 R = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 C = 0
+u8 Tm = 0
+u8 Choice = 1
+u16 Dst16 = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Pts = 0
+
+  tile screen
+  set sound table RockSoundTable areas 4
+  sprites 16x16
+  copy SpritePat count 448 to vram.spr_pat
+  HideSprites
+  LoadTiles
+  HighName[0] = 84
+  HighName[1] = 76
+  HighName[2] = 83
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+
+new_game:
+  Score = 0
+  Lives = 3
+  Cycle = 0
+  DrawCave
+
+  ' Lines 240-355: (another) main cycle
+next_cycle:
+  inc Cycle
+  if Cycle > 99 then Cycle = 99
+
+again_cycle:
+  nmi off
+  Dmp = 1
+  if Cycle > 2 then Dmp += 1
+  if Cycle > 6 then Dmp += 2
+  if Cycle > 10 then Dmp += 4
+  NewRow
+  W16 = Dmp
+  W16 *= 14
+  RSpd = W16 + 48
+  W16 = Dmp
+  W16 *= 10
+  MSpd = W16 + 24
+  ' Lines 330-350: monsters at the walls, the couple in the middle
+  LOn = 1
+  LX = 32
+  LAcc = 0
+  LVis = 1
+  LVisT = 0
+  LBoom = 0
+  ROn = 1
+  RX = 208
+  RAccM = 0
+  RVis = 1
+  RVisT = 0
+  RBoom = 0
+  JJP = 15
+  CX = 120
+  UpOn = 0
+  StopSide
+  BirdOn = 0
+  BirdBoom = 0
+  BirdWait = random(120, 240)
+  Dead = 0
+  ShowStatus
+  print at 11,10, "CYCLE"
+  NumU = Cycle
+  print at 17,10, digits$(NumU, 2)
+  DrawSprites
+  Rearm
+  wait 60 frames
+  wait no fire
+  nmi off
+  fill 32 count 10 at 11,10
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  LoadShift
+  ReadStick
+  MoveCouple
+  MoveUpShot
+  MoveSideShot
+  MoveMonsters
+  MoveBird
+  Animate
+  FallRocks
+  DrawSprites
+  if Dead > 0 then goto lost_one
+  if RY >= LandY then goto landed
+  goto main_loop
+
+  ' --- Lines 750-780: the rocks reach the bottom ---
+landed:
+  N = RK[JJP]
+  K = JJP + 1
+  N += RK[K]
+  if N > 0 then
+    Dead = 2
+    goto lost_one
+  end if
+  play sound SndMade
+  print at 10,10, "YOU MADE IT"
+  W16 = Cycle
+  W16 *= 100
+  Score += W16
+  ' The rocks shatter on the floor around them
+  for C = ArenaL to ArenaR
+    if RK[C] > 0 then put char Rubble at C,FloorRow
+  next
+  N = RRow + 1
+  fill 32 count 24 at ArenaL,RRow
+  fill 32 count 24 at ArenaL,N
+  ShowStatus
+  Rearm
+  wait 90 frames
+  nmi off
+  fill 32 count 24 at ArenaL,FloorRow
+  fill 32 count 11 at 10,10
+  goto next_cycle
+
+  ' --- Lines 505-510, 755-760: MUNCH or CRUNCH ---
+lost_one:
+  UpOn = 0
+  StopSide
+  if Dead = 1 then
+    play sound SndMunch
+    print at 10,10, "** MUNCH **"
+  else
+    play sound SndCrunch
+    print at 9,10, "** CRUNCH **"
+  end if
+  for Tm = 1 to 50
+    DrawSprites
+    N = Tm & 4
+    if N = 0 then
+      set sprite 0 to 192,0,0,0
+    else
+      if Dead = 1 then
+        X = CX
+        set sprite 0 to CoupleY,X,52,8
+      else
+        set sprite 0 to CoupleY,CX,36,15
+      end if
+    end if
+    set sprite 1 to 192,0,0,0
+    update sprites from 0 count 6
+    Rearm
+    wait
+    nmi off
+  next
+  dec Lives
+  ClearRows
+  fill 32 count 12 at 9,10
+  if Lives > 0 then
+    play sound SndLose
+    goto again_cycle
+  end if
+
+  ' --- Game over ---
+  ShowStatus
+  play sound SndOver
+  print at 11,10, "GAME OVER"
+  HideSprites
+  Rearm
+  wait 150 frames
+  nmi off
+  if Score > HighScore then
+    ' Lines 762-765: a new high score
+    HighScore = Score
+    print at 6,12, "NEW HIGH SCORE!!"
+    play sound SndGood
+    Rearm
+    wait 60 frames
+    nmi off
+    EnterName
+  end if
+  ShowStatus
+  print at 9,15, "ANOTHER GAME"
+if defined AMY_TIMELOST_ANTHOLOGY
+  print at 9,16, "ANTHOLOGY MENU"
+else defined
+  print at 9,16, "TITLE PAGE"
+end defined
+  Choice = 1
+  Rearm
+  wait no fire
+  choose menu 1 to 2 into Choice cursor $3E at 7,15 step 1
+  wait no fire
+  nmi off
+  if Choice = 1 then goto new_game
+if defined AMY_TIMELOST_ANTHOLOGY
+  call asm TimelostReturnToDirector
+  loop forever
+else defined
+  goto title
+end defined
+
+if defined AMY_TIMELOST_ANTHOLOGY
+asm {
+TimelostReturnToDirector:
+    xor a
+    ld ($20F0),a
+    jp $2003
+}
+end defined
+
+' ---------------------------------------------------------------------------
+
+' Re-arm the VDP interrupt before waiting: "nmi on" reads the VDP status,
+' so a frame interrupt lost to the guard race cannot freeze the wait
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub ReadStick:
+  Stick = 0
+  Btn = 0
+  Up = 0
+  if joypad(1).left then Stick = 1
+  if joypad(2).left then Stick = 1
+  if joypad(1).right then Stick = 2
+  if joypad(2).right then Stick = 2
+  if joypad(1).up then Up = 1
+  if joypad(2).up then Up = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  return
+end sub
+
+' Lines 250-260, 355: a full row of rocks with 7 - DMP gaps (6/5 as many
+' in this wider cave), and colored rocks
+sub NewRow:
+  for C = 0 to 31
+    RK[C] = 0
+  next
+  for C = ArenaL to ArenaR
+    RK[C] = 1
+  next
+  N = 0
+  if Dmp < 7 then
+    N = 7 - Dmp
+    N *= 6
+    N /= 5
+  end if
+  for I = 1 to N
+    C = random(ArenaL, ArenaR)
+    RK[C] = 0
+  next
+  ' The book's second idea: colored rocks
+  N = 1
+  if Cycle >= 5 then N = 2
+  for I = 1 to N
+    C = random(ArenaL, ArenaR)
+    if RK[C] = 1 then RK[C] = 2
+  next
+  N = 3 + Dmp
+  RRow = N
+  RY = N * 8
+  RAcc = 0
+  LastShift = 255
+  DrawRow
+  return
+end sub
+
+' The rock row on rows RRow (upper halves) and RRow + 1 (lower halves)
+sub DrawRow:
+  N = RRow + 1
+  for C = ArenaL to ArenaR
+    K = RK[C]
+    if K = 0 then
+      put char 32 at C,RRow
+      put char 32 at C,N
+    else
+      V = RockUp
+      if K = 2 then V = GemUp
+      put char V at C,RRow
+      inc V
+      put char V at C,N
+    end if
+  next
+  return
+end sub
+
+sub ClearRows:
+  N = RRow + 1
+  fill 32 count 24 at ArenaL,RRow
+  fill 32 count 24 at ArenaL,N
+  return
+end sub
+
+' Line 406: the row comes down, a pixel at a time
+sub FallRocks:
+  RAcc += RSpd
+  if RAcc < 256 then return
+  RAcc -= 256
+  inc RY
+  N = RY >> 3
+  if N = RRow then return
+  ' A new row position: the old upper row is empty now
+  fill 32 count 24 at ArenaL,RRow
+  RRow = N
+  DrawRow
+  play sound SndRumble
+  return
+end sub
+
+' The half-rock patterns for the present pixel offset
+sub LoadShift:
+  N = RY & 7
+  if N = LastShift then return
+  LastShift = N
+  W16 = N
+  W16 <<= 5
+  Dst16 = 1024
+  for J = 0 to 2
+    copy ShiftPat + W16 count 32 to vram.pattern + Dst16
+    copy ShiftCol + W16 count 32 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  return
+end sub
+
+' Lines 800-839: move, or stand and fire
+sub MoveCouple:
+  N = 0
+  if Btn = 1 then
+    if BtnWas = 0 then N = 1
+  end if
+  BtnWas = Btn
+  if N = 1 then
+    if Stick = 0 then
+      FireUp
+    else
+      FireSide
+    end if
+  end if
+  if MoveT > 0 then dec MoveT
+  if Btn = 0 then
+    if MoveT = 0 then
+      if Stick = 1 then
+        Facing = 1
+        if JJP > ArenaL then
+          dec JJP
+          MoveT = 4
+        end if
+      end if
+      if Stick = 2 then
+        Facing = 2
+        if JJP < 26 then
+          inc JJP
+          MoveT = 4
+        end if
+      end if
+    end if
+  end if
+  X = JJP * 8
+  if CX < X then
+    CX += 2
+  else
+    if CX > X then CX -= 2
+  end if
+  return
+end sub
+
+' Line 820: the heavy artillery model, straight up
+sub FireUp:
+  if UpOn = 1 then return
+  UpOn = 1
+  UX = CX
+  UY = 136
+  play sound SndUp
+  return
+end sub
+
+' Lines 827-830: the hand model, left or right
+sub FireSide:
+  if SideOn = 1 then return
+  SideOn = 1
+  SDir = Stick
+  if SDir = 1 then
+    SX = CX - 8
+  else
+    SX = CX + 16
+  end if
+  SCol = 255
+  play sound SndSide
+  return
+end sub
+
+sub StopSide:
+  if SideOn = 1 then
+    if SCol < 32 then put char 32 at SCol,FloorRow
+  end if
+  SideOn = 0
+  SCol = 255
+  return
+end sub
+
+' Lines 442-445, 1115-1120: the shot up breaks one rock, or finds the
+' Warbird through a gap
+sub MoveUpShot:
+  if UpOn = 0 then return
+  if UY < 20 then
+    UpOn = 0
+    return
+  end if
+  UY -= 4
+  ' The rock row?
+  ' (the shot rises from below, so reaching the row's lower edge is a hit)
+  N = RY + 8
+  if UY <= N then
+    if UY >= 0 then
+      N = UX + 4
+      C = N >> 3
+      if RK[C] > 0 then
+        K = RK[C]
+        RK[C] = 0
+        put char 32 at C,RRow
+        N = RRow + 1
+        put char 32 at C,N
+        UpOn = 0
+        ' The lower the row, the more it is worth
+        Pts = RRow
+        Pts *= 5
+        if K = 2 then
+          W16 = Cycle
+          W16 *= 50
+          Pts += W16
+          play sound SndGem
+        end if
+        Score += Pts
+        ShowScore
+        play sound SndCrumble
+        return
+      end if
+    end if
+  end if
+  ' The Warbird
+  if BirdOn = 1 then
+    if BirdBoom = 0 then
+      if UY <= 36 then
+        N = UX + 6
+        P = BirdX + 1
+        if N >= P then
+          N = UX + 2
+          P = BirdX + 14
+          if N <= P then
+            UpOn = 0
+            BirdBoom = 20
+            W16 = Cycle
+            W16 *= 50
+            Pts = W16 + 200
+            Score += Pts
+            ShowScore
+            play sound SndZapN
+            play sound SndZapT
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Lines 377-381, 1100-1110: the side shot, a tile sliding along row 20
+sub MoveSideShot:
+  if SideOn = 0 then return
+  if SDir = 1 then
+    if SX < 35 then
+      StopSide
+      return
+    end if
+    SX -= 3
+  else
+    if SX > 214 then
+      StopSide
+      return
+    end if
+    SX += 3
+  end if
+  C = SX >> 3
+  if C <> SCol then
+    if SCol < 32 then put char 32 at SCol,FloorRow
+    SCol = C
+  end if
+  N = SX & 7
+  N += Bolt0
+  put char N at C,FloorRow
+  ' A monster that is there (the book's first idea: not one that faded)
+  if LOn = 1 then
+    if LVis = 1 then
+      N = LX + 13
+      if SX <= N then
+        P = SX + 4
+        N = LX + 2
+        if P >= N then
+          X = LX
+          HitMonster
+          LOn = 2
+          LBoom = 16
+          return
+        end if
+      end if
+    end if
+  end if
+  if ROn = 1 then
+    if RVis = 1 then
+      N = RX + 13
+      if SX <= N then
+        P = SX + 4
+        N = RX + 2
+        if P >= N then
+          X = RX
+          HitMonster
+          ROn = 2
+          RBoom = 16
+          return
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Lines 1200-1220: the closer it came, the more it is worth
+sub HitMonster:
+  StopSide
+  if X > CX then
+    N = X - CX
+  else
+    N = CX - X
+  end if
+  N >>= 4
+  Pts = 70
+  if N < 6 then
+    N *= 10
+    Pts -= N
+  else
+    Pts = 10
+  end if
+  Score += Pts
+  ShowScore
+  play sound SndZapN
+  play sound SndZapT
+  return
+end sub
+
+' Lines 390-397: the monsters step in, and come back after being shot
+sub MoveMonsters:
+  ' Left monster
+  if LOn = 2 then
+    dec LBoom
+    if LBoom = 0 then LOn = 0
+  end if
+  if LOn = 0 then
+    P = random(0, 255)
+    if P < Dmp then
+      LOn = 1
+      LX = 32
+      LVis = 1
+      LVisT = 0
+    end if
+  end if
+  if LOn = 1 then
+    LAcc += MSpd
+    if LAcc >= 256 then
+      LAcc -= 256
+      inc LX
+    end if
+    N = LX + 12
+    P = CX + 3
+    if N >= P then Dead = 1
+    if Cycle >= 3 then
+      inc LVisT
+      if LVis = 1 then
+        if LVisT >= 90 then
+          LVis = 0
+          LVisT = 0
+        end if
+      else
+        if LVisT >= 45 then
+          LVis = 1
+          LVisT = 0
+          play sound SndFade
+        end if
+      end if
+    end if
+  end if
+  ' Right monster
+  if ROn = 2 then
+    dec RBoom
+    if RBoom = 0 then ROn = 0
+  end if
+  if ROn = 0 then
+    P = random(0, 255)
+    if P < Dmp then
+      ROn = 1
+      RX = 208
+      RVis = 1
+      RVisT = 30
+    end if
+  end if
+  if ROn = 1 then
+    RAccM += MSpd
+    if RAccM >= 256 then
+      RAccM -= 256
+      dec RX
+    end if
+    N = RX + 3
+    P = CX + 13
+    if N <= P then Dead = 1
+    if Cycle >= 3 then
+      inc RVisT
+      if RVis = 1 then
+        if RVisT >= 90 then
+          RVis = 0
+          RVisT = 0
+        end if
+      else
+        if RVisT >= 45 then
+          RVis = 1
+          RVisT = 0
+          play sound SndFade
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' The book's second idea: a Warbird under the roof, from cycle 2
+sub MoveBird:
+  if BirdBoom > 0 then
+    dec BirdBoom
+    if BirdBoom = 0 then BirdOn = 0
+    return
+  end if
+  if BirdOn = 0 then
+    if Cycle < 2 then return
+    if BirdWait > 0 then
+      dec BirdWait
+      return
+    end if
+    BirdWait = random(200, 255)
+    BirdOn = 1
+    BirdDir = random(0, 1)
+    BirdX = 24
+    if BirdDir = 1 then BirdX = 216
+    play sound SndBird
+    return
+  end if
+  if BirdDir = 0 then
+    inc BirdX
+    if BirdX >= 216 then BirdOn = 0
+  else
+    dec BirdX
+    if BirdX <= 24 then BirdOn = 0
+  end if
+  return
+end sub
+
+sub Animate:
+  inc AnimT
+  if AnimT >= 10 then
+    AnimT = 0
+    AnimF = AnimF ^ 4
+  end if
+  ' Feet step while the couple moves
+  X = JJP * 8
+  if CX <> X then
+    inc StepT
+    if StepT >= 5 then
+      StepT = 0
+      StepF = StepF ^ 8
+    end if
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  set sprite 0 to CoupleY,CX,StepF,5
+  N = StepF + 4
+  set sprite 1 to CoupleY,CX,N,9
+  ' 2 left monster, 3 right monster
+  if LOn = 2 then
+    N = LBoom & 4
+    P = 36
+    if N = 0 then P = 40
+    set sprite 2 to MonY,LX,P,11
+  else
+    if LOn = 1 then
+      if LVis = 1 then
+        P = 20 + AnimF
+        set sprite 2 to MonY,LX,P,3
+      else
+        set sprite 2 to 192,0,0,0
+      end if
+    else
+      set sprite 2 to 192,0,0,0
+    end if
+  end if
+  if ROn = 2 then
+    N = RBoom & 4
+    P = 36
+    if N = 0 then P = 40
+    set sprite 3 to MonY,RX,P,11
+  else
+    if ROn = 1 then
+      if RVis = 1 then
+        P = 28 + AnimF
+        set sprite 3 to MonY,RX,P,13
+      else
+        set sprite 3 to 192,0,0,0
+      end if
+    else
+      set sprite 3 to 192,0,0,0
+    end if
+  end if
+  ' 4 the shot up
+  if UpOn = 1 then
+    set sprite 4 to UY,UX,16,11
+  else
+    set sprite 4 to 192,0,0,0
+  end if
+  ' 5 the Warbird
+  if BirdOn = 1 then
+    if BirdBoom > 0 then
+      N = BirdBoom & 4
+      P = 36
+      if N = 0 then P = 40
+      set sprite 5 to 24,BirdX,P,11
+    else
+      P = 44 + AnimF
+      set sprite 5 to 24,BirdX,P,13
+    end if
+  else
+    set sprite 5 to 192,0,0,0
+  end if
+  update sprites from 0 count 6
+  return
+end sub
+
+' Line 175, 1000-1020: the cave
+sub DrawCave:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  fill Ceiling count 32 at 0,2
+  for R = 3 to 20
+    fill Wall count 4 at 0,R
+    fill Wall count 4 at 28,R
+  next
+  fill FloorT count 32 at 0,21
+  fill Dirt count 32 at 0,22
+  fill Dirt count 32 at 0,23
+  ShowStatus
+  return
+end sub
+
+sub ShowScore:
+  print at 2,0, "SCORE"
+  NumU = Score
+  print at 8,0, digits$(NumU, 5)
+  return
+end sub
+
+' Lines 372-373: the score and the high score
+sub ShowStatus:
+  ShowScore
+  print at 16,0, "HIGH"
+  NumU = HighScore
+  print at 21,0, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 27
+    N = HighName[J]
+    put char N at X,0
+  next
+  print at 2,1, "CYCLE"
+  NumU = Cycle
+  print at 8,1, digits$(NumU, 2)
+  print at 16,1, "LIVES"
+  for J = 0 to 2
+    X = J + 22
+    N = 32
+    if J < Lives then N = Heart
+    put char N at X,1
+  next
+  return
+end sub
+
+' Lines 763-764: three initials with the joystick
+sub EnterName:
+  print at 6,13, "YOUR INITIALS:"
+  print at 5,16, "UP/DOWN, FIRE: NEXT"
+  for I = 0 to 2
+    HighName[I] = 65
+  next
+  I = 0
+name_loop:
+  for J = 0 to 2
+    X = J + 21
+    N = HighName[J]
+    put char N at X,13
+  next
+  X = I + 21
+  fill 32 count 3 at 21,14
+  put char 45 at X,14
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadStick
+  if Btn = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    inc I
+    if I = 3 then goto name_done
+    goto name_loop
+  end if
+  N = HighName[I]
+  if Up = 1 then
+    inc N
+    if N > 90 then N = 65
+  end if
+  K = 0
+  if joypad(1).down then K = 1
+  if joypad(2).down then K = 1
+  if K = 1 then
+    dec N
+    if N < 65 then N = 90
+  end if
+  HighName[I] = N
+  goto name_loop
+name_done:
+  fill 32 count 3 at 21,14
+  fill 32 count 20 at 5,16
+  fill 32 count 20 at 5,13
+  fill 32 count 18 at 6,12
+  return
+end sub
+
+' Graphics II: tiles 132-145 with their row colors, in all three thirds
+sub LoadTiles:
+  Dst16 = 1056
+  for J = 0 to 2
+    copy TilePat count 112 to vram.pattern + Dst16
+    copy TileCol count 112 to vram.color + Dst16
+    Dst16 += 2048
+  next
+  LastShift = 255
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites from 0 count 6
+  return
+end sub
+
+' Lines 8000-8300: the instructions
+sub TitlePage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $F1
+  LoadTiles
+  cls
+  backdrop black
+  fill Ceiling count 32 at 0,0
+  print at 9,2, "R O C K F A L L !"
+  print at 2,4, "AVOID BEING CRUSHED BY THE"
+  print at 2,5, "FALLING ROCKS OR MUNCHED BY"
+  print at 2,6, "INCONSIDERATE MONSTERS."
+  print at 2,8, "FIRE: SHOOT UP AT THE ROCKS."
+  print at 2,9, "FIRE + LEFT OR RIGHT: SHOOT"
+  print at 2,10, "THE MONSTERS."
+  print at 2,11, "STICK: MOVE LEFT OR RIGHT."
+  print at 2,13, "THE CLOSER THEY COME, THE"
+  print at 2,14, "MORE POINTS. STAND UNDER A"
+  print at 2,15, "GAP WHEN THE ROCKS LAND!"
+  print at 2,17, "COLORED ROCKS AND WARBIRDS"
+  print at 2,18, "ARE WORTH MORE."
+  print at 4,20, "HIGH"
+  NumU = HighScore
+  print at 9,20, digits$(NumU, 5)
+  for J = 0 to 2
+    X = J + 15
+    N = HighName[J]
+    put char N at X,20
+  next
+  print at 6,22, "PRESS FIRE TO PLAY"
+  fill FloorT count 32 at 0,23
+  set sprite 0 to 158,212,0,5
+  set sprite 1 to 158,212,4,9
+  set sprite 2 to 157,180,28,13
+  update sprites from 0 count 6
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  HideSprites
+  fill mode 2 text color with $10
+  LoadTiles
+  backdrop white
+  cls
+  print at 11,1, "ROCKFALL!"
+  print at 2,3, "BY KRIS AUSTEN ANDREWS,"
+  print at 2,4, "ARLAN KEITH ANDREWS SR. AND"
+  print at 2,5, "JOSEPH C. GIARRATANO"
+  print at 2,6, "TIMELOST, QUE, 1983"
+  print at 2,8, "THE CAVE ROOF CRASHES DOWN"
+  print at 2,9, "WHILE THE WIZARD'S CREATURES"
+  print at 2,10, "ATTACK JACQUE AND ERIN."
+  print at 2,12, "THIS VERSION ADDS THE"
+  print at 2,13, "BOOK'S TWO IDEAS: MONSTERS"
+  print at 2,14, "THAT FADE IN AND OUT, AND"
+  print at 2,15, "COLORED ROCKS AND WARBIRDS"
+  print at 2,16, "WORTH MORE POINTS."
+  print at 4,22, "PRESS FIRE TO CONTINUE"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' Rock halves for the 8 pixel offsets: rock upper, rock lower, colored upper, colored lower
+data ShiftPat bytes
+  $18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00
+  $00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00
+  $00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00
+  $00,$00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00
+  $00,$00,$00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00
+  $00,$00,$00,$00,$00,$00,$00,$18,$3C,$7E,$7F,$7F,$7E,$3E,$3C,$00
+end data
+data ShiftCol bytes
+  $E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11,$11,$11,$11,$11,$11,$11
+  $91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11,$11,$11,$11,$11,$11
+  $11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11,$11,$11,$11,$11
+  $11,$11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11,$11,$11,$11
+  $11,$11,$11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11,$11,$11
+  $11,$11,$11,$11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11,$11
+  $11,$11,$11,$11,$11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11,$11
+  $11,$11,$11,$11,$11,$11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$E1,$E1,$F1,$E1,$E1,$A1,$A1,$A1,$11
+  $11,$11,$11,$11,$11,$11,$11,$91,$B1,$F1,$91,$81,$81,$61,$61,$11
+end data
+' Tiles 132-145: Wall, Ceiling, Floor, Dirt, Rubble, Heart, Bolt0, Bolt1, Bolt2, Bolt3, Bolt4, Bolt5, Bolt6, Bolt7
+data TilePat bytes
+  $20,$13,$94,$08,$60,$02,$82,$18,$FF,$BF,$DD,$59,$49,$08,$08,$00
+  $FF,$B7,$FF,$44,$08,$82,$20,$04,$20,$02,$88,$00,$11,$40,$04,$80
+  $00,$00,$00,$18,$3D,$7E,$FF,$FF,$6C,$FE,$FE,$7C,$38,$10,$00,$00
+  $00,$00,$00,$F0,$60,$00,$00,$00,$00,$00,$00,$78,$30,$00,$00,$00
+  $00,$00,$00,$3C,$18,$00,$00,$00,$00,$00,$00,$1E,$0C,$00,$00,$00
+  $00,$00,$00,$0F,$06,$00,$00,$00,$00,$00,$00,$07,$03,$00,$00,$00
+  $00,$00,$00,$03,$01,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $A6,$16,$A6,$16,$A6,$16,$A6,$16,$A1,$A1,$A1,$61,$61,$61,$E1,$E1
+  $E1,$F1,$E1,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $E1,$E1,$E1,$E1,$F1,$E1,$A1,$A1,$91,$91,$91,$91,$91,$91,$91,$91
+  $11,$11,$11,$B1,$F1,$11,$11,$11,$11,$11,$11,$B1,$F1,$11,$11,$11
+  $11,$11,$11,$B1,$F1,$11,$11,$11,$11,$11,$11,$B1,$F1,$11,$11,$11
+  $11,$11,$11,$B1,$F1,$11,$11,$11,$11,$11,$11,$B1,$F1,$11,$11,$11
+  $11,$11,$11,$B1,$F1,$11,$11,$11,$11,$11,$11,$B1,$F1,$11,$11,$11
+end data
+' Sprites: Jacque, Erin, JacqueB, ErinB, UpShot, LeftA, LeftB, RightA, RightB, BoomA, BoomB, BirdA, BirdB, Jaws
+data SpritePat bytes
+  $00,$00,$00,$38,$38,$10,$38,$7C,$BA,$BA,$3A,$2A,$28,$28,$6C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$38,$7C,$38,$10,$7C,$BA,$38,$7C,$FE,$28,$6C,$00
+  $00,$00,$00,$38,$38,$10,$38,$7C,$BA,$BA,$3A,$2A,$44,$44,$82,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$38,$7C,$38,$10,$7C,$BA,$38,$7C,$FE,$48,$84,$00
+  $0C,$1E,$0C,$1E,$0C,$0C,$12,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$00,$00,$0F,$0F,$00,$00,$00,$00,$03,$03,$0C,$0C
+  $C0,$C0,$30,$30,$CC,$CC,$0C,$0C,$0C,$0C,$FC,$FC,$03,$03,$03,$03
+  $00,$00,$03,$03,$00,$00,$0F,$0F,$00,$00,$00,$00,$0C,$0C,$30,$30
+  $C0,$C0,$30,$30,$CC,$CC,$0C,$0C,$0C,$0C,$FC,$FC,$30,$30,$0C,$0C
+  $03,$03,$0C,$0C,$33,$33,$30,$30,$30,$30,$3F,$3F,$C0,$C0,$C0,$C0
+  $00,$00,$C0,$C0,$00,$00,$F0,$F0,$00,$00,$00,$00,$C0,$C0,$30,$30
+  $03,$03,$0C,$0C,$33,$33,$30,$30,$30,$30,$3F,$3F,$30,$30,$30,$30
+  $00,$00,$C0,$C0,$00,$00,$F0,$F0,$00,$00,$00,$00,$C0,$C0,$C0,$C0
+  $00,$00,$09,$05,$13,$0F,$3F,$0F,$13,$05,$09,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$90,$E0,$F8,$E0,$90,$40,$20,$00,$00,$00,$00,$00
+  $80,$20,$08,$00,$02,$A0,$00,$04,$00,$10,$21,$80,$00,$00,$00,$00
+  $81,$84,$08,$00,$80,$0A,$00,$40,$00,$10,$08,$81,$00,$00,$00,$00
+  $80,$C0,$70,$3C,$1E,$0E,$07,$0F,$1D,$03,$01,$00,$00,$00,$00,$00
+  $01,$03,$0E,$3C,$78,$70,$F8,$FC,$EE,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$3F,$7F,$E3,$C1,$81,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$FC,$FE,$C7,$83,$81,$00,$00,$00,$00
+  $92,$DB,$FF,$FF,$80,$98,$98,$80,$80,$FF,$FF,$DB,$92,$00,$00,$00
+  $49,$6D,$FF,$FF,$01,$19,$19,$01,$01,$FF,$FF,$6D,$49,$00,$00,$00
+end data
+
+asm {
+RfUp:
+    db $40,$E0,$10,$01,$40,$7F,$10,$01,$40,$59,$10,$01,$40,$44,$10,$01,$40,$37,$10,$01,$40,$2F,$10,$01
+    db $50
+RfSide:
+    db $40,$25,$20,$01,$40,$2C,$20,$01,$40,$35,$20,$01,$40,$44,$20,$01,$40,$5D,$20,$01,$50
+RfCrumble:
+    db $00,$00,$04,$03,$00,$00,$15,$04,$00,$00,$36,$04,$00,$00,$66,$05,$00,$00,$A6,$05,$10
+RfGem:
+    db $80,$47,$20,$03,$80,$35,$20,$03,$80,$2A,$20,$03,$80,$24,$20,$03,$80,$24,$F0,$02,$90
+RfZapN:
+    db $00,$00,$12,$03,$00,$00,$33,$04,$00,$00,$66,$06,$10
+RfZapT:
+    db $80,$BA,$10,$02,$80,$18,$21,$02,$80,$BF,$41,$02,$80,$EA,$72,$03,$90
+RfRumble:
+    db $C0,$FF,$63,$03,$C0,$FF,$A3,$03,$D0
+RfCrunch:
+    db $00,$00,$04,$04,$00,$00,$05,$06,$00,$00,$16,$08,$00,$00,$36,$0A,$00,$00,$66,$0C,$00,$00,$96,$0E
+    db $10
+RfMunch:
+    db $00,$00,$05,$04,$00,$00,$F7,$04,$00,$00,$05,$04,$00,$00,$F7,$04,$00,$00,$05,$04,$00,$00,$F7,$04
+    db $00,$00,$05,$04,$00,$00,$F7,$04,$10
+RfMade:
+    db $40,$8F,$10,$05,$40,$8F,$F0,$01,$40,$71,$10,$05,$40,$71,$F0,$01,$40,$5F,$10,$05,$40,$5F,$F0,$01
+    db $40,$47,$10,$17,$40,$47,$F0,$01,$50
+RfBird:
+    db $C0,$3E,$30,$02,$C0,$4B,$30,$02,$C0,$3E,$30,$02,$C0,$4B,$30,$02,$C0,$3E,$30,$02,$C0,$4B,$30,$02
+    db $C0,$3E,$30,$02,$C0,$4B,$30,$02,$C0,$3E,$30,$02,$C0,$4B,$30,$02,$C0,$3E,$30,$02,$C0,$4B,$30,$02
+    db $D0
+RfFade:
+    db $C0,$7C,$60,$02,$C0,$5D,$70,$02,$C0,$4B,$90,$02,$D0
+RfLose:
+    db $80,$D6,$20,$06,$80,$E2,$20,$06,$80,$F0,$20,$06,$80,$FE,$20,$06,$80,$FE,$F0,$02,$90
+RfOver:
+    db $40,$41,$21,$0A,$40,$41,$F1,$02,$40,$53,$21,$0A,$40,$53,$F1,$02,$40,$68,$21,$0A,$40,$68,$F1,$02
+    db $40,$7C,$21,$0A,$40,$7C,$F1,$02,$40,$94,$21,$0A,$40,$94,$F1,$02,$40,$AB,$21,$0A,$40,$AB,$F1,$02
+    db $40,$E0,$21,$0A,$40,$E0,$F1,$02,$40,$7F,$22,$28,$40,$7F,$F2,$02,$50
+RfGood:
+    db $40,$8F,$10,$04,$40,$8F,$F0,$01,$40,$71,$10,$04,$40,$71,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01
+    db $40,$47,$10,$09,$40,$47,$F0,$01,$40,$5F,$10,$04,$40,$5F,$F0,$01,$40,$47,$10,$1D,$40,$47,$F0,$01
+    db $50
+RfPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+
+RockSoundTable:
+    dw RfUp,$7035
+    dw RfSide,$7035
+    dw RfCrumble,$702B
+    dw RfGem,$703F
+    dw RfZapN,$702B
+    dw RfZapT,$703F
+    dw RfRumble,$7049
+    dw RfCrunch,$702B
+    dw RfMunch,$702B
+    dw RfMade,$7035
+    dw RfBird,$7049
+    dw RfFade,$7049
+    dw RfLose,$703F
+    dw RfOver,$7035
+    dw RfGood,$7035
+    dw RfPick,$7049
+    dw RockTuneMel,$703F
+    dw RockTuneBass,$7049
+; Title tune: Rockfall, a stomping tune in G minor (original for this port)
+; two phrases with dynamics; Tiny Sound, 7 frames per step
+RockTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1A,$00,$1A,$1D,$21,$00,$1F,$1D,$1C,$00,$18,$00
+    db $1A,$00,$00,$01,$02,$10,$1A,$21,$21,$00,$21,$24,$26,$00,$24,$21
+    db $1F,$00,$1D,$1C,$1A,$00,$00,$01,$02,$30,$1A,$21,$1D,$1F,$21,$00
+    db $1D,$1F,$21,$00,$24,$22,$21,$1F,$1D,$00,$1C,$00,$02,$10,$1A,$21
+    db $1A,$00,$15,$00,$1A,$00,$00,$01,$00,$00,$00,$00,$02,$30,$1A,$21
+    db $21,$00,$21,$24,$28,$00,$26,$24,$22,$00,$1F,$00,$21,$00,$00,$01
+    db $02,$10,$1A,$21,$29,$00,$29,$28,$26,$00,$24,$22,$21,$00,$1F,$1C
+    db $1A,$00,$00,$01,$02,$30,$1A,$21,$26,$24,$22,$00,$21,$1F,$1D,$00
+    db $1F,$21,$22,$24,$26,$00,$25,$00,$02,$10,$1A,$21,$26,$00,$21,$00
+    db $1A,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+RockTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$50,$18,$32,$0E,$00,$09,$00,$0E,$00,$09,$00,$0C,$00,$07,$00
+    db $0C,$00,$07,$00,$0A,$00,$11,$00,$0A,$00,$11,$00,$09,$00,$10,$00
+    db $09,$00,$0D,$00,$0E,$00,$09,$00,$0E,$00,$09,$00,$0C,$00,$07,$00
+    db $0C,$00,$07,$00,$0A,$00,$11,$00,$09,$00,$10,$00,$0E,$00,$00,$01
+    db $00,$00,$00,$00,$02,$50,$18,$32,$0E,$00,$09,$00,$0E,$00,$09,$00
+    db $0A,$00,$11,$00,$0A,$00,$11,$00,$0C,$00,$07,$00,$0C,$00,$07,$00
+    db $09,$00,$10,$00,$09,$00,$10,$00,$0E,$00,$09,$00,$0E,$00,$09,$00
+    db $0A,$00,$11,$00,$07,$00,$0E,$00,$09,$00,$10,$00,$09,$00,$0D,$00
+    db $02,$30,$18,$32,$0E,$00,$00,$01,$0E,$00,$00,$01,$00,$00,$00,$00
+    db $FF
+}
