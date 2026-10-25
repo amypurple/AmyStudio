@@ -2639,6 +2639,32 @@ FrameVar = frame
 print vdp.status at 0,0
 ```
 
+Joypad direction and button properties are normalized byte values: they return
+exactly `0` or `1`. Combine both controller ports directly when either player may
+control the same action:
+
+```basic
+Up  = joypad(1).up    | joypad(2).up
+Dn  = joypad(1).down  | joypad(2).down
+Lf  = joypad(1).left  | joypad(2).left
+Rt  = joypad(1).right | joypad(2).right
+Btn = joypad(1).fire  | joypad(2).fire
+```
+
+`|` is bitwise OR, which is also a logical OR for these normalized operands. No
+`? 1 : 0` conversion is needed, and Amy does not currently define either the
+`?:` conditional operator or `:` as a general statement separator. Unlike a
+sequence containing only `if joypad(...).property then Value = 1`, each direct
+assignment also clears `Value` when neither controller holds the input. This
+makes it the preferred concise form for current-state input.
+
+Do not assume the concise source is smaller yet. In the October 24, 2026
+compiler, the five assignments above occupy 554 bytes in a minimal Balanced ROM;
+the equivalent implementation with five explicit zero assignments followed by
+ten `if` statements occupies 536 bytes. The 18-byte difference is a known code
+generation opportunity in combined normalized-input expressions, not a reason
+to use the incorrect latching form without the zero assignments.
+
 Append `.pressed` or `.released` to a joypad direction or button property to
 detect one edge. The result stays stable for repeated reads during the same
 program frame and does not repeat while the input remains unchanged:

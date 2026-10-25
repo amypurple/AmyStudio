@@ -245,6 +245,12 @@ The Balanced ROM changed from **6125 bytes to 5852 bytes**, a reduction of **273
 - Use `for each Actor, I in Actors` when every array element receives the same logic.
 - Use runtime sprite indexes such as `set sprite I + 1 x to Actor.X` when actors map to a sprite pool.
 - Use `joypad(N).fire` for either standard fire button and `.action` for any of four Super Action buttons.
+- Merge two controllers with a direct normalized assignment such as
+  `Up = joypad(1).up | joypad(2).up`. Each property is `0` or `1`, so no ternary
+  conversion is needed and the assignment clears stale state automatically. This is
+  the clearest source form, but currently measures 18 bytes larger across five inputs
+  than behaviorally equivalent zeroing plus ten `if` statements; measure before using
+  it specifically as a size optimization.
 - Use byte or word ROM lookup tables for fixed state-to-value mappings instead of long comparison ladders.
 - Group consecutive VRAM transfers when the display update can safely be performed as one operation.
 
