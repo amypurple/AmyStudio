@@ -17,6 +17,7 @@ const suite = suiteIndex >= 0 ? String(process.argv[suiteIndex + 1] || "").trim(
 const biosPath = process.env.AMY_COLECO_BIOS || resolve(root, "studio", "bios", "colecovision.rom");
 const hasBios = existsSync(biosPath);
 const tests = [
+  { file: "test-example-sound-tables.mjs", area: "example-sound-table-contract", evidence: "static", suite: "studio" },
   { file: "test-expression-fail-closed.mjs", area: "expressions", evidence: "compile+assemble" },
   { file: "test-amy-syntax-tokenizer.mjs", area: "syntax-tokenizer", evidence: "compile+assemble" },
   { file: "test-amy-syntax-overlay.mjs", area: "syntax-overlay-rendering", evidence: "compile+assemble" },
