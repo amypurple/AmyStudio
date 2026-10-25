@@ -59,6 +59,12 @@ zsdcc 4.6. The measured devkitSMS revision is `533ae572` (2026-09-29), including
 ColecoVision VDP interrupt acknowledgement, IRQ/NMI vector protection, and bounded static-RAM clear.
 The ugBASIC results use official `main` commit `e35e6df71f311174b3a3fcffdbf6849eecea5ec4`,
 built from source on 2026-10-10. Each sample is compiled in a clean directory.
+An upstream refresh on 2026-10-25 also rebuilt CVBasic `fd70d3d`, ugBASIC `79612f9` and
+`5bbd963`, and checked devkitSMS head. CVBasic's six ColecoVision ROMs remain byte-identical and
+devkitSMS is unchanged. The newer ugBASIC builds are smaller, but both fail the 16x16 metasprite
+oracle after TMS9918 sprite-stride commit `1068bfe`; the ranked suite therefore retains the last
+fully validated ugBASIC revision. See
+`docs/audits/optimization/external-toolchain-refresh-2026-10-25.md`.
 Every sample is built in a freshly cleaned, isolated directory. Literal display text uses
 `PRINT RAW`, reducing Hello to 1,420 occupied ROM bytes and Controller to 2,025. The corrected Coleco
 controller masks pass the input oracle. MSC1 reduces Warrior to 9,733 ROM bytes and restores the

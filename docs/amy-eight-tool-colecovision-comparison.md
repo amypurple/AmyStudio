@@ -76,6 +76,14 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
 | PkK's devkit / SDCC 4.5 | `--opt-code-size --max-allocs-per-node 25000` | Its `libcv` / `libcvu` libraries link only referenced modules; the higher allocator limit prevents an SDCC IY miscompile in the state fixture |
 
+The 2026-10-25 upstream refresh does not change the ranked revisions. CVBasic master `fd70d3d`
+reproduces all six 0.9.2 ColecoVision ROMs byte for byte, including after its TI-99/4A TMS9918
+changes, and devkitSMS remains at `533ae572`. ugBASIC `79612f9` and current main `5bbd963` reduce
+the apparent total to 20,902 and 20,494 bytes respectively, but both fail the dedicated 16x16
+metasprite oracle after sprite-stride commit `1068bfe`. The comparison retains the 25,079-byte
+`e35e6df` suite because all six programs are validated. The full rejected-candidate matrix is in
+`docs/audits/optimization/external-toolchain-refresh-2026-10-25.md`.
+
 These are the most size-oriented **native settings validated in this study**, not claims about
 every release or project configuration. No other toolchain passed through Amy's optimizer or MDL.
 Experimental serves this size test; Balanced remains Amy's default.
