@@ -3,6 +3,7 @@ import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./lib
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
 import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
 import { EOS_PUBLIC_VECTORS } from "./firmwareMaps.js";
+import { normalizeCompressionIncludes } from "./compressionIncludes.js";
 
 function isColecoOs7MemoryProfile(memoryProfile) {
   return memoryProfile === "colecovision_legacy_sdcc"
@@ -2439,7 +2440,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     ).paths
   ).sort();
   const bundles = (project.selectedBundles || []).slice().sort();
-  const comps = project.selectedCompression.slice().sort();
+  const comps = normalizeCompressionIncludes(project.selectedCompression).sort();
   const assetPaths = [
     ...(project.selectedAssets || []),
     ...assetDeclarations.map((asset) => asset.path)
