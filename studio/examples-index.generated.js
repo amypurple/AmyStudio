@@ -2248,5 +2248,25 @@ export const exampleManifest = [
       "stealth",
       "voice"
     ]
+  },
+  {
+    "id": "santas-sleigh-run",
+    "label": "Santa's Sleigh Run",
+    "detail": "A Christmas delivery game with five snowy houses, wind, gift-snatching crows, precision bonuses, high scores and traditional seasonal music.",
+    "projectName": "Santa's Sleigh Run",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "christmas",
+      "sprites",
+      "music",
+      "high-score",
+      "manual-canon"
+    ]
   }
 ];
