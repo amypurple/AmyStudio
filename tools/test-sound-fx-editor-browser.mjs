@@ -176,11 +176,12 @@ try {
   await waitFor(`document.querySelector(".sound-table-creator-modal")`, "sound table creator reopens");
   await evaluate(`(() => {
     const buttons = Array.from(document.querySelectorAll(".sound-table-creator-modal button"));
-    buttons.find((button) => button.textContent === "+ BIOS music").click();
     buttons.find((button) => button.textContent === "+ BIOS sound").click();
+    buttons.find((button) => button.textContent === "+ BIOS music").click();
     buttons.find((button) => button.textContent === "+ BIOS sound").click();
   })()`);
   await waitFor(`document.querySelectorAll(".sound-table-creator__row").length === 3`, "third sound row");
+  assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll(".sound-table-creator__row")).map((row) => row.dataset.role)`), ["music", "sfx", "sfx"], "creator keeps background music before sound effects");
   assert.equal(await evaluate(`document.querySelector(".sound-table-creator__row select").value`), "1", "first table entry is anchored to BIOS slot 1");
   assert.equal(await evaluate(`document.querySelector(".sound-table-creator__row select").disabled`), true, "first table entry slot cannot be changed");
   assert.equal(await evaluate(`document.querySelector(".sound-table-creator-modal details").hidden`), false, "generated source appears after adding a sound");
@@ -425,6 +426,37 @@ try {
     Array.from(document.querySelectorAll(".sound-library-transport button")).find((button) => button.textContent === "Edit").click();
   })()`);
   await waitFor(`document.querySelector(".sound-sequence-editor-modal")`, "Sound FX editor");
+  await client.send("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 520,
+    deviceScaleFactor: 1,
+    mobile: true
+  });
+  const mobileSoundEditor = await evaluate(`(() => {
+    const editor = document.querySelector(".sound-sequence-editor-modal");
+    const backdrop = editor.parentElement;
+    const before = editor.scrollTop;
+    editor.scrollTop = editor.scrollHeight;
+    const rect = editor.getBoundingClientRect();
+    return {
+      backdropHeight: backdrop.getBoundingClientRect().height,
+      viewportHeight: window.innerHeight,
+      top: rect.top,
+      bottom: rect.bottom,
+      clientHeight: editor.clientHeight,
+      scrollHeight: editor.scrollHeight,
+      scrollTop: editor.scrollTop,
+      before,
+      overflowY: getComputedStyle(editor).overflowY,
+      touchAction: getComputedStyle(editor).touchAction
+    };
+  })()`);
+  assert.equal(mobileSoundEditor.backdropHeight, mobileSoundEditor.viewportHeight, "SOUND backdrop follows the mobile viewport");
+  assert.ok(mobileSoundEditor.top >= 0 && mobileSoundEditor.bottom <= mobileSoundEditor.viewportHeight, "SOUND editor remains fully inside the mobile viewport");
+  assert.ok(mobileSoundEditor.scrollHeight > mobileSoundEditor.clientHeight, "SOUND editor has a bounded scrolling viewport");
+  assert.ok(mobileSoundEditor.scrollTop > mobileSoundEditor.before, "SOUND editor can scroll to controls below the fold");
+  assert.equal(mobileSoundEditor.overflowY, "auto", "SOUND editor owns vertical scrolling");
+  assert.equal(mobileSoundEditor.touchAction, "pan-y", "SOUND editor accepts vertical touch gestures");
   assert.equal(await evaluate(`document.querySelector('[data-sound-field="frames"] input').value`), "2");
   await evaluate(`(() => {
     const set = (field, value) => {

@@ -2815,7 +2815,7 @@ export function createProjectFileUiHelpers({
     header.append(title, close);
     const note = document.createElement("p");
     note.className = "graphics-editor-modal__note";
-    note.textContent = "Reserve early slots for simultaneous music voices. Put effects in later slots; effects sharing a slot interrupt each other.";
+    note.textContent = "Background music is kept first, beginning at slot 1 ($702B). Put effects in later slots; effects sharing a slot interrupt each other.";
     const newTinyButton = document.createElement("button");
     newTinyButton.type = "button";
     newTinyButton.textContent = "+ Tiny music";
@@ -2890,8 +2890,13 @@ export function createProjectFileUiHelpers({
       remove.setAttribute("aria-label", "Remove sound");
       remove.addEventListener("click", () => { row.remove(); update(); });
       row.append(name, roleText, slot, remove);
-      rows.appendChild(row);
-      refreshSlots(row, role);
+      const firstSfx = role === "music" ? [...rows.children].find((item) => item.dataset.role === "sfx") : null;
+      if (firstSfx) rows.insertBefore(row, firstSfx);
+      else rows.appendChild(row);
+      for (const item of rows.children) refreshSlots(item);
+      if (firstSfx && firstSfx.querySelector("select").value === "1") {
+        firstSfx.querySelector("select").value = areaCount.value;
+      }
       update();
       previewDetails.hidden = false;
       previewDetails.open = true;

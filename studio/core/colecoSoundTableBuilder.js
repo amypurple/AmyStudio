@@ -23,6 +23,10 @@ export function buildColecoSoundTableSource({ tableName, areaCount, sounds }) {
     names.add(name.toLowerCase());
     return { name, role, slot, address: colecoSoundAreaAddress(slot) };
   });
+  const firstSfx = normalized.findIndex((sound) => sound.role === "sfx");
+  if (firstSfx >= 0 && normalized.slice(firstSfx + 1).some((sound) => sound.role === "music")) {
+    throw new Error("Background music must precede sound effects in the sound table.");
+  }
   if (normalized[0].slot !== 1) {
     throw new Error("The first sound-table entry must use BIOS slot 1.");
   }

@@ -31,6 +31,14 @@ assert.throws(() => addColecoSoundToTableSource(extended, { tableName: "GameSoun
 assert.throws(() => buildColecoSoundTableSource({ tableName: "Bad name", areaCount: 4, sounds: [{ name: "A", slot: 1 }] }), /identifier/);
 assert.throws(() => buildColecoSoundTableSource({ tableName: "T", areaCount: 2, sounds: [{ name: "A", slot: 3 }] }), /slot from 1 to 2/);
 assert.throws(() => buildColecoSoundTableSource({ tableName: "T", areaCount: 6, sounds: [{ name: "OnlyEffect", slot: 6 }] }), /first sound-table entry must use BIOS slot 1/i);
+assert.throws(() => buildColecoSoundTableSource({
+  tableName: "T",
+  areaCount: 6,
+  sounds: [
+    { name: "Effect", role: "sfx", slot: 1 },
+    { name: "BackgroundMusic", role: "music", slot: 2 }
+  ]
+}), /background music must precede sound effects/i);
 
 const explicitStart = "sub start:\n  set sound table GameSoundTable areas 6\n  text screen\nend sub\n\nasm {\nSounds:\n  db $50\n}\n";
 const safePlay = insertColecoSoundPlayback(explicitStart, {

@@ -71,7 +71,7 @@ only the voice assigned to the same area after its requested frame delay.
 
 For a frequency sweep, the encoded length is a sweep count rather than a direct frame duration. Amy Studio labels it `Sweep count` and previews the BIOS duration: first delay plus the remaining counts multiplied by the repeat interval.
 
-If the project has no BIOS sound table, choose `SOUND` to open **New Sound Table**. Set the table name and number of sound slots, add Music and SFX rows, and choose every slot yourself. Early slots are recommended for simultaneous music voices; later slots are convenient for effects. Sounds sharing one slot intentionally interrupt each other. `Create table` inserts the initialization in `sub start` when present and adds editable, silent sound labels to the source.
+If the project has no BIOS sound table, choose `SOUND` to open **New Sound Table**. Set the table name and number of sound slots, then add Music and SFX rows. Studio keeps background-music entries first and anchors the first voice to slot 1 (`$702B`); subsequent music voices should use `$7035`, `$703F`, and `$7049` as needed. Put effects after the music, preferably in later slots. Sounds sharing one slot intentionally interrupt each other. `Create table` inserts the initialization in `sub start` when present and adds editable, silent sound labels to the source.
 
 For an existing table, open `SOUND` and choose `+ Sound`. Select its table, role and BIOS slot before confirming. Amy Studio reports whether the slot is free or which sounds already occupy it. The new entry and its silent editable label are inserted without regenerating the existing expert ASM.
 
@@ -183,6 +183,14 @@ The validator checks:
 This protects the important Coleco BIOS sound-table contract: low areas are
 low priority and are currently owned by music playback, while later areas are
 the safer place for gameplay effects.
+
+The ordering is load-bearing, not cosmetic. Put background music first, beginning
+with `$702B`, then `$7035`, `$703F`, and `$7049` for additional simultaneous voices.
+If a legacy table starts with an effect, either move its existing `$702B` entry to
+the first position and update positional `play sound N` references, or retarget the
+first entry to `$702B` when changing indices would be unsafe. A table whose first
+entry points above `$702B` can make OS7 derive the wrong sound-work-area range,
+causing RAM corruption or silent/misbehaving sounds.
 
 ### Studio sound-effect editor target
 

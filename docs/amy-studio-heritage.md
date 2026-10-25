@@ -234,6 +234,8 @@ why Amy Studio needs validation, not just byte import.
 Current Amy conventions:
 
 - `set sound table ... areas N` installs the BIOS-compatible sound table.
+- Background music comes first: entry 1 uses `$702B`, followed by `$7035`,
+  `$703F`, and `$7049` for additional simultaneous voices before later SFX.
 - `play sound N`, `stop sound N`, `stop song`, and `mute all` target the sound
   manager model.
 - Tiny music is useful for compact note-based music.
