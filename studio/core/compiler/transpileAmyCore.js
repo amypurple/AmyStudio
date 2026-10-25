@@ -4456,6 +4456,7 @@ export function transpileAmyCore(sourceText, deps) {
     makeGeneratedLabel,
     getRuntimeInfo,
     scopedRuntimeName,
+    parseBuiltinInputRef,
     parseArrayRef,
     dataLengths
   }));
@@ -6062,7 +6063,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitStoreInt8FromA,
         emitLoadInt16IntoHL,
         emitStoreInt16FromHL,
-        isAnyFixedDeclaredType
+        isAnyFixedDeclaredType,
+        useConstantDownStep: semanticOptimizerOptions.constantDownStep !== false
       });
       if (forStmt.handled) {
         if (!forStmt.ok) return { ok: false, asmBody: "", log: forStmt.log };

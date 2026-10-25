@@ -19,7 +19,8 @@ export function handleForStatement({
   emitStoreInt8FromA,
   emitLoadInt16IntoHL,
   emitStoreInt16FromHL,
-  isAnyFixedDeclaredType
+  isAnyFixedDeclaredType,
+  useConstantDownStep = true
 }) {
   const _dep = checkForDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -72,6 +73,9 @@ export function handleForStatement({
     const continueLabel = makeGeneratedLabel("ForContinue");
     const stepAnalysis = analyzeForStep(normalizeExpression(forDownto[4] || "1"), "down");
     if (stepAnalysis.error) return { ok: false, handled: true, log: `${stepAnalysis.error} ${rawLine}` };
+    const stepValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(stepAnalysis.magnitudeToken)
+      : null;
     forStack.push({
       name: forDownto[1],
       endToken: normalizeExpression(forDownto[3]),
@@ -81,7 +85,8 @@ export function handleForStatement({
       loopLabel,
       continueLabel,
       exitLabel,
-      direction: "down"
+      direction: "down",
+      constantStep: Number.isInteger(stepValue) ? stepValue : null
     });
     const lines = [...initCode, `${loopLabel}:`];
     const exitCode = emitCompareGoto(forDownto[1], "<", normalizeExpression(forDownto[3]), exitLabel);
@@ -186,13 +191,17 @@ export function handleForStatement({
       const unsignedDownLoop = !isSignedDeclaredType(loop.declaredType);
       if (loop.type === "int8") {
         lines.push(...emitLoadInt8Into("a", loop.name));
-        lines.push("    ld b,a");
-        const loadStep = emitLoadInt8Into("a", loop.stepToken);
-        if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
-        lines.push(...loadStep);
-        lines.push("    ld c,a");
-        lines.push("    ld a,b");
-        lines.push("    sub c");
+        if (useConstantDownStep && Number.isInteger(loop.constantStep) && loop.constantStep >= 1 && loop.constantStep <= 255) {
+          lines.push(`    sub ${loop.constantStep}`);
+        } else {
+          lines.push("    ld b,a");
+          const loadStep = emitLoadInt8Into("a", loop.stepToken);
+          if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
+          lines.push(...loadStep);
+          lines.push("    ld c,a");
+          lines.push("    ld a,b");
+          lines.push("    sub c");
+        }
         if (unsignedDownLoop) lines.push(`    jp c,${loop.exitLabel}`);
         lines.push(...emitStoreInt8FromA(loop.name));
       } else {

@@ -4116,15 +4116,20 @@ export class Z80Optimizer {
                             this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'a') &&
                             this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'hl')) {
 
+                            const memorySource = String(token.operands[1].value).toLowerCase().replace(/\s+/g, '');
+                            // (HL) is already the effective address. Treating its text as a
+                            // symbol would manufacture the invalid pseudo-load `LD HL,HL`.
+                            if (memorySource !== 'hl') {
+                                optimized.push(new Instruction(
+                                    token.label,
+                                    'ld',
+                                    [new Operand('register_pair', 'hl'), new Operand('symbol', token.operands[1].value)],
+                                    token.lineNumber,
+                                    token.sourceLine
+                                ));
+                            }
                             optimized.push(new Instruction(
-                                token.label,
-                                'ld',
-                                [new Operand('register_pair', 'hl'), new Operand('symbol', token.operands[1].value)],
-                                token.lineNumber,
-                                token.sourceLine
-                            ));
-                            optimized.push(new Instruction(
-                                null,
+                                memorySource === 'hl' ? token.label : null,
                                 incDecA.mnemonic.toLowerCase(),
                                 [new Operand('memory', 'hl')],
                                 incDecA.lineNumber,
@@ -5528,8 +5533,10 @@ export class Z80Optimizer {
                         const dest = token.operands[0];
                         const src = token.operands[1];
 
-                        if (dest.type === 'register' &&
-                            src.type === 'register' &&
+                        const sameByteRegister = dest.type === 'register' && src.type === 'register';
+                        const samePair = dest.type === 'register_pair' &&
+                            ['register_pair', 'symbol'].includes(src.type);
+                        if ((sameByteRegister || samePair) &&
                             dest.value.toLowerCase() === src.value.toLowerCase()) {
 
                             // Skip this no-op instruction

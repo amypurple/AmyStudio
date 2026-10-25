@@ -22,8 +22,42 @@ export function createExpressionComputeHelpers({
   emitStoreInt16FromHL,
   makeGeneratedLabel,
   getRuntimeInfo,
-  scopedRuntimeName
+  scopedRuntimeName,
+  parseBuiltinInputRef
 }) {
+  function emitCombinedJoypadBooleanOr(node) {
+    if (node?.kind !== "binary" || node.op !== "|" || typeof parseBuiltinInputRef !== "function") return null;
+    const left = parseBuiltinInputRef(node.left);
+    const right = parseBuiltinInputRef(node.right);
+    const supportedSources = new Set([
+      "joypad_bit",
+      "joypad_mask",
+      "joypad_pressed_bit",
+      "joypad_pressed_mask",
+      "joypad_released_bit",
+      "joypad_released_mask"
+    ]);
+    if (!left || !right || !supportedSources.has(left.source) || left.source !== right.source) return null;
+    if (left.property !== right.property || !left.runtimeName || !right.runtimeName || left.pad === right.pad) return null;
+
+    const mask = left.source.endsWith("_bit") ? (1 << left.bit) : left.mask;
+    const trueLabel = makeGeneratedLabel("InputOrTrue");
+    const doneLabel = makeGeneratedLabel("InputOrDone");
+    return [
+      `    ld a,(${left.runtimeName})`,
+      "    ld b,a",
+      `    ld a,(${right.runtimeName})`,
+      "    or b",
+      `    and $${mask.toString(16).toUpperCase()}`,
+      `    jr nz,${trueLabel}`,
+      "    xor a",
+      `    jr ${doneLabel}`,
+      `${trueLabel}:`,
+      "    ld a,1",
+      `${doneLabel}:`
+    ];
+  }
+
   function emitComputeExpressionAst(node, preferredDeclaredType = null) {
     const computationType = resolveExpressionAstComputationType(node, preferredDeclaredType);
     if (!computationType) return null;
@@ -541,6 +575,8 @@ export function createExpressionComputeHelpers({
     }
     if (node.kind === "binary") {
       if (node.op === "+" || node.op === "-" || node.op === "&" || node.op === "|" || node.op === "^") {
+        const combinedJoypadBoolean = emitCombinedJoypadBooleanOr(node);
+        if (combinedJoypadBoolean) return combinedJoypadBoolean;
         const leftValue = evaluateAstNumericByteConstant(node.left);
         const rightValue = evaluateAstNumericByteConstant(node.right);
         const immediate = (value) => symbolOrValue(String(value & 0xFF));
