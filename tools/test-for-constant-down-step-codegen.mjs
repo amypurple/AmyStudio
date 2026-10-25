@@ -11,28 +11,46 @@ const temp = mkdtempSync(join(tmpdir(), "amy-for-down-step-"));
 const sourceText = `project "FOR CONSTANT DOWN STEP"
 memory "colecovision_legacy_sdcc"
 const THREE = 3
+const ZERO = 0
 u8 U = 0
 u8 Count1 = 0
 u8 Count3 = 0
 u8 DynamicCount = 0
+u8 NonZeroBoundCount = 0
 u8 StepValue = 2
+u16 W = 0
+u8 WordZeroCount = 0
+u8 WordNonZeroCount = 0
 i8 S = 0
 i8 SignedSum = 0
+i8 SignedZeroCount = 0
 u8 Passed = 0
 
 for U = 7 to 0 step -1
   Count1 += 1
 next
-for U = 9 downto 0 step THREE
+for U = 9 downto ZERO step THREE
   Count3 += 1
 next
 for U = 6 downto 0 step StepValue
   DynamicCount += 1
 next
+for U = 5 downto 2
+  NonZeroBoundCount += 1
+next
+for W = 3 downto ZERO
+  WordZeroCount += 1
+next
+for W = 4 downto 2
+  WordNonZeroCount += 1
+next
 for S = 3 to -3 step -2
   SignedSum += S
 next
-if Count1 = 8 and Count3 = 4 and DynamicCount = 4 and SignedSum = 0 then Passed = 1
+for S = 2 downto 0
+  SignedZeroCount += 1
+next
+if Count1 = 8 and Count3 = 4 and DynamicCount = 4 and NonZeroBoundCount = 4 and WordZeroCount = 4 and WordNonZeroCount = 3 and SignedSum = 0 and SignedZeroCount = 3 then Passed = 1
 loop forever
 `;
 
@@ -60,6 +78,31 @@ try {
     assert.match(generated, /sub 3/i, `${profile}: named constant step should use immediate subtraction`);
     assert.match(generated, /sub 2/i, `${profile}: signed constant step should use immediate subtraction`);
     assert.match(generated, /sub c/i, `${profile}: runtime step must retain the register-based fallback`);
+    assert.doesNotMatch(
+      generated,
+      /AMY_FOR_LOOP_\d+:\s*\r?\n\s*ld a,\(AMY_UVAR_U\)\s*\r?\n\s*cp (?:0|AMY_UCONST_ZERO)/i,
+      `${profile}: unsigned zero-bound loops must omit the impossible initial comparison`
+    );
+    assert.match(
+      generated,
+      /AMY_FOR_LOOP_\d+:\s*\r?\n\s*ld a,\(AMY_UVAR_U\)\s*\r?\n\s*cp 2/i,
+      `${profile}: a nonzero lower bound must retain its initial comparison`
+    );
+    assert.match(
+      generated,
+      /AMY_FOR_LOOP_\d+:\s*\r?\n\s*ld a,\(AMY_UVAR_S\)\s*\r?\n\s*or a\s*\r?\n\s*jp m,/i,
+      `${profile}: a signed zero-bound loop must retain its sign test`
+    );
+    assert.doesNotMatch(
+      generated,
+      /AMY_FOR_LOOP_\d+:\s*\r?\n\s*ld hl,\(AMY_UVAR_W\)\s*\r?\n\s*ld de,(?:0|AMY_UCONST_ZERO)/i,
+      `${profile}: unsigned word zero-bound loops must omit the impossible initial comparison`
+    );
+    assert.match(
+      generated,
+      /AMY_FOR_LOOP_\d+:\s*\r?\n\s*ld hl,\(AMY_UVAR_W\)[\s\S]{0,220}?AMY_CMP_LEFT32/i,
+      `${profile}: an unsigned word nonzero bound must retain its initial comparison`
+    );
 
     const core = await GearcolecoTestCore.create({ seed: 0x464f5231 });
     try {
@@ -69,7 +112,11 @@ try {
       assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_Count1"), 1)[0], 8, `${profile}: step 1 count`);
       assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_Count3"), 1)[0], 4, `${profile}: named step count`);
       assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_DynamicCount"), 1)[0], 4, `${profile}: dynamic step count`);
+      assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_NonZeroBoundCount"), 1)[0], 4, `${profile}: nonzero bound count`);
+      assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_WordZeroCount"), 1)[0], 4, `${profile}: word zero-bound count`);
+      assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_WordNonZeroCount"), 1)[0], 3, `${profile}: word nonzero-bound count`);
       assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_SignedSum"), 1)[0], 0, `${profile}: signed step sum`);
+      assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_SignedZeroCount"), 1)[0], 3, `${profile}: signed zero-bound count`);
       assert.equal(core.readRam(addressOf(generated, "AMY_UVAR_Passed"), 1)[0], 1, `${profile}: aggregate result`);
     } finally {
       core.destroy();

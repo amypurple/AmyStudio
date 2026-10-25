@@ -76,6 +76,10 @@ export function handleForStatement({
     const stepValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
       ? tryEvaluateCompileTimeNumericExpression(stepAnalysis.magnitudeToken)
       : null;
+    const endValue = typeof tryEvaluateCompileTimeNumericExpression === "function"
+      ? tryEvaluateCompileTimeNumericExpression(normalizeExpression(forDownto[3]))
+      : null;
+    const omitInitialBoundCheck = !isSignedDeclaredType(declaredType) && endValue === 0;
     forStack.push({
       name: forDownto[1],
       endToken: normalizeExpression(forDownto[3]),
@@ -89,9 +93,13 @@ export function handleForStatement({
       constantStep: Number.isInteger(stepValue) ? stepValue : null
     });
     const lines = [...initCode, `${loopLabel}:`];
-    const exitCode = emitCompareGoto(forDownto[1], "<", normalizeExpression(forDownto[3]), exitLabel);
-    if (!exitCode) return { ok: false, handled: true, log: `Unsupported downto-loop bound comparison: ${rawLine}` };
-    lines.push(...exitCode);
+    // An unsigned byte/word can never be below zero. The subtraction at NEXT
+    // already exits on borrow, so a zero lower bound needs no per-iteration test.
+    if (!omitInitialBoundCheck) {
+      const exitCode = emitCompareGoto(forDownto[1], "<", normalizeExpression(forDownto[3]), exitLabel);
+      if (!exitCode) return { ok: false, handled: true, log: `Unsupported downto-loop bound comparison: ${rawLine}` };
+      lines.push(...exitCode);
+    }
     return { ok: true, handled: true, lines };
   }
 
@@ -132,6 +140,9 @@ export function handleForStatement({
       && startValue >= 0
       && startValue <= endValue
       && endValue < 255;
+    const omitInitialDownBoundCheck = stepAnalysis.direction === "down"
+      && !isSignedDeclaredType(declaredType)
+      && endValue === 0;
     forStack.push({
       name: forDecl[1],
       endToken: normalizeExpression(forDecl[3]),
@@ -149,7 +160,7 @@ export function handleForStatement({
       } : null
     });
     const lines = [...initCode, `${loopLabel}:`];
-    if (!canUseSmallU8Loop) {
+    if (!canUseSmallU8Loop && !omitInitialDownBoundCheck) {
       const exitCode = emitCompareGoto(
         forDecl[1],
         stepAnalysis.direction === "down" ? "<" : ">",
