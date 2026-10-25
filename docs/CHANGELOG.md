@@ -11,6 +11,8 @@
   validation gates pass.
 - Updated the HTML, Markdown, PDF, CSV and downloadable evidence archive with
   the rebuilt benchmark ROMs and hashes.
+- Synchronized the external-audit ASM exporter with the normal ADAM compiler
+  wiring, restoring 146/146 exports including EOS `create ... status ...`.
 
 ## 2026-10-20 - Spiders game port
 

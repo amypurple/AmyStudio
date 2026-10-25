@@ -33,7 +33,8 @@ control-flow barriers.
 
 ## Clean-repository promotion
 
-The clean corpus compiles 146/146 examples and assembles 145 ROMs. Its 143 exportable post-optimizer
-oracles pass, as do all three GearColeco runtime checks and the MDL ROM self-test. Two pre-existing EOS
-examples remain outside that external-oracle stage because the clean export helper does not yet accept
-their `create ... status ...` statement; both compile in the normal corpus gate.
+The clean corpus compiles 146/146 examples and assembles 145 ROMs. Its original promotion run passed
+143/143 exportable post-optimizer oracles, all three GearColeco runtime checks, and the MDL ROM
+self-test. The audit exporter was then synchronized with the normal compiler's ADAM statement and
+build-context wiring; a complete follow-up export passes 146/146 examples, including both EOS
+`create ... status ...` cases.

@@ -14,6 +14,7 @@ import {
   rewriteImmediateByteTempCoordinateUses as rewriteImmediateByteTempCoordinateUsesCore
 } from "../studio/core/compilerFrontend.js";
 import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtimeCallHelpers.js";
+import { handleAdamStatement } from "../studio/core/compiler/adamStatementHelpers.js";
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "../studio/core/compiler/addressHelpers.js";
 import { handleArrayBulkStatement } from "../studio/core/compiler/arrayBulkStatementHelpers.js";
@@ -56,6 +57,8 @@ import { finalizeAmyTranspile } from "../studio/core/compiler/transpileFinalizat
 import { handleVramTextStatement } from "../studio/core/compiler/vramTextStatementHelpers.js";
 import { handleVramPixelInputStatement } from "../studio/core/compiler/vramPixelInputStatementHelpers.js";
 import { transpileAmySource } from "../studio/core/amyCompiler.js";
+import { bundleAmySource } from "../studio/core/amySourceBundle.js";
+import { getBuildContextDefines, resolveAmyBuildContext } from "../studio/core/projectTargets.js";
 import { getOptimizationProfile, sourceHintsTinySound } from "../studio/core/optimization.js";
 import { generateAsm } from "../studio/core/project.js";
 import { transpileAmyCore } from "../studio/core/compiler/transpileAmyCore.js";
@@ -127,8 +130,25 @@ function stripAmyInlineComment(rawLine) {
   return text;
 }
 
-function transpileAmy(sourceText) {
-  return transpileAmyCore(sourceText, {
+function transpileAmy(sourceText, options = {}) {
+  const projectFiles = options.projectFiles || [];
+  const bundled = bundleAmySource(sourceText, projectFiles);
+  const buildContext = options.buildTarget
+    ? resolveAmyBuildContext({ target: options.buildTarget, memoryProfile: options.memoryProfile }, {
+        target: options.buildTarget,
+        memoryProfile: options.memoryProfile
+      })
+    : null;
+  const files = new Map(projectFiles.map((file) => [
+    String(file?.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase(),
+    file
+  ]));
+  const resolveStaticAbiInclude = (includePath) => {
+    const key = String(includePath || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase();
+    const file = files.get(key);
+    return file?.base64 ? Buffer.from(file.base64, "base64").toString("utf8") : null;
+  };
+  return transpileAmyCore(bundled.sourceText, {
     rewriteImmediateByteTempCoordinateUsesCore,
     inferAmyMemoryCapabilities,
     sourceHintsTinySound,
@@ -177,18 +197,22 @@ function transpileAmy(sourceText) {
     handleMutateStatement,
     handleMathBitStatement,
     handleArrayBulkStatement,
+    handleAdamStatement,
     createInlineStatementCompiler,
     finalizeAmyTranspile
     ,
-    stripAmyInlineComment
+    stripAmyInlineComment,
+    resolveStaticAbiInclude,
+    ...(buildContext ? { buildContext, predefinedSymbols: getBuildContextDefines(buildContext) } : {})
   });
 }
 
-function transpileSource(sourceLang, sourceText) {
+function transpileSource(sourceLang, sourceText, options = {}) {
   return transpileAmySource({
     sourceLang,
     sourceText,
     transpileAmy,
+    options,
     lexZ80Source,
     summarizeTokens
   });
@@ -215,7 +239,7 @@ async function main() {
       projectName: example.projectName,
       sourceLang: example.sourceLang || manifest.defaults.sourceLang,
       targetPlatform: example.buildTarget?.platform || "colecovision",
-      delegated: example.buildTarget?.platform === "colecovision-megacart",
+      delegated: ["colecovision-megacart", "adam-native-program"].includes(example.buildTarget?.platform),
       status: "pending",
       asmPath: null,
       error: null
@@ -225,7 +249,11 @@ async function main() {
       const project = buildProjectFromExample(example, { newProjectFn: makeNewProject });
       project.projectName = example.projectName || project.projectName;
       project.sourceLang = example.sourceLang || project.sourceLang;
-      const transpiled = transpileSource(project.sourceLang, project.sourceText);
+      const transpiled = transpileSource(project.sourceLang, project.sourceText, {
+        projectFiles: project.projectFiles || [],
+        buildTarget: example.buildTarget || project.buildTarget || null,
+        memoryProfile: project.memoryProfile || null
+      });
       if (!transpiled?.ok) {
         throw new Error(transpiled?.log || `Transpile failed for ${example.id}`);
       }
