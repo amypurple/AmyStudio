@@ -30,6 +30,9 @@ export function createAssignmentArithmeticHelpers({
   parseArrayRef,
   parseRecordFieldRef,
   emitLoadArrayAddressIntoHL,
+  emitLoadRecordFieldAddressIntoHL,
+  getRecordAliasIxOperand,
+  getDirectRecordFieldAddress,
   emitU32Inc,
   emitU32Dec,
   ensureCompareScratch32,
@@ -734,6 +737,17 @@ export function createAssignmentArithmeticHelpers({
   }
 
   function emitAdjustByOne(target, op) {
+    const recordField = parseRecordFieldRef(target);
+    if (recordField) {
+      if (recordField.fieldInfo.type !== "int8") return null;
+      const ixOperand = getRecordAliasIxOperand(target);
+      if (ixOperand) return [`    ${op} (${ixOperand})`];
+      const directAddress = getDirectRecordFieldAddress(target);
+      if (directAddress) return [`    ld hl,${directAddress}`, `    ${op} (hl)`];
+      const loadAddress = emitLoadRecordFieldAddressIntoHL(target);
+      if (!loadAddress) return null;
+      return [...loadAddress, `    ${op} (hl)`];
+    }
     const arrayRef = parseArrayRef(target);
     const info = arrayRef ? getRuntimeInfo(arrayRef.name) : getRuntimeInfo(target);
     if (!info) return null;
@@ -1224,10 +1238,9 @@ export function createAssignmentArithmeticHelpers({
       return null;
     }
     if (targetType === "int8") {
-      const isRecordFieldTarget = String(target).includes(".");
       if ((opToken === "+=" || opToken === "-=") && isZero) return [];
-      if (!isRecordFieldTarget && opToken === "+=" && isOne) return emitAdjustByOne(target, "inc");
-      if (!isRecordFieldTarget && opToken === "-=" && isOne) return emitAdjustByOne(target, "dec");
+      if (opToken === "+=" && isOne) return emitAdjustByOne(target, "inc");
+      if (opToken === "-=" && isOne) return emitAdjustByOne(target, "dec");
       if (opToken === "*=" && isOne) return [];
       if (opToken === "*=" && isZero) return emitRuntimeStore(target, "0");
       if (opToken === "*=" && isTwo) return emitMultiplyByPowerOfTwo(target, 1);

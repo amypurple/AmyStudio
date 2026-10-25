@@ -1133,6 +1133,10 @@ export function transpileAmyCore(sourceText, deps) {
     const declarationsLowered = rawLines.map((rawLine, lineIndex) => {
       const code = stripAmyInlineComment(rawLine);
       const stripped = code.trim();
+      const unsupportedDimensions = stripped.match(/^(?:(?:ram|dim|local)\s+)?[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\[([^\]]*)\]/i);
+      if (unsupportedDimensions && unsupportedDimensions[1].split(",").length > 2) {
+        throw new Error(`Amy supports one- and two-dimensional arrays; '${stripped}' has more than two dimensions at line ${lineIndex + 1}`);
+      }
       const recordStart = stripped.match(/^record\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
       if (recordStart) {
         currentRecord = recordStart[1].toLowerCase();
@@ -4077,6 +4081,7 @@ export function transpileAmyCore(sourceText, deps) {
     formatIxOffset,
     scopedRuntimeName,
     symbolOrValue,
+    resolveAddressSymbol,
     emitLoadInt8Into: (...args) => emitLoadInt8Into(...args),
     emitLoadInt16IntoHL: (...args) => emitLoadInt16IntoHL(...args),
     makeGeneratedLabel,
@@ -4119,6 +4124,7 @@ export function transpileAmyCore(sourceText, deps) {
     resolveDeclaredValueType: (...args) => resolveDeclaredValueType(...args),
     scopedRuntimeName,
     symbolOrValue,
+    resolveAddressSymbol,
     emitBcdStore: (...args) => emitBcdStore(...args),
     resolveValueType: (...args) => resolveValueType(...args),
     emitComputeExpressionAst: (...args) => emitComputeExpressionAst(...args),
@@ -4529,6 +4535,9 @@ export function transpileAmyCore(sourceText, deps) {
     parseArrayRef,
     parseRecordFieldRef,
     emitLoadArrayAddressIntoHL: (...args) => emitLoadArrayAddressIntoHL(...args),
+    emitLoadRecordFieldAddressIntoHL: (...args) => emitLoadRecordFieldAddressIntoHL(...args),
+    getRecordAliasIxOperand: (...args) => getRecordAliasIxOperand(...args),
+    getDirectRecordFieldAddress: (...args) => getDirectRecordFieldAddress(...args),
     emitU32Inc,
     emitU32Dec,
     ensureCompareScratch32,

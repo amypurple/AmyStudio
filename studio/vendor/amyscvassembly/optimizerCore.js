@@ -102,7 +102,10 @@ export class Z80Optimizer {
                     }
                 }
 
-                return bodyBytes <= 8;
+                const maxBodyBytes = Number.isInteger(this.config.inlineMaxBodyBytes)
+                    ? Math.max(0, this.config.inlineMaxBodyBytes)
+                    : 8;
+                return bodyBytes <= maxBodyBytes;
             }
 
             tokenReferencesSymbol(token, symbolName) {
@@ -1246,8 +1249,11 @@ export class Z80Optimizer {
                         }
                     }
 
-                    // Relaxation 2: JR → JP (when target is out of JR range)
-                    if (this.config.peephole && mnem === 'jr' && token.operands.length >= 1) {
+                    // Mandatory legalization: JR → JP when the final target is out of range.
+                    // This is correctness work, not an optional size optimization. In
+                    // particular, optimizer Off must still assemble a program whose
+                    // layout makes a relative branch exceed the Z80's signed byte.
+                    if (mnem === 'jr' && token.operands.length >= 1) {
                         const lastOp = token.operands[token.operands.length - 1];
                         if (lastOp.type === 'symbol' || lastOp.type === 'immediate') {
                             const targetAddr = resolveBranchTarget(lastOp);
@@ -2100,6 +2106,41 @@ export class Z80Optimizer {
                     }
 
                     const mnem = token.mnemonic.toLowerCase();
+
+                    // CVBasic commonly widens an already-normalized byte in A to HL,
+                    // then immediately reduces HL back to A for a truth test:
+                    //   LD L,A / LD H,0 / LD A,H / OR L
+                    // A and L contain the same byte at the end, so OR A produces the
+                    // identical A value and documented flags while preserving HL.
+                    if (mnem === 'ld' && i + 3 < tokens.length &&
+                        token.operands.length === 2 &&
+                        token.operands[0].type === 'register' && String(token.operands[0].value).toLowerCase() === 'l' &&
+                        token.operands[1].type === 'register' && String(token.operands[1].value).toLowerCase() === 'a') {
+                        const t1 = tokens[i + 1];
+                        const t2 = tokens[i + 2];
+                        const t3 = tokens[i + 3];
+                        const isLdHZero = t1 instanceof Instruction && !t1.label &&
+                            t1.mnemonic.toLowerCase() === 'ld' && t1.operands.length === 2 &&
+                            t1.operands[0].type === 'register' && String(t1.operands[0].value).toLowerCase() === 'h' &&
+                            t1.operands[1].type === 'immediate' && Number(t1.operands[1].value) === 0;
+                        const isLdAFromH = t2 instanceof Instruction && !t2.label &&
+                            t2.mnemonic.toLowerCase() === 'ld' && t2.operands.length === 2 &&
+                            t2.operands[0].type === 'register' && String(t2.operands[0].value).toLowerCase() === 'a' &&
+                            t2.operands[1].type === 'register' && String(t2.operands[1].value).toLowerCase() === 'h';
+                        const isOrL = t3 instanceof Instruction && !t3.label &&
+                            t3.mnemonic.toLowerCase() === 'or' && t3.operands.length === 1 &&
+                            t3.operands[0].type === 'register' && String(t3.operands[0].value).toLowerCase() === 'l';
+                        if (isLdHZero && isLdAFromH && isOrL) {
+                            optimized.push(token);
+                            optimized.push(t1);
+                            optimized.push(new Instruction(null, 'or', [new Operand('register', 'a')], t3.lineNumber, t3.sourceLine));
+                            this.stats.peepholeOpts++;
+                            this.stats.bytesSaved++;
+                            optimizerLog(`  Folded CVBasic byte-to-word truth normalization at line ${token.lineNumber}`, 'debug');
+                            i += 3;
+                            continue;
+                        }
+                    }
 
                     // === PHASE 1.5i2: Remove dead A transfer in register/immediate copies ===
                     //   ld a,src

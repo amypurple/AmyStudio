@@ -51,6 +51,10 @@ State.Header = 1
 State.EnemyX[0] = 10
 State.EnemyX[Index] = 40
 State.Scores[2] = 1000
+State.Header += 1
+State.Header -= 1
+State.EnemyX[Index] += 1
+State.EnemyX[Index] -= 1
 Result = State.EnemyX[Index]
 WordResult = State.Scores[2]
 State.Footer = Result
@@ -63,6 +67,10 @@ loop forever`;
     assert.equal(index - state, 16, `${profile}: record must be byte-packed to exactly 16 bytes`);
     assert.match(asm, /ld hl,\$[0-9A-F]{4}\s+push hl[\s\S]*ld a,\(AMY_UVAR_Index\)[\s\S]*ld e,a\s+ld d,0[\s\S]*pop hl\s+add hl,de/i,
       `${profile}: dynamic byte field index must use compact address arithmetic`);
+    assert.match(asm, /ld hl,\$[0-9A-F]{4}\s+inc \(hl\)/i,
+      `${profile}: static byte record field += 1 must use direct INC (HL)`);
+    assert.match(asm, /ld a,\(AMY_UVAR_Index\)[\s\S]{0,180}?add hl,de\s+inc \(hl\)/i,
+      `${profile}: indexed byte record field += 1 must compute its address once`);
   }
 
   const badLength = compile("record-array-field-zero", `
@@ -97,18 +105,44 @@ loop forever`, false);
   if (existsSync(biosPath)) {
     const runtimeBody = `
 record TestMemory:
+  u8 GuardBefore
   u8 Bytes[4]
+  i8 SignedByte
+  u8 GuardAfter
   u16 Words[2]
 end record
+record Actor:
+  u8 X
+  u8 Guard
+end record
 TestMemory State
+Actor Actors[2]
 u8 Index = 2
 u8 PassCount = 0
+State.GuardBefore = 17
+State.GuardAfter = 23
 State.Bytes[0] = 11
 State.Bytes[Index] = 33
+State.SignedByte = 127
 State.Words[1] = $1234
+State.Bytes[0] -= 1
+State.Bytes[0] += 1
+State.Bytes[Index] += 1
+State.Bytes[Index] -= 1
+State.SignedByte += 1
+State.SignedByte -= 1
+Actors[1].X = 255
+Actors[1].Guard = 61
+with Actors[1] as ActorRef
+  ActorRef.X += 1
+  ActorRef.X -= 1
+end with
 if State.Bytes[0] = 11 then PassCount += 1
 if State.Bytes[Index] = 33 then PassCount += 1
 if State.Words[1] = $1234 then PassCount += 1
+if State.SignedByte = 127 then PassCount += 1
+if State.GuardBefore = 17 and State.GuardAfter = 23 then PassCount += 1
+if Actors[1].X = 255 and Actors[1].Guard = 61 then PassCount += 1
 record_array_field_done:
 loop forever`;
     const runtimeAsm = compile("record-array-field-runtime", runtimeBody);
@@ -128,7 +162,7 @@ loop forever`;
       core.loadBios(readFileSync(biosPath));
       core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
       core.runFrame();
-      assert.equal(core.readRam(pass, 1)[0], 3, "runtime record array-field checks did not all pass");
+      assert.equal(core.readRam(pass, 1)[0], 6, "runtime record array-field checks did not all pass");
     } finally {
       core.destroy();
     }

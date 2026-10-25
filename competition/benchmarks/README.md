@@ -33,13 +33,13 @@ release or commit dates, and compiler backends are recorded in
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | 227 | 1,466 | 1,980 | 1,420 | 1,401 | 1,106 | 795 | 1,001 |
 | Warrior bitmap | 3,214 | 4,948 | 4,976 | 9,733 | 4,680 | 4,525 | 3,643 | 4,691 |
-| Controller Visual | 594 | 1,695 | 2,272 | 2,025 | 1,403 | 1,194 | 932 | 812 |
-| Sprite Metasprite | 976 | 1,845 | 2,492 | 5,797 | 1,654 | 1,304 | 1,142 | 1,413 |
-| State Update | 1,156 | 2,453 | 2,712 | 4,013 | 2,099 | 1,308 | 1,253 | 1,291 |
-| Tile Animation | 1,316 | 2,982 | 2,729 | 2,091 | 1,838 | 1,530 | 1,376 | 1,627 |
+| Controller Visual | 604 | 1,695 | 2,272 | 2,025 | 1,403 | 1,194 | 932 | 812 |
+| Sprite Metasprite | 939 | 1,845 | 2,492 | 5,797 | 1,654 | 1,304 | 1,142 | 1,413 |
+| State Update | 1,138 | 2,453 | 2,712 | 4,013 | 2,099 | 1,308 | 1,253 | 1,291 |
+| Tile Animation | 1,255 | 2,982 | 2,729 | 2,091 | 1,838 | 1,530 | 1,376 | 1,627 |
 
 These figures include each program's cartridge header, runtime, code, and ROM
-data, but exclude cartridge padding. Amy uses Experimental optimization. z88dk uses its
+data, but exclude cartridge padding. Amy uses Balanced optimization. z88dk uses its
 size-optimized zsdcc backend where the runtime oracle passes and direct `cputs` for fixed text;
 the ZX0 bitmap retains the classic backend because its hand-written depacker depends on that ABI.
 devkitSMS/SDCC uses `--opt-code-size`, `--max-allocs-per-node 200000`,

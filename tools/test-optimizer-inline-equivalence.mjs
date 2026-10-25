@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { getOptimizationProfile } from "../studio/core/optimization.js";
 import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compilerCore.js";
 
 const inlineConfig = {
@@ -19,13 +20,22 @@ const inlineConfig = {
   stripIxFrames: false
 };
 
-async function assemble(source, inline) {
+assert.equal(getOptimizationProfile("off", "").optimizerConfig, null,
+  "off must not configure the optimizer");
+for (const level of ["safe", "balanced", "aggressive"]) {
+  assert.equal(getOptimizationProfile(level, "").optimizerConfig.inlineMaxBodyBytes, 8,
+    `${level} must retain the conservative inline budget`);
+}
+assert.equal(getOptimizationProfile("experimental", "").optimizerConfig.inlineMaxBodyBytes, 16,
+  "experimental alone may use the validated sixteen-byte inline budget");
+
+async function assemble(source, inline, inlineMaxBodyBytes = 8) {
   const result = await assembleAmysCVAssembly({ "main.asm": source }, "main.asm", {
     outputFilename: `inline-equivalence-${inline ? "on" : "off"}.bin`,
     outputMode: "binary",
     targetPlatform: "raw",
     optimizerEnabled: inline,
-    optimizerConfig: inline ? inlineConfig : null
+    optimizerConfig: inline ? { ...inlineConfig, inlineMaxBodyBytes } : null
   });
   assert.equal(result.ok, true, result.log || "fixture should assemble");
   return result;
@@ -143,4 +153,48 @@ for (const [name, source] of Object.entries(retainedFixtures)) {
   assert.match(result.optimizedAsm, /call Tiny/i, `${name}: non-exclusive or over-budget routine must not inline`);
 }
 
-console.log("Optimizer encoded-size inlining equivalence: PASS (state, flags, stack, branch path, reference barriers)");
+const sixteenByteRoutine = `org $9000
+Start:
+  call Medium
+  halt
+Medium:
+  ld a,4
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  ret
+`;
+
+const retainedAtEight = await assemble(sixteenByteRoutine, true, 8);
+const inlinedAtSixteen = await assemble(sixteenByteRoutine, true, 16);
+assert.match(retainedAtEight.optimizedAsm, /call Medium/i, "eight-byte budget must retain a sixteen-byte routine");
+assert.doesNotMatch(inlinedAtSixteen.optimizedAsm, /call Medium/i, "sixteen-byte budget may inline a guarded sixteen-byte routine");
+assert.equal(retainedAtEight.binary.length - inlinedAtSixteen.binary.length, 4, "larger guarded budget still saves only CALL plus RET");
+assert.equal(execute(retainedAtEight.binary).a, execute(inlinedAtSixteen.binary).a, "sixteen-byte inlining preserves execution");
+
+const seventeenByteRoutine = sixteenByteRoutine.replace("  ret\n", "  nop\n  ret\n");
+const retainedAtSeventeen = await assemble(seventeenByteRoutine, true, 16);
+assert.match(retainedAtSeventeen.optimizedAsm, /call Medium/i, "sixteen-byte budget must retain a seventeen-byte routine");
+
+for (const [name, source] of Object.entries({
+  mediumDataAddress: sixteenByteRoutine.replace("  halt\nMedium:", "  halt\nPointer: dw Medium\nMedium:"),
+  mediumStack: sixteenByteRoutine.replace("  ld a,4", "  push af\n  pop af"),
+  mediumIo: sixteenByteRoutine.replace("  ld a,4", "  in a,($fc)"),
+  mediumBranch: sixteenByteRoutine.replace("  ld a,4", "  jr MediumDone\nMediumDone:\n  ld a,4")
+})) {
+  const result = await assemble(source, true, 16);
+  assert.match(result.optimizedAsm, /call Medium/i, `${name}: safety barrier must override the larger budget`);
+}
+
+console.log("Optimizer encoded-size inlining equivalence: PASS (8/16-byte budgets, state, flags, stack, branch, reference barriers)");

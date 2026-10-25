@@ -1,3 +1,17 @@
+## 2026-10-25 - SDCC-inspired code-generation refinements
+
+- Lowered byte record-field `+= 1` and `-= 1` directly to in-place Z80
+  `INC/DEC`, saving 481 bytes across 14 Balanced corpus ROMs with no growth.
+- Reduced Gameplay State Update from 1,152 to 1,138 occupied bytes and the
+  six-sample Amy total from 7,391 to 7,377 bytes.
+- Raised the guarded single-call inlining budget from 8 to 16 encoded bytes
+  for Experimental only, saving another 332 bytes across 36 laboratory ROMs.
+- Preserved calls, branches, labels, stack operations, I/O, data references
+  and unsafe instructions as inlining barriers; all post-optimizer and runtime
+  validation gates pass.
+- Updated the HTML, Markdown, PDF, CSV and downloadable evidence archive with
+  the rebuilt benchmark ROMs and hashes.
+
 ## 2026-10-20 - Spiders game port
 
 - Added Joe Rocke's 1984 **Spiders** to the browser game catalogue, based on
