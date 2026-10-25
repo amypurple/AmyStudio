@@ -45,6 +45,11 @@ the ZX0 bitmap retains the classic backend because its hand-written depacker dep
 devkitSMS/SDCC uses `--opt-code-size`, `--max-allocs-per-node 200000`,
 `NO_FRAME_INT_HOOK`, and `MAXSPRITES=3`. Small fixed VRAM transfers use
 `SG_VRAMmemcpy_brief`; repeated Name/Color bytes use `SG_VRAMmemset`.
+An additional runtime-validated audit found that SDCC allocator budgets are non-monotonic:
+`100000` is smaller for three simple devkitSMS fixtures, `500000` is smaller for the State
+fixture, and `3000` miscompiles State through stale `IY` reuse. These exploratory results do not
+replace the ranked six-ROM set until every selected build and dependency is archived. See
+`docs/audits/optimization/sdcc-node-budget-audit-2026-10-24.md`.
 CVBasic uses its normal compiler and official
 TMSColor/Pletter bitmap pipeline. devkitSMS uses its native aPLib VRAM decoder
 with frame IRQ disabled around decompression; PVColLib uses native RLE. The bitmap

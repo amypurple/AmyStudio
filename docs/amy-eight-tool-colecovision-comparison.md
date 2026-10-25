@@ -1,6 +1,6 @@
 # ColecoVision development: eight-solution comparison
 
-Updated: 2026-10-20
+Updated: 2026-10-25
 
 ## Method
 
@@ -79,6 +79,26 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 These are the most size-oriented **native settings validated in this study**, not claims about
 every release or project configuration. No other toolchain passed through Amy's optimizer or MDL.
 Experimental serves this size test; Balanced remains Amy's default.
+
+### SDCC allocator-budget audit
+
+`--max-allocs-per-node` is a non-monotonic search budget, not a quality slider. Runtime validation
+is mandatory: at `3000`, both SDCC 4.5 and 4.6 emit a superficially smaller Gameplay State Update
+ROM whose stale `IY` reuse changes the expected checksum from 1,478 to 1,742.
+
+| Validated SDCC 4.6 result | Reference | 100000 nodes | 500000 nodes |
+|---|---:|---:|---:|
+| devkitSMS Hello World | 1,401 | **1,386** | 1,390 |
+| devkitSMS Warrior bitmap | 4,680 | **4,665** | 4,669 |
+| devkitSMS Controller Visual | 1,403 | **1,388** | 1,392 |
+| devkitSMS Gameplay State Update | 2,099 | 2,062 | **2,023** |
+| PVColLib State reconstruction | 1,278 | 1,238 | **1,195** |
+| PkK/libcv State Update | 1,291 | 1,257 | **1,214** |
+
+The selected node budget therefore has to be searched per program and each selected ROM must pass
+its runtime oracle. The main ranking remains on its documented reproducible settings until all six
+replacement samples, dependencies, and provenance are complete. The detailed audit is preserved in
+`docs/audits/optimization/sdcc-node-budget-audit-2026-10-24.md`.
 
 ### Real occupied size, excluding cartridge padding
 

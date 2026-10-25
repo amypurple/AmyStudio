@@ -13,6 +13,9 @@
   the rebuilt benchmark ROMs and hashes.
 - Synchronized the external-audit ASM exporter with the normal ADAM compiler
   wiring, restoring 146/146 exports including EOS `create ... status ...`.
+- Documented the SDCC allocator-budget audit: node limits are non-monotonic,
+  `100000` favors simple samples, `500000` favors State Update, and `3000`
+  produces an invalid stale-`IY` result despite its smaller apparent size.
 
 ## 2026-10-20 - Spiders game port
 
