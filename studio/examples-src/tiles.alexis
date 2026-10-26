@@ -1,0 +1,908 @@
+' TILES
+' The memory game by Rick Harrison from COMPUTE! magazine, February 1988
+' (Commodore 64, Apple II, Atari, IBM PC, Amiga and Atari ST), for the
+' ColecoVision in Amy by Amy Bienvenu.
+'
+' Coloured tiles appear on a grid of six by ten. Memorize them, press the
+' button: they vanish, and you must find them again. Each tile found is
+' worth 100 points, each wrong square costs 100. Looking costs too: while
+' the tiles are shown the score drops 20 points a second (40 from 2000,
+' 60 above 5000). Every round adds a tile. The game ends when the score
+' reaches zero, or after a pattern of 30 tiles. One or two players; two
+' players take turns, each with a score, a pattern size and a high score.
+'
+' Controls (either joystick): the stick moves the cursor; a side button
+' shows the tiles, hides them when you are ready, and picks a square.
+' Keypad not used.
+'
+' Liberties taken:
+' - Joystick instead of the cursor keys and RETURN; the number of players
+'   is chosen in the title menu.
+' - The tiles of a round are shown again when it ends.
+' - High scores are kept until power off.
+' - New music (Tile Waltz) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; one sprite (the cursor); the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TC0tl = 128
+const TC0tr = 129
+const TC0bl = 130
+const TC0br = 131
+const TC1tl = 132
+const TC1tr = 133
+const TC1bl = 134
+const TC1br = 135
+const TC2tl = 136
+const TC2tr = 137
+const TC2bl = 138
+const TC2br = 139
+const TC3tl = 140
+const TC3tr = 141
+const TC3bl = 142
+const TC3br = 143
+const TC4tl = 144
+const TC4tr = 145
+const TC4bl = 146
+const TC4br = 147
+const TC5tl = 148
+const TC5tr = 149
+const TC5bl = 150
+const TC5br = 151
+const TC6tl = 152
+const TC6tr = 153
+const TC6bl = 154
+const TC6br = 155
+const TC7tl = 156
+const TC7tr = 157
+const TC7bl = 158
+const TC7br = 159
+const TC8tl = 160
+const TC8tr = 161
+const TC8bl = 162
+const TC8br = 163
+const TC9tl = 164
+const TC9tr = 165
+const TC9bl = 166
+const TC9br = 167
+const TC10tl = 168
+const TC10tr = 169
+const TC10bl = 170
+const TC10br = 171
+const TC11tl = 172
+const TC11tr = 173
+const TC11bl = 174
+const TC11br = 175
+const TC12tl = 176
+const TC12tr = 177
+const TC12bl = 178
+const TC12br = 179
+const TSq0 = 180
+const TSq1 = 181
+const TSq2 = 182
+const TSq3 = 183
+const TSq4 = 184
+const TSq5 = 185
+const TSq6 = 186
+const TSq7 = 187
+const TSq8 = 188
+const TSq9 = 189
+const TSq10 = 190
+const TSq11 = 191
+const TSq12 = 192
+const SCursor = 0
+const NTiles8 = 520
+const SprBytes = 32
+const SndMove = 1
+const SndTick = 2
+const SndReady = 3
+const SndHit = 4
+const SndMiss = 5
+const SndRound = 6
+const SndOver = 7
+const SndThirty = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+u8 PatPos[30]
+u8 PatCol[30]
+u8 Found[30]
+u8 Cell[60]
+u16 Scr[2]
+u16 Hi[2]
+u8 Num[2]
+u8 Out[2]
+u16 NumU = 0
+u16 Drop = 0
+u8 Players = 1
+u8 Pl = 0
+u8 N = 0
+u8 Hits = 0
+u8 Cur = 0
+u8 Menu = 0
+u8 Sec = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Fc = 0
+u8 Ci = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 Ok = 0
+u8 Mk = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table TiSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Hi[0] = 500
+  Hi[1] = 500
+
+title:
+  TitlePage
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    EditorialPage
+    goto title
+  end if
+  Players = Menu + 1
+  for J = 0 to 1
+    Scr[J] = 500
+    Num[J] = 1
+    Out[J] = 1
+  next
+  Out[0] = 0
+  if Players = 2 then Out[1] = 0
+  Pl = 0
+  GameScreen
+
+round:
+  ' this player's round
+  ShowPanel
+  NewPattern
+  ClearGrid
+  Message1
+  print at 2,21, "PLAYER"
+  NumU = Pl + 1
+  print at 9,21, digits$(NumU, 1)
+  print at 11,21, ": FIRE TO VIEW"
+  WaitPress
+  ' viewing costs points every second
+  ShowPattern
+  Message1
+  print at 2,21, "FIRE WHEN READY"
+  Sec = 0
+view_loop:
+  Frame1
+  ReadPad
+  inc Sec
+  if Sec = 60 then
+    Sec = 0
+    Drop = 20
+    if Scr[Pl] >= 2000 then Drop = 40
+    if Scr[Pl] > 5000 then Drop = 60
+    if Scr[Pl] <= Drop then
+      Scr[Pl] = 0
+    else
+      Scr[Pl] = Scr[Pl] - Drop
+    end if
+    ShowPanel
+    play sound SndTick
+    if Scr[Pl] = 0 then goto round_over
+  end if
+  if Press = 0 then goto view_loop
+  ClearGrid
+  play sound SndReady
+  Message1
+  print at 2,21, "TILES TO FIND"
+  Hits = 0
+  ShowLeft
+search_loop:
+  Frame1
+  ReadPad
+  MoveCursor
+  DrawCursor
+  if Press = 1 then
+    Pick
+    if Scr[Pl] = 0 then goto round_over
+    if Hits = N then goto round_won
+  end if
+  goto search_loop
+
+round_won:
+  HideSprites
+  ShowPattern
+  play sound SndRound
+  Message1
+  print at 2,21, "WELL DONE!"
+  Pause2
+  inc Num[Pl]
+  if Num[Pl] > 30 then goto thirty
+  goto next_player
+
+round_over:
+  HideSprites
+  ShowPattern
+  play sound SndOver
+  Out[Pl] = 1
+  Message1
+  print at 2,21, "PLAYER"
+  NumU = Pl + 1
+  print at 9,21, digits$(NumU, 1)
+  print at 11,21, ": GAME OVER"
+  Pause2
+
+next_player:
+  if Scr[Pl] > Hi[Pl] then Hi[Pl] = Scr[Pl]
+  ShowPanel
+  if Out[0] = 1 then
+    if Out[1] = 1 then goto game_end
+  end if
+  if Players = 2 then
+    Pl = 1 - Pl
+    if Out[Pl] = 1 then Pl = 1 - Pl
+  end if
+  goto round
+
+thirty:
+  if Scr[Pl] > Hi[Pl] then Hi[Pl] = Scr[Pl]
+  ShowPanel
+  Message1
+  print at 2,21, "30 TILES FOUND!"
+  play sound SndThirty
+  ' the grid lights up in every colour
+  for K = 1 to 120
+    Frame1
+    Cur = random(0, 59)
+    Fc = random(1, 12)
+    DrawCell
+  next
+
+game_end:
+  Message1
+  print at 2,21, "PRESS A BUTTON"
+  WaitPress
+  goto title
+
+' ---------------------------------------------------------------------------
+' The pattern
+
+' NewPattern: N different squares, each with a colour
+sub NewPattern:
+  N = Num[Pl]
+  for J = 0 to 59
+    Cell[J] = 255
+  next
+  W = N - 1
+  for I = 0 to W
+np_again:
+    V = random(0, 255)
+    V = V + Mix
+    while V >= 60
+      V = V - 60
+    end while
+    Mix = Mix + 23
+    if Cell[V] <> 255 then goto np_again
+    Cell[V] = I
+    PatPos[I] = V
+    PatCol[I] = random(1, 12)
+    Found[I] = 0
+  next
+  return
+end sub
+
+' Pick: the square under the cursor
+sub Pick:
+  I = Cell[Cur]
+  Ok = 0
+  if I <> 255 then
+    if Found[I] = 0 then Ok = 1
+  end if
+  if Ok = 1 then
+    Found[I] = 1
+    inc Hits
+    Scr[Pl] = Scr[Pl] + 100
+    Fc = PatCol[I]
+    DrawCell
+    play sound SndHit
+  else
+    if Scr[Pl] <= 100 then
+      Scr[Pl] = 0
+    else
+      Scr[Pl] = Scr[Pl] - 100
+    end if
+    play sound SndMiss
+  end if
+  if Scr[Pl] > Hi[Pl] then Hi[Pl] = Scr[Pl]
+  ShowPanel
+  ShowLeft
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' DrawCell: square Cur with fill Fc
+sub DrawCell:
+  Cy = 0
+  Cx = Cur
+  while Cx >= 10
+    Cx = Cx - 10
+    inc Cy
+  end while
+  X = Cx * 2
+  X = X + 2
+  Y = Cy * 2
+  Y = Y + 6
+  V = Fc * 4
+  V = V + TC0tl
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  inc V
+  dec X
+  inc Y
+  put char V at X,Y
+  inc V
+  inc X
+  put char V at X,Y
+  return
+end sub
+
+sub ClearGrid:
+  Fc = 0
+  for Cur = 0 to 59
+    DrawCell
+  next
+  Cur = 0
+  return
+end sub
+
+sub ShowPattern:
+  W = N - 1
+  for Ci = 0 to W
+    Cur = PatPos[Ci]
+    Fc = PatCol[Ci]
+    DrawCell
+  next
+  Cur = 0
+  return
+end sub
+
+sub ShowLeft:
+  V = N - Hits
+  NumU = V
+  print at 16,21, digits$(NumU, 2)
+  return
+end sub
+
+sub Message1:
+  fill 32 count 28 at 2,21
+  return
+end sub
+
+' the panel: the scores and the high scores (player 2 only with two)
+sub ShowPanel:
+  print at 23,6, "PLAYER1"
+  NumU = Scr[0]
+  print at 24,7, digits$(NumU, 5)
+  print at 23,9, "HIGH 1"
+  NumU = Hi[0]
+  print at 24,10, digits$(NumU, 5)
+  if Players = 2 then
+    print at 23,12, "PLAYER2"
+    NumU = Scr[1]
+    print at 24,13, digits$(NumU, 5)
+    print at 23,15, "HIGH 2"
+    NumU = Hi[1]
+    print at 24,16, digits$(NumU, 5)
+  end if
+  ' whose turn
+  print at 22,6, " "
+  print at 22,12, " "
+  V = Pl * 6
+  V = V + 6
+  print at 22,V, ">"
+  print at 2,19, "TILES"
+  NumU = Num[Pl]
+  if NumU > 30 then NumU = 30
+  print at 8,19, digits$(NumU, 2)
+  return
+end sub
+
+sub DrawCursor:
+  X = Cx * 16
+  X = X + 16
+  Y = Cy * 16
+  Y = Y + 47
+  V = Tick & 8
+  W = 15
+  if V > 0 then W = 11
+  set sprite 0 to Y, X, SCursor, W
+  update sprites
+  return
+end sub
+
+sub MoveCursor:
+  Cy = 0
+  Cx = Cur
+  while Cx >= 10
+    Cx = Cx - 10
+    inc Cy
+  end while
+  if Stick = 0 then return
+  if Lf1 = 1 then
+    if Cx > 0 then dec Cx
+  end if
+  if Rt1 = 1 then
+    if Cx < 9 then inc Cx
+  end if
+  if Up1 = 1 then
+    if Cy > 0 then dec Cy
+  end if
+  if Dn1 = 1 then
+    if Cy < 5 then inc Cy
+  end if
+  Cur = Cy * 10
+  Cur = Cur + Cx
+  play sound SndMove
+  return
+end sub
+
+sub GameScreen:
+  NewScreen
+  ' the title in small squares above the grid
+  print at 2,2, "T I L E S"
+  for J = 0 to 4
+    V = TSq1 + J
+    X = J * 2
+    X = X + 3
+    put char V at X,3
+  next
+  print at 13,2, "A MEMORY GAME"
+  Fc = 0
+  for Cur = 0 to 59
+    DrawCell
+  next
+  Cur = 0
+  ShowPanel
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub Pause2:
+  for K = 1 to 120
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  for J = 0 to 1
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  ' each letter: 3 squares wide, 5 high (rows packed below)
+  for I = 0 to 4
+    for J = 0 to 4
+      V = I * 5
+      V = V + J
+      V = LogoBits[V]
+      Mk = 1
+      for K = 0 to 2
+        W = V & Mk
+        Mk = Mk + Mk
+        if W > 0 then
+          X = I * 4
+          X = X + 5
+          X = X + K
+          Y = J + 3
+          W = TSq1 + I
+          put char W at X,Y
+        end if
+      next
+    next
+  next
+  print at 7,10, "A MEMORY GAME"
+  print at 10,12, "1 PLAYER"
+  print at 10,13, "2 PLAYERS"
+  print at 10,14, "HOW TO PLAY"
+  print at 10,15, "CREDITS"
+  print at 4,18, "HIGH 1"
+  NumU = Hi[0]
+  print at 11,18, digits$(NumU, 5)
+  print at 4,19, "HIGH 2"
+  NumU = Hi[1]
+  print at 11,19, digits$(NumU, 5)
+  print at 6,22, "1988 RICK HARRISON"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 3 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  for J = 12 to 15
+    print at 8,J, " "
+  next
+  Y = Menu + 12
+  print at 8,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+' the letters T I L E S, five rows each, three bits a row (bit 0 left)
+data LogoBits bytes
+  7,2,2,2,2
+  7,2,2,2,7
+  1,1,1,1,7
+  7,1,7,1,7
+  7,1,7,4,7
+end data
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "PRESS THE BUTTON TO VIEW"
+  print at 2,4, "THE TILES, AGAIN WHEN YOU"
+  print at 2,5, "KNOW WHERE THEY ARE."
+  print at 2,7, "MOVE THE CURSOR TO EACH TILE"
+  print at 2,8, "AND PRESS THE BUTTON."
+  print at 2,10, "RIGHT: 100 POINTS. WRONG:"
+  print at 2,11, "MINUS 100. LOOKING COSTS 20"
+  print at 2,12, "A SECOND (40 FROM 2000, 60"
+  print at 2,13, "ABOVE 5000)."
+  print at 2,15, "EACH ROUND ADDS A TILE."
+  print at 2,16, "GAME OVER AT ZERO, OR AFTER"
+  print at 2,17, "30 TILES. TWO PLAYERS TAKE"
+  print at 2,18, "TURNS."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 12,1, "TILES"
+  print at 2,3, "BY RICK HARRISON, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE, FEBRUARY"
+  print at 2,5, "1988, FOR THE COMMODORE 64,"
+  print at 2,6, "APPLE II, ATARI, IBM PC,"
+  print at 2,7, "AMIGA AND ATARI ST."
+  print at 2,9, "NEW MUSIC: TILE WALTZ."
+  print at 2,11, "COLECOVISION VERSION BY"
+  print at 2,12, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+end data
+data TileCol bytes
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$0E
+  $0E,$E8,$E8,$E8,$E8,$E8,$E8,$E8
+  $0E,$E8,$E8,$E8,$E8,$E8,$E8,$E8
+  $E8,$E8,$E8,$E8,$E8,$E8,$E8,$0E
+  $E8,$E8,$E8,$E8,$E8,$E8,$E8,$0E
+  $0E,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $0E,$EB,$EB,$EB,$EB,$EB,$EB,$EB
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$0E
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$0E
+  $0E,$E3,$E3,$E3,$E3,$E3,$E3,$E3
+  $0E,$E3,$E3,$E3,$E3,$E3,$E3,$E3
+  $E3,$E3,$E3,$E3,$E3,$E3,$E3,$0E
+  $E3,$E3,$E3,$E3,$E3,$E3,$E3,$0E
+  $0E,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $0E,$E5,$E5,$E5,$E5,$E5,$E5,$E5
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$0E
+  $E5,$E5,$E5,$E5,$E5,$E5,$E5,$0E
+  $0E,$ED,$ED,$ED,$ED,$ED,$ED,$ED
+  $0E,$ED,$ED,$ED,$ED,$ED,$ED,$ED
+  $ED,$ED,$ED,$ED,$ED,$ED,$ED,$0E
+  $ED,$ED,$ED,$ED,$ED,$ED,$ED,$0E
+  $0E,$E7,$E7,$E7,$E7,$E7,$E7,$E7
+  $0E,$E7,$E7,$E7,$E7,$E7,$E7,$E7
+  $E7,$E7,$E7,$E7,$E7,$E7,$E7,$0E
+  $E7,$E7,$E7,$E7,$E7,$E7,$E7,$0E
+  $0E,$E9,$E9,$E9,$E9,$E9,$E9,$E9
+  $0E,$E9,$E9,$E9,$E9,$E9,$E9,$E9
+  $E9,$E9,$E9,$E9,$E9,$E9,$E9,$0E
+  $E9,$E9,$E9,$E9,$E9,$E9,$E9,$0E
+  $0E,$EA,$EA,$EA,$EA,$EA,$EA,$EA
+  $0E,$EA,$EA,$EA,$EA,$EA,$EA,$EA
+  $EA,$EA,$EA,$EA,$EA,$EA,$EA,$0E
+  $EA,$EA,$EA,$EA,$EA,$EA,$EA,$0E
+  $0E,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $0E,$E2,$E2,$E2,$E2,$E2,$E2,$E2
+  $E2,$E2,$E2,$E2,$E2,$E2,$E2,$0E
+  $E2,$E2,$E2,$E2,$E2,$E2,$E2,$0E
+  $0E,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $0E,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$0E
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$0E
+  $0E,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $0E,$E6,$E6,$E6,$E6,$E6,$E6,$E6
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$0E
+  $E6,$E6,$E6,$E6,$E6,$E6,$E6,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$15,$15,$15,$15,$15,$15,$01
+  $01,$1D,$1D,$1D,$1D,$1D,$1D,$01
+  $01,$17,$17,$17,$17,$17,$17,$01
+  $01,$19,$19,$19,$19,$19,$19,$01
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$12,$12,$12,$12,$12,$12,$01
+  $01,$14,$14,$14,$14,$14,$14,$01
+  $01,$16,$16,$16,$16,$16,$16,$01
+  $01,$1F,$1F,$1F,$1F,$1F,$1F,$01
+end data
+data SpritePat bytes
+  $FF,$FF,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$FF,$FF
+  $FF,$FF,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$FF,$FF
+end data
+
+asm {
+TiMove:
+    db $40,$40,$70,$01,$50
+TiTick:
+    db $40,$35,$60,$01,$50
+TiReady:
+    db $40,$7F,$20,$02,$40,$7F,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$50
+TiHit:
+    db $40,$6B,$20,$02,$40,$6B,$F0,$01,$40,$47,$20,$05,$40,$47,$F0,$01,$50
+TiMiss:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+TiRound:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$0B,$40,$6B,$F0,$01,$50
+TiOver:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+TiThirty:
+    db $40,$D6,$20,$03,$40,$D6,$F0,$01,$40,$AA,$20,$03,$40,$AA,$F0,$01,$40,$8F,$20,$03,$40,$8F,$F0,$01
+    db $40,$6B,$20,$03,$40,$6B,$F0,$01,$40,$55,$20,$03,$40,$55,$F0,$01,$40,$47,$20,$03,$40,$47,$F0,$01
+    db $40,$35,$20,$1D,$40,$35,$F0,$01,$50
+
+TiSoundTable:
+    dw TiMove,$702B
+    dw TiTick,$7035
+    dw TiReady,$7035
+    dw TiHit,$7035
+    dw TiMiss,$702B
+    dw TiRound,$7035
+    dw TiOver,$7035
+    dw TiThirty,$7035
+    dw TiTuneMel,$703F
+    dw TiTuneBass,$7049
+; Tile Waltz, F major (original for this game)
+; Tiny Sound, 10 frames per step
+TiTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$30,$1A,$21,$28,$01,$2B,$24,$01,$28,$26,$01,$23,$1F,$01,$01
+    db $21,$01,$24,$28,$01,$2D,$2B,$01,$29,$28,$01,$01,$28,$01,$2B,$30
+    db $01,$2F,$2D,$01,$29,$26,$01,$28,$24,$01,$26,$23,$01,$01,$24,$01
+    db $01,$01,$01,$01
+    db $FF
+TiTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$60,$18,$32,$0C,$10,$13,$0C,$10,$13,$07,$0E,$11,$07,$0E,$11
+    db $05,$09,$0C,$05,$09,$0C,$0C,$10,$13,$0C,$10,$13,$0C,$10,$13,$05
+    db $09,$0C,$07,$0B,$0E,$07,$0B,$0E,$07,$0E,$11,$07,$0E,$11,$0C,$10
+    db $13,$0C,$01,$01
+    db $FF
+}

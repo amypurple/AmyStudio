@@ -1,0 +1,1030 @@
+' GALACTICON
+' The arcade game by Bill Chin and George Miller from COMPUTE! magazine,
+' April 1988 (Commodore 64, Atari ST, Apple II), for the ColecoVision in
+' Amy by Amy Bienvenu.
+'
+' Aliens have put a device in the sun that throws fireballs at the
+' planets. Steer the crosshair and shoot each fireball before it reaches
+' its planet; a planet takes three hits, then it is gone. Blue flares do
+' no harm. Shooting heats the blaster: the energy bar shows what is left,
+' and the crosshair turns red when it is too hot to fire. Destroy enough
+' fireballs and the next level is faster. The game ends when the last
+' planet is destroyed.
+'
+' Controls (either joystick): the stick moves the crosshair; a side
+' button fires. Keypad not used.
+'
+' Liberties taken:
+' - Four planets on four orbits (drawn as dotted rings, like the ST
+'   version); the fireballs steer toward their planet.
+' - Each planet takes three hits (the 64 version: "several"); its colour
+'   darkens with each one.
+' - Scoring: 10 points a fireball times the level, 50 a planet left at the
+'   end of a level. The high score is kept until power off.
+' - New music (Solar Wind) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; the crosshair is a stable
+' sprite; planets, fireballs and the explosion share the others and take
+' turns (flicker) only when more than four meet on a line; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait.
+
+const TSun000 = 128
+const TSun001 = 129
+const TSun002 = 130
+const TSun003 = 131
+const TSun010 = 132
+const TSun011 = 133
+const TSun012 = 134
+const TSun013 = 135
+const TSun020 = 136
+const TSun021 = 137
+const TSun022 = 138
+const TSun023 = 139
+const TSun030 = 140
+const TSun031 = 141
+const TSun032 = 142
+const TSun033 = 143
+const TSun100 = 144
+const TSun101 = 145
+const TSun102 = 146
+const TSun103 = 147
+const TSun110 = 148
+const TSun111 = 149
+const TSun112 = 150
+const TSun113 = 151
+const TSun120 = 152
+const TSun121 = 153
+const TSun122 = 154
+const TSun123 = 155
+const TSun130 = 156
+const TSun131 = 157
+const TSun132 = 158
+const TSun133 = 159
+const TDot00 = 160
+const TDot01 = 161
+const TDot10 = 162
+const TDot11 = 163
+const TStar00 = 164
+const TStar01 = 165
+const TStar10 = 166
+const TStar11 = 167
+const TBstar00 = 168
+const TBstar01 = 169
+const TBstar10 = 170
+const TBstar11 = 171
+const TBarE = 172
+const TBarF = 173
+const TBarH = 174
+const SCross = 0
+const SPlanet0 = 4
+const SPlanet1 = 8
+const SPlanet2 = 12
+const SPlanet3 = 16
+const SFire0 = 20
+const SFire1 = 24
+const SBoom0 = 28
+const SBoom1 = 32
+const NTiles8 = 376
+const SprBytes = 288
+const SndTick = 1
+const SndZap = 2
+const SndHot = 3
+const SndBoom = 4
+const SndHit = 5
+const SndLaunch = 6
+const SndLevel = 7
+const SndClear = 8
+const SndOver = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+u8 PA[4]
+u8 PHp[4]
+u8 PX[4]
+u8 PY[4]
+u8 FAct[3]
+u16 FX[3]
+u16 FY[3]
+u8 FVX[3]
+u8 FVY[3]
+u8 FSX[3]
+u8 FSY[3]
+u8 FTg[3]
+u8 FTy[3]
+u8 FAge[3]
+u16 Score = 0
+u16 High = 0
+u16 NumU = 0
+u16 P = 0
+u16 Q = 0
+u8 Level = 1
+u8 Kills = 0
+u8 Need = 8
+u8 Spd = 10
+u8 SpawnT = 60
+u8 MaxF = 1
+u8 Energy = 100
+u8 Shown = 255
+u8 CXp = 120
+u8 CYp = 120
+u8 BX = 0
+u8 BY = 0
+u8 BT = 0
+u8 Alive = 4
+u8 SunF = 0
+u8 Fi = 0
+u8 Pi = 0
+u8 Ax = 0
+u8 Ay = 0
+u8 M = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Hold = 0
+u8 Lk = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table GaSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  High = 0
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+  Score = 0
+  Level = 1
+  for J = 0 to 3
+    PHp[J] = 3
+    PA[J] = J * 64
+  next
+  Alive = 4
+  PlayScreen
+
+new_level:
+  for J = 0 to 2
+    FAct[J] = 0
+  next
+  BT = 0
+  Kills = 0
+  Need = Level * 2
+  Need = Need + 6
+  Spd = Level * 3
+  Spd = Spd + 9
+  if Spd > 40 then Spd = 40
+  MaxF = Level + 1
+  MaxF = MaxF >> 1
+  if MaxF > 3 then MaxF = 3
+  SpawnT = 90
+  Energy = 100
+  Shown = 255
+  ShowHud
+  Message
+  print at 9,22, "LEVEL"
+  NumU = Level
+  print at 15,22, digits$(NumU, 2)
+  print at 18,22, "READY"
+  play sound SndLevel
+  for Lk = 1 to 90
+    Frame1
+    MovePlanets
+    DrawSprites
+  next
+  Message
+
+play_loop:
+  Frame1
+  ReadPad
+  MoveCross
+  MovePlanets
+  Spawn
+  MoveFire
+  if Press = 1 then Shoot
+  ' the blaster cools down
+  V = Tick & 1
+  if V = 0 then
+    if Energy < 100 then inc Energy
+  end if
+  ShowEnergy
+  AnimateSun
+  DrawSprites
+  if Alive = 0 then goto game_over
+  if Kills >= Need then goto level_done
+  goto play_loop
+
+level_done:
+  for J = 1 to Alive
+    Score = Score + 50
+  next
+  ShowHud
+  Message
+  print at 8,22, "LEVEL CLEARED!"
+  play sound SndClear
+  for J = 0 to 2
+    FAct[J] = 0
+  next
+  for Lk = 1 to 100
+    Frame1
+    MovePlanets
+    DrawSprites
+  next
+  inc Level
+  goto new_level
+
+game_over:
+  for J = 0 to 2
+    FAct[J] = 0
+  next
+  DrawSprites
+  if Score > High then High = Score
+  ShowHud
+  Message
+  print at 3,22, "THE PLANETS ARE DESTROYED"
+  play sound SndOver
+  Rearm
+  wait 120 frames
+  pause until press
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' The planets
+
+sub MovePlanets:
+  ' inner orbits turn faster
+  inc PA[0]
+  V = Tick & 1
+  if V = 0 then inc PA[1]
+  V = Tick & 3
+  if V = 0 then inc PA[2]
+  V = Tick & 7
+  if V = 0 then inc PA[3]
+  for Pi = 0 to 3
+    V = PA[Pi] >> 2
+    P = OrbXT[Pi]
+    PX[Pi] = peek(P + V)
+    P = OrbYT[Pi]
+    PY[Pi] = peek(P + V)
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Fireballs
+
+sub Spawn:
+  if SpawnT > 0 then
+    dec SpawnT
+    return
+  end if
+  ' a free slot, within this level's number
+  Fi = 255
+  K = MaxF - 1
+  for J = 0 to K
+    if FAct[J] = 0 then
+      if Fi = 255 then Fi = J
+    end if
+  next
+  if Fi = 255 then return
+  V = 30
+  if Level < 12 then
+    W = Level * 5
+    V = 90 - W
+  end if
+  W = V + 30
+  SpawnT = random(V, W)
+  ' a living planet to aim at
+  V = random(0, 3)
+  for J = 0 to 3
+    if PHp[V] = 0 then
+      inc V
+      V = V & 3
+    end if
+  next
+  FTg[Fi] = V
+  FAct[Fi] = 1
+  FAge[Fi] = 0
+  FX[Fi] = 2048
+  FY[Fi] = 1536
+  FTy[Fi] = 0
+  V = random(0, 3)
+  if V = 0 then
+    ' a harmless flare: straight out in a random direction
+    FTy[Fi] = 1
+    FVX[Fi] = random(4, 14)
+    FVY[Fi] = random(4, 14)
+    FSX[Fi] = random(0, 1)
+    FSY[Fi] = random(0, 1)
+  else
+    Steer
+  end if
+  play sound SndLaunch
+  return
+end sub
+
+' Steer: fireball Fi heads for its planet (speed Spd, in 1/16 pixels)
+sub Steer:
+  K = FTg[Fi]
+  if PHp[K] = 0 then
+    ' its planet is gone: pick another
+    for J = 0 to 3
+      if PHp[K] = 0 then
+        inc K
+        K = K & 3
+      end if
+    next
+    FTg[Fi] = K
+  end if
+  P = FX[Fi] >> 4
+  X = P
+  P = FY[Fi] >> 4
+  Y = P
+  V = PX[K] + 8
+  W = PY[K] + 9
+  FSX[Fi] = 0
+  if V >= X then
+    Ax = V - X
+  else
+    Ax = X - V
+    FSX[Fi] = 1
+  end if
+  FSY[Fi] = 0
+  if W >= Y then
+    Ay = W - Y
+  else
+    Ay = Y - W
+    FSY[Fi] = 1
+  end if
+  M = Ax
+  if Ay > M then M = Ay
+  if M = 0 then M = 1
+  Q = Ax * Spd
+  Q = Q / M
+  FVX[Fi] = Q
+  Q = Ay * Spd
+  Q = Q / M
+  FVY[Fi] = Q
+  return
+end sub
+
+sub MoveFire:
+  for Fi = 0 to 2
+    if FAct[Fi] = 1 then
+      inc FAge[Fi]
+      if FTy[Fi] = 0 then
+        V = FAge[Fi] & 3
+        if V = 0 then Steer
+      end if
+      if FSX[Fi] = 0 then
+        FX[Fi] = FX[Fi] + FVX[Fi]
+      else
+        FX[Fi] = FX[Fi] - FVX[Fi]
+      end if
+      if FSY[Fi] = 0 then
+        FY[Fi] = FY[Fi] + FVY[Fi]
+      else
+        FY[Fi] = FY[Fi] - FVY[Fi]
+      end if
+      P = FX[Fi] >> 4
+      X = P
+      P = FY[Fi] >> 4
+      Y = P
+      ' off the play area or an old flare: gone
+      if X < 20 then FAct[Fi] = 0
+      if X > 236 then FAct[Fi] = 0
+      if Y < 20 then FAct[Fi] = 0
+      if Y > 170 then FAct[Fi] = 0
+      if FTy[Fi] = 1 then
+        if FAge[Fi] > 90 then FAct[Fi] = 0
+      else
+        ' has it reached its planet?
+        K = FTg[Fi]
+        V = PX[K] + 8
+        W = PY[K] + 9
+        Ax = X - V
+        if X < V then Ax = V - X
+        Ay = Y - W
+        if Y < W then Ay = W - Y
+        if Ax < 6 then
+          if Ay < 6 then
+            FAct[Fi] = 0
+            dec PHp[K]
+            BX = PX[K]
+            BY = PY[K]
+            BT = 16
+            play sound SndHit
+            if PHp[K] = 0 then dec Alive
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Shoot: the blaster at the crosshair's centre
+sub Shoot:
+  if Energy < 15 then
+    play sound SndHot
+    return
+  end if
+  Energy = Energy - 15
+  play sound SndZap
+  X = CXp + 8
+  Y = CYp + 8
+  for Fi = 0 to 2
+    if FAct[Fi] = 1 then
+      P = FX[Fi] >> 4
+      V = P
+      P = FY[Fi] >> 4
+      W = P
+      Ax = X - V
+      if X < V then Ax = V - X
+      Ay = Y - W
+      if Y < W then Ay = W - Y
+      if Ax < 10 then
+        if Ay < 10 then
+          FAct[Fi] = 0
+          BX = V - 8
+          BY = W - 9
+          BT = 16
+          play sound SndBoom
+          if FTy[Fi] = 0 then
+            inc Kills
+            for J = 1 to Level
+              Score = Score + 10
+            next
+            ShowHud
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub MoveCross:
+  ' faster while the stick is held
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 0 then
+    Hold = 0
+    return
+  end if
+  if Hold < 30 then inc Hold
+  W = 1
+  if Hold > 8 then W = 2
+  if Hold > 20 then W = 3
+  if Lf1 = 1 then
+    V = 16 + W
+    if CXp > V then CXp = CXp - W
+  end if
+  if Rt1 = 1 then
+    V = 224 - W
+    if CXp < V then CXp = CXp + W
+  end if
+  if Up1 = 1 then
+    V = 12 + W
+    if CYp > V then CYp = CYp - W
+  end if
+  if Dn1 = 1 then
+    V = 158 - W
+    if CYp < V then CYp = CYp + W
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+sub DrawSprites:
+  V = 15
+  if Energy < 15 then V = 8
+  set sprite 0 to CYp, CXp, SCross, V
+  for Pi = 0 to 3
+    J = Pi + 1
+    if PHp[Pi] = 0 then
+      set sprite J to 192, 0, 0, 0
+    else
+      ' colours: blue, green, cyan, light red; darker when hit
+      V = PlanetCol[Pi]
+      if PHp[Pi] = 2 then V = PlanetCol2[Pi]
+      if PHp[Pi] = 1 then V = 14
+      K = Pi * 4
+      K = K + SPlanet0
+      set sprite J to PY[Pi], PX[Pi], K, V
+    end if
+  next
+  for Fi = 0 to 2
+    J = Fi + 5
+    if FAct[Fi] = 1 then
+      P = FX[Fi] >> 4
+      X = P
+      P = FY[Fi] >> 4
+      Y = P
+      X = X - 8
+      Y = Y - 9
+      K = SFire0
+      V = Tick & 4
+      if V > 0 then K = SFire1
+      V = 11
+      if FTy[Fi] = 1 then V = 5
+      set sprite J to Y, X, K, V
+    else
+      set sprite J to 192, 0, 0, 0
+    end if
+  next
+  if BT > 0 then
+    dec BT
+    K = SBoom0
+    if BT < 8 then K = SBoom1
+    V = 11
+    if BT < 8 then V = 8
+    set sprite 8 to BY, BX, K, V
+  else
+    set sprite 8 to 192, 0, 0, 0
+  end if
+  update sprites
+  return
+end sub
+
+data PlanetCol bytes 5, 3, 7, 9
+data PlanetCol2 bytes 4, 12, 4, 6
+
+sub AnimateSun:
+  V = Tick & 15
+  if V <> 0 then return
+  SunF = 1 - SunF
+  K = TSun000
+  if SunF = 1 then K = TSun100
+  for J = 0 to 3
+    Y = J + 10
+    for W = 0 to 3
+      X = W + 14
+      put char K at X,Y
+      inc K
+    next
+  next
+  return
+end sub
+
+sub ShowEnergy:
+  V = Energy / 5
+  if V = Shown then return
+  Shown = V
+  for J = 0 to 19
+    X = J + 9
+    K = TBarE
+    if J < V then
+      K = TBarF
+      if Energy < 15 then K = TBarH
+    end if
+    put char K at X,21
+  next
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "LEVEL"
+  NumU = Level
+  print at 8,1, digits$(NumU, 2)
+  print at 11,1, "SCORE"
+  NumU = Score
+  print at 17,1, digits$(NumU, 5)
+  print at 23,1, "HI"
+  NumU = High
+  print at 25,1, digits$(NumU, 5)
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub PlayScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  copy BgMap count 640 to vram.name + 64
+  print at 2,21, "ENERGY"
+  Shown = 255
+  ShowHud
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then Stick = 1
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 9
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  copy BgMap count 640 to vram.name + 64
+  print at 10,3, "GALACTICON"
+  print at 11,16, "PLAY"
+  print at 11,17, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  print at 10,20, "HIGH"
+  NumU = High
+  print at 15,20, digits$(NumU, 5)
+  print at 4,22, "1988 BILL CHIN, G. MILLER"
+  screen on
+  nmi off
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+  for J = 0 to 3
+    PHp[J] = 3
+  next
+title_loop:
+  Frame1
+  ReadPad
+  MovePlanets
+  AnimateSun
+  for Pi = 0 to 3
+    J = Pi + 1
+    V = PlanetCol[Pi]
+    K = Pi * 4
+    K = K + SPlanet0
+    set sprite J to PY[Pi], PX[Pi], K, V
+  next
+  update sprites
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndTick
+  end if
+  print at 9,16, " "
+  print at 9,17, " "
+  print at 9,18, " "
+  Y = Menu + 16
+  print at 9,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "A DEVICE IN THE SUN THROWS"
+  print at 2,4, "FIREBALLS AT THE PLANETS."
+  print at 2,6, "STICK: MOVE THE CROSSHAIR."
+  print at 2,7, "BUTTON: FIRE."
+  print at 2,9, "SHOOT THE YELLOW FIREBALLS"
+  print at 2,10, "BEFORE THEY REACH A PLANET."
+  print at 2,11, "BLUE FLARES ARE HARMLESS."
+  print at 2,13, "EACH SHOT HEATS THE BLASTER:"
+  print at 2,14, "WATCH THE ENERGY BAR. RED"
+  print at 2,15, "CROSSHAIR: LET IT COOL."
+  print at 2,17, "A PLANET TAKES THREE HITS."
+  print at 2,18, "LOSE THEM ALL: GAME OVER."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 10,1, "GALACTICON"
+  print at 2,3, "BY BILL CHIN AND GEORGE"
+  print at 2,4, "MILLER, FROM COMPUTE!"
+  print at 2,5, "MAGAZINE, APRIL 1988, FOR"
+  print at 2,6, "THE COMMODORE 64, ATARI ST"
+  print at 2,7, "AND APPLE II."
+  print at 2,9, "NEW MUSIC: SOLAR WIND."
+  print at 2,11, "COLECOVISION VERSION BY"
+  print at 2,12, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data BgMap bytes
+  32,32,32,168,32,32,32,32,32,32,32,32,32,32,32,32,162,169,32,165,32,165,32,32,32,32,32,165,32,32,32,32
+  32,32,32,32,170,32,32,32,32,32,32,163,161,32,160,160,32,160,161,163,32,32,32,32,32,32,168,32,168,32,32,32
+  32,32,164,32,32,32,32,32,32,32,161,32,32,32,163,163,163,163,32,32,161,163,32,32,164,32,32,32,32,32,32,32
+  32,32,32,32,32,167,165,32,32,162,32,32,160,160,32,32,32,32,32,160,162,32,160,165,32,32,32,168,32,171,32,32
+  32,32,32,32,32,32,32,32,162,32,163,160,32,32,162,160,160,160,162,32,161,32,32,163,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,161,32,163,32,32,161,165,32,163,32,32,169,160,32,161,162,32,162,32,32,32,32,32,32,32
+  32,32,32,32,166,32,166,160,32,160,32,160,32,163,161,32,161,161,32,171,160,162,32,162,163,32,32,32,32,32,32,32
+  32,32,32,32,32,32,161,32,161,169,161,32,161,32,32,32,32,32,161,163,32,163,32,162,32,162,32,32,32,32,32,32
+  32,32,164,32,32,32,161,32,160,32,160,32,160,32,128,129,130,131,32,32,162,163,32,163,32,162,32,32,32,32,32,32
+  32,32,32,32,32,32,161,32,160,32,160,161,32,32,132,133,134,135,32,32,32,32,32,32,32,32,164,32,164,32,32,32
+  32,32,32,32,32,32,163,32,162,32,162,163,32,32,136,137,138,139,32,32,160,32,160,161,32,161,165,167,32,32,32,32
+  32,32,32,32,32,32,163,32,162,32,162,32,162,32,140,141,142,143,32,32,160,161,32,161,32,160,32,32,32,170,32,32
+  32,32,32,32,165,32,163,32,163,32,163,32,163,32,32,32,32,32,163,161,166,161,32,160,32,160,32,32,32,32,32,32
+  32,32,32,32,32,32,32,162,32,162,32,162,32,161,163,170,163,163,32,32,162,160,32,160,161,32,32,165,32,32,32,32
+  32,32,32,32,32,32,32,163,32,161,32,32,160,162,32,161,32,32,32,162,32,163,160,32,160,165,32,32,32,32,32,32
+  32,32,32,32,32,32,165,32,160,166,161,162,32,32,160,162,162,162,160,32,163,32,171,162,32,168,32,32,32,32,32,32
+  32,32,32,32,32,32,166,32,32,160,32,32,162,162,32,32,166,32,32,162,160,32,162,32,32,32,32,32,164,32,32,32
+  32,32,32,32,167,32,32,32,169,32,160,32,32,32,161,161,161,161,32,32,163,161,32,32,32,171,32,32,32,32,32,32
+  32,32,164,32,32,32,32,32,32,164,32,161,163,32,162,162,32,162,163,161,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,171,32,160,32,166,32,32,32,32,32,32,32,32,32,32,32,32,32
+end data
+data OrbX0 bytes 154,154,153,153,151,150,148,146,144,142,139,136,133,130,127,123,120,117,113,110,107,104,101,98,96,94,92,90,89,87,87,86,86,86,87,87,89,90,92,94,96,98,101,104,107,110,113,117,120,123,127,130,133,136,139,142,144,146,148,150,151,153,153,154
+data OrbY0 bytes 87,90,93,96,99,102,105,107,110,112,114,115,117,118,119,119,119,119,119,118,117,115,114,112,110,107,105,102,99,96,93,90,87,84,81,78,75,72,69,67,64,62,60,59,57,56,55,55,55,55,55,56,57,59,60,62,64,67,69,72,75,78,81,84
+data OrbX1 bytes 168,168,167,166,164,162,160,157,154,150,147,143,138,134,129,125,120,115,111,106,102,97,93,90,86,83,80,78,76,74,73,72,72,72,73,74,76,78,80,83,86,90,93,97,102,106,111,115,120,125,129,134,138,143,147,150,154,157,160,162,164,166,167,168
+data OrbY1 bytes 87,91,96,100,104,108,112,116,119,122,125,127,129,131,132,132,133,132,132,131,129,127,125,122,119,116,112,108,104,100,96,91,87,83,78,74,70,66,62,58,55,52,49,47,45,43,42,42,41,42,42,43,45,47,49,52,55,58,62,66,70,74,78,83
+data OrbX2 bytes 182,182,181,179,177,175,172,168,164,159,154,149,144,138,132,126,120,114,108,102,96,91,86,81,76,72,68,65,63,61,59,58,58,58,59,61,63,65,68,72,76,81,86,91,96,102,108,114,120,126,132,138,144,149,154,159,164,168,172,175,177,179,181,182
+data OrbY2 bytes 87,93,98,104,110,115,120,124,129,133,136,139,141,143,145,146,146,146,145,143,141,139,136,133,129,124,120,115,110,104,98,93,87,81,76,70,64,59,54,50,45,41,38,35,33,31,29,28,28,28,29,31,33,35,38,41,45,50,54,59,64,70,76,81
+data OrbX3 bytes 196,196,195,193,190,187,183,179,174,168,162,156,149,142,135,127,120,113,105,98,91,84,78,72,66,61,57,53,50,47,45,44,44,44,45,47,50,53,57,61,66,72,78,84,91,98,105,113,120,127,135,142,149,156,162,168,174,179,183,187,190,193,195,196
+data OrbY3 bytes 87,94,101,108,115,121,127,133,138,143,147,151,154,156,158,159,159,159,158,156,154,151,147,143,138,133,127,121,115,108,101,94,87,80,73,66,59,53,47,41,36,31,27,23,20,18,16,15,15,15,16,18,20,23,27,31,36,41,47,53,59,66,73,80
+data OrbXT words = @OrbX0, @OrbX1, @OrbX2, @OrbX3
+data OrbYT words = @OrbY0, @OrbY1, @OrbY2, @OrbY3
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$03,$05,$06
+  $00,$00,$07,$0B,$0D,$E0,$C0,$68
+  $00,$00,$A0,$D0,$E0,$07,$24,$16
+  $00,$00,$00,$00,$00,$A0,$C0,$E0
+  $06,$06,$03,$06,$05,$05,$06,$03
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $05,$03,$00,$00,$00,$00,$00,$00
+  $60,$70,$C0,$A0,$60,$A0,$C0,$60
+  $C0,$06,$03,$03,$06,$04,$06,$01
+  $00,$00,$00,$00,$00,$80,$40,$C0
+  $00,$00,$00,$00,$00,$01,$02,$05
+  $A0,$C0,$60,$C0,$A0,$80,$60,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $B0,$C0,$E0,$06,$70,$A0,$C0,$00
+  $E4,$48,$90,$60,$0E,$07,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $08,$0A,$0C,$E0,$E0,$C0,$09,$68
+  $00,$00,$00,$00,$18,$90,$24,$16
+  $00,$00,$00,$00,$C0,$E0,$E0,$60
+  $38,$42,$C0,$28,$05,$05,$06,$03
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $05,$03,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$A0,$60,$A0,$C0,$0C
+  $05,$06,$03,$03,$18,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$80,$40,$C0
+  $00,$00,$00,$00,$00,$01,$02,$05
+  $14,$C0,$60,$C0,$A0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $B0,$12,$60,$C0,$0E,$F0,$07,$02
+  $E4,$48,$90,$70,$82,$00,$00,$00
+  $C0,$E0,$E0,$00,$00,$00,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00
+  $00,$04,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$00,$00,$04,$00,$00
+  $00,$00,$80,$80,$80,$80,$00,$00
+  $00,$00,$80,$80,$80,$80,$00,$00
+  $00,$00,$80,$80,$80,$80,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$81,$81,$81
+  $01,$01,$81,$81,$81,$1A,$8A,$AB
+  $01,$01,$81,$81,$81,$1A,$BA,$AB
+  $01,$01,$01,$01,$01,$81,$81,$81
+  $81,$81,$A1,$A1,$A1,$B1,$A1,$B1
+  $AB,$AB,$0B,$0B,$0B,$0B,$0B,$0B
+  $AB,$AB,$0B,$0B,$0B,$0B,$0B,$0B
+  $81,$81,$A1,$A1,$A1,$B1,$B1,$A1
+  $18,$A8,$B8,$A8,$A1,$81,$81,$B1
+  $0B,$0B,$0B,$0B,$0B,$AB,$AB,$AB
+  $0B,$0B,$0B,$0B,$0B,$AB,$AB,$AB
+  $B8,$B8,$A8,$A8,$A1,$B1,$81,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $AB,$8A,$8A,$18,$81,$81,$81,$01
+  $BA,$BA,$BA,$18,$81,$81,$81,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $61,$81,$81,$18,$18,$1A,$BA,$AB
+  $01,$01,$01,$01,$81,$BA,$BA,$AB
+  $01,$01,$01,$01,$81,$81,$81,$81
+  $81,$68,$18,$81,$A1,$B1,$A1,$B1
+  $AB,$AB,$0B,$0B,$0B,$0B,$0B,$0B
+  $AB,$AB,$0B,$0B,$0B,$0B,$0B,$0B
+  $A1,$B1,$A1,$A1,$A1,$B8,$B8,$8A
+  $B1,$A1,$B1,$A1,$81,$18,$18,$18
+  $0B,$0B,$0B,$0B,$0B,$AB,$AB,$AB
+  $0B,$0B,$0B,$0B,$0B,$AB,$AB,$AB
+  $8B,$B8,$A8,$A1,$A1,$B1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $AB,$BA,$8A,$18,$81,$18,$81,$81
+  $BA,$BA,$BA,$18,$81,$01,$01,$01
+  $81,$81,$81,$01,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$01,$01
+  $01,$41,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$41,$01,$01
+  $01,$01,$01,$01,$01,$41,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$01,$01,$01,$01,$E1,$01,$01
+  $01,$F1,$01,$01,$01,$01,$01,$01
+  $01,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$04,$41,$41,$41,$41,$04,$01
+  $01,$04,$43,$4C,$4C,$43,$04,$01
+  $01,$04,$48,$46,$46,$48,$04,$01
+end data
+data SpritePat bytes
+  $00,$02,$02,$00,$00,$60,$00,$01,$01,$00,$60,$00,$00,$02,$02,$00
+  $00,$40,$40,$00,$00,$06,$00,$80,$80,$00,$06,$00,$00,$40,$40,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$0F,$0F,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0,$F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$07,$0F,$1F,$1F,$1F,$1F,$1F,$1F,$0F,$07,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$F8,$F8,$F8,$F8,$F8,$F8,$F0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0F,$0F,$0F,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0,$F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$07,$0E,$0F,$0D,$0F,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$F0,$F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$06,$0F,$0F,$0F,$0E,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$F0,$B0,$F0,$F0,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$08,$05,$03,$1F,$03,$05,$09,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$20,$40,$80,$F0,$80,$40,$20,$00,$00,$00,$00,$00,$00,$00
+  $80,$40,$20,$00,$00,$00,$00,$FE,$00,$00,$00,$20,$40,$80,$00,$00
+  $81,$82,$84,$00,$00,$00,$00,$3F,$00,$00,$00,$84,$82,$81,$00,$00
+end data
+
+asm {
+GaTick:
+    db $40,$40,$60,$01,$50
+GaZap:
+    db $40,$35,$20,$01,$40,$47,$30,$01,$40,$5F,$40,$01,$40,$7F,$50,$01,$40,$AA,$70,$01,$50
+GaHot:
+    db $00,$00,$46,$03,$00,$00,$76,$03,$10
+GaBoom:
+    db $00,$00,$24,$02,$00,$00,$35,$03,$00,$00,$56,$04,$00,$00,$77,$05,$10
+GaHit:
+    db $00,$00,$17,$03,$00,$00,$37,$04,$00,$00,$57,$06,$00,$00,$77,$08,$10
+GaLaunch:
+    db $40,$53,$51,$02,$40,$7C,$61,$02,$40,$AB,$71,$02,$50
+GaLevel:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$09,$40,$8F,$F0,$01
+    db $50
+GaClear:
+    db $40,$D6,$20,$03,$40,$D6,$F0,$01,$40,$AA,$20,$03,$40,$AA,$F0,$01,$40,$8F,$20,$03,$40,$8F,$F0,$01
+    db $40,$6B,$20,$03,$40,$6B,$F0,$01,$40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$6B,$20,$0D,$40,$6B,$F0,$01
+    db $50
+GaOver:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+GaSoundTable:
+    dw GaTick,$702B
+    dw GaZap,$7035
+    dw GaHot,$702B
+    dw GaBoom,$702B
+    dw GaHit,$702B
+    dw GaLaunch,$7035
+    dw GaLevel,$7035
+    dw GaClear,$7035
+    dw GaOver,$7035
+    dw GaTuneMel,$703F
+    dw GaTuneBass,$7049
+; Solar Wind, E minor (original for this game)
+; Tiny Sound, 7 frames per step
+GaTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$23,$01,$2A,$01,$26,$28,$2A,$01,$2D,$01,$2A,$26
+    db $28,$01,$01,$01,$23,$01,$2A,$01,$26,$28,$2A,$01,$2F,$2D,$2A,$28
+    db $26,$01,$23,$01
+    db $FF
+GaTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$0B,$06,$0B,$0B,$0B,$06,$0B,$0E,$0E,$09,$0E
+    db $04,$04,$0B,$04,$0B,$0B,$06,$0B,$07,$07,$0E,$07,$09,$09,$10,$09
+    db $0B,$06,$0B,$01
+    db $FF
+}

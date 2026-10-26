@@ -1,0 +1,1389 @@
+' CANFIELD
+' The solitaire game by Ed Reynolds from COMPUTE! magazine, January 1988
+' (Atari version by Bill Chin, IBM PC and Amiga versions by George
+' Miller), for the ColecoVision in Amy by Amy Bienvenu.
+'
+' Canfield was played at Richard A. Canfield's casino in Saratoga Springs:
+' a deck costs $50, each card played to a foundation pays $5.
+'
+' The deal: 13 cards face down make the stock (its top card face up); one
+' card starts the first foundation and sets the base rank for all four;
+' four cards start the tableau; the other 34 are the pack. The pack is
+' turned over three cards at a time onto the talon; when it runs out, the
+' talon becomes the pack again. Foundations build up in suit from the
+' base rank, wrapping from king to ace, until each holds 13. Tableau
+' piles build down in alternate colours (wrapping too); a whole pile moves
+' as one. The stock fills empty tableau places while it lasts; after that
+' a place may be filled from the talon or left empty. Cards of the base
+' rank go to the foundations by themselves.
+'
+' Controls (either joystick): the stick moves the pointer between the
+' piles; the left button picks a pile up and puts it down on another
+' (on the pack: turns three cards over); the right button sends the top
+' card of the pile under the pointer to its foundation, or drops a picked
+' pile. MENU (bottom left): new deal or the title. Keypad not used.
+'
+' Liberties taken:
+' - Joystick and buttons instead of the S, T, F, P, 1-4 keys.
+' - The bank is kept until power off (the disk versions saved it per
+'   player name); below $50 it starts again at $500, as in the original.
+' - Cards drawn like the Apple II version's hi-res cards (from Monte Carlo).
+' - New music (Saratoga Rag) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (the pointers);
+' the frame loop is protected from the NMI and every screen is drawn with
+' the NMI off after a wait.
+
+const TRk0 = 128
+const TRk1 = 129
+const TRk2 = 130
+const TRk3 = 131
+const TRk4 = 132
+const TRk5 = 133
+const TRk6 = 134
+const TRk7 = 135
+const TRk8 = 136
+const TRk9 = 137
+const TRk10 = 138
+const TRk11 = 139
+const TRk12 = 140
+const TRr0 = 141
+const TRr1 = 142
+const TRr2 = 143
+const TRr3 = 144
+const TRr4 = 145
+const TRr5 = 146
+const TRr6 = 147
+const TRr7 = 148
+const TRr8 = 149
+const TRr9 = 150
+const TRr10 = 151
+const TRr11 = 152
+const TRr12 = 153
+const TSs0 = 154
+const TSs1 = 155
+const TSs2 = 156
+const TSs3 = 157
+const TPipa00 = 158
+const TPipa01 = 159
+const TPipa10 = 160
+const TPipa11 = 161
+const TPipb00 = 162
+const TPipb01 = 163
+const TPipb10 = 164
+const TPipb11 = 165
+const TPipc00 = 166
+const TPipc01 = 167
+const TPipc10 = 168
+const TPipc11 = 169
+const TPipd00 = 170
+const TPipd01 = 171
+const TPipd10 = 172
+const TPipd11 = 173
+const TEtl = 174
+const TEtr = 175
+const TEl = 176
+const TEr = 177
+const TEbl = 178
+const TEbr = 179
+const TFelt = 180
+const TSlot00 = 181
+const TSlot01 = 182
+const TSlot02 = 183
+const TSlot03 = 184
+const TSlot10 = 185
+const TSlot11 = 186
+const TSlot12 = 187
+const TSlot13 = 188
+const TSlot20 = 189
+const TSlot21 = 190
+const TSlot22 = 191
+const TSlot23 = 192
+const TBack00 = 193
+const TBack01 = 194
+const TBack02 = 195
+const TBack03 = 196
+const TBack10 = 197
+const TBack11 = 198
+const TBack12 = 199
+const TBack13 = 200
+const TBack20 = 201
+const TBack21 = 202
+const TBack22 = 203
+const TBack23 = 204
+const SArrow = 0
+const SArrowl = 4
+const NTiles8 = 616
+const SprBytes = 64
+const SndMove = 1
+const SndPick = 2
+const SndUnpick = 3
+const SndPlace = 4
+const SndBad = 5
+const SndShuffle = 6
+const SndDeal = 7
+const SndWin = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+u8 Cd[52]
+u8 Stk[13]
+u8 Pk[52]
+u8 Tl[52]
+u8 Fo[4]
+u8 Tb[64]
+u8 Tn[4]
+u8 Sc = 0
+u8 Pc = 0
+u8 Tc = 0
+u8 Base = 0
+u8 Done = 0
+u16 Money = 500
+u16 NumU = 0
+u8 Cur = 0
+u8 Sel = 255
+u8 Menu = 0
+u8 Changed = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Mix = 0
+u8 Tick = 0
+u8 Src = 0
+u8 Dst = 0
+u8 Cc = 0
+u8 Ok = 0
+u8 Fk = 0
+u8 Sp = 0
+u8 Dk = 0
+u8 Dr = 0
+u8 Ds = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Dq = 0
+u8 Ct = 0
+u8 Cr = 0
+u8 Cs = 0
+u8 Pt = 0
+u8 Pn = 0
+u8 Pi = 0
+u8 Fi = 0
+u8 Np = 0
+u8 Ja = 0
+u8 Ka = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table CfSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Money = 500
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+
+new_deal:
+  if Money < 50 then
+    Money = 500
+    NewScreen
+    print at 4,11, "A NEW STAKE OF 500"
+    ShowScreen
+    Rearm
+    wait 90 frames
+    nmi off
+    TableScreen
+  end if
+  Menu = 0
+  Money = Money - 50
+  Shuffle
+  DealOut
+  Cur = 10
+  Sel = 255
+  AutoPlay
+  DrawTable
+
+play_loop:
+  Frame1
+  ReadPad
+  MovePointer
+  if Press = 1 then LeftButton
+  if Press2 = 1 then RightButton
+  if Changed = 1 then
+    Changed = 0
+    AutoPlay
+    DrawTable
+  end if
+  if Done = 52 then goto won
+  if Menu = 1 then goto new_deal
+  if Menu = 2 then goto title
+  DrawPointers
+  goto play_loop
+
+won:
+  HideSprites
+  ShowHud
+  fill 32 count 28 at 2,22
+  print at 3,22, "YOU HAVE BEATEN THE ODDS!"
+  play sound SndWin
+  Rearm
+  wait 180 frames
+  pause until press
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' The deal
+
+sub Shuffle:
+  for J = 0 to 51
+    Cd[J] = J
+  next
+  play sound SndShuffle
+  J = 51
+sh_next:
+  V = random(0, 255)
+  V += Mix
+  V += Tick
+  N = J + 1
+  while V >= N
+    V -= N
+  end while
+  X = Cd[J]
+  Cd[J] = Cd[V]
+  Cd[V] = X
+  Mix += 37
+  dec J
+  if J > 0 then goto sh_next
+  return
+end sub
+
+sub DealOut:
+  ' the stock: 13 cards, the last one on top
+  for J = 0 to 12
+    Stk[J] = Cd[J]
+  next
+  Sc = 13
+  ' the first foundation sets the base rank
+  for J = 0 to 3
+    Fo[J] = 255
+  next
+  Dk = Cd[13]
+  CardOf
+  Base = Dr
+  Fo[0] = Dk
+  Done = 1
+  Money = Money + 5
+  ' the tableau
+  for J = 0 to 3
+    K = J * 16
+    V = J + 14
+    Tb[K] = Cd[V]
+    Tn[J] = 1
+  next
+  ' the pack: the 34 others
+  Pc = 0
+  for J = 18 to 51
+    Pk[Pc] = Cd[J]
+    inc Pc
+  next
+  Tc = 0
+  return
+end sub
+
+' Dk = a card (0-51): Dr = its rank (0 ace - 12 king), Ds = its suit
+' (0 hearts, 1 diamonds, 2 spades, 3 clubs)
+sub CardOf:
+  Dr = Dk
+  Ds = 0
+  while Dr >= 13
+    Dr -= 13
+    inc Ds
+  end while
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Rules
+
+' TopOf: Cc = the top card of spot Src (stock 0, talon 1, tableau 7-10),
+' 255 when there is none
+sub TopOf:
+  Cc = 255
+  if Src = 0 then
+    if Sc > 0 then
+      K = Sc - 1
+      Cc = Stk[K]
+    end if
+  end if
+  if Src = 1 then
+    if Tc > 0 then
+      K = Tc - 1
+      Cc = Tl[K]
+    end if
+  end if
+  if Src >= 7 then
+    Pt = Src - 7
+    Pn = Tn[Pt]
+    if Pn > 0 then
+      K = Pt * 16
+      K = K + Pn
+      dec K
+      Cc = Tb[K]
+    end if
+  end if
+  return
+end sub
+
+' TakeTop: remove the top card of spot Src
+sub TakeTop:
+  if Src = 0 then dec Sc
+  if Src = 1 then dec Tc
+  if Src >= 7 then
+    Pt = Src - 7
+    dec Tn[Pt]
+  end if
+  return
+end sub
+
+' FoundFor: Fk = the foundation card Cc can go on, 255 if none
+sub FoundFor:
+  Fk = 255
+  Dk = Cc
+  CardOf
+  Cr = Dr
+  Cs = Ds
+  for J = 0 to 3
+    if Fo[J] = 255 then
+      if Cr = Base then
+        if Fk = 255 then Fk = J
+      end if
+    else
+      Dk = Fo[J]
+      CardOf
+      if Ds = Cs then
+        V = Dr + 1
+        if V = 13 then V = 0
+        if V = Cr then Fk = J
+      end if
+    end if
+  next
+  return
+end sub
+
+' ToFoundation: play the top card of Src to its foundation (Ok = 1)
+sub ToFoundation:
+  Ok = 0
+  TopOf
+  if Cc = 255 then return
+  FoundFor
+  if Fk = 255 then return
+  Fo[Fk] = Cc
+  TakeTop
+  inc Done
+  Money = Money + 5
+  Ok = 1
+  return
+end sub
+
+' FitsOn: Ok = 1 when card Cc goes on tableau pile Pt (one rank lower,
+' the other colour; ranks wrap)
+sub FitsOn:
+  Ok = 0
+  Pn = Tn[Pt]
+  if Pn = 0 then return
+  K = Pt * 16
+  K = K + Pn
+  dec K
+  Dk = Tb[K]
+  CardOf
+  Cr = Dr
+  W = 0
+  if Ds < 2 then W = 1
+  Dk = Cc
+  CardOf
+  V = 0
+  if Ds < 2 then V = 1
+  if V = W then return
+  V = Dr + 1
+  if V = 13 then V = 0
+  if V = Cr then Ok = 1
+  return
+end sub
+
+' MoveTo: move what Src holds onto Dst; Ok = 1 when it worked
+sub MoveTo:
+  Ok = 0
+  if Dst >= 3 then
+    if Dst <= 6 then
+      ToFoundation
+      return
+    end if
+  end if
+  if Dst < 7 then return
+  Pt = Dst - 7
+  if Src >= 7 then
+    ' a whole tableau pile onto another
+    if Src = Dst then return
+    X = Src - 7
+    N = Tn[X]
+    if N = 0 then return
+    K = X * 16
+    Cc = Tb[K]
+    FitsOn
+    if Ok = 0 then return
+    Y = Tn[Pt]
+    Ct = N - 1
+    for J = 0 to Ct
+      V = X * 16
+      V = V + J
+      W = Pt * 16
+      W = W + Y
+      W = W + J
+      Tb[W] = Tb[V]
+    next
+    Tn[Pt] = Y + N
+    Tn[X] = 0
+    return
+  end if
+  ' one card from the stock or the talon
+  TopOf
+  if Cc = 255 then return
+  if Tn[Pt] = 0 then
+    ' an empty place: from the talon, once the stock is gone
+    if Src <> 1 then return
+    if Sc > 0 then return
+    Ok = 1
+  else
+    FitsOn
+  end if
+  if Ok = 0 then return
+  K = Pt * 16
+  K = K + Tn[Pt]
+  Tb[K] = Cc
+  inc Tn[Pt]
+  TakeTop
+  return
+end sub
+
+' TurnPack: three cards from the pack to the talon, or the talon back
+sub TurnPack:
+  if Pc = 0 then
+    if Tc = 0 then
+      play sound SndBad
+      return
+    end if
+    Ct = Tc - 1
+    for J = 0 to Ct
+      V = Tc - 1
+      V = V - J
+      Pk[J] = Tl[V]
+    next
+    Pc = Tc
+    Tc = 0
+    play sound SndShuffle
+    return
+  end if
+  for J = 1 to 3
+    if Pc > 0 then
+      dec Pc
+      Tl[Tc] = Pk[Pc]
+      inc Tc
+    end if
+  next
+  play sound SndDeal
+  return
+end sub
+
+' AutoPlay: base-rank cards go to the foundations; the stock fills empty
+' tableau places
+sub AutoPlay:
+ap_again:
+  for Src = 0 to 10
+    if Src = 2 then Src = 6
+    TopOf
+    if Cc <> 255 then
+      Dk = Cc
+      CardOf
+      if Dr = Base then
+        ToFoundation
+        if Ok = 1 then goto ap_again
+      end if
+    end if
+  next
+  for Pt = 0 to 3
+    if Tn[Pt] = 0 then
+      if Sc > 0 then
+        dec Sc
+        K = Pt * 16
+        Tb[K] = Stk[Sc]
+        Tn[Pt] = 1
+        goto ap_again
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Controls
+
+sub MovePointer:
+  if Stick = 0 then return
+  V = Cur
+  if Cur <= 2 then
+    if Up1 = 1 then
+      if Cur > 0 then dec Cur
+    end if
+    if Dn1 = 1 then
+      inc Cur
+      if Cur = 3 then Cur = 11
+    end if
+    if Rt1 = 1 then
+      if Cur = 0 then
+        Cur = 3
+      else
+        Cur = 7
+      end if
+    end if
+  else
+    if Cur = 11 then
+      if Up1 = 1 then Cur = 2
+      if Rt1 = 1 then Cur = 7
+    else
+      if Cur <= 6 then
+        if Lf1 = 1 then
+          if Cur = 3 then
+            Cur = 0
+          else
+            dec Cur
+          end if
+        end if
+        if Rt1 = 1 then
+          if Cur < 6 then inc Cur
+        end if
+        if Dn1 = 1 then Cur = Cur + 4
+      else
+        if Lf1 = 1 then
+          if Cur = 7 then
+            Cur = 1
+          else
+            dec Cur
+          end if
+        end if
+        if Rt1 = 1 then
+          if Cur < 10 then inc Cur
+        end if
+        if Up1 = 1 then Cur = Cur - 4
+      end if
+    end if
+  end if
+  if Cur <> V then play sound SndMove
+  return
+end sub
+
+sub LeftButton:
+  if Cur = 11 then
+    GameMenu
+    return
+  end if
+  if Cur = 2 then
+    Sel = 255
+    TurnPack
+    Changed = 1
+    return
+  end if
+  if Sel = 255 then
+    ' pick up: the stock, the talon or a tableau pile
+    if Cur >= 3 then
+      if Cur <= 6 then
+        play sound SndBad
+        return
+      end if
+    end if
+    Src = Cur
+    TopOf
+    if Cc = 255 then
+      play sound SndBad
+      return
+    end if
+    Sel = Cur
+    play sound SndPick
+    return
+  end if
+  if Sel = Cur then
+    Sel = 255
+    play sound SndUnpick
+    return
+  end if
+  Src = Sel
+  Dst = Cur
+  MoveTo
+  Sel = 255
+  if Ok = 0 then
+    play sound SndBad
+    return
+  end if
+  play sound SndPlace
+  Changed = 1
+  return
+end sub
+
+sub RightButton:
+  if Sel <> 255 then
+    Sel = 255
+    play sound SndUnpick
+    return
+  end if
+  Src = Cur
+  if Cur = 2 then return
+  if Cur >= 3 then
+    if Cur <= 6 then return
+  end if
+  if Cur = 11 then return
+  ToFoundation
+  if Ok = 0 then
+    play sound SndBad
+    return
+  end if
+  play sound SndPlace
+  Changed = 1
+  return
+end sub
+
+' the menu: continue, a new deal ($50), the title (Menu 0, 1, 2)
+sub GameMenu:
+  HideSprites
+  Menu = 0
+gm_draw:
+  fill 32 count 28 at 2,22
+  print at 3,22, "CONTINUE"
+  print at 13,22, "NEW DEAL"
+  print at 23,22, "TITLE"
+  V = Menu * 10
+  V += 2
+  put char 62 at V,22
+gm_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Rt1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    if Lf1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    play sound SndMove
+    goto gm_draw
+  end if
+  if Press2 = 1 then
+    Menu = 0
+    goto gm_done
+  end if
+  if Press = 0 then goto gm_loop
+gm_done:
+  fill 32 count 28 at 2,22
+  print at 2,22, "MENU"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' the felt and the fixed labels
+sub DrawTable:
+  Rearm
+  wait
+  nmi off
+  ShowHud
+  ' stock
+  Dx = 2
+  Dy = 3
+  if Sc > 0 then
+    K = Sc - 1
+    Dk = Stk[K]
+    DrawCard
+  else
+    DrawSlot
+  end if
+  NumU = Sc
+  print at 2,6, digits$(NumU, 2)
+  ' talon
+  Dy = 9
+  if Tc > 0 then
+    K = Tc - 1
+    Dk = Tl[K]
+    DrawCard
+  else
+    DrawSlot
+  end if
+  NumU = Tc
+  print at 2,12, digits$(NumU, 2)
+  ' pack
+  Dy = 15
+  if Pc > 0 then
+    DrawBack
+  else
+    DrawSlot
+  end if
+  NumU = Pc
+  print at 2,18, digits$(NumU, 2)
+  ' foundations
+  for Fi = 0 to 3
+    Dx = Fi * 5
+    Dx = Dx + 9
+    Dy = 3
+    if Fo[Fi] = 255 then
+      DrawSlot
+    else
+      Dk = Fo[Fi]
+      DrawCard
+    end if
+  next
+  ' tableau: covered cards show their top row
+  for Pi = 0 to 3
+    DrawPile
+  next
+  return
+end sub
+
+sub DrawPile:
+  Dx = Pi * 5
+  Dx = Dx + 9
+  N = Tn[Pi]
+  Dy = 8
+  if N = 0 then
+    DrawSlot
+    Dy = 11
+  else
+    for Dq = 1 to N
+      K = Pi * 16
+      K = K + Dq
+      dec K
+      Dk = Tb[K]
+      if Dq = N then
+        DrawCard
+        Dy = Dy + 3
+      else
+        DrawTopRow
+        inc Dy
+      end if
+    next
+  end if
+  while Dy <= 22
+    fill TFelt count 4 at Dx,Dy
+    inc Dy
+  end while
+  return
+end sub
+
+' DrawTopRow: card Dk's top row at Dx,Dy
+sub DrawTopRow:
+  CardOf
+  put char TEtl at Dx,Dy
+  X = Dx + 1
+  V = TRk0 + Dr
+  if Ds < 2 then V = TRr0 + Dr
+  put char V at X,Dy
+  inc X
+  V = TSs0 + Ds
+  put char V at X,Dy
+  inc X
+  put char TEtr at X,Dy
+  return
+end sub
+
+' DrawCard: card Dk, face up, at Dx,Dy (4 x 3 tiles)
+sub DrawCard:
+  DrawTopRow
+  Np = Ds * 4
+  Np += TPipa00
+  Y = Dy + 1
+  put char TEl at Dx,Y
+  X = Dx + 1
+  put char Np at X,Y
+  inc Np
+  inc X
+  put char Np at X,Y
+  inc X
+  put char TEr at X,Y
+  inc Np
+  inc Y
+  put char TEbl at Dx,Y
+  X = Dx + 1
+  put char Np at X,Y
+  inc Np
+  inc X
+  put char Np at X,Y
+  inc X
+  put char TEbr at X,Y
+  return
+end sub
+
+sub DrawBack:
+  for Ja = 0 to 2
+    Y = Dy + Ja
+    V = Ja * 4
+    V = V + TBack00
+    for Ka = 0 to 3
+      X = Dx + Ka
+      put char V at X,Y
+      inc V
+    next
+  next
+  return
+end sub
+
+sub DrawSlot:
+  for Ja = 0 to 2
+    Y = Dy + Ja
+    V = Ja * 4
+    V = V + TSlot00
+    for Ka = 0 to 3
+      X = Dx + Ka
+      put char V at X,Y
+      inc V
+    next
+  next
+  return
+end sub
+
+sub DrawPointers:
+  ' the pointer's place: Dx, Dy of the pile under it
+  Sp = Cur
+  PilePos
+  X = Dx * 8
+  X -= 12
+  Y = Dy * 8
+  Y += 3
+  V = 11
+  N = Tick & 16
+  if N > 0 then V = 10
+  set sprite 0 to Y,X,SArrow,V
+  if Sel = 255 then
+    set sprite 1 to 192,0,0,0
+  else
+    Sp = Sel
+    PilePos
+    X = Dx * 8
+    X += 28
+    Y = Dy * 8
+    Y += 3
+    set sprite 1 to Y,X,SArrowl,8
+  end if
+  update sprites
+  return
+end sub
+
+' PilePos: Dx, Dy = where spot Sp's top card is
+sub PilePos:
+  Dx = 2
+  if Sp = 0 then Dy = 3
+  if Sp = 1 then Dy = 9
+  if Sp = 2 then Dy = 15
+  if Sp = 11 then
+    Dx = 2
+    Dy = 22
+  end if
+  if Sp >= 3 then
+    if Sp <= 6 then
+      Dx = Sp - 3
+      Dx = Dx * 5
+      Dx = Dx + 9
+      Dy = 3
+    end if
+  end if
+  if Sp >= 7 then
+    if Sp <= 10 then
+      V = Sp - 7
+      Dx = V * 5
+      Dx = Dx + 9
+      Dy = 8
+      N = Tn[V]
+      if N > 1 then
+        Dy = Dy + N
+        dec Dy
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  print at 2,1, "BANK"
+  NumU = Money
+  print at 7,1, digits$(NumU, 5)
+  print at 18,1, "CARDS"
+  NumU = Done
+  print at 24,1, digits$(NumU, 2)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 18
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 7
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 1
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark green
+  cls
+  for Y = 2 to 22
+    fill TFelt count 28 at 2,Y
+  next
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+' the table: labels, then everything else is drawn by DrawTable
+sub TableScreen:
+  NewScreen
+  print at 2,2, "STOCK"
+  print at 9,2, "FOUNDATIONS"
+  print at 2,8, "TALON"
+  print at 2,14, "PACK"
+  fill 32 count 4 at 2,22
+  print at 2,22, "MENU"
+  ShowScreen
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 10,2, "CANFIELD"
+  print at 4,3, "THE SARATOGA CLUB HOUSE"
+  ' four foundations of kings and the deck
+  for Fi = 0 to 3
+    Dx = Fi * 5
+    Dx = Dx + 5
+    Dy = 6
+    Dk = Fi * 13
+    Dk = Dk + 12
+    DrawCard
+  next
+  Dx = 25
+  Dy = 6
+  DrawBack
+  print at 11,12, "PLAY"
+  print at 11,14, "HOW TO PLAY"
+  print at 11,16, "CREDITS"
+  print at 6,19, "YOUR BANK"
+  NumU = Money
+  print at 17,19, digits$(NumU, 5)
+  print at 6,22, "1988 ED REYNOLDS"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+  WasBtn2 = 1
+title_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  print at 9,12, " "
+  print at 9,14, " "
+  print at 9,16, " "
+  Y = Menu * 2
+  Y = Y + 12
+  print at 9,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  if Menu = 0 then TableScreen
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "A DECK COSTS 50 DOLLARS, A"
+  print at 2,4, "FOUNDATION CARD PAYS 5."
+  print at 2,6, "FOUNDATIONS: UP IN SUIT FROM"
+  print at 2,7, "THE FIRST CARD'S RANK, KING"
+  print at 2,8, "TO ACE WRAPS AROUND."
+  print at 2,9, "TABLEAU: DOWN, ALTERNATE"
+  print at 2,10, "COLOURS; MOVE WHOLE PILES."
+  print at 2,11, "THE PACK TURNS 3 AT A TIME."
+  print at 2,13, "STICK: POINT AT A PILE."
+  print at 2,14, "LEFT BUTTON: PICK UP, PUT"
+  print at 2,15, "DOWN; ON THE PACK: TURN."
+  print at 2,16, "RIGHT BUTTON: SEND THE TOP"
+  print at 2,17, "CARD TO ITS FOUNDATION."
+  print at 2,18, "MENU: NEW DEAL OR TITLE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 10,1, "CANFIELD"
+  print at 2,3, "BY ED REYNOLDS, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE, JANUARY"
+  print at 2,5, "1988, FOR THE ATARI, APPLE"
+  print at 2,6, "II, IBM PC, COMMODORE 64 AND"
+  print at 2,7, "AMIGA. ATARI AND APPLE BY"
+  print at 2,8, "BILL CHIN; IBM PC AND AMIGA"
+  print at 2,9, "BY GEORGE MILLER."
+  print at 2,11, "THE GAME OF RICHARD A."
+  print at 2,12, "CANFIELD'S CASINO, SARATOGA"
+  print at 2,13, "SPRINGS, NEW YORK."
+  print at 2,15, "NEW MUSIC: SARATOGA RAG."
+  print at 2,17, "COLECOVISION VERSION BY"
+  print at 2,18, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$00,$28,$83,$83,$38,$10,$00
+  $00,$00,$10,$38,$83,$38,$10,$00
+  $00,$00,$10,$38,$83,$83,$28,$00
+  $00,$00,$38,$38,$83,$93,$10,$00
+  $00,$00,$1C,$C1,$80,$80,$80,$C0
+  $00,$00,$38,$83,$01,$01,$01,$03
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $C0,$E0,$F0,$07,$03,$01,$00,$00
+  $03,$07,$F0,$E0,$C0,$80,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C1,$E2,$01,$03,$07,$00,$00
+  $01,$83,$B8,$80,$C0,$E0,$00,$00
+  $00,$03,$07,$07,$03,$C6,$82,$80
+  $00,$C0,$E0,$E0,$C0,$9C,$41,$01
+  $82,$C6,$01,$03,$07,$00,$00,$00
+  $41,$9C,$80,$C0,$E0,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$04,$00,$00,$00,$40,$00
+  $00,$80,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$02,$02,$02,$02,$02,$02
+  $40,$40,$40,$40,$40,$40,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$02,$02,$02,$02,$02,$02
+  $40,$40,$40,$40,$40,$40,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $02,$02,$02,$02,$02,$02,$01,$00
+  $00,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $54,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $54,$45,$54,$11,$54,$45,$54,$00
+end data
+data TileCol bytes
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$1F,$1F,$F1,$1F,$0F
+  $0E,$F1,$1F,$F1,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$F1,$1F,$1F,$1F,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$8F,$8F,$F8,$8F,$0F
+  $0E,$F8,$8F,$F8,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$F8,$8F,$8F,$8F,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$0F,$8F,$F8,$F8,$8F,$8F,$0F
+  $0E,$0F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$8F,$8F,$8F,$0F,$0F,$0E
+  $F8,$8F,$8F,$8F,$8F,$0F,$0F,$0E
+  $0F,$8F,$8F,$8F,$F8,$F8,$F8,$F8
+  $0F,$8F,$8F,$8F,$8F,$F8,$F8,$F8
+  $F8,$F8,$F8,$8F,$8F,$8F,$0F,$0E
+  $F8,$F8,$8F,$8F,$8F,$8F,$0F,$0E
+  $0F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$F1,$1F,$1F,$1F,$0F,$0E
+  $F1,$F1,$1F,$1F,$1F,$1F,$0F,$0E
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$1F,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$0F,$0F,$0E
+  $F1,$1F,$1F,$1F,$1F,$0F,$0F,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $0C,$0C,$2C,$0C,$0C,$0C,$2C,$0C
+  $0C,$C3,$3C,$3C,$3C,$3C,$3C,$3C
+  $0C,$03,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$03,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$C3,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+  $3C,$3C,$3C,$3C,$3C,$3C,$C3,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$03,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$03,$0C
+  $3C,$3C,$3C,$3C,$3C,$3C,$C3,$0C
+  $0E,$45,$45,$45,$45,$45,$45,$45
+  $0E,$45,$45,$45,$45,$45,$45,$45
+  $0E,$45,$45,$45,$45,$45,$45,$45
+  $0E,$45,$54,$45,$54,$45,$54,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $54,$45,$54,$45,$54,$45,$54,$45
+  $45,$45,$45,$45,$45,$45,$45,$0E
+  $45,$45,$45,$45,$45,$45,$45,$0E
+  $45,$45,$45,$45,$45,$45,$45,$0E
+  $54,$45,$54,$45,$54,$45,$54,$0E
+end data
+data SpritePat bytes
+  $00,$00,$00,$C0,$F0,$FC,$FE,$FC,$F0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0F,$3F,$7F,$3F,$0F,$03,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+CfMove:
+    db $40,$40,$60,$01,$50
+CfPick:
+    db $40,$71,$30,$02,$40,$55,$40,$02,$50
+CfUnpick:
+    db $40,$55,$40,$02,$40,$71,$50,$02,$50
+CfPlace:
+    db $40,$5F,$20,$02,$40,$5F,$F0,$01,$40,$47,$20,$04,$40,$47,$F0,$01,$50
+CfBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+CfShuffle:
+    db $00,$00,$51,$02,$00,$00,$72,$02,$00,$00,$51,$02,$00,$00,$72,$02,$00,$00,$51,$02,$00,$00,$82,$03
+    db $10
+CfDeal:
+    db $00,$00,$61,$01,$00,$00,$92,$01,$00,$00,$61,$01,$00,$00,$92,$01,$10
+CfWin:
+    db $40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+
+CfSoundTable:
+    dw CfMove,$702B
+    dw CfPick,$7035
+    dw CfUnpick,$7035
+    dw CfPlace,$7035
+    dw CfBad,$702B
+    dw CfShuffle,$702B
+    dw CfDeal,$702B
+    dw CfWin,$7035
+    dw CfTuneMel,$703F
+    dw CfTuneBass,$7049
+; Saratoga Rag, C major (original for this game)
+; Tiny Sound, 8 frames per step
+CfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$23,$26,$01,$23,$2B,$01,$28,$26,$24,$28,$01,$24
+    db $21,$01,$23,$24,$23,$26,$01,$23,$2B,$01,$2F,$2D,$2B,$26,$01,$23
+    db $1F,$01,$01,$01
+    db $FF
+CfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$07,$0E,$07,$0E,$04,$0B,$04,$0B,$09,$10,$09,$10
+    db $0E,$09,$0E,$12,$07,$0E,$07,$0E,$04,$0B,$04,$0B,$0E,$09,$0E,$09
+    db $07,$0E,$07,$01
+    db $FF
+}
