@@ -39,7 +39,7 @@ try {
     "--opt", "balanced",
   ], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   assert.equal(build.status, 0, `${build.error?.stack || ""}${build.stdout || ""}${build.stderr || ""}`);
-  assert.equal(readFileSync(rom).length, 6017, "unexpected occupied ROM size");
+  assert.equal(readFileSync(rom).length, 5934, "unexpected occupied ROM size");
 
   const core = await GearcolecoTestCore.create({ seed: 0x198501 });
   try {
@@ -61,7 +61,7 @@ try {
     const attributes = core.readVram(0x1b00, 20);
     assert.ok(attributes[4] < 192, `parachutist sprite is hidden at Y=${attributes[4]}`);
     assert.ok([4, 8, 12, 16].includes(attributes[6]), `unexpected parachutist pattern ${attributes[6]}`);
-    console.log(`Paratrooper runtime test: PASS (6017 bytes, visible parachutist pattern ${attributes[6]})`);
+    console.log(`Paratrooper runtime test: PASS (5934 bytes, visible parachutist pattern ${attributes[6]})`);
   } finally {
     core.destroy();
   }

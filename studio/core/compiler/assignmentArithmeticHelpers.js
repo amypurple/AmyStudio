@@ -755,6 +755,40 @@ export function createAssignmentArithmeticHelpers({
     ];
   }
 
+  function emitDivideUnsignedInt8ByPowerOfTwo(target, shiftCount) {
+    const info = getRuntimeInfo(target);
+    const declaredType = normalizeDeclaredType(resolveDeclaredValueType(target) || "byte");
+    if (!info || info.kind === "array" || info.type !== "int8" || isSignedDeclaredType(declaredType)) return null;
+    if (!Number.isInteger(shiftCount) || shiftCount < 1 || shiftCount > 7) return null;
+    const loadTarget = emitLoadInt8Into("a", target);
+    const storeTarget = emitStoreInt8FromA(target);
+    if (!loadTarget || !storeTarget) return null;
+    return [
+      ...loadTarget,
+      ...Array.from({ length: shiftCount }, () => "    srl a"),
+      ...storeTarget
+    ];
+  }
+
+  function emitDivideUnsignedInt16ByPowerOfTwo(target, shiftCount) {
+    const info = getRuntimeInfo(target);
+    const declaredType = normalizeDeclaredType(resolveDeclaredValueType(target) || "word");
+    if (!info || info.kind === "array" || info.type !== "int16") return null;
+    if (declaredType !== "u16") return null;
+    if (!Number.isInteger(shiftCount) || shiftCount < 1 || shiftCount > 15) return null;
+    // A generic constant division costs eight bytes between the target load/store.
+    // Each 16-bit logical shift costs four encoded bytes, so only /2 is smaller.
+    if (shiftCount * 4 >= 8) return null;
+    const loadTarget = emitLoadInt16IntoHL(target);
+    const storeTarget = emitStoreInt16FromHL(target);
+    if (!loadTarget || !storeTarget) return null;
+    const lines = [...loadTarget];
+    for (let index = 0; index < shiftCount; index += 1) {
+      lines.push("    srl h", "    rr l");
+    }
+    return [...lines, ...storeTarget];
+  }
+
   function emitFixed8_8MultiplyOp(target, valueToken) {
     const targetDeclared = normalizeDeclaredType(resolveDeclaredValueType(target) || "fixed");
     const loadTarget = emitLoadInt16IntoHL(target, targetDeclared);
@@ -1309,6 +1343,12 @@ export function createAssignmentArithmeticHelpers({
         }
       }
       if (opToken === "/=" && isOne) return [];
+      if (opToken === "/=" && Number.isInteger(constantNumeric)
+          && constantNumeric > 1 && constantNumeric <= 0x80
+          && (constantNumeric & (constantNumeric - 1)) === 0) {
+        const powerDivision = emitDivideUnsignedInt8ByPowerOfTwo(target, Math.log2(constantNumeric));
+        if (powerDivision) return powerDivision;
+      }
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");
       if (opToken === "+=") return emitArithInt8Op(target, valueToken, "add");
@@ -1334,6 +1374,12 @@ export function createAssignmentArithmeticHelpers({
         if (constantNumeric > 0 && constantNumeric <= 0xFFFF && (constantNumeric & (constantNumeric - 1)) === 0) {
           return emitMultiplyByPowerOfTwo(target, Math.log2(constantNumeric));
         }
+      }
+      if (!isFixedTarget && opToken === "/=" && Number.isInteger(constantNumeric)
+          && constantNumeric > 1 && constantNumeric <= 0x8000
+          && (constantNumeric & (constantNumeric - 1)) === 0) {
+        const powerDivision = emitDivideUnsignedInt16ByPowerOfTwo(target, Math.log2(constantNumeric));
+        if (powerDivision) return powerDivision;
       }
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");

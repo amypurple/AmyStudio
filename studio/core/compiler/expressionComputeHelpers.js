@@ -647,6 +647,18 @@ export function createExpressionComputeHelpers({
         if (leftValue !== null && rightValue !== null) {
           return [`    ld a,${symbolOrValue(String(rightValue === 0 ? 0 : (Math.trunc(leftValue / rightValue) & 0xFF)))}`];
         }
+        if (Number.isInteger(rightValue) && rightValue > 1 && rightValue <= 0x80
+            && (rightValue & (rightValue - 1)) === 0) {
+          const leftDeclaredType = resolveDeclaredValueType(renderExpressionAst(node.left));
+          if (!isSignedDeclaredType(leftDeclaredType)) {
+            const loadLeft = emitLoadInt8AstIntoA(node.left);
+            if (!loadLeft) return null;
+            return [
+              ...loadLeft,
+              ...Array.from({ length: Math.log2(rightValue) }, () => "    srl a")
+            ];
+          }
+        }
         return emitLoadInt8RuntimeDivideAstIntoA(node);
       }
       if (node.op === "%") {
@@ -990,6 +1002,14 @@ export function createExpressionComputeHelpers({
           const rightValue = tryEvaluateConstantExpression(renderExpressionAst(node.right));
           if (leftValue !== null && rightValue !== null) {
             return emitLoadInt16ValueIntoHL(String(rightValue === 0 ? 0 : (Math.trunc(leftValue / rightValue) & 0xFFFF)));
+          }
+          if (rightValue === 2) {
+            const leftType = resolveExpressionAstComputationType(node.left, preferredDeclaredType);
+            if (!isSignedDeclaredType(leftType?.declaredType) && !isAnyFixedDeclaredType(leftType?.declaredType)) {
+              const loadLeft = emitLoadInt16AstIntoHL(node.left, "u16");
+              if (!loadLeft) return null;
+              return [...loadLeft, "    srl h", "    rr l"];
+            }
           }
           return emitLoadInt16RuntimeDivideAstIntoHL(node, preferredDeclaredType);
         }
