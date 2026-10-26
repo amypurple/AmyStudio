@@ -956,20 +956,15 @@ export function createExpressionComputeHelpers({
             for (let value = constantValue; value > 1; value >>= 1) lines.push("    add hl,hl");
             return lines;
           }
-          const bits = [];
-          for (let bit = 0; bit < 16; bit += 1) {
-            if (constantValue & (1 << bit)) bits.push(bit);
-          }
-          if (bits.length > 6) return null;
-          const lines = ["    ld d,h", "    ld e,l", "    ld hl,0"];
-          let currentShift = 0;
+          const bits = constantValue.toString(2).slice(1);
+          const lines = ["    ld d,h", "    ld e,l"];
           for (const bit of bits) {
-            while (currentShift < bit) {
-              lines.push("    ex de,hl", "    add hl,hl", "    ex de,hl");
-              currentShift += 1;
-            }
-            lines.push("    add hl,de");
+            lines.push("    add hl,hl");
+            if (bit === "1") lines.push("    add hl,de");
           }
+          // The general expression-multiply loop costs 17 bytes after loading
+          // the left operand. Keep it when the fixed chain is not smaller.
+          if (lines.length >= 17) return null;
           return lines;
         };
         if (leftValue !== null) {

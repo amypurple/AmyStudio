@@ -632,6 +632,61 @@ export function createAssignmentArithmeticHelpers({
     ];
   }
 
+  function emitMultiplyInt8ByConstant(target, factor) {
+    const info = getRuntimeInfo(target);
+    if (!info || info.kind === "array" || info.type !== "int8") return null;
+    if (!Number.isInteger(factor) || factor < 2 || factor > 0xFF) return null;
+    const specialChains = {
+      3: ["    ld b,a", "    add a,a", "    add a,b"],
+      5: ["    ld b,a", "    add a,a", "    add a,a", "    add a,b"],
+      6: ["    add a,a", "    ld b,a", "    add a,a", "    add a,b"],
+      10: ["    add a,a", "    ld b,a", "    add a,a", "    add a,a", "    add a,b"],
+      12: ["    add a,a", "    add a,a", "    ld b,a", "    add a,a", "    add a,b"],
+      14: ["    ld b,a", "    add a,a", "    add a,a", "    add a,a", "    sub b", "    add a,a"]
+    };
+    const bits = factor.toString(2).slice(1);
+    const generatedChain = ["    ld b,a"];
+    for (const bit of bits) {
+      generatedChain.push("    add a,a");
+      if (bit === "1") generatedChain.push("    add a,b");
+    }
+    const chain = specialChains[factor] || generatedChain;
+    // The counted-addition fallback costs 15 bytes around the loaded/stored value.
+    if (chain.length >= 15) return null;
+    const loadTarget = emitLoadInt8Into("a", target);
+    const storeTarget = emitStoreInt8FromA(target);
+    if (!loadTarget || !storeTarget) return null;
+    return [...loadTarget, ...chain, ...storeTarget];
+  }
+
+  function emitMultiplyInt16ByConstant(target, factor) {
+    const info = getRuntimeInfo(target);
+    const declaredType = normalizeDeclaredType(resolveDeclaredValueType(target) || "word");
+    if (!info || info.kind === "array" || info.type !== "int16" || isAnyFixedDeclaredType(declaredType)) return null;
+    if (!Number.isInteger(factor) || factor < 2 || factor > 0xFFFF) return null;
+    const specialChains = {
+      3: ["    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,de"],
+      5: ["    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,hl", "    add hl,de"],
+      6: ["    add hl,hl", "    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,de"],
+      10: ["    add hl,hl", "    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,hl", "    add hl,de"],
+      12: ["    add hl,hl", "    add hl,hl", "    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,de"],
+      14: ["    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,hl", "    add hl,hl", "    or a", "    sbc hl,de", "    add hl,hl"]
+    };
+    const bits = factor.toString(2).slice(1);
+    const generatedChain = ["    ld d,h", "    ld e,l"];
+    for (const bit of bits) {
+      generatedChain.push("    add hl,hl");
+      if (bit === "1") generatedChain.push("    add hl,de");
+    }
+    const chain = specialChains[factor] || generatedChain;
+    // The counted-addition fallback costs 17 bytes around the loaded/stored value.
+    if (chain.length >= 17) return null;
+    const loadTarget = emitLoadInt16IntoHL(target);
+    const storeTarget = emitStoreInt16FromHL(target);
+    if (!loadTarget || !storeTarget) return null;
+    return [...loadTarget, ...chain, ...storeTarget];
+  }
+
   function emitDivideInt8Op(target, valueToken) {
     const info = getRuntimeInfo(target);
     if (!info || info.kind === "array" || info.type !== "int8") return null;
@@ -1246,6 +1301,13 @@ export function createAssignmentArithmeticHelpers({
       if (opToken === "*=" && isTwo) return emitMultiplyByPowerOfTwo(target, 1);
       if (opToken === "*=" && isFour) return emitMultiplyByPowerOfTwo(target, 2);
       if (opToken === "*=" && isEight) return emitMultiplyByPowerOfTwo(target, 3);
+      if (opToken === "*=" && Number.isInteger(constantNumeric)) {
+        const constantMultiply = emitMultiplyInt8ByConstant(target, constantNumeric);
+        if (constantMultiply) return constantMultiply;
+        if (constantNumeric > 0 && constantNumeric <= 0xFF && (constantNumeric & (constantNumeric - 1)) === 0) {
+          return emitMultiplyByPowerOfTwo(target, Math.log2(constantNumeric));
+        }
+      }
       if (opToken === "/=" && isOne) return [];
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");
@@ -1266,6 +1328,13 @@ export function createAssignmentArithmeticHelpers({
       if (!isFixedTarget && opToken === "*=" && isTwo) return emitMultiplyByPowerOfTwo(target, 1);
       if (!isFixedTarget && opToken === "*=" && isFour) return emitMultiplyByPowerOfTwo(target, 2);
       if (!isFixedTarget && opToken === "*=" && isEight) return emitMultiplyByPowerOfTwo(target, 3);
+      if (!isFixedTarget && opToken === "*=" && Number.isInteger(constantNumeric)) {
+        const constantMultiply = emitMultiplyInt16ByConstant(target, constantNumeric);
+        if (constantMultiply) return constantMultiply;
+        if (constantNumeric > 0 && constantNumeric <= 0xFFFF && (constantNumeric & (constantNumeric - 1)) === 0) {
+          return emitMultiplyByPowerOfTwo(target, Math.log2(constantNumeric));
+        }
+      }
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");
       if (opToken === "+=") return emitArithInt16Op(target, valueToken, "add");
