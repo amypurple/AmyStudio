@@ -6,6 +6,9 @@
 - Added **3-D Super Plotter**, combining ideas from COMPUTE!'s 3-D Surfaces
   and Superplotter into fourteen interactive mathematical surfaces with
   rotation, tilt, mesh, perspective, color and hidden-line controls.
+- Added **Climber 5**, James Rogers' August 1987 COMPUTE! game, with five
+  buildings, ladders, electrodes, hooks, sweepers, a countdown, title music
+  and VoxPCM voices.
 - Fixed Circus' animated title loop by giving its color updater an independent
   iterator instead of overwriting the outer twenty-step animation counter.
 - Enabled NMI before Circus' editorial prompt and Southern States' controller
