@@ -1,0 +1,2386 @@
+cartridge "LASER CHESS/MIKE DUPPONG, COMPUTE!/1987"
+
+' LASER CHESS
+' From "Laser Chess" by Mike Duppong, COMPUTE! magazine, June 1987
+' (first prize in the $10,000 programming contest of COMPUTE!'s Atari ST
+' Disk & Magazine; the original was written in Modula-2 for the Atari
+' ST; COMPUTE! printed versions for the Amiga by Tim Midkiff, the
+' Commodore 64 by Bill Chin, the Atari XL/XE by Rhett Anderson and the
+' Apple II by Tim Victor). All credit belongs to the authors.
+'
+' Historical context (summary of the article):
+' A chesslike strategy game for two players on a 9 x 9 board. Each
+' player has a laser, the only piece that fires, and an army of
+' reflective pieces; the goal is to eliminate the opponent's king,
+' with the laser or by capture. A turn is two moves: moving a piece one
+' square (forward, back, left or right; two squares or a diagonal take
+' both moves), rotating a piece (one move, to any facing), or firing the
+' laser (once a turn). The pieces: the king (no reflective side; it can
+' capture); the laser (no reflective side; it rotates to aim); the
+' hypercube (transparent and invulnerable; moved onto a piece, it sends
+' that piece to a random empty square, once a turn); the beam splitter
+' (its vertex splits a beam in two, its sides bounce it 90 degrees, its
+' base is weak); the block (one side bounces a beam straight back, the
+' others are weak; it can capture); the diagonal mirror (bounces 90
+' degrees on both sides, removable only by capture); the straight mirror
+' (bounces back from its flat side, lets a beam pass edgewise); and the
+' triangular mirror (bounces 90 degrees on its long side, weak on the
+' other two). The hypersquare at the centre absorbs beams and works
+' like a hypercube on any piece moved onto it, once a turn. A laser can
+' destroy its own side's pieces as easily as the enemy's.
+'
+' ColecoVision version in Amy by Amy Bienvenu, 2026, following the
+' article's rules and the Atari and Amiga versions' screens.
+' Controls (either joystick, players take turns): the stick moves the
+' cursor; the left button picks up a piece and puts it down (on its
+' own square: done; on another square: a move); the right button
+' rotates the piece you hold. Move the cursor left of the board to the
+' FIRE, PASS and NEW buttons. The keypad is not used.
+' A rotation counts as one move when you put the piece down, and can be
+' combined with a move when two moves remain (as in the Amiga version).
+' The laser path is followed square by square; a beam that comes back
+' along the same path in the same direction stops (the listings'
+' BEAMCK check), a beam split in two is followed as two beams.
+' A computer player for red, gold or both was added (see CpuAct).
+' Adaptation liberties: the starting position is rebuilt from the
+' article's photos (the DATA lines of the scans are not legible); the
+' two armies are red and gold on a cyan and blue board; the colour of
+' the moves-remaining border is a status line instead; NEW asks for a
+' second press instead of a dialog box; Quit is left out (cartridge);
+' an editorial page and an original title tune.
+' Everything that matters stays in columns 2-29, inside the TV overscan.
+' Drawing (squares, beams, text) is done with the NMI off, after a
+' frame starts.
+
+const SndTick = 1
+const SndPick = 2
+const SndMove = 3
+const SndRotate = 4
+const SndBad = 5
+const SndZap = 6
+const SndBoom = 7
+const SndWarp = 8
+const SndTurn = 9
+const SndWin = 10
+const SndTuneA = 11
+const SndTuneB = 12
+
+u8 Pc[81]
+u8 Ow[81]
+u8 Fc[81]
+u8 Vis[81]
+u8 BX[4]
+u8 BY[4]
+u8 BD[4]
+u8 BA[4]
+u8 Kill[6]
+u8 Glyph[8]
+u16 ArtOff = 0
+u16 W16 = 0
+u16 FontW = 0
+u8 SqR = 0
+u8 SqC = 0
+u8 SqClr = 0
+u8 Xc = 0
+u8 Yy = 0
+u8 Col = 15
+u8 TxRow = 0
+u8 TxCol = 0
+u8 TxClr = 15
+u8 Pl = 0
+u8 Moves = 2
+u8 Fired = 0
+u8 HyCube = 0
+u8 HySq = 0
+u8 Sel = 0
+u8 Ss = 0
+u8 Fc0 = 0
+u8 CX = 4
+u8 CY = 4
+u8 CXP = 0
+u8 RepT = 0
+u8 NewArm = 0
+u8 Winner = 0
+u8 KillN = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 BtA = 0
+u8 BtB = 0
+u8 WasA = 0
+u8 WasB = 0
+u8 Mix = 0
+u8 S = 0
+u8 T = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 DX = 0
+u8 DY = 0
+u8 Dist = 0
+u8 Cost = 0
+u8 Ok = 0
+u8 B = 0
+u8 Steps = 0
+u8 Any = 0
+u8 NX = 0
+u8 NY = 0
+u8 Dl = 0
+u8 O1 = 0
+u8 O2 = 0
+u8 Tm = 0
+u8 Kj = 0
+u8 Kq = 0
+u8 Dm = 0
+u8 Keep = 0
+u8 Pg = 0
+u8 CapN = 0
+u8 CapS[16]
+u8 CapO[16]
+u8 Ci1 = 0
+u8 Ci2 = 0
+u8 VisN = 0
+u8 VisL[64]
+u8 LzSq[2]
+u8 KgSq[2]
+u8 Aim = 0
+u8 Pl2 = 0
+u8 Lq = 0
+u8 Lo = 0
+u8 Lr = 0
+u8 Kx = 0
+u8 Ky = 0
+u8 Md = 0
+u16 Prox = 0
+u16 Hit16 = 0
+u8 Sim = 0
+u8 Sp = 0
+u8 Me = 0
+u8 Op = 0
+u8 CpuR = 0
+u8 CpuG = 1
+u8 Cs = 0
+u8 Cd = 0
+u8 Cr = 0
+u8 Ct = 0
+u8 Ck = 0
+u8 Co = 0
+u8 Cn = 0
+u8 Tp = 0
+u8 Tw = 0
+u8 Tf = 0
+u8 BestK = 0
+u8 BestS = 0
+u8 BestT = 0
+u8 BestO = 0
+u8 MenuL = 0
+u16 G16 = 0
+u16 V16 = 0
+u16 T0 = 0
+u16 T16 = 0
+u16 Gk = 0
+u16 Sc16 = 0
+u16 Best16 = 0
+u16 CapV = 0
+u8 CurS = 255
+u8 SelS = 255
+u8 OldS = 255
+u8 OldSel = 255
+u8 ArrX = 0
+u8 ArrY = 99
+u8 X1 = 0
+u8 Y1 = 0
+u8 X2 = 0
+u8 Y2 = 0
+
+  tile screen
+  set sound table LcSoundTable areas 4
+  Glyph[0] = 0
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+  SetupMenu
+
+new_game:
+  for S = 0 to 80
+    Pc[S] = SetPc[S]
+    Ow[S] = SetOw[S]
+    Fc[S] = SetOr[S]
+  next
+  Pl = 0
+  Moves = 2
+  Fired = 0
+  HyCube = 0
+  HySq = 0
+  Sel = 0
+  CX = 4
+  CY = 6
+  Winner = 0
+  NewArm = 0
+  BoardScreen
+
+main_loop:
+  Rearm
+  wait
+  nmi off
+  ' a computer player's move
+  V = CpuR
+  if Pl = 1 then V = CpuG
+  if V = 1 then
+    CpuAct
+    CpuDo
+    if Winner > 0 then goto game_over
+    if Moves = 0 then NextPlayer
+    ' computer against computer: a button ends the demo
+    ReadPad
+    if CpuR = 1 then
+      if CpuG = 1 then
+        if BtA = 1 then goto title
+      end if
+    end if
+    goto main_loop
+  end if
+  ReadPad
+  MoveCursor
+  if BtB = 1 then
+    if WasB = 0 then RotatePiece
+  end if
+  WasB = BtB
+  if BtA = 1 then
+    if WasA = 0 then Press
+  end if
+  WasA = BtA
+  ShowCursor
+  if Winner > 0 then goto game_over
+  if Moves = 0 then NextPlayer
+  goto main_loop
+
+game_over:
+  HideCursor
+  play sound SndWin
+  TxRow = 22
+  TxCol = 2
+  if Winner = 1 then
+    TxClr = 9
+    call asm BText with hl = address of TxtRedWins
+  elseif Winner = 2 then
+    TxClr = 11
+    call asm BText with hl = address of TxtGoldWins
+  else
+    TxClr = 15
+    call asm BText with hl = address of TxtDraw
+  end if
+  Rearm
+  wait 60 frames
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' The font (characters 32-95) kept at VRAM $1C00, free in bitmap mode,
+' so BText can write on the bitmap screen
+sub KeepFont:
+  FontW = 0
+  for K = 0 to 15
+    W16 = FontW + 256
+    copy vram.pattern + W16 count 32 to vram.name + 1024 + FontW
+    FontW += 32
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  BtA = 0
+  BtB = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then BtA = 1
+  if joypad(2).button1 then BtA = 1
+  if joypad(1).button2 then BtB = 1
+  if joypad(2).button2 then BtB = 1
+  return
+end sub
+
+' The cursor walks square by square; left of the board are the buttons
+sub MoveCursor:
+  V = Up1 + Dn1
+  V += Lf1
+  V += Rt1
+  if V = 0 then
+    RepT = 0
+    return
+  end if
+  if RepT > 0 then
+    dec RepT
+    return
+  end if
+  RepT = 9
+  if CX = 255 then
+    ' on the buttons: rows 1, 3, 5
+    if Up1 = 1 then
+      if CY > 1 then CY -= 2
+    end if
+    if Dn1 = 1 then
+      if CY < 5 then CY += 2
+    end if
+    if Rt1 = 1 then CX = 0
+  else
+    if Up1 = 1 then
+      if CY > 0 then dec CY
+    end if
+    if Dn1 = 1 then
+      if CY < 8 then inc CY
+    end if
+    if Rt1 = 1 then
+      if CX < 8 then inc CX
+    end if
+    if Lf1 = 1 then
+      if CX = 0 then
+        CX = 255
+        if CY < 2 then
+          CY = 1
+        elseif CY < 4 then
+          CY = 3
+        else
+          CY = 5
+        end if
+      else
+        dec CX
+      end if
+    end if
+  end if
+  play sound SndTick
+  return
+end sub
+
+' The cursor is drawn into the board itself: the square under it turns
+' white, the piece you hold sits on light green; on the panel, an arrow
+sub ShowCursor:
+  V = 255
+  if CX <> 255 then
+    V = CY * 9
+    V += CX
+  end if
+  N = 255
+  if Sel = 1 then N = Ss
+  if V = CurS then
+    if N = SelS then
+      if CX = ArrX then
+        if CY = ArrY then return
+      end if
+    end if
+  end if
+  ' undraw the old ones, draw the new ones
+  OldS = CurS
+  OldSel = SelS
+  CurS = V
+  SelS = N
+  if OldS < 81 then
+    S = OldS
+    DrawSquare
+  end if
+  if OldSel < 81 then
+    S = OldSel
+    DrawSquare
+  end if
+  if CurS < 81 then
+    S = CurS
+    DrawSquare
+  end if
+  if SelS < 81 then
+    S = SelS
+    DrawSquare
+  end if
+  if ArrX = 255 then
+    TxRow = ArrY * 2
+    TxRow += 3
+    TxCol = 2
+    call asm BText with hl = address of TxtSpace
+  end if
+  ArrX = CX
+  ArrY = CY
+  if CX = 255 then
+    TxRow = CY * 2
+    TxRow += 3
+    TxCol = 2
+    TxClr = 15
+    call asm BText with hl = address of TxtArrow
+  end if
+  return
+end sub
+
+sub HideCursor:
+  ShowCursorOff
+  return
+end sub
+
+sub ShowCursorOff:
+  OldS = CurS
+  OldSel = SelS
+  CurS = 255
+  SelS = 255
+  if OldS < 81 then
+    S = OldS
+    DrawSquare
+  end if
+  if OldSel < 81 then
+    S = OldSel
+    DrawSquare
+  end if
+  if ArrX = 255 then
+    TxRow = ArrY * 2
+    TxRow += 3
+    TxCol = 2
+    call asm BText with hl = address of TxtSpace
+  end if
+  ArrX = 0
+  ArrY = 99
+  return
+end sub
+
+' Left button: the panel buttons, or pick up / put down
+sub Press:
+  if CX = 255 then
+    if Sel = 1 then
+      play sound SndBad
+      return
+    end if
+    if CY = 1 then
+      FireButton
+    elseif CY = 3 then
+      play sound SndPick
+      Moves = 0
+    else
+      if NewArm = 1 then
+        play sound SndPick
+        NewArm = 0
+        RestartGame
+        return
+      end if
+      NewArm = 1
+      Message
+      TxRow = 22
+      TxCol = 2
+      TxClr = 15
+      call asm BText with hl = address of TxtNew
+    end if
+    return
+  end if
+  NewArm = 0
+  S = CY * 9
+  S += CX
+  if Sel = 0 then
+    ' pick up one of your own pieces
+    if Pc[S] = 0 then return
+    if Ow[S] <> Pl then
+      play sound SndBad
+      return
+    end if
+    Sel = 1
+    Ss = S
+    Fc0 = Fc[S]
+    play sound SndPick
+    return
+  end if
+  TryMove
+  return
+end sub
+
+sub RestartGame:
+  for S = 0 to 80
+    Pc[S] = SetPc[S]
+    Ow[S] = SetOw[S]
+    Fc[S] = SetOr[S]
+  next
+  Pl = 0
+  Moves = 2
+  Fired = 0
+  HyCube = 0
+  HySq = 0
+  Sel = 0
+  CX = 4
+  CY = 6
+  BoardScreen
+  return
+end sub
+
+' Right button: rotate the piece you hold a quarter turn
+sub RotatePiece:
+  if Sel = 0 then return
+  K = Pc[Ss]
+  if K = 1 then
+    play sound SndBad
+    return
+  end if
+  if K = 3 then
+    play sound SndBad
+    return
+  end if
+  V = Fc[Ss]
+  if K >= 6 then
+    if K <= 7 then
+      V = V ^ 1
+    else
+      inc V
+      V = V & 3
+    end if
+  else
+    inc V
+    V = V & 3
+  end if
+  Fc[Ss] = V
+  play sound SndRotate
+  S = Ss
+  DrawSquare
+  return
+end sub
+
+' Put the held piece down at the cursor
+sub TryMove:
+  T = CY * 9
+  T += CX
+  Cost = 0
+  if Fc[Ss] <> Fc0 then Cost = 1
+  if T = Ss then
+    ' put down where it was: a rotation costs a move
+    if Cost = 1 then dec Moves
+    Sel = 0
+    play sound SndMove
+    StatusLine
+    return
+  end if
+  X = SqX[Ss]
+  Y = SqY[Ss]
+  if CX > X then
+    DX = CX - X
+  else
+    DX = X - CX
+  end if
+  if CY > Y then
+    DY = CY - Y
+  else
+    DY = Y - CY
+  end if
+  Dist = DX + DY
+  V = Dist + Cost
+  Ok = 1
+  if V > Moves then Ok = 0
+  if Dist > 2 then Ok = 0
+  if DX = 2 then
+    N = CX + X
+    N = N >> 1
+    J = Y * 9
+    J += N
+    if Pc[J] > 0 then Ok = 0
+  end if
+  if DY = 2 then
+    N = CY + Y
+    N = N >> 1
+    J = N * 9
+    J += X
+    if Pc[J] > 0 then Ok = 0
+  end if
+  if DX = 1 then
+    if DY = 1 then
+      ' a diagonal: one of the two squares between must be free
+      J = Y * 9
+      J += CX
+      N = CY * 9
+      N += X
+      if Pc[J] > 0 then
+        if Pc[N] > 0 then Ok = 0
+      end if
+    end if
+  end if
+  K = Pc[Ss]
+  if Ok = 1 then
+    if Pc[T] > 0 then
+      if K = 3 then
+        ' the hypercube sends that piece elsewhere
+        if HyCube = 1 then Ok = 0
+      elseif Ow[T] = Pl then
+        Ok = 0
+      elseif K = 1 then
+        Ok = 1
+      elseif K = 5 then
+        Ok = 1
+      else
+        Ok = 0
+      end if
+    end if
+  end if
+  if Ok = 1 then
+    if T = 40 then
+      if HySq = 1 then Ok = 0
+    end if
+  end if
+  if Ok = 0 then
+    play sound SndBad
+    return
+  end if
+  V = Dist + Cost
+  Moves -= V
+  Sel = 0
+  if Pc[T] > 0 then
+    if K = 3 then
+      HyCube = 1
+      J = T
+      RandEmpty
+      Pc[N] = Pc[J]
+      Ow[N] = Ow[J]
+      Fc[N] = Fc[J]
+      S = N
+      DrawSquare
+      play sound SndWarp
+    else
+      ' a capture
+      if Pc[T] = 1 then
+        Winner = Pl + 1
+      end if
+      play sound SndBoom
+    end if
+  else
+    play sound SndMove
+  end if
+  Pc[T] = K
+  Ow[T] = Pl
+  Fc[T] = Fc[Ss]
+  Pc[Ss] = 0
+  S = Ss
+  DrawSquare
+  S = T
+  DrawSquare
+  if T = 40 then
+    ' the hypersquare
+    HySq = 1
+    J = 40
+    RandEmpty
+    Pc[N] = K
+    Ow[N] = Pl
+    Fc[N] = Fc[40]
+    Pc[40] = 0
+    T = N
+    S = 40
+    DrawSquare
+    S = T
+    DrawSquare
+    play sound SndWarp
+  end if
+  StatusLine
+  return
+end sub
+
+' A random empty square other than J and the centre, into N
+sub RandEmpty:
+  for I = 1 to 200
+    Mix += 37
+    V = frame
+    N = random(0, 80)
+    N += Mix
+    N += V
+    if N >= 81 then N -= 81
+    if N >= 81 then N -= 81
+    if N >= 81 then N -= 81
+    if Pc[N] = 0 then
+      if N <> 40 then
+        if N <> J then
+          if N <> Ss then return
+        end if
+      end if
+    end if
+  next
+  N = J
+  return
+end sub
+
+sub FireButton:
+  if Fired = 1 then
+    play sound SndBad
+    return
+  end if
+  T = 255
+  for S = 0 to 80
+    if Pc[S] = 2 then
+      if Ow[S] = Pl then T = S
+    end if
+  next
+  if T = 255 then
+    play sound SndBad
+    return
+  end if
+  Fired = 1
+  dec Moves
+  HideCursor
+  FireLaser
+  StatusLine
+  return
+end sub
+
+' The laser shot: up to four beams, square by square
+sub FireLaser:
+  for S = 0 to 80
+    Vis[S] = 0
+  next
+  VisN = 0
+  for B = 0 to 3
+    BA[B] = 0
+  next
+  KillN = 0
+  BX[0] = SqX[T]
+  BY[0] = SqY[T]
+  BD[0] = Fc[T]
+  BA[0] = 1
+  for Steps = 1 to 60
+    Any = 0
+    for B = 0 to 3
+      if BA[B] = 1 then
+        Any = 1
+        BeamStep
+      end if
+    next
+    if Any = 0 then goto laser_done
+    play sound SndZap
+    Rearm
+    wait 4 frames
+    nmi off
+  next
+laser_done:
+  ' let the players see the whole path
+  Rearm
+  wait 75 frames
+  nmi off
+  ' the hits
+  if KillN > 0 then
+    for Kj = 0 to 5
+      if Kj < KillN then
+        S = Kill[Kj]
+        Explode
+      end if
+    next
+    ' kings left?
+    X = 0
+    Y = 0
+    for S = 0 to 80
+      if Pc[S] = 1 then
+        if Ow[S] = 0 then X = 1
+        if Ow[S] = 1 then Y = 1
+      end if
+    next
+    if X = 0 then
+      if Y = 0 then
+        Winner = 3
+      else
+        Winner = 2
+      end if
+    elseif Y = 0 then
+      Winner = 1
+    end if
+  end if
+  if Keep = 0 then DrawBoard
+  return
+end sub
+
+sub BeamStep:
+  X = BX[B]
+  Y = BY[B]
+  V = BD[B]
+  NX = X
+  NY = Y
+  if V = 0 then
+    if Y = 0 then
+      BeamOff
+      return
+    end if
+    dec NY
+  elseif V = 1 then
+    if X = 8 then
+      BeamOff
+      return
+    end if
+    inc NX
+  elseif V = 2 then
+    if Y = 8 then
+      BeamOff
+      return
+    end if
+    inc NY
+  else
+    if X = 0 then
+      BeamOff
+      return
+    end if
+    dec NX
+  end if
+  ' draw it from centre to centre
+  X1 = X * 16
+  X1 += 96
+  Y1 = Y * 16
+  Y1 += 32
+  X2 = NX * 16
+  X2 += 96
+  Y2 = NY * 16
+  Y2 += 32
+  BeamLine
+  BX[B] = NX
+  BY[B] = NY
+  S = NY * 9
+  S += NX
+  ' the same square, the same way: a loop, stop
+  N = BitTab[V]
+  K = Vis[S] & N
+  if K > 0 then
+    BA[B] = 0
+    return
+  end if
+  if Vis[S] = 0 then
+    if VisN < 64 then
+      VisL[VisN] = S
+      inc VisN
+    end if
+  end if
+  K = Vis[S] | N
+  Vis[S] = K
+  K = Pc[S]
+  if K = 0 then
+    if S = 40 then BA[B] = 0
+    return
+  end if
+  ' what the piece does: in its own frame
+  N = Fc[S]
+  Dl = V - N
+  Dl = Dl & 3
+  J = K * 4
+  J += Dl
+  O1 = BeamA[J]
+  O2 = BeamB[J]
+  if O1 = 5 then return
+  if O1 = 4 then
+    BA[B] = 0
+    for I = 0 to 5
+      if I < KillN then
+        if Kill[I] = S then return
+      end if
+    next
+    if KillN < 6 then
+      Kill[KillN] = S
+      inc KillN
+    end if
+    return
+  end if
+  O1 += N
+  O1 = O1 & 3
+  BD[B] = O1
+  if O2 < 4 then
+    O2 += N
+    O2 = O2 & 3
+    for I = 0 to 3
+      if BA[I] = 0 then
+        BA[I] = 1
+        BX[I] = NX
+        BY[I] = NY
+        BD[I] = O2
+        return
+      end if
+    next
+  end if
+  return
+end sub
+
+' A beam leaving the board: draw it to the edge
+sub BeamOff:
+  BA[B] = 0
+  X1 = X * 16
+  X1 += 96
+  Y1 = Y * 16
+  Y1 += 32
+  X2 = X1
+  Y2 = Y1
+  if V = 0 then Y2 = Y1 - 8
+  if V = 1 then X2 = X1 + 7
+  if V = 2 then Y2 = Y1 + 7
+  if V = 3 then X2 = X1 - 8
+  BeamLine
+  return
+end sub
+
+' A straight beam from X1,Y1 to X2,Y2, two pixels wide
+sub BeamLine:
+  if Sim = 1 then return
+  ' laser red, four pixels wide
+  Col = 9
+  if X1 = X2 then
+    if Y1 > Y2 then
+      N = Y1
+      Y1 = Y2
+      Y2 = N
+    end if
+    for Yy = Y1 to Y2
+      Xc = X1 - 2
+      call asm Pset
+      inc Xc
+      call asm Pset
+      inc Xc
+      call asm Pset
+      inc Xc
+      call asm Pset
+    next
+  else
+    if X1 > X2 then
+      N = X1
+      X1 = X2
+      X2 = N
+    end if
+    for Xc = X1 to X2
+      Yy = Y1 - 2
+      call asm Pset
+      inc Yy
+      call asm Pset
+      inc Yy
+      call asm Pset
+      inc Yy
+      call asm Pset
+    next
+  end if
+  return
+end sub
+
+sub Explode:
+  play sound SndBoom
+  for Tm = 0 to 5
+    SqR = SqY[S]
+    SqR *= 2
+    SqR += 3
+    SqC = SqX[S]
+    SqC *= 2
+    SqC += 11
+    ArtOff = 0
+    N = Tm & 1
+    SqClr = $99
+    if N = 1 then SqClr = $BB
+    call asm DrawSq
+    Rearm
+    wait 3 frames
+    nmi off
+  next
+  Pc[S] = 0
+  DrawSquare
+  return
+end sub
+
+' Draw square S as it stands
+sub DrawSquare:
+  X = SqX[S]
+  Y = SqY[S]
+  SqR = Y * 2
+  SqR += 3
+  SqC = X * 2
+  SqC += 11
+  V = X + Y
+  V = V & 1
+  N = 7
+  if V = 1 then N = 4
+  if S = SelS then N = 3
+  if S = CurS then N = 15
+  K = Pc[S]
+  if K = 0 then
+    ArtOff = 0
+    if S = 40 then
+      ArtOff = Off32[33]
+      N = N + $D0
+    end if
+  else
+    J = K - 1
+    J *= 4
+    J += Fc[S]
+    J += 1
+    ArtOff = Off32[J]
+    if Ow[S] = 0 then
+      N = N + $80
+    else
+      N = N + $B0
+    end if
+  end if
+  SqClr = N
+  call asm DrawSq
+  return
+end sub
+
+sub DrawBoard:
+  for S = 0 to 80
+    DrawSquare
+  next
+  ArrY = 99
+  return
+end sub
+
+' The bitmap screen: board, buttons, status
+sub BoardScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  bitmap screen color $F0
+  backdrop black
+  cls
+  DrawBoard
+  TxRow = 1
+  TxCol = 10
+  TxClr = 15
+  call asm BText with hl = address of TxtTitle
+  TxRow = 5
+  TxCol = 4
+  TxClr = 9
+  call asm BText with hl = address of TxtFire
+  TxRow = 9
+  TxCol = 4
+  TxClr = 7
+  call asm BText with hl = address of TxtPass
+  TxRow = 13
+  TxCol = 4
+  TxClr = 14
+  call asm BText with hl = address of TxtNewB
+  StatusLine
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Message:
+  TxRow = 22
+  TxCol = 2
+  TxClr = 15
+  call asm BText with hl = address of TxtBlank
+  return
+end sub
+
+' Whose turn, how many moves
+sub StatusLine:
+  Message
+  TxRow = 22
+  TxCol = 2
+  if Pl = 0 then
+    TxClr = 9
+    call asm BText with hl = address of TxtRed
+  else
+    TxClr = 11
+    call asm BText with hl = address of TxtGold
+  end if
+  TxCol = 9
+  TxClr = 15
+  if Moves = 2 then
+    call asm BText with hl = address of TxtTwo
+  end if
+  if Moves = 1 then
+    call asm BText with hl = address of TxtOne
+  end if
+  return
+end sub
+
+sub NextPlayer:
+  Pl = Pl ^ 1
+  Moves = 2
+  Fired = 0
+  HyCube = 0
+  HySq = 0
+  Sel = 0
+  play sound SndTurn
+  StatusLine
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The computer player (an addition: the listings are for two people).
+' Before each of its moves it tries every step and rotation of every
+' piece, and firing, and plays out the laser shots in silence (Sim = 1):
+' what its own next shot would hit, minus what the other laser could hit
+' afterwards, plus any capture. Doing nothing is a candidate too.
+
+' Piece values for the simulated shots
+sub SimShot:
+  G16 = 20000
+  Hit16 = 20000
+  T = LzSq[Sp]
+  if T = 255 then return
+  Sim = 1
+  ' forget the last shot's squares
+  I = 0
+  while I < VisN
+    S = VisL[I]
+    Vis[S] = 0
+    inc I
+  end while
+  VisN = 0
+  for B = 0 to 3
+    BA[B] = 0
+  next
+  KillN = 0
+  BX[0] = SqX[T]
+  BY[0] = SqY[T]
+  BD[0] = Fc[T]
+  BA[0] = 1
+  for Steps = 1 to 60
+    Any = 0
+    for B = 0 to 3
+      if BA[B] = 1 then
+        Any = 1
+        BeamStep
+      end if
+    next
+    if Any = 0 then goto sim_done
+  next
+sim_done:
+  Sim = 0
+  ' how close the beam passes to the other king: aiming, and danger
+  V = Sp ^ 1
+  Kq = KgSq[V]
+  Prox = 0
+  if Kq < 81 then
+    Kx = SqX[Kq]
+    Ky = SqY[Kq]
+    Md = 16
+    I = 0
+    while I < VisN
+      S = VisL[I]
+      X = SqX[S]
+      Y = SqY[S]
+      if X > Kx then
+        V = X - Kx
+      else
+        V = Kx - X
+      end if
+      if Y > Ky then
+        N = Y - Ky
+      else
+        N = Ky - Y
+      end if
+      V += N
+      if V < Md then Md = V
+      inc I
+    end while
+    V = 16 - Md
+    Prox = V * V
+    Prox += Prox
+    ' and how far it reaches: open lines of fire
+    V = VisN * 6
+    Prox += V
+  end if
+  for Kj = 0 to 5
+    if Kj < KillN then
+      S = Kill[Kj]
+      K = Pc[S]
+      V16 = PieceVal[K]
+      if Ow[S] = Sp then
+        G16 -= V16
+        Hit16 -= V16
+      else
+        G16 += V16
+        Hit16 += V16
+      end if
+    end if
+  next
+  G16 += Prox
+  return
+end sub
+
+' The score of the position as it stands, for Me, plus CapV
+sub Evaluate:
+  ' what my laser could do next: as it points, and aimed the best way
+  ' found at the start of this move (rotating costs)
+  Sp = Me
+  SimShot
+  Gk = G16
+  if T < 81 then
+    Lq = T
+    Lo = Fc[Lq]
+    if Aim <> Lo then
+      Fc[Lq] = Aim
+      SimShot
+      G16 -= 30
+      if G16 > Gk then Gk = G16
+      Fc[Lq] = Lo
+    end if
+  end if
+  ' a shot I could fire this very turn counts in full, a later one half
+  V = 0
+  if Fired = 0 then
+    if Moves >= 2 then V = 1
+  end if
+  if V = 0 then
+    if Gk >= 20000 then
+      Gk -= 20000
+      Gk = Gk >> 1
+      Gk += 20000
+    else
+      Gk = 20000 - Gk
+      Gk = Gk >> 1
+      Gk = 20000 - Gk
+    end if
+  end if
+  ' what the other laser could do to me, aimed any of four ways
+  ' (it can rotate and fire in one turn)
+  Sp = Op
+  SimShot
+  T16 = G16
+  Lq = LzSq[Op]
+  if Lq < 81 then
+    Lo = Fc[Lq]
+    for Lr = 0 to 3
+      if Lr <> Lo then
+        Fc[Lq] = Lr
+        SimShot
+        if G16 > T16 then T16 = G16
+      end if
+    next
+    Fc[Lq] = Lo
+  end if
+  G16 = T16
+  Sc16 = Gk + 30000
+  Sc16 -= G16
+  Sc16 += CapV
+  ' kings in reach of a capturing block or king (two moves a turn)
+  Sp = Me
+  KingReach
+  if Md <= 2 then Sc16 -= 4000
+  if Md = 3 then Sc16 -= 250
+  LaserReach
+  if Md <= 2 then Sc16 -= 300
+  Sp = Op
+  KingReach
+  if Md <= 2 then Sc16 += 400
+  if Md = 3 then Sc16 += 120
+  if Md = 4 then Sc16 += 40
+  Mix += 29
+  V = random(0, 7)
+  V += Mix
+  V = V & 7
+  Sc16 += V
+  return
+end sub
+
+' How near the closest enemy block or king is to player Sp's king, into Md
+sub KingReach:
+  Md = 99
+  Kq = KgSq[Sp]
+  if Kq = 255 then return
+  Kx = SqX[Kq]
+  Ky = SqY[Kq]
+  I = 0
+  while I < CapN
+    if CapO[I] <> Sp then
+      if CapO[I] < 2 then
+        S = CapS[I]
+        X = SqX[S]
+        Y = SqY[S]
+        if X > Kx then
+          V = X - Kx
+        else
+          V = Kx - X
+        end if
+        if Y > Ky then
+          N = Y - Ky
+        else
+          N = Ky - Y
+        end if
+        V += N
+        if V < Md then Md = V
+      end if
+    end if
+    inc I
+  end while
+  return
+end sub
+
+' How near the closest enemy block or king is to Me's laser, into Md
+sub LaserReach:
+  Md = 99
+  Kq = LzSq[Me]
+  if Kq = 255 then return
+  Kx = SqX[Kq]
+  Ky = SqY[Kq]
+  I = 0
+  while I < CapN
+    if CapO[I] = Op then
+      S = CapS[I]
+      X = SqX[S]
+      Y = SqY[S]
+      if X > Kx then
+        V = X - Kx
+      else
+        V = Kx - X
+      end if
+      if Y > Ky then
+        N = Y - Ky
+      else
+        N = Ky - Y
+      end if
+      V += N
+      if V < Md then Md = V
+    end if
+    inc I
+  end while
+  return
+end sub
+
+sub FindKeys:
+  LzSq[0] = 255
+  LzSq[1] = 255
+  KgSq[0] = 255
+  KgSq[1] = 255
+  CapN = 0
+  for S = 0 to 80
+    K = Pc[S]
+    V = 0
+    if K = 1 then V = 1
+    if K = 5 then V = 1
+    if V = 1 then
+      if CapN < 16 then
+        CapS[CapN] = S
+        CapO[CapN] = Ow[S]
+        inc CapN
+      end if
+    end if
+    if K = 1 then
+      V = Ow[S]
+      KgSq[V] = S
+    end if
+    if K = 2 then
+      V = Ow[S]
+      LzSq[V] = S
+    end if
+  next
+  for S = 0 to 80
+    Vis[S] = 0
+  next
+  VisN = 0
+  return
+end sub
+
+sub CpuAct:
+  Me = Pl
+  Op = Pl ^ 1
+  FindKeys
+  ' the best way to aim my laser from here
+  Aim = 255
+  Sp = Me
+  SimShot
+  if T < 81 then
+    Lq = T
+    Lo = Fc[Lq]
+    Aim = Lo
+    Best16 = G16
+    for Lr = 0 to 3
+      Fc[Lq] = Lr
+      SimShot
+      if G16 > Best16 then
+        Best16 = G16
+        Aim = Lr
+      end if
+    next
+    Fc[Lq] = Lo
+  end if
+  ' doing nothing
+  Sp = Op
+  SimShot
+  T0 = G16
+  CapV = 0
+  Evaluate
+  Best16 = Sc16
+  BestK = 0
+  ' firing now
+  if Fired = 0 then
+    Sp = Me
+    SimShot
+    if Hit16 > 20000 then
+      Gk = Hit16
+      T16 = T0
+      for Kj = 0 to 5
+        if Kj < KillN then
+          S = Kill[Kj]
+          if Pc[S] = 2 then
+            if Ow[S] = Op then T16 = 20000
+          end if
+        end if
+      next
+      Sc16 = Gk + 30040
+      Sc16 -= T16
+      if Sc16 > Best16 then
+        Best16 = Sc16
+        BestK = 1
+      end if
+    end if
+  end if
+  ' every step and rotation
+  for Cs = 0 to 80
+    Ck = Pc[Cs]
+    if Ck > 0 then
+      if Ow[Cs] = Me then
+        Co = Fc[Cs]
+        CapV = 0
+        if Ck <> 1 then
+          if Ck <> 3 then
+            for Cr = 1 to 3
+              Cn = Co + Cr
+              Cn = Cn & 3
+              V = 1
+              if Ck >= 6 then
+                if Ck <= 7 then
+                  Cn = Co ^ 1
+                  if Cr > 1 then V = 0
+                end if
+              end if
+              if V = 1 then
+                Fc[Cs] = Cn
+                Evaluate
+                Fc[Cs] = Co
+                if Sc16 > Best16 then
+                  Best16 = Sc16
+                  BestK = 2
+                  BestS = Cs
+                  BestO = Cn
+                end if
+              end if
+            next
+          end if
+        end if
+        for Cd = 0 to 3
+          Ct = 255
+          X = SqX[Cs]
+          Y = SqY[Cs]
+          if Cd = 0 then
+            if Y > 0 then Ct = Cs - 9
+          elseif Cd = 1 then
+            if X < 8 then Ct = Cs + 1
+          elseif Cd = 2 then
+            if Y < 8 then Ct = Cs + 9
+          else
+            if X > 0 then Ct = Cs - 1
+          end if
+          if Ct = 40 then Ct = 255
+          if Ct < 81 then
+            Tp = Pc[Ct]
+            V = 0
+            CapV = 0
+            if Tp = 0 then
+              V = 1
+              ' blocks go forward: they capture
+              if Ck = 5 then
+                if Me = 0 then
+                  if Cd = 2 then CapV = 3
+                else
+                  if Cd = 0 then CapV = 3
+                end if
+              end if
+            end if
+            if Tp > 0 then
+              if Ow[Ct] = Op then
+                if Ck = 1 then V = 1
+                if Ck = 5 then V = 1
+                if V = 1 then CapV = PieceVal[Tp]
+                if Tp = 1 then CapV = 9000
+              end if
+            end if
+            if V = 1 then
+              Tw = Ow[Ct]
+              Tf = Fc[Ct]
+              Pc[Ct] = Ck
+              Ow[Ct] = Me
+              Fc[Ct] = Co
+              Pc[Cs] = 0
+              ' the king or laser moved, or a piece was captured
+              if Ck = 1 then KgSq[Me] = Ct
+              if Ck = 2 then LzSq[Me] = Ct
+              if Tp = 1 then KgSq[Op] = 255
+              if Tp = 2 then LzSq[Op] = 255
+              Ci1 = 255
+              Ci2 = 255
+              I = 0
+              while I < CapN
+                if CapS[I] = Cs then Ci1 = I
+                if CapS[I] = Ct then Ci2 = I
+                inc I
+              end while
+              if Ci1 < 16 then CapS[Ci1] = Ct
+              if Ci2 < 16 then CapO[Ci2] = 9
+              Evaluate
+              if Ci1 < 16 then CapS[Ci1] = Cs
+              if Ci2 < 16 then CapO[Ci2] = Op
+              if Ck = 1 then KgSq[Me] = Cs
+              if Ck = 2 then LzSq[Me] = Cs
+              if Tp = 1 then KgSq[Op] = Ct
+              if Tp = 2 then LzSq[Op] = Ct
+              Pc[Cs] = Ck
+              Pc[Ct] = Tp
+              Ow[Ct] = Tw
+              Fc[Ct] = Tf
+              if Sc16 > Best16 then
+                Best16 = Sc16
+                BestK = 3
+                BestS = Cs
+                BestT = Ct
+              end if
+            end if
+          end if
+        next
+      end if
+    end if
+  next
+  CapV = 0
+  return
+end sub
+
+' Play the chosen move, with the cursor, slowly enough to follow
+sub CpuDo:
+  if BestK = 0 then
+    CX = 255
+    CY = 3
+    CpuShow
+    play sound SndPick
+    Moves = 0
+    return
+  end if
+  if BestK = 1 then
+    CX = 255
+    CY = 1
+    CpuShow
+    FireButton
+    return
+  end if
+  CX = SqX[BestS]
+  CY = SqY[BestS]
+  CpuShow
+  Sel = 1
+  Ss = BestS
+  Fc0 = Fc[Ss]
+  play sound SndPick
+  CpuShow
+  if BestK = 2 then
+    Fc[Ss] = BestO
+    S = Ss
+    DrawSquare
+    play sound SndRotate
+    CpuShow
+  else
+    CX = SqX[BestT]
+    CY = SqY[BestT]
+    CpuShow
+  end if
+  TryMove
+  return
+end sub
+
+sub CpuShow:
+  ShowCursor
+  Rearm
+  wait 20 frames
+  nmi off
+  return
+end sub
+
+' Every piece, drawn as on the board, with what it does
+sub PiecesPage:
+  Pg = 0
+pieces_page:
+  Rearm
+  wait
+  nmi off
+  display off
+  bitmap screen color $F0
+  backdrop black
+  cls
+  TxRow = 1
+  TxCol = 10
+  TxClr = 15
+  call asm BText with hl = address of PcTitle
+  for Kj = 0 to 7
+    N = Kj >> 2
+    if N = Pg then
+    SqR = Kj & 3
+    SqR *= 4
+    SqR += 4
+    SqC = 2
+    J = Kj * 4
+    J += 1
+    if Kj = 1 then J += 1
+    if Kj = 3 then J += 2
+    if Kj = 4 then J += 2
+    if Kj = 7 then J += 2
+    ArtOff = Off32[J]
+    SqClr = $B4
+    call asm DrawSq
+    TxRow = SqR
+    TxCol = 5
+    TxClr = 11
+    if Kj = 0 then
+      call asm BText with hl = address of PcT00
+    end if
+    if Kj = 1 then
+      call asm BText with hl = address of PcT10
+    end if
+    if Kj = 2 then
+      call asm BText with hl = address of PcT20
+    end if
+    if Kj = 3 then
+      call asm BText with hl = address of PcT30
+    end if
+    if Kj = 4 then
+      call asm BText with hl = address of PcT40
+    end if
+    if Kj = 5 then
+      call asm BText with hl = address of PcT50
+    end if
+    if Kj = 6 then
+      call asm BText with hl = address of PcT60
+    end if
+    if Kj = 7 then
+      call asm BText with hl = address of PcT70
+    end if
+    TxRow = SqR + 1
+    TxCol = 5
+    TxClr = 15
+    if Kj = 0 then
+      call asm BText with hl = address of PcT01
+    end if
+    if Kj = 1 then
+      call asm BText with hl = address of PcT11
+    end if
+    if Kj = 2 then
+      call asm BText with hl = address of PcT21
+    end if
+    if Kj = 3 then
+      call asm BText with hl = address of PcT31
+    end if
+    if Kj = 4 then
+      call asm BText with hl = address of PcT41
+    end if
+    if Kj = 5 then
+      call asm BText with hl = address of PcT51
+    end if
+    if Kj = 6 then
+      call asm BText with hl = address of PcT61
+    end if
+    if Kj = 7 then
+      call asm BText with hl = address of PcT71
+    end if
+    end if
+  next
+  if Pg = 1 then
+    TxRow = 20
+    TxCol = 2
+    TxClr = 13
+    call asm BText with hl = address of PcCentre
+  end if
+  TxRow = 22
+  TxCol = 8
+  TxClr = 15
+  call asm BText with hl = address of PcPress
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  inc Pg
+  if Pg < 2 then goto pieces_page
+  return
+end sub
+
+' Three small shots, to see how the beam behaves
+sub LaserDemos:
+  for Dm = 0 to 2
+    for S = 0 to 80
+      Pc[S] = 0
+      Ow[S] = 0
+      Fc[S] = 0
+    next
+    J = Dm * 13
+    for I = 0 to 3
+      S = DemoData[J]
+      if S < 81 then
+        inc J
+        Pc[S] = DemoData[J]
+        inc J
+        Ow[S] = DemoData[J]
+        inc J
+        Fc[S] = DemoData[J]
+        inc J
+      end if
+    next
+    CurS = 255
+    SelS = 255
+    Rearm
+    wait
+    nmi off
+    display off
+    bitmap screen color $F0
+    backdrop black
+    cls
+    DrawBoard
+    TxRow = 1
+    TxCol = 6
+    TxClr = 15
+    call asm BText with hl = address of LdTitle
+    TxRow = 21
+    TxCol = 2
+    TxClr = 11
+    if Dm = 0 then
+      call asm BText with hl = address of Ld0a
+    end if
+    if Dm = 1 then
+      call asm BText with hl = address of Ld1a
+    end if
+    if Dm = 2 then
+      call asm BText with hl = address of Ld2a
+    end if
+    Rearm
+    wait
+    nmi off
+    screen on
+    nmi off
+    Rearm
+    wait 50 frames
+    nmi off
+    ' fire the laser on the board
+    T = 255
+    for S = 0 to 80
+      if Pc[S] = 2 then T = S
+    next
+    Keep = 1
+    FireLaser
+    Keep = 0
+    Winner = 0
+    ' the pieces still standing, drawn back over the beam
+    for S = 0 to 80
+      if Pc[S] > 0 then DrawSquare
+    next
+    TxRow = 22
+    TxCol = 2
+    TxClr = 15
+    if Dm = 0 then
+      call asm BText with hl = address of Ld0b
+    end if
+    if Dm = 1 then
+      call asm BText with hl = address of Ld1b
+    end if
+    if Dm = 2 then
+      call asm BText with hl = address of Ld2b
+    end if
+    Rearm
+    wait no fire
+    pause until press
+    wait no fire
+    nmi off
+  next
+  return
+end sub
+
+' Who plays red and gold
+sub SetupMenu:
+setup_menu:
+  Rearm
+  wait
+  nmi off
+  display off
+  tile screen
+  fill mode 2 text color with $F1
+  backdrop black
+  cls
+  print at 9,3, "LASER CHESS"
+  print at 5,8, "RED"
+  print at 5,10, "GOLD"
+  print at 5,13, "START THE GAME"
+  print at 5,15, "SEE THE PIECES"
+  print at 5,17, "SEE THE LASER"
+  print at 3,20, "UP/DOWN: CHOOSE A LINE"
+  print at 3,21, "LEFT/RIGHT: CHANGE IT"
+  print at 3,22, "BUTTON: START OR SEE"
+  MenuL = 2
+  WasB = 0
+  ShowSetup
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Rearm
+  wait no fire
+  nmi off
+setup_loop:
+  Rearm
+  wait 8 frames
+  nmi off
+  ReadPad
+  V = BtA | BtB
+  if V = 1 then
+    play sound SndPick
+    Rearm
+    wait no fire
+    nmi off
+    if MenuL = 3 then
+      PiecesPage
+      goto setup_menu
+    end if
+    if MenuL = 4 then
+      LaserDemos
+      goto setup_menu
+    end if
+    return
+  end if
+  V = 0
+  if Up1 = 1 then
+    if MenuL > 0 then dec MenuL
+    V = 1
+  end if
+  if Dn1 = 1 then
+    if MenuL < 4 then inc MenuL
+    V = 1
+  end if
+  N = Lf1 | Rt1
+  if N = 1 then
+    if WasB = 0 then
+      if MenuL = 0 then CpuR = CpuR ^ 1
+      if MenuL = 1 then CpuG = CpuG ^ 1
+      V = 1
+    end if
+  end if
+  ' one change per push
+  WasB = N
+  if V = 1 then
+    play sound SndTick
+    Rearm
+    wait
+    nmi off
+    ShowSetup
+  end if
+  goto setup_loop
+end sub
+
+sub ShowSetup:
+  put char 32 at 3,8
+  put char 32 at 3,10
+  put char 32 at 3,13
+  put char 32 at 3,15
+  put char 32 at 3,17
+  Y = SetupRow[MenuL]
+  put char 62 at 3,Y
+  if CpuR = 0 then print at 12,8, "HUMAN   "
+  if CpuR = 1 then print at 12,8, "COMPUTER"
+  if CpuG = 0 then print at 12,10, "HUMAN   "
+  if CpuG = 1 then print at 12,10, "COMPUTER"
+  return
+end sub
+
+sub TitlePage:
+  Rearm
+  wait
+  nmi off
+  display off
+  tile screen
+  fill mode 2 text color with $F1
+  backdrop black
+  cls
+  print at 9,4, "LASER CHESS"
+  print at 5,7, "BY MIKE DUPPONG, 1987"
+  print at 4,10, "PLAY A FRIEND OR THE CPU."
+  print at 4,11, "ELIMINATE THE OTHER KING"
+  print at 4,12, "WITH YOUR LASER, OR"
+  print at 4,13, "CAPTURE IT."
+  print at 4,15, "LEFT BUTTON: PICK UP/PUT"
+  print at 4,16, "RIGHT BUTTON: ROTATE"
+  print at 4,17, "FIRE AND PASS: LEFT OF"
+  print at 4,18, "THE BOARD."
+  print at 8,21, "PRESS A BUTTON"
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 9,1, "LASER CHESS"
+  print at 2,3, "BY MIKE DUPPONG. FIRST"
+  print at 2,4, "PRIZE IN COMPUTE!'S 10,000"
+  print at 2,5, "DOLLAR CONTEST, WRITTEN IN"
+  print at 2,6, "MODULA-2 FOR THE ATARI ST."
+  print at 2,7, "COMPUTE! PRINTED IT FOR THE"
+  print at 2,8, "AMIGA, C64, ATARI XL/XE AND"
+  print at 2,9, "APPLE II IN JUNE 1987."
+  print at 2,11, "A CHESSLIKE GAME OF LASERS"
+  print at 2,12, "AND MIRRORS: AIM, BOUNCE,"
+  print at 2,13, "SPLIT THE BEAM, AND BURN"
+  print at 2,14, "THROUGH TO THE OTHER KING."
+  print at 2,16, "THE STARTING POSITION IS"
+  print at 2,17, "REBUILT FROM THE PHOTOS."
+  print at 2,19, "COLECOVISION VERSION BY"
+  print at 2,20, "AMY BIENVENU, 2026."
+  print at 6,22, "PRESS A BUTTON"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data BitTab bytes = 1, 2, 4, 8
+' demos: laser east, a mirror up to the king / a splitter / a bounce back
+data DemoData bytes = 54, 2, 0, 1, 60, 6, 0, 0, 15, 1, 1, 0, 255, 54, 2, 0, 1, 59, 4, 0, 3, 14, 1, 1, 0, 255, 55, 2, 0, 1, 57, 3, 0, 0, 61, 7, 1, 1, 255
+data SetupRow bytes = 8, 10, 13, 15, 17
+data PieceVal words = 0, 6000, 400, 0, 80, 60, 0, 0, 50
+' "LASER CHESS"
+data TxtTitle bytes = 76, 65, 83, 69, 82, 32, 67, 72, 69, 83, 83, 0
+' "FIRE"
+data TxtFire bytes = 70, 73, 82, 69, 0
+' "PASS"
+data TxtPass bytes = 80, 65, 83, 83, 0
+' "NEW"
+data TxtNewB bytes = 78, 69, 87, 0
+' "                            "
+data TxtBlank bytes = 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 0
+' "RED"
+data TxtRed bytes = 82, 69, 68, 0
+' "GOLD"
+data TxtGold bytes = 71, 79, 76, 68, 0
+' "2 MOVES LEFT"
+data TxtTwo bytes = 50, 32, 77, 79, 86, 69, 83, 32, 76, 69, 70, 84, 0
+' "1 MOVE LEFT "
+data TxtOne bytes = 49, 32, 77, 79, 86, 69, 32, 76, 69, 70, 84, 32, 0
+' "PRESS AGAIN FOR A NEW GAME"
+data TxtNew bytes = 80, 82, 69, 83, 83, 32, 65, 71, 65, 73, 78, 32, 70, 79, 82, 32, 65, 32, 78, 69, 87, 32, 71, 65, 77, 69, 0
+' "RED WINS! PRESS A BUTTON"
+data TxtRedWins bytes = 82, 69, 68, 32, 87, 73, 78, 83, 33, 32, 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 0
+' "GOLD WINS! PRESS A BUTTON"
+data TxtGoldWins bytes = 71, 79, 76, 68, 32, 87, 73, 78, 83, 33, 32, 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 0
+' "A DRAW! PRESS A BUTTON"
+data TxtDraw bytes = 65, 32, 68, 82, 65, 87, 33, 32, 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 0
+' ">"
+data TxtArrow bytes = 62, 0
+' " "
+data TxtSpace bytes = 32, 0
+' "KING - NO MIRROR SIDE."
+data PcT00 bytes = 75, 73, 78, 71, 32, 45, 32, 78, 79, 32, 77, 73, 82, 82, 79, 82, 32, 83, 73, 68, 69, 46, 0
+' "LOSE IT, LOSE. CAPTURES."
+data PcT01 bytes = 76, 79, 83, 69, 32, 73, 84, 44, 32, 76, 79, 83, 69, 46, 32, 67, 65, 80, 84, 85, 82, 69, 83, 46, 0
+' "LASER - FIRES ONCE A TURN"
+data PcT10 bytes = 76, 65, 83, 69, 82, 32, 45, 32, 70, 73, 82, 69, 83, 32, 79, 78, 67, 69, 32, 65, 32, 84, 85, 82, 78, 0
+' "ROTATES TO AIM. FRAGILE."
+data PcT11 bytes = 82, 79, 84, 65, 84, 69, 83, 32, 84, 79, 32, 65, 73, 77, 46, 32, 70, 82, 65, 71, 73, 76, 69, 46, 0
+' "HYPERCUBE - BEAMS PASS."
+data PcT20 bytes = 72, 89, 80, 69, 82, 67, 85, 66, 69, 32, 45, 32, 66, 69, 65, 77, 83, 32, 80, 65, 83, 83, 46, 0
+' "WARPS A PIECE IT LANDS ON"
+data PcT21 bytes = 87, 65, 82, 80, 83, 32, 65, 32, 80, 73, 69, 67, 69, 32, 73, 84, 32, 76, 65, 78, 68, 83, 32, 79, 78, 0
+' "SPLITTER - POINT SPLITS,"
+data PcT30 bytes = 83, 80, 76, 73, 84, 84, 69, 82, 32, 45, 32, 80, 79, 73, 78, 84, 32, 83, 80, 76, 73, 84, 83, 44, 0
+' "SIDES TURN, BASE IS WEAK."
+data PcT31 bytes = 83, 73, 68, 69, 83, 32, 84, 85, 82, 78, 44, 32, 66, 65, 83, 69, 32, 73, 83, 32, 87, 69, 65, 75, 46, 0
+' "BLOCK - BAR BOUNCES BACK."
+data PcT40 bytes = 66, 76, 79, 67, 75, 32, 45, 32, 66, 65, 82, 32, 66, 79, 85, 78, 67, 69, 83, 32, 66, 65, 67, 75, 46, 0
+' "CAPTURES. SIDES ARE WEAK."
+data PcT41 bytes = 67, 65, 80, 84, 85, 82, 69, 83, 46, 32, 83, 73, 68, 69, 83, 32, 65, 82, 69, 32, 87, 69, 65, 75, 46, 0
+' "DIAGONAL MIRROR - TURNS"
+data PcT50 bytes = 68, 73, 65, 71, 79, 78, 65, 76, 32, 77, 73, 82, 82, 79, 82, 32, 45, 32, 84, 85, 82, 78, 83, 0
+' "BEAMS 90 DEGREES. SAFE."
+data PcT51 bytes = 66, 69, 65, 77, 83, 32, 57, 48, 32, 68, 69, 71, 82, 69, 69, 83, 46, 32, 83, 65, 70, 69, 46, 0
+' "STRAIGHT MIRROR - BOUNCES"
+data PcT60 bytes = 83, 84, 82, 65, 73, 71, 72, 84, 32, 77, 73, 82, 82, 79, 82, 32, 45, 32, 66, 79, 85, 78, 67, 69, 83, 0
+' "BACK, EDGE ON LETS PASS."
+data PcT61 bytes = 66, 65, 67, 75, 44, 32, 69, 68, 71, 69, 32, 79, 78, 32, 76, 69, 84, 83, 32, 80, 65, 83, 83, 46, 0
+' "TRIANGLE - LONG SIDE"
+data PcT70 bytes = 84, 82, 73, 65, 78, 71, 76, 69, 32, 45, 32, 76, 79, 78, 71, 32, 83, 73, 68, 69, 0
+' "TURNS BEAMS. LEGS WEAK."
+data PcT71 bytes = 84, 85, 82, 78, 83, 32, 66, 69, 65, 77, 83, 46, 32, 76, 69, 71, 83, 32, 87, 69, 65, 75, 46, 0
+' "THE PIECES"
+data PcTitle bytes = 84, 72, 69, 32, 80, 73, 69, 67, 69, 83, 0
+' "CENTRE SQUARE EATS BEAMS."
+data PcCentre bytes = 67, 69, 78, 84, 82, 69, 32, 83, 81, 85, 65, 82, 69, 32, 69, 65, 84, 83, 32, 66, 69, 65, 77, 83, 46, 0
+' "PRESS A BUTTON"
+data PcPress bytes = 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 0
+' "HOW THE LASER WORKS"
+data LdTitle bytes = 72, 79, 87, 32, 84, 72, 69, 32, 76, 65, 83, 69, 82, 32, 87, 79, 82, 75, 83, 0
+' "A MIRROR TURNS THE BEAM"
+data Ld0a bytes = 65, 32, 77, 73, 82, 82, 79, 82, 32, 84, 85, 82, 78, 83, 32, 84, 72, 69, 32, 66, 69, 65, 77, 0
+' "THE KING HAS NO MIRROR SIDE"
+data Ld0b bytes = 84, 72, 69, 32, 75, 73, 78, 71, 32, 72, 65, 83, 32, 78, 79, 32, 77, 73, 82, 82, 79, 82, 32, 83, 73, 68, 69, 0
+' "A SPLITTER MAKES TWO BEAMS"
+data Ld1a bytes = 65, 32, 83, 80, 76, 73, 84, 84, 69, 82, 32, 77, 65, 75, 69, 83, 32, 84, 87, 79, 32, 66, 69, 65, 77, 83, 0
+' "ONE OF THEM FOUND THE KING"
+data Ld1b bytes = 79, 78, 69, 32, 79, 70, 32, 84, 72, 69, 77, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 75, 73, 78, 71, 0
+' "A STRAIGHT MIRROR BOUNCES"
+data Ld2a bytes = 65, 32, 83, 84, 82, 65, 73, 71, 72, 84, 32, 77, 73, 82, 82, 79, 82, 32, 66, 79, 85, 78, 67, 69, 83, 0
+' "BACK: YOUR LASER IS NOT SAFE"
+data Ld2b bytes = 66, 65, 67, 75, 58, 32, 89, 79, 85, 82, 32, 76, 65, 83, 69, 82, 32, 73, 83, 32, 78, 79, 84, 32, 83, 65, 70, 69, 0
+' "PRESS A BUTTON"
+data LdPress bytes = 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 0
+data SetPc bytes = 8, 6, 5, 2, 1, 4, 5, 6, 8, 8, 7, 8, 3, 5, 5, 8, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 7, 8, 5, 5, 3, 8, 7, 8, 8, 6, 5, 4, 1, 2, 5, 6, 8
+data SetOw bytes = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+data SetOr bytes = 1, 0, 2, 2, 0, 2, 2, 1, 2, 1, 0, 1, 0, 2, 2, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 3
+data SqX bytes = 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8
+data SqY bytes = 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8
+data Off32 words = 0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960, 992, 1024, 1056
+data BeamA bytes = 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 4, 0, 1, 0, 4, 4, 0, 4, 1, 0, 3, 2, 2, 5, 0, 5, 4, 4, 1, 0
+data BeamB bytes = 0, 0, 0, 0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 3, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+data Art bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$13,$1B,$00,$00,$00,$00,$80,$80,$48,$58,$1F,$1F,$18,$1F,$00,$00,$00,$00,$F8,$F8,$18,$F8,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$13,$1B,$00,$00,$00,$00,$80,$80,$48,$58,$1F,$1F,$18,$1F,$00,$00,$00,$00,$F8,$F8,$18,$F8,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$13,$1B,$00,$00,$00,$00,$80,$80,$48,$58,$1F,$1F,$18,$1F,$00,$00,$00,$00,$F8,$F8,$18,$F8,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$13,$1B,$00,$00,$00,$00,$80,$80,$48,$58,$1F,$1F,$18,$1F,$00,$00,$00,$00,$F8,$F8,$18,$F8,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01,$00,$80,$80,$80,$80,$80,$80,$80,$0F,$0F,$0F,$0E,$0F,$0F,$00,$00,$F0,$F0,$F0,$70,$F0,$F0,$00,$00
+  $00,$00,$00,$00,$3F,$3F,$3F,$37,$00,$00,$00,$00,$00,$00,$00,$FE,$37,$3F,$3F,$3F,$00,$00,$00,$00,$FE,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$0F,$0F,$0E,$0F,$0F,$0F,$00,$00,$F0,$F0,$70,$F0,$F0,$F0,$01,$01,$01,$01,$01,$01,$01,$00,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$7F,$00,$00,$00,$00,$FC,$FC,$FC,$EC,$7F,$00,$00,$00,$00,$00,$00,$00,$EC,$FC,$FC,$FC,$00,$00,$00,$00
+  $00,$00,$07,$08,$10,$3F,$20,$20,$00,$00,$FC,$0C,$14,$E4,$24,$24,$20,$20,$20,$20,$20,$3F,$00,$00,$24,$24,$24,$28,$30,$E0,$00,$00
+  $00,$00,$07,$08,$10,$3F,$20,$20,$00,$00,$FC,$0C,$14,$E4,$24,$24,$20,$20,$20,$20,$20,$3F,$00,$00,$24,$24,$24,$28,$30,$E0,$00,$00
+  $00,$00,$07,$08,$10,$3F,$20,$20,$00,$00,$FC,$0C,$14,$E4,$24,$24,$20,$20,$20,$20,$20,$3F,$00,$00,$24,$24,$24,$28,$30,$E0,$00,$00
+  $00,$00,$07,$08,$10,$3F,$20,$20,$00,$00,$FC,$0C,$14,$E4,$24,$24,$20,$20,$20,$20,$20,$3F,$00,$00,$24,$24,$24,$28,$30,$E0,$00,$00
+  $00,$00,$01,$01,$03,$03,$07,$0F,$00,$C0,$E0,$E0,$F0,$F0,$F8,$F8,$0F,$1F,$1F,$3F,$38,$30,$70,$60,$FC,$FC,$FE,$FE,$07,$03,$03,$01
+  $00,$C0,$F8,$7E,$1F,$0F,$0F,$0F,$00,$00,$00,$00,$80,$C0,$F0,$FC,$0F,$0F,$0F,$0F,$0F,$1F,$7C,$F0,$FE,$FE,$FC,$F0,$C0,$00,$00,$00
+  $80,$C0,$C0,$E0,$7F,$7F,$3F,$3F,$06,$0E,$0C,$1C,$FC,$F8,$F8,$F0,$1F,$1F,$0F,$0F,$07,$07,$03,$00,$F0,$E0,$C0,$C0,$80,$80,$00,$00
+  $00,$00,$00,$03,$0F,$3F,$7F,$7F,$0F,$3E,$F8,$F0,$F0,$F0,$F0,$F0,$3F,$0F,$03,$01,$00,$00,$00,$00,$F0,$F0,$F0,$F8,$7E,$1F,$03,$00
+  $00,$7F,$7F,$7F,$00,$00,$1F,$1F,$00,$FE,$FE,$FE,$00,$00,$F8,$F8,$18,$18,$18,$18,$18,$1F,$00,$00,$08,$08,$08,$08,$08,$F8,$00,$00
+  $00,$00,$00,$3F,$3F,$20,$20,$20,$00,$0E,$0E,$CE,$CE,$CE,$CE,$CE,$20,$20,$20,$20,$3F,$00,$00,$00,$CE,$CE,$CE,$CE,$CE,$0E,$0E,$00
+  $00,$00,$1F,$10,$10,$10,$10,$10,$00,$00,$F8,$18,$18,$18,$18,$18,$1F,$1F,$00,$00,$7F,$7F,$7F,$00,$F8,$F8,$00,$00,$FE,$FE,$FE,$00
+  $00,$70,$70,$73,$73,$73,$73,$73,$00,$00,$00,$FC,$04,$04,$04,$04,$73,$73,$73,$73,$73,$70,$70,$00,$04,$04,$04,$FC,$FC,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F,$1F,$3E,$7C,$F8,$01,$03,$07,$0F,$1F,$3E,$7C,$78,$F0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$70,$78,$7C,$3E,$1F,$0F,$07,$00,$00,$00,$00,$00,$00,$80,$C0,$03,$01,$00,$00,$00,$00,$00,$00,$E0,$F0,$F8,$7C,$3E,$1F,$0F,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F,$1F,$3E,$7C,$F8,$01,$03,$07,$0F,$1F,$3E,$7C,$78,$F0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$70,$78,$7C,$3E,$1F,$0F,$07,$00,$00,$00,$00,$00,$00,$80,$C0,$03,$01,$00,$00,$00,$00,$00,$00,$E0,$F0,$F8,$7C,$3E,$1F,$0F,$07
+  $00,$00,$00,$00,$00,$00,$7F,$7F,$00,$00,$00,$00,$00,$00,$FE,$FE,$7F,$7F,$00,$00,$00,$00,$00,$00,$FE,$FE,$00,$00,$00,$00,$00,$00
+  $00,$03,$03,$03,$03,$03,$03,$03,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$03,$03,$03,$03,$03,$03,$03,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$7F,$7F,$00,$00,$00,$00,$00,$00,$FE,$FE,$7F,$7F,$00,$00,$00,$00,$00,$00,$FE,$FE,$00,$00,$00,$00,$00,$00
+  $00,$03,$03,$03,$03,$03,$03,$03,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$03,$03,$03,$03,$03,$03,$03,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$70,$78,$7C,$7E,$5F,$4F,$47,$00,$00,$00,$00,$00,$00,$80,$C0,$43,$41,$40,$40,$40,$40,$7F,$00,$E0,$F0,$F8,$7C,$3E,$1F,$FF,$07
+  $00,$7F,$40,$40,$40,$40,$41,$43,$00,$FE,$1E,$3E,$7C,$F8,$F0,$E0,$47,$4F,$5F,$7E,$7C,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $E0,$FF,$F8,$7C,$3E,$1F,$0F,$07,$00,$FE,$02,$02,$02,$02,$82,$C2,$03,$01,$00,$00,$00,$00,$00,$00,$E2,$F2,$FA,$7E,$3E,$1E,$0E,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$1F,$3E,$7E,$FA,$F2,$E2,$07,$0F,$1F,$3E,$7C,$78,$7F,$00,$C2,$82,$02,$02,$02,$02,$FE,$00
+  $00,$00,$00,$00,$01,$02,$04,$09,$00,$00,$00,$80,$40,$20,$90,$48,$12,$09,$04,$02,$01,$00,$00,$00,$24,$48,$90,$20,$40,$80,$00,$00
+end data
+data SprPat bytes
+  $FF,$C0,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$C0,$FF,$FF,$03,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$03,$FF
+  $00,$00,$00,$00,$20,$3C,$3F,$3F,$3F,$3F,$3C,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00
+end data
+data Font bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10,$10,$10,$10,$00,$10,$00,$28,$28,$00,$00,$00,$00,$00,$00,$38,$44,$04,$08,$10,$00,$10
+  $00,$38,$44,$04,$08,$10,$00,$10,$00,$60,$64,$08,$10,$20,$4C,$0C,$00,$30,$48,$50,$20,$54,$48,$34,$00,$10,$10,$20,$00,$00,$00,$00
+  $00,$08,$10,$20,$20,$20,$10,$08,$00,$20,$10,$08,$08,$08,$10,$20,$00,$00,$54,$38,$7C,$38,$54,$00,$00,$00,$10,$10,$7C,$10,$10,$00
+  $00,$00,$00,$00,$00,$30,$10,$20,$00,$00,$00,$00,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$30,$00,$04,$04,$08,$10,$20,$40,$40
+  $00,$38,$44,$4C,$54,$64,$44,$38,$00,$10,$30,$10,$10,$10,$10,$38,$00,$38,$44,$04,$08,$10,$20,$7C,$00,$7C,$08,$10,$08,$04,$44,$38
+  $00,$08,$18,$28,$48,$7C,$08,$08,$00,$7C,$40,$78,$04,$04,$44,$38,$00,$18,$20,$40,$78,$44,$44,$38,$00,$7C,$04,$08,$10,$20,$20,$20
+  $00,$38,$44,$44,$38,$44,$44,$38,$00,$38,$44,$44,$3C,$04,$08,$30,$00,$00,$30,$30,$00,$30,$30,$00,$00,$38,$44,$04,$08,$10,$00,$10
+  $00,$08,$10,$20,$40,$20,$10,$08,$00,$00,$00,$7C,$00,$7C,$00,$00,$00,$20,$10,$08,$04,$08,$10,$20,$00,$38,$44,$04,$08,$10,$00,$10
+  $00,$38,$44,$04,$08,$10,$00,$10,$00,$38,$44,$44,$7C,$44,$44,$44,$00,$78,$44,$44,$78,$44,$44,$78,$00,$38,$44,$40,$40,$40,$44,$38
+  $00,$78,$44,$44,$44,$44,$44,$78,$00,$7C,$40,$40,$78,$40,$40,$7C,$00,$7C,$40,$40,$78,$40,$40,$40,$00,$38,$44,$40,$5C,$44,$44,$3C
+  $00,$44,$44,$44,$7C,$44,$44,$44,$00,$38,$10,$10,$10,$10,$10,$38,$00,$1C,$08,$08,$08,$08,$48,$30,$00,$44,$48,$50,$60,$50,$48,$44
+  $00,$40,$40,$40,$40,$40,$40,$7C,$00,$44,$6C,$54,$54,$44,$44,$44,$00,$44,$64,$54,$4C,$44,$44,$44,$00,$38,$44,$44,$44,$44,$44,$38
+  $00,$78,$44,$44,$78,$40,$40,$40,$00,$38,$44,$44,$44,$54,$48,$34,$00,$78,$44,$44,$78,$50,$48,$44,$00,$3C,$40,$40,$38,$04,$04,$78
+  $00,$7C,$10,$10,$10,$10,$10,$10,$00,$44,$44,$44,$44,$44,$44,$38,$00,$44,$44,$44,$44,$44,$28,$10,$00,$44,$44,$44,$54,$54,$54,$28
+  $00,$44,$44,$28,$10,$28,$44,$44,$00,$44,$44,$28,$10,$10,$10,$10,$00,$7C,$04,$08,$10,$20,$40,$7C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+LcTick:
+    db $00,$00,$B1,$01,$10
+LcPick:
+    db $C0,$55,$30,$02,$C0,$40,$50,$02,$D0
+LcMove:
+    db $00,$00,$42,$02,$00,$00,$73,$03,$10
+LcRotate:
+    db $C0,$7F,$40,$02,$C0,$5F,$50,$02,$D0
+LcBad:
+    db $C0,$F9,$33,$06,$C0,$F9,$F3,$02,$C0,$FF,$33,$06,$D0
+LcZap:
+    db $40,$2B,$20,$01,$40,$31,$20,$01,$40,$38,$20,$01,$40,$42,$20,$01,$50
+LcBoom:
+    db $00,$00,$14,$03,$00,$00,$25,$06,$00,$00,$46,$08,$00,$00,$77,$0C,$10
+LcWarp:
+    db $40,$75,$31,$01,$40,$18,$31,$01,$40,$E0,$30,$01,$40,$BA,$30,$01,$40,$A0,$30,$01,$40,$8C,$30,$01
+    db $40,$7C,$30,$01,$40,$70,$30,$01,$40,$66,$30,$01,$40,$5D,$30,$01,$40,$56,$30,$01,$40,$50,$30,$01
+    db $40,$4B,$30,$01,$40,$4B,$40,$01,$40,$50,$40,$01,$40,$56,$40,$01,$40,$5D,$40,$01,$40,$66,$40,$01
+    db $40,$70,$40,$01,$40,$7C,$40,$01,$40,$8C,$40,$01,$40,$A0,$40,$01,$40,$BA,$40,$01,$40,$E0,$40,$01
+    db $40,$18,$41,$01,$40,$75,$41,$01,$50
+LcTurn:
+    db $C0,$AA,$40,$03,$C0,$71,$40,$03,$D0
+LcWin:
+    db $40,$D6,$20,$06,$40,$D6,$F0,$01,$40,$AA,$20,$06,$40,$AA,$F0,$01,$40,$8F,$20,$06,$40,$8F,$F0,$01
+    db $40,$6B,$20,$0D,$40,$6B,$F0,$01,$40,$8F,$20,$06,$40,$8F,$F0,$01,$40,$6B,$20,$06,$40,$6B,$F0,$01
+    db $40,$55,$20,$27,$40,$55,$F0,$01,$50
+
+LcSoundTable:
+    dw LcTick,$702B
+    dw LcPick,$7049
+    dw LcMove,$702B
+    dw LcRotate,$7049
+    dw LcBad,$7049
+    dw LcZap,$7035
+    dw LcBoom,$702B
+    dw LcWarp,$7035
+    dw LcTurn,$7049
+    dw LcWin,$7035
+    dw LcTuneMel,$703F
+    dw LcTuneBass,$7049
+; Title tune: Photon Pulse, a fast synth arpeggio over a pulsing octave bass in A minor (original for this game)
+; Tiny Sound, 5 frames per step
+LcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 5
+    db $02,$30,$1A,$21,$1C,$1F,$23,$28,$23,$1F,$1C,$23,$18,$1C,$1F,$24
+    db $1F,$1C,$18,$1F,$1F,$23,$26,$2B,$26,$23,$1F,$26,$1A,$1E,$21,$26
+    db $21,$1E,$1A,$21,$1C,$1F,$23,$28,$23,$1F,$1C,$23,$18,$1C,$1F,$24
+    db $1F,$1C,$18,$1F,$1F,$23,$26,$2B,$26,$23,$1F,$26,$1A,$1E,$21,$26
+    db $21,$1E,$1A,$21,$02,$10,$1A,$21,$28,$01,$01,$01,$26,$01,$23,$01
+    db $24,$01,$01,$01,$23,$01,$1F,$01,$26,$01,$01,$01,$23,$01,$21,$01
+    db $23,$01,$01,$01,$1E,$01,$01,$01,$28,$01,$01,$01,$2B,$01,$2A,$01
+    db $28,$01,$01,$01,$26,$01,$23,$01,$24,$01,$26,$01,$23,$01,$21,$01
+    db $1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $FF
+LcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 5
+    db $02,$50,$18,$32,$04,$10,$04,$10,$04,$10,$04,$10,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$07,$13,$07,$13,$07,$13,$07,$13,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$04,$10,$04,$10,$04,$10,$04,$10,$0C,$18,$0C,$18
+    db $0C,$18,$0C,$18,$07,$13,$07,$13,$07,$13,$07,$13,$0E,$1A,$0E,$1A
+    db $0E,$1A,$0E,$1A,$02,$50,$18,$32,$0C,$18,$0C,$18,$0C,$18,$0C,$18
+    db $07,$13,$07,$13,$07,$13,$07,$13,$0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A
+    db $04,$10,$04,$10,$04,$10,$04,$10,$0C,$18,$0C,$18,$0C,$18,$0C,$18
+    db $0E,$1A,$0E,$1A,$0E,$1A,$0E,$1A,$07,$13,$07,$13,$07,$13,$07,$13
+    db $04,$10,$04,$10,$04,$10,$04,$10
+    db $FF
+; Laser Chess Z80 helpers (called with the NMI off)
+
+; DrawSq: one board square, 2 x 2 cells at text row SqR, column SqC:
+; the 32 pattern bytes at Art + ArtOff, every colour byte SqClr.
+DrawSq:
+    ld hl,(AMY_UVAR_ArtOff)
+    ld de,AMY_UDATA_Art
+    add hl,de
+    ld a,(AMY_UVAR_SqR)
+    ld d,a
+    ld a,(AMY_UVAR_SqC)
+    add a,a
+    add a,a
+    add a,a
+    ld e,a
+    call ds_cell
+    ld a,e
+    add a,8
+    ld e,a
+    call ds_cell
+    inc d
+    ld a,e
+    sub 8
+    ld e,a
+    call ds_cell
+    ld a,e
+    add a,8
+    ld e,a
+    call ds_cell
+    ret
+; hl: 8 pattern bytes (advanced), de: VRAM address (kept)
+ds_cell:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $40
+    out ($BF),a
+    ld b,8
+dsc_p:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz dsc_p
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $60
+    out ($BF),a
+    ld a,(AMY_UVAR_SqClr)
+    ld b,8
+dsc_c:
+    out ($BE),a
+    nop
+    nop
+    nop
+    djnz dsc_c
+    ret
+
+; Pset: plots pixel Xc,Yy in colour Col on the bitmap screen (pattern
+; table at $0000, colour table at $2000, name table in order), with the
+; NMI off. The ink becomes Col; the background colour is kept.
+Pset:
+    ld a,(AMY_UVAR_Yy)
+    ld h,a
+    srl h
+    srl h
+    srl h                       ; h = Yy / 8 (third row of 8 pixels)
+    and 7
+    ld l,a
+    ld a,(AMY_UVAR_Xc)
+    and $F8
+    or l
+    ld l,a                      ; hl = (Yy/8)*256 + (Xc & $F8) + (Yy & 7)
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a                 ; read address
+    ld a,(AMY_UVAR_Xc)
+    and 7
+    ld b,a
+    ld a,$80
+    jr z,ps_bit
+ps_sh:
+    srl a
+    djnz ps_sh
+ps_bit:
+    ld c,a
+    nop
+    nop
+    in a,($BE)
+    or c
+    ld c,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,c
+    out ($BE),a                 ; the pattern byte with the new bit
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $20                      ; $2000 + address, read
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    and $0F
+    ld c,a
+    ld a,(AMY_UVAR_Col)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    or c
+    ld c,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60                      ; write it back with the new ink
+    out ($BF),a
+    ld a,c
+    out ($BE),a
+    ret
+
+; BText: writes the zero-ended string at HL on the bitmap screen.
+BText:
+bt_lp:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    push hl
+    sub 32
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,AMY_UDATA_Font
+    add hl,de                   ; glyph address in ROM
+    ld de,AMY_UVAR_Glyph
+    ld bc,8
+    ldir
+    ld a,(AMY_UVAR_TxRow)
+    ld h,a
+    ld a,(AMY_UVAR_TxCol)
+    add a,a
+    add a,a
+    add a,a
+    ld l,a                      ; pattern address: row*256 + col*8
+    push hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_Glyph
+    ld b,8
+bt_wr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz bt_wr
+    pop hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    ld a,(AMY_UVAR_TxClr)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld b,8
+bt_cl:
+    out ($BE),a
+    nop
+    nop
+    nop
+    djnz bt_cl
+    ld hl,AMY_UVAR_TxCol
+    inc (hl)
+    pop hl
+    jr bt_lp
+}

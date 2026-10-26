@@ -1,3 +1,25 @@
+## 2026-10-26 - Laser Chess, 3-D Super Plotter and input fixes
+
+- Added **Laser Chess**, Mike Duppong's 1987 COMPUTE! strategy game adapted
+  for ColecoVision with two-player play, optional computer opponents,
+  reflective pieces, beam splitting and animated laser paths.
+- Added **3-D Super Plotter**, combining ideas from COMPUTE!'s 3-D Surfaces
+  and Superplotter into fourteen interactive mathematical surfaces with
+  rotation, tilt, mesh, perspective, color and hidden-line controls.
+- Fixed Circus' animated title loop by giving its color updater an independent
+  iterator instead of overwriting the outer twenty-step animation counter.
+- Enabled NMI before Circus' editorial prompt and Southern States' controller
+  choices, preventing waits from stalling on controller tables that were no
+  longer being refreshed.
+- Thanks to [**zyzzle**](https://forums.atariage.com/profile/64028-zyzzle/)
+  for discovering and reporting the Circus and Southern States bugs.
+- Reduced indexed byte compound updates by reusing one proven destination
+  address for dynamic `+=`, `-=`, `&=`, `|=` and `^=` operations. The clean
+  repository also received the previously validated immediate-mask rule.
+- Validated the resulting clean catalogue at 148/148 examples, including
+  GearColeco runtime captures of both new programs and both corrected input
+  flows.
+
 ## 2026-10-25 - SDCC-inspired code-generation refinements
 
 - Lowered byte record-field `+= 1` and `-= 1` directly to in-place Z80

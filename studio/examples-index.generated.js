@@ -2268,5 +2268,45 @@ export const exampleManifest = [
       "high-score",
       "manual-canon"
     ]
+  },
+  {
+    "id": "laser-chess",
+    "label": "Laser Chess (1987)",
+    "detail": "A ColecoVision adaptation of Mike Duppong's COMPUTE! strategy game, with two-player play, optional computer opponents, reflective pieces, beam splitting and animated laser paths.",
+    "projectName": "Laser Chess",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "adaptation",
+      "game",
+      "strategy",
+      "laser",
+      "computer-player",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "3d-super-plotter",
+    "label": "3-D Super Plotter (1987)",
+    "detail": "Fourteen interactive 3-D mathematical surfaces inspired by COMPUTE!'s 3-D Surfaces and Superplotter, with rotation, tilt, mesh density, perspective and hidden-line controls.",
+    "projectName": "3-D Super Plotter",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "compute",
+      "adaptation",
+      "demo",
+      "3d",
+      "mathematics",
+      "graphics",
+      "manual-canon"
+    ]
   }
 ];
