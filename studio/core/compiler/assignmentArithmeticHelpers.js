@@ -20,6 +20,7 @@ export function createAssignmentArithmeticHelpers({
   makeGeneratedLabel,
   symbolOrValue,
   emitLoadInt16IntoHL,
+  emitLoadSourceAddressIntoHL,
   emitStoreInt16FromHL,
   parseNumericLiteral,
   isSignedDeclaredType,
@@ -1101,6 +1102,14 @@ export function createAssignmentArithmeticHelpers({
   function emitFormulaAssignment(target, opToken, valueToken) {
     const targetType = resolveValueType(target);
     if (opToken === "=") {
+      const addressMatch = String(valueToken || "").trim().match(/^address\s+of\s+(.+)$/i);
+      if (addressMatch) {
+        const targetDeclared = normalizeDeclaredType(resolveDeclaredValueType(target));
+        if (targetType !== "int16" || targetDeclared === "i16" || isAnyFixedDeclaredType(targetDeclared)) return null;
+        const loadAddress = emitLoadSourceAddressIntoHL(addressMatch[1].trim());
+        const storeTarget = emitStoreInt16FromHL(target);
+        return loadAddress && storeTarget ? [...loadAddress, ...storeTarget] : null;
+      }
       if (targetType === "int16") {
         const shift = String(valueToken || "").trim().match(/^(.+?)\s*(<<|>>)\s*(.+)$/);
         if (shift) {

@@ -4525,6 +4525,7 @@ export function transpileAmyCore(sourceText, deps) {
     makeGeneratedLabel,
     symbolOrValue,
     emitLoadInt16IntoHL,
+    emitLoadSourceAddressIntoHL: (...args) => emitLoadSourceAddressIntoHL(...args),
     emitStoreInt16FromHL,
     parseNumericLiteral,
     isSignedDeclaredType,

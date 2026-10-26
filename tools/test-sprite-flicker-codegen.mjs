@@ -118,6 +118,20 @@ try {
   assert.deepEqual(await readFile(constantRomPath), await readFile(join(output, "balanced.rom")),
     "constant and literal stable ranges must produce byte-identical ROMs");
 
+  const initializedSourcePath = join(output, "initialized.alexis");
+  const initializedAsmPath = join(output, "initialized.asm");
+  await writeFile(initializedSourcePath, `project "INITIALIZED FLICKER"
+u8 Phase = 1
+sprites stable 28 to 31
+sprites flicker on
+update sprites
+loop forever
+`);
+  const initialized = await compileSource(initializedSourcePath, initializedAsmPath, join(output, "initialized.rom"));
+  assert.equal(initialized.code, 0, "sprite flicker with initialized RAM must produce one valid startup routine");
+  const initializedAsm = await readFile(initializedAsmPath, "utf8");
+  assert.equal((initializedAsm.match(/^Start:/gm) || []).length, 1, "sprite flicker must request its frame counter before startup generation");
+
   const ordinarySourcePath = join(output, "ordinary.alexis");
   const ordinaryAsmPath = join(output, "ordinary.asm");
   await writeFile(ordinarySourcePath, `project "ORDINARY SPRITES"
@@ -135,6 +149,57 @@ loop forever
     "ordinary sprite projects must not reserve flicker state or include flicker controls");
   assert.doesNotMatch(ordinaryAsm, /AMY_UPDATE_SPRITES_FLICKER/,
     "ordinary sprite projects must not include the flicker uploader");
+
+  const hiddenGapSourcePath = join(output, "hidden-gap.alexis");
+  const hiddenGapRomPath = join(output, "hidden-gap.rom");
+  await writeFile(hiddenGapSourcePath, `project "SPRITE Y192 GAP"
+data Dot bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+text screen
+sprites 8x8
+sprites simple
+copy Dot to vram.spr_pat
+clear sprites
+set sprite count 7
+set sprite 2 to 80,40,0,6
+set sprite 3 to 80,64,0,8
+set sprite 4 to 80,88,0,10
+set sprite 5 to 192,120,0,15
+set sprite 6 to 80,200,0,13
+sprites flicker on
+screen on
+MainLoop:
+  wait
+  update sprites
+  goto MainLoop
+`);
+  const hiddenGap = await compileSource(hiddenGapSourcePath, join(output, "hidden-gap.asm"), hiddenGapRomPath);
+  assert.equal(hiddenGap.code, 0, "sprite Y=192 gap reproduction must compile");
+  const hiddenGapCore = await GearcolecoTestCore.create({ seed: 0x59313932 });
+  try {
+    hiddenGapCore.loadBios(await readFile(resolve(root, "studio/bios/colecovision.rom")));
+    hiddenGapCore.loadRom(await readFile(hiddenGapRomPath), { region: GEARCOLECO_TEST_REGION.NTSC });
+    let laterSpriteRendered = false;
+    let uploadedFrames = 0;
+    for (let frame = 0; frame < 120; frame += 1) {
+      hiddenGapCore.runFrame();
+      const sat = [...hiddenGapCore.readVram(0x1B00, 29)];
+      if (sat[28] !== 0xD0) continue;
+      uploadedFrames += 1;
+      assert.equal(sat.some((value, offset) => offset % 4 === 0 && value === 192), true,
+        "Y=192 sprite must remain a normal non-terminating SAT entry");
+      assert.equal(sat.some((value, offset) => offset % 4 === 0
+        && value === 80 && sat[offset + 1] === 200 && sat[offset + 3] === 13), true,
+      "logical sprite after Y=192 entry must still be uploaded");
+      const purple = rgb565(colecoPalette[13]);
+      if (hiddenGapCore.getFramebufferView().pixels.includes(purple)) laterSpriteRendered = true;
+    }
+    assert.ok(uploadedFrames > 0, "sprite Y=192 gap reproduction must upload its SAT");
+    assert.equal(laterSpriteRendered, true, "sprite after a Y=192 entry must remain visible with flicker enabled");
+  } finally {
+    hiddenGapCore.destroy();
+  }
 
   const invalidCases = [
     {

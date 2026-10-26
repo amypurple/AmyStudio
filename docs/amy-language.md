@@ -3305,6 +3305,19 @@ call asm ReadValues with a = Lives, hl = Score
 call asm FillBuffer with hl = address of Buffer, de = address of Lives
 ```
 
+An address can also be stored in an unsigned 16-bit variable before a later ASM call:
+
+```basic
+u16 BufferAddress = 0
+u8 Buffer[32]
+
+BufferAddress = address of Buffer
+call asm FillBuffer with hl = BufferAddress
+```
+
+The destination of an `address of` assignment must be `u16`; byte, signed, and fixed-point
+destinations are rejected because they cannot represent a ColecoVision address safely.
+
 For two or more register arguments, Amy evaluates every expression first and stages the results
 before loading the requested registers. One argument therefore cannot destroy another while it is
 being calculated, and argument order in the source does not affect the call.
