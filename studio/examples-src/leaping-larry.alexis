@@ -1,0 +1,1328 @@
+' LEAPING LARRY
+' The action game by Michael Streeter from COMPUTE! magazine, December
+' 1987 (Commodore 64; Apple II version by Bill Chin, Atari version by
+' Rhett Anderson), for the ColecoVision in Amy by Amy Bienvenu.
+'
+' Larry, an apprentice inventor, left his plans in a factory guarded by
+' robots, with the elevators shut down. From the bottom floor he must leap
+' from conveyor belt to conveyor belt up six floors to the plans on the top
+' floor. The belts move a little faster than Larry walks: standing still,
+' the belt slides out from under him and he falls. Levels 1-6: the belts
+' get shorter. From level 7 one more floor is invisible each level.
+' Touching a robot costs a Larry; there are three.
+'
+' Scoring (as the Commodore 64 version): top floor plans 600, bottom floor
+' plans 100, falling plans 50.
+'
+' Controls (either joystick): the stick walks; a side button leaps, but
+' only while walking. Keypad not used.
+'
+' Liberties taken:
+' - The belts' lengths, speeds and directions were chosen for this version
+'   (the listing is machine code); the belts slide smoothly, pixel by pixel.
+' - The falling plans drift down the screen from time to time; catch them.
+' - A falling Larry lands on the next belt or floor below him (no harm).
+' - Larry can leap on the top floor and the ground too, to hop over a robot.
+' - A best score is kept until power off. New music and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; Larry (2 sprites) and a robot
+' (2) share a floor, at most four sprites on a line except for a moment
+' when the falling plans pass; the frame loop is protected from the NMI
+' and every screen is drawn with the NMI off after a wait.
+
+const TBelt0e = 128
+const TBelt0l1 = 129
+const TBelt0l2 = 130
+const TBelt0l3 = 131
+const TBelt0l4 = 132
+const TBelt0l5 = 133
+const TBelt0l6 = 134
+const TBelt0l7 = 135
+const TBelt0f = 136
+const TBelt0r1 = 137
+const TBelt0r2 = 138
+const TBelt0r3 = 139
+const TBelt0r4 = 140
+const TBelt0r5 = 141
+const TBelt0r6 = 142
+const TBelt0r7 = 143
+const TBelt1e = 144
+const TBelt1l1 = 145
+const TBelt1l2 = 146
+const TBelt1l3 = 147
+const TBelt1l4 = 148
+const TBelt1l5 = 149
+const TBelt1l6 = 150
+const TBelt1l7 = 151
+const TBelt1f = 152
+const TBelt1r1 = 153
+const TBelt1r2 = 154
+const TBelt1r3 = 155
+const TBelt1r4 = 156
+const TBelt1r5 = 157
+const TBelt1r6 = 158
+const TBelt1r7 = 159
+const TBelt2e = 160
+const TBelt2l1 = 161
+const TBelt2l2 = 162
+const TBelt2l3 = 163
+const TBelt2l4 = 164
+const TBelt2l5 = 165
+const TBelt2l6 = 166
+const TBelt2l7 = 167
+const TBelt2f = 168
+const TBelt2r1 = 169
+const TBelt2r2 = 170
+const TBelt2r3 = 171
+const TBelt2r4 = 172
+const TBelt2r5 = 173
+const TBelt2r6 = 174
+const TBelt2r7 = 175
+const TBelt3e = 176
+const TBelt3l1 = 177
+const TBelt3l2 = 178
+const TBelt3l3 = 179
+const TBelt3l4 = 180
+const TBelt3l5 = 181
+const TBelt3l6 = 182
+const TBelt3l7 = 183
+const TBelt3f = 184
+const TBelt3r1 = 185
+const TBelt3r2 = 186
+const TBelt3r3 = 187
+const TBelt3r4 = 188
+const TBelt3r5 = 189
+const TBelt3r6 = 190
+const TBelt3r7 = 191
+const TBelt4e = 192
+const TBelt4l1 = 193
+const TBelt4l2 = 194
+const TBelt4l3 = 195
+const TBelt4l4 = 196
+const TBelt4l5 = 197
+const TBelt4l6 = 198
+const TBelt4l7 = 199
+const TBelt4f = 200
+const TBelt4r1 = 201
+const TBelt4r2 = 202
+const TBelt4r3 = 203
+const TBelt4r4 = 204
+const TBelt4r5 = 205
+const TBelt4r6 = 206
+const TBelt4r7 = 207
+const TBelt5e = 208
+const TBelt5l1 = 209
+const TBelt5l2 = 210
+const TBelt5l3 = 211
+const TBelt5l4 = 212
+const TBelt5l5 = 213
+const TBelt5l6 = 214
+const TBelt5l7 = 215
+const TBelt5f = 216
+const TBelt5r1 = 217
+const TBelt5r2 = 218
+const TBelt5r3 = 219
+const TBelt5r4 = 220
+const TBelt5r5 = 221
+const TBelt5r6 = 222
+const TBelt5r7 = 223
+const TGround = 224
+const TTop = 225
+const TTopoff = 226
+const TPlansg00 = 227
+const TPlansg01 = 228
+const TPlanst00 = 229
+const TPlanst01 = 230
+const TPlanst10 = 231
+const TPlanst11 = 232
+const SLarwalk1D = 0
+const SLarwalk1B = 4
+const SLalwalk1D = 8
+const SLalwalk1B = 12
+const SLarwalk2D = 16
+const SLarwalk2B = 20
+const SLalwalk2D = 24
+const SLalwalk2B = 28
+const SLarleapD = 32
+const SLarleapB = 36
+const SLalleapD = 40
+const SLalleapB = 44
+const SRobot1D = 48
+const SRobot1B = 52
+const SRobot2D = 56
+const SRobot2B = 60
+const SPlan = 64
+const NTiles8 = 840
+const SprBytes = 544
+const SndTick = 1
+const SndLeap = 2
+const SndLand = 3
+const SndPlans = 4
+const SndBonus = 5
+const SndDie = 6
+const SndLevel = 7
+const SndStart = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+u8 BOfL[6]
+u8 BOfH[6]
+u8 BSpL[6]
+u8 BSpH[6]
+u8 BDir[6]
+u8 BVis[6]
+u8 BLen = 48
+u8 TopVis = 1
+u16 Score = 0
+u16 Best = 0
+u16 NumU = 0
+u16 Spd = 0
+u8 Lives = 3
+u8 Level = 1
+u8 Lx = 24
+u8 Ly = 176
+u8 Lst = 0
+u8 Ls = 0
+u8 Face = 0
+u8 Ldx = 0
+u8 Jf = 0
+u8 Vf = 0
+u8 Fc = 0
+u8 Walk = 0
+u8 Moving = 0
+u8 Fx = 0
+u8 Gx = 200
+u8 Gd = 1
+u8 Gacc = 0
+u8 Tx = 40
+u8 Td = 0
+u8 Tacc = 0
+u8 RSpd = 3
+u8 PB = 1
+u8 PBc = 20
+u8 PTc = 14
+u8 Pf = 0
+u8 Pfx = 0
+u8 Pfy = 0
+u8 PfT = 0
+u8 Hurt = 0
+u8 Won = 0
+u8 Menu = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 K = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Sp = 0
+u8 Hit = 0
+
+  tile screen
+  set sound table LlSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Best = 0
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HelpPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+  Score = 0
+  Lives = 3
+  Level = 1
+
+new_level:
+  SetupLevel
+  DrawLevel
+  StartLarry
+  play sound SndStart
+
+play_loop:
+  Frame1
+  call asm LlDrawBelts
+  call asm LlMoveBelts
+  ReadPad
+  MoveLarry
+  MoveRobots
+  FallingPlans
+  CheckRobots
+  DrawSprites
+  if Hurt = 1 then goto lost_life
+  if Won = 1 then goto level_done
+  goto play_loop
+
+lost_life:
+  play sound SndDie
+  for J = 1 to 60
+    Frame1
+    call asm LlDrawBelts
+    call asm LlMoveBelts
+    V = J & 4
+    if V = 0 then
+      DrawSprites
+    else
+      set sprite 0 to 192,0,0,0
+      set sprite 1 to 192,0,0,0
+      update sprites
+    end if
+  next
+  dec Lives
+  if Lives = 0 then goto game_over
+  ShowHud
+  StartLarry
+  goto play_loop
+
+level_done:
+  play sound SndLevel
+  for J = 1 to 90
+    Frame1
+    call asm LlDrawBelts
+    call asm LlMoveBelts
+  next
+  inc Level
+  goto new_level
+
+game_over:
+  HideSprites
+  if Score > Best then Best = Score
+  print at 10,11, "          "
+  print at 11,11, "GAME OVER"
+  ShowHud
+  Rearm
+  wait 120 frames
+  pause until press
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' Levels
+
+sub SetupLevel:
+  ' belts shorten until level 6
+  V = Level
+  if V > 6 then V = 6
+  if V = 1 then BLen = 48
+  if V = 2 then BLen = 40
+  if V = 3 then BLen = 34
+  if V = 4 then BLen = 28
+  if V = 5 then BLen = 24
+  if V = 6 then BLen = 20
+  ' from level 7 the floors vanish from the top down
+  TopVis = 1
+  if Level >= 7 then TopVis = 0
+  for K = 0 to 5
+    BVis[K] = 1
+    V = 13 - K
+    if Level >= V then BVis[K] = 0
+    BDir[K] = K & 1
+    BOfH[K] = random(0, 63)
+    BOfL[K] = 0
+    ' speed in 1/256 pixels a frame: about 1.2 to 1.6 (Larry walks 1)
+    Spd = K * 16
+    Spd = Spd + 300
+    V = Level
+    if V > 8 then V = 8
+    W = V * 8
+    Spd = Spd + W
+    BSpL[K] = Spd & 255
+    BSpH[K] = Spd >> 8
+  next
+  ' robots get a little faster every two levels
+  RSpd = Level >> 1
+  RSpd = RSpd + 3
+  if RSpd > 6 then RSpd = 6
+  PB = 1
+  PBc = random(14, 25)
+  PTc = random(4, 25)
+  Pf = 0
+  PfT = 200
+  return
+end sub
+
+sub StartLarry:
+  Lx = 24
+  Ly = 176
+  Lst = 0
+  Ls = 0
+  Face = 0
+  Hurt = 0
+  Won = 0
+  Gx = 200
+  Gd = 1
+  Tx = 30
+  if PTc < 15 then Tx = 200
+  Td = 0
+  WasBtn = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Larry
+
+' Support: is there floor under X on surface V (0 ground, 1-6 belts, 7 top)?
+' Answer in Sp.
+sub Support:
+  Sp = 1
+  if V = 0 then return
+  if V = 7 then return
+  K = V - 1
+  Sx = X - BOfH[K]
+  Sx = Sx & 63
+  if Sx >= BLen then Sp = 0
+  return
+end sub
+
+sub MoveLarry:
+  Moving = 0
+  if Lst = 0 then
+    if Lf1 = 1 then
+      if Lx > 16 then dec Lx
+      Face = 1
+      Moving = 1
+    end if
+    if Rt1 = 1 then
+      if Lx < 224 then inc Lx
+      Face = 0
+      Moving = 1
+    end if
+    if Moving = 1 then inc Walk
+    if Press = 1 then
+      if Moving = 1 then
+        Lst = 1
+        Jf = 0
+        Ldx = Face
+        play sound SndLeap
+        return
+      end if
+    end if
+    ' the belt slides away under a slow Larry
+    X = Lx + 8
+    V = Ls
+    Support
+    if Sp = 0 then
+      Lst = 2
+      Vf = 1
+      Fc = 0
+    end if
+    PlansHere
+    return
+  end if
+  ' in the air: keep going the way he leapt
+  if Ldx = 0 then
+    if Lx < 224 then inc Lx
+  else
+    if Lx > 16 then dec Lx
+  end if
+  if Lst = 1 then
+    V = Rise[Jf]
+    Ly = Ly - V
+    inc Jf
+    if Jf = 12 then
+      Lst = 2
+      Vf = 0
+      Fc = 0
+    end if
+    return
+  end if
+  ' falling: one pixel at a time, landing on a surface with floor
+  inc Fc
+  if Fc = 3 then
+    Fc = 0
+    if Vf < 4 then inc Vf
+  end if
+  if Vf = 0 then return
+  for J = 1 to Vf
+    inc Ly
+    ' surfaces are at y = 176 - 20 * n
+    V = 176 - Ly
+    Sy = V / 20
+    X = Sy * 20
+    ' surfaces 0-7 only: above the top floor (a leap from it) is the air
+    if Sy > 7 then X = 255
+    if X = V then
+      X = Lx + 8
+      V = Sy
+      Support
+      if Sp = 1 then
+        Lst = 0
+        Ls = Sy
+        play sound SndLand
+        return
+      end if
+    end if
+    if Ly >= 176 then
+      Ly = 176
+      Lst = 0
+      Ls = 0
+      return
+    end if
+  next
+  return
+end sub
+
+data Rise bytes 3,3,3,2,2,2,2,2,1,1,1,1
+
+sub PlansHere:
+  if Ls = 0 then
+    if PB = 1 then
+      X = PBc * 8
+      V = Lx + 4
+      W = X - 4
+      if V >= W then
+        W = X + 12
+        if V <= W then
+          PB = 0
+          Score = Score + 100
+          play sound SndPlans
+          fill 32 count 2 at PBc,21
+          ShowHud
+        end if
+      end if
+    end if
+  end if
+  if Ls = 7 then
+    X = PTc * 8
+    V = Lx + 4
+    W = X - 4
+    if V >= W then
+      W = X + 12
+      if V <= W then
+        Score = Score + 600
+        ShowHud
+        Won = 1
+      end if
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Robots and falling plans
+
+sub MoveRobots:
+  Gacc = Gacc + RSpd
+  while Gacc >= 4
+    Gacc = Gacc - 4
+    if Gd = 0 then
+      inc Gx
+      if Gx >= 224 then Gd = 1
+    else
+      dec Gx
+      if Gx <= 16 then Gd = 0
+    end if
+  end while
+  Tacc = Tacc + RSpd
+  while Tacc >= 4
+    Tacc = Tacc - 4
+    if Td = 0 then
+      inc Tx
+      if Tx >= 224 then Td = 1
+    else
+      dec Tx
+      if Tx <= 16 then Td = 0
+    end if
+  end while
+  return
+end sub
+
+sub CheckRobots:
+  ' ground robot: Larry near the ground floor
+  ' robots are 12 pixels tall: Larry clears them in a leap
+  if Ly >= 165 then
+    V = Lx - Gx
+    if Lx < Gx then V = Gx - Lx
+    if V < 11 then Hurt = 1
+  end if
+  if Ly <= 47 then
+   if Ly >= 25 then
+    V = Lx - Tx
+    if Lx < Tx then V = Tx - Lx
+    if V < 11 then Hurt = 1
+   end if
+  end if
+  return
+end sub
+
+sub FallingPlans:
+  if Pf = 0 then
+    dec PfT
+    if PfT = 0 then
+      Pf = 1
+      Pfx = random(24, 216)
+      Pfy = 24
+    end if
+    return
+  end if
+  V = Tick & 1
+  if V = 0 then inc Pfy
+  V = Tick & 31
+  if V < 16 then
+    if Pfx < 224 then inc Pfx
+  else
+    if Pfx > 16 then dec Pfx
+  end if
+  ' caught?
+  V = Lx - Pfx
+  if Lx < Pfx then V = Pfx - Lx
+  if V < 12 then
+    W = Ly - 16
+    X = Pfy + 4
+    V = X - W
+    if X < W then V = W - X
+    if V < 12 then
+      Pf = 0
+      PfT = random(180, 255)
+      Score = Score + 50
+      play sound SndBonus
+      ShowHud
+      return
+    end if
+  end if
+  if Pfy >= 172 then
+    Pf = 0
+    PfT = random(180, 255)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+sub DrawSprites:
+  ' Larry: pattern by direction and pose
+  Sp = SLarwalk1D
+  if Face = 1 then Sp = SLalwalk1D
+  ' patterns: walk 1, walk 2 (+16), leap (+32); the body is the detail + 4
+  if Lst > 0 then
+    Sp = Sp + 32
+  else
+    V = Walk & 8
+    if V > 0 then Sp = Sp + 16
+  end if
+  Sy = Ly - 17
+  set sprite 0 to Sy, Lx, Sp, 9
+  V = Sp + 4
+  set sprite 1 to Sy, Lx, V, 15
+  ' robots: legs move with their steps
+  Sp = SRobot1D
+  V = Gx & 4
+  if V > 0 then Sp = SRobot2D
+  set sprite 2 to 159, Gx, Sp, 8
+  V = Sp + 4
+  set sprite 3 to 159, Gx, V, 14
+  Sp = SRobot1D
+  V = Tx & 4
+  if V > 0 then Sp = SRobot2D
+  set sprite 4 to 19, Tx, Sp, 8
+  V = Sp + 4
+  set sprite 5 to 19, Tx, V, 14
+  if Pf = 1 then
+    set sprite 6 to Pfy, Pfx, SPlan, 7
+  else
+    set sprite 6 to 192, 0, 0, 0
+  end if
+  update sprites
+  return
+end sub
+
+sub DrawLevel:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  cls
+  ' ground and top floor
+  fill TGround count 28 at 2,22
+  if TopVis = 1 then
+    fill TTop count 28 at 2,4
+  end if
+  ' plans on the floors
+  put char TPlansg00 at PBc,21
+  V = PBc + 1
+  put char TPlansg01 at V,21
+  put char TPlanst00 at PTc,3
+  V = PTc + 1
+  put char TPlanst01 at V,3
+  put char TPlanst10 at PTc,4
+  put char TPlanst11 at V,4
+  call asm LlDrawBelts
+  ShowHud
+  screen on
+  nmi off
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  NumU = Score
+  print at 8,1, digits$(NumU, 5)
+  print at 15,1, "MEN"
+  NumU = Lives
+  print at 19,1, digits$(NumU, 1)
+  print at 22,1, "LEVEL"
+  NumU = Level
+  print at 28,1, digits$(NumU, 2)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame and controls
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then Stick = 1
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 7
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub ScreenSetup:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub TitlePage:
+  ScreenSetup
+  ' a little factory scene: three belts and the plans
+  for K = 0 to 5
+    BVis[K] = 0
+  next
+  BVis[0] = 1
+  BVis[2] = 1
+  BLen = 40
+  BOfH[0] = 5
+  BOfH[2] = 30
+  BOfH[4] = 50
+  call asm LlDrawBelts
+  fill TGround count 28 at 2,22
+  put char TPlansg00 at 22,21
+  put char TPlansg01 at 23,21
+  print at 9,2, "LEAPING  LARRY"
+  print at 11,4, "PLAY"
+  print at 11,5, "HOW TO PLAY"
+  print at 11,6, "CREDITS"
+  print at 10,8, "BEST"
+  NumU = Best
+  print at 15,8, digits$(NumU, 5)
+  print at 5,11, "1987 MICHAEL STREETER"
+  Menu = 0
+  set sprite 0 to 158, 40, SLarwalk1D, 9
+  set sprite 1 to 158, 40, SLarwalk1B, 15
+  update sprites
+  screen on
+  nmi off
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndTick
+  end if
+  print at 9,4, " "
+  print at 9,5, " "
+  print at 9,6, " "
+  Y = Menu + 4
+  print at 9,Y, ">"
+  if Press = 1 then goto title_done
+  goto title_loop
+title_done:
+  mute all
+  return
+end sub
+
+sub HelpPage:
+  ScreenSetup
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "LARRY LEFT HIS PLANS ON THE"
+  print at 2,4, "TOP FLOOR OF THE FACTORY."
+  print at 2,5, "THE ELEVATORS ARE OFF: LEAP"
+  print at 2,6, "FROM BELT TO BELT TO REACH"
+  print at 2,7, "THEM, AND KEEP AWAY FROM"
+  print at 2,8, "THE ROBOTS."
+  print at 2,10, "STICK: WALK."
+  print at 2,11, "BUTTON: LEAP (WHILE WALKING)."
+  print at 2,13, "THE BELTS ARE FASTER THAN"
+  print at 2,14, "LARRY: STAND STILL AND HE"
+  print at 2,15, "FALLS. TOP PLANS 600, BOTTOM"
+  print at 2,16, "PLANS 100, FALLING PLANS 50."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  ScreenSetup
+  print at 8,1, "LEAPING LARRY"
+  print at 2,3, "BY MICHAEL STREETER, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE, DECEMBER"
+  print at 2,5, "1987, FOR THE COMMODORE 64."
+  print at 2,6, "APPLE II VERSION BY BILL"
+  print at 2,7, "CHIN, ATARI VERSION BY"
+  print at 2,8, "RHETT ANDERSON."
+  print at 2,10, "NEW MUSIC: FACTORY SHUFFLE."
+  print at 2,12, "COLECOVISION VERSION BY"
+  print at 2,13, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$80,$00
+  $00,$00,$00,$00,$C0,$40,$C0,$00
+  $00,$00,$00,$00,$E0,$60,$E0,$00
+  $00,$00,$00,$00,$F0,$70,$F0,$00
+  $00,$00,$00,$00,$07,$70,$07,$00
+  $00,$00,$00,$00,$03,$8B,$03,$00
+  $00,$00,$00,$00,$01,$89,$01,$00
+  $00,$00,$00,$00,$00,$88,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$00
+  $00,$00,$00,$00,$03,$03,$03,$00
+  $00,$00,$00,$00,$07,$07,$07,$00
+  $00,$00,$00,$00,$F0,$07,$F0,$00
+  $00,$00,$00,$00,$E0,$E8,$E0,$00
+  $00,$00,$00,$00,$C0,$C8,$C0,$00
+  $00,$00,$00,$00,$80,$88,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$80,$00,$00,$00,$00,$00
+  $C0,$40,$C0,$00,$00,$00,$00,$00
+  $E0,$60,$E0,$00,$00,$00,$00,$00
+  $F0,$70,$F0,$00,$00,$00,$00,$00
+  $07,$70,$07,$00,$00,$00,$00,$00
+  $03,$8B,$03,$00,$00,$00,$00,$00
+  $01,$89,$01,$00,$00,$00,$00,$00
+  $00,$88,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$00,$00,$00,$00,$00
+  $03,$03,$03,$00,$00,$00,$00,$00
+  $07,$07,$07,$00,$00,$00,$00,$00
+  $F0,$07,$F0,$00,$00,$00,$00,$00
+  $E0,$E8,$E0,$00,$00,$00,$00,$00
+  $C0,$C8,$C0,$00,$00,$00,$00,$00
+  $80,$88,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$80,$00
+  $00,$00,$00,$00,$C0,$40,$C0,$00
+  $00,$00,$00,$00,$E0,$60,$E0,$00
+  $00,$00,$00,$00,$F0,$70,$F0,$00
+  $00,$00,$00,$00,$07,$70,$07,$00
+  $00,$00,$00,$00,$03,$8B,$03,$00
+  $00,$00,$00,$00,$01,$89,$01,$00
+  $00,$00,$00,$00,$00,$88,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$00
+  $00,$00,$00,$00,$03,$03,$03,$00
+  $00,$00,$00,$00,$07,$07,$07,$00
+  $00,$00,$00,$00,$F0,$07,$F0,$00
+  $00,$00,$00,$00,$E0,$E8,$E0,$00
+  $00,$00,$00,$00,$C0,$C8,$C0,$00
+  $00,$00,$00,$00,$80,$88,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$80,$00,$00,$00,$00,$00
+  $C0,$40,$C0,$00,$00,$00,$00,$00
+  $E0,$60,$E0,$00,$00,$00,$00,$00
+  $F0,$70,$F0,$00,$00,$00,$00,$00
+  $07,$70,$07,$00,$00,$00,$00,$00
+  $03,$8B,$03,$00,$00,$00,$00,$00
+  $01,$89,$01,$00,$00,$00,$00,$00
+  $00,$88,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$00,$00,$00,$00,$00
+  $03,$03,$03,$00,$00,$00,$00,$00
+  $07,$07,$07,$00,$00,$00,$00,$00
+  $F0,$07,$F0,$00,$00,$00,$00,$00
+  $E0,$E8,$E0,$00,$00,$00,$00,$00
+  $C0,$C8,$C0,$00,$00,$00,$00,$00
+  $80,$88,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$00,$80,$00
+  $00,$00,$00,$00,$C0,$40,$C0,$00
+  $00,$00,$00,$00,$E0,$60,$E0,$00
+  $00,$00,$00,$00,$F0,$70,$F0,$00
+  $00,$00,$00,$00,$07,$70,$07,$00
+  $00,$00,$00,$00,$03,$8B,$03,$00
+  $00,$00,$00,$00,$01,$89,$01,$00
+  $00,$00,$00,$00,$00,$88,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$00
+  $00,$00,$00,$00,$03,$03,$03,$00
+  $00,$00,$00,$00,$07,$07,$07,$00
+  $00,$00,$00,$00,$F0,$07,$F0,$00
+  $00,$00,$00,$00,$E0,$E8,$E0,$00
+  $00,$00,$00,$00,$C0,$C8,$C0,$00
+  $00,$00,$00,$00,$80,$88,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$80,$00,$00,$00,$00,$00
+  $C0,$40,$C0,$00,$00,$00,$00,$00
+  $E0,$60,$E0,$00,$00,$00,$00,$00
+  $F0,$70,$F0,$00,$00,$00,$00,$00
+  $07,$70,$07,$00,$00,$00,$00,$00
+  $03,$8B,$03,$00,$00,$00,$00,$00
+  $01,$89,$01,$00,$00,$00,$00,$00
+  $00,$88,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$00,$00,$00,$00,$00
+  $03,$03,$03,$00,$00,$00,$00,$00
+  $07,$07,$07,$00,$00,$00,$00,$00
+  $F0,$07,$F0,$00,$00,$00,$00,$00
+  $E0,$E8,$E0,$00,$00,$00,$00,$00
+  $C0,$C8,$C0,$00,$00,$00,$00,$00
+  $80,$88,$80,$00,$00,$00,$00,$00
+  $00,$00,$20,$00,$00,$04,$00,$00
+  $00,$00,$00,$00,$00,$00,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$B4,$80,$51,$00
+  $00,$00,$00,$01,$12,$01,$B2,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $B4,$80,$51,$00,$00,$00,$10,$00
+  $12,$01,$B2,$00,$00,$00,$10,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$B1,$01,$A1,$01
+  $01,$01,$01,$01,$B1,$B1,$A1,$01
+  $01,$01,$01,$01,$B1,$B1,$A1,$01
+  $01,$01,$01,$01,$B1,$B1,$A1,$01
+  $01,$01,$01,$01,$1B,$B1,$1A,$01
+  $01,$01,$01,$01,$1B,$1B,$1A,$01
+  $01,$01,$01,$01,$1B,$1B,$1A,$01
+  $01,$01,$01,$01,$0B,$1B,$0A,$01
+  $01,$01,$01,$01,$B1,$B1,$A1,$01
+  $01,$01,$01,$01,$B1,$B1,$A1,$01
+  $01,$01,$01,$01,$B1,$B1,$A1,$01
+  $01,$01,$01,$01,$1B,$B1,$1A,$01
+  $01,$01,$01,$01,$1B,$1B,$1A,$01
+  $01,$01,$01,$01,$1B,$1B,$1A,$01
+  $01,$01,$01,$01,$1B,$1B,$1A,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $91,$01,$81,$01,$01,$01,$01,$01
+  $91,$91,$81,$01,$01,$01,$01,$01
+  $91,$91,$81,$01,$01,$01,$01,$01
+  $91,$91,$81,$01,$01,$01,$01,$01
+  $19,$91,$18,$01,$01,$01,$01,$01
+  $19,$19,$18,$01,$01,$01,$01,$01
+  $19,$19,$18,$01,$01,$01,$01,$01
+  $09,$19,$08,$01,$01,$01,$01,$01
+  $91,$91,$81,$01,$01,$01,$01,$01
+  $91,$91,$81,$01,$01,$01,$01,$01
+  $91,$91,$81,$01,$01,$01,$01,$01
+  $19,$91,$18,$01,$01,$01,$01,$01
+  $19,$19,$18,$01,$01,$01,$01,$01
+  $19,$19,$18,$01,$01,$01,$01,$01
+  $19,$19,$18,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$71,$01,$41,$01
+  $01,$01,$01,$01,$71,$71,$41,$01
+  $01,$01,$01,$01,$71,$71,$41,$01
+  $01,$01,$01,$01,$71,$71,$41,$01
+  $01,$01,$01,$01,$17,$71,$14,$01
+  $01,$01,$01,$01,$17,$17,$14,$01
+  $01,$01,$01,$01,$17,$17,$14,$01
+  $01,$01,$01,$01,$07,$17,$04,$01
+  $01,$01,$01,$01,$71,$71,$41,$01
+  $01,$01,$01,$01,$71,$71,$41,$01
+  $01,$01,$01,$01,$71,$71,$41,$01
+  $01,$01,$01,$01,$17,$71,$14,$01
+  $01,$01,$01,$01,$17,$17,$14,$01
+  $01,$01,$01,$01,$17,$17,$14,$01
+  $01,$01,$01,$01,$17,$17,$14,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $31,$01,$21,$01,$01,$01,$01,$01
+  $31,$31,$21,$01,$01,$01,$01,$01
+  $31,$31,$21,$01,$01,$01,$01,$01
+  $31,$31,$21,$01,$01,$01,$01,$01
+  $13,$31,$12,$01,$01,$01,$01,$01
+  $13,$13,$12,$01,$01,$01,$01,$01
+  $13,$13,$12,$01,$01,$01,$01,$01
+  $03,$13,$02,$01,$01,$01,$01,$01
+  $31,$31,$21,$01,$01,$01,$01,$01
+  $31,$31,$21,$01,$01,$01,$01,$01
+  $31,$31,$21,$01,$01,$01,$01,$01
+  $13,$31,$12,$01,$01,$01,$01,$01
+  $13,$13,$12,$01,$01,$01,$01,$01
+  $13,$13,$12,$01,$01,$01,$01,$01
+  $13,$13,$12,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$51,$01,$41,$01
+  $01,$01,$01,$01,$51,$51,$41,$01
+  $01,$01,$01,$01,$51,$51,$41,$01
+  $01,$01,$01,$01,$51,$51,$41,$01
+  $01,$01,$01,$01,$15,$51,$14,$01
+  $01,$01,$01,$01,$15,$15,$14,$01
+  $01,$01,$01,$01,$15,$15,$14,$01
+  $01,$01,$01,$01,$05,$15,$04,$01
+  $01,$01,$01,$01,$51,$51,$41,$01
+  $01,$01,$01,$01,$51,$51,$41,$01
+  $01,$01,$01,$01,$51,$51,$41,$01
+  $01,$01,$01,$01,$15,$51,$14,$01
+  $01,$01,$01,$01,$15,$15,$14,$01
+  $01,$01,$01,$01,$15,$15,$14,$01
+  $01,$01,$01,$01,$15,$15,$14,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $D1,$01,$61,$01,$01,$01,$01,$01
+  $D1,$D1,$61,$01,$01,$01,$01,$01
+  $D1,$D1,$61,$01,$01,$01,$01,$01
+  $D1,$D1,$61,$01,$01,$01,$01,$01
+  $1D,$D1,$16,$01,$01,$01,$01,$01
+  $1D,$1D,$16,$01,$01,$01,$01,$01
+  $1D,$1D,$16,$01,$01,$01,$01,$01
+  $0D,$1D,$06,$01,$01,$01,$01,$01
+  $D1,$D1,$61,$01,$01,$01,$01,$01
+  $D1,$D1,$61,$01,$01,$01,$01,$01
+  $D1,$D1,$61,$01,$01,$01,$01,$01
+  $1D,$D1,$16,$01,$01,$01,$01,$01
+  $1D,$1D,$16,$01,$01,$01,$01,$01
+  $1D,$1D,$16,$01,$01,$01,$01,$01
+  $1D,$1D,$16,$01,$01,$01,$01,$01
+  $0F,$0E,$1E,$0E,$0E,$1E,$0E,$01
+  $01,$01,$01,$01,$0F,$0E,$1E,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$05,$5F,$5F,$5F,$F5,$05
+  $01,$01,$05,$5F,$F5,$5F,$F5,$05
+  $01,$01,$01,$01,$01,$01,$05,$5F
+  $01,$01,$01,$01,$01,$01,$05,$5F
+  $5F,$5F,$F5,$05,$0F,$0E,$1E,$01
+  $F5,$5F,$F5,$05,$0F,$0E,$1E,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$80,$C0,$80,$00,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$04,$04,$00,$00,$07,$0F,$0F,$0F,$06,$0C,$18,$1C
+  $00,$00,$80,$C0,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$60,$30,$18,$1C
+  $00,$00,$00,$00,$07,$01,$03,$01,$00,$18,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$00,$00,$00,$00,$07,$07,$07,$07,$06,$0C,$18,$38
+  $00,$00,$C0,$E0,$20,$20,$00,$00,$E0,$F0,$F0,$F0,$60,$30,$18,$38
+  $00,$00,$00,$00,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$80,$C0,$80,$00,$00,$60,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$04,$04,$00,$00,$07,$0F,$0F,$0F,$07,$03,$03,$03
+  $00,$00,$80,$C0,$00,$00,$00,$00,$E0,$F0,$90,$E0,$C0,$80,$80,$C0
+  $00,$00,$00,$00,$07,$01,$03,$01,$00,$00,$06,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$00,$00,$00,$00,$07,$0F,$09,$07,$03,$01,$01,$03
+  $00,$00,$C0,$E0,$20,$20,$00,$00,$E0,$F0,$F0,$F0,$E0,$C0,$C0,$C0
+  $00,$00,$00,$00,$03,$03,$03,$01,$00,$1C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$80,$C0,$80,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$04,$04,$00,$00,$0F,$03,$0F,$0F,$0F,$1C,$38,$00
+  $00,$00,$80,$C0,$00,$00,$00,$00,$E0,$F0,$E0,$E0,$70,$18,$0C,$02
+  $00,$00,$00,$00,$07,$01,$03,$01,$18,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$C0,$80,$00,$38,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$03,$00,$00,$00,$00,$07,$0F,$07,$07,$0E,$18,$30,$40
+  $00,$00,$C0,$E0,$20,$20,$00,$00,$F0,$C0,$F0,$F0,$F0,$38,$1C,$00
+  $01,$00,$00,$04,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$0F,$0B,$0F,$08,$0F,$1F,$37,$36,$37,$07,$06,$06,$0E,$0E
+  $00,$00,$E0,$A0,$E0,$20,$E0,$F0,$D8,$D8,$D8,$E0,$60,$60,$70,$70
+  $01,$00,$00,$04,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$0F,$0B,$0F,$08,$0F,$1F,$37,$36,$37,$07,$06,$0C,$18,$1C
+  $00,$00,$E0,$A0,$E0,$20,$E0,$F0,$D8,$D8,$D8,$E0,$60,$30,$18,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$80,$B4,$80,$AE,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$01,$ED,$01,$4D,$FF
+end data
+
+asm {
+LlTick:
+    db $40,$47,$60,$01,$50
+LlLeap:
+    db $40,$D6,$30,$02,$40,$AA,$30,$02,$40,$8F,$30,$02,$40,$6B,$40,$02,$40,$55,$60,$02,$50
+LlLand:
+    db $00,$00,$35,$02,$00,$00,$66,$02,$10
+LlPlans:
+    db $40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$71,$20,$03,$40,$71,$F0,$01,$40,$5F,$20,$07,$40,$5F,$F0,$01
+    db $50
+LlBonus:
+    db $40,$55,$20,$02,$40,$55,$F0,$01,$40,$47,$20,$02,$40,$47,$F0,$01,$40,$35,$20,$05,$40,$35,$F0,$01
+    db $50
+LlDie:
+    db $40,$D6,$20,$07,$40,$D6,$F0,$01,$40,$E2,$20,$07,$40,$E2,$F0,$01,$40,$F0,$20,$07,$40,$F0,$F0,$01
+    db $40,$FE,$20,$07,$40,$FE,$F0,$01,$40,$0E,$21,$13,$40,$0E,$F1,$01,$50
+LlLevel:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$04,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$04,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+LlStart:
+    db $40,$1D,$21,$04,$40,$1D,$F1,$01,$40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$09,$40,$AA,$F0,$01
+    db $50
+
+LlSoundTable:
+    dw LlTick,$702B
+    dw LlLeap,$7035
+    dw LlLand,$702B
+    dw LlPlans,$7035
+    dw LlBonus,$7035
+    dw LlDie,$7035
+    dw LlLevel,$7035
+    dw LlStart,$7035
+    dw LlTuneMel,$703F
+    dw LlTuneBass,$7049
+; Factory Shuffle, C major (original for this game)
+; Tiny Sound, 8 frames per step
+LlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1F,$23,$26,$23,$28,$26,$23,$1F,$21,$24,$28,$24
+    db $26,$01,$01,$01,$23,$26,$2B,$26,$28,$24,$21,$24,$26,$23,$1F,$21
+    db $1F,$01,$01,$01
+    db $FF
+LlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$04,$01,$0B,$01,$09,$01,$10,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$0C,$01,$07,$01,$0E,$01,$09,$01
+    db $07,$01,$0E,$01
+    db $FF
+; belts.asm: the six conveyor belts of Leaping Larry.
+; A belt row is a pattern 64 pixels long that repeats across the screen:
+; pixel x holds belt when ((x - offset) & 63) < BLen. LlMoveBelts slides
+; each offset by its speed (8.8 fixed point) in its direction; LlDrawBelts
+; rewrites the six rows of the name table with the tiles that cut a belt
+; on the right pixel (art.py: per row, empty, 1-7 pixels from the left,
+; full, 1-7 pixels from the right). Call both with the NMI off.
+
+LlBeltRow:
+    db 19, 17, 14, 12, 9, 7
+
+; LlMoveBelts: offset += or -= speed for each belt
+LlMoveBelts:
+    ld c,0
+MbLp:
+    ld b,0
+    ld hl,AMY_UVAR_BSpL
+    add hl,bc
+    ld e,(hl)
+    ld hl,AMY_UVAR_BSpH
+    add hl,bc
+    ld d,(hl)
+    ld hl,AMY_UVAR_BDir
+    add hl,bc
+    ld a,(hl)
+    push af
+    ld hl,AMY_UVAR_BOfL
+    add hl,bc
+    ld a,(hl)
+    ld hl,AMY_UVAR_BOfH
+    add hl,bc
+    ld h,(hl)
+    ld l,a
+    pop af
+    or a
+    jr nz,MbLeft
+    add hl,de
+    jr MbStore
+MbLeft:
+    or a
+    sbc hl,de
+MbStore:
+    ex de,hl
+    ld hl,AMY_UVAR_BOfL
+    add hl,bc
+    ld (hl),e
+    ld hl,AMY_UVAR_BOfH
+    add hl,bc
+    ld (hl),d
+    inc c
+    ld a,c
+    cp 6
+    jr c,MbLp
+    ret
+
+; LlDrawBelts: the six belt rows, columns 2-29
+LlDrawBelts:
+    ld c,0
+DbRow:
+    push bc
+    ld b,0
+    ld hl,LlBeltRow
+    add hl,bc
+    ld l,(hl)
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1802
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    and $3F
+    or $40
+    out ($BF),a
+    ; tile base of this row: 128 + 16 * row
+    ld a,c
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,128
+    ld e,a
+    ld hl,AMY_UVAR_BVis
+    add hl,bc
+    ld a,(hl)
+    or a
+    jr z,DbHidden
+    ld hl,AMY_UVAR_BOfH
+    add hl,bc
+    ld a,16
+    sub (hl)
+    and 63
+    ld c,a              ; c = position in the pattern
+    ld a,(AMY_UVAR_BLen)
+    ld d,a
+    ld b,28
+DbCol:
+    ld a,c
+    cp d
+    jr nc,DbOut1
+    add a,8
+    cp d
+    jr z,DbFull
+    jr c,DbFull
+    ld a,d              ; the belt ends in this tile: L - s pixels
+    sub c
+    add a,e
+    jr DbPut
+DbFull:
+    ld a,e
+    add a,8
+    jr DbPut
+DbOut1:
+    cp 57
+    jr c,DbEmpty
+    sub 48              ; the next belt starts here: s - 56 pixels, + 8
+    add a,e
+    jr DbPut
+DbEmpty:
+    ld a,e
+DbPut:
+    out ($BE),a
+    ld a,c
+    add a,8
+    and 63
+    ld c,a
+    djnz DbCol
+    jr DbNext
+DbHidden:
+    ld b,28
+    ld a,e
+DbHl:
+    out ($BE),a
+    nop
+    nop
+    djnz DbHl
+DbNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 6
+    jp c,DbRow
+    ret
+}

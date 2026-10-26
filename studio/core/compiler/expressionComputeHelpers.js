@@ -298,6 +298,11 @@ export function createExpressionComputeHelpers({
     const leftType = resolveExpressionAstComputationType(node.left);
     const rightType = resolveExpressionAstComputationType(node.right);
     if (leftType?.runtimeType !== "int8" || rightType?.runtimeType !== "int8") return null;
+    const signed = isSignedDeclaredType(leftType.declaredType) || isSignedDeclaredType(rightType.declaredType);
+    if (signed) {
+      const divide = emitLoadInt16RuntimeDivideAstIntoHL(node, "i16");
+      return divide ? [...divide, "    ld a,l"] : null;
+    }
     const loadLeft = emitLoadInt8AstIntoA(node.left);
     const loadRight = emitLoadInt8AstIntoA(node.right);
     if (!loadLeft || !loadRight) return null;
@@ -656,6 +661,20 @@ export function createExpressionComputeHelpers({
             return [
               ...loadLeft,
               ...Array.from({ length: Math.log2(rightValue) }, () => "    srl a")
+            ];
+          }
+          const shiftCount = Math.log2(rightValue);
+          if (shiftCount <= 3) {
+            const loadLeft = emitLoadInt8AstIntoA(node.left);
+            if (!loadLeft) return null;
+            const nonNegative = makeGeneratedLabel("DivSigned8ExprNonNegative");
+            return [
+              ...loadLeft,
+              "    bit 7,a",
+              `    jr z,${nonNegative}`,
+              `    add a,${rightValue - 1}`,
+              `${nonNegative}:`,
+              ...Array.from({ length: shiftCount }, () => "    sra a")
             ];
           }
         }

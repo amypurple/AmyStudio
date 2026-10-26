@@ -549,6 +549,13 @@ export class Z80Optimizer {
                     if (candidate.label) {
                         return false;
                     }
+                    const mnem = candidate.mnemonic.toLowerCase();
+                    if (['call', 'rst', 'ret', 'reti', 'retn', 'jp', 'jr', 'djnz', 'halt'].includes(mnem)) {
+                        // Without an explicit ABI/control-flow proof, a call may consume
+                        // the register and a block exit may expose it to another block or
+                        // the caller. Neither is evidence that the old value is dead.
+                        return false;
+                    }
                     if (this.instructionUsesPriorFlags(candidate) && target === 'a') {
                         // A few flag-reading ops also implicitly consume A; stay conservative.
                         return false;
@@ -558,13 +565,6 @@ export class Z80Optimizer {
                     }
                     if (this.instructionTouchesRegister(candidate, target)) {
                         return false;
-                    }
-                    const mnem = candidate.mnemonic.toLowerCase();
-                    if ((mnem === 'ret' || mnem === 'reti' || mnem === 'retn') && candidate.operands.length === 0) {
-                        return true;
-                    }
-                    if ((mnem === 'jp' || mnem === 'jr') && candidate.operands.length === 1) {
-                        return true;
                     }
                 }
                 return false;
@@ -4138,6 +4138,7 @@ export class Z80Optimizer {
                         i + 2 < tokens.length) {
                         const incDecA = tokens[i + 1];
                         const storeBack = tokens[i + 2];
+                        const memorySource = String(token.operands[1].value).toLowerCase().replace(/\s+/g, '');
 
                         if (!parseIndexedDisplacement(token.operands[1].value) &&
                             incDecA instanceof Instruction &&
@@ -4155,9 +4156,8 @@ export class Z80Optimizer {
                             storeBack.operands[1].value.toLowerCase() === 'a' &&
                             storeBack.operands[0].value === token.operands[1].value &&
                             this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'a') &&
-                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'hl')) {
+                            (memorySource === 'hl' || this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'hl'))) {
 
-                            const memorySource = String(token.operands[1].value).toLowerCase().replace(/\s+/g, '');
                             // (HL) is already the effective address. Treating its text as a
                             // symbol would manufacture the invalid pseudo-load `LD HL,HL`.
                             if (memorySource !== 'hl') {
@@ -4291,7 +4291,8 @@ export class Z80Optimizer {
                             symbolName.toLowerCase() !== 'bc' &&
                             !symbolName.includes('ix') &&
                             !symbolName.includes('iy') &&
-                            isLdMemA(storeBack, symbolName)) {
+                            isLdMemA(storeBack, symbolName) &&
+                            this.isRegisterDeadBeforeNextUse(tokens, i + 2, 'hl')) {
                             optimized.push(new Instruction(
                                 token.label,
                                 'ld',

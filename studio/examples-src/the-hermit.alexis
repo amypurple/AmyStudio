@@ -1,0 +1,5684 @@
+' THE HERMIT
+' The text adventure by Eric Bryant from COMPUTE! magazine, November 1987,
+' for the ColecoVision in Amy by Amy Bienvenu.
+'
+' A hermit in the hills has vanished; under his cabin lie mines, an
+' underground river, a village, a tomb and a spaceship. Find the ten
+' treasures, bring them aboard the ship and launch it: 200 points.
+'
+' Screen: a picture of the place on rows 1-7, the score and moves on row 8,
+' the story on rows 9-18 (it scrolls; MORE waits for a button when a long
+' text fills it), a menu on rows 20-22.
+'
+' Controls (either joystick): up/down choose a verb (left column) or a
+' noun (right column); right or the left button moves to the nouns; the
+' left button carries out the command; the right button goes back. PUT
+' asks where after the noun. Keypad not used.
+'
+' Inside: the adventure lives in data, not code. advc.py turns adv.py
+' (rooms, objects, every rule of the listing as conditions and actions)
+' into bytecode and packed text (a 191-entry dictionary: 9.4K of text in
+' 5.9K with its tables). engine.asm runs the rules, wraps and scrolls the
+' text and builds the menus. The pictures (scenes.py) are painted in
+' Python, cut into tiles and grouped in ten ZX0-packed tile sets of at
+' most 128 tiles, with 23 packed tile maps; the bear, the mummy, the
+' leopard, the demon and the raft are sprites (art.py); the leopard and
+' the demon are magnified.
+'
+' Liberties taken:
+' - A verb and noun menu instead of typing; the noun menu lists only what
+'   can be seen or is carried (and the six directions for GO), SAY offers
+'   five words. INVENTORY, LOOK, SCORE and QUIT are menu verbs; RESTART is
+'   QUIT, then a new game from the title. Synonyms (N, I, L, Q) are gone.
+' - Pictures for every place, and short exits lines ("EXITS: NORTH SOUTH.").
+' - Things in open containers are listed ("THERE IS A FLARE IN THE FLARE
+'   GUN."); TAKE takes things out of open containers.
+' - Several messages the listing printed without context were given one
+'   (the bear and the leopard blocking the way south, the bin at the end
+'   of the track, the crossbow fired at nothing, the sphinx's wrong answer).
+'   The raft can only be built on the river shore, so the game cannot be
+'   lost that way. The dark tunnels can be crossed without light (nothing
+'   is seen there).
+' - Score: 10 for each treasure in the spaceship, 5 for going down the
+'   trapdoor, 10 for reaching the far shore, 40 for the sphinx, 15 for the
+'   ankh, 30 for launching with all ten: 200, as in the original.
+' - The pictures show what the player changed: the pushed refrigerator
+'   and the trapdoor, the coal bin, the broken and mended track, the rope,
+'   the door in the mine shaft, the cut vine, the open sarcophagus and
+'   drawer, the dragon without smoke, the card in the slot, the rock.
+' - No cartridge screen: the game starts on its title; the credits are in
+'   the title menu.
+' - New music (The Hermit's Lantern) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; at most four sprites (one
+' creature) on screen; the frame loop is protected from the NMI and every
+' screen is drawn with the NMI off after a wait.
+
+const SndTick = 1
+const SndMore = 2
+const SndOk = 3
+const SndBack = 4
+const SndTreasure = 5
+const SndDie = 6
+const SndWin = 7
+const SndTuneA = 8
+const SndTuneB = 9
+const FgTw = 0
+const FgHc = 1
+const FgSb = 2
+const FgFl = 3
+const FgLt = 4
+const FgSmash = 5
+const FgIr = 6
+const FgBc = 7
+const FgMc = 8
+const FgLc = 9
+const FgDc = 10
+const FgPc = 11
+const FgAc = 12
+const FgS34 = 13
+const FgLift = 14
+const FgTd = 15
+const FgSc = 16
+const FgDead = 17
+const FgWin = 18
+const FgQuit = 19
+const VbGo = 0
+const VbLook = 1
+const VbTake = 2
+const VbDrop = 3
+const VbExamine = 4
+const VbOpen = 5
+const VbClose = 6
+const VbPut = 7
+const VbInventory = 8
+const VbRead = 9
+const VbEnter = 10
+const VbExit = 11
+const VbPush = 12
+const VbLift = 13
+const VbHook = 14
+const VbCut = 15
+const VbLight = 16
+const VbFill = 17
+const VbBuild = 18
+const VbShoot = 19
+const VbHit = 20
+const VbAttack = 21
+const VbRub = 22
+const VbOffer = 23
+const VbSay = 24
+const VbDrink = 25
+const VbDive = 26
+const VbScore = 27
+const VbQuit = 28
+const NVerbs = 29
+const TitleScene = 0
+const RiverScene = 11
+const SBearDL = 0
+const SBearDR = 4
+const SBearBL = 8
+const SBearBR = 12
+const SMummyDL = 16
+const SMummyDR = 20
+const SMummyBL = 24
+const SMummyBR = 28
+const SLeopardDL = 32
+const SLeopardDR = 36
+const SLeopardBL = 40
+const SLeopardBR = 44
+const SDemonDL = 48
+const SDemonDR = 52
+const SDemonBL = 56
+const SDemonBR = 60
+const SRaftDL = 64
+const SRaftDR = 68
+const SRaftBL = 72
+const SRaftBR = 76
+const NTiles8 = 0
+const SprBytes = 640
+
+' world (engine.asm)
+u8 OL[68]
+u8 Fl[20]
+u8 Opn[12]
+u8 Pt[6]
+u8 NL[70]
+u8 WBuf[30]
+u8 RowBuf[28]
+u8 TxStk[16]
+u16 TxPtr = 0
+u16 Moves = 0
+u8 Rm = 1
+u8 Verb = 0
+u8 Noun = 0
+u8 Noun2 = 0
+u8 Score = 0
+u8 Scene = 0
+u8 Dark = 0
+u8 NCount = 0
+u8 NeedNoun = 0
+u8 PkV = 0
+u8 PkN = 0
+u8 PkCol = 0
+u8 PkMode = 0
+u8 InMore = 0
+u8 TxDepth = 0
+u8 TCol = 0
+u8 TPend = 0
+u8 TWLen = 0
+u8 TAlt = 0
+u8 TLines = 0
+u8 StopF = 0
+u8 ContF = 0
+u8 Neg = 0
+u8 RootOp = 0
+u8 T1 = 0
+u8 T2 = 0
+u8 T3 = 0
+u8 T4 = 0
+u8 NStart = 0
+u8 SaveN = 0
+' the cartridge
+u16 NumU = 0
+u8 Shown = 255
+u8 FamShown = 255
+u8 Fam = 0
+u8 OldScore = 0
+u8 Menu = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Dirty = 0
+u8 Mag = 0
+u8 HistN = 0
+u8 Pg = 0
+u8 Blink = 0
+u8 Ended = 0
+u8 J = 0
+u8 V = 0
+u8 Y = 0
+
+  tile screen
+  set sound table HeSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HelpPages
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+
+new_game:
+  GameScreen
+  call asm HeStart
+  NewPicture
+  ShowCreatures
+  call asm HeOverlay
+  call asm HeStatus
+  PkV = 0
+  NewVerb
+
+play_loop:
+  Frame1
+  ReadPad
+  Dirty = 0
+  if Stick = 1 then MoveStick
+  if Press = 1 then FireLeft
+  if Press2 = 1 then FireRight
+  if Ended > 0 then goto game_end
+  if Dirty = 1 then
+    call asm HeDrawPick
+  end if
+  goto play_loop
+
+game_end:
+  mute all
+  if Ended = 1 then play sound SndDie
+  if Ended = 2 then play sound SndWin
+  EndPicker
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' The menu
+
+sub NewVerb:
+  Verb = PkV
+  PkN = 0
+  PkCol = 0
+  PkMode = 0
+  call asm HeNouns
+  call asm HeDrawPick
+  return
+end sub
+
+sub MoveStick:
+  if Up1 = 1 then
+    if PkCol = 0 then
+      if PkMode = 0 then
+        if PkV = 0 then
+          PkV = NVerbs - 1
+        else
+          dec PkV
+        end if
+        NewVerb
+        play sound SndTick
+      end if
+    else
+      if PkN > 0 then
+        dec PkN
+        Dirty = 1
+        play sound SndTick
+      end if
+    end if
+  end if
+  if Dn1 = 1 then
+    if PkCol = 0 then
+      if PkMode = 0 then
+        inc PkV
+        if PkV = NVerbs then PkV = 0
+        NewVerb
+        play sound SndTick
+      end if
+    else
+      V = PkN + 1
+      if V < NCount then
+        PkN = V
+        Dirty = 1
+        play sound SndTick
+      end if
+    end if
+  end if
+  if Rt1 = 1 then
+    if PkCol = 0 then
+      if NeedNoun > 0 then
+        if NCount > 0 then
+          PkCol = 1
+          Dirty = 1
+          play sound SndTick
+        end if
+      end if
+    end if
+  end if
+  if Lf1 = 1 then
+    if PkMode = 0 then
+      if PkCol = 1 then
+        PkCol = 0
+        Dirty = 1
+        play sound SndTick
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub FireLeft:
+  if PkCol = 0 then
+    if NeedNoun = 0 then
+      Noun = 0
+      Noun2 = 0
+      RunTurn
+      return
+    end if
+    if NCount > 0 then
+      PkCol = 1
+      Dirty = 1
+      play sound SndTick
+    end if
+    return
+  end if
+  if NCount = 0 then return
+  if PkMode = 0 then
+    Noun = NL[PkN]
+    Noun2 = 0
+    if Verb = VbPut then
+      SaveN = Noun
+      PkMode = 1
+      PkN = 0
+      call asm HeTargets
+      Dirty = 1
+      play sound SndOk
+      return
+    end if
+    RunTurn
+    return
+  end if
+  Noun2 = NL[PkN]
+  Noun = SaveN
+  RunTurn
+  return
+end sub
+
+sub FireRight:
+  if PkMode = 1 then
+    NewVerb
+    PkCol = 1
+    Dirty = 1
+    play sound SndBack
+    return
+  end if
+  if PkCol = 1 then
+    PkCol = 0
+    Dirty = 1
+    play sound SndBack
+  end if
+  return
+end sub
+
+' RunTurn: the engine plays the command (the NMI is off: Frame1 ended)
+sub RunTurn:
+  play sound SndOk
+  OldScore = Score
+  call asm HeTurn
+  if Scene <> Shown then NewPicture
+  ShowCreatures
+  call asm HeOverlay
+  call asm HeStatus
+  if HistN > 0 then Pager
+  if Fl[FgDead] = 1 then
+    Ended = 1
+    return
+  end if
+  if Fl[FgWin] = 1 then
+    Ended = 2
+    return
+  end if
+  if Fl[FgQuit] = 1 then
+    Ended = 3
+    return
+  end if
+  if Score > OldScore then play sound SndTreasure
+  NewVerb
+  return
+end sub
+
+' Pager: when a turn wrote more than the window holds, the engine kept the
+' lines that scrolled away (VRAM history). Show them ten at a time from
+' the start, MORE between pages, ending on the window as it was.
+sub Pager:
+  call asm HeHistFinish
+  Pg = 0
+  V = HistN - 10
+  while Pg < V
+    call asm HeHistShow
+    ' MORE blinks and has its own chime until a button is pressed
+    InMore = 1
+    play sound SndMore
+    Blink = 0
+    Press = 0
+    Press2 = 0
+    while Press = 0 and Press2 = 0
+      if Blink = 0 then
+        call asm HeMoreMark
+      end if
+      if Blink = 20 then
+        call asm HeDrawDivider
+      end if
+      Frame1
+      ReadPad
+      inc Blink
+      if Blink = 32 then Blink = 0
+    end while
+    play sound SndTick
+    InMore = 0
+    Pg = Pg + 10
+    if Pg > V then Pg = V
+  end while
+  call asm HeHistShow
+  call asm HeDrawDivider
+  return
+end sub
+
+' NewPicture: unpacking with the display on can garble VRAM reads, so the
+' screen goes blank for a moment; it comes back with the NMI still off
+' (this can run in the middle of a turn)
+sub NewPicture:
+  display off
+  ShowScene
+  call asm HeDisplayOn
+  return
+end sub
+
+' EndPicker: the menu area says how the game ended
+sub EndPicker:
+  for Y = 20 to 22
+    fill 32 count 28 at 2,Y
+  next
+  if Ended = 1 then print at 9,20, "YOU HAVE DIED."
+  if Ended = 2 then print at 7,20, "THE SHIP SOARS AWAY!"
+  if Ended = 3 then print at 10,20, "GAME OVER"
+  print at 7,22, "PRESS A BUTTON"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame and controls
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  ' the stick: one step when pushed, then a repeat while held
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 18
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' GameScreen: fonts, divider, empty picture
+sub GameScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop black
+  cls
+  call asm HeFonts
+  FamShown = 255
+  Shown = 255
+  Ended = 0
+  WasBtn = 1
+  WasBtn2 = 1
+  screen on
+  nmi off
+  return
+end sub
+
+data HeFamPat0 bytes
+  $98,$00,$63,$88,$00,$22,$00,$01,$8E,$F0,$FE,$A0,$7E,$A3,$80,$89,$E0,$3B,$AA,$44,$AA,$11,$AA,$55
+  $FD,$7E,$CF,$FE,$E0,$2E,$57,$F0,$62,$1F,$00,$18,$87,$7F,$00,$E2,$F5,$F0,$92,$7F,$24,$AB,$00,$A5
+  $00,$A5,$EA,$89,$AA,$FE,$7F,$91,$ED,$CB,$40,$FA,$D9,$30,$3E,$E0,$EE,$55,$BB,$55,$00,$FD,$20,$0E
+  $E0,$63,$0F,$7F,$A3,$F0,$57,$3F,$A6,$70,$EE,$5F,$7F,$1F,$F5,$96,$FE,$E6,$03,$E2,$A8,$0F,$E0,$3B
+  $B1,$C0,$E9,$F2,$1F,$2B,$01,$E5,$33,$FE,$BD,$80,$88,$BE,$F8,$93,$EE,$68,$FC,$0A,$F0,$A4,$07,$8F
+  $C0,$FE,$98,$63,$EE,$F5,$9E,$EC,$00,$89,$E0,$FC,$D8,$E0,$8E,$D5,$F0,$5B,$A8,$DD,$77,$3E,$F0,$0E
+  $03,$0F,$1F,$7F,$FE,$A3,$7E,$DF,$38,$17,$7A,$E0,$01,$A6,$3C,$7E,$07,$3F,$F8,$1B,$F5,$39,$7F,$F0
+  $28,$FC,$E9,$FE,$23,$3F,$01,$9A,$1C,$E0,$A5,$0F,$EF,$33,$1F,$D9,$62,$E0,$A9,$80,$3C,$7B,$EB,$FE
+  $EE,$FF,$40,$20,$67,$C0,$F0,$F8,$8E,$01,$03,$07,$15,$B8,$3F,$32,$83,$07,$1C,$30,$C0,$AE,$F9,$70
+  $AE,$3C,$46,$37,$6F,$35,$FE,$E9,$B9,$7F,$7B,$D7,$01,$34,$DE,$CF,$EE,$E6,$D9,$E8,$6F,$E0,$38,$0E
+  $08,$7A,$E9,$0C,$EE,$6D,$E0,$15,$E9,$FC,$98,$23,$02,$0C,$18,$30,$60,$40,$9B,$0C,$1E,$79,$34,$A8
+  $3E,$F0,$80,$03,$B7,$C0,$40,$A5,$F8,$2E,$BF,$F0,$6B,$C0,$C6,$E0,$B7,$03,$39,$CD,$CC,$A0,$25,$03
+  $23,$7C,$0F,$76,$DC,$56,$E0,$78,$80,$40,$30,$18,$0C,$06,$02,$01,$01,$02,$02,$04,$04,$A3,$08,$CD
+  $8E,$96,$25,$03,$0E,$38,$60,$C0,$00,$78,$1D,$DB,$90,$E0,$E6,$40,$F0,$80,$F7,$6A,$F0,$BA,$7D,$F0
+  $2A,$C0,$EF,$7F,$7A,$11,$EF,$43,$E0,$F1,$6E,$EB,$D1,$FD,$E9,$A0,$0F,$3B,$DA,$FD,$05,$F0,$E0,$04
+  $81,$3F,$07,$BF,$1E,$83,$C0,$70,$1C,$06,$DA,$E6,$00,$86,$80,$40,$40,$20,$20,$AD,$10,$6F,$E0,$4B
+  $9A,$FF,$00,$FC,$F8,$22,$0F,$EC,$68,$07,$3E,$1E,$88,$F0,$3F,$87,$E0,$03,$F6,$D1,$FE,$87,$C0,$B8
+  $E1,$F8,$FF,$8C,$07,$E8,$E2,$9F,$FF,$E0,$0F,$2E,$E0,$81,$AF,$FC,$EC,$E1,$83,$B0,$5A,$49,$3E,$BF
+  $2F,$D1,$B0,$3E,$A1,$B0,$79,$F1,$F8,$F0,$F0,$E0,$78,$2E,$00,$0E,$0E,$06,$4E,$E2,$10,$F7,$EE,$FF
+  $D3,$33,$30,$EF,$E0,$6F,$FF,$72,$E0,$8A,$00,$FC,$D6,$89,$ED,$E0,$97,$3E,$DE,$DF,$5F,$2F,$BB,$07
+  $86,$57,$68,$BB,$07,$86,$57,$38,$D5,$55,$60
+end data
+data HeFamCol0 bytes
+  $BA,$11,$FD,$61,$6F,$E1,$FF,$8B,$F0,$EE,$A0,$FF,$F1,$F3,$E0,$F2,$FD,$FE,$97,$F1,$CB,$E2,$E1,$98
+  $F0,$86,$E6,$EE,$21,$E1,$EE,$F8,$F5,$F0,$A5,$E1,$A4,$EE,$A5,$EE,$A0,$61,$29,$E6,$39,$EC,$F3,$62
+  $CF,$F0,$DD,$EA,$20,$66,$9B,$66,$F6,$8E,$FC,$E0,$63,$E6,$E1,$FF,$B6,$8E,$FF,$F4,$FE,$E5,$F5,$FE
+  $AE,$FE,$F2,$62,$FF,$FE,$41,$AA,$EE,$FF,$F7,$B6,$80,$EE,$62,$FE,$E1,$4F,$20,$D8,$90,$29,$E6,$6E
+  $66,$EA,$FA,$F9,$FC,$CF,$66,$89,$F5,$F2,$E4,$A7,$E8,$F6,$FF,$FE,$D8,$DE,$79,$74,$F9,$FF,$F4,$37
+  $AC,$76,$8C,$13,$DF,$C0,$94,$7D,$EC,$7F,$EB,$40,$7D,$20,$D7,$9F,$8F,$FE,$B2,$3F,$FF,$A8,$7C,$42
+  $37,$60,$CD,$FE,$7F,$E2,$65,$14,$3F,$EC,$75,$F4,$F7,$40,$DE,$20,$28,$5F,$E6,$F3,$C2,$DD,$A0,$D7
+  $40,$5C,$04,$AE,$E6,$E0,$68,$66,$1F,$B1,$61,$24,$7D,$EA,$F4,$FE,$D8,$54,$7F,$2E,$FC,$FE,$30,$3F
+  $63,$61,$9E,$F4,$40,$D7,$CC,$CF,$B8,$F7,$F9,$FC,$FA,$FE,$F1,$66,$43,$F7,$FF,$C0,$DF,$A0,$80,$7D
+  $60,$DC,$04,$78,$00,$77,$E0,$70,$FE,$C0,$F8,$E2,$EB,$FF,$B1,$E8,$2F,$81,$F0,$7A,$BE,$8E,$F1,$D1
+  $E2,$FF,$FE,$BD,$11,$E0,$FF,$C3,$59,$53,$F7,$F9,$F0,$DF,$80,$FE,$7D,$E0,$FF,$C8,$FB,$87,$F0,$E5
+  $DB,$F8,$79,$90,$7D,$F8,$DF,$BF,$E0,$28,$E1,$7C,$FE,$E5,$D8,$D5,$55,$60
+end data
+data HeFamPat1 bytes
+  $03,$F7,$EF,$01,$7F,$BF,$F7,$FD,$00,$98,$F0,$E6,$2F,$0F,$E0,$96,$00,$78,$F0,$F0,$0F,$FE,$89,$20
+  $00,$3E,$B1,$FE,$66,$3F,$1F,$00,$46,$B9,$F8,$F0,$F8,$B1,$9D,$FA,$F1,$F2,$F9,$B0,$BE,$EF,$81,$E0
+  $E7,$6B,$01,$02,$00,$98,$40,$79,$03,$07,$07,$27,$07,$8F,$EF,$80,$C0,$E0,$FE,$C1,$9E,$41,$BE,$F4
+  $FC,$91,$1F,$80,$9F,$1F,$1F,$1C,$FF,$C6,$60,$24,$0C,$18,$B8,$30,$F1,$EF,$01,$F9,$47,$38,$FF,$E1
+  $A0,$EF,$3F,$37,$3D,$1F,$F8,$60,$D1,$68,$A1,$03,$78,$31,$92,$C0,$80,$0F,$F0,$E0,$C0,$40,$EB,$A5
+  $FF,$1C,$A6,$00,$AA,$01,$07,$A2,$30,$60,$C0,$8A,$80,$00,$A2,$0C,$06,$03,$88,$01,$00,$6A,$80,$A9
+  $E0,$38,$7F,$BD,$D2,$3C,$50,$FA,$FF,$60,$77,$DF,$9F,$9F,$EC,$60,$8F,$06,$0E,$1C,$38,$A1,$D9,$E0
+  $EF,$60,$70,$38,$48,$95,$88,$A0,$0E,$FB,$F9,$F9,$F7,$EE,$FC,$7C,$B8,$06,$BC,$1F,$FE,$88,$1D,$1F
+  $A8,$3F,$FF,$1C,$3C,$19,$17,$FE,$F9,$47,$44,$8E,$B8,$F8,$FF,$A6,$FC,$38,$3C,$F8,$59,$A0,$F7,$6F
+  $3F,$CA,$1F,$07,$05,$03,$C0,$1F,$FE,$FE,$F4,$F8,$F0,$A1,$DF,$3C,$DF,$93,$CD,$07,$0F,$7C,$7C,$FC
+  $E0,$82,$E7,$9C,$1C,$3E,$3E,$38,$D1,$98,$39,$38,$ED,$80,$FC,$DB,$F0,$DC,$78,$FA,$40,$B1,$1F,$EA
+  $96,$BD,$0B,$FC,$CF,$F0,$B0,$B5,$C0,$FF,$FF,$0C,$E8,$F4,$F8,$A6,$02,$E0,$C0,$30,$B5,$03,$D7,$4F
+  $6D,$FF,$90,$96,$C2,$B0,$9A,$20,$08,$5F,$C0,$BC,$F0,$30,$F6,$E0,$FB,$0F,$3D,$FF,$B0,$EE,$FB,$D0
+  $FE,$4A,$FC,$7F,$F0,$CF,$51,$F9,$F0,$DD,$F1,$37,$D0,$5E,$FB,$B0,$43,$BF,$FE,$F0,$D2,$73,$30,$28
+  $0D,$EE,$51,$3F,$FF,$E3,$C7,$85,$0F,$03,$AF,$BA,$E3,$85,$3C,$D3,$8C,$75,$DE,$40,$40,$73,$4A,$D6
+  $40,$46,$24,$00,$00,$EE,$7D,$1D,$FE,$FD,$9C,$9E,$3E,$66,$4E,$A8,$3B,$03,$B8,$BF,$FE,$AC,$5F,$10
+  $E7,$23,$CA,$36,$4F,$B0,$6B,$FE,$9D,$F2,$F1,$E3,$94,$8F,$08,$30,$1C,$C6,$47,$6B,$18,$04,$02,$1E
+  $78,$E9,$FE,$8D,$06,$08,$66,$90,$24,$00,$00,$89,$00,$00,$22,$C0,$20,$4B,$78,$78,$E9,$FE,$C2,$D0
+  $26,$07,$1E,$F8,$CB,$B7,$3E,$79,$45,$23,$8B,$60,$F0,$FC,$0F,$C2,$91,$20,$32,$9E,$EA,$B0,$F9,$0E
+  $C3,$EF,$38,$05,$1F,$23,$7A,$9C,$C3,$37,$DD,$DC,$DF,$EF,$3B,$51,$EE,$C2,$67,$90,$FB,$EB,$A0,$1C
+  $8B,$6E,$3F,$3F,$FE,$75,$83,$20,$55,$55,$80
+end data
+data HeFamCol1 bytes
+  $A2,$61,$A6,$61,$6F,$66,$F0,$EB,$FF,$A6,$98,$E0,$97,$AA,$AA,$D8,$FE,$86,$66,$AA,$F3,$61,$F0,$BC
+  $DF,$AA,$FE,$F1,$E0,$F9,$B1,$A2,$EF,$B1,$66,$5A,$FB,$E5,$F2,$B8,$86,$40,$B8,$B6,$FE,$F9,$E7,$F0
+  $FF,$6B,$B7,$FE,$EF,$F1,$A1,$FF,$EF,$F0,$11,$85,$F9,$F9,$FF,$F0,$88,$E1,$E1,$0F,$C0,$7D,$A0,$FE
+  $3C,$46,$F7,$75,$90,$3F,$6D,$30,$3F,$FE,$BB,$80,$F4,$DE,$EA,$84,$FF,$F1,$F9,$FE,$FD,$9D,$F0,$F3
+  $D0,$C7,$FE,$AF,$D8,$66,$50,$3F,$FF,$6A,$3C,$FE,$F7,$84,$FE,$E8,$F1,$E0,$1F,$A0,$F9,$AD,$FE,$0F
+  $14,$78,$A0,$F7,$F0,$DE,$D0,$A4,$03,$DD,$71,$F6,$F7,$FE,$DA,$80,$E6,$3F,$ED,$F0,$7D,$D0,$F7,$B0
+  $3F,$40,$FE,$A2,$EE,$EF,$E1,$F8,$C7,$9D,$F0,$DF,$9A,$F2,$F2,$62,$E4,$EE,$F0,$BD,$F1,$D0,$F7,$B0
+  $DE,$90,$CC,$E4,$FE,$FF,$E4,$DC,$39,$40,$8E,$E4,$41,$F0,$63,$44,$44,$DB,$E0,$E4,$98,$FE,$85,$41
+  $44,$A6,$C4,$9A,$44,$84,$AE,$94,$F0,$5E,$FF,$A8,$41,$44,$6A,$11,$9A,$44,$B4,$7D,$A0,$F7,$F0,$DB
+  $60,$94,$89,$FF,$98,$84,$F7,$F0,$C7,$8C,$D7,$FF,$40,$1D,$BB,$10,$FE,$97,$F0,$DC,$D0,$D7,$32,$7F
+  $2E,$FF,$FF,$BE,$F0,$F7,$F7,$E0,$DF,$C0,$E6,$AF,$E1,$C4,$FF,$EE,$F0,$0F,$D0,$C8,$98,$32,$3E,$5F
+  $FE,$F7,$80,$3F,$6A,$F4,$F5,$D3,$DF,$A0,$F0,$F7,$D0,$87,$B0,$E8,$DB,$C6,$BF,$E6,$E6,$F9,$FF,$FB
+  $A4,$F2,$CA,$70,$A6,$FE,$D8,$60,$1F,$FF,$7E,$FE,$2E,$36,$F8,$DF,$56,$FF,$C5,$87,$F4,$FF,$C0,$F7
+  $A1,$EA,$FE,$F4,$22,$84,$F4,$68,$F1,$11,$FF,$9B,$F8,$FF,$11,$55,$55,$80
+end data
+data HeFamPat2 bytes
+  $A0,$EE,$8F,$AE,$EE,$EA,$EE,$F0,$82,$00,$00,$3F,$3F,$48,$93,$F9,$F9,$F8,$FF,$F0,$39,$0A,$0E,$CE
+  $CE,$B0,$8E,$0F,$0F,$F0,$7E,$D1,$F0,$67,$F0,$F0,$3F,$CA,$FE,$F9,$5A,$00,$5A,$CE,$62,$CA,$CE,$28
+  $1F,$BF,$F8,$FA,$A8,$D0,$01,$AE,$07,$7D,$3E,$8F,$0F,$FE,$85,$00,$A7,$F3,$EB,$6D,$FD,$FA,$9F,$60
+  $44,$FF,$68,$F0,$FF,$C0,$F0,$FD,$60,$FF,$F1,$F1,$69,$10,$FE,$D0,$F0,$7A,$61,$AF,$47,$FF,$68,$F0
+  $DD,$60,$D7,$90,$DF,$A0,$FF,$DF,$70,$FF,$97,$80,$DF,$88,$F0,$D9,$E8,$E9,$FF,$C0,$A6,$00,$9A,$03
+  $00,$69,$FC,$AA,$00,$0E,$DE,$E1,$FF,$97,$F3,$B9,$40,$69,$BC,$FE,$FE,$FA,$FE,$A5,$F0,$A5,$C0,$A5
+  $03,$A5,$FC,$A7,$0E,$FA,$7A,$A1,$AF,$42,$E3,$FA,$7B,$EE,$FE,$FE,$70,$41,$F0,$7F,$BB,$F1,$DE,$50
+  $D0,$7F,$FF,$F0,$FE,$A6,$E0,$6A,$DD,$0E,$55,$BB,$55,$EE,$F1,$AA,$FD,$7D,$20,$5D,$FE,$83,$75,$FB
+  $75,$EE,$A5,$D1,$DF,$E9,$C1,$D5,$F9,$E0,$9A,$5F,$BF,$57,$FD,$A7,$5D,$E8,$B0,$F5,$F2,$C0,$86,$D5
+  $E8,$57,$D0,$E8,$55,$AA,$FD,$00,$AA,$88,$18,$EF,$FF,$C1,$1B,$9F,$F0,$FB,$9A,$E0,$C0,$16,$EF,$0C
+  $FF,$CF,$FB,$A6,$C0,$C0,$F8,$00,$03,$FC,$EB,$DD,$D0,$E7,$FE,$FD,$CB,$F6,$E2,$03,$71,$E0,$E0,$13
+  $F6,$19,$F0,$E6,$03,$E0,$96,$7F,$24,$F7,$CF,$CF,$3B,$7D,$E7,$FE,$73,$F3,$C0,$C2,$D0,$A3,$FE,$55
+  $00,$67,$B8,$88,$F0,$E0,$AB,$57,$FD,$B8,$0F,$7F,$7F,$BF,$C8,$9F,$FD,$FB,$E7,$F5,$FE,$E9,$EA,$9B
+  $A3,$FB,$EF,$DF,$F3,$E9,$F0,$83,$CB,$FE,$F8,$F0,$D5,$8B,$90,$11,$7B,$44,$22,$1D,$80,$D7,$E1,$9D
+  $F0,$75,$E1,$AB,$C9,$AF,$EB,$58,$40,$7F,$01,$FE,$3F,$E8,$FD,$D8,$E4,$F7,$FE,$59,$20,$8E,$C0,$8F
+  $F0,$7F,$C1,$F0,$38,$70,$EB,$FE,$7B,$FF,$A4,$76,$58,$60,$A2,$FC,$34,$9F,$1F,$DD,$69,$E3,$68,$80
+  $8E,$E1,$E1,$F0,$FF,$D1,$F5,$F0,$92,$03,$3F,$2F,$1F,$80,$0E,$3F,$48,$5F,$60,$09,$30,$89,$E0,$E3
+  $4C,$87,$7B,$E7,$C7,$8F,$8F,$1F,$28,$2B,$F0,$37,$B8,$7A,$7A,$1F,$03,$6F,$6F,$2F,$6F,$79,$CC,$21
+  $43,$AF,$37,$80,$81,$FE,$39,$FC,$41,$6A,$81,$01,$80,$80,$5A,$7F,$75,$55,$58
+end data
+data HeFamCol2 bytes
+  $85,$A6,$AF,$66,$F0,$58,$BC,$AA,$AA,$FE,$2B,$FA,$98,$E0,$81,$FF,$FF,$F4,$FE,$A5,$AA,$A5,$A6,$A2
+  $BA,$FB,$A1,$FA,$BB,$BE,$FF,$B1,$FA,$6F,$EA,$EA,$E6,$FE,$A1,$EE,$69,$E1,$FB,$D8,$A6,$B7,$F8,$F0
+  $5F,$68,$FE,$F0,$60,$1E,$F0,$7E,$69,$F0,$79,$94,$DE,$F1,$6C,$77,$D1,$FF,$68,$F0,$9F,$60,$D1,$DE
+  $B4,$F0,$7F,$CD,$D4,$FE,$FE,$DC,$1F,$45,$DF,$F0,$28,$F7,$E0,$80,$F0,$7F,$F9,$FE,$A5,$E1,$FF,$E8
+  $CF,$94,$FE,$7F,$A0,$7A,$E0,$E6,$1C,$8E,$CC,$D0,$0F,$35,$A4,$B1,$66,$77,$69,$F7,$F0,$48,$E5,$E0
+  $EF,$B1,$61,$FD,$B8,$FE,$F0,$15,$FA,$FC,$11,$62,$44,$54,$EF,$FF,$54,$F7,$9A,$F0,$55,$F1,$E0,$F9
+  $E8,$A2,$64,$64,$64,$65,$64,$67,$F4,$F4,$FF,$E7,$FF,$D8,$FF,$EB,$D7,$D0,$B9,$FB,$FF,$FE,$FE,$CB
+  $F6,$EF,$F4,$C6,$F7,$DE,$88,$FE,$BD,$41,$F0,$A4,$64,$89,$A6,$AA,$69,$A6,$2B,$AA,$FE,$7D,$FE,$E1
+  $F0,$F4,$D0,$9F,$A4,$A4,$41,$99,$9F,$FE,$F0,$67,$A4,$A1,$A4,$19,$AC,$D2,$9C,$4C,$75,$6C,$B7,$A1
+  $59,$BC,$8C,$FE,$BE,$11,$FC,$C7,$11,$80,$18,$EE,$F6,$F6,$EC,$FC,$F1,$FF,$DB,$E0,$FE,$CD,$FE,$37
+  $60,$9F,$E4,$B1,$58,$20,$5F,$F1,$F3,$03,$F0,$BF,$7A,$FB,$66,$FA,$80,$E6,$74,$C3,$D0,$1E,$60,$2A
+  $A1,$A1,$AA,$1F,$F3,$F0,$F0,$DF,$7E,$48,$D2,$80,$07,$F3,$51,$F0,$DA,$80,$61,$FD,$FE,$A5,$43,$11
+  $B6,$61,$84,$3B,$74,$58,$8E,$E8,$B2,$EE,$A1,$11,$FC,$F0,$FB,$E7,$F0,$CF,$40,$B6,$D5,$55,$60
+end data
+data HeFamPat3 bytes
+  $68,$00,$04,$00,$8F,$40,$00,$F0,$28,$03,$20,$F8,$41,$0F,$7F,$FC,$D0,$24,$C0,$F0,$FE,$3F,$E2,$EB
+  $00,$1F,$8B,$3F,$5F,$A2,$FE,$84,$C0,$39,$A0,$86,$01,$43,$07,$0F,$1F,$67,$C0,$80,$80,$8F,$E0,$FF
+  $D9,$70,$88,$07,$1F,$F8,$39,$03,$1F,$FC,$E0,$A3,$9E,$1F,$7F,$F8,$C3,$96,$E0,$8E,$07,$EC,$20,$93
+  $F8,$FE,$1F,$03,$92,$90,$7E,$E0,$F8,$1F,$FE,$7B,$5F,$0F,$07,$C8,$EA,$55,$00,$FC,$1B,$01,$79,$DF
+  $F1,$E8,$01,$07,$78,$6C,$93,$07,$3F,$F1,$EB,$FE,$F6,$66,$3C,$E0,$FC,$3C,$82,$04,$80,$E0,$1C,$F2
+  $50,$ED,$80,$6F,$01,$CA,$30,$F8,$4E,$FC,$A8,$22,$AE,$AA,$44,$11,$F0,$62,$A2,$19,$48,$92,$A8,$3F
+  $F7,$FE,$C0,$DB,$F0,$F1,$D2,$22,$E6,$3F,$E0,$25,$CF,$CF,$A4,$F0,$B9,$FC,$B2,$19,$93,$00,$01,$01
+  $78,$59,$40,$89,$F4,$00,$68,$FA,$0B,$FD,$CA,$F0,$1F,$0A,$A2,$81,$87,$BE,$3F,$EE,$55,$BB,$55,$00
+  $DD,$03,$E0,$F5,$3D,$82,$3D,$7D,$BF,$7F,$25,$13,$7F,$6D,$3F,$7F,$E3,$F9,$F3,$7F,$EC,$F9,$AA,$FF
+  $F0,$0F,$F7,$F9,$E1,$7E,$EB,$FF,$F8,$E5,$AE,$FD,$B5,$FB,$FE,$EC,$F9,$FE,$DF,$EC,$F6,$F9,$FF,$94
+  $39,$F4,$A0,$C0,$8B,$FE,$E0,$C2,$FE,$AB,$3C,$7E,$E9,$DC,$FE,$62,$19,$18,$7A,$DA,$2E,$EE,$D5,$FE
+  $0A,$E7,$69,$00,$A6,$9F,$37,$00,$FB,$1C,$62,$03,$03,$F2,$FE,$98,$18,$33,$80,$81,$C1,$C3,$FA,$38
+  $30,$8A,$EF,$BE,$A2,$DB,$7E,$EF,$79,$F0,$62,$EE,$F8,$87,$FC,$FE,$F8,$E0,$7F,$79,$A0,$FC,$7F,$1F
+  $07,$17,$D0,$8D,$6F,$1F,$55,$56
+end data
+data HeFamCol3 bytes
+  $7F,$11,$F1,$11,$FA,$FE,$F6,$FA,$E3,$81,$F6,$BD,$FF,$86,$F0,$E0,$D0,$BA,$E1,$FE,$2E,$11,$EE,$F0
+  $39,$A0,$BF,$B1,$FE,$9E,$F0,$E0,$3F,$FF,$70,$7F,$90,$E7,$F6,$86,$66,$66,$9F,$F4,$FF,$F9,$F6,$F0
+  $7D,$D0,$BC,$EE,$FE,$F7,$90,$8E,$56,$5C,$39,$F0,$F2,$60,$92,$81,$27,$88,$88,$BF,$94,$F1,$F4,$FE
+  $F0,$F6,$F0,$E0,$F7,$C0,$DF,$A0,$80,$6D,$B1,$CF,$30,$F0,$7A,$FD,$41,$3B,$FE,$CA,$F0,$C1,$52,$24
+  $C1,$CC,$A0,$41,$21,$EB,$C1,$66,$AA,$BB,$AA,$F8,$66,$CA,$F0,$B6,$4A,$B6,$F4,$E0,$F3,$C0,$F1,$F3
+  $E0,$8F,$61,$61,$F0,$7F,$60,$BC,$42,$50,$FD,$EF,$00,$29,$21,$6D,$C2,$E0,$C8,$9E,$44,$41,$C4,$C4
+  $F4,$E3,$A1,$C4,$C1,$FF,$FF,$F5,$F0,$E5,$F9,$FC,$8A,$B6,$BA,$FE,$A6,$F9,$01,$FF,$A9,$66,$B6,$F3
+  $E0,$EE,$E5,$F5,$A6,$F8,$FC,$1B,$FE,$F7,$E0,$6F,$EC,$F9,$BD,$FE,$F0,$FA,$7D,$FF,$C2,$AE,$22,$F4
+  $7E,$FF,$F4,$F0,$FE,$A7,$C2,$EF,$B8,$21,$E0,$29,$C4,$FD,$DA,$E7,$D5,$E0,$E9,$CD,$FF,$C6,$F6,$F0
+  $39,$AA,$A1,$20,$FF,$B6,$C0,$6E,$62,$FE,$FF,$E0,$5E,$79,$50,$A3,$CC,$B7,$F6,$BF,$C2,$F0,$A3,$CA
+  $A6,$CA,$BF,$FF,$A2,$81,$F0,$7D,$D0,$D5,$55,$60
+end data
+data HeFamPat4 bytes
+  $98,$00,$20,$88,$00,$22,$00,$8A,$8F,$3F,$F8,$80,$F5,$FC,$64,$9A,$C8,$F0,$F2,$FC,$AA,$00,$44,$9A
+  $11,$AB,$03,$07,$0F,$AF,$7F,$BF,$3F,$18,$3C,$C3,$E7,$A9,$BA,$F0,$6F,$07,$F0,$3D,$90,$BA,$3F,$A4
+  $5E,$C0,$EA,$F4,$FA,$F1,$AA,$55,$FC,$6E,$AB,$F5,$82,$57,$7F,$00,$7F,$7F,$FA,$9E,$BF,$F8,$FE,$1F
+  $AB,$8A,$1F,$0F,$BE,$FC,$FE,$7F,$00,$C0,$F1,$E9,$5E,$AA,$7F,$E0,$F8,$FA,$A2,$F8,$FA,$FA,$F8,$8E
+  $FD,$EA,$91,$8F,$D5,$F5,$CB,$70,$00,$9A,$F0,$AF,$5A,$00,$4E,$49,$2A,$FD,$EE,$BB,$3A,$FC,$3A,$EE
+  $57,$F1,$FC,$8D,$01,$57,$CE,$F0,$3A,$7B,$FA,$BE,$3D,$F0,$54,$EF,$80,$0C,$DA,$BE,$07,$E6,$FF,$C0
+  $FA,$E3,$9E,$FA,$FE,$58,$F0,$E0,$1F,$E2,$89,$FC,$03,$77,$1E,$29,$7F,$89,$EE,$D5,$3A,$10,$DF,$E0
+  $6B,$F1,$CE,$00,$D5,$AF,$DD,$77,$8E,$86,$01,$DD,$FC,$77,$03,$E4,$5A,$E0,$59,$E2,$E0,$F0,$1F,$F0
+  $FB,$1F,$E0,$AB,$3F,$3F,$93,$20,$DF,$04,$4D,$92,$16,$A9,$80,$F8,$7D,$F4,$A1,$01,$6D,$FE,$EA,$65
+  $A0,$80,$4B,$0F,$E9,$D9,$FE,$A2,$80,$DD,$C2,$C1,$E1,$BF,$E0,$00,$AA,$74,$80,$AA,$EF,$7D,$AB,$F7
+  $BF,$8A,$FE,$00,$28,$6D,$EA,$36,$F7,$43,$E6,$E0,$F8,$F0,$C0,$E1,$D0,$6F,$01,$F0,$38,$2D,$D6,$7E
+  $1F,$46,$0D,$A1,$06,$23,$E0,$E3,$E4,$FD,$0F,$F8,$FC,$FC,$80,$EF,$FD,$8C,$31,$E2,$65,$8E,$93,$EF
+  $89,$E1,$C0,$7F,$66,$F8,$3F,$01,$7A,$B1,$7D,$9B,$F0,$70,$4F,$98,$34,$EF,$BF,$F7,$FE,$F0,$D7,$18
+  $FD,$F0,$8F,$0C,$F0,$3F,$EF,$F0,$29,$00,$68,$F7,$68,$01,$20,$83,$0F,$0F,$7F,$7D,$F4,$60,$8B,$89
+  $E0,$20,$D9,$00,$FD,$80,$E0,$7C,$D0,$55,$56
+end data
+data HeFamCol4 bytes
+  $BA,$11,$FD,$61,$7E,$FE,$28,$B1,$A1,$98,$BA,$11,$8E,$BB,$AA,$E0,$7F,$FF,$CD,$BE,$FC,$FE,$60,$41
+  $61,$B1,$AA,$84,$B8,$A2,$BB,$2F,$BA,$44,$F7,$85,$F0,$FF,$A5,$B1,$AC,$FC,$9F,$FC,$60,$AE,$44,$B1
+  $B6,$44,$B1,$B7,$EF,$B4,$CB,$B4,$B3,$BB,$FA,$F1,$BA,$FB,$FE,$F0,$FA,$90,$D0,$87,$BB,$BF,$B6,$AA
+  $D6,$80,$E6,$BB,$F0,$96,$B1,$97,$BB,$BA,$28,$AE,$A8,$66,$66,$6A,$64,$8F,$B6,$3B,$9F,$FA,$6B,$8F
+  $FA,$3A,$B6,$B6,$D0,$F9,$FB,$F0,$F7,$D0,$DF,$F0,$08,$E9,$F3,$AA,$3F,$A9,$E2,$03,$FF,$89,$86,$10
+  $FF,$DC,$F0,$FE,$27,$FF,$F0,$3F,$05,$FC,$7A,$FE,$DE,$B6,$F4,$64,$64,$66,$66,$EE,$F1,$B4,$FE,$2A
+  $64,$97,$B4,$72,$C4,$93,$BB,$8A,$16,$BB,$16,$96,$BA,$9E,$AA,$F0,$78,$E2,$F7,$F4,$FB,$C6,$F9,$AA
+  $BD,$FE,$F0,$BE,$B6,$25,$FF,$8F,$A6,$00,$3F,$F0,$FE,$FC,$D5,$D2,$23,$FF,$EE,$F8,$98,$B5,$FE,$FF
+  $E1,$82,$F0,$A5,$EE,$BF,$E1,$D2,$FF,$F0,$78,$FC,$D0,$F0,$FD,$D1,$F0,$FF,$FE,$D0,$3F,$EF,$F1,$A4
+  $3A,$E3,$A1,$EA,$A1,$F1,$E1,$A6,$49,$EE,$E1,$4B,$C8,$BE,$3D,$E6,$F3,$F0,$2F,$EE,$F7,$97,$E0,$AA
+  $C1,$E6,$E1,$0E,$DC,$FE,$FF,$C5,$FE,$FF,$E8,$D9,$E5,$FF,$F0,$D2,$10,$3C,$F0,$A5,$11,$FC,$FF,$E0
+  $36,$70,$32,$40,$5F,$4F,$FF,$88,$00,$BC,$FE,$D0,$D5,$55,$60
+end data
+data HeFamPat5 bytes
+  $88,$FE,$89,$00,$EF,$6B,$00,$DE,$E2,$F0,$07,$EC,$EE,$00,$A0,$E0,$AE,$E0,$07,$01,$00,$FC,$D0,$21
+  $38,$2F,$F0,$FE,$7E,$1E,$F8,$01,$80,$80,$3E,$B0,$8B,$6F,$0F,$CF,$A0,$F0,$29,$80,$62,$EF,$E0,$5A
+  $7F,$2B,$3C,$FC,$FE,$E0,$E5,$8D,$E6,$C0,$E0,$0F,$E8,$E0,$E0,$3F,$65,$00,$C0,$C0,$EF,$50,$FB,$D6
+  $FE,$6B,$F0,$E3,$3C,$E3,$E0,$CC,$FF,$7F,$3F,$3F,$7F,$B0,$B8,$EF,$11,$06,$EC,$E2,$30,$09,$0F,$03
+  $01,$C7,$69,$C0,$6E,$07,$BA,$BB,$07,$F0,$F6,$91,$FE,$DF,$3C,$91,$C0,$88,$03,$03,$7B,$DE,$E8,$F0
+  $EE,$63,$C0,$80,$97,$22,$99,$C1,$03,$01,$00,$6D,$6F,$B7,$D6,$60,$63,$FC,$07,$67,$B3,$C0,$7F,$80
+  $75,$C6,$E2,$E4,$24,$03,$F8,$AF,$E0,$FE,$4B,$3F,$76,$78,$1A,$3E,$0E,$0E,$FC,$03,$0B,$0F,$3F,$0F
+  $1F,$A4,$FE,$8B,$1F,$CF,$F0,$F8,$FE,$FC,$F8,$B9,$82,$40,$FF,$ED,$EB,$29,$86,$44,$FD,$1E,$A1,$55
+  $F8,$EF,$C5,$FF,$89,$01,$EE,$A8,$01,$C3,$C1,$C0,$82,$0F,$01,$C3,$81,$E8,$C4,$E7,$81,$F1,$F0,$B3
+  $F7,$C0,$70,$36,$9E,$A7,$7F,$72,$17,$01,$82,$E0,$9F,$E0,$F0,$BC,$80,$5A,$E8,$26,$77,$03,$EC,$EC
+  $E8,$07,$F9,$66,$AC,$96,$C3,$96,$CF,$24,$E3,$0E,$B5,$C0,$9A,$71,$C0,$2F,$0F,$93,$FC,$B8,$E1,$F8
+  $FF,$DC,$0F,$E0,$52,$72,$C1,$82,$07,$9F,$7E,$57,$67,$80,$B9,$F4,$F0,$DD,$00,$69,$C0,$7F,$12,$77
+  $F0,$CF,$99,$DE,$D2,$AE,$93,$0F,$4C,$80,$33,$80,$F3,$F0,$DA,$E0,$FC,$27,$C0,$3F,$30,$EE,$FF,$D0
+  $A0,$08,$E2,$FC,$0C,$FF,$FC,$CF,$1E,$A1,$EF,$C7,$FF,$D7,$FB,$EA,$D1,$E0,$D4,$6F,$FC,$A8,$FF,$FB
+  $99,$30,$7F,$A8,$AF,$F9,$03,$ED,$9F,$A0,$F1,$9F,$A0,$FF,$9B,$A0,$F0,$DB,$FF,$20,$1D,$D9,$76,$F0
+  $8F,$0E,$DF,$BF,$FF,$F0,$A4,$E7,$E5,$40,$E7,$F3,$40,$E0,$F5,$A0,$7E,$E3,$F0,$7F,$9B,$80,$1B,$F9
+  $EF,$CF,$F6,$D4,$7A,$FF,$0F,$5D,$8A,$50,$F7,$BF,$BF,$D8,$FE,$F0,$60,$EF,$03,$FE,$90,$BB,$C0,$FE
+  $D8,$B0,$24,$00,$EF,$00,$7D,$E7,$F0,$E7,$DD,$F0,$49,$50,$F7,$E7,$90,$82,$EC,$EC,$EC,$0C,$43,$4D
+  $31,$CD,$0B,$25,$F6,$23,$75,$00,$1B,$3E,$BA,$FF,$30,$42,$FF,$FC,$D8,$F8,$D9,$90,$5C,$FF,$50,$B0
+  $55,$55,$80
+end data
+data HeFamCol5 bytes
+  $8B,$E1,$11,$88,$F8,$39,$E2,$E2,$21,$E2,$E8,$E6,$F1,$E2,$22,$22,$FB,$F7,$E8,$FF,$D9,$F8,$EB,$FF
+  $F0,$C8,$F2,$D9,$A0,$F2,$22,$E0,$97,$22,$CF,$C0,$FE,$88,$FE,$FF,$3C,$E0,$BE,$F1,$88,$E6,$EC,$FF
+  $C1,$21,$22,$A2,$C2,$BE,$CC,$9D,$FE,$E9,$F3,$CC,$7E,$F0,$18,$CB,$CB,$B1,$B1,$CB,$FF,$C7,$EF,$FF
+  $8E,$B0,$D0,$FF,$48,$EC,$FF,$70,$7B,$F2,$EF,$60,$F6,$C1,$50,$FF,$EE,$FF,$F5,$F0,$F2,$FE,$3C,$FF
+  $FE,$04,$F6,$F1,$B8,$37,$FD,$96,$F0,$9F,$11,$F9,$FD,$FE,$E0,$F7,$C0,$CF,$A0,$F9,$6B,$B8,$EC,$FF
+  $F8,$0B,$FC,$0A,$CB,$FF,$FE,$D1,$98,$D2,$97,$EC,$11,$DA,$F0,$C1,$5E,$88,$7F,$C1,$01,$B9,$FF,$F1
+  $F8,$A7,$F1,$DF,$F7,$CD,$40,$E1,$F8,$F3,$FE,$96,$D8,$FE,$C1,$F8,$FE,$20,$8E,$E1,$EC,$FC,$F1,$C4
+  $9E,$F1,$C1,$FE,$F0,$7D,$79,$93,$20,$F7,$FD,$E9,$32,$3F,$F1,$80,$3D,$5A,$B7,$EC,$80,$29,$FC,$7D
+  $F0,$62,$F1,$EC,$4E,$90,$E3,$B0,$CB,$88,$EE,$9C,$90,$E7,$E5,$C4,$9E,$F0,$E0,$7F,$C0,$E6,$03,$F0
+  $65,$11,$EE,$C1,$E7,$24,$82,$F0,$80,$E1,$FA,$9D,$FF,$EE,$69,$FE,$F7,$F5,$A6,$E7,$FE,$F9,$CB,$F9
+  $E0,$6E,$D1,$FF,$F6,$11,$F8,$EF,$66,$FF,$A6,$F0,$2E,$AA,$E0,$19,$E2,$DB,$B1,$B5,$FF,$51,$D1,$AA
+  $BB,$55,$7A,$E1,$B1,$1B,$64,$89,$FE,$87,$66,$A6,$84,$EA,$A1,$E0,$86,$0F,$C8,$FF,$FB,$99,$AD,$FF
+  $FE,$99,$E0,$7E,$6B,$A0,$7E,$F1,$A0,$7E,$F1,$A0,$61,$E2,$D8,$D8,$D6,$61,$D6,$FF,$61,$88,$EE,$16
+  $FE,$F7,$E0,$FF,$A4,$00,$FE,$A4,$F3,$40,$7F,$E0,$FF,$C8,$F8,$FA,$AD,$FE,$66,$AF,$A1,$F0,$1F,$C0
+  $6E,$DB,$FF,$29,$B1,$DB,$96,$FD,$F1,$AA,$BF,$FD,$E9,$F8,$D8,$50,$BB,$61,$FC,$FE,$FE,$F5,$A8,$2E
+  $A6,$FE,$F7,$F0,$EE,$B8,$F6,$FE,$FE,$C8,$B0,$79,$F0,$F7,$DC,$4C,$50,$B7,$11,$B0,$ED,$68,$8C,$90
+  $FD,$1E,$E0,$FF,$F8,$08,$FA,$DD,$FF,$BB,$7D,$E0,$E7,$F8,$FF,$B9,$DD,$FE,$CF,$99,$75,$F0,$5F,$FF
+  $F5,$C0,$55,$58
+end data
+data HeFamPat6 bytes
+  $03,$F7,$EF,$01,$7F,$BF,$F7,$DD,$01,$98,$F0,$F2,$F8,$F8,$E0,$E6,$00,$D0,$24,$7E,$7E,$89,$1F,$1F
+  $69,$80,$22,$07,$07,$48,$3B,$E0,$E0,$77,$00,$A9,$55,$A3,$FC,$F8,$F0,$86,$FF,$F5,$F0,$75,$60,$3C
+  $61,$98,$7D,$18,$5D,$18,$0F,$E6,$57,$06,$FD,$77,$03,$DF,$A8,$57,$6A,$55,$01,$C0,$C0,$DD,$D5,$23
+  $80,$F0,$E8,$B0,$60,$A0,$7F,$A4,$3C,$A5,$5F,$FC,$B5,$B0,$A7,$80,$CB,$60,$1F,$FA,$C0,$6C,$F3,$F7
+  $30,$8F,$60,$B1,$AB,$FD,$BB,$EE,$FB,$F8,$BD,$75,$8B,$F0,$5D,$CB,$E0,$D5,$DF,$D0,$F9,$CA,$D0,$5D
+  $1F,$7D,$DE,$A0,$F0,$76,$C8,$FE,$F0,$F9,$A8,$AA,$AA,$2A,$11,$92,$44,$5E,$AE,$46,$AE,$1F,$AF,$4F
+  $1F,$E0,$63,$5F,$BF,$9A,$F0,$F4,$58,$86,$44,$BA,$79,$BA,$5C,$BE,$C0,$84,$96,$45,$AB,$71,$EA,$64
+  $FA,$F1,$FA,$FC,$FA,$4D,$AE,$00,$AF,$00,$7D,$00,$9E,$A7,$BF,$01,$EF,$F0,$69,$00,$72,$7D,$3E,$3F
+  $7F,$FD,$E1,$AE,$80,$C0,$FF,$E8,$E0,$C1,$F8,$0B,$EE,$C8,$F0,$96,$AA,$FE,$3E,$00,$7C,$E0,$48,$3C
+  $FE,$7E,$40,$40,$00,$68,$AA,$E6,$F0,$92,$3F,$E2,$A9,$E1,$FE,$81,$7F,$A0,$F9,$FF,$D5,$F0,$BE,$AB
+  $20,$25,$07,$F8,$FC,$25,$10,$9B,$01,$EF,$03,$5E,$A5,$20,$86,$FC,$FC,$FD,$FE,$FE,$7D,$10,$A4,$AA
+  $8D,$0F,$AF,$FE,$CC,$E0,$37,$80,$FD,$D1,$86,$20,$CB,$FC,$03,$FC,$66,$90,$7F,$01,$00,$80,$A0,$8F
+  $FE,$F0,$A3,$F8,$A6,$60,$03,$80,$00,$BB,$1F,$D0,$49,$A0,$A1,$FD,$D6,$AD,$BE,$2F,$33,$FF,$9A,$03
+  $00,$58,$A2,$80,$40,$20,$10,$AA,$08,$3F,$69,$C0,$FD,$B0,$7B,$48,$0F,$CF,$90,$AF,$FA,$A1,$FE,$00
+  $5A,$10,$8A,$30,$20,$A0,$40,$86,$00,$C0,$00,$3F,$3D,$F0,$00,$40,$FF,$F0,$40,$E7,$3C,$DB,$A0,$0F
+  $A2,$FF,$1F,$64,$01,$03,$F8,$FB,$70,$80,$BC,$FF,$00,$84,$F9,$21,$90,$EF,$20,$FF,$9E,$20,$8A,$E4
+  $20,$FF,$E0,$B3,$BF,$F6,$D8,$CD,$D0,$6F,$C0,$FF,$D9,$F7,$FC,$E3,$8D,$F1,$02,$F8,$90,$C0,$3C,$FE
+  $7E,$0F,$FE,$A6,$07,$9A,$FC,$FE,$62,$E0,$F0,$18,$96,$F8,$3F,$82,$0F,$FF,$00,$10,$0C,$F4,$80,$FF
+  $88,$FE,$29,$FE,$7F,$D2,$FD,$26,$03,$F8,$FC,$00,$89,$F2,$F0,$E3,$AE,$BE,$6A,$F9,$FE,$7B,$AE,$9F
+  $AA,$96,$22,$F4,$EC,$9F,$7C,$BC,$F4,$40,$7E,$C1,$3A,$1B,$F3,$A6,$FE,$F1,$F3,$0F,$5F,$D0,$7E,$D9
+  $D0,$75,$55,$58
+end data
+data HeFamCol6 bytes
+  $A2,$61,$A6,$61,$6E,$E6,$F0,$6B,$E6,$CA,$E0,$66,$5F,$D0,$5A,$E6,$01,$B9,$66,$FC,$FA,$ED,$FD,$E1
+  $F9,$DF,$F0,$3E,$F5,$FC,$4F,$E4,$7D,$B0,$A1,$E1,$69,$E1,$17,$DF,$F0,$30,$78,$AC,$3C,$FE,$E1,$EC
+  $F5,$F0,$28,$E6,$07,$C0,$FE,$A3,$E1,$D4,$54,$FC,$BB,$A2,$7F,$FF,$E6,$6D,$11,$9C,$B2,$FC,$7A,$FC
+  $37,$72,$FD,$FB,$F1,$9E,$5A,$C0,$1B,$11,$DF,$F0,$DC,$29,$11,$7A,$5A,$7F,$FE,$FE,$EE,$E0,$F9,$FC
+  $F0,$A5,$61,$E2,$D5,$64,$54,$48,$9F,$44,$55,$F0,$3F,$F5,$D0,$F2,$00,$97,$64,$33,$66,$A4,$01,$E1
+  $FD,$95,$10,$37,$28,$E6,$D0,$B9,$E1,$F0,$F3,$6C,$BE,$FE,$5C,$A6,$54,$54,$44,$64,$6E,$55,$FF,$8F
+  $44,$F0,$FE,$E1,$DF,$C0,$EF,$F3,$41,$D0,$D2,$A0,$4F,$FD,$A9,$FE,$61,$A6,$A6,$9A,$11,$AA,$69,$B1
+  $A7,$BA,$DF,$D0,$B0,$3F,$FF,$90,$2F,$A6,$8D,$89,$FE,$86,$AA,$66,$11,$60,$BA,$B6,$B1,$BD,$11,$D0
+  $F8,$F1,$40,$7F,$7C,$9F,$D4,$40,$E6,$3C,$E2,$A1,$FE,$81,$BA,$EE,$D6,$E0,$FD,$D1,$B0,$F3,$90,$76
+  $CA,$8E,$66,$4C,$7E,$BD,$1C,$7A,$9A,$F8,$A6,$83,$FE,$7B,$D0,$EF,$E1,$FE,$B0,$7C,$8E,$FC,$E9,$FE
+  $A5,$11,$3F,$8B,$FE,$4A,$A1,$5E,$A6,$3D,$0C,$CB,$6E,$9F,$F0,$10,$E7,$0C,$E7,$F7,$2C,$D7,$80,$DE
+  $D0,$A0,$77,$8C,$7F,$81,$DD,$74,$2C,$B9,$BB,$FE,$E3,$D6,$BD,$9A,$20,$E7,$4C,$E7,$C3,$F0,$FC,$C1
+  $DD,$90,$68,$BB,$5F,$FE,$D5,$55,$60
+end data
+data HeFamPat7 bytes
+  $BA,$00,$FD,$77,$AE,$DD,$F0,$22,$03,$03,$0B,$1F,$BA,$FB,$E0,$F2,$88,$07,$8A,$F8,$FD,$01,$23,$FE
+  $F7,$A8,$F0,$00,$A0,$BF,$A5,$C0,$FE,$FE,$F0,$1E,$EF,$E9,$0F,$C1,$F0,$8A,$3F,$00,$96,$C2,$4B,$75
+  $B8,$F5,$FA,$F9,$80,$83,$DB,$A8,$45,$AA,$11,$A3,$81,$FC,$FA,$F0,$EF,$F0,$BF,$7F,$F0,$A7,$34,$FC
+  $BD,$1F,$EA,$08,$55,$89,$55,$39,$EF,$DF,$02,$5F,$F7,$7D,$6B,$EE,$EF,$01,$7F,$80,$F1,$5F,$E7,$EF
+  $5F,$9F,$D7,$ED,$F7,$E0,$A9,$B7,$E8,$F9,$FD,$F6,$D0,$AA,$BE,$F5,$FD,$78,$6F,$7F,$42,$C0,$82,$EF
+  $F7,$77,$AF,$93,$DD,$DF,$F2,$ED,$FA,$7D,$A1,$30,$82,$FD,$AA,$55,$A2,$15,$43,$A7,$57,$A5,$17,$AD
+  $47,$AD,$13,$55,$BB,$55,$EE,$F9,$F8,$B7,$E8,$7F,$02,$3F,$50,$3E,$F5,$ED,$FB,$77,$70,$39,$E7,$E7
+  $90,$AA,$F6,$FE,$AA,$BC,$FE,$84,$E7,$A9,$57,$A1,$16,$A9,$47,$AB,$10,$55,$AA,$FC,$6E,$F1,$7F,$00
+  $3A,$21,$FE,$2D,$F7,$83,$99,$AB,$54,$A3,$14,$E7,$50,$11,$AA,$44,$F9,$F7,$F8,$83,$AB,$45,$AB,$7F
+  $E0,$B0,$E0,$D9,$E3,$C4,$2A,$91,$2A,$F9,$00,$AA,$AA,$FC,$22,$66,$88,$03,$AB,$76,$23,$05,$8F,$80
+  $37,$B0,$B9,$6F,$60,$F3,$10,$DE,$B7,$B0,$A0,$C5,$7B,$91,$80,$6A,$80,$2A,$80,$62,$80,$08,$98,$6C
+  $16,$97,$CB,$00,$27,$1F,$7F,$3F,$1F,$07,$92,$F1,$E2,$F8,$FD,$FC,$F8,$E0,$8E,$07,$27,$D0,$65,$A5
+  $F7,$03,$07,$0F,$0F,$07,$03,$A2,$F7,$C0,$E0,$F0,$F0,$E0,$C0,$F7,$EF,$4B,$F5,$DA,$F0,$ED,$48,$96
+  $AA,$D5,$FB,$55,$9F,$A3,$01,$92,$E1,$F8,$FC,$FE,$FE,$FC,$F8,$79,$D0,$88,$A0,$42,$3B,$30,$9E,$FE
+  $F1,$FF,$22,$5F,$63,$F1,$26,$90,$3A,$A8,$17,$F0,$F9,$1F,$C6,$EE,$AA,$5F,$F8,$32,$26,$BC,$00,$FE
+  $6E,$0F,$EA,$0A,$1F,$FF,$71,$69,$D0,$62,$AA,$FA,$4E,$81,$67,$22,$F5,$FC,$98,$60,$FC,$2A,$F1,$F0
+  $8D,$51,$AF,$1F,$98,$20,$3B,$EA,$F9,$AF,$5F,$E9,$57,$2F,$82,$5E,$26,$3F,$F0,$F8,$07,$82,$2A,$F4
+  $C0,$18,$BD,$03,$0A,$FB,$F6,$1F,$C2,$CA,$5F,$FD,$FA,$F5,$F2,$F5,$E8,$05,$61,$8E,$41,$A3,$17,$49
+  $5E,$12,$00,$09,$24,$92,$00,$49,$F8,$BC,$48,$F0,$E9,$00,$67,$D5,$F8,$F8,$90,$00,$AF,$54,$48,$10
+  $86,$5F,$15,$A0,$45,$A2,$1E,$E0,$3F,$FE,$9E,$E0,$45,$25,$7F,$AF,$2A,$FE,$FB,$F1,$F2,$28,$8A,$90
+  $FA,$1B,$FA,$4C,$40,$AF,$AB,$A9,$FB,$F0,$38,$67,$10,$6F,$F1,$F8,$E0,$BE,$A2,$C1,$B0,$37,$30,$8E
+  $AF,$4F,$60,$1D,$E3,$B0,$F8,$F5,$BC,$60,$FE,$A5,$F0,$A5,$0F,$8C,$EF,$BD,$2A,$02,$DE,$BF,$BB,$C8
+  $FF,$F0,$C8,$FF,$F0,$C8,$E2,$E0,$E0,$B0,$98,$70,$F0,$D0,$F3,$82,$AD,$D1,$0D,$2E,$DF,$0E,$E0,$2E
+  $0C,$FF,$22,$26,$06,$6B,$07,$06,$0C,$2C,$A9,$E8,$07,$A6,$26,$3F,$0D,$0E,$D0,$4A,$B1,$01,$18,$A2
+  $0C,$7E,$00,$7E,$78,$E1,$83,$80,$FD,$66,$51,$E3,$EB,$EB,$75,$55,$58
+end data
+data HeFamCol7 bytes
+  $BA,$66,$FD,$61,$78,$F0,$88,$A6,$A6,$26,$A6,$AA,$AA,$F2,$F2,$97,$61,$BA,$F0,$F3,$AA,$39,$E0,$A7
+  $A1,$9F,$DE,$F0,$7F,$FF,$B0,$3C,$A2,$A5,$61,$F8,$FF,$A2,$F3,$8E,$E9,$EE,$66,$68,$66,$28,$A6,$39
+  $FC,$FF,$AA,$C2,$FE,$F2,$F0,$7D,$FE,$BC,$A6,$F0,$7D,$B0,$E0,$FE,$1F,$A0,$15,$E0,$00,$F1,$90,$77
+  $B0,$5B,$11,$CF,$FC,$70,$5F,$60,$57,$FE,$9D,$DB,$FC,$63,$11,$E1,$E6,$F7,$FF,$F0,$CD,$CF,$D2,$FF
+  $E9,$FE,$DF,$F0,$D0,$7C,$F0,$4E,$A0,$57,$FA,$E2,$30,$E3,$EE,$FE,$F3,$F1,$E0,$C8,$FE,$8A,$C1,$61
+  $C1,$A2,$CC,$64,$61,$C1,$C2,$A5,$22,$3D,$E0,$FF,$BD,$CB,$FE,$A5,$CC,$8F,$61,$C6,$F0,$3D,$80,$F7
+  $60,$D2,$FE,$9B,$C1,$C6,$BC,$F0,$92,$BD,$C1,$7C,$FF,$4A,$EE,$A5,$22,$E3,$36,$DE,$E0,$C0,$4F,$A0
+  $7D,$80,$E2,$FE,$96,$61,$08,$A1,$BA,$66,$BA,$BE,$AA,$FB,$F0,$1E,$D2,$2F,$A6,$F1,$DF,$B8,$9B,$BC
+  $04,$00,$F6,$F0,$80,$CC,$A5,$C1,$98,$CC,$66,$66,$6E,$C6,$B0,$4F,$C7,$74,$5E,$88,$A1,$A1,$3E,$30
+  $6F,$66,$AA,$BB,$34,$D2,$7E,$43,$CF,$FE,$E0,$7B,$A8,$99,$A0,$EB,$A1,$B1,$A1,$F8,$61,$DC,$F0,$2E
+  $F9,$AA,$FC,$3F,$C0,$FF,$F0,$D0,$97,$F0,$9F,$FE,$F1,$9E,$64,$E0,$1B,$FF,$AA,$FF,$BA,$B6,$44,$D6
+  $11,$87,$B6,$88,$ED,$BB,$BB,$3D,$E0,$CA,$8A,$BB,$C6,$E4,$55,$55,$80
+end data
+data HeFamPat8 bytes
+  $A4,$00,$89,$DF,$00,$5F,$00,$57,$00,$EF,$DD,$00,$55,$FC,$E0,$AA,$57,$55,$1A,$D5,$A6,$D5,$AA,$FD
+  $75,$9A,$75,$FD,$AA,$7D,$5D,$1A,$F5,$5F,$E5,$86,$FD,$57,$AE,$55,$AA,$11,$AF,$44,$F5,$9A,$F0,$5D
+  $F2,$E0,$92,$AB,$96,$D5,$F2,$57,$F0,$4E,$00,$22,$00,$88,$00,$C1,$82,$BF,$18,$FB,$F0,$1B,$FC,$87
+  $E0,$7F,$F6,$F0,$A0,$FB,$AA,$03,$FC,$6A,$0F,$A9,$00,$BF,$8A,$FC,$1B,$83,$FC,$FE,$B6,$F0,$A8,$0F
+  $F0,$77,$E0,$FA,$F0,$CF,$B9,$3F,$B0,$AA,$FC,$03,$1F,$90,$3A,$61,$80,$A1,$7F,$82,$00,$F8,$00,$07
+  $4F,$FF,$B9,$B0,$20,$7B,$6B,$0F,$70,$D0,$AB,$1F,$E0,$97,$B0,$6F,$EC,$80,$AA,$7F,$FB,$5A,$FB,$0D
+  $BA,$FC,$31,$0F,$5E,$7D,$AD,$19,$FE,$8A,$E0,$EF,$38,$F0,$6E,$01,$A1,$FA,$1F,$93,$FE,$19,$7F,$F0
+  $FC,$E0,$F0,$B9,$E0,$C0,$A2,$80,$7A,$1F,$3C,$7E,$FE,$EE,$3C,$E1,$C0,$CE,$3B,$F1,$03,$E6,$FE,$07
+  $1F,$00,$48,$26,$FE,$F0,$F8,$FC,$EF,$F8,$C0,$BF,$B8,$FE,$73,$F8,$3F,$0F,$40,$20,$80,$FE,$FC,$F0
+  $FF,$E3,$AD,$20,$89,$E0,$C0,$3F,$8B,$10,$36,$89,$BA,$7F,$F0,$3B,$F0,$80,$7A,$A9,$C0,$C0,$67,$E0
+  $BF,$04,$BA,$6B,$80,$7F,$00,$F2,$F0,$65,$00,$AA,$FD,$BF,$11,$2E,$FF,$F0,$10,$AE,$F0,$3F,$B0,$29
+  $03,$2F,$07,$90,$7C,$F0,$FE,$AD,$FB,$A0,$7F,$FF,$E0,$E9,$FE,$E3,$15,$A8,$45,$78,$98,$D0,$48,$BF
+  $F3,$F3,$E3,$F3,$F3,$0C,$AA,$55,$A2,$7A,$F0,$A1,$14,$E6,$40,$A0,$10,$A0,$40,$44,$39,$0A,$01,$F0
+  $F8,$C0,$E7,$28,$05,$E5,$1E,$0C,$3F,$9E,$FF,$9E,$0C,$00,$C1,$AE,$80,$80,$F8,$F6,$FE,$7B,$02,$05
+  $02,$AD,$01,$FF,$F9,$D8,$F8,$F9,$ED,$E0,$DC,$F0,$B9,$03,$F0,$8E,$07,$BB,$30,$6E,$00,$F0,$68,$47
+  $6D,$17,$AB,$CA,$BB,$BF,$20,$F0,$CA,$60,$BB,$E7,$10,$E6,$A0,$F5,$FE,$00,$5A,$C5,$39,$70,$AF,$E0
+  $50,$2F,$80,$40,$29,$1B,$2B,$3F,$E6,$F0,$03,$DE,$00,$66,$1F,$77,$00,$08,$86,$3D,$00,$24,$EF,$BD
+  $89,$00,$BC,$62,$BF,$FC,$5E,$A1,$BD,$C0,$50,$A0,$FC,$2D,$B8,$98,$B0,$86,$AF,$1F,$CE,$7F,$B3,$F0
+  $22,$E5,$FE,$F7,$10,$6A,$D1,$A3,$E2,$03,$FF,$BB,$7F,$75,$BF,$2A,$CF,$FE,$9D,$FC,$E3,$1F,$78,$06
+  $D2,$C7,$3F,$E1,$8D,$E0,$22,$DE,$B5,$F1,$8D,$41,$1F,$07,$DA,$50,$7F,$D2,$A6,$77,$81,$D2,$C5,$49
+  $ED,$80,$10,$55,$56
+end data
+data HeFamCol8 bytes
+  $AE,$66,$61,$FC,$3C,$F0,$53,$A1,$FD,$61,$52,$98,$11,$AF,$44,$54,$44,$F8,$7A,$F1,$55,$5A,$54,$5A
+  $44,$82,$FF,$FF,$BB,$BA,$6A,$FF,$82,$BA,$A9,$F4,$FB,$FB,$C3,$E2,$9A,$F0,$FB,$0F,$B6,$FE,$F0,$C4
+  $E3,$F0,$FE,$A6,$E0,$97,$54,$F3,$93,$B0,$F8,$90,$70,$7F,$50,$FF,$9A,$C1,$30,$3F,$F0,$FF,$2C,$10
+  $FF,$CC,$F0,$F8,$98,$E0,$A3,$F5,$DF,$C0,$F1,$8E,$C2,$80,$7F,$40,$72,$C0,$92,$54,$E7,$EB,$30,$F9
+  $F0,$10,$DF,$F6,$86,$F0,$E7,$EB,$FD,$FB,$FB,$FF,$A2,$FE,$FE,$EB,$A1,$FE,$F7,$D0,$F9,$9D,$CF,$E0
+  $FF,$CD,$FE,$FA,$F1,$DF,$FE,$64,$EB,$FE,$FF,$FE,$A2,$C0,$5F,$7F,$FE,$FF,$8A,$F1,$87,$EA,$F9,$9A
+  $F0,$A4,$BA,$7B,$2D,$EE,$FF,$EB,$B0,$F0,$E4,$D0,$D6,$F1,$2A,$A6,$66,$A6,$AF,$66,$F0,$66,$11,$61
+  $61,$5F,$F3,$BE,$FE,$F0,$EF,$AA,$FE,$F0,$E5,$B0,$F6,$90,$97,$66,$FF,$AD,$FB,$FE,$FF,$AD,$DB,$E0
+  $FE,$F1,$F3,$FE,$97,$A6,$4C,$CE,$A0,$B6,$4F,$4D,$F8,$FE,$F0,$7C,$AE,$8F,$FB,$B6,$FE,$FF,$92,$D9
+  $CF,$C6,$C0,$7F,$F6,$DF,$D0,$EE,$77,$F0,$3E,$F7,$FA,$3E,$FF,$BA,$6F,$AA,$F0,$0D,$FF,$CD,$F1,$F4
+  $FF,$F0,$6D,$F5,$93,$E0,$9A,$A0,$66,$13,$DF,$70,$50,$7D,$40,$7F,$F0,$FE,$F5,$B0,$F4,$FF,$F0,$F9
+  $8E,$FC,$E4,$F0,$E0,$F7,$C0,$DF,$A0,$50,$5C,$CA,$EA,$F1,$1B,$E1,$5E,$35,$F0,$63,$E1,$EE,$CA,$C0
+  $E6,$EA,$FE,$E6,$82,$EA,$A6,$F6,$FE,$18,$82,$E1,$FF,$8A,$F1,$FE,$6A,$E1,$A9,$EE,$E6,$2E,$EA,$EA
+  $EF,$F7,$EA,$41,$FF,$F3,$FE,$A1,$8E,$F2,$90,$BF,$EA,$FE,$B5,$10,$55,$58
+end data
+data HeFamPat9 bytes
+  $BA,$00,$FD,$88,$AF,$22,$F0,$A5,$80,$E6,$F6,$83,$80,$E1,$C2,$82,$01,$03,$07,$8F,$1F,$0E,$C0,$E0
+  $F0,$F8,$CC,$0B,$02,$93,$AA,$E2,$91,$78,$A8,$AA,$AA,$F3,$F0,$EE,$D8,$AB,$8F,$7E,$0F,$3F,$7F,$B0
+  $08,$FC,$F0,$FC,$FE,$26,$3F,$0F,$00,$08,$25,$C0,$EA,$F0,$00,$A8,$88,$BB,$23,$03,$FC,$BE,$F1,$E2
+  $D5,$FC,$8A,$AA,$44,$FB,$11,$F8,$1F,$BE,$8E,$FE,$A8,$E0,$CF,$8A,$C7,$E0,$A8,$07,$C3,$BB,$03,$F5
+  $FA,$9E,$6E,$3D,$8F,$44,$B0,$8F,$AB,$47,$F1,$92,$F9,$AB,$13,$EA,$C4,$EA,$D1,$08,$E5,$AA,$55,$FC
+  $8D,$AB,$57,$DD,$BC,$D8,$FF,$F0,$98,$FC,$0F,$3F,$7F,$F5,$FE,$38,$AC,$98,$D5,$EA,$E0,$E6,$FC,$24
+  $EA,$D5,$9B,$EE,$55,$BB,$92,$F8,$1E,$57,$0F,$5F,$BF,$7F,$6C,$62,$C0,$C0,$4F,$F8,$FF,$FF,$6C,$F8
+  $F9,$60,$83,$03,$03,$36,$BD,$BE,$78,$88,$A9,$D5,$8B,$D5,$03,$57,$EF,$BA,$F8,$E9,$C0,$F8,$F8,$EA
+  $00,$55,$FC,$DD,$B9,$BF,$F0,$CA,$4A,$AE,$5F,$7F,$4F,$FF,$F8,$E1,$58,$FA,$D0,$FE,$9F,$03,$48,$FD
+  $ED,$48,$F2,$0C,$FE,$DD,$09,$B0,$98,$3F,$38,$E0,$F5,$F8,$FD,$2F,$EA,$1F,$BF,$41,$03,$18,$01,$DF
+  $81,$C0,$80,$FE,$FD,$50,$AA,$EF,$7D,$EF,$F7,$F1,$FE,$FF,$EF,$EB,$FF,$00,$F3,$7F,$1B,$6D,$F9,$8F
+  $F1,$3F,$F0,$6D,$FF,$F9,$E8,$F8,$FF,$E8,$F8,$FD,$B0,$7E,$E8,$F0,$26,$01,$23,$01,$6D,$80,$75,$2F
+  $F3,$E9,$80,$8A,$E1,$F0,$F2,$88,$EA,$D7,$C1,$AA,$A0,$BE,$07,$A1,$F0,$9D,$01,$7F,$FC,$7A,$28,$23
+  $A2,$FA,$8F,$0F,$FF,$A2,$F9,$3F,$2A,$7F,$00,$AB,$E0,$89,$DD,$AB,$01,$01,$07,$63,$6A,$39,$EA,$8A
+  $C0,$0F,$7F,$73,$E9,$FF,$C0,$B0,$EA,$35,$90,$E2,$A2,$1F,$E9,$F8,$70,$9F,$80,$FE,$3F,$50,$92,$E0
+  $FE,$0F,$BE,$0E,$2E,$B6,$AB,$13,$F2,$83,$10,$01,$FF,$80,$FD,$F1,$F3,$01,$EB,$06,$2E,$0C,$C0,$FC
+  $E0,$C7,$7F,$78,$3A,$0E,$38,$71,$FF,$A9,$38,$98,$CE,$2F,$88,$7F,$D9,$78,$3C,$F0,$A4,$AB,$E9,$C1
+  $07,$7F,$91,$D0,$3F,$51,$C8,$82,$03,$3F,$07,$F3,$85,$DB,$0F,$2E,$38,$BE,$8E,$AE,$80,$EB,$60,$32
+  $30,$40,$88,$78,$3E,$AE,$0C,$26,$03,$88,$23,$07,$01,$4B,$E5,$3E,$76,$51,$19,$1E,$70,$BA,$0E,$27
+  $81,$69,$49,$26,$04,$0E,$0E,$0E,$CE,$86,$20,$70,$70,$70,$71,$C9,$B9,$2B,$07,$AE,$38,$72,$C1,$70
+  $A2,$97,$61,$07,$3E,$F0,$BA,$30,$62,$C0,$F6,$40,$80,$E2,$40,$AD,$FA,$27,$88,$E8,$20,$0E,$3E,$FE
+  $7F,$69,$03,$3F,$FF,$F0,$69,$7F,$69,$00,$69,$FE,$2F,$C0,$F9,$8D,$3B,$3F,$FE,$E6,$58,$AF,$FC,$E2
+  $1D,$55,$56
+end data
+data HeFamCol9 bytes
+  $BA,$11,$FD,$61,$7D,$F0,$F7,$FE,$A0,$EF,$F1,$7E,$FE,$8A,$11,$E1,$0F,$C2,$A4,$F1,$39,$8C,$F5,$FC
+  $E6,$D8,$7A,$F1,$F6,$F1,$FF,$FF,$6A,$F4,$A9,$E1,$EE,$AE,$E4,$D0,$3F,$70,$82,$AC,$2F,$A1,$A1,$FF
+  $A7,$F9,$11,$E0,$FD,$FE,$E3,$8D,$F6,$FF,$EA,$FE,$F5,$9A,$54,$F4,$AA,$E4,$54,$28,$E4,$A2,$E1,$83
+  $EE,$89,$AD,$AA,$AA,$3F,$F0,$CF,$8C,$F5,$D6,$FE,$25,$81,$FF,$AA,$F4,$FF,$6A,$F8,$A9,$E4,$EE,$AA
+  $E8,$EE,$5F,$AC,$2B,$86,$D4,$FE,$88,$86,$81,$A7,$88,$F9,$78,$6C,$FE,$E9,$F9,$FF,$AA,$E8,$88,$9F
+  $E8,$58,$6E,$86,$FE,$FF,$B0,$8C,$6B,$A6,$97,$EC,$B8,$F9,$66,$FC,$BC,$11,$F0,$BF,$81,$A7,$FB,$AB
+  $F7,$88,$61,$EE,$98,$86,$D0,$F8,$48,$20,$E6,$E6,$E1,$E6,$D9,$AC,$D8,$A8,$6B,$E6,$F7,$D1,$B0,$DF
+  $90,$5D,$FE,$FC,$E3,$F0,$7D,$50,$E0,$F9,$92,$D1,$D1,$D1,$11,$08,$D9,$91,$D9,$D9,$F7,$F0,$D7,$F8
+  $F5,$B8,$F8,$E8,$F0,$AA,$F1,$F1,$62,$B1,$B1,$4F,$D8,$E2,$E0,$9D,$61,$63,$A8,$2F,$F8,$F4,$FE,$0D
+  $E4,$FB,$81,$05,$E8,$AE,$F1,$88,$E8,$FE,$F9,$FB,$C0,$77,$93,$FF,$ED,$C0,$F0,$7F,$D0,$FD,$AC,$B0
+  $EB,$E4,$86,$BD,$D4,$64,$F7,$50,$9F,$30,$FF,$DA,$10,$D6,$3E,$C5,$FC,$EB,$75,$F1,$3F,$08,$20,$3D
+  $94,$FC,$65,$88,$FF,$D8,$FC,$5E,$C0,$4F,$08,$36,$A0,$7F,$F4,$FF,$60,$DB,$20,$FC,$41,$10,$F9,$D5
+  $50,$3F,$29,$E8,$3F,$C4,$9C,$D8,$EF,$E3,$FE,$F0,$A7,$F6,$DF,$D0,$B0,$7D,$90,$F7,$70,$F8,$E5,$21
+  $30,$F6,$33,$FC,$0F,$21,$CA,$F0,$88,$5F,$DF,$CA,$E0,$88,$47,$3A,$90,$F6,$EE,$7C,$70,$4D,$55,$56
+end data
+data HeFamPat10 bytes
+  $88,$FE,$8B,$00,$EF,$00,$98,$F0,$E6,$03,$03,$E0,$96,$00,$3E,$C0,$C0,$DD,$C0,$7D,$FE,$FC,$DD,$E0
+  $78,$B3,$FF,$C0,$3F,$D9,$F9,$F1,$DE,$E0,$F2,$2F,$FC,$E0,$4F,$C1,$88,$FF,$FC,$03,$BF,$FC,$A8,$EE
+  $F8,$00,$7C,$19,$8F,$F8,$F0,$E0,$73,$82,$A7,$FC,$F8,$F8,$FC,$18,$E4,$1F,$1F,$C0,$E6,$D0,$20,$7F
+  $03,$20,$FD,$7F,$1F,$0F,$07,$6F,$60,$9F,$E0,$F0,$F8,$3D,$77,$C8,$83,$EC,$F1,$73,$FE,$E6,$62,$39
+  $03,$7F,$F5,$9D,$07,$0F,$1F,$8E,$40,$D3,$A9,$F7,$BF,$E3,$F0,$FF,$E0,$45,$CB,$71,$C8,$FF,$FF,$30
+  $DD,$A0,$EA,$F5,$98,$EF,$BE,$7D,$A0,$FB,$01,$6F,$A2,$CA,$80,$00,$2D,$80,$EF,$EF,$C2,$E0,$6D,$80
+  $9D,$F4,$DC,$BD,$EE,$FA,$C5,$D1,$08,$18,$3E,$18,$3C,$3C,$18,$F0,$F2,$FC,$FE,$39,$1E,$01,$D0,$E3
+  $0F,$38,$07,$9A,$90,$08,$8B,$E0,$1C,$FE,$F0,$90,$9E,$70,$98,$A6,$BC,$0F,$68,$F0,$F0,$60,$C0,$F2
+  $11,$24,$A3,$BE,$AF,$24,$FE,$F0,$A0,$08,$28,$C0,$38,$56,$E7,$E0,$7C,$21,$F0,$A6,$00,$82,$0F,$8F
+  $C0,$47,$FC,$6B,$FF,$D0,$FC,$79,$F0,$A0,$80,$28,$BF,$20,$FA,$06,$0F,$8F,$06,$BB,$97,$F8,$FB,$29
+  $F5,$EE,$8E,$40,$F0,$62,$FC,$B8,$48,$92,$3E,$1E,$24,$F0,$A0,$F9,$DF,$F0,$8C,$C2,$80,$E8,$F5,$01
+  $01,$F6,$60,$1D,$80,$01,$03,$0B,$01,$EA,$40,$80,$27,$C8,$80,$FA,$49,$FE,$0F,$36,$D0,$7A,$FF,$3F
+  $E7,$40,$73,$47,$7F,$7B,$E3,$F1,$0E,$A3,$FE,$00,$3E,$D6,$F1,$F0,$DA,$61,$F0,$21,$83,$3E,$3E,$2E
+  $3E,$00,$EF,$FE,$C2,$D0,$EE,$B1,$0F,$38,$FE,$80,$6C,$2F,$1F,$FE,$FA,$75,$3B,$08,$FD,$FF,$C5,$72
+  $D3,$C0,$77,$90,$7E,$B1,$D1,$FF,$3F,$98,$FF,$9A,$B0,$00,$4D,$6D,$71,$FD,$6A,$A7,$FB,$C6,$DF,$10
+  $69,$EF,$69,$F0,$6B,$EF,$B7,$F2,$80,$E7,$F0,$3F,$AC,$F2,$0A,$07,$48,$AE,$0F,$EF,$3F,$51,$B0,$FC
+  $92,$E0,$C7,$1F,$C9,$79,$21,$9A,$A4,$E0,$A4,$C0,$A4,$80,$D5,$55,$60
+end data
+data HeFamCol10 bytes
+  $8B,$D1,$11,$86,$F8,$39,$FD,$F1,$E0,$88,$FF,$FF,$08,$E7,$FD,$FD,$C8,$B8,$DD,$EE,$FE,$F6,$E0,$F2
+  $EE,$FE,$A6,$D1,$DA,$A1,$DA,$9A,$DB,$B1,$D1,$9A,$AA,$BB,$F2,$F0,$96,$BA,$F7,$AA,$E0,$A1,$B1,$A1
+  $8E,$DB,$DB,$F8,$7F,$AD,$FE,$69,$BA,$6A,$AA,$9F,$A1,$F5,$CF,$F0,$FE,$3D,$E0,$F7,$C0,$DB,$A0,$B1
+  $E3,$FF,$70,$FF,$E8,$74,$FF,$B0,$EC,$9F,$9C,$EF,$CF,$8A,$E0,$0F,$C0,$F7,$A0,$78,$78,$20,$66,$61
+  $66,$61,$FF,$F0,$E0,$BB,$E6,$FF,$EE,$FF,$58,$D8,$FF,$B8,$F0,$FF,$30,$F0,$DF,$C0,$AD,$9F,$FC,$EB
+  $FF,$FE,$80,$F8,$FE,$E0,$6E,$55,$FE,$A9,$44,$9A,$54,$44,$55,$64,$8F,$A6,$64,$E0,$2F,$A4,$D8,$EF
+  $F8,$FD,$BE,$FE,$F0,$F2,$64,$FE,$B8,$A4,$D0,$FF,$FB,$EF,$B8,$78,$EA,$E7,$E8,$E4,$EF,$98,$E7,$F2
+  $AA,$8C,$41,$3A,$61,$61,$F0,$60,$61,$11,$61,$A0,$54,$28,$64,$3F,$58,$FE,$F5,$E0,$A9,$F2,$41,$F0
+  $9A,$44,$A4,$0F,$90,$E3,$48,$9F,$D0,$DE,$F3,$18,$DB,$F0,$41,$DF,$20,$87,$BC,$FE,$68,$FE,$50,$F0
+  $15,$FF,$00,$10,$77,$D8,$DD,$20,$F6,$F0,$F3,$C4,$FE,$8E,$C0,$3A,$38,$50,$43,$FF,$F9,$FE,$40,$7B
+  $F8,$DF,$68,$FE,$7A,$E7,$54,$1E,$C0,$7A,$91,$64,$5E,$B0,$E3,$A0,$93,$10,$8D,$F0,$2E,$EE,$FA,$31
+  $CA,$00,$A1,$48,$E1,$DA,$AA,$E0,$D2,$9C,$7F,$F0,$1E,$EA,$97,$DA,$CB,$E4,$11,$9F,$F2,$A9,$1C,$59
+  $6E,$00,$98,$F6,$FE,$9F,$A1,$F0,$FF,$A8,$F0,$F2,$F2,$93,$11,$D5,$FF,$55,$60
+end data
+data HeFamPat11 bytes
+  $A0,$EE,$8A,$AE,$EE,$EA,$EE,$00,$A1,$C0,$AA,$00,$01,$88,$41,$01,$AA,$00,$80,$88,$C0,$80,$AA,$00
+  $03,$88,$43,$03,$8E,$C0,$C4,$BC,$62,$01,$05,$3E,$C0,$3F,$80,$84,$F1,$C0,$82,$03,$07,$00,$00,$4F
+  $88,$FF,$71,$C1,$C9,$FF,$F0,$C1,$C9,$FF,$F0,$C1,$C9,$F9,$F0,$FF,$A6,$BE,$FE,$00,$FE,$3C,$C2,$88
+  $82,$C2,$2A,$EE,$08,$AC,$EC,$E8,$EC,$FF,$0C,$FE,$AA,$EE,$2E,$A7,$3F,$6F,$E0,$DD,$CA,$FE,$E0,$7E
+  $C8,$BA,$EA,$FF,$0E,$7F,$F0,$F7,$80,$F0,$F7,$B0,$E3,$7D,$71,$28,$2C,$A5,$FF,$00,$A5,$3F,$F8,$ED
+  $50,$63,$2A,$2E,$FA,$FF,$F1,$5C,$61,$FE,$FE,$FA,$BF,$F0,$FF,$71,$B6,$F0,$F0,$FA,$81,$F0,$78,$FC
+  $FC,$F8,$7C,$9E,$3C,$3C,$38,$74,$62,$3E,$3A,$4F,$A1,$9F,$E0,$F0,$FF,$B2,$B1,$FF,$6D,$09,$C3,$C1
+  $8F,$6B,$EE,$FE,$60,$F9,$6D,$F0,$F9,$6D,$F0,$F9,$BB,$F0,$E3,$6B,$EC,$FC,$E0,$D0,$93,$3E,$3E,$2E
+  $3E,$98,$E0,$3F,$49,$24,$92,$00,$F8,$C7,$FE,$F1,$5B,$FE,$99,$0F,$00,$F0,$76,$50,$43,$D8,$D2,$F3
+  $0F,$0F,$82,$CE,$80,$C2,$63,$FE,$01,$6C,$B3,$07,$A0,$80,$86,$7F,$80,$3F,$1F,$E7,$01,$11,$01,$3F
+  $80,$98,$2C,$84,$FC,$01,$8F,$80,$7F,$BB,$DA,$A5,$55,$07,$E3,$A0,$9D,$4A,$6F,$A0,$A5,$D8,$9D,$F2
+  $AA,$DE,$BB,$0F,$F0,$F7,$E0,$7E,$F8,$E0,$4B,$07,$99,$F0,$4B,$FC,$00,$0F,$F1,$E1,$E3,$C3,$87,$07
+  $0F,$F0,$8F,$87,$C7,$2E,$37,$F0,$D0,$7F,$AB,$B0,$28,$E0,$9B,$80,$C0,$F8,$E6,$27,$D1,$01,$03,$1F
+  $A5,$00,$EB,$8B,$03,$BC,$2A,$E0,$A6,$E0,$3B,$FC,$03,$79,$7F,$83,$C0,$48,$87,$AF,$EF,$BD,$77,$10
+  $9A,$FC,$FC,$00,$93,$07,$BC,$26,$00,$F7,$FF,$D0,$AA,$3F,$F0,$0E,$D1,$DF,$E0,$A0,$2D,$EA,$96,$A0
+  $A2,$EF,$0F,$07,$0D,$2B,$A0,$E7,$A0,$FF,$7E,$E3,$CA,$55,$55,$80
+end data
+data HeFamCol11 bytes
+  $96,$A6,$A8,$66,$61,$79,$F0,$5F,$FF,$81,$BC,$7E,$71,$F0,$57,$AA,$FF,$B6,$BB,$98,$B6,$BA,$A6,$06
+  $86,$66,$9A,$A6,$F6,$69,$A6,$A7,$FF,$DF,$D8,$F0,$7E,$FF,$8C,$47,$C7,$74,$AA,$FF,$F6,$86,$1A,$FF
+  $A1,$88,$F0,$A4,$F5,$F0,$76,$E4,$4E,$74,$7F,$F1,$74,$7F,$F4,$FF,$E0,$CC,$DF,$16,$F0,$05,$BB,$BA
+  $FF,$AA,$A1,$F8,$9F,$66,$66,$AA,$BB,$AA,$F0,$29,$B6,$7F,$F3,$E0,$60,$E8,$61,$A1,$B1,$A1,$F8,$F3
+  $61,$11,$FE,$DE,$E0,$C0,$28,$A6,$F1,$F0,$21,$85,$A8,$86,$A8,$B8,$86,$A2,$AA,$BD,$BA,$F9,$EB,$6C
+  $AA,$DF,$F0,$D0,$6E,$66,$B9,$FF,$A8,$F0,$D9,$CF,$C0,$E0,$3E,$60,$BF,$AA,$FD,$10,$FD,$F0,$F9,$F8
+  $E0,$7C,$C0,$B9,$EA,$F0,$8F,$A1,$11,$90,$FF,$FB,$FF,$F0,$7D,$D0,$F7,$B0,$E9,$49,$D0,$E6,$A6,$A2
+  $A2,$F0,$39,$22,$22,$D0,$FB,$F1,$A0,$8F,$F0,$04,$FF,$D1,$E0,$97,$C0,$CF,$A1,$9D,$F5,$78,$F0,$64
+  $E1,$E1,$EE,$E6,$EA,$EF,$ED,$EA,$F0,$EB,$FF,$EE,$DE,$E0,$C0,$29,$EA,$EF,$9D,$62,$89,$FE,$A0,$F5
+  $F0,$7F,$DF,$FF,$FA,$F0,$FE,$8A,$A1,$B1,$08,$9D,$11,$FF,$55,$56
+end data
+data HeMap0 bytes
+  $A8,$20,$80,$59,$3E,$81,$82,$83,$84,$85,$86,$E0,$67,$87,$88,$89,$E5,$C5,$C0,$80,$82,$8A,$8B,$8C
+  $8D,$8E,$8F,$90,$91,$25,$92,$93,$61,$E2,$94,$95,$96,$97,$98,$FE,$02,$99,$9A,$9B,$9C,$80,$9D,$9E
+  $80,$69,$20,$A9,$9F,$0A,$A0,$9F,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$16,$AB,$A5,$AC,$AD,$A5
+  $AE,$AF,$B0,$B1,$B2,$9F,$29,$20,$86,$B3,$B4,$B5,$B6,$B7,$64,$A5,$A5,$B8,$B9,$BA,$BB,$BC,$27,$BD
+  $A5,$BE,$BF,$A5,$C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$20,$AB,$C9,$C8,$C9,$FB,$C0,$FE,$A3,$C1,$CA,$A8
+  $FE,$C3,$92,$CB,$CC,$CD,$CC,$CE,$20,$69,$CF,$68,$D0,$9A,$D1,$D2,$BC,$63,$D3,$D4,$D0,$DF,$D8,$C5
+  $55,$55,$80
+end data
+data HeMap1 bytes
+  $A9,$20,$80,$17,$E2,$C5,$C0,$09,$81,$82,$83,$84,$42,$09,$85,$86,$87,$88,$42,$08,$89,$8A,$8B,$8C
+  $69,$8D,$A8,$8E,$3F,$8F,$90,$91,$92,$FE,$DF,$C0,$FE,$62,$93,$94,$20,$20,$93,$95,$96,$97,$98,$99
+  $9A,$9B,$99,$9C,$80,$20,$A5,$9D,$E8,$F9,$9E,$64,$E8,$9F,$A0,$A1,$A2,$A3,$A4,$FE,$26,$A5,$A6,$9D
+  $20,$97,$A7,$A1,$F9,$A8,$83,$A9,$AA,$AB,$AC,$8B,$E2,$AD,$F5,$F3,$C5,$55,$58
+end data
+data HeMap2 bytes
+  $A1,$20,$E5,$80,$81,$82,$83,$84,$F8,$83,$80,$80,$85,$86,$A2,$FE,$87,$80,$29,$20,$87,$80,$88,$89
+  $8A,$8B,$96,$F8,$0E,$8C,$8D,$8E,$8F,$FF,$3D,$90,$91,$C0,$83,$92,$93,$94,$95,$96,$F8,$0E,$96,$97
+  $98,$99,$FF,$3C,$9A,$9B,$C0,$8F,$9C,$9D,$FE,$4E,$D3,$E5,$9E,$80,$93,$9F,$A0,$A1,$A1,$A2,$A3,$88
+  $F9,$A4,$A1,$A2,$A5,$39,$A6,$A7,$C0,$AF,$A8,$00,$26,$A9,$AA,$8A,$AE,$AB,$F9,$22,$AC,$8A,$89,$AD
+  $3A,$AE,$AF,$A9,$A9,$B0,$8F,$FE,$22,$B1,$A9,$98,$20,$94,$B2,$B3,$8A,$B4,$B2,$26,$B5,$B6,$23,$B7
+  $B2,$D5,$C5,$55,$60
+end data
+data HeMap3 bytes
+  $A1,$20,$81,$BE,$BF,$C0,$C1,$C2,$61,$9A,$C1,$C3,$C4,$C5,$20,$C6,$22,$C7,$C8,$68,$C9,$5F,$E0,$BB
+  $C7,$CE,$C9,$C0,$EE,$CA,$C6,$CB,$F7,$CC,$FE,$86,$CD,$CE,$CF,$D0,$CC,$6F,$C6,$D6,$E5,$C0,$A4,$D1
+  $82,$D2,$D3,$D3,$D4,$11,$A4,$C6,$A2,$D5,$85,$D6,$20,$08,$D7,$D8,$D9,$D9,$DA,$DB,$DC,$DD,$DD,$DE
+  $DF,$E0,$D9,$D9,$E1,$E2,$49,$A7,$E3,$E4,$E5,$E6,$E7,$E8,$D2,$FE,$5B,$E9,$EA,$CA,$EB,$EC,$ED,$20
+  $55,$55,$80
+end data
+data HeMap4 bytes
+  $A8,$20,$80,$62,$81,$82,$46,$21,$83,$80,$A6,$20,$86,$80,$28,$84,$85,$96,$86,$87,$0F,$88,$85,$89
+  $8A,$C0,$59,$1E,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93,$91,$94,$95,$96,$E4,$E0,$C0,$61,$61,$97,$98
+  $99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$19,$A0,$80,$A2,$A3,$A2,$A4,$A5,$A5,$A6,$A3,$A7,$11,$8A,$A8
+  $A9,$22,$AA,$AB,$28,$AC,$AD,$81,$AE,$AF,$62,$B0,$B1,$98,$B2,$B3,$A5,$9A,$A5,$B4,$B5,$20,$B6,$B7
+  $75,$55,$58
+end data
+data HeMap5 bytes
+  $A0,$20,$78,$80,$81,$82,$83,$82,$84,$85,$86,$87,$EE,$1B,$82,$E2,$C5,$FD,$88,$89,$AA,$8A,$8B,$82
+  $8C,$8D,$88,$8E,$AA,$8F,$90,$83,$91,$92,$88,$93,$A7,$DC,$94,$95,$96,$F8,$EF,$C5,$FD,$AA,$97,$98
+  $99,$8A,$97,$9A,$AA,$9B,$9C,$BE,$9D,$EA,$EA,$9E,$DC,$9F,$0F,$C5,$A4,$FF,$A0,$5A,$20,$68,$A1,$86
+  $A2,$A3,$A4,$A5,$A1,$62,$A6,$A1,$58,$EA,$A7,$A8,$F0,$A9,$3E,$C0,$50,$BA,$AA,$AB,$AC,$AD,$AE,$AC
+  $AC,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B9,$BA,$BB,$BC,$BD,$BE,$BF,$BF,$C0,$C1,$C2,$FE,$90
+  $AC,$9A,$C3,$C4,$C5,$60,$C6,$C7,$AC,$3D,$C5,$55,$56
+end data
+data HeMap6 bytes
+  $A8,$20,$80,$86,$81,$82,$83,$84,$85,$60,$A2,$86,$87,$88,$87,$89,$85,$96,$8A,$8B,$8C,$8D,$8E,$8F
+  $80,$29,$20,$A6,$90,$08,$91,$92,$93,$92,$B8,$94,$F9,$8B,$95,$96,$97,$8E,$FB,$98,$99,$FF,$22,$9A
+  $90,$9A,$20,$9B,$6E,$9C,$C0,$29,$9D,$2A,$9E,$26,$94,$9F,$EF,$A0,$D0,$C5,$A6,$FF,$A1,$F1,$A2,$C0
+  $89,$9D,$A3,$BB,$A4,$D0,$E1,$C0,$95,$A5,$A5,$A5,$A6,$92,$AE,$A7,$FE,$8A,$A8,$A5,$9A,$20,$A9,$2E
+  $AA,$C1,$92,$AB,$22,$A7,$AC,$88,$AD,$9B,$92,$AE,$AF,$F9,$CF,$C5,$FF,$66,$B0,$B1,$B2,$B3,$B4,$B5
+  $B6,$25,$B7,$B6,$84,$B5,$B8,$B6,$B9,$BA,$BB,$BC,$BD,$BE,$BF,$20,$55,$58
+end data
+data HeMap7 bytes
+  $A9,$20,$C8,$26,$C9,$CA,$CB,$08,$99,$CC,$CB,$92,$CD,$CE,$C8,$9A,$20,$C8,$49,$82,$CF,$D0,$D1,$F8
+  $D2,$F6,$F5,$D3,$D4,$C0,$E6,$FF,$D5,$D6,$D7,$67,$D8,$D9,$DA,$A3,$F4,$DB,$DC,$D7,$C0,$99,$FF,$DD
+  $DE,$DF,$9E,$E0,$E1,$E2,$F4,$8F,$E3,$E4,$C0,$4F,$FE,$88,$E5,$E6,$86,$E7,$E8,$E9,$EA,$E6,$23,$EB
+  $C8,$81,$C0,$9E,$EC,$ED,$EE,$FF,$18,$EF,$F0,$F1,$F2,$EE,$8E,$F3,$F4,$80,$52,$09,$F5,$F6,$F7,$F8
+  $4D,$55,$56
+end data
+data HeMap8 bytes
+  $A2,$20,$80,$81,$9A,$82,$83,$81,$E8,$84,$FB,$85,$F2,$E6,$8A,$86,$87,$0F,$C5,$89,$FF,$88,$89,$3A
+  $F5,$8A,$18,$F6,$8B,$8C,$E0,$BE,$8D,$C5,$FF,$91,$8E,$69,$20,$82,$8F,$90,$91,$8F,$E5,$F6,$3E,$C0
+  $50,$BA,$92,$93,$94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$92,$92
+  $A6,$A7,$A8,$A9,$AA,$97,$FE,$49,$AB,$AC,$AD,$AE,$AF,$AB,$08,$E8,$B0,$B1,$F6,$2E,$B2,$B3,$B4,$B5
+  $C0,$20,$91,$AB,$B6,$B7,$AB,$89,$B8,$B9,$82,$BA,$BB,$BC,$BD,$75,$55,$58
+end data
+data HeMap9 bytes
+  $A9,$20,$99,$21,$89,$C0,$C1,$C2,$C3,$C4,$A7,$C5,$C6,$C7,$C8,$C9,$CA,$CF,$D6,$C5,$E2,$C0,$CB,$CC
+  $60,$6E,$CD,$CE,$CF,$D0,$D1,$D2,$D3,$D4,$D5,$FF,$3F,$D6,$D7,$D8,$D8,$C0,$2E,$D8,$D9,$DA,$DB,$FF
+  $4A,$DC,$DD,$DE,$DF,$E0,$E1,$1F,$E2,$DF,$E3,$E4,$E5,$D8,$7E,$C5,$FF,$26,$E6,$E7,$EB,$E8,$E6,$E9
+  $92,$FD,$EA,$EB,$EB,$EC,$E9,$99,$39,$D8,$F2,$80,$0B,$ED,$EE,$EF,$ED,$C7,$C0,$DF,$D8,$C5,$92,$FF
+  $F0,$F1,$F2,$F3,$F1,$F0,$48,$AF,$F4,$F5,$F6,$F0,$F7,$D8,$8F,$C0,$FE,$13,$D5,$C5,$55,$60
+end data
+data HeMap10 bytes
+  $A9,$20,$AE,$16,$9A,$20,$AF,$88,$B0,$B1,$88,$B2,$AF,$43,$98,$C0,$61,$B3,$B4,$B4,$B4,$B5,$42,$22
+  $B6,$B7,$21,$B8,$B9,$08,$99,$BA,$BB,$61,$BC,$BD,$BE,$BF,$C0,$C1,$C2,$EA,$FF,$C3,$22,$C4,$C5,$F9
+  $C6,$F3,$EF,$22,$C7,$C8,$C9,$CA,$CB,$CC,$58,$CD,$CE,$CF,$D0,$D1,$D2,$D3,$FA,$C5,$FF,$D4,$12,$69
+  $D5,$D6,$D7,$A2,$D8,$D9,$D4,$DA,$DB,$19,$B5,$DC,$D4,$20,$55,$58
+end data
+data HeMap11 bytes
+  $A6,$20,$B8,$B9,$B8,$2E,$BA,$F9,$22,$BB,$BC,$EB,$BD,$EA,$BE,$A9,$E2,$BF,$A2,$C0,$FA,$C1,$C5,$FF
+  $C2,$45,$F8,$C0,$38,$C3,$C4,$C5,$C6,$F8,$27,$C7,$C8,$C9,$97,$E0,$EB,$C5,$FF,$C6,$E0,$EF,$F8,$83
+  $CA,$CB,$CC,$CD,$93,$E0,$EF,$C0,$CE,$FE,$65,$EB,$CF,$D0,$D1,$D2,$D3,$D4,$D2,$F4,$D5,$DF,$DA,$C5
+  $A5,$FF,$D6,$87,$D7,$D8,$D9,$DA,$DB,$88,$FA,$F7,$DC,$DD,$D8,$E9,$C5,$FF,$DE,$17,$D5,$C5,$55,$60
+end data
+data HeMap12 bytes
+  $A8,$20,$AA,$59,$91,$AB,$AC,$AA,$A6,$20,$88,$AD,$96,$AE,$AD,$49,$AF,$B0,$B1,$B2,$B3,$AD,$6F,$B4
+  $FB,$C8,$C0,$89,$AD,$B5,$59,$B6,$B7,$B8,$B8,$B9,$BA,$BB,$BC,$BC,$BD,$BE,$BF,$C0,$C0,$C1,$A0,$AD
+  $6E,$C2,$F9,$18,$C3,$C4,$C4,$C5,$C6,$88,$C7,$C8,$BE,$C9,$EA,$0F,$CA,$CB,$CC,$CD,$C0,$2A,$CE,$A2
+  $AD,$CF,$D0,$22,$D1,$D2,$22,$D3,$D4,$2E,$D5,$EA,$2E,$D6,$81,$92,$D7,$3A,$D8,$D9,$83,$DA,$F5,$FE
+  $92,$DB,$DC,$AD,$DD,$DE,$20,$69,$DF,$17,$D5,$C5,$55,$60
+end data
+data HeMap13 bytes
+  $A1,$20,$81,$80,$81,$82,$83,$80,$7F,$D2,$E9,$C5,$C0,$84,$84,$85,$86,$3F,$D2,$FA,$C0,$E1,$87,$18
+  $E2,$88,$89,$FF,$8A,$8B,$BA,$8C,$F2,$EF,$8D,$E2,$D2,$F0,$C0,$90,$85,$8E,$8F,$90,$91,$92,$93,$93
+  $94,$95,$96,$8F,$97,$20,$24,$98,$99,$9A,$9B,$9B,$9C,$9D,$9E,$3A,$FF,$9F,$89,$A0,$9F,$98,$A1,$A2
+  $A3,$19,$B8,$A4,$A5,$9F,$D2,$FA,$C5,$FF,$A6,$18,$91,$A7,$A8,$B9,$A9,$D4,$F5,$C5,$55,$58
+end data
+data HeMap14 bytes
+  $A1,$20,$81,$80,$81,$82,$83,$80,$7F,$D2,$EA,$C5,$FF,$84,$22,$85,$84,$59,$86,$87,$88,$89,$8A,$8B
+  $8C,$97,$8D,$8E,$89,$8F,$90,$91,$84,$8F,$D2,$C5,$A8,$FF,$92,$59,$93,$94,$95,$96,$97,$98,$99,$9A
+  $9B,$9C,$9D,$85,$A9,$9E,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$93,$92,$20,$81,$85,$A7,$A8,$A9,$AA,$AB
+  $AC,$AD,$AE,$AF,$81,$99,$B0,$B1,$B2,$B3,$B4,$B5,$B6,$A7,$20,$22,$B7,$AF,$B8,$B9,$BA,$AF,$1E,$98
+  $BB,$BC,$BD,$BE,$83,$0B,$BF,$BD,$C0,$C1,$A6,$B2,$C2,$C3,$C4,$BE,$C5,$C0,$3A,$AF,$C6,$C4,$0E,$C7
+  $C8,$C9,$CA,$83,$48,$CB,$CC,$CD,$CD,$CE,$CB,$83,$CF,$D0,$D1,$D2,$A3,$BC,$D3,$AF,$EE,$C0,$D4,$59
+  $69,$D5,$D6,$D7,$4A,$D8,$D9,$DA,$DB,$DC,$DD,$DE,$DE,$DE,$DD,$DF,$E0,$E1,$E2,$62,$E3,$E4,$E5,$F5
+  $E6,$C5,$55,$58
+end data
+data HeMap15 bytes
+  $A8,$20,$80,$08,$A0,$81,$82,$20,$83,$84,$85,$86,$87,$82,$88,$80,$29,$20,$A1,$89,$21,$25,$8A,$8B
+  $8C,$8D,$8E,$8F,$89,$90,$91,$89,$A6,$20,$85,$92,$86,$93,$94,$95,$96,$97,$99,$98,$99,$92,$69,$20
+  $A1,$9A,$21,$25,$9B,$9C,$9D,$9E,$9F,$A0,$9A,$A1,$A2,$9A,$A6,$20,$81,$A3,$85,$96,$A4,$A5,$A6,$A7
+  $A8,$A9,$AA,$AB,$AC,$AD,$A3,$9A,$20,$AE,$02,$42,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B9,$AE
+  $5A,$20,$69,$BA,$17,$D5,$C5,$55,$60
+end data
+data HeMap16 bytes
+  $A8,$20,$B8,$86,$B9,$BA,$A3,$BB,$BC,$12,$E0,$BD,$FB,$EF,$BE,$A3,$BF,$C0,$CE,$C5,$B9,$C0,$BE,$E8
+  $FE,$FA,$C1,$A3,$F4,$C2,$1F,$C2,$F7,$C0,$DE,$BE,$C9,$9F,$C3,$C2,$78,$C0,$63,$C4,$C5,$90,$FE,$BD
+  $C6,$C0,$87,$C7,$C8,$C8,$C9,$C8,$98,$FF,$CA,$CB,$C8,$22,$CC,$CD,$38,$F5,$39,$CE,$CF,$D0,$D1,$C0
+  $3E,$FE,$60,$D2,$D3,$C8,$88,$D4,$D5,$E3,$EE,$C3,$C0,$D7,$FE,$DD,$C0,$55,$56
+end data
+data HeMap17 bytes
+  $A9,$20,$E7,$17,$E6,$C5,$C0,$2F,$E8,$E9,$FE,$89,$EA,$EB,$8E,$EC,$E7,$DC,$79,$C0,$62,$ED,$EE,$F8
+  $FE,$98,$EF,$F0,$E7,$F1,$E7,$DC,$96,$C0,$21,$F2,$F3,$A0,$F4,$AF,$F5,$DC,$7D,$C0,$F6,$FE,$60,$F6
+  $F7,$F0,$BC,$F8,$00,$6E,$F9,$FE,$08,$86,$FA,$F0,$20,$FB,$F9,$69,$20,$A0,$AF,$6E,$FC,$C0,$6E,$FD
+  $DC,$1F,$C5,$55,$55,$80
+end data
+data HeMap18 bytes
+  $A6,$20,$CE,$CF,$D0,$2E,$D1,$F6,$2E,$CE,$FE,$62,$D2,$D3,$88,$D4,$CE,$69,$20,$98,$CE,$D5,$D6,$B8
+  $D7,$F6,$F2,$C0,$08,$D8,$D9,$D9,$DA,$58,$EE,$DB,$DC,$FF,$DD,$F6,$2F,$CE,$FE,$88,$DE,$DF,$6E,$E0
+  $C0,$08,$EE,$E1,$E2,$FF,$E3,$F6,$38,$40,$80,$A8,$E4,$E5,$E5,$E6,$E7,$E5,$E5,$E8,$E9,$47,$B8,$C1
+  $EA,$FE,$E9,$C1,$EB,$23,$EC,$ED,$82,$FE,$82,$EC,$21,$EE,$EA,$82,$EF,$EC,$F0,$EC,$A6,$20,$80,$F1
+  $29,$F2,$26,$F1,$F3,$F1,$F5,$C5,$55,$58
+end data
+data HeMap19 bytes
+  $A0,$20,$84,$BB,$BC,$BD,$BB,$3F,$D0,$E8,$C5,$C0,$85,$BE,$BF,$3F,$D1,$C0,$0B,$C0,$E6,$FE,$C1,$C2
+  $C0,$0E,$C0,$06,$00,$94,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF,$D0,$D1,$D2,$E5,$FF
+  $99,$D3,$D4,$D5,$D6,$D7,$D8,$D9,$39,$DA,$DB,$DC,$DD,$DE,$DF,$C0,$3E,$FE,$49,$E0,$E1,$E2,$E3,$E4
+  $D9,$64,$9F,$E5,$E6,$E7,$E8,$E9,$BB,$C0,$7E,$C3,$92,$90,$EE,$EA,$EB,$EC,$ED,$EE,$EF,$EF,$F0,$ED
+  $F1,$F2,$F3,$B6,$BE,$3D,$C5,$55,$56
+end data
+data HeMap20 bytes
+  $A8,$20,$80,$81,$82,$81,$82,$83,$84,$85,$86,$87,$88,$80,$08,$89,$8A,$8B,$80,$0F,$C5,$88,$C0,$52
+  $80,$8C,$8D,$8E,$8F,$90,$91,$92,$93,$94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$12,$78
+  $A1,$A2,$A3,$FF,$4A,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$80,$22,$AD,$AE,$E1,$AF,$80,$BE,$B0,$C7
+  $C0,$81,$8A,$B1,$B2,$B3,$B3,$B4,$B5,$B6,$B7,$80,$B8,$68,$AE,$4A,$B9,$18,$79,$BA,$BB,$BC,$BD,$BE
+  $12,$FD,$C7,$C0,$EA,$FE,$BF,$89,$C0,$C1,$98,$C2,$C3,$C4,$88,$C5,$BF,$64,$9A,$C6,$C7,$AE,$C8,$C6
+  $BF,$20,$6A,$98,$86,$C9,$21,$CA,$98,$27,$CB,$CC,$CD,$8F,$F0,$C5,$55,$55,$80
+end data
+data HeMap21 bytes
+  $A9,$20,$80,$8A,$81,$82,$20,$83,$80,$5A,$20,$68,$84,$96,$85,$86,$87,$88,$89,$8A,$84,$04,$A6,$20
+  $A0,$8B,$68,$8C,$8D,$8E,$8F,$90,$91,$92,$93,$94,$24,$95,$96,$97,$8B,$29,$20,$A8,$98,$12,$99,$9A
+  $9B,$9C,$9D,$9E,$9A,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$98,$02,$9A,$20,$A9,$8A,$AA,$AB,$69
+  $AC,$AD,$AE,$09,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B9,$A9,$69,$20,$82,$BA,$BB,$BC,$BD,$8A
+  $BE,$BD,$28,$BF,$C0,$A0,$C1,$C0,$22,$C2,$C3,$C4,$C1,$C5,$C6,$C7,$C8,$0E,$C9,$CA,$CB,$BA,$C0,$27
+  $CC,$CD,$CC,$C6,$FA,$0E,$CE,$CF,$D0,$D1,$FF,$7B,$D2,$D3,$D4,$C0,$55,$55,$80
+end data
+data HeMap22 bytes
+  $A9,$20,$80,$16,$9A,$20,$84,$45,$A6,$20,$91,$8B,$69,$20,$A4,$98,$5A,$20,$69,$A9,$16,$9A,$20,$BA
+  $01,$82,$D5,$D6,$C7,$C8,$20,$E4,$C9,$CA,$CB,$BA,$C0,$60,$67,$D7,$CF,$D0,$D1,$D1,$D1,$D2,$D3,$D4
+  $55,$55,$80
+end data
+data SceneFam bytes 3,11,2,8,1,6,7,6,8,7,11,2,10,10,0,9,1,0,5,9,5,4,4
+data FamPatTab words = @HeFamPat0, @HeFamPat1, @HeFamPat2, @HeFamPat3, @HeFamPat4, @HeFamPat5, @HeFamPat6, @HeFamPat7, @HeFamPat8, @HeFamPat9, @HeFamPat10, @HeFamPat11
+data FamColTab words = @HeFamCol0, @HeFamCol1, @HeFamCol2, @HeFamCol3, @HeFamCol4, @HeFamCol5, @HeFamCol6, @HeFamCol7, @HeFamCol8, @HeFamCol9, @HeFamCol10, @HeFamCol11
+data SceneMapTab words
+  @HeMap0, @HeMap1, @HeMap2, @HeMap3, @HeMap4, @HeMap5, @HeMap6, @HeMap7,
+  @HeMap8, @HeMap9, @HeMap10, @HeMap11, @HeMap12, @HeMap13, @HeMap14, @HeMap15,
+  @HeMap16, @HeMap17, @HeMap18, @HeMap19, @HeMap20, @HeMap21, @HeMap22
+end data
+
+' ShowScene: the picture of Scene on rows 1-7 (255 = darkness). The tile
+' set of its family is unpacked only when the family changes.
+sub ShowScene:
+  Shown = Scene
+  if Scene = 255 then
+    for Y = 1 to 7
+      fill 32 count 28 at 2,Y
+    next
+    print at 7,4, "IT IS PITCH DARK."
+    return
+  end if
+  Fam = SceneFam[Scene]
+  if Fam <> FamShown then
+    decompress zx0 FamPatTab[Fam] to vram.pattern + 1024
+    decompress zx0 FamColTab[Fam] to vram.color + 1024
+    FamShown = Fam
+  end if
+  decompress zx0 SceneMapTab[Scene] to vram.name + 32
+  return
+end sub
+
+' ShowCreatures: the bear, the mummy, the leopard, the demon and the raft
+' stand in the picture as sprites while they are in the room (object
+' numbers from adv.py: 47 bear, 24 mummy, 67 leopard, 56 demon, 63 raft)
+sub ShowCreatures:
+  Mag = 0
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  if Dark = 0 then
+    if OL[47] = Rm then
+      Creature(36, 64, SBearDL, 10, 15)
+    end if
+    if OL[24] = Rm then
+      Creature(40, 170, SMummyDL, 15, 14)
+    end if
+    if OL[67] = Rm then
+      Mag = 1
+      Creature(30, 80, SLeopardDL, 1, 11)
+    end if
+    if OL[56] = Rm then
+      Mag = 1
+      Creature(22, 96, SDemonDL, 8, 11)
+    end if
+    if OL[63] = Rm then
+      if Scene <> RiverScene then
+        Creature(27, 160, SRaftDL, 10, 6)
+      end if
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+' Creature: four sprites (details first, so they are drawn on top)
+sub Creature(u8 CY, u8 CX, u8 CP, u8 CBody, u8 CDet):
+  ' the leopard and the demon are magnified (64 x 32 pixels)
+  V = CX + 16
+  if Mag = 1 then
+    V = CX + 32
+    sprites double
+  else
+    sprites simple
+  end if
+  J = CP + 4
+  set sprite 0 to CY, CX, CP, CDet
+  set sprite 1 to CY, V, J, CDet
+  J = CP + 8
+  set sprite 2 to CY, CX, J, CBody
+  J = CP + 12
+  set sprite 3 to CY, V, J, CBody
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub EditorialPage:
+  nmi off
+  display off
+  fill mode 2 text color with $F0
+  backdrop black
+  cls
+  print at 10,1, "THE HERMIT"
+  print at 2,3, "A TEXT ADVENTURE BY ERIC"
+  print at 2,4, "BRYANT, FROM COMPUTE!"
+  print at 2,5, "MAGAZINE, NOVEMBER 1987."
+  print at 2,7, "THE WHOLE STORY, EVERY ROOM"
+  print at 2,8, "AND EVERY PUZZLE, WITH A"
+  print at 2,9, "JOYSTICK MENU INSTEAD OF"
+  print at 2,10, "TYPING, AND A PICTURE FOR"
+  print at 2,11, "EACH PLACE."
+  print at 2,13, "NEW MUSIC: THE HERMIT'S"
+  print at 2,14, "LANTERN."
+  print at 2,16, "COLECOVISION VERSION BY"
+  print at 2,17, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop black
+  cls
+  call asm HeFonts
+  Scene = TitleScene
+  Shown = 255
+  FamShown = 255
+  ShowScene
+  print at 11,10, "THE HERMIT"
+  print at 4,12, "AN ADVENTURE UNDERGROUND"
+  print at 12,16, "PLAY"
+  print at 12,18, "HOW TO PLAY"
+  print at 12,20, "CREDITS"
+  print at 5,22, "1987 ERIC BRYANT  2026"
+  Menu = 0
+  screen on
+  nmi off
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+  WasBtn2 = 1
+title_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndTick
+  end if
+  print at 10,16, " "
+  print at 10,18, " "
+  print at 10,20, " "
+  Y = Menu * 2
+  Y = Y + 16
+  print at 10,Y, ">"
+
+  if Press = 1 then goto title_done
+  goto title_loop
+title_done:
+  mute all
+  play sound SndOk
+  return
+end sub
+
+sub HelpPages:
+  Rearm
+  wait
+  nmi off
+  display off
+  cls
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOU ARE LOOKING FOR THE"
+  print at 2,4, "HERMIT WHO LIVED IN THE"
+  print at 2,5, "HILLS. EXPLORE, SOLVE THE"
+  print at 2,6, "PUZZLES, FIND TEN TREASURES"
+  print at 2,7, "AND BRING THEM ALL TO THE"
+  print at 2,8, "SPACESHIP, THEN LAUNCH IT."
+  print at 2,10, "STICK UP/DOWN: CHOOSE A"
+  print at 2,11, "VERB, THEN STICK RIGHT OR"
+  print at 2,12, "LEFT BUTTON: CHOOSE WHAT."
+  print at 2,13, "LEFT BUTTON: DO IT."
+  print at 2,14, "RIGHT BUTTON: BACK."
+  print at 2,16, "WHEN THE STORY FILLS THE"
+  print at 2,17, "SCREEN, MORE WAITS FOR A"
+  print at 2,18, "BUTTON. SCORE 200 TO WIN."
+  print at 8,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$06,$00,$00,$00,$00,$00,$00,$00,$00,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$30,$1C,$0F,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$19,$3F,$6F,$7F,$7F,$39,$FF,$FF,$FF,$FF,$7F,$7F,$F8,$F0,$00
+  $00,$80,$C0,$60,$E0,$E0,$C0,$FF,$FF,$FE,$FE,$FC,$FC,$3E,$1E,$00
+  $00,$00,$00,$00,$00,$18,$70,$E0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0A,$00,$40,$04,$00,$08,$01,$04,$00,$08,$00,$00
+  $00,$00,$00,$00,$00,$00,$14,$00,$80,$00,$00,$00,$00,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1F,$3F,$2E,$3F,$15,$FF,$BF,$1B,$1F,$17,$1E,$1B,$1D,$15,$1D,$3D
+  $00,$80,$80,$80,$00,$FE,$EA,$80,$00,$80,$80,$80,$80,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07
+  $00,$00,$00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E
+  $00,$00,$00,$00,$00,$30,$48,$87,$8F,$4F,$0F,$07,$07,$0E,$1C,$00
+  $00,$00,$00,$00,$00,$03,$3F,$FF,$FF,$FF,$FF,$BC,$1C,$0C,$0C,$00
+  $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$0F,$07,$03,$03,$00
+  $00,$00,$28,$7C,$EE,$FF,$FC,$F8,$F0,$E0,$C0,$70,$38,$18,$0C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$04,$00,$0C,$00,$00,$00,$01,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$20,$00,$30,$00,$00,$00,$80,$00,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $80,$C0,$60,$70,$38,$3C,$1F,$1F,$0F,$07,$03,$00,$00,$00,$00,$00
+  $00,$08,$0C,$07,$0F,$1B,$3F,$F3,$FF,$FF,$7F,$7E,$73,$E0,$C0,$00
+  $00,$10,$30,$E0,$F0,$D8,$FC,$CF,$FF,$FF,$FE,$7E,$CE,$07,$03,$00
+  $01,$03,$06,$0E,$1C,$3C,$F8,$F8,$F0,$E0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$11,$11,$11,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$11,$11,$11,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$11,$11,$11,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$6E,$6E,$6E,$3F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$EE,$EE,$EE,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$EE,$EE,$EE,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$E8,$E8,$E8,$F8,$00
+end data
+
+asm {
+HeTick:
+    db $40,$47,$60,$01,$50
+HeMore:
+    db $40,$55,$30,$02,$40,$55,$F0,$01,$40,$40,$30,$02,$40,$40,$F0,$01,$40,$55,$30,$02,$40,$55,$F0,$01
+    db $40,$40,$30,$05,$40,$40,$F0,$01,$50
+HeOk:
+    db $40,$7F,$30,$02,$40,$5F,$40,$02,$50
+HeBack:
+    db $40,$5F,$40,$02,$40,$7F,$50,$02,$50
+HeTreasure:
+    db $40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$71,$20,$03,$40,$71,$F0,$01,$40,$5F,$20,$03,$40,$5F,$F0,$01
+    db $40,$47,$20,$09,$40,$47,$F0,$01,$50
+HeDie:
+    db $40,$1D,$21,$0B,$40,$1D,$F1,$01,$40,$2E,$21,$0B,$40,$2E,$F1,$01,$40,$41,$21,$0B,$40,$41,$F1,$01
+    db $40,$AB,$21,$1D,$40,$AB,$F1,$01,$50
+HeWin:
+    db $40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01
+    db $40,$6B,$20,$07,$40,$6B,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$1D,$40,$55,$F0,$01,$50
+
+HeSoundTable:
+    dw HeTick,$702B
+    dw HeMore,$7035
+    dw HeOk,$7035
+    dw HeBack,$7035
+    dw HeTreasure,$7035
+    dw HeDie,$7035
+    dw HeWin,$7035
+    dw HeTuneMel,$703F
+    dw HeTuneBass,$7049
+; The Hermit's Lantern, D minor (original for this game)
+; Tiny Sound, 12 frames per step
+HeTuneMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$30,$1A,$21,$21,$00,$24,$28,$00,$26,$24,$00,$23,$21,$00,$01
+    db $1F,$00,$23,$26,$00,$24,$23,$00,$21,$20,$00,$01,$21,$00,$24,$28
+    db $00,$29,$28,$00,$26,$24,$00,$23,$24,$00,$23,$21,$00,$20,$21,$00
+    db $00,$00,$01,$01
+    db $FF
+HeTuneBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$60,$18,$32,$09,$01,$10,$09,$01,$10,$07,$01,$0E,$07,$01,$0E
+    db $04,$01,$0B,$04,$01,$0B,$09,$01,$10,$04,$01,$0B,$09,$01,$10,$05
+    db $01,$0C,$0E,$01,$09,$04,$01,$0B,$05,$01,$0C,$04,$01,$0B,$09,$01
+    db $10,$09,$01,$01
+    db $FF
+; engine.asm: The Hermit's adventure engine (Z80).
+; - text: packed messages (advc.py), word wrap and scrolling in the text
+;   window (rows 9-18, columns 2-29), a MORE pause read straight from the
+;   controller ports;
+; - world: object locations, containers, exits, darkness, score;
+; - rules: runs the bytecode lists made by advc.py (conditions, actions);
+; - menus: builds the noun list for the verb picked and draws the picker.
+; Call every entry point with the NMI off.
+; Locations: 0 nowhere, 1-56 rooms, 100 carried, 102-112 inside a
+; container (index = code - 101), 113 out of reach (the vine).
+
+V_Rm      equ AMY_UVAR_Rm
+V_Verb    equ AMY_UVAR_Verb
+V_Noun    equ AMY_UVAR_Noun
+V_Noun2   equ AMY_UVAR_Noun2
+V_Score   equ AMY_UVAR_Score
+V_Scene   equ AMY_UVAR_Scene
+V_Dark    equ AMY_UVAR_Dark
+V_Moves   equ AMY_UVAR_Moves
+V_NCount  equ AMY_UVAR_NCount
+V_Need    equ AMY_UVAR_NeedNoun
+V_PkV     equ AMY_UVAR_PkV
+V_PkN     equ AMY_UVAR_PkN
+V_PkCol   equ AMY_UVAR_PkCol
+V_PkMode  equ AMY_UVAR_PkMode
+V_InMore  equ AMY_UVAR_InMore
+V_OL      equ AMY_UVAR_OL
+V_Fl      equ AMY_UVAR_Fl
+V_Opn     equ AMY_UVAR_Opn
+V_Pt      equ AMY_UVAR_Pt
+V_NL      equ AMY_UVAR_NL
+V_WBuf    equ AMY_UVAR_WBuf
+V_RowBuf  equ AMY_UVAR_RowBuf
+V_TxStk   equ AMY_UVAR_TxStk
+V_TxPtr   equ AMY_UVAR_TxPtr
+V_TxDepth equ AMY_UVAR_TxDepth
+V_TCol    equ AMY_UVAR_TCol
+V_TPend   equ AMY_UVAR_TPend
+V_TWLen   equ AMY_UVAR_TWLen
+V_TAlt    equ AMY_UVAR_TAlt
+V_TLines  equ AMY_UVAR_TLines
+V_StopF   equ AMY_UVAR_StopF
+V_ContF   equ AMY_UVAR_ContF
+V_Neg     equ AMY_UVAR_Neg
+V_RootOp  equ AMY_UVAR_RootOp
+V_T1      equ AMY_UVAR_T1
+V_T2      equ AMY_UVAR_T2
+V_T3      equ AMY_UVAR_T3
+V_T4      equ AMY_UVAR_T4
+V_NStart  equ AMY_UVAR_NStart
+V_SaveN   equ AMY_UVAR_SaveN
+
+HE_NAME   equ $1800
+HE_PAT    equ $0000
+HE_COL    equ $2000
+HE_CARRIED equ 100
+HE_LANTERN equ 6
+HE_RAFT   equ 63
+HE_MOUTH  equ 58
+HE_SPACESHIP_ROOM equ 44
+HE_DIVIDER equ 96
+HE_DARKSCENE equ 255
+
+; ---------------------------------------------------------------------------
+; Small helpers
+
+; OLAddr: A = object -> HL = its location byte
+OLAddr:
+    ld e,a
+    ld d,0
+    ld hl,V_OL
+    add hl,de
+    ret
+
+; FlAddr: A = flag -> HL
+FlAddr:
+    ld e,a
+    ld d,0
+    ld hl,V_Fl
+    add hl,de
+    ret
+
+; ObjEnt: A = object or word -> HL = its 6-byte entry
+ObjEnt:
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,de
+    ld de,HeObjs
+    add hl,de
+    ret
+
+; ContIdx: A = object -> A = container index (0 = not a container)
+ContIdx:
+    cp HE_NOBJ+1
+    jr nc,CiNone
+    call ObjEnt
+    ld de,5
+    add hl,de
+    ld a,(hl)
+    ret
+CiNone:
+    xor a
+    ret
+
+; ResObj: operand 255 = the noun, 254 = the second noun
+ResObj:
+    cp 255
+    jr nz,RoTwo
+    ld a,(V_Noun)
+    ret
+RoTwo:
+    cp 254
+    ret nz
+    ld a,(V_Noun2)
+    ret
+
+; ResLoc: operand 250 = the player's room
+ResLoc:
+    cp 250
+    ret nz
+    ld a,(V_Rm)
+    ret
+
+; Root: A = object -> A = room it is in, 100 when carried, 0 when nowhere
+; or out of sight. V_RootOp = 1: a closed container hides what is inside.
+Root:
+    ld b,8
+RtLp:
+    call OLAddr
+    ld a,(hl)
+    cp 101
+    ret c
+    cp 113
+    jr nc,RtNone
+    sub 101
+    ld c,a
+    ld a,(V_RootOp)
+    or a
+    jr z,RtGo
+    ld e,c
+    ld d,0
+    ld hl,V_Opn
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,RtNone
+RtGo:
+    ld e,c
+    ld d,0
+    ld hl,HeContObj
+    add hl,de
+    ld a,(hl)
+    djnz RtLp
+RtNone:
+    xor a
+    ret
+
+; Visible: A = object -> A = 1 when the player can see it
+Visible:
+    ld (V_T1),a
+    ld a,1
+    ld (V_RootOp),a
+    ld a,(V_T1)
+    call Root
+    cp HE_CARRIED
+    jr z,VsYes
+    ld c,a
+    ld a,(V_Dark)
+    or a
+    jr nz,VsNo
+    ld a,(V_Rm)
+    cp c
+    jr z,VsYes
+    ld hl,HeScenery
+VsSc:
+    ld a,(hl)
+    or a
+    jr z,VsNo
+    ld c,a
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld a,(V_T1)
+    cp c
+    jr nz,VsSc
+    ld a,(V_Rm)
+    cp b
+    jr nz,VsSc
+VsYes:
+    ld a,1
+    ret
+VsNo:
+    xor a
+    ret
+
+; Have: A = object -> A = 1 when carried (even inside a closed container)
+Have:
+    ld c,a
+    xor a
+    ld (V_RootOp),a
+    ld a,c
+    call Root
+    cp HE_CARRIED
+    ld a,1
+    ret z
+    xor a
+    ret
+
+; Reach: A = object -> A = 1 when in hand or in an open container in hand
+Reach:
+    ld c,a
+    ld a,1
+    ld (V_RootOp),a
+    ld a,c
+    call Root
+    cp HE_CARRIED
+    ld a,1
+    ret z
+    xor a
+    ret
+
+; HasLight: A = 1 when the lit lantern is carried
+HasLight:
+    ld a,HF_LT
+    call FlAddr
+    ld a,(hl)
+    or a
+    ret z
+    ld a,HE_LANTERN
+    jp Have
+
+; UpdDark: rooms 37 and 38 are dark without the lantern
+UpdDark:
+    xor a
+    ld (V_Dark),a
+    ld a,(V_Rm)
+    cp 37
+    jr z,UdChk
+    cp 38
+    ret nz
+UdChk:
+    call HasLight
+    or a
+    ret nz
+    ld a,1
+    ld (V_Dark),a
+    ret
+
+; RoomEnt: HL = the entry (9 bytes) of the player's room
+RoomEnt:
+    ld a,(V_Rm)
+    ld l,a
+    ld h,0
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld de,HeRooms
+    add hl,de
+    ret
+
+; GetExit: A = direction 0-5 -> A = room it leads to (0 = none)
+GetExit:
+    ld (V_T2),a
+    ld hl,HePatchWhere
+    ld b,HE_NPATCH
+    ld c,0
+GxLp:
+    ld a,(V_Rm)
+    cp (hl)
+    inc hl
+    jr nz,GxNext
+    ld a,(V_T2)
+    cp (hl)
+    jr nz,GxNext
+    ld e,c
+    ld d,0
+    ld hl,V_Pt
+    add hl,de
+    ld a,(hl)
+    ret
+GxNext:
+    inc hl
+    inc c
+    djnz GxLp
+    call RoomEnt
+    ld a,(V_T2)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    ret
+
+; CalcScore: Score = points earned + 10 for each treasure in the spaceship
+CalcScore:
+    ld a,HF_SC
+    call FlAddr
+    ld a,(hl)
+    ld (V_Score),a
+    ld c,1
+CsLp:
+    push bc
+    ld a,c
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    and 4
+    jr z,CsNext
+    xor a
+    ld (V_RootOp),a
+    pop bc
+    push bc
+    ld a,c
+    call Root
+    cp HE_SPACESHIP_ROOM
+    jr nz,CsNext
+    ld hl,V_Score
+    ld a,(hl)
+    add a,10
+    ld (hl),a
+CsNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,CsLp
+    ret
+
+; SetScene: the picture for the room (255 = darkness)
+SetScene:
+    ld a,(V_Dark)
+    or a
+    ld a,HE_DARKSCENE
+    jr nz,SsSet
+    call RoomEnt
+    ld de,8
+    add hl,de
+    ld a,(hl)
+    ld (V_Scene),a
+    ld hl,HeSceneIf
+SsIf:
+    ld a,(hl)
+    or a
+    ret z
+    ld b,a
+    inc hl
+    ld a,(V_Rm)
+    cp b
+    jr nz,SsSkip3
+    ld a,(hl)
+    inc hl
+    push hl
+    call OLAddr
+    ld a,(hl)
+    pop hl
+    cp (hl)
+    inc hl
+    jr nz,SsSkip1
+    ld a,(hl)
+SsSet:
+    ld (V_Scene),a
+    ret
+SsSkip3:
+    inc hl
+SsSkip2:
+    inc hl
+SsSkip1:
+    inc hl
+    jr SsIf
+
+; ---------------------------------------------------------------------------
+; VDP
+
+; VSetW / VSetR: HL = VRAM address to write / read
+VSetW:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    and $3F
+    or $40
+    out ($BF),a
+    ret
+VSetR:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    and $3F
+    out ($BF),a
+    ret
+
+; RowCol: D = row, E = column -> HL = name table address
+RowCol:
+    ld l,d
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,e
+    add a,l
+    ld l,a
+    ld a,h
+    adc a,HE_NAME/256
+    ld h,a
+    ret
+
+; AltMap: A = character -> A = code in the current font (TAlt 0 white,
+; 1 yellow, 2 black on yellow). Keeps BC, DE, HL.
+AltMap:
+    push bc
+    ld c,a
+    ld a,(V_TAlt)
+    or a
+    jr z,AmPlain
+    dec a
+    jr nz,AmInv
+    ld a,c
+    add a,128
+    pop bc
+    ret
+AmInv:
+    ld a,c
+    cp 64
+    jr nc,AmInvHi
+    add a,96
+    pop bc
+    ret
+AmInvHi:
+    add a,160
+    pop bc
+    ret
+AmPlain:
+    ld a,c
+    pop bc
+    ret
+
+; ---------------------------------------------------------------------------
+; Text
+
+; MsgStart: HL = message number
+MsgStart:
+    add hl,hl
+    ld de,HeMsgTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld (V_TxPtr),hl
+    xor a
+    ld (V_TxDepth),a
+    ret
+
+; NextCh: A = next character of the message, 0 at its end
+NextCh:
+    ld hl,(V_TxPtr)
+NcLp:
+    ld a,(hl)
+    inc hl
+    or a
+    jr z,NcEnd
+    cp 32
+    jr c,NcDict
+    cp 96
+    jr nc,NcHi
+    ld (V_TxPtr),hl
+    ret
+NcHi:
+    sub 65
+    jr NcIdx
+NcDict:
+    dec a
+NcIdx:
+    ld c,a
+    ex de,hl
+    ld a,(V_TxDepth)
+    ld l,a
+    inc a
+    ld (V_TxDepth),a
+    ld h,0
+    add hl,hl
+    push bc
+    ld bc,V_TxStk
+    add hl,bc
+    pop bc
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    ld l,c
+    ld h,0
+    add hl,hl
+    ld de,HeDict
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jr NcLp
+NcEnd:
+    ld a,(V_TxDepth)
+    or a
+    jr z,NcDone
+    dec a
+    ld (V_TxDepth),a
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,V_TxStk
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jr NcLp
+NcDone:
+    ld (V_TxPtr),hl
+    xor a
+    ret
+
+; PrintMsg: HL = message number, added to the text at the cursor
+PrintMsg:
+    call MsgStart
+PmLp:
+    call NextCh
+    or a
+    ret z
+    call PutCh
+    jr PmLp
+
+; Say: HL = message number, as a new paragraph
+Say:
+    push hl
+    call Para
+    pop hl
+    jr PrintMsg
+
+; PutCh: A = character into the word buffer (a space ends the word)
+PutCh:
+    cp 32
+    jr nz,PcWord
+    call FlushWord
+    ld a,(V_TCol)
+    or a
+    ret z
+    ld a,1
+    ld (V_TPend),a
+    ret
+PcWord:
+    ld c,a
+    ld a,(V_TWLen)
+    cp 28
+    jr c,PcAdd
+    push bc
+    call FlushWord
+    pop bc
+    ld a,(V_TWLen)
+PcAdd:
+    ld e,a
+    ld d,0
+    ld hl,V_WBuf
+    add hl,de
+    ld (hl),c
+    inc a
+    ld (V_TWLen),a
+    ret
+
+; FlushWord: write the buffered word on the bottom line, wrapping first
+FlushWord:
+    ld a,(V_TWLen)
+    or a
+    ret z
+    ld b,a
+    ld a,(V_TPend)
+    add a,b
+    ld b,a
+    ld a,(V_TCol)
+    add a,b
+    cp 29
+    jr c,FwFits
+    call NewLine
+FwFits:
+    ld d,18
+    ld a,(V_TCol)
+    add a,2
+    ld e,a
+    call RowCol
+    call VSetW
+    ld a,(V_TPend)
+    or a
+    jr z,FwWord
+    ld a,32
+    out ($BE),a
+    ld hl,V_TCol
+    inc (hl)
+FwWord:
+    xor a
+    ld (V_TPend),a
+    ld a,(V_TWLen)
+    ld b,a
+    ld hl,V_WBuf
+FwLp:
+    ld a,(hl)
+    call AltMap
+    out ($BE),a
+    inc hl
+    djnz FwLp
+    ld a,(V_TWLen)
+    ld b,a
+    ld a,(V_TCol)
+    add a,b
+    ld (V_TCol),a
+    xor a
+    ld (V_TWLen),a
+    ret
+
+; Para: start a new paragraph on a fresh line
+Para:
+    call FlushWord
+    xor a
+    ld (V_TPend),a
+    ld a,(V_TCol)
+    or a
+    ret z
+    ; fall into NewLine
+
+; NewLine: scroll the window up one line (pausing when it is full)
+NewLine:
+    ld a,(V_TLines)
+    cp 10
+    call nc,SaveTop
+    call ScrollUp
+    xor a
+    ld (V_TCol),a
+    ld (V_TPend),a
+    ld hl,V_TLines
+    inc (hl)
+    ret
+
+; ScrollUp: rows 10-18 move to 9-17; row 18 is cleared
+ScrollUp:
+    ld d,10
+SuLp:
+    push de
+    ld e,2
+    call RowCol
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,28
+SuRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz SuRd
+    pop de
+    push de
+    dec d
+    ld e,2
+    call RowCol
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,28
+SuWr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz SuWr
+    pop de
+    inc d
+    ld a,d
+    cp 19
+    jr c,SuLp
+    ld d,18
+    ld e,2
+    call RowCol
+    call VSetW
+    ld b,28
+SuClr:
+    ld a,32
+    out ($BE),a
+    nop
+    djnz SuClr
+    ret
+
+; ClearRows: D = first row, B = number of rows (columns 2-29)
+ClearRows:
+    push bc
+    push de
+    ld e,2
+    call RowCol
+    call VSetW
+    ld b,28
+CrLp:
+    ld a,32
+    out ($BE),a
+    nop
+    djnz CrLp
+    pop de
+    pop bc
+    inc d
+    djnz ClearRows
+    ret
+
+; More: the window is full; show MORE and wait for a side button
+; SaveTop: the window is full: the top line goes to the history in VRAM
+; ($3A80, 28 bytes a line) before it scrolls away. After the turn, Amy
+; pages through it (MORE) when the turn wrote more than the window holds.
+HE_HIST equ $3A80
+HE_HISTMAX equ 40
+SaveTop:
+    ld a,(AMY_UVAR_HistN)
+    cp HE_HISTMAX
+    ret nc
+    ld d,9
+    jp HistPut
+
+; HistPut: row D of the window -> history line HistN, HistN + 1
+HistPut:
+    ld e,2
+    call RowCol
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,28
+HpRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz HpRd
+    ld a,(AMY_UVAR_HistN)
+    call HistAddr
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,28
+HpWr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HpWr
+    ld hl,AMY_UVAR_HistN
+    inc (hl)
+    ret
+
+; HistAddr: A = history line -> HL = its VRAM address
+HistAddr:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    or a
+    sbc hl,de
+    ld de,HE_HIST
+    add hl,de
+    ret
+
+; HeHistFinish: add the ten lines of the window to the history
+HeHistFinish:
+    ld d,9
+HhfLp:
+    push de
+    call HistPut
+    pop de
+    inc d
+    ld a,d
+    cp 19
+    jr c,HhfLp
+    ret
+
+; HeHistShow: history lines Pg .. Pg + 9 into the window
+HeHistShow:
+    ld d,9
+HhsLp:
+    push de
+    ld a,d
+    sub 9
+    ld hl,AMY_UVAR_Pg
+    add a,(hl)
+    call HistAddr
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,28
+HhsRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz HhsRd
+    pop de
+    push de
+    ld e,2
+    call RowCol
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,28
+HhsWr:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HhsWr
+    pop de
+    inc d
+    ld a,d
+    cp 19
+    jr c,HhsLp
+    ret
+
+; HeMoreMark: " - MORE - " on row 19
+HeMoreMark:
+    ld d,19
+    ld e,11
+    call RowCol
+    call VSetW
+    ld hl,HeMoreTxt
+    ld b,10
+MoLp:
+    ld a,(hl)
+    add a,128
+    out ($BE),a
+    inc hl
+    djnz MoLp
+    ret
+HeMoreTxt:
+    db " - MORE - "
+
+; DrawDivider: the line on row 19
+HeDrawDivider:
+DrawDivider:
+    ld d,19
+    ld e,2
+    call RowCol
+    call VSetW
+    ld b,28
+DdLp:
+    ld a,HE_DIVIDER
+    out ($BE),a
+    nop
+    djnz DdLp
+    ret
+
+; PrintNum: HL = number (0-9999), into the text
+PrintNum:
+    xor a
+    ld (V_NStart),a
+    ld de,1000
+    call PnDig
+    ld de,100
+    call PnDig
+    ld de,10
+    call PnDig
+    ld a,l
+    add a,48
+    jp PutCh
+PnDig:
+    ld a,47
+PnSub:
+    inc a
+    or a
+    sbc hl,de
+    jr nc,PnSub
+    add hl,de
+    cp 48
+    jr nz,PnOut
+    ld c,a
+    ld a,(V_NStart)
+    or a
+    ret z
+    ld a,c
+PnOut:
+    ld c,a
+    ld a,1
+    ld (V_NStart),a
+    ld a,c
+    push hl
+    call PutCh
+    pop hl
+    ret
+
+; PrintObj: A = object -> its menu name; PrintFull: its full name;
+; PrintArt: "A ", "AN " or "SOME " and its full name
+PrintObj:
+    call ObjEnt
+    jr PoMsg
+PrintFull:
+    call ObjEnt
+    inc hl
+    inc hl
+PoMsg:
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jp PrintMsg
+PrintArt:
+    push af
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    rrca
+    rrca
+    rrca
+    and 3
+    ld l,a
+    ld h,0
+    ld de,SysA
+    add hl,de
+    call PrintMsg
+    pop af
+    jr PrintFull
+
+; ---------------------------------------------------------------------------
+; Rules
+
+; RunList: HL = rule list, A = 1 to run every rule that matches.
+; Returns A = 1 when a rule ran.
+RunList:
+    ld c,a
+    ld b,0
+RlRule:
+    ld a,(hl)
+    or a
+    jr z,RlEnd
+    push bc
+    ld e,a
+    ld d,0
+    inc hl
+    push hl
+    add hl,de
+    ex (sp),hl
+    call EvalConds
+    or a
+    jr z,RlSkip
+    pop de
+    push de
+    xor a
+    ld (V_ContF),a
+    call ExecActs
+    pop hl
+    pop bc
+    ld b,1
+    ld a,(V_StopF)
+    or a
+    jr nz,RlEnd
+    ld a,c
+    or a
+    jr nz,RlRule
+    ld a,(V_ContF)
+    or a
+    jr nz,RlRule
+RlEnd:
+    ld a,b
+    ret
+RlSkip:
+    pop hl
+    pop bc
+    jr RlRule
+
+; EvalConds: HL = conditions -> A = 1 when all hold (HL = first action)
+EvalConds:
+    xor a
+    ld (V_Neg),a
+EcLp:
+    ld a,(hl)
+    cp $40
+    jr nc,EcPass
+    inc hl
+    cp $0B
+    jr nz,EcGo
+    ld a,1
+    ld (V_Neg),a
+    jr EcLp
+EcGo:
+    dec a
+    add a,a
+    push hl
+    ld l,a
+    ld h,0
+    ld de,EcTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ex (sp),hl
+    ret
+EcRes:
+    ld c,a
+    ld a,(V_Neg)
+    xor c
+    ld c,a
+    xor a
+    ld (V_Neg),a
+    ld a,c
+    or a
+    jr nz,EcLp
+    ret
+EcPass:
+    ld a,1
+    ret
+
+EcTab:
+    dw CNoun, CNoun2, CRoom, CRoomIn, CHere, CHave, CAt, CFlag
+    dw CFlagGe, COpen, EcPass, CLight, CScoreGe, EcPass, CNounIn
+
+CmpRes:
+    ld a,1
+    jp z,EcRes
+    xor a
+    jp EcRes
+
+CNoun:
+    ld a,(V_Noun)
+    cp (hl)
+    inc hl
+    jr CmpRes
+CNoun2:
+    ld a,(V_Noun2)
+    cp (hl)
+    inc hl
+    jr CmpRes
+CRoom:
+    ld a,(V_Rm)
+    cp (hl)
+    inc hl
+    jr CmpRes
+CRoomIn:
+    ld a,(V_Rm)
+    ld c,a
+    ld a,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld e,0
+    cp c
+    jr z,CriLo
+    jr nc,CriNo
+CriLo:
+    ld a,b
+    cp c
+    jr c,CriNo
+    ld e,1
+CriNo:
+    ld a,e
+    jp EcRes
+CHere:
+    ld a,(hl)
+    inc hl
+    push hl
+    call ResObj
+    call Visible
+    pop hl
+    jp EcRes
+CHave:
+    ld a,(hl)
+    inc hl
+    push hl
+    call ResObj
+    call Have
+    pop hl
+    jp EcRes
+CAt:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    push bc
+    call ResObj
+    call OLAddr
+    pop bc
+    ld a,c
+    push hl
+    call ResLoc
+    pop hl
+    cp (hl)
+    pop hl
+    jr CmpRes
+CFlag:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld a,(hl)
+    pop hl
+    cp c
+    jr CmpRes
+CFlagGe:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld a,(hl)
+    pop hl
+    cp c
+    ld a,0
+    jp c,EcRes
+    inc a
+    jp EcRes
+COpen:
+    ld a,(hl)
+    inc hl
+    push hl
+    call ResObj
+    call IsOpen
+    pop hl
+    jp EcRes
+CLight:
+    push hl
+    call HasLight
+    pop hl
+    jp EcRes
+CScoreGe:
+    ld c,(hl)
+    inc hl
+    push hl
+    push bc
+    call CalcScore
+    pop bc
+    pop hl
+    ld a,(V_Score)
+    cp c
+    ld a,0
+    jp c,EcRes
+    inc a
+    jp EcRes
+CNounIn:
+    ld b,(hl)
+    inc hl
+    ld e,0
+    ld a,(V_Noun)
+CniLp:
+    cp (hl)
+    inc hl
+    jr nz,CniNext
+    ld e,1
+CniNext:
+    djnz CniLp
+    ld a,e
+    jp EcRes
+
+; IsOpen: A = object -> A = 1 when it is an open container
+IsOpen:
+    call ContIdx
+    or a
+    ret z
+    ld e,a
+    ld d,0
+    ld hl,V_Opn
+    add hl,de
+    ld a,(hl)
+    ret
+
+; ExecActs: HL = first action, DE = end of the rule
+ExecActs:
+    ld a,l
+    cp e
+    jr nz,EaGo
+    ld a,h
+    cp d
+    ret z
+EaGo:
+    push de
+    ld a,(hl)
+    inc hl
+    sub $40
+    add a,a
+    push hl
+    ld l,a
+    ld h,0
+    ld de,EaTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ex (sp),hl
+    ret
+EaNext:
+    pop de
+    ld a,(V_StopF)
+    or a
+    ret nz
+    jr ExecActs
+
+EaTab:
+    dw AMsg, ASetL, ASetF, AAddF, AGoto, APatch, ASetOpen, ADie
+    dw AWin, ALook, ACont, ABuiltin, AScore, AList, ASetNoun
+
+AMsg:
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    push hl
+    ex de,hl
+    call Say
+    pop hl
+    jp EaNext
+ASetL:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    push bc
+    call ResObj
+    call OLAddr
+    pop bc
+    ld a,c
+    push hl
+    call ResLoc
+    pop hl
+    ld (hl),a
+    pop hl
+    jp EaNext
+ASetF:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld (hl),c
+    pop hl
+    jp EaNext
+AAddF:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    call FlAddr
+    ld a,(hl)
+    add a,c
+    ld (hl),a
+    pop hl
+    jp EaNext
+AGoto:
+    ld a,(hl)
+    inc hl
+    push hl
+    ld (V_Rm),a
+    call EnterRoom
+    call DoLook
+    pop hl
+    jp EaNext
+APatch:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    ld e,a
+    ld d,0
+    ld hl,V_Pt
+    add hl,de
+    ld (hl),c
+    pop hl
+    jp EaNext
+ASetOpen:
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    push bc
+    call ResObj
+    call ContIdx
+    pop bc
+    or a
+    jr z,AsoDone
+    ld e,a
+    ld d,0
+    ld hl,V_Opn
+    add hl,de
+    ld (hl),c
+AsoDone:
+    pop hl
+    jp EaNext
+ADie:
+    ld a,HF_DEAD
+    jr AStop
+AWin:
+    ld a,HF_WIN
+AStop:
+    push hl
+    call FlAddr
+    ld (hl),1
+    ld a,1
+    ld (V_StopF),a
+    pop hl
+    jp EaNext
+ALook:
+    push hl
+    call DoLook
+    pop hl
+    jp EaNext
+ACont:
+    ld a,1
+    ld (V_ContF),a
+    jp EaNext
+ABuiltin:
+    ld a,(hl)
+    inc hl
+    push hl
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,BiTab
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld de,AbRet
+    push de
+    jp (hl)
+AbRet:
+    pop hl
+    jp EaNext
+AScore:
+    ld c,(hl)
+    inc hl
+    push hl
+    ld a,HF_SC
+    call FlAddr
+    ld a,(hl)
+    add a,c
+    ld (hl),a
+    pop hl
+    jp EaNext
+AList:
+    ld a,(hl)
+    inc hl
+    push hl
+    call ResObj
+    call ListIn
+    pop hl
+    jp EaNext
+ASetNoun:
+    ld a,(hl)
+    inc hl
+    ld (V_Noun),a
+    jp EaNext
+
+BiTab:
+    dw BGo, BInv, BScore, BTake, BDrop, BExam, BOpen, BClose, BPut
+
+; ---------------------------------------------------------------------------
+; Built-in verbs
+
+; EnterRoom: creatures lose track of the player; the raft comes along
+EnterRoom:
+    xor a
+    ld hl,V_Fl+HF_BC
+    ld (hl),a
+    ld hl,V_Fl+HF_MC
+    ld (hl),a
+    ld hl,V_Fl+HF_LC
+    ld (hl),a
+    ld hl,V_Fl+HF_DC
+    ld (hl),a
+    ld hl,V_Fl+HF_PC
+    ld (hl),a
+    ld a,(V_Fl+HF_IR)
+    or a
+    jr z,ErDone
+    ld a,(V_Rm)
+    ld (V_OL+HE_RAFT),a
+ErDone:
+    jp UpdDark
+
+BGo:
+    ld a,(V_Noun)
+    sub 70
+    call GetExit
+    or a
+    jr nz,BgWay
+    ld hl,SysNoWay
+    jp Say
+BgWay:
+    ld (V_T3),a
+    ld a,(V_Fl+HF_IR)
+    or a
+    jr z,BgLand
+    ld a,(V_T3)
+    ld hl,HeRaftRooms
+BgRaft:
+    ld c,(hl)
+    inc hl
+    inc c
+    dec c
+    jr z,BgNoRaft
+    cp c
+    jr nz,BgRaft
+    jr BgMove
+BgNoRaft:
+    ld hl,SysExitRaft
+    jp Say
+BgLand:
+    ld a,(V_Rm)         ; coming up from under the water is fine
+    cp 31
+    jr nc,BgMove
+    ld a,(V_T3)
+    cp 28
+    jr c,BgMove
+    cp 31
+    jr nc,BgMove
+    ld hl,SysSwim
+    jp Say
+BgMove:
+    ld a,(V_T3)
+    ld (V_Rm),a
+    call EnterRoom
+    jp DoLook
+HeRaftRooms:
+    db 21, 22, 28, 29, 30, 34, 0
+
+BInv:
+    ld hl,SysCarrying
+    call Say
+    xor a
+    ld (V_T3),a
+    ld c,1
+BiLp:
+    push bc
+    ld a,c
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr nz,BiNext
+    call Para
+    pop bc
+    push bc
+    ld a,c
+    call PrintFull
+    ld a,1
+    ld (V_T3),a
+BiNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,BiLp
+    ; what is inside the open containers carried
+    ld c,1
+BiCl:
+    push bc
+    ld a,c
+    ld (V_T4),a
+    call Reach
+    or a
+    jr z,BiCn
+    ld a,(V_T4)
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr z,BiCn
+    call Para
+    ld a,(V_T4)
+    call PrintFull
+    ld hl,SysInThe
+    call PrintMsg
+    ld a,(V_T4)
+    call OLAddr
+    ld a,(hl)
+    sub 101
+    ld e,a
+    ld d,0
+    ld hl,HeContObj
+    add hl,de
+    ld a,(hl)
+    call PrintObj
+    ld a,1
+    ld (V_T3),a
+BiCn:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,BiCl
+    ld a,(V_T3)
+    or a
+    ret nz
+    ld hl,SysNothing
+    jp Say
+
+BScore:
+    call CalcScore
+    ld hl,SysScore1
+    call Say
+    ld a,(V_Score)
+    ld l,a
+    ld h,0
+    call PrintNum
+    ld hl,SysScore2
+    call PrintMsg
+    ld hl,(V_Moves)
+    call PrintNum
+    ld hl,SysScore3
+    call PrintMsg
+    ld a,(V_Score)
+    ld hl,SysRank0
+    cp 10
+    jr c,BsRank
+    inc hl
+    cp 50
+    jr c,BsRank
+    inc hl
+    cp 100
+    jr c,BsRank
+    inc hl
+    cp 150
+    jr c,BsRank
+    inc hl
+    cp 200
+    jr c,BsRank
+    inc hl
+BsRank:
+    call PrintMsg
+    ld hl,SysScore4
+    jp PrintMsg
+
+BTake:
+    ld a,(V_Noun)
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr nz,BtNotYet
+    ld hl,SysHaveIt
+    jp Say
+BtNotYet:
+    ld a,(V_Noun)
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    and 3
+    jr nz,BtSolid
+    ld hl,SysFlows
+    jp Say
+BtSolid:
+    cp 2
+    jr nz,BtOk
+    ld hl,SysStays
+    jp Say
+BtOk:
+    ld a,(V_Noun)
+    call OLAddr
+    ld (hl),HE_CARRIED
+    ld hl,SysTaken
+    call Say
+    ld a,(V_Noun)
+    call ObjEnt
+    ld de,4
+    add hl,de
+    ld a,(hl)
+    and 4
+    ret z
+    ld hl,SysTreasure
+    jp Say
+
+BDrop:
+    ld a,(V_Noun)
+    call Have
+    or a
+    jr nz,BdOk
+    ld hl,SysNoHave
+    jp Say
+BdOk:
+    ld a,(V_Noun)
+    call OLAddr
+    ld a,(V_Rm)
+    ld (hl),a
+    ld hl,SysDropped
+    jp Say
+
+BExam:
+    ld a,(V_Noun)
+    call ContIdx
+    or a
+    jr nz,BeCont
+    ld hl,SysNothingSpecial
+    jp Say
+BeCont:
+    ld a,(V_Noun)
+    call IsOpen
+    or a
+    jr nz,BeOpen
+    ld hl,SysIsClosed
+    jp Say
+BeOpen:
+    ld hl,SysIsOpen
+    call Say
+    ld a,(V_Noun)
+    jp ListIn
+
+BOpen:
+    ld a,(V_Noun)
+    call ContIdx
+    or a
+    jr nz,BoCont
+    ld hl,SysCantOpen
+    jp Say
+BoCont:
+    ld e,a
+    ld d,0
+    ld hl,V_Opn
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,BoDo
+    ld hl,SysAlreadyOpen
+    jp Say
+BoDo:
+    ld (hl),1
+    ld hl,SysOk
+    call Say
+    ld a,(V_Noun)
+    jp ListIn
+
+BClose:
+    ld a,(V_Noun)
+    call ContIdx
+    or a
+    jr nz,BcCont
+    ld hl,SysCantClose
+    jp Say
+BcCont:
+    ld e,a
+    ld d,0
+    ld hl,V_Opn
+    add hl,de
+    ld a,(hl)
+    or a
+    jr nz,BcDo
+    ld hl,SysAlreadyClosed
+    jp Say
+BcDo:
+    ld (hl),0
+    ld hl,SysOk
+    jp Say
+
+BPut:
+    ld a,(V_Noun2)
+    call ContIdx
+    or a
+    jr nz,BpCont
+BpNo:
+    ld hl,SysCantPut
+    jp Say
+BpCont:
+    ld (V_T3),a
+    ld a,(V_Noun)
+    ld c,a
+    ld a,(V_Noun2)
+    cp c
+    jr z,BpNo
+    ld a,(V_Noun2)
+    call IsOpen
+    or a
+    jr nz,BpOpen
+    ld hl,SysClosed
+    jp Say
+BpOpen:
+    ld a,(V_Noun)
+    call Have
+    or a
+    jr nz,BpHave
+    ld hl,SysNoHave
+    jp Say
+BpHave:
+    ; a container may not go inside what it holds
+    ld a,(V_Noun2)
+    ld (V_T4),a
+BpLoop:
+    ld a,(V_T4)
+    call OLAddr
+    ld a,(hl)
+    cp 102
+    jr c,BpRoom
+    cp 113
+    jr nc,BpRoom
+    sub 101
+    ld e,a
+    ld d,0
+    ld hl,HeContObj
+    add hl,de
+    ld a,(hl)
+    ld (V_T4),a
+    ld c,a
+    ld a,(V_Noun)
+    cp c
+    jr z,BpNo
+    jr BpLoop
+BpRoom:
+    ; room left inside?
+    ld a,(V_T3)
+    ld e,a
+    ld d,0
+    ld hl,HeContCode
+    add hl,de
+    ld a,(hl)
+    ld (V_T4),a
+    ld hl,HeContCap
+    add hl,de
+    ld a,(hl)
+    ld b,a
+    ld c,1
+BpCount:
+    push bc
+    ld a,c
+    call OLAddr
+    ld a,(V_T4)
+    cp (hl)
+    pop bc
+    jr nz,BpCn
+    dec b
+    jr z,BpFull
+BpCn:
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,BpCount
+    ld a,(V_Noun)
+    call OLAddr
+    ld a,(V_T4)
+    ld (hl),a
+    ld hl,SysOk
+    jp Say
+BpFull:
+    ld hl,SysFull
+    jp Say
+
+; ListIn: A = container -> "THERE IS A x IN THE y." for what it holds
+ListIn:
+    ld (V_T4),a
+    call ContIdx
+    or a
+    ret z
+    ld e,a
+    ld d,0
+    ld hl,V_Opn
+    add hl,de
+    ld a,(hl)
+    or a
+    ret z
+    ld hl,HeContCode
+    add hl,de
+    ld a,(hl)
+    ld (V_T3),a
+    ld c,1
+LiLp:
+    push bc
+    ld a,c
+    call OLAddr
+    ld a,(V_T3)
+    cp (hl)
+    jr nz,LiNext
+    ld hl,SysThereIs
+    call Say
+    pop bc
+    push bc
+    ld a,c
+    call PrintArt
+    ld hl,SysInThe
+    call PrintMsg
+    ld a,(V_T4)
+    call PrintObj
+    ld a,46
+    call PutCh
+LiNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,LiLp
+    ret
+
+; DoLook: describe the room
+DoLook:
+    call UpdDark
+    ld a,(V_Dark)
+    or a
+    jr z,LkLit
+    ld hl,SysDark
+    call Say
+    jp LkExits
+LkLit:
+    ld hl,SysYouAre
+    call Say
+    call RoomEnt
+    ld de,6
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    call PrintMsg
+    ld a,(V_Fl+HF_IR)
+    or a
+    jr z,LkRules
+    ld hl,SysRaft
+    call Say
+LkRules:
+    ld hl,HeR_LOOKX
+    ld a,1
+    call RunList
+    ld c,1
+LkObj:
+    push bc
+    ld a,c
+    call OLAddr
+    ld a,(V_Rm)
+    cp (hl)
+    jr nz,LkON
+    ld hl,SysThereIs
+    call Say
+    pop bc
+    push bc
+    ld a,c
+    call PrintArt
+    ld hl,SysHere
+    call PrintMsg
+LkON:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,LkObj
+    ld c,1
+LkCont:
+    push bc
+    ld e,c
+    ld d,0
+    ld hl,HeContObj
+    add hl,de
+    ld a,(hl)
+    ld (V_T2),a
+    ld a,1
+    ld (V_RootOp),a
+    ld a,(V_T2)
+    call Root
+    ld hl,V_Rm
+    cp (hl)
+    jr nz,LkCN
+    ld a,(V_T2)
+    call ListIn
+LkCN:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NCONT+1
+    jr c,LkCont
+LkExits:
+    ld hl,SysExits
+    call Say
+    xor a
+    ld (V_T3),a
+    ld c,0
+LkE:
+    push bc
+    ld a,c
+    call GetExit
+    or a
+    jr z,LkEN
+    ld a,32
+    call PutCh
+    pop bc
+    push bc
+    ld l,c
+    ld h,0
+    ld de,SysDir0
+    add hl,de
+    call PrintMsg
+    ld a,1
+    ld (V_T3),a
+LkEN:
+    pop bc
+    inc c
+    ld a,c
+    cp 6
+    jr c,LkE
+    ld a,(V_T3)
+    or a
+    jr nz,LkDot
+    ld hl,SysNoExits
+    jp PrintMsg
+LkDot:
+    ld a,46
+    jp PutCh
+
+; ---------------------------------------------------------------------------
+; Entry points (called from Amy)
+
+; HeStart: a new game
+HeStart:
+    ld hl,HeObjStart
+    ld de,V_OL
+    ld bc,HE_NOBJ+1
+    ldir
+    ld hl,HeFlagStart
+    ld de,V_Fl
+    ld bc,HE_NFLAGS
+    ldir
+    ld hl,HeContOpen
+    ld de,V_Opn
+    ld bc,HE_NCONT+1
+    ldir
+    ld hl,V_Pt
+    ld b,HE_NPATCH
+    xor a
+HsPt:
+    ld (hl),a
+    inc hl
+    djnz HsPt
+    ld (V_StopF),a
+    ld (V_TCol),a
+    ld (V_TPend),a
+    ld (V_TWLen),a
+    ld (V_TAlt),a
+    ld (V_TLines),a
+    ld (V_InMore),a
+    ld hl,0
+    ld (V_Moves),hl
+    ld a,1
+    ld (V_Rm),a
+    ld d,9
+    ld b,10
+    call ClearRows
+    call DrawDivider
+    call DoLook
+    call FlushWord
+    call UpdDark
+    call CalcScore
+    jp SetScene
+
+; HeTurn: run Verb / Noun / Noun2
+HeTurn:
+    xor a
+    ld (AMY_UVAR_HistN),a
+    ld (V_StopF),a
+    ld (V_TLines),a
+    call Echo
+    ld hl,(V_Moves)
+    inc hl
+    ld (V_Moves),hl
+    call UpdDark
+    ld a,(V_Verb)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeVerbRules
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    xor a
+    call RunList
+    ld a,(V_StopF)
+    or a
+    jr nz,HtEnd
+    call UpdDark
+    ld hl,HeR_EVERY
+    ld a,1
+    call RunList
+HtEnd:
+    call FlushWord
+    call UpdDark
+    call CalcScore
+    jp SetScene
+
+; HeSay: HL = message number as a paragraph (for Amy), then flush
+HeSay:
+    call Say
+    jp FlushWord
+
+; Echo: "> VERB NOUN [IN NOUN2]" in yellow
+Echo:
+    call Para
+    ld a,1
+    ld (V_TAlt),a
+    ld hl,SysPrompt
+    call PrintMsg
+    ld a,(V_Verb)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeVerbMsg
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    call PrintMsg
+    ld a,(V_Noun)
+    or a
+    jr z,EchoEnd
+    ld a,32
+    call PutCh
+    ld a,(V_Noun)
+    call PrintObj
+    ld a,(V_Noun2)
+    or a
+    jr z,EchoEnd
+    ld hl,SysIn
+    call PrintMsg
+    ld a,(V_Noun2)
+    call PrintObj
+EchoEnd:
+    call FlushWord
+    xor a
+    ld (V_TAlt),a
+    ret
+
+; HeNouns: the noun list for Verb (NL, NCount, NeedNoun)
+HeNouns:
+    call UpdDark
+    xor a
+    ld (V_NCount),a
+    ld a,(V_Verb)
+    ld e,a
+    ld d,0
+    ld hl,HeVerbKind
+    add hl,de
+    ld a,(hl)
+    ld (V_Need),a
+    ld (V_T3),a
+    or a
+    ret z
+    cp 1
+    jr z,HnDir
+    cp 5
+    jr z,HnSay
+    cp 6
+    jr z,HnBuild
+    ld c,1
+HnLp:
+    push bc
+    ld a,c
+    ld (V_T4),a
+    ld a,(V_T3)
+    cp 4
+    jr z,HnHeld
+    ld a,(V_T4)
+    call Visible
+    or a
+    jr z,HnNext
+    ld a,(V_T3)
+    cp 3
+    jr nz,HnAdd
+    ld a,(V_T4)
+    call OLAddr
+    ld a,(hl)
+    cp HE_CARRIED
+    jr z,HnNext
+    jr HnAdd
+HnHeld:
+    ld a,(V_T4)
+    call Reach
+    or a
+    jr z,HnNext
+HnAdd:
+    ld a,(V_T4)
+    call AddNoun
+HnNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,HnLp
+    ret
+HnDir:
+    ld a,70
+HndLp:
+    push af
+    call AddNoun
+    pop af
+    inc a
+    cp 76
+    jr c,HndLp
+    ret
+HnSay:
+    ld hl,HeSayWords
+HnsLp:
+    ld a,(hl)
+    or a
+    ret z
+    push hl
+    call AddNoun
+    pop hl
+    inc hl
+    jr HnsLp
+HnBuild:
+    ld a,HE_RAFT
+AddNoun:
+    ld hl,V_NCount
+    ld e,(hl)
+    inc (hl)
+    ld d,0
+    ld hl,V_NL
+    add hl,de
+    ld (hl),a
+    ret
+
+; HeTargets: where PUT can put Noun (open or closed containers in sight)
+HeTargets:
+    call UpdDark
+    xor a
+    ld (V_NCount),a
+    ld a,1
+    ld (V_Need),a
+    ld c,1
+HtgLp:
+    push bc
+    ld a,c
+    ld (V_T4),a
+    ld a,(V_Noun)
+    cp c
+    jr z,HtgNext
+    ld a,c
+    cp HE_MOUTH
+    jr z,HtgVis
+    call ContIdx
+    or a
+    jr z,HtgNext
+HtgVis:
+    ld a,(V_T4)
+    call Visible
+    or a
+    jr z,HtgNext
+    ld a,(V_T4)
+    call AddNoun
+HtgNext:
+    pop bc
+    inc c
+    ld a,c
+    cp HE_NOBJ+1
+    jr c,HtgLp
+    ret
+
+; PrintFixed: HL = message, D = row, E = column, B = width (no wrap,
+; padded with spaces in the current font)
+PrintFixed:
+    push bc
+    push de
+    call MsgStart
+    pop de
+    call RowCol
+    call VSetW
+    pop bc
+PfLp:
+    push bc
+    call NextCh
+    pop bc
+    or a
+    jr z,PfPad
+    call AltMap
+    out ($BE),a
+    djnz PfLp
+    ret
+PfPad:
+    ld a,32
+    call AltMap
+    out ($BE),a
+    nop
+    djnz PfPad
+    ret
+
+; PutAt: A = character at D,E
+PutAt:
+    push af
+    call RowCol
+    call VSetW
+    pop af
+    out ($BE),a
+    ret
+
+; HeDrawPick: the verb and noun picker on rows 20-22
+HeDrawPick:
+    ld d,20
+    ld b,3
+    call ClearRows
+    ; verbs: the one before, the current one, the one after
+    ld c,0
+DpV:
+    push bc
+    ld a,(V_PkMode)
+    or a
+    jr z,DpVShow
+    ld a,c
+    cp 1
+    jr nz,DpVNext
+DpVShow:
+    ld a,(V_PkV)
+    add a,c
+    dec a
+    jp p,DpVPos
+    add a,HE_NVERBS
+DpVPos:
+    cp HE_NVERBS
+    jr c,DpVOk
+    sub HE_NVERBS
+DpVOk:
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,HeVerbMsg
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    xor a
+    ld (V_TAlt),a
+    ld a,c
+    cp 1
+    jr nz,DpVDraw
+    ld a,(V_PkCol)
+    or a
+    jr nz,DpVDraw
+    ld a,2
+    ld (V_TAlt),a
+DpVDraw:
+    ld a,20
+    add a,c
+    ld d,a
+    ld e,3
+    ld b,9
+    call PrintFixed
+DpVNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 3
+    jr c,DpV
+    xor a
+    ld (V_TAlt),a
+    ; nouns
+    ld a,(V_Need)
+    or a
+    jr z,DpMarks
+    ld a,(V_NCount)
+    or a
+    jr nz,DpNList
+    ld hl,SysNone
+    ld d,21
+    ld e,14
+    ld b,16
+    call PrintFixed
+    jr DpMarks
+DpNList:
+    ld c,0
+DpN:
+    push bc
+    ld a,(V_PkN)
+    add a,c
+    dec a
+    jp m,DpNNext
+    ld hl,V_NCount
+    cp (hl)
+    jr nc,DpNNext
+    ld e,a
+    ld d,0
+    ld hl,V_NL
+    add hl,de
+    ld a,(hl)
+    call ObjEnt
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    xor a
+    ld (V_TAlt),a
+    ld a,c
+    cp 1
+    jr nz,DpNDraw
+    ld a,(V_PkCol)
+    or a
+    jr z,DpNDraw
+    ld a,2
+    ld (V_TAlt),a
+DpNDraw:
+    ld a,20
+    add a,c
+    ld d,a
+    ld e,14
+    ld b,16
+    call PrintFixed
+DpNNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 3
+    jr c,DpN
+    xor a
+    ld (V_TAlt),a
+DpMarks:
+    ld a,(V_PkCol)
+    or a
+    ld a,62
+    jr z,DpM1
+    ld a,32
+DpM1:
+    ld d,21
+    ld e,2
+    call PutAt
+    ld a,(V_PkCol)
+    or a
+    ld a,32
+    jr z,DpM2
+    ld a,62
+DpM2:
+    ld d,21
+    ld e,13
+    call PutAt
+    ; row 19: the divider, with "IN WHAT?" while choosing where to put
+    call DrawDivider
+    ld a,(V_PkMode)
+    or a
+    ret z
+    ld a,1
+    ld (V_TAlt),a
+    ld hl,SysInWhat
+    ld d,19
+    ld e,14
+    ld b,8
+    call PrintFixed
+    xor a
+    ld (V_TAlt),a
+    ret
+
+; HeStatus: row 8, "SCORE 15  MOVES 23" in yellow
+HeStatus:
+    ld d,8
+    ld b,1
+    call ClearRows
+    ld a,1
+    ld (V_TAlt),a
+    ld hl,SysScoreW
+    ld d,8
+    ld e,2
+    ld b,6
+    call PrintFixed
+    ld a,(V_Score)
+    ld l,a
+    ld h,0
+    ld de,8*256+8
+    call WrNum
+    ld hl,SysMovesW
+    ld d,8
+    ld e,18
+    ld b,6
+    call PrintFixed
+    ld hl,(V_Moves)
+    ld de,8*256+24
+    call WrNum
+    xor a
+    ld (V_TAlt),a
+    ret
+
+; WrNum: HL = number, D,E = place: digits without leading zeros
+WrNum:
+    push hl
+    call RowCol
+    call VSetW
+    pop hl
+    xor a
+    ld (V_NStart),a
+    ld de,1000
+    call WnDig
+    ld de,100
+    call WnDig
+    ld de,10
+    call WnDig
+    ld a,l
+    add a,48
+    call AltMap
+    out ($BE),a
+    ret
+WnDig:
+    ld a,47
+WnSub:
+    inc a
+    or a
+    sbc hl,de
+    jr nc,WnSub
+    add hl,de
+    cp 48
+    jr nz,WnOut
+    ld c,a
+    ld a,(V_NStart)
+    or a
+    ret z
+    ld a,c
+WnOut:
+    ld c,a
+    ld a,1
+    ld (V_NStart),a
+    ld a,c
+    call AltMap
+    out ($BE),a
+    ret
+
+; HeFonts: yellow font (codes 160-223) in the middle and bottom thirds,
+; black-on-yellow font (codes 128-159, 224-255) and the divider (96) in
+; the bottom third
+HeFonts:
+    ld bc,$03FF         ; R3: three colour tables, one per screen third
+    call WRITE_REGISTER
+    ld a,1
+    call HfThird
+    ld a,2
+    call HfThird
+    ; divider
+    ld hl,HE_PAT+$1000+HE_DIVIDER*8
+    call VSetW
+    ld hl,HeDivPat
+    ld b,8
+HfDp:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HfDp
+    ld hl,HE_COL+$1000+HE_DIVIDER*8
+    call VSetW
+    ld b,8
+HfDc:
+    ld a,$40
+    out ($BE),a
+    nop
+    djnz HfDc
+    ret
+HeDivPat:
+    db $00,$00,$00,$AA,$55,$00,$00,$00
+
+; HfThird: A = third (1 or 2)
+HfThird:
+    add a,a
+    add a,a
+    add a,a
+    ld (V_T3),a         ; high byte of the third's offset ($0800 or $1000)
+    ld c,32
+HfCh:
+    push bc
+    ; read the glyph
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(V_T3)
+    add a,h
+    ld h,a
+    call VSetR
+    ld hl,V_RowBuf
+    ld b,8
+HfRd:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz HfRd
+    pop bc
+    push bc
+    ; yellow copy at code + 128
+    ld a,c
+    add a,128
+    ld (V_T4),a
+    ld a,$B0
+    call HfPut
+    ; black on yellow copy (bottom third only)
+    ld a,(V_T3)
+    cp $10
+    jr nz,HfNext
+    pop bc
+    push bc
+    ld a,c
+    cp 64
+    jr nc,HfHi
+    add a,96
+    jr HfInv
+HfHi:
+    add a,160
+HfInv:
+    ld (V_T4),a
+    ld a,$1B
+    call HfPut
+HfNext:
+    pop bc
+    inc c
+    ld a,c
+    cp 96
+    jr c,HfCh
+    ret
+
+; HfPut: glyph in RowBuf -> code T4 of third T3, colour A
+HfPut:
+    push af
+    ld a,(V_T4)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(V_T3)
+    add a,h
+    ld h,a
+    push hl
+    call VSetW
+    ld hl,V_RowBuf
+    ld b,8
+HpP:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz HpP
+    pop hl
+    ld de,HE_COL
+    add hl,de
+    call VSetW
+    pop af
+    ld b,8
+HpC:
+    out ($BE),a
+    nop
+    djnz HpC
+    ret
+
+; HeOverlay: draw what changed in the picture (open trapdoor, rope...).
+; Pass 0 puts back the plain tiles of every change to this picture that
+; does not hold here, pass 1 draws every change that holds here.
+HeOverlay:
+    ld a,(V_Dark)
+    or a
+    ret nz
+    xor a
+    call OvPass
+    ld a,1
+OvPass:
+    ld (V_T3),a
+    ld hl,HeOverlays
+OvLp:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    ld b,a              ; room
+    ld a,(hl)           ; scene
+    inc hl
+    ld c,a
+    ld a,(V_Scene)
+    cp c
+    jr nz,OvSkip        ; another picture: leave it alone
+    ld a,(V_Rm)
+    cp b
+    ld a,0
+    jr nz,OvHave        ; same picture, another room: put the plain tiles back
+    push hl
+    call OvCond
+    pop hl
+OvHave:
+    ld b,a
+    ld a,(V_T3)
+    cp b
+    jr nz,OvSkip
+    ; draw the runs: base codes in pass 0, new codes in pass 1
+    inc hl
+    inc hl
+    inc hl
+    ld b,(hl)
+    inc hl
+OvRun:
+    push bc
+    ld e,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    ld d,0
+    ld hl,HE_NAME+32
+    add hl,de
+    call VSetW
+    pop hl
+    ld a,(V_T3)
+    or a
+    jr z,OvBase
+    ld e,c
+    ld d,0
+    add hl,de
+OvBase:
+    ld b,c
+OvW:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz OvW
+    ld a,(V_T3)
+    or a
+    jr nz,OvRn
+    ld e,c
+    ld d,0
+    add hl,de
+OvRn:
+    pop bc
+    djnz OvRun
+    jr OvLp
+OvSkip:
+    ; skip the condition and the runs
+    inc hl
+    inc hl
+    inc hl
+    ld b,(hl)
+    inc hl
+OvSk:
+    inc hl
+    ld a,(hl)
+    inc hl
+    add a,a
+    ld e,a
+    ld d,0
+    add hl,de
+    djnz OvSk
+    jr OvLp
+
+; OvCond: HL = condition -> A = 1 when it holds
+OvCond:
+    ld a,(hl)
+    ld (V_T4),a
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    ld a,(V_T4)
+    and 127
+    cp 1
+    jr nz,OcFlag
+    ld a,c
+    call OLAddr
+    ld a,(hl)
+    jr OcCmp
+OcFlag:
+    cp 2
+    jr nz,OcPatch
+    ld a,c
+    call FlAddr
+    ld a,(hl)
+    jr OcCmp
+OcPatch:
+    cp 3
+    jr nz,OcOpen
+    ld e,c
+    ld d,0
+    ld hl,V_Pt
+    add hl,de
+    ld a,(hl)
+    jr OcCmp
+OcOpen:
+    push bc
+    ld a,c
+    call IsOpen
+    pop bc
+OcCmp:
+    cp b
+    ld a,1
+    jr z,OcNeg
+    xor a
+OcNeg:
+    ld b,a
+    ld a,(V_T4)
+    rlca
+    and 1
+    xor b
+    ret
+
+; HeDisplayOn: display on, NMI left off (R1 bit 6 on, bit 5 off)
+HeDisplayOn:
+    ld a,(VDP_R1_SHADOW)
+    or $40
+    and $DF
+    ld (VDP_R1_SHADOW),a
+    ld c,a
+    ld b,1
+    jp WRITE_REGISTER
+; generated by advc.py from adv.py - do not edit
+SysYouAre equ 0
+SysDark equ 1
+SysRaft equ 2
+SysThereIs equ 3
+SysA equ 4
+SysAn equ 5
+SysSome equ 6
+SysHere equ 7
+SysInThe equ 8
+SysExits equ 9
+SysNoExits equ 10
+SysNoWay equ 11
+SysExitRaft equ 12
+SysCarrying equ 13
+SysNothing equ 14
+SysHaveIt equ 15
+SysFlows equ 16
+SysStays equ 17
+SysTaken equ 18
+SysTreasure equ 19
+SysNoHave equ 20
+SysDropped equ 21
+SysNothingSpecial equ 22
+SysIsOpen equ 23
+SysIsClosed equ 24
+SysCantOpen equ 25
+SysCantClose equ 26
+SysAlreadyOpen equ 27
+SysAlreadyClosed equ 28
+SysOk equ 29
+SysFull equ 30
+SysClosed equ 31
+SysCantPut equ 32
+SysScore1 equ 33
+SysScore2 equ 34
+SysScore3 equ 35
+SysScore4 equ 36
+SysRank0 equ 37
+SysRank1 equ 38
+SysRank2 equ 39
+SysRank3 equ 40
+SysRank4 equ 41
+SysRank5 equ 42
+SysDied equ 43
+SysIn equ 44
+SysDir0 equ 45
+SysDir1 equ 46
+SysDir2 equ 47
+SysDir3 equ 48
+SysDir4 equ 49
+SysDir5 equ 50
+SysNone equ 51
+SysIce equ 52
+SysSteam equ 53
+SysFire equ 54
+SysPrompt equ 55
+SysSwim equ 56
+SysInWhat equ 57
+SysScoreW equ 58
+SysMovesW equ 59
+HF_TW equ 0
+HF_HC equ 1
+HF_SB equ 2
+HF_FL equ 3
+HF_LT equ 4
+HF_SMASH equ 5
+HF_IR equ 6
+HF_BC equ 7
+HF_MC equ 8
+HF_LC equ 9
+HF_DC equ 10
+HF_PC equ 11
+HF_AC equ 12
+HF_S34 equ 13
+HF_LIFT equ 14
+HF_TD equ 15
+HF_SC equ 16
+HF_DEAD equ 17
+HF_WIN equ 18
+HF_QUIT equ 19
+HE_NVERBS equ 29
+HeDict:
+    dw HeD0,HeD1,HeD2,HeD3,HeD4,HeD5,HeD6,HeD7,HeD8,HeD9,HeD10,HeD11
+    dw HeD12,HeD13,HeD14,HeD15,HeD16,HeD17,HeD18,HeD19,HeD20,HeD21,HeD22,HeD23
+    dw HeD24,HeD25,HeD26,HeD27,HeD28,HeD29,HeD30,HeD31,HeD32,HeD33,HeD34,HeD35
+    dw HeD36,HeD37,HeD38,HeD39,HeD40,HeD41,HeD42,HeD43,HeD44,HeD45,HeD46,HeD47
+    dw HeD48,HeD49,HeD50,HeD51,HeD52,HeD53,HeD54,HeD55,HeD56,HeD57,HeD58,HeD59
+    dw HeD60,HeD61,HeD62,HeD63,HeD64,HeD65,HeD66,HeD67,HeD68,HeD69,HeD70,HeD71
+    dw HeD72,HeD73,HeD74,HeD75,HeD76,HeD77,HeD78,HeD79,HeD80,HeD81,HeD82,HeD83
+    dw HeD84,HeD85,HeD86,HeD87,HeD88,HeD89,HeD90,HeD91,HeD92,HeD93,HeD94,HeD95
+    dw HeD96,HeD97,HeD98,HeD99,HeD100,HeD101,HeD102,HeD103,HeD104,HeD105,HeD106,HeD107
+    dw HeD108,HeD109,HeD110,HeD111,HeD112,HeD113,HeD114,HeD115,HeD116,HeD117,HeD118,HeD119
+    dw HeD120,HeD121,HeD122,HeD123,HeD124,HeD125,HeD126,HeD127,HeD128,HeD129,HeD130,HeD131
+    dw HeD132,HeD133,HeD134,HeD135,HeD136,HeD137,HeD138,HeD139,HeD140,HeD141,HeD142,HeD143
+    dw HeD144,HeD145,HeD146,HeD147,HeD148,HeD149,HeD150,HeD151,HeD152,HeD153,HeD154,HeD155
+    dw HeD156,HeD157,HeD158,HeD159,HeD160,HeD161,HeD162,HeD163,HeD164,HeD165,HeD166,HeD167
+    dw HeD168,HeD169,HeD170,HeD171,HeD172,HeD173,HeD174,HeD175,HeD176,HeD177,HeD178,HeD179
+    dw HeD180,HeD181,HeD182,HeD183,HeD184,HeD185,HeD186,HeD187,HeD188,HeD189,HeD190
+HeD0:
+    db 32,84,72,69,32,0
+HeD1:
+    db 89,79,85,32,0
+HeD2:
+    db 73,78,0
+HeD3:
+    db 83,32,0
+HeD4:
+    db 69,32,0
+HeD5:
+    db 84,72,0
+HeD6:
+    db 84,32,0
+HeD7:
+    db 32,65,0
+HeD8:
+    db 69,82,0
+HeD9:
+    db 65,82,0
+HeD10:
+    db 3,71,32,0
+HeD11:
+    db 69,78,0
+HeD12:
+    db 79,85,0
+HeD13:
+    db 68,32,0
+HeD14:
+    db 84,79,0
+HeD15:
+    db 73,7,0
+HeD16:
+    db 65,78,0
+HeD17:
+    db 79,78,0
+HeD18:
+    db 2,72,65,86,5,0
+HeD19:
+    db 73,4,0
+HeD20:
+    db 69,65,0
+HeD21:
+    db 46,46,0
+HeD22:
+    db 84,85,78,78,69,76,0
+HeD23:
+    db 73,84,0
+HeD24:
+    db 65,76,0
+HeD25:
+    db 8,32,0
+HeD26:
+    db 82,79,0
+HeD27:
+    db 65,67,0
+HeD28:
+    db 65,84,0
+HeD29:
+    db 83,84,0
+HeD30:
+    db 89,13,82,32,0
+HeD31:
+    db 19,78,79,6,11,15,32,0
+HeD32:
+    db 83,72,0
+HeD33:
+    db 6,5,0
+HeD34:
+    db 2,67,17,39,7,0
+HeD35:
+    db 79,82,0
+HeD36:
+    db 79,70,0
+HeD37:
+    db 70,27,77,0
+HeD38:
+    db 69,4,0
+HeD39:
+    db 82,21,68,83,58,32,39,0
+HeD40:
+    db 71,79,76,68,12,0
+HeD41:
+    db 87,82,24,84,12,32,18,32,0
+HeD42:
+    db 6,9,5,20,0
+HeD43:
+    db 76,79,0
+HeD44:
+    db 72,79,79,75,0
+HeD45:
+    db 76,32,0
+HeD46:
+    db 79,80,12,0
+HeD47:
+    db 76,73,0
+HeD48:
+    db 87,73,6,0
+HeD49:
+    db 89,32,0
+HeD50:
+    db 82,65,0
+HeD51:
+    db 22,46,0
+HeD52:
+    db 67,72,0
+HeD53:
+    db 83,80,28,69,97,73,80,0
+HeD54:
+    db 84,82,28,75,0
+HeD55:
+    db 16,72,65,4,0
+HeD56:
+    db 65,32,0
+HeD57:
+    db 8,78,0
+HeD58:
+    db 69,46,0
+HeD59:
+    db 82,69,0
+HeD60:
+    db 85,78,0
+HeD61:
+    db 69,14,0
+HeD62:
+    db 68,69,77,18,0
+HeD63:
+    db 3,26,0
+HeD64:
+    db 82,21,0
+HeD65:
+    db 16,20,0
+HeD66:
+    db 73,76,0
+HeD67:
+    db 84,115,80,68,79,100,0
+HeD68:
+    db 83,80,72,3,88,0
+HeD69:
+    db 78,79,0
+HeD70:
+    db 9,46,0
+HeD71:
+    db 77,85,77,77,0
+HeD72:
+    db 71,115,80,80,76,11,109,0
+HeD73:
+    db 83,77,25,110,0
+HeD74:
+    db 120,83,79,77,69,6,11,106,24,46,0
+HeD75:
+    db 83,46,0
+HeD76:
+    db 66,79,0
+HeD77:
+    db 69,68,0
+HeD78:
+    db 15,1,0
+HeD79:
+    db 2,10,5,0
+HeD80:
+    db 76,17,84,9,78,0
+HeD81:
+    db 82,73,0
+HeD82:
+    db 76,69,79,80,10,0
+HeD83:
+    db 67,112,70,70,46,0
+HeD84:
+    db 68,79,87,78,0
+HeD85:
+    db 76,65,0
+HeD86:
+    db 83,65,80,80,0
+HeD87:
+    db 67,79,25,32,66,3,0
+HeD88:
+    db 15,32,0
+HeD89:
+    db 87,65,0
+HeD90:
+    db 6,65,7,0
+HeD91:
+    db 73,82,0
+HeD92:
+    db 75,32,0
+HeD93:
+    db 3,32,0
+HeD94:
+    db 3,1,0
+HeD95:
+    db 24,46,0
+HeD96:
+    db 73,67,0
+HeD97:
+    db 9,32,0
+HeD98:
+    db 84,46,0
+HeD99:
+    db 25,129,68,114,0
+HeD100:
+    db 82,13,71,72,0
+HeD101:
+    db 6,29,46,0
+HeD102:
+    db 12,84,0
+HeD103:
+    db 85,82,0
+HeD104:
+    db 13,6,0
+HeD105:
+    db 76,10,71,5,0
+HeD106:
+    db 69,10,0
+HeD107:
+    db 30,10,32,82,85,66,89,0
+HeD108:
+    db 72,17,71,0
+HeD109:
+    db 27,79,77,46,0
+HeD110:
+    db 67,65,86,0
+HeD111:
+    db 117,65,77,66,135,0
+HeD112:
+    db 71,82,13,78,0
+HeD113:
+    db 83,77,79,75,5,0
+HeD114:
+    db 69,76,0
+HeD115:
+    db 69,83,0
+HeD116:
+    db 141,10,68,0
+HeD117:
+    db 3,71,0
+HeD118:
+    db 69,77,0
+HeD119:
+    db 80,85,0
+HeD120:
+    db 67,108,83,0
+HeD121:
+    db 68,73,0
+HeD122:
+    db 46,32,0
+HeD123:
+    db 122,14,0
+HeD124:
+    db 30,29,85,69,39,4,0
+HeD125:
+    db 16,113,46,0
+HeD126:
+    db 12,32,0
+HeD127:
+    db 44,32,0
+HeD128:
+    db 87,72,0
+HeD129:
+    db 74,69,87,179,126,75,78,73,70,69,0
+HeD130:
+    db 69,112,88,156,32,101,32,112,70,69,0
+HeD131:
+    db 66,150,68,68,0
+HeD132:
+    db 71,79,76,14,78,85,71,71,69,84,0
+HeD133:
+    db 66,108,67,75,0
+HeD134:
+    db 101,1,0
+HeD135:
+    db 83,77,65,97,0
+HeD136:
+    db 115,70,163,0
+HeD137:
+    db 32,72,0
+HeD138:
+    db 69,88,0
+HeD139:
+    db 89,46,0
+HeD140:
+    db 84,129,83,85,124,0
+HeD141:
+    db 142,46,0
+HeD142:
+    db 69,67,0
+HeD143:
+    db 13,7,0
+HeD144:
+    db 134,6,11,0
+HeD145:
+    db 32,77,0
+HeD146:
+    db 70,131,76,0
+HeD147:
+    db 83,65,89,0
+HeD148:
+    db 79,73,110,0
+HeD149:
+    db 80,13,117,0
+HeD150:
+    db 70,76,10,0
+HeD151:
+    db 18,1,70,108,100,0
+HeD152:
+    db 30,25,28,84,24,0
+HeD153:
+    db 32,20,0
+HeD154:
+    db 146,86,135,0
+HeD155:
+    db 125,68,9,0
+HeD156:
+    db 87,29,162,0
+HeD157:
+    db 102,1,0
+HeD158:
+    db 3,143,0
+HeD159:
+    db 25,32,0
+HeD160:
+    db 83,79,0
+HeD161:
+    db 83,80,0
+HeD162:
+    db 32,67,0
+HeD163:
+    db 17,68,0
+HeD164:
+    db 105,32,70,28,183,65,83,75,0
+HeD165:
+    db 23,46,0
+HeD166:
+    db 70,100,0
+HeD167:
+    db 17,14,0
+HeD168:
+    db 76,18,71,32,86,3,103,173,0
+HeD169:
+    db 8,71,65,3,30,1,87,25,0
+HeD170:
+    db 4,15,87,10,14,89,13,116,0
+HeD171:
+    db 79,79,0
+HeD172:
+    db 85,84,0
+HeD173:
+    db 27,80,0
+HeD174:
+    db 79,75,0
+HeD175:
+    db 76,5,0
+HeD176:
+    db 83,169,0
+HeD177:
+    db 134,7,0
+HeD178:
+    db 71,72,0
+HeD179:
+    db 66,85,131,0
+HeD180:
+    db 28,75,0
+HeD181:
+    db 101,70,9,0
+HeD182:
+    db 21,6,0
+HeD183:
+    db 228,75,9,117,73,69,70,0
+HeD184:
+    db 105,122,75,72,0
+HeD185:
+    db 66,76,28,157,0
+HeD186:
+    db 68,79,0
+HeD187:
+    db 175,9,78,0
+HeD188:
+    db 66,171,32,0
+HeD189:
+    db 130,211,126,113,32,79,131,0
+HeD190:
+    db 98,189,66,65,83,5,104,0
+HeMsgTab:
+    dw HeM0,HeM1,HeM2,HeM3,HeM4,HeM5,HeM6,HeM7,HeM8,HeM9,HeM10,HeM11
+    dw HeM12,HeM13,HeM14,HeM15,HeM16,HeM17,HeM18,HeM19,HeM20,HeM21,HeM22,HeM23
+    dw HeM24,HeM25,HeM26,HeM27,HeM28,HeM29,HeM30,HeM31,HeM32,HeM33,HeM34,HeM35
+    dw HeM36,HeM37,HeM38,HeM39,HeM40,HeM41,HeM42,HeM43,HeM44,HeM45,HeM46,HeM47
+    dw HeM48,HeM49,HeM50,HeM51,HeM52,HeM53,HeM54,HeM55,HeM56,HeM57,HeM58,HeM59
+    dw HeM60,HeM61,HeM62,HeM63,HeM64,HeM65,HeM66,HeM67,HeM68,HeM69,HeM70,HeM71
+    dw HeM72,HeM73,HeM74,HeM75,HeM76,HeM77,HeM78,HeM79,HeM80,HeM81,HeM82,HeM83
+    dw HeM84,HeM85,HeM86,HeM87,HeM88,HeM89,HeM90,HeM91,HeM92,HeM93,HeM94,HeM95
+    dw HeM96,HeM97,HeM98,HeM99,HeM100,HeM101,HeM102,HeM103,HeM104,HeM105,HeM106,HeM107
+    dw HeM108,HeM109,HeM110,HeM111,HeM112,HeM113,HeM114,HeM115,HeM116,HeM117,HeM118,HeM119
+    dw HeM120,HeM121,HeM122,HeM123,HeM124,HeM125,HeM126,HeM127,HeM128,HeM129,HeM130,HeM131
+    dw HeM132,HeM133,HeM134,HeM135,HeM136,HeM137,HeM138,HeM139,HeM140,HeM141,HeM142,HeM143
+    dw HeM144,HeM145,HeM146,HeM147,HeM148,HeM149,HeM150,HeM151,HeM152,HeM153,HeM154,HeM155
+    dw HeM156,HeM157,HeM158,HeM159,HeM160,HeM161,HeM162,HeM163,HeM164,HeM165,HeM166,HeM167
+    dw HeM168,HeM169,HeM170,HeM171,HeM172,HeM173,HeM174,HeM175,HeM176,HeM177,HeM178,HeM179
+    dw HeM180,HeM181,HeM182,HeM183,HeM184,HeM185,HeM186,HeM187,HeM188,HeM189,HeM190,HeM191
+    dw HeM192,HeM193,HeM194,HeM195,HeM196,HeM197,HeM198,HeM199,HeM200,HeM201,HeM202,HeM203
+    dw HeM204,HeM205,HeM206,HeM207,HeM208,HeM209,HeM210,HeM211,HeM212,HeM213,HeM214,HeM215
+    dw HeM216,HeM217,HeM218,HeM219,HeM220,HeM221,HeM222,HeM223,HeM224,HeM225,HeM226,HeM227
+    dw HeM228,HeM229,HeM230,HeM231,HeM232,HeM233,HeM234,HeM235,HeM236,HeM237,HeM238,HeM239
+    dw HeM240,HeM241,HeM242,HeM243,HeM244,HeM245,HeM246,HeM247,HeM248,HeM249,HeM250,HeM251
+    dw HeM252,HeM253,HeM254,HeM255,HeM256,HeM257,HeM258,HeM259,HeM260,HeM261,HeM262,HeM263
+    dw HeM264,HeM265,HeM266,HeM267,HeM268,HeM269,HeM270,HeM271,HeM272,HeM273,HeM274,HeM275
+    dw HeM276,HeM277,HeM278,HeM279,HeM280,HeM281,HeM282,HeM283,HeM284,HeM285,HeM286,HeM287
+    dw HeM288,HeM289,HeM290,HeM291,HeM292,HeM293,HeM294,HeM295,HeM296,HeM297,HeM298,HeM299
+    dw HeM300,HeM301,HeM302,HeM303,HeM304,HeM305,HeM306,HeM307,HeM308,HeM309,HeM310,HeM311
+    dw HeM312,HeM313,HeM314,HeM315,HeM316,HeM317,HeM318,HeM319,HeM320,HeM321,HeM322,HeM323
+    dw HeM324,HeM325,HeM326,HeM327,HeM328,HeM329,HeM330,HeM331,HeM332,HeM333,HeM334,HeM335
+    dw HeM336,HeM337,HeM338,HeM339,HeM340,HeM341,HeM342,HeM343,HeM344,HeM345,HeM346,HeM347
+    dw HeM348,HeM349,HeM350,HeM351,HeM352,HeM353,HeM354,HeM355,HeM356,HeM357,HeM358,HeM359
+    dw HeM360,HeM361,HeM362,HeM363
+HeM0:
+    db 144,0
+HeM1:
+    db 144,158,15,84,224,68,10,75,78,180,140,0
+HeM2:
+    db 144,65,181,26,87,236,68,191,201,0
+HeM3:
+    db 107,0
+HeM4:
+    db 121,0
+HeM5:
+    db 17,32,0
+HeM6:
+    db 225,77,5,0
+HeM7:
+    db 202,9,123,0
+HeM8:
+    db 32,159,0
+HeM9:
+    db 203,24,83,58,0
+HeM10:
+    db 32,78,18,123,0
+HeM11:
+    db 99,71,79,32,155,154,204,0
+HeM12:
+    db 70,156,30,192,2,77,85,83,7,203,24,1,201,0
+HeM13:
+    db 144,67,10,82,89,182,58,0
+HeM14:
+    db 65,66,225,76,237,179,114,134,6,182,46,0
+HeM15:
+    db 2,164,72,65,86,5,160,0
+HeM16:
+    db 16,70,108,87,4,6,165,32,31,70,182,9,83,116,0
+HeM17:
+    db 155,24,183,32,30,65,89,4,184,163,0
+HeM18:
+    db 84,65,75,12,46,0
+HeM19:
+    db 19,121,205,33,0
+HeM20:
+    db 2,68,18,39,7,72,65,86,5,160,0
+HeM21:
+    db 68,238,80,206,0
+HeM22:
+    db 2,83,69,5,209,226,207,73,25,8,66,208,160,0
+HeM23:
+    db 130,111,46,0
+HeM24:
+    db 130,185,206,0
+HeM25:
+    db 99,111,32,166,0
+HeM26:
+    db 99,185,5,166,0
+HeM27:
+    db 130,164,111,46,0
+HeM28:
+    db 130,164,185,206,0
+HeM29:
+    db 239,46,0
+HeM30:
+    db 130,70,85,76,76,46,0
+HeM31:
+    db 155,20,185,206,0
+HeM32:
+    db 99,184,7,16,6,9,123,0
+HeM33:
+    db 19,28,72,73,69,86,142,26,83,67,100,5,101,32,0
+HeM34:
+    db 32,208,101,26,80,79,83,83,73,66,240,50,48,48,32,158,0
+HeM35:
+    db 210,79,86,69,140,32,6,20,184,84,4,2,159,82,17,157,101,58,32,39,0
+HeM36:
+    db 8,68,86,167,168,135,39,0
+HeM37:
+    db 65,77,29,69,168,0
+HeM38:
+    db 134,86,161,69,0
+HeM39:
+    db 65,86,9,65,71,69,0
+HeM40:
+    db 3,84,179,76,207,84,85,25,0
+HeM41:
+    db 80,27,0
+HeM42:
+    db 77,65,30,9,0
+HeM43:
+    db 19,186,206,0
+HeM44:
+    db 32,158,0
+HeM45:
+    db 78,100,6,0
+HeM46:
+    db 241,0
+HeM47:
+    db 21,30,0
+HeM48:
+    db 87,69,30,0
+HeM49:
+    db 85,80,0
+HeM50:
+    db 149,0
+HeM51:
+    db 40,134,6,182,41,0
+HeM52:
+    db 161,69,0
+HeM53:
+    db 30,21,77,0
+HeM54:
+    db 70,73,124,0
+HeM55:
+    db 62,32,0
+HeM56:
+    db 2,67,17,242,83,87,73,77,32,155,70,10,46,0
+HeM57:
+    db 158,193,29,63,0
+HeM58:
+    db 83,67,100,69,0
+HeM59:
+    db 77,79,86,180,0
+HeM60:
+    db 71,79,0
+HeM61:
+    db 108,239,0
+HeM62:
+    db 84,65,75,69,0
+HeM63:
+    db 68,238,0
+HeM64:
+    db 203,65,77,3,69,0
+HeM65:
+    db 111,0
+HeM66:
+    db 185,69,0
+HeM67:
+    db 184,84,0
+HeM68:
+    db 3,86,12,15,82,89,0
+HeM69:
+    db 129,68,0
+HeM70:
+    db 167,9,0
+HeM71:
+    db 203,24,0
+HeM72:
+    db 184,97,0
+HeM73:
+    db 112,70,84,0
+HeM74:
+    db 109,0
+HeM75:
+    db 67,237,0
+HeM76:
+    db 112,243,84,0
+HeM77:
+    db 211,0
+HeM78:
+    db 244,68,0
+HeM79:
+    db 97,236,84,0
+HeM80:
+    db 72,24,0
+HeM81:
+    db 29,84,245,0
+HeM82:
+    db 82,85,66,0
+HeM83:
+    db 246,0
+HeM84:
+    db 212,0
+HeM85:
+    db 68,82,3,75,0
+HeM86:
+    db 186,86,69,0
+HeM87:
+    db 81,85,24,0
+HeM88:
+    db 83,73,71,78,0
+HeM89:
+    db 74,65,68,5,80,142,69,30,25,0
+HeM90:
+    db 76,247,162,141,239,0
+HeM91:
+    db 76,247,162,66,13,78,14,141,239,0
+HeM92:
+    db 68,115,71,18,32,30,29,85,69,0
+HeM93:
+    db 150,125,117,227,10,68,0
+HeM94:
+    db 213,145,0
+HeM95:
+    db 76,247,162,214,0
+HeM96:
+    db 66,245,80,245,0
+HeM97:
+    db 194,0
+HeM98:
+    db 42,194,42,0
+HeM99:
+    db 97,10,80,12,126,30,161,75,0
+HeM100:
+    db 89,179,108,87,32,86,73,25,0
+HeM101:
+    db 77,69,84,224,141,88,0
+HeM102:
+    db 83,108,84,0
+HeM103:
+    db 195,0
+HeM104:
+    db 42,195,42,0
+HeM105:
+    db 193,24,5,83,228,0
+HeM106:
+    db 118,0
+HeM107:
+    db 67,18,84,27,110,80,17,179,0
+HeM108:
+    db 71,73,17,7,79,65,157,84,124,69,0
+HeM109:
+    db 67,27,83,83,141,87,0
+HeM110:
+    db 87,236,68,191,68,124,83,83,9,0
+HeM111:
+    db 215,5,71,125,0
+HeM112:
+    db 215,69,0
+HeM113:
+    db 66,125,75,0
+HeM114:
+    db 136,89,0
+HeM115:
+    db 68,115,87,9,0
+HeM116:
+    db 66,142,0
+HeM117:
+    db 124,70,146,71,9,65,15,82,0
+HeM118:
+    db 132,0
+HeM119:
+    db 213,196,9,0
+HeM120:
+    db 213,225,65,75,126,196,9,0
+HeM121:
+    db 196,9,0
+HeM122:
+    db 70,76,3,7,38,32,30,69,179,0
+HeM123:
+    db 83,75,179,69,15,78,0
+HeM124:
+    db 67,156,67,76,69,0
+HeM125:
+    db 170,67,156,67,240,216,0
+HeM126:
+    db 80,161,75,0
+HeM127:
+    db 117,237,69,0
+HeM128:
+    db 151,72,73,124,0
+HeM129:
+    db 42,151,72,73,124,42,0
+HeM130:
+    db 197,0
+HeM131:
+    db 42,197,42,0
+HeM132:
+    db 77,69,84,224,27,68,0
+HeM133:
+    db 137,0
+HeM134:
+    db 137,32,38,32,238,69,0
+HeM135:
+    db 67,112,70,70,0
+HeM136:
+    db 152,0
+HeM137:
+    db 66,27,75,191,119,0
+HeM138:
+    db 138,186,65,77,18,68,0
+HeM139:
+    db 42,138,186,65,77,18,68,42,0
+HeM140:
+    db 86,3,69,0
+HeM141:
+    db 108,71,83,0
+HeM142:
+    db 217,180,0
+HeM143:
+    db 170,66,171,0
+HeM144:
+    db 77,29,84,124,83,83,0
+HeM145:
+    db 105,32,150,77,80,0
+HeM146:
+    db 42,105,32,150,77,80,42,0
+HeM147:
+    db 83,10,67,79,80,72,65,71,85,83,0
+HeM148:
+    db 72,248,0
+HeM149:
+    db 42,105,202,248,42,0
+HeM150:
+    db 229,0
+HeM151:
+    db 42,229,42,0
+HeM152:
+    db 88,89,90,90,0
+HeM153:
+    db 170,27,67,75,0
+HeM154:
+    db 80,167,28,76,69,0
+HeM155:
+    db 80,167,28,240,216,0
+HeM156:
+    db 127,0
+HeM157:
+    db 249,0
+HeM158:
+    db 42,249,42,0
+HeM159:
+    db 77,169,0
+HeM160:
+    db 80,24,0
+HeM161:
+    db 133,0
+HeM162:
+    db 172,0
+HeM163:
+    db 42,172,42,0
+HeM164:
+    db 87,29,9,0
+HeM165:
+    db 115,70,84,0
+HeM166:
+    db 66,237,15,78,0
+HeM167:
+    db 84,146,68,167,0
+HeM168:
+    db 173,11,214,0
+HeM169:
+    db 214,32,173,11,102,26,238,69,0
+HeM170:
+    db 250,147,68,0
+HeM171:
+    db 29,1,70,82,18,7,251,100,32,101,26,138,67,65,66,3,46,0
+HeM172:
+    db 159,112,86,11,174,32,130,226,10,83,179,114,70,168,78,73,97,206,0
+HeM173:
+    db 159,66,142,174,0
+HeM174:
+    db 159,75,24,117,12,187,183,80,84,114,67,65,66,3,69,84,4,76,3,69,1,78,100,6
+    db 32,87,25,76,46,0
+HeM175:
+    db 128,165,76,114,67,10,86,126,230,0
+HeM176:
+    db 3,122,32,3,67,76,3,126,230,26,119,32,82,125,4,143,241,46,0
+HeM177:
+    db 65,7,121,83,15,78,5,87,25,76,46,1,119,32,82,125,4,79,86,9,1,87,25,110
+    db 143,241,46,0
+HeM178:
+    db 128,230,1,87,25,76,4,71,76,24,84,162,113,32,156,18,32,80,89,82,24,123,0
+HeM179:
+    db 128,78,29,168,224,175,5,193,73,117,218,85,83,126,231,32,83,15,115,71,123,0
+HeM180:
+    db 128,176,0
+HeM181:
+    db 29,1,12,14,101,26,230,1,119,8,76,225,32,12,68,4,72,9,123,0
+HeM182:
+    db 128,23,187,143,21,30,1,23,218,198,126,66,89,26,66,13,76,68,135,0
+HeM183:
+    db 29,1,141,84,15,77,32,101,26,138,148,0
+HeM184:
+    db 128,67,168,86,126,230,0
+HeM185:
+    db 128,230,0
+HeM186:
+    db 65,7,121,68,21,14,12,68,46,0
+HeM187:
+    db 3,122,8,66,228,18,126,77,3,5,97,65,70,163,0
+HeM188:
+    db 18,26,148,0
+HeM189:
+    db 18,1,97,100,5,101,26,219,0
+HeM190:
+    db 18,26,68,156,7,80,65,6,46,0
+HeM191:
+    db 18,26,80,65,6,32,159,67,167,162,101,122,32,220,177,14,86,131,150,71,123,0
+HeM192:
+    db 128,72,85,7,85,83,142,8,4,121,77,69,69,84,11,80,76,28,123,0
+HeM193:
+    db 159,72,21,76,9,39,4,72,85,163,0
+HeM194:
+    db 128,68,183,79,112,97,126,72,85,163,0
+HeM195:
+    db 159,77,73,68,68,240,101,26,219,0
+HeM196:
+    db 85,80,30,129,77,32,128,219,32,6,165,1,67,76,171,32,221,2,83,69,5,121,97,73
+    db 80,46,0
+HeM197:
+    db 149,30,129,77,32,128,219,0
+HeM198:
+    db 220,87,29,135,1,67,168,82,12,7,184,97,103,2,241,46,0
+HeM199:
+    db 128,83,125,75,191,97,73,80,46,0
+HeM200:
+    db 159,67,124,87,39,4,81,85,10,84,9,140,0
+HeM201:
+    db 128,170,252,187,217,103,173,32,102,8,141,86,123,0
+HeM202:
+    db 128,68,10,157,230,0
+HeM203:
+    db 128,66,85,146,224,176,1,83,77,179,110,101,32,68,207,65,114,211,83,1,65,156,46,0
+HeM204:
+    db 128,138,176,0
+HeM205:
+    db 128,83,77,25,76,8,77,80,72,73,6,21,84,135,0
+HeM206:
+    db 128,71,73,71,17,84,161,32,252,46,0
+HeM207:
+    db 65,181,26,118,46,0
+HeM208:
+    db 128,72,25,76,154,204,0
+HeM209:
+    db 128,68,124,83,83,11,174,0
+HeM210:
+    db 159,112,66,82,10,114,174,0
+HeM211:
+    db 128,67,100,146,68,100,46,0
+HeM212:
+    db 159,72,203,65,71,18,45,97,65,80,126,174,0
+HeM213:
+    db 3,122,32,21,30,47,87,180,7,230,26,175,69,45,158,198,83,1,87,69,30,87,10,14
+    db 203,160,0
+HeM214:
+    db 29,1,12,14,199,67,100,146,68,100,46,122,8,82,117,154,114,76,21,68,4,241,46,0
+HeM215:
+    db 128,170,176,0
+HeM216:
+    db 155,154,114,76,21,68,4,143,79,67,69,17,59,32,2,84,168,78,32,66,245,46,0
+HeM217:
+    db 65,4,2,167,9,1,10,117,154,89,44,26,74,69,7,101,32,70,156,5,67,79,77,103
+    db 222,68,115,71,18,39,4,77,169,188,12,71,85,76,70,4,89,13,46,0
+HeM218:
+    db 98,253,30,228,4,158,31,154,204,0
+HeM219:
+    db 98,250,147,14,198,4,31,154,204,0
+HeM220:
+    db 2,124,84,168,78,32,143,83,168,70,28,5,231,8,156,46,0
+HeM221:
+    db 98,241,32,251,100,32,185,103,66,69,72,3,14,89,13,116,0
+HeM222:
+    db 65,4,2,68,180,67,12,68,44,1,23,32,175,103,158,102,8,141,86,123,0
+HeM223:
+    db 2,82,125,32,222,66,171,116,0
+HeM224:
+    db 2,70,76,69,5,222,147,68,116,0
+HeM225:
+    db 2,70,76,69,5,222,76,85,77,66,9,11,136,89,116,0
+HeM226:
+    db 2,71,115,66,1,214,122,68,1,67,156,67,240,111,4,3,15,26,80,24,116,0
+HeM227:
+    db 2,125,109,1,137,188,67,79,131,1,238,123,0
+HeM228:
+    db 98,86,3,103,10,5,67,18,78,207,84,126,15,71,69,6,135,0
+HeM229:
+    db 2,124,80,76,28,69,1,66,27,75,191,119,32,113,1,27,68,46,0
+HeM230:
+    db 16,225,65,75,4,223,177,68,116,0
+HeM231:
+    db 130,66,108,87,78,8,154,114,66,89,1,87,3,68,116,0
+HeM232:
+    db 24,4,77,169,218,111,32,87,73,68,5,232,178,20,67,79,77,11,102,32,160,32,139,0
+HeM233:
+    db 130,121,80,150,30,161,227,10,68,187,139,0
+HeM234:
+    db 139,0
+HeM235:
+    db 130,200,206,0
+HeM236:
+    db 254,187,130,76,160,0
+HeM237:
+    db 254,46,0
+HeM238:
+    db 130,183,80,84,204,0
+HeM239:
+    db 120,83,69,86,9,224,71,183,4,18,1,72,131,163,0
+HeM240:
+    db 16,124,83,183,66,76,103,121,81,85,10,124,76,46,0
+HeM241:
+    db 130,121,77,131,75,114,193,24,5,67,79,76,100,46,0
+HeM242:
+    db 130,80,168,5,193,24,123,0
+HeM243:
+    db 120,17,32,3,83,67,146,80,84,73,18,58,32,39,83,66,45,57,49,48,39,32,18,32
+    db 24,4,30,10,181,46,0
+HeM244:
+    db 107,17,32,100,17,71,5,66,237,15,78,210,10,75,126,39,150,125,117,39,122,68,26,83
+    db 108,163,0
+HeM245:
+    db 120,233,11,102,32,24,4,66,82,17,117,69,140,0
+HeM246:
+    db 120,121,83,182,240,68,115,87,135,0
+HeM247:
+    db 120,39,83,73,71,78,224,215,69,39,32,106,16,158,250,3,75,46,0
+HeM248:
+    db 120,121,87,100,78,210,29,84,124,83,140,0
+HeM249:
+    db 130,12,67,65,83,126,158,79,76,14,66,228,65,71,69,140,0
+HeM250:
+    db 2,184,76,110,111,1,68,115,87,135,0
+HeM251:
+    db 98,132,227,129,75,4,111,187,30,69,80,4,76,21,14,149,32,3,153,68,10,75,78,180
+    db 140,0
+HeM252:
+    db 98,136,114,111,4,24,4,69,89,103,232,76,69,84,4,208,121,68,69,69,80,210,79,17
+    db 46,0
+HeM253:
+    db 16,186,151,171,4,223,77,169,116,0
+HeM254:
+    db 98,178,83,15,80,140,0
+HeM255:
+    db 16,87,13,76,14,226,131,110,13,163,0
+HeM256:
+    db 16,87,18,39,7,70,160,0
+HeM257:
+    db 121,251,100,32,143,241,227,129,75,4,111,46,0
+HeM258:
+    db 16,104,98,132,218,220,22,22,39,0
+HeM259:
+    db 16,104,153,180,67,65,80,69,192,246,1,151,72,156,5,153,115,46,39,0
+HeM260:
+    db 255,251,32,242,167,135,39,0
+HeM261:
+    db 255,167,135,39,0
+HeM262:
+    db 16,104,6,20,67,10,68,8,67,84,73,86,29,103,118,32,83,66,45,57,49,48,46,39
+    db 0
+HeM263:
+    db 98,141,79,157,20,18,32,127,79,108,71,89,187,107,18,76,114,18,5,80,65,71,5,3
+    db 84,28,163,32,16,104,116,127,210,85,83,7,66,5,83,85,77,77,18,126,158,80,167,28
+    db 76,123,39,0
+HeM264:
+    db 107,209,106,160,0
+HeM265:
+    db 144,25,129,68,89,8,181,46,0
+HeM266:
+    db 144,65,181,1,201,0
+HeM267:
+    db 2,70,25,110,223,141,84,15,77,76,180,4,80,24,116,0
+HeM268:
+    db 2,83,112,68,5,149,1,117,237,69,116,0
+HeM269:
+    db 2,67,112,77,66,8,181,46,0
+HeM270:
+    db 130,15,79,32,138,231,32,89,13,46,0
+HeM271:
+    db 31,87,69,73,243,7,30,10,84,83,1,152,32,153,77,79,86,5,149,1,119,46,0
+HeM272:
+    db 125,231,84,125,29,179,89,1,119,4,10,5,66,27,75,12,188,144,6,27,87,78,234,76
+    db 116,0
+HeM273:
+    db 65,70,84,9,26,66,146,69,70,32,146,68,5,2,83,15,80,8,84,1,12,14,199,119
+    db 46,0
+HeM274:
+    db 98,119,32,12,68,4,72,9,69,59,1,66,158,87,131,110,242,77,79,86,123,0
+HeM275:
+    db 99,167,162,166,0
+HeM276:
+    db 2,186,86,5,223,146,86,9,116,0
+HeM277:
+    db 65,4,2,186,86,5,223,87,29,9,1,67,168,82,12,7,154,97,103,2,87,180,7,45
+    db 32,223,83,21,46,0
+HeM278:
+    db 2,203,24,1,201,0
+HeM279:
+    db 2,67,112,77,66,32,208,199,118,46,0
+HeM280:
+    db 144,242,3,122,89,6,182,46,0
+HeM281:
+    db 107,121,71,73,17,7,203,80,108,83,73,18,122,68,1,118,32,150,125,117,103,6,165,1
+    db 67,69,131,11,199,252,46,0
+HeM282:
+    db 67,18,71,82,29,85,76,29,73,18,83,33,32,19,25,110,84,191,205,83,33,0
+HeM283:
+    db 125,231,84,125,29,179,114,19,242,79,66,84,65,3,142,8,76,76,1,84,129,83,168,103
+    db 232,2,76,232,159,252,8,71,65,3,46,0
+HeM284:
+    db 2,184,97,1,152,188,16,27,76,76,4,65,154,89,116,0
+HeM285:
+    db 2,72,171,26,200,32,159,186,30,17,67,123,0
+HeM286:
+    db 2,184,97,32,16,153,124,86,21,76,26,132,32,220,78,247,33,0
+HeM287:
+    db 209,72,65,80,80,12,140,0
+HeM288:
+    db 83,69,86,9,224,6,182,4,70,108,65,7,102,32,220,78,247,32,160,0
+HeM289:
+    db 130,15,79,202,21,86,204,0
+HeM290:
+    db 96,109,32,190,0
+HeM291:
+    db 2,109,1,137,32,18,1,138,148,0
+HeM292:
+    db 107,209,153,109,32,16,18,32,85,80,202,9,123,0
+HeM293:
+    db 2,109,1,214,188,184,76,110,16,3,153,31,72,228,140,0
+HeM294:
+    db 239,192,2,67,85,7,121,76,18,71,32,80,73,207,5,101,32,86,3,5,222,84,124,123
+    db 0
+HeM295:
+    db 19,209,97,10,80,32,12,13,243,46,0
+HeM296:
+    db 98,79,6,162,86,3,103,173,202,73,243,8,141,86,69,1,177,68,46,0
+HeM297:
+    db 99,67,85,7,166,0
+HeM298:
+    db 130,164,76,160,0
+HeM299:
+    db 107,134,32,213,158,160,0
+HeM300:
+    db 96,112,243,7,190,0
+HeM301:
+    db 239,44,1,145,218,76,160,0
+HeM302:
+    db 2,6,27,87,32,31,145,8,84,1,136,89,188,16,66,129,75,83,192,12,71,85,76,70
+    db 182,1,136,114,158,70,150,77,69,140,1,145,32,112,103,200,126,216,46,0
+HeM303:
+    db 130,164,70,85,76,76,46,0
+HeM304:
+    db 2,211,1,145,32,113,32,213,222,196,135,0
+HeM305:
+    db 96,70,131,110,190,0
+HeM306:
+    db 99,70,131,110,166,0
+HeM307:
+    db 96,84,73,5,190,0
+HeM308:
+    db 96,244,14,16,102,46,0
+HeM309:
+    db 2,97,13,76,14,244,14,16,18,1,97,100,5,199,219,0
+HeM310:
+    db 2,244,68,26,201,0
+HeM311:
+    db 98,215,5,71,125,218,111,187,16,203,80,108,68,103,158,31,70,28,69,116,0
+HeM312:
+    db 98,215,5,97,236,84,4,223,65,156,192,97,79,87,9,11,2,113,32,226,10,75,140,0
+HeM313:
+    db 217,103,30,10,7,153,70,25,110,143,177,68,44,188,18,5,72,24,83,1,253,159,66,28
+    db 157,101,202,20,78,207,75,192,66,129,75,11,72,20,226,3,123,0
+HeM314:
+    db 98,30,161,157,80,76,125,71,103,223,67,129,84,85,124,39,4,6,27,29,46,0
+HeM315:
+    db 16,251,103,242,83,69,183,8,70,70,207,84,206,0
+HeM316:
+    db 18,227,18,84,28,84,1,30,161,157,66,129,75,4,3,153,226,76,3,84,9,140,0
+HeM317:
+    db 98,30,161,157,70,112,103,101,70,188,67,76,29,84,9,4,143,177,68,46,0
+HeM318:
+    db 130,242,108,65,68,206,0
+HeM319:
+    db 99,97,236,7,166,0
+HeM320:
+    db 65,70,84,162,124,80,21,84,126,66,108,87,4,113,1,80,161,75,192,2,117,73,80,8
+    db 154,89,1,27,67,157,153,124,86,21,76,26,80,150,30,161,227,10,14,3,83,73,68,5
+    db 160,0
+HeM321:
+    db 96,72,16,190,0
+HeM322:
+    db 29,84,245,11,113,208,121,87,21,80,18,218,83,85,161,73,68,123,0
+HeM323:
+    db 19,121,67,27,83,83,141,87,32,45,32,85,83,5,160,0
+HeM324:
+    db 29,84,245,11,155,20,70,237,131,123,0
+HeM325:
+    db 96,82,85,66,32,190,0
+HeM326:
+    db 107,121,184,70,70,32,101,32,178,228,26,127,8,80,80,171,140,0
+HeM327:
+    db 39,225,32,193,65,7,251,32,19,231,210,69,63,39,0
+HeM328:
+    db 144,125,80,27,84,207,84,142,122,68,1,127,8,80,80,27,28,72,103,2,45,227,150,87
+    db 4,71,115,226,11,231,32,31,72,171,84,116,0
+HeM329:
+    db 98,127,8,67,67,69,80,84,4,31,246,182,188,71,73,86,103,2,121,249,187,39,156,18
+    db 161,32,73,83,78,39,7,24,63,39,202,5,212,4,66,69,231,5,186,151,171,182,46,0
+HeM330:
+    db 39,134,192,155,87,18,39,7,251,46,39,0
+HeM331:
+    db 107,134,32,18,5,72,9,5,15,8,67,67,69,80,7,31,246,182,46,0
+HeM332:
+    db 98,133,227,146,103,208,232,74,85,77,80,4,223,80,24,192,70,25,76,11,153,72,20,68
+    db 247,187,72,5,72,65,4,76,69,70,7,66,69,72,3,68,26,172,46,0
+HeM333:
+    db 121,72,79,76,108,87,32,86,79,161,5,212,4,39,70,236,76,46,39,0
+HeM334:
+    db 39,87,82,18,71,44,39,32,212,83,1,133,46,0
+HeM335:
+    db 25,110,31,87,13,78,68,4,10,5,72,21,76,126,3,30,17,84,76,204,0
+HeM336:
+    db 83,85,68,68,12,76,89,1,221,82,85,97,103,3,153,31,111,210,169,188,2,68,27,87
+    db 78,116,0
+HeM337:
+    db 98,221,72,65,4,121,80,207,85,112,10,32,84,65,30,123,0
+HeM338:
+    db 99,68,82,3,157,166,0
+HeM339:
+    db 98,221,20,15,79,32,97,25,108,87,202,9,123,0
+HeM340:
+    db 107,134,32,221,72,9,123,0
+HeM341:
+    db 98,136,114,71,115,66,4,2,232,117,239,103,2,153,68,247,46,0
+HeM342:
+    db 98,136,114,76,85,77,66,9,235,0
+HeM343:
+    db 98,253,183,66,82,28,103,89,13,187,2,70,69,69,110,31,146,66,4,67,82,245,116,0
+HeM344:
+    db 98,253,111,4,72,20,10,77,83,192,129,68,114,153,183,66,82,28,5,89,13,46,0
+HeM345:
+    db 98,147,14,80,13,78,67,180,59,32,155,73,83,1,150,83,7,6,11,2,83,69,69,116
+    db 0
+HeM346:
+    db 98,147,14,30,25,75,235,0
+HeM347:
+    db 39,2,75,134,87,32,193,9,5,153,129,117,210,69,44,39,1,127,32,212,4,232,186,151
+    db 171,140,0
+HeM348:
+    db 98,127,32,84,65,80,4,72,20,70,236,7,73,77,80,29,73,167,76,204,0
+HeM349:
+    db 98,133,32,226,21,75,83,58,32,39,193,191,225,112,14,16,67,17,32,83,3,157,97,73
+    db 80,83,59,32,193,191,71,65,4,16,67,17,32,198,1,86,73,69,87,59,32,193,191,112
+    db 81,85,73,14,16,67,17,32,87,69,73,243,210,17,114,15,78,140,39,0
+HeM350:
+    db 39,17,83,87,162,77,114,146,68,68,240,67,100,124,67,84,76,89,188,6,13,32,97,25
+    db 7,112,86,5,153,12,74,79,114,6,114,205,140,39,0
+HeM351:
+    db 98,133,32,80,13,78,67,180,59,202,20,67,150,87,4,21,71,9,76,89,8,154,24,11
+    db 31,6,27,29,116,0
+HeM352:
+    db 98,133,218,154,24,11,80,29,73,167,76,204,0
+HeM353:
+    db 2,82,125,32,208,101,32,79,88,89,71,12,116,0
+HeM354:
+    db 2,70,69,69,110,186,90,90,89,116,0
+HeM355:
+    db 98,69,112,88,156,32,154,97,103,208,199,86,73,25,46,0
+HeM356:
+    db 98,83,232,154,97,103,208,199,141,88,46,0
+HeM357:
+    db 112,243,7,97,3,103,6,165,26,67,82,28,157,66,69,84,87,69,191,225,77,5,66,21
+    db 77,140,0
+HeM358:
+    db 121,238,5,173,4,149,32,222,15,80,32,199,148,0
+HeM359:
+    db 121,238,5,20,84,73,126,143,142,71,5,199,148,0
+HeM360:
+    db 200,142,234,110,20,121,152,46,0
+HeM361:
+    db 98,132,218,111,46,0
+HeM362:
+    db 233,32,222,66,82,17,117,103,199,79,65,75,46,0
+HeM363:
+    db 178,67,168,76,4,222,189,77,169,46,0
+HeRooms:
+    db 0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,171,0,0
+    db 1,0,3,4,0,0,172,0,1,0,0,0,2,0,0,173,0,1
+    db 0,0,2,0,0,0,174,0,2,0,9,6,0,0,0,175,0,3
+    db 0,0,7,5,0,0,175,0,3,0,8,0,6,0,0,176,0,4
+    db 7,0,0,0,0,0,177,0,4,5,11,0,10,0,0,178,0,3
+    db 0,0,9,0,0,0,179,0,5,9,0,0,0,0,0,180,0,5
+    db 0,14,13,15,0,0,181,0,4,0,0,0,12,0,0,182,0,3
+    db 12,0,0,0,0,0,183,0,6,0,16,12,0,0,0,184,0,3
+    db 15,17,0,0,0,0,185,0,3,16,0,0,0,0,0,186,0,3
+    db 0,0,0,0,0,0,187,0,7,18,0,17,0,0,0,187,0,7
+    db 0,21,0,0,0,0,188,0,6,20,0,23,22,0,0,189,0,8
+    db 0,0,21,0,0,0,189,0,8,0,0,24,21,0,0,190,0,9
+    db 27,26,25,23,0,0,191,0,9,0,0,0,24,0,0,192,0,10
+    db 24,0,0,0,0,0,193,0,10,0,24,0,0,0,0,194,0,10
+    db 21,34,29,30,0,0,195,0,11,0,0,0,28,0,0,196,0,11
+    db 0,0,28,0,0,0,197,0,11,0,32,0,0,29,0,198,0,12
+    db 31,0,33,0,0,0,199,0,12,0,0,0,32,0,0,200,0,12
+    db 0,36,0,35,0,0,189,0,8,0,0,34,0,0,0,189,0,8
+    db 34,37,0,0,0,0,201,0,5,36,38,0,0,0,0,202,0,3
+    db 37,41,39,0,0,0,202,0,3,0,40,0,38,0,0,203,0,13
+    db 39,0,0,41,0,0,184,0,3,38,42,40,0,0,0,204,0,5
+    db 41,49,45,43,0,0,205,0,14,0,0,42,0,0,0,206,0,15
+    db 0,0,0,0,0,0,207,0,16,0,0,46,42,0,0,208,0,17
+    db 48,0,47,45,0,0,208,0,17,0,0,0,46,0,0,209,0,18
+    db 0,46,0,0,0,0,210,0,18,42,50,0,0,0,0,211,0,17
+    db 49,54,51,53,0,0,204,0,5,0,0,52,50,0,0,211,0,17
+    db 0,0,0,51,0,0,212,0,19,0,0,50,0,0,0,213,0,3
+    db 50,55,0,0,0,0,211,0,17,54,56,0,0,0,0,214,0,20
+    db 55,0,0,0,0,0,215,0,21
+HePatchWhere:
+    db 4,5,18,1,14,4,20,5,21,1,34,0
+HE_NPATCH equ 6
+HeObjs:
+    db 0,0,0,0,0,0,88,0,88,0,2,0,89,0,89,0,2,2,90,0,91,0,1,0
+    db 92,0,92,0,2,0,93,0,93,0,1,0,94,0,94,0,9,0,95,0,95,0,1,3
+    db 96,0,96,0,1,1,97,0,98,0,5,0,99,0,99,0,1,0,100,0,100,0,1,4
+    db 101,0,101,0,1,5,102,0,102,0,2,6,103,0,104,0,12,0,105,0,105,0,16,0
+    db 106,0,106,0,2,0,107,0,107,0,2,0,108,0,108,0,2,0,109,0,109,0,1,7
+    db 110,0,110,0,2,0,111,0,111,0,1,11,112,0,112,0,1,0,113,0,113,0,2,0
+    db 114,0,114,0,2,0,115,0,115,0,2,8,116,0,116,0,2,9,117,0,117,0,2,0
+    db 118,0,118,0,2,0,119,0,120,0,9,0,121,0,121,0,1,0,122,0,122,0,17,0
+    db 123,0,123,0,2,0,124,0,125,0,2,0,126,0,126,0,1,0,127,0,127,0,2,0
+    db 128,0,129,0,5,0,130,0,131,0,5,0,132,0,132,0,1,0,133,0,134,0,1,0
+    db 135,0,135,0,2,0,136,0,136,0,2,0,137,0,137,0,2,0,138,0,139,0,5,0
+    db 140,0,140,0,1,0,141,0,141,0,17,0,142,0,142,0,18,0,143,0,143,0,2,0
+    db 144,0,144,0,2,0,145,0,146,0,5,0,147,0,147,0,2,10,148,0,149,0,5,0
+    db 150,0,151,0,5,0,152,0,152,0,2,0,153,0,153,0,1,0,154,0,155,0,2,0
+    db 156,0,156,0,2,0,157,0,158,0,5,0,159,0,159,0,2,0,160,0,160,0,2,0
+    db 161,0,161,0,2,0,162,0,163,0,5,0,164,0,164,0,16,0,165,0,165,0,2,0
+    db 166,0,166,0,2,0,167,0,167,0,1,0,168,0,169,0,2,0,170,0,170,0,2,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,45,0,45,0,0,0,46,0,46,0,0,0
+    db 47,0,47,0,0,0,48,0,48,0,0,0,49,0,49,0,0,0,50,0,50,0,0,0
+    db 52,0,52,0,0,0,53,0,53,0,0,0,54,0,54,0,0,0
+HE_NOBJ equ 67
+HeObjStart:
+    db 0,4,18,48,55,0,110,0,13,102,10,26,0,44,105,106,43,44,24,35,47,100,100,33
+    db 111,0,3,4,0,6,0,102,13,11,17,16,18,7,10,100,0,7,8,104,113,27,0,36
+    db 0,0,39,109,0,0,53,52,0,0,0,56,56,0,0,0,0,18,11,42
+HeContCode:
+    db 0,102,103,104,105,106,107,108,109,110,111,112
+HeContCap:
+    db 0,4,1,1,1,1,1,1,5,6,3,1
+HeContOpen:
+    db 0,0,1,0,0,0,1,1,0,1,0,0
+HeContObj:
+    db 0,8,2,7,11,12,13,19,25,26,50,21
+HE_NCONT equ 11
+HeScenery:
+    db 40,14,40,20,46,36,58,55,48,33,64,44,44,24,62,21,62,22,62,28,62,29,62,30
+    db 62,31,62,32,62,33,62,34,62,35,0
+HeFlagStart:
+    db 1,0,0,0,0,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0
+HE_NFLAGS equ 20
+HeVerbKind:
+    db 1,0,3,4,2,2,2,4,0,2,2,0,2,2,2,2,2,2,6,4,2,2,4,4
+    db 5,2,0,0,0
+HeVerbMsg:
+    dw 60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,58,87
+HeSceneIf:
+    db 56,60,0,22,0
+HeOverlays:
+    db 3,1,1,6,110,2,89,1,128,221,121,1,146,222,4,2,1,28,4,10,21,4,133,134
+    db 134,134,128,128,128,223,26,4,135,128,128,128,134,134,134,224,53,9,142,143,143,143,144,145
+    db 128,128,128,128,128,128,225,143,143,143,226,227,85,9,152,153,153,153,154,155,128,128,128,128
+    db 128,128,225,153,153,153,228,229,117,9,158,143,143,143,144,145,128,128,128,128,128,128,225,143
+    db 143,143,226,227,149,9,158,143,143,143,168,145,128,128,128,128,128,128,225,143,143,143,230,227
+    db 181,4,176,143,143,143,231,232,233,234,186,4,177,169,169,169,143,143,143,235,212,5,178,181
+    db 182,182,182,236,237,238,239,240,218,4,183,178,178,178,182,182,182,241,4,2,2,15,1,10
+    db 21,4,133,134,134,134,128,128,128,223,26,4,135,128,128,128,134,134,134,224,53,9,142,143
+    db 143,143,144,145,128,128,128,128,128,128,225,143,143,143,226,227,85,9,152,153,153,153,154,155
+    db 128,128,128,128,128,128,225,153,153,153,228,229,117,9,158,143,143,143,144,145,128,128,128,128
+    db 128,128,225,143,143,143,226,227,149,9,158,143,143,143,168,145,128,128,128,242,243,244,225,143
+    db 143,143,230,227,181,4,176,143,143,143,245,246,247,248,186,4,177,169,169,169,143,143,143,235
+    db 212,5,178,181,182,182,182,236,249,250,251,252,218,4,183,178,178,178,182,182,182,241,7,4
+    db 1,41,7,3,109,6,154,155,156,157,158,159,214,215,216,217,218,219,141,6,154,164,165,165
+    db 166,159,220,221,222,222,223,224,174,4,171,165,165,172,225,226,227,228,12,4,1,41,12,3
+    db 109,6,154,155,156,157,158,159,214,215,216,217,218,219,141,6,154,164,165,165,166,159,220,221
+    db 222,222,223,224,174,4,171,165,165,172,225,226,227,228,8,4,1,42,8,3,172,7,163,170
+    db 171,165,165,172,173,229,230,163,163,163,163,231,203,3,169,178,179,232,233,234,210,3,180,181
+    db 174,235,236,237,8,4,2,2,1,4,172,7,163,170,171,165,165,172,173,229,230,163,163,163
+    db 163,231,182,4,139,140,128,128,238,239,240,241,203,3,169,178,179,232,233,234,210,8,180,181
+    db 174,182,183,140,128,128,235,236,242,243,244,245,246,247,14,6,2,1,1,7,14,1,135,247
+    db 46,1,146,248,78,1,146,249,110,1,146,250,142,1,146,248,174,1,146,249,205,3,182,182
+    db 182,251,252,253,20,6,2,1,1,7,14,1,135,247,46,1,146,248,78,1,146,249,110,1
+    db 146,250,142,1,146,248,174,1,146,249,205,3,182,182,182,251,252,253,18,7,3,1,19,4
+    db 99,5,200,200,200,200,200,249,250,251,251,252,131,5,200,200,200,200,200,249,253,254,254,255
+    db 163,5,200,200,200,200,200,249,253,254,254,255,195,5,200,200,200,200,200,249,253,254,254,255
+    db 24,9,129,44,113,3,82,1,223,254,114,1,233,153,146,1,233,153,39,13,4,50,1,4
+    db 54,3,128,128,128,224,225,226,78,11,138,139,139,140,137,137,137,141,128,128,128,137,137,137
+    db 227,228,228,228,229,230,231,232,107,10,143,144,145,146,147,147,148,149,150,143,233,233,233,233
+    db 233,233,234,235,236,237,139,10,143,152,153,154,155,155,156,157,158,143,233,233,233,233,233,233
+    db 233,233,233,233,55,20,2,0,0,4,18,3,137,138,139,128,128,128,48,4,150,151,152,153
+    db 128,128,128,128,79,4,169,170,171,172,244,128,128,128,111,3,181,182,183,128,128,128,44,16
+    db 1,5,107,1,147,2,205,205,248,249,47,18,1,25,47,3,82,8,222,223,223,223,223,223
+    db 223,224,245,246,246,246,246,246,246,247,114,8,228,229,229,230,231,229,229,232,248,249,249,249
+    db 249,249,249,250,146,8,228,234,234,234,234,234,234,232,251,252,252,253,254,252,252,255,53,3
+    db 1,54,53,3,147,4,204,204,204,198,238,239,240,241,178,5,223,224,217,217,225,242,243,244
+    db 245,246,211,4,232,232,232,232,247,248,249,250,0
+HeSayWords:
+    db 62,76,77,78,53,0
+HeVerbRules:
+    dw HeR_GO,HeR_LOOK,HeR_TAKE,HeR_DROP,HeR_EXAMINE,HeR_OPEN,HeR_CLOSE,HeR_PUT,HeR_INVENTORY,HeR_READ,HeR_ENTER,HeR_EXIT,HeR_PUSH,HeR_LIFT,HeR_HOOK,HeR_CUT,HeR_LIGHT,HeR_FILL,HeR_BUILD,HeR_SHOOT,HeR_HIT,HeR_ATTACK,HeR_RUB,HeR_OFFER,HeR_SAY,HeR_DRINK,HeR_DIVE,HeR_SCORE,HeR_QUIT
+HeR_GO:
+    db 7,3,30,1,73,64,216,0,11,3,55,1,71,8,0,1,64,217,0,71,9,3,36,1
+    db 71,5,47,64,218,0,9,3,42,1,71,5,67,64,219,0,9,4,28,30,8,6,0,64
+    db 56,0,11,3,31,1,74,64,220,0,66,12,10,74,11,3,19,1,70,64,221,0,69,1
+    db 0,74,13,3,4,1,75,8,15,1,64,222,0,76,5,74,6,5,47,64,223,0,74,6
+    db 5,67,64,224,0,74,6,5,24,64,225,0,74,2,75,0,0
+HeR_LOOK:
+    db 1,73,0
+HeR_TAKE:
+    db 6,1,66,64,226,0,71,20,1,39,8,1,1,64,227,0,66,1,0,69,2,0,69,3
+    db 0,65,39,100,8,1,44,7,44,113,64,228,0,2,75,3,0
+HeR_DROP:
+    db 13,1,38,5,42,64,229,0,65,42,0,65,38,0,10,15,2,14,62,64,230,0,65,255
+    db 0,8,1,15,64,231,0,65,255,0,2,75,4,0
+HeR_EXAMINE:
+    db 5,1,4,64,232,0,5,1,5,64,233,0,8,15,3,1,2,3,64,234,0,8,1,6
+    db 8,5,1,64,235,0,8,1,6,8,4,1,64,236,0,8,1,6,8,3,1,64,237,0
+    db 5,1,6,64,238,0,5,1,9,64,239,0,5,1,10,64,240,0,5,1,14,64,241,0
+    db 5,1,15,64,242,0,5,1,16,64,243,0,5,1,17,64,244,0,8,1,18,7,44,113
+    db 64,245,0,5,1,20,64,246,0,5,1,22,64,247,0,5,1,23,64,248,0,5,1,24
+    db 64,249,0,2,75,5,0
+HeR_OPEN:
+    db 18,15,2,20,25,7,25,0,64,250,0,65,25,250,70,25,1,77,25,6,1,20,78,25
+    db 75,6,8,1,28,8,15,1,64,27,0,11,1,28,64,251,0,66,15,1,69,0,5,5
+    db 1,27,64,238,0,14,1,50,7,24,111,70,50,1,65,24,250,64,252,0,2,75,6,0
+HeR_CLOSE:
+    db 14,1,28,8,15,1,64,29,0,66,15,0,69,0,0,6,1,20,78,25,75,7,2,75
+    db 7,0
+HeR_PUT:
+    db 16,1,15,2,58,64,253,0,64,254,0,65,15,0,66,0,0,8,2,58,64,253,0,65
+    db 255,0,8,1,15,11,2,12,64,255,0,8,2,13,11,1,5,64,0,1,8,2,19,11
+    db 1,10,64,0,1,8,2,21,11,1,22,64,0,1,5,2,11,64,0,1,13,1,36,2
+    db 2,65,36,103,64,1,1,69,1,19,2,75,8,0
+HeR_INVENTORY:
+    db 2,75,1,0
+HeR_READ:
+    db 5,1,1,64,2,1,5,1,2,64,3,1,8,1,4,8,0,1,64,4,1,5,1,4
+    db 64,5,1,5,1,5,64,6,1,5,1,3,64,7,1,3,64,8,1,0
+HeR_ENTER:
+    db 8,1,63,8,6,1,64,9,1,14,1,63,64,10,1,66,6,1,69,4,28,69,5,28
+    db 6,1,59,64,11,1,71,7,1,35,64,12,1,68,18,7,1,16,64,13,1,68,44,5
+    db 1,50,64,14,1,13,1,41,3,7,5,42,64,15,1,64,16,1,71,14,1,41,3,7
+    db 7,42,8,64,15,1,64,16,1,71,15,1,41,3,7,64,15,1,64,17,1,65,41,12
+    db 68,12,5,1,41,64,18,1,3,64,19,1,0
+HeR_EXIT:
+    db 16,8,6,1,3,29,64,20,1,66,6,0,66,12,10,68,31,10,8,6,1,4,28,30
+    db 64,21,1,71,19,8,6,1,3,34,8,13,0,64,22,1,66,6,0,66,13,1,76,10
+    db 9,8,6,1,64,22,1,66,6,0,7,3,44,64,23,1,68,43,3,64,24,1,0
+HeR_PUSH:
+    db 16,1,64,7,5,107,13,170,64,25,1,76,30,64,26,1,72,11,1,64,7,5,107,64
+    db 25,1,64,27,1,16,1,41,3,7,64,28,1,64,29,1,65,41,0,66,2,1,11,1
+    db 27,7,28,0,64,30,1,65,28,4,3,64,31,1,0
+HeR_LIFT:
+    db 17,1,48,8,14,0,64,32,1,66,14,1,65,12,250,65,49,250,5,1,54,64,33,1
+    db 3,64,31,1,0
+HeR_HOOK:
+    db 6,11,6,39,64,34,1,19,1,40,3,14,64,35,1,66,1,1,69,2,20,69,3,14
+    db 65,39,14,5,1,40,64,36,1,11,1,66,64,37,1,65,66,0,65,7,100,3,64,31
+    db 1,0
+HeR_CUT:
+    db 13,1,44,7,44,113,6,9,64,38,1,65,44,250,8,1,44,7,44,113,64,39,1,5
+    db 1,44,64,40,1,3,64,41,1,0
+HeR_LIGHT:
+    db 8,1,6,11,6,6,64,20,0,8,1,6,8,5,1,64,235,0,8,1,6,8,4,1
+    db 64,42,1,8,1,6,8,3,0,64,43,1,8,1,6,11,6,31,64,44,1,8,1,6
+    db 64,45,1,66,4,1,28,1,24,6,6,8,4,1,64,46,1,65,24,0,66,8,0,66
+    db 4,0,66,5,1,65,6,250,65,52,111,3,64,44,1,0
+HeR_FILL:
+    db 8,1,6,8,5,1,64,235,0,8,1,6,8,3,1,64,47,1,16,1,6,6,29,64
+    db 48,1,66,3,1,65,29,0,65,30,100,5,1,6,64,49,1,3,64,50,1,0
+HeR_BUILD:
+    db 6,11,6,44,64,51,1,6,11,6,45,64,52,1,7,11,4,21,22,64,53,1,12,64
+    db 54,1,65,44,0,65,45,0,65,63,250,0
+HeR_SHOOT:
+    db 11,1,21,7,22,112,10,21,64,55,1,71,22,1,21,7,22,112,5,47,64,56,1,64
+    db 57,1,65,22,0,65,47,0,66,7,0,11,1,21,7,22,112,64,56,1,65,22,0,19
+    db 1,19,7,10,108,5,67,64,58,1,65,10,0,65,67,0,66,9,0,13,1,19,7,10
+    db 108,5,24,64,59,1,65,10,250,13,1,19,7,10,108,5,56,64,59,1,65,10,250,13
+    db 1,19,7,10,108,5,60,64,59,1,65,10,250,13,1,19,7,10,108,5,47,64,60,1
+    db 65,10,0,11,1,19,7,10,108,64,61,1,65,10,250,7,15,2,21,19,64,62,1,3
+    db 64,63,1,0
+HeR_HIT:
+    db 13,1,54,6,34,64,64,1,65,54,0,65,5,250,5,1,54,64,65,1,10,15,5,24
+    db 47,67,56,60,64,66,1,3,64,31,1,0
+HeR_ATTACK:
+    db 12,15,5,24,47,67,56,60,6,19,64,67,1,10,15,5,24,47,67,56,60,64,66,1
+    db 3,64,68,1,0
+HeR_RUB:
+    db 7,1,49,5,56,64,31,1,8,1,49,11,6,51,64,69,1,16,1,49,3,52,64,70
+    db 1,64,71,1,65,56,250,66,10,0,9,1,49,64,70,1,64,72,1,71,3,64,31,1
+    db 0
+HeR_OFFER:
+    db 21,5,56,1,65,64,73,1,65,65,0,65,56,0,66,10,0,65,57,100,76,15,5,5
+    db 56,64,74,1,3,64,75,1,0
+HeR_SAY:
+    db 18,1,62,5,60,64,76,1,65,60,0,66,11,0,65,61,250,76,40,5,1,53,64,77
+    db 1,5,5,60,64,78,1,3,64,31,1,0
+HeR_DRINK:
+    db 8,1,14,64,79,1,65,14,0,9,1,62,4,31,33,64,80,1,71,5,1,62,64,81
+    db 1,3,64,82,1,0
+HeR_DIVE:
+    db 13,3,29,64,20,1,66,6,0,66,12,10,68,31,7,4,28,30,64,21,1,71,6,4
+    db 21,22,64,83,1,6,4,34,35,64,83,1,3,64,84,1,0
+HeR_SCORE:
+    db 2,75,2,0
+HeR_QUIT:
+    db 5,75,2,66,19,1,0
+HeR_EVERY:
+    db 5,5,24,67,8,1,9,5,24,8,8,4,64,85,1,71,5,5,24,64,86,1,5,5
+    db 47,67,7,1,9,5,47,8,7,3,64,87,1,71,5,5,47,64,88,1,5,5,67,67
+    db 9,1,9,5,67,8,9,3,64,89,1,71,5,5,67,64,90,1,5,5,56,67,10,1
+    db 14,5,56,8,10,4,64,91,1,65,56,0,66,10,0,5,5,56,64,92,1,5,5,60
+    db 67,11,1,11,5,60,8,11,1,64,93,1,64,94,1,9,5,60,8,11,4,64,95,1
+    db 71,8,5,60,9,11,2,64,96,1,6,4,31,33,67,12,255,10,4,31,33,8,12,0
+    db 64,97,1,71,10,4,31,33,11,9,12,3,64,98,1,16,4,31,33,10,11,5,11,7
+    db 14,105,64,99,1,65,14,0,16,4,31,33,10,12,5,12,7,15,106,64,100,1,65,15
+    db 0,0
+HeR_LOOKX:
+    db 5,3,18,64,101,1,8,3,14,8,1,1,64,102,1,8,3,20,8,1,1,64,103,1
+    db 8,3,8,8,2,1,64,104,1,8,3,4,8,15,1,64,105,1,8,3,24,7,44,113
+    db 64,106,1,8,3,55,8,0,1,64,107,1,0
+}

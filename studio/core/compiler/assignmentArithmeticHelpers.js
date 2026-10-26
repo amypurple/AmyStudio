@@ -691,6 +691,22 @@ export function createAssignmentArithmeticHelpers({
   function emitDivideInt8Op(target, valueToken) {
     const info = getRuntimeInfo(target);
     if (!info || info.kind === "array" || info.type !== "int8") return null;
+    const declaredType = normalizeDeclaredType(resolveDeclaredValueType(target) || "byte");
+    if (isSignedDeclaredType(declaredType)) {
+      const loadTarget = emitLoadInt16IntoHL(target, "i16");
+      const loadValue = emitLoadInt16ValueIntoBC(valueToken, "i16");
+      const storeTarget = emitStoreInt8FromA(target);
+      if (!loadTarget || !loadValue || !storeTarget) return null;
+      return [
+        ...loadTarget,
+        "    push hl",
+        ...loadValue,
+        "    pop hl",
+        "    call AMY_I16_DIV",
+        "    ld a,l",
+        ...storeTarget
+      ];
+    }
     const loadTarget = emitLoadInt8Into("a", target);
     const storeTarget = emitStoreInt8FromA(target);
     if (!loadTarget || !storeTarget) return null;
@@ -767,6 +783,28 @@ export function createAssignmentArithmeticHelpers({
     return [
       ...loadTarget,
       ...Array.from({ length: shiftCount }, () => "    srl a"),
+      ...storeTarget
+    ];
+  }
+
+  function emitDivideSignedInt8ByPowerOfTwo(target, shiftCount) {
+    const info = getRuntimeInfo(target);
+    const declaredType = normalizeDeclaredType(resolveDeclaredValueType(target) || "byte");
+    if (!info || info.kind === "array" || info.type !== "int8" || !isSignedDeclaredType(declaredType)) return null;
+    // Bias then arithmetic-shift to preserve truncation toward zero. Through
+    // /8 this remains smaller than sign-extension plus AMY_I16_DIV setup.
+    if (!Number.isInteger(shiftCount) || shiftCount < 1 || shiftCount > 3) return null;
+    const loadTarget = emitLoadInt8Into("a", target);
+    const storeTarget = emitStoreInt8FromA(target);
+    if (!loadTarget || !storeTarget) return null;
+    const nonNegative = makeGeneratedLabel("DivSigned8NonNegative");
+    return [
+      ...loadTarget,
+      "    bit 7,a",
+      `    jr z,${nonNegative}`,
+      `    add a,${(1 << shiftCount) - 1}`,
+      `${nonNegative}:`,
+      ...Array.from({ length: shiftCount }, () => "    sra a"),
       ...storeTarget
     ];
   }
@@ -1389,6 +1427,8 @@ export function createAssignmentArithmeticHelpers({
           && (constantNumeric & (constantNumeric - 1)) === 0) {
         const powerDivision = emitDivideUnsignedInt8ByPowerOfTwo(target, Math.log2(constantNumeric));
         if (powerDivision) return powerDivision;
+        const signedPowerDivision = emitDivideSignedInt8ByPowerOfTwo(target, Math.log2(constantNumeric));
+        if (signedPowerDivision) return signedPowerDivision;
       }
       if ((valueTokenReferencesRuntimeValue || resolveValueType(valueToken) === "int8")
           && (opToken === "+=" || opToken === "-=")) {

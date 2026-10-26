@@ -1,0 +1,1082 @@
+cartridge "MONTE CARLO/AMY BIENVENU/2026"
+
+' MONTE CARLO
+' The solitaire card game from COMPUTE! magazine, September 1987, by
+' Thomas Carlson (versions for the Commodore 64, Apple II, Atari 8-bit,
+' Amiga, Atari ST and IBM PC), for the ColecoVision in Amy by Amy Bienvenu.
+'
+' Shuffle a deck and deal a grid five cards across. Remove two cards of the
+' same value that touch (side by side, above and below, or corner to
+' corner). The cards left slide up to fill the gaps, in reading order, and
+' new cards from the deck fill the end of the grid. Clear all 52 to win.
+' Easy deals six rows, Medium five, Hard four.
+'
+' Controls (either joystick): the stick moves the pointer; the left button
+' picks a card, then its partner (pick it again to let go); the right
+' button opens the menu (continue, new deal, title). Keypad not used.
+'
+' Liberties taken:
+' - The cards are drawn like the Apple II version's hi-res cards.
+' - Joystick and side buttons instead of the cursor keys and RETURN; the
+'   right button menu replaces the Q key.
+' - The game notices when no pair is left, says so and counts the cards
+'   removed; the best count for each level is kept until power off.
+' - New music (Riviera Waltz) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; at most two sprites (the
+' pointers); the frame loop is protected from the NMI and the screen is
+' drawn with the NMI off after a wait.
+
+const TRk0 = 128
+const TRk1 = 129
+const TRk2 = 130
+const TRk3 = 131
+const TRk4 = 132
+const TRk5 = 133
+const TRk6 = 134
+const TRk7 = 135
+const TRk8 = 136
+const TRk9 = 137
+const TRk10 = 138
+const TRk11 = 139
+const TRk12 = 140
+const TRr0 = 141
+const TRr1 = 142
+const TRr2 = 143
+const TRr3 = 144
+const TRr4 = 145
+const TRr5 = 146
+const TRr6 = 147
+const TRr7 = 148
+const TRr8 = 149
+const TRr9 = 150
+const TRr10 = 151
+const TRr11 = 152
+const TRr12 = 153
+const TSs0 = 154
+const TSs1 = 155
+const TSs2 = 156
+const TSs3 = 157
+const TPipa00 = 158
+const TPipa01 = 159
+const TPipa10 = 160
+const TPipa11 = 161
+const TPipb00 = 162
+const TPipb01 = 163
+const TPipb10 = 164
+const TPipb11 = 165
+const TPipc00 = 166
+const TPipc01 = 167
+const TPipc10 = 168
+const TPipc11 = 169
+const TPipd00 = 170
+const TPipd01 = 171
+const TPipd10 = 172
+const TPipd11 = 173
+const TEtl = 174
+const TEtr = 175
+const TEl = 176
+const TEr = 177
+const TEbl = 178
+const TEbr = 179
+const TFelt = 180
+const TBack00 = 181
+const TBack01 = 182
+const TBack02 = 183
+const TBack03 = 184
+const TBack10 = 185
+const TBack11 = 186
+const TBack12 = 187
+const TBack13 = 188
+const TBack20 = 189
+const TBack21 = 190
+const TBack22 = 191
+const TBack23 = 192
+const SArrow = 0
+const SArrowl = 4
+const NTiles8 = 520
+const SprBytes = 64
+const SndMove = 1
+const SndPick = 2
+const SndUnpick = 3
+const SndMatch = 4
+const SndBad = 5
+const SndShuffle = 6
+const SndDeal = 7
+const SndWin = 8
+const SndOver = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+u8 Cd[52]
+u8 Best[3]
+u16 NumU = 0
+u8 Left = 0
+u8 Level = 0
+u8 NR = 5
+u8 NB = 25
+u8 R0 = 4
+u8 Cur = 0
+u8 Sel = 255
+u8 Shown = 0
+u8 Moves = 0
+u8 Menu = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Mix = 0
+u8 Tick = 0
+u8 Sp = 0
+u8 Dq = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Dk = 0
+u8 Ds = 0
+u8 Dr = 0
+u8 Pa = 0
+u8 Pb = 0
+u8 Xa = 0
+u8 Ya = 0
+u8 Xb = 0
+u8 Yb = 0
+u8 Ok = 0
+u8 Ix = 0
+u8 J = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table McSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Best[0] = 0
+  Best[1] = 0
+  Best[2] = 0
+  EditorialPage
+
+title:
+  TitlePage
+  if Menu = 3 then
+    RulesPage
+    goto title
+  end if
+  Level = Menu
+
+new_deal:
+  NR = 6 - Level
+  NB = NR * 5
+  V = 6 - NR
+  V = V * 3
+  V = V >> 1
+  R0 = 3 + V
+  Shuffle
+  Deal
+  Cur = 0
+  Sel = 255
+  CheckMoves
+
+play_loop:
+  Frame1
+  ReadPad
+  MovePointer
+  if Press = 1 then PickCard
+  if Left = 0 then goto won
+  if Moves = 0 then goto stuck
+  if Press2 = 1 then
+    GameMenu
+    if Menu = 1 then goto new_deal
+    if Menu = 2 then goto title
+  end if
+  DrawPointers
+  goto play_loop
+
+won:
+  HideSprites
+  ShowHud
+  ClearMsg
+  print at 4,22, "THE TABLEAU IS CLEARED!"
+  play sound SndWin
+  Rearm
+  wait 150 frames
+  nmi off
+  goto after_game
+
+stuck:
+  HideSprites
+  ClearMsg
+  print at 2,22, "NO MORE PAIRS"
+  V = 52 - Left
+  NumU = V
+  print at 16,22, digits$(NumU, 2)
+  print at 19,22, "REMOVED"
+  play sound SndOver
+  Rearm
+  wait 150 frames
+  nmi off
+
+after_game:
+  ' remember the best count for this level
+  V = 52 - Left
+  if V > Best[Level] then Best[Level] = V
+  ShowHud
+  EndMenu
+  if Menu = 0 then goto new_deal
+  goto title
+
+' ---------------------------------------------------------------------------
+' Frame and controls
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  ' the stick: one step when pushed, then a repeat while held
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 18
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 7
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 1
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark green
+  cls
+  for Y = 2 to 20
+    fill TFelt count 28 at 2,Y
+  next
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The deck
+
+sub Shuffle:
+  for J = 0 to 51
+    Cd[J] = J
+  next
+  play sound SndShuffle
+  ' Fisher-Yates, from the top card down
+  J = 51
+sh_next:
+  V = random(0, 255)
+  V += Mix
+  V += Tick
+  N = J + 1
+  while V >= N
+    V -= N
+  end while
+  X = Cd[J]
+  Cd[J] = Cd[V]
+  Cd[V] = X
+  Mix += 37
+  dec J
+  if J > 0 then goto sh_next
+  Left = 52
+  return
+end sub
+
+' draw the grid from the start, a card at a time
+sub Deal:
+  NewScreen
+  ShowHud
+  ClearMsg
+  print at 2,22, "SHUFFLING THE DECK..."
+  ShowScreen
+  Rearm
+  wait 30 frames
+  nmi off
+  for Sp = 0 to 29
+    if Sp < NB then
+      DrawSlot
+      play sound SndDeal
+      Rearm
+      wait 3 frames
+      nmi off
+    end if
+  next
+  ClearMsg
+  print at 2,22, "FIND PAIRS THAT TOUCH"
+  return
+end sub
+
+' Sp = a grid slot: Dx, Dy = its top-left tile
+sub SlotPos:
+  Dq = Sp
+  Dy = 0
+  while Dq >= 5
+    Dq -= 5
+    inc Dy
+  end while
+  Dx = Dq * 5
+  Dx += 4
+  Dy = Dy * 3
+  Dy += R0
+  return
+end sub
+
+' Dk = a card (0-51): Dr = its value (0-12), Ds = its suit (0-3)
+sub CardOf:
+  Dr = Dk
+  Ds = 0
+  while Dr >= 13
+    Dr -= 13
+    inc Ds
+  end while
+  return
+end sub
+
+' draw grid slot Sp: its card, or the felt when it is empty
+sub DrawSlot:
+  SlotPos
+  if Sp >= Left then
+    for Dq = 0 to 2
+      Y = Dy + Dq
+      fill TFelt count 4 at Dx,Y
+    next
+    return
+  end if
+  Dk = Cd[Sp]
+  CardOf
+  ' top row: corner, value, small suit, corner
+  put char TEtl at Dx,Dy
+  X = Dx + 1
+  V = TRk0 + Dr
+  if Ds < 2 then V = TRr0 + Dr
+  put char V at X,Dy
+  inc X
+  V = TSs0 + Ds
+  put char V at X,Dy
+  inc X
+  put char TEtr at X,Dy
+  ' the big suit, two rows
+  N = Ds * 4
+  N += TPipa00
+  Y = Dy + 1
+  put char TEl at Dx,Y
+  X = Dx + 1
+  put char N at X,Y
+  inc N
+  inc X
+  put char N at X,Y
+  inc X
+  put char TEr at X,Y
+  inc N
+  inc Y
+  put char TEbl at Dx,Y
+  X = Dx + 1
+  put char N at X,Y
+  inc N
+  inc X
+  put char N at X,Y
+  inc X
+  put char TEbr at X,Y
+  return
+end sub
+
+' Pa, Pb slots: Ok = 1 when they touch (sides or corners)
+sub Touch:
+  Ok = 0
+  if Pa = Pb then return
+  Xa = Pa
+  Ya = 0
+  while Xa >= 5
+    Xa -= 5
+    inc Ya
+  end while
+  Xb = Pb
+  Yb = 0
+  while Xb >= 5
+    Xb -= 5
+    inc Yb
+  end while
+  V = Xa + 1
+  if Xb > V then return
+  V = Xb + 1
+  if Xa > V then return
+  V = Ya + 1
+  if Yb > V then return
+  V = Yb + 1
+  if Ya > V then return
+  Ok = 1
+  return
+end sub
+
+' Ok = 1 when the cards in slots Pa and Pb have the same value
+sub SameValue:
+  Dk = Cd[Pa]
+  CardOf
+  X = Dr
+  Dk = Cd[Pb]
+  CardOf
+  Ok = 0
+  if X = Dr then Ok = 1
+  return
+end sub
+
+' Moves = 1 when some pair of touching cards with the same value is left
+sub CheckMoves:
+  Moves = 0
+  Shown = NB
+  if Left < NB then Shown = Left
+  if Shown < 2 then return
+  V = Shown - 1
+  for Ix = 0 to 29
+    if Ix < Shown then
+      if Moves = 0 then
+        ' the neighbours further on: right, below left, below, below right
+        Pa = Ix
+        for J = 0 to 3
+          Pb = Ix + 1
+          if J = 1 then Pb = Ix + 4
+          if J = 2 then Pb = Ix + 5
+          if J = 3 then Pb = Ix + 6
+          if Pb < Shown then
+            Touch
+            if Ok = 1 then
+              SameValue
+              if Ok = 1 then Moves = 1
+            end if
+          end if
+        next
+      end if
+    end if
+  next
+  return
+end sub
+
+' remove the cards in slots Pa < Pb: the rest move up, the deck fills in
+sub RemovePair:
+  if Pa > Pb then
+    V = Pa
+    Pa = Pb
+    Pb = V
+  end if
+  Ix = Pb
+  while Ix < 51
+    V = Ix + 1
+    Cd[Ix] = Cd[V]
+    inc Ix
+  end while
+  dec Left
+  Ix = Pa
+  while Ix < 51
+    V = Ix + 1
+    Cd[Ix] = Cd[V]
+    inc Ix
+  end while
+  dec Left
+  for Sp = 0 to 29
+    if Sp >= Pa then
+      if Sp < NB then DrawSlot
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Playing
+
+sub MovePointer:
+  if Stick = 0 then return
+  Pa = Cur
+  Xa = Cur
+  Ya = 0
+  while Xa >= 5
+    Xa -= 5
+    inc Ya
+  end while
+  if Lf1 = 1 then
+    if Xa > 0 then dec Cur
+  end if
+  if Rt1 = 1 then
+    if Xa < 4 then inc Cur
+  end if
+  if Up1 = 1 then
+    if Ya > 0 then Cur -= 5
+  end if
+  if Dn1 = 1 then
+    V = Cur + 5
+    if V < NB then Cur = V
+  end if
+  if Cur <> Pa then play sound SndMove
+  return
+end sub
+
+sub PickCard:
+  if Cur >= Left then
+    play sound SndBad
+    return
+  end if
+  if Sel = 255 then
+    Sel = Cur
+    play sound SndPick
+    return
+  end if
+  if Sel = Cur then
+    Sel = 255
+    play sound SndUnpick
+    return
+  end if
+  Pa = Sel
+  Pb = Cur
+  Touch
+  if Ok = 0 then
+    ClearMsg
+    print at 2,22, "THOSE CARDS DO NOT TOUCH"
+    play sound SndBad
+    return
+  end if
+  SameValue
+  if Ok = 0 then
+    ClearMsg
+    print at 2,22, "NOT THE SAME VALUE"
+    play sound SndBad
+    return
+  end if
+  Pa = Sel
+  Pb = Cur
+  Sel = 255
+  HideSprites
+  play sound SndMatch
+  RemovePair
+  ClearMsg
+  ShowHud
+  CheckMoves
+  return
+end sub
+
+sub DrawPointers:
+  Sp = Cur
+  SlotPos
+  X = Dx * 8
+  X -= 8
+  Y = Dy * 8
+  Y += 5
+  V = 11
+  N = Tick & 16
+  if N > 0 then V = 10
+  set sprite 0 to Y,X,SArrow,V
+  if Sel = 255 then
+    set sprite 1 to 192,0,0,0
+  else
+    Sp = Sel
+    SlotPos
+    X = Dx * 8
+    X += 32
+    Y = Dy * 8
+    Y += 5
+    set sprite 1 to Y,X,SArrowl,8
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  print at 2,1, "MONTE CARLO"
+  if Level = 0 then print at 24,1, "EASY"
+  if Level = 1 then print at 22,1, "MEDIUM"
+  if Level = 2 then print at 24,1, "HARD"
+  fill 32 count 28 at 2,21
+  print at 2,21, "CARDS"
+  NumU = Left
+  print at 8,21, digits$(NumU, 2)
+  print at 11,21, "DECK"
+  V = 0
+  if Left > NB then V = Left - NB
+  NumU = V
+  print at 16,21, digits$(NumU, 2)
+  print at 20,21, "BEST"
+  NumU = Best[Level]
+  print at 25,21, digits$(NumU, 2)
+  return
+end sub
+
+' the right button: continue, a new deal, or the title (Menu 0, 1, 2)
+sub GameMenu:
+  HideSprites
+  Menu = 0
+gm_draw:
+  ClearMsg
+  print at 3,22, "CONTINUE"
+  print at 13,22, "NEW DEAL"
+  print at 23,22, "TITLE"
+  V = Menu * 10
+  V += 2
+  put char 62 at V,22
+gm_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Rt1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    if Lf1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    play sound SndMove
+    goto gm_draw
+  end if
+  if Press2 = 1 then
+    Menu = 0
+    ClearMsg
+    return
+  end if
+  if Press = 0 then goto gm_loop
+  ClearMsg
+  return
+end sub
+
+' after a game: play again (Menu 0) or the title (Menu 1)
+sub EndMenu:
+  Menu = 0
+em_draw:
+  fill 32 count 28 at 2,22
+  print at 5,22, "PLAY AGAIN"
+  print at 19,22, "TITLE"
+  V = Menu * 14
+  V += 4
+  put char 62 at V,22
+em_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Rt1 = 1 then Menu = 1
+    if Lf1 = 1 then Menu = 0
+    play sound SndMove
+    goto em_draw
+  end if
+  if Press = 0 then goto em_loop
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub TitlePage:
+  NewScreen
+  print at 10,2, "MONTE CARLO"
+  print at 7,3, "A SOLITAIRE GAME"
+  ' four aces and the deck
+  R0 = 6
+  Left = 52
+  for J = 0 to 3
+    Cd[J] = J * 13
+  next
+  for Sp = 0 to 3
+    DrawSlot
+  next
+  put char TBack00 at 24,6
+  put char TBack01 at 25,6
+  put char TBack02 at 26,6
+  put char TBack03 at 27,6
+  put char TBack10 at 24,7
+  put char TBack11 at 25,7
+  put char TBack12 at 26,7
+  put char TBack13 at 27,7
+  put char TBack20 at 24,8
+  put char TBack21 at 25,8
+  put char TBack22 at 26,8
+  put char TBack23 at 27,8
+  Menu = 1
+  ShowTitleMenu
+  print at 5,20, "COMPUTE! SEPTEMBER 1987"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 3 then inc Menu
+    end if
+    ShowTitleMenu
+  end if
+  V = Press | Press2
+  if V = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub ShowTitleMenu:
+  for Y = 12 to 15
+    fill 32 count 18 at 7,Y
+  next
+  print at 9,12, "EASY    6 ROWS"
+  print at 9,13, "MEDIUM  5 ROWS"
+  print at 9,14, "HARD    4 ROWS"
+  print at 9,15, "HOW TO PLAY"
+  V = Menu + 12
+  put char 62 at 7,V
+  return
+end sub
+
+sub RulesPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop dark green
+  cls
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "TAKE AWAY TWO CARDS OF THE"
+  print at 2,4, "SAME VALUE THAT TOUCH: SIDE"
+  print at 2,5, "BY SIDE, ONE ABOVE THE OTHER"
+  print at 2,6, "OR CORNER TO CORNER."
+  print at 2,8, "THE OTHER CARDS MOVE UP TO"
+  print at 2,9, "FILL THE GAPS, AND NEW CARDS"
+  print at 2,10, "FROM THE DECK FILL THE END."
+  print at 2,12, "CLEAR ALL 52 CARDS TO WIN."
+  print at 2,14, "STICK   MOVE THE POINTER"
+  print at 2,15, "LEFT    PICK A CARD, THEN"
+  print at 10,16, "ITS PARTNER"
+  print at 2,17, "RIGHT   MENU"
+  print at 7,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 10,1, "MONTE CARLO"
+  print at 2,3, "BY THOMAS CARLSON, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE, SEPTEMBER"
+  print at 2,5, "1987, FOR THE COMMODORE 64,"
+  print at 2,6, "APPLE II, ATARI, AMIGA, ST"
+  print at 2,7, "AND IBM PC."
+  print at 2,9, "CARDS DRAWN AFTER THE APPLE"
+  print at 2,10, "II VERSION. NEW MUSIC:"
+  print at 2,11, "RIVIERA WALTZ."
+  print at 2,13, "COLECOVISION VERSION BY"
+  print at 2,14, "AMY BIENVENU, 2026."
+  print at 7,22, "PRESS A BUTTON"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$18,$24,$24,$C3,$24,$24,$00
+  $00,$1C,$22,$04,$08,$10,$C1,$00
+  $00,$C3,$02,$1C,$02,$02,$C3,$00
+  $00,$04,$0C,$14,$24,$C1,$04,$00
+  $00,$C1,$20,$C3,$02,$02,$C3,$00
+  $00,$1C,$20,$C3,$22,$22,$1C,$00
+  $00,$C1,$02,$04,$08,$08,$08,$00
+  $00,$1C,$22,$1C,$22,$22,$1C,$00
+  $00,$1C,$22,$22,$E1,$02,$1C,$00
+  $00,$26,$29,$29,$29,$29,$26,$00
+  $00,$0E,$04,$04,$04,$24,$18,$00
+  $00,$1C,$22,$22,$2A,$24,$1A,$00
+  $00,$22,$24,$38,$24,$22,$22,$00
+  $00,$00,$28,$83,$83,$38,$10,$00
+  $00,$00,$10,$38,$83,$38,$10,$00
+  $00,$00,$10,$38,$83,$83,$28,$00
+  $00,$00,$38,$38,$83,$93,$10,$00
+  $00,$00,$1C,$C1,$80,$80,$80,$C0
+  $00,$00,$38,$83,$01,$01,$01,$03
+  $E0,$F0,$07,$03,$01,$00,$00,$00
+  $07,$F0,$E0,$C0,$80,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $C0,$E0,$F0,$07,$03,$01,$00,$00
+  $03,$07,$F0,$E0,$C0,$80,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C1,$E2,$01,$03,$07,$00,$00
+  $01,$83,$B8,$80,$C0,$E0,$00,$00
+  $00,$03,$07,$07,$03,$C6,$82,$80
+  $00,$C0,$E0,$E0,$C0,$9C,$41,$01
+  $82,$C6,$01,$03,$07,$00,$00,$00
+  $41,$9C,$80,$C0,$E0,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$04,$00,$00,$00,$40,$00
+  $00,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$44,$AA,$11,$AA,$44,$AA,$11
+  $00,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$91
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $AA,$44,$AA,$11,$AA,$44,$AA,$11
+  $54,$45,$54,$11,$54,$45,$54,$11
+  $AA,$C4,$AA,$91,$AA,$C4,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $AA,$44,$AA,$11,$AA,$44,$AA,$00
+  $54,$45,$54,$11,$54,$45,$54,$00
+end data
+data TileCol bytes
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$1F,$1F,$F1,$1F,$0F
+  $0E,$F1,$1F,$F1,$1F,$1F,$F1,$0F
+  $0E,$1F,$1F,$F1,$1F,$1F,$1F,$0F
+  $0E,$F1,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$F1,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$1F,$1F,$1F,$1F,$1F,$1F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$8F,$8F,$F8,$8F,$0F
+  $0E,$F8,$8F,$F8,$8F,$8F,$F8,$0F
+  $0E,$8F,$8F,$F8,$8F,$8F,$8F,$0F
+  $0E,$F8,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$8F,$8F,$8F,$8F,$8F,$8F,$0F
+  $0E,$0F,$8F,$F8,$F8,$8F,$8F,$0F
+  $0E,$0F,$8F,$8F,$F8,$8F,$8F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0E,$0F,$1F,$1F,$F1,$F1,$1F,$0F
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $0F,$0F,$8F,$F8,$F8,$F8,$F8,$F8
+  $F8,$F8,$8F,$8F,$8F,$0F,$0F,$0E
+  $F8,$8F,$8F,$8F,$8F,$0F,$0F,$0E
+  $0F,$8F,$8F,$8F,$F8,$F8,$F8,$F8
+  $0F,$8F,$8F,$8F,$8F,$F8,$F8,$F8
+  $F8,$F8,$F8,$8F,$8F,$8F,$0F,$0E
+  $F8,$F8,$8F,$8F,$8F,$8F,$0F,$0E
+  $0F,$1F,$1F,$1F,$F1,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $F1,$F1,$F1,$1F,$1F,$1F,$0F,$0E
+  $F1,$F1,$1F,$1F,$1F,$1F,$0F,$0E
+  $0F,$1F,$1F,$1F,$1F,$F1,$F1,$F1
+  $0F,$1F,$1F,$1F,$1F,$1F,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$0F,$0F,$0E
+  $F1,$1F,$1F,$1F,$1F,$0F,$0F,$0E
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $0E,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$0E
+  $0C,$0C,$2C,$0C,$0C,$0C,$2C,$0C
+  $0E,$45,$45,$45,$45,$45,$45,$45
+  $0E,$45,$45,$45,$45,$45,$45,$45
+  $0E,$45,$45,$45,$45,$45,$45,$45
+  $0E,$45,$54,$45,$54,$45,$54,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $45,$45,$45,$45,$45,$45,$45,$45
+  $54,$45,$54,$45,$54,$45,$54,$45
+  $45,$45,$45,$45,$45,$45,$45,$0E
+  $45,$45,$45,$45,$45,$45,$45,$0E
+  $45,$45,$45,$45,$45,$45,$45,$0E
+  $54,$45,$54,$45,$54,$45,$54,$0E
+end data
+data SpritePat bytes
+  $00,$00,$00,$C0,$F0,$FC,$FE,$FC,$F0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0F,$3F,$7F,$3F,$0F,$03,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+McMove:
+    db $40,$40,$60,$01,$50
+McPick:
+    db $40,$71,$30,$02,$40,$55,$40,$02,$50
+McUnpick:
+    db $40,$55,$40,$02,$40,$71,$50,$02,$50
+McMatch:
+    db $40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$71,$20,$03,$40,$71,$F0,$01,$40,$5F,$20,$03,$40,$5F,$F0,$01
+    db $40,$47,$20,$07,$40,$47,$F0,$01,$50
+McBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+McShuffle:
+    db $00,$00,$51,$02,$00,$00,$72,$02,$00,$00,$51,$02,$00,$00,$72,$02,$00,$00,$51,$02,$00,$00,$72,$02
+    db $00,$00,$51,$02,$00,$00,$82,$03,$10
+McDeal:
+    db $00,$00,$61,$01,$00,$00,$92,$01,$10
+McWin:
+    db $40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+McOver:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+McSoundTable:
+    dw McMove,$702B
+    dw McPick,$7035
+    dw McUnpick,$7035
+    dw McMatch,$7035
+    dw McBad,$702B
+    dw McShuffle,$702B
+    dw McDeal,$702B
+    dw McWin,$7035
+    dw McOver,$7035
+    dw McTuneMel,$703F
+    dw McTuneBass,$7049
+; Riviera Waltz, G major (original for this game)
+; Tiny Sound, 9 frames per step
+McTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$30,$1A,$21,$2A,$00,$00,$2D,$00,$01,$32,$01,$01,$31,$00,$01
+    db $2F,$01,$01,$2B,$00,$01,$28,$01,$01,$2D,$00,$01,$2A,$01,$01,$26
+    db $00,$01,$2A,$01,$01,$2D,$00,$01,$2B,$01,$01,$28,$00,$01,$25,$01
+    db $01,$26,$00,$01
+    db $FF
+McTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$18,$32,$0E,$12,$15,$0E,$12,$15,$0E,$12,$15,$09,$0D,$10
+    db $07,$0B,$0E,$07,$0B,$0E,$09,$0D,$10,$09,$0D,$10,$0E,$12,$15,$0B
+    db $0E,$12,$0E,$12,$15,$09,$0D,$10,$04,$07,$0B,$09,$0D,$10,$09,$0D
+    db $10,$0E,$12,$15
+    db $FF
+}

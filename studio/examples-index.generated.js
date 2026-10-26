@@ -2354,6 +2354,89 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "monte-carlo",
+    "label": "Monte Carlo (1987)",
+    "detail": "Thomas Carlson's solitaire card game from COMPUTE!, September 1987, adapted with joystick selection, three difficulty levels, music and persistent best counts.",
+    "projectName": "Monte Carlo",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "adaptation",
+      "game",
+      "cards",
+      "solitaire",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "marbles",
+    "label": "Marbles (1987)",
+    "detail": "Stephen Stout's COMPUTE! pipe-routing arcade game from October 1987, with simultaneous arrow switching, paired buckets, procedural pipe layouts and rising speed.",
+    "projectName": "Marbles",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "adaptation",
+      "game",
+      "arcade",
+      "pipes",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "the-hermit",
+    "label": "The Hermit (1987)",
+    "detail": "Eric Bryant's COMPUTE! adventure from November 1987, rebuilt with joystick verb-and-noun menus, packed text, illustrated locations, ten treasures and a complete rule-bytecode engine.",
+    "projectName": "The Hermit",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "adaptation",
+      "game",
+      "adventure",
+      "text",
+      "graphics",
+      "zx0",
+      "manual-canon"
+    ]
+  },
+  {
+    "id": "leaping-larry",
+    "label": "Leaping Larry (1987)",
+    "detail": "Michael Streeter's COMPUTE! factory action game from December 1987, featuring smooth conveyor belts, six floors, robots, falling plans, music and progressively hidden platforms.",
+    "projectName": "Leaping Larry",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute",
+      "adaptation",
+      "game",
+      "platform",
+      "conveyors",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "3d-super-plotter",
     "label": "3-D Super Plotter (1987)",
     "detail": "Fourteen interactive 3-D mathematical surfaces inspired by COMPUTE!'s 3-D Surfaces and Superplotter, with rotation, tilt, mesh density, perspective and hidden-line controls.",

@@ -1,0 +1,835 @@
+cartridge "MARBLES/AMY BIENVENU/2026"
+
+' MARBLES
+' The arcade game by Stephen Stout from COMPUTE! magazine, October 1987
+' (Atari version; Commodore 64 version by Bill Chin, Amiga and IBM PC
+' versions by Tim Midkiff), for the ColecoVision in Amy by Amy Bienvenu.
+'
+' Marbles drop one at a time into the tops of six glass pipes. Where a
+' cross pipe joins, an arrow says whether a marble coming down goes on down
+' or turns along the cross pipe; the button flips every arrow at once.
+' Slide the red and blue buckets under the pipes and catch each marble in
+' the bucket of its colour. Forty marbles drop on each level; catch twenty
+' to go on to the next, faster level with more cross pipes.
+'
+' Controls (either joystick): left and right slide the buckets; either
+' side button flips the arrows. Keypad not used.
+'
+' Liberties taken (the versions all differ; this one takes from each):
+' - Two buckets, red and blue, from the Atari version; random pipe mazes,
+'   40 marbles a level and 20 to catch, from the Amiga and PC versions.
+' - Every arrow flips with the button, as in the Atari version; a marble
+'   that arrives along a cross pipe always carries on down (no loops).
+' - No gremlins (Apple II) and no multi-player turns (Amiga, PC).
+' - Original graphics, sounds and music (Rolling Down).
+'
+' House rules kept: columns 2-29, rows 1-22; the buckets are sprites 0
+' and 1, which never flicker; the frame loop is protected from the NMI and
+' the screen is drawn with the NMI off after a wait.
+
+const TPv = 128
+const TPh = 129
+const TPtop = 130
+const TPbot = 131
+const TPbr = 132
+const TJr0 = 133
+const TJr1 = 134
+const TJl0 = 135
+const TJl1 = 136
+const TFloor = 137
+const TStar = 138
+const TBall00 = 139
+const TBall01 = 140
+const TBall10 = 141
+const TBall11 = 142
+const SMarble = 0
+const SBucket = 4
+const SSplash = 8
+const NTiles8 = 120
+const SprBytes = 96
+const SndDrop = 1
+const SndFlip = 2
+const SndClack = 3
+const SndCatch = 4
+const SndMiss = 5
+const SndWrong = 6
+const SndLevel = 7
+const SndOver = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+u8 ConR[15]
+u8 ConG[15]
+u8 ArL[15]
+u8 ArR[15]
+u8 MbC[6]
+u8 MbX[6]
+u8 MbY[6]
+u8 MbD[6]
+u8 MbT[6]
+u16 NumU = 0
+u16 Score = 0
+u16 Best = 0
+u16 TotC = 0
+u16 TotD = 0
+u8 NCon = 0
+u8 Level = 1
+u8 Dropped = 0
+u8 Caught = 0
+u8 Active = 0
+u8 MaxM = 3
+u8 Spd = 1
+u8 SpawnT = 0
+u8 SpawnI = 60
+u8 Bx = 112
+u8 SplT = 0
+u8 SplX = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Mix = 0
+u8 Tick = 0
+u8 Mi = 0
+u8 St = 0
+u8 Gk = 0
+u8 Gr = 0
+u8 Gc = 0
+u8 Tries = 0
+u8 Ok = 0
+u8 Jk = 0
+u8 Pp = 0
+u8 Rw = 0
+u8 Cx = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MbSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  EditorialPage
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  Level = 1
+  Score = 0
+  TotC = 0
+  TotD = 0
+
+new_level:
+  NewLevel
+
+play_loop:
+  Frame1
+  ReadPad
+  ' the buckets
+  if Lf1 = 1 then
+    if Bx > 17 then Bx -= 2
+  end if
+  if Rt1 = 1 then
+    if Bx < 207 then Bx += 2
+  end if
+  if Press = 1 then FlipArrows
+  Spawn
+  for St = 1 to 2
+    if St <= Spd then MoveMarbles
+  next
+  if SplT > 0 then dec SplT
+  DrawSprites
+  if Dropped < 40 then goto play_loop
+  if Active > 0 then goto play_loop
+  ' the level is over
+  if Caught >= 20 then
+    HideSprites
+    print at 8,22, "LEVEL CLEARED!"
+    play sound SndLevel
+    NumU = Level * 100
+    Score += NumU
+    if Score > Best then Best = Score
+    ShowHud
+    Rearm
+    wait 150 frames
+    nmi off
+    if Level < 99 then inc Level
+    goto new_level
+  end if
+  ' game over: the score and how well you caught
+  HideSprites
+  if Score > Best then Best = Score
+  ShowHud
+  fill 32 count 28 at 2,22
+  print at 4,22, "GAME OVER"
+  play sound SndOver
+  ' the rating: marbles caught out of marbles dropped, in percent
+  NumU = TotC * 100
+  NumU = NumU / TotD
+  print at 15,22, digits$(NumU, 3)
+  print at 18,22, "% CAUGHT"
+  Rearm
+  wait 180 frames
+  wait no fire
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' Frame and controls
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' A level: six pipes, random cross pipes between them
+
+sub NewLevel:
+  NewScreen
+  ' faster and busier as the levels go up
+  MaxM = Level + 2
+  if MaxM > 6 then MaxM = 6
+  Spd = 1
+  if Level >= 4 then Spd = 2
+  V = Level * 5
+  SpawnI = 75
+  if V < 40 then SpawnI = 75 - V
+  if V >= 40 then SpawnI = 35
+  Dropped = 0
+  Caught = 0
+  Active = 0
+  SplT = 0
+  for J = 0 to 5
+    MbC[J] = 0
+  next
+  ' the stars behind the pipes
+  for Y = 2 to 19
+    V = Y * 7
+    for X = 2 to 29
+      V += 13
+      N = V & 31
+      if N = 0 then put char TStar at X,Y
+    next
+  next
+  ' the pipes, row 3 to row 18
+  for Pp = 0 to 5
+    Cx = Pp * 4
+    Cx += 5
+    put char TPtop at Cx,3
+    for Y = 4 to 17
+      put char TPv at Cx,Y
+    next
+    put char TPbot at Cx,18
+  next
+  ' the cross pipes
+  NCon = 0
+  K = Level + 1
+  K = K >> 1
+  K += 1
+  if K > 3 then K = 3
+  for Gk = 0 to 4
+    for J = 1 to 3
+      if J <= K then AddCross
+    next
+  next
+  DrawCrosses
+  fill TFloor count 28 at 2,20
+  Bx = 112
+  ShowHud
+  fill 32 count 28 at 2,22
+  print at 9,22, "LEVEL"
+  NumU = Level
+  print at 15,22, digits$(NumU, 2)
+  print at 18,22, "- GO!"
+  ShowScreen
+  SpawnT = 90
+  return
+end sub
+
+' a cross pipe in gap Gk at a free row (not next to another one that
+' shares a pipe with it)
+sub AddCross:
+  for Tries = 1 to 12
+    Mix += 29
+    V = random(0, 255)
+    V += Mix
+    while V >= 12
+      V -= 12
+    end while
+    Gr = V + 5
+    Ok = 1
+    for Jk = 0 to 14
+      if Jk < NCon then
+        V = ConG[Jk] + 1
+        N = Gk + 1
+        ' gaps Gk - 1, Gk and Gk + 1 share a pipe with this one
+        if V >= Gk then
+          if ConG[Jk] <= N then
+            V = ConR[Jk]
+            if V = Gr then Ok = 0
+            V += 1
+            if V = Gr then Ok = 0
+            V = Gr + 1
+            if V = ConR[Jk] then Ok = 0
+          end if
+        end if
+      end if
+    next
+    if Ok = 1 then
+      ConG[NCon] = Gk
+      ConR[NCon] = Gr
+      V = Mix & 1
+      ArL[NCon] = V
+      V = Mix & 2
+      ArR[NCon] = 0
+      if V > 0 then ArR[NCon] = 1
+      inc NCon
+      return
+    end if
+  next
+  return
+end sub
+
+sub DrawCrosses:
+  for Jk = 0 to 14
+    if Jk < NCon then
+      Cx = ConG[Jk] * 4
+      Cx += 5
+      Gr = ConR[Jk]
+      V = TJr0 + ArL[Jk]
+      put char V at Cx,Gr
+      X = Cx + 1
+      fill TPh count 3 at X,Gr
+      X = Cx + 4
+      V = TJl0 + ArR[Jk]
+      put char V at X,Gr
+    end if
+  next
+  return
+end sub
+
+sub FlipArrows:
+  for Jk = 0 to 14
+    if Jk < NCon then
+      ArL[Jk] = ArL[Jk] ^ 1
+      ArR[Jk] = ArR[Jk] ^ 1
+    end if
+  next
+  DrawCrosses
+  play sound SndFlip
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Marbles
+
+sub Spawn:
+  if SpawnT > 0 then
+    dec SpawnT
+    return
+  end if
+  if Dropped >= 40 then return
+  if Active >= MaxM then return
+  SpawnT = SpawnI
+  for Mi = 0 to 5
+    if MbC[Mi] = 0 then
+      Mix += 41
+      V = random(0, 255)
+      V += Mix
+      while V >= 6
+        V -= 6
+      end while
+      X = V * 4
+      X += 5
+      MbX[Mi] = X * 8
+      MbY[Mi] = 24
+      MbD[Mi] = 0
+      V = Mix & 4
+      MbC[Mi] = 8
+      if V > 0 then MbC[Mi] = 5
+      inc Dropped
+      inc Active
+      if Dropped = 3 then fill 32 count 28 at 2,22
+      play sound SndDrop
+      ShowHud
+      return
+    end if
+  next
+  return
+end sub
+
+sub MoveMarbles:
+  for Mi = 0 to 5
+    if MbC[Mi] > 0 then MoveOne
+  next
+  return
+end sub
+
+sub MoveOne:
+  V = MbD[Mi]
+  if V = 0 then
+    Y = MbY[Mi] + 1
+    MbY[Mi] = Y
+    V = Y & 7
+    if V = 0 then
+      Rw = Y >> 3
+      if Rw >= 19 then
+        MbD[Mi] = 3
+      else
+        Junction
+      end if
+    end if
+  elseif V = 1 then
+    X = MbX[Mi] + 1
+    MbX[Mi] = X
+    if X = MbT[Mi] then
+      ' along the cross pipe and on down the next pipe
+      MbD[Mi] = 0
+      inc MbY[Mi]
+    end if
+  elseif V = 2 then
+    X = MbX[Mi] - 1
+    MbX[Mi] = X
+    if X = MbT[Mi] then
+      MbD[Mi] = 0
+      inc MbY[Mi]
+    end if
+  else
+    Y = MbY[Mi] + 1
+    MbY[Mi] = Y
+    if Y = 156 then Bucket
+    if Y >= 164 then
+      if MbC[Mi] > 0 then Lost
+    end if
+  end if
+  return
+end sub
+
+' a marble coming down reached row Rw: is there a cross pipe here?
+sub Junction:
+  X = MbX[Mi] >> 3
+  V = X - 5
+  Pp = V >> 2
+  for Jk = 0 to 14
+    if Jk < NCon then
+      if ConR[Jk] = Rw then
+        if ConG[Jk] = Pp then
+          ' the cross pipe goes right from this pipe
+          if ArL[Jk] = 1 then
+            MbD[Mi] = 1
+            V = X + 4
+            MbT[Mi] = V * 8
+            play sound SndClack
+          end if
+        end if
+        V = ConG[Jk] + 1
+        if V = Pp then
+          ' it goes left
+          if ArR[Jk] = 1 then
+            MbD[Mi] = 2
+            V = X - 4
+            MbT[Mi] = V * 8
+            play sound SndClack
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' the marble reaches the buckets' rim
+sub Bucket:
+  Cx = MbX[Mi] + 3
+  K = 0
+  V = Bx + 2
+  N = Bx + 13
+  if Cx >= V then
+    if Cx <= N then K = 8
+  end if
+  V = Bx + 18
+  N = Bx + 29
+  if Cx >= V then
+    if Cx <= N then K = 5
+  end if
+  if K = 0 then return
+  if K = MbC[Mi] then
+    inc Caught
+    inc TotC
+    NumU = Level * 10
+    Score += NumU
+    play sound SndCatch
+  else
+    play sound SndWrong
+  end if
+  inc TotD
+  MbC[Mi] = 0
+  dec Active
+  ShowHud
+  return
+end sub
+
+sub Lost:
+  play sound SndMiss
+  SplX = MbX[Mi]
+  SplT = 20
+  inc TotD
+  MbC[Mi] = 0
+  dec Active
+  ShowHud
+  return
+end sub
+
+sub DrawSprites:
+  set sprite 0 to 150,Bx,SBucket,8
+  X = Bx + 16
+  set sprite 1 to 150,X,SBucket,5
+  for Mi = 0 to 5
+    J = Mi + 2
+    V = MbC[Mi]
+    if V > 0 then
+      Y = MbY[Mi] - 1
+      X = MbX[Mi]
+      set sprite J to Y,X,SMarble,V
+    else
+      set sprite J to 192,0,0,0
+    end if
+  next
+  if SplT > 0 then
+    set sprite 8 to 151,SplX,SSplash,15
+  else
+    set sprite 8 to 192,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  fill 32 count 28 at 2,1
+  print at 2,1, "LEVEL"
+  NumU = Level
+  print at 8,1, digits$(NumU, 2)
+  print at 11,1, "CAUGHT"
+  NumU = Caught
+  print at 18,1, digits$(NumU, 2)
+  print at 21,1, "LEFT"
+  V = 40 - Dropped
+  NumU = V
+  print at 26,1, digits$(NumU, 2)
+  fill 32 count 28 at 2,21
+  print at 2,21, "SCORE"
+  NumU = Score
+  print at 8,21, digits$(NumU, 5)
+  print at 16,21, "BEST"
+  NumU = Best
+  print at 21,21, digits$(NumU, 5)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub TitlePage:
+  NewScreen
+  for Y = 2 to 20
+    V = Y * 5
+    for X = 2 to 29
+      V += 11
+      N = V & 31
+      if N = 0 then put char TStar at X,Y
+    next
+  next
+  print at 12,3, "MARBLES"
+  put char TBall00 at 15,6
+  put char TBall01 at 16,6
+  put char TBall10 at 15,7
+  put char TBall11 at 16,7
+  ' a little pipe with a cross pipe, as in the game
+  for Y = 9 to 13
+    put char TPv at 9,Y
+    put char TPv at 22,Y
+  next
+  put char TJr1 at 9,11
+  fill TPh count 12 at 10,11
+  put char TJl0 at 22,11
+  print at 4,16, "CATCH THE MARBLES IN THE"
+  print at 4,17, "BUCKETS OF THEIR COLOUR"
+  Menu = 0
+  ShowTitleMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  Rearm
+  wait no fire
+  nmi off
+tp_loop:
+  Frame1
+  ReadPad
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      Menu = Menu ^ 1
+      ShowTitleMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  mute all
+  Rearm
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub ShowTitleMenu:
+  fill 32 count 16 at 9,19
+  fill 32 count 16 at 9,20
+  print at 11,19, "START"
+  print at 11,20, "HOW TO PLAY"
+  V = Menu + 19
+  put char 62 at 9,V
+  return
+end sub
+
+sub RulesPage:
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  backdrop dark blue
+  cls
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "MARBLES DROP INTO THE PIPES."
+  print at 2,4, "WHERE A CROSS PIPE JOINS,"
+  print at 2,5, "THE ARROW SAYS WHICH WAY A"
+  print at 2,6, "MARBLE GOES: DOWN, OR ACROSS"
+  print at 2,7, "TO THE NEXT PIPE."
+  print at 2,9, "THE BUTTON FLIPS EVERY ARROW."
+  print at 2,11, "SLIDE THE BUCKETS WITH THE"
+  print at 2,12, "STICK. CATCH RED IN RED AND"
+  print at 2,13, "BLUE IN BLUE."
+  print at 2,15, "40 MARBLES DROP ON A LEVEL."
+  print at 2,16, "CATCH 20 TO GO ON. EACH"
+  print at 2,17, "LEVEL IS FASTER."
+  print at 7,22, "PRESS A BUTTON"
+  screen on
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  nmi off
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  print at 12,1, "MARBLES"
+  print at 2,3, "BY STEPHEN STOUT, FROM"
+  print at 2,4, "COMPUTE! MAGAZINE, OCTOBER"
+  print at 2,5, "1987. COMMODORE 64 VERSION"
+  print at 2,6, "BY BILL CHIN; AMIGA AND PC"
+  print at 2,7, "VERSIONS BY TIM MIDKIFF."
+  print at 2,9, "THIS VERSION MIXES THEM:"
+  print at 2,10, "TWO BUCKETS, RANDOM PIPES,"
+  print at 2,11, "40 MARBLES A LEVEL."
+  print at 2,13, "NEW MUSIC: ROLLING DOWN."
+  print at 2,15, "COLECOVISION VERSION BY"
+  print at 2,16, "AMY BIENVENU, 2026."
+  print at 7,22, "PRESS A BUTTON"
+  Rearm
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$98,$98,$98,$43,$98,$80,$81
+  $81,$80,$84,$41,$41,$84,$80,$81
+  $81,$19,$19,$19,$C2,$19,$01,$81
+  $81,$01,$21,$82,$82,$21,$01,$81
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$40,$00,$00
+  $03,$F0,$E0,$C0,$80,$80,$18,$38
+  $C0,$F0,$07,$03,$01,$01,$00,$00
+  $10,$00,$80,$80,$C0,$E0,$F0,$03
+  $00,$00,$01,$01,$03,$07,$F0,$C0
+end data
+data TileCol bytes
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$71,$71
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $B1,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+  $B1,$B1,$B1,$1B,$1B,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+  $B1,$B1,$B1,$1B,$1B,$B1,$B1,$B1
+  $0E,$0F,$0E,$0E,$01,$01,$01,$01
+  $01,$01,$41,$01,$01,$41,$01,$01
+  $81,$18,$18,$18,$18,$18,$98,$98
+  $81,$81,$18,$18,$18,$18,$08,$08
+  $98,$08,$18,$18,$18,$18,$18,$81
+  $08,$08,$18,$18,$18,$18,$81,$81
+end data
+data SpritePat bytes
+  $00,$78,$FC,$BC,$DC,$FC,$78,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$C0,$E0,$60,$70,$30,$3F,$1F,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03,$07,$06,$0E,$0C,$FC,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$24,$91,$41,$A5,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+MbDrop:
+    db $40,$47,$50,$01,$40,$55,$60,$01,$40,$6B,$70,$01,$50
+MbFlip:
+    db $00,$00,$41,$01,$00,$00,$72,$02,$10
+MbClack:
+    db $40,$35,$50,$01,$50
+MbCatch:
+    db $40,$6B,$20,$02,$40,$6B,$F0,$01,$40,$55,$20,$02,$40,$55,$F0,$01,$40,$47,$20,$04,$40,$47,$F0,$01
+    db $50
+MbMiss:
+    db $00,$00,$25,$03,$00,$00,$56,$05,$00,$00,$97,$06,$10
+MbWrong:
+    db $40,$68,$31,$04,$40,$E0,$41,$06,$50
+MbLevel:
+    db $40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$8F,$20,$05,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$55,$20,$11,$40,$55,$F0,$01,$50
+MbOver:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$2E,$21,$09,$40,$2E,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01
+    db $40,$53,$21,$1B,$40,$53,$F1,$01,$50
+
+MbSoundTable:
+    dw MbDrop,$702B
+    dw MbFlip,$702B
+    dw MbClack,$7035
+    dw MbCatch,$7035
+    dw MbMiss,$702B
+    dw MbWrong,$7035
+    dw MbLevel,$7035
+    dw MbOver,$7035
+    dw MbTuneMel,$703F
+    dw MbTuneBass,$7049
+; Rolling Down, C major (original for this game)
+; Tiny Sound, 7 frames per step
+MbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$2B,$01,$26,$01,$23,$01,$26,$01,$2B,$01,$2D,$01
+    db $2F,$01,$01,$01,$2D,$01,$2A,$01,$26,$01,$2A,$01,$2D,$01,$2F,$01
+    db $30,$01,$01,$01,$2F,$01,$2B,$01,$28,$01,$2B,$01,$30,$01,$2F,$01
+    db $2D,$01,$2B,$01,$2A,$01,$26,$01,$28,$01,$2A,$01,$2B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+MbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$04,$01,$0B,$01
+    db $04,$01,$0B,$01,$0E,$01,$15,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$0E,$01
+    db $FF
+}
