@@ -26,8 +26,8 @@ for (const level of ["safe", "balanced", "aggressive"]) {
   assert.equal(getOptimizationProfile(level, "").optimizerConfig.inlineMaxBodyBytes, 8,
     `${level} must retain the conservative inline budget`);
 }
-assert.equal(getOptimizationProfile("experimental", "").optimizerConfig.inlineMaxBodyBytes, 16,
-  "experimental alone may use the validated sixteen-byte inline budget");
+assert.equal(getOptimizationProfile("experimental", "").optimizerConfig.inlineMaxBodyBytes, 24,
+  "experimental alone may use the guarded twenty-four-byte inline budget");
 
 async function assemble(source, inline, inlineMaxBodyBytes = 8) {
   const result = await assembleAmysCVAssembly({ "main.asm": source }, "main.asm", {
@@ -187,6 +187,21 @@ const seventeenByteRoutine = sixteenByteRoutine.replace("  ret\n", "  nop\n  ret
 const retainedAtSeventeen = await assemble(seventeenByteRoutine, true, 16);
 assert.match(retainedAtSeventeen.optimizedAsm, /call Medium/i, "sixteen-byte budget must retain a seventeen-byte routine");
 
+const twentyFourByteRoutine = sixteenByteRoutine.replace("  ret\n", `${"  nop\n".repeat(8)}  ret\n`);
+const retainedAtSixteenForTwentyFour = await assemble(twentyFourByteRoutine, true, 16);
+const inlinedAtTwentyFour = await assemble(twentyFourByteRoutine, true, 24);
+assert.doesNotMatch(inlinedAtTwentyFour.optimizedAsm, /call Medium/i,
+  "twenty-four-byte budget may inline a guarded twenty-four-byte routine");
+assert.equal(retainedAtSixteenForTwentyFour.binary.length - inlinedAtTwentyFour.binary.length, 4,
+  "twenty-four-byte inlining still saves only CALL plus RET");
+assert.equal(execute(inlinedAtTwentyFour.binary).a, execute(retainedAtSixteenForTwentyFour.binary).a,
+  "twenty-four-byte inlining preserves execution");
+
+const twentyFiveByteRoutine = twentyFourByteRoutine.replace("  ret\n", "  nop\n  ret\n");
+const retainedAtTwentyFive = await assemble(twentyFiveByteRoutine, true, 24);
+assert.match(retainedAtTwentyFive.optimizedAsm, /call Medium/i,
+  "twenty-four-byte budget must retain a twenty-five-byte routine");
+
 for (const [name, source] of Object.entries({
   mediumDataAddress: sixteenByteRoutine.replace("  halt\nMedium:", "  halt\nPointer: dw Medium\nMedium:"),
   mediumStack: sixteenByteRoutine.replace("  ld a,4", "  push af\n  pop af"),
@@ -197,4 +212,4 @@ for (const [name, source] of Object.entries({
   assert.match(result.optimizedAsm, /call Medium/i, `${name}: safety barrier must override the larger budget`);
 }
 
-console.log("Optimizer encoded-size inlining equivalence: PASS (8/16-byte budgets, state, flags, stack, branch, reference barriers)");
+console.log("Optimizer encoded-size inlining equivalence: PASS (8/16/24-byte budgets, state, flags, stack, branch, reference barriers)");

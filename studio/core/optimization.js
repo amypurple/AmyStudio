@@ -103,7 +103,7 @@ export function getOptimizationProfile(level, sourceText = "") {
     speculativeValueReuse: normalized === "aggressive" || normalized === "experimental",
     hazardousValueReuse: normalized === "experimental",
     inlineRoutines: normalized === "experimental",
-    inlineMaxBodyBytes: normalized === "experimental" ? 16 : 8,
+    inlineMaxBodyBytes: normalized === "experimental" ? 24 : 8,
     stripIxFrames: normalized === "experimental"
   };
   const levelInfo = OPTIMIZATION_LEVELS[normalized] || OPTIMIZATION_LEVELS.safe;
