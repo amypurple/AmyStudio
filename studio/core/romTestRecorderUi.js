@@ -10,7 +10,7 @@ import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAda
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
 import { GameplayRecordingSession } from "./gameplayRecordingSession.js?v=20260918-unbounded-input-log";
-import { downloadGameplayVideo, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261012-avi-quality1";
+import { downloadGameplayVideo, downloadGameplayVideoSegments, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261026-avi-segments1";
 import { createDevelopmentRouteStore, expandRouteInputs } from "./developmentCheckpointRoutes.js?v=20260919-route-replay";
 import {
   createRomTestCase,
@@ -48,7 +48,7 @@ import {
 } from "./routineCycleProfiler.js?v=20260801-profile-readable";
 import { createControllerSetupUi } from "./controllerSetupUi.js?v=20261004-keyboard-port-routing1";
 import { detectEmulatorMedia, EMULATOR_MEDIA_KIND, isKnownEmulatorMediaName } from "./emulatorMediaDetection.js?v=20261002-adam-media-autodetect1";
-import { renderCrtTelevision } from "./crtTelevisionRenderer.js?v=20261015-crt-left19";
+import { DEFAULT_CRT_EFFECTS, renderCrtTelevision, resetCrtTelevisionPersistence } from "./crtTelevisionRenderer.js?v=20261024-crt-effects";
 
 const SEED = 0x19770527;
 const PLAYBACK_MAX_CATCHUP_FRAMES = 4;
@@ -259,6 +259,11 @@ function ensureStyles() {
     .rom-recorder__tools > * { flex:1 1 auto; }
     .rom-recorder__settings { display:grid; grid-template-columns:minmax(126px,1.1fr) minmax(70px,.65fr) minmax(58px,.6fr) minmax(70px,.75fr) minmax(116px,1fr); gap:6px; align-items:end; }
     .rom-recorder__settings-actions { grid-column:1 / -1; display:flex; justify-content:flex-end; gap:6px; }
+    .rom-recorder__crt-effects { display:grid; grid-template-columns:repeat(3,minmax(105px,1fr)); gap:7px; padding:7px; border:1px solid #26343c; background:#0d1419; }
+    .rom-recorder__crt-effects[hidden] { display:none; }
+    .rom-recorder__crt-effects label { display:grid; grid-template-columns:1fr auto; gap:3px 7px; align-items:center; }
+    .rom-recorder__crt-effects input { grid-column:1 / -1; }
+    .rom-recorder__crt-value { color:#65dbef; font-variant-numeric:tabular-nums; }
     .rom-recorder__region-toggle { min-height:32px; color:#65dbef; font-weight:700; letter-spacing:.06em; }
     .rom-recorder__compact-action[aria-pressed="true"] { color:#081014; background:#65dbef; }
     .rom-recorder__record-action { color:#fff; background:#7c1720; border-color:#db4452; font-weight:700; }
@@ -417,6 +422,7 @@ function buildDialog() {
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<button class="rom-recorder__region-toggle" type="button" data-field="region" value="-1" title="Cycle video region">AUTO</button></label>
           <label>AVI quality<select data-field="videoQuality" title="Higher profiles enlarge pixels before JPEG encoding to prevent color bleeding"><option value="standard">Standard 1x</option><option value="high" selected>High 2x</option><option value="archive">Archive 4x</option></select></label>
+          <label>AVI rendering<select data-field="videoRendering" title="Export raw pixels or the complete CRT television rendering"><option value="pixels" selected>Perfect pixels</option><option value="crt">CRT television</option></select></label>
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
           <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
@@ -426,6 +432,11 @@ function buildDialog() {
           <label>Serial line<select data-field="adamSerialBaud"><option value="0">Instant test bridge</option><option value="300">300 baud 8N1</option><option value="1200">1200 baud 8N1</option><option value="2400">2400 baud 8N1</option><option value="9600">9600 baud 8N1</option><option value="19200">19200 baud 8N1</option></select></label>
           <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="crtView" title="Simulate overscan on a Coleco ADAM CRT monitor" aria-label="Coleco ADAM CRT monitor view" aria-pressed="false">CRT</button><button class="rom-recorder__compact-action" type="button" data-action="captureScreen" title="Download the displayed screen as PNG" aria-label="Capture displayed screen">PNG</button><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
           <div class="rom-recorder__settings-actions" data-field="adamResetActions" hidden><button type="button" data-action="resetAdam" title="Operate the ADAM computer-reset switch and boot EOS">RESET ADAM</button><button type="button" data-action="resetColecoVision" title="Operate the ColecoVision-reset switch and boot the inserted cartridge through OS7">RESET CV</button></div>
+        </div>
+        <div class="rom-recorder__crt-effects" data-field="crtEffects" hidden>
+          <label>Phosphor decay <span class="rom-recorder__crt-value" data-field="phosphorDecayValue">12%</span><input data-field="phosphorDecay" type="range" min="0" max="100" value="12"></label>
+          <label>Phosphor mask <span class="rom-recorder__crt-value" data-field="phosphorMaskValue">20%</span><input data-field="phosphorMask" type="range" min="0" max="100" value="20"></label>
+          <label>Phosphor glow <span class="rom-recorder__crt-value" data-field="phosphorGlowValue">15%</span><input data-field="phosphorGlow" type="range" min="0" max="100" value="15"></label>
         </div>
         <div class="rom-recorder__development" aria-label="Development checkpoints">
           <label>Checkpoint<select data-field="checkpoint"><option value="">No checkpoints</option></select></label>
@@ -501,6 +512,7 @@ export function createRomTestRecorderUi({
   let audioMuted = false;
   let mouseSpinnerEnabled = false;
   let crtViewEnabled = false;
+  let lastCrtFrame = null;
   const mouseSpinnerAccum = [0, 0];
   let mouseJoystickMask = 0;
   const SPINNER_DELTA_LIMIT = 127;
@@ -1287,6 +1299,24 @@ export function createRomTestRecorderUi({
       : "Simulate overscan on a Coleco ADAM CRT monitor";
   }
 
+  function crtEffectOptions() {
+    return {
+      phosphorDecay: Number(field("phosphorDecay")?.value ?? DEFAULT_CRT_EFFECTS.phosphorDecay),
+      phosphorMask: Number(field("phosphorMask")?.value ?? DEFAULT_CRT_EFFECTS.phosphorMask),
+      phosphorGlow: Number(field("phosphorGlow")?.value ?? DEFAULT_CRT_EFFECTS.phosphorGlow)
+    };
+  }
+
+  function refreshCrtEffectLabels() {
+    for (const name of ["phosphorDecay", "phosphorMask", "phosphorGlow"]) {
+      field(`${name}Value`).textContent = `${field(name).value}%`;
+    }
+  }
+
+  function refreshCrtEffectVisibility() {
+    field("crtEffects").hidden = !crtViewEnabled && field("videoRendering").value !== "crt";
+  }
+
   function downloadCanvasPng(canvas, filename) {
     canvas.toBlob((blob) => {
       if (!blob) {
@@ -1303,11 +1333,17 @@ export function createRomTestRecorderUi({
   }
 
   function renderCrtDisplay() {
-    renderCrtTelevision(dialog.querySelector("canvas.rom-recorder__crt-screen"), dialog.querySelector("canvas.rom-recorder__screen"), {
+    const crtCanvas = dialog.querySelector("canvas.rom-recorder__crt-screen");
+    const frame = recorder?.getTimeline?.().frame ?? null;
+    const resetPersistence = frame === null || lastCrtFrame === null || frame !== lastCrtFrame + 1;
+    renderCrtTelevision(crtCanvas, dialog.querySelector("canvas.rom-recorder__screen"), {
       backdropIndex: core?.getVdpRegisters()?.[7] & 0x0F,
       region: core && core.getFramesPerSecond() < 55 ? "pal" : "ntsc",
-      cabinet: "adam"
+      cabinet: "adam",
+      ...crtEffectOptions(),
+      resetPersistence
     });
+    lastCrtFrame = frame;
   }
 
   function render({ forceInspector = false } = {}) {
@@ -1965,6 +2001,8 @@ export function createRomTestRecorderUi({
           session: gameplayRecording,
           restoreControllerMasks: recorder?.controllerMasks || controllerMasks,
           videoQuality: field("videoQuality").value,
+          videoRendering: field("videoRendering").value,
+          crtOptions: { cabinet: "adam", ...crtEffectOptions() },
           onProgress({ completed, total, encoded }) {
             setRecorderStatus(format === "gif"
               ? `Encoding animated GIF ${completed}/${total} source frames (${encoded || 0} kept)...`
@@ -1973,10 +2011,12 @@ export function createRomTestRecorderUi({
         });
         const sourceName = externalRomName || getProject()?.name || "amy-studio-gameplay";
         const stem = sourceName.replace(/\.[^.]+$/, "").replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "amy-studio-gameplay";
-        downloadGameplayVideo(result.blob, `${stem}-${result.frameCount}-frames.${format}`);
+        const filename = `${stem}-${result.frameCount}-frames.${format}`;
+        if (format === "gif") downloadGameplayVideo(result.blob, filename);
+        else downloadGameplayVideoSegments(result.segments, filename);
         setRecorderStatus(format === "gif"
           ? `Exported ${result.frameCount} GIF frames at ${result.fps.toFixed(2)} Hz (silent).`
-          : `Exported ${result.frameCount} frames at ${result.width}x${result.height}, ${result.fps} Hz with ${result.sampleRate} Hz PCM audio.`);
+          : `Exported ${result.frameCount} ${result.videoRendering === "crt" ? "CRT " : ""}frames in ${result.segments.length} AVI ${result.segments.length === 1 ? "file" : "parts"} at ${result.width}x${result.height}, ${result.fps} Hz with ${result.sampleRate} Hz PCM audio.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       } finally {
@@ -2005,6 +2045,17 @@ export function createRomTestRecorderUi({
       audioSink.setPlaybackRate(playbackRate);
     });
     field("scale").addEventListener("change", applyScale);
+    field("videoRendering").addEventListener("change", refreshCrtEffectVisibility);
+    refreshCrtEffectLabels();
+    refreshCrtEffectVisibility();
+    for (const name of ["phosphorDecay", "phosphorMask", "phosphorGlow"]) {
+      field(name).addEventListener("input", () => {
+        refreshCrtEffectLabels();
+        lastCrtFrame = null;
+        resetCrtTelevisionPersistence(dialog.querySelector("canvas.rom-recorder__crt-screen"));
+        if (crtViewEnabled && core && recorder) render();
+      });
+    }
     field("machine").addEventListener("change", async () => {
       updateAdamResetActions();
       setRecorderStatus(`Restarting as ${field("machine").selectedOptions[0]?.textContent || "selected machine"}...`);
@@ -2072,6 +2123,9 @@ export function createRomTestRecorderUi({
       crtViewEnabled = !crtViewEnabled;
       const screenWrap = dialog.querySelector(".rom-recorder__screen-wrap");
       screenWrap.classList.toggle("is-crt", crtViewEnabled);
+      refreshCrtEffectVisibility();
+      lastCrtFrame = null;
+      resetCrtTelevisionPersistence(dialog.querySelector("canvas.rom-recorder__crt-screen"));
       renderCrtViewButton();
       applyScale();
       if (crtViewEnabled) renderCrtDisplay();
@@ -2160,6 +2214,8 @@ export function createRomTestRecorderUi({
       playing = false;
       audioSink.flush();
       recorder.seek(Number(field("timeline").value));
+      lastCrtFrame = null;
+      resetCrtTelevisionPersistence(dialog.querySelector("canvas.rom-recorder__crt-screen"));
       stoppedCheckpoint = null;
       render({ forceInspector: true });
     });

@@ -44,6 +44,27 @@ const rasterCache = new WeakMap();
 const horizontalWarpCache = new WeakMap();
 const cabinetCache = new Map();
 const opticalOverlayCache = new Map();
+const persistenceCache = new WeakMap();
+
+export const DEFAULT_CRT_EFFECTS = Object.freeze({
+  phosphorDecay: 12,
+  phosphorMask: 20,
+  phosphorGlow: 15
+});
+
+export function normalizeCrtEffects(options = {}) {
+  const percent = (value, fallback) => Math.max(0, Math.min(100,
+    Number.isFinite(Number(value)) ? Number(value) : fallback));
+  return {
+    phosphorDecay: percent(options.phosphorDecay, DEFAULT_CRT_EFFECTS.phosphorDecay),
+    phosphorMask: percent(options.phosphorMask, DEFAULT_CRT_EFFECTS.phosphorMask),
+    phosphorGlow: percent(options.phosphorGlow, DEFAULT_CRT_EFFECTS.phosphorGlow)
+  };
+}
+
+export function resetCrtTelevisionPersistence(target) {
+  if (target) persistenceCache.delete(target);
+}
 const TMS9918_COLORS = Object.freeze([
   "#000000", "#000000", "#21c842", "#5edc78",
   "#5455ed", "#7d76fc", "#d4524d", "#42ebf5",
@@ -177,22 +198,26 @@ function cachedCabinet(cabinet, renderScale) {
   return canvas;
 }
 
-function cachedOpticalOverlay(screen, adamMonitor, renderScale) {
-  const key = `${screen.width}x${screen.height}:${adamMonitor ? "adam" : "television"}:${renderScale}`;
+function cachedOpticalOverlay(screen, adamMonitor, renderScale, phosphorMask) {
+  const mask = Math.round(phosphorMask * 10) / 10;
+  const key = `${screen.width}x${screen.height}:${adamMonitor ? "adam" : "television"}:${renderScale}:${mask}`;
   let canvas = opticalOverlayCache.get(key);
   if (canvas) return canvas;
   canvas = document.createElement("canvas");
   canvas.width = screen.width * renderScale;
   canvas.height = screen.height * renderScale;
   const context = canvas.getContext("2d");
-  const stripe = 3 * renderScale;
-  for (let x = 0; x < canvas.width; x += stripe) {
-    context.fillStyle = "rgba(255,70,55,.018)";
-    context.fillRect(x, 0, renderScale, canvas.height);
-    context.fillStyle = "rgba(70,255,90,.014)";
-    context.fillRect(x + renderScale, 0, renderScale, canvas.height);
-    context.fillStyle = "rgba(70,110,255,.018)";
-    context.fillRect(x + renderScale * 2, 0, renderScale, canvas.height);
+  const maskStrength = mask / 100;
+  if (maskStrength > 0) {
+    const stripe = 3 * renderScale;
+    for (let x = 0; x < canvas.width; x += stripe) {
+      context.fillStyle = `rgba(255,70,55,${0.09 * maskStrength})`;
+      context.fillRect(x, 0, renderScale, canvas.height);
+      context.fillStyle = `rgba(70,255,90,${0.07 * maskStrength})`;
+      context.fillRect(x + renderScale, 0, renderScale, canvas.height);
+      context.fillStyle = `rgba(70,110,255,${0.09 * maskStrength})`;
+      context.fillRect(x + renderScale * 2, 0, renderScale, canvas.height);
+    }
   }
   if (adamMonitor) {
     context.fillStyle = "rgba(24,72,255,.035)";
@@ -236,6 +261,7 @@ function drawCurvedPicture(context, source, options, screen, renderScale = 1) {
   const geometry = getCrtTelevisionGeometry(options?.region, options?.cabinet);
   const { cropLeft, cropY, sourceWidth, sourceHeight } = geometry;
   const adamMonitor = options?.cabinet === "adam";
+  const effects = normalizeCrtEffects(options);
   const horizontalCurve = adamMonitor ? 4 : 5;
   const verticalCurve = adamMonitor ? 2.5 : 3.5;
   // The source raster has no more vertical detail than its scanline count.
@@ -292,6 +318,15 @@ function drawCurvedPicture(context, source, options, screen, renderScale = 1) {
   }
   context.filter = "none";
 
+  if (effects.phosphorGlow > 0) {
+    context.save();
+    context.globalCompositeOperation = "screen";
+    context.globalAlpha = effects.phosphorGlow / 250;
+    context.filter = `blur(${1 + effects.phosphorGlow * 0.045}px)`;
+    context.drawImage(horizontalWarp, screen.x, screen.y, screen.width, screen.height);
+    context.restore();
+  }
+
   // This is optional analogue left-edge ringing/phase smear, not the TMS9918A
   // sprite Early Clock bit. Early Clock moves a sprite 32 active pixels left.
   context.save();
@@ -303,7 +338,7 @@ function drawCurvedPicture(context, source, options, screen, renderScale = 1) {
   context.restore();
 
   // Cache the static phosphor mask, monitor tint and vignette as one overlay.
-  context.drawImage(cachedOpticalOverlay(screen, adamMonitor, renderScale),
+  context.drawImage(cachedOpticalOverlay(screen, adamMonitor, renderScale, effects.phosphorMask),
     screen.x, screen.y, screen.width, screen.height);
   context.restore();
 
@@ -326,6 +361,7 @@ export function renderCrtTelevision(target, source, options = {}) {
   if (target.width !== targetWidth) target.width = targetWidth;
   if (target.height !== targetHeight) target.height = targetHeight;
   const context = target.getContext("2d", { alpha: false });
+  if (options.resetPersistence) resetCrtTelevisionPersistence(target);
   context.setTransform(1, 0, 0, 1, 0, 0);
   context.clearRect(0, 0, target.width, target.height);
   const adamMonitor = options.cabinet === "adam";
@@ -333,4 +369,31 @@ export function renderCrtTelevision(target, source, options = {}) {
   context.drawImage(cachedCabinet(adamMonitor ? "adam" : "television", renderScale), 0, 0);
   context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
   drawCurvedPicture(context, source, options, screen, renderScale);
+
+  const effects = normalizeCrtEffects(options);
+  const previous = persistenceCache.get(target);
+  if (previous && effects.phosphorDecay > 0) {
+    context.save();
+    roundedScreenPath(context, screen);
+    context.clip();
+    context.globalAlpha = effects.phosphorDecay * 0.008;
+    context.drawImage(previous,
+      screen.x * renderScale, screen.y * renderScale, screen.width * renderScale, screen.height * renderScale,
+      screen.x, screen.y, screen.width, screen.height);
+    context.restore();
+  }
+  if (effects.phosphorDecay <= 0) {
+    persistenceCache.delete(target);
+    return;
+  }
+  let history = previous;
+  if (!history || history.width !== target.width || history.height !== target.height) {
+    history = document.createElement("canvas");
+    history.width = target.width;
+    history.height = target.height;
+    persistenceCache.set(target, history);
+  }
+  const historyContext = history.getContext("2d", { alpha: false });
+  historyContext.setTransform(1, 0, 0, 1, 0, 0);
+  historyContext.drawImage(target, 0, 0);
 }

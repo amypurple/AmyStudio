@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildMjpegPcmAvi } from "../studio/core/mjpegPcmAvi.js";
+import { buildMjpegPcmAvi, buildMjpegPcmAviSegments } from "../studio/core/mjpegPcmAvi.js";
 import { normalizeVideoExportRange, videoExportQualityProfile } from "../studio/core/romGameplayVideoExport.js";
 
 const ascii = (bytes, offset, length) => new TextDecoder().decode(bytes.subarray(offset, offset + length));
@@ -16,6 +16,21 @@ assert.equal(new DataView(bytes.buffer).getUint32(4, true) + 8, bytes.byteLength
 assert.ok(ascii(bytes, 0, bytes.length).includes("MJPG"));
 assert.ok(ascii(bytes, 0, bytes.length).includes("movi"));
 assert.ok(ascii(bytes, 0, bytes.length).includes("idx1"));
+const segmentedFrames = Array.from({ length: 6 }, () => ({
+  jpeg: new Uint8Array(400_000),
+  audio: new Int16Array(2_000)
+}));
+const segments = buildMjpegPcmAviSegments(
+  { width: 640, height: 448, fps: 60, sampleRate: 44100, frames: segmentedFrames },
+  1024 * 1024
+);
+assert.equal(segments.length, 3);
+assert.deepEqual(segments.map(({ firstFrame, frameCount }) => [firstFrame, frameCount]), [[0, 2], [2, 2], [4, 2]]);
+for (const segment of segments) {
+  const segmentBytes = new Uint8Array(await segment.blob.arrayBuffer());
+  assert.equal(ascii(segmentBytes, 0, 4), "RIFF");
+  assert.equal(ascii(segmentBytes, 8, 4), "AVI ");
+}
 assert.deepEqual(
   normalizeVideoExportRange({ firstAvailableFrame: 10, latestFrame: 80 }, 2, 99),
   { from: 10, to: 80, frameCount: 70 }

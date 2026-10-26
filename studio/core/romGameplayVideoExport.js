@@ -1,5 +1,6 @@
-import { buildMjpegPcmAvi } from "./mjpegPcmAvi.js";
+import { buildMjpegPcmAvi, buildMjpegPcmAviSegments } from "./mjpegPcmAvi.js?v=20261026-avi-segments1";
 import { AnimatedGifEncoder, rgb565ToRgb332 } from "./animatedGif.js";
+import { renderCrtTelevision } from "./crtTelevisionRenderer.js";
 
 const rgb5To8 = Uint8Array.from({ length: 32 }, (_, value) => Math.round(value * 255 / 31));
 const rgb6To8 = Uint8Array.from({ length: 64 }, (_, value) => Math.round(value * 255 / 63));
@@ -125,7 +126,18 @@ export async function exportRecordedGameplay({
   }
 }
 
-export async function exportGameplaySession({ core, session, restoreControllerMasks = [0, 0], quality, videoQuality = "high", onProgress = () => {}, onFrame = () => {}, signal }) {
+export async function exportGameplaySession({
+  core,
+  session,
+  restoreControllerMasks = [0, 0],
+  quality,
+  videoQuality = "high",
+  videoRendering = "pixels",
+  crtOptions = {},
+  onProgress = () => {},
+  onFrame = () => {},
+  signal
+}) {
   if (!core) throw new Error("Start the debugger before exporting video.");
   const recording = typeof session?.snapshot === "function" ? session.snapshot() : session;
   if (!recording?.initialState || !recording?.inputs?.length) {
@@ -133,6 +145,7 @@ export async function exportGameplaySession({ core, session, restoreControllerMa
   }
   const restoreState = core.saveState();
   const canvas = document.createElement("canvas");
+  const crtCanvas = videoRendering === "crt" ? document.createElement("canvas") : null;
   const profile = videoExportQualityProfile(videoQuality);
   const jpegQuality = Number.isFinite(quality) ? quality : profile.jpegQuality;
   const frames = [];
@@ -150,32 +163,62 @@ export async function exportGameplaySession({ core, session, restoreControllerMa
       if (result.breakpointHit) throw new Error(`A breakpoint interrupted video export at frame ${index}.`);
       const framebuffer = core.getFramebufferView();
       onFrame({ index, framebuffer });
-      renderFramebuffer(canvas, framebuffer, profile.scale);
+      // CRT geometry is expressed in native TMS9918A pixels; scale only the
+      // finished television, not the framebuffer that enters the simulation.
+      renderFramebuffer(canvas, framebuffer, crtCanvas ? 1 : profile.scale);
+      let encodedCanvas = canvas;
+      if (crtCanvas) {
+        const crtRenderScale = Math.min(2, profile.scale);
+        renderCrtTelevision(crtCanvas, canvas, {
+          ...crtOptions,
+          backdropIndex: core.getVdpRegisters?.()?.[7] & 0x0F,
+          region: (recording.framesPerSecond || core.getFramesPerSecond()) < 55 ? "pal" : "ntsc",
+          renderScale: crtRenderScale,
+          resetPersistence: index === 0
+        });
+        encodedCanvas = crtCanvas;
+      }
       const audio = core.getAudioFrame();
       if (!sampleRate) sampleRate = audio.sampleRate;
       if (audio.sampleRate !== sampleRate || audio.channels !== 2) throw new Error("GearColeco changed audio format during video export.");
-      frames.push({ jpeg: await canvasToJpeg(canvas, jpegQuality), audio: audio.samples });
+      frames.push({ jpeg: await canvasToJpeg(encodedCanvas, jpegQuality), audio: audio.samples });
       onProgress({ completed: index + 1, total: recording.inputs.length });
       if ((index % 8) === 7) await nextTask();
     }
     const framebuffer = core.getFramebufferView();
+    const width = crtCanvas?.width || framebuffer.width * profile.scale;
+    const height = crtCanvas?.height || framebuffer.height * profile.scale;
+    const frameCount = frames.length;
+    const segments = buildMjpegPcmAviSegments({
+      width,
+      height,
+      fps: recording.framesPerSecond || core.getFramesPerSecond(),
+      sampleRate,
+      channels: 2,
+      frames
+    });
     return {
-      blob: buildMjpegPcmAvi({
-        width: framebuffer.width * profile.scale,
-        height: framebuffer.height * profile.scale,
-        fps: recording.framesPerSecond || core.getFramesPerSecond(),
-        sampleRate,
-        channels: 2,
-        frames
-      }),
-      frameCount: frames.length,
+      blob: segments.length === 1 ? segments[0].blob : null,
+      segments,
+      frameCount,
       fps: recording.framesPerSecond || core.getFramesPerSecond(),
       sampleRate,
       videoQuality: profile.id,
-      width: framebuffer.width * profile.scale,
-      height: framebuffer.height * profile.scale
+      videoRendering: crtCanvas ? "crt" : "pixels",
+      width,
+      height
     };
   } finally {
+    // The return value is evaluated before finally. Drop the encoded-frame
+    // references and large canvas backing stores before GearColeco allocates
+    // temporary memory to restore the save state.
+    frames.length = 0;
+    canvas.width = 1;
+    canvas.height = 1;
+    if (crtCanvas) {
+      crtCanvas.width = 1;
+      crtCanvas.height = 1;
+    }
     core.loadState(restoreState, { controllerMasks: restoreControllerMasks });
   }
 }
@@ -222,4 +265,20 @@ export function downloadGameplayVideo(blob, filename = "amy-studio-gameplay.avi"
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadGameplayVideoSegments(segments, filename = "amy-studio-gameplay.avi") {
+  if (!Array.isArray(segments) || !segments.length) throw new Error("No AVI segments were produced.");
+  if (segments.length === 1) {
+    downloadGameplayVideo(segments[0].blob, filename);
+    return;
+  }
+  const dot = filename.lastIndexOf(".");
+  const stem = dot > 0 ? filename.slice(0, dot) : filename;
+  const extension = dot > 0 ? filename.slice(dot) : ".avi";
+  const digits = Math.max(2, String(segments.length).length);
+  segments.forEach((segment, index) => {
+    const part = String(index + 1).padStart(digits, "0");
+    setTimeout(() => downloadGameplayVideo(segment.blob, `${stem}-part-${part}${extension}`), index * 150);
+  });
 }

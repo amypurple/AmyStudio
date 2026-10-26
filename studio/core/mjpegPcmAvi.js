@@ -102,6 +102,21 @@ function pcmBytes(samples) {
   return new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);
 }
 
+function mediaChunkHeader(id, size) {
+  const header = new Uint8Array(8);
+  header.set(fourcc(id), 0);
+  writeU32(new DataView(header.buffer), 4, size);
+  return header;
+}
+
+function listHeader(type, size) {
+  const header = new Uint8Array(12);
+  header.set(fourcc("LIST"), 0);
+  writeU32(new DataView(header.buffer), 4, size);
+  header.set(fourcc(type), 8);
+  return header;
+}
+
 export function buildMjpegPcmAvi({ width, height, fps, sampleRate, channels = 2, frames }) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
     throw new RangeError("AVI dimensions must be positive integers.");
@@ -110,6 +125,8 @@ export function buildMjpegPcmAvi({ width, height, fps, sampleRate, channels = 2,
   if (!Number.isInteger(sampleRate) || sampleRate < 1) throw new RangeError("AVI sample rate must be positive.");
   if (!Array.isArray(frames) || !frames.length) throw new RangeError("AVI export needs at least one frame.");
 
+  // Keep encoded payloads as Blob parts. Building one contiguous movi array
+  // temporarily tripled memory use for long high-resolution CRT recordings.
   const mediaParts = [];
   const indexEntries = [];
   let mediaOffset = 4; // idx1 offsets are relative to the LIST payload, including 'movi'.
@@ -123,10 +140,10 @@ export function buildMjpegPcmAvi({ width, height, fps, sampleRate, channels = 2,
     maxAudioBytes = Math.max(maxAudioBytes, audio.byteLength);
     totalSampleFrames += Math.floor(audio.length / channels);
     for (const [id, payload, flags] of [["00dc", jpeg, 0x10], ["01wb", pcmBytes(audio), 0]]) {
-      const part = chunk(id, payload);
-      mediaParts.push(part);
       indexEntries.push({ id, flags, offset: mediaOffset, size: payload.byteLength });
-      mediaOffset += part.byteLength;
+      mediaParts.push(mediaChunkHeader(id, payload.byteLength), payload);
+      if (payload.byteLength & 1) mediaParts.push(new Uint8Array(1));
+      mediaOffset += 8 + payload.byteLength + (payload.byteLength & 1);
     }
   }
 
@@ -135,7 +152,9 @@ export function buildMjpegPcmAvi({ width, height, fps, sampleRate, channels = 2,
     videoStream({ width, height, fps, frameCount: frames.length, suggestedBufferSize: maxVideoBytes }),
     audioStream({ sampleRate, channels, totalSampleFrames, suggestedBufferSize: maxAudioBytes })
   ]);
-  const movi = list("movi", mediaParts);
+  const moviSize = mediaOffset;
+  const moviHeader = listHeader("movi", moviSize);
+  const moviByteLength = 8 + moviSize;
   const index = new Uint8Array(indexEntries.length * 16);
   const indexView = new DataView(index.buffer);
   indexEntries.forEach((entry, position) => {
@@ -146,11 +165,54 @@ export function buildMjpegPcmAvi({ width, height, fps, sampleRate, channels = 2,
     writeU32(indexView, offset + 12, entry.size);
   });
   const idx1 = chunk("idx1", index);
-  const riffSize = 4 + hdrl.byteLength + movi.byteLength + idx1.byteLength;
+  const riffSize = 4 + hdrl.byteLength + moviByteLength + idx1.byteLength;
   if (riffSize + 8 > 0xFFFFFFFF) throw new RangeError("AVI export exceeds the 4 GiB RIFF limit.");
   const riff = new Uint8Array(12);
   riff.set(fourcc("RIFF"), 0);
   writeU32(new DataView(riff.buffer), 4, riffSize);
   riff.set(fourcc("AVI "), 8);
-  return new Blob([riff, hdrl, movi, idx1], { type: "video/x-msvideo" });
+  return new Blob([riff, hdrl, moviHeader, ...mediaParts, idx1], { type: "video/x-msvideo" });
+}
+
+export const DEFAULT_AVI_SEGMENT_BYTES = 384 * 1024 * 1024;
+
+function estimatedFrameBytes(frame) {
+  const jpegBytes = frame.jpeg?.byteLength || 0;
+  const audioBytes = frame.audio?.byteLength || 0;
+  // Two media chunk headers, optional word padding, and two idx1 records.
+  return jpegBytes + (jpegBytes & 1) + audioBytes + (audioBytes & 1) + 48;
+}
+
+export function buildMjpegPcmAviSegments(options, maxSegmentBytes = DEFAULT_AVI_SEGMENT_BYTES) {
+  const { frames } = options;
+  if (!Array.isArray(frames) || !frames.length) throw new RangeError("AVI export needs at least one frame.");
+  if (!Number.isSafeInteger(maxSegmentBytes) || maxSegmentBytes < 1024 * 1024) {
+    throw new RangeError("AVI segment size must be at least 1 MiB.");
+  }
+
+  const groups = [];
+  let group = [];
+  let bytes = 4096; // Conservative allowance for RIFF and stream headers.
+  for (const frame of frames) {
+    const frameBytes = estimatedFrameBytes(frame);
+    if (group.length && bytes + frameBytes > maxSegmentBytes) {
+      groups.push(group);
+      group = [];
+      bytes = 4096;
+    }
+    group.push(frame);
+    bytes += frameBytes;
+  }
+  if (group.length) groups.push(group);
+
+  let firstFrame = 0;
+  return groups.map((segmentFrames) => {
+    const segment = {
+      blob: buildMjpegPcmAvi({ ...options, frames: segmentFrames }),
+      frameCount: segmentFrames.length,
+      firstFrame
+    };
+    firstFrame += segmentFrames.length;
+    return segment;
+  });
 }
