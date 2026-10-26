@@ -1349,6 +1349,30 @@ export function createAssignmentArithmeticHelpers({
         const powerDivision = emitDivideUnsignedInt8ByPowerOfTwo(target, Math.log2(constantNumeric));
         if (powerDivision) return powerDivision;
       }
+      if ((valueTokenReferencesRuntimeValue || resolveValueType(valueToken) === "int8")
+          && (opToken === "+=" || opToken === "-=")) {
+        const valueType = resolveValueType(valueToken);
+        const loadValue = valueType === "int8" ? emitLoadInt8Into("a", valueToken) : null;
+        const recordField = parseRecordFieldRef(target);
+        const arrayRef = parseArrayRef(target);
+        const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+        const loadAddress = recordField
+          ? emitLoadRecordFieldAddressIntoHL(target)
+          : arrayRef && arrayInfo?.kind === "array" && arrayInfo.elementType === "int8"
+            ? emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index)
+            : null;
+        if (loadValue && loadAddress) {
+          return [
+            ...loadValue,
+            "    push af",
+            ...loadAddress,
+            "    pop bc",
+            "    ld a,(hl)",
+            `    ${opToken === "+=" ? "add a,b" : "sub b"}`,
+            "    ld (hl),a"
+          ];
+        }
+      }
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");
       if (opToken === "+=") return emitArithInt8Op(target, valueToken, "add");

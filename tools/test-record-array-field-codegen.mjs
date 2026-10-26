@@ -44,6 +44,7 @@ end record
 
 SceneMemory State
 u8 Index = 3
+u8 Delta = 7
 u8 Result = 0
 u16 WordResult = 0
 
@@ -58,6 +59,8 @@ State.EnemyX[Index] -= 1
 Result = State.EnemyX[Index]
 WordResult = State.Scores[2]
 State.Footer = Result
+State.EnemyX[Index] += Delta
+State.EnemyX[Index] -= Delta
 loop forever`;
 
   for (const profile of ["off", "safe", "balanced", "aggressive", "experimental"]) {
@@ -71,6 +74,8 @@ loop forever`;
       `${profile}: static byte record field += 1 must use direct INC (HL)`);
     assert.match(asm, /ld a,\(AMY_UVAR_Index\)[\s\S]{0,180}?add hl,de\s+inc \(hl\)/i,
       `${profile}: indexed byte record field += 1 must compute its address once`);
+    assert.match(asm, /ld a,\(AMY_UVAR_Delta\)\s+push af[\s\S]{0,240}?pop bc\s+ld a,\(hl\)\s+(?:add a,b|sub b)\s+ld \(hl\),a/i,
+      `${profile}: indexed byte record field compound assignment must compute its address once`);
   }
 
   const badLength = compile("record-array-field-zero", `
@@ -118,6 +123,8 @@ end record
 TestMemory State
 Actor Actors[2]
 u8 Index = 2
+u8 ActorIndex = 1
+u8 Delta = 7
 u8 PassCount = 0
 State.GuardBefore = 17
 State.GuardAfter = 23
@@ -133,6 +140,8 @@ State.SignedByte += 1
 State.SignedByte -= 1
 Actors[1].X = 255
 Actors[1].Guard = 61
+Actors[ActorIndex].X += Delta
+Actors[ActorIndex].X -= Delta
 with Actors[1] as ActorRef
   ActorRef.X += 1
   ActorRef.X -= 1
