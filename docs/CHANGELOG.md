@@ -9,9 +9,12 @@
 - Added **Climber 5**, James Rogers' August 1987 COMPUTE! game, with five
   buildings, ladders, electrodes, hooks, sweepers, a countdown, title music
   and VoxPCM voices.
-- Added **Santa's Sleigh Run**, an original Christmas delivery game with five
-  snowy houses, wind, gift-snatching crows, precision bonuses, high scores
-  and traditional seasonal music.
+- Expanded **Santa's Sleigh Run** into a four-stage Christmas action game:
+  rooftop delivery, a toy-factory catching challenge, marching coal goblins
+  and an ice-wall finale, followed by harder rounds and Gorf-style ranks.
+- Added **Deep Chambers**, an original dungeon crawler with 26 four-room
+  levels, rank-changing monsters, persistent monster pits, keys, food,
+  treasure, potions and an escape from level Z.
 - Added **Party in Willow Hollow**, an original woodland birthday adventure
   with eight party minigames, a connected party map, collectible presents,
   candles, Tiny Sound music and a musical cake finale.
@@ -25,7 +28,7 @@
 - Reduced indexed byte compound updates by reusing one proven destination
   address for dynamic `+=`, `-=`, `&=`, `|=` and `^=` operations. The clean
   repository also received the previously validated immediate-mask rule.
-- Validated the resulting clean catalogue at 150/150 examples, including
+- Validated the resulting clean catalogue at 151/151 examples, including
   GearColeco runtime captures of both new programs and both corrected input
   flows.
 
