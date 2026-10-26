@@ -651,7 +651,14 @@ export function createAssignmentArithmeticHelpers({
       generatedChain.push("    add a,a");
       if (bit === "1") generatedChain.push("    add a,b");
     }
-    const chain = specialChains[factor] || generatedChain;
+    const upperPower = 2 ** Math.ceil(Math.log2(factor + 1));
+    const subtractChain = upperPower <= 256 && factor === upperPower - 1
+      ? ["    ld b,a", ...Array.from({ length: Math.log2(upperPower) }, () => "    add a,a"), "    sub b"]
+      : null;
+    const genericChain = subtractChain && subtractChain.length < generatedChain.length
+      ? subtractChain
+      : generatedChain;
+    const chain = specialChains[factor] || genericChain;
     // The counted-addition fallback costs 15 bytes around the loaded/stored value.
     if (chain.length >= 15) return null;
     const loadTarget = emitLoadInt8Into("a", target);
@@ -671,7 +678,9 @@ export function createAssignmentArithmeticHelpers({
       6: ["    add hl,hl", "    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,de"],
       10: ["    add hl,hl", "    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,hl", "    add hl,de"],
       12: ["    add hl,hl", "    add hl,hl", "    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,de"],
-      14: ["    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,hl", "    add hl,hl", "    or a", "    sbc hl,de", "    add hl,hl"]
+      14: ["    ld d,h", "    ld e,l", "    add hl,hl", "    add hl,hl", "    add hl,hl", "    or a", "    sbc hl,de", "    add hl,hl"],
+      256: ["    ld h,l", "    ld l,0"],
+      257: ["    ld a,h", "    add a,l", "    ld h,a"]
     };
     const bits = factor.toString(2).slice(1);
     const generatedChain = ["    ld d,h", "    ld e,l"];

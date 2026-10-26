@@ -309,6 +309,15 @@ export function createByteLoadHelpers(ctx) {
       lines.push("    add a,a");
       if (bit === "1") lines.push("    add a,b");
     }
+    const upperPower = 2 ** Math.ceil(Math.log2(scale + 1));
+    if (upperPower <= 256 && scale === upperPower - 1) {
+      const subtract = [
+        "    ld b,a",
+        ...Array.from({ length: Math.log2(upperPower) }, () => "    add a,a"),
+        "    sub b"
+      ];
+      if (subtract.length < lines.length) return subtract;
+    }
     return lines;
   }
 

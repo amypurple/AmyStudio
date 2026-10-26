@@ -982,6 +982,8 @@ export function createExpressionComputeHelpers({
           if (!Number.isInteger(constantValue) || constantValue < 0 || constantValue > 0xFFFF) return null;
           if (constantValue === 0) return ["    ld hl,0"];
           if (constantValue === 1) return [];
+          if (constantValue === 256) return ["    ld h,l", "    ld l,0"];
+          if (constantValue === 257) return ["    ld a,h", "    add a,l", "    ld h,a"];
           if ((constantValue & (constantValue - 1)) === 0) {
             const lines = [];
             for (let value = constantValue; value > 1; value >>= 1) lines.push("    add hl,hl");
