@@ -1254,6 +1254,38 @@ export function createAssignmentArithmeticHelpers({
       && (targetType === "int8" || targetType === "int16" || targetType === "u32" || targetType === "i32")) {
       const operator = opToken === "&=" ? "and" : opToken === "|=" ? "or" : "xor";
       if (targetType === "int8") {
+        const arrayRef = parseArrayRef(target);
+        const arrayInfo = arrayRef ? getRuntimeInfo(arrayRef.name) : null;
+        if (arrayRef &&
+            constantNumeric !== null && constantNumeric >= 0 && constantNumeric <= 0xFF &&
+            arrayInfo?.kind === "array" && arrayInfo.elementType === "int8") {
+          const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+          if (loadAddress) {
+            return [
+              ...loadAddress,
+              "    ld a,(hl)",
+              `    ${operator} ${constantNumeric}`,
+              "    ld (hl),a"
+            ];
+          }
+        }
+        if (arrayRef && (valueTokenReferencesRuntimeValue || resolveValueType(valueToken) === "int8") &&
+            arrayInfo?.kind === "array" && arrayInfo.elementType === "int8" &&
+            resolveValueType(valueToken) === "int8") {
+          const loadValue = emitLoadInt8Into("a", valueToken);
+          const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
+          if (loadValue && loadAddress) {
+            return [
+              ...loadValue,
+              "    push af",
+              ...loadAddress,
+              "    pop bc",
+              "    ld a,(hl)",
+              `    ${operator} b`,
+              "    ld (hl),a"
+            ];
+          }
+        }
         const targetInfo = getRuntimeInfo(target);
         if (constantNumeric !== null &&
             constantNumeric >= 0 && constantNumeric <= 0xFF &&
