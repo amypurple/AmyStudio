@@ -9,6 +9,9 @@
 - Added **Climber 5**, James Rogers' August 1987 COMPUTE! game, with five
   buildings, ladders, electrodes, hooks, sweepers, a countdown, title music
   and VoxPCM voices.
+- Added **Santa's Sleigh Run**, an original Christmas delivery game with five
+  snowy houses, wind, gift-snatching crows, precision bonuses, high scores
+  and traditional seasonal music.
 - Fixed Circus' animated title loop by giving its color updater an independent
   iterator instead of overwriting the outer twenty-step animation counter.
 - Enabled NMI before Circus' editorial prompt and Southern States' controller
@@ -19,7 +22,7 @@
 - Reduced indexed byte compound updates by reusing one proven destination
   address for dynamic `+=`, `-=`, `&=`, `|=` and `^=` operations. The clean
   repository also received the previously validated immediate-mask rule.
-- Validated the resulting clean catalogue at 148/148 examples, including
+- Validated the resulting clean catalogue at 149/149 examples, including
   GearColeco runtime captures of both new programs and both corrected input
   flows.
 
