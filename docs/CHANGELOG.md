@@ -12,6 +12,9 @@
 - Added **Santa's Sleigh Run**, an original Christmas delivery game with five
   snowy houses, wind, gift-snatching crows, precision bonuses, high scores
   and traditional seasonal music.
+- Added **Party in Willow Hollow**, an original woodland birthday adventure
+  with eight party minigames, a connected party map, collectible presents,
+  candles, Tiny Sound music and a musical cake finale.
 - Fixed Circus' animated title loop by giving its color updater an independent
   iterator instead of overwriting the outer twenty-step animation counter.
 - Enabled NMI before Circus' editorial prompt and Southern States' controller
@@ -22,7 +25,7 @@
 - Reduced indexed byte compound updates by reusing one proven destination
   address for dynamic `+=`, `-=`, `&=`, `|=` and `^=` operations. The clean
   repository also received the previously validated immediate-mask rule.
-- Validated the resulting clean catalogue at 149/149 examples, including
+- Validated the resulting clean catalogue at 150/150 examples, including
   GearColeco runtime captures of both new programs and both corrected input
   flows.
 

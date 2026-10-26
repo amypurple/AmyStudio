@@ -2311,6 +2311,27 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "party-in-willow-hollow",
+    "label": "Party in Willow Hollow",
+    "detail": "An original woodland birthday adventure with eight distinct party minigames, presents, candles, a party map and a musical cake finale.",
+    "projectName": "Party in Willow Hollow",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "minigames",
+      "party",
+      "woodland",
+      "sprites",
+      "music",
+      "manual-canon"
+    ]
+  },
+  {
     "id": "3d-super-plotter",
     "label": "3-D Super Plotter (1987)",
     "detail": "Fourteen interactive 3-D mathematical surfaces inspired by COMPUTE!'s 3-D Surfaces and Superplotter, with rotation, tilt, mesh density, perspective and hidden-line controls.",
