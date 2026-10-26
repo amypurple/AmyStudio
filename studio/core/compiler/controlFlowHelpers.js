@@ -1429,6 +1429,51 @@ export function createControlFlowHelpers(ctx) {
     if (conditionAst.kind === "not") {
       return emitConditionAstJump(conditionAst.expr, asmJumpTarget, !branchWhenFalse);
     }
+    if (conditionAst.kind === "or" && conditionAst.left?.kind === "atom" && conditionAst.right?.kind === "atom") {
+      const leftCompare = parseTopLevelComparison(conditionAst.left.text);
+      const rightCompare = parseTopLevelComparison(conditionAst.right.text);
+      const isEquality = (comparison) => comparison && (comparison.operator === "=" || comparison.operator === "==");
+      if (isEquality(leftCompare) && isEquality(rightCompare)) {
+        const leftToken = normalizeExpression(leftCompare.left);
+        const repeatedToken = normalizeExpression(rightCompare.left);
+        const leftValue = tryEvaluateConstantExpression(leftCompare.right);
+        const rightValue = tryEvaluateConstantExpression(rightCompare.right);
+        if (leftToken === repeatedToken
+            && resolveValueType(leftToken) === "int8"
+            && Number.isInteger(leftValue) && leftValue >= 0 && leftValue <= 0xFF
+            && Number.isInteger(rightValue) && rightValue >= 0 && rightValue <= 0xFF) {
+          const loadValue = emitLoadInt8ValueInto("a", leftToken);
+          if (loadValue) {
+            if (!branchWhenFalse) {
+              return {
+                ok: true,
+                lines: [
+                  ...loadValue,
+                  `    cp ${symbolOrValue(String(leftValue))}`,
+                  `    jp z,${asmJumpTarget}`,
+                  `    cp ${symbolOrValue(String(rightValue))}`,
+                  `    jp z,${asmJumpTarget}`
+                ],
+                log: ""
+              };
+            }
+            const matched = makeGeneratedLabel("IfSharedOrMatched");
+            return {
+              ok: true,
+              lines: [
+                ...loadValue,
+                `    cp ${symbolOrValue(String(leftValue))}`,
+                `    jp z,${matched}`,
+                `    cp ${symbolOrValue(String(rightValue))}`,
+                `    jp nz,${asmJumpTarget}`,
+                `${matched}:`
+              ],
+              log: ""
+            };
+          }
+        }
+      }
+    }
     if (conditionAst.kind === "and") {
       if (branchWhenFalse) {
         const leftFalse = emitConditionAstJump(conditionAst.left, asmJumpTarget, true);
