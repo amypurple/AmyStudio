@@ -754,7 +754,7 @@ export function createControlFlowHelpers(ctx) {
       const rightImmediate = directByteImmediate(rightToken);
       if (rightImmediate !== null) {
         lines.push(...loadLeft);
-        const immediateValue = Number.parseInt(String(rightImmediate).replace(/^\$/, "0x"), 0);
+        const immediateValue = tryEvaluateCompileTimeNumericExpression(rightToken);
         if ((effectiveOperator === "==" || effectiveOperator === "!=") && immediateValue === 0) {
           lines.push("    or a");
         } else if ((effectiveOperator === "==" || effectiveOperator === "!=") && immediateValue === 1) {
