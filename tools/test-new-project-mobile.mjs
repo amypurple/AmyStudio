@@ -120,6 +120,32 @@ try {
   await send("Page.navigate", { url: studioUrl });
   await waitFor(`document.readyState === "complete" && document.getElementById("studioLoading") === null`, "Amy Studio startup");
 
+  await touch('summary[aria-label="Main menu"]');
+  await waitFor(`document.querySelector('.topbar__menu--quiet')?.open === true`, "mobile main menu");
+  const menuLayout = await evaluate(`(() => {
+    const panel = document.querySelector('.menu-panel--burger');
+    for (const section of panel.querySelectorAll('.menu-section')) section.open = true;
+    const rect = panel.getBoundingClientRect();
+    const style = getComputedStyle(panel);
+    return {
+      left: rect.left,
+      right: rect.right,
+      bottom: rect.bottom,
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      clientHeight: panel.clientHeight,
+      scrollHeight: panel.scrollHeight,
+      overflowY: style.overflowY,
+      touchAction: style.touchAction
+    };
+  })()`);
+  assert.ok(menuLayout.left >= 0 && menuLayout.right <= menuLayout.viewportWidth, "main menu remains inside the mobile viewport");
+  assert.ok(menuLayout.bottom <= menuLayout.viewportHeight, "main menu remains vertically bounded");
+  assert.equal(menuLayout.overflowY, "auto", "main menu owns vertical scrolling");
+  assert.equal(menuLayout.touchAction, "pan-y", "main menu accepts vertical touch gestures");
+  assert.ok(menuLayout.scrollHeight > menuLayout.clientHeight, "expanded main menu can scroll on a phone");
+  await touch('summary[aria-label="Main menu"]');
+
   await touch("#btnNew");
   await waitFor(`document.getElementById("newProjectDialog")?.open === true`, "new-project dialog");
   await evaluate(`(() => {
