@@ -1292,7 +1292,8 @@ export const exampleManifest = [
       "ti99",
       "port",
       "game",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1308,7 +1309,8 @@ export const exampleManifest = [
       "ti99",
       "port",
       "game",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1324,7 +1326,8 @@ export const exampleManifest = [
       "ti99",
       "port",
       "educational",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1341,7 +1344,8 @@ export const exampleManifest = [
       "port",
       "adam",
       "educational",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1358,7 +1362,8 @@ export const exampleManifest = [
       "port",
       "game",
       "sprites",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1375,7 +1380,8 @@ export const exampleManifest = [
       "port",
       "adam",
       "educational",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1392,7 +1398,8 @@ export const exampleManifest = [
       "port",
       "game",
       "sprites",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1410,7 +1417,8 @@ export const exampleManifest = [
       "game",
       "sprites",
       "voxpcm",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1427,7 +1435,8 @@ export const exampleManifest = [
       "port",
       "game",
       "adam",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1444,7 +1453,8 @@ export const exampleManifest = [
       "port",
       "game",
       "sprites",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1461,7 +1471,8 @@ export const exampleManifest = [
       "port",
       "music",
       "graphics",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1478,7 +1489,8 @@ export const exampleManifest = [
       "port",
       "game",
       "controllers",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1496,7 +1508,8 @@ export const exampleManifest = [
       "game",
       "sprites",
       "music",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1515,7 +1528,8 @@ export const exampleManifest = [
       "game",
       "sprites",
       "music",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1533,7 +1547,8 @@ export const exampleManifest = [
       "port",
       "game",
       "sprites",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1551,7 +1566,8 @@ export const exampleManifest = [
       "game",
       "sprites",
       "keypad",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1569,7 +1585,8 @@ export const exampleManifest = [
       "game",
       "sprites",
       "fixed-point",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1589,7 +1606,8 @@ export const exampleManifest = [
       "two-player",
       "sprites",
       "music",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1607,7 +1625,8 @@ export const exampleManifest = [
       "puzzle",
       "solver",
       "music",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1678,7 +1697,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1691,7 +1711,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1704,7 +1725,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1717,7 +1739,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1730,7 +1753,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1743,7 +1767,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1757,7 +1782,8 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "numeric",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1770,7 +1796,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1783,7 +1810,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1796,7 +1824,8 @@ export const exampleManifest = [
     "category": "Demos",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1809,7 +1838,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1822,7 +1852,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1835,7 +1866,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1848,7 +1880,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "port",
       "game",
       "scrolling",
@@ -1884,7 +1916,8 @@ export const exampleManifest = [
     "category": "Demos",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1897,7 +1930,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1910,7 +1944,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1923,7 +1958,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1936,7 +1972,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -1949,7 +1986,8 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "manual-canon"
+      "manual-canon",
+      "compute!"
     ]
   },
   {
@@ -2144,7 +2182,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "port",
       "game",
       "motorcycle",
@@ -2164,7 +2202,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "strategy",
@@ -2183,7 +2221,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "reinterpretation",
       "game",
       "underwater",
@@ -2203,7 +2241,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "reinterpretation",
       "chatgpt",
       "game",
@@ -2222,7 +2260,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "strategy",
@@ -2302,7 +2340,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "strategy",
@@ -2322,7 +2360,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "platform",
@@ -2364,7 +2402,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "cards",
@@ -2384,7 +2422,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "arcade",
@@ -2405,7 +2443,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "adventure",
@@ -2426,7 +2464,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "platform",
@@ -2447,7 +2485,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "cards",
@@ -2467,7 +2505,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "memory",
@@ -2488,7 +2526,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "cards",
@@ -2509,7 +2547,7 @@ export const exampleManifest = [
     "category": "Games",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "game",
       "arcade",
@@ -2775,7 +2813,7 @@ export const exampleManifest = [
     "category": "Demos",
     "tags": [
       "amy",
-      "compute",
+      "compute!",
       "adaptation",
       "demo",
       "3d",

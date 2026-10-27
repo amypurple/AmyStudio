@@ -81,6 +81,12 @@ function collectExampleTags(example) {
   return [...new Set(tags)];
 }
 
+function collectSourceTags(id) {
+  const sourcePath = path.join(root, "studio", "examples-src", `${id}.alexis`);
+  if (!fs.existsSync(sourcePath)) return [];
+  return fs.readFileSync(sourcePath, "utf8").includes("COMPUTE!") ? ["compute!"] : [];
+}
+
 const index = JSON.parse(fs.readFileSync(examplesIndexPath, "utf8"));
 const manifest = index.map((entry) => {
   const item = {
@@ -94,7 +100,11 @@ const manifest = index.map((entry) => {
     editorialTrack: entry.editorialTrack || classifyEditorialTrack(entry.id)
   };
   item.category = entry.category || categorizeExample(item.id);
-  item.tags = entry.tags || collectExampleTags(item);
+  const declaredTags = entry.tags || collectExampleTags(item);
+  item.tags = [...new Set([
+    ...declaredTags.map((tag) => tag === "compute" ? "compute!" : tag),
+    ...collectSourceTags(item.id)
+  ])];
   return item;
 });
 

@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { exampleManifest } from "../studio/examples-index.generated.js";
+import { exampleManifest as browserExampleManifest } from "../studio/examples.js";
 
 const root = resolve(import.meta.dirname, "..");
 const sourceRoot = join(root, "studio", "examples-src");
@@ -27,6 +29,11 @@ for (const example of catalog) {
   } else {
     assert.match(visible, /\bBY\b|INSPIRED BY/i, `${example.id}: no visible author credit`);
   }
+  const manifestEntry = exampleManifest.find((entry) => entry.id === example.id);
+  assert.ok(manifestEntry?.tags?.includes("compute!"), `${example.id}: generated compute! tag is missing`);
+  assert.ok(!manifestEntry?.tags?.includes("compute"), `${example.id}: legacy compute tag was not normalized`);
+  const browserEntry = browserExampleManifest.find((entry) => entry.id === example.id);
+  assert.ok(browserEntry?.tags?.includes("compute!"), `${example.id}: browser compute! tag is missing`);
   checked.push(example.id);
 }
 

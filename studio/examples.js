@@ -1,4 +1,5 @@
 import { loadExampleSource, loadExampleSources, loadExamplesIndex } from "./core/exampleSourceLoader.js";
+import { exampleManifest as generatedExampleManifest } from "./examples-index.generated.js";
 
 let projectFilesModulePromise = null;
 
@@ -15,6 +16,7 @@ async function loadExampleProjectFilesById(id) {
 // studio/examples-src/<id>.alexis file; binary project-file assets are wired by id in
 // studio/examples-project-files.js. No program listings are embedded in this module.
 const exampleManifestData = await loadExamplesIndex();
+const generatedExampleById = new Map(generatedExampleManifest.map((entry) => [entry.id, entry]));
 
 // Legacy default-source seed still consumed by projectLifecycle / examples-preview.
 export const exampleSources = { amy: "" };
@@ -77,6 +79,7 @@ const rawExampleCatalog = exampleManifestData.map((entry) => ({
   detail: entry.detail || "",
   projectName: entry.projectName || entry.id,
   sourceLang: entry.sourceLang || "amy",
+  tags: generatedExampleById.get(entry.id)?.tags || entry.tags || [],
   ...(entry.memoryProfile ? { memoryProfile: entry.memoryProfile } : {}),
   ...(entry.buildTarget ? { buildTarget: { ...entry.buildTarget } } : {}),
   ...(entry.funFact ? { funFact: entry.funFact } : {}),
@@ -151,7 +154,7 @@ function categorizeExample(id) {
 }
 
 function collectExampleTags(example) {
-  const tags = [example.sourceLang];
+  const tags = [example.sourceLang, ...(example.tags || [])];
   if (example.id.startsWith("toolchain-benchmark-")) tags.push("benchmark");
   if (example.id.includes("minimal")) tags.push("minimal");
   if (example.id.includes("numeric") || example.id.includes("math") || example.id.includes("fixed-ufixed") || example.id.includes("arithmetic") || example.id.includes("fixed32")) tags.push("numeric");
