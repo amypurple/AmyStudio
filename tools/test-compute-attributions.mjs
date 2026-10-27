@@ -24,11 +24,7 @@ for (const example of catalog) {
 
   assert.match(visible, /COMPUTE!|GAZETTE/i, `${example.id}: no visible COMPUTE!/Gazette credit`);
   assert.match(visible, /19[78]\d/, `${example.id}: no visible publication year`);
-  if (example.id === "circus") {
-    assert.match(visible, /TI-99\/4A VERSION/i, "circus: collective TI-version credit is missing");
-  } else {
-    assert.match(visible, /\bBY\b|INSPIRED BY/i, `${example.id}: no visible author credit`);
-  }
+  assert.match(visible, /\bBY\b|INSPIRED BY/i, `${example.id}: no visible author credit`);
   const manifestEntry = exampleManifest.find((entry) => entry.id === example.id);
   assert.ok(manifestEntry?.tags?.includes("compute!"), `${example.id}: generated compute! tag is missing`);
   assert.ok(!manifestEntry?.tags?.includes("compute"), `${example.id}: legacy compute tag was not normalized`);

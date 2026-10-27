@@ -1690,7 +1690,7 @@ export const exampleManifest = [
   {
     "id": "circus",
     "label": "Circus (TI-99/4A Port)",
-    "detail": "A trampoline-and-acrobat action game adapted from the 1984 TI-99/4A listing with balloons, birds and title music.",
+    "detail": "Craig Setera's trampoline-and-acrobat action game from COMPUTE! Issue 45, February 1984, adapted from its TI-99/4A listing with balloons, birds and title music.",
     "projectName": "circus",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
