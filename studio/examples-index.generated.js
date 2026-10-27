@@ -2520,31 +2520,10 @@ export const exampleManifest = [
     ]
   },
   {
-    "id": "giant-book-reversi",
-    "label": "Giant Book Reversi (1984)",
-    "detail": "Graham Charlton's Reversi from Tim Hartnell's Giant Book of Computer Games, with Classic and depth-two Master opponents, legal-move hints, animated flips and music.",
-    "projectName": "Giant Book Reversi",
-    "sourceLang": "amy",
-    "memoryProfile": "colecovision_legacy_sdcc",
-    "editorialTrack": "manual-canon",
-    "category": "Games",
-    "tags": [
-      "amy",
-      "book",
-      "adaptation",
-      "game",
-      "board",
-      "reversi",
-      "computer-player",
-      "music",
-      "manual-canon"
-    ]
-  },
-  {
-    "id": "giant-book-checkers",
-    "label": "Giant Book Checkers (1984)",
-    "detail": "Tim Hartnell's Giant Book of Computer Games checkers program, adapted with legal moves, chained captures, kings, animated movement, a book-faithful computer player and music.",
-    "projectName": "Giant Book Checkers",
+    "id": "boardgames",
+    "label": "Giant Book Board Games (1984)",
+    "detail": "A combined cartridge of Checkers, Reversi and Awari from Tim Hartnell's Giant Book of Computer Games, with a shared joystick menu for switching among all three games.",
+    "projectName": "Giant Book Board Games",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",
@@ -2556,10 +2535,10 @@ export const exampleManifest = [
       "game",
       "board",
       "checkers",
-      "computer-player",
-      "sprites",
-      "music",
-      "manual-canon"
+      "reversi",
+      "awari",
+      "mancala",
+      "collection"
     ]
   },
   {
