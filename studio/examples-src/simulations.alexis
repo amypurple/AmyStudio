@@ -1,0 +1,1947 @@
+' SIMULATIONS
+' Three simulations from the "Simulations" chapter of Tim Hartnell's Giant
+' Book of Computer Games (Ballantine Books, 1984; Interface Publications,
+' 1983), for the ColecoVision in Amy by Amy Bienvenu.
+'
+' MISTRESS OF XENOPHOBIA (after a program by Alastair Gourlay): rule a
+' little planet for 20 years. Each year decree how much more land to farm
+' and how much to spend on food ($10 a unit each); feed the peasants or
+' face rebellion; a population under 150, or an empty treasury, ends it.
+' RURAL PURSUITS (after a program by Stephen Glen): run a farm for 10
+' years. Choose the acres to work, the workers' pay and the share of corn,
+' wheat and barley; badly paid workers leave.
+' CHAIRMAN OF THE BOARD: run a factory week by week (hire, fire, set
+' production, raise prices) until stock and capital pass $10,000, while
+' unions, fires and suppliers do their worst.
+'
+' Controls (either joystick): numbers are entered digit by digit: left and
+' right choose a digit, up and down change it, the button confirms. The
+' second button leaves. Keypad not used.
+'
+' Liberties taken:
+' - All three: whole numbers (and cents in CHAIRMAN) instead of BASIC's
+'   fractions; RND is a 16-bit fraction. Sums are capped at 999,999,999.
+' - XENOPHOBIA: RND*(W*R*5 - P) is computed on the size of the change,
+'   up or down, then added or taken away.
+' - RURAL PURSUITS: the pay is whole dollars, up to $255 a worker.
+' - CHAIRMAN: the listing's HA (lines 1240-1250) is read as MA, so the
+'   kazoos made are counted into stock; a fire cannot burn stock that is
+'   not there, and with no stock nothing is sold (the listing would loop).
+' - New pictures (the planet, the farm, the factory), bar graphs, music
+'   (Affairs of State) and sounds.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; sprites only for
+' the celebration (eight sparks, staggered); every screen is drawn with the
+' NMI off after a wait.
+
+const TBg0 = 128
+const TBg1 = 129
+const TBg2 = 130
+const TBg3 = 131
+const TBg4 = 132
+const TBg5 = 133
+const TBg6 = 134
+const TBg7 = 135
+const TBg8 = 136
+const TBy0 = 137
+const TBy1 = 138
+const TBy2 = 139
+const TBy3 = 140
+const TBy4 = 141
+const TBy5 = 142
+const TBy6 = 143
+const TBy7 = 144
+const TBy8 = 145
+const TBr0 = 146
+const TBr1 = 147
+const TBr2 = 148
+const TBr3 = 149
+const TBr4 = 150
+const TBr5 = 151
+const TBr6 = 152
+const TBr7 = 153
+const TBr8 = 154
+const SSpark = 0
+const SSmoke = 4
+const SBird = 8
+const NTiles8 = 216
+const SprBytes = 96
+const SndHush = 1
+const SndClick = 2
+const SndCoin = 3
+const SndReport = 4
+const SndGood = 5
+const SndBad = 6
+const SndRiot = 7
+const SndFire = 8
+const SndWin = 9
+const SndLose = 10
+const SndTuneA = 11
+const SndTuneB = 12
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+const PicBase = 155
+const PicBase8 = 1240
+const PlanetN = 448
+data PlanetPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$00,$01,$00,$00,$00
+  $00,$00,$00,$01,$80,$00,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$00,$00,$01,$01,$01,$C0,$C0,$C0,$C0
+  $00,$80,$80,$80,$03,$03,$03,$03,$00,$00,$00,$00,$00,$08,$00,$00
+  $00,$00,$00,$00,$00,$07,$F0,$E0,$00,$00,$00,$00,$80,$0F,$07,$07
+  $00,$00,$00,$00,$00,$00,$01,$00,$00,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$03,$07,$0F,$E0,$C0,$80
+  $C0,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$E0,$F0,$07,$03,$01,$03,$00,$00,$01,$00,$00,$00,$00,$00
+  $F0,$E0,$F0,$F0,$F0,$07,$00,$00,$07,$03,$07,$07,$07,$0F,$80,$00
+  $00,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$02,$00,$00,$01,$00,$00,$01,$01,$03,$03,$03,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$0F,$0F,$0F,$E0,$E0
+  $80,$80,$C0,$C0,$E0,$E0,$E0,$E0,$00,$00,$00,$00,$00,$40,$00,$C0
+  $00,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$20,$00,$00
+  $00,$40,$00,$00,$00,$00,$00,$00,$00,$08,$20,$00,$00,$00,$00,$00
+  $00,$00,$03,$07,$0F,$07,$03,$00,$1E,$F0,$C0,$00,$00,$00,$C0,$F0
+  $03,$03,$07,$03,$03,$03,$03,$03,$C0,$C0,$C0,$80,$80,$00,$00,$00
+  $E0,$E0,$F0,$E0,$E0,$E0,$E0,$E0,$3C,$07,$01,$00,$00,$00,$01,$07
+  $00,$80,$E0,$70,$78,$70,$E0,$80,$00,$00,$00,$10,$00,$00,$00,$04
+  $00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00
+  $1E,$01,$00,$00,$00,$00,$00,$00,$03,$0E,$03,$02,$00,$00,$00,$00
+  $00,$00,$03,$00,$00,$80,$C0,$E0,$01,$01,$03,$03,$03,$07,$07,$0F
+  $00,$00,$E0,$00,$00,$00,$01,$03,$E0,$07,$E0,$80,$80,$00,$00,$00
+  $3C,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$01,$00,$00,$00,$10,$00,$80,$00,$00,$00
+  $0F,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00
+  $0F,$0F,$E0,$E0,$C0,$80,$00,$00,$07,$F0,$E0,$80,$00,$00,$00,$00
+end data
+data PlanetCol bytes
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$F1,$11,$F1,$11,$11,$11
+  $11,$11,$11,$F1,$F1,$11,$11,$11,$11,$11,$F1,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$F1,$11,$11,$E1,$E1,$E1,$1E,$1E,$1E,$1E
+  $11,$E1,$E1,$E1,$1E,$1E,$1E,$1E,$11,$11,$11,$11,$11,$F1,$11,$11
+  $11,$11,$11,$11,$11,$71,$17,$17,$11,$11,$11,$11,$71,$17,$17,$17
+  $11,$11,$11,$11,$11,$11,$F1,$11,$11,$F1,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$F1,$11,$11,$D1,$D1,$D1,$1D,$1D,$1D
+  $1E,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$1E,$DD,$DD,$DD,$DD,$DD,$DD,$DD
+  $11,$D1,$D1,$D1,$1D,$1D,$1D,$6D,$11,$11,$F1,$11,$11,$11,$11,$11
+  $17,$17,$17,$17,$17,$71,$11,$11,$17,$17,$17,$17,$17,$17,$71,$11
+  $11,$F1,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$F1
+  $11,$11,$11,$11,$F1,$11,$11,$B1,$11,$11,$D1,$D1,$D1,$D1,$D1,$1B
+  $DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$6D,$6D,$6D,$6D,$6D,$6D,$D6,$D6
+  $61,$61,$61,$61,$61,$61,$61,$6B,$11,$11,$11,$11,$11,$F1,$11,$B1
+  $11,$11,$F1,$11,$11,$11,$11,$11,$11,$11,$11,$11,$F1,$F1,$11,$11
+  $11,$F1,$11,$11,$11,$11,$11,$11,$11,$F1,$F1,$11,$11,$11,$11,$11
+  $11,$11,$B1,$B1,$B1,$B1,$B1,$11,$B1,$B1,$B1,$11,$11,$11,$B1,$B1
+  $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D6,$D6,$D6,$D6,$D6,$66,$66,$66
+  $61,$61,$61,$61,$61,$61,$61,$61,$B1,$B1,$B1,$11,$11,$11,$B1,$B1
+  $11,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$11,$11,$11,$F1,$11,$11,$11,$F1
+  $11,$11,$11,$11,$F1,$11,$11,$11,$11,$11,$11,$F1,$11,$11,$11,$11
+  $B1,$B1,$11,$11,$11,$11,$11,$11,$D1,$1B,$B1,$F1,$11,$11,$11,$11
+  $DD,$DD,$DB,$DD,$DD,$1D,$1D,$1D,$6D,$6D,$6D,$6D,$6D,$6D,$6D,$6D
+  $66,$66,$6B,$66,$66,$66,$16,$16,$61,$B1,$B1,$61,$61,$11,$11,$11
+  $B1,$B1,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$F1,$11,$11,$11
+  $11,$F1,$11,$11,$11,$11,$F1,$11,$11,$11,$F1,$11,$F1,$11,$11,$11
+  $D1,$D1,$D1,$11,$11,$11,$11,$11,$DD,$DD,$DD,$DD,$1D,$11,$11,$11
+  $6D,$6D,$D6,$D6,$D6,$D1,$11,$11,$16,$61,$61,$61,$11,$11,$11,$11
+end data
+data PlanetMap bytes
+  155,155,156,157,158,155,159,160,161,162,155,155,155,163,164,155
+  155,165,155,166,155,167,168,169,170,171,172,155,155,173,174,175
+  155,167,158,176,177,178,179,179,179,180,181,182,155,183,184,185
+  155,186,155,187,188,189,179,179,179,190,191,192,193,194,155,155
+  155,195,196,155,197,198,199,179,200,201,202,203,204,155,162,205
+  155,155,206,155,155,155,207,208,209,210,155,155,155,155,155,155
+end data
+const FarmN = 336
+data FarmPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$C0,$F0,$00,$00,$00,$00,$00,$00,$00,$08
+  $00,$00,$00,$07,$0F,$0F,$0F,$E0,$00,$00,$80,$F0,$07,$07,$07,$03
+  $00,$00,$00,$03,$0F,$C0,$C0,$C0,$0F,$C0,$00,$00,$00,$00,$00,$00
+  $03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F0,$03,$00,$00,$00
+  $00,$00,$01,$03,$03,$03,$07,$03,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$C0,$E0,$E0,$E0,$F0,$E0,$00,$00,$00,$00,$00,$01,$03,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$07,$03,$01
+  $0F,$0F,$0F,$07,$00,$00,$00,$00,$07,$07,$07,$F0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$0F,$0F,$00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$1C,$1C,$1C,$1C,$E0,$E0,$C0,$80,$00,$00,$00,$00
+  $F0,$E0,$0F,$0F,$0F,$0F,$0F,$0F,$00,$00,$00,$00,$00,$00,$00,$E0
+  $00,$00,$00,$00,$00,$00,$00,$80,$00,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03
+  $1C,$1C,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$0F,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$80,$80,$80,$80,$80,$80,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00
+  $03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data FarmCol bytes
+  $55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$55,$65
+  $55,$55,$55,$55,$55,$55,$65,$65,$55,$55,$55,$55,$55,$55,$55,$25
+  $55,$55,$55,$B5,$B5,$B5,$B5,$5B,$55,$55,$B5,$B5,$5B,$5B,$5B,$5B
+  $55,$55,$55,$65,$65,$56,$58,$58,$65,$56,$66,$66,$66,$66,$88,$88
+  $56,$66,$66,$66,$66,$66,$88,$88,$55,$55,$65,$65,$56,$66,$88,$88
+  $55,$55,$25,$25,$25,$25,$25,$25,$52,$22,$22,$22,$22,$22,$22,$22
+  $55,$25,$25,$25,$25,$25,$25,$25,$55,$55,$55,$55,$55,$85,$85,$85
+  $55,$55,$55,$55,$88,$88,$88,$88,$55,$55,$55,$55,$58,$58,$58,$58
+  $B5,$B5,$B5,$B5,$55,$55,$55,$55,$5B,$5B,$5B,$B5,$B5,$55,$55,$55
+  $55,$55,$55,$55,$55,$55,$CC,$CC,$58,$58,$58,$58,$58,$58,$C8,$C8
+  $88,$88,$88,$88,$88,$88,$F8,$F8,$88,$88,$88,$88,$88,$88,$8F,$8F
+  $88,$88,$88,$88,$88,$88,$88,$88,$25,$25,$25,$55,$55,$55,$CC,$CC
+  $22,$22,$22,$22,$A2,$A5,$AC,$AC,$25,$25,$25,$25,$55,$55,$CC,$CC
+  $58,$58,$F5,$F5,$F5,$F5,$FC,$FC,$88,$88,$FF,$FF,$FF,$FF,$FF,$FA
+  $88,$88,$FF,$FF,$FF,$FF,$FF,$AF,$55,$85,$55,$55,$55,$55,$CC,$CC
+  $CC,$CC,$AA,$AA,$CC,$CC,$AA,$AA,$C8,$C8,$A8,$A8,$C8,$C8,$A8,$A8
+  $68,$68,$68,$68,$68,$68,$68,$68,$86,$86,$86,$86,$86,$86,$86,$86
+  $AC,$AC,$AA,$AA,$CC,$CC,$AA,$AA,$FC,$FC,$FA,$FA,$FC,$FC,$AA,$AA
+  $FA,$FA,$FA,$FA,$FA,$FA,$AA,$AA,$AF,$AF,$AF,$AF,$AF,$AF,$AA,$AA
+  $C8,$C8,$AA,$AA,$CC,$CC,$AA,$AA,$68,$68,$AA,$AA,$CC,$CC,$AA,$AA
+  $86,$86,$AA,$AA,$CC,$CC,$AA,$AA,$88,$88,$AA,$AA,$CC,$CC,$AA,$AA
+end data
+data FarmMap bytes
+  155,155,156,157,155,155,155,158,155,155,155,155,155,159,160,155
+  155,161,162,163,164,155,165,166,167,155,168,169,170,171,172,155
+  173,174,175,176,177,173,178,179,180,173,181,182,183,184,173,173
+  185,186,187,188,177,185,185,189,185,185,190,191,192,185,185,185
+  185,193,194,195,196,185,185,185,185,185,185,185,185,185,185,185
+  185,185,185,185,185,185,185,185,185,185,185,185,185,185,185,185
+end data
+const FactoryN = 160
+data FactoryPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$0F,$0F
+  $00,$00,$00,$00,$07,$07,$F0,$F0,$00,$00,$00,$C0,$F0,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00,$F0,$F0
+  $F0,$03,$00,$00,$00,$00,$0F,$0F,$F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $0F,$0F,$0F,$0F,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$00,$00,$C0,$C0
+  $F0,$F0,$F0,$F0,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data FactoryCol bytes
+  $77,$77,$77,$77,$77,$77,$77,$77,$77,$77,$77,$77,$78,$78,$67,$67
+  $77,$77,$77,$77,$78,$78,$67,$67,$77,$77,$77,$E7,$E7,$7E,$EE,$EE
+  $77,$77,$77,$77,$77,$77,$77,$E7,$67,$67,$67,$67,$67,$67,$67,$67
+  $67,$67,$67,$67,$67,$67,$67,$67,$EE,$EE,$EE,$EE,$EE,$EE,$EB,$EB
+  $E7,$7E,$EE,$EE,$EE,$EE,$EB,$EB,$EB,$EB,$EB,$EB,$EE,$EE,$EE,$EE
+  $EB,$EB,$EB,$EB,$EE,$EE,$EE,$EE,$EB,$EB,$EB,$EB,$EE,$EE,$E1,$E1
+  $EB,$EB,$EB,$EB,$EE,$EE,$E1,$E1,$77,$77,$77,$77,$77,$77,$CC,$CC
+  $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$67,$67,$67,$67,$67,$67,$6C,$6C
+  $67,$67,$67,$67,$67,$67,$6C,$6C,$CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+end data
+data FactoryMap bytes
+  155,155,155,155,155,155,155,155,155,155,155,155,155,156,157,155
+  155,158,159,158,159,158,159,158,159,158,159,158,159,160,161,155
+  155,162,163,162,163,162,163,162,163,162,163,162,163,160,161,155
+  155,164,165,164,165,164,166,167,165,164,165,164,165,160,161,155
+  168,169,169,169,169,169,170,171,169,169,169,169,169,172,173,168
+  174,174,174,174,174,174,174,174,174,174,174,174,174,174,174,174
+end data
+data ProdStart bytes 0, 7, 15, 25, 31, 39, 48, 58
+data ProdLen bytes 7, 8, 10, 6, 8, 9, 10, 12
+data ProdText bytes
+  69, 80, 79, 78, 89, 77, 83, 66, 73, 67, 89, 67, 76, 69, 83, 72, 65, 82, 77, 79
+  78, 73, 67, 65, 83, 75, 65, 90, 79, 79, 83, 76, 69, 67, 84, 69, 82, 78, 83, 77
+  79, 76, 69, 83, 75, 73, 78, 83, 67, 65, 82, 80, 69, 84, 66, 65, 71, 83, 80, 73
+  84, 72, 32, 72, 69, 76, 77, 69, 84, 83
+end data
+
+' the font has no dollar sign: one is drawn over '$'
+data Dollar bytes $10,$7C,$90,$7C,$12,$7C,$10,$00
+
+' Celebrate: three bursts of eight sparks (the directions, the colours)
+data CbDx bytes 0,3,4,3,0,253,252,253
+data CbDy bytes 252,253,0,3,4,3,0,253
+data CbCol bytes 15,11,9,13,7,10,8,14
+u8 CbX[8]
+u8 CbY[8]
+u8 CbK = 0
+u8 CbT = 0
+u8 CbN = 0
+u8 CbC = 0
+u8 CbV = 0
+
+' 32-bit scratch and the entered number
+u32 Qa = 0
+u32 Qb = 0
+u32 Qc = 0
+u32 Qn = 0
+u32 Qr = 0
+u32 Qs = 0
+u32 Qt = 0
+u32 Qv = 0
+u32 Qx = 0
+u32 Qmax = 0
+u32 Qp = 0
+i32 Ti = 0
+i32 Tj = 0
+u8 Lb = 0
+u16 Lw = 0
+u8 Dg[7]
+u8 Pd[10]
+u8 Nd = 4
+
+' XENOPHOBIA
+u32 Xp = 0
+u32 Xu = 0
+u32 Xl = 0
+u32 Xw = 0
+u32 Xf = 0
+u8 Xr = 0
+u8 Xy = 0
+u8 Xend = 0
+
+' RURAL PURSUITS
+u32 Mo = 0
+u32 La = 0
+u32 Ac = 0
+u32 Cs = 0
+u32 Cx = 0
+u32 Ba = 0
+u32 Cn = 0
+u32 Wh = 0
+u32 Tt = 0
+u32 Rt = 0
+u32 Lw2 = 0
+u32 Wg = 0
+u32 Mx = 0
+u8 Cp = 0
+u8 Wp = 0
+u8 Pp = 0
+u8 Yr = 1
+
+' CHAIRMAN OF THE BOARD (money in cents)
+i32 Ca = 0
+u32 St = 0
+u32 Sp = 0
+u32 Co = 0
+u32 Wo = 0
+u32 Wa = 0
+u32 Pr = 0
+u32 Rc = 0
+u32 Re = 1
+u32 Ma = 0
+u32 Ha = 0
+u16 We = 0
+u8 Prod = 0
+u8 Cend = 0
+u32 Fl = 0
+u32 Su = 0
+u8 Un = 0
+u8 Pc = 0
+u8 Inp = 0
+
+' scratch
+u16 Uw = 0
+u16 Ub = 0
+u16 NumU = 0
+u16 Rs = $3A71
+u16 Rt16 = 0
+u16 Rw = 0
+u8 Rb = 0
+u8 Nr = 0
+u8 Res = 0
+u8 Ka = 0
+u8 Kc = 0
+u8 Pos = 0
+
+' input and menus
+u8 Menu = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Bc = 0
+
+  tile screen
+  set sound table SmSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then goto rural
+  if Menu = 2 then goto chairman
+  if Menu = 3 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+
+' ---------------------------------------------------------------------------
+' MISTRESS OF XENOPHOBIA
+
+xeno:
+  ' the book: P = 200 + INT(RND*300), U = 700 + INT(RND*500), L = 70 + INT(RND*50)
+  Qn = 300
+  RndOf
+  Xp = Qr + 200
+  Qn = 500
+  RndOf
+  Xu = Qr + 700
+  Qn = 50
+  RndOf
+  Xl = Qr + 70
+  Xy = 1
+  Xend = 0
+  Ka = 1
+  GameScreen
+xe_year:
+  XeStats
+  play sound SndReport
+  Say
+  print at 2,16, "A REPORT FROM THE OFFICE OF"
+  print at 2,17, "INFORMATION, MISTRESS..."
+  print at 2,18, "TIME TO ISSUE A DECREE..."
+  print at 2,19, "HOW MUCH LAND IS TO BE"
+  print at 2,20, "FARMED THIS YEAR?"
+  Qv = 0
+  Nd = 6
+  DigitsIn
+  if Res = 1 then goto title
+  Xw = Qv
+  ' the book: U = U - W*10, bankrupt below 1
+  Qa = Xw * 10
+  if Qa >= Xu then goto xe_broke
+  Xu = Xu - Qa
+  Xl = Xl + Xw
+  XeStats
+  play sound SndCoin
+  Say
+  print at 2,16, "AND HOW MUCH WILL YOU"
+  print at 2,17, "SPEND ON FOOD FOR THE"
+  print at 2,18, "PEASANTS?"
+  Qv = 0
+  Nd = 6
+  DigitsIn
+  if Res = 1 then goto title
+  Xf = Qv
+  Qa = Xf * 10
+  if Qa >= Xu then goto xe_broke
+  Xu = Xu - Qa
+  XeStats
+  play sound SndCoin
+  ' R = INT(RND*10) + 1; the food feeds W*R*5
+  Nr = 10
+  RndN
+  Xr = V + 1
+  Qt = Xf * 5
+  Qa = Xr
+  Qt = Qt * Qa
+  Say
+  ' not enough food when P - W*R*5 > P/4, that is 4(P - T) > P
+  if Xp > Qt then
+    Qa = Xp - Qt
+    Qa = Qa * 4
+    if Qa > Xp then
+      print at 2,16, "OH DEAR!! THERE'S NOT"
+      print at 2,17, "ENOUGH FOOD FOR EVERYONE..."
+      Pause
+      Say
+      print at 2,16, "HORRORS, YOUR XENONESS"
+      print at 2,17, "THERE'S BEEN A REBELLION!!!"
+      print at 2,18, "THE PEASANTS ARE REVOLTING"
+      print at 2,19, "(I HAD TO GET THAT LINE IN!)"
+      play sound SndRiot
+      Riot
+      Pause
+      Rnd
+      if Rb < 51 then
+        print at 2,20, "AND YOUR COPS COULDN'T"
+        print at 2,21, "STOP THEM"
+        play sound SndLose
+        goto xe_over
+      end if
+      print at 2,20, "BUT YOUR RUTHLESS POLICE"
+      print at 2,21, "HAVE PUT A STOP TO THAT"
+      Pause
+      Say
+    end if
+  end if
+  ' P = P + RND*(T - P), up or down
+  if Qt >= Xp then
+    Qn = Qt - Xp
+    RndOf
+    Xp = Xp + Qr
+  else
+    Qn = Xp - Qt
+    RndOf
+    Xp = Xp - Qr
+  end if
+  if Xp > 999999999 then Xp = 999999999
+  XeStats
+  if Xp <= 149 then
+    print at 2,16, "THE POPULATION OF XENOPHOBIA"
+    print at 2,17, "IS NOW DOWN TO"
+    Qx = Xp
+    PrintQ17
+    print at 2,18, "AND THAT JUST AIN'T ENOUGH,"
+    print at 2,19, "YOUR XENONESS"
+    play sound SndLose
+    goto xe_over
+  end if
+  ' U = U + INT(P*L)/93 (capped)
+  Qa = 4000000000 / Xp
+  if Xl > Qa then
+    Xu = 999999999
+  else
+    Qa = Xp * Xl
+    Qa = Qa / 93
+    Xu = Xu + Qa
+    if Xu > 999999999 then Xu = 999999999
+  end if
+  XeStats
+  play sound SndGood
+  print at 2,16, "THE HARVEST IS IN, AND THE"
+  print at 2,17, "TAXES WITH IT."
+  Pause
+  if Xy < 20 then
+    inc Xy
+    goto xe_year
+  end if
+  Say
+  print at 2,16, "WELL, XENOPHOBIC, THAT'S"
+  print at 2,17, "THE END OF YOUR 20 YEAR"
+  print at 2,18, "DOMINATION. YOU MANAGED TO"
+  print at 2,19, "ACCUMULATE $"
+  Qx = Xu
+  X = 14
+  Y = 19
+  PrintQ
+  print at 2,20, "WHICH AIN'T TOO BAD..."
+  play sound SndWin
+  Celebrate
+  goto xe_over
+xe_broke:
+  Say
+  print at 2,16, "WELL, XENO, THAT'S A FINE"
+  print at 2,17, "MESS YOU'VE GOT YOURSELF,"
+  print at 2,18, "AND OUR LITTLE PLANET INTO."
+  print at 2,19, "THE TREASURY IS BANKRUPT!!"
+  print at 2,20, "GUESS WHO BLEW IT?????????"
+  play sound SndLose
+xe_over:
+  Xend = 1
+  EndWait
+  if Res = 0 then goto xeno
+  goto title
+
+' ---------------------------------------------------------------------------
+' RURAL PURSUITS
+
+rural:
+  ' the book's start: MO 7000-7999, LA 100-1099, AC 300-499, CS 8-12
+  Qn = 1000
+  RndOf
+  Mo = Qr + 7000
+  Qn = 1000
+  RndOf
+  La = Qr + 100
+  Qn = 200
+  RndOf
+  Ac = Qr + 300
+  Nr = 5
+  RndN
+  Cs = V
+  Cs = Cs + 8
+  Cx = Cs
+  Yr = 1
+  Ka = 2
+  GameScreen
+ru_year:
+  Ba = 0
+  Cn = 0
+  Wh = 0
+  RuStats
+  play sound SndReport
+  ' MAX = INT(MO/CS), no more than AC
+  Mx = Mo / Cs
+  if Mx > Ac then Mx = Ac
+  Say
+  print at 2,16, "IT WILL BE $"
+  Qx = Cs
+  X = 14
+  Y = 16
+  PrintQ
+  print at 18,16, "AN ACRE TO"
+  print at 2,17, "WORK. THE MOST YOU CAN WORK"
+  print at 2,18, "THIS YEAR IS"
+  Qx = Mx
+  X = 15
+  Y = 18
+  PrintQ
+  print at 20,18, "ACRES."
+  print at 2,19, "HOW MUCH LAND DO YOU WANT"
+  print at 2,20, "TO HARVEST?"
+ru_land:
+  Qv = 0
+  Nd = 4
+  DigitsIn
+  if Res = 1 then goto title
+  if Qv > Mx then
+    play sound SndBad
+    goto ru_land
+  end if
+  Lw2 = Qv
+  Qa = Lw2 * Cs
+  Mo = Mo - Qa
+  RuStats
+  play sound SndCoin
+  Say
+  print at 2,16, "HOW MUCH WILL YOU PAY EACH"
+  print at 2,17, "WORKER (UP TO $255)?"
+ru_pay:
+  Qv = 0
+  Nd = 3
+  DigitsIn
+  if Res = 1 then goto title
+  Qa = Qv * La
+  if Qv > 255 then
+    play sound SndBad
+    goto ru_pay
+  end if
+  if Qa > Mo then
+    play sound SndBad
+    print at 2,19, "YOU CAN'T AFFORD THAT"
+    goto ru_pay
+  end if
+  Wg = Qv
+  Mo = Mo - Qa
+  RuStats
+  play sound SndCoin
+  Say
+  print at 2,16, "WHAT PROPORTION (OUT OF TEN)"
+  print at 2,17, "DO YOU WISH TO CONCENTRATE"
+  print at 2,18, "ON CORN?"
+ru_corn:
+  Qv = 0
+  Nd = 2
+  DigitsIn
+  if Res = 1 then goto title
+  if Qv > 10 then
+    play sound SndBad
+    goto ru_corn
+  end if
+  Qx = Qv
+  Low8
+  Cp = Lb
+  Pp = 10 - Cp
+  Say
+  print at 2,16, "OF THE REMAINING"
+  NumU = Pp
+  print at 19,16, width$(NumU, 2)
+  print at 2,17, "(OUT OF 10), HOW MUCH WHEAT"
+  print at 2,18, "WILL YOU PLANT?"
+ru_wheat:
+  Qv = 0
+  Nd = 2
+  DigitsIn
+  if Res = 1 then goto title
+  Qa = Pp
+  if Qv > Qa then
+    play sound SndBad
+    goto ru_wheat
+  end if
+  Qx = Qv
+  Low8
+  Wp = Lb
+  Pp = Pp - Wp
+  Say
+  print at 2,16, "STAND BY FOR A YEAR..."
+  Pause
+  ' the crops: Y = share x L x LA x W, then the book's factors
+  Qa = Lw2 * La
+  Qa = Qa * Wg
+  Qb = Pp
+  Qn = Qa * Qb
+  Qs = 100000
+  Kc = 3
+  ScaleDiv
+  Ba = Qr
+  Qb = Cp
+  Qn = Qa * Qb
+  Qs = 170000
+  Kc = 27
+  ScaleDiv
+  Cn = Qr
+  Qb = Wp
+  Qn = Qa * Qb
+  Qs = 93000
+  Kc = 14
+  ScaleDiv
+  Wh = Qr
+  Tt = Ba + Cn
+  Tt = Tt + Wh
+  ' RT = INT((.5 + 8.7 BA + 5.94 CO + 2.2 WH)(CS - CX + 1))
+  Qa = Ba * 870
+  Qb = Cn * 594
+  Qa = Qa + Qb
+  Qb = Wh * 220
+  Qa = Qa + Qb
+  Qa = Qa + 50
+  Qb = Cs - Cx
+  Qb = Qb + 1
+  Qa = Qa * Qb
+  Rt = Qa / 100
+  if Tt = 0 then Rt = 0
+  Mo = Mo + Rt
+  if Mo > 999999999 then Mo = 999999999
+  RuStats
+  Say
+  Qx = Tt
+  X = 2
+  Y = 16
+  PrintQ
+  print at 12,16, "TONS HARVESTED"
+  print at 2,17, "AND YOUR TOTAL RETURN WAS $"
+  Qx = Rt
+  X = 2
+  Y = 18
+  PrintQ
+  play sound SndCoin
+  Pause
+  ' LA = INT(LA - LA/(W + .01)): LA*100/(100W + 1) leave (rounded up)
+  Qa = La * 100
+  Qb = Wg * 100
+  Qb = Qb + 1
+  Qc = Qa / Qb
+  Qt = Qc * Qb
+  if Qt < Qa then inc Qc
+  if Qc >= La then
+    La = 0
+  else
+    La = La - Qc
+  end if
+  RuStats
+  Pause
+  if Yr = 10 then
+    Say
+    print at 2,16, "YOU HAVE SURVIVED FOR 10"
+    print at 2,17, "YEARS. CONGRATULATIONS!"
+    play sound SndWin
+    Celebrate
+    goto ru_over
+  end if
+  if Mo < 1 then
+    Say
+    print at 2,16, "YOU HAVE GONE BROKE!"
+    play sound SndLose
+    goto ru_over
+  end if
+  if La < 1 then
+    Say
+    print at 2,16, "YOU HAVE NO WORKERS, AND"
+    print at 2,17, "HAVE BEEN FORCED TO SELL"
+    print at 2,18, "YOUR FARM"
+    play sound SndLose
+    goto ru_over
+  end if
+  inc Yr
+  ' general costs rise 12.5% a year: CS = CS + INT(12.5 CS / 100)
+  Qa = Cs * 125
+  Qa = Qa / 1000
+  Cs = Cs + Qa
+  goto ru_year
+ru_over:
+  EndWait
+  if Res = 0 then goto rural
+  goto title
+
+' ---------------------------------------------------------------------------
+' CHAIRMAN OF THE BOARD
+
+chairman:
+  ' the book's start (in cents)
+  Nr = 8
+  RndN
+  Prod = V
+  Qn = 500
+  RndOf
+  Qa = Qr + 500
+  Ti = Qa
+  Ca = Ti * 100
+  Qn = 500
+  RndOf
+  St = Qr + 100
+  Nr = 5
+  RndN
+  Qa = V
+  Qa = Qa + 10
+  Sp = Qa * 100
+ch_co:
+  Nr = 5
+  RndN
+  Qa = V
+  Qa = Qa + 7
+  Co = Qa * 100
+  if Co > Sp then goto ch_co
+  Nr = 10
+  RndN
+  Wo = V
+  Wo = Wo + 7
+  ' WA = 12 + INT(RND*SP)
+  Qn = Sp / 100
+  RndOf
+  Qa = Qr + 12
+  Wa = Qa * 100
+  Nr = 6
+  RndN
+  Pr = V
+  Pr = Pr + 5
+  Nr = 20
+  RndN
+  Qa = V
+  Qa = Qa + 100
+  Rc = Qa * 100
+  We = 0
+  Re = 1
+  Ma = 0
+  Cend = 0
+  Ka = 3
+  GameScreen
+ch_week:
+  inc We
+  ChReport
+  if Cend > 0 then goto ch_over
+  ' staff: hire; if nobody, maybe fire
+  Say
+  print at 2,16, "HOW MANY PEOPLE DO YOU"
+  print at 2,17, "WANT TO HIRE?"
+  Qv = 0
+  Nd = 3
+  DigitsIn
+  if Res = 1 then goto title
+  Wo = Wo + Qv
+  if Qv = 0 then
+    ChReport
+    if Cend > 0 then goto ch_over
+    Say
+    print at 2,16, "HOW MANY PEOPLE DO YOU"
+    print at 2,17, "WISH TO FIRE?"
+ch_fire:
+    Qv = 0
+    Nd = 3
+    DigitsIn
+    if Res = 1 then goto title
+    if Qv > Wo then
+      play sound SndBad
+      goto ch_fire
+    end if
+    if Qv > 0 then
+      ' A = INT(RND*A + 1)
+      Qn = Qv
+      RndOf
+      Qa = Qr + 1
+      Say
+      print at 2,16, "THE UNIONS WILL ALLOW YOU"
+      print at 2,17, "TO GET RID OF"
+      Qx = Qa
+      PrintQ17
+      Wo = Wo - Qa
+      play sound SndBad
+      Pause
+    end if
+  end if
+  ChReport
+  if Cend > 0 then goto ch_over
+  ' production
+  Say
+  print at 2,16, "HOW MANY DO YOU WISH TO"
+  print at 2,17, "PRODUCE?"
+  Ma = 0
+ch_make:
+  Qv = 0
+  Nd = 4
+  DigitsIn
+  if Res = 1 then goto title
+  Ma = Qv
+  if Ma > 0 then
+    Qa = Ma * Co
+    Ti = Qa
+    if Ti > Ca then
+      print at 2,19, "YOU DO NOT HAVE ENOUGH MONEY"
+      play sound SndBad
+      goto ch_make
+    end if
+    Qa = Pr * Wo
+    if Ma > Qa then
+      print at 2,19, "NOT ENOUGH PEOPLE         "
+      play sound SndBad
+      goto ch_make
+    end if
+    ' MA = INT(MA - RND*MA/5)
+    Qn = Ma
+    RndOf
+    Qb = Qr / 5
+    Ma = Ma - Qb
+    St = St + Ma
+    Qa = Co * Ma
+    Ti = Qa
+    Ca = Ca - Ti
+    Say
+    print at 2,16, "THE NUMBER ACTUALLY MADE"
+    print at 2,17, "THIS WEEK WAS"
+    Qx = Ma
+    PrintQ17
+    play sound SndCoin
+    Pause
+  end if
+  ChReport
+  if Cend > 0 then goto ch_over
+  ' sales: A = INT(RND*ST/(RE/1000)) + 1, no more than the stock
+  Ha = 0
+  if St > 0 then
+    Qn = St * 1000
+    Qn = Qn / Re
+    if Qn > St then Qn = St
+    RndOf
+    Ha = Qr + 1
+    if Ha > St then Ha = St
+  end if
+  St = St - Ha
+  Qa = Ha * Sp
+  Ti = Qa
+  Ca = Ca + Ti
+  Say
+  print at 2,16, "THE TOTAL NUMBER SOLD IS"
+  Qx = Ha
+  X = 2
+  Y = 17
+  PrintQ
+  print at 2,18, "THE INCOME FROM THAT SALE"
+  print at 2,19, "WAS"
+  Qx = Qa
+  X = 6
+  Y = 19
+  PrintMoney
+  play sound SndCoin
+  ChStats
+  Pause
+  ' problems: the unions (45% none)
+  Un = 0
+  Fl = 0
+  Su = 0
+  Pc = 0
+  Rnd
+  Rw = Rs
+  if Rw >= 29491 then
+    Nr = 7
+    RndN
+    Un = V + 1
+    Qb = V
+  Qb = Qb + 1
+    Qa = Qb + 100
+    Wa = Wa * Qa
+    Wa = Wa / 100
+    Say
+    print at 2,16, "THE UNIONS ARE DEMANDING A"
+    print at 2,17, "PAY RISE OF"
+    NumU = V + 1
+    print at 14,17, width$(NumU, 1)
+    print at 16,17, "%"
+    print at 2,18, "PAY PER EMPLOYEE IS NOW"
+    Qx = Wa
+    X = 2
+    Y = 19
+    PrintMoney
+    play sound SndBad
+    ChStats
+    Pause
+  end if
+  ' a fire (19%)
+  Rnd
+  Rw = Rs
+  if Rw >= 53084 then
+    if St > 0 then
+      Qn = St / 2
+      RndOf
+      Qa = Qr + 1
+      if Qa > St then Qa = St
+      Fl = Qa
+      St = St - Qa
+      Say
+      print at 2,16, "A FIRE IN YOUR WAREHOUSE"
+      print at 2,17, "HAS DESTROYED"
+      Qx = Qa
+      X = 16
+      Y = 17
+      PrintQ
+      print at 2,18, "WORTH"
+      Qa = Qa * Sp
+      Qx = Qa
+      X = 8
+      Y = 18
+      PrintMoney
+      print at 20,18, "RETAIL"
+      play sound SndFire
+      Riot
+      ChStats
+      Pause
+    end if
+  end if
+  ' the supplier (30%)
+  Rnd
+  Rw = Rs
+  if Rw < 19661 then
+ch_sup:
+    ' A = INT(RND*100*CO/7)/100 dollars: RND*CO/7 cents, at least 1
+    Qn = Co / 7
+    RndOf
+    if Qr < 1 then goto ch_sup
+    Su = Qr
+    Co = Co + Qr
+    Say
+    print at 2,16, "YOUR MAIN SUPPLIER HAS"
+    print at 2,17, "ANNOUNCED A PRICE RISE OF"
+    Qx = Qr
+    X = 2
+    Y = 18
+    PrintMoney
+    print at 14,18, "EACH"
+    play sound SndBad
+    ChStats
+    Pause
+  end if
+  ' the price: IF RND < .65 AND MA < SP THEN no chance to raise it
+  Rnd
+  Rw = Rs
+  Res = 0
+  if Rw < 42598 then
+    Qa = Sp / 100
+    if Ma < Qa then Res = 1
+  end if
+  if Res = 0 then
+    Say
+    print at 2,16, "YOU HAVE A CHANCE TO RAISE"
+    print at 2,17, "YOUR PRICE. WHAT PERCENTAGE"
+    print at 2,18, "INCREASE WOULD YOU LIKE?"
+    Qv = 0
+    Nd = 2
+    DigitsIn
+    if Res = 1 then goto title
+    Qx = Qv
+    Low8
+    Pc = Lb
+    Re = Re + Qv
+    Qa = Qv + 100
+    Sp = Sp * Qa
+    Sp = Sp / 100
+    ChStats
+  end if
+  ' the week's bills: CA = CA - WA*WO - RC
+  Qa = Wa * Wo
+  Qa = Qa + Rc
+  Ti = Qa
+  Ca = Ca - Ti
+  goto ch_week
+ch_over:
+  EndWait
+  if Res = 0 then goto chairman
+  goto title
+
+' ---------------------------------------------------------------------------
+' XENOPHOBIA helpers
+
+sub XeStats:
+  print at 2,1, "XENOPHOBIA"
+  print at 16,1, "YEAR"
+  NumU = Xy + 1994
+  print at 21,1, width$(NumU, 4)
+  print at 2,9, "PEASANTS"
+  Qx = Xp
+  X = 11
+  Y = 9
+  PrintQ
+  Qs = 25
+  Bc = TBg0
+  Bar
+  print at 2,11, "ACRES"
+  Qx = Xl
+  X = 11
+  Y = 11
+  PrintQ
+  Qs = 10
+  Bc = TBy0
+  Bar
+  print at 2,13, "TREASURY $"
+  Qx = Xu
+  X = 13
+  Y = 13
+  PrintQ
+  Qs = 100
+  Bc = TBr0
+  Bar
+  return
+end sub
+
+' Riot: the screen shakes in red a moment
+sub Riot:
+  for J = 1 to 10
+    V = J & 1
+    if V = 0 then
+      backdrop dark red
+    else
+      backdrop black
+    end if
+    Frame1
+    Frame1
+  next
+  backdrop black
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' RURAL PURSUITS helpers
+
+sub RuStats:
+  print at 2,1, "RURAL PURSUITS"
+  print at 21,1, "YEAR"
+  NumU = Yr
+  print at 26,1, width$(NumU, 2)
+  print at 2,9, "MONEY $"
+  Qx = Mo
+  X = 10
+  Y = 9
+  PrintQ
+  Qs = 100
+  Bc = TBy0
+  Bar
+  print at 2,10, "WORKERS"
+  Qx = La
+  X = 10
+  Y = 10
+  PrintQ
+  Qs = 14
+  Bc = TBg0
+  Bar
+  print at 2,11, "ACRES"
+  Qx = Ac
+  X = 10
+  Y = 11
+  PrintQ
+  print at 17,11, "COST/ACRE"
+  Qx = Cs
+  X = 27
+  Y = 11
+  PrintQ3
+  print at 2,12, "CORN"
+  Qx = Cn
+  X = 10
+  Y = 12
+  PrintQ
+  Qs = 10
+  Bc = TBy0
+  Bar
+  print at 2,13, "BARLEY"
+  Qx = Ba
+  X = 10
+  Y = 13
+  PrintQ
+  Bc = TBg0
+  Bar
+  print at 2,14, "WHEAT"
+  Qx = Wh
+  X = 10
+  Y = 14
+  PrintQ
+  Bc = TBr0
+  Bar
+  return
+end sub
+
+' ScaleDiv: Qr = INT(Qn * Kc / Qs), without overflow:
+' (Qn / Qs) * Kc + ((Qn mod Qs) * Kc) / Qs
+sub ScaleDiv:
+  Qb = Kc
+  Qc = Qn / Qs
+  Qr = Qc * Qb
+  Qc = Qn % Qs
+  Qc = Qc * Qb
+  Qc = Qc / Qs
+  Qr = Qr + Qc
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' CHAIRMAN helpers
+
+' ChReport: the shop floor report; Cend 1 bankrupt, 2 retired
+sub ChReport:
+  ChStats
+  ' the book adds stock (a count) to capital (in dollars)
+  Qa = St * 100
+  Ti = Qa
+  Tj = Ca + Ti
+  if Tj < 100 then
+    Say
+    print at 2,16, "YOU'RE BANKRUPT!!"
+    print at 2,17, "OH THE SHAME OF IT!!"
+    print at 2,18, "STILL, YOU KEPT THE BUSINESS"
+    print at 2,19, "GOING FOR"
+    NumU = We
+    print at 12,19, width$(NumU, 4)
+    print at 17,19, "WEEKS"
+    play sound SndLose
+    Cend = 1
+    return
+  end if
+  if Tj > 999900 then
+    Say
+    print at 2,16, "YOU'VE MADE $10,000 AND"
+    print at 2,17, "CAN NOW RETIRE..."
+    play sound SndWin
+    Celebrate
+    Cend = 2
+  end if
+  return
+end sub
+
+sub ChStats:
+  print at 2,1, "THE BOARD"
+  print at 18,1, "WEEK"
+  NumU = We
+  print at 23,1, width$(NumU, 4)
+  print at 2,9, "CAPITAL"
+  fill 32 count 18 at 11,9
+  Tj = Ca
+  if Ca < 0 then
+    print at 11,9, "-"
+    Tj = 0 - Ca
+  end if
+  Qx = Tj
+  X = 12
+  Y = 9
+  PrintMoney
+  print at 2,10, "STOCK"
+  Qx = St
+  X = 11
+  Y = 10
+  PrintQ
+  Ka = ProdStart[Prod]
+  Kc = ProdLen[Prod]
+  X = 18
+  fill 32 count 12 at 18,10
+  for J = 1 to Kc
+    V = ProdText[Ka]
+    put char V at X,10
+    inc X
+    inc Ka
+  next
+  print at 2,11, "SELL AT"
+  Qx = Sp
+  X = 11
+  Y = 11
+  PrintMoney
+  print at 2,12, "COST"
+  Qx = Co
+  X = 11
+  Y = 12
+  PrintMoney
+  print at 2,13, "WORKERS"
+  Qx = Wo
+  X = 11
+  Y = 13
+  PrintQ
+  print at 18,13, "MAKE"
+  Qa = Pr * Wo
+  Qx = Qa
+  X = 23
+  Y = 13
+  PrintQ
+  print at 2,14, "WAGES"
+  Qx = Wa
+  X = 11
+  Y = 14
+  PrintMoney
+  print at 18,14, "EACH"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Numbers and screens
+
+' GameScreen: the picture of game Ka (1-3) in rows 2-7
+sub GameScreen:
+  NewScreen
+  backdrop black
+  if Ka = 1 then
+    copy PlanetPat count PlanetN to vram.pattern + PicBase8
+    copy PlanetCol count PlanetN to vram.color + PicBase8
+  end if
+  if Ka = 2 then
+    copy FarmPat count FarmN to vram.pattern + PicBase8
+    copy FarmCol count FarmN to vram.color + PicBase8
+  end if
+  if Ka = 3 then
+    copy FactoryPat count FactoryN to vram.pattern + PicBase8
+    copy FactoryCol count FactoryN to vram.color + PicBase8
+  end if
+  Kc = 0
+  for Y = 2 to 7
+    for X = 8 to 23
+      if Ka = 1 then V = PlanetMap[Kc]
+      if Ka = 2 then V = FarmMap[Kc]
+      if Ka = 3 then V = FactoryMap[Kc]
+      put char V at X,Y
+      inc Kc
+    next
+  next
+  ShowScreen
+  return
+end sub
+
+' Say: the message rows cleared
+sub Say:
+  for Y = 16 to 21
+    fill 32 count 28 at 2,Y
+  next
+  return
+end sub
+
+' PrintQ: Qx at X, Y (9 places cleared first)
+sub PrintQ:
+  fill 32 count 9 at X,Y
+  Qp = Qx
+  Qt = Qx
+  Kc = 0
+pq_split:
+  Qx = Qt % 10
+  Low8
+  Pd[Kc] = Lb
+  inc Kc
+  Qt = Qt / 10
+  if Qt > 0 then goto pq_split
+  ' the digits, most significant first; X ends after the last
+pq_put:
+  if Kc > 0 then
+    dec Kc
+    V = Pd[Kc] + 48
+    put char V at X,Y
+    inc X
+    goto pq_put
+  end if
+  Qx = Qp
+  return
+end sub
+
+sub PrintQ3:
+  fill 32 count 3 at X,Y
+  Kc = 3
+  Qp = Qx
+  Qt = Qx
+  Kc = 0
+  goto pq_split
+end sub
+
+sub PrintQ17:
+  X = 16
+  Y = 17
+  PrintQ
+  return
+end sub
+
+' PrintMoney: Qx cents as $D.CC at X, Y
+sub PrintMoney:
+  fill 32 count 12 at X,Y
+  print at X,Y, "$"
+  inc X
+  Qn = Qx
+  Qx = Qn / 100
+  W = Y
+  PrintQ
+  print at X,Y, "."
+  inc X
+  Qx = Qn % 100
+  Low8
+  NumU = Lb / 10
+  print at X,Y, width$(NumU, 1)
+  inc X
+  NumU = Lb % 10
+  print at X,Y, width$(NumU, 1)
+  return
+end sub
+
+' Bar: Qx / Qs pixels (no more than 80) at columns 20-29 of row Y, colour
+' tiles from Bc
+sub Bar:
+  Qa = Qx / Qs
+  if Qa > 80 then Qa = 80
+  Qx = Qa
+  Low8
+  for J = 0 to 9
+    V = J << 3
+    W = 0
+    if Lb > V then W = Lb - V
+    if W > 8 then W = 8
+    W = W + Bc
+    X = J + 20
+    put char W at X,Y
+  next
+  return
+end sub
+
+' Low8: Lb = the low byte of Qx
+sub Low8:
+  call asm SmLow8
+  return
+end sub
+
+' DigitsIn: a number of Nd digits on row 21 (from Qv); Res 1 to leave
+sub DigitsIn:
+  Qa = Qv
+  for K = 1 to 6
+    Dg[K] = 0
+  next
+  K = Nd
+di_split:
+  if K > 0 then
+    Qb = Qa % 10
+    Qx = Qb
+    Low8
+    Dg[K] = Lb
+    Qa = Qa / 10
+    dec K
+    goto di_split
+  end if
+  Pos = Nd
+  Inp = 1
+  print at 2,22, "BUTTON: OK     2ND: MENU"
+  WasBtn = 1
+  WasBtn2 = 1
+  Res = 1
+di_loop:
+  if Res = 1 then
+    fill 32 count 16 at 12,21
+    for K = 1 to Nd
+      X = K << 1
+      X = X + 12
+      NumU = Dg[K]
+      print at X,21, width$(NumU, 1)
+      if K = Pos then
+        dec X
+        print at X,21, ">"
+      end if
+    next
+    Res = 0
+  end if
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Pos > 1 then dec Pos
+    end if
+    if Rt1 = 1 then
+      if Pos < Nd then inc Pos
+    end if
+    if Up1 = 1 then
+      V = Dg[Pos] + 1
+      if V > 9 then V = 0
+      Dg[Pos] = V
+    end if
+    if Dn1 = 1 then
+      V = Dg[Pos]
+      if V = 0 then
+        V = 9
+      else
+        dec V
+      end if
+      Dg[Pos] = V
+    end if
+    play sound SndClick
+    Res = 1
+  end if
+  if Press2 = 1 then
+    Inp = 0
+    Res = 1
+    return
+  end if
+  if Press = 0 then goto di_loop
+  Inp = 0
+  Qv = 0
+  for K = 1 to Nd
+    Qv = Qv * 10
+    V = Dg[K]
+    Qa = V
+    Qv = Qv + Qa
+  next
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  Res = 0
+  return
+end sub
+
+' RndOf: Qr = INT(RND * Qn), RND a 16-bit fraction (Rw / 65536)
+sub RndOf:
+  Rnd
+  Rw = Rs
+  Qb = Rw
+  Qa = Qn >> 16
+  Qr = Qa * Qb
+  Qa = Qn & 65535
+  Qa = Qa * Qb
+  Qa = Qa >> 16
+  Qr = Qr + Qa
+  return
+end sub
+
+' Celebrate: three bursts of sparks
+sub Celebrate:
+  clear sprites
+  set sprite count 8
+  for CbN = 1 to 3
+    for CbK = 0 to 7
+      CbX[CbK] = 72
+      CbY[CbK] = 64
+      if CbN = 2 then
+        CbX[CbK] = 168
+        CbY[CbK] = 44
+      end if
+      if CbN = 3 then
+        CbX[CbK] = 120
+        CbY[CbK] = 88
+      end if
+    next
+    for CbT = 1 to 16
+      CbV = CbT & 7
+      CbC = CbCol[CbV]
+      for CbK = 0 to 7
+        CbV = CbX[CbK] + CbDx[CbK]
+        CbX[CbK] = CbV
+        CbV = CbY[CbK] + CbDy[CbK]
+        CbY[CbK] = CbV
+        set sprite CbK to CbY[CbK], CbX[CbK], SSpark, CbC
+      next
+      update sprites
+      Frame1
+      Frame1
+    next
+  next
+  HideSprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Common
+
+' EndWait: Res 0 for the button (again), 1 for the second (menu)
+sub EndWait:
+  print at 2,22, "BUTTON: AGAIN  2ND: MENU"
+  for J = 1 to 40
+    Frame1
+  next
+  WasBtn = 1
+  WasBtn2 = 1
+ew_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Press2 = 1 then
+    HideSprites
+    Res = 1
+    return
+  end if
+  if Press = 0 then goto ew_loop
+  HideSprites
+  Res = 0
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+' RndN: V from 0 to Nr - 1
+sub RndN:
+  Rnd
+  Uw = Rb
+  Ub = 0
+  for J = 1 to Nr
+    Ub = Ub + Uw
+  next
+  Ub = Ub >> 8
+  V = Ub
+  return
+end sub
+
+sub Rnd:
+  Rt16 = Rs << 7
+  Rs ^= Rt16
+  Rt16 = Rs >> 9
+  Rs ^= Rt16
+  Rt16 = Rs << 8
+  Rs ^= Rt16
+  Rt16 = Rs >> 8
+  Rb = Rt16
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 3
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  sprites stable 0 to 0
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  Ka = 1
+  GameScreen
+  backdrop dark blue
+  print at 9,1, "SIMULATIONS"
+  print at 7,10, "MISTRESS OF XENOPHOBIA"
+  print at 7,11, "RURAL PURSUITS"
+  print at 7,12, "CHAIRMAN OF THE BOARD"
+  print at 7,14, "HOW TO PLAY"
+  print at 7,15, "CREDITS"
+  print at 3,20, "FROM TIM HARTNELL'S GIANT"
+  print at 3,21, "BOOK OF COMPUTER GAMES"
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 4 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 10 to 15
+    print at 5,I, " "
+  next
+  Y = Menu + 10
+  if Menu >= 3 then inc Y
+  print at 5,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub PageWait:
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "XENOPHOBIA: RULE 20 YEARS."
+  print at 2,4, "EACH YEAR BUY LAND TO FARM"
+  print at 2,5, "AND FOOD ($10 EACH). FEED"
+  print at 2,6, "THE PEASANTS OR THEY REVOLT."
+  print at 2,8, "RURAL PURSUITS: FARM FOR 10"
+  print at 2,9, "YEARS: ACRES, PAY, AND THE"
+  print at 2,10, "SHARES OF CORN AND WHEAT."
+  print at 2,11, "POOR PAY: WORKERS LEAVE."
+  print at 2,13, "CHAIRMAN: RUN A FACTORY TILL"
+  print at 2,14, "CAPITAL AND STOCK PASS"
+  print at 2,15, "$10,000. HIRE, FIRE, MAKE,"
+  print at 2,16, "RAISE PRICES (SALES DROP)."
+  print at 2,18, "NUMBERS: LEFT/RIGHT A DIGIT,"
+  print at 2,19, "UP/DOWN: CHANGE. BUTTON: OK."
+  print at 2,20, "2ND BUTTON: BACK TO MENU."
+  PageWait
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,1, "SIMULATIONS"
+  print at 2,3, "MISTRESS OF XENOPHOBIA"
+  print at 2,4, "(AFTER ALASTAIR GOURLAY),"
+  print at 2,5, "RURAL PURSUITS (AFTER"
+  print at 2,6, "STEPHEN GLEN) AND CHAIRMAN"
+  print at 2,7, "OF THE BOARD FROM TIM"
+  print at 2,8, "HARTNELL'S GIANT BOOK OF"
+  print at 2,9, "COMPUTER GAMES (BALLANTINE"
+  print at 2,10, "BOOKS, 1984; INTERFACE"
+  print at 2,11, "PUBLICATIONS, 1983)."
+  print at 2,13, "MUSIC: AFFAIRS OF STATE"
+  print at 2,14, "(ORIGINAL)."
+  print at 2,16, "COLECOVISION VERSION BY"
+  print at 2,17, "AMY BIENVENU, 2026."
+  PageWait
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$00
+  $00,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$E0,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$F0,$00
+  $00,$07,$07,$07,$07,$07,$07,$00
+  $00,$03,$03,$03,$03,$03,$03,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$31,$31,$31,$31,$31,$31,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$03,$03,$03,$03,$03,$03,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$B1,$B1,$B1,$B1,$B1,$B1,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$0B,$0B,$0B,$0B,$0B,$0B,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$81,$81,$81,$81,$81,$81,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$08,$08,$08,$08,$08,$08,$01
+end data
+data SpritePat bytes
+  $10,$10,$54,$38,$FE,$38,$54,$10,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$0F,$1F,$3F,$1F,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$E0,$F0,$E0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$60,$30,$1C,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$06,$0C,$18,$70,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+; SmLow8: Lb = the low byte of the 32-bit Qx
+SmLow8:
+    ld a,(AMY_UVAR_Qx)
+    ld (AMY_UVAR_Lb),a
+    ret
+
+SmHush:
+    db $00,$00,$F4,$01,$10
+SmClick:
+    db $40,$40,$70,$01,$50
+SmCoin:
+    db $40,$47,$20,$02,$40,$47,$F0,$01,$40,$35,$20,$05,$40,$35,$F0,$01,$50
+SmReport:
+    db $40,$AA,$30,$03,$40,$AA,$F0,$01,$40,$8F,$30,$03,$40,$8F,$F0,$01,$40,$71,$30,$07,$40,$71,$F0,$01
+    db $50
+SmGood:
+    db $40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$5F,$20,$07,$40,$5F,$F0,$01,$50
+SmBad:
+    db $40,$FC,$31,$09,$40,$FC,$F1,$01,$50
+SmRiot:
+    db $00,$00,$25,$03,$00,$00,$36,$03,$00,$00,$25,$03,$00,$00,$36,$03,$00,$00,$77,$06,$00,$00,$C7,$08
+    db $10
+SmFire:
+    db $00,$00,$26,$02,$00,$00,$37,$03,$00,$00,$46,$04,$00,$00,$77,$06,$00,$00,$B7,$0A,$10
+SmWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$04,$40,$6B,$F0,$01,$40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$6B,$20,$0F,$40,$6B,$F0,$01
+    db $50
+SmLose:
+    db $40,$1D,$31,$09,$40,$1D,$F1,$01,$40,$2E,$31,$09,$40,$2E,$F1,$01,$40,$41,$31,$09,$40,$41,$F1,$01
+    db $40,$53,$31,$17,$40,$53,$F1,$01,$50
+
+SmSoundTable:
+    dw SmHush,$702B
+    dw SmClick,$7035
+    dw SmCoin,$7035
+    dw SmReport,$7035
+    dw SmGood,$7035
+    dw SmBad,$7035
+    dw SmRiot,$702B
+    dw SmFire,$702B
+    dw SmWin,$7035
+    dw SmLose,$7035
+    dw SmTuneMel,$703F
+    dw SmTuneBass,$7049
+; Affairs of State, D major (original for this game)
+; Tiny Sound, 7 frames per step
+SmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$31,$88,$21,$00,$00,$25,$28,$00,$00,$00,$25,$00,$21,$00
+    db $23,$00,$00,$00,$25,$00,$26,$00,$28,$00,$2A,$00,$28,$00,$00,$00
+    db $00,$00,$00,$00,$2A,$00,$28,$00,$26,$00,$25,$00,$23,$00,$25,$00
+    db $26,$00,$23,$00,$21,$00,$25,$00,$23,$00,$20,$00,$21,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+SmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$F1,$22,$15,$10,$15,$10,$15,$10,$15,$10,$10,$17,$10,$17
+    db $10,$17,$10,$17,$15,$10,$15,$10,$0E,$15,$0E,$15,$15,$10,$15,$10
+    db $15,$10,$15,$10,$0E,$15,$0E,$15,$15,$10,$15,$10,$10,$17,$10,$17
+    db $10,$17,$14,$17,$15,$10,$15,$10,$10,$17,$10,$17,$15,$10,$15,$00
+    db $00,$00,$00,$00
+    db $FF
+}

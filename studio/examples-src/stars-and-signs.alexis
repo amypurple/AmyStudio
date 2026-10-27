@@ -1,0 +1,890 @@
+' STARS AND SIGNS
+' The two programs of "Fun with your Printer" in Tim Hartnell's Giant
+' Book of Computer Games (Ballantine Books, 1984; Interface Publications,
+' 1983), for the ColecoVision in Amy by Amy Bienvenu.
+'
+' CELESTIA: John Conway's LIFE on an 8 x 18 colony; each generation is
+' shown four times, the colony and its three reflections, as the book
+' prints it. A live cell with 2 or 3 neighbours lives, an empty one with
+' exactly 3 is born, every other cell is empty next time.
+' BILLBOARD: type a message; it comes out in giant letters, each 5 x 7
+' blocks, as the book prints them down the paper.
+'
+' Controls (either joystick): CELESTIA: the button makes a new sky, the
+' second button leaves. BILLBOARD: the stick moves over the keyboard, the
+' button types (DEL rubs out, END shows the sign); on the sign, the
+' button writes a new message, the second button leaves. Keypad not used.
+'
+' Liberties taken:
+' - There is no printer: both programs draw on the screen. CELESTIA's
+'   cells are little stars in four colours, one for each reflection;
+'   when the sky stops changing (or dies), a new one is made.
+' - BILLBOARD's letters are drawn with lamps on a sign, scrolling past
+'   like a marquee, instead of being printed sideways down the paper
+'   with copies of each letter. The book's letter shapes are partly
+'   unreadable in the scanned listing; these are drawn anew, 5 x 7 as in
+'   the book. Messages hold up to 26 characters: letters, '.', '!' and
+'   spaces (the book prints anything else as a space).
+' - New music (Starlight Press) and sounds.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; one sprite (the
+' pointer); every screen is drawn with the NMI off after a wait.
+
+const TSky00 = 128
+const TSky01 = 129
+const TSky02 = 130
+const TSky03 = 131
+const TSky10 = 132
+const TSky11 = 133
+const TSky12 = 134
+const TSky13 = 135
+const TSky20 = 136
+const TSky21 = 137
+const TSky22 = 138
+const TSky23 = 139
+const TSky30 = 140
+const TSky31 = 141
+const TSky32 = 142
+const TSky33 = 143
+const TBulb = 144
+const TBulb0 = 145
+const TFrameh = 146
+const TFramel = 147
+const TChase0 = 148
+const TChase1 = 149
+const TPost = 150
+const TGrass = 151
+const SRing = 0
+const SSpark = 4
+const NTiles8 = 192
+const SprBytes = 64
+const SndHush = 1
+const SndClick = 2
+const SndKey = 3
+const SndGen = 4
+const SndBad = 5
+const SndOn = 6
+const SndTuneA = 7
+const SndTuneB = 8
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+' the big letters A-Z, '.', '!', space (26, 27, 28): 5 column bytes each,
+' bit 0 the top row
+data Glyph bytes
+  126, 9, 9, 9, 126, 127, 73, 73, 73, 54, 62, 65, 65, 65, 34
+  127, 65, 65, 65, 62, 127, 73, 73, 73, 65, 127, 9, 9, 9, 1
+  62, 65, 73, 73, 122, 127, 8, 8, 8, 127, 0, 65, 127, 65, 0
+  32, 64, 65, 63, 1, 127, 8, 20, 34, 65, 127, 64, 64, 64, 64
+  127, 2, 12, 2, 127, 127, 2, 4, 8, 127, 62, 65, 65, 65, 62
+  127, 9, 9, 9, 6, 62, 65, 81, 33, 94, 127, 9, 25, 41, 70
+  70, 73, 73, 73, 49, 1, 1, 127, 1, 1, 63, 64, 64, 64, 63
+  31, 32, 64, 32, 31, 127, 32, 24, 32, 127, 99, 20, 8, 20, 99
+  3, 4, 120, 4, 3, 97, 81, 73, 69, 67, 0, 96, 96, 0, 0
+  0, 0, 95, 0, 0, 0, 0, 0, 0, 0
+end data
+
+' CELESTIA: cell X (1-10), Y (1-20) at X * 21 + Y; 1 = a star
+u8 Ca[231]
+u8 Cb[231]
+u8 Gen = 0
+u8 Chg = 0
+u8 Live = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Cn = 0
+u16 Ci = 0
+' BILLBOARD
+u8 Msg[26]
+u8 Ml = 0
+u8 Key = 0
+u8 Sc = 0
+u8 Tot = 0
+u8 Lt = 0
+u8 Gc = 0
+u8 Gb = 0
+u8 Phase = 0
+
+' scratch
+u16 Uw = 0
+u16 NumU = 0
+u16 Rs = $3A71
+u16 Rt = 0
+u8 Rb = 0
+u8 Res = 0
+u8 Ka = 0
+u8 Kc = 0
+
+' input and menus
+u8 Menu = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Sx = 0
+u8 Sy = 0
+
+  tile screen
+  set sound table PrSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then goto billboard
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+
+' ---------------------------------------------------------------------------
+' CELESTIA
+
+celestia:
+  NewScreen
+  backdrop dark blue
+  print at 2,1, "CELESTIA"
+  print at 2,22, "BUTTON: NEW SKY  2ND: MENU"
+  ShowScreen
+ce_new:
+  ' the book: each cell a star when RND > .45
+  for Ci = 0 to 230
+    Ca[Ci] = 0
+    Cb[Ci] = 0
+  next
+  for Cx = 2 to 9
+    for Cy = 2 to 19
+      CeIdx
+      Rnd
+      if Rb > 115 then
+        Ca[Ci] = 1
+        Cb[Ci] = 1
+      end if
+    next
+  next
+  Gen = 0
+ce_loop:
+  CeDraw
+  print at 20,1, "GEN"
+  NumU = Gen
+  print at 24,1, width$(NumU, 3)
+  play sound SndGen
+  WasBtn = 1
+  WasBtn2 = 1
+  for J = 1 to 24
+    Frame1
+    Rnd
+    ReadPad
+    if Press2 = 1 then goto title
+    if Press = 1 then goto ce_new
+  next
+  CeEvolve
+  inc Gen
+  ' a still or empty sky: a new one after a moment
+  if Chg = 0 then
+    print at 2,20, "THE SKY IS STILL..."
+    for J = 1 to 90
+      Frame1
+    next
+    print at 2,20, "                   "
+    goto ce_new
+  end if
+  goto ce_loop
+
+' ---------------------------------------------------------------------------
+' BILLBOARD
+
+billboard:
+  Ml = 0
+bb_edit:
+  NewScreen
+  backdrop dark red
+  print at 2,1, "BILLBOARD"
+  print at 2,3, "ENTER YOUR MESSAGE:"
+  for Y = 6 to 8
+    fill TFrameh count 28 at 2,Y
+  next
+  fill 32 count 26 at 3,7
+  for K = 0 to 30
+    BbKeyXY
+    BbKeyLabel
+  next
+  print at 2,22, "BUTTON: TYPE    2ND: MENU"
+  ShowScreen
+  BbShowMsg
+  Key = 0
+  WasBtn = 1
+  WasBtn2 = 1
+  Res = 1
+bb_pick:
+  if Res = 1 then
+    K = Key
+    BbKeyXY
+    Sx = X << 3
+    Sx = Sx - 4
+    if Key >= 28 then Sx = Sx + 4
+    Sy = Y << 3
+    Sy = Sy - 5
+    set sprite 0 to Sy, Sx, SRing, 11
+    update sprites
+    Res = 0
+  end if
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    V = Key & 7
+    if Lf1 = 1 then
+      if V > 0 then dec Key
+    end if
+    if Rt1 = 1 then
+      if V < 7 then
+        if Key < 30 then inc Key
+      end if
+    end if
+    if Up1 = 1 then
+      if Key >= 8 then Key = Key - 8
+    end if
+    if Dn1 = 1 then
+      if Key < 24 then
+        Key = Key + 8
+        if Key > 30 then Key = 30
+      end if
+    end if
+    play sound SndClick
+    Res = 1
+  end if
+  if Press2 = 1 then goto title
+  if Press = 0 then goto bb_pick
+  ' the keys: 0-25 letters, 26 '.', 27 '!', 28 space, 29 DEL, 30 END
+  if Key = 29 then
+    if Ml > 0 then
+      dec Ml
+      play sound SndKey
+    else
+      play sound SndBad
+    end if
+    BbShowMsg
+    goto bb_pick
+  end if
+  if Key = 30 then
+    if Ml = 0 then
+      play sound SndBad
+      goto bb_pick
+    end if
+    goto bb_sign
+  end if
+  if Ml < 26 then
+    Msg[Ml] = Key
+    inc Ml
+    play sound SndKey
+  else
+    play sound SndBad
+  end if
+  BbShowMsg
+  goto bb_pick
+
+bb_sign:
+  NewScreen
+  backdrop light blue
+  ' the sign: a frame of chasing lights, two posts, the grass
+  for Y = 13 to 18
+    put char TPost at 7,Y
+    put char TPost at 24,Y
+  next
+  fill TGrass count 32 at 0,19
+  fill TGrass count 32 at 0,20
+  fill TGrass count 32 at 0,21
+  for Y = 5 to 11
+    fill TBulb0 count 28 at 2,Y
+  next
+  print at 2,22, "BUTTON: NEW  2ND: MENU"
+  ShowScreen
+  play sound SndOn
+  ' the message comes in from the right, six columns a letter
+  Tot = Ml * 6
+  Tot = Tot + 28
+  Sc = 0
+  Phase = 0
+  WasBtn = 1
+  WasBtn2 = 1
+bb_step:
+  BbFrame
+  BbDraw
+  for J = 1 to 4
+    Frame1
+    ReadPad
+    if Press2 = 1 then goto title
+    if Press = 1 then goto bb_edit
+  next
+  inc Sc
+  if Sc >= Tot then Sc = 0
+  goto bb_step
+
+' ---------------------------------------------------------------------------
+' CELESTIA helpers
+
+' CeIdx: Ci from Cx, Cy
+sub CeIdx:
+  Ci = Cx * 21
+  Ci = Ci + Cy
+  return
+end sub
+
+' CeEvolve: the book's lines 280-430; Chg counts the cells that changed
+sub CeEvolve:
+  Chg = 0
+  for Cx = 2 to 9
+    for Cy = 2 to 19
+      CeIdx
+      Cn = 0
+      Uw = Ci - 22
+      Cn = Cn + Ca[Uw]
+      inc Uw
+      Cn = Cn + Ca[Uw]
+      inc Uw
+      Cn = Cn + Ca[Uw]
+      Uw = Ci - 1
+      Cn = Cn + Ca[Uw]
+      Uw = Ci + 1
+      Cn = Cn + Ca[Uw]
+      Uw = Ci + 20
+      Cn = Cn + Ca[Uw]
+      inc Uw
+      Cn = Cn + Ca[Uw]
+      inc Uw
+      Cn = Cn + Ca[Uw]
+      if Ca[Ci] = 1 then
+        if Cn < 2 then Cb[Ci] = 0
+        if Cn > 3 then Cb[Ci] = 0
+      else
+        if Cn = 3 then Cb[Ci] = 1
+      end if
+    next
+  next
+  for Cx = 2 to 9
+    for Cy = 2 to 19
+      CeIdx
+      if Ca[Ci] <> Cb[Ci] then inc Chg
+      Ca[Ci] = Cb[Ci]
+    next
+  next
+  return
+end sub
+
+' CeDraw: 16 rows (X 2-9, then 9-2) of 18 tiles, two cells each (Y 2-19,
+' then 19-2), from column 7, row 4; each quarter its own colour
+sub CeDraw:
+  for I = 0 to 15
+    if I < 8 then
+      Cx = I + 2
+      Ka = 0
+    else
+      Cx = 17 - I
+      Ka = 8
+    end if
+    Y = I + 4
+    for J = 0 to 17
+      if J < 9 then
+        Cy = J << 1
+        Cy = Cy + 2
+        W = Ka
+        CeIdx
+        V = Ca[Ci] << 1
+        inc Ci
+        V = V + Ca[Ci]
+      else
+        Cy = J - 9
+        Cy = Cy << 1
+        Cy = 19 - Cy
+        W = Ka + 4
+        CeIdx
+        V = Ca[Ci] << 1
+        dec Ci
+        V = V + Ca[Ci]
+      end if
+      V = V + W
+      V = V + TSky00
+      X = J + 7
+      put char V at X,Y
+    next
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' BILLBOARD helpers
+
+' BbKeyXY: key K: rows of eight at rows 12, 14, 16, 18; columns 4 + 3c
+sub BbKeyXY:
+  V = K >> 3
+  Y = V << 1
+  Y = Y + 12
+  V = K & 7
+  X = V * 3
+  X = X + 4
+  ' DEL and END need room
+  if K = 29 then X = 20
+  if K = 30 then X = 25
+  return
+end sub
+
+sub BbKeyLabel:
+  if K < 26 then
+    V = K + 65
+    put char V at X,Y
+    return
+  end if
+  if K = 26 then print at X,Y, "."
+  if K = 27 then print at X,Y, "!"
+  if K = 28 then print at X,Y, "SP"
+  if K = 29 then print at X,Y, "DEL"
+  if K = 30 then print at X,Y, "END"
+  return
+end sub
+
+' BbShowMsg: the message on the strip at row 7, a cursor after it
+sub BbShowMsg:
+  fill 32 count 26 at 3,7
+  X = 3
+  for K = 1 to Ml
+    J = K - 1
+    V = Msg[J]
+    BbAscii
+    put char V at X,7
+    inc X
+  next
+  if Ml < 26 then put char 95 at X,7
+  NumU = Ml
+  print at 22,3, width$(NumU, 2)
+  print at 25,3, "/26"
+  return
+end sub
+
+' BbAscii: V from a key code to its character
+sub BbAscii:
+  if V < 26 then
+    V = V + 65
+    return
+  end if
+  if V = 26 then
+    V = 46
+    return
+  end if
+  if V = 27 then
+    V = 33
+    return
+  end if
+  V = 32
+  return
+end sub
+
+' BbFrame: the frame's lights chase, a step each time
+sub BbFrame:
+  inc Phase
+  V = Phase & 1
+  W = TChase0
+  if V = 1 then W = TChase1
+  fill W count 30 at 1,4
+  fill W count 30 at 1,12
+  for Y = 5 to 11
+    put char W at 1,Y
+    put char W at 30,Y
+  next
+  return
+end sub
+
+' BbDraw: 28 columns of lamps from the message, scrolled by Sc
+sub BbDraw:
+  for K = 0 to 27
+    X = K + 2
+    Gb = 0
+    V = Sc + K
+    if V >= 28 then
+      V = V - 28
+      Lt = V / 6
+      Gc = V % 6
+      if Lt < Ml then
+        if Gc < 5 then
+          W = Msg[Lt]
+          W = W * 5
+          W = W + Gc
+          Gb = Glyph[W]
+        end if
+      end if
+    end if
+    for J = 0 to 6
+      Y = J + 5
+      V = Gb & 1
+      if V = 1 then
+        put char TBulb at X,Y
+      else
+        put char TBulb0 at X,Y
+      end if
+      Gb = Gb >> 1
+    next
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Common
+
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  sprites stable 0 to 0
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  backdrop dark blue
+  print at 8,2, "STARS AND SIGNS"
+  ' a little sky and a row of lamps
+  for X = 2 to 29
+    Rnd
+    V = Rb & 15
+    V = V + TSky00
+    put char V at X,4
+    Rnd
+    V = Rb & 15
+    V = V + TSky00
+    put char V at X,5
+  next
+  for X = 9 to 22
+    V = X & 1
+    W = TBulb
+    if V = 1 then W = TBulb0
+    put char W at X,17
+  next
+  print at 9,9, "CELESTIA"
+  print at 9,10, "BILLBOARD"
+  print at 9,12, "HOW TO PLAY"
+  print at 9,13, "CREDITS"
+  print at 3,20, "FROM TIM HARTNELL'S GIANT"
+  print at 3,21, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 576
+  TzOn = 1
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 3 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 9 to 13
+    print at 7,I, " "
+  next
+  Y = Menu + 9
+  if Menu >= 2 then inc Y
+  print at 7,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub PageWait:
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "CELESTIA: A COLONY OF STARS"
+  print at 2,4, "LIVES BY CONWAY'S LIFE:"
+  print at 2,5, "A STAR WITH 2 OR 3 STARS"
+  print at 2,6, "NEXT TO IT STAYS; AN EMPTY"
+  print at 2,7, "PLACE WITH 3 GETS A STAR."
+  print at 2,8, "THE SKY SHOWS IT FOUR WAYS."
+  print at 2,9, "BUTTON: NEW SKY."
+  print at 2,11, "BILLBOARD: TYPE A MESSAGE"
+  print at 2,12, "WITH THE STICK AND BUTTON"
+  print at 2,13, "(DEL RUBS OUT); END PUTS IT"
+  print at 2,14, "UP IN LIGHTS. BUTTON: A NEW"
+  print at 2,15, "MESSAGE."
+  print at 2,17, "THE BOOK PRINTED BOTH ON"
+  print at 2,18, "PAPER; HERE THE SCREEN IS"
+  print at 2,19, "THE PAPER. 2ND: MENU."
+  PageWait
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 8,1, "STARS AND SIGNS"
+  print at 2,3, "CELESTIA AND BILLBOARD FROM"
+  print at 2,4, "TIM HARTNELL'S GIANT BOOK"
+  print at 2,5, "OF COMPUTER GAMES"
+  print at 2,6, "(BALLANTINE BOOKS, 1984;"
+  print at 2,7, "INTERFACE PUBLICATIONS,"
+  print at 2,8, "1983), FUN WITH YOUR"
+  print at 2,9, "PRINTER."
+  print at 2,11, "LIFE: JOHN CONWAY (1970)."
+  print at 2,13, "MUSIC: STARLIGHT PRESS"
+  print at 2,14, "(ORIGINAL)."
+  print at 2,16, "COLECOVISION VERSION BY"
+  print at 2,17, "AMY BIENVENU, 2026."
+  PageWait
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$06,$06,$F0,$F0,$06,$06,$00
+  $00,$60,$60,$F0,$F0,$60,$60,$00
+  $00,$99,$99,$00,$00,$99,$99,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$06,$06,$F0,$F0,$06,$06,$00
+  $00,$60,$60,$F0,$F0,$60,$60,$00
+  $00,$99,$99,$00,$00,$99,$99,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$06,$06,$F0,$F0,$06,$06,$00
+  $00,$60,$60,$F0,$F0,$60,$60,$00
+  $00,$99,$99,$00,$00,$99,$99,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$06,$06,$F0,$F0,$06,$06,$00
+  $00,$60,$60,$F0,$F0,$60,$60,$00
+  $00,$99,$99,$00,$00,$99,$99,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$30,$87,$30,$00,$00,$06,$00
+  $00,$30,$00,$00,$00,$0C,$E1,$0C
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$22,$89,$64,$44,$00,$AA,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$B4,$B4,$4B,$4B,$B4,$B4,$04
+  $04,$B4,$B4,$B4,$B4,$B4,$B4,$04
+  $04,$4B,$4B,$0B,$0B,$4B,$4B,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$74,$74,$47,$47,$74,$74,$04
+  $04,$74,$74,$74,$74,$74,$74,$04
+  $04,$47,$47,$07,$07,$47,$47,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$D4,$D4,$4D,$4D,$D4,$D4,$04
+  $04,$D4,$D4,$D4,$D4,$D4,$D4,$04
+  $04,$4D,$4D,$0D,$0D,$4D,$4D,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$34,$34,$43,$43,$34,$34,$04
+  $04,$34,$34,$34,$34,$34,$34,$04
+  $04,$43,$43,$03,$03,$43,$43,$04
+  $01,$1B,$1B,$1B,$1B,$1B,$1B,$01
+  $01,$01,$E1,$1E,$1E,$E1,$01,$01
+  $08,$09,$08,$06,$01,$01,$01,$01
+  $06,$08,$09,$01,$01,$01,$06,$08
+  $01,$B1,$1B,$B1,$01,$01,$E1,$01
+  $01,$E1,$01,$01,$01,$B1,$1B,$B1
+  $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+  $01,$C1,$1C,$3C,$C3,$03,$C3,$03
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $10,$10,$54,$38,$FE,$38,$54,$10,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+PrHush:
+    db $00,$00,$F4,$01,$10
+PrClick:
+    db $40,$40,$70,$01,$50
+PrKey:
+    db $40,$2A,$40,$01,$40,$55,$80,$02,$50
+PrGen:
+    db $40,$24,$60,$01,$40,$2A,$A0,$02,$50
+PrBad:
+    db $40,$FC,$31,$09,$40,$FC,$F1,$01,$50
+PrOn:
+    db $40,$D6,$20,$03,$40,$D6,$F0,$01,$40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$6B,$20,$09,$40,$6B,$F0,$01
+    db $50
+
+PrSoundTable:
+    dw PrHush,$702B
+    dw PrClick,$7035
+    dw PrKey,$7035
+    dw PrGen,$7035
+    dw PrBad,$7035
+    dw PrOn,$7035
+    dw PrTuneMel,$703F
+    dw PrTuneBass,$7049
+; Starlight Press, E flat major (original for this game)
+; Tiny Sound, 9 frames per step
+PrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$40,$F1,$22,$22,$00,$26,$00,$29,$00,$2E,$00,$2D,$00,$29,$00
+    db $26,$00,$00,$00,$27,$00,$2B,$00,$2E,$00,$2B,$00,$29,$00,$00,$00
+    db $00,$00,$00,$00,$26,$00,$29,$00,$2E,$00,$32,$00,$30,$00,$2D,$00
+    db $29,$00,$27,$00,$26,$00,$24,$00,$21,$00,$1D,$00,$22,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+PrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$70,$F1,$22,$16,$11,$16,$11,$16,$11,$16,$11,$0F,$16,$0F,$16
+    db $0F,$16,$0F,$16,$0F,$16,$0F,$16,$11,$18,$11,$18,$11,$18,$11,$18
+    db $11,$18,$11,$18,$16,$11,$16,$11,$13,$1A,$13,$1A,$11,$18,$11,$18
+    db $0F,$16,$0F,$16,$11,$18,$11,$18,$11,$18,$11,$18,$16,$11,$16,$00
+    db $00,$00,$00,$00
+    db $FF
+}
