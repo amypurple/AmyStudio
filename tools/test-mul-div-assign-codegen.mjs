@@ -68,7 +68,7 @@ u16 C = 0
   C = A * B
   C = C / B
   loop forever
-`, [/MUL16_EXPR_LOOP/i, /call AMY_U16_DIV/]);
+`, [/MUL16_EXPR_LOOP/i, /srl b/i, /rr c/i, /sla e/i, /rl d/i, /call AMY_U16_DIV/]);
 
 check("local-u16-mul-div", `
 sub start:
@@ -79,7 +79,7 @@ sub start:
   C = C / B
   loop forever
 end sub
-`, [/MUL16_EXPR_LOOP/i, /call AMY_U16_DIV/, /\(ix-/]);
+`, [/MUL16_EXPR_LOOP/i, /srl b/i, /rr c/i, /sla e/i, /rl d/i, /call AMY_U16_DIV/, /\(ix-/]);
 
 check("local-i16-negation", `
 sub start:
@@ -111,6 +111,6 @@ MyWordRoutine:
   call asm MyWordRoutine with hl = A * B
   call asm MyWordRoutine with hl = A / B
   loop forever
-`, [/MUL16_EXPR_LOOP/i, /call AMY_U16_DIV/, /call MyWordRoutine/]);
+`, [/MUL16_EXPR_LOOP/i, /srl b/i, /rr c/i, /sla e/i, /rl d/i, /call AMY_U16_DIV/, /call MyWordRoutine/]);
 
 console.log("test-mul-div-assign-codegen: PASS");

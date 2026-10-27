@@ -607,11 +607,11 @@ export function createAssignmentArithmeticHelpers({
     // signed and unsigned operands (two's complement); only the discarded upper half differs.
     if (isAnyFixedDeclaredType(loweredTarget)) return null;
     const loadTarget = emitLoadInt16IntoHL(target);
-    const loadCount = emitLoadUnsignedInt16ValueIntoBC(valueToken);
+    const loadCount = emitLoadInt16ValueIntoBC(valueToken, loweredTarget);
     const storeTarget = emitStoreInt16FromHL(target);
     if (!loadTarget || !loadCount || !storeTarget) return null;
     const mulLoop = makeGeneratedLabel("Mul16Loop");
-    const mulDone = makeGeneratedLabel("Mul16Done");
+    const mulSkip = makeGeneratedLabel("Mul16Skip");
     return [
       ...loadTarget,
       "    ex de,hl",
@@ -621,14 +621,17 @@ export function createAssignmentArithmeticHelpers({
       ...loadCount,
       "    pop de",
       "    ld hl,0",
+      "    ld a,16",
       `${mulLoop}:`,
-      "    ld a,b",
-      "    or c",
-      `    jr z,${mulDone}`,
+      "    srl b",
+      "    rr c",
+      `    jr nc,${mulSkip}`,
       "    add hl,de",
-      "    dec bc",
-      `    jr ${mulLoop}`,
-      `${mulDone}:`,
+      `${mulSkip}:`,
+      "    sla e",
+      "    rl d",
+      "    dec a",
+      `    jr nz,${mulLoop}`,
       ...storeTarget
     ];
   }

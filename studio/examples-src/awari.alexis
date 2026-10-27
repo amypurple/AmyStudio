@@ -1,0 +1,1142 @@
+' AWARI
+' The pebble-in-pits game from Tim Hartnell's Giant Book of Computer
+' Games (Ballantine Books, 1984; Interface Publications, 1983), for the
+' ColecoVision in Amy by Amy Bienvenu.
+'
+' Twelve pits hold three seeds each: A to F along the top are the
+' computer's, L to G along the bottom are yours. Pick one of your pits:
+' its seeds are sown one by one into the next pits, clockwise (A to F,
+' then G to L, then back to A); the homes at the ends get none. If the
+' last seed falls into an empty pit, the seeds in the pit opposite are
+' taken to the mover's home (yours on the left, the computer's on the
+' right). When either side's pits are all empty the game ends, and the
+' fuller home wins.
+'
+' The computer plays as the book's program (BOOK level): the move that
+' takes the most seeds, otherwise a pit picked at random. MASTER level
+' also counts the best capture you could make in reply.
+'
+' Controls (either joystick): left and right pick a pit, the button sows
+' it. Keypad not used.
+'
+' Liberties taken:
+' - The book's listing is off by one when it finds the last pit, can
+'   destroy seeds when a pit holds twelve or more (they are sown back
+'   into the emptied pit), and lets you play the computer's pits or an
+'   empty one; here the rules are those its text describes, a big pit
+'   skips its own place, and only your non-empty pits can be played.
+' - The game also ends when either side is empty after the computer's
+'   move (the book checked only after yours).
+' - You may choose who starts; MASTER level is new. The sowing is shown
+'   seed by seed. New music (Seed Song) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (the cursor and
+' the seed in hand); the frame loop is protected from the NMI and every
+' screen is drawn with the NMI off after a wait.
+
+const TWood = 128
+const TPit0_00 = 129
+const TPit0_01 = 130
+const TPit0_02 = 131
+const TPit0_10 = 132
+const TPit0_11 = 133
+const TPit0_12 = 134
+const TPit0_20 = 135
+const TPit0_21 = 136
+const TPit0_22 = 137
+const TPit1_00 = 138
+const TPit1_01 = 139
+const TPit1_02 = 140
+const TPit1_10 = 141
+const TPit1_11 = 142
+const TPit1_12 = 143
+const TPit1_20 = 144
+const TPit1_21 = 145
+const TPit1_22 = 146
+const TPit2_00 = 147
+const TPit2_01 = 148
+const TPit2_02 = 149
+const TPit2_10 = 150
+const TPit2_11 = 151
+const TPit2_12 = 152
+const TPit2_20 = 153
+const TPit2_21 = 154
+const TPit2_22 = 155
+const TPit3_00 = 156
+const TPit3_01 = 157
+const TPit3_02 = 158
+const TPit3_10 = 159
+const TPit3_11 = 160
+const TPit3_12 = 161
+const TPit3_20 = 162
+const TPit3_21 = 163
+const TPit3_22 = 164
+const TPit4_00 = 165
+const TPit4_01 = 166
+const TPit4_02 = 167
+const TPit4_10 = 168
+const TPit4_11 = 169
+const TPit4_12 = 170
+const TPit4_20 = 171
+const TPit4_21 = 172
+const TPit4_22 = 173
+const TPit5_00 = 174
+const TPit5_01 = 175
+const TPit5_02 = 176
+const TPit5_10 = 177
+const TPit5_11 = 178
+const TPit5_12 = 179
+const TPit5_20 = 180
+const TPit5_21 = 181
+const TPit5_22 = 182
+const TPit6_00 = 183
+const TPit6_01 = 184
+const TPit6_02 = 185
+const TPit6_10 = 186
+const TPit6_11 = 187
+const TPit6_12 = 188
+const TPit6_20 = 189
+const TPit6_21 = 190
+const TPit6_22 = 191
+const TPit7_00 = 192
+const TPit7_01 = 193
+const TPit7_02 = 194
+const TPit7_10 = 195
+const TPit7_11 = 196
+const TPit7_12 = 197
+const TPit7_20 = 198
+const TPit7_21 = 199
+const TPit7_22 = 200
+const TPit8_00 = 201
+const TPit8_01 = 202
+const TPit8_02 = 203
+const TPit8_10 = 204
+const TPit8_11 = 205
+const TPit8_12 = 206
+const TPit8_20 = 207
+const TPit8_21 = 208
+const TPit8_22 = 209
+const TPit9_00 = 210
+const TPit9_01 = 211
+const TPit9_02 = 212
+const TPit9_10 = 213
+const TPit9_11 = 214
+const TPit9_12 = 215
+const TPit9_20 = 216
+const TPit9_21 = 217
+const TPit9_22 = 218
+const TPit10_00 = 219
+const TPit10_01 = 220
+const TPit10_02 = 221
+const TPit10_10 = 222
+const TPit10_11 = 223
+const TPit10_12 = 224
+const TPit10_20 = 225
+const TPit10_21 = 226
+const TPit10_22 = 227
+const THome00 = 228
+const THome01 = 229
+const THome02 = 230
+const THome10 = 231
+const THome11 = 232
+const THome12 = 233
+const THome20 = 234
+const THome21 = 235
+const THome22 = 236
+const THome30 = 237
+const THome31 = 238
+const THome32 = 239
+const THome40 = 240
+const THome41 = 241
+const THome42 = 242
+const THome50 = 243
+const THome51 = 244
+const THome52 = 245
+const THome60 = 246
+const THome61 = 247
+const THome62 = 248
+const SFrame = 0
+const SHand = 4
+const NTiles8 = 968
+const SprBytes = 64
+const SndHush = 1
+const SndMove = 2
+const SndDrop = 3
+const SndTake = 4
+const SndBad = 5
+const SndWin = 6
+const SndLose = 7
+const SndTuneA = 8
+const SndTuneB = 9
+
+' Pits[1..12]: A-F = 1-6 (the computer's), G-L = 7-12 (yours)
+u8 Pits[13]
+u8 Sv[13]
+u8 Sw[13]
+u8 HomeMe = 0
+u8 HomeYou = 0
+u8 Level = 0
+u8 First = 0
+u8 Anim = 0
+u8 Sel = 12
+u8 C = 0
+u8 N = 0
+u8 P = 0
+u8 Last = 0
+u8 O = 0
+u8 Gain = 0
+u8 Mc = 0
+u8 Hc = 0
+u8 MaxR = 0
+u8 Score = 0
+u8 BestS = 0
+u8 BestC = 0
+u8 Cw = 0
+u8 Hw = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 Rs = $9E37
+u16 Rt = 0
+u8 Rb = 0
+u16 NumU = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table AwSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Level = 0
+
+title:
+  TitlePage
+  if Menu = 3 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 4 then
+    EditorialPage
+    goto title
+  end if
+  First = Menu
+  NewGame
+  BoardScreen
+  if First = 1 then goto computer_turn
+
+player_turn:
+  Sides
+  if Hw = 0 then goto game_end
+  if Cw = 0 then goto game_end
+  Message
+  print at 2,18, "YOUR MOVE: PICK A PIT"
+  if Pits[Sel] = 0 then
+    ' start on a pit with seeds
+    for I = 7 to 12
+      if Pits[I] > 0 then Sel = I
+    next
+  end if
+  Mode = 1
+player_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    ' L (12) is on the left, G (7) on the right
+    if Lf1 = 1 then
+      if Sel < 12 then inc Sel
+    end if
+    if Rt1 = 1 then
+      if Sel > 7 then dec Sel
+    end if
+    play sound SndMove
+  end if
+  P = Sel
+  PitXY
+  V = Y * 8
+  V = V - 1
+  W = X * 8
+  set sprite 1 to V, W, SFrame, 15
+  update sprites
+  if Press = 0 then goto player_loop
+  if Pits[Sel] = 0 then
+    play sound SndBad
+    goto player_loop
+  end if
+  Mode = 0
+  Message
+  print at 2,18, "YOU SOW FROM"
+  V = 64 + Sel
+  put char V at 15,18
+  C = Sel
+  Anim = 1
+  Sow
+  Anim = 0
+  HideSprites
+  if Gain > 0 then
+    HomeYou = HomeYou + Gain
+    ShowHomes
+    play sound SndTake
+    print at 2,19, "YOU TAKE"
+    NumU = Gain
+    print at 11,19, digits$(NumU, 2)
+    Pause
+  end if
+  Sides
+  if Hw = 0 then goto game_end
+  if Cw = 0 then goto game_end
+
+computer_turn:
+  Message
+  print at 2,18, "LET ME THINK..."
+  Pause20
+  ChooseMove
+  Message
+  print at 2,18, "I'LL MOVE FROM"
+  V = 64 + C
+  put char V at 17,18
+  P = C
+  PitXY
+  V = Y * 8
+  V = V - 1
+  W = X * 8
+  set sprite 1 to V, W, SFrame, 9
+  update sprites
+  Pause
+  Anim = 1
+  Sow
+  Anim = 0
+  HideSprites
+  if Gain > 0 then
+    HomeMe = HomeMe + Gain
+    ShowHomes
+    play sound SndTake
+    print at 2,19, "I TAKE"
+    NumU = Gain
+    print at 9,19, digits$(NumU, 2)
+    Pause
+  end if
+  goto player_turn
+
+game_end:
+  Mode = 2
+  HideSprites
+  Message
+  print at 2,18, "THAT'S THE END OF THE GAME"
+  if HomeYou > HomeMe then
+    print at 2,19, "YOU'RE THE WINNER!"
+    play sound SndWin
+  end if
+  if HomeYou < HomeMe then
+    print at 2,19, "AND I'M THE WINNER!"
+    play sound SndLose
+  end if
+  if HomeYou = HomeMe then print at 2,19, "IT LOOKS LIKE A DRAW!"
+  print at 2,21, "MY SCORE WAS"
+  NumU = HomeMe
+  print at 15,21, digits$(NumU, 2)
+  print at 2,22, "AND YOURS WAS"
+  NumU = HomeYou
+  print at 16,22, digits$(NumU, 2)
+  Rearm
+  wait 120 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Rules
+
+sub NewGame:
+  for I = 1 to 12
+    Pits[I] = 3
+  next
+  HomeMe = 0
+  HomeYou = 0
+  Sel = 12
+  return
+end sub
+
+' Sides: Cw, Hw = the seeds on the computer's and on your side
+sub Sides:
+  Cw = 0
+  Hw = 0
+  for I = 1 to 6
+    Cw = Cw + Pits[I]
+  next
+  for I = 7 to 12
+    Hw = Hw + Pits[I]
+  next
+  return
+end sub
+
+' Sow: the seeds of pit C, one to each next pit (C itself skipped);
+' Gain = the seeds taken from the pit opposite the last one, when it was
+' empty. With Anim = 1 every seed is drawn as it falls.
+sub Sow:
+  N = Pits[C]
+  Pits[C] = 0
+  if Anim = 1 then
+    P = C
+    DrawPit
+  end if
+  P = C
+  for J = 1 to N
+sw_next:
+    inc P
+    if P > 12 then P = 1
+    if P = C then goto sw_next
+    inc Pits[P]
+    if Anim = 1 then
+      Hand
+      DrawPit
+      play sound SndDrop
+      for K = 1 to 8
+        Frame1
+      next
+    end if
+  next
+  Last = P
+  Gain = 0
+  if Pits[Last] <> 1 then return
+  O = 13 - Last
+  Gain = Pits[O]
+  if Gain = 0 then return
+  Pits[O] = 0
+  if Anim = 1 then
+    P = O
+    DrawPit
+  end if
+  return
+end sub
+
+' ChooseMove: C = the computer's pit
+sub ChooseMove:
+  copy Pits to Sv
+  BestS = 0
+  BestC = 0
+  for Mc = 1 to 6
+    if Sv[Mc] > 0 then
+      C = Mc
+      Sow
+      Score = Gain
+      if Level = 1 then
+        ' the best capture you could make in reply
+        copy Pits to Sw
+        MaxR = 0
+        for Hc = 7 to 12
+          if Sw[Hc] > 0 then
+            C = Hc
+            Sow
+            if Gain > MaxR then MaxR = Gain
+            copy Sw to Pits
+          end if
+        next
+        Score = Score + 100
+        Score = Score - MaxR
+      end if
+      V = 0
+      if Score > BestS then V = 1
+      if Score = BestS then
+        if Level = 1 then
+          Rnd
+          if Rb < 100 then V = 1
+        end if
+      end if
+      if V = 1 then
+        BestS = Score
+        BestC = Mc
+      end if
+      copy Sv to Pits
+    end if
+  next
+  C = BestC
+  if Level = 1 then return
+  if BestS > 0 then return
+  ' no capture: a pit picked at random, as the book did
+cm_try:
+  Rnd
+  V = Rb & 7
+  if V = 0 then goto cm_try
+  if V > 6 then goto cm_try
+  if Pits[V] = 0 then goto cm_try
+  C = V
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' PitXY: X, Y = the top-left tile of pit P
+sub PitXY:
+  if P <= 6 then
+    X = P - 1
+    X = X * 3
+    X = X + 7
+    Y = 7
+  else
+    X = 12 - P
+    X = X * 3
+    X = X + 7
+    Y = 11
+  end if
+  return
+end sub
+
+sub DrawPit:
+  PitXY
+  ' the picture with the seeds: none to nine, or a heap
+  V = Pits[P]
+  if V > 10 then V = 10
+  W = V * 9
+  W = W + TPit0_00
+  Quad3
+  W = X + 1
+  ' the count, above the top pits and below the bottom ones
+  I = Y - 1
+  if P > 6 then I = Y + 3
+  print at X,I, "   "
+  NumU = Pits[P]
+  if NumU < 10 then
+    print at W,I, digits$(NumU, 1)
+  else
+    print at W,I, digits$(NumU, 2)
+  end if
+  return
+end sub
+
+' Quad3: the 3 x 3 tiles from W at X, Y
+sub Quad3:
+  for I = 0 to 2
+    V = Y + I
+    put char W at X,V
+    inc W
+    inc X
+    put char W at X,V
+    inc W
+    inc X
+    put char W at X,V
+    inc W
+    X = X - 2
+  next
+  return
+end sub
+
+sub Hand:
+  PitXY
+  V = Y * 8
+  V = V + 3
+  W = X * 8
+  W = W + 4
+  set sprite 0 to V, W, SHand, 11
+  update sprites
+  return
+end sub
+
+sub ShowHomes:
+  NumU = HomeYou
+  print at 4,10, digits$(NumU, 2)
+  NumU = HomeMe
+  print at 27,10, digits$(NumU, 2)
+  return
+end sub
+
+sub DrawBoard:
+  for Y = 7 to 13
+    fill TWood count 28 at 2,Y
+  next
+  ' the homes
+  W = THome00
+  for Y = 7 to 13
+    put char W at 3,Y
+    inc W
+    put char W at 4,Y
+    inc W
+    put char W at 5,Y
+    inc W
+  next
+  W = THome00
+  for Y = 7 to 13
+    put char W at 26,Y
+    inc W
+    put char W at 27,Y
+    inc W
+    put char W at 28,Y
+    inc W
+  next
+  for P = 1 to 12
+    DrawPit
+  next
+  print at 8,5, "A  B  C  D  E  F"
+  print at 8,15, "L  K  J  I  H  G"
+  print at 3,15, "YOU"
+  print at 26,15, "ME"
+  ShowHomes
+  return
+end sub
+
+sub Message:
+  for I = 18 to 22
+    fill 32 count 28 at 2,I
+  next
+  return
+end sub
+
+sub BoardScreen:
+  NewScreen
+  print at 13,2, "AWARI"
+  DrawBoard
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 40
+    Frame1
+  next
+  return
+end sub
+
+sub Pause20:
+  for J = 1 to 20
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  sprites stable 0 to 1
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 13,2, "AWARI"
+  ' a strip of the board
+  for Y = 4 to 6
+    fill TWood count 20 at 6,Y
+  next
+  for K = 1 to 6
+    Pits[K] = K
+    P = K
+    PitXY
+    Y = 4
+    W = K * 9
+    W = W + TPit0_00
+    Quad3
+  next
+  print at 6,10, "PLAY: YOU GO FIRST"
+  print at 6,11, "PLAY: I GO FIRST"
+  print at 6,12, "LEVEL:"
+  print at 6,13, "HOW TO PLAY"
+  print at 6,14, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 4 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  for I = 10 to 14
+    print at 4,I, " "
+  next
+  Y = Menu + 10
+  print at 4,Y, ">"
+  if Level = 0 then print at 13,12, "BOOK  "
+  if Level = 1 then print at 13,12, "MASTER"
+  if Press = 0 then goto title_loop
+  if Menu = 2 then
+    Level = 1 - Level
+    play sound SndDrop
+    goto title_loop
+  end if
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOUR PITS ARE L TO G, MINE"
+  print at 2,4, "A TO F. PICK ONE OF YOURS:"
+  print at 2,5, "ITS SEEDS ARE SOWN ONE BY"
+  print at 2,6, "ONE INTO THE NEXT PITS,"
+  print at 2,7, "CLOCKWISE. HOMES GET NONE."
+  print at 2,9, "IF THE LAST SEED FALLS IN AN"
+  print at 2,10, "EMPTY PIT, THE SEEDS OF THE"
+  print at 2,11, "PIT OPPOSITE GO TO YOUR HOME"
+  print at 2,12, "(YOURS LEFT, MINE RIGHT)."
+  print at 2,14, "WHEN ONE SIDE IS EMPTY THE"
+  print at 2,15, "GAME ENDS: THE FULLER HOME"
+  print at 2,16, "WINS."
+  print at 2,18, "STICK: PICK A PIT."
+  print at 2,19, "BUTTON: SOW IT."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 13,1, "AWARI"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "AWARI IS ONE OF THE MANCALA"
+  print at 2,10, "GAMES, PLAYED FROM AFRICA"
+  print at 2,11, "TO THE PHILIPPINES."
+  print at 2,13, "NEW MUSIC: SEED SONG."
+  print at 2,15, "COLECOVISION VERSION BY"
+  print at 2,16, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$30,$00,$00,$06,$00,$00
+  $01,$F0,$E0,$C0,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$00
+  $F0,$F0,$06,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$00
+  $F0,$F0,$06,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $00,$00,$00,$00,$00,$60,$F0,$F0
+  $00,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$60
+  $F0,$F0,$06,$00,$00,$00,$00,$00
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $F0,$F0,$60,$00,$00,$60,$F0,$F0
+  $00,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$60
+  $F0,$F0,$06,$00,$00,$06,$F0,$F0
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $F0,$F0,$60,$00,$00,$60,$F0,$F0
+  $06,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$60
+  $F0,$F0,$06,$00,$00,$06,$F0,$F0
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $F0,$F0,$60,$00,$00,$60,$F0,$F0
+  $06,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $80,$F0,$07,$03,$01,$01,$01,$60
+  $F0,$F0,$06,$00,$00,$06,$F0,$F0
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $F0,$F0,$60,$00,$00,$60,$F0,$F0
+  $06,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$18,$C3,$C3,$18,$60,$F0
+  $80,$F0,$07,$03,$01,$01,$01,$60
+  $F0,$F0,$06,$00,$00,$06,$F0,$F0
+  $F0,$60,$18,$C3,$C3,$18,$00,$00
+  $F0,$F0,$60,$00,$00,$60,$F0,$F0
+  $06,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$18,$C3,$C3,$18,$99,$00
+  $80,$F0,$07,$03,$01,$01,$01,$60
+  $F0,$F0,$06,$00,$00,$06,$F0,$F0
+  $00,$99,$18,$C3,$C3,$18,$00,$00
+  $F0,$F0,$60,$00,$00,$60,$F0,$F0
+  $06,$80,$80,$80,$C0,$E0,$F0,$01
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $60,$01,$01,$01,$03,$07,$F0,$80
+  $01,$F0,$E0,$C0,$80,$80,$80,$06
+  $00,$00,$00,$00,$18,$C3,$C3,$24
+  $80,$F0,$07,$03,$01,$01,$01,$93
+  $F0,$F0,$06,$F0,$F0,$06,$F0,$F0
+  $00,$00,$24,$00,$00,$24,$00,$00
+  $01,$01,$93,$01,$01,$93,$01,$01
+  $06,$80,$80,$80,$C0,$E0,$F0,$01
+  $24,$C3,$C3,$18,$C3,$C3,$18,$00
+  $93,$01,$01,$01,$03,$07,$F0,$80
+  $00,$00,$03,$07,$F0,$E0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$F0,$07,$03,$03
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$C0,$C0,$E0,$F0,$07,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$07,$F0,$E0,$C0,$00
+end data
+data TileCol bytes
+  $0A,$0A,$6A,$0A,$0A,$6A,$0A,$0A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$01
+  $1B,$1B,$B1,$01,$01,$01,$01,$01
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$01
+  $1B,$1B,$B1,$01,$01,$01,$01,$01
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $01,$01,$01,$01,$01,$B1,$B1,$B1
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$B1
+  $1B,$1B,$B1,$01,$01,$01,$01,$01
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$B1,$B1,$01,$01,$B1,$B1,$B1
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$B1
+  $1B,$1B,$B1,$01,$01,$B1,$1B,$1B
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$B1,$B1,$01,$01,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$B1
+  $1B,$1B,$B1,$01,$01,$B1,$1B,$1B
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$B1,$B1,$01,$01,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$B1
+  $1B,$1B,$B1,$01,$01,$B1,$1B,$1B
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$B1,$B1,$01,$01,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$B1,$1B,$1B,$B1,$B1,$B1
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$B1
+  $1B,$1B,$B1,$01,$01,$B1,$1B,$1B
+  $B1,$B1,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$B1,$B1,$01,$01,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$B1,$1B,$1B,$B1,$1B,$0B
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$B1
+  $1B,$1B,$B1,$01,$01,$B1,$1B,$1B
+  $0B,$1B,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$B1,$B1,$01,$01,$B1,$B1,$B1
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$01,$B1,$1B,$1B,$B1,$01,$01
+  $B1,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $1A,$A1,$A1,$A1,$A1,$A1,$A1,$B1
+  $01,$01,$01,$01,$B1,$1B,$1B,$1B
+  $1A,$1A,$A1,$A1,$A1,$A1,$A1,$1B
+  $1B,$1B,$B1,$1B,$1B,$B1,$1B,$1B
+  $0B,$0B,$1B,$0B,$0B,$1B,$0B,$0B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1B
+  $B1,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $1B,$1B,$1B,$B1,$1B,$1B,$B1,$01
+  $1B,$A1,$A1,$A1,$A1,$A1,$1A,$1A
+  $0A,$0A,$1A,$1A,$A1,$A1,$A1,$A1
+  $0A,$01,$01,$01,$01,$01,$01,$01
+  $0A,$0A,$1A,$1A,$1A,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$1A,$1A,$0A
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $A1,$A1,$A1,$A1,$1A,$1A,$1A,$0A
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF,$00,$00,$00,$00
+  $F0,$10,$10,$10,$10,$10,$10,$10,$10,$10,$10,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+AwHush:
+    db $00,$00,$F4,$01,$10
+AwMove:
+    db $40,$40,$60,$01,$50
+AwDrop:
+    db $40,$35,$30,$01,$40,$47,$50,$01,$40,$47,$70,$01,$50
+AwTake:
+    db $40,$AA,$20,$02,$40,$AA,$F0,$01,$40,$8F,$20,$02,$40,$8F,$F0,$01,$40,$71,$20,$02,$40,$71,$F0,$01
+    db $40,$55,$20,$07,$40,$55,$F0,$01,$50
+AwBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+AwWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+AwLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+AwSoundTable:
+    dw AwHush,$702B
+    dw AwMove,$7035
+    dw AwDrop,$7035
+    dw AwTake,$7035
+    dw AwBad,$702B
+    dw AwWin,$7035
+    dw AwLose,$7035
+    dw AwTuneMel,$703F
+    dw AwTuneBass,$7049
+; Seed Song, C pentatonic (original for this game)
+; Tiny Sound, 8 frames per step
+AwTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$23,$26,$28,$01,$26,$23,$21,$1F,$21,$23,$26,$01
+    db $23,$21,$1F,$01,$1C,$1F,$21,$23,$26,$28,$2B,$01,$28,$26,$23,$21
+    db $1F,$01,$01,$01
+    db $FF
+AwTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$07,$0E,$07,$0E,$04,$0B,$04,$0B,$0C,$07,$0E,$09
+    db $07,$0E,$07,$0E,$04,$0B,$04,$0B,$0C,$07,$0C,$07,$0E,$09,$0E,$09
+    db $07,$0E,$07,$01
+    db $FF
+}

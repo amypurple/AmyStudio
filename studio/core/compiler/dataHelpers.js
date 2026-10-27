@@ -227,8 +227,8 @@ export function createDataHelpers(ctx) {
       if (!values.length) {
         throw new Error(`Word table ${name} is empty.`);
       }
-      if (values.length > 128) {
-        throw new Error(`Word table ${name} has ${values.length} entries; variable indexing supports at most 128.`);
+      if (values.length > 256) {
+        throw new Error(`Word table ${name} has ${values.length} entries; byte indexing supports at most 256.`);
       }
       const asmName = ensureDataAsmSymbol(name);
       const asmEntries = values.map((entry) => (entry.kind === "address" ? rewriteUserSymbolsInExpression(entry.name) : entry.text));

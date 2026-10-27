@@ -1,0 +1,966 @@
+' ROBOT MINEFIELD
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), for the ColecoVision in Amy by
+' Amy Bienvenu.
+'
+' You are trapped in a walled field with twenty mines and four manic
+' robots, all bent on your destruction. The robots come straight at you
+' but cannot see the mines: put a mine between you and them, and they
+' will smash into it. Mines are deadly to you too. Robots can merge into
+' one another, and split again at the last moment. Wreck all four to win.
+'
+' The robots move as the book's do: a step toward you each turn, every
+' time when they are above you or to your right, seven times in ten when
+' they are below you or to your left. They move first, then you.
+'
+' Controls (either joystick): the stick moves you one square north,
+' south, east or west. Keypad not used.
+'
+' Liberties taken:
+' - A wrecked robot is shown on its mine (the book showed only the mine);
+'   the mine is still there and as deadly.
+' - Wins and losses are counted. New music (Clockwork March) and sound
+'   effects.
+'
+' House rules kept: columns 2-29, rows 1-22; 8 x 8 sprites, which the
+' runtime takes turns showing when more than four share a line; the frame
+' loop is protected from the NMI and every screen is drawn with the NMI
+' off after a wait.
+
+const TFloor = 128
+const TWall = 129
+const TMine = 130
+const TWreck = 131
+const TBot00 = 132
+const TBot01 = 133
+const TBot02 = 134
+const TBot03 = 135
+const TBot04 = 136
+const TBot05 = 137
+const TBot06 = 138
+const TBot07 = 139
+const TBot10 = 140
+const TBot11 = 141
+const TBot12 = 142
+const TBot13 = 143
+const TBot14 = 144
+const TBot15 = 145
+const TBot16 = 146
+const TBot17 = 147
+const TBot20 = 148
+const TBot21 = 149
+const TBot22 = 150
+const TBot23 = 151
+const TBot24 = 152
+const TBot25 = 153
+const TBot26 = 154
+const TBot27 = 155
+const TBot30 = 156
+const TBot31 = 157
+const TBot32 = 158
+const TBot33 = 159
+const TBot34 = 160
+const TBot35 = 161
+const TBot36 = 162
+const TBot37 = 163
+const TBot40 = 164
+const TBot41 = 165
+const TBot42 = 166
+const TBot43 = 167
+const TBot44 = 168
+const TBot45 = 169
+const TBot46 = 170
+const TBot47 = 171
+const TBot50 = 172
+const TBot51 = 173
+const TBot52 = 174
+const TBot53 = 175
+const TBot54 = 176
+const TBot55 = 177
+const TBot56 = 178
+const TBot57 = 179
+const SYou = 0
+const SRobot1 = 4
+const SRobot2 = 8
+const SBoom1 = 12
+const SBoom2 = 16
+const NTiles8 = 416
+const SprBytes = 160
+const SndBoom = 1
+const SndStep = 2
+const SndClank = 3
+const SndCaught = 4
+const SndWin = 5
+const SndTuneA = 6
+const SndTuneB = 7
+
+' the field, as the book: Fd[row * 16 + column] for rows and columns
+' 1-15; 46 floor, 88 wall, 42 mine, 36 robot, 72 you
+u8 Fd[256]
+u8 Rr[4]
+u8 Rc[4]
+u8 Ox[4]
+u8 Oy[4]
+u8 D = 8
+u8 F = 8
+u8 Tally = 0
+u8 Ch = 0
+u8 Won = 0
+u8 Lost = 0
+u8 E = 0
+u8 X = 0
+u8 Y = 0
+u8 Cell = 0
+u8 Ends = 0
+u8 Px = 0
+u8 Py = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Mb = 0
+u16 NumU = 0
+u16 Rs = $2E91
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+
+  tile screen
+  set sound table RmSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+
+round:
+  NewField
+  FieldScreen
+
+turn:
+  ' the robots move first
+  Robots
+  if Ends > 0 then goto round_end
+  ' then you
+  Message
+  print at 2,21, "WHICH WAY? (N, S, E OR W)"
+  Mode = 1
+your_move:
+  Frame1
+  ReadPad
+  if Stick = 0 then goto your_move
+  X = D
+  Y = F
+  if Up1 = 1 then
+    if D > 2 then dec D
+  end if
+  if Dn1 = 1 then
+    if D < 14 then inc D
+  end if
+  if Rt1 = 1 then
+    if F < 14 then inc F
+  end if
+  if Lf1 = 1 then
+    if F > 2 then dec F
+  end if
+  if D = X then
+    if F = Y then goto your_move
+  end if
+  Mode = 0
+  ' your old square is cleared (as the book), then you step
+  Cell = X * 16
+  Cell = Cell + Y
+  Fd[Cell] = 46
+  DrawCell
+  SlideYou
+  Cell = D * 16
+  Cell = Cell + F
+  if Fd[Cell] = 42 then
+    Ends = 3
+    Blast
+    goto round_end
+  end if
+  Fd[Cell] = 72
+  goto turn
+
+round_end:
+  ' Ends: 1 a robot got you, 2 you won, 3 a mine
+  Mode = 2
+  Message
+  if Ends = 1 then
+    print at 2,21, "A ROBOT HAS GOT YOU!!"
+    inc Lost
+    play sound SndCaught
+  end if
+  if Ends = 2 then
+    print at 2,21, "YOU'VE DEFEATED THE ROBOTS!!"
+    inc Won
+    play sound SndWin
+  end if
+  if Ends = 3 then
+    print at 2,21, "YOU'VE RUN INTO A MINE!!"
+    inc Lost
+  end if
+  ShowScore
+  print at 2,22, "BUTTON: AGAIN   2ND: TITLE"
+  Rearm
+  wait 60 frames
+  wait no fire
+  nmi off
+  WasBtn = 1
+re_wait:
+  Frame1
+  ReadPad
+  if joypad(1).button2 then goto re_title
+  if joypad(2).button2 then goto re_title
+  if Press = 0 then goto re_wait
+  goto round
+re_title:
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' The field
+
+sub NewField:
+  for I = 1 to 15
+    for J = 1 to 15
+      K = I * 16
+      K = K + J
+      V = 46
+      if I = 1 then V = 88
+      if I = 15 then V = 88
+      if J = 1 then V = 88
+      if J = 15 then V = 88
+      Fd[K] = V
+    next
+  next
+  ' twenty mines (the book placed them over and over until twenty landed)
+  for I = 1 to 20
+nf_mine:
+    Rnd13
+    X = V + 1
+    Rnd13
+    Y = V + 1
+    K = X * 16
+    K = K + Y
+    if Fd[K] = 88 then goto nf_mine
+    Fd[K] = 42
+  next
+  ' four robots, then you, on empty squares
+  for E = 0 to 3
+nf_robot:
+    Rnd13
+    X = V + 2
+    Rnd13
+    Y = V + 2
+    if X > 14 then goto nf_robot
+    if Y > 14 then goto nf_robot
+    K = X * 16
+    K = K + Y
+    if Fd[K] <> 46 then goto nf_robot
+    Rr[E] = X
+    Rc[E] = Y
+    Fd[K] = 36
+  next
+nf_you:
+  Rnd13
+  D = V + 2
+  Rnd13
+  F = V + 2
+  if D > 14 then goto nf_you
+  if F > 14 then goto nf_you
+  K = D * 16
+  K = K + F
+  if Fd[K] <> 46 then goto nf_you
+  Fd[K] = 72
+  Tally = 0
+  Ch = 0
+  Ends = 0
+  return
+end sub
+
+' Rnd13: V = 0 to 12 at random (the book's INT(RND * 13))
+sub Rnd13:
+  Rnd
+  NumU = Rb
+  NumU = NumU * 13
+  NumU = NumU >> 8
+  V = NumU
+  return
+end sub
+
+' Robots: each robot steps toward you, as the book
+sub Robots:
+  Tally = 0
+  for E = 0 to 3
+    X = Rr[E]
+    Y = Rc[E]
+    Ox[E] = X
+    Oy[E] = Y
+    K = X * 16
+    K = K + Y
+    if Fd[K] = 42 then
+      ' already wrecked on a mine
+      inc Tally
+    else
+      ' (each pair as if-else: Amy miscompiles two ifs on the same pair
+      ' when the first changes it)
+      if X < D then
+        inc X
+      else
+        if X > D then
+          Rnd
+          if Rb >= 77 then dec X
+        end if
+      end if
+      if Y < F then
+        Rnd
+        if Rb >= 77 then inc Y
+      else
+        if Y > F then dec Y
+      end if
+      if X < 2 then X = 2
+      if X > 14 then X = 14
+      if Y < 2 then Y = 2
+      if Y > 14 then Y = 14
+      Fd[K] = 46
+      Rr[E] = X
+      Rc[E] = Y
+    end if
+  next
+  ' they move on screen together
+  SlideRobots
+  for E = 0 to 3
+    X = Ox[E]
+    Y = Oy[E]
+    K = X * 16
+    K = K + Y
+    if Fd[K] <> 42 then
+      Cell = K
+      DrawCell
+      X = Rr[E]
+      Y = Rc[E]
+      K = X * 16
+      K = K + Y
+      W = Fd[K]
+      if W = 42 then
+        ' smashed into a mine
+        inc Tally
+        Cell = K
+        Boom
+        put char TWreck at Px,Py
+      else
+        if W = 72 then
+          Fd[K] = 36
+          Ends = 1
+        else
+          Fd[K] = 36
+        end if
+      end if
+    end if
+  next
+  if Tally < Ch then Tally = Ch
+  Ch = Tally
+  ShowScore
+  if Ends > 0 then return
+  if Tally = 4 then Ends = 2
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' CellXY: Px, Py = the screen column and row of square Cell
+sub CellXY:
+  V = Cell >> 4
+  Py = V + 4
+  V = Cell & 15
+  Px = V + 7
+  return
+end sub
+
+' DrawCell: square Cell as the field shows it (robots and you are sprites)
+sub DrawCell:
+  CellXY
+  V = Fd[Cell]
+  W = TFloor
+  if V = 88 then W = TWall
+  if V = 42 then W = TMine
+  put char W at Px,Py
+  return
+end sub
+
+sub DrawField:
+  for Cell = 17 to 239
+    V = Cell & 15
+    if V >= 1 then
+      if V <= 15 then DrawCell
+    end if
+  next
+  return
+end sub
+
+' the robots' and your sprites at their squares, slid by S pixels from
+' where they were
+sub SlideRobots:
+  play sound SndClank
+  for J = 1 to 8
+    for E = 0 to 3
+      ' from Ox, Oy toward Rr, Rc, J pixels of the way
+      V = Oy[E]
+      V = V + 7
+      V = V * 8
+      W = Rc[E]
+      if W > Oy[E] then V = V + J
+      if W < Oy[E] then V = V - J
+      K = Ox[E]
+      K = K + 4
+      K = K * 8
+      W = Rr[E]
+      if W > Ox[E] then K = K + J
+      if W < Ox[E] then K = K - J
+      dec K
+      ' a wrecked robot shows as the wreck tile, not a sprite
+      X = Ox[E]
+      Y = Oy[E]
+      W = X * 16
+      W = W + Y
+      if Fd[W] = 42 then K = 192
+      W = Tick & 8
+      I = SRobot1
+      if W > 0 then I = SRobot2
+      W = E + 1
+      set sprite W to K, V, I, 14
+    next
+    DrawYouSprite
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+sub DrawYouSprite:
+  V = F + 7
+  V = V * 8
+  K = D + 4
+  K = K * 8
+  dec K
+  set sprite 0 to K, V, SYou, 11
+  return
+end sub
+
+' SlideYou: you step from X, Y to D, F
+sub SlideYou:
+  play sound SndStep
+  for J = 1 to 8
+    V = Y + 7
+    V = V * 8
+    if F > Y then V = V + J
+    if F < Y then V = V - J
+    K = X + 4
+    K = K * 8
+    if D > X then K = K + J
+    if D < X then K = K - J
+    dec K
+    set sprite 0 to K, V, SYou, 11
+    update sprites
+    Frame1
+  next
+  return
+end sub
+
+' Boom: an explosion on square Cell
+sub Boom:
+  CellXY
+  play sound SndBoom
+  V = Px * 8
+  K = Py * 8
+  dec K
+  for J = 1 to 16
+    W = J & 4
+    I = SBoom1
+    if W > 0 then I = SBoom2
+    W = J & 2
+    Mb = 9
+    if W > 0 then Mb = 11
+    set sprite 5 to K, V, I, Mb
+    update sprites
+    Frame1
+  next
+  set sprite 5 to 192, 0, 0, 0
+  update sprites
+  return
+end sub
+
+' Blast: you on a mine
+sub Blast:
+  Cell = D * 16
+  Cell = Cell + F
+  set sprite 0 to 192, 0, 0, 0
+  Boom
+  return
+end sub
+
+sub ShowScore:
+  print at 2,2, "DEAD ROBOT TALLY:"
+  NumU = Tally
+  print at 20,2, digits$(NumU, 1)
+  print at 24,6, "WON"
+  NumU = Won
+  print at 24,7, width$(NumU, 3)
+  print at 24,9, "LOST"
+  NumU = Lost
+  print at 24,10, width$(NumU, 3)
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub FieldScreen:
+  NewScreen
+  DrawField
+  ShowScore
+  ShowScreen
+  ' the robots and you
+  for E = 0 to 3
+    Ox[E] = Rr[E]
+    Oy[E] = Rc[E]
+  next
+  for E = 0 to 3
+    V = Rc[E]
+    V = V + 7
+    V = V * 8
+    K = Rr[E]
+    K = K + 4
+    K = K * 8
+    dec K
+    W = E + 1
+    set sprite W to K, V, SRobot1, 14
+  next
+  DrawYouSprite
+  update sprites
+  Message
+  print at 2,21, "STAND BY..."
+  for J = 1 to 40
+    Frame1
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  MineLights
+  return
+end sub
+
+' MineLights: the mines' red lights blink (their colour rows change)
+sub MineLights:
+  Mb = Tick & 31
+  if Mb = 0 then
+    vpoke vram.color + 1041, $81
+    vpoke vram.color + 1042, $81
+    vpoke vram.color + 3089, $81
+    vpoke vram.color + 3090, $81
+    vpoke vram.color + 5137, $81
+    vpoke vram.color + 5138, $81
+  end if
+  if Mb = 16 then
+    vpoke vram.color + 1041, $61
+    vpoke vram.color + 1042, $61
+    vpoke vram.color + 3089, $61
+    vpoke vram.color + 3090, $61
+    vpoke vram.color + 5137, $61
+    vpoke vram.color + 5138, $61
+  end if
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 14
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 14
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  for I = 0 to 5
+    set sprite I to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 9,2, "ROBOT MINEFIELD"
+  ' the big robot
+  W = TBot00
+  for I = 0 to 5
+    Y = 4 + I
+    for J = 0 to 7
+      X = 12 + J
+      put char W at X,Y
+      inc W
+    next
+  next
+  ' a row of mines
+  for X = 8 to 23
+    V = X & 1
+    if V = 0 then put char TMine at X,11
+  next
+  print at 10,13, "PLAY"
+  print at 10,14, "HOW TO PLAY"
+  print at 10,15, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndStep
+  end if
+  print at 8,13, " "
+  print at 8,14, " "
+  print at 8,15, " "
+  Y = Menu + 13
+  print at 8,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOU ARE TRAPPED IN A WALLED"
+  print at 2,4, "FIELD WITH TWENTY MINES AND"
+  print at 2,5, "FOUR MANIC ROBOTS."
+  print at 2,7, "THE ROBOTS COME AT YOU BUT"
+  print at 2,8, "CANNOT SEE THE MINES: GET A"
+  print at 2,9, "MINE BETWEEN YOU AND THEM."
+  print at 2,10, "MINES ARE DEADLY TO YOU TOO."
+  print at 2,12, "ROBOTS CAN MERGE, AND SPLIT"
+  print at 2,13, "AGAIN AT THE LAST MOMENT."
+  print at 2,15, "WRECK ALL FOUR TO WIN."
+  print at 2,17, "STICK: A STEP NORTH, SOUTH,"
+  print at 2,18, "EAST OR WEST."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 8,1, "ROBOT MINEFIELD"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "NEW MUSIC: CLOCKWORK MARCH."
+  print at 2,11, "COLECOVISION VERSION BY"
+  print at 2,12, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $01,$80,$80,$80,$80,$80,$80,$00
+  $00,$18,$18,$81,$00,$00,$81,$00
+  $00,$62,$C9,$A3,$00,$24,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$03,$03,$01,$00,$00,$00
+  $C0,$E0,$E0,$E0,$C0,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $00,$00,$00,$00,$00,$03,$03,$03
+  $00,$00,$00,$00,$00,$E0,$E0,$E0
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $03,$03,$03,$00,$00,$C0,$C9,$C0
+  $E0,$E0,$E0,$00,$00,$01,$25,$01
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0
+  $00,$00,$00,$00,$03,$03,$04,$04
+  $F0,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$07,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$10,$10
+  $00,$00,$00,$00,$00,$00,$07,$07
+  $F0,$F0,$C0,$C1,$C1,$C1,$C1,$C1
+  $04,$04,$04,$03,$03,$03,$03,$03
+  $F0,$F0,$F0,$0E,$0E,$0E,$0E,$F0
+  $00,$00,$00,$0E,$0E,$0E,$0E,$00
+  $00,$00,$00,$70,$70,$70,$70,$00
+  $07,$07,$07,$07,$07,$07,$07,$07
+  $10,$10,$10,$E0,$E0,$E0,$E0,$E0
+  $07,$07,$01,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $F0,$F0,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$07,$07,$00,$00,$00,$00,$00
+  $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+  $C1,$C1,$C1,$C1,$C1,$00,$00,$00
+end data
+data TileCol bytes
+  $41,$01,$01,$01,$01,$01,$01,$01
+  $EF,$FE,$FE,$FE,$FE,$FE,$FE,$0E
+  $01,$81,$81,$1E,$0E,$0E,$1E,$01
+  $01,$E1,$1E,$1E,$0E,$1E,$1E,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $84,$84,$84,$84,$84,$04,$04,$04
+  $84,$84,$84,$84,$84,$E4,$E4,$E4
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $0E,$0E,$0E,$0E,$0E,$E8,$E8,$E8
+  $0E,$0E,$0E,$0E,$0E,$E8,$E8,$E8
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $E8,$E8,$E8,$0E,$0E,$E1,$E1,$E1
+  $E8,$E8,$E8,$0E,$0E,$E1,$E1,$E1
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$4E,$4E
+  $04,$04,$04,$04,$E4,$E4,$4E,$4E
+  $4E,$4E,$4E,$04,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$04,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$04,$0E,$0E,$0E,$0E
+  $4E,$4E,$4E,$04,$0E,$0E,$0E,$0E
+  $04,$04,$04,$04,$E4,$E4,$4E,$4E
+  $04,$04,$04,$04,$04,$04,$4E,$4E
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $4E,$4E,$4E,$E4,$E4,$E4,$E4,$E4
+  $E1,$E1,$E1,$1E,$1E,$1E,$1E,$E1
+  $01,$01,$01,$B1,$B1,$B1,$B1,$01
+  $01,$01,$01,$31,$31,$31,$31,$01
+  $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $4E,$4E,$4E,$E4,$E4,$E4,$E4,$E4
+  $4E,$4E,$4E,$4E,$4E,$4E,$4E,$4E
+  $4E,$4E,$4E,$4E,$4E,$04,$04,$04
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $E1,$E1,$E1,$0E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$0E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$0E,$0E,$0E,$0E,$0E
+  $E1,$E1,$E1,$0E,$0E,$0E,$0E,$0E
+  $E4,$E4,$E4,$E4,$E4,$E4,$E4,$E4
+  $4E,$4E,$4E,$4E,$4E,$04,$04,$04
+end data
+data SpritePat bytes
+  $30,$30,$78,$B4,$30,$48,$48,$CC,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7E,$5A,$7E,$3C,$FF,$BD,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $7E,$66,$7E,$3C,$FF,$BD,$42,$C3,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$FE,$38,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $89,$00,$24,$80,$01,$24,$00,$91,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+RmBoom:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$36,$08,$00,$00,$56,$0A,$00,$00,$77,$0C,$10
+RmStep:
+    db $40,$7F,$60,$01,$40,$A9,$80,$01,$50
+RmClank:
+    db $40,$FC,$51,$02,$40,$FC,$F1,$01,$40,$3B,$52,$02,$40,$3B,$F2,$01,$50
+RmCaught:
+    db $40,$1D,$21,$05,$40,$1D,$F1,$01,$40,$2E,$21,$05,$40,$2E,$F1,$01,$40,$41,$21,$05,$40,$41,$F1,$01
+    db $40,$53,$21,$05,$40,$53,$F1,$01,$40,$68,$21,$13,$40,$68,$F1,$01,$50
+RmWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+
+RmSoundTable:
+    dw RmBoom,$702B
+    dw RmStep,$7035
+    dw RmClank,$7035
+    dw RmCaught,$7035
+    dw RmWin,$7035
+    dw RmTuneMel,$703F
+    dw RmTuneBass,$7049
+; Clockwork March, A minor (original for this game)
+; Tiny Sound, 7 frames per step
+RmTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1C,$01,$1C,$1F,$23,$01,$23,$01,$21,$1F,$1E,$01
+    db $1A,$01,$1E,$01,$1C,$01,$1C,$1F,$23,$01,$28,$01,$26,$23,$21,$1E
+    db $1C,$01,$01,$01
+    db $FF
+RmTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$04,$0B,$04,$0B,$04,$0B,$04,$0B,$0E,$09,$0E,$09
+    db $0B,$06,$0B,$06,$04,$0B,$04,$0B,$07,$0E,$07,$0E,$0B,$06,$0B,$06
+    db $04,$0B,$04,$01
+    db $FF
+}

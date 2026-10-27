@@ -1,0 +1,1052 @@
+' MOONLANDER
+' MOONLANDER and REALTIME LANDER from Tim Hartnell's Giant Book of
+' Computer Games (Ballantine Books, 1984; Interface Publications, 1983),
+' for the ColecoVision in Amy by Amy Bienvenu.
+'
+' Land on the moon with limited fuel. You are told your height, your
+' speed (negative when falling) and your fuel. Each burn of thrust uses
+' that much fuel; the moon pulls with 5 units, so a thrust of 5 holds
+' your speed, more slows your fall. Touch down gently enough (under 20
+' metres with a speed under 15) to land safely; your galactic rating is
+' then your fuel left times 234. A crash rates 100 less your speed, and
+' leaves a crater 45 metres deep for every kph.
+'
+' MOONLANDER: choose the thrust for each step with the stick, then fire.
+' REALTIME LANDER (for experienced space jockeys): the craft falls on its
+' own; the stick sets the throttle from 0 to 9 (each step burns 1.7 per
+' notch), the button cuts it. It starts still, with more fuel and higher,
+' and is more forgiving at the bottom (under 40 metres, speed under 25).
+'
+' Controls (either joystick): as above; the second button returns to the
+' title between missions. Keypad not used.
+'
+' Liberties taken:
+' - The book ended the flight the moment the fuel ran out above 100
+'   metres; here the craft falls the rest of the way and is judged when
+'   it hits.
+' - The realtime throttle stays where you set it (the book read a key
+'   each step). Height, speed and fuel keep their tenths.
+' - The book's lander was a "<*>" jumping about a screen of text; here it
+'   is drawn over the moon, with its flame. New music (Tranquillity) and
+'   sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; four sprites at most (the
+' lander in two colours, its flame, and the flag or the explosion); the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TSky = 128
+const TStar0 = 129
+const TStar1 = 130
+const TStar2 = 131
+const TStar3 = 132
+const TEarth00 = 133
+const TEarth01 = 134
+const TEarth02 = 135
+const TEarth10 = 136
+const TEarth11 = 137
+const TEarth12 = 138
+const TEarth20 = 139
+const TEarth21 = 140
+const TEarth22 = 141
+const TMount0 = 142
+const TMount1 = 143
+const TMount2 = 144
+const TMount3 = 145
+const TGround = 146
+const TCrater00 = 147
+const TCrater01 = 148
+const TCrater10 = 149
+const TCrater11 = 150
+const TPad = 151
+const THole00 = 152
+const THole01 = 153
+const SBody = 0
+const SFoil = 4
+const SFlame1 = 8
+const SFlame2 = 12
+const SBoom1 = 16
+const SBoom2 = 20
+const SFlag = 24
+const NTiles8 = 208
+const SprBytes = 224
+const SndHush = 1
+const SndClick = 2
+const SndGlideLo = 3
+const SndGlideHi = 4
+const SndRumbleLo = 5
+const SndRumbleHi = 6
+const SndLanded = 7
+const SndCrash = 8
+const SndTuneA = 9
+const SndTuneB = 10
+
+' height, speed, fuel and thrust in tenths
+i16 Bh = 0
+i16 Av = 0
+i16 Cf = 0
+i16 Tt = 0
+i16 Dv = 0
+i16 Ab = 0
+i32 Score = 0
+i32 Best = -10000
+i32 Nv = 0
+i32 Pw = 0
+u8 Lead = 0
+u8 Nx = 0
+u8 Ny2 = 0
+u8 Real = 0
+u8 Tn = 0
+u8 Lv = 0
+u8 Out = 0
+u8 Landed = 0
+u8 Ly = 0
+u8 Ny = 0
+u8 Lx = 120
+u8 Fl = 0
+u8 Rumble = 0
+u8 RumbleT = 0
+u8 Tw = 0
+u8 Ti = 0
+u8 Tj = 0
+u8 Tv = 0
+u8 Tc = 0
+u16 W16 = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumU = 0
+u16 NumW = 0
+u16 Rs = $1F3B
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table MlSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    EditorialPage
+    goto title
+  end if
+  Real = Menu
+
+mission:
+  NewMission
+  MoonScreen
+  Tn = 0
+  Lv = 0
+  Ly = 0
+  HeightY
+  Ly = Ny
+  DrawLander
+  Mode = 1
+
+flight:
+  Hud
+  Tt = 0
+  if Out = 1 then goto burn
+  if Real = 1 then goto realtime
+  ' MOONLANDER: choose the thrust, then fire
+  print at 16,2, "THRUST?"
+ch_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Tn < 99 then inc Tn
+    end if
+    if Dn1 = 1 then
+      if Tn > 0 then dec Tn
+    end if
+    if Rt1 = 1 then
+      if Tn < 90 then Tn = Tn + 10
+    end if
+    if Lf1 = 1 then
+      if Tn >= 10 then Tn = Tn - 10
+    end if
+    play sound SndClick
+  end if
+  NumU = Tn
+  print at 24,2, digits$(NumU, 2)
+  if Press = 0 then goto ch_loop
+  Tt = Tn
+  Tt = Tt * 10
+  goto burn
+
+realtime:
+  ' REALTIME: the throttle, read through the step
+  for J = 1 to 10
+    Frame1
+    ReadPad
+    if Stick = 1 then
+      if Up1 = 1 then
+        if Lv < 9 then inc Lv
+      end if
+      if Dn1 = 1 then
+        if Lv > 0 then dec Lv
+      end if
+      play sound SndClick
+    end if
+    if Press = 1 then Lv = 0
+    Gauge
+    Engine
+    ' the craft moves smoothly between steps
+    MoveLander
+  next
+  Tt = Lv
+  Tt = Tt * 17
+
+burn:
+  ' the book: no more thrust than fuel; the moon pulls with 5
+  if Tt > Cf then Tt = 0
+  Cf = Cf - Tt
+  Dv = Tt - 50
+  Dv = Dv / 2
+  Bh = Bh + Av
+  Bh = Bh + Dv
+  Av = Av + Dv
+  if Cf < 10 then Out = 1
+  Fl = 0
+  if Tt > 0 then
+    Fl = 1
+    if Tt > 80 then Fl = 2
+    ' MOONLANDER: one even burn for the whole glide
+    if Real = 0 then
+      if Fl = 1 then play sound SndGlideLo
+      if Fl = 2 then play sound SndGlideHi
+    end if
+  end if
+  if Real = 1 then
+    if Out = 1 then
+      Lv = 0
+      Engine
+    end if
+  end if
+  HeightY
+  V = 0
+  if Real = 0 then V = 16
+  if Out = 1 then V = 10
+  if V > 0 then
+    ' MOONLANDER (or a craft out of fuel): the step is shown as a glide
+    for J = 1 to V
+      Frame1
+      MoveLander
+    next
+  end if
+  ' landed? still flying? crashed?
+  Ab = Bh
+  if Ab < 0 then Ab = 0 - Ab
+  NumW = 200
+  if Real = 1 then NumW = 400
+  V = 0
+  if Ab < NumW then V = 1
+  Ab = Av
+  if Ab < 0 then Ab = 0 - Ab
+  NumW = 150
+  if Real = 1 then NumW = 250
+  if Ab >= NumW then V = 0
+  if V = 1 then goto touchdown
+  NumW = 190
+  if Real = 1 then NumW = 390
+  if Bh > NumW then goto flight
+  goto crash
+
+touchdown:
+  Mode = 0
+  mute all
+  Rumble = 0
+  Landed = 1
+  Ly = 136
+  Fl = 0
+  DrawLander
+  play sound SndLanded
+  Hud
+  Message
+  print at 5,7, "YOU HAVE LANDED SAFELY"
+  print at 2,8, "WELL DONE, INTREPID CAPTAIN"
+  ' the flag
+  V = Lx + 14
+  set sprite 3 to 136, V, SFlag, 15
+  update sprites
+  Ab = Cf / 10
+  Score = Ab
+  Score = Score * 234
+  goto rating
+
+crash:
+  Mode = 0
+  mute all
+  Rumble = 0
+  Landed = 0
+  Ly = 136
+  Fl = 0
+  DrawLander
+  Hud
+  Message
+  if Out = 1 then print at 4,7, "YOU HAVE RUN OUT OF FUEL"
+  Boom
+  ' the crater stays
+  V = Lx / 8
+  put char THole00 at V,19
+  inc V
+  put char THole01 at V,19
+  print at 4,8, "YOUR SHIP CRASHED AT"
+  Ab = Av
+  if Ab < 0 then Ab = 0 - Ab
+  Ab = Ab / 10
+  Nv = Ab
+  Nx = 25
+  Ny2 = 8
+  ShowNum
+  print at 4,9, "KPH, CREATING A"
+  Dv = Ab * 45
+  Nv = Dv
+  Nx = 20
+  Ny2 = 9
+  ShowNum
+  print at 4,10, "METRE DEEP CRATER"
+  Score = Ab
+  Score = 100 - Score
+
+rating:
+  print at 4,11, "YOUR GALACTIC RATING IS"
+  Nv = Score
+  Nx = 4
+  Ny2 = 12
+  ShowNum
+  if Score > Best then Best = Score
+  print at 4,13, "BEST RATING SO FAR IS"
+  Nv = Best
+  Nx = 4
+  Ny2 = 14
+  ShowNum
+  Pause
+  print at 4,15, "PLEASE STAND BY FOR YOUR"
+  print at 4,16, "NEXT MISSION (BUTTON)"
+  Mode = 2
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+rt_wait:
+  Frame1
+  ReadPad
+  if Press2 = 1 then
+    Mode = 0
+    goto title
+  end if
+  if Press = 0 then goto rt_wait
+  Mode = 0
+  goto mission
+
+' ---------------------------------------------------------------------------
+' The flight
+
+sub NewMission:
+  Rnd
+  NumW = Rb
+  NumW = NumW * 380
+  NumW = NumW >> 8
+  Bh = NumW
+  Bh = Bh + 1200
+  Bh = Bh * 10
+  Rnd
+  NumW = Rb
+  NumW = NumW * 90
+  NumW = NumW >> 8
+  Cf = NumW
+  if Real = 1 then
+    Cf = Cf + 720
+    Av = 0
+  else
+    Cf = Cf + 320
+    ' a starting speed of -20 to -79
+    Rnd
+    NumW = Rb
+    NumW = NumW * 60
+    NumW = NumW >> 8
+    Av = NumW
+    Av = Av + 20
+    Av = 0 - Av
+    Av = Av * 10
+  end if
+  Cf = Cf * 10
+  Out = 0
+  Landed = 0
+  Fl = 0
+  Rumble = 0
+  Lx = 120
+  return
+end sub
+
+' HeightY: Ny = the lander's screen row for height Bh (136 on the ground)
+sub HeightY:
+  Ab = Bh
+  if Ab < 0 then Ab = 0
+  if Ab > 15800 then Ab = 15800
+  Ab = Ab / 140
+  V = Ab
+  Ny = 136 - V
+  return
+end sub
+
+' MoveLander: a step of the way to Ny, with a little wobble as in the book
+sub MoveLander:
+  if Ly < Ny then
+    W = Ny - Ly
+    W = W >> 2
+    if W = 0 then W = 1
+    Ly = Ly + W
+  else
+    if Ly > Ny then
+      W = Ly - Ny
+      W = W >> 2
+      if W = 0 then W = 1
+      Ly = Ly - W
+    end if
+  end if
+  Rnd
+  V = Rb & 31
+  if V = 0 then
+    if Lx > 104 then dec Lx
+  end if
+  if V = 1 then
+    if Lx < 136 then inc Lx
+  end if
+  DrawLander
+  return
+end sub
+
+sub DrawLander:
+  set sprite 0 to Ly, Lx, SFoil, 11
+  set sprite 1 to Ly, Lx, SBody, 14
+  V = Tick & 2
+  W = 192
+  if Fl > 0 then
+    W = Ly
+    K = SFlame1
+    if Fl = 2 then K = SFlame2
+    X = 9
+    if V = 0 then X = 10
+    set sprite 2 to W, Lx, K, X
+  else
+    set sprite 2 to 192, 0, 0, 0
+  end if
+  update sprites
+  return
+end sub
+
+' ShowNum: Nv in plain figures at Nx, Ny2 (Amy pads signed numbers with
+' zeros)
+sub ShowNum:
+  if Nv < 0 then
+    put char 45 at Nx,Ny2
+    inc Nx
+    Nv = 0 - Nv
+  end if
+  Lead = 0
+  for K = 0 to 5
+    if K = 0 then Pw = 100000
+    if K = 1 then Pw = 10000
+    if K = 2 then Pw = 1000
+    if K = 3 then Pw = 100
+    if K = 4 then Pw = 10
+    if K = 5 then Pw = 1
+    V = 48
+sn_count:
+    if Nv >= Pw then
+      Nv = Nv - Pw
+      inc V
+      goto sn_count
+    end if
+    if V > 48 then Lead = 1
+    if K = 5 then Lead = 1
+    if Lead = 1 then
+      put char V at Nx,Ny2
+      inc Nx
+    end if
+  next
+  print at Nx,Ny2, "  "
+  return
+end sub
+
+sub Boom:
+  play sound SndCrash
+  set sprite 0 to 192, 0, 0, 0
+  set sprite 1 to 192, 0, 0, 0
+  set sprite 2 to 192, 0, 0, 0
+  for J = 1 to 24
+    V = J & 4
+    K = SBoom1
+    if V > 0 then K = SBoom2
+    V = J & 2
+    W = 9
+    if V > 0 then W = 11
+    set sprite 3 to 136, Lx, K, W
+    update sprites
+    Frame1
+    Frame1
+  next
+  set sprite 3 to 192, 0, 0, 0
+  update sprites
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Screens
+
+sub Hud:
+  print at 2,1, "HEIGHT"
+  Ab = Bh / 10
+  if Ab < 0 then Ab = 0
+  NumU = Ab
+  print at 9,1, width$(NumU, 5)
+  print at 16,1, "VELOCITY"
+  Ab = Av / 10
+  V = 32
+  if Ab < 0 then
+    V = 45
+    Ab = 0 - Ab
+  end if
+  NumU = Ab
+  print at 25,1, width$(NumU, 3)
+  ' the sign just before the first figure
+  print at 24,1, " "
+  X = 27
+  if NumU >= 10 then X = 26
+  if NumU >= 100 then X = 25
+  dec X
+  put char V at X,1
+  print at 2,2, "FUEL"
+  Ab = Cf / 10
+  NumU = Ab
+  print at 7,2, width$(NumU, 4)
+  if Real = 1 then Gauge
+  return
+end sub
+
+' the throttle gauge (REALTIME)
+sub Gauge:
+  print at 16,2, "THROTTLE"
+  NumU = Lv
+  print at 25,2, digits$(NumU, 1)
+  return
+end sub
+
+sub Message:
+  for I = 7 to 16
+    Y = I
+    SkyRow
+  next
+  return
+end sub
+
+' SkyRow: row Y of the starry sky again
+sub SkyRow:
+  for X = 2 to 29
+    V = X * 7
+    V = V + Y
+    V = V * 5
+    V = V & 31
+    W = TSky
+    if V < 4 then W = TStar0 + V
+    put char W at X,Y
+  next
+  return
+end sub
+
+sub MoonScreen:
+  NewScreen
+  for Y = 3 to 17
+    SkyRow
+  next
+  ' the Earth
+  W = TEarth00
+  for I = 0 to 2
+    Y = 4 + I
+    for J = 0 to 2
+      X = 24 + J
+      put char W at X,Y
+      inc W
+    next
+  next
+  ' mountains on the horizon, then the regolith with craters and the pad
+  for X = 2 to 29
+    V = X * 3
+    V = V & 3
+    W = TMount0 + V
+    put char W at X,18
+    put char TGround at X,19
+    put char TGround at X,20
+    put char TGround at X,21
+    put char TGround at X,22
+  next
+  put char TCrater00 at 5,20
+  put char TCrater01 at 6,20
+  put char TCrater10 at 5,21
+  put char TCrater11 at 6,21
+  put char TCrater00 at 24,21
+  put char TCrater01 at 25,21
+  put char TCrater10 at 24,22
+  put char TCrater11 at 25,22
+  for X = 13 to 18
+    put char TPad at X,19
+  next
+  Hud
+  ShowScreen
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  Twinkle
+  return
+end sub
+
+' Engine (REALTIME): the flame and one long, steady rumble that follows
+' the throttle, low or high (renewed before it runs out)
+sub Engine:
+  W = 0
+  if Lv > 0 then
+    W = 1
+    if Lv >= 5 then W = 2
+    Tt = Lv
+    Tt = Tt * 17
+    if Tt > Cf then W = 0
+  end if
+  Fl = W
+  if W <> Rumble then
+    Rumble = W
+    RumbleT = 0
+    if W = 0 then
+      mute all
+    end if
+    if W = 1 then play sound SndRumbleLo
+    if W = 2 then play sound SndRumbleHi
+    return
+  end if
+  if W > 0 then
+    inc RumbleT
+    if RumbleT >= 230 then
+      RumbleT = 0
+      if W = 1 then play sound SndRumbleLo
+      if W = 2 then play sound SndRumbleHi
+    end if
+  end if
+  return
+end sub
+
+' Twinkle: every eighth frame the four kinds of star change brightness,
+' each in its own turn (white, grey, dark blue, grey...)
+data TwinkleCol bytes $F1, $F1, $E1, $41, $11, $41, $E1, $F1
+sub Twinkle:
+  Tv = Tick & 7
+  if Tv <> 0 then return
+  inc Tw
+  for Ti = 0 to 3
+    Tv = Ti * 3
+    Tv = Tv + Tw
+    Tv = Tv & 7
+    Tc = TwinkleCol[Tv]
+    Tv = TStar0 + Ti
+    W16 = Tv
+    W16 = W16 * 8
+    for Tj = 0 to 7
+      vpoke vram.color + W16, Tc
+      W16 = W16 + 2048
+      vpoke vram.color + W16, Tc
+      W16 = W16 + 2048
+      vpoke vram.color + W16, Tc
+      W16 = W16 - 4095
+    next
+  next
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 3
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  set sprite 2 to 192,0,0,0
+  set sprite 3 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  for Y = 1 to 17
+    SkyRow
+  next
+  W = TEarth00
+  for I = 0 to 2
+    Y = 2 + I
+    for J = 0 to 2
+      X = 24 + J
+      put char W at X,Y
+      inc W
+    next
+  next
+  for X = 2 to 29
+    V = X * 3
+    V = V & 3
+    W = TMount0 + V
+    put char W at X,18
+    put char TGround at X,19
+    put char TGround at X,20
+  next
+  print at 10,4, "MOONLANDER"
+  print at 9,8, "MOONLANDER"
+  print at 9,9, "REALTIME LANDER"
+  print at 9,10, "HOW TO PLAY"
+  print at 9,11, "CREDITS"
+  print at 3,21, "FROM TIM HARTNELL'S GIANT"
+  print at 3,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  ' the lander hovering by the title
+  Lx = 40
+  Ly = 40
+  Fl = 1
+  DrawLander
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  V = Tick & 63
+  Ly = 36
+  if V > 31 then Ly = 38
+  DrawLander
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 3 then inc Menu
+    end if
+    play sound SndClick
+  end if
+  for I = 8 to 11
+    print at 7,I, " "
+  next
+  Y = Menu + 8
+  print at 7,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "LAND ON THE MOON WITH THE"
+  print at 2,4, "FUEL YOU HAVE. THE MOON PULLS"
+  print at 2,5, "WITH 5: A THRUST OF 5 HOLDS"
+  print at 2,6, "YOUR SPEED, MORE SLOWS YOUR"
+  print at 2,7, "FALL. EACH BURN USES FUEL."
+  print at 2,9, "LAND GENTLY: THE FUEL LEFT"
+  print at 2,10, "MAKES YOUR GALACTIC RATING."
+  print at 2,12, "MOONLANDER: UP, DOWN (1) AND"
+  print at 2,13, "LEFT, RIGHT (10) SET THE"
+  print at 2,14, "THRUST; BUTTON FIRES IT."
+  print at 2,16, "REALTIME: UP, DOWN SET THE"
+  print at 2,17, "THROTTLE 0-9; BUTTON CUTS IT."
+  print at 2,19, "SECOND BUTTON: BACK TO TITLE"
+  print at 2,20, "BETWEEN MISSIONS."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 10,1, "MOONLANDER"
+  print at 2,3, "MOONLANDER AND REALTIME"
+  print at 2,4, "LANDER FROM TIM HARTNELL'S"
+  print at 2,5, "GIANT BOOK OF COMPUTER GAMES"
+  print at 2,6, "(BALLANTINE BOOKS, 1984;"
+  print at 2,7, "INTERFACE PUBLICATIONS,"
+  print at 2,8, "1983)."
+  print at 2,10, "NEW MUSIC: TRANQUILLITY."
+  print at 2,12, "COLECOVISION VERSION BY"
+  print at 2,13, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$40,$00
+  $00,$00,$00,$00,$08,$00,$00,$00
+  $00,$00,$80,$00,$00,$00,$00,$04
+  $00,$00,$00,$03,$07,$F0,$E0,$E0
+  $00,$00,$1C,$C1,$81,$81,$01,$01
+  $00,$00,$00,$C0,$C0,$C0,$C0,$D8
+  $C0,$C0,$C0,$C0,$C0,$03,$30,$C0
+  $87,$00,$00,$00,$00,$00,$80,$40
+  $03,$03,$03,$03,$03,$E0,$E0,$C0
+  $E0,$E0,$F0,$06,$03,$00,$00,$00
+  $40,$81,$87,$F0,$F0,$F0,$00,$00
+  $C0,$40,$C0,$C0,$C0,$00,$00,$00
+  $00,$02,$E1,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E1,$04,$00
+  $00,$06,$F0,$F0,$E0,$00,$00,$00
+  $00,$00,$80,$C0,$F0,$07,$02,$00
+  $00,$10,$00,$02,$40,$00,$04,$00
+  $00,$00,$00,$E0,$C0,$E0,$C0,$80
+  $00,$00,$00,$07,$03,$07,$03,$01
+  $80,$C0,$E0,$07,$00,$00,$00,$00
+  $01,$03,$07,$E0,$00,$00,$00,$00
+  $81,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$80,$80,$00,$80,$80,$C0
+  $03,$03,$01,$01,$00,$01,$01,$03
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$E1,$01,$01,$01,$01,$E1,$01
+  $01,$01,$01,$01,$F1,$01,$01,$01
+  $01,$01,$E1,$01,$01,$01,$01,$E1
+  $01,$01,$01,$41,$41,$14,$14,$14
+  $01,$01,$24,$42,$42,$42,$4F,$4F
+  $01,$01,$01,$41,$41,$41,$41,$41
+  $14,$14,$14,$14,$14,$24,$42,$12
+  $42,$04,$04,$04,$04,$04,$24,$4F
+  $14,$14,$14,$14,$14,$41,$41,$F1
+  $12,$12,$12,$21,$41,$01,$01,$01
+  $4F,$24,$24,$42,$42,$42,$01,$01
+  $F1,$41,$21,$21,$21,$01,$01,$01
+  $01,$E1,$1E,$1E,$0E,$0E,$0E,$0E
+  $01,$01,$01,$01,$E1,$E1,$1E,$0E
+  $01,$E1,$1E,$1E,$1E,$0E,$0E,$0E
+  $01,$01,$E1,$E1,$E1,$1E,$1E,$0E
+  $0E,$1E,$0E,$1E,$1E,$0E,$1E,$0E
+  $0E,$0E,$0E,$EF,$EF,$E1,$E1,$E1
+  $0E,$0E,$0E,$EF,$EF,$E1,$E1,$E1
+  $E1,$E1,$E1,$1E,$0E,$0E,$0E,$0E
+  $E1,$E1,$E1,$1E,$0E,$0E,$0E,$0E
+  $8E,$0F,$0E,$01,$0E,$0E,$0E,$0E
+  $E1,$E1,$E1,$E1,$01,$E1,$E1,$E1
+  $E1,$E1,$E1,$E1,$01,$E1,$E1,$E1
+end data
+data SpritePat bytes
+  $00,$03,$04,$04,$03,$0F,$10,$10,$0F,$08,$10,$30,$00,$00,$00,$00
+  $00,$C0,$20,$20,$C0,$F0,$08,$08,$F0,$10,$08,$0C,$00,$00,$00,$00
+  $00,$00,$03,$03,$00,$00,$0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$00,$00,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$03,$01,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$C0,$80,$80,$00,$00,$00
+  $00,$00,$00,$05,$0B,$16,$0C,$18,$14,$0C,$1B,$06,$05,$00,$00,$00
+  $00,$00,$00,$A0,$60,$D8,$30,$28,$18,$30,$68,$D0,$A0,$00,$00,$00
+  $00,$07,$15,$30,$00,$60,$40,$60,$00,$60,$40,$70,$00,$17,$05,$03
+  $00,$70,$50,$14,$00,$06,$05,$07,$00,$07,$04,$06,$00,$70,$50,$40
+  $00,$03,$03,$03,$02,$02,$02,$02,$02,$02,$02,$02,$02,$00,$00,$00
+  $00,$C0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+MlHush:
+    db $00,$00,$F4,$01,$10
+MlClick:
+    db $40,$40,$70,$01,$50
+MlGlideLo:
+    db $00,$00,$76,$10,$10
+MlGlideHi:
+    db $00,$00,$56,$10,$10
+MlRumbleLo:
+    db $00,$00,$76,$FA,$10
+MlRumbleHi:
+    db $00,$00,$56,$FA,$10
+MlLanded:
+    db $40,$8F,$30,$05,$40,$8F,$F0,$01,$40,$71,$30,$05,$40,$71,$F0,$01,$40,$5F,$30,$05,$40,$5F,$F0,$01
+    db $40,$47,$30,$13,$40,$47,$F0,$01,$50
+MlCrash:
+    db $00,$00,$07,$04,$00,$00,$27,$06,$00,$00,$37,$08,$00,$00,$57,$0A,$00,$00,$67,$0C,$10
+
+MlSoundTable:
+    dw MlHush,$702B
+    dw MlClick,$7035
+    dw MlGlideLo,$702B
+    dw MlGlideHi,$702B
+    dw MlRumbleLo,$702B
+    dw MlRumbleHi,$702B
+    dw MlLanded,$7035
+    dw MlCrash,$702B
+    dw MlTuneMel,$703F
+    dw MlTuneBass,$7049
+; Tranquillity, C major (original for this game)
+; Tiny Sound, 8 frames per step
+MlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$F1,$22,$23,$00,$00,$00,$26,$00,$00,$00,$2B,$00,$00,$00
+    db $2A,$00,$28,$00,$26,$00,$00,$00,$23,$00,$24,$00,$21,$00,$00,$00
+    db $00,$00,$00,$00,$23,$00,$00,$00,$26,$00,$00,$00,$2B,$00,$2D,$00
+    db $2F,$00,$00,$00,$2D,$00,$2B,$00,$2A,$00,$26,$00,$2B,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+MlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$13,$1A,$1F,$23,$13,$1A,$1F,$23,$10,$17,$1C,$1F
+    db $10,$17,$1C,$1F,$0C,$13,$18,$1C,$0C,$13,$18,$1C,$0E,$15,$1A,$1E
+    db $0E,$15,$1A,$1E,$13,$1A,$1F,$23,$13,$1A,$1F,$23,$10,$17,$1C,$1F
+    db $0C,$13,$18,$1C,$0E,$15,$1A,$1E,$0E,$15,$1A,$1E,$13,$1A,$1F,$23
+    db $1F,$00,$00,$00
+    db $FF
+}

@@ -1,7 +1,7 @@
 cartridge "SANTA'S SLEIGH RUN/PRESENTS AMY STUDIO/2026"
 
 ' SANTA'S SLEIGH RUN
-' A Christmas game for the ColecoVision, written in Amy.  Three stages, then round again, harder:
+' A Christmas game for the ColecoVision, written in Amy. Five stages, then round again, harder:
 '   1  DELIVERY  fly Santa's sleigh over five houses and drop a gift down every chimney
 '   2  FACTORY   catch the toys falling from the North Pole workshop chutes in Santa's sack
 '   3  DEFENCE   throw snowballs at the coal goblins marching on the Pole
@@ -11,10 +11,10 @@ cartridge "SANTA'S SLEIGH RUN/PRESENTS AMY STUDIO/2026"
 
 ' ---- DEBUG SHORTCUTS: remove the leading ' from a line to switch it on, then build -------------
 '   define DBG_SKIP_TITLE     start straight in the game, no title screen
-'   define DBG_STAGE_2        begin at stage 2, the toy factory  (DBG_STAGE_3: goblins, DBG_STAGE_4: ice wall)
+'   define DBG_STAGE_2        begin at stage 2, the toy factory  (DBG_STAGE_3: goblins, DBG_STAGE_4: ice wall, DBG_STAGE_5: sky dash)
 '   define DBG_ROUND_2        begin at round 2: wind, crows, rank (DBG_ROUND_3, DBG_ROUND_4 are harder)
 '   define DBG_LIVES_5        begin with five lives
-'   define DBG_QUICK          tiny stages (1 house, 3 toys, 3 goblins, 5 bricks) to see the clear screens fast
+'   define DBG_QUICK          tiny stages (1 house, 3 toys, 3 goblins, 5 bricks, a short flight) to see the clear screens fast
 '   define DBG_GOD            lives are never lost
 
 const TlStar = 128
@@ -291,6 +291,50 @@ const SpDropBox0 = 112
 const SpDropBox1 = 116
 const SpDropRib0 = 120
 const SpDropRib1 = 124
+const TlCloud00 = 138
+const TlCloud01 = 139
+const TlCloud02 = 140
+const TlCloud10 = 141
+const TlCloud11 = 142
+const TlCloud12 = 143
+const SpFWhite0R = 48
+const SpFWhite0L = 52
+const SpFNose0R = 56
+const SpFNose0L = 60
+const SpFSleighR = 64
+const SpFSleighL = 68
+const SpFDeerR0 = 72
+const SpFDeerR1 = 76
+const SpFDeerR2 = 80
+const SpFDeerR3 = 84
+const SpFDeerL0 = 88
+const SpFDeerL1 = 92
+const SpFDeerL2 = 96
+const SpFDeerL3 = 100
+const SpPlRB0 = 104
+const SpPlRA0 = 108
+const SpPlLB0 = 112
+const SpPlLA0 = 116
+const SpPlRB1 = 120
+const SpPlRA1 = 124
+const SpPlLB1 = 128
+const SpPlLA1 = 132
+const SpBalB0 = 136
+const SpBalA0 = 140
+const SpBalB1 = 144
+const SpBalA1 = 148
+const SpBirdR0 = 152
+const SpBirdR1 = 156
+const SpBirdR2 = 160
+const SpBirdR3 = 164
+const SpBirdL0 = 168
+const SpBirdL1 = 172
+const SpBirdL2 = 176
+const SpBirdL3 = 180
+const SpGBox0 = 184
+const SpGRib0 = 188
+const SpGBox1 = 192
+const SpGRib1 = 196
 
 const SndDrop = 1
 const SndDing = 2
@@ -323,11 +367,14 @@ const SndTuneCA = 27
 const SndTuneCB = 28
 const SndTuneDA = 29
 const SndTuneDB = 30
+const SndTuneEA = 31
+const SndTuneEB = 32
 const LenT = 1536
 const LenA = 1100
 const LenB = 640
 const LenC = 576
 const LenD = 512
+const LenE = 448
 
 const SleighY = 38
 if defined DBG_QUICK
@@ -344,7 +391,7 @@ u16 T16 = 0
 u16 MusT = 0
 u8 HighName[3]
 u8 Lives = 3
-u8 Round = 0                    ' how many times round the three stages the player has been
+u8 Round = 0                    ' how many times round the five stages the player has been
 u8 StageNo = 0                  ' 0 delivery, 1 factory, 2 defence
 u8 Result = 0                   ' what a stage reports: 1 = cleared
 u8 SetNo = 0                    ' which art set is in video memory: 0 title, 1 delivery, 2 factory, 3 defence
@@ -507,6 +554,26 @@ u8 NY = 0
 u8 Tx = 0
 u8 Ty = 0
 
+' stage 5: sky dash
+u8 FlyX = 112
+u8 FlyY = 140
+u8 FlyDir = 1
+u8 FlyGal = 0
+u8 FlyGalT = 0
+u8 FlyHit = 0                   ' safe frames after a collision
+u8 DistU = 0                    ' distance flown, in units of 16 frames
+u8 DistT = 0
+u8 Goal = 120
+u8 SpawnE = 40
+u8 ObOn[4]
+u8 ObK[4]                       ' 0 plane, 1 balloon, 2 bird, 3 floating gift
+u8 ObX[4]
+u8 ObY[4]
+u8 ObDir[4]
+u8 ObC[4]
+u8 ClX[3]
+u8 ClY[3]
+
   tile screen
   set sound table XmasSoundTable areas 4
   sprites 16x16
@@ -538,6 +605,9 @@ end defined
 if defined DBG_STAGE_4
   StageNo = 3
 end defined
+if defined DBG_STAGE_5
+  StageNo = 4
+end defined
 if defined DBG_ROUND_2
   Round = 1
 end defined
@@ -558,13 +628,14 @@ stage_loop:
   if StageNo = 1 then PlayFactory
   if StageNo = 2 then PlayDefense
   if StageNo = 3 then PlayIceWall
+  if StageNo = 4 then PlaySkyDash
   if Result = 1 then goto stage_won
   if Lives = 0 then goto lost
   goto stage_loop
 
 stage_won:
   inc StageNo
-  if StageNo >= 4 then
+  if StageNo >= 5 then
     StageNo = 0
     inc Round
     if Lives < MaxLives then
@@ -635,7 +706,7 @@ sub TitlePage:
   print at 4,11, "COAL GOBLINS AND SMASH"
   print at 4,12, "THE GOBLINS' ICE WALL!"
   print at 4,14, "STICK: MOVE   FIRE: ACT"
-  print at 4,15, "FOUR STAGES, THEN ROUND"
+  print at 4,15, "FIVE STAGES, THEN ROUND"
   print at 4,16, "AGAIN, HARDER AND HARDER"
   print at 7,18, "HIGH"
   print HighScore at 12,18 digits 5
@@ -728,6 +799,13 @@ sub StageIntro:
     print at 5,14, "GIFTS IN ICE! BOUNCE THE"
     print at 5,15, "SNOWBALL OFF YOUR SLEIGH"
     print at 5,16, "AND SMASH EVERY BLOCK."
+  end if
+  if StageNo = 4 then
+    print at 5,11, "STAGE 5: SKY DASH"
+    print at 5,13, "FLY THE SLEIGH THROUGH A"
+    print at 5,14, "SKY OF PLANES, BALLOONS"
+    print at 5,15, "AND BIRDS. STICK MOVES UP,"
+    print at 5,16, "DOWN, LEFT, RIGHT. GRAB GIFTS!"
   end if
   if Extra = 1 then
     Extra = 0
@@ -844,6 +922,10 @@ sub LoadSet:
       decompress zx0 PatD to vram.pattern + W16
       decompress zx0 ColD to vram.color + W16
     end if
+    if SetNo = 5 then
+      decompress zx0 PatE to vram.pattern + W16
+      decompress zx0 ColE to vram.color + W16
+    end if
     W16 += 2048
   next
   if SetNo < 2 then
@@ -857,6 +939,9 @@ sub LoadSet:
   end if
   if SetNo = 4 then
     decompress zx0 SprD to vram.spr_pat
+  end if
+  if SetNo = 5 then
+    decompress zx0 SprE to vram.spr_pat
   end if
   return
 end sub
@@ -1029,7 +1114,7 @@ sub LightStrings:
   return
 end sub
 
-' Santa's rank grows with every round through the three stages
+' Santa's rank grows with every round through the five stages
 sub PrintRank:
   if Round = 0 then print at 14,8, "ELF"
   if Round = 1 then print at 14,8, "HEAD ELF"
@@ -1059,6 +1144,10 @@ sub StartMusic:
     play sound SndTuneDA
     play sound SndTuneDB
   end if
+  if StageNo = 4 then
+    play sound SndTuneEA
+    play sound SndTuneEB
+  end if
   return
 end sub
 
@@ -1068,6 +1157,7 @@ sub MusicTick:
   if StageNo = 1 then T16 = LenB
   if StageNo = 2 then T16 = LenC
   if StageNo = 3 then T16 = LenD
+  if StageNo = 4 then T16 = LenE
   if MusT >= T16 then StartMusic
   return
 end sub
@@ -1081,6 +1171,8 @@ sub StopMusic:
   stop sound SndTuneCB
   stop sound SndTuneDA
   stop sound SndTuneDB
+  stop sound SndTuneEA
+  stop sound SndTuneEB
   mute all
   return
 end sub
@@ -3324,6 +3416,417 @@ sub DrawSpritesWall:
   return
 end sub
 
+' ---------------------------------------------------------------------------
+' Stage 5: sky dash.  Fly the sleigh up and down and left and right through a
+' sky of planes, balloons and birds; floating gifts are worth a bonus.  The
+' stage ends when the distance bar is full.
+' ---------------------------------------------------------------------------
+
+sub PlaySkyDash:
+  SetNo = 5
+  NewScreen
+  Fail = 0
+  FlyX = 112
+  FlyY = 140
+  FlyDir = 1
+  FlyHit = 0
+  DistU = 0
+  DistT = 0
+  Goal = Round * 15
+  Goal += 110
+  if Goal > 200 then Goal = 200
+if defined DBG_QUICK
+  Goal = 6
+end defined
+  SpawnE = 50
+  for I = 0 to 3
+    ObOn[I] = 0
+  next
+  DrawStars
+  for I = 0 to 2
+    ClX[I] = I * 9
+    ClX[I] += 2
+    ClY[I] = random(3, 17)
+    DrawCloud
+  next
+  ShowHud
+  ShowSkyHud
+  print at 7,11, "DODGE EVERYTHING!"
+  MsgT = 60
+  Rearm
+  wait no fire
+  nmi off
+  StartMusic
+sk_loop:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  inc Tick
+  MusicTick
+  MoveFlyer
+  SpawnObstacle
+  MoveObstacles
+  AnimateSky
+  DrawSpritesSky
+  if Fail = 1 then goto sk_fail
+  if DistU >= Goal then goto sk_done
+  goto sk_loop
+
+sk_done:
+  StopMusic
+  W16 = Lives
+  W16 *= 100
+  W16 += 300
+  Score += W16
+  ShowHud
+  print at 5,7, "THE SKY IS CLEAR!"
+  print at 8,9, "FLIGHT BONUS"
+  print W16 at 21,9 digits 3
+  play sound SndLevel
+  Rearm
+  wait 150 frames
+  nmi off
+  Result = 1
+  return
+
+sk_fail:
+  StopMusic
+  play sound SndOver
+  print at 3,9, "THE SLEIGH WENT DOWN!"
+  Rearm
+  wait 120 frames
+  nmi off
+  Result = 0
+  return
+end sub
+
+sub ShowSkyHud:
+  print at 8,1, "SKY"
+  print DistU at 12,1 digits 3
+  print at 15,1, "/"
+  print Goal at 16,1 digits 3
+  return
+end sub
+
+' Up, down, left and right; the sleigh stays in the lower part of the sky
+sub MoveFlyer:
+  if Stick = 1 then
+    FlyDir = 0
+    if FlyX > 10 then FlyX -= 3
+  end if
+  if Stick = 2 then
+    FlyDir = 1
+    if FlyX < 214 then FlyX += 3
+  end if
+  if Up = 1 then
+    if FlyY > 96 then FlyY -= 2
+  end if
+  if Down = 1 then
+    if FlyY < 156 then FlyY += 2
+  end if
+  inc FlyGalT
+  if FlyGalT >= 4 then
+    FlyGalT = 0
+    inc FlyGal
+    FlyGal &= 3
+  end if
+  if FlyHit > 0 then dec FlyHit
+  inc DistT
+  if DistT >= 16 then
+    DistT = 0
+    inc DistU
+    ShowSkyHud
+  end if
+  return
+end sub
+
+' A new obstacle drops in from the top; faster and more often as the flight goes on
+sub SpawnObstacle:
+  if SpawnE > 0 then
+    dec SpawnE
+    return
+  end if
+  N = DistU >> 3
+  P = Round * 3
+  N += P
+  if N > 28 then N = 28
+  SpawnE = 46 - N
+  N = random(0, 12)
+  SpawnE += N
+  for I = 0 to 3
+    if ObOn[I] = 0 then
+      ObOn[I] = 1
+      ObX[I] = random(16, 220)
+      ObY[I] = 14
+      ObDir[I] = random(0, 1)
+      N = random(0, 9)
+      K = 0
+      if N = 4 then K = 1
+      if N = 5 then K = 1
+      if N = 6 then K = 2
+      if N = 7 then K = 2
+      if N = 8 then K = 3
+      ObK[I] = K
+      N = random(0, 3)
+      P = 8
+      if N = 1 then P = 3
+      if N = 2 then P = 13
+      if N = 3 then P = 11
+      ObC[I] = P
+      return
+    end if
+  next
+  return
+end sub
+
+sub MoveObstacles:
+  for I = 0 to 3
+    if ObOn[I] = 1 then
+      K = ObK[I]
+      Y = ObY[I]
+      N = 2
+      if K = 1 then N = 1
+      if Round >= 2 then inc N
+      Y += N
+      ObY[I] = Y
+      X = ObX[I]
+      if K = 0 then
+        if ObDir[I] = 1 then
+          X += 1
+          if Round >= 1 then X += 1
+        else
+          if X > 1 then X -= 1
+          if Round >= 1 then
+            if X > 1 then X -= 1
+          end if
+        end if
+      end if
+      if K = 2 then
+        if ObDir[I] = 1 then
+          X += 2
+        else
+          if X > 2 then X -= 2
+        end if
+      end if
+      if K = 1 then
+        N = Tick & 31
+        if N = 0 then ObDir[I] = 1 - ObDir[I]
+        N = Tick & 1
+        if N = 0 then
+          if ObDir[I] = 1 then
+            X += 1
+          else
+            if X > 1 then X -= 1
+          end if
+        end if
+      end if
+      ObX[I] = X
+      if X < 4 then ObOn[I] = 0
+      if X > 236 then ObOn[I] = 0
+      if Y >= 186 then ObOn[I] = 0
+      if ObOn[I] = 1 then CheckHit
+    end if
+  next
+  return
+end sub
+
+' Obstacle I against the sleigh (the sleigh is 32 wide, its body a band across the middle)
+sub CheckHit:
+  X = ObX[I]
+  Y = ObY[I]
+  if ObK[I] = 3 then
+    P = X + 8
+    N = Y + 8
+  else
+    X += 3
+    Y += 3
+    P = X + 10
+    N = Y + 10
+  end if
+  T16 = FlyX
+  T16 += 30
+  if X >= T16 then return
+  T16 = FlyX
+  T16 += 2
+  if P <= T16 then return
+  T16 = FlyY
+  T16 += 13
+  if Y >= T16 then return
+  T16 = FlyY
+  T16 += 3
+  if N <= T16 then return
+  ObOn[I] = 0
+  if ObK[I] = 3 then
+    Score += 100
+    EfX = ObX[I]
+    EfY = ObY[I]
+    EfP = SpSpark0
+    EfC = 11
+    EfT = 24
+    play sound SndDing
+    ShowHud
+    return
+  end if
+  if FlyHit > 0 then return
+  LoseOne
+  play sound SndHit
+  ShowLives
+  EfX = FlyX + 8
+  EfY = FlyY
+  EfP = SpPuff0
+  EfC = 15
+  EfT = 24
+  FlyHit = 90
+  if Lives = 0 then Fail = 1
+  return
+end sub
+
+' Clouds drift down a row now and then; stars and snow fall past
+sub AnimateSky:
+  N = Tick & 7
+  if N = 0 then
+    I = Tick >> 3
+    I &= 3
+    if I < 3 then MoveCloud
+  end if
+  N = Tick & 15
+  if N = 0 then Twinkle
+  SnowStep
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 22 at 5,11
+  end if
+  return
+end sub
+
+' Cloud I: one row down (its top row becomes its bottom row's neighbour), or back to the top
+sub MoveCloud:
+  X = ClX[I]
+  Y = ClY[I]
+  fill 32 count 3 at X,Y
+  inc Y
+  if Y > 21 then
+    fill 32 count 3 at X,Y
+    ClY[I] = 2
+    ClX[I] = random(2, 25)
+    DrawCloud
+    return
+  end if
+  ClY[I] = Y
+  DrawCloud
+  return
+end sub
+
+sub DrawCloud:
+  X = ClX[I]
+  Y = ClY[I]
+  put char TlCloud00 at X,Y
+  P = X + 1
+  put char TlCloud01 at P,Y
+  P = X + 2
+  put char TlCloud02 at P,Y
+  Y += 1
+  put char TlCloud10 at X,Y
+  P = X + 1
+  put char TlCloud11 at P,Y
+  P = X + 2
+  put char TlCloud12 at P,Y
+  return
+end sub
+
+' the sleigh with Rudolph, then four obstacles of two sprites each
+sub DrawSpritesSky:
+  X = FlyX + 16
+  P = FlyGal
+  P <<= 2
+  N = Tick & 4
+  J = 1
+  if FlyHit > 0 then
+    if N = 0 then J = 0
+  end if
+  if J = 0 then
+    set sprite 0 to 192,0,0,0
+    set sprite 1 to 192,0,0,0
+    set sprite 2 to 192,0,0,0
+    set sprite 3 to 192,0,0,0
+  else
+    if FlyDir = 1 then
+      set sprite 0 to FlyY,FlyX,SpFWhite0R,15
+      set sprite 1 to FlyY,X,SpFNose0R,9
+      set sprite 2 to FlyY,FlyX,SpFSleighR,8
+      P += SpFDeerR0
+      set sprite 3 to FlyY,X,P,10
+    else
+      set sprite 0 to FlyY,X,SpFWhite0L,15
+      set sprite 1 to FlyY,FlyX,SpFNose0L,9
+      set sprite 2 to FlyY,X,SpFSleighL,8
+      P += SpFDeerL0
+      set sprite 3 to FlyY,FlyX,P,10
+    end if
+  end if
+  for I = 0 to 3
+    J = I * 2
+    J += 4
+    if ObOn[I] = 1 then
+      K = ObK[I]
+      X = ObX[I]
+      Y = ObY[I]
+      N = Tick
+      N >>= 3
+      N &= 1
+      N <<= 3
+      if K = 0 then
+        if ObDir[I] = 1 then
+          P = SpPlRB0
+        else
+          P = SpPlLB0
+        end if
+        P += N
+        set sprite J to Y,X,P + 4,8
+        inc J
+        set sprite J to Y,X,P,5
+      end if
+      if K = 1 then
+        P = SpBalB0
+        P += N
+        set sprite J to Y,X,P + 4,15
+        inc J
+        set sprite J to Y,X,P,ObC[I]
+      end if
+      if K = 2 then
+        P = Tick
+        P >>= 2
+        P &= 3
+        P <<= 2
+        if ObDir[I] = 1 then
+          P += SpBirdR0
+        else
+          P += SpBirdL0
+        end if
+        set sprite J to 192,0,0,0
+        inc J
+        set sprite J to Y,X,P,14
+      end if
+      if K = 3 then
+        P = SpGBox0
+        P += N
+        set sprite J to Y,X,P + 4,11
+        inc J
+        set sprite J to Y,X,P,ObC[I]
+      end if
+    else
+      set sprite J to 192,0,0,0
+      inc J
+      set sprite J to 192,0,0,0
+    end if
+  next
+  EfS = 12
+  DrawEffect
+  update sprites
+  return
+end sub
+
 
 data ColA bytes
   $96,$F1,$96,$E1,$96,$F1,$95,$B1,$69,$81,$7D,$D0,$7B,$8A,$EE,$D2
@@ -3352,6 +3855,10 @@ data ColD bytes
   $E0,$11,$F0,$B8,$BF,$FE,$E1,$F0,$B8,$3F,$FE,$E1,$F0,$B8,$5F,$FE
   $E1,$F0,$B8,$DF,$FE,$E1,$F0,$B8,$9F,$FE,$E1,$F0,$B8,$75,$FE,$F0
   $F0,$39,$F4,$F7,$E2,$9A,$FD,$FF,$FF,$EF,$96,$FF,$9D,$EF,$55,$56
+end data
+data ColE bytes
+  $96,$F1,$96,$E1,$96,$F1,$95,$B1,$69,$81,$69,$B1,$5A,$F1,$41,$E7
+  $40,$D7,$F0,$55,$55,$80
 end data
 data ColT bytes
   $96,$F1,$96,$E1,$96,$F1,$95,$B1,$69,$81,$69,$B1,$5A,$E1,$29,$81
@@ -3417,6 +3924,14 @@ data PatD bytes
   $FC,$A8,$00,$3F,$79,$E0,$01,$8E,$FF,$FE,$11,$3A,$FD,$FF,$F0,$2A
   $FF,$7F,$FF,$64,$89,$E7,$CF,$9B,$EF,$F3,$FE,$3A,$CF,$E7,$F7,$E7
   $BF,$DF,$C3,$B6,$BB,$DB,$D4,$9F,$F0,$F8,$F4,$FE,$D5,$55,$60
+end data
+data PatE bytes
+  $A2,$00,$10,$00,$02,$FE,$04,$F6,$E1,$E2,$38,$DC,$5A,$0F,$1F,$3F
+  $7F,$79,$7F,$7F,$1E,$F0,$F8,$FC,$CE,$FE,$FF,$89,$7F,$1A,$73,$3F
+  $1F,$0F,$00,$E6,$FE,$9E,$FE,$FC,$F8,$F0,$00,$22,$66,$FF,$79,$7E
+  $3C,$18,$A3,$F8,$30,$7F,$30,$7A,$6F,$08,$0C,$FE,$0C,$08,$FE,$A9
+  $01,$21,$03,$1F,$3F,$00,$3E,$FF,$A8,$00,$B8,$80,$C0,$7B,$FE,$FE
+  $3F,$65,$FB,$7F,$3C,$00,$FF,$D2,$E3,$F4,$B5,$6D,$00,$55,$58
 end data
 data PatT bytes
   $A2,$00,$10,$00,$02,$FE,$04,$F6,$E1,$E2,$38,$DC,$5A,$0F,$1F,$3F
@@ -3565,6 +4080,47 @@ data SprD bytes
   $C1,$DC,$A5,$EC,$0E,$FF,$A9,$FF,$7E,$A4,$00,$1A,$3C,$1A,$00,$15
   $86,$36,$1C,$18,$FF,$18,$79,$C0,$5E,$CA,$BC,$3C,$C0,$5D,$55,$56
 end data
+data SprE bytes
+  $92,$00,$64,$01,$03,$00,$2A,$C0,$60,$E0,$C0,$00,$7A,$C9,$0C,$EE
+  $FA,$BA,$0A,$60,$AF,$18,$FB,$F2,$F3,$8A,$26,$00,$08,$BF,$20,$F3
+  $7C,$69,$10,$BE,$04,$F2,$FE,$80,$EE,$D4,$A0,$40,$A4,$40,$FA,$AF
+  $F9,$02,$F2,$F6,$F2,$20,$3E,$ED,$07,$FE,$93,$FC,$F7,$05,$FF,$FE
+  $78,$FF,$A9,$03,$0F,$1F,$FE,$F5,$BD,$FE,$22,$C0,$F0,$A7,$F8,$FE
+  $F5,$BD,$BE,$16,$05,$16,$18,$2C,$32,$11,$28,$34,$1A,$0D,$16,$19
+  $09,$A0,$D8,$28,$14,$08,$0C,$84,$48,$2C,$30,$D8,$60,$90,$82,$06
+  $1B,$2D,$30,$50,$60,$30,$48,$64,$32,$19,$2C,$5A,$C0,$68,$34,$98
+  $4C,$26,$12,$08,$06,$0A,$0C,$B4,$F7,$3A,$B7,$3D,$3F,$00,$0E,$3D
+  $E0,$FC,$E6,$9E,$10,$09,$27,$C3,$09,$4F,$0F,$17,$02,$60,$6F,$40
+  $20,$80,$D0,$E0,$E8,$C0,$90,$40,$BA,$26,$20,$12,$24,$BF,$4A,$C4
+  $DA,$BE,$48,$8C,$A0,$48,$F8,$F6,$7A,$67,$04,$22,$02,$C2,$E0,$F6
+  $20,$E2,$9B,$0C,$3F,$AA,$05,$1F,$7F,$69,$7F,$6C,$80,$AE,$8E,$FF
+  $E1,$24,$03,$FF,$98,$03,$01,$01,$69,$C0,$A6,$30,$DA,$FC,$C5,$F8
+  $A7,$FE,$E4,$F9,$FE,$2A,$03,$91,$00,$AA,$C0,$00,$44,$D9,$0C,$B8
+  $3F,$F7,$B8,$7F,$7F,$DE,$FE,$07,$F6,$EE,$81,$1F,$FF,$42,$7F,$07
+  $F6,$FA,$E0,$7F,$0C,$9B,$CC,$FC,$8B,$F7,$FE,$FE,$86,$76,$E7,$3F
+  $85,$60,$40,$C0,$5A,$C2,$59,$24,$1A,$3C,$3E,$3E,$1E,$EC,$9F,$30
+  $10,$0C,$C0,$09,$91,$30,$10,$18,$FF,$A0,$BE,$09,$91,$20,$30,$00
+  $8F,$20,$60,$40,$1F,$E1,$C7,$40,$FA,$A1,$E0,$58,$83,$7C,$7C,$78
+  $37,$4A,$C2,$61,$0C,$08,$30,$D8,$B6,$B6,$FC,$C5,$7C,$06,$02,$03
+  $C0,$3B,$E0,$C3,$C0,$AF,$A1,$18,$BE,$09,$91,$04,$06,$00,$8F,$04
+  $0C,$40,$1F,$E1,$C7,$40,$82,$A0,$76,$07,$13,$73,$C3,$73,$73,$13
+  $07,$1E,$68,$80,$8E,$D8,$F8,$F9,$F3,$80,$C4,$BE,$D1,$60,$EC,$9C
+  $60,$DB,$40,$01,$BF,$EB,$01,$EC,$0D,$06,$9E,$03,$1B,$1F,$F9,$F6
+  $01,$42,$62,$E0,$C8,$CE,$7C,$CE,$C8,$E0,$C4,$FC,$AC,$3F,$E3,$A9
+  $EC,$FF,$C4,$D1,$FE,$0E,$F7,$EC,$F1,$00,$4A,$01,$0A,$01,$11,$28
+  $80,$28,$80,$53,$20,$D5,$F2,$1C,$1C,$3C,$3C,$F9,$C3,$87,$02,$58
+  $D5,$FD,$38,$38,$E1,$F9,$6F,$C3,$40,$48,$3D,$FE,$FD,$EA,$FD,$C8
+  $FE,$FE,$EA,$80,$50,$EF,$FE,$80,$0D,$4B,$B6,$A2,$9C,$40,$60,$23
+  $1C,$0F,$52,$82,$18,$29,$08,$18,$30,$70,$97,$F4,$F6,$E4,$ED,$5C
+  $18,$30,$83,$C2,$39,$06,$1F,$C1,$AB,$C2,$80,$4C,$04,$23,$EF,$C7
+  $92,$E0,$1B,$C8,$F8,$FB,$F4,$E4,$93,$7E,$88,$C1,$27,$43,$48,$A6
+  $08,$1C,$FA,$E7,$C0,$02,$02,$10,$18,$0C,$0E,$07,$2F,$6F,$27,$02
+  $69,$02,$06,$0C,$B8,$38,$F0,$E0,$A2,$7E,$C1,$C2,$A5,$01,$DE,$1C
+  $D3,$18,$83,$57,$79,$92,$00,$18,$13,$1F,$DF,$2F,$27,$5B,$F0,$88
+  $C1,$F7,$E3,$48,$A6,$10,$38,$5F,$E7,$03,$E4,$7E,$E2,$C1,$E4,$C2
+  $F2,$FE,$A9,$FF,$7E,$A1,$00,$58,$66,$36,$1C,$18,$FF,$18,$90,$00
+  $68,$3C,$79,$C4,$5E,$8A,$BC,$3C,$80,$5D,$55,$56
+end data
 data SprT bytes
   $92,$00,$64,$01,$03,$00,$2A,$C0,$60,$E0,$C0,$00,$7A,$C9,$0C,$EE
   $FA,$BA,$0A,$60,$AF,$18,$FB,$F2,$F3,$8A,$26,$00,$08,$BF,$20,$F3
@@ -3668,6 +4224,8 @@ XmasSoundTable:
     dw XmTuneCBass,$7049
     dw XmTuneDMel,$703F
     dw XmTuneDBass,$7049
+    dw XmTuneEMel,$703F
+    dw XmTuneEBass,$7049
 ; Music: Tiny Sound, two voices per tune
 XmTuneTMel:
     db $44
@@ -3782,5 +4340,25 @@ XmTuneDBass:
     db $07,$00,$00,$00,$07,$00,$0E,$00,$10,$00,$17,$00,$0C,$00,$13,$00
     db $09,$00,$10,$00,$0E,$00,$15,$00,$0E,$00,$15,$00,$0E,$00,$15,$00
     db $07,$00,$00,$00
+    db $FF
+XmTuneEMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$26,$00,$26,$23,$26,$00,$2B,$00,$28,$00,$28,$24
+    db $28,$00,$2D,$00,$26,$23,$1F,$23,$26,$00,$01,$01,$23,$26,$2B,$26
+    db $23,$1F,$21,$23,$26,$00,$26,$23,$26,$00,$2B,$00,$28,$00,$28,$24
+    db $28,$00,$2D,$00,$26,$23,$1F,$23,$26,$00,$01,$01,$23,$26,$2B,$26
+    db $23,$1F,$21,$23
+    db $FF
+XmTuneEBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$07,$07,$13,$07,$07,$07,$13,$07,$0C,$0C,$18,$0C
+    db $0C,$0C,$18,$0C,$0E,$0E,$1A,$0E,$0E,$0E,$1A,$0E,$07,$07,$13,$07
+    db $0E,$0E,$1A,$0E,$07,$07,$13,$07,$07,$07,$13,$07,$0C,$0C,$18,$0C
+    db $0C,$0C,$18,$0C,$0E,$0E,$1A,$0E,$0E,$0E,$1A,$0E,$07,$07,$13,$07
+    db $0E,$0E,$1A,$0E
     db $FF
 }

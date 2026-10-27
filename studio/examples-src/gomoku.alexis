@@ -1,0 +1,922 @@
+' GOMOKU
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), after a program by Graham
+' Charlton, for the ColecoVision in Amy by Amy Bienvenu.
+'
+' Take turns placing stones on the points of an 8 x 8 board: yours are
+' white, the computer's black. Five in a line, across, up and down or
+' diagonally, wins.
+'
+' The computer plays as the book's program: it looks at every free point
+' three times, first for a line of its own it can make five, then for one
+' of yours of three or more to block, then for one of its own of three or
+' more to lengthen, counting how many lines a point would join; with none
+' it picks a free point at random.
+'
+' Controls (either joystick): the stick moves the cursor, the button
+' places a stone. Keypad not used.
+'
+' Liberties taken:
+' - A full board is a draw (the book had the computer concede).
+' - The book's opening list has ten points for twelve choices; one of the
+'   ten is chosen.
+' - The winning line turns red. New music (Stones in the Garden) and
+'   sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; one sprite (the cursor); the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TPtla = 128
+const TPtlb = 129
+const TPtlc = 130
+const TPtld = 131
+const TPtma = 132
+const TPtmb = 133
+const TPtmc = 134
+const TPtmd = 135
+const TPtra = 136
+const TPtrb = 137
+const TPtrc = 138
+const TPtrd = 139
+const TPmla = 140
+const TPmlb = 141
+const TPmlc = 142
+const TPmld = 143
+const TPmma = 144
+const TPmmb = 145
+const TPmmc = 146
+const TPmmd = 147
+const TPmra = 148
+const TPmrb = 149
+const TPmrc = 150
+const TPmrd = 151
+const TPbla = 152
+const TPblb = 153
+const TPblc = 154
+const TPbld = 155
+const TPbma = 156
+const TPbmb = 157
+const TPbmc = 158
+const TPbmd = 159
+const TPbra = 160
+const TPbrb = 161
+const TPbrc = 162
+const TPbrd = 163
+const TBlacka = 164
+const TBlackb = 165
+const TBlackc = 166
+const TBlackd = 167
+const TWhitea = 168
+const TWhiteb = 169
+const TWhitec = 170
+const TWhited = 171
+const TReda = 172
+const TRedb = 173
+const TRedc = 174
+const TRedd = 175
+const TFtl = 176
+const TFtr = 177
+const TFbl = 178
+const TFbr = 179
+const TFt = 180
+const TFb = 181
+const TFl = 182
+const TFr = 183
+const SCursor = 0
+const NTiles8 = 448
+const SprBytes = 32
+const SndHush = 1
+const SndMove = 2
+const SndPlace = 3
+const SndBad = 4
+const SndWin = 5
+const SndLose = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+' the board as the book: Gb[row * 10 + column], rows 1-8 from the top,
+' columns 2-9; 46 a free point, 2 the computer (black), 3 you (white),
+' 0 outside
+u8 Gb[110]
+u8 First = 0
+u8 Cur = 35
+u8 G = 0
+u8 A = 0
+u8 E = 0
+u8 N = 0
+u8 Z = 0
+u8 K = 0
+u8 L = 0
+u8 M = 0
+u8 T = 0
+u8 H1 = 0
+u8 Xd = 0
+u8 Tries = 0
+u8 Cell = 0
+u8 Pr = 0
+u8 Pc = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumW = 0
+u16 Rs = $3C5A
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table GkSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    EditorialPage
+    goto title
+  end if
+  First = Menu
+  NewGame
+  BoardScreen
+  if First = 0 then goto player_turn
+  ' the computer's opening point, from the book's list
+  Rnd
+  NumW = Rb
+  NumW = NumW * 10
+  NumW = NumW >> 8
+  V = NumW
+  G = Openings[V]
+  Z = 2
+  Place
+  goto player_turn
+
+computer_turn:
+  Free
+  if V = 0 then goto draw_game
+  Message
+  print at 2,21, "MY MOVE..."
+  Pause20
+  ChooseMove
+  if G = 0 then
+    Message
+    print at 2,21, "I CONCEDE THE GAME TO A"
+    print at 2,22, "MASTER!"
+    play sound SndWin
+    goto game_end
+  end if
+  Z = 2
+  Place
+  A = G
+  Longest
+  if L > 3 then goto i_won
+
+player_turn:
+  Free
+  if V = 0 then goto draw_game
+  Message
+  print at 2,21, "PLEASE ENTER YOUR MOVE..."
+  Mode = 1
+player_loop:
+  Frame1
+  ReadPad
+  MoveCursor
+  DrawCursor
+  if Press = 0 then goto player_loop
+  if Gb[Cur] <> 46 then
+    play sound SndBad
+    goto player_loop
+  end if
+  Mode = 0
+  HideSprites
+  G = Cur
+  Z = 3
+  Place
+  A = G
+  Longest
+  if L > 3 then goto you_won
+  goto computer_turn
+
+you_won:
+  Message
+  print at 2,21, "YOU WIN!!"
+  play sound SndWin
+  RedLine
+  goto game_end
+i_won:
+  Message
+  print at 2,21, "I WIN!!"
+  play sound SndLose
+  RedLine
+  goto game_end
+draw_game:
+  Message
+  print at 2,21, "THE BOARD IS FULL: A DRAW"
+game_end:
+  Mode = 2
+  HideSprites
+  Rearm
+  wait 60 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Rules
+
+data Dirs bytes 1, 9, 10, 11
+data Openings bytes 34, 35, 44, 46, 47, 54, 55, 56, 57, 66
+
+sub NewGame:
+  fill array Gb with 0
+  for I = 1 to 8
+    for J = 2 to 9
+      V = I * 10
+      V = V + J
+      Gb[V] = 46
+    next
+  next
+  Cur = 45
+  return
+end sub
+
+' Free: V = the number of free points
+sub Free:
+  V = 0
+  for I = 12 to 89
+    if Gb[I] = 46 then inc V
+  next
+  return
+end sub
+
+' Count: K = K + the stones of side Z in a row from A in steps of N
+sub Count:
+  E = A
+ct_next:
+  E = E + N
+  if Gb[E] <> Z then return
+  inc K
+  goto ct_next
+end sub
+
+' Longest: L = the most stones of side Z next to A in one line
+sub Longest:
+  L = 0
+  for Xd = 0 to 3
+    K = 0
+    N = Dirs[Xd]
+    Count
+    N = 0 - N
+    Count
+    if K > L then L = K
+  next
+  return
+end sub
+
+' ChooseMove: G = the computer's point, as the book (0: none)
+sub ChooseMove:
+  for T = 1 to 3
+    Z = 2
+    if T = 2 then Z = 3
+    G = 0
+    H1 = 0
+    L = 0
+    for A = 12 to 89
+      if Gb[A] = 46 then
+        M = 0
+        for Xd = 0 to 3
+          K = 0
+          N = Dirs[Xd]
+          Count
+          N = 0 - N
+          Count
+          if K > L then
+            H1 = 0
+            L = K
+          end if
+          if L = K then
+            V = 1
+            if T = 1 then
+              if L < 4 then V = 0
+            else
+              if L < 2 then V = 0
+            end if
+            if V = 1 then inc M
+          end if
+        next
+        if M > H1 then
+          H1 = M
+          G = A
+        end if
+      end if
+    next
+    if H1 > 0 then return
+  next
+  ' at random
+  for Tries = 1 to 100
+    Rnd
+    NumW = Rb
+    NumW = NumW * 77
+    NumW = NumW >> 8
+    V = NumW
+    G = V + 13
+    if Gb[G] = 46 then return
+  next
+  G = 0
+  return
+end sub
+
+' Place: a stone of side Z on point G
+sub Place:
+  Gb[G] = Z
+  Cell = G
+  DrawPoint
+  play sound SndPlace
+  return
+end sub
+
+' RedLine: the five (or more) stones through A turn red, flashing
+sub RedLine:
+  for Xd = 0 to 3
+    K = 0
+    N = Dirs[Xd]
+    Count
+    W = K
+    N = 0 - N
+    Count
+    if K > 3 then goto rl_found
+  next
+  return
+rl_found:
+  ' from the far end in direction +N back through A
+  N = Dirs[Xd]
+  E = W * N
+  E = A + E
+  K = K + 1
+  for J = 1 to 6
+    Cell = E
+    for I = 1 to K
+      W = TReda
+      DrawQuad
+      Cell = Cell - N
+    next
+    Pause10
+    Cell = E
+    for I = 1 to K
+      DrawPoint
+      Cell = Cell - N
+    next
+    Pause10
+  next
+  Cell = E
+  for I = 1 to K
+    W = TReda
+    DrawQuad
+    Cell = Cell - N
+  next
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' DrawPoint: point Cell as it is now
+sub DrawPoint:
+  V = Gb[Cell]
+  if V = 2 then
+    W = TBlacka
+  else
+    if V = 3 then
+      W = TWhitea
+    else
+      ' an empty point: its lines stop at the board's edges
+      Y = Cell / 10
+      X = Y * 10
+      X = Cell - X
+      Pr = 1
+      if Y = 1 then Pr = 0
+      if Y = 8 then Pr = 2
+      Pc = 1
+      if X = 2 then Pc = 0
+      if X = 9 then Pc = 2
+      W = Pr * 3
+      W = W + Pc
+      W = W * 4
+      W = W + TPtla
+    end if
+  end if
+  DrawQuad
+  return
+end sub
+
+' DrawQuad: the 2 x 2 tiles from W for point Cell
+sub DrawQuad:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  X = X * 2
+  X = X - 1
+  Y = Y * 2
+  Y = Y + 2
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  inc W
+  dec X
+  inc Y
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  return
+end sub
+
+sub DrawBoard:
+  put char TFtl at 2,3
+  fill TFt count 16 at 3,3
+  put char TFtr at 19,3
+  for Y = 4 to 19
+    put char TFl at 2,Y
+    put char TFr at 19,Y
+  next
+  put char TFbl at 2,20
+  fill TFb count 16 at 3,20
+  put char TFbr at 19,20
+  for A = 12 to 89
+    if Gb[A] <> 0 then
+      Cell = A
+      DrawPoint
+    end if
+  next
+  print at 22,6, "ME"
+  put char TBlacka at 22,7
+  put char TBlackb at 23,7
+  put char TBlackc at 22,8
+  put char TBlackd at 23,8
+  print at 22,11, "YOU"
+  put char TWhitea at 22,12
+  put char TWhiteb at 23,12
+  put char TWhitec at 22,13
+  put char TWhited at 23,13
+  return
+end sub
+
+sub DrawCursor:
+  Y = Cur / 10
+  X = Y * 10
+  X = Cur - X
+  X = X * 16
+  X = X - 8
+  Y = Y * 16
+  Y = Y + 15
+  V = Tick & 8
+  W = 15
+  if V > 0 then W = 9
+  set sprite 0 to Y, X, SCursor, W
+  update sprites
+  return
+end sub
+
+sub MoveCursor:
+  if Stick = 0 then return
+  Y = Cur / 10
+  X = Y * 10
+  X = Cur - X
+  if Lf1 = 1 then
+    if X > 2 then dec X
+  end if
+  if Rt1 = 1 then
+    if X < 9 then inc X
+  end if
+  if Up1 = 1 then
+    if Y > 1 then dec Y
+  end if
+  if Dn1 = 1 then
+    if Y < 8 then inc Y
+  end if
+  Cur = Y * 10
+  Cur = Cur + X
+  play sound SndMove
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub BoardScreen:
+  NewScreen
+  print at 13,1, "GOMOKU"
+  DrawBoard
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause10:
+  for Tries = 1 to 10
+    Frame1
+  next
+  return
+end sub
+
+sub Pause20:
+  for Tries = 1 to 20
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 13,2, "GOMOKU"
+  ' five stones in a line on a strip of the board
+  fill array Gb with 0
+  for J = 2 to 9
+    V = 40 + J
+    Gb[V] = 46
+  next
+  for J = 3 to 7
+    V = 40 + J
+    Gb[V] = 2
+  next
+  Gb[48] = 3
+  for J = 2 to 9
+    Cell = 40 + J
+    DrawPoint
+  next
+  print at 6,14, "PLAY: YOU GO FIRST"
+  print at 6,15, "PLAY: I GO FIRST"
+  print at 6,16, "HOW TO PLAY"
+  print at 6,17, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 3 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  for I = 14 to 17
+    print at 4,I, " "
+  next
+  Y = Menu + 14
+  print at 4,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "TAKE TURNS PLACING STONES"
+  print at 2,4, "ON THE POINTS OF THE BOARD:"
+  print at 2,5, "YOURS ARE WHITE, MINE BLACK."
+  print at 2,7, "FIVE IN A LINE WINS:"
+  print at 2,8, "ACROSS, UP AND DOWN, OR"
+  print at 2,9, "DIAGONALLY."
+  print at 2,11, "EASY TO LEARN, BUT ALMOST"
+  print at 2,12, "IMPOSSIBLE TO WIN!"
+  print at 2,15, "STICK: MOVE THE CURSOR."
+  print at 2,16, "BUTTON: PLACE A STONE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 13,1, "GOMOKU"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983). THE PROGRAM IS BASED"
+  print at 2,8, "ON ONE BY GRAHAM CHARLTON."
+  print at 2,10, "NEW MUSIC: STONES IN THE"
+  print at 2,11, "GARDEN."
+  print at 2,13, "COLECOVISION VERSION BY"
+  print at 2,14, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$07,$F0,$E0,$C0,$80,$80,$80
+  $00,$E0,$F0,$07,$03,$01,$01,$01
+  $80,$80,$80,$C0,$E0,$F0,$07,$00
+  $01,$01,$01,$03,$07,$F0,$E0,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+end data
+data TileCol bytes
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$1A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$01
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$01
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$01
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $01,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $01,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $01,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$01
+  $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+  $01,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $1A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$1A,$A1,$A1,$A1,$A1,$A1,$A1
+  $0A,$1A,$1A,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$1A,$0A
+  $A1,$A1,$A1,$A1,$A1,$1A,$1A,$0A
+  $0A,$FA,$AF,$AF,$AF,$AF,$AF,$AF
+  $0A,$FA,$FA,$AF,$AF,$AF,$AF,$AF
+  $AF,$AF,$AF,$AF,$AF,$AF,$FA,$0A
+  $AF,$AF,$AF,$AF,$AF,$FA,$FA,$0A
+  $0A,$8A,$A8,$A8,$A8,$A8,$A8,$A8
+  $0A,$8A,$8A,$A8,$A8,$A8,$A8,$A8
+  $A8,$A8,$A8,$A8,$A8,$A8,$8A,$0A
+  $A8,$A8,$A8,$A8,$A8,$8A,$8A,$0A
+  $06,$06,$6A,$6A,$6A,$6A,$6A,$6A
+  $06,$06,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$06,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$06,$06
+  $06,$06,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$06,$06
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$6A
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+end data
+
+asm {
+GkHush:
+    db $00,$00,$F4,$01,$10
+GkMove:
+    db $40,$40,$60,$01,$50
+GkPlace:
+    db $00,$00,$23,$01,$00,$00,$45,$02,$00,$00,$66,$02,$10
+GkBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+GkWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+GkLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+GkSoundTable:
+    dw GkHush,$702B
+    dw GkMove,$7035
+    dw GkPlace,$702B
+    dw GkBad,$702B
+    dw GkWin,$7035
+    dw GkLose,$7035
+    dw GkTuneMel,$703F
+    dw GkTuneBass,$7049
+; Stones in the Garden, A minor pentatonic (original for this game)
+; Tiny Sound, 9 frames per step
+GkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$30,$1A,$21,$1C,$01,$1F,$21,$23,$01,$26,$23,$21,$01,$1F,$1C
+    db $1F,$01,$01,$01,$23,$01,$26,$28,$26,$23,$21,$01,$1F,$21,$23,$1F
+    db $1C,$01,$01,$01
+    db $FF
+GkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$18,$32,$04,$0B,$10,$0B,$07,$0E,$07,$0E,$09,$10,$09,$10
+    db $04,$0B,$04,$0B,$07,$0E,$07,$0E,$0E,$09,$0E,$09,$0C,$07,$0B,$06
+    db $04,$0B,$04,$01
+    db $FF
+}

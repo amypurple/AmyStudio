@@ -50,6 +50,7 @@ const tests = [
   { file: "test-wide-zero-compare-rom.mjs", area: "wide-zero-numeric-comparisons", evidence: "GearColeco" },
   { file: "test-numeric-comparison-selftest-rom.mjs", area: "catalogued-numeric-comparison-selftest", evidence: "GearColeco" },
   { file: "test-mul-div-assign-codegen.mjs", area: "multiply-divide-assignment", evidence: "compile+assemble" },
+  { file: "test-integer-muldiv-matrix.mjs", area: "integer-multiply-divide-edge-matrix", evidence: "GearColeco" },
   { file: "test-signed-byte-division-codegen.mjs", area: "signed-byte-division", evidence: "GearColeco" },
   { file: "test-divide-by-zero-diagnostics.mjs", area: "divide-by-zero-diagnostics", evidence: "compile+assemble" },
   { file: "test-global-scratch-clobber-warning.mjs", area: "global-scratch-clobber-diagnostics", evidence: "unit" },

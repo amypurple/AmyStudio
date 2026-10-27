@@ -357,7 +357,7 @@ export function createExpressionComputeHelpers({
     const loadRight = emitLoadInt16AstIntoHL(node.right, preferredDeclaredType);
     if (!loadLeft || !loadRight) return null;
     const loopLabel = makeGeneratedLabel("Mul16ExprLoop");
-    const doneLabel = makeGeneratedLabel("Mul16ExprDone");
+    const skipLabel = makeGeneratedLabel("Mul16ExprSkip");
     return [
       ...loadLeft,
       "    push hl",
@@ -366,14 +366,17 @@ export function createExpressionComputeHelpers({
       "    ld c,l",
       "    pop de",
       "    ld hl,0",
+      "    ld a,16",
       `${loopLabel}:`,
-      "    ld a,b",
-      "    or c",
-      `    jr z,${doneLabel}`,
+      "    srl b",
+      "    rr c",
+      `    jr nc,${skipLabel}`,
       "    add hl,de",
-      "    dec bc",
-      `    jr ${loopLabel}`,
-      `${doneLabel}:`
+      `${skipLabel}:`,
+      "    sla e",
+      "    rl d",
+      "    dec a",
+      `    jr nz,${loopLabel}`
     ];
   }
 

@@ -44,6 +44,22 @@ u16 U16ExpressionSource256 = 4660
 u16 U16ExpressionSource257 = 4660
 u16 U16ExpressionResult256 = 0
 u16 U16ExpressionResult257 = 0
+i16 DynamicLeft = 100
+i16 DynamicRight = -3
+i16 DynamicResult = 0
+i16 DynamicCompound = -1234
+i16 DynamicCompoundFactor = -7
+u16 DynamicMaxLeft = 65535
+u16 DynamicMaxRight = 65535
+u16 DynamicMaxResult = 0
+u16 DynamicZeroLeft = 12345
+u16 DynamicZeroRight = 0
+u16 DynamicZeroResult = 1
+i16 DynamicMinLeft = -32768
+i16 DynamicMinusOne = -1
+i16 DynamicMinResult = 0
+u16 Constant2048Source = 37
+u16 Constant2048Result = 0
 U8Value *= 3
 I8Value *= 5
 U8Six *= 6
@@ -68,6 +84,12 @@ U16Times256 *= 256
 U16Times257 *= 257
 U16ExpressionResult256 = U16ExpressionSource256 * 256
 U16ExpressionResult257 = 257 * U16ExpressionSource257
+DynamicResult = DynamicLeft * DynamicRight
+DynamicCompound *= DynamicCompoundFactor
+DynamicMaxResult = DynamicMaxLeft * DynamicMaxRight
+DynamicZeroResult = DynamicZeroLeft * DynamicZeroRight
+DynamicMinResult = DynamicMinLeft * DynamicMinusOne
+Constant2048Result = Constant2048Source * 2048
 loop forever
 `);
 
@@ -99,6 +121,8 @@ for (const profile of profiles) {
   assert.match(asm, /ld d,h\s*\r?\n\s*ld e,l\s*\r?\n\s*add hl,hl/i, `${profile}: generated word multiply chain missing`);
   assert.match(asm, /ld h,l\s*\r?\n\s*ld l,0/i, `${profile}: word multiply-by-256 chain missing`);
   assert.match(asm, /ld a,h\s*\r?\n\s*add a,l\s*\r?\n\s*ld h,a/i, `${profile}: word multiply-by-257 chain missing`);
+  assert.match(asm, /ld a,16\s*\r?\n[^]*?srl b\s*\r?\n\s*rr c\s*\r?\n[^]*?sla e\s*\r?\n\s*rl d/i, `${profile}: bounded dynamic word multiply missing`);
+  assert.doesNotMatch(asm, /ld a,b\s*\r?\n\s*or c\s*\r?\n\s*jr z,[^\r\n]*Mul16/i, `${profile}: unbounded counted word multiply survived`);
 
   const biosPath = join(root, "studio", "bios", "colecovision.rom");
   if (!existsSync(biosPath)) continue;
@@ -131,6 +155,12 @@ for (const profile of profiles) {
     assert.equal(readWord(core, asm, "U16Times257"), 17972, `${profile}: u16 times 257`);
     assert.equal(readWord(core, asm, "U16ExpressionResult256"), 13312, `${profile}: u16 expression times 256`);
     assert.equal(readWord(core, asm, "U16ExpressionResult257"), 17972, `${profile}: u16 expression times 257`);
+    assert.equal(readWord(core, asm, "DynamicResult"), 65236, `${profile}: i16 expression with negative multiplier`);
+    assert.equal(readWord(core, asm, "DynamicCompound"), 8638, `${profile}: i16 compound multiply with two negatives`);
+    assert.equal(readWord(core, asm, "DynamicMaxResult"), 1, `${profile}: u16 maximum operands wrap modulo 65536`);
+    assert.equal(readWord(core, asm, "DynamicZeroResult"), 0, `${profile}: dynamic multiply by zero`);
+    assert.equal(readWord(core, asm, "DynamicMinResult"), 32768, `${profile}: i16 minimum times minus one wraps modulo 65536`);
+    assert.equal(readWord(core, asm, "Constant2048Result"), 10240, `${profile}: expression times 2048 uses exact bounded lowering`);
   } finally {
     core.destroy();
   }

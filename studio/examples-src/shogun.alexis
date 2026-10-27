@@ -1,0 +1,1112 @@
+' SHOGUN
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), for the ColecoVision in Amy by
+' Amy Bienvenu. Based on the Japanese game Hasami Shogi.
+'
+' Each side has eighteen pieces on its first two rows: yours (white) at
+' the bottom, the computer's (black) at the top. A piece moves forward,
+' backward or sideways in a straight line, never diagonally, across
+' empty squares; or it jumps over a piece next to it (yours or the
+' enemy's, which stays) into the empty square beyond. Squeeze an enemy
+' piece between two of yours, across or up and down, to take it; moving
+' between two enemy pieces is safe. The first to take six wins.
+'
+' The computer plays as the book's program (BOOK level): a move that
+' takes a piece if it has one; otherwise a piece chosen at random jumps
+' if it can, or steps one square. MASTER level takes the most pieces it
+' can, and otherwise avoids moves that would let you take one.
+'
+' Controls (either joystick): the stick moves the cursor; the button
+' picks a piece and then its square (dots show where it can go). Picking
+' the piece again puts it back. Keypad not used.
+'
+' Liberties taken:
+' - The book's listing checked none of your moves, could take your piece
+'   without moving its own, and needed seven captures to win though its
+'   text says six; here both sides follow the rules its text gives.
+' - Pieces move any distance, as the text says (the book's computer only
+'   ever stepped one square). A side with no move loses. MASTER level is
+'   new. New music (Edge of the Board) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (the cursor and
+' a moving piece); the frame loop is protected from the NMI and every
+' screen is drawn with the NMI off after a wait.
+
+const TQ0ea = 128
+const TQ0eb = 129
+const TQ0ec = 130
+const TQ0ed = 131
+const TQ0youa = 132
+const TQ0youb = 133
+const TQ0youc = 134
+const TQ0youd = 135
+const TQ0mea = 136
+const TQ0meb = 137
+const TQ0mec = 138
+const TQ0med = 139
+const TQ0dota = 140
+const TQ0dotb = 141
+const TQ0dotc = 142
+const TQ0dotd = 143
+const TQ1ea = 144
+const TQ1eb = 145
+const TQ1ec = 146
+const TQ1ed = 147
+const TQ1youa = 148
+const TQ1youb = 149
+const TQ1youc = 150
+const TQ1youd = 151
+const TQ1mea = 152
+const TQ1meb = 153
+const TQ1mec = 154
+const TQ1med = 155
+const TQ1dota = 156
+const TQ1dotb = 157
+const TQ1dotc = 158
+const TQ1dotd = 159
+const TFtl = 160
+const TFtr = 161
+const TFbl = 162
+const TFbr = 163
+const TFt = 164
+const TFb = 165
+const TFl = 166
+const TFr = 167
+const SCursor = 0
+const SPiece = 4
+const SPiecedn = 8
+const NTiles8 = 320
+const SprBytes = 96
+const SndHush = 1
+const SndMove = 2
+const SndPick = 3
+const SndBack = 4
+const SndPlace = 5
+const SndTake = 6
+const SndBad = 7
+const SndWin = 8
+const SndLose = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+' the board: Sb[row * 10 + column], rows 1 (yours, at the bottom) to 9,
+' columns 1 to 9; 0 empty, 1 the computer, 2 you, 255 outside
+u8 Sb[110]
+u8 Ms[40]
+u8 Ss[110]
+u8 Su[110]
+u8 Level = 0
+u8 Ns = 0
+u8 Cs = 0
+u8 Hs = 0
+u8 Cur = 25
+u8 Sel = 0
+u8 Side = 0
+u8 Foe = 0
+u8 A = 0
+u8 B = 0
+u8 Dd = 0
+u8 D = 0
+u8 Took = 0
+u8 Best = 0
+u8 BestA = 0
+u8 BestB = 0
+u8 Risk = 0
+u8 Pa = 0
+u8 Pb = 0
+u8 Qa = 0
+u8 Qb = 0
+u8 Cell = 0
+u8 Kind = 0
+u8 Tries = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumU = 0
+u16 NumW = 0
+u16 Rs = $7E15
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 L = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Tx = 0
+u8 Ty = 0
+
+  tile screen
+  set sound table SgSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Level = 0
+
+title:
+  TitlePage
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    EditorialPage
+    goto title
+  end if
+  NewGame
+  BoardScreen
+
+player_turn:
+  Side = 2
+  Any
+  if V = 0 then
+    Message
+    print at 2,21, "YOU HAVE NO MOVE: I WIN!"
+    play sound SndLose
+    goto game_end
+  end if
+  Message
+  print at 2,21, "YOUR MOVE"
+  Sel = 0
+  Mode = 1
+player_loop:
+  Frame1
+  ReadPad
+  MoveCursor
+  DrawCursor
+  if Press = 0 then goto player_loop
+  V = Sb[Cur]
+  if V = 2 then
+    ClearDots
+    if Sel = Cur then
+      ' put it back
+      Sel = 0
+      play sound SndBack
+      goto player_loop
+    end if
+    A = Cur
+    Moves
+    if Ns = 0 then
+      play sound SndBad
+      Sel = 0
+      goto player_loop
+    end if
+    Sel = Cur
+    ShowDots
+    play sound SndPick
+    goto player_loop
+  end if
+  if Sel = 0 then
+    play sound SndBad
+    goto player_loop
+  end if
+  A = Sel
+  Moves
+  V = 0
+  for I = 1 to Ns
+    J = I - 1
+    if Ms[J] = Cur then V = 1
+  next
+  if V = 0 then
+    play sound SndBad
+    goto player_loop
+  end if
+  Mode = 0
+  ClearDots
+  HideSprites
+  A = Sel
+  B = Cur
+  Side = 2
+  Slide
+  DoMove
+  Hs = Hs + Took
+  ShowPanel
+  if Took > 0 then play sound SndTake
+  if Hs >= 6 then goto you_won
+
+computer_turn:
+  Side = 1
+  Any
+  if V = 0 then
+    Message
+    print at 2,21, "SHOGUN MASTER, I GIVE YOU"
+    print at 2,22, "THE VICTORY!"
+    play sound SndWin
+    goto game_end
+  end if
+  Message
+  print at 2,21, "MY MOVE..."
+  Pause20
+  ChooseMove
+  A = BestA
+  B = BestB
+  Side = 1
+  Slide
+  DoMove
+  Cs = Cs + Took
+  ShowPanel
+  if Took > 0 then play sound SndTake
+  if Cs >= 6 then goto i_won
+  goto player_turn
+
+you_won:
+  Message
+  print at 2,21, "YOU WIN!"
+  play sound SndWin
+  goto game_end
+i_won:
+  Message
+  print at 2,21, "I WIN!"
+  play sound SndLose
+game_end:
+  Mode = 2
+  HideSprites
+  Rearm
+  wait 60 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Rules
+
+data Dirs bytes 246, 255, 1, 10
+
+sub NewGame:
+  fill array Sb with 255
+  for I = 1 to 9
+    for J = 1 to 9
+      V = I * 10
+      V = V + J
+      W = 0
+      if I <= 2 then W = 2
+      if I >= 8 then W = 1
+      Sb[V] = W
+    next
+  next
+  Cs = 0
+  Hs = 0
+  Cur = 25
+  return
+end sub
+
+' Moves: Ms[0..Ns-1] = the squares the piece on A can reach
+sub Moves:
+  Ns = 0
+  for Dd = 0 to 3
+    D = Dirs[Dd]
+    B = A + D
+    if Sb[B] = 0 then
+      ' slide across empty squares
+mv_slide:
+      if Ns < 40 then
+        Ms[Ns] = B
+        inc Ns
+      end if
+      B = B + D
+      if Sb[B] = 0 then goto mv_slide
+    else
+      ' a piece next to it: jump into the square beyond
+      if Sb[B] <> 255 then
+        B = B + D
+        if Sb[B] = 0 then
+          if Ns < 40 then
+            Ms[Ns] = B
+            inc Ns
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Any: V = 1 when side Side has a move
+sub Any:
+  V = 0
+  for Pa = 11 to 99
+    if Sb[Pa] = Side then
+      A = Pa
+      Moves
+      if Ns > 0 then
+        V = 1
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' DoMove: side Side's piece goes from A to B; Took = the pieces it squeezes
+sub DoMove:
+  Sb[A] = 0
+  Sb[B] = Side
+  Foe = 3 - Side
+  Took = 0
+  for Dd = 0 to 3
+    D = Dirs[Dd]
+    V = B + D
+    if Sb[V] = Foe then
+      W = V + D
+      if Sb[W] = Side then
+        Sb[V] = 0
+        inc Took
+        if Mode <> 3 then
+          Cell = V
+          DrawSquare
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Danger: Risk = the most pieces you could take after the computer's move
+' (the board is as it would be then)
+sub Danger:
+  Risk = 0
+  copy Sb to Ss
+  for Pb = 11 to 99
+    if Ss[Pb] = 2 then
+      A = Pb
+      Moves
+      L = Ns
+      for K = 1 to L
+        J = K - 1
+        A = Pb
+        Moves
+        B = Ms[J]
+        Side = 2
+        DoMove
+        if Took > Risk then Risk = Took
+        copy Ss to Sb
+      next
+    end if
+  next
+  return
+end sub
+
+' ChooseMove: BestA to BestB, as the book (or MASTER)
+sub ChooseMove:
+  Mode = 3
+  ' a move that takes (MASTER: the most, then the safest)
+  Best = 0
+  BestA = 0
+  for Pa = 11 to 99
+    if Sb[Pa] = 1 then
+      A = Pa
+      Moves
+      L = Ns
+      for K = 1 to L
+        J = K - 1
+        A = Pa
+        Moves
+        B = Ms[J]
+        copy Sb to Ss
+        Side = 1
+        DoMove
+        copy Ss to Sb
+        if Took > Best then
+          Best = Took
+          BestA = Pa
+          BestB = B
+        end if
+      next
+    end if
+  next
+  if Best > 0 then
+    Mode = 0
+    return
+  end if
+  if Level = 1 then
+    SafeMove
+    if BestA > 0 then
+      Mode = 0
+      return
+    end if
+  end if
+  ' the book: a piece at random jumps if it can, else steps one square
+  for Tries = 1 to 250
+    Rnd
+    V = Rb & 127
+    if V >= 11 then
+      if V <= 99 then
+        if Sb[V] = 1 then
+          for Dd = 0 to 3
+            D = Dirs[Dd]
+            W = V + D
+            if Sb[W] <> 0 then
+              if Sb[W] <> 255 then
+                W = W + D
+                if Sb[W] = 0 then goto cm_take
+              end if
+            end if
+            W = V + D
+            if Sb[W] = 0 then goto cm_take
+          next
+        end if
+      end if
+    end if
+  next
+  ' any move at all
+  for Pa = 11 to 99
+    if Sb[Pa] = 1 then
+      A = Pa
+      Moves
+      if Ns > 0 then
+        BestA = Pa
+        BestB = Ms[0]
+        Mode = 0
+        return
+      end if
+    end if
+  next
+  Mode = 0
+  return
+cm_take:
+  BestA = V
+  BestB = W
+  Mode = 0
+  return
+end sub
+
+' SafeMove: a random move after which you cannot take a piece (BestA = 0:
+' none found)
+sub SafeMove:
+  BestA = 0
+  for Tries = 1 to 40
+    Rnd
+    V = Rb & 127
+    if V >= 11 then
+      if V <= 99 then
+        if Sb[V] = 1 then
+          A = V
+          Moves
+          if Ns > 0 then
+            Rnd
+            NumW = Rb
+            NumW = NumW * Ns
+            NumW = NumW >> 8
+            W = NumW
+            B = Ms[W]
+            Qa = V
+            Qb = B
+            ' try it, and look at your replies
+            copy Sb to Su
+            A = Qa
+            B = Qb
+            Side = 1
+            DoMove
+            Danger
+            copy Su to Sb
+            if Risk = 0 then
+              BestA = Qa
+              BestB = Qb
+              return
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' Slide: the piece on A slides to B on screen (a sprite)
+sub Slide:
+  Kind = Sb[A]
+  Sb[A] = 0
+  Cell = A
+  DrawSquare
+  Sb[A] = Kind
+  Cell = A
+  SquareXY
+  Sx = X
+  Sy = Y
+  Cell = B
+  SquareXY
+  Tx = X
+  Ty = Y
+  W = SPiece
+  K = 15
+  if Kind = 1 then
+    W = SPiecedn
+    K = 1
+  end if
+sl_step:
+  ' (if-else: two one-line ifs on the same pair after an addition are
+  ' miscompiled by Amy)
+  if Sx < Tx then
+    Sx = Sx + 4
+  else
+    if Sx > Tx then Sx = Sx - 4
+  end if
+  if Sy < Ty then
+    Sy = Sy + 4
+  else
+    if Sy > Ty then Sy = Sy - 4
+  end if
+  set sprite 1 to Sy, Sx, W, K
+  update sprites
+  Frame1
+  if Sx <> Tx then goto sl_step
+  if Sy <> Ty then goto sl_step
+  set sprite 1 to 192, 0, 0, 0
+  update sprites
+  Sb[B] = Kind
+  Cell = B
+  DrawSquare
+  Sb[B] = 0
+  play sound SndPlace
+  return
+end sub
+
+' SquareXY: X, Y = the sprite position of square Cell
+sub SquareXY:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  X = X - 1
+  X = X * 16
+  X = X + 24
+  V = 9 - Y
+  Y = V * 16
+  Y = Y + 15
+  return
+end sub
+
+' DrawSquare: square Cell as it is now
+sub DrawSquare:
+  V = Sb[Cell]
+  W = 0
+  if V = 2 then W = 1
+  if V = 1 then W = 2
+  W = W * 4
+  DrawState
+  return
+end sub
+
+' DrawState: square Cell with state tile offset W (0 empty, 4 yours,
+' 8 the computer's, 12 a dot)
+sub DrawState:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  V = X + Y
+  V = V & 1
+  V = V * 16
+  W = W + V
+  W = W + TQ0ea
+  X = X - 1
+  X = X * 2
+  X = X + 3
+  V = 9 - Y
+  Y = V * 2
+  Y = Y + 2
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  inc W
+  dec X
+  inc Y
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  return
+end sub
+
+sub ShowDots:
+  for I = 1 to Ns
+    J = I - 1
+    Cell = Ms[J]
+    W = 12
+    DrawState
+  next
+  return
+end sub
+
+sub ClearDots:
+  for Pa = 11 to 99
+    if Sb[Pa] = 0 then
+      Cell = Pa
+      DrawSquare
+    end if
+  next
+  return
+end sub
+
+sub DrawBoard:
+  put char TFtl at 2,1
+  fill TFt count 18 at 3,1
+  put char TFtr at 21,1
+  for Y = 2 to 19
+    put char TFl at 2,Y
+    put char TFr at 21,Y
+  next
+  put char TFbl at 2,20
+  fill TFb count 18 at 3,20
+  put char TFbr at 21,20
+  for Pa = 11 to 99
+    if Sb[Pa] <> 255 then
+      Cell = Pa
+      DrawSquare
+    end if
+  next
+  return
+end sub
+
+sub ShowPanel:
+  print at 23,3, "ME"
+  put char TQ0mea at 23,4
+  put char TQ0meb at 24,4
+  put char TQ0mec at 23,5
+  put char TQ0med at 24,5
+  print at 23,7, "TAKEN"
+  NumU = Cs
+  print at 23,8, digits$(NumU, 1)
+  print at 23,12, "YOU"
+  put char TQ0youa at 23,13
+  put char TQ0youb at 24,13
+  put char TQ0youc at 23,14
+  put char TQ0youd at 24,14
+  print at 23,16, "TAKEN"
+  NumU = Hs
+  print at 23,17, digits$(NumU, 1)
+  return
+end sub
+
+sub DrawCursor:
+  Cell = Cur
+  SquareXY
+  V = Tick & 8
+  W = 11
+  if V > 0 then W = 10
+  if Sel <> 0 then W = 9
+  set sprite 0 to Y, X, SCursor, W
+  update sprites
+  return
+end sub
+
+sub MoveCursor:
+  if Stick = 0 then return
+  Y = Cur / 10
+  X = Y * 10
+  X = Cur - X
+  if Lf1 = 1 then
+    if X > 1 then dec X
+  end if
+  if Rt1 = 1 then
+    if X < 9 then inc X
+  end if
+  if Up1 = 1 then
+    if Y < 9 then inc Y
+  end if
+  if Dn1 = 1 then
+    if Y > 1 then dec Y
+  end if
+  Cur = Y * 10
+  Cur = Cur + X
+  play sound SndMove
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub BoardScreen:
+  NewScreen
+  DrawBoard
+  ShowPanel
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause20:
+  for Tries = 1 to 20
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  sprites stable 0 to 1
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 13,2, "SHOGUN"
+  ' a black piece squeezed between two white ones
+  fill array Sb with 255
+  Sb[63] = 2
+  Sb[64] = 1
+  Sb[65] = 2
+  Sb[62] = 0
+  Sb[66] = 0
+  for I = 62 to 66
+    Cell = I
+    DrawSquare
+  next
+  print at 6,13, "PLAY"
+  print at 6,14, "LEVEL:"
+  print at 6,15, "HOW TO PLAY"
+  print at 6,16, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 3 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  for I = 13 to 16
+    print at 4,I, " "
+  next
+  Y = Menu + 13
+  print at 4,Y, ">"
+  if Level = 0 then print at 13,14, "BOOK  "
+  if Level = 1 then print at 13,14, "MASTER"
+  if Press = 0 then goto title_loop
+  if Menu = 1 then
+    Level = 1 - Level
+    play sound SndPlace
+    goto title_loop
+  end if
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOUR WHITE PIECES START AT"
+  print at 2,4, "THE BOTTOM, MY BLACK ONES AT"
+  print at 2,5, "THE TOP. A PIECE MOVES IN A"
+  print at 2,6, "STRAIGHT LINE, NOT ON THE"
+  print at 2,7, "DIAGONAL, OVER EMPTY SQUARES,"
+  print at 2,8, "OR JUMPS A PIECE NEXT TO IT."
+  print at 2,10, "SQUEEZE A PIECE BETWEEN TWO"
+  print at 2,11, "OF YOURS TO TAKE IT. MOVING"
+  print at 2,12, "BETWEEN TWO IS SAFE."
+  print at 2,14, "THE FIRST TO TAKE SIX WINS."
+  print at 2,17, "BUTTON: PICK A PIECE, THEN"
+  print at 2,18, "ITS SQUARE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 13,1, "SHOGUN"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983). BASED ON THE JAPANESE"
+  print at 2,8, "GAME HASAMI SHOGI."
+  print at 2,10, "NEW MUSIC: EDGE OF THE"
+  print at 2,11, "BOARD."
+  print at 2,13, "COLECOVISION VERSION BY"
+  print at 2,14, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$E0,$E0
+  $00,$80,$C0,$E0,$F0,$07,$07,$07
+  $E0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $07,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$E0
+  $00,$00,$03,$03,$03,$03,$03,$07
+  $E0,$E0,$E0,$F0,$07,$03,$01,$00
+  $07,$07,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$E0,$E0
+  $00,$80,$C0,$E0,$F0,$07,$07,$07
+  $E0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $07,$03,$03,$03,$03,$03,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$C0,$E0
+  $00,$00,$03,$03,$03,$03,$03,$07
+  $E0,$E0,$E0,$F0,$07,$03,$01,$00
+  $07,$07,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+end data
+data TileCol bytes
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$FA,$FA,$FA,$AF,$AF,$AF,$AF
+  $0A,$FA,$FA,$FA,$FA,$AF,$AF,$AF
+  $AF,$AF,$AF,$AF,$AF,$AF,$0A,$0A
+  $AF,$AF,$AF,$AF,$AF,$AF,$0A,$0A
+  $0A,$0A,$A1,$A1,$A1,$A1,$A1,$A1
+  $0A,$0A,$A1,$A1,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$1A,$1A,$1A,$0A
+  $A1,$A1,$A1,$1A,$1A,$1A,$1A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$BA,$BA
+  $0A,$0A,$0A,$0A,$0A,$0A,$BA,$BA
+  $BA,$BA,$0A,$0A,$0A,$0A,$0A,$0A
+  $BA,$BA,$0A,$0A,$0A,$0A,$0A,$0A
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $06,$F6,$F6,$F6,$6F,$6F,$6F,$6F
+  $06,$F6,$F6,$F6,$F6,$6F,$6F,$6F
+  $6F,$6F,$6F,$6F,$6F,$6F,$06,$06
+  $6F,$6F,$6F,$6F,$6F,$6F,$06,$06
+  $06,$06,$61,$61,$61,$61,$61,$61
+  $06,$06,$61,$61,$61,$61,$61,$61
+  $61,$61,$61,$61,$16,$16,$16,$06
+  $61,$61,$61,$16,$16,$16,$16,$06
+  $06,$06,$06,$06,$06,$06,$B6,$B6
+  $06,$06,$06,$06,$06,$06,$B6,$B6
+  $B6,$B6,$06,$06,$06,$06,$06,$06
+  $B6,$B6,$06,$06,$06,$06,$06,$06
+  $01,$01,$01,$01,$01,$01,$81,$81
+  $01,$01,$01,$01,$01,$01,$81,$81
+  $81,$81,$01,$01,$01,$01,$01,$01
+  $81,$81,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$08,$08
+  $08,$08,$01,$01,$01,$01,$01,$01
+  $81,$81,$81,$81,$81,$81,$81,$81
+  $81,$81,$81,$81,$81,$81,$81,$81
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $00,$01,$03,$07,$0F,$1F,$1F,$1F,$1F,$3F,$3F,$3F,$3F,$3F,$00,$00
+  $00,$80,$C0,$E0,$F0,$F8,$F8,$F8,$F8,$FC,$FC,$FC,$FC,$FC,$00,$00
+  $00,$00,$3F,$3F,$3F,$3F,$3F,$1F,$1F,$1F,$1F,$0F,$07,$03,$01,$00
+  $00,$00,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$F8,$F8,$F0,$E0,$C0,$80,$00
+end data
+
+asm {
+SgHush:
+    db $00,$00,$F4,$01,$10
+SgMove:
+    db $40,$40,$60,$01,$50
+SgPick:
+    db $40,$6B,$30,$01,$40,$47,$50,$01,$50
+SgBack:
+    db $40,$47,$40,$01,$40,$6B,$60,$01,$50
+SgPlace:
+    db $00,$00,$23,$01,$00,$00,$45,$02,$00,$00,$66,$02,$10
+SgTake:
+    db $40,$7F,$20,$02,$40,$7F,$F0,$01,$40,$AA,$20,$02,$40,$AA,$F0,$01,$40,$FE,$20,$07,$40,$FE,$F0,$01
+    db $50
+SgBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+SgWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+SgLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+SgSoundTable:
+    dw SgHush,$702B
+    dw SgMove,$7035
+    dw SgPick,$7035
+    dw SgBack,$7035
+    dw SgPlace,$702B
+    dw SgTake,$7035
+    dw SgBad,$702B
+    dw SgWin,$7035
+    dw SgLose,$7035
+    dw SgTuneMel,$703F
+    dw SgTuneBass,$7049
+; Edge of the Board, E in-scale (original for this game)
+; Tiny Sound, 9 frames per step
+SgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$30,$1A,$21,$23,$01,$24,$28,$2A,$01,$28,$24,$23,$01,$01,$1F
+    db $1E,$01,$01,$01,$23,$01,$24,$28,$2A,$2B,$2A,$28,$24,$01,$23,$24
+    db $23,$01,$01,$01
+    db $FF
+SgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$18,$32,$0B,$12,$0B,$12,$0C,$07,$0C,$07,$04,$0B,$04,$0B
+    db $06,$0C,$06,$0C,$0B,$12,$0B,$12,$0C,$07,$04,$0B,$06,$0C,$06,$0C
+    db $0B,$12,$0B,$01
+    db $FF
+}

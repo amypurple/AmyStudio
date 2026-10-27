@@ -1,0 +1,873 @@
+' FOUR IN A ROW
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), for the ColecoVision in Amy by
+' Amy Bienvenu.
+'
+' Drop discs into the seven columns of the upright board; each falls to
+' the lowest free place. Four of your (yellow) discs in a line, across,
+' up and down or diagonally, wins; so do four of the computer's (red).
+'
+' The computer plays as the book's "brute force" program (BOOK level): it
+' scans the board from the top for a piece with a line of three that can
+' be completed or must be blocked, or a pair it can make into three; with
+' none, it plays at random next to a piece already on the board. MASTER
+' level first takes a winning place and blocks yours, then plays as the
+' book.
+'
+' Controls (either joystick): left and right move the disc above the
+' board, the button drops it. Keypad not used.
+'
+' Liberties taken:
+' - The book's vertical check looked below the top piece of a column
+'   (never true); here it looks above. One of its across checks tested
+'   the wrong square for support; it tests the square under the gap.
+' - You may let the computer start (the book suggested it); its first
+'   disc then goes in the middle column. MASTER level is new.
+' - A full board is a draw too. The winning line flashes. The discs fall.
+'   New music (Drop Shuffle) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (the disc above
+' the board and a falling one); the frame loop is protected from the NMI
+' and every screen is drawn with the NMI off after a wait.
+
+const THolea = 128
+const THoleb = 129
+const THolec = 130
+const THoled = 131
+const TReda = 132
+const TRedb = 133
+const TRedc = 134
+const TRedd = 135
+const TYela = 136
+const TYelb = 137
+const TYelc = 138
+const TYeld = 139
+const TWhitea = 140
+const TWhiteb = 141
+const TWhitec = 142
+const TWhited = 143
+const TFoot = 144
+const TLeg = 145
+const SDisc = 0
+const NTiles8 = 144
+const SprBytes = 32
+const SndHush = 1
+const SndMove = 2
+const SndDrop = 3
+const SndBad = 4
+const SndWin = 5
+const SndLose = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+' the board: Bd[row * 10 + column], rows 1 (top) to 7 (bottom), columns
+' 1 to 7; 0 empty, 1 the computer (red), 2 you (yellow), 255 outside;
+' squares the checks reach past either end (100 and up) count as outside
+u8 Bd[100]
+u8 Cand[32]
+u8 Win4[4]
+u8 Level = 0
+u8 First = 0
+u8 Cc = 4
+u8 Who = 0
+u8 Mv = 0
+u8 B = 0
+u8 X = 0
+u8 E1 = 0
+u8 E2 = 0
+u8 Tg = 0
+u8 Sp = 0
+u8 Pi = 0
+u8 Cnt = 0
+u8 Won = 0
+u8 L = 0
+u8 Dr = 0
+u8 Nr = 0
+u8 Cell = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumW = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 Px = 0
+u8 Py = 0
+
+  tile screen
+  set sound table FrSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Level = 0
+
+title:
+  TitlePage
+  if Menu = 3 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 4 then
+    EditorialPage
+    goto title
+  end if
+  First = Menu
+  NewGame
+  BoardScreen
+  if First = 1 then goto computer_turn
+
+player_turn:
+  Message
+  print at 2,21, "YOUR MOVE..."
+  Mode = 1
+player_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Cc > 1 then dec Cc
+    end if
+    if Rt1 = 1 then
+      if Cc < 7 then inc Cc
+    end if
+    play sound SndMove
+  end if
+  V = Cc - 1
+  V = V * 16
+  Px = V + 64
+  set sprite 0 to 15, Px, SDisc, 11
+  update sprites
+  if Press = 0 then goto player_loop
+  L = Cc
+  Land
+  if L = 0 then
+    play sound SndBad
+    goto player_loop
+  end if
+  Mode = 0
+  Who = 2
+  DropDisc
+  Who = 2
+  WinCheck
+  if Won = 1 then goto you_won
+  Full
+  if V = 0 then goto draw_game
+
+computer_turn:
+  Message
+  print at 2,21, "STAND BY FOR MY MOVE..."
+  set sprite 0 to 192, 0, 0, 0
+  update sprites
+  Pause20
+  ComputerMove
+  if Mv = 0 then
+    Message
+    print at 2,21, "I THINK WE SHOULD CALL IT"
+    print at 2,22, "A DRAW"
+    goto game_end
+  end if
+  L = Mv
+  Who = 1
+  DropDisc
+  Who = 1
+  WinCheck
+  if Won = 1 then goto i_won
+  Full
+  if V = 0 then goto draw_game
+  goto player_turn
+
+you_won:
+  Message
+  print at 2,21, "YOU'VE BEATEN ME, HUMAN!"
+  play sound SndWin
+  Flash
+  goto game_end
+i_won:
+  Message
+  print at 2,21, "I'VE DEFEATED YOU, HUMAN!"
+  play sound SndLose
+  Flash
+  goto game_end
+draw_game:
+  Message
+  print at 2,21, "THE BOARD IS FULL: A DRAW"
+game_end:
+  Mode = 2
+  HideSprites
+  Rearm
+  wait 60 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Rules
+
+sub NewGame:
+  fill array Bd with 255
+  for I = 1 to 7
+    for J = 1 to 7
+      K = I * 10
+      K = K + J
+      Bd[K] = 0
+    next
+  next
+  Cc = 4
+  return
+end sub
+
+' Land: L = a column (1-7) in, the square a disc dropped there lands on
+' out (0 when the column is full)
+sub Land:
+  V = L + 10
+  if Bd[V] <> 0 then
+    L = 0
+    return
+  end if
+ld_down:
+  W = V + 10
+  if Bd[W] = 0 then
+    V = W
+    goto ld_down
+  end if
+  L = V
+  return
+end sub
+
+' Full: V = the number of columns with room
+sub Full:
+  V = 0
+  for I = 11 to 17
+    if Bd[I] = 0 then inc V
+  next
+  return
+end sub
+
+' WinCheck: Won = 1 when side Who has four in a line (Win4 = the squares)
+sub WinCheck:
+  Won = 0
+  for B = 11 to 77
+    if Bd[B] = Who then
+      for Dr = 0 to 3
+        W = LineDir[Dr]
+        V = B
+        Cnt = 1
+        Win4[0] = B
+        for K = 1 to 3
+          V = V + W
+          if V < 100 then
+            if Bd[V] = Who then
+              Win4[K] = V
+              inc Cnt
+            end if
+          end if
+        next
+        if Cnt = 4 then
+          Won = 1
+          return
+        end if
+      next
+    end if
+  next
+  return
+end sub
+
+' across, down, and the two diagonals downward
+data LineDir bytes 1, 10, 11, 9
+
+' the book's checks, offsets from a piece B: two more pieces like it, the
+' empty square to play, and the square under it that must be filled
+' (a line of three to complete or to block)
+data Danger bytes 1,2,3,13, 255,254,253,7, 1,2,255,9, 255,2,1,11, 1,255,2,12, 1,255,254,8, 255,254,1,11, 10,20,246,0, 11,22,245,255, 9,18,247,1
+' (a pair to make three): one more piece, the square, the one under it
+data Three bytes 1,2,12, 1,255,9, 255,254,8, 10,246,0, 9,247,1, 11,245,255
+' (next to any piece): the square and the one under it
+data Single bytes 1,11, 255,9, 246,0, 245,255, 247,1
+
+sub ComputerMove:
+  Mv = 0
+  ' its first disc: the middle
+  Full
+  V = 0
+  for I = 11 to 77
+    if Bd[I] = 1 then V = 1
+    if Bd[I] = 2 then V = 1
+  next
+  if V = 0 then
+    Mv = 74
+    return
+  end if
+  if Level = 1 then
+    ' a winning place, then one that stops yours
+    Who = 1
+    WinPlace
+    if Mv > 0 then return
+    Who = 2
+    WinPlace
+    if Mv > 0 then return
+  end if
+  ' the book's scan from the top
+  for B = 11 to 77
+    X = Bd[B]
+    if X = 1 then goto cm_piece
+    if X = 2 then goto cm_piece
+    goto cm_next
+cm_piece:
+    for Pi = 0 to 9
+      K = Pi * 4
+      E1 = Danger[K]
+      inc K
+      E2 = Danger[K]
+      inc K
+      Tg = Danger[K]
+      inc K
+      Sp = Danger[K]
+      V = B + E1
+      W = B + E2
+      if V < 100 then
+        if W < 100 then
+          if Bd[V] = X then
+            if Bd[W] = X then
+              Try
+              if Mv > 0 then return
+            end if
+          end if
+        end if
+      end if
+    next
+    for Pi = 0 to 5
+      K = Pi * 3
+      E1 = Three[K]
+      inc K
+      Tg = Three[K]
+      inc K
+      Sp = Three[K]
+      V = B + E1
+      if V < 100 then
+        if Bd[V] = X then
+          Try
+          if Mv > 0 then return
+        end if
+      end if
+    next
+cm_next:
+  next
+  ' single moves: next to any piece, chosen at random
+  Nr = 0
+  for B = 11 to 77
+    X = Bd[B]
+    if X = 1 then goto cm_single
+    if X = 2 then goto cm_single
+    goto cm_snext
+cm_single:
+    for Pi = 0 to 4
+      K = Pi * 2
+      Tg = Single[K]
+      inc K
+      Sp = Single[K]
+      Try
+      if Mv > 0 then
+        if Nr < 32 then
+          Cand[Nr] = Mv
+          inc Nr
+        end if
+        Mv = 0
+      end if
+    next
+cm_snext:
+  next
+  if Nr = 0 then return
+  Rnd
+  V = Nr
+  NumW = Rb
+  NumW = NumW * V
+  NumW = NumW >> 8
+  V = NumW
+  Mv = Cand[V]
+  return
+end sub
+
+' Try: Mv = B + Tg when that square is empty and the one at B + Sp is not
+sub Try:
+  V = B + Tg
+  if V >= 100 then return
+  if Bd[V] <> 0 then return
+  W = B + Sp
+  if W < 100 then
+    if Bd[W] = 0 then return
+  end if
+  Mv = V
+  return
+end sub
+
+' WinPlace: Mv = a square where side Who would make four (0: none)
+sub WinPlace:
+  Mv = 0
+  for J = 1 to 7
+    L = J
+    Land
+    if L > 0 then
+      Bd[L] = Who
+      Cell = L
+      WinCheck
+      Bd[L] = 0
+      if Won = 1 then
+        Mv = L
+        return
+      end if
+    end if
+  next
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' DropDisc: side Who's disc falls into square L
+sub DropDisc:
+  Cell = L
+  V = L / 10
+  K = V * 10
+  W = L - K
+  W = W - 1
+  W = W * 16
+  Px = W + 64
+  ' from above the board down to the row
+  V = V - 1
+  V = V * 16
+  V = V + 31
+  W = 11
+  if Who = 1 then W = 8
+  Py = 15
+dd_fall:
+  set sprite 1 to Py, Px, SDisc, W
+  update sprites
+  Frame1
+  Py = Py + 4
+  if Py < V then goto dd_fall
+  set sprite 1 to 192, 0, 0, 0
+  update sprites
+  Bd[L] = Who
+  DrawCell
+  play sound SndDrop
+  return
+end sub
+
+' DrawCell: square Cell as it is now
+sub DrawCell:
+  V = Bd[Cell]
+  W = THolea
+  if V = 1 then W = TReda
+  if V = 2 then W = TYela
+  DrawQuad
+  return
+end sub
+
+' DrawQuad: the 2 x 2 tiles from W for square Cell
+sub DrawQuad:
+  V = Cell / 10
+  K = V * 10
+  Px = Cell - K
+  Px = Px * 2
+  Px = Px + 6
+  Py = V * 2
+  Py = Py + 2
+  put char W at Px,Py
+  inc W
+  inc Px
+  put char W at Px,Py
+  inc W
+  dec Px
+  inc Py
+  put char W at Px,Py
+  inc W
+  inc Px
+  put char W at Px,Py
+  return
+end sub
+
+' the winning line flashes white
+sub Flash:
+  for J = 1 to 6
+    for I = 0 to 3
+      Cell = Win4[I]
+      W = TWhitea
+      DrawQuad
+    next
+    for K = 1 to 8
+      Frame1
+    next
+    for I = 0 to 3
+      Cell = Win4[I]
+      DrawCell
+    next
+    for K = 1 to 8
+      Frame1
+    next
+  next
+  return
+end sub
+
+sub DrawBoard:
+  for I = 1 to 7
+    for J = 1 to 7
+      Cell = I * 10
+      Cell = Cell + J
+      DrawCell
+    next
+  next
+  fill TFoot count 16 at 7,18
+  put char TLeg at 7,19
+  put char TLeg at 22,19
+  print at 8,19, "1 2 3 4 5 6 7"
+  ' the key
+  Cell = 0
+  print at 24,6, "ME"
+  put char TReda at 24,7
+  put char TRedb at 25,7
+  put char TRedc at 24,8
+  put char TRedd at 25,8
+  print at 24,11, "YOU"
+  put char TYela at 24,12
+  put char TYelb at 25,12
+  put char TYelc at 24,13
+  put char TYeld at 25,13
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub BoardScreen:
+  NewScreen
+  print at 9,1, "FOUR IN A ROW"
+  DrawBoard
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause20:
+  for J = 1 to 20
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  sprites stable 0 to 1
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 9,2, "FOUR IN A ROW"
+  ' a row of four in each colour
+  for I = 0 to 3
+    Cell = 41 + I
+    W = TReda
+    DrawQuad
+    Cell = 45 + I
+    W = TYela
+    if I = 3 then W = THolea
+    DrawQuad
+  next
+  print at 6,13, "PLAY: YOU GO FIRST"
+  print at 6,14, "PLAY: I GO FIRST"
+  print at 6,15, "LEVEL:"
+  print at 6,16, "HOW TO PLAY"
+  print at 6,17, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 4 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  for I = 13 to 17
+    print at 4,I, " "
+  next
+  Py = Menu + 13
+  print at 4,Py, ">"
+  if Level = 0 then print at 13,15, "BOOK  "
+  if Level = 1 then print at 13,15, "MASTER"
+  if Press = 0 then goto title_loop
+  if Menu = 2 then
+    Level = 1 - Level
+    play sound SndDrop
+    goto title_loop
+  end if
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "DROP YOUR YELLOW DISCS INTO"
+  print at 2,4, "THE BOARD: EACH FALLS TO THE"
+  print at 2,5, "LOWEST FREE PLACE IN ITS"
+  print at 2,6, "COLUMN."
+  print at 2,8, "FOUR IN A LINE WINS: ACROSS,"
+  print at 2,9, "UP AND DOWN, OR DIAGONALLY."
+  print at 2,10, "MY RED DISCS TRY THE SAME."
+  print at 2,12, "A FULL BOARD IS A DRAW."
+  print at 2,15, "STICK: CHOOSE A COLUMN."
+  print at 2,16, "BUTTON: DROP THE DISC."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 9,1, "FOUR IN A ROW"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "THE COMPUTER PLAYS AS THE"
+  print at 2,10, "BOOK'S BRUTE FORCE PROGRAM."
+  print at 2,12, "NEW MUSIC: DROP SHUFFLE."
+  print at 2,14, "COLECOVISION VERSION BY"
+  print at 2,15, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$07,$E0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$07,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$E0,$07,$00,$00
+  $03,$03,$03,$07,$07,$E0,$00,$00
+  $00,$00,$07,$E0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$07,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$E0,$07,$00,$00
+  $03,$03,$03,$07,$07,$E0,$00,$00
+  $00,$00,$07,$E0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$07,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$E0,$07,$00,$00
+  $03,$03,$03,$07,$07,$E0,$00,$00
+  $00,$00,$07,$E0,$E0,$C0,$C0,$C0
+  $00,$00,$E0,$07,$07,$03,$03,$03
+  $C0,$C0,$C0,$E0,$E0,$07,$00,$00
+  $03,$03,$03,$07,$07,$E0,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $81,$81,$81,$81,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$14,$41,$41,$41,$41,$41
+  $04,$04,$14,$41,$41,$41,$41,$41
+  $41,$41,$41,$41,$41,$14,$04,$04
+  $41,$41,$41,$41,$41,$14,$04,$04
+  $04,$04,$84,$48,$48,$48,$48,$48
+  $04,$04,$84,$48,$48,$48,$48,$48
+  $48,$48,$48,$48,$48,$84,$04,$04
+  $48,$48,$48,$48,$48,$84,$04,$04
+  $04,$04,$B4,$4B,$4B,$4B,$4B,$4B
+  $04,$04,$B4,$4B,$4B,$4B,$4B,$4B
+  $4B,$4B,$4B,$4B,$4B,$B4,$04,$04
+  $4B,$4B,$4B,$4B,$4B,$B4,$04,$04
+  $04,$04,$F4,$4F,$4F,$4F,$4F,$4F
+  $04,$04,$F4,$4F,$4F,$4F,$4F,$4F
+  $4F,$4F,$4F,$4F,$4F,$F4,$04,$04
+  $4F,$4F,$4F,$4F,$4F,$F4,$04,$04
+  $04,$04,$04,$01,$01,$01,$01,$01
+  $14,$14,$14,$14,$04,$04,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$07,$1F,$1F,$3F,$3F,$3F,$3F,$3F,$3F,$1F,$1F,$07,$00,$00
+  $00,$00,$E0,$F8,$F8,$FC,$FC,$FC,$FC,$FC,$FC,$F8,$F8,$E0,$00,$00
+end data
+
+asm {
+FrHush:
+    db $00,$00,$F4,$01,$10
+FrMove:
+    db $40,$40,$60,$01,$50
+FrDrop:
+    db $00,$00,$14,$01,$00,$00,$35,$02,$00,$00,$66,$03,$10
+FrBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+FrWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+FrLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+FrSoundTable:
+    dw FrHush,$702B
+    dw FrMove,$7035
+    dw FrDrop,$702B
+    dw FrBad,$702B
+    dw FrWin,$7035
+    dw FrLose,$7035
+    dw FrTuneMel,$703F
+    dw FrTuneBass,$7049
+; Drop Shuffle, F major (original for this game)
+; Tiny Sound, 8 frames per step
+FrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$24,$01,$28,$2B,$01,$28,$24,$01,$26,$28,$29,$01
+    db $28,$26,$24,$01,$1F,$01,$24,$28,$01,$2B,$2D,$2B,$29,$01,$26,$23
+    db $24,$01,$01,$01
+    db $FF
+FrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0C,$07,$10,$07,$0C,$07,$10,$07,$07,$0E,$0B,$0E
+    db $0C,$07,$10,$07,$05,$0C,$09,$0C,$0C,$07,$10,$07,$07,$0E,$0B,$0E
+    db $0C,$07,$0C,$01
+    db $FF
+}

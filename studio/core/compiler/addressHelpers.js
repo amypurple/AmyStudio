@@ -37,6 +37,7 @@ export function createAddressHelpers(ctx) {
       "    add a,a",
       "    ld e,a",
       "    ld d,0",
+      ...(table.length > 128 ? ["    rl d"] : []),
       `    ld hl,${resolveAddressSymbol(name)}`,
       "    add hl,de",
       "    ld e,(hl)",

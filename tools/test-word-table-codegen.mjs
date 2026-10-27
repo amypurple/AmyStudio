@@ -230,6 +230,31 @@ check("variable index emits the minimal dereference sequence", () => {
   );
 });
 
+check("word tables above 128 entries preserve the doubled-index carry", () => {
+  const entries = Array.from({ length: 129 }, (_, index) => String(0x4000 + index)).join(",");
+  const largeTable = transpileAmy(`data Large words = ${entries}
+u8 I = 128
+u16 Address = 0
+Address = Large[I]
+loop forever
+`);
+  assert.equal(largeTable.ok, true, largeTable.log || "large word table transpile failed");
+  assert.match(
+    String(largeTable.asmBody || ""),
+    /add a,a\s*\n\s*ld e,a\s*\n\s*ld d,0\s*\n\s*rl d\s*\n\s*ld hl,AMY_UDATA_Large/i,
+    "entry 128 must address byte offset $0100 rather than wrap to entry 0"
+  );
+});
+
+check("word tables above 256 entries are rejected clearly", () => {
+  const entries = Array.from({ length: 257 }, (_, index) => String(0x4000 + index)).join(",");
+  const oversizedTable = transpileAmy(`data TooLarge words = ${entries}
+loop forever
+`);
+  assert.equal(oversizedTable.ok, false);
+  assert.match(String(oversizedTable.log || ""), /257 entries.*at most 256/i);
+});
+
 check("put frame accepts a table entry as source", () => {
   assert.match(
     asm,
@@ -353,6 +378,17 @@ check("inline byte and word data close before the next statement", () => {
   assert.match(inlineAsm, /AMY_UDATA_Bytes:\s*\n\s*db \$01,\$02/, "inline byte data should contain only its declared values");
   assert.match(inlineAsm, /AMY_UDATA_Pointers:\s*\n\s*dw AMY_UDATA_Payload/, "inline word data should contain only its declared entries");
   assert.doesNotMatch(inlineAsm, /\bdb\s+[^\n]*(?:text|screen)/i, "the following Amy statement must not be swallowed as data");
+});
+
+check("byte table shape is known before its declaration", () => {
+  const forwardByteTable = transpileAmy(`u8 Index = 1
+u8 Value = 0
+Value = Values[Index]
+loop forever
+data Values bytes = 16,20,24
+`);
+  assert.equal(forwardByteTable.ok, true, forwardByteTable.log || "transpile failed");
+  assert.match(forwardByteTable.asmBody, /ld hl,AMY_UDATA_Values/i);
 });
 
 check("mixed signedness fixed-byte cast is rejected", () => {
@@ -570,6 +606,20 @@ check("logical pixel-box collision transpiles", () => {
   assert.match(logicalBoxCollisionAsm, /add a,14/i, "15-pixel constant width should fold to an inclusive +14 edge");
   assert.match(logicalBoxCollisionAsm, /add a,55/i, "56-pixel constant width should fold to an inclusive +55 edge");
   assert.doesNotMatch(logicalBoxCollisionAsm, /GET_BKGRND|GET_VRAM|AMY_CHECK_COLLISION_RAW/i, "logical boxes must not read VRAM or require sprite collision helpers");
+});
+const INLINE_FORWARD_WORD_TABLE_DEMO = `u8 I = 0
+u16 Period = 0
+sub start:
+  Period = Periods[I]
+  psg tone 0, Periods[I]
+  loop forever
+end sub
+data Periods words = 285,214,170,143
+`;
+const inlineForwardWordTableResult = transpileAmy(INLINE_FORWARD_WORD_TABLE_DEMO);
+check("inline word tables support forward indexed expressions", () => {
+  assert.equal(inlineForwardWordTableResult.ok, true, inlineForwardWordTableResult.log || "transpile failed");
+  assert.match(String(inlineForwardWordTableResult.asmBody || ""), /AMY_UDATA_Periods/i);
 });
 const BIOS_STUBS = [
   "TURN_OFF_SOUND EQU $1FD6",

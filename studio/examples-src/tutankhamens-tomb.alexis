@@ -1,0 +1,898 @@
+' TUTANKHAMEN'S TOMB
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), for the ColecoVision in Amy by
+' Amy Bienvenu.
+'
+' An explorer is trapped in the Pharaoh's tomb, somewhere in a block of
+' tunnels ten squares high, wide and deep within Egypt's greatest
+' pyramid, with only a little air. He is knocking on the side of the
+' tomb; you follow the sound. But stone muffles it, and you cannot always
+' tell exactly where it comes from: each part of the answer (above or
+' below, left or right) is heard only seven times in ten. Ahead or behind
+' always comes through. Reach him within twenty minutes; each move takes
+' one.
+'
+' The front view shows the tunnels at every depth; the gauge at the right
+' shows how deep you are (near to far). Your torch lights the blocks
+' around you; squares you have crossed stay marked.
+'
+' Controls (either joystick): the stick moves you up, down, left or
+' right; the left button goes forward (deeper), the right button back.
+' Keypad not used.
+'
+' Liberties taken:
+' - The knocks are heard as well as read, louder as you come nearer.
+' - The book's long opening text is cut to its essentials on the rules
+'   page. New music (Valley of the Kings) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (you and your
+' torch flame); the frame loop is protected from the NMI and every
+' screen is drawn with the NMI off after a wait.
+
+const TDark00 = 128
+const TDark01 = 129
+const TDark10 = 130
+const TDark11 = 131
+const TLit00 = 132
+const TLit01 = 133
+const TLit10 = 134
+const TLit11 = 135
+const TSeen00 = 136
+const TSeen01 = 137
+const TSeen10 = 138
+const TSeen11 = 139
+const TSlot = 140
+const THere = 141
+const TPyr00 = 142
+const TPyr01 = 143
+const TPyr02 = 144
+const TPyr03 = 145
+const TPyr04 = 146
+const TPyr05 = 147
+const TPyr06 = 148
+const TPyr07 = 149
+const TPyr10 = 150
+const TPyr11 = 151
+const TPyr12 = 152
+const TPyr13 = 153
+const TPyr14 = 154
+const TPyr15 = 155
+const TPyr16 = 156
+const TPyr17 = 157
+const TPyr20 = 158
+const TPyr21 = 159
+const TPyr22 = 160
+const TPyr23 = 161
+const TPyr24 = 162
+const TPyr25 = 163
+const TPyr26 = 164
+const TPyr27 = 165
+const TPyr30 = 166
+const TPyr31 = 167
+const TPyr32 = 168
+const TPyr33 = 169
+const TPyr34 = 170
+const TPyr35 = 171
+const TPyr36 = 172
+const TPyr37 = 173
+const TPyr40 = 174
+const TPyr41 = 175
+const TPyr42 = 176
+const TPyr43 = 177
+const TPyr44 = 178
+const TPyr45 = 179
+const TPyr46 = 180
+const TPyr47 = 181
+const TPyr50 = 182
+const TPyr51 = 183
+const TPyr52 = 184
+const TPyr53 = 185
+const TPyr54 = 186
+const TPyr55 = 187
+const TPyr56 = 188
+const TPyr57 = 189
+const SBody = 0
+const SFlame = 4
+const NTiles8 = 496
+const SprBytes = 64
+const SndKnockNear = 1
+const SndKnockMid = 2
+const SndKnockFar = 3
+const SndStep = 4
+const SndWin = 5
+const SndLose = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+' where you have been (front view): Seen[x * 10 + z], x and z 0-9
+u8 Seen[100]
+u8 A = 0
+u8 B = 0
+u8 C = 0
+u8 X = 1
+u8 Y = 1
+u8 Z = 1
+u8 Ox = 1
+u8 Oz = 1
+u8 Cc = 21
+u8 Dist = 0
+u8 Dx = 0
+u8 Moved = 0
+u8 Cx = 0
+u8 Cz = 0
+u8 Lt = 0
+u8 Ai = 0
+u8 Aj = 0
+u8 Ak = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumU = 0
+u16 Rs = $51C7
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 Px = 0
+u8 Py = 0
+
+  tile screen
+  set sound table TtSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+  NewSearch
+  TombScreen
+
+turn:
+  ' the knocking: where it seems to come from
+  Message
+  Knock
+  print at 2,21, "KNOCKING:"
+  Rnd
+  if Rb < 179 then
+    if X > B then print at 12,21, "BELOW YOU"
+    if X < B then print at 12,21, "ABOVE YOU"
+  end if
+  Rnd
+  if Rb < 179 then
+    if Z > C then print at 2,22, "TO THE LEFT,"
+    if Z < C then print at 2,22, "TO THE RIGHT,"
+  end if
+  if Y < A then print at 15,22, "AHEAD OF YOU"
+  if Y > A then print at 15,22, "BEHIND YOU"
+  dec Cc
+  ShowAir
+  Mode = 1
+wait_move:
+  Frame1
+  Torch
+  ReadPad
+  Moved = 0
+  Ox = X
+  Oz = Z
+  if Press = 1 then
+    if Y < 10 then inc Y
+    Moved = 1
+  end if
+  if Press2 = 1 then
+    if Y > 1 then dec Y
+    Moved = 1
+  end if
+  if Stick = 1 then
+    if Up1 = 1 then
+      if X < 10 then inc X
+    end if
+    if Dn1 = 1 then
+      if X > 1 then dec X
+    end if
+    if Rt1 = 1 then
+      if Z < 10 then inc Z
+    end if
+    if Lf1 = 1 then
+      if Z > 1 then dec Z
+    end if
+    Moved = 1
+  end if
+  if Moved = 0 then goto wait_move
+  Mode = 0
+  play sound SndStep
+  Walk
+  ShowDepth
+  if X = B then
+    if Z = C then
+      if Y = A then goto found
+    end if
+  end if
+  if Cc > 1 then goto turn
+
+  ' too late
+  Mode = 2
+  Message
+  print at 2,21, "THAT'S THE END OF THE ROAD..."
+  play sound SndLose
+  Pause
+  Message
+  print at 2,21, "YOU ARE TOO LATE... YOUR"
+  print at 2,22, "FRIEND HAS DIED IN THE PYRAMID"
+  Pause
+  Pause
+  Message
+  print at 2,21, "THE PHARAOH'S TOMB HAS BECOME"
+  print at 2,22, "...HIS TOMB..."
+  ShowTomb
+  goto the_end
+
+found:
+  Mode = 2
+  Message
+  print at 2,21, "WELL DONE... YOU FOUND YOUR"
+  print at 2,22, "FRIEND WITH ONLY"
+  NumU = Cc
+  print at 19,22, width$(NumU, 2)
+  play sound SndWin
+  Pause
+  Pause
+  Message
+  print at 2,21, "MINUTES OF AIR REMAINING..."
+  ShowTomb
+the_end:
+  Rearm
+  wait 60 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' The search
+
+sub NewSearch:
+  ' the tomb: 4 to 10 each way (the book's INT(RND * 7) + 4)
+  Rnd
+  NumU = Rb
+  NumU = NumU * 7
+  NumU = NumU >> 8
+  A = NumU + 4
+  Rnd
+  NumU = Rb
+  NumU = NumU * 7
+  NumU = NumU >> 8
+  B = NumU + 4
+  Rnd
+  NumU = Rb
+  NumU = NumU * 7
+  NumU = NumU >> 8
+  C = NumU + 4
+  X = 1
+  Y = 1
+  Z = 1
+  Cc = 21
+  for I = 0 to 99
+    Seen[I] = 0
+  next
+  Seen[0] = 1
+  return
+end sub
+
+' Knock: three knocks, louder the nearer you are (in any direction)
+sub Knock:
+  Dist = 0
+  if X > B then Dx = X - B
+  if X <= B then Dx = B - X
+  if Dx > Dist then Dist = Dx
+  if Y > A then Dx = Y - A
+  if Y <= A then Dx = A - Y
+  if Dx > Dist then Dist = Dx
+  if Z > C then Dx = Z - C
+  if Z <= C then Dx = C - Z
+  if Dx > Dist then Dist = Dx
+  if Dist <= 2 then
+    play sound SndKnockNear
+  else
+    if Dist <= 5 then
+      play sound SndKnockMid
+    else
+      play sound SndKnockFar
+    end if
+  end if
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' BlockAt: the block for x = Cx, z = Cz (1-10): lit near you, marked if
+' crossed, dark otherwise
+sub BlockAt:
+  V = Cx - 1
+  V = V * 10
+  V = V + Cz
+  dec V
+  W = TDark00
+  if Seen[V] = 1 then W = TSeen00
+  ' the torch lights the squares next to you
+  Lt = 0
+  V = Cx + 1
+  Px = X + 1
+  if V >= X then
+    if Cx <= Px then
+      V = Cz + 1
+      Px = Z + 1
+      if V >= Z then
+        if Cz <= Px then Lt = 1
+      end if
+    end if
+  end if
+  if Lt = 1 then W = TLit00
+  Px = Cz * 2
+  Py = 10 - Cx
+  Py = Py * 2
+  inc Py
+  put char W at Px,Py
+  inc W
+  inc Px
+  put char W at Px,Py
+  inc W
+  dec Px
+  inc Py
+  put char W at Px,Py
+  inc W
+  inc Px
+  put char W at Px,Py
+  return
+end sub
+
+' the blocks around (cx, cz) again
+sub Around:
+  for Ai = 0 to 2
+    Aj = Ox + Ai
+    if Aj >= 2 then
+      Cx = Aj - 1
+      if Cx <= 10 then
+        for Ak = 0 to 2
+          Aj = Oz + Ak
+          if Aj >= 2 then
+            Cz = Aj - 1
+            if Cz <= 10 then BlockAt
+          end if
+          Aj = Ox + Ai
+        next
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawGrid:
+  for Cx = 1 to 10
+    for Cz = 1 to 10
+      BlockAt
+    next
+  next
+  return
+end sub
+
+' Walk: you and the torch move to the next square
+sub Walk:
+  V = X - 1
+  V = V * 10
+  V = V + Z
+  dec V
+  Seen[V] = 1
+  ' the old light goes out, the new one is lit
+  Around
+  Ox = X
+  Oz = Z
+  Around
+  Torch
+  return
+end sub
+
+' Torch: you and your flickering flame
+sub Torch:
+  V = Z * 16
+  W = 10 - X
+  W = W * 16
+  W = W + 7
+  K = Tick & 4
+  I = 9
+  if K > 0 then I = 11
+  set sprite 0 to W, V, SFlame, I
+  set sprite 1 to W, V, SBody, 15
+  update sprites
+  return
+end sub
+
+sub ShowDepth:
+  print at 23,2, "FAR"
+  for I = 1 to 10
+    V = 14 - I
+    W = TSlot
+    if I = Y then W = THere
+    put char W at 24,V
+  next
+  print at 23,15, "NEAR"
+  return
+end sub
+
+sub ShowAir:
+  print at 23,17, "AIR"
+  NumU = Cc
+  print at 23,18, width$(NumU, 2)
+  print at 26,18, "MIN"
+  return
+end sub
+
+' ShowTomb: where the tomb was (a flashing block)
+sub ShowTomb:
+  HideSprites
+  for J = 1 to 8
+    Cx = B
+    Cz = C
+    V = J & 1
+    if V = 0 then
+      BlockAt
+    else
+      Px = C * 2
+      Py = 10 - B
+      Py = Py * 2
+      inc Py
+      fill THere count 2 at Px,Py
+      inc Py
+      fill THere count 2 at Px,Py
+    end if
+    for K = 1 to 10
+      Frame1
+    next
+  next
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub TombScreen:
+  NewScreen
+  Ox = X
+  Oz = Z
+  DrawGrid
+  ShowDepth
+  ShowAir
+  ShowScreen
+  Torch
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 20
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 20
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  sprites stable 0 to 1
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 7,2, "TUTANKHAMEN'S TOMB"
+  W = TPyr00
+  for I = 0 to 5
+    Py = 4 + I
+    for J = 0 to 7
+      Px = 12 + J
+      put char W at Px,Py
+      inc W
+    next
+  next
+  print at 10,12, "PLAY"
+  print at 10,13, "HOW TO PLAY"
+  print at 10,14, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndStep
+  end if
+  print at 8,12, " "
+  print at 8,13, " "
+  print at 8,14, " "
+  Py = Menu + 12
+  print at 8,Py, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOU HAVE A LIMITED TIME IN"
+  print at 2,4, "WHICH TO FIND AN EXPLORER"
+  print at 2,5, "LOST WITHIN EGYPT'S GREATEST"
+  print at 2,6, "PYRAMID. HE IS TRAPPED IN"
+  print at 2,7, "THE PHARAOH'S TOMB WITH VERY"
+  print at 2,8, "LITTLE AIR, KNOCKING ON ITS"
+  print at 2,9, "SIDE. FOLLOW THE SOUND..."
+  print at 2,10, "BUT IT IS MUFFLED, AND YOU"
+  print at 2,11, "CANNOT ALWAYS TELL EXACTLY"
+  print at 2,12, "WHERE IT COMES FROM."
+  print at 2,14, "STICK: UP, DOWN, LEFT, RIGHT."
+  print at 2,15, "LEFT BUTTON: FORWARD (DEEPER)."
+  print at 2,16, "RIGHT BUTTON: BACK."
+  print at 2,17, "EACH MOVE TAKES A MINUTE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 7,1, "TUTANKHAMEN'S TOMB"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "THE CURSE OF THE ROYAL TOMB"
+  print at 2,10, "CONTINUES ITS EVIL WORK..."
+  print at 2,12, "NEW MUSIC: VALLEY OF THE"
+  print at 2,13, "KINGS."
+  print at 2,15, "COLECOVISION VERSION BY"
+  print at 2,16, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$80,$80,$80,$80,$80,$80,$80
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$83,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$03,$07,$F0,$E0,$E0
+  $80,$C0,$E0,$60,$F0,$07,$03,$C0
+  $01,$03,$03,$03,$03,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$80,$80,$80,$80,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$01,$03,$07,$F0
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $01,$C0,$C0,$C0,$00,$E0,$E0,$E0
+  $00,$00,$80,$C0,$C0,$E0,$F0,$07
+  $83,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03
+  $F0,$E0,$C0,$80,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$F0,$F0,$F0,$00,$07,$07,$07
+  $07,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$80,$C0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$F0,$E0,$C0,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$03,$03,$03,$00,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$07,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $01,$03,$03,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$00,$00,$00,$00
+  $00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$E0,$E0,$F0,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $06,$61,$61,$61,$61,$61,$61,$61
+  $06,$01,$01,$01,$01,$01,$01,$01
+  $06,$01,$01,$01,$01,$01,$01,$01
+  $06,$61,$61,$61,$61,$61,$61,$61
+  $0A,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $0A,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0A,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0A,$AB,$AB,$AB,$AB,$AB,$AB,$AB
+  $01,$16,$16,$16,$16,$16,$16,$16
+  $01,$06,$06,$06,$06,$06,$06,$06
+  $01,$06,$06,$06,$06,$06,$06,$06
+  $01,$16,$16,$16,$16,$16,$16,$16
+  $01,$1E,$E1,$E1,$E1,$E1,$1E,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$4B,$4B
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$0D,$0D,$0D,$0D,$0D,$04,$04
+  $04,$0D,$0D,$0D,$0D,$0D,$04,$04
+  $04,$0D,$0D,$0D,$0D,$0D,$04,$04
+  $04,$AD,$AD,$AD,$6D,$DA,$4A,$4A
+  $64,$6D,$6D,$6D,$6D,$D6,$46,$A6
+  $B4,$BD,$BD,$BD,$BD,$BD,$B4,$04
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$4B
+  $04,$BD,$BD,$BD,$BD,$BD,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$A4,$64,$A4,$A4,$4A
+  $46,$4A,$0A,$0A,$06,$0A,$0A,$0A
+  $46,$A6,$A6,$A6,$06,$A6,$A6,$A6
+  $04,$04,$64,$64,$64,$64,$64,$46
+  $4B,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$A4,$A4
+  $46,$4A,$4A,$4A,$A6,$0A,$0A,$0A
+  $06,$0A,$0A,$0A,$06,$0A,$0A,$0A
+  $06,$A6,$A6,$A6,$06,$6A,$6A,$6A
+  $46,$46,$46,$06,$06,$06,$06,$06
+  $04,$04,$04,$04,$64,$64,$64,$64
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $64,$A4,$4A,$4A,$46,$4A,$4A,$0A
+  $06,$0A,$0A,$0A,$06,$0A,$0A,$0A
+  $06,$0A,$0A,$0A,$61,$A1,$A1,$A1
+  $06,$6A,$6A,$6A,$06,$6A,$6A,$6A
+  $06,$06,$06,$06,$06,$06,$06,$06
+  $64,$64,$46,$46,$46,$06,$06,$06
+  $04,$04,$04,$04,$04,$04,$04,$64
+  $A4,$A4,$A4,$A4,$0B,$0B,$0B,$0B
+  $06,$0A,$0A,$0A,$0B,$0B,$0B,$0B
+  $06,$0A,$0A,$0A,$0B,$0B,$0B,$0B
+  $61,$A1,$A1,$A1,$0B,$0B,$0B,$0B
+  $06,$6A,$0A,$0A,$0B,$0B,$0B,$0B
+  $06,$06,$06,$06,$0B,$0B,$0B,$0B
+  $06,$06,$06,$06,$0B,$0B,$0B,$0B
+  $64,$64,$64,$64,$0B,$0B,$0B,$0B
+end data
+data SpritePat bytes
+  $00,$03,$07,$03,$07,$0F,$17,$17,$07,$04,$04,$0C,$00,$00,$00,$00
+  $00,$00,$80,$00,$A0,$C0,$80,$80,$80,$80,$80,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$70,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+TtKnockNear:
+    db $00,$00,$15,$02,$00,$00,$F5,$06,$00,$00,$15,$02,$00,$00,$F5,$06,$00,$00,$15,$02,$10
+TtKnockMid:
+    db $00,$00,$55,$02,$00,$00,$F5,$06,$00,$00,$55,$02,$00,$00,$F5,$06,$00,$00,$55,$02,$10
+TtKnockFar:
+    db $00,$00,$95,$02,$00,$00,$F5,$06,$00,$00,$95,$02,$00,$00,$F5,$06,$00,$00,$95,$02,$10
+TtStep:
+    db $40,$53,$71,$01,$40,$7C,$91,$01,$50
+TtWin:
+    db $40,$FE,$30,$05,$40,$FE,$F0,$01,$40,$D6,$30,$05,$40,$D6,$F0,$01,$40,$AA,$30,$05,$40,$AA,$F0,$01
+    db $40,$7F,$30,$13,$40,$7F,$F0,$01,$50
+TtLose:
+    db $40,$FE,$30,$0B,$40,$FE,$F0,$01,$40,$0E,$31,$0B,$40,$0E,$F1,$01,$40,$1D,$31,$0B,$40,$1D,$F1,$01
+    db $40,$53,$31,$1D,$40,$53,$F1,$01,$50
+
+TtSoundTable:
+    dw TtKnockNear,$702B
+    dw TtKnockMid,$702B
+    dw TtKnockFar,$702B
+    dw TtStep,$7035
+    dw TtWin,$7035
+    dw TtLose,$7035
+    dw TtTuneMel,$703F
+    dw TtTuneBass,$7049
+; Valley of the Kings, A Phrygian dominant (original for this game)
+; Tiny Sound, 8 frames per step
+TtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$F1,$22,$1C,$00,$1D,$00,$20,$00,$21,$00,$23,$00,$00,$00
+    db $24,$23,$21,$20,$21,$00,$20,$00,$1D,$00,$1C,$00,$00,$00,$00,$00
+    db $01,$01,$01,$01,$23,$00,$24,$00,$26,$00,$28,$00,$29,$00,$28,$00
+    db $26,$24,$23,$21,$20,$00,$21,$00,$1D,$00,$20,$00,$1C,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+TtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$04,$0B,$10,$0B,$04,$0B,$10,$0B,$09,$10,$15,$10
+    db $04,$0B,$10,$0B,$05,$0C,$11,$0C,$04,$0B,$10,$0B,$04,$0B,$10,$0B
+    db $04,$01,$01,$01,$07,$0E,$13,$0E,$09,$10,$15,$10,$05,$0C,$11,$0C
+    db $04,$0B,$14,$0B,$05,$0C,$11,$0C,$04,$0B,$14,$0B,$04,$0B,$10,$00
+    db $00,$00,$00,$00
+    db $FF
+}

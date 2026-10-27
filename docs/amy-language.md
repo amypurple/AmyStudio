@@ -1715,6 +1715,10 @@ Root32 = sqrt(Position32)
 ```
 
 `Counter *= N`: supported by the destination type table below.
+Dynamic `u16` and `i16` multiplication uses a fixed 16-step shift/add sequence.
+Negative multipliers therefore take the same bounded time as positive values, and
+the result wraps modulo 65536 as ordinary two's-complement word arithmetic.
+Compile-time constant factors use shorter shift/add/subtract chains when available.
 `Counter /= N`: integer division truncates toward zero for signed targets. A divisor that is
 provably zero is rejected at compile time. A runtime divisor whose value becomes zero stores
 `0`, without adding a trap or diagnostic code to the ROM.
@@ -3163,7 +3167,9 @@ Rules:
 - a **constant index folds to the entry label directly** (`Levels[1]` → `ld hl,Level2_label`, no table walk)
 - a variable index reads the `dw` entry at runtime with the minimal sequence
   (`add a,a` / `add hl,de` / fetch low+high / `ex de,hl`) — no runtime helper
-- at most 128 entries (the byte-index doubling limit); out-of-range constant
+- at most 256 entries with a byte index; tables above 128 entries preserve the
+  high carry from the doubled byte offset, while smaller tables retain the minimal sequence;
+  out-of-range constant
   indexes and non-`@` bare identifiers are compile errors, including assignments
   such as `P = Levels[9]`; variable indexes deliberately have no runtime bounds check
 - consumers taking a ROM source address accept `Table[Index]`: `decompress`,

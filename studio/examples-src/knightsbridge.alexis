@@ -1,0 +1,986 @@
+' KNIGHTSBRIDGE
+' Tim Hartnell's own game, from his Giant Book of Computer Games
+' (Ballantine Books, 1984; Interface Publications, 1983), for the
+' ColecoVision in Amy by Amy Bienvenu.
+'
+' Seven knights a side on a 7 x 7 board: yours (white) along the bottom,
+' the computer's (black) along the top. Every piece moves as a chess
+' knight, but chance picks which one must move each turn (the idea came
+' from chess's ancestor, played with a die). Land on an enemy knight to
+' take it. The first to take five wins.
+'
+' The computer plays as the book's program (BOOK level): the chosen
+' knight takes a piece if it can, else it makes the first move it finds.
+' MASTER level also avoids squares your knights could reach. The
+' computer moves first, as in the book.
+'
+' Controls (either joystick): the knight you must move flashes; the stick
+' moves the cursor, the button sends the knight to a dot or onto an
+' enemy knight.
+' Keypad not used.
+'
+' Liberties taken:
+' - Chance picks among the knights that can move (the book could pick a
+'   stuck one, and then the computer conceded or you had to); a side with
+'   no knight able to move loses.
+' - The chance pick is shown as the cursor running over your knights.
+'   MASTER level is new. New music (Kensington Gallop) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (the cursor and
+' a moving knight); the frame loop is protected from the NMI and every
+' screen is drawn with the NMI off after a wait.
+
+const TQ0ea = 128
+const TQ0eb = 129
+const TQ0ec = 130
+const TQ0ed = 131
+const TQ0youa = 132
+const TQ0youb = 133
+const TQ0youc = 134
+const TQ0youd = 135
+const TQ0mea = 136
+const TQ0meb = 137
+const TQ0mec = 138
+const TQ0med = 139
+const TQ0dota = 140
+const TQ0dotb = 141
+const TQ0dotc = 142
+const TQ0dotd = 143
+const TQ1ea = 144
+const TQ1eb = 145
+const TQ1ec = 146
+const TQ1ed = 147
+const TQ1youa = 148
+const TQ1youb = 149
+const TQ1youc = 150
+const TQ1youd = 151
+const TQ1mea = 152
+const TQ1meb = 153
+const TQ1mec = 154
+const TQ1med = 155
+const TQ1dota = 156
+const TQ1dotb = 157
+const TQ1dotc = 158
+const TQ1dotd = 159
+const TFtl = 160
+const TFtr = 161
+const TFbl = 162
+const TFbr = 163
+const TFt = 164
+const TFb = 165
+const TFl = 166
+const TFr = 167
+const SCursor = 0
+const SKnight = 4
+const SKnightl = 8
+const NTiles8 = 320
+const SprBytes = 96
+const SndHush = 1
+const SndMove = 2
+const SndPlace = 3
+const SndTake = 4
+const SndBad = 5
+const SndWin = 6
+const SndLose = 7
+const SndTuneA = 8
+const SndTuneB = 9
+
+' the board: Kb[row * 10 + column], rows 1 (yours, at the bottom) to 7,
+' columns 1 to 7; 0 empty, 1 the computer, 2 you, 255 outside
+u8 Kb[100]
+u8 Pl[8]
+u8 Ms[8]
+u8 Level = 0
+u8 Np = 0
+u8 Ns = 0
+u8 Co = 0
+u8 Hu = 0
+u8 Cur = 14
+u8 Force = 0
+u8 Side = 0
+u8 Foe = 0
+u8 A = 0
+u8 B = 0
+u8 Zi = 0
+u8 Safe = 0
+u8 Cell = 0
+u8 Kind = 0
+u8 Tries = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumU = 0
+u16 NumW = 0
+u16 Rs = $2B6D
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Tx = 0
+u8 Ty = 0
+
+  tile screen
+  set sound table KbSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  Level = 0
+
+title:
+  TitlePage
+  if Menu = 2 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 3 then
+    EditorialPage
+    goto title
+  end if
+  NewGame
+  BoardScreen
+
+computer_turn:
+  Side = 1
+  Pick
+  if Np = 0 then
+    Message
+    print at 2,21, "I CONCEDE TO A MASTER"
+    play sound SndWin
+    goto game_end
+  end if
+  Message
+  print at 2,21, "I HAVE TO MOVE THE PIECE ON"
+  ShowWhere
+  PickSquare
+  Pause
+  A = Force
+  Side = 1
+  Slide
+  Land
+  if Kind = 2 then
+    inc Co
+    print at 2,22, "GOTCHA!!"
+    play sound SndTake
+    ShowPanel
+    Pause
+  end if
+  if Co = 5 then goto i_won
+
+player_turn:
+  Side = 2
+  Pick
+  if Np = 0 then
+    Message
+    print at 2,21, "NONE OF YOURS CAN MOVE:"
+    print at 2,22, "I WIN"
+    play sound SndLose
+    goto game_end
+  end if
+  Message
+  print at 2,21, "YOU MUST MOVE THE PIECE ON"
+  ShowWhere
+  A = Force
+  Moves
+  ShowDots
+  Cur = Force
+  Mode = 1
+player_loop:
+  Frame1
+  ReadPad
+  MoveCursor
+  DrawCursor
+  if Press = 0 then goto player_loop
+  V = 0
+  for I = 1 to Ns
+    J = I - 1
+    if Ms[J] = Cur then V = 1
+  next
+  if V = 0 then
+    play sound SndBad
+    goto player_loop
+  end if
+  Mode = 0
+  ClearDots
+  HideSprites
+  A = Force
+  B = Cur
+  Side = 2
+  Slide
+  Land
+  if Kind = 1 then
+    inc Hu
+    Message
+    print at 2,21, "WELL PLAYED!"
+    play sound SndTake
+    ShowPanel
+    Pause
+  end if
+  if Hu = 5 then goto you_won
+  goto computer_turn
+
+you_won:
+  Message
+  print at 2,21, "YOU HAVE BEATEN ME, HUMAN"
+  play sound SndWin
+  goto game_end
+i_won:
+  Message
+  print at 2,20, "THIS VICTORY IS THE FIRST"
+  print at 2,21, "STEP IN OUR PLAN TO TAKE"
+  print at 2,22, "OVER THE ENTIRE EARTH!"
+  play sound SndLose
+game_end:
+  Mode = 2
+  HideSprites
+  Rearm
+  wait 60 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Rules
+
+' the knight's moves, as the book: -8, -21, -12, -19, 19, 12, 21, 8
+data Jumps bytes 248, 235, 244, 237, 19, 12, 21, 8
+
+sub NewGame:
+  fill array Kb with 255
+  for I = 1 to 7
+    for J = 1 to 7
+      V = I * 10
+      V = V + J
+      W = 0
+      if I = 1 then W = 2
+      if I = 7 then W = 1
+      Kb[V] = W
+    next
+  next
+  Co = 0
+  Hu = 0
+  return
+end sub
+
+' Moves: Ms[0..Ns-1] = where the knight on A can go (empty or an enemy),
+' in the book's order
+sub Moves:
+  Ns = 0
+  Kind = Kb[A]
+  for Zi = 0 to 7
+    W = Jumps[Zi]
+    B = A + W
+    if B < 100 then
+      V = Kb[B]
+      if V <> 255 then
+        if V <> Kind then
+          Ms[Ns] = B
+          inc Ns
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Pick: Force = side Side's knight chosen by chance among those that can
+' move (Np = how many could)
+sub Pick:
+  Np = 0
+  for K = 11 to 77
+    if Kb[K] = Side then
+      A = K
+      Moves
+      if Ns > 0 then
+        Pl[Np] = K
+        inc Np
+      end if
+    end if
+  next
+  if Np = 0 then return
+  Rnd
+  NumW = Rb
+  NumW = NumW * Np
+  NumW = NumW >> 8
+  V = NumW
+  Force = Pl[V]
+  ' the cursor runs over the candidates before it settles
+  for K = 1 to 16
+    Rnd
+    NumW = Rb
+    NumW = NumW * Np
+    NumW = NumW >> 8
+    V = NumW
+    Cur = Pl[V]
+    DrawCursor
+    play sound SndMove
+    for J = 1 to 3
+      Frame1
+    next
+  next
+  Cur = Force
+  DrawCursor
+  return
+end sub
+
+' PickSquare: B = where the computer's knight on Force goes
+sub PickSquare:
+  A = Force
+  Moves
+  ' a capture, the first in the book's order
+  for I = 1 to Ns
+    J = I - 1
+    W = Ms[J]
+    if Kb[W] = 2 then
+      B = W
+      return
+    end if
+  next
+  if Level = 1 then
+    ' a square none of your knights can reach
+    for I = 1 to Ns
+      J = I - 1
+      W = Ms[J]
+      Attacked
+      if Safe = 1 then
+        B = W
+        return
+      end if
+    next
+  end if
+  B = Ms[0]
+  return
+end sub
+
+' Attacked: Safe = 1 when no knight of yours could land on square W
+sub Attacked:
+  Safe = 1
+  for Zi = 0 to 7
+    V = Jumps[Zi]
+    V = W + V
+    if V < 100 then
+      if Kb[V] = 2 then Safe = 0
+    end if
+  next
+  return
+end sub
+
+' Land: the knight from A arrives on B; Kind = what was there
+sub Land:
+  Kind = Kb[B]
+  Kb[B] = Kb[A]
+  Kb[A] = 0
+  Cell = A
+  DrawSquare
+  Cell = B
+  DrawSquare
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' ShowWhere: the forced knight's square, as the book's two digits
+sub ShowWhere:
+  V = Force / 10
+  W = V * 10
+  W = Force - W
+  NumU = Force
+  print at 2,22, digits$(NumU, 2)
+  return
+end sub
+
+' Slide: the knight on A leaps to B on screen (a sprite)
+sub Slide:
+  Kind = Kb[A]
+  Kb[A] = 0
+  Cell = A
+  DrawSquare
+  Kb[A] = Kind
+  Cell = A
+  SquareXY
+  Sx = X
+  Sy = Y
+  Cell = B
+  SquareXY
+  Tx = X
+  Ty = Y
+  W = SKnight
+  K = 15
+  if Kind = 1 then
+    W = SKnightl
+    K = 1
+  end if
+  ' (if-else: two one-line ifs on the same pair after an addition are
+  ' miscompiled by Amy)
+sl_step:
+  if Sx < Tx then
+    Sx = Sx + 2
+  else
+    if Sx > Tx then Sx = Sx - 2
+  end if
+  if Sy < Ty then
+    Sy = Sy + 2
+  else
+    if Sy > Ty then Sy = Sy - 2
+  end if
+  set sprite 1 to Sy, Sx, W, K
+  update sprites
+  Frame1
+  if Sx <> Tx then goto sl_step
+  if Sy <> Ty then goto sl_step
+  set sprite 1 to 192, 0, 0, 0
+  update sprites
+  play sound SndPlace
+  return
+end sub
+
+' SquareXY: X, Y = the sprite position of square Cell
+sub SquareXY:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  X = X * 16
+  X = X + 16
+  V = 7 - Y
+  Y = V * 16
+  Y = Y + 31
+  return
+end sub
+
+' DrawSquare: square Cell as it is now
+sub DrawSquare:
+  V = Kb[Cell]
+  W = 0
+  if V = 2 then W = 1
+  if V = 1 then W = 2
+  W = W * 4
+  DrawState
+  return
+end sub
+
+' DrawState: square Cell with state tile offset W (0 empty, 4 yours,
+' 8 the computer's, 12 a dot)
+sub DrawState:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  V = X + Y
+  V = V & 1
+  V = V * 16
+  W = W + V
+  W = W + TQ0ea
+  X = X * 2
+  X = X + 2
+  V = 7 - Y
+  Y = V * 2
+  Y = Y + 4
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  inc W
+  dec X
+  inc Y
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  return
+end sub
+
+sub ShowDots:
+  for I = 1 to Ns
+    J = I - 1
+    Cell = Ms[J]
+    if Kb[Cell] = 0 then
+      W = 12
+      DrawState
+    end if
+  next
+  return
+end sub
+
+sub ClearDots:
+  for K = 11 to 77
+    if Kb[K] = 0 then
+      Cell = K
+      DrawSquare
+    end if
+  next
+  return
+end sub
+
+sub DrawBoard:
+  put char TFtl at 3,3
+  fill TFt count 14 at 4,3
+  put char TFtr at 18,3
+  for Y = 4 to 17
+    put char TFl at 3,Y
+    put char TFr at 18,Y
+  next
+  put char TFbl at 3,18
+  fill TFb count 14 at 4,18
+  put char TFbr at 18,18
+  for K = 11 to 77
+    if Kb[K] <> 255 then
+      Cell = K
+      DrawSquare
+    end if
+  next
+  ' the book's numbers along the sides
+  print at 4,19, "1 2 3 4 5 6 7"
+  for I = 1 to 7
+    V = 7 - I
+    V = V * 2
+    V = V + 4
+    NumU = I
+    print at 20,V, digits$(NumU, 1)
+  next
+  return
+end sub
+
+sub ShowPanel:
+  print at 22,5, "ME"
+  put char TQ0mea at 22,6
+  put char TQ0meb at 23,6
+  put char TQ0mec at 22,7
+  put char TQ0med at 23,7
+  print at 25,6, "TOOK"
+  NumU = Co
+  print at 25,7, digits$(NumU, 1)
+  print at 22,11, "YOU"
+  put char TQ0youa at 22,12
+  put char TQ0youb at 23,12
+  put char TQ0youc at 22,13
+  put char TQ0youd at 23,13
+  print at 25,12, "TOOK"
+  NumU = Hu
+  print at 25,13, digits$(NumU, 1)
+  return
+end sub
+
+sub DrawCursor:
+  Cell = Cur
+  SquareXY
+  V = Tick & 8
+  W = 11
+  if V > 0 then W = 9
+  set sprite 0 to Y, X, SCursor, W
+  update sprites
+  return
+end sub
+
+sub MoveCursor:
+  if Stick = 0 then return
+  Y = Cur / 10
+  X = Y * 10
+  X = Cur - X
+  if Lf1 = 1 then
+    if X > 1 then dec X
+  end if
+  if Rt1 = 1 then
+    if X < 7 then inc X
+  end if
+  if Up1 = 1 then
+    if Y < 7 then inc Y
+  end if
+  if Dn1 = 1 then
+    if Y > 1 then dec Y
+  end if
+  Cur = Y * 10
+  Cur = Cur + X
+  play sound SndMove
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,20
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub BoardScreen:
+  NewScreen
+  print at 4,1, "KNIGHTSBRIDGE"
+  DrawBoard
+  ShowPanel
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for Tries = 1 to 40
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  sprites stable 0 to 1
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 9,2, "KNIGHTSBRIDGE"
+  ' a white knight facing a black one
+  fill array Kb with 255
+  Kb[53] = 2
+  Kb[54] = 0
+  Kb[55] = 1
+  for I = 53 to 55
+    Cell = I
+    DrawSquare
+  next
+  print at 6,13, "PLAY"
+  print at 6,14, "LEVEL:"
+  print at 6,15, "HOW TO PLAY"
+  print at 6,16, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 3 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  for I = 13 to 16
+    print at 4,I, " "
+  next
+  Y = Menu + 13
+  print at 4,Y, ">"
+  if Level = 0 then print at 13,14, "BOOK  "
+  if Level = 1 then print at 13,14, "MASTER"
+  if Press = 0 then goto title_loop
+  if Menu = 1 then
+    Level = 1 - Level
+    play sound SndPlace
+    goto title_loop
+  end if
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "ALL THE PIECES ARE KNIGHTS"
+  print at 2,4, "AND MOVE AS IN CHESS. YOURS"
+  print at 2,5, "ARE WHITE, MINE BLACK."
+  print at 2,7, "EACH TURN, CHANCE PICKS THE"
+  print at 2,8, "KNIGHT THAT MUST MOVE."
+  print at 2,10, "LAND ON AN ENEMY KNIGHT TO"
+  print at 2,11, "TAKE IT. THE FIRST TO TAKE"
+  print at 2,12, "FIVE WINS."
+  print at 2,15, "STICK: MOVE THE CURSOR."
+  print at 2,16, "BUTTON: SEND YOUR KNIGHT TO"
+  print at 2,17, "A DOT, OR ONTO AN ENEMY."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 9,1, "KNIGHTSBRIDGE"
+  print at 2,3, "INVENTED BY TIM HARTNELL"
+  print at 2,4, "AND PUBLISHED IN HIS GIANT"
+  print at 2,5, "BOOK OF COMPUTER GAMES"
+  print at 2,6, "(BALLANTINE BOOKS, 1984;"
+  print at 2,7, "INTERFACE PUBLICATIONS,"
+  print at 2,8, "1983)."
+  print at 2,10, "NEW MUSIC: KENSINGTON"
+  print at 2,11, "GALLOP."
+  print at 2,13, "COLECOVISION VERSION BY"
+  print at 2,14, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$07,$F0,$E1,$E0,$C0,$C3
+  $00,$80,$E0,$F0,$07,$07,$07,$07
+  $00,$01,$03,$07,$07,$F0,$E0,$00
+  $07,$07,$07,$07,$03,$03,$01,$00
+  $00,$01,$07,$F0,$E0,$E0,$E0,$E0
+  $00,$40,$E0,$F0,$87,$07,$03,$C3
+  $E0,$E0,$E0,$E0,$C0,$C0,$80,$00
+  $00,$80,$C0,$E0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$02,$07,$F0,$E1,$E0,$C0,$C3
+  $00,$80,$E0,$F0,$07,$07,$07,$07
+  $00,$01,$03,$07,$07,$F0,$E0,$00
+  $07,$07,$07,$07,$03,$03,$01,$00
+  $00,$01,$07,$F0,$E0,$E0,$E0,$E0
+  $00,$40,$E0,$F0,$87,$07,$03,$C3
+  $E0,$E0,$E0,$E0,$C0,$C0,$80,$00
+  $00,$80,$C0,$E0,$E0,$F0,$07,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+end data
+data TileCol bytes
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$FB,$FB,$BF,$BF,$BF,$BF,$BF
+  $0B,$FB,$FB,$FB,$BF,$BF,$BF,$BF
+  $0B,$FB,$FB,$FB,$FB,$BF,$BF,$0B
+  $BF,$BF,$BF,$BF,$BF,$BF,$BF,$0B
+  $0B,$1B,$1B,$B1,$B1,$B1,$B1,$B1
+  $0B,$1B,$1B,$1B,$B1,$B1,$B1,$B1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$B1,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$8B,$8B
+  $0B,$0B,$0B,$0B,$0B,$0B,$8B,$8B
+  $8B,$8B,$0B,$0B,$0B,$0B,$0B,$0B
+  $8B,$8B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$FA,$FA,$AF,$AF,$AF,$AF,$AF
+  $0A,$FA,$FA,$FA,$AF,$AF,$AF,$AF
+  $0A,$FA,$FA,$FA,$FA,$AF,$AF,$0A
+  $AF,$AF,$AF,$AF,$AF,$AF,$AF,$0A
+  $0A,$1A,$1A,$A1,$A1,$A1,$A1,$A1
+  $0A,$1A,$1A,$1A,$A1,$A1,$A1,$A1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$0A
+  $0A,$1A,$1A,$1A,$1A,$1A,$A1,$0A
+  $0A,$0A,$0A,$0A,$0A,$0A,$8A,$8A
+  $0A,$0A,$0A,$0A,$0A,$0A,$8A,$8A
+  $8A,$8A,$0A,$0A,$0A,$0A,$0A,$0A
+  $8A,$8A,$0A,$0A,$0A,$0A,$0A,$0A
+  $01,$01,$01,$01,$01,$01,$C1,$C1
+  $01,$01,$01,$01,$01,$01,$C1,$C1
+  $C1,$C1,$01,$01,$01,$01,$01,$01
+  $C1,$C1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$0C,$0C
+  $0C,$0C,$01,$01,$01,$01,$01,$01
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+  $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $00,$02,$07,$0F,$1E,$1F,$3F,$3C,$00,$01,$03,$07,$07,$0F,$1F,$00
+  $00,$80,$E0,$F0,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$FC,$FC,$FE,$00
+  $00,$01,$07,$0F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$3F,$3F,$7F,$00
+  $00,$40,$E0,$F0,$78,$F8,$FC,$3C,$00,$80,$C0,$E0,$E0,$F0,$F8,$00
+end data
+
+asm {
+KbHush:
+    db $00,$00,$F4,$01,$10
+KbMove:
+    db $40,$40,$60,$01,$50
+KbPlace:
+    db $00,$00,$23,$01,$00,$00,$45,$02,$00,$00,$66,$02,$10
+KbTake:
+    db $40,$7F,$20,$02,$40,$7F,$F0,$01,$40,$65,$20,$02,$40,$65,$F0,$01,$40,$55,$20,$07,$40,$55,$F0,$01
+    db $50
+KbBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+KbWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+KbLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+KbSoundTable:
+    dw KbHush,$702B
+    dw KbMove,$7035
+    dw KbPlace,$702B
+    dw KbTake,$7035
+    dw KbBad,$702B
+    dw KbWin,$7035
+    dw KbLose,$7035
+    dw KbTuneMel,$703F
+    dw KbTuneBass,$7049
+; Kensington Gallop, D major (original for this game)
+; Tiny Sound, 7 frames per step
+KbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$21,$25,$28,$25,$2D,$01,$28,$01,$2A,$26,$23,$26
+    db $28,$01,$25,$01,$21,$25,$28,$25,$2D,$01,$2F,$01,$2C,$28,$23,$2C
+    db $2D,$01,$01,$01
+    db $FF
+KbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$09,$10,$09,$10,$09,$10,$0D,$10,$0E,$09,$0B,$06
+    db $04,$0B,$04,$0B,$09,$10,$09,$10,$06,$0D,$0E,$09,$04,$0B,$04,$0B
+    db $09,$10,$09,$01
+    db $FF
+}

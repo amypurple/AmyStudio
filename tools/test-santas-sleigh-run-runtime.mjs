@@ -32,7 +32,7 @@ try {
   core.loadRom(readFileSync(romPath), { region: GEARCOLECO_TEST_REGION.NTSC });
   runUntil(/SANTA'S SLEIGH RUN[\s\S]*PRESS FIRE TO START/, 1200, "Santa title page did not appear");
   tapFire();
-  runUntil(/SCORE 00000[\s\S]*GIFTS 8[\s\S]*LEVEL 01/, 900, "Santa game did not reach the playable HUD");
+  runUntil(/SCORE 00000[\s\S]*GIFTS 8[\s\S]*WIND/, 900, "Santa game did not reach the playable HUD");
   console.log(`Santa's Sleigh Run runtime: PASS (${romPath})`);
 } finally {
   core.destroy();
