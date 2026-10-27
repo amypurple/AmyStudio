@@ -36,17 +36,23 @@ export function createByteLoadHelpers(ctx) {
   function emitLoadDataByteRefInto(register, token) {
     const dataRef = parseArrayRef(token);
     if (!dataRef || !dataLengths?.has(dataRef.name)) return null;
-    const loadIndex = emitLoadInt8ValueInto("a", dataRef.index);
-    if (!loadIndex) return null;
     const dataLabel = resolveAddressSymbol ? resolveAddressSymbol(dataRef.name) : dataRef.name;
-    const lines = [
-      ...loadIndex,
-      "    ld e,a",
-      "    ld d,0",
-      `    ld hl,${dataLabel}`,
-      "    add hl,de",
-      "    ld a,(hl)"
-    ];
+    const normalizedIndex = normalizeExpression(String(dataRef.index).trim());
+    const constantIndex = tryEvaluateConstantExpression?.(normalizedIndex);
+    if (Number.isInteger(constantIndex) && (constantIndex < 0 || constantIndex > 0xFFFF)) return null;
+    const indexAst = parseExpressionAst(normalizedIndex);
+    const indexType = indexAst ? resolveExpressionAstValueType(indexAst) : null;
+    const needsWideIndex = (Number.isInteger(constantIndex) && constantIndex > 0xFF) || indexType === "int16";
+    let lines;
+    if (needsWideIndex) {
+      const loadIndex = emitLoadInt16IntoHL(normalizedIndex);
+      if (!loadIndex) return null;
+      lines = [...loadIndex, `    ld de,${dataLabel}`, "    add hl,de", "    ld a,(hl)"];
+    } else {
+      const loadIndex = emitLoadInt8ValueInto("a", normalizedIndex);
+      if (!loadIndex) return null;
+      lines = [...loadIndex, "    ld e,a", "    ld d,0", `    ld hl,${dataLabel}`, "    add hl,de", "    ld a,(hl)"];
+    }
     if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
     return lines;
   }
