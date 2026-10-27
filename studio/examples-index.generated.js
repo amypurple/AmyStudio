@@ -278,6 +278,27 @@ export const exampleManifest = [
     ]
   },
   {
+    "id": "picture-show-120c",
+    "label": "Picture Show: 120 Colors",
+    "detail": "An original two-picture gallery demonstrating Amy's temporal 120-color display and ZX0-compressed dual-purpose VRAM banks, with controller-driven switching.",
+    "projectName": "picture-show-120c",
+    "sourceLang": "amy",
+    "editorialTrack": "manual-canon",
+    "category": "Demos",
+    "tags": [
+      "amy",
+      "original",
+      "graphics",
+      "120c",
+      "temporal",
+      "zx0",
+      "controller",
+      "ai-assisted"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
+  },
+  {
     "id": "toolchain-benchmark-hello",
     "label": "Toolchain Benchmark: Hello World",
     "detail": "Exact Amy Studio source used by the seven-tool Hello World comparison.",

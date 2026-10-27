@@ -1994,6 +1994,9 @@ Hz; on PAL each phase is visible at 25 Hz.
 (R3=`$FF`, R4=`$03`). The generated NMI preserves registers and remains compatible
 with scene frame handlers, top-level `on vblank`, controllers, music, and sound. Projects that never use either
 command include no 120C runtime and reserve no 120C RAM.
+Using either command reserves the two 120C state bytes before controller and user
+variables and links the update routine; `120 colors off` is therefore valid even
+when the same source never executes `120 colors on`.
 
 The commands do not convert an ordinary picture into 120C data. The uploaded
 banks must have been authored or converted specifically for the dual pattern/color

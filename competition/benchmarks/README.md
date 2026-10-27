@@ -32,7 +32,7 @@ release or commit dates, and compiler backends are recorded in
 | Sample | Amy | CVBasic | z88dk | ugBASIC | devkitSMS | PVColLib | NewColeco | libcv |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | 227 | 1,466 | 1,980 | 1,420 | 1,401 | 1,106 | 795 | 1,001 |
-| Warrior bitmap | 3,214 | 4,948 | 4,976 | 9,733 | 4,680 | 4,525 | 3,643 | 4,691 |
+| Warrior bitmap | 3,213 | 4,948 | 4,976 | 9,733 | 4,680 | 4,525 | 3,643 | 4,691 |
 | Controller Visual | 604 | 1,695 | 2,272 | 2,025 | 1,403 | 1,194 | 932 | 812 |
 | Sprite Metasprite | 939 | 1,845 | 2,492 | 5,797 | 1,654 | 1,304 | 1,142 | 1,413 |
 | State Update | 1,138 | 2,453 | 2,712 | 4,013 | 2,099 | 1,308 | 1,253 | 1,291 |

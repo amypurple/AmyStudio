@@ -47,16 +47,15 @@ zx0s_literals:
         inc     c
 zx0_lit_pages:
         ld      b, a
+        ld      a, c                    ; keep page count away from the VDP port register
 zx0_lit_loop:
-        push    bc
         ld      c, $be
 zx0_lit_loop2:
         outi
         ; nop                          ; judged redundant: OUTI + INC DE + JR already leave wide spacing
         inc     de
         jr      nz, zx0_lit_loop2
-        pop     bc
-        dec     c
+        dec     a
         jr      nz, zx0_lit_loop
 
         ex      af,af'                  ; restore bit-buffer A/flags

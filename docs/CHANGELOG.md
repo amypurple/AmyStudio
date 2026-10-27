@@ -1,3 +1,17 @@
+## 2026-10-27 - 120-color RAM safety and Picture Show
+
+- Fixed temporal 120-color RAM allocation so its phase bytes, controller buffers
+  and user variables cannot overlap.
+- Made `120 colors off` valid by itself by linking the NMI update dependency even
+  when the same program never uses `120 colors on`.
+- Fixed ZX0 direct-to-VRAM literal runs longer than 256 bytes. The smaller loop
+  now restores a proven 257-byte payload exactly and reduces the Warrior bitmap
+  benchmark from 3,214 to 3,213 bytes.
+- Added **Picture Show: 120 Colors**, a two-picture ZX0 gallery with controller
+  switching and exact round-trip runtime validation.
+- Revalidated all five 120C profiles and the complete 191-example Balanced clean
+  corpus, then refreshed the comparison HTML, Markdown, PDF and CSV to 7,372
+  occupied bytes across Amy Studio's six benchmark ROMs.
 ## 2026-10-26 - Laser Chess, 3-D Super Plotter and input fixes
 
 - Added **Laser Chess**, Mike Duppong's 1987 COMPUTE! strategy game adapted

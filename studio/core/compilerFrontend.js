@@ -102,6 +102,8 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const needsTinySound = usesTinySound;
   const needsExomizer = /\b(?:decompress\s+exomizer|exomizer_decompress|codec\s+exomizer)\b/i.test(codeText);
   const needsVoiceQueue = /^\s*voice\s+(?:start|stop|speaking)\b/im.test(codeText);
+  const needs120c = /^\s*120\s+colors\s+(?:on|off)\s*$/im.test(codeText) ||
+    /\bAMY_120C_(?:ON|OFF|UPDATE)\b/i.test(text);
   const needsEnlargePattern = /\bAMY_ENLARGE_PATTERN\b/i.test(text) ||
     /^\s*enlarge\s+pattern\b/im.test(codeText);
   const usesHalt = /\bhalt\b/i.test(text);
@@ -166,10 +168,11 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsVdpStatusShadow ||
     needsFrameCounter ||
     usesVblankHook ||
-    needsVoiceQueue;
+    needsVoiceQueue ||
+    needs120c;
   let controllerBackend = inferControllerBackendFromSource(codeText);
   if (controllerBackend?.controllerBackend === "bios_cont_scan_compact" &&
-      (needsSound || needsSpinner || needsFrameCounter || needsSleepState)) {
+      (needsSound || needsSpinner || needsFrameCounter || needsSleepState || needs120c)) {
     controllerBackend = null;
   }
   return {
@@ -189,6 +192,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsTinySound,
     needsExomizer,
     needsVoiceQueue,
+    needs120c,
     needsEnlargePattern,
     usesTinySound,
     usesHalt,

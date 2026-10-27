@@ -6,6 +6,9 @@ function collectUsedAlexisSymbols(asmBody, options = {}) {
   for (const symbol of matches) {
     if (alexisRuntimeCatalog[symbol]) used.add(symbol);
   }
+  // The generated NMI calls UPDATE whenever either public 120C command is used.
+  // Include it before that generated NMI exists in the dependency scan.
+  if (used.has("AMY_120C_ON") || used.has("AMY_120C_OFF")) used.add("AMY_120C_UPDATE");
   if (/\bAMY_SLEEP_SERVICE\b/.test(asmBody)) used.add("AMY_PAUSE_PRESS_RELEASE_BLANK");
   if (/\bAMY_CHOICE_KEYPAD_RANGE_BLANK\b/.test(asmBody)) used.add("AMY_WAIT_FRAMES_SAFE");
   if (/\bsndtiny_[12]\b/.test(asmBody) || options.forceTinySound) used.add("AMY_TINY_SOUND");
