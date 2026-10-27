@@ -80,6 +80,8 @@ const rawExampleCatalog = exampleManifestData.map((entry) => ({
   projectName: entry.projectName || entry.id,
   sourceLang: entry.sourceLang || "amy",
   tags: generatedExampleById.get(entry.id)?.tags || entry.tags || [],
+  originKind: generatedExampleById.get(entry.id)?.originKind || "",
+  originLabel: generatedExampleById.get(entry.id)?.originLabel || "",
   ...(entry.memoryProfile ? { memoryProfile: entry.memoryProfile } : {}),
   ...(entry.buildTarget ? { buildTarget: { ...entry.buildTarget } } : {}),
   ...(entry.funFact ? { funFact: entry.funFact } : {}),
@@ -186,6 +188,7 @@ export const exampleManifest = exampleCatalog.map((example) => {
     ...(example.buildTarget ? { buildTarget: { ...example.buildTarget } } : {}),
     editorialTrack: example.editorialTrack,
     category,
-    tags
+    tags,
+    ...(example.originKind ? { originKind: example.originKind, originLabel: example.originLabel } : {})
   };
 });

@@ -9,19 +9,36 @@ export function createExamplePickerHelpers({
   getExampleSearchFilter
 }) {
   function getExampleTagOrder() {
-    return [...new Set(exampleManifest.flatMap((item) => item.tags || []))].sort((a, b) => a.localeCompare(b));
+    const originOrder = [
+      "faithful-adaptation",
+      "expanded-adaptation",
+      "reimagined-adaptation",
+      "inspired",
+      "original",
+      "adaptation-collection"
+    ];
+    const presentOrigins = new Set(exampleManifest.map((item) => item.originKind).filter(Boolean));
+    const originFilters = originOrder.filter((kind) => presentOrigins.has(kind)).map((kind) => `origin:${kind}`);
+    const tags = [...new Set(exampleManifest.flatMap((item) => item.tags || []))].sort((a, b) => a.localeCompare(b));
+    return [...originFilters, ...tags];
   }
 
   function getFilteredExampleManifest() {
     const search = getExampleSearchFilter().trim().toLowerCase();
     return exampleManifest.filter((item) => {
       const categoryOk = !getExampleCategoryFilter() || getExampleCategoryFilter() === "all" || item.category === getExampleCategoryFilter();
-      const tagOk = !getExampleTagFilter() || getExampleTagFilter() === "all" || (item.tags || []).includes(getExampleTagFilter());
+      const selectedTag = getExampleTagFilter();
+      const tagOk = !selectedTag || selectedTag === "all" || (
+        selectedTag.startsWith("origin:")
+          ? item.originKind === selectedTag.slice("origin:".length)
+          : (item.tags || []).includes(selectedTag)
+      );
       const searchOk = !search || [
         item.label,
         item.detail,
         item.category,
         item.projectName,
+        item.originLabel,
         ...(item.tags || [])
       ].some((value) => String(value || "").toLowerCase().includes(search));
       return categoryOk && tagOk && searchOk;
@@ -41,13 +58,14 @@ export function createExamplePickerHelpers({
     }
     els.exampleDetail.textContent = meta.detail || "Load a built-in demo.";
     const parts = [`Category: ${meta.category}`];
+    if (meta.originLabel) parts.push(`Origin: ${meta.originLabel}`);
     if (meta.benchmark) parts.push("Benchmark: ROM/RAM panel");
     if (meta.tags?.length) parts.push(`Tags: ${meta.tags.join(", ")}`);
     if (meta.selectedLibs?.length) parts.push(`Libs: ${getManifestLabels("libs", meta.selectedLibs).join(", ")}`);
     if (meta.selectedBundles?.length) parts.push(`Bundles: ${getManifestLabels("bundles", meta.selectedBundles).join(", ")}`);
     els.exampleMeta.textContent = parts.join(" | ");
     if (els.currentExampleSummary) {
-      els.currentExampleSummary.textContent = `${meta.label} | ${meta.category}${meta.benchmark ? " | benchmark" : ""}`;
+      els.currentExampleSummary.textContent = `${meta.label} | ${meta.category}${meta.originLabel ? ` | ${meta.originLabel}` : ""}${meta.benchmark ? " | benchmark" : ""}`;
     }
   }
 

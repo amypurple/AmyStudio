@@ -465,7 +465,15 @@ function refreshExampleBrowserUi() {
     for (const tag of tags) {
       const option = document.createElement("option");
       option.value = tag;
-      option.textContent = tag === "all" ? "All tags" : `Tag: ${tag}`;
+      if (tag === "all") {
+        option.textContent = "All tags and origins";
+      } else if (tag.startsWith("origin:")) {
+        const originKind = tag.slice("origin:".length);
+        const originLabel = exampleManifest.find((item) => item.originKind === originKind)?.originLabel || originKind;
+        option.textContent = `Origin: ${originLabel}`;
+      } else {
+        option.textContent = `Tag: ${tag}`;
+      }
       if (tag === exampleTagFilter) option.selected = true;
       els.exampleTagSelect.appendChild(option);
     }

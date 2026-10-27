@@ -27,6 +27,15 @@ const exampleEditorialTracks = {
   CVBASIC_PORT: "cvbasic-port"
 };
 
+const exampleOriginLabels = {
+  "faithful-adaptation": "Faithful adaptation",
+  "expanded-adaptation": "Adaptation + expanded AI",
+  "reimagined-adaptation": "Reimagined adaptation",
+  inspired: "Inspired work",
+  original: "Original",
+  "adaptation-collection": "Original collection of adaptations"
+};
+
 const legacyCompatExampleIds = new Set([
   "text-screen-demo",
   "amy-qbasic-flow-demo",
@@ -87,6 +96,17 @@ function collectSourceTags(id) {
   return fs.readFileSync(sourcePath, "utf8").includes("COMPUTE!") ? ["compute!"] : [];
 }
 
+function classifyOrigin(entry, tags) {
+  if (entry.originKind) return entry.originKind;
+  if (tags.includes("inspired")) return "inspired";
+  if (tags.includes("reinterpretation")) return "reimagined-adaptation";
+  if (tags.includes("adaptation") || tags.includes("port") || tags.includes("cvbasic-port")) {
+    return "faithful-adaptation";
+  }
+  if (tags.includes("original") && !tags.includes("book") && !tags.includes("compute!")) return "original";
+  return "";
+}
+
 const index = JSON.parse(fs.readFileSync(examplesIndexPath, "utf8"));
 const manifest = index.map((entry) => {
   const item = {
@@ -105,6 +125,13 @@ const manifest = index.map((entry) => {
     ...declaredTags.map((tag) => tag === "compute" ? "compute!" : tag),
     ...collectSourceTags(item.id)
   ])];
+  item.originKind = classifyOrigin(entry, item.tags);
+  if (item.originKind) {
+    item.originLabel = exampleOriginLabels[item.originKind];
+    if (!item.originLabel) throw new Error(`Unknown originKind '${item.originKind}' for ${item.id}`);
+  } else {
+    delete item.originKind;
+  }
   return item;
 });
 
@@ -116,6 +143,9 @@ const output = `// Generated lightweight examples directory. Do not add sourceTe
 
 ` +
   `export const exampleEditorialTracks = ${JSON.stringify(exampleEditorialTracks, null, 2)};
+
+` +
+  `export const exampleOriginLabels = ${JSON.stringify(exampleOriginLabels, null, 2)};
 
 ` +
   `export const exampleManifest = ${JSON.stringify(manifest, null, 2)};

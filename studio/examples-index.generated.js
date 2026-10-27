@@ -19,6 +19,15 @@ export const exampleEditorialTracks = {
   "CVBASIC_PORT": "cvbasic-port"
 };
 
+export const exampleOriginLabels = {
+  "faithful-adaptation": "Faithful adaptation",
+  "expanded-adaptation": "Adaptation + expanded AI",
+  "reimagined-adaptation": "Reimagined adaptation",
+  "inspired": "Inspired work",
+  "original": "Original",
+  "adaptation-collection": "Original collection of adaptations"
+};
+
 export const exampleManifest = [
   {
     "id": "amy-chess",
@@ -642,7 +651,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-face-joystick-port",
@@ -657,7 +668,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-test3-port",
@@ -673,7 +686,9 @@ export const exampleManifest = [
       "port",
       "selftest",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-test1-port",
@@ -689,7 +704,9 @@ export const exampleManifest = [
       "port",
       "selftest",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-controller-port",
@@ -704,7 +721,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-vramcopy-port",
@@ -719,7 +738,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-spinner-port",
@@ -734,7 +755,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-plot-port",
@@ -749,7 +772,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-plot-live-port",
@@ -764,7 +789,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-vector-cube-port",
@@ -779,7 +806,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "cvbasic-demo-port",
@@ -794,7 +823,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "amy-float-ahl-benchmark",
@@ -967,7 +998,9 @@ export const exampleManifest = [
       "cvbasic",
       "port",
       "cvbasic-port"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "tile-collision-maze",
@@ -1294,7 +1327,9 @@ export const exampleManifest = [
       "game",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "gold-miner",
@@ -1311,7 +1346,9 @@ export const exampleManifest = [
       "game",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "first-math",
@@ -1328,7 +1365,9 @@ export const exampleManifest = [
       "educational",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "southern-states",
@@ -1346,7 +1385,9 @@ export const exampleManifest = [
       "educational",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "diamond-drop",
@@ -1364,7 +1405,9 @@ export const exampleManifest = [
       "sprites",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "mystery-spell",
@@ -1382,7 +1425,9 @@ export const exampleManifest = [
       "educational",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "runway-180",
@@ -1400,7 +1445,9 @@ export const exampleManifest = [
       "sprites",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "crazy-climber",
@@ -1419,7 +1466,9 @@ export const exampleManifest = [
       "voxpcm",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "get-the-gold",
@@ -1437,7 +1486,9 @@ export const exampleManifest = [
       "adam",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "balloon-crazy",
@@ -1455,7 +1506,9 @@ export const exampleManifest = [
       "sprites",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "beethoven-medley",
@@ -1473,7 +1526,9 @@ export const exampleManifest = [
       "graphics",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "blueberries",
@@ -1491,7 +1546,9 @@ export const exampleManifest = [
       "controllers",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "pests",
@@ -1510,7 +1567,9 @@ export const exampleManifest = [
       "music",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "spiders",
@@ -1530,7 +1589,9 @@ export const exampleManifest = [
       "music",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "bunny-hop",
@@ -1549,7 +1610,9 @@ export const exampleManifest = [
       "sprites",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "jackpot",
@@ -1568,7 +1631,9 @@ export const exampleManifest = [
       "keypad",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "devastator",
@@ -1587,7 +1652,9 @@ export const exampleManifest = [
       "fixed-point",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "olympiad",
@@ -1608,7 +1675,9 @@ export const exampleManifest = [
       "music",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "pentominos",
@@ -1627,7 +1696,9 @@ export const exampleManifest = [
       "music",
       "manual-canon",
       "compute!"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "amy-runtime-input-expression-test",
@@ -1886,7 +1957,9 @@ export const exampleManifest = [
       "scrolling",
       "graphics",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "strategy-puzzles",
@@ -1904,7 +1977,9 @@ export const exampleManifest = [
       "puzzle",
       "strategy",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "ti-mozart",
@@ -2048,7 +2123,9 @@ export const exampleManifest = [
       "sprites",
       "experimental",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "slime-creatures-3d",
@@ -2069,7 +2146,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "pitdemons",
@@ -2089,7 +2168,9 @@ export const exampleManifest = [
       "music",
       "zx0",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "caverns",
@@ -2109,7 +2190,9 @@ export const exampleManifest = [
       "music",
       "zx0",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "dungeon-shadows",
@@ -2149,7 +2232,9 @@ export const exampleManifest = [
       "experimental",
       "to-be-improved",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "timelost-rockfall",
@@ -2169,7 +2254,9 @@ export const exampleManifest = [
       "experimental",
       "to-be-improved",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "biker-dave",
@@ -2189,7 +2276,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "laser-strike-battleship",
@@ -2208,7 +2297,9 @@ export const exampleManifest = [
       "strategy",
       "voice",
       "voxpcm"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "treasure-diver",
@@ -2228,7 +2319,9 @@ export const exampleManifest = [
       "sprites",
       "sharks",
       "air"
-    ]
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   },
   {
     "id": "treasure-diver-ocean-expedition",
@@ -2247,7 +2340,9 @@ export const exampleManifest = [
       "game",
       "underwater",
       "sprites"
-    ]
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   },
   {
     "id": "chain-reaction",
@@ -2265,7 +2360,9 @@ export const exampleManifest = [
       "game",
       "strategy",
       "chain-reaction"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "darkhouse",
@@ -2285,7 +2382,9 @@ export const exampleManifest = [
       "3d",
       "stealth",
       "voice"
-    ]
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   },
   {
     "id": "santas-sleigh-run",
@@ -2306,7 +2405,9 @@ export const exampleManifest = [
       "high-score",
       "multi-stage",
       "manual-canon"
-    ]
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   },
   {
     "id": "deep-chambers",
@@ -2327,7 +2428,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   },
   {
     "id": "laser-chess",
@@ -2347,7 +2450,9 @@ export const exampleManifest = [
       "laser",
       "computer-player",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "climber-5",
@@ -2368,7 +2473,9 @@ export const exampleManifest = [
       "voice",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "party-in-willow-hollow",
@@ -2389,7 +2496,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   },
   {
     "id": "monte-carlo",
@@ -2409,7 +2518,9 @@ export const exampleManifest = [
       "solitaire",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "marbles",
@@ -2430,7 +2541,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "the-hermit",
@@ -2451,7 +2564,9 @@ export const exampleManifest = [
       "graphics",
       "zx0",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "leaping-larry",
@@ -2472,7 +2587,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "canfield",
@@ -2492,7 +2609,9 @@ export const exampleManifest = [
       "solitaire",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "tiles",
@@ -2513,7 +2632,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "blackjack",
@@ -2534,7 +2655,9 @@ export const exampleManifest = [
       "casino",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "galacticon",
@@ -2555,7 +2678,9 @@ export const exampleManifest = [
       "sprites",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "boardgames",
@@ -2577,7 +2702,9 @@ export const exampleManifest = [
       "awari",
       "mancala",
       "collection"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "more-board-games",
@@ -2598,7 +2725,9 @@ export const exampleManifest = [
       "gomoku",
       "knightsbridge",
       "collection"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "awari",
@@ -2619,7 +2748,9 @@ export const exampleManifest = [
       "mancala",
       "computer-player",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "shogun",
@@ -2639,7 +2770,9 @@ export const exampleManifest = [
       "shogun",
       "computer-player",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "gomoku",
@@ -2659,7 +2792,9 @@ export const exampleManifest = [
       "gomoku",
       "computer-player",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "knightsbridge",
@@ -2679,7 +2814,9 @@ export const exampleManifest = [
       "knights",
       "strategy",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "four-in-a-row",
@@ -2699,7 +2836,9 @@ export const exampleManifest = [
       "four-in-a-row",
       "computer-player",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "robot-minefield",
@@ -2719,7 +2858,9 @@ export const exampleManifest = [
       "robots",
       "strategy",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "tutankhamens-tomb",
@@ -2739,7 +2880,9 @@ export const exampleManifest = [
       "3d",
       "puzzle",
       "sound"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "duke-of-dragonfear",
@@ -2759,7 +2902,9 @@ export const exampleManifest = [
       "exploration",
       "dragons",
       "strategy"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "moonlander",
@@ -2779,7 +2924,9 @@ export const exampleManifest = [
       "space",
       "lander",
       "realtime"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "stronghold",
@@ -2800,7 +2947,9 @@ export const exampleManifest = [
       "exploration",
       "music",
       "manual-canon"
-    ]
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   },
   {
     "id": "3d-super-plotter",
@@ -2820,7 +2969,9 @@ export const exampleManifest = [
       "mathematics",
       "graphics",
       "manual-canon"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "hyperwar",
@@ -2840,7 +2991,9 @@ export const exampleManifest = [
       "strategy",
       "simulation",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "avalanche",
@@ -2860,7 +3013,9 @@ export const exampleManifest = [
       "simulation",
       "alpine",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "avalanche-run",
@@ -2880,7 +3035,9 @@ export const exampleManifest = [
       "3d",
       "skiing",
       "music"
-    ]
+    ],
+    "originKind": "inspired",
+    "originLabel": "Inspired work"
   },
   {
     "id": "microchip-golf",
@@ -2900,7 +3057,9 @@ export const exampleManifest = [
       "golf",
       "3d",
       "music"
-    ]
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   },
   {
     "id": "las-vegas-high",
@@ -2920,7 +3079,9 @@ export const exampleManifest = [
       "slots",
       "chance",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "roulette",
@@ -2940,7 +3101,9 @@ export const exampleManifest = [
       "roulette",
       "chance",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "dice-hall",
@@ -2960,7 +3123,9 @@ export const exampleManifest = [
       "dice",
       "casino",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "dice-duels",
@@ -2980,7 +3145,9 @@ export const exampleManifest = [
       "dice",
       "computer-player",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "card-parlour",
@@ -3000,7 +3167,9 @@ export const exampleManifest = [
       "cards",
       "fortune",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "brain-games-1",
@@ -3020,7 +3189,9 @@ export const exampleManifest = [
       "puzzle",
       "logic",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "brain-games-2",
@@ -3040,7 +3211,9 @@ export const exampleManifest = [
       "puzzle",
       "logic",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "just-for-fun",
@@ -3060,7 +3233,9 @@ export const exampleManifest = [
       "puzzle",
       "strategy",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "thinking-machines",
@@ -3080,7 +3255,9 @@ export const exampleManifest = [
       "ai",
       "cards",
       "text"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "stars-and-signs",
@@ -3100,7 +3277,9 @@ export const exampleManifest = [
       "life",
       "text",
       "graphics"
-    ]
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   },
   {
     "id": "cavern-shadow-thieves",
@@ -3120,7 +3299,9 @@ export const exampleManifest = [
       "caverns",
       "procedural",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "bannochburn-legacy",
@@ -3140,7 +3321,9 @@ export const exampleManifest = [
       "castle",
       "combat",
       "music"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "simulations",
@@ -3160,7 +3343,9 @@ export const exampleManifest = [
       "simulation",
       "management",
       "strategy"
-    ]
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   },
   {
     "id": "casino",
@@ -3181,7 +3366,9 @@ export const exampleManifest = [
       "casino",
       "cards",
       "dice"
-    ]
+    ],
+    "originKind": "adaptation-collection",
+    "originLabel": "Original collection of adaptations"
   },
   {
     "id": "lamplighter",
@@ -3202,6 +3389,8 @@ export const exampleManifest = [
       "music",
       "ai-assisted",
       "compute!"
-    ]
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   }
 ];
