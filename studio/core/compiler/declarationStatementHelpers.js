@@ -161,7 +161,7 @@ export function handleDeclarationStatement({
     if (nameError) return { handled: true, ok: false, log: nameError };
     if (!isSafeExpression(expr)) return { handled: true, ok: false, log: `Invalid constant declaration: ${rawLine}` };
     state.symbols.add(name);
-    state.compileTimeConstants?.set(name, expr);
+    state.compileTimeConstants?.set(String(name).toLowerCase(), expr);
     const asmName = ensureConstAsmSymbol(name);
     const fixedValue = /^-?[0-9]+\.[0-9]+$/.test(expr) ? parseFixedPointLiteral(expr) : null;
     const asmExpr = fixedValue === null

@@ -1503,7 +1503,11 @@ export function transpileAmyCore(sourceText, deps) {
     declarations.push(`AMY_SPRITE_STABLE_LAST EQU ${stableRange.last}`);
   }
   const symbols = new Set();
-  const compileTimeConstants = new Map();
+  // Seed constants found by the declaration pre-scan so executable statements
+  // may safely use numeric constants declared later in the source.
+  const compileTimeConstants = new Map(
+    [...earlyCompileTimeConstants].map(([name, value]) => [lowerName(name), String(value)])
+  );
   const runtimeVars = new Map();
   const recordTypes = new Map();
   const recordDefinitionLineNumbers = new Set();
@@ -2636,7 +2640,7 @@ export function transpileAmyCore(sourceText, deps) {
         if (nameError) return nameError;
         if (!isSafeExpression(expr)) return `Invalid enum value declaration: ${enumRaw}`;
         symbols.add(name);
-        compileTimeConstants.set(name, expr);
+        compileTimeConstants.set(lowerName(name), expr);
         declarations.push(`${ensureConstAsmSymbol(name)} EQU ${rewriteUserSymbolsInExpression(expr)}`);
         const numericValue = tryEvaluateCompileTimeNumericExpression(expr);
         nextValueExpr = Number.isInteger(numericValue) ? String(numericValue + 1) : `(${expr}) + 1`;
@@ -3372,11 +3376,12 @@ export function transpileAmyCore(sourceText, deps) {
     const identifiers = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
     let expanded = normalized;
     for (const ident of identifiers) {
-      if (!compileTimeConstants.has(ident)) return null;
-      if (seen.has(lowerName(ident))) return null;
+      const constantKey = lowerName(ident);
+      if (!compileTimeConstants.has(constantKey)) return null;
+      if (seen.has(constantKey)) return null;
       const nestedSeen = new Set(seen);
-      nestedSeen.add(lowerName(ident));
-      const resolved = tryEvaluateCompileTimeNumericExpression(compileTimeConstants.get(ident), nestedSeen);
+      nestedSeen.add(constantKey);
+      const resolved = tryEvaluateCompileTimeNumericExpression(compileTimeConstants.get(constantKey), nestedSeen);
       if (resolved === null) return null;
       const escapedIdent = ident.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       expanded = expanded.replace(new RegExp(`\\b${escapedIdent}\\b`, "g"), String(resolved));

@@ -21,6 +21,16 @@ copy Tbl count 300 to vram.pattern
 data Tbl bytes = 1, 2, 3
 screen on
 `;
+const forwardSource = `tile screen
+copy Tbl count N to vram.pattern
+copy Tbl count VIEW_N1 to vram.color
+copy Tbl count BYTE_MAX to vram.name
+const N = 360
+const VIEW_N1 = N + 664
+const BYTE_MAX = 255
+data Tbl bytes = 1, 2, 3
+screen on
+`;
 
 try {
   await writeFile(sourcePath, source);
@@ -36,6 +46,17 @@ try {
     assert.match(asm, /ld bc,AMY_UCONST_VIEW_N1\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: 1024 should preserve both bytes`);
     assert.match(asm, /ld bc,300\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: literal and named counts should use the same path`);
     assert.doesNotMatch(asm, /ld a,AMY_UCONST_(?:WORD_MIN|N|VIEW_N1)/i, `${profile}: wide constants must not be truncated through A`);
+
+    const forwardPath = join(directory, `forward-${profile}.alexis`);
+    const forwardAsmPath = join(directory, `forward-${profile}.asm`);
+    const forwardRomPath = join(directory, `forward-${profile}.rom`);
+    await writeFile(forwardPath, forwardSource);
+    await run(["tools/amyc.mjs", forwardPath, "--asm", forwardAsmPath, "--rom", forwardRomPath, "--opt", profile]);
+    const forwardAsm = await readFile(forwardAsmPath, "utf8");
+    assert.match(forwardAsm, /ld bc,AMY_UCONST_N\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: forward 360 count should use the wide wrapper`);
+    assert.match(forwardAsm, /ld bc,AMY_UCONST_VIEW_N1\s+call AMY_COPY_BYTES_TO_VRAM/i, `${profile}: forward constant expression should preserve 1024`);
+    assert.match(forwardAsm, /ld bc,AMY_UCONST_BYTE_MAX\s+call WRITE_VRAM/i, `${profile}: forward 255 count should keep the byte-sized path`);
+    assert.doesNotMatch(forwardAsm, /ld a,AMY_UCONST_(?:N|VIEW_N1)/i, `${profile}: forward wide constants must not be truncated through A`);
   }
   console.log("Named constant copy counts: PASS");
 } finally {
