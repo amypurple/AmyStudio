@@ -1065,6 +1065,33 @@ export function createExpressionComputeHelpers({
           : isAnyFixedDeclaredType(rightDeclaredType)
             ? normalizeDeclaredType(rightDeclaredType)
             : resolveDeclaredValueType(renderExpressionAst(node));
+      if (!isAnyFixedDeclaredType(arithmeticContext)) {
+        const leftValue = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.left));
+        const rightValue = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.right));
+        let valueNode = null;
+        let delta = null;
+        let maxSteps = 0;
+        if (node.op === "+" && Number.isInteger(rightValue)) {
+          valueNode = node.left;
+          delta = rightValue;
+          maxSteps = 3;
+        } else if (node.op === "+" && Number.isInteger(leftValue)) {
+          valueNode = node.right;
+          delta = leftValue;
+          maxSteps = 3;
+        } else if (node.op === "-" && Number.isInteger(rightValue)) {
+          valueNode = node.left;
+          delta = -rightValue;
+          maxSteps = 5;
+        }
+        if (valueNode && Number.isInteger(delta) && delta !== 0 && Math.abs(delta) <= maxSteps) {
+          const loadValue = emitLoadInt16AstIntoHL(valueNode, arithmeticContext);
+          if (loadValue) {
+            const instruction = delta > 0 ? "    inc hl" : "    dec hl";
+            return [...loadValue, ...Array.from({ length: Math.abs(delta) }, () => instruction)];
+          }
+        }
+      }
       const loadLeft = emitLoadInt16AstIntoHL(node.left, arithmeticContext);
       const loadRight = emitLoadInt16AstIntoHL(node.right, arithmeticContext);
       if (!loadLeft || !loadRight) return null;
