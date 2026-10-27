@@ -1,0 +1,2489 @@
+' AVALANCHE RUN
+' A first-person downhill race for the ColecoVision, in Amy, by Amy Bienvenu.
+' Inspired by AVALANCHE in Tim Hartnell's Giant Book of Computer Games
+' (Ballantine Books, 1984; Interface Publications, 1983), where the mayor
+' of an alpine village prepares for the avalanches. Here the avalanche has
+' already broken loose above you: ski down ahead of it and warn the
+' village before it buries you.
+'
+' Three stages, each a run down to a village. The snow rushes toward you
+' in perspective; the piste bends left and right between walls of forest.
+' Trees and rocks on the piste throw you over if you hit them; skiing
+' between a pair of flags (a gate) scores and gives a little speed. The
+' avalanche is behind you: its rumble grows as it gains, and the gauge
+' shows how far back it is. Slow down too much, fall too often, and it
+' catches you. Reach the third village to win.
+'
+' Controls (either joystick): left and right steer; up tucks (faster);
+' down snowploughs (slower). Either button starts and goes through the
+' pages. Keypad not used.
+'
+' What is not from the book: everything but the theme. The book's game is
+' a turn-by-turn budget for the mayor; this is a new action game on the
+' same mountain, and it names its inspiration on the credits page.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the ground and
+' mountains run to the edges, as pictures); six sprites in all, the two ski
+' tips (rows 21-23 only) and four objects; the frame loop is protected from
+' the NMI, and every screen is drawn with the NMI off after a wait.
+'
+' How the picture works: rows 8-23 are the ground. Each row uses its own
+' four tiles (snow, forest, left edge, right edge) in its third of the
+' screen. The four share one colour per pixel line, forest in front and
+' snow behind, so one 32-byte copy recolours a row. Every frame each pixel
+' line takes its depth from a table, adds the distance run, and turns grey
+' or white: the snow bands rush toward you. Every frame each row also gets
+' its forest edges from the player's place, the piste's width and the
+' curve (which reaches further at a distance); they move in half tiles.
+
+const TSky = 128
+const TCloud00 = 129
+const TCloud01 = 130
+const TCloud02 = 131
+const TMtn00 = 132
+const TMtn01 = 133
+const TMtn02 = 134
+const TMtn03 = 135
+const TMtn04 = 136
+const TMtn05 = 137
+const TMtn06 = 138
+const TMtn07 = 139
+const TMtn08 = 140
+const TMtn09 = 141
+const TMtn010 = 142
+const TMtn011 = 143
+const TMtn012 = 144
+const TMtn013 = 145
+const TMtn014 = 146
+const TMtn015 = 147
+const TMtn10 = 148
+const TMtn11 = 149
+const TMtn12 = 150
+const TMtn13 = 151
+const TMtn14 = 152
+const TMtn15 = 153
+const TMtn16 = 154
+const TMtn17 = 155
+const TMtn18 = 156
+const TMtn19 = 157
+const TMtn110 = 158
+const TMtn111 = 159
+const TMtn112 = 160
+const TMtn113 = 161
+const TMtn114 = 162
+const TMtn115 = 163
+const TMtn20 = 164
+const TMtn21 = 165
+const TMtn22 = 166
+const TMtn23 = 167
+const TMtn24 = 168
+const TMtn25 = 169
+const TMtn26 = 170
+const TMtn27 = 171
+const TMtn28 = 172
+const TMtn29 = 173
+const TMtn210 = 174
+const TMtn211 = 175
+const TMtn212 = 176
+const TMtn213 = 177
+const TMtn214 = 178
+const TMtn215 = 179
+const TBrow = 180
+const TBarfull = 181
+const TBarhot = 182
+const TBarnone = 183
+const THouse = 184
+const TBlank = 185
+const TWhite = 186
+const SSkia = 0
+const SSkib = 4
+const SSkila = 8
+const SSkilb = 12
+const SSkira = 16
+const SSkirb = 20
+const SSkixa = 24
+const SSkixb = 28
+const STree0 = 32
+const STree1 = 36
+const STree2 = 40
+const STree3 = 44
+const STree4 = 48
+const STree5 = 52
+const STree6 = 56
+const STree7 = 60
+const SRock0 = 64
+const SRock1 = 68
+const SRock2 = 72
+const SRock3 = 76
+const SRock4 = 80
+const SRock5 = 84
+const SRock6 = 88
+const SRock7 = 92
+const SFlag0 = 96
+const SFlag1 = 100
+const SFlag2 = 104
+const SFlag3 = 108
+const SFlag4 = 112
+const SFlag5 = 116
+const SFlag6 = 120
+const SFlag7 = 124
+const SChalet0 = 128
+const SChalet1 = 132
+const SChalet2 = 136
+const SChalet3 = 140
+const SChalet4 = 144
+const SChalet5 = 148
+const SChalet6 = 152
+const SChalet7 = 156
+const SSpray = 160
+const SRocket = 164
+const SBurst0 = 168
+const SBurst1 = 172
+const SBurst2 = 176
+const SBurst3 = 180
+const NTiles8 = 472
+const SprBytes = 1472
+const SndRumbleFar = 1
+const SndRumbleNear = 2
+const SndRumbleHere = 3
+const SndCrash = 4
+const SndBuried = 5
+const SndClick = 6
+const SndGate = 7
+const SndMiss = 8
+const SndSwish = 9
+const SndLaunch = 10
+const SndPop = 11
+const SndVillage = 12
+const SndTuneA = 13
+const SndTuneB = 14
+
+const GBase = 208
+const KTree = 1
+const KRock = 2
+const KFlagL = 3
+const KFlagR = 4
+const KChalet = 5
+
+data Gnd1Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$80,$C1,$08,$1C,$00,$20,$72
+  $00,$80,$C0,$00,$10,$00,$20,$70,$07,$00,$01,$08,$0C,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$80,$C1,$08,$1C,$00,$20,$72
+  $00,$80,$C0,$00,$10,$00,$20,$70,$07,$00,$01,$08,$0C,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$80,$C1,$08,$1C,$00,$20,$72
+  $00,$80,$C0,$00,$10,$00,$20,$70,$07,$00,$01,$08,$0C,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$87,$C1,$C9,$1C,$1C,$20,$72
+  $70,$80,$C0,$C0,$10,$10,$20,$70,$07,$07,$01,$09,$0C,$0C,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$87,$C1,$C9,$1C,$1C,$20,$72
+  $70,$80,$C0,$C0,$10,$10,$20,$70,$07,$07,$01,$09,$0C,$0C,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$87,$C1,$C9,$1C,$1C,$20,$72
+  $70,$80,$C0,$C0,$10,$10,$20,$70,$07,$07,$01,$09,$0C,$0C,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$E0,$F5,$0E,$0E,$1F
+  $00,$40,$E0,$E0,$F0,$00,$00,$10,$00,$00,$00,$00,$05,$0E,$0E,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$E0,$F5,$0E,$0E,$1F
+  $00,$40,$E0,$E0,$F0,$00,$00,$10,$00,$00,$00,$00,$05,$0E,$0E,$0F
+end data
+data Gnd2Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$E0,$F5,$0E,$0E,$1F
+  $00,$40,$E0,$E0,$F0,$00,$00,$10,$00,$00,$00,$00,$05,$0E,$0E,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$00,$00,$00
+  $10,$30,$30,$70,$70,$00,$00,$00,$00,$08,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$00,$00,$00
+  $10,$30,$30,$70,$70,$00,$00,$00,$00,$08,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$00,$00,$00
+  $10,$30,$30,$70,$70,$00,$00,$00,$00,$08,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$00,$00
+  $10,$30,$30,$70,$70,$F0,$00,$00,$00,$08,$08,$0C,$0C,$0E,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$00,$00
+  $10,$30,$30,$70,$70,$F0,$00,$00,$00,$08,$08,$0C,$0C,$0E,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$FE,$00
+  $10,$30,$30,$70,$70,$F0,$F0,$00,$00,$08,$08,$0C,$0C,$0E,$0E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$FE,$00
+  $10,$30,$30,$70,$70,$F0,$F0,$00,$00,$08,$08,$0C,$0C,$0E,$0E,$00
+end data
+data MtnRow0 bytes
+  $84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93
+  $84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93
+  $84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93
+end data
+data MtnRow1 bytes
+  $94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3
+  $94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3
+  $94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3
+end data
+data MtnRow2 bytes
+  $A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3
+  $A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3
+  $A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3
+end data
+data YofZ bytes
+  $C8,$C8,$C8,$C8,$C8,$C8,$C8,$B6,$A8,$9C,$93,$8B,$85,$80,$7B,$77
+  $74,$70,$6E,$6B,$69,$67,$65,$64,$62,$61,$60,$5E,$5D,$5C,$5B,$5A
+  $5A,$59,$58,$57,$57,$56,$55,$55,$54,$54,$53,$53,$52,$52,$52,$51
+  $51,$50,$50,$50,$50,$4F,$4F,$4F,$4E,$4E,$4E,$4E,$4D,$4D,$4D,$4D
+  $4C,$4C,$4C,$4C,$4C,$4C,$4B,$4B,$4B,$4B,$4B,$4B,$4A,$4A,$4A,$4A
+  $4A,$4A,$4A,$4A,$49,$49,$49,$49,$49,$49,$49,$49,$49,$48,$48,$48
+  $48,$48,$48,$48,$48,$48,$48,$48,$48,$47,$47,$47,$47,$47,$47,$47
+  $47,$47,$47,$47,$47,$47,$47,$46,$46,$46,$46,$46,$46,$46,$46,$46
+end data
+data SizeOfZ bytes
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$06,$06,$06,$05,$05,$05,$04
+  $04,$04,$04,$03,$03,$03,$03,$03,$03,$03,$02,$02,$02,$02,$02,$02
+  $02,$02,$02,$02,$02,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+data InvZ bytes
+  $9A,$9A,$9A,$9A,$9A,$9A,$80,$6E,$60,$55,$4D,$46,$40,$3B,$37,$33
+  $30,$2D,$2B,$28,$26,$25,$23,$21,$20,$1F,$1E,$1C,$1B,$1A,$1A,$19
+  $18,$17,$17,$16,$15,$15,$14,$14,$13,$13,$12,$12,$11,$11,$11,$10
+  $10,$10,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$0D,$0D,$0D,$0D,$0D,$0C,$0C
+  $0C,$0C,$0C,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$08,$08,$08,$08,$08
+  $08,$08,$08,$08,$08,$08,$08,$07,$07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$07,$07,$06,$06,$06,$06,$06,$06,$06,$06,$06
+end data
+data CurveZ bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$02,$02,$02,$02,$02,$03,$03,$03,$03
+  $04,$04,$04,$04,$05,$05,$05,$05,$06,$06,$06,$07,$07,$07,$08,$08
+  $09,$09,$09,$0A,$0A,$0A,$0B,$0B,$0C,$0C,$0D,$0D,$0E,$0E,$0F,$0F
+  $10,$10,$11,$11,$12,$12,$13,$13,$14,$14,$15,$15,$16,$17,$17,$18
+  $19,$19,$1A,$1A,$1B,$1C,$1C,$1D,$1E,$1E,$1F,$20,$21,$21,$22,$23
+  $24,$24,$25,$26,$27,$27,$28,$29,$2A,$2B,$2B,$2C,$2D,$2E,$2F,$30
+  $31,$31,$32,$33,$34,$35,$36,$37,$38,$39,$3A,$3B,$3C,$3D,$3E,$3F
+end data
+data InvRow bytes
+  $04,$0C,$13,$1A,$22,$29,$30,$38,$3F,$47,$4E,$55,$5D,$64,$6C,$73
+end data
+data KRow bytes
+  $FF,$68,$3D,$2B,$23,$1C,$18,$15,$12,$10,$0F,$0D,$0C,$0B,$0B,$0A
+end data
+data LineTab bytes
+  $00,$34,$00,$00,$1A,$00,$55,$11,$00,$00,$0D,$00,$66,$0A,$00
+  $AB,$08,$00,$6E,$07,$00,$80,$06,$00,$C7,$05,$00,$33,$05,$00
+  $BA,$04,$00,$55,$04,$02,$00,$04,$02,$B7,$03,$02,$77,$03,$02
+  $40,$03,$02,$0F,$03,$02,$E4,$02,$02,$BD,$02,$02,$9A,$02,$02
+  $7A,$02,$02,$5D,$02,$02,$43,$02,$02,$2B,$02,$02,$14,$02,$02
+  $00,$02,$02,$ED,$01,$02,$DB,$01,$02,$CB,$01,$02,$BC,$01,$02
+  $AD,$01,$02,$A0,$01,$02,$93,$01,$02,$88,$01,$02,$7C,$01,$01
+  $72,$01,$01,$68,$01,$01,$5E,$01,$01,$55,$01,$01,$4D,$01,$01
+  $45,$01,$01,$3D,$01,$01,$36,$01,$01,$2F,$01,$01,$28,$01,$01
+  $21,$01,$01,$1B,$01,$01,$15,$01,$01,$10,$01,$01,$0A,$01,$01
+  $05,$01,$01,$00,$01,$01,$FB,$00,$01,$F7,$00,$01,$F2,$00,$01
+  $EE,$00,$01,$EA,$00,$01,$E6,$00,$01,$E2,$00,$01,$DE,$00,$01
+  $DA,$00,$01,$D7,$00,$01,$D3,$00,$01,$D0,$00,$01,$CD,$00,$01
+  $CA,$00,$01,$C7,$00,$01,$C4,$00,$01,$C1,$00,$01,$BE,$00,$03
+  $BB,$00,$03,$B9,$00,$03,$B6,$00,$03,$B4,$00,$03,$B1,$00,$03
+  $AF,$00,$03,$AD,$00,$03,$AB,$00,$03,$A9,$00,$03,$A6,$00,$03
+  $A4,$00,$03,$A2,$00,$03,$A0,$00,$03,$9E,$00,$03,$9D,$00,$03
+  $9B,$00,$03,$99,$00,$03,$97,$00,$03,$96,$00,$03,$94,$00,$03
+  $92,$00,$03,$91,$00,$03,$8F,$00,$03,$8E,$00,$03,$8C,$00,$03
+  $8B,$00,$03,$89,$00,$03,$88,$00,$03,$86,$00,$03,$85,$00,$03
+  $84,$00,$03,$83,$00,$03,$81,$00,$03,$80,$00,$03,$7F,$00,$03
+  $7E,$00,$03,$7C,$00,$03,$7B,$00,$03,$7A,$00,$03,$79,$00,$03
+  $78,$00,$03,$77,$00,$03,$76,$00,$03,$75,$00,$03,$74,$00,$03
+  $73,$00,$03,$72,$00,$03,$71,$00,$03,$70,$00,$03,$6F,$00,$03
+  $6E,$00,$03,$6D,$00,$03,$6C,$00,$03,$6B,$00,$03,$6A,$00,$03
+  $6A,$00,$03,$69,$00,$03,$68,$00,$03
+end data
+
+data StageAv bytes 16, 18, 21
+data StageW bytes 100, 84, 70
+data StageGap bytes 30, 24, 20
+data StageCurve bytes 24, 36, 48
+data KindPat bytes 0, STree0, SRock0, SFlag0, SFlag0, SChalet0
+data FwCols bytes 8, 11, 7, 13, 3, 15, 9, 10
+data KindCol bytes 0, 12, 1, 8, 8, 6
+
+' the world
+i16 Px = 0
+i16 Cq = 0
+i16 CqTo = 0
+i16 Wd = 100
+i16 Gap = 0
+i16 Hs = 0
+i16 Dl = 0
+i16 Dr = 0
+i16 Co = 0
+i16 Iv = 0
+i16 Xw = 0
+i16 Tw = 0
+i16 Drift = 0
+i16 Mx = 0
+i16 My = 0
+i16 Mz = 0
+u16 Pos = 0
+u16 Spd = 0
+u16 Tgt = 0
+u16 Dist = 0
+u16 DSub = 0
+u16 StLen = 0
+u16 SpawnAcc = 0
+u16 CurveAcc = 0
+u16 Score = 0
+u16 Best = 0
+u16 Gates = 0
+u16 Missed = 0
+u16 GatesAt = 0
+u16 Fn = 0
+' the fireworks: state (0 idle, 1 rising, 100+ bursting), place, top, colour
+u8 FwT[4]
+u8 FwX[4]
+u8 FwY[4]
+u8 FwTop[4]
+u8 FwC[4]
+u8 FwWait = 0
+u8 FwBusy = 0
+u8 Flash = 0
+u8 Why = 0
+u16 Dz = 0
+u16 Ma = 0
+u16 Mb = 0
+u16 Tm = 0
+u16 OffW = 0
+u16 Addr = 0
+u16 Uw = 0
+u16 NumU = 0
+u16 Rs = $2C51
+u16 Rt = 0
+u8 Rb = 0
+u8 Stage = 0
+u8 AvS = 0
+u8 Cr = 0
+u8 Pose = 0
+u8 OldPose = 0
+u8 Whoosh = 0
+u8 Forest = 0
+u8 ChaletOut = 0
+u8 Done = 0
+u8 Rumble = 0
+u8 RumbleT = 0
+u8 Mo = 255
+u8 HudT = 0
+u8 Late = 0
+u8 Passes = 0
+u8 Gcol = 0
+u8 Oslot = 0
+
+' the four objects: kind, depth x16, lateral place
+u8 OKind[4]
+u8 OCol[4]
+' their sprites: row, column, pattern, colour
+u8 SprY[4]
+u8 SprX[4]
+u8 SprP[4]
+u8 SprC[4]
+u16 OZ[4]
+i16 OX[4]
+' each ground row's edges last drawn, in half tiles
+u8 LhOld[16]
+u8 RhOld[16]
+' one ground row's colours, four tiles of eight lines
+u8 Lb[32]
+' the colours last sent for each ground row's eight lines
+u8 Cache[128]
+u8 StN = 0
+u8 StAll = 0
+u8 StOdd = 0
+u8 StD = 0
+u16 StC = 0
+' the piste's half width on each ground row, in pixels
+u8 WdR[16]
+i16 EC1 = 0
+u8 EOl = 0
+u8 EOr = 0
+u8 ELc = 0
+u8 ELh = 0
+u8 ERc = 0
+u8 ERh = 0
+u8 EGs = 0
+u16 ENam = 0
+i16 EPx = 0
+i16 ECq = 0
+i16 EBase = 0
+
+' scratch, kept to their own subs
+u8 Rk = 0
+u8 Rw = 0
+u8 Ln = 0
+u8 Lj = 0
+u8 J0 = 0
+u8 Cc = 0
+u8 Hl = 0
+u8 Hr = 0
+u8 Lc = 0
+u8 Lh = 0
+u8 Rc = 0
+u8 Rh = 0
+u8 Gs = 0
+u8 Gf = 0
+u8 Gl = 0
+u8 Gr = 0
+u8 Cb = 0
+u8 Nn = 0
+u8 Oi = 0
+u8 Ok = 0
+u8 Zb = 0
+u8 Sv = 0
+u8 Yv = 0
+u8 Sp = 0
+u8 Pt = 0
+u8 Pc = 0
+u8 Xb = 0
+u8 Free = 0
+u8 Sk = 0
+u8 Ty = 0
+u16 Oz0 = 0
+u16 Oz1 = 0
+
+' input and menus
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  ' each third of the screen gets its own colour table (the ground rows
+  ' need their own colours)
+  call asm ArThirds
+  set sound table ArSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  ' a new game
+  Stage = 0
+  Score = 0
+  Gates = 0
+
+stage_start:
+  NewStage
+  SlopeScreen
+  StageIntro
+  Mode = 1
+
+run:
+  ' a steady 30 passes a second: never sooner than two frames
+  ' (ArLate: has the screen started a new frame while this pass worked?)
+  call asm ArLate
+  if Late = 0 then Frame1
+  Frame1
+  inc Passes
+  update sprites
+  Stripes
+  Edges
+  Mountains
+  ' the HUD, one line a pass, every few passes
+  inc HudT
+  if HudT = 3 then HudTop
+  if HudT >= 6 then
+    HudT = 0
+    HudLow
+  end if
+  ReadPad
+  Ride
+  Objects
+  Avalanche
+  Skis
+  if Done = 1 then goto stage_clear
+  if Done = 2 then goto buried
+  goto run
+
+stage_clear:
+  Mode = 0
+  mute all
+  Rumble = 0
+  play sound SndVillage
+  ' the bonus: what is left of the avalanche's gap
+  Uw = Gap
+  Uw = Uw >> 4
+  Score = Score + Uw
+  Hud
+  ClearSky
+  ' a firework for every gate skied on this stage (five more at the end)
+  Fn = Gates - GatesAt
+  if Stage = 2 then Fn = Fn + 5
+  if Fn > 20 then Fn = 20
+  Fireworks
+  inc Stage
+  if Stage = 3 then goto won
+  print at 3,3, "VILLAGE WARNED!  BONUS"
+  NumU = Uw
+  print at 25,3, width$(NumU, 4)
+  print at 3,4, "ON TO THE NEXT ONE..."
+  Pause
+  Pause
+  goto stage_start
+
+won:
+  print at 3,3, "THE LAST VILLAGE IS SAFE:"
+  print at 3,4, "ALL ARE SHELTERED IN TIME!"
+  Pause
+  Pause
+  goto final
+
+buried:
+  Mode = 0
+  mute all
+  Rumble = 0
+  play sound SndBuried
+  Whiteout
+  fill $1F count 1024 to vram.color + 2048
+  print at 7,10, "BURIED BY THE"
+  print at 7,11, "AVALANCHE!"
+  Pause
+  Pause
+
+final:
+  if Score > Best then Best = Score
+  ' the results: in the sky, or on the snow that buried you
+  if Done = 2 then
+    Y = 13
+  else
+    ClearSky
+    Y = 3
+  end if
+  print at 4,Y, "SCORE"
+  NumU = Score
+  print at 10,Y, width$(NumU, 5)
+  print at 17,Y, "BEST"
+  NumU = Best
+  print at 22,Y, width$(NumU, 5)
+  inc Y
+  print at 4,Y, "PRESS A BUTTON"
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+end_wait:
+  Frame1
+  ReadPad
+  if Press = 0 then goto end_wait
+  goto title
+
+' ---------------------------------------------------------------------------
+' The run
+
+sub NewStage:
+  GatesAt = Gates
+  AvS = StageAv[Stage]
+  V = StageW[Stage]
+  Wd = V
+  WidthRows
+  Px = 0
+  Cq = 0
+  CqTo = 0
+  Hs = 0
+  Spd = 6
+  Gap = 2400
+  Dist = 0
+  DSub = 0
+  SpawnAcc = 0
+  CurveAcc = 0
+  ChaletOut = 0
+  Done = 0
+  Cr = 0
+  Pose = 0
+  Forest = 0
+  Rumble = 0
+  StLen = 2400
+  if Stage = 1 then StLen = 2800
+  if Stage = 2 then StLen = 3200
+  for Oi = 0 to 3
+    OKind[Oi] = 0
+  next
+  return
+end sub
+
+' Ride: the player's speed, steering, the curve's pull and the distance
+sub Ride:
+  Pose = 0
+  if Cr > 0 then
+    ' fallen: up again after a while
+    dec Cr
+    Spd = 0
+    Pose = 3
+    if Cr = 0 then Spd = 4
+    goto ride_move
+  end if
+  Tgt = 18
+  if Up1 = 1 then Tgt = 26
+  if Dn1 = 1 then Tgt = 6
+  ' in the forest: deep snow, and the trees are close
+  Forest = 0
+  Tw = Px
+  if Tw < 0 then Tw = 0 - Tw
+  if Tw > Wd then
+    Forest = 1
+    if Tgt > 8 then Tgt = 8
+    Rnd
+    if Rb < 4 then
+      if Spd > 4 then
+        Why = 2
+        Fall
+        return
+      end if
+    end if
+  end if
+  if Spd < Tgt then
+    V = Passes & 1
+    if V = 0 then inc Spd
+  else
+    if Spd > Tgt then
+      dec Spd
+    end if
+  end if
+  ' steering, quicker at speed
+  Uw = Spd >> 3
+  Tw = Uw
+  Tw = Tw + 1
+  if Lf1 = 1 then
+    Px = Px - Tw
+    Pose = 1
+  end if
+  if Rt1 = 1 then
+    Px = Px + Tw
+    Pose = 2
+  end if
+  ' the skis bite as a turn begins
+  if Pose > 0 then
+    if Pose <> OldPose then
+      ' a whoosh of snow (on the noise channel: the rumble waits)
+      play sound SndSwish
+      Whoosh = 12
+      Rumble = 0
+    end if
+  end if
+  OldPose = Pose
+  ' the curve pulls you to its outside
+  Drift = Spd
+  Mx = Drift
+  My = Cq
+  call asm ArMul
+  Drift = Mz
+  Drift = Drift / 512
+  Px = Px - Drift
+  Tw = Wd + 60
+  if Px > Tw then
+    Px = Tw
+  else
+    Tw = 0 - Tw
+    if Px < Tw then Px = Tw
+  end if
+ride_move:
+  Pos = Pos + Spd
+  DSub = DSub + Spd
+  Uw = DSub >> 4
+  DSub = DSub & 15
+  Dist = Dist + Uw
+  SpawnAcc = SpawnAcc + Uw
+  CurveAcc = CurveAcc + Uw
+  ' the horizon turns with the curve
+  Tw = Spd
+  Mx = Tw
+  My = Cq
+  call asm ArMul
+  Tw = Mz
+  Tw = Tw / 32
+  Hs = Hs + Tw
+  ' a new bend every 200 metres; the piste eases into it
+  if CurveAcc >= 200 then
+    CurveAcc = 0
+    Rnd
+    V = StageCurve[Stage]
+    Uw = Rb
+    W = V << 1
+    Mx = Uw
+    My = W
+    call asm ArMul
+    Uw = Mz
+    Uw = Uw >> 8
+    CqTo = Uw
+    Tw = V
+    CqTo = CqTo - Tw
+    Rnd
+    if Rb < 70 then CqTo = 0
+  end if
+  V = Passes & 1
+  if V = 0 then
+    if Cq < CqTo then
+      inc Cq
+    else
+      if Cq > CqTo then dec Cq
+    end if
+  end if
+  return
+end sub
+
+sub Fall:
+  play sound SndCrash
+  Rumble = 0
+  Cr = 60
+  Spd = 0
+  return
+end sub
+
+' Avalanche: it runs at its own steady speed; the gap is what you keep
+sub Avalanche:
+  Tw = Spd
+  Gap = Gap + Tw
+  Tw = AvS
+  Gap = Gap - Tw
+  if Gap > 3200 then Gap = 3200
+  if Gap <= 0 then
+    Gap = 0
+    Done = 2
+    return
+  end if
+  if Whoosh > 0 then
+    dec Whoosh
+    return
+  end if
+  ' one long rumble, louder as it comes
+  W = 1
+  if Gap < 2000 then W = 2
+  if Gap < 900 then W = 3
+  if W <> Rumble then
+    Rumble = W
+    RumbleT = 0
+    if W = 1 then play sound SndRumbleFar
+    if W = 2 then play sound SndRumbleNear
+    if W = 3 then play sound SndRumbleHere
+    return
+  end if
+  inc RumbleT
+  if RumbleT >= 110 then
+    RumbleT = 0
+    if W = 1 then play sound SndRumbleFar
+    if W = 2 then play sound SndRumbleNear
+    if W = 3 then play sound SndRumbleHere
+  end if
+  return
+end sub
+
+' Objects: move them toward the player, test what is passed, place the
+' sprites, and bring new ones over the brow
+sub Objects:
+  for Oi = 0 to 3
+    Ok = OKind[Oi]
+    if Ok > 0 then
+      Oz0 = OZ[Oi]
+      if Oz0 > Spd then
+        Oz1 = Oz0 - Spd
+      else
+        Oz1 = 0
+      end if
+      OZ[Oi] = Oz1
+      ' passing the ski tips (depth 7)
+      if Oz0 >= 112 then
+        if Oz1 < 112 then Pass
+      end if
+      if Oz1 < 80 then
+        OKind[Oi] = 0
+        Ok = 0
+      end if
+    end if
+  next
+  ProjectAll
+  ' a new object every so often
+  V = StageGap[Stage]
+  Uw = V
+  if SpawnAcc >= Uw then
+    SpawnAcc = 0
+    Spawn
+  end if
+  return
+end sub
+
+' Pass: object Oi reaches the skis
+sub Pass:
+  Tw = OX[Oi]
+  Tw = Tw - Px
+  if Ok = KFlagL then
+    ' the gate: between this flag and its pair, 40 to the right
+    if Tw < 0 then
+      Tw = 0 - Tw
+      if Tw < 40 then
+        play sound SndGate
+        inc Gates
+        Score = Score + 100
+        Spd = Spd + 4
+        return
+      end if
+    end if
+    play sound SndMiss
+    inc Missed
+    return
+  end if
+  if Ok = KFlagR then return
+  ' the village: the end of the stage
+  if Ok = KChalet then
+    Done = 1
+    return
+  end if
+  if Cr > 0 then return
+  if Tw < 0 then Tw = 0 - Tw
+  if Tw < 10 then
+    Why = 1
+    Fall
+  end if
+  return
+end sub
+
+' ProjectAll: the four objects' sprites (2-5), placed by ArProject from
+' their depth and place, the player's place and the curve
+sub ProjectAll:
+  call asm ArProject
+  for Oi = 0 to 3
+    Sp = Oi + 2
+    Yv = SprY[Oi]
+    Xb = SprX[Oi]
+    Pt = SprP[Oi]
+    Pc = SprC[Oi]
+    set sprite Sp to Yv, Xb, Pt, Pc
+  next
+  return
+end sub
+
+' Spawn: something new at depth 80, as far as the eye can see
+sub Spawn:
+  ' how many free places
+  Free = 0
+  Oslot = 255
+  for Oi = 0 to 3
+    Ok = OKind[Oi]
+    if Ok = 0 then
+      inc Free
+      Oslot = Oi
+    end if
+  next
+  if Free = 0 then return
+  Oi = Oslot
+  ' near the end, only the village's chalet comes
+  Uw = StLen - 60
+  if Dist >= Uw then
+    ' the village
+    if ChaletOut = 0 then
+      ChaletOut = 1
+      OKind[Oi] = KChalet
+      OCol[Oi] = 6
+      OZ[Oi] = 1280
+      OX[Oi] = 0
+    end if
+    return
+  end if
+  ChaletOut = 0
+  Rnd
+  Ty = Rb & 15
+  if Ty >= 10 then
+    if Free >= 2 then goto sp_gate
+    Ty = 0
+  end if
+  if Ty <= 3 then
+    ' a pine just off the piste
+    Rnd
+    Tw = Rb & 31
+    Tw = Tw + Wd
+    Tw = Tw + 6
+    V = Rb & 128
+    if V > 0 then Tw = 0 - Tw
+    OKind[Oi] = KTree
+    OCol[Oi] = 12
+    OZ[Oi] = 1280
+    OX[Oi] = Tw
+    return
+  end if
+  ' a pine or a rock on the piste
+  Ok = KTree
+  if Ty >= 7 then Ok = KRock
+  Lateral
+  OKind[Oi] = Ok
+  V = KindCol[Ok]
+  OCol[Oi] = V
+  OZ[Oi] = 1280
+  OX[Oi] = Tw
+  return
+sp_gate:
+  ' a gate: two flags 40 apart, the pair inside the piste
+  Lateral
+  if Tw > 0 then Tw = Tw - 30
+  Tw = Tw / 2
+  Gcol = Gcol ^ 1
+  Pc = 8
+  if Gcol = 1 then Pc = 4
+  OKind[Oi] = KFlagL
+  OCol[Oi] = Pc
+  OZ[Oi] = 1280
+  OX[Oi] = Tw
+  for Oi = 0 to 3
+    Ok = OKind[Oi]
+    if Ok = 0 then
+      OKind[Oi] = KFlagR
+      OCol[Oi] = Pc
+      OZ[Oi] = 1280
+      Tw = Tw + 40
+      OX[Oi] = Tw
+      return
+    end if
+  next
+  return
+end sub
+
+' Lateral: Tw = a random place on the piste, 10 in from either edge
+sub Lateral:
+  Rnd
+  Tw = Wd << 1
+  Tw = Tw - 20
+  Uw = Tw
+  NumU = Rb
+  Mx = Uw
+  My = NumU
+  call asm ArMul
+  Uw = Mz
+  Uw = Uw >> 8
+  Tw = Uw
+  Tw = Tw - Wd
+  Tw = Tw + 10
+  return
+end sub
+
+' Fireworks: Fn rockets over the village, up to four in the air at once;
+' each rises with a whistle and bursts in its own colour with a crackle,
+' lighting up the sky
+sub Fireworks:
+  for Oi = 0 to 3
+    FwT[Oi] = 0
+    Sp = Oi + 2
+    set sprite Sp to 192, 0, 0, 0
+  next
+  FwWait = 0
+fw_frame:
+  Frame1
+  ' a new rocket every 14 frames
+  if FwWait > 0 then dec FwWait
+  if Fn > 0 then
+    if FwWait = 0 then
+      for Oi = 0 to 3
+        V = FwT[Oi]
+        if V = 0 then
+          if FwWait = 0 then
+            FwT[Oi] = 1
+            Rnd
+            V = Rb >> 1
+            V = V + 48
+            FwX[Oi] = V
+            FwY[Oi] = 150
+            Rnd
+            V = Rb & 15
+            V = V + 36
+            FwTop[Oi] = V
+            V = Rb & 7
+            W = FwCols[V]
+            FwC[Oi] = W
+            play sound SndLaunch
+            FwWait = 14
+            dec Fn
+          end if
+        end if
+      next
+    end if
+  end if
+  FwBusy = 0
+  for Oi = 0 to 3
+    Sp = Oi + 2
+    V = FwT[Oi]
+    if V > 0 then
+      FwBusy = 1
+      if V < 100 then
+        ' rising
+        Y = FwY[Oi]
+        Y = Y - 5
+        FwY[Oi] = Y
+        W = FwTop[Oi]
+        if Y <= W then
+          FwT[Oi] = 100
+          play sound SndPop
+          ' the sky lights up
+          Flash = 3
+          V = FwC[Oi]
+          call asm ArBackdrop
+        end if
+        X = FwX[Oi]
+        set sprite Sp to Y, X, SRocket, 11
+      else
+        ' bursting: four sizes, five frames each, then gone
+        inc V
+        FwT[Oi] = V
+        W = V - 100
+        W = W / 5
+        if W >= 4 then
+          FwT[Oi] = 0
+          set sprite Sp to 192, 0, 0, 0
+        else
+          Pt = W << 2
+          Pt = Pt + SBurst0
+          Y = FwY[Oi]
+          Y = Y - 16
+          X = FwX[Oi]
+          X = X - 16
+          Pc = FwC[Oi]
+          ' the last sparks twinkle
+          if W = 3 then
+            K = V & 2
+            if K = 0 then Pc = 15
+          end if
+          set sprite Sp to Y, X, Pt, Pc
+        end if
+      end if
+    end if
+  next
+  if Flash > 0 then
+    dec Flash
+    if Flash = 0 then backdrop light blue
+  end if
+  update sprites
+  if Fn > 0 then goto fw_frame
+  if FwBusy = 1 then goto fw_frame
+  return
+end sub
+
+' Skis: the two ski tips at the bottom of the screen
+sub Skis:
+  Sk = SSkia
+  if Pose = 1 then Sk = SSkila
+  if Pose = 2 then Sk = SSkira
+  if Pose = 3 then Sk = SSkixa
+  V = Sk + 4
+  if Pose = 3 then
+    set sprite 0 to 167, 112, Sk, 8
+    set sprite 1 to 167, 112, V, 8
+  else
+    set sprite 0 to 167, 96, Sk, 8
+    set sprite 1 to 167, 128, V, 8
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The picture
+
+' Stripes, Edges: the ground, drawn by the Z80 routines at the end (see
+' the header); Amy's version of them took several frames
+sub Stripes:
+  call asm ArStripes
+  return
+end sub
+
+' StripesAll: every row again (a new screen)
+sub StripesAll:
+  fill array Cache with 0
+  StAll = 1
+  call asm ArStripes
+  StAll = 0
+  return
+end sub
+
+sub Edges:
+  ' nothing moved, nothing to draw
+  if Px = EPx then
+    if Cq = ECq then return
+  end if
+  EPx = Px
+  ECq = Cq
+  call asm ArEdges
+  return
+end sub
+
+' WidthRows: the piste's half width in pixels on each ground row
+sub WidthRows:
+  for Rk = 0 to 15
+    V = InvRow[Rk]
+    Mx = Wd
+    My = V
+    call asm ArMul
+    Xw = Mz / 64
+    V = Xw
+    WdR[Rk] = V
+  next
+  return
+end sub
+
+' Mountains: the range on the horizon, turned with the curves
+sub Mountains:
+  Tw = Hs >> 9
+  Tw = Tw & 15
+  V = Tw
+  if V = Mo then return
+  Mo = V
+  copy MtnRow0 + Mo count 32 to vram.name + 160
+  copy MtnRow1 + Mo count 32 to vram.name + 192
+  copy MtnRow2 + Mo count 32 to vram.name + 224
+  return
+end sub
+
+sub Hud:
+  HudTop
+  HudLow
+  return
+end sub
+
+sub HudTop:
+  print at 2,1, "STAGE"
+  V = Stage + 1
+  NumU = V
+  print at 8,1, digits$(NumU, 1)
+  print at 11,1, "GATES"
+  NumU = Gates
+  print at 17,1, width$(NumU, 3)
+  put char THouse at 21,1
+  Uw = 0
+  if StLen > Dist then Uw = StLen - Dist
+  NumU = Uw
+  print at 22,1, width$(NumU, 4)
+  print at 26,1, "M"
+  return
+end sub
+
+sub HudLow:
+  print at 2,2, "SPEED"
+  Uw = Spd << 2
+  NumU = Uw
+  print at 8,2, width$(NumU, 3)
+  print at 13,2, "AVALANCHE"
+  ' eight boxes: how far behind it is
+  Tw = Gap / 400
+  V = Tw
+  for X = 0 to 7
+    W = TBarnone
+    if X < V then
+      W = TBarfull
+      if V <= 2 then W = TBarhot
+    end if
+    Y = X + 22
+    put char W at Y,2
+  next
+  return
+end sub
+
+' Whiteout: the snow comes down over everything
+sub Whiteout:
+  HideSprites
+  for Y = 1 to 22
+    fill TWhite count 32 at 0,Y
+    Frame1
+    Frame1
+  next
+  return
+end sub
+
+sub ClearSky:
+  for Y = 3 to 4
+    fill 32 count 32 at 0,Y
+  next
+  return
+end sub
+
+sub Clouds:
+  put char TCloud00 at 3,4
+  put char TCloud01 at 4,4
+  put char TCloud02 at 5,4
+  put char TCloud00 at 23,3
+  put char TCloud01 at 24,3
+  put char TCloud02 at 25,3
+  return
+end sub
+
+' SlopeScreen: the sky, the range, the piste, the HUD
+sub SlopeScreen:
+  NewScreen
+  ClearSky
+  Clouds
+  Mo = 255
+  ' row 8: the brow of the slope
+  fill TBrow count 32 at 0,8
+  for Rk = 0 to 15
+    LhOld[Rk] = 255
+    RhOld[Rk] = 255
+  next
+  EPx = 9999
+  Mountains
+  StripesAll
+  Edges
+  Hud
+  Skis
+  ProjectAll
+  update sprites
+  ShowScreen
+  return
+end sub
+
+sub StageIntro:
+  ClearSky
+  print at 3,3, "STAGE"
+  V = Stage + 1
+  NumU = V
+  print at 9,3, digits$(NumU, 1)
+  if Stage = 0 then print at 11,3, "PINE RIDGE"
+  if Stage = 1 then print at 11,3, "DEVIL'S GULLY"
+  if Stage = 2 then print at 11,3, "THE GLACIER"
+  print at 3,4, "THE SNOW BREAKS ABOVE YOU!"
+  play sound SndRumbleNear
+  Pause
+  print at 3,4, "         GO!              "
+  Pause
+  ClearSky
+  Clouds
+  Rumble = 0
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Helpers
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy Gnd1Pat count 256 to vram.pattern + 3712
+  copy Gnd2Pat count 256 to vram.pattern + 5760
+  backdrop light blue
+  cls
+  return
+end sub
+
+' PageScreen: a page of text, white on dark blue
+sub PageScreen:
+  NewScreen
+  backdrop dark blue
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewStage
+  Px = 0
+  Cq = 0
+  SlopeScreen
+  fill 32 count 32 at 0,1
+  fill 32 count 32 at 0,2
+  ClearSky
+  print at 9,1, "AVALANCHE RUN"
+  print at 11,2, "START"
+  print at 11,3, "HOW TO PLAY"
+  print at 11,4, "CREDITS"
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  ' the snow slides by, and the piste sways
+  Pos = Pos + 10
+  Stripes
+  V = Tick & 127
+  Tw = V
+  if Tw > 63 then Tw = 127 - Tw
+  Tw = Tw - 32
+  Cq = Tw
+  Edges
+  ' the ski tips lean into the sway
+  Pose = 0
+  if Cq < -12 then
+    Pose = 1
+  else
+    if Cq > 12 then Pose = 2
+  end if
+  Skis
+  update sprites
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 2 to 4
+    print at 9,I, " "
+  next
+  Y = Menu + 2
+  print at 9,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  PageScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "THE AVALANCHE HAS BROKEN"
+  print at 2,4, "LOOSE ABOVE YOU. SKI DOWN"
+  print at 2,5, "AHEAD OF IT AND WARN THE"
+  print at 2,6, "VILLAGE BELOW. THREE STAGES."
+  print at 2,8, "LEFT, RIGHT: STEER"
+  print at 2,9, "UP: TUCK, FOR SPEED"
+  print at 2,10, "DOWN: SNOWPLOUGH, TO SLOW"
+  print at 2,12, "TREES AND ROCKS THROW YOU."
+  print at 2,13, "THE FOREST IS DEEP AND SLOW."
+  print at 2,14, "SKI BETWEEN TWO FLAGS FOR"
+  print at 2,15, "100 POINTS AND A BOOST."
+  print at 2,17, "THE GAUGE SHOWS HOW FAR"
+  print at 2,18, "BACK THE AVALANCHE IS:"
+  print at 2,19, "LISTEN TO IT, TOO."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  PageScreen
+  print at 9,1, "AVALANCHE RUN"
+  print at 2,3, "A NEW GAME INSPIRED BY"
+  print at 2,4, "AVALANCHE IN TIM HARTNELL'S"
+  print at 2,5, "GIANT BOOK OF COMPUTER GAMES"
+  print at 2,6, "(BALLANTINE BOOKS, 1984;"
+  print at 2,7, "INTERFACE PUBLICATIONS,"
+  print at 2,8, "1983), WHERE THE MAYOR OF A"
+  print at 2,9, "MOUNTAIN VILLAGE BRACES FOR"
+  print at 2,10, "THE SNOW."
+  print at 2,12, "MUSIC: FIRST LIGHT ON THE"
+  print at 2,13, "COL (ORIGINAL)."
+  print at 2,15, "COLECOVISION GAME BY"
+  print at 2,16, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$F0,$C0,$80,$00,$00
+  $00,$87,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$F0,$03,$00,$00
+  $00,$00,$01,$03,$07,$E0,$C0,$80
+  $00,$80,$C0,$E0,$70,$03,$E0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$F0
+  $08,$1C,$C1,$80,$0C,$0E,$F0,$F0
+  $00,$00,$00,$00,$C0,$E0,$F0,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$07,$F0,$E0
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $80,$E0,$F0,$07,$E0,$F0,$07,$03
+  $00,$00,$01,$03,$07,$F0,$60,$00
+  $40,$E0,$F0,$07,$03,$70,$87,$83
+  $00,$00,$00,$01,$07,$F0,$E0,$40
+  $C0,$80,$00,$00,$00,$00,$00,$00
+  $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $E0,$F0,$07,$01,$00,$00,$00,$00
+  $00,$00,$80,$C0,$F0,$06,$C0,$F0
+  $00,$00,$01,$03,$F0,$E0,$40,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $F0,$07,$03,$0E,$07,$03,$01,$00
+  $00,$00,$00,$00,$80,$C0,$E0,$70
+  $00,$00,$00,$01,$03,$07,$0E,$E0
+  $00,$03,$07,$F0,$60,$00,$00,$80
+  $00,$00,$00,$00,$00,$44,$22,$11
+  $00,$00,$00,$00,$00,$44,$22,$11
+  $00,$00,$00,$00,$00,$44,$22,$11
+  $00,$80,$C0,$C0,$C0,$44,$22,$11
+  $81,$80,$80,$80,$80,$44,$22,$11
+  $00,$00,$80,$80,$80,$44,$22,$11
+  $00,$00,$00,$00,$00,$44,$22,$11
+  $F0,$F0,$F0,$F0,$F0,$44,$22,$11
+  $00,$00,$00,$00,$00,$44,$22,$11
+  $06,$02,$02,$02,$02,$44,$22,$11
+  $00,$80,$80,$80,$80,$44,$22,$11
+  $03,$03,$03,$03,$03,$44,$22,$11
+  $00,$00,$00,$00,$00,$44,$22,$11
+  $03,$E0,$F0,$03,$01,$44,$22,$11
+  $C0,$80,$01,$01,$01,$44,$22,$11
+  $80,$80,$80,$80,$80,$44,$22,$11
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$18,$C3,$81,$00,$83,$48,$83
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$F5,$5F,$5F,$5F,$05,$05
+  $05,$5F,$5F,$0F,$0F,$0F,$05,$05
+  $05,$05,$05,$F5,$F5,$5F,$05,$05
+  $05,$05,$F5,$F5,$F5,$5F,$5F,$5F
+  $05,$F5,$F5,$F5,$F5,$5F,$EF,$EF
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$F5,$F5,$F5,$5F
+  $F5,$F5,$5F,$5F,$EF,$EF,$FE,$FE
+  $05,$05,$05,$05,$F5,$F5,$F5,$5F
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$F5,$F5,$5F,$5F
+  $05,$05,$05,$05,$05,$05,$F5,$F5
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FE,$FE,$0E,$0E,$0E,$0E,$0E,$0E
+  $F5,$F5,$F5,$5F,$EF,$EF,$FE,$FE
+  $05,$05,$F5,$F5,$F5,$5F,$5F,$0F
+  $F5,$F5,$F5,$5F,$5F,$EF,$FE,$FE
+  $05,$05,$05,$F5,$F5,$5F,$5F,$5F
+  $5F,$5F,$0F,$0F,$0F,$0F,$0F,$0F
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+  $EF,$EF,$FE,$FE,$0E,$0E,$0E,$0E
+  $05,$05,$F5,$F5,$F5,$5F,$EF,$EF
+  $05,$05,$F5,$F5,$5F,$5F,$5F,$0F
+  $EF,$EF,$EF,$EF,$EF,$EF,$EF,$EF
+  $F5,$5F,$5F,$FE,$FE,$FE,$FE,$0E
+  $05,$05,$05,$05,$F5,$F5,$F5,$F5
+  $05,$05,$05,$F5,$F5,$F5,$F5,$5F
+  $05,$F5,$F5,$5F,$5F,$0F,$0F,$EF
+  $0F,$0F,$0F,$0F,$0F,$FC,$FC,$FC
+  $0E,$0E,$0E,$0E,$0E,$FC,$FC,$FC
+  $0E,$0E,$0E,$0E,$0E,$FC,$FC,$FC
+  $0F,$EF,$EF,$EF,$EF,$FC,$FC,$FC
+  $FE,$FE,$FE,$FE,$FE,$FC,$FC,$FC
+  $0F,$0F,$EF,$EF,$EF,$FC,$FC,$FC
+  $0F,$0F,$0F,$0F,$0F,$FC,$FC,$FC
+  $FE,$FE,$FE,$FE,$FE,$FC,$FC,$FC
+  $0E,$0E,$0E,$0E,$0E,$FC,$FC,$FC
+  $FE,$FE,$FE,$FE,$FE,$FC,$FC,$FC
+  $0F,$EF,$EF,$EF,$EF,$FC,$FC,$FC
+  $EF,$EF,$EF,$EF,$EF,$FC,$FC,$FC
+  $0E,$0E,$0E,$0E,$0E,$FC,$FC,$FC
+  $5F,$EF,$EF,$FE,$FE,$FC,$FC,$FC
+  $5F,$5F,$EF,$EF,$EF,$FC,$FC,$FC
+  $EF,$EF,$EF,$EF,$EF,$FC,$FC,$FC
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0E
+  $04,$4F,$4F,$4F,$4F,$4F,$4F,$04
+  $04,$48,$48,$48,$48,$48,$48,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$64,$46,$46,$06,$4B,$B4,$4B
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+end data
+data SpritePat bytes
+  $01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$C0,$C0,$C0,$C0,$E0,$E0,$E0,$E0,$E0,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$07,$07,$07,$07,$07,$00,$00,$00,$00
+  $00,$00,$80,$80,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$30,$1C,$1C,$0E,$07,$07,$03,$03,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$C0,$C0,$E0,$00,$00,$00,$00
+  $60,$30,$38,$38,$1C,$1C,$1C,$0E,$0E,$0E,$07,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $0C,$18,$1C,$1C,$38,$38,$38,$70,$70,$70,$E0,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$03,$03,$07,$00,$00,$00,$00
+  $18,$18,$38,$38,$70,$E0,$E0,$C0,$C0,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$01,$03,$07,$0E,$1C,$38,$00,$00,$00,$00
+  $0C,$18,$38,$70,$E0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$18,$0E,$07,$03,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$C0,$E0,$70,$38,$1C,$0E,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03,$07,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$07,$03,$07,$0F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$80,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$07,$03,$07,$0F,$07,$0F,$1F,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$80,$C0,$80,$C0,$E0,$00
+  $00,$00,$00,$01,$03,$07,$0F,$03,$07,$0F,$07,$0F,$0F,$1F,$01,$01
+  $00,$00,$00,$00,$00,$80,$C0,$00,$80,$E0,$80,$C0,$E0,$F0,$00,$00
+  $02,$07,$07,$0F,$1F,$07,$0F,$1F,$3F,$0F,$1F,$3F,$7F,$FF,$02,$02
+  $00,$00,$00,$80,$C0,$00,$80,$C0,$E0,$80,$C0,$E0,$F0,$F8,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$0F,$0F,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$0F,$0F,$1F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F8,$F8
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$0F,$0F,$1F,$1F,$3F,$3F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F0,$F8,$F8,$FC,$FE,$FE
+  $00,$00,$00,$00,$00,$00,$00,$03,$0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$F8,$FC,$FE,$FF,$FF,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$02,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$07,$07,$04,$04,$04,$04,$04
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$08,$08,$08,$08,$08,$08
+  $00,$00,$00,$00,$00,$00,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$0F,$0F,$0F,$0F,$0F,$08,$08,$08,$08,$08,$08,$08,$08
+  $00,$00,$00,$FC,$F8,$F0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $3F,$3F,$3F,$3F,$3F,$3F,$30,$30,$30,$30,$30,$30,$30,$30,$30,$30
+  $FE,$FC,$F8,$F0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$02,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$0F,$07,$05,$06,$06
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$E0,$60,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$01,$07,$07,$0F,$1F,$0D,$0F,$0E,$0E
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$E0,$F0,$F8,$B0,$F0,$70,$70
+  $00,$00,$00,$00,$00,$03,$07,$0F,$0F,$3F,$0F,$0C,$0C,$0F,$0F,$0F
+  $00,$00,$00,$00,$80,$E0,$F0,$F8,$F8,$FE,$F8,$98,$98,$F8,$78,$78
+  $00,$01,$03,$07,$0F,$1F,$3F,$7F,$FF,$3F,$39,$39,$3F,$3E,$3E,$3E
+  $00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$FF,$FC,$9C,$9C,$FC,$7C,$7C,$7C
+  $00,$08,$25,$49,$2A,$15,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$90,$24,$48,$A8,$50,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$07,$03,$0F,$07,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$E0,$C0,$E0,$A0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$01,$05,$07,$1B,$0E,$02,$3E,$0E,$1A,$06,$04,$00,$00,$00
+  $00,$00,$00,$20,$60,$58,$F0,$00,$78,$B0,$D8,$E0,$A0,$00,$00,$00
+  $01,$09,$09,$05,$65,$38,$08,$00,$F8,$00,$38,$66,$04,$0C,$08,$00
+  $00,$10,$30,$20,$26,$18,$00,$00,$0E,$00,$1C,$26,$A0,$B0,$90,$00
+  $01,$09,$09,$05,$64,$18,$00,$00,$F0,$00,$18,$64,$04,$08,$08,$00
+  $00,$10,$10,$20,$26,$18,$00,$00,$0F,$00,$18,$26,$A0,$90,$90,$80
+end data
+
+asm {
+; ArMul: Mz = Mx * My (the low 16 bits, right for signed and unsigned),
+; by shift and add: about 700 cycles whatever the numbers
+ArMul:
+    ld de,(AMY_UVAR_Mx)
+    ld bc,(AMY_UVAR_My)
+    ld hl,0
+    ld a,16
+ArMulLoop:
+    add hl,hl
+    sla c
+    rl b
+    jr nc,ArMulSkip
+    add hl,de
+ArMulSkip:
+    dec a
+    jr nz,ArMulLoop
+    ld (AMY_UVAR_Mz),hl
+    ret
+
+; ---------------------------------------------------------------------------
+; ArStripes: the colours of ground rows 8-23 for the distance Pos. Each
+; pixel line adds its depth to Pos and is grey when its band bits are both
+; set (kind 0 never, 1 bits 7 and 6, 2 bits 8 and 7, 3 bits 6 and 5);
+; LineTab holds depth
+; and kind, three bytes a line. A row's eight colours are kept in Cache:
+; only rows whose colours changed go to VRAM, to the colours of the row's
+; four tiles, writes spaced at 30 cycles or more (safe with the display on).
+ArStripes:
+    ; the far rows (8-15) on every other call, unless StAll is set
+    ld a,(AMY_UVAR_StAll)
+    or a
+    jr nz,ArStFrom8
+    ld a,(AMY_UVAR_StOdd)
+    xor 1
+    ld (AMY_UVAR_StOdd),a
+    jr nz,ArStFrom8
+    ld a,16
+    ld hl,AMY_UDATA_LineTab+192
+    exx
+    ld hl,AMY_UVAR_Cache+64
+    exx
+    jr ArStGo
+ArStFrom8:
+    ld a,9
+    ld hl,AMY_UDATA_LineTab+24
+    exx
+    ld hl,AMY_UVAR_Cache+8
+    exx
+ArStGo:
+    ld (AMY_UVAR_Rw),a
+    ld bc,(AMY_UVAR_Pos)
+ArStRow:
+    ld de,AMY_UVAR_Lb
+    exx
+    ld (AMY_UVAR_StC),hl
+    exx
+    ld a,8
+    ld (AMY_UVAR_StN),a
+ArStLine:
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld a,(hl)
+    inc hl
+    ex de,hl
+    add hl,bc
+    or a
+    jr z,ArStWhite
+    dec a
+    jr z,ArStK1
+    dec a
+    jr z,ArStK2
+    ld a,l
+    and $60
+    cp $60
+    jr ArStTest
+ArStK2:
+    add hl,hl
+    ld a,h
+    and 3
+    cp 3
+    jr ArStTest
+ArStK1:
+    ld a,l
+    and $C0
+    cp $C0
+ArStTest:
+    ld a,$CF
+    jr nz,ArStPut
+    ld a,$2E
+    jr ArStPut
+ArStWhite:
+    ld a,$CF
+ArStPut:
+    ex de,hl
+    exx
+    cp (hl)
+    jr z,ArStSame
+    ld (hl),a
+    ld a,1
+    ld (AMY_UVAR_StD),a
+ArStSame:
+    inc hl
+    exx
+    ld a,(AMY_UVAR_StN)
+    dec a
+    ld (AMY_UVAR_StN),a
+    jr nz,ArStLine
+    ld a,(AMY_UVAR_StD)
+    or a
+    jr z,ArStNext
+    xor a
+    ld (AMY_UVAR_StD),a
+    push hl
+    push bc
+    ; the colour address: $2000 + third * $800 + 208 * 8 + (row & 7) * 32
+    ld a,(AMY_UVAR_Rw)
+    ld c,a
+    and 7
+    rrca
+    rrca
+    rrca
+    ld l,a
+    ld a,c
+    srl a
+    srl a
+    srl a
+    add a,a
+    add a,a
+    add a,a
+    add a,$26
+    ld h,a
+    ld de,$0080
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld c,4
+ArStRep:
+    ld hl,(AMY_UVAR_StC)
+    ld b,8
+ArStOut:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz ArStOut
+    dec c
+    jr nz,ArStRep
+    pop bc
+    pop hl
+ArStNext:
+    ld a,(AMY_UVAR_Rw)
+    inc a
+    ld (AMY_UVAR_Rw),a
+    cp 24
+    jp nz,ArStRow
+    ret
+
+; ArLate: Late = 1 when the VDP has begun a frame since its status was
+; last read (the NMI is off during a pass, so nothing else reads it)
+ArLate:
+    in a,($BF)
+    rlca
+    and 1
+    ld (AMY_UVAR_Late),a
+    ret
+
+; ArBackdrop: the backdrop (VDP register 7) to colour V, for a flash
+ArBackdrop:
+    ld a,(AMY_UVAR_V)
+    ld c,a
+    ld b,7
+    jp WRITE_REGISTER
+
+; ArThirds: VDP register 3 = $FF, three colour tables (Amy's tile screen
+; shares one between the thirds)
+ArThirds:
+    ld b,3
+    ld c,$FF
+    jp WRITE_REGISTER
+
+; ArMul8: HL = DE * A (DE signed, A unsigned; the low 16 bits)
+ArMul8:
+    ld hl,0
+    ld b,8
+ArM8Loop:
+    add hl,hl
+    add a,a
+    jr nc,ArM8Skip
+    add hl,de
+ArM8Skip:
+    djnz ArM8Loop
+    ret
+
+; ArClamp: A = HL kept within 0-256, in half tiles (0-64)
+ArClamp:
+    bit 7,h
+    jr nz,ArClZero
+    ld a,h
+    or a
+    jr z,ArClOk
+    ld a,64
+    ret
+ArClOk:
+    ld a,l
+    srl a
+    srl a
+    ret
+ArClZero:
+    xor a
+    ret
+
+; ArEdges: each ground row's forest edges. The middle of the piste on row
+; k is 128 + (Cq * KRow[k]) / 128 - (Px * InvRow[k]) / 64 pixels, its edges
+; WdR[k] either side. Rows whose edges moved are drawn again (ArDrawRow).
+ArEdges:
+    ld a,1
+    ld (AMY_UVAR_Rk),a
+ArEdRow:
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_KRow
+    add hl,de
+    ld a,(hl)
+    ld de,(AMY_UVAR_Cq)
+    call ArMul8
+    add hl,hl
+    ld l,h
+    ld a,h
+    rla
+    sbc a,a
+    ld h,a
+    ld (AMY_UVAR_EC1),hl
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_InvRow
+    add hl,de
+    ld a,(hl)
+    ld de,(AMY_UVAR_Px)
+    call ArMul8
+    ld b,6
+ArEdShift:
+    sra h
+    rr l
+    djnz ArEdShift
+    ex de,hl
+    ld hl,(AMY_UVAR_EC1)
+    or a
+    sbc hl,de
+    ld de,128
+    add hl,de
+    ld (AMY_UVAR_EBase),hl
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_WdR
+    add hl,de
+    ld e,(hl)
+    ld d,0
+    ld hl,(AMY_UVAR_EBase)
+    or a
+    sbc hl,de
+    push de
+    call ArClamp
+    ld (AMY_UVAR_Hl),a
+    pop de
+    ld hl,(AMY_UVAR_EBase)
+    add hl,de
+    call ArClamp
+    ld b,a
+    ld a,(AMY_UVAR_Hl)
+    cp b
+    jr c,ArEdOk
+    ld b,a
+ArEdOk:
+    ld a,b
+    ld (AMY_UVAR_Hr),a
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_LhOld
+    add hl,de
+    ld a,(AMY_UVAR_Hl)
+    cp (hl)
+    jr nz,ArEdNew
+    ld hl,AMY_UVAR_RhOld
+    add hl,de
+    ld a,(AMY_UVAR_Hr)
+    cp (hl)
+    jr z,ArEdNext
+ArEdNew:
+    ld hl,AMY_UVAR_LhOld
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_EOl),a
+    ld a,(AMY_UVAR_Hl)
+    ld (hl),a
+    ld hl,AMY_UVAR_RhOld
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_EOr),a
+    ld a,(AMY_UVAR_Hr)
+    ld (hl),a
+    ld a,(AMY_UVAR_EOl)
+    cp 255
+    jr nz,ArEdSpans
+    call ArDrawRow
+    jr ArEdNext
+ArEdSpans:
+    ; only the tiles round each edge's old and new places
+    call ArRowSetup
+    ld a,(AMY_UVAR_EOl)
+    ld b,a
+    ld a,(AMY_UVAR_Hl)
+    call ArSpan
+    ld a,(AMY_UVAR_EOr)
+    ld b,a
+    ld a,(AMY_UVAR_Hr)
+    call ArSpan
+ArEdNext:
+    ld a,(AMY_UVAR_Rk)
+    inc a
+    ld (AMY_UVAR_Rk),a
+    cp 16
+    jp nz,ArEdRow
+    ret
+
+; ArRowSetup: for row Rk+8, the edge columns (ELc, ERc), their halves
+; (ELh, ERh), the row's first tile code (EGs) and name address (ENam)
+ArRowSetup:
+    ld a,(AMY_UVAR_Hl)
+    ld b,a
+    srl a
+    ld (AMY_UVAR_ELc),a
+    ld a,b
+    and 1
+    ld (AMY_UVAR_ELh),a
+    ld a,(AMY_UVAR_Hr)
+    ld b,a
+    srl a
+    ld (AMY_UVAR_ERc),a
+    ld a,b
+    and 1
+    ld (AMY_UVAR_ERh),a
+    ld a,(AMY_UVAR_Rk)
+    add a,8
+    ld l,a
+    and 7
+    add a,a
+    add a,a
+    add a,208
+    ld (AMY_UVAR_EGs),a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1800
+    add hl,de
+    ld (AMY_UVAR_ENam),hl
+    ret
+
+; ArSpan: the tiles from column min(A,B)/2 to max(A,B)/2 (A and B in half
+; tiles) of the row set up by ArRowSetup
+ArSpan:
+    cp b
+    jr c,ArSpOrd
+    ld c,a
+    ld a,b
+    ld b,c
+ArSpOrd:
+    ; A = the smaller, B = the larger
+    srl a
+    srl b
+    cp 32
+    ret nc
+    ld c,a
+    ld a,b
+    cp 32
+    jr c,ArSpEnd
+    ld b,31
+ArSpEnd:
+    ld a,b
+    sub c
+    inc a
+    ld b,a
+    ld hl,(AMY_UVAR_ENam)
+    ld e,c
+    ld d,0
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_EGs)
+    ld d,a
+ArSpCell:
+    ; the tile at column C: forest, left half edge, snow, right half edge
+    ld a,(AMY_UVAR_ELc)
+    ld e,a
+    ld a,c
+    cp e
+    jr c,ArSpForest
+    jr nz,ArSpMid
+    ld a,(AMY_UVAR_ELh)
+    or a
+    jr z,ArSpMid
+    ld a,d
+    add a,2
+    jr ArSpOut
+ArSpMid:
+    ld a,(AMY_UVAR_ERc)
+    ld e,a
+    ld a,c
+    cp e
+    jr c,ArSpSnow
+    jr nz,ArSpForest
+    ld a,(AMY_UVAR_ERh)
+    or a
+    jr z,ArSpForest
+    ld a,d
+    add a,3
+    jr ArSpOut
+ArSpSnow:
+    ld a,d
+    jr ArSpOut
+ArSpForest:
+    ld a,d
+    inc a
+ArSpOut:
+    out ($BE),a
+    inc c
+    djnz ArSpCell
+    ret
+
+; ArDrawRow: ground row Rk+8 from its edges Hl and Hr (half tiles): forest,
+; a left half edge, snow, a right half edge, forest
+ArDrawRow:
+    ld a,(AMY_UVAR_Rk)
+    add a,8
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1800
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_Rk)
+    add a,8
+    and 7
+    add a,a
+    add a,a
+    add a,208
+    ld d,a
+    ld e,0
+    ld a,(AMY_UVAR_Hl)
+    srl a
+    jr z,ArDrL0
+    ld b,a
+    ld e,a
+    ld a,d
+    inc a
+ArDrL:
+    out ($BE),a
+    nop
+    nop
+    djnz ArDrL
+ArDrL0:
+    ld a,(AMY_UVAR_Hl)
+    and 1
+    jr z,ArDrS
+    ld a,e
+    cp 32
+    jr nc,ArDrS
+    ld a,d
+    add a,2
+    out ($BE),a
+    inc e
+ArDrS:
+    ld a,(AMY_UVAR_Hr)
+    srl a
+    sub e
+    jr c,ArDrR
+    jr z,ArDrR
+    ld b,a
+    add a,e
+    ld e,a
+    ld a,d
+ArDrSl:
+    out ($BE),a
+    nop
+    nop
+    djnz ArDrSl
+ArDrR:
+    ld a,e
+    cp 32
+    ret nc
+    ld a,(AMY_UVAR_Hr)
+    and 1
+    jr z,ArDrF
+    ld a,(AMY_UVAR_Hr)
+    srl a
+    cp e
+    jr nz,ArDrF
+    ld a,d
+    add a,3
+    out ($BE),a
+    inc e
+ArDrF:
+    ld a,32
+    sub e
+    ret z
+    ret c
+    ld b,a
+    ld a,d
+    inc a
+ArDrFl:
+    out ($BE),a
+    nop
+    nop
+    djnz ArDrFl
+    ret
+
+; ArProject: for the four objects, SprY/SprX/SprP/SprC from the depth
+; (OZ / 16, the tables YofZ, SizeOfZ, CurveZ, InvZ), the place OX, the
+; player's place Px and the curve Cq. Hidden: row 192.
+ArProject:
+    xor a
+    ld (AMY_UVAR_Oi),a
+ArPrLoop:
+    ld a,(AMY_UVAR_Oi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_OKind
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Ok),a
+    or a
+    jp z,ArPrHide
+    ld hl,AMY_UVAR_OZ
+    add hl,de
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,h
+    or a
+    jr nz,ArPrFar
+    ld a,l
+    cp 128
+    jr c,ArPrZok
+ArPrFar:
+    ld a,127
+ArPrZok:
+    ld (AMY_UVAR_Zb),a
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_SizeOfZ
+    add hl,de
+    ld a,(hl)
+    cp 255
+    jp z,ArPrHide
+    ld (AMY_UVAR_Sv),a
+    ld hl,AMY_UDATA_YofZ
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Yv),a
+    ld hl,AMY_UDATA_CurveZ
+    add hl,de
+    ld a,(hl)
+    ld de,(AMY_UVAR_Cq)
+    call ArMul8
+    sra h
+    rr l
+    sra h
+    rr l
+    ex de,hl
+    ld a,(AMY_UVAR_Oi)
+    add a,a
+    ld c,a
+    ld b,0
+    ld hl,AMY_UVAR_OX
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    add hl,de
+    ld de,(AMY_UVAR_Px)
+    or a
+    sbc hl,de
+    push hl
+    ld de,300
+    add hl,de
+    ld de,601
+    or a
+    sbc hl,de
+    pop hl
+    jr nc,ArPrHide
+    ex de,hl
+    ld a,(AMY_UVAR_Zb)
+    ld c,a
+    ld b,0
+    ld hl,AMY_UDATA_InvZ
+    add hl,bc
+    ld a,(hl)
+    call ArMul8
+    ld b,6
+ArPrShift:
+    sra h
+    rr l
+    djnz ArPrShift
+    ld de,112
+    add hl,de
+    ld a,h
+    or a
+    jr nz,ArPrHide
+    ld a,(AMY_UVAR_Oi)
+    ld e,a
+    ld d,0
+    ld a,l
+    ld hl,AMY_UVAR_SprX
+    add hl,de
+    ld (hl),a
+    ld a,(AMY_UVAR_Yv)
+    sub 33
+    ld hl,AMY_UVAR_SprY
+    add hl,de
+    ld (hl),a
+    ld hl,AMY_UVAR_OCol
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_SprC
+    add hl,de
+    ld (hl),a
+    push de
+    ld a,(AMY_UVAR_Ok)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_KindPat
+    add hl,de
+    ld b,(hl)
+    pop de
+    ld a,(AMY_UVAR_Sv)
+    add a,a
+    add a,a
+    add a,b
+    ld hl,AMY_UVAR_SprP
+    add hl,de
+    ld (hl),a
+    jr ArPrNext
+ArPrHide:
+    ld a,(AMY_UVAR_Oi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_SprY
+    add hl,de
+    ld (hl),192
+    ld hl,AMY_UVAR_SprX
+    add hl,de
+    ld (hl),0
+    ld hl,AMY_UVAR_SprP
+    add hl,de
+    ld (hl),0
+    ld hl,AMY_UVAR_SprC
+    add hl,de
+    ld (hl),0
+ArPrNext:
+    ld a,(AMY_UVAR_Oi)
+    inc a
+    ld (AMY_UVAR_Oi),a
+    cp 4
+    jp nz,ArPrLoop
+    ret
+ArRumbleFar:
+    db $00,$00,$B6,$FA,$10
+ArRumbleNear:
+    db $00,$00,$76,$FA,$10
+ArRumbleHere:
+    db $00,$00,$36,$FA,$10
+ArCrash:
+    db $00,$00,$05,$03,$00,$00,$16,$05,$00,$00,$36,$08,$00,$00,$47,$0A,$00,$00,$67,$0C,$00,$00,$87,$0C
+    db $10
+ArBuried:
+    db $00,$00,$07,$14,$00,$00,$27,$1E,$00,$00,$47,$28,$00,$00,$77,$28,$00,$00,$A7,$28,$10
+ArClick:
+    db $40,$40,$70,$01,$50
+ArGate:
+    db $40,$55,$20,$03,$40,$55,$F0,$01,$40,$40,$20,$07,$40,$40,$F0,$01,$50
+ArMiss:
+    db $40,$1D,$41,$05,$40,$1D,$F1,$01,$40,$53,$41,$09,$40,$53,$F1,$01,$50
+ArSwish:
+    db $00,$00,$84,$02,$00,$00,$44,$03,$00,$00,$24,$04,$00,$00,$44,$04,$00,$00,$75,$04,$00,$00,$A5,$04
+    db $00,$00,$D5,$03,$10
+ArLaunch:
+    db $40,$E0,$70,$02,$40,$A0,$70,$02,$40,$7C,$80,$02,$40,$5D,$90,$02,$40,$4B,$A0,$02,$40,$3B,$B0,$02
+    db $40,$2F,$D0,$02,$50
+ArPop:
+    db $00,$00,$04,$02,$00,$00,$15,$03,$00,$00,$36,$05,$00,$00,$56,$06,$00,$00,$77,$08,$00,$00,$A7,$08
+    db $10
+ArVillage:
+    db $40,$8F,$20,$07,$40,$8F,$F0,$01,$40,$71,$20,$07,$40,$71,$F0,$01,$40,$5F,$20,$07,$40,$5F,$F0,$01
+    db $40,$47,$20,$17,$40,$47,$F0,$01,$50
+
+ArSoundTable:
+    dw ArRumbleFar,$702B
+    dw ArRumbleNear,$702B
+    dw ArRumbleHere,$702B
+    dw ArCrash,$702B
+    dw ArBuried,$702B
+    dw ArClick,$7035
+    dw ArGate,$7035
+    dw ArMiss,$7035
+    dw ArSwish,$702B
+    dw ArLaunch,$7035
+    dw ArPop,$702B
+    dw ArVillage,$7035
+    dw ArTuneMel,$703F
+    dw ArTuneBass,$7049
+; First Light on the Col, G major (original for this game)
+; Tiny Sound, 7 frames per step
+ArTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$F1,$22,$21,$00,$26,$00,$2A,$00,$00,$00,$28,$00,$26,$00
+    db $23,$00,$00,$00,$21,$00,$26,$00,$2A,$00,$2D,$00,$2F,$00,$00,$00
+    db $2D,$00,$00,$00,$2A,$00,$2B,$00,$2D,$00,$2A,$00,$28,$00,$26,$00
+    db $25,$00,$28,$00,$26,$00,$21,$00,$1E,$00,$1A,$00,$26,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+ArTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$F1,$22,$0E,$15,$1A,$1E,$0E,$15,$1A,$1E,$13,$17,$1A,$1F
+    db $13,$17,$1A,$1F,$0E,$15,$1A,$1E,$0E,$15,$1A,$1E,$13,$17,$1C,$1F
+    db $0E,$15,$1A,$1E,$0B,$12,$17,$1A,$0E,$15,$1A,$1E,$15,$19,$1C,$21
+    db $15,$19,$1C,$1F,$0E,$15,$1A,$1E,$09,$10,$15,$19,$0E,$15,$1A,$1E
+    db $1A,$00,$00,$00
+    db $FF
+}

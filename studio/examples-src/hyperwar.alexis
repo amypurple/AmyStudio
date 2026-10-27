@@ -1,0 +1,1162 @@
+' HYPERWAR
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), for the ColecoVision in Amy by
+' Amy Bienvenu.
+'
+' You patrol a cube of space ten parsecs on a side. One Dosznti
+' mothership drifts through it; you cannot destroy it, but every laser
+' hit kills hundreds of Dosznti. Raise the destruction tally as high as
+' you can before your energy banks or the stardate timer run out. Lasers
+' reach three parsecs on every axis and hit half the time; each costs
+' energy, every order costs a little, and the Dosznti, notoriously bad
+' shots, fire back when you come within five parsecs.
+'
+' As the book, master control reports both ships' co-ordinates every
+' turn, and the deep space scanners now and then read the distances,
+' when the mothership also drifts a parsec or so. The viewscreen shows
+' the mothership when it is in front of you; the map shows north-south
+' and east-west, the gauge beside it fore and aft.
+'
+' Controls (either joystick): the stick moves north, south, east or west;
+' the left button fires the lasers; the right button opens the helm
+' (advance, retreat, hyperspace), chosen with the stick. Keypad not used.
+'
+' Liberties taken:
+' - Landing on the mothership's very parsec is a collision and ends the
+'   mission (the book had the message but no test for it).
+' - Hyperspace keeps the book's quirk: it throws you to a new north-south
+'   and east-west place but leaves fore and aft as they were.
+' - New music (Stardate) and sound effects; the viewscreen, map and gauge
+'   are new; the tally keeps a best.
+'
+' House rules kept: columns 2-29, rows 1-22; four sprites at most (the
+' mothership in two colours and two laser bolts); the frame loop is
+' protected from the NMI and every screen is drawn with the NMI off
+' after a wait.
+
+const TStar0 = 128
+const TStar1 = 129
+const TStar2 = 130
+const TStar3 = 131
+const TSpace = 132
+const TRail = 133
+const TCell = 134
+const TYou = 135
+const TThem = 136
+const TBoth = 137
+const TBar = 138
+const TBarlow = 139
+const TBarnone = 140
+const SDome = 0
+const SHull = 4
+const SBolt = 8
+const NTiles8 = 104
+const SprBytes = 96
+const SndEngine = 1
+const SndBoom = 2
+const SndHit = 3
+const SndClick = 4
+const SndLaser = 5
+const SndAlarm = 6
+const SndScan = 7
+const SndHyper = 8
+const SndFade = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+u8 A = 0
+u8 B = 0
+u8 C = 0
+u8 X = 0
+u8 Y = 0
+u8 Z = 0
+u16 L4 = 0
+u8 Ti = 50
+u32 T = 0
+u32 Hs = 0
+u32 Nv = 0
+u32 Pw = 0
+u8 Lead = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Ends = 0
+u8 Cond = 0
+u8 Da = 0
+u8 Hm = 0
+u8 Ox = 0
+u8 Oy = 0
+u8 Ex = 0
+u8 Ey = 0
+u8 Big = 0
+u8 Seen = 0
+u8 Tw = 0
+u8 Ti2 = 0
+u8 Tj = 0
+u8 Tv = 0
+u8 Tc = 0
+u16 W16 = 0
+i16 Dv = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u16 NumU = 0
+u16 Rs = $6D2F
+u16 Rt = 0
+u8 Rb = 0
+u8 Rb2 = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+
+  tile screen
+  set sound table HwSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+
+mission:
+  NewMission
+  BridgeScreen
+
+turn:
+  ' status report from master control
+  Panel
+  View
+  if Ti < 1 then
+    Ends = 2
+    goto mission_end
+  end if
+  if L4 = 0 then
+    Ends = 1
+    goto mission_end
+  end if
+  if L4 > 1 then
+    L4 = L4 - 1
+  else
+    L4 = 0
+  end if
+  dec Ti
+  Panel
+  Message
+  print at 2,21, "WHAT IS YOUR ORDER, CAPTAIN?"
+  Mode = 1
+order:
+  Frame1
+  ReadPad
+  Ox = X
+  Oy = Y
+  if Press = 1 then
+    Mode = 0
+    Laser
+    goto after
+  end if
+  if Press2 = 1 then
+    Helm
+    if Hm = 0 then goto order
+    Mode = 0
+    goto after
+  end if
+  if Stick = 0 then goto order
+  Mode = 0
+  if Up1 = 1 then
+    if X > 1 then dec X
+  end if
+  if Dn1 = 1 then
+    if X < 10 then inc X
+  end if
+  if Rt1 = 1 then
+    if Y < 10 then inc Y
+  end if
+  if Lf1 = 1 then
+    if Y > 1 then dec Y
+  end if
+  play sound SndEngine
+after:
+  MapShips
+  View
+  if X = A then
+    if Y = B then
+      if Z = C then
+        Ends = 3
+        goto mission_end
+      end if
+    end if
+  end if
+  Report
+  ' now and then the deep space scanners, and the mothership drifts
+  Rnd
+  if Rb < 77 then
+    Message
+    print at 2,21, "DEEP SPACE SCANNERS READ:"
+    print at 2,22, "N/S"
+    Dv = A
+    Dv = Dv - X
+    Sign
+    print at 9,22, "E/W"
+    Dv = B
+    Dv = Dv - Y
+    Nx = 13
+    SignAt
+    print at 17,22, "A/R"
+    Dv = C
+    Dv = Dv - Z
+    Nx = 21
+    SignAt
+    play sound SndScan
+    Pause
+    Drift
+    A = A + Ex
+    Drift
+    B = B + Ex
+    Drift
+    C = C + Ex
+    if A < 1 then A = 1
+    if A > 200 then A = 1
+    if A > 10 then A = 10
+    if B < 1 then B = 1
+    if B > 200 then B = 1
+    if B > 10 then B = 10
+    if C < 1 then C = 1
+    if C > 200 then C = 1
+    if C > 10 then C = 10
+    MapShips
+    View
+  end if
+  goto turn
+
+mission_end:
+  ' Ends: 1 energy gone, 2 time up, 3 collision
+  Mode = 2
+  HideSprites
+  Message
+  if Ends = 3 then
+    print at 2,21, "YOU HAVE COLLIDED WITH THE"
+    print at 2,22, "DOSZNTI SHIP!!"
+    play sound SndHit
+    Flash
+    Pause
+  end if
+  Message
+  print at 2,21, "SHIP'S MASTER CONTROL HERE"
+  if Ends = 1 then print at 2,22, "ENERGY RESERVES DEPLETED"
+  if Ends = 2 then print at 2,22, "YOU STAYED IN SPACE TOO LONG"
+  Pause
+  Pause
+  Message
+  print at 2,21, "YOU DEFEATED"
+  Nv = T
+  Nx = 15
+  Ny = 21
+  ShowNum
+  print at Nx,21, " DOSZNTI"
+  Pause
+  Pause
+  for K = 1 to 3
+    print at 2,22, "LIFE SUPPORT SYSTEMS FADING"
+    play sound SndFade
+    Pause
+    print at 2,22, "                            "
+    for J = 1 to 20
+      Frame1
+    next
+  next
+  if T > Hs then Hs = T
+  Message
+  print at 2,21, "BEST SO FAR:"
+  Nv = Hs
+  Nx = 15
+  Ny = 21
+  ShowNum
+  print at 2,22, "BUTTON: NEXT MISSION"
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto mission
+
+' ---------------------------------------------------------------------------
+' The mission
+
+sub NewMission:
+  Rnd
+  NumU = Rb
+  NumU = NumU * 30
+  NumU = NumU >> 8
+  L4 = NumU + 35
+  L4 = L4 * 4
+  T = 0
+  Ti = 50
+  Ten
+  A = V
+  Ten
+  B = V
+  Ten
+  C = V
+  Ten
+  X = V
+  Ten
+  Y = V
+  Ten
+  Z = V
+  if X = A then
+    if Y = B then
+      if Z = C then Z = 11 - C
+    end if
+  end if
+  Ends = 0
+  Cond = 0
+  return
+end sub
+
+' Ten: V = 1 to 10 at random
+sub Ten:
+  Rnd
+  NumU = Rb
+  NumU = NumU * 10
+  NumU = NumU >> 8
+  V = NumU + 1
+  return
+end sub
+
+' Drift: Ex = the book's INT(RND * 2 - RND * 2): -2 to 1
+sub Drift:
+  Rnd
+  Rb2 = Rb
+  Rnd
+  Dv = Rb2
+  Dv = Dv - Rb
+  Dv = Dv * 2
+  if Dv >= 0 then
+    Ex = 0
+    if Dv >= 256 then Ex = 1
+  else
+    Ex = 255
+    if Dv < -256 then Ex = 254
+  end if
+  return
+end sub
+
+' InRange: V = 1 when every axis is within K parsecs
+sub InRange:
+  V = 1
+  if A > X then
+    W = A - X
+  else
+    W = X - A
+  end if
+  if W > K then V = 0
+  if B > Y then
+    W = B - Y
+  else
+    W = Y - B
+  end if
+  if W > K then V = 0
+  if C > Z then
+    W = C - Z
+  else
+    W = Z - C
+  end if
+  if W > K then V = 0
+  return
+end sub
+
+sub Laser:
+  if L4 > 3 then
+    L4 = L4 - 3
+  else
+    L4 = 0
+  end if
+  Panel
+  K = 3
+  InRange
+  ' (the answer is kept: Bolts uses V)
+  Hm = V
+  Bolts
+  Message
+  if Hm = 0 then
+    print at 2,21, "THE DOSZNTI SHIP IS NOT"
+    print at 2,22, "WITHIN RANGE, SIR"
+    Pause
+    return
+  end if
+  print at 2,21, "LASERS ARMED AND READY, SIR"
+  Pause
+  Rnd
+  Message
+  if Rb < 128 then
+    print at 2,21, "LASER FIRE WAS UNSUCCESSFUL,"
+    print at 2,22, "CAPTAIN"
+    Pause
+    return
+  end if
+  print at 2,21, "YOU DAMAGED THE DOSZNTI SHIP"
+  print at 2,22, "CAPTAIN. WELL DONE!!!"
+  play sound SndBoom
+  Flash
+  ' 784 to 1783 Dosznti
+  Rnd
+  NumU = Rb
+  NumU = NumU * 1000
+  NumU = NumU >> 8
+  NumU = NumU + 784
+  Nv = NumU
+  T = T + Nv
+  Panel
+  Pause
+  return
+end sub
+
+' Helm: advance, retreat, hyperspace or cancel (Hm = 0 cancelled)
+sub Helm:
+  Hm = 1
+hl_draw:
+  Message
+  print at 2,21, "HELM: ADVANCE RETREAT HYPER"
+  print at 2,22, "      (RIGHT BUTTON: CANCEL)"
+  V = 7
+  if Hm = 2 then V = 15
+  if Hm = 3 then V = 23
+  print at 6,21, " "
+  print at 14,21, " "
+  print at 22,21, " "
+  print at V,21, ">"
+hl_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Rt1 = 1 then
+      if Hm < 3 then inc Hm
+    end if
+    if Lf1 = 1 then
+      if Hm > 1 then dec Hm
+    end if
+    play sound SndClick
+    goto hl_draw
+  end if
+  if Press2 = 1 then
+    Hm = 0
+    Message
+    print at 2,21, "WHAT IS YOUR ORDER, CAPTAIN?"
+    return
+  end if
+  if Press = 0 then goto hl_loop
+  if Hm = 1 then
+    if Z > 1 then dec Z
+    play sound SndEngine
+  end if
+  if Hm = 2 then
+    if Z < 10 then inc Z
+    play sound SndEngine
+  end if
+  if Hm = 3 then Hyper
+  return
+end sub
+
+sub Hyper:
+  play sound SndHyper
+  HideSprites
+  ' the stars stream past
+  for K = 1 to 30
+    for J = 1 to 3
+      Rnd
+      V = Rb & 31
+      if V < 28 then
+        V = V + 2
+        Rnd
+        W = Rb & 7
+        W = W + 1
+        put char TRail at V,W
+      end if
+    next
+    Frame1
+  next
+  ' as the book: north-south and east-west at random (twice the first)
+  Ten
+  X = V
+  Ten
+  Y = V
+  Ten
+  X = V
+  StarsAgain
+  return
+end sub
+
+' Report: are the Dosznti firing at us?
+sub Report:
+  K = 5
+  InRange
+  if V = 0 then
+    Cond = 0
+    Panel
+    return
+  end if
+  Rnd
+  if Rb < 179 then
+    Cond = 0
+    Panel
+    return
+  end if
+  Cond = 2
+  Panel
+  Message
+  print at 2,21, "CONDITION RED! CONDITION RED"
+  play sound SndAlarm
+  Pause
+  Rnd
+  if Rb < 64 then
+    Cond = 1
+    Panel
+    print at 2,22, "CONDITION AMBER!"
+    Pause
+    return
+  end if
+  Message
+  print at 2,21, "DOSZNTI FIRING AT US, SIR!"
+  Pause
+  Rnd
+  Message
+  if Rb >= 179 then
+    print at 2,21, "THE DOSZNTI FIRE MISSED OUR"
+    print at 2,22, "SHIP, CAPTAIN"
+    Pause
+    return
+  end if
+  play sound SndHit
+  Flash
+  ' a damage rating of 2 to 10
+  Rnd
+  NumU = Rb
+  NumU = NumU * 9
+  NumU = NumU >> 8
+  Da = NumU + 2
+  print at 2,21, "DAMAGE RATING"
+  NumU = Da
+  print at 16,21, width$(NumU, 2)
+  if Da = 2 then print at 2,22, "TO THE FOREWARD SECTION, SIR"
+  if Da = 3 then print at 2,22, "TO THE CREW SECTION, CAPTAIN"
+  if Da >= 4 then
+    if Da <= 6 then print at 2,22, "TO THE MAIN DRIVE, SIR"
+  end if
+  if Da >= 7 then print at 2,22, "TO THE POWER RESERVE CHAMBER"
+  NumU = Da
+  NumU = NumU * 4
+  if L4 > NumU then
+    L4 = L4 - NumU
+  else
+    L4 = 0
+  end if
+  Panel
+  Pause
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Bridge
+
+' View: the mothership on the viewscreen when it is in front of us
+sub View:
+  Seen = 0
+  print at 22,9, "       "
+  if C < Z then
+    Seen = 1
+    ' east-west across, north-south up and down, bigger when nearer
+    Dv = B
+    Dv = Dv - Y
+    Dv = Dv * 10
+    Dv = Dv + 120
+    Ex = Dv
+    Dv = A
+    Dv = Dv - X
+    Dv = Dv * 3
+    Dv = Dv + 30
+    Ey = Dv
+    if Ey < 10 then Ey = 10
+    V = Z - C
+    Big = 0
+    if V <= 2 then Big = 1
+    if Big = 1 then
+      sprites double
+      Ex = Ex - 8
+      Ey = Ey - 8
+    else
+      sprites simple
+    end if
+    set sprite 0 to Ey, Ex, SDome, 13
+    set sprite 1 to Ey, Ex, SHull, 14
+  else
+    set sprite 0 to 192, 0, 0, 0
+    set sprite 1 to 192, 0, 0, 0
+    if C > Z then print at 22,9, "BEHIND"
+    if C = Z then print at 22,9, "ABEAM"
+  end if
+  update sprites
+  return
+end sub
+
+' Bolts: two laser bolts from the bottom corners to the mothership (or
+' to the middle of the screen when it is not there)
+sub Bolts:
+  play sound SndLaser
+  if Seen = 0 then
+    Ex = 120
+    Ey = 30
+  end if
+  for K = 0 to 10
+    ' from (16, 64) and (224, 64), K tenths of the way
+    W = Ex - 16
+    NumU = W
+    NumU = NumU * K
+    NumU = NumU / 10
+    V = NumU
+    V = V + 16
+    W = 64 - Ey
+    NumU = W
+    NumU = NumU * K
+    NumU = NumU / 10
+    J = NumU
+    J = 64 - J
+    set sprite 2 to J, V, SBolt, 9
+    W = 224 - Ex
+    NumU = W
+    NumU = NumU * K
+    NumU = NumU / 10
+    V = NumU
+    V = 224 - V
+    set sprite 3 to J, V, SBolt, 9
+    update sprites
+    Frame1
+  next
+  set sprite 2 to 192, 0, 0, 0
+  set sprite 3 to 192, 0, 0, 0
+  update sprites
+  return
+end sub
+
+sub Flash:
+  for K = 1 to 6
+    V = K & 1
+    if V = 1 then
+      backdrop light red
+    else
+      backdrop black
+    end if
+    for J = 1 to 3
+      Frame1
+    next
+  next
+  backdrop black
+  return
+end sub
+
+sub Panel:
+  print at 15,11, "ENERGY"
+  NumU = L4 / 4
+  print at 26,11, width$(NumU, 3)
+  ' ten cells, one for every 7 units
+  for K = 0 to 9
+    V = K * 7
+    NumU = V
+    NumU = NumU * 4
+    W = TBarnone
+    if L4 > NumU then
+      W = TBar
+      if L4 < 40 then W = TBarlow
+    end if
+    V = 15 + K
+    put char W at V,12
+  next
+  print at 15,14, "STARDATE"
+  NumU = Ti
+  print at 26,14, width$(NumU, 3)
+  print at 15,16, "TALLY"
+  Nv = T
+  Nx = 21
+  Ny = 16
+  ShowNum
+  print at 15,18, "CONDITION"
+  if Cond = 0 then print at 15,19, "GREEN"
+  if Cond = 1 then print at 15,19, "AMBER"
+  if Cond = 2 then print at 15,19, "RED  "
+  return
+end sub
+
+' MapShips: the sector map (north-south down, east-west across) and the
+' fore and aft gauge
+sub MapShips:
+  for I = 1 to 10
+    V = I + 10
+    for J = 1 to 10
+      W = TCell
+      K = 0
+      if I = X then
+        if J = Y then K = 1
+      end if
+      if I = A then
+        if J = B then K = K + 2
+      end if
+      if K = 1 then W = TYou
+      if K = 2 then W = TThem
+      if K = 3 then W = TBoth
+      Nx = J + 1
+      put char W at Nx,V
+    next
+    W = TCell
+    K = 0
+    if I = Z then K = 1
+    if I = C then K = K + 2
+    if K = 1 then W = TYou
+    if K = 2 then W = TThem
+    if K = 3 then W = TBoth
+    put char W at 13,V
+  next
+  return
+end sub
+
+' ShowNum: Nv in plain figures at Nx, Ny
+sub ShowNum:
+  Lead = 0
+  for K = 0 to 5
+    if K = 0 then Pw = 100000
+    if K = 1 then Pw = 10000
+    if K = 2 then Pw = 1000
+    if K = 3 then Pw = 100
+    if K = 4 then Pw = 10
+    if K = 5 then Pw = 1
+    V = 48
+sn_count:
+    if Nv >= Pw then
+      Nv = Nv - Pw
+      inc V
+      goto sn_count
+    end if
+    if V > 48 then Lead = 1
+    if K = 5 then Lead = 1
+    if Lead = 1 then
+      put char V at Nx,Ny
+      inc Nx
+    end if
+  next
+  print at Nx,Ny, " "
+  return
+end sub
+
+' Sign: Dv with its sign at 6,22; SignAt: at Nx,22
+sub Sign:
+  Nx = 6
+  SignAt
+  return
+end sub
+
+sub SignAt:
+  V = 43
+  if Dv < 0 then
+    V = 45
+    Dv = 0 - Dv
+  end if
+  if Dv = 0 then V = 32
+  put char V at Nx,22
+  inc Nx
+  NumU = Dv
+  V = NumU
+  V = V + 48
+  if NumU >= 10 then
+    put char 49 at Nx,22
+    inc Nx
+    V = 48
+  end if
+  put char V at Nx,22
+  return
+end sub
+
+sub StarsAgain:
+  for V = 1 to 9
+    for W = 2 to 29
+      K = W * 7
+      K = K + V
+      K = K * 5
+      K = K & 31
+      J = TSpace
+      if K < 4 then J = TStar0 + K
+      put char J at W,V
+    next
+  next
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub BridgeScreen:
+  NewScreen
+  StarsAgain
+  fill TRail count 28 at 2,10
+  print at 2,9, "VIEWSCREEN"
+  MapShips
+  print at 13,20, " "
+  Panel
+  ShowScreen
+  View
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  Twinkle
+  return
+end sub
+
+' Twinkle: every eighth frame the four kinds of star change brightness
+data TwinkleCol bytes $F1, $F1, $E1, $41, $11, $41, $E1, $F1
+sub Twinkle:
+  Tv = Tick & 7
+  if Tv <> 0 then return
+  inc Tw
+  for Ti2 = 0 to 3
+    Tv = Ti2 * 3
+    Tv = Tv + Tw
+    Tv = Tv & 7
+    Tc = TwinkleCol[Tv]
+    Tv = TStar0 + Ti2
+    W16 = Tv
+    W16 = W16 * 8
+    ' (the viewscreen spans the first two thirds of the screen)
+    for Tj = 0 to 7
+      vpoke vram.color + W16, Tc
+      W16 = W16 + 2048
+      vpoke vram.color + W16, Tc
+      W16 = W16 - 2047
+    next
+  next
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 50
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then Stick = 1
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 3
+  for I = 0 to 3
+    set sprite I to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  StarsAgain
+  print at 12,3, "HYPERWAR"
+  print at 11,13, "PLAY"
+  print at 11,14, "HOW TO PLAY"
+  print at 11,15, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  sprites double
+  set sprite 0 to 40, 112, SDome, 13
+  set sprite 1 to 40, 112, SHull, 14
+  update sprites
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndClick
+  end if
+  print at 9,13, " "
+  print at 9,14, " "
+  print at 9,15, " "
+  V = Menu + 13
+  print at 9,V, ">"
+  if Press = 0 then goto title_loop
+  sprites simple
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "PATROL A CUBE OF SPACE TEN"
+  print at 2,4, "PARSECS A SIDE. ONE DOSZNTI"
+  print at 2,5, "MOTHERSHIP DRIFTS THROUGH IT"
+  print at 2,6, "A LASER HIT KILLS HUNDREDS"
+  print at 2,7, "OF DOSZNTI. LASERS REACH 3"
+  print at 2,8, "PARSECS EACH WAY; THEY FIRE"
+  print at 2,9, "BACK WITHIN 5. MIND YOUR"
+  print at 2,10, "ENERGY AND THE STARDATE."
+  print at 2,12, "STICK: NORTH, SOUTH, EAST,"
+  print at 2,13, "WEST. LEFT BUTTON: LASERS."
+  print at 2,14, "RIGHT BUTTON: HELM: ADVANCE,"
+  print at 2,15, "RETREAT OR HYPERSPACE."
+  print at 2,17, "THE MAP: YOU BLUE, THEM RED."
+  print at 2,18, "THE COLUMN BESIDE IT: FORE"
+  print at 2,19, "(TOP) AND AFT."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 12,1, "HYPERWAR"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "NEW MUSIC: STARDATE."
+  print at 2,11, "COLECOVISION VERSION BY"
+  print at 2,12, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$20,$00,$00,$00,$00
+  $00,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$08,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$18,$C3,$81,$81,$24,$00,$00
+  $00,$C3,$81,$00,$81,$C3,$00,$00
+  $00,$C3,$A5,$00,$A5,$C3,$00,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$01,$01,$01,$01,$01,$01,$00
+  $00,$01,$82,$82,$82,$82,$01,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$F1,$01,$01
+  $01,$01,$01,$01,$01,$01,$F1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$0E,$0F,$0E,$01,$01,$01
+  $01,$01,$01,$41,$01,$01,$01,$01
+  $01,$51,$15,$15,$15,$51,$01,$01
+  $01,$18,$18,$08,$18,$18,$01,$01
+  $01,$1D,$1D,$0D,$1D,$1D,$01,$01
+  $01,$13,$13,$13,$13,$13,$13,$01
+  $01,$18,$18,$18,$18,$18,$18,$01
+  $01,$14,$41,$41,$41,$41,$14,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$07,$0F,$1B,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$F0,$D8,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$3F,$7F,$FF,$B6,$7F,$1F,$07,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$FC,$FE,$FF,$6D,$FE,$F8,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+HwEngine:
+    db $00,$00,$66,$14,$00,$00,$86,$0A,$10
+HwBoom:
+    db $00,$00,$04,$04,$00,$00,$25,$06,$00,$00,$36,$08,$00,$00,$57,$0A,$10
+HwHit:
+    db $00,$00,$04,$03,$00,$00,$17,$05,$00,$00,$37,$08,$00,$00,$57,$0A,$10
+HwClick:
+    db $40,$40,$70,$01,$50
+HwLaser:
+    db $40,$35,$20,$01,$40,$40,$20,$01,$40,$4C,$30,$01,$40,$5A,$30,$01,$40,$6B,$40,$01,$40,$7F,$40,$01
+    db $40,$97,$50,$01,$40,$B4,$50,$01,$40,$D6,$60,$01,$50
+HwAlarm:
+    db $40,$7F,$30,$05,$40,$7F,$F0,$01,$40,$A9,$30,$05,$40,$A9,$F0,$01,$40,$7F,$30,$05,$40,$7F,$F0,$01
+    db $40,$A9,$30,$05,$40,$A9,$F0,$01,$50
+HwScan:
+    db $40,$47,$50,$01,$40,$47,$F0,$01,$40,$40,$50,$01,$40,$40,$F0,$01,$40,$39,$50,$01,$40,$39,$F0,$01
+    db $40,$35,$50,$03,$40,$35,$F0,$01,$50
+HwHyper:
+    db $40,$FC,$31,$02,$40,$7C,$31,$02,$40,$1D,$31,$02,$40,$D6,$30,$02,$40,$A0,$30,$02,$40,$78,$30,$02
+    db $40,$5A,$30,$02,$40,$43,$30,$02,$40,$32,$40,$04,$50
+HwFade:
+    db $40,$1D,$51,$09,$40,$1D,$F1,$01,$40,$41,$51,$09,$40,$41,$F1,$01,$40,$53,$51,$11,$40,$53,$F1,$01
+    db $50
+
+HwSoundTable:
+    dw HwEngine,$702B
+    dw HwBoom,$702B
+    dw HwHit,$702B
+    dw HwClick,$7035
+    dw HwLaser,$7035
+    dw HwAlarm,$7035
+    dw HwScan,$7035
+    dw HwHyper,$7035
+    dw HwFade,$7035
+    dw HwTuneMel,$703F
+    dw HwTuneBass,$7049
+; Stardate, E minor (original for this game)
+; Tiny Sound, 7 frames per step
+HwTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$31,$88,$23,$01,$23,$01,$2A,$00,$00,$01,$28,$01,$26,$01
+    db $25,$01,$23,$00,$21,$01,$23,$01,$25,$01,$1E,$00,$00,$01,$21,$01
+    db $23,$00,$00,$00,$23,$01,$26,$01,$2A,$00,$2F,$00,$2D,$01,$2A,$01
+    db $28,$01,$2A,$00,$26,$01,$25,$01,$21,$01,$23,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+HwTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$31,$88,$0B,$01,$0B,$01,$0B,$01,$0B,$01,$07,$01,$07,$01
+    db $07,$01,$07,$01,$09,$01,$09,$01,$09,$01,$09,$01,$0B,$01,$06,$01
+    db $0B,$01,$0B,$01,$07,$01,$07,$01,$0E,$01,$0E,$01,$09,$01,$09,$01
+    db $06,$01,$06,$01,$07,$01,$09,$01,$06,$01,$0B,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}

@@ -1,0 +1,858 @@
+' AVALANCHE
+' From Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983), for the ColecoVision in Amy by
+' Amy Bienvenu.
+'
+' You are Mayor Glugenheimer of a Swiss alpine village lying straight in
+' the path of avalanches. You hope to stay in office for twenty years.
+' Your one resource is money: what you keep earns ten per cent a year,
+' what you spend buys shelter (2.7 cubic yards a dollar, and a villager
+' needs ten). The chance of an avalanche grows every year, from 19 to 1
+' in the first to certain in the nineteenth. When one strikes, those
+' with shelter are safe and the rest are killed; lose more than you
+' save and you are forced to step down. The village grows five per cent
+' a year. Your mayoral rating at the end counts the treasury (ten times),
+' the villagers (21 each) and the shelter, less twelve for every death.
+'
+' Controls (either joystick): up and down change the amount to spend,
+' left and right choose the figure; the left button spends it, the right
+' button spends everything. Keypad not used.
+'
+' Liberties taken:
+' - The book's listing sent you from office when an avalanche killed no
+'   one; here everyone is safe and you carry on (the shelter still wears
+'   by a tenth, as after any avalanche).
+' - The village, its chalets and its shelters are drawn, and the
+'   avalanche comes down the mountain. New music (Alpenglow) and sound
+'   effects.
+'
+' House rules kept: columns 2-29, rows 1-22; no sprites; the frame loop
+' is protected from the NMI and every screen is drawn with the NMI off
+' after a wait.
+
+const TSky = 128
+const TSnow = 129
+const TSnowl = 130
+const TSnowr = 131
+const TRock = 132
+const TRockl = 133
+const TRockr = 134
+const TPine = 135
+const TValley = 136
+const TChalet = 137
+const TShelter = 138
+const TSlide1 = 139
+const TSlide2 = 140
+const SFlake = 0
+const NTiles8 = 104
+const SprBytes = 32
+const SndRumble = 1
+const SndClick = 2
+const SndSpend = 3
+const SndToll = 4
+const SndWin = 5
+const SndLose = 6
+const SndTuneA = 7
+const SndTuneB = 8
+
+u32 M = 0
+u32 S = 0
+u32 D = 0
+u32 Amt = 0
+u32 Nv = 0
+u32 Pw = 0
+u32 Q = 0
+u32 X32 = 0
+u32 Rg = 0
+u32 Ng = 0
+u32 Kd = 0
+u32 P = 0
+u16 NumU = 0
+u8 Y = 1
+u8 N = 0
+u8 Pl = 2
+u8 Lead = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Ends = 0
+u8 Houses = 0
+u8 Huts = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+u16 Rs = $3B9D
+u16 Rt = 0
+u8 Rb = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 Cx = 0
+u8 Cy = 0
+
+  tile screen
+  set sound table AvSoundTable areas 4
+  nmi off
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+  NewTerm
+  VillageScreen
+
+year:
+  if Y = 20 then goto well_done
+  Report
+  Spend
+  M = M - Amt
+  ' 2.7 cubic yards a dollar
+  X32 = Amt * 27
+  X32 = X32 / 10
+  S = S + X32
+  ' ten per cent interest, rounded
+  X32 = M + 5
+  X32 = X32 / 10
+  M = M + X32
+  ' the chance: 1 in (20 - year)
+  V = 20 - Y
+  Rnd
+  NumU = Rb
+  NumU = NumU * V
+  NumU = NumU >> 8
+  if NumU = 0 then
+    Avalanche
+    if Ends = 1 then goto step_down
+  end if
+  ' the village grows
+  X32 = P / 20
+  P = P + X32
+  inc Y
+  DrawVillage
+  goto year
+
+well_done:
+  Message
+  print at 2,15, "WELL DONE, MAYOR!"
+  print at 2,16, "YOU SURVIVED 20 YEARS IN"
+  print at 2,17, "OFFICE, AND END YOUR TERM:"
+  print at 2,18, "$"
+  Nv = M
+  Nx = 3
+  Ny = 18
+  ShowNum
+  print at Nx,18, " IN THE TREASURY"
+  Nv = P
+  Nx = 2
+  Ny = 19
+  ShowNum
+  print at Nx,19, " PEOPLE SURVIVING"
+  Nv = S
+  Nx = 2
+  Ny = 20
+  ShowNum
+  print at Nx,20, " CUBIC YARDS OF SHELTER"
+  ' the rating: 10 M + 21 P + S - 12 D
+  Rg = M * 10
+  X32 = P
+  X32 = X32 * 21
+  Rg = Rg + X32
+  Rg = Rg + S
+  Ng = D * 12
+  print at 2,21, "YOUR MAYORAL RATING IS"
+  Nx = 2
+  Ny = 22
+  if Rg >= Ng then
+    Nv = Rg - Ng
+  else
+    Nv = Ng - Rg
+    put char 45 at Nx,22
+    inc Nx
+  end if
+  ShowNum
+  play sound SndWin
+  goto the_end
+
+step_down:
+  Message
+  print at 2,16, "THE LOSS OF HUMAN LIFE WAS"
+  print at 2,17, "CATASTROPHIC... YOU HAVE"
+  print at 2,18, "BEEN FORCED TO STEP DOWN"
+  print at 2,19, "FROM THE OFFICE OF MAYOR"
+  play sound SndLose
+the_end:
+  Mode = 2
+  Rearm
+  wait 90 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' The village
+
+sub NewTerm:
+  ' $9087 to $14086, and 2278 to 3277 people
+  Rnd
+  M = Rb
+  M = M * 5000
+  M = M / 256
+  M = M + 9087
+  Rnd
+  NumU = Rb
+  NumU = NumU * 1000
+  NumU = NumU >> 8
+  P = NumU
+  P = P + 2278
+  S = 0
+  D = 0
+  N = 0
+  Y = 1
+  Ends = 0
+  return
+end sub
+
+sub Report:
+  Message
+  print at 2,15, "YEAR"
+  NumU = Y
+  print at 7,15, width$(NumU, 2)
+  print at 12,15, "AVALANCHE"
+  V = 20 - Y
+  NumU = V
+  print at 22,15, width$(NumU, 2)
+  print at 25,15, "TO 1"
+  print at 2,16, "PEOPLE"
+  Nv = P
+  Nx = 9
+  Ny = 16
+  ShowNum
+  print at 16,16, "SHELTER"
+  Nv = S
+  Nx = 24
+  Ny = 16
+  ShowNum
+  print at 2,17, "TREASURY $"
+  Nv = M
+  Nx = 13
+  Ny = 17
+  ShowNum
+  if D > 0 then
+    print at 2,18, "DEAD"
+    Nv = D
+    Nx = 7
+    Ny = 18
+    ShowNum
+  end if
+  if N > 0 then
+    print at 16,18, "AVALANCHES"
+    NumU = N
+    print at 27,18, width$(NumU, 2)
+  end if
+  return
+end sub
+
+' Spend: Amt, chosen figure by figure (never more than the treasury)
+sub Spend:
+  Amt = 0
+  Pl = 2
+  print at 2,19, "HOW MUCH WILL YOU SPEND ON"
+  print at 2,20, "SHELTER? $"
+  print at 2,22, "BUTTON: SPEND   RIGHT: ALL"
+  Mode = 1
+  WasBtn = 1
+  WasBtn2 = 1
+sp_draw:
+  ' six figures
+  Nv = Amt
+  for K = 0 to 5
+    PlacePw
+    V = 48
+sp_count:
+    if Nv >= Pw then
+      Nv = Nv - Pw
+      inc V
+      goto sp_count
+    end if
+    W = K + 13
+    put char V at W,20
+  next
+  print at 13,21, "      "
+sp_loop:
+  Frame1
+  ReadPad
+  V = Tick & 16
+  W = Pl + 13
+  if V = 0 then
+    put char 94 at W,21
+  else
+    put char 32 at W,21
+  end if
+  if Press2 = 1 then
+    Amt = M
+    Mode = 0
+    play sound SndSpend
+    return
+  end if
+  if Press = 1 then
+    Mode = 0
+    play sound SndSpend
+    return
+  end if
+  if Stick = 0 then goto sp_loop
+  K = Pl
+  PlacePw
+  if Up1 = 1 then
+    X32 = Amt + Pw
+    if X32 <= M then
+      Amt = X32
+    else
+      Amt = M
+    end if
+  end if
+  if Dn1 = 1 then
+    if Amt >= Pw then
+      Amt = Amt - Pw
+    else
+      Amt = 0
+    end if
+  end if
+  if Lf1 = 1 then
+    if Pl > 0 then dec Pl
+  end if
+  if Rt1 = 1 then
+    if Pl < 5 then inc Pl
+  end if
+  play sound SndClick
+  goto sp_draw
+end sub
+
+' PlacePw: Pw = 100000, 10000, ... 1 for figure K
+sub PlacePw:
+  if K = 0 then Pw = 100000
+  if K = 1 then Pw = 10000
+  if K = 2 then Pw = 1000
+  if K = 3 then Pw = 100
+  if K = 4 then Pw = 10
+  if K = 5 then Pw = 1
+  return
+end sub
+
+sub Avalanche:
+  inc N
+  Message
+  print at 9,18, "** AVALANCHE **"
+  play sound SndRumble
+  ' the snow comes down the mountain, then over the village
+  for Cy = 3 to 14
+    for Cx = 2 to 29
+      SceneAt
+      if W <> TSky then
+        V = Cx + Cy
+        V = V & 1
+        W = TSlide1 + V
+        put char W at Cx,Cy
+      end if
+    next
+    for J = 1 to 4
+      Frame1
+    next
+    if Cy = 9 then play sound SndRumble
+  next
+  for J = 1 to 40
+    Frame1
+  next
+  ' the sheltered are safe
+  Q = S + 5
+  Q = Q / 10
+  Message
+  if Q >= P then
+    print at 2,15, "EVERYONE IS SAFE..."
+    Nv = P
+    Nx = 2
+    Ny = 16
+    ShowNum
+    print at Nx,16, " PEOPLE IN THE SHELTERS"
+  else
+    Nv = Q
+    Nx = 2
+    Ny = 15
+    ShowNum
+    print at Nx,15, " PEOPLE ARE SAFE..."
+    X32 = P
+    X32 = X32 - Q
+    print at 2,16, "BUT"
+    Nv = X32
+    Nx = 6
+    Ny = 16
+    ShowNum
+    print at Nx,16, " PEOPLE WERE KILLED..."
+    D = D + X32
+    Kd = X32
+    P = Q
+    play sound SndToll
+  end if
+  ' the shelter loses a tenth
+  X32 = S + 5
+  X32 = X32 / 10
+  S = S - X32
+  print at 2,17, "THERE ARE"
+  Nv = S
+  Nx = 12
+  Ny = 17
+  ShowNum
+  print at 2,18, "CUBIC YARDS OF SHELTER LEFT"
+  Pause
+  Pause
+  Pause
+  ' more killed than saved: out of office
+  if Kd > P then Ends = 1
+  Kd = 0
+  DrawScene
+  return
+end sub
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' SceneAt: W = the scenery tile at Cx, Cy (no village)
+sub SceneAt:
+  W = TValley
+  if Cy >= 12 then return
+  ' the mountain: row Cy spans columns 16 - Cy to 15 + Cy
+  V = 16 - Cy
+  K = 15 + Cy
+  W = TSky
+  if Cx < V then return
+  if Cx > K then return
+  if Cy <= 3 then
+    W = TSnow
+    if Cx = V then W = TSnowl
+    if Cx = K then W = TSnowr
+    return
+  end if
+  if Cy <= 7 then
+    W = TRock
+    if Cx = V then W = TRockl
+    if Cx = K then W = TRockr
+    return
+  end if
+  W = TSnow
+  if Cx = V then W = TSnowl
+  if Cx = K then W = TSnowr
+  if W = TSnow then
+    ' pines here and there
+    V = Cx * 5
+    V = V + Cy
+    V = V & 3
+    if V = 0 then W = TPine
+  end if
+  return
+end sub
+
+sub DrawScene:
+  for Cy = 1 to 14
+    for Cx = 2 to 29
+      SceneAt
+      put char W at Cx,Cy
+    next
+  next
+  return
+end sub
+
+' DrawVillage: a chalet for every 600 villagers, a shelter for every
+' 6000 cubic yards (room for 600)
+sub DrawVillage:
+  ' (counted up: Amy does not narrow a u32 into a byte)
+  X32 = P / 600
+  Houses = 0
+dv_h:
+  if X32 > 0 then
+    if Houses < 12 then
+      inc Houses
+      dec X32
+      goto dv_h
+    end if
+  end if
+  X32 = S / 6000
+  Huts = 0
+dv_s:
+  if X32 > 0 then
+    if Huts < 12 then
+      inc Huts
+      dec X32
+      goto dv_s
+    end if
+  end if
+  fill TValley count 28 at 2,12
+  fill TValley count 28 at 2,13
+  fill TValley count 28 at 2,14
+  for I = 1 to Houses
+    V = I * 2
+    V = V + 2
+    put char TChalet at V,12
+  next
+  for I = 1 to Huts
+    V = I * 2
+    V = V + 3
+    put char TShelter at V,14
+  next
+  return
+end sub
+
+' ShowNum: Nv in plain figures at Nx, Ny
+sub ShowNum:
+  Lead = 0
+  for K = 0 to 6
+    if K = 0 then Pw = 1000000
+    if K = 1 then Pw = 100000
+    if K = 2 then Pw = 10000
+    if K = 3 then Pw = 1000
+    if K = 4 then Pw = 100
+    if K = 5 then Pw = 10
+    if K = 6 then Pw = 1
+    V = 48
+sn_count:
+    if Nv >= Pw then
+      Nv = Nv - Pw
+      inc V
+      goto sn_count
+    end if
+    if V > 48 then Lead = 1
+    if K = 6 then Lead = 1
+    if Lead = 1 then
+      put char V at Nx,Ny
+      inc Nx
+    end if
+  next
+  return
+end sub
+
+sub Message:
+  for I = 15 to 22
+    fill 32 count 28 at 2,I
+  next
+  return
+end sub
+
+sub VillageScreen:
+  NewScreen
+  DrawScene
+  DrawVillage
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+data Dollar bytes
+  $10,$7C,$90,$7C,$12,$7C,$10,$00
+end data
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  ' the font has no dollar sign: one is drawn over '$'
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  DrawScene
+  P = 4000
+  S = 30000
+  DrawVillage
+  print at 11,16, "AVALANCHE"
+  print at 11,18, "PLAY"
+  print at 11,19, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  print at 3,22, "FROM HARTNELL'S GIANT BOOK"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndClick
+  end if
+  print at 9,18, " "
+  print at 9,19, " "
+  print at 9,20, " "
+  V = Menu + 18
+  print at 9,V, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOU ARE MAYOR GLUGENHEIMER."
+  print at 2,4, "AVALANCHES THREATEN YOUR"
+  print at 2,5, "VILLAGE, MORE LIKELY EACH"
+  print at 2,6, "YEAR. MONEY KEPT EARNS 10%;"
+  print at 2,7, "MONEY SPENT BUYS SHELTER"
+  print at 2,8, "(2.7 CUBIC YARDS A DOLLAR;"
+  print at 2,9, "A VILLAGER NEEDS 10)."
+  print at 2,11, "IF MORE ARE KILLED THAN ARE"
+  print at 2,12, "SAVED, YOU MUST STEP DOWN."
+  print at 2,13, "LAST 20 YEARS IN OFFICE!"
+  print at 2,15, "UP, DOWN: CHANGE A FIGURE."
+  print at 2,16, "LEFT, RIGHT: CHOOSE FIGURE."
+  print at 2,17, "LEFT BUTTON: SPEND IT."
+  print at 2,18, "RIGHT BUTTON: SPEND ALL."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 10,1, "AVALANCHE"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "NEW MUSIC: ALPENGLOW."
+  print at 2,11, "COLECOVISION VERSION BY"
+  print at 2,12, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$02,$00,$00,$40,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$10,$00,$02,$40,$00,$08,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $10,$38,$38,$83,$83,$01,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$C3,$81,$00,$00,$99,$00,$18
+  $00,$00,$C3,$81,$18,$18,$18,$18
+  $00,$42,$00,$10,$00,$81,$00,$20
+  $20,$00,$04,$00,$80,$02,$00,$40
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $0F,$0F,$EF,$0F,$0F,$EF,$0F,$0F
+  $F5,$F5,$F5,$5F,$5F,$5F,$5F,$0F
+  $F5,$F5,$F5,$F5,$5F,$5F,$5F,$0F
+  $0E,$1E,$0E,$1E,$1E,$0E,$1E,$0E
+  $E5,$E5,$E5,$5E,$5E,$5E,$5E,$0E
+  $E5,$E5,$E5,$E5,$5E,$5E,$5E,$0E
+  $CF,$CF,$CF,$FC,$FC,$FC,$6F,$6F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $8F,$F8,$F8,$08,$0A,$A1,$0A,$1A
+  $0F,$0F,$FE,$FE,$1E,$1E,$1E,$1E
+  $0F,$7F,$0F,$7F,$0F,$7F,$0F,$7F
+  $7F,$0F,$7F,$0F,$7F,$7F,$0F,$7F
+end data
+data SpritePat bytes
+  $50,$20,$50,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+AvRumble:
+    db $00,$00,$26,$1E,$00,$00,$36,$1E,$00,$00,$47,$1E,$00,$00,$67,$1E,$00,$00,$77,$14,$10
+AvClick:
+    db $40,$40,$70,$01,$50
+AvSpend:
+    db $40,$55,$40,$02,$40,$55,$F0,$01,$40,$47,$40,$02,$40,$47,$F0,$01,$40,$35,$40,$05,$40,$35,$F0,$01
+    db $50
+AvToll:
+    db $40,$FC,$31,$13,$40,$FC,$F1,$01,$40,$FC,$31,$13,$40,$FC,$F1,$01,$40,$FC,$31,$1D,$40,$FC,$F1,$01
+    db $50
+AvWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+AvLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+AvSoundTable:
+    dw AvRumble,$702B
+    dw AvClick,$7035
+    dw AvSpend,$7035
+    dw AvToll,$7035
+    dw AvWin,$7035
+    dw AvLose,$7035
+    dw AvTuneMel,$703F
+    dw AvTuneBass,$7049
+; Alpenglow, G major (original for this game)
+; Tiny Sound, 7 frames per step
+AvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$F1,$22,$21,$00,$26,$00,$2A,$00,$2D,$00,$00,$00,$2A,$00
+    db $26,$00,$28,$00,$25,$00,$28,$00,$2B,$00,$2D,$00,$00,$00,$2B,$00
+    db $28,$00,$25,$00,$26,$00,$2A,$00,$2D,$00,$32,$00,$00,$00,$2F,$00
+    db $2D,$00,$2A,$00,$2B,$00,$28,$00,$25,$00,$28,$00,$26,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+AvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$F1,$22,$0E,$12,$15,$12,$0E,$12,$15,$12,$0E,$12,$15,$12
+    db $0E,$12,$15,$12,$09,$0D,$10,$0D,$09,$0D,$10,$0D,$09,$0D,$13,$0D
+    db $09,$0D,$10,$0D,$0E,$12,$15,$12,$0E,$12,$15,$12,$07,$0B,$0E,$0B
+    db $0E,$12,$15,$12,$09,$0D,$10,$0D,$09,$0D,$13,$0D,$0E,$12,$15,$1A
+    db $00,$00,$00,$00
+    db $FF
+}

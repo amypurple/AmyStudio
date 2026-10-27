@@ -1,0 +1,2622 @@
+' MICROCHIP GOLF
+' A round of golf for the ColecoVision, in Amy, by Amy Bienvenu, after
+' CADDY in Tim Hartnell's Giant Book of Computer Games (Ballantine Books,
+' 1984; Interface Publications, 1983): nine holes on "the Microchip
+' Golfcourse", each with its DIFFICULTY FACTOR of three, four or five; the
+' computer keeps the score card, tells you how each hole went and works
+' out your average per hole; if you overshoot, your next shot goes back
+' toward the hole.
+'
+' Here you stand behind the ball and look down the hole: the fairway with
+' its mowing stripes, the rough and its trees on either side, bunkers, the
+' green and the flag. Aim, swing, and the view flies with the ball.
+'
+' Controls (either joystick): left and right aim (the cross shows where);
+' hold a side button to swing back - the power gauge rises and falls -
+' and let go to hit. On the green you putt straight at the hole and only
+' choose the strength. Either button goes through the pages; on the title
+' and at the end of a round, up and down choose. Keypad not used.
+'
+' Liberties taken (CADDY is a line of text with a "0" for the ball):
+' - The holes keep the book's lengths (15 to 26 of its steps, shown here
+'   as 225 to 390 yards) and its difficulty factor, which here makes the
+'   wind (up to 6 mph a step of difficulty) and how short a shot may fall
+'   (up to 4% a step; the book divided by up to 1 + the factor, which made
+'   every stroke a lottery).
+' - The book typed in a stroke strength; here it is the power gauge, and
+'   the ball also goes left or right: aim, wind, rough (a shorter club),
+'   bunkers (shorter still), and trees past the rough (a penalty stroke,
+'   play again from where you were). On the green you putt; within a yard
+'   of the hole the ball drops.
+' - A hole is picked up after ten strokes. Par (3 up to 250 yards, else 4)
+'   is new; so are the names for scores (birdie, bogey...).
+' - New music (Morning on the Links) and sound effects.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the course runs
+' to the edges, as a picture); sprites: the club (two), the ball, the aim
+' cross and four things on the course; the frame loop is protected from
+' the NMI, and every screen is drawn with the NMI off after a wait.
+'
+' The picture is Avalanche Run's slope engine (engine.asm): ground rows
+' 8-23 coloured line by line from a depth table (the mowing stripes), the
+' rough's edges drawn where they move, and the course's things projected
+' as sprites in eight sizes. One depth step is 4 yards; sideways the units
+' are feet.
+
+const TSky = 128
+const TCloud00 = 129
+const TCloud01 = 130
+const TCloud02 = 131
+const TMtn00 = 132
+const TMtn01 = 133
+const TMtn02 = 134
+const TMtn03 = 135
+const TMtn04 = 136
+const TMtn05 = 137
+const TMtn06 = 138
+const TMtn07 = 139
+const TMtn08 = 140
+const TMtn09 = 141
+const TMtn010 = 142
+const TMtn011 = 143
+const TMtn012 = 144
+const TMtn013 = 145
+const TMtn014 = 146
+const TMtn015 = 147
+const TMtn10 = 148
+const TMtn11 = 149
+const TMtn12 = 150
+const TMtn13 = 151
+const TMtn14 = 152
+const TMtn15 = 153
+const TMtn16 = 154
+const TMtn17 = 155
+const TMtn18 = 156
+const TMtn19 = 157
+const TMtn110 = 158
+const TMtn111 = 159
+const TMtn112 = 160
+const TMtn113 = 161
+const TMtn114 = 162
+const TMtn115 = 163
+const TMtn20 = 164
+const TMtn21 = 165
+const TMtn22 = 166
+const TMtn23 = 167
+const TMtn24 = 168
+const TMtn25 = 169
+const TMtn26 = 170
+const TMtn27 = 171
+const TMtn28 = 172
+const TMtn29 = 173
+const TMtn210 = 174
+const TMtn211 = 175
+const TMtn212 = 176
+const TMtn213 = 177
+const TMtn214 = 178
+const TMtn215 = 179
+const TBrow = 180
+const TBarfull = 181
+const TBarhot = 182
+const TBarnone = 183
+const TWindl = 184
+const TWindr = 185
+const TFlagic = 186
+const TWhite = 187
+const SClubal = 0
+const SClubar = 4
+const SClubtl = 8
+const SClubtr = 12
+const SClubfl = 16
+const SClubfr = 20
+const SBallbig = 24
+const SBallair = 28
+const SBallfar = 32
+const SAim = 36
+const STree0 = 40
+const STree1 = 44
+const STree2 = 48
+const STree3 = 52
+const STree4 = 56
+const STree5 = 60
+const STree6 = 64
+const STree7 = 68
+const SBunker0 = 72
+const SBunker1 = 76
+const SBunker2 = 80
+const SBunker3 = 84
+const SBunker4 = 88
+const SBunker5 = 92
+const SBunker6 = 96
+const SBunker7 = 100
+const SFlag0 = 104
+const SFlag1 = 108
+const SFlag2 = 112
+const SFlag3 = 116
+const SFlag4 = 120
+const SFlag5 = 124
+const SFlag6 = 128
+const SFlag7 = 132
+const SGreen0 = 136
+const SGreen1 = 140
+const SGreen2 = 144
+const SGreen3 = 148
+const SGreen4 = 152
+const SGreen5 = 156
+const SGreen6 = 160
+const SGreen7 = 164
+const NTiles8 = 480
+const SprBytes = 1344
+const SndSwoosh = 1
+const SndWind = 2
+const SndThud = 3
+const SndSand = 4
+const SndClick = 5
+const SndHit = 6
+const SndPutt = 7
+const SndGauge = 8
+const SndCup = 9
+const SndCheer = 10
+const SndGroan = 11
+const SndTuneA = 12
+const SndTuneB = 13
+
+const GBase = 208
+const KTree = 1
+const KBunker = 2
+const KFlag = 3
+const KGreen = 4
+
+data Gnd1Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$80,$C1,$08,$1C,$00,$20,$72
+  $00,$80,$C0,$00,$10,$00,$20,$70,$07,$00,$01,$08,$0C,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$80,$C1,$08,$1C,$00,$20,$72
+  $00,$80,$C0,$00,$10,$00,$20,$70,$07,$00,$01,$08,$0C,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$80,$C1,$08,$1C,$00,$20,$72
+  $00,$80,$C0,$00,$10,$00,$20,$70,$07,$00,$01,$08,$0C,$00,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$87,$C1,$C9,$1C,$1C,$20,$72
+  $70,$80,$C0,$C0,$10,$10,$20,$70,$07,$07,$01,$09,$0C,$0C,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$87,$C1,$C9,$1C,$1C,$20,$72
+  $70,$80,$C0,$C0,$10,$10,$20,$70,$07,$07,$01,$09,$0C,$0C,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$87,$C1,$C9,$1C,$1C,$20,$72
+  $70,$80,$C0,$C0,$10,$10,$20,$70,$07,$07,$01,$09,$0C,$0C,$00,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$E0,$F5,$0E,$0E,$1F
+  $00,$40,$E0,$E0,$F0,$00,$00,$10,$00,$00,$00,$00,$05,$0E,$0E,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$E0,$F5,$0E,$0E,$1F
+  $00,$40,$E0,$E0,$F0,$00,$00,$10,$00,$00,$00,$00,$05,$0E,$0E,$0F
+end data
+data Gnd2Pat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$E0,$E0,$F5,$0E,$0E,$1F
+  $00,$40,$E0,$E0,$F0,$00,$00,$10,$00,$00,$00,$00,$05,$0E,$0E,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$00,$00,$00
+  $10,$30,$30,$70,$70,$00,$00,$00,$00,$08,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$00,$00,$00
+  $10,$30,$30,$70,$70,$00,$00,$00,$00,$08,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$00,$00,$00
+  $10,$30,$30,$70,$70,$00,$00,$00,$00,$08,$08,$0C,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$00,$00
+  $10,$30,$30,$70,$70,$F0,$00,$00,$00,$08,$08,$0C,$0C,$0E,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$00,$00
+  $10,$30,$30,$70,$70,$F0,$00,$00,$00,$08,$08,$0C,$0C,$0E,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$FE,$00
+  $10,$30,$30,$70,$70,$F0,$F0,$00,$00,$08,$08,$0C,$0C,$0E,$0E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$10,$38,$38,$7C,$7C,$FE,$FE,$00
+  $10,$30,$30,$70,$70,$F0,$F0,$00,$00,$08,$08,$0C,$0C,$0E,$0E,$00
+end data
+data MtnRow0 bytes
+  $84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93
+  $84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93
+  $84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93
+end data
+data MtnRow1 bytes
+  $94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3
+  $94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3
+  $94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3
+end data
+data MtnRow2 bytes
+  $A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3
+  $A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3
+  $A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3
+end data
+data YofZ bytes
+  $C8,$C8,$C8,$C8,$C8,$C8,$C8,$B6,$A8,$9C,$93,$8B,$85,$80,$7B,$77
+  $74,$70,$6E,$6B,$69,$67,$65,$64,$62,$61,$60,$5E,$5D,$5C,$5B,$5A
+  $5A,$59,$58,$57,$57,$56,$55,$55,$54,$54,$53,$53,$52,$52,$52,$51
+  $51,$50,$50,$50,$50,$4F,$4F,$4F,$4E,$4E,$4E,$4E,$4D,$4D,$4D,$4D
+  $4C,$4C,$4C,$4C,$4C,$4C,$4B,$4B,$4B,$4B,$4B,$4B,$4A,$4A,$4A,$4A
+  $4A,$4A,$4A,$4A,$49,$49,$49,$49,$49,$49,$49,$49,$49,$48,$48,$48
+  $48,$48,$48,$48,$48,$48,$48,$48,$48,$47,$47,$47,$47,$47,$47,$47
+  $47,$47,$47,$47,$47,$47,$47,$46,$46,$46,$46,$46,$46,$46,$46,$46
+end data
+data SizeOfZ bytes
+  $07,$07,$07,$07,$07,$07,$07,$07,$07,$06,$06,$06,$05,$05,$05,$04
+  $04,$04,$04,$03,$03,$03,$03,$03,$03,$03,$02,$02,$02,$02,$02,$02
+  $02,$02,$02,$02,$02,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+data InvZ bytes
+  $9A,$9A,$9A,$9A,$9A,$9A,$80,$6E,$60,$55,$4D,$46,$40,$3B,$37,$33
+  $30,$2D,$2B,$28,$26,$25,$23,$21,$20,$1F,$1E,$1C,$1B,$1A,$1A,$19
+  $18,$17,$17,$16,$15,$15,$14,$14,$13,$13,$12,$12,$11,$11,$11,$10
+  $10,$10,$0F,$0F,$0F,$0E,$0E,$0E,$0E,$0D,$0D,$0D,$0D,$0D,$0C,$0C
+  $0C,$0C,$0C,$0B,$0B,$0B,$0B,$0B,$0B,$0B,$0A,$0A,$0A,$0A,$0A,$0A
+  $0A,$09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$08,$08,$08,$08,$08
+  $08,$08,$08,$08,$08,$08,$08,$07,$07,$07,$07,$07,$07,$07,$07,$07
+  $07,$07,$07,$07,$07,$07,$07,$06,$06,$06,$06,$06,$06,$06,$06,$06
+end data
+data CurveZ bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$02,$02,$02,$02,$02,$03,$03,$03,$03
+  $04,$04,$04,$04,$05,$05,$05,$05,$06,$06,$06,$07,$07,$07,$08,$08
+  $09,$09,$09,$0A,$0A,$0A,$0B,$0B,$0C,$0C,$0D,$0D,$0E,$0E,$0F,$0F
+  $10,$10,$11,$11,$12,$12,$13,$13,$14,$14,$15,$15,$16,$17,$17,$18
+  $19,$19,$1A,$1A,$1B,$1C,$1C,$1D,$1E,$1E,$1F,$20,$21,$21,$22,$23
+  $24,$24,$25,$26,$27,$27,$28,$29,$2A,$2B,$2B,$2C,$2D,$2E,$2F,$30
+  $31,$31,$32,$33,$34,$35,$36,$37,$38,$39,$3A,$3B,$3C,$3D,$3E,$3F
+end data
+data InvRow bytes
+  $04,$0C,$13,$1A,$22,$29,$30,$38,$3F,$47,$4E,$55,$5D,$64,$6C,$73
+end data
+data KRow bytes
+  $FF,$68,$3D,$2B,$23,$1C,$18,$15,$12,$10,$0F,$0D,$0C,$0B,$0B,$0A
+end data
+data LineTab bytes
+  $00,$34,$00,$00,$1A,$00,$55,$11,$00,$00,$0D,$00,$66,$0A,$00
+  $AB,$08,$00,$6E,$07,$00,$80,$06,$00,$C7,$05,$00,$33,$05,$00
+  $BA,$04,$00,$55,$04,$02,$00,$04,$02,$B7,$03,$02,$77,$03,$02
+  $40,$03,$02,$0F,$03,$02,$E4,$02,$02,$BD,$02,$02,$9A,$02,$02
+  $7A,$02,$02,$5D,$02,$02,$43,$02,$02,$2B,$02,$02,$14,$02,$02
+  $00,$02,$02,$ED,$01,$02,$DB,$01,$02,$CB,$01,$02,$BC,$01,$02
+  $AD,$01,$02,$A0,$01,$02,$93,$01,$02,$88,$01,$02,$7C,$01,$01
+  $72,$01,$01,$68,$01,$01,$5E,$01,$01,$55,$01,$01,$4D,$01,$01
+  $45,$01,$01,$3D,$01,$01,$36,$01,$01,$2F,$01,$01,$28,$01,$01
+  $21,$01,$01,$1B,$01,$01,$15,$01,$01,$10,$01,$01,$0A,$01,$01
+  $05,$01,$01,$00,$01,$01,$FB,$00,$01,$F7,$00,$01,$F2,$00,$01
+  $EE,$00,$01,$EA,$00,$01,$E6,$00,$01,$E2,$00,$01,$DE,$00,$01
+  $DA,$00,$01,$D7,$00,$01,$D3,$00,$01,$D0,$00,$01,$CD,$00,$01
+  $CA,$00,$01,$C7,$00,$01,$C4,$00,$01,$C1,$00,$01,$BE,$00,$03
+  $BB,$00,$03,$B9,$00,$03,$B6,$00,$03,$B4,$00,$03,$B1,$00,$03
+  $AF,$00,$03,$AD,$00,$03,$AB,$00,$03,$A9,$00,$03,$A6,$00,$03
+  $A4,$00,$03,$A2,$00,$03,$A0,$00,$03,$9E,$00,$03,$9D,$00,$03
+  $9B,$00,$03,$99,$00,$03,$97,$00,$03,$96,$00,$03,$94,$00,$03
+  $92,$00,$03,$91,$00,$03,$8F,$00,$03,$8E,$00,$03,$8C,$00,$03
+  $8B,$00,$03,$89,$00,$03,$88,$00,$03,$86,$00,$03,$85,$00,$03
+  $84,$00,$03,$83,$00,$03,$81,$00,$03,$80,$00,$03,$7F,$00,$03
+  $7E,$00,$03,$7C,$00,$03,$7B,$00,$03,$7A,$00,$03,$79,$00,$03
+  $78,$00,$03,$77,$00,$03,$76,$00,$03,$75,$00,$03,$74,$00,$03
+  $73,$00,$03,$72,$00,$03,$71,$00,$03,$70,$00,$03,$6F,$00,$03
+  $6E,$00,$03,$6D,$00,$03,$6C,$00,$03,$6B,$00,$03,$6A,$00,$03
+  $6A,$00,$03,$69,$00,$03,$68,$00,$03
+end data
+
+data KindPat bytes 0, STree0, SBunker0, SFlag0, SGreen0
+
+' the engine's state (see engine.asm)
+i16 Px = 0
+i16 Cq = 0
+i16 Mx = 0
+i16 My = 0
+i16 Mz = 0
+i16 EC1 = 0
+i16 EBase = 0
+i16 EPx = 0
+u16 Pos = 0
+u16 StC = 0
+u16 ENam = 0
+u8 ColA = $C3
+u8 ColB = $C2
+u8 StN = 0
+u8 StD = 0
+u8 StAll = 0
+u8 StOdd = 0
+u8 EOl = 0
+u8 EOr = 0
+u8 ELc = 0
+u8 ELh = 0
+u8 ERc = 0
+u8 ERh = 0
+u8 EGs = 0
+u8 Late = 0
+u8 Rk = 0
+u8 Rw = 0
+u8 Hl = 0
+u8 Hr = 0
+u8 Oi = 0
+u8 Ok = 0
+u8 Zb = 0
+u8 Sv = 0
+u8 Yv = 0
+u8 OKind[4]
+u8 OCol[4]
+u16 OZ[4]
+i16 OX[4]
+u8 SprY[4]
+u8 SprX[4]
+u8 SprP[4]
+u8 SprC[4]
+u8 LhOld[16]
+u8 RhOld[16]
+u8 WdR[16]
+u8 Lb[8]
+u8 Cache[128]
+
+' the round
+u8 HoleNo = 0
+u8 Strokes[9]
+u16 Yards[9]
+u8 Pars[9]
+u16 Total = 0
+u16 TotPar = 0
+u16 Best = 999
+u8 Q = 0
+u8 Par = 0
+u8 Shot = 0
+u8 Lie = 0
+u8 OldLie = 0
+u8 Holed = 0
+u8 Pen = 0
+' the hole: its length, the ball's place along it and across it (feet),
+' the way you face, the fairway's half width, bunkers, wind
+u16 HLen = 0
+u16 By = 0
+u16 OldBy = 0
+u16 Togo = 0
+i16 Bx = 0
+i16 OldBx = 0
+i16 Dir = 1
+i16 Wd = 60
+u16 BkAy = 0
+i16 BkAx = 0
+u16 BkBy = 0
+i16 BkBx = 0
+i16 Wind = 0
+' a shot: aim, power, carry, the sideways drift
+i16 Aim = 0
+u8 Pw = 0
+u8 PwUp = 0
+u16 PMax = 0
+u16 Carry = 0
+i16 DLat = 0
+' the flight
+u16 Fy16 = 0
+u16 FStep = 0
+i16 Fx16 = 0
+i16 FxStep = 0
+u8 FN = 0
+u8 FI = 0
+u8 FH = 0
+u8 Zz = 0
+u8 Club = 0
+u8 Flying = 0
+i16 SDir = 1
+u8 Off = 0
+
+' scratch, kept to their own subs
+i16 Tw = 0
+i16 Xw = 0
+u16 Uw = 0
+u16 U2 = 0
+u16 NumU = 0
+u16 Rs = $6A1D
+u16 Rt = 0
+u8 Rb = 0
+u8 Sp = 0
+u8 Pt = 0
+u8 Pc = 0
+u8 Xb = 0
+u8 Cb = 0
+
+' input and menus
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Passes = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  ' each third of the screen gets its own colour table (the ground rows
+  ' need their own colours)
+  call asm ArThirds
+  set sound table CgSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+new_round:
+  HoleNo = 0
+  Total = 0
+  TotPar = 0
+  for I = 0 to 8
+    Strokes[I] = 0
+  next
+
+hole_start:
+  NewHole
+  CourseScreen
+  HoleIntro
+
+shot_start:
+  ' trees past the rough: a penalty stroke, play again from where you were
+  CourseScreen
+  if Pen = 1 then
+    Pen = 0
+    Message
+    print at 2,3, "IN THE TREES: PENALTY STROKE"
+    print at 2,4, "PLAY AGAIN FROM HERE."
+    play sound SndGroan
+    Pause
+    Message
+  end if
+  if Shot >= 10 then
+    ' picked up
+    Message
+    print at 3,3, "TEN STROKES: PICK IT UP."
+    Pause
+    goto hole_done
+  end if
+  Aiming
+  Swing
+  if Holed = 1 then goto hole_done
+  goto shot_start
+
+hole_done:
+  Mode = 0
+  HoleResult
+  V = HoleNo
+  Strokes[V] = Shot
+  Total = Total + Shot
+  TotPar = TotPar + Par
+  ScoreCard
+  inc HoleNo
+  if HoleNo < 9 then goto hole_start
+
+  ' the end of the round
+  RoundEnd
+  if Menu = 0 then goto new_round
+  goto title
+
+' ---------------------------------------------------------------------------
+' The hole
+
+' NewHole: the book's hole: J from 0 to 11 and a difficulty factor of 3 to
+' 5; the ball travels 26 - J of the book's steps (15 yards each)
+sub NewHole:
+  Rnd
+  Uw = Rb
+  Uw = Uw * 12
+  Uw = Uw >> 8
+  V = Uw
+  V = 26 - V
+  Uw = V
+  HLen = Uw * 15
+  V = HoleNo
+  Yards[V] = HLen
+  Rnd
+  Uw = Rb
+  Uw = Uw * 3
+  Uw = Uw >> 8
+  Q = Uw
+  Q = Q + 3
+  Par = 3
+  if HLen > 250 then Par = 4
+  Pars[V] = Par
+  ' the wind: up to six miles an hour for each step of difficulty
+  Rnd
+  Uw = Rb
+  V = Q * 6
+  W = V + 1
+  Uw = Uw * W
+  Uw = Uw >> 8
+  Wind = Uw
+  Rnd
+  V = Rb & 1
+  if V = 1 then Wind = 0 - Wind
+  ' the fairway narrows with difficulty
+  Wd = 90
+  if Q = 4 then Wd = 75
+  if Q = 5 then Wd = 60
+  WidthRows
+  ' a bunker on the way, another by the green
+  Rnd
+  Uw = Rb
+  Uw = Uw >> 2
+  Uw = Uw + 140
+  if Uw > HLen then Uw = HLen - 40
+  BkAy = Uw
+  Rnd
+  Tw = Rb & 31
+  Tw = Tw + Wd
+  Tw = Tw - 30
+  V = Rb & 128
+  if V > 0 then Tw = 0 - Tw
+  BkAx = Tw
+  BkBy = HLen - 14
+  Rnd
+  BkBx = 34
+  V = Rb & 1
+  if V = 1 then BkBx = -34
+  ' the ball on the tee
+  By = 0
+  Bx = 0
+  Dir = 1
+  Shot = 0
+  Lie = 0
+  Holed = 0
+  Pen = 0
+  Aim = 0
+  return
+end sub
+
+' Place: the course's things and the picture's state for the ball's place
+sub Place:
+  if By < HLen then
+    Togo = HLen - By
+    Dir = 1
+  else
+    Togo = By - HLen
+    Dir = -1
+  end if
+  ' in flight the view keeps facing the way the ball was hit
+  if Flying = 1 then Dir = SDir
+  ' the stripes and edges as seen from the ball, facing the hole
+  Uw = By << 6
+  if Dir = 1 then
+    Pos = Uw
+  else
+    Pos = 0 - Uw
+  end if
+  Mx = Bx
+  My = Dir
+  call asm ArMul
+  Px = Mz
+  ' the flag and the green at the hole, the two bunkers
+  Oi = 0
+  Uw = HLen
+  Tw = 0
+  K = KFlag
+  PlaceOne
+  Oi = 1
+  Uw = HLen
+  Tw = 0
+  K = KGreen
+  PlaceOne
+  Oi = 2
+  Uw = BkAy
+  Tw = BkAx
+  K = KBunker
+  PlaceOne
+  Oi = 3
+  Uw = BkBy
+  Tw = BkBx
+  K = KBunker
+  PlaceOne
+  return
+end sub
+
+' PlaceOne: object Oi of kind K at Uw yards along the hole, Tw feet across
+sub PlaceOne:
+  ' its distance ahead (yards), in the way the ball faces
+  Xw = Uw
+  U2 = By
+  Tw = Tw - Bx
+  if Dir = 1 then
+    Xw = Xw - By
+  else
+    Xw = By - Uw
+    Tw = 0 - Tw
+  end if
+  if Xw < 2 then
+    OKind[Oi] = 0
+    return
+  end if
+  if Xw > 330 then
+    OKind[Oi] = 0
+    return
+  end if
+  OKind[Oi] = K
+  ' depth x16, one step of depth is 4 yards; on the green the view comes
+  ' closer: 5 steps and 1 a yard
+  Uw = Xw
+  if Lie = 3 then
+    Uw = Uw + 5
+    Uw = Uw << 4
+  else
+    Uw = Uw << 2
+  end if
+  OZ[Oi] = Uw
+  ' the flag stands on the green: draw it from the green's own place
+  OX[Oi] = Tw
+  V = 8
+  if K = KGreen then V = 12
+  if K = KBunker then V = 11
+  if K = KTree then V = 12
+  OCol[Oi] = V
+  return
+end sub
+
+' WidthRows: the fairway's half width in pixels on each ground row
+sub WidthRows:
+  for Rk = 0 to 15
+    V = InvRow[Rk]
+    Mx = Wd
+    My = V
+    call asm ArMul
+    Xw = Mz / 64
+    V = Xw
+    WdR[Rk] = V
+  next
+  return
+end sub
+
+' Lies: what the ball sits in
+sub FindLie:
+  Lie = 0
+  Tw = Bx
+  if Tw < 0 then Tw = 0 - Tw
+  if Tw > Wd then Lie = 1
+  ' in a bunker?
+  Xw = By
+  Uw = BkAy
+  Tw = Uw
+  Xw = Xw - Tw
+  if Xw < 0 then Xw = 0 - Xw
+  if Xw <= 9 then
+    Tw = Bx - BkAx
+    if Tw < 0 then Tw = 0 - Tw
+    if Tw <= 26 then Lie = 2
+  end if
+  Xw = By
+  Uw = BkBy
+  Tw = Uw
+  Xw = Xw - Tw
+  if Xw < 0 then Xw = 0 - Xw
+  if Xw <= 6 then
+    Tw = Bx - BkBx
+    if Tw < 0 then Tw = 0 - Tw
+    if Tw <= 22 then Lie = 2
+  end if
+  ' on the green: within 12 yards of the hole and 45 feet across
+  if Togo <= 12 then
+    Tw = Bx
+    if Tw < 0 then Tw = 0 - Tw
+    if Tw <= 45 then Lie = 3
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' A shot
+
+' Aiming: the stick moves the cross; holding a button starts the swing
+sub Aiming:
+  if Lie = 3 then Aim = 0
+  Pw = 0
+  WasBtn = 1
+  Rearm
+  wait no fire
+  nmi off
+  Club = 0
+  Mode = 1
+aim_loop:
+  Pace
+  ReadPad
+  if Lie <> 3 then
+    if Lf1 = 1 then
+      if Aim > -60 then Aim = Aim - 2
+    else
+      if Rt1 = 1 then
+        if Aim < 60 then Aim = Aim + 2
+      end if
+    end if
+  end if
+  AimMark
+  BallAt
+  ClubAt
+  update sprites
+  if Press = 0 then goto aim_loop
+  ' the backswing: the gauge rises while the button is held, falls back
+  ' from the top, and the shot goes when it is let go
+  Pw = 0
+  PwUp = 1
+  Club = 1
+  Mode = 2
+power_loop:
+  Pace
+  ReadPad
+  if PwUp = 1 then
+    Pw = Pw + 4
+    if Pw >= 100 then
+      Pw = 100
+      PwUp = 0
+    end if
+  else
+    if Pw >= 4 then
+      Pw = Pw - 4
+    else
+      Pw = 0
+      PwUp = 1
+    end if
+  end if
+  V = Pw & 12
+  if V = 0 then play sound SndGauge
+  PowerBar
+  ClubAt
+  update sprites
+  if Btn = 1 then goto power_loop
+  Mode = 3
+  return
+end sub
+
+' Swing: the shot's carry and drift, then the flight
+sub Swing:
+  inc Shot
+  Club = 2
+  ClubAt
+  update sprites
+  play sound SndSwoosh
+  OldBy = By
+  OldBx = Bx
+  OldLie = Lie
+  if Lie = 3 then goto putt
+  ' the club for the lie: driver, rough, sand
+  PMax = 250
+  if Shot > 1 then PMax = 220
+  if Lie = 1 then PMax = 170
+  if Lie = 2 then PMax = 90
+  ' never more than a little past the hole (a softer club near the green)
+  Uw = Togo + 40
+  if Uw < PMax then PMax = Uw
+  Uw = PMax
+  V = Pw
+  NumU = V
+  Mx = Uw
+  My = NumU
+  call asm ArMul
+  Uw = Mz
+  Carry = Uw / 100
+  ' the difficulty factor: up to 4% short for each step
+  Rnd
+  V = Q * 4
+  W = V + 1
+  Uw = Rb
+  Uw = Uw * W
+  Uw = Uw >> 8
+  NumU = Uw
+  Mx = Carry
+  My = NumU
+  call asm ArMul
+  Uw = Mz
+  Uw = Uw / 100
+  Carry = Carry - Uw
+  ' the drift: the aim (feet at 80 yards) and the wind (feet per 100 yards
+  ' a mile an hour)
+  Mx = Aim
+  My = Carry
+  call asm ArMul
+  DLat = Mz / 80
+  Mx = Wind
+  My = Carry
+  call asm ArMul
+  Tw = Mz / 100
+  DLat = DLat + Tw
+  play sound SndHit
+  SDir = Dir
+  Flying = 1
+  Fly
+  Flying = 0
+  Dir = SDir
+  ' where it came down (the flight only moved the view)
+  Mx = DLat
+  My = Dir
+  call asm ArMul
+  Bx = OldBx + Mz
+  if Dir = 1 then
+    By = OldBy + Carry
+  else
+    if OldBy > Carry then
+      By = OldBy - Carry
+    else
+      By = 0
+    end if
+  end if
+  Place
+  ' in the hole from out there? (the book: land on the hole's spot)
+  if Togo <= 1 then
+    Tw = Bx
+    if Tw < 0 then Tw = 0 - Tw
+    if Tw <= 12 then
+      Holed = 1
+      play sound SndCup
+      return
+    end if
+  end if
+  ' into the trees: back where it was, a stroke more
+  Tw = Bx
+  if Tw < 0 then Tw = 0 - Tw
+  Xw = Wd + 70
+  if Tw > Xw then
+    inc Shot
+    Pen = 1
+    By = OldBy
+    Bx = OldBx
+    Place
+    FindLie
+    return
+  end if
+  FindLie
+  if Lie = 2 then
+    play sound SndSand
+  else
+    play sound SndThud
+  end if
+  return
+putt:
+  ' the putter: the gauge's top is twice the distance to the hole and a
+  ' bit, the difficulty a little either way
+  Uw = Togo << 1
+  Uw = Uw + 6
+  PMax = Uw
+  V = Pw
+  NumU = V
+  Mx = PMax
+  My = NumU
+  call asm ArMul
+  Uw = Mz
+  Uw = Uw + 50
+  Carry = Uw / 100
+  Rnd
+  V = Rb & 7
+  if V < Q then
+    V = Rb & 8
+    if V > 0 then
+      inc Carry
+    else
+      if Carry > 0 then dec Carry
+    end if
+  end if
+  play sound SndPutt
+  Roll
+  ' the ball stops Carry yards on; within a yard of the hole it drops
+  Tw = Carry
+  Xw = Togo
+  Tw = Tw - Xw
+  if Tw < 0 then Tw = 0 - Tw
+  if Tw <= 1 then
+    Holed = 1
+    play sound SndCup
+    return
+  end if
+  if Dir = 1 then
+    By = By + Carry
+  else
+    if By > Carry then
+      By = By - Carry
+    else
+      By = 0
+    end if
+  end if
+  Bx = 0
+  Place
+  FindLie
+  if Lie <> 3 then
+    ' rolled off the green: it stays at the fringe
+    Lie = 3
+  end if
+  return
+end sub
+
+' Fly: the view follows the ball along its carry; the ball rises and falls
+sub Fly:
+  HideAim
+  Uw = Carry >> 2
+  V = Uw
+  FN = V + 30
+  ' fixed point: yards x16
+  Fy16 = By << 4
+  Uw = Carry << 4
+  FStep = Uw / FN
+  Mx = DLat
+  My = 16
+  call asm ArMul
+  Fx16 = Bx
+  Fx16 = Fx16 << 4
+  Tw = FN
+  FxStep = Mz / Tw
+  FH = Carry >> 3
+  if FH > 60 then FH = 60
+  for FI = 1 to FN
+    Pace
+    ' the camera moves on
+    if Dir = 1 then
+      Fy16 = Fy16 + FStep
+    else
+      if Fy16 > FStep then
+        Fy16 = Fy16 - FStep
+      else
+        Fy16 = 0
+      end if
+    end if
+    Mx = FxStep
+    My = Dir
+    call asm ArMul
+    Fx16 = Fx16 + Mz
+    By = Fy16 >> 4
+    Bx = Fx16 / 16
+    PlaceView
+    ' the ball: a parabola, 4 h t (n - t) / n^2
+    V = FN - FI
+    Uw = FI
+    Uw = Uw * V
+    Uw = Uw << 2
+    NumU = FH
+    Mx = Uw
+    My = NumU
+    call asm ArMul
+    Uw = Mz
+    U2 = FN
+    U2 = U2 * FN
+    Uw = Uw / U2
+    V = Uw
+    Y = 140 - V
+    Pt = SBallair
+    if FI > 20 then Pt = SBallfar
+    set sprite 6 to Y, 112, Pt, 15
+    if FI = 6 then
+      Club = 3
+      ClubAt
+    end if
+    update sprites
+  next
+  return
+end sub
+
+' Roll: a putt: the ball runs away from you toward the hole
+sub Roll:
+  HideAim
+  Club = 3
+  ClubAt
+  FN = 30
+  FStep = Carry
+  for FI = 1 to FN
+    Pace
+    ' depth of the ball: 5 steps out, then 1 a yard (the green's close view)
+    Uw = FStep
+    V = FI
+    NumU = V
+    Mx = Uw
+    My = NumU
+    call asm ArMul
+    Uw = Mz
+    Uw = Uw / FN
+    Uw = Uw + 5
+    if Uw < 6 then Uw = 6
+    if Uw > 127 then Uw = 127
+    Zz = Uw
+    V = YofZ[Zz]
+    Y = V - 31
+    Pt = SBallair
+    if Zz > 14 then Pt = SBallfar
+    set sprite 6 to Y, 112, Pt, 15
+    update sprites
+  next
+  return
+end sub
+
+' PlaceView: the picture redrawn for the ball's place (during a flight)
+sub PlaceView:
+  Place
+  call asm ArStripes
+  Edges
+  ProjectAll
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Sprites
+
+' ClubAt: the club, 0 at address, 1 at the top, 2 just hit, 3 follow-through
+sub ClubAt:
+  if Club = 0 then
+    set sprite 0 to 150, 80, SClubal, 14
+    set sprite 1 to 150, 112, SClubar, 14
+  end if
+  if Club = 1 then
+    set sprite 0 to 150, 80, SClubtl, 14
+    set sprite 1 to 150, 112, SClubtr, 14
+  end if
+  if Club = 2 then
+    set sprite 0 to 150, 80, SClubfl, 14
+    set sprite 1 to 150, 112, SClubfr, 14
+  end if
+  if Club = 3 then
+    set sprite 0 to 120, 64, SClubfl, 14
+    set sprite 1 to 192, 0, 0, 0
+  end if
+  return
+end sub
+
+' BallAt: the ball at your feet
+sub BallAt:
+  set sprite 6 to 152, 112, SBallbig, 15
+  return
+end sub
+
+' AimMark: the cross, 80 yards out (depth 20), Aim feet across
+sub AimMark:
+  if Lie = 3 then
+    set sprite 7 to 192, 0, 0, 0
+    return
+  end if
+  V = InvZ[20]
+  Mx = Aim
+  My = V
+  call asm ArMul
+  Tw = Mz / 64
+  Tw = Tw + 112
+  Xb = Tw
+  V = YofZ[20]
+  Y = V - 25
+  set sprite 7 to Y, Xb, SAim, 9
+  return
+end sub
+
+sub HideAim:
+  set sprite 7 to 192, 0, 0, 0
+  return
+end sub
+
+' ProjectAll: the course's things (sprites 2-5) from ArProject
+sub ProjectAll:
+  call asm ArProject
+  for Oi = 0 to 3
+    Sp = Oi + 2
+    Yv = SprY[Oi]
+    Xb = SprX[Oi]
+    Pt = SprP[Oi]
+    Pc = SprC[Oi]
+    set sprite Sp to Yv, Xb, Pt, Pc
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The picture
+
+sub Edges:
+  if Px = EPx then return
+  EPx = Px
+  call asm ArEdges
+  return
+end sub
+
+' Pace: a steady 30 passes a second (see Avalanche Run)
+sub Pace:
+  call asm ArLate
+  if Late = 0 then Frame1
+  Frame1
+  inc Passes
+  return
+end sub
+
+' CourseScreen: the sky, the hills, the hole as seen from the ball, HUD
+sub CourseScreen:
+  Place
+  FindLie
+  ' (the green's close view depends on the lie)
+  Place
+  NewScreen
+  for Y = 5 to 7
+    V = Y - 5
+    Off = V << 4
+    Off = Off + TMtn00
+    for X = 0 to 31
+      W = X & 15
+      W = W + Off
+      put char W at X,Y
+    next
+  next
+  fill TBrow count 32 at 0,8
+  for Rk = 0 to 15
+    LhOld[Rk] = 255
+    RhOld[Rk] = 255
+  next
+  EPx = 9999
+  Clouds
+  fill array Cache with 0
+  StAll = 1
+  call asm ArStripes
+  StAll = 0
+  Edges
+  Hud
+  ProjectAll
+  HideAim
+  Club = 0
+  ClubAt
+  BallAt
+  update sprites
+  ShowScreen
+  return
+end sub
+
+sub Clouds:
+  put char TCloud00 at 3,4
+  put char TCloud01 at 4,4
+  put char TCloud02 at 5,4
+  put char TCloud00 at 23,3
+  put char TCloud01 at 24,3
+  put char TCloud02 at 25,3
+  return
+end sub
+
+' Message: rows 3-4 cleared for a message
+sub Message:
+  fill 32 count 32 at 0,3
+  fill 32 count 32 at 0,4
+  return
+end sub
+
+sub Hud:
+  print at 2,1, "HOLE"
+  V = HoleNo + 1
+  NumU = V
+  print at 7,1, digits$(NumU, 1)
+  print at 9,1, "PAR"
+  NumU = Par
+  print at 13,1, digits$(NumU, 1)
+  print at 15,1, "SHOT"
+  V = Shot + 1
+  NumU = V
+  print at 20,1, width$(NumU, 2)
+  put char TFlagic at 24,1
+  NumU = Togo
+  print at 25,1, width$(NumU, 3)
+  print at 28,1, "Y"
+  ' row 2: the wind, the lie
+  print at 2,2, "WIND"
+  Tw = Wind
+  W = TWindr
+  if Tw < 0 then
+    Tw = 0 - Tw
+    W = TWindl
+  end if
+  if Tw = 0 then W = 32
+  put char W at 7,2
+  NumU = Tw
+  print at 8,2, width$(NumU, 2)
+  if Lie = 0 then
+    if Shot = 0 then
+      print at 11,2, "TEE    "
+    else
+      print at 11,2, "FAIRWAY"
+    end if
+  end if
+  if Lie = 1 then print at 11,2, "ROUGH  "
+  if Lie = 2 then print at 11,2, "BUNKER "
+  if Lie = 3 then print at 11,2, "GREEN  "
+  PowerBar
+  return
+end sub
+
+' PowerBar: nine boxes, columns 21-29
+sub PowerBar:
+  Uw = Pw
+  Uw = Uw * 9
+  Uw = Uw + 5
+  Uw = Uw / 100
+  V = Uw
+  for X = 0 to 8
+    W = TBarnone
+    if X < V then
+      W = TBarfull
+      if X >= 7 then W = TBarhot
+    end if
+    Y = X + 21
+    put char W at Y,2
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages between shots
+
+sub HoleIntro:
+  Message
+  print at 3,3, "HOLE"
+  V = HoleNo + 1
+  NumU = V
+  print at 8,3, digits$(NumU, 1)
+  NumU = HLen
+  print at 11,3, width$(NumU, 3)
+  print at 15,3, "YARDS  PAR"
+  NumU = Par
+  print at 26,3, digits$(NumU, 1)
+  ' the book's words
+  print at 3,4, "DIFFICULTY FACTOR IS"
+  if Q = 3 then print at 24,4, "THREE"
+  if Q = 4 then print at 24,4, "FOUR"
+  if Q = 5 then print at 24,4, "FIVE"
+  Pause
+  Pause
+  Message
+  Clouds
+  return
+end sub
+
+sub HoleResult:
+  Message
+  ' the book: "You did it!!"
+  if Holed = 1 then
+    print at 3,3, "YOU DID IT!!"
+  end if
+  Tw = Shot
+  Xw = Par
+  Tw = Tw - Xw
+  if Shot = 1 then
+    print at 3,4, "A HOLE IN ONE!"
+  else
+    if Tw <= -2 then print at 3,4, "AN EAGLE!"
+    if Tw = -1 then print at 3,4, "A BIRDIE!"
+    if Tw = 0 then print at 3,4, "PAR."
+    if Tw = 1 then print at 3,4, "A BOGEY."
+    if Tw = 2 then print at 3,4, "A DOUBLE BOGEY."
+    if Tw >= 3 then print at 3,4, "OH DEAR."
+  end if
+  if Tw < 0 then
+    play sound SndCheer
+  else
+    if Tw > 1 then play sound SndGroan
+  end if
+  print at 20,3, "STROKES"
+  NumU = Shot
+  print at 28,3, digits$(NumU, 1)
+  if Shot >= 10 then print at 27,3, "10"
+  Pause
+  Pause
+  return
+end sub
+
+' ScoreCard: the book's "The game so far", with the average per hole
+sub ScoreCard:
+  PageScreen
+  print at 9,1, "THE GAME SO FAR"
+  print at 3,3, "HOLE YARDS PAR STROKES"
+  for I = 0 to HoleNo
+    Y = I + 5
+    V = I + 1
+    NumU = V
+    print at 4,Y, digits$(NumU, 1)
+    NumU = Yards[I]
+    print at 8,Y, width$(NumU, 3)
+    V = Pars[I]
+    NumU = V
+    print at 14,Y, digits$(NumU, 1)
+    V = Strokes[I]
+    NumU = V
+    print at 20,Y, width$(NumU, 2)
+  next
+  V = HoleNo + 1
+  print at 3,16, "SCORE FOR"
+  NumU = V
+  print at 13,16, digits$(NumU, 1)
+  print at 15,16, "HOLES:"
+  NumU = Total
+  print at 22,16, width$(NumU, 3)
+  ' against par
+  Tw = Total
+  Xw = TotPar
+  Tw = Tw - Xw
+  print at 3,17, "AGAINST PAR:"
+  if Tw = 0 then
+    print at 22,17, "  E"
+  else
+    if Tw > 0 then
+      NumU = Tw
+      print at 22,17, "+"
+      print at 23,17, width$(NumU, 2)
+    else
+      Tw = 0 - Tw
+      NumU = Tw
+      print at 22,17, "-"
+      print at 23,17, width$(NumU, 2)
+    end if
+  end if
+  ' the average, rounded as the book does: INT((K + .5) / Z)... to a tenth
+  print at 3,18, "AVERAGE PER HOLE:"
+  Uw = Total * 10
+  V = HoleNo + 1
+  U2 = V
+  V = V >> 1
+  Uw = Uw + V
+  NumU = Uw / U2
+  Uw = NumU / 10
+  U2 = Uw * 10
+  NumU = NumU - U2
+  print at 21,18, width$(Uw, 2)
+  print at 23,18, "."
+  print at 24,18, digits$(NumU, 1)
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' RoundEnd: the book's last words, the best round, another round?
+sub RoundEnd:
+  PageScreen
+  print at 3,2, "END OF THAT ROUND, GOLFER!"
+  print at 3,4, "YOU SCORED"
+  NumU = Total
+  print at 14,4, width$(NumU, 3)
+  print at 3,5, "AND YOUR AVERAGE PER HOLE"
+  print at 3,6, "WAS"
+  Uw = Total + 4
+  Uw = Uw / 9
+  NumU = Uw
+  print at 7,6, width$(NumU, 2)
+  if Total < Best then
+    Best = Total
+    print at 3,8, "YOUR BEST ROUND YET!"
+    play sound SndCheer
+  end if
+  print at 3,9, "BEST ROUND:"
+  NumU = Best
+  print at 15,9, width$(NumU, 3)
+  print at 3,10, "PAR FOR THE COURSE:"
+  NumU = TotPar
+  print at 23,10, width$(NumU, 2)
+  print at 8,14, "ANOTHER ROUND"
+  print at 8,15, "TITLE PAGE"
+  ShowScreen
+  Menu = 0
+  WasBtn = 1
+re_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      Menu = 0
+    else
+      if Dn1 = 1 then Menu = 1
+    end if
+    play sound SndClick
+  end if
+  print at 6,14, " "
+  print at 6,15, " "
+  Y = Menu + 14
+  print at 6,Y, ">"
+  if Press = 0 then goto re_loop
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Helpers
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy Gnd1Pat count 256 to vram.pattern + 3712
+  copy Gnd2Pat count 256 to vram.pattern + 5760
+  backdrop light blue
+  cls
+  return
+end sub
+
+' PageScreen: a page of text, white on dark green
+sub PageScreen:
+  NewScreen
+  backdrop dark green
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  HoleNo = 0
+  HLen = 330
+  Q = 3
+  Wd = 75
+  WidthRows
+  BkAy = 200
+  BkAx = 70
+  BkBy = 316
+  BkBx = -34
+  By = 0
+  Bx = 0
+  Shot = 0
+  Par = 4
+  Wind = 0
+  Pw = 0
+  CourseScreen
+  fill 32 count 32 at 0,1
+  fill 32 count 32 at 0,2
+  Message
+  print at 9,1, "MICROCHIP GOLF"
+  print at 11,2, "PLAY 9 HOLES"
+  print at 11,3, "HOW TO PLAY"
+  print at 11,4, "CREDITS"
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 2 to 4
+    print at 9,I, " "
+  next
+  Y = Menu + 2
+  print at 9,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  PageScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "NINE HOLES ON THE MICROCHIP"
+  print at 2,4, "GOLFCOURSE. FEWEST STROKES"
+  print at 2,5, "WINS."
+  print at 2,7, "LEFT, RIGHT: AIM THE CROSS."
+  print at 2,8, "HOLD A BUTTON: THE GAUGE"
+  print at 2,9, "RISES AND FALLS. LET GO TO"
+  print at 2,10, "HIT. WATCH THE WIND!"
+  print at 2,12, "ROUGH AND BUNKERS SHORTEN"
+  print at 2,13, "YOUR SHOT. TREES COST A"
+  print at 2,14, "PENALTY STROKE."
+  print at 2,16, "ON THE GREEN YOU PUTT AT THE"
+  print at 2,17, "HOLE: THE GAUGE'S TOP IS"
+  print at 2,18, "TWICE THE DISTANCE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  PageScreen
+  print at 8,1, "MICROCHIP GOLF"
+  print at 2,3, "AFTER CADDY IN TIM"
+  print at 2,4, "HARTNELL'S GIANT BOOK OF"
+  print at 2,5, "COMPUTER GAMES (BALLANTINE"
+  print at 2,6, "BOOKS, 1984; INTERFACE"
+  print at 2,7, "PUBLICATIONS, 1983)."
+  print at 2,9, "MUSIC: MORNING ON THE LINKS"
+  print at 2,10, "(ORIGINAL)."
+  print at 2,12, "COLECOVISION GAME BY"
+  print at 2,13, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$01,$F0,$C0,$80,$00,$00
+  $00,$87,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$F0,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0E,$E1,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$38,$07
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $07,$F0,$0E,$07,$F0,$E0,$C0,$00
+  $80,$80,$C0,$C0,$C0,$C0,$C0,$C0
+  $00,$00,$00,$00,$80,$C0,$E0,$07
+  $00,$00,$00,$00,$03,$03,$03,$03
+  $00,$00,$00,$00,$00,$00,$20,$C0
+  $00,$00,$00,$00,$01,$03,$07,$F0
+  $C0,$C0,$01,$01,$01,$01,$01,$01
+  $F0,$07,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$E0
+  $00,$00,$0C,$1C,$83,$70,$60,$80
+  $00,$00,$00,$00,$80,$07,$03,$00
+  $00,$00,$00,$01,$03,$07,$F0,$E0
+  $03,$07,$07,$07,$07,$07,$07,$07
+  $00,$80,$E0,$F0,$07,$03,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$40
+  $00,$00,$00,$11,$88,$44,$22,$11
+  $C0,$C0,$C0,$11,$88,$44,$22,$11
+  $03,$01,$00,$11,$88,$44,$22,$11
+  $F0,$C0,$00,$11,$88,$44,$22,$11
+  $C0,$C0,$C0,$11,$88,$44,$22,$11
+  $60,$C0,$C0,$11,$88,$44,$22,$11
+  $01,$01,$01,$11,$88,$44,$22,$11
+  $00,$00,$00,$11,$88,$44,$22,$11
+  $F0,$03,$07,$11,$88,$44,$22,$11
+  $00,$00,$00,$11,$88,$44,$22,$11
+  $00,$00,$00,$11,$88,$44,$22,$11
+  $40,$80,$80,$11,$88,$44,$22,$11
+  $07,$07,$07,$11,$88,$44,$22,$11
+  $00,$00,$00,$11,$88,$44,$22,$11
+  $07,$C0,$C0,$11,$88,$44,$22,$11
+  $C1,$C3,$C3,$11,$88,$44,$22,$11
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$81,$81,$81,$81,$81,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$30,$80,$30,$10,$00,$00
+  $00,$08,$0C,$01,$0C,$08,$00,$00
+  $C3,$C1,$C3,$20,$20,$20,$20,$70
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$F5,$5F,$5F,$5F,$05,$05
+  $05,$5F,$5F,$0F,$0F,$0F,$05,$05
+  $05,$05,$05,$F5,$F5,$5F,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$C5
+  $05,$05,$05,$05,$05,$05,$05,$C5
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$C5,$5C,$5C,$53
+  $05,$05,$05,$05,$05,$05,$05,$25
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$C5,$5C
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $C5,$5C,$C5,$35,$53,$53,$53,$03
+  $C5,$C5,$32,$32,$32,$32,$32,$32
+  $05,$05,$05,$05,$25,$25,$25,$52
+  $05,$05,$05,$05,$C5,$C5,$C5,$35
+  $05,$05,$05,$05,$05,$05,$25,$32
+  $05,$05,$05,$05,$35,$35,$35,$53
+  $53,$53,$23,$23,$23,$23,$23,$23
+  $25,$52,$52,$52,$02,$02,$02,$02
+  $05,$05,$05,$05,$05,$25,$25,$25
+  $05,$05,$C5,$C5,$5C,$C3,$C3,$53
+  $05,$05,$05,$05,$25,$52,$52,$02
+  $05,$05,$05,$35,$35,$35,$53,$53
+  $5C,$23,$23,$23,$23,$23,$23,$23
+  $05,$25,$25,$25,$52,$52,$52,$02
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$35
+  $03,$03,$03,$2C,$2C,$2C,$2C,$2C
+  $32,$32,$32,$2C,$2C,$2C,$2C,$2C
+  $52,$52,$02,$2C,$2C,$2C,$2C,$2C
+  $53,$53,$03,$2C,$2C,$2C,$2C,$2C
+  $32,$32,$32,$2C,$2C,$2C,$2C,$2C
+  $53,$23,$23,$2C,$2C,$2C,$2C,$2C
+  $23,$23,$23,$2C,$2C,$2C,$2C,$2C
+  $02,$02,$02,$2C,$2C,$2C,$2C,$2C
+  $25,$32,$32,$2C,$2C,$2C,$2C,$2C
+  $03,$03,$03,$2C,$2C,$2C,$2C,$2C
+  $02,$02,$02,$2C,$2C,$2C,$2C,$2C
+  $53,$23,$23,$2C,$2C,$2C,$2C,$2C
+  $23,$23,$23,$2C,$2C,$2C,$2C,$2C
+  $02,$02,$02,$2C,$2C,$2C,$2C,$2C
+  $35,$23,$23,$2C,$2C,$2C,$2C,$2C
+  $32,$32,$32,$2C,$2C,$2C,$2C,$2C
+  $02,$02,$02,$02,$02,$02,$02,$0C
+  $04,$4B,$4B,$4B,$4B,$4B,$4B,$04
+  $04,$48,$48,$48,$48,$48,$48,$04
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $05,$F5,$F5,$5F,$F5,$F5,$05,$05
+  $05,$F5,$F5,$5F,$F5,$F5,$05,$05
+  $5F,$5F,$5F,$F5,$F5,$F5,$F5,$F5
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$3F,$3F,$00
+  $02,$02,$02,$04,$04,$04,$08,$08,$08,$10,$10,$10,$F0,$F0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $20,$20,$10,$10,$08,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$02,$04,$08,$7C,$7C,$00,$00,$00,$00
+  $04,$08,$10,$20,$40,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$C0,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$02,$01,$01,$02,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$40,$80,$80,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$07,$03,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$80,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F,$0F,$07,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$07,$0F,$0F,$1F,$0F,$07,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$E0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$01,$03,$0F,$0F,$1F,$3F,$1F,$0F,$07,$01,$01,$01,$03
+  $00,$00,$00,$00,$00,$C0,$E0,$F0,$F8,$F0,$E0,$80,$00,$00,$00,$00
+  $02,$07,$0F,$1F,$3F,$7F,$FF,$FF,$7F,$3F,$0F,$02,$02,$02,$02,$07
+  $00,$00,$80,$C0,$E0,$F0,$F8,$F8,$F0,$E0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$0F,$0F,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F8,$F8,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$3F,$7F,$3F,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$FC,$FE,$FC,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$F8,$F0,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$FE,$FC,$F8,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $FF,$FE,$FC,$F8,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$07,$1F,$1F,$07
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F8,$F8,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$1F,$3F,$1F,$0F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$FC,$FE,$FC,$F8
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1F,$7F,$FF,$FF,$7F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F8,$FE,$FF,$FF,$FE,$F8
+end data
+
+asm {
+; The slope engine from Avalanche Run (games/ar), shared here: the ground
+; rows' colour bands (ArStripes, colours ColA and ColB), their edges
+; (ArEdges), the objects' sprites (ArProject), and helpers.
+; ArMul: Mz = Mx * My (the low 16 bits, right for signed and unsigned),
+; by shift and add: about 700 cycles whatever the numbers
+ArMul:
+    ld de,(AMY_UVAR_Mx)
+    ld bc,(AMY_UVAR_My)
+    ld hl,0
+    ld a,16
+ArMulLoop:
+    add hl,hl
+    sla c
+    rl b
+    jr nc,ArMulSkip
+    add hl,de
+ArMulSkip:
+    dec a
+    jr nz,ArMulLoop
+    ld (AMY_UVAR_Mz),hl
+    ret
+
+; ---------------------------------------------------------------------------
+; ArStripes: the colours of ground rows 8-23 for the distance Pos. Each
+; pixel line adds its depth to Pos and is grey when its band bits are both
+; set (kind 0 never, 1 bits 7 and 6, 2 bits 8 and 7, 3 bits 6 and 5);
+; LineTab holds depth
+; and kind, three bytes a line. A row's eight colours are kept in Cache:
+; only rows whose colours changed go to VRAM, to the colours of the row's
+; four tiles, writes spaced at 30 cycles or more (safe with the display on).
+ArStripes:
+    ; the far rows (8-15) on every other call, unless StAll is set
+    ld a,(AMY_UVAR_StAll)
+    or a
+    jr nz,ArStFrom8
+    ld a,(AMY_UVAR_StOdd)
+    xor 1
+    ld (AMY_UVAR_StOdd),a
+    jr nz,ArStFrom8
+    ld a,16
+    ld hl,AMY_UDATA_LineTab+192
+    exx
+    ld hl,AMY_UVAR_Cache+64
+    exx
+    jr ArStGo
+ArStFrom8:
+    ld a,9
+    ld hl,AMY_UDATA_LineTab+24
+    exx
+    ld hl,AMY_UVAR_Cache+8
+    exx
+ArStGo:
+    ld (AMY_UVAR_Rw),a
+    ld bc,(AMY_UVAR_Pos)
+ArStRow:
+    ld de,AMY_UVAR_Lb
+    exx
+    ld (AMY_UVAR_StC),hl
+    exx
+    ld a,8
+    ld (AMY_UVAR_StN),a
+ArStLine:
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld a,(hl)
+    inc hl
+    ex de,hl
+    add hl,bc
+    or a
+    jr z,ArStWhite
+    dec a
+    jr z,ArStK1
+    dec a
+    jr z,ArStK2
+    ld a,l
+    and $60
+    cp $60
+    jr ArStTest
+ArStK2:
+    add hl,hl
+    ld a,h
+    and 3
+    cp 3
+    jr ArStTest
+ArStK1:
+    ld a,l
+    and $C0
+    cp $C0
+ArStTest:
+    ld a,(AMY_UVAR_ColA)
+    jr nz,ArStPut
+    ld a,(AMY_UVAR_ColB)
+    jr ArStPut
+ArStWhite:
+    ld a,(AMY_UVAR_ColA)
+ArStPut:
+    ex de,hl
+    exx
+    cp (hl)
+    jr z,ArStSame
+    ld (hl),a
+    ld a,1
+    ld (AMY_UVAR_StD),a
+ArStSame:
+    inc hl
+    exx
+    ld a,(AMY_UVAR_StN)
+    dec a
+    ld (AMY_UVAR_StN),a
+    jr nz,ArStLine
+    ld a,(AMY_UVAR_StD)
+    or a
+    jr z,ArStNext
+    xor a
+    ld (AMY_UVAR_StD),a
+    push hl
+    push bc
+    ; the colour address: $2000 + third * $800 + 208 * 8 + (row & 7) * 32
+    ld a,(AMY_UVAR_Rw)
+    ld c,a
+    and 7
+    rrca
+    rrca
+    rrca
+    ld l,a
+    ld a,c
+    srl a
+    srl a
+    srl a
+    add a,a
+    add a,a
+    add a,a
+    add a,$26
+    ld h,a
+    ld de,$0080
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld c,4
+ArStRep:
+    ld hl,(AMY_UVAR_StC)
+    ld b,8
+ArStOut:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz ArStOut
+    dec c
+    jr nz,ArStRep
+    pop bc
+    pop hl
+ArStNext:
+    ld a,(AMY_UVAR_Rw)
+    inc a
+    ld (AMY_UVAR_Rw),a
+    cp 24
+    jp nz,ArStRow
+    ret
+
+; ArLate: Late = 1 when the VDP has begun a frame since its status was
+; last read (the NMI is off during a pass, so nothing else reads it)
+ArLate:
+    in a,($BF)
+    rlca
+    and 1
+    ld (AMY_UVAR_Late),a
+    ret
+
+; ArBackdrop: the backdrop (VDP register 7) to colour V, for a flash
+ArBackdrop:
+    ld a,(AMY_UVAR_V)
+    ld c,a
+    ld b,7
+    jp WRITE_REGISTER
+
+; ArThirds: VDP register 3 = $FF, three colour tables (Amy's tile screen
+; shares one between the thirds)
+ArThirds:
+    ld b,3
+    ld c,$FF
+    jp WRITE_REGISTER
+
+; ArMul8: HL = DE * A (DE signed, A unsigned; the low 16 bits)
+ArMul8:
+    ld hl,0
+    ld b,8
+ArM8Loop:
+    add hl,hl
+    add a,a
+    jr nc,ArM8Skip
+    add hl,de
+ArM8Skip:
+    djnz ArM8Loop
+    ret
+
+; ArClamp: A = HL kept within 0-256, in half tiles (0-64)
+ArClamp:
+    bit 7,h
+    jr nz,ArClZero
+    ld a,h
+    or a
+    jr z,ArClOk
+    ld a,64
+    ret
+ArClOk:
+    ld a,l
+    srl a
+    srl a
+    ret
+ArClZero:
+    xor a
+    ret
+
+; ArEdges: each ground row's forest edges. The middle of the piste on row
+; k is 128 + (Cq * KRow[k]) / 128 - (Px * InvRow[k]) / 64 pixels, its edges
+; WdR[k] either side. Rows whose edges moved are drawn again (ArDrawRow).
+ArEdges:
+    ld a,1
+    ld (AMY_UVAR_Rk),a
+ArEdRow:
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_KRow
+    add hl,de
+    ld a,(hl)
+    ld de,(AMY_UVAR_Cq)
+    call ArMul8
+    add hl,hl
+    ld l,h
+    ld a,h
+    rla
+    sbc a,a
+    ld h,a
+    ld (AMY_UVAR_EC1),hl
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_InvRow
+    add hl,de
+    ld a,(hl)
+    ld de,(AMY_UVAR_Px)
+    call ArMul8
+    ld b,6
+ArEdShift:
+    sra h
+    rr l
+    djnz ArEdShift
+    ex de,hl
+    ld hl,(AMY_UVAR_EC1)
+    or a
+    sbc hl,de
+    ld de,128
+    add hl,de
+    ld (AMY_UVAR_EBase),hl
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_WdR
+    add hl,de
+    ld e,(hl)
+    ld d,0
+    ld hl,(AMY_UVAR_EBase)
+    or a
+    sbc hl,de
+    push de
+    call ArClamp
+    ld (AMY_UVAR_Hl),a
+    pop de
+    ld hl,(AMY_UVAR_EBase)
+    add hl,de
+    call ArClamp
+    ld b,a
+    ld a,(AMY_UVAR_Hl)
+    cp b
+    jr c,ArEdOk
+    ld b,a
+ArEdOk:
+    ld a,b
+    ld (AMY_UVAR_Hr),a
+    ld a,(AMY_UVAR_Rk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_LhOld
+    add hl,de
+    ld a,(AMY_UVAR_Hl)
+    cp (hl)
+    jr nz,ArEdNew
+    ld hl,AMY_UVAR_RhOld
+    add hl,de
+    ld a,(AMY_UVAR_Hr)
+    cp (hl)
+    jr z,ArEdNext
+ArEdNew:
+    ld hl,AMY_UVAR_LhOld
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_EOl),a
+    ld a,(AMY_UVAR_Hl)
+    ld (hl),a
+    ld hl,AMY_UVAR_RhOld
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_EOr),a
+    ld a,(AMY_UVAR_Hr)
+    ld (hl),a
+    ld a,(AMY_UVAR_EOl)
+    cp 255
+    jr nz,ArEdSpans
+    call ArDrawRow
+    jr ArEdNext
+ArEdSpans:
+    ; only the tiles round each edge's old and new places
+    call ArRowSetup
+    ld a,(AMY_UVAR_EOl)
+    ld b,a
+    ld a,(AMY_UVAR_Hl)
+    call ArSpan
+    ld a,(AMY_UVAR_EOr)
+    ld b,a
+    ld a,(AMY_UVAR_Hr)
+    call ArSpan
+ArEdNext:
+    ld a,(AMY_UVAR_Rk)
+    inc a
+    ld (AMY_UVAR_Rk),a
+    cp 16
+    jp nz,ArEdRow
+    ret
+
+; ArRowSetup: for row Rk+8, the edge columns (ELc, ERc), their halves
+; (ELh, ERh), the row's first tile code (EGs) and name address (ENam)
+ArRowSetup:
+    ld a,(AMY_UVAR_Hl)
+    ld b,a
+    srl a
+    ld (AMY_UVAR_ELc),a
+    ld a,b
+    and 1
+    ld (AMY_UVAR_ELh),a
+    ld a,(AMY_UVAR_Hr)
+    ld b,a
+    srl a
+    ld (AMY_UVAR_ERc),a
+    ld a,b
+    and 1
+    ld (AMY_UVAR_ERh),a
+    ld a,(AMY_UVAR_Rk)
+    add a,8
+    ld l,a
+    and 7
+    add a,a
+    add a,a
+    add a,208
+    ld (AMY_UVAR_EGs),a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1800
+    add hl,de
+    ld (AMY_UVAR_ENam),hl
+    ret
+
+; ArSpan: the tiles from column min(A,B)/2 to max(A,B)/2 (A and B in half
+; tiles) of the row set up by ArRowSetup
+ArSpan:
+    cp b
+    jr c,ArSpOrd
+    ld c,a
+    ld a,b
+    ld b,c
+ArSpOrd:
+    ; A = the smaller, B = the larger
+    srl a
+    srl b
+    cp 32
+    ret nc
+    ld c,a
+    ld a,b
+    cp 32
+    jr c,ArSpEnd
+    ld b,31
+ArSpEnd:
+    ld a,b
+    sub c
+    inc a
+    ld b,a
+    ld hl,(AMY_UVAR_ENam)
+    ld e,c
+    ld d,0
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_EGs)
+    ld d,a
+ArSpCell:
+    ; the tile at column C: forest, left half edge, snow, right half edge
+    ld a,(AMY_UVAR_ELc)
+    ld e,a
+    ld a,c
+    cp e
+    jr c,ArSpForest
+    jr nz,ArSpMid
+    ld a,(AMY_UVAR_ELh)
+    or a
+    jr z,ArSpMid
+    ld a,d
+    add a,2
+    jr ArSpOut
+ArSpMid:
+    ld a,(AMY_UVAR_ERc)
+    ld e,a
+    ld a,c
+    cp e
+    jr c,ArSpSnow
+    jr nz,ArSpForest
+    ld a,(AMY_UVAR_ERh)
+    or a
+    jr z,ArSpForest
+    ld a,d
+    add a,3
+    jr ArSpOut
+ArSpSnow:
+    ld a,d
+    jr ArSpOut
+ArSpForest:
+    ld a,d
+    inc a
+ArSpOut:
+    out ($BE),a
+    inc c
+    djnz ArSpCell
+    ret
+
+; ArDrawRow: ground row Rk+8 from its edges Hl and Hr (half tiles): forest,
+; a left half edge, snow, a right half edge, forest
+ArDrawRow:
+    ld a,(AMY_UVAR_Rk)
+    add a,8
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,$1800
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_Rk)
+    add a,8
+    and 7
+    add a,a
+    add a,a
+    add a,208
+    ld d,a
+    ld e,0
+    ld a,(AMY_UVAR_Hl)
+    srl a
+    jr z,ArDrL0
+    ld b,a
+    ld e,a
+    ld a,d
+    inc a
+ArDrL:
+    out ($BE),a
+    nop
+    nop
+    djnz ArDrL
+ArDrL0:
+    ld a,(AMY_UVAR_Hl)
+    and 1
+    jr z,ArDrS
+    ld a,e
+    cp 32
+    jr nc,ArDrS
+    ld a,d
+    add a,2
+    out ($BE),a
+    inc e
+ArDrS:
+    ld a,(AMY_UVAR_Hr)
+    srl a
+    sub e
+    jr c,ArDrR
+    jr z,ArDrR
+    ld b,a
+    add a,e
+    ld e,a
+    ld a,d
+ArDrSl:
+    out ($BE),a
+    nop
+    nop
+    djnz ArDrSl
+ArDrR:
+    ld a,e
+    cp 32
+    ret nc
+    ld a,(AMY_UVAR_Hr)
+    and 1
+    jr z,ArDrF
+    ld a,(AMY_UVAR_Hr)
+    srl a
+    cp e
+    jr nz,ArDrF
+    ld a,d
+    add a,3
+    out ($BE),a
+    inc e
+ArDrF:
+    ld a,32
+    sub e
+    ret z
+    ret c
+    ld b,a
+    ld a,d
+    inc a
+ArDrFl:
+    out ($BE),a
+    nop
+    nop
+    djnz ArDrFl
+    ret
+
+; ArProject: for the four objects, SprY/SprX/SprP/SprC from the depth
+; (OZ / 16, the tables YofZ, SizeOfZ, CurveZ, InvZ), the place OX, the
+; player's place Px and the curve Cq. Hidden: row 192.
+ArProject:
+    xor a
+    ld (AMY_UVAR_Oi),a
+ArPrLoop:
+    ld a,(AMY_UVAR_Oi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_OKind
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Ok),a
+    or a
+    jp z,ArPrHide
+    ld hl,AMY_UVAR_OZ
+    add hl,de
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,h
+    or a
+    jr nz,ArPrFar
+    ld a,l
+    cp 128
+    jr c,ArPrZok
+ArPrFar:
+    ld a,127
+ArPrZok:
+    ld (AMY_UVAR_Zb),a
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_SizeOfZ
+    add hl,de
+    ld a,(hl)
+    cp 255
+    jp z,ArPrHide
+    ld (AMY_UVAR_Sv),a
+    ld hl,AMY_UDATA_YofZ
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Yv),a
+    ld hl,AMY_UDATA_CurveZ
+    add hl,de
+    ld a,(hl)
+    ld de,(AMY_UVAR_Cq)
+    call ArMul8
+    sra h
+    rr l
+    sra h
+    rr l
+    ex de,hl
+    ld a,(AMY_UVAR_Oi)
+    add a,a
+    ld c,a
+    ld b,0
+    ld hl,AMY_UVAR_OX
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    add hl,de
+    ld de,(AMY_UVAR_Px)
+    or a
+    sbc hl,de
+    push hl
+    ld de,300
+    add hl,de
+    ld de,601
+    or a
+    sbc hl,de
+    pop hl
+    jr nc,ArPrHide
+    ex de,hl
+    ld a,(AMY_UVAR_Zb)
+    ld c,a
+    ld b,0
+    ld hl,AMY_UDATA_InvZ
+    add hl,bc
+    ld a,(hl)
+    call ArMul8
+    ld b,6
+ArPrShift:
+    sra h
+    rr l
+    djnz ArPrShift
+    ld de,112
+    add hl,de
+    ld a,h
+    or a
+    jr nz,ArPrHide
+    ld a,(AMY_UVAR_Oi)
+    ld e,a
+    ld d,0
+    ld a,l
+    ld hl,AMY_UVAR_SprX
+    add hl,de
+    ld (hl),a
+    ld a,(AMY_UVAR_Yv)
+    sub 33
+    ld hl,AMY_UVAR_SprY
+    add hl,de
+    ld (hl),a
+    ld hl,AMY_UVAR_OCol
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_SprC
+    add hl,de
+    ld (hl),a
+    push de
+    ld a,(AMY_UVAR_Ok)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_KindPat
+    add hl,de
+    ld b,(hl)
+    pop de
+    ld a,(AMY_UVAR_Sv)
+    add a,a
+    add a,a
+    add a,b
+    ld hl,AMY_UVAR_SprP
+    add hl,de
+    ld (hl),a
+    jr ArPrNext
+ArPrHide:
+    ld a,(AMY_UVAR_Oi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_SprY
+    add hl,de
+    ld (hl),192
+    ld hl,AMY_UVAR_SprX
+    add hl,de
+    ld (hl),0
+    ld hl,AMY_UVAR_SprP
+    add hl,de
+    ld (hl),0
+    ld hl,AMY_UVAR_SprC
+    add hl,de
+    ld (hl),0
+ArPrNext:
+    ld a,(AMY_UVAR_Oi)
+    inc a
+    ld (AMY_UVAR_Oi),a
+    cp 4
+    jp nz,ArPrLoop
+    ret
+CgSwoosh:
+    db $00,$00,$95,$02,$00,$00,$54,$02,$00,$00,$34,$02,$00,$00,$65,$03,$00,$00,$A5,$03,$10
+CgWind:
+    db $00,$00,$C6,$3C,$00,$00,$B6,$3C,$00,$00,$C6,$3C,$10
+CgThud:
+    db $00,$00,$26,$02,$00,$00,$57,$03,$00,$00,$97,$04,$10
+CgSand:
+    db $00,$00,$34,$03,$00,$00,$55,$04,$00,$00,$85,$06,$00,$00,$B6,$06,$10
+CgClick:
+    db $40,$40,$70,$01,$50
+CgHit:
+    db $40,$47,$00,$01,$40,$5F,$20,$01,$40,$7F,$40,$02,$40,$A9,$70,$03,$50
+CgPutt:
+    db $40,$6B,$30,$01,$40,$8F,$60,$02,$50
+CgGauge:
+    db $40,$35,$A0,$01,$50
+CgCup:
+    db $40,$55,$30,$02,$40,$5F,$40,$02,$40,$55,$40,$02,$40,$5F,$50,$02,$40,$6B,$60,$03,$50
+CgCheer:
+    db $40,$8F,$20,$05,$40,$8F,$F0,$01,$40,$71,$20,$05,$40,$71,$F0,$01,$40,$5F,$20,$05,$40,$5F,$F0,$01
+    db $40,$47,$20,$0F,$40,$47,$F0,$01,$50
+CgGroan:
+    db $40,$1D,$41,$06,$40,$2E,$51,$06,$40,$53,$71,$0A,$50
+
+CgSoundTable:
+    dw CgSwoosh,$702B
+    dw CgWind,$702B
+    dw CgThud,$702B
+    dw CgSand,$702B
+    dw CgClick,$7035
+    dw CgHit,$7035
+    dw CgPutt,$7035
+    dw CgGauge,$7035
+    dw CgCup,$7035
+    dw CgCheer,$7035
+    dw CgGroan,$7035
+    dw CgTuneMel,$703F
+    dw CgTuneBass,$7049
+; Morning on the Links, F major waltz (original for this game)
+; Tiny Sound, 8 frames per step
+CgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$F1,$22,$1F,$00,$28,$00,$00,$00,$26,$00,$24,$00,$00,$00
+    db $23,$00,$26,$00,$2B,$00,$00,$00,$00,$00,$00,$00,$21,$00,$29,$00
+    db $00,$00,$28,$00,$26,$00,$00,$00,$24,$00,$28,$00,$24,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+CgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$0C,$00,$10,$00,$13,$00,$0C,$00,$10,$00,$13,$00
+    db $07,$00,$0E,$00,$13,$00,$07,$00,$0B,$00,$0E,$00,$05,$00,$09,$00
+    db $0C,$00,$07,$00,$0B,$00,$0E,$00,$0C,$00,$10,$00,$13,$00,$0C,$00
+    db $00,$00,$00,$00
+    db $FF
+}

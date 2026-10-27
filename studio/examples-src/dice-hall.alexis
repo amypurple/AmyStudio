@@ -1,0 +1,1338 @@
+' THE DICE HALL
+' Three dice games from Tim Hartnell's Giant Book of Computer Games
+' (Ballantine Books, 1984; Interface Publications, 1983), at one green
+' table, for the ColecoVision in Amy by Amy Bienvenu.
+'
+' SEVEN/ELEVEN (the book's craps without the betting): $105; each round
+' costs $5. A first roll of 7 or 11 wins, 2, 3 or 12 loses, anything else
+' becomes your target number; roll it again before a 7 or an 11 to win. A
+' win pays $20. The book keeps the tally of wins and losses.
+' NO SWEAT (birdcage): $30. Bet on a number from 1 to 6; the bet is taken,
+' three dice turn in the cage, and each one showing your number gives the
+' bet back once. Go broke and the game is over; top $250 and you're done.
+' UNDER 'N' OVER (under and over seven): $30. Bet under 7 (pays even), on
+' 7 (pays 4 to 1) or over 7 (pays even), then two dice are thrown. Go broke
+' and "there's no room for deadbeats in my joint".
+'
+' Controls (either joystick): on the menus up and down choose; at the
+' tables left and right choose a box (a number, under or over), the button
+' picks it; then left and right change the bet by 1, up and down by 10,
+' and the button throws. The second button leaves the table. Keypad not
+' used.
+'
+' Liberties taken:
+' - SEVEN/ELEVEN ends when you cannot pay the $5 for a round (the book
+'   went on for ever, into debt).
+' - The dice are thrown across the felt (two or three, as the book rolls
+'   them one at a time with a pause); in NO SWEAT they turn in a birdcage
+'   and drop out one by one, as the book reports each die.
+' - Bets are chosen on the layout with the stick, not typed.
+' - New music (Snake Eyes Shuffle) and sounds.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; sprites: up to
+' three dice, the chip and the point's puck; the frame loop is protected
+' from the NMI and every screen is drawn with the NMI off after a wait.
+
+const TRailt = 128
+const TRailb = 129
+const THline = 130
+const TVline = 131
+const TCross = 132
+const TFace1 = 133
+const TFace2 = 134
+const TFace3 = 135
+const TFace4 = 136
+const TFace5 = 137
+const TFace6 = 138
+const TCagea00 = 139
+const TCagea01 = 140
+const TCagea02 = 141
+const TCagea03 = 142
+const TCagea10 = 143
+const TCagea11 = 144
+const TCagea12 = 145
+const TCagea13 = 146
+const TCagea20 = 147
+const TCagea21 = 148
+const TCagea22 = 149
+const TCagea23 = 150
+const TCagea30 = 151
+const TCagea31 = 152
+const TCagea32 = 153
+const TCagea33 = 154
+const TCagea40 = 155
+const TCagea41 = 156
+const TCagea42 = 157
+const TCagea43 = 158
+const TCagea50 = 159
+const TCagea51 = 160
+const TCagea52 = 161
+const TCagea53 = 162
+const TCageb00 = 163
+const TCageb01 = 164
+const TCageb02 = 165
+const TCageb03 = 166
+const TCageb10 = 167
+const TCageb11 = 168
+const TCageb12 = 169
+const TCageb13 = 170
+const TCageb20 = 171
+const TCageb21 = 172
+const TCageb22 = 173
+const TCageb23 = 174
+const TCageb30 = 175
+const TCageb31 = 176
+const TCageb32 = 177
+const TCageb33 = 178
+const TCageb40 = 179
+const TCageb41 = 180
+const TCageb42 = 181
+const TCageb43 = 182
+const TCageb50 = 183
+const TCageb51 = 184
+const TCageb52 = 185
+const TCageb53 = 186
+const SDie1 = 0
+const SDie2 = 4
+const SDie3 = 8
+const SDie4 = 12
+const SDie5 = 16
+const SDie6 = 20
+const STumble1 = 24
+const STumble2 = 28
+const SChip = 32
+const SPuck = 36
+const NTiles8 = 472
+const SprBytes = 320
+const SndRattle = 1
+const SndBounce = 2
+const SndCage = 3
+const SndClick = 4
+const SndChip = 5
+const SndWin = 6
+const SndBigWin = 7
+const SndLose = 8
+const SndPoint = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+' the throw: 40 frames; how far along the felt (0-255) and how high
+data Ease bytes 0,13,25,37,48,59,69,79,88,97,106,114,122,129,136,143,149,155,160,166,171,175,180,184,188,191,195,198,201,204,206,209,211,213,215,217,219,220,221,222,223
+data Hop bytes 0,9,17,23,28,31,32,31,28,23,17,9,0,6,11,14,16,16,14,11,6,0,3,5,6,6,5,3,0,1,2,2,1,0,0,0,0,0,0,0,0
+' the point boxes of SEVEN/ELEVEN: the numbers and their columns
+data PointNum bytes 4, 5, 6, 8, 9, 10
+' the font has no dollar sign: one is drawn over '$'
+data Dollar bytes $10,$7C,$90,$7C,$12,$7C,$10,$00
+
+u16 Cash = 0
+u16 Bet = 1
+u16 Wins = 0
+u16 Losses = 0
+u16 RoundNo = 0
+u8 Game = 0
+u8 Choice = 0
+u8 CageX = 3
+u8 CageEnd = 6
+u8 Res = 0
+' (for the tests: 1 waiting for a roll, 2 choosing a box, 3 the bet)
+u8 Stage = 0
+u8 Target = 0
+u8 Total = 0
+u8 Matches = 0
+u8 NDice = 2
+u8 Face[3]
+u8 DX[3]
+u8 DY[3]
+u8 SX[3]
+
+' scratch, kept to their own subs
+u16 Uw = 0
+u16 NumU = 0
+u16 Rs = $7A35
+u16 Rt = 0
+u8 Rb = 0
+u8 Di = 0
+u8 T = 0
+u8 E = 0
+u8 H = 0
+u8 Pt = 0
+u8 Px = 0
+u8 Py = 0
+u8 Ci = 0
+
+' input and menus
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DgSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 3 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+  Game = Menu + 1
+  if Game = 1 then goto seven_eleven
+  if Game = 2 then goto no_sweat
+  goto under_over
+
+' ---------------------------------------------------------------------------
+' SEVEN/ELEVEN
+
+seven_eleven:
+  Cash = 105
+  Wins = 0
+  Losses = 0
+  RoundNo = 0
+  NDice = 2
+  TableScreen
+se_round:
+  Mode = 1
+  if Cash < 5 then goto se_broke
+  ' the book: $5 a round
+  Cash = Cash - 5
+  inc RoundNo
+  Target = 0
+  Puck
+  CashLine
+  Tally
+  Say
+  print at 2,3, "THIS IS ROUND NUMBER"
+  NumU = RoundNo
+  print at 23,3, width$(NumU, 3)
+  print at 2,4, "PRESS THE BUTTON TO ROLL"
+  WaitButton
+  if Res = 1 then goto title
+  Throw
+  Say
+  print at 2,3, "IN 7/11 YOU'VE ROLLED"
+  NumU = Total
+  print at 24,3, width$(NumU, 2)
+  if Total = 7 then goto se_win
+  if Total = 11 then goto se_win
+  if Total = 2 then goto se_out
+  if Total = 3 then goto se_out
+  if Total = 12 then goto se_out
+  ' the target number
+  Target = Total
+  Puck
+  play sound SndPoint
+  print at 2,4, "THAT'S YOUR TARGET NUMBER"
+  Pause
+se_again:
+  Say
+  print at 2,3, "YOUR TARGET NUMBER IS"
+  NumU = Target
+  print at 24,3, width$(NumU, 2)
+  print at 2,4, "PRESS THE BUTTON TO ROLL"
+  WaitButton
+  if Res = 1 then goto title
+  Throw
+  Say
+  print at 2,3, "IN 7/11 YOU'VE ROLLED"
+  NumU = Total
+  print at 24,3, width$(NumU, 2)
+  if Total = Target then goto se_win
+  if Total = 7 then goto se_lose
+  if Total = 11 then goto se_lose
+  Pause
+  goto se_again
+se_out:
+  print at 2,4, "SO THAT'S THE END OF THE ROUND"
+  goto se_lost
+se_lose:
+  print at 2,4, "AND SO YOU LOSE"
+se_lost:
+  inc Losses
+  play sound SndLose
+  Tally
+  Pause
+  Pause
+  goto se_round
+se_win:
+  print at 2,4, "AND YOU'VE WON"
+  inc Wins
+  Cash = Cash + 20
+  play sound SndWin
+  CashLine
+  Tally
+  Pause
+  Pause
+  goto se_round
+se_broke:
+  Say
+  print at 2,3, "YOU CAN'T PAY FOR A ROUND."
+  print at 2,4, "THE GAME IS OVER."
+  play sound SndLose
+  goto table_end
+
+' ---------------------------------------------------------------------------
+' NO SWEAT
+
+no_sweat:
+  Cash = 30
+  Bet = 4
+  Choice = 0
+  NDice = 3
+  TableScreen
+ns_bet:
+  Mode = 1
+  CashLine
+  Say
+  print at 2,3, "WHICH NUMBER ARE YOU"
+  print at 2,4, "BETTING ON?"
+  ChooseBox
+  if Res = 1 then goto title
+  AskBet
+  if Res = 1 then goto ns_bet
+  ' the bet is taken; three dice turn in the cage
+  Cash = Cash - Bet
+  CashLine
+  Say
+  print at 2,3, "THE CAGE TURNS..."
+  Spin
+  Matches = 0
+  for Di = 0 to 2
+    DropDie
+    Say
+    print at 2,3, "DIE"
+    V = Di + 1
+    NumU = V
+    print at 6,3, digits$(NumU, 1)
+    print at 8,3, "FELL"
+    V = Face[Di]
+    NumU = V
+    print at 13,3, digits$(NumU, 1)
+    V = Choice + 1
+    W = Face[Di]
+    if W = V then
+      print at 2,4, "SO YOU WIN $"
+      NumU = Bet
+      print at 14,4, width$(NumU, 3)
+      Cash = Cash + Bet
+      inc Matches
+      play sound SndWin
+      CashLine
+    end if
+    Pause
+  next
+  if Matches = 3 then play sound SndBigWin
+  Pause
+  HideDice
+  if Cash > 250 then goto ns_top
+  if Cash > 0 then goto ns_bet
+  Say
+  print at 2,3, "THE GAME IS OVER,"
+  print at 2,4, "'COS YOU'RE BROKE!"
+  play sound SndLose
+  goto table_end
+ns_top:
+  Say
+  print at 2,3, "YOU'VE TOPPED $250!"
+  print at 2,4, "WELL DONE!!"
+  play sound SndBigWin
+  goto table_end
+
+' ---------------------------------------------------------------------------
+' UNDER 'N' OVER
+
+under_over:
+  Cash = 30
+  Bet = 5
+  Choice = 0
+  NDice = 2
+  TableScreen
+uo_bet:
+  Mode = 1
+  CashLine
+  Say
+  print at 2,3, "OK, PUNTER, 'TIS TIME TO"
+  print at 2,4, "PLACE YOUR BET..."
+  ChooseBox
+  if Res = 1 then goto title
+  AskBet
+  if Res = 1 then goto uo_bet
+  Throw
+  Say
+  print at 2,3, "SO THE TOTAL IS"
+  NumU = Total
+  print at 18,3, width$(NumU, 2)
+  ' the book: W = -A, then 4 * A on seven, A under or over
+  V = 0
+  if Choice = 0 then
+    if Total < 7 then V = 1
+  end if
+  if Choice = 1 then
+    if Total = 7 then V = 4
+  end if
+  if Choice = 2 then
+    if Total > 7 then V = 1
+  end if
+  if V = 0 then
+    Cash = Cash - Bet
+    print at 2,4, "AND SO YOU LOSE $"
+    NumU = Bet
+    print at 19,4, width$(NumU, 3)
+    play sound SndLose
+  else
+    Uw = Bet
+    if V = 4 then Uw = Bet << 2
+    Cash = Cash + Uw
+    print at 2,4, "YOU'VE JUST WON $"
+    NumU = Uw
+    print at 19,4, width$(NumU, 3)
+    if V = 4 then
+      play sound SndBigWin
+    else
+      play sound SndWin
+    end if
+  end if
+  CashLine
+  Pause
+  Pause
+  HideDice
+  if Cash > 0 then goto uo_bet
+  Say
+  print at 2,3, "YOU'RE FLAT BROKE, BUDDY,"
+  print at 2,4, "SO I GOTTA CLOSE THE CASINO"
+  play sound SndLose
+  Pause
+  Pause
+  Say
+  print at 2,3, "THERE'S NO ROOM FOR"
+  print at 2,4, "DEADBEATS IN MY JOINT"
+  goto table_end
+
+table_end:
+  Mode = 0
+  Pause
+  Pause
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+te_wait:
+  Frame1
+  ReadPad
+  if Press = 1 then goto title
+  if Press2 = 1 then goto title
+  goto te_wait
+
+' ---------------------------------------------------------------------------
+' The table
+
+' WaitButton: wait for the button (Res 0) or the second button (Res 1)
+sub WaitButton:
+  Stage = 1
+  WasBtn = 1
+  WasBtn2 = 1
+wb_loop:
+  Frame1
+  ReadPad
+  if Press2 = 1 then
+    Res = 1
+    Stage = 0
+    return
+  end if
+  if Press = 0 then goto wb_loop
+  Res = 0
+  Stage = 0
+  return
+end sub
+
+' ChooseBox: the chip over the boxes (6 numbers, or under / 7 / over);
+' the button picks (0), the second button leaves (1)
+sub ChooseBox:
+  Stage = 2
+  WasBtn = 1
+  WasBtn2 = 1
+cb_loop:
+  Frame1
+  ReadPad
+  K = 2
+  if Game = 2 then K = 5
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Choice > 0 then dec Choice
+    end if
+    if Rt1 = 1 then
+      if Choice < K then inc Choice
+    end if
+    play sound SndClick
+  end if
+  ChipAt
+  if Press2 = 1 then
+    Res = 1
+    Stage = 0
+    return
+  end if
+  if Press = 0 then goto cb_loop
+  play sound SndChip
+  Res = 0
+  Stage = 0
+  return
+end sub
+
+' AskBet: how much? Left/right 1, up/down 10; the button throws (0), the
+' second button goes back to the boxes (1)
+sub AskBet:
+  Stage = 3
+  if Bet > Cash then Bet = Cash
+  if Bet = 0 then Bet = 1
+  Say
+  print at 2,3, "HOW MUCH WOULD YOU LIKE"
+  print at 2,4, "TO BET?  $"
+  WasBtn = 1
+  WasBtn2 = 1
+ab_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Rt1 = 1 then
+      if Bet < Cash then inc Bet
+    end if
+    if Lf1 = 1 then
+      if Bet > 1 then dec Bet
+    end if
+    if Up1 = 1 then
+      Bet = Bet + 10
+      if Bet > Cash then Bet = Cash
+    end if
+    if Dn1 = 1 then
+      if Bet > 10 then
+        Bet = Bet - 10
+      else
+        Bet = 1
+      end if
+    end if
+    play sound SndClick
+  end if
+  NumU = Bet
+  print at 12,4, width$(NumU, 3)
+  if Press2 = 1 then
+    Res = 1
+    Stage = 0
+    return
+  end if
+  if Press = 0 then goto ab_loop
+  Res = 0
+  Stage = 0
+  return
+end sub
+
+' ChipAt: the chip over box Choice
+sub ChipAt:
+  if Game = 2 then
+    ' six boxes, 4 columns each from column 4: middle at 4 + 4c + 1.5
+    X = Choice << 5
+    X = X + 36
+    set sprite 3 to 110, X, SChip, 11
+  else
+    ' three boxes, 9 columns each from column 2
+    X = Choice * 72
+    X = X + 36
+    set sprite 3 to 110, X, SChip, 11
+  end if
+  update sprites
+  return
+end sub
+
+' Puck: SEVEN/ELEVEN's puck on the target number's box, or off
+sub Puck:
+  if Target = 0 then
+    set sprite 4 to 192, 0, 0, 0
+  else
+    for K = 0 to 5
+      V = PointNum[K]
+      if V = Target then
+        X = K << 5
+        X = X + 36
+      end if
+    next
+    set sprite 4 to 99, X, SPuck, 15
+  end if
+  update sprites
+  return
+end sub
+
+' Throw: NDice dice thrown from the right across the felt, bouncing and
+' tumbling, stopping side by side; Face[] and Total are the book's dice
+sub Throw:
+  HideChip
+  Total = 0
+  for Di = 0 to 2
+    Rnd
+    Uw = Rb
+    Uw = Uw * 6
+    Uw = Uw >> 8
+    V = Uw
+    V = V + 1
+    Face[Di] = V
+  next
+  for Di = 0 to NDice
+    if Di < NDice then
+      V = Face[Di]
+      Total = Total + V
+    end if
+  next
+  ' where each one stops
+  for Di = 0 to 2
+    V = Di * 48
+    if NDice = 2 then V = V + 24
+    V = V + 64
+    DX[Di] = V
+    V = Di << 3
+    V = V + 56
+    DY[Di] = V
+  next
+  play sound SndRattle
+  for T = 0 to 40
+    Frame1
+    E = Ease[T]
+    H = Hop[T]
+    if H = 0 then
+      if T > 0 then
+        if T < 30 then play sound SndBounce
+      end if
+    end if
+    for Di = 0 to 2
+      if Di < NDice then
+        ' x from 232 to the stop, along the ease
+        W = DX[Di]
+        V = 232 - W
+        Uw = V
+        Uw = Uw * E
+        Uw = Uw >> 8
+        V = Uw
+        X = 232 - V
+        V = DY[Di]
+        Y = V - H
+        Pt = STumble1
+        V = T & 4
+        if V > 0 then Pt = STumble2
+        if T >= 28 then
+          ' still turning over, but showing faces now
+          Rnd
+          V = Rb & 7
+          if V < 6 then
+            V = V << 2
+            Pt = SDie1 + V
+          end if
+        end if
+        if T = 40 then
+          V = Face[Di]
+          V = V - 1
+          V = V << 2
+          Pt = SDie1 + V
+        end if
+        set sprite Di to Y, X, Pt, 15
+      end if
+    next
+    update sprites
+  next
+  return
+end sub
+
+' Spin: NO SWEAT's cage turns, the dice jumble inside it
+sub Spin:
+  HideChip
+  for Di = 0 to 2
+    Rnd
+    Uw = Rb
+    Uw = Uw * 6
+    Uw = Uw >> 8
+    V = Uw
+    V = V + 1
+    Face[Di] = V
+  next
+  play sound SndCage
+  for T = 0 to 60
+    Frame1
+    V = T & 4
+    K = TCagea00
+    if V > 0 then K = TCageb00
+    CageAt
+    for Di = 0 to 2
+      Rnd
+      V = Rb & 15
+      X = V + 20
+      Rnd
+      V = Rb & 31
+      Y = V + 44
+      Pt = STumble1
+      V = Rb & 32
+      if V > 0 then Pt = STumble2
+      set sprite Di to Y, X, Pt, 15
+    next
+    update sprites
+  next
+  ' the dice wait in the cage's bottom
+  for Di = 0 to 2
+    V = Di << 3
+    X = V + 20
+    set sprite Di to 76, X, STumble1, 15
+  next
+  update sprites
+  return
+end sub
+
+' CageAt: the cage's 4 x 6 tiles from code K (columns 3-6 at the tables,
+' 14-17 on the title), rows 5-10
+sub CageAt:
+  Ci = K
+  for Y = 5 to 10
+    for X = CageX to CageEnd
+      put char Ci at X,Y
+      inc Ci
+    next
+  next
+  return
+end sub
+
+' DropDie: die Di rolls out of the cage to its place on the felt
+sub DropDie:
+  V = Di * 48
+  V = V + 96
+  DX[Di] = V
+  play sound SndBounce
+  X = 24
+  for T = 0 to 16
+    Frame1
+    ' from the cage's bottom to its place, a small hop
+    W = DX[Di]
+    if X < W then
+      V = W - X
+      V = V >> 2
+      if V = 0 then V = 1
+      X = X + V
+    else
+      if X > W then
+        V = X - W
+        V = V >> 2
+        if V = 0 then V = 1
+        X = X - V
+      end if
+    end if
+    V = T & 3
+    Pt = STumble1
+    if V > 1 then Pt = STumble2
+    Y = 52
+    if T >= 12 then
+      V = Face[Di]
+      V = V - 1
+      V = V << 2
+      Pt = SDie1 + V
+    end if
+    set sprite Di to Y, X, Pt, 15
+    update sprites
+  next
+  return
+end sub
+
+sub HideDice:
+  for Di = 0 to 2
+    set sprite Di to 192, 0, 0, 0
+  next
+  update sprites
+  return
+end sub
+
+sub HideChip:
+  set sprite 3 to 192, 0, 0, 0
+  update sprites
+  return
+end sub
+
+sub Tally:
+  print at 2,18, "WINS"
+  NumU = Wins
+  print at 7,18, width$(NumU, 3)
+  print at 12,18, "LOSSES"
+  NumU = Losses
+  print at 19,18, width$(NumU, 3)
+  return
+end sub
+
+sub CashLine:
+  print at 21,1, "$"
+  NumU = Cash
+  print at 23,1, width$(NumU, 4)
+  return
+end sub
+
+' Say: the croupier's two lines cleared
+sub Say:
+  fill 32 count 29 at 1,3
+  fill 32 count 29 at 1,4
+  return
+end sub
+
+sub TableScreen:
+  NewScreen
+  fill TRailt count 32 at 0,0
+  fill TRailb count 32 at 0,23
+  if Game = 1 then print at 2,1, "SEVEN/ELEVEN"
+  if Game = 2 then print at 2,1, "NO SWEAT"
+  if Game = 3 then print at 2,1, "UNDER 'N' OVER"
+  fill THline count 28 at 2,12
+  fill THline count 28 at 2,17
+  if Game = 1 then
+    ' the target numbers' boxes
+    for K = 0 to 5
+      X = K << 2
+      X = X + 4
+      put char TVline at X,13
+      put char TVline at X,14
+      put char TVline at X,15
+      put char TVline at X,16
+      inc X
+      V = PointNum[K]
+      NumU = V
+      print at X,15, width$(NumU, 2)
+    next
+    put char TVline at 28,13
+    put char TVline at 28,14
+    put char TVline at 28,15
+    put char TVline at 28,16
+    print at 2,19, "7 OR 11 FIRST WINS, 2,3,12"
+    print at 2,20, "LOSE. ELSE ROLL THAT TARGET"
+    print at 2,21, "AGAIN BEFORE 7 OR 11."
+    print at 2,22, "$5 A ROUND, A WIN PAYS $20"
+  end if
+  if Game = 2 then
+    Cage
+    for K = 0 to 5
+      X = K << 2
+      X = X + 4
+      put char TVline at X,13
+      put char TVline at X,14
+      put char TVline at X,15
+      put char TVline at X,16
+      X = X + 1
+      V = TFace1 + K
+      put char V at X,15
+      inc X
+      V = K + 1
+      NumU = V
+      print at X,15, digits$(NumU, 1)
+    next
+    put char TVline at 28,13
+    put char TVline at 28,14
+    put char TVline at 28,15
+    put char TVline at 28,16
+    print at 2,19, "EACH DIE SHOWING YOUR NUMBER"
+    print at 2,20, "GIVES THE BET BACK ONCE."
+    print at 2,21, "TOP $250 AND YOU'RE DONE."
+  end if
+  if Game = 3 then
+    for K = 0 to 3
+      X = K * 9
+      X = X + 2
+      put char TVline at X,13
+      put char TVline at X,14
+      put char TVline at X,15
+      put char TVline at X,16
+    next
+    print at 3,14, "UNDER 7"
+    print at 15,14, "7"
+    print at 22,14, "OVER 7"
+    print at 3,15, "PAYS 1:1"
+    print at 12,15, "PAYS 4:1"
+    print at 21,15, "PAYS 1:1"
+  end if
+  if Game <> 1 then
+    print at 2,22, "2ND BUTTON: LEAVE THE TABLE"
+  end if
+  CashLine
+  ShowScreen
+  return
+end sub
+
+sub Cage:
+  K = TCagea00
+  CageAt
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Helpers
+
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 50
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  sprites stable 0 to 4
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  fill TRailt count 32 at 0,0
+  fill TRailb count 32 at 0,23
+  print at 9,2, "THE DICE HALL"
+  CageX = 14
+  CageEnd = 17
+  Cage
+  CageX = 3
+  CageEnd = 6
+  print at 8,13, "SEVEN/ELEVEN"
+  print at 8,14, "NO SWEAT"
+  print at 8,15, "UNDER 'N' OVER"
+  print at 8,16, "HOW TO PLAY"
+  print at 8,17, "CREDITS"
+  print at 3,21, "FROM TIM HARTNELL'S GIANT"
+  print at 3,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  ' two dice on the felt
+  set sprite 0 to 40, 48, SDie6, 15
+  set sprite 1 to 48, 176, SDie1, 15
+  update sprites
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ' the cage turns slowly
+  V = Tick & 31
+  if V = 0 then
+    K = TCagea00
+    V = Tick & 32
+    if V > 0 then K = TCageb00
+    CageX = 14
+    CageEnd = 17
+    CageAt
+    CageX = 3
+    CageEnd = 6
+  end if
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 4 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 13 to 17
+    print at 6,I, " "
+  next
+  Y = Menu + 13
+  print at 6,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub PageScreen:
+  NewScreen
+  backdrop black
+  return
+end sub
+
+sub RulesPage:
+  PageScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "SEVEN/ELEVEN: $105, $5 A"
+  print at 2,4, "ROUND. 7 OR 11 WINS $20, 2,"
+  print at 2,5, "3 OR 12 LOSES. ELSE ROLL THAT"
+  print at 2,6, "NUMBER AGAIN BEFORE 7 OR 11."
+  print at 2,8, "NO SWEAT: $30. BET ON 1-6;"
+  print at 2,9, "EACH OF 3 DICE SHOWING IT"
+  print at 2,10, "GIVES THE BET BACK ONCE."
+  print at 2,12, "UNDER 'N' OVER: $30. UNDER 7"
+  print at 2,13, "OR OVER 7 PAY EVEN, 7 PAYS"
+  print at 2,14, "4 TO 1."
+  print at 2,16, "LEFT, RIGHT: CHOOSE A BOX."
+  print at 2,17, "BUTTON: PICK IT. THEN THE BET"
+  print at 2,18, "(1 LEFT/RIGHT, 10 UP/DOWN);"
+  print at 2,19, "BUTTON: THROW."
+  print at 2,20, "2ND BUTTON: LEAVE THE TABLE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  PageScreen
+  print at 9,1, "THE DICE HALL"
+  print at 2,3, "SEVEN/ELEVEN, NO SWEAT AND"
+  print at 2,4, "UNDER 'N' OVER FROM TIM"
+  print at 2,5, "HARTNELL'S GIANT BOOK OF"
+  print at 2,6, "COMPUTER GAMES (BALLANTINE"
+  print at 2,7, "BOOKS, 1984; INTERFACE"
+  print at 2,8, "PUBLICATIONS, 1983)."
+  print at 2,10, "MUSIC: SNAKE EYES SHUFFLE"
+  print at 2,11, "(ORIGINAL)."
+  print at 2,13, "COLECOVISION VERSION BY"
+  print at 2,14, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$10,$10,$10,$10,$10
+  $10,$10,$10,$00,$10,$10,$10,$10
+  $81,$00,$00,$10,$00,$00,$00,$81
+  $81,$40,$00,$00,$00,$00,$02,$81
+  $81,$40,$00,$10,$00,$00,$02,$81
+  $81,$42,$00,$00,$00,$00,$42,$81
+  $81,$42,$00,$10,$00,$00,$42,$81
+  $81,$42,$00,$42,$00,$00,$42,$81
+  $00,$00,$82,$C2,$C2,$62,$22,$32
+  $00,$00,$08,$08,$08,$08,$08,$08
+  $00,$00,$20,$20,$20,$20,$20,$20
+  $01,$01,$83,$83,$83,$86,$84,$8C
+  $12,$1A,$0A,$0E,$06,$06,$03,$01
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $88,$98,$90,$B0,$A0,$E0,$C0,$80
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $88,$88,$C8,$48,$68,$28,$38,$18
+  $21,$21,$23,$22,$26,$24,$2C,$38
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $18,$38,$28,$68,$48,$C8,$88,$88
+  $38,$2C,$24,$26,$22,$23,$21,$21
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $01,$03,$06,$06,$0E,$0A,$1A,$12
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $20,$20,$20,$20,$20,$20,$20,$20
+  $80,$C0,$E0,$A0,$B0,$90,$98,$88
+  $32,$22,$62,$C2,$C2,$82,$00,$00
+  $08,$08,$08,$08,$08,$08,$00,$00
+  $20,$20,$20,$20,$20,$20,$00,$00
+  $8C,$84,$86,$83,$83,$83,$01,$01
+  $80,$80,$90,$D0,$D0,$70,$30,$30
+  $00,$00,$41,$41,$41,$41,$41,$41
+  $00,$00,$04,$04,$04,$04,$04,$04
+  $01,$01,$11,$13,$13,$16,$14,$1C
+  $10,$18,$08,$0C,$04,$06,$03,$01
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $18,$18,$10,$30,$20,$60,$C0,$80
+  $01,$00,$00,$00,$00,$00,$00,$00
+  $C1,$C1,$C1,$41,$61,$21,$31,$19
+  $05,$05,$07,$06,$06,$04,$0C,$18
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01
+  $19,$31,$21,$61,$41,$C1,$C1,$C1
+  $18,$0C,$04,$06,$06,$07,$05,$05
+  $00,$00,$00,$00,$00,$00,$00,$80
+  $01,$03,$06,$04,$0C,$08,$18,$10
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $80,$C0,$60,$20,$30,$10,$18,$18
+  $30,$30,$70,$D0,$D0,$90,$80,$80
+  $41,$41,$41,$41,$41,$41,$00,$00
+  $04,$04,$04,$04,$04,$04,$00,$00
+  $1C,$14,$16,$13,$13,$11,$01,$01
+end data
+data TileCol bytes
+  $06,$0A,$06,$06,$06,$0A,$0C,$0C
+  $0C,$0C,$0A,$06,$06,$06,$0A,$06
+  $0C,$0C,$0C,$0F,$0C,$0C,$0C,$0C
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$0F,$FC,$FC,$FC,$FC
+  $CF,$0F,$0F,$1F,$0F,$0F,$0F,$CF
+  $CF,$1F,$0F,$0F,$0F,$0F,$1F,$CF
+  $CF,$1F,$0F,$1F,$0F,$0F,$1F,$CF
+  $CF,$1F,$0F,$0F,$0F,$0F,$1F,$CF
+  $CF,$1F,$0F,$1F,$0F,$0F,$1F,$CF
+  $CF,$1F,$0F,$1F,$0F,$0F,$1F,$CF
+  $0F,$0F,$FC,$FC,$FC,$FC,$FC,$FC
+  $0F,$0F,$FC,$FC,$FC,$FC,$FC,$FC
+  $0F,$0F,$FC,$FC,$FC,$FC,$FC,$FC
+  $CF,$CF,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$0F,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$0F,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$0F,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$CF,$CF
+  $CF,$CF,$FC,$FC,$FC,$FC,$FC,$FC
+  $0F,$0F,$FC,$FC,$FC,$FC,$FC,$FC
+  $0F,$0F,$FC,$FC,$FC,$FC,$FC,$FC
+  $CF,$CF,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+  $FC,$FC,$FC,$FC,$FC,$FC,$CF,$CF
+  $FC,$FC,$FC,$FC,$FC,$FC,$0F,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$0F,$0F
+  $FC,$FC,$FC,$FC,$FC,$FC,$CF,$CF
+end data
+data SpritePat bytes
+  $3F,$7F,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$3F
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$3F
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$3F
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$E7,$E7,$FF,$7F,$3F
+  $FC,$FE,$FF,$E7,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FE,$FE,$FF,$FF,$E7,$E7,$FF,$7F,$3F
+  $FC,$FE,$FF,$E7,$E7,$FF,$FF,$7F,$7F,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$7F,$3F
+  $FC,$FE,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $00,$00,$01,$07,$1F,$7F,$FF,$F9,$FF,$7F,$1F,$07,$01,$00,$00,$00
+  $00,$00,$80,$E0,$F8,$FE,$FF,$3F,$FF,$FE,$F8,$E0,$80,$00,$00,$00
+  $03,$07,$0F,$1F,$3D,$7F,$FF,$FF,$FF,$7F,$3F,$1F,$0F,$07,$00,$00
+  $C0,$E0,$F0,$F8,$BC,$FE,$FF,$FF,$FF,$FE,$F0,$E0,$C0,$80,$00,$00
+  $00,$00,$00,$00,$03,$0F,$1C,$18,$1C,$0F,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$F0,$38,$18,$38,$F0,$C0,$00,$00,$00,$00,$00
+  $03,$0F,$1F,$3B,$35,$3B,$1F,$0F,$03,$00,$00,$00,$00,$00,$00,$00
+  $C0,$F0,$F8,$5C,$98,$5C,$F8,$F0,$C0,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+DgRattle:
+    db $00,$00,$44,$02,$00,$00,$65,$02,$00,$00,$44,$02,$00,$00,$65,$02,$00,$00,$54,$02,$00,$00,$75,$03
+    db $10
+DgBounce:
+    db $00,$00,$24,$01,$00,$00,$55,$02,$10
+DgCage:
+    db $00,$00,$76,$03,$00,$00,$96,$03,$00,$00,$76,$03,$00,$00,$96,$03,$00,$00,$76,$03,$00,$00,$96,$03
+    db $00,$00,$76,$03,$00,$00,$96,$03,$00,$00,$76,$03,$00,$00,$A6,$03,$10
+DgClick:
+    db $40,$40,$70,$01,$50
+DgChip:
+    db $40,$30,$40,$01,$40,$28,$60,$02,$50
+DgWin:
+    db $40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$71,$20,$04,$40,$71,$F0,$01,$40,$5F,$20,$04,$40,$5F,$F0,$01
+    db $40,$47,$20,$0D,$40,$47,$F0,$01,$50
+DgBigWin:
+    db $40,$6B,$10,$03,$40,$6B,$F0,$01,$40,$55,$10,$03,$40,$55,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01
+    db $40,$35,$10,$03,$40,$35,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01,$40,$35,$10,$03,$40,$35,$F0,$01
+    db $40,$2A,$10,$13,$40,$2A,$F0,$01,$50
+DgLose:
+    db $40,$1D,$41,$07,$40,$1D,$F1,$01,$40,$41,$41,$07,$40,$41,$F1,$01,$40,$53,$41,$13,$40,$53,$F1,$01
+    db $50
+DgPoint:
+    db $40,$AA,$30,$03,$40,$AA,$F0,$01,$40,$7F,$30,$07,$40,$7F,$F0,$01,$50
+
+DgSoundTable:
+    dw DgRattle,$702B
+    dw DgBounce,$702B
+    dw DgCage,$702B
+    dw DgClick,$7035
+    dw DgChip,$7035
+    dw DgWin,$7035
+    dw DgBigWin,$7035
+    dw DgLose,$7035
+    dw DgPoint,$7035
+    dw DgTuneMel,$703F
+    dw DgTuneBass,$7049
+; Snake Eyes Shuffle, G major (original for this game)
+; Tiny Sound, 6 frames per step
+DgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$26,$00,$00,$29,$2A,$00,$2D,$00,$2A,$00,$26,$00
+    db $28,$00,$00,$00,$26,$00,$00,$29,$2A,$00,$2D,$00,$2F,$00,$2D,$00
+    db $2A,$00,$00,$00,$2B,$00,$00,$2E,$2F,$00,$32,$00,$2F,$00,$2B,$00
+    db $2D,$00,$00,$00,$2A,$00,$26,$00,$2D,$00,$2A,$00,$26,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+DgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0E,$00,$12,$00,$15,$00,$17,$00,$0E,$00,$12,$00
+    db $15,$00,$12,$00,$0E,$00,$12,$00,$15,$00,$17,$00,$09,$00,$0D,$00
+    db $10,$00,$0D,$00,$07,$00,$0B,$00,$0E,$00,$10,$00,$07,$00,$0B,$00
+    db $0E,$00,$0B,$00,$09,$00,$0D,$00,$10,$00,$0D,$00,$0E,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}

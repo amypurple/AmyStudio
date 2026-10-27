@@ -1,0 +1,1530 @@
+' DICE DUELS
+' Four dice games against the computer from Tim Hartnell's Giant Book of
+' Computer Games (Ballantine Books, 1984; Interface Publications, 1983),
+' for the ColecoVision in Amy by Amy Bienvenu.
+'
+' CHEMIN DE COMPUTER (after chemin de fer): the banker (the computer),
+' then you, throw five dice. Twos and fives count nothing and are thrown
+' again; only the last digit of the total counts (27 is 7). A 7, 8 or 9 on
+' the first throw is a Natural, La Petite or La Grande and stands. Higher
+' wins; the best of nine scoring games (a standoff doesn't count).
+' ONE-AND-TWENTY (blackjack with a die): throw as often as you like and
+' stand when you will; over 21 is bust. Then the computer throws until it
+' beats you or busts. Five scoring rounds.
+' SNAKES' EYES: throw a pair as often as you dare, adding them up; a 7 and
+' you lose. Stand, and the computer throws until it passes you, ties, or
+' throws a 7. Nine scoring rounds.
+' MALIBU: you and the computer start with 50 points each; five rounds of
+' three dice each. Lucky Joe (13) 6, Sough (13 with a pair) 10 more, Easy
+' Rider (6 or 15) 4, Straight Road (9 or 12) 3, Triple Crown (three alike)
+' 5, Two of a Kind 3, Low and Mean (3) 7, High Roller (18) 12, and the
+' Dreaded Seven costs 2. What one wins the other loses.
+'
+' Controls (either joystick): the button throws; the second button
+' stands (ONE-AND-TWENTY, SNAKES' EYES); on the menus up and down choose.
+' Keypad not used.
+'
+' Liberties taken:
+' - CHEMIN: the listing's second throw tests "E = 2 OR 2 = 5", so a five
+'   thrown again counted; the text says twos and fives are discarded
+'   again, and so they are here.
+' - MALIBU: the listing gives your Straight Road's 3 points to a variable
+'   nobody reads (BS = HS + 3); here you get them. Your name is "YOU".
+' - The book seeded its dice by how long you took to press a key; here
+'   the dice come from the game's own random numbers.
+' - The dice are thrown one after another onto the felt and stay there;
+'   new music (Two Dice in a Cup) and sounds.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; dice in the air
+' are sprites (four at most), landed dice are tiles; the frame loop is
+' protected from the NMI and every screen is drawn with the NMI off after
+' a wait.
+
+const TRailt = 128
+const TRailb = 129
+const THline = 130
+const TD100 = 131
+const TD101 = 132
+const TD110 = 133
+const TD111 = 134
+const TD200 = 135
+const TD201 = 136
+const TD210 = 137
+const TD211 = 138
+const TD300 = 139
+const TD301 = 140
+const TD310 = 141
+const TD311 = 142
+const TD400 = 143
+const TD401 = 144
+const TD410 = 145
+const TD411 = 146
+const TD500 = 147
+const TD501 = 148
+const TD510 = 149
+const TD511 = 150
+const TD600 = 151
+const TD601 = 152
+const TD610 = 153
+const TD611 = 154
+const TR200 = 155
+const TR201 = 156
+const TR210 = 157
+const TR211 = 158
+const TR500 = 159
+const TR501 = 160
+const TR510 = 161
+const TR511 = 162
+const SDie1 = 0
+const SDie2 = 4
+const SDie3 = 8
+const SDie4 = 12
+const SDie5 = 16
+const SDie6 = 20
+const STumble1 = 24
+const STumble2 = 28
+const SPointer = 32
+const NTiles8 = 280
+const SprBytes = 288
+const SndRattle = 1
+const SndBounce = 2
+const SndCage = 3
+const SndClick = 4
+const SndChip = 5
+const SndWin = 6
+const SndBigWin = 7
+const SndLose = 8
+const SndPoint = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+' a throw: 30 frames; how far along the felt (0-255) and how high
+data Ease bytes 0,16,31,46,60,73,86,98,109,120,130,140,149,157,165,172,179,185,191,196,201,205,209,213,216,219,221,223,224,225,226
+data Hop bytes 0,9,17,23,27,29,29,27,23,17,9,0,5,9,11,11,9,5,0,2,3,3,2,0,0,0,0,0,0,0,0
+
+u8 Game = 0
+' the dice of a throw: faces, tile places, and in the air
+u8 Face[13]
+u8 TgX[13]
+u8 TgY[13]
+u8 NThrow = 0
+' scores: rounds won (me, you), totals (me, you), points (MALIBU)
+u8 MeWon = 0
+u8 YouWon = 0
+u8 MeT = 0
+u8 YouT = 0
+u8 NMe = 0
+u8 NYou = 0
+u8 RoundNo = 0
+i16 MeP = 50
+i16 YouP = 50
+u8 Count = 0
+u8 Line = 19
+u8 C1 = 0
+u8 C2 = 0
+u8 C3 = 0
+
+' scratch, kept to their own subs
+u16 Uw = 0
+u16 NumU = 0
+u16 Rs = $4C2B
+u16 Rt = 0
+u8 Rb = 0
+u8 Di = 0
+u8 Sl = 0
+u8 T = 0
+u8 E = 0
+u8 H = 0
+u8 Pt = 0
+u8 Tm = 0
+u8 Ct = 0
+u8 Dt = 0
+u8 Res = 0
+
+' input and menus
+u8 Menu = 0
+u8 Mode = 0
+u8 Stage = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  set sound table DdSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 4 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 5 then
+    CreditsPage
+    goto title
+  end if
+  Game = Menu + 1
+  MeWon = 0
+  YouWon = 0
+  RoundNo = 0
+  MeP = 50
+  YouP = 50
+  if Game = 1 then goto chemin
+  if Game = 2 then goto twenty_one
+  if Game = 3 then goto snakes
+  goto malibu
+
+' ---------------------------------------------------------------------------
+' CHEMIN DE COMPUTER
+
+chemin:
+  TableScreen
+ch_game:
+  Mode = 1
+  inc RoundNo
+  ClearDice
+  Say
+  print at 2,19, "THIS IS GAME"
+  NumU = RoundNo
+  print at 15,19, width$(NumU, 2)
+  print at 2,20, "NOW, I'LL ROLL AS BANKER..."
+  Pause
+  ' the banker's five dice
+  Y = 5
+  ChRoll
+  MeT = Dt
+  Say
+  print at 2,19, "SO MY FINAL TOTAL IS"
+  NumU = MeT
+  print at 23,19, digits$(NumU, 1)
+  print at 2,21, "PRESS THE BUTTON TO ROLL"
+  print at 2,22, "YOUR DICE"
+  WaitButton
+  if Res = 1 then goto title
+  Y = 13
+  ChRoll
+  YouT = Dt
+  Say
+  print at 2,19, "COMPUTER"
+  NumU = MeT
+  print at 11,19, digits$(NumU, 1)
+  print at 15,19, "HUMAN"
+  NumU = YouT
+  print at 21,19, digits$(NumU, 1)
+  if MeT = YouT then
+    print at 2,20, "THAT'S A STANDOFF"
+  else
+    if MeT > YouT then
+      print at 2,20, "I'M THE WINNER THAT TIME!"
+      inc MeWon
+      play sound SndLose
+    else
+      print at 2,20, "YOU'RE THE WINNER THAT TIME!"
+      inc YouWon
+      play sound SndWin
+    end if
+  end if
+  ScoreLine
+  Pause
+  Pause
+  V = MeWon + YouWon
+  if V = 9 then goto ch_end
+  Say
+  print at 2,19, "NOW THE TOTALS SO FAR ARE"
+  NumU = MeWon
+  print at 2,20, width$(NumU, 1)
+  print at 4,20, "FOR ME, AND"
+  NumU = YouWon
+  print at 16,20, width$(NumU, 1)
+  print at 18,20, "FOR YOU..."
+  if MeWon > YouWon then print at 2,21, "LOOKS LIKE I'M IN FRONT!"
+  if YouWon > MeWon then print at 2,21, "AND YOU SEEM TO HAVE THE EDGE!"
+  Pause
+  Pause
+  goto ch_game
+ch_end:
+  Say
+  print at 2,19, "WELL, OLD BUDDY, WE SEEM TO"
+  print at 2,20, "HAVE COME TO THE END OF THE"
+  print at 2,21, "GAME... NINE SCORING ROUNDS."
+  Pause
+  Pause
+  Say
+  if YouWon > MeWon then
+    print at 2,19, "AND, FOR ONCE, IT IS YOU"
+    print at 2,20, "WHO HAS BEATEN ME!"
+    play sound SndBigWin
+  else
+    print at 2,19, "AND, ONCE AGAIN, THE MIGHTY"
+    print at 2,20, "MACHINE PROVES THE SUPREME"
+    print at 2,21, "CHAMPEEN!!"
+    play sound SndLose
+  end if
+  Pause
+  Pause
+  Say
+  print at 2,19, "THANKS FOR THE GAME, OLD"
+  print at 2,20, "BUDDY, WE MUST DO IT AGAIN"
+  print at 2,21, "SOME TIME, WHEN YOU FEEL"
+  print at 2,22, "LUCKY..."
+  goto game_end
+
+' ---------------------------------------------------------------------------
+' ONE-AND-TWENTY
+
+twenty_one:
+  TableScreen
+tw_round:
+  Mode = 1
+  inc RoundNo
+  ClearDice
+  MeT = 0
+  YouT = 0
+  NMe = 0
+  NYou = 0
+  Totals
+tw_you:
+  Say
+  print at 2,19, "BUTTON: ROLL"
+  print at 2,20, "2ND BUTTON: STAND"
+  WaitButton
+  if Res = 1 then goto tw_stand
+  ' one die, onto your row
+  OneDie
+  V = Face[0]
+  YouT = YouT + V
+  Totals
+  Say
+  print at 2,19, "YOU ROLLED A"
+  NumU = V
+  print at 15,19, digits$(NumU, 1)
+  print at 2,20, "SO YOUR TOTAL IS"
+  NumU = YouT
+  print at 19,20, width$(NumU, 2)
+  PauseShort
+  if YouT > 21 then goto tw_stand
+  goto tw_you
+tw_stand:
+  Say
+  print at 2,19, "YOUR TOTAL IS"
+  NumU = YouT
+  print at 16,19, width$(NumU, 2)
+  PauseShort
+tw_me:
+  ' the book's whole strategy, line 180
+  V = 0
+  if MeT > YouT then
+    if MeT < 22 then V = 1
+  end if
+  if MeT > 21 then V = 1
+  if YouT > 21 then V = 1
+  if YouT = 21 then
+    if MeT = 21 then V = 1
+  end if
+  if V = 1 then goto tw_judge
+  OneDieMe
+  V = Face[0]
+  MeT = MeT + V
+  Totals
+  Say
+  print at 2,19, "I ROLLED A"
+  NumU = V
+  print at 13,19, digits$(NumU, 1)
+  print at 2,20, "SO MY TOTAL IS"
+  NumU = MeT
+  print at 17,20, width$(NumU, 2)
+  PauseShort
+  goto tw_me
+tw_judge:
+  Say
+  V = 0
+  if YouT = MeT then V = 1
+  if YouT > 21 then
+    if MeT > 21 then V = 1
+  end if
+  if V = 1 then
+    print at 2,19, "THAT ROUND IS A DEAD HEAT..."
+    print at 2,20, "NO SCORE"
+  else
+    W = 0
+    if MeT > YouT then W = 1
+    if YouT > 21 then W = 1
+    if MeT > 21 then W = 0
+    if W = 1 then
+      print at 2,19, "I WIN!!"
+      inc MeWon
+      play sound SndLose
+    else
+      print at 2,19, "YOU WIN!!"
+      inc YouWon
+      play sound SndWin
+    end if
+  end if
+  ScoreLine
+  Pause
+  Pause
+  V = MeWon + YouWon
+  if V < 5 then goto tw_round
+  Say
+  print at 2,19, "THAT'S THE END OF THE GAME"
+  print at 2,20, "FINAL SCORES: YOU"
+  NumU = YouWon
+  print at 20,20, digits$(NumU, 1)
+  print at 22,20, "ME"
+  NumU = MeWon
+  print at 25,20, digits$(NumU, 1)
+  if MeWon > YouWon then
+    print at 2,21, "AND I DEFEATED YOU, HUMANOID!"
+    play sound SndLose
+  else
+    print at 2,21, "AND REMARKABLY, A MERE HUMAN"
+    print at 2,22, "BEAT THE MACHINE!"
+    play sound SndBigWin
+  end if
+  goto game_end
+
+' ---------------------------------------------------------------------------
+' SNAKES' EYES
+
+snakes:
+  TableScreen
+sn_round:
+  Mode = 1
+  MeT = 0
+  YouT = 0
+  ClearDice
+  Totals
+sn_you:
+  Say
+  print at 2,19, "BUTTON: ROLL"
+  print at 2,20, "2ND BUTTON: STAND (LET ME"
+  print at 2,21, "TRY TO BEAT YOU)"
+  WaitButton
+  if Res = 1 then goto sn_me
+  Y = 13
+  Pair
+  if Dt = 7 then
+    Say
+    print at 2,19, "A SEVEN! I WIN!"
+    inc MeWon
+    play sound SndLose
+    goto sn_score
+  end if
+  YouT = YouT + Dt
+  Totals
+  goto sn_you
+sn_me:
+  Say
+  print at 2,19, "STAND BY"
+  PauseShort
+  Y = 5
+  Pair
+  if Dt = 7 then
+    Say
+    print at 2,19, "A SEVEN... YOU WIN!"
+    inc YouWon
+    play sound SndWin
+    goto sn_score
+  end if
+  MeT = MeT + Dt
+  Totals
+  if MeT < YouT then goto sn_me
+  Say
+  if MeT = YouT then
+    print at 2,19, "IT'S A DEAD HEAT!"
+  else
+    print at 2,19, "I WIN!"
+    inc MeWon
+    play sound SndLose
+  end if
+sn_score:
+  ScoreLine
+  Pause
+  Pause
+  V = MeWon + YouWon
+  if V < 9 then
+    Say
+    if YouWon > MeWon then print at 2,19, "YOU ARE LEADING!"
+    if MeWon > YouWon then print at 2,19, "AND I'M IN THE LEAD..."
+    Pause
+    goto sn_round
+  end if
+  Say
+  print at 2,19, "WELL, BUDDY, THAT'S THE END"
+  print at 2,20, "OF THE GAME..."
+  if YouWon < MeWon then
+    print at 2,21, "I'M THE WINNER!!"
+    play sound SndLose
+  else
+    print at 2,21, "YOU'RE THE WINNER!!"
+    play sound SndBigWin
+  end if
+  goto game_end
+
+' ---------------------------------------------------------------------------
+' MALIBU
+
+malibu:
+  TableScreen
+ma_round:
+  Mode = 1
+  inc RoundNo
+  ClearDice
+  Say
+  print at 2,19, "THIS IS ROUND"
+  NumU = RoundNo
+  print at 16,19, digits$(NumU, 1)
+  print at 2,20, "FIRST I'LL ROLL THREE DICE"
+  print at 2,21, "FOR MYSELF... STAND BY..."
+  Pause
+  Y = 5
+  Three
+  C1 = Face[0]
+  C2 = Face[1]
+  C3 = Face[2]
+  MeT = Dt
+  Say
+  print at 2,19, "AND NOW IT'S TIME TO ROLL"
+  print at 2,20, "FOR YOU (PRESS THE BUTTON)"
+  WaitButton
+  if Res = 1 then goto title
+  Y = 13
+  Three
+  YouT = Dt
+  ' the book's scoring, in its order
+  Say
+  Count = 0
+  ' Sough: 13 with a pair
+  K = C1
+  V = C2
+  W = C3
+  Tm = MeT
+  Pairish
+  if Res = 1 then
+    if MeT = 13 then
+      Say1
+      print at 2,Line, "THAT'S SOUGH FOR ME!"
+      MeP = MeP + 10
+      YouP = YouP - 10
+    end if
+  end if
+  K = Face[0]
+  V = Face[1]
+  W = Face[2]
+  Pairish
+  if Res = 1 then
+    if YouT = 13 then
+      Say1
+      print at 2,Line, "THAT'S SOUGH FOR YOU!"
+      YouP = YouP + 10
+      MeP = MeP - 10
+    end if
+  end if
+  V = 0
+  if YouT = 15 then V = 1
+  if YouT = 6 then V = 1
+  if V = 1 then
+    Say1
+    print at 2,Line, "EASY RIDER FOR YOU"
+    YouP = YouP + 4
+    MeP = MeP - 4
+  end if
+  V = 0
+  if MeT = 15 then V = 1
+  if MeT = 6 then V = 1
+  if V = 1 then
+    Say1
+    print at 2,Line, "EASY RIDER FOR ME"
+    MeP = MeP + 4
+    YouP = YouP - 4
+  end if
+  V = 0
+  if MeT = 9 then V = 1
+  if MeT = 12 then V = 1
+  if V = 1 then
+    Say1
+    print at 2,Line, "I CRACK A STRAIGHT ROAD"
+    MeP = MeP + 3
+    YouP = YouP - 3
+  end if
+  V = 0
+  if YouT = 9 then V = 1
+  if YouT = 12 then V = 1
+  if V = 1 then
+    Say1
+    print at 2,Line, "YOU CRACK A STRAIGHT ROAD"
+    YouP = YouP + 3
+    MeP = MeP - 3
+  end if
+  ' a triple crown, or else two of a kind
+  K = C1
+  V = C2
+  W = C3
+  Kinds
+  if Res = 3 then
+    Say1
+    print at 2,Line, "A TRIPLE CROWN FOR ME!"
+    MeP = MeP + 5
+    YouP = YouP - 5
+  end if
+  if Res = 2 then
+    Say1
+    print at 2,Line, "TWO OF A KIND FOR ME"
+    MeP = MeP + 3
+    YouP = YouP - 3
+  end if
+  K = Face[0]
+  V = Face[1]
+  W = Face[2]
+  Kinds
+  if Res = 3 then
+    Say1
+    print at 2,Line, "A TRIPLE CROWN FOR YOU!"
+    YouP = YouP + 5
+    MeP = MeP - 5
+  end if
+  if Res = 2 then
+    Say1
+    print at 2,Line, "TWO OF A KIND FOR YOU"
+    YouP = YouP + 3
+    MeP = MeP - 3
+  end if
+  if YouT = 13 then
+    Say1
+    print at 2,Line, "FOR YOU... LUCKY JOE!"
+    YouP = YouP + 6
+    MeP = MeP - 6
+  end if
+  if MeT = 13 then
+    Say1
+    print at 2,Line, "FOR ME... LUCKY JOE!"
+    MeP = MeP + 6
+    YouP = YouP - 6
+  end if
+  if YouT = 3 then
+    Say1
+    print at 2,Line, "LOW AND MEAN... FOR YOU!"
+    YouP = YouP + 7
+    MeP = MeP - 7
+  end if
+  if MeT = 3 then
+    Say1
+    print at 2,Line, "LOW AND MEAN... FOR ME!"
+    MeP = MeP + 7
+    YouP = YouP - 7
+  end if
+  if YouT = 18 then
+    Say1
+    print at 2,Line, "HIGH ROLLER FOR THE HUMAN"
+    YouP = YouP + 12
+    MeP = MeP - 12
+  end if
+  if MeT = 18 then
+    Say1
+    print at 2,Line, "HIGH ROLLER FOR THE MACHINE"
+    MeP = MeP + 12
+    YouP = YouP - 12
+  end if
+  if YouT = 7 then
+    Say1
+    print at 2,Line, "YOU TRIPPED A DREADED SEVEN"
+    YouP = YouP - 2
+    MeP = MeP + 2
+  end if
+  if MeT = 7 then
+    Say1
+    print at 2,Line, "I TRIPPED A DREADED SEVEN"
+    MeP = MeP - 2
+    YouP = YouP + 2
+  end if
+  if Count = 0 then
+    print at 2,19, "NOTHING FOR EITHER OF US"
+  end if
+  ScoreLine
+  Pause
+  Pause
+  Pause
+  ' both still in the game?
+  V = 0
+  if MeP < 1 then V = 1
+  if YouP < 1 then V = 1
+  if RoundNo >= 5 then V = 1
+  if V = 0 then goto ma_round
+  Say
+  print at 2,19, "WELL, THAT'S THE END OF OUR"
+  print at 2,20, "LITTLE GAME OF MALIBU..."
+  if MeP > YouP then
+    print at 2,21, "SO I'M THE WINNER!!!"
+    play sound SndLose
+  end if
+  if YouP > MeP then
+    print at 2,21, "SO YOU TAKE THE WINNER'S"
+    print at 2,22, "TROPHY!!"
+    play sound SndBigWin
+  end if
+  if MeP = YouP then
+    print at 2,21, "IT LOOKS LIKE A DEAD HEAT..."
+  end if
+  goto game_end
+
+game_end:
+  Mode = 0
+  Pause
+  Pause
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+  WasBtn2 = 1
+ge_wait:
+  Frame1
+  ReadPad
+  if Press = 1 then goto title
+  if Press2 = 1 then goto title
+  goto ge_wait
+
+' ---------------------------------------------------------------------------
+' The table
+
+' ---------------------------------------------------------------------------
+' Helpers
+
+' ChRoll: five dice in row Y; twos and fives count nothing and go again;
+' Dt = the last digit of the total
+sub ChRoll:
+  NThrow = 5
+  for Di = 0 to 4
+    RollFace
+    V = Di * 3
+    V = V + 4
+    TgX[Di] = V
+    TgY[Di] = Y
+  next
+  Throw
+  Dt = 0
+  Ct = 0
+  for Di = 0 to 4
+    V = Face[Di]
+    W = 1
+    if V = 2 then W = 0
+    if V = 5 then W = 0
+    if W = 1 then
+      Dt = Dt + V
+    else
+      inc Ct
+    end if
+  next
+  LastDigit
+  Say
+  print at 2,19, "TOTAL ON THE FIRST ROLL IS"
+  NumU = Dt
+  print at 29,19, digits$(NumU, 1)
+  if Dt = 9 then
+    print at 2,20, "AND THAT'S LA GRANDE..."
+    play sound SndBigWin
+    Pause
+    return
+  end if
+  if Dt = 8 then
+    print at 2,20, "AND THAT'S LA PETITE..."
+    play sound SndWin
+    Pause
+    return
+  end if
+  if Dt = 7 then
+    print at 2,20, "AND THAT'S A NATURAL..."
+    play sound SndWin
+    Pause
+    return
+  end if
+  if Ct = 0 then
+    Pause
+    return
+  end if
+  NumU = Ct
+  print at 2,20, digits$(NumU, 1)
+  print at 4,20, "MUST BE ROLLED AGAIN"
+  ' the twos and fives turn red, then fly again
+  for Di = 0 to 4
+    V = Face[Di]
+    if V = 2 then RedDie
+    if V = 5 then RedDie
+  next
+  Pause
+  K = 0
+  for Di = 0 to 4
+    V = Face[Di]
+    W = 0
+    if V = 2 then W = 1
+    if V = 5 then W = 1
+    if W = 1 then
+      ' this die again, to the same place
+      X = TgX[Di]
+      Y = TgY[Di]
+      TgX[K] = X
+      TgY[K] = Y
+      inc K
+    end if
+  next
+  NThrow = K
+  K = K - 1
+  for Di = 0 to K
+    RollFace
+  next
+  Throw
+  for Di = 0 to K
+    V = Face[Di]
+    W = 1
+    if V = 2 then W = 0
+    if V = 5 then W = 0
+    if W = 1 then Dt = Dt + V
+  next
+  LastDigit
+  Pause
+  return
+end sub
+
+sub LastDigit:
+ld_again:
+  if Dt > 9 then
+    Dt = Dt - 10
+    goto ld_again
+  end if
+  return
+end sub
+
+' RedDie: die Di shown with red pips (it will be thrown again)
+sub RedDie:
+  X = TgX[Di]
+  Y = TgY[Di]
+  V = Face[Di]
+  W = TR200
+  if V = 5 then W = TR500
+  DieTiles
+  return
+end sub
+
+' OneDie: one die thrown onto your row's next place (row 13, then 15, eight a row);
+' OneDieMe: onto the computer's (5, then 7)
+sub OneDie:
+  V = NYou
+  if V > 15 then V = 15
+  Y = 13
+  if V >= 8 then
+    V = V - 8
+    Y = 15
+  end if
+  inc NYou
+  ThrowOne
+  return
+end sub
+
+sub OneDieMe:
+  V = NMe
+  if V > 15 then V = 15
+  Y = 5
+  if V >= 8 then
+    V = V - 8
+    Y = 7
+  end if
+  inc NMe
+  ThrowOne
+  return
+end sub
+
+' ThrowOne: one die to place V (three columns each, eight a row) of row Y
+sub ThrowOne:
+  V = V * 3
+  V = V + 2
+  TgX[0] = V
+  TgY[0] = Y
+  Di = 0
+  RollFace
+  NThrow = 1
+  Throw
+  return
+end sub
+
+' Pair: two dice into row Y (the new pair replaces the last); Dt = total
+sub Pair:
+  ClearRow
+  for Di = 0 to 1
+    RollFace
+    V = Di * 3
+    V = V + 10
+    TgX[Di] = V
+    TgY[Di] = Y
+  next
+  NThrow = 2
+  Throw
+  V = Face[0]
+  W = Face[1]
+  Dt = V + W
+  return
+end sub
+
+' Three: three dice into row Y; Dt = their total
+sub Three:
+  for Di = 0 to 2
+    RollFace
+    V = Di * 3
+    V = V + 8
+    TgX[Di] = V
+    TgY[Di] = Y
+  next
+  NThrow = 3
+  Throw
+  Dt = 0
+  for Di = 0 to 2
+    V = Face[Di]
+    Dt = Dt + V
+  next
+  return
+end sub
+
+' Pairish: Res = 1 when two of K, V, W are the same
+sub Pairish:
+  Res = 0
+  if K = V then Res = 1
+  if V = W then Res = 1
+  if K = W then Res = 1
+  return
+end sub
+
+' Kinds: Res = 3 (all alike), 2 (a pair) or 0
+sub Kinds:
+  Res = 0
+  if K = V then Res = 2
+  if V = W then Res = 2
+  if K = W then Res = 2
+  if K = V then
+    if V = W then Res = 3
+  end if
+  return
+end sub
+
+' Say1: Line = the next message line (19-22): the first clears the lines,
+' after four a pause and a fresh start
+sub Say1:
+  if Count = 0 then Say
+  if Count = 4 then
+    PauseShort
+    Say
+    Count = 0
+  end if
+  Line = Count + 19
+  inc Count
+  return
+end sub
+
+' RollFace: Face[Di] = a die, 1 to 6
+sub RollFace:
+  Rnd
+  Uw = Rb
+  Uw = Uw * 6
+  Uw = Uw >> 8
+  V = Uw
+  V = V + 1
+  Face[Di] = V
+  return
+end sub
+
+' Throw: NThrow dice, one after another eight frames apart, from the right
+' onto their tile places; each lands as tiles
+sub Throw:
+  play sound SndRattle
+  V = NThrow - 1
+  V = V << 3
+  Tm = V + 30
+  for T = 0 to Tm
+    Frame1
+    for Di = 0 to 12
+      if Di < NThrow then
+        V = Di << 3
+        if T >= V then
+          E = T - V
+          if E <= 30 then
+            Sl = Di & 3
+            if E = 30 then
+              ' landed: the die's tiles, its sprite gone
+              X = TgX[Di]
+              Y = TgY[Di]
+              V = Face[Di]
+              V = V - 1
+              V = V << 2
+              W = TD100 + V
+              DieTiles
+              set sprite Sl to 192, 0, 0, 0
+              play sound SndBounce
+            else
+              ' from x 240 to its place along the ease, hopping
+              W = TgX[Di]
+              W = W << 3
+              Pt = 240 - W
+              Uw = Pt
+              K = Ease[E]
+              Uw = Uw * K
+              Uw = Uw >> 8
+              V = Uw
+              X = 240 - V
+              W = TgY[Di]
+              W = W << 3
+              H = Hop[E]
+              Y = W - H
+              dec Y
+              Pt = STumble1
+              V = E & 4
+              if V > 0 then Pt = STumble2
+              if E >= 22 then
+                V = Face[Di]
+                V = V - 1
+                V = V << 2
+                Pt = SDie1 + V
+              end if
+              set sprite Sl to Y, X, Pt, 15
+            end if
+          end if
+        end if
+      end if
+    next
+    update sprites
+  next
+  return
+end sub
+
+' DieTiles: the 2 x 2 tiles from code W at column X, row Y
+sub DieTiles:
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  inc W
+  dec X
+  inc Y
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  dec X
+  dec Y
+  return
+end sub
+
+' ClearDice: both halves of the felt bare
+sub ClearDice:
+  for Y = 5 to 8
+    fill 32 count 26 at 2,Y
+  next
+  for Y = 13 to 16
+    fill 32 count 26 at 2,Y
+  next
+  Totals
+  return
+end sub
+
+' ClearRow: rows Y and Y + 1 bare (the last pair)
+sub ClearRow:
+  fill 32 count 18 at 2,Y
+  V = Y + 1
+  fill 32 count 18 at 2,V
+  return
+end sub
+
+' Totals: each side's total, to the right of its dice (not for CHEMIN)
+sub Totals:
+  if Game = 1 then return
+  if Game = 4 then return
+  print at 23,5, "TOTAL"
+  NumU = MeT
+  print at 23,6, width$(NumU, 3)
+  print at 23,13, "TOTAL"
+  NumU = YouT
+  print at 23,14, width$(NumU, 3)
+  return
+end sub
+
+sub ScoreLine:
+  if Game = 4 then
+    print at 15,1, "ME"
+    Uw = MeP
+    if MeP < 0 then Uw = 0
+    NumU = Uw
+    print at 18,1, width$(NumU, 3)
+    print at 22,1, "YOU"
+    Uw = YouP
+    if YouP < 0 then Uw = 0
+    NumU = Uw
+    print at 26,1, width$(NumU, 3)
+    return
+  end if
+  print at 15,1, "ME"
+  NumU = MeWon
+  print at 18,1, width$(NumU, 2)
+  print at 22,1, "YOU"
+  NumU = YouWon
+  print at 26,1, width$(NumU, 2)
+  return
+end sub
+
+' Say: the message lines (19-22) cleared
+sub Say:
+  for Y = 19 to 22
+    fill 32 count 28 at 2,Y
+  next
+  return
+end sub
+
+' WaitButton: the button (Res 0) or the second button (Res 1)
+sub WaitButton:
+  Stage = 1
+  WasBtn = 1
+  WasBtn2 = 1
+wb_loop:
+  Frame1
+  ReadPad
+  if Press2 = 1 then
+    Res = 1
+    Stage = 0
+    return
+  end if
+  if Press = 0 then goto wb_loop
+  Res = 0
+  Stage = 0
+  return
+end sub
+
+sub TableScreen:
+  NewScreen
+  fill TRailt count 32 at 0,0
+  fill TRailb count 32 at 0,23
+  if Game = 1 then print at 2,1, "CHEMIN"
+  if Game = 2 then print at 2,1, "ONE-AND-21"
+  if Game = 3 then print at 2,1, "SNAKES' EYES"
+  if Game = 4 then print at 2,1, "MALIBU"
+  print at 2,3, "THE HOUSE"
+  fill THline count 28 at 2,10
+  print at 2,11, "YOU"
+  fill THline count 28 at 2,18
+  ScoreLine
+  ShowScreen
+  return
+end sub
+
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 50
+    Frame1
+  next
+  return
+end sub
+
+sub PauseShort:
+  for J = 1 to 25
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 12
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 5
+  sprites stable 0 to 4
+  for J = 0 to 4
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop dark green
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  fill TRailt count 32 at 0,0
+  fill TRailb count 32 at 0,23
+  print at 10,2, "DICE DUELS"
+  ' a few dice on the felt
+  W = TD600
+  X = 6
+  Y = 5
+  DieTiles
+  W = TD100
+  X = 10
+  Y = 6
+  DieTiles
+  W = TD300
+  X = 20
+  Y = 5
+  DieTiles
+  W = TD500
+  X = 24
+  Y = 6
+  DieTiles
+  print at 8,11, "CHEMIN DE COMPUTER"
+  print at 8,12, "ONE-AND-TWENTY"
+  print at 8,13, "SNAKES' EYES"
+  print at 8,14, "MALIBU"
+  print at 8,15, "HOW TO PLAY"
+  print at 8,16, "CREDITS"
+  print at 3,20, "FROM TIM HARTNELL'S GIANT"
+  print at 3,21, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 5 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 11 to 16
+    print at 6,I, " "
+  next
+  Y = Menu + 11
+  print at 6,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub PageScreen:
+  NewScreen
+  backdrop black
+  return
+end sub
+
+sub RulesPage:
+  PageScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "CHEMIN: FIVE DICE, 2S AND 5S"
+  print at 2,4, "COUNT NOTHING AND GO AGAIN;"
+  print at 2,5, "LAST DIGIT OF THE TOTAL WINS."
+  print at 2,7, "ONE-AND-TWENTY: ROLL ONE DIE"
+  print at 2,8, "AS OFTEN AS YOU LIKE; OVER"
+  print at 2,9, "21 IS BUST."
+  print at 2,11, "SNAKES' EYES: ROLL PAIRS AND"
+  print at 2,12, "ADD THEM; A 7 AND YOU LOSE."
+  print at 2,14, "MALIBU: 3 DICE EACH, FIVE"
+  print at 2,15, "ROUNDS, POINTS FOR 13, 6, 15,"
+  print at 2,16, "9, 12, PAIRS, 3, 18... AND"
+  print at 2,17, "A 7 COSTS YOU."
+  print at 2,19, "BUTTON: ROLL"
+  print at 2,20, "2ND BUTTON: STAND"
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  PageScreen
+  print at 10,1, "DICE DUELS"
+  print at 2,3, "CHEMIN DE COMPUTER, ONE-AND-"
+  print at 2,4, "TWENTY, SNAKES' EYES AND"
+  print at 2,5, "MALIBU FROM TIM HARTNELL'S"
+  print at 2,6, "GIANT BOOK OF COMPUTER GAMES"
+  print at 2,7, "(BALLANTINE BOOKS, 1984;"
+  print at 2,8, "INTERFACE PUBLICATIONS,"
+  print at 2,9, "1983)."
+  print at 2,11, "MUSIC: TWO DICE IN A CUP"
+  print at 2,12, "(ORIGINAL)."
+  print at 2,14, "COLECOVISION VERSION BY"
+  print at 2,15, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C0,$80,$00,$00,$00,$00,$00,$01
+  $03,$01,$00,$00,$00,$00,$00,$80
+  $01,$00,$00,$00,$00,$00,$80,$C0
+  $80,$00,$00,$00,$00,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$00
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$18,$18,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$01
+  $03,$01,$00,$00,$00,$00,$00,$80
+  $01,$00,$00,$00,$00,$00,$80,$C0
+  $80,$00,$00,$18,$18,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$00
+  $03,$01,$00,$18,$18,$00,$00,$00
+  $00,$00,$00,$18,$18,$00,$80,$C0
+  $00,$00,$00,$18,$18,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$01
+  $03,$01,$00,$18,$18,$00,$00,$80
+  $01,$00,$00,$18,$18,$00,$80,$C0
+  $80,$00,$00,$18,$18,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$18
+  $03,$01,$00,$18,$18,$00,$00,$18
+  $18,$00,$00,$18,$18,$00,$80,$C0
+  $18,$00,$00,$18,$18,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$00
+  $03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0
+  $00,$00,$00,$18,$18,$00,$01,$03
+  $C0,$80,$00,$18,$18,$00,$00,$01
+  $03,$01,$00,$18,$18,$00,$00,$80
+  $01,$00,$00,$18,$18,$00,$80,$C0
+  $80,$00,$00,$18,$18,$00,$01,$03
+end data
+data TileCol bytes
+  $06,$0A,$06,$06,$06,$0A,$0C,$0C
+  $0C,$0C,$0A,$06,$06,$06,$0A,$06
+  $0C,$0C,$0C,$0F,$0C,$0C,$0C,$0C
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$1F
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$1F
+  $1F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $1F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$0F
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $0F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$1F
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$1F
+  $1F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $1F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$0F
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$0F
+  $0F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $0F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$1F
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$1F
+  $1F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $1F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$1F
+  $CF,$CF,$0F,$1F,$1F,$0F,$0F,$1F
+  $1F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $1F,$0F,$0F,$1F,$1F,$0F,$CF,$CF
+  $CF,$CF,$0F,$8F,$8F,$0F,$0F,$0F
+  $CF,$CF,$0F,$0F,$0F,$0F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$CF,$CF
+  $0F,$0F,$0F,$8F,$8F,$0F,$CF,$CF
+  $CF,$CF,$0F,$8F,$8F,$0F,$0F,$8F
+  $CF,$CF,$0F,$8F,$8F,$0F,$0F,$8F
+  $8F,$0F,$0F,$8F,$8F,$0F,$CF,$CF
+  $8F,$0F,$0F,$8F,$8F,$0F,$CF,$CF
+end data
+data SpritePat bytes
+  $3F,$7F,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$3F
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$3F
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$3F
+  $FC,$FE,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$E7,$E7,$FF,$7F,$3F
+  $FC,$FE,$FF,$E7,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$FE,$FE,$FF,$FF,$E7,$E7,$FF,$7F,$3F
+  $FC,$FE,$FF,$E7,$E7,$FF,$FF,$7F,$7F,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $3F,$7F,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$7F,$3F
+  $FC,$FE,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$FF,$E7,$E7,$FF,$FE,$FC
+  $00,$00,$01,$07,$1F,$7F,$FF,$F9,$FF,$7F,$1F,$07,$01,$00,$00,$00
+  $00,$00,$80,$E0,$F8,$FE,$FF,$3F,$FF,$FE,$F8,$E0,$80,$00,$00,$00
+  $03,$07,$0F,$1F,$3D,$7F,$FF,$FF,$FF,$7F,$3F,$1F,$0F,$07,$00,$00
+  $C0,$E0,$F0,$F8,$BC,$FE,$FF,$FF,$FF,$FE,$F0,$E0,$C0,$80,$00,$00
+  $00,$00,$30,$3C,$3F,$3F,$3F,$3C,$30,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+DdRattle:
+    db $00,$00,$44,$02,$00,$00,$65,$02,$00,$00,$44,$02,$00,$00,$65,$02,$00,$00,$54,$02,$00,$00,$75,$03
+    db $10
+DdBounce:
+    db $00,$00,$24,$01,$00,$00,$55,$02,$10
+DdCage:
+    db $00,$00,$76,$03,$00,$00,$96,$03,$00,$00,$76,$03,$00,$00,$96,$03,$00,$00,$76,$03,$00,$00,$96,$03
+    db $00,$00,$76,$03,$00,$00,$96,$03,$00,$00,$76,$03,$00,$00,$A6,$03,$10
+DdClick:
+    db $40,$40,$70,$01,$50
+DdChip:
+    db $40,$30,$40,$01,$40,$28,$60,$02,$50
+DdWin:
+    db $40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$71,$20,$04,$40,$71,$F0,$01,$40,$5F,$20,$04,$40,$5F,$F0,$01
+    db $40,$47,$20,$0D,$40,$47,$F0,$01,$50
+DdBigWin:
+    db $40,$6B,$10,$03,$40,$6B,$F0,$01,$40,$55,$10,$03,$40,$55,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01
+    db $40,$35,$10,$03,$40,$35,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01,$40,$35,$10,$03,$40,$35,$F0,$01
+    db $40,$2A,$10,$13,$40,$2A,$F0,$01,$50
+DdLose:
+    db $40,$1D,$41,$07,$40,$1D,$F1,$01,$40,$41,$41,$07,$40,$41,$F1,$01,$40,$53,$41,$13,$40,$53,$F1,$01
+    db $50
+DdPoint:
+    db $40,$AA,$30,$03,$40,$AA,$F0,$01,$40,$7F,$30,$07,$40,$7F,$F0,$01,$50
+
+DdSoundTable:
+    dw DdRattle,$702B
+    dw DdBounce,$702B
+    dw DdCage,$702B
+    dw DdClick,$7035
+    dw DdChip,$7035
+    dw DdWin,$7035
+    dw DdBigWin,$7035
+    dw DdLose,$7035
+    dw DdPoint,$7035
+    dw DdTuneMel,$703F
+    dw DdTuneBass,$7049
+; Two Dice in a Cup, F major (original for this game)
+; Tiny Sound, 6 frames per step
+DdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$1F,$00,$24,$00,$28,$00,$24,$00,$2B,$00,$28,$00
+    db $24,$00,$00,$00,$21,$00,$26,$00,$29,$00,$26,$00,$2D,$00,$29,$00
+    db $26,$00,$00,$00,$1F,$00,$23,$00,$26,$00,$2B,$00,$29,$00,$26,$00
+    db $23,$00,$1F,$00,$24,$00,$28,$00,$2B,$00,$28,$00,$24,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+DdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$0C,$00,$13,$00,$0C,$00,$13,$00,$0C,$00,$13,$00
+    db $0C,$00,$13,$00,$0E,$00,$15,$00,$0E,$00,$15,$00,$0E,$00,$15,$00
+    db $0E,$00,$15,$00,$07,$00,$0E,$00,$07,$00,$0E,$00,$07,$00,$0E,$00
+    db $07,$00,$0E,$00,$0C,$00,$13,$00,$0C,$00,$13,$00,$0C,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}

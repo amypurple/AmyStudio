@@ -1,0 +1,1300 @@
+' LAS VEGAS HIGH
+' The slot machine from Tim Hartnell's Giant Book of Computer Games
+' (Ballantine Books, 1984; Interface Publications, 1983), for the
+' ColecoVision in Amy by Amy Bienvenu.
+'
+' You come in with $250. Bet, pull the handle, and the three reels spin.
+' Each reel stops on a symbol drawn with the book's odds (out of 43: BAR 2,
+' Bell 4, Apple 6, Cherry 8, Lemon 11, Plum 12). The book's payouts, times
+' your bet: three BARs 9 ("That's jackpot style!"), three Bells 3.9, three
+' of a kind 3.5 (but not three Apples, which the listing pays as a pair),
+' a pair 0.7; and on top, a Bell on the right 0.6, an Apple at each end
+' 0.5, Cherry-Bell-Cherry 0.4. A win is paid on top of your bet; a loss
+' takes the bet. Go broke and the night is over; pass $2,500 and the house
+' throws you out ("People with luck like yours give our casino a bad
+' name").
+'
+' Controls (either joystick): left and right change the bet by $10, up
+' bets everything; down pulls the handle (or press a side button). On the
+' title, up and down choose. Keypad not used.
+'
+' Liberties taken:
+' - The book typed in any bet; here it moves in $10 steps (or all you have
+'   when that is less than $10).
+' - The listing's favourite combination tests for an Apple in the middle
+'   while its message says "cherry, bell, cherry"; here it is the bell, as
+'   the message says.
+' - The reels, the handle, the lights and the coins are new; the book
+'   printed a line of symbol names. New music (Neon Strip) and sounds.
+' - The best night (the most money you held) is kept until power off.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; sprites: the
+' handle (two) and up to four coins; the frame loop is protected from the
+' NMI and every screen is drawn with the NMI off after a wait.
+'
+' How the reels turn: see art.py. Each reel window is 4 x 6 tiles of its
+' own (codes 184-255, middle third), numbered down each column; a reel at
+' place P (0-191) shows lines P to P+47 of the strip, one 48-byte copy per
+' column for the patterns and one for the colours.
+
+const TBulb0 = 128
+const TBulb1 = 129
+const TBulb2 = 130
+const TFtl = 131
+const TFtr = 132
+const TFbl = 133
+const TFbr = 134
+const TFt = 135
+const TFb = 136
+const TFl = 137
+const TFr = 138
+const TArl = 139
+const TArr = 140
+const TTray = 141
+const TLbox = 142
+const TWhite = 143
+const SArm = 0
+const SArmh = 4
+const SKnob = 8
+const SCoin0 = 12
+const SCoin1 = 16
+const SCoin2 = 20
+const NTiles8 = 128
+const SprBytes = 192
+const SndLever = 1
+const SndWhirr = 2
+const SndClunk = 3
+const SndClick = 4
+const SndCoin = 5
+const SndLose = 6
+const SndPair = 7
+const SndWin = 8
+const SndJackpot = 9
+const SndBroke = 10
+const SndTuneA = 11
+const SndTuneB = 12
+
+data ReelPat0 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$00,$E0,$E0,$E0,$E1,$E1,$E1
+  $E1,$E1,$E0,$E0,$E0,$E0,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$07,$07,$F0,$07,$07,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$F0,$F0,$E0,$E0
+  $F0,$E0,$E0,$F0,$F0,$07,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$03,$03,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$03
+  $03,$03,$03,$03,$03,$03,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$03
+  $07,$07,$07,$07,$07,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$E0,$00,$E0,$E0,$E0,$E1,$E1,$E1
+  $E1,$E1,$E0,$E0,$E0,$E0,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data ReelCol0 bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F8,$FF,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$FF,$F8,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$8F,$8F,$8F,$8F,$8F,$F8,$8F,$8F,$8F,$8F,$8F,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$BF,$BF,$FB,$FB,$FB,$FB
+  $FB,$FB,$FB,$FB,$FB,$BF,$BF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $AF,$AF,$AF,$AF,$FA,$FA,$FA,$FA,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$DF,$DF,$DF
+  $DF,$DF,$DF,$DF,$DF,$DF,$DF,$DF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F8,$FF,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$FF,$F8,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+data ReelPat1 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C1,$22,$C3
+  $22,$C2,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$01,$01,$02,$02,$04,$04,$08,$08,$10,$10,$10,$20
+  $20,$03,$01,$80,$80,$80,$00,$00,$00,$00,$01,$03,$20,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$03,$07,$F0,$F0,$E0,$E0,$C0,$C0,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$01,$03,$03,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$F0,$C0,$80,$00,$30,$30,$30,$30
+  $30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$F0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$80,$00,$00,$00,$30,$30
+  $30,$30,$30,$00,$00,$00,$00,$00,$00,$00,$80,$E0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C1,$22,$C3
+  $22,$C2,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$01,$01,$02,$02,$04,$04,$08,$08,$10,$10,$10,$20
+end data
+data ReelCol1 bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$88,$FF,$11,$11,$11,$B1,$B1,$B1
+  $B1,$B1,$11,$11,$11,$11,$FF,$88,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+  $8F,$F8,$F8,$98,$98,$98,$88,$88,$88,$88,$F8,$F8,$8F,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FA,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$FA,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$AF,$AF,$AF,$FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA,$AA
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA,$FA,$AF,$AF,$AF,$AF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FD,$FD,$FD,$DD,$9D,$9D,$9D,$9D
+  $9D,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$FD,$FD,$FD,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F8,$F8,$88,$88,$88,$98,$98
+  $98,$98,$98,$88,$88,$88,$88,$88,$88,$88,$F8,$F8,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$88,$FF,$11,$11,$11,$B1,$B1,$B1
+  $B1,$B1,$11,$11,$11,$11,$FF,$88,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+end data
+data ReelPat2 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$87,$44,$38
+  $45,$44,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$80,$40,$40,$20,$20,$10,$10,$08,$08,$08,$04
+  $00,$02,$E0,$C8,$88,$88,$00,$00,$80,$80,$80,$C0,$E0,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$C0,$E0,$F0,$F0,$07,$07,$03,$03,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$80,$C0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$C0,$C0,$F8,$C1,$C1,$F8,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$F0,$00,$00,$00
+  $00,$00,$00,$07,$83,$C1,$E0,$F0,$00,$07,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$87,$44,$38
+  $45,$44,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$03,$80,$40,$40,$20,$20,$10,$10,$08,$08,$08,$04
+end data
+data ReelCol2 bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$88,$FF,$11,$11,$11,$B1,$B1,$1B
+  $B1,$B1,$11,$11,$11,$11,$FF,$88,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FC,$FC,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+  $FF,$8F,$F8,$F8,$F8,$F8,$88,$88,$F8,$F8,$F8,$F8,$F8,$8F,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FA,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB,$FA,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$AF,$AF,$AF,$AF,$AF,$FA,$FA,$FA,$FA,$FA,$FA,$AA
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA,$FA,$AF,$AF,$AF,$AF,$FF,$FF,$FF
+  $FF,$FF,$FF,$CF,$CF,$2F,$F2,$F2,$2F,$FD,$FD,$DD,$DD,$DD,$DD,$DD
+  $DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$DD,$FD,$FD,$DF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FC,$FC,$FC,$FC,$FC,$FF,$F8,$F8,$88,$88,$88,$88,$88
+  $88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$F8,$F8,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$88,$FF,$11,$11,$11,$B1,$B1,$1B
+  $B1,$B1,$11,$11,$11,$11,$FF,$88,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FC,$FC,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+end data
+data ReelPat3 bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$00,$07,$07,$07,$07,$87,$07
+  $07,$87,$07,$07,$07,$07,$00,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$E0,$F0,$F0,$F0,$07,$F0,$F0,$F0,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$F0,$07,$07
+  $0F,$07,$07,$F0,$F0,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$C0,$C0,$F0,$F0,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0
+  $E0,$E0,$E0,$E0,$E0,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$00,$07,$07,$07,$07,$87,$07
+  $07,$87,$07,$07,$07,$07,$00,$07,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data ReelCol3 bytes
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F8,$FF,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$FF,$F8,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$8F,$8F,$8F,$8F,$8F,$F8,$8F,$8F,$8F,$8F,$8F,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$BF,$BF,$BF,$BF,$FB,$FB
+  $FB,$FB,$FB,$BF,$BF,$BF,$BF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$DF,$DF,$DF
+  $DF,$DF,$DF,$DF,$DF,$DF,$DF,$DF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$8F,$8F,$8F,$8F
+  $8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F8,$FF,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$FF,$F8,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+  $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+end data
+' the strip slot of each symbol (by the book's numbers 1-6)
+data SlotOf bytes 0, 0, 3, 5, 1, 2, 4
+
+' bulb colours: dim, yellow, white
+data BulbSeq bytes 6, 11, 15
+' a round bulb (its colours are set by Lights)
+data BulbPat bytes $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+' the font has no dollar sign: one is drawn over '$'
+data Dollar bytes $10,$7C,$90,$7C,$12,$7C,$10,$00
+
+' the money
+u16 Cash = 250
+u16 Bet = 25
+u16 Best = 250
+u16 Win = 0
+u16 Shown = 0
+u16 Stp = 0
+u8 Mt = 0
+' the reels: place (0-191), speed, distance still to go, stopped, symbol
+u8 RPos[3]
+u8 RSpd[3]
+u16 RLeft[3]
+u8 RStop[3]
+u8 RSym[3]
+u8 RWhen[3]
+u8 C1 = 0
+u8 C2 = 0
+u8 C3 = 0
+u8 Spinning = 0
+u8 Moving = 0
+' the lights
+u8 Phase = 0
+u8 Flashy = 0
+' the coins
+u8 CoinN = 0
+u8 CoinY[4]
+u8 CoinX[4]
+i8 CoinV[4]
+i8 Cv = 0
+u8 CoinF[4]
+
+' scratch, kept to their own subs
+u16 Addr = 0
+u16 Off16 = 0
+u16 Uw = 0
+u16 U2 = 0
+u16 NumU = 0
+u16 Rs = $3B71
+u16 Rt = 0
+u8 Rb = 0
+u8 Rr = 0
+u8 Rc = 0
+u8 Rv = 0
+u8 Bi = 0
+u8 Bc = 0
+u8 Lv = 0
+u8 Ci = 0
+u8 Late = 0
+u8 Tk = 0
+
+' input and menus
+u8 Menu = 0
+u8 Mode = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Passes = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  ' each third of the screen its own colours (the reels are in the middle)
+  call asm LvThirds
+  set sound table LvSoundTable areas 4
+  sprites 16x16
+  sprites double
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    PayPage
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  ' an evening at the casino
+  Cash = 250
+  Bet = 25
+  Cabinet
+  Chatter
+
+bet_loop:
+  Mode = 1
+  BetLine
+  print at 2,19, "LEFT, RIGHT: BET  UP: ALL"
+  print at 2,20, "DOWN OR BUTTON: PULL!"
+  WasBtn = 1
+bl_frame:
+  Pace
+  Lights
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Bet > 10 then
+        Bet = Bet - 10
+        play sound SndClick
+      end if
+    end if
+    if Rt1 = 1 then
+      Uw = Bet + 10
+      if Uw <= Cash then
+        Bet = Uw
+        play sound SndClick
+      end if
+    end if
+    if Up1 = 1 then
+      Bet = Cash
+      play sound SndClick
+    end if
+    BetLine
+  end if
+  if Dn1 = 1 then goto pull
+  if Press = 1 then goto pull
+  goto bl_frame
+
+pull:
+  Mode = 2
+  fill 32 count 28 at 2,19
+  fill 32 count 28 at 2,20
+  fill 32 count 28 at 2,16
+  fill 32 count 28 at 2,17
+  Handle
+  Spin
+  Judge
+  Pay
+  ' the end of the night?
+  if Cash < 1 then goto broke
+  if Cash > 2500 then goto thrown_out
+  if Bet > Cash then Bet = Cash
+  Chatter
+  goto bet_loop
+
+broke:
+  Mode = 0
+  play sound SndBroke
+  Message
+  print at 2,4, "THAT'S THE END OF THE LINE,"
+  print at 2,5, "OH ONCE MIGHTY GAMBLER..."
+  Pause
+  Pause
+  Message
+  print at 2,4, "YOU'RE STONE, FLAT BROKE!!"
+  Pause
+  Pause
+  goto night_over
+
+thrown_out:
+  Mode = 0
+  play sound SndJackpot
+  Message
+  print at 2,4, "WELL DONE, GAMBLER!!"
+  print at 2,5, "YOU'VE REACHED OUR LIMIT,"
+  Pause
+  Pause
+  Message
+  print at 2,4, "SO WE'LL HAVE TO THROW YOU"
+  print at 2,5, "OUT. PEOPLE WITH LUCK LIKE"
+  Pause
+  Pause
+  Message
+  print at 2,4, "YOURS GIVE OUR CASINO A"
+  print at 2,5, "BAD NAME..."
+  Pause
+  Pause
+
+night_over:
+  fill 32 count 28 at 2,16
+  fill 32 count 28 at 2,17
+  print at 2,16, "BEST NIGHT: $"
+  NumU = Best
+  print at 15,16, width$(NumU, 4)
+  print at 2,17, "PRESS A BUTTON"
+  Rearm
+  wait no fire
+  nmi off
+  WasBtn = 1
+no_wait:
+  Pace
+  Lights
+  ReadPad
+  if Press = 0 then goto no_wait
+  goto title
+
+' ---------------------------------------------------------------------------
+' The machine
+
+' Spin: the book's three symbols, then the reels: all turn, and stop one
+' after the other, each easing onto its symbol
+sub Spin:
+  for Rr = 0 to 2
+    ' the book: A = INT(43 * RND)
+    Rnd
+    Uw = Rb
+    Uw = Uw * 43
+    Uw = Uw >> 8
+    V = Uw
+    W = 6
+    if V < 31 then W = 5
+    if V < 20 then W = 4
+    if V < 12 then W = 3
+    if V < 6 then W = 2
+    if V < 2 then W = 1
+    RSym[Rr] = W
+    RSpd[Rr] = 12
+    RStop[Rr] = 0
+    RLeft[Rr] = 0
+    V = Rr * 14
+    V = V + 24
+    RWhen[Rr] = V
+  next
+  C1 = RSym[0]
+  C2 = RSym[1]
+  C3 = RSym[2]
+  play sound SndWhirr
+  Tk = 0
+sp_frame:
+  Pace
+  Lights
+  inc Tk
+  Moving = 0
+  for Rr = 0 to 2
+    V = RStop[Rr]
+    if V = 0 then
+      Moving = 1
+      ' time to stop? then the distance to the symbol, plus a turn
+      V = RWhen[Rr]
+      if Tk = V then
+        W = RSym[Rr]
+        W = SlotOf[W]
+        Uw = W
+        Uw = Uw << 5
+        ' the symbol centred: its slot's top 8 lines below the window's
+        Uw = Uw + 376
+        V = RPos[Rr]
+        U2 = V
+        Uw = Uw - U2
+        ' (target - place) mod 192, then one more turn
+        if Uw >= 192 then Uw = Uw - 192
+        if Uw >= 192 then Uw = Uw - 192
+        if Uw >= 192 then Uw = Uw - 192
+        Uw = Uw + 192
+        RLeft[Rr] = Uw
+      end if
+      V = RSpd[Rr]
+      Uw = RLeft[Rr]
+      if Uw > 0 then
+        ' easing in: an eighth of the way left, between 2 and 12
+        U2 = Uw >> 3
+        if U2 < 2 then U2 = 2
+        if U2 > 12 then U2 = 12
+        if U2 > Uw then U2 = Uw
+        V = U2
+        Uw = Uw - U2
+        RLeft[Rr] = Uw
+        if Uw = 0 then
+          RStop[Rr] = 1
+          play sound SndClunk
+        end if
+      end if
+      W = RPos[Rr]
+      W = W + V
+      if W >= 192 then W = W - 192
+      RPos[Rr] = W
+      DrawReel
+    end if
+  next
+  if Moving = 1 then goto sp_frame
+  return
+end sub
+
+' DrawReel: reel Rr at its place, column by column
+sub DrawReel:
+  V = RPos[Rr]
+  Off16 = V
+  ' VRAM: code 184 + reel x 24 + column x 6, eight bytes a code, middle third
+  V = Rr * 24
+  Uw = V
+  Uw = Uw + 184
+  Uw = Uw << 3
+  Addr = Uw + 2048
+  copy ReelPat0 + Off16 count 48 to vram.pattern + Addr
+  copy ReelCol0 + Off16 count 48 to vram.color + Addr
+  Addr = Addr + 48
+  copy ReelPat1 + Off16 count 48 to vram.pattern + Addr
+  copy ReelCol1 + Off16 count 48 to vram.color + Addr
+  Addr = Addr + 48
+  copy ReelPat2 + Off16 count 48 to vram.pattern + Addr
+  copy ReelCol2 + Off16 count 48 to vram.color + Addr
+  Addr = Addr + 48
+  copy ReelPat3 + Off16 count 48 to vram.pattern + Addr
+  copy ReelCol3 + Off16 count 48 to vram.color + Addr
+  return
+end sub
+
+' Judge: the book's payouts, in tenths of the bet (Mt)
+sub Judge:
+  Mt = 0
+  fill 32 count 28 at 2,16
+  fill 32 count 28 at 2,17
+  V = C1 + C2
+  V = V + C3
+  if V = 3 then
+    print at 2,16, "THREE BARS!!! JACKPOT STYLE!"
+    Mt = 90
+    goto jd_bonus
+  end if
+  if C1 = C2 then
+    if C2 = C3 then
+      if C1 = 2 then
+        print at 2,16, "THREE BELLS!!!"
+        Mt = 39
+        goto jd_bonus
+      end if
+      ' three of a kind, but the listing leaves out the Apples
+      if C2 <> 3 then
+        print at 2,16, "THREE OF A KIND!"
+        Mt = 35
+        goto jd_bonus
+      end if
+    end if
+  end if
+  V = 0
+  if C1 = C2 then V = 1
+  if C1 = C3 then V = 1
+  if C2 = C3 then V = 1
+  if V = 1 then
+    print at 2,16, ">> A PAIR <<"
+    Mt = 7
+  end if
+jd_bonus:
+  if C3 = 2 then
+    print at 2,17, "A BELL AT THE END: A BONUS!"
+    Mt = Mt + 6
+    PauseShort
+  end if
+  if C1 = 3 then
+    if C3 = 3 then
+      print at 2,17, "AN APPLE AT EACH SIDE: GOOD!"
+      Mt = Mt + 5
+      PauseShort
+    end if
+  end if
+  if C1 = 4 then
+    if C2 = 2 then
+      if C3 = 4 then
+        print at 2,17, "CHERRY BELL CHERRY: MY FAV!"
+        Mt = Mt + 4
+        PauseShort
+      end if
+    end if
+  end if
+  ' WIN = INT(BET * WIN)
+  Uw = Bet / 10
+  U2 = Uw * 10
+  U2 = Bet - U2
+  Uw = Uw * Mt
+  U2 = U2 * Mt
+  U2 = U2 / 10
+  Win = Uw + U2
+  return
+end sub
+
+' Pay: the winnings counted out with coins, or the bet lost
+sub Pay:
+  if Win = 0 then
+    if Mt = 0 then print at 2,16, "NO LUCK..."
+    print at 2,17, "AND YOU'VE LOST $"
+    NumU = Bet
+    print at 19,17, width$(NumU, 4)
+    play sound SndLose
+    Cash = Cash - Bet
+    CashLine
+    PauseShort
+    return
+  end if
+  if Mt >= 35 then
+    play sound SndJackpot
+    Flashy = 1
+  else
+    if Mt >= 13 then
+      play sound SndWin
+    else
+      play sound SndPair
+    end if
+  end if
+  print at 2,17, "AND YOU'VE WON $"
+  NumU = Win
+  print at 18,17, width$(NumU, 4)
+  ' the coins drop into the tray while the money is counted
+  CoinsStart
+  Shown = Cash
+  Cash = Cash + Win
+  Stp = Win / 24
+  if Stp = 0 then Stp = 1
+py_frame:
+  Pace
+  Lights
+  Coins
+  if Shown < Cash then
+    Uw = Cash - Shown
+    if Uw > Stp then
+      Shown = Shown + Stp
+    else
+      Shown = Cash
+    end if
+    NumU = Shown
+    print at 8,18, width$(NumU, 4)
+    V = Tick & 3
+    if V = 0 then play sound SndCoin
+    goto py_frame
+  end if
+  for J = 1 to 40
+    Pace
+    Lights
+    Coins
+  next
+  Flashy = 0
+  CoinsAway
+  if Cash > Best then Best = Cash
+  CashLine
+  return
+end sub
+
+' Handle: the handle pulled down and let go
+sub Handle:
+  play sound SndLever
+  for J = 0 to 2
+    Lv = J
+    HandleAt
+    update sprites
+    Pace
+  next
+  for J = 1 to 4
+    Pace
+  next
+  Lv = 1
+  HandleAt
+  update sprites
+  Pace
+  Lv = 0
+  HandleAt
+  update sprites
+  return
+end sub
+
+' HandleAt: the handle's arm and knob, up (0), half way (1) or down (2)
+sub HandleAt:
+  if Lv = 0 then
+    set sprite 0 to 55, 212, SArm, 14
+    set sprite 1 to 31, 212, SKnob, 8
+  end if
+  if Lv = 1 then
+    set sprite 0 to 55, 212, SArmh, 14
+    set sprite 1 to 47, 212, SKnob, 8
+  end if
+  if Lv = 2 then
+    set sprite 0 to 87, 212, SArm, 14
+    set sprite 1 to 103, 212, SKnob, 8
+  end if
+  return
+end sub
+
+' the coins: up to four drop from the chute and bounce in the tray
+sub CoinsStart:
+  CoinN = 4
+  for Ci = 0 to 3
+    V = Ci * 18
+    V = V + 92
+    CoinX[Ci] = V
+    V = Ci * 12
+    V = 120 - V
+    CoinY[Ci] = V
+    CoinV[Ci] = 0
+    CoinF[Ci] = Ci
+  next
+  return
+end sub
+
+sub Coins:
+  for Ci = 0 to 3
+    Y = CoinY[Ci]
+    Cv = CoinV[Ci]
+    ' falling, then bouncing (less each time) on the tray, row 21
+    if Cv < 0 then
+      V = 0 - Cv
+      Y = Y - V
+    else
+      V = Cv
+      Y = Y + V
+    end if
+    if Y >= 148 then
+      Y = 148
+      if Cv > 2 then
+        Cv = Cv >> 1
+        Cv = 0 - Cv
+      else
+        Cv = 0
+      end if
+    else
+      if Cv < 8 then Cv = Cv + 1
+    end if
+    CoinV[Ci] = Cv
+    CoinY[Ci] = Y
+    W = CoinF[Ci]
+    inc W
+    if W >= 12 then W = 0
+    CoinF[Ci] = W
+    W = W >> 2
+    K = SCoin0
+    if W = 1 then K = SCoin1
+    if W = 2 then K = SCoin2
+    X = CoinX[Ci]
+    V = Ci + 2
+    set sprite V to Y, X, K, 11
+  next
+  update sprites
+  return
+end sub
+
+sub CoinsAway:
+  for Ci = 2 to 5
+    set sprite Ci to 192, 0, 0, 0
+  next
+  update sprites
+  return
+end sub
+
+' Lights: the bulbs chase round (every fourth pass), or all flash on a big win
+sub Lights:
+  V = Passes & 3
+  if V <> 0 then return
+  inc Phase
+  if Phase >= 3 then Phase = 0
+  for Bi = 0 to 2
+    V = Phase + Bi
+    if V >= 3 then V = V - 3
+    if Flashy = 1 then
+      V = Passes & 4
+      W = 15
+      if V = 0 then W = 11
+    else
+      W = BulbSeq[V]
+    end if
+    ' the bulb's six middle lines: bulb colour on red
+    Bc = W << 4
+    Bc = Bc | 6
+    V = Bi + TBulb0
+    Uw = V
+    Uw = Uw << 3
+    Uw = Uw + 1
+    fill Bc count 6 to vram.color + Uw
+    Uw = Uw + 2048
+    fill Bc count 6 to vram.color + Uw
+    Uw = Uw + 2048
+    fill Bc count 6 to vram.color + Uw
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The cabinet and its lines
+
+sub Cabinet:
+  NewScreen
+  ' the bulbs: rows 0, 2 and 23, and down both sides
+  for X = 0 to 31
+    V = X % 3
+    W = V + TBulb0
+    put char W at X,0
+    put char W at X,2
+    put char W at X,23
+  next
+  for Y = 3 to 22
+    V = Y % 3
+    W = V + TBulb0
+    put char W at 0,Y
+    put char W at 31,Y
+  next
+  print at 9,1, "LAS VEGAS HIGH"
+  ' the reel windows and their frames
+  for Rr = 0 to 2
+    V = Rr << 3
+    X = V + 4
+    put char TFtl at X,8
+    put char TFbl at X,15
+    for Y = 9 to 14
+      put char TFl at X,Y
+    next
+    Rv = Rr * 24
+    Rv = Rv + 184
+    for Rc = 0 to 3
+      inc X
+      put char TFt at X,8
+      put char TFb at X,15
+      for Y = 9 to 14
+        put char Rv at X,Y
+        inc Rv
+      next
+    next
+    inc X
+    put char TFtr at X,8
+    put char TFbr at X,15
+    for Y = 9 to 14
+      put char TFr at X,Y
+    next
+  next
+  ' the payline arrows
+  put char TArl at 4,11
+  put char TArl at 4,12
+  put char TArr at 25,11
+  put char TArr at 25,12
+  ' the handle's box, the coin tray
+  put char TLbox at 28,11
+  put char TLbox at 28,12
+  for X = 6 to 25
+    put char TTray at X,21
+  next
+  for Rr = 0 to 2
+    DrawReel
+  next
+  CashLine
+  ShowScreen
+  Lv = 0
+  HandleAt
+  update sprites
+  return
+end sub
+
+sub CashLine:
+  print at 2,18, "CASH $"
+  NumU = Cash
+  print at 8,18, width$(NumU, 4)
+  BetLine
+  return
+end sub
+
+sub BetLine:
+  print at 17,18, "BET $"
+  NumU = Bet
+  print at 22,18, width$(NumU, 4)
+  return
+end sub
+
+' Chatter: the book's words for how the night is going
+sub Chatter:
+  Message
+  if Cash < 300 then
+    print at 2,4, "HI THERE, GAMBLER!"
+  else
+    if Cash < 600 then
+      print at 2,4, "YOU'RE DOING WELL TONIGHT!"
+    else
+      if Cash < 900 then
+        print at 2,4, "LADY LUCK HAS CERTAINLY"
+        print at 2,5, "SMILED ON YOU!"
+      else
+        if Cash < 1200 then
+          print at 2,4, "THE FATES ARE BEING"
+          print at 2,5, "EXTREMELY KIND"
+        else
+          print at 2,4, "IT IS SO GOOD TO SEE AN"
+          print at 2,5, "EXPERT AT WORK"
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Message:
+  fill 32 count 29 at 1,4
+  fill 32 count 29 at 1,5
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Helpers
+
+' Rnd: Rb = a random byte (16-bit xorshift)
+sub Rnd:
+  Rt = Rs << 7
+  Rs ^= Rt
+  Rt = Rs >> 9
+  Rs ^= Rt
+  Rt = Rs << 8
+  Rs ^= Rt
+  Rt = Rs >> 8
+  Rb = Rt
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Pace: a steady 30 passes a second (see games/ar)
+sub Pace:
+  call asm LvLate
+  if Late = 0 then Frame1
+  Frame1
+  inc Passes
+  return
+end sub
+
+sub Pause:
+  for J = 1 to 30
+    Pace
+    Lights
+  next
+  return
+end sub
+
+sub PauseShort:
+  for J = 1 to 15
+    Pace
+    Lights
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 8
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 2
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 5
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  ' the bulbs: the round shape in every third
+  for Bi = 0 to 2
+    V = Bi + TBulb0
+    Uw = V
+    Uw = Uw << 3
+    copy BulbPat count 8 to vram.pattern + Uw
+    U2 = Uw + 2048
+    copy BulbPat count 8 to vram.pattern + U2
+    U2 = U2 + 2048
+    copy BulbPat count 8 to vram.pattern + U2
+  next
+  backdrop dark red
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  Cash = 250
+  Bet = 25
+  Cabinet
+  fill 32 count 28 at 2,18
+  print at 9,16, "PLAY"
+  print at 9,17, "PAYOUTS"
+  print at 9,18, "CREDITS"
+  print at 2,20, "FROM HARTNELL'S GIANT BOOK"
+  Message
+  print at 2,4, "HI THERE, GAMBLER!"
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Pace
+  Lights
+  ' the reels drift round slowly in the window
+  V = Passes & 1
+  if V = 0 then
+    for Rr = 0 to 2
+      W = RPos[Rr]
+      W = W + 1
+      if W >= 192 then W = 0
+      RPos[Rr] = W
+    next
+    Rr = Passes & 6
+    Rr = Rr >> 1
+    if Rr < 3 then DrawReel
+  end if
+  Rnd
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    else
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+    end if
+    play sound SndClick
+  end if
+  for I = 16 to 18
+    print at 7,I, " "
+  next
+  Y = Menu + 16
+  print at 7,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub PageScreen:
+  NewScreen
+  backdrop black
+  return
+end sub
+
+sub PayPage:
+  PageScreen
+  print at 10,1, "PAYOUTS"
+  print at 2,3, "TIMES YOUR BET, PAID ON TOP"
+  print at 2,4, "(A LOSS TAKES THE BET)"
+  print at 2,6, "THREE BARS ............. 9"
+  print at 2,7, "THREE BELLS .......... 3.9"
+  print at 2,8, "THREE OF A KIND ...... 3.5"
+  print at 2,9, " (BUT THREE APPLES PAY AS"
+  print at 2,10, "  A PAIR, AS IN THE BOOK)"
+  print at 2,11, "A PAIR ............... 0.7"
+  print at 2,13, "AND ON TOP OF THOSE:"
+  print at 2,14, "BELL ON THE RIGHT .... 0.6"
+  print at 2,15, "APPLE AT EACH END .... 0.5"
+  print at 2,16, "CHERRY BELL CHERRY ... 0.4"
+  print at 2,18, "START WITH $250. GO BROKE OR"
+  print at 2,19, "PASS $2500 AND THE NIGHT IS"
+  print at 2,20, "OVER."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  PageScreen
+  print at 8,1, "LAS VEGAS HIGH"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "MUSIC: NEON STRIP"
+  print at 2,10, "(ORIGINAL)."
+  print at 2,12, "COLECOVISION VERSION BY"
+  print at 2,13, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$C0,$C0,$30,$30,$30,$30
+  $00,$00,$03,$03,$0C,$0C,$0C,$0C
+  $30,$30,$30,$30,$C0,$C0,$00,$00
+  $0C,$0C,$0C,$0C,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$C3,$0C,$00,$00,$0C,$C3,$03
+  $C0,$C3,$30,$00,$00,$30,$C3,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$81,$42,$42,$42,$42,$81,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $06,$6F,$6F,$6F,$6F,$6F,$6F,$06
+  $06,$6F,$6F,$6F,$6F,$6F,$6F,$06
+  $06,$6F,$6F,$6F,$6F,$6F,$6F,$06
+  $06,$06,$6B,$6B,$B6,$B6,$B6,$B6
+  $06,$06,$6B,$6B,$B6,$B6,$B6,$B6
+  $B6,$B6,$B6,$B6,$6B,$6B,$06,$06
+  $B6,$B6,$B6,$B6,$6B,$6B,$06,$06
+  $06,$06,$0B,$0B,$06,$06,$06,$06
+  $06,$06,$06,$06,$0B,$0B,$06,$06
+  $B6,$B6,$B6,$B6,$B6,$B6,$B6,$B6
+  $B6,$B6,$B6,$B6,$B6,$B6,$B6,$B6
+  $B6,$B6,$6B,$0B,$0B,$6B,$B6,$B6
+  $B6,$B6,$6B,$0B,$0B,$6B,$B6,$B6
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $0E,$EF,$FE,$FE,$FE,$FE,$EF,$0E
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+end data
+data SpritePat bytes
+  $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$07,$07,$03,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$E0,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0E,$0D,$0E,$07,$03,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$70,$B0,$70,$E0,$C0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$80,$80,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$07,$0F,$0F,$0F,$0F,$0F,$07,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$C0,$C0,$80,$00
+end data
+
+asm {
+; LvLate: Late = 1 when the VDP has begun a frame since its status was
+; last read (the NMI is off during a pass, so nothing else reads it)
+LvLate:
+    in a,($BF)
+    rlca
+    and 1
+    ld (AMY_UVAR_Late),a
+    ret
+
+; LvThirds: VDP register 3 = $FF, a colour table for each third
+LvThirds:
+    ld b,3
+    ld c,$FF
+    jp WRITE_REGISTER
+LvLever:
+    db $00,$00,$36,$03,$00,$00,$57,$04,$00,$00,$86,$04,$10
+LvWhirr:
+    db $00,$00,$95,$C8,$10
+LvClunk:
+    db $00,$00,$06,$02,$00,$00,$37,$03,$00,$00,$77,$04,$10
+LvClick:
+    db $40,$40,$70,$01,$50
+LvCoin:
+    db $40,$2A,$30,$01,$40,$24,$50,$02,$50
+LvLose:
+    db $40,$1D,$41,$07,$40,$1D,$F1,$01,$40,$2E,$41,$07,$40,$2E,$F1,$01,$40,$41,$41,$07,$40,$41,$F1,$01
+    db $40,$53,$41,$13,$40,$53,$F1,$01,$50
+LvPair:
+    db $40,$6B,$30,$04,$40,$6B,$F0,$01,$40,$55,$30,$09,$40,$55,$F0,$01,$50
+LvWin:
+    db $40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$71,$20,$04,$40,$71,$F0,$01,$40,$5F,$20,$04,$40,$5F,$F0,$01
+    db $40,$47,$20,$0B,$40,$47,$F0,$01,$50
+LvJackpot:
+    db $40,$6B,$10,$03,$40,$6B,$F0,$01,$40,$55,$10,$03,$40,$55,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01
+    db $40,$35,$10,$03,$40,$35,$F0,$01,$40,$47,$10,$03,$40,$47,$F0,$01,$40,$35,$10,$03,$40,$35,$F0,$01
+    db $40,$2A,$10,$13,$40,$2A,$F0,$01,$50
+LvBroke:
+    db $40,$D6,$30,$09,$40,$D6,$F0,$01,$40,$E2,$30,$09,$40,$E2,$F0,$01,$40,$F0,$30,$09,$40,$F0,$F0,$01
+    db $40,$FE,$30,$1D,$40,$FE,$F0,$01,$50
+
+LvSoundTable:
+    dw LvLever,$702B
+    dw LvWhirr,$702B
+    dw LvClunk,$702B
+    dw LvClick,$7035
+    dw LvCoin,$7035
+    dw LvLose,$7035
+    dw LvPair,$7035
+    dw LvWin,$7035
+    dw LvJackpot,$7035
+    dw LvBroke,$7035
+    dw LvTuneMel,$703F
+    dw LvTuneBass,$7049
+; Neon Strip, C major (original for this game)
+; Tiny Sound, 6 frames per step
+LvTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$23,$00,$26,$00,$28,$00,$00,$26,$28,$00,$2B,$00
+    db $00,$00,$00,$00,$2D,$00,$2B,$00,$28,$00,$26,$00,$23,$00,$26,$00
+    db $00,$00,$00,$00,$24,$00,$28,$00,$2B,$00,$00,$28,$2B,$00,$2D,$00
+    db $00,$00,$2B,$00,$28,$00,$26,$00,$23,$00,$21,$00,$1F,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+LvTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$60,$18,$32,$07,$00,$0B,$00,$0E,$00,$10,$00,$07,$00,$0B,$00
+    db $0E,$00,$0B,$00,$0C,$00,$10,$00,$13,$00,$10,$00,$07,$00,$0B,$00
+    db $0E,$00,$0B,$00,$0C,$00,$10,$00,$13,$00,$15,$00,$0C,$00,$10,$00
+    db $13,$00,$10,$00,$0E,$00,$12,$00,$15,$00,$12,$00,$07,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}
