@@ -31,7 +31,7 @@ features are listed separately from language capabilities.
 
 | Solution | Version or revision | Version date |
 |---|---|---|
-| Amy Studio | `02596a3f` | 2026-10-20 |
+| Amy Studio | `472653ae1` | 2026-10-27 |
 | CVBasic | 0.9.2, tag `e99aede0` | 2026-07-24 |
 | z88dk | nightly `26587-33d4c333ea-20261020`, zsdcc 4.6 | 2026-10-20 |
 | ugBASIC | `main` commit `e35e6df7` | 2026-10-10 |
