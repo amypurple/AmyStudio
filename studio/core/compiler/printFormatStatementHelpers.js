@@ -38,6 +38,13 @@ export function handlePrintFormatStatement({
   if (_depBcd.handled) return _depBcd;
   const _depTypedPrint = checkTypedPrintFormatDeprecation(line, rawLine);
   if (_depTypedPrint.handled) return _depTypedPrint;
+  if (/^\s*print\b/i.test(rawLine) && rawLine.replace(/"(?:[^"\\]|\\.)*"/g, "").includes(";")) {
+    return {
+      handled: true,
+      ok: false,
+      log: `PRINT items must be separated with commas; semicolon-separated items are not supported: ${rawLine}`
+    };
+  }
 
   function isFp5DeclaredType(type) {
     const lowered = String(type || "").trim().toLowerCase();

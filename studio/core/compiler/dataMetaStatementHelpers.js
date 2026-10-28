@@ -73,7 +73,13 @@ export function handleDataMetaStatement({
       }
       return { handled: true, ok: true };
     }
-    if (looksLikeDataTokens(line)) {
+    if (state.inData.layout === "chars") {
+      try {
+        flushDataBlock();
+      } catch (error) {
+        return { handled: true, ok: false, log: String(error.message || error) };
+      }
+    } else if (looksLikeDataTokens(line)) {
       try {
         appendDataTokens(state.inData, line, rawLine.trim());
       } catch (error) {
@@ -81,10 +87,12 @@ export function handleDataMetaStatement({
       }
       return { handled: true, ok: true };
     }
-    try {
-      flushDataBlock();
-    } catch (error) {
-      return { handled: true, ok: false, log: String(error.message || error) };
+    if (state.inData) {
+      try {
+        flushDataBlock();
+      } catch (error) {
+        return { handled: true, ok: false, log: String(error.message || error) };
+      }
     }
   }
 
@@ -213,6 +221,23 @@ export function handleDataMetaStatement({
     }
     state.inData = block;
     try {
+      flushDataBlock();
+    } catch (error) {
+      return { handled: true, ok: false, log: String(error.message || error) };
+    }
+    return { handled: true, ok: true };
+  }
+
+  const dataCharsInline = line.match(/^data\s+([A-Za-z_][A-Za-z0-9_]*)\s+chars\s+("[^"]*")$/i);
+  if (dataCharsInline) {
+    const name = dataCharsInline[1];
+    const nameError = validateGlobalUserName(name, "Data block", rawLine);
+    if (nameError) return { handled: true, ok: false, log: nameError };
+    const row = parseBitmapLine(dataCharsInline[2]);
+    const block = { name, values: [], layout: "chars", leftRows: [], rightRows: [] };
+    try {
+      appendCharRow(block, row, rawLine.trim());
+      state.inData = block;
       flushDataBlock();
     } catch (error) {
       return { handled: true, ok: false, log: String(error.message || error) };

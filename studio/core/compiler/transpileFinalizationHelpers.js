@@ -372,7 +372,7 @@ export function inferGeneratedUserRoutineClobbers(lines) {
     const text = String(line || "").replace(/;.*$/, "").trim();
     const routineMatch = text.match(routineLabel);
     if (routineMatch) {
-      current = { name: routineMatch[1].toUpperCase(), lines: [], calls: new Set(), direct: new Set() };
+      current = { name: routineMatch[1].toUpperCase(), lines: [], calls: new Set(), direct: new Set(), opaque: false };
       routines.set(current.name, current);
       continue;
     }
@@ -407,13 +407,19 @@ export function inferGeneratedUserRoutineClobbers(lines) {
         continue;
       }
       if (/^(?:jp|jr|djnz)\b/i.test(text)) {
-        if (/^(?:jp|jr)\s*\(/i.test(text)) markAll(routine);
+        if (/^(?:jp|jr)\s*\(/i.test(text)) {
+          routine.opaque = true;
+          markAll(routine);
+        }
         if (/^djnz\b/i.test(text)) mark(routine, "bc", "af");
         continue;
       }
       if (/^push\s+(?:af|bc|de|hl|ix|iy)\b/i.test(text)) continue;
       const pop = text.match(/^pop\s+(af|bc|de|hl|ix|iy)\b/i);
-      if (pop) { mark(routine, pop[1].toLowerCase()); continue; }
+      if (pop) {
+        mark(routine, pop[1].toLowerCase());
+        continue;
+      }
       const ld = text.match(/^ld\s+([^,]+),/i);
       if (ld) {
         const destination = ld[1].trim().toLowerCase();
@@ -451,7 +457,8 @@ export function inferGeneratedUserRoutineClobbers(lines) {
       if (/^ex\s+\(sp\)\s*,\s*(hl|ix|iy)/i.test(text)) { mark(routine, text.match(/(hl|ix|iy)\s*$/i)[1].toLowerCase()); continue; }
       if (/^(?:ldi|ldir|ldd|lddr|cpi|cpir|cpd|cpdr)\b/i.test(text)) { mark(routine, "af", "bc", "de", "hl"); continue; }
       if (/^(?:ini|inir|ind|indr|outi|otir|outd|otdr)\b/i.test(text)) { markAll(routine); continue; }
-      if (/^(?:in|out|rst|im\b|asm\b|__asm|amy_inline_asm)/i.test(text)) { markAll(routine); continue; }
+      if (/^(?:in|out|rst|im\b|asm\b|__asm|amy_inline_asm)/i.test(text)) { markAll(routine); routine.opaque = true; continue; }
+      routine.opaque = true;
       markAll(routine);
     }
   }
@@ -489,7 +496,10 @@ export function inferGeneratedUserRoutineClobbers(lines) {
           continue;
         }
         for (const family of callee.direct) {
-          if (!routine.direct.has(family)) { routine.direct.add(family); changed = true; }
+          if (!routine.direct.has(family)) {
+            routine.direct.add(family);
+            changed = true;
+          }
         }
       }
     }
@@ -568,8 +578,9 @@ export function optimizeGeneratedMemoryLoads(lines, userRoutineClobbers = null) 
       const target = text.match(/^call(?:\s+[a-z]+\s*,)?\s+([A-Za-z_.$?@][\w.$?@]*)$/i)?.[1]?.toUpperCase() || null;
       const inferred = target?.startsWith("AMY_UPROC_") ? userRoutineClobbers?.get(target) : null;
       if (inferred ? inferred.has("hl") : callClobbersRegister(text, "hl")) knownHL = null;
-      // A preserved accumulator does not prove that the referenced memory was
-      // unchanged, so every call invalidates the cached byte value.
+      // A cached byte is also a claim about memory. A callee may preserve AF
+      // while changing that memory through another register, so calls always
+      // invalidate knownA until memory-write effects are inferred separately.
       knownA = null;
       optimized.push(line);
       continue;
@@ -578,7 +589,9 @@ export function optimizeGeneratedMemoryLoads(lines, userRoutineClobbers = null) 
     if (anyLoadHL.test(text)) {
       const loadHL = text.match(directLoadHL);
       const loadedSymbol = loadHL ? loadHL[1].toLowerCase() : null;
-      if (loadedSymbol && knownHL === loadedSymbol) continue;
+      if (loadedSymbol && knownHL === loadedSymbol) {
+        continue;
+      }
       knownHL = loadedSymbol;
       knownA = null;
       optimized.push(line);

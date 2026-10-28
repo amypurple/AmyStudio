@@ -47,11 +47,23 @@ export function createByteLoadHelpers(ctx) {
     if (needsWideIndex) {
       const loadIndex = emitLoadInt16IntoHL(normalizedIndex);
       if (!loadIndex) return null;
-      lines = [...loadIndex, `    ld de,${dataLabel}`, "    add hl,de", "    ld a,(hl)"];
+      lines = [
+        ...loadIndex,
+        `    ld de,${dataLabel}`,
+        "    add hl,de",
+        "    ld a,(hl)"
+      ];
     } else {
       const loadIndex = emitLoadInt8ValueInto("a", normalizedIndex);
       if (!loadIndex) return null;
-      lines = [...loadIndex, "    ld e,a", "    ld d,0", `    ld hl,${dataLabel}`, "    add hl,de", "    ld a,(hl)"];
+      lines = [
+        ...loadIndex,
+        "    ld e,a",
+        "    ld d,0",
+        `    ld hl,${dataLabel}`,
+        "    add hl,de",
+        "    ld a,(hl)"
+      ];
     }
     if (register.toLowerCase() !== "a") lines.push(`    ld ${register},a`);
     return lines;
@@ -377,36 +389,36 @@ export function createByteLoadHelpers(ctx) {
     const normalized = normalizeExpression(String(countToken).trim());
     if (!normalized || /random\s*\(/i.test(normalized)) return null;
     const constantCount = tryEvaluateConstantExpression(normalized);
+    const emitBoundedRandom = (loadCount) => {
+      const multiplyLoop = makeGeneratedLabel("RandomScaleLoop");
+      const multiplySkip = makeGeneratedLabel("RandomScaleSkip");
+      return [
+        ...loadCount,
+        "    call AMY_RANDOM_U8",
+        "    ld e,a",
+        "    ld d,0",
+        "    ld hl,0",
+        "    ld c,8",
+        `${multiplyLoop}:`,
+        "    srl b",
+        `    jr nc,${multiplySkip}`,
+        "    add hl,de",
+        `${multiplySkip}:`,
+        "    sla e",
+        "    rl d",
+        "    dec c",
+        `    jr nz,${multiplyLoop}`,
+        "    ld a,h"
+      ];
+    };
     if (Number.isInteger(constantCount)) {
       if (constantCount <= 0) return ["    xor a"];
-      if (constantCount >= 256) {
-        return [
-          "    call AMY_RANDOM_U8"
-        ];
-      }
-      let mask = 0;
-      let top = constantCount - 1;
-      do {
-        mask = (mask << 1) | 1;
-        top >>= 1;
-      } while (top > 0);
-      const retryLabel = makeGeneratedLabel("RandomCountRetry");
-      return [
-        `    ld b,${symbolOrValue(String(constantCount & 0xFF))}`,
-        `    ld c,${symbolOrValue(String(mask & 0xFF))}`,
-        `${retryLabel}:`,
-        "    push bc",
-        "    call AMY_RANDOM_U8",
-        "    pop bc",
-        "    and c",
-        "    cp b",
-        `    jr nc,${retryLabel}`
-      ];
+      if (constantCount >= 256) return ["    call AMY_RANDOM_U8"];
+      return emitBoundedRandom([`    ld b,${symbolOrValue(String(constantCount & 0xFF))}`]);
     }
     const loadCount = emitLoadInt8ValueInto("b", normalized);
     if (!loadCount) return null;
     const nonZeroLabel = makeGeneratedLabel("RandomCountNonZero");
-    const retryLabel = makeGeneratedLabel("RandomCountRetry");
     const doneLabel = makeGeneratedLabel("RandomCountDone");
     return [
       ...loadCount,
@@ -416,12 +428,7 @@ export function createByteLoadHelpers(ctx) {
       "    xor a",
       `    jr ${doneLabel}`,
       `${nonZeroLabel}:`,
-      `${retryLabel}:`,
-      "    push bc",
-      "    call AMY_RANDOM_U8",
-      "    pop bc",
-      "    cp b",
-      `    jr nc,${retryLabel}`,
+      ...emitBoundedRandom([]),
       `${doneLabel}:`
     ];
   }

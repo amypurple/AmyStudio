@@ -12,6 +12,8 @@ export function handleDispatchLabelStatement({
   emitRuntimeStore,
   splitTopLevelArgs,
   emitOnIndexedJump,
+  insideRoutine,
+  isDeclaredRoutine,
   ensureLabelAsmSymbol,
   resolveSourceJumpTarget,
   formatUnknownJumpTargetLog
@@ -75,6 +77,13 @@ export function handleDispatchLabelStatement({
   const onGosub = line.match(/^on\s+(.+?)\s+gosub\s+(.+)$/i);
   if (onGosub) {
     const labels = splitTopLevelArgs(onGosub[2]).map((part) => part.trim()).filter(Boolean);
+    if (!insideRoutine && labels.some((name) => !isDeclaredRoutine(name))) {
+      return {
+        ok: false,
+        handled: true,
+        log: `on ... gosub targets must be inside a subroutine so RETURN has a caller: ${rawLine}`
+      };
+    }
     if (!labels.length || labels.some((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))) {
       return { ok: false, handled: true, log: `on ... gosub requires a comma-separated label list: ${rawLine}` };
     }

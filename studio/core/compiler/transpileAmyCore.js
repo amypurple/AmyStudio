@@ -3196,7 +3196,12 @@ export function transpileAmyCore(sourceText, deps) {
         return { declaredType: "u8", runtimeType: "int8" };
       }
       if (String(node.name || "").toLowerCase() === "random" && (node.args.length === 1 || node.args.length === 2)) {
-        return { declaredType: "u8", runtimeType: "int8" };
+        const bounds = node.args.map((arg) => tryEvaluateCompileTimeNumericExpression(renderExpressionAst(arg)));
+        const needsWord = node.args.length === 1
+          ? Number.isInteger(bounds[0]) && bounds[0] > 256
+          : bounds.every(Number.isInteger) && (bounds[0] < 0 || bounds[1] > 255 || (bounds[1] - bounds[0] + 1) > 256);
+        const declaredType = needsWord ? "u16" : "u8";
+        return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
       }
       if (/^(?:min|max)$/i.test(String(node.name || "")) && node.args.length === 2) {
         const leftType = resolveExpressionAstComputationType(node.args[0]);
@@ -6159,6 +6164,8 @@ export function transpileAmyCore(sourceText, deps) {
         emitRuntimeStore,
         splitTopLevelArgs,
         emitOnIndexedJump,
+        insideRoutine: Boolean(currentFunction || (currentProc && lowerName(currentProc) !== "start")),
+        isDeclaredRoutine: (name) => mapHasInsensitive(procAsmSymbols, name),
         ensureLabelAsmSymbol,
         resolveSourceJumpTarget,
         formatUnknownJumpTargetLog
@@ -6252,6 +6259,8 @@ export function transpileAmyCore(sourceText, deps) {
         line,
         rawLine,
         resolveValueType,
+        resolveDeclaredValueType,
+        isSignedDeclaredType,
         emitMultiplyInt8Op,
         emitMultiplyInt16Op,
         emitDivideInt8Op,

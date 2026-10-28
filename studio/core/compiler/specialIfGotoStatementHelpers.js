@@ -26,6 +26,15 @@ export function handleSpecialIfGotoStatement({
     return { ok: true, handled: true, lines: code.lines };
   }
 
+  const ifBoxCollisionGoto = line.match(/^if\s+(box\s+.+?\s*,\s*.+?\s+size\s+.+?\s*,\s*.+?\s+collides\s+with\s+box\s+.+?\s*,\s*.+?\s+size\s+.+?\s*,\s*.+?)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  if (ifBoxCollisionGoto) {
+    const jumpTarget = resolveSourceJumpTarget(ifBoxCollisionGoto[2]);
+    if (!jumpTarget) return { ok: false, handled: true, log: formatUnknownJumpTargetLog(ifBoxCollisionGoto[2], rawLine) };
+    const code = emitConditionalJump(ifBoxCollisionGoto[1], jumpTarget);
+    if (!code.ok) return { ok: false, handled: true, log: code.log };
+    return { ok: true, handled: true, lines: code.lines };
+  }
+
   const ifSpriteHitboxCollisionGoto = line.match(/^if\s+sprite\s+(.+?)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+collides\s+with\s+sprite\s+(.+?)\s+hitbox\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:then\s+)?goto\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
   if (ifSpriteHitboxCollisionGoto) {
     const jumpTarget = resolveSourceJumpTarget(ifSpriteHitboxCollisionGoto[5]);

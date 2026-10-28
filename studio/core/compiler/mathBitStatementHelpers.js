@@ -4,6 +4,8 @@ export function handleMathBitStatement({
   line,
   rawLine,
   resolveValueType,
+  resolveDeclaredValueType,
+  isSignedDeclaredType,
   emitMultiplyInt8Op,
   emitMultiplyInt16Op,
   emitDivideInt8Op,
@@ -47,6 +49,7 @@ export function handleMathBitStatement({
   if (clampVar) {
     const targetType = resolveValueType(clampVar[1]);
     if (targetType !== "int8" && targetType !== "int16") return { ok: false, handled: true, log: `clamp requires a scalar byte/word RAM variable: ${rawLine}` };
+    const signedTarget = isSignedDeclaredType(resolveDeclaredValueType(clampVar[1]));
     const clampNotLow = makeGeneratedLabel("ClampNotLow");
     const clampStore = makeGeneratedLabel("ClampStore");
     if (targetType === "int8") {
@@ -57,6 +60,40 @@ export function handleMathBitStatement({
       const maxLoad = emitLoadInt8Into("b", clampVar[3]);
       if (!minLoad) return { ok: false, handled: true, log: `clamp min must be a byte value: ${rawLine}` };
       if (!maxLoad) return { ok: false, handled: true, log: `clamp max must be a byte value: ${rawLine}` };
+      if (signedTarget) {
+        const clampKeep = makeGeneratedLabel("ClampKeep");
+        const emitSignedCompareWithBound = (boundLoad) => [
+          ...boundLoad,
+          "    ld a,b",
+          "    xor $80",
+          "    ld b,a",
+          ...loadTarget,
+          "    xor $80",
+          "    cp b"
+        ];
+        return {
+          ok: true,
+          handled: true,
+          lines: [
+            ...emitSignedCompareWithBound(minLoad),
+            `    jr nc,${clampNotLow}`,
+            ...minLoad,
+            "    ld a,b",
+            `    jr ${clampStore}`,
+            `${clampNotLow}:`,
+            ...emitSignedCompareWithBound(maxLoad),
+            `    jr c,${clampKeep}`,
+            `    jr z,${clampKeep}`,
+            ...maxLoad,
+            "    ld a,b",
+            `    jr ${clampStore}`,
+            `${clampKeep}:`,
+            ...loadTarget,
+            `${clampStore}:`,
+            ...storeTarget
+          ]
+        };
+      }
       return {
         ok: true,
         handled: true,
@@ -88,6 +125,39 @@ export function handleMathBitStatement({
     const loadTargetWithBoundInDe = (boundLoad) => targetUsesIndex
       ? [...boundLoad, "    push hl", ...emitLoadInt16IntoHL(clampVar[1]), "    pop de"]
       : [...boundLoad, "    ex de,hl", ...emitLoadInt16IntoHL(clampVar[1])];
+    if (signedTarget) {
+      const emitSignedCompareWithBound = (boundLoad) => [
+        ...loadTargetWithBoundInDe(boundLoad),
+        "    ld a,h",
+        "    xor $80",
+        "    ld h,a",
+        "    ld a,d",
+        "    xor $80",
+        "    ld d,a",
+        "    or a",
+        "    sbc hl,de"
+      ];
+      return {
+        ok: true,
+        handled: true,
+        lines: [
+          ...emitSignedCompareWithBound(minLoad),
+          `    jr nc,${clampNotLow}`,
+          ...minLoad,
+          `    jr ${clampStore}`,
+          `${clampNotLow}:`,
+          ...emitSignedCompareWithBound(maxLoad),
+          `    jr c,${clampKeep}`,
+          `    jr z,${clampKeep}`,
+          ...maxLoad,
+          `    jr ${clampStore}`,
+          `${clampKeep}:`,
+          ...emitLoadInt16IntoHL(clampVar[1]),
+          `${clampStore}:`,
+          ...emitStoreInt16FromHL(clampVar[1])
+        ]
+      };
+    }
     return {
       ok: true,
       handled: true,

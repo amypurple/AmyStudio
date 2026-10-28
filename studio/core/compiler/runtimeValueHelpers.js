@@ -31,6 +31,7 @@ export function createRuntimeValueHelpers({
   resolveDeclaredValueType,
   scopedRuntimeName,
   symbolOrValue,
+  resolveAddressSymbol,
   emitBcdStore,
   resolveValueType,
   emitComputeExpressionAst,
@@ -989,6 +990,12 @@ export function createRuntimeValueHelpers({
       ];
     }
     if (type === "int16") {
+      const addressOf = String(token).trim().match(/^@([A-Za-z_][A-Za-z0-9_]*)$/);
+      if (addressOf) {
+        const address = resolveAddressSymbol?.(addressOf[1]);
+        if (!address) return null;
+        return [`    ld hl,${address}`, "    push hl"];
+      }
       const loadArg = emitLoadInt16IntoHL(token, declaredType);
       if (!loadArg) return null;
       return [...loadArg, "    push hl"];

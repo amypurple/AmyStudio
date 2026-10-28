@@ -52,6 +52,9 @@ export function scanAmyFirstPass({
   }
 
   function parseSignatureParam(rawParam, ownerName, seenParams, rawLine) {
+    if (/\[[^\]]*\]/.test(rawParam)) {
+      return { error: `Array parameters are not supported; pass an index, a ROM/RAM address, or use a global array in ${rawLine}` };
+    }
     const pm = rawParam.trim().match(/^(ref\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
     if (!pm) return { invalid: true };
     const isRef = !!pm[1];

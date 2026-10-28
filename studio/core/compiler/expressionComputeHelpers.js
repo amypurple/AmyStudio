@@ -745,6 +745,27 @@ export function createExpressionComputeHelpers({
     }
     if (node.kind === "call") {
       const callName = String(node.name || "").toLowerCase();
+      if (callName === "random" && node.args.length === 1) {
+        const count = tryEvaluateCompileTimeNumericExpression(renderExpressionAst(node.args[0]));
+        if (Number.isInteger(count) && count > 256 && count <= 65536) {
+          const countWord = count === 65536 ? 0 : count;
+          const lines = [
+            "    call AMY_RANDOM_U8",
+            "    ld d,a",
+            "    call AMY_RANDOM_U8",
+            "    ld e,a",
+            "    ex de,hl"
+          ];
+          if (countWord !== 0) {
+            lines.push(
+              `    ld bc,${symbolOrValue(String(countWord))}`,
+              "    call AMY_U16_DIV",
+              "    ld hl,(AMY_U16_DIV_REM)"
+            );
+          }
+          return lines;
+        }
+      }
       if (callName === "absdiff" && node.args.length === 2) {
         const leftType = resolveExpressionAstComputationType(node.args[0]);
         const rightType = resolveExpressionAstComputationType(node.args[1]);

@@ -229,21 +229,30 @@ export function handleForStatement({
         lines.push(...emitStoreInt16FromHL(loop.name));
       }
     } else if (loop.type === "int8") {
+      const unsignedUpLoop = !isSignedDeclaredType(loop.declaredType);
       lines.push(...emitLoadInt8Into("a", loop.name));
       if (loop.constantStep === 1) {
         lines.push("    inc a");
+        if (unsignedUpLoop) lines.push(`    jp z,${loop.exitLabel}`);
       } else {
         lines.push("    ld b,a");
         const loadStep = emitLoadInt8Into("a", loop.stepToken);
         if (!loadStep) return { ok: false, handled: true, log: `Unsupported for-loop step value for ${loop.name}` };
         lines.push(...loadStep);
         lines.push("    add a,b");
+        if (unsignedUpLoop) lines.push(`    jp c,${loop.exitLabel}`);
       }
       lines.push(...emitStoreInt8FromA(loop.name));
     } else {
+      const unsignedUpLoop = !isSignedDeclaredType(loop.declaredType);
       lines.push(...emitLoadInt16IntoHL(loop.name));
       if (loop.constantStep === 1) {
         lines.push("    inc hl");
+        if (unsignedUpLoop) {
+          lines.push("    ld a,h");
+          lines.push("    or l");
+          lines.push(`    jp z,${loop.exitLabel}`);
+        }
       } else {
         lines.push("    push hl");
         const loadStep = emitLoadInt16IntoHL(loop.stepToken);
@@ -252,6 +261,7 @@ export function handleForStatement({
         lines.push("    ex de,hl");
         lines.push("    pop hl");
         lines.push("    add hl,de");
+        if (unsignedUpLoop) lines.push(`    jp c,${loop.exitLabel}`);
       }
       lines.push(...emitStoreInt16FromHL(loop.name));
     }

@@ -337,6 +337,12 @@ export class DAN3Codec {
             len;
         while (i > 1) {
             len = this.optimalLengths[i * this.BIT_OFFSET_NBR + subset];
+            if (!Number.isInteger(len) || len <= 0) {
+                const cell = i * this.BIT_OFFSET_NBR + subset;
+                this.optimalOffsets[cell] = 0;
+                this.optimalLengths[cell] = 1;
+                len = 1;
+            }
             for (j = i - 1; j > i - len; j--) {
                 const cell = j * this.BIT_OFFSET_NBR + subset;
                 this.optimalOffsets[cell] = 0;
