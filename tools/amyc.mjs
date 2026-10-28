@@ -9,9 +9,11 @@
 //   node tools/amyc.mjs prog.alexis --opt balanced        # optimization level (default: balanced)
 //   node tools/amyc.mjs prog.alexis --project-dir dir     # resolve @project/... includes from dir
 //   node tools/amyc.mjs prog.alexis --hardware sgm1       # enable optional target hardware
+//   node tools/amyc.mjs prog.alexis --define FEATURE      # add a compile-time symbol
+//   node tools/amyc.mjs prog.alexis --report-json out     # write machine-readable build results
 //
 // Reuses the exact Studio compiler wiring, so it matches what the browser builds.
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -113,23 +115,58 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [], experimentalRecordIx: false };
+  const opts = { file: null, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [], defines: [], experimentalRecordIx: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--asm") opts.asm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--optimized-asm") opts.optimizedAsm = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--rom") opts.rom = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--symbols") opts.symbols = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
+    else if (a === "--report-json") opts.reportJson = argv[++i] || null;
     else if (a === "--opt") opts.opt = argv[++i] || "balanced";
     else if (a === "--project-dir") opts.projectDir = argv[++i] || null;
     else if (a === "--target") opts.target = argv[++i] || "colecovision-cartridge";
     else if (a === "--medium") opts.medium = argv[++i] || null;
     else if (a === "--memory-profile") opts.memoryProfile = argv[++i] || null;
     else if (a === "--hardware") opts.hardware.push(argv[++i] || "");
+    else if (a === "--define") opts.defines.push(argv[++i] || "");
     else if (a === "--experimental-record-ix") opts.experimentalRecordIx = true;
     else if (!opts.file && !a.startsWith("--")) opts.file = a;
   }
   return opts;
+}
+
+function diagnosticFromLog(file, stage, log, severity = "error", sourceText = "") {
+  const message = String(log || "unknown error").trim();
+  const location = message.match(/\bline\s+(\d+)(?::(\d+))?/i);
+  let inferredLine = 1;
+  if (!location && sourceText) {
+    const lines = String(sourceText).split(/\r?\n/);
+    const reportedSource = message.match(/:\s*([^:\r\n]+)$/)?.[1]?.trim();
+    if (reportedSource) {
+      const index = lines.findIndex((line) => line.trim() === reportedSource);
+      if (index >= 0) inferredLine = index + 1;
+    }
+  }
+  return {
+    file,
+    line: location ? Number(location[1]) : inferredLine,
+    column: location?.[2] ? Number(location[2]) : 1,
+    severity,
+    stage,
+    message
+  };
+}
+
+function writeBuildReport(opts, payload) {
+  if (!opts.reportJson) return;
+  const reportPath = path.resolve(opts.reportJson);
+  mkdirSync(path.dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, `${JSON.stringify({
+    format: "amy-compiler-report-v1",
+    compiler: "Amy Studio",
+    ...payload
+  }, null, 2)}\n`, "utf8");
 }
 
 // Resolve every `include "path"` in the ASM: embedded lib sources, repo files
@@ -189,7 +226,7 @@ function buildAssemblyFiles(asm, projectDir) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (!opts.file) {
-    console.error("usage: node tools/amyc.mjs <file.alexis> [--asm [out]] [--rom [out]] [--opt level] [--target platform] [--medium dsk|ddp] [--memory-profile profile] [--project-dir dir]");
+    console.error("usage: node tools/amyc.mjs <file.alexis> [--asm [out]] [--rom [out]] [--opt level] [--target platform] [--medium dsk|ddp] [--memory-profile profile] [--project-dir dir] [--define symbol]");
     process.exit(2);
   }
   const srcPath = path.resolve(opts.file);
@@ -227,11 +264,16 @@ async function main() {
     sourceLang: "amy",
     sourceText,
     options: { buildContext },
-    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: getBuildContextDefines(buildContext), experimentalRecordIx: opts.experimentalRecordIx || optimizationUsesRecordIx(opts.opt) }),
+    transpileAmy: (s) => transpileAmyCore(s, { ...DEPS, resolveStaticAbiInclude, buildContext, predefinedSymbols: [...new Set([...getBuildContextDefines(buildContext), ...opts.defines.filter(Boolean)])], experimentalRecordIx: opts.experimentalRecordIx || optimizationUsesRecordIx(opts.opt) }),
     lexZ80Source,
     summarizeTokens
   });
-  if (!transpiled?.ok) { console.error("Transpile failed: " + (transpiled?.log || "unknown error")); process.exit(1); }
+  if (!transpiled?.ok) {
+    const log = transpiled?.log || "unknown error";
+    writeBuildReport(opts, { ok: false, source: srcPath, stage: "transpile", diagnostics: [diagnosticFromLog(srcPath, "transpile", log, "error", sourceText)] });
+    console.error("Transpile failed: " + log);
+    process.exit(1);
+  }
   transpiled.metadata = { ...(transpiled.metadata || {}), buildTarget: buildContext };
   const staticAbiRam = transpiled.ramUsage?.staticAbi;
   if (staticAbiRam?.routineCount > 0) {
@@ -256,6 +298,7 @@ async function main() {
   });
   if (!assembled.ok) {
     const err = String(assembled.log || "").split("\n").filter((l) => /error/i.test(l)).slice(0, 3).join(" | ");
+    writeBuildReport(opts, { ok: false, source: srcPath, stage: "assemble", diagnostics: [diagnosticFromLog(srcPath, "assemble", err || assembled.log)] });
     console.error("Assemble failed (" + opts.opt + "): " + (err || "see assembler log"));
     process.exit(1);
   }
@@ -276,6 +319,22 @@ async function main() {
     writeFileSync(symbolsPath, assembled.symbolsText || "", "utf8");
     console.log("SYM  -> " + symbolsPath);
   }
+  writeBuildReport(opts, {
+    ok: true,
+    source: srcPath,
+    target: project.target,
+    memoryProfile: project.memoryProfile,
+    optimization: opts.opt,
+    romBytes: rom.length,
+    ramUsage: transpiled.ramUsage || null,
+    diagnostics: (transpiled.warnings || transpiled.metadata?.warnings || []).map((warning) => diagnosticFromLog(srcPath, "transpile", warning, "warning", sourceText)),
+    artifacts: {
+      asm: opts.asm !== undefined ? (typeof opts.asm === "string" ? path.resolve(opts.asm) : base + ".asm") : null,
+      optimizedAsm: opts.optimizedAsm !== undefined ? (typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm") : null,
+      rom: opts.rom !== undefined ? (typeof opts.rom === "string" ? path.resolve(opts.rom) : base + ".rom") : null,
+      symbols: opts.symbols !== undefined ? (typeof opts.symbols === "string" ? path.resolve(opts.symbols) : base + ".sym") : null
+    }
+  });
 }
 
 main().catch((error) => { console.error(error?.stack || String(error)); process.exit(1); });
