@@ -91,7 +91,9 @@ export function getOptimizationProfile(level, sourceText = "") {
   }
   const optimizerConfig = {
     peephole: true,
-    deadCode: normalized === "experimental",
+    // Disabled until control-flow-aware elimination is proven safe. The prior
+    // pass removed live menu construction in The Hermit.
+    deadCode: false,
     branchShortening: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     localValueReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
     blockCopyBcZeroReuse: normalized === "balanced" || normalized === "aggressive" || normalized === "experimental",
