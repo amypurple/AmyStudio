@@ -3658,5 +3658,75 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "alfabug",
+    "label": "Alfabug (July 1983)",
+    "detail": "Michael Wasilenko's COMPUTE!'s Gazette alphabet game: choose letters in sequence or at random and send five animated bugs racing toward the finish post.",
+    "projectName": "Alfabug",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "educational",
+      "alphabet",
+      "racing",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "type-in",
+    "label": "Type-In (2026)",
+    "detail": "An original game about programming in 1983: decipher a worn magazine listing, run the resulting VIC-20 game, diagnose its errors and personalize the finished program.",
+    "projectName": "Type-In",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "programming",
+      "educational",
+      "vic-20",
+      "magazine",
+      "music",
+      "ai-assisted",
+      "compute!"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
+  },
+  {
+    "id": "the-stacks",
+    "label": "The Stacks (2026)",
+    "detail": "An original first-person ray-cast adventure: explore a dark magazine library, recover eight lost pages and manage a fading oil lamp across changing layouts.",
+    "projectName": "The Stacks",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "adventure",
+      "ray-casting",
+      "first-person",
+      "exploration",
+      "music",
+      "ai-assisted"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   }
 ];

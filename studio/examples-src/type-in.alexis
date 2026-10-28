@@ -1,0 +1,1054 @@
+' TYPE-IN
+' An original game by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026, in Amy by Amy Bienvenu; the idea grew from a morning of porting
+' COMPUTE!'s Gazette type-ins of 1983 with Amy, who typed her first
+' programs on a VIC-20 that year.
+'
+' The game: it is 1983 and you are typing in PARACHUTE, a short program
+' from a worn copy of KEYBOARD KIDS (an imaginary magazine; the program
+' is written for this game). Line by line it goes into your listing. Where
+' the page is smudged you must decide what the character was: 1, 7 or I?
+' 0, O or 9? The line around it is the clue. Then RUN it, and the little
+' VIC screen above shows what you typed: a wrong guess is a syntax error,
+' or worse, a program that runs but not as printed (a pink sky, a gale, a
+' pad off the screen, 70 points a landing). FIX lines and RUN again. When
+' it works, add your own touch (one of them mends the magazine's own bug)
+' and see your version fly. The ending tells you how your PARACHUTE came
+' out, typos and all.
+'
+' PARACHUTE: a plane crosses the top of the screen; the button drops a
+' diver, who falls eight rows, drifting with the wind; land on the pad for
+' points. Push the stick down to stop the program (RUN/STOP).
+'
+' Controls (either joystick): the stick chooses, the button types or
+' picks; during RUN the button is the program's key and the stick down
+' stops it. Keypad not used.
+'
+' The program's BASIC is played out by this game (it is not a BASIC
+' interpreter): each smudge's three readings have their real effect in
+' VIC-20 BASIC, wraps and all (a diver off the right edge comes back a row
+' lower, FOR Y=1 TO B runs once because B is 0, W=I is no wind at all).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; no sprites; the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TSkyb = 128
+const TEqb = 129
+const TGtb = 130
+const TStarb = 131
+const TPadb = 132
+const TSkyp = 133
+const TEqp = 134
+const TGtp = 135
+const TStarp = 136
+const TPadp = 137
+const TBordb = 138
+const TBordr = 139
+const TSmudge = 140
+const THome = 141
+const SNone = 0
+const NTiles8 = 112
+const SprBytes = 32
+const SndClick = 1
+const SndBuzz = 2
+const SndDing = 3
+const SndDrop = 4
+const SndBeep = 5
+const SndPick = 6
+const SndDone = 7
+const SndTuneA = 8
+const SndTuneB = 9
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing ----------------------------------------------------------
+' Ord the text ids in listing order (NL of them), Sel the reading chosen
+' for each smudge (255: not yet), Top the first line shown, Cur the FIX
+' cursor
+u8 Ord[20]
+u8 NL = 0
+u8 Sel[13]
+u8 Top = 0
+u8 Cur = 0
+' --- PARACHUTE's run -------------------------------------------------------
+' Sk the sky (0 blue, 1 pink), W the wind, X the pad, P the plane, D the
+' diver, S the score, Wr the plane's turn (line 40), Fl the rows of a fall
+u8 Sk = 0
+u8 W = 1
+u8 X = 20
+u8 P = 0
+i16 D = 0
+u16 S = 0
+u8 Wr = 20
+u8 Fl = 8
+u8 Yf = 0
+i16 Cl = 0
+' the story so far: runs, errors met, drops, landings, the last run ended
+' in an error, your touch (0 none, 1 trail, 2 wide pad, 3 gusts, 4 sound)
+u8 Runs = 0
+u8 Errs = 0
+u8 Drops = 0
+u8 Lands = 0
+u8 LastErr = 0
+u8 Touch = 0
+' for the test bot: 1 typing, 2 picking, 3 running, 4 the menu, 5 fixing,
+' 6 your touch, 7 the ending, 8 title
+u8 Ph = 0
+u8 Tc = $F1
+
+u16 NumU = 0
+u16 V16 = 0
+u16 Tp = 0
+u16 Tq = 0
+u8 Kp = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 Rw = 0
+u8 Ch = 0
+u8 Id = 0
+u8 Sl = 0
+u8 Kk = 0
+u8 Q = 0
+u8 Ln = 0
+u8 Mn = 0
+u8 Ex = 0
+u8 Ey = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 Sel1 = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table TnSoundTable areas 4
+  nmi off
+  screen on
+
+title:
+  Ph = 8
+  TextScreen
+  backdrop dark blue
+  print at 11,3, "TYPE-IN"
+  print at 4,5, "A GAME OF TYPING A GAME"
+  print at 2,8, "IT IS 1983. THE MAGAZINE IS"
+  print at 2,9, "WORN, THE PROGRAM IS LONG,"
+  print at 2,10, "AND SOME CHARACTERS ARE"
+  print at 2,11, "SMUDGED"
+  put char TSmudge at 10,11
+  print at 11,11, ". READ THEM WELL."
+  print at 2,19, "BY CLAUDE (AN AI BY"
+  print at 2,20, "ANTHROPIC), FOR AMY STUDIO"
+  print at 2,21, "2026. MUSIC: READY."
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Hold(60)
+  print at 8,15, "PRESS A BUTTON"
+  WaitPress
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+
+  ' the magazine's page
+  TextScreen
+  print at 2,2, "KEYBOARD KIDS, AUGUST 1983"
+  print at 2,4, "PARACHUTE"
+  print at 2,5, "BY D. ROWE"
+  print at 2,7, "A PLANE FLIES OVER THE TOP"
+  print at 2,8, "OF THE SCREEN. PRESS A KEY"
+  print at 2,9, "TO DROP YOUR PARACHUTIST AND"
+  print at 2,10, "LAND HER ON THE PAD. MIND"
+  print at 2,11, "THE WIND! TYPE CAREFULLY."
+  print at 2,14, "(YOUR COPY HAS BEEN READ BY"
+  print at 2,15, "EVERY KID ON THE STREET.)"
+  print at 2,19, "THE BUTTON TYPES THE NEXT"
+  print at 2,20, "LINE."
+  ShowScreen
+  WaitPress
+
+  ' a fresh start
+  for I = 0 to 12
+    Sel[I] = 255
+  next
+  for I = 0 to 12
+    Ord[I] = I
+  next
+  NL = 0
+  Top = 0
+  Runs = 0
+  Errs = 0
+  Drops = 0
+  Lands = 0
+  LastErr = 0
+  Touch = 0
+  WorkScreen
+  ' typing: the thirteen lines, one at a time
+  for K = 0 to 12
+    Ph = 1
+    inc NL
+    if NL > 7 then
+      Top = NL - 7
+      ShowListing
+    end if
+    Id = Ord[K]
+    V = K - Top
+    Ey = V + 11
+    TypeLine
+    Hold(10)
+  next
+  print at 2,22, "                            "
+
+menu:
+  ' RUN, FIX, DONE
+  Ph = 4
+  Mn = 0
+  WasBtn = 1
+mn_draw:
+  print at 2,21, "                            "
+  print at 2,22, "   RUN      FIX      DONE   "
+  V = Mn * 9
+  V = V + 2
+  print at V,22, ">"
+mn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Mn > 0 then dec Mn
+    end if
+    if Rt1 = 1 then
+      if Mn < 2 then inc Mn
+    end if
+    play sound SndPick
+    goto mn_draw
+  end if
+  if Press = 0 then goto mn_loop
+  play sound SndPick
+  if Mn = 0 then
+    RunProg
+    goto menu
+  end if
+  if Mn = 1 then
+    FixMode
+    goto menu
+  end if
+  ' DONE
+  if LastErr = 1 then
+    print at 2,21, "IT STOPS WITH AN ERROR."
+    Hold(90)
+    goto mn_draw
+  end if
+  if Drops = 0 then
+    print at 2,21, "RUN IT AND DROP A DIVER!"
+    Hold(90)
+    goto mn_draw
+  end if
+  if Touch = 0 then
+    YourTouch
+    goto menu
+  end if
+  Ending
+  goto title
+
+' WorkScreen: the TV (rows 1-9), its border, the listing, the page
+sub WorkScreen:
+  TextScreen
+  backdrop dark blue
+  TvClear
+  ShowListing
+  ShowScreen
+  return
+end sub
+
+' TvClear: the VIC screen in its sky colour, the border round it
+sub TvClear:
+  V = Sk * 5
+  Ch = TSkyb + V
+  for Y = 1 to 9
+    fill Ch count 22 at 5,Y
+  next
+  Ch = TBordb
+  if Sk = 1 then Ch = TBordr
+  for Y = 1 to 10
+    put char Ch at 4,Y
+    put char Ch at 27,Y
+  next
+  fill Ch count 24 at 4,10
+  return
+end sub
+
+' TvPut(cell, kind): kind 0 sky, 1 =, 2 >, 3 *, 4 the pad, at VIC cell
+' (22 to a row; off the 9 rows shown: nothing)
+sub TvPut(i16 Cc, u8 Kd):
+  if Cc < 0 then return
+  if Cc > 197 then return
+  V16 = Cc
+  Tp = V16 / 22
+  V = lowbyte Tp
+  Ey = V + 1
+  Tp = V16 % 22
+  V = lowbyte Tp
+  Ex = V + 5
+  V = Sk * 5
+  V = V + Kd
+  Ch = TSkyb + V
+  put char Ch at Ex,Ey
+  return
+end sub
+
+' ShowListing: lines Top to Top + 6 at rows 11-17
+sub ShowListing:
+  for Q = 0 to 6
+    V = Top + Q
+    Y = Q + 11
+    fill 32 count 28 at 2,Y
+    if V < NL then
+      Id = Ord[V]
+      Ex = 3
+      Ey = Y
+      PrintLine(0)
+    end if
+  next
+  return
+end sub
+
+' PrintLine(page): text Id at Ex, Ey; a smudge as read (or, on the page or
+' not yet read, the smudge itself)
+sub PrintLine(u8 Pg):
+  V = TxtHi[Id]
+  V16 = V
+  V16 = V16 << 8
+  V = TxtLo[Id]
+  Tq = V16 + V
+  Kp = Ex
+pl_next:
+  Ch = TxtAll[Tq]
+  if Ch = 0 then return
+  if Ch = 1 then Ch = THome
+  if Ch = 64 then
+    Sl = SlotOf[Id]
+    V = Sel[Sl]
+    if Pg = 1 then V = 255
+    if V = 255 then
+      Ch = TSmudge
+    else
+      V16 = Id * 3
+      V16 = V16 + V
+      Ch = Cand[V16]
+    end if
+  end if
+  put char Ch at Kp,Ey
+  inc Kp
+  inc Tq
+  goto pl_next
+end sub
+
+' TypeLine: text Id typed into row Ey, a key at a time; a smudge stops
+' the typing for a choice
+sub TypeLine:
+  V = TxtHi[Id]
+  V16 = V
+  V16 = V16 << 8
+  V = TxtLo[Id]
+  Tp = V16 + V
+  Kk = 3
+  fill 32 count 28 at 2,Ey
+tl_next:
+  Ch = TxtAll[Tp]
+  if Ch = 0 then return
+  if Ch = 1 then Ch = THome
+  if Ch = 64 then
+    Ex = Kk
+    Picker
+    Ph = 1
+    Sl = SlotOf[Id]
+    V16 = Id * 3
+    V = Sel[Sl]
+    V16 = V16 + V
+    Ch = Cand[V16]
+  end if
+  put char Ch at Kk,Ey
+  play sound SndClick
+  Frame1
+  Frame1
+  inc Kk
+  inc Tp
+  goto tl_next
+end sub
+
+' Picker: the page's line (row 20) and its three readings (row 21)
+sub Picker:
+  Ph = 2
+  Sl = SlotOf[Id]
+  Ex = 2
+  Oy = Ey
+  Ey = 20
+  print at 2,19, "ON THE PAGE:                "
+  fill 32 count 28 at 2,20
+  PrintLine(1)
+  print at 2,21, "IT MUST BE:                 "
+  print at 2,22, "STICK: CHOOSE  BUTTON: TYPE "
+  V16 = Id * 3
+  for Q = 0 to 2
+    V = Q * 4
+    V = V + 17
+    Tq = V16 + Q
+    Ch = Cand[Tq]
+    put char Ch at V,21
+  next
+  Sel1 = Sel[Sl]
+  if Sel1 = 255 then Sel1 = 1
+  WasBtn = 1
+pk_draw:
+  for Q = 0 to 2
+    V = Q * 4
+    V = V + 15
+    print at V,21, " "
+  next
+  V = Sel1 * 4
+  V = V + 15
+  print at V,21, ">"
+pk_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Sel1 > 0 then dec Sel1
+    end if
+    if Rt1 = 1 then
+      if Sel1 < 2 then inc Sel1
+    end if
+    play sound SndPick
+    goto pk_draw
+  end if
+  if Press = 0 then goto pk_loop
+  Sel[Sl] = Sel1
+  play sound SndClick
+  for Q = 19 to 22
+    fill 32 count 28 at 2,Q
+  next
+  Ey = Oy
+  return
+end sub
+
+' FixMode: a cursor on the listing; the button retypes a smudged line
+sub FixMode:
+  Ph = 5
+  Cur = Top
+  WasBtn = 1
+  print at 2,21, "                            "
+  print at 2,22, "BUTTON: RETYPE  LEFT: BACK  "
+fx_draw:
+  ShowListing
+  V = Cur - Top
+  V = V + 11
+  print at 2,V, ">"
+fx_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      ShowListing
+      return
+    end if
+    if Up1 = 1 then
+      if Cur > 0 then dec Cur
+      if Cur < Top then Top = Cur
+    end if
+    if Dn1 = 1 then
+      V = NL - 1
+      if Cur < V then inc Cur
+      V = Top + 6
+      if Cur > V then inc Top
+    end if
+    play sound SndPick
+    goto fx_draw
+  end if
+  if Press = 0 then goto fx_loop
+  Id = Ord[Cur]
+  V16 = Id * 3
+  V = Cand[V16]
+  if V = 0 then
+    print at 2,21, "AS PRINTED: NOTHING SMUDGED"
+    play sound SndBuzz
+    Hold(40)
+    print at 2,21, "                            "
+    goto fx_draw
+  end if
+  V = Cur - Top
+  Ey = V + 11
+  Picker
+  Ph = 5
+  print at 2,22, "BUTTON: RETYPE  LEFT: BACK  "
+  goto fx_draw
+end sub
+
+' HasLine(id): Q = 1 if text id is in the listing
+sub HasLine(u8 Hid):
+  Q = 0
+  for K = 0 to 19
+    if K < NL then
+      if Ord[K] = Hid then Q = 1
+    end if
+  next
+  return
+end sub
+
+' RunProg: PARACHUTE as typed
+sub RunProg:
+  Ph = 3
+  inc Runs
+  LastErr = 0
+  print at 2,21, "BUTTON: DROP   DOWN: STOP   "
+  print at 2,22, "                            "
+  ' (the press that chose RUN is not the program's key)
+rn_release:
+  Frame1
+  ReadPad
+  if Btn = 1 then goto rn_release
+  ' 10: the colours (1I0: an error)
+  V = Sel[0]
+  if V = 2 then
+    Sk = 0
+    TvClear
+    BasicErr(10)
+    return
+  end if
+  Sk = V
+  TvClear
+  ' 20
+  W = 1
+  if Sel[1] = 0 then W = 7
+  if Sel[1] = 2 then W = 0
+  S = 0
+  ' 30
+  if Sel[2] = 1 then
+    BasicErr(30)
+    return
+  end if
+  X = 20
+  if Sel[2] = 2 then X = 70
+  ' 35 (36, 37: the wider pad)
+  Cl = X + 176
+  TvPut(Cl, 4)
+  if Touch = 2 then
+    Cl = X + 175
+    TvPut(Cl, 4)
+    Cl = X + 177
+    TvPut(Cl, 4)
+  end if
+  P = 0
+rn40:
+  ' 40
+  if Sel[4] = 1 then
+    BasicErr(40)
+    return
+  end if
+  Wr = 20
+  if Sel[4] = 2 then Wr = 29
+  inc P
+  if P > Wr then P = 0
+  ' 50: the plane (TAB(P)"=>"; with your touch " =>")
+  Cl = P
+  if Touch = 1 then
+    TvPut(Cl, 0)
+    inc Cl
+  end if
+  TvPut(Cl, 1)
+  inc Cl
+  TvPut(Cl, 2)
+rn60:
+  ' 60
+  if Sel[6] = 2 then
+    BasicErr(60)
+    return
+  end if
+  Hold(4)
+  ReadPad
+  if Dn1 = 1 then
+    BasicBreak(60)
+    return
+  end if
+  if Btn = 1 then
+    if Sel[6] = 0 then goto rn80
+    ' THEN 60: round and round line 60 while the key is held
+    goto rn60
+  end if
+  ' 70
+  goto rn40
+rn80:
+  ' 80-90: the drop
+  inc Drops
+  play sound SndDrop
+  D = P
+  if Touch = 3 then
+    Rnd16
+    V = highbyte Rw
+    W = V % 3
+  end if
+  Fl = 8
+  if Sel[8] = 1 then Fl = 1
+  if Sel[8] = 2 then Fl = 3
+  for Yf = 1 to Fl
+    D = D + W
+    V16 = Yf
+    V16 = V16 * 22
+    Cl = V16
+    Cl = Cl + D
+    TvPut(Cl, 3)
+    Hold(4)
+  next
+  ' 100
+  if Sel[10] = 0 then
+    BasicErr(100)
+    return
+  end if
+  V = 0
+  if Touch = 2 then
+    Cl = D - X
+    Cl = abs(Cl)
+    if Cl < 2 then V = 1
+  else
+    if D = X then V = 1
+  end if
+  if V = 1 then
+    inc Lands
+    if Sel[10] = 1 then S = S + 10
+    if Sel[10] = 2 then S = S + 70
+    play sound SndDing
+  end if
+  ' 105: S at {HOME}, with BASIC's leading space
+  print at 5,1, " "
+  NumU = S
+  ShowNum(6, 1)
+  ' 107: your landing sound
+  if Touch = 4 then
+    if D = X then play sound SndBeep
+  end if
+  ' 110
+  if Sel[12] = 1 then
+    BasicErr(110)
+    return
+  end if
+  if Sel[12] = 0 then
+    print at 5,6, "?UNDEF'D STATEMENT    "
+    print at 5,7, "ERROR IN 110          "
+    print at 5,8, "READY.                "
+    play sound SndBuzz
+    inc Errs
+    LastErr = 1
+    return
+  end if
+  goto rn40
+end sub
+
+' BasicErr(line): ?SYNTAX ERROR IN line, READY.
+sub BasicErr(u8 Lnum):
+  print at 5,7, "?SYNTAX  ERROR IN     "
+  NumU = Lnum
+  ShowNum(23, 7)
+  print at 5,8, "READY.                "
+  play sound SndBuzz
+  inc Errs
+  LastErr = 1
+  return
+end sub
+
+sub BasicBreak(u8 Lnum):
+  print at 5,7, "BREAK IN              "
+  NumU = Lnum
+  ShowNum(14, 7)
+  print at 5,8, "READY.                "
+  return
+end sub
+
+' YourTouch: one change of your own
+sub YourTouch:
+  Ph = 6
+  for Q = 11 to 22
+    fill 32 count 28 at 2,Q
+  next
+  print at 2,11, "IT WORKS! NOW MAKE IT YOURS."
+  print at 2,12, "CHANGE ONE THING:"
+  print at 4,14, "ERASE THE PLANE'S TRAIL"
+  print at 4,15, "A WIDER LANDING PAD"
+  print at 4,16, "GUSTS OF WIND"
+  print at 4,17, "A SOUND WHEN SHE LANDS"
+  print at 2,19, "(THE TRAIL IS THE MAGAZINE'S"
+  print at 2,20, "OWN BUG: LINE 50 NEVER"
+  print at 2,21, "ERASES THE PLANE'S TAIL.)"
+  Oy = 14
+  Nopt = 4
+  Mn = 0
+  WasBtn = 1
+yt_draw:
+  for Q = 0 to 3
+    V = Q + 14
+    print at 2,V, " "
+  next
+  V = Mn + 14
+  print at 2,V, ">"
+yt_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Mn > 0 then dec Mn
+    end if
+    if Dn1 = 1 then
+      if Mn < 3 then inc Mn
+    end if
+    play sound SndPick
+    goto yt_draw
+  end if
+  if Press = 0 then goto yt_loop
+  play sound SndDone
+  Touch = Mn + 1
+  ' the listing changes
+  if Touch = 1 then Ord[5] = 13
+  if Touch = 2 then
+    Ord[10] = 16
+    InsertAfter(3, 14)
+    InsertAfter(4, 15)
+  end if
+  if Touch = 3 then InsertAfter(8, 17)
+  if Touch = 4 then InsertAfter(11, 18)
+  for Q = 11 to 22
+    fill 32 count 28 at 2,Q
+  next
+  Top = 0
+  ShowListing
+  print at 2,21, "RUN YOUR VERSION, THEN DONE."
+  Hold(60)
+  return
+end sub
+
+' InsertAfter(place, id): a new line in the listing after place
+sub InsertAfter(u8 At, u8 Nid):
+  K = NL
+  while K > At
+    V = K - 1
+    Ord[K] = Ord[V]
+    dec K
+  end while
+  V = At + 1
+  Ord[V] = Nid
+  inc NL
+  return
+end sub
+
+' Ending: how your PARACHUTE came out
+sub Ending:
+  Ph = 7
+  TextScreen
+  backdrop dark blue
+  print at 2,1, "YOUR PARACHUTE"
+  print at 2,3, "LINES TYPED:"
+  NumU = NL
+  ShowNum(16, 3)
+  print at 2,4, "RUNS:"
+  NumU = Runs
+  ShowNum(16, 4)
+  print at 2,5, "ERRORS MET:"
+  NumU = Errs
+  ShowNum(16, 5)
+  print at 2,6, "LANDINGS:"
+  NumU = Lands
+  ShowNum(16, 6)
+  Y = 8
+  ' what runs, but not as printed: your version
+  if Sel[0] = 1 then
+    print at 2,Y, "YOUR SKY IS PINK (170)."
+    inc Y
+  end if
+  if Sel[1] = 0 then
+    print at 2,Y, "A GALE BLOWS (W=7)."
+    inc Y
+  end if
+  if Sel[1] = 2 then
+    print at 2,Y, "NO WIND AT ALL (W=I IS 0)."
+    inc Y
+  end if
+  if Sel[2] = 2 then
+    print at 2,Y, "THE PAD IS OFF SCREEN (70)."
+    inc Y
+  end if
+  if Sel[4] = 2 then
+    print at 2,Y, "THE PLANE WRAPS A ROW (29)."
+    inc Y
+  end if
+  if Sel[6] = 1 then
+    print at 2,Y, "THE KEY ONLY HOLDS THE PLANE."
+    inc Y
+  end if
+  if Sel[8] <> 0 then
+    print at 2,Y, "SHE STOPS IN MID-AIR."
+    inc Y
+  end if
+  if Sel[10] = 2 then
+    print at 2,Y, "70 POINTS A LANDING!"
+    inc Y
+  end if
+  if Y = 8 then
+    print at 2,Y, "EVERY SMUDGE READ RIGHT."
+    inc Y
+  end if
+  inc Y
+  if Touch = 1 then print at 2,Y, "YOU MENDED THE PLANE'S TRAIL."
+  if Touch = 2 then print at 2,Y, "YOU WIDENED THE PAD."
+  if Touch = 3 then print at 2,Y, "YOU ADDED GUSTS OF WIND."
+  if Touch = 4 then print at 2,Y, "YOU GAVE HER A LANDING SOUND."
+  print at 2,19, "THANK YOU FOR TYPING."
+  print at 2,21, "PRESS A BUTTON"
+  ShowScreen
+  play sound SndDone
+  WaitPress
+  return
+end sub
+
+' ShowNum X, Y: NumU, as many digits as it has
+sub ShowNum(u8 Px, u8 Py):
+  if NumU < 10 then
+    print at Px,Py, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at Px,Py, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at Px,Py, digits$(NumU, 3)
+      else
+        print at Px,Py, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+
+' PARACHUTE (texts.py)
+const NText = 19
+data TxtAll bytes 49, 48, 32, 80, 79, 75, 69, 51, 54, 56, 55, 57, 44, 49, 64, 48, 0, 50, 48, 32, 83, 61, 48, 58, 87, 61, 64, 0, 51, 48, 32, 88, 61, 64, 48, 0, 51, 53, 32, 80, 79, 75, 69, 55, 56, 53, 54, 43, 88, 44, 49, 54, 48, 0, 52, 48, 32, 80, 61, 80, 43, 49, 58, 73, 70, 80, 62, 50, 64, 84, 72, 69, 78, 80, 61, 48, 0, 53, 48, 32, 80, 82, 73, 78, 84, 34, 1, 34, 84, 65, 66, 40, 80, 41, 34, 61, 62, 34, 0, 54, 48, 32, 73, 70, 80, 69, 69, 75, 40, 54, 53, 51, 41, 84, 72, 69, 78, 64, 48, 0, 55, 48, 32, 71, 79, 84, 79, 52, 48, 0, 56, 48, 32, 68, 61, 80, 58, 70, 79, 82, 89, 61, 49, 84, 79, 64, 0, 57, 48, 32, 68, 61, 68, 43, 87, 58, 80, 79, 75, 69, 55, 54, 56, 48, 43, 68, 43, 50, 50, 42, 89, 44, 52, 50, 0, 49, 48, 48, 32, 73, 70, 68, 61, 88, 84, 72, 69, 78, 83, 61, 83, 43, 64, 48, 0, 49, 48, 53, 32, 80, 82, 73, 78, 84, 34, 1, 34, 83, 0, 49, 49, 48, 32, 71, 79, 84, 79, 52, 64, 0, 53, 48, 32, 80, 82, 73, 78, 84, 34, 1, 34, 84, 65, 66, 40, 80, 41, 34, 32, 61, 62, 34, 0, 51, 54, 32, 80, 79, 75, 69, 55, 56, 53, 53, 43, 88, 44, 49, 54, 48, 0, 51, 55, 32, 80, 79, 75, 69, 55, 56, 53, 55, 43, 88, 44, 49, 54, 48, 0, 49, 48, 48, 32, 73, 70, 65, 66, 83, 40, 68, 45, 88, 41, 60, 50, 84, 72, 69, 78, 83, 61, 83, 43, 64, 48, 0, 56, 53, 32, 87, 61, 73, 78, 84, 40, 82, 78, 68, 40, 49, 41, 42, 51, 41, 0, 49, 48, 55, 32, 73, 70, 68, 61, 88, 84, 72, 69, 78, 80, 79, 75, 69, 51, 54, 56, 55, 54, 44, 50, 51, 48, 0
+data TxtLo bytes 0, 17, 28, 36, 54, 77, 99, 120, 130, 147, 175, 195, 209, 220, 243, 5, 23, 50, 69
+data TxtHi bytes 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1
+data Cand bytes 49, 55, 73, 55, 49, 73, 50, 90, 55, 0, 0, 0, 48, 79, 57, 0, 0, 0, 56, 54, 66, 0, 0, 0, 56, 66, 51, 0, 0, 0, 73, 49, 55, 0, 0, 0, 54, 79, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 73, 49, 55, 0, 0, 0, 0, 0, 0
+data Corr bytes 0, 1, 0, 255, 0, 255, 0, 255, 0, 255, 1, 255, 2, 255, 255, 255, 1, 255, 255
+data SlotOf bytes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 10, 17, 18
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$30,$0C,$30,$C0,$00,$00
+  $00,$10,$54,$38,$01,$38,$54,$10
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C0,$30,$0C,$30,$C0,$00,$00
+  $00,$10,$54,$38,$01,$38,$54,$10
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $30,$83,$01,$80,$03,$81,$38,$00
+  $00,$C3,$40,$38,$04,$87,$00,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$0F,$04,$0F,$04,$04,$04
+  $04,$F4,$F4,$F4,$F4,$F4,$04,$04
+  $04,$B4,$B4,$B4,$4B,$B4,$B4,$B4
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $09,$09,$09,$09,$09,$09,$09,$09
+  $09,$09,$0F,$09,$0F,$09,$09,$09
+  $09,$F9,$F9,$F9,$F9,$F9,$09,$09
+  $09,$B9,$B9,$B9,$9B,$B9,$B9,$B9
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $E1,$1E,$1E,$1E,$1E,$1E,$E1,$01
+  $0F,$F1,$1F,$1F,$1F,$F1,$0F,$0F
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+TnClick:
+    db $00,$00,$34,$01,$00,$00,$F4,$01,$10
+TnBuzz:
+    db $40,$F9,$13,$14,$40,$FE,$F0,$01,$50
+TnDing:
+    db $40,$47,$10,$04,$40,$35,$20,$0C,$40,$FE,$F0,$01,$50
+TnDrop:
+    db $40,$7F,$30,$02,$40,$A9,$40,$02,$40,$FE,$50,$02,$40,$FE,$F0,$01,$50
+TnBeep:
+    db $40,$5B,$10,$0A,$40,$FE,$F0,$01,$50
+TnPick:
+    db $40,$55,$40,$02,$40,$FE,$F0,$01,$50
+TnDone:
+    db $40,$6B,$20,$06,$40,$55,$20,$06,$40,$47,$20,$0C,$40,$FE,$F0,$01,$50
+
+TnSoundTable:
+    dw TnClick,$702B
+    dw TnBuzz,$7035
+    dw TnDing,$7035
+    dw TnDrop,$7035
+    dw TnBeep,$7035
+    dw TnPick,$7035
+    dw TnDone,$7035
+    dw TnTuneMel,$703F
+    dw TnTuneBass,$7049
+; Ready., F (original for this game)
+; Tiny Sound, 6 frames per step
+TnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$1F,$24,$28,$2B,$28,$24,$26,$00,$28,$26,$24,$23
+    db $24,$00,$00,$00,$21,$26,$29,$2D,$29,$26,$28,$00,$29,$28,$26,$24
+    db $23,$00,$00,$00,$1F,$24,$28,$2B,$2D,$2B,$28,$24,$26,$28,$29,$26
+    db $23,$1F,$21,$23,$24,$00,$1F,$00,$1C,$00,$1F,$00,$24,$00,$00,$00
+    db $24,$00,$00,$00
+    db $FF
+TnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$0C,$00,$10,$00,$13,$00,$10,$00,$07,$00,$0B,$00
+    db $0C,$00,$07,$00,$0E,$00,$11,$00,$15,$00,$11,$00,$07,$00,$0B,$00
+    db $13,$00,$07,$00,$0C,$00,$10,$00,$11,$00,$10,$00,$13,$00,$11,$00
+    db $07,$00,$0B,$00,$0C,$00,$07,$00,$10,$00,$07,$00,$0C,$00,$07,$00
+    db $0C,$00,$00,$00
+    db $FF
+
+}

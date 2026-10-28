@@ -9,6 +9,9 @@ const expectedOrigins = new Map([
   ["avalanche-run", "inspired"],
   ["casino", "adaptation-collection"],
   ["lamplighter", "original"],
+  ["type-in", "original"],
+  ["the-stacks", "original"],
+  ["alfabug", "faithful-adaptation"],
   ["laser-chess", "faithful-adaptation"]
 ]);
 

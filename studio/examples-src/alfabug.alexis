@@ -1,0 +1,555 @@
+' ALFABUG
+' The game by Michael Wasilenko from COMPUTE!'s Gazette, July 1983 (pages
+' 120-121), for the ColecoVision in Amy by Amy Bienvenu. Ported by Claude
+' (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: Program 1, the game for the VIC-20 (transcribed in
+' orig/alfabug-vic.bas from the scan beside it), and the Bug-Swatter
+' column of September 1983 (page 125, beside it too), which changes line
+' 115 so that the bugs move one step for each letter.
+'
+' The game: five bugs wait at the start of their lanes. The screen asks
+' for a letter of the alphabet, in order from A; the right one starts the
+' race, and the bugs run to the post at random, a step or none each turn.
+' Each one gets its place, 1 to 5, as it arrives. A game for small
+' children learning their letters.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23. Labels such as l81 are the listing's line numbers.
+'
+' Liberties taken:
+' - Joystick only: the letters are on a strip at the bottom of the screen;
+'   push the stick left or right to the letter and press the button.
+' - Two choices on the title, both from the magazine: the letters in
+'   order (the listing) or at random (its line 76, left as a REM), and the
+'   bugs racing to the end (the listing) or moving one step a letter (the
+'   Bug-Swatter change to line 115).
+' - The letter asked for is shown in brackets (the VIC showed it in
+'   reverse), and the bugs are always drawn as bugs (the listing switched
+'   to its own characters only during the race, so before it they showed
+'   as ")" and "*").
+' - "AGAIN? 'Y' OR 'N'" is a YES / NO choice; NO goes back to the title
+'   (the listing ended).
+' - New title music (Bug Derby), a title page and a credits page; the
+'   POKEd beeps are Tiny Sound effects.
+' - Timing: a bug takes 2 frames (about the VIC's BASIC).
+'
+' House rules kept: text in columns 2-29 and rows 1-22; no sprites; the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TBug0a = 128
+const TBug0b = 129
+const TBug1a = 130
+const TBug1b = 131
+const TBug2a = 132
+const TBug2b = 133
+const TBug3a = 134
+const TBug3b = 135
+const TBug4a = 136
+const TBug4b = 137
+const TLane = 138
+const TPost = 139
+const TArrow = 140
+const SNone = 0
+const NTiles8 = 104
+const SprBytes = 32
+const SndBuzz = 1
+const SndPost = 2
+const SndTick = 3
+const SndStep = 4
+const SndTuneA = 5
+const SndTuneB = 6
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' Kc the bugs' steps from the start (K - Y), Od 1 once a bug has its place,
+' Fn the bugs at the post (F - 48), AB the letter, Fl the wings (CR)
+u8 Kc[5]
+u8 Od[5]
+u8 Fn = 0
+u8 AB = 64
+u8 Fl = 1
+u8 E = 0
+' the two choices: Ord 1 in order, 2 at random; Stp 1 race, 2 a step
+u8 Ord = 1
+u8 Stp = 1
+' the letter under the cursor (0 = A)
+u8 Cur = 0
+' for the test bot: 1 a letter asked, 2 the race, 6 a yes or no, 8 the
+' title, 9 the choices
+u8 Ph = 0
+u8 Tc = $F1
+
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 C = 0
+u8 I = 0
+u8 L = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  tile screen
+  set sound table AfSoundTable areas 4
+  nmi off
+  screen on
+
+title:
+  ' the title page
+  Ph = 8
+  TextScreen
+  backdrop dark green
+  print at 11,3, "ALFABUG"
+  for C = 0 to 4
+    X = C * 2
+    X = X + 10
+    V = C * 2
+    V = V + TBug0b
+    put char V at X,5
+  next
+  print at 4,8, "BY MICHAEL WASILENKO"
+  print at 2,9, "COMPUTE!'S GAZETTE JULY 1983"
+  print at 3,12, "PUSH THE STICK TO THE"
+  print at 3,13, "LETTER, PRESS THE BUTTON,"
+  print at 3,14, "AND THE BUGS WILL RUN!"
+  print at 4,18, "PRESS A BUTTON TO PLAY"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 448
+  TzOn = 1
+  WaitPress
+  play sound SndTick
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+
+  ' the choices
+  Ph = 9
+  TextScreen
+  backdrop dark green
+  print at 4,3, "THE LETTERS COME:"
+  print at 6,5, "IN ORDER, A TO Z"
+  print at 6,6, "AT RANDOM"
+  Oy = 5
+  Nopt = 2
+  PickOne
+  Ord = Sel
+  print at 4,10, "THE BUGS:"
+  print at 6,12, "RACE TO THE POST"
+  print at 6,13, "TAKE ONE STEP A LETTER"
+  Oy = 12
+  PickOne
+  Stp = Sel
+  if TzOn = 1 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+    TzOn = 0
+  end if
+  AB = 64
+  Cur = 0
+
+l55:
+  ' 55-75: the lanes and the bugs
+  Ph = 0
+  TextScreen
+  backdrop black
+  Fl = 1
+  Fn = 0
+  for C = 0 to 4
+    Kc[C] = 0
+    Od[C] = 0
+  next
+  for L = 0 to 5
+    Y = L * 2
+    Y = Y + 7
+    for X = 5 to 25
+      put char TLane at X,Y
+    next
+    put char TPost at 26,Y
+  next
+  for C = 0 to 4
+    Y = C * 2
+    Y = Y + 8
+    V = 49 + C
+    put char V at 5,Y
+    DrawBug
+  next
+  print at 3,21, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  ShowScreen
+
+l76:
+  ' 76-77: the next letter (or, line 76, one at random)
+  if Ord = 2 then
+    Rnd16
+    Rt = Rw >> 8
+    V = lowbyte Rt
+    V = V & 31
+    if V > 25 then V = V - 6
+    AB = V + 65
+  else
+    inc AB
+    if AB > 90 then AB = 65
+  end if
+
+l78:
+  ' 78-80: PRESS (letter) TO START, a wrong one buzzes
+  Ph = 1
+  print at 5,2, "PRESS ( ) TO START"
+  if Stp = 2 then
+    if Fl = 0 then print at 5,2, "PRESS ( ) TO GO ON "
+    if Kc[0] > 0 then print at 5,2, "PRESS ( ) TO GO ON "
+  end if
+  put char AB at 12,2
+  WasBtn = 1
+l79:
+  print at 2,22, "                            "
+  X = Cur + 3
+  put char TArrow at X,22
+l79w:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if Cur > 0 then dec Cur
+    end if
+    if Rt1 = 1 then
+      if Cur < 25 then inc Cur
+    end if
+    play sound SndStep
+    goto l79
+  end if
+  if Press = 0 then goto l79w
+  V = Cur + 65
+  if V <> AB then
+    play sound SndBuzz
+    goto l78
+  end if
+  play sound SndTick
+  print at 5,2, "                    "
+
+l81:
+  ' 81-115: the bugs run, a step or none each
+  Ph = 2
+  for C = 0 to 4
+    if Kc[C] = 19 then goto l105
+    Y = C * 2
+    Y = Y + 8
+    X = Kc[C] + 6
+    put char 32 at X,Y
+    Rnd16
+    E = 0
+    if Rw >= 32768 then E = 1
+    Kc[C] = Kc[C] + E
+    if Kc[C] = 19 then inc Fn
+    DrawBug
+    Hold(2)
+    if Kc[C] = 19 then goto l105
+    goto l110
+l105:
+    if Od[C] = 0 then
+      Y = C * 2
+      Y = Y + 8
+      V = Fn + 48
+      put char V at 26,Y
+      V = Fl
+      Fl = 0
+      DrawBug
+      Fl = V
+      Od[C] = 1
+      play sound SndPost
+    end if
+l110:
+  next
+  ' 115: the wings flap; on to the next turn, or (Bug-Swatter) the next
+  ' letter
+  Fl = Fl ^ 1
+  if Fn < 5 then
+    if Stp = 2 then goto l76
+    goto l81
+  end if
+
+  ' 120-150: again?
+  Hold(30)
+  print at 2,22, "                            "
+  print at 5,19, "AGAIN?"
+  Oy = 20
+  YesNo
+  if Sel = 1 then goto l55
+  goto title
+
+' DrawBug: bug C in its lane at its step, wings Fl (0 = up, the
+' listing's 42)
+sub DrawBug:
+  Y = C * 2
+  Y = Y + 8
+  X = Kc[C] + 6
+  V = C * 2
+  V = V + TBug0a
+  if Fl = 0 then inc V
+  put char V at X,Y
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+' YesNo: YES or NO on row Oy (Sel 1 = YES)
+sub YesNo:
+  Ph = 6
+  Sel = 1
+  WasBtn = 1
+yn_draw:
+  print at 10,Oy, " YES   NO "
+  X = 10
+  if Sel = 2 then X = 16
+  print at X,Oy, ">"
+yn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    goto yn_draw
+  end if
+  if Press = 0 then goto yn_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+data TilePat bytes
+  $24,$48,$84,$01,$01,$84,$48,$24
+  $90,$48,$84,$01,$01,$84,$48,$90
+  $24,$48,$84,$01,$01,$84,$48,$24
+  $90,$48,$84,$01,$01,$84,$48,$90
+  $24,$48,$84,$01,$01,$84,$48,$24
+  $90,$48,$84,$01,$01,$84,$48,$90
+  $24,$48,$84,$01,$01,$84,$48,$24
+  $90,$48,$84,$01,$01,$84,$48,$90
+  $24,$48,$84,$01,$01,$84,$48,$24
+  $90,$48,$84,$01,$01,$84,$48,$90
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$07,$18,$18,$18,$18
+  $10,$38,$83,$10,$10,$10,$00,$00
+end data
+data TileCol bytes
+  $F1,$F1,$1F,$1F,$1F,$1F,$F1,$F1
+  $F1,$F1,$1F,$1F,$1F,$1F,$F1,$F1
+  $71,$71,$17,$17,$17,$17,$71,$71
+  $71,$71,$17,$17,$17,$17,$71,$71
+  $D1,$D1,$1D,$1D,$1D,$1D,$D1,$D1
+  $D1,$D1,$1D,$1D,$1D,$1D,$D1,$D1
+  $31,$31,$13,$13,$13,$13,$31,$31
+  $31,$31,$13,$13,$13,$13,$31,$31
+  $B1,$B1,$1B,$1B,$1B,$1B,$B1,$B1
+  $B1,$B1,$1B,$1B,$1B,$1B,$B1,$B1
+  $01,$01,$01,$0F,$01,$01,$01,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$F1
+  $B1,$B1,$1B,$B1,$B1,$B1,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+AfBuzz:
+    db $00,$00,$14,$04,$00,$00,$F4,$01,$10
+AfPost:
+    db $40,$34,$10,$03,$40,$FE,$F0,$01,$50
+AfTick:
+    db $40,$40,$50,$01,$50
+AfStep:
+    db $40,$7F,$80,$01,$50
+
+AfSoundTable:
+    dw AfBuzz,$702B
+    dw AfPost,$7035
+    dw AfTick,$7035
+    dw AfStep,$7035
+    dw AfTuneMel,$703F
+    dw AfTuneBass,$7049
+; Bug Derby, F major (original for this game)
+; Tiny Sound, 7 frames per step
+AfTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$31,$88,$1F,$00,$24,$28,$2B,$00,$28,$24,$26,$00,$28,$26
+    db $24,$00,$00,$00,$1F,$00,$24,$28,$2B,$00,$2D,$2B,$29,$00,$28,$00
+    db $A6,$00,$00,$00,$28,$28,$29,$00,$2B,$2B,$2D,$00,$2B,$29,$28,$26
+    db $28,$00,$24,$00,$1F,$21,$24,$00,$28,$00,$26,$00,$A4,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+AfTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$F1,$22,$0C,$13,$0C,$13,$0C,$13,$0C,$13,$07,$0E,$07,$0E
+    db $0C,$13,$0C,$13,$0C,$13,$0C,$13,$05,$0C,$05,$0C,$07,$0E,$07,$0E
+    db $07,$0E,$07,$0E,$0C,$13,$0C,$13,$05,$0C,$05,$0C,$0C,$13,$0C,$13
+    db $07,$0E,$07,$0E,$0C,$13,$0C,$13,$07,$0E,$07,$0E,$0C,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+}
