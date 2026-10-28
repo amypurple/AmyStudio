@@ -31,7 +31,8 @@ export function handleSoundSpinnerStatement({
   makeGeneratedLabel,
   resolveAddressSymbol,
   emitLoadSourceAddressIntoHL,
-  emitStoreInt8FromA
+  emitStoreInt8FromA,
+  tinySoundOnceEnabled = false
 }) {
   const _dep = checkSoundDeprecation(line, rawLine);
   if (_dep.handled) return _dep;
@@ -202,8 +203,9 @@ export function handleSoundSpinnerStatement({
     return { ok: true, handled: true, lines };
   }
 
-  const playSong = line.match(/^play\s+song\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+  const playSong = line.match(/^play\s+song\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+(once))?$/i);
   if (playSong) {
+    const playOnce = !!playSong[2];
     return {
       ok: true,
       handled: true,
@@ -212,6 +214,9 @@ export function handleSoundSpinnerStatement({
         "    ld a,1",
         "    ld (AMY_SOUND_ENABLED),a",
         "    ld (AMY_MUSIC_ENABLED),a",
+        ...(tinySoundOnceEnabled
+          ? [`    call ${playOnce ? "AMY_TINY_SOUND_ONCE_MODE" : "AMY_TINY_SOUND_LOOP_MODE"}`]
+          : []),
         "    call AMY_PLAY_SONG"
       ]
     };

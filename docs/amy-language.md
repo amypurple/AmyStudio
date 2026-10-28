@@ -3010,6 +3010,7 @@ set sound table SoundTable
 play sound 1
 play sounds 5, 6, 7
 play song SongTable
+play song SongTable once
 stop song
 mute all
 sound runtime on
@@ -3031,6 +3032,12 @@ previous display/NMI state when it returns.
 
 Coleco BIOS sound indexes are `1..62`. Index `63` aliases the BIOS free-area
 sentinel and cannot start; compile-time indexes outside the valid range are rejected.
+
+`play song Name once` is the one-shot form for Tiny Sound songs. Each active
+Tiny Sound channel stops when it reaches its `$FF` terminator instead of returning
+to the beginning of its stream. A later ordinary `play song Name` restores looping.
+Projects that never use `once` retain the original smaller Tiny Sound runtime byte
+for byte; the stop-mode state and code are linked only when the source requests them.
 
 ---
 
@@ -3672,6 +3679,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `play sound N` | Trigger BIOS sound slot 1..62 |
 | `play sounds A, B [, ...]` | Trigger two or more BIOS sound slots (each 1..62) |
 | `play song Name` | Start music table |
+| `play song Name once` | Play a Tiny Sound song once, stopping its channels at `$FF` |
 | `stop song` | Stop music |
 | `mute all` | Silence output |
 | `sound runtime on/off` | Toggle NMI sound update |

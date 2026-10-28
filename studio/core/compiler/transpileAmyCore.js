@@ -1489,6 +1489,7 @@ export function transpileAmyCore(sourceText, deps) {
     return { ok: false, asmBody: "", log: "partial sprite upload is not allowed in a project using sprites flicker" };
   }
   const inferredMemoryCaps = inferAmyMemoryCapabilities(lines.join("\n"), sourceHintsTinySound);
+  const tinySoundOnceEnabled = /^\s*play\s+song\s+[A-Za-z_][A-Za-z0-9_]*\s+once\s*(?:'.*)?$/im.test(lines.join("\n"));
   if ((inferredMemoryCaps.usesJoypadPressed1 || inferredMemoryCaps.usesJoypadPressed2
       || inferredMemoryCaps.usesJoypadReleased1 || inferredMemoryCaps.usesJoypadReleased2)
       && !inferredMemoryCaps.usesWaitVblank) {
@@ -5601,7 +5602,8 @@ export function transpileAmyCore(sourceText, deps) {
         makeGeneratedLabel,
         resolveAddressSymbol,
         emitLoadSourceAddressIntoHL,
-        emitStoreInt8FromA
+        emitStoreInt8FromA,
+        tinySoundOnceEnabled
       });
       if (soundSpinnerStmt.handled) {
         if (!soundSpinnerStmt.ok) return { ok: false, asmBody: "", log: soundSpinnerStmt.log };
@@ -5979,7 +5981,8 @@ export function transpileAmyCore(sourceText, deps) {
         makeGeneratedLabel,
         resolveAddressSymbol,
         emitLoadSourceAddressIntoHL,
-        emitStoreInt8FromA
+        emitStoreInt8FromA,
+        tinySoundOnceEnabled
       })
     });
 

@@ -11,8 +11,17 @@ function collectUsedAlexisSymbols(asmBody, options = {}) {
   if (used.has("AMY_120C_ON") || used.has("AMY_120C_OFF")) used.add("AMY_120C_UPDATE");
   if (/\bAMY_SLEEP_SERVICE\b/.test(asmBody)) used.add("AMY_PAUSE_PRESS_RELEASE_BLANK");
   if (/\bAMY_CHOICE_KEYPAD_RANGE_BLANK\b/.test(asmBody)) used.add("AMY_WAIT_FRAMES_SAFE");
-  if (/\bsndtiny_[12]\b/.test(asmBody) || options.forceTinySound) used.add("AMY_TINY_SOUND");
+  if (/\bsndtiny_[12]\b/.test(asmBody) || /\bAMY_TINY_SOUND_ONCE_MODE\b/.test(asmBody) || options.forceTinySound) {
+    used.add("AMY_TINY_SOUND");
+  }
   return used;
+}
+
+function renderTinySoundOnceVariant(asm) {
+  const loopBlock = `    ld l,(iy+0)\n    ld h,(iy+1)\n    ld (iy+2),l\n    ld (iy+3),h\n    jr AMY_TINY_SOUND_NEXT_CODE`;
+  const onceBlock = `    ld a,(iy+6)\n    or a\n    jr z,AMY_TINY_SOUND_LOOP_STREAM\n    xor a\n    ld (iy+6),a\n    ld (ix+0),$FF\n    ret\nAMY_TINY_SOUND_LOOP_STREAM:\n${loopBlock}`;
+  if (!asm.includes(loopBlock)) throw new Error("Tiny Sound once variant could not find the loop terminator.");
+  return `${asm.replace(loopBlock, onceBlock)}\n\nAMY_TINY_SOUND_ONCE_MODE:\n    ld a,$01\n    jr AMY_TINY_SOUND_SET_MODE\nAMY_TINY_SOUND_LOOP_MODE:\n    xor a\nAMY_TINY_SOUND_SET_MODE:\n    ld (AMY_TINYSOUND_SLOT_1+6),a\n    ld (AMY_TINYSOUND_SLOT_2+6),a\n    ret`;
 }
 
 function resolveDependencies(initialSymbols) {
@@ -172,6 +181,7 @@ export function renderAlexisRuntime(asmBody, options = {}) {
     [...(options.excludedSourcePaths || [])].map((path) => String(path).replace(/\\/g, "/"))
   );
   const used = resolveDependencies(collectUsedAlexisSymbols(asmBody, options));
+  const needsTinySoundOnce = /\bAMY_TINY_SOUND_ONCE_MODE\b/.test(asmBody);
   if (!used.size) return "";
 
   const lines = [];
@@ -196,7 +206,9 @@ export function renderAlexisRuntime(asmBody, options = {}) {
     const entry = alexisRuntimeCatalog[symbol];
     if (excludedSourcePaths.has(String(entry.sourcePath || "").replace(/\\/g, "/"))) continue;
     grouped.push(`; from ${entry.sourcePath}`);
-    grouped.push(entry.asm, "");
+    grouped.push(symbol === "AMY_TINY_SOUND" && needsTinySoundOnce
+      ? renderTinySoundOnceVariant(entry.asm)
+      : entry.asm, "");
   }
   lines.push(...grouped);
   return lines.join("\n").trimEnd();
