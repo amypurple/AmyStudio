@@ -1,0 +1,653 @@
+' DEFEND
+' The game by Regena from COMPUTE!'s Gazette, September 1983 ("The
+' Beginner's Corner", pages 120-121), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: Program 3, "Defend For The VIC", transcribed in
+' orig/defend-vic.bas from the scan beside it.
+'
+' The game: four invaders cross the screen from the right. Move your base
+' up and down the left edge and fire along your row: the first invader
+' in it is destroyed for 10 points (another comes from the right); a shot
+' that hits nothing costs 5. An invader that reaches your side ends the
+' game. Past 500 points they come twice as fast.
+'
+' Controls (either joystick): the stick moves the base up and down; the
+' button fires; the button starts and answers. Keypad not used.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23: places are VIC screen offsets. Labels such as l60 are the
+' listing's line numbers.
+'
+' Kept as the listing has them: several invaders may share a row (one
+' shot takes the first of H, I, J, K); a new invader may appear on top of
+' another; your base turns from red to white after its first shot (line
+' 60 flashes its colour red, then white).
+'
+' Liberties taken:
+' - The stick and the button instead of the up-arrow, cursor-down, F7 and
+'   space keys; a held button fires once (the space key repeated).
+' - The base stops one row higher than on the VIC (row 21): the VIC's
+'   last row is in the overscan of a CRT ColecoVision; invaders never
+'   came there anyway.
+' - The breach (line 100) flashes the whole column red (on the VIC only
+'   the characters in it changed colour, mostly spaces).
+' - New title music (Hold the Line) and a credits page; the POKEd sounds
+'   are Tiny Sound effects. "TRY AGAIN" is a YES or NO; NO goes back to
+'   the title.
+' - Timing: the invaders step every 8 frames (every 5 past 500 points),
+'   near the VIC's BASIC.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; no sprites; the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TBaser = 128
+const TBasew = 129
+const TInv = 130
+const THit = 131
+const TBreach = 132
+const SNone = 0
+const NTiles8 = 40
+const SprBytes = 32
+const SndHit = 1
+const SndBreach = 2
+const SndStep = 3
+const SndShot = 4
+const SndTick = 5
+const SndTuneA = 6
+const SndTuneB = 7
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' N your base, Inv the invaders H, I, J, K (VIC offsets), SC the score, TS
+' the high score, D the frames between the invaders' steps, L the count,
+' Bt your base's tile
+u16 N = 242
+u16 Inv[4]
+i16 SC = 0
+i16 TS = 0
+u8 D = 8
+u8 L = 0
+u8 Bt = 0
+' the cell under Bx (OrPeek) and the tile to put there (OrPoke)
+u16 Bx = 0
+u8 Pk = 0
+u8 Tl = 0
+' for the test bot: 1 playing, 2 the breach, 6 yes or no, 7 the end, 8
+' title
+u8 Ph = 0
+u8 Tc = $F4
+
+u16 NumU = 0
+u16 V16 = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 Rw = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table DnSoundTable areas 4
+  nmi off
+  screen on
+
+l200:
+  ' 200-280: the title (POKE 36879,186: light cyan, a red border)
+  Ph = 8
+  Tc = $17
+  TextScreen
+  backdrop medium red
+  print at 9,3, "** DEFEND **"
+  print at 11,5, "BY REGENA"
+  print at 2,8, "PUSH THE STICK UP OR DOWN"
+  print at 2,9, "TO MOVE. PRESS THE BUTTON"
+  print at 2,10, "TO FIRE."
+  print at 2,13, "KEEP THE INVADERS FROM"
+  print at 2,14, "REACHING YOUR SIDE OF THE"
+  print at 2,15, "SCREEN."
+  print at 2,19, "COMPUTE!'S GAZETTE SEPT 1983"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Hold(60)
+  print at 4,17, "PRESS A BUTTON TO START"
+  WaitPress
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+
+l10:
+  ' 10-25 (POKE 36879,107: blue, a cyan border)
+  Ph = 1
+  Tc = $F4
+  TextScreen
+  backdrop cyan
+  N = 242
+  SC = 0
+  D = 8
+  L = 0
+  Bt = TBaser
+  ScoreBar
+  Bx = N
+  Tl = Bt
+  call asm OrPoke
+l22:
+  for K = 0 to 3
+    NewInv(K)
+  next
+  ' 24: four different rows to start
+  for K = 0 to 2
+    V = K + 1
+    for J = V to 3
+      if Inv[K] = Inv[J] then goto l22
+    next
+  next
+  for K = 0 to 3
+    Bx = Inv[K]
+    Tl = TInv
+    call asm OrPoke
+  next
+  ShowScreen
+
+l30:
+  Frame1
+  ReadPad
+  if Press = 1 then goto l60
+  if Stick = 1 then
+    if Up1 = 1 then
+      Bx = N
+      Tl = 32
+      call asm OrPoke
+      N = N - 22
+      goto l90
+    end if
+    if Dn1 = 1 then
+      Bx = N
+      Tl = 32
+      call asm OrPoke
+      N = N + 22
+      goto l90
+    end if
+  end if
+  inc L
+  if L < D then goto l30
+  ' 36-46: the invaders step left; one at your side ends the game
+  L = 0
+  for K = 0 to 3
+    Inv[K] = Inv[K] - 1
+  next
+  for K = 0 to 3
+    V16 = Inv[K] % 22
+    if V16 = 0 then goto l100
+  next
+  play sound SndStep
+  for K = 0 to 3
+    Bx = Inv[K] + 1
+    Tl = 32
+    call asm OrPoke
+  next
+  for K = 0 to 3
+    Bx = Inv[K]
+    Tl = TInv
+    call asm OrPoke
+  next
+  goto l30
+
+l60:
+  ' 60: the shot; your base flashes red, then white
+  play sound SndShot
+  for K = 1 to 3
+    Bx = N
+    Tl = TBaser
+    call asm OrPoke
+    Frame1
+    Tl = TBasew
+    call asm OrPoke
+    Frame1
+  next
+  Bt = TBasew
+  ' 62-78: the first invader in your row
+  V16 = N + 22
+  for K = 0 to 3
+    if Inv[K] > N then
+      if Inv[K] < V16 then goto l72
+    end if
+  next
+  ' 70: a miss
+  SC = SC - 5
+  goto l82
+l72:
+  play sound SndHit
+  Bx = Inv[K]
+  Tl = THit
+  call asm OrPoke
+  Frame1
+  NewInv(K)
+  ' 80
+  SC = SC + 10
+  Tl = 32
+  call asm OrPoke
+l82:
+  ScoreBar
+  if SC > 500 then D = 5
+  goto l30
+
+l90:
+  ' 90-94 (the lowest row is 21 here: see the header)
+  if N < 44 then N = 44
+  if N > 462 then N = 462
+  Bx = N
+  Tl = Bt
+  call asm OrPoke
+  goto l30
+
+l100:
+  ' 100-130: the breach
+  Ph = 2
+  play sound SndBreach
+  for J = 2 to 22
+    V16 = J
+    Bx = V16 * 22
+    inc Bx
+    Tl = TBreach
+    call asm OrPoke
+  next
+  Hold(30)
+  for J = 2 to 22
+    V16 = J
+    Bx = V16 * 22
+    inc Bx
+    call asm OrPeek
+    if Pk = TBreach then
+      Tl = 32
+      call asm OrPoke
+    end if
+  next
+  print at 6,3, "GAME OVER"
+  Hold(90)
+  ' 140-190 (POKE 36879,27: white, a cyan border)
+  Ph = 7
+  Tc = $4F
+  TextScreen
+  backdrop cyan
+  print at 2,3, "YOUR FINAL SCORE WAS"
+  ShowSigned(2, 5, SC)
+  if SC > TS then TS = SC
+  print at 2,8, "HIGH SCORE ="
+  ShowSigned(15, 8, TS)
+  print at 2,12, "TRY AGAIN?"
+  ShowScreen
+  Oy = 14
+  YesNo
+  if Sel = 1 then goto l10
+  goto l200
+
+' NewInv(k) (2: FNR): an invader at the right edge, rows 2 to 21
+sub NewInv(u8 Ki):
+  Rnd16
+  Uq = Rw
+  Uq2 = 20
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  V16 = lowword Uq
+  V16 = V16 * 22
+  Inv[Ki] = V16 + 65
+  return
+end sub
+
+' ScoreBar (82): the top row, SCORE = SC
+sub ScoreBar:
+  fill 32 count 22 at 5,1
+  print at 5,1, "SCORE ="
+  ShowSigned(13, 1, SC)
+  return
+end sub
+
+sub ShowSigned(u8 Qx, u8 Qy, i16 Qv):
+  if Qv < 0 then
+    print at Qx,Qy, "-"
+    inc Qx
+    V16 = 0 - Qv
+  else
+    V16 = Qv
+  end if
+  NumU = V16
+  ShowNum(Qx, Qy)
+  return
+end sub
+
+' ShowNum X, Y: NumU, as many digits as it has
+sub ShowNum(u8 Px, u8 Py):
+  if NumU < 10 then
+    print at Px,Py, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at Px,Py, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at Px,Py, digits$(NumU, 3)
+      else
+        print at Px,Py, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+
+' YesNo: YES or NO on row Oy (Sel 1 = YES)
+sub YesNo:
+  Ph = 6
+  Sel = 1
+  WasBtn = 1
+yn_draw:
+  print at 10,Oy, " YES   NO "
+  X = 10
+  if Sel = 2 then X = 16
+  print at X,Oy, ">"
+yn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    goto yn_draw
+  end if
+  if Press = 0 then goto yn_loop
+  play sound SndTick
+  return
+end sub
+
+data TilePat bytes
+  $18,$C3,$81,$00,$00,$81,$C3,$18
+  $18,$C3,$81,$00,$00,$81,$C3,$18
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $84,$48,$48,$08,$08,$48,$48,$84
+  $F4,$4F,$4F,$0F,$0F,$4F,$4F,$F4
+  $84,$84,$84,$48,$84,$84,$84,$04
+  $84,$48,$84,$48,$84,$48,$84,$48
+  $08,$08,$08,$08,$08,$08,$08,$08
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+DnHit:
+    db $00,$00,$05,$06,$00,$00,$45,$04,$00,$00,$F5,$01,$10
+DnBreach:
+    db $00,$00,$06,$32,$00,$00,$56,$0A,$00,$00,$F6,$01,$10
+DnStep:
+    db $40,$38,$30,$01,$40,$FE,$F0,$01,$50
+DnShot:
+    db $40,$C4,$10,$01,$40,$BD,$10,$01,$40,$B6,$10,$01,$40,$AF,$10,$01,$40,$A8,$10,$01,$40,$A1,$10,$01
+    db $40,$9A,$10,$01,$40,$93,$10,$01,$40,$8C,$10,$01,$40,$85,$10,$01,$40,$7E,$10,$01,$40,$FE,$F0,$01
+    db $50
+DnTick:
+    db $40,$40,$50,$01,$50
+
+DnSoundTable:
+    dw DnHit,$702B
+    dw DnBreach,$702B
+    dw DnStep,$7035
+    dw DnShot,$7035
+    dw DnTick,$7035
+    dw DnTuneMel,$703F
+    dw DnTuneBass,$7049
+; Hold the Line, C (original for this game)
+; Tiny Sound, 6 frames per step
+DnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$1A,$00,$1A,$00,$1F,$00,$23,$00,$26,$00,$00,$00
+    db $23,$00,$00,$00,$1A,$00,$1A,$00,$1F,$00,$23,$00,$26,$00,$23,$00
+    db $1F,$00,$00,$00,$21,$00,$21,$00,$26,$00,$24,$00,$23,$00,$21,$00
+    db $1F,$00,$1E,$00,$1F,$00,$23,$00,$26,$00,$2B,$00,$00,$00,$26,$00
+    db $2B,$00,$00,$00
+    db $FF
+DnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$07,$07,$0E,$07,$07,$07,$0E,$07,$07,$07,$0E,$07
+    db $07,$07,$0E,$07,$07,$07,$0E,$07,$07,$07,$0E,$07,$10,$10,$0B,$10
+    db $10,$10,$0B,$10,$0E,$0E,$09,$0E,$0E,$0E,$09,$0E,$07,$07,$0E,$07
+    db $0E,$0E,$09,$0E,$07,$07,$0E,$07,$07,$07,$0E,$07,$0E,$0E,$09,$0E
+    db $07,$00,$00,$00
+    db $FF
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_Bx)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; OrPeek: Pk = the tile at B
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+}

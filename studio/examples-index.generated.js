@@ -3591,5 +3591,72 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "potholes",
+    "label": "Potholes (September 1983)",
+    "detail": "Joe W. Rocke's COMPUTE!'s Gazette road game: fill potholes across city blocks while avoiding traffic and the pursuing street commissioner.",
+    "projectName": "Potholes",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "maze",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "demon-star",
+    "label": "Demon Star (September 1983)",
+    "detail": "Stan McDaniel's COMPUTE!'s Gazette space game: explore a scrolling universe, fire torpedoes and confront rare Demon Stars and Quasars.",
+    "projectName": "Demon Star",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "space",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "defend",
+    "label": "Defend (September 1983)",
+    "detail": "C. Regena's COMPUTE!'s Gazette Beginner's Corner game: defend a moving base, shoot advancing invaders and survive the accelerating attack.",
+    "projectName": "Defend",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "beginner",
+      "arcade",
+      "shooter",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

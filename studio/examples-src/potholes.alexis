@@ -1,0 +1,842 @@
+' POTHOLES
+' The game by Joe W. Rocke from COMPUTE!'s Gazette, September 1983 (pages
+' 64-67 and 115-116), for the ColecoVision in Amy by Amy Bienvenu. Ported
+' by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: Programs 1 and 2, the VIC-20 version (its custom characters and
+' the game), transcribed in orig/potholes-vic.bas from the scans beside it.
+'
+' The game: your red car fills the potholes of the city's streets, five
+' points each. The street commissioner's blue car wants them back: it
+' waits a while, then drives three blocks' worth at a time (three cells)
+' toward you, stops, looks where you are and sets off again. If the cars
+' meet, or the commissioner runs into something that is not a street, you
+' lose a car (three a game) and the streets are dug up again. Fill all
+' 150 for a bonus of twenty times the pothole value; then each pothole is
+' worth five more.
+'
+' Controls (either joystick): hold the stick to drive (let go and the car
+' stops); a turn into a block is ignored and the car keeps going; the
+' button answers in the menus. Keypad not used.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23: places are VIC screen offsets. Labels such as l1100 are the
+' listing's line numbers.
+'
+' Kept as the listing has them: the commissioner restores what was under
+' his car (the article says he leaves new potholes, the listing does not);
+' he aims only along the longer distance to you; a crash digs up all the
+' potholes again but keeps the score.
+'
+' Liberties taken:
+' - The stick instead of the keys U, M, H and K; Y or N is chosen with the
+'   stick and the button; N goes back to the title.
+' - The bottom line (the pothole value and the cars left) is moved into
+'   the side panel: on the VIC it was the screen's last row, which a CRT
+'   ColecoVision hides in the overscan.
+' - A title page with credits and new music (Road Crew Rag); the listing
+'   started the game at once. The POKEd sounds are Tiny Sound effects.
+' - Timing: a turn (both cars) is 5 frames, near the VIC's BASIC.
+'
+' House rules kept: text in columns 2-29 and rows 1-22; no sprites; the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const TWall = 128
+const TPot = 129
+const TRedup = 130
+const TReddn = 131
+const TRedlf = 132
+const TRedrt = 133
+const TBluup = 134
+const TBludn = 135
+const TBlulf = 136
+const TBlurt = 137
+const TStarm = 138
+const TStarw = 139
+const SNone = 0
+const NTiles8 = 96
+const SprBytes = 32
+const SndCrash = 1
+const SndBlop = 2
+const SndBonus = 3
+const SndOver = 4
+const SndTick = 5
+const SndTuneA = 6
+const SndTuneB = 7
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' A your car, B the commissioner's, A1 and B1 their next cells; HA and HB
+' their directions (0 up, 1 down, 2 left, 3 right, 4 none); UN what is
+' under the commissioner; CN his count; S the score, HS the high score, TE
+' a pothole's value, PO the potholes left, CA the cars left, BO the bonus
+u16 A = 0
+u16 B = 0
+u16 A1 = 0
+u16 B1 = 0
+u8 HA = 4
+u8 HB = 4
+u8 UN = 0
+i8 CN = 20
+i16 HX = 0
+i16 HY = 0
+u16 S = 0
+u16 HS = 0
+u8 TE = 5
+u8 PO = 150
+u8 CA = 3
+u16 BO = 0
+u8 OV = 0
+u8 D = 0
+u8 P = 0
+' the cell under Bx (OrPeek) and the tile to put there (OrPoke)
+u16 Bx = 0
+u8 Pk = 0
+u8 Tl = 0
+' for the test bot: 1 playing, 2 crash, 3 bonus, 6 yes or no, 7 game
+' over, 8 title
+u8 Ph = 0
+u8 Tc = $4F
+
+u16 NumU = 0
+u16 V16 = 0
+i16 W16 = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 Rw = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table PhSoundTable areas 4
+  nmi off
+  screen on
+
+title:
+  Ph = 8
+  TextScreen
+  backdrop cyan
+  print at 8,3, "** POTHOLES **"
+  print at 8,5, "BY JOE W. ROCKE"
+  print at 2,8, "FILL THE CITY'S POTHOLES"
+  put char TPot at 27,8
+  print at 2,9, "BY DRIVING OVER THEM IN YOUR"
+  print at 2,10, "RED CAR"
+  put char TReddn at 10,10
+  print at 11,10, ", AND KEEP CLEAR OF"
+  print at 2,11, "THE STREET COMMISSIONER"
+  put char TBluup at 26,11
+  print at 27,11, "."
+  print at 2,13, "HOLD THE STICK TO DRIVE."
+  print at 6,16, "PRESS A BUTTON"
+  print at 2,19, "COMPUTE!'S GAZETTE SEPT 1983"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  WaitPress
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  ' 20000-20050
+  CA = 3
+  S = 0
+  TE = 5
+  OV = 0
+
+l1010:
+  CityMap
+  Ph = 1
+l1020:
+  Hold(5)
+  Car1100
+  Car1200
+  if OV = 1 then goto l1700
+  if PO = 0 then goto l1500
+  goto l1020
+
+l1500:
+  ' the bonus
+  Ph = 3
+  Car1100
+  print at 21,17, "BONUS"
+  V16 = TE
+  BO = V16 * 20
+  S = S + BO
+  TE = TE + 5
+  NumU = BO
+  ShowNum(21, 18)
+  play sound SndBonus
+  Hold(150)
+  goto l1010
+
+l1700:
+  ' a crash
+  Ph = 2
+  Car1100
+  Bx = B
+  Tl = 32
+  call asm OrPoke
+  ' 3200: the star flashes while the noise fades
+  play sound SndCrash
+  Bx = A
+  for K = 1 to 16
+    Tl = TStarm
+    call asm OrPoke
+    Hold(2)
+    Tl = TStarw
+    call asm OrPoke
+    Hold(2)
+  next
+  Tl = TStarm
+  call asm OrPoke
+  Hold(20)
+  dec CA
+  OV = 0
+  if CA = 0 then goto l4000
+  goto l1010
+
+l4000:
+  ' game over
+  Ph = 7
+  play sound SndOver
+  for Y = 2 to 20
+    fill 32 count 13 at 6,Y
+  next
+  print at 6,10, "* GAME OVER *"
+  if S > HS then
+    HS = S
+    print at 7,13, "TOP SCORE..."
+  end if
+  NumU = HS
+  ShowRight(11)
+  Hold(60)
+  print at 7,16, "TRY AGAIN?"
+  Oy = 18
+  YesNoMap
+  if Sel = 2 then goto title
+  ' 6100
+  CA = 3
+  S = 0
+  TE = 5
+  goto l1010
+
+' CityMap (10000-10210): the streets, their potholes, the panel, the cars
+sub CityMap:
+  Tc = $4F
+  TextScreen
+  backdrop cyan
+  ' the VIC's white screen
+  for Y = 1 to 23
+    fill 32 count 22 at 5,Y
+  next
+  print at 6,1, "** POTHOLES **"
+  fill TWall count 15 at 5,2
+  for I = 0 to 5
+    Y = I * 3
+    Y = Y + 3
+    put char TWall at 5,Y
+    fill TPot count 13 at 6,Y
+    put char TWall at 19,Y
+    for J = 1 to 2
+      inc Y
+      for X = 0 to 4
+        K = X * 3
+        K = K + 5
+        put char TWall at K,Y
+        inc K
+        put char TPot at K,Y
+        inc K
+        put char TWall at K,Y
+      next
+      put char TWall at 19,Y
+    next
+  next
+  put char TWall at 5,21
+  fill TPot count 13 at 6,21
+  put char TWall at 19,21
+  fill TWall count 15 at 5,22
+  ' the panel
+  print at 21,4, "SCORE"
+  NumU = S
+  ShowRight(5)
+  print at 22,9, "HIGH"
+  print at 21,10, "SCORE"
+  NumU = HS
+  ShowRight(11)
+  ' (10070, the VIC's bottom line, here in the panel)
+  put char TPot at 21,13
+  print at 22,13, "="
+  NumU = TE
+  ShowRight(13)
+  print at 22,13, "="
+  put char TRedrt at 21,14
+  NumU = CA
+  ShowRight(14)
+  ' 10130-10200
+  A = 45
+  B = 453
+  UN = TPot
+  Bx = A
+  Tl = TReddn
+  call asm OrPoke
+  Bx = B
+  Tl = TBluup
+  call asm OrPoke
+  HA = 4
+  HB = 4
+  PO = 150
+  CN = 20
+  ShowScreen
+  return
+end sub
+
+' ShowRight(row): NumU right-aligned to column 26 (the VIC's last)
+sub ShowRight(u8 Ry):
+  fill 32 count 5 at 22,Ry
+  if NumU < 10 then
+    print at 26,Ry, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at 25,Ry, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at 24,Ry, digits$(NumU, 3)
+      else
+        if NumU < 10000 then
+          print at 23,Ry, digits$(NumU, 4)
+        else
+          print at 22,Ry, digits$(NumU, 5)
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Ahead(dir): V16 = the cell next to V16 in direction dir (M())
+sub Ahead(u8 Dr):
+  if Dr = 0 then V16 = V16 - 22
+  if Dr = 1 then V16 = V16 + 22
+  if Dr = 2 then dec V16
+  if Dr = 3 then inc V16
+  return
+end sub
+
+' CarTile(dir, blue): Tl = the car facing dir (CH())
+sub CarTile(u8 Dr, u8 Blue):
+  Tl = TRedup + Dr
+  if Blue = 1 then Tl = TBluup + Dr
+  return
+end sub
+
+' Car1100 (1100-1120): your car moves; the stick; the cell ahead
+sub Car1100:
+  if HA <> 4 then
+    Bx = A
+    Tl = 32
+    call asm OrPoke
+    A = A1
+    Bx = A
+    CarTile(HA, 0)
+    call asm OrPoke
+  end if
+  Stick300
+  Ahead500
+  return
+end sub
+
+' Stick300 (300-370): a direction held, unless a block is that way
+sub Stick300:
+  ReadPad
+  P = 4
+  if Up1 = 1 then P = 0
+  if Dn1 = 1 then P = 1
+  if Lf1 = 1 then P = 2
+  if Rt1 = 1 then P = 3
+  if P = 4 then
+    HA = 4
+    return
+  end if
+  V16 = A
+  Ahead(P)
+  Bx = V16
+  call asm OrPeek
+  if Pk = TWall then return
+  HA = P
+  return
+end sub
+
+' Ahead500 (500-630): what is ahead of your car
+sub Ahead500:
+  if HA = 4 then return
+  V16 = A
+  Ahead(HA)
+  A1 = V16
+  Bx = A1
+  call asm OrPeek
+  D = Pk
+  if D = 32 then return
+  if D = TPot then
+    ' 560-580: filled
+    play sound SndBlop
+    V16 = TE
+    S = S + V16
+    dec PO
+    NumU = S
+    ShowRight(5)
+    return
+  end if
+  if D = TWall then
+    HA = 4
+    return
+  end if
+  OV = 1
+  return
+end sub
+
+' Car1200 (1200-1230): the commissioner moves, counts, aims, looks ahead
+sub Car1200:
+  if HB <> 4 then
+    Bx = B
+    Tl = UN
+    call asm OrPoke
+    B = B1
+    Bx = B
+    call asm OrPeek
+    UN = Pk
+    CarTile(HB, 1)
+    call asm OrPoke
+  end if
+  dec CN
+  Aim400
+  Look600
+  return
+end sub
+
+' Aim400 (400-460)
+sub Aim400:
+  if HB <> 4 then
+    V16 = B
+    Ahead(HB)
+    B1 = V16
+  end if
+  if CN > 0 then return
+  if CN = 0 then
+    HB = 4
+    return
+  end if
+  ' 405: the rows (INT((offset + 1) / 22), as the listing)
+  V16 = B + 1
+  V16 = V16 / 22
+  HY = V16
+  V16 = A + 1
+  V16 = V16 / 22
+  W16 = V16
+  HY = HY - W16
+  ' 410
+  HX = B
+  W16 = A
+  HX = HX - W16
+  W16 = HY * 22
+  HX = HX - W16
+  CN = 3
+  ' 420: the longer way
+  V16 = abs(HX)
+  Rw = abs(HY)
+  if V16 > Rw then goto a450
+  if HY >= 0 then
+    HB = 0
+  else
+    HB = 1
+  end if
+  return
+a450:
+  if HX > 0 then
+    HB = 2
+  else
+    HB = 3
+  end if
+  return
+end sub
+
+' Look600 (600-630): the commissioner's next cell must be a street
+sub Look600:
+  if HB = 4 then return
+  V16 = B
+  Ahead(HB)
+  B1 = V16
+  Bx = B1
+  call asm OrPeek
+  if Pk = 32 then return
+  if Pk = TPot then return
+  OV = 1
+  return
+end sub
+
+' YesNoMap: YES or NO on row Oy inside the map (Sel 1 = YES)
+sub YesNoMap:
+  Ph = 6
+  Sel = 1
+  WasBtn = 1
+ynm_draw:
+  print at 7,Oy, " YES  NO "
+  X = 7
+  if Sel = 2 then X = 12
+  print at X,Oy, ">"
+ynm_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    goto ynm_draw
+  end if
+  if Press = 0 then goto ynm_loop
+  play sound SndTick
+  return
+end sub
+
+' ShowNum X, Y: NumU, as many digits as it has
+sub ShowNum(u8 Px, u8 Py):
+  if NumU < 10 then
+    print at Px,Py, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at Px,Py, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at Px,Py, digits$(NumU, 3)
+      else
+        print at Px,Py, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+
+data TilePat bytes
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$00,$18,$18,$18,$00,$00,$00
+  $54,$83,$54,$10,$10,$45,$01,$45
+  $45,$01,$45,$10,$10,$54,$83,$54
+  $0E,$E4,$B1,$01,$01,$B1,$E4,$0E
+  $70,$D8,$8D,$80,$80,$8D,$D8,$70
+  $54,$83,$54,$10,$10,$45,$01,$45
+  $45,$01,$45,$10,$10,$54,$83,$54
+  $0E,$E4,$B1,$01,$01,$B1,$E4,$0E
+  $70,$D8,$8D,$80,$80,$8D,$D8,$70
+  $00,$54,$38,$01,$38,$54,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $AF,$FA,$AF,$FA,$AF,$FA,$AF,$FA
+  $0F,$0F,$AF,$AF,$AF,$0F,$0F,$0F
+  $8F,$F8,$8F,$8F,$8F,$F8,$F8,$F8
+  $F8,$F8,$F8,$8F,$8F,$8F,$F8,$8F
+  $8F,$8F,$F8,$F8,$F8,$F8,$8F,$8F
+  $8F,$F8,$F8,$F8,$F8,$F8,$F8,$8F
+  $4F,$F4,$4F,$4F,$4F,$F4,$F4,$F4
+  $F4,$F4,$F4,$4F,$4F,$4F,$F4,$4F
+  $4F,$4F,$F4,$F4,$F4,$F4,$4F,$4F
+  $4F,$F4,$F4,$F4,$F4,$F4,$F4,$4F
+  $0F,$DF,$DF,$FD,$DF,$DF,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+PhCrash:
+    db $00,$00,$05,$02,$00,$00,$06,$02,$00,$00,$15,$02,$00,$00,$16,$02,$00,$00,$25,$02,$00,$00,$26,$02
+    db $00,$00,$35,$02,$00,$00,$36,$02,$00,$00,$45,$02,$00,$00,$46,$02,$00,$00,$55,$02,$00,$00,$56,$02
+    db $00,$00,$65,$02,$00,$00,$66,$02,$00,$00,$75,$02,$00,$00,$76,$02,$00,$00,$85,$02,$00,$00,$86,$02
+    db $00,$00,$95,$02,$00,$00,$96,$02,$00,$00,$A5,$02,$00,$00,$A6,$02,$00,$00,$B5,$02,$00,$00,$B6,$02
+    db $00,$00,$C5,$02,$00,$00,$C6,$02,$00,$00,$D5,$02,$00,$00,$D6,$02,$00,$00,$E5,$02,$00,$00,$E6,$02
+    db $00,$00,$F5,$02,$00,$00,$F6,$02,$10
+PhBlop:
+    db $40,$46,$10,$02,$40,$06,$12,$03,$40,$FE,$F0,$01,$50
+PhBonus:
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02,$40,$C4,$10,$03,$40,$9A,$10,$02
+    db $40,$FE,$F0,$01,$50
+PhOver:
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01,$40,$47,$12,$01,$40,$EB,$11,$01
+    db $40,$47,$12,$01,$40,$EB,$11,$01,$40,$FE,$F0,$01,$50
+PhTick:
+    db $40,$40,$50,$01,$50
+
+PhSoundTable:
+    dw PhCrash,$702B
+    dw PhBlop,$7035
+    dw PhBonus,$7035
+    dw PhOver,$7035
+    dw PhTick,$7035
+    dw PhTuneMel,$703F
+    dw PhTuneBass,$7049
+; Road Crew Rag, C (original for this game)
+; Tiny Sound, 6 frames per step
+PhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$23,$00,$26,$23,$1F,$00,$21,$23,$00,$00,$22,$23
+    db $26,$00,$00,$00,$28,$00,$26,$23,$1F,$00,$21,$00,$23,$00,$1F,$00
+    db $1C,$00,$00,$00,$24,$00,$28,$24,$21,$00,$23,$24,$26,$00,$25,$26
+    db $2A,$00,$28,$26,$23,$00,$21,$00,$1F,$00,$1A,$00,$1F,$00,$23,$00
+    db $2B,$00,$00,$00
+    db $FF
+PhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$07,$0E,$0B,$0E,$07,$0E,$0B,$0E,$0E,$15,$12,$15
+    db $07,$0E,$0B,$0E,$0C,$13,$10,$13,$07,$0E,$0B,$0E,$09,$10,$0C,$10
+    db $0E,$15,$12,$15,$0C,$13,$10,$13,$0C,$13,$10,$13,$0B,$12,$0E,$12
+    db $0B,$12,$0E,$12,$09,$10,$0C,$10,$0E,$15,$12,$15,$07,$0E,$0B,$0E
+    db $07,$00,$00,$00
+    db $FF
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_Bx)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; OrPeek: Pk = the tile at B
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+}
