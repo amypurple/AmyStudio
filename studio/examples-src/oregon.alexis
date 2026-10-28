@@ -1,0 +1,2764 @@
+' OREGON
+' MECC's OREGON (Elementary Volume 6, Apple II; the disk's version "LAST
+' UPDATE: 80/8/12"), after the 1971 game by Don Rawitsch, Bill Heinemann
+' and Paul Dillenberger, for the ColecoVision in Amy by Amy Bienvenu.
+' Ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: the disk image MECC-A725 Elementary Vol. 6 v1.2: the programs
+' OREGON (the setup and the shop) and OREGONA (the trip), listed from the
+' disk in orig/ (orig/applesoft.py), and the shape table OREGONMAP (the map,
+' the wagon, the trees, the deer, the riders, the wolves, the bullet, the
+' letters), used byte for byte (art.py). Labels such as l3000 are the
+' listing's line numbers.
+'
+' The trip: from Independence, Missouri, to Oregon City, 2040 miles in
+' 1847, one fortnight a turn, with $700 for oxen, food, bullets, clothing
+' and supplies. Each turn: the map, then hunt, stop at a fort (every
+' other turn) or go on; eat poorly, moderately or well; riders or one of
+' sixteen events; past 1050 miles the mountains, the South Pass and the
+' Blue Mountains.
+'
+' Controls (either joystick): up and down choose in a list, the button
+' chooses; an amount is set with the stick (up/down 1, right/left 10) and
+' the button; on a hunt the button shoots. Keypad not used.
+'
+' Kept as the listing has them (these are how the game plays):
+' - The arithmetic: miles and supplies keep their fractions until the
+'   status line rounds them down; the map moves the wagon INT(M/24.8)
+'   steps and, as its FOR loop starts at the last step again, one more
+'   each turn, so the trail ends a little before 2040 miles.
+' - Past 1050 miles the mountains come every turn: line 4720 tests
+'   RND(-1), which is always tiny.
+' - Cold without enough clothes is followed by the hail storm (line 4530
+'   cannot reach its GOTO 6300); a bad illness cannot kill; missing every
+'   wolf goes on to the eating question; a "bad illness" after a blizzard
+'   goes back to the mountains.
+' - A rider hit ends the fight before the shot is counted (40 bullets a
+'   shot, 50 back); the ace marksman gets the fewest shots.
+'
+' Liberties taken:
+' - Choices and amounts with the stick instead of typed numbers; amounts
+'   go from 0 to the money left, so the negative purchases the listing
+'   accepted are not possible. "PRESS SPACE BAR" says "PRESS A BUTTON".
+' - Text rewrapped for 28 columns; the status line says CLOTH.
+' - RND: a 16-bit generator. RND(-1)'s reseeding (line 4720 and 4790)
+'   is not reproduced (see the README).
+' - After December 20 the date stays at December 20 (the listing reads
+'   past its 20 dates).
+' - Apple hi-res columns 0-279 are drawn on 0-255 (the letters keep their
+'   width).
+' - The song plays once on the intro pages (the listing loops it).
+'
+' House rules kept: columns 2-29, rows 1-22 on text screens (the map and
+' the hunt are pictures, as on the Apple); the frame loop is protected
+' from the NMI and every screen is drawn with the NMI off after a wait.
+
+const SndHush = 1
+const SndBell = 2
+const SndShot = 3
+const SndTick = 4
+const SndTuneA = 5
+const SndTuneB = 6
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the trip, named after the listing's variables ---------------------
+' A oxen, F food, B bullets, C clothing, T cash: whole numbers
+i16 Ox = 0
+i16 Fd = 0
+i32 Bu = 0
+i16 Cl = 0
+i16 Ca = 0
+' M miles and M1 misc. supplies, in 65536ths (RND is a whole number of
+' 65536ths, so every expression of the listing is exact)
+i32 Mi = 0
+i32 Md = 0
+' D9 marksman 1-5, D3 the turn (1 = March 29), X1 the fort every other turn
+u8 Sk = 0
+u8 Tn = 0
+u8 Fx = 0
+' K8 injured, S4 seriously ill, E how well you eat
+u8 Inj = 0
+u8 Ill = 0
+' the doctor is due this turn (kept across the map)
+u8 Doc = 0
+u8 Eat = 0
+' S5 the riders' mood, T1 tactics, B8 bandits (1) or wild animals (2)
+i8 Fr = 0
+u8 Tac = 0
+u8 B8 = 0
+' L1 a blizzard this turn, C1 not enough clothes, F1 F2 the passes, M9
+u8 Bz = 0
+u8 Cd1 = 0
+u8 Sp1 = 0
+u8 Sp2 = 0
+u8 M9 = 0
+' the wagon on the map (P1, Q1, P2, Q2, W4, IG)
+u16 Wx = 261
+u8 Wy = 99
+u8 Wdx = 0
+u8 Wdy = 0
+u16 W4 = 0
+u8 Ig = 0
+' the hunt: S1 hits, T7 shots, HS, A1 A2 the animal's two drawings, PK
+' its place, KP the bullet's, SH a bullet in the air
+u8 Hits = 0
+u8 Shots = 0
+u8 Hs = 0
+u8 An1 = 0
+u8 An2 = 0
+u16 Pk = 0
+u8 Kp = 0
+u8 Sh = 0
+u8 Hres = 0
+' a choice (X), an amount
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u16 Nv = 0
+u16 Nmax = 0
+u8 Nx = 0
+u8 Ny = 0
+' the last amounts typed at the fort (F7, A7, C7, M7)
+u16 F7 = 0
+
+' --- drawing (OrDraw, OrText) -------------------------------------------
+u8 Sn = 0
+i16 Sx = 0
+i16 Sy = 0
+u8 Sm = 1
+u8 Su = 0
+u8 Lb = 0
+i16 Cx = 0
+i16 Cy = 0
+u16 Sq = 0
+u16 Tp = 0
+u8 Bmp = 0
+
+' --- random numbers ------------------------------------------------------
+u16 Rs = $ACE1
+u16 Rw = 0
+u16 Rt = 0
+u16 Rn = 0
+u16 Rv = 0
+
+' --- scratch ---------------------------------------------------------------
+i32 Q = 0
+i32 Q2 = 0
+i32 Q2a = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 NumU = 0
+u16 G = 0
+u16 Gend = 0
+u16 V16 = 0
+' a loss: K = Kc + Km*RND (LoseMi, LoseMd)
+u8 Km = 0
+u8 Kc = 0
+u8 Ly = 8
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 D1 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Tick = 0
+' for the test bot: what the game waits for (1 a button, 2 a choice, 3 an
+' amount, 4 yes or no, 5 the map, 6 a hunt) and the random state a hunt
+' left
+u8 Ask = 0
+u8 Latch = 0
+u8 FireWas = 0
+u8 Fv = 0
+u16 HuntRs = 0
+' the songs' steps and the shapes' points use the VDP between frames
+u8 Wt = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table OrSoundTable areas 4
+  nmi off
+  HideSprites
+  screen on
+
+' ---------------------------------------------------------------------------
+' OREGON: the title, the story, the shop
+
+l10:
+  TextScreen
+  print at 10,2, "O R E G O N"
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 2316
+  TzOn = 1
+  print at 2,4, "THIS PROGRAM SIMULATES A"
+  print at 2,5, "TRIP OVER THE OREGON TRAIL"
+  print at 2,6, "FROM INDEPENDENCE, MISSOURI"
+  print at 2,7, "TO OREGON CITY, OREGON IN"
+  print at 2,8, "1847."
+  print at 2,10, "YOUR FAMILY OF FIVE WILL"
+  print at 2,11, "COVER THE 2040 MILE TRAIL IN"
+  print at 2,12, "5 OR 6 MONTHS --"
+  print at 6,14, "IF YOU MAKE IT ALIVE!"
+  print at 2,16, "YOU HAD SAVED $900 TO SPEND"
+  print at 2,17, "FOR THE TRIP, AND YOU'VE"
+  print at 2,18, "JUST PAID $200 FOR A WAGON."
+  ShowScreen
+  GoOn
+  ' (the button press seeds the random numbers)
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $ACE1
+l270:
+  TextScreen
+  print at 2,1, "OXEN - YOU CAN SPEND"
+  print at 2,2, "  $200-$300 ON YOUR TEAM."
+  print at 2,3, "  THE MORE YOU SPEND, THE"
+  print at 2,4, "  FASTER YOU WILL GO,"
+  print at 2,5, "  BECAUSE YOU WILL HAVE"
+  print at 2,6, "  BETTER ANIMALS."
+  print at 2,8, "FOOD - THE MORE YOU HAVE,"
+  print at 2,9, "  THE LESS CHANCE THERE IS"
+  print at 2,10, "  OF SICKNESS."
+  print at 2,12, "AMMUNITION - $1 BUYS A BELT"
+  print at 2,13, "  OF 50 BULLETS. (YOU'LL BE"
+  print at 2,14, "  SHOOTING AT ANIMALS AND"
+  print at 2,15, "  BANDITS.)"
+  print at 2,17, "CLOTHING - THIS IS VERY"
+  print at 2,18, "  IMPORTANT FOR THE COLD"
+  print at 2,19, "  WEATHER YOU WILL ENCOUNTER"
+  print at 2,20, "  CROSSING THE MOUNTAINS."
+  ShowScreen
+  GoOn
+  TextScreen
+  print at 2,1, "MISCELLANEOUS SUPPLIES -"
+  print at 2,2, "  THIS INCLUDES MEDICINE AND"
+  print at 2,3, "  OTHER THINGS YOU WILL"
+  print at 2,4, "  NEED."
+  print at 2,7, "YOU CAN SPEND ALL OF YOUR"
+  print at 2,8, "MONEY BEFORE YOU START YOUR"
+  print at 2,9, "TRIP, OR AT FORTS ALONG THE"
+  print at 2,10, "WAY. (ITEMS COST MORE AT THE"
+  print at 2,11, "FORTS.)"
+  print at 2,13, "YOU CAN HUNT ON YOUR WAY TO"
+  print at 2,14, "OREGON. WHEN YOU DO HUNT,"
+  print at 2,15, "YOU WILL BE SHOOTING AT"
+  print at 2,16, "ANIMALS AS THEY MOVE ACROSS"
+  print at 2,17, "THE SCREEN BY PRESSING A"
+  print at 2,18, "BUTTON."
+  print at 11,19, "GOOD LUCK!"
+  ShowScreen
+  GoOn
+l370:
+  TextScreen
+  print at 2,3, "HOW GOOD A SHOT ARE YOU?"
+  print at 4,5, "1. ACE MARKSMAN"
+  print at 4,6, "2. GOOD SHOT"
+  print at 4,7, "3. FAIR TO MIDDLIN'"
+  print at 4,8, "4. NEED PRACTICE"
+  print at 4,9, "5. SHAKY KNEES"
+  print at 2,11, "CHOOSE ONE OF THE ABOVE --"
+  print at 2,12, "THE BETTER YOU CLAIM YOU"
+  print at 2,13, "ARE, THE LESS TIMES YOU WILL"
+  print at 2,14, "HAVE TO SHOOT AT THE ANIMAL."
+  ShowScreen
+  Oy = 5
+  Nopt = 5
+  PickOne
+  Sk = Sel
+  TzOn = 0
+  mute all
+
+l800:
+  ' the shop: each amount, then the sum
+  TextScreen
+  print at 2,1, "HOW MUCH DO YOU WANT TO"
+  print at 2,2, "SPEND ON-"
+  print at 2,4, "OXEN"
+  print at 2,6, "FOOD"
+  print at 2,8, "AMMUNITION"
+  print at 2,10, "CLOTHING"
+  print at 2,12, "MISC. SUPPLIES"
+  ShowScreen
+l830:
+  Nx = 17
+  Ny = 4
+  Nmax = 700
+  Nv = 0
+  AskAmt
+  if Nv < 200 then goto l834
+  if Nv > 300 then goto l834
+  goto l836
+l834:
+  print at 2,17, "SPEND FROM 200 TO 300"
+  print at 2,18, "DOLLARS..."
+  Pause1
+  goto l830
+l836:
+  ClrRows17
+  Ox = Nv
+  Ny = 6
+  Nv = 0
+  AskAmt
+  Fd = Nv
+  Ny = 8
+  Nv = 0
+  AskAmt
+  Bu = Nv
+  Ny = 10
+  Nv = 0
+  AskAmt
+  Cl = Nv
+  Ny = 12
+  Nv = 0
+  AskAmt
+  Md = Nv
+  ' the sum (lines 876-890)
+  print at 17,12, "+"
+  print at 17,13, "-----"
+  Ca = Ox + Fd
+  V16 = lowword Bu
+  Ca = Ca + V16
+  Ca = Ca + Cl
+  V16 = lowword Md
+  Ca = Ca + V16
+  print at 10,14, "TOTAL="
+  print at 17,14, "$"
+  NumU = Ca
+  print at 18,14, width$(NumU, 4)
+  print at 4,15, "SAVED      $ 700"
+  print at 4,16, "SPENT     -$"
+  print at 16,16, width$(NumU, 4)
+  print at 15,17, "-----"
+  Ca = 700 - Ca
+  if Ca >= 0 then
+    print at 4,18, "BALANCE    $"
+    NumU = Ca
+  else
+    print at 4,18, "BALANCE   -$"
+    V16 = 0 - Ca
+    NumU = V16
+  end if
+  print at 16,18, width$(NumU, 4)
+  if Ca >= 0 then goto l900
+  print at 2,19, "YOU'VE SPENT TOO MUCH MONEY!"
+  print at 2,20, "YOU ONLY HAVE $700 TO SPEND."
+  print at 2,21, "TRY AGAIN..."
+  GoOn
+  goto l800
+l900:
+  print at 2,20, "YOU HAVE $"
+  NumU = Ca
+  X = 14
+  if NumU > 9 then inc X
+  if NumU > 99 then inc X
+  if X = 14 then print at 12,20, digits$(NumU, 1)
+  if X = 15 then print at 12,20, digits$(NumU, 2)
+  if X = 16 then print at 12,20, digits$(NumU, 3)
+  print at X,20, "DOLLARS LEFT"
+  print at 2,21, "TO SPEND ALONG THE WAY..."
+  GoOn
+  TextScreen
+  print at 2,12, "PREPARING FOR THE JOURNEY..."
+  ShowScreen
+  Pause1
+
+' ---------------------------------------------------------------------------
+' OREGONA: the trip (line 110 on)
+
+  ' B became bullets: $1 buys 50
+  Bu = Bu * 50
+  Q = Md
+  Md = Q << 16
+  Fx = 1
+  Tn = 0
+  Mi = 0
+  Wx = 261
+  Wy = 99
+  W4 = 0
+  Ig = 0
+  Inj = 0
+  Ill = 0
+  Eat = 0
+  Sp1 = 0
+  Sp2 = 0
+  M9 = 0
+  B8 = 0
+
+l190:
+  inc Tn
+  ' 200: the doctor, for an injury or a serious illness
+  Doc = Inj | Ill
+  if Doc = 1 then
+    Ca = Ca - 20
+    if Ca < 0 then goto l5080
+  end if
+  ' 201: the map
+  MapScreen
+  if Ig = 1 then goto l6050
+  TextScreen
+  if Doc = 1 then
+    Inj = 0
+    Ill = 0
+    print at 2,7, "THE DOCTOR'S BILL IS $20."
+    ShowStatus
+  end if
+  if Fd < 13 then
+    print at 2,8, "YOU'D BETTER DO SOME HUNTING"
+    print at 2,9, "OR BUY SOME FOOD AND SOON!"
+  end if
+  ShowStatus
+  DateLine
+  ShowScreen
+  if Fx = 1 then
+    Fx = 0
+  else
+    Fx = 1
+  end if
+l210:
+  if Fx = 1 then goto l270t
+  print at 2,11, "DO YOU WANT TO-"
+  print at 4,13, "1. STOP AT THE NEXT FORT"
+  print at 4,14, "2. HUNT"
+  print at 4,15, "3. CONTINUE"
+  Oy = 13
+  Nopt = 3
+  PickOne
+  goto l290
+l270t:
+  print at 2,11, "DO YOU WANT TO-"
+  print at 4,13, "1. HUNT"
+  print at 4,14, "2. CONTINUE"
+  Oy = 13
+  Nopt = 2
+  PickOne
+  inc Sel
+l290:
+  if Sel = 2 then
+    if Bu <= 40 then
+      print at 2,20, "TOUGH-YOU NEED MORE BULLETS"
+      print at 2,21, "TO HUNT!"
+      GoOn
+      ' (500 ends in HOME: the menu comes back alone on the screen)
+      TextScreen
+      ShowScreen
+      goto l210
+    end if
+  end if
+  An1 = 2
+  An2 = 3
+  if Sel = 1 then goto l350
+  if Sel = 2 then goto l1000
+  goto l3000
+
+l350:
+  ' the fort: what was paid buys two thirds as much
+  ClrMsg
+  ClrLow
+  print at 2,7, "HOW MUCH DO YOU WANT TO"
+  print at 2,8, "SPEND ON-"
+  print at 2,11, "FOOD?"
+  Nx = 17
+  Ny = 11
+  FortAmount
+  Uq = F7
+  Uq = Uq << 1
+  Uq = Uq / 3
+  V16 = lowword Uq
+  Fd = Fd + V16
+  ShowStatus
+  ClrLow
+  print at 2,11, "AMMUNITION?"
+  Ny = 11
+  FortAmount
+  ' B = INT(B + 2/3*A7*50)
+  Uq = F7
+  Uq = Uq * 100
+  Uq = Uq / 3
+  Q = Uq
+  Bu = Bu + Q
+  ShowStatus
+  ClrLow
+  print at 2,11, "CLOTHES?"
+  Ny = 11
+  FortAmount
+  Uq = F7
+  Uq = Uq << 1
+  Uq = Uq / 3
+  V16 = lowword Uq
+  Cl = Cl + V16
+  ShowStatus
+  ClrLow
+  print at 2,11, "MISCELLANEOUS?"
+  Ny = 11
+  FortAmount
+  Uq = F7
+  Uq = Uq << 1
+  Uq = Uq / 3
+  Q = Uq
+  Q = Q << 16
+  Md = Md + Q
+  ShowStatus
+  goto l3000
+
+l1000:
+  ' a hunt: the food is S1 times 5 to 14, the bullets 8 a claimed skill
+  HuntRun
+  if Hres = 1 then goto l3170
+l1430:
+  if An1 = 5 then goto l3170
+  Rn = 10
+  RndK
+  V = Rv + 5
+  V16 = V
+  V16 = V16 * Hits
+  Fd = Fd + V16
+  V = Sk << 3
+  Q = V
+  Bu = Bu - Q
+
+l3000:
+  TextScreen
+  ShowStatus
+  DateLine
+  ShowScreen
+  if Fd < 13 then goto l5060
+  print at 2,10, "DO YOU WANT TO EAT-"
+  print at 4,12, "1. POORLY"
+  print at 4,13, "2. MODERATELY"
+  print at 4,14, "3. WELL"
+  Oy = 12
+  Nopt = 3
+  PickOne
+  Eat = Sel
+  ' 3020: F = F - 8 - 5*E
+  V = Eat * 5
+  V = V + 8
+  V16 = V
+  Fd = Fd - V16
+  if Fd >= 0 then goto l3050
+  Fd = Fd + V16
+  print at 2,21, "YOU CAN'T EAT THAT WELL!"
+  GoOn
+  goto l3000
+l3050:
+  ' M = M + 200 + (A-220)/5 + INT(RND*10), then INT
+  Q = Ox
+  Q = Q - 220
+  Q2 = Q / 5
+  ' (whole division rounds toward zero; INT rounds down)
+  Q = Q2 * 5
+  Q2a = Ox
+  Q2a = Q2a - 220
+  Q = Q2a - Q
+  if Q < 0 then Q2 = Q2 - 1
+  Q2 = Q2 + 200
+  Rn = 10
+  RndK
+  Q = Rv
+  Q2 = Q2 + Q
+  Q2 = Q2 << 16
+  Mi = Mi + Q2
+  Bz = 0
+  Cd1 = 0
+  ShowStatus
+l3100:
+  ' riders, most likely near 400 miles: none when RND*10 > ((M/100-4)^2
+  ' +72)/((M/100-4)^2+12)-1, that is when RND*65536 > 3932160000 over
+  ' (M-400)^2+120000
+  Q = Mi >> 16
+  Q = Q - 400
+  Q = Q * Q
+  Uq = Q
+  Uq = Uq + 120000
+  Uq2 = 3932160000
+  Uq2 = Uq2 / Uq
+  Rnd16
+  Uq = Rw
+  if Uq > Uq2 then goto l4010
+
+l3110:
+  ClrMsg
+  ClrLow
+  Fr = 0
+  print at 2,10, "RIDERS AHEAD...THEY"
+  Rnd16
+  if Rw >= 52429 then
+    print at 2,11, "DON'T LOOK HOSTILE."
+    Fr = 1
+  else
+    print at 2,11, "LOOK HOSTILE."
+  end if
+  print at 2,13, "TACTICS -"
+  print at 4,15, "1. RUN"
+  print at 4,16, "2. ATTACK"
+  print at 4,17, "3. CONTINUE"
+  print at 4,18, "4. CIRCLE YOUR WAGONS"
+  Oy = 15
+  Nopt = 4
+  PickOne
+  Tac = Sel
+  Rnd16
+  if Rw >= 52429 then Fr = Fr - 1
+  if Fr = 1 then goto l3300
+  if Tac > 1 then goto l3150
+  ' 3146: running from hostile riders
+  Mi = Mi + 327680
+  Bu = Bu - 150
+  Ox = Ox - 40
+  goto l3470
+l3150:
+  if Tac = 3 then goto l3200
+  ' a fight: the riders cross the screen
+  An1 = 5
+  An2 = 6
+  goto l1000
+l3170:
+  TextScreen
+  ShowStatus
+  DateLine
+  ShowScreen
+  if B8 = 1 then goto l3965
+  if B8 = 2 then goto l4350
+  ' 3174: B = B - (T7*40 - 50)
+  V16 = Shots
+  V16 = V16 * 40
+  Q = V16
+  Q = Q - 50
+  Bu = Bu - Q
+  if Tac = 4 then Mi = Mi - 1638400
+  if Hs = 0 then
+    print at 2,12, "LOUSY SHOOTING - - - YOU GOT"
+    print at 2,13, "KNIFED"
+    Inj = 1
+    print at 2,14, "YOU'LL HAVE TO SEE 'OL DOC"
+    print at 2,15, "BLANCHARD!"
+    GoOn
+  end if
+  goto l3470
+l3200:
+  Rnd16
+  if Rw >= 52429 then
+    print at 2,20, "YOU ARE LUCKY..."
+    print at 2,21, "THEY DIDN'T ATTACK."
+    GoOn
+    goto l190
+  end if
+  Bu = Bu - 150
+  Km = 0
+  Kc = 15
+  LoseMd
+  goto l3470
+l3300:
+  ' friendly riders
+  if Tac = 1 then
+    Mi = Mi + 983040
+    Ox = Ox - 10
+    goto l3470
+  end if
+  if Tac = 2 then
+    Km = 0
+    Kc = 5
+    LoseMi
+    Bu = Bu - 100
+  end if
+  if Tac = 4 then Mi = Mi - 1310720
+l3470:
+  ' (10000 and 10050 clear the rows below the status; 12000 does not come
+  ' before the bullet check, so bullets can still be below zero)
+  ClrMsg
+  ClrLow
+  if Fr = 1 then
+    print at 2,12, "THE RIDERS WERE FRIENDLY,"
+    print at 2,13, "BUT CHECK FOR POSSIBLE"
+    print at 2,14, "LOSSES!"
+    GoOn
+    goto l190
+  end if
+  print at 2,12, "THE RIDERS WERE HOSTILE."
+  print at 2,13, "CHECK FOR LOSSES!"
+  if Bu >= 0 then
+    GoOn
+    goto l190
+  end if
+  print at 2,14, "YOU RAN OUT OF BULLETS,"
+  print at 2,15, "AND YOU WERE MASACRED!"
+  goto l5170
+
+l4010:
+  ' one of sixteen events: RND*100 against the table of line 14000
+  ClrMsg
+  ClrLow
+  Ly = 8
+  Rnd16
+  D1 = 0
+l4020:
+  inc D1
+  if D1 = 16 then goto l4670
+  ' R1 > D: RND*100 > D, that is RND*6553600 > D*65536
+  Uq = Rw
+  Uq = Uq * 100
+  V = EventAt[D1]
+  Uq2 = V
+  Uq2 = Uq2 << 16
+  if Uq > Uq2 then goto l4020
+  if D1 = 1 then goto l3660
+  if D1 = 2 then goto l3700
+  if D1 = 3 then goto l3740
+  if D1 = 4 then goto l3790
+  if D1 = 5 then goto l3820
+  if D1 = 6 then goto l3850
+  if D1 = 7 then goto l3880
+  if D1 = 8 then goto l3960
+  if D1 = 9 then goto l4130
+  if D1 = 10 then goto l4190
+  ' 4036: a blank line before the last six
+  Nl1
+  if D1 = 11 then goto l4220
+  if D1 = 12 then goto l4290
+  if D1 = 13 then goto l4340
+  if D1 = 14 then goto l4560
+  goto l4610
+
+l3660:
+  print at 2,Ly, "YOUR WAGON HAS BROKEN"
+  Nl1
+  print at 2,Ly, "DOWN..."
+  Nl1
+  print at 2,Ly, "LOSE TIME AND SUPPLIES"
+  Nl1
+  print at 2,Ly, "FIXING"
+  Nl1
+  print at 2,Ly, "IT."
+  Nl1
+  ' M = M - 15 - 5*RND: M1 = M1 - 8
+  Km = 5
+  Kc = 15
+  LoseMi
+  Km = 0
+  Kc = 8
+  LoseMd
+  goto l4710
+l3700:
+  print at 2,Ly, "OX INJURES LEG. SLOWS YOU"
+  Nl1
+  print at 2,Ly, "DOWN FOR THE REST OF THE"
+  Nl1
+  print at 2,Ly, "TRIP"
+  Nl1
+  Km = 0
+  Kc = 25
+  LoseMi
+  Ox = Ox - 20
+  goto l4710
+l3740:
+  print at 2,Ly, "BAD LUCK. YOUR DAUGHTER"
+  Nl1
+  print at 2,Ly, "BROKE"
+  Nl1
+  print at 2,Ly, "HER ARM, YOU USED SUPPLIES"
+  Nl1
+  print at 2,Ly, "HELPING HER."
+  Nl1
+  ' M = M - 5 - 4*RND: M1 = M1 - 2 - 3*RND
+  Km = 4
+  Kc = 5
+  LoseMi
+  Km = 3
+  Kc = 2
+  LoseMd
+  goto l4710
+l3790:
+  print at 2,Ly, "OX WANDERS OFF."
+  Nl1
+  print at 2,Ly, "YOU SPEND TIME LOOKING FOR"
+  Nl1
+  print at 2,Ly, "IT."
+  Nl1
+  Km = 0
+  Kc = 17
+  LoseMi
+  goto l4710
+l3820:
+  print at 2,Ly, "YOUR SON GOT LOST."
+  Nl1
+  print at 2,Ly, "SPEND TIME LOOKING FOR HIM."
+  Nl1
+  Km = 0
+  Kc = 10
+  LoseMi
+  goto l4710
+l3850:
+  print at 2,Ly, "UNSAFE WATER."
+  Nl1
+  print at 2,Ly, "SPEND TIME LOOKING FOR CLEAR"
+  Nl1
+  print at 2,Ly, "SPRING"
+  Nl1
+  ' M = M - 10*RND - 2
+  Km = 10
+  Kc = 2
+  LoseMi
+  goto l4710
+l3880:
+  Q = Mi >> 16
+  if Mi > 62259200 then goto l4490
+  print at 2,Ly, "HEAVY RAINS."
+  Nl1
+  print at 2,Ly, "TIME AND SUPPLIES LOST."
+  Nl1
+  Fd = Fd - 10
+  Bu = Bu - 500
+  Km = 0
+  Kc = 15
+  LoseMd
+  ' M = M - 10*RND - 5
+  Km = 10
+  Kc = 5
+  LoseMi
+  goto l4710
+l3960:
+  print at 2,Ly, "BANDITS ATTACKING!"
+  Nl1
+  GoOn
+  B8 = 1
+  An1 = 5
+  An2 = 6
+  goto l1000
+l3965:
+  B8 = 0
+  V16 = Shots
+  V16 = V16 * 20
+  Q = V16
+  Bu = Bu - Q
+  Ly = 12
+  if Bu < 0 then
+    print at 2,Ly, "YOU RAN OUT OF BULLETS!"
+    Nl1
+    print at 2,Ly, "THEY GET LOTS OF CASH!"
+    Nl1
+    Ca = Ca / 3
+    goto l4040
+  end if
+  if Hs = 1 then
+    print at 2,Ly, "QUICKEST DRAW OUTSIDE OF"
+    Nl1
+    print at 2,Ly, "DODGE CITY!"
+    Nl1
+    print at 2,Ly, "YOU GOT 'EM."
+    Nl1
+    goto l4710
+  end if
+  print at 2,Ly, "YOU GOT SHOT IN THE LEG AND"
+  Nl1
+  print at 2,Ly, "THEY TOOK ONE OF YOUR OXEN."
+  Nl1
+  Inj = 1
+  print at 2,Ly, "BETTER HAVE A DOC LOOK AT"
+  Nl1
+  print at 2,Ly, "YOUR WOUND!!"
+  Nl1
+  Km = 0
+  Kc = 5
+  LoseMd
+  Ox = Ox - 20
+  goto l4710
+l4040:
+  Nl1
+  print at 2,Ly, "YOU GOT SHOT IN THE LEG AND"
+  Nl1
+  print at 2,Ly, "THEY TOOK ONE OF YOUR OXEN."
+  Nl1
+  Km = 0
+  Kc = 5
+  LoseMd
+  Ox = Ox - 20
+  Inj = 1
+  Nl1
+  print at 2,Ly, "BETTER HAVE A DOC LOOK AT"
+  Nl1
+  print at 2,Ly, "YOUR WOUND."
+  Nl1
+  goto l4710
+l4130:
+  print at 2,Ly, "THERE WAS A FIRE IN YOUR"
+  Nl1
+  print at 2,Ly, "WAGON."
+  Nl1
+  print at 2,Ly, "FOOD AND SUPPLIES DAMAGED"
+  Nl1
+  Fd = Fd - 40
+  Bu = Bu - 400
+  ' M1 = M1 - 10 - 5*RND*8 - 3
+  Km = 40
+  Kc = 13
+  LoseMd
+  Km = 0
+  Kc = 15
+  LoseMi
+  goto l4710
+l4190:
+  print at 2,Ly, "LOSE YOUR WAY IN HEAVY FOG-"
+  Nl1
+  print at 2,Ly, "TIME IS LOST"
+  Nl1
+  ' M = M - 10 - 5*RND
+  Km = 5
+  Kc = 10
+  LoseMi
+  goto l4710
+l4220:
+  print at 2,Ly, "YOU KILLED A POISONOUS SNAKE"
+  Nl1
+  print at 2,Ly, "AFTER IT BIT YOU."
+  Nl1
+  Bu = Bu - 10
+  Km = 0
+  Kc = 5
+  LoseMd
+  if Md >= 0 then
+    print at 2,Ly, "MEDICINE USED.."
+    Nl1
+    Nl1
+    goto l4710
+  end if
+  Nl1
+  Nl1
+  print at 2,Ly, "YOU DIED OF THE BITE,"
+  Nl1
+  print at 2,Ly, "BECAUSE YOU"
+  Nl1
+  Nl1
+  print at 2,Ly, "DON'T HAVE ANY MEDICINE!"
+  Nl1
+  goto l5170
+l4290:
+  print at 2,Ly, "WAGON GETS SWAMPED FORDING"
+  Nl1
+  print at 2,Ly, "RIVER - - LOSE FOOD AND"
+  Nl1
+  print at 2,Ly, "CLOTHES"
+  Nl1
+  Fd = Fd - 30
+  Cl = Cl - 20
+  ' M = M - 20 - 20*RND
+  Km = 20
+  Kc = 20
+  LoseMi
+  goto l4710
+l4340:
+  print at 2,Ly, "WILD ANIMALS ATTACK!"
+  Nl1
+  GoOn
+  An1 = 13
+  An2 = 14
+  B8 = 2
+  goto l1000
+l4350:
+  B8 = 0
+  if Mi < 62259200 then goto l190
+  Ly = 12
+  goto l4720
+l4490:
+  print at 2,Ly, "COLD WEATHER-----BRRRRRR!"
+  Nl1
+  print at 2,Ly, "----"
+  Nl1
+  ' C > 22 + 4*RND: enough clothes
+  Rnd16
+  Q = Cl
+  Q = Q << 16
+  Q2 = Rw
+  Q2 = Q2 << 2
+  Q2 = Q2 + 1441792
+  if Q > Q2 then
+    print at 2,Ly, "YOU HAVE ENOUGH CLOTHES"
+    Nl1
+    print at 2,Ly, "TO KEEP WARM"
+    Nl1
+    goto l4710
+  end if
+  Cd1 = 1
+  print at 2,Ly, "YOU DON'T HAVE ENOUGH"
+  Nl1
+  print at 2,Ly, "CLOTHES"
+  Nl1
+  print at 2,Ly, "TO KEEP WARM"
+  Nl1
+  ' (the listing's GOTO 6300 after IF C1 = 0 THEN 4710 is never reached:
+  ' it goes on to the next line, the hail storm)
+l4560:
+  print at 2,Ly, "HAIL STORM---SUPPLIES"
+  Nl1
+  print at 2,Ly, "DAMAGED"
+  Nl1
+  ' M = M - 5 - RND*10: B = B - 100: M1 = M1 - 4 - RND*3
+  Km = 10
+  Kc = 5
+  LoseMi
+  Bu = Bu - 100
+  Km = 3
+  Kc = 4
+  LoseMd
+  goto l4710
+l4610:
+  ' an illness that comes with how you eat
+  if Eat = 1 then goto l6300
+  Rnd16
+  if Eat = 3 then
+    if Rw < 32768 then goto l6300
+    goto l4710
+  end if
+  if Rw > 16384 then goto l6300
+  goto l4710
+l4670:
+  print at 2,Ly, "HELPFUL INDIANS SHOW YOU"
+  Nl1
+  print at 2,Ly, "WHERE"
+  Nl1
+  print at 2,Ly, "TO FIND MORE FOOD"
+  Nl1
+  Fd = Fd + 14
+
+l4710:
+  if Mi < 68812800 then
+    GoOn
+    goto l190
+  end if
+  Nl1
+l4720:
+  ' 4720: RND(-1)*10 > 9 - ...: RND(-1) is always tiny, so the mountains
+  ' come every turn past 1050 miles
+  print at 2,Ly, "RUGGED MOUNTAINS"
+  Nl1
+  Nl1
+  Rnd16
+  if Rw >= 6554 then goto l4780
+  print at 2,Ly, "YOU GOT LOST - LOSE VALUABLE"
+  Nl1
+  print at 2,Ly, "TIME TRYING TO FIND THE"
+  Nl1
+  print at 2,Ly, "TRAIL!"
+  Nl1
+  Nl1
+  Km = 0
+  Kc = 60
+  LoseMi
+  goto l4860
+l4780:
+  Rnd16
+  if Rw >= 6554 then goto l4840
+  print at 2,Ly, "WAGON DAMAGED! LOSE TIME AND"
+  Nl1
+  print at 2,Ly, "SUPPLIES"
+  Nl1
+  Km = 0
+  Kc = 5
+  LoseMd
+  Bu = Bu - 200
+  ' M = M - 20 - 30*RND(-1): RND(-1) is 2.99E-8, a 65536th or less
+  Mi = Mi - 1310721
+  Nl1
+  goto l4860
+l4840:
+  print at 2,Ly, "THE GOING IS SLOW"
+  Nl1
+  Nl1
+  ' M = M - 45 - RND/.02
+  Km = 50
+  Kc = 45
+  LoseMi
+l4860:
+  if Sp1 = 1 then goto l4900
+  Sp1 = 1
+  Rnd16
+  if Rw <= 52428 then goto l4970
+  print at 2,Ly, "YOU MADE IT SAFELY THROUGH"
+  Nl1
+  print at 2,Ly, "SOUTH PASS"
+  Nl1
+  Nl1
+  print at 2,Ly, "THERE WAS NO SNOW."
+  Nl1
+l4900:
+  if Mi < 111411200 then goto l4940
+  if Sp2 = 1 then goto l4940
+  Sp2 = 1
+  Rnd16
+  if Rw <= 45875 then goto l4970
+l4940:
+  if Mi <= 62259200 then M9 = 1
+  GoOn
+  goto l190
+l4970:
+  print at 2,Ly, "BLIZZARD IN MOUNTAIN PASS --"
+  Nl1
+  print at 2,Ly, "TIME AND SUPPLIES LOST"
+  Nl1
+  Bz = 1
+  Fd = Fd - 25
+  Km = 0
+  Kc = 10
+  LoseMd
+  Bu = Bu - 300
+  ' M = M - 30 - 40*RND
+  Km = 40
+  Kc = 30
+  LoseMi
+  ' C < 18 + 2*RND: not enough clothes
+  Rnd16
+  Q = Cl
+  Q = Q << 16
+  Q2 = Rw
+  Q2 = Q2 << 1
+  Q2 = Q2 + 1179648
+  if Q < Q2 then goto l6300
+  goto l4940
+
+l5060:
+  ClrMsg
+  ClrLow
+  print at 2,12, "YOU RAN OUT OF FOOD AND"
+  print at 2,13, "STARVED TO DEATH."
+  goto l5170
+l5080:
+  Ca = 0
+  TextScreen
+  ShowScreen
+  Ly = 12
+  print at 2,Ly, "YOU CAN'T AFFORD A DOCTOR"
+  Nl1
+  goto l5120
+l5110:
+  print at 2,Ly, "YOU RAN OUT OF MEDICAL"
+  Nl1
+  print at 2,Ly, "SUPPLIES..."
+  Nl1
+l5120:
+  if Inj = 1 then
+    print at 2,Ly, "YOU DIED OF INJURIES"
+  else
+    print at 2,Ly, "YOU DIED OF PNEUMONIA"
+  end if
+  Nl1
+l5170:
+  GoOn
+  TextScreen
+  print at 2,2, "DUE TO YOUR UNFORTUNATE"
+  print at 2,3, "SITUATION THERE ARE A FEW"
+  print at 2,4, "FORMALITIES WE MUST GO"
+  print at 2,5, "THROUGH-"
+  ShowScreen
+  print at 2,7, "WOULD YOU LIKE A MINISTER?"
+  Oy = 8
+  AskYes
+  print at 2,10, "WOULD YOU LIKE A FANCY"
+  print at 2,11, "FUNERAL?"
+  Oy = 12
+  AskYes
+  print at 2,14, "WOULD YOU LIKE US TO INFORM"
+  print at 2,15, "YOUR NEXT OF KIN?"
+  Oy = 16
+  AskYes
+  W = Sel
+  TextScreen
+  if W = 1 then
+    print at 2,2, "THAT WILL BE $4.50 FOR THE"
+    print at 2,3, "TELEGRAPH CHARGE."
+  else
+    print at 2,2, "BUT YOUR AUNT SADIE IN ST."
+    print at 2,3, "LOUIS IS WORRIED ABOUT YOU!"
+  end if
+  print at 2,5, "THANK YOU FOR THIS"
+  print at 2,6, "INFORMATION."
+  print at 2,8, "SORRY YOU DIDN'T MAKE IT TO"
+  print at 2,9, "OREGON!"
+  print at 2,11, "BETTER LUCK NEXT TIME."
+  print at 17,13, "SINCERLY"
+  print at 2,15, "THE OREGON CITY CHAMBER OF"
+  print at 2,16, "COMMERCE"
+  ShowScreen
+  GoOn
+  CreditsPage
+  goto l10
+
+l6050:
+  ' arrived: the telegram, typed with the speaker's clicks
+  TextScreen
+  ShowScreen
+  Tp = address of Telegram
+l6060:
+  Y = peek(Tp)
+  inc Tp
+  if Y > 0 then
+    TypeLine
+    goto l6060
+  end if
+  GoOn
+  CreditsPage
+  goto l10
+
+l6300:
+  ' an illness: mild, bad or serious, by how well you eat
+  ' 100*RND < 10 + 35*(E-1): mild
+  Rnd16
+  Uq = Rw
+  Uq = Uq * 100
+  V = Eat - 1
+  V = V * 35
+  V = V + 10
+  Uq2 = V
+  Uq2 = Uq2 << 16
+  if Uq < Uq2 then goto l6370
+  ' 100*RND < 100 - 40/4^(E-1): bad (twice that: 120, 180, 195)
+  Rnd16
+  Uq = Rw
+  Uq = Uq * 200
+  Uq2 = 120
+  if Eat = 2 then Uq2 = 180
+  if Eat = 3 then Uq2 = 195
+  Uq2 = Uq2 << 16
+  if Uq < Uq2 then goto l6410
+  print at 2,Ly, "SERIOUS ILLNESS..."
+  Nl1
+  print at 2,Ly, "YOU MUST STOP FOR MEDICAL"
+  Nl1
+  print at 2,Ly, "ATTENTION!"
+  Nl1
+  Km = 0
+  Kc = 10
+  LoseMd
+  Ill = 1
+  goto l6440
+l6370:
+  print at 2,Ly, "MILD ILLNESS... MEDICINE"
+  Nl1
+  print at 2,Ly, "USED."
+  Nl1
+  Km = 0
+  Kc = 5
+  LoseMi
+  Km = 0
+  Kc = 2
+  LoseMd
+  goto l6440
+l6410:
+  print at 2,Ly, "BAD ILLNESS..MEDICINE USED."
+  Nl1
+  Km = 0
+  Kc = 5
+  LoseMi
+  Km = 0
+  Kc = 5
+  LoseMd
+  goto l4710
+l6440:
+  if Md < 0 then goto l5110
+  if Bz = 1 then goto l4940
+  goto l4710
+
+' ---------------------------------------------------------------------------
+' Screens
+
+' TextScreen: back to text (after the map or a hunt), all rows cleared
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  if Bmp = 1 then
+    call asm OrFont
+    Bmp = 0
+  end if
+  fill 32 count 768 to vram.name
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  Ly = 8
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+' BitmapScreen: the three thirds as one bitmap (Apple HGR2), cleared
+sub BitmapScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  Bmp = 1
+  fill 0 count 6144 to vram.pattern
+  copy Ident count 256 to vram.name
+  copy Ident count 256 to vram.name + 256
+  copy Ident count 256 to vram.name + 512
+  return
+end sub
+
+' Status (lines 12000-12025): whole numbers, nothing below zero, shown
+sub ShowStatus:
+  if Md < 0 then
+    Md = 0
+  else
+    Q = Md >> 16
+    Md = Q << 16
+  end if
+  Q = Mi >> 16
+  Mi = Q << 16
+  if M9 = 1 then
+    Mi = 62259200
+    M9 = 0
+  end if
+  if Fd < 0 then Fd = 0
+  if Bu < 0 then Bu = 0
+  if Cl < 0 then Cl = 0
+  fill 45 count 28 at 2,3
+  print at 2,4, "FOOD BULLETS CLOTH MISC CASH"
+  fill 32 count 28 at 2,5
+  NumU = Fd
+  print at 2,5, width$(NumU, 4)
+  NumU = lowword Bu
+  print at 9,5, width$(NumU, 5)
+  NumU = Cl
+  print at 15,5, width$(NumU, 5)
+  Q = Md >> 16
+  NumU = lowword Q
+  print at 21,5, width$(NumU, 4)
+  NumU = 0
+  if Ca > 0 then NumU = Ca
+  print at 26,5, width$(NumU, 4)
+  fill 45 count 28 at 2,6
+  return
+end sub
+
+' DateLine (12500): the day and the miles
+sub DateLine:
+  fill 32 count 28 at 2,1
+  fill 32 count 28 at 2,2
+  print at 2,1, "MONDAY- "
+  X = 10
+  Y = 1
+  V = Tn
+  if V > 20 then V = 20
+  V16 = V - 1
+  V16 = V16 * 13
+  Tp = address of Dates
+  Tp = Tp + V16
+  call asm OrPut
+  X = X + Rv
+  print at X,1, ",1847"
+  print at 17,2, "MILES="
+  Q = Mi >> 16
+  NumU = lowword Q
+  print at 24,2, width$(NumU, 5)
+  return
+end sub
+
+' ClrMsg (10050): rows 7-8; ClrLow (10000): rows 9-22
+sub ClrMsg:
+  fill 32 count 32 at 0,7
+  fill 32 count 32 at 0,8
+  return
+end sub
+
+sub ClrLow:
+  for Y = 9 to 22
+    fill 32 count 32 at 0,Y
+  next
+  return
+end sub
+
+sub ClrRows17:
+  for Y = 17 to 21
+    fill 32 count 32 at 0,Y
+  next
+  return
+end sub
+
+' NL: the next line of a message; a full screen waits for the button
+sub Nl1:
+  inc Ly
+  if Ly > 21 then
+    ' (a page break of this port's: Ask 7 for the bot)
+    print at 3,22, "PRESS A BUTTON TO CONTINUE"
+    Ask = 7
+    WaitPress
+    Ask = 0
+    fill 32 count 32 at 0,22
+    for Y = 7 to 21
+      fill 32 count 32 at 0,Y
+    next
+    Ly = 7
+  end if
+  return
+end sub
+
+' Continue (505): PRESS A BUTTON TO CONTINUE, then the row is cleared
+sub GoOn:
+  print at 3,22, "PRESS A BUTTON TO CONTINUE"
+  Ask = 1
+  WaitPress
+  Ask = 0
+  fill 32 count 32 at 0,22
+  return
+end sub
+
+' Choose: a list of Nopt choices at rows Oy on, column 4; Sel = 1-Nopt
+sub PickOne:
+  Ask = 2
+  Sel = 1
+  WasBtn = 1
+ch_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 2,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 2,Y, ">"
+ch_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto ch_draw
+  end if
+  if Press = 0 then goto ch_loop
+  play sound SndTick
+  Ask = 0
+  return
+end sub
+
+' YesNo: YES or NO on the row after the question's (Sel 1 = YES)
+sub AskYes:
+  Ask = 4
+  Sel = 1
+  WasBtn = 1
+yn_draw:
+  print at 3,Oy, " YES   NO "
+  X = 3
+  if Sel = 2 then X = 9
+  print at X,Oy, ">"
+yn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Up1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    if Dn1 = 1 then Sel = 2
+    goto yn_draw
+  end if
+  if Press = 0 then goto yn_loop
+  play sound SndTick
+  Ask = 0
+  return
+end sub
+
+' Amount: a number set with the stick at Nx, Ny ("? " then the number),
+' 0 to Nmax: up and down 1, right and left 10
+sub AskAmt:
+  Ask = 3
+  print at Nx,Ny, "?"
+  WasBtn = 1
+am_draw:
+  X = Nx + 2
+  NumU = Nv
+  print at X,Ny, width$(NumU, 3)
+am_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Nv < Nmax then inc Nv
+    end if
+    if Dn1 = 1 then
+      if Nv > 0 then dec Nv
+    end if
+    if Rt1 = 1 then
+      Nv = Nv + 10
+      if Nv > Nmax then Nv = Nmax
+    end if
+    if Lf1 = 1 then
+      if Nv > 10 then
+        Nv = Nv - 10
+      else
+        Nv = 0
+      end if
+    end if
+    goto am_draw
+  end if
+  if Press = 0 then goto am_loop
+  play sound SndTick
+  print at Nx,Ny, " "
+  Ask = 0
+  return
+end sub
+
+' FortAmount: an amount at the fort, at most the cash left (line 400 never
+' needed then); T = T - amount
+sub FortAmount:
+  Nmax = 0
+  if Ca > 0 then Nmax = Ca
+  Nv = 0
+  AskAmt
+  F7 = Nv
+  V16 = Nv
+  Ca = Ca - V16
+  return
+end sub
+
+' TypeLine: a line of the telegram at row Y, a letter at a time
+sub TypeLine:
+  X = 2
+tl_loop:
+  V = peek(Tp)
+  inc Tp
+  if V = 0 then return
+  call asm OrChar
+  play sound SndTick
+  Frame1
+  Frame1
+  Frame1
+  inc X
+  goto tl_loop
+end sub
+
+' MapScreen (17000-17999): the map, the date, the miles, the wagon
+sub MapScreen:
+  BitmapScreen
+  DrawMap
+  ' the date (past December 20 it stays there) and the year
+  Sx = 5
+  Sy = 150
+  V = Tn
+  if V > 20 then V = 20
+  V16 = V - 1
+  V16 = V16 * 13
+  Tp = address of Dates
+  Tp = Tp + V16
+  call asm OrText
+  Tp = address of Tx1847
+  call asm OrText
+  Sx = 150
+  Sy = 150
+  Tp = address of TxMiles
+  call asm OrText
+  Q = Mi >> 16
+  NumU = lowword Q
+  DrawNum
+  ShowScreen
+  if Mi = 0 then
+    ' 17005: the wagon at the start
+    Sm = 1
+    DrawWagon
+    W4 = 1
+    goto ms_done
+  end if
+  ' 17006: FOR G = W4 TO INT(M/24.8) (a FOR runs at least once)
+  Q = Mi * 5
+  Q = Q / 8126464
+  Gend = lowword Q
+  G = W4
+ms_step:
+  if Wx = 261 then
+    Wdx = 4
+    Wdy = 1
+  end if
+  if Wx = 165 then
+    Wdx = 2
+    Wdy = 0
+  end if
+  if Wx = 113 then
+    Wdx = 1
+    Wdy = 2
+  end if
+  if Wx = 96 then
+    Wdx = 2
+    Wdy = 0
+  end if
+  if Wx <= 66 then
+    Ig = 1
+    goto ms_arrive
+  end if
+  Sm = 1
+  DrawWagon
+  for J = 1 to 8
+    Frame1
+  next
+  Sm = 0
+  DrawWagon
+  Sm = 1
+  DrawMap
+  Wx = Wx - Wdx
+  Wy = Wy - Wdy
+  inc G
+  if G <= Gend then goto ms_step
+  W4 = Gend
+  goto ms_done
+ms_arrive:
+  ' 17080: the wagon blinks, the bell rings
+  Sm = 1
+  DrawWagon
+  for J = 1 to 30
+    Frame1
+  next
+  for K = 1 to 15
+    Sm = 0
+    DrawWagon
+    Frame1
+    Sm = 1
+    DrawWagon
+    play sound SndBell
+    for J = 1 to 6
+      Frame1
+    next
+  next
+ms_done:
+  Sm = 1
+  DrawWagon
+  Sx = 49
+  Sy = 181
+  Tp = address of TxPress
+  call asm OrText
+  Ask = 5
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub DrawMap:
+  Su = 0
+  Sn = 8
+  Sx = 1
+  Sy = 1
+  call asm OrDraw
+  Sn = 9
+  Sx = 1
+  Sy = 1
+  call asm OrDraw
+  return
+end sub
+
+sub DrawWagon:
+  Su = 0
+  Sn = 10
+  Sx = Wx
+  Sy = Wy
+  call asm OrDraw
+  return
+end sub
+
+' DrawNum: NumU in the shape table's digits at Sx, Sy
+sub DrawNum:
+  Su = 1
+  Sm = 1
+  V16 = 10000
+  W = 0
+dn_loop:
+  V = 0
+dn_count:
+  if NumU >= V16 then
+    NumU = NumU - V16
+    inc V
+    goto dn_count
+  end if
+  if V > 0 then W = 1
+  if V16 = 1 then W = 1
+  if W = 1 then
+    Sn = V + 20
+    call asm OrDraw
+    Sx = Sx + 7
+  end if
+  V16 = V16 / 10
+  if V16 > 0 then goto dn_loop
+  Su = 0
+  return
+end sub
+
+' Hunt (1000-1435): the animal (A1, A2) runs left to right in random
+' jumps; the button sends a bullet up from the middle; it hits if the
+' animal is within reach when it gets there. Hres 1: a rider or a wolf
+' was hit (the listing's jump to 3170).
+sub HuntRun:
+  Ask = 6
+  BitmapScreen
+  Hits = 0
+  Shots = 0
+  Hres = 0
+  Sm = 1
+  Sx = 60
+  Sy = 172
+  Tp = address of TxShoot
+  call asm OrText
+  ' 1010: seven trees, a pine or an oak, at random heights
+  G = 20
+hu_tree:
+  Rnd16
+  Sn = 1
+  if Rw < 32768 then Sn = 7
+  Rn = 15
+  RndK
+  Su = 0
+  Sx = G
+  Sy = Rv
+  call asm OrDraw
+  Sx = G + 1
+  Sy = Rv
+  call asm OrDraw
+  G = G + 40
+  if G <= 260 then goto hu_tree
+  ShowScreen
+  Kp = 166
+  Hs = 0
+  Sh = 0
+  Latch = 0
+  FireWas = 1
+hu_1020:
+  Pk = 46
+hu_1030:
+  HuntKey
+  Rn = 25
+  RndK
+  Pk = Pk + Rv
+  if Pk > 260 then goto hu_1020
+  Sm = 1
+  Sn = An1
+  DrawAnimal
+  if Sh = 1 then ShotStep
+  if Hs > 0 then
+    HitOrMiss
+    if Hs = 1 then
+      if An1 = 5 then
+        Hres = 1
+        HuntRs = Rs
+        Ask = 0
+        return
+      end if
+      if An1 = 13 then
+        Hres = 1
+        HuntRs = Rs
+        Ask = 0
+        return
+      end if
+    end if
+    Hs = 0
+    inc Shots
+    if Shots > Sk then goto hu_end
+  end if
+  Sm = 0
+  Sn = An1
+  DrawAnimal
+  HuntKey
+  Rn = 25
+  RndK
+  Pk = Pk + Rv
+  if Pk > 260 then goto hu_1020
+  Sm = 1
+  Sn = An2
+  DrawAnimal
+  if Sh = 1 then ShotStep
+  if Hs > 0 then
+    HitOrMiss
+    if Hs = 1 then
+      if An1 = 5 then
+        Hres = 1
+        HuntRs = Rs
+        Ask = 0
+        return
+      end if
+      if An1 = 13 then
+        Hres = 1
+        HuntRs = Rs
+        Ask = 0
+        return
+      end if
+    end if
+    Hs = 0
+    inc Shots
+    if Shots > Sk then goto hu_end
+  end if
+  Sm = 0
+  Sn = An2
+  DrawAnimal
+  goto hu_1030
+hu_end:
+  for J = 1 to 60
+    Frame1
+  next
+  HuntRs = Rs
+  Ask = 0
+  return
+end sub
+
+' HuntKey (1030): the button fires when no bullet is in the air
+sub HuntKey:
+  Frame1
+  if Latch = 0 then return
+  if Kp <> 166 then return
+  Latch = 0
+  play sound SndShot
+  Sh = 1
+  ' 35000: the hit or miss of the last shot is wiped
+  Sm = 0
+  Sx = 100
+  Sy = 183
+  Tp = address of TxHit
+  call asm OrText
+  Sx = 100
+  Sy = 183
+  Tp = address of TxMissed
+  call asm OrText
+  Sm = 1
+  return
+end sub
+
+sub DrawAnimal:
+  Su = 0
+  Sx = Pk
+  Sy = 55
+  call asm OrDraw
+  return
+end sub
+
+' Bullet (1200): 9 lines up a step; at the top, a hit or a miss
+sub ShotStep:
+  Su = 0
+  Sn = 4
+  Sx = 130
+  Sm = 0
+  Sy = Kp
+  call asm OrDraw
+  Kp = Kp - 9
+  Sm = 1
+  Sy = Kp
+  call asm OrDraw
+  if Kp > 70 then return
+  Sm = 0
+  Sy = Kp
+  call asm OrDraw
+  Sn = An1
+  DrawAnimal
+  Sn = An2
+  DrawAnimal
+  Sh = 0
+  Kp = 166
+  Latch = 0
+  Hs = 1
+  if Pk < 125 then Hs = 2
+  if Pk > 173 then Hs = 2
+  return
+end sub
+
+' HitOrMiss (1400)
+sub HitOrMiss:
+  Sm = 1
+  Sx = 100
+  Sy = 183
+  if Hs = 1 then
+    Tp = address of TxHit
+    call asm OrText
+    play sound SndBell
+    inc Hits
+    Pk = 46
+  else
+    Tp = address of TxMissed
+    call asm OrText
+  end if
+  return
+end sub
+
+sub CreditsPage:
+  TextScreen
+  print at 12,1, "OREGON"
+  print at 2,3, "MECC'S OREGON (ELEMENTARY"
+  print at 2,4, "VOLUME 6, APPLE II, 1980),"
+  print at 2,5, "AFTER THE 1971 GAME BY DON"
+  print at 2,6, "RAWITSCH, BILL HEINEMANN AND"
+  print at 2,7, "PAUL DILLENBERGER."
+  print at 2,9, "FOR THE COLECOVISION BY"
+  print at 2,10, "CLAUDE (AN AI MADE BY"
+  print at 2,11, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,12, "2026, IN AMY, THE LANGUAGE"
+  print at 2,13, "BY AMY BIENVENU."
+  print at 2,15, "MUSIC: SWEET BETSY FROM PIKE"
+  print at 2,16, "(TRADITIONAL), AS MECC'S"
+  print at 2,17, "PROGRAM PLAYED IT."
+  print at 2,19, "PICTURES: MECC'S SHAPES."
+  ShowScreen
+  GoOn
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frames, pads, random numbers
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  ' a hunt latches the button like the Apple's keyboard strobe: a press is
+  ' kept until the game takes it or clears it (POKE -16368)
+  if Ask = 6 then
+    Fv = 0
+    if joypad(1).fire then Fv = 1
+    if joypad(2).fire then Fv = 1
+    if Fv = 1 then
+      if FireWas = 0 then Latch = 1
+    end if
+    FireWas = Fv
+  end if
+  return
+end sub
+
+sub Pause1:
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' Rnd: RND(1) as Rw/65536 (a 16-bit xorshift, 7 9 8; never 0)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' LoseMi, LoseMd: M (or M1) = M - Kc - Km*RND (a new RND when Km > 0)
+sub LoseMi:
+  if Km > 0 then Rnd16
+  call asm OrLose with hl = address of Mi
+  return
+end sub
+
+sub LoseMd:
+  if Km > 0 then Rnd16
+  call asm OrLose with hl = address of Md
+  return
+end sub
+
+' RndK: Rv = INT(RND*Rn)
+sub RndK:
+  Rnd16
+  Uq = Rw
+  Uq2 = Rn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+' the event table (line 14000): RND*100 above each, the next event
+data EventAt bytes 0, 6, 11, 13, 15, 17, 22, 32, 35, 37, 42, 44, 54, 64, 69, 95
+
+' the dates (line 12050), 13 bytes each
+data Dates bytes
+  77,65,82,67,72,32,50,57,0,0,0,0,0
+  65,80,82,73,76,32,49,50,0,0,0,0,0
+  65,80,82,73,76,32,50,54,0,0,0,0,0
+  77,65,89,32,49,48,0,0,0,0,0,0,0
+  77,65,89,32,50,52,0,0,0,0,0,0,0
+  74,85,78,69,32,55,0,0,0,0,0,0,0
+  74,85,78,69,32,50,49,0,0,0,0,0,0
+  74,85,76,89,32,53,0,0,0,0,0,0,0
+  74,85,76,89,32,49,57,0,0,0,0,0,0
+  65,85,71,85,83,84,32,50,0,0,0,0,0
+  65,85,71,85,83,84,32,49,54,0,0,0,0
+  65,85,71,85,83,84,32,51,49,0,0,0,0
+  83,69,80,84,69,77,66,69,82,32,49,51,0
+  83,69,80,84,69,77,66,69,82,32,50,55,0
+  79,67,84,79,66,69,82,32,49,49,0,0,0
+  79,67,84,79,66,69,82,32,50,53,0,0,0
+  78,79,86,69,77,66,69,82,32,56,0,0,0
+  78,79,86,69,77,66,69,82,32,50,50,0,0
+  68,69,67,69,77,66,69,82,32,54,0,0,0
+  68,69,67,69,77,66,69,82,32,50,48,0,0
+end data
+
+data Tx1847 bytes 32, 49, 56, 52, 55, 0
+data TxMiles bytes 77, 73, 76, 69, 83, 32, 32, 0
+data TxPress bytes 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 32, 84, 79, 32, 67, 79, 78, 84, 73, 78, 85, 69, 0
+data TxShoot bytes 80, 82, 69, 83, 83, 32, 65, 32, 66, 85, 84, 84, 79, 78, 32, 84, 79, 32, 83, 72, 79, 79, 84, 0
+data TxHit bytes 68, 73, 82, 69, 67, 84, 32, 72, 73, 84, 0
+data TxMissed bytes 89, 79, 85, 32, 77, 73, 83, 83, 69, 68, 0
+
+' the telegram (line 15000): each line its row, then its letters, 0
+data Telegram bytes
+  2,73,78,67,79,77,73,78,71,32,84,69,76,69,71,82,65,77,0
+  5,84,79,32,78,69,87,32,82,69,83,73,68,69,78,84,32,79,70,32,79,82,69,71,79,78,0
+  6,84,69,82,82,73,84,79,82,89,45,0
+  9,80,82,69,83,73,68,69,78,84,32,74,65,77,69,83,32,75,46,32,80,79,76,75,0
+  10,83,69,78,68,83,32,89,79,85,32,72,73,83,0
+  12,72,69,65,82,84,73,69,83,84,32,67,79,78,71,82,65,84,85,76,65,84,73,79,78,83,44,0
+  14,65,78,68,32,87,73,83,72,69,83,32,89,79,85,32,65,32,80,82,79,83,80,69,82,79,85,83,0
+  15,76,73,70,69,0
+  17,65,72,69,65,68,32,65,84,32,89,79,85,82,32,78,69,87,32,72,79,77,69,33,0
+  0
+end data
+
+data ShapeTab bytes
+  $41,$00,$88,$00,$FB,$00,$B2,$01,$5A,$02,$6C,$02,$9C,$03,$AE,$04
+  $11,$05,$6E,$09,$39,$0A,$00,$00,$00,$00,$C6,$0A,$4F,$0B,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$CF,$0C,$E2,$0C,$EE,$0C,$FA,$0C
+  $05,$0D,$10,$0D,$1E,$0D,$2B,$0D,$34,$0D,$42,$0D,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C1,$0B,$D1,$0B,$DF,$0B
+  $EC,$0B,$F8,$0B,$00,$00,$07,$0C,$14,$0C,$22,$0C,$2C,$0C,$36,$0C
+  $47,$0C,$4F,$0C,$60,$0C,$70,$0C,$7C,$0C,$00,$00,$89,$0C,$99,$0C
+  $A7,$0C,$B0,$0C,$BA,$0C,$00,$00,$00,$00,$C5,$0C,$00,$00,$00,$00
+  $00,$00,$00,$00,$51,$0D,$00,$00,$36,$2E,$36,$35,$35,$2D,$36,$35
+  $35,$27,$3F,$27,$37,$35,$2E,$2E,$2E,$35,$2D,$2E,$2E,$37,$3F,$27
+  $3F,$27,$36,$35,$2D,$2E,$2E,$2E,$2E,$35,$37,$3F,$27,$3F,$27,$3F
+  $27,$37,$36,$36,$36,$36,$2E,$35,$35,$2D,$36,$DD,$DB,$DB,$DB,$2C
+  $2C,$2C,$24,$24,$24,$24,$2C,$27,$27,$27,$37,$3F,$3E,$3F,$3E,$3E
+  $3F,$37,$3F,$2C,$2C,$25,$25,$2D,$2C,$2C,$2C,$2C,$2C,$3F,$3E,$3F
+  $3E,$3C,$27,$2D,$2C,$25,$25,$25,$25,$25,$25,$25,$3F,$3E,$3F,$2C
+  $2C,$2C,$2C,$2C,$25,$2C,$24,$2C,$3C,$00,$36,$3E,$37,$37,$3F,$36
+  $24,$24,$2C,$DC,$1B,$3E,$3E,$36,$2E,$2C,$34,$37,$37,$35,$35,$37
+  $36,$36,$3E,$3E,$3E,$3F,$3F,$3C,$3F,$3F,$3F,$37,$3F,$3F,$3E,$37
+  $37,$3F,$3E,$3E,$36,$37,$2F,$2C,$2D,$2C,$34,$35,$3D,$3E,$3E,$3E
+  $37,$37,$37,$36,$36,$35,$36,$35,$2E,$3C,$3C,$24,$24,$2C,$2C,$2C
+  $2C,$2D,$2C,$24,$27,$27,$27,$37,$2D,$35,$35,$36,$35,$36,$35,$2E
+  $2E,$2E,$2E,$35,$35,$2D,$2E,$25,$27,$3F,$3C,$3C,$3C,$3C,$24,$27
+  $2C,$2C,$24,$25,$3C,$3C,$2C,$36,$35,$35,$2D,$25,$25,$3D,$3E,$2E
+  $35,$35,$2E,$36,$3D,$3E,$3E,$2E,$2D,$2E,$36,$35,$2D,$2E,$3C,$3C
+  $24,$27,$3C,$2F,$25,$25,$25,$25,$E5,$1B,$3E,$3E,$3E,$27,$2D,$2C
+  $2C,$3F,$3C,$27,$4F,$49,$89,$0A,$27,$27,$3C,$27,$25,$25,$25,$25
+  $2C,$24,$25,$24,$25,$2D,$25,$2D,$27,$27,$27,$3F,$3C,$BF,$4A,$3D
+  $00,$25,$37,$37,$3F,$3E,$24,$25,$2C,$34,$37,$36,$3E,$37,$37,$27
+  $27,$27,$27,$25,$25,$25,$3E,$3E,$3E,$2E,$2D,$2C,$34,$37,$37,$2E
+  $36,$37,$36,$3E,$36,$37,$3E,$3F,$3F,$27,$3F,$3F,$3F,$3F,$3E,$3F
+  $3F,$3E,$3F,$3E,$3E,$36,$37,$3E,$3E,$26,$25,$25,$25,$2D,$36,$3E
+  $36,$37,$37,$3F,$3F,$3E,$3E,$3E,$36,$3E,$3E,$36,$3E,$2E,$2E,$24
+  $25,$25,$25,$2C,$2C,$25,$2D,$2C,$25,$2D,$2C,$25,$2D,$2D,$2C,$24
+  $25,$27,$27,$36,$35,$2D,$3E,$2E,$2D,$2E,$2D,$2D,$2C,$2C,$24,$3D
+  $36,$36,$35,$2D,$2E,$35,$2D,$36,$35,$35,$3F,$3E,$3E,$3E,$36,$2D
+  $2C,$2C,$2C,$2C,$24,$2C,$3C,$3C,$3C,$24,$27,$3F,$2C,$25,$2D,$2C
+  $2C,$24,$2C,$24,$24,$24,$25,$3F,$34,$2D,$2D,$2C,$2C,$27,$27,$3F
+  $3C,$3C,$3F,$27,$2D,$95,$3A,$05,$00,$36,$DF,$B3,$1B,$D5,$D3,$6B
+  $49,$69,$4A,$09,$DF,$DB,$9B,$55,$09,$05,$00,$35,$92,$92,$92,$3F
+  $3E,$37,$37,$37,$36,$3E,$36,$37,$37,$37,$2E,$2E,$2E,$3E,$3E,$3E
+  $3E,$3E,$3E,$3E,$24,$37,$2C,$25,$25,$2C,$2C,$3F,$3C,$3C,$3C,$3F
+  $2D,$37,$0E,$76,$76,$36,$36,$0E,$2E,$3E,$2D,$27,$27,$24,$27,$24
+  $2C,$24,$3C,$3C,$3C,$3F,$25,$25,$3E,$3E,$3F,$3E,$27,$27,$27,$2E
+  $2E,$26,$3F,$3E,$36,$36,$36,$35,$35,$35,$2D,$2E,$36,$27,$3F,$27
+  $27,$27,$3F,$24,$3C,$24,$27,$24,$27,$27,$37,$37,$37,$37,$37,$3E
+  $3E,$36,$36,$35,$35,$2D,$3C,$3C,$3C,$24,$25,$25,$25,$2D,$2C,$2C
+  $24,$27,$3F,$3C,$3C,$24,$25,$25,$2C,$2C,$2D,$3F,$3F,$3F,$3E,$3E
+  $37,$37,$3E,$36,$27,$25,$25,$25,$25,$2C,$25,$2D,$2D,$2D,$2C,$2D
+  $2D,$24,$2C,$2D,$35,$35,$35,$35,$35,$35,$36,$35,$3D,$3F,$3C,$24
+  $3F,$3C,$27,$27,$27,$27,$24,$24,$24,$25,$24,$2C,$2D,$2E,$35,$2D
+  $2E,$35,$2D,$2E,$2D,$CD,$3D,$3E,$3F,$3F,$27,$27,$3F,$3C,$3F,$3C
+  $27,$24,$25,$25,$3D,$36,$24,$FC,$36,$27,$2D,$3F,$27,$25,$2D,$25
+  $25,$25,$25,$3D,$3E,$3E,$3E,$3E,$3F,$3E,$36,$37,$37,$37,$37,$2C
+  $2C,$2C,$24,$25,$34,$2F,$25,$36,$2D,$35,$36,$36,$2E,$35,$36,$36
+  $37,$35,$36,$35,$35,$25,$25,$25,$25,$2C,$24,$25,$2D,$24,$25,$24
+  $2E,$2E,$2E,$35,$2D,$35,$2D,$2E,$35,$35,$37,$3F,$27,$3F,$E7,$DB
+  $DB,$1B,$24,$2D,$2D,$35,$35,$2D,$2E,$3C,$27,$0C,$2C,$2D,$2E,$2D
+  $2E,$2E,$3E,$3E,$3F,$3C,$3F,$37,$37,$07,$00,$2F,$92,$92,$DB,$15
+  $75,$15,$15,$15,$3E,$34,$3F,$1C,$1C,$14,$36,$36,$3E,$36,$36,$37
+  $37,$37,$37,$37,$2E,$2E,$2E,$2E,$2E,$2E,$36,$37,$37,$37,$37,$3F
+  $3C,$2F,$25,$25,$25,$25,$27,$27,$27,$27,$27,$3F,$3C,$3C,$2C,$2C
+  $34,$37,$37,$37,$3F,$3F,$3F,$3C,$3C,$3C,$3C,$34,$35,$35,$35,$26
+  $3F,$37,$3F,$37,$3F,$3E,$37,$3F,$3E,$3E,$37,$37,$3F,$3E,$36,$3E
+  $3C,$3C,$3C,$2D,$2C,$24,$25,$2C,$2C,$2C,$2D,$2C,$25,$2C,$2C,$2C
+  $3F,$3C,$3C,$25,$2C,$24,$2D,$2C,$25,$3D,$3F,$3E,$3F,$3F,$37,$3F
+  $3E,$3E,$37,$37,$3E,$26,$25,$25,$24,$25,$25,$2D,$2C,$2D,$2D,$2D
+  $2C,$2D,$2D,$35,$2D,$3C,$24,$25,$2C,$2E,$35,$2D,$2E,$35,$35,$35
+  $36,$36,$2D,$2E,$3F,$3F,$24,$3C,$3C,$27,$3F,$3C,$27,$27,$24,$24
+  $25,$25,$25,$25,$25,$25,$2D,$2D,$2E,$2E,$2E,$35,$2D,$2E,$35,$15
+  $3F,$3F,$3C,$3F,$3C,$3F,$3C,$7C,$49,$21,$3C,$3C,$2C,$2C,$E5,$3C
+  $1E,$36,$27,$3E,$34,$2C,$2C,$24,$2C,$3E,$2F,$2D,$35,$3F,$3F,$3F
+  $3E,$37,$25,$25,$2D,$2D,$2D,$2C,$3D,$3E,$3F,$37,$36,$B6,$DA,$2A
+  $36,$37,$37,$37,$35,$35,$35,$2D,$25,$25,$25,$25,$2D,$2C,$24,$25
+  $2D,$3D,$27,$34,$35,$2D,$35,$35,$2D,$2E,$2E,$36,$37,$3F,$3F,$E7
+  $1C,$36,$36,$3E,$36,$36,$37,$37,$37,$37,$37,$06,$00,$24,$2D,$35
+  $2D,$2E,$2E,$2D,$2E,$35,$35,$2E,$2E,$36,$3D,$2E,$3E,$36,$37,$3E
+  $3E,$3E,$3E,$3E,$3F,$3F,$37,$2D,$2D,$3F,$3F,$37,$36,$36,$36,$36
+  $36,$2E,$2E,$2E,$36,$2D,$35,$2D,$2D,$DE,$DB,$DB,$DB,$DB,$DB,$1B
+  $2C,$25,$2D,$2C,$2C,$24,$24,$24,$24,$24,$24,$24,$24,$37,$3F,$37
+  $3D,$3F,$37,$3D,$3F,$3F,$2C,$27,$3F,$2C,$3C,$27,$3C,$24,$24,$2C
+  $24,$25,$24,$25,$2D,$2C,$25,$2D,$2C,$2C,$2D,$2D,$2C,$2D,$35,$00
+  $3F,$49,$49,$49,$49,$49,$49,$49,$49,$49,$49,$49,$49,$49,$49,$92
+  $92,$92,$92,$8A,$12,$35,$2D,$2E,$35,$2D,$2D,$2E,$2E,$36,$37,$3E
+  $36,$2E,$2F,$3C,$24,$2C,$2D,$24,$25,$2C,$24,$2C,$24,$24,$27,$2D
+  $2E,$2D,$2D,$2D,$2D,$2E,$2D,$2D,$2D,$2E,$2D,$2D,$35,$2D,$2D,$2D
+  $2E,$2D,$2D,$35,$2D,$2D,$2D,$2E,$2D,$2D,$35,$2D,$2D,$2D,$2D,$2D
+  $35,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$2D,$2D,$2D,$2D,$25,$2D,$2D,$2D,$2D,$2C,$2D,$2D,$25
+  $2D,$2D,$2D,$2D,$2C,$2D,$2D,$2D,$2C,$2C,$2E,$2E,$2D,$2E,$25,$2D
+  $2E,$2D,$2D,$2D,$2E,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$3E,$3E,$3E,$3E
+  $37,$37,$37,$3F,$3E,$3E,$3E,$37,$36,$36,$35,$36,$35,$3E,$36,$37
+  $36,$36,$35,$35,$35,$35,$35,$2D,$35,$35,$2D,$35,$2D,$35,$2D,$36
+  $36,$3E,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F
+  $3E,$3F,$3F,$3F,$37,$36,$36,$35,$36,$36,$35,$36,$2E,$36,$2E,$2E
+  $2E,$2E,$36,$36,$35,$2E,$2E,$2D,$2D,$2D,$2C,$2D,$2D,$25,$2D,$2D
+  $2D,$2C,$2D,$2D,$2D,$2D,$3D,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$3E
+  $3F,$3F,$37,$3F,$3F,$3F,$3F,$2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $2E,$2E,$36,$36,$35,$35,$35,$36,$36,$36,$35,$36,$35,$36,$36,$36
+  $3F,$3F,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$37,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+  $3E,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$37,$3F,$3F,$3F,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$DF
+  $DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$DB,$23
+  $27,$27,$27,$27,$27,$27,$27,$3C,$3C,$3C,$3C,$24,$24,$24,$2D,$25
+  $2D,$24,$3F,$37,$3F,$27,$3C,$24,$3C,$24,$3C,$24,$24,$27,$24,$27
+  $24,$24,$27,$27,$24,$24,$25,$25,$24,$25,$24,$2C,$24,$24,$24,$24
+  $24,$24,$2C,$24,$25,$25,$25,$2C,$24,$25,$2C,$24,$25,$2C,$24,$24
+  $2C,$24,$2C,$24,$25,$2C,$24,$24,$2C,$24,$25,$24,$3C,$24,$3C,$24
+  $24,$27,$64,$49,$49,$49,$49,$49,$49,$49,$49,$89,$52,$49,$49,$49
+  $49,$51,$49,$21,$34,$36,$36,$36,$36,$36,$36,$36,$37,$36,$37,$3E
+  $3E,$36,$36,$35,$36,$36,$36,$3E,$36,$37,$36,$37,$3E,$36,$36,$36
+  $37,$36,$36,$36,$36,$36,$37,$36,$3E,$3F,$3F,$3F,$3F,$27,$3F,$3F
+  $3F,$27,$3F,$3F,$3F,$3C,$3F,$3F,$3F,$3C,$3F,$3F,$3F,$3C,$3F,$3F
+  $27,$3F,$3F,$3F,$2D,$2D,$2D,$2E,$2D,$2D,$35,$2D,$2D,$2D,$2E,$2D
+  $2D,$35,$2D,$35,$36,$36,$36,$37,$36,$36,$36,$36,$36,$37,$36,$36
+  $36,$36,$36,$36,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$36
+  $35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$6D,$49,$49,$49,$49,$49
+  $24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24,$24,$3F,$3F,$3F,$3F,$3C,$3F,$3F
+  $27,$2E,$2D,$2D,$35,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2E,$2D,$2D
+  $2D,$2D,$2D,$35,$2D,$2D,$35,$36,$36,$36,$36,$2D,$2D,$2D,$2D,$2D
+  $2D,$2D,$35,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36
+  $36,$36,$36,$36,$36,$26,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$24,$24,$24,$24,$24,$2C,$2D,$2D,$2D,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D
+  $2D,$35,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36
+  $36,$36,$36,$36,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$2C,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2C,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$2D,$2D,$2D,$2D,$25,$2D,$2D,$2D,$2D,$2D,$3D,$3F,$3F
+  $3F,$3F,$3F,$37,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$37
+  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$27,$24,$24,$24,$3C,$3F,$3F,$3F
+  $3F,$3F,$3F,$24,$24,$24,$24,$24,$24,$24,$24,$24,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$25,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2C,$2D,$2D,$2D
+  $2E,$2E,$2D,$2C,$2C,$2D,$2E,$35,$2D,$2E,$2D,$24,$27,$24,$24,$27
+  $24,$24,$24,$3C,$24,$24,$24,$3C,$24,$24,$3F,$3C,$3C,$2C,$2C,$24
+  $24,$27,$24,$27,$3C,$24,$3C,$24,$3C,$24,$3C,$24,$3C,$24,$3C,$24
+  $3C,$3F,$37,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$37,$3F,$3F,$3F,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$3F,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36
+  $36,$36,$36,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2C,$2D,$2D,$2D,$2D,$2D
+  $2D,$25,$2D,$2D,$2D,$2D,$2D,$25,$2D,$2D,$2D,$2D,$3F,$3F,$3F,$3F
+  $37,$3F,$3F,$3F,$3F,$3F,$3E,$3F,$3F,$3F,$3F,$3F,$3F,$37,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36
+  $36,$36,$36,$24,$24,$24,$24,$24,$24,$24,$24,$24,$3C,$3F,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+  $3F,$3F,$3F,$3F,$3F,$3D,$3F,$36,$36,$36,$36,$36,$36,$36,$36,$36
+  $36,$36,$36,$36,$36,$26,$24,$24,$24,$24,$24,$24,$24,$24,$24,$24
+  $24,$24,$24,$3F,$2D,$3F,$3C,$3C,$3E,$3E,$27,$27,$27,$3F,$27,$24
+  $3C,$3C,$3C,$3C,$3C,$3F,$24,$2C,$24,$2C,$24,$3F,$24,$3C,$3C,$3C
+  $24,$27,$24,$3C,$27,$24,$24,$24,$24,$34,$24,$06,$00,$36,$92,$92
+  $92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$4A,$49,$49,$49,$49,$49
+  $49,$49,$49,$49,$92,$92,$49,$49,$49,$49,$49,$49,$49,$2D,$2C,$2D
+  $2D,$35,$35,$35,$3F,$37,$3F,$3F,$3C,$27,$3C,$35,$2E,$35,$2D,$2D
+  $2C,$2D,$2D,$2C,$2D,$25,$2D,$2D,$2C,$2D,$2D,$2D,$2E,$2E,$2E,$36
+  $36,$3E,$36,$36,$2E,$36,$36,$35,$36,$2E,$35,$2D,$2E,$35,$2E,$35
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$35,$2D,$2E,$2D,$2D,$2D,$2C,$2D,$2C
+  $2C,$2E,$36,$35,$35,$35,$2D,$35,$35,$35,$35,$35,$35,$35,$35,$35
+  $25,$25,$25,$25,$25,$25,$25,$25,$25,$25,$2D,$2D,$2D,$2D,$35,$2D
+  $2E,$2C,$2C,$2C,$2C,$2D,$2D,$2E,$35,$2D,$2E,$35,$2D,$2E,$35,$2D
+  $2E,$35,$2D,$2E,$35,$2D,$2E,$35,$2D,$2E,$35,$2D,$2D,$2D,$2D,$2D
+  $2D,$2D,$2E,$2D,$35,$2D,$2D,$2E,$2D,$2D,$2C,$2D,$2E,$2D,$2E,$2D
+  $2E,$2D,$2E,$2D,$2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E,$2D,$2D,$2D
+  $2D,$25,$2D,$25,$2D,$2C,$3D,$00,$2C,$2C,$2C,$35,$35,$3E,$3E,$27
+  $27,$2C,$2C,$2D,$2D,$2D,$2D,$35,$35,$3E,$3E,$27,$27,$2C,$2C,$2D
+  $2C,$2C,$3C,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$2E,$2E,$27,$27,$37,$3F
+  $3F,$3F,$3F,$3F,$3F,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$3C,$37,$3F,$3F
+  $2E,$36,$36,$2F,$24,$24,$3C,$3C,$2D,$27,$3F,$3F,$37,$2D,$35,$3F
+  $3E,$27,$2D,$3F,$24,$37,$3E,$24,$27,$27,$3F,$34,$24,$36,$37,$37
+  $2D,$2C,$36,$2C,$36,$25,$36,$36,$36,$2F,$24,$2C,$24,$2D,$2D,$2D
+  $2D,$2D,$2D,$25,$2D,$25,$3C,$24,$27,$27,$2C,$2C,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$2E,$36,$37,$37,$3E,$3E,$2E,$3F,$3F,$3F,$3F,$3F,$3F
+  $27,$3C,$24,$24,$00,$3F,$35,$35,$35,$2D,$2D,$2E,$2E,$2E,$2D,$2D
+  $2D,$3E,$3E,$36,$3F,$3E,$3F,$3F,$3F,$3E,$37,$3F,$3E,$2D,$2D,$2E
+  $2D,$2E,$2D,$2E,$2D,$2E,$2E,$2E,$35,$2D,$36,$3F,$3F,$3C,$27,$27
+  $3F,$27,$3F,$3F,$27,$3F,$3F,$3F,$3F,$3C,$27,$27,$2E,$27,$27,$26
+  $34,$2E,$2E,$3E,$3F,$3F,$27,$3F,$3F,$3C,$3F,$27,$3F,$3E,$3E,$3E
+  $3F,$3E,$3F,$37,$37,$3E,$37,$3F,$37,$3F,$3F,$3F,$27,$2D,$2C,$2D
+  $2C,$25,$25,$25,$25,$2C,$24,$25,$2C,$24,$3F,$3C,$3F,$27,$3F,$3F
+  $27,$27,$2D,$2D,$25,$2D,$2D,$2E,$35,$2D,$2D,$2C,$2D,$2D,$2D,$2D
+  $2D,$2D,$2D,$2D,$2D,$2D,$25,$2D,$25,$25,$25,$2C,$3E,$00,$2D,$35
+  $35,$35,$2D,$2D,$2E,$2E,$2E,$2D,$2D,$2D,$3E,$3E,$3E,$3E,$3E,$3F
+  $3F,$3F,$3E,$37,$3F,$3E,$36,$37,$3E,$3E,$3E,$37,$3F,$3E,$3F,$27
+  $27,$2D,$2D,$2C,$2C,$24,$25,$3C,$3C,$34,$35,$35,$36,$3F,$3F,$27
+  $3F,$3F,$3C,$3F,$3F,$36,$2D,$2E,$2D,$36,$35,$3F,$3F,$3F,$3F,$3F
+  $27,$2C,$25,$3F,$3F,$3F,$3C,$27,$24,$3F,$24,$24,$3C,$3C,$3F,$3C
+  $3F,$3F,$27,$2C,$2D,$2D,$2C,$2D,$35,$2D,$2E,$2D,$2C,$2D,$2D,$2D
+  $2D,$2D,$2D,$2D,$2D,$2D,$2D,$2D,$2C,$2D,$2C,$2C,$2C,$3D,$3C,$00
+  $0E,$09,$0E,$0E,$36,$36,$24,$3C,$3F,$37,$36,$24,$24,$0C,$1E,$00
+  $24,$36,$36,$36,$2D,$65,$E4,$3F,$2D,$0C,$E4,$3F,$37,$00,$37,$49
+  $0E,$1C,$3F,$1E,$36,$36,$0E,$2D,$0C,$1E,$00,$E7,$36,$36,$36,$2D
+  $65,$24,$24,$1C,$3F,$37,$00,$2D,$2D,$2D,$3F,$3F,$36,$2E,$2D,$3F
+  $37,$36,$2D,$2D,$07,$00,$76,$29,$2D,$3F,$F7,$36,$36,$0E,$2D,$25
+  $3C,$05,$00,$36,$36,$36,$36,$24,$2C,$2D,$25,$24,$36,$36,$36,$04
+  $00,$00,$09,$3D,$2F,$36,$36,$36,$2F,$3D,$00,$00,$49,$31,$36,$36
+  $1E,$3F,$1C,$0E,$00,$24,$36,$36,$36,$24,$2C,$0C,$0C,$0C,$1E,$1E
+  $1E,$0E,$0E,$0E,$14,$00,$00,$36,$36,$36,$2D,$2D,$07,$00,$0C,$36
+  $36,$36,$24,$24,$24,$0E,$0E,$26,$0C,$0C,$36,$36,$36,$24,$00,$36
+  $36,$36,$36,$24,$24,$24,$76,$0E,$0E,$0E,$26,$24,$24,$34,$00,$2D
+  $29,$75,$36,$36,$1E,$3F,$1C,$24,$24,$0C,$00,$3F,$36,$36,$36,$24
+  $24,$24,$2D,$75,$F6,$3F,$37,$00,$35,$36,$36,$36,$24,$24,$24,$2D
+  $75,$F6,$3F,$0E,$0E,$0E,$1C,$00,$3F,$29,$75,$1C,$3F,$1E,$76,$2D
+  $0E,$F6,$3F,$1C,$0E,$00,$27,$2D,$2D,$3F,$36,$36,$36,$04,$00,$3E
+  $36,$36,$76,$2D,$0C,$24,$24,$34,$00,$3F,$36,$36,$0E,$0E,$0C,$0C
+  $24,$24,$06,$00,$25,$76,$0E,$36,$26,$24,$0C,$0C,$34,$00,$3F,$29
+  $75,$36,$36,$1E,$3F,$1C,$24,$24,$0C,$2D,$0E,$1E,$1E,$1E,$1E,$0C
+  $00,$2D,$09,$1E,$0C,$36,$36,$36,$2D,$3F,$3F,$05,$00,$00,$F1,$0C
+  $2D,$0E,$F6,$F7,$1E,$2E,$2D,$3D,$00,$2D,$2D,$2D,$F6,$1E,$75,$F6
+  $3F,$1C,$0E,$00,$3F,$36,$2E,$2D,$3D,$24,$34,$36,$36,$26,$00,$27
+  $2D,$2D,$3F,$3F,$36,$2D,$75,$36,$1E,$3F,$1C,$0E,$00,$3F,$49,$39
+  $F7,$1E,$2E,$2D,$0E,$F6,$3F,$1C,$24,$00,$35,$2D,$2D,$F6,$1E,$1E
+  $36,$04,$00,$3F,$29,$75,$F6,$3F,$1E,$76,$2D,$0C,$E4,$3F,$1C,$64
+  $00,$3F,$29,$75,$36,$3F,$E7,$64,$2D,$0E,$36,$F6,$1E,$2F,$3F,$05
+  $00,$00
+end data
+
+data XScl bytes
+  $00,$00,$01,$02,$03,$04,$05,$06,$07,$08,$09,$0A,$0A,$0B,$0C,$0D
+  $0E,$0F,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19,$1A,$1B,$1C
+  $1D,$1E,$1F,$20,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$2A,$2A
+  $2B,$2C,$2D,$2E,$2F,$30,$31,$32,$33,$34,$35,$35,$36,$37,$38,$39
+  $3A,$3B,$3C,$3D,$3E,$3F,$40,$40,$41,$42,$43,$44,$45,$46,$47,$48
+  $49,$4A,$4A,$4B,$4C,$4D,$4E,$4F,$50,$51,$52,$53,$54,$55,$55,$56
+  $57,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F,$60,$60,$61,$62,$63,$64,$65
+  $66,$67,$68,$69,$6A,$6A,$6B,$6C,$6D,$6E,$6F,$70,$71,$72,$73,$74
+  $75,$75,$76,$77,$78,$79,$7A,$7B,$7C,$7D,$7E,$7F,$80,$80,$81,$82
+  $83,$84,$85,$86,$87,$88,$89,$8A,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91
+  $92,$93,$94,$95,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0
+  $A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$AA,$AB,$AC,$AD,$AE
+  $AF,$B0,$B1,$B2,$B3,$B4,$B5,$B5,$B6,$B7,$B8,$B9,$BA,$BB,$BC,$BD
+  $BE,$BF,$C0,$C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CA,$CB
+  $CC,$CD,$CE,$CF,$D0,$D1,$D2,$D3,$D4,$D5,$D5,$D6,$D7,$D8,$D9,$DA
+  $DB,$DC,$DD,$DE,$DF,$E0,$E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9
+  $EA,$EA,$EB,$EC,$ED,$EE,$EF,$F0,$F1,$F2,$F3,$F4,$F5,$F5,$F6,$F7
+  $F8,$F9,$FA,$FB,$FC,$FD,$FE,$FF
+end data
+
+data Ident bytes
+  $00,$01,$02,$03,$04,$05,$06,$07,$08,$09,$0A,$0B,$0C,$0D,$0E,$0F
+  $10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$1A,$1B,$1C,$1D,$1E,$1F
+  $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$2A,$2B,$2C,$2D,$2E,$2F
+  $30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$3A,$3B,$3C,$3D,$3E,$3F
+  $40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$4A,$4B,$4C,$4D,$4E,$4F
+  $50,$51,$52,$53,$54,$55,$56,$57,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F
+  $60,$61,$62,$63,$64,$65,$66,$67,$68,$69,$6A,$6B,$6C,$6D,$6E,$6F
+  $70,$71,$72,$73,$74,$75,$76,$77,$78,$79,$7A,$7B,$7C,$7D,$7E,$7F
+  $80,$81,$82,$83,$84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F
+  $90,$91,$92,$93,$94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F
+  $A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF
+  $B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B9,$BA,$BB,$BC,$BD,$BE,$BF
+  $C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF
+  $D0,$D1,$D2,$D3,$D4,$D5,$D6,$D7,$D8,$D9,$DA,$DB,$DC,$DD,$DE,$DF
+  $E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9,$EA,$EB,$EC,$ED,$EE,$EF
+  $F0,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$F9,$FA,$FB,$FC,$FD,$FE,$FF
+end data
+
+data Dollar bytes
+  $10,$7C,$90,$7C,$12,$7C,$10,$00
+end data
+
+asm {
+OrHush:
+    db $00,$00,$F4,$01,$10
+OrBell:
+    db $40,$70,$10,$06,$40,$70,$F0,$01,$50
+OrShot:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$56,$03,$00,$00,$96,$02,$10
+OrTick:
+    db $00,$00,$44,$01,$10
+
+OrSoundTable:
+    dw OrHush,$702B
+    dw OrBell,$7035
+    dw OrShot,$702B
+    dw OrTick,$702B
+    dw OrTuneMel,$703F
+    dw OrTuneBass,$7049
+; Sweet Betsy from Pike (traditional), as MECC's OREGON plays it
+; Tiny Sound, 6 frames per step
+OrTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$1A,$00,$00,$00,$1A,$00,$00,$00,$1F,$00,$00,$00
+    db $21,$00,$00,$00,$23,$00,$00,$00,$00,$00,$00,$00,$1F,$00,$1E,$00
+    db $1C,$00,$00,$00,$00,$00,$24,$00,$24,$00,$00,$00,$24,$00,$00,$00
+    db $00,$00,$00,$00,$23,$00,$24,$00,$26,$00,$00,$00,$00,$00,$1F,$00
+    db $1F,$00,$00,$00,$1F,$00,$00,$00,$1E,$00,$00,$00,$1F,$00,$00,$00
+    db $21,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$1A,$00,$00,$00,$1A,$00,$00,$00,$1F,$00,$00,$00
+    db $21,$00,$00,$00,$23,$00,$00,$00,$00,$00,$00,$00,$1F,$00,$1E,$00
+    db $1C,$00,$00,$00,$00,$00,$24,$00,$24,$00,$00,$00,$24,$00,$00,$00
+    db $00,$00,$00,$00,$24,$00,$24,$00,$23,$00,$00,$00,$00,$00,$21,$00
+    db $1F,$00,$00,$00,$1E,$00,$00,$00,$1F,$00,$00,$00,$21,$00,$00,$00
+    db $1F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$01,$01,$01,$01,$01,$26,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$24,$00,$00,$00,$23,$00,$00,$00,$00,$00,$21
+    db $00,$23,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$1A,$00,$1A,$00,$1F,$00,$00,$00,$00,$00,$1F
+    db $00,$1F,$00,$00,$00,$1F,$00,$00,$00,$00,$00,$1E,$00,$1F,$00,$00
+    db $00,$21,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$1A,$00,$00,$00,$1A,$00,$00,$00,$1F,$00,$00
+    db $00,$21,$00,$00,$00,$23,$00,$00,$00,$00,$00,$00,$00,$1F,$00,$1E
+    db $00,$1C,$00,$00,$00,$00,$00,$24,$00,$24,$00,$00,$00,$24,$00,$00
+    db $00,$00,$00,$00,$00,$24,$00,$24,$00,$23,$00,$00,$00,$00,$00,$21
+    db $00,$1F,$00,$00,$00,$1E,$00,$00,$00,$1F,$00,$00,$00,$21,$00,$00
+    db $00,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$01,$01,$01,$01,$01
+    db $FF
+OrTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$80,$18,$32,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01
+    db $FF
+
+; ---------------------------------------------------------------------------
+; OrDraw: Applesoft DRAW of shape Sn (1-based) of ShapeTab at Sx, Sy
+; (Apple hi-res coordinates), setting (Sm 1) or clearing (Sm 0) its
+; points. Each byte holds vectors A (bits 0-2), B (3-5), C (6-7); a
+; vector's bit 2 plots before moving (0 up, 1 right, 2 down, 3 left); C
+; is skipped when 0, and B too when B and C are both 0; a 0 byte ends the
+; shape. Columns 0-279 are drawn on 0-255 (XScl); with Su = 1 (letters)
+; only the starting column is scaled. Called with the NMI off.
+; Registers while drawing: IX the shape's bytes, DE the column, BC the line.
+OrDraw:
+    ld a,(AMY_UVAR_Sn)
+    dec a
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,AMY_UDATA_ShapeTab+2
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld ix,AMY_UDATA_ShapeTab
+    add ix,de
+    ld de,(AMY_UVAR_Sx)
+    ; the letters' starting column, and the offset that turns Cx into it
+    ld a,d
+    or a
+    jr nz,OrDrawNoBase
+    ld hl,AMY_UDATA_XScl
+    add hl,de
+    ld a,(hl)
+    sub e
+    ld (AMY_UVAR_Lb),a
+OrDrawNoBase:
+    ld bc,(AMY_UVAR_Sy)
+OrDrawByte:
+    ld a,(ix+0)
+    or a
+    ret z
+    inc ix
+    push af
+    and 7
+    call OrVec
+    pop af
+    ld h,a
+    and $C0
+    jr nz,OrDrawBC
+    ld a,h
+    and $38
+    jr z,OrDrawByte
+    rrca
+    rrca
+    rrca
+    call OrVec
+    jr OrDrawByte
+OrDrawBC:
+    ld a,h
+    push af
+    rrca
+    rrca
+    rrca
+    and 7
+    call OrVec
+    pop af
+    rlca
+    rlca
+    and 3
+    call OrVec
+    jr OrDrawByte
+
+; OrVec: the vector in A at DE, BC
+OrVec:
+    bit 2,a
+    call nz,OrPlot
+    and 3
+    jr z,OrVecUp
+    dec a
+    jr z,OrVecRight
+    dec a
+    jr z,OrVecDown
+    dec de
+    ret
+OrVecUp:
+    dec bc
+    ret
+OrVecRight:
+    inc de
+    ret
+OrVecDown:
+    inc bc
+    ret
+
+; OrPlot: the point DE, BC when on the screen (keeps AF, BC, DE)
+OrPlot:
+    push af
+    ld a,b
+    or a
+    jr nz,OrPlotOut
+    ld a,c
+    cp 192
+    jr nc,OrPlotOut
+    ld a,(AMY_UVAR_Su)
+    or a
+    jr nz,OrPlotLetter
+    ld a,d
+    or a
+    jr z,OrPlotScale
+    dec a
+    jr nz,OrPlotOut
+    ld a,e
+    cp 24
+    jr nc,OrPlotOut
+OrPlotScale:
+    ld hl,AMY_UDATA_XScl
+    add hl,de
+    ld a,(hl)
+    jr OrPix
+OrPlotLetter:
+    ld a,(AMY_UVAR_Lb)
+    add a,e
+; OrPix: the pixel at column A, line C: VRAM (C>>3)*256 + (A&$F8) + (C&7)
+OrPix:
+    push de
+    ld e,a
+    and 7
+    ld hl,OrMaskTab
+    add a,l
+    ld l,a
+    jr nc,OrPixNoC
+    inc h
+OrPixNoC:
+    ld d,(hl)
+    ld a,c
+    rrca
+    rrca
+    rrca
+    and $1F
+    ld h,a
+    ld a,e
+    and $F8
+    ld l,a
+    ld a,c
+    and 7
+    or l
+    ld l,a
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld e,a
+    ld a,(AMY_UVAR_Sm)
+    or a
+    ld a,e
+    jr z,OrPixClear
+    or d
+    jr OrPixWrite
+OrPixClear:
+    ld e,a
+    ld a,d
+    cpl
+    and e
+OrPixWrite:
+    ld e,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,e
+    nop
+    nop
+    out ($BE),a
+    pop de
+OrPlotOut:
+    pop af
+    ret
+
+OrMaskTab:
+    db $80,$40,$20,$10,$08,$04,$02,$01
+
+; OrText: the letters of the 0-ended string at Tp drawn from Sx, Sy (Apple
+; coordinates, 7 apart: DRAW ASC-28, line 30015); Sx moves on
+OrText:
+    ld a,1
+    ld (AMY_UVAR_Su),a
+OrTextLoop:
+    ld hl,(AMY_UVAR_Tp)
+    ld a,(hl)
+    or a
+    jr z,OrTextEnd
+    inc hl
+    ld (AMY_UVAR_Tp),hl
+    cp 32
+    jr z,OrTextNext
+    sub 28
+    ld (AMY_UVAR_Sn),a
+    call OrDraw
+OrTextNext:
+    ld hl,(AMY_UVAR_Sx)
+    ld de,7
+    add hl,de
+    ld (AMY_UVAR_Sx),hl
+    jr OrTextLoop
+OrTextEnd:
+    xor a
+    ld (AMY_UVAR_Su),a
+    ret
+
+; OrPut: the 0-ended string at Tp printed in the text at column X, row Y;
+; Rv = its length
+OrPut:
+    ld a,(AMY_UVAR_Y)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_X)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,(AMY_UVAR_Tp)
+    ld b,0
+OrPutLoop:
+    ld a,(hl)
+    or a
+    jr z,OrPutEnd
+    out ($BE),a
+    inc hl
+    inc b
+    ex (sp),hl
+    ex (sp),hl
+    jr OrPutLoop
+OrPutEnd:
+    ld a,b
+    ld (AMY_UVAR_Rv),a
+    xor a
+    ld (AMY_UVAR_Rv+1),a
+    ret
+
+; OrChar: the character V at column X, row Y
+OrChar:
+    ld a,(AMY_UVAR_Y)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_X)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_V)
+    out ($BE),a
+    ret
+
+; OrLose: the i32 at HL less Kc*65536 + Km*Rw
+OrLose:
+    push hl
+    ld a,(AMY_UVAR_Km)
+    ld b,a
+    ld de,(AMY_UVAR_Rw)
+    ld hl,0
+    ld c,0
+    or a
+    jr z,OrLoseSum
+OrLoseMul:
+    add hl,de
+    jr nc,OrLoseNoC
+    inc c
+OrLoseNoC:
+    djnz OrLoseMul
+OrLoseSum:
+    ld a,(AMY_UVAR_Kc)
+    add a,c
+    ld c,a
+    ex de,hl
+    pop hl
+    ld a,(hl)
+    sub e
+    ld (hl),a
+    inc hl
+    ld a,(hl)
+    sbc a,d
+    ld (hl),a
+    inc hl
+    ld a,(hl)
+    sbc a,c
+    ld (hl),a
+    inc hl
+    ld a,(hl)
+    sbc a,0
+    ld (hl),a
+    ret
+
+; OrFont: the font back in the three thirds after a bitmap
+OrFont:
+    call LOAD_ASCII
+    jp AMY_DUPLICATE_PATTERN_THIRDS
+}

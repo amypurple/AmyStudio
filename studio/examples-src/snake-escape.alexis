@@ -1,0 +1,801 @@
+' SNAKE ESCAPE
+' The game by Daryl Biberdorf from COMPUTE!'s Gazette, July 1983 (pages 54
+' and 118-120), for the ColecoVision in Amy by Amy Bienvenu. Ported by
+' Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: Program 1, the VIC-20 version, transcribed in
+' orig/snake-escape-vic.bas from the scans beside it.
+'
+' The game: 150 poisonous plants fill the garden. The snake starts at the
+' top left; every move adds a segment (a point) in a new colour. Reach the
+' escape hole at the bottom right within the time of your skill level (60,
+' 45, 30 or 15 seconds) for a bonus (5 to 24, 34, 44 or 54 by level). A
+' plant, your own body or the time costs a snake; three snakes a game.
+'
+' Controls (either joystick): the stick moves the snake while it is held
+' (let go and it stops, but the clock runs); the button answers in the
+' menus. Keypad not used.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23: the snake's place B is the VIC screen offset, so leaving the
+' right edge comes back on the left one row down, and the reverse, as the
+' Strategy section warns. Labels such as l250 are the listing's line
+' numbers.
+'
+' Kept as the listing has them: pushing against the top or bottom edge
+' scores a point a try without moving (line 250 counts before line 300
+' puts the snake back); the skill question comes before every snake.
+'
+' Liberties taken:
+' - The stick instead of the keys I, J, K and M (left is tried first, as
+'   line 200 is); Y or N and the level are chosen with the stick and the
+'   button. "HIT A KEY" says "PRESS A BUTTON".
+' - A move every 3 frames (about the VIC's BASIC speed).
+' - The text rewrapped for 28 columns; one colour of text a screen.
+' - New title music (Garden Gate) and a credits page; the listing's POKEd
+'   sounds made as Tiny Sound effects.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the garden is a
+' picture to row 23); no sprites; the frame loop is protected from the NMI
+' and every screen is drawn with the NMI off after a wait.
+
+const TPoison = 128
+const THole = 129
+const TBodyw = 130
+const THeadw = 131
+const TBodyr = 132
+const THeadr = 133
+const TBodym = 134
+const THeadm = 135
+const TBodyn = 136
+const THeadn = 137
+const TBodyy = 138
+const THeady = 139
+const TCross = 140
+const TStone = 141
+const TRed = 142
+const SNone = 0
+const NTiles8 = 120
+const SprBytes = 32
+const SndHush = 1
+const SndStep = 2
+const SndEscape = 3
+const SndPoison = 4
+const SndTired = 5
+const SndOver = 6
+const SndTick = 7
+const SndTuneA = 8
+const SndTuneB = 9
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' SO score, SR snakes, S skill (1-4), B the head's VIC screen offset, DR the
+' step, CL the colour (1 white, 2 red, 4 purple, 6 blue, 7 yellow)
+u16 SO = 0
+u8 SR = 3
+u8 S = 1
+u16 B = 0
+i16 DR = 0
+u8 CL = 1
+u8 VB = 0
+u8 BN = 0
+' the seconds allowed (L$) and the frames gone (TI$)
+u16 Limit = 3600
+u16 Frames = 0
+' the cell under B (OrPeek) and the tile to put there (OrPoke)
+u8 Pk = 0
+u8 Tl = 0
+' the head and body tiles of colour CL
+u8 Hd = 0
+u8 Bd = 0
+' for the test bot: 1 the garden, 2 escaped, 3 poisoned, 4 tired, 5 the
+' skill question, 6 a yes or no, 7 game over
+u8 Ph = 0
+' the text colours of the next screen (set before the tiles are loaded)
+u8 Tc = $4F
+
+u16 NumU = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 V16 = 0
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 I = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 R = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table SeSoundTable areas 4
+  nmi off
+  screen on
+
+l30000:
+  ' the title
+  TextScreen
+  backdrop cyan
+  ' 30010: a red frame around SNAKE ESCAPE!
+  for Y = 9 to 13
+    fill TRed count 17 at 7,Y
+  next
+  fill 32 count 15 at 8,10
+  fill 32 count 15 at 8,11
+  fill 32 count 15 at 8,12
+  print at 9,11, "SNAKE ESCAPE!"
+  print at 7,15, "BY DARYL BIBERDORF"
+  print at 2,19, "COMPUTE!'S GAZETTE JULY 1983"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  print at 9,17, "INSTRUCTIONS ?"
+  Oy = 18
+  YesNo
+  TzOn = 0
+  mute all
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  if Sel = 1 then Instructions
+  SO = 0
+  SR = 3
+
+l120:
+l130:
+  Skill
+  Garden
+  ' 28000: the head at the top left
+  B = 0
+  Frames = 0
+l150:
+  ' 150: a new colour (not 3 or 5)
+  Rnd16
+  V = highbyte Rw
+  V = V % 7
+  CL = V + 1
+  if CL = 5 then goto l150
+  if CL = 3 then goto l150
+  ColourTiles
+l160:
+  ' 160: the time is up
+  if Frames >= Limit then
+    Tired
+    if SR = 0 then goto l6000
+    goto l130
+  end if
+  Tl = Hd
+  call asm OrPoke
+  ' 190: the stick (left first, as line 200 is tried first)
+  Step3
+  DR = 0
+  if Lf1 = 1 then
+    DR = -1
+  else
+    if Rt1 = 1 then
+      DR = 1
+    else
+      if Up1 = 1 then
+        DR = -22
+      else
+        if Dn1 = 1 then DR = 22
+      end if
+    end if
+  end if
+  if DR = 0 then goto l160
+l250:
+  ' 250: the body where the head was; a point
+  Tl = Bd
+  call asm OrPoke
+  V16 = B
+  B = B + DR
+  inc SO
+  ' 300 (before the checks here: off the top or the bottom there is no
+  ' screen to read; the listing read whatever was there): back
+  if B > 505 then
+    B = V16
+    play sound SndStep
+    goto l150
+  end if
+  call asm OrPeek
+  if Pk = TPoison then goto l9500
+  if Pk = THole then goto l5000
+  if Pk >= TBodyw then
+    if Pk <= THeady then goto l9500
+  end if
+  play sound SndStep
+  goto l150
+
+l5000:
+  ' escaped: a bonus by level
+  Ph = 2
+  VB = 20
+  if S = 2 then VB = 30
+  if S = 3 then VB = 40
+  if S = 4 then VB = 50
+  Rnd16
+  Uq = Rw
+  V16 = VB
+  Uq2 = V16
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  V16 = lowword Uq
+  BN = V16 + 5
+  TextScreen
+  backdrop cyan
+  print at 6,7, "YOU HAVE ESCAPED!!!"
+  V16 = BN
+  SO = SO + V16
+  print at 11,10, "BONUS:"
+  NumU = BN
+  print at 18,10, digits$(NumU, 2)
+  print at 11,13, "SCORE:"
+  NumU = SO
+  ShowNum(18, 13)
+  NumU = SR
+  print at 6,16, digits$(NumU, 1)
+  print at 8,16, "SNAKES REMAINING"
+  ShowScreen
+  play sound SndEscape
+  Hold(150)
+  goto l120
+
+l9500:
+  ' poisoned, or bitten: RIP
+  Ph = 3
+  Tl = Hd
+  call asm OrPoke
+  play sound SndPoison
+  dec SR
+  ' 9550: a white cross: a cell, RIP, a cell (VIC row 9 column 11 down)
+  put char TStone at 16,10
+  print at 15,11, "RIP"
+  put char TStone at 16,12
+  Hold(60)
+  TextScreen
+  backdrop cyan
+  print at 11,3, "TOO BAD!!"
+  print at 11,6, "SCORE:"
+  NumU = SO
+  ShowNum(18, 6)
+  NumU = SR
+  print at 6,9, digits$(NumU, 1)
+  print at 8,9, "SNAKES REMAINING"
+  ShowScreen
+  Hold(120)
+  if SR = 0 then goto l6000
+  goto l120
+
+l6000:
+  ' game over, in a frame of crosses
+  Ph = 7
+  TextScreen
+  backdrop cyan
+  fill TCross count 13 at 9,11
+  put char TCross at 9,12
+  put char TCross at 21,12
+  fill TCross count 13 at 9,13
+  print at 10,12, " GAME"
+  ShowScreen
+  play sound SndOver
+  Hold(60)
+  print at 15,12, " OVER "
+  Hold(60)
+  print at 10,17, "PLAY AGAIN ?"
+  Oy = 18
+  YesNo
+  if Sel = 1 then
+    SO = 0
+    SR = 3
+    goto l120
+  end if
+  TextScreen
+  print at 14,15, "BYE!"
+  ShowScreen
+  Hold(120)
+  goto l30000
+
+' ---------------------------------------------------------------------------
+
+' Garden (9000): 150 plants anywhere from offset 17 on, the hole in the
+' corner (2 x 2), the cells above it and left of it cleared
+sub Garden:
+  Ph = 1
+  ' (POKE 36879,138: orange, a red border)
+  Tc = $1A
+  TextScreen
+  Tc = $4F
+  backdrop medium red
+  for Y = 1 to 23
+    fill 32 count 22 at 5,Y
+  next
+  for J = 1 to 150
+    Rnd16
+    Uq = Rw
+    Uq2 = 489
+    Uq = Uq * Uq2
+    Uq = Uq >> 16
+    B = lowword Uq
+    B = B + 17
+    Tl = TPoison
+    call asm OrPoke
+  next
+  B = 505
+  Tl = THole
+  call asm OrPoke
+  B = 504
+  call asm OrPoke
+  B = 483
+  call asm OrPoke
+  B = 482
+  call asm OrPoke
+  ' 9050: 8141 (above the hole) and 8183 (left of it)
+  Tl = 32
+  B = 461
+  call asm OrPoke
+  B = 503
+  call asm OrPoke
+  ShowScreen
+  return
+end sub
+
+' Skill (8000-8110): the time allowed
+sub Skill:
+  Ph = 5
+  ' (POKE 36879,218: light green, a red border)
+  Tc = $43
+  TextScreen
+  Tc = $4F
+  backdrop medium red
+  print at 6,3, "CHOOSE YOUR SKILL:"
+  fill 45 count 17 at 6,4
+  print at 6,6, "LEVEL 1=60 SECONDS"
+  print at 6,7, "LEVEL 2=45 SECONDS"
+  print at 6,8, "LEVEL 3=30 SECONDS"
+  print at 6,9, "LEVEL 4=15 SECONDS"
+  print at 12,12, "LEVEL ?"
+  ShowScreen
+  Oy = 6
+  Nopt = 4
+  PickOne
+  S = Sel
+  Limit = 3600
+  if S = 2 then Limit = 2700
+  if S = 3 then Limit = 1800
+  if S = 4 then Limit = 900
+  return
+end sub
+
+sub Instructions:
+  TextScreen
+  print at 2,2, "YOUR GOAL IS TO MOVE THE"
+  print at 2,3, "SNAKE OUT OF THE POISON"
+  print at 2,4, "PATCH."
+  print at 2,6, "TRY TO AVOID ALL POISON ("
+  put char TPoison at 27,6
+  print at 28,6, ")."
+  print at 2,8, "CONTROLS: THE STICK"
+  print at 2,9, "(LET GO TO STOP)"
+  print at 2,11, "POINT VALUES:"
+  print at 2,12, "BODY SEGMENT=1 POINT"
+  print at 2,14, "YOU WILL RECEIVE A BONUS FOR"
+  print at 2,15, "ESCAPING."
+  print at 3,18, "PRESS A BUTTON TO START"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+' Tired (7000): the time ran out
+sub Tired:
+  Ph = 4
+  dec SR
+  TextScreen
+  backdrop cyan
+  print at 6,2, "WHEW! YOU HAVE JUST"
+  print at 6,3, "DIED OF EXAUSTION!"
+  print at 11,5, "SCORE:"
+  NumU = SO
+  ShowNum(18, 5)
+  NumU = SR
+  print at 6,7, digits$(NumU, 1)
+  print at 8,7, "SNAKES REMAINING"
+  ShowScreen
+  play sound SndTired
+  Hold(120)
+  return
+end sub
+
+' ColourTiles: the head and body tiles of colour CL
+sub ColourTiles:
+  if CL = 1 then
+    Hd = THeadw
+    Bd = TBodyw
+  end if
+  if CL = 2 then
+    Hd = THeadr
+    Bd = TBodyr
+  end if
+  if CL = 4 then
+    Hd = THeadm
+    Bd = TBodym
+  end if
+  if CL = 6 then
+    Hd = THeadn
+    Bd = TBodyn
+  end if
+  if CL = 7 then
+    Hd = THeady
+    Bd = TBodyy
+  end if
+  return
+end sub
+
+' ShowNum X, Y: NumU, as many digits as it has
+sub ShowNum(u8 Px, u8 Py):
+  if NumU < 10 then
+    print at Px,Py, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at Px,Py, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at Px,Py, digits$(NumU, 3)
+      else
+        print at Px,Py, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' YesNo: YES or NO on row Oy (Sel 1 = YES)
+sub YesNo:
+  Ph = 6
+  Sel = 1
+  WasBtn = 1
+yn_draw:
+  print at 10,Oy, " YES   NO "
+  X = 10
+  if Sel = 2 then X = 16
+  print at X,Oy, ">"
+yn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    goto yn_draw
+  end if
+  if Press = 0 then goto yn_loop
+  play sound SndTick
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+' Step3: three frames of the garden's clock, then the stick
+sub Step3:
+  for J = 1 to 3
+    Frame1
+  next
+  Frames = Frames + 3
+  ReadPad
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+data TilePat bytes
+  $00,$18,$81,$24,$C3,$18,$C3,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$C3,$42,$42,$42,$42,$C3,$00
+  $C3,$99,$C3,$18,$18,$C3,$99,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0A,$1A,$A1,$A1,$A1,$1A,$A1,$0A
+  $0D,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+  $0A,$AF,$AF,$AF,$AF,$AF,$AF,$0A
+  $0A,$AF,$FA,$FA,$FA,$FA,$AF,$0A
+  $0A,$A8,$A8,$A8,$A8,$A8,$A8,$0A
+  $0A,$A8,$8A,$8A,$8A,$8A,$A8,$0A
+  $0A,$AD,$AD,$AD,$AD,$AD,$AD,$0A
+  $0A,$AD,$DA,$DA,$DA,$DA,$AD,$0A
+  $0A,$A4,$A4,$A4,$A4,$A4,$A4,$0A
+  $0A,$A4,$4A,$4A,$4A,$4A,$A4,$0A
+  $0A,$AB,$AB,$AB,$AB,$AB,$AB,$0A
+  $0A,$AB,$BA,$BA,$BA,$BA,$AB,$0A
+  $4F,$F4,$F4,$4F,$4F,$F4,$F4,$4F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $08,$08,$08,$08,$08,$08,$08,$08
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+SeHush:
+    db $00,$00,$F4,$01,$10
+SeStep:
+    db $40,$88,$40,$01,$50
+SeEscape:
+    db $40,$E0,$22,$01,$40,$BB,$22,$01,$40,$9A,$22,$01,$40,$7C,$22,$01,$40,$60,$22,$01,$40,$3B,$22,$01
+    db $40,$10,$22,$01,$40,$F3,$21,$01,$40,$CA,$21,$01,$40,$AE,$21,$01,$40,$8A,$21,$01,$40,$67,$21,$01
+    db $40,$41,$21,$01,$40,$20,$21,$01,$40,$FC,$20,$01,$40,$D9,$20,$01,$40,$B6,$20,$01,$40,$93,$20,$01
+    db $40,$70,$20,$01,$40,$4D,$20,$01,$40,$2A,$20,$01,$40,$FE,$F0,$01,$50
+SePoison:
+    db $40,$09,$13,$1E,$40,$FF,$13,$1E,$40,$FF,$13,$24,$40,$FE,$F0,$01,$50
+SeTired:
+    db $40,$8A,$01,$02,$40,$8A,$11,$02,$40,$8A,$21,$02,$40,$8A,$31,$02,$40,$8A,$41,$02,$40,$8A,$51,$02
+    db $40,$8A,$61,$02,$40,$8A,$71,$02,$40,$8A,$81,$02,$40,$8A,$91,$02,$40,$8A,$A1,$02,$40,$8A,$B1,$02
+    db $40,$8A,$C1,$02,$40,$8A,$D1,$02,$50
+SeOver:
+    db $40,$3B,$12,$3C,$40,$E0,$12,$3C,$40,$FE,$F0,$01,$50
+SeTick:
+    db $40,$40,$50,$01,$50
+
+SeSoundTable:
+    dw SeHush,$702B
+    dw SeStep,$7035
+    dw SeEscape,$7035
+    dw SePoison,$7035
+    dw SeTired,$7035
+    dw SeOver,$7035
+    dw SeTick,$7035
+    dw SeTuneMel,$703F
+    dw SeTuneBass,$7049
+; Garden Gate, A minor to A major (original for this game)
+; Tiny Sound, 6 frames per step
+SeTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$40,$F1,$22,$23,$22,$23,$00,$1E,$00,$00,$00,$23,$22,$23,$00
+    db $1F,$00,$00,$00,$21,$20,$21,$00,$1C,$00,$00,$00,$26,$25,$26,$00
+    db $23,$00,$00,$00,$1F,$00,$21,$00,$23,$00,$26,$00,$28,$00,$00,$00
+    db $27,$00,$00,$00,$28,$00,$23,$00,$2C,$00,$00,$00,$28,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+SeTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$10,$0B,$10,$0B,$10,$0B,$10,$0B,$0C,$07,$0C,$07
+    db $0C,$07,$0C,$07,$09,$10,$09,$10,$09,$10,$09,$10,$0B,$12,$0B,$12
+    db $0B,$12,$0B,$12,$10,$0B,$10,$0B,$0C,$07,$0C,$07,$09,$10,$09,$10
+    db $0B,$12,$0B,$12,$10,$0B,$10,$0B,$10,$14,$17,$10,$10,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; OrPeek: Pk = the tile at B
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+}

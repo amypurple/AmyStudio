@@ -65,9 +65,11 @@ const SndWin = 8
 const SndLose = 9
 const SndTuneA = 10
 const SndTuneB = 11
+u16 TzLeft = 0
+u8 TzOn = 0
 u8 Sb[110]
 u8 Ms[40]
-u8 Ss[110]
+u8 Ss[121]
 u8 Su[110]
 u8 Level = 0
 u8 Ns = 0
@@ -1159,6 +1161,15 @@ end sub
 ' Frame, controls, screens
 
 sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound SndTuneA
+    stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
   nmi off
   nmi on
   return
@@ -1279,6 +1290,8 @@ sub TitlePage:
   Menu = 0
   play sound SndTuneA
   play sound SndTuneB
+  TzLeft = 288
+  TzOn = 1
   WasBtn = 1
 title_loop:
   Frame1
@@ -1307,6 +1320,7 @@ title_loop:
     goto title_loop
   end if
   mute all
+  TzOn = 0
   return
 end sub
 
@@ -1317,7 +1331,7 @@ sub RulesPage:
   print at 2,4, "THE BOTTOM, MY BLACK ONES AT"
   print at 2,5, "THE TOP. A PIECE MOVES IN A"
   print at 2,6, "STRAIGHT LINE, NOT ON THE"
-  print at 2,7, "DIAGONAL, OVER EMPTY SQUARES,"
+  print at 2,7, "DIAGONAL, OVER EMPTY SQUARES"
   print at 2,8, "OR JUMPS A PIECE NEXT TO IT."
   print at 2,10, "SQUEEZE A PIECE BETWEEN TWO"
   print at 2,11, "OF YOURS TO TAKE IT. MOVING"
@@ -1452,26 +1466,28 @@ data SpritePat bytes
 end data
 
 
-data GkDirs bytes 1, 9, 10, 11
-data Openings bytes 34, 35, 44, 46, 47, 54, 55, 56, 57, 66
+data GkDirs bytes 1, 10, 11, 12
+' (the book's opening points, moved one row and column down and right
+' with the board's new middle)
+data Openings bytes 48, 49, 59, 61, 62, 70, 71, 72, 73, 83
 
 sub GkNewGame:
   fill array Ss with 0
-  for I = 1 to 8
-    for J = 2 to 9
-      V = I * 10
+  for I = 1 to 9
+    for J = 1 to 9
+      V = I * 11
       V = V + J
       Ss[V] = 46
     next
   next
-  Cur = 45
+  Cur = 60
   return
 end sub
 
 ' Free: V = the number of free points
 sub Free:
   V = 0
-  for I = 12 to 89
+  for I = 12 to 108
     if Ss[I] = 46 then inc V
   next
   return
@@ -1509,7 +1525,7 @@ sub GkChooseMove:
     G = 0
     H1 = 0
     L = 0
-    for A = 12 to 89
+    for A = 12 to 108
       if Ss[A] = 46 then
         M = 0
         for Xd = 0 to 3
@@ -1544,10 +1560,10 @@ sub GkChooseMove:
   for Tries = 1 to 100
     GkRnd
     NumW = Rb
-    NumW = NumW * 77
+    NumW = NumW * 97
     NumW = NumW >> 8
     V = NumW
-    G = V + 13
+    G = V + 12
     if Ss[G] = 46 then return
   next
   G = 0
@@ -1631,14 +1647,14 @@ sub DrawPoint:
       W = TWhitea
     else
       ' an empty point: its lines stop at the board's edges
-      Y = Cell / 10
-      X = Y * 10
+      Y = Cell / 11
+      X = Y * 11
       X = Cell - X
       Pr = 1
       if Y = 1 then Pr = 0
-      if Y = 8 then Pr = 2
+      if Y = 9 then Pr = 2
       Pc = 1
-      if X = 2 then Pc = 0
+      if X = 1 then Pc = 0
       if X = 9 then Pc = 2
       W = Pr * 3
       W = W + Pc
@@ -1652,13 +1668,12 @@ end sub
 
 ' DrawQuad: the 2 x 2 tiles from W for point Cell
 sub DrawQuad:
-  Y = Cell / 10
-  X = Y * 10
+  Y = Cell / 11
+  X = Y * 11
   X = Cell - X
   X = X * 2
-  X = X - 1
+  X = X + 1
   Y = Y * 2
-  Y = Y + 2
   put char W at X,Y
   inc W
   inc X
@@ -1674,43 +1689,43 @@ sub DrawQuad:
 end sub
 
 sub GkDrawBoard:
-  put char GkTFtl at 2,3
-  fill GkTFt count 16 at 3,3
-  put char GkTFtr at 19,3
-  for Y = 4 to 19
+  put char GkTFtl at 2,1
+  fill GkTFt count 18 at 3,1
+  put char GkTFtr at 21,1
+  for Y = 2 to 19
     put char GkTFl at 2,Y
-    put char GkTFr at 19,Y
+    put char GkTFr at 21,Y
   next
   put char GkTFbl at 2,20
-  fill GkTFb count 16 at 3,20
-  put char GkTFbr at 19,20
-  for A = 12 to 89
+  fill GkTFb count 18 at 3,20
+  put char GkTFbr at 21,20
+  for A = 12 to 108
     if Ss[A] <> 0 then
       Cell = A
       DrawPoint
     end if
   next
-  print at 22,6, "ME"
-  put char TBlacka at 22,7
-  put char TBlackb at 23,7
-  put char TBlackc at 22,8
-  put char TBlackd at 23,8
-  print at 22,11, "YOU"
-  put char TWhitea at 22,12
-  put char TWhiteb at 23,12
-  put char TWhitec at 22,13
-  put char TWhited at 23,13
+  print at 24,6, "ME"
+  put char TBlacka at 24,7
+  put char TBlackb at 25,7
+  put char TBlackc at 24,8
+  put char TBlackd at 25,8
+  print at 24,11, "YOU"
+  put char TWhitea at 24,12
+  put char TWhiteb at 25,12
+  put char TWhitec at 24,13
+  put char TWhited at 25,13
   return
 end sub
 
 sub GkDrawCursor:
-  Y = Cur / 10
-  X = Y * 10
+  Y = Cur / 11
+  X = Y * 11
   X = Cur - X
   X = X * 16
-  X = X - 8
+  X = X + 8
   Y = Y * 16
-  Y = Y + 15
+  Y = Y - 1
   V = Tick & 8
   W = 15
   if V > 0 then W = 9
@@ -1721,11 +1736,11 @@ end sub
 
 sub GkMoveCursor:
   if Stick = 0 then return
-  Y = Cur / 10
-  X = Y * 10
+  Y = Cur / 11
+  X = Y * 11
   X = Cur - X
   if Lf1 = 1 then
-    if X > 2 then dec X
+    if X > 1 then dec X
   end if
   if Rt1 = 1 then
     if X < 9 then inc X
@@ -1734,9 +1749,9 @@ sub GkMoveCursor:
     if Y > 1 then dec Y
   end if
   if Dn1 = 1 then
-    if Y < 8 then inc Y
+    if Y < 9 then inc Y
   end if
-  Cur = Y * 10
+  Cur = Y * 11
   Cur = Cur + X
   play sound GkSndMove
   return
@@ -1750,7 +1765,7 @@ end sub
 
 sub GkBoardScreen:
   GkNewScreen
-  print at 13,1, "GOMOKU"
+  print at 23,1, "GOMOKU"
   GkDrawBoard
   GkShowScreen
   return
@@ -1760,6 +1775,15 @@ end sub
 ' Frame, controls, screens
 
 sub GkRearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound GkSndTuneA
+    stop sound GkSndTuneB
+      TzOn = 0
+    end if
+  end if
   nmi off
   nmi on
   return
@@ -1865,17 +1889,17 @@ sub GkTitlePage:
   print at 13,2, "GOMOKU"
   ' five stones in a line on a strip of the board
   fill array Ss with 0
-  for J = 2 to 9
-    V = 40 + J
+  for J = 1 to 9
+    V = 44 + J
     Ss[V] = 46
   next
   for J = 3 to 7
-    V = 40 + J
+    V = 44 + J
     Ss[V] = 2
   next
-  Ss[48] = 3
-  for J = 2 to 9
-    Cell = 40 + J
+  Ss[52] = 3
+  for J = 1 to 9
+    Cell = 44 + J
     DrawPoint
   next
   print at 6,14, "PLAY: YOU GO FIRST"
@@ -1889,6 +1913,8 @@ sub GkTitlePage:
   Menu = 0
   play sound GkSndTuneA
   play sound GkSndTuneB
+  TzLeft = 288
+  TzOn = 1
   WasBtn = 1
 gk_title_loop:
   GkFrame1
@@ -1910,6 +1936,7 @@ gk_title_loop:
   print at 4,Y, ">"
   if Press = 0 then goto gk_title_loop
   mute all
+  TzOn = 0
   return
 end sub
 
@@ -1938,7 +1965,7 @@ end sub
 
 sub GkEditorialPage:
   GkNewScreen
-  print at 13,1, "GOMOKU"
+  print at 23,1, "GOMOKU"
   print at 2,3, "FROM TIM HARTNELL'S GIANT"
   print at 2,4, "BOOK OF COMPUTER GAMES"
   print at 2,5, "(BALLANTINE BOOKS, 1984;"
@@ -2465,6 +2492,15 @@ end sub
 ' Frame, controls, screens
 
 sub KbRearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+    stop sound KbSndTuneA
+    stop sound KbSndTuneB
+      TzOn = 0
+    end if
+  end if
   nmi off
   nmi on
   return
@@ -2582,6 +2618,8 @@ sub KbTitlePage:
   Menu = 0
   play sound KbSndTuneA
   play sound KbSndTuneB
+  TzLeft = 224
+  TzOn = 1
   WasBtn = 1
 kb_title_loop:
   KbFrame1
@@ -2610,6 +2648,7 @@ kb_title_loop:
     goto kb_title_loop
   end if
   mute all
+  TzOn = 0
   return
 end sub
 

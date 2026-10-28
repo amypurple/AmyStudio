@@ -1,0 +1,1328 @@
+' CYLON ZAP
+' The game by Mark Dudley from COMPUTE!'s Gazette, August 1983 (pages
+' 48-49 and 119-121), for the ColecoVision in Amy by Amy Bienvenu. Ported
+' by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: Program 3, the game for the 8K VIC-20 (transcribed in
+' orig/cylon-zap-vic.bas from the scans beside it), with Program 2's
+' instructions; Program 4, the Commodore 64 version, for checks.
+'
+' The game: the space station Alpha, in the middle of the screen, guards
+' a nuclear reactor. Cylon fighters launch at random from the four edges
+' and fly straight at it, kamikaze style. Push the stick toward one to fire
+' that side's laser; the button sets off a smart bomb, which destroys every
+' fighter on the screen (three to start). A point a fighter. At 30 points
+' the launches come twice as often and the side fighters fly twice as
+' fast; at 50 the top and bottom ones too, and a bomb is won; at 60, 110
+' and 150 a bonus base and bomb (and 5 points). A fighter that reaches the
+' reactor blows up the station; three stations. The best five scores are
+' kept with their initials, chosen with the stick.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23: places are VIC screen offsets (the listing's 4096 + offset).
+' Labels such as l320 are the listing's line numbers.
+'
+' Liberties taken:
+' - Each laser fires the way the stick is pushed. (The VIC listing reads
+'   the port so that pushing right fires down and pushing down fires
+'   right; the article and the 64 version fire the way you push.)
+' - A laser no longer erases its own gun, and the left laser stops at the
+'   screen's edge (the listing's loop ran on into the row above).
+' - A smart bomb needs a fresh press of the button (held, the listing
+'   would fire one bomb after another).
+' - The station, the fighters and the guns are redrawn after the
+'   screenshots: the scans of the character DATA and of the routine that
+'   drew the station are too faint to copy bit for bit.
+' - The title's scrolling words of asterisks are drawn in place, letter by
+'   letter; new title music (Alpha Station) and a credits page; the score,
+'   bases and bombs are spelled out beside the VIC screen; "HIT RETURN"
+'   and "HIT Y" are "PRESS A BUTTON"; the POKEd sounds are Tiny Sound
+'   effects; the heroes' tune is the listing's DATA.
+' - A fighter passing over the station or a gun no longer leaves a hole
+'   in it (the listing blanked every cell behind a fighter).
+' - Timing: a turn of the main loop is 8 frames (about the VIC's BASIC).
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the playfield is
+' a picture to row 23); no sprites; the frame loop is protected from the
+' NMI and every screen is drawn with the NMI off after a wait.
+
+const TGunu = 128
+const TGunr = 129
+const TGund = 130
+const TGunl = 131
+const TFtop = 132
+const TFleft = 133
+const TFbot = 134
+const TFright = 135
+const TLasv = 136
+const TLash = 137
+const TBoom = 138
+const TSpark1 = 139
+const TSpark2 = 140
+const TSpark3 = 141
+const TSpark4 = 142
+const TSpark5 = 143
+const TSpark6 = 144
+const TSpark7 = 145
+const TBlk = 146
+const TCtl = 147
+const TCtr = 148
+const TCbl = 149
+const TCbr = 150
+const TCore = 151
+const TCore1 = 152
+const TCore2 = 153
+const TCore3 = 154
+const TCore4 = 155
+const TCore5 = 156
+const TCore6 = 157
+const TCore7 = 158
+const TStarr = 159
+const TStary = 160
+const SNone = 0
+const NTiles8 = 264
+const SprBytes = 32
+const SndLaser = 1
+const SndKill = 2
+const SndBlast = 3
+const SndBomb = 4
+const SndLaunch = 5
+const SndBonus = 6
+const SndHero = 7
+const SndTick = 8
+const SndTuneA = 9
+const SndTuneB = 10
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' N1-N4 the fighters' places (top, bottom, left, right), S1-S4 1 while
+' each waits to launch, X the launch odds, Y the side fighters' step, I
+' the vertical fighters' step, SC the score, BA the bases, BO the bombs
+u16 N1 = 10
+u16 N2 = 494
+u16 N3 = 242
+u16 N4 = 263
+u8 S1 = 1
+u8 S2 = 1
+u8 S3 = 1
+u8 S4 = 1
+u8 X = 15
+u8 Y = 1
+u8 I = 22
+u16 SC = 0
+u8 BA = 3
+u8 BO = 3
+' the heroes: W the scores, Nm three letters each (A1$-A5$)
+u16 W[5]
+u8 Nm[15]
+u8 Slot = 0
+u8 E = 1
+' the station's blast (585-725): the eight points, their steps, K, G
+u16 Qp[8]
+u16 F = 0
+u16 Fz = 0
+u8 K = 0
+u8 G = 0
+u8 Z = 0
+u8 Dir = 0
+u8 Hit = 0
+' the cell under B (OrPeek) and the tile to put there (OrPoke)
+u16 B = 0
+u8 Pk = 0
+u8 Tl = 0
+' for the test bot: 1 playing, 2 the blast, 3 bonus, 4 a bomb, 5 initials,
+' 6 a yes or no, 7 heroes, 8 the title
+u8 Ph = 0
+u8 Tc = $F1
+
+u16 NumU = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 V16 = 0
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 C = 0
+u8 J = 0
+u8 V = 0
+u8 V2 = 0
+u8 Mk = 0
+u8 Px = 0
+u8 Py = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table CzSoundTable areas 4
+  nmi off
+  screen on
+  ' 45-50: the heroes to beat
+  W[0] = 30
+  W[1] = 20
+  W[2] = 10
+  W[3] = 5
+  W[4] = 1
+  for J = 0 to 14
+    Nm[J] = 46
+  next
+  Nm[0] = 68
+  Nm[3] = 85
+  Nm[6] = 68
+  Nm[9] = 67
+  Nm[12] = 79
+
+  ' Program 2, 235-310: the title
+  Ph = 8
+  TextScreen
+  backdrop black
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  Tl = TStarr
+  Py = 3
+  BigWord(0)
+  Tl = TStary
+  Py = 9
+  BigWord(1)
+  print at 10,15, "BY M. DUDLEY"
+  print at 2,19, "COMPUTE!'S GAZETTE AUG. 1983"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  print at 8,17, "INSTRUCTIONS ?"
+  Oy = 18
+  Hold(60)
+  ' (the YES/NO row is the credits' first: put it at 18, the credits move)
+  print at 2,19, "                            "
+  print at 2,20, "                            "
+  print at 2,21, "                            "
+  print at 2,20, "COMPUTE!'S GAZETTE AUG. 1983"
+  print at 2,21, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,22, "BY ANTHROPIC), AMY STUDIO"
+  YesNo
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  if Sel = 1 then Instructions
+
+l655:
+  ' 655-685, 820-850: the heroes, then a game
+  Heroes
+  print at 4,20, "PRESS A BUTTON TO PLAY"
+  WasBtn = 1
+l660:
+  Frame1
+  ReadPad
+  if Press = 0 then goto l660
+  play sound SndTick
+
+l60:
+  ' 60-80: a new game
+  BA = 3
+  BO = 3
+  SC = 0
+  S1 = 1
+  S2 = 1
+  S3 = 1
+  S4 = 1
+  N1 = 10
+  N2 = 494
+  N3 = 242
+  N4 = 263
+  X = 15
+  Y = 1
+  I = 22
+  GameScreen
+  Ph = 1
+
+l90:
+  ' 90: the score, the bases, the bombs
+  NumU = SC
+  ShowNum(8, 1)
+  NumU = BA
+  print at 8,2, digits$(NumU, 1)
+  NumU = BO
+  print at 8,3, digits$(NumU, 1)
+  Hold(8)
+  ' 95-120: the stick; the reactor flickers
+  ReadPad
+  Rnd16
+  V = highbyte Rw
+  V = V % 7
+  B = 252
+  Tl = TCore1 + V
+  call asm OrPoke
+  ' 125-145: a laser, or a bomb
+  if Up1 = 1 then
+    LaserUp
+    goto l150
+  end if
+  if Rt1 = 1 then
+    LaserRight
+    goto l150
+  end if
+  if Lf1 = 1 then
+    LaserLeft
+    goto l150
+  end if
+  if Dn1 = 1 then
+    LaserDown
+    goto l150
+  end if
+  if Press = 1 then
+    if BO > 0 then SmartBomb
+  end if
+
+l150:
+  ' 150-188: launches, each 1 in X
+  if S1 = 1 then
+    OneIn
+    if Hit = 1 then
+      S1 = 0
+      play sound SndLaunch
+    end if
+  end if
+  if S2 = 1 then
+    OneIn
+    if Hit = 1 then
+      S2 = 0
+      play sound SndLaunch
+    end if
+  end if
+  if S3 = 1 then
+    OneIn
+    if Hit = 1 then
+      S3 = 0
+      play sound SndLaunch
+    end if
+  end if
+  if S4 = 1 then
+    OneIn
+    if Hit = 1 then
+      S4 = 0
+      play sound SndLaunch
+    end if
+  end if
+  ' 190-195: the top fighter, down
+  if S1 = 0 then
+    B = N1 + 22
+    call asm OrPeek
+    V = Pk - TCore
+    if V < 8 then
+      Blast
+    else
+      B = N1
+      Tl = 32
+      if N1 = 186 then Tl = TGunu
+      if N1 >= 208 then Tl = TBlk
+      if N1 = 230 then Tl = TCore
+      call asm OrPoke
+      V16 = I
+      N1 = N1 + V16
+      B = N1
+      Tl = TFtop
+      call asm OrPoke
+    end if
+  end if
+  ' 200-205: the bottom fighter, up
+  if S2 = 0 then
+    B = N2 - 22
+    call asm OrPeek
+    V = Pk - TCore
+    if V < 8 then
+      Blast
+    else
+      B = N2
+      Tl = 32
+      if N2 = 318 then Tl = TGund
+      if N2 = 274 then Tl = TCore
+      if N2 = 296 then Tl = TBlk
+      call asm OrPoke
+      V16 = I
+      N2 = N2 - V16
+      B = N2
+      Tl = TFbot
+      call asm OrPoke
+    end if
+  end if
+  ' 210-215: the left fighter, right
+  if S3 = 0 then
+    B = N3 + 1
+    call asm OrPeek
+    V = Pk - TCore
+    if V < 8 then
+      Blast
+    else
+      B = N3
+      Tl = 32
+      if N3 = 249 then Tl = TGunl
+      if N3 = 250 then Tl = TBlk
+      call asm OrPoke
+      V16 = Y
+      N3 = N3 + V16
+      B = N3
+      Tl = TFleft
+      call asm OrPoke
+    end if
+  end if
+  ' 220-225: the right fighter, left
+  if S4 = 0 then
+    B = N4 - 1
+    call asm OrPeek
+    V = Pk - TCore
+    if V < 8 then
+      Blast
+    else
+      B = N4
+      Tl = 32
+      if N4 = 255 then Tl = TGunr
+      if N4 = 254 then Tl = TBlk
+      call asm OrPoke
+      V16 = Y
+      N4 = N4 - V16
+      B = N4
+      Tl = TFright
+      call asm OrPoke
+    end if
+  end if
+  ' 230-235
+  if BA = 0 then goto l620
+  if SC > 50 then X = 4
+  goto l90
+
+l620:
+  ' 620-650: a place among the heroes?
+  Slot = 5
+  for J = 0 to 4
+    if Slot = 5 then
+      if SC >= W[J] then Slot = J
+    end if
+  next
+  if Slot = 5 then goto l655
+  ' (the lower ones move down a place)
+  J = 4
+  while J > Slot
+    W[J] = W[J - 1]
+    V = J * 3
+    V2 = V - 3
+    Nm[V] = Nm[V2]
+    Nm[V + 1] = Nm[V2 + 1]
+    Nm[V + 2] = Nm[V2 + 2]
+    dec J
+  end while
+  W[Slot] = SC
+  ' 905-925, 730-815: the initials
+  Initials
+  goto l655
+
+' GameScreen (70-80, 240-315): the station, the guns, the labels
+sub GameScreen:
+  Tc = $71
+  TextScreen
+  Tc = $F1
+  backdrop black
+  DrawStation
+  print at 2,1, "SCORE"
+  print at 2,2, "BASES"
+  print at 2,3, "BOMBS"
+  ShowScreen
+  return
+end sub
+
+sub DrawStation:
+  for J = 9 to 13
+    for C = 8 to 12
+      V16 = J
+      B = V16 * 22
+      V16 = C
+      B = B + V16
+      Tl = TBlk
+      call asm OrPoke
+    next
+  next
+  B = 206
+  Tl = TCtl
+  call asm OrPoke
+  B = 210
+  Tl = TCtr
+  call asm OrPoke
+  B = 294
+  Tl = TCbl
+  call asm OrPoke
+  B = 298
+  Tl = TCbr
+  call asm OrPoke
+  ' 305: the reactor
+  Tl = TCore
+  B = 252
+  call asm OrPoke
+  B = 251
+  call asm OrPoke
+  B = 253
+  call asm OrPoke
+  B = 230
+  call asm OrPoke
+  B = 274
+  call asm OrPoke
+  ' 295-300: the guns
+  B = 186
+  Tl = TGunu
+  call asm OrPoke
+  B = 318
+  Tl = TGund
+  call asm OrPoke
+  B = 249
+  Tl = TGunl
+  call asm OrPoke
+  B = 255
+  Tl = TGunr
+  call asm OrPoke
+  return
+end sub
+
+' OneIn (150-188): INT(RND(1)*X) = 0, 1 in X
+sub OneIn:
+  Rnd16
+  Uq = Rw
+  V16 = X
+  Uq2 = V16
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  V16 = lowword Uq
+  Hit = 0
+  if V16 = 0 then Hit = 1
+  return
+end sub
+
+' LaserUp (320-340): up the column from the gun; the top fighter?
+sub LaserUp:
+  play sound SndLaser
+  F = 186
+lu_loop:
+  if F >= 22 then
+    B = F - 22
+    call asm OrPeek
+    if Pk = TFtop then
+      B = N1
+      Kill
+      N1 = 10
+      S1 = 1
+      return
+    end if
+  end if
+  if F <> 186 then
+    B = F
+    Tl = TLasv
+    call asm OrPoke
+    Frame1
+    Tl = 32
+    call asm OrPoke
+  end if
+  if F < 22 then return
+  F = F - 22
+  goto lu_loop
+end sub
+
+' LaserDown (345-365)
+sub LaserDown:
+  play sound SndLaser
+  F = 318
+ld_loop:
+  if F < 484 then
+    B = F + 22
+    call asm OrPeek
+    if Pk = TFbot then
+      B = N2
+      Kill
+      N2 = 494
+      S2 = 1
+      return
+    end if
+  end if
+  if F <> 318 then
+    B = F
+    Tl = TLasv
+    call asm OrPoke
+    Frame1
+    Tl = 32
+    call asm OrPoke
+  end if
+  if F >= 484 then return
+  F = F + 22
+  goto ld_loop
+end sub
+
+' LaserLeft (370-390): along row 11 to the edge
+sub LaserLeft:
+  play sound SndLaser
+  F = 249
+ll_loop:
+  if F > 242 then
+    B = F - 1
+    call asm OrPeek
+    if Pk = TFleft then
+      B = N3
+      Kill
+      N3 = 242
+      S3 = 1
+      return
+    end if
+  end if
+  if F <> 249 then
+    B = F
+    Tl = TLash
+    call asm OrPoke
+    Frame1
+    Tl = 32
+    call asm OrPoke
+  end if
+  if F = 242 then return
+  dec F
+  goto ll_loop
+end sub
+
+' LaserRight (395-415)
+sub LaserRight:
+  play sound SndLaser
+  F = 255
+lr_loop:
+  if F < 263 then
+    B = F + 1
+    call asm OrPeek
+    if Pk = TFright then
+      B = N4
+      Kill
+      N4 = 263
+      S4 = 1
+      return
+    end if
+  end if
+  if F <> 255 then
+    B = F
+    Tl = TLash
+    call asm OrPoke
+    Frame1
+    Tl = 32
+    call asm OrPoke
+  end if
+  if F = 263 then return
+  inc F
+  goto lr_loop
+end sub
+
+' Kill (335, 480-525): the fighter at B explodes; a point
+sub Kill:
+  Tl = TBoom
+  call asm OrPoke
+  play sound SndKill
+  Hold(6)
+  Tl = 32
+  call asm OrPoke
+  inc SC
+  Score510
+  return
+end sub
+
+' Score510 (510-580): the speeds, the bombs and the bonuses by the score
+sub Score510:
+s510:
+  if SC = 30 then
+    X = X >> 1
+    Y = 2
+  end if
+  if SC = 50 then
+    X = 4
+    I = 44
+    inc BO
+  end if
+  V = 0
+  if SC = 60 then V = 1
+  if SC = 110 then V = 1
+  if SC = 150 then V = 1
+  if V = 0 then return
+  ' 530-580: BONUS, BASE - BOMB
+  Ph = 3
+  TextScreen
+  print at 13,11, "BONUS"
+  print at 10,12, "BASE - BOMB"
+  ShowScreen
+  play sound SndBonus
+  Hold(60)
+  inc BO
+  inc BA
+  SC = SC + 5
+  GameScreen
+  Ph = 1
+  goto s510
+end sub
+
+' SmartBomb (855-895): the screen flashes; every fighter in flight dies
+sub SmartBomb:
+  Ph = 4
+  play sound SndBomb
+  for C = 1 to 8
+    V = 8 - C
+    V = VicCol[V]
+    call asm CzBack
+    Hold(6)
+  next
+  backdrop black
+  if S1 = 0 then
+    inc SC
+    Score510
+    B = N1
+    Tl = 32
+    call asm OrPoke
+    N1 = 10
+    S1 = 1
+  end if
+  if S2 = 0 then
+    inc SC
+    Score510
+    B = N2
+    Tl = 32
+    call asm OrPoke
+    N2 = 494
+    S2 = 1
+  end if
+  if S3 = 0 then
+    inc SC
+    Score510
+    B = N3
+    Tl = 32
+    call asm OrPoke
+    N3 = 242
+    S3 = 1
+  end if
+  if S4 = 0 then
+    inc SC
+    Score510
+    B = N4
+    Tl = 32
+    call asm OrPoke
+    N4 = 263
+    S4 = 1
+  end if
+  dec BO
+  Ph = 1
+  return
+end sub
+
+' Blast (585-615, 690-725): the station blows up in eight rays
+sub Blast:
+  Ph = 2
+  play sound SndBlast
+  Qp[0] = 252
+  Qp[1] = 253
+  Qp[2] = 274
+  Qp[3] = 275
+  Qp[4] = 229
+  Qp[5] = 297
+  Qp[6] = 273
+  Qp[7] = 276
+  K = 0
+  G = 0
+  for Z = 1 to 16
+    inc K
+    if K > 3 then
+      if K < 11 then
+        V = K - 3
+        V = VicCol[V]
+    call asm CzBack
+      end if
+    end if
+    for C = 0 to 7
+      B = Qp[C]
+      if B < 506 then
+        Tl = 46
+        if G = 0 then
+          Rnd16
+          V = highbyte Rw
+          V = V % 7
+          Tl = TSpark1 + V
+        end if
+        call asm OrPoke
+      end if
+    next
+    Hold(3)
+    if K > 3 then
+      G = 1
+      ClearField
+    end if
+    if K < 8 then
+      Qp[0] = Qp[0] - 21
+      Qp[1] = Qp[1] - 23
+      Qp[2] = Qp[2] + 21
+      Qp[3] = Qp[3] + 23
+      Qp[4] = Qp[4] - 22
+      Qp[5] = Qp[5] + 22
+      Qp[6] = Qp[6] - 1
+      Qp[7] = Qp[7] + 1
+    end if
+  next
+  backdrop black
+  ' 605-615
+  N1 = 10
+  S1 = 1
+  N2 = 494
+  S2 = 1
+  N3 = 242
+  S3 = 1
+  N4 = 263
+  S4 = 1
+  dec BA
+  if BA <> 0 then GameScreen
+  Ph = 1
+  return
+end sub
+
+' ClearField: the VIC screen blank (PRINT "{CLR}")
+sub ClearField:
+  for J = 1 to 23
+    fill 32 count 22 at 5,J
+  next
+  return
+end sub
+
+' BigWord(w): CYLON (0) or ZAP (1) in the tile Tl from row Py
+sub BigWord(u8 Wd):
+  for Z = 0 to 4
+    Mk = 128
+    V2 = Z * 3
+    for C = 0 to 19
+      if Wd = 0 then
+        V = BigCylon[V2]
+      else
+        V = BigZap[V2]
+      end if
+      V = V & Mk
+      if V <> 0 then
+        Px = C + 6
+        if Wd = 1 then Px = C + 10
+        Oy = Py + Z
+        put char Tl at Px,Oy
+      end if
+      Mk = Mk >> 1
+      if Mk = 0 then
+        Mk = 128
+        inc V2
+      end if
+    next
+    Hold(4)
+  next
+  return
+end sub
+
+' Instructions (Program 2, 130-180)
+sub Instructions:
+  Tc = $71
+  TextScreen
+  Tc = $F1
+  print at 2,1, "WELCOME TO CYLON ZAP"
+  print at 2,3, "YOU HAVE A BASE NAMED ALPHA."
+  print at 2,5, "YOUR MISSION IS TO PROTECT"
+  print at 2,6, "THE NUCLEAR REACTOR FROM THE"
+  print at 2,7, "KAMIKAZE STAR FIGHTERS."
+  print at 2,9, "YOU HAVE 4 LASERS CONTROLLED"
+  print at 2,10, "BY THE JOYSTICK."
+  print at 2,12, "YOU ALSO HAVE SMART BOMBS"
+  print at 2,13, "LAUNCHED BY THE FIRE BUTTON."
+  print at 2,15, "ALL YOU DO IS POINT THE GUN"
+  print at 2,16, "AND THE LASER FIRES"
+  print at 2,17, "AUTOMATICALLY."
+  print at 2,21, "PRESS A BUTTON TO CONTINUE"
+  ShowScreen
+  WaitPress
+  TextScreen
+  print at 2,3, "THE FIGHTERS WILL FLY FASTER"
+  print at 2,4, "AS MORE OF THEM ARE"
+  print at 2,5, "DESTROYED."
+  print at 2,8, "BONUS BASE AND BOMB AT 60"
+  print at 2,9, "POINTS."
+  print at 10,13, "GOOD LUCK"
+  print at 2,21, "PRESS A BUTTON TO CONTINUE"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+' Heroes (820-850): the best five
+sub Heroes:
+  Ph = 7
+  TextScreen
+  backdrop black
+  print at 8,2, "CYLON ZAP HEROS"
+  print at 9,4, "BEST 5 SCORES"
+  for J = 0 to 4
+    Py = J * 2
+    Py = Py + 7
+    V = J * 3
+    put char Nm[V] at 9,Py
+    put char Nm[V + 1] at 10,Py
+    put char Nm[V + 2] at 11,Py
+    print at 12,Py, "..."
+    NumU = W[J]
+    ShowNum(16, Py)
+  next
+  ShowScreen
+  return
+end sub
+
+' Initials (905-925, 730-815): three letters with the stick, the button
+sub Initials:
+  Ph = 5
+  TextScreen
+  NumU = Slot + 1
+  print at 2,6, "NUMBER"
+  print at 9,6, digits$(NumU, 1)
+  print at 11,6, "ENTER YOUR INITIALS"
+  print at 2,16, "THE STICK CHOOSES A LETTER,"
+  print at 2,17, "THE BUTTON TAKES IT."
+  ShowScreen
+  play sound SndHero
+  Hold(150)
+  V2 = Slot * 3
+  for C = 0 to 2
+    E = 1
+    WasBtn = 1
+in_draw:
+    Px = C * 2
+    Px = Px + 13
+    V = E + 64
+    put char V at Px,10
+    put char 45 at Px,11
+in_loop:
+    Frame1
+    ReadPad
+    if Stick = 1 then
+      if Up1 = 1 then inc E
+      if Rt1 = 1 then inc E
+      if Dn1 = 1 then dec E
+      if Lf1 = 1 then dec E
+      if E = 0 then E = 26
+      if E = 27 then E = 1
+      play sound SndTick
+      goto in_draw
+    end if
+    if Press = 0 then goto in_loop
+    play sound SndTick
+    put char 32 at Px,11
+    V = E + 64
+    Nm[V2] = V
+    inc V2
+  next
+  Hold(30)
+  return
+end sub
+
+' ShowNum X, Y: NumU, as many digits as it has
+sub ShowNum(u8 Px, u8 Py):
+  if NumU < 10 then
+    print at Px,Py, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at Px,Py, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at Px,Py, digits$(NumU, 3)
+      else
+        print at Px,Py, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+
+' YesNo: YES or NO on row Oy (Sel 1 = YES)
+sub YesNo:
+  Ph = 6
+  Sel = 1
+  WasBtn = 1
+yn_draw:
+  print at 10,Oy, " YES   NO "
+  X = 10
+  if Sel = 2 then X = 16
+  print at X,Oy, ">"
+yn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    goto yn_draw
+  end if
+  if Press = 0 then goto yn_loop
+  play sound SndTick
+  return
+end sub
+
+' the title's big words (5 rows of 20 cells, 3 bytes a row)
+' the VIC's colours 0-7 on the TMS9918
+data VicCol bytes 1, 15, 8, 7, 13, 3, 4, 11
+data BigCylon bytes 234, 142, 144, 138, 138, 208, 132, 138, 176, 132, 138, 144, 228, 238, 144
+data BigZap bytes 228, 224, 0, 42, 160, 0, 78, 224, 0, 138, 128, 0, 234, 128, 0
+
+data TilePat bytes
+  $18,$18,$C3,$81,$18,$18,$81,$00
+  $80,$C8,$CC,$00,$00,$CC,$C8,$80
+  $00,$81,$18,$18,$81,$C3,$18,$18
+  $01,$13,$CC,$00,$00,$CC,$13,$01
+  $C3,$C3,$99,$C3,$81,$00,$24,$18
+  $C4,$13,$C1,$E2,$E2,$C1,$13,$C4
+  $18,$24,$00,$81,$C3,$99,$C3,$C3
+  $23,$C8,$83,$B8,$B8,$83,$C8,$23
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $92,$54,$38,$01,$38,$54,$92,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $CC,$CC,$CC,$CC,$CC,$CC,$CC,$CC
+  $00,$10,$54,$38,$83,$38,$54,$10
+  $00,$10,$54,$38,$83,$38,$54,$10
+end data
+data TileCol bytes
+  $B1,$B1,$1B,$1B,$B1,$B1,$1B,$0B
+  $B1,$B1,$B1,$0B,$0B,$B1,$B1,$B1
+  $0B,$1B,$B1,$B1,$1B,$1B,$B1,$B1
+  $B1,$B1,$1B,$0B,$0B,$1B,$B1,$B1
+  $D1,$D1,$1D,$1D,$1D,$0D,$D1,$D1
+  $31,$13,$13,$13,$13,$13,$13,$31
+  $71,$71,$07,$17,$17,$17,$71,$71
+  $51,$15,$15,$51,$51,$15,$15,$51
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+  $01,$01,$01,$0B,$0B,$01,$01,$01
+  $81,$81,$81,$18,$81,$81,$81,$01
+  $F1,$F1,$F1,$1F,$F1,$F1,$F1,$01
+  $81,$81,$81,$18,$81,$81,$81,$01
+  $71,$71,$71,$17,$71,$71,$71,$01
+  $D1,$D1,$D1,$1D,$D1,$D1,$D1,$01
+  $31,$31,$31,$13,$31,$31,$31,$01
+  $51,$51,$51,$15,$51,$51,$51,$01
+  $B1,$B1,$B1,$1B,$B1,$B1,$B1,$01
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $81,$81,$81,$18,$18,$18,$18,$08
+  $81,$81,$81,$81,$18,$18,$18,$08
+  $08,$18,$18,$18,$18,$81,$81,$81
+  $08,$18,$18,$18,$81,$81,$81,$81
+  $F1,$F1,$1F,$1F,$F1,$F1,$1F,$1F
+  $F1,$F1,$1F,$1F,$F1,$F1,$1F,$1F
+  $81,$81,$18,$18,$81,$81,$18,$18
+  $71,$71,$17,$17,$71,$71,$17,$17
+  $D1,$D1,$1D,$1D,$D1,$D1,$1D,$1D
+  $31,$31,$13,$13,$31,$31,$13,$13
+  $51,$51,$15,$15,$51,$51,$15,$15
+  $B1,$B1,$1B,$1B,$B1,$B1,$1B,$1B
+  $01,$81,$81,$81,$18,$81,$81,$81
+  $01,$B1,$B1,$B1,$1B,$B1,$B1,$B1
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+CzLaser:
+    db $00,$00,$24,$04,$00,$00,$F4,$01,$10
+CzKill:
+    db $00,$00,$05,$02,$00,$00,$25,$02,$00,$00,$45,$02,$00,$00,$65,$02,$00,$00,$85,$02,$00,$00,$A5,$02
+    db $00,$00,$C5,$02,$00,$00,$E5,$02,$10
+CzBlast:
+    db $00,$00,$06,$04,$00,$00,$16,$04,$00,$00,$26,$04,$00,$00,$36,$04,$00,$00,$46,$04,$00,$00,$56,$04
+    db $00,$00,$66,$04,$00,$00,$76,$04,$00,$00,$86,$04,$00,$00,$96,$04,$00,$00,$A6,$04,$00,$00,$B6,$04
+    db $00,$00,$C6,$04,$00,$00,$D6,$04,$00,$00,$E6,$04,$00,$00,$F6,$04,$10
+CzBomb:
+    db $00,$00,$06,$14,$00,$00,$46,$14,$00,$00,$86,$14,$00,$00,$F6,$01,$10
+CzLaunch:
+    db $40,$0A,$21,$01,$40,$FC,$20,$01,$40,$ED,$20,$01,$40,$E0,$20,$01,$40,$D2,$20,$01,$40,$C4,$20,$01
+    db $40,$B6,$20,$01,$40,$A8,$20,$01,$40,$9A,$20,$01,$40,$8C,$20,$01,$40,$7E,$20,$01,$40,$70,$20,$01
+    db $40,$62,$20,$01,$40,$54,$20,$01,$40,$FE,$F0,$01,$50
+CzBonus:
+    db $40,$7E,$00,$04,$40,$FE,$F0,$04,$40,$7E,$00,$04,$40,$FE,$F0,$04,$40,$7E,$00,$04,$40,$FE,$F0,$04
+    db $40,$7E,$00,$04,$40,$FE,$F0,$04,$40,$7E,$00,$04,$40,$FE,$F0,$04,$40,$7E,$00,$04,$40,$FE,$F0,$04
+    db $40,$7E,$00,$04,$40,$FE,$F0,$04,$50
+CzHero:
+    db $40,$88,$10,$0C,$40,$FE,$F0,$01,$40,$96,$10,$0C,$40,$FE,$F0,$01,$40,$74,$10,$0C,$40,$FE,$F0,$01
+    db $40,$65,$10,$06,$40,$FE,$F0,$01,$40,$4D,$10,$06,$40,$FE,$F0,$01,$40,$5B,$10,$0C,$40,$FE,$F0,$01
+    db $40,$65,$10,$06,$40,$FE,$F0,$01,$40,$4D,$10,$06,$40,$FE,$F0,$01,$40,$5B,$10,$0C,$40,$FE,$F0,$01
+    db $40,$74,$10,$0C,$40,$FE,$F0,$01,$40,$65,$10,$0C,$40,$FE,$F0,$01,$40,$88,$10,$0C,$40,$FE,$F0,$01
+    db $40,$96,$10,$12,$40,$FE,$F0,$01,$50
+CzTick:
+    db $40,$40,$50,$01,$50
+
+CzSoundTable:
+    dw CzLaser,$702B
+    dw CzKill,$702B
+    dw CzBlast,$702B
+    dw CzBomb,$702B
+    dw CzLaunch,$7035
+    dw CzBonus,$7035
+    dw CzHero,$7035
+    dw CzTick,$7035
+    dw CzTuneMel,$703F
+    dw CzTuneBass,$7049
+; Alpha Station, E minor (original for this game)
+; Tiny Sound, 6 frames per step
+CzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$23,$00,$23,$26,$2A,$00,$28,$26,$25,$00,$21,$00
+    db $23,$00,$00,$00,$23,$00,$23,$26,$2A,$00,$2D,$2B,$2A,$00,$28,$00
+    db $2A,$00,$00,$00,$2B,$00,$2A,$28,$26,$00,$28,$2A,$23,$00,$25,$26
+    db $28,$00,$25,$00,$23,$00,$26,$00,$2A,$00,$2F,$00,$2E,$00,$00,$00
+    db $2F,$00,$00,$00
+    db $FF
+CzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$0B,$0B,$12,$0B,$0B,$0B,$12,$0B,$09,$09,$10,$09
+    db $0B,$0B,$12,$0B,$0B,$0B,$12,$0B,$0E,$0E,$15,$0E,$09,$09,$10,$09
+    db $0B,$0B,$12,$0B,$07,$07,$0E,$07,$07,$07,$0E,$07,$09,$09,$10,$09
+    db $09,$09,$10,$09,$0B,$0B,$12,$0B,$07,$07,$0E,$07,$06,$06,$0D,$06
+    db $0B,$00,$00,$00
+    db $FF
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; CzBack: the backdrop (VDP register 7) to the colour V
+CzBack:
+    ld a,(AMY_UVAR_V)
+    out ($BF),a
+    ld a,$87
+    out ($BF),a
+    ret
+
+; OrPeek: Pk = the tile at B
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+}

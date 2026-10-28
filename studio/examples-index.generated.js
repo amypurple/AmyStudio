@@ -2706,7 +2706,7 @@ export const exampleManifest = [
   {
     "id": "boardgames",
     "label": "Giant Book Board Games (1984)",
-    "detail": "A combined cartridge of Checkers, Reversi and Awari from Tim Hartnell's Giant Book of Computer Games, with a shared joystick menu for switching among all three games.",
+    "detail": "A combined cartridge of Checkers, Reversi, Awari and Four in a Row from Tim Hartnell's Giant Book of Computer Games, with a shared joystick menu for switching among all four games.",
     "projectName": "Giant Book Board Games",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
@@ -2722,6 +2722,7 @@ export const exampleManifest = [
       "reversi",
       "awari",
       "mancala",
+      "four-in-a-row",
       "collection"
     ],
     "originKind": "faithful-adaptation",
@@ -3413,5 +3414,182 @@ export const exampleManifest = [
     ],
     "originKind": "original",
     "originLabel": "Original"
+  },
+  {
+    "id": "starlight",
+    "label": "Starlight (2026)",
+    "detail": "A ten-night Lights Out-style star puzzle; each solved sky reveals a constellation over a 120-color dusk introduction.",
+    "projectName": "Starlight",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "puzzle",
+      "constellations",
+      "120-colors",
+      "music",
+      "ai-assisted"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
+  },
+  {
+    "id": "firefly-jar",
+    "label": "Firefly Jar (2026)",
+    "detail": "A gentle summer-night toy: catch twenty glowing fireflies in a jar, then release them back into the sky.",
+    "projectName": "Firefly Jar",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "toy",
+      "fireflies",
+      "sprites",
+      "music",
+      "ai-assisted"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
+  },
+  {
+    "id": "skiing",
+    "label": "Skiing (2026)",
+    "detail": "An original three-mode downhill game inspired by Coleco's unreleased Skiing concept, with rolling pseudo-3D hills, varied crests, jumps, aerial tricks, Ski Trails, Slalom and Avalanche Run.",
+    "projectName": "Skiing",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "original",
+      "game",
+      "arcade",
+      "sports",
+      "3d",
+      "skiing",
+      "slalom",
+      "music"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
+  },
+  {
+    "id": "oregon",
+    "label": "Oregon (1980)",
+    "detail": "A faithful ColecoVision port of MECC's Apple II Oregon: outfit a wagon, hunt, manage supplies and survive the 2,040-mile trail to Oregon City.",
+    "projectName": "Oregon",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "adaptation",
+      "game",
+      "educational",
+      "simulation",
+      "history",
+      "apple-ii",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "skydiver",
+    "label": "Skydiver (July 1983)",
+    "detail": "Alan Crossley's COMPUTE!'s Gazette parachuting game: choose a landing pad, compensate for the wind, delay opening the chute and build a bonus streak.",
+    "projectName": "Skydiver",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "skydiving",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "snake-escape",
+    "label": "Snake Escape (July 1983)",
+    "detail": "Daryl Biberdorf's COMPUTE!'s Gazette maze game: guide a growing snake through a poisonous garden and reach the escape hole before time expires.",
+    "projectName": "Snake Escape",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "maze",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "viper",
+    "label": "The Viper (August 1983)",
+    "detail": "Dave and Casey Gardner's COMPUTE!'s Gazette maze game: collect asterisks while an increasingly dangerous viper hunts through open or walled playfields.",
+    "projectName": "The Viper",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "maze",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "cylon-zap",
+    "label": "Cylon Zap (August 1983)",
+    "detail": "Mark Dudley's COMPUTE!'s Gazette defense game: choose five heroes, intercept descending Cylons and protect the station through increasingly fast attacks.",
+    "projectName": "Cylon Zap",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "shooter",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

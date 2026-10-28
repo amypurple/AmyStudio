@@ -15,6 +15,7 @@ for (const example of catalog) {
   if (!existsSync(sourcePath)) continue;
   const source = readFileSync(sourcePath, "utf8");
   const tags = Array.isArray(example.tags) ? example.tags : [];
+  if (example.originKind === "original") continue;
   if (!tags.includes("compute") && !source.includes("COMPUTE!")) continue;
 
   const visible = source

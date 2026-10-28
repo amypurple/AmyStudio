@@ -1,0 +1,620 @@
+cartridge "FIREFLY JAR/CLAUDE FOR AMY STUDIO/2026"
+
+' FIREFLY JAR
+' An original game for the ColecoVision, written in Amy by Claude (an AI
+' made by Anthropic) for Amy Studio, 2026.
+'
+' A summer night over the meadow. Fireflies drift and blink. Carry your jar
+' to a firefly while it glows and press the button to catch it; the jar
+' fills with light. With twenty in the jar, you open it and let them all go
+' home to the sky. Nothing chases you; a firefly that has gone dark simply
+' slips past the jar.
+'
+' Controls (either joystick): the stick moves the jar; either button
+' catches. Keypad not used.
+' Liberties: none - an original game (the idea: a summer evening).
+'
+' House rules kept: columns 2-29, rows 1-22; tiles from code 128; the frame
+' loop is protected from the NMI (Frame1); the tune plays once (TzLeft).
+
+const TSky = 128
+const TStar = 129
+const TTips = 130
+const TGrass = 131
+const TFlower = 132
+const TReed = 133
+const THill = 134
+const THilll = 135
+const THillr = 136
+const SJar = 0
+const SGlow0 = 4
+const SGlow1 = 8
+const SGlow2 = 12
+const SGlow3 = 16
+const SGlow4 = 20
+const SFly = 24
+const SFlyw = 28
+const NTiles8 = 72
+const SprBytes = 256
+const SndHush = 1
+const SndCatch = 2
+const SndMiss = 3
+const SndFree = 4
+const SndHush2 = 5
+const SndTuneA = 6
+const SndTuneB = 7
+
+const Goal = 20
+const NFly = 5
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u8 Fx[5]
+u8 Fy[5]
+u8 Fdx[5]
+u8 Fdy[5]
+u8 Fph[5]
+u8 Jx = 120
+u8 Jy = 120
+u8 Caught = 0
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 1
+u8 Press = 0
+u8 WasStick = 1
+u8 Tick = 0
+u8 Hit = 0
+u8 Lj = 0
+u8 Wave = 0
+u8 Glow = 56
+u8 K = 0
+u8 J = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table FjSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+
+title:
+  TitlePage
+  if Menu > 0 then goto title
+
+  Caught = 0
+  Glow = 56
+  Jx = 120
+  Jy = 120
+  DrawMeadow
+  for K = 0 to 4
+    NewFly
+    V = K * 22
+    Fph[K] = V
+  next
+
+play_loop:
+  Frame1
+  ReadPad
+  ' the jar, two pixels a frame
+  if Lf1 = 1 then
+    if Jx > 16 then Jx -= 2
+  end if
+  if Rt1 = 1 then
+    if Jx < 224 then Jx += 2
+  end if
+  if Up1 = 1 then
+    if Jy > 24 then Jy -= 2
+  end if
+  if Dn1 = 1 then
+    if Jy < 150 then Jy += 2
+  end if
+  MoveFlies
+  if Press = 1 then TryCatch
+  DrawSprites
+  if Caught < Goal then goto play_loop
+
+  LetGo
+  goto title
+
+' ---------------------------------------------------------------------------
+' The fireflies
+
+' NewFly: firefly K appears somewhere over the meadow, drifting
+sub NewFly:
+  Fx[K] = random(24, 216)
+  Fy[K] = random(28, 140)
+  Fdx[K] = random(0, 2)
+  Fdy[K] = random(0, 2)
+  return
+end sub
+
+' MoveFlies: every other frame a pixel; now and then a new direction; the
+' glow comes and goes (lit for Glow frames of every 112: 56 at first,
+' a little less with each catch, down to 36)
+sub MoveFlies:
+  V = Tick & 1
+  for K = 0 to 4
+    inc Fph[K]
+    if Fph[K] >= 112 then Fph[K] = 0
+    if V = 0 then
+      if Fdx[K] = 0 then
+        if Fx[K] > 18 then dec Fx[K]
+      end if
+      if Fdx[K] = 2 then
+        if Fx[K] < 222 then inc Fx[K]
+      end if
+      if Fdy[K] = 0 then
+        if Fy[K] > 24 then dec Fy[K]
+      end if
+      if Fdy[K] = 2 then
+        if Fy[K] < 148 then inc Fy[K]
+      end if
+    end if
+    W = Tick + Fph[K]
+    W = W & 63
+    if W = 0 then
+      Fdx[K] = random(0, 2)
+      Fdy[K] = random(0, 2)
+    end if
+  next
+  return
+end sub
+
+' TryCatch: a glowing firefly inside the jar's opening is caught
+sub TryCatch:
+  Hit = 255
+  X = Jx + 2
+  Y = Jy + 1
+  for K = 0 to 4
+    if Fph[K] < Glow then
+      V = Fx[K] + 4
+      W = Fy[K] + 5
+      if box X,Y size 12,14 collides with box V,W size 6,6 then Hit = K
+    end if
+  next
+  if Hit = 255 then
+    play sound SndMiss
+    return
+  end if
+  play sound SndCatch
+  inc Caught
+  if Glow > 36 then dec Glow
+  K = Hit
+  NewFly
+  Fph[K] = 60
+  Hud
+  return
+end sub
+
+sub DrawSprites:
+  Y = Jy - 1
+  set sprite 0 to Y, Jx, SJar, 15
+  V = Caught / 5
+  if V > 4 then V = 4
+  W = SGlow0
+  if V = 1 then W = SGlow1
+  if V = 2 then W = SGlow2
+  if V = 3 then W = SGlow3
+  if V = 4 then W = SGlow4
+  set sprite 1 to Y, Jx, W, 11
+  for K = 0 to 4
+    J = K + 2
+    Y = Fy[K] - 1
+    V = 12
+    W = SFly
+    if Fph[K] < Glow then
+      V = 11
+      N = Tick & 8
+      if N > 0 then W = SFlyw
+    end if
+    set sprite J to Y, Fx[K], W, V
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Screens
+
+sub DrawMeadow:
+  NewScreen
+  for K = 0 to 23
+    X = random(2, 29)
+    Y = random(3, 12)
+    put char TStar at X,Y
+  next
+  ' far hills
+  fill THill count 6 at 4,13
+  put char THilll at 3,13
+  put char THillr at 10,13
+  fill THill count 9 at 17,13
+  put char THilll at 16,13
+  put char THillr at 26,13
+  fill THill count 4 at 5,12
+  put char THilll at 4,12
+  put char THillr at 9,12
+  fill THill count 5 at 19,12
+  put char THilll at 18,12
+  put char THillr at 24,12
+  fill TTips count 28 at 2,14
+  for Y = 15 to 19
+    fill TGrass count 28 at 2,Y
+  next
+  for K = 0 to 13
+    X = random(2, 29)
+    Y = random(15, 19)
+    put char TFlower at X,Y
+  next
+  put char TReed at 6,14
+  put char TReed at 7,14
+  put char TReed at 22,14
+  Hud
+  print at 2,21, "CATCH THEM WHILE THEY GLOW."
+  ShowScreen
+  return
+end sub
+
+sub Hud:
+  print at 2,1, "FIREFLY JAR"
+  print at 17,1, "CAUGHT"
+  NumU = Caught
+  print at 24,1, digits$(NumU, 2)
+  print at 26,1, "/20"
+  return
+end sub
+
+' LetGo: the jar opens, and twenty lights go home to the sky
+sub LetGo:
+  play sound SndFree
+  fill 32 count 28 at 2,21
+  print at 2,21, "TWENTY LIGHTS IN YOUR JAR."
+  print at 2,22, "YOU OPEN IT AND LET THEM GO."
+  for Wave = 1 to 4
+    for K = 0 to 4
+      V = K * 4
+      Fx[K] = Jx + V
+      Fx[K] = Fx[K] - 8
+      Fy[K] = Jy
+      Fph[K] = 0
+    next
+    ' five lights leave the jar: it holds five fewer
+    Caught -= 5
+    Hud
+    for Lj = 1 to 110
+      Frame1
+      for K = 0 to 4
+        V = Lj & 3
+        if V = 0 then
+          if Fy[K] > 4 then dec Fy[K]
+        end if
+        if Fy[K] > 2 then dec Fy[K]
+        W = Tick + K
+        W = W & 15
+        if W < 8 then
+          inc Fx[K]
+        else
+          dec Fx[K]
+        end if
+        ' above the meadow's sky they are home: out of sight
+        if Fy[K] < 22 then Fy[K] = 208
+        if Fy[K] > 200 then Fy[K] = 208
+      next
+      DrawSprites
+    next
+  next
+  HideSprites
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  print at 2,21, "THEY GO HOME TO THE SKY."
+  print at 2,22, "GOODNIGHT."
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  CreditsPage
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  fill TTips count 28 at 2,14
+  for Y = 15 to 19
+    fill TGrass count 28 at 2,Y
+  next
+  put char TFlower at 5,16
+  put char TFlower at 12,18
+  put char TFlower at 21,15
+  put char TFlower at 27,17
+  print at 10,4, "FIREFLY JAR"
+  print at 4,6, "A SUMMER NIGHT, A JAR,"
+  print at 4,7, "AND TWENTY SMALL LIGHTS."
+  ShowMenu
+  ShowScreen
+  ' two fireflies keep the title company
+  for K = 0 to 1
+    NewFly
+    Fy[K] = 60 + K * 30
+  next
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 672
+  TzOn = 1
+  Menu = 0
+  WasBtn = 1
+  WasStick = 1
+tp_loop:
+  Frame1
+  ReadPad
+  MoveFlies
+  for K = 0 to 1
+    J = K + 2
+    Y = Fy[K] - 1
+    V = 12
+    if Fph[K] < Glow then V = 11
+    set sprite J to Y, Fx[K], SFly, V
+  next
+  update sprites
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  if Menu = 1 then HowPage
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for K = 9 to 11
+    fill 32 count 28 at 2,K
+  next
+  print at 11,9, "START"
+  print at 11,10, "HOW TO PLAY"
+  print at 11,11, "CREDITS"
+  V = Menu + 9
+  put char 62 at 9,V
+  return
+end sub
+
+sub HowPage:
+  NewScreen
+  print at 10,2, "HOW TO PLAY"
+  print at 2,5, "THE FIREFLIES DRIFT AND"
+  print at 2,6, "BLINK OVER THE MEADOW."
+  print at 2,8, "MOVE THE JAR WITH THE STICK."
+  print at 2,9, "WHEN A FIREFLY GLOWS INSIDE"
+  print at 2,10, "THE JAR, PRESS A BUTTON."
+  print at 2,12, "A DARK FIREFLY SLIPS PAST:"
+  print at 2,13, "WAIT FOR IT TO GLOW AGAIN."
+  print at 2,15, "TWENTY IN THE JAR, AND YOU"
+  print at 2,16, "LET THEM ALL GO."
+  print at 2,18, "THERE IS NO HURRY."
+  PagePause
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "FIREFLY JAR"
+  print at 2,5, "AN ORIGINAL GAME BY CLAUDE"
+  print at 2,6, "(AN AI MADE BY ANTHROPIC)"
+  print at 2,7, "FOR AMY STUDIO, 2026."
+  print at 2,9, "WRITTEN IN AMY, THE LANGUAGE"
+  print at 2,10, "AND STUDIO OF AMY BIENVENU."
+  print at 2,12, "MUSIC: MEADOW LULLABY"
+  print at 2,14, "FOR EVERY SUMMER EVENING"
+  print at 2,15, "SPENT CHASING SMALL LIGHTS."
+  PagePause
+  return
+end sub
+
+sub PagePause:
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame and screen helpers (from the toolbox template)
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 7
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to 192, 0, 0, 0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$08,$00,$00,$00,$00
+  $00,$00,$00,$42,$4A,$24,$00,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $AA,$10,$38,$10,$AA,$02,$07,$02
+  $00,$00,$10,$10,$10,$10,$30,$00
+  $88,$22,$88,$22,$88,$22,$88,$22
+  $00,$02,$00,$02,$08,$22,$08,$22
+  $80,$00,$80,$20,$88,$20,$88,$22
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+  $01,$01,$01,$C1,$C1,$1C,$0C,$0C
+  $C1,$1C,$C1,$1C,$C1,$1C,$C1,$1C
+  $C1,$F1,$F1,$F1,$C1,$F1,$F1,$F1
+  $01,$01,$61,$61,$C1,$C1,$C1,$0C
+  $41,$41,$41,$41,$41,$41,$41,$41
+  $01,$41,$01,$41,$41,$41,$41,$41
+  $41,$01,$41,$41,$41,$41,$41,$41
+end data
+data SpritePat bytes
+  $1F,$20,$1F,$10,$20,$40,$40,$40,$40,$40,$40,$40,$40,$20,$1F,$00
+  $E0,$10,$E0,$20,$10,$08,$08,$08,$08,$08,$08,$08,$08,$10,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$15,$0A,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$A0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$15,$0A,$15,$0A,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$A0,$40,$A0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$1F,$1F,$1F,$1F,$1F,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$0C,$03,$07,$07,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C0,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+FjHush:
+    db $00,$00,$F4,$01,$10
+FjCatch:
+    db $40,$47,$30,$02,$40,$35,$30,$02,$40,$2A,$40,$03,$40,$2A,$A0,$06,$50
+FjMiss:
+    db $40,$D6,$90,$02,$40,$E2,$C0,$03,$50
+FjFree:
+    db $40,$6B,$40,$04,$40,$55,$40,$04,$40,$47,$40,$04,$40,$35,$40,$04,$40,$35,$90,$0C,$50
+FjHush2:
+    db $00,$00,$F4,$01,$10
+
+FjSoundTable:
+    dw FjHush,$702B
+    dw FjCatch,$7035
+    dw FjMiss,$7035
+    dw FjFree,$7035
+    dw FjHush2,$702B
+    dw FjTuneMel,$703F
+    dw FjTuneBass,$7049
+; Meadow Lullaby (original for this game)
+; Tiny Sound, 7 frames per step
+FjTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$F1,$22,$21,$00,$26,$00,$2A,$00,$28,$00,$00,$00,$26,$00
+    db $23,$00,$00,$00,$21,$00,$00,$00,$00,$00,$00,$00,$1F,$00,$23,$00
+    db $26,$00,$25,$00,$00,$00,$21,$00,$28,$00,$00,$00,$26,$00,$00,$00
+    db $00,$00,$00,$00,$1E,$00,$21,$00,$26,$00,$2A,$00,$00,$00,$2D,$00
+    db $2B,$00,$2A,$00,$28,$00,$00,$00,$00,$00,$00,$00,$26,$00,$25,$00
+    db $23,$00,$21,$00,$00,$00,$25,$00,$26,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+FjTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$F1,$22,$0E,$00,$15,$00,$1A,$00,$0E,$00,$15,$00,$1A,$00
+    db $0B,$00,$12,$00,$17,$00,$09,$00,$10,$00,$15,$00,$07,$00,$0E,$00
+    db $13,$00,$07,$00,$0E,$00,$13,$00,$09,$00,$10,$00,$15,$00,$0E,$00
+    db $15,$00,$1A,$00,$0E,$00,$15,$00,$1A,$00,$0E,$00,$15,$00,$1A,$00
+    db $0B,$00,$12,$00,$17,$00,$07,$00,$0E,$00,$13,$00,$09,$00,$10,$00
+    db $15,$00,$09,$00,$10,$00,$15,$00,$0E,$00,$15,$00,$1A,$00,$0E,$00
+    db $15,$00,$1A,$00
+    db $FF
+}

@@ -1,0 +1,899 @@
+' SKYDIVER
+' The game by Alan Crossley from COMPUTE!'s Gazette, July 1983 (pages 52
+' and 115-117), for the ColecoVision in Amy by Amy Bienvenu. Ported by
+' Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Sources: Program 1, the VIC-20 version (transcribed in
+' orig/skydiver-vic.bas from the scans beside it), with the landing tune
+' of Program 2 (the VIC with Super Expander). The Commodore 64 version
+' (Program 3) was not used: it still moves the diver 22 cells a row (the
+' VIC's width) and its landing cells do not meet its pads.
+'
+' The game: an airplane crosses the sky. Choose a pad (5X, 10X or 2X:
+' the larger the bonus, the smaller the pad), jump with the button, fall
+' a few rows, then steer the parachute with the stick against the wind.
+' Land on the yellow part of the pad you chose for the pad's times the
+' bonus value; anything else costs a skydiver. Every two landings the
+' bonus goes up 50, the parachute falls faster and steers slower. An extra
+' skydiver at 5000 points.
+'
+' Controls (either joystick): left and right choose the pad (the button
+' confirms; after 15 seconds the computer chooses) and steer the
+' parachute; the button jumps. Keypad not used.
+'
+' The VIC-20's screen (22 columns, 23 rows) is kept cell for cell, at
+' columns 5-26 and rows 1-23: the diver's place B is the VIC's screen
+' offset, so a step off the right edge comes back on the left one row
+' down, as it did; the invisible walls (character 96) are there too.
+' Labels such as l300 are the listing's line numbers.
+'
+' Liberties taken:
+' - The plane's old place is wiped as it moves (line 100 prints the new
+'   one only).
+' - Timing: a step of the parachute is 2 frames, of the plane 5, of the
+'   free fall 5 (about the VIC's BASIC speed); the 15-second countdown is
+'   in real seconds.
+' - The landing tune is Program 2's; a falling phrase on a miss and a
+'   rising one for the bonus advance (Program 2 had sound strings there);
+'   new title music (Open Sky) and a credits page.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the ground row
+' 23 is a picture); no sprites; the frame loop is protected from the NMI
+' and every screen is drawn with the NMI off after a wait.
+
+const TPlanetop = 128
+const TPlanel = 129
+const TPlaner = 130
+const TFall = 131
+const TChute = 132
+const TPad = 133
+const TPadl = 134
+const TPadr = 135
+const TGround = 136
+const TG5 = 137
+const TGX = 138
+const TG1 = 139
+const TG0 = 140
+const TG2 = 141
+const TSel5 = 142
+const TSel0 = 143
+const TSel2 = 144
+const TCrash = 145
+const TWall = 146
+const SNone = 0
+const NTiles8 = 152
+const SprBytes = 32
+const SndHush = 1
+const SndTick = 2
+const SndJump = 3
+const SndOpen = 4
+const SndMiss = 5
+const SndCrash = 6
+const SndAdvance = 7
+const SndPoint = 8
+const SndTuneA = 9
+const SndTuneB = 10
+const SndLandA = 11
+const SndLandB = 12
+' the tune now playing: frames left (counted in Rearm, once a frame)
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' SC score, BO bonus value, BA skydivers, WA rows: steps a row, W steps a
+' steer, EX the extra one given, NJ landings since the last advance
+u16 SC = 0
+u16 HI = 0
+u16 BO = 100
+u8 BA = 3
+u8 WA = 7
+u8 W = 8
+u8 EX = 0
+u8 NJ = 0
+' P the pad (1 5X, 2 10X, 3 2X), A the plane's column, CT CC the jump it
+' makes by itself, B the diver's VIC screen offset, CH its character, C D
+' WI the step counters, T the free fall's rows, S the wind's steps, SD its
+' speed, DI its direction
+u8 P = 1
+u8 A = 0
+u8 CT = 0
+u8 CC = 0
+u16 B = 0
+u8 CH = 0
+u8 C = 0
+u8 D = 0
+u8 WI = 0
+u8 T = 0
+u8 S = 5
+u8 SD = 15
+i8 DI = 1
+u16 VA = 0
+u8 TM = 15
+u16 Secs = 0
+u8 Blink = 0
+' R: the joystick as line 1010 makes it (1 up, 2 down, 4 left, 8 right,
+' 128 the button)
+u8 R = 0
+' the cell under B (OrPeek) and the tile to put there (OrPoke)
+u8 Pk = 0
+' for the test bot: 1 choosing, 2 the plane, 3 the free fall, 4 the
+' parachute, 5 a landing scored, 6 a miss, 7 the title
+u8 Ph = 0
+u8 Tl = 0
+
+u16 NumU = 0
+u16 V16 = 0
+u16 G = 0
+u16 Rw = 0
+u16 Rs = $1D2B
+u16 Rt = 0
+u8 I = 0
+u8 J = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table SdSoundTable areas 4
+  nmi off
+  screen on
+
+l60100:
+  TitleScreen
+
+l12:
+  SC = 0
+  BO = 100
+  BA = 3
+  WA = 7
+  W = 8
+  EX = 0
+  NJ = 0
+  PlayScreen
+  print at 5,1, "SCORE: 000"
+
+l20:
+  ' a round: the ground, the skydivers left, the wind, the pad
+  NewRound
+  if BA = 0 then goto l60000
+  ' 21: the pad chosen, top right
+  fill 32 count 3 at 19,1
+  if P = 1 then print at 19,1, "5X"
+  if P = 2 then print at 19,1, "10X"
+  if P = 3 then print at 19,1, "2X"
+  ' 22: the plane drops the diver by itself after CT steps
+  Rnd16
+  V = highbyte Rw
+  V = V % 20
+  CT = V + 22
+  CC = 0
+  A = 0
+  Ph = 2
+
+l100:
+  ' the plane crosses row 2 (its tail on row 2, its body on row 3)
+  Plane
+  inc A
+  inc CC
+  if CC >= CT then
+    if A < 21 then
+      if A > 1 then goto l120
+    end if
+  end if
+  if A >= 20 then
+    PlaneOff
+    A = 0
+  end if
+  ' 110: the button jumps
+  Pace(5)
+  if R <> 128 then goto l100
+  if A > 20 then goto l100
+  if A < 1 then goto l100
+l120:
+  PlaneOff
+  play sound SndJump
+  Ph = 3
+  ' 200: B = 7747 + A: row 3, one column right of the plane's tail
+  B = 67 + A
+  Rnd16
+  V = highbyte Rw
+  V = V >> 5
+  T = V + 2
+  CH = TFall
+  C = 0
+l212:
+  inc C
+  Tl = 32
+  call asm OrPoke
+  B = B + 22
+  Tl = CH
+  call asm OrPoke
+  if C < T then
+    Pace(5)
+    goto l212
+  end if
+
+  ' 300: the parachute opens
+  play sound SndOpen
+  Ph = 4
+  CH = TChute
+  C = 0
+  D = 0
+  WI = 0
+l305:
+  Tl = CH
+  call asm OrPoke
+  Pace(2)
+  inc C
+  if C >= W then
+    if R = 4 then
+      Tl = 32
+      call asm OrPoke
+      B = B - 1
+      Tl = CH
+      call asm OrPoke
+      C = 0
+    end if
+  end if
+  if C >= W then
+    if R = 8 then
+      Tl = 32
+      call asm OrPoke
+      B = B + 1
+      Tl = CH
+      call asm OrPoke
+      C = 0
+    end if
+  end if
+  inc D
+  if D >= WA then
+    Tl = 32
+    call asm OrPoke
+    B = B + 22
+    D = 0
+    call asm OrPeek
+    if Pk <> 32 then goto l3000
+  end if
+  Tl = CH
+  call asm OrPoke
+  inc WI
+  if WI >= S then
+    Tl = 32
+    call asm OrPoke
+    if DI = -1 then
+      B = B - 1
+    else
+      B = B + 1
+    end if
+    WI = 0
+  end if
+  ' 400: blown or steered into something
+  call asm OrPeek
+  if Pk <> 32 then
+    if Pk <> CH then goto l3000
+  end if
+  Tl = CH
+  call asm OrPoke
+  goto l305
+
+l3000:
+  ' 3000: on the yellow part of the pad chosen? (8124-8125, 8130, 8135-8137)
+  if P = 1 then
+    if B = 444 then goto l4000
+    if B = 445 then goto l4000
+  end if
+  if P = 2 then
+    if B = 450 then goto l4050
+  end if
+  if P = 3 then
+    if B = 455 then goto l4100
+    if B = 456 then goto l4100
+    if B = 457 then goto l4100
+  end if
+  Tl = TCrash
+  call asm OrPoke
+  play sound SndCrash
+  goto l12000
+l4000:
+  Tl = CH
+  call asm OrPoke
+  print at 10,9, "5 X"
+  V = 5
+  goto l4200
+l4050:
+  Tl = CH
+  call asm OrPoke
+  print at 9,9, "10 X"
+  V = 10
+  goto l4200
+l4100:
+  Tl = CH
+  call asm OrPoke
+  print at 10,9, "2 X"
+  V = 2
+l4200:
+  ' "5 X 100 = 500" (BASIC prints numbers with a space each side)
+  NumU = BO
+  X = 17
+  if BO > 999 then
+    print at 14,9, digits$(NumU, 4)
+    inc X
+  else
+    print at 14,9, digits$(NumU, 3)
+  end if
+  print at X,9, " ="
+  X = X + 3
+  VA = BO * V
+  NumU = VA
+  if VA > 999 then
+    print at X,9, digits$(NumU, 4)
+  else
+    print at X,9, digits$(NumU, 3)
+  end if
+
+l10000:
+  Ph = 5
+  inc NJ
+  play sound SndLandA
+  play sound SndLandB
+  TzLeft = 174
+  TzOn = 1
+  ' 10100: the score counts up by tens
+  V16 = VA / 10
+  for G = 1 to V16
+    SC = SC + 10
+    NumU = SC
+    print at 12,1, digits$(NumU, 3)
+    if SC > 999 then print at 12,1, digits$(NumU, 4)
+    if SC > 9999 then print at 12,1, digits$(NumU, 5)
+    Pace(1)
+  next
+  Hold(120)
+  if EX = 0 then
+    if SC >= 5000 then
+      inc BA
+      EX = 1
+    end if
+  end if
+  fill 32 count 22 at 5,9
+  goto l20
+
+l12000:
+  Ph = 6
+  play sound SndMiss
+  print at 8,9, "SORRY NO BONUS!"
+  dec BA
+  Hold(60)
+  Tl = 32
+  call asm OrPoke
+  fill 32 count 22 at 5,9
+  goto l20
+
+l60000:
+  print at 11,8, "GAME OVER"
+  if SC > HI then HI = SC
+  Hold(120)
+  goto l60100
+
+' ---------------------------------------------------------------------------
+
+' Round (5000-5070): the ground and the pads, the skydivers left, the wind,
+' the bonus advance, the pad chosen, the walls
+sub NewRound:
+  ' 5020: row 20: the pads 5X (columns 4-5), 10X (10), 2X (15-17)
+  fill 32 count 22 at 5,21
+  put char TPadl at 8,21
+  put char TPad at 9,21
+  put char TPad at 10,21
+  put char TPadr at 11,21
+  put char TPadl at 14,21
+  put char TPad at 15,21
+  put char TPadr at 16,21
+  put char TPadl at 19,21
+  put char TPad at 20,21
+  put char TPad at 21,21
+  put char TPad at 22,21
+  put char TPadr at 23,21
+  ' 5030: row 21, reversed: "    5X   10X    2X    "
+  fill TGround count 22 at 5,22
+  put char TG5 at 9,22
+  put char TGX at 10,22
+  put char TG1 at 14,22
+  put char TG0 at 15,22
+  put char TGX at 16,22
+  put char TG2 at 21,22
+  put char TGX at 22,22
+  ' 5040: row 22, solid
+  fill TGround count 22 at 5,23
+  if BA = 0 then return
+  ' 5042: the skydivers in reserve, top right
+  fill 32 count 4 at 22,1
+  if BA > 1 then
+    J = BA - 1
+    if J > 4 then J = 4
+    for I = 1 to J
+      X = I + 22
+      put char TChute at X,1
+    next
+  end if
+  ' 5045: the wind: strong (every 5 steps, 15), middling (10, 10) or light
+  ' (15, 5), left or right
+  Rnd16
+  V = highbyte Rw
+  V = V % 3
+  S = 5
+  SD = 15
+  if V = 1 then
+    S = 10
+    SD = 10
+  end if
+  if V = 2 then
+    S = 15
+    SD = 5
+  end if
+  Rnd16
+  DI = 1
+  if Rw > 32767 then DI = -1
+  if NJ >= 2 then
+    BO = BO + 50
+    play sound SndAdvance
+    print at 5,8, "BONUS ADVANCE TO"
+    NumU = BO
+    print at 22,8, digits$(NumU, 3)
+    if WA > 4 then dec WA
+    NJ = 0
+    if W < 18 then inc W
+  end if
+  ' 5056: "WIND:  15 TO RIGHT"
+  print at 8,3, "WIND:"
+  NumU = SD
+  if SD < 10 then
+    print at 15,3, digits$(NumU, 1)
+  else
+    print at 14,3, digits$(NumU, 2)
+  end if
+  if DI = 1 then
+    print at 17,3, "TO RIGHT"
+  else
+    print at 17,3, "TO LEFT"
+  end if
+  PickPad
+  Hold(60)
+  fill 32 count 22 at 5,2
+  ' 5060: the walls, columns 0 and 21 from row 2 to row 20 (invisible)
+  for Y = 3 to 21
+    put char TWall at 5,Y
+    put char TWall at 26,Y
+  next
+  return
+end sub
+
+' Choose (50000-50150): left and right move the choice, the button takes
+' it; after 15 seconds the computer chooses
+sub PickPad:
+  Ph = 1
+  print at 9,5, "5X   10X  2X"
+  P = 1
+  Secs = 0
+  Blink = 0
+ch_loop:
+  ' 50025: the first letter of the choice blinks (reversed, then not)
+  Blink = Blink ^ 1
+  ChoiceMark
+  ' 50027: the countdown
+  V16 = Secs / 60
+  V = V16
+  TM = 15 - V
+  fill 32 count 2 at 15,13
+  NumU = TM
+  if TM < 10 then
+    print at 16,13, digits$(NumU, 1)
+  else
+    print at 15,13, digits$(NumU, 2)
+  end if
+  if TM = 0 then
+    Blink = 0
+    ChoiceMark
+    Rnd16
+    V = highbyte Rw
+    V = V % 3
+    P = V + 1
+    goto ch_done
+  end if
+  Pace(8)
+  Secs = Secs + 8
+  if R = 4 then
+    Blink = 0
+    ChoiceMark
+    dec P
+    if P < 1 then P = 3
+    play sound SndTick
+  end if
+  if R = 8 then
+    Blink = 0
+    ChoiceMark
+    inc P
+    if P > 3 then P = 1
+    play sound SndTick
+  end if
+  if R >= 128 then
+    Blink = 0
+    ChoiceMark
+    goto ch_done
+  end if
+  goto ch_loop
+ch_done:
+  if P = 1 then print at 6,15, "YOU MUST LAND ON 5X"
+  if P = 2 then print at 6,15, "YOU MUST LAND ON 10X"
+  if P = 3 then print at 6,15, "YOU MUST LAND ON 2X"
+  Hold(90)
+  for Y = 2 to 19
+    fill 32 count 22 at 5,Y
+  next
+  return
+end sub
+
+' ChoiceMark: the choice's first letter, reversed when Blink is 1
+sub ChoiceMark:
+  if P = 1 then
+    if Blink = 1 then
+      put char TSel5 at 9,5
+    else
+      print at 9,5, "5"
+    end if
+  end if
+  if P = 2 then
+    if Blink = 1 then
+      put char TSel0 at 15,5
+    else
+      print at 15,5, "0"
+    end if
+  end if
+  if P = 3 then
+    if Blink = 1 then
+      put char TSel2 at 19,5
+    else
+      print at 19,5, "2"
+    end if
+  end if
+  return
+end sub
+
+' Plane (100): the tail at row 2, column A; the body at columns A-1 and A
+sub Plane:
+  PlaneOff
+  X = A + 5
+  if A < 22 then put char TPlanetop at X,2
+  if A > 0 then
+    X = A + 4
+    if A < 23 then put char TPlanel at X,3
+  end if
+  X = A + 5
+  if A < 22 then put char TPlaner at X,3
+  return
+end sub
+
+' PlaneOff: wipe the plane at its last place (A-1)
+sub PlaneOff:
+  if A = 0 then return
+  X = A + 4
+  print at X,2, " "
+  if A > 1 then
+    X = A + 3
+    print at X,3, "  "
+  else
+    print at X,3, " "
+  end if
+  return
+end sub
+
+sub TitleScreen:
+  Ph = 7
+  NewScreen
+  backdrop cyan
+  print at 11,3, "SKY DIVER"
+  print at 5,8, "USE JOYSTICK TO PLAY"
+  print at 11,13, "HIGH SCORE"
+  NumU = HI
+  X = 15
+  if HI > 9 then X = 14
+  if HI > 999 then X = 13
+  print at X,15, digits$(NumU, 1)
+  if HI > 9 then print at X,15, digits$(NumU, 2)
+  if HI > 99 then print at X,15, digits$(NumU, 3)
+  if HI > 999 then print at X,15, digits$(NumU, 4)
+  if HI > 9999 then print at X,15, digits$(NumU, 5)
+  print at 2,18, "BY ALAN CROSSLEY, COMPUTE!'S"
+  print at 2,19, "GAZETTE, JULY 1983."
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO."
+  print at 2,22, "MUSIC: OPEN SKY."
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 280
+  TzOn = 1
+  ' 60160: any move of the stick, or the button
+ti_wait:
+  Pace(1)
+  if R = 0 then goto ti_wait
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $1D2B
+  TzOn = 0
+  mute all
+  return
+end sub
+
+sub PlayScreen:
+  NewScreen
+  backdrop cyan
+  ShowScreen
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $47
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+' Pace N: N frames, then the joystick read as line 1010 does
+sub Pace(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  R = 0
+  if joypad(1).up then R = R | 1
+  if joypad(2).up then R = R | 1
+  if joypad(1).down then R = R | 2
+  if joypad(2).down then R = R | 2
+  if joypad(1).left then R = R | 4
+  if joypad(2).left then R = R | 4
+  if joypad(1).right then R = R | 8
+  if joypad(2).right then R = R | 8
+  if joypad(1).fire then R = R | 128
+  if joypad(2).fire then R = R | 128
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndLandA
+      stop sound SndLandB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+data TilePat bytes
+  $00,$02,$06,$0E,$E1,$C1,$81,$00
+  $00,$00,$E0,$07,$00,$00,$00,$00
+  $01,$00,$01,$E0,$03,$00,$00,$00
+  $00,$18,$C3,$18,$C3,$18,$20,$00
+  $C3,$81,$00,$99,$A5,$18,$C3,$24
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$80,$80,$80,$00
+  $01,$01,$01,$01,$01,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $83,$40,$87,$04,$04,$44,$38,$00
+  $44,$44,$28,$10,$28,$44,$44,$00
+  $10,$30,$10,$10,$10,$10,$38,$00
+  $38,$44,$4C,$54,$64,$44,$38,$00
+  $38,$44,$04,$18,$20,$40,$83,$00
+  $83,$40,$87,$04,$04,$44,$38,$00
+  $38,$44,$4C,$54,$64,$44,$38,$00
+  $38,$44,$04,$18,$20,$40,$83,$00
+  $49,$C3,$24,$18,$18,$24,$C3,$92
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $07,$47,$47,$47,$74,$74,$74,$04
+  $04,$04,$74,$47,$07,$07,$07,$07
+  $74,$04,$74,$47,$74,$07,$07,$07
+  $07,$17,$71,$17,$71,$17,$17,$07
+  $78,$78,$08,$17,$71,$17,$71,$17
+  $0B,$0B,$07,$07,$07,$07,$07,$07
+  $17,$17,$17,$17,$17,$17,$17,$01
+  $17,$17,$17,$17,$17,$17,$17,$01
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $4F,$F4,$4F,$F4,$F4,$F4,$F4,$04
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $F4,$F4,$F4,$F4,$F4,$F4,$4F,$04
+  $87,$78,$87,$78,$78,$78,$78,$08
+  $78,$78,$78,$78,$78,$78,$78,$08
+  $78,$78,$78,$78,$78,$78,$87,$08
+  $87,$78,$98,$98,$98,$98,$78,$87
+  $07,$07,$07,$07,$07,$07,$07,$07
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+SdHush:
+    db $00,$00,$F4,$01,$10
+SdTick:
+    db $40,$40,$50,$01,$50
+SdJump:
+    db $00,$00,$35,$03,$00,$00,$65,$03,$00,$00,$96,$03,$10
+SdOpen:
+    db $00,$00,$14,$02,$00,$00,$45,$04,$00,$00,$85,$04,$10
+SdMiss:
+    db $40,$1D,$21,$07,$40,$1D,$F1,$01,$40,$41,$21,$07,$40,$41,$F1,$01,$40,$53,$21,$07,$40,$53,$F1,$01
+    db $40,$7C,$21,$07,$40,$7C,$F1,$01,$40,$AB,$21,$13,$40,$AB,$F1,$01,$50
+SdCrash:
+    db $00,$00,$05,$03,$00,$00,$16,$05,$00,$00,$37,$08,$00,$00,$67,$0A,$10
+SdAdvance:
+    db $40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$A0,$20,$05,$40,$A0,$F0,$01,$40,$8F,$20,$09,$40,$8F,$F0,$01
+    db $40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$A0,$20,$05,$40,$A0,$F0,$01,$40,$BF,$20,$05,$40,$BF,$F0,$01
+    db $40,$AA,$20,$05,$40,$AA,$F0,$01,$40,$D6,$20,$05,$40,$D6,$F0,$01,$40,$BF,$20,$0F,$40,$BF,$F0,$01
+    db $50
+SdPoint:
+    db $40,$55,$60,$01,$50
+
+SdSoundTable:
+    dw SdHush,$702B
+    dw SdTick,$7035
+    dw SdJump,$702B
+    dw SdOpen,$702B
+    dw SdMiss,$7035
+    dw SdCrash,$702B
+    dw SdAdvance,$7035
+    dw SdPoint,$7035
+    dw SdTuneMel,$703F
+    dw SdTuneBass,$7049
+    dw SdLandMel,$703F
+    dw SdLandBass,$7049
+; Open Sky, C major (original for this game)
+; Tiny Sound, 7 frames per step
+SdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$F1,$22,$1F,$00,$23,$00,$26,$00,$2B,$00,$00,$00,$2A,$00
+    db $28,$00,$26,$00,$23,$00,$00,$00,$24,$00,$23,$00,$21,$00,$1F,$00
+    db $21,$00,$23,$00,$1F,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+SdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$70,$F1,$22,$07,$0E,$13,$0E,$07,$0E,$13,$0E,$10,$0B,$10,$0B
+    db $10,$0B,$10,$0B,$0C,$07,$0C,$07,$0E,$09,$0E,$09,$07,$0E,$13,$0E
+    db $0B,$0E,$13,$0E,$07,$0E,$13,$0E,$07,$00,$00,$00
+    db $FF
+; the landing tune of Program 2 (Super Expander), from its DATA
+; Tiny Sound, 6 frames per step
+SdLandMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$21,$00,$1F,$00,$24,$00,$26,$2B,$28,$00,$26,$2B
+    db $28,$00,$24,$00,$26,$00,$21,$00,$1F,$00,$2C,$00,$2B,$00,$00,$00
+    db $00
+    db $FF
+SdLandBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$80,$18,$32,$15,$00,$13,$00,$18,$00,$1A,$1F,$1C,$00,$1A,$1F
+    db $1C,$00,$18,$00,$1A,$00,$15,$00,$13,$00,$20,$00,$1F,$00,$00,$00
+    db $00
+    db $FF
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; OrPeek: Pk = the tile at B (PEEK(B))
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B (POKE B,Tl)
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+}

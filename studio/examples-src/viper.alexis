@@ -1,0 +1,694 @@
+' THE VIPER
+' The game by Dave and Casey Gardner from COMPUTE!'s Gazette, August 1983
+' (pages 42-46 and 116-117), for the ColecoVision in Amy by Amy Bienvenu.
+' Ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: Program 1, the VIC-20 version, transcribed in orig/viper-vic.bas
+' from the scans beside it. The Commodore 64 version (Program 2) was read
+' for its menus only: it is the same game, faster, with 20 levels.
+'
+' The game: the Viper races about the screen eating asterisks; each one
+' makes it two segments longer. Hitting a wall, the maze or its own body
+' ends the game. Nine speeds; three courses (no maze, the easy maze for
+' twice the points, the hard maze for five times). Score: the asterisks
+' eaten times the skill level times the maze's factor.
+'
+' Controls (either joystick): the stick turns the Viper (it keeps going
+' the way it was last pushed; diagonals are ignored, as the listing's
+' machine-language routine compared the port for one direction exactly);
+' in the menus the stick chooses and the button confirms. Keypad not used.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23, with the VIC's yellow border around it: the Viper's place S
+' is the VIC screen offset. Labels such as l210 are the listing's line
+' numbers.
+'
+' Kept as the listing has them: the Viper waits, still, until the stick is
+' first pushed; turning back onto your own body is a crash; the asterisk
+' may land anywhere free, maze cells excluded; the skill question comes
+' back before every game and the maze explanation is shown once.
+'
+' Liberties taken:
+' - The stick and the button instead of the keys 1-9, H, E and N.
+' - Speed: a move every 60 + SK milliseconds (SK = (10 - level) squared,
+'   the listing's delay loop), counted in frames: level 9 is about 16
+'   moves a second, level 1 about 7, near the VIC's BASIC.
+' - The tail's ring of 101 places (Q) would overflow after 50 asterisks
+'   and stop the BASIC with an error; here the Viper stops growing at 98.
+' - The text rewrapped for 28 columns; the scrolling "VIC-VIPER" title
+'   says "THE VIPER"; new title music (Coil and Strike) and a credits
+'   page; the listing's POKEd sounds made as Tiny Sound effects.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the playfield is
+' a picture to row 23); no sprites; the frame loop is protected from the
+' NMI and every screen is drawn with the NMI off after a wait.
+
+const THead = 128
+const TCrash = 129
+const TWall = 130
+const TBorder = 131
+const SNone = 0
+const NTiles8 = 32
+const SprBytes = 32
+const SndCrash = 1
+const SndMove = 2
+const SndBite = 3
+const SndTick = 4
+const SndTuneA = 5
+const SndTuneB = 6
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' S the head's VIC screen offset, DR the step, M the asterisk, MM 1 while
+' a new asterisk is wanted, P asterisks eaten, N the length, A the ring's
+' place, Q the ring of the body's cells, MZ the maze (1 hard, 2 easy),
+' SK the delay, LV the level (A$), R the score, HS the high score, TR 1
+' once the maze explanation has been shown
+u16 S = 0
+i16 DR = 0
+u16 M = 0
+u8 MM = 0
+u16 P = 0
+u8 N = 2
+u8 A = 2
+u8 Z = 0
+u16 Q[101]
+u8 MZ = 0
+u8 SK = 0
+u8 LV = 1
+u16 R = 0
+u16 HS = 0
+u8 TR = 0
+' the step clock: milliseconds gone (17 a frame) against 60 + SK
+u16 Acc = 0
+u16 Th = 0
+' the cell under B (OrPeek) and the tile to put there (OrPoke)
+u16 B = 0
+u8 Pk = 0
+u8 Tl = 0
+' for the test bot: 1 playing, 2 crashed, 3 score, 5 skill, 6 maze, 7 title
+u8 Ph = 0
+u8 Tc = $F4
+
+u16 NumU = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 V16 = 0
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+
+  ' no cartridge screen: the game starts on its title
+  tile screen
+  set sound table VpSoundTable areas 4
+  nmi off
+  screen on
+
+  ' 370-430: the title, the first time only
+  Ph = 7
+  TextScreen
+  backdrop light yellow
+  print at 2,12, "BY DAVE AND CASEY GARDNER"
+  print at 2,19, "COMPUTE!'S GAZETTE AUG. 1983"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 384
+  TzOn = 1
+  ' 390-410: the Viper crawls across row 4, right to left
+  for I = 1 to 45
+    for K = 0 to 21
+      V = I + K
+      dec V
+      Tl = 32
+      if V >= 24 then
+        V = V - 24
+        if V < 17 then Tl = TitleSnake[V]
+      end if
+      X = K + 5
+      put char Tl at X,5
+    next
+    Hold(10)
+  next
+  print at 7,8, "PRESS A BUTTON"
+  WaitPress
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  ' 430-440
+  TextScreen
+  print at 2,4, "GET THE '*'S BUT DON'T HIT"
+  print at 2,5, "ANYTHING ELSE."
+  print at 2,8, "USE THE JOYSTICK."
+  ShowScreen
+  Hold(120)
+
+l30:
+  ' 30-60: a new game
+  MZ = 0
+  P = 0
+  DR = 0
+  A = 2
+  N = 2
+  MM = 0
+  for J = 0 to 100
+    Q[J] = $FFFF
+  next
+  Level
+  Maze
+  ' 70-100: the walls round the edge
+  for J = 0 to 21
+    B = J
+    Tl = TWall
+    call asm OrPoke
+    B = J + 484
+    call asm OrPoke
+  next
+  for J = 1 to 21
+    V16 = J
+    B = V16 * 22
+    Tl = TWall
+    call asm OrPoke
+    B = B + 21
+    call asm OrPoke
+  next
+  ' 110-160: the first asterisk, then the Viper
+l110:
+  RndCell
+  M = B
+  call asm OrPeek
+  if Pk <> 32 then goto l110
+  Tl = 42
+  call asm OrPoke
+l140:
+  RndCell
+  S = B
+  call asm OrPeek
+  if Pk <> 32 then goto l140
+  Tl = THead
+  call asm OrPoke
+  ShowScreen
+  Ph = 1
+  Acc = 0
+  V16 = SK
+  Th = V16 + 60
+
+l170:
+  ' the stick is read every frame (SYS 828); a move when the time is up
+  Frame1
+  ReadPad
+  Acc = Acc + 17
+  if Acc < Th then goto l170
+  Acc = Acc - Th
+  ' 180-200: one direction exactly turns the Viper
+  V = Up1 + Dn1
+  V = V + Lf1
+  V = V + Rt1
+  if V = 1 then
+    if Rt1 = 1 then DR = 1
+    if Lf1 = 1 then DR = -1
+    if Dn1 = 1 then DR = 22
+    if Up1 = 1 then DR = -22
+  end if
+  ' 210: a wall, the maze or the body: the crash
+  B = S + DR
+  call asm OrPeek
+  if Pk = TWall then goto l210
+  if Pk = 43 then goto l210
+  ' 220: a new asterisk wanted
+  if MM = 1 then
+    RndCell
+    M = B
+    MM = 0
+    call asm OrPeek
+    if Pk <> 32 then MM = 1
+    B = S + DR
+    call asm OrPeek
+  end if
+  ' 240: an asterisk eaten
+  if Pk = 42 then
+    play sound SndBite
+    inc P
+    if N < 98 then N = N + 2
+    MM = 1
+  end if
+  ' 250: the asterisk (again)
+  if MM = 0 then
+    B = M
+    Tl = 42
+    call asm OrPoke
+  end if
+  ' 260-320: the ring; the tail's cell cleared
+  Q[A] = S + DR
+  Z = A
+  if A < N then Z = A + 101
+  Z = Z - N
+  V16 = Q[Z]
+  if V16 < 506 then
+    B = V16
+    Tl = 32
+    call asm OrPoke
+  end if
+  inc A
+  if A > 100 then A = 0
+  ' 330: the viper noise
+  play sound SndMove
+  ' 350: the body where the head was, the head ahead
+  B = S
+  Tl = 43
+  call asm OrPoke
+  S = S + DR
+  B = S
+  Tl = THead
+  call asm OrPoke
+  goto l170
+
+l210:
+  B = S
+  Tl = 43
+  call asm OrPoke
+  B = S + DR
+  Tl = TCrash
+  call asm OrPoke
+  Ph = 2
+  ' 600-610
+  play sound SndCrash
+  Hold(120)
+  ' 620-690: the score
+  if MZ = 1 then P = P * 5
+  if MZ = 2 then P = P * 2
+  V16 = LV
+  R = P * V16
+  Ph = 3
+  Tc = $B4
+  TextScreen
+  Tc = $F4
+  print at 2,3, "YOUR SCORE:"
+  NumU = R
+  ShowNum(14, 3)
+  if R > HS then HS = R
+  print at 2,6, "HIGH SCORE:"
+  NumU = HS
+  ShowNum(14, 6)
+  ShowScreen
+  Hold(180)
+  goto l30
+
+' Level (450-480): the skill, 1 to 9
+sub Level:
+  Ph = 5
+  TextScreen
+  print at 2,4, "ENTER SKILL LEVEL"
+  print at 2,6, "(EASY 1 - 9 HARD)"
+  print at 2,12, "LEFT AND RIGHT CHOOSE,"
+  print at 2,13, "THE BUTTON STARTS."
+  ShowScreen
+  WasBtn = 1
+lv_draw:
+  print at 9,9, "<   >"
+  NumU = LV
+  print at 11,9, digits$(NumU, 1)
+lv_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then
+      if LV > 1 then dec LV
+    end if
+    if Rt1 = 1 then
+      if LV < 9 then inc LV
+    end if
+    play sound SndTick
+    goto lv_draw
+  end if
+  if Press = 0 then goto lv_loop
+  play sound SndTick
+  V = 10 - LV
+  SK = V * V
+  return
+end sub
+
+' Maze (490-590): the course
+sub Maze:
+  Ph = 6
+  TextScreen
+  Y = 2
+  if TR = 0 then
+    print at 2,2, "YOU WILL GET 2 TIMES AS MANY"
+    print at 2,3, "POINTS WITH AN EASY MAZE."
+    print at 2,5, "YOU WILL GET 5 TIMES AS MANY"
+    print at 2,6, "POINTS WITH A HARD MAZE."
+    Y = 9
+    TR = 1
+  end if
+  print at 6,Y, "HARD MAZE"
+  inc Y
+  print at 6,Y, "EASY MAZE"
+  inc Y
+  print at 6,Y, "NO MAZE"
+  ShowScreen
+  Oy = Y - 2
+  Nopt = 3
+  PickOne
+  ' the playfield: the VIC screen in blue, its border in yellow
+  TextScreen
+  for Y = 0 to 23
+    fill TBorder count 32 at 0,Y
+  next
+  for Y = 1 to 23
+    fill 32 count 22 at 5,Y
+  next
+  if Sel = 3 then return
+  MZ = Sel
+  K = 60
+  if MZ = 2 then K = 32
+  for J = 0 to K - 1
+    V = MazeOff[J]
+    B = V
+    B = B + 100
+    Tl = TWall
+    call asm OrPoke
+  next
+  return
+end sub
+
+' RndCell (110, 700): B = INT(RND(1)*506)
+sub RndCell:
+  Rnd16
+  Uq = Rw
+  Uq2 = 506
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  B = lowword Uq
+  return
+end sub
+
+' ShowNum X, Y: NumU, as many digits as it has
+sub ShowNum(u8 Px, u8 Py):
+  if NumU < 10 then
+    print at Px,Py, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at Px,Py, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at Px,Py, digits$(NumU, 3)
+      else
+        print at Px,Py, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 5
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+
+' 760-780: the maze's cells (VIC offsets less 100); the easy maze is the
+' first 32
+data MazeOff bytes 42, 43, 83, 84, 85, 88, 89, 90, 105, 112, 122, 123, 124, 125, 126, 127, 134, 135, 136, 137, 138, 139, 149, 156, 171, 172, 173, 176, 177, 178, 218, 219, 41, 44, 77, 78, 79, 80, 81, 92, 93, 94, 95, 96, 129, 130, 131, 132, 165, 166, 167, 168, 169, 180, 181, 182, 183, 184, 217, 220
+' 380: the crawling title (the diamond head, + body)
+data TitleSnake bytes 128, 43, 43, 43, 32, 84, 72, 69, 32, 86, 73, 80, 69, 82, 43, 43, 43
+
+data TilePat bytes
+  $18,$C3,$81,$00,$00,$81,$C3,$18
+  $18,$C3,$81,$00,$00,$81,$C3,$18
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $F4,$4F,$4F,$0F,$0F,$4F,$4F,$F4
+  $84,$48,$48,$08,$08,$48,$48,$84
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+VpCrash:
+    db $00,$00,$05,$04,$00,$00,$15,$04,$00,$00,$25,$04,$00,$00,$35,$04,$00,$00,$45,$04,$00,$00,$55,$04
+    db $00,$00,$65,$04,$00,$00,$75,$04,$00,$00,$85,$04,$00,$00,$95,$04,$00,$00,$A5,$04,$00,$00,$B5,$04
+    db $00,$00,$C5,$04,$00,$00,$D5,$04,$00,$00,$E5,$04,$00,$00,$F5,$04,$10
+VpMove:
+    db $40,$5B,$30,$02,$50
+VpBite:
+    db $40,$2A,$00,$03,$40,$15,$00,$03,$40,$FE,$F0,$01,$50
+VpTick:
+    db $40,$40,$50,$01,$50
+
+VpSoundTable:
+    dw VpCrash,$702B
+    dw VpMove,$7035
+    dw VpBite,$7035
+    dw VpTick,$7035
+    dw VpTuneMel,$703F
+    dw VpTuneBass,$7049
+; Coil and Strike, D (original for this game)
+; Tiny Sound, 6 frames per step
+VpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$1A,$21,$21,$00,$22,$00,$25,$00,$26,$00,$28,$00,$26,$25
+    db $26,$00,$22,$00,$21,$00,$22,$00,$25,$00,$28,$00,$29,$00,$28,$26
+    db $25,$00,$00,$00,$26,$00,$28,$00,$29,$00,$2D,$00,$2B,$29,$28,$00
+    db $26,$00,$25,$00,$22,$25,$22,$21,$00,$00,$28,$00,$2D,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+VpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$09,$10,$09,$10,$09,$10,$09,$10,$09,$10,$09,$10
+    db $0A,$10,$0A,$10,$09,$10,$09,$10,$09,$10,$09,$10,$07,$0E,$07,$0E
+    db $09,$10,$09,$10,$0E,$15,$0E,$15,$0E,$15,$0E,$15,$07,$0E,$07,$0E
+    db $09,$10,$09,$10,$0A,$10,$0A,$10,$09,$10,$09,$10,$09,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; OrPeek: Pk = the tile at B
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+}

@@ -1,0 +1,995 @@
+cartridge "STARLIGHT/CLAUDE FOR AMY STUDIO/2026"
+
+' STARLIGHT
+' An original puzzle game for the ColecoVision, written in Amy by Claude (an
+' AI made by Anthropic) for Amy Studio, 2026.
+'
+' Dusk. Twenty-five stars sleep in the sky. Wake one and it wakes its four
+' neighbours too - or puts the awake ones back to sleep. Wake every star
+' and the sky draws a picture. Ten nights, each a little harder.
+'
+' Controls (either joystick): the stick moves between the stars; the left
+' button wakes the star you point at (and its neighbours); the right button
+' starts the night again. Keypad not used.
+'
+' Liberties and sources: the puzzle is the classic "lights out" kind (made
+' famous by Tiger Electronics' Lights Out, 1995); the stars, the nights,
+' the pictures in the sky, the music and the intro picture are new. Each
+' night is made by pressing a few stars of a fully awake sky, so every
+' night can be solved, and the fewest moves are known.
+' The intro is a 120-colour picture (kit/c120, `120 colors on`).
+'
+' House rules kept: columns 2-29, rows 1-22; tiles from code 128; the frame
+' loop is protected from the NMI (Frame1); the tune plays once (TzLeft).
+
+' Amy workaround: with `120 colors on`, small programs have their first
+' user bytes on the joypad buffers (reported, bugs/120c-ram-overlap). This
+' game's layout is larger and not hit; the four bytes stay as a guard.
+u8 JoyGap[4]
+
+const TDim00 = 128
+const TDim01 = 129
+const TDim10 = 130
+const TDim11 = 131
+const TLit00 = 132
+const TLit01 = 133
+const TLit10 = 134
+const TLit11 = 135
+const TSky = 136
+const TLht = 137
+const TLhb = 138
+const TLvl = 139
+const TLvr = 140
+const TLd = 141
+const TLu = 142
+const TTwk = 143
+const TTwk2 = 144
+const SCursor = 0
+const SSpark = 4
+const NTiles8 = 136
+const SprBytes = 64
+const SndHush = 1
+const SndTick = 2
+const SndWake = 3
+const SndSleep = 4
+const SndDone = 5
+const SndTuneA = 6
+const SndTuneB = 7
+' the pictures the sky draws, one a night (28 characters each)
+data CName bytes
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 76, 65, 78, 84, 69, 82, 78, 33, 32, 32, 32, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 83, 76, 69, 69, 80, 89, 32, 67, 65, 84, 33, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 79, 76, 68, 32, 66, 82, 73, 68, 71, 69, 33, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 75, 73, 84, 69, 33, 32, 32, 32, 32, 32, 32, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 84, 69, 65, 80, 79, 84, 33, 32, 32, 32, 32, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 76, 73, 84, 84, 76, 69, 32, 66, 79, 65, 84, 33, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 79, 87, 76, 33, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 79, 80, 69, 78, 32, 66, 79, 79, 75, 33, 32, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 66, 69, 76, 76, 33, 32, 32, 32, 32, 32, 32, 32, 32, 32
+  89, 79, 85, 32, 70, 79, 85, 78, 68, 32, 84, 72, 69, 32, 67, 82, 79, 87, 78, 32, 79, 70, 32, 68, 85, 83, 75, 33
+end data
+' the stars of each picture (25 a night: 1 = part of it)
+data PicStars bytes
+  0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0
+  0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1
+  0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0
+  0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0
+  0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0
+  1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0
+  0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0
+  0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1
+  0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1
+end data
+' the lines of each picture: column, row, tile (LineOff: first line of a night)
+data LineData bytes
+  13, 6, 142, 11, 9, 139, 12, 9, 140, 11, 12, 139, 12, 12, 140, 13, 13, 137, 13, 14, 138, 16, 13, 137
+  16, 14, 138, 17, 12, 139, 18, 12, 140, 17, 9, 139, 18, 9, 140, 16, 6, 141, 13, 7, 137, 13, 8, 138
+  16, 7, 137, 16, 8, 138, 14, 15, 139, 15, 15, 140, 8, 15, 139, 9, 15, 140, 8, 12, 139, 9, 12, 140
+  8, 9, 139, 9, 9, 140, 10, 6, 142, 13, 6, 141, 16, 6, 142, 19, 6, 141, 20, 9, 139, 21, 9, 140
+  20, 12, 139, 21, 12, 140, 20, 15, 139, 21, 15, 140, 13, 15, 141, 16, 15, 142, 10, 10, 137, 10, 11, 138
+  13, 10, 137, 13, 11, 138, 16, 10, 137, 16, 11, 138, 19, 10, 137, 19, 11, 138, 8, 12, 139, 9, 12, 140
+  8, 15, 139, 9, 15, 140, 20, 12, 139, 21, 12, 140, 20, 15, 139, 21, 15, 140, 10, 15, 142, 13, 13, 137
+  13, 14, 138, 16, 13, 137, 16, 14, 138, 19, 15, 141, 16, 6, 141, 16, 9, 142, 13, 9, 141, 13, 6, 142
+  13, 7, 137, 13, 8, 138, 16, 7, 137, 16, 8, 138, 14, 6, 139, 15, 6, 140, 14, 9, 139, 15, 9, 140
+  14, 12, 139, 15, 12, 140, 16, 15, 141, 13, 10, 137, 13, 11, 138, 16, 10, 137, 16, 11, 138, 17, 12, 139
+  18, 12, 140, 17, 15, 139, 18, 15, 140, 16, 16, 137, 16, 17, 138, 13, 16, 137, 13, 17, 138, 11, 15, 139
+  12, 15, 140, 11, 12, 139, 12, 12, 140, 14, 9, 139, 15, 9, 140, 19, 12, 142, 10, 12, 141, 10, 15, 141
+  13, 16, 137, 13, 17, 138, 16, 16, 137, 16, 17, 138, 19, 15, 142, 19, 13, 137, 19, 14, 138, 16, 13, 137
+  16, 14, 138, 13, 13, 137, 13, 14, 138, 10, 13, 137, 10, 14, 138, 14, 12, 139, 15, 12, 140, 14, 9, 139
+  15, 9, 140, 14, 6, 139, 15, 6, 140, 16, 6, 141, 19, 9, 141, 19, 10, 137, 19, 11, 138, 16, 10, 137
+  16, 11, 138, 10, 6, 141, 13, 7, 137, 13, 8, 138, 16, 7, 137, 16, 8, 138, 19, 6, 142, 11, 9, 139
+  12, 9, 140, 11, 12, 139, 12, 12, 140, 13, 15, 141, 16, 15, 142, 17, 12, 139, 18, 12, 140, 17, 9, 139
+  18, 9, 140, 10, 7, 137, 10, 8, 138, 13, 9, 141, 16, 9, 142, 19, 7, 137, 19, 8, 138, 20, 9, 139
+  21, 9, 140, 20, 12, 139, 21, 12, 140, 19, 13, 137, 19, 14, 138, 16, 15, 142, 13, 15, 141, 10, 13, 137
+  10, 14, 138, 8, 12, 139, 9, 12, 140, 8, 9, 139, 9, 9, 140, 14, 12, 139, 15, 12, 140, 14, 15, 139
+  15, 15, 140, 14, 6, 139, 15, 6, 140, 11, 9, 139, 12, 9, 140, 13, 7, 137, 13, 8, 138, 16, 7, 137
+  16, 8, 138, 17, 9, 139, 18, 9, 140, 11, 12, 139, 12, 12, 140, 10, 15, 142, 10, 16, 137, 10, 17, 138
+  13, 16, 137, 13, 17, 138, 16, 16, 137, 16, 17, 138, 19, 16, 137, 19, 17, 138, 19, 15, 141, 17, 12, 139
+  18, 12, 140, 10, 16, 137, 10, 17, 138, 13, 16, 137, 13, 17, 138, 16, 16, 137, 16, 17, 138, 19, 16, 137
+  19, 17, 138, 8, 15, 139, 9, 15, 140, 8, 12, 139, 9, 12, 140, 8, 9, 139, 9, 9, 140, 20, 15, 139
+  21, 15, 140, 20, 12, 139, 21, 12, 140, 20, 9, 139, 21, 9, 140, 10, 9, 141, 13, 9, 142, 16, 9, 141
+  19, 9, 142, 14, 6, 139, 15, 6, 140
+end data
+data LineOff words 0, 20, 38, 60, 75, 95, 121, 137, 161, 185, 211
+data TwA bytes $F1, $F1, $F1, $F1, $F1, $F1, $F1, $F1
+data TwB bytes $41, $41, $41, $41, $41, $41, $41, $41
+data DuskA bytes
+  $96,$00,$80,$FF,$44,$27,$06,$F9,$06,$85,$5A,$58,$20,$01,$03,$03,$01,$82,$80,$C0,$C0,$80,$AC,$3F
+  $94,$10,$58,$65,$18,$18,$C3,$C3,$81,$02,$2E,$0B,$E0,$FE,$10,$1A,$03,$88,$F8,$FF,$14,$1A,$30,$89
+  $0F,$FF,$05,$46,$6D,$BF,$1F,$01,$58,$CE,$98,$EE,$80,$80,$42,$37,$E0,$80,$B6,$99,$40,$FE,$3F,$54
+  $2A,$80,$75,$06,$F6,$19,$39,$7E,$85,$80,$3B,$01,$6A,$F9,$4A,$FE,$0F,$1F,$0F,$F0,$E0,$DD,$7F,$71
+  $96,$6D,$3C,$3C,$C3,$3C,$F8,$FE,$1F,$69,$BF,$AF,$C0,$FE,$14,$4A,$01,$9A,$83,$07,$7F,$6A,$3C,$0F
+  $03,$07,$90,$A2,$E0,$C0,$0F,$1F,$3F,$7F,$4F,$FF,$0F,$C0,$F0,$C0,$E0,$F0,$86,$BF,$80,$1F,$F0,$0F
+  $EF,$D9,$FE,$A8,$7C,$2A,$68,$F0,$15,$A5,$1F,$CD,$6E,$69,$E0,$6E,$07,$60,$52,$D5,$6F,$DA,$08,$E0
+  $14,$99,$17,$1F,$03,$1A,$16,$12,$E2,$FC,$DE,$24,$F8,$C0,$7B,$F7,$F0,$71,$DE,$8E,$FE,$FE,$DD,$4A
+  $E0,$F9,$0F,$F8,$07,$07,$38,$07,$03,$FF,$8C,$71,$80,$6A,$AB,$7F,$77,$07,$F8,$F8,$09,$8F,$CF,$C8
+  $80,$F9,$F3,$EF,$FB,$EF,$D9,$C5,$EE,$A5,$80,$A1,$F8,$3F,$D9,$6A,$2E,$F4,$C8,$9B,$1F,$7F,$0F,$E8
+  $FE,$11,$05,$46,$60,$44,$F1,$11,$55,$8A,$51,$F1,$F7,$51,$F0,$65,$86,$52,$AB,$51,$1B,$C1,$FE,$47
+  $76,$5D,$C6,$41,$0F,$F0,$04,$56,$24,$54,$E1,$34,$75,$B4,$A0,$44,$05,$68,$D1,$01,$82,$41,$1C,$C1
+  $D5,$24,$86,$5D,$DD,$CC,$CC,$C1,$A1,$3F,$DD,$C4,$97,$FE,$40,$58,$18,$41,$16,$11,$C1,$1C,$E4,$DD
+  $C3,$CA,$86,$A3,$EE,$A3,$BA,$FB,$82,$F1,$B1,$D1,$CA,$A8,$A6,$3F,$B6,$B3,$B6,$61,$CF,$FD,$B7,$FE
+  $0A,$11,$5A,$15,$21,$8B,$16,$5D,$61,$11,$41,$6A,$E2,$FB,$FF,$E4,$F1,$62,$B1,$FB,$86,$FE,$B3,$BB
+  $FE,$B6,$62,$A6,$61,$B9,$D5,$FB,$F4,$DD,$44,$1D,$3E,$0B,$14,$FF,$FC,$FF,$F0,$01,$5F,$FC,$88,$16
+  $15,$F1,$F0,$48,$E2,$16,$19,$FE,$3D,$94,$11,$D0,$E0,$F0,$56,$35,$41,$44,$77,$A3,$B0,$92,$3A,$D9
+  $EE,$A6,$1A,$A1,$A0,$C6,$38,$F0,$55,$DA,$82,$88,$99,$DF,$91,$11,$6D,$FC,$AF,$19,$F0,$47,$F5,$EF
+  $D0,$B4,$91,$E3,$29,$FE,$DE,$E0,$F0,$55,$79,$CE,$5E,$FE,$7C,$F0,$DD,$5D,$F3,$5F,$FE,$C3,$D0,$F1
+  $F1,$FD,$95,$60,$F0,$FE,$52,$19,$19,$1A,$99,$1C,$11,$05,$16,$8A,$19,$91,$FF,$F0,$EE,$E1,$C0,$62
+  $91,$1A,$E7,$B0,$F5,$F3,$FE,$17,$7D,$B6,$8A,$F0,$1D,$D2,$30,$52,$52,$19,$A8,$A9,$E1,$48,$1B,$1D
+  $61,$91,$61,$14,$61,$61,$19,$86,$61,$B1,$1B,$B1,$A1,$30,$CB,$A2,$69,$59,$B0,$55,$75,$77,$02,$60
+  $10,$3A,$FE,$A5,$99,$98,$9D,$19,$96,$1A,$41,$11,$14,$22,$C4,$54,$15,$66,$A5,$41,$A7,$D1,$D4,$66
+  $DD,$6A,$6C,$45,$4D,$16,$61,$2B,$DB,$41,$37,$96,$34,$D3,$33,$F0,$CB,$60,$D1,$D6,$20,$95,$61,$D4
+  $CA,$70,$91,$02,$97,$C1,$DF,$D0,$70,$7D,$F0,$F5,$90,$F7,$50,$76,$FE,$BC,$19,$80,$6F,$D1,$60,$4E
+  $C0,$0F,$EE,$39,$C0,$3F,$DF,$E0,$F3,$C0,$82,$50,$EC,$A1,$7B,$41,$1A,$3D,$11,$0E,$FE,$88,$41,$91
+  $2E,$9D,$24,$2E,$41,$FD,$A1,$41,$A7,$AA,$BA,$D4,$DD,$AA,$54,$16,$D1,$72,$00,$24,$54,$61,$D2,$90
+  $4B,$18,$FA,$5A,$06,$AF,$D1,$61,$C0,$A1,$61,$D5,$55,$60
+end data
+data DuskB bytes
+  $80,$00,$54,$27,$01,$C0,$06,$90,$5A,$0E,$FE,$A6,$00,$98,$80,$61,$00,$FF,$00,$1F,$00,$44,$A9,$18
+  $94,$E7,$81,$00,$09,$81,$F8,$80,$00,$04,$A8,$03,$81,$F0,$00,$41,$AA,$30,$00,$41,$54,$9E,$7F,$07
+  $01,$C4,$62,$F0,$80,$05,$99,$FC,$0F,$C0,$77,$B6,$54,$2A,$3F,$D4,$06,$CA,$7A,$07,$40,$A9,$06,$A2
+  $FC,$07,$3F,$E0,$C0,$A2,$3F,$06,$7F,$00,$3C,$3C,$C3,$3C,$3C,$FE,$FF,$DD,$86,$F1,$FE,$44,$A8,$01
+  $A5,$FE,$1F,$A2,$C0,$03,$F7,$F8,$E0,$F0,$E0,$20,$0F,$98,$1F,$20,$FF,$80,$A3,$03,$01,$B8,$F8,$FC
+  $F0,$FC,$C0,$1F,$E0,$FD,$DF,$D9,$3C,$A5,$FF,$28,$FF,$02,$84,$C0,$7A,$B1,$80,$5B,$80,$D7,$80,$D7
+  $F0,$94,$40,$F5,$91,$90,$82,$DF,$B1,$A0,$5B,$F0,$60,$EC,$F5,$5E,$A1,$E0,$DD,$BE,$20,$36,$FE,$FC
+  $F8,$F8,$10,$07,$0F,$07,$0B,$DE,$18,$07,$FD,$3E,$0F,$FF,$FE,$DF,$30,$1D,$D5,$AA,$FD,$FC,$F0,$97
+  $88,$98,$FC,$CC,$98,$F0,$1F,$CE,$70,$5F,$85,$78,$DD,$DA,$27,$FF,$F8,$C0,$69,$DD,$E0,$6F,$44,$FE
+  $28,$41,$04,$42,$08,$54,$1F,$F4,$41,$15,$62,$C4,$E4,$B8,$C4,$F0,$32,$15,$85,$14,$16,$35,$A4,$F4
+  $D1,$50,$34,$84,$DC,$42,$65,$C4,$F4,$45,$D8,$C6,$15,$1D,$D0,$F0,$69,$51,$14,$58,$21,$44,$11,$E4
+  $54,$EE,$F0,$2C,$4F,$FC,$A9,$51,$AE,$41,$55,$F1,$44,$F0,$2B,$44,$FF,$E0,$D4,$D0,$F0,$5E,$05,$77
+  $F4,$54,$54,$F0,$13,$A8,$D1,$54,$39,$65,$5D,$D5,$C1,$F5,$39,$11,$1C,$DD,$DD,$DE,$ED,$E5,$A3,$55
+  $DD,$C6,$DC,$CA,$AB,$C4,$55,$A4,$21,$D5,$03,$91,$FA,$16,$6E,$D5,$65,$55,$FF,$08,$A6,$AC,$9D,$ED
+  $82,$D9,$6A,$E9,$FE,$27,$FB,$F1,$CA,$E8,$EB,$F0,$7E,$F9,$FE,$54,$D5,$5D,$FD,$FF,$3C,$DD,$55,$4E
+  $A5,$55,$29,$55,$46,$FC,$D1,$FD,$F2,$BD,$55,$E2,$BC,$55,$F0,$F7,$D0,$D7,$F0,$D6,$90,$80,$55,$3D
+  $80,$3F,$FF,$60,$5F,$BE,$7F,$EB,$F2,$E1,$C0,$F9,$EB,$E0,$F1,$60,$9D,$56,$55,$5D,$6A,$1D,$54,$DB
+  $56,$23,$E4,$E6,$FB,$FD,$A6,$FB,$FF,$8D,$F1,$FF,$A9,$0D,$BA,$FA,$FD,$FA,$FE,$FE,$E5,$BA,$C1,$FA
+  $3D,$A6,$C1,$90,$F6,$F1,$E0,$06,$93,$DD,$4E,$9F,$3C,$DD,$DE,$D5,$76,$00,$3F,$D1,$61,$FC,$F0,$FF
+  $F0,$15,$FE,$FE,$F1,$94,$D1,$0E,$FE,$67,$1D,$11,$44,$DE,$D0,$F0,$05,$60,$DE,$6D,$66,$DD,$66,$C0
+  $0A,$9E,$BB,$6A,$DE,$60,$D4,$A1,$1D,$38,$F0,$55,$DA,$7E,$28,$DD,$9D,$F1,$91,$D1,$FE,$59,$86,$D9
+  $D4,$41,$80,$D1,$11,$AD,$91,$8A,$D4,$9D,$6D,$11,$97,$D0,$E0,$D1,$F0,$C5,$D3,$26,$4D,$F0,$BD,$41
+  $FE,$52,$97,$11,$D5,$B0,$D9,$FF,$97,$99,$9D,$D4,$90,$F2,$4A,$11,$56,$80,$11,$E5,$F0,$79,$DE,$4E
+  $60,$1F,$FE,$50,$37,$D2,$68,$11,$7F,$FB,$FC,$04,$71,$EA,$58,$D4,$BC,$44,$F0,$CD,$F2,$2A,$11,$19
+  $91,$D9,$4D,$94,$94,$82,$D1,$DD,$D4,$4D,$72,$30,$17,$77,$9E,$65,$80,$42,$36,$D9,$94,$C7,$DE,$44
+  $F0,$A8,$69,$D4,$3D,$B8,$60,$A1,$91,$DD,$99,$ED,$A0,$84,$1E,$49,$16,$D4,$A1,$D4,$19,$D4,$D1,$BD
+  $11,$C1,$B1,$4B,$B1,$FF,$5F,$20,$FE,$F8,$BD,$FC,$55,$1D,$5D,$1C,$CF,$3C,$D7,$D0,$46,$5F,$63,$69
+  $4D,$91,$E8,$E7,$FE,$22,$D6,$A6,$D6,$45,$06,$66,$61,$AC,$6A,$5E,$1C,$44,$4D,$66,$EC,$CD,$D4,$B2
+  $DB,$91,$DE,$C1,$77,$8A,$43,$F0,$3C,$62,$A7,$96,$F8,$5E,$56,$3D,$75,$18,$40,$5D,$3D,$F5,$D0,$F7
+  $70,$DF,$D0,$70,$7D,$F0,$F5,$90,$A0,$D4,$1F,$80,$18,$F5,$96,$D4,$60,$F7,$E0,$9E,$CE,$C0,$1F,$DF
+  $97,$E0,$77,$90,$87,$1F,$61,$B1,$91,$11,$14,$6F,$08,$FB,$E8,$FE,$DD,$CE,$E1,$B7,$9E,$94,$DC,$20
+  $3C,$ED,$9D,$BA,$AC,$D4,$A6,$A6,$D5,$90,$ED,$A1,$54,$9C,$00,$DB,$72,$91,$8E,$19,$E1,$99,$40,$7B
+  $BB,$D4,$E8,$C0,$54,$75,$55,$58
+end data
+data DuskN bytes
+  $95,$00,$55,$80,$00,$36,$5B,$01,$02,$03,$04,$05,$06,$07,$08,$09,$0A,$0B,$0C,$0D,$0E,$0F,$10,$11
+  $12,$13,$14,$15,$16,$17,$18,$19,$1A,$1B,$1C,$1D,$1E,$1F,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+  $2A,$2B,$2C,$2D,$2E,$2F,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$3A,$3B,$3C,$3D,$3E,$3F,$40,$41
+  $42,$43,$44,$45,$46,$47,$48,$49,$4A,$4B,$4C,$4D,$4E,$4F,$50,$51,$52,$53,$54,$55,$56,$57,$58,$59
+  $5A,$00,$5C,$5D,$5E,$5F,$60,$61,$62,$63,$64,$65,$66,$67,$68,$69,$6A,$6B,$6C,$6D,$6E,$6F,$70,$71
+  $72,$73,$74,$75,$76,$77,$78,$79,$7A,$7B,$7C,$7D,$7E,$7F,$80,$81,$82,$83,$84,$85,$86,$87,$88,$89
+  $8A,$8B,$8C,$8D,$8E,$8F,$90,$91,$92,$93,$94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1
+  $A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B9
+  $BA,$BB,$BC,$BD,$BE,$BF,$C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF,$D0,$D1
+  $D2,$D3,$D4,$D5,$D6,$D7,$D8,$D9,$DA,$DB,$DC,$DD,$DE,$DF,$E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9
+  $EA,$EB,$EC,$ED,$EE,$EF,$F0,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$F9,$FA,$FB,$FC,$FD,$FE,$FF,$00,$42
+  $1C,$2E,$D8,$2F,$F9,$D7,$C7,$F6,$21,$F8,$CE,$FC,$73,$DB,$FF,$FB,$F6,$28,$D2,$21,$CC,$E5,$40,$B7
+  $D9,$E6,$EF,$C2,$F0,$32,$E7,$B9,$EC,$81,$1C,$DC,$E0,$54,$EC,$55,$FE,$A2,$F3,$DA,$56,$E9,$FA,$B3
+  $9D,$F7,$E1,$57,$58,$EE,$3B,$E8,$E4,$D5,$23,$9E,$F2,$F0,$EF,$F1,$59,$DF,$E2,$ED,$EB,$B6,$A1,$EA
+  $86,$AE,$5C,$B2,$69,$FD,$F5,$64,$D6,$43,$F3,$A2,$A4,$6C,$E3,$D2,$A2,$73,$F8,$B8,$F6,$9C,$16,$0C
+  $DE,$FC,$D3,$F4,$B3,$99,$DD,$9A,$4B,$D4,$32,$9D,$A4,$57,$55,$55,$80
+end data
+
+u16 TzLeft = 0
+u8 TzOn = 0
+
+u8 Lit[25]
+u8 Scr[12]
+u8 NScr = 0
+u8 Night = 1
+u16 Moves = 0
+u8 Cx = 2
+u8 Cy = 2
+u8 Menu = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 1
+u8 WasBtn2 = 1
+u8 Press = 0
+u8 Press2 = 0
+u8 WasStick = 1
+u8 Tick = 0
+u8 Mix = 0
+u8 Solved = 0
+u8 C = 0
+u8 Kx = 0
+u8 Ky = 0
+u8 Kc = 0
+u8 K = 0
+u8 J = 0
+u8 N = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u16 NumU = 0
+u16 Off16 = 0
+u16 L0 = 0
+u16 L1 = 0
+u16 Li = 0
+u8 LB[3]
+u8 PicB[25]
+
+  tile screen
+  set sound table SlSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  Intro
+
+title:
+  TitlePage
+  if Menu > 0 then goto title
+  Night = 1
+
+night_start:
+  MakeNight
+  DrawBoard
+
+play_loop:
+  Frame1
+  ReadPad
+  Twinkle
+  ' the stick: one star a push
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      if Lf1 = 1 then
+        if Cx > 0 then dec Cx
+      end if
+      if Rt1 = 1 then
+        if Cx < 4 then inc Cx
+      end if
+      if Up1 = 1 then
+        if Cy > 0 then dec Cy
+      end if
+      if Dn1 = 1 then
+        if Cy < 4 then inc Cy
+      end if
+      play sound SndTick
+    end if
+  end if
+  WasStick = V
+  PlaceCursor
+  if Press2 = 1 then
+    ' the night again, as it began
+    ResetNight
+    DrawBoard
+    goto play_loop
+  end if
+  if Press = 0 then goto play_loop
+  C = Cy * 5
+  C = C + Cx
+  Toggle
+  if Lit[C] = 1 then
+    play sound SndWake
+  else
+    play sound SndSleep
+  end if
+  inc Moves
+  Hud
+  CheckSky
+  if Solved = 0 then goto play_loop
+
+  ' every star awake: the sky draws its picture
+  NightDone
+  inc Night
+  if Night <= 10 then goto night_start
+  Ending
+  goto title
+
+' ---------------------------------------------------------------------------
+' The nights
+
+' MakeNight: a fully awake sky, then Night + 2 different stars pressed
+sub MakeNight:
+  N = Night + 2
+make_again:
+  NScr = 0
+  while NScr < N
+    V = random(0, 24)
+    V += Mix
+    while V > 24
+      V -= 25
+    end while
+    ' a star pressed twice would undo itself: take another
+    W = 0
+    for K = 0 to 11
+      if K < NScr then
+        if Scr[K] = V then W = 1
+      end if
+    next
+    if W = 0 then
+      Scr[NScr] = V
+      inc NScr
+    end if
+    inc Mix
+  end while
+  ResetNight
+  ' (a rare set of presses leaves the sky awake: then choose again)
+  CheckSky
+  if Solved = 1 then goto make_again
+  return
+end sub
+
+' ResetNight: the night as it began (from Scr), no moves yet
+sub ResetNight:
+  for K = 0 to 24
+    Lit[K] = 1
+  next
+  for J = 0 to 11
+    if J < NScr then
+      C = Scr[J]
+      ToggleQuiet
+    end if
+  next
+  Moves = 0
+  Solved = 0
+  return
+end sub
+
+' Toggle: the star C and its neighbours change, and are drawn
+sub Toggle:
+  ToggleQuiet
+  Kx = C % 5
+  Ky = C / 5
+  Kc = C
+  DrawStar
+  if Kx > 0 then
+    C = Kc - 1
+    DrawStar
+  end if
+  if Kx < 4 then
+    C = Kc + 1
+    DrawStar
+  end if
+  if Ky > 0 then
+    C = Kc - 5
+    DrawStar
+  end if
+  if Ky < 4 then
+    C = Kc + 5
+    DrawStar
+  end if
+  C = Kc
+  return
+end sub
+
+' ToggleQuiet: the same, in RAM only (C is kept)
+sub ToggleQuiet:
+  X = C % 5
+  Y = C / 5
+  Lit[C] = 1 - Lit[C]
+  if X > 0 then
+    V = C - 1
+    Lit[V] = 1 - Lit[V]
+  end if
+  if X < 4 then
+    V = C + 1
+    Lit[V] = 1 - Lit[V]
+  end if
+  if Y > 0 then
+    V = C - 5
+    Lit[V] = 1 - Lit[V]
+  end if
+  if Y < 4 then
+    V = C + 5
+    Lit[V] = 1 - Lit[V]
+  end if
+  return
+end sub
+
+sub CheckSky:
+  Solved = 1
+  for K = 0 to 24
+    if Lit[K] = 0 then Solved = 0
+  next
+  return
+end sub
+
+' NightDone: the picture's name, the moves, sparks over the stars
+sub NightDone:
+  play sound SndDone
+  HideCursor
+  DrawPicture
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  Off16 = Night - 1
+  Off16 = Off16 * 28
+  copy CName + Off16 count 28 to vram.name + 674
+  print at 2,20, "IN"
+  NumU = Moves
+  print at 5,20, width$(NumU, 3)
+  print at 9,20, "MOVES, FEWEST"
+  NumU = NScr
+  print at 23,20, width$(NumU, 2)
+  for J = 1 to 150
+    Frame1
+    Twinkle
+    V = Tick & 7
+    if V = 0 then
+      ' a spark over a random star
+      K = random(0, 3)
+      K += 1
+      W = random(0, 24)
+      X = W % 5
+      Y = W / 5
+      X = X * 24
+      X = X + 64
+      Y = Y * 24
+      Y = Y + 31
+      set sprite K to Y, X, SSpark, 15
+      update sprites
+    end if
+  next
+  HideSprites
+  if Night < 10 then
+    print at 2,22, "PRESS A BUTTON: NEXT NIGHT"
+  else
+    print at 2,22, "PRESS A BUTTON"
+  end if
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' DrawPicture: the sky draws tonight's picture between the stars, a line at
+' a time
+sub DrawPicture:
+  ' the stars outside the picture fade, so the picture stands out
+  Off16 = Night - 1
+  Off16 = Off16 * 25
+  copy PicStars + Off16 count 25 to PicB
+  for C = 0 to 24
+    if PicB[C] = 0 then
+      Lit[C] = 0
+      DrawStar
+      Lit[C] = 1
+    end if
+  next
+  Frame1
+  V = Night - 1
+  L0 = LineOff[V]
+  V = Night
+  L1 = LineOff[V]
+  Li = L0
+  while Li < L1
+    Off16 = Li * 3
+    copy LineData + Off16 count 3 to LB
+    put char LB[2] at LB[0],LB[1]
+    inc Li
+    V = Li & 1
+    if V = 0 then
+      Frame1
+      Frame1
+      Twinkle
+    end if
+  end while
+  return
+end sub
+
+' DrawStar: star C, asleep or awake, at its place (2 x 2 tiles)
+sub DrawStar:
+  X = C % 5
+  Y = C / 5
+  X = X * 3
+  X = X + 8
+  Y = Y * 3
+  Y = Y + 4
+  W = TDim00
+  if Lit[C] = 1 then W = TLit00
+  put char W at X,Y
+  W += 1
+  X += 1
+  put char W at X,Y
+  W += 1
+  X -= 1
+  Y += 1
+  put char W at X,Y
+  W += 1
+  X += 1
+  put char W at X,Y
+  return
+end sub
+
+sub DrawBoard:
+  NewScreen
+  ' faint stars far away, around the puzzle
+  for K = 0 to 39
+    X = random(2, 29)
+    Y = random(3, 19)
+    W = 0
+    if X >= 7 then
+      if X <= 23 then
+        if Y >= 3 then
+          if Y <= 18 then W = 1
+        end if
+      end if
+    end if
+    if W = 0 then
+      V = TTwk
+      N = K & 1
+      if N = 1 then V = TTwk2
+      put char V at X,Y
+    end if
+  next
+  for C = 0 to 24
+    DrawStar
+  next
+  Hud
+  print at 2,21, "WAKE EVERY STAR. EACH STAR"
+  print at 2,22, "WAKES ITS FOUR NEIGHBOURS."
+  ShowScreen
+  PlaceCursor
+  return
+end sub
+
+sub Hud:
+  print at 2,1, "STARLIGHT"
+  print at 13,1, "NIGHT"
+  NumU = Night
+  print at 19,1, width$(NumU, 2)
+  print at 23,1, "M"
+  NumU = Moves
+  print at 25,1, digits$(NumU, 3)
+  return
+end sub
+
+sub PlaceCursor:
+  X = Cx * 24
+  X = X + 64
+  Y = Cy * 24
+  Y = Y + 31
+  V = 7
+  N = Tick & 16
+  if N > 0 then V = 15
+  set sprite 0 to Y, X, SCursor, V
+  update sprites
+  return
+end sub
+
+sub HideCursor:
+  set sprite 0 to 192, 0, 0, 0
+  update sprites
+  return
+end sub
+
+' Twinkle: the faraway stars change colour now and then (colour table)
+sub Twinkle:
+  V = Tick & 31
+  if V <> 0 then return
+  V = Tick & 32
+  Uw16
+  if V = 0 then
+    copy TwA count 8 to vram.color + Off16
+    Off16 = Off16 + 2048
+    copy TwA count 8 to vram.color + Off16
+    Off16 = Off16 + 2048
+    copy TwA count 8 to vram.color + Off16
+  else
+    copy TwB count 8 to vram.color + Off16
+    Off16 = Off16 + 2048
+    copy TwB count 8 to vram.color + Off16
+    Off16 = Off16 + 2048
+    copy TwB count 8 to vram.color + Off16
+  end if
+  return
+end sub
+
+sub Uw16:
+  Off16 = TTwk
+  Off16 = Off16 << 3
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+' Intro: the dusk picture in 120 colours, a few seconds or a button
+sub Intro:
+  Rearm
+  wait
+  nmi off
+  screen off
+  picture screen
+  decompress zx0 DuskA to vram $0000
+  decompress zx0 DuskN to vram $1800
+  decompress zx0 DuskB to vram $2000
+  120 colors on
+  screen on
+  WasBtn = 1
+  WasBtn2 = 1
+  for N = 1 to 240
+    Frame1
+    ReadPad
+    if Press = 1 then N = 240
+    if Press2 = 1 then N = 240
+  next
+  120 colors off
+  Rearm
+  wait
+  nmi off
+  screen off
+  tile screen
+  copy SpritePat count SprBytes to vram.spr_pat
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  for K = 0 to 4
+    X = K * 5
+    X = X + 5
+    C = 0
+    Lit[0] = K & 1
+    Y = 3
+    W = TDim00
+    if Lit[0] = 1 then W = TLit00
+    put char W at X,Y
+    W += 1
+    X += 1
+    put char W at X,Y
+    W += 1
+    X -= 1
+    Y += 1
+    put char W at X,Y
+    W += 1
+    X += 1
+    put char W at X,Y
+  next
+  print at 11,8, "STARLIGHT"
+  print at 4,10, "WAKE THE STARS, ONE NIGHT"
+  print at 4,11, "AT A TIME."
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 768
+  TzOn = 1
+  Menu = 0
+  WasBtn = 1
+  WasStick = 1
+tp_loop:
+  Frame1
+  ReadPad
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Menu > 0 then dec Menu
+      end if
+      if Dn1 = 1 then
+        if Menu < 2 then inc Menu
+      end if
+      play sound SndTick
+      ShowMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  mute all
+  TzOn = 0
+  if Menu = 1 then HowPage
+  if Menu = 2 then CreditsPage
+  return
+end sub
+
+sub ShowMenu:
+  for K = 15 to 17
+    fill 32 count 28 at 2,K
+  next
+  print at 11,15, "START"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
+  V = Menu + 15
+  put char 62 at 9,V
+  return
+end sub
+
+sub HowPage:
+  NewScreen
+  print at 10,2, "HOW TO PLAY"
+  print at 2,5, "TWENTY-FIVE STARS SLEEP."
+  print at 2,6, "PRESS THE BUTTON ON A STAR:"
+  print at 2,7, "IT CHANGES, AND SO DO ITS"
+  print at 2,8, "FOUR NEIGHBOURS (UP, DOWN,"
+  print at 2,9, "LEFT, RIGHT): ASLEEP WAKES,"
+  print at 2,10, "AWAKE GOES BACK TO SLEEP."
+  print at 2,12, "WAKE EVERY STAR AND THE SKY"
+  print at 2,13, "DRAWS A PICTURE. TEN NIGHTS."
+  print at 2,15, "STICK: MOVE BETWEEN STARS"
+  print at 2,16, "LEFT BUTTON: PRESS A STAR"
+  print at 2,17, "RIGHT BUTTON: TRY AGAIN"
+  print at 2,19, "THERE IS NO HURRY."
+  PagePause
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "STARLIGHT"
+  print at 2,5, "AN ORIGINAL GAME BY CLAUDE"
+  print at 2,6, "(AN AI MADE BY ANTHROPIC)"
+  print at 2,7, "FOR AMY STUDIO, 2026."
+  print at 2,9, "WRITTEN IN AMY, THE LANGUAGE"
+  print at 2,10, "AND STUDIO OF AMY BIENVENU."
+  print at 2,12, "THE PUZZLE IS THE CLASSIC"
+  print at 2,13, "LIGHTS-OUT KIND (TIGER"
+  print at 2,14, "ELECTRONICS, 1995). STARS,"
+  print at 2,15, "NIGHTS, PICTURES AND MUSIC"
+  print at 2,16, "ARE NEW."
+  print at 2,18, "MUSIC: COUNTING STARS AT DUSK"
+  PagePause
+  return
+end sub
+
+sub Ending:
+  NewScreen
+  for C = 0 to 24
+    Lit[C] = 1
+    DrawStar
+  next
+  print at 2,1, "TEN NIGHTS, TEN PICTURES."
+  print at 2,21, "THE SKY IS FULL. GOODNIGHT,"
+  print at 2,22, "STARGAZER."
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 768
+  TzOn = 1
+  for J = 1 to 200
+    Frame1
+    Twinkle
+  next
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  mute all
+  TzOn = 0
+  CreditsPage
+  return
+end sub
+
+sub PagePause:
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame and screen helpers
+
+sub Rearm:
+  ' a tune plays once (Tiny Sound loops): stop it when its time is up
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 6
+  sprites stable 0 to 0
+  for J = 0 to 5
+    set sprite J to 192, 0, 0, 0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$01,$02,$02,$04,$07,$40,$20
+  $00,$80,$40,$40,$20,$E0,$02,$04
+  $10,$08,$09,$12,$14,$28,$30,$00
+  $08,$10,$90,$48,$28,$14,$0C,$00
+  $00,$01,$03,$03,$07,$00,$80,$C0
+  $00,$80,$C0,$C0,$E0,$00,$01,$03
+  $E0,$F0,$F0,$E1,$1C,$38,$30,$00
+  $07,$F0,$F0,$87,$38,$1C,$0C,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+  $80,$40,$20,$10,$08,$04,$02,$01
+  $01,$02,$04,$08,$10,$20,$40,$80
+  $00,$00,$00,$10,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$41,$41,$41,$41,$14,$41,$41
+  $01,$41,$41,$41,$41,$14,$41,$41
+  $41,$41,$41,$41,$41,$41,$41,$01
+  $41,$41,$41,$41,$41,$41,$41,$01
+  $01,$B1,$B1,$B1,$B1,$0B,$1B,$1B
+  $01,$B1,$B1,$B1,$B1,$0B,$1B,$1B
+  $1B,$1B,$1B,$1B,$B1,$B1,$B1,$01
+  $1B,$B1,$B1,$1B,$B1,$B1,$B1,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$07
+  $07,$01,$01,$01,$01,$01,$01,$01
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $71,$71,$71,$71,$71,$71,$71,$71
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $01,$01,$01,$01,$E1,$01,$01,$01
+end data
+data SpritePat bytes
+  $E0,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$80,$E0
+  $07,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$07
+  $00,$01,$01,$00,$40,$00,$00,$20,$00,$00,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$04,$00,$00,$08,$00,$00,$20,$00,$00,$00,$00,$00
+end data
+
+asm {
+SlHush:
+    db $00,$00,$F4,$01,$10
+SlTick:
+    db $40,$47,$70,$01,$40,$47,$C0,$01,$50
+SlWake:
+    db $40,$55,$30,$02,$40,$40,$40,$02,$40,$35,$60,$03,$40,$35,$B0,$04,$50
+SlSleep:
+    db $40,$7F,$50,$02,$40,$AA,$80,$03,$40,$AA,$D0,$03,$50
+SlDone:
+    db $40,$6B,$20,$06,$40,$55,$20,$06,$40,$47,$20,$06,$40,$35,$20,$0A,$40,$35,$80,$14,$50
+
+SlSoundTable:
+    dw SlHush,$702B
+    dw SlTick,$7035
+    dw SlWake,$7035
+    dw SlSleep,$7035
+    dw SlDone,$7035
+    dw SlTuneMel,$703F
+    dw SlTuneBass,$7049
+; Counting Stars at Dusk (original for this game)
+; Tiny Sound, 8 frames per step
+SlTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$F1,$22,$23,$00,$28,$00,$2B,$00,$2A,$00,$28,$00,$23,$00
+    db $26,$00,$24,$00,$23,$00,$00,$00,$21,$00,$00,$00,$1F,$00,$23,$00
+    db $28,$00,$26,$00,$24,$00,$21,$00,$23,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$23,$00,$26,$00,$2B,$00,$2D,$00,$2F,$00,$00,$00
+    db $2D,$00,$2B,$00,$2A,$00,$26,$00,$28,$00,$00,$00,$26,$00,$23,$00
+    db $1F,$00,$21,$00,$23,$00,$26,$00,$2B,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+SlTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$04,$00,$0B,$00,$10,$00,$04,$00,$0B,$00,$10,$00
+    db $0C,$00,$13,$00,$18,$00,$0B,$00,$12,$00,$17,$00,$04,$00,$0B,$00
+    db $10,$00,$0C,$00,$13,$00,$18,$00,$0B,$00,$12,$00,$17,$00,$0B,$00
+    db $12,$00,$17,$00,$07,$00,$0E,$00,$13,$00,$07,$00,$0E,$00,$13,$00
+    db $0E,$00,$15,$00,$1A,$00,$0E,$00,$15,$00,$1A,$00,$0C,$00,$13,$00
+    db $18,$00,$0E,$00,$15,$00,$1A,$00,$07,$00,$0E,$00,$13,$00,$07,$00
+    db $0E,$00,$13,$00
+    db $FF
+}
