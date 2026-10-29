@@ -1,0 +1,1602 @@
+cartridge "DEEP HALLS/AMY BIENVENU/2026"
+
+' DEEP HALLS - an original 3D maze for the ColecoVision.
+'
+' Find the yellow door out of each of four halls, seen from inside in 3D.
+' The view is ray cast (ray.asm): 32 rays a frame through a 16 x 16 map;
+' each one's distance picks a ready-made column of 16 tiles, and the rows
+' go to the hidden name table page, which is then shown (no tearing).
+'
+' House rules: joystick and button only; text in columns 2-29, rows 1-22;
+' tiles from code 128 (tables.py); an original tune played once
+' (tune.py); the frame loop keeps the NMI off outside the wait.
+'
+' Screen: row 1 the counters, rows 2-17 the view (all 32 columns), rows
+' 19-21 a compass and news. Stick up/down walk, left/right turn; the
+' button shows the map while held.
+
+const SndHush = 1
+const SndTick = 2
+const SndStep = 3
+const SndOut = 4
+const SndTuneA = 5
+const SndTuneB = 6
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $00,$80,$80,$00,$80,$80,$80,$00
+  $00,$00,$80,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$80,$00,$00,$00
+  $80,$80,$80,$00,$80,$80,$00,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $00,$80,$80,$00,$80,$80,$80,$00
+  $00,$00,$80,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$80,$00,$00,$00
+  $80,$80,$80,$00,$80,$80,$00,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $00,$80,$80,$00,$80,$80,$80,$00
+  $00,$00,$80,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$80,$00,$00,$00
+  $80,$80,$80,$00,$80,$80,$00,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $00,$80,$80,$00,$80,$80,$80,$00
+  $00,$00,$80,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$00,$00,$00,$00
+  $80,$80,$80,$00,$80,$00,$00,$00
+  $80,$80,$80,$00,$80,$80,$00,$00
+  $80,$80,$80,$00,$80,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $EF,$EF,$EF,$EE,$EF,$EF,$EF,$EE
+  $11,$EF,$EF,$EE,$EF,$EF,$EF,$EE
+  $11,$11,$EF,$EE,$EF,$EF,$EF,$EE
+  $11,$11,$11,$EE,$EF,$EF,$EF,$EE
+  $11,$11,$11,$11,$EF,$EF,$EF,$EE
+  $11,$11,$11,$11,$11,$EF,$EF,$EE
+  $11,$11,$11,$11,$11,$11,$EF,$EE
+  $11,$11,$11,$11,$11,$11,$11,$EE
+  $EF,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $EF,$EF,$EE,$EE,$EE,$EE,$EE,$EE
+  $EF,$EF,$EF,$EE,$EE,$EE,$EE,$EE
+  $EF,$EF,$EF,$EE,$EE,$EE,$EE,$EE
+  $EF,$EF,$EF,$EE,$EF,$EE,$EE,$EE
+  $EF,$EF,$EF,$EE,$EF,$EF,$EE,$EE
+  $EF,$EF,$EF,$EE,$EF,$EF,$EF,$EE
+  $1E,$1E,$1E,$11,$1E,$1E,$1E,$11
+  $11,$1E,$1E,$11,$1E,$1E,$1E,$11
+  $11,$11,$1E,$11,$1E,$1E,$1E,$11
+  $11,$11,$11,$11,$1E,$1E,$1E,$11
+  $11,$11,$11,$11,$1E,$1E,$1E,$11
+  $11,$11,$11,$11,$11,$1E,$1E,$11
+  $11,$11,$11,$11,$11,$11,$1E,$11
+  $11,$11,$11,$11,$11,$11,$11,$11
+  $1E,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $1E,$1E,$EE,$EE,$EE,$EE,$EE,$EE
+  $1E,$1E,$1E,$EE,$EE,$EE,$EE,$EE
+  $1E,$1E,$1E,$11,$EE,$EE,$EE,$EE
+  $1E,$1E,$1E,$11,$1E,$EE,$EE,$EE
+  $1E,$1E,$1E,$11,$1E,$1E,$EE,$EE
+  $1E,$1E,$1E,$11,$1E,$1E,$1E,$EE
+  $AB,$AB,$AB,$AA,$AB,$AB,$AB,$AA
+  $11,$AB,$AB,$AA,$AB,$AB,$AB,$AA
+  $11,$11,$AB,$AA,$AB,$AB,$AB,$AA
+  $11,$11,$11,$AA,$AB,$AB,$AB,$AA
+  $11,$11,$11,$11,$AB,$AB,$AB,$AA
+  $11,$11,$11,$11,$11,$AB,$AB,$AA
+  $11,$11,$11,$11,$11,$11,$AB,$AA
+  $11,$11,$11,$11,$11,$11,$11,$AA
+  $AB,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $AB,$AB,$EE,$EE,$EE,$EE,$EE,$EE
+  $AB,$AB,$AB,$EE,$EE,$EE,$EE,$EE
+  $AB,$AB,$AB,$AA,$EE,$EE,$EE,$EE
+  $AB,$AB,$AB,$AA,$AB,$EE,$EE,$EE
+  $AB,$AB,$AB,$AA,$AB,$AB,$EE,$EE
+  $AB,$AB,$AB,$AA,$AB,$AB,$AB,$EE
+  $6A,$6A,$6A,$66,$6A,$6A,$6A,$66
+  $11,$6A,$6A,$66,$6A,$6A,$6A,$66
+  $11,$11,$6A,$66,$6A,$6A,$6A,$66
+  $11,$11,$11,$66,$6A,$6A,$6A,$66
+  $11,$11,$11,$11,$6A,$6A,$6A,$66
+  $11,$11,$11,$11,$11,$6A,$6A,$66
+  $11,$11,$11,$11,$11,$11,$6A,$66
+  $11,$11,$11,$11,$11,$11,$11,$66
+  $6A,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+  $6A,$6A,$EE,$EE,$EE,$EE,$EE,$EE
+  $6A,$6A,$6A,$EE,$EE,$EE,$EE,$EE
+  $6A,$6A,$6A,$66,$EE,$EE,$EE,$EE
+  $6A,$6A,$6A,$66,$6A,$EE,$EE,$EE
+  $6A,$6A,$6A,$66,$6A,$6A,$EE,$EE
+  $6A,$6A,$6A,$66,$6A,$6A,$6A,$EE
+  $EE,$EE,$EE,$EE,$EE,$EE,$EE,$11
+  $BB,$BB,$BB,$BB,$BB,$BB,$BB,$BB
+end data
+const NTiles8 = 512
+const TCeil = 128
+const TFloor = 129
+const TMapW = 190
+const TMapD = 191
+data Mazes bytes
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,1
+  1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1
+  1,0,1,0,0,0,1,0,0,0,0,0,1,0,1,1
+  1,0,1,0,1,1,1,0,1,1,1,1,1,0,1,1
+  1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,1
+  1,0,1,1,1,0,1,1,1,1,1,1,1,0,1,1
+  1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,1
+  1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1
+  1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,1
+  1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1
+  1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,1
+  1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1
+  1,0,1,0,0,0,0,0,0,0,0,0,1,0,0,3
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,1
+  1,0,1,1,1,0,0,0,1,1,1,1,1,0,1,1
+  1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,1
+  1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1
+  1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,1
+  1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,1
+  1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1
+  1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1
+  1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,1
+  1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1
+  1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,1
+  1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,1
+  1,1,1,1,1,0,1,0,1,1,1,1,1,0,1,1
+  1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,1
+  1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1
+  1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,1
+  1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,1
+  1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,1
+  1,0,0,0,1,1,1,0,1,1,1,1,1,0,1,1
+  1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,1
+  1,0,1,1,1,0,1,1,1,0,1,0,1,0,1,1
+  1,0,1,0,0,0,1,0,0,0,0,0,0,0,1,1
+  1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1
+  1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,3
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,0,0,0,0,0,0,0,0,0,1,0,0,0,1,1
+  1,1,1,1,1,1,1,1,0,0,1,0,1,1,1,1
+  1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,1
+  1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1
+  1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,1
+  1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1
+  1,0,1,0,1,0,1,0,1,0,0,0,1,0,1,1
+  1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1
+  1,0,0,0,1,0,1,0,1,0,0,0,0,0,1,1
+  1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1
+  1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,1
+  1,0,1,0,1,0,1,0,1,1,1,0,1,0,1,1
+  1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,3
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+end data
+const NMazes = 4
+
+u8 Map[256]
+u16 PX = 0
+u16 PY = 0
+u8 Ang = 0
+u16 CPtr[32]
+u16 RcPage = 0
+u8 PageN = 0
+
+' the caster's working places (ray.asm)
+u8 RcC = 0
+u8 RcA = 0
+u8 RcAY = 0
+u8 RcStX = 0
+u8 RcStY = 0
+u8 RcMX = 0
+u8 RcMY = 0
+u16 RcSX = 0
+u16 RcSY = 0
+u16 RcDX = 0
+u16 RcDY = 0
+u8 RcN = 0
+u8 RcSide = 0
+u8 RcKind = 0
+u8 RcHH = 0
+u8 MvDir = 0
+u8 MvSp = 0
+u16 MvNX = 0
+u8 MvDoor = 0
+
+u8 Level = 0
+u16 Secs = 0
+u8 SecF = 0
+u16 Total = 0
+u8 Frames = 0
+u8 HudOn = 0
+u8 Shown = 0
+
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Sel = 0
+u8 Tick = 0
+u8 LastTick = 0
+u8 Busy = 0
+
+u16 W16 = 0
+u8 I = 0
+u8 J = 0
+u8 C = 0
+u8 V = 0
+u8 V2 = 0
+u8 X = 0
+u8 Y = 0
+
+  tile screen
+  sprites 8x8
+  set sound table DhSoundTable areas 4
+  nmi off
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 1 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 2 then
+    CreditsPage
+    goto title
+  end if
+  Level = 0
+  Total = 0
+
+level_start:
+  LevelPage
+  StartLevel
+
+play_loop:
+  Frame1
+  Busy = 1
+  ReadPad
+  ' walk and turn by the frames the last view took (so speed holds)
+  V = Tick - LastTick
+  LastTick = Tick
+  if V > 4 then V = 4
+  Frames = V
+  if Btn = 1 then
+    ShowMap
+    goto play_loop
+  end if
+  if Shown = 1 then
+    Shown = 0
+    HudBoth
+  end if
+  V2 = Frames * 4
+  if Lf1 = 1 then Ang = Ang - V2
+  if Rt1 = 1 then Ang = Ang + V2
+  MvSp = Frames * 18
+  if Up1 = 1 then
+    MvDir = 0
+    asm {
+      call RcMove
+    }
+  end if
+  if Dn1 = 1 then
+    MvDir = 1
+    MvSp = Frames * 12
+    asm {
+      call RcMove
+    }
+  end if
+  View
+  ' the clock
+  SecF = SecF + Frames
+  if SecF >= 60 then
+    SecF = SecF - 60
+    if Secs < 5999 then inc Secs
+    HudOn = 1
+  end if
+  if HudOn = 1 then
+    HudOn = 0
+    HudBoth
+  end if
+  Busy = 0
+  if MvDoor = 0 then goto play_loop
+
+  ' out!
+  play sound SndOut
+  Total = Total + Secs
+  inc Level
+  Hold(60)
+  if Level < NMazes then goto level_start
+  EndPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' the halls
+
+sub StartLevel:
+  NewScreen
+  backdrop black
+  W16 = Level * 256
+  for I = 0 to 255
+    Map[I] = Mazes[W16]
+    inc W16
+  next
+  ' the start: room (1, 1), facing east
+  PX = 384
+  PY = 384
+  ' facing the open way
+  Ang = 0
+  if Map[18] <> 0 then Ang = 64
+  MvDoor = 0
+  Secs = 0
+  SecF = 0
+  Shown = 0
+  RcPage = $1C00
+  PageN = 1
+  HudBoth
+  View
+  ShowScreen
+  LastTick = Tick
+  WaitStick
+  return
+end sub
+
+' View: cast, draw into the hidden page, show it
+sub View:
+  asm {
+    call RcCast
+    call RcDraw
+  }
+  if PageN = 1 then
+    asm {
+      ld a,7
+      out ($BF),a
+      ld a,$82
+      out ($BF),a
+    }
+    RcPage = $1800
+    PageN = 0
+  else
+    asm {
+      ld a,6
+      out ($BF),a
+      ld a,$82
+      out ($BF),a
+    }
+    RcPage = $1C00
+    PageN = 1
+  end if
+  return
+end sub
+
+' HudBoth: the counters and the compass on both pages
+sub HudBoth:
+  W16 = $1800
+  VDP_NAME_SHADOW_SET
+  Hud
+  W16 = $1C00
+  VDP_NAME_SHADOW_SET
+  Hud
+  W16 = $1800
+  VDP_NAME_SHADOW_SET
+  return
+end sub
+
+sub VDP_NAME_SHADOW_SET:
+  asm {
+    ld hl,(AMY_UVAR_W16)
+    ld (VDP_NAME_SHADOW),hl
+  }
+  return
+end sub
+
+sub Hud:
+  print at 2,1, "HALL"
+  V = Level + 1
+  print at 7,1, digits$(V, 1)
+  print at 19,1, "TIME"
+  W16 = Secs / 60
+  V = lowbyte W16
+  print at 24,1, digits$(V, 2)
+  put char 58 at 26,1
+  W16 = W16 * 60
+  W16 = Secs - W16
+  V = lowbyte W16
+  print at 27,1, digits$(V, 2)
+  fill 32 count 28 at 2,20
+  print at 3,20, "HOLD THE BUTTON FOR THE MAP"
+  return
+end sub
+
+' ShowMap: the hall from above on the shown page while the button is
+' held (# walls, the door, you as an arrow)
+sub ShowMap:
+  if Shown = 0 then
+    Shown = 1
+    ' draw on the page shown now
+    if PageN = 1 then
+      W16 = $1800
+    else
+      W16 = $1C00
+    end if
+    VDP_NAME_SHADOW_SET
+    for Y = 2 to 17
+      fill 32 count 32 at 0,Y
+    next
+    I = 0
+    for Y = 0 to 15
+      for X = 0 to 15
+        V = Map[I]
+        C = 32
+        if V = 1 then C = TMapW
+        if V = 3 then C = TMapD
+        J = X + 8
+        V2 = Y + 2
+        put char C at J,V2
+        inc I
+      next
+    next
+    ' you: an arrow by the way you face
+    J = PX >> 8
+    J = J + 8
+    V2 = PY >> 8
+    V2 = V2 + 2
+    V = Ang + 32
+    V = V >> 6
+    C = 62
+    if V = 1 then C = 118
+    if V = 2 then C = 60
+    if V = 3 then C = 94
+    put char C at J,V2
+    W16 = $1800
+    VDP_NAME_SHADOW_SET
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the pages
+
+sub TitlePage:
+  NewScreen
+  backdrop black
+  ' a corridor behind the title
+  PX = 384
+  PY = 384
+  Ang = 0
+  for I = 0 to 255
+    Map[I] = Mazes[I]
+  next
+  if Map[18] <> 0 then Ang = 64
+  RcPage = $1800
+  asm {
+    call RcCast
+    call RcDraw
+  }
+  print at 10,1, "DEEP HALLS"
+  print at 10,19, "PLAY"
+  print at 10,20, "HOW TO PLAY"
+  print at 10,21, "CREDITS"
+  print at 5,22, "AN ORIGINAL GAME, 2026"
+  Sel = 0
+  ShowTitleMenu
+  ShowScreen
+  play song DhSong once
+  WaitStick
+tp_loop:
+  Frame1
+  ReadPad
+  ' the view turns slowly
+  V = Tick & 3
+  if V = 0 then
+    inc Ang
+    asm {
+      call RcCast
+      call RcDraw
+    }
+  end if
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Sel > 0 then dec Sel
+      end if
+      if Dn1 = 1 then
+        if Sel < 2 then inc Sel
+      end if
+      play sound SndTick
+      ShowTitleMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop song
+  mute all
+  play sound SndStep
+  return
+end sub
+
+sub ShowTitleMenu:
+  for Y = 19 to 21
+    put char 32 at 8,Y
+  next
+  Y = Sel + 19
+  put char 62 at 8,Y
+  return
+end sub
+
+sub LevelPage:
+  TextPage
+  V = Level + 1
+  print at 12,6, "HALL"
+  print at 17,6, digits$(V, 1)
+  print at 17,6, digits$(V, 1)
+  print at 7,10, "FIND THE YELLOW DOOR"
+  print at 8,20, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub HowToPage:
+  TextPage
+  print at 10,1, "HOW TO PLAY"
+  print at 2,4, "YOU ARE LOST IN THE DEEP"
+  print at 2,5, "HALLS. EACH HALL HAS ONE"
+  print at 2,6, "WAY OUT: A YELLOW DOOR."
+  print at 2,9, "STICK UP: WALK ON."
+  print at 2,10, "STICK DOWN: STEP BACK."
+  print at 2,11, "STICK LEFT/RIGHT: TURN."
+  print at 2,13, "HOLD THE BUTTON TO SEE THE"
+  print at 2,14, "MAP OF THE HALL (THE ARROW"
+  print at 2,15, "IS YOU)."
+  print at 2,18, "FOUR HALLS. HOW FAST CAN"
+  print at 2,19, "YOU GET OUT?"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub CreditsPage:
+  TextPage
+  print at 10,2, "DEEP HALLS"
+  print at 2,4, "AN ORIGINAL GAME FOR THE"
+  print at 2,5, "COLECOVISION."
+  print at 2,7, "DESIGN, PROGRAM, THE RAY"
+  print at 2,8, "CASTER, SOUNDS AND THE TUNE"
+  print at 2,9, "ECHOES:"
+  print at 2,10, "CLAUDE (AN AI BY ANTHROPIC)"
+  print at 2,13, "MADE WITH AMY STUDIO"
+  print at 2,14, "BY AMY BIENVENU"
+  print at 2,17, "(C) 2026"
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub EndPage:
+  TextPage
+  print at 5,5, "YOU FOUND THE WAY OUT"
+  print at 5,6, "OF EVERY HALL!"
+  print at 5,10, "TIME IN THE HALLS"
+  W16 = Total / 60
+  V = lowbyte W16
+  print at 23,10, digits$(V, 2)
+  put char 58 at 25,10
+  W16 = W16 * 60
+  W16 = Total - W16
+  V = lowbyte W16
+  print at 26,10, digits$(V, 2)
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Hold(60)
+  WaitPress
+  return
+end sub
+
+sub TextPage:
+  NewScreen
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the machine
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Hold(u8 Frames2):
+  for C = 1 to Frames2
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub WaitStick:
+  WasBtn = 1
+  WasStick = 1
+  return
+end sub
+
+sub WaitPress:
+  WaitStick
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  play sound SndTick
+  return
+end sub
+
+' every new screen: display off, tiles, both name pages cleared, page 1
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  clear sprites
+  set sprite count 1
+  sprites flicker off
+  set sprite 0 to 192,0,0,0
+  update sprites
+  asm {
+    ld a,6
+    out ($BF),a
+    ld a,$82
+    out ($BF),a
+    ld hl,$1C00
+    ld (VDP_NAME_SHADOW),hl
+  }
+  cls
+  asm {
+    ld hl,$1800
+    ld (VDP_NAME_SHADOW),hl
+  }
+  cls
+  backdrop black
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+asm {
+; The ray caster. 32 rays a frame from (PX, PY) (8.8 fixed point, in
+; cells of the 16 x 16 Map) at angle Ang (256 a turn), by DDA: each ray
+; steps from grid line to grid line until it meets a wall. Its distance,
+; corrected for the column's angle, picks a half height (RcH), and that
+; with the wall's kind and side picks a ready-made column of 16 tiles
+; (RcCol), whose address goes into CPtr. RcDraw then writes the 16 rows
+; of the view into the hidden name table page, row by row.
+
+; RcMul: HL = (A * DE) >> 8
+RcMul:
+    ld hl,0
+    ld c,0
+    ld b,8
+RcMu1:
+    add hl,hl
+    rl c
+    add a,a
+    jr nc,RcMu2
+    add hl,de
+    jr nc,RcMu2
+    inc c
+RcMu2:
+    djnz RcMu1
+    ld l,h
+    ld h,c
+    ret
+
+; RcTab: HL = the word at RcCos or RcDD (table in HL) for angle A
+RcWord:
+    ld e,a
+    ld d,0
+    ex de,hl
+    add hl,hl
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ret
+
+RcCast:
+    xor a
+    ld (AMY_UVAR_RcC),a
+RcCa0:
+    ; the ray's angle
+    ld a,(AMY_UVAR_RcC)
+    ld e,a
+    ld d,0
+    ld hl,RcOff
+    add hl,de
+    ld a,(AMY_UVAR_Ang)
+    add a,(hl)
+    ld (AMY_UVAR_RcA),a
+    ; --- across: the step, the distance between x lines, the first one
+    ld hl,RcCos
+    call RcWord
+    ld a,h
+    ld (AMY_UVAR_RcStX),a       ; bit 7: going west
+    ld a,(AMY_UVAR_RcA)
+    ld hl,RcDD
+    call RcWord
+    ld (AMY_UVAR_RcDX),hl
+    ex de,hl
+    ld a,(AMY_UVAR_PX+1)
+    ld (AMY_UVAR_RcMX),a
+    ld a,(AMY_UVAR_PX)
+    ld b,a
+    ld a,(AMY_UVAR_RcStX)
+    bit 7,a
+    ld a,b
+    jr nz,RcCa1
+    ; east: (1 - frac)
+    or a
+    jr nz,RcCa1a
+    ld (AMY_UVAR_RcSX),de
+    jr RcCa2
+RcCa1a:
+    neg
+RcCa1:
+    call RcMul
+    ld (AMY_UVAR_RcSX),hl
+RcCa2:
+    ; --- down: sin(a) = cos(a - 64)
+    ld a,(AMY_UVAR_RcA)
+    sub 64
+    ld (AMY_UVAR_RcAY),a
+    ld hl,RcCos
+    call RcWord
+    ld a,h
+    ld (AMY_UVAR_RcStY),a       ; bit 7: going north
+    ld a,(AMY_UVAR_RcAY)
+    ld hl,RcDD
+    call RcWord
+    ld (AMY_UVAR_RcDY),hl
+    ex de,hl
+    ld a,(AMY_UVAR_PY+1)
+    ld (AMY_UVAR_RcMY),a
+    ld a,(AMY_UVAR_PY)
+    ld b,a
+    ld a,(AMY_UVAR_RcStY)
+    bit 7,a
+    ld a,b
+    jr nz,RcCa3
+    or a
+    jr nz,RcCa3a
+    ld (AMY_UVAR_RcSY),de
+    jr RcCa4
+RcCa3a:
+    neg
+RcCa3:
+    call RcMul
+    ld (AMY_UVAR_RcSY),hl
+RcCa4:
+    ; --- step along until a wall (at most 40 steps)
+    ld a,40
+    ld (AMY_UVAR_RcN),a
+RcSt0:
+    ld hl,(AMY_UVAR_RcSX)
+    ld de,(AMY_UVAR_RcSY)
+    or a
+    sbc hl,de
+    jr nc,RcSt2
+    ; to the next x line
+    add hl,de
+    ld de,(AMY_UVAR_RcDX)
+    add hl,de
+    ld (AMY_UVAR_RcSX),hl
+    ld a,(AMY_UVAR_RcStX)
+    rlca
+    sbc a,a
+    or 1                        ; +1 or -1
+    ld hl,AMY_UVAR_RcMX
+    add a,(hl)
+    and 15
+    ld (hl),a
+    xor a
+    ld (AMY_UVAR_RcSide),a
+    jr RcSt3
+RcSt2:
+    ld hl,(AMY_UVAR_RcSY)
+    ld de,(AMY_UVAR_RcDY)
+    add hl,de
+    ld (AMY_UVAR_RcSY),hl
+    ld a,(AMY_UVAR_RcStY)
+    rlca
+    sbc a,a
+    or 1
+    ld hl,AMY_UVAR_RcMY
+    add a,(hl)
+    and 15
+    ld (hl),a
+    ld a,1
+    ld (AMY_UVAR_RcSide),a
+RcSt3:
+    ; the cell
+    ld a,(AMY_UVAR_RcMY)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld hl,AMY_UVAR_RcMX
+    or (hl)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Map
+    add hl,de
+    ld a,(hl)
+    or a
+    jr nz,RcHit
+    ld hl,AMY_UVAR_RcN
+    dec (hl)
+    jr nz,RcSt0
+    ld a,1
+RcHit:
+    ld (AMY_UVAR_RcKind),a
+    ; the distance: back one step on the side that was crossed
+    ld a,(AMY_UVAR_RcSide)
+    or a
+    jr nz,RcHi1
+    ld hl,(AMY_UVAR_RcSX)
+    ld de,(AMY_UVAR_RcDX)
+    jr RcHi2
+RcHi1:
+    ld hl,(AMY_UVAR_RcSY)
+    ld de,(AMY_UVAR_RcDY)
+RcHi2:
+    or a
+    sbc hl,de
+    ; corrected: times the cosine of the column's angle
+    ex de,hl
+    ld a,(AMY_UVAR_RcC)
+    ld c,a
+    ld b,0
+    ld hl,RcCosOff
+    add hl,bc
+    ld a,(hl)
+    call RcMul
+    ; sixteenths of a cell, at most 255
+    ld a,h
+    cp 16
+    jr c,RcHi3
+    ld a,255
+    jr RcHi4
+RcHi3:
+    ; hl >> 4
+    ld a,l
+    srl h
+    rra
+    srl h
+    rra
+    srl h
+    rra
+    srl h
+    rra
+RcHi4:
+    ld e,a
+    ld d,0
+    ld hl,RcH
+    add hl,de
+    ld a,(hl)                   ; half height 0-64
+    ld (AMY_UVAR_RcHH),a
+    ; the set: door (kind 3) 2, else 0; plus the side
+    ld a,(AMY_UVAR_RcKind)
+    cp 3
+    ld a,0
+    jr nz,RcHi5
+    ld a,2
+RcHi5:
+    ld hl,AMY_UVAR_RcSide
+    add a,(hl)
+    ; (set * 65 + hh) * 16 + RcCol
+    ld l,a
+    ld h,0
+    ld e,l
+    ld d,h
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl                   ; set * 64
+    add hl,de                   ; set * 65
+    ld a,(AMY_UVAR_RcHH)
+    ld e,a
+    ld d,0
+    add hl,de
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,RcCol
+    add hl,de
+    ex de,hl
+    ld a,(AMY_UVAR_RcC)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,AMY_UVAR_CPtr
+    add hl,bc
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    ld a,(AMY_UVAR_RcC)
+    inc a
+    ld (AMY_UVAR_RcC),a
+    cp 32
+    jp nz,RcCa0
+    ret
+
+; RcDraw: the 16 rows of the view into the name table at RcPage (rows
+; 2-17)
+RcDraw:
+    ld c,0                      ; c = the row
+RcDr1:
+    ; the address: RcPage + (row + 2) * 32
+    ld a,c
+    add a,2
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(AMY_UVAR_RcPage)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld ix,AMY_UVAR_CPtr
+    ld b,32
+RcDr2:
+    ld l,(ix+0)
+    ld h,(ix+1)
+    ld e,c
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    out ($BE),a
+    inc ix
+    inc ix
+    djnz RcDr2
+    inc c
+    ld a,c
+    cp 16
+    jr nz,RcDr1
+    ret
+
+; RcMove: PX, PY a step of MvSp (256ths of a cell) forwards (MvDir 0) or
+; backwards (1), each way on its own (so walls are slid along), kept 48
+; 256ths off the walls. A door touched sets MvDoor.
+RcMove:
+    ld a,(AMY_UVAR_MvDir)
+    or a
+    ld a,(AMY_UVAR_Ang)
+    jr z,RcMv0
+    add a,128
+RcMv0:
+    ld (AMY_UVAR_RcA),a
+    ; --- across
+    ld hl,RcCos
+    call RcWord
+    ld a,h
+    ld (AMY_UVAR_RcStX),a
+    bit 7,h
+    jr z,RcMv1
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+RcMv1:
+    ex de,hl
+    ld a,(AMY_UVAR_MvSp)
+    call RcMul
+    ex de,hl                    ; de = how far
+    ld hl,(AMY_UVAR_PX)
+    ld a,(AMY_UVAR_RcStX)
+    bit 7,a
+    jr nz,RcMv2
+    add hl,de
+    ld (AMY_UVAR_MvNX),hl
+    ld de,48
+    add hl,de
+    jr RcMv3
+RcMv2:
+    or a
+    sbc hl,de
+    ld (AMY_UVAR_MvNX),hl
+    ld de,48
+    or a
+    sbc hl,de
+RcMv3:
+    ld a,(AMY_UVAR_PY+1)
+    call RcCell
+    jr nz,RcMv4
+    ld hl,(AMY_UVAR_MvNX)
+    ld (AMY_UVAR_PX),hl
+RcMv4:
+    ; --- down
+    ld a,(AMY_UVAR_RcA)
+    sub 64
+    ld hl,RcCos
+    call RcWord
+    ld a,h
+    ld (AMY_UVAR_RcStY),a
+    bit 7,h
+    jr z,RcMv5
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+RcMv5:
+    ex de,hl
+    ld a,(AMY_UVAR_MvSp)
+    call RcMul
+    ex de,hl
+    ld hl,(AMY_UVAR_PY)
+    ld a,(AMY_UVAR_RcStY)
+    bit 7,a
+    jr nz,RcMv6
+    add hl,de
+    ld (AMY_UVAR_MvNX),hl
+    ld de,48
+    add hl,de
+    jr RcMv7
+RcMv6:
+    or a
+    sbc hl,de
+    ld (AMY_UVAR_MvNX),hl
+    ld de,48
+    or a
+    sbc hl,de
+RcMv7:
+    ; the cell at column PX, row H
+    ld a,h
+    ld h,a
+    ld a,(AMY_UVAR_PX+1)
+    ld l,a                      ; l = column
+    ld a,h                      ; a = row
+    call RcCellXY
+    ret nz
+    ld hl,(AMY_UVAR_MvNX)
+    ld (AMY_UVAR_PY),hl
+    ret
+
+; RcCell: is the cell at column H, row A a wall? (NZ; a door sets MvDoor)
+RcCell:
+    ld l,h
+; RcCellXY: column L, row A
+RcCellXY:
+    and 15
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld e,a
+    ld a,l
+    and 15
+    or e
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Map
+    add hl,de
+    ld a,(hl)
+    cp 3
+    jr nz,RcCe1
+    ld (AMY_UVAR_MvDoor),a
+RcCe1:
+    or a
+    ret
+; generated by tables.py: the ray caster's tables
+    align 256
+RcCos:
+    dw $0100,$0100,$0100,$00FF,$00FF,$00FE,$00FD,$00FC
+    dw $00FB,$00FA,$00F8,$00F7,$00F5,$00F3,$00F1,$00EF
+    dw $00ED,$00EA,$00E7,$00E5,$00E2,$00DF,$00DC,$00D8
+    dw $00D5,$00D1,$00CE,$00CA,$00C6,$00C2,$00BE,$00B9
+    dw $00B5,$00B1,$00AC,$00A7,$00A2,$009D,$0098,$0093
+    dw $008E,$0089,$0084,$007E,$0079,$0073,$006D,$0068
+    dw $0062,$005C,$0056,$0050,$004A,$0044,$003E,$0038
+    dw $0032,$002C,$0026,$001F,$0019,$0013,$000D,$0006
+    dw $0000,$FFFA,$FFF3,$FFED,$FFE7,$FFE1,$FFDA,$FFD4
+    dw $FFCE,$FFC8,$FFC2,$FFBC,$FFB6,$FFB0,$FFAA,$FFA4
+    dw $FF9E,$FF98,$FF93,$FF8D,$FF87,$FF82,$FF7C,$FF77
+    dw $FF72,$FF6D,$FF68,$FF63,$FF5E,$FF59,$FF54,$FF4F
+    dw $FF4B,$FF47,$FF42,$FF3E,$FF3A,$FF36,$FF32,$FF2F
+    dw $FF2B,$FF28,$FF24,$FF21,$FF1E,$FF1B,$FF19,$FF16
+    dw $FF13,$FF11,$FF0F,$FF0D,$FF0B,$FF09,$FF08,$FF06
+    dw $FF05,$FF04,$FF03,$FF02,$FF01,$FF01,$FF00,$FF00
+    dw $FF00,$FF00,$FF00,$FF01,$FF01,$FF02,$FF03,$FF04
+    dw $FF05,$FF06,$FF08,$FF09,$FF0B,$FF0D,$FF0F,$FF11
+    dw $FF13,$FF16,$FF19,$FF1B,$FF1E,$FF21,$FF24,$FF28
+    dw $FF2B,$FF2F,$FF32,$FF36,$FF3A,$FF3E,$FF42,$FF47
+    dw $FF4B,$FF4F,$FF54,$FF59,$FF5E,$FF63,$FF68,$FF6D
+    dw $FF72,$FF77,$FF7C,$FF82,$FF87,$FF8D,$FF93,$FF98
+    dw $FF9E,$FFA4,$FFAA,$FFB0,$FFB6,$FFBC,$FFC2,$FFC8
+    dw $FFCE,$FFD4,$FFDA,$FFE1,$FFE7,$FFED,$FFF3,$FFFA
+    dw $0000,$0006,$000D,$0013,$0019,$001F,$0026,$002C
+    dw $0032,$0038,$003E,$0044,$004A,$0050,$0056,$005C
+    dw $0062,$0068,$006D,$0073,$0079,$007E,$0084,$0089
+    dw $008E,$0093,$0098,$009D,$00A2,$00A7,$00AC,$00B1
+    dw $00B5,$00B9,$00BE,$00C2,$00C6,$00CA,$00CE,$00D1
+    dw $00D5,$00D8,$00DC,$00DF,$00E2,$00E5,$00E7,$00EA
+    dw $00ED,$00EF,$00F1,$00F3,$00F5,$00F7,$00F8,$00FA
+    dw $00FB,$00FC,$00FD,$00FE,$00FF,$00FF,$0100,$0100
+RcDD:
+    dw $0100,$0100,$0100,$0101,$0101,$0102,$0103,$0104
+    dw $0105,$0106,$0108,$010A,$010C,$010E,$0110,$0112
+    dw $0115,$0118,$011B,$011F,$0122,$0126,$012A,$012F
+    dw $0134,$0139,$013F,$0145,$014B,$0152,$015A,$0161
+    dw $016A,$0173,$017D,$0188,$0194,$01A0,$01AE,$01BD
+    dw $01CD,$01DF,$01F2,$0207,$021F,$0239,$0257,$0278
+    dw $029D,$02C7,$02F8,$0330,$0372,$03C0,$041E,$0490
+    dw $0520,$05D9,$06D1,$082B,$0A34,$0D98,$1461,$28BF
+    dw $3FFF,$28BF,$1461,$0D98,$0A34,$082B,$06D1,$05D9
+    dw $0520,$0490,$041E,$03C0,$0372,$0330,$02F8,$02C7
+    dw $029D,$0278,$0257,$0239,$021F,$0207,$01F2,$01DF
+    dw $01CD,$01BD,$01AE,$01A0,$0194,$0188,$017D,$0173
+    dw $016A,$0161,$015A,$0152,$014B,$0145,$013F,$0139
+    dw $0134,$012F,$012A,$0126,$0122,$011F,$011B,$0118
+    dw $0115,$0112,$0110,$010E,$010C,$010A,$0108,$0106
+    dw $0105,$0104,$0103,$0102,$0101,$0101,$0100,$0100
+    dw $0100,$0100,$0100,$0101,$0101,$0102,$0103,$0104
+    dw $0105,$0106,$0108,$010A,$010C,$010E,$0110,$0112
+    dw $0115,$0118,$011B,$011F,$0122,$0126,$012A,$012F
+    dw $0134,$0139,$013F,$0145,$014B,$0152,$015A,$0161
+    dw $016A,$0173,$017D,$0188,$0194,$01A0,$01AE,$01BD
+    dw $01CD,$01DF,$01F2,$0207,$021F,$0239,$0257,$0278
+    dw $029D,$02C7,$02F8,$0330,$0372,$03C0,$041E,$0490
+    dw $0520,$05D9,$06D1,$082B,$0A34,$0D98,$1461,$28BF
+    dw $3FFF,$28BF,$1461,$0D98,$0A34,$082B,$06D1,$05D9
+    dw $0520,$0490,$041E,$03C0,$0372,$0330,$02F8,$02C7
+    dw $029D,$0278,$0257,$0239,$021F,$0207,$01F2,$01DF
+    dw $01CD,$01BD,$01AE,$01A0,$0194,$0188,$017D,$0173
+    dw $016A,$0161,$015A,$0152,$014B,$0145,$013F,$0139
+    dw $0134,$012F,$012A,$0126,$0122,$011F,$011B,$0118
+    dw $0115,$0112,$0110,$010E,$010C,$010A,$0108,$0106
+    dw $0105,$0104,$0103,$0102,$0101,$0101,$0100,$0100
+RcH:
+    db $40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40,$40
+    db $40,$40,$40,$3F,$3C,$39,$37,$34,$32,$30,$2E,$2C,$2B,$29,$28,$27
+    db $26,$24,$23,$22,$21,$20,$20,$1F,$1E,$1D,$1D,$1C,$1B,$1B,$1A,$1A
+    db $19,$18,$18,$18,$17,$17,$16,$16,$15,$15,$15,$14,$14,$14,$13,$13
+    db $13,$12,$12,$12,$12,$11,$11,$11,$11,$10,$10,$10,$10,$10,$0F,$0F
+    db $0F,$0F,$0F,$0E,$0E,$0E,$0E,$0E,$0E,$0D,$0D,$0D,$0D,$0D,$0D,$0D
+    db $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+    db $0B,$0B,$0B,$0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A,$09
+    db $09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$09,$08,$08
+    db $08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$08,$08
+    db $08,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07,$07
+    db $07,$07,$07,$07,$07,$07,$07,$07,$07,$06,$06,$06,$06,$06,$06,$06
+    db $06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06
+    db $06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$06,$05,$05,$05,$05,$05
+    db $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05
+    db $05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05,$05
+RcOff:
+    db $EB,$EC,$EE,$EF,$F0,$F1,$F3,$F4,$F5,$F7,$F8,$F9,$FB,$FC,$FE,$FF
+    db $01,$02,$04,$05,$07,$08,$09,$0B,$0C,$0D,$0F,$10,$11,$12,$14,$15
+RcCosOff:
+    db $DF,$E3,$E6,$E9,$EC,$EF,$F2,$F5,$F7,$F9,$FB,$FD,$FE,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FE,$FD,$FB,$F9,$F7,$F5,$F2,$EF,$EC,$E9,$E6,$E3,$DF
+RcCol:
+    db $80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$89,$8A,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$88,$8B,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$87,$8C,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$86,$8D,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$85,$8E,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$84,$8F,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$83,$90,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$82,$82,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$89,$82,$82,$8A,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$88,$82,$82,$8B,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$87,$82,$82,$8C,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$86,$82,$82,$8D,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$85,$82,$82,$8E,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$84,$82,$82,$8F,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$83,$82,$82,$90,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$82,$82,$82,$82,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$89,$82,$82,$82,$82,$8A,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$88,$82,$82,$82,$82,$8B,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$87,$82,$82,$82,$82,$8C,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$86,$82,$82,$82,$82,$8D,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$85,$82,$82,$82,$82,$8E,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$84,$82,$82,$82,$82,$8F,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$83,$82,$82,$82,$82,$90,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$82,$82,$82,$82,$82,$82,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$89,$82,$82,$82,$82,$82,$82,$8A,$81,$81,$81,$81
+    db $80,$80,$80,$80,$88,$82,$82,$82,$82,$82,$82,$8B,$81,$81,$81,$81
+    db $80,$80,$80,$80,$87,$82,$82,$82,$82,$82,$82,$8C,$81,$81,$81,$81
+    db $80,$80,$80,$80,$86,$82,$82,$82,$82,$82,$82,$8D,$81,$81,$81,$81
+    db $80,$80,$80,$80,$85,$82,$82,$82,$82,$82,$82,$8E,$81,$81,$81,$81
+    db $80,$80,$80,$80,$84,$82,$82,$82,$82,$82,$82,$8F,$81,$81,$81,$81
+    db $80,$80,$80,$80,$83,$82,$82,$82,$82,$82,$82,$90,$81,$81,$81,$81
+    db $80,$80,$80,$80,$82,$82,$82,$82,$82,$82,$82,$82,$81,$81,$81,$81
+    db $80,$80,$80,$89,$82,$82,$82,$82,$82,$82,$82,$82,$8A,$81,$81,$81
+    db $80,$80,$80,$88,$82,$82,$82,$82,$82,$82,$82,$82,$8B,$81,$81,$81
+    db $80,$80,$80,$87,$82,$82,$82,$82,$82,$82,$82,$82,$8C,$81,$81,$81
+    db $80,$80,$80,$86,$82,$82,$82,$82,$82,$82,$82,$82,$8D,$81,$81,$81
+    db $80,$80,$80,$85,$82,$82,$82,$82,$82,$82,$82,$82,$8E,$81,$81,$81
+    db $80,$80,$80,$84,$82,$82,$82,$82,$82,$82,$82,$82,$8F,$81,$81,$81
+    db $80,$80,$80,$83,$82,$82,$82,$82,$82,$82,$82,$82,$90,$81,$81,$81
+    db $80,$80,$80,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$81,$81,$81
+    db $80,$80,$89,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8A,$81,$81
+    db $80,$80,$88,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8B,$81,$81
+    db $80,$80,$87,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8C,$81,$81
+    db $80,$80,$86,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8D,$81,$81
+    db $80,$80,$85,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8E,$81,$81
+    db $80,$80,$84,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8F,$81,$81
+    db $80,$80,$83,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$90,$81,$81
+    db $80,$80,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$81,$81
+    db $80,$89,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8A,$81
+    db $80,$88,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8B,$81
+    db $80,$87,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8C,$81
+    db $80,$86,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8D,$81
+    db $80,$85,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8E,$81
+    db $80,$84,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8F,$81
+    db $80,$83,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$90,$81
+    db $80,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$81
+    db $89,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8A
+    db $88,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8B
+    db $87,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8C
+    db $86,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8D
+    db $85,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8E
+    db $84,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$8F
+    db $83,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$90
+    db $82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82
+    db $80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$98,$99,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$97,$9A,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$96,$9B,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$95,$9C,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$94,$9D,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$93,$9E,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$92,$9F,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$91,$91,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$98,$91,$91,$99,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$97,$91,$91,$9A,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$96,$91,$91,$9B,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$95,$91,$91,$9C,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$94,$91,$91,$9D,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$93,$91,$91,$9E,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$92,$91,$91,$9F,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$91,$91,$91,$91,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$98,$91,$91,$91,$91,$99,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$97,$91,$91,$91,$91,$9A,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$96,$91,$91,$91,$91,$9B,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$95,$91,$91,$91,$91,$9C,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$94,$91,$91,$91,$91,$9D,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$93,$91,$91,$91,$91,$9E,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$92,$91,$91,$91,$91,$9F,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$91,$91,$91,$91,$91,$91,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$98,$91,$91,$91,$91,$91,$91,$99,$81,$81,$81,$81
+    db $80,$80,$80,$80,$97,$91,$91,$91,$91,$91,$91,$9A,$81,$81,$81,$81
+    db $80,$80,$80,$80,$96,$91,$91,$91,$91,$91,$91,$9B,$81,$81,$81,$81
+    db $80,$80,$80,$80,$95,$91,$91,$91,$91,$91,$91,$9C,$81,$81,$81,$81
+    db $80,$80,$80,$80,$94,$91,$91,$91,$91,$91,$91,$9D,$81,$81,$81,$81
+    db $80,$80,$80,$80,$93,$91,$91,$91,$91,$91,$91,$9E,$81,$81,$81,$81
+    db $80,$80,$80,$80,$92,$91,$91,$91,$91,$91,$91,$9F,$81,$81,$81,$81
+    db $80,$80,$80,$80,$91,$91,$91,$91,$91,$91,$91,$91,$81,$81,$81,$81
+    db $80,$80,$80,$98,$91,$91,$91,$91,$91,$91,$91,$91,$99,$81,$81,$81
+    db $80,$80,$80,$97,$91,$91,$91,$91,$91,$91,$91,$91,$9A,$81,$81,$81
+    db $80,$80,$80,$96,$91,$91,$91,$91,$91,$91,$91,$91,$9B,$81,$81,$81
+    db $80,$80,$80,$95,$91,$91,$91,$91,$91,$91,$91,$91,$9C,$81,$81,$81
+    db $80,$80,$80,$94,$91,$91,$91,$91,$91,$91,$91,$91,$9D,$81,$81,$81
+    db $80,$80,$80,$93,$91,$91,$91,$91,$91,$91,$91,$91,$9E,$81,$81,$81
+    db $80,$80,$80,$92,$91,$91,$91,$91,$91,$91,$91,$91,$9F,$81,$81,$81
+    db $80,$80,$80,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$81,$81,$81
+    db $80,$80,$98,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$99,$81,$81
+    db $80,$80,$97,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9A,$81,$81
+    db $80,$80,$96,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9B,$81,$81
+    db $80,$80,$95,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9C,$81,$81
+    db $80,$80,$94,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9D,$81,$81
+    db $80,$80,$93,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9E,$81,$81
+    db $80,$80,$92,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9F,$81,$81
+    db $80,$80,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$81,$81
+    db $80,$98,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$99,$81
+    db $80,$97,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9A,$81
+    db $80,$96,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9B,$81
+    db $80,$95,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9C,$81
+    db $80,$94,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9D,$81
+    db $80,$93,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9E,$81
+    db $80,$92,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9F,$81
+    db $80,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$81
+    db $98,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$99
+    db $97,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9A
+    db $96,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9B
+    db $95,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9C
+    db $94,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9D
+    db $93,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9E
+    db $92,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$9F
+    db $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+    db $80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A7,$A8,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A6,$A9,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A5,$AA,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A4,$AB,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A3,$AC,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A2,$AD,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A1,$AE,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$A0,$A0,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A7,$A0,$A0,$A8,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A6,$A0,$A0,$A9,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A5,$A0,$A0,$AA,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A4,$A0,$A0,$AB,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A3,$A0,$A0,$AC,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A2,$A0,$A0,$AD,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A1,$A0,$A0,$AE,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$A0,$A0,$A0,$A0,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A7,$A0,$A0,$A0,$A0,$A8,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A6,$A0,$A0,$A0,$A0,$A9,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A5,$A0,$A0,$A0,$A0,$AA,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A4,$A0,$A0,$A0,$A0,$AB,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A3,$A0,$A0,$A0,$A0,$AC,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A2,$A0,$A0,$A0,$A0,$AD,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A1,$A0,$A0,$A0,$A0,$AE,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$A0,$A0,$A0,$A0,$A0,$A0,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A7,$A0,$A0,$A0,$A0,$A0,$A0,$A8,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A6,$A0,$A0,$A0,$A0,$A0,$A0,$A9,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A5,$A0,$A0,$A0,$A0,$A0,$A0,$AA,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A4,$A0,$A0,$A0,$A0,$A0,$A0,$AB,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A3,$A0,$A0,$A0,$A0,$A0,$A0,$AC,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A2,$A0,$A0,$A0,$A0,$A0,$A0,$AD,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A1,$A0,$A0,$A0,$A0,$A0,$A0,$AE,$81,$81,$81,$81
+    db $80,$80,$80,$80,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$81,$81,$81,$81
+    db $80,$80,$80,$A7,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A8,$81,$81,$81
+    db $80,$80,$80,$A6,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A9,$81,$81,$81
+    db $80,$80,$80,$A5,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AA,$81,$81,$81
+    db $80,$80,$80,$A4,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AB,$81,$81,$81
+    db $80,$80,$80,$A3,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AC,$81,$81,$81
+    db $80,$80,$80,$A2,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AD,$81,$81,$81
+    db $80,$80,$80,$A1,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AE,$81,$81,$81
+    db $80,$80,$80,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$81,$81,$81
+    db $80,$80,$A7,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A8,$81,$81
+    db $80,$80,$A6,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A9,$81,$81
+    db $80,$80,$A5,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AA,$81,$81
+    db $80,$80,$A4,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AB,$81,$81
+    db $80,$80,$A3,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AC,$81,$81
+    db $80,$80,$A2,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AD,$81,$81
+    db $80,$80,$A1,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AE,$81,$81
+    db $80,$80,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$81,$81
+    db $80,$A7,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A8,$81
+    db $80,$A6,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A9,$81
+    db $80,$A5,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AA,$81
+    db $80,$A4,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AB,$81
+    db $80,$A3,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AC,$81
+    db $80,$A2,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AD,$81
+    db $80,$A1,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AE,$81
+    db $80,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$81
+    db $A7,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A8
+    db $A6,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A9
+    db $A5,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AA
+    db $A4,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AB
+    db $A3,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AC
+    db $A2,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AD
+    db $A1,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$AE
+    db $A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+    db $80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B6,$B7,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B5,$B8,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B4,$B9,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B3,$BA,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B2,$BB,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B1,$BC,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$B0,$BD,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$80,$AF,$AF,$81,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B6,$AF,$AF,$B7,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B5,$AF,$AF,$B8,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B4,$AF,$AF,$B9,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B3,$AF,$AF,$BA,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B2,$AF,$AF,$BB,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B1,$AF,$AF,$BC,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$B0,$AF,$AF,$BD,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$80,$AF,$AF,$AF,$AF,$81,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B6,$AF,$AF,$AF,$AF,$B7,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B5,$AF,$AF,$AF,$AF,$B8,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B4,$AF,$AF,$AF,$AF,$B9,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B3,$AF,$AF,$AF,$AF,$BA,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B2,$AF,$AF,$AF,$AF,$BB,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B1,$AF,$AF,$AF,$AF,$BC,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$B0,$AF,$AF,$AF,$AF,$BD,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$80,$AF,$AF,$AF,$AF,$AF,$AF,$81,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B6,$AF,$AF,$AF,$AF,$AF,$AF,$B7,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B5,$AF,$AF,$AF,$AF,$AF,$AF,$B8,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B4,$AF,$AF,$AF,$AF,$AF,$AF,$B9,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B3,$AF,$AF,$AF,$AF,$AF,$AF,$BA,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B2,$AF,$AF,$AF,$AF,$AF,$AF,$BB,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B1,$AF,$AF,$AF,$AF,$AF,$AF,$BC,$81,$81,$81,$81
+    db $80,$80,$80,$80,$B0,$AF,$AF,$AF,$AF,$AF,$AF,$BD,$81,$81,$81,$81
+    db $80,$80,$80,$80,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$81,$81,$81,$81
+    db $80,$80,$80,$B6,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B7,$81,$81,$81
+    db $80,$80,$80,$B5,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B8,$81,$81,$81
+    db $80,$80,$80,$B4,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B9,$81,$81,$81
+    db $80,$80,$80,$B3,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BA,$81,$81,$81
+    db $80,$80,$80,$B2,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BB,$81,$81,$81
+    db $80,$80,$80,$B1,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BC,$81,$81,$81
+    db $80,$80,$80,$B0,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BD,$81,$81,$81
+    db $80,$80,$80,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$81,$81,$81
+    db $80,$80,$B6,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B7,$81,$81
+    db $80,$80,$B5,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B8,$81,$81
+    db $80,$80,$B4,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B9,$81,$81
+    db $80,$80,$B3,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BA,$81,$81
+    db $80,$80,$B2,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BB,$81,$81
+    db $80,$80,$B1,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BC,$81,$81
+    db $80,$80,$B0,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BD,$81,$81
+    db $80,$80,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$81,$81
+    db $80,$B6,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B7,$81
+    db $80,$B5,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B8,$81
+    db $80,$B4,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B9,$81
+    db $80,$B3,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BA,$81
+    db $80,$B2,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BB,$81
+    db $80,$B1,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BC,$81
+    db $80,$B0,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BD,$81
+    db $80,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$81
+    db $B6,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B7
+    db $B5,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B8
+    db $B4,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$B9
+    db $B3,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BA
+    db $B2,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BB
+    db $B1,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BC
+    db $B0,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$BD
+    db $AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF,$AF
+
+DhHush:
+    db $00,$00,$F4,$01,$10
+DhTick:
+    db $40,$40,$50,$01,$50
+DhStep:
+    db $00,$00,$46,$02,$00,$00,$76,$02,$10
+DhOut:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$30,$10,$50
+
+DhSoundTable:
+    dw DhHush,$702B
+    dw DhTick,$7035
+    dw DhStep,$702B
+    dw DhOut,$7035
+    dw DhTuneMel,$703F
+    dw DhTuneBass,$7049
+; Echoes, E minor (original for this game)
+; Tiny Sound, 10 frames per step
+DhTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$30,$1A,$21,$23,$00,$00,$1E,$26,$00,$25,$23,$22,$00,$1E,$00
+    db $1F,$00,$00,$1C,$23,$00,$21,$1F,$1E,$00,$00,$00,$23,$00,$26,$2A
+    db $28,$00,$26,$25,$26,$00,$23,$00,$1F,$00,$1E,$1C,$1E,$00,$22,$00
+    db $A3,$00,$00,$00
+    db $FF
+DhTuneBass:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$60,$18,$32,$0B,$00,$12,$00,$0B,$00,$12,$00,$12,$00,$19,$00
+    db $10,$00,$17,$00,$10,$00,$17,$00,$12,$00,$19,$00,$0B,$00,$12,$00
+    db $13,$00,$1A,$00,$10,$00,$17,$00,$10,$00,$17,$00,$12,$00,$12,$00
+    db $0B,$00,$00,$00
+    db $FF
+; the title song: both voices of Echoes at once
+DhSong:
+    dw $0001
+    db $40+5,6
+    dw $0000
+}

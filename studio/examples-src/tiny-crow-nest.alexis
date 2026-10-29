@@ -1,0 +1,935 @@
+' TINY CROW'S NEST
+' An original game by Claude (an AI made by Anthropic) for Amy Studio and
+' Amy Bienvenu, 2026.
+'
+' The crows have nested in the farmer's crates, and the scarecrow has had
+' enough: he flings pumpkins at them. Push the stick up and down to aim,
+' hold the button to wind up the throw (the power swings up and down),
+' let go to throw. Three pumpkins a stack (four for the last four); knock every crow out of its
+' nest. Glass breaks and lets the pumpkin through; wood cracks or is
+' shoved along, and a hard throw goes right through it; stone takes a hard throw. A block with nothing under
+' it falls, unless it is held between two blocks or by a neighbour
+' standing on something, so a good throw at the right block brings a
+' whole stack down. A crow that falls, or that a block falls on, flies off.
+'
+' How the throw works: the starting speeds for every angle and power are
+' worked out once (phys.py); in flight the pumpkin only adds its speeds
+' and gravity, in 1/256 pixels.
+'
+' House rules kept: joystick only; text in columns 2-29 and rows 1-22;
+' tiles at 128 and up; a title tune that plays once (Amy's play song ...
+' once); a credits page; the frame loop is protected from the NMI and
+' every screen is drawn with the NMI off after a wait.
+
+const TSky = 128
+const TGrass = 129
+const TDirt = 130
+const TGlass = 131
+const TWood = 132
+const TWoodcr = 133
+const TStone = 134
+const TStonecr = 135
+const TCrow = 136
+const TPuff = 137
+const TScare00 = 138
+const TScare01 = 139
+const TScare10 = 140
+const TScare11 = 141
+const TScare20 = 142
+const TScare21 = 143
+const SNone = 0
+const NTiles8 = 128
+const SprBytes = 32
+const SPump = 0
+const SDot = 1
+const SndHush = 1
+const SndFling = 2
+const SndGlass = 3
+const SndWood = 4
+const SndStone = 5
+const SndCaw = 6
+const SndTumble = 7
+const SndThud = 8
+const SndClear = 9
+const SndFail = 10
+const SndTick = 11
+const SndTuneA = 12
+const SndTuneB = 13
+const NLevels = 12
+data LvData bytes 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 4, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 1, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 4, 1, 0, 2, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 4, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 3, 2, 3, 2, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 2, 4, 2, 0, 0, 0, 0, 0, 2, 4, 2, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 2, 2, 2, 0, 0, 1, 0, 0, 2, 2, 2, 0, 0, 0, 3, 0, 3, 0, 0, 1, 0, 0, 3, 0, 3, 0, 0, 0, 3, 3, 3, 0, 1, 1, 1, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 0, 4, 0, 1, 0, 4, 0, 3, 0, 0, 0, 0, 0, 3, 0, 2, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 2, 2, 0, 0, 2, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 2, 1, 2, 0, 0, 4, 0, 0, 0, 0, 0, 2, 0, 0, 3, 3, 3, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 1, 2, 0, 0, 2, 0, 0, 0, 0, 0, 3, 0, 0, 2, 4, 2, 0, 0, 3, 0, 0, 0, 0, 0, 2, 0, 0, 3, 3, 3, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 1, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 3, 0, 0, 1, 4, 1, 0, 0, 3, 0, 0, 0, 0, 0, 2, 2, 0, 3, 3, 3, 0, 2, 2, 0, 0, 0, 0, 0, 2, 2, 0, 2, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0
+data LvNames bytes 79, 78, 69, 32, 67, 82, 79, 87, 32, 32, 32, 32, 32, 32, 32, 32, 84, 87, 79, 32, 79, 78, 32, 65, 32, 70, 69, 78, 67, 69, 32, 32, 71, 76, 65, 83, 83, 32, 72, 79, 85, 83, 69, 32, 32, 32, 32, 32, 84, 72, 69, 32, 84, 65, 76, 76, 32, 79, 78, 69, 32, 32, 32, 32, 83, 84, 79, 78, 69, 32, 87, 65, 76, 76, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 66, 65, 82, 78, 32, 32, 32, 32, 32, 32, 32, 32, 67, 82, 79, 87, 32, 76, 65, 68, 68, 69, 82, 32, 32, 32, 32, 32, 66, 69, 72, 73, 78, 68, 32, 71, 76, 65, 83, 83, 32, 32, 32, 32, 84, 72, 69, 32, 84, 79, 87, 69, 82, 32, 32, 32, 32, 32, 32, 32, 84, 87, 79, 32, 72, 79, 85, 83, 69, 83, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 67, 65, 83, 84, 76, 69, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 67, 82, 79, 87, 83, 39, 32, 75, 73, 78, 71, 32
+const Grav = 20
+data VxT words 303, 363, 424, 484, 545, 605, 666, 726, 787, 847, 908, 968, 1029, 1089, 1150, 1210, 297, 356, 415, 475, 534, 593, 653, 712, 772, 831, 890, 950, 1009, 1068, 1128, 1187, 289, 346, 404, 462, 520, 577, 635, 693, 751, 808, 866, 924, 981, 1039, 1097, 1155, 278, 334, 390, 445, 501, 557, 613, 668, 724, 780, 835, 891, 947, 1002, 1058, 1114, 266, 319, 372, 426, 479, 532, 585, 639, 692, 745, 798, 851, 905, 958, 1011, 1064, 252, 302, 352, 403, 453, 503, 554, 604, 654, 705, 755, 805, 856, 906, 956, 1007, 235, 282, 329, 377, 424, 471, 518, 565, 612, 659, 706, 753, 800, 847, 894, 941, 217, 261, 304, 348, 391, 434, 478, 521, 565, 608, 652, 695, 739, 782, 825, 869, 197, 237, 276, 316, 355, 395, 434, 474, 513, 553, 592, 632, 671, 711, 750, 790, 176, 211, 247, 282, 317, 352, 388, 423, 458, 493, 529, 564, 599, 634, 670, 705, 154, 184, 215, 246, 276, 307, 338, 369, 399, 430, 461, 492, 522, 553, 584, 614, 130, 156, 182, 208, 234, 260, 286, 312, 338, 364, 389, 415, 441, 467, 493, 519, 105, 126, 147, 168, 189, 210, 231, 252, 273, 294, 315, 336, 357, 378, 399, 420, 80, 95, 111, 127, 143, 159, 175, 191, 207, 223, 239, 254, 270, 286, 302, 318, 53, 64, 75, 85, 96, 107, 117, 128, 139, 149, 160, 171, 181, 192, 203, 213, 27, 32, 37, 43, 48, 54, 59, 64, 70, 75, 80, 86, 91, 96, 102, 107
+data VuT words 53, 64, 75, 85, 96, 107, 117, 128, 139, 149, 160, 171, 181, 192, 203, 213, 80, 95, 111, 127, 143, 159, 175, 191, 207, 223, 239, 254, 270, 286, 302, 318, 105, 126, 147, 168, 189, 210, 231, 252, 273, 294, 315, 336, 357, 378, 399, 420, 130, 156, 182, 208, 234, 260, 286, 312, 338, 364, 389, 415, 441, 467, 493, 519, 154, 184, 215, 246, 276, 307, 338, 369, 399, 430, 461, 492, 522, 553, 584, 614, 176, 211, 247, 282, 317, 352, 388, 423, 458, 493, 529, 564, 599, 634, 670, 705, 197, 237, 276, 316, 355, 395, 434, 474, 513, 553, 592, 632, 671, 711, 750, 790, 217, 261, 304, 348, 391, 434, 478, 521, 565, 608, 652, 695, 739, 782, 825, 869, 235, 282, 329, 377, 424, 471, 518, 565, 612, 659, 706, 753, 800, 847, 894, 941, 252, 302, 352, 403, 453, 503, 554, 604, 654, 705, 755, 805, 856, 906, 956, 1007, 266, 319, 372, 426, 479, 532, 585, 639, 692, 745, 798, 851, 905, 958, 1011, 1064, 278, 334, 390, 445, 501, 557, 613, 668, 724, 780, 835, 891, 947, 1002, 1058, 1114, 289, 346, 404, 462, 520, 577, 635, 693, 751, 808, 866, 924, 981, 1039, 1097, 1155, 297, 356, 415, 475, 534, 593, 653, 712, 772, 831, 890, 950, 1009, 1068, 1128, 1187, 303, 363, 424, 484, 545, 605, 666, 726, 787, 847, 908, 968, 1029, 1089, 1150, 1210, 306, 367, 428, 490, 551, 612, 673, 734, 796, 857, 918, 979, 1041, 1102, 1163, 1224
+
+' --- the stack ----------------------------------------------------------------
+' Bk: 14 x 13 cells: 0 air, 1 glass, 2 wood, 3 stone, 4 crow, 5 cracked
+' wood, 6 cracked stone, 7 a puff of feathers or splinters (gone soon)
+u8 Bk[182]
+u8 PfC[8]
+u8 PfT[8]
+u8 Lvl = 0
+u8 Crows = 0
+u8 Pumps = 3
+u16 Score = 0
+' --- the throw ------------------------------------------------------------------
+' Mode 0 aiming, 1 flying, 2 settling; Ang 0-15 (10-85 degrees), Pw 0-15
+' and its direction; the pumpkin in 1/256 pixels, its speeds
+u8 Mode = 0
+u8 Ang = 6
+u8 Pw = 0
+u8 PwDir = 1
+u8 Charging = 0
+u8 AimT = 0
+u16 PxF = 0
+u16 PyF = 0
+u16 Vx = 0
+u16 Vu = 0
+u16 Vd = 0
+u8 Rising = 0
+u8 Quiet = 0
+u8 FallT = 0
+u8 Moved = 0
+' for the test bot: 1 playing, 2 a card, 3 the end, 8 the title
+u8 Ph = 0
+u8 Busy = 0
+u8 Tc = $F1
+
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 W16 = 0
+u16 Addr = 0
+u16 Sx = 0
+u16 Sy = 0
+u16 Su = 0
+u16 Sd = 0
+u8 Sr = 0
+u8 C = 0
+u8 I = 0
+u8 I2 = 0
+u8 K = 0
+u8 N = 0
+u8 J = 0
+u8 V = 0
+u8 V2 = 0
+u8 Gx = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Dv = 0
+u8 Dt = 0
+u8 Gy = 0
+u8 X = 0
+u8 Y = 0
+u8 L = 0
+u8 R = 0
+u8 Held = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+
+  tile screen
+  set sound table CnSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy Spr8 count 16 to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  Ph = 8
+  Lvl = 11
+  DrawField
+  print at 8,3, "TINY CROW'S NEST"
+  print at 7,5, "THE SCARECROW STRIKES"
+  print at 7,6, "BACK"
+  print at 7,22, "PRESS THE BUTTON"
+  ShowScreen
+  play song CnSong once
+  WaitPress
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  play sound SndCaw
+  ' how to play
+  NewScreen
+  print at 4,3, "TINY CROW'S NEST"
+  print at 3,6, "THE CROWS HAVE NESTED IN"
+  print at 3,7, "THE FARMER'S CRATES. THE"
+  print at 3,8, "SCARECROW HAS PUMPKINS."
+  print at 3,11, "STICK UP, DOWN: AIM"
+  print at 3,12, "HOLD THE BUTTON: WIND UP"
+  print at 3,13, "LET GO: THROW"
+  print at 3,15, "GLASS BREAKS. WOOD CRACKS."
+  print at 3,16, "STONE IS HARD. WHAT HAS"
+  print at 3,17, "NOTHING UNDER IT FALLS."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  play sound SndTick
+  ' the credits
+  NewScreen
+  print at 4,3, "TINY CROW'S NEST"
+  print at 2,7, "A GAME BY CLAUDE (AN AI MADE"
+  print at 2,8, "BY ANTHROPIC) FOR AMY STUDIO"
+  print at 2,10, "AND AMY BIENVENU"
+  print at 2,13, "MUSIC: HARVEST JIG"
+  print at 2,16, "COLECOVISION, AMY, 2026"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  play sound SndTick
+  stop sound SndTuneA
+  stop sound SndTuneB
+  Lvl = 0
+  Score = 0
+
+level_start:
+  LevelCard
+  DrawField
+  ShowScreen
+  ' three pumpkins a stack, four for the last four stacks
+  Pumps = 3
+  if Lvl >= 8 then Pumps = 4
+  Mode = 0
+  Ph = 1
+  ShowHud
+
+play_loop:
+  Frame1
+  Busy = 1
+  ReadPad
+  if Mode = 0 then Aim
+  if Mode = 1 then Fly
+  if Mode = 2 then Settle
+  Puffs
+  Busy = 0
+  if Mode <> 3 then goto play_loop
+
+  ' the throw and the stack are done: cleared, or another throw, or again
+  if Crows = 0 then
+    play sound SndClear
+    W16 = Pumps * 500
+    Score = Score + W16
+    ShowHud
+    print at 9,4, "STACK CLEARED!"
+    Hold(120)
+    inc Lvl
+    if Lvl < NLevels then goto level_start
+    goto the_end
+  end if
+  if Pumps > 0 then
+    Mode = 0
+    goto play_loop
+  end if
+  play sound SndFail
+  print at 6,4, "THE CROWS STAY. AGAIN!"
+  Hold(120)
+  goto level_start
+
+the_end:
+  HideSprites
+  Ph = 3
+  NewScreen
+  print at 3,5, "THE LAST CROW FLIES OFF"
+  print at 3,6, "OVER THE HILL. THE FARMER"
+  print at 3,7, "WILL NEVER KNOW WHO SAVED"
+  print at 3,8, "HIS CRATES."
+  print at 3,12, "SCORE:"
+  print at 10,12, digits$(Score, 5)
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  play song CnSong once
+  WaitPress
+  stop sound SndTuneA
+  stop sound SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub LevelCard:
+  Ph = 2
+  HideSprites
+  NewScreen
+  print at 12,8, "STACK"
+  V = Lvl + 1
+  print at 18,8, digits$(V, 2)
+  W16 = Lvl * 16
+  for I = 0 to 15
+    V = LvNames[W16]
+    X = I + 8
+    put char V at X,11
+    inc W16
+  next
+  ShowScreen
+  Hold(110)
+  return
+end sub
+
+' DrawField: the sky, the ground, the scarecrow, the stack of level Lvl
+sub DrawField:
+  ' text on the sky: white on light blue
+  Tc = $F5
+  NewScreen
+  Tc = $F1
+  backdrop light blue
+  for Y = 2 to 20
+    fill TSky count 32 at 0,Y
+  next
+  fill TGrass count 32 at 0,21
+  fill TDirt count 32 at 0,22
+  put char TScare00 at 3,18
+  put char TScare01 at 4,18
+  put char TScare10 at 3,19
+  put char TScare11 at 4,19
+  put char TScare20 at 3,20
+  put char TScare21 at 4,20
+  W16 = Lvl * 182
+  Crows = 0
+  for I = 0 to 181
+    V = LvData[W16]
+    Bk[I] = V
+    if V = 4 then inc Crows
+    inc W16
+    DrawCell
+  next
+  for I = 0 to 7
+    PfT[I] = 0
+  next
+  return
+end sub
+
+' DrawCell: cell I as it is now
+sub DrawCell:
+  Dv = Bk[I]
+  Dt = CellTile[Dv]
+  Dy = I / 14
+  Dx = Dy * 14
+  Dx = I - Dx
+  Dx = Dx + 16
+  Dy = Dy + 8
+  put char Dt at Dx,Dy
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "STACK"
+  V = Lvl + 1
+  print at 8,1, digits$(V, 2)
+  print at 11,1, "CROWS"
+  print at 17,1, digits$(Crows, 2)
+  print at 20,1, "PUMPKINS"
+  print at 29,1, digits$(Pumps, 1)
+  print at 2,2, "SCORE"
+  print at 8,2, digits$(Score, 5)
+  return
+end sub
+
+' Aim: the stick sets the angle, the button winds up the power; letting
+' go throws
+sub Aim:
+  if AimT > 0 then dec AimT
+  if AimT = 0 then
+    if Up1 = 1 then
+      if Ang < 15 then inc Ang
+      AimT = 5
+    end if
+    if Dn1 = 1 then
+      if Ang > 0 then dec Ang
+      AimT = 5
+    end if
+  end if
+  if Btn = 1 then
+    Charging = 1
+    V = Tick & 1
+    if V = 0 then
+      if PwDir = 1 then
+        inc Pw
+        if Pw = 15 then PwDir = 0
+      else
+        dec Pw
+        if Pw = 0 then PwDir = 1
+      end if
+    end if
+  else
+    if Charging = 1 then
+      Charging = 0
+      Throw
+      return
+    end if
+  end if
+  ShowAim
+  return
+end sub
+
+' ShowAim: three dots along the coming flight, and the power bar
+sub ShowAim:
+  K = Ang * 16
+  K = K + Pw
+  Sx = 40 * 256
+  Sy = 136 * 256
+  Su = VuT[K]
+  Sd = 0
+  Sr = 1
+  for J = 1 to 24
+    W16 = VxT[K]
+    Sx = Sx + W16
+    if Sr = 1 then
+      Sy = Sy - Su
+      if Su > Grav then
+        Su = Su - Grav
+      else
+        Sr = 0
+      end if
+    else
+      Sy = Sy + Sd
+      Sd = Sd + Grav
+    end if
+    V = J & 7
+    if V = 0 then
+      N = J >> 3
+      W16 = Sx >> 8
+      X = lowbyte W16
+      W16 = Sy >> 8
+      Y = lowbyte W16
+      dec Y
+      set sprite N to Y,X,SDot,15
+    end if
+  next
+  set sprite 0 to 192,0,SPump,9
+  update sprites
+  ' the power, as a bar beside the scarecrow
+  print at 2,17, " "
+  V = Pw >> 2
+  for J = 0 to 3
+    Y = 20 - J
+    if J < V then
+      print at 2,Y, "="
+    else
+      print at 2,Y, " "
+    end if
+  next
+  return
+end sub
+
+sub Throw:
+  play sound SndFling
+  K = Ang * 16
+  K = K + Pw
+  Vx = VxT[K]
+  Vu = VuT[K]
+  Vd = 0
+  Rising = 1
+  PxF = 40 * 256
+  PyF = 136 * 256
+  dec Pumps
+  ShowHud
+  Mode = 1
+  Pw = 0
+  PwDir = 1
+  for J = 1 to 3
+    set sprite J to 192,0,SDot,0
+  next
+  for J = 17 to 20
+    print at 2,J, " "
+  next
+  return
+end sub
+
+' Fly: the pumpkin moves; off the screen or on the ground it is done; in
+' the stack it hits what is there
+sub Fly:
+  PxF = PxF + Vx
+  if Rising = 1 then
+    PyF = PyF - Vu
+    if Vu > Grav then
+      Vu = Vu - Grav
+    else
+      Rising = 0
+    end if
+  else
+    PyF = PyF + Vd
+    Vd = Vd + Grav
+  end if
+  W16 = PxF >> 8
+  X = lowbyte W16
+  W16 = PyF >> 8
+  Y = lowbyte W16
+  if PxF >= 62464 then
+    Landed
+    return
+  end if
+  if Y >= 160 then
+    if Y < 200 then
+      play sound SndThud
+      Landed
+      return
+    end if
+  end if
+  V = Y - 1
+  set sprite 0 to V,X,SPump,9
+  update sprites
+  ' the cell under the pumpkin's middle
+  V = X + 4
+  Gx = V >> 3
+  V = Y + 4
+  Gy = V >> 3
+  if Gx < 16 then return
+  if Gy < 8 then return
+  if Gy > 20 then return
+  Gx = Gx - 16
+  Gy = Gy - 8
+  V = Gy * 14
+  I = V + Gx
+  V = Bk[I]
+  if V = 0 then return
+  if V = 7 then return
+  Hit
+  return
+end sub
+
+' Hit: the pumpkin meets cell I (type V)
+sub Hit:
+  if V = 1 then
+    ' glass: shatters, the pumpkin goes on, slower
+    play sound SndGlass
+    Break
+    W16 = Vx >> 2
+    Vx = Vx - W16
+    return
+  end if
+  if V = 4 then
+    ' a crow: off it flies
+    CrowOut
+    W16 = Vx >> 2
+    Vx = Vx - W16
+    return
+  end if
+  if V = 2 then
+    play sound SndWood
+    if Vx > 650 then
+      ' a hard throw goes right through the wood, at half speed
+      Break
+      Vx = Vx >> 1
+      return
+    else
+      Bk[I] = 5
+      DrawCell
+      Shove
+    end if
+  end if
+  if V = 5 then
+    play sound SndWood
+    Break
+    if Vx > 500 then
+      Vx = Vx >> 1
+      return
+    end if
+  end if
+  if V = 3 then
+    play sound SndStone
+    if Vx > 700 then
+      Bk[I] = 6
+      DrawCell
+    end if
+    if Vx > 900 then Shove
+  end if
+  if V = 6 then
+    play sound SndStone
+    if Vx > 600 then
+      Break
+    else
+      Shove
+    end if
+  end if
+  Landed
+  return
+end sub
+
+' Shove: block I slides one cell on if there is air there
+sub Shove:
+  if Vx < 300 then return
+  Gy = I / 14
+  V = Gy * 14
+  Gx = I - V
+  if Gx = 13 then
+    ' off the edge of the stack
+    Bk[I] = 0
+    DrawCell
+    return
+  end if
+  I2 = I + 1
+  V = Bk[I2]
+  if V <> 0 then return
+  Bk[I2] = Bk[I]
+  Bk[I] = 0
+  DrawCell
+  I = I2
+  DrawCell
+  return
+end sub
+
+' Break: block I is gone in a puff
+sub Break:
+  Bk[I] = 7
+  DrawCell
+  NewPuff
+  return
+end sub
+
+sub CrowOut:
+  play sound SndCaw
+  Bk[I] = 7
+  DrawCell
+  NewPuff
+  dec Crows
+  Score = Score + 100
+  ShowHud
+  return
+end sub
+
+sub NewPuff:
+  for J = 0 to 7
+    if PfT[J] = 0 then
+      PfC[J] = I
+      PfT[J] = 20
+      J = 7
+    end if
+  next
+  return
+end sub
+
+' Puffs: a puff clears after a moment
+sub Puffs:
+  for K = 0 to 7
+    if PfT[K] > 0 then
+      dec PfT[K]
+      if PfT[K] = 0 then
+        I = PfC[K]
+        if Bk[I] = 7 then
+          Bk[I] = 0
+          DrawCell
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Landed: the pumpkin is done; the stack settles
+sub Landed:
+  set sprite 0 to 192,0,SPump,0
+  update sprites
+  Mode = 2
+  Quiet = 0
+  FallT = 0
+  return
+end sub
+
+' Settle: every 4 frames, what has nothing under it falls a cell; when
+' nothing has moved for a while (and the puffs are gone), the throw is over
+sub Settle:
+  inc FallT
+  if FallT < 4 then return
+  FallT = 0
+  Moved = 0
+  for N = 0 to 11
+    Gy = 11 - N
+    for Gx = 0 to 13
+      V = Gy * 14
+      I = V + Gx
+      V = Bk[I]
+      if V <> 0 then
+        if V <> 7 then FallOne
+      end if
+    next
+  next
+  if Moved = 1 then
+    Quiet = 0
+    return
+  end if
+  inc Quiet
+  if Quiet < 6 then return
+  for K = 0 to 7
+    if PfT[K] > 0 then return
+  next
+  Mode = 3
+  return
+end sub
+
+' FallOne: cell I (type V, row Gy) falls if nothing holds it
+sub FallOne:
+  I2 = I + 14
+  V2 = Bk[I2]
+  if V2 = 4 then
+    if V <> 4 then
+      ' a block coming down on a crow knocks it out of the nest
+      K = I
+      I = I2
+      CrowOut
+      I = K
+      Moved = 1
+      return
+    end if
+  end if
+  if V2 <> 0 then
+    if V2 <> 7 then return
+  end if
+  if V = 4 then
+    ' a crow with nothing under it flies off
+    CrowOut
+    Moved = 1
+    return
+  end if
+  ' held between two blocks, or by a neighbour standing on something?
+  L = 0
+  R = 0
+  if Gx > 0 then
+    V2 = I - 1
+    L = Bk[V2]
+  end if
+  if Gx < 13 then
+    V2 = I + 1
+    R = Bk[V2]
+  end if
+  if L = 4 then L = 0
+  if L = 7 then L = 0
+  if R = 4 then R = 0
+  if R = 7 then R = 0
+  Held = 0
+  if L <> 0 then
+    if R <> 0 then Held = 1
+  end if
+  if L <> 0 then
+    V2 = I + 13
+    if Gy = 12 then Held = 1
+    if Bk[V2] <> 0 then
+      if Bk[V2] <> 7 then Held = 1
+    end if
+  end if
+  if R <> 0 then
+    V2 = I + 15
+    if Bk[V2] <> 0 then
+      if Bk[V2] <> 7 then Held = 1
+    end if
+  end if
+  if Held = 1 then return
+  ' it falls; a crow under it is knocked off
+  Bk[I2] = V
+  Bk[I] = 0
+  DrawCell
+  I = I2
+  DrawCell
+  Moved = 1
+  play sound SndTumble
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites flicker on
+  for J = 0 to 3
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the tile for each kind of cell
+data CellTile bytes 128, 131, 132, 134, 136, 133, 135, 137
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $52,$00,$00,$00,$00,$00,$00,$00
+  $40,$08,$02,$20,$04,$80,$12,$00
+  $00,$81,$A1,$91,$80,$85,$81,$00
+  $00,$81,$42,$81,$42,$81,$42,$00
+  $00,$89,$4A,$91,$52,$91,$4A,$00
+  $00,$91,$91,$00,$85,$85,$00,$00
+  $00,$95,$4C,$08,$A5,$C5,$00,$00
+  $00,$18,$C3,$93,$01,$C3,$24,$00
+  $92,$44,$10,$A5,$00,$48,$8A,$00
+  $03,$07,$04,$00,$07,$03,$01,$00
+  $C0,$E0,$20,$00,$E0,$C0,$80,$00
+  $C0,$C0,$E0,$E0,$F0,$01,$01,$01
+  $03,$03,$07,$07,$F0,$80,$80,$80
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $80,$80,$80,$80,$80,$80,$80,$80
+end data
+data TileCol bytes
+  $05,$05,$05,$05,$05,$05,$05,$05
+  $5C,$02,$02,$02,$02,$02,$02,$02
+  $6A,$6A,$6A,$6A,$6A,$6A,$6A,$0A
+  $0F,$F7,$F7,$F7,$F7,$F7,$F7,$0F
+  $06,$6A,$A6,$6A,$A6,$6A,$A6,$06
+  $06,$6A,$A6,$6A,$A6,$6A,$A6,$06
+  $01,$1E,$1E,$01,$1E,$1E,$01,$0E
+  $01,$1E,$E1,$E1,$1E,$1E,$01,$0E
+  $05,$15,$51,$51,$51,$51,$15,$05
+  $F5,$F5,$F5,$F5,$05,$F5,$F5,$05
+  $B5,$B5,$1B,$0B,$1B,$B5,$65,$06
+  $B5,$B5,$1B,$0B,$1B,$B5,$65,$06
+  $58,$58,$58,$58,$58,$65,$65,$65
+  $58,$58,$58,$58,$85,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+  $65,$65,$65,$65,$65,$65,$65,$65
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data Spr8 bytes 24, 32, 126, 255, 255, 255, 126, 0, 0, 0, 0, 24, 24, 0, 0, 0
+
+asm {
+CnHush:
+    db $00,$00,$F4,$01,$10
+CnFling:
+    db $00,$00,$55,$02,$00,$00,$35,$02,$00,$00,$65,$03,$00,$00,$A5,$03,$00,$00,$F5,$01,$10
+CnGlass:
+    db $40,$24,$20,$02,$40,$2A,$40,$02,$40,$20,$60,$03,$40,$26,$90,$04,$40,$FE,$F0,$01,$50
+CnWood:
+    db $00,$00,$26,$02,$00,$00,$76,$03,$00,$00,$F6,$01,$10
+CnStone:
+    db $40,$FC,$11,$02,$40,$3B,$52,$03,$40,$FE,$F0,$01,$50
+CnCaw:
+    db $40,$AA,$20,$04,$40,$B4,$40,$03,$40,$BF,$30,$05,$40,$CA,$70,$03,$40,$FE,$F0,$01,$50
+CnTumble:
+    db $00,$00,$67,$02,$00,$00,$F7,$01,$10
+CnThud:
+    db $00,$00,$46,$03,$00,$00,$96,$03,$00,$00,$F6,$01,$10
+CnClear:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$05,$40,$6B,$30,$0C,$40,$FE,$F0,$01,$50
+CnFail:
+    db $40,$1D,$31,$08,$40,$2E,$41,$08,$40,$41,$51,$10,$40,$FE,$F0,$01,$50
+CnTick:
+    db $40,$40,$50,$01,$50
+
+CnSoundTable:
+    dw CnHush,$702B
+    dw CnFling,$702B
+    dw CnGlass,$7035
+    dw CnWood,$702B
+    dw CnStone,$7035
+    dw CnCaw,$7035
+    dw CnTumble,$702B
+    dw CnThud,$702B
+    dw CnClear,$7035
+    dw CnFail,$7035
+    dw CnTick,$7035
+    dw CnTuneMel,$703F
+    dw CnTuneBass,$7049
+; Harvest Jig, G major (original for this game)
+; Tiny Sound, 6 frames per step
+CnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 6
+    db $02,$30,$31,$88,$26,$2A,$2D,$2A,$26,$2A,$28,$25,$21,$25,$28,$25
+    db $A6,$00,$00,$00,$2A,$2D,$2F,$2D,$2A,$26,$28,$2A,$2B,$2A,$28,$25
+    db $A6,$00,$00,$00,$2D,$2B,$2A,$2B,$2D,$2A,$26,$2A,$2B,$2A,$28,$2A
+    db $2B,$28,$25,$28,$2A,$28,$26,$28,$2A,$26,$21,$25,$A6,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+CnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 6
+    db $02,$70,$F1,$22,$0E,$00,$15,$00,$0E,$00,$15,$00,$09,$00,$10,$00
+    db $0E,$00,$15,$00,$0E,$00,$15,$00,$0B,$00,$12,$00,$10,$00,$09,$00
+    db $0E,$00,$15,$00,$0E,$00,$15,$00,$0E,$00,$15,$00,$10,$00,$17,$00
+    db $09,$00,$10,$00,$0E,$00,$15,$00,$07,$00,$09,$00,$0E,$00,$15,$00
+    db $0E,$00,$00,$00
+    db $FF
+CnSong:
+    dw $0001
+    db $40+12,13
+    dw $0000
+}

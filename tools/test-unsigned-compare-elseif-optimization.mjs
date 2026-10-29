@@ -61,6 +61,14 @@ assert.deepEqual(
   "instructions between the false label and repeated comparison must disable reuse"
 );
 
+const standaloneIfPrefix = commonPrefix.filter((line) => line !== "    jr AMY_IF_END_2");
+const standaloneIfs = [...standaloneIfPrefix, ...repeatedTail.slice(0, -1)];
+assert.deepEqual(
+  helpers.optimizeUnsignedCompareElseIfTails(standaloneIfs),
+  standaloneIfs,
+  "independent adjacent IF statements must recompute their comparison flags"
+);
+
 const differentTargets = [...commonPrefix, ...repeatedTail];
 differentTargets[13] = "    jr C,AMY_IF_FALSE_4";
 assert.deepEqual(

@@ -1,0 +1,1679 @@
+' SOUNDING
+' An original game by Claude (an AI made by Anthropic) for Amy Studio and
+' Amy Bienvenu, 2026. The echolocation look (a dark screen where only the
+' surfaces a sound touches light up) was Amy's idea.
+'
+' A young bat is lost deep underground, too young to know the way. Bats
+' find their way in the dark by clicking and listening, and so do you: press the button
+' to click, and the sound spreads through the open cave (around corners,
+' never through rock), lighting the rock it touches for a moment before
+' it fades back to black. Find the way out of twelve caves. Moths glow when a
+' click finds them; cave snakes hear your clicks and come to where you
+' made them. Water drips make their own small sounds, and those light the
+' rock too.
+'
+' How the wave works: each click is a flood through open air, one layer of
+' cells a frame (wave.asm). Rock beside the air it reaches is drawn with
+' the edge for its open sides. Each click draws with one of four tile
+' sets, and the set fades by rewriting only its colours, so a click glows
+' and darkens smoothly with nothing redrawn and nothing flashing.
+'
+' House rules kept: joystick only; text in columns 2-29 and rows 1-22
+' (the caves are columns 2-29, rows 2-22); tiles at 128 and up; a title
+' tune that plays once (Amy's play song ... once); a credits page; the
+' frame loop is protected from the NMI and every screen is drawn with the
+' NMI off after a wait.
+
+const SStal = 0
+const SOwl1 = 4
+const SOwl2 = 8
+const SBat1 = 12
+const SBat2 = 16
+const SSnake1 = 20
+const SSnake2 = 24
+const SMoth1 = 28
+const SMoth2 = 32
+const NTiles8 = 0
+const SprBytes = 288
+const SndHush = 1
+const SndClick = 2
+const SndEcho0 = 3
+const SndEcho1 = 4
+const SndEcho2 = 5
+const SndEcho3 = 6
+const SndDrip = 7
+const SndThud = 8
+const SndMoth = 9
+const SndSlither0 = 10
+const SndSlither1 = 11
+const SndSlither2 = 12
+const SndBreeze = 13
+const SndCrack = 14
+const SndCrash = 15
+const SndWeb = 16
+const SndHoot = 17
+const SndRiver = 18
+const SndHurt = 19
+const SndOut = 20
+const SndTick = 21
+const SndTuneA = 22
+const SndTuneB = 23
+const NCaves = 12
+data CvMask0 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 9, False, False, False, False, False, 2, 255, 255, 255, 9, 1, 1, 1, 1, 3, 255, 255, 8, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 9, False, False, False, False, False, False, 6, 255, 255, 9, False, False, False, False, False, 2, 255, 255, 8, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 12, False, False, False, False, False, 6, 255, 255, 9, False, False, False, 4, 4, 4, 6, 255, 255, 8, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 12, 4, 4, 4, 6, 255, 255, 13, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, 1, 3, 255, 255, 255, 255, 255, 255, 9, 1, 1, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 3, 255, 9, 1, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 6, 255, 8, False, False, False, False, 4, 4, 4, 4, 7, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, 6, 255, 255, 255, 255, 255, 8, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, 6, 255, 255, 255, 255, 9, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 12, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 9, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 3, 255, 12, 4, 4, 4, 2, 255, 255, 255, 255, 255, 255, 8, False, False, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 12, 7, 255, 255, 255, 255, 255, 12, 4, 6, 254, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo0 words 133, 200, 522, 597, 0, 0, 0, 0, 1, 376, 0, 0, 0, 0, 0, 0, 0
+data CvMask1 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 12, False, False, False, False, False, False, False, 4, 4, 4, 4, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 8, False, False, False, False, False, 6, 255, 255, 255, 255, 12, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 3, 255, 255, 255, 12, False, False, False, False, 6, 255, 255, 255, 255, 255, 255, 12, 2, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 12, False, False, 6, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 9, 1, 1, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 11, 255, 255, 255, 9, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 1, 2, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 9, False, False, False, False, 2, 255, 255, 255, 12, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 9, False, False, False, False, False, 2, 255, 255, 255, 255, 12, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 9, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 9, False, False, False, False, False, False, 4, 4, 5, 7, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 6, 255, 255, 12, False, False, False, False, False, 6, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, 6, 255, 255, 255, 255, 12, False, False, False, 6, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, 6, 255, 255, 255, 255, 255, 255, 12, False, 6, 255, 255, 255, 255, 255, 255, 255, 9, 1, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255, 255, 255, 255, 255, 9, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 13, 5, 4, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 9, 1, 1, 1, 1, 1, 3, 255, 255, 255, 255, 255, 254, 12, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 3, 255, 255, 9, False, False, False, False, False, False, False, 1, 3, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo1 words 99, 150, 331, 587, 1, 533, 0, 0, 2, 216, 239, 0, 0, 0, 0, 0, 0
+data CvMask2 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, 2, 255, 9, 1, 1, 1, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 3, 255, 255, 9, 1, False, False, False, 2, 255, 8, False, False, False, False, False, 2, 255, 9, 3, 255, 9, 1, 1, False, False, False, False, False, False, False, False, 2, 255, 255, 12, 4, 4, 4, 4, 6, 255, 12, 4, 4, 4, False, False, 2, 255, 8, 2, 255, 8, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, 2, 255, 12, 6, 255, 8, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 3, 255, 9, 1, 1, 1, 1, 1, 3, 255, 8, False, 2, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 6, 255, 12, 4, False, False, False, False, 6, 255, 12, False, False, 1, 1, 5, 5, 4, 4, 4, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, 2, 255, 9, 1, 1, 3, 255, 12, 4, 4, 6, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, 2, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 255, 9, 1, False, False, False, False, 3, 255, 9, 1, 1, False, False, False, False, False, False, False, False, False, 2, 255, 12, 4, 4, 4, 5, 5, 5, 5, 5, 5, 4, 4, False, False, False, False, 2, 255, 8, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 4, 4, 4, 6, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, 3, 255, 9, 1, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 8, 4, 4, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 255, 8, False, False, False, 6, 255, 9, 1, 1, 1, 1, 1, 2, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 13, 4, 4, 4, 6, 255, 255, 12, 4, 4, 4, False, False, 2, 255, 255, 8, False, False, False, False, 2, 255, 13, 5, 5, 5, 5, 5, 5, 5, 7, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, 2, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 4, 6, 254, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo2 words 132, 152, 270, 584, 2, 402, 494, 0, 2, 379, 626, 0, 2, 150, 266, 0, 0
+data CvMask3 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 12, 4, 4, 4, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 1, 1, 7, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 7, 255, 255, 255, 9, 1, 1, False, False, False, False, 6, 255, 255, 255, 255, 255, 9, 1, 1, 1, 1, 3, 255, 8, False, False, False, False, False, False, 6, 255, 255, 255, 9, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 9, False, 4, 4, 4, 4, 4, False, 2, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 6, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 8, 2, 255, 255, 255, 255, 255, 8, 2, 255, 253, 9, 3, 255, 255, 12, 4, 4, 4, 6, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 8, 2, 255, 255, 255, 255, 255, 8, 2, 255, 255, 8, 2, 255, 255, 255, 255, 255, 255, 255, 9, 1, False, False, False, False, False, False, False, 3, 255, 255, 12, 6, 255, 255, 255, 255, 255, 8, 2, 255, 255, 12, False, 3, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, 2, 255, 255, 255, 8, False, 1, 3, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, 1, 1, 1, 3, 255, 255, 9, 1, 1, False, False, 1, 3, 255, 12, 4, 4, 6, 255, 255, 9, 1, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 2, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 9, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 10, 255, 255, 12, 4, 4, 4, 4, 4, 4, 5, 3, 255, 255, 9, 5, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 14, 255, 255, 255, 255, 254, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 12, 3, 255, 255, 255, 255, 253, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 12, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 255, 255, 11, 255, 255, 13, 5, 5, 5, False, False, False, False, False, False, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 1, False, 1, 3, 255, 255, 255, 9, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo3 words 132, 187, 325, 549, 2, 275, 556, 0, 3, 151, 362, 653, 1, 118, 0, 0, 0
+data CvMask4 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, False, 4, 4, 4, 4, 4, 4, 4, False, 4, 4, 4, 4, 4, 4, False, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 10, 255, 9, 5, 5, 5, 3, 255, 10, 255, 9, 5, 5, 3, 255, 10, 255, 9, 5, 5, 5, 5, 3, 255, 8, False, False, False, False, 2, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 14, 255, 10, 255, 255, 10, 255, 14, 255, 10, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 255, 14, 255, 10, 255, 255, 255, 12, 5, 5, 5, 6, 255, 255, 12, 5, 5, 5, 6, 255, 255, 255, 255, 14, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 5, 5, 6, 255, 9, 5, 5, 5, 5, 5, 5, 5, 3, 255, 9, 5, 5, 5, 5, 5, 5, 5, 5, 5, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 10, 255, 255, 253, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 9, 5, 5, 5, 5, 2, 255, 9, 5, 5, 5, 3, 255, 10, 255, 14, 255, 9, 5, 5, 5, 5, 5, 3, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 12, 5, 5, 5, 6, 255, 11, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 14, 255, 9, 5, 5, 6, 255, 12, 7, 255, 13, 4, 5, 5, 5, 5, 5, 5, 5, 6, 255, 13, 5, 6, 255, 8, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 5, 6, 255, 13, 5, 5, 5, 3, 255, 9, 5, 5, 5, 5, 5, 5, 5, 5, 3, 255, 13, 5, 5, 5, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 13, 5, 5, 5, 5, 5, 7, 255, 10, 255, 14, 255, 9, 7, 255, 13, 5, 3, 255, 12, 5, 5, 5, 3, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 14, 254, 12, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, 1, 1, 1, False, 1, 1, 1, 1, False, 1, 1, 3, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo4 words 99, 201, 422, 441, 3, 281, 429, 648, 2, 216, 540, 0, 2, 102, 323, 0, 0
+data CvMask5 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 3, 255, 255, 9, 1, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 1, 3, 255, 255, 13, 1, 1, 1, 1, False, False, False, False, False, False, False, False, 2, 255, 255, 8, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, 3, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, 4, 6, 255, 255, 8, 2, 255, 9, 5, 5, 5, 5, 5, 3, 255, 255, 8, False, 2, 255, 255, 12, 4, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 8, 2, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 8, False, 2, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, 2, 255, 9, 5, 5, 4, 6, 255, 10, 255, 9, 5, 3, 255, 10, 255, 255, 12, 4, 4, 5, 7, 255, 255, 12, False, False, False, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 10, 255, 10, 255, 10, 255, 10, 255, 255, 255, 255, 255, 255, 255, 11, 255, 255, 8, False, False, False, False, False, False, 2, 255, 10, 255, 13, 5, 5, 5, 6, 255, 10, 255, 10, 255, 12, 5, 5, 5, 5, 5, 3, 255, 12, 3, 255, 8, False, False, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 10, 255, 8, False, False, False, False, False, False, 2, 255, 12, 5, 5, 5, 5, 5, 5, 5, 6, 255, 8, 5, 5, 5, 5, 5, 7, 255, 12, 3, 255, 10, 255, 8, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 253, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 10, 255, 8, False, False, False, False, False, False, False, 1, 1, 1, 1, 3, 255, 9, 5, 5, 5, 5, 6, 255, 9, 1, 1, 1, 3, 255, 255, 10, 255, 10, 255, 8, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 8, 4, 4, 4, 6, 255, 9, 6, 255, 10, 255, 8, False, False, False, False, False, False, 4, 4, 4, 4, 4, 6, 255, 10, 255, 255, 255, 9, 5, 5, 6, 255, 255, 255, 255, 255, 10, 255, 255, 10, 255, 8, False, False, False, False, False, 2, 255, 255, 253, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 9, 5, 5, 5, 6, 255, 9, 6, 255, 12, False, False, False, False, False, 2, 255, 13, 5, 5, 5, 5, 5, 6, 255, 13, 5, 6, 255, 13, 5, 5, 6, 255, 255, 255, 255, 255, 14, 255, 255, 254, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, False, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo5 words 132, 239, 366, 588, 3, 151, 487, 501, 2, 136, 437, 0, 2, 102, 555, 0, 1
+data CvMask6 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 12, 4, 4, 4, 4, 4, 4, 4, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 3, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 3, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 1, 1, 1, 3, 255, 255, 12, 4, 4, 6, 255, 255, 255, 255, 8, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, 1, 1, 3, 255, 255, 9, 1, False, False, False, False, False, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 255, 13, False, False, False, False, False, False, 4, 4, 4, 4, 6, 255, 255, 12, 4, 4, 4, 4, 4, 4, 4, 4, 4, 7, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 8, False, False, False, False, 2, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 8, False, False, False, False, 2, 255, 255, 255, 252, 252, 252, 252, 252, 255, 255, 255, 255, 255, 252, 252, 252, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 8, 2, 255, 255, 255, 255, 255, 255, 255, 255, 8, 2, 255, 255, 255, 9, 1, 1, 1, 1, 3, 255, 8, False, False, False, False, False, 1, 3, 255, 255, 8, False, 1, 1, 1, 3, 255, 255, 255, 9, False, False, 3, 255, 255, 12, 4, 4, 4, 4, 6, 255, 8, False, False, False, False, False, 4, 6, 255, 255, 12, 4, 4, 4, 4, 6, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, 3, 255, 255, 255, 9, 1, 1, 3, 255, 8, False, False, False, False, 2, 255, 255, 9, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 12, 4, 4, 4, 2, 255, 255, 255, 12, 4, 4, 6, 255, 8, False, False, False, False, 2, 255, 255, 12, 4, 4, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 1, 1, 3, 255, 255, 14, 255, 255, 254, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo6 words 99, 119, 165, 459, 3, 231, 281, 587, 0, 0, 0, 0, 0, 0, 0, 0, 0
+data CvMask7 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 12, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 255, 255, 255, 8, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 8, False, False, False, False, 2, 255, 9, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 255, 10, 255, 255, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 14, 255, 255, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, 7, 255, 13, 5, 5, False, False, False, False, False, 2, 255, 12, 5, 5, 5, 5, 5, 7, 255, 9, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 5, 5, 5, 5, 5, 5, 5, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, 7, 255, 13, 5, 5, False, False, False, False, False, 2, 255, 254, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo7 words 99, 165, 422, 538, 1, 437, 0, 0, 2, 330, 593, 0, 3, 170, 175, 183, 0
+data CvMask8 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 2, 255, 255, 255, 8, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 14, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 1, 3, 255, 255, 255, 9, 1, 1, 3, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 11, 255, 255, 255, 255, 255, 12, 4, 4, 6, 255, 255, 255, 12, 4, 4, 6, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 12, 5, 5, 5, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 13, 5, 5, False, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, 1, 1, 1, 3, 255, 255, 255, 8, 1, 1, 1, 1, 3, 255, 255, 255, 255, 9, 1, 1, 1, 1, 1, 3, 255, 8, False, False, False, False, False, False, 4, 4, 4, 6, 255, 255, 255, 12, 4, 4, 4, 4, 6, 255, 255, 255, 255, 12, 4, 4, 4, 4, 4, 2, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 254, 12, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo8 words 99, 273, 420, 439, 3, 180, 370, 584, 3, 170, 185, 431, 0, 0, 0, 0, 3
+data CvMask9 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, False, 4, 4, 4, 4, 4, False, 4, 4, 4, 4, 4, False, 4, 4, 4, 4, 4, False, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 14, 255, 13, 5, 3, 255, 14, 255, 9, 5, 7, 255, 14, 255, 9, 5, 7, 255, 14, 255, 9, 5, 7, 255, 8, False, False, False, False, 2, 255, 255, 253, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 253, 255, 10, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 7, 255, 11, 255, 12, 5, 5, 5, 2, 255, 13, 5, 5, 5, 2, 255, 13, 5, 3, 255, 10, 255, 13, 5, False, False, False, False, False, 2, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 14, 255, 255, 255, 10, 255, 10, 255, 255, 255, 8, False, False, False, False, 2, 255, 13, 5, 1, 4, 5, 5, 3, 255, 13, 4, 3, 255, 9, 5, 7, 255, 11, 255, 13, 6, 255, 12, 5, 3, 255, 8, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 10, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, False, 5, 7, 255, 10, 255, 13, 5, 6, 255, 11, 255, 14, 255, 14, 255, 9, 5, 6, 255, 9, 5, 5, 7, 255, 10, 255, 8, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 253, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 13, 5, 4, 5, 3, 255, 9, 5, 4, 5, 5, 5, 5, 5, 2, 255, 13, 5, 2, 255, 13, 5, 5, 6, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 13, False, False, False, False, False, False, 5, 5, 5, 7, 255, 14, 255, 14, 255, 13, 5, 5, 5, 3, 255, 12, 5, 3, 255, 12, 5, 5, 5, 3, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 8, False, False, False, False, 2, 255, 9, 5, 5, 5, 5, 5, 5, 5, 3, 255, 11, 255, 8, 5, 7, 255, 8, 5, 5, 5, 3, 255, 10, 255, 13, False, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 10, 255, 10, 255, 255, 255, 10, 255, 255, 255, 10, 255, 10, 255, 255, 8, False, False, False, False, 2, 255, 14, 255, 9, 5, 5, 5, 7, 255, 10, 255, 14, 255, 10, 255, 13, 5, 6, 255, 11, 255, 14, 255, 8, 7, 255, 8, False, False, False, False, 2, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 8, False, False, False, False, False, 5, 5, 5, 6, 255, 13, 5, 5, 5, 4, 5, 5, 5, 4, 5, 5, 5, 7, 255, 12, 5, 5, 5, 6, 255, 13, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 254, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo9 words 99, 175, 296, 684, 2, 311, 617, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+data CvMask10 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 255, 252, 252, 252, 255, 255, 255, 255, 255, 9, 3, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 255, 255, 255, 252, 252, 252, 252, 252, 255, 255, 255, 255, 12, 6, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 252, 252, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 8, False, False, False, False, 2, 252, 252, 252, 255, 255, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 8, False, False, False, False, 2, 252, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 252, 252, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 252, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 6, 255, 255, 255, 252, 252, 252, 252, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 252, 252, 252, 252, 252, 252, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 252, 252, 252, 252, 252, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 3, 255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo10 words 99, 264, 378, 556, 1, 370, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+data CvMask11 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, 2, 255, 255, 255, 255, 254, 255, 255, 8, False, False, False, False, 2, 255, 9, 5, 5, 7, 255, 13, 5, 5, 5, 5, 5, 7, 255, 8, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 4, 4, 4, 2, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 10, 255, 9, 5, 5, 5, 5, 5, 5, 5, 5, 7, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 14, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 253, 255, 255, 255, 255, 8, 1, 5, 7, 255, 13, 5, 1, False, False, False, False, False, 2, 255, 255, 255, 10, 255, 9, 5, 5, 5, 5, 5, 3, 255, 13, 5, 5, 5, 5, 4, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, False, False, 5, 5, 5, 6, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 10, 255, 9, 5, 7, 255, 8, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 10, 255, 9, 5, 7, 255, 8, 5, 5, 5, 5, 5, 3, 255, 14, 255, 10, 255, 255, 255, 8, False, False, False, False, False, 2, 255, 13, 5, 5, 5, 6, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 13, 5, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 11, 255, 10, 255, 255, 255, 11, 255, 12, 5, 5, 5, 2, 255, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 5, 5, 5, 5, 5, 6, 255, 10, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 11, 255, 255, 8, False, False, False, False, 2, 252, 252, 252, 252, 252, 252, 252, 252, 252, 14, 255, 12, 5, 5, 5, 6, 255, 13, 5, 7, 255, 10, 255, 14, 255, 9, False, False, False, False, False, 2, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 12, False, False, False, False, False, 2, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 9, 5, 5, 5, 5, 5, 3, 255, 9, 5, 5, 4, 5, 5, 3, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 255, 255, 10, 255, 8, False, False, False, False, 2, 255, 9, 5, 5, 7, 255, 13, 5, 3, 255, 10, 255, 255, 255, 255, 255, 10, 255, 14, 255, 9, 5, 7, 255, 14, 255, 8, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 10, 255, 10, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 10, 255, 13, 5, 5, 5, 5, 6, 255, 12, 5, 7, 255, 13, 5, 4, 5, 5, 5, 6, 255, 13, 5, 5, 5, False, False, False, False, False, 2, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo11 words 675, 110, 411, 551, 2, 184, 400, 0, 1, 615, 0, 0, 2, 165, 559, 0, 1
+data CvMask12 bytes False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, 4, 4, 4, 4, False, False, False, False, 4, 4, 4, 4, 4, 4, 4, 4, 4, False, False, False, False, 4, 4, 4, 4, 4, False, False, False, False, False, 2, 255, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, 2, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 12, 4, 4, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 12, 4, 4, 6, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 3, 255, 255, 9, 1, 1, 1, 3, 255, 255, 255, 9, 1, 1, 1, 3, 255, 255, 255, 255, 255, 13, 5, 5, 5, 5, False, False, False, False, False, False, 6, 255, 255, 12, 4, 4, 4, 2, 255, 255, 255, 8, 4, 4, 4, 6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 255, 255, 9, 1, 3, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 14, 255, 255, 13, 1, 1, 3, 255, 255, 255, 12, 4, 6, 255, 255, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 10, 255, 255, 255, 255, 255, 255, 255, 8, False, False, 3, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 7, 255, 255, 255, 255, 12, 5, 5, 5, 5, 5, 5, 5, 4, False, False, 4, 5, 7, 255, 255, 255, 255, 13, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, 2, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, 2, 255, 255, 9, 1, 1, 3, 255, 255, 255, 255, 255, 255, 9, 3, 255, 255, 12, 6, 255, 255, 9, 1, 1, 3, 255, 255, 8, False, False, False, False, 2, 255, 255, 12, 4, 4, 6, 255, 255, 255, 255, 255, 255, 8, 2, 255, 255, 255, 255, 255, 255, 12, 4, 4, 6, 255, 254, 8, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 5, 5, 5, 7, 255, 255, 255, 255, 13, 5, 5, 5, 4, 4, 5, 5, 5, 7, 255, 255, 255, 255, 13, 5, 5, 5, False, False, False, False, False, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 8, False, False, False, False, False, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False
+data CvInfo12 words 228, 237, 250, 389, 0, 0, 0, 0, 3, 240, 279, 492, 0, 0, 0, 0, 0
+data CvMaskTab words @CvMask0, @CvMask1, @CvMask2, @CvMask3, @CvMask4, @CvMask5, @CvMask6, @CvMask7, @CvMask8, @CvMask9, @CvMask10, @CvMask11, @CvMask12
+data CvInfoTab words @CvInfo0, @CvInfo1, @CvInfo2, @CvInfo3, @CvInfo4, @CvInfo5, @CvInfo6, @CvInfo7, @CvInfo8, @CvInfo9, @CvInfo10, @CvInfo11, @CvInfo12
+data CvNames bytes 84, 72, 69, 32, 70, 73, 82, 83, 84, 32, 68, 65, 82, 75, 32, 32, 32, 32, 32, 32, 68, 82, 73, 80, 80, 73, 78, 71, 32, 72, 65, 76, 76, 32, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 83, 78, 65, 75, 69, 39, 83, 32, 87, 65, 76, 75, 32, 32, 32, 32, 69, 67, 72, 79, 32, 71, 65, 82, 68, 69, 78, 32, 32, 32, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 76, 79, 78, 71, 32, 84, 72, 82, 79, 65, 84, 32, 32, 32, 32, 32, 87, 72, 69, 82, 69, 32, 84, 72, 69, 32, 65, 73, 82, 32, 77, 79, 86, 69, 83, 32, 84, 72, 69, 32, 82, 73, 86, 69, 82, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 67, 79, 76, 76, 65, 80, 83, 69, 32, 32, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 79, 87, 76, 83, 39, 32, 72, 65, 76, 76, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 87, 69, 66, 32, 77, 65, 90, 69, 32, 32, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 68, 65, 82, 75, 32, 76, 65, 75, 69, 32, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 76, 65, 83, 84, 32, 67, 76, 73, 77, 66, 32, 32, 32, 32, 32, 32
+
+' --- the wave (wave.asm) ------------------------------------------------
+u16 SgCur[64]
+u16 SgNxt[64]
+u8 SgBuf[32]
+u8 SgCurN = 0
+u8 SgNxtN = 0
+u8 SgLit = 0
+u8 SgBase = 128
+u8 SgRow0 = 0
+u8 SgRows = 0
+u16 SgPtr = 0
+u16 SgTmp = 0
+u16 SgN = 0
+u16 SgMask = 0
+' the wave now spreading: on, its tile set, layers done and the most,
+' who made it (0 the bat, 1 a drip, 2 a bump), where
+u8 WOn = 0
+u8 WGen = 0
+u8 WLay = 0
+u8 WMax = 0
+u8 WKind = 0
+' who is making a new wave (Ping): 0 the bat, 1 a drip, 2 a bump
+u8 CallK = 0
+u16 WOrig = 0
+' each tile set's age in frames (0: dark and free)
+u8 GAge[4]
+u8 NextGen = 0
+' 1 for a set that fades twice as fast (a click by the river)
+u8 GFast[4]
+' 1 while the bat is by the river
+u8 Wet = 0
+u8 RvT = 0
+
+' stalactites: count, cell, state (0 hanging, 1 shaking, 2 falling,
+' 3 gone), height in pixels, timer, glow age
+u8 StN = 0
+u16 StC[3]
+u8 StS[3]
+u8 StY[3]
+u8 StT[3]
+u8 StAge[3]
+' frames the bat is held in a web
+u8 Stuck = 0
+
+' --- the cave ---------------------------------------------------------------
+u8 CaveN = 0
+u16 Info = 0
+u16 Start = 0
+u16 ExitC = 0
+' the bat: its cell, pixels, frames left of its move, direction
+u16 PC = 0
+u8 Px = 0
+u8 Py = 0
+u8 PMv = 0
+u8 PDir = 0
+u8 Wing = 0
+u8 Cool = 0
+u8 Feathers = 3
+u8 Moths = 0
+u8 CaveMoths = 0
+u8 HurtT = 0
+' moths: cell, still there, glow age
+u16 MoC[3]
+u8 MoOn[3]
+u8 MoAge[3]
+' snakes: count, cell, home, pixels, move frames left, direction,
+' the cell they heard (0 none), glow age, rest
+u8 SnN = 0
+u16 SnC[3]
+u16 SnHome[3]
+u8 SnX[3]
+u8 SnY[3]
+u8 SnMv[3]
+u8 SnDir[3]
+u16 SnT[3]
+u8 SnAge[3]
+u8 SnRest[3]
+' 1 for an owl (fast, still until it hears something)
+u8 SnOwl[3]
+' drips: count, cell, frames to the next drop
+u8 DrN = 0
+u16 DrC[3]
+u8 DrT[3]
+u8 SlT = 0
+' for the test bot: 1 playing, 2 a cave card, 3 the end, 8 the title
+u8 Ph = 0
+u8 Done = 0
+' 1 while the bat flies itself (the title)
+u8 Auto = 0
+' the way out's breath: frames to the next
+u8 ExT = 0
+
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 Cell = 0
+u16 Nb = 0
+u16 W16 = 0
+u16 Addr = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 D1 = 0
+u8 D2 = 0
+u8 D3 = 0
+u8 Best = 0
+u8 Bd = 0
+u8 Mk = 0
+u8 C = 0
+u8 G = 0
+u8 I = 0
+u8 K = 0
+u8 N = 0
+u8 J = 0
+u8 V = 0
+u8 V2 = 0
+u8 X = 0
+u8 Y = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+
+  tile screen
+  set sound table SgSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  ' the title: the name over a cave the bat flies by itself, clicking
+  Ph = 8
+  CaveN = NCaves
+  LoadCave
+  DrawCave
+  print at 2,1, "                            "
+  print at 8,2, "S O U N D I N G"
+  print at 7,4, "YOUNG BAT IN THE DARK"
+  print at 8,22, "PRESS THE BUTTON"
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song SgSong once
+  Auto = 1
+  WasBtn = 1
+attract:
+  Frame1
+  ReadPad
+  Ages
+  if WOn = 1 then WaveStep
+  AutoFly
+  Drips
+  Objects
+  ShowSprites
+  if Press = 0 then goto attract
+  Auto = 0
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  play sound SndTick
+  ' the story
+  NewScreen
+  print at 10,3, "S O U N D I N G"
+  print at 4,6, "A YOUNG BAT IS LOST DEEP"
+  print at 4,7, "UNDER THE HILLS. IN THE"
+  print at 4,8, "DARK IT CANNOT SEE."
+  print at 4,9, "IT CAN LISTEN."
+  print at 4,12, "BUTTON: CLICK, AND SEE"
+  print at 4,13, "   WHAT THE SOUND TOUCHES"
+  print at 4,14, "STICK:  FLY"
+  print at 4,16, "MOTHS GLOW. SNAKES HEAR"
+  print at 4,17, "YOU, AND COME TO LOOK."
+  print at 4,18, "THE WAY OUT BREATHES."
+  print at 4,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  play sound SndTick
+  ' the credits page
+  NewScreen
+  print at 10,3, "S O U N D I N G"
+  print at 2,7, "A GAME BY CLAUDE (AN AI MADE"
+  print at 2,8, "BY ANTHROPIC) FOR AMY STUDIO"
+  print at 2,10, "THE IDEA OF A DARK SCREEN"
+  print at 2,11, "LIT ONLY WHERE A SOUND"
+  print at 2,12, "TOUCHES: AMY BIENVENU"
+  print at 2,15, "MUSIC: UNDER THE HILLS"
+  print at 2,18, "COLECOVISION, AMY, 2026"
+  print at 4,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  play sound SndTick
+  stop sound SndTuneA
+  stop sound SndTuneB
+
+  Feathers = 3
+  Moths = 0
+  CaveN = 0
+
+cave_start:
+  CaveCard
+  LoadCave
+  DrawCave
+  Ph = 1
+
+play_loop:
+  Frame1
+  ReadPad
+  Ages
+  if WOn = 1 then WaveStep
+  MoveBat
+  Snakes
+  Stals
+  River
+  Drips
+  Objects
+  ShowSprites
+  if HurtT > 0 then
+    dec HurtT
+    if HurtT = 0 then
+      if Feathers = 0 then goto game_over
+      Respawn
+    end if
+  end if
+  if Done = 1 then goto cave_out
+  goto play_loop
+
+cave_out:
+  ' the way out: on to the next cave
+  play sound SndOut
+  Moths = Moths + CaveMoths
+  Hold(60)
+  inc CaveN
+  if CaveN < NCaves then goto cave_start
+  ' the end: out under the sky
+  Ph = 3
+  NewScreen
+  print at 4,5, "THE AIR MOVES. IT IS"
+  print at 4,6, "COOL, AND SMELLS OF RAIN."
+  print at 4,9, "ABOVE: THE EVENING SKY,"
+  print at 4,10, "AND A THOUSAND BATS OF"
+  print at 4,11, "ITS COLONY, OUT TO HUNT."
+  print at 4,15, "MOTHS CAUGHT:"
+  print at 18,15, digits$(Moths, 2)
+  print at 4,21, "PRESS THE BUTTON"
+  ShowScreen
+  play song SgSong once
+  WaitPress
+  stop sound SndTuneA
+  stop sound SndTuneB
+  goto title
+
+game_over:
+  HideSprites
+  print at 8,12, "THE DARK KEEPS"
+  print at 8,13, "THE LITTLE BAT..."
+  Hold(150)
+  goto title
+
+' ---------------------------------------------------------------------------
+
+' CaveCard: the cave's number and name
+sub CaveCard:
+  Ph = 2
+  NewScreen
+  V = CaveN + 1
+  print at 11,8, "CAVE"
+  print at 16,8, digits$(V, 2)
+  W16 = CaveN * 20
+  for I = 0 to 19
+    V = CvNames[W16]
+    X = I + 6
+    put char V at X,11
+    inc W16
+  next
+  print at 6,15, "LIVES"
+  print at 15,15, digits$(Feathers, 1)
+  print at 6,16, "MOTHS"
+  print at 15,16, digits$(Moths, 2)
+  ShowScreen
+  Hold(120)
+  return
+end sub
+
+' InfoW: word K of the cave's info into W16 (0 start, 1-3 moths, 4 the
+' snakes, 5-7 their cells, 8 the drips, 9-11 their cells)
+sub InfoW:
+  Addr = K * 2
+  Addr = Addr + Info
+  W16 = peek(Addr)
+  inc Addr
+  V = peek(Addr)
+  Rt = V * 256
+  W16 = W16 + Rt
+  return
+end sub
+
+sub LoadCave:
+  SgMask = CvMaskTab[CaveN]
+  Info = CvInfoTab[CaveN]
+  K = 0
+  InfoW
+  Start = W16
+  for I = 0 to 2
+    K = I + 1
+    InfoW
+    MoC[I] = W16
+    MoOn[I] = 1
+    MoAge[I] = 0
+  next
+  K = 4
+  InfoW
+  SnN = lowbyte W16
+  for I = 0 to 2
+    K = I + 5
+    InfoW
+    SnHome[I] = W16
+  next
+  K = 16
+  InfoW
+  V = lowbyte W16
+  for I = 0 to 2
+    V2 = V & 1
+    SnOwl[I] = V2
+    V = V >> 1
+  next
+  K = 12
+  InfoW
+  StN = lowbyte W16
+  for I = 0 to 2
+    K = I + 13
+    InfoW
+    StC[I] = W16
+    StS[I] = 0
+    StAge[I] = 0
+  next
+  K = 8
+  InfoW
+  DrN = lowbyte W16
+  for I = 0 to 2
+    K = I + 9
+    InfoW
+    DrC[I] = W16
+    V = I * 70
+    DrT[I] = V + 90
+  next
+  ' the way out
+  ExitC = 0
+  for Cell = 64 to 735
+    Addr = SgMask + Cell
+    V = peek(Addr)
+    if V = 254 then ExitC = Cell
+  next
+  ExT = 200
+  CaveMoths = 0
+  Done = 0
+  Respawn
+  return
+end sub
+
+' Respawn: the bat at the start, the snakes at home
+sub Respawn:
+  PC = Start
+  Cell = Start
+  CellXY
+  Px = Cx * 8
+  Py = Cy * 8
+  PMv = 0
+  Cool = 0
+  Stuck = 0
+  ' a shaking stalactite settles again; fallen ones stay gone
+  for I = 0 to 2
+    if StS[I] < 3 then StS[I] = 0
+    Cell = StC[I]
+    CellXY
+    StY[I] = Cy * 8
+  next
+  for I = 0 to 2
+    Cell = SnHome[I]
+    SnC[I] = Cell
+    CellXY
+    SnX[I] = Cx * 8
+    SnY[I] = Cy * 8
+    SnMv[I] = 0
+    SnT[I] = 0
+    SnAge[I] = 0
+    SnRest[I] = 20
+    SnDir[I] = 0
+  next
+  return
+end sub
+
+' CellXY: Cell's column and row into Cx, Cy
+sub CellXY:
+  V = lowbyte Cell
+  Cx = V & 31
+  W16 = Cell >> 5
+  Cy = lowbyte W16
+  return
+end sub
+
+' DrawCave: all dark, the four tile sets loaded, black
+sub DrawCave:
+  NewScreen
+  copy SgPat count 1024 to vram.pattern + 1024
+  copy SgPat count 1024 to vram.pattern + 3072
+  copy SgPat count 1024 to vram.pattern + 5120
+  fill $11 count 1024 to vram.color + 1024
+  fill $11 count 1024 to vram.color + 3072
+  fill $11 count 1024 to vram.color + 5120
+  for G = 0 to 3
+    GAge[G] = 0
+  next
+  WOn = 0
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "CAVE"
+  V = CaveN + 1
+  print at 7,1, digits$(V, 2)
+  print at 10,1, "MOTHS"
+  V = Moths + CaveMoths
+  print at 16,1, digits$(V, 2)
+  print at 23,1, "LIVES"
+  print at 29,1, digits$(Feathers, 1)
+  return
+end sub
+
+' Ping: a wave from Cell, made by WKind, WMax layers; needs a dark set
+sub Ping:
+  G = NextGen
+  ' the set must be dark and swept
+  if GAge[G] > 0 then return
+  if WOn = 1 then
+    ' the bat's click goes first: the wave still spreading stops
+    if WKind = 0 then
+      if CallK <> 0 then return
+    end if
+    if CallK = 1 then return
+    WOn = 0
+  end if
+  V = G * 32
+  SgBase = V + 128
+  GAge[G] = 1
+  GFast[G] = 0
+  SetFade
+  NextGen = G + 1
+  NextGen = NextGen & 3
+  WOn = 1
+  WKind = CallK
+  WMax = 22
+  if CallK = 1 then WMax = 5
+  if CallK = 2 then WMax = 1
+  WGen = G
+  WLay = 0
+  WOrig = Cell
+  SgCur[0] = Cell
+  SgCurN = 1
+  Addr = SgMask + Cell
+  V = peek(Addr)
+  V2 = SgBase + 16
+  if V = 254 then V2 = SgBase
+  if V = 253 then V2 = SgBase + 17
+  if V = 252 then V2 = SgBase + 18
+  Addr = Cell
+  vpoke vram.name + Addr, V2
+  return
+end sub
+
+sub SweepSet:
+  asm {
+    call SgSweep
+  }
+  return
+end sub
+
+' WaveStep: one layer, its echo, and who heard it
+sub WaveStep:
+  V = WGen * 32
+  SgBase = V + 128
+  asm {
+    call SgLayer
+  }
+  inc WLay
+  if SgLit > 0 then
+    if WKind = 0 then
+      V = WLay & 3
+      if V = 1 then
+        if WLay < 5 then
+          play sound SndEcho0
+        else
+          if WLay < 9 then
+            play sound SndEcho1
+          else
+            if WLay < 14 then
+              play sound SndEcho2
+            else
+              play sound SndEcho3
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  ' moths and snakes the wave reached glow; snakes hear the bat
+  V2 = SgBase + 16
+  for I = 0 to 2
+    if MoOn[I] = 1 then
+      Addr = MoC[I]
+      vpeek vram.name + Addr into V
+      if V = V2 then MoAge[I] = 1
+    end if
+  next
+  if SnN > 0 then
+    for I = 1 to SnN
+      K = I - 1
+      Addr = SnC[K]
+      vpeek vram.name + Addr into V
+      if V = V2 then
+        SnAge[K] = 1
+        ' hunters hear the bat (not by the river); owls hear drips too
+        V = 0
+        if WKind = 0 then
+          if GFast[WGen] = 0 then V = 1
+        end if
+        if WKind = 1 then V = SnOwl[K]
+        if V = 1 then
+          if SnOwl[K] = 1 then
+            if SnT[K] = 0 then play sound SndHoot
+          end if
+          SnT[K] = WOrig
+        end if
+      end if
+    next
+  end if
+  ' stalactites glow when found; a click close under one shakes it loose
+  if StN > 0 then
+    for I = 1 to StN
+      K = I - 1
+      if StS[K] < 2 then
+        Addr = StC[K]
+        vpeek vram.name + Addr into V
+        if V = V2 then
+          StAge[K] = 1
+          if WKind = 0 then
+            if WLay <= 4 then
+              if StS[K] = 0 then
+                StS[K] = 1
+                StT[K] = 36
+                play sound SndCrack
+              end if
+            end if
+          end if
+        end if
+      end if
+    next
+  end if
+  if WLay >= WMax then WOn = 0
+  if SgCurN = 0 then WOn = 0
+  return
+end sub
+
+' Ages: the tile sets fade as they age; glows on moths and snakes too
+sub Ages:
+  for G = 0 to 3
+    if GAge[G] > 0 then
+      inc GAge[G]
+      if GFast[G] = 1 then
+        V = GAge[G]
+        if V < 87 then inc GAge[G]
+      end if
+      V = GAge[G]
+      if V = 18 then SetFade
+      if V = 19 then SetFade
+      if V = 36 then SetFade
+      if V = 37 then SetFade
+      if V = 60 then SetFade
+      if V = 61 then SetFade
+      if V = 88 then SetFade
+      if V > 88 then
+        ' dark now: swept, three rows a frame, then free
+        V2 = V - 89
+        SgRow0 = V2 * 3
+        SgRows = 3
+        V2 = G * 32
+        SgBase = V2 + 128
+        SweepSet
+        if V = 96 then GAge[G] = 0
+      end if
+    end if
+  next
+  for I = 0 to 2
+    if MoAge[I] > 0 then
+      inc MoAge[I]
+      if MoAge[I] > 100 then MoAge[I] = 0
+    end if
+    if SnAge[I] > 0 then
+      inc SnAge[I]
+      if SnAge[I] > 70 then SnAge[I] = 0
+    end if
+  next
+  if Cool > 0 then dec Cool
+  return
+end sub
+
+' SetFade: set G's colours for its age: white, grey, blue, dark blue,
+' black (the way out: white, cyan, cyan, light blue, black)
+sub SetFade:
+  V = GAge[G]
+  Mk = $F1
+  V2 = $F1
+  if V >= 18 then
+    Mk = $E1
+    V2 = $71
+  end if
+  if V >= 36 then
+    Mk = $51
+    V2 = $71
+  end if
+  if V >= 60 then
+    Mk = $41
+    V2 = $51
+  end if
+  if V >= 88 then
+    Mk = $11
+    V2 = $11
+  end if
+  Addr = G * 256
+  Addr = Addr + 1024
+  fill Mk count 256 to vram.color + Addr
+  fill V2 count 8 to vram.color + Addr
+  Addr = Addr + 2048
+  fill Mk count 256 to vram.color + Addr
+  fill V2 count 8 to vram.color + Addr
+  Addr = Addr + 2048
+  fill Mk count 256 to vram.color + Addr
+  fill V2 count 8 to vram.color + Addr
+  return
+end sub
+
+' Open: is Nb air (or the way out)? Mk 1 if so
+sub IsOpen:
+  Addr = SgMask + Nb
+  V = peek(Addr)
+  Mk = 0
+  if V >= 252 then Mk = 1
+  return
+end sub
+
+' NbOf: the cell beside Cell in direction D1 (0 up, 1 right, 2 down,
+' 3 left) into Nb
+sub NbOf:
+  Nb = Cell
+  if D1 = 0 then Nb = Nb - 32
+  if D1 = 1 then inc Nb
+  if D1 = 2 then Nb = Nb + 32
+  if D1 = 3 then dec Nb
+  return
+end sub
+
+' MoveBat: the stick flies the bat a cell at a time; into rock is
+' a bump (a small sound that shows the rock there)
+sub MoveBat:
+  if HurtT > 0 then return
+  if Stuck > 0 then dec Stuck
+  if PMv > 0 then
+    dec PMv
+    if PDir = 0 then Py = Py - 2
+    if PDir = 1 then Px = Px + 2
+    if PDir = 2 then Py = Py + 2
+    if PDir = 3 then Px = Px - 2
+    if PMv = 0 then Arrived
+    return
+  end if
+  if Press = 1 then
+    if Cool = 0 then
+      Cell = PC
+      CallK = 0
+      Ping
+      if WOn = 1 then
+        play sound SndClick
+        Cool = 24
+        ' by the river: the water's noise hides the click and blurs it
+        NearWater
+        GFast[WGen] = Wet
+      end if
+    end if
+  end if
+  if Stuck > 0 then return
+  D1 = 255
+  if Up1 = 1 then D1 = 0
+  if Dn1 = 1 then D1 = 2
+  if Lf1 = 1 then D1 = 3
+  if Rt1 = 1 then D1 = 1
+  if D1 = 255 then return
+  Cell = PC
+  NbOf
+  IsOpen
+  if Mk = 0 then
+    if Cool = 0 then
+      play sound SndThud
+      CallK = 2
+      Ping
+      Cool = 16
+    end if
+    return
+  end if
+  PDir = D1
+  PC = Nb
+  PMv = 4
+  return
+end sub
+
+sub Arrived:
+  if Auto = 1 then return
+  ' a moth caught, the way out found
+  for I = 0 to 2
+    if MoOn[I] = 1 then
+      if MoC[I] = PC then
+        MoOn[I] = 0
+        inc CaveMoths
+        play sound SndMoth
+        if CaveMoths = 3 then
+          if Feathers < 5 then inc Feathers
+        end if
+        ShowHud
+      end if
+    end if
+  next
+  Addr = SgMask + PC
+  V = peek(Addr)
+  if V = 254 then Done = 1
+  if V = 253 then
+    ' a web: held a while
+    Stuck = 75
+    play sound SndWeb
+  end if
+  return
+end sub
+
+' Snakes: they go to the last click they heard, a cell at a time, then
+' wander; a snake on the bat takes a feather
+sub Snakes:
+  if SnN = 0 then return
+  for I = 1 to SnN
+    K = I - 1
+    if SnMv[K] > 0 then
+      dec SnMv[K]
+      V = SnDir[K]
+      V2 = SnOwl[K] + 1
+      if V = 0 then SnY[K] = SnY[K] - V2
+      if V = 1 then SnX[K] = SnX[K] + V2
+      if V = 2 then SnY[K] = SnY[K] + V2
+      if V = 3 then SnX[K] = SnX[K] - V2
+    else
+      if SnRest[K] > 0 then
+        dec SnRest[K]
+      else
+        SnakeTurn
+      end if
+    end if
+    ' caught?
+    if HurtT = 0 then
+      V = SnX[K] - Px
+      if SnX[K] < Px then V = Px - SnX[K]
+      if V < 6 then
+        V = SnY[K] - Py
+        if SnY[K] < Py then V = Py - SnY[K]
+        if V < 6 then
+          dec Feathers
+          HurtT = 60
+          play sound SndHurt
+          ShowHud
+          SnAge[K] = 1
+        end if
+      end if
+    end if
+  next
+  ' the nearest snake's slither, louder when near
+  inc SlT
+  if SlT >= 24 then
+    SlT = 0
+    Best = 99
+    Cell = PC
+    CellXY
+    Tx = Cx
+    Ty = Cy
+    for I = 1 to SnN
+      K = I - 1
+      Cell = SnC[K]
+      CellXY
+      D1 = Cx - Tx
+      if Cx < Tx then D1 = Tx - Cx
+      D2 = Cy - Ty
+      if Cy < Ty then D2 = Ty - Cy
+      D1 = D1 + D2
+      if D1 < Best then Best = D1
+    next
+    if Best <= 2 then
+      play sound SndSlither0
+    else
+      if Best <= 4 then
+        play sound SndSlither1
+      else
+        if Best <= 7 then play sound SndSlither2
+      end if
+    end if
+  end if
+  return
+end sub
+
+' SnakeTurn: snake K chooses its next cell: toward what it heard, else
+' anywhere but back
+sub SnakeTurn:
+  Cell = SnC[K]
+  CellXY
+  SnRest[K] = 5
+  Bd = 255
+  if SnT[K] <> 0 then
+    if SnT[K] = Cell then
+      SnT[K] = 0
+    else
+      Tx = Cx
+      Ty = Cy
+      Cell = SnT[K]
+      CellXY
+      ' the best open direction toward it
+      Best = 255
+      for D1 = 0 to 3
+        Cell = SnC[K]
+        NbOf
+        IsOpen
+        if Mk = 1 then
+          Cell = Nb
+          V2 = Cx
+          V = Cy
+          Cell = SnT[K]
+          CellXY
+          Cell = Nb
+          SnDist
+          if D2 < Best then
+            Best = D2
+            Bd = D1
+          end if
+        end if
+      next
+    end if
+  end if
+  if Bd = 255 then
+    if SnOwl[K] = 1 then
+      ' an owl waits, still, for the next sound
+      SnRest[K] = 20
+      return
+    end if
+  end if
+  if Bd = 255 then
+    ' wander: a random open way, not straight back if there is another
+    Rnd16
+    V = lowbyte Rw
+    D1 = V & 3
+    for J = 0 to 3
+      Cell = SnC[K]
+      NbOf
+      IsOpen
+      if Mk = 1 then
+        V = SnDir[K] + 2
+        V = V & 3
+        if D1 <> V then
+          Bd = D1
+          J = 3
+        end if
+      end if
+      inc D1
+      D1 = D1 & 3
+    next
+    if Bd = 255 then
+      V = SnDir[K] + 2
+      Bd = V & 3
+    end if
+    SnRest[K] = 12
+  end if
+  D1 = Bd
+  Cell = SnC[K]
+  NbOf
+  IsOpen
+  if Mk = 0 then return
+  SnDir[K] = Bd
+  SnC[K] = Nb
+  SnMv[K] = 8
+  if SnOwl[K] = 1 then
+    SnMv[K] = 4
+    SnRest[K] = 0
+  end if
+  return
+end sub
+
+' SnDist: D2 = steps from cell Nb to (Cx, Cy) (the target), across
+sub SnDist:
+  Tx = Cx
+  Ty = Cy
+  Cell = Nb
+  CellXY
+  D3 = Cx - Tx
+  if Cx < Tx then D3 = Tx - Cx
+  D2 = Cy - Ty
+  if Cy < Ty then D2 = Ty - Cy
+  D2 = D2 + D3
+  Cx = Tx
+  Cy = Ty
+  return
+end sub
+
+' River: the water's rushing, heard by the river
+sub River:
+  inc RvT
+  if RvT < 40 then return
+  RvT = 0
+  NearWater
+  if Wet = 1 then play sound SndRiver
+  return
+end sub
+
+' NearWater: Wet 1 if water is within two cells of the bat
+sub NearWater:
+  Wet = 0
+  W16 = PC - 66
+  for Y = 0 to 4
+    for X = 0 to 4
+      Addr = SgMask + W16
+      V = peek(Addr)
+      if V = 252 then Wet = 1
+      inc W16
+    next
+    W16 = W16 + 27
+  next
+  return
+end sub
+
+' Stals: a shaken stalactite trembles, then falls until it meets rock,
+' where it shatters with a crash (a sound of its own)
+sub Stals:
+  if StN = 0 then return
+  for I = 1 to StN
+    K = I - 1
+    if StAge[K] > 0 then
+      inc StAge[K]
+      if StAge[K] > 90 then StAge[K] = 0
+    end if
+    if StS[K] = 1 then
+      dec StT[K]
+      if StT[K] = 0 then StS[K] = 2
+    end if
+    if StS[K] = 2 then
+      StAge[K] = 1
+      StY[K] = StY[K] + 3
+      ' the cell under its point
+      Cell = StC[K]
+      CellXY
+      V = StY[K] + 8
+      V = V >> 3
+      W16 = V * 32
+      Cell = W16 + Cx
+      Addr = SgMask + Cell
+      V = peek(Addr)
+      if V < 253 then
+        StS[K] = 3
+        play sound SndCrash
+        ' the crash is a sound too
+        Cell = Cell - 32
+        CallK = 2
+        Ping
+      end if
+      ' on the bat?
+      if HurtT = 0 then
+        X = Cx * 8
+        V = X - Px
+        if X < Px then V = Px - X
+        if V < 6 then
+          V = StY[K] - Py
+          if StY[K] < Py then V = Py - StY[K]
+          if V < 7 then
+            dec Feathers
+            HurtT = 60
+            play sound SndHurt
+            ShowHud
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Drips: every few seconds a drop falls and makes a small sound
+sub Drips:
+  ' the way out breathes now and then (a soft draught of air)
+  if ExT > 0 then
+    dec ExT
+  else
+    if WOn = 0 then
+      Cell = ExitC
+      CallK = 1
+      Ping
+      if WOn = 1 then
+        WMax = 4
+        play sound SndBreeze
+        ExT = 240
+      end if
+    end if
+  end if
+  if DrN = 0 then return
+  for I = 1 to DrN
+    K = I - 1
+    if DrT[K] > 0 then
+      dec DrT[K]
+    else
+      if WOn = 0 then
+        Cell = DrC[K]
+        CallK = 1
+        Ping
+        if WOn = 1 then
+          play sound SndDrip
+          Rnd16
+          V = lowbyte Rw
+          V = V & 127
+          DrT[K] = V + 150
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub Objects:
+  inc Wing
+  return
+end sub
+
+' AutoFly: the title's bat flies on, turning at random, and clicks
+sub AutoFly:
+  if PMv > 0 then
+    MoveBat
+    return
+  end if
+  if Cool = 0 then
+    Rnd16
+    V = lowbyte Rw
+    if V < 40 then
+      Cell = PC
+      CallK = 0
+      Ping
+      if WOn = 1 then Cool = 50
+    end if
+  end if
+  ' straight on if it can, else a random open way
+  Rnd16
+  V = lowbyte Rw
+  D1 = PDir
+  if V < 50 then
+    V = V & 3
+    D1 = V
+  end if
+  for J = 0 to 3
+    Cell = PC
+    NbOf
+    IsOpen
+    if Mk = 1 then
+      PDir = D1
+      PC = Nb
+      PMv = 4
+      J = 3
+    else
+      inc D1
+      D1 = D1 & 3
+    end if
+  next
+  return
+end sub
+
+' ShowSprites: the bat (always, dim; blinking while hurt), the
+' moths, snakes, owls and stalactites while a sound shows them
+sub ShowSprites:
+  V = Wing >> 3
+  V = V & 1
+  N = SBat1
+  if V = 1 then N = SBat2
+  C = 14
+  if HurtT > 0 then
+    V = HurtT & 4
+    if V > 0 then C = 0
+  end if
+  Y = Py - 5
+  X = Px - 4
+  set sprite 0 to Y,X,N,C
+  for I = 0 to 2
+    K = I + 1
+    C = 0
+    if SnAge[I] > 0 then
+      C = 2
+      if SnAge[I] > 25 then C = 12
+      if SnAge[I] > 50 then C = 1
+    end if
+    if I >= SnN then C = 0
+    Y = SnY[I] - 5
+    X = SnX[I] - 4
+    V = Wing >> 4
+    V = V & 1
+    N = SSnake1
+    if V = 1 then N = SSnake2
+    if SnOwl[I] = 1 then
+      ' an owl: grey-brown when seen; wings open when it flies
+      if C = 2 then C = 15
+      if C = 12 then C = 14
+      N = SOwl1
+      if SnMv[I] = 0 then N = SOwl2
+    end if
+    set sprite K to Y,X,N,C
+    K = I + 4
+    C = 0
+    if MoOn[I] = 1 then
+      if MoAge[I] > 0 then
+        C = 11
+        if MoAge[I] > 40 then C = 10
+        if MoAge[I] > 75 then C = 1
+      end if
+    end if
+    Cell = MoC[I]
+    CellXY
+    Y = Cy * 8
+    Y = Y - 5
+    X = Cx * 8
+    X = X - 4
+    V = Wing >> 2
+    V = V & 1
+    N = SMoth1
+    if V = 1 then N = SMoth2
+    set sprite K to Y,X,N,C
+    ' the stalactites
+    K = I + 7
+    C = 0
+    if StS[I] < 3 then
+      if StAge[I] > 0 then
+        C = 14
+        if StAge[I] > 40 then C = 4
+      end if
+    end if
+    if I >= StN then C = 0
+    Cell = StC[I]
+    CellXY
+    X = Cx * 8
+    X = X - 4
+    if StS[I] = 1 then
+      V = Tick & 2
+      if V > 0 then inc X
+    end if
+    Y = StY[I] - 5
+    set sprite K to Y,X,SStal,C
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 10
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 9
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' Rnd16: a 16-bit xorshift (7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+data SpritePat bytes
+  $00,$00,$00,$00,$07,$07,$03,$03,$03,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$E0,$E0,$C0,$C0,$C0,$80,$80,$80,$00,$00,$00,$00
+  $00,$00,$08,$0C,$0F,$19,$16,$19,$0E,$1D,$3C,$7C,$B8,$00,$00,$00
+  $00,$00,$10,$30,$F0,$98,$68,$98,$70,$B8,$3C,$3E,$1D,$00,$00,$00
+  $00,$00,$08,$0C,$0F,$19,$16,$19,$0E,$07,$07,$03,$02,$00,$00,$00
+  $00,$00,$10,$30,$F0,$98,$68,$98,$70,$E0,$E0,$C0,$40,$00,$00,$00
+  $00,$00,$00,$00,$02,$03,$82,$C7,$EF,$FF,$FB,$D3,$81,$00,$00,$00
+  $00,$00,$00,$00,$40,$C0,$41,$E3,$F7,$FF,$DF,$CB,$81,$00,$00,$00
+  $00,$00,$00,$00,$02,$03,$02,$0F,$3F,$6F,$C7,$83,$01,$00,$00,$00
+  $00,$00,$00,$00,$40,$C0,$40,$F0,$FC,$F6,$E3,$C1,$80,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$1E,$3F,$73,$61,$60,$30,$00,$00,$00
+  $00,$00,$00,$00,$1C,$3E,$37,$3C,$38,$B8,$F8,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$0F,$1F,$39,$70,$60,$00,$00,$00
+  $00,$00,$00,$00,$1C,$3E,$37,$3C,$38,$B8,$F8,$F0,$00,$00,$00,$00
+  $00,$00,$00,$00,$0C,$1E,$1E,$0E,$03,$0E,$0C,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$30,$78,$78,$70,$C0,$70,$30,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$06,$03,$06,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$60,$C0,$60,$00,$00,$00,$00,$00,$00
+end data
+data SgPat bytes 60, 66, 153, 165, 165, 153, 66, 60, 255, 57, 0, 0, 0, 0, 0, 0, 3, 3, 3, 1, 1, 3, 3, 3, 255, 59, 3, 1, 1, 3, 3, 3, 0, 0, 0, 0, 0, 0, 115, 255, 255, 57, 0, 0, 0, 0, 115, 255, 3, 3, 3, 1, 1, 3, 115, 255, 255, 59, 3, 1, 1, 3, 115, 255, 192, 128, 128, 192, 192, 192, 128, 128, 255, 185, 128, 192, 192, 192, 128, 128, 195, 131, 131, 193, 193, 195, 131, 131, 255, 187, 131, 193, 193, 195, 131, 131, 192, 128, 128, 192, 192, 192, 243, 255, 255, 185, 128, 192, 192, 192, 243, 255, 195, 131, 131, 193, 193, 195, 243, 255, 255, 187, 131, 193, 193, 195, 243, 255, 0, 0, 0, 0, 0, 0, 0, 0, 146, 84, 56, 238, 56, 84, 146, 0, 0, 96, 153, 12, 0, 48, 205, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 66, 153, 165, 165, 153, 66, 60, 255, 57, 0, 0, 0, 0, 0, 0, 3, 3, 3, 1, 1, 3, 3, 3, 255, 59, 3, 1, 1, 3, 3, 3, 0, 0, 0, 0, 0, 0, 115, 255, 255, 57, 0, 0, 0, 0, 115, 255, 3, 3, 3, 1, 1, 3, 115, 255, 255, 59, 3, 1, 1, 3, 115, 255, 192, 128, 128, 192, 192, 192, 128, 128, 255, 185, 128, 192, 192, 192, 128, 128, 195, 131, 131, 193, 193, 195, 131, 131, 255, 187, 131, 193, 193, 195, 131, 131, 192, 128, 128, 192, 192, 192, 243, 255, 255, 185, 128, 192, 192, 192, 243, 255, 195, 131, 131, 193, 193, 195, 243, 255, 255, 187, 131, 193, 193, 195, 243, 255, 0, 0, 0, 0, 0, 0, 0, 0, 146, 84, 56, 238, 56, 84, 146, 0, 0, 96, 153, 12, 0, 48, 205, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 66, 153, 165, 165, 153, 66, 60, 255, 57, 0, 0, 0, 0, 0, 0, 3, 3, 3, 1, 1, 3, 3, 3, 255, 59, 3, 1, 1, 3, 3, 3, 0, 0, 0, 0, 0, 0, 115, 255, 255, 57, 0, 0, 0, 0, 115, 255, 3, 3, 3, 1, 1, 3, 115, 255, 255, 59, 3, 1, 1, 3, 115, 255, 192, 128, 128, 192, 192, 192, 128, 128, 255, 185, 128, 192, 192, 192, 128, 128, 195, 131, 131, 193, 193, 195, 131, 131, 255, 187, 131, 193, 193, 195, 131, 131, 192, 128, 128, 192, 192, 192, 243, 255, 255, 185, 128, 192, 192, 192, 243, 255, 195, 131, 131, 193, 193, 195, 243, 255, 255, 187, 131, 193, 193, 195, 243, 255, 0, 0, 0, 0, 0, 0, 0, 0, 146, 84, 56, 238, 56, 84, 146, 0, 0, 96, 153, 12, 0, 48, 205, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 66, 153, 165, 165, 153, 66, 60, 255, 57, 0, 0, 0, 0, 0, 0, 3, 3, 3, 1, 1, 3, 3, 3, 255, 59, 3, 1, 1, 3, 3, 3, 0, 0, 0, 0, 0, 0, 115, 255, 255, 57, 0, 0, 0, 0, 115, 255, 3, 3, 3, 1, 1, 3, 115, 255, 255, 59, 3, 1, 1, 3, 115, 255, 192, 128, 128, 192, 192, 192, 128, 128, 255, 185, 128, 192, 192, 192, 128, 128, 195, 131, 131, 193, 193, 195, 131, 131, 255, 187, 131, 193, 193, 195, 131, 131, 192, 128, 128, 192, 192, 192, 243, 255, 255, 185, 128, 192, 192, 192, 243, 255, 195, 131, 131, 193, 193, 195, 243, 255, 255, 187, 131, 193, 193, 195, 243, 255, 0, 0, 0, 0, 0, 0, 0, 0, 146, 84, 56, 238, 56, 84, 146, 0, 0, 96, 153, 12, 0, 48, 205, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+asm {
+SgHush:
+    db $00,$00,$F4,$01,$10
+SgClick:
+    db $40,$2F,$10,$01,$40,$25,$20,$01,$40,$1F,$40,$01,$40,$FE,$F0,$01,$50
+SgEcho0:
+    db $40,$33,$30,$01,$40,$33,$60,$01,$40,$FE,$F0,$01,$50
+SgEcho1:
+    db $40,$3E,$50,$01,$40,$3E,$80,$01,$40,$FE,$F0,$01,$50
+SgEcho2:
+    db $40,$50,$70,$01,$40,$50,$A0,$01,$40,$FE,$F0,$01,$50
+SgEcho3:
+    db $40,$66,$90,$01,$40,$66,$C0,$01,$40,$FE,$F0,$01,$50
+SgDrip:
+    db $40,$23,$50,$01,$40,$2B,$60,$01,$40,$35,$80,$01,$40,$42,$B0,$02,$40,$FE,$F0,$01,$50
+SgThud:
+    db $00,$00,$36,$02,$00,$00,$76,$02,$00,$00,$F6,$01,$10
+SgMoth:
+    db $40,$47,$20,$03,$40,$35,$20,$03,$40,$2A,$20,$03,$40,$24,$40,$04,$40,$FE,$F0,$01,$50
+SgSlither0:
+    db $00,$00,$51,$02,$00,$00,$81,$02,$00,$00,$F1,$01,$10
+SgSlither1:
+    db $00,$00,$81,$02,$00,$00,$B1,$02,$00,$00,$F1,$01,$10
+SgSlither2:
+    db $00,$00,$B1,$02,$00,$00,$D1,$02,$00,$00,$F1,$01,$10
+SgBreeze:
+    db $00,$00,$B5,$03,$00,$00,$95,$04,$00,$00,$A5,$04,$00,$00,$C5,$04,$00,$00,$E5,$03,$00,$00,$F5,$01
+    db $10
+SgCrack:
+    db $00,$00,$45,$02,$00,$00,$F5,$03,$00,$00,$55,$02,$00,$00,$F5,$03,$00,$00,$65,$02,$00,$00,$F5,$01
+    db $10
+SgCrash:
+    db $00,$00,$06,$03,$00,$00,$26,$04,$00,$00,$56,$06,$00,$00,$96,$08,$00,$00,$F6,$01,$10
+SgWeb:
+    db $40,$53,$41,$03,$40,$68,$41,$03,$40,$53,$51,$03,$40,$68,$61,$03,$40,$7C,$81,$03,$40,$FE,$F0,$01
+    db $50
+SgHoot:
+    db $40,$1D,$31,$0A,$40,$1D,$F1,$04,$40,$41,$41,$10,$40,$FE,$F0,$01,$50
+SgRiver:
+    db $00,$00,$C7,$04,$00,$00,$B7,$04,$00,$00,$D7,$04,$00,$00,$C7,$04,$00,$00,$F7,$01,$10
+SgHurt:
+    db $40,$A0,$10,$04,$40,$D7,$20,$04,$40,$1F,$31,$06,$40,$82,$51,$08,$40,$FE,$F0,$01,$50
+SgOut:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$04,$40,$39,$30,$0A,$40,$FE,$F0,$01
+    db $50
+SgTick:
+    db $40,$40,$50,$01,$50
+
+SgSoundTable:
+    dw SgHush,$702B
+    dw SgClick,$7035
+    dw SgEcho0,$7035
+    dw SgEcho1,$7035
+    dw SgEcho2,$7035
+    dw SgEcho3,$7035
+    dw SgDrip,$7035
+    dw SgThud,$702B
+    dw SgMoth,$7035
+    dw SgSlither0,$702B
+    dw SgSlither1,$702B
+    dw SgSlither2,$702B
+    dw SgBreeze,$702B
+    dw SgCrack,$702B
+    dw SgCrash,$702B
+    dw SgWeb,$7035
+    dw SgHoot,$7035
+    dw SgRiver,$702B
+    dw SgHurt,$7035
+    dw SgOut,$7035
+    dw SgTick,$7035
+    dw SgTuneMel,$703F
+    dw SgTuneBass,$7049
+; Under the Hills, D dorian (original for this game)
+; Tiny Sound, 9 frames per step
+SgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$30,$31,$88,$21,$00,$24,$00,$A8,$00,$00,$00,$26,$00,$24,$00
+    db $A3,$00,$00,$00,$21,$00,$1C,$00,$1F,$00,$A1,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$24,$00,$28,$00,$AB,$00,$00,$00,$2A,$00,$28,$00
+    db $A6,$00,$00,$00,$28,$00,$26,$00,$24,$00,$23,$00,$A1,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+SgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$70,$F1,$22,$09,$00,$00,$00,$10,$00,$00,$00,$09,$00,$00,$00
+    db $10,$00,$00,$00,$07,$00,$00,$00,$0E,$00,$00,$00,$09,$00,$00,$00
+    db $10,$00,$00,$00,$0C,$00,$00,$00,$13,$00,$00,$00,$0E,$00,$00,$00
+    db $15,$00,$00,$00,$10,$00,$00,$00,$0B,$00,$00,$00,$09,$00,$00,$00
+    db $09,$00,$00,$00
+    db $FF
+; the title song: both voices of Under the Hills
+SgSong:
+    dw $0001
+    db $40+22,23
+    dw $0000
+; SOUNDING's sound wave, one layer a frame. The wave is a flood through
+; open air: SgCur holds the cells it reached last frame; each of their
+; four neighbours is either rock (its edge is lit with this wave's tile
+; set: SgBase + its open-side bits) or air not yet reached by this wave
+; (marked with SgBase + 16, or SgBase + 0 for the way out, and kept for
+; the next layer in SgNxt). The screen's name table is the "reached"
+; record, so the wave needs no RAM map. Rock lit counts in SgLit.
+SgLayer:
+    xor a
+    ld (AMY_UVAR_SgNxtN),a
+    ld (AMY_UVAR_SgLit),a
+    ld a,(AMY_UVAR_SgCurN)
+    or a
+    jr z,SgLyCopy
+    ld hl,AMY_UVAR_SgCur
+    ld (AMY_UVAR_SgPtr),hl
+SgLy1:
+    push af
+    ld hl,(AMY_UVAR_SgPtr)
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld (AMY_UVAR_SgPtr),hl
+    ld (AMY_UVAR_SgTmp),de
+    ld de,-32
+    call SgNb
+    ld de,1
+    call SgNb
+    ld de,32
+    call SgNb
+    ld de,-1
+    call SgNb
+    pop af
+    dec a
+    jr nz,SgLy1
+SgLyCopy:
+    ; the next layer becomes the current one
+    ld a,(AMY_UVAR_SgNxtN)
+    ld (AMY_UVAR_SgCurN),a
+    or a
+    ret z
+    add a,a
+    ld c,a
+    ld b,0
+    ld hl,AMY_UVAR_SgNxt
+    ld de,AMY_UVAR_SgCur
+    ldir
+    ret
+
+; SgNb: the neighbour of SgTmp at offset DE
+SgNb:
+    ld hl,(AMY_UVAR_SgTmp)
+    add hl,de
+    ld (AMY_UVAR_SgN),hl
+    ex de,hl
+    ld hl,(AMY_UVAR_SgMask)
+    add hl,de
+    ld c,(hl)
+    ld hl,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld b,a
+    ld a,c
+    cp 252
+    jr nc,SgNbAir
+    ; rock: its edge in this wave's set
+    ld a,(AMY_UVAR_SgBase)
+    add a,c
+    cp b
+    ret z
+    ld c,a
+    call SgPut
+    ld hl,AMY_UVAR_SgLit
+    inc (hl)
+    ret
+SgNbAir:
+    ; 252 water (+18), 253 a web (+17), 254 the way out (+0), 255 air (+16)
+    ld a,(AMY_UVAR_SgBase)
+    bit 0,c
+    jr nz,SgNbOdd
+    bit 1,c
+    jr nz,SgNbOut
+    add a,18
+    jr SgNbOut
+SgNbOdd:
+    add a,16
+    bit 1,c
+    jr nz,SgNbOut
+    inc a
+SgNbOut:
+    cp b
+    ret z
+    ld c,a
+    call SgPut
+    ld a,(AMY_UVAR_SgNxtN)
+    cp 64
+    ret nc
+    inc a
+    ld (AMY_UVAR_SgNxtN),a
+    dec a
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_SgNxt
+    add hl,de
+    ld de,(AMY_UVAR_SgN)
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    ret
+
+; SgPut: the tile C at VRAM address HL
+SgPut:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,c
+    out ($BE),a
+    ret
+
+; SgSweep: the cells of tile set SgBase back to darkness (32), 32 cells
+; at a time through SgBuf: SgRows rows from row SgRow0 (a set is swept a
+; little each frame once it has faded, so a new wave finds it clean)
+SgSweep:
+    ld a,(AMY_UVAR_SgRow0)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld (AMY_UVAR_SgTmp),hl
+    ld a,(AMY_UVAR_SgRows)
+SgSw1:
+    push af
+    ld hl,(AMY_UVAR_SgTmp)
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld hl,AMY_UVAR_SgBuf
+    ld b,32
+SgSw2:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz SgSw2
+    ld hl,AMY_UVAR_SgBuf
+    ld b,32
+    ld a,(AMY_UVAR_SgBase)
+    ld c,a
+SgSw3:
+    ld a,(hl)
+    and $E0
+    cp c
+    jr nz,SgSw4
+    ld (hl),32
+SgSw4:
+    inc hl
+    djnz SgSw3
+    ld hl,(AMY_UVAR_SgTmp)
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_SgBuf
+    ld b,32
+SgSw5:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz SgSw5
+    ld hl,(AMY_UVAR_SgTmp)
+    ld de,32
+    add hl,de
+    ld (AMY_UVAR_SgTmp),hl
+    pop af
+    dec a
+    jr nz,SgSw1
+    ret
+}

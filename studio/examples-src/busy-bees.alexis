@@ -1,0 +1,1206 @@
+cartridge "BUSY BEES/AMY BIENVENU/2026"
+
+' BUSY BEES - an original beekeeping game for the ColecoVision.
+'
+' The bees fly by themselves from the hive to the flowers in bloom and
+' back with nectar: each trip is a drop of honey. You are the keeper:
+' walk about, plant flowers on bare beds (3 drops from the honey pot),
+' and puff smoke to drive the wasps away before they catch your bees.
+' Every ten drops a season brings a new bee. Each season (spring, summer,
+' autumn) wants its honey before it ends.
+'
+' House rules: joystick and button only; text in columns 2-29, rows 1-22;
+' tiles from code 128 (art.py); an original tune played once (tune.py);
+' the frame loop keeps the NMI off outside the wait (Frame1).
+'
+' Screen: row 1 the counters, rows 2-21 the garden, row 22 news. Sprites
+' are 8 x 8: 0-1 the keeper, 2 the smoke, 3-13 the bees and wasps.
+
+const TGrass0 = 128
+const TGrass1 = 129
+const TSoil = 130
+const TSprout = 131
+const TBud = 132
+const TBloom = 133
+const THive00 = 134
+const THive01 = 135
+const THive10 = 136
+const THive11 = 137
+const TTree = 138
+const TComb = 139
+const SBee1 = 0
+const SBee2 = 4
+const SWasp1 = 8
+const SWasp2 = 12
+const SKeeperT = 16
+const SKeeperB = 20
+const SSmoke1 = 24
+const SSmoke2 = 28
+const SPuff = 32
+const NTiles8 = 96
+const SprBytes = 288
+const SndHush = 1
+const SndTick = 2
+const SndPuff = 3
+const SndPlant = 4
+const SndNo = 5
+const SndHoney = 6
+const SndNewBee = 7
+const SndZap = 8
+const SndWasp = 9
+const SndWin = 10
+const SndLose = 11
+const SndTuneA = 12
+const SndTuneB = 13
+data TitleXY bytes
+  8,2,9,2,8,3,10,3,8,4,9,4,8,5,10,5,8,6,9,6,12,2,14,2,12,3,14,3,12,4,14,4,12,5,14,5,12,6,13,6,14,6,16,2,17,2,18,2,16,3,16,4,17,4,18,4,18,5,16,6,17,6,18,6,20,2,22,2,20,3,22,3,21,4,21,5,21,6,8,8,9,8,8,9,10,9,8,10,9,10,8,11,10,11,8,12,9,12,12,8,13,8,14,8,12,9,12,10,13,10,12,11,12,12,13,12,14,12,16,8,17,8,18,8,16,9,16,10,17,10,16,11,16,12,17,12,18,12,20,8,21,8,22,8,20,9,20,10,21,10,22,10,22,11,20,12,21,12,22,12,255
+end data
+
+const NBee = 8
+const NWasp = 3
+' the hive's middle, in pixels
+const HiveX = 124
+const HiveY = 84
+
+' the flower beds (screen cells) and their flowers: FS 0 soil, 1 sprout,
+' 2 bud, 3 bloom; FN nectar left; FT the time to the next stage
+data FlX bytes 5,6,5,6, 24,25,24,25, 5,6,5,6, 24,25,24,25
+data FlY bytes 5,5,6,6, 5,5,6,6, 16,16,17,17, 16,16,17,17
+u8 FS[16]
+u8 FN[16]
+u8 FT[16]
+
+' the bees (BS 0 none, 1 to a flower, 2 sipping, 3 home, 4 idle, 5 caught)
+u8 BX[8]
+u8 BY[8]
+u8 BS[8]
+u8 BT[8]
+u8 BF[8]
+' the wasps (WS 0 none, 1 hunting, 2 fleeing)
+u8 WX[3]
+u8 WY[3]
+u8 WS[3]
+u8 WG[3]
+
+u8 KX = 0
+u8 KY = 0
+u8 SmT = 0
+u8 SmX = 0
+u8 SmY = 0
+u8 Season = 0
+u16 Pot = 0
+u16 Total = 0
+u8 Got = 0
+u8 Quota = 0
+u8 NextBee = 0
+u8 Bees = 0
+u16 SeasT = 0
+u8 SecF = 0
+u16 WaspT = 0
+u8 HudOn = 0
+u8 NewsT = 0
+u8 Lost = 0
+u16 Rnd = 777
+u8 RndB = 0
+
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Sel = 0
+u8 Tick = 0
+u8 Busy = 0
+
+' scratch: never kept across a sub call
+u16 W16 = 0
+u16 W2 = 0
+u8 I = 0
+u8 J = 0
+u8 C = 0
+u8 K = 0
+u8 V = 0
+u8 V2 = 0
+u8 X = 0
+u8 Y = 0
+u8 Gx = 0
+u8 Gy = 0
+u8 Best = 0
+u8 BestD = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 N = 0
+u8 Q = 0
+u8 Na = 0
+u8 Rot = 0
+u8 Ord[11]
+
+' each season: the honey it wants, the frames between wasps (in fours)
+data QuotaT bytes 80, 120, 160
+data WaspGap bytes 150, 100, 70
+
+  tile screen
+  set sound table BzSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 1 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 2 then
+    CreditsPage
+    goto title
+  end if
+  Season = 0
+  Pot = 6
+  Total = 0
+  Lost = 0
+  for I = 0 to 15
+    FS[I] = 0
+    FT[I] = 0
+  next
+  ' six flowers to start with
+  for I = 0 to 15
+    V = I & 3
+    if V < 2 then
+      FS[I] = 3
+      FN[I] = 3
+    end if
+    if I >= 8 then FS[I] = 0
+  next
+  FS[8] = 3
+  FN[8] = 3
+  FS[12] = 3
+  FN[12] = 3
+  for I = 0 to NBee - 1
+    BS[I] = 0
+  next
+  for I = 0 to 2
+    BS[I] = 4
+    BX[I] = HiveX
+    BY[I] = HiveY
+  next
+
+season_start:
+  SeasonPage
+  DrawGarden
+  KX = 124
+  KY = 112
+  SmT = 0
+  Got = 0
+  NextBee = 10
+  Quota = QuotaT[Season]
+  SeasT = 120
+  SecF = 0
+  V = WaspGap[Season]
+  WaspT = V
+  for I = 0 to NWasp - 1
+    WS[I] = 0
+  next
+  ShowHud
+  ShowScreen
+  WaitStick
+
+play_loop:
+  Frame1
+  Busy = 1
+  ReadPad
+  Keeper
+  for I = 0 to NBee - 1
+    if BS[I] > 0 then Bee
+  next
+  for I = 0 to NWasp - 1
+    if WS[I] > 0 then Wasp
+  next
+  Flowers
+  Spawns
+  ShowSprites
+  inc SecF
+  if SecF >= 60 then
+    SecF = 0
+    dec SeasT
+    HudOn = 1
+  end if
+  if HudOn = 1 then
+    HudOn = 0
+    ShowHud
+  end if
+  if NewsT > 0 then
+    dec NewsT
+    if NewsT = 0 then fill 32 count 28 at 2,22
+  end if
+  Busy = 0
+  if Bees = 0 then
+    Lost = 1
+    goto game_over
+  end if
+  if SeasT > 0 then goto play_loop
+
+  ' the season is over
+  HideSprites
+  if Got < Quota then
+    Lost = 2
+    goto game_over
+  end if
+  play sound SndWin
+  fill 32 count 28 at 2,22
+  print at 5,22, "A GOOD SEASON FOR HONEY!"
+  Hold(150)
+  inc Season
+  if Season < 3 then goto season_start
+  EndPage
+  goto title
+
+game_over:
+  Hold(30)
+  HideSprites
+  play sound SndLose
+  fill 32 count 28 at 2,22
+  if Lost = 1 then print at 6,22, "THE HIVE IS EMPTY..."
+  if Lost = 2 then print at 6,22, "NOT ENOUGH HONEY..."
+  Hold(180)
+  EndPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' the garden
+
+sub DrawGarden:
+  NewScreen
+  backdrop dark green
+  for Y = 2 to 21
+    for X = 2 to 29
+      V = X + Y
+      V = V & 1
+      V = V + TGrass0
+      put char V at X,Y
+    next
+  next
+  ' a few trees round the edge
+  put char TTree at 3,10
+  put char TTree at 28,9
+  put char TTree at 12,2
+  put char TTree at 19,20
+  put char TTree at 28,20
+  put char TTree at 2,20
+  put char THive00 at 15,10
+  put char THive01 at 16,10
+  put char THive10 at 15,11
+  put char THive11 at 16,11
+  for I = 0 to 15
+    DrawFlower
+  next
+  return
+end sub
+
+sub DrawFlower:
+  X = FlX[I]
+  Y = FlY[I]
+  V = FS[I] + TSoil
+  put char V at X,Y
+  return
+end sub
+
+' Flowers: one flower a frame grows on (its timer counts in sixteens)
+sub Flowers:
+  I = Tick & 15
+  V = FS[I]
+  if V = 0 then return
+  if V = 3 then return
+  V2 = FT[I] + 1
+  FT[I] = V2
+  ' about five seconds a stage
+  if V2 < 19 then return
+  FT[I] = 0
+  V = V + 1
+  FS[I] = V
+  if V = 3 then FN[I] = 3
+  DrawFlower
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the keeper
+
+sub Keeper:
+  ' the keeper walks a pixel a frame, three in two when going straight
+  for C = 1 to 2
+    V = 1
+    if C = 2 then
+      V = Tick & 1
+      V2 = Lf1 | Rt1
+      V2 = V2 & Up1
+      if V2 = 1 then V = 0
+      V2 = Lf1 | Rt1
+      V2 = V2 & Dn1
+      if V2 = 1 then V = 0
+    end if
+    if V = 1 then
+      if Lf1 = 1 then
+        if KX > 16 then dec KX
+      end if
+      if Rt1 = 1 then
+        if KX < 232 then inc KX
+      end if
+      if Up1 = 1 then
+        if KY > 16 then dec KY
+      end if
+      if Dn1 = 1 then
+        if KY < 160 then inc KY
+      end if
+    end if
+  next
+  if SmT > 0 then dec SmT
+  if Press = 0 then return
+  ' on a bare bed: plant (3 drops); anywhere else: a puff of smoke
+  Gx = KX + 4
+  Gx = Gx >> 3
+  Gy = KY + 12
+  Gy = Gy >> 3
+  for I = 0 to 15
+    if FlX[I] = Gx then
+      if FlY[I] = Gy then
+        if FS[I] = 0 then
+          if Pot >= 3 then
+            Pot = Pot - 3
+            FS[I] = 1
+            FT[I] = 0
+            DrawFlower
+            HudOn = 1
+            play sound SndPlant
+          else
+            play sound SndNo
+            News(1)
+          end if
+          return
+        end if
+      end if
+    end if
+  next
+  if SmT > 0 then return
+  SmT = 40
+  SmX = KX
+  SmY = KY
+  play sound SndPuff
+  ' wasps near the smoke flee
+  for I = 0 to NWasp - 1
+    if WS[I] = 1 then
+      X = WX[I]
+      Y = WY[I]
+      Gx = SmX
+      Gy = SmY
+      Dist
+      if BestD < 48 then WS[I] = 2
+    end if
+  next
+  return
+end sub
+
+' Dist: the larger of across and up/down between X, Y and Gx, Gy (BestD)
+sub Dist:
+  if X >= Gx then
+    Dx = X - Gx
+  else
+    Dx = Gx - X
+  end if
+  if Y >= Gy then
+    Dy = Y - Gy
+  else
+    Dy = Gy - Y
+  end if
+  BestD = Dx
+  if Dy > Dx then BestD = Dy
+  return
+end sub
+
+' Toward: X, Y a pixel nearer to Gx, Gy each way
+sub Toward:
+  ' (written with else: two ifs in a row on the same pair trip an Amy
+  ' optimiser bug, see flagbug.alexis)
+  if X < Gx then
+    inc X
+  else
+    if X > Gx then dec X
+  end if
+  if Y < Gy then
+    inc Y
+  else
+    if Y > Gy then dec Y
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the bees
+
+sub Bee:
+  K = BS[I]
+  if K = 5 then
+    V = BT[I] + 1
+    BT[I] = V
+    if V >= 30 then BS[I] = 0
+    return
+  end if
+  ' bees fly three pixels in four frames
+  V = Tick + I
+  V = V & 3
+  if V = 0 then return
+  X = BX[I]
+  Y = BY[I]
+  if K = 4 then
+    ' idle by the hive: look for a flower in bloom (now and then)
+    Best = 255
+    V = Tick + I
+    V = V & 15
+    if V = 9 then PickFlower
+    if Best = 255 then
+      ' a little dance round the hive
+      V = Tick + I
+      V = V & 63
+      Gx = HiveX - 12
+      if V >= 32 then Gx = HiveX + 12
+      Gy = HiveY - 10
+      Toward
+      BX[I] = X
+      BY[I] = Y
+      return
+    end if
+    BF[I] = Best
+    BS[I] = 1
+    K = 1
+  end if
+  if K = 1 then
+    J = BF[I]
+    if FS[J] <> 3 then
+      BS[I] = 4
+      return
+    end if
+    Gx = FlX[J] * 8
+    Gy = FlY[J] * 8
+    Toward
+    BX[I] = X
+    BY[I] = Y
+    if X = Gx then
+      if Y = Gy then
+        BS[I] = 2
+        BT[I] = 0
+      end if
+    end if
+    return
+  end if
+  if K = 2 then
+    V = BT[I] + 1
+    BT[I] = V
+    ' a wiggle while sipping
+    V2 = V & 8
+    if V2 > 0 then
+      BX[I] = X + 1
+    else
+      BX[I] = X - 1
+    end if
+    if V < 48 then return
+    J = BF[I]
+    if FS[J] = 3 then
+      V = FN[J] - 1
+      FN[J] = V
+      if V = 0 then
+        FS[J] = 1
+        FT[J] = 0
+        Q = I
+        I = J
+        DrawFlower
+        I = Q
+      end if
+    end if
+    BS[I] = 3
+    return
+  end if
+  if K = 3 then
+    Gx = HiveX
+    Gy = HiveY
+    Toward
+    BX[I] = X
+    BY[I] = Y
+    if X = Gx then
+      if Y = Gy then
+        ' a drop of honey
+        if Got < 255 then inc Got
+        if Pot < 999 then inc Pot
+        inc Total
+        HudOn = 1
+        play sound SndHoney
+        BS[I] = 4
+        dec NextBee
+        if NextBee = 0 then
+          NextBee = 10
+          NewBee
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' PickFlower: the nearest flower in bloom with nectar (Best, 255 none)
+sub PickFlower:
+  Best = 255
+  V2 = 255
+  for J = 0 to 15
+    if FS[J] = 3 then
+      Gx = FlX[J] * 8
+      Gy = FlY[J] * 8
+      Dist
+      if BestD < V2 then
+        V2 = BestD
+        Best = J
+      end if
+    end if
+  next
+  return
+end sub
+
+sub NewBee:
+  for J = 0 to NBee - 1
+    if BS[J] = 0 then
+      BS[J] = 4
+      BX[J] = HiveX
+      BY[J] = HiveY
+      play sound SndNewBee
+      News(2)
+      return
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the wasps
+
+sub Spawns:
+  if WaspT > 0 then
+    V = Tick & 3
+    if V = 0 then dec WaspT
+    return
+  end if
+  V = WaspGap[Season]
+  WaspT = V
+  for J = 0 to NWasp - 1
+    if WS[J] = 0 then
+      WS[J] = 1
+      NextRnd
+      V = RndB & 3
+      NextRnd
+      V2 = RndB & 127
+      if V = 0 then
+        WX[J] = 8
+        WY[J] = V2 + 24
+      end if
+      if V = 1 then
+        WX[J] = 244
+        WY[J] = V2 + 24
+      end if
+      if V = 2 then
+        WX[J] = V2 + 60
+        WY[J] = 16
+      end if
+      if V = 3 then
+        WX[J] = V2 + 60
+        WY[J] = 170
+      end if
+      WG[J] = 255
+      play sound SndWasp
+      return
+    end if
+  next
+  return
+end sub
+
+sub Wasp:
+  X = WX[I]
+  Y = WY[I]
+  if WS[I] = 2 then
+    ' away from the keeper, quickly, and off the garden
+    for C = 1 to 2
+      if X >= KX then
+        inc X
+      else
+        dec X
+      end if
+      if Y >= KY then
+        inc Y
+      else
+        dec Y
+      end if
+    next
+    WX[I] = X
+    WY[I] = Y
+    if X < 4 then WS[I] = 0
+    if X > 248 then WS[I] = 0
+    if Y < 12 then WS[I] = 0
+    if Y > 180 then WS[I] = 0
+    return
+  end if
+  ' wasps fly three pixels in four frames
+  V = Tick + I
+  V = V & 3
+  if V = 1 then return
+  ' the nearest bee outside the hive (chosen again now and then)
+  J = WG[I]
+  V = Tick & 31
+  if V = 0 then J = 255
+  if J <> 255 then
+    if BS[J] = 0 then J = 255
+    if BS[J] >= 4 then J = 255
+  end if
+  if J = 255 then
+    V2 = 255
+    for C = 0 to NBee - 1
+      K = BS[C]
+      if K > 0 then
+        if K < 4 then
+          Gx = BX[C]
+          Gy = BY[C]
+          Dist
+          if BestD < V2 then
+            V2 = BestD
+            J = C
+          end if
+        end if
+      end if
+    next
+    WG[I] = J
+  end if
+  if J = 255 then
+    ' nothing to hunt: drift about
+    Gx = KX
+    Gy = 40
+  else
+    Gx = BX[J]
+    Gy = BY[J]
+  end if
+  Toward
+  WX[I] = X
+  WY[I] = Y
+  if J = 255 then return
+  Dist
+  if BestD < 4 then
+    ' caught
+    BS[J] = 5
+    BT[J] = 0
+    WG[I] = 255
+    ' and off it goes with its catch
+    WS[I] = 2
+    play sound SndZap
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the screen
+
+sub ShowSprites:
+  Y = KY - 1
+  set sprite 0 to Y,KX,SKeeperT,15
+  Y = KY + 7
+  set sprite 1 to Y,KX,SKeeperB,15
+  if SmT > 0 then
+    V = SSmoke1
+    C = SmT & 8
+    if C > 0 then V = SSmoke2
+    Y = SmY - 9
+    X = SmX + 4
+    set sprite 2 to Y,X,V,14
+  else
+    set sprite 2 to 192,0,0,0
+  end if
+  ' bees and wasps take turns at the places 3-13
+  Na = 0
+  Bees = 0
+  for C = 0 to NBee - 1
+    if BS[C] > 0 then
+      Ord[Na] = C
+      inc Na
+      if BS[C] < 5 then inc Bees
+    end if
+  next
+  for C = 0 to NWasp - 1
+    if WS[C] > 0 then
+      V = C + 8
+      Ord[Na] = V
+      inc Na
+    end if
+  next
+  inc Rot
+  if Rot >= Na then Rot = 0
+  for Q = 0 to 10
+    N = Q + 3
+    if Q >= Na then
+      set sprite N to 192,0,0,0
+    else
+      C = Q + Rot
+      if C >= Na then C = C - Na
+      C = Ord[C]
+      V = Tick & 4
+      if C < 8 then
+        Y = BY[C] - 1
+        X = BX[C]
+        K = SBee1
+        if V > 0 then K = SBee2
+        V2 = 11
+        if BS[C] = 5 then
+          K = SPuff
+          V2 = 15
+        end if
+      else
+        C = C - 8
+        Y = WY[C] - 1
+        X = WX[C]
+        K = SWasp1
+        if V > 0 then K = SWasp2
+        V2 = 9
+      end if
+      set sprite N to Y,X,K,V2
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "HONEY"
+  print at 8,1, digits$(Got, 3)
+  put char 47 at 11,1
+  print at 12,1, digits$(Quota, 3)
+  print at 16,1, "POT"
+  print at 20,1, digits$(Pot, 3)
+  W16 = SeasT / 60
+  V = lowbyte W16
+  print at 24,1, digits$(V, 1)
+  put char 58 at 25,1
+  W2 = W16 * 60
+  W16 = SeasT - W2
+  V = lowbyte W16
+  print at 26,1, digits$(V, 2)
+  return
+end sub
+
+' News: a message on row 22 for a few seconds
+sub News(u8 Which):
+  fill 32 count 28 at 2,22
+  if Which = 1 then print at 3,22, "PLANTING TAKES 3 HONEY"
+  if Which = 2 then print at 3,22, "A NEW BEE JOINS THE HIVE!"
+  NewsT = 150
+  return
+end sub
+
+' NextRnd: the next random byte (xorshift's high byte)
+sub NextRnd:
+  W2 = Rnd << 7
+  Rnd = Rnd ^ W2
+  W2 = Rnd >> 9
+  Rnd = Rnd ^ W2
+  W2 = Rnd << 8
+  Rnd = Rnd ^ W2
+  W2 = Rnd >> 8
+  RndB = lowbyte W2
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the pages
+
+sub TitlePage:
+  NewScreen
+  backdrop dark green
+  I = 0
+tp_xy:
+  X = TitleXY[I]
+  if X <> 255 then
+    Y = TitleXY[I + 1]
+    put char TComb at X,Y
+    I = I + 2
+    goto tp_xy
+  end if
+  put char THive00 at 4,13
+  put char THive01 at 5,13
+  put char THive10 at 4,14
+  put char THive11 at 5,14
+  for X = 8 to 27
+    V = X & 1
+    V = V + TGrass0
+    put char V at X,14
+  next
+  put char TBloom at 10,14
+  put char TBloom at 15,14
+  put char TBud at 20,14
+  put char TBloom at 25,14
+  print at 10,17, "PLAY"
+  print at 10,18, "HOW TO PLAY"
+  print at 10,19, "CREDITS"
+  print at 5,22, "AN ORIGINAL GAME, 2026"
+  Sel = 0
+  ShowTitleMenu
+  ShowScreen
+  play song BzSong once
+  WaitStick
+  X = 48
+tp_loop:
+  Frame1
+  ReadPad
+  NextRnd
+  if Rnd = 0 then Rnd = 1
+  ' a bee flies to the flowers and back
+  inc X
+  if X > 210 then X = 48
+  Y = Tick & 16
+  Y = Y >> 2
+  Y = Y + 96
+  V = SBee1
+  C = Tick & 4
+  if C > 0 then V = SBee2
+  set sprite 3 to Y,X,V,11
+  update sprites
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Sel > 0 then dec Sel
+      end if
+      if Dn1 = 1 then
+        if Sel < 2 then inc Sel
+      end if
+      play sound SndTick
+      ShowTitleMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop song
+  mute all
+  play sound SndPlant
+  return
+end sub
+
+sub ShowTitleMenu:
+  for Y = 17 to 19
+    put char 32 at 8,Y
+  next
+  Y = Sel + 17
+  put char 62 at 8,Y
+  return
+end sub
+
+sub SeasonPage:
+  TextPage
+  if Season = 0 then print at 13,5, "SPRING"
+  if Season = 1 then print at 13,5, "SUMMER"
+  if Season = 2 then print at 13,5, "AUTUMN"
+  print at 6,9, "BRING IN"
+  print at 15,9, digits$(QuotaT[Season], 3)
+  print at 19,9, "DROPS OF"
+  print at 6,10, "HONEY IN TWO MINUTES."
+  if Season > 0 then
+    print at 6,13, "THE WASPS COME MORE"
+    print at 6,14, "OFTEN NOW!"
+  end if
+  print at 8,20, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub HowToPage:
+  TextPage
+  print at 10,1, "HOW TO PLAY"
+  print at 2,3, "THE BEES FLY BY THEMSELVES"
+  print at 2,4, "TO FLOWERS IN BLOOM AND BACK"
+  print at 2,5, "TO THE HIVE: EACH TRIP IS A"
+  print at 2,6, "DROP OF HONEY."
+  print at 2,8, "STICK: WALK ABOUT."
+  print at 2,9, "BUTTON ON A BARE BED: PLANT"
+  print at 2,10, "A FLOWER (3 DROPS FROM THE"
+  print at 2,11, "POT). IT BLOOMS IN A WHILE."
+  print at 2,12, "BUTTON ANYWHERE ELSE: A PUFF"
+  print at 2,13, "OF SMOKE: NEAR WASPS FLEE."
+  print at 2,15, "WASPS CATCH BEES. TEN DROPS"
+  print at 2,16, "IN A SEASON BRING A NEW BEE."
+  print at 2,18, "THREE SEASONS, EACH WANTS"
+  print at 2,19, "ITS HONEY IN TWO MINUTES."
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub CreditsPage:
+  TextPage
+  print at 11,2, "BUSY BEES"
+  print at 2,4, "AN ORIGINAL GAME FOR THE"
+  print at 2,5, "COLECOVISION."
+  print at 2,7, "DESIGN, PROGRAM, GRAPHICS,"
+  print at 2,8, "SOUNDS AND THE TUNE"
+  print at 2,9, "HONEY HUM:"
+  print at 2,10, "CLAUDE (AN AI BY ANTHROPIC)"
+  print at 2,13, "MADE WITH AMY STUDIO"
+  print at 2,14, "BY AMY BIENVENU"
+  print at 2,17, "(C) 2026"
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub EndPage:
+  TextPage
+  if Lost = 0 then
+    print at 4,5, "WHAT A YEAR FOR HONEY!"
+    print at 4,8, "THE HIVE IS READY FOR"
+    print at 4,9, "WINTER."
+  else
+    print at 4,5, "THE BEES WILL TRY AGAIN"
+    print at 4,6, "NEXT YEAR."
+  end if
+  print at 4,12, "HONEY GATHERED"
+  print at 20,12, digits$(Total, 3)
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Hold(60)
+  WaitPress
+  return
+end sub
+
+sub TextPage:
+  NewScreen
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the machine
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: let the NMI run during the wait, then keep it off
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Hold(u8 Frames):
+  for C = 1 to Frames
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' WaitStick: until the button is let go (so a press is a new one)
+sub WaitStick:
+  WasBtn = 1
+  WasStick = 1
+  return
+end sub
+
+sub WaitPress:
+  WaitStick
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  play sound SndTick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 14
+  sprites flicker off
+  for C = 0 to 13
+    set sprite C to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every new screen starts here: wait, NMI off, display off, tiles, cls
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$04,$00,$40,$00,$02,$20,$00
+  $00,$20,$00,$04,$00,$40,$00,$08
+  $00,$20,$02,$00,$40,$04,$00,$10
+  $00,$00,$10,$34,$1C,$18,$10,$10
+  $00,$18,$C3,$18,$54,$38,$10,$10
+  $93,$01,$10,$38,$10,$01,$93,$10
+  $F0,$E0,$C0,$80,$80,$00,$03,$07
+  $F0,$07,$03,$01,$01,$00,$C0,$E0
+  $00,$00,$00,$00,$80,$20,$20,$00
+  $00,$00,$00,$00,$01,$04,$04,$00
+  $18,$C3,$81,$81,$C3,$18,$18,$00
+  $C3,$81,$81,$81,$81,$81,$81,$C3
+end data
+data TileCol bytes
+  $02,$32,$02,$32,$02,$32,$32,$02
+  $02,$32,$02,$32,$02,$32,$02,$32
+  $06,$A6,$A6,$06,$A6,$A6,$06,$A6
+  $06,$06,$26,$26,$26,$26,$26,$26
+  $06,$D6,$6D,$D6,$26,$26,$26,$26
+  $6D,$6D,$BD,$BD,$BD,$6D,$6D,$26
+  $4B,$4B,$4B,$4B,$4A,$0B,$1A,$1B
+  $B4,$4B,$4B,$4B,$4A,$0B,$1A,$1B
+  $0A,$0B,$0A,$0B,$46,$64,$64,$04
+  $0A,$0B,$0A,$0B,$46,$64,$64,$04
+  $C2,$2C,$2C,$2C,$2C,$62,$62,$02
+  $4B,$4B,$BA,$BA,$BA,$BA,$4B,$4B
+end data
+data SpritePat bytes
+  $00,$28,$10,$7C,$FE,$7C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$10,$7C,$FE,$7C,$28,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $82,$44,$38,$7C,$FE,$7C,$38,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$C6,$38,$7C,$FE,$7C,$38,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $3C,$7E,$FF,$42,$5A,$42,$3C,$7E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$BD,$BD,$3C,$24,$24,$66,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$7A,$FC,$78,$36,$07,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $4C,$9E,$7F,$FC,$7A,$B7,$16,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $92,$54,$00,$EE,$00,$54,$92,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+BzHush:
+    db $00,$00,$F4,$01,$10
+BzTick:
+    db $40,$40,$50,$01,$50
+BzPuff:
+    db $00,$00,$34,$03,$00,$00,$55,$05,$00,$00,$76,$06,$10
+BzPlant:
+    db $40,$AA,$30,$02,$40,$71,$40,$04,$50
+BzNo:
+    db $40,$F9,$22,$04,$40,$F9,$33,$06,$50
+BzHoney:
+    db $80,$47,$50,$02,$80,$35,$60,$03,$90
+BzNewBee:
+    db $40,$7F,$30,$03,$40,$5F,$30,$03,$40,$40,$40,$06,$50
+BzZap:
+    db $C0,$53,$21,$03,$C0,$FC,$41,$06,$D0
+BzWasp:
+    db $C0,$F0,$50,$03,$C0,$E2,$50,$03,$C0,$F0,$60,$03,$D0
+BzWin:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$30,$10,$50
+BzLose:
+    db $40,$1D,$21,$08,$40,$53,$31,$08,$40,$AB,$41,$08,$40,$3B,$52,$14,$50
+
+BzSoundTable:
+    dw BzHush,$702B
+    dw BzTick,$7035
+    dw BzPuff,$702B
+    dw BzPlant,$7035
+    dw BzNo,$7035
+    dw BzHoney,$703F
+    dw BzNewBee,$7035
+    dw BzZap,$7049
+    dw BzWasp,$7049
+    dw BzWin,$7035
+    dw BzLose,$7035
+    dw BzTuneMel,$703F
+    dw BzTuneBass,$7049
+; Honey Hum, C major (original for this game)
+; Tiny Sound, 7 frames per step
+BzTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1F,$21,$23,$1F,$26,$00,$23,$00,$24,$23,$21,$00
+    db $1C,$1E,$1F,$1C,$24,$00,$21,$00,$23,$21,$1F,$00,$23,$24,$26,$23
+    db $2B,$00,$26,$00,$28,$26,$24,$23,$21,$23,$24,$21,$9F,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+BzTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$13,$00,$0E,$00,$13,$00,$0E,$00,$13,$00,$0E,$00
+    db $0C,$00,$13,$00,$0C,$00,$10,$00,$13,$00,$0E,$00,$13,$00,$17,$00
+    db $13,$00,$17,$00,$0C,$00,$10,$00,$0E,$00,$12,$00,$13,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+; the title song: both voices of Honey Hum at once
+BzSong:
+    dw $0001
+    db $40+12,13
+    dw $0000
+}

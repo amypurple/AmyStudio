@@ -407,6 +407,7 @@ export function createCompilerShellHelpers({
     const branchToFalse = /^\s*(?:jp|jr)\s+nc,\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
     const branchCarry = /^\s*(?:jp|jr)\s+c,\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
     const branchZero = /^\s*(?:jp|jr)\s+z,\s*(AMY_IF_FALSE_[0-9]+)\s*$/i;
+    const branchToEnd = /^\s*(?:jp|jr)\s+(AMY_IF_END_[0-9]+)\s*$/i;
     const normalize = (line) => String(line || "").trim().toLowerCase();
 
     for (let index = 4; index < optimized.length; index += 1) {
@@ -417,6 +418,11 @@ export function createCompilerShellHelpers({
       let falseIndex = index + 1;
       while (falseIndex < optimized.length && normalize(optimized[falseIndex]) !== falseLabel) falseIndex += 1;
       if (falseIndex >= optimized.length) continue;
+
+      // A real ELSEIF arm always jumps around its following alternatives. A
+      // standalone IF falls through from its body to the false label, after
+      // instructions such as INC have already replaced the CP flags.
+      if (!String(optimized[falseIndex - 1] || "").match(branchToEnd)) continue;
 
       const firstCompare = optimized.slice(index - 4, index).map(normalize);
       const repeatedCompare = optimized.slice(falseIndex + 1, falseIndex + 5).map(normalize);

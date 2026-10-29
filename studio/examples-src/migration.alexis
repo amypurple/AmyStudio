@@ -1,0 +1,1409 @@
+' MIGRATION
+' An original game by Claude (an AI made by Anthropic) for Amy Studio and
+' Amy Bienvenu, 2026.
+'
+' A flock of Canada geese flies south for the winter, in four legs: the
+' north bay, the great lakes, the ridges, the marsh. You are the lead
+' goose; the others follow in a V, each flying where the one ahead flew a
+' moment before. The flock gets hungry as it flies: hold the button over a
+' lake to come down and feed (the land stops moving), but every moment on
+' the water lets the frost come closer, and a flock caught by the frost
+' loses its last goose. Storm clouds scatter geese out of the V; a hawk
+' comes for the goose at the back unless the lead flies at it; a goose
+' left without food drops out. Lost geese wait on the ground below: fly
+' over one and it joins the V again.
+'
+' How the flock flies: the lead's last 32 places are kept; follower k
+' takes the place of the lead (3 x its row) frames ago, set back and to
+' its side of the V, so the V bends and flows behind every turn.
+'
+' House rules kept: joystick only; text in columns 2-29 and rows 1-22;
+' tiles at 128 and up; a title tune that plays once (Amy's play song ...
+' once); a credits page; the frame loop is protected from the NMI and
+' every screen is drawn with the NMI off after a wait.
+
+const TSnow = 128
+const TTundra = 129
+const TGrass = 130
+const TTree = 131
+const TSnowtree = 132
+const TField = 133
+const TLake = 134
+const THouse = 135
+const TPeak = 136
+const TRock = 137
+const TCloud = 138
+const TReed = 139
+const TRoad = 140
+const TRoadh = 141
+const TRoadne = 142
+const TRoadnw = 143
+const TRoadse = 144
+const TRoadsw = 145
+const TBridgev = 146
+const TBridgeh = 147
+const TMud = 148
+const TLakesnownw = 149
+const TLakesnowne = 150
+const TLakesnowsw = 151
+const TLakesnowse = 152
+const TLaketundranw = 153
+const TLaketundrane = 154
+const TLaketundrasw = 155
+const TLaketundrase = 156
+const TLakegrassnw = 157
+const TLakegrassne = 158
+const TLakegrasssw = 159
+const TLakegrassse = 160
+const TLakemudnw = 161
+const TLakemudne = 162
+const TLakemudsw = 163
+const TLakemudse = 164
+const TLakerocknw = 165
+const TLakerockne = 166
+const TLakerocksw = 167
+const TLakerockse = 168
+const TCloudsnownw = 169
+const TCloudsnowne = 170
+const TCloudsnowsw = 171
+const TCloudsnowse = 172
+const TCloudtundranw = 173
+const TCloudtundrane = 174
+const TCloudtundrasw = 175
+const TCloudtundrase = 176
+const TCloudgrassnw = 177
+const TCloudgrassne = 178
+const TCloudgrasssw = 179
+const TCloudgrassse = 180
+const TCloudmudnw = 181
+const TCloudmudne = 182
+const TCloudmudsw = 183
+const TCloudmudse = 184
+const TCloudrocknw = 185
+const TCloudrockne = 186
+const TCloudrocksw = 187
+const TCloudrockse = 188
+const TTreesnownw = 189
+const TTreesnowne = 190
+const TTreesnowsw = 191
+const TTreesnowse = 192
+const TTreetundranw = 193
+const TTreetundrane = 194
+const TTreetundrasw = 195
+const TTreetundrase = 196
+const TTreegrassnw = 197
+const TTreegrassne = 198
+const TTreegrasssw = 199
+const TTreegrassse = 200
+const TTreemudnw = 201
+const TTreemudne = 202
+const TTreemudsw = 203
+const TTreemudse = 204
+const TTreerocknw = 205
+const TTreerockne = 206
+const TTreerocksw = 207
+const TTreerockse = 208
+const SNone = 0
+const NTiles8 = 648
+const SprBytes = 32
+const SGoose1 = 0
+const SGoose2 = 1
+const SHawk = 2
+const SndHush = 1
+const SndHonk = 2
+const SndJoin = 3
+const SndLost = 4
+const SndCry = 5
+const SndTuneA = 6
+const SndTuneB = 7
+const LegRows = 160
+data LegStray bytes 57, 196, 97, 204, 143, 124, 78, 76, 114, 84, 135, 92, 42, 148, 85, 124, 147, 68, 38, 156, 103, 140, 136, 116
+data LegNames bytes 84, 72, 69, 32, 78, 79, 82, 84, 72, 32, 66, 65, 89, 32, 32, 32, 84, 72, 69, 32, 71, 82, 69, 65, 84, 32, 76, 65, 75, 69, 83, 32, 84, 72, 69, 32, 82, 73, 68, 71, 69, 83, 32, 32, 32, 32, 32, 32, 84, 72, 69, 32, 77, 65, 82, 83, 72, 32, 32, 32, 32, 32, 32, 32
+
+' --- the land -----------------------------------------------------------------
+' Leg 0-3, Top the map row at the top of the screen (row 2), MgMap and
+' MgDst for scroll.asm, StepT frames to the next row
+u8 Leg = 0
+u16 Top = 0
+u16 MgMap = 0
+u8 MgDst = 0
+u8 MgBuf[32]
+u16 MgCell = 0
+u8 Pk = 0
+u8 StepT = 0
+' --- the flock ----------------------------------------------------------------
+' the lead (pixels), its last 32 places, the followers (count 0-12)
+u8 Lx = 120
+u8 Ly = 120
+u8 HX[32]
+u8 HY[32]
+u8 HI = 0
+u8 NF = 8
+u8 FX[12]
+u8 FY[12]
+u8 Food = 100
+u8 Frost = 0
+u8 Resting = 0
+u8 FoodT = 0
+u8 Wing = 0
+' the strays: map row and x for each of the leg's three (0: gone)
+u16 StR[3]
+u8 StX[3]
+u8 StOn[3]
+' the hawk: on, pixels, frames to the next, its target follower
+u8 HkOn = 0
+u8 HkX = 0
+u8 HkY = 0
+u8 HkT = 200
+u8 HkTg = 0
+u8 Scared = 0
+' totals
+u8 Arrived = 0
+' for the test bot: 1 flying, 2 a card, 3 the end, 8 the title
+u8 Ph = 0
+u8 Busy = 0
+
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u16 W16 = 0
+u16 Addr = 0
+u8 C = 0
+u8 I = 0
+u8 K = 0
+u8 N = 0
+u8 J = 0
+u8 V = 0
+u8 V2 = 0
+u8 N2 = 0
+u8 X = 0
+u8 Y = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+
+  tile screen
+  set sound table MgSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy Spr8 count 24 to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  ' the title: the first leg passing under a small V
+  Ph = 8
+  Leg = 0
+  NewLeg
+  print at 2,1, "MIGRATION: PRESS THE BUTTON"
+  play song MgSong once
+  NF = 6
+  Lx = 124
+  Ly = 110
+  for I = 0 to 31
+    HX[I] = Lx
+    HY[I] = Ly
+  next
+  WasBtn = 1
+attract:
+  Frame1
+  ReadPad
+  ' the lead drifts gently from side to side
+  V = Tick & 63
+  if V < 32 then
+    V = Tick & 3
+    if V = 0 then inc Lx
+  else
+    V = Tick & 3
+    if V = 0 then dec Lx
+  end if
+  Scroll
+  Flock
+  ShowBirds
+  if Press = 0 then goto attract
+  Rs = Rs ^ Tick
+  if Rs = 0 then Rs = $5A3C
+  play sound SndHonk
+  ' the story
+  NewScreen
+  print at 7,3, "M I G R A T I O N"
+  print at 3,6, "THE NIGHTS ARE COLD. IT IS"
+  print at 3,7, "TIME TO FLY SOUTH."
+  print at 3,9, "YOU LEAD THE V. THE OTHERS"
+  print at 3,10, "FOLLOW WHERE YOU FLY."
+  print at 3,12, "BUTTON (OVER A LAKE): COME"
+  print at 3,13, "DOWN TO FEED. THE FROST"
+  print at 3,14, "COMES CLOSER WHILE YOU DO."
+  print at 3,16, "FLY AT A HAWK TO SCARE IT."
+  print at 3,17, "FLY OVER LOST GEESE TO"
+  print at 3,18, "BRING THEM BACK."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  play sound SndHonk
+  ' the credits
+  NewScreen
+  print at 7,3, "M I G R A T I O N"
+  print at 2,7, "A GAME BY CLAUDE (AN AI MADE"
+  print at 2,8, "BY ANTHROPIC) FOR AMY STUDIO"
+  print at 2,10, "AND AMY BIENVENU"
+  print at 2,13, "MUSIC: SOUTHWARD"
+  print at 2,16, "COLECOVISION, AMY, 2026"
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  WaitPress
+  play sound SndHonk
+  stop sound SndTuneA
+  stop sound SndTuneB
+
+  Leg = 0
+  NF = 8
+  Arrived = 0
+
+leg_start:
+  LegCard
+  NewLeg
+  ' the food carries on from leg to leg (full at the start of the flight)
+  if Leg = 0 then Food = 100
+  Frost = 0
+  Lx = 124
+  Ly = 120
+  for I = 0 to 31
+    HX[I] = Lx
+    HY[I] = Ly
+  next
+  HkOn = 0
+  HkT = 250
+  ShowHud
+  Ph = 1
+
+play_loop:
+  Frame1
+  Busy = 1
+  ReadPad
+  Steer
+  Rest
+  if Resting = 0 then Scroll
+  Flock
+  Storms
+  Hawk
+  Strays
+  Hunger
+  ShowBirds
+  V = Tick & 31
+  if V = 0 then ShowHud
+  Busy = 0
+  ' the leg ends when its last row reaches the bottom of the screen
+  W16 = Leg * 160
+  W16 = W16 + LegRows
+  W16 = W16 - 21
+  if Top < W16 then goto play_loop
+
+  ' the leg is flown
+  HideSprites
+  play sound SndHonk
+  inc Leg
+  if Leg < 4 then goto leg_start
+  ' the end: the marsh
+  Ph = 3
+  Arrived = NF + 1
+  NewScreen
+  print at 3,5, "THE MARSH AT LAST. THE"
+  print at 3,6, "WATER IS WARM, THE REEDS"
+  print at 3,7, "ARE FULL OF SEED."
+  print at 3,10, "GEESE THAT FLEW THE WHOLE"
+  print at 3,11, "WAY SOUTH:"
+  print at 15,11, digits$(Arrived, 2)
+  if Arrived >= 13 then print at 3,14, "NOT ONE WAS LOST. A FINE V."
+  if Arrived < 13 then
+    if Arrived >= 9 then print at 3,14, "A GOOD FLOCK. A GOOD LEAD."
+  end if
+  if Arrived < 9 then print at 2,14, "A HARD ROAD, BUT YOU DID IT."
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  play song MgSong once
+  WaitPress
+  stop sound SndTuneA
+  stop sound SndTuneB
+  goto title
+
+' ---------------------------------------------------------------------------
+
+sub LegCard:
+  Ph = 2
+  HideSprites
+  NewScreen
+  print at 13,7, "LEG"
+  V = Leg + 1
+  print at 17,7, digits$(V, 1)
+  W16 = Leg * 16
+  for I = 0 to 15
+    V = LegNames[W16]
+    X = I + 8
+    put char V at X,10
+    inc W16
+  next
+  print at 8,14, "GEESE IN THE V:"
+  V = NF + 1
+  print at 24,14, digits$(V, 2)
+  ShowScreen
+  Hold(150)
+  return
+end sub
+
+' NewLeg: the leg's first 21 rows, its strays
+sub NewLeg:
+  NewScreen
+  Top = Leg * 160
+  for Y = 2 to 22
+    V = Y - 2
+    MgMap = Top + V
+    MgDst = Y
+    asm {
+      call MgRow
+    }
+  next
+  for I = 0 to 2
+    V = Leg * 6
+    K = I * 2
+    V = V + K
+    V2 = LegStray[V]
+    W16 = V2
+    W16 = W16 + Top
+    StR[I] = W16
+    inc V
+    StX[I] = LegStray[V]
+    StOn[I] = 1
+  next
+  StepT = 14
+  ShowScreen
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "GEESE"
+  V = NF + 1
+  print at 8,1, digits$(V, 2)
+  print at 11,1, "FOOD"
+  V = Food / 20
+  print at 16,1, "     "
+  if V > 0 then
+    for I = 1 to V
+      X = I + 15
+      if X <= 20 then print at X,1, "*"
+    next
+  end if
+  print at 22,1, "FROST"
+  V = Frost >> 5
+  print at 28,1, digits$(V, 1)
+  return
+end sub
+
+' Scroll: the land moves up a row every StepT frames
+sub Scroll:
+  dec StepT
+  if StepT > 0 then return
+  StepT = 14
+  asm {
+    call MgShift
+  }
+  inc Top
+  MgMap = Top + 20
+  MgDst = 22
+  asm {
+    call MgRow
+  }
+  return
+end sub
+
+' Steer: the lead flies where the stick says, inside the sky
+sub Steer:
+  if Resting = 1 then return
+  if Lf1 = 1 then
+    if Lx > 20 then dec Lx
+  end if
+  if Rt1 = 1 then
+    if Lx < 228 then inc Lx
+  end if
+  if Up1 = 1 then
+    if Ly > 40 then dec Ly
+  end if
+  if Dn1 = 1 then
+    if Ly < 168 then inc Ly
+  end if
+  ' the lead's places, for the V
+  inc HI
+  HI = HI & 31
+  HX[HI] = Lx
+  HY[HI] = Ly
+  return
+end sub
+
+' LeadTile: Pk = the land under the lead
+sub LeadTile:
+  X = Lx + 4
+  Y = Ly + 4
+  V = X >> 3
+  V2 = Y >> 3
+  W16 = V2 * 32
+  MgCell = W16 + V
+  asm {
+    call MgPeek
+  }
+  return
+end sub
+
+' Rest: the button held over a lake brings the flock down to feed
+sub Rest:
+  Resting = 0
+  if Btn = 1 then
+    LeadTile
+    if Pk = TLake then Resting = 1
+  end if
+  if Resting = 1 then
+    inc FoodT
+    V = FoodT & 3
+    if V = 0 then
+      if Food < 100 then inc Food
+    end if
+    V = FoodT & 7
+    if V = 0 then
+      if Frost < 255 then inc Frost
+    end if
+    if Frost = 255 then
+      ' the frost catches the flock: the last goose is lost
+      if NF > 0 then
+        dec NF
+        play sound SndLost
+      end if
+      Frost = 160
+      ShowHud
+    end if
+  else
+    V = Tick & 15
+    if V = 0 then
+      if Frost > 0 then dec Frost
+    end if
+  end if
+  return
+end sub
+
+' Hunger: food runs down as the flock flies (twice as fast over the
+' mountains); with none, a goose drops out now and then
+sub Hunger:
+  if Resting = 1 then return
+  inc FoodT
+  V = FoodT & 31
+  if V = 0 then
+    if Food > 0 then dec Food
+    LeadTile
+    if Pk = TPeak then
+      if Food > 0 then dec Food
+    end if
+  end if
+  if Food = 0 then
+    V = FoodT & 255
+    if V = 128 then
+      if NF > 0 then
+        K = NF - 1
+        DropOut
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Flock: each follower takes its place in the V from the lead's path
+sub Flock:
+  if NF = 0 then return
+  N2 = NF - 1
+  for K = 0 to N2
+    ' row in the V and side
+    N = K >> 1
+    inc N
+    V = N * 3
+    V = HI - V
+    V = V & 31
+    X = HX[V]
+    Y = HY[V]
+    V2 = N * 7
+    Y = Y - V2
+    V = K & 1
+    if V = 0 then
+      X = X - V2
+    else
+      X = X + V2
+    end if
+    if Resting = 1 then
+      ' on the water the V closes up a little
+      V = N * 2
+      Y = Y + V
+    end if
+    FX[K] = X
+    FY[K] = Y
+  next
+  return
+end sub
+
+' Storms: a goose inside a storm cloud may be thrown out of the V
+sub Storms:
+  if NF = 0 then return
+  Rnd16
+  V = lowbyte Rw
+  if V >= 12 then return
+  ' one follower at random
+  Rt = Rw >> 8
+  K = lowbyte Rt
+  K = K & 15
+  if K >= NF then return
+  X = FX[K] + 4
+  Y = FY[K] + 4
+  V = X >> 3
+  V2 = Y >> 3
+  W16 = V2 * 32
+  MgCell = W16 + V
+  asm {
+    call MgPeek
+  }
+  if Pk = TCloud then DropOut
+  return
+end sub
+
+' DropOut: follower K leaves the V and comes down where it is (a stray
+' that can be found again), the others close up
+sub DropOut:
+  play sound SndLost
+  ' a free stray place
+  for I = 0 to 2
+    if StOn[I] = 0 then
+      StOn[I] = 1
+      V = FY[K] >> 3
+      W16 = Top + V
+      W16 = W16 - 2
+      StR[I] = W16
+      StX[I] = FX[K]
+      I = 2
+    end if
+  next
+  dec NF
+  ShowHud
+  return
+end sub
+
+' Strays: lost geese below; the lead flying over one brings it back
+sub Strays:
+  for I = 0 to 2
+    if StOn[I] = 1 then
+      ' gone off the top of the screen: lost for good
+      if StR[I] < Top then StOn[I] = 0
+    end if
+    if StOn[I] = 1 then
+      W16 = StR[I] - Top
+      if W16 < 21 then
+        V = lowbyte W16
+        Y = V * 8
+        Y = Y + 16
+        X = StX[I]
+        V = X - Lx
+        if Lx > X then V = Lx - X
+        if V < 8 then
+          V = Y - Ly
+          if Ly > Y then V = Ly - Y
+          if V < 8 then
+            StOn[I] = 0
+            if NF < 12 then
+              inc NF
+              play sound SndJoin
+              ShowHud
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' Hawk: now and then a hawk comes from the side for the goose at the back
+' of the V; the lead flying close scares it away
+sub Hawk:
+  if HkOn = 0 then
+    if HkT > 0 then
+      dec HkT
+      return
+    end if
+    if NF = 0 then return
+    HkOn = 1
+    Scared = 0
+    HkY = 60
+    Rnd16
+    V = lowbyte Rw
+    HkX = 4
+    if V > 127 then HkX = 244
+    play sound SndCry
+    return
+  end if
+  ' its target: the last goose of the V
+  if NF = 0 then
+    Scared = 1
+  end if
+  K = NF - 1
+  if Scared = 1 then
+    ' away, up and off the screen
+    if HkY > 4 then
+      HkY = HkY - 2
+    else
+      HkOn = 0
+      V = 4 - Leg
+      HkT = V * 150
+    end if
+    return
+  end if
+  X = FX[K]
+  Y = FY[K]
+  V = Tick & 1
+  if V = 0 then
+    if HkX < X then inc HkX
+    if HkX > X then dec HkX
+    if HkY < Y then inc HkY
+    if HkY > Y then dec HkY
+  end if
+  if Leg >= 2 then
+    if HkX < X then inc HkX
+    if HkX > X then dec HkX
+  end if
+  ' the lead close: scared off
+  V = HkX - Lx
+  if Lx > HkX then V = Lx - HkX
+  if V < 18 then
+    V = HkY - Ly
+    if Ly > HkY then V = Ly - HkY
+    if V < 18 then
+      Scared = 1
+      play sound SndHonk
+      return
+    end if
+  end if
+  ' caught the goose at the back
+  V = HkX - X
+  if X > HkX then V = X - HkX
+  if V < 4 then
+    V = HkY - Y
+    if Y > HkY then V = Y - HkY
+    if V < 4 then
+      dec NF
+      play sound SndLost
+      ShowHud
+      Scared = 1
+    end if
+  end if
+  return
+end sub
+
+' ShowBirds: the V (wings beating, still on the water), the strays below,
+' the hawk
+sub ShowBirds:
+  inc Wing
+  N = SGoose1
+  V = Wing & 8
+  if V > 0 then N = SGoose2
+  if Resting = 1 then N = SGoose2
+  Y = Ly - 1
+  set sprite 0 to Y,Lx,N,6
+  for K = 0 to 11
+    C = 0
+    if K < NF then C = 1
+    Y = FY[K] - 1
+    J = K + 1
+    set sprite J to Y,FX[K],N,C
+  next
+  for I = 0 to 2
+    C = 0
+    Y = 0
+    X = 0
+    if StOn[I] = 1 then
+      W16 = StR[I] - Top
+      if W16 < 21 then
+        V = lowbyte W16
+        Y = V * 8
+        Y = Y + 15
+        X = StX[I]
+        C = 10
+      end if
+    end if
+    J = I + 13
+    set sprite J to Y,X,SGoose2,C
+  next
+  C = 0
+  if HkOn = 1 then C = 6
+  Y = HkY - 1
+  set sprite 16 to Y,HkX,SHawk,C
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 17
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 16
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+data TilePat bytes
+  $00,$20,$02,$00,$10,$00,$42,$00
+  $00,$20,$02,$00,$10,$00,$42,$00
+  $00,$20,$02,$00,$10,$00,$42,$00
+  $10,$38,$83,$38,$83,$01,$10,$00
+  $10,$38,$83,$38,$83,$01,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$60,$90,$00,$0C,$12,$00,$00
+  $00,$30,$87,$03,$48,$48,$00,$00
+  $10,$38,$28,$44,$42,$81,$80,$00
+  $00,$20,$02,$00,$10,$00,$42,$00
+  $C3,$81,$00,$00,$81,$00,$01,$83
+  $92,$92,$49,$49,$92,$92,$00,$00
+  $18,$18,$00,$18,$18,$00,$18,$18
+  $00,$00,$00,$24,$00,$00,$00,$00
+  $10,$10,$00,$16,$00,$00,$00,$00
+  $10,$10,$00,$D0,$00,$00,$00,$00
+  $00,$00,$00,$16,$00,$10,$10,$10
+  $00,$00,$00,$D0,$00,$10,$10,$10
+  $81,$99,$99,$81,$99,$99,$81,$81
+  $00,$00,$00,$99,$00,$00,$00,$00
+  $00,$20,$02,$00,$10,$00,$42,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$01,$03,$07,$F0,$E0,$C0,$80
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $80,$C0,$E0,$F0,$07,$03,$01,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+end data
+data TileCol bytes
+  $0F,$EF,$EF,$0F,$EF,$0F,$EF,$0F
+  $0E,$FE,$FE,$0E,$FE,$0E,$FE,$0E
+  $02,$32,$32,$02,$32,$02,$32,$02
+  $C2,$C2,$2C,$C2,$2C,$2C,$C2,$02
+  $CF,$CF,$FC,$CF,$FC,$FC,$CF,$0F
+  $0A,$0B,$0A,$0B,$0A,$0B,$0A,$0B
+  $04,$54,$54,$04,$54,$54,$04,$04
+  $02,$82,$28,$28,$82,$82,$02,$02
+  $FE,$FE,$FE,$FE,$FE,$FE,$FE,$0E
+  $0A,$EA,$EA,$0A,$EA,$0A,$EA,$0A
+  $1E,$1E,$0E,$0E,$1E,$0E,$1E,$1E
+  $C7,$C7,$C7,$C7,$C7,$C7,$07,$07
+  $E1,$E1,$01,$E1,$E1,$01,$E1,$E1
+  $01,$01,$01,$1E,$01,$01,$01,$01
+  $E1,$E1,$01,$E1,$01,$01,$01,$01
+  $E1,$E1,$01,$E1,$01,$01,$01,$01
+  $01,$01,$01,$E1,$01,$E1,$E1,$E1
+  $01,$01,$01,$E1,$01,$E1,$E1,$E1
+  $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $0A,$01,$01,$1A,$01,$01,$01,$0A
+  $06,$A6,$A6,$06,$A6,$06,$A6,$06
+  $04,$F4,$F4,$F4,$4F,$4F,$4F,$4F
+  $04,$F4,$F4,$F4,$F4,$4F,$4F,$4F
+  $4F,$4F,$4F,$4F,$F4,$F4,$F4,$04
+  $4F,$4F,$4F,$F4,$F4,$F4,$F4,$04
+  $04,$E4,$E4,$E4,$4E,$4E,$4E,$4E
+  $04,$E4,$E4,$E4,$E4,$4E,$4E,$4E
+  $4E,$4E,$4E,$4E,$E4,$E4,$E4,$04
+  $4E,$4E,$4E,$E4,$E4,$E4,$E4,$04
+  $04,$24,$24,$24,$42,$42,$42,$42
+  $04,$24,$24,$24,$24,$42,$42,$42
+  $42,$42,$42,$42,$24,$24,$24,$04
+  $42,$42,$42,$24,$24,$24,$24,$04
+  $04,$64,$64,$64,$46,$46,$46,$46
+  $04,$64,$64,$64,$64,$46,$46,$46
+  $46,$46,$46,$46,$64,$64,$64,$04
+  $46,$46,$46,$64,$64,$64,$64,$04
+  $04,$A4,$A4,$A4,$4A,$4A,$4A,$4A
+  $04,$A4,$A4,$A4,$A4,$4A,$4A,$4A
+  $4A,$4A,$4A,$4A,$A4,$A4,$A4,$04
+  $4A,$4A,$4A,$A4,$A4,$A4,$A4,$04
+  $0E,$FE,$FE,$FE,$EF,$EF,$EF,$EF
+  $0E,$FE,$FE,$FE,$FE,$EF,$EF,$EF
+  $EF,$EF,$EF,$EF,$FE,$FE,$FE,$0E
+  $EF,$EF,$EF,$FE,$FE,$FE,$FE,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$0E,$0E,$0E,$0E,$0E,$0E,$0E
+  $0E,$2E,$2E,$2E,$E2,$E2,$E2,$E2
+  $0E,$2E,$2E,$2E,$2E,$E2,$E2,$E2
+  $E2,$E2,$E2,$E2,$2E,$2E,$2E,$0E
+  $E2,$E2,$E2,$2E,$2E,$2E,$2E,$0E
+  $0E,$6E,$6E,$6E,$E6,$E6,$E6,$E6
+  $0E,$6E,$6E,$6E,$6E,$E6,$E6,$E6
+  $E6,$E6,$E6,$E6,$6E,$6E,$6E,$0E
+  $E6,$E6,$E6,$6E,$6E,$6E,$6E,$0E
+  $0E,$AE,$AE,$AE,$EA,$EA,$EA,$EA
+  $0E,$AE,$AE,$AE,$AE,$EA,$EA,$EA
+  $EA,$EA,$EA,$EA,$AE,$AE,$AE,$0E
+  $EA,$EA,$EA,$AE,$AE,$AE,$AE,$0E
+  $0C,$FC,$FC,$FC,$CF,$CF,$CF,$CF
+  $0C,$FC,$FC,$FC,$FC,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$FC,$FC,$FC,$0C
+  $CF,$CF,$CF,$FC,$FC,$FC,$FC,$0C
+  $0C,$EC,$EC,$EC,$CE,$CE,$CE,$CE
+  $0C,$EC,$EC,$EC,$EC,$CE,$CE,$CE
+  $CE,$CE,$CE,$CE,$EC,$EC,$EC,$0C
+  $CE,$CE,$CE,$EC,$EC,$EC,$EC,$0C
+  $0C,$2C,$2C,$2C,$C2,$C2,$C2,$C2
+  $0C,$2C,$2C,$2C,$2C,$C2,$C2,$C2
+  $C2,$C2,$C2,$C2,$2C,$2C,$2C,$0C
+  $C2,$C2,$C2,$2C,$2C,$2C,$2C,$0C
+  $0C,$6C,$6C,$6C,$C6,$C6,$C6,$C6
+  $0C,$6C,$6C,$6C,$6C,$C6,$C6,$C6
+  $C6,$C6,$C6,$C6,$6C,$6C,$6C,$0C
+  $C6,$C6,$C6,$6C,$6C,$6C,$6C,$0C
+  $0C,$AC,$AC,$AC,$CA,$CA,$CA,$CA
+  $0C,$AC,$AC,$AC,$AC,$CA,$CA,$CA
+  $CA,$CA,$CA,$CA,$AC,$AC,$AC,$0C
+  $CA,$CA,$CA,$AC,$AC,$AC,$AC,$0C
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+data Spr8 bytes 24, 24, 153, 126, 60, 24, 24, 24, 24, 24, 60, 126, 153, 24, 24, 24, 130, 68, 40, 56, 16, 56, 16, 0
+
+asm {
+MgHush:
+    db $00,$00,$F4,$01,$10
+MgHonk:
+    db $40,$53,$21,$03,$40,$68,$31,$04,$40,$7C,$71,$02,$40,$FE,$F0,$01,$50
+MgJoin:
+    db $40,$1D,$21,$03,$40,$2E,$41,$03,$40,$FF,$F3,$03,$40,$FE,$20,$03,$40,$0E,$41,$04,$40,$FE,$F0,$01
+    db $50
+MgLost:
+    db $40,$D6,$30,$04,$40,$F0,$40,$04,$40,$0E,$51,$04,$40,$41,$71,$06,$40,$7C,$A1,$08,$40,$FE,$F0,$01
+    db $50
+MgCry:
+    db $40,$40,$50,$03,$40,$39,$30,$04,$40,$43,$40,$06,$40,$4C,$70,$08,$40,$FE,$F0,$01,$50
+
+MgSoundTable:
+    dw MgHush,$702B
+    dw MgHonk,$7035
+    dw MgJoin,$7035
+    dw MgLost,$7035
+    dw MgCry,$7035
+    dw MgTuneMel,$703F
+    dw MgTuneBass,$7049
+; Southward, D major (original for this game)
+; Tiny Sound, 8 frames per step
+MgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$31,$88,$1C,$00,$21,$00,$25,$00,$A8,$00,$26,$00,$25,$00
+    db $A3,$00,$00,$00,$21,$00,$23,$00,$25,$00,$26,$00,$28,$00,$2A,$00
+    db $A8,$00,$00,$00,$2A,$00,$28,$00,$26,$00,$A5,$00,$23,$00,$25,$00
+    db $A1,$00,$00,$00,$23,$00,$25,$00,$26,$00,$23,$00,$A1,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+MgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$09,$00,$10,$00,$15,$00,$10,$00,$0E,$00,$15,$00
+    db $10,$00,$0B,$00,$09,$00,$10,$00,$15,$00,$10,$00,$0D,$00,$14,$00
+    db $10,$00,$0B,$00,$0E,$00,$15,$00,$12,$00,$15,$00,$10,$00,$17,$00
+    db $0D,$00,$10,$00,$0E,$00,$15,$00,$10,$00,$0B,$00,$09,$00,$10,$00
+    db $09,$00,$00,$00
+    db $FF
+MgSong:
+    dw $0001
+    db $40+6,7
+    dw $0000
+; MIGRATION's scrolling: the land moves up a row at a time.
+; MgShift: screen rows 3-22 move up to rows 2-21 (32 bytes at a time
+; through MgBuf). MgRow: map row MgMap (0-639, the four legs one after the
+; other) is decoded (count, tile pairs) into screen row MgDst.
+MgShift:
+    ld hl,(VDP_NAME_SHADOW)
+    ld de,64
+    add hl,de
+    ld b,20
+MgSh1:
+    push bc
+    push hl
+    ld de,32
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld hl,AMY_UVAR_MgBuf
+    ld b,32
+MgSh2:
+    in a,($BE)
+    ld (hl),a
+    inc hl
+    djnz MgSh2
+    pop hl
+    push hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld hl,AMY_UVAR_MgBuf
+    ld b,32
+MgSh3:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz MgSh3
+    pop hl
+    ld de,32
+    add hl,de
+    pop bc
+    djnz MgSh1
+    ret
+
+MgRow:
+    ld hl,(AMY_UVAR_MgMap)
+    add hl,hl
+    ld de,LegRowOff
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,LegData
+    add hl,de
+    push hl
+    ld a,(AMY_UVAR_MgDst)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld c,32
+MgRw1:
+    ld b,(hl)
+    inc hl
+    ld a,(hl)
+    inc hl
+MgRw2:
+    out ($BE),a
+    nop
+    dec c
+    djnz MgRw2
+    ld a,c
+    or a
+    jr nz,MgRw1
+    ret
+
+; MgPeek: Pk = the tile on screen at cell MgCell
+MgPeek:
+    ld hl,(AMY_UVAR_MgCell)
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+LegRowOff:
+    dw 0,2,4,6,8,18,28,34,44,54,56,66,72,78,84,94
+    dw 96,98,100,102,104,106,108,110,112,114,116,118,120,122,132,148
+    dw 162,174,184,202,224,236,244,256,262,264,266,268,270,280,286,296
+    dw 298,300,302,304,306,308,310,320,330,336,346,356,358,360,362,364
+    dw 366,376,386,392,396,402,412,422,424,426,428,430,432,434,436,438
+    dw 448,454,464,466,476,482,488,494,504,506,508,510,512,514,524,528
+    dw 538,540,542,552,558,564,570,580,582,584,586,588,590,600,606,616
+    dw 618,620,622,624,626,636,642,648,654,664,666,668,670,672,674,676
+    dw 678,680,682,684,686,704,718,732,752,762,780,790,792,794,796,798
+    dw 800,802,804,806,808,810,812,814,816,818,820,822,832,842,848,854
+    dw 860,870,878,892,902,916,930,936,948,954,964,970,982,994,1004,1018
+    dw 1036,1058,1082,1102,1114,1126,1140,1158,1168,1178,1188,1198,1204,1214,1224,1234
+    dw 1244,1254,1262,1272,1284,1298,1318,1334,1342,1348,1356,1364,1370,1376,1382,1388
+    dw 1394,1400,1406,1412,1422,1434,1440,1452,1466,1480,1490,1504,1510,1518,1520,1522
+    dw 1524,1534,1540,1550,1552,1554,1560,1566,1572,1578,1580,1582,1584,1586,1596,1602
+    dw 1612,1626,1640,1650,1660,1670,1688,1710,1720,1734,1744,1754,1760,1770,1780,1790
+    dw 1802,1814,1826,1836,1846,1872,1894,1920,1934,1944,1954,1964,1974,1990,2004,2014
+    dw 2024,2044,2064,2092,2108,2128,2148,2172,2190,2214,2236,2250,2256,2266,2276,2286
+    dw 2300,2310,2328,2346,2354,2362,2370,2376,2382,2388,2398,2404,2410,2416,2418,2420
+    dw 2430,2440,2452,2470,2484,2494,2508,2522,2530,2538,2548,2554,2564,2582,2592,2598
+    dw 2604,2606,2608,2610,2612,2614,2616,2618,2620,2622,2624,2634,2644,2650,2660,2670
+    dw 2676,2682,2708,2746,2756,2762,2766,2772,2782,2792,2794,2796,2806,2810,2820,2822
+    dw 2824,2826,2828,2830,2840,2854,2882,2908,2914,2924,2926,2928,2930,2932,2934,2936
+    dw 2938,2940,2950,2968,2982,2996,3018,3032,3046,3056,3084,3106,3112,3114,3116,3118
+    dw 3120,3130,3136,3146,3148,3150,3152,3154,3156,3158,3160,3162,3168,3174,3210,3244
+    dw 3250,3252,3254,3264,3274,3280,3288,3302,3314,3338,3348,3354,3364,3374,3376,3378
+    dw 3384,3390,3426,3464,3474,3498,3508,3526,3528,3530,3532,3534,3536,3538,3540,3542
+    dw 3544,3554,3560,3570,3580,3586,3620,3646,3648,3650,3660,3666,3676,3678,3680,3682
+    dw 3692,3698,3702,3706,3710,3724,3742,3748,3758,3770,3792,3812,3814,3816,3826,3832
+    dw 3844,3852,3864,3870,3880,3882,3884,3886,3888,3898,3908,3914,3918,3924,3934,3944
+    dw 3950,3952,3954,3956,3958,3960,3962,3964,3966,3972,3978,3992,4006,4016,4028,4038
+    dw 4040,4042,4044,4046,4048,4050,4052,4054,4056,4066,4076,4082,4088,4094,4112,4130
+    dw 4136,4146,4156,4158,4160,4162,4172,4178,4196,4206,4216,4230,4244,4258,4268,4276
+    dw 4286,4312,4338,4352,4366,4380,4398,4420,4430,4440,4456,4468,4484,4494,4504,4518
+    dw 4534,4556,4580,4604,4614,4626,4638,4648,4662,4674,4688,4704,4718,4728,4738,4748
+    dw 4762,4772,4782,4794,4810,4828,4842,4858,4872,4890,4900,4918,4932,4950,4964,4986
+    dw 4996,5006,5016,5030,5044,5058,5078,5094,5110,5128,5142,5160,5170,5180,5190,5196
+    dw 5206,5212,5230,5250,5268,5284,5304,5324,5348,5364,5378,5392,5402,5430,5444,5460
+    dw 5470,5484,5490,5496,5510,5520,5534,5544,5552,5564,5574,5588,5610,5628,5642,5662
+    dw 5686,5704,5710,5728,5740,5750,5760,5770,5782,5798,5812,5824,5836,5852,5862,5864
+LegData:
+    db 32,128,32,128,32,128,32,128,12,128,1,192,5,132,1,191,13,128,11,128,1,192,7,132,1,191,12,128,11,128,9,132
+    db 12,128,11,128,1,190,7,132,1,189,12,128,12,128,1,190,5,132,1,189,13,128,32,128,19,128,1,152,3,134,1,151
+    db 8,128,19,128,5,134,8,128,19,128,5,134,8,128,19,128,5,134,8,128,19,128,1,150,3,134,1,149,8,128,32,128
+    db 32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,2,128,1,192,1,132
+    db 1,191,27,128,1,128,1,192,3,132,1,191,1,128,1,192,6,132,18,128,1,128,11,132,1,189,1,152,3,134,1,151
+    db 14,128,11,132,1,189,1,152,5,134,1,151,13,128,1,128,5,132,6,128,7,134,13,128,1,128,1,190,3,132,1,189
+    db 6,128,1,150,5,134,1,149,13,128,2,128,1,190,1,132,1,189,8,128,1,150,3,134,1,149,9,128,1,192,4,132
+    db 8,128,1,192,3,132,1,191,14,128,5,132,8,128,5,132,14,128,5,132,8,128,1,190,3,132,1,189,14,128,5,132
+    db 27,128,1,190,4,132,32,128,32,128,32,128,32,128,6,128,1,192,5,132,1,191,19,128,6,128,7,132,19,128,6,128
+    db 1,190,5,132,1,189,19,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,16,128,1,152,5,134,1,151,9,128
+    db 15,128,1,152,7,134,1,151,8,128,15,128,9,134,8,128,15,128,1,150,7,134,1,149,8,128,16,128,1,150,5,134
+    db 1,149,9,128,32,128,32,128,32,128,32,128,32,128,2,128,1,192,1,132,1,191,27,128,1,128,1,192,3,132,1,191
+    db 26,128,1,128,5,132,26,128,6,132,26,128,1,128,5,132,26,128,1,128,1,190,3,132,1,189,26,128,2,128,1,190
+    db 1,132,1,189,27,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,32,128,6,128,1,152,7,134,1,151,17,128
+    db 6,128,9,134,17,128,6,128,1,150,7,134,1,149,17,128,32,128,12,128,1,192,3,132,1,191,15,128,12,128,5,132
+    db 15,128,12,128,5,132,15,128,12,128,5,132,15,128,12,128,1,190,3,132,1,189,15,128,32,129,32,129,32,129,32,129
+    db 32,129,22,129,1,196,7,132,1,195,1,129,22,129,10,132,22,129,1,194,7,132,1,193,1,129,32,129,32,129,21,129
+    db 1,196,1,132,1,195,8,129,21,129,3,132,8,129,21,129,3,132,8,129,21,129,3,132,8,129,21,129,1,194,1,132
+    db 1,193,8,129,32,129,32,129,32,129,32,129,32,129,14,129,1,156,3,134,1,155,13,129,14,129,5,134,13,129,14,129
+    db 1,154,3,134,1,153,13,129,32,129,32,129,32,129,32,129,32,129,15,129,1,196,3,132,1,195,12,129,15,129,5,132
+    db 12,129,15,129,5,132,12,129,15,129,5,132,12,129,15,129,1,194,3,132,1,193,12,129,32,129,32,129,32,129,32,129
+    db 32,129,32,129,32,129,32,129,32,129,32,129,32,129,5,129,1,156,7,134,1,155,5,129,1,196,3,132,1,195,8,129
+    db 5,129,9,134,4,129,1,196,5,132,1,195,7,129,5,129,1,154,7,134,1,153,4,129,7,132,7,129,3,129,1,196
+    db 4,132,1,195,1,129,1,196,1,195,6,129,7,132,7,129,3,129,9,132,6,129,7,132,7,129,3,129,1,194,7,132
+    db 1,193,6,129,1,194,5,132,1,193,7,129,19,129,1,194,3,132,1,193,8,129,32,129,32,129,32,129,32,129,32,129
+    db 32,129,32,129,32,129,32,129,32,129,32,129,32,129,32,129,32,129,32,129,32,129,16,129,1,196,3,132,1,195,11,129
+    db 15,129,1,196,5,132,1,195,10,129,15,129,7,132,10,129,15,129,7,132,10,129,15,129,7,132,10,129,14,130,5,131
+    db 9,130,3,131,1,130,14,130,5,131,9,130,4,131,14,130,5,131,9,130,1,198,1,131,1,197,1,130,14,130,5,131
+    db 3,130,8,133,2,130,14,130,1,198,3,131,1,197,3,130,7,133,3,130,15,130,1,198,1,131,1,197,4,130,8,133
+    db 2,130,22,130,4,133,6,130,22,130,6,133,1,200,1,131,1,199,1,130,20,130,8,133,4,131,20,130,7,133,3,131
+    db 1,197,1,130,20,130,4,133,8,130,14,130,1,160,7,134,1,159,5,133,4,130,14,130,1,146,8,134,1,130,4,133
+    db 4,130,14,130,1,158,7,134,1,157,9,130,7,130,1,200,3,131,1,199,2,130,1,140,17,130,6,130,1,200,5,131
+    db 1,199,1,130,1,140,4,130,7,133,6,130,6,130,7,131,1,130,1,140,4,130,4,133,1,130,1,200,3,131,1,199
+    db 3,130,6,130,1,198,5,131,1,197,1,130,1,140,4,130,5,133,1,198,4,131,1,199,2,130,7,130,1,198,3,131
+    db 1,197,2,130,1,140,4,130,6,133,5,131,2,130,14,130,1,140,4,130,6,133,5,131,2,130,14,130,1,140,6,130
+    db 1,200,8,131,2,130,14,130,1,140,6,130,1,198,7,131,1,197,2,130,14,130,1,142,5,141,1,145,1,130,1,198
+    db 5,131,1,197,3,130,10,130,6,133,4,130,1,140,11,130,10,130,7,133,3,130,1,140,11,130,10,130,5,133,5,130
+    db 1,140,11,130,10,130,7,133,3,130,1,140,11,130,20,130,1,140,11,130,18,130,2,133,1,140,2,133,9,130,18,130
+    db 2,133,1,140,1,133,10,130,18,130,2,133,1,140,3,133,8,130,18,130,2,133,1,140,2,133,9,130,18,130,2,133
+    db 1,140,1,133,10,130,20,130,1,140,1,135,10,130,20,130,1,160,3,134,1,159,7,130,4,130,6,133,10,130,1,146
+    db 4,134,7,130,4,130,6,133,10,130,1,158,3,134,1,157,7,130,4,130,7,133,9,130,1,142,1,141,1,130,1,141
+    db 1,145,1,135,6,130,4,130,4,133,12,130,2,135,2,130,1,140,1,135,6,130,24,130,1,140,1,135,6,130,24,130
+    db 1,140,7,130,23,130,1,135,1,140,7,130,23,130,1,135,1,140,7,130,24,130,1,140,7,130,24,130,1,140,7,130
+    db 24,130,1,140,7,130,24,130,1,140,7,130,24,130,1,140,7,130,24,130,1,140,7,130,24,130,1,140,7,130,24,130
+    db 1,140,7,130,19,130,1,180,5,138,1,179,6,130,18,130,1,180,7,138,1,179,1,145,4,130,18,130,9,138,5,130
+    db 18,130,1,178,7,138,1,177,1,140,4,130,19,130,1,178,5,138,1,177,1,130,1,140,4,130,6,130,1,160,5,134
+    db 1,159,14,130,1,140,4,130,6,130,7,134,14,130,1,140,4,130,6,130,1,158,5,134,1,157,14,130,1,140,4,130
+    db 27,130,1,140,4,130,21,130,6,141,1,143,4,130,32,130,32,130,32,130,11,130,1,200,1,131,1,199,18,130,11,130
+    db 3,131,18,130,11,130,1,198,1,131,1,197,18,130,32,130,32,130,17,130,8,133,7,130,17,130,8,133,7,130,17,130
+    db 8,133,7,130,17,130,6,133,9,130,32,130,32,130,32,130,32,130,14,130,1,160,5,134,1,159,11,130,14,130,7,134
+    db 11,130,14,130,1,158,5,134,1,157,11,130,12,130,1,200,1,199,1,140,1,200,1,199,15,130,11,130,1,200,2,131
+    db 1,140,4,131,1,199,12,130,11,130,3,131,1,140,5,131,12,130,11,130,3,131,1,140,5,131,12,130,11,130,3,131
+    db 1,140,5,131,12,130,2,130,6,133,3,130,1,198,2,131,1,140,4,131,1,197,12,130,1,131,1,199,6,133,4,130
+    db 1,198,1,197,1,140,1,198,2,131,1,197,13,130,2,131,6,133,6,130,1,140,17,130,2,131,7,133,5,130,1,142
+    db 4,141,1,145,12,130,3,131,1,199,15,130,1,140,12,130,3,131,1,197,15,130,1,140,12,130,19,130,1,140,12,130
+    db 11,130,1,144,7,141,1,143,12,130,10,130,1,135,1,140,1,135,19,130,11,130,1,140,1,135,1,140,18,130,10,130
+    db 1,135,1,140,1,135,1,140,18,130,10,130,1,135,1,140,1,130,1,140,18,130,10,130,1,135,1,140,1,130,1,140
+    db 18,130,11,130,1,140,1,135,1,140,18,130,11,130,1,140,1,135,1,140,18,130,11,130,1,140,1,130,1,140,1,130
+    db 1,160,3,134,1,159,1,130,1,200,6,131,1,199,3,130,6,130,1,144,4,141,1,143,1,130,1,140,1,130,5,134
+    db 1,130,8,131,3,130,6,130,1,140,6,130,1,140,1,130,1,158,3,134,1,157,1,130,1,198,6,131,1,197,3,130
+    db 6,130,1,140,3,130,1,144,2,141,1,143,18,130,6,130,1,140,3,130,1,140,21,130,6,130,1,140,3,130,1,140
+    db 21,130,6,130,1,140,3,130,1,140,21,130,6,130,1,140,3,130,1,140,21,130,6,130,1,140,3,130,1,142,5,141
+    db 1,145,1,131,14,130,6,130,1,140,6,130,2,131,1,130,1,140,15,130,6,130,1,140,9,130,1,140,15,130,6,130
+    db 1,140,9,130,1,140,15,130,6,130,1,140,9,130,1,140,1,135,1,130,1,200,7,131,1,199,4,130,3,130,1,144
+    db 2,141,1,143,9,130,1,140,1,135,1,130,9,131,4,130,3,130,1,140,12,130,1,140,2,130,1,198,1,197,1,135
+    db 1,130,1,135,1,198,2,131,1,197,4,130,3,130,1,140,11,130,1,135,1,142,6,141,1,145,8,130,3,130,1,140
+    db 13,130,2,135,1,130,1,135,1,130,1,135,1,140,8,130,1,130,1,200,1,199,1,140,1,200,1,199,17,130,1,140
+    db 3,130,5,133,1,130,2,131,1,140,2,131,12,130,1,200,1,131,1,199,2,130,1,140,3,130,5,133,3,131,1,140
+    db 2,131,12,130,3,131,2,130,1,140,3,130,5,133,1,130,2,131,1,140,2,131,12,130,1,198,1,131,1,197,2,130
+    db 1,140,3,130,5,133,1,130,1,198,1,197,1,140,1,198,1,197,13,130,1,180,5,138,1,179,6,130,3,130,1,140
+    db 14,130,1,180,7,138,1,179,5,130,18,130,9,138,5,130,18,130,1,178,7,138,1,177,5,130,19,130,1,178,5,138
+    db 1,177,6,130,23,130,1,160,1,134,1,159,6,130,20,130,1,160,2,134,1,146,2,134,1,159,5,130,20,130,3,134
+    db 1,146,3,134,5,130,15,130,1,144,4,141,1,158,2,147,1,146,2,134,1,157,5,130,11,130,4,133,1,140,3,133
+    db 2,130,1,158,3,134,1,157,6,130,11,130,4,133,1,140,16,130,11,130,4,133,1,140,16,130,11,130,4,133,1,140
+    db 16,130,15,130,1,140,16,130,15,130,1,140,16,130,15,130,1,140,16,130,8,130,1,144,6,141,1,143,16,130,8,130
+    db 1,140,23,130,8,130,1,140,23,130,8,130,1,140,23,130,32,130,32,130,23,130,1,180,5,138,1,179,2,130,22,130
+    db 1,180,7,138,1,179,1,131,11,130,1,180,3,138,1,179,6,130,10,138,10,130,1,180,5,138,1,179,5,130,1,178
+    db 7,138,1,177,1,131,10,130,7,138,6,130,1,178,5,138,1,177,2,130,10,130,1,178,5,138,1,177,15,130,9,130
+    db 1,200,1,199,1,178,3,138,1,177,16,130,9,130,1,198,2,131,1,199,1,130,1,131,17,130,10,130,1,198,4,131
+    db 17,130,11,130,6,131,1,199,14,130,10,130,1,200,7,131,1,199,13,130,10,130,9,131,13,130,10,130,1,198,7,131
+    db 1,197,13,130,11,130,1,198,5,131,1,197,1,130,1,200,3,131,1,199,8,130,18,130,1,200,5,131,1,199,7,130
+    db 18,130,7,131,7,130,17,130,9,131,6,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130
+    db 4,130,1,160,5,134,1,159,21,130,3,130,1,160,7,134,1,159,20,130,3,137,9,134,20,137,3,137,1,166,7,134
+    db 1,165,20,137,4,137,1,166,5,134,1,165,21,137,7,136,4,137,21,136,7,136,4,137,21,136,3,136,1,137,3,136
+    db 4,137,8,136,1,137,1,136,1,137,1,136,1,137,4,136,1,137,3,136,1,136,1,137,1,208,1,207,2,136,5,137
+    db 1,136,1,137,2,136,1,137,3,136,3,137,1,136,1,137,4,136,1,137,1,136,1,137,1,136,1,137,1,208,3,131
+    db 1,207,26,137,1,137,5,131,26,137,6,131,26,137,1,137,5,131,26,137,1,137,1,206,3,131,1,205,26,137,2,130
+    db 1,198,1,131,1,197,27,130,32,130,32,130,24,130,1,180,5,138,1,179,1,130,24,130,8,138,24,130,1,178,5,138
+    db 1,177,1,130,32,130,32,130,32,130,32,130,32,130,7,136,1,130,6,136,4,137,14,136,5,136,1,168,3,134,1,167
+    db 4,136,4,137,14,136,1,136,1,137,1,136,1,137,1,136,5,134,2,136,8,137,2,136,1,208,1,207,3,136,4,137
+    db 1,136,5,137,5,134,1,137,1,136,8,137,1,136,1,137,1,206,1,205,1,136,1,137,1,136,5,137,5,137,5,134
+    db 22,137,5,137,1,166,3,134,1,165,22,137,32,137,32,137,32,137,32,137,32,137,32,137,32,137,32,130,16,130,1,180
+    db 3,138,1,179,11,130,3,130,1,200,1,131,1,199,9,130,1,180,5,138,1,179,10,130,2,130,1,200,3,131,1,199
+    db 8,130,7,138,10,130,2,130,5,131,8,130,1,178,5,138,1,177,10,130,2,130,5,131,9,130,1,178,3,138,1,177
+    db 2,130,1,180,3,138,1,179,4,130,2,130,1,198,3,131,1,197,16,130,5,138,4,130,11,136,4,137,7,136,1,130
+    db 5,138,1,130,3,136,11,136,4,137,8,136,5,138,4,136,5,130,6,136,4,137,1,130,4,136,2,130,1,136,1,178
+    db 3,138,1,177,1,136,1,130,1,136,1,130,9,130,1,136,1,130,4,137,1,130,1,136,1,130,2,136,7,130,2,136
+    db 3,130,11,130,4,137,17,130,32,137,32,137,32,137,32,137,15,137,1,168,5,134,1,167,10,137,15,137,7,134,10,137
+    db 15,137,1,166,5,134,1,165,10,137,32,137,32,137,32,137,32,137,32,137,32,130,32,130,32,130,10,136,4,137,18,136
+    db 10,136,4,137,18,136,5,136,2,130,3,136,4,137,1,136,1,130,1,136,2,130,1,136,1,130,1,136,2,130,2,136
+    db 1,130,1,136,2,130,1,136,1,130,1,136,1,130,2,136,6,130,4,137,1,136,1,130,1,136,2,130,1,136,5,130
+    db 1,136,1,130,1,136,2,130,1,136,1,130,10,130,4,137,18,130,32,130,32,130,23,130,1,200,1,131,1,199,6,130
+    db 22,130,1,200,3,131,1,199,5,130,22,137,5,131,5,137,22,137,1,206,4,131,5,137,18,137,1,188,3,138,1,187
+    db 1,206,3,131,5,137,18,137,5,138,1,137,2,131,1,205,5,137,8,137,1,168,5,134,1,167,3,137,1,186,3,138
+    db 1,185,1,137,1,206,1,205,6,137,7,137,1,168,7,134,1,167,16,137,7,137,9,134,16,137,7,137,1,166,7,134
+    db 1,165,16,137,8,137,1,166,5,134,1,165,17,137,32,137,32,137,22,136,4,137,6,136,22,136,4,137,6,136,1,130
+    db 6,136,1,130,2,136,1,130,3,136,1,200,1,199,1,136,1,130,4,136,4,137,1,130,1,136,1,130,1,136,1,130
+    db 1,136,2,130,2,136,2,130,1,136,2,130,1,136,3,130,1,136,2,131,1,136,1,200,1,199,1,136,1,130,1,136
+    db 4,137,1,130,1,136,4,130,14,130,7,131,2,130,3,137,6,130,5,130,1,200,5,131,1,199,2,130,1,198,1,131
+    db 1,197,1,180,9,138,1,179,4,130,5,130,7,131,5,130,11,138,4,130,5,130,1,198,5,131,1,197,5,130,1,178
+    db 9,138,1,177,4,130,32,130,32,130,32,130,32,130,32,130,32,137,32,137,32,137,32,137,6,137,1,168,5,134,1,167
+    db 19,137,6,137,7,134,19,137,6,137,1,166,5,134,1,165,19,137,9,136,1,137,11,136,4,137,7,136,21,136,4,137
+    db 7,136,4,136,1,137,3,136,1,137,2,136,1,137,2,136,1,137,2,136,2,137,2,136,5,137,1,136,1,137,2,136
+    db 1,137,1,136,1,137,3,136,5,137,2,136,2,137,1,136,1,137,2,136,2,137,2,136,7,137,1,136,3,137,32,137
+    db 32,130,3,130,1,200,1,131,1,199,26,130,3,130,3,131,26,130,3,130,1,198,1,131,1,197,26,130,32,130,32,130
+    db 32,130,24,130,1,200,5,131,1,199,1,130,23,130,1,200,8,131,23,130,9,131,23,130,9,131,23,130,9,131,7,137
+    db 1,168,3,134,1,167,11,137,1,206,8,131,6,137,1,168,5,134,1,167,11,137,1,206,5,131,1,205,1,137,6,137
+    db 7,134,19,137,6,136,1,166,5,134,1,165,19,136,6,136,1,137,1,166,3,134,1,165,20,136,4,136,8,137,8,136
+    db 1,137,1,136,1,137,2,136,2,137,1,136,2,137,2,136,12,137,2,136,3,137,3,136,1,137,1,136,1,137,1,136
+    db 7,137,1,136,32,137,32,137,1,137,1,208,1,131,1,207,28,137,4,131,1,207,27,137,5,131,3,137,1,188,3,138
+    db 1,187,19,137,5,131,3,130,5,138,19,130,5,131,3,130,1,178,3,138,1,177,19,130,4,131,1,197,27,130,1,130
+    db 1,198,1,131,1,197,28,130,32,130,32,130,32,130,32,130,27,130,1,200,1,131,1,199,2,130,26,130,1,200,3,131
+    db 1,199,1,130,26,130,5,131,1,130,26,130,6,131,26,137,5,131,1,137,26,137,1,206,3,131,1,205,1,137,27,137
+    db 1,206,1,131,1,205,2,137,28,137,1,131,3,137,32,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,24,130
+    db 6,133,2,130,24,130,5,133,3,130,16,130,1,160,3,134,1,159,3,130,6,133,2,130,15,130,1,160,5,134,1,159
+    db 2,130,4,133,4,130,15,130,7,134,2,130,4,133,4,130,15,130,1,158,5,134,1,157,2,130,8,133,16,130,1,158
+    db 3,134,1,157,11,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,32,130,6,130,1,200,3,131,1,199
+    db 21,130,5,130,1,200,5,131,1,199,20,130,5,130,7,131,20,130,5,130,7,131,20,130,5,130,7,131,20,130,5,130
+    db 1,198,5,131,1,197,10,130,1,180,3,138,1,179,5,130,6,130,1,198,3,131,1,197,10,130,1,180,5,138,1,179
+    db 4,130,21,130,7,138,4,130,21,130,1,178,5,138,1,177,4,130,22,130,1,178,3,138,1,177,5,130,32,130,32,130
+    db 32,130,7,130,1,160,5,134,1,159,18,130,7,130,7,134,18,130,7,130,1,158,5,134,1,157,6,130,1,133,1,130
+    db 5,133,5,130,18,130,1,180,5,138,1,179,7,130,18,130,7,138,1,130,1,133,5,130,13,130,1,140,4,130,1,178
+    db 5,138,1,177,7,130,13,130,1,140,9,130,1,200,5,131,1,199,2,130,13,130,1,140,8,130,1,200,7,131,1,199
+    db 1,130,13,130,1,140,8,130,9,131,1,130,13,130,1,140,8,130,10,131,13,130,1,140,8,130,9,131,1,130,10,130
+    db 1,200,1,131,1,199,1,140,1,200,1,131,1,199,5,130,1,198,7,131,1,197,1,130,6,130,1,140,2,130,1,200
+    db 3,131,1,140,3,131,1,199,5,130,1,198,5,131,1,197,2,130,6,130,1,140,2,130,4,131,1,140,4,131,14,130
+    db 6,130,1,140,2,130,4,131,1,140,4,131,14,130,6,130,1,140,2,130,4,131,1,140,4,131,14,130,6,130,1,140
+    db 2,130,1,198,3,131,1,140,3,131,1,197,14,130,6,130,1,140,3,130,1,198,1,131,1,197,1,140,1,198,1,131
+    db 1,197,15,130,6,130,1,140,6,130,1,140,18,130,6,130,1,140,6,130,1,140,18,130,6,130,1,140,6,130,1,140
+    db 1,200,3,131,1,199,13,130,6,130,1,140,6,130,1,140,5,131,13,130,6,130,1,140,6,130,1,140,1,198,3,131
+    db 1,197,13,130,6,130,1,140,6,130,1,140,18,130,6,130,1,140,6,130,1,140,18,130,6,130,1,142,3,141,1,145
+    db 2,130,1,140,18,130,10,130,1,140,2,130,1,140,1,200,6,131,1,199,10,130,10,130,1,140,2,130,1,140,1,198
+    db 6,131,1,197,1,160,3,134,1,159,5,130,10,130,1,142,2,141,1,142,1,141,1,145,1,198,3,131,1,197,1,130
+    db 5,134,5,130,12,130,1,135,1,140,1,130,1,142,2,141,1,145,3,130,1,158,3,134,1,157,5,130,13,130,1,140
+    db 4,130,1,140,13,130,13,130,1,140,1,135,3,130,1,140,13,130,12,130,1,135,1,140,4,130,1,140,13,130,13,130
+    db 1,140,4,130,1,140,13,130,12,130,1,135,1,140,1,135,3,130,1,140,13,130,12,130,1,135,1,140,4,130,1,140
+    db 13,130,12,130,1,135,1,140,1,135,3,130,1,140,13,130,12,130,1,135,1,142,4,141,1,142,1,141,1,145,11,130
+    db 13,130,1,135,4,130,1,140,1,130,1,140,11,130,18,130,1,140,1,130,1,140,11,130,18,130,1,140,1,130,1,140
+    db 11,130,18,130,1,140,1,130,1,140,11,130,12,130,1,144,5,141,1,142,1,141,1,143,11,130,12,130,1,140,5,130
+    db 1,140,13,130,12,130,1,140,5,130,1,140,13,130,12,130,1,140,4,130,1,135,1,140,13,130,10,130,2,133,1,140
+    db 5,133,1,140,3,130,4,133,6,130,10,130,2,133,1,140,1,133,4,130,1,140,3,130,8,133,2,130,10,130,7,133
+    db 1,130,1,140,3,130,5,133,5,130,10,130,2,133,6,135,1,140,1,135,2,130,8,133,2,130,10,130,1,144,7,141
+    db 1,142,4,141,4,133,5,130,10,130,1,140,1,130,1,135,1,130,1,135,3,130,1,140,13,130,10,130,1,140,7,130
+    db 1,140,13,130,4,130,1,160,3,134,1,159,1,130,1,140,7,130,1,140,13,130,4,130,5,134,1,130,1,140,7,130
+    db 1,140,13,130,4,130,5,134,1,130,1,140,2,130,1,180,7,138,1,179,10,130,4,130,5,134,1,130,1,140,2,130
+    db 9,138,10,130,4,130,1,158,3,134,1,157,1,130,1,140,2,130,1,178,7,138,1,177,10,130,10,130,1,140,7,130
+    db 1,140,13,130,10,130,1,140,7,130,1,140,13,130,10,130,1,140,7,130,1,140,13,130,10,130,1,140,7,130,1,140
+    db 3,130,7,133,3,130,10,130,1,140,7,130,1,140,3,130,7,133,3,130,10,130,1,140,7,130,1,140,3,130,6,133
+    db 4,130,7,130,3,133,1,142,3,141,1,130,3,141,1,143,3,130,6,133,4,130,7,130,5,133,1,180,3,138,1,179
+    db 1,130,1,140,13,130,7,130,5,133,5,138,1,130,1,142,7,141,1,145,5,130,7,130,4,133,1,130,5,138,1,130
+    db 1,140,7,130,1,140,5,130,12,130,5,138,1,130,1,140,7,130,1,140,5,130,12,130,1,178,3,138,1,177,1,130
+    db 1,140,7,130,1,140,5,130,18,130,1,140,7,130,1,140,5,130,18,130,1,140,7,130,1,140,5,130,18,130,1,142
+    db 7,141,1,143,5,130,26,130,1,140,5,130,26,130,1,140,3,130,1,139,1,130,26,148,1,140,5,139,10,148,5,133
+    db 7,148,1,164,3,134,1,146,1,147,1,163,3,139,10,148,7,133,4,148,1,164,4,134,1,146,1,134,1,146,1,163
+    db 2,139,10,148,4,133,7,148,5,134,1,146,1,134,1,146,1,134,2,148,12,148,8,133,1,148,1,162,4,134,3,146
+    db 1,161,2,148,12,148,5,133,4,148,1,144,1,162,3,147,2,146,1,161,1,135,2,148,12,148,4,133,1,135,3,148
+    db 1,135,1,140,3,139,1,134,3,135,3,148,13,148,1,131,1,148,1,135,1,144,4,141,1,143,1,135,2,139,1,134
+    db 1,139,5,148,16,148,1,140,4,148,1,135,3,148,3,134,1,163,3,148,14,148,1,184,9,138,1,183,1,162,3,134
+    db 3,148,14,148,11,138,1,148,1,162,1,134,1,161,3,148,14,148,1,182,9,138,1,181,7,148,3,148,1,204,1,131
+    db 1,203,1,184,3,138,1,183,5,148,1,142,2,141,1,148,2,141,1,145,9,148,3,148,2,131,1,201,5,138,11,148
+    db 1,140,9,148,3,148,1,202,1,201,1,148,5,138,11,148,1,140,9,148,6,148,5,138,11,148,1,140,9,148,6,148
+    db 1,182,3,138,1,181,11,148,1,140,9,148,22,148,1,140,9,148,22,148,1,140,9,148,8,148,1,184,7,138,1,183
+    db 5,148,1,140,9,148,8,148,9,138,5,148,1,140,9,148,8,148,1,182,7,138,1,181,5,148,1,140,9,148,17,148
+    db 1,184,7,138,1,183,6,148,17,148,12,138,1,183,2,148,16,148,1,139,1,182,12,138,1,183,1,148,15,148,3,139
+    db 1,148,1,182,12,138,14,148,5,139,1,148,1,182,9,138,1,181,1,148,6,148,1,164,5,134,1,163,2,148,3,139
+    db 3,148,1,182,7,138,1,181,2,148,5,148,1,164,7,134,1,163,2,148,1,139,5,148,1,140,9,148,5,148,9,134
+    db 7,148,1,139,1,140,1,139,8,148,4,148,1,139,1,162,7,134,1,161,6,148,2,139,1,140,2,139,7,148,3,148
+    db 3,139,1,162,5,134,1,161,5,148,1,139,2,148,1,139,1,140,1,139,8,148,4,148,5,139,1,148,6,139,1,148
+    db 3,139,2,148,1,139,9,148,7,148,14,139,11,148,1,148,1,164,5,134,1,163,1,148,7,139,1,148,3,139,12,148
+    db 8,134,4,148,1,139,5,148,1,139,13,148,1,131,1,162,5,134,1,161,24,148,3,131,1,203,21,148,1,139,6,148
+    db 3,131,1,201,19,148,5,139,4,148,4,148,6,131,1,203,11,148,7,139,3,148,5,148,1,139,1,202,4,131,1,203
+    db 11,148,2,139,7,133,3,148,5,139,1,202,3,131,13,148,6,133,1,148,2,148,7,139,3,131,13,148,6,133,1,148
+    db 3,148,5,139,1,204,3,131,13,148,7,133,5,148,1,139,1,204,4,131,1,201,13,148,4,133,3,148,6,148,1,202
+    db 3,131,1,201,21,148,32,148,9,148,7,133,16,148
+}

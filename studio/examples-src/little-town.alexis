@@ -1,0 +1,1447 @@
+cartridge "LITTLE TOWN/AMY BIENVENU/2026"
+
+' LITTLE TOWN - an original town builder for the ColecoVision.
+'
+' Lay roads, mark lots for HOMES, SHOPS and WORKS, put up parks and power
+' plants. A lot grows (three sizes) when it has a road beside it, power
+' (a plant within 7 cells) and demand: homes want jobs, works and shops
+' want people. Works nearby keep homes small; a park nearby lets them grow
+' into flats. Every month brings taxes and costs upkeep. Grow the town
+' to 600 people to make it a city.
+'
+' House rules: joystick and button only; text in columns 2-29, rows 1-22;
+' tiles from code 128 (art.py); an original tune played once (tune.py);
+' the frame loop keeps the NMI off outside the wait (Frame1).
+'
+' Screen: row 1 the counters, rows 2-20 the town (28 x 19 cells, one tile
+' each, kept in the name table itself: town.asm), row 21 news, row 22 the
+' tools. Sprites are 8 x 8: the pointer.
+
+const TGrass0 = 128
+const TGrass1 = 129
+const TTree = 130
+const TWater = 131
+const TRoad00 = 132
+const TRoad01 = 133
+const TRoad02 = 134
+const TRoad03 = 135
+const TRoad04 = 136
+const TRoad05 = 137
+const TRoad06 = 138
+const TRoad07 = 139
+const TRoad08 = 140
+const TRoad09 = 141
+const TRoad10 = 142
+const TRoad11 = 143
+const TRoad12 = 144
+const TRoad13 = 145
+const TRoad14 = 146
+const TRoad15 = 147
+const THome0 = 148
+const THome1 = 149
+const THome2 = 150
+const THome3 = 151
+const TShop0 = 152
+const TShop1 = 153
+const TShop2 = 154
+const TShop3 = 155
+const TWork0 = 156
+const TWork1 = 157
+const TWork2 = 158
+const TWork3 = 159
+const TPark = 160
+const TPlant = 161
+const TClear = 162
+const SCursor = 0
+const SBox = 4
+const NTiles8 = 280
+const SprBytes = 64
+const SndHush = 1
+const SndTick = 2
+const SndBuild = 3
+const SndRoad = 4
+const SndClear = 5
+const SndNo = 6
+const SndGrow = 7
+const SndMonth = 8
+const SndCheer = 9
+const SndTuneA = 10
+const SndTuneB = 11
+data TitleXY bytes
+  4,2,4,3,4,4,4,5,4,6,5,6,6,6,8,2,9,2,10,2,9,3,9,4,9,5,8,6,9,6,10,6,12,2,13,2,14,2,13,3,13,4,13,5,13,6,16,2,17,2,18,2,17,3,17,4,17,5,17,6,20,2,20,3,20,4,20,5,20,6,21,6,22,6,24,2,25,2,26,2,24,3,24,4,25,4,24,5,24,6,25,6,26,6,8,8,9,8,10,8,9,9,9,10,9,11,9,12,12,8,13,8,14,8,12,9,14,9,12,10,14,10,12,11,14,11,12,12,13,12,14,12,16,8,18,8,16,9,18,9,16,10,17,10,18,10,16,11,17,11,18,11,16,12,18,12,20,8,22,8,20,9,21,9,22,9,20,10,21,10,22,10,20,11,21,11,22,11,20,12,22,12,255
+end data
+
+' the cell town.asm reads or writes, and what TnLook finds around it
+u8 Tx = 0
+u8 Ty = 0
+u8 Tt = 0
+u8 LkX = 0
+u8 LkY = 0
+u8 NRoad = 0
+u8 NWork = 0
+u8 NPark = 0
+' TnCount's counts: homes, shops, works at levels 0-3; roads; plants
+u16 Cnt[12]
+u16 NRoads = 0
+u8 NPlant = 0
+u8 PlX[16]
+u8 PlY[16]
+
+u16 Money = 0
+u16 Pop = 0
+u16 JobC = 0
+u16 JobI = 0
+i16 DemR = 0
+i16 DemC = 0
+i16 DemI = 0
+u8 Month = 0
+u8 Year = 0
+u16 MonT = 0
+u8 CntT = 0
+u8 Stage = 0
+u8 Tool = 0
+u8 CurX = 0
+u8 CurY = 0
+u8 MoveT = 0
+u8 Moved = 0
+u8 InfoOn = 0
+u8 NewsT = 0
+u16 Rnd = 4321
+u8 SwX = 0
+u8 SwY = 0
+u8 RndB = 0
+
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Sel = 0
+u8 Tick = 0
+u8 Busy = 0
+
+' scratch: never kept across a sub call
+u16 W16 = 0
+u16 W2 = 0
+i16 S16 = 0
+u8 I = 0
+u8 J = 0
+u8 C = 0
+u8 K = 0
+u8 V = 0
+u8 V2 = 0
+u8 X = 0
+u8 Y = 0
+u8 Z = 0
+u8 L = 0
+u8 Cap = 0
+u8 Pw = 0
+u8 Ok = 0
+u8 Mask = 0
+u8 Cost = 0
+u8 Gx = 0
+u8 Gy = 0
+
+' the tools: road, home, shop, work, park, power, clear
+data ToolCost bytes 5, 10, 15, 15, 20, 150, 2
+data ToolIcon bytes 147, 150, 154, 158, 160, 161, 162
+data ToolName bytes 82,79,65,68,32,32, 72,79,77,69,83,32, 83,72,79,80,83,32, 87,79,82,75,83,32, 80,65,82,75,32,32, 80,79,87,69,82,32, 67,76,69,65,82,32
+' people and jobs by level (homes, shops, works)
+data PopL bytes 0, 8, 20, 40
+data ShopL bytes 0, 6, 15, 30
+data WorkL bytes 0, 8, 20, 40
+data MonName bytes 74,65,78, 70,69,66, 77,65,82, 65,80,82, 77,65,89, 74,85,78, 74,85,76, 65,85,71, 83,69,80, 79,67,84, 78,79,86, 68,69,67
+
+  tile screen
+  set sound table TnSoundTable areas 4
+  sprites 8x8
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 1 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 2 then
+    CreditsPage
+    goto title
+  end if
+
+  NewTown
+  Money = 600
+  Month = 0
+  Year = 1
+  MonT = 0
+  Stage = 0
+  Tool = 0
+  CurX = 14
+  CurY = 9
+  Recount
+  ShowHud
+  ShowTools
+  ShowInfo
+  ShowScreen
+  WaitStick
+
+play_loop:
+  Frame1
+  Busy = 1
+  ReadPad
+  Controls
+  ' four cells a frame look whether to grow, in turn (the whole town
+  ' every two seconds or so)
+  for K = 1 to 4
+    inc SwX
+    if SwX >= 28 then
+      SwX = 0
+      inc SwY
+      if SwY >= 19 then SwY = 0
+    end if
+    Tx = SwX + 2
+    Ty = SwY + 2
+    Grow
+  next
+  ' the counts again each second, a month each five
+  inc CntT
+  if CntT >= 60 then
+    CntT = 0
+    Recount
+    ShowHud
+  end if
+  inc MonT
+  if MonT >= 300 then
+    MonT = 0
+    NewMonth
+  end if
+  if NewsT > 0 then
+    dec NewsT
+    if NewsT = 0 then ShowInfo
+  end if
+  ShowPointer
+  Busy = 0
+  if Stage < 3 then goto play_loop
+  ' a city!
+  HideSprites
+  Hold(120)
+  EndPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' the town
+
+' NewTown: grass, two lakes, woods, and the road in from the west
+sub NewTown:
+  NewScreen
+  backdrop dark green
+  for Ty = 2 to 20
+    for Tx = 2 to 29
+      NextRnd
+      V = RndB & 1
+      Tt = TGrass0 + V
+      PutT
+    next
+  next
+  for K = 1 to 2
+    NextRnd
+    Gx = RndB & 15
+    Gx = Gx + 8
+    if K = 2 then Gx = Gx + 4
+    NextRnd
+    Gy = RndB & 7
+    Gy = Gy + 3
+    if K = 2 then Gy = Gy + 8
+    for Ty = Gy to Gy + 3
+      for Tx = Gx to Gx + 4
+        Ok = 1
+        if Ty = Gy then
+          if Tx = Gx then Ok = 0
+        end if
+        V = Gx + 4
+        if Tx = V then
+          V2 = Gy + 3
+          if Ty = V2 then Ok = 0
+        end if
+        if Ok = 1 then
+          Tt = TWater
+          PutT
+        end if
+      next
+    next
+  next
+  ' woods: little clumps
+  for K = 1 to 10
+    NextRnd
+    Gx = RndB & 31
+    if Gx < 26 then
+      Gx = Gx + 3
+      NextRnd
+      Gy = RndB & 15
+      Gy = Gy + 3
+      for J = 1 to 4
+        NextRnd
+        V = RndB & 3
+        Tx = Gx + V
+        NextRnd
+        V = RndB & 1
+        Ty = Gy + V
+        if Tx <= 29 then
+          GetT
+          if Tt <= TGrass1 then
+            Tt = TTree
+            PutT
+          end if
+        end if
+      next
+    end if
+  next
+  ' the road in
+  Ty = 11
+  for Tx = 2 to 7
+    Tt = TRoad10
+    PutT
+  next
+  Tx = 7
+  Tt = TRoad08
+  PutT
+  return
+end sub
+
+sub GetT:
+  asm {
+    call TnGet
+  }
+  return
+end sub
+
+sub PutT:
+  asm {
+    call TnPut
+  }
+  return
+end sub
+
+' IsRoad: is the cell Tx, Ty a road? (Ok)
+sub IsRoad:
+  Ok = 0
+  GetT
+  if Tt >= TRoad00 then
+    if Tt <= TRoad15 then Ok = 1
+  end if
+  return
+end sub
+
+' RoadFix: the road at Tx, Ty joined to its neighbours (if it is a road)
+sub RoadFix:
+  IsRoad
+  if Ok = 0 then return
+  Gx = Tx
+  Gy = Ty
+  Mask = 0
+  Ty = Gy - 1
+  IsRoad
+  if Ok = 1 then Mask = Mask | 1
+  Ty = Gy + 1
+  IsRoad
+  if Ok = 1 then Mask = Mask | 4
+  Ty = Gy
+  Tx = Gx + 1
+  IsRoad
+  if Ok = 1 then Mask = Mask | 2
+  Tx = Gx - 1
+  IsRoad
+  if Ok = 1 then Mask = Mask | 8
+  ' the road in from the west edge
+  if Gx = 2 then Mask = Mask | 8
+  Tx = Gx
+  Tt = TRoad00 + Mask
+  PutT
+  return
+end sub
+
+' RoadsAround: the cell Tx, Ty and its four neighbours joined up
+sub RoadsAround:
+  X = Tx
+  Y = Ty
+  RoadFix
+  Tx = X
+  Ty = Y - 1
+  RoadFix
+  Tx = X
+  Ty = Y + 1
+  RoadFix
+  Tx = X - 1
+  Ty = Y
+  RoadFix
+  Tx = X + 1
+  Ty = Y
+  RoadFix
+  Tx = X
+  Ty = Y
+  return
+end sub
+
+' Powered: a power plant within 7 across and 6 down of Tx, Ty? (Pw)
+sub Powered:
+  Pw = 0
+  if NPlant = 0 then return
+  for J = 0 to NPlant - 1
+    V = PlX[J]
+    if V >= Tx then
+      V = V - Tx
+    else
+      V = Tx - V
+    end if
+    if V <= 7 then
+      V = PlY[J]
+      if V >= Ty then
+        V = V - Ty
+      else
+        V = Ty - V
+      end if
+      if V <= 6 then Pw = 1
+    end if
+  next
+  return
+end sub
+
+' Grow: the lot at Tx, Ty grows, stays or shrinks
+sub Grow:
+  GetT
+  if Tt < THome0 then return
+  if Tt > TWork3 then return
+  V = Tt - THome0
+  Z = V >> 2
+  L = V & 3
+  asm {
+    call TnLook
+  }
+  Powered
+  NextRnd
+  if NRoad = 0 then Pw = 0
+  if Pw = 0 then
+    ' no road or no power: it empties, slowly
+    if L > 0 then
+      V = RndB & 7
+      if V = 0 then
+        dec L
+        SetLot
+      end if
+    end if
+    return
+  end if
+  S16 = DemR
+  if Z = 1 then S16 = DemC
+  if Z = 2 then S16 = DemI
+  Cap = 3
+  if Z = 0 then
+    if NWork > 0 then Cap = 1
+    if NPark = 0 then
+      if Cap = 3 then Cap = 2
+    end if
+  end if
+  if L > Cap then
+    dec L
+    SetLot
+    return
+  end if
+  if S16 > 0 then
+    if L < Cap then
+      V = RndB & 15
+      if V = 0 then
+        inc L
+        SetLot
+        play sound SndGrow
+      end if
+    end if
+    return
+  end if
+  if S16 < -10 then
+    if L > 0 then
+      V = RndB & 15
+      if V = 0 then
+        dec L
+        SetLot
+      end if
+    end if
+  end if
+  return
+end sub
+
+' SetLot: lot kind Z at level L on Tx, Ty
+sub SetLot:
+  V = Z * 4
+  V = V + L
+  Tt = THome0 + V
+  PutT
+  return
+end sub
+
+' Recount: the town counted, and what it wants
+sub Recount:
+  asm {
+    call TnCount
+  }
+  Pop = 0
+  JobC = 0
+  JobI = 0
+  for L = 1 to 3
+    V2 = PopL[L]
+    W16 = V2
+    W2 = Cnt[L]
+    W2 = W2 * W16
+    Pop = Pop + W2
+    V2 = ShopL[L]
+    W16 = V2
+    V = L + 4
+    W2 = Cnt[V]
+    W2 = W2 * W16
+    JobC = JobC + W2
+    V2 = WorkL[L]
+    W16 = V2
+    V = L + 8
+    W2 = Cnt[V]
+    W2 = W2 * W16
+    JobI = JobI + W2
+  next
+  ' homes want jobs; works want people; shops want customers
+  ' (each job keeps a family and a half, so a town that works grows)
+  W16 = JobC + JobI
+  W2 = W16 / 2
+  W16 = W16 + W2
+  S16 = W16
+  S16 = S16 + 30
+  DemR = S16 - Pop
+  W16 = Pop / 2
+  S16 = W16
+  S16 = S16 + 20
+  DemI = S16 - JobI
+  W16 = Pop / 4
+  S16 = W16
+  S16 = S16 + 10
+  DemC = S16 - JobC
+  ' the milestones
+  if Stage = 0 then
+    if Pop >= 100 then
+      Stage = 1
+      News(1)
+    end if
+  end if
+  if Stage = 1 then
+    if Pop >= 300 then
+      Stage = 2
+      News(2)
+    end if
+  end if
+  if Stage = 2 then
+    if Pop >= 600 then
+      Stage = 3
+      News(3)
+    end if
+  end if
+  return
+end sub
+
+sub NewMonth:
+  ' taxes: a twelfth of the people and the jobs; upkeep: an eighth of
+  ' the roads and 4 a plant
+  W16 = Pop / 12
+  W2 = JobC + JobI
+  W2 = W2 / 12
+  W16 = W16 + W2
+  Money = Money + W16
+  if Money > 60000 then Money = 60000
+  W16 = NRoads / 8
+  W2 = NPlant * 4
+  W16 = W16 + W2
+  if Money > W16 then
+    Money = Money - W16
+  else
+    Money = 0
+  end if
+  inc Month
+  if Month >= 12 then
+    Month = 0
+    if Year < 99 then inc Year
+  end if
+  play sound SndMonth
+  ShowHud
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the player
+
+sub Controls:
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  Moved = 0
+  if V = 0 then
+    MoveT = 0
+  else
+    if MoveT = 0 then
+      MovePointer
+      MoveT = 14
+    else
+      dec MoveT
+      if MoveT = 0 then
+        MovePointer
+        MoveT = 4
+      end if
+    end if
+  end if
+  if Moved = 1 then ShowInfo
+  if CurY = 19 then
+    ' the tools row
+    if Press = 1 then
+      V = CurX / 4
+      if V > 6 then V = 6
+      Tool = V
+      play sound SndTick
+      ShowTools
+      ShowInfo
+    end if
+    return
+  end if
+  ' build: on a press, and on each new cell while the button is held
+  if Press = 1 then
+    Build
+    return
+  end if
+  if Btn = 1 then
+    if Moved = 1 then Build
+  end if
+  return
+end sub
+
+sub MovePointer:
+  Moved = 1
+  if Lf1 = 1 then
+    if CurX > 0 then dec CurX
+  end if
+  if Rt1 = 1 then
+    if CurX < 27 then inc CurX
+  end if
+  if Up1 = 1 then
+    if CurY > 0 then dec CurY
+  end if
+  if Dn1 = 1 then
+    if CurY < 19 then inc CurY
+  end if
+  return
+end sub
+
+' Build: the tool on the pointer's cell
+sub Build:
+  Tx = CurX + 2
+  Ty = CurY + 2
+  GetT
+  Cost = ToolCost[Tool]
+  W16 = Cost
+  if Money < W16 then
+    play sound SndNo
+    News(4)
+    return
+  end if
+  if Tool = 6 then
+    ' clear: anything but grass and water
+    if Tt <= TGrass1 then return
+    if Tt = TWater then
+      play sound SndNo
+      return
+    end if
+    V = Tt
+    Tt = TGrass0
+    PutT
+    if V >= TRoad00 then
+      if V <= TRoad15 then RoadsAround
+    end if
+    Money = Money - W16
+    play sound SndClear
+    Recount
+    ShowHud
+    ShowInfo
+    return
+  end if
+  ' everything else goes on grass only
+  if Tt > TGrass1 then
+    if Btn = 1 then
+      if Press = 0 then return
+    end if
+    play sound SndNo
+    return
+  end if
+  Money = Money - W16
+  if Tool = 0 then
+    Tt = TRoad00
+    PutT
+    RoadsAround
+    play sound SndRoad
+  else
+    V = Tool - 1
+    Tt = THome0
+    if V = 1 then Tt = TShop0
+    if V = 2 then Tt = TWork0
+    if V = 3 then Tt = TPark
+    if V = 4 then Tt = TPlant
+    PutT
+    play sound SndBuild
+  end if
+  Recount
+  ShowHud
+  ShowInfo
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the screen
+
+sub ShowPointer:
+  V = 15
+  C = Tick & 16
+  if C > 0 then V = 11
+  if CurY = 19 then
+    ' a box round the tool's picture
+    X = CurX / 4
+    if X > 6 then X = 6
+    X = X * 32
+    X = X + 24
+    set sprite 0 to 175,X,SBox,V
+  else
+    X = CurX * 8
+    X = X + 16
+    Y = CurY * 8
+    Y = Y + 15
+    set sprite 0 to Y,X,SCursor,V
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "CASH"
+  print at 7,1, digits$(Money, 5)
+  print at 13,1, "POP"
+  print at 17,1, digits$(Pop, 5)
+  W16 = Month * 3
+  for J = 0 to 2
+    V = MonName[W16]
+    X = J + 23
+    put char V at X,1
+    inc W16
+  next
+  put char 89 at 27,1
+  print at 28,1, digits$(Year, 2)
+  return
+end sub
+
+sub ShowTools:
+  fill 32 count 28 at 2,22
+  for J = 0 to 6
+    X = J * 4
+    X = X + 3
+    V = ToolIcon[J]
+    put char V at X,22
+    if J = Tool then
+      X = X + 1
+      put char 60 at X,22
+    end if
+  next
+  return
+end sub
+
+' ShowInfo: row 21: the tool (on the tools row), or the cell under the
+' pointer and what it lacks, or what the town wants
+sub ShowInfo:
+  if NewsT > 0 then return
+  fill 32 count 28 at 2,21
+  if CurY = 19 then
+    V = CurX / 4
+    if V > 6 then V = 6
+    W16 = V * 6
+    for J = 0 to 5
+      V2 = ToolName[W16]
+      X = J + 2
+      put char V2 at X,21
+      inc W16
+    next
+    print at 9,21, "COSTS"
+    print at 15,21, digits$(ToolCost[V], 3)
+    return
+  end if
+  Tx = CurX + 2
+  Ty = CurY + 2
+  GetT
+  if Tt >= THome0 then
+    if Tt <= TWork3 then
+      V = Tt - THome0
+      Z = V >> 2
+      L = V & 3
+      if Z = 0 then print at 2,21, "HOMES"
+      if Z = 1 then print at 2,21, "SHOPS"
+      if Z = 2 then print at 2,21, "WORKS"
+      print at 8,21, digits$(L, 1)
+      asm {
+        call TnLook
+      }
+      Powered
+      if NRoad = 0 then
+        print at 11,21, "NEEDS A ROAD"
+        return
+      end if
+      if Pw = 0 then
+        print at 11,21, "NEEDS POWER"
+        return
+      end if
+      if Z = 0 then
+        if NWork > 0 then
+          print at 11,21, "WORKS TOO CLOSE"
+          return
+        end if
+        if L = 2 then
+          if NPark = 0 then
+            print at 11,21, "WANTS A PARK"
+            return
+          end if
+        end if
+      end if
+      print at 11,21, "FINE"
+      return
+    end if
+  end if
+  ' anything else: what the town wants most
+  print at 2,21, "THE TOWN WANTS"
+  S16 = DemR
+  V = 0
+  if DemC > S16 then
+    S16 = DemC
+    V = 1
+  end if
+  if DemI > S16 then
+    S16 = DemI
+    V = 2
+  end if
+  if S16 <= 0 then
+    print at 17,21, "NOTHING"
+    return
+  end if
+  if V = 0 then print at 17,21, "HOMES"
+  if V = 1 then print at 17,21, "SHOPS"
+  if V = 2 then print at 17,21, "WORKS"
+  return
+end sub
+
+' News: a message on row 21 for a few seconds
+sub News(u8 Which):
+  fill 32 count 28 at 2,21
+  if Which = 1 then print at 3,21, "IT IS A VILLAGE NOW!"
+  if Which = 2 then print at 3,21, "IT IS A TOWN NOW!"
+  if Which = 3 then print at 3,21, "IT IS A CITY NOW!"
+  if Which = 4 then print at 3,21, "NOT ENOUGH MONEY"
+  if Which < 4 then play sound SndCheer
+  NewsT = 150
+  return
+end sub
+
+' NextRnd: the next random byte (xorshift's high byte)
+sub NextRnd:
+  ' xorshift (7, 9, 8): every 16-bit value but 0 in turn
+  W2 = Rnd << 7
+  Rnd = Rnd ^ W2
+  W2 = Rnd >> 9
+  Rnd = Rnd ^ W2
+  W2 = Rnd << 8
+  Rnd = Rnd ^ W2
+  W2 = Rnd >> 8
+  RndB = lowbyte W2
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the pages
+
+sub TitlePage:
+  NewScreen
+  backdrop dark green
+  I = 0
+tp_xy:
+  X = TitleXY[I]
+  if X <> 255 then
+    Y = TitleXY[I + 1]
+    put char THome2 at X,Y
+    I = I + 2
+    goto tp_xy
+  end if
+  ' a street
+  for X = 2 to 29
+    put char TRoad10 at X,15
+  next
+  put char THome2 at 4,14
+  put char THome3 at 6,14
+  put char TShop2 at 9,14
+  put char TPark at 12,14
+  put char TShop3 at 15,14
+  put char TWork2 at 20,14
+  put char TTree at 23,14
+  put char TPlant at 26,14
+  print at 7,17, "PLAY"
+  print at 7,18, "HOW TO PLAY"
+  print at 7,19, "CREDITS"
+  print at 5,22, "AN ORIGINAL GAME, 2026"
+  Sel = 0
+  ShowTitleMenu
+  ShowScreen
+  play song TnSong once
+  WaitStick
+tp_loop:
+  Frame1
+  ReadPad
+  NextRnd
+  if Rnd = 0 then Rnd = 1
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Sel > 0 then dec Sel
+      end if
+      if Dn1 = 1 then
+        if Sel < 2 then inc Sel
+      end if
+      play sound SndTick
+      ShowTitleMenu
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop song
+  mute all
+  play sound SndBuild
+  return
+end sub
+
+sub ShowTitleMenu:
+  for Y = 17 to 19
+    put char 32 at 5,Y
+  next
+  Y = Sel + 17
+  put char 62 at 5,Y
+  return
+end sub
+
+sub HowToPage:
+  TextPage
+  print at 10,1, "HOW TO PLAY"
+  print at 2,3, "STICK: MOVE THE POINTER."
+  print at 2,4, "BUTTON: BUILD (HOLD IT TO"
+  print at 2,5, "LAY A LINE OF ROAD)."
+  print at 2,6, "BOTTOM ROW: PICK A TOOL."
+  print at 2,8, "HOMES, SHOPS AND WORKS GROW"
+  print at 2,9, "BY A ROAD, WITH POWER (A"
+  print at 2,10, "PLANT WITHIN 7 CELLS), WHEN"
+  print at 2,11, "THE TOWN WANTS THEM:"
+  print at 2,12, "HOMES WANT JOBS, SHOPS AND"
+  print at 2,13, "WORKS WANT PEOPLE."
+  print at 2,15, "WORKS NEAR HOMES KEEP THEM"
+  print at 2,16, "SMALL. A PARK NEAR HOMES"
+  print at 2,17, "LETS THEM GROW TO FLATS."
+  print at 2,19, "TAXES COME EVERY MONTH."
+  print at 2,20, "REACH 600 PEOPLE: A CITY!"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub CreditsPage:
+  TextPage
+  print at 10,2, "LITTLE TOWN"
+  print at 2,4, "AN ORIGINAL GAME FOR THE"
+  print at 2,5, "COLECOVISION."
+  print at 2,7, "DESIGN, PROGRAM, GRAPHICS,"
+  print at 2,8, "SOUNDS AND THE TUNE"
+  print at 2,9, "MAIN STREET:"
+  print at 2,10, "CLAUDE (AN AI BY ANTHROPIC)"
+  print at 2,13, "MADE WITH AMY STUDIO"
+  print at 2,14, "BY AMY BIENVENU"
+  print at 2,17, "(C) 2026"
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub EndPage:
+  TextPage
+  print at 5,5, "LITTLE TOWN IS A CITY!"
+  print at 5,8, "600 PEOPLE CALL IT HOME."
+  print at 5,10, "IT TOOK"
+  print at 13,10, digits$(Year, 2)
+  print at 16,10, "YEARS."
+  print at 5,13, "THANK YOU, MAYOR."
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Hold(60)
+  WaitPress
+  return
+end sub
+
+sub TextPage:
+  NewScreen
+  fill mode 2 text color with $10
+  backdrop white
+  cls
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the machine
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: let the NMI run during the wait, then keep it off
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Hold(u8 Frames):
+  for C = 1 to Frames
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' WaitStick: until the button is let go (so a press is a new one)
+sub WaitStick:
+  WasBtn = 1
+  WasStick = 1
+  return
+end sub
+
+sub WaitPress:
+  WaitStick
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  play sound SndTick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  sprites flicker off
+  set sprite 0 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' every new screen starts here: wait, NMI off, display off, tiles, cls
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$04,$00,$40,$00,$02,$20,$00
+  $00,$20,$00,$04,$00,$40,$00,$08
+  $18,$C3,$81,$81,$C3,$18,$18,$00
+  $00,$20,$00,$06,$00,$40,$00,$00
+  $00,$00,$C3,$C3,$C3,$C3,$00,$00
+  $C3,$C3,$C3,$C3,$C3,$C3,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$00,$00
+  $C3,$C3,$C0,$C0,$C0,$C0,$00,$00
+  $00,$00,$C3,$C3,$C3,$C3,$C3,$C3
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $00,$00,$C0,$C0,$C0,$C0,$C3,$C3
+  $C3,$C3,$C0,$C0,$C0,$C0,$C3,$C3
+  $00,$00,$03,$03,$03,$03,$00,$00
+  $C3,$C3,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $C3,$C3,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$C3,$C3
+  $C3,$C3,$03,$03,$03,$03,$C3,$C3
+  $00,$00,$00,$00,$00,$00,$C3,$C3
+  $C3,$C3,$00,$00,$00,$00,$C3,$C3
+  $00,$42,$00,$00,$00,$00,$42,$00
+  $00,$00,$18,$C3,$81,$81,$08,$00
+  $18,$C3,$81,$00,$00,$42,$18,$00
+  $00,$AA,$00,$AA,$00,$AA,$18,$00
+  $00,$42,$00,$00,$00,$00,$42,$00
+  $00,$00,$81,$AA,$81,$99,$99,$00
+  $00,$00,$AA,$00,$00,$24,$24,$00
+  $00,$AA,$00,$AA,$00,$AA,$18,$00
+  $00,$42,$00,$00,$00,$00,$42,$00
+  $00,$00,$00,$81,$49,$81,$0C,$00
+  $04,$04,$04,$81,$AA,$00,$0C,$00
+  $2A,$2A,$2A,$00,$AA,$00,$30,$00
+  $38,$83,$38,$10,$00,$42,$18,$42
+  $18,$18,$00,$AA,$00,$AA,$00,$00
+  $00,$42,$24,$18,$18,$24,$42,$00
+end data
+data TileCol bytes
+  $02,$32,$02,$32,$02,$32,$32,$02
+  $02,$32,$02,$32,$02,$32,$02,$32
+  $C2,$2C,$2C,$2C,$2C,$62,$62,$02
+  $05,$F5,$05,$F5,$05,$F5,$05,$05
+  $02,$02,$2E,$2E,$2E,$2E,$02,$02
+  $2E,$2E,$2E,$2E,$2E,$2E,$02,$02
+  $02,$02,$2E,$2E,$2E,$2E,$02,$02
+  $2E,$2E,$2E,$2E,$2E,$2E,$02,$02
+  $02,$02,$2E,$2E,$2E,$2E,$2E,$2E
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $02,$02,$2E,$2E,$2E,$2E,$2E,$2E
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $02,$02,$2E,$2E,$2E,$2E,$02,$02
+  $2E,$2E,$2E,$2E,$2E,$2E,$02,$02
+  $02,$02,$0E,$0E,$0E,$0E,$02,$02
+  $2E,$2E,$0E,$0E,$0E,$0E,$02,$02
+  $02,$02,$2E,$2E,$2E,$2E,$2E,$2E
+  $2E,$2E,$2E,$2E,$2E,$2E,$2E,$2E
+  $02,$02,$0E,$0E,$0E,$0E,$2E,$2E
+  $2E,$2E,$0E,$0E,$0E,$0E,$2E,$2E
+  $02,$B2,$02,$02,$02,$02,$B2,$02
+  $02,$02,$82,$28,$28,$2F,$1F,$02
+  $82,$28,$28,$08,$0F,$1F,$1F,$02
+  $09,$91,$09,$91,$09,$91,$19,$02
+  $02,$52,$02,$02,$02,$02,$52,$02
+  $02,$02,$27,$7F,$2F,$F5,$F5,$02
+  $02,$07,$7F,$07,$0F,$F5,$F5,$02
+  $05,$5F,$05,$5F,$05,$5F,$F5,$02
+  $02,$A2,$02,$02,$02,$02,$A2,$02
+  $02,$02,$02,$2E,$1E,$2E,$1E,$02
+  $62,$62,$62,$2A,$AE,$0A,$1A,$02
+  $E2,$62,$62,$0A,$AE,$0A,$1A,$02
+  $32,$23,$32,$62,$02,$B2,$2B,$B2
+  $12,$12,$0D,$DF,$0D,$DF,$0D,$02
+  $01,$81,$81,$81,$81,$81,$81,$01
+end data
+data SpritePat bytes
+  $D8,$84,$00,$84,$D8,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $FF,$81,$81,$81,$81,$81,$81,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+; LITTLE TOWN: the town lives in the name table ($1800), one tile a cell
+; (columns 2-29, rows 2-20), so the map needs no RAM.
+
+; TnAddr: HL = the name table address of column Tx, row Ty
+TnAddr:
+    ld a,(AMY_UVAR_Ty)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_Tx)
+    or l
+    ld l,a
+    ld de,$1800
+    add hl,de
+    ret
+
+; TnGet: Tt = the tile at Tx, Ty
+TnGet:
+    call TnAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Tt),a
+    ret
+
+; TnPut: the tile Tt at Tx, Ty
+TnPut:
+    call TnAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_Tt)
+    out ($BE),a
+    ret
+
+; TnLook: around Tx, Ty: NRoad = 1 if a road is in the 3 x 3 square, NWork
+; = the works (built) in the 5 x 5 square, NPark = the parks there
+TnLook:
+    xor a
+    ld (AMY_UVAR_NRoad),a
+    ld (AMY_UVAR_NWork),a
+    ld (AMY_UVAR_NPark),a
+    ld a,(AMY_UVAR_Tx)
+    ld (AMY_UVAR_LkX),a
+    ld a,(AMY_UVAR_Ty)
+    ld (AMY_UVAR_LkY),a
+    sub 2
+    ld (AMY_UVAR_Ty),a
+    ld a,(AMY_UVAR_Tx)
+    sub 2
+    ld (AMY_UVAR_Tx),a
+    ld c,0                  ; c = the row (0-4)
+TnLk1:
+    call TnAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld b,0                  ; b = the column (0-4)
+TnLk2:
+    in a,($BE)
+    ld e,a
+    ; a road (1 to 3 across and down: the inner square)?
+    sub AMY_UCONST_TRoad00
+    cp 16
+    jr nc,TnLk3
+    ld a,b
+    dec a
+    cp 3
+    jr nc,TnLk3
+    ld a,c
+    dec a
+    cp 3
+    jr nc,TnLk3
+    ld a,1
+    ld (AMY_UVAR_NRoad),a
+TnLk3:
+    ld a,e
+    sub AMY_UCONST_TWork1
+    cp 3
+    jr nc,TnLk4
+    ld hl,AMY_UVAR_NWork
+    inc (hl)
+TnLk4:
+    ld a,e
+    cp AMY_UCONST_TPark
+    jr nz,TnLk5
+    ld hl,AMY_UVAR_NPark
+    inc (hl)
+TnLk5:
+    inc b
+    ld a,b
+    cp 5
+    jr nz,TnLk2
+    ld hl,AMY_UVAR_Ty
+    inc (hl)
+    inc c
+    ld a,c
+    cp 5
+    jr nz,TnLk1
+    ld a,(AMY_UVAR_LkX)
+    ld (AMY_UVAR_Tx),a
+    ld a,(AMY_UVAR_LkY)
+    ld (AMY_UVAR_Ty),a
+    ret
+
+; TnCount: the whole town counted: Cnt (12 words) for the homes, shops
+; and works at levels 0-3, NRoads, and the power plants' places (PlX,
+; PlY, up to 16 of them, NPlant)
+TnCount:
+    ld hl,AMY_UVAR_Cnt
+    ld b,24
+TnCn0:
+    ld (hl),0
+    inc hl
+    djnz TnCn0
+    ld hl,0
+    ld (AMY_UVAR_NRoads),hl
+    xor a
+    ld (AMY_UVAR_NPlant),a
+    ld a,2
+    ld (AMY_UVAR_Ty),a
+TnCn1:
+    ld a,2
+    ld (AMY_UVAR_Tx),a
+    call TnAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld b,28
+TnCn2:
+    in a,($BE)
+    ld e,a
+    sub AMY_UCONST_TRoad00
+    cp 16
+    jr nc,TnCn3
+    ld hl,(AMY_UVAR_NRoads)
+    inc hl
+    ld (AMY_UVAR_NRoads),hl
+    jr TnCn6
+TnCn3:
+    ld a,e
+    sub AMY_UCONST_THome0
+    cp 12
+    jr nc,TnCn4
+    add a,a
+    ld l,a
+    ld h,0
+    push de
+    ld de,AMY_UVAR_Cnt
+    add hl,de
+    pop de
+    inc (hl)
+    jr nz,TnCn6
+    inc hl
+    inc (hl)
+    jr TnCn6
+TnCn4:
+    ld a,e
+    cp AMY_UCONST_TPlant
+    jr nz,TnCn6
+    ld a,(AMY_UVAR_NPlant)
+    cp 16
+    jr nc,TnCn6
+    ld l,a
+    ld h,0
+    push de
+    ld de,AMY_UVAR_PlY
+    add hl,de
+    ld a,(AMY_UVAR_Ty)
+    ld (hl),a
+    ld de,AMY_UVAR_PlX - AMY_UVAR_PlY
+    add hl,de
+    ld a,30
+    sub b                   ; the column: 2 + (28 - b)
+    ld (hl),a
+    pop de
+    ld hl,AMY_UVAR_NPlant
+    inc (hl)
+TnCn6:
+    djnz TnCn2
+    ld hl,AMY_UVAR_Ty
+    inc (hl)
+    ld a,(hl)
+    cp 21
+    jr nz,TnCn1
+    ret
+
+TnHush:
+    db $00,$00,$F4,$01,$10
+TnTick:
+    db $40,$40,$50,$01,$50
+TnBuild:
+    db $40,$7F,$20,$02,$40,$55,$30,$03,$50
+TnRoad:
+    db $00,$00,$36,$02,$00,$00,$66,$02,$10
+TnClear:
+    db $00,$00,$25,$03,$00,$00,$56,$04,$10
+TnNo:
+    db $40,$F9,$22,$04,$40,$F9,$33,$06,$50
+TnGrow:
+    db $80,$47,$60,$02,$80,$35,$70,$03,$90
+TnMonth:
+    db $80,$6B,$50,$02,$80,$55,$60,$04,$90
+TnCheer:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$30,$10,$50
+
+TnSoundTable:
+    dw TnHush,$702B
+    dw TnTick,$7035
+    dw TnBuild,$7035
+    dw TnRoad,$702B
+    dw TnClear,$702B
+    dw TnNo,$7035
+    dw TnGrow,$703F
+    dw TnMonth,$703F
+    dw TnCheer,$7035
+    dw TnTuneMel,$703F
+    dw TnTuneBass,$7049
+; Main Street, F major (original for this game)
+; Tiny Sound, 8 frames per step
+TnTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$18,$1C,$1F,$00,$1C,$1F,$24,$00,$23,$21,$1F,$00
+    db $1D,$21,$24,$00,$21,$1D,$1C,$00,$1A,$1C,$1D,$00,$1F,$21,$23,$00
+    db $24,$26,$28,$00,$26,$24,$23,$21,$1F,$1C,$1A,$17,$98,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+TnTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0C,$00,$13,$00,$0C,$00,$13,$00,$0C,$00,$10,$00
+    db $11,$00,$0C,$00,$11,$00,$0C,$00,$13,$00,$17,$00,$10,$00,$13,$00
+    db $15,$00,$0C,$00,$11,$00,$0E,$00,$13,$00,$13,$00,$0C,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+; the title song: both voices of Main Street at once
+TnSong:
+    dw $0001
+    db $40+10,11
+    dw $0000
+}

@@ -1,0 +1,2007 @@
+cartridge "SNOWBALL HILL/AMY BIENVENU/2026"
+
+' SNOWBALL HILL - an original snowball duel for the ColecoVision.
+'
+' Two snowmen on a snowy hill throw snowballs at each other in turns,
+' through the wind. A snowball that lands digs a hole in the hill, and a
+' snowman with nothing under him slides down into it. Each hit takes
+' some of his snow; the first to lose all of it loses the round. First to
+' three rounds wins. One player against the computer, or two players.
+'
+' The hill is drawn in the bitmap screen (snow.asm): every pixel can be
+' dug out, and the snowball meets the hill pixel by pixel. Amy's print
+' does not draw in the bitmap, so words are drawn with font.py's letters.
+'
+' House rules: joystick and button only; text in columns 2-29, rows 1-22
+' (the counters sit on rows 1-2 of the bitmap, messages on row 3);
+' an original tune played once; the NMI is off outside the wait.
+'
+' Controls (the player whose turn it is, either joystick): up and down set
+' the angle; hold the button for strength, let go to throw.
+
+const SManRw = 0
+const SManRt = 4
+const SManLw = 8
+const SManLt = 12
+const SHitw = 16
+const SHitt = 20
+const SBall = 24
+const SDot = 28
+const SPuff1 = 32
+const SPuff2 = 36
+const NTiles8 = 0
+const SprBytes = 320
+const SndThrow = 1
+const SndSplat = 2
+const SndTick = 3
+const SndHurt = 4
+const SndFall = 5
+const SndRound = 6
+const SndMatch = 7
+const SndCharge = 8
+const SndTuneA = 9
+const SndTuneB = 10
+data CosT words 256, 256, 256, 256, 255, 255, 255, 254, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 243, 242, 241, 239, 237, 236, 234, 232, 230, 228, 226, 224, 222, 219, 217, 215, 212, 210, 207, 204, 202, 199, 196, 193, 190, 187, 184, 181, 178, 175, 171, 168, 165, 161, 158, 154, 150, 147, 143, 139, 136, 132, 128, 124, 120, 116, 112, 108, 104, 100, 96, 92, 88, 83, 79, 75, 71, 66, 62, 58, 53, 49, 44, 40, 36, 31, 27, 22, 18, 13, 9, 4, 0
+data SinT words 0, 4, 9, 13, 18, 22, 27, 31, 36, 40, 44, 49, 53, 58, 62, 66, 71, 75, 79, 83, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 139, 143, 147, 150, 154, 158, 161, 165, 168, 171, 175, 178, 181, 184, 187, 190, 193, 196, 199, 202, 204, 207, 210, 212, 215, 217, 219, 222, 224, 226, 228, 230, 232, 234, 236, 237, 239, 241, 242, 243, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 254, 255, 255, 255, 256, 256, 256, 256
+data Wave bytes 0, 2, 3, 5, 6, 8, 9, 11, 12, 14, 16, 17, 19, 20, 22, 23, 24, 26, 27, 29, 30, 32, 33, 34, 36, 37, 38, 39, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 56, 57, 58, 59, 59, 60, 60, 61, 61, 62, 62, 62, 63, 63, 63, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 63, 63, 63, 62, 62, 62, 61, 61, 60, 60, 59, 59, 58, 57, 56, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 39, 38, 37, 36, 34, 33, 32, 30, 29, 27, 26, 24, 23, 22, 20, 19, 17, 16, 14, 12, 11, 9, 8, 6, 5, 3, 2, 0, 254, 253, 251, 250, 248, 247, 245, 244, 242, 240, 239, 237, 236, 234, 233, 232, 230, 229, 227, 226, 224, 223, 222, 220, 219, 218, 217, 215, 214, 213, 212, 211, 210, 209, 208, 207, 206, 205, 204, 203, 202, 201, 200, 200, 199, 198, 197, 197, 196, 196, 195, 195, 194, 194, 194, 193, 193, 193, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 192, 193, 193, 193, 194, 194, 194, 195, 195, 196, 196, 197, 197, 198, 199, 200, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 217, 218, 219, 220, 222, 223, 224, 226, 227, 229, 230, 232, 233, 234, 236, 237, 239, 240, 242, 244, 245, 247, 248, 250, 251, 253, 254
+const TRed = 0
+const LRed = 3
+const TBlue = 3
+const LBlue = 4
+const TCpu = 7
+const LCpu = 3
+const TWind = 10
+const LWind = 4
+const TAng = 14
+const LAng = 5
+const TPow = 19
+const LPow = 3
+const TTitle = 22
+const LTitle = 13
+const TPlay1 = 35
+const LPlay1 = 27
+const TPlay2 = 62
+const LPlay2 = 11
+const THow = 73
+const LHow = 11
+const TCred = 84
+const LCred = 7
+const TThink = 91
+const LThink = 11
+const TTurn = 102
+const LTurn = 7
+const TWins = 109
+const LWins = 15
+const TMatch = 124
+const LMatch = 15
+const TCalm = 139
+const LCalm = 4
+const TRound = 143
+const LRound = 5
+const TPress = 148
+const LPress = 16
+const TWSnow = 164
+const LWSnow = 10
+const TWIce = 174
+const LWIce = 10
+const TWBomb = 184
+const LWBomb = 10
+const TWGust = 194
+const LWGust = 10
+const TWalk = 204
+const LWalk = 4
+const TBlank = 208
+const LBlank = 28
+data Txt bytes 82, 69, 68, 66, 76, 85, 69, 67, 80, 85, 87, 73, 78, 68, 65, 78, 71, 76, 69, 80, 79, 87, 83, 78, 79, 87, 66, 65, 76, 76, 32, 72, 73, 76, 76, 79, 78, 69, 32, 80, 76, 65, 89, 69, 82, 44, 32, 65, 71, 65, 73, 78, 83, 84, 32, 84, 72, 69, 32, 67, 80, 85, 84, 87, 79, 32, 80, 76, 65, 89, 69, 82, 83, 72, 79, 87, 32, 84, 79, 32, 80, 76, 65, 89, 67, 82, 69, 68, 73, 84, 83, 84, 72, 73, 78, 75, 73, 78, 71, 46, 46, 46, 39, 83, 32, 84, 85, 82, 78, 87, 73, 78, 83, 32, 84, 72, 69, 32, 82, 79, 85, 78, 68, 33, 87, 73, 78, 83, 32, 84, 72, 69, 32, 77, 65, 84, 67, 72, 33, 67, 65, 76, 77, 82, 79, 85, 78, 68, 80, 82, 69, 83, 83, 32, 84, 72, 69, 32, 66, 85, 84, 84, 79, 78, 83, 78, 79, 87, 66, 65, 76, 76, 32, 32, 73, 67, 73, 67, 76, 69, 32, 32, 32, 32, 83, 78, 79, 87, 32, 66, 79, 77, 66, 32, 71, 85, 83, 84, 32, 32, 32, 32, 32, 32, 87, 65, 76, 75, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32
+
+' --- the bitmap routines' variables (snow.asm)
+u8 SbH[256]
+u8 SbX = 0
+u8 SbY = 0
+u8 SbP = 0
+u8 SbR = 0
+u8 SbDy = 0
+u8 SbLy = 0
+u8 SbX0 = 0
+u8 SbX1 = 0
+u8 SbBx = 0
+u8 SbC = 0
+u8 SbCol = 0
+u8 SbRow = 0
+
+' --- the snowmen (0 red, on the left; 1 blue, on the right)
+u8 PX[2]
+u8 PY[2]
+u8 HP[2]
+u8 Ang[2]
+u8 Wins[2]
+u8 Cpu[2]
+u8 Turn = 0
+u8 First = 0
+i8 Wind = 0
+u8 Pow = 0
+u8 PowDir = 1
+u8 Charging = 0
+u8 Hurt = 0
+u8 HurtT = 0
+
+' --- the snowball, in 64ths of a pixel
+i16 Bx = 0
+i16 By = 0
+i16 Vx = 0
+i16 Vy = 0
+u8 Flying = 0
+
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 WasStick = 0
+u8 Sel = 0
+u8 Tick = 0
+u16 Rnd = 12345
+u8 Busy = 0
+u8 RepT = 0
+u8 TgX = 0
+u8 TgY = 0
+u8 BestD = 0
+u8 BestA = 0
+u8 BestP = 0
+u8 CA = 0
+u8 CI = 0
+u8 CJ = 0
+u8 Lo = 0
+u8 Hi = 0
+u8 SimX = 0
+u8 HJ = 0
+u8 MinH = 40
+u8 Q2 = 0
+u8 FlyT = 0
+u8 Winner = 0
+u8 RndB = 0
+u8 SimY = 0
+u8 SimHit = 0
+u8 Quiet = 0
+u8 Reach = 12
+u8 Hits = 0
+u8 CAng = 0
+u8 A0 = 0
+u8 P0 = 0
+u8 CPow = 0
+u8 ImpX = 0
+u8 ImpY = 0
+u8 PuX = 0
+u8 PuY = 0
+u8 HillOn = 0
+i16 WindQ = 0
+' the weapons (0 snowball, 1 icicle, 2 snow bomb, 3 gust): how many of
+' each special one is left this round, per snowman
+u8 Weap = 0
+u8 AmI[2]
+u8 AmB[2]
+u8 AmG[2]
+u8 Steps = 0
+u8 WalkT = 0
+u8 Bounce = 0
+u8 ManHit = 0
+i16 OBx = 0
+i16 OBy = 0
+
+' scratch: never kept across a sub call
+u16 W16 = 0
+u16 W2 = 0
+i16 S16 = 0
+i16 S2 = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 N = 0
+u8 V = 0
+u8 V2 = 0
+u8 X = 0
+u8 Y = 0
+u8 Q = 0
+u8 Col = 0
+u8 Row = 0
+
+' team colours (red, blue)
+data TeamCol bytes 8, 4
+
+  bitmap screen
+  set sound table SbSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  CreditsPage
+
+title:
+  TitlePage
+  if Sel = 2 then
+    HowToPage
+    goto title
+  end if
+  if Sel = 3 then
+    CreditsPage
+    goto title
+  end if
+  Cpu[0] = 0
+  Cpu[1] = Sel ^ 1
+  Wins[0] = 0
+  Wins[1] = 0
+  First = 0
+
+round_start:
+  NewHill
+  HP[0] = 100
+  HP[1] = 100
+  Ang[0] = 45
+  Ang[1] = 45
+  Turn = First
+  First = First ^ 1
+  Quiet = 0
+  for K = 0 to 1
+    AmI[K] = 2
+    AmB[K] = 1
+    AmG[K] = 1
+  next
+  Hud
+
+turn_start:
+  ' the wind changes every turn
+  NextRnd
+  V = RndB
+  V = V & 31
+  S16 = V
+  S16 = S16 - 15
+  Wind = S16
+  Hud
+  Aim
+  Hits = 0
+  Throw
+  Settle
+  if Hits = 1 then
+    Quiet = 0
+  else
+    inc Quiet
+  end if
+  Hud
+  ' the round?
+  if HP[0] = 0 then goto round_over
+  if HP[1] = 0 then goto round_over
+  Turn = Turn ^ 1
+  goto turn_start
+
+round_over:
+  ' the snowman still standing wins it
+  Winner = 0
+  if HP[0] = 0 then Winner = 1
+  inc Wins[Winner]
+  Hud
+  Banner(Winner, TWins, LWins)
+  play sound SndRound
+  Hold(150)
+  if Wins[Winner] < 3 then goto round_start
+  Banner(Winner, TMatch, LMatch)
+  play sound SndMatch
+  Hold(120)
+  WaitPress
+  goto title
+
+' ---------------------------------------------------------------------------
+' the hill
+
+' NewHill: a new hill (two waves of different lengths, a flat place for
+' each snowman), drawn, and the snowmen stood on it
+' Ease: column J half way towards the column next to it (towards the flat)
+sub Ease:
+  if J < 128 then
+    if J < 20 then
+      V = J + 1
+    else
+      V = J - 1
+    end if
+  else
+    if J < 212 then
+      V = J + 1
+    else
+      V = J - 1
+    end if
+  end if
+  W16 = SbH[J]
+  W2 = SbH[V]
+  W16 = W16 + W2
+  W16 = W16 + W2
+  W16 = W16 + W2
+  W16 = W16 / 4
+  SbH[J] = lowbyte W16
+  return
+end sub
+
+sub NewHill:
+  NextRnd
+  Q = RndB
+  NextRnd
+  N = RndB
+  NextRnd
+  V2 = RndB
+  V2 = V2 & 1
+  V2 = V2 + 1
+  for I = 0 to 255
+    ' height = 128 + wave(x * V2 + Q) / 2 + wave(x * 3 + N) / 8 - hump
+    W16 = I * V2
+    V = lowbyte W16
+    V = V + Q
+    Q2 = Wave[V]
+    S16 = Q2
+    if S16 > 127 then S16 = S16 - 256
+    S2 = S16 / 2
+    W16 = I * 3
+    V = lowbyte W16
+    V = V + N
+    Q2 = Wave[V]
+    S16 = Q2
+    if S16 > 127 then S16 = S16 - 256
+    S16 = S16 / 8
+    S16 = S16 + S2
+    S16 = S16 + 128
+    ' a hump in the middle, so the snowballs go up and over
+    J = I
+    if J > 128 then J = 255 - I
+    S2 = J / 4
+    S16 = S16 - S2
+    S2 = MinH
+    if S16 < S2 then S16 = S2
+    if S16 > 180 then S16 = 180
+    SbH[I] = lowbyte S16
+  next
+  ' flat places at x 20-44 and 212-236, eased into the slopes beside
+  ' them (each column half way to the flat, a quarter, an eighth...)
+  V = SbH[32]
+  for I = 20 to 44
+    SbH[I] = V
+  next
+  V = SbH[224]
+  for I = 212 to 236
+    SbH[I] = V
+  next
+  for I = 1 to 16
+    J = 20 - I
+    Ease
+    J = 44 + I
+    Ease
+    J = 212 - I
+    Ease
+    J = 236 + I
+    if J > 236 then Ease
+  next
+  Rearm
+  wait
+  nmi off
+  display off
+  bitmap screen
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  asm {
+    call SbDraw
+  }
+  PX[0] = 24
+  PX[1] = 216
+  PY[0] = SbH[32] - 16
+  PY[1] = SbH[224] - 16
+  Rearm
+  wait
+  nmi off
+  screen on
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' a turn
+
+' Aim: the player whose turn it is sets the angle and the strength (the
+' computer works its throw out)
+sub Aim:
+  Pow = 0
+  PowDir = 1
+  Charging = 0
+  Weap = 0
+  Steps = 40
+  WalkT = 0
+  if Cpu[Turn] = 1 then
+    Say(TThink, LThink, 10, 3)
+    CpuAim
+    ShowWeap
+    Hold(30)
+    Say(TBlank, LBlank, 2, 3)
+    return
+  end if
+  ShowWeap
+  WaitStick
+aim_loop:
+  Frame1
+  ReadPad
+  ' walking, a pixel every third frame, while not charging
+  V = Lf1 | Rt1
+  if V = 1 then
+    if Charging = 0 then
+      inc WalkT
+      if WalkT >= 3 then
+        WalkT = 0
+        WalkStep
+      end if
+    end if
+  end if
+  ' the angle: a degree a step, quicker when held
+  V = Up1 | Dn1
+  if V = 0 then
+    RepT = 0
+  else
+    if RepT = 0 then
+      AngleStep
+      RepT = 12
+    else
+      dec RepT
+      if RepT = 0 then
+        AngleStep
+        RepT = 2
+      end if
+    end if
+  end if
+  ' the strength swings up and down while the button is held
+  if Btn = 1 then
+    Charging = 1
+    if PowDir = 1 then
+      Pow = Pow + 2
+      if Pow >= 100 then
+        Pow = 100
+        PowDir = 0
+      end if
+    else
+      if Pow > 2 then
+        Pow = Pow - 2
+      else
+        Pow = 0
+        PowDir = 1
+      end if
+    end if
+    V = Pow & 15
+    if V = 0 then play sound SndCharge
+    ShowPow
+  else
+    if Charging = 1 then
+      ' a tap (not a throw): the next weapon
+      if Pow < 8 then
+        Charging = 0
+        Pow = 0
+        PowDir = 1
+        NextWeap
+        ShowPow
+        goto aim_loop
+      end if
+      Say(TBlank, LBlank, 2, 3)
+      return
+    end if
+  end if
+  ShowMen
+  ShowAim
+  goto aim_loop
+end sub
+
+' NextWeap: the next weapon this snowman still has (the snowball always)
+sub NextWeap:
+  for J = 1 to 4
+    inc Weap
+    if Weap > 3 then Weap = 0
+    V = 1
+    if Weap = 1 then V = AmI[Turn]
+    if Weap = 2 then V = AmB[Turn]
+    if Weap = 3 then V = AmG[Turn]
+    if V > 0 then
+      play sound SndTick
+      ShowWeap
+      return
+    end if
+  next
+  return
+end sub
+
+' ShowWeap: the weapon (and how many are left) and the steps, on row 3
+sub ShowWeap:
+  if Weap = 0 then
+    Say(TWSnow, LWSnow, 2, 3)
+    Say(TBlank, 3, 12, 3)
+  end if
+  if Weap = 1 then
+    Say(TWIce, LWIce, 2, 3)
+    Num(AmI[Turn], 12, 3)
+  end if
+  if Weap = 2 then
+    Say(TWBomb, LWBomb, 2, 3)
+    Num(AmB[Turn], 12, 3)
+  end if
+  if Weap = 3 then
+    Say(TWGust, LWGust, 2, 3)
+    Num(AmG[Turn], 12, 3)
+  end if
+  Say(TWalk, LWalk, 21, 3)
+  Num(Steps, 26, 3)
+  return
+end sub
+
+' WalkStep: a pixel left or right, up small rises, down slopes; never
+' past the other snowman (they keep 20 pixels apart)
+sub WalkStep:
+  if Steps = 0 then return
+  X = PX[Turn]
+  if Lf1 = 1 then
+    if X < 3 then return
+    dec X
+    if Turn = 1 then
+      V = PX[0] + 20
+      if X < V then return
+    end if
+  else
+    if X > 237 then return
+    inc X
+    if Turn = 0 then
+      V = X + 20
+      if V > PX[1] then return
+    end if
+  end if
+  ' up to 3 pixels of rise
+  Y = PY[Turn]
+  SbX = X + 8
+  for J = 0 to 3
+    SbY = Y + 15
+    asm {
+      call SbPix
+    }
+    if SbP = 1 then dec Y
+  next
+  SbY = Y + 15
+  asm {
+    call SbPix
+  }
+  if SbP = 1 then return
+  ' and down to the snow (8 at most: Settle does the rest)
+  for J = 0 to 7
+    SbY = Y + 16
+    asm {
+      call SbPix
+    }
+    if SbP = 0 then
+      if Y < 174 then inc Y
+    end if
+  next
+  PX[Turn] = X
+  PY[Turn] = Y
+  dec Steps
+  Num(Steps, 26, 3)
+  ShowMen
+  return
+end sub
+
+sub AngleStep:
+  if Up1 = 1 then
+    if Ang[Turn] < 85 then inc Ang[Turn]
+  end if
+  if Dn1 = 1 then
+    if Ang[Turn] > 5 then dec Ang[Turn]
+  end if
+  ShowAng
+  return
+end sub
+
+' Launch: the snowball's start and speed from the angle and Pow
+sub Launch:
+  V = Turn
+  X = PX[V] + 8
+  Y = PY[V] + 2
+  S16 = X
+  Bx = S16 * 64
+  S16 = Y
+  By = S16 * 64
+  ' speed = 96 + Pow * 4 (64ths of a pixel a frame); a quarter of it
+  ' times cos / 64 keeps within 16 bits
+  S16 = Pow
+  S16 = S16 + 24
+  V = Ang[Turn]
+  W16 = CosT[V]
+  S2 = W16
+  S2 = S2 * S16
+  Vx = S2 / 64
+  W16 = SinT[V]
+  S2 = W16
+  S2 = S2 * S16
+  Vy = S2 / 64
+  Vy = 0 - Vy
+  if Turn = 1 then Vx = 0 - Vx
+  return
+end sub
+
+' Throw: the snowball flies until it lands, hits a snowman or leaves the
+' screen at a side
+sub Throw:
+  Launch
+  if Weap = 1 then dec AmI[Turn]
+  if Weap = 2 then dec AmB[Turn]
+  if Weap = 3 then dec AmG[Turn]
+  Bounce = 0
+  play sound SndThrow
+  for I = 4 to 6
+    set sprite I to 192,0,0,0
+  next
+  Flying = 1
+  FlyT = 0
+fly_loop:
+  Frame1
+  inc FlyT
+  ' the wind pushes, gravity pulls (2 substeps a frame: no tunnelling)
+  for J = 1 to 2
+    if Flying = 1 then
+      S16 = Wind
+      S16 = S16 / 4
+      Vx = Vx + S16
+      Vy = Vy + 4
+      OBx = Bx
+      OBy = By
+      Bx = Bx + Vx
+      By = By + Vy
+      S16 = Bx / 64
+      if S16 < 0 then Flying = 0
+      if S16 > 255 then Flying = 0
+      if Flying = 1 then
+        X = lowbyte S16
+        S2 = By / 64
+        if S2 >= 32 then
+          if S2 >= 192 then S2 = 191
+          Y = lowbyte S2
+          SbX = X
+          SbY = Y
+          asm {
+            call SbPix
+          }
+          ManHit = 0
+          if SbP = 1 then Flying = 2
+          ' a snowman?
+          for K = 0 to 1
+            ' (not the thrower himself, as the snowball leaves his hand)
+            V2 = 0
+            if K = Turn then
+              if FlyT < 16 then V2 = 1
+            end if
+            if V2 = 1 then goto next_man
+            V = PX[K] + 3
+            V2 = PX[K] + 13
+            if X >= V then
+              if X < V2 then
+                V = PY[K] + 2
+                V2 = PY[K] + 16
+                if Y >= V then
+                  if Y < V2 then
+                    Flying = 2
+                    ManHit = 1
+                  end if
+                end if
+              end if
+            end if
+next_man:
+          next
+          if Flying = 2 then
+            ImpX = X
+            ImpY = Y
+            ' the snow bomb bounces off the hill twice, losing half its
+            ' speed each time
+            if Weap = 2 then
+              if ManHit = 0 then
+                if Bounce < 2 then
+                  inc Bounce
+                  Bx = OBx
+                  By = OBy
+                  Vy = Vy / 2
+                  Vy = 0 - Vy
+                  Vx = Vx / 2
+                  Flying = 1
+                  play sound SndTick
+                end if
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  next
+  ' the snowball's sprite
+  if Flying = 1 then
+    S2 = By / 64
+    if S2 < 0 then
+      Y = 192
+    else
+      Y = lowbyte S2
+      Y = Y - 8
+    end if
+    X = X - 8
+    V = 15
+    if Weap = 1 then V = 7
+    if Weap = 2 then V = 14
+    if Weap = 3 then V = 5
+    set sprite 4 to Y,X,SBall,V
+  end if
+  ShowMen
+  if Flying = 1 then goto fly_loop
+  set sprite 4 to 192,0,0,0
+  if Flying = 0 then
+    ShowMen
+    return
+  end if
+  ' it landed: a hole in the hill, a splat, and the snow it takes
+  play sound SndSplat
+  X = ImpX
+  Y = ImpY
+  SbX = X
+  SbY = Y
+  ' the longer nobody is hit, the bigger the snowballs get
+  V = Quiet
+  if V > 6 then V = 6
+  V = V * 2
+  SbR = V + 10
+  if Weap = 1 then
+    ' the icicle drills on through the snow before it bursts
+    if ManHit = 0 then
+      Y = Y + 14
+      if Y > 190 then Y = 190
+      if Vx < 0 then
+        if X > 4 then X = X - 4
+      else
+        if X < 251 then X = X + 4
+      end if
+      SbX = X
+      SbY = Y
+      ImpX = X
+      ImpY = Y
+    end if
+    SbR = 9
+  end if
+  if Weap = 2 then SbR = 15
+  if Weap = 3 then SbR = 3
+  Reach = SbR + 2
+  asm {
+    call SbCrater
+  }
+  if Weap = 3 then
+    Gust
+    ShowMen
+    return
+  end if
+  PuX = X - 8
+  PuY = Y - 8
+  set sprite 5 to PuY,PuX,SPuff1,15
+  update sprites
+  Hold(6)
+  set sprite 5 to PuY,PuX,SPuff2,14
+  update sprites
+  Hold(8)
+  set sprite 5 to 192,0,0,0
+  for K = 0 to 1
+    Damage
+  next
+  ShowMen
+  return
+end sub
+
+' Damage: snowman K, near the splat at ImpX, ImpY?
+sub Damage:
+  ' how far the splat is from the nearest point of his body (x + 3..12,
+  ' y + 2..15), the larger of across and up/down
+  V = PX[K] + 3
+  V2 = PX[K] + 12
+  Q = 0
+  if ImpX < V then Q = V - ImpX
+  if ImpX > V2 then Q = ImpX - V2
+  V = PY[K] + 2
+  V2 = PY[K] + 15
+  Q2 = 0
+  if ImpY < V then Q2 = V - ImpY
+  if ImpY > V2 then Q2 = ImpY - V2
+  if Q2 > Q then Q = Q2
+  if Q >= Reach then return
+  ' 34 for a hit on him, less further off
+  V = Reach - Q
+  V = V * 2
+  V = V + 10
+  V2 = 34
+  if Weap = 1 then V2 = 44
+  if Weap = 2 then V2 = 40
+  if V > V2 then V = V2
+  if Q = 0 then V = V2
+  if HP[K] > V then
+    HP[K] = HP[K] - V
+  else
+    HP[K] = 0
+  end if
+  Hurt = K
+  HurtT = 20
+  Hits = 1
+  play sound SndHurt
+  return
+end sub
+
+' Gust: blows a snowman near ImpX, ImpY 28 pixels away from it (never
+' past the other snowman or the screen's sides); Settle drops him after
+sub Gust:
+  for K = 0 to 1
+    V = PX[K] + 8
+    if V >= ImpX then
+      Q = V - ImpX
+    else
+      Q = ImpX - V
+    end if
+    V2 = PY[K] + 8
+    if V2 >= ImpY then
+      Q2 = V2 - ImpY
+    else
+      Q2 = ImpY - V2
+    end if
+    if Q < 40 then
+      if Q2 < 40 then
+        Hurt = K
+        HurtT = 20
+        Hits = 1
+        play sound SndHurt
+        V = PX[K] + 8
+        for J = 1 to 28
+          X = PX[K]
+          if V >= ImpX then
+            if X < 238 then inc X
+            if K = 0 then
+              V2 = X + 20
+              if V2 > PX[1] then X = PX[0]
+            end if
+          else
+            if X > 2 then dec X
+            if K = 1 then
+              V2 = PX[0] + 20
+              if X < V2 then X = PX[1]
+            end if
+          end if
+          PX[K] = X
+          ' ride up any rise
+          SbX = X + 8
+          for I = 0 to 7
+            SbY = PY[K] + 15
+            asm {
+              call SbPix
+            }
+            if SbP = 1 then PY[K] = PY[K] - 1
+          next
+          if J & 1 then
+            Frame1
+            ShowMen
+          end if
+        next
+      end if
+    end if
+  next
+  return
+end sub
+
+' Settle: the snowmen slide down into any hole under them
+sub Settle:
+settle_loop:
+  N = 0
+  for K = 0 to 1
+    if HP[K] > 0 then
+      ' snow under his feet (x + 5, 8 and 11)?
+      V = PY[K] + 16
+      SbY = V
+      Q = 0
+      for J = 0 to 2
+        V = J * 3
+        V = V + 5
+        V = V + PX[K]
+        SbX = V
+        asm {
+          call SbPix
+        }
+        Q = Q | SbP
+      next
+      if Q = 0 then
+        PY[K] = PY[K] + 1
+        N = 1
+        if PY[K] >= 175 then
+          ' off the bottom of the hill: out
+          HP[K] = 0
+          PY[K] = 192
+          play sound SndFall
+        end if
+      end if
+    end if
+  next
+  if N = 1 then
+    Frame1
+    ShowMen
+    goto settle_loop
+  end if
+  ShowMen
+  return
+end sub
+
+' CpuAim: the computer tries each angle, finds by halving the strength
+' that lands nearest the other snowman (with this wind), and throws with
+' a little error
+sub CpuAim:
+  ' the target
+  K = Turn ^ 1
+  TgX = PX[K] + 8
+  TgY = PY[K] + 9
+  BestD = 255
+  BestA = 45
+  BestP = 80
+  HillOn = 1
+  ' every 10 degrees from 20 to 80, every 6 points of strength from 16
+  for CA = 0 to 6
+    for CI = 0 to 14
+      V = CA * 10
+      CAng = V + 20
+      V = CI * 6
+      CPow = V + 16
+      TryThrow
+    next
+  next
+  ' then near the best: 5 degrees and 3 points either way
+  A0 = BestA
+  P0 = BestP
+  for CA = 0 to 2
+    for CI = 0 to 2
+      Q = CA * 5
+      CAng = A0 + Q
+      CAng = CAng - 5
+      Q = CI * 3
+      CPow = P0 + Q
+      CPow = CPow - 3
+      if CPow > 100 then CPow = 100
+      if CAng > 85 then CAng = 85
+      TryThrow
+    next
+  next
+  Ang[Turn] = BestA
+  if BestD < 4 then
+    if AmI[Turn] > 0 then
+      Weap = 1
+    else
+      if AmB[Turn] > 0 then Weap = 2
+    end if
+  end if
+  ' a few points either way: it is not perfect
+  NextRnd
+  V = RndB
+  V = V & 3
+  Pow = BestP + V
+  if Pow > 2 then Pow = Pow - 2
+  if Pow > 100 then Pow = 100
+  ShowAng
+  ShowPow
+  ShowMen
+  ShowAim
+  Hold(40)
+  return
+end sub
+
+' TryThrow: a practice throw at CAng, CPow: keep it if it lands nearest
+sub TryThrow:
+  Ang[Turn] = CAng
+  Pow = CPow
+  Sim
+  ' how far from him it ends: 0 on him, else the larger of across and
+  ' up/down from his middle
+  Q = 0
+  if SimHit = 0 then
+    if SimX >= TgX then
+      Q = SimX - TgX
+    else
+      Q = TgX - SimX
+    end if
+    if SimY >= TgY then
+      V = SimY - TgY
+    else
+      V = TgY - SimY
+    end if
+    if V > Q then Q = V
+  end if
+  if Q < BestD then
+    BestD = Q
+    BestA = CAng
+    BestP = CPow
+  end if
+  return
+end sub
+
+' Sim: where a throw at this angle and Pow comes down: on the target's
+' line (HillOn = 0), or wherever it meets the hill or the target's line
+' (HillOn = 1): SimX
+sub Sim:
+  Launch
+  S16 = Wind
+  WindQ = S16 / 4
+  asm {
+    call SbSim
+  }
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' showing it
+
+sub ShowMen:
+  for K = 0 to 1
+    N = K * 2
+    V = SManRw
+    if K = 1 then V = SManLw
+    Y = PY[K] - 1
+    if HP[K] = 0 then Y = 192
+    X = PX[K]
+    if HurtT > 0 then
+      if Hurt = K then
+        V = SHitw
+        V2 = HurtT & 4
+        if V2 > 0 then inc X
+      end if
+    end if
+    set sprite N to Y,X,V,15
+    inc N
+    V = V + 4
+    V2 = TeamCol[K]
+    set sprite N to Y,X,V,V2
+  next
+  if HurtT > 0 then dec HurtT
+  update sprites
+  return
+end sub
+
+' ShowAim: three dots along the way the snowball will set off
+sub ShowAim:
+  V = Ang[Turn]
+  W16 = CosT[V]
+  S16 = W16
+  W16 = SinT[V]
+  S2 = W16
+  X = PX[Turn] + 8
+  Y = PY[Turn] + 2
+  for I = 1 to 3
+    ' 8 pixels apart
+    W16 = I * 8
+    W2 = S16 * W16
+    W2 = W2 / 256
+    V = lowbyte W2
+    if Turn = 0 then
+      Q = X + V
+    else
+      Q = X - V
+    end if
+    W2 = S2 * W16
+    W2 = W2 / 256
+    V = lowbyte W2
+    V2 = Y - V
+    V2 = V2 - 8
+    Q = Q - 8
+    N = I + 3
+    set sprite N to V2,Q,SDot,9
+  next
+  update sprites
+  return
+end sub
+
+' Hud: the counters on rows 0 and 1 of the bitmap
+sub Hud:
+  Say(TRed, LRed, 2, 1)
+  Num(HP[0], 6, 1)
+  Say(TBlue, LBlue, 21, 1)
+  Num(HP[1], 26, 1)
+  ' the rounds won
+  SbRow = 1
+  SbCol = 12
+  SbC = Wins[0] + 48
+  asm {
+    call SbChar
+  }
+  SbCol = 13
+  SbC = 45
+  asm {
+    call SbChar
+  }
+  SbCol = 14
+  SbC = Wins[1] + 48
+  asm {
+    call SbChar
+  }
+  ' the wind: arrows its way and its strength
+  Say(TWind, LWind, 2, 2)
+  if Wind = 0 then
+    Say(TCalm, LCalm, 7, 2)
+  else
+    SbRow = 2
+    SbCol = 7
+    SbC = 62
+    S16 = Wind
+    if Wind < 0 then
+      SbC = 60
+      S16 = 0 - S16
+    end if
+    asm {
+      call SbChar
+    }
+    V = lowbyte S16
+    Num(V, 8, 2)
+  end if
+  ShowAng
+  ShowPow
+  return
+end sub
+
+sub ShowAng:
+  Say(TAng, LAng, 13, 2)
+  Num(Ang[Turn], 18, 2)
+  return
+end sub
+
+sub ShowPow:
+  Say(TPow, LPow, 23, 2)
+  Num(Pow, 26, 2)
+  return
+end sub
+
+' Say: Len letters of Txt from At, at column C, row R
+sub Say(u8 At, u8 Len, u8 C, u8 R):
+  SbRow = R
+  SbCol = C
+  for J = 1 to Len
+    SbC = Txt[At]
+    asm {
+      call SbChar
+    }
+    inc At
+    inc SbCol
+  next
+  return
+end sub
+
+' Num: N as up to 3 figures ending just left of column C + 3 (C, C + 1,
+' C + 2 for 3 figures; fewer figures are blanked)
+sub Num(u8 Val, u8 C, u8 R):
+  SbRow = R
+  SbCol = C
+  V = Val / 100
+  SbC = V + 48
+  if V = 0 then SbC = 32
+  asm {
+    call SbChar
+  }
+  V2 = V * 100
+  V = Val - V2
+  Q = V / 10
+  SbC = Q + 48
+  if Val < 10 then SbC = 32
+  inc SbCol
+  asm {
+    call SbChar
+  }
+  V2 = Q * 10
+  V = V - V2
+  SbC = V + 48
+  inc SbCol
+  asm {
+    call SbChar
+  }
+  return
+end sub
+
+' Banner: "RED/BLUE wins..." on row 3 (the message row)
+sub Banner(u8 Who, u8 At, u8 Len):
+  if Who = 0 then
+    Say(TRed, LRed, 6, 3)
+    Say(At, Len, 10, 3)
+  else
+    Say(TBlue, LBlue, 5, 3)
+    Say(At, Len, 10, 3)
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the pages (in the bitmap too: a plain hill below, words above)
+
+sub TitlePage:
+  MinH = 104
+  NewHill
+  MinH = 40
+  PY[0] = 192
+  PY[1] = 192
+  HP[0] = 0
+  HP[1] = 0
+  ShowMen
+  Say(TTitle, LTitle, 9, 3)
+  Say(TPlay1, LPlay1, 3, 6)
+  Say(TPlay2, LPlay2, 3, 7)
+  Say(THow, LHow, 3, 8)
+  Say(TCred, LCred, 3, 9)
+  Sel = 0
+  ShowSel
+  play song SbSong once
+  WaitStick
+tp_loop:
+  Frame1
+  ReadPad
+  V = Up1 | Dn1
+  if V = 1 then
+    if WasStick = 0 then
+      if Up1 = 1 then
+        if Sel > 0 then dec Sel
+      end if
+      if Dn1 = 1 then
+        if Sel < 3 then inc Sel
+      end if
+      play sound SndTick
+      ShowSel
+    end if
+  end if
+  WasStick = V
+  if Press = 0 then goto tp_loop
+  stop song
+  mute all
+  return
+end sub
+
+sub ShowSel:
+  SbCol = 2
+  for I = 0 to 3
+    SbRow = I + 6
+    SbC = 32
+    if I = Sel then SbC = 62
+    asm {
+      call SbChar
+    }
+  next
+  return
+end sub
+
+sub HowToPage:
+  TextPage
+  print at 10,1, "HOW TO PLAY"
+  print at 2,3, "TWO SNOWMEN, A HILL, AND"
+  print at 2,4, "SNOWBALLS. THROW IN TURNS."
+  print at 2,5, "UP/DOWN: ANGLE. LEFT/RIGHT:"
+  print at 2,6, "WALK (40 STEPS A TURN)."
+  print at 2,7, "TAP THE BUTTON: NEXT WEAPON."
+  print at 2,8, "HOLD IT: STRENGTH SWINGS."
+  print at 2,9, "LET GO TO THROW."
+  print at 2,11, "ICICLE (2): DRILLS, HITS HARD"
+  print at 2,12, "SNOW BOMB (1): BOUNCES TWICE,"
+  print at 2,13, "  A BIG HOLE."
+  print at 2,14, "GUST (1): BLOWS HIM AWAY."
+  print at 2,16, "MIND THE WIND. HOLES MAKE"
+  print at 2,17, "SNOWMEN SLIDE DOWN. A HIT"
+  print at 2,18, "TAKES SNOW. 3 ROUNDS WIN."
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+sub CreditsPage:
+  TextPage
+  print at 8,2, "SNOWBALL HILL"
+  print at 2,4, "AN ORIGINAL GAME FOR THE"
+  print at 2,5, "COLECOVISION."
+  print at 2,7, "DESIGN, PROGRAM, GRAPHICS,"
+  print at 2,8, "SOUNDS AND THE TUNE"
+  print at 2,9, "SNOW DAY:"
+  print at 2,10, "CLAUDE (AN AI BY ANTHROPIC)"
+  print at 2,13, "MADE WITH AMY STUDIO"
+  print at 2,14, "BY AMY BIENVENU"
+  print at 2,17, "(C) 2026"
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  WaitPress
+  return
+end sub
+
+' TextPage: a plain text screen (then back to the bitmap after)
+sub TextPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  text screen
+  backdrop dark blue
+  cls
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the machine
+
+' NextRnd: the next random byte (RndB: the high byte of the LCG, the low
+' bytes of which repeat too soon)
+sub NextRnd:
+  Rnd = Rnd * 75
+  Rnd = Rnd + 74
+  W2 = Rnd >> 8
+  RndB = lowbyte W2
+  ' (and stirred by the frames: the button's timing)
+  RndB = RndB ^ Tick
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub Hold(u8 Frames):
+  for HJ = 1 to Frames
+    Frame1
+    ShowMen
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  Lf1 = 0
+  Rt1 = 0
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub WaitStick:
+  WasBtn = 1
+  WasStick = 1
+  return
+end sub
+
+sub WaitPress:
+  WaitStick
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  play sound SndTick
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 8
+  sprites flicker off
+  for J = 0 to 7
+    set sprite J to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+data SpritePat bytes
+  $00,$00,$00,$03,$05,$07,$00,$03,$0F,$0F,$0F,$1F,$1F,$1F,$0F,$07
+  $00,$00,$00,$C0,$A0,$E0,$00,$C0,$F0,$78,$F8,$7C,$FC,$FC,$F8,$F0
+  $03,$03,$07,$00,$00,$00,$07,$00,$00,$60,$10,$00,$00,$00,$00,$00
+  $C0,$C0,$E0,$00,$00,$00,$F0,$10,$00,$02,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$05,$07,$00,$03,$0F,$1E,$1F,$3E,$3F,$3F,$1F,$0F
+  $00,$00,$00,$C0,$A0,$E0,$00,$C0,$F0,$F0,$F0,$F8,$F8,$F8,$F0,$E0
+  $03,$03,$07,$00,$00,$00,$0F,$08,$00,$40,$20,$00,$00,$00,$00,$00
+  $C0,$C0,$E0,$00,$00,$00,$E0,$00,$00,$06,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$0D,$0F,$00,$3F,$3E,$7F,$7F,$3F,$1F
+  $00,$00,$00,$00,$00,$00,$00,$B0,$F0,$00,$FC,$7C,$FE,$FE,$FC,$F8
+  $00,$00,$00,$00,$00,$03,$07,$00,$00,$1F,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$C0,$E0,$00,$00,$F8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$03,$07,$07,$07,$03,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$C0,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$11,$0B,$07,$3F,$07,$0B,$11,$01,$00,$00,$00
+  $00,$00,$00,$00,$00,$10,$A0,$C0,$E0,$C0,$A0,$10,$00,$00,$00,$00
+  $00,$00,$81,$41,$23,$08,$02,$D0,$02,$08,$23,$41,$81,$00,$00,$00
+  $00,$00,$02,$04,$88,$20,$80,$16,$80,$20,$88,$04,$02,$00,$00,$00
+end data
+
+asm {
+; SNOWBALL HILL: the hill, drawn in the bitmap screen (Graphics II with the
+; name table counting 0-255 in each third, so a pixel x, y lives in the
+; pattern byte (y / 8) * 256 + (x & $F8) + (y & 7), bit 7 - (x & 7)).
+; A set pixel is snow; the colour table gives each line of the screen its
+; snow and sky colours (SbColY).
+
+; SbDraw: the whole screen from the heights SbH (the first snowy line of
+; each column), patterns then colours (with the display off)
+SbDraw:
+    xor a
+    out ($BF),a
+    ld a,$40
+    out ($BF),a
+    ld c,0                  ; c = the character row (0-23)
+SbDr1:
+    ld b,0                  ; b = the column block's first x
+SbDr2:
+    ld e,0                  ; e = the line in the row (0-7)
+SbDr3:
+    ; y = c * 8 + e
+    ld a,c
+    add a,a
+    add a,a
+    add a,a
+    add a,e
+    ld d,a                  ; d = y
+    push bc
+    push de
+    ld hl,AMY_UVAR_SbH
+    ld a,l
+    add a,b
+    ld l,a
+    jr nc,SbDr4
+    inc h
+SbDr4:
+    ld c,0                  ; c = the byte
+    ld b,8
+SbDr5:
+    ld a,d
+    cp (hl)                 ; y >= height: snow
+    ccf
+    rl c
+    inc hl
+    djnz SbDr5
+    ld a,c
+    out ($BE),a
+    pop de
+    pop bc
+    inc e
+    ld a,e
+    cp 8
+    jr nz,SbDr3
+    ld a,b
+    add a,8
+    ld b,a
+    jr nz,SbDr2
+    inc c
+    ld a,c
+    cp 24
+    jr nz,SbDr1
+    ; the colours: each line's byte for all 32 blocks
+    xor a
+    out ($BF),a
+    ld a,$60
+    out ($BF),a
+    ld c,0
+SbDc1:
+    ld b,32
+SbDc2:
+    ld e,0
+SbDc3:
+    ld a,c
+    add a,a
+    add a,a
+    add a,a
+    add a,e
+    push hl
+    ld l,a
+    ld h,0
+    push de
+    ld de,SbColY
+    add hl,de
+    pop de
+    ld a,(hl)
+    pop hl
+    out ($BE),a
+    inc e
+    ld a,e
+    cp 8
+    jr nz,SbDc3
+    djnz SbDc2
+    inc c
+    ld a,c
+    cp 24
+    jr nz,SbDc1
+    ret
+
+; SbAddr: HL = the VRAM pattern address of pixel (D = x, E = y)
+SbAddr:
+    ld a,e
+    rrca
+    rrca
+    rrca
+    and 31
+    ld h,a
+    ld a,d
+    and $F8
+    ld l,a
+    ld a,e
+    and 7
+    or l
+    ld l,a
+    ret
+
+; SbPix: is pixel SbX, SbY snow? (SbP = 1; the bottom edge counts as snow)
+SbPix:
+    ld a,(AMY_UVAR_SbY)
+    cp 192
+    jr c,SbPix1
+    ld a,1
+    ld (AMY_UVAR_SbP),a
+    ret
+SbPix1:
+    ld e,a
+    ld a,(AMY_UVAR_SbX)
+    ld d,a
+    call SbAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    nop
+    nop
+    in a,($BE)
+    ld b,a
+    ld a,(AMY_UVAR_SbX)
+    and 7
+    ld c,a
+    ld a,b
+    inc c
+SbPix2:
+    rla
+    dec c
+    jr nz,SbPix2
+    ld a,0
+    rla
+    ld (AMY_UVAR_SbP),a
+    ret
+
+; SbCrater: a round hole of radius SbR (at most 15) at SbX, SbY, line by
+; line (lines above 32, the counters' rows, and below 191 are left alone)
+SbCrater:
+    ld a,(AMY_UVAR_SbR)
+    neg
+    ld (AMY_UVAR_SbDy),a
+SbCr1:
+    ; the line: y = SbY + dy
+    ld a,(AMY_UVAR_SbDy)
+    ld b,a
+    ld a,(AMY_UVAR_SbY)
+    add a,b
+    ld e,a
+    ; dy < 0 and the sum carried? (above the top) / beyond the bottom
+    bit 7,b
+    jr z,SbCr1b
+    ld a,(AMY_UVAR_SbY)
+    cp e
+    jr c,SbCrNext           ; wrapped below 0
+SbCr1b:
+    ld a,e
+    cp 32
+    jr c,SbCrNext
+    cp 192
+    jr nc,SbCrNext
+    ld (AMY_UVAR_SbLy),a
+    ; half width w = SbCirc[r * 16 + |dy|]
+    ld a,b
+    bit 7,a
+    jr z,SbCr2
+    neg
+SbCr2:
+    ld c,a
+    ld a,(AMY_UVAR_SbR)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    add a,c
+    ld l,a
+    ld h,0
+    ld de,SbCirc
+    add hl,de
+    ld c,(hl)               ; c = w
+    ; x0 = SbX - w (0 at least), x1 = SbX + w (255 at most)
+    ld a,(AMY_UVAR_SbX)
+    sub c
+    jr nc,SbCr3
+    xor a
+SbCr3:
+    ld (AMY_UVAR_SbX0),a
+    ld a,(AMY_UVAR_SbX)
+    add a,c
+    jr nc,SbCr4
+    ld a,255
+SbCr4:
+    ld (AMY_UVAR_SbX1),a
+    call SbClear
+SbCrNext:
+    ld hl,AMY_UVAR_SbDy
+    ld a,(hl)
+    inc (hl)
+    ld b,a
+    ld a,(AMY_UVAR_SbR)
+    cp b
+    jr nz,SbCr1
+    ret
+
+; SbClear: clear the pixels SbX0..SbX1 of line SbLy
+SbClear:
+    ld a,(AMY_UVAR_SbX0)
+    and $F8
+    ld (AMY_UVAR_SbBx),a
+SbCl1:
+    ; this block's mask: the bits from max(x0, bx) to min(x1, bx + 7)
+    ld a,(AMY_UVAR_SbBx)
+    ld b,a
+    ld a,(AMY_UVAR_SbX0)
+    sub b
+    jr nc,SbCl2
+    xor a
+SbCl2:
+    ld e,a                  ; e = first bit (0 = leftmost)
+    ld a,(AMY_UVAR_SbX1)
+    sub b
+    cp 8
+    jr c,SbCl3
+    ld a,7
+SbCl3:
+    ld d,a                  ; d = last bit
+    ; mask = ($FF >> e) & ($FF << (7 - d))
+    ld hl,SbRight
+    ld a,l
+    add a,e
+    ld l,a
+    jr nc,SbCl4
+    inc h
+SbCl4:
+    ld c,(hl)
+    ld hl,SbLeft
+    ld a,l
+    add a,d
+    ld l,a
+    jr nc,SbCl5
+    inc h
+SbCl5:
+    ld a,(hl)
+    and c
+    cpl
+    ld c,a                  ; c = the bits to keep
+    ; read, clear, write back
+    ld a,(AMY_UVAR_SbBx)
+    ld d,a
+    ld a,(AMY_UVAR_SbLy)
+    ld e,a
+    call SbAddr
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    nop
+    nop
+    in a,($BE)
+    and c
+    ld b,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,b
+    out ($BE),a
+    ; the next block, if any
+    ld a,(AMY_UVAR_SbBx)
+    add a,8
+    jr c,SbClDone
+    ld (AMY_UVAR_SbBx),a
+    ld b,a
+    ld a,(AMY_UVAR_SbX1)
+    cp b
+    jr nc,SbCl1
+SbClDone:
+    ret
+
+; SbChar: letter SbC (ASCII 32-95) at column SbCol, row SbRow
+SbChar:
+    ld a,(AMY_UVAR_SbRow)
+    ld h,a
+    ld a,(AMY_UVAR_SbCol)
+    add a,a
+    add a,a
+    add a,a
+    ld l,a
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_SbC)
+    sub 32
+    jr nc,SbCh1
+    xor a
+SbCh1:
+    cp 64
+    jr c,SbCh2
+    xor a
+SbCh2:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,SbFont
+    add hl,de
+    ld b,8
+SbCh3:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz SbCh3
+    ret
+
+SbRight:
+    db $FF,$7F,$3F,$1F,$0F,$07,$03,$01
+SbLeft:
+    db $80,$C0,$E0,$F0,$F8,$FC,$FE,$FF
+
+; SbSim: the computer's practice throw: from Bx, By with speed Vx, Vy (all
+; in 64ths of a pixel), the wind's push WindQ and gravity 4 each step, up
+; to 250 steps, until it meets the target (the box TgX - 5..TgX + 5,
+; TgY - 8..TgY + 6: SimHit = 1), the hill or the bottom, or leaves the
+; screen at a side: where it ended, SimX, SimY
+SbSim:
+    xor a
+    ld (AMY_UVAR_SimHit),a
+    ld a,250
+    ld (AMY_UVAR_CJ),a
+SbSim1:
+    ld hl,(AMY_UVAR_Vx)
+    ld de,(AMY_UVAR_WindQ)
+    add hl,de
+    ld (AMY_UVAR_Vx),hl
+    ex de,hl
+    ld hl,(AMY_UVAR_Bx)
+    add hl,de
+    ld (AMY_UVAR_Bx),hl
+    call SbSix
+    jr nc,SbSim2
+    ld a,(AMY_UVAR_Bx + 1)
+    rla
+    ld a,0
+    jr c,SbSimEnd
+    ld a,255
+    jr SbSimEnd
+SbSim2:
+    ld (AMY_UVAR_SimX),a
+    ld hl,(AMY_UVAR_Vy)
+    ld de,4
+    add hl,de
+    ld (AMY_UVAR_Vy),hl
+    ex de,hl
+    ld hl,(AMY_UVAR_By)
+    add hl,de
+    ld (AMY_UVAR_By),hl
+    call SbSix
+    jr c,SbSimNext          ; above the screen (or far below)
+    ld (AMY_UVAR_SimY),a
+    ld (AMY_UVAR_SbY),a
+    cp 192
+    jr nc,SbSimDone         ; the bottom
+    ; the target's box?
+    ld a,(AMY_UVAR_TgX)
+    sub 5
+    ld b,a
+    ld a,(AMY_UVAR_SimX)
+    sub b
+    cp 11
+    jr nc,SbSim3
+    ld a,(AMY_UVAR_TgY)
+    sub 8
+    ld b,a
+    ld a,(AMY_UVAR_SimY)
+    sub b
+    cp 15
+    jr nc,SbSim3
+    ld a,1
+    ld (AMY_UVAR_SimHit),a
+    ret
+SbSim3:
+    ld a,(AMY_UVAR_SimY)
+    cp 32
+    jr c,SbSimNext
+    ld a,(AMY_UVAR_SimX)
+    ld (AMY_UVAR_SbX),a
+    call SbPix
+    ld a,(AMY_UVAR_SbP)
+    or a
+    jr nz,SbSimDone
+SbSimNext:
+    ld hl,AMY_UVAR_CJ
+    dec (hl)
+    jr nz,SbSim1
+SbSimDone:
+    ret
+SbSimEnd:
+    ld (AMY_UVAR_SimX),a
+    ld a,0
+    ld (AMY_UVAR_SimY),a
+    ret
+
+; SbSix: HL (64ths of a pixel, signed) to whole pixels in A; carry set
+; when outside 0..255
+SbSix:
+    bit 7,h
+    jr nz,SbSixOff
+    ld a,h
+    cp $40
+    jr nc,SbSixOff
+    ld a,l
+    rlca
+    rlca
+    and 3
+    ld b,a
+    ld a,h
+    add a,a
+    add a,a
+    or b
+    or a                    ; carry clear
+    ret
+SbSixOff:
+    scf
+    ret
+SbColY:
+    db 244,244,244,244,244,244,244,244,244,244,244,244,244,244,244,244
+    db 244,244,244,244,244,244,244,244,244,244,244,244,244,244,244,244
+    db 244,244,244,244,244,244,244,244,244,244,244,244,244,244,244,244
+    db 245,245,245,245,245,245,245,245,245,245,245,245,245,245,245,245
+    db 245,245,245,245,245,245,245,245,245,245,245,245,245,245,245,245
+    db 245,245,245,245,245,245,245,245,245,245,245,245,245,245,245,245
+    db 245,245,245,245,245,245,245,245,247,247,247,247,247,247,247,247
+    db 247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247
+    db 247,247,247,247,247,247,247,247,247,247,247,247,247,247,247,247
+    db 247,247,247,247,247,247,231,231,231,231,231,231,231,231,231,231
+    db 231,231,231,231,231,231,231,231,231,231,231,231,231,231,231,231
+    db 231,231,231,231,231,231,231,231,231,231,231,231,231,231,231,231
+SbCirc:
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 3,3,2,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 4,4,3,3,0,0,0,0,0,0,0,0,0,0,0,0
+    db 5,5,5,4,3,0,0,0,0,0,0,0,0,0,0,0
+    db 6,6,6,5,4,3,0,0,0,0,0,0,0,0,0,0
+    db 7,7,7,6,6,5,4,0,0,0,0,0,0,0,0,0
+    db 8,8,8,7,7,6,5,4,0,0,0,0,0,0,0,0
+    db 9,9,9,8,8,7,7,6,4,0,0,0,0,0,0,0
+    db 10,10,10,10,9,9,8,7,6,4,0,0,0,0,0,0
+    db 11,11,11,11,10,10,9,8,8,6,5,0,0,0,0,0
+    db 12,12,12,12,11,11,10,10,9,8,7,5,0,0,0,0
+    db 13,13,13,13,12,12,12,11,10,9,8,7,5,0,0,0
+    db 14,14,14,14,13,13,13,12,11,11,10,9,7,5,0,0
+    db 15,15,15,15,14,14,14,13,13,12,11,10,9,7,5,0
+SbFont:
+    db 0,0,0,0,0,0,0,0,16,16,16,16,16,0,16,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,16,16,32,0,0,0,0,0
+    db 8,16,32,32,32,16,8,0,32,16,8,8,8,16,32,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,48,16,32,0,0,0,0,124,0,0,0,0
+    db 0,0,0,0,0,48,48,0,4,8,8,16,32,32,64,0
+    db 56,68,76,84,100,68,56,0,16,48,16,16,16,16,56,0
+    db 56,68,4,24,32,64,124,0,120,4,4,56,4,4,120,0
+    db 8,24,40,72,124,8,8,0,124,64,120,4,4,68,56,0
+    db 24,32,64,120,68,68,56,0,124,4,8,16,32,32,32,0
+    db 56,68,68,56,68,68,56,0,56,68,68,60,4,8,48,0
+    db 0,48,48,0,48,48,0,0,0,0,0,0,0,0,0,0
+    db 8,16,32,64,32,16,8,0,0,0,0,0,0,0,0,0
+    db 32,16,8,4,8,16,32,0,56,68,4,24,16,0,16,0
+    db 0,0,0,0,0,0,0,0,56,68,68,124,68,68,68,0
+    db 120,68,68,120,68,68,120,0,56,68,64,64,64,68,56,0
+    db 112,72,68,68,68,72,112,0,124,64,64,120,64,64,124,0
+    db 124,64,64,120,64,64,64,0,56,68,64,92,68,68,60,0
+    db 68,68,68,124,68,68,68,0,56,16,16,16,16,16,56,0
+    db 28,8,8,8,8,72,48,0,68,72,80,96,80,72,68,0
+    db 64,64,64,64,64,64,124,0,68,108,84,84,68,68,68,0
+    db 68,68,100,84,76,68,68,0,56,68,68,68,68,68,56,0
+    db 120,68,68,120,64,64,64,0,56,68,68,68,84,72,52,0
+    db 120,68,68,120,80,72,68,0,60,64,64,56,4,4,120,0
+    db 124,16,16,16,16,16,16,0,68,68,68,68,68,68,56,0
+    db 68,68,68,68,68,40,16,0,68,68,68,84,84,84,40,0
+    db 68,68,40,16,40,68,68,0,68,68,40,16,16,16,16,0
+    db 124,4,8,16,32,64,124,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+SbThrow:
+    db $00,$00,$44,$02,$00,$00,$74,$03,$00,$00,$B4,$03,$10
+SbSplat:
+    db $00,$00,$15,$02,$00,$00,$36,$04,$00,$00,$76,$08,$10
+SbTick:
+    db $40,$40,$50,$01,$50
+SbHurt:
+    db $40,$D6,$20,$03,$40,$FE,$30,$03,$40,$41,$41,$06,$50
+SbFall:
+    db $40,$1D,$31,$04,$40,$53,$41,$04,$40,$AB,$51,$04,$40,$3B,$62,$08,$50
+SbRound:
+    db $40,$8F,$20,$05,$40,$71,$20,$05,$40,$5F,$20,$05,$40,$47,$30,$0E,$50
+SbMatch:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$06,$40,$8F,$20,$06,$40,$6B,$30,$14
+    db $50
+SbCharge:
+    db $40,$7F,$70,$01,$50
+
+SbSoundTable:
+    dw SbThrow,$702B
+    dw SbSplat,$702B
+    dw SbTick,$7035
+    dw SbHurt,$7035
+    dw SbFall,$7035
+    dw SbRound,$7035
+    dw SbMatch,$7035
+    dw SbCharge,$7035
+    dw SbTuneMel,$703F
+    dw SbTuneBass,$7049
+; Snow Day, D major (original for this game)
+; Tiny Sound, 8 frames per step
+SbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1C,$00,$21,$00,$25,$00,$28,$00,$2A,$28,$25,$00
+    db $21,$00,$00,$00,$23,$00,$26,$00,$2A,$00,$28,$26,$25,$00,$23,$00
+    db $00,$00,$00,$00,$1C,$00,$21,$00,$25,$00,$28,$00,$2D,$00,$2C,$2A
+    db $28,$00,$25,$00,$26,$00,$23,$00,$20,$00,$23,$00,$A1,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+SbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$09,$00,$10,$00,$09,$00,$10,$00,$0E,$00,$15,$00
+    db $09,$00,$10,$00,$04,$00,$0B,$00,$04,$00,$0B,$00,$04,$00,$08,$00
+    db $0B,$00,$10,$00,$09,$00,$10,$00,$09,$00,$10,$00,$06,$00,$0D,$00
+    db $09,$00,$10,$00,$0E,$00,$09,$00,$04,$00,$0B,$00,$09,$00,$00,$00
+    db $00,$00,$00,$00
+    db $FF
+; the title song: both voices of Snow Day at once
+SbSong:
+    dw $0001
+    db $40+9,10
+    dw $0000
+}
