@@ -4047,5 +4047,29 @@ export const exampleManifest = [
     ],
     "originKind": "original",
     "originLabel": "Original"
+  },
+  {
+    "id": "midnight-manor",
+    "label": "Midnight Manor (2026)",
+    "detail": "Explore a textured first-person haunted manor by lantern light, recover three music-box pieces, unlock doors and evade a wall-crossing ghost before the oil runs out.",
+    "projectName": "Midnight Manor",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "inspired",
+      "game",
+      "horror",
+      "3d",
+      "raycasting",
+      "exploration",
+      "haunted-house",
+      "music",
+      "ai-assisted"
+    ],
+    "originKind": "inspired",
+    "originLabel": "Inspired work"
   }
 ];
