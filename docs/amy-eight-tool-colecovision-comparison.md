@@ -78,8 +78,8 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 
 The October 29 ugBASIC refresh changes the ranked revision. Commit `afd97a3` fixes both the earlier
 16x16 TMS9918 pattern conversion regression and `SPRITE DISABLE`. The six rebuilt ROMs pass the
-bitmap and metasprite runtime oracles and occupy 20,905 bytes total. Source-level size settings were
-also rechecked: byte-default variables, `PRINT RAW`, native MSC1 compression and peephole
+bitmap and metasprite runtime oracles and occupy 20,877 bytes total. Source-level size settings were
+also rechecked: byte-default variables, `PRINT RAW`, a direct byte truth test for the keypad, native MSC1 compression and peephole
 optimization are active. Pass limits from 2 through 64 converge to the same result.
 
 These are the most size-oriented **native settings validated in this study**, not claims about
@@ -112,11 +112,11 @@ replacement samples, dependencies, and provenance are complete. The detailed aud
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **184** | 227 | 795 | 1,001 | 1,106 | 1,401 | 1,466 | 1,980 | 1,419 |
 | Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,691 | 4,525 | 4,680 | 4,948 | 4,976 | 7,649 |
-| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,403 | 1,695 | 2,272 | 2,024 |
+| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,403 | 1,695 | 2,272 | 1,996 |
 | Sprite Metasprite | **343** | 939 | 1,142 | 1,413 | 1,304 | 1,654 | 1,845 | 2,492 | 3,711 |
 | Gameplay State Update* | **508** | 1,134 | 1,253 | 1,291 | 1,308 | 2,099 | 2,453 | 2,712 | 4,012 |
 | Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,530 | 1,838 | 2,982 | 2,729 | 2,090 |
-| **Six-sample total*** | **5,126** | **7,372** | **9,141** | **10,835** | **10,967** | **13,075** | **15,389** | **17,161** | **20,905** |
+| **Six-sample total*** | **5,126** | **7,372** | **9,141** | **10,835** | **10,967** | **13,075** | **15,389** | **17,161** | **20,877** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
