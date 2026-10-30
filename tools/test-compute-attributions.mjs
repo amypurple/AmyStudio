@@ -18,6 +18,10 @@ for (const example of catalog) {
   if (example.originKind === "original") continue;
   if (!tags.includes("compute") && !source.includes("COMPUTE!")) continue;
 
+  const cartridgeHeader = source.split(/\r?\n/, 1)[0] || "";
+  assert.doesNotMatch(cartridgeHeader, /AMY BIENVENU/i,
+    `${example.id}: cartridge header must credit the original COMPUTE!/Gazette author`);
+
   const visible = source
     .split(/\r?\n/)
     .filter((line) => /^\s*print\b/i.test(line))
