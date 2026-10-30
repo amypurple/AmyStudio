@@ -1,0 +1,818 @@
+' VIC TIMEPIECE
+' The rolling-ball clock by Joseph D. Wright from COMPUTE!'s Gazette, July
+' 1983 (article pages 74-75, listing pages 124-125), for the ColecoVision
+' in Amy by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for
+' Amy Studio, 2026.
+'
+' Source: the "Rolling-Ball Clock" listing for the VIC-20, transcribed in
+' orig/timepiece-vic.bas from the scan beside it, and the article's
+' screenshots.
+'
+' The clock: like the plastic rolling-ball clocks, it tells the time with
+' balls on three racks. Every minute a ball rides the elevator up the
+' right side, runs along the top and drops onto the minute rack (1 to 4).
+' The fifth ball tips the rack: it goes on to the five-minute rack (5 to
+' 55) and the four others roll down the chute to the bottom. The twelfth
+' five-minute ball goes on to the hour rack (1 to 12) and the eleven
+' others roll down; the thirteenth hour ball empties the hour rack but
+' one, and it is 1:00. Read the hour on the bottom rack, then add the
+' five-minute and minute racks.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23. The balls' routes are the listing's DATA (paths.py).
+'
+' Liberties taken:
+' - Joystick only: the time is set with the stick and the button (the
+'   listing asked for it typed, as 915 or 1231). The button sets it again
+'   while the clock runs (the listing's "any key" ran the program again).
+' - A FAST choice runs a minute every four seconds, to watch the racks
+'   fill and tip; the stick turns the sound off and on (the article
+'   suggested turning the volume down at night).
+' - The listing moves the balls with separate loops for each case (lines
+'   300-760); here every ball follows its route on its own, so a rack that
+'   tips sends its balls down together, as the listing's loops drew them.
+'   The listing's minute rack stopped balls one cell to the right of where
+'   it set them (lines 430 and 1090); the racks here line up with their
+'   labels.
+' - The balls at the bottom are counted (30 in the clock), so the row
+'   fills and empties as they come and go (the listing drew a fixed row).
+' - The ColecoVision has no clock: time is counted in frames (60 a second;
+'   a busy frame can make it drift a little over a day).
+' - New title music (Brass Pendulum), a title page and a credits page; the
+'   POKEd roll and hit are Tiny Sound effects.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (the clock is a
+' picture to row 23); no sprites; the frame loop is protected from the NMI
+' and every screen is drawn with the NMI off after a wait.
+
+const TBall = 128
+const TBlk = 129
+const TRed = 130
+const TSlope = 131
+const TLift = 132
+const TD0 = 133
+const TD1 = 134
+const TD2 = 135
+const TD3 = 136
+const TD4 = 137
+const TD5 = 138
+const TD6 = 139
+const TD7 = 140
+const TD8 = 141
+const TD9 = 142
+const SNone = 0
+const NTiles8 = 120
+const SprBytes = 32
+const SndRoll = 1
+const SndHit = 2
+const SndTick = 3
+const SndTuneA = 4
+const SndTuneB = 5
+const PElev = 0
+const NElev = 41
+const PR4 = 41
+const NR4 = 33
+const PR9 = 74
+const NR9 = 30
+const PR15 = 104
+const NR15 = 23
+const PStop4 = 17
+const PStop9 = 22
+data PthX bytes 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 15, 15, 15, 14, 13, 12, 11, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19, 19, 19, 19, 19, 20, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 21, 20, 19, 18, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 21, 20, 19, 18, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 22, 22, 21, 20, 19, 18
+data PthY bytes 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 7, 8, 9, 10, 10, 10, 11, 12, 13, 14, 15, 16, 16, 17, 18, 19, 20, 21, 22, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 12, 13, 14, 15, 16, 16, 17, 18, 19, 20, 21, 22, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 17, 18, 19, 20, 21, 22
+
+' --- the clock ---------------------------------------------------------------
+' Mc balls on the minute rack, Fv on the five-minute rack, Hc on the hour
+' rack, Pool at the bottom, Pend minutes waiting to run, Act balls moving
+u8 Mc = 0
+u8 Fv = 0
+u8 Hc = 12
+u8 Pool = 0
+u8 Pend = 0
+u8 Act = 0
+' the time being set, the speed (1 real, 2 fast), the sound (1 on)
+u8 SetH = 12
+u8 SetM = 0
+u8 Fld = 0
+u8 Spd = 1
+u8 Snd = 1
+u16 Fr = 0
+u16 Per = 3600
+u16 Due = 3480
+u8 Rc = 0
+' the moving balls: on, route start, place on it, its end, where it
+' leaves it to roll along a rack (255 never), which rack (0 minutes, 1
+' fives, 2 hours), rolling, column and row, the rack slot, frames to wait
+u8 MOn[32]
+u8 MBase[32]
+u8 MIdx[32]
+u8 MEnd[32]
+u8 MStop[32]
+u8 MKind[32]
+u8 MRoll[32]
+u8 MCol[32]
+u8 MRow[32]
+u8 MTgt[32]
+u8 MWait[32]
+' Spawn's arguments
+u8 SBase = 0
+u8 SIdx = 0
+u8 SEnd = 0
+u8 SStop = 0
+u8 SKind = 0
+' for the test bot: 1 the clock, 8 the title, 9 setting the time
+u8 Ph = 0
+u8 Tc = $1A
+
+u16 Rw = 0
+u16 Rs = $5A3C
+u16 Rt = 0
+u8 Sel = 0
+u8 Nopt = 0
+u8 Oy = 0
+u8 C = 0
+u8 I = 0
+u8 K = 0
+u8 Q = 0
+u8 N = 0
+u8 J = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u8 Px = 0
+u8 Py = 0
+u8 Tick = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Fresh = 0
+
+  tile screen
+  set sound table TpSoundTable areas 4
+  nmi off
+  screen on
+
+  ' the title page
+  Ph = 8
+  Tc = $1A
+  TextScreen
+  backdrop dark yellow
+  print at 9,3, "VIC TIMEPIECE"
+  print at 7,5, "A ROLLING-BALL CLOCK"
+  for C = 0 to 4
+    X = C * 2
+    X = X + 11
+    put char TBall at X,7
+  next
+  print at 5,9, "BY JOSEPH D. WRIGHT"
+  print at 2,10, "COMPUTE!'S GAZETTE JULY 1983"
+  print at 2,13, "READ THE HOUR ON THE BOTTOM"
+  print at 2,14, "RACK, THEN ADD THE FIVES AND"
+  print at 2,15, "THE MINUTES ABOVE IT."
+  print at 4,18, "PRESS A BUTTON TO START"
+  print at 2,20, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,21, "BY ANTHROPIC), AMY STUDIO"
+  ShowScreen
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song TpSong once
+  WaitPress
+  play sound SndTick
+  stop sound SndTuneA
+  stop sound SndTuneB
+
+l1000:
+  ' 1000-1045: the time, set with the stick
+  Ph = 9
+  TextScreen
+  backdrop dark yellow
+  print at 8,3, "SET THE TIME"
+  print at 3,12, "LEFT, RIGHT: HOURS, MINUTES"
+  print at 3,13, "UP, DOWN: CHANGE"
+  print at 3,14, "BUTTON: DONE"
+  ShowScreen
+  Fld = 0
+  WasBtn = 1
+st_draw:
+  print at 12,7, digits$(SetH, 2)
+  print at 14,7, ":"
+  print at 15,7, digits$(SetM, 2)
+  print at 11,8, "      "
+  X = Fld * 3
+  X = X + 12
+  print at X,8, "--"
+st_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Fld = 0
+    if Rt1 = 1 then Fld = 1
+    if Up1 = 1 then
+      if Fld = 0 then
+        inc SetH
+        if SetH > 12 then SetH = 1
+      else
+        inc SetM
+        if SetM > 59 then SetM = 0
+      end if
+    end if
+    if Dn1 = 1 then
+      if Fld = 0 then
+        dec SetH
+        if SetH = 0 then SetH = 12
+      else
+        if SetM = 0 then
+          SetM = 59
+        else
+          dec SetM
+        end if
+      end if
+    end if
+    goto st_draw
+  end if
+  if Press = 0 then goto st_loop
+  play sound SndTick
+  print at 4,17, "THE CLOCK RUNS:"
+  print at 6,19, "IN REAL TIME"
+  print at 6,20, "FAST (4 SEC. A MINUTE)"
+  Oy = 19
+  Nopt = 2
+  PickOne
+  Spd = Sel
+  if Spd = 1 then
+    Per = 3600
+    Due = 3480
+  else
+    Per = 240
+    Due = 0
+  end if
+  Fr = 0
+
+  ' 1050-1120: the racks set to the time
+  Hc = SetH
+  Fv = SetM / 5
+  V = Fv * 5
+  Mc = SetM - V
+  Pool = 30 - Hc
+  Pool = Pool - Fv
+  Pool = Pool - Mc
+  Pend = 0
+  Act = 0
+  for K = 0 to 31
+    MOn[K] = 0
+  next
+  DrawClock
+
+l900:
+  ' 900-930: time for action
+  Ph = 1
+  Frame1
+  ReadPad
+  if Press = 1 then
+    play sound SndTick
+    mute all
+    goto l1000
+  end if
+  if Stick = 1 then
+    if Fresh = 1 then
+      Snd = Snd ^ 1
+      if Snd = 1 then
+        print at 5,1, "         "
+        play sound SndTick
+      else
+        mute all
+        print at 5,1, "SOUND OFF"
+      end if
+    end if
+  end if
+  ' 910: a ball sets off two seconds before the minute
+  if Fr = Due then inc Pend
+  inc Fr
+  if Fr >= Per then Fr = 0
+  if Pend > 0 then
+    if Act = 0 then
+      if Pool > 0 then
+        dec Pend
+        dec Pool
+        DrawPool
+        SBase = PElev
+        SIdx = 0
+        SEnd = NElev
+        SStop = NElev - 1
+        SKind = 0
+        Spawn
+      end if
+    end if
+  end if
+  if Act > 0 then MoveAll
+  goto l900
+
+' DrawClock (100-170): the racks, their labels, the chute and the balls
+sub DrawClock:
+  TextScreen
+  backdrop dark yellow
+  for X = 17 to 25
+    put char TRed at X,2
+  next
+  put char TBlk at 5,6
+  put char TBlk at 6,6
+  for X = 7 to 10
+    V = X - 7
+    V = V + TD1
+    put char V at X,6
+  next
+  for X = 11 to 18
+    put char TRed at X,6
+  next
+  ' the five-minute labels: 5, 10, 15 ... 55 down the columns
+  put char TBlk at 5,11
+  for I = 1 to 10
+    X = I + 5
+    V = I + 1
+    V = V >> 1
+    V = V + TD0
+    put char V at X,11
+  next
+  for I = 0 to 10
+    X = I + 5
+    V = I & 1
+    if V = 0 then
+      put char TD5 at X,12
+    else
+      put char TD0 at X,12
+    end if
+  next
+  for X = 16 to 20
+    put char TRed at X,11
+    put char TRed at X,12
+  next
+  ' the hour labels: 1 ... 12
+  for X = 5 to 13
+    put char TBlk at X,17
+  next
+  put char TD1 at 14,17
+  put char TD1 at 15,17
+  put char TD1 at 16,17
+  for X = 17 to 21
+    put char TRed at X,17
+  next
+  for I = 0 to 11
+    X = I + 5
+    V = I + 1
+    if V > 9 then V = V - 10
+    V = V + TD0
+    put char V at X,18
+  next
+  for X = 17 to 20
+    put char TRed at X,18
+  next
+  ' 160: the chute's wall
+  put char TSlope at 22,19
+  put char TSlope at 21,20
+  put char TSlope at 20,21
+  put char TSlope at 19,22
+  ' the balls on the racks (1060-1120)
+  if Mc > 0 then
+    for I = 1 to Mc
+      X = I + 6
+      put char TBall at X,5
+    next
+  end if
+  if Fv > 0 then
+    for I = 1 to Fv
+      X = I + 4
+      put char TBall at X,10
+    next
+  end if
+  for I = 1 to Hc
+    X = I + 4
+    put char TBall at X,16
+  next
+  DrawPool
+  if Snd = 0 then print at 5,1, "SOUND OFF"
+  ShowScreen
+  return
+end sub
+
+' DrawPool: the balls at the bottom, in a row up to the elevator
+sub DrawPool:
+  N = Pool
+  if N > 16 then N = 16
+  V = 26 - N
+  for X = 10 to 25
+    if X < V then
+      put char 32 at X,23
+    else
+      put char TBall at X,23
+    end if
+  next
+  return
+end sub
+
+' Spawn: a ball sets off on route SBase from place SIdx
+sub Spawn:
+  Q = 0
+sp_find:
+  if MOn[Q] = 0 then goto sp_got
+  inc Q
+  if Q < 32 then goto sp_find
+  return
+sp_got:
+  MOn[Q] = 1
+  MBase[Q] = SBase
+  MIdx[Q] = SIdx
+  MEnd[Q] = SEnd
+  MStop[Q] = SStop
+  MKind[Q] = SKind
+  MRoll[Q] = 0
+  MWait[Q] = 1
+  I = SBase + SIdx
+  MCol[Q] = PthX[I]
+  MRow[Q] = PthY[I]
+  X = MCol[Q]
+  Y = MRow[Q]
+  put char TBall at X,Y
+  inc Act
+  return
+end sub
+
+' MoveAll: every ball a step when its wait is up, then all drawn again
+sub MoveAll:
+  for K = 0 to 31
+    if MOn[K] = 1 then
+      dec MWait[K]
+      if MWait[K] = 0 then MoveOne
+    end if
+  next
+  for K = 0 to 31
+    if MOn[K] = 1 then
+      X = MCol[K]
+      Y = MRow[K]
+      put char TBall at X,Y
+    end if
+  next
+  return
+end sub
+
+' MoveOne: ball K a step on (300-760)
+sub MoveOne:
+  ' the elevator climbs slowly (2020: the delay for X < 24)
+  W = 2
+  if Spd = 2 then W = 1
+  if MBase[K] = PElev then
+    if MIdx[K] < 22 then W = W + 1
+  end if
+  MWait[K] = W
+  X = MCol[K]
+  Y = MRow[K]
+  if MRoll[K] = 1 then goto mo_roll
+  if MIdx[K] = MStop[K] then
+    ' off the route: roll along a rack to the first free place
+    MRoll[K] = 1
+    if MKind[K] = 0 then MTgt[K] = Mc + 7
+    if MKind[K] = 1 then MTgt[K] = Fv + 5
+    if MKind[K] = 2 then MTgt[K] = Hc + 5
+    goto mo_roll
+  end if
+  V = MIdx[K] + 1
+  if V = MEnd[K] then
+    ' down the chute to the bottom
+    put char 32 at X,Y
+    MOn[K] = 0
+    dec Act
+    inc Pool
+    DrawPool
+    return
+  end if
+  put char 32 at X,Y
+  MIdx[K] = V
+  I = MBase[K] + V
+  MCol[K] = PthX[I]
+  MRow[K] = PthY[I]
+  if MBase[K] = PElev then
+    ' 320-340: the elevator's platform under the climbing ball
+    if V < 23 then
+      put char TLift at X,Y
+      if V > 1 then
+        I = I - 2
+        Px = PthX[I]
+        Py = PthY[I]
+        put char 32 at Px,Py
+      end if
+    else
+      I = I - 2
+      Px = PthX[I]
+      Py = PthY[I]
+      put char 32 at Px,Py
+    end if
+    return
+  end if
+  RollSound
+  return
+mo_roll:
+  if X = MTgt[K] then
+    Arrive
+    return
+  end if
+  put char 32 at X,Y
+  dec X
+  MCol[K] = X
+  RollSound
+  return
+end sub
+
+sub RollSound:
+  inc Rc
+  V = Rc & 3
+  if V = 0 then
+    if Snd = 1 then play sound SndRoll
+  end if
+  return
+end sub
+
+' Arrive: ball K stops on its rack (2190: the hit), and a full rack tips
+sub Arrive:
+  MOn[K] = 0
+  dec Act
+  if Snd = 1 then play sound SndHit
+  if MKind[K] = 0 then
+    if Mc < 4 then
+      inc Mc
+      return
+    end if
+    ' 500-530: the fifth minute: on to the fives, the four go down
+    Mc = 0
+    SBase = PR4
+    SEnd = NR4
+    SIdx = 4
+    SStop = PStop4
+    SKind = 1
+    Spawn
+    SStop = 255
+    for N = 0 to 3
+      SIdx = 3 - N
+      Spawn
+    next
+    return
+  end if
+  if MKind[K] = 1 then
+    if Fv < 11 then
+      inc Fv
+      return
+    end if
+    ' 600-695: the twelfth five: on to the hours, the eleven go down
+    Fv = 0
+    SBase = PR9
+    SEnd = NR9
+    SIdx = 11
+    SStop = PStop9
+    SKind = 2
+    Spawn
+    SStop = 255
+    for N = 0 to 10
+      SIdx = 10 - N
+      Spawn
+    next
+    return
+  end if
+  if Hc < 12 then
+    inc Hc
+    return
+  end if
+  ' 700-760: the thirteenth hour: all go down but one, and it is 1:00
+  Hc = 1
+  SBase = PR15
+  SEnd = NR15
+  SStop = 255
+  for N = 0 to 11
+    SIdx = 11 - N
+    Spawn
+  next
+  return
+end sub
+
+' PickOne: one of Nopt lines from row Oy (column 6), the cursor at 4
+sub PickOne:
+  Sel = 1
+  WasBtn = 1
+po_draw:
+  for I = 1 to Nopt
+    Y = Oy + I
+    dec Y
+    print at 4,Y, " "
+  next
+  Y = Oy + Sel
+  dec Y
+  print at 4,Y, ">"
+po_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Sel > 1 then dec Sel
+    end if
+    if Dn1 = 1 then
+      if Sel < Nopt then inc Sel
+    end if
+    goto po_draw
+  end if
+  if Press = 0 then goto po_loop
+  play sound SndTick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  fill mode 2 text color with Tc
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).fire then Btn = 1
+  if joypad(2).fire then Btn = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Stick = 0
+  Fresh = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Fresh = 1
+      Rep = 16
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+data TilePat bytes
+  $C3,$81,$00,$00,$00,$00,$81,$C3
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$44,$4C,$54,$64,$44,$38
+  $00,$10,$30,$10,$10,$10,$10,$38
+  $00,$38,$44,$04,$18,$20,$40,$83
+  $00,$83,$08,$10,$08,$04,$44,$38
+  $00,$08,$18,$28,$48,$83,$08,$08
+  $00,$83,$40,$87,$04,$04,$44,$38
+  $00,$18,$20,$40,$87,$44,$44,$38
+  $00,$83,$04,$08,$10,$20,$20,$20
+  $00,$38,$44,$44,$38,$44,$44,$38
+  $00,$38,$44,$44,$C3,$04,$08,$30
+end data
+data TileCol bytes
+  $AF,$AF,$0F,$0F,$0F,$0F,$AF,$AF
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $08,$08,$08,$08,$08,$08,$08,$08
+  $8A,$8A,$8A,$A8,$A8,$A8,$A8,$08
+  $01,$01,$0A,$0A,$0A,$0A,$0A,$0A
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$1A
+  $01,$1A,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$A1,$A1,$A1,$A1,$1A,$A1,$A1
+  $01,$1A,$A1,$1A,$A1,$A1,$A1,$A1
+  $01,$A1,$A1,$A1,$1A,$A1,$A1,$A1
+  $01,$1A,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $01,$A1,$A1,$A1,$1A,$A1,$A1,$A1
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+TpRoll:
+    db $00,$00,$44,$01,$00,$00,$F4,$01,$00,$00,$54,$01,$00,$00,$F4,$01,$10
+TpHit:
+    db $40,$9A,$10,$02,$40,$9A,$60,$02,$40,$FE,$F0,$01,$50
+TpTick:
+    db $40,$40,$50,$01,$50
+
+TpSoundTable:
+    dw TpRoll,$702B
+    dw TpHit,$7035
+    dw TpTick,$7035
+    dw TpTuneMel,$703F
+    dw TpTuneBass,$7049
+; Brass Pendulum, G major (original for this game)
+; Tiny Sound, 8 frames per step
+TpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$31,$88,$2A,$00,$2D,$00,$32,$00,$31,$00,$2F,$00,$2D,$00
+    db $AA,$00,$00,$00,$00,$00,$2B,$00,$2F,$00,$34,$00,$32,$00,$31,$00
+    db $2F,$00,$AD,$00,$00,$00,$00,$00,$2A,$00,$2D,$00,$32,$00,$36,$00
+    db $34,$00,$32,$00,$31,$00,$34,$00,$2D,$00,$26,$00,$00,$26,$00,$00
+    db $26,$00,$00,$A6,$00,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+TpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$70,$F1,$22,$0E,$00,$12,$15,$00,$12,$0E,$00,$12,$15,$00,$12
+    db $0E,$00,$12,$15,$00,$12,$10,$00,$13,$17,$00,$13,$09,$00,$0D,$10
+    db $00,$0D,$09,$00,$0D,$10,$00,$0D,$0E,$00,$12,$15,$00,$12,$0B,$00
+    db $0E,$12,$00,$0E,$09,$00,$0D,$10,$00,$0D,$0E,$00,$00,$09,$00,$00
+    db $0E,$00,$00,$0E,$00,$00,$00,$00,$00,$00,$00,$00
+    db $FF
+; the title song: both voices of Brass Pendulum (SndTuneA, SndTuneB)
+TpSong:
+    dw $0001
+    db $40+4,5
+    dw $0000
+}

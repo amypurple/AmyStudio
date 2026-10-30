@@ -321,6 +321,15 @@ export function createProcHelpers({
 
   function ensureImplicitStartForExecutable() {
     if (currentProcRef.get() || currentFunctionRef.get()) return;
+    if (body.includes("Start:")) {
+      // Included files and BASIC-style layouts may place a routine between two
+      // top-level regions. Resume the existing entry region without emitting a
+      // second Start label or repeating cartridge initialization.
+      currentProcRef.set("Start");
+      currentFunctionRef.set(null);
+      openedImplicitStartRef.set(true);
+      return;
+    }
     openStartProc();
     openedImplicitStartRef.set(true);
   }

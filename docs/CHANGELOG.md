@@ -10,9 +10,13 @@
 - Corrected BLAM! and Bowling Champ to declare their two active sprites,
   preventing later SAT memory from being interpreted as visible sprites on
   stricter TMS9918A implementations.
-- Revalidated provenance metadata, the COMPUTE! attribution screens and all
-  seven new Balanced cartridges; the browser catalogue now contains **387
-  examples**.
+- Restored 160 source listings and their project assets that were advertised
+  by the clean example catalogue but absent from the published repository.
+- Added final Z80 branch legalization so a `JR` that becomes out of range
+  after optimization is safely promoted to `JP`; this fixes both 421 builds.
+- Revalidated provenance metadata, COMPUTE! attribution screens and the full
+  clean corpus: **387/387 examples compile** in Balanced, including 386 ROMs
+  and one target-specific project.
 
 ## 2026-10-27 - 120-color RAM safety and Picture Show
 

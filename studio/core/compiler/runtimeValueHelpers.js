@@ -40,6 +40,7 @@ export function createRuntimeValueHelpers({
   emitLoadInt8ValueInto,
   emitLoadWordTableEntryIntoHL,
   getWordTableInfo,
+  dataLengths,
   ensureCompareScratch32,
   ensureFp5ReturnScratch,
   emitStoreExtended32,
@@ -548,6 +549,11 @@ export function createRuntimeValueHelpers({
     }
     const arrayRef = parseArrayRef(token);
     if (arrayRef) {
+      if (dataLengths?.has(arrayRef.name)) {
+        const loadByte = emitLoadInt8Into("a", normalized);
+        if (!loadByte) return null;
+        return [...loadByte, "    ld l,a", "    ld h,0"];
+      }
       const info = getRuntimeInfo(arrayRef.name);
       if (!info || info.kind !== "array" || info.elementType !== "int16") return null;
       const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);

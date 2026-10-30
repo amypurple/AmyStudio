@@ -312,6 +312,8 @@ function isIxIyDisplacementOperandText(value) {
                 this.sourceLines = [];   // Store original source lines
                 this.errorCount = 0;     // Track errors for listing
                 this.lineToAddressMap = new Map(); // Map source line numbers to assembled addresses
+                this.tokenAddressMap = new Map(); // Exact pass-2 addresses for branch legalization
+                this.tokenScopeMap = new Map(); // Parent labels for .local branch targets
                 this.breakpointsToInject = new Set(); // Breakpoints to inject as ld b,b (0x40)
                 // v2.1: LET variables and STOP flag
                 this.variableTable = {}; // Mutable variables (LET directive)
@@ -341,6 +343,32 @@ function isIxIyDisplacementOperandText(value) {
                 for (const lineNum of breakpointsSet) {
                     this.breakpointsToInject.add(lineNum + 1); // Convert to 1-based
                 }
+            }
+
+            legalizeOutOfRangeJr(tokens) {
+                let expanded = 0;
+                const legalized = tokens.map(token => {
+                    if (!(token instanceof Instruction) || token.mnemonic.toLowerCase() !== 'jr' || token.operands.length < 1) return token;
+                    const targetOp = token.operands[token.operands.length - 1];
+                    const pc = this.tokenAddressMap.get(token);
+                    if (pc === undefined || !['symbol', 'immediate'].includes(targetOp.type)) return token;
+
+                    let target;
+                    if (targetOp.type === 'immediate' && typeof targetOp.value === 'number') {
+                        target = targetOp.value;
+                    } else if (typeof targetOp.value === 'string') {
+                        const raw = targetOp.value;
+                        const name = raw.startsWith('.') ? `${this.tokenScopeMap.get(token) || ''}${raw}` : raw;
+                        target = this.symbolTable[name];
+                    }
+                    if (target === undefined) return token;
+                    const offset = target - (pc + 2);
+                    if (offset >= -128 && offset <= 127) return token;
+
+                    expanded++;
+                    return new Instruction(token.label, 'jp', token.operands, token.lineNumber, token.sourceLine);
+                });
+                return { tokens: legalized, expanded };
             }
 
             // Post-compilation ROM patcher: Patch RST vector trampolines in ColecoVision header
@@ -488,6 +516,12 @@ function isIxIyDisplacementOperandText(value) {
                         const symbolsBefore = {...this.symbolTable};
                         let iteration = 0;
                         const maxIterations = 10; // Safety limit
+                        const phase2Totals = {
+                            jpToJr: 0,
+                            ldToXor: 0,
+                            djnzExpanded: 0,
+                            jrExpanded: 0
+                        };
 
                         do {
                             // Reset per-iteration counters
@@ -515,8 +549,17 @@ function isIxIyDisplacementOperandText(value) {
 
                             iteration++;
                             const relaxed = optimizer.stats.djnzExpanded + optimizer.stats.jrExpanded;
+                            phase2Totals.jpToJr += optimizer.stats.jpToJr;
+                            phase2Totals.ldToXor += optimizer.stats.ldToXor;
+                            phase2Totals.djnzExpanded += optimizer.stats.djnzExpanded;
+                            phase2Totals.jrExpanded += optimizer.stats.jrExpanded;
                             log(`  Iteration ${iteration}: ${optimizer.stats.jpToJr} JP→JR conversions${relaxed > 0 ? `, ${relaxed} JR/DJNZ expanded` : ''}`, 'debug');
                         } while ((optimizer.stats.jpToJr > 0 || optimizer.stats.djnzExpanded > 0 || optimizer.stats.jrExpanded > 0) && iteration < maxIterations);
+
+                        optimizer.stats.jpToJr = phase2Totals.jpToJr;
+                        optimizer.stats.ldToXor = phase2Totals.ldToXor;
+                        optimizer.stats.djnzExpanded = phase2Totals.djnzExpanded;
+                        optimizer.stats.jrExpanded = phase2Totals.jrExpanded;
 
                         // Show address shifts for labels that moved
                         log(`Address mapping (labels that moved):`, 'debug');
@@ -589,6 +632,7 @@ function isIxIyDisplacementOperandText(value) {
                             rstVectorsUsed: 0,
                             routinesInlined: 0,
                             inlinePasses: 0,
+                            jrExpanded: 0,
                             bytesSaved: 0
                         };
                         // Optimizer disabled - hide bytes saved display
@@ -596,6 +640,39 @@ function isIxIyDisplacementOperandText(value) {
                             ? document.getElementById('bytes-saved-display')
                             : null;
                         bytesSavedDisplay?.classList.add('hidden');
+                    }
+
+                    // Final one-way legalization after every optional optimizer pass.
+                    // Branch shortening can move later labels and, near the signed-byte
+                    // boundary, leave a JR out of range when its iteration cap is met.
+                    // A legalizer with no optimization options can only promote JR to JP,
+                    // so this pass converges and cannot oscillate back to the short form.
+                    let finalLegalizeIteration = 0;
+                    let finalJrExpanded = 0;
+                    const maxFinalLegalizeIterations = 10;
+                    do {
+                        const legalized = this.legalizeOutOfRangeJr(tokens);
+                        tokens = legalized.tokens;
+                        finalJrExpanded += legalized.expanded;
+
+                        this.symbolTable = {};
+                        this.constantTable = {};
+                        this.symbolInfo = {};
+                        this.fileMap = [];
+                        this.pc = 0;
+                        this.firstOrg = null;
+                        this.sectionPCs = { CODE: 0, DATA: 0, BSS: 0 };
+                        this.currentSection = 'CODE';
+                        this.lastNonTempSymbol = '';
+                        this.buildSymbolTable(tokens);
+                        finalLegalizeIteration++;
+                        if (legalized.expanded === 0) break;
+                    } while (finalLegalizeIteration < maxFinalLegalizeIterations);
+
+                    if (finalJrExpanded > 0) {
+                        this.compilationStats.optimizer.jrExpanded =
+                            (this.compilationStats.optimizer.jrExpanded || 0) + finalJrExpanded;
+                        log(`Final branch legalization: ${finalJrExpanded} JR→JP promotion${finalJrExpanded > 1 ? 's' : ''}`, 'info');
                     }
 
                     this.currentPass = 3;
@@ -1661,6 +1738,8 @@ function isIxIyDisplacementOperandText(value) {
                 this.constantTable = {};
                 this.symbolInfo = {};
                 this.fileMap = [];
+                this.tokenAddressMap = new Map();
+                this.tokenScopeMap = new Map();
                 let currentSourceFile = 'main';
 
                 // Track ROM output position separately from PC for BSS (RAM) sections
@@ -1766,6 +1845,9 @@ function isIxIyDisplacementOperandText(value) {
                                 }
                             }
                         }
+
+                        this.tokenAddressMap.set(token, this.pc);
+                        this.tokenScopeMap.set(token, this.lastNonTempSymbol);
 
                         if (token instanceof Directive) {
                             switch (token.name) {
@@ -1915,6 +1997,14 @@ function isIxIyDisplacementOperandText(value) {
                                         const blockSize = this.evaluateExpression(token.operands[0]);
                                         this.pc += blockSize;
                                         if (!inBSSSection) romPC += blockSize;
+                                    }
+                                    break;
+                                case 'FILL':
+                                    // Telemark TASM: emit count bytes, defaulting to $FF.
+                                    {
+                                        const fillSize = this.evaluateExpression(token.operands[0]);
+                                        this.pc += fillSize;
+                                        if (!inBSSSection) romPC += fillSize;
                                     }
                                     break;
                                 case 'INCBIN':
@@ -2623,6 +2713,17 @@ function isIxIyDisplacementOperandText(value) {
                                             this.output.push(fillValue);
                                         }
                                         this.pc += blockSize;
+                                    }
+                                    break;
+                                case 'FILL':
+                                    // Telemark TASM: FILL count [, value], default value $FF.
+                                    {
+                                        const fillSize = this.evaluateExpression(token.operands[0]);
+                                        const fillValue = token.operands.length > 1
+                                            ? this.evaluateExpression(token.operands[1]) & 0xFF
+                                            : 0xFF;
+                                        for (let i = 0; i < fillSize; i++) this.output.push(fillValue);
+                                        this.pc += fillSize;
                                     }
                                     break;
                                 case 'INCBIN':

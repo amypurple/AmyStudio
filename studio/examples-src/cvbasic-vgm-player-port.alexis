@@ -1,0 +1,130 @@
+cartridge "VGM PLAYER PORT/AMY STUDIO/2026"
+
+' Amy port of CVBasic examples/vgm.bas.
+' The original example expects alexkidd.vgm beside the source.
+' This self-contained demo embeds a tiny SN76489 VGM stream instead.
+
+u16 VgmPointer = 0
+u16 VgmEnd = 0
+
+on vblank VgmPlay
+
+  text screen
+  print centered at 4, "CVBASIC VGM PORT"
+  print centered at 6, "ON FRAME PLAYER"
+  print centered at 8, "MINI SN76489 STREAM"
+  VgmStart
+  screen on
+
+main_loop:
+  wait
+  print at 2,10, "PTR:"
+  print VgmPointer at 7,10 digits 5
+  if VgmPointer = 0 then
+    print centered at 14, "VGM DONE"
+  end if
+  goto main_loop
+
+sub VgmStart:
+  asm {
+    ld hl,VgmMusic
+    ld de,4
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,VgmMusic
+    add hl,de
+    ld (VgmEnd),hl
+    ld hl,VgmMusic
+    ld de,8
+    add hl,de
+    ld a,(hl)
+    cp $50
+    jr nc,VgmStartNewHeader
+    ld hl,VgmMusic
+    ld de,64
+    add hl,de
+    ld (VgmPointer),hl
+    jr VgmStartDone
+VgmStartNewHeader:
+    ld hl,VgmMusic
+    ld de,52
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    push de
+    ld hl,VgmMusic
+    ld de,$34
+    add hl,de
+    pop de
+    add hl,de
+    ld (VgmPointer),hl
+VgmStartDone:
+  }
+  return
+
+sub VgmPlay:
+  asm {
+    ld hl,(VgmPointer)
+    ld a,h
+    or l
+    ret z
+    ld de,(VgmEnd)
+    or a
+    sbc hl,de
+    jr c,VgmPlayNotEnd
+    xor a
+    ld hl,VgmPointer
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ret
+VgmPlayNotEnd:
+    ld hl,(VgmPointer)
+VgmPlayLoop:
+    ld a,(hl)
+    inc hl
+    cp $50
+    jr z,VgmPlayPsg
+    cp $61
+    jr z,VgmPlayWaitN
+    cp $62
+    jr z,VgmPlayWaitFrame
+    cp $63
+    jr z,VgmPlayWaitFrame
+    cp $66
+    jr z,VgmPlayEnd
+    jr VgmPlayLoop
+VgmPlayPsg:
+    ld a,(hl)
+    inc hl
+    out ($ff),a
+    jr VgmPlayLoop
+VgmPlayWaitN:
+    inc hl
+    inc hl
+VgmPlayWaitFrame:
+    ld (VgmPointer),hl
+    ret
+VgmPlayEnd:
+    xor a
+    ld hl,VgmPointer
+    ld (hl),a
+    inc hl
+    ld (hl),a
+  }
+  return
+
+data VgmMusic bytes
+  $56,$67,$6D,$20,$4B,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $50,$80,$50,$20,$50,$90,$62,$50,$9F,$62,$66
+end data

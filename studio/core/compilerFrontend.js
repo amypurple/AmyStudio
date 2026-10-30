@@ -83,6 +83,8 @@ export function inferControllerBackendFromSource(sourceText) {
 export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const text = sourceText || "";
   const codeText = text.split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
+  const needsCompleteDefaultAscii = Array.from(text.matchAll(/"(?:""|[^"])*"/g), (match) => match[0])
+    .some((literal) => /[}~\x7F]/.test(literal));
   const constBytes = new Map();
   for (const match of codeText.matchAll(/^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\$[0-9A-Fa-f]+|[0-9]+)\s*$/gim)) {
     const valueText = match[2];
@@ -202,6 +204,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     usesGraphicsMode2Text,
     needsSleepState,
     needsBackdropShadow,
+    needsCompleteDefaultAscii,
     soundAreaCount,
     needsNmi,
     ...(controllerBackend || {})

@@ -1,0 +1,212 @@
+cartridge "COSMO TRAINER/AMY STUDIO/2026"
+
+' COSMO TRAINER-INSPIRED AMY DEMO
+' Inspired by Marcel de Kogel's 1997 Cosmo Trainer.
+' This is not a source-faithful port of CTRAINER.C.
+' It keeps the core training-loop idea:
+' dodge incoming space stones, keep your shield alive, build score.
+
+record Position:
+  u8 X
+  u8 Y
+end record
+
+Position Ship
+Position Stones[6]
+u8 Shield = 56
+u8 I = 0
+u8 TrainerTick = 0
+u8 Dodges = 0
+u8 SpeedLevel = 0
+u8 ShipColor = 15
+u8 BlinkTick = 0
+bcd digits 5 Score
+
+hitbox ShipBox = 3,4 size 10,11
+hitbox StoneBox = 2,2 size 12,12
+
+data TrainerShip sprite16
+  ".......XX......."
+  "......XXXX......"
+  ".....XXXXXX....."
+  "....XXX..XXX...."
+  "...XXX....XXX..."
+  "..XXX..XX..XXX.."
+  ".XXX..XXXX..XXX."
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXXX"
+  ".XX..XXXXXX..XX."
+  ".X....XXXX....X."
+  "......XXXX......"
+  ".....XX..XX....."
+  "....XX....XX...."
+  "...XX......XX..."
+  "..XX........XX.."
+end data
+
+data TrainerStone sprite16
+  ".....XXXXXX....."
+  "...XXXXXXXXXX..."
+  "..XXXX.XX.XXXX.."
+  ".XXX.XXXXXX.XXX."
+  ".XX.XXXXXXXX.XX."
+  "XXX.XX.XX.XX.XXX"
+  "XX.XXXXXXXXXX.XX"
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXXX"
+  "XX.XXXXXXXXXX.XX"
+  "XXX.XX.XX.XX.XXX"
+  ".XX.XXXXXXXX.XX."
+  ".XXX.XXXXXX.XXX."
+  "..XXXX.XX.XXXX.."
+  "...XXXXXXXXXX..."
+  ".....XXXXXX....."
+end data
+
+text screen
+sprites 16x16
+sprites simple
+copy TrainerShip to vram.spr_pat
+copy TrainerStone to vram $3820
+clear sprites
+set sprite count 7
+screen on
+
+title_screen:
+  cls
+  print centered at 4, "COSMO TRAINER"
+  print centered at 7, "DODGE THE SPACE STONES"
+  print centered at 9, "KEEP YOUR SHIELD ALIVE"
+  print centered at 14, "PRESS FIRE TO START"
+wait_title:
+  wait
+  if not joypad(1).button1 then goto wait_title
+release_title:
+  wait
+  if joypad(1).button1 then goto release_title
+
+start_game:
+  cls
+  Ship.X = 112
+  Ship.Y = 164
+  Shield = 56
+  Dodges = 0
+  SpeedLevel = 0
+  ShipColor = 15
+  BlinkTick = 0
+  Score = 0
+  print at 1,0, "SHIELD:   SCORE:     LV:"
+  print Shield at 7,0 digits 2
+  print Score at 17,0
+  print SpeedLevel at 28,0 digits 1
+  reset_stones
+  goto game_loop
+
+sub reset_stones:
+  Stones[0].X = 24
+  Stones[0].Y = 8
+  Stones[1].X = 72
+  Stones[1].Y = 48
+  Stones[2].X = 120
+  Stones[2].Y = 88
+  Stones[3].X = 168
+  Stones[3].Y = 128
+  Stones[4].X = 216
+  Stones[4].Y = 28
+  Stones[5].X = 48
+  Stones[5].Y = 148
+  return
+
+game_loop:
+  wait
+
+  if joypad(1).left then
+    if Ship.X > 4 then Ship.X -= 3
+  end if
+  if joypad(1).right then
+    if Ship.X < 236 then Ship.X += 3
+  end if
+
+  TrainerTick += 1
+  if BlinkTick > 0 then
+    BlinkTick -= 1
+    if ShipColor = 15 then
+      ShipColor = 6
+    else
+      ShipColor = 15
+    end if
+  else
+    ShipColor = 15
+  end if
+
+  Stones[0].Y += 2 + SpeedLevel
+  Stones[1].Y += 3 + SpeedLevel
+  Stones[2].Y += 2 + SpeedLevel
+  Stones[3].Y += 4 + SpeedLevel
+  Stones[4].Y += 1 + SpeedLevel
+  Stones[5].Y += 3 + SpeedLevel
+
+  I = 0
+stone_reset_loop:
+  if Stones[I].Y > 180 then
+    Score += 1
+    Dodges += 1
+    print Score at 17,0
+    if Dodges = 12 then
+      if SpeedLevel < 4 then
+        SpeedLevel += 1
+        print SpeedLevel at 28,0 digits 1
+      end if
+      Dodges = 0
+    end if
+    Stones[I].Y = 0
+    Stones[I].X = random(0, 240)
+  end if
+  I += 1
+  if I < 6 then goto stone_reset_loop
+
+  set sprite 0 to Ship.Y - 1,Ship.X,0,ShipColor
+  set sprite 1 to Stones[0].Y - 1,Stones[0].X,4,8
+  set sprite 2 to Stones[1].Y - 1,Stones[1].X,4,9
+  set sprite 3 to Stones[2].Y - 1,Stones[2].X,4,10
+  set sprite 4 to Stones[3].Y - 1,Stones[3].X,4,11
+  set sprite 5 to Stones[4].Y - 1,Stones[4].X,4,12
+  set sprite 6 to Stones[5].Y - 1,Stones[5].X,4,13
+  update sprites
+
+  if sprite 0 hitbox ShipBox collides with sprite 1 hitbox StoneBox then goto hit
+  if sprite 0 hitbox ShipBox collides with sprite 2 hitbox StoneBox then goto hit
+  if sprite 0 hitbox ShipBox collides with sprite 3 hitbox StoneBox then goto hit
+  if sprite 0 hitbox ShipBox collides with sprite 4 hitbox StoneBox then goto hit
+  if sprite 0 hitbox ShipBox collides with sprite 5 hitbox StoneBox then goto hit
+  if sprite 0 hitbox ShipBox collides with sprite 6 hitbox StoneBox then goto hit
+
+  goto game_loop
+
+hit:
+  if Shield > 0 then Shield -= 4
+  print Shield at 7,0 digits 2
+  if Shield = 0 then goto game_over
+  BlinkTick = 16
+  goto game_loop
+
+game_over:
+  set sprite 0 to 209,0,0,0
+  set sprite 1 to 209,0,0,0
+  set sprite 2 to 209,0,0,0
+  set sprite 3 to 209,0,0,0
+  set sprite 4 to 209,0,0,0
+  set sprite 5 to 209,0,0,0
+  set sprite 6 to 209,0,0,0
+  update sprites
+  print centered at 8, "TRAINING OVER"
+  print at 10,11, "SCORE:"
+  print Score at 17,11
+  print centered at 15, "PRESS FIRE TO RETRY"
+wait_retry:
+  wait
+  if not joypad(1).button1 then goto wait_retry
+release_retry:
+  wait
+  if joypad(1).button1 then goto release_retry
+  goto title_screen

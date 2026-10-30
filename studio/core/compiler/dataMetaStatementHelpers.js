@@ -127,7 +127,7 @@ export function handleDataMetaStatement({
           log: `Inline ASM label '${asmLabel[1]}' collides with existing Amy ${collision}. Rename the ASM label, for example '${asmLabel[1]}Sound' or '${asmLabel[1]}Data'. Offending line: ${rawLine}`
         };
       }
-      state.asmBuffer = [...state.asmBuffer, state.rewriteUserSymbolsInExpression(asmLine)];
+      state.asmBuffer = [...state.asmBuffer, state.rewriteUserSymbolsInAsmLine(asmLine)];
     }
     return { handled: true, ok: true };
   }

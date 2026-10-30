@@ -1,0 +1,1115 @@
+project "421"
+cartridge "421/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+const SfxBrasser = 5
+const SfxGlisser = 6
+const SfxApplause = 7
+const SfxMario0 = 8
+const SfxMario1 = 9
+const SfxMario2 = 10
+const SfxDing = 11
+const SfxCpuWin0 = 16
+const SfxCpuWin1 = 17
+const SfxBad0 = 14
+const SfxBad1 = 15
+
+const ModeOnePlayer = 1
+const ModeTwoPlayers = 2
+const PhaseLoad = 0
+const PhaseUnload = 1
+
+record Player421:
+  u8 Die1
+  u8 Die2
+  u8 Die3
+  u8 Starts
+  u8 Score
+  u8 Tokens
+end record
+
+Player421 Players[2]
+
+u8 MenuKey = 0
+u8 DieValue = 1
+u8 DiePos = 1
+u8 DieRed = 0
+u8 DieX = 1
+u8 DiePosWork = 0
+u8 DiceFrame[9]
+u8 FourTwentyOneBlankDie[9]
+u8 GameMode = ModeOnePlayer
+u8 GamePhase = PhaseLoad
+u8 Turn = 0
+u8 RoundWinner = 0
+u8 TokensLoaded = 0
+u8 MaxThrows = 0
+u8 ThrowCount = 0
+u8 SelectedDie1 = 0
+u8 SelectedDie2 = 0
+u8 SelectedDie3 = 0
+u8 TurnScore = 0
+u8 SortD1 = 0
+u8 SortD2 = 0
+u8 SortD3 = 0
+u8 SortTemp = 0
+
+picture FourTwentyOneTitle:
+  pattern from "@project/421-title.pattern.zx0" codec zx0
+  color from "@project/421-title.color.zx0" codec zx0
+end picture
+
+picture FourTwentyOneCredits:
+  pattern from "@project/421-credits.pattern.zx0" codec zx0
+  color from "@project/421-credits.color.zx0" codec zx0
+end picture
+
+asset FourTwentyOneNameRle from "@project/421.name.zx0" codec zx0
+asset FourTwentyOnePatternRle from "@project/421.pattern.zx0" codec zx0
+asset FourTwentyOneColorRle from "@project/421.color.zx0" codec zx0
+
+' Cursor positions for instructions, one player, two players, and credits.
+data FourTwentyOneMenuSpots bytes 6,9, 4,11, 4,13, 8,17
+
+function FourTwentyOneRank(ref Player421 P) as u8
+  if P.Die1 = 4 and P.Die2 = 2 and P.Die3 = 1 then return 0
+  if P.Die1 = 1 and P.Die2 = 1 and P.Die3 = 1 then return 1
+  if P.Die1 = 6 and P.Die2 = 1 and P.Die3 = 1 then return 2
+  if P.Die1 = 6 and P.Die2 = 6 and P.Die3 = 6 then return 3
+  if P.Die1 = 5 and P.Die2 = 1 and P.Die3 = 1 then return 4
+  if P.Die1 = 5 and P.Die2 = 5 and P.Die3 = 5 then return 5
+  if P.Die1 = 4 and P.Die2 = 1 and P.Die3 = 1 then return 6
+  if P.Die1 = 4 and P.Die2 = 4 and P.Die3 = 4 then return 7
+  if P.Die1 = 3 and P.Die2 = 1 and P.Die3 = 1 then return 8
+  if P.Die1 = 3 and P.Die2 = 3 and P.Die3 = 3 then return 9
+  if P.Die1 = 2 and P.Die2 = 1 and P.Die3 = 1 then return 10
+  if P.Die1 = 2 and P.Die2 = 2 and P.Die3 = 2 then return 11
+  if P.Die1 = 6 and P.Die2 = 5 and P.Die3 = 4 then return 12
+  if P.Die1 = 5 and P.Die2 = 4 and P.Die3 = 3 then return 13
+  if P.Die1 = 4 and P.Die2 = 3 and P.Die3 = 2 then return 14
+  if P.Die1 = 3 and P.Die2 = 2 and P.Die3 = 1 then return 15
+  return 255
+
+function FourTwentyOneScore(ref Player421 P) as u8
+  SortD1 = P.Die1
+  SortD2 = P.Die2
+  SortD3 = P.Die3
+  if SortD1 = 4 and SortD2 = 2 and SortD3 = 1 then return 10
+  if SortD1 = 1 and SortD2 = 1 and SortD3 = 1 then return 7
+  if SortD1 = 6 and SortD2 = 1 and SortD3 = 1 then return 6
+  if SortD1 = 6 and SortD2 = 6 and SortD3 = 6 then return 6
+  if SortD1 = 5 and SortD2 = 1 and SortD3 = 1 then return 5
+  if SortD1 = 5 and SortD2 = 5 and SortD3 = 5 then return 5
+  if SortD1 = 4 and SortD2 = 1 and SortD3 = 1 then return 4
+  if SortD1 = 4 and SortD2 = 4 and SortD3 = 4 then return 4
+  if SortD1 = 3 and SortD2 = 1 and SortD3 = 1 then return 3
+  if SortD1 = 3 and SortD2 = 3 and SortD3 = 3 then return 3
+  if SortD1 = 2 and SortD2 = 1 and SortD3 = 1 then return 2
+  if SortD1 = 2 and SortD2 = 2 and SortD3 = 2 then return 2
+  if SortD1 = 6 and SortD2 = 5 and SortD3 = 4 then return 2
+  if SortD1 = 5 and SortD2 = 4 and SortD3 = 3 then return 2
+  if SortD1 = 4 and SortD2 = 3 and SortD3 = 2 then return 2
+  if SortD1 = 3 and SortD2 = 2 and SortD3 = 1 then return 2
+  return 1
+
+sub FourTwentyOneSortDice(ref Player421 P):
+  SortD1 = P.Die1
+  SortD2 = P.Die2
+  SortD3 = P.Die3
+  if SortD2 > SortD1 then
+    SortTemp = SortD1
+    SortD1 = SortD2
+    SortD2 = SortTemp
+  end if
+  if SortD3 > SortD1 then
+    SortTemp = SortD1
+    SortD1 = SortD3
+    SortD3 = SortTemp
+  end if
+  if SortD3 > SortD2 then
+    SortTemp = SortD2
+    SortD2 = SortD3
+    SortD3 = SortTemp
+  end if
+  P.Die1 = SortD1
+  P.Die2 = SortD2
+  P.Die3 = SortD3
+  return
+
+function FourTwentyOneCompare(ref Player421 P1, ref Player421 P2) as u8
+  u8 Rank1 = 0
+  u8 Rank2 = 0
+  u8 Score1 = 0
+  u8 Score2 = 0
+  if P1.Die1 = P2.Die1 and P1.Die2 = P2.Die2 and P1.Die3 = P2.Die3 then return 2
+  Rank1 = FourTwentyOneRank(P1)
+  Rank2 = FourTwentyOneRank(P2)
+  Score1 = FourTwentyOneScore(P1)
+  Score2 = FourTwentyOneScore(P2)
+  if Score2 > Score1 then return 1
+  if Score1 > Score2 then return 0
+  if Score1 = 1 then
+    if P2.Die1 > P1.Die1 then return 1
+    if P2.Die1 < P1.Die1 then return 0
+    if P2.Die2 > P1.Die2 then return 1
+    if P2.Die2 < P1.Die2 then return 0
+    if P2.Die3 > P1.Die3 then return 1
+    return 0
+  end if
+  if Rank2 < Rank1 then return 1
+  return 0
+
+sub FourTwentyOneDrawPlayerDice(ref Player421 P, u8 Side):
+  DieRed = SelectedDie1
+  DieValue = P.Die1
+  DiePos = 1 + Side * 3
+  draw_die
+  DieRed = SelectedDie2
+  DieValue = P.Die2
+  DiePos = 2 + Side * 3
+  draw_die
+  DieRed = SelectedDie3
+  DieValue = P.Die3
+  DiePos = 3 + Side * 3
+  draw_die
+  return
+
+sub FourTwentyOneRollSelected(ref Player421 P, u8 Side):
+  u8 RollFrame = 0
+  if SelectedDie1 <> 0 then
+    play sound SfxBrasser
+    for RollFrame = 0 to 4
+      P.Die1 = random(1,6)
+      FourTwentyOneDrawPlayerDice(P,Side)
+      wait 3 frames
+    next
+  end if
+  if SelectedDie2 <> 0 then
+    play sound SfxBrasser
+    for RollFrame = 0 to 4
+      P.Die2 = random(1,6)
+      FourTwentyOneDrawPlayerDice(P,Side)
+      wait 3 frames
+    next
+  end if
+  if SelectedDie3 <> 0 then
+    play sound SfxBrasser
+    for RollFrame = 0 to 4
+      P.Die3 = random(1,6)
+      FourTwentyOneDrawPlayerDice(P,Side)
+      wait 3 frames
+    next
+  end if
+  SelectedDie1 = 0
+  SelectedDie2 = 0
+  SelectedDie3 = 0
+  FourTwentyOneSortDice(P)
+  FourTwentyOneDrawPlayerDice(P,Side)
+  return
+
+sub FourTwentyOneRollAll(ref Player421 P, u8 Side):
+  SelectedDie1 = 1
+  SelectedDie2 = 1
+  SelectedDie3 = 1
+  FourTwentyOneRollSelected(P,Side)
+  return
+
+sub FourTwentyOneSelectHumanDice(ref Player421 P, u8 Side):
+  u8 Key = 255
+  u8 Controller = 1
+  Controller = Side + 1
+  SelectedDie1 = 0
+  SelectedDie2 = 0
+  SelectedDie3 = 0
+  print centered at 18, "ANOTHER THROW?"
+  print centered at 19, "1,2,3 SELECT DICE"
+  print centered at 20, "FIRE CONFIRMS"
+  do
+    Key = keypad(Controller)
+    if Key = 1 then
+      SelectedDie1 = 1 - SelectedDie1
+      FourTwentyOneDrawPlayerDice(P,Side)
+      do
+        Key = keypad(Controller)
+        if Key <> 1 then exit do
+        wait
+      loop
+    elseif Key = 2 then
+      SelectedDie2 = 1 - SelectedDie2
+      FourTwentyOneDrawPlayerDice(P,Side)
+      do
+        Key = keypad(Controller)
+        if Key <> 2 then exit do
+        wait
+      loop
+    elseif Key = 3 then
+      SelectedDie3 = 1 - SelectedDie3
+      FourTwentyOneDrawPlayerDice(P,Side)
+      do
+        Key = keypad(Controller)
+        if Key <> 3 then exit do
+        wait
+      loop
+    end if
+    if joypad(Controller).button1 then exit do
+    wait
+  loop
+  wait no fire
+  print centered at 18, "                        "
+  print centered at 19, "                          "
+  print centered at 20, "                 "
+  return
+
+function FourTwentyOneTakeTurn(ref Player421 P, ref Player421 Opponent, u8 Side, u8 Computer, ref u8 ThrowLimit) as u8
+  u8 SetsLimit = 0
+  u8 Result = 0
+  ThrowCount = 1
+  if ThrowLimit = 0 then
+    SetsLimit = 1
+    ThrowLimit = 3
+  end if
+  FourTwentyOneRollAll(P,Side)
+  do
+    FourTwentyOneSortDice(P)
+    P.Score = FourTwentyOneScore(P)
+    if Side = 0 then
+      print at 7,7,P.Score
+    else
+      print at 26,7,P.Score
+    end if
+    print centered at 15,"MAX NB OF THROWS:"
+    print at 24,15,ThrowLimit
+    if ThrowCount >= ThrowLimit then exit do
+    SelectedDie1 = 0
+    SelectedDie2 = 0
+    SelectedDie3 = 0
+    if Computer <> 0 then
+      print centered at 18,"COMPUTER THINKS ..."
+      if SetsLimit <> 0 then
+        if P.Score < 3 then
+          SelectedDie1 = 1
+          SelectedDie2 = 1
+          SelectedDie3 = 1
+        end if
+      else
+        Result = FourTwentyOneCompare(Opponent,P)
+        if Result = 0 or Result = 2 then
+          SelectedDie1 = 1
+          SelectedDie2 = 1
+          SelectedDie3 = 1
+        end if
+      end if
+      wait 50 frames
+      print centered at 18,"                     "
+    else
+      FourTwentyOneSelectHumanDice(P,Side)
+    end if
+    if SelectedDie1 = 0 and SelectedDie2 = 0 and SelectedDie3 = 0 then
+      if SetsLimit <> 0 then ThrowLimit = ThrowCount
+      exit do
+    end if
+    FourTwentyOneRollSelected(P,Side)
+    ThrowCount += 1
+    if SetsLimit <> 0 then
+      if ThrowCount = 3 then ThrowLimit = 3 else ThrowLimit = ThrowCount + 1
+    end if
+  loop
+  SelectedDie1 = 0
+  SelectedDie2 = 0
+  SelectedDie3 = 0
+  FourTwentyOneDrawPlayerDice(P,Side)
+  P.Score = FourTwentyOneScore(P)
+  if SetsLimit = 0 then ThrowLimit = 0
+  return P.Score
+
+sub FourTwentyOneDrawTokens:
+  u8 I = 0
+  u8 X = 0
+  nmi off
+  for I = 0 to 10
+    X = 4 + (I << 1)
+    put char 32 at X,11
+    put char 32 at X + 1,11
+    put char 32 at X,12
+    put char 32 at X + 1,12
+    X = 26 - (I << 1)
+    put char 32 at X,11
+    put char 32 at X + 1,11
+    put char 32 at X,12
+    put char 32 at X + 1,12
+  next
+  for I = 0 to 10
+    if I < Players[0].Tokens then
+      X = 4 + (I << 1)
+      put char $A8 at X,11
+      put char $AA at X + 1,11
+      put char $A9 at X,12
+      put char $AB at X + 1,12
+    end if
+    if I < Players[1].Tokens then
+      X = 26 - (I << 1)
+      put char $A8 at X,11
+      put char $AA at X + 1,11
+      put char $A9 at X,12
+      put char $AB at X + 1,12
+    end if
+  next
+if Players[0].Tokens = 0 then
+    put char $A2 at 4,11
+    put char $A4 at 5,11
+    put char $A3 at 4,12
+    put char $A5 at 5,12
+  end if
+  if Players[1].Tokens = 0 then
+    put char $A2 at 26,11
+    put char $A4 at 27,11
+    put char $A3 at 26,12
+    put char $A5 at 27,12
+  end if
+  nmi on
+  print at 1,12,Players[0].Tokens
+  print at 29,12,Players[1].Tokens
+  return
+
+sub FourTwentyOneDrawTokenAt(u8 X):
+  put char $A8 at X,11
+  put char $AA at X + 1,11
+  put char $A9 at X,12
+  put char $AB at X + 1,12
+  return
+
+sub FourTwentyOneAddTokens(u8 Count, u8 Player, u8 Before):
+  u8 I = 0
+  u8 X = 4
+  play sound SfxGlisser
+  wait 37 frames
+  if Player = 0 then
+    X += Before << 1
+    nmi off
+    for I = 0 to Count - 1
+      FourTwentyOneDrawTokenAt(X + (I << 1))
+    next
+  else
+    X = 26 - (Before << 1)
+    nmi off
+    for I = 0 to Count - 1
+      FourTwentyOneDrawTokenAt(X - (I << 1))
+    next
+  end if
+  nmi on
+  return
+
+sub FourTwentyOneMoveTokens(u8 Count, u8 Player, u8 Before):
+  u8 I = 0
+  u8 X = 4
+  play sound SfxGlisser
+  wait 37 frames
+  if Player = 0 then
+    X += (Before - Count) << 1
+    nmi off
+    if Count <> Before then
+      put char 32 at X,11
+      put char 32 at X,12
+    else
+      put char $A2 at X,11
+      put char $A3 at X,12
+    end if
+    for I = 0 to Count - 1
+      FourTwentyOneDrawTokenAt(X + 1 + (I << 1))
+    next
+    nmi on
+    wait 25 frames
+    nmi off
+    if Count <> Before then
+      put char 32 at X + 1,11
+      put char 32 at X + 1,12
+    else
+      put char $A4 at X + 1,11
+      put char $A5 at X + 1,12
+    end if
+    for I = 0 to Count - 1
+      FourTwentyOneDrawTokenAt(X + 2 + (I << 1))
+    next
+  else
+    X = 26 - ((Before - Count) << 1)
+    nmi off
+    if Count <> Before then
+      put char 32 at X + 1,11
+      put char 32 at X + 1,12
+    else
+      put char $A4 at X + 1,11
+      put char $A5 at X + 1,12
+    end if
+    for I = 0 to Count - 1
+      FourTwentyOneDrawTokenAt(X - 1 - (I << 1))
+    next
+    nmi on
+    wait 25 frames
+    nmi off
+    if Count <> Before then
+      put char 32 at X,11
+      put char 32 at X,12
+    else
+      put char $A2 at X,11
+      put char $A3 at X,12
+    end if
+    for I = 0 to Count - 1
+      FourTwentyOneDrawTokenAt(X - 2 - (I << 1))
+    next
+  end if
+  nmi on
+  wait 25 frames
+  return
+
+sub FourTwentyOneDistribute:
+  u8 Award = 0
+  u8 Other = 0
+  u8 Before = 0
+  Other = 1 - RoundWinner
+  Award = Players[RoundWinner].Score
+  if GamePhase = PhaseLoad then
+    if Award > 11 - TokensLoaded then Award = 11 - TokensLoaded
+    Before = Players[Other].Tokens
+    FourTwentyOneAddTokens(Award,Other,Before)
+    Players[Other].Tokens += Award
+    TokensLoaded += Award
+  else
+    if Award > Players[RoundWinner].Tokens then Award = Players[RoundWinner].Tokens
+    Before = Players[RoundWinner].Tokens
+    FourTwentyOneMoveTokens(Award,RoundWinner,Before)
+    Players[RoundWinner].Tokens -= Award
+    Players[Other].Tokens += Award
+  end if
+  print at 1,12,Players[0].Tokens
+  print at 29,12,Players[1].Tokens
+  return
+sub FourTwentyOneDrawPhase:
+  if GamePhase = PhaseLoad then
+    print centered at 0,"PHASE ONE"
+    print centered at 1,"LOAD"
+  else
+    print centered at 0,"PHASE TWO"
+    print centered at 1,"UNLOAD"
+  end if
+  print at 1,7,"TOTAL="
+  print at 20,7,"TOTAL="
+  print at 2,2,"1"
+  print at 6,2,"2"
+  print at 10,2,"3"
+  print at 21,2,"1"
+  print at 25,2,"2"
+  print at 29,2,"3"
+  if GameMode = ModeOnePlayer then print at 23,0,"COMPUTER"
+  return
+
+sub FourTwentyOneAnimateStar(u8 Winner):
+  u8 I = 0
+  u8 X = 4
+  if Winner <> 0 then X = 26
+  for I = 0 to 2
+    nmi off
+    put char 32 at X,11
+    put char 32 at X + 1,11
+    put char 32 at X,12
+    put char 32 at X + 1,12
+    put char $A2 at X,10
+    put char $A4 at X + 1,10
+    put char $A3 at X,11
+    put char $A5 at X + 1,11
+    nmi on
+    wait 20 frames
+    nmi off
+    put char 32 at X,10
+    put char 32 at X + 1,10
+    put char 32 at X,11
+    put char 32 at X + 1,11
+    put char $A2 at X,11
+    put char $A4 at X + 1,11
+    put char $A3 at X,12
+    put char $A5 at X + 1,12
+    nmi on
+    wait 20 frames
+  next
+  return
+function FourTwentyOneGameOver() as u8
+  if Players[0].Tokens = 0 then
+    print centered at 19,"PLAYER 1 WINS THE GAME"
+    play sound SfxMario0
+    play sound SfxMario1
+    play sound SfxMario2
+    FourTwentyOneAnimateStar(0)
+    return 1
+  end if
+  if Players[1].Tokens = 0 then
+    if GameMode = ModeTwoPlayers then
+      print centered at 19,"PLAYER 2 WINS THE GAME"
+      play sound SfxMario0
+      play sound SfxMario1
+      play sound SfxMario2
+    else
+      print centered at 19,"COMPUTER WINS THE GAME"
+      play sound SfxCpuWin0
+      play sound SfxCpuWin1
+    end if
+    FourTwentyOneAnimateStar(1)
+    return 1
+  end if
+  return 0
+
+sub FourTwentyOnePlayRound:
+  MaxThrows = 0
+  if Turn = 0 then
+    Players[0].Score = FourTwentyOneTakeTurn(Players[0],Players[1],0,0,MaxThrows)
+    if GameMode = ModeOnePlayer then
+      Players[1].Score = FourTwentyOneTakeTurn(Players[1],Players[0],1,1,MaxThrows)
+    else
+      Players[1].Score = FourTwentyOneTakeTurn(Players[1],Players[0],1,0,MaxThrows)
+    end if
+  else
+    if GameMode = ModeOnePlayer then
+      Players[1].Score = FourTwentyOneTakeTurn(Players[1],Players[0],1,1,MaxThrows)
+    else
+      Players[1].Score = FourTwentyOneTakeTurn(Players[1],Players[0],1,0,MaxThrows)
+    end if
+    Players[0].Score = FourTwentyOneTakeTurn(Players[0],Players[1],0,0,MaxThrows)
+  end if
+  RoundWinner = FourTwentyOneCompare(Players[0],Players[1])
+  return
+
+sub FourTwentyOneDrawStarterDie(ref Player421 P, u8 Side):
+  DieRed = 0
+  DieValue = P.Die1
+  DiePos = 1 + Side * 5
+  draw_die
+  return
+
+sub FourTwentyOneClearStarterDice:
+  for DiePosWork = 0 to 8
+    FourTwentyOneBlankDie[DiePosWork] = 32
+  next
+  nmi off
+  put FourTwentyOneBlankDie frame size 3,3 at 1,3
+  put FourTwentyOneBlankDie frame size 3,3 at 28,3
+  nmi on
+  return
+
+sub FourTwentyOneRollStarterDie(ref Player421 P, u8 Side):
+  u8 RollFrame = 0
+  play sound SfxBrasser
+  for RollFrame = 0 to 4
+    P.Die1 = random(1,6)
+    FourTwentyOneDrawStarterDie(P,Side)
+    wait 3 frames
+  next
+  return
+sub FourTwentyOneDetermineStarter:
+  print centered at 16,"PLAYER ONE, PRESS FIRE"
+  print centered at 19,"BEST SCORE BEGINS"
+  print centered at 20,"1 BEATS 6, 6 BEATS 5 ..."
+  pause until press and release
+  print centered at 16,"                      "
+  FourTwentyOneRollStarterDie(Players[0],0)
+  if GameMode = ModeTwoPlayers then
+    print centered at 16,"PLAYER TWO, PRESS FIRE"
+    pause until press and release
+    print centered at 16,"                      "
+  end if
+  FourTwentyOneRollStarterDie(Players[1],1)
+  if Players[0].Die1 = 1 then Players[0].Die1 = 7
+  if Players[1].Die1 = 1 then Players[1].Die1 = 7
+  if Players[0].Die1 = Players[1].Die1 then
+    print centered at 16,"TIE! HIT FIRE TO THROW AGAIN"
+    play sound SfxBad0
+    play sound SfxBad1
+    pause until press and release
+    FourTwentyOneDetermineStarter
+    return
+  end if
+  if Players[0].Die1 > Players[1].Die1 then
+    Turn = 0
+    print centered at 16,"PLAYER 1 BEGINS"
+  else
+    Turn = 1
+    if GameMode = ModeTwoPlayers then
+      print centered at 16,"PLAYER 2 BEGINS"
+    else
+      print centered at 16,"COMPUTER BEGINS"
+    end if
+  end if
+  print centered at 19,"PRESS FIRE TO CONTINUE"
+  print centered at 20,"                        "
+  pause until press and release
+  FourTwentyOneClearStarterDice
+  print centered at 16,"               "
+  print centered at 19,"                      "
+  return
+
+sub FourTwentyOneClearRoundMessage:
+  print centered at 18,"                        "
+  print centered at 19,"                          "
+  return
+
+sub FourTwentyOneRunGame(u8 RequestedMode):
+  GameMode = RequestedMode
+  Players[0].Die1 = 0
+  Players[0].Die2 = 0
+  Players[0].Die3 = 0
+  Players[0].Score = 0
+  Players[0].Tokens = 0
+  Players[1].Die1 = 0
+  Players[1].Die2 = 0
+  Players[1].Die3 = 0
+  Players[1].Score = 0
+  Players[1].Tokens = 0
+  TokensLoaded = 0
+  GamePhase = PhaseLoad
+  screen off
+  text screen
+  decompress zx0 FourTwentyOnePatternRle to vram.pattern
+  decompress zx0 FourTwentyOneColorRle to vram.color
+  decompress zx0 FourTwentyOneNameRle to vram.name
+  screen on
+  FourTwentyOneDetermineStarter
+  FourTwentyOneDrawPhase
+  do while TokensLoaded < 11
+    FourTwentyOnePlayRound
+    if RoundWinner = 2 then
+      print centered at 18,"NOBODY WINS THE ROUND"
+      print centered at 19,"PRESS FIRE TO CONTINUE"
+      pause until press and release
+      FourTwentyOneClearRoundMessage
+    else
+      FourTwentyOneDistribute
+      if RoundWinner = 0 then
+        print centered at 18,"PLAYER 1 WINS THE ROUND"
+      elseif GameMode = ModeTwoPlayers then
+        print centered at 18,"PLAYER 2 WINS THE ROUND"
+      else
+        print centered at 18,"COMPUTER WINS THE ROUND"
+      end if
+      if TokensLoaded < 11 then
+        pause until press and release
+        FourTwentyOneClearRoundMessage
+      else
+        print centered at 18,"PHASE ONE IS OVER"
+      end if
+    end if
+  loop
+  if FourTwentyOneGameOver() <> 0 then goto FourTwentyOneGameFinished
+  pause until press and release
+  FourTwentyOneClearRoundMessage
+  GamePhase = PhaseUnload
+  FourTwentyOneDrawPhase
+  do while Players[0].Tokens <> 0 and Players[1].Tokens <> 0
+    FourTwentyOnePlayRound
+    if RoundWinner = 2 then
+      print centered at 18,"NOBODY WINS THE ROUND"
+      pause until press and release
+      FourTwentyOneClearRoundMessage
+    else
+      FourTwentyOneDistribute
+      if Players[0].Tokens = 0 or Players[1].Tokens = 0 then
+        print centered at 18,"    GAME IS OVER    "
+      end if
+      if FourTwentyOneGameOver() <> 0 then exit do
+      pause until press and release
+      FourTwentyOneClearRoundMessage
+    end if
+  loop
+FourTwentyOneGameFinished:
+  print centered at 21,"PRESS FIRE TO GO TO MENU"
+  pause until press and release sleep after 5 seconds
+  goto show_menu
+sub start:
+  set sound table FourTwentyOneSoundTable areas 8
+  show picture FourTwentyOneTitle
+  play sound SfxDing
+  wait 200 frames or press
+  wait no fire
+  goto show_menu
+
+sub show_menu:
+  text screen
+  backdrop black
+  cls
+  print centered at 3, "MENU"
+  print centered at 9, "0 - INSTRUCTIONS"
+  print centered at 11, "1 - ONE PLAYER MODE"
+  print centered at 13, "2 - TWO PLAYERS MODE"
+  print centered at 17, "3 - CREDITS"
+  screen on
+  choose menu 0 to 3 into MenuKey cursor $3E at list FourTwentyOneMenuSpots sleep after 10 seconds
+  if MenuKey = 1 then FourTwentyOneRunGame(ModeOnePlayer)
+  if MenuKey = 2 then FourTwentyOneRunGame(ModeTwoPlayers)
+  if MenuKey = 3 goto show_credits
+  if MenuKey = 0 goto instructions_page_one
+
+sub instructions_page_one:
+  cls
+  print centered at 1, "INSTRUCTIONS - PAGE ONE"
+  print at 1,4, "GOAL: BE THE FIRST ONE TO SHOW"
+  print at 7,5, "HIS YELLOW STAR."
+  print at 1,7, "GAME: FIRST WE THROW THE DICES"
+  print at 7,8, "TO DECIDE WHO PLAYS FIRST"
+  print at 1,9, "THE DICE ORDER IS 1,6,5,4,3,2"
+  print at 1,10, "SO 1 BEATS 4, ETC."
+  print at 1,12, "THE GAME IS IN TWO PHASES:"
+  print at 1,13, "PHASE 1 (LOAD) AND PHASE 2"
+  print at 1,14, "(UNLOAD)."
+  print at 1,17, "PHASE 1: PLAYERS DISTRIBUTE"
+  print at 10,18, "THE 11 TOKENS. THEIR"
+  print at 1,19, "GOAL IS TO RECEIVE LESS TOKENS."
+  print centered at 23, "PRESS FIRE TO CONTINUE"
+  pause until press and release
+  goto instructions_page_two
+
+sub instructions_page_two:
+  cls
+  print centered at 1, "INSTRUCTIONS - PAGE TWO"
+  print at 1,4, "IF ONE PLAYER HAS 0 TOKEN AT"
+  print at 1,5, "THE END OF PHASE 1, HE WINS."
+  print at 1,7, "PHASE 2: PLAYERS GIVE EACHOTHER"
+  print at 10,8, "TOKENS TO SHOW THEIR"
+  print at 1,9, "STAR FIRST TO WIN THE GAME."
+  print at 1,11, "COMBINATIONS: THE ORDER IS"
+  print at 1,13, "(FROM BEST TO WORST)"
+  print at 1,15, "421,111,611,666,511,555,411,"
+  print at 1,16, "444,311,333,211,222,654,543,"
+  print at 1,17, "432,321"
+  print at 1,19, "OTHER COMBINATIONS ARE, FROM"
+  print at 1,20, "BEST TO WORST, 655 TO 221."
+  print centered at 23, "PRESS FIRE TO CONTINUE"
+  pause until press and release
+  goto instructions_page_three
+
+sub instructions_page_three:
+  cls
+  print centered at 1, "INSTRUCTIONS - PAGE THREE"
+  print at 1,4, "THROWING: THE STARTER THROWS"
+  print at 11,5, "HIS 3 DICES AND"
+  print at 1,6, "DECIDES TO THROW ONCE OR TWICE"
+  print at 1,7, "1,2, OR ALL DICES AT ONCE. NEXT"
+  print at 1,8, "PLAYER MUST NOT EXCEED THE"
+  print at 1,9, "MAXIMUM NUMBER OF THROWS"
+  print at 1,10, "ALLOWED."
+  print at 1,12, "TOKENS: IN BOTH PHASES, THE"
+  print at 9,13, "PLAYER WHO MAKES THE"
+  print at 1,14, "WORSE COMBINATION TAKES THE"
+  print at 1,15, "TOKENS. THE NUMBER OF TOKENS"
+  print at 1,16, "DEPENDS ON THE BEST"
+  print at 1,17, "COMBINATION."
+  print centered at 23, "PRESS FIRE TO CONTINUE"
+  pause until press and release
+  goto instructions_page_four
+
+sub instructions_page_four:
+  cls
+  print centered at 1, "INSTRUCTIONS - PAGE FOUR"
+  print at 1,4, "IF THE BEST COMBINATION IS XXX"
+  print at 1,5, "THEN THE WORST PLAYER WILL"
+  print at 1,6, "RECEIVE YY TOKENS:"
+  print at 1,8, "421 ---------------- 10 TOKENS"
+  print at 1,9, "111 ----------------  7 TOKENS"
+  print at 1,10, "611 OR 666 ---------  6 TOKENS"
+  print at 1,11, "511 OR 555 ---------  5 TOKENS"
+  print at 1,12, "411 OR 444 ---------  4 TOKENS"
+  print at 1,13, "311 OR 333 ---------  3 TOKENS"
+  print at 1,14, "211 OR 222 ---------  2 TOKENS"
+  print at 1,15, "SEQUENCE -----------  2 TOKENS"
+  print at 1,16, "OTHER---------------  1 TOKEN"
+  print at 1,18, "GAME STOPS WHEN ONE PLAYER"
+  print at 1,19, "SHOWS HIS STAR."
+  print centered at 23, "PRESS FIRE FOR MENU"
+  pause until press and release
+  goto show_menu
+
+sub show_credits:
+  show picture FourTwentyOneCredits
+  wait 200 frames or press
+  wait no fire
+  goto show_menu
+sub begin_rolls:
+  FourTwentyOneRunGame(ModeTwoPlayers)
+  return
+sub draw_die:
+  if DiePos >= 4 goto draw_die_right_side
+  DieX = 1
+  DiePosWork = DiePos - 1
+  goto draw_die_x_ready
+
+draw_die_right_side:
+  DieX = 20
+  DiePosWork = DiePos - 4
+
+draw_die_x_ready:
+  DiePosWork = DiePosWork << 2
+  DieX += DiePosWork
+  asm {
+    call FourTwentyOne_CopyDieFace
+  }
+  put DiceFrame frame size 3,3 at DieX,3
+  return
+
+
+
+data FourTwentyOneDiceFaces bytes
+  ' Blue die 1.
+  $60,$68,$70,$61,$69,$71,$62,$6A,$72
+  ' Blue die 2.
+  $60,$6B,$73,$64,$6C,$74,$65,$6D,$72
+  ' Blue die 3.
+  $60,$68,$63,$61,$69,$71,$75,$6A,$72
+  ' Blue die 4.
+  $66,$68,$63,$61,$6A,$71,$75,$6A,$6E
+  ' Blue die 5.
+  $66,$68,$63,$61,$69,$71,$75,$6A,$6E
+  ' Blue die 6.
+  $78,$81,$88,$79,$81,$89,$7A,$82,$8A
+  ' Red die 1.
+  $B8,$C0,$C8,$B9,$C1,$C9,$BA,$C2,$CA
+  ' Red die 2.
+  $B8,$C3,$CB,$BC,$C4,$CC,$BD,$C5,$CA
+  ' Red die 3.
+  $B8,$C0,$BB,$B9,$C1,$C9,$CD,$C2,$CA
+  ' Red die 4.
+  $BE,$C0,$BB,$B9,$C2,$C9,$CD,$C2,$C6
+  ' Red die 5.
+  $BE,$C0,$BB,$B9,$C1,$C9,$CD,$C2,$C6
+  ' Red die 6.
+  $D0,$D9,$E0,$D1,$DA,$E1,$D2,$DA,$E2
+end data
+
+asm {
+FourTwentyOne_CopyDieFace:
+    ld a,(AMY_UVAR_DieRed)
+    or a
+    jr z,FourTwentyOne_CopyDieBlue
+    ld a,6
+    jr FourTwentyOne_CopyDieColorReady
+FourTwentyOne_CopyDieBlue:
+    xor a
+FourTwentyOne_CopyDieColorReady:
+    ld b,a
+    ld a,(AMY_UVAR_DieValue)
+    dec a
+    add a,b
+    ld e,a
+    add a,a
+    add a,a
+    add a,a
+    add a,e
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_FourTwentyOneDiceFaces
+    add hl,de
+    ld de,AMY_UVAR_DiceFrame
+    ld bc,9
+    ldir
+    ret
+
+FourTwentyOneSoundTable:
+    dw FourTwentyOneSoundTable_reserved_area_1,$702B
+    dw FourTwentyOneSoundTable_reserved_area_2,$7035
+    dw FourTwentyOneSoundTable_reserved_area_3,$703F
+    dw FourTwentyOneSoundTable_reserved_area_4,$7049
+    dw brasser,$7053
+    dw glisser,$705D
+    dw applause,$7067
+    dw mariobros0,$7071
+    dw mariobros1,$7053
+    dw mariobros2,$705D
+    dw ding_sound,$7067
+    dw gameover_sound0,$7071
+    dw gameover_sound1,$7053
+    dw bad_sound0,$705D
+    dw bad_sound1,$7067
+    dw dk_dosoldo_sound0,$7071
+    dw dk_dosoldo_sound1,$7053
+
+FourTwentyOneSoundTable_reserved_area_1:
+    db $FF
+
+FourTwentyOneSoundTable_reserved_area_2:
+    db $FF
+
+FourTwentyOneSoundTable_reserved_area_3:
+    db $FF
+
+FourTwentyOneSoundTable_reserved_area_4:
+    db $FF
+
+brasser:
+    db $40,$37,$93,$01,$61,$40,$55,$90,$01,$40,$50,$90
+    db $01,$40,$5C,$90,$01,$40,$65,$90,$01,$40,$F3,$90
+    db $01,$40,$4F,$90,$01,$40,$CD,$91,$01,$40,$57,$90
+    db $01,$40,$ED,$90,$01,$40,$67,$90,$01,$40,$59,$90
+    db $01,$61,$40,$9C,$92,$01,$50
+
+glisser:
+    db $7E,$40,$6B,$90,$01,$40,$A2,$92,$01,$40,$30,$92
+    db $01,$40,$BA,$92,$01,$40,$A0,$92,$01,$40,$2D,$93
+    db $01,$40,$61,$92,$01,$50
+
+applause:
+    db $40,$82,$90,$01,$40,$56,$90,$01,$40,$61,$90,$01
+    db $40,$51,$90,$01,$40,$55,$90,$01,$40,$58,$90,$01
+    db $61,$40,$6A,$90,$01,$67,$40,$81,$90,$01,$61,$40
+    db $9A,$90,$01,$40,$60,$90,$01,$40,$79,$90,$01,$40
+    db $68,$90,$01,$40,$AA,$90,$01,$62,$40,$68,$90,$01
+    db $40,$57,$90,$01,$40,$58,$90,$01,$62,$40,$6C,$90
+    db $01,$62,$40,$50,$90,$01,$61,$40,$6D,$90,$01,$40
+    db $95,$90,$01,$40,$6F,$90,$01,$40,$4F,$90,$01,$63
+    db $40,$83,$90,$01,$40,$A0,$90,$01,$40,$60,$90,$01
+    db $61,$40,$51,$90,$01,$61,$40,$51,$90,$01,$40,$53
+    db $90,$01,$64,$40,$6D,$90,$01,$40,$6B,$90,$01,$40
+    db $53,$90,$01,$40,$96,$90,$01,$40,$52,$90,$01,$40
+    db $5A,$90,$01,$63,$40,$50,$90,$01,$40,$53,$90,$01
+    db $40,$4F,$90,$01,$40,$7A,$90,$01,$40,$69,$90,$01
+    db $40,$63,$90,$01,$40,$4E,$90,$01,$64,$40,$52,$90
+    db $01,$40,$52,$90,$01,$61,$40,$51,$90,$01,$40,$6B
+    db $90,$01,$40,$82,$90,$01,$40,$65,$90,$01,$40,$4F
+    db $90,$01,$62,$40,$67,$90,$01,$63,$40,$6B,$90,$01
+    db $40,$61,$90,$01,$40,$99,$90,$01,$40,$73,$90,$01
+    db $40,$5D,$90,$01,$40,$60,$90,$01,$63,$40,$59,$90
+    db $01,$65,$40,$82,$90,$01,$40,$67,$90,$01,$40,$60
+    db $90,$01,$40,$98,$90,$01,$40,$6E,$90,$01,$40,$6B
+    db $90,$01,$66,$40,$83,$90,$01,$40,$78,$90,$01,$61
+    db $40,$7A,$90,$01,$40,$61,$90,$01,$40,$52,$90,$01
+    db $40,$52,$90,$01,$40,$83,$90,$01,$40,$9B,$90,$01
+    db $40,$7F,$90,$01,$62,$40,$74,$90,$01,$40,$5E,$90
+    db $01,$40,$77,$90,$01,$40,$65,$90,$01,$63,$40,$A6
+    db $90,$01,$40,$53,$90,$01,$40,$B2,$90,$01,$61,$40
+    db $A7,$90,$01,$40,$91,$90,$01,$40,$80,$90,$01,$40
+    db $56,$90,$01,$40,$60,$90,$01,$64,$40,$50,$90,$01
+    db $61,$40,$97,$90,$01,$40,$53,$90,$01,$62,$40,$99
+    db $90,$01,$40,$5F,$90,$01,$40,$60,$90,$01,$65,$40
+    db $CF,$90,$01,$40,$78,$90,$01,$40,$86,$90,$01,$40
+    db $51,$90,$01,$40,$60,$90,$01,$40,$6E,$90,$01,$40
+    db $63,$90,$01,$50
+
+mariobros0:
+    db $40,$B3,$91,$01,$40,$1A,$91,$01,$40,$41,$91,$01
+    db $40,$18,$91,$01,$40,$20,$91,$01,$40,$DA,$90,$01
+    db $40,$2B,$91,$01,$40,$D1,$90,$01,$40,$E4,$90,$01
+    db $40,$18,$91,$01,$40,$E3,$90,$01,$40,$DD,$90,$01
+    db $40,$CF,$90,$01,$40,$D2,$90,$01,$40,$D0,$90,$01
+    db $40,$DF,$90,$01,$40,$0E,$91,$01,$40,$13,$91,$01
+    db $40,$0A,$91,$01,$40,$0A,$91,$01,$40,$CD,$90,$01
+    db $40,$18,$91,$01,$40,$C0,$90,$01,$40,$0C,$91,$01
+    db $40,$1F,$91,$01,$40,$CF,$90,$01,$40,$10,$91,$01
+    db $40,$CA,$90,$01,$40,$1C,$91,$01,$40,$2B,$91,$01
+    db $40,$0D,$91,$01,$40,$EF,$90,$01,$40,$04,$91,$01
+    db $40,$C1,$90,$01,$40,$0E,$91,$01,$40,$E5,$90,$01
+    db $40,$EE,$90,$01,$40,$0E,$91,$01,$40,$CB,$90,$01
+    db $40,$11,$91,$01,$40,$DC,$90,$01,$40,$08,$91,$01
+    db $40,$17,$91,$01,$40,$F7,$90,$01,$40,$0E,$91,$01
+    db $40,$CA,$90,$01,$40,$11,$91,$01,$40,$DE,$90,$01
+    db $40,$08,$91,$01,$40,$1A,$91,$01,$50
+
+mariobros1:
+    db $80,$CE,$90,$01,$A1,$80,$AE,$90,$01,$80,$B8,$90
+    db $01,$80,$DC,$90,$01,$80,$C7,$90,$01,$80,$D0,$90
+    db $01,$80,$D0,$90,$01,$80,$C1,$90,$01,$80,$B8,$90
+    db $01,$80,$AE,$90,$01,$80,$8D,$90,$01,$80,$A8,$90
+    db $01,$80,$8B,$90,$01,$80,$8C,$90,$01,$80,$A8,$90
+    db $01,$80,$8C,$90,$01,$80,$8C,$90,$01,$80,$D6,$90
+    db $01,$80,$B4,$90,$01,$80,$CD,$90,$01,$80,$86,$90
+    db $01,$80,$B0,$90,$01,$80,$87,$90,$01,$80,$88,$90
+    db $01,$80,$AC,$90,$01,$80,$88,$90,$01,$80,$AC,$90
+    db $01,$80,$87,$90,$01,$80,$8A,$90,$01,$80,$6D,$90
+    db $01,$80,$8B,$90,$01,$80,$A7,$90,$01,$80,$B3,$90
+    db $01,$80,$AE,$90,$01,$80,$91,$90,$01,$80,$75,$90
+    db $01,$80,$AE,$90,$01,$80,$AB,$90,$01,$80,$75,$90
+    db $01,$80,$A1,$90,$01,$80,$75,$90,$01,$80,$75,$90
+    db $01,$80,$79,$90,$01,$80,$76,$90,$01,$80,$76,$90
+    db $01,$80,$76,$90,$01,$80,$77,$90,$01,$80,$73,$90
+    db $01,$80,$74,$90,$01,$80,$76,$90,$01,$90
+
+mariobros2:
+    db $C0,$67,$90,$01,$E1,$C0,$64,$90,$01,$C0,$6C,$90
+    db $01,$C0,$53,$90,$01,$C0,$69,$90,$01,$C0,$4F,$90
+    db $01,$C0,$6C,$90,$01,$C0,$69,$90,$01,$C0,$73,$90
+    db $01,$C0,$6A,$90,$01,$C0,$53,$90,$01,$C0,$6C,$90
+    db $01,$C0,$6B,$90,$01,$C0,$6A,$90,$01,$C0,$6A,$90
+    db $01,$C0,$6C,$90,$01,$C0,$6F,$90,$01,$C0,$69,$90
+    db $01,$C0,$65,$90,$01,$C0,$6A,$90,$01,$C0,$6C,$90
+    db $01,$C0,$6B,$90,$01,$C0,$70,$90,$01,$C0,$72,$90
+    db $01,$C0,$6C,$90,$01,$C0,$69,$90,$01,$C0,$5B,$90
+    db $01,$C0,$69,$90,$01,$C0,$5C,$90,$01,$C0,$5D,$90
+    db $01,$C0,$6A,$90,$01,$C0,$5D,$90,$01,$C0,$5C,$90
+    db $01,$C0,$5C,$90,$01,$C0,$5C,$90,$01,$C0,$70,$90
+    db $01,$C0,$5D,$90,$01,$C0,$5D,$90,$01,$C0,$5C,$90
+    db $01,$C0,$72,$90,$01,$C0,$5E,$90,$01,$C0,$74,$90
+    db $01,$C0,$4F,$90,$01,$C0,$5C,$90,$01,$C0,$51,$90
+    db $01,$C0,$4E,$90,$01,$C0,$5C,$90,$01,$C0,$4F,$90
+    db $01,$C0,$5C,$90,$01,$C0,$51,$90,$01,$D0
+
+ding_sound:
+    db $40,$8F,$90,$01,$40,$8F,$90,$03,$40,$8F,$90,$0A
+    db $62,$40,$8F,$90,$01,$40,$8F,$90,$01,$40,$8F,$90
+    db $04,$62,$40,$8F,$90,$01,$40,$8F,$90,$01,$40,$8F
+    db $90,$04,$62,$40,$6B,$90,$05,$40,$69,$90,$01,$40
+    db $6B,$90,$01,$40,$6D,$90,$01,$40,$6B,$90,$01,$40
+    db $69,$90,$01,$40,$6B,$90,$01,$40,$6D,$90,$01,$40
+    db $6B,$90,$01,$40,$69,$90,$01,$40,$6B,$90,$01,$40
+    db $6D,$90,$01,$40,$6B,$90,$01,$40,$69,$90,$01,$40
+    db $6B,$90,$01,$40,$6D,$90,$01,$40,$6B,$90,$01,$40
+    db $69,$90,$01,$40,$6B,$90,$01,$40,$6D,$90,$01,$40
+    db $6B,$90,$01,$40,$69,$90,$01,$40,$6B,$90,$01,$40
+    db $6D,$90,$01,$40,$6B,$90,$01,$40,$69,$90,$01,$40
+    db $6B,$90,$01,$50
+
+gameover_sound0:
+    db $61,$40,$41,$93,$01,$40,$3B,$93,$01,$40,$52,$93
+    db $01,$40,$AC,$93,$01,$50
+
+gameover_sound1:
+    db $80,$99,$90,$01,$80,$A4,$90,$01,$80,$6E,$90,$01
+    db $80,$7C,$90,$01,$80,$83,$90,$01,$80,$87,$90,$01
+    db $80,$95,$90,$01,$80,$9F,$90,$01,$80,$87,$90,$01
+    db $80,$96,$90,$01,$80,$91,$90,$01,$80,$A1,$90,$01
+    db $80,$81,$90,$01,$80,$7D,$90,$01,$80,$8A,$90,$01
+    db $80,$9C,$90,$01,$80,$A4,$90,$01,$80,$8B,$90,$01
+    db $80,$85,$90,$01,$80,$8D,$90,$01,$80,$93,$90,$01
+    db $80,$92,$90,$01,$80,$9A,$90,$01,$80,$A4,$90,$01
+    db $80,$99,$90,$01,$80,$86,$90,$01,$80,$8E,$90,$01
+    db $80,$96,$90,$01,$80,$83,$90,$01,$80,$9E,$90,$01
+    db $80,$9B,$90,$01,$80,$8B,$90,$01,$80,$8E,$90,$01
+    db $80,$9D,$90,$01,$80,$9B,$90,$01,$80,$98,$90,$01
+    db $80,$99,$90,$01,$80,$96,$90,$01,$80,$8F,$90,$01
+    db $80,$94,$90,$01,$80,$8D,$90,$01,$80,$A4,$90,$01
+    db $80,$9A,$90,$01,$80,$99,$90,$01,$80,$96,$90,$01
+    db $80,$8E,$90,$01,$80,$8D,$90,$01,$80,$8B,$90,$01
+    db $80,$9B,$90,$01,$80,$9F,$90,$01,$80,$89,$90,$01
+    db $80,$9A,$90,$01,$80,$9C,$90,$01,$80,$9D,$90,$01
+    db $80,$94,$90,$01,$80,$95,$90,$01,$80,$92,$90,$01
+    db $80,$89,$90,$01,$80,$88,$90,$01,$80,$92,$90,$01
+    db $80,$8D,$90,$01,$90
+
+bad_sound0:
+    db $61,$40,$E0,$91,$01,$40,$67,$92,$01,$40,$0C,$92
+    db $01,$40,$95,$91,$01,$40,$F2,$91,$01,$40,$04,$92
+    db $01,$40,$15,$92,$01,$40,$00,$92,$01,$40,$E7,$92
+    db $01,$40,$02,$93,$01,$40,$2A,$93,$01,$40,$13,$93
+    db $01,$50
+
+bad_sound1:
+    db $80,$0F,$91,$01,$80,$02,$91,$01,$80,$34,$91,$01
+    db $80,$7C,$91,$01,$80,$AB,$91,$01,$80,$E8,$91,$01
+    db $80,$08,$92,$01,$80,$06,$92,$01,$80,$F8,$91,$01
+    db $80,$3E,$92,$01,$A1,$80,$07,$92,$01,$90
+
+dk_dosoldo_sound0:
+    db $40,$DF,$9E,$0C,$40,$DF,$9E,$09,$40,$83,$9E,$03
+    db $40,$81,$9E,$0C,$40,$81,$9E,$06,$40,$E0,$9E,$03
+    db $40,$DF,$9E,$03,$40,$DF,$9E,$0C,$40,$DF,$9E,$0C
+    db $40,$DF,$9E,$0C,$40,$E0,$9E,$03,$50
+
+dk_dosoldo_sound1:
+    db $40,$5F,$9E,$0C,$40,$5F,$9E,$09,$40,$D5,$99,$03
+    db $40,$D5,$99,$0C,$40,$D5,$99,$06,$40,$BB,$9E,$03
+    db $40,$BE,$9E,$03,$40,$BB,$9E,$09,$40,$BC,$9E,$03
+    db $40,$BC,$9E,$03,$40,$BD,$9E,$03,$40,$BE,$9E,$03
+    db $40,$BF,$9E,$03,$40,$C0,$9E,$06,$40,$BF,$9E,$03
+    db $40,$BE,$9E,$03,$40,$A2,$9B,$03,$50
+}

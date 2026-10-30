@@ -1,0 +1,109 @@
+project "Amy Recursive Local Array Restore Selftest"
+memory "colecovision_legacy_sdcc"
+
+' Regression lab for recursive functions that use local arrays as snapshots.
+' This is the exact pattern needed by minimax-style game search:
+' copy global board -> local Saved[], mutate board, recurse, restore board.
+
+u8 Board[64]
+u8 Baseline[64]
+u8 I = 0
+u8 Failures = 0
+u8 Passes = 0
+u8 Mutations = 0
+i16 SearchScore = 0
+
+sub start:
+  text screen
+  backdrop black
+  print centered at 1, "RECURSIVE ARRAY RESTORE"
+
+  for I = 0 to 63
+    Board[I] = I
+    Baseline[I] = I
+  next
+
+  print at 1,4, "DEPTH 1"
+  SearchScore = SearchAndRestore(1,11)
+  CheckBoardRestored
+  print SearchScore at 20,4
+
+  print at 1,6, "DEPTH 2"
+  SearchScore = SearchAndRestore(2,22)
+  CheckBoardRestored
+  print SearchScore at 20,6
+
+  print at 1,8, "DEPTH 3"
+  SearchScore = SearchAndRestore(3,33)
+  CheckBoardRestored
+  print SearchScore at 20,8
+
+  print at 1,10, "DEPTH 4"
+  SearchScore = SearchAndRestore(4,44)
+  CheckBoardRestored
+  print SearchScore at 20,10
+
+  print at 1,13, "MUTATIONS"
+  print Mutations at 20,13
+  print at 1,15, "PASSES"
+  print Passes at 20,15
+  print at 1,17, "FAILURES"
+  print Failures at 20,17
+
+  if Failures = 0 then
+    print centered at 22, "PASS"
+  else
+    print centered at 22, "FAIL"
+  end if
+
+  screen on
+  loop forever
+end sub
+
+function SearchAndRestore(u8 Depth, u8 Seed) as i16
+  u8 Saved[64] = 0
+  u8 J = 0
+  i16 Score = 0
+
+  copy Board to Saved count 64
+
+  ' Mutate several positions so restore errors are easy to see.
+  Board[0] = Seed
+  Board[Depth] = Seed + Depth
+  Board[63] = 255 - Depth
+  Mutations += 1
+
+  if Depth > 0 then
+    Score = SearchAndRestore(Depth - 1,Seed + 3)
+  else
+    Score = 100
+  end if
+
+  ' Add a checksum-like value before restore so recursion result is used.
+  Score += Board[0]
+  Score += Board[Depth]
+  Score -= Board[63]
+
+  copy Saved to Board count 64
+
+  ' Verify immediately inside the recursive frame as well.
+  for J = 0 to 63
+    if Board[J] <> Saved[J] then Failures += 1
+  next
+
+  return Score
+
+sub CheckBoardRestored:
+  u8 J = 0
+  u8 LocalFail = 0
+
+  for J = 0 to 63
+    if Board[J] <> Baseline[J] then LocalFail += 1
+  next
+
+  if LocalFail = 0 then
+    Passes += 1
+  else
+    Failures += LocalFail
+  end if
+  return

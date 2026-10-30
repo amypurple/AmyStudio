@@ -180,6 +180,18 @@ export function createTypeSymbolHelpers(ctx) {
     });
   }
 
+  function rewriteUserSymbolsInAsmLine(sourceLine) {
+    const line = String(sourceLine || "");
+    const commentIndex = line.indexOf(";");
+    const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+    const comment = commentIndex >= 0 ? line.slice(commentIndex) : "";
+    const instruction = code.match(/^(\s*(?:[A-Za-z_][A-Za-z0-9_]*:\s*)?)([A-Za-z_.][A-Za-z0-9_.]*)([\s\S]*)$/);
+    if (!instruction) return line;
+    // The first token is an opcode/directive, not an Amy expression. Rewriting
+    // it would turn a mnemonic such as OUT into a same-named Amy label.
+    return `${instruction[1]}${instruction[2]}${rewriteUserSymbolsInExpression(instruction[3])}${comment}`;
+  }
+
   function symbolOrValue(token) {
     return rewriteUserSymbolsInExpression(normalizeExpression(token));
   }
@@ -244,6 +256,7 @@ export function createTypeSymbolHelpers(ctx) {
     ensureUserVarAsmSymbol,
     resolveNamedAsmSymbol,
     rewriteUserSymbolsInExpression,
+    rewriteUserSymbolsInAsmLine,
     resolveAddressSymbol,
     resolveJumpTarget,
     resolveSourceJumpTarget,

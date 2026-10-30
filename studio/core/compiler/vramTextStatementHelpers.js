@@ -284,11 +284,19 @@ export function handleVramTextStatement({
   const backdrop = line.match(/^backdrop(?:\s+color)?\s+(.+)$/i);
   if (backdrop) {
     const color = parseColecoColorNibble(backdrop[1]);
-    if (color === null) {
-      return { ok: false, handled: true, log: `backdrop expects a Coleco color name or value 0..15: ${rawLine}` };
+    if (color !== null) {
+      const value = `$${color.toString(16).toUpperCase().padStart(2, "0")}`;
+      return { ok: true, handled: true, lines: [`    ld a,${value}`, "    ld (AMY_VDP_R7_SHADOW),a", "    ld c,a", "    ld b,7", "    call WRITE_REGISTER"] };
     }
-    const value = `$${color.toString(16).toUpperCase().padStart(2, "0")}`;
-    return { ok: true, handled: true, lines: [`    ld a,${value}`, "    ld (AMY_VDP_R7_SHADOW),a", "    ld c,a", "    ld b,7", "    call WRITE_REGISTER"] };
+    const loadColor = emitLoadInt8ValueInto?.("a", backdrop[1]);
+    if (!loadColor) {
+      return { ok: false, handled: true, log: `backdrop expects a Coleco color name, value 0..15, or byte expression: ${rawLine}` };
+    }
+    return {
+      ok: true,
+      handled: true,
+      lines: [...loadColor, "    and $0F", "    ld (AMY_VDP_R7_SHADOW),a", "    ld c,a", "    ld b,7", "    call WRITE_REGISTER"]
+    };
   }
 
   const setScreenPages = line.match(/^set\s+screen\s+pages\s+(.+)\s+and\s+(.+)$/i);

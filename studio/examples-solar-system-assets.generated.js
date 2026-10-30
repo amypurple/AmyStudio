@@ -5,56 +5,56 @@ export const solarSystemEncyclopediaProjectFiles = [
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "lgCpBAAbB8rwA67A/hOW1OYc8CSA/Ing+Cn4IuDASYL88ACo+P5m4fD8GsHn4OK18I/4dDxk88K2g//AYufHWsFI2R8/8pg/H59mDy/3GJ7+5w6KfPyCfmT5+f2YAw9/L4Dv5/GcZi6oGIApHw+5zyYoKQZnD4zA6t5/JAcBjYfhmPaSn885b9+Qv/M5dI7D41Jm+OE8Hc3Z2PaRpG/g+ekO/2l/fj/iJngBDxmC4gQYrA/AicSG9/j45vHyff7+/PCJ/ICG+PH+4/gL+87/Bi/wgP95gIaAHvMLI3wDj3NuKPok/MADP4/A/wav/5tl1P4X9tbzXtl6vOPFmMWP33liw4fYqqoB+ebuyf5MvgPw2IB3k/8YP93ku+DU60+/P33T8aFXH9Z1fp+H0DALfx+HwaZOz8+PznYqPx8H+fD+P3/zHrEIn48xw6j3Ow+POfOg9L+f1lnZiw+AH/puWvBjAwHZm57S7Mmjnvjz8N3q/vD8avqH+IPv8OPDg+5K8vEmhw8I/PvjByGaBycnM3EPmiMwcBrPV4MjIKV4oq9fHzMhMXD3z/WHjG//337t8/8695/iD/378//+Jd3fz+fzeXx+w/k449r8Hw7SxvnXph4B4fHY7T0/BoDAI7g59v/G8sPJxh8h2s90oz944e6e+evD8+A7+FzG0oggij8A/vADHPlPRrdwnB8uhjs7Gx4NZ3+f3z+53/Ea1DLHHpsnfo4oamYH+Q8PP3sHBy//cRqpY7uP/4GTK/f88eLsyCpvBHjz4cAjcAEcgMHguAT/oPDgjI/8eXjSfR3O8KXztOfSOWjdTfLrGUV1Pp4+Ys3O95nPfnySn0fnGHzYZ8cOB9otzmoB+AMBYLU9FxcL+ts9/z++wJGKjeeP1/WfjffgA+q0fzPAD6Hh8/9uAB8LABkbOzEzfG9daychJ4dYaJ9H+eMTZNXk4GDHHIGHW42AgH6fx8NsUHrKDyuAwf4VNVVY"
+    "base64": "gQC7h/uApeUBq4EHie6ejwEB/2oLBw8AaR+mAIgP6B9/3pLPjwsDAwcHmdDpJwcXsT/4nP5/P/PNh/8/5/L+1v5kHwsDmgCOBp4HWDzw+6mMn97B6vAfhgGXP/PT4P9l8jbi8GX+/v6h/Jn44MAZufHDg578MY75+bzy8CSA4K8A3G/z8CmBaQEiB4dN5m1slx/ZXpcDB0/eb8ph4OHxifDwZvj8/h7u+IwkfHx8ftl4uMD//+DwoPHaneBh9GTAr+HL7tCf/6wBg6vaP6MrfzlG/g4ePsztcwYMGAwuA/C6H/4pfwCmOTgYDA4IqhAgLWCIxiA4MHD/hvz48PT2Geny+vD/4Iv++N/vyOrv/vzJVPPwc4rIr7SL8IDO0bqigPPhSP7fj/L5nR/iodPAgD/5xfuf1MF+TeHzq/HgW8znMIDAYL/+0+2PBvPqV/7538iz/sy/f/638E40jdYvrvGz8w/9S1BI2S0XFwsJnxvfD48DTU2/FNGvnfmHAeOWK/nA48cDBhx8/4dN+P6Ph8Gf9WA4Hmf4u6WjjA8vmN8+fP+///5yEw1u8eLs/hRVdVVY"
   },
   {
     "path": "solar-system-encyclopedia-assets/sun.color.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "lgBhYba7if+7L7/wbv/sb///n8rwKb9o/6S/pL9///A6479H0vD9uv/w5NL9//Bb9tPg1lDhsSCkv9zA9+BhoNwuN1B91qW753j18VjkBjrxsRfpsLZo9h2FJD2gfQB50kq/HJj27rax//YEYvHx587I8Mn2sQY+9/GRu6GqpLvJnr7xa/Bp8S9hOPrwtqG7f0Y/kvAuv1RKqvc09P/w3Ij/fPBfI53wvWjwvrbeh7/PsCj3fKHx/+RefyvwXwpfjAKWvyS2tv//dp7y8E/+T3z9qPvS/vny/gqx51aeGpGD/zWbf+DwzXLz4X4dxqKXsSH+pvbPtprz4JrtkDvQr/ri8Jb2j7burfE7xmGy3gu7//+v/8aC59fy7+HUQrWx1+7/77be+/OmGPCZtmFho6/O8cT/uqrJ//S4T1qP/vA73/ZPKH+iLOdcTcT+acO++FjSEREm9l21nqEwez8Awf4FKbt1VVg="
+    "base64": "lgCiZmERvmH1+r///qTx9qr29gr2BaT2CvYX1P7jvpE4+f/wFaD/Cv8H1u7lZvAp9gPY+/pDZRh8/8ZA4WHw1s4oYefg4v++lmH18f+W7JX2N/Zf7jXRwOPwkJS3ZvX93vA/8/BoYSr2nmHUPf+pemY+1fB2fvUS9RTdlP6p/d49UOOK30Dyz7bKQvE2BHgkpf//5f7d8MnbuDL0H8y4AP5RFKX/1VVg"
   },
   {
     "path": "solar-system-encyclopedia-assets/sun.frames-0.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "BIcAeXNeTHlzAHn/a3ZQTWtza//I8iZqLGtARwuHiHqOUEJEREFpaxaZwO8Aa2v085iBa19LGv9WJ/886qIaPhFRgKJoHVhWhnOYa4BOa2hr8u77EAF/eOPh7YR7wgCBbaZOJJNr9n7kbIChRIL//zt+RoBgpk8kZiqJHFcSZP85iSleKf/pAWVgh3NugGs/WoBZkP9rlKVMrk6nuWQAhg5bJT4pamtkFEZULlNieIAaaxpnAhlZJDItK4ZrEglHViKNayhDhmkBUjYzQ1VVgA=="
+    "base64": "KgBi///58/X//uT8/uKJQBEg5lI5PVbeOUAn8J4AQB/0/fOAGJL/Qhn/LR8gHyIvXBGlHaUFP/H+P6UAIJH/Yk88Yj5iT454gBgk//9HWEiSYRMkMTcdiAFGXQSORFraYmIl5IChHZj/MgUA5hEZSRcZ6mI2BwALByQAGOYbFhA4MziBklkfJTUGNVVY"
   },
   {
     "path": "solar-system-encyclopedia-assets/sun.frames-1.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "HwB5c15M+YHz/v9rdlBNa3Nr//7neBVaJ++ILj9DaxMJBQhI/2mVT0JERHhqFZiRIzGuwADPfhQCa/OBYGtfS2j/GCj/OCRrKP86fWwKEgQhBx4YaxCYQ2hra12Di4Ixa6gXAyhzGIpOa39bc4jyTmhxa0AVCiIGH22BklBI//89jCY1JhtKGAptE6IAlGtI4oWS8mJha21+DAcggIpCQQgg/y+Zipj/D0ltYNqATxZ6HIJ8gCkwYyFyVRn/DR+iQ7hoxI+BZ4CY/xUcKV4p/w2ZbTc0KLlis/qGkFyvgLpPg3jigGH/OWb/+YAyAKj/Tl/2zzAkgYIOb5dwa/8rdHdq3sCABoBrZv8RMi5A8WxFlo+IgL11d4B1VVg="
+    "base64": "KgBi///58/Xv/mLweOSJQEojMAS56xTcnkFfDPAnAEAfv/TzgFoIF4njRRBvKKWYgGFAVE5XH4gjJkLmD3AkQSuvU/44gDn54khLEgBgLAIpSJI/GDxRDt69KoA+9jZMOoAmLgMq3AAI5k077D00CYB2AWQaY2G8NYAO6yQcFZ9eYFWAWZL/RgiRQHqZIUnmQwENgCEkKswANdCAiiAeghgrUFsKOuYi4IA1VVg="
   },
   {
     "path": "solar-system-encyclopedia-assets/mercury.pattern.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "kACLjwOJ8OL44MDSkgcI9+Ph4SCC/PDw+Av9+Pjwqd7++aKGfw8GkgEPPvz8/8KCn4+Hxwo/ugf/ACJ/P69/kv+Ff/D+/+0kiPvwYILnx4+f7w//H7K7v5MD7/+yY/mjoTWDHw8OaMmAOwvguYbTJvOAgMDg52ufBwiAu9sDWLr3D+Ef6KeA77X8opjDwcBh+g4cPDx4NAcpfLvfN4N9tP/r/65uqgHZz6WHHx8fu/LuuiLCOfz+v5oBAQMfpx/+zuP/Izs/3x3D/p0IgBe+8cAV8K0Xrso+sboe/ppA4Od1YTE9/l+jCf76Yf/gqsCAIsDwWJL9/2H+/Pil/74OUPsAf0nfoPCGAMAM4DbgcCGq9AMJBwzAF9kBnhAB8N3iMPAuAQ/A5uEHH3AesYcIq4ELH4vwED6gvuvx+Vh6c/D+w/67AtarrPxJsqoMELsg/0Ckre/NO/238PV2o+/g+PPdrM/AnLzikf5qBgcPAEZh8fsAFVXVVWA="
+    "base64": "gAC9BO6lg7zB5CW/AQEDAwcOPPXwghw4Dwf7/oe48P9qBw8fPx8P5+cAfz/69dv/wGGq4HA4HODwXvh8PgD88ODaLv7u/uzxOPz4//r8AJSP+f+A5PGPnwcBwCAMxfuR//H+re/x4sIkQhmGHyNDb3PhwP6n/uPwDy/Zf3WWPn4HJB9/vODg7irMKsAgD5+o8Ibj52E/AwGv/Ix2gdoHbQB7/uB1nf2AgMD4fNuPZoqdH4eCCSr48ZB2II4ccMKJ/vjiLKj48Dbgj8/PTJonARCDCKctwfdMqPtMg2V47iL087xmlJP+uTkH0vz/vryY8KXHoePdBrOPAWcWPi20COdgIBAq9zbh4So1vtrAt/1ZnzTfiEKGDwZh8MCArgEUCh9g+T78/v8Shp+Phxk5GRwsDrM/nqEA8q3sOkP5b/tx9XqjUvOBrvD/x9z/BPafwLu/9H2wJ+y70NMO6QTgMwL98M/LFlrz823k9K/DyL1nj4DwNa55A+G6H5eAvvlz/r3+ZZZ/7IAIABBhOZYxEBAICPH9SxhMgPdUH5pY+PRFiMy9w8Fhz3Z3uhkPvps83223g/Ek/nDhvScBg63T/zq2z8/P/2MUu/Lut05rf/J7p/H4D5D/r2uw/azhrRg7t/aNfiP+dwiAF2EL0KvwF2463ca+Csj56T4e/x+mQKHgovD4dzU4HDyJPnz8Uf8/dqO8ofD+wrDi/pL/JY//vg5A+wB/Od+g8IcAwAzgV8sqgfSgA5wHDMAXmWEQAfDu3TDwIgEP7sDhYQcfcOixCHqBC7gf8LMQAO6+8bT5g6r83v86VABigCHr/wK6xtov4KDksAbYMjUO9OTE7rAM+zsAIP9ASRz6bO9Nd1tnjvD/q8Dgvu713iwM+XC8uf6qtQZ/oP4JkPH7AEFdVVY="
   },
   {
     "path": "solar-system-encyclopedia-assets/mercury.color.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "lgCC7o/v8Bjn///i9f/wL/+iKP9T9f/wLv+iR/H/8P9A8vz/ovTC/vvwhf/c5hf1//Bo7wKQ70aA/6D/PdI48FaU/z/34j/+MmSe7v49xPzW6WD/d/gf4coo7nng90b//qDLRACR/lFK7l1VVg=="
+    "base64": "lgA/Ee79/unx4R/1+u384RUb7oTwKO4BiO/v5/7B8Pm58Dc8ffDd7EfXHPc5POH3jE3VhPT+KO/h8GjvRKT/P/X/znSiU/T/8Gv/moLhV+T/8H8g/vL/JEbz4bLn+7Le8Dh+/MzvIP+W4PNMINoz6EO3+EZTg76E8GjvApHvRoD/oP890jjwVpT/P/fif97M86D+6PA9subANf7hjrCUHqB49OfwzeCW6CXu7qTu/OFUf+Cb3ADA/lUp7nVVWA=="
   },
   {
     "path": "solar-system-encyclopedia-assets/mercury.frames-0.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "SgAyCjlBMioANP8J/jJGQ+/wPC1L3vj78KQ0oDQ/nvr184CDPsqwMp8WFTSAgi9CTSMJhjRIMpAuajIhQA041b4QCBIOM0JCItwjTCaKnhjxgKAsZj8aMkIJ/wIDAearQkIoGLdKT4CJBQw+uwB//4AiGz1HZpcHCRMZnTBCKZgBHE4kYhANSjRaNEiBGTr277QmFEUuGLkxQtK9R63iAA4SSjRG4TeAiw8uzY6Y4rIlRJBek4we1oAnNDbaAEF16JJJXMOQvAqAoR3VVWA="
+    "base64": "SwB7RYCIe4/zev/+g3uQinuI8I90lv6JXP8jCTiZwIJ6Cwruep8a844ngKqFXGn/IIIZUlF7CHaJmGgmepN7GJJbLhgVECUgNSGSeh0Cenohh0k58ZhCQXp4/3mJiWfcj5dsAJl6VUQhmAwHMCEiYFp6ewMbgnuGV3sTpvA7OTo76qF/bp6VmnuAmP8+SKI3SDRZBCMOBqgXIB7/HBeZWIRmDZgHQENPZneJbxmpYJFpeqtLM9oVMm0NCBOZgRJ6HyZWgU18gsiUmFCOdWZ4iXNLkvkR8IZKTCp5DwV6gYZ6JDEhe35rR8+O+TgCl2qM5q3y5o/uCBgVAFyOKSiAJn2HewaHiKP7lFyCPgHwD+y6NgDiYfMUFtVVYA=="
   },
   {
     "path": "solar-system-encyclopedia-assets/mercury.frames-1.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "KQAyoSs7MpoAMjQy/zSh//3n/i808j3wuwDtF/r784AgKj2I/xEoMkWq/x8YhjU6ITINEoc0+POAkgo5Jf8GoDISkP+JPkAi/wRP94WA54z99f+AKjKTPGgBCxG9IIBpOL45nfzu/oABmf8hNBo5Gw345X7JQieAoTQaNAHVVWA="
+    "base64": "KQB7vnGCe/P/mf+HK3v/9PP+vHrQ/vD6mnoAei9UU/OmgHCEZmj/aHtFmP96Y2Z8gU0aSQQidU4KeitsrvJdAIJFgIF7CJb/P4R7KEcIkjx6P12LcuaAhYdcGJP/Pdj3AFiSenthel56mxZlmciAh4NNaAFGEZhkenomJmuZSJiFf/6ATcn978lmgEorFmBrYjmDLXuRXeuAgO+VgUkI4/uNbSYAlV+ILDIqeiABEYhyjSYvepHVVWA="
   },
   {
     "path": "solar-system-encyclopedia-assets/venus.pattern.zx0",
@@ -117,56 +117,56 @@ export const solarSystemEncyclopediaProjectFiles = [
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "kQCZAgcAiAF/+PAgGBwcDIKAwOD4CCAQHz8Aox/n7gEDD5qIgEsCiHVg8IIwcHBgCSYEDAkbFzR+OPjw/7T7c//gisFAML79giEHn44cj3QO06v+A4r/D49/AIHDpZvYmdCgBfpqGLdw3IsDA6RsogYDhwD4+AQGfq1PO2F/fr7QvLgHOIIBDgYGLsClSAEBAQAM/P+Na6m4/x9c5qHgwMAaD/rB/iqAIDDeSu8f/397/3CP0LcP1efuEPDggv/w+MAAF+unyQ+K/gM7+P/g99x3YM+f2OjyeD8GDBgQPe8gYORbuar0//D/7r4P/yrP3j6qEAiiBUsDHw0PHRgumx+u+v4fzBf90N34jfEHLjgcnJ87CUM4PDngf/g8Ph4euXHbPv4mbq3wHS48PP8ZOD9/+PCY8UMBkoHRay9hY4Jnx8PBvXDZh1+AkBB8POcZuXPzfKn+fpt/Px993nb/Iun+noDg8OtrkICIhJ8DwpPBz6r/cMBogN/Z/n7Sf8GBAfDbo/q3RNC48KvjeHhNP/j7I/7A+81S/Hu37q/a0Ouo/v7v3Oub/uz4ZOzukx/Mev//SJf+/yKEqwcAfhr/4wCth8EepfHaT4Z0j5/f4xTgYLsLAJrr/gC9pKtjlvi/w5F7h4fD43fx8G2+5BXxnvjhw4MHHt9/4ePm8Rix+bugYvuSQMb/kOxRCLA26Mjgp/9tJOmDUwD/0qFLgPXwuBrwqiB/GYaHjx/b8DL18Lpc5/w+4YS9fzf6aGIjv8BX6qT76v+B4sfwYcDB4d9r68vw30/KT6/UguGD//98b/yhSr/GdB9K7XTDa9DBZ3j5MUSG9+DwjsC/uT5Ox0Y9tyIe0gDonu/Pxwc5x4NjtQ4cePSGutiw0/iZTivx1vxaNu67fuL44ZK+Dw/Q3ucKNb/P/uJQ2OC4/x6f9zmv+5wuPfzvvT/BUOvF/Ps88f3WUQD/bizrjf9j24+H+IbBnfEAXVnpxWad3/P4qTKDzlq5H+6/g1M6/V5ISMZgPh7Ux6dTgR464w7wsv7Cp8HtQR5+C53wOw4oGCTH42E5+Pvwqg/wSYcBgPioTgA2bvO+nf6uU+HeaQcw5qvw+f8B/gBTVVWA"
+    "base64": "kACLBAz4+d6SgIM5AwfwiDBwZjg8PAsBoP8ApxyhlIYGDg4cPH/A8Pjy/v/tlCfA4OegAz8/mEUIGBiigDpAYP8AagaeB8c7MXD/IOHguAIDAODw328TNzcHD3b6f3x/3///9/vT/uLF4GQ4hwGI8DhnAgYEqgxAYYA4EJoHAgLYEJN4OBhgICCfohANnwd7SnLOeAPDgP7dLZ7jDh8//coC+B0ZGDRwGI1LDQ+Twx+wkIiAhIKjwoEgQvr+Dq8PtZL/Bw8fGPjwJmBwMLsRcGupwHig/gMfwftLvQK95hfxwwdvp7/Iy8nK+PyZvznDZoeHwzA+P3+8AGerIOHeh0ao/j8s96fwgYHB32HPXV/Q/Gnwjp/P5w3YPErbywO/OwEP/5j0e3Bxc2Nv0PiYUPXT5bKNA/jzw8ePHr5oTLwAS43MtYyIQP5gQP+YTnx8ORMXH/8p8PHJ/XB4qyLC4vL28P1hN2NB+DTeH/x7ur4/N/+d/t+ZHN31xe8ry/Dv/Q0wy+e1HrbiHI/gCL+i/uGB37j/y632u6CyOnB/jB4O81yY7tC6/Vz/yTH3/s6dcuMy/mHt/pj4YfD87Iz8oP6m/CL4Dxjf3p4efip/ZDJy/oqCP6Yf308A/SnVK2//MucRKF/fer/n4/PxbQDX0qL+1vsq1qA/c6H/8NNXThb+j9XjQzGYgPvo/txbZe4+r7FOHj4+PHh//pt78PyylQ9y+/8yWFCa9vb6DDx8PB6KXQD58ONT3uhTbjwcDP/hcJOoeHh8fj/HjjAOz2J/Pn+LHAwegZ7cJ//rq14s1iMkNAevFCfVvvRB9tsUwsX8i+PnMG2PATh832qc8P+hrm/0+SI2z4Cl/s+txyN6LaLvH+zwz44x272ePyvRcChkPOLAHnzT4AdLoWFjQ0Ppw8PBPD7/P9sA67+K/7joA78XA/62zMTXSvYvsm+AZ/T+uK0QYW7g4IGRE+UKHRgYME0/39+fDy+433z/g35/W9D1rtnXvsaWMyCAvMPF4uNjc3Hw//dgr369qgbx4cGBg4WZ6/gk+vn5/d8P/9H/xz/3D48FH//+XNiT1M6qjX57PXmHS3bj8SHPz7jCKLVht6zxfeZ9IGkf/vJRrPvCCEnwjuDzpmfn5eVfhE8w7eK/W8XHjnhak8fnx8HQfLd47ev5LZ8eOv7zag7v0r9K04H4lCH+PH7P3U1KzmcHDHArewf92iXbN5rKX065fuGmf3+/FwcLvd9V/GmpZdsHkO1D9n9OaV+1z7uQTlyj7ClG+27eWmWB0PMwQI9/cD7R/9pe/++P8Gccw6NK8PGdeLvY4ubz4CMA70q+O3g4sFbcOs4y3/O9JjsHPMHh/f3YYbOe+v8O4NMO/H4qWnz87lyYpT/8TE5QJL+PzG12xQonn5/f6qr/k390zZ3iCGziLOcffgx00imM4fROclY14sOcXt65sf4RU1VVgA=="
   },
   {
     "path": "solar-system-encyclopedia-assets/moon.color.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "lgCG7rn+9PDwL//iKf5/4Ojy/z/4x5Tk//B5oPeQ/vXw8i/+sjvw3+7+9x6XSJ98rOHw+H+cT/I5Sh9cXvBffF/w9Xjw8AUo/1Sk/1KB/0r/EX02ObJf79fwx/OQP9rFVP/usWW45KIwz5Do/+xUfPAHNY58IPMeXOxTdSjdMqTu9vCA/in+Ec0Y/FPw9eGRaPWu/+D+4PBuAP4VVKX/1VVg"
+    "base64": "lgA+Ee78veHwKf5K8efE5f3wKf4OlST///n/pA/91/CfsKDv9JH+/fByt/7cffBPOF+Q/2woT92a8PF5/H4r8D3U/JHwLv/+4+S2/LR/oJ/I8OfQ/vSx8D+g+N238M/0+fD+//Bg58T/4OS/9+HyqMDu/3z9cnCH8WFs2Mx52P/weunB8X+Id9QpffF88HyZ3fzfjPD+bvCl/u9U8P88/+nw7n/cpZHx51yf8Gg48H/5/AQu/vBTY4A/EvAi//5Ggf+g/1/zzHCa8P7fMJc49//w6bD+f5LPhPjH3D7wk+GdnmOwXxrP0N8jlPfwfDzQpfH/8Xj8SNDXzHjc3dTk8B4MfPDcePnt8Dc0XvR87HjwRWn/UpX/Kf8p//fk+fDSKf/W2DiYdZ3cM1jWlITup+FbDlxAxtxp8Q6Sdc3wkX7/alKn8YckRqh1nqDwVKT/7FSavO5E2Kzw8Pf/Ih2HJG9ATHm+4+A1Zu8SnjeA50zH8PKR8JD+LgD+EFKX/1VVgA=="
   },
   {
     "path": "solar-system-encyclopedia-assets/moon.frames-0.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "KgBX///58/Wi8I4+CGZWNycz/wlSJxUqJycyeqrSd2IBVlZ7UwJt8wD7++vy2oA++qyT/4DRvp//8Kn/IiYNKXoIJogUXlZ+VkxrgJD/oQuqT0r6flGlavj77ohKlWZVC0cZOWJ9ABueeoB/EKZulVd7GZNLTyzKgFV37JhQVpl4nz0nJap6gH7sIFas4+NOK5iMhnNy51a+j51mrX7agD5cJH+AB93wqok7oBmfbwJ0l8iAIYeDVq6CViYnI0S6WxojIIPjxAhlk4CtaZnI+wCYUid0GjPWfG4t9DhfmDygokkwOGxiaWq8PoDOAGGinZybVjsrVVWA"
+    "base64": "KgCZ///58/WY8bW4wyGY2UkZI/8gWBUcUKlXiAZZvqbNZgNomiF+RwwvbJoAmpqk/5rzgGpkPotdrH6BOF7yb5k6O46roij699AToNOCfTQhmmerSGKGgYnJ/5qtAqIuZJkKhbhM8IJXBiz/CZKaCv8hTIaCfyIYvWXhmTyNAESA1ACvlfXgnoahAme0YVJWTr5X0fAiWI1IIFZfutSTZwBASsytt4AADZitjpnZeOPmVTiMIWNhjWjRme79a1zSfqAA5Sk7zNOA43yP5PCpnup+GL5+0CIMan7pgGGGkrJ7mc4YmksWdqpanh3+sPDZit+bzW17po7pC2Lwr6D++pWHut77AUglszF5A0QalTgQt5pyiqXRJnbJKVRR4i6cmF1gYauItp6A+x7/yLyChgEbcIYxghxVVYA="
   },
   {
     "path": "solar-system-encyclopedia-assets/moon.frames-1.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "KgBX///58/Dr7C6I8j6ihz9W4BlLMVxNMeLHoyH6/la+dvT/hZ/t5L0AgII3MVpXCJ4offFnRoQoqd9ogiGJJAl6czZ+h1dWaQ5lrrNdgAJgL4ynmycqrufwBVkn+GC7Z4oTqYZDj2sdfPenlF0YB7jwgAgmm5imq2E3JzWWJyctSENWVpYobZ5EI1RYJKVWdVcINp2ANGD//5YZbGJXrphXpVeoiIIfkEpICicpUDBBgHgnAwZwcR57cmhf/29raAw0VqSRev9WZ31+9e2YlyuTGoGarI3NJxWH+0IrZFMnkP/JD4BFJRQEG27/dVZAf4t/o6g374H+gB5/aY10V6D/joKij5Sf/yABILg6HP9d8yYGPWGfODl0mad4EBF6oeTFgCqLjFaCyYIaH0fh8ZpOJwknQUmCFhJWeoqSIDIbV4FJVhdeEXljKH/VVWA="
+    "base64": "CgDFmf+kmYgAi5me2P8mmZGg/37Ia4PZ8JZTUFJvipDJlpqZyon/rpqC/8KMp5GupJnAeJEAmprBu5qqAMOAYYl+ep2Z2J7FEqnxYSSXiJdDmh6EiZmYkk2+YGmUmteGqJqhn6OemqIlgIL/ua+aKdZqdQPP/9Ca0AJNmeF+gl8hXZGZWqCbM8eTj5Uas/8tRalbxrWa/6KYn37rgGL/fyySmWgitMXn1rXtARpR4JKImRYIT0qamZojaqyFgIebEqaZp2MLRsmlpZIg48SfnJOA4PmAlpnV0ZnL0JmCfRU2sQkoQBAfTZCIB7YVB09klHOqpi0q/6GZZSeMafvEj6OegF70ntjLt2yCv21xgJV916vAFQUOBI6JlkcVGx85rHxKHQk3Xv+nmourmjLKtrOvgKiFx4C+87fv8VK4d3Gww5T/2ToDDQGEcpHkWxU9FyaQQq0gFhVBmZ26lBQvFGzGgCCalxq1o16djXdudOE18ZpVFREPWimCP06kvoq/Pjk7XX+jwjUrMJbmgP+XqzVVWA=="
   },
   {
     "path": "solar-system-encyclopedia-assets/mars.pattern.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "gQC9H+6lAYkfByg/8d6ODwG6IsOA5u7/4Pb4IoCAfv6owIBowKLg+fDv82Pw8Pj8APz4p+AA/vza/vh/18aG/P7/wcDn73x+f+d37/j//4lWi8Dw/gOI7ncABwMBh+ipA5oHDz8BLgfwIyNDot8fO4fH/+/4qv/fQefg/plzwP6AYwfedpg3wuru8CnAiSD4/+Dw/f7/3Ox4lPbBwfOY/77Bu/KUf5z2nfx/8uKMePjv//zY2F7/p4HGu36s7/75IP9tx/D4f6NMPB6DAEAgEBAIDIqGECb84DD6/n/vQP6C78eDAWKfD9saX/a68wvw5Z/frYeHg4GDDw8/9cCnoV94WLPj4VDPPmK4dv358J7g/4T74cAB+HX+rwfv/0Hzc0Op/g+mH6I/fz8P7Z3we//Sv9n//6v/2/X/1Pjv/nXucj6614bXtYjhbOy7+xTuan/w113+benxbY1/vmrXQi4H8vvj4P8MOLwGDP/T7Y1uyPF2/fPgxDvt/Lf0/yzm/rq38D9M//Hu8H7f8Dry4wPwx0OOP+CcjGK0g/6K7M/Xrezw333KI9C+4ri8gIqIPwHtpLFiy+j/DLR3r/wY2GkA/eKxmN5+Vm7gNjwb4uXC4Pgn0lBQQEBbquPw+GB8YQMePj4cjHv9u284DJ173+/veGBwDB5eHJiWGwgIGBAQYMQdbnb3oAK8Dg4M8Ai8H+7J+ttFh1sebLuHn5bJ0sF/64//h28j/uNOTN7A29fHA/6ygBjboeB9ymIxBg8+8DcEDv8fao2pg8ExRdgzrcbDwWx8nX5aG4t/gX/B8B+sWfTj8LX/4ze76tM6ux2+XoHgPtH1uh7//g1jkAuaWNL782Aaffl1fYgqcb8+wuTwy//53/jMvxzH4/HwuDgwcM8zYG2bDCgf/okBPzcziCfB8dHmmMT8/2cDodBtgdydyHMRsjPPTPzi8q/AcND9ZwtjtL/vC7rbQasBGezG3i2Pvnu9monCOv4dMWGBAdh6/cDB/ryBp/h33z2uyKCDntreIQ/fywxnyhjGsPfsmPG0pPMgnTIjM7z3x2CPjuLj5+f/mcBv4fP7+R8Hw07dYdEh8uxbMDh8rjx8dJ0HMXjWGyqtn6MMPjyo/3ii9vBwOKkc4x4PgZnx/G3+9UFx91v5u9L3qiG7GzFzY4fPzzaTZNczq1uBm731AP5VTVVW"
+    "base64": "hACIAQBagP74/4rAgBrAKOC/8O6O8+T+tmLg/Oj+j8Dw5O7PcGxpB2cHDw+a7gPyOjwDAf6IBwNrB7/vg9Wv//71/qYfoj9/Pw/tjvT7ewB/f+afvQP+/+/v4W3+7+LbBmbx//8ZxsHAwe/4YR2J8PymHwcCgPD/p8e7lrB+p9Hw4fW++Pz//w/+9/jvl5bfcHh4fOfj8SZ4OBi27jTvuIH7SKsBYkB+/vyAKC4Dz2S5AwHav/8fsw8LD47+3KmfNp+fj4eHn3KSg4OBgP9/twMMrz/y8jVMGuDK6Ikgn8eDAPHnr9B2UULj4PPx76jL0ozI/vD1zH7wKvt/h1rDGZj+j4ei5PHvw2rEYn4/545wwfiP8L/zAMB6J3EPb/7+qAyYHPj5/Abuzvr09Czve+Hw8WtFf67/B/AtD774p/E87//+/nX+v3/w/qX/8Nsfoi+d/kei8Pz82+Qz/Xm7ycD+r7jg8L78Ser/+Pe8uJfiW/4mP/4nAH/f27j3xljstJ+k4v7gwsno1xTIZZb4POb48CTB+Ynx/T5X+cvhQPHw8sZtM+PADtypZzLO8lhyJOPKXbqr+BCcdnUlzMrdAW1j/m6Shs3X129xyEW31vjgUmvyezM/9m0Z4Y8/4cMV34kMOfcNhv358H3//P3VOurwDon2g+2CpOPcRP8x8BsILj6My2gj1iKv+A/u0P7S1fsfS829w/FZX+bb8+aXx/yfD8fDxsea//kHw4vBgXkX92zDw4GDHTFhapgHLgEI+3jhVl4x/ZjvvfrJbcT29GeuD/i7r/nfBSA5IcCgEJAwMDh822SntsHj08KfyQjBgwfe20dgCNzdzdYRoG3zey7QfH3Nj+oX/cr/LV0D+//A/ng8Zgds7NycGL/v379/5oX78/fzRVUeBDcxeC9PHxluEhCTDB5eHJiAaNECjA4MtZgnplpufN/v709uoivmBrUePj7OVnUDe/2uzTgT68Md/JObBxs5c2OH0p/IqfO6gA4ef7/TSK3ga5TD31GY+Vlh/lVTVVWA"
   },
   {
     "path": "solar-system-encyclopedia-assets/mars.color.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "lgCqmZiIiIiYmYuaqpr/8O778P7+8L3+5PClmPi//kqWONJfUdPw1v6UmN/UnzLgf/aTBvwz//D/3vDw0LyG4KWG/jiAXy530iiqQ/+K+/6qhpZT38x64OL+mOQ34PTw537/p/H86e/fZt/w/0nIjD/dHDlS/7k+9r+n74eYY9DPjPBPwvPxPjvw0f4/We549uH+fCeHgGz46UCf8wbP3PH4fHgyrnz+HruDmfWs3/qGfUrTAF/w/lrwXO+cmb458A7Llp+Bn/3z8Dk098Bu1PAmZoaZX97ClSRqqv/3/g+KTF7y7peq/7BY2PFg/5H/0v/wzPjB/vfwr9+q7Dzu9+Dwz/DzOo3ujPw4cIWIiPT+1+p2UDy+cowzAteEfJA8rsgAfeDTIHyRf/7g1/Aw3+rxbFKdBNexcHWVgKef+/n9zO/0n6x03xQUeejGFGmY1Z+28KaGnZghJLVmsKb7ePDp7mbz9OdP1Euc+8gw/6iV8VegbKpzQDJNnHUgyPfwndxz/fI8s3Cy/rPwyogxlhdC8nMKzCD3VkzWp2rT09wf0H9O/8pcU5TDYHrCtIpzqP2m8TdMk1gvoPC6isT1AP5FKZl1VVg="
+    "base64": "lgCIiIqKqop48Pb+ioaKELyqpqFq/LeIiIhqf2fAf/XsPKK8iv5G2Ijgf/lA2MzbluH38CiGCoYE9f4fFcH+K2af9PDdvHaMKWbcPPfwPa/g+P/wUpCK8GD9+cB9/lyNNIUm2ZLzy15fpH+Sl/DQPvfwt3ZIKIZaiE87z+DwSogAdvhxnk48Md/s8Dr/aueo5+/y5f8mNtJ11Dz8/2E3mjc0XFB1x5j3XKI9m5Mk5PXw9AL87mRkyHJ97jWBNP6ePDXDsNvOajOmzozgcpoNZ9B3RTz/zHG48Mr/4Lbv8no4JDzw53LxOMfIYOTz1P5o//R/Rsfw89PgzvDEX/XflO+PrAbs8mEg1jA2hjKKfd9Z5u7NAP5VFKWI1VVg"
   },
   {
     "path": "solar-system-encyclopedia-assets/mars.frames-0.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "KgBH/+f5AESn+PPx/elKN+BpkTNH/wt5TW4sGA9HsnQ+0x8QNhqmRby4jfuuEoiunpNHmKCkrgDZgIallV16SwpBsikpubtgMo1/g6NuCXmh0Og0RyRzcUCnuZpiZAX5HvnpFSYvgVwjeL24ku1mpYSwO13vNtsJbooaTl5jJrQCWP+cSW4Rd3WXS5xaK75vrakRHLpHgR/xg/op4v6Ov/+yj3JD8OpXhjohTfDlT+eZbFS3CFgvrDm8eEQ2KIrv7bq/SgEc+u3/gIoHX3+UeOz+DrbqyxgRcUOQXOUB6ZesIj2LPC+SbmFFu3aDo33tOSSqgYavmziGRwqfRhNGiUeHGf+Vm2EMtVap6354YW5VDwmLnBNpRxZJpSP+Lp1awIEqZpi3YqdLKJTjn4cG4ICCOlBHguYbf5COXS05pBDkcj+PPrlPlatjZEeERB2KiIDdR6P/ooAJqyhKiA5r+ICiq0cUfGcpn1F6YJC2aFNYj3ezEIk5WYoeRX5JTJ3vgGYcoDA1VVg="
+    "base64": "KABFCP9tOEUAQnz/h1j/RY5/7uH1L/cXBF8y/x8mT0WFlg+WzUVPKheEQ/9g7kL/Rx6bIp6DRUQlJo7zAHmAojdmdo9kpkV1AxI+uXdvZX6ef+ffbw1fcqhdKi5LmYdRi6Ab+Fh9SEWAI0UcZyboiQE2iUCbnlRXdn8nbGSPo1ACbqIZSYIiigE9/5dOC5MSRVwjj+2agYCGGP9FLh0iRRmmRXlFnEaTonBXJJgUew//bbtM7X//KZJTCXidXDQkCTmIlEJCIUjv6pqGjoAbiWJFp37648Mktll/Z2uRRobvTocUdD06kx2GTA5FXSRh+lN2i5V046o6aoOBjYkwRf7igN8dzz6Aob+PgI33BZK+lAGVTghDTwJPHIFKRXdSgYlC/Czt/4iAmCud4nx1gTgJqEWOR0gAmChFGDYOk3Rgcf+NRyXDmU6XED4PHifbfRdAkys5hYCZHRxFiGuCtTmIgZgzKlfjgtkkJe8ALZ/+/3kXQxs+lXpNMaSUuW6AF1IWLACCcR4knjVVWA=="
   },
   {
     "path": "solar-system-encyclopedia-assets/mars.frames-1.zx0",
     "kind": "compressed",
     "codec": "zx0",
     "source": "generated",
-    "base64": "CgBesf9ZSkcADglC/5dHDWpL/64Gk/F+R5FZgkeG3YUon1D/mqizR7lo8TseRESpJzTuhZ/5YmUdmzCfAABHZ0flgYaUIU17EAkJ4J7/f2xr8SgfF3oSV/+RM34YTIVInqSulMi+W82BSUQJTKObu4gtUiZHsFwYOkMieYnyeklGDG9CmiBGEg5ub2WSnpG6E33/Op9GR0T/ghYcU4AZRwKvu6KNN4z9gN3+pAx6KgRHfmiu/wqgelbufFEFDW9U1RpDE3uAqzgluIFgRxStK1OCR45HG3//gOP3LaH6kHeG/nDoliN6A1hHNgfa7Eo+ki+Zh4BnaUQlnm0FSBmA/yaAqv+TIZp2QZEyjKqZR2aDIpdHngRdlu7K2ANAJzUgrEltaoqVo5l7FQEFn7ruJI2AaJSOuE1juIv5p78/LKFSiHdwRCD4XghHV/CjCT2WVylUKW14RC6eMe2HAboBqfr+gTxoX4umVW7wkWkqvFhrKTGsR7J1QGZZy/k7sWluqEYJR4jKAaaaEik1LoGHgWevohhVVYA="
+    "base64": "QgBjRv9FOkUAmAIT/4HkVVdFgwxC/0dI27kpUUVFGEXv4yItKPV7eZnkPm4/QowfK9IHAIlWGBqeJAAApdDiVTuOAGqIFYAOPwICcl+gRa5KBwtRHZW7IOUvls16FhpmLSb/i2pCrtlIgJJbDRYdGylgiR0nRTiIRZA1onBFckytMajdUJkFAnslRR9JhApWmNiz1+1HLfNCm8t3GESSgUJFAXIdiWCef0htOf7+gQw2izHAuUr54AMCXlvuRCZIBm8RgVhyHixlgFFoIyQw+XuA+EViPfOOjjoJgWr/HSVaf/uFuv8feFuKXmFxRSovaeyqD0cdRacIQmlemAEdLEh7pviA8YhzO6MHEi9Iq4AzJ5IppiYZkGFgcSHITdkqESArLlKCDEFcnycjK0iigW+T/7jzPOOdaRWjgIUQjgktJ3cgBkKfY1tGsoNzAg4h2W/9uxcHeMVm++/7AYy6zWKAknsiUEMi/1lyQV00sYhoKEuTEf94GP9sUgpuswLC6/5vkoFFK0hnRRwmjZ8mdVVY"
   },
   {
     "path": "solar-system-encyclopedia-assets/jupiter.pattern.zx0",
@@ -325,7 +325,7 @@ export const solarSystemEncyclopediaProjectFiles = [
     "path": "solar-system-encyclopedia-assets/stars.asm",
     "kind": "asm",
     "source": "generated",
-    "base64": "U29sYXJVcGxvYWRTdGFyUGF0dGVybjoKICAgIHB1c2ggYWYKICAgIHB1c2ggYmMKICAgIHB1c2ggaGwKICAgIGNwIDY1CiAgICBsZCBobCxTb2xhclN0YXJQYXR0ZXJuc0EKICAgIGpyIG56LFNvbGFyVXBsb2FkU3RhclBhdHRlcm5SZWFkeQogICAgbGQgaGwsU29sYXJTdGFyUGF0dGVybnNCClNvbGFyVXBsb2FkU3RhclBhdHRlcm5SZWFkeToKICAgIHhvciBhCiAgICBvdXQgKCRCRiksYQogICAgbGQgYSwkN0EKICAgIG91dCAoJEJGKSxhCiAgICBsZCBiLDE2ClNvbGFyVXBsb2FkU3RhclBhdHRlcm5Mb29wOgogICAgbGQgYSwoaGwpCiAgICBvdXQgKCRCRSksYQogICAgaW5jIGhsCiAgICBkam56IFNvbGFyVXBsb2FkU3RhclBhdHRlcm5Mb29wCiAgICBwb3AgaGwKICAgIHBvcCBiYwogICAgcG9wIGFmCiAgICByZXQKClNvbGFyU3RhclBhdHRlcm5zQToKICAgIGRiICQwMCwkMDAsJDAwLCQxMCwkMDAsJDAwLCQwMCwkMDAKICAgIGRiICQwMCwkMDAsJDEwLCQzOCwkMTAsJDAwLCQwMCwkMDAKU29sYXJTdGFyUGF0dGVybnNCOgogICAgZGIgJDAwLCQwMCwkMTAsJDM4LCQxMCwkMDAsJDAwLCQwMAogICAgZGIgJDAwLCQwMCwkMDAsJDEwLCQwMCwkMDAsJDAwLCQwMAo="
+    "base64": "U29sYXJVcGxvYWRTdGFyUGF0dGVybjoKICAgIHB1c2ggYWYKICAgIHB1c2ggYmMKICAgIHB1c2ggaGwKICAgIGNwIDY1CiAgICBsZCBobCxTb2xhclN0YXJQYXR0ZXJuc0EKICAgIGpyIG56LFNvbGFyVXBsb2FkU3RhclBhdHRlcm5SZWFkeQogICAgbGQgaGwsU29sYXJTdGFyUGF0dGVybnNCClNvbGFyVXBsb2FkU3RhclBhdHRlcm5SZWFkeToKICAgIHhvciBhCiAgICBvdXQgKCRCRiksYQogICAgbGQgYSwkN0EKICAgIG91dCAoJEJGKSxhCiAgICBsZCBiLDE2ClNvbGFyVXBsb2FkU3RhclBhdHRlcm5Mb29wOgogICAgbGQgYSwoaGwpCiAgICBvdXQgKCRCRSksYQogICAgaW5jIGhsCiAgICBkam56IFNvbGFyVXBsb2FkU3RhclBhdHRlcm5Mb29wCiAgICBwb3AgaGwKICAgIHBvcCBiYwogICAgcG9wIGFmCiAgICByZXQKClNvbGFyU3RhclBhdHRlcm5zQToKICAgIGRiICQwMCwkMDAsJDAwLCQxMCwkMDAsJDAwLCQwMCwkMDAKICAgIGRiICQwMCwkMDAsJDEwLCQzOCwkMTAsJDAwLCQwMCwkMDAKU29sYXJTdGFyUGF0dGVybnNCOgogICAgZGIgJDAwLCQwMCwkMTAsJDM4LCQxMCwkMDAsJDAwLCQwMAogICAgZGIgJDAwLCQwMCwkMDAsJDEwLCQwMCwkMDAsJDAwLCQwMAoKU29sYXJVcGxvYWRNZW51TG9nbzoKICAgIHB1c2ggYWYKICAgIHB1c2ggYmMKICAgIHB1c2ggaGwKICAgIGxkIGMsYQogICAgbGQgYiwwCiAgICBsZCBobCxTb2xhck1lbnVMb2dvTWFza3MKICAgIGFkZCBobCxiYwogICAgbGQgYywoaGwpCiAgICBsZCBobCxTb2xhck1lbnVMb2dvQQogICAgeG9yIGEKICAgIG91dCAoJEJGKSxhCiAgICBsZCBhLCQ0MwogICAgb3V0ICgkQkYpLGEKICAgIGxkIGIsNDgKU29sYXJVcGxvYWRNZW51TG9nb0xvb3A6CiAgICBsZCBhLChobCkKICAgIGFuZCBjCiAgICBvdXQgKCRCRSksYQogICAgaW5jIGhsCiAgICBkam56IFNvbGFyVXBsb2FkTWVudUxvZ29Mb29wCiAgICBwb3AgaGwKICAgIHBvcCBiYwogICAgcG9wIGFmCiAgICByZXQKClNvbGFyTWVudUxvZ29NYXNrczoKICAgIGRiICRGRiwkN0YsJEJGLCRFRiwkRkIsJEZFCgpTb2xhck1lbnVMb2dvQToKICAgIGRiICQwMCwkN0YsJEZGLCQwMCwkMDMsJDBGLCQwMywkMDAKICAgIGRiICQwMCwkOEYsJENGLCRDQywkOEMsJDBDLCQ4QywkQ0MKICAgIGRiICQwMCwkRTAsJEY4LCQwQywkMEMsJDBDLCQwQywkMEMKICAgIGRiICRDMCwkRkYsJDdGLCQwMCwkMDAsJDAwLCQwMCwkMDAKICAgIGRiICRDQywkQ0YsJDhGLCQwMCwkMDAsJDAwLCQwMCwkMDAKICAgIGRiICQwQywkRjgsJEUwLCQwMCwkMDAsJDAwLCQwMCwkMDAK"
   },
   {
     "path": "solar-system-encyclopedia-assets/voice-earth-1.voxpcm.zx0",

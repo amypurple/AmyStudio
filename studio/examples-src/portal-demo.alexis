@@ -1,0 +1,278 @@
+project "Portal Demo"
+cartridge "PORTAL DEMO/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' Amy port of old-projects-sdcc-z80/sdcctest/portal.
+' Demonstrates converted ZX0 assets, sprite-pattern upload, VBlank equalizer
+' sprites reading Coleco BIOS sound areas, and the original BIOS sound table.
+
+asset PortalName from "@project/portal.name.zx0" codec zx0
+asset PortalPattern from "@project/portal.pattern.zx0" codec zx0
+asset PortalSpritePattern from "@project/portal.sprpat.zx0" codec zx0
+asset PortalColorFull from "@project/portal.color.zx0" codec zx0
+
+u16 MusicTimer = 0
+u8 MusicActive = 0
+
+on vblank PortalVblank
+
+sub start:
+  screen off
+  tile screen
+  sprites 16x16
+  sprites double
+  set sound table PortalSoundTable areas 7
+  decompress zx0 PortalPattern to vram.pattern
+  duplicate mode 2 text patterns
+  decompress zx0 PortalName to vram.name
+  decompress zx0 PortalColorFull to vram.color
+  decompress zx0 PortalSpritePattern to vram.spr_pat
+  set sprite pattern table vram.spr_pat
+  clear sprites
+  set sprite count 4
+  update sprites from 0 count 4
+  MusicTimer = 0
+  MusicActive = 1
+  screen on
+main_loop:
+  wait
+  goto main_loop
+
+sub PortalVblank:
+  if MusicActive = 0 then return
+  PortalUpdateEqualizer
+  select case MusicTimer
+  case 0
+    mute all
+    play sound 2
+  case 961
+    play sound 3
+  case 62, 782
+    stop sound 7
+    play sound 4
+  case 541, 1501
+    stop sound 4
+    play sound 5
+  case 660, 1620
+    stop sound 5
+    play sound 6
+  case 1739
+    stop sound 6
+    play sound 7
+  end select
+  MusicTimer += 1
+  if MusicTimer > 1900 then
+    MusicTimer = 0
+  end if
+  return
+
+sub PortalUpdateEqualizer:
+  asm {
+Portal_Update_Equalizer:
+    ld hl,AMY_SPRITE_TABLE
+    ld de,$7035
+    ld b,3
+    ld c,80
+Portal_Equalizer_Loop:
+    ld (hl),159
+    inc hl
+    ld (hl),c
+    inc hl
+    ld a,(de)
+    cp $FF
+    ld a,60
+    jr z,Portal_Equalizer_Pattern_Ready
+    push de
+    inc de
+    inc de
+    inc de
+    inc de
+    ld a,(de)
+    pop de
+    srl a
+    srl a
+Portal_Equalizer_Pattern_Ready:
+    ld (hl),a
+    inc hl
+    ld (hl),6
+    inc hl
+    ld a,c
+    add a,32
+    ld c,a
+    ld a,e
+    add a,10
+    ld e,a
+    jr nc,Portal_Equalizer_Next
+    inc d
+Portal_Equalizer_Next:
+    djnz Portal_Equalizer_Loop
+    ld (hl),$D0
+    inc hl
+    xor a
+    ld (hl),a
+    inc hl
+    ld (hl),60
+    inc hl
+    xor a
+    ld (hl),a
+    ld hl,AMY_SPRITE_TABLE
+    ld de,$1B00
+    ld a,4
+    call AMY_UPDATE_SPRITES_PARTIAL
+  }
+  return
+
+end sub
+
+asm {
+  PortalSoundTable:
+  dw PortalDummy,$702B
+  dw PortalLyrics1A,$702B+20
+  dw PortalLyrics1B,$702B+20
+  dw PortalVocals1A,$702B+30
+  dw PortalVocals1B,$702B+30
+  dw PortalVocals1C,$702B+30
+  dw PortalVocals1D,$702B+30
+  PortalDummy:
+  db $FF
+  PortalLyrics1A:
+  db $42,$1D,$A1,$03,$E3,$11
+  db $42,$1D,$41,$0D,$13,$33
+  db $42,$2E,$91,$03,$E3,$11
+  db $42,$2E,$51,$0A,$13,$33
+  db $42,$53,$61,$02,$E2,$11
+  db $42,$53,$41,$05,$12,$23
+  db $42,$53,$81,$04,$24,$11
+  db $62
+  db $42,$53,$A1,$07,$F7,$11
+  db $40,$53,$41,$0D
+  db $42,$2E,$41,$0F,$14,$36
+  db $42,$2E,$81,$03,$23,$11
+  db $40,$00,$F0,$93
+  db $42,$FC,$41,$0F,$13,$33
+  db $42,$1D,$A1,$03,$E3,$11
+  db $42,$1D,$41,$0D,$13,$33
+  db $42,$2E,$91,$03,$E3,$11
+  db $42,$2E,$51,$0A,$13,$33
+  db $42,$53,$61,$02,$E2,$11
+  db $42,$53,$41,$05,$12,$33
+  db $42,$53,$81,$04,$24,$11
+  db $42,$53,$A1,$0B,$F7,$11
+  db $40,$53,$41,$16
+  db $42,$2E,$41,$0F,$14,$3B
+  db $42,$2E,$81,$04,$24,$11
+  db $40,$00,$F0,$1B
+  db $42,$7D,$B1,$03,$D3,$11
+  db $40,$7D,$41,$1D
+  db $40,$53,$61,$0E
+  db $40,$FC,$51,$15
+  db $42,$FC,$71,$06,$24,$12
+  db $40,$00,$F0,$5F
+  db $42,$FC,$B1,$03,$D3,$11
+  db $40,$FC,$51,$09
+  db $40,$53,$61,$18
+  db $66
+  db $40,$2E,$41,$10
+  db $40,$1D,$51,$1F
+  db $42,$1D,$61,$06,$24,$12
+  db $40,$00,$F0,$04
+  db $42,$53,$B1,$03,$D3,$11
+  db $40,$53,$41,$09
+  db $68
+  db $40,$94,$51,$1E
+  db $40,$7D,$51,$24
+  db $40,$53,$51,$27
+  db $42,$FC,$71,$02,$E3,$11
+  db $42,$FC,$41,$0D,$23,$27
+  db $40,$FC,$51,$20
+  db $40,$2E,$41,$11
+  db $42,$2E,$51,$06,$33,$22
+  db $50
+  PortalLyrics1B:
+  db $42,$1D,$B1,$03,$E3,$11
+  db $42,$1D,$51,$0D,$13,$33
+  db $42,$2E,$A1,$03,$E3,$11
+  db $42,$2E,$61,$0A,$13,$33
+  db $42,$53,$71,$02,$E2,$11
+  db $42,$53,$51,$05,$12,$23
+  db $42,$53,$91,$04,$24,$11
+  db $62
+  db $42,$53,$B1,$07,$F7,$11
+  db $40,$53,$51,$0D
+  db $42,$2E,$51,$0F,$14,$36
+  db $42,$2E,$91,$03,$23,$11
+  db $40,$00,$F0,$93
+  db $42,$FC,$51,$0F,$13,$33
+  db $42,$1D,$B1,$03,$E3,$11
+  db $42,$1D,$51,$0D,$13,$33
+  db $42,$2E,$A1,$03,$E3,$11
+  db $42,$2E,$61,$0A,$13,$33
+  db $42,$53,$71,$02,$E2,$11
+  db $42,$53,$51,$05,$12,$33
+  db $42,$53,$91,$04,$24,$11
+  db $42,$53,$B1,$0B,$F7,$11
+  db $40,$53,$51,$04
+  db $40,$00,$F0,$23
+  db $40,$2E,$51,$0F
+  db $42,$7D,$C1,$03,$D3,$11
+  db $40,$7D,$51,$11
+  db $40,$00,$F0,$1A
+  db $40,$53,$71,$0A
+  db $40,$00,$F0,$0B
+  db $40,$FC,$61,$15
+  db $42,$FC,$81,$03,$24,$12
+  db $40,$00,$F0,$67
+  db $42,$53,$C1,$03,$D3,$11
+  db $40,$53,$61,$1F
+  db $40,$2E,$51,$10
+  db $40,$1D,$61,$25
+  db $42,$1D,$61,$05,$24,$12
+  db $40,$00,$F0,$03
+  db $42,$53,$C1,$03,$D3,$11
+  db $40,$53,$51,$08
+  db $66
+  db $40,$94,$61,$26
+  db $40,$7D,$71,$13
+  db $40,$53,$61,$0C
+  db $72
+  db $40,$FC,$61,$08
+  db $65
+  db $40,$7D,$61,$08
+  db $67
+  db $40,$53,$61,$0B
+  db $40,$40,$71,$0F
+  db $65
+  db $40,$53,$61,$0C
+  db $40,$7D,$71,$0D
+  db $62
+  db $40,$AB,$61,$10
+  db $50
+  PortalVocals1A:
+  db $82,$FE,$70,$0F,$17,$23
+  db $82,$BE,$70,$0F,$17,$23
+  db $82,$97,$50,$0F,$17,$23
+  db $82,$BE,$60,$0F,$17,$23
+  db $82,$E2,$70,$0F,$17,$23
+  db $82,$BE,$70,$0F,$17,$23
+  db $82,$97,$50,$0F,$17,$23
+  db $82,$BE,$60,$0F,$17,$23
+  db $98
+  PortalVocals1B:
+  db $82,$E2,$70,$0F,$17,$23
+  db $82,$AA,$70,$0F,$17,$23
+  db $82,$8F,$50,$0F,$17,$23
+  db $82,$AA,$60,$0F,$17,$23
+  db $98
+  PortalVocals1C:
+  db $82,$FE,$70,$0F,$17,$23
+  db $82,$CA,$70,$0F,$17,$23
+  db $82,$8F,$50,$0F,$17,$23
+  db $82,$CA,$60,$0F,$17,$23
+  db $98
+  PortalVocals1D:
+  db $82,$F0,$70,$0F,$17,$23
+  db $82,$BE,$70,$0F,$17,$23
+  db $82,$A0,$50,$0F,$17,$23
+  db $82,$7F,$60,$1E,$17,$23
+  db $90
+}

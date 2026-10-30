@@ -1,0 +1,1198 @@
+' CHECKERS
+' The board game from Tim Hartnell's Giant Book of Computer Games
+' (Ballantine Books, 1984; Interface Publications, 1983), for the
+' ColecoVision in Amy by Amy Bienvenu.
+'
+' You (white) play up the board, the computer (red) plays down. Pieces
+' move one square diagonally forward and capture by jumping over an
+' enemy piece into the empty square behind it; after a capture, another
+' jump with the same piece may follow. A piece reaching the far row
+' becomes a king (a crown), which moves backward as well. Take all twelve
+' enemy pieces, or leave the other side without a move, to win.
+'
+' The computer plays as the book's program: it looks at its pieces from
+' the top of the board down and takes the first capture it finds (and
+' keeps jumping while it can); otherwise it moves a piece on its second
+' row to be crowned; otherwise it picks at random among moves to squares
+' where you cannot take it; otherwise any move; with no move at all it
+' concedes. It moves first, as in the book.
+'
+' Controls (either joystick): the stick moves the cursor; the left
+' button picks a piece and then its square (dots show where it can go);
+' after a jump the piece stays picked for another jump, or the right
+' button ends the turn. The right button with nothing picked offers to
+' concede. Keypad not used.
+'
+' Liberties taken:
+' - Your moves are checked (the book took any move); captures are not
+'   compulsory for you, as in the book, and the computer always takes one.
+' - The pieces slide across the board; the book's "Good move" and
+'   "Got me!" come back when you capture.
+' - New music (Kings Row) and sound effects.
+'
+' House rules kept: columns 2-29, rows 1-22; two sprites (the cursor and
+' a moving piece); the frame loop is protected from the NMI and every
+' screen is drawn with the NMI off after a wait.
+
+const TLighta = 128
+const TLightb = 129
+const TLightc = 130
+const TLightd = 131
+const TDarka = 132
+const TDarkb = 133
+const TDarkc = 134
+const TDarkd = 135
+const TCmana = 136
+const TCmanb = 137
+const TCmanc = 138
+const TCmand = 139
+const TCkinga = 140
+const TCkingb = 141
+const TCkingc = 142
+const TCkingd = 143
+const THmana = 144
+const THmanb = 145
+const THmanc = 146
+const THmand = 147
+const THkinga = 148
+const THkingb = 149
+const THkingc = 150
+const THkingd = 151
+const TDota = 152
+const TDotb = 153
+const TDotc = 154
+const TDotd = 155
+const TFtl = 156
+const TFtr = 157
+const TFbl = 158
+const TFbr = 159
+const TFt = 160
+const TFl = 161
+const TFr = 162
+const SCursor = 0
+const SPiece = 4
+const NTiles8 = 280
+const SprBytes = 64
+const SndMove = 1
+const SndPick = 2
+const SndBack = 3
+const SndPlace = 4
+const SndTake = 5
+const SndCrown = 6
+const SndBad = 7
+const SndWin = 8
+const SndLose = 9
+const SndTuneA = 10
+const SndTuneB = 11
+
+' the board: Q[row * 10 + column], rows and columns 1-8, row 8 at the top;
+' 255 not a playing square, 0 empty, 1 red man, 2 red king, 3 white man,
+' 4 white king
+u8 Q[100]
+u8 Sl[12]
+u8 Sd[12]
+u8 Ns = 0
+u8 Co = 0
+u8 Hu = 0
+u8 Cur = 32
+u8 Sel = 0
+u8 Chain = 0
+u8 Menu = 0
+u8 Mode = 0
+u8 A = 0
+u8 M = 0
+u8 L = 0
+u8 Pc = 0
+u8 Dd = 0
+u8 D0 = 0
+u8 D1 = 0
+u8 Ok = 0
+u8 Cell = 0
+u8 Kind = 0
+u8 Fr = 0
+u8 Dest = 0
+u8 Found = 0
+u8 Safe = 0
+u8 Tries = 0
+u8 Moves = 0
+u8 Rep = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 WasBtn2 = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Ai = 0
+u8 Bi = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 X = 0
+u8 Y = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table CkSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    RulesPage
+    goto title
+  end if
+  if Menu = 2 then
+    EditorialPage
+    goto title
+  end if
+  NewGame
+  BoardScreen
+
+computer_turn:
+  Message
+  print at 2,22, "MY MOVE..."
+  Pause20
+  ComputerMove
+  if Ok = 0 then
+    Message
+    print at 2,22, "I CONCEDE THE GAME"
+    play sound SndWin
+    goto game_end
+  end if
+  Crown
+  ShowPanel
+  if Co = 12 then goto i_won
+  ' can the player move?
+  Kind = 3
+  AnyMove
+  if Moves = 0 then goto i_won
+
+player_turn:
+  Message
+  print at 2,22, "YOUR MOVE"
+  Sel = 0
+  Chain = 0
+  Mode = 1
+player_loop:
+  Frame1
+  ReadPad
+  MoveCursor
+  DrawCursor
+  if Press2 = 1 then
+    if Chain = 1 then goto player_done
+    if Sel <> 0 then
+      ClearDots
+      Sel = 0
+      play sound SndBack
+      goto player_loop
+    end if
+    ConcedeMenu
+    if Menu = 1 then
+      Message
+      print at 2,22, "YOU CONCEDE"
+      play sound SndLose
+      goto game_end
+    end if
+    Message
+    print at 2,22, "YOUR MOVE"
+    goto player_loop
+  end if
+  if Press = 0 then goto player_loop
+  ' a white piece: pick it (not in the middle of a jump)
+  V = Q[Cur]
+  if V >= 3 then
+    if Chain = 1 then goto player_loop
+    A = Cur
+    PieceMoves
+    if Ns = 0 then
+      play sound SndBad
+      goto player_loop
+    end if
+    ClearDots
+    Sel = Cur
+    ShowDots
+    play sound SndPick
+    goto player_loop
+  end if
+  if Sel = 0 then
+    play sound SndBad
+    goto player_loop
+  end if
+  ' a square for the picked piece
+  A = Sel
+  PieceMoves
+  Found = 255
+  for I = 1 to Ns
+    J = I - 1
+    if Sd[J] = Cur then Found = J
+  next
+  if Found = 255 then
+    play sound SndBad
+    goto player_loop
+  end if
+  ClearDots
+  HideSprites
+  M = Cur
+  V = Sel
+  W = M
+  MovePiece
+  ' a jump: the piece in between is taken
+  V = Sel - M
+  if M > Sel then V = M - Sel
+  if V > 11 then
+    V = Sel + M
+    V = V >> 1
+    Q[V] = 0
+    Cell = V
+    DrawSquare
+    inc Hu
+    ShowPanel
+    play sound SndTake
+    V = random(0, 9)
+    if V < 3 then
+      Message
+      print at 2,22, "GOOD MOVE"
+    end if
+    if V > 6 then
+      Message
+      print at 2,22, "GOT ME!"
+    end if
+    if Hu = 12 then goto you_won
+    ' crowned: the turn ends
+    Kind = Q[M]
+    Crown
+    if Q[M] <> Kind then goto player_done
+    ' another jump?
+    Sel = M
+    A = M
+    PieceMoves
+    V = 0
+    for I = 1 to Ns
+      J = I - 1
+      if Sl[J] = 1 then V = 1
+    next
+    if V = 1 then
+      Chain = 1
+      ShowDots
+      Message
+      print at 2,21, "JUMP AGAIN, OR RIGHT BUTTON"
+      print at 2,22, "TO END YOUR TURN"
+      goto player_loop
+    end if
+  end if
+player_done:
+  Mode = 0
+  ClearDots
+  HideSprites
+  Message
+  Crown
+  ShowPanel
+  if Hu = 12 then goto you_won
+  Kind = 1
+  AnyMove
+  if Moves = 0 then goto you_won
+  goto computer_turn
+
+you_won:
+  Message
+  print at 2,22, "YOU HAVE WON"
+  play sound SndWin
+  goto game_end
+i_won:
+  Message
+  print at 2,22, "I HAVE WON"
+  play sound SndLose
+game_end:
+  Mode = 2
+  HideSprites
+  print at 2,21, "THANKS FOR THE GAME"
+  Rearm
+  wait 120 frames
+  pause until press
+  wait no fire
+  nmi off
+  Mode = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' Rules
+
+sub NewGame:
+  for I = 0 to 99
+    Q[I] = 255
+  next
+  for I = 1 to 8
+    for J = 1 to 8
+      V = I + J
+      V = V & 1
+      if V = 0 then
+        K = I * 10
+        K = K + J
+        Q[K] = 0
+        if I <= 3 then Q[K] = 3
+        if I >= 6 then Q[K] = 1
+      end if
+    next
+  next
+  Co = 0
+  Hu = 0
+  Cur = 33
+  return
+end sub
+
+' the directions: down-left, down-right (red's way), up-left, up-right
+data Dirs bytes 245, 247, 9, 11
+
+' Range: D0, D1 = the directions piece Pc may use
+sub Range:
+  D0 = 0
+  D1 = 3
+  if Pc = 1 then D1 = 1
+  if Pc = 3 then D0 = 2
+  return
+end sub
+
+' Enemy: Ok = 1 when the piece V belongs to the other side of Pc
+sub Enemy:
+  Ok = 0
+  if V = 0 then return
+  if V = 255 then return
+  if Pc <= 2 then
+    if V >= 3 then Ok = 1
+  else
+    if V <= 2 then Ok = 1
+  end if
+  return
+end sub
+
+' PieceMoves: the moves of the piece on A: Sd = squares, Sl = 1 for a jump
+sub PieceMoves:
+  Ns = 0
+  Pc = Q[A]
+  Range
+  for Dd = D0 to D1
+    W = Dirs[Dd]
+    M = A + W
+    V = Q[M]
+    if V = 0 then
+      if Chain = 0 then
+        Sd[Ns] = M
+        Sl[Ns] = 0
+        inc Ns
+      end if
+    else
+      Enemy
+      if Ok = 1 then
+        L = M + W
+        if Q[L] = 0 then
+          Sd[Ns] = L
+          Sl[Ns] = 1
+          inc Ns
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' AnyMove: Moves = how many pieces of side Kind (1 red, 3 white) can move
+sub AnyMove:
+  Moves = 0
+  Chain = 0
+  for Ai = 11 to 88
+    V = Q[Ai]
+    W = 0
+    if Kind = 1 then
+      if V = 1 then W = 1
+      if V = 2 then W = 1
+    else
+      if V = 3 then W = 1
+      if V = 4 then W = 1
+    end if
+    if W = 1 then
+      A = Ai
+      PieceMoves
+      if Ns > 0 then inc Moves
+    end if
+  next
+  return
+end sub
+
+' Crown: men on the far rows become kings
+sub Crown:
+  for I = 11 to 18
+    if Q[I] = 1 then
+      Q[I] = 2
+      Cell = I
+      DrawSquare
+      play sound SndCrown
+    end if
+  next
+  for I = 81 to 88
+    if Q[I] = 3 then
+      Q[I] = 4
+      Cell = I
+      DrawSquare
+      play sound SndCrown
+    end if
+  next
+  return
+end sub
+
+' SafeAt: Safe = 1 when a red piece moved from A to M cannot be taken
+sub SafeAt:
+  Safe = 1
+  ' look from M along each direction: a white piece next to it that
+  ' could jump over it into an empty square behind (A counts as empty)
+  for Dd = 0 to 3
+    W = Dirs[Dd]
+    X = M + W
+    V = Q[X]
+    if V >= 3 then
+      if V <= 4 then
+        ' that white piece would jump the other way
+        Y = M - W
+        K = Q[Y]
+        if Y = A then K = 0
+        if K = 0 then
+          ' a white man only jumps upward: from X to Y, Y must be higher
+          if V = 4 then Safe = 0
+          if V = 3 then
+            if Y > X then Safe = 0
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ComputerMove: the book's way (Ok = 0: no move, it concedes)
+sub ComputerMove:
+  Ok = 1
+  Chain = 0
+  Ns = 0
+  ' captures first, from the top of the board down
+  Bi = 88
+cm_scan:
+  V = Q[Bi]
+  if V = 1 then goto cm_piece
+  if V = 2 then goto cm_piece
+  goto cm_next
+cm_piece:
+  A = Bi
+  Pc = Q[A]
+  Range
+  for Dd = D0 to D1
+    W = Dirs[Dd]
+    M = A + W
+    V = Q[M]
+    Enemy
+    if Ok = 1 then
+      L = M + W
+      if Q[L] = 0 then goto cm_jump
+    end if
+    Ok = 1
+  next
+cm_next:
+  dec Bi
+  if Bi >= 11 then goto cm_scan
+  ' crowning: a man on the second row with an empty square ahead
+  for Bi = 21 to 28
+    if Q[Bi] = 1 then
+      for Dd = 0 to 1
+        W = Dirs[Dd]
+        M = Bi + W
+        if Q[M] = 0 then
+          A = Bi
+          goto cm_go
+        end if
+      next
+    end if
+  next
+  ' safe moves, chosen at random
+  Ns = 0
+  for Bi = 11 to 88
+    V = Q[Bi]
+    W = 0
+    if V = 1 then W = 1
+    if V = 2 then W = 1
+    if W = 1 then
+      A = Bi
+      Pc = V
+      Range
+      for Dd = D0 to D1
+        W = Dirs[Dd]
+        M = A + W
+        if Q[M] = 0 then
+          SafeAt
+          if Safe = 1 then
+            if Ns < 12 then
+              Sl[Ns] = A
+              Sd[Ns] = M
+              inc Ns
+            end if
+          end if
+        end if
+      next
+    end if
+  next
+  if Ns > 0 then
+    V = Ns - 1
+    V = random(0, V)
+    A = Sl[V]
+    M = Sd[V]
+    goto cm_go
+  end if
+  ' any move at all, tried at random as the book did
+  for Tries = 1 to 250
+    V = random(11, 88)
+    W = Q[V]
+    K = 0
+    if W = 1 then K = 1
+    if W = 2 then K = 1
+    if K = 1 then
+      A = V
+      Pc = W
+      Range
+      for Dd = D0 to D1
+        W = Dirs[Dd]
+        M = A + W
+        if Q[M] = 0 then goto cm_go
+      next
+    end if
+  next
+  Ok = 0
+  return
+cm_go:
+  V = A
+  W = M
+  MovePiece
+  return
+cm_jump:
+  ' jump, and keep jumping while it can
+  V = A
+  W = L
+  MovePiece
+  Q[M] = 0
+  Cell = M
+  DrawSquare
+  inc Co
+  play sound SndTake
+  ShowPanel
+  if Co = 12 then return
+  A = L
+  Pc = Q[A]
+  ' a man crowned by the jump stops there
+  if Pc = 1 then
+    if A < 19 then return
+  end if
+  Range
+  for Dd = D0 to D1
+    W = Dirs[Dd]
+    M = A + W
+    V = Q[M]
+    Enemy
+    if Ok = 1 then
+      L = M + W
+      if Q[L] = 0 then goto cm_jump
+    end if
+    Ok = 1
+  next
+  return
+end sub
+
+' MovePiece: the piece on V slides to W (Q updated, both squares redrawn)
+sub MovePiece:
+  Fr = V
+  Dest = W
+  Kind = Q[V]
+  Q[V] = 0
+  Cell = V
+  DrawSquare
+  ' a sprite carries it across
+  Cell = V
+  SquareXY
+  Sx = X
+  Sy = Y
+  Cell = Dest
+  SquareXY
+  Tx = X
+  Ty = Y
+  K = 8
+  if Kind >= 3 then K = 15
+  for J = 1 to 8
+    if Sx < Tx then Sx = Sx + 2
+    if Sx > Tx then Sx = Sx - 2
+    if Sy < Ty then Sy = Sy + 2
+    if Sy > Ty then Sy = Sy - 2
+    set sprite 1 to Sy, Sx, SPiece, K
+    update sprites
+    Frame1
+  next
+  set sprite 1 to 192, 0, 0, 0
+  update sprites
+  Q[Dest] = Kind
+  Cell = Dest
+  DrawSquare
+  play sound SndPlace
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Drawing
+
+' SquareXY: X, Y = the sprite position of square Cell
+sub SquareXY:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  X = X * 16
+  X = X + 8
+  V = 9 - Y
+  Y = V * 16
+  Y = Y + 15
+  return
+end sub
+
+' DrawSquare: square Cell as it is now
+sub DrawSquare:
+  Y = Cell / 10
+  X = Y * 10
+  X = Cell - X
+  V = Q[Cell]
+  W = TDarka
+  if V = 255 then W = TLighta
+  if V = 1 then W = TCmana
+  if V = 2 then W = TCkinga
+  if V = 3 then W = THmana
+  if V = 4 then W = THkinga
+  DrawQuad
+  return
+end sub
+
+' DrawQuad: the 2 x 2 tiles from W for square X (column), Y (row)
+sub DrawQuad:
+  X = X * 2
+  X = X + 1
+  V = 9 - Y
+  Y = V * 2
+  Y = Y + 2
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  inc W
+  dec X
+  inc Y
+  put char W at X,Y
+  inc W
+  inc X
+  put char W at X,Y
+  return
+end sub
+
+sub ShowDots:
+  for I = 1 to Ns
+    J = I - 1
+    Cell = Sd[J]
+    Y = Cell / 10
+    X = Y * 10
+    X = Cell - X
+    W = TDota
+    DrawQuad
+  next
+  return
+end sub
+
+sub ClearDots:
+  for Ai = 11 to 88
+    if Q[Ai] = 0 then
+      Cell = Ai
+      DrawSquare
+    end if
+  next
+  return
+end sub
+
+sub DrawBoard:
+  put char TFtl at 2,3
+  fill TFt count 16 at 3,3
+  put char TFtr at 19,3
+  for Y = 4 to 19
+    put char TFl at 2,Y
+    put char TFr at 19,Y
+  next
+  put char TFbl at 2,20
+  fill TFt count 16 at 3,20
+  put char TFbr at 19,20
+  for I = 1 to 8
+    for J = 1 to 8
+      Cell = I * 10
+      Cell = Cell + J
+      DrawSquare
+    next
+  next
+  return
+end sub
+
+sub ShowPanel:
+  print at 21,4, "ME"
+  ' the piece pictures
+  put char TCmana at 21,5
+  put char TCmanb at 22,5
+  put char TCmanc at 21,6
+  put char TCmand at 22,6
+  print at 24,5, "TAKEN"
+  NumU = Co
+  print at 24,6, digits$(NumU, 2)
+  print at 21,10, "YOU"
+  put char THmana at 21,11
+  put char THmanb at 22,11
+  put char THmanc at 21,12
+  put char THmand at 22,12
+  print at 24,11, "TAKEN"
+  NumU = Hu
+  print at 24,12, digits$(NumU, 2)
+  return
+end sub
+
+sub DrawCursor:
+  Cell = Cur
+  SquareXY
+  V = Tick & 8
+  W = 11
+  if V > 0 then W = 10
+  if Sel <> 0 then W = 9
+  set sprite 0 to Y, X, SCursor, W
+  update sprites
+  return
+end sub
+
+' the cursor moves on the playing squares, diagonally neighbouring
+sub MoveCursor:
+  if Stick = 0 then return
+  Y = Cur / 10
+  X = Y * 10
+  X = Cur - X
+  if Lf1 = 1 then
+    if X > 1 then dec X
+  end if
+  if Rt1 = 1 then
+    if X < 8 then inc X
+  end if
+  if Up1 = 1 then
+    if Y < 8 then inc Y
+  end if
+  if Dn1 = 1 then
+    if Y > 1 then dec Y
+  end if
+  Cur = Y * 10
+  Cur = Cur + X
+  play sound SndMove
+  return
+end sub
+
+sub Message:
+  fill 32 count 28 at 2,21
+  fill 32 count 28 at 2,22
+  return
+end sub
+
+sub ConcedeMenu:
+  Menu = 0
+cc_draw:
+  Message
+  print at 2,21, "CONCEDE THE GAME?"
+  print at 4,22, "NO"
+  print at 10,22, "YES"
+  V = Menu * 6
+  V = V + 3
+  print at V,22, ">"
+cc_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Rt1 = 1 then Menu = 1
+    if Lf1 = 1 then Menu = 0
+    play sound SndMove
+    goto cc_draw
+  end if
+  if Press = 0 then goto cc_loop
+  return
+end sub
+
+sub BoardScreen:
+  NewScreen
+  print at 2,1, "CHECKERS"
+  DrawBoard
+  ShowPanel
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frame, controls, screens
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+sub Pause20:
+  for J = 1 to 20
+    Frame1
+  next
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  Btn2 = 0
+  if joypad(1).up then Up1 = 1
+  if joypad(2).up then Up1 = 1
+  if joypad(1).down then Dn1 = 1
+  if joypad(2).down then Dn1 = 1
+  if joypad(1).left then Lf1 = 1
+  if joypad(2).left then Lf1 = 1
+  if joypad(1).right then Rt1 = 1
+  if joypad(2).right then Rt1 = 1
+  if joypad(1).button1 then Btn = 1
+  if joypad(2).button1 then Btn = 1
+  if joypad(1).button2 then Btn2 = 1
+  if joypad(2).button2 then Btn2 = 1
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  Press2 = 0
+  if Btn2 = 1 then
+    if WasBtn2 = 0 then Press2 = 1
+  end if
+  WasBtn2 = Btn2
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 15
+    else
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 6
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  sprites stable 0 to 1
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 10,2, "CHECKERS"
+  ' a corner of the board with a red king and a white king
+  for I = 6 to 8
+    for J = 3 to 6
+      Cell = I * 10
+      Cell = Cell + J
+      V = I + J
+      V = V & 1
+      Q[Cell] = 255
+      if V = 0 then Q[Cell] = 0
+      DrawSquare
+    next
+  next
+  Q[64] = 2
+  Cell = 64
+  DrawSquare
+  Q[75] = 4
+  Cell = 75
+  DrawSquare
+  print at 9,14, "PLAY"
+  print at 9,15, "HOW TO PLAY"
+  print at 9,16, "CREDITS"
+  print at 5,21, "FROM TIM HARTNELL'S GIANT"
+  print at 5,22, "BOOK OF COMPUTER GAMES"
+  ShowScreen
+  Menu = 0
+  play sound SndTuneA
+  play sound SndTuneB
+  WasBtn = 1
+title_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Up1 = 1 then
+      if Menu > 0 then dec Menu
+    end if
+    if Dn1 = 1 then
+      if Menu < 2 then inc Menu
+    end if
+    play sound SndMove
+  end if
+  print at 7,14, " "
+  print at 7,15, " "
+  print at 7,16, " "
+  Y = Menu + 14
+  print at 7,Y, ">"
+  if Press = 0 then goto title_loop
+  mute all
+  return
+end sub
+
+sub RulesPage:
+  NewScreen
+  print at 9,1, "HOW TO PLAY"
+  print at 2,3, "YOU ARE WHITE AND PLAY UP"
+  print at 2,4, "THE BOARD. PIECES MOVE ONE"
+  print at 2,5, "SQUARE DIAGONALLY FORWARD,"
+  print at 2,6, "AND TAKE BY JUMPING OVER A"
+  print at 2,7, "PIECE INTO THE EMPTY SQUARE"
+  print at 2,8, "BEHIND. JUMPS MAY FOLLOW."
+  print at 2,10, "ON THE FAR ROW A PIECE IS"
+  print at 2,11, "CROWNED KING: IT MOVES BACK"
+  print at 2,12, "AS WELL."
+  print at 2,14, "TAKE ALL TWELVE, OR LEAVE"
+  print at 2,15, "NO MOVE, TO WIN."
+  print at 2,17, "LEFT BUTTON: PICK A PIECE,"
+  print at 2,18, "THEN ITS SQUARE. RIGHT:"
+  print at 2,19, "END A JUMP, OR CONCEDE."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+sub EditorialPage:
+  NewScreen
+  print at 10,1, "CHECKERS"
+  print at 2,3, "FROM TIM HARTNELL'S GIANT"
+  print at 2,4, "BOOK OF COMPUTER GAMES"
+  print at 2,5, "(BALLANTINE BOOKS, 1984;"
+  print at 2,6, "INTERFACE PUBLICATIONS,"
+  print at 2,7, "1983)."
+  print at 2,9, "THE COMPUTER PLAYS AS THE"
+  print at 2,10, "BOOK'S PROGRAM DOES."
+  print at 2,12, "NEW MUSIC: KINGS ROW."
+  print at 2,14, "COLECOVISION VERSION BY"
+  print at 2,15, "AMY BIENVENU, 2026."
+  print at 8,22, "PRESS A BUTTON"
+  ShowScreen
+  Rearm
+  wait no fire
+  pause until press
+  wait no fire
+  nmi off
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$F0,$E0,$C1,$C4,$C0,$88
+  $00,$80,$F0,$07,$83,$23,$03,$11
+  $88,$C0,$C4,$C1,$E0,$F0,$01,$00
+  $11,$03,$23,$83,$07,$F0,$80,$00
+  $00,$01,$F0,$E0,$C0,$C0,$C4,$86
+  $00,$80,$F0,$07,$03,$03,$93,$26
+  $87,$38,$C0,$C0,$E0,$F0,$01,$00
+  $06,$04,$03,$03,$07,$F0,$80,$00
+  $00,$01,$F0,$E0,$C1,$C4,$C0,$88
+  $00,$80,$F0,$07,$83,$23,$03,$11
+  $88,$C0,$C4,$C1,$E0,$F0,$01,$00
+  $11,$03,$23,$83,$07,$F0,$80,$00
+  $00,$01,$F0,$E0,$C0,$C0,$C4,$86
+  $00,$80,$F0,$07,$03,$03,$93,$26
+  $87,$38,$C0,$C0,$E0,$F0,$01,$00
+  $06,$04,$03,$03,$07,$F0,$80,$00
+  $00,$00,$00,$00,$00,$00,$03,$03
+  $00,$00,$00,$00,$00,$00,$C0,$C0
+  $03,$03,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$38,$38
+  $00,$00,$03,$03,$03,$03,$1C,$1C
+  $38,$38,$C0,$C0,$C0,$C0,$00,$00
+  $1C,$1C,$03,$03,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $38,$38,$38,$38,$38,$38,$38,$38
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+end data
+data TileCol bytes
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $0C,$8C,$C8,$C8,$C8,$C8,$C8,$C8
+  $0C,$8C,$8C,$C8,$C8,$C8,$C8,$C8
+  $C8,$C8,$C8,$C8,$C8,$C8,$8C,$0C
+  $C8,$C8,$C8,$C8,$C8,$8C,$8C,$0C
+  $0C,$8C,$C8,$C8,$C8,$C8,$C8,$C8
+  $0C,$8C,$8C,$C8,$C8,$C8,$C8,$8C
+  $C8,$8C,$C8,$C8,$C8,$C8,$8C,$0C
+  $8C,$8C,$C8,$C8,$C8,$8C,$8C,$0C
+  $0C,$FC,$CF,$CF,$CF,$CF,$CF,$CF
+  $0C,$FC,$FC,$CF,$CF,$CF,$CF,$CF
+  $CF,$CF,$CF,$CF,$CF,$CF,$FC,$0C
+  $CF,$CF,$CF,$CF,$CF,$FC,$FC,$0C
+  $0C,$FC,$CF,$CF,$CF,$CF,$CF,$CF
+  $0C,$FC,$FC,$CF,$CF,$CF,$CF,$FC
+  $CF,$FC,$CF,$CF,$CF,$CF,$FC,$0C
+  $FC,$FC,$CF,$CF,$CF,$FC,$FC,$0C
+  $0C,$0C,$0C,$0C,$0C,$0C,$BC,$BC
+  $0C,$0C,$0C,$0C,$0C,$0C,$BC,$BC
+  $BC,$BC,$0C,$0C,$0C,$0C,$0C,$0C
+  $BC,$BC,$0C,$0C,$0C,$0C,$0C,$0C
+  $06,$06,$6A,$6A,$6A,$6A,$A6,$A6
+  $06,$06,$6A,$6A,$6A,$6A,$A6,$A6
+  $A6,$A6,$6A,$6A,$6A,$6A,$06,$06
+  $A6,$A6,$6A,$6A,$6A,$6A,$06,$06
+  $06,$06,$0A,$0A,$0A,$0A,$06,$06
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+  $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+end data
+data SpritePat bytes
+  $FF,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$FF
+  $FF,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$FF
+  $00,$01,$0F,$1F,$3F,$3F,$3F,$7F,$7F,$3F,$3F,$3F,$1F,$0F,$01,$00
+  $00,$80,$F0,$F8,$FC,$FC,$FC,$FE,$FE,$FC,$FC,$FC,$F8,$F0,$80,$00
+end data
+
+asm {
+CkMove:
+    db $40,$40,$60,$01,$50
+CkPick:
+    db $40,$6B,$30,$01,$40,$47,$50,$01,$50
+CkBack:
+    db $40,$47,$40,$01,$40,$6B,$60,$01,$50
+CkPlace:
+    db $00,$00,$23,$01,$00,$00,$55,$02,$10
+CkTake:
+    db $00,$00,$24,$02,$00,$00,$46,$03,$00,$00,$67,$04,$10
+CkCrown:
+    db $40,$8F,$20,$03,$40,$8F,$F0,$01,$40,$71,$20,$03,$40,$71,$F0,$01,$40,$5F,$20,$03,$40,$5F,$F0,$01
+    db $40,$47,$20,$09,$40,$47,$F0,$01,$50
+CkBad:
+    db $00,$00,$36,$04,$00,$00,$67,$06,$10
+CkWin:
+    db $40,$D6,$20,$04,$40,$D6,$F0,$01,$40,$AA,$20,$04,$40,$AA,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01
+    db $40,$6B,$20,$05,$40,$6B,$F0,$01,$40,$8F,$20,$04,$40,$8F,$F0,$01,$40,$6B,$20,$05,$40,$6B,$F0,$01
+    db $40,$55,$20,$17,$40,$55,$F0,$01,$50
+CkLose:
+    db $40,$1D,$21,$09,$40,$1D,$F1,$01,$40,$41,$21,$09,$40,$41,$F1,$01,$40,$53,$21,$09,$40,$53,$F1,$01
+    db $40,$AB,$21,$19,$40,$AB,$F1,$01,$50
+
+CkSoundTable:
+    dw CkMove,$702B
+    dw CkPick,$7035
+    dw CkBack,$7035
+    dw CkPlace,$702B
+    dw CkTake,$702B
+    dw CkCrown,$7035
+    dw CkBad,$702B
+    dw CkWin,$7035
+    dw CkLose,$7035
+    dw CkTuneMel,$703F
+    dw CkTuneBass,$7049
+; Kings Row, G major (original for this game)
+; Tiny Sound, 8 frames per step
+CkTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$26,$01,$2A,$2D,$01,$2A,$2B,$28,$01,$25,$28,$2D
+    db $01,$2B,$2A,$28,$26,$01,$2A,$2D,$01,$32,$31,$2F,$2D,$2B,$28,$25
+    db $26,$01,$01,$01
+    db $FF
+CkTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0E,$09,$0E,$09,$0E,$09,$04,$09,$09,$10,$09,$10
+    db $09,$10,$0D,$10,$0E,$09,$0E,$09,$0B,$12,$07,$0E,$09,$10,$09,$0D
+    db $0E,$09,$0E,$01
+    db $FF
+}

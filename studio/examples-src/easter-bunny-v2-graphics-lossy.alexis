@@ -1,0 +1,156 @@
+project "Old Devkit Bunny v2"
+memory "colecovision_legacy_sdcc"
+
+asset BunnyNameRle from "@project/bunny.name.mdkrle" codec mdkrle
+asset BunnyPatternRle from "@project/bunny.pattern.mdkrle" codec mdkrle
+asset BunnyColorRle from "@project/bunny.color.mdkrle" codec mdkrle
+
+' Player position and velocity.
+u8 Bunny_PlayerX = 0
+u8 Bunny_PlayerY = 0
+i8 Bunny_PlayerVy = 0
+ufixed Bunny_PlayerXW = 0
+ufixed Bunny_PlayerYW = 0
+fixed Bunny_PlayerVXW = 0
+fixed Bunny_PlayerVYW = 0
+
+' Player animation and title-state timing.
+u8 Bunny_PlayerState = 0
+u8 Bunny_PlayerSpeed = 128
+u8 Bunny_OldJoy = 0
+u8 Bunny_SmokeFrame = 0
+u8 Bunny_SmokeY = 240
+u8 Bunny_Speed = 2
+u8 Bunny_TitleColorOffset = 0
+u8 Bunny_TitleSrcOffset = 0
+u8 Bunny_TitleRepeat = 0
+u16 Bunny_TitleVramOffset = 0
+
+' Level/session state.
+u8 Bunny_LevelNum = 0
+u8 Bunny_EggsLeft = 0
+u8 Bunny_BirdKill = 0
+u8 Bunny_StartX = 96
+u8 Bunny_StartY = 112
+
+' Level decode and collision scratch.
+u8 Bunny_Item = 32
+u8 Bunny_DL_Count = 0
+u16 Bunny_DL_Ptr = 0
+u8 Bunny_DL_Y = 0
+u8 Bunny_DL_X = 0
+u8 Bunny_CF_CY = 0
+u8 Bunny_CE_Row = 0
+u8 Bunny_CE_Col = 0
+
+' Easter Bunny v2 is a cleanup boundary, not a completed rewrite yet.
+' The visible listing now uses Amy language for the project setup and keeps
+' the remaining original sound/music/level data as project files.
+' Next real porting step: replace the helper calls below with Amy routines one subsystem at a time.
+
+sub start:
+  tile screen
+  sprites 8x8
+  sprites simple
+  set sound table BunnySoundTable areas 7
+  call asm Bunny_StartNearOriginal
+  loop forever
+end sub
+
+' Initial title/test sprite layout, expressed with Amy sprite commands.
+sub Bunny_InitTestSprites:
+  set sprite 0 to 120,96,2,14
+  set sprite 1 to 120,96,3,15
+  set sprite 2 to 112,96,0,14
+  set sprite 3 to 112,96,1,13
+  set sprite 4 to 208,0,38,15
+  set sprite 5 to 40,128,44,15
+  return
+
+' Bird starts offscreen-ish and then chases the player during gameplay.
+sub Bunny_InitBird:
+  set sprite 5 to 0,128,44,15
+  return
+
+' Title state initialization now lives in Amy and calls the sprite setup sub above.
+sub Bunny_InitTitleState:
+  Bunny_PlayerX = 96
+  Bunny_PlayerY = 112
+  Bunny_PlayerVy = 0
+  Bunny_PlayerVXW = 0
+  Bunny_PlayerVYW = 0
+  Bunny_PlayerXW = 96
+  Bunny_PlayerYW = 112
+  Bunny_PlayerState = 0
+  Bunny_OldJoy = 0
+  Bunny_SmokeFrame = 0
+  Bunny_Speed = 2
+  Bunny_PlayerSpeed = 128
+  Bunny_TitleColorOffset = 0
+  Bunny_InitTestSprites
+  set sprite 4 to 208,0,38,15
+  set sprite 5 to 208,128,44,15
+  update sprites
+  return
+
+' Sprite reset is now native Amy code.
+sub Bunny_ResetSprites:
+  clear sprites
+  set sprite count 6
+  return
+
+' Keep the byte mirrors synchronized from the 8.8 fixed-position words.
+sub Bunny_SyncPlayerCoords:
+  Bunny_PlayerX = Bunny_PlayerXW
+  Bunny_PlayerY = Bunny_PlayerYW
+  Bunny_PlayerVy = whole Bunny_PlayerVYW
+  return
+
+' First real Bunny v2 rewrite slice: this helper is now Amy code, not bridge ASM.
+sub Bunny_InitPlayerFromStart:
+  Bunny_PlayerVXW = 0
+  Bunny_PlayerVYW = 0
+  Bunny_PlayerState = 0
+  Bunny_PlayerSpeed = 128
+  Bunny_PlayerX = Bunny_StartX
+  Bunny_PlayerXW = Bunny_StartX
+  Bunny_PlayerY = Bunny_StartY
+  Bunny_PlayerYW = Bunny_StartY
+  Bunny_PlayerVy = 0
+  Bunny_SmokeFrame = 4
+  return
+
+
+' Player colors, smoke start, and sprite-state update now live in Amy.
+sub Bunny_PlayerColor:
+  set sprite 0 color to 14
+  set sprite 2 color to 14
+  set sprite 1 color to 15
+  set sprite 3 color to 13
+  return
+
+sub Bunny_StartSmoke:
+  Bunny_SmokeFrame = 0
+  Bunny_SmokeY = Bunny_PlayerY + 2
+  set sprite 4 x to Bunny_PlayerX
+  set sprite 4 y to Bunny_SmokeY
+  set sprite 4 pattern to 38
+  set sprite 4 color to 15
+  return
+
+sub Bunny_UpdateSpritesFromState:
+  set sprites 0,1 y to Bunny_PlayerY
+  set sprites 2,3 y to Bunny_PlayerY - 8
+  set sprites 0,1,2,3 x to Bunny_PlayerX
+  if Bunny_SmokeFrame < 4 then
+    Bunny_SmokeY -= 4
+    set sprite 4 y to Bunny_SmokeY
+    set sprite 4 x to Bunny_PlayerX
+    set sprite 4 pattern to Bunny_SmokeFrame + 38
+    Bunny_SmokeFrame += 1
+  else
+    set sprite 4 y to 240
+  end if
+  return
+
+include asm "@project/bunny_legacy_engine.inc"

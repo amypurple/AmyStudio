@@ -1,0 +1,373 @@
+cartridge "XB TO AMY/DEMO OF TI EXTENDED BASIC FORMS/2026"
+
+' XB TO AMY - one demo per TI Extended BASIC situation found on the
+' Moonbeam disk (MOONBEAM, MOONVASN, STRIKE99, DETHDRON, ROBOTRUN, ZEROZONE,
+' ASTROMAN, CAVNQEST, GARBELLY, DESERTRK). The matching BASIC program is
+' xb-to-amy-demo.xb; the report is xb-to-amy-report.md. Each section is
+' numbered like the report (S1, S2 ...).
+'
+' What the demo does: a title made from a string table (S8), a message
+' window that scrolls like PRINT (S13), five enemy sprites in automatic
+' motion (S1) that bounce off the edges, a joystick ship (S4), a shot
+' that uses CALL DISTANCE (S3) and the hardware collision flag (S2),
+' a SUB with output parameters (S6), ON ... GOTO on an array element (S10),
+' a signed MAX(MIN()) expression (S11), a score with USING (S12) and the
+' sound of a three-voice CALL SOUND (S14). Fire shoots; keypad * restarts
+' (RUN, S16).
+
+const ShipSlot = 0
+const ShotSlot = 1
+const FirstEnemy = 2
+const Enemies = 5
+const SndShotA = 1
+const SndShotB = 2
+const SndShotC = 3
+const SndBeep = 4
+
+' S1: CALL SPRITE / CALL MOTION -> position and velocity per sprite, 8.8
+u16 EY[Enemies]
+u16 EX[Enemies]
+i16 VY[Enemies]
+i16 VX[Enemies]
+bool Alive[Enemies]
+u16 SY16 = 0                   ' the shot
+i16 SVY = 0
+bool ShotOn = false
+u8 ShipX = 120                 ' S4: CALL POSITION / CALL LOCATE
+u8 ShipY = 160
+u16 Score = 0
+u16 HighScore = 0              ' S15: kept in RAM (MOONVASN wrote it to disk)
+u8 Kills = 0
+u8 I = 0
+u8 N = 0
+u8 X = 0
+u8 Y = 0
+u8 R = 0
+u8 C = 0
+u8 Line = 0
+u8 Choice = 0
+u8 Kind[Enemies]               ' S9 / S10: XB DIM K(4) has 5 elements, 0-4
+u16 T16 = 0
+i16 DX = 0
+i16 DY = 0
+u16 Dist = 0
+i16 SX = 0
+bool Hit = false
+
+  text screen
+  set sound table DemoSoundTable areas 4
+  sprites 16x16
+  copy DemoSprites count 96 to vram.spr_pat
+  set text colors white count 32
+  backdrop black
+
+restart:
+  ' S16: RUN -> jump back to the start, clearing what RUN would clear
+  nmi on
+  HideAll
+  cls
+  Score = 0
+  Kills = 0
+  ' S8: string array printed from a table of addresses and lengths
+  for I = 0 to 2
+    N = TitleLen[I]
+    Y = I + 3
+    put Titles[I] count N at 4,Y
+  next
+  screen on
+  ' S13: PRINT scrolls the whole screen; here a 4-line window scrolls
+  ScrollWindow(@L1)
+  wait 30 frames
+  ScrollWindow(@L2)
+  wait 30 frames
+  ScrollWindow(@L3)
+  wait 30 frames
+  ScrollWindow(@L4)
+  wait 30 frames
+  ' S1: five enemies with their own motion
+  for I = 0 to 4
+    Alive[I] = true
+    Kind[I] = random(1, 2)
+    N = random(20, 220)
+    EX[I] = N << 8
+    N = I * 16
+    N += 24
+    EY[I] = N << 8
+    VX[I] = random(0, 255)
+    VX[I] -= 128
+    VY[I] = random(0, 63)
+    VY[I] -= 32
+  next
+  ShipX = 120
+  ShipY = 160
+  ShotOn = false
+
+main_loop:
+  nmi on
+  wait
+  nmi off
+  ReadStick
+  MoveEnemies
+  MoveShot
+  update sprites
+  ' S2: CALL COINC(ALL,Q) :: IF Q THEN ...
+  if any collision then
+    if ShotOn then CheckShot
+  end if
+  ' S5: CALL GCHAR -> get char at (the ship stops at a wall)
+  C = get char at 2,22
+  ' S16: RUN from keypad *
+  Choice = keypad(1)
+  if Choice = 10 then goto restart
+  if Kills = Enemies then goto restart
+  goto main_loop
+
+' ---------------------------------------------------------------------------
+
+' S4: CALL JOYST(1,X,Y) with Y up = +4, then CALL LOCATE
+sub ReadStick:
+  if joypad(1).left then
+    if ShipX > 16 then ShipX -= 2
+  end if
+  if joypad(1).right then
+    if ShipX < 224 then ShipX += 2
+  end if
+  set sprite ShipSlot to ShipY,ShipX,0,15
+  if joypad(1).fire then
+    if not ShotOn then
+      ShotOn = true
+      N = ShipY - 8
+      SY16 = N << 8
+      SVY = -1024
+      play sounds SndShotA, SndShotB, SndShotC
+    end if
+  end if
+  return
+end sub
+
+' S1: CALL MOTION, plus a bounce at the CRT-safe edges
+sub MoveEnemies:
+  for I = 0 to 4
+    if Alive[I] then
+      EX[I] += VX[I]
+      T16 = EX[I] >> 8
+      X = T16
+      if X < 16 then
+        VX[I] = 0 - VX[I]
+        EX[I] = 16 << 8
+      end if
+      if X > 224 then
+        VX[I] = 0 - VX[I]
+        EX[I] = 224 << 8
+      end if
+      EY[I] += VY[I]
+      T16 = EY[I] >> 8
+      Y = T16
+      if Y < 16 then
+        VY[I] = 0 - VY[I]
+        EY[I] = 16 << 8
+      end if
+      if Y > 120 then
+        VY[I] = 0 - VY[I]
+        EY[I] = 120 << 8
+      end if
+      T16 = EX[I] >> 8
+      X = T16
+      T16 = EY[I] >> 8
+      Y = T16
+      N = I + FirstEnemy
+      ' S10: ON K(I) GOTO -> a pattern per kind
+      R = Kind[I]
+      on R goto kind1, kind2
+kind1:
+      set sprite N to Y,X,1,10
+      goto kind_done
+kind2:
+      set sprite N to Y,X,2,13
+kind_done:
+    end if
+  next
+  return
+end sub
+
+sub MoveShot:
+  if not ShotOn then
+    hide sprite ShotSlot
+    return
+  end if
+  SY16 += SVY
+  T16 = SY16 >> 8
+  Y = T16
+  if Y < 8 then
+    ShotOn = false
+    hide sprite ShotSlot
+    return
+  end if
+  if Y > 200 then
+    ShotOn = false
+    hide sprite ShotSlot
+    return
+  end if
+  set sprite ShotSlot to Y,ShipX,0,11
+  return
+end sub
+
+' S3: CALL DISTANCE(#1,#2,D) returns dx*dx + dy*dy
+sub CheckShot:
+  T16 = SY16 >> 8
+  for I = 0 to 4
+    if Alive[I] then
+      DX = ShipX
+      T16 = EX[I] >> 8
+      DX -= T16
+      T16 = SY16 >> 8
+      DY = T16
+      T16 = EY[I] >> 8
+      DY -= T16
+      ' A u16 sum of squares wraps past 65535 (XB used real numbers):
+      ' reject far sprites first
+      Dist = 60000
+      if signed DX > -32 then
+        if signed DX < 32 then
+          if signed DY > -32 then
+            if signed DY < 32 then
+              Dist = DX * DX
+              Dist += DY * DY
+            end if
+          end if
+        end if
+      end if
+      if Dist < 200 then
+        Alive[I] = false
+        N = I + FirstEnemy
+        hide sprite N
+        ShotOn = false
+        inc Kills
+        AddScore(Score, Kills)
+        ShowScore
+        play sound SndBeep
+      end if
+    end if
+  next
+  return
+end sub
+
+' S6: SUB SC(TM,TZ): XB passes simple variables by reference
+sub AddScore(ref u16 Total, u8 Count):
+  Total += 100
+  ' S11: signed operands select signed MIN/MAX comparison semantics.
+  SX = max(-20, min(120 - ShipX, 20))
+  return
+end sub
+
+' S12: DISPLAY AT(1,24)SIZE(5):USING "#####":Score
+sub ShowScore:
+  print Score at 23,0 width 5
+  return
+end sub
+
+' S7/S13: a ROM label address can be passed directly to a u16 parameter.
+' The message window in rows 18-21 scrolls up one line.
+sub ScrollWindow(u16 Address):
+  copy vram.name + 610 count 28 to vram.name + 578
+  copy vram.name + 642 count 28 to vram.name + 610
+  copy vram.name + 674 count 28 to vram.name + 642
+  fill 32 count 28 at 2,21
+  X = 2
+scroll_char:
+  C = peek(Address)
+  if C = 0 then return
+  put char C at X,21
+  inc X
+  Address += 1
+  goto scroll_char
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 7
+  update sprites
+  return
+end sub
+
+' S8: one-line CHARS data, plus address and length tables.
+data T1 chars "XB TO AMY DEMO"
+data T2 chars "MOONBEAM DISK TESTS"
+data T3 chars "FIRE SHOOTS, * RESTARTS"
+data Titles words = @T1, @T2, @T3
+data TitleLen bytes 14,19,23
+
+' S13: zero-ended lines for the scrolling window
+data L1 chars "YOU ARE BEING ATTACKED{0}"
+data L2 chars "BY ALIEN STARFIGHTERS.{0}"
+data L3 chars "USE JOYSTICK #1 TO AIM{0}"
+data L4 chars "PRESS FIRE TO SHOOT.{0}"
+
+' Sprites: ship, enemy A, enemy B (16x16)
+data DemoSprites sprite16
+  ".......XX......."
+  ".......XX......."
+  "......XXXX......"
+  "......XXXX......"
+  ".....XXXXXX....."
+  "....XXXXXXXX...."
+  "...XXXXXXXXXX..."
+  "..XXXX.XX.XXXX.."
+  ".XXXX..XX..XXXX."
+  "XXXX...XX...XXXX"
+  "XXX....XX....XXX"
+  "XX............XX"
+  "................"
+  "................"
+  "................"
+  "................"
+  "....XXXXXXXX...."
+  "..XXXXXXXXXXXX.."
+  ".XXX..XXXX..XXX."
+  "XXXX..XXXX..XXXX"
+  "XXXXXXXXXXXXXXXX"
+  "..XXX......XXX.."
+  ".XX..XX..XX..XX."
+  "XX............XX"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "......XXXX......"
+  "....XXXXXXXX...."
+  "..XXXXXXXXXXXX.."
+  ".XX.XX.XX.XX.XX."
+  "XXXXXXXXXXXXXXXX"
+  "...XXX....XXX..."
+  "....X......X...."
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+asm {
+ShotT1:
+    db $40,$BB,$32,$18,$50
+ShotT2:
+    db $80,$B7,$32,$18,$90
+ShotN:
+    db $00,$00,$37,$18,$10
+BeepT1:
+    db $40,$70,$00,$03,$50
+
+DemoSoundTable:
+    dw ShotT1,$702B
+    dw ShotT2,$703F
+    dw ShotN,$702B
+    dw BeepT1,$7035
+}

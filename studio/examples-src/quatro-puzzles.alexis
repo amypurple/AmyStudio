@@ -1,0 +1,3064 @@
+project "Quatro Puzzles"
+' cartridge "QUATRO/PUZZLES/2026"
+memory "colecovision_legacy_sdcc"
+
+' MULTI-GAME MEMORY MAP
+' 1. Shared variables remain alive while the cartridge runs.
+' 2. ArcadeRam reserves only its largest game-specific record.
+' 3. Entering a game must initialize that game's overlay part before reading it.
+' 4. Phase A exceptions are listed explicitly as permanent RAM below.
+'
+' SOURCE ORGANIZATION
+' A. Shared types and the complete RAM map come first so memory ownership is visible.
+' B. ROM resources follow; they consume no overlay RAM.
+' C. The cartridge title and selector are the only shared executable flow.
+' D. Each game code section names the one ArcadeRam part that it owns.
+
+' SHARED CARTRIDGE STATE
+u8 ArcadeChoice = 0
+
+' SHARED RECORD TYPES USED BY OVERLAY PARTS
+
+
+' GAME-SPECIFIC RAM LAYOUTS
+record ExplosionMemory:
+  i8 Board[64]
+  i8 SimBoard[64]
+  u8 CursorX
+  u8 CursorY
+  u8 OldX
+  u8 OldY
+  i8 FrameValue
+  u8 FrameIndex
+  u8 FrameOffset
+  u8 CellCount
+  u8 Threshold
+  u8 CurrentOwner
+  u8 Exploded
+  u8 OpponentFound
+  u8 CpuTry
+  u8 BestIndex
+  u8 SimET
+  u8 EvalHit
+  i16 EvalScore
+  i16 BestScore
+  u8 Tmp
+  u8 SpriteX
+  u8 SpriteY
+  u8 WinFlag
+end record
+
+record DiamondDashMemory:
+  u8 DiamondsNeeded
+  u8 SessionMountains
+  u8 MoveContinue
+  u8 GameOverFlag
+  u8 PlayerX
+  u8 PlayerY
+  i8 PlayerDX
+  i8 PlayerDY
+  u8 OneDynamiteX
+  u8 OneDynamiteY
+  u8 DynamiteCountdown
+  u8 FireWasDown
+  u8 DiamondDType
+  u8 HoleCount
+  u8 RockX
+  u8 RockY
+  u8 CS_CurCol
+  u8 CS_ColCount
+  u8 CS_BarrelX
+  u8 CS_BarrelY
+  u8 CS_FrameIndex
+end record
+
+record ReversiMemory:
+  u8 DirFlips[8]
+  u8 CursorX
+  u8 CursorY
+  u8 SelectedIndex
+  u8 CellIndex
+  u8 ProbeIndex
+  u8 CellValue
+  u8 Piece
+  u8 BaseTile
+  u8 TileX
+  u8 TileY
+  u8 ScanX
+  u8 ScanY
+  u8 MoveX
+  u8 MoveY
+  u8 Dir
+  u8 MoveCount
+  u8 FlipCount
+  u8 TotalFlips
+  u8 BestIndex
+  u8 BestX
+  u8 BestY
+  u8 BestScore
+  i16 BestValue
+  i16 ThinkScore
+  u16 ReversiNodes
+  u8 ReversiSearchAborted
+  u8 ReversiEnforceBudget
+  u8 ReversiCompletedDepth
+  u8 ReversiDepthBestIndex
+  i16 ReversiDepthBestValue
+  u8 PassCount
+  u8 BlackScore
+  u8 WhiteScore
+  u8 CurrentPiece
+  u8 OpponentPiece
+  u8 Pad
+  u8 Key
+  u8 SpriteX
+  u8 SpriteY
+  u8 SpritePattern
+  u8 Tmp
+  u8 FlipStep
+  u8 BoardParity
+  u8 LastPad
+  u8 MenuPlayer
+  u8 TurnPiece
+  u8 ActiveController
+  u8 BlackController
+  u8 WhiteController
+  u8 TieBreak
+  i8 StepX
+  i8 StepY
+  i8 Tx
+  i8 Ty
+end record
+
+record TrainTrackMemory:
+  u8 Board[49]
+  u8 Solution[49]
+  u8 FixedClue[49]
+  u8 CursorX
+  u8 CursorY
+  u8 CursorColor
+  u8 CursorTicks
+  u8 Puzzle
+  u8 Cell
+  u16 PuzzleDataPointer
+  u8 Piece
+  u8 Tile
+  u8 ScreenX
+  u8 ScreenY
+  u8 I
+  u8 X
+  u8 Y
+  u8 LastPad
+  u8 TestSolveWasDown
+  u8 Mistakes
+  u8 RouteLength
+  u8 TrainX
+  u8 TrainY
+  u8 TargetX
+  u8 TargetY
+  u8 TrainPattern
+  u8 SmokeX
+  u8 SmokeY
+  u8 SmokeIndex
+  u8 SmokeStep
+  u8 SmokeSlot
+  u8 SmokePattern
+  u8 SmokeAge[3]
+  u8 SmokeXs[3]
+  u8 SmokeYs[3]
+  u8 SmokeFrame
+  u8 SmokeRiseStep
+  u8 TravelStep
+  u8 WaterTicks
+  u8 WaterFrame
+  u8 WaterCell
+  u8 WaterColumn
+  u8 WaterRow
+  u8 WaterUpdating
+  u8 WaterSavedI
+  u8 HintCount
+  u8 HintTarget
+  i8 TrainDX
+  i8 TrainDY
+end record
+
+' One physical RAM region, interpreted as exactly one active game at a time.
+overlay ArcadeRam
+  Explosion as ExplosionMemory
+  DiamondDash as DiamondDashMemory
+  Reversi as ReversiMemory
+  TrainTrack as TrainTrackMemory
+end overlay
+
+' PERMANENT PHASE A EXCEPTIONS
+' These operands cannot yet be qualified in BCD, for, put, or get statements.
+' They are workspaces, not persistent game state, and remain outside ArcadeRam.
+' EXPLOSION WORKSPACE
+u8 EX_Row = 0
+u8 EX_Col = 0
+u8 EX_CellIndex = 0
+i8 EX_CellValue = 0
+u8 EX_CellFrame[4]
+u8 EX_TmpX = 0
+u8 EX_TmpY = 0
+
+' DIAMOND WORKSPACE
+bcd digits 4 DD_Score, DD_Timer
+bcd digits 2 DD_Dynamite
+u8 DD_TmpX = 0, DD_TmpY = 0, DD_TmpType = 0, DD_TmpCount = 0
+i8 DD_TmpDX = 0, DD_TmpDY = 0
+u8 DD_CS_StartX = 0, DD_CS_StartY = 0
+u8 DD_BlastFrame[49]
+
+' REVERSI WORKSPACE
+u8 RV_Board[64]
+u8 RV_Hints[64]
+
+' TRAIN WORKSPACE
+u8 TT_BoardRedrawn = 0
+
+' SHARED TITLE RESOURCES
+' One clean geometric mark, repeated in four ColecoVision colors.
+data QuatroTitleDiamond sprite16
+  ".......XX......."
+  "......XXXX......"
+  ".....XXXXXX....."
+  "....XXXXXXXX...."
+  "...XXXXXXXXXX..."
+  "..XXXXXXXXXXXX.."
+  ".XXXXXXXXXXXXXX."
+  "XXXXXXXXXXXXXXXX"
+  "XXXXXXXXXXXXXXXX"
+  ".XXXXXXXXXXXXXX."
+  "..XXXXXXXXXXXX.."
+  "...XXXXXXXXXX..."
+  "....XXXXXXXX...."
+  ".....XXXXXX....."
+  "......XXXX......"
+  ".......XX......."
+end data
+
+' ---------------------------------------------------------------------------
+' EXPLOSION ROM RESOURCES
+' RAM PART: ArcadeRam.Explosion
+' These constants and data tables live in ROM, not in the overlay.
+' ---------------------------------------------------------------------------
+' Amy port inspired by Amy Bienvenu / NewColeco's 2004 SDCC Explosion sample.
+' Original source: old-projects-sdcc-z80/sdcctest/explosion/
+' Board cells are signed like the original C char arrays:
+'   positive = player, negative = CPU, zero = empty.
+' Keep units separate:
+'   Col/Row are board-cell coordinates, TileX/TileY are tile coordinates,
+'   SpriteX/SpriteY are pixel coordinates.
+
+const EX_BoardTileX = 8
+const EX_BoardTileY = 4
+const EX_PlayerOwner = 1
+const EX_CpuOwner = 2
+const EX_MaxEval = 32000
+
+' Original SDCC sprites: two layered arrow sprites plus one explosion sprite.
+data EX_ExplosionSprites bytes
+  $03,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$03,$00,$00,$00
+  $00,$80,$40,$20,$10,$08,$04,$02,$01,$0E,$48,$A4,$24,$12,$12,$0C
+  $00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$F0,$B0,$18,$18,$0C,$0C,$00
+  $80,$20,$58,$36,$2D,$1F,$17,$0F,$0F,$17,$1F,$2D,$36,$58,$20,$80
+  $01,$04,$1A,$6C,$B4,$F8,$E8,$F0,$F0,$E8,$F8,$B4,$6C,$1A,$04,$01
+end data
+
+' Original board tile graphics, matching change_pattern(128,CASE_PATTERN,26).
+data EX_ExplosionCasePattern bytes
+  $00,$00,$00,$00,$00,$00,$03,$03,$01,$01,$01,$01,$01,$01,$81,$81
+  $03,$00,$00,$00,$00,$00,$00,$FF,$81,$01,$01,$01,$01,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$01,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$03,$03,$01,$01,$01,$01,$01,$01,$81,$81
+  $03,$00,$00,$00,$00,$00,$00,$FF,$81,$01,$39,$39,$39,$01,$01,$FF
+  $01,$01,$39,$39,$39,$01,$01,$01,$00,$00,$38,$38,$38,$00,$00,$FF
+  $00,$00,$38,$38,$38,$00,$03,$03,$01,$01,$39,$39,$39,$01,$81,$81
+  $03,$00,$38,$38,$38,$00,$00,$FF,$81,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$38,$00,$38,$38,$01,$01,$39,$39,$39,$01,$39,$39
+  $38,$00,$38,$38,$38,$00,$00,$FF,$39,$01,$39,$39,$39,$01,$01,$FF
+  $00,$00,$38,$38,$3B,$03,$3B,$38,$01,$01,$39,$39,$B9,$81,$B9,$39
+  $3B,$03,$3B,$38,$38,$00,$00,$FF,$B9,$81,$B9,$39,$39,$01,$01,$FF
+end data
+
+' Original empty tile graphics, matching change_pattern(154,EMPTY_PATTERN,4).
+data EX_ExplosionEmptyPattern bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$01,$01,$01,$01,$01,$01,$01,$FF
+end data
+
+' Original spaces[] frame table: 17 board-value frames, each a 2x2 tile frame.
+data EX_ExplosionSpaces bytes
+  $96,$97,$98,$99,$96,$97,$94,$95,$92,$93,$94,$95,$8E,$8F,$90,$91
+  $84,$8C,$8D,$87,$88,$89,$8A,$8B,$84,$85,$86,$87,$80,$81,$82,$83
+  $9A,$9B,$9C,$9D,$9E,$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9
+  $A2,$AA,$AB,$A5,$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B2,$B3
+  $B4,$B5,$B6,$B7
+end data
+
+' ---------------------------------------------------------------------------
+' DIAMOND ROM RESOURCES
+' RAM PART: ArcadeRam.DiamondDash
+' These constants and data tables live in ROM, not in the overlay.
+' ---------------------------------------------------------------------------
+' Board-generation constants.
+const DD_DiamondMinX = 1
+const DD_DiamondMaxX = 30
+const DD_DiamondMinY = 4
+const DD_DiamondMaxY = 21
+const DD_HoleMinX = 3
+const DD_HoleMaxX = 28
+const DD_HoleMinY = 8
+const DD_HoleMaxY = 21
+const DD_RockMinX = 0
+const DD_RockMaxX = 31
+const DD_RockMinY = 2
+const DD_RockMaxY = 22
+const DD_StartDynamite = 20
+const DD_StartTimer = 1000
+const DD_DynamiteFuse = 10
+
+' Session state.
+
+' Player and dynamite position state.
+
+' General scratch state for map edits and scans.
+
+' Tile meanings.
+enum DD_DiamondTiles:
+  DD_RockTile = 1
+  DD_WalkableTile = 2
+  DD_EmeraldTile = 3
+  DD_RubyTile = 4
+  DD_DiamondTile = 5
+  DD_ExitOpenTile = 6
+  DD_PowderBarrelTile = 7
+  DD_ExitClosedTile = 8
+  DD_DynamiteLitTile1 = 29
+  DD_DynamiteLitTile2 = 30
+  DD_DynamitePackTile = 31
+  DD_SkyTile = 32
+end enum
+
+' Sprite pattern indexes.
+enum DD_DiamondSprite:
+  DD_MinerPattern = 64
+end enum
+const DD_MinerColor = 15
+
+tile type DD_hole = DD_WalkableTile
+tile type DD_blastClears = DD_RockTile,DD_DynamiteLitTile1,DD_DynamiteLitTile2,DD_DynamitePackTile
+
+asset DD_DiamondNameZx0 from "@project/quatro-diamond.name.zx0" codec zx0
+asset DD_DiamondPatternZx0 from "@project/quatro-diamond.pattern.zx0" codec zx0
+asset DD_DiamondColorZx0 from "@project/quatro-diamond.color.zx0" codec zx0
+
+data DD_HolesShape1 bytes = -1,-2, 0,-2, 1,-2, -2,-1, -1,-1, 0,-1, 1,-1, 2,-1, -2,0, -1,0, 0,0, 1,0, 0,1
+data DD_HolesShape2 bytes = -2,-2, -1,-2, 0,-2, -2,-1, -1,-1, 0,-1, 1,-1, -2,0, -1,0, 0,0, 1,0, 0,1, 1,1
+data DD_minimum_diamants bytes = 85,75,60,45,35
+data DD_GameOverText bytes = 33,34,35,36,37,38
+data DD_TitleText bytes = 40,41,42,43,44,45,46,47
+
+' ---------------------------------------------------------------------------
+' REVERSI ROM RESOURCES
+' RAM PART: ArcadeRam.Reversi
+' These constants and data tables live in ROM, not in the overlay.
+' ---------------------------------------------------------------------------
+' Amy port of the old NewColeco SDCC Reversi sample.
+' Original source: old-projects-sdcc-z80/sdccold/reversi/
+' The original readme says the old version had no sounds and was buggy.
+' This port keeps the original board graphics and adds NewColeco's historical
+' logo cue to the menu.
+
+asset RV_ReversiBoardZx0 from "@project/reversi.name.zx0" codec zx0
+asset RV_ReversiPatternZx0 from "@project/reversi.pattern.zx0" codec zx0
+asset RV_ReversiColorRaw from "@project/reversi.color.raw" codec raw
+asset RV_ReversiSpritesZx0 from "@project/reversi.sprpat.zx0" codec zx0
+asset RV_ReversiMenuNameZx0 from "@project/reversi-menu-v5.name.zx0" codec zx0
+
+const RV_Empty = 0
+const RV_BlackPiece = 1
+const RV_WhitePiece = 2
+const RV_HintPiece = 3
+const RV_BoardLeft = 5
+const RV_BoardTop = 5
+const RV_HumanPiece = RV_BlackPiece
+const RV_CpuPiece = RV_WhitePiece
+const RV_ControllerHuman = 0
+const RV_ControllerSimple = 1
+const RV_ControllerTuned = 2
+const RV_ReversiNodeBudget = 400
+const RV_SfxWrong0 = 1
+const RV_SfxWrong1 = 2
+const RV_SfxFlip0 = 3
+const RV_SfxFlip1 = 4
+const RV_SfxPass0 = 5
+const RV_SfxPass1 = 6
+const RV_SfxPlace = 7
+const RV_SfxWin0 = 8
+const RV_SfxWin1 = 9
+const RV_SfxWin2 = 10
+const RV_SfxLose0 = 11
+const RV_SfxLose1 = 12
+const RV_SfxLose2 = 13
+
+data RV_ReversiDirX bytes
+  1,1,0,-1,-1,-1,0,1
+end data
+
+data RV_ReversiDirY bytes
+  0,1,1,1,0,-1,-1,-1
+end data
+
+data RV_ReversiPositionWeights bytes
+  20,-3,11,8,8,11,-3,20,
+  -3,-7,-4,1,1,-4,-7,-3,
+  11,-4,2,2,2,2,-4,11,
+  8,1,2,-3,-3,2,1,8,
+  8,1,2,-3,-3,2,1,8,
+  11,-4,2,2,2,2,-4,11,
+  -3,-7,-4,1,1,-4,-7,-3,
+  20,-3,11,8,8,11,-3,20
+end data
+
+data RV_ReversiMoveOrder bytes
+  0,7,56,63,2,5,16,23,40,47,58,61,3,4,24,31,
+  32,39,59,60,18,19,20,21,26,29,34,37,42,43,44,45,
+  11,12,25,30,33,38,51,52,1,6,8,15,27,28,35,36,
+  48,55,57,62,10,13,17,22,41,46,50,53,9,14,49,54
+end data
+
+' ---------------------------------------------------------------------------
+' TRAIN ROM RESOURCES
+' RAM PART: ArcadeRam.TrainTrack
+' These constants and data tables live in ROM, not in the overlay.
+' ---------------------------------------------------------------------------
+' define TRAIN_TRACK_DEBUG_SOLVED
+
+asset TT_AllAboard from "@project/all-aboard.dsound" codec raw
+asset TT_TrainTrackPatterns from "@project/train-track.pattern.zx0" codec zx0
+asset TT_TrainTrackColors from "@project/train-track.color.zx0" codec zx0
+
+const TT_EmptyPiece = 0
+const TT_HorizontalPiece = 1
+const TT_VerticalPiece = 2
+const TT_NorthEastPiece = 3
+const TT_EastSouthPiece = 4
+const TT_SouthWestPiece = 5
+const TT_WestNorthPiece = 6
+const TT_WaterPiece = 7
+const TT_BoardX = 9
+const TT_BoardY = 8
+const TT_TitleTileBase = 120
+const TT_TrackTileBase = 180
+const TT_HintDigitBase = 232
+const TT_WaterFrameTileBase = 212
+const TT_PuzzleCount = 9
+
+data TT_CursorSprite sprite16
+  "XXXXXXXXXXXXXXXX"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "X..............X"
+  "XXXXXXXXXXXXXXXX"
+end data
+
+data TT_TrainUpSprite sprite16
+  "......XXXX......"
+  "......XXXX......"
+  ".....XXXXXX....."
+  "...XX.XXXX.XX..."
+  "....XXXXXXXX...."
+  "...XX.XXXX.XX..."
+  "....XXXXXXXX...."
+  "...XX.XXXX.XX..."
+  "..XXXXXXXXXXXX.."
+  "..XX..XXXX..XX.."
+  "..XXXXXXXXXXXX.."
+  "...XX......XX..."
+  "...XXXXXXXXXX..."
+  "....XX....XX...."
+  "....XX....XX...."
+  "................"
+end data
+
+data TT_TrainRightSprite sprite16
+  "................"
+  "................"
+  ".....XXX........"
+  "...XXXXXX.X.X..."
+  ".XXXXX.XXXXXX..."
+  ".XXX.X.X.X.X.X.."
+  "...X.XXXXXXXXXXX"
+  "...X.XXXXXXXXXXX"
+  "...X.XXXXXXXXXXX"
+  "...X.XXXXXXXXXXX"
+  ".XXX.X.X.X.X.X.."
+  ".XXXXX.XXXXXX..."
+  "...XXXXXX.X.X..."
+  ".....XXX........"
+  "................"
+  "................"
+end data
+
+data TT_TrainDownSprite sprite16
+  "................"
+  "....XX....XX...."
+  "....XX....XX...."
+  "...XXXXXXXXXX..."
+  "...XX......XX..."
+  "..XXXXXXXXXXXX.."
+  "..XX..XXXX..XX.."
+  "..XXXXXXXXXXXX.."
+  "...XX.XXXX.XX..."
+  "....XXXXXXXX...."
+  "...XX.XXXX.XX..."
+  "....XXXXXXXX...."
+  "...XX.XXXX.XX..."
+  ".....XXXXXX....."
+  "......XXXX......"
+  "......XXXX......"
+end data
+
+data TT_TrainLeftSprite sprite16
+  "................"
+  "................"
+  "........XXX....."
+  "...X.X.XXXXXX..."
+  "...XXXXXX.XXXXX."
+  "..X.X.X.X.X.XXX."
+  "XXXXXXXXXXX.X..."
+  "XXXXXXXXXXX.X..."
+  "XXXXXXXXXXX.X..."
+  "XXXXXXXXXXX.X..."
+  "..X.X.X.X.X.XXX."
+  "...XXXXXX.XXXXX."
+  "...X.X.XXXXXX..."
+  "........XXX....."
+  "................"
+  "................"
+end data
+
+data TT_SmokeDotsSprite sprite16
+  "................"
+  ".....XX........."
+  "....XXXX........"
+  "....XXXX..XX...."
+  ".....XX..XXXX..."
+  ".........XXXX..."
+  "..XX......XX...."
+  ".XXXX..........."
+  ".XXXX....XX....."
+  "..XX....XXXX...."
+  "........XXXX...."
+  ".........XX....."
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+data TT_SmokeDotsMediumSprite sprite16
+  "................"
+  "................"
+  ".....XX........."
+  ".....XX...XX...."
+  "..........XX...."
+  "................"
+  "..XX............"
+  "..XX............"
+  ".........XX....."
+  ".........XX....."
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+data TT_SmokeDotsSmallSprite sprite16
+  "................"
+  "................"
+  ".....X.........."
+  "..........X....."
+  "................"
+  "................"
+  "..X............."
+  "................"
+  ".........X......"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+  "................"
+end data
+
+data TT_SmokeDotsEmptySprite bytes
+  $00 count 32
+end data
+
+' Eight frames per size give every smoke puff a slower 24-frame fade.
+data TT_SmokeAgePatterns bytes = 20,20,20,20,20,20,20,20,24,24,24,24,24,24,24,24,28,28,28,28,28,28,28,28,32
+
+data TT_PuzzleSolution1 bytes
+  0,0,0,0,0,0,0, 1,1,5,0,4,1,5, 0,0,2,0,2,0,2, 0,0,3,1,6,0,2, 1,1,1,1,1,1,6, 0,0,0,0,0,0,0, 0,0,0,0,0,0,0
+end data
+data TT_PuzzleSolution2 bytes
+  0,0,0,2,0,0,0, 0,4,1,6,0,0,0, 0,2,0,0,0,0,0, 0,3,1,1,1,5,0, 0,0,0,0,0,2,0, 0,4,1,1,1,6,0, 0,2,0,0,0,0,0
+end data
+data TT_PuzzleSolution3 bytes
+  0,0,0,0,0,0,0, 0,4,1,1,1,5,0, 1,6,0,0,0,2,0, 0,4,1,1,1,6,0, 0,2,0,0,0,0,0, 0,3,1,1,1,1,1, 0,0,0,0,0,0,0
+end data
+data TT_PuzzleSolution4 bytes
+  0,0,0,0,2,0,0, 0,0,0,0,2,0,0, 4,1,1,1,6,0,0, 3,5,0,0,0,0,0, 0,2,0,0,0,0,0, 0,2,0,0,0,4,1, 0,3,1,1,1,6,0
+end data
+data TT_PuzzleSolution5 bytes
+  0,0,0,0,0,0,2, 0,0,0,0,0,0,2, 0,0,0,0,0,0,2, 1,1,1,5,0,4,6, 0,0,4,6,0,2,0, 0,0,2,0,0,2,0, 0,0,3,1,1,6,0
+end data
+data TT_PuzzleSolution6 bytes
+  0,0,0,0,0,2,0, 0,0,0,0,0,3,5, 1,5,0,0,0,0,2, 0,2,0,0,0,4,6, 0,3,5,0,0,2,0, 0,0,3,1,5,2,0, 0,0,0,0,3,6,0
+end data
+data TT_PuzzleSolution7 bytes
+  2,0,0,0,0,0,0, 3,5,0,0,0,0,0, 0,2,0,0,0,0,0, 0,2,4,1,1,1,1, 0,2,3,5,0,0,0, 0,2,0,2,0,0,0, 0,3,1,6,0,0,0
+end data
+data TT_PuzzleSolution8 bytes
+  0,2,0,0,0,0,0, 0,2,0,0,0,0,0, 0,3,1,1,1,5,0, 0,0,0,0,0,3,5, 0,0,0,0,0,0,2, 0,0,0,0,0,4,6, 1,1,1,1,1,6,0
+end data
+data TT_PuzzleSolution9 bytes
+  0,2,0,0,0,0,0, 4,6,0,0,0,0,0, 2,0,4,1,5,4,1, 2,4,6,0,3,6,0, 2,2,0,0,0,0,0, 2,2,0,0,0,0,0, 3,6,0,0,0,0,0
+end data
+
+data TT_PuzzleSolutionTable words = @TT_PuzzleSolution1,@TT_PuzzleSolution2,@TT_PuzzleSolution3,@TT_PuzzleSolution4,@TT_PuzzleSolution5,@TT_PuzzleSolution6,@TT_PuzzleSolution7,@TT_PuzzleSolution8,@TT_PuzzleSolution9
+
+data TT_PuzzleFixedCells bytes
+  5,7,13,16,25,28,0,0
+  5,3,8,24,33,43,0,0
+  6,8,12,14,24,29,41,0
+  7,4,17,14,29,44,47,41
+  7,21,24,37,46,33,20,6
+  7,14,29,38,47,26,13,5
+  7,27,24,31,44,29,8,0
+  7,1,16,19,34,47,44,42
+  6,20,18,22,42,14,1,0
+end data
+
+data TT_PuzzleRowCounts bytes
+  0,6,3,4,7,0,0, 1,3,1,5,1,5,1, 0,5,3,5,1,6,0
+  1,1,5,2,1,3,5, 1,1,1,6,3,2,4, 1,2,3,3,3,4,2
+  1,2,1,6,3,2,3, 1,1,5,2,1,2,6, 1,2,6,5,2,2,2
+end data
+
+data TT_PuzzleColumnCounts bytes
+  2,2,4,2,4,2,4, 0,5,3,4,2,3,0, 1,5,3,3,3,4,1
+  2,5,2,2,4,2,1, 1,1,4,3,1,4,4, 1,3,2,1,2,6,3
+  2,6,3,4,1,1,1, 1,4,2,2,2,4,3, 6,6,2,1,2,2,1
+end data
+
+data TT_PuzzleRoutes bytes
+  20,7,8,9,16,23,24,25,18,11,12,13,20,27,34,33,32,31,30,29,28
+  17,3,10,9,8,15,22,23,24,25,26,33,40,39,38,37,36,43,0,0,0
+  20,14,15,8,9,10,11,12,19,26,25,24,23,22,29,36,37,38,39,40,41
+  18,4,11,18,17,16,15,14,21,22,29,36,43,44,45,46,47,40,41,0,0
+  18,21,22,23,24,31,30,37,44,45,46,47,40,33,26,27,20,13,6,0,0
+  18,14,15,22,29,30,37,38,39,46,47,40,33,26,27,20,13,12,5,0,0
+  18,27,26,25,24,23,30,31,38,45,44,43,36,29,22,15,8,7,0,0,0
+  18,1,8,15,16,17,18,19,26,27,34,41,40,47,46,45,44,43,42,0,0
+  20,20,19,26,25,18,17,16,23,22,29,36,43,42,35,28,21,14,7,8,1
+end data
+
+' SHARED TITLE AND GAME SELECTOR
+set sound table QuatroTitleSoundTable areas 1
+text screen
+backdrop dark blue
+sprites 16x16
+sprites simple
+copy QuatroTitleDiamond to vram.spr_pat
+clear sprites
+set sprite 0 to 88,72,0,5
+set sprite 1 to 96,112,0,10
+set sprite 2 to 88,152,0,8
+set sprite 3 to 96,192,0,7
+set sprite count 4
+update sprites
+print centered at 5, "QUATRO PUZZLES"
+print centered at 7, "PUZZLE COLLECTION"
+print centered at 15, "FOUR GAMES - ONE CHALLENGE"
+print centered at 20, "PRESS FIRE"
+play sound 1
+screen on
+pause until press and release sleep after 10 seconds
+mute all
+clear sprites
+update sprites
+text screen
+backdrop dark blue
+print centered at 5, "MENU"
+print at 8,9, "1 EXPLOSION"
+print at 8,11, "2 DIAMOND DASH"
+print at 8,13, "3 REVERSI"
+print at 8,15, "4 RAILS PUZZLES"
+print centered at 20, "UP/DOWN + FIRE OR KEYPAD"
+screen on
+ArcadeChoice = 1
+set sprite 0 to 71,48,0,5
+set sprite count 1
+update sprites
+choose menu 1 to 4 into ArcadeChoice cursor sprite 0 at 48,71 step 16 sleep after 10 seconds
+on ArcadeChoice goto EX_GameEntry, DD_GameEntry, RV_GameEntry, TT_GameEntry
+
+' ============================================================================
+' EXPLOSION GAME MODULE
+' RAM PART: ArcadeRam.Explosion
+' ENTRY: EX_GameEntry
+' OWNERSHIP RULE: initialize this RAM part before reading previous values.
+' ============================================================================
+sub EX_GameEntry:
+  tile screen
+  sprites 16x16
+  sprites simple
+  define chars EX_ExplosionCasePattern at 128 count 26
+  define chars EX_ExplosionEmptyPattern at 154 count 4
+  define chars EX_ExplosionCasePattern at 158 count 26
+  fill $19 count 208 to vram.color + $0400
+  fill $1E count 32 to vram.color + $04D0
+  fill $14 count 208 to vram.color + $04F0
+  define sprites EX_ExplosionSprites at 0
+  set sound table ExplosionSoundTable areas 1
+  EX_setup_game
+  screen on
+  goto EX_player_turn
+end sub
+
+sub EX_setup_game:
+  cls
+  print centered at 1, "EXPLOSION"
+  print centered at 22, "D-PAD MOVE  FIRE SELECT"
+  for EX_CellIndex = 0 to 63
+    ArcadeRam.Explosion.Board[EX_CellIndex] = 0
+  next
+  ArcadeRam.Explosion.Board[0] = 1
+  ArcadeRam.Explosion.Board[7] = 1
+  ArcadeRam.Explosion.Board[56] = -1
+  ArcadeRam.Explosion.Board[63] = -1
+  ArcadeRam.Explosion.CursorX = 0
+  ArcadeRam.Explosion.CursorY = 0
+  clear sprites
+  set sprite count 3
+  EX_hide_explosion
+  EX_draw_board
+  EX_draw_cursor
+  return
+
+sub EX_player_turn:
+  ArcadeRam.Explosion.CurrentOwner = EX_PlayerOwner
+  print centered at 2, "TURN: PLAYER"
+  EX_draw_cursor
+player_loop:
+  ArcadeRam.Explosion.OldX = ArcadeRam.Explosion.CursorX
+  ArcadeRam.Explosion.OldY = ArcadeRam.Explosion.CursorY
+  if joypad(1).left then
+    if ArcadeRam.Explosion.CursorX > 0 then ArcadeRam.Explosion.CursorX -= 1
+  end if
+  if joypad(1).right then
+    if ArcadeRam.Explosion.CursorX < 7 then ArcadeRam.Explosion.CursorX += 1
+  end if
+  if joypad(1).up then
+    if ArcadeRam.Explosion.CursorY > 0 then ArcadeRam.Explosion.CursorY -= 1
+  end if
+  if joypad(1).down then
+    if ArcadeRam.Explosion.CursorY < 7 then ArcadeRam.Explosion.CursorY += 1
+  end if
+  if ArcadeRam.Explosion.OldX != ArcadeRam.Explosion.CursorX goto player_cursor_changed
+  if ArcadeRam.Explosion.OldY != ArcadeRam.Explosion.CursorY goto player_cursor_changed
+  goto player_cursor_done
+player_cursor_changed:
+  EX_draw_cursor
+player_cursor_done:
+  if joypad(1).button1 then goto player_fire
+  wait 4 frames
+  goto player_loop
+player_fire:
+  wait no fire
+  EX_Col = ArcadeRam.Explosion.CursorX
+  EX_Row = ArcadeRam.Explosion.CursorY
+  EX_make_index
+  EX_CellValue = ArcadeRam.Explosion.Board[EX_CellIndex]
+  if signed EX_CellValue < 0 goto player_loop
+  EX_hide_cursor
+  EX_add_one_at_index
+  EX_resolve_explosions
+  EX_draw_board
+  if ArcadeRam.Explosion.WinFlag = 1 goto player_wins
+  goto EX_cpu_turn
+  return
+player_wins:
+  print centered at 20, "YOU WIN"
+  play sound 1
+  pause until press
+  wait no fire
+  EX_setup_game
+  goto EX_player_turn
+  return
+
+sub EX_cpu_turn:
+  ArcadeRam.Explosion.CurrentOwner = EX_CpuOwner
+  print centered at 2, "TURN: CPU   "
+  EX_hide_cursor
+  ArcadeRam.Explosion.BestScore = EX_MaxEval
+  ArcadeRam.Explosion.BestIndex = 0
+  ArcadeRam.Explosion.CpuTry = 0
+cpu_scan_loop:
+  EX_CellIndex = ArcadeRam.Explosion.CpuTry
+  EX_CellValue = ArcadeRam.Explosion.Board[EX_CellIndex]
+  if signed EX_CellValue >= 0 goto cpu_scan_next
+  EX_copy_board_to_sim
+  EX_CellIndex = ArcadeRam.Explosion.CpuTry
+  EX_sim_add_one_at_index
+  EX_sim_resolve_explosions
+  if ArcadeRam.Explosion.SimET != 0 then
+    ArcadeRam.Explosion.BestIndex = ArcadeRam.Explosion.CpuTry
+    goto cpu_choice_ready
+  end if
+  EX_evaluate_sim
+  if ArcadeRam.Explosion.EvalScore < ArcadeRam.Explosion.BestScore then
+    ArcadeRam.Explosion.BestScore = ArcadeRam.Explosion.EvalScore
+    ArcadeRam.Explosion.BestIndex = ArcadeRam.Explosion.CpuTry
+  end if
+cpu_scan_next:
+  ArcadeRam.Explosion.CpuTry += 1
+  if ArcadeRam.Explosion.CpuTry < 64 goto cpu_scan_loop
+cpu_choice_ready:
+  wait 20 frames
+  EX_CellIndex = ArcadeRam.Explosion.BestIndex
+  EX_index_to_xy
+  EX_Col = EX_TmpX
+  EX_Row = EX_TmpY
+  EX_CellIndex = ArcadeRam.Explosion.BestIndex
+  EX_add_one_at_index
+  EX_resolve_explosions
+  EX_draw_board
+  if ArcadeRam.Explosion.WinFlag = 1 goto cpu_wins
+  goto EX_player_turn
+  return
+cpu_wins:
+  print centered at 20, "CPU WIN"
+  play sound 1
+  pause until press
+  wait no fire
+  EX_setup_game
+  goto EX_player_turn
+  return
+
+sub EX_draw_board:
+  wait
+  nmi off
+  EX_CellIndex = 0
+  for EX_Row = 0 to 7
+    for EX_Col = 0 to 7
+      EX_draw_cell
+      EX_CellIndex += 1
+    next
+  next
+  nmi on
+  return
+
+sub EX_draw_cell:
+  if EX_Col > 7 then return
+  if EX_Row > 7 then return
+  EX_CellValue = ArcadeRam.Explosion.Board[EX_CellIndex]
+  ArcadeRam.Explosion.FrameValue = EX_CellValue + 8
+  if signed ArcadeRam.Explosion.FrameValue < 0 then ArcadeRam.Explosion.FrameValue = 0
+  if signed ArcadeRam.Explosion.FrameValue > 16 then ArcadeRam.Explosion.FrameValue = 16
+  ArcadeRam.Explosion.FrameIndex = ArcadeRam.Explosion.FrameValue
+  ArcadeRam.Explosion.FrameOffset = ArcadeRam.Explosion.FrameIndex << 2
+  EX_CellFrame[0] = EX_ExplosionSpaces[ArcadeRam.Explosion.FrameOffset]
+  ArcadeRam.Explosion.Tmp = ArcadeRam.Explosion.FrameOffset + 1
+  EX_CellFrame[1] = EX_ExplosionSpaces[ArcadeRam.Explosion.Tmp]
+  ArcadeRam.Explosion.Tmp = ArcadeRam.Explosion.FrameOffset + 2
+  EX_CellFrame[2] = EX_ExplosionSpaces[ArcadeRam.Explosion.Tmp]
+  ArcadeRam.Explosion.Tmp = ArcadeRam.Explosion.FrameOffset + 3
+  EX_CellFrame[3] = EX_ExplosionSpaces[ArcadeRam.Explosion.Tmp]
+  EX_TmpX = EX_BoardTileX + EX_Col * 2
+  EX_TmpY = EX_BoardTileY + EX_Row * 2
+  put EX_CellFrame frame size 2,2 at EX_TmpX,EX_TmpY
+  return
+
+sub EX_draw_cell_safe:
+  wait
+  nmi off
+  EX_draw_cell
+  nmi on
+  return
+
+sub EX_draw_cursor:
+  wait
+  ArcadeRam.Explosion.SpriteX = 66 + ArcadeRam.Explosion.CursorX * 16
+  ArcadeRam.Explosion.SpriteY = 40 + ArcadeRam.Explosion.CursorY * 16
+  set sprite 0 to ArcadeRam.Explosion.SpriteY,ArcadeRam.Explosion.SpriteX,0,1
+  set sprite 1 to ArcadeRam.Explosion.SpriteY,ArcadeRam.Explosion.SpriteX,4,15
+  update sprites from 0 count 2
+  return
+
+sub EX_hide_cursor:
+  wait
+  set sprite 0 y to 204
+  set sprite 1 y to 204
+  update sprites from 0 count 2
+  return
+
+sub EX_show_explosion:
+  wait
+  ArcadeRam.Explosion.SpriteX = 64 + EX_Col * 16
+  ArcadeRam.Explosion.SpriteY = 31 + EX_Row * 16
+  set sprite 2 to ArcadeRam.Explosion.SpriteY,ArcadeRam.Explosion.SpriteX,8,11
+  update sprites from 2 count 1
+  return
+
+sub EX_hide_explosion:
+  wait
+  set sprite 2 y to 204
+  update sprites from 2 count 1
+  return
+
+sub EX_make_index:
+  EX_CellIndex = EX_Row * 8
+  EX_CellIndex += EX_Col
+  return
+
+sub EX_index_to_xy:
+  EX_TmpY = EX_CellIndex / 8
+  EX_TmpX = EX_CellIndex & 7
+  return
+
+sub EX_threshold_for_current:
+  ArcadeRam.Explosion.Threshold = 4
+  if EX_Col = 0 then ArcadeRam.Explosion.Threshold -= 1
+  if EX_Col = 7 then ArcadeRam.Explosion.Threshold -= 1
+  if EX_Row = 0 then ArcadeRam.Explosion.Threshold -= 1
+  if EX_Row = 7 then ArcadeRam.Explosion.Threshold -= 1
+  return
+
+sub EX_load_abs_cell_count:
+  EX_CellValue = ArcadeRam.Explosion.Board[EX_CellIndex]
+  if signed EX_CellValue < 0 then
+    ArcadeRam.Explosion.CellCount = 0 - EX_CellValue
+  else
+    ArcadeRam.Explosion.CellCount = EX_CellValue
+  end if
+  return
+
+sub EX_store_count_for_owner:
+  if ArcadeRam.Explosion.CellCount = 0 then
+    ArcadeRam.Explosion.Board[EX_CellIndex] = 0
+    return
+  end if
+  if ArcadeRam.Explosion.CurrentOwner = EX_PlayerOwner then
+    ArcadeRam.Explosion.Board[EX_CellIndex] = ArcadeRam.Explosion.CellCount
+  else
+    ArcadeRam.Explosion.Board[EX_CellIndex] = 0 - ArcadeRam.Explosion.CellCount
+  end if
+  return
+
+sub EX_add_one_at_index:
+  EX_load_abs_cell_count
+  ArcadeRam.Explosion.CellCount += 1
+  EX_store_count_for_owner
+  return
+
+sub EX_copy_board_to_sim:
+  for EX_CellIndex = 0 to 63
+    ArcadeRam.Explosion.SimBoard[EX_CellIndex] = ArcadeRam.Explosion.Board[EX_CellIndex]
+  next
+  return
+
+sub EX_sim_load_abs_cell_count:
+  EX_CellValue = ArcadeRam.Explosion.SimBoard[EX_CellIndex]
+  if signed EX_CellValue < 0 then
+    ArcadeRam.Explosion.CellCount = 0 - EX_CellValue
+  else
+    ArcadeRam.Explosion.CellCount = EX_CellValue
+  end if
+  return
+
+sub EX_sim_store_count_for_owner:
+  if ArcadeRam.Explosion.CellCount = 0 then
+    ArcadeRam.Explosion.SimBoard[EX_CellIndex] = 0
+    return
+  end if
+  if ArcadeRam.Explosion.CurrentOwner = EX_PlayerOwner then
+    ArcadeRam.Explosion.SimBoard[EX_CellIndex] = ArcadeRam.Explosion.CellCount
+  else
+    ArcadeRam.Explosion.SimBoard[EX_CellIndex] = 0 - ArcadeRam.Explosion.CellCount
+  end if
+  return
+
+sub EX_sim_add_one_at_index:
+  EX_sim_load_abs_cell_count
+  ArcadeRam.Explosion.CellCount += 1
+  EX_sim_store_count_for_owner
+  return
+
+sub EX_sim_add_neighbor:
+  if EX_Col > 7 then return
+  if EX_Row > 7 then return
+  EX_make_index
+  EX_sim_add_one_at_index
+  return
+
+sub EX_sim_resolve_explosions:
+sim_resolve_again:
+  ArcadeRam.Explosion.Exploded = 0
+  ArcadeRam.Explosion.OpponentFound = 0
+  for EX_Row = 0 to 7
+    for EX_Col = 0 to 7
+      EX_make_index
+      EX_CellValue = ArcadeRam.Explosion.SimBoard[EX_CellIndex]
+      if EX_CellValue = 0 goto sim_scan_next_cell
+      if ArcadeRam.Explosion.CurrentOwner = EX_PlayerOwner then
+        if signed EX_CellValue < 0 then ArcadeRam.Explosion.OpponentFound = 1
+      else
+        if signed EX_CellValue > 0 then ArcadeRam.Explosion.OpponentFound = 1
+      end if
+      EX_sim_load_abs_cell_count
+      EX_threshold_for_current
+      if ArcadeRam.Explosion.CellCount <= ArcadeRam.Explosion.Threshold goto sim_scan_next_cell
+      ArcadeRam.Explosion.Exploded = 1
+      ArcadeRam.Explosion.CellCount -= ArcadeRam.Explosion.Threshold
+      EX_sim_store_count_for_owner
+      EX_TmpX = EX_Col
+      EX_TmpY = EX_Row
+      if EX_TmpY > 0 then
+        EX_Row = EX_TmpY - 1
+        EX_Col = EX_TmpX
+        EX_sim_add_neighbor
+      end if
+      if EX_TmpX > 0 then
+        EX_Row = EX_TmpY
+        EX_Col = EX_TmpX - 1
+        EX_sim_add_neighbor
+      end if
+      if EX_TmpX < 7 then
+        EX_Row = EX_TmpY
+        EX_Col = EX_TmpX + 1
+        EX_sim_add_neighbor
+      end if
+      if EX_TmpY < 7 then
+        EX_Row = EX_TmpY + 1
+        EX_Col = EX_TmpX
+        EX_sim_add_neighbor
+      end if
+      EX_Row = EX_TmpY
+      EX_Col = EX_TmpX
+sim_scan_next_cell:
+    next
+  next
+  if ArcadeRam.Explosion.Exploded != 0 then
+    if ArcadeRam.Explosion.OpponentFound != 0 goto sim_resolve_again
+  end if
+  ArcadeRam.Explosion.SimET = 0
+  if ArcadeRam.Explosion.OpponentFound = 0 then ArcadeRam.Explosion.SimET = 1
+  return
+
+sub EX_evaluate_sim:
+  ArcadeRam.Explosion.EvalScore = 0
+  for EX_Row = 0 to 7
+    for EX_Col = 0 to 7
+      EX_make_index
+      EX_CellValue = ArcadeRam.Explosion.SimBoard[EX_CellIndex]
+      ArcadeRam.Explosion.EvalScore += EX_CellValue
+      EX_sim_load_abs_cell_count
+      EX_threshold_for_current
+      if signed EX_CellValue < 0 then
+        if ArcadeRam.Explosion.CellCount >= ArcadeRam.Explosion.Threshold then
+          ArcadeRam.Explosion.EvalScore -= 2
+          EX_TmpX = EX_Col
+          EX_TmpY = EX_Row
+          if EX_TmpY > 0 then
+            EX_Row = EX_TmpY - 1
+            EX_Col = EX_TmpX
+            EX_eval_player_at_threshold
+            if ArcadeRam.Explosion.EvalHit != 0 then ArcadeRam.Explosion.EvalScore += 10
+          end if
+          if EX_TmpX > 0 then
+            EX_Row = EX_TmpY
+            EX_Col = EX_TmpX - 1
+            EX_eval_player_at_threshold
+            if ArcadeRam.Explosion.EvalHit != 0 then ArcadeRam.Explosion.EvalScore += 10
+          end if
+          if EX_TmpX < 7 then
+            EX_Row = EX_TmpY
+            EX_Col = EX_TmpX + 1
+            EX_eval_player_at_threshold
+            if ArcadeRam.Explosion.EvalHit != 0 then ArcadeRam.Explosion.EvalScore += 10
+          end if
+          if EX_TmpY < 7 then
+            EX_Row = EX_TmpY + 1
+            EX_Col = EX_TmpX
+            EX_eval_player_at_threshold
+            if ArcadeRam.Explosion.EvalHit != 0 then ArcadeRam.Explosion.EvalScore += 10
+          end if
+          EX_Row = EX_TmpY
+          EX_Col = EX_TmpX
+        end if
+      end if
+    next
+  next
+  return
+
+sub EX_eval_player_at_threshold:
+  ArcadeRam.Explosion.EvalHit = 0
+  if EX_Col > 7 then return
+  if EX_Row > 7 then return
+  EX_make_index
+  EX_threshold_for_current
+  EX_CellValue = ArcadeRam.Explosion.SimBoard[EX_CellIndex]
+  if signed EX_CellValue < 0 then return
+  if EX_CellValue = ArcadeRam.Explosion.Threshold then ArcadeRam.Explosion.EvalHit = 1
+  return
+
+sub EX_add_neighbor:
+  if EX_Col > 7 then return
+  if EX_Row > 7 then return
+  EX_make_index
+  EX_add_one_at_index
+  return
+
+sub EX_resolve_explosions:
+resolve_again:
+  ArcadeRam.Explosion.Exploded = 0
+  ArcadeRam.Explosion.OpponentFound = 0
+  for EX_Row = 0 to 7
+    for EX_Col = 0 to 7
+      EX_make_index
+      EX_CellValue = ArcadeRam.Explosion.Board[EX_CellIndex]
+      if EX_CellValue = 0 goto scan_next_cell
+      if ArcadeRam.Explosion.CurrentOwner = EX_PlayerOwner then
+        if signed EX_CellValue < 0 then ArcadeRam.Explosion.OpponentFound = 1
+      else
+        if signed EX_CellValue > 0 then ArcadeRam.Explosion.OpponentFound = 1
+      end if
+      EX_load_abs_cell_count
+      EX_threshold_for_current
+      if ArcadeRam.Explosion.CellCount <= ArcadeRam.Explosion.Threshold goto scan_next_cell
+      ArcadeRam.Explosion.Exploded = 1
+      ArcadeRam.Explosion.CellCount -= ArcadeRam.Explosion.Threshold
+      EX_store_count_for_owner
+      EX_draw_cell_safe
+      EX_show_explosion
+      play sound 1
+      wait 2 frames
+      EX_TmpX = EX_Col
+      EX_TmpY = EX_Row
+      if EX_TmpY > 0 then
+        EX_Row = EX_TmpY - 1
+        EX_Col = EX_TmpX
+        EX_add_neighbor
+      end if
+      if EX_TmpX > 0 then
+        EX_Row = EX_TmpY
+        EX_Col = EX_TmpX - 1
+        EX_add_neighbor
+      end if
+      if EX_TmpX < 7 then
+        EX_Row = EX_TmpY
+        EX_Col = EX_TmpX + 1
+        EX_add_neighbor
+      end if
+      if EX_TmpY < 7 then
+        EX_Row = EX_TmpY + 1
+        EX_Col = EX_TmpX
+        EX_add_neighbor
+      end if
+      EX_Row = EX_TmpY
+      EX_Col = EX_TmpX
+scan_next_cell:
+    next
+  next
+  if ArcadeRam.Explosion.Exploded != 0 then
+    if ArcadeRam.Explosion.OpponentFound != 0 goto resolve_again
+  end if
+  EX_hide_explosion
+  ArcadeRam.Explosion.WinFlag = 0
+  if ArcadeRam.Explosion.OpponentFound = 0 then ArcadeRam.Explosion.WinFlag = 1
+  return
+
+asm {
+ExplosionSoundTable:
+    dw ExplosionPop,$702B
+
+ExplosionPop:
+    db $40,$A0,$11,$01
+    db $40,$1C,$61,$01
+    db $40,$2C,$B1,$01
+    db $40,$2E,$D1,$01
+    db $50
+}
+
+' ============================================================================
+' DIAMOND GAME MODULE
+' RAM PART: ArcadeRam.DiamondDash
+' ENTRY: DD_GameEntry
+' OWNERSHIP RULE: initialize this RAM part before reading previous values.
+' ============================================================================
+sub DD_GameEntry:
+  tile screen
+    sprites 8x8
+    sprites simple
+    set sound table DiamondSoundTable areas 6
+    decompress zx0 DD_DiamondPatternZx0 to vram.pattern
+    duplicate mode 2 text patterns
+    decompress zx0 DD_DiamondColorZx0 to vram.color
+    set sprite pattern table vram.pattern
+    clear sprites
+    set sprite count 1
+    goto DD_return_to_title
+end sub
+
+sub DD_start_session:
+  DD_Score = 0
+  ArcadeRam.DiamondDash.SessionMountains = 5
+  DD_start_mountain
+  goto DD_game_loop
+
+sub DD_start_mountain:
+  ArcadeRam.DiamondDash.SessionMountains -= 1
+  DD_Diamond_StartMountain
+  DD_show_score
+  wait no fire on joypad 1
+  return
+
+sub DD_show_score:
+  print at 6,23, DD_Score
+  print at 14,23, DD_Timer
+  print at 23,23, DD_Dynamite
+  return
+
+sub DD_game_loop:
+  wait
+  DD_Diamond_MovePlayer
+  if ArcadeRam.DiamondDash.MoveContinue = 0 goto DD_round_end
+  if DD_Timer > 0 goto DD_tick_timer
+  DD_show_score
+  DD_Diamond_UpdateDynamite
+  goto DD_game_loop
+
+sub DD_tick_timer:
+  DD_Timer -= 1
+  DD_show_score
+  DD_Diamond_UpdateDynamite
+  goto DD_game_loop
+
+sub DD_round_end:
+  DD_Diamond_EndRound
+  if ArcadeRam.DiamondDash.GameOverFlag = 1 goto DD_game_over_screen
+  if ArcadeRam.DiamondDash.SessionMountains = 0 goto DD_replay_last_mountain
+  DD_start_mountain
+  goto DD_game_loop
+
+sub DD_game_over_screen:
+  mute all
+  put DD_GameOverText at 13,11
+  play sound 3
+  pause until press
+  wait no fire
+  goto DD_return_to_title
+
+sub DD_replay_last_mountain:
+  ArcadeRam.DiamondDash.SessionMountains += 1
+  DD_start_mountain
+  goto DD_game_loop
+
+sub DD_return_to_title:
+  mute all
+  ArcadeRam.DiamondDash.GameOverFlag = 0
+  ArcadeRam.DiamondDash.DynamiteCountdown = 0
+  ArcadeRam.DiamondDash.FireWasDown = 0
+  DD_Diamond_BuildMountain
+  put DD_TitleText at 12,11
+  screen on
+  pause until press
+  wait no fire
+  goto DD_start_session
+
+sub DD_Diamond_StartMountain:
+  ArcadeRam.DiamondDash.GameOverFlag = 0
+  ArcadeRam.DiamondDash.DynamiteCountdown = 0
+  ArcadeRam.DiamondDash.FireWasDown = 0
+  ArcadeRam.DiamondDash.MoveContinue = 1
+  ArcadeRam.DiamondDash.DiamondsNeeded = DD_minimum_diamants[ArcadeRam.DiamondDash.SessionMountains]
+  DD_Diamond_BuildMountain
+  DD_Dynamite = DD_StartDynamite
+  DD_Timer = DD_StartTimer
+  set sprite 0 tile ArcadeRam.DiamondDash.PlayerX,ArcadeRam.DiamondDash.PlayerY pattern DD_MinerPattern color DD_MinerColor
+  update sprites
+  return
+
+sub DD_Diamond_BuildMountain:
+  mute all
+  screen off
+  decompress zx0 DD_DiamondNameZx0 to vram.name
+  ArcadeRam.DiamondDash.PlayerX = 22
+  ArcadeRam.DiamondDash.PlayerY = 2
+  ArcadeRam.DiamondDash.PlayerDX = 0
+  ArcadeRam.DiamondDash.PlayerDY = 0
+  set sprite 0 to 15,176,DD_MinerPattern,DD_MinerColor
+  ArcadeRam.DiamondDash.HoleCount = 5
+Diamond_BuildMountain_holes:
+  if Diamond_AddHoles() = false then goto Diamond_BuildMountain_holes
+  if ArcadeRam.DiamondDash.HoleCount != 0 then goto Diamond_BuildMountain_holes
+  DD_TmpCount = 51
+  ArcadeRam.DiamondDash.DiamondDType = DD_EmeraldTile
+Diamond_BuildMountain_green:
+  if Diamond_AddDiamond() = false then goto Diamond_BuildMountain_green
+  if DD_TmpCount != 0 then goto Diamond_BuildMountain_green
+  DD_TmpCount = 23
+  ArcadeRam.DiamondDash.DiamondDType = DD_RubyTile
+Diamond_BuildMountain_red:
+  if Diamond_AddDiamond() = false then goto Diamond_BuildMountain_red
+  if DD_TmpCount != 0 then goto Diamond_BuildMountain_red
+  DD_TmpCount = 11
+  ArcadeRam.DiamondDash.DiamondDType = DD_DiamondTile
+Diamond_BuildMountain_white:
+  if Diamond_AddDiamond() = false then goto Diamond_BuildMountain_white
+  if DD_TmpCount != 0 then goto Diamond_BuildMountain_white
+  update sprites
+  screen on
+  return
+
+sub DD_Diamond_MovePlayer:
+  ArcadeRam.DiamondDash.MoveContinue = 1
+  ArcadeRam.DiamondDash.PlayerDX = 0
+  ArcadeRam.DiamondDash.PlayerDY = 0
+  move sprite 0 toward tile ArcadeRam.DiamondDash.PlayerX,ArcadeRam.DiamondDash.PlayerY step 4 wait 3 frames animate pattern xor 1
+  put char DD_WalkableTile at ArcadeRam.DiamondDash.PlayerX,ArcadeRam.DiamondDash.PlayerY
+  if joypad(1).up then
+    ArcadeRam.DiamondDash.PlayerDY = -1
+  end if
+  if joypad(1).down then
+    ArcadeRam.DiamondDash.PlayerDY = 1
+  end if
+  if joypad(1).left then
+    ArcadeRam.DiamondDash.PlayerDX = -1
+  end if
+  if joypad(1).right then
+    ArcadeRam.DiamondDash.PlayerDX = 1
+  end if
+  if ArcadeRam.DiamondDash.PlayerDX != 0 goto Diamond_MP_SetMoving
+  if ArcadeRam.DiamondDash.PlayerDY != 0 goto Diamond_MP_SetMoving
+  set sprite 0 pattern bit 1 on
+  goto Diamond_MP_AfterIdle
+Diamond_MP_SetMoving:
+  set sprite 0 pattern bit 1 off
+Diamond_MP_AfterIdle:
+  if joypad(1).button1 then goto Diamond_MovePlayer_fire_pressed
+  ArcadeRam.DiamondDash.FireWasDown = 0
+  goto Diamond_MovePlayer_target
+
+Diamond_MovePlayer_fire_pressed:
+  if ArcadeRam.DiamondDash.FireWasDown != 0 then goto Diamond_MovePlayer_target
+  ArcadeRam.DiamondDash.FireWasDown = 1
+  goto Diamond_MovePlayer_fire
+
+Diamond_MovePlayer_fire:
+  if ArcadeRam.DiamondDash.DynamiteCountdown = 0 then
+    ArcadeRam.DiamondDash.DynamiteCountdown = DD_DynamiteFuse
+    ArcadeRam.DiamondDash.OneDynamiteX = ArcadeRam.DiamondDash.PlayerX
+    ArcadeRam.DiamondDash.OneDynamiteY = ArcadeRam.DiamondDash.PlayerY
+    if DD_Dynamite = 0 then
+      ArcadeRam.DiamondDash.GameOverFlag = 1
+      ArcadeRam.DiamondDash.MoveContinue = 0
+      return
+    end if
+    DD_Dynamite -= 1
+    play sound 4
+  end if
+  goto Diamond_MovePlayer_target
+
+Diamond_MovePlayer_target:
+  DD_TmpX = ArcadeRam.DiamondDash.PlayerX + ArcadeRam.DiamondDash.PlayerDX
+  DD_TmpY = ArcadeRam.DiamondDash.PlayerY + ArcadeRam.DiamondDash.PlayerDY
+  DD_TmpType = get char at DD_TmpX,DD_TmpY
+  select case DD_TmpType
+  case DD_DynamitePackTile
+    goto Diamond_MovePlayer_pickPack
+  case DD_ExitOpenTile
+    goto Diamond_MovePlayer_exitTile
+  case DD_WalkableTile
+    goto Diamond_MovePlayer_walk
+  case DD_EmeraldTile
+    goto Diamond_MovePlayer_green
+  case DD_RubyTile
+    goto Diamond_MovePlayer_red
+  case DD_DiamondTile
+    goto Diamond_MovePlayer_white
+  end select
+  return
+
+Diamond_MovePlayer_walk:
+  ArcadeRam.DiamondDash.PlayerX = DD_TmpX
+  ArcadeRam.DiamondDash.PlayerY = DD_TmpY
+  return
+
+Diamond_MovePlayer_green:
+  DD_Score += 1
+  goto Diamond_MovePlayer_takeDiamond
+
+Diamond_MovePlayer_red:
+  DD_Score += 3
+  goto Diamond_MovePlayer_takeDiamond
+
+Diamond_MovePlayer_white:
+  DD_Score += 5
+
+Diamond_MovePlayer_takeDiamond:
+  play sound 1
+  ArcadeRam.DiamondDash.PlayerX = DD_TmpX
+  ArcadeRam.DiamondDash.PlayerY = DD_TmpY
+  ArcadeRam.DiamondDash.DiamondsNeeded -= 1
+  if ArcadeRam.DiamondDash.DiamondsNeeded != 0 then return
+  put char DD_ExitOpenTile at 23,2
+  play sound 5
+  play sound 6
+  return
+
+Diamond_MovePlayer_pickPack:
+  DD_Dynamite += 3
+  ArcadeRam.DiamondDash.PlayerX = DD_TmpX
+  ArcadeRam.DiamondDash.PlayerY = DD_TmpY
+  play sound 2
+  return
+
+Diamond_MovePlayer_exitTile:
+  ArcadeRam.DiamondDash.PlayerX = DD_TmpX
+  ArcadeRam.DiamondDash.PlayerY = DD_TmpY
+  move sprite 0 toward tile ArcadeRam.DiamondDash.PlayerX,ArcadeRam.DiamondDash.PlayerY step 4 wait 3 frames animate pattern xor 1
+  ArcadeRam.DiamondDash.MoveContinue = 0
+  return
+
+sub DD_Diamond_EndRound:
+  if ArcadeRam.DiamondDash.GameOverFlag != 0 then return
+Diamond_EndRound_timerLoop:
+  if DD_Timer < 10 then goto Diamond_EndRound_dynamite
+  DD_Timer -= 10
+  DD_Score += 1
+  play sound 1
+  DD_show_score
+  wait 2 frames
+  goto Diamond_EndRound_timerLoop
+Diamond_EndRound_dynamite:
+  if DD_Dynamite = 0 then goto Diamond_EndRound_music
+  DD_Dynamite -= 1
+  DD_Score += 5
+  play sound 2
+  DD_show_score
+  wait 12 frames
+  goto Diamond_EndRound_dynamite
+Diamond_EndRound_music:
+  play sound 5
+  play sound 6
+  wait 75 frames
+  return
+
+sub DD_Diamond_UpdateDynamite:
+  if ArcadeRam.DiamondDash.DynamiteCountdown = 0 then return
+  ArcadeRam.DiamondDash.DynamiteCountdown -= 1
+  DD_TmpType = DD_DynamiteLitTile2
+  if ArcadeRam.DiamondDash.DynamiteCountdown mod 2 != 0 then
+    DD_TmpType = DD_DynamiteLitTile1
+  end if
+  put char DD_TmpType at ArcadeRam.DiamondDash.OneDynamiteX,ArcadeRam.DiamondDash.OneDynamiteY
+  if ArcadeRam.DiamondDash.DynamiteCountdown != 0 then return
+  wait
+  ' Guard the long VRAM carve burst from NMI status reads.
+  nmi off
+  DD_TmpCount = 3
+  DD_Diamond_CarveSquare
+  nmi on
+  return
+
+function Diamond_AddDiamond() as bool
+  DD_TmpX = random(DD_DiamondMinX, DD_DiamondMaxX)
+  DD_TmpY = random(DD_DiamondMinY, DD_DiamondMaxY)
+  DD_TmpType = get char at DD_TmpX,DD_TmpY
+  if DD_TmpType != DD_RockTile then return false
+  if chars in box DD_TmpX - 1,DD_TmpY - 1 size 3,3 contain DD_hole then return false
+  put char ArcadeRam.DiamondDash.DiamondDType at DD_TmpX,DD_TmpY
+  DD_TmpCount -= 1
+  return true
+
+function Diamond_AddHoles() as bool
+  DD_TmpX = random(DD_HoleMinX, DD_HoleMaxX)
+  DD_TmpY = random(DD_HoleMinY, DD_HoleMaxY)
+  DD_TmpType = random(0, 1)
+  if DD_TmpType = 0 then
+    restore DD_HolesShape1
+  else
+    restore DD_HolesShape2
+  end if
+  ArcadeRam.DiamondDash.DiamondDType = 13
+Diamond_AddHoles_checkLoop:
+  read DD_TmpDX, DD_TmpDY
+  DD_TmpCount = get char at DD_TmpX + DD_TmpDX,DD_TmpY + DD_TmpDY
+  if DD_TmpCount != DD_RockTile then return false
+  ArcadeRam.DiamondDash.DiamondDType -= 1
+  if ArcadeRam.DiamondDash.DiamondDType != 0 then goto Diamond_AddHoles_checkLoop
+  if DD_TmpType = 0 then
+    restore DD_HolesShape1
+  else
+    restore DD_HolesShape2
+  end if
+  ArcadeRam.DiamondDash.DiamondDType = 13
+Diamond_AddHoles_paintLoop:
+  read DD_TmpDX, DD_TmpDY
+  put char DD_WalkableTile at DD_TmpX + DD_TmpDX,DD_TmpY + DD_TmpDY
+  ArcadeRam.DiamondDash.DiamondDType -= 1
+  if ArcadeRam.DiamondDash.DiamondDType != 0 then goto Diamond_AddHoles_paintLoop
+  ArcadeRam.DiamondDash.HoleCount -= 1
+  select case ArcadeRam.DiamondDash.HoleCount
+  case 2
+    put char DD_PowderBarrelTile at DD_TmpX,DD_TmpY
+  case 1
+    put char DD_DynamitePackTile at DD_TmpX,DD_TmpY
+  end select
+  return true
+
+sub DD_Diamond_CarveSquare:
+  play sound 2
+  DD_TmpX = 5
+Diamond_CS_rocks:
+  ArcadeRam.DiamondDash.RockX = random(DD_RockMinX, DD_RockMaxX)
+  ArcadeRam.DiamondDash.RockY = random(DD_RockMinY, DD_RockMaxY)
+  DD_TmpType = get char at ArcadeRam.DiamondDash.RockX,ArcadeRam.DiamondDash.RockY
+  if DD_TmpType != DD_WalkableTile then goto Diamond_CS_rocks
+  put char DD_RockTile at ArcadeRam.DiamondDash.RockX,ArcadeRam.DiamondDash.RockY
+  DD_TmpX -= 1
+  if DD_TmpX != 0 then goto Diamond_CS_rocks
+  ArcadeRam.DiamondDash.CS_BarrelX = 0
+  ArcadeRam.DiamondDash.CS_BarrelY = 0
+  DD_TmpY = DD_TmpCount
+  DD_TmpY >>= 1
+  DD_CS_StartX = ArcadeRam.DiamondDash.OneDynamiteX
+  DD_CS_StartX -= DD_TmpY
+  DD_CS_StartY = ArcadeRam.DiamondDash.OneDynamiteY
+  DD_CS_StartY -= DD_TmpY
+  DD_BlastFrame = get frame size DD_TmpCount,DD_TmpCount at DD_CS_StartX,DD_CS_StartY
+  replace DD_blastClears with DD_WalkableTile in DD_BlastFrame frame size DD_TmpCount,DD_TmpCount
+  ArcadeRam.DiamondDash.CS_FrameIndex = 0
+  ArcadeRam.DiamondDash.HoleCount = DD_CS_StartY
+  ArcadeRam.DiamondDash.DiamondDType = DD_TmpCount
+Diamond_CS_row:
+  ArcadeRam.DiamondDash.CS_CurCol = DD_CS_StartX
+  ArcadeRam.DiamondDash.CS_ColCount = DD_TmpCount
+Diamond_CS_col:
+  DD_TmpType = DD_BlastFrame[ArcadeRam.DiamondDash.CS_FrameIndex]
+  select case DD_TmpType
+  case DD_PowderBarrelTile
+    ArcadeRam.DiamondDash.CS_BarrelX = ArcadeRam.DiamondDash.CS_CurCol
+    ArcadeRam.DiamondDash.CS_BarrelY = ArcadeRam.DiamondDash.HoleCount
+    DD_BlastFrame[ArcadeRam.DiamondDash.CS_FrameIndex] = DD_WalkableTile
+  end select
+  ArcadeRam.DiamondDash.CS_FrameIndex += 1
+  ArcadeRam.DiamondDash.CS_CurCol += 1
+  ArcadeRam.DiamondDash.CS_ColCount -= 1
+  if ArcadeRam.DiamondDash.CS_ColCount != 0 then goto Diamond_CS_col
+  ArcadeRam.DiamondDash.HoleCount += 1
+  ArcadeRam.DiamondDash.DiamondDType -= 1
+  if ArcadeRam.DiamondDash.DiamondDType != 0 then goto Diamond_CS_row
+  put DD_BlastFrame frame size DD_TmpCount,DD_TmpCount at DD_CS_StartX,DD_CS_StartY
+  if ArcadeRam.DiamondDash.CS_BarrelX = 0 then return
+  ArcadeRam.DiamondDash.OneDynamiteX = ArcadeRam.DiamondDash.CS_BarrelX
+  ArcadeRam.DiamondDash.OneDynamiteY = ArcadeRam.DiamondDash.CS_BarrelY
+  DD_TmpCount = 7
+  DD_Diamond_CarveSquare
+  return
+
+include "@project/diamond_sounds.inc"
+
+' ============================================================================
+' REVERSI GAME MODULE
+' RAM PART: ArcadeRam.Reversi
+' ENTRY: RV_GameEntry
+' OWNERSHIP RULE: initialize this RAM part before reading previous values.
+' ============================================================================
+sub RV_GameEntry:
+  tile screen
+  sprites 16x16
+  sprites simple
+  decompress zx0 RV_ReversiPatternZx0 to vram.pattern
+  duplicate mode 2 text patterns
+  load mode 2 text colors RV_ReversiColorRaw
+  decompress zx0 RV_ReversiSpritesZx0 to vram.spr_pat
+  clear sprites
+  set sprite count 2
+  set sound table ReversiSoundTable areas 8
+  screen on
+  RV_ReversiShowMenu
+  RV_ReversiNewGame
+  goto RV_ReversiNextTurn
+end sub
+
+sub RV_ReversiShowMenu:
+  ArcadeRam.Reversi.MenuPlayer = 0
+  ArcadeRam.Reversi.BlackController = RV_ControllerHuman
+  ArcadeRam.Reversi.WhiteController = RV_ControllerTuned
+  ArcadeRam.Reversi.LastPad = 0
+  decompress zx0 RV_ReversiMenuNameZx0 to vram.name
+  RV_ReversiDrawPlayerMenu
+
+ReversiMenuInput:
+  wait
+  ArcadeRam.Reversi.Pad = joypad(1)
+  if joypad(1).left then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      ArcadeRam.Reversi.MenuPlayer = 0
+      ArcadeRam.Reversi.LastPad = 1
+      RV_ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).right then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      ArcadeRam.Reversi.MenuPlayer = 1
+      ArcadeRam.Reversi.LastPad = 1
+      RV_ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).up then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      if ArcadeRam.Reversi.MenuPlayer = 0 then
+        if ArcadeRam.Reversi.BlackController = 0 then ArcadeRam.Reversi.BlackController = 2 else ArcadeRam.Reversi.BlackController -= 1
+      else
+        if ArcadeRam.Reversi.WhiteController = 0 then ArcadeRam.Reversi.WhiteController = 2 else ArcadeRam.Reversi.WhiteController -= 1
+      end if
+      ArcadeRam.Reversi.LastPad = 1
+      RV_ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).down then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      if ArcadeRam.Reversi.MenuPlayer = 0 then
+        if ArcadeRam.Reversi.BlackController = 2 then ArcadeRam.Reversi.BlackController = 0 else ArcadeRam.Reversi.BlackController += 1
+      else
+        if ArcadeRam.Reversi.WhiteController = 2 then ArcadeRam.Reversi.WhiteController = 0 else ArcadeRam.Reversi.WhiteController += 1
+      end if
+      ArcadeRam.Reversi.LastPad = 1
+      RV_ReversiDrawPlayerMenu
+    end if
+  elseif joypad(1).button1 then
+    wait no fire
+    mute all
+    return
+  end if
+  if ArcadeRam.Reversi.Pad = 0 then ArcadeRam.Reversi.LastPad = 0 else ArcadeRam.Reversi.LastPad = 1
+  goto ReversiMenuInput
+
+sub RV_ReversiDrawPlayerMenu:
+  if ArcadeRam.Reversi.MenuPlayer = 0 then
+    put char $2A at 3,8
+    put char $20 at 18,8
+  else
+    put char $20 at 3,8
+    put char $2A at 18,8
+  end if
+  select case ArcadeRam.Reversi.BlackController
+  case RV_ControllerHuman
+    put char $2A at 2,11
+    put char $20 at 2,13
+    put char $20 at 2,15
+  case RV_ControllerSimple
+    put char $20 at 2,11
+    put char $2A at 2,13
+    put char $20 at 2,15
+  case RV_ControllerTuned
+    put char $20 at 2,11
+    put char $20 at 2,13
+    put char $2A at 2,15
+  end select
+  select case ArcadeRam.Reversi.WhiteController
+  case RV_ControllerHuman
+    put char $2A at 17,11
+    put char $20 at 17,13
+    put char $20 at 17,15
+  case RV_ControllerSimple
+    put char $20 at 17,11
+    put char $2A at 17,13
+    put char $20 at 17,15
+  case RV_ControllerTuned
+    put char $20 at 17,11
+    put char $20 at 17,13
+    put char $2A at 17,15
+  end select
+  return
+sub RV_ReversiNewGame:
+  decompress zx0 RV_ReversiBoardZx0 to vram.name
+  for ArcadeRam.Reversi.CellIndex = 0 to 63
+    RV_Board[ArcadeRam.Reversi.CellIndex] = RV_Empty
+    RV_Hints[ArcadeRam.Reversi.CellIndex] = RV_Empty
+  next
+  ArcadeRam.Reversi.CursorX = 2
+  ArcadeRam.Reversi.CursorY = 3
+  ArcadeRam.Reversi.PassCount = 0
+  ArcadeRam.Reversi.Piece = RV_WhitePiece
+  ArcadeRam.Reversi.ScanX = 3
+  ArcadeRam.Reversi.ScanY = 3
+  RV_ReversiPutPiece
+  ArcadeRam.Reversi.ScanX = 4
+  ArcadeRam.Reversi.ScanY = 4
+  RV_ReversiPutPiece
+  ArcadeRam.Reversi.Piece = RV_BlackPiece
+  ArcadeRam.Reversi.ScanX = 4
+  ArcadeRam.Reversi.ScanY = 3
+  RV_ReversiPutPiece
+  ArcadeRam.Reversi.ScanX = 3
+  ArcadeRam.Reversi.ScanY = 4
+  RV_ReversiPutPiece
+  ArcadeRam.Reversi.CurrentPiece = RV_HumanPiece
+  RV_ReversiMarkLegalMoves
+  RV_ReversiDrawHints
+  RV_ReversiDrawScores
+  RV_ReversiDrawCursor
+  return
+
+sub RV_ReversiNextTurn:
+  ArcadeRam.Reversi.CurrentPiece = ArcadeRam.Reversi.TurnPiece
+  RV_ReversiMarkLegalMoves
+  if ArcadeRam.Reversi.MoveCount = 0 then
+    play sound RV_SfxPass0
+    play sound RV_SfxPass1
+    ArcadeRam.Reversi.PassCount += 1
+    if ArcadeRam.Reversi.PassCount >= 2 then goto RV_ReversiGameOver
+    RV_ReversiSwitchTurn
+    goto RV_ReversiNextTurn
+  end if
+  ArcadeRam.Reversi.PassCount = 0
+  if ArcadeRam.Reversi.TurnPiece = RV_BlackPiece then
+    ArcadeRam.Reversi.ActiveController = ArcadeRam.Reversi.BlackController
+  else
+    ArcadeRam.Reversi.ActiveController = ArcadeRam.Reversi.WhiteController
+  end if
+  if ArcadeRam.Reversi.ActiveController = RV_ControllerHuman then goto RV_ReversiHumanTurn
+  goto RV_ReversiCpuTurn
+
+sub RV_ReversiSwitchTurn:
+  if ArcadeRam.Reversi.TurnPiece = RV_BlackPiece then
+    ArcadeRam.Reversi.TurnPiece = RV_WhitePiece
+  else
+    ArcadeRam.Reversi.TurnPiece = RV_BlackPiece
+  end if
+  return
+
+sub RV_ReversiHumanTurn:
+  nmi on
+  ArcadeRam.Reversi.LastPad = 0
+  wait
+  RV_ReversiDrawHints
+  if ArcadeRam.Reversi.TurnPiece = RV_BlackPiece then
+    RV_PrintBlackTurn
+  else
+    RV_PrintWhiteTurn
+  end if
+ReversiPlayerLoop:
+  wait
+  RV_ReversiDrawCursor
+  ArcadeRam.Reversi.Pad = joypad(1)
+  if joypad(1).left then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      if ArcadeRam.Reversi.CursorX > 0 then ArcadeRam.Reversi.CursorX -= 1
+    end if
+  elseif joypad(1).right then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      if ArcadeRam.Reversi.CursorX < 7 then ArcadeRam.Reversi.CursorX += 1
+    end if
+  elseif joypad(1).up then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      if ArcadeRam.Reversi.CursorY > 0 then ArcadeRam.Reversi.CursorY -= 1
+    end if
+  elseif joypad(1).down then
+    if ArcadeRam.Reversi.LastPad = 0 then
+      if ArcadeRam.Reversi.CursorY < 7 then ArcadeRam.Reversi.CursorY += 1
+    end if
+  elseif joypad(1).button1 then
+    ArcadeRam.Reversi.SelectedIndex = (ArcadeRam.Reversi.CursorY << 3) + ArcadeRam.Reversi.CursorX
+    ArcadeRam.Reversi.CellValue = RV_Hints[ArcadeRam.Reversi.SelectedIndex]
+    if ArcadeRam.Reversi.CellValue > 0 then
+      play sound RV_SfxPlace
+      RV_ReversiEraseHints
+      ArcadeRam.Reversi.ScanX = ArcadeRam.Reversi.CursorX
+      ArcadeRam.Reversi.ScanY = ArcadeRam.Reversi.CursorY
+      ArcadeRam.Reversi.Piece = ArcadeRam.Reversi.TurnPiece
+      RV_ReversiApplyMove
+      RV_ReversiDrawScores
+      wait no fire
+      RV_ReversiSwitchTurn
+      goto RV_ReversiNextTurn
+    else
+      play sound RV_SfxWrong0
+      play sound RV_SfxWrong1
+      wait 24 frames
+      wait no fire
+    end if
+  end if
+  if ArcadeRam.Reversi.Pad = 0 then ArcadeRam.Reversi.LastPad = 0 else ArcadeRam.Reversi.LastPad = 1
+  goto ReversiPlayerLoop
+
+sub RV_PrintWhiteTurn:
+  print at 23,17, "WHITE"
+  print at 23,18, "TURN "
+end sub
+
+sub RV_PrintBlackTurn:
+  print at 23,17, "BLACK"
+  print at 23,18, "TURN "
+end sub
+
+sub RV_ReversiCpuTurn:
+  nmi on
+  wait
+  if ArcadeRam.Reversi.TurnPiece = RV_BlackPiece then
+    RV_PrintBlackTurn
+  else
+    RV_PrintWhiteTurn
+  end if
+
+  RV_ReversiDrawHints
+  nmi off
+  ArcadeRam.Reversi.OpponentPiece = 3 - ArcadeRam.Reversi.TurnPiece
+  ArcadeRam.Reversi.BestValue = -30000
+  ArcadeRam.Reversi.BestIndex = 255
+
+  if ArcadeRam.Reversi.ActiveController = RV_ControllerTuned then
+    RV_ReversiFindTunedMove
+    if ArcadeRam.Reversi.BestIndex <> 255 then
+      ArcadeRam.Reversi.BestX = ArcadeRam.Reversi.BestIndex & 7
+      ArcadeRam.Reversi.BestY = ArcadeRam.Reversi.BestIndex >> 3
+      goto ReversiCpuMoveReady
+    end if
+  end if
+
+  ' A rare depth-2 budget abort falls back to the bounded simple evaluator.
+  ArcadeRam.Reversi.BestValue = -30000
+  ArcadeRam.Reversi.CellIndex = 0
+    for ArcadeRam.Reversi.ScanY = 0 to 7
+      for ArcadeRam.Reversi.ScanX = 0 to 7
+        if RV_Board[ArcadeRam.Reversi.CellIndex] = RV_Empty then
+          ArcadeRam.Reversi.TotalFlips = 0
+          for ArcadeRam.Reversi.Dir = 0 to 7
+            RV_ReversiCountDirection
+            ArcadeRam.Reversi.TotalFlips += ArcadeRam.Reversi.FlipCount
+          next
+          if ArcadeRam.Reversi.TotalFlips > 0 then
+            ArcadeRam.Reversi.ThinkScore = ReversiScoreSimpleMove(ArcadeRam.Reversi.CellIndex,ArcadeRam.Reversi.TotalFlips,ArcadeRam.Reversi.TurnPiece)
+            if ArcadeRam.Reversi.ThinkScore > ArcadeRam.Reversi.BestValue then
+              ArcadeRam.Reversi.BestValue = ArcadeRam.Reversi.ThinkScore
+              ArcadeRam.Reversi.BestIndex = ArcadeRam.Reversi.CellIndex
+              ArcadeRam.Reversi.BestX = ArcadeRam.Reversi.ScanX
+              ArcadeRam.Reversi.BestY = ArcadeRam.Reversi.ScanY
+            elseif ArcadeRam.Reversi.ThinkScore = ArcadeRam.Reversi.BestValue then
+              ArcadeRam.Reversi.TieBreak = random(0,1)
+              if ArcadeRam.Reversi.TieBreak = 1 then
+                ArcadeRam.Reversi.BestIndex = ArcadeRam.Reversi.CellIndex
+                ArcadeRam.Reversi.BestX = ArcadeRam.Reversi.ScanX
+                ArcadeRam.Reversi.BestY = ArcadeRam.Reversi.ScanY
+              end if
+            end if
+          end if
+        end if
+        ArcadeRam.Reversi.CellIndex += 1
+    next
+  next
+
+ReversiCpuMoveReady:
+  nmi on
+  if ArcadeRam.Reversi.BestIndex = 255 then goto RV_ReversiGameOver
+  ArcadeRam.Reversi.CurrentPiece = ArcadeRam.Reversi.TurnPiece
+  RV_ReversiMarkLegalMoves
+  ArcadeRam.Reversi.CellValue = RV_Hints[ArcadeRam.Reversi.BestIndex]
+  if ArcadeRam.Reversi.CellValue = 0 then
+    ArcadeRam.Reversi.BestIndex = 255
+    for ArcadeRam.Reversi.CellIndex = 0 to 63
+      if ArcadeRam.Reversi.BestIndex = 255 then
+        if RV_Hints[ArcadeRam.Reversi.CellIndex] > 0 then ArcadeRam.Reversi.BestIndex = ArcadeRam.Reversi.CellIndex
+      end if
+    next
+    if ArcadeRam.Reversi.BestIndex = 255 then goto RV_ReversiGameOver
+    ArcadeRam.Reversi.BestX = ArcadeRam.Reversi.BestIndex & 7
+    ArcadeRam.Reversi.BestY = ArcadeRam.Reversi.BestIndex >> 3
+  end if
+  wait
+  RV_ReversiEraseHints
+  ArcadeRam.Reversi.ScanX = ArcadeRam.Reversi.BestX
+  ArcadeRam.Reversi.ScanY = ArcadeRam.Reversi.BestY
+  ArcadeRam.Reversi.TotalFlips = 0
+  for ArcadeRam.Reversi.Dir = 0 to 7
+    RV_ReversiCountDirection
+    ArcadeRam.Reversi.TotalFlips += ArcadeRam.Reversi.FlipCount
+  next
+  if ArcadeRam.Reversi.TotalFlips = 0 then goto RV_ReversiGameOver
+  ArcadeRam.Reversi.Piece = ArcadeRam.Reversi.TurnPiece
+  wait 20 frames
+  RV_ReversiApplyMove
+  RV_ReversiDrawScores
+  RV_ReversiSwitchTurn
+  goto RV_ReversiNextTurn
+
+' Iterative search: depth 2 is authoritative. Depth 3 replaces it only when
+' every node finishes inside the shared ColecoVision-friendly budget.
+sub RV_ReversiFindTunedMove:
+  ArcadeRam.Reversi.ReversiNodes = 0
+  ArcadeRam.Reversi.ReversiCompletedDepth = 0
+  ArcadeRam.Reversi.ReversiSearchAborted = 0
+  ArcadeRam.Reversi.ReversiEnforceBudget = 0
+  ArcadeRam.Reversi.BestIndex = 255
+  ArcadeRam.Reversi.BestValue = -30000
+
+  ArcadeRam.Reversi.Tmp = ReversiSearchDepth(2,ArcadeRam.Reversi.TurnPiece)
+  if ArcadeRam.Reversi.Tmp = 1 then
+    ArcadeRam.Reversi.BestIndex = ArcadeRam.Reversi.ReversiDepthBestIndex
+    ArcadeRam.Reversi.BestValue = ArcadeRam.Reversi.ReversiDepthBestValue
+    ArcadeRam.Reversi.ReversiCompletedDepth = 2
+  end if
+
+  if ArcadeRam.Reversi.ReversiNodes < RV_ReversiNodeBudget then
+    ArcadeRam.Reversi.ReversiSearchAborted = 0
+    ArcadeRam.Reversi.ReversiEnforceBudget = 1
+    ArcadeRam.Reversi.Tmp = ReversiSearchDepth(3,ArcadeRam.Reversi.TurnPiece)
+    if ArcadeRam.Reversi.Tmp = 1 then
+      ArcadeRam.Reversi.BestIndex = ArcadeRam.Reversi.ReversiDepthBestIndex
+      ArcadeRam.Reversi.BestValue = ArcadeRam.Reversi.ReversiDepthBestValue
+      ArcadeRam.Reversi.ReversiCompletedDepth = 3
+    end if
+  end if
+  ArcadeRam.Reversi.ReversiEnforceBudget = 0
+  return
+
+' Root candidates come from the gameplay engine's authoritative legal-move map.
+' Static ordering gives alpha-beta useful depth within the 400-node budget.
+function ReversiSearchDepth(u8 Depth, u8 Side) as u8
+u8 RV_SavedBoard[64] = 0
+u8 RV_Slot = 0
+u8 RV_Move = 0
+u8 RV_MoveTotal = 0
+u8 RV_OtherSide = 0
+i16 RV_Score = 0
+i16 RV_RootAlpha = -30000
+
+  ArcadeRam.Reversi.ReversiDepthBestIndex = 255
+  ArcadeRam.Reversi.ReversiDepthBestValue = -30000
+  RV_OtherSide = 3 - Side
+
+  do while RV_Slot < 64
+    RV_Move = RV_ReversiMoveOrder[RV_Slot]
+    if RV_Hints[RV_Move] > 0 then
+      RV_MoveTotal += 1
+      copy RV_Board to RV_SavedBoard count 64
+      RV_ReversiApplyMoveFast(RV_Move,Side)
+      RV_Score = 0 - ReversiAlphaBeta(Depth - 1,RV_OtherSide,-30000,0 - RV_RootAlpha)
+      copy RV_SavedBoard to RV_Board count 64
+      if ArcadeRam.Reversi.ReversiSearchAborted <> 0 then return 0
+      if RV_Score > ArcadeRam.Reversi.ReversiDepthBestValue then
+        ArcadeRam.Reversi.ReversiDepthBestValue = RV_Score
+        ArcadeRam.Reversi.ReversiDepthBestIndex = RV_Move
+      elseif RV_Score = ArcadeRam.Reversi.ReversiDepthBestValue then
+        ArcadeRam.Reversi.TieBreak = random(0,1)
+        if ArcadeRam.Reversi.TieBreak = 1 then ArcadeRam.Reversi.ReversiDepthBestIndex = RV_Move
+      end if
+      if RV_Score > RV_RootAlpha then RV_RootAlpha = RV_Score
+    end if
+    RV_Slot += 1
+  loop
+  if RV_MoveTotal = 0 then return 0
+  return 1
+function ReversiAlphaBeta(u8 Depth, u8 Side, i16 Alpha, i16 Beta) as i16
+u8 RV_SavedBoard[64] = 0
+u8 RV_Slot = 0
+u8 RV_Move = 0
+u8 RV_MoveTotal = 0
+u8 RV_OtherSide = 0
+i16 RV_Score = 0
+i16 RV_Best = -30000
+
+  if ArcadeRam.Reversi.ReversiEnforceBudget <> 0 then
+    if ArcadeRam.Reversi.ReversiNodes >= RV_ReversiNodeBudget then
+      ArcadeRam.Reversi.ReversiSearchAborted = 1
+      return ReversiEvaluateTuned(Side)
+    end if
+  end if
+  ArcadeRam.Reversi.ReversiNodes += 1
+  if Depth = 0 then return ReversiEvaluateTuned(Side)
+
+  RV_OtherSide = 3 - Side
+  do while RV_Slot < 64
+    RV_Move = RV_ReversiMoveOrder[RV_Slot]
+    if ReversiCountMoveFast(RV_Move,Side) > 0 then
+      RV_MoveTotal += 1
+      copy RV_Board to RV_SavedBoard count 64
+      RV_ReversiApplyMoveFast(RV_Move,Side)
+      if Depth = 1 then
+        if ArcadeRam.Reversi.ReversiEnforceBudget <> 0 and ArcadeRam.Reversi.ReversiNodes >= RV_ReversiNodeBudget then
+          ArcadeRam.Reversi.ReversiSearchAborted = 1
+          RV_Score = 0 - ReversiEvaluateTuned(RV_OtherSide)
+        else
+          ArcadeRam.Reversi.ReversiNodes += 1
+          RV_Score = 0 - ReversiEvaluateTuned(RV_OtherSide)
+        end if
+      else
+        RV_Score = 0 - ReversiAlphaBeta(Depth - 1,RV_OtherSide,0 - Beta,0 - Alpha)
+      end if
+      copy RV_SavedBoard to RV_Board count 64
+      if ArcadeRam.Reversi.ReversiSearchAborted <> 0 then return RV_Score
+      if RV_Score > RV_Best then RV_Best = RV_Score
+      if RV_Score > Alpha then Alpha = RV_Score
+      if Alpha >= Beta then return RV_Best
+    end if
+    RV_Slot += 1
+  loop
+
+  if RV_MoveTotal = 0 then
+    if ReversiHasAnyMove(RV_OtherSide) > 0 then
+      if Depth = 1 then
+        if ArcadeRam.Reversi.ReversiEnforceBudget <> 0 and ArcadeRam.Reversi.ReversiNodes >= RV_ReversiNodeBudget then
+          ArcadeRam.Reversi.ReversiSearchAborted = 1
+          return 0 - ReversiEvaluateTuned(RV_OtherSide)
+        end if
+        ArcadeRam.Reversi.ReversiNodes += 1
+        return 0 - ReversiEvaluateTuned(RV_OtherSide)
+      end if
+      return 0 - ReversiAlphaBeta(Depth - 1,RV_OtherSide,0 - Beta,0 - Alpha)
+    end if
+    return ReversiEvaluateTuned(Side)
+  end if
+  return RV_Best
+' Integer heuristic tuned for shallow Z80 searches: stable corners,
+' frontier exposure, corner danger, positional value, and late material.
+function ReversiEvaluateTuned(u8 Side) as i16
+u8 RV_I = 0
+u8 RV_Opp = 0
+u8 RV_SideCount = 0
+u8 RV_OppCount = 0
+u8 RV_EmptyCount = 0
+u8 RV_SideCorners = 0
+u8 RV_OppCorners = 0
+u8 RV_SideClose = 0
+u8 RV_OppClose = 0
+u8 RV_SideFrontier = 0
+u8 RV_OppFrontier = 0
+u8 RV_SideMoves = 0
+u8 RV_OppMoves = 0
+i8 RV_Weight = 0
+i16 RV_Score = 0
+
+  RV_Opp = 3 - Side
+  for RV_I = 0 to 63
+    RV_Weight = RV_ReversiPositionWeights[RV_I]
+    if RV_Board[RV_I] = Side then
+      RV_SideCount += 1
+      RV_Score += RV_Weight
+      if ReversiHasEmptyNeighbour(RV_I) > 0 then RV_SideFrontier += 1
+    elseif RV_Board[RV_I] = RV_Opp then
+      RV_OppCount += 1
+      RV_Score -= RV_Weight
+      if ReversiHasEmptyNeighbour(RV_I) > 0 then RV_OppFrontier += 1
+    else
+      RV_EmptyCount += 1
+    end if
+  next
+
+  if RV_Board[0] = Side then RV_SideCorners += 1
+  if RV_Board[7] = Side then RV_SideCorners += 1
+  if RV_Board[56] = Side then RV_SideCorners += 1
+  if RV_Board[63] = Side then RV_SideCorners += 1
+  if RV_Board[0] = RV_Opp then RV_OppCorners += 1
+  if RV_Board[7] = RV_Opp then RV_OppCorners += 1
+  if RV_Board[56] = RV_Opp then RV_OppCorners += 1
+  if RV_Board[63] = RV_Opp then RV_OppCorners += 1
+
+  if RV_Board[0] = RV_Empty then
+    if RV_Board[1] = Side then RV_SideClose += 1
+    if RV_Board[8] = Side then RV_SideClose += 1
+    if RV_Board[9] = Side then RV_SideClose += 1
+    if RV_Board[1] = RV_Opp then RV_OppClose += 1
+    if RV_Board[8] = RV_Opp then RV_OppClose += 1
+    if RV_Board[9] = RV_Opp then RV_OppClose += 1
+  end if
+  if RV_Board[7] = RV_Empty then
+    if RV_Board[6] = Side then RV_SideClose += 1
+    if RV_Board[14] = Side then RV_SideClose += 1
+    if RV_Board[15] = Side then RV_SideClose += 1
+    if RV_Board[6] = RV_Opp then RV_OppClose += 1
+    if RV_Board[14] = RV_Opp then RV_OppClose += 1
+    if RV_Board[15] = RV_Opp then RV_OppClose += 1
+  end if
+  if RV_Board[56] = RV_Empty then
+    if RV_Board[48] = Side then RV_SideClose += 1
+    if RV_Board[49] = Side then RV_SideClose += 1
+    if RV_Board[57] = Side then RV_SideClose += 1
+    if RV_Board[48] = RV_Opp then RV_OppClose += 1
+    if RV_Board[49] = RV_Opp then RV_OppClose += 1
+    if RV_Board[57] = RV_Opp then RV_OppClose += 1
+  end if
+  if RV_Board[63] = RV_Empty then
+    if RV_Board[54] = Side then RV_SideClose += 1
+    if RV_Board[55] = Side then RV_SideClose += 1
+    if RV_Board[62] = Side then RV_SideClose += 1
+    if RV_Board[54] = RV_Opp then RV_OppClose += 1
+    if RV_Board[55] = RV_Opp then RV_OppClose += 1
+    if RV_Board[62] = RV_Opp then RV_OppClose += 1
+  end if
+
+  RV_SideMoves = ReversiCountMovesFast(Side)
+  RV_OppMoves = ReversiCountMovesFast(RV_Opp)
+
+  RV_Score += RV_SideCorners * 64
+  RV_Score -= RV_OppCorners * 64
+  RV_Score += RV_OppClose * 8
+  RV_Score += RV_OppClose * 4
+  RV_Score -= RV_SideClose * 8
+  RV_Score -= RV_SideClose * 4
+  RV_Score += RV_OppFrontier * 16
+  RV_Score -= RV_SideFrontier * 16
+  RV_Score += RV_SideMoves * 4
+  RV_Score -= RV_OppMoves * 4
+  if RV_EmptyCount <= 12 then
+    RV_Score += RV_SideCount * 4
+    RV_Score -= RV_OppCount * 4
+  else
+    RV_Score += RV_SideCount
+    RV_Score -= RV_OppCount
+  end if
+  return RV_Score
+
+function ReversiHasEmptyNeighbour(u8 Cell) as u8
+u8 RV_X = 0
+u8 RV_Y = 0
+u8 RV_Neighbour = 0
+
+  RV_X = Cell & 7
+  RV_Y = Cell >> 3
+  if RV_X > 0 then
+    RV_Neighbour = Cell - 1
+    if RV_Board[RV_Neighbour] = RV_Empty then return 1
+  end if
+  if RV_X < 7 then
+    RV_Neighbour = Cell + 1
+    if RV_Board[RV_Neighbour] = RV_Empty then return 1
+  end if
+  if RV_Y > 0 then
+    RV_Neighbour = Cell - 8
+    if RV_Board[RV_Neighbour] = RV_Empty then return 1
+    if RV_X > 0 then
+      RV_Neighbour = Cell - 9
+      if RV_Board[RV_Neighbour] = RV_Empty then return 1
+    end if
+    if RV_X < 7 then
+      RV_Neighbour = Cell - 7
+      if RV_Board[RV_Neighbour] = RV_Empty then return 1
+    end if
+  end if
+  if RV_Y < 7 then
+    RV_Neighbour = Cell + 8
+    if RV_Board[RV_Neighbour] = RV_Empty then return 1
+    if RV_X > 0 then
+      RV_Neighbour = Cell + 7
+      if RV_Board[RV_Neighbour] = RV_Empty then return 1
+    end if
+    if RV_X < 7 then
+      RV_Neighbour = Cell + 9
+      if RV_Board[RV_Neighbour] = RV_Empty then return 1
+    end if
+  end if
+  return 0
+function ReversiScoreSimpleMove(u8 RV_Move, u8 Flips, u8 Side) as i16
+i16 RV_Score = 0
+u8 RV_MX = 0
+u8 RV_MY = 0
+
+  if Flips = 0 then return -30000
+  RV_Score = Flips
+  RV_MX = RV_Move & 7
+  RV_MY = RV_Move >> 3
+  if RV_Move = 0 or RV_Move = 7 or RV_Move = 56 or RV_Move = 63 then RV_Score += 40
+  if RV_MX = 0 or RV_MX = 7 or RV_MY = 0 or RV_MY = 7 then RV_Score += 6
+  if RV_Move = 1 or RV_Move = 8 or RV_Move = 9 then RV_Score -= 12
+  if RV_Move = 6 or RV_Move = 14 or RV_Move = 15 then RV_Score -= 12
+  if RV_Move = 48 or RV_Move = 49 or RV_Move = 57 then RV_Score -= 12
+  if RV_Move = 54 or RV_Move = 55 or RV_Move = 62 then RV_Score -= 12
+  return RV_Score
+
+function ReversiCountMovesFast(u8 Side) as u8
+u8 RV_Move = 0
+u8 RV_Count = 0
+  for RV_Move = 0 to 63
+    if ReversiCountMoveFast(RV_Move,Side) > 0 then RV_Count += 1
+  next
+  return RV_Count
+
+function ReversiHasAnyMove(u8 Side) as u8
+u8 RV_Move = 0
+  for RV_Move = 0 to 63
+    if ReversiCountMoveFast(RV_Move,Side) > 0 then return 1
+  next
+  return 0
+
+function ReversiCountMoveFast(u8 RV_Move, u8 Side) as u8
+u8 RV_D = 0
+u8 RV_Total = 0
+  if RV_Board[RV_Move] <> RV_Empty then return 0
+  for RV_D = 0 to 7
+    RV_Total += ReversiCountDirFast(RV_Move,Side,RV_D)
+  next
+  return RV_Total
+
+function ReversiCountDirFast(u8 RV_Move, u8 Side, u8 RV_D) as u8
+u8 RV_FX = 0
+u8 RV_FY = 0
+i8 RV_FStepX = 0
+i8 RV_FStepY = 0
+u8 RV_FIndex = 0
+u8 RV_Count = 0
+u8 RV_Opponent = 0
+
+  RV_Opponent = 3 - Side
+  RV_FX = RV_Move & 7
+  RV_FY = RV_Move >> 3
+  RV_FStepX = RV_ReversiDirX[RV_D]
+  RV_FStepY = RV_ReversiDirY[RV_D]
+
+ReversiCountDirFastLoop:
+  RV_FX += RV_FStepX
+  RV_FY += RV_FStepY
+  if RV_FX > 7 then return 0
+  if RV_FY > 7 then return 0
+  RV_FIndex = (RV_FY << 3) + RV_FX
+  if RV_Board[RV_FIndex] = RV_Opponent then
+    RV_Count += 1
+    goto ReversiCountDirFastLoop
+  elseif RV_Board[RV_FIndex] = Side then
+    return RV_Count
+  end if
+  return 0
+
+sub RV_ReversiApplyMoveFast(u8 RV_Move, u8 Side):
+u8 RV_D = 0
+u8 RV_LocalFlips = 0
+u8 RV_LocalStep = 0
+u8 RV_FX = 0
+u8 RV_FY = 0
+i8 RV_FStepX = 0
+i8 RV_FStepY = 0
+u8 RV_FIndex = 0
+
+  for RV_D = 0 to 7
+    RV_LocalFlips = ReversiCountDirFast(RV_Move,Side,RV_D)
+    if RV_LocalFlips > 0 then
+      RV_FX = RV_Move & 7
+      RV_FY = RV_Move >> 3
+      RV_FStepX = RV_ReversiDirX[RV_D]
+      RV_FStepY = RV_ReversiDirY[RV_D]
+      for RV_LocalStep = 1 to RV_LocalFlips
+        RV_FX += RV_FStepX
+        RV_FY += RV_FStepY
+        RV_FIndex = (RV_FY << 3) + RV_FX
+        RV_Board[RV_FIndex] = Side
+      next
+    end if
+  next
+  RV_Board[RV_Move] = Side
+  return
+sub RV_ReversiGameOver:
+  clear sprites
+  update sprites
+  RV_ReversiDrawScores
+  if ArcadeRam.Reversi.BlackScore > ArcadeRam.Reversi.WhiteScore then
+    print centered at 22, "  BLACK WINS  "
+    if ArcadeRam.Reversi.BlackController = RV_ControllerHuman then
+      RV_ReversiPlayWinSound
+    else
+      RV_ReversiPlayLoseSound
+    end if
+  elseif ArcadeRam.Reversi.WhiteScore > ArcadeRam.Reversi.BlackScore then
+    print centered at 22, "  WHITE WINS  "
+    if ArcadeRam.Reversi.WhiteController = RV_ControllerHuman then
+      RV_ReversiPlayWinSound
+    else
+      RV_ReversiPlayLoseSound
+    end if
+  else
+    print centered at 22, "  DRAW GAME   "
+    RV_ReversiPlayLoseSound
+  end if
+  print centered at 23, "PRESS FIRE"
+  pause until press
+  wait no fire
+  RV_ReversiNewGame
+  goto RV_ReversiNextTurn
+sub RV_ReversiPlayWinSound:
+  play sound RV_SfxWin0
+  play sound RV_SfxWin1
+  play sound RV_SfxWin2
+  return
+
+sub RV_ReversiPlayLoseSound:
+  play sound RV_SfxLose0
+  play sound RV_SfxLose1
+  play sound RV_SfxLose2
+  return
+sub RV_ReversiMarkLegalMoves:
+  RV_ReversiCleanHints
+  ArcadeRam.Reversi.MoveCount = 0
+  ArcadeRam.Reversi.OpponentPiece = 3 - ArcadeRam.Reversi.CurrentPiece
+  ArcadeRam.Reversi.CellIndex = 0
+  for ArcadeRam.Reversi.ScanY = 0 to 7
+    for ArcadeRam.Reversi.ScanX = 0 to 7
+      if RV_Board[ArcadeRam.Reversi.CellIndex] = RV_Empty then
+        ArcadeRam.Reversi.TotalFlips = 0
+        for ArcadeRam.Reversi.Dir = 0 to 7
+          RV_ReversiCountDirection
+          ArcadeRam.Reversi.TotalFlips += ArcadeRam.Reversi.FlipCount
+        next
+        if ArcadeRam.Reversi.TotalFlips > 0 then
+          RV_Hints[ArcadeRam.Reversi.CellIndex] = ArcadeRam.Reversi.TotalFlips
+          ArcadeRam.Reversi.MoveCount += 1
+        end if
+      end if
+      ArcadeRam.Reversi.CellIndex += 1
+    next
+  next
+  return
+
+sub RV_ReversiCleanHints:
+  for ArcadeRam.Reversi.CellIndex = 0 to 63
+    RV_Hints[ArcadeRam.Reversi.CellIndex] = RV_Empty
+  next
+  return
+
+sub RV_ReversiDrawHints:
+  ArcadeRam.Reversi.CellIndex = 0
+  for ArcadeRam.Reversi.ScanY = 0 to 7
+    for ArcadeRam.Reversi.ScanX = 0 to 7
+      if RV_Hints[ArcadeRam.Reversi.CellIndex] > 0 then
+        ArcadeRam.Reversi.Piece = RV_HintPiece
+        RV_ReversiDrawPieceOnly
+      end if
+      ArcadeRam.Reversi.CellIndex += 1
+    next
+  next
+  return
+
+sub RV_ReversiEraseHints:
+  ArcadeRam.Reversi.CellIndex = 0
+  for ArcadeRam.Reversi.ScanY = 0 to 7
+    for ArcadeRam.Reversi.ScanX = 0 to 7
+      if RV_Hints[ArcadeRam.Reversi.CellIndex] > 0 then
+        RV_Hints[ArcadeRam.Reversi.CellIndex] = RV_Empty
+        ArcadeRam.Reversi.Piece = RV_Empty
+        RV_ReversiDrawPieceOnly
+      end if
+      ArcadeRam.Reversi.CellIndex += 1
+    next
+  next
+  return
+
+sub RV_ReversiCountDirection:
+  ArcadeRam.Reversi.FlipCount = 0
+  ArcadeRam.Reversi.StepX = 0
+  ArcadeRam.Reversi.StepY = 0
+  if ArcadeRam.Reversi.Dir = 0 then
+    ArcadeRam.Reversi.StepX = 1
+  elseif ArcadeRam.Reversi.Dir = 1 then
+    ArcadeRam.Reversi.StepX = 1
+    ArcadeRam.Reversi.StepY = 1
+  elseif ArcadeRam.Reversi.Dir = 2 then
+    ArcadeRam.Reversi.StepY = 1
+  elseif ArcadeRam.Reversi.Dir = 3 then
+    ArcadeRam.Reversi.StepX = -1
+    ArcadeRam.Reversi.StepY = 1
+  elseif ArcadeRam.Reversi.Dir = 4 then
+    ArcadeRam.Reversi.StepX = -1
+  elseif ArcadeRam.Reversi.Dir = 5 then
+    ArcadeRam.Reversi.StepX = -1
+    ArcadeRam.Reversi.StepY = -1
+  elseif ArcadeRam.Reversi.Dir = 6 then
+    ArcadeRam.Reversi.StepY = -1
+  else
+    ArcadeRam.Reversi.StepX = 1
+    ArcadeRam.Reversi.StepY = -1
+  end if
+  ArcadeRam.Reversi.Tx = ArcadeRam.Reversi.ScanX
+  ArcadeRam.Reversi.Ty = ArcadeRam.Reversi.ScanY
+ReversiCountLoop:
+  ArcadeRam.Reversi.Tx += ArcadeRam.Reversi.StepX
+  ArcadeRam.Reversi.Ty += ArcadeRam.Reversi.StepY
+  if ArcadeRam.Reversi.Tx < 0 or ArcadeRam.Reversi.Tx > 7 or ArcadeRam.Reversi.Ty < 0 or ArcadeRam.Reversi.Ty > 7 then
+    ArcadeRam.Reversi.FlipCount = 0
+    return
+  end if
+  ArcadeRam.Reversi.ProbeIndex = (ArcadeRam.Reversi.Ty << 3) + ArcadeRam.Reversi.Tx
+  ArcadeRam.Reversi.CellValue = RV_Board[ArcadeRam.Reversi.ProbeIndex]
+  if ArcadeRam.Reversi.CellValue = ArcadeRam.Reversi.OpponentPiece then
+    ArcadeRam.Reversi.FlipCount += 1
+    goto ReversiCountLoop
+  end if
+  if ArcadeRam.Reversi.CellValue = ArcadeRam.Reversi.CurrentPiece then
+    return
+  end if
+  ArcadeRam.Reversi.FlipCount = 0
+  return
+
+sub RV_ReversiApplyMove:
+  ArcadeRam.Reversi.CurrentPiece = ArcadeRam.Reversi.Piece
+  ArcadeRam.Reversi.OpponentPiece = 3 - ArcadeRam.Reversi.CurrentPiece
+  ArcadeRam.Reversi.MoveX = ArcadeRam.Reversi.ScanX
+  ArcadeRam.Reversi.MoveY = ArcadeRam.Reversi.ScanY
+  RV_ReversiPutPiece
+  ArcadeRam.Reversi.CursorX = ArcadeRam.Reversi.MoveX
+  ArcadeRam.Reversi.CursorY = ArcadeRam.Reversi.MoveY
+  RV_ReversiDrawCursor
+
+  ' Freeze all directional results before animating flips. Otherwise an earlier
+  ' direction can modify Board[] and make a later direction look legal.
+  for ArcadeRam.Reversi.Dir = 0 to 7
+    ArcadeRam.Reversi.ScanX = ArcadeRam.Reversi.MoveX
+    ArcadeRam.Reversi.ScanY = ArcadeRam.Reversi.MoveY
+    RV_ReversiCountDirection
+    ArcadeRam.Reversi.DirFlips[ArcadeRam.Reversi.Dir] = ArcadeRam.Reversi.FlipCount
+  next
+
+  for ArcadeRam.Reversi.Dir = 0 to 7
+    ArcadeRam.Reversi.FlipCount = ArcadeRam.Reversi.DirFlips[ArcadeRam.Reversi.Dir]
+    if ArcadeRam.Reversi.FlipCount > 0 then
+      ArcadeRam.Reversi.StepX = RV_ReversiDirX[ArcadeRam.Reversi.Dir]
+      ArcadeRam.Reversi.StepY = RV_ReversiDirY[ArcadeRam.Reversi.Dir]
+      ArcadeRam.Reversi.Tx = ArcadeRam.Reversi.MoveX
+      ArcadeRam.Reversi.Ty = ArcadeRam.Reversi.MoveY
+      for ArcadeRam.Reversi.FlipStep = 1 to ArcadeRam.Reversi.FlipCount
+        ArcadeRam.Reversi.Tx += ArcadeRam.Reversi.StepX
+        ArcadeRam.Reversi.Ty += ArcadeRam.Reversi.StepY
+        ArcadeRam.Reversi.ScanX = ArcadeRam.Reversi.Tx
+        ArcadeRam.Reversi.ScanY = ArcadeRam.Reversi.Ty
+        RV_ReversiAnimateFlip
+      next
+    end if
+  next
+  ArcadeRam.Reversi.ScanX = ArcadeRam.Reversi.MoveX
+  ArcadeRam.Reversi.ScanY = ArcadeRam.Reversi.MoveY
+  return
+
+sub RV_ReversiAnimateFlip:
+u8 RV_OldColor = 0
+u8 RV_NewColor = 0
+u8 RV_OldPattern = $2C
+u8 RV_NewPattern = $10
+u8 RV_AnimationFrame = 0
+
+  ArcadeRam.Reversi.CellIndex = (ArcadeRam.Reversi.ScanY << 3) + ArcadeRam.Reversi.ScanX
+  ArcadeRam.Reversi.CellValue = RV_Board[ArcadeRam.Reversi.CellIndex]
+  if ArcadeRam.Reversi.CellValue = RV_BlackPiece then RV_OldColor = 1 else RV_OldColor = 15
+  if ArcadeRam.Reversi.CurrentPiece = RV_BlackPiece then RV_NewColor = 1 else RV_NewColor = 15
+  play sound RV_SfxFlip0
+  play sound RV_SfxFlip1
+  wait
+  ArcadeRam.Reversi.Piece = RV_Empty
+  RV_ReversiDrawPieceOnly
+  ArcadeRam.Reversi.SpriteX = (ArcadeRam.Reversi.ScanX << 4) + (RV_BoardLeft << 3)
+  ArcadeRam.Reversi.SpriteY = (ArcadeRam.Reversi.ScanY << 4) + (RV_BoardTop << 3) - 1
+  set sprite count 4
+
+  for RV_AnimationFrame = 0 to 6
+    set sprite 2 to ArcadeRam.Reversi.SpriteY,ArcadeRam.Reversi.SpriteX,RV_NewPattern,RV_NewColor
+    set sprite 3 to ArcadeRam.Reversi.SpriteY,ArcadeRam.Reversi.SpriteX,RV_OldPattern,RV_OldColor
+    update sprites
+    wait 2 frames
+    RV_NewPattern += 4
+    RV_OldPattern += 4
+  next
+
+  ArcadeRam.Reversi.Piece = ArcadeRam.Reversi.CurrentPiece
+  RV_ReversiPutPiece
+  set sprite 2 y to 207
+  set sprite 3 y to 207
+  set sprite count 2
+  update sprites
+  wait 2 frames
+  return
+
+sub RV_ReversiPutPiece:
+  if ArcadeRam.Reversi.ScanX > 7 or ArcadeRam.Reversi.ScanY > 7 then return
+  ArcadeRam.Reversi.CellIndex = (ArcadeRam.Reversi.ScanY << 3) + ArcadeRam.Reversi.ScanX
+  RV_Board[ArcadeRam.Reversi.CellIndex] = ArcadeRam.Reversi.Piece
+  RV_ReversiDrawPieceOnly
+  return
+
+sub RV_ReversiDrawPieceOnly:
+  ArcadeRam.Reversi.BaseTile = 128
+  ArcadeRam.Reversi.BoardParity = (ArcadeRam.Reversi.ScanX + ArcadeRam.Reversi.ScanY) & 1
+  if ArcadeRam.Reversi.BoardParity = 1 then ArcadeRam.Reversi.BaseTile = 144
+  if ArcadeRam.Reversi.Piece = RV_BlackPiece then
+    ArcadeRam.Reversi.BaseTile += 4
+  elseif ArcadeRam.Reversi.Piece = RV_WhitePiece then
+    ArcadeRam.Reversi.BaseTile += 8
+  elseif ArcadeRam.Reversi.Piece = RV_HintPiece then
+    ArcadeRam.Reversi.BaseTile += 12
+  end if
+  ArcadeRam.Reversi.TileX = RV_BoardLeft + (ArcadeRam.Reversi.ScanX << 1)
+  ArcadeRam.Reversi.TileY = RV_BoardTop + (ArcadeRam.Reversi.ScanY << 1)
+  put char ArcadeRam.Reversi.BaseTile at ArcadeRam.Reversi.TileX,ArcadeRam.Reversi.TileY
+  put char ArcadeRam.Reversi.BaseTile + 1 at ArcadeRam.Reversi.TileX,ArcadeRam.Reversi.TileY + 1
+  put char ArcadeRam.Reversi.BaseTile + 2 at ArcadeRam.Reversi.TileX + 1,ArcadeRam.Reversi.TileY
+  put char ArcadeRam.Reversi.BaseTile + 3 at ArcadeRam.Reversi.TileX + 1,ArcadeRam.Reversi.TileY + 1
+  return
+
+sub RV_ReversiDrawHourglass:
+  ArcadeRam.Reversi.SpritePattern = 8
+  goto RV_ReversiDrawPointer
+
+sub RV_ReversiDrawCursor:
+  ArcadeRam.Reversi.SpritePattern = 0
+  goto RV_ReversiDrawPointer
+
+sub RV_ReversiDrawPointer:
+  ArcadeRam.Reversi.SpriteX = (ArcadeRam.Reversi.CursorX << 4) + (RV_BoardLeft << 3)
+  ArcadeRam.Reversi.SpriteY = (ArcadeRam.Reversi.CursorY << 4) + (RV_BoardTop << 3) + 7
+  set sprite 0 to ArcadeRam.Reversi.SpriteY,ArcadeRam.Reversi.SpriteX,ArcadeRam.Reversi.SpritePattern,1
+  set sprite 1 to ArcadeRam.Reversi.SpriteY,ArcadeRam.Reversi.SpriteX,ArcadeRam.Reversi.SpritePattern + 4,15
+  set sprite count 2
+  update sprites
+  return
+
+sub RV_ReversiDrawScores:
+  ArcadeRam.Reversi.BlackScore = 0
+  ArcadeRam.Reversi.WhiteScore = 0
+  for ArcadeRam.Reversi.CellIndex = 0 to 63
+    if RV_Board[ArcadeRam.Reversi.CellIndex] = RV_BlackPiece then
+      ArcadeRam.Reversi.BlackScore += 1
+    elseif RV_Board[ArcadeRam.Reversi.CellIndex] = RV_WhitePiece then
+      ArcadeRam.Reversi.WhiteScore += 1
+    end if
+  next
+  print ArcadeRam.Reversi.BlackScore at 24,8
+  print ArcadeRam.Reversi.WhiteScore at 24,13
+  return
+
+include "@project/quatro-reversi-sound.asm"
+
+' ============================================================================
+' TRAIN GAME MODULE
+' RAM PART: ArcadeRam.TrainTrack
+' ENTRY: TT_GameEntry
+' OWNERSHIP RULE: initialize this RAM part before reading previous values.
+' ============================================================================
+sub TT_GameEntry:
+tile screen
+  backdrop dark blue
+  sprites 16x16
+  sprites simple
+  ' One compressed charset fills $78-$D7 in every Mode 2 third.
+  decompress TT_TrainTrackPatterns to vram.pattern + 960
+  decompress TT_TrainTrackPatterns to vram.pattern + 3008
+  decompress TT_TrainTrackPatterns to vram.pattern + 5056
+  decompress TT_TrainTrackColors to vram.color + 960
+  decompress TT_TrainTrackColors to vram.color + 3008
+  decompress TT_TrainTrackColors to vram.color + 5056
+  ' Reuse the BIOS font already in VRAM: copy digits $30-$37 to $D0-$D7.
+  copy vram.pattern + 384 count 32 to vram.pattern + 1856
+  copy vram.pattern + 416 count 32 to vram.pattern + 1888
+  copy vram.pattern + 2432 count 32 to vram.pattern + 3904
+  copy vram.pattern + 2464 count 32 to vram.pattern + 3936
+  copy vram.pattern + 4480 count 32 to vram.pattern + 5952
+  copy vram.pattern + 4512 count 32 to vram.pattern + 5984
+  copy TT_CursorSprite to vram.spr_pat
+  copy TT_TrainUpSprite to vram.spr_pat + 32
+  copy TT_TrainRightSprite to vram.spr_pat + 64
+  copy TT_TrainDownSprite to vram.spr_pat + 96
+  copy TT_TrainLeftSprite to vram.spr_pat + 128
+  copy TT_SmokeDotsSprite to vram.spr_pat + 160
+  copy TT_SmokeDotsMediumSprite to vram.spr_pat + 192
+  copy TT_SmokeDotsSmallSprite to vram.spr_pat + 224
+  copy TT_SmokeDotsEmptySprite to vram.spr_pat + 256
+  set sound table TrainTrackSoundTable areas 8
+  clear sprites
+  set sprite count 1
+  update sprites
+  screen on
+  goto TT_TitleScreen
+end sub
+
+sub TT_TitleScreen:
+  mute all
+  cls
+  TT_DrawTitleLogo
+  print centered at 6, "BUILD ONE CONTINUOUS RAIL"
+  print centered at 8, "MATCH EVERY ROW AND COLUMN"
+  print at 4,13, "PAD        MOVE CURSOR"
+  print at 4,15, "LEFT FIRE  CYCLE TRACK"
+  print at 4,17, "RIGHT FIRE MARK WATER"
+  print centered at 22, "PRESS FIRE"
+  pause until press and release sleep after 10 seconds
+  ArcadeRam.TrainTrack.Puzzle = 0
+  TT_LoadPuzzle
+  goto TT_GameLoop
+
+sub TT_LoadPuzzle:
+  mute all
+  ArcadeRam.TrainTrack.WaterUpdating = 0
+  ArcadeRam.TrainTrack.WaterTicks = 0
+  ArcadeRam.TrainTrack.WaterRow = 0
+  ArcadeRam.TrainTrack.WaterFrame = 0
+  ArcadeRam.TrainTrack.TestSolveWasDown = 0
+  cls
+  TT_DrawTitleLogo
+  ArcadeRam.TrainTrack.PuzzleDataPointer = TT_PuzzleSolutionTable[ArcadeRam.TrainTrack.Puzzle]
+  for ArcadeRam.TrainTrack.I = 0 to 48
+    ArcadeRam.TrainTrack.Solution[ArcadeRam.TrainTrack.I] = peek(ArcadeRam.TrainTrack.PuzzleDataPointer)
+    ArcadeRam.TrainTrack.PuzzleDataPointer += 1
+    ArcadeRam.TrainTrack.FixedClue[ArcadeRam.TrainTrack.I] = 0
+    ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I] = TT_EmptyPiece
+  next
+  ' Each puzzle stores only its few fixed cell indexes, not a 49-byte flag map.
+  ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Puzzle << 3
+  ArcadeRam.TrainTrack.Tile = TT_PuzzleFixedCells[ArcadeRam.TrainTrack.Cell]
+  for ArcadeRam.TrainTrack.I = 1 to ArcadeRam.TrainTrack.Tile
+    ArcadeRam.TrainTrack.X = ArcadeRam.TrainTrack.Cell + ArcadeRam.TrainTrack.I
+    ArcadeRam.TrainTrack.X = TT_PuzzleFixedCells[ArcadeRam.TrainTrack.X]
+    ArcadeRam.TrainTrack.FixedClue[ArcadeRam.TrainTrack.X] = 1
+    ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.X] = ArcadeRam.TrainTrack.Solution[ArcadeRam.TrainTrack.X]
+  next
+  ArcadeRam.TrainTrack.CursorX = 0
+  ArcadeRam.TrainTrack.CursorY = 0
+  ArcadeRam.TrainTrack.CursorColor = 15
+  ArcadeRam.TrainTrack.CursorTicks = 0
+  TT_DrawBoard
+  TT_DrawCursor
+  play sound 3
+ifdef TRAIN_TRACK_DEBUG_SOLVED
+  for ArcadeRam.TrainTrack.I = 0 to 48
+    ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I] = ArcadeRam.TrainTrack.Solution[ArcadeRam.TrainTrack.I]
+  next
+  TT_DrawBoard
+  TT_CheckPuzzleComplete
+end ifdef
+  return
+
+sub TT_DrawBoard:
+  print at 12,4, "PUZZLE"
+  print ArcadeRam.TrainTrack.Puzzle + 1 at 19,4 digits 1
+  TT_DrawHints
+  for ArcadeRam.TrainTrack.I = 0 to 48
+    TT_DrawCell
+  next
+  return
+
+sub TT_DrawSolvedBoard:
+  ' Debug auto-solve runs while the display is active. Limit each VBlank to
+  ' one puzzle row so NAME-table writes cannot spill into active rendering.
+  ArcadeRam.TrainTrack.WaterUpdating = 0
+  for ArcadeRam.TrainTrack.Y = 0 to 6
+    wait
+    ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Y << 3
+    ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.Y
+    for ArcadeRam.TrainTrack.X = 0 to 6
+      ArcadeRam.TrainTrack.I = ArcadeRam.TrainTrack.Cell + ArcadeRam.TrainTrack.X
+      TT_DrawCell
+    next
+  next
+  wait
+  TT_DrawHints
+  wait
+  TT_DrawCursor
+  return
+
+sub TT_DrawHints:
+  for ArcadeRam.TrainTrack.X = 0 to 6
+    ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Puzzle << 3
+    ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.Puzzle
+    ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.X
+    ArcadeRam.TrainTrack.HintTarget = TT_PuzzleColumnCounts[ArcadeRam.TrainTrack.Cell]
+    ArcadeRam.TrainTrack.HintCount = 0
+    for ArcadeRam.TrainTrack.Y = 0 to 6
+      ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Y << 3
+      ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.Y
+      ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.X
+      ArcadeRam.TrainTrack.Piece = ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell]
+      if ArcadeRam.TrainTrack.Piece > TT_EmptyPiece and ArcadeRam.TrainTrack.Piece < TT_WaterPiece then ArcadeRam.TrainTrack.HintCount += 1
+    next
+    ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.HintTarget + 48
+    if ArcadeRam.TrainTrack.HintCount = ArcadeRam.TrainTrack.HintTarget then ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.HintTarget + TT_HintDigitBase
+    ArcadeRam.TrainTrack.ScreenX = ArcadeRam.TrainTrack.X << 1
+    ArcadeRam.TrainTrack.ScreenX += TT_BoardX
+    put char ArcadeRam.TrainTrack.Tile at ArcadeRam.TrainTrack.ScreenX,6
+  next
+  for ArcadeRam.TrainTrack.Y = 0 to 6
+    ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Puzzle << 3
+    ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.Puzzle
+    ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.Y
+    ArcadeRam.TrainTrack.HintTarget = TT_PuzzleRowCounts[ArcadeRam.TrainTrack.Cell]
+    ArcadeRam.TrainTrack.HintCount = 0
+    for ArcadeRam.TrainTrack.X = 0 to 6
+      ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Y << 3
+      ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.Y
+      ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.X
+      ArcadeRam.TrainTrack.Piece = ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell]
+      if ArcadeRam.TrainTrack.Piece > TT_EmptyPiece and ArcadeRam.TrainTrack.Piece < TT_WaterPiece then ArcadeRam.TrainTrack.HintCount += 1
+    next
+    ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.HintTarget + 48
+    if ArcadeRam.TrainTrack.HintCount = ArcadeRam.TrainTrack.HintTarget then ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.HintTarget + TT_HintDigitBase
+    ArcadeRam.TrainTrack.ScreenY = ArcadeRam.TrainTrack.Y << 1
+    ArcadeRam.TrainTrack.ScreenY += TT_BoardY
+    put char ArcadeRam.TrainTrack.Tile at 8,ArcadeRam.TrainTrack.ScreenY
+  next
+  return
+
+sub TT_DrawTitleLogo:
+  for ArcadeRam.TrainTrack.X = 0 to 19
+    ArcadeRam.TrainTrack.Tile = TT_TitleTileBase
+    ArcadeRam.TrainTrack.Tile += ArcadeRam.TrainTrack.X
+    ArcadeRam.TrainTrack.ScreenX = 6 + ArcadeRam.TrainTrack.X
+    put char ArcadeRam.TrainTrack.Tile at ArcadeRam.TrainTrack.ScreenX,1
+    ArcadeRam.TrainTrack.Tile = TT_TitleTileBase + 20
+    ArcadeRam.TrainTrack.Tile += ArcadeRam.TrainTrack.X
+    put char ArcadeRam.TrainTrack.Tile at ArcadeRam.TrainTrack.ScreenX,2
+    ArcadeRam.TrainTrack.Tile = TT_TitleTileBase + 40
+    ArcadeRam.TrainTrack.Tile += ArcadeRam.TrainTrack.X
+    put char ArcadeRam.TrainTrack.Tile at ArcadeRam.TrainTrack.ScreenX,3
+  next
+  return
+
+sub TT_DrawCell:
+  ArcadeRam.TrainTrack.Y = ArcadeRam.TrainTrack.I / 7
+  ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Y << 3
+  ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.Y
+  ArcadeRam.TrainTrack.X = ArcadeRam.TrainTrack.I - ArcadeRam.TrainTrack.Cell
+  ArcadeRam.TrainTrack.Piece = ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I]
+  if ArcadeRam.TrainTrack.Piece = TT_WaterPiece then
+    ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.WaterFrame << 2
+    ArcadeRam.TrainTrack.Tile += TT_WaterFrameTileBase
+  else
+    ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.Piece << 2
+    ArcadeRam.TrainTrack.Tile += TT_TrackTileBase
+  end if
+  ArcadeRam.TrainTrack.ScreenX = ArcadeRam.TrainTrack.X << 1
+  ArcadeRam.TrainTrack.ScreenX += TT_BoardX
+  ArcadeRam.TrainTrack.ScreenY = ArcadeRam.TrainTrack.Y << 1
+  ArcadeRam.TrainTrack.ScreenY += TT_BoardY
+  put char ArcadeRam.TrainTrack.Tile at ArcadeRam.TrainTrack.ScreenX,ArcadeRam.TrainTrack.ScreenY
+  put char ArcadeRam.TrainTrack.Tile + 1 at ArcadeRam.TrainTrack.ScreenX + 1,ArcadeRam.TrainTrack.ScreenY
+  put char ArcadeRam.TrainTrack.Tile + 2 at ArcadeRam.TrainTrack.ScreenX,ArcadeRam.TrainTrack.ScreenY + 1
+  put char ArcadeRam.TrainTrack.Tile + 3 at ArcadeRam.TrainTrack.ScreenX + 1,ArcadeRam.TrainTrack.ScreenY + 1
+  return
+
+sub TT_DrawCursor:
+  ArcadeRam.TrainTrack.CursorTicks += 1
+  if ArcadeRam.TrainTrack.CursorTicks = 15 then
+    ArcadeRam.TrainTrack.CursorTicks = 0
+    if ArcadeRam.TrainTrack.CursorColor = 15 then
+      ArcadeRam.TrainTrack.CursorColor = 1
+    else
+      ArcadeRam.TrainTrack.CursorColor = 15
+    end if
+  end if
+  ArcadeRam.TrainTrack.ScreenX = ArcadeRam.TrainTrack.CursorX << 4
+  ArcadeRam.TrainTrack.ScreenX += TT_BoardX * 8
+  ArcadeRam.TrainTrack.ScreenY = ArcadeRam.TrainTrack.CursorY << 4
+  ArcadeRam.TrainTrack.ScreenY += TT_BoardY * 8
+  ArcadeRam.TrainTrack.ScreenY -= 1
+  set sprite 0 to ArcadeRam.TrainTrack.ScreenY,ArcadeRam.TrainTrack.ScreenX,0,ArcadeRam.TrainTrack.CursorColor
+  update sprites
+  return
+
+sub TT_CyclePiece:
+  ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.CursorY << 3
+  ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.CursorY
+  ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.CursorX
+  if ArcadeRam.TrainTrack.FixedClue[ArcadeRam.TrainTrack.Cell] = 1 then
+    play sound 5
+    return
+  end if
+  ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell] += 1
+  if ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell] > TT_WestNorthPiece then ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell] = TT_EmptyPiece
+  ArcadeRam.TrainTrack.I = ArcadeRam.TrainTrack.Cell
+  TT_DrawCell
+  TT_DrawHints
+  TT_BoardRedrawn = 1
+  play sound 4
+  TT_CheckPuzzleComplete
+  return
+
+sub TT_ToggleWater:
+  ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.CursorY << 3
+  ArcadeRam.TrainTrack.Cell -= ArcadeRam.TrainTrack.CursorY
+  ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.CursorX
+  if ArcadeRam.TrainTrack.FixedClue[ArcadeRam.TrainTrack.Cell] = 1 then
+    play sound 5
+    return
+  end if
+  if ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell] = TT_WaterPiece then
+    ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell] = TT_EmptyPiece
+  else
+    ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.Cell] = TT_WaterPiece
+  end if
+  ArcadeRam.TrainTrack.I = ArcadeRam.TrainTrack.Cell
+  TT_DrawCell
+  TT_DrawHints
+  TT_BoardRedrawn = 1
+  play sound 4
+  TT_CheckPuzzleComplete
+  return
+
+sub TT_CheckPuzzleComplete:
+  ArcadeRam.TrainTrack.Mistakes = 0
+  for ArcadeRam.TrainTrack.I = 0 to 48
+    if ArcadeRam.TrainTrack.Solution[ArcadeRam.TrainTrack.I] = TT_EmptyPiece then
+      if ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I] <> TT_EmptyPiece and ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I] <> TT_WaterPiece then ArcadeRam.TrainTrack.Mistakes += 1
+    else
+      if ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I] <> ArcadeRam.TrainTrack.Solution[ArcadeRam.TrainTrack.I] then ArcadeRam.TrainTrack.Mistakes += 1
+    end if
+  next
+  if ArcadeRam.TrainTrack.Mistakes = 0 then TT_Victory
+  return
+
+sub TT_Victory:
+  print centered at 23, "ALL ABOARD!"
+  play dsound TT_AllAboard step 21
+  play sounds 6, 7, 8
+  fill row 23 from 0 count 32 with $20
+  clear sprites
+  set sprite count 4
+  for ArcadeRam.TrainTrack.SmokeSlot = 0 to 2
+    ArcadeRam.TrainTrack.SmokeAge[ArcadeRam.TrainTrack.SmokeSlot] = 24
+    ArcadeRam.TrainTrack.SmokeXs[ArcadeRam.TrainTrack.SmokeSlot] = 0
+    ' Y=$D0 terminates the hardware sprite list; $CF is safely off-screen.
+    ArcadeRam.TrainTrack.SmokeYs[ArcadeRam.TrainTrack.SmokeSlot] = 207
+    set sprite ArcadeRam.TrainTrack.SmokeSlot to ArcadeRam.TrainTrack.SmokeYs[ArcadeRam.TrainTrack.SmokeSlot],ArcadeRam.TrainTrack.SmokeXs[ArcadeRam.TrainTrack.SmokeSlot],32,14
+  next
+  update sprites
+  ArcadeRam.TrainTrack.SmokeIndex = 2
+  ArcadeRam.TrainTrack.SmokeStep = 0
+  ArcadeRam.TrainTrack.SmokeRiseStep = 0
+  ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Puzzle << 4
+  ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.Puzzle << 2
+  ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.Tile
+  ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.Puzzle
+  ArcadeRam.TrainTrack.RouteLength = TT_PuzzleRoutes[ArcadeRam.TrainTrack.Cell]
+  ArcadeRam.TrainTrack.Cell += 1
+  ArcadeRam.TrainTrack.Cell = TT_PuzzleRoutes[ArcadeRam.TrainTrack.Cell]
+  ArcadeRam.TrainTrack.Y = ArcadeRam.TrainTrack.Cell / 7
+  ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.Y << 3
+  ArcadeRam.TrainTrack.Tile -= ArcadeRam.TrainTrack.Y
+  ArcadeRam.TrainTrack.X = ArcadeRam.TrainTrack.Cell - ArcadeRam.TrainTrack.Tile
+  ArcadeRam.TrainTrack.TrainX = ArcadeRam.TrainTrack.X << 4
+  ArcadeRam.TrainTrack.TrainX += TT_BoardX * 8
+  ArcadeRam.TrainTrack.TrainY = ArcadeRam.TrainTrack.Y << 4
+  ArcadeRam.TrainTrack.TrainY += TT_BoardY * 8
+  ArcadeRam.TrainTrack.TrainY -= 1
+  for ArcadeRam.TrainTrack.I = 2 to ArcadeRam.TrainTrack.RouteLength
+    ArcadeRam.TrainTrack.Cell = ArcadeRam.TrainTrack.Puzzle << 4
+    ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.Puzzle << 2
+    ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.Tile
+    ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.Puzzle
+    ArcadeRam.TrainTrack.Cell += ArcadeRam.TrainTrack.I
+    ArcadeRam.TrainTrack.Cell = TT_PuzzleRoutes[ArcadeRam.TrainTrack.Cell]
+    ArcadeRam.TrainTrack.Y = ArcadeRam.TrainTrack.Cell / 7
+    ArcadeRam.TrainTrack.Tile = ArcadeRam.TrainTrack.Y << 3
+    ArcadeRam.TrainTrack.Tile -= ArcadeRam.TrainTrack.Y
+    ArcadeRam.TrainTrack.X = ArcadeRam.TrainTrack.Cell - ArcadeRam.TrainTrack.Tile
+    ArcadeRam.TrainTrack.TargetX = ArcadeRam.TrainTrack.X << 4
+    ArcadeRam.TrainTrack.TargetX += TT_BoardX * 8
+    ArcadeRam.TrainTrack.TargetY = ArcadeRam.TrainTrack.Y << 4
+    ArcadeRam.TrainTrack.TargetY += TT_BoardY * 8
+    ArcadeRam.TrainTrack.TargetY -= 1
+    ArcadeRam.TrainTrack.TrainDX = 0
+    ArcadeRam.TrainTrack.TrainDY = 0
+    if ArcadeRam.TrainTrack.TargetX > ArcadeRam.TrainTrack.TrainX then
+      ArcadeRam.TrainTrack.TrainDX = 2
+      ArcadeRam.TrainTrack.TrainPattern = 8
+    elseif ArcadeRam.TrainTrack.TargetX < ArcadeRam.TrainTrack.TrainX then
+      ArcadeRam.TrainTrack.TrainDX = -2
+      ArcadeRam.TrainTrack.TrainPattern = 16
+    elseif ArcadeRam.TrainTrack.TargetY > ArcadeRam.TrainTrack.TrainY then
+      ArcadeRam.TrainTrack.TrainDY = 2
+      ArcadeRam.TrainTrack.TrainPattern = 12
+    else
+      ArcadeRam.TrainTrack.TrainDY = -2
+      ArcadeRam.TrainTrack.TrainPattern = 4
+    end if
+    for ArcadeRam.TrainTrack.TravelStep = 1 to 8
+      ArcadeRam.TrainTrack.TrainX += ArcadeRam.TrainTrack.TrainDX
+      ArcadeRam.TrainTrack.TrainY += ArcadeRam.TrainTrack.TrainDY
+      for ArcadeRam.TrainTrack.SmokeFrame = 0 to 1
+        ArcadeRam.TrainTrack.SmokeRiseStep += 1
+        if ArcadeRam.TrainTrack.SmokeRiseStep = 4 then ArcadeRam.TrainTrack.SmokeRiseStep = 0
+        for ArcadeRam.TrainTrack.SmokeSlot = 0 to 2
+          if ArcadeRam.TrainTrack.SmokeAge[ArcadeRam.TrainTrack.SmokeSlot] < 24 then
+            ArcadeRam.TrainTrack.SmokeAge[ArcadeRam.TrainTrack.SmokeSlot] += 1
+            if ArcadeRam.TrainTrack.SmokeRiseStep = 0 then ArcadeRam.TrainTrack.SmokeYs[ArcadeRam.TrainTrack.SmokeSlot] -= 1
+          end if
+          ArcadeRam.TrainTrack.SmokePattern = TT_SmokeAgePatterns[ArcadeRam.TrainTrack.SmokeAge[ArcadeRam.TrainTrack.SmokeSlot]]
+          set sprite ArcadeRam.TrainTrack.SmokeSlot to ArcadeRam.TrainTrack.SmokeYs[ArcadeRam.TrainTrack.SmokeSlot],ArcadeRam.TrainTrack.SmokeXs[ArcadeRam.TrainTrack.SmokeSlot],ArcadeRam.TrainTrack.SmokePattern,14
+        next
+        ArcadeRam.TrainTrack.SmokeStep += 1
+        if ArcadeRam.TrainTrack.SmokeStep = 8 then
+          ArcadeRam.TrainTrack.SmokeStep = 0
+          ArcadeRam.TrainTrack.SmokeIndex += 1
+          if ArcadeRam.TrainTrack.SmokeIndex > 2 then ArcadeRam.TrainTrack.SmokeIndex = 0
+          ArcadeRam.TrainTrack.SmokeX = ArcadeRam.TrainTrack.TrainX
+          ArcadeRam.TrainTrack.SmokeY = ArcadeRam.TrainTrack.TrainY - 8
+          ArcadeRam.TrainTrack.SmokeAge[ArcadeRam.TrainTrack.SmokeIndex] = 0
+          ArcadeRam.TrainTrack.SmokeXs[ArcadeRam.TrainTrack.SmokeIndex] = ArcadeRam.TrainTrack.SmokeX
+          ArcadeRam.TrainTrack.SmokeYs[ArcadeRam.TrainTrack.SmokeIndex] = ArcadeRam.TrainTrack.SmokeY
+          set sprite ArcadeRam.TrainTrack.SmokeIndex to ArcadeRam.TrainTrack.SmokeY,ArcadeRam.TrainTrack.SmokeX,20,14
+        end if
+        ' Lower sprite indexes have priority, so smoke overlays the train.
+        set sprite 3 to ArcadeRam.TrainTrack.TrainY,ArcadeRam.TrainTrack.TrainX,ArcadeRam.TrainTrack.TrainPattern,1
+        update sprites
+        wait 1 frame
+        TT_AnimateWater
+      next
+    next
+  next
+  wait 60 frames
+  clear sprites
+  set sprite count 1
+  update sprites
+  print centered at 23, "CONGRATULATIONS!"
+  play sounds 1, 2
+  wait 120 frames
+  pause until press and release
+  mute all
+  clear sprites
+  update sprites
+  ArcadeRam.TrainTrack.WaterUpdating = 0
+  ArcadeRam.TrainTrack.WaterTicks = 0
+  wait 1 frame
+  ArcadeRam.TrainTrack.Puzzle += 1
+  if ArcadeRam.TrainTrack.Puzzle = TT_PuzzleCount then ArcadeRam.TrainTrack.Puzzle = 0
+  TT_LoadPuzzle
+  return
+
+sub TT_GameLoop:
+  ' Begin all interactive VRAM work immediately after VBlank. A board redraw
+  ' replaces this frame's water row so the VDP address latch is never overrun.
+  wait
+  TT_BoardRedrawn = 0
+  if joypad(2).fire then
+    if ArcadeRam.TrainTrack.TestSolveWasDown = 0 then
+      ArcadeRam.TrainTrack.TestSolveWasDown = 1
+      for ArcadeRam.TrainTrack.I = 0 to 48
+    ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.I] = ArcadeRam.TrainTrack.Solution[ArcadeRam.TrainTrack.I]
+  next
+      TT_DrawSolvedBoard
+      TT_BoardRedrawn = 1
+      TT_CheckPuzzleComplete
+    end if
+  else
+    ArcadeRam.TrainTrack.TestSolveWasDown = 0
+  end if
+  if joypad(1).up then
+    if ArcadeRam.TrainTrack.LastPad = 0 and ArcadeRam.TrainTrack.CursorY > 0 then ArcadeRam.TrainTrack.CursorY -= 1
+    ArcadeRam.TrainTrack.LastPad = 1
+  elseif joypad(1).down then
+    if ArcadeRam.TrainTrack.LastPad = 0 and ArcadeRam.TrainTrack.CursorY < 6 then ArcadeRam.TrainTrack.CursorY += 1
+    ArcadeRam.TrainTrack.LastPad = 1
+  elseif joypad(1).left then
+    if ArcadeRam.TrainTrack.LastPad = 0 and ArcadeRam.TrainTrack.CursorX > 0 then ArcadeRam.TrainTrack.CursorX -= 1
+    ArcadeRam.TrainTrack.LastPad = 1
+  elseif joypad(1).right then
+    if ArcadeRam.TrainTrack.LastPad = 0 and ArcadeRam.TrainTrack.CursorX < 6 then ArcadeRam.TrainTrack.CursorX += 1
+    ArcadeRam.TrainTrack.LastPad = 1
+  elseif joypad(1).button1 then
+    if ArcadeRam.TrainTrack.LastPad = 0 then TT_CyclePiece
+    ArcadeRam.TrainTrack.LastPad = 1
+  elseif joypad(1).button2 then
+    if ArcadeRam.TrainTrack.LastPad = 0 then TT_ToggleWater
+    ArcadeRam.TrainTrack.LastPad = 1
+  else
+    ArcadeRam.TrainTrack.LastPad = 0
+  end if
+  TT_DrawCursor
+  if TT_BoardRedrawn = 0 then TT_AnimateWater
+  goto TT_GameLoop
+
+sub TT_AnimateWater:
+  if ArcadeRam.TrainTrack.WaterUpdating = 0 then
+    ArcadeRam.TrainTrack.WaterTicks += 1
+    if ArcadeRam.TrainTrack.WaterTicks < 15 then return
+    ArcadeRam.TrainTrack.WaterTicks = 0
+    ArcadeRam.TrainTrack.WaterFrame += 1
+    if ArcadeRam.TrainTrack.WaterFrame > 4 then ArcadeRam.TrainTrack.WaterFrame = 0
+    ArcadeRam.TrainTrack.WaterRow = 0
+    ArcadeRam.TrainTrack.WaterUpdating = 1
+  end if
+  ' Victory also uses I for its route; preserve it across water redraws.
+  ArcadeRam.TrainTrack.WaterSavedI = ArcadeRam.TrainTrack.I
+  ArcadeRam.TrainTrack.WaterCell = ArcadeRam.TrainTrack.WaterRow << 3
+  ArcadeRam.TrainTrack.WaterCell -= ArcadeRam.TrainTrack.WaterRow
+  for ArcadeRam.TrainTrack.WaterColumn = 0 to 6
+    if ArcadeRam.TrainTrack.Board[ArcadeRam.TrainTrack.WaterCell] = TT_WaterPiece then
+      ArcadeRam.TrainTrack.I = ArcadeRam.TrainTrack.WaterCell
+      TT_DrawCell
+    end if
+    ArcadeRam.TrainTrack.WaterCell += 1
+  next
+  ArcadeRam.TrainTrack.I = ArcadeRam.TrainTrack.WaterSavedI
+  ArcadeRam.TrainTrack.WaterRow += 1
+  if ArcadeRam.TrainTrack.WaterRow > 6 then ArcadeRam.TrainTrack.WaterUpdating = 0
+  return
+
+asm {
+TrainTrackTitleMusicVoice1:
+    db $40,$1D,$51,$06,$40,$D5,$50,$06,$40,$A9,$50,$06,$40,$D5,$50,$06
+    db $40,$A9,$50,$06,$40,$8E,$50,$06,$40,$A9,$50,$06,$40,$8E,$50,$06
+    db $40,$6A,$50,$18,$50
+TrainTrackTitleMusicVoice2:
+    db $80,$3A,$52,$06,$80,$AB,$51,$06,$80,$53,$51,$06,$80,$1D,$51,$06
+    db $80,$D5,$50,$06,$80,$A9,$50,$06,$80,$D5,$50,$06,$80,$A9,$50,$06
+    db $80,$8E,$50,$18,$90
+TrainTrackStartSound:
+    db $40,$6B,$10,$02,$50
+TrainTrackPlaceSound:
+    db $41,$6D,$20,$03,$11,$FC
+    db $50
+TrainTrackErrorSound:
+    db $80,$30,$63,$04,$90
+TrainTrackSirenTone1:
+    db $42,$B4,$60,$20,$F4,$21
+    db $42,$B4,$30,$0C,$24,$22
+    db $42,$B4,$60,$48,$F4,$21
+    db $42,$B4,$30,$0E,$26,$22
+    db $66
+    db $50
+TrainTrackSirenTone2:
+    db $82,$78,$60,$20,$F4,$21
+    db $82,$78,$30,$0C,$24,$22
+    db $82,$78,$60,$48,$F4,$21
+    db $82,$78,$30,$0E,$26,$22
+    db $A6
+    db $90
+TrainTrackSirenNoise:
+    db $C0,$00,$F0,$06
+    db $C2,$A0,$60,$20,$F4,$21
+    db $C2,$A0,$30,$0C,$24,$22
+    db $C2,$A0,$60,$48,$F4,$21
+    db $C2,$A0,$30,$0C,$26,$22
+    db $D0
+TrainTrackSoundTable:
+    dw TrainTrackTitleMusicVoice1,$702B
+    dw TrainTrackTitleMusicVoice2,$7035
+    dw TrainTrackStartSound,$703F
+    dw TrainTrackPlaceSound,$7049
+    dw TrainTrackErrorSound,$7053
+    dw TrainTrackSirenTone1,$705D
+    dw TrainTrackSirenTone2,$7067
+    dw TrainTrackSirenNoise,$7071
+}

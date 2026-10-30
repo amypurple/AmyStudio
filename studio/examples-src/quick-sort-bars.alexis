@@ -1,0 +1,163 @@
+const LeftX = 6
+const BlockTile = $23
+const EmptyTile = $20
+
+' Sorting data.
+u8 Values[20], RowBuffer[20], LowStack[20], HighStack[20]
+' Loop and compare state.
+u8 IndexA = 0, J = 0, K = 0, Col = 0, Threshold = 0
+u8 Temp = 0, CompareA = 0, CompareB = 0
+' Swap and write-back state.
+u8 SwapA = 0, SwapB = 0, WriteIndex = 0, WriteValue = 0
+' Algorithm-specific scratch state.
+u8 InnerLimit = 0, HeapEnd = 0, Root = 0, Child = 0, StoreIndex = 0
+u8 ArgStart = 0, ArgEnd = 0, StackTop = 0, Low = 0, High = 0, Pivot = 0, PivotPos = 0
+
+' Quick Sort Bars
+  screen off
+  setup_screen
+  randomize_values
+  screen on
+  goto ready_loop
+
+ready_loop:
+  print at 1,22, "PRESS FIRE TO SORT"
+  print at 1,23, "PRESS AGAIN TO RESHUFFLE"
+wait_sort_press:
+  wait
+  if joypad(1).button1 then goto wait_sort_release
+  goto wait_sort_press
+wait_sort_release:
+  wait
+  if joypad(1).button1 then goto wait_sort_release
+  fill row 22 from 0 count 32 with EmptyTile
+  run_sort
+  print at 1,22, "DONE - FIRE RANDOMIZE"
+wait_randomize_press:
+  wait
+  if joypad(1).button1 then goto wait_randomize_release
+  goto wait_randomize_press
+wait_randomize_release:
+  wait
+  if joypad(1).button1 then goto wait_randomize_release
+  randomize_values
+  goto ready_loop
+
+sub setup_screen:
+  text screen
+  print at 1,0, "QUICK SORT"
+  print at 1,21, "ROWS 1..20 = THRESHOLDS"
+  return
+
+sub randomize_values:
+  for IndexA = 0 to 19
+    Values[IndexA] = IndexA
+    Values[IndexA] += 1
+  next
+  for IndexA = 0 to 39
+    SwapA = random(1, 20)
+    SwapA -= 1
+    SwapB = random(1, 20)
+    SwapB -= 1
+    swap Values[SwapA] with Values[SwapB]
+  next
+  render_bars
+  return
+
+sub render_bars:
+  nmi off
+  for Threshold = 1 to 20
+    fill array RowBuffer with EmptyTile
+    Col = 0
+    do while Col <= 19
+      if Values[Col] >= Threshold then
+        RowBuffer[Col] = BlockTile
+      end if
+      Col += 1
+    loop
+    put RowBuffer count 20 at LeftX,Threshold
+  next
+  nmi on
+  return
+
+sub step_delay:
+  wait 5 frames
+  return
+
+sub set_item:
+  Values[WriteIndex] = WriteValue
+  render_bars
+  step_delay
+  return
+
+sub swap_items:
+  swap Values[SwapA] with Values[SwapB]
+  render_bars
+  step_delay
+  return
+
+sub run_sort:
+  StackTop = 1
+  LowStack[0] = 0
+  HighStack[0] = 19
+quick_pop:
+  if StackTop = 0 goto quick_done
+  StackTop -= 1
+  K = StackTop
+  Low = LowStack[K]
+  High = HighStack[K]
+  if Low >= High goto quick_pop
+  ArgStart = Low
+  ArgEnd = High
+  partition_range
+  if PivotPos = 0 goto quick_no_left
+  Temp = PivotPos
+  Temp -= 1
+  if Low >= Temp goto quick_no_left
+  K = StackTop
+  LowStack[K] = Low
+  HighStack[K] = Temp
+  StackTop += 1
+quick_no_left:
+  Temp = PivotPos
+  Temp += 1
+  if Temp >= High goto quick_pop
+  K = StackTop
+  LowStack[K] = Temp
+  HighStack[K] = High
+  StackTop += 1
+  goto quick_pop
+quick_done:
+  return
+
+sub partition_range:
+  Low = ArgStart
+  High = ArgEnd
+  Pivot = Values[High]
+  step_delay
+  StoreIndex = Low
+  J = Low
+part_loop:
+  if J >= High then
+    goto part_done_scan
+  end if
+  CompareA = Values[J]
+  if CompareA <= Pivot then
+    if StoreIndex = J then
+      StoreIndex += 1
+    else
+      SwapA = StoreIndex
+      SwapB = J
+      swap_items
+      StoreIndex += 1
+    end if
+  end if
+part_next:
+  J += 1
+  goto part_loop
+part_done_scan:
+  SwapA = StoreIndex
+  SwapB = High
+  swap_items
+  PivotPos = StoreIndex
+  return

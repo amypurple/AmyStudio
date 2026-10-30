@@ -1,0 +1,1515 @@
+' define DACMAN_DEBUG_SKIP_TITLE
+' define DACMAN_DEBUG_NO_LIFE_LOSS
+' define DACMAN_DEBUG_START_LAST_LEVEL
+'define DACMAN_DEBUG_TRIGGER_END_SCENE
+
+project "DacMan 2"
+' cartridge "DACMAN 2/AMY STUDIO/2026"
+memory "colecovision_legacy_sdcc"
+
+' DacMan 2 puzzle engine based on NewColeco's Dacman and the 2020 level editor.
+' Original source: old-projects-sdcc-z80/sdcctest/dacman/
+' Goal: native Amy logic, with legacy BIOS sound data kept as data labels until
+' Amy gains a first-class syntax for BIOS sound tables.
+
+picture DacmanTitlePicture:
+  pattern from "@project/dacman2-title.pattern.zx0" codec zx0
+  color from "@project/dacman2-title.color.zx0" codec zx0
+end picture
+
+asset DacmanGameColorRle from "@project/dacman-game.color.zx0" codec zx0
+asset DacmanTileset from "@project/dacman2-tileset.pattern.bin" codec raw
+asset DacmanNumbers from "@project/dacman-numbers.bin" codec raw
+asset DacmanFont from "@project/dacman-font.bin" codec raw
+asset DacmanDieze from "@project/dacman-dieze.bin" codec raw
+asset DacmanEtoile from "@project/dacman-etoile.bin" codec raw
+asset DacmanEmptyBoard from "@project/dacman2-empty-board.name.zx0" codec zx0
+asset DacmanAgainBoard from "@project/dacman2-again.name.zx0" codec zx0
+asset Dacman2Level1 from "@project/dacman2-level1.name.zx0" codec zx0
+asset Dacman2Level2 from "@project/dacman2-level2.name.zx0" codec zx0
+asset Dacman2Level3 from "@project/dacman2-level3.name.zx0" codec zx0
+asset Dacman2Level4 from "@project/dacman2-level4.name.zx0" codec zx0
+asset Dacman2Level5 from "@project/dacman2-level5.name.zx0" codec zx0
+asset Dacman2Level6 from "@project/dacman2-level6.name.zx0" codec zx0
+asset Dacman2Level7 from "@project/dacman2-level7.name.zx0" codec zx0
+asset Dacman2Level8 from "@project/dacman2-level8.name.zx0" codec zx0
+asset Dacman2Level9 from "@project/dacman2-level9.name.zx0" codec zx0
+asset Dacman2Level10 from "@project/dacman2-level10.name.zx0" codec zx0
+asset Dacman2Level11 from "@project/dacman2-level11.name.zx0" codec zx0
+asset Dacman2Level12 from "@project/dacman2-level12.name.zx0" codec zx0
+
+const BoardLeft = 6
+const BoardTop = 2
+const BoardWidth = 19
+const BoardHeight = 21
+const PlayableLevelCount = 12
+const EmptyScreenIndex = 15
+const AgainScreenIndex = 16
+const WallMask = $80
+const DotTile = $A0
+const PowerDotTile = $A1
+const PacRightTile = $A2
+const PacDownTile = $A3
+const PacLeftTile = $A4
+const PacUpTile = $A5
+const PacClosedTile = $A6
+const FirstGhostTile = $AB
+const GhostCount = 5
+const LastGhostTile = $AF
+const BlueGhostTile = $74
+const BarrierTile = $70
+const LockTile = $71
+const TeleporterTile = $72
+const KeyTile = $73
+const FruitMapMarkerTile = $00
+const FruitMarkerMask = $B0
+const FirstLevelFruitTile = $B0
+const LastLevelFruitTile = $BB
+const ImmuneGhostTile = $75
+const DecorFlowerTile = $76
+const DecorHerbTile = $77
+const DecorHeartTile = $78
+const DecorDiamondTile = $79
+const DecorClubTile = $7A
+const DecorSpadeTile = $7B
+const DecorSmileyTile = $7C
+const DecorAnimalTile = $7D
+const MaxTeleporters = 16
+const GhostAlive = 0
+const GhostEyesTravel = 1
+const GhostEyesWaiting = 2
+const GhostInactive = 3
+const BluePhaseNormal = 0
+const BluePhaseVulnerable = 1
+const BluePhaseFlashing = 2
+const BlueFlashDuration = 36
+const NoGhost = GhostCount
+const GhostEyesPattern = 0
+const MissSprite = 5
+const SecondMissSprite = 6
+const MissColor = $08
+
+u8 Gd[GhostCount]
+u8 Gx[GhostCount]
+u8 Gy[GhostCount]
+u8 Ogx[GhostCount]
+u8 Ogy[GhostCount]
+u8 Gc[GhostCount]
+u8 Gt[GhostCount]
+u8 GhostMoveTimer[GhostCount]
+u8 GhostImmune[GhostCount]
+u8 GhostState[GhostCount]
+u8 GhostEyeX[GhostCount]
+u8 GhostEyeY[GhostCount]
+u8 GhostEyeTimer[GhostCount]
+u16 Score = 0
+u16 Hiscore = 0
+u16 Dots = 0
+u16 NextLife = 1000
+u8 PacLifes = 6
+u8 Level = 0
+u8 Playing = 0
+u8 Flashing = 0
+u8 EasyMode = 0
+u8 EasyCodeStep = 0
+u8 TitleKey = 255
+u8 TitleLastKey = 255
+u8 BonusGame = 0
+u8 Difficulty = 2
+u8 BaseMoveDelay = 9
+u8 BlueDuration = 210
+u8 BluePhase = BluePhaseNormal
+u8 BluePhaseTimer = 0
+u8 VulnerableGhostCount = 0
+u8 BlueTickPhase = 0
+u8 BlueFlashCounter = 0
+u8 BlueFlashWhite = 0
+u8 BlueMusicPlaying = 0
+u8 PacMoveTimer = 1
+u8 PacAteDot = 0
+u8 PacUnderTile = 32
+u8 Keys = 0
+u8 TeleporterCount = 0
+u8 TeleporterX[16]
+u8 TeleporterY[16]
+u8 TeleporterIndex = 0
+u8 FruitHistory[PlayableLevelCount]
+u8 MenuPad = 0
+u8 MenuLastPad = 0
+u8 NoLevel = 0
+u8 NbpacLifes = 6
+u16 Bonus = 20
+u8 ScreenDataIndex = 0
+u16 BoardSourceOffset = 128
+u16 BoardTargetOffset = 0
+
+u8 PacX = 0
+u8 PacY = 0
+
+u8 X = 0
+u8 Y = 0
+u8 I = 0
+u8 G = 0
+u8 C = 0
+u8 Tmp = 0
+u8 Tmp2 = 0
+u8 Wall = 0
+u8 Nd = 0
+u8 Number = 0
+u8 Ok = NoGhost
+u8 Cpac = 0
+u8 PacLookPattern = 1
+u8 Ncpac = 0
+u8 Px = 0
+u8 Py = 0
+u8 Opx = 0
+u8 Opy = 0
+u8 Dpx = 0
+u8 Dpy = 0
+u8 Ndpx = 0
+u8 Ndpy = 0
+u16 DataPtr = 0
+u16 RowPtr = 0
+u16 WaitCount = 0
+u8 RowIndex = 0
+u8 LifeIndex = 0
+
+
+data DacmanBlueDurations bytes = 240,210,180,150
+data DacmanEasyCodeKeys bytes = 10,3,2,7,9,11
+data DacmanDirectionBits bytes = 1,2,4,8
+data DacmanLookPatterns bytes = 3,7,1,5
+
+data DacmanGOffset bytes = 0,16,32,0,48,0,0,0,64
+
+data DacmanGhostDirections bytes
+  $00,$01,$02,$FD,$04,$FB,$FA,$F9,$08,$F7,$F6,$F5,$F4,$F3,$F2,$F1
+  $00,$01,$02,$01,$04,$01,$02,$FD,$08,$01,$F6,$01,$08,$F7,$F6,$F5
+  $00,$01,$02,$02,$04,$FB,$02,$02,$08,$01,$02,$FD,$04,$FB,$FA,$F9
+  $00,$01,$02,$02,$04,$04,$04,$FA,$08,$08,$F6,$F6,$04,$F4,$04,$F2
+  $00,$01,$02,$01,$04,$FB,$04,$FB,$08,$08,$08,$F7,$08,$08,$F4,$F3
+end data
+
+data DacmanDx bytes
+  $00,$01,$00,$00,$FF,$00,$00,$00,$00
+end data
+
+data DacmanDy bytes
+  $00,$00,$01,$00,$00,$00,$00,$00,$FF
+end data
+
+data DacmanSpritePatterns bytes
+  $00,$00,$24,$5A,$5A,$24,$00,$00 ' independent white ghost eyes sprite$AF
+  $06,$05,$03,$80,$80,$00,$00,$00 ' Miss DacMan closed left
+  $06,$05,$43,$00,$00,$40,$00,$00 ' Miss DacMan open left
+  $60,$A0,$C0,$01,$01,$00,$00,$00 ' closed right
+  $60,$A0,$C2,$00,$00,$02,$00,$00 ' open right
+  $18,$00,$00,$00,$00,$03,$05,$06 ' closed up
+  $00,$24,$00,$00,$00,$03,$05,$06 ' open up
+  $60,$A0,$C0,$00,$00,$00,$00,$18 ' closed down
+  $60,$A0,$C0,$00,$00,$00,$24,$00 ' open down
+end data
+
+' Twelve playable levels currently use ten unique maps; reserved slots keep the special screens at indices 15 and 16.
+data DacmanScreenData words
+  @Dacman2Level1,@Dacman2Level2,@Dacman2Level3,@Dacman2Level4,
+  @Dacman2Level5,@Dacman2Level6,@Dacman2Level7,@Dacman2Level8,
+  @Dacman2Level9,@Dacman2Level10,@Dacman2Level11,@Dacman2Level12,
+  @Dacman2Level1,@Dacman2Level2,@Dacman2Level3,
+  @DacmanEmptyBoard,@DacmanAgainBoard
+end data
+
+
+sub start:
+  mode 2 screen
+  set sound table DacmanSoundTable areas 4
+  DacmanInitGraphics
+DacmanMainMenu:
+ifdef DACMAN_DEBUG_SKIP_TITLE
+else ifdef
+  DacmanShowTitle
+  DacmanSelectDifficulty
+end ifdef
+  DacmanGame
+  goto DacmanMainMenu
+end sub
+
+sub DacmanInitGraphics:
+  screen off
+  mode 2 screen
+  sprites 8x8
+  sprites simple
+  cls
+  fill 0 count 8 to vram.pattern + FruitMapMarkerTile * 8
+  copy DacmanNumbers count 80 to vram.pattern + 48 * 8
+  copy DacmanFont count 224 to vram.pattern + 65 * 8
+  copy DacmanDieze count 8 to vram.pattern + 35 * 8
+  copy DacmanEtoile count 8 to vram.pattern + 42 * 8
+  copy DacmanTileset count 800 to vram.pattern + BarrierTile * 8
+  duplicate mode 2 patterns
+  decompress DacmanGameColorRle to vram.color
+  copy DacmanSpritePatterns count 72 to vram.spr_pat
+  backdrop black
+  screen on
+  return
+
+
+sub DacmanShowTitle:
+  EasyCodeStep = 0
+  TitleLastKey = 255
+DacmanTitleCycle:
+  show picture DacmanTitlePicture
+  play sound 10
+  WaitCount = 700
+DacmanTitleWait:
+  if joypad(1).button1 then goto DacmanTitleDone
+  TitleKey = keypad(1)
+  if TitleKey = 255 then
+    TitleLastKey = 255
+  elseif TitleLastKey = 255 then
+    DacmanCheckEasyCode
+    TitleLastKey = TitleKey
+  end if
+  if WaitCount = 0 then goto DacmanTitleCycle
+  wait
+  WaitCount -= 1
+  goto DacmanTitleWait
+
+DacmanTitleDone:
+  mute all
+  wait no fire
+  DacmanInitGraphics
+  return
+
+sub DacmanCheckEasyCode:
+  if TitleKey = DacmanEasyCodeKeys[EasyCodeStep] then
+    EasyCodeStep += 1
+    if EasyCodeStep = 6 then
+      EasyMode = 1
+      play sound 9
+      EasyCodeStep = 0
+    end if
+  else
+    EasyCodeStep = 0
+  end if
+  return
+
+sub DacmanSelectDifficulty:
+  nmi off
+  Difficulty = 2
+  MenuLastPad = 0
+  cls
+  print centered at 3, "SELECT SKILL"
+  print at 11,8, "1 EASY"
+  print at 11,11, "2 NORMAL"
+  print at 11,14, "3 HARD"
+  print at 11,17, "4 EXPERT"
+  print centered at 21, "UP/DOWN AND FIRE"
+  DacmanDrawDifficulty
+  nmi on
+DacmanDifficultyLoop:
+  wait
+  MenuPad = joypad(1)
+  if joypad(1).up then
+    if MenuLastPad = 0 then
+      if Difficulty > 1 then Difficulty -= 1
+      MenuLastPad = 1
+      DacmanDrawDifficulty
+    end if
+  elseif joypad(1).down then
+    if MenuLastPad = 0 then
+      if Difficulty < 4 then Difficulty += 1
+      MenuLastPad = 1
+      DacmanDrawDifficulty
+    end if
+  elseif joypad(1).fire then
+    BaseMoveDelay = 11 - Difficulty
+    BlueDuration = DacmanBlueDurations[Difficulty - 1]
+    wait no fire
+    nmi off
+    return
+  end if
+  if MenuPad = 0 then MenuLastPad = 0 else MenuLastPad = 1
+  goto DacmanDifficultyLoop
+
+sub DacmanDrawDifficulty:
+  for I = 1 to 4
+    if I = Difficulty then
+      put char $2A at 9,5 + I * 3
+    else
+      put char $20 at 9,5 + I * 3
+    end if
+  next
+  return
+
+sub DacmanGame:
+DacmanRestartGame:
+  cls
+  Score = 0
+  Level = NoLevel
+ifdef DACMAN_DEBUG_START_LAST_LEVEL
+  Level = PlayableLevelCount - 1
+end ifdef
+  if EasyMode != 0 then
+    PacLifes = 99
+  else
+    PacLifes = NbpacLifes
+  end if
+  NextLife = 1000
+  for I = 0 to PlayableLevelCount - 1
+    FruitHistory[I] = 0
+  next
+  print centered at 0, "HIGH SCORE"
+  print at 1,22, "SCORE"
+  DacmanPutHiscore
+  DacmanAddScore0
+  DacmanPutLives
+ifdef DACMAN_DEBUG_TRIGGER_END_SCENE
+  DacmanTheEnd
+  return
+end ifdef
+DacmanNewBoard:
+  DacmanPutBoard
+  DacmanInitLevel
+  DacmanDrawStatus
+  DacmanCountDots
+DacmanContinueLevel:
+  play sound 1
+  play sound 2
+  WaitCount = 318
+  DacmanWaitGameplayFrames
+  DacmanPacmanPlay
+  stop sound 3
+  stop sound 4
+  if Ok = 15 then goto DacmanLevelClear
+  DacmanPacmanDead
+ifdef DACMAN_DEBUG_NO_LIFE_LOSS
+  DacmanRestartActorsAfterDeath
+  goto DacmanContinueLevel
+else ifdef
+  if PacLifes = 0 then goto DacmanGameOver
+  PacLifes -= 1
+  DacmanPutLives
+  DacmanRestartActorsAfterDeath
+  goto DacmanContinueLevel
+end ifdef
+DacmanLevelClear:
+  DacmanFlashBoardClear
+  if Level = PlayableLevelCount - 1 then
+    DacmanTheEnd
+    return
+  end if
+  Level += 1
+  goto DacmanNewBoard
+DacmanGameOver:
+  mute all
+  Playing = 1
+  print at 11,11, "GAME OVER"
+  Score = 0
+  WaitCount = 0
+DacmanGameOverWait:
+  if keypad(1) = 10 then goto DacmanRestartGame
+  if keypad(1) = 11 then return
+  if WaitCount = 450 then goto DacmanGameOverAgainBoard
+  wait
+  DacmanVblank
+  WaitCount += 1
+  goto DacmanGameOverWait
+DacmanGameOverAgainBoard:
+  clear sprites
+  update sprites
+  DacmanDrawBoardAgain
+  WaitCount = 0
+DacmanAgainLoop:
+  if keypad(1) = 10 then goto DacmanRestartGame
+  if keypad(1) = 11 then return
+  WaitCount += 1
+  if WaitCount = 12 then
+    put char PacClosedTile at 9,16
+  end if
+  if WaitCount = 24 then
+    put char PacRightTile at 9,16
+    WaitCount = 0
+  end if
+  wait
+  DacmanVblank
+  wait
+  DacmanVblank
+  goto DacmanAgainLoop
+end sub
+
+sub DacmanDrawStatus:
+  Tmp = Level + 1
+  print at 26,7, "LEVEL"
+  print Tmp at 28,8 digits 2
+  print at 26,10, "KEYS"
+  print Keys at 28,11 digits 2
+  DacmanDrawFruitHistory
+  return
+
+sub DacmanDrawFruitHistory:
+  fill 32 count 16 to vram.name + 23 * 32 + 8
+  Tmp = Level
+  if Tmp > PlayableLevelCount - 1 then Tmp = PlayableLevelCount - 1
+  for I = 0 to Tmp
+    if FruitHistory[I] != 0 then
+      put char FirstLevelFruitTile + I at 23 - I,23
+    end if
+  next
+  return
+
+sub DacmanPutHiscore:
+  print Hiscore at 13,1 digits 5
+  put char 48 at 18,1
+  return
+
+sub DacmanAddScore0:
+  DacmanAddScore
+  return
+
+sub DacmanAddScore:
+  Score += Tmp
+  print Score at 1,23 digits 5
+  put char 48 at 6,23
+  if Hiscore < Score then
+    Hiscore = Score
+    DacmanPutHiscore
+  end if
+  if NextLife > 0 then
+    if Score >= NextLife then
+      PacLifes += 1
+      play sound 9
+      DacmanPutLives
+      if NextLife > 8000 then NextLife = 0 else NextLife = NextLife * 2
+    end if
+  end if
+  Tmp = 0
+  return
+
+sub DacmanPutLives:
+  Tmp = PacLifes
+  if Tmp > 6 then Tmp = 6
+  fill 32 count 6 to vram.name + 23 * 32 + 25
+  if Tmp = 0 then return
+  for LifeIndex = 0 to Tmp - 1
+    put char PacLeftTile at 25 + LifeIndex,23
+  next
+  return
+
+sub DacmanPutBoard:
+  ScreenDataIndex = Level
+  DacmanLoadScreenData
+  return
+
+sub DacmanDrawBoardVide:
+  ScreenDataIndex = EmptyScreenIndex
+  DacmanLoadScreenData
+  return
+
+sub DacmanDrawBoardAgain:
+  ScreenDataIndex = AgainScreenIndex
+  DacmanLoadScreenData
+  return
+
+sub DacmanLoadScreenData:
+  decompress zx0 DacmanScreenData[ScreenDataIndex] to vram.spr_attr + 128
+  BoardSourceOffset = 128
+  BoardTargetOffset = BoardTop * 32 + BoardLeft
+  for I = 0 to BoardHeight - 1
+    copy vram.spr_attr + BoardSourceOffset count 19 to vram.name + BoardTargetOffset
+    BoardSourceOffset += BoardWidth
+    BoardTargetOffset += 32
+  next
+  return
+
+sub DacmanInitLevel:
+  Playing = 0
+  Keys = 0
+  TeleporterCount = 0
+  PacUnderTile = 32
+  BluePhase = BluePhaseNormal
+  BluePhaseTimer = 0
+  VulnerableGhostCount = 0
+  BlueTickPhase = 0
+  BlueFlashCounter = 0
+  BlueFlashWhite = 0
+  BlueMusicPlaying = 0
+  clear sprites
+  set sprite count 7
+  for G = 0 to GhostCount - 1
+    Gd[G] = 0
+    Gx[G] = 0
+    Gy[G] = 0
+    Ogx[G] = 0
+    Ogy[G] = 0
+    Gc[G] = 32
+    Gt[G] = 0
+    GhostMoveTimer[G] = 255
+    GhostImmune[G] = 0
+    GhostState[G] = GhostInactive
+    GhostEyeX[G] = 0
+    GhostEyeY[G] = 207
+    GhostEyeTimer[G] = 0
+  next
+  for Y = 2 to 22
+    for X = 6 to 24
+      C = get char at X,Y
+      if C = FruitMapMarkerTile then
+        C = FirstLevelFruitTile + (Level & 15)
+        put char C at X,Y
+      end if
+      if C = TeleporterTile then
+        if TeleporterCount < MaxTeleporters then
+          TeleporterX[TeleporterCount] = X
+          TeleporterY[TeleporterCount] = Y
+          TeleporterCount += 1
+        end if
+      end if
+      if C >= FirstGhostTile then
+        if C <= LastGhostTile then
+          G = C - FirstGhostTile
+          Gx[G] = X
+          Gy[G] = Y
+          Ogx[G] = X
+          Ogy[G] = Y
+          GhostMoveTimer[G] = 1
+          GhostState[G] = GhostAlive
+        end if
+      end if
+      if C >= PacRightTile then
+        if C <= PacClosedTile then
+          PacX = X
+          PacY = Y
+        end if
+      end if
+    next
+  next
+  for G = 0 to GhostCount - 1
+    set sprite G to 207,0,GhostEyesPattern,15
+  next
+  update sprites
+  set sprite MissSprite to 207,0,1,MissColor
+  set sprite SecondMissSprite to 207,0,1,MissColor
+  update sprites
+  Playing = 1
+  return
+
+sub DacmanCountDots:
+  Playing = 0
+  nmi off
+  Dots = 0
+  for X = 6 to 24
+    for Y = 2 to 22
+      C = get char at X,Y
+      if C = DotTile then Dots += 1
+      if C = PowerDotTile then Dots += 1
+    next
+  next
+  nmi on
+  Playing = 1
+  return
+
+
+sub DacmanWaitGameplayFrames:
+DacmanWaitGameplayLoop:
+  if WaitCount = 0 then return
+  wait
+  DacmanVblank
+  WaitCount -= 1
+  goto DacmanWaitGameplayLoop
+end sub
+sub DacmanRestartActorsAfterDeath:
+  WaitCount = 16
+  DacmanWaitGameplayFrames
+  for G = 0 to GhostCount - 1
+    if GhostState[G] = GhostAlive then
+      put char Gc[G] at Gx[G],Gy[G]
+    end if
+    Gx[G] = Ogx[G]
+    Gy[G] = Ogy[G]
+    Gc[G] = 32
+    Gt[G] = 0
+    if Ogx[G] = 0 then GhostState[G] = GhostInactive else GhostState[G] = GhostAlive
+    GhostEyeTimer[G] = 0
+    set sprite G to 207,0,GhostEyesPattern,15
+  next
+  update sprites
+  for G = 0 to GhostCount - 1
+    if GhostState[G] = GhostAlive then
+      put char FirstGhostTile + G at Gx[G],Gy[G]
+    end if
+  next
+  PacUnderTile = 32
+  put char PacLeftTile at PacX,PacY
+  return
+
+sub DacmanPacmanPlay:
+  Px = PacX
+  Py = PacY
+  Cpac = PacLeftTile
+  PacLookPattern = 1
+  Dpx = 2
+  Dpy = 0
+  DacmanUpdateLook
+  update sprites
+  play sound 3
+  BluePhase = BluePhaseNormal
+  BluePhaseTimer = 0
+  VulnerableGhostCount = 0
+  BlueTickPhase = 0
+  BlueFlashCounter = 0
+  BlueFlashWhite = 0
+  BlueMusicPlaying = 0
+  PacMoveTimer = 1
+  fill array GhostMoveTimer with 1 count GhostCount
+  Ok = NoGhost
+  if Dots = 0 then Ok = 15
+DacmanPlayLoop:
+  wait
+  DacmanVblank
+  if Ok != NoGhost then return
+  if Dots = 0 then Ok = 15
+  if Ok != NoGhost then return
+  if keypad(1) = 10 then
+    goto DacmanPauseLoop
+  end if
+  if keypad(1) = 5 then
+    goto DacmanBuyLife
+  end if
+  C = joypad(1) & $0F
+  Ndpx = 0
+  Ndpy = 0
+  if C & $01 then Ndpy = 2
+  if C & $04 then Ndpy = 1
+  if C & $02 then Ndpx = 1
+  if C & $08 then Ndpx = 2
+  if PacMoveTimer > 0 then PacMoveTimer -= 1
+  if PacMoveTimer = 0 then
+    DacmanChoosePacDirection
+    put char Cpac at Px,Py
+    DacmanMovePac
+    if Ok != NoGhost then return
+    PacMoveTimer = BaseMoveDelay - 2
+    if PacAteDot != 0 then PacMoveTimer = BaseMoveDelay
+  end if
+  DacmanUpdateGhosts
+  if Dots = 0 then Ok = 15
+  goto DacmanPlayLoop
+DacmanPauseLoop:
+  wait no fire
+DacmanPauseWait:
+  if keypad(1) = 10 then goto DacmanPlayLoop
+  wait
+  goto DacmanPauseWait
+DacmanBuyLife:
+  if Score >= 2000 then
+    Score -= 2000
+    Tmp = 0
+    DacmanAddScore
+    PacLifes += 1
+    play sound 9
+    DacmanPutLives
+  end if
+  goto DacmanPlayLoop
+end sub
+
+sub DacmanChoosePacDirection:
+  if Ndpx = 0 then
+    if Ndpy = 0 then return
+  end if
+  Opx = Px
+  Opy = Py
+  if Ndpx = 1 then Opx += 1
+  if Ndpx = 2 then Opx -= 1
+  if Ndpx != 0 then
+    DacmanWrapOpx
+    C = get char at Opx,Opy
+    if (C & $F0) = WallMask or C = BarrierTile then Ndpx = 0
+    if C = LockTile then
+      if Keys = 0 then Ndpx = 0
+    end if
+  end if
+  Opx = Px
+  Opy = Py
+  if Ndpy = 1 then Opy += 1
+  if Ndpy = 2 then Opy -= 1
+  if Ndpy != 0 then
+    DacmanWrapOpy
+    C = get char at Opx,Opy
+    if (C & $F0) = WallMask or C = BarrierTile then Ndpy = 0
+    if C = LockTile then
+      if Keys = 0 then Ndpy = 0
+    end if
+  end if
+  if Ndpx = 0 then
+    if Ndpy != 0 then
+      Dpx = 0
+      Dpy = Ndpy
+      return
+    end if
+  end if
+  if Ndpy = 0 then
+    if Ndpx != 0 then
+      Dpx = Ndpx
+      Dpy = 0
+      return
+    end if
+  end if
+  if Ndpx = 0 then return
+  if Ndpy = 0 then return
+  if Dpx != 0 then
+    Dpx = 0
+    Dpy = Ndpy
+    return
+  end if
+  if Dpy != 0 then
+    Dpx = Ndpx
+    Dpy = 0
+    return
+  end if
+  Number = random(0,1)
+  if Number = 0 then
+    Dpx = Ndpx
+    Dpy = 0
+  else
+    Dpy = Ndpy
+    Dpx = 0
+  end if
+  return
+
+sub DacmanMovePac:
+  PacAteDot = 0
+  Ncpac = PacClosedTile
+  Opx = Px
+  if Dpx = 1 then
+    Opx += 1
+    Ncpac = PacRightTile
+  end if
+  if Dpx = 2 then
+    Opx -= 1
+    Ncpac = PacLeftTile
+  end if
+  DacmanWrapOpx
+  Opy = Py
+  if Dpy = 1 then
+    Opy += 1
+    Ncpac = PacDownTile
+  end if
+  if Dpy = 2 then
+    Opy -= 1
+    Ncpac = PacUpTile
+  end if
+  DacmanWrapOpy
+  C = get char at Opx,Opy
+  if (C & $F0) = WallMask or C = BarrierTile then
+    Dpx = 0
+    Dpy = 0
+    return
+  end if
+  if C = LockTile then
+    if Keys = 0 then return
+  end if
+  if Dpx = 0 then
+    if Dpy = 0 then return
+  end if
+  if Ncpac >= PacRightTile then
+    if Ncpac <= PacUpTile then PacLookPattern = DacmanLookPatterns[Ncpac - PacRightTile]
+  end if
+  put char PacUnderTile at Px,Py
+  Px = Opx
+  Py = Opy
+  if Cpac = Ncpac then Cpac = PacClosedTile else Cpac = Ncpac
+  Tmp2 = 0
+  if C > FirstGhostTile - 1 then
+    if C <= LastGhostTile then
+      Ok = C - FirstGhostTile
+      return
+    end if
+  end if
+  if C = BlueGhostTile then
+    DacmanWhichGhost
+    Tmp2 = G + 1
+    Number = Gc[G]
+    DacmanStartGhostEyes
+    C = Number
+  end if
+  if C = ImmuneGhostTile then
+    DacmanWhichGhost
+    Ok = G
+    return
+  end if
+  if C = DotTile then
+    Tmp = 1
+    DacmanGobDot
+    DacmanConsumeHiddenTile
+    C = 32
+  end if
+  if C = PowerDotTile then
+    Tmp = 5
+    DacmanGobDot
+    DacmanConsumeHiddenTile
+    C = 32
+    DacmanStartBluePhase
+    Bonus = 20
+  end if
+  if C = KeyTile then
+    Keys += 1
+    play sound 15
+    DacmanDrawStatus
+    DacmanConsumeHiddenTile
+    C = 32
+  end if
+  if C = LockTile then
+    Keys -= 1
+    play sound 14
+    DacmanDrawStatus
+    C = 32
+  end if
+  if (C & $F0) = FruitMarkerMask then
+    FruitHistory[Level & 15] = 1
+    Tmp = Level + 1
+    Tmp *= 10
+    DacmanAddScore
+    DacmanConsumeHiddenTile
+    DacmanDrawFruitHistory
+    C = 32
+    play sound 7
+  end if
+  if C = TeleporterTile then DacmanUseTeleporter
+  PacUnderTile = C
+  put char Cpac at Px,Py
+  return
+
+
+sub DacmanUseTeleporter:
+  if TeleporterCount < 2 then return
+  TeleporterIndex = 0
+DacmanFindTeleporter:
+  if TeleporterX[TeleporterIndex] = Px then
+    if TeleporterY[TeleporterIndex] = Py then goto DacmanTeleportFound
+  end if
+  TeleporterIndex += 1
+  if TeleporterIndex < TeleporterCount then goto DacmanFindTeleporter
+  return
+DacmanTeleportFound:
+  if Dpx = 1 then goto DacmanTeleportNext
+  if Dpy = 1 then goto DacmanTeleportNext
+  if TeleporterIndex = 0 then TeleporterIndex = TeleporterCount - 1 else TeleporterIndex -= 1
+  goto DacmanTeleportMove
+DacmanTeleportNext:
+  TeleporterIndex += 1
+  if TeleporterIndex >= TeleporterCount then TeleporterIndex = 0
+DacmanTeleportMove:
+  play sound 16
+  Px = TeleporterX[TeleporterIndex]
+  Py = TeleporterY[TeleporterIndex]
+  C = TeleporterTile
+  return
+
+sub DacmanConsumeHiddenTile:
+  if Tmp2 = 0 then return
+  I = Tmp2 - 1
+  Gc[I] = 32
+  return
+
+sub DacmanStartBluePhase:
+  VulnerableGhostCount = 0
+  for G = 0 to GhostCount - 1
+    Gt[G] = 0
+    if GhostState[G] = GhostAlive then
+      if GhostImmune[G] = 0 then
+        Gt[G] = 1
+        VulnerableGhostCount += 1
+      end if
+    end if
+  next
+  if VulnerableGhostCount = 0 then
+    DacmanEndBluePhase
+    return
+  end if
+  stop sound 3
+  stop sound 4
+  play sound 4
+  BlueMusicPlaying = 1
+  BluePhase = BluePhaseVulnerable
+  BluePhaseTimer = BlueDuration - BlueFlashDuration
+  BlueTickPhase = 0
+  BlueFlashCounter = 0
+  BlueFlashWhite = 0
+  return
+
+sub DacmanUpdateBluePhase:
+  if BluePhase = BluePhaseNormal then return
+  if VulnerableGhostCount = 0 then
+    DacmanEndBluePhase
+    return
+  end if
+  if BlueTickPhase = 0 then BlueTickPhase = 1 else BlueTickPhase = 0
+  if BlueTickPhase != 0 then return
+  if BluePhaseTimer > 0 then BluePhaseTimer -= 1
+  if BluePhaseTimer > 0 then return
+  if BluePhase = BluePhaseVulnerable then
+    BluePhase = BluePhaseFlashing
+    BluePhaseTimer = BlueFlashDuration
+    BlueFlashCounter = 0
+    BlueFlashWhite = 0
+    return
+  end if
+  DacmanEndBluePhase
+  return
+
+sub DacmanEndBluePhase:
+  fill array Gt with 0 count GhostCount
+  BluePhase = BluePhaseNormal
+  BluePhaseTimer = 0
+  VulnerableGhostCount = 0
+  BlueTickPhase = 0
+  BlueFlashCounter = 0
+  BlueFlashWhite = 0
+  fill mode 2 color thirds at BlueGhostTile count 1 with $41
+  if BlueMusicPlaying != 0 then
+    stop sound 4
+    stop sound 3
+    play sound 3
+  end if
+  BlueMusicPlaying = 0
+  return
+
+sub DacmanUpdateGhosts:
+  DacmanUpdateGhostEyes
+  DacmanUpdateBluePhase
+  for G = 0 to GhostCount - 1
+    if GhostState[G] = GhostAlive then
+      if GhostMoveTimer[G] > 0 then GhostMoveTimer[G] -= 1
+      if GhostMoveTimer[G] = 0 then
+        DacmanMoveOneGhost
+        DacmanReloadGhostTimer
+      end if
+    end if
+  next
+  return
+sub DacmanReloadGhostTimer:
+  if GhostImmune[G] != 0 then
+    GhostMoveTimer[G] = BaseMoveDelay - 2
+  else
+    if Gt[G] > 0 then
+      GhostMoveTimer[G] = BaseMoveDelay + 1
+    else
+      GhostMoveTimer[G] = BaseMoveDelay - 1
+    end if
+  end if
+  return
+
+sub DacmanMoveOneGhost:
+    Wall = $0F
+    X = Gx[G] + 1
+    Y = Gy[G]
+    if X > 24 then X = 6
+    C = get char at X,Y
+    if (C & $F0) = WallMask or (C & $F8) = $A8 or C = BlueGhostTile or C = ImmuneGhostTile or C = LockTile or C = TeleporterTile then Wall -= 1
+    X = Gx[G]
+    Y = Gy[G] + 1
+    if Y > 22 then Y = 2
+    C = get char at X,Y
+    if (C & $F0) = WallMask or (C & $F8) = $A8 or C = BlueGhostTile or C = ImmuneGhostTile or C = LockTile or C = TeleporterTile then Wall -= 2
+    X = Gx[G] - 1
+    Y = Gy[G]
+    if X < 6 then X = 24
+    C = get char at X,Y
+    if (C & $F0) = WallMask or (C & $F8) = $A8 or C = BlueGhostTile or C = ImmuneGhostTile or C = LockTile or C = TeleporterTile then Wall -= 4
+    X = Gx[G]
+    Y = Gy[G] - 1
+    if Y < 2 then Y = 22
+    C = get char at X,Y
+    if (C & $F0) = WallMask or (C & $F8) = $A8 or C = BlueGhostTile or C = ImmuneGhostTile or C = LockTile or C = TeleporterTile then Wall -= 8
+    DacmanChooseGhostDirection
+    put char Gc[G] at Gx[G],Gy[G]
+    Tmp = DacmanDx[Nd]
+    if Tmp = 255 then Gx[G] -= 1 else Gx[G] += Tmp
+    if Gx[G] < 6 then Gx[G] = 24
+    if Gx[G] > 24 then Gx[G] = 6
+    Tmp = DacmanDy[Nd]
+    if Tmp = 255 then Gy[G] -= 1 else Gy[G] += Tmp
+    if Gy[G] < 2 then Gy[G] = 22
+    if Gy[G] > 22 then Gy[G] = 2
+    C = get char at Gx[G],Gy[G]
+    if C > PacRightTile - 1 then
+      if C < PacClosedTile + 1 then
+        if Gt[G] > 0 then
+          C = PacUnderTile
+          Gc[G] = 32
+          DacmanStartGhostEyes
+          put char Cpac at Px,Py
+          return
+        else
+          C = PacUnderTile
+          Ok = G
+        end if
+      end if
+    end if
+
+    if (C & $F0) = FruitMarkerMask then
+      C = 32
+      if Gt[G] > 0 then
+        if VulnerableGhostCount > 0 then VulnerableGhostCount -= 1
+      end if
+      Gt[G] = 0
+      GhostImmune[G] = 1
+      if VulnerableGhostCount = 0 then
+        if BluePhase != BluePhaseNormal then DacmanEndBluePhase
+      end if
+    end if
+    Gc[G] = C
+    Gd[G] = Nd
+    if Gt[G] > 0 then
+      put char BlueGhostTile at Gx[G],Gy[G]
+    else
+      if GhostImmune[G] != 0 then
+        put char ImmuneGhostTile at Gx[G],Gy[G]
+      else
+        put char FirstGhostTile + G at Gx[G],Gy[G]
+      end if
+    end if
+  return
+
+sub DacmanChooseGhostDirection:
+  Tmp = DacmanGOffset[Gd[G]]
+  Number = Tmp + Wall
+  Nd = DacmanGhostDirections[Number]
+DacmanGhostChoiceLoop:
+  if Nd <= 8 then return
+  Wall = 0 - Nd
+  Number = random(0,3)
+  Tmp = Wall & DacmanDirectionBits[Number]
+  if Tmp != 0 then Nd = Tmp
+  goto DacmanGhostChoiceLoop
+end sub
+
+sub DacmanWhichGhost:
+  G = 0
+DacmanWhichGhostLoop:
+  if Gx[G] = Opx then
+    if Gy[G] = Opy then return
+  end if
+  if G = GhostCount - 1 then return
+  G += 1
+  goto DacmanWhichGhostLoop
+end sub
+
+sub DacmanStartGhostEyes:
+  Tmp = Bonus
+  DacmanAddScore
+  play sound 8
+  Bonus = Bonus * 2
+  GhostState[G] = GhostEyesTravel
+  GhostEyeX[G] = Gx[G] * 8
+  GhostEyeY[G] = Gy[G] * 8 - 1
+  GhostEyeTimer[G] = 2
+  if Gt[G] > 0 then
+    if VulnerableGhostCount > 0 then VulnerableGhostCount -= 1
+  end if
+  Gt[G] = 0
+  GhostImmune[G] = 0
+  set sprite G to GhostEyeY[G],GhostEyeX[G],GhostEyesPattern,15
+  update sprites
+  if VulnerableGhostCount = 0 then
+    if BluePhase != BluePhaseNormal then DacmanEndBluePhase
+  end if
+  return
+
+sub DacmanUpdateGhostEyes:
+  for G = 0 to GhostCount - 1
+    if GhostState[G] = GhostEyesTravel then
+      if GhostEyeTimer[G] > 0 then GhostEyeTimer[G] -= 1
+      if GhostEyeTimer[G] = 0 then
+        GhostEyeTimer[G] = 2
+        X = Ogx[G] * 8
+        Y = Ogy[G] * 8 - 1
+        if GhostEyeX[G] < X then GhostEyeX[G] += 2
+        if GhostEyeX[G] > X then GhostEyeX[G] -= 2
+        if GhostEyeY[G] < Y then GhostEyeY[G] += 2
+        if GhostEyeY[G] > Y then GhostEyeY[G] -= 2
+        if GhostEyeX[G] = X then
+          if GhostEyeY[G] = Y then GhostState[G] = GhostEyesWaiting
+        end if
+      end if
+    end if
+    if GhostState[G] = GhostEyesWaiting then
+      Tmp = 0
+      if Px = Ogx[G] then
+        if Py = Ogy[G] then Tmp = 1
+      end if
+      for I = 0 to GhostCount - 1
+        if I != G then
+          if GhostState[I] = GhostAlive then
+            if Gx[I] = Ogx[G] then
+              if Gy[I] = Ogy[G] then Tmp = 1
+            end if
+          end if
+        end if
+      next
+      if Tmp = 0 then
+        Gx[G] = Ogx[G]
+        Gy[G] = Ogy[G]
+        C = get char at Gx[G],Gy[G]
+        Gc[G] = C
+        Gt[G] = 0
+        GhostImmune[G] = 0
+        GhostMoveTimer[G] = 1
+        GhostState[G] = GhostAlive
+        put char FirstGhostTile + G at Gx[G],Gy[G]
+        set sprite G to 207,0,GhostEyesPattern,15
+      end if
+    end if
+    if GhostState[G] != GhostAlive then
+      set sprite G to GhostEyeY[G],GhostEyeX[G],GhostEyesPattern,15
+    end if
+  next
+  DacmanUpdateLook
+  update sprites
+  return
+
+sub DacmanUpdateLook:
+  ' Movement may stop at a wall; PacLookPattern keeps the last valid orientation.
+  Number = PacLookPattern
+  if Cpac != PacClosedTile then Number += 1
+  X = Px * 8
+  Y = Py * 8 - 1
+  set sprite MissSprite to Y,X,Number,MissColor
+  return
+
+
+sub DacmanGobDot:
+  PacAteDot = 1
+  DacmanAddScore
+  stop sound 6
+  play sound 6
+  Dots = Dots - 1
+  return
+
+sub DacmanWrapOpx:
+  if Opx < 6 then Opx = 24
+  if Opx > 24 then Opx = 6
+  return
+
+sub DacmanWrapOpy:
+  if Opy < 2 then Opy = 22
+  if Opy > 22 then Opy = 2
+  return
+
+sub DacmanPacmanDead:
+  set sprite MissSprite to 207,0,1,MissColor
+  set sprite SecondMissSprite to 207,0,1,MissColor
+  update sprites
+  mute all
+  play sound 5
+  for C = $C0 to $D0
+    put char C at Gx[Ok],Gy[Ok]
+    wait 2 frames
+  next
+  for Tmp = 0 to 1
+    for C = $D1 to $D3
+      put char C at Gx[Ok],Gy[Ok]
+      wait 3 frames
+    next
+  next
+  wait 20 frames
+  put char FirstGhostTile + Ok at Gx[Ok],Gy[Ok]
+  return
+
+sub DacmanFlashBoardClear:
+  define chars DacmanTileset + 256 at 128 count 16
+  wait 24 frames
+  define chars DacmanTileset + 128 at 128 count 16
+  wait 24 frames
+  define chars DacmanTileset + 256 at 128 count 16
+  wait 24 frames
+  define chars DacmanTileset + 128 at 128 count 16
+  return
+
+sub DacmanTheEnd:
+  mute all
+  Playing = 0
+  DacmanDrawBoardVide
+  set sprite count 7
+  for G = 0 to GhostCount - 1
+    set sprite G to 207,0,GhostEyesPattern,15
+  next
+  DacmanInitLevel
+  nmi on
+  play sound 3
+  for I = 0 to 11
+    Tmp = I & 1
+    DacmanPutMiss
+    put char 32 at PacX,PacY
+    PacX += 1
+    put char PacClosedTile - Tmp * 4 at PacX,PacY
+    wait 12 frames
+  next
+
+  Tmp = 0
+  DacmanPutMiss
+  put char PacClosedTile at PacX,PacY
+  put char $A7 at PacX,PacY - 1
+  put char $A8 at PacX + 1,PacY - 1
+
+  play sound 11
+  play sound 12
+  play sound 13
+  wait 2000 frames
+  play sound 3
+
+  for G = 2 downto 0
+    for I = 6 to 7 + G
+      put char 32 at I - 1,PacY
+      put char FirstGhostTile + G at I,PacY
+      wait 5 frames
+    next
+  next
+
+  put char 32 at PacX,PacY - 1
+  put char 32 at PacX + 1,PacY - 1
+
+  Tmp = 1
+  DacmanPutMiss
+  put char $A9 at PacX + 1,PacY - 1
+
+  for I = 10 to 16
+    put char 32 at I - 3,PacY
+    put char FirstGhostTile at I - 2,PacY
+    put char $AC at I - 1,PacY
+    put char $AD at I,PacY
+    if I = 11 then
+      put char PacLeftTile at PacX,PacY
+    end if
+    wait 20 frames
+  next
+
+  put char 32 at PacX + 1,PacY - 1
+  print at 7,PacY, "     THE END     "
+  set sprite MissSprite to 207,0,1,MissColor
+  set sprite SecondMissSprite to 207,0,1,MissColor
+  update sprites
+  put char $8A at 6,PacY - 1
+  put char $8A at 6,PacY
+  put char $8A at 6,PacY + 1
+  wait 300 frames
+  mute all
+  wait 300 frames or press
+  return
+
+sub DacmanPutMiss:
+  Number = 1 + Tmp
+  set sprite MissSprite to 12 * 8 - 1,19 * 8,Number,MissColor
+  set sprite SecondMissSprite to 12 * 8 - 1,21 * 8,Number,MissColor
+  put char PacClosedTile - 2 * Tmp at 19,12
+  put char PacClosedTile - 2 * Tmp at 21,12
+  update sprites
+  return
+sub DacmanVblank:
+  if Playing = 0 then return
+  Flashing += 1
+  if Flashing = 12 then
+    fill $F1 count 8 to vram.color + (128 + 33) * 8
+    fill $F1 count 8 to vram.color + (256 + 128 + 33) * 8
+    fill $F1 count 8 to vram.color + (512 + 128 + 33) * 8
+  end if
+  if Flashing = 24 then
+    fill $11 count 8 to vram.color + (128 + 33) * 8
+    fill $11 count 8 to vram.color + (256 + 128 + 33) * 8
+    fill $11 count 8 to vram.color + (512 + 128 + 33) * 8
+    Flashing = 0
+  end if
+  if BluePhase != BluePhaseFlashing then goto DacmanGhostBlueColor
+  BlueFlashCounter += 1
+  if BlueFlashCounter >= 6 then
+    BlueFlashCounter = 0
+    if BlueFlashWhite = 0 then BlueFlashWhite = 1 else BlueFlashWhite = 0
+  end if
+  if BlueFlashWhite != 0 then goto DacmanGhostWhiteColor
+  goto DacmanGhostApplyBlueColor
+DacmanGhostBlueColor:
+  BlueFlashCounter = 0
+  BlueFlashWhite = 0
+DacmanGhostApplyBlueColor:
+  fill mode 2 color thirds at BlueGhostTile count 1 with $41
+  return
+DacmanGhostWhiteColor:
+  fill mode 2 color thirds at BlueGhostTile count 1 with $F1
+  return
+asm {
+DacmanSoundTable:
+    dw DacmanIntroA,$702B
+    dw DacmanIntroB,$7035
+    dw DacmanBgA,$702B
+    dw DacmanBgB,$702B
+    dw DacmanDeath,$702B
+    dw DacmanGobDotSound,$7049
+    dw DacmanBonus,$703F
+    dw DacmanBlueGhost,$7035
+    dw DacmanNewLife,$703F
+    dw DacmanDing,$703F
+    dw DacmanEndA,$702B
+    dw DacmanEndB,$7035
+    dw DacmanEndC,$703F
+    dw DacmanOpenLock,$703F
+    dw DacmanKey,$703F
+    dw DacmanTeleport,$703F
+
+DacmanIntroA:
+    db $40,$E2,$00,$05,$64,$40,$71,$00,$04,$64,$40,$97,$00,$05,$64,$40
+    db $B3,$00,$04,$65,$40,$71,$00,$04,$40,$97,$00,$04,$69,$40,$B3,$00
+    db $0D,$64,$40,$D5,$00,$05,$64,$40,$6A,$00,$04,$64,$40,$8E,$00,$04
+    db $64,$40,$A9,$00,$05,$64,$40,$6A,$00,$04,$40,$8E,$00,$04,$69,$40
+    db $A9,$00,$0D,$64,$40,$E2,$00,$05,$64,$40,$71,$00,$04,$64,$40,$97
+    db $00,$05,$64,$40,$B3,$00,$05,$64,$40,$71,$00,$04,$40,$97,$00,$05
+    db $68,$40,$B3,$00,$0D,$64,$40,$B3,$00,$05,$40,$A9,$00,$04,$40,$A0
+    db $00,$04,$65,$40,$A0,$00,$04,$40,$97,$00,$04,$40,$8E,$00,$05,$64
+    db $40,$8E,$00,$04,$40,$86,$00,$04,$40,$7F,$00,$05,$64,$40,$71,$00
+    db $09,$50
+
+DacmanIntroB:
+    db $80,$89,$33,$09,$B1,$80,$C4,$11,$09,$80,$89,$33,$09,$B0,$80,$C4
+    db $11,$09,$80,$56,$33,$09,$B1,$80,$AB,$11,$09,$80,$56,$33,$09,$B1
+    db $80,$AB,$11,$08,$80,$89,$33,$09,$B1,$80,$C4,$11,$09,$80,$89,$33
+    db $09,$B1,$80,$C4,$11,$08,$80,$5C,$22,$09,$A9,$80,$1A,$22,$09,$A8
+    db $80,$DF,$11,$09,$A8,$80,$C4,$11,$09,$90
+
+DacmanBgA:
+    db $C0,$F3,$40,$01,$C0,$FD,$40,$01,$C0,$07,$41,$01,$C0,$1C,$41,$01
+    db $C0,$30,$41,$01,$C0,$3A,$41,$01,$C0,$58,$41,$01,$C0,$6D,$41,$01
+    db $C0,$95,$41,$01,$C0,$B4,$41,$01,$C0,$E6,$41,$01,$C0,$19,$42,$01
+    db $C0,$56,$42,$01,$C0,$19,$42,$01,$C0,$E6,$41,$01,$C0,$B4,$41,$01
+    db $C0,$95,$41,$01,$C0,$6D,$41,$01,$C0,$58,$41,$01,$C0,$3A,$41,$01
+    db $C0,$30,$41,$01,$C0,$1C,$41,$01,$C0,$07,$41,$01,$C0,$FD,$40,$01
+    db $D8
+
+DacmanBgB:
+    db $C0,$0C,$41,$01,$C0,$C5,$40,$01,$C0,$9D,$40,$01,$C0,$83,$40,$01
+    db $C0,$83,$40,$01,$C0,$6F,$40,$01,$C0,$6F,$40,$01,$C0,$60,$40,$01
+    db $C0,$65,$40,$01,$C0,$21,$43,$01,$D8
+
+DacmanDeath:
+    db $40,$A6,$20,$01,$40,$A6,$10,$01,$40,$AD,$10,$01,$40,$A3,$10,$01
+    db $40,$99,$10,$01,$40,$96,$10,$01,$40,$AA,$10,$01,$40,$B7,$10,$01
+    db $40,$C3,$10,$01,$40,$B9,$10,$01,$40,$AC,$10,$01,$40,$A2,$10,$01
+    db $40,$B4,$10,$01,$40,$C3,$10,$01,$40,$D3,$10,$01,$40,$CC,$10,$01
+    db $40,$BC,$10,$01,$40,$AF,$10,$01,$40,$BE,$10,$01,$40,$D1,$10,$01
+    db $40,$E4,$10,$01,$40,$E3,$10,$01,$40,$D0,$10,$01,$40,$C0,$10,$01
+    db $40,$C7,$10,$01,$40,$E0,$10,$01,$40,$F6,$10,$01,$40,$02,$11,$01
+    db $40,$E9,$10,$01,$40,$D5,$10,$01,$40,$D2,$10,$01,$40,$F2,$10,$01
+    db $40,$0C,$11,$01,$40,$21,$11,$01,$40,$07,$11,$01,$40,$18,$02,$01
+    db $40,$9C,$01,$01,$40,$FA,$10,$01,$40,$B1,$10,$01,$40,$89,$10,$01
+    db $40,$75,$10,$01,$62,$40,$5B,$02,$01,$40,$9A,$01,$01,$40,$2A,$11
+    db $01
+DacmanTeleport:
+    db $40,$ED,$10,$01,$40,$C4,$10,$01,$40,$BA,$10,$01,$40,$A1,$10
+    db $01
+DacmanKey:
+    db $40,$88,$10,$01,$40,$7E,$10,$01,$40,$65,$10,$01,$40,$7E,$20
+    db $01,$40,$65,$30,$01,$50
+
+DacmanGobDotSound:
+    db $80,$10,$01,$01,$80,$CB,$01,$01,$80,$AC,$01,$01,$80,$4E,$15,$01
+    db $90
+
+DacmanBonus:
+    db $80,$74,$30,$01,$80,$A1,$20,$01,$80,$A7,$10,$01,$80,$C0,$10,$01
+    db $80,$CF,$10,$01,$80,$11,$01,$01,$80,$85,$01,$01,$80,$D4,$00,$01
+    db $80,$E9,$00,$01,$80,$2D,$02,$01,$80,$49,$01,$01,$80,$E4,$00,$01
+DacmanOpenLock:
+    db $80,$D5,$00,$01,$80,$C0,$00,$01,$80,$AC,$10,$02,$80,$9D,$10,$02
+    db $80,$8E,$10,$02,$80,$88,$20,$02,$80,$79,$20,$03,$90
+
+DacmanBlueGhost:
+    db $40,$A4,$01,$01,$40,$C5,$03,$01,$40,$CB,$01,$01,$40,$96,$01,$01
+    db $40,$0E,$11,$01,$40,$D1,$10,$01,$40,$8C,$11,$01,$40,$1C,$11,$01
+    db $40,$CB,$10,$01,$40,$AE,$10,$01,$40,$0A,$11,$01,$40,$DA,$10,$01
+    db $40,$A9,$10,$01,$40,$93,$10,$01,$40,$C9,$20,$01,$40,$A5,$20,$01
+    db $40,$6E,$20,$01,$40,$63,$20,$01,$40,$71,$20,$01,$40,$84,$20,$01
+    db $40,$9D,$20,$01,$40,$C3,$20,$01,$40,$00,$21,$01,$40,$75,$21,$01
+    db $40,$65,$20,$01,$40,$67,$20,$01,$40,$76,$20,$01,$40,$8A,$20,$01
+    db $40,$A6,$20,$01,$40,$D1,$20,$01,$40,$1B,$21,$01,$40,$AA,$21,$01
+    db $40,$7B,$20,$01,$40,$64,$20,$01,$40,$72,$20,$01,$40,$85,$20,$01
+    db $40,$9F,$20,$01,$40,$C7,$20,$01,$40,$07,$21,$01,$40,$85,$21,$01
+    db $40,$A3,$20,$01,$40,$62,$20,$01,$40,$6F,$20,$01,$40,$81,$20,$01
+    db $40,$99,$20,$01,$40,$BD,$10,$01,$40,$F4,$20,$01,$40,$5F,$21,$01
+    db $40,$F2,$20,$01,$40,$5F,$20,$01,$40,$6C,$20,$01,$40,$7C,$20,$01
+    db $40,$93,$20,$01,$40,$B3,$20,$01,$40,$E5,$30,$01,$40,$40,$21,$01
+    db $40,$CE,$31,$01,$40,$5C,$30,$01,$50
+
+DacmanNewLife:
+    db $40,$6B,$00,$02
+    db $41,$6D,$00,$02,$11,$FE
+    db $40,$6D,$30,$02
+    db $65
+    db $40,$6B,$00,$02
+    db $41,$6D,$00,$02,$11,$FE
+    db $40,$6D,$30,$02
+    db $65
+    db $40,$6B,$00,$02
+    db $41,$6D,$00,$02,$11,$FE
+    db $40,$6D,$30,$02
+    db $65
+    db $40,$6B,$00,$02
+    db $41,$6D,$00,$02,$11,$FE
+    db $40,$6D,$30,$02
+    db $50
+
+DacmanDing:
+    db $42,$8F,$30,$0E,$F4,$21
+    db $62
+    db $42,$8F,$30,$06,$F4,$21
+    db $62
+    db $42,$8F,$30,$06,$F4,$21
+    db $62
+    db $40,$6B,$40,$05
+    db $41,$69,$50,$03,$11,$02
+    db $40,$6B,$40,$01
+    db $41,$69,$30,$03,$11,$02
+    db $40,$6B,$20,$01
+    db $41,$69,$30,$03,$11,$02
+    db $40,$6B,$20,$01
+    db $41,$69,$10,$03,$11,$02
+    db $40,$6B,$00,$01
+    db $41,$69,$10,$03,$11,$02
+    db $40,$6B,$00,$01
+    db $41,$69,$00,$03,$11,$02
+    db $40,$6B,$00,$01
+    db $41,$69,$00,$02,$11,$02
+    db $50
+
+DacmanEndA:
+    db $40,$A9,$30,$29,$40,$64,$30,$2A,$40,$71,$30,$14,$61,$40,$7F,$30
+    db $14,$40,$86,$30,$15,$40,$97,$30,$15,$40,$A9,$30,$3E,$40,$B3,$30
+    db $0A,$61,$40,$A9,$30,$0A,$40,$97,$30,$53,$40,$A9,$30,$14,$61,$40
+    db $C9,$30,$14,$40,$8E,$30,$2A,$40,$97,$30,$14,$61,$40,$C9,$30,$14
+    db $40,$BE,$30,$15,$40,$A9,$30,$53,$40,$BE,$30,$0A,$40,$C9,$30,$0A
+    db $61,$40,$BE,$30,$53,$40,$A0,$30,$14,$40,$A9,$30,$15,$40,$A0,$30
+    db $15,$40,$8E,$30,$14,$61,$40,$7F,$30,$29,$40,$8E,$30,$15,$40,$A0
+    db $30,$14,$61,$40,$A0,$30,$29,$40,$A9,$30,$53,$40,$E2,$30,$15,$40
+    db $C9,$30,$14,$61,$40,$BE,$30,$14,$40,$C9,$30,$15,$40,$BE,$30,$15
+    db $40,$FE,$30,$14,$61,$40,$0D,$41,$29,$40,$A9,$30,$14,$61,$40,$E2
+    db $30,$14,$40,$BE,$30,$2A,$40,$C9,$30,$7C,$40,$A0,$30,$15,$40,$A9
+    db $30,$15,$40,$A0,$30,$14,$61,$40,$8E,$30,$14,$40,$7F,$30,$2A,$40
+    db $8E,$30,$14,$61,$40,$A0,$30,$3E,$40,$A9,$30,$53,$40,$7F,$30,$14
+    db $61,$40,$6A,$30,$29,$40,$71,$30,$14,$61,$40,$71,$30,$14,$40,$7F
+    db $30,$2A,$40,$8E,$30,$14,$61,$40,$8E,$30,$14,$40,$97,$30,$15,$40
+    db $71,$30,$A6,$50
+
+DacmanEndB:
+    db $80,$93,$41,$53,$80,$5C,$52,$37,$80,$7C,$41,$1C,$80,$93,$41,$53
+    db $80,$2E,$41,$53,$80,$1D,$41,$53,$80,$2E,$41,$29,$80,$93,$41,$2A
+    db $80,$7C,$41,$A5,$A1,$80,$40,$41,$A5,$A1,$80,$FC,$41,$A5,$A1,$80
+    db $7C,$41,$53,$80,$53,$41,$53,$80,$7C,$41,$29,$80,$FC,$41,$7C,$80
+    db $7C,$41,$53,$80,$C4,$41,$53,$80,$53,$41,$A6,$80,$67,$41,$A6,$80
+    db $53,$41,$A6,$90
+
+DacmanEndC:
+    db $C0,$F8,$63,$53,$C0,$89,$63,$53,$C0,$27,$63,$53,$C0,$F9,$52,$53
+    db $C0,$A6,$52,$53,$C0,$F9,$52,$29,$C0,$27,$63,$2A,$C0,$89,$63,$A5
+    db $E1,$C0,$F9,$52,$A5,$E1,$C0,$27,$63,$A5,$E1,$C0,$89,$63,$53,$C0
+    db $0D,$41,$53,$C0,$F8,$63,$A5,$C0,$40,$41,$53,$C0,$1D,$41,$53,$C0
+    db $56,$63,$A6,$C0,$89,$63,$A6,$C0,$53,$41,$A6,$D0
+
+}

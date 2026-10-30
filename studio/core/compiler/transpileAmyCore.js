@@ -2134,6 +2134,7 @@ export function transpileAmyCore(sourceText, deps) {
     ensureUserVarAsmSymbol,
     resolveNamedAsmSymbol,
     rewriteUserSymbolsInExpression,
+    rewriteUserSymbolsInAsmLine,
     resolveAddressSymbol,
     resolveJumpTarget,
     resolveSourceJumpTarget,
@@ -4144,6 +4145,7 @@ export function transpileAmyCore(sourceText, deps) {
     emitLoadInt8ValueInto: (...args) => emitLoadInt8ValueInto(...args),
     emitLoadWordTableEntryIntoHL: (...args) => emitLoadWordTableEntryIntoHL(...args),
     getWordTableInfo: (...args) => getWordTableInfo(...args),
+    dataLengths,
     ensureCompareScratch32: (...args) => ensureCompareScratch32(...args),
     ensureFp5ReturnScratch,
     emitStoreExtended32: (...args) => emitStoreExtended32(...args),
@@ -4904,6 +4906,7 @@ export function transpileAmyCore(sourceText, deps) {
           get detachedAsmData() { return romData; },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,
+          rewriteUserSymbolsInAsmLine,
           describeGlobalNameCollision
         },
         parseBitmapLine,
