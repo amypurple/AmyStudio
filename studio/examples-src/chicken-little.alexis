@@ -1,0 +1,814 @@
+cartridge "CHICKEN LITTLE/AMY BIENVENU/2026"
+
+' CHICKEN LITTLE
+' Jeff Wolverton's CHICKEN LITTLE (COMPUTE!'s Gazette, November 1983, for
+' the VIC-20 and the Commodore 64; he was 15), for the ColecoVision in Amy
+' by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Source: the 64 version's listing (orig/chicken64.bas, typed in from the
+' magazine). Labels such as l520 are its line numbers; Pk and Po stand for
+' its PEEKs and POKEs of the screen (0 a piece of sky, 2 a rock, 4 a hit,
+' 32 nothing).
+'
+' The sky really is falling: 30 pieces hang in it and come down one at a
+' time, blown left and right by the wind. Throw rocks at them (50 points
+' a falling piece, 10 a resting one). A piece on your head costs a
+' chicken; when nine reach the ground (one fewer each level), the sky has
+' fallen. Clear the sky for the next level: the pieces fall faster.
+'
+' Controls (either joystick): the stick moves Chicken Little about the
+' farmyard (the bottom five rows), the button throws a rock. Keypad not
+' used.
+'
+' Kept as the listing has them: one piece falls at a time, in order; a
+' rock thrown before the last one has landed is lost; a hit piece leaves
+' its mark where a later piece may still meet it (the rock's last place is
+' kept, line 560); the starting piece can leave a copy of itself behind
+' when the one before it ended over a resting piece (line 510).
+' Liberties taken:
+' - 30 columns (the 64 had 40); the pieces start in rows 2-16 (the 64's
+'   1-16: row 1 here is the score line), a rock stops under it.
+' - RND: a 16-bit generator. After the sky has fallen, a button starts a
+'   new game (the 64's program ended).
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; an
+' original title tune that plays once; the screen is drawn with the NMI
+' off.
+
+const TSky = 128
+const TSky2 = 129
+const TYard = 130
+const TPiece = 131
+const TPieceg = 132
+const TRock = 133
+const TRockg = 134
+const THit = 135
+const THitg = 136
+const TFence = 137
+const THeart = 138
+const SBody = 0
+const SDet1 = 4
+const SDet2 = 8
+const NTiles8 = 88
+const SprBytes = 96
+const SndThrow = 1
+const SndSmash = 2
+const SndChip = 3
+const SndOuch = 4
+const SndThud = 5
+const SndLevel = 6
+const SndTuneA = 7
+const SndTuneB = 8
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' X, Y Chicken Little (columns 0-28, rows 17-21), A its cell; B the rock
+' (F: in the air), Q the falling piece (Q1 what was under it), R its
+' number, R1 one is falling; C the pieces' cells; SC score, Hens chickens,
+' QW the sky's slowness (moves per fall), PS pieces to the end, DE landed
+u8 X = 15
+u8 Y = 20
+u16 A = 0
+u16 B = 0
+u8 F = 0
+u16 Q = 0
+u8 Q1 = 0
+u8 R = 0
+u8 R1 = 0
+u16 C[31]
+u16 SC = 0
+u8 Hens = 3
+u8 QW = 4
+u8 PS = 9
+u8 DE = 0
+u8 M = 0
+u8 Ev = 0
+
+u8 Pv = 0
+u8 Pw = 0
+u8 Tx = 0
+u8 Ty = 0
+u16 Qn = 0
+u16 Pass = 0
+u8 Flash = 7
+
+u16 Rs = $ACE1
+u16 Rw = 0
+u16 Rt = 0
+u16 Rn = 0
+u16 Rv = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 NumU = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Stp = 0
+u8 Ask = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 T = 0
+u16 V16 = 0
+
+  tile screen
+  set sound table ClSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  CreditsPage
+new_game:
+  ' 1120-1290: the instructions, then 170-180
+  Instructions
+  PS = 9
+  QW = 4
+  Hens = 3
+  SC = 0
+  R = 0
+  DE = 0
+  Q1 = 0
+  Q = 0
+  B = 0
+  F = 0
+  R1 = 0
+
+' 190-260: the sky's 30 pieces
+l190:
+  NewScreen
+  fill TSky count 30 at 1,2
+  for Ty = 3 to 16
+    fill TSky count 30 at 1,Ty
+  next
+  fill TSky2 count 1 at 7,4
+  fill TSky2 count 1 at 22,6
+  fill TSky2 count 1 at 13,9
+  fill TSky2 count 1 at 27,12
+  fill TFence count 30 at 1,16
+  for Ty = 17 to 22
+    fill TYard count 30 at 1,Ty
+  next
+  for T = 1 to 30
+    Rn = 450
+    RndK
+    V16 = Rv + 60
+    C[T] = V16
+    Po(V16, 0)
+  next
+  Hud
+  ShowScreen
+
+' 270: Chicken Little in the middle of the farmyard
+l270:
+  X = 14
+  Y = 20
+  A = 614
+  Flash = 11
+  Ask = 1
+
+' 290-460: the main loop: QW moves of Chicken Little and the rock to one
+' move of the falling piece
+l300:
+  if QW = 1 then
+    M = 1
+    goto l330
+  end if
+  M = 1
+l330:
+  inc Pass
+  Tick4
+  ReadPad
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  V = V | Btn
+  if V = 1 then Move870
+  ClearPad
+  ' 350-355
+  Chicken
+  A = Y * 30
+  A = A + X
+  if F = 1 then
+    Rock980
+    if Ev = 2 then goto l1090
+  end if
+  if M <> 1 then goto l450
+  if R1 = 1 then
+    Fall520
+    if Ev = 1 then goto l640
+    if Ev = 2 then goto l1090
+  end if
+  if R = 31 then goto l750
+  if R1 = 0 then
+    Next480
+    if R = 31 then goto l750
+    Fall520
+    if Ev = 1 then goto l640
+    if Ev = 2 then goto l1090
+  end if
+l450:
+  if QW = 1 then goto l300
+  inc M
+  if M > QW then goto l300
+  goto l330
+
+' 640-740: a piece on Chicken Little's head
+l640:
+  for T = 0 to 15
+    Flash = T + 7
+    Flash = Flash & 15
+    Chicken
+    Tick4
+  next
+  play sound SndOuch
+  Pause(60)
+  dec Hens
+  Hud
+  if Hens = 0 then goto l1090
+  R1 = 0
+  F = 0
+  Po(B, 32)
+  goto l270
+
+' 750-840: the sky cleared, the next level
+l750:
+  HideSprites
+  Ask = 0
+  NewScreen
+  ShowScreen
+  for T = 1 to 6
+    print at 11,10, "NEXT LEVEL"
+    play sound SndLevel
+    Pause(10)
+    print at 11,10, "          "
+    Pause(10)
+  next
+  if QW = 1 then QW = 2
+  dec QW
+  if PS > 1 then dec PS
+  R = 0
+  DE = 0
+  goto l190
+
+' 1090-1100: the sky has fallen
+l1090:
+  HideSprites
+  Ask = 0
+  NewScreen
+  print at 5,8, "THE SKY HAS FALLEN."
+  print at 5,10, "YOUR SCORE WAS:"
+  NumU = SC
+  Ndig
+  Tx = 21
+  ShowNum
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Ask = 9
+  WaitPress
+  Ask = 0
+  goto new_game
+
+' ---------------------------------------------------------------------------
+' 480-490: the next piece still in the sky
+sub Next480:
+n480:
+  inc R
+  if R = 31 then return
+  R1 = 1
+  if C[R] = 0 then goto n480
+  Pk(C[R])
+  if Pv = 32 then goto n480
+  ' 500-510
+  Q = C[R]
+  if Q1 <> 0 then Q1 = 32
+  return
+end sub
+
+' 520-620: the falling piece's move (Ev: 1 on the chicken, 2 the end)
+sub Fall520:
+  Ev = 0
+  Po(Q, Q1)
+  Rn = 3
+  RndK
+  Q = Q + 29
+  Q = Q + Rv
+  if Q = A then
+    Ev = 1
+    return
+  end if
+  V16 = A + 1
+  if Q = V16 then
+    Ev = 1
+    return
+  end if
+  V16 = A + 30
+  if Q = V16 then
+    Ev = 1
+    return
+  end if
+  V16 = A + 31
+  if Q = V16 then
+    Ev = 1
+    return
+  end if
+  Pk(Q)
+  Q1 = Pv
+  Po(Q, 0)
+  ' 550: on the ground (past row 21's first cell)
+  if Q > 630 then
+    R1 = 0
+    Po(Q, 32)
+    C[R] = 0
+    inc DE
+    play sound SndThud
+  end if
+  Meet560
+  return
+end sub
+
+' 560-620 (also reached from the rock, 1010): the rock and the piece meet
+sub Meet560:
+  if Q = B then Po(Q, 4)
+  if DE = PS then
+    Ev = 2
+    return
+  end if
+  if Q <> B then return
+  play sound SndSmash
+  Pause(8)
+  Po(Q, 32)
+  SC = SC + 50
+  C[R] = 0
+  R1 = 0
+  F = 0
+  Hud
+  return
+end sub
+
+' 980-1070: the rock goes up a row
+sub Rock980:
+  Ev = 0
+  Po(B, 32)
+  B = B - 30
+  ' 1000: past the top (here: under the score line)
+  if B < 60 then
+    F = 0
+    return
+  end if
+  if B = Q then
+    Meet560
+    return
+  end if
+  Pk(B)
+  if Pv = 0 then
+    ' 1030-1035: a resting piece
+    Po(B, 4)
+    play sound SndChip
+    Pause(4)
+    SC = SC + 10
+    Hud
+  end if
+  Pk(B)
+  if Pv <> 32 then
+    Po(B, 32)
+    F = 0
+    return
+  end if
+  Po(B, 2)
+  return
+end sub
+
+' 870-950: the stick and the button
+sub Move870:
+  if F = 0 then
+    if Btn = 1 then
+      F = 1
+      B = A - 30
+      play sound SndThrow
+    end if
+  end if
+  if Rt1 = 1 then
+    if X < 28 then inc X
+  end if
+  if Lf1 = 1 then
+    if X > 0 then dec X
+  end if
+  if Dn1 = 1 then
+    if Y < 21 then inc Y
+  end if
+  if Up1 = 1 then
+    if Y > 17 then dec Y
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pk: what is at cell Qn (row * 30 + column): 0, 2, 4 or 32, in Pv
+sub Pk(u16 Cc):
+  Qn = Cc
+  Cell
+  Pv = 32
+  if Ty < 2 then return
+  if Ty > 22 then return
+  Pw = get char at Tx,Ty
+  if Pw = TPiece then Pv = 0
+  if Pw = TPieceg then Pv = 0
+  if Pw = TRock then Pv = 2
+  if Pw = TRockg then Pv = 2
+  if Pw = THit then Pv = 4
+  if Pw = THitg then Pv = 4
+  return
+end sub
+
+' Po: POKE a code at cell Qn, on the sky (rows 2-16) or the farmyard
+sub Po(u16 Cc, u8 Vv):
+  Qn = Cc
+  Cell
+  if Ty < 2 then return
+  if Ty > 22 then return
+  if Ty < 17 then
+    Pw = TSky
+    if Ty = 16 then Pw = TFence
+    if Vv = 0 then Pw = TPiece
+    if Vv = 2 then Pw = TRock
+    if Vv = 4 then Pw = THit
+  else
+    Pw = TYard
+    if Vv = 0 then Pw = TPieceg
+    if Vv = 2 then Pw = TRockg
+    if Vv = 4 then Pw = THitg
+  end if
+  put char Pw at Tx,Ty
+  return
+end sub
+
+' Cell: Qn as tile column Tx, row Ty
+sub Cell:
+  Ty = 0
+  V16 = Qn
+  while V16 >= 30
+    V16 = V16 - 30
+    inc Ty
+  end while
+  Tx = V16 + 1
+  return
+end sub
+
+' Chicken Little's two sprites (it steps as it moves)
+sub Chicken:
+  W = X + 1
+  W = W * 8
+  V = Y * 8
+  dec V
+  set sprite 0 to V,W,SDet1,8
+  V16 = X + Y
+  J8 = V16 & 1
+  if J8 = 1 then set sprite 0 to V,W,SDet2,8
+  set sprite 1 to V,W,SBody,Flash
+  update sprites
+  return
+end sub
+
+' 330: the score line
+sub Hud:
+  fill 32 count 30 at 1,1
+  print at 2,1, "SCORE:"
+  NumU = SC
+  Ndig
+  Tx = 9
+  Ty = 1
+  ShowNum
+  print at 20,1, "CHICKENS:"
+  V = Hens
+  print at 29,1, digits$(V, 1)
+  return
+end sub
+
+sub Ndig:
+  W = 1
+  if NumU >= 10 then W = 2
+  if NumU >= 100 then W = 3
+  if NumU >= 1000 then W = 4
+  if NumU >= 10000 then W = 5
+  return
+end sub
+
+sub ShowNum:
+  if W = 1 then print at Tx,Ty, digits$(NumU, 1)
+  if W = 2 then print at Tx,Ty, digits$(NumU, 2)
+  if W = 3 then print at Tx,Ty, digits$(NumU, 3)
+  if W = 4 then print at Tx,Ty, digits$(NumU, 4)
+  if W = 5 then print at Tx,Ty, digits$(NumU, 5)
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Tick4: the 64's BASIC loop took about 4 frames a turn
+sub Tick4:
+  Frame1
+  Frame1
+  Frame1
+  Frame1
+  return
+end sub
+
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  ' the stick moved during a pause is not the next turn's
+  ClearPad
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  ' the stick is read every frame (a quick tap still counts): latched
+  ' until the turn takes it
+  V = joypad(1).up | joypad(2).up
+  Up1 = Up1 | V
+  V = joypad(1).down | joypad(2).down
+  Dn1 = Dn1 | V
+  V = joypad(1).left | joypad(2).left
+  Lf1 = Lf1 | V
+  V = joypad(1).right | joypad(2).right
+  Rt1 = Rt1 | V
+  V = joypad(1).fire | joypad(2).fire
+  Btn = Btn | V
+  return
+end sub
+
+' ReadPad: what the frames since the last turn saw (then cleared)
+sub ReadPad:
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  V = joypad(1).fire | joypad(2).fire
+  WasBtn = V
+  Stp = Up1 | Dn1
+  Stp = Stp | Lf1
+  Stp = Stp | Rt1
+  return
+end sub
+
+sub ClearPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Btn = 0
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  for J8 = 0 to 1
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' RndK: Rv = INT(RND * Rn) (FNA)
+sub RndK:
+  Rnd16
+  Uq = Rw
+  Uq2 = Rn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+' WaitPress: a new press of a button
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  ClearPad
+  Frame1
+  V = Btn
+  if V = 0 then
+    WasBtn = 0
+    goto wp_loop
+  end if
+  if WasBtn = 1 then goto wp_loop
+  ClearPad
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 8,1, "CHICKEN LITTLE"
+  print at 2,3, "BY JEFF WOLVERTON (AGE 15),"
+  print at 2,4, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,5, "NOVEMBER 1983 (VIC-20 AND"
+  print at 2,6, "COMMODORE 64)."
+  print at 2,8, "FOR THE COLECOVISION BY"
+  print at 2,9, "CLAUDE (AN AI MADE BY"
+  print at 2,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "2026, IN AMY, THE LANGUAGE"
+  print at 2,12, "BY AMY BIENVENU."
+  print at 2,14, "MUSIC: THE SKY IS FALLING"
+  print at 2,15, "(ORIGINAL)."
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 470
+  TzOn = 1
+  Ask = 1
+  WaitPress
+  Ask = 0
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $ACE1
+  return
+end sub
+
+sub Instructions:
+  NewScreen
+  print at 8,1, "CHICKEN LITTLE"
+  print at 2,3, "YOU ARE CHICKEN LITTLE. YOU"
+  print at 2,4, "MOVE IN THE BOTTOM PART OF"
+  print at 2,5, "THE SCREEN WHILE PIECES OF"
+  print at 2,6, "SKY (BLOWN RANDOMLY BY THE"
+  print at 2,7, "WIND) FALL TO THE GROUND. TO"
+  print at 2,8, "SCORE POINTS, TOSS ROCKS AT"
+  print at 2,9, "THE FALLING PIECES OF SKY"
+  print at 2,10, "WITH THE FIRE BUTTON."
+  print at 2,12, "YOU CAN ALSO HIT NON-FALLING"
+  print at 2,13, "PIECES."
+  print at 7,21, "PRESS FIRE TO CONTINUE"
+  ShowScreen
+  Ask = 1
+  WaitPress
+  NewScreen
+  print at 2,2, "USE A JOYSTICK TO MOVE ABOUT"
+  print at 2,3, "THE SCREEN."
+  print at 2,5, "YOU GET 50 POINTS FOR"
+  print at 2,6, "HITTING FALLING SKY, AND 10"
+  print at 2,7, "POINTS FOR OTHERS."
+  print at 2,9, "EACH TIME YOU CLEAR THE"
+  print at 2,10, "SCREEN AND ADVANCE TO THE"
+  print at 2,11, "NEXT LEVEL THE PIECES OF SKY"
+  print at 2,12, "FALL FASTER."
+  print at 2,14, "IF MORE THAN EIGHT PIECES OF"
+  print at 2,15, "SKY HIT THE GROUND, THE GAME"
+  print at 2,16, "IS OVER."
+  print at 11,18, "GOOD LUCK!"
+  print at 6,21, "PRESS FIRE TO BEGIN"
+  ShowScreen
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $10,$00,$00,$00,$00,$00,$00,$00
+  $C3,$81,$20,$10,$04,$81,$C3,$18
+  $C3,$81,$20,$10,$04,$81,$C3,$18
+  $00,$00,$18,$C3,$C3,$18,$00,$00
+  $10,$00,$18,$C3,$C3,$18,$00,$00
+  $91,$52,$C3,$00,$C3,$54,$92,$10
+  $91,$52,$C3,$00,$C3,$54,$92,$10
+  $00,$00,$00,$88,$00,$88,$00,$00
+  $00,$93,$01,$01,$83,$38,$10,$00
+end data
+data TileCol bytes
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$F4,$04,$04,$04,$04,$04
+  $C3,$03,$03,$03,$03,$03,$03,$03
+  $45,$45,$F5,$F5,$F5,$45,$45,$54
+  $35,$35,$F5,$F5,$F5,$35,$35,$53
+  $04,$04,$E4,$4E,$4E,$E4,$04,$04
+  $C3,$03,$E3,$3E,$3E,$E3,$03,$03
+  $B4,$B4,$4B,$0B,$4B,$B4,$B4,$B4
+  $B3,$B3,$3B,$0B,$3B,$B3,$B3,$B3
+  $04,$04,$04,$F4,$0F,$F4,$0F,$03
+  $01,$18,$18,$18,$18,$81,$81,$01
+end data
+data SpritePat bytes
+  $00,$03,$07,$07,$07,$03,$0F,$1F,$3F,$3F,$1F,$0F,$02,$00,$00,$00
+  $00,$C0,$E0,$60,$E0,$C0,$F0,$F8,$FC,$FC,$F8,$F0,$40,$00,$00,$00
+  $03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$06,$00
+  $00,$00,$00,$80,$18,$10,$00,$00,$00,$00,$00,$00,$00,$40,$60,$00
+  $03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$03,$00
+  $00,$00,$00,$80,$18,$10,$00,$00,$00,$00,$00,$00,$00,$40,$60,$00
+end data
+
+asm {
+ClThrow:
+    db $00,$00,$15,$02,$00,$00,$55,$02,$10
+ClSmash:
+    db $40,$75,$11,$02,$40,$E0,$10,$02,$40,$8C,$10,$02,$40,$5D,$20,$02,$40,$46,$40,$02,$40,$38,$70,$03
+    db $50
+ClChip:
+    db $40,$50,$20,$02,$40,$70,$30,$02,$40,$A0,$40,$02,$40,$E0,$70,$03,$50
+ClOuch:
+    db $40,$53,$11,$0C,$40,$53,$F1,$03,$40,$53,$11,$06,$40,$53,$F1,$03,$40,$1D,$11,$18,$40,$1D,$61,$0A
+    db $50
+ClThud:
+    db $00,$00,$26,$03,$00,$00,$66,$04,$10
+ClLevel:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$0C,$50
+
+ClSoundTable:
+    dw ClThrow,$702B
+    dw ClSmash,$7035
+    dw ClChip,$7035
+    dw ClOuch,$7035
+    dw ClThud,$702B
+    dw ClLevel,$7035
+    dw ClTuneMel,$703F
+    dw ClTuneBass,$7049
+; The Sky Is Falling (original)
+; Tiny Sound, 7 frames per step
+ClTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$23,$01,$23,$01,$26,$01,$23,$01,$1F,$01,$21,$01
+    db $23,$01,$01,$01,$21,$01,$21,$01,$24,$01,$21,$01,$1E,$01,$1F,$01
+    db $21,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$2A,$01,$28,$01,$26,$01
+    db $24,$01,$23,$01,$21,$01,$1A,$01,$1E,$01,$21,$01,$1F,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ClTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$0E,$01
+    db $07,$01,$0E,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$07,$01,$0E,$01,$10,$01,$0B,$01,$0C,$01,$07,$01
+    db $0E,$01,$07,$01,$0E,$01,$09,$01,$0E,$01,$12,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01
+    db $FF
+}

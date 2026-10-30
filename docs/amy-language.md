@@ -221,7 +221,8 @@ C-style forms remain accepted for familiarity:
 Statement conventions used throughout this document:
 
 - `Name` — source identifier
-- identifiers are case-insensitive and cannot collide with Amy keywords or builtins; for example, use `UpdateGame` rather than `Update`
+- identifiers are case-insensitive across variables, labels, subs, functions, data and types; `Ty` and `TY`, or `f560` and `F560`, are the same name
+- identifiers cannot collide with Amy keywords or builtins; for example, use `UpdateGame`, `MoveStep` or `ScenePicture` rather than `Update`, `Step` or `Picture`
 - `X,Y` — name-table column, row (`u8`)
 - `W,H` — width, height (`u8`)
 - `N`, `Count`, `Digits` — numeric literal or `u8` variable
@@ -230,6 +231,22 @@ Statement conventions used throughout this document:
 - `to Dst` — copy or assign to destination
 - `from Src` — read or subtract from source
 - `at X,Y` — name-table coordinates, not pixel coordinates
+
+### Reserved identifiers
+
+The following names are language keywords or builtins and cannot be reused as variables, labels,
+data blocks, types, subs or functions. Matching is case-insensitive.
+
+```text
+and or not if then else elseif do loop while until for to step next downto
+select case goto return exit continue sub function const data restore read memory
+asset codec picture bitmap sprite16 cartridge bank overlay screen display nmi graphics
+text cls print put fill vpoke vpeek vram decompress copy define show sprites sprite
+hitbox hide clear update swap wipe play stop mute sound song dsound tripcm enable
+disable reset spinner spinners random floor fraction highbyte lowbyte highword lowword
+sqrt log exp format fixed ufixed fixed32 fp5 bool bcd u8 u16 u32 i8 i16 i32
+joypad keypad vdp status frame on wait choose fire true false
+```
 
 ---
 
@@ -242,7 +259,7 @@ Global declarations live at top level (outside any `sub` or `function`).
 ```basic
 u8  Pad1 = 0, Pad2 = 0
 u16 Score = 0, HighScore = 0
-i8  Delta = -1, Step = 1
+i8  Delta = -1, StepAmount = 1
 i16 Velocity = 0, Gravity = 1
 bool Ready = false, Paused = false
 bcd digits 4 Coins, Gems

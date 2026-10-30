@@ -4071,5 +4071,96 @@ export const exampleManifest = [
     ],
     "originKind": "inspired",
     "originLabel": "Inspired work"
+  },
+  {
+    "id": "oil-tycoon",
+    "label": "Oil Tycoon (October 1983)",
+    "detail": "Gordon F. Wheat's COMPUTE!'s Gazette oil-field game: drill through dirt and shale, pump connected oil pockets, manage dynamite and survive gas and hidden devils.",
+    "projectName": "Oil Tycoon",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "simulation",
+      "strategy",
+      "vic-20",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "chicken-little",
+    "label": "Chicken Little (November 1983)",
+    "detail": "Jeff Wolverton's COMPUTE!'s Gazette action game: dodge the falling sky, throw rocks at its pieces and clear each increasingly fast level.",
+    "projectName": "Chicken Little",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "shooter",
+      "vic-20",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "martian-prisoner",
+    "label": "Martian Prisoner (November 1983)",
+    "detail": "A graphical menu-driven presentation of COMPUTE!'s Gazette's Martian text adventure: escape the cell, evade guards, gather equipment and destroy the ship.",
+    "projectName": "Martian Prisoner",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "reimagined",
+      "game",
+      "adventure",
+      "text-adventure",
+      "vic-20",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "lemonade-stand",
+    "label": "Lemonade Stand (1979)",
+    "detail": "A faithful joystick adaptation of Apple Computer's classic business simulation, preserving its weather, pricing, sales and Applesoft floating-point calculations.",
+    "projectName": "Lemonade Stand",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "adaptation",
+      "game",
+      "simulation",
+      "business",
+      "strategy",
+      "apple-ii",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

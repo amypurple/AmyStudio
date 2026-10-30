@@ -2282,9 +2282,9 @@ export class Z80Optimizer {
                     //   inc bc
                     //
                     // LDI has the same net HL/DE movement and copies the same byte, but
-                    // temporarily decrements BC and changes flags. INC BC restores BC and
-                    // does not affect flags, so this is only valid when flags are dead
-                    // before their next use.
+                    // temporarily decrements BC, changes flags, and does not leave the
+                    // copied byte in A. INC BC restores BC and does not affect flags, so
+                    // this is only valid when both A and flags are dead before reuse.
                     if (this.config.localValueReuse &&
                         isLdAFromHlMemory(token) &&
                         i + 3 < tokens.length &&
@@ -2294,6 +2294,7 @@ export class Z80Optimizer {
                         !tokens[i + 1].label &&
                         !tokens[i + 2].label &&
                         !tokens[i + 3].label &&
+                        this.isRegisterDeadBeforeNextUse(tokens, i + 3, 'a') &&
                         this.areFlagsDeadBeforeNextUse(tokens, i + 3)) {
                         optimized.push(new Instruction(
                             token.label,

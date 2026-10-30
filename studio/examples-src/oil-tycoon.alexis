@@ -1,0 +1,1126 @@
+cartridge "OIL TYCOON/AMY BIENVENU/2026"
+
+' OIL TYCOON
+' Gordon F. Wheat's OIL TYCOON (COMPUTE!'s Gazette, October 1983, for the
+' VIC-20 and the Commodore 64), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: the 64 version's listing (orig/oil64.bas, typed in from the
+' magazine). Labels such as l340 are its line numbers; Pk and Po stand for
+' its PEEKs and POKEs of the screen, and the tiles keep its screen codes
+' (tile = 128 + code: c00-c25 in art.py).
+'
+' You are P. J. Uing. Move the rig over a column, drill down through the
+' dirt to the oil and pump it: every pocket of oil joined to the pipe's
+' end (beside it or above it) comes out, and the deeper the more it is
+' worth. Shale wears your pipe away, a devil in the oil blows the rig up,
+' and gas may wait in the empty spaces you pumped. Dynamite blasts what
+' is under the pipe. Five rigs, a new one for each $100,000, and one
+' more for every field pumped dry.
+'
+' Controls (either joystick): left and right move the rig, down drills,
+' up pulls the pipe up a length; the button pumps (the pipe's end in oil
+' or in an empty space), drops dynamite (in dirt), or, with the pipe all
+' the way up, gives the rig up for a new one (the 64 used the space bar
+' for that). Keypad not used.
+'
+' Kept as the listing has them: the rules and the scores (the oil's
+' depth, the 2% devil hiding in pumped oil, the 6% gas in empty spaces,
+' a bonus rig only for the first $100,000 of a jump), the 8 levels
+' (dynamite 3/2 per rig, shale 20/30, shale hidden from level 5).
+' Liberties taken:
+' - The field is 30 columns wide (the 64's was 40, the VIC's 22): the
+'   oil (30 + 30 pairs instead of 40 + 40) and the shale (15 or 23
+'   instead of 20 or 30) are scaled to it, so it fills the screen.
+' - The 64's rows 0-3 (score line, pipe line, surface, sky) are one score
+'   line here; the rig's tower and the gusher are sprites.
+' - RND: a 16-bit generator (the 64 seeded RND(0) from its clock).
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; the
+' title tune is original and plays once; the screen is drawn with the NMI
+' off.
+
+const TC00 = 128
+const TC01 = 129
+const TC02 = 130
+const TC03 = 131
+const TC04 = 132
+const TC05 = 133
+const TC06 = 134
+const TC07 = 135
+const TC08 = 136
+const TC09 = 137
+const TC10 = 138
+const TC11 = 139
+const TC12 = 140
+const TC13 = 141
+const TC14 = 142
+const TC15 = 143
+const TC16 = 144
+const TC17 = 145
+const TC18 = 146
+const TC19 = 147
+const TC20 = 148
+const TC21 = 149
+const TC22 = 150
+const TC23 = 151
+const TC24 = 152
+const TC25 = 153
+const TSky = 154
+const TIrig = 155
+const TIpipe = 156
+const STower = 0
+const SGush1 = 4
+const SGush2 = 8
+const NTiles8 = 232
+const SprBytes = 96
+const SndDrill = 1
+const SndBoom = 2
+const SndDing = 3
+const SndPump = 4
+const SndFuse = 5
+const SndGrind = 6
+const SndGlug = 7
+const SndTuneA = 8
+const SndTuneB = 9
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables ----------------------------------------------
+' X the rig's column, R the pipe's length + 1, P pipe left, Y dynamite,
+' M rigs left (as the 64: 4 extra), Z the score in $100s, K bonuses given,
+' T level, L dynamite per rig, S shale, N the shale's code
+u8 X = 15
+u8 R = 1
+u8 P = 20
+u8 Y = 3
+i8 M = 4
+u16 Z = 0
+u16 J = 0
+u8 K = 0
+u8 T = 1
+u8 L = 3
+u8 S = 15
+u8 N = 24
+u8 Q = 0
+u8 H = 0
+u8 C = 0
+u8 D = 0
+u8 B = 0
+' the pumping scan (lines 490-570): E to F step Dd, G the neighbour, I
+i8 E = 0
+i8 F = 0
+i8 Dd = 0
+i8 G = 0
+i8 I = 0
+i8 Ai = 0
+u8 Af[32]
+u16 Hs[9]
+
+' --- screen access -----------------------------------------------------
+u8 Pr = 0
+u8 Pc = 0
+u8 Pv = 0
+u8 Pw = 0
+u8 Dy = 0
+u8 Dx = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Gush = 0
+
+' --- random numbers, input, scratch ----------------------------------------
+u16 Rs = $ACE1
+u16 Rw = 0
+u16 Rt = 0
+u16 Rn = 0
+u16 Rv = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 NumU = 0
+u16 V16 = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Hold = 0
+u8 Tick = 0
+u8 Mix = 0
+u8 Ask = 0
+u8 Act = 0
+u8 LastDir = 0
+u8 V = 0
+u8 W = 0
+u8 A = 0
+u8 J8 = 0
+u8 Xa = 0
+u8 Ya = 0
+
+  tile screen
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  set sound table OtSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  HideSprites
+  screen on
+  for A = 1 to 8
+    Hs[A] = 0
+  next
+  CreditsPage
+  InstructionsPage
+
+' ---------------------------------------------------------------------------
+' 205-260: the high scores and the level
+l205:
+  HideSprites
+  if Z > Hs[T] then Hs[T] = Z
+  NewScreen
+  print at 9,1, "OIL TYCOON"
+  print at 4,3, "LAST GAME"
+  V = T
+  print at 14,3, digits$(V, 1)
+  Tx = 17
+  Ty = 3
+  NumU = Z
+  Money
+  print at 4,5, "LEVEL    HIGH SCORE"
+  for A = 1 to 8
+    Y = A + A
+    Y = Y + 4
+    print at 6,Y, digits$(A, 1)
+    Tx = 13
+    Ty = Y
+    NumU = Hs[A]
+    Money
+  next
+  print at 3,22, "DIFFICULTY LEVEL? 12345678"
+  ShowScreen
+  T = 1
+  Ask = 2
+  WasBtn = 1
+l235:
+  ' the chosen level blinks
+  V = Tick & 16
+  for A = 1 to 8
+    W = A + 20
+    if A = T then
+      if V = 0 then
+        put char 32 at W,22
+      else
+        print at W,22, digits$(A, 1)
+      end if
+    else
+      print at W,22, digits$(A, 1)
+    end if
+  next
+  Frame1
+  ReadPad
+  if Hold = 1 then
+    if Rt1 = 1 then
+      if T < 8 then inc T
+    end if
+    if Lf1 = 1 then
+      if T > 1 then dec T
+    end if
+  end if
+  if Press = 0 then goto l235
+  Ask = 0
+  ' 245-255
+  L = 3
+  V = T & 1
+  if V = 0 then L = 2
+  S = 15
+  if T = 3 then S = 23
+  if T = 4 then S = 23
+  if T > 6 then S = 23
+  N = 24
+  if T > 4 then
+    N = 25
+    inc L
+  end if
+  ' 265-270
+  M = 4
+  Z = 0
+  K = 0
+  GameScreen
+  NewRig
+  Hud
+
+' ---------------------------------------------------------------------------
+' 290-320: the main loop (an action every 4 frames, as the 64's BASIC paced it)
+l290:
+  Ask = 1
+  Frame1
+  ReadPad
+  Tower
+  if Press = 1 then goto l310
+  if Hold = 0 then goto l290
+  Ask = 0
+  if R = 1 then
+    if Lf1 = 1 then
+      if X > 0 then
+        Po(4, X, 14)
+        dec X
+      end if
+    end if
+    if Rt1 = 1 then
+      if X < 29 then
+        Po(4, X, 14)
+        inc X
+      end if
+    end if
+  end if
+  Po(4, X, 2)
+  if Dn1 = 1 then
+    if P > 0 then goto l340
+  end if
+  if Up1 = 1 then
+    if R > 1 then goto l400
+  end if
+  goto l290
+l310:
+  Ask = 0
+  ' the button with the pipe all the way up gives the rig up (the 64's
+  ' space bar, line 315); otherwise 435
+  if R = 1 then goto l375
+  goto l435
+
+' 340-380: drilling, and gas
+l340:
+  V = R + 4
+  Pk(V, X)
+  C = Pv
+  dec P
+  Hud
+  V = R + 4
+  ' 345: shale, a devil or the bottom: the pipe is ground away
+  W = 0
+  if C = N then W = 1
+  if C = 3 then W = 1
+  if V > 24 then W = 1
+  if W = 1 then
+    play sound SndGrind
+    Pause(12)
+    goto l290
+  end if
+  ' 350: dirt or oil, or an empty space without gas (94%)
+  Rnd16
+  W = 0
+  if Rw > 3932 then W = 1
+  if C <> 14 then W = 1
+  if W = 1 then
+    for B = 1 to 3
+      A = C + B
+      Po(V, X, A)
+      play sound SndDrill
+      Pause(3)
+    next
+    inc R
+    goto l290
+  end if
+  ' 355: gas
+  for B = 1 to 2
+    A = C + B
+    Po(V, X, A)
+    play sound SndDrill
+    Pause(3)
+  next
+  Ya = V
+  Boom735
+l360:
+  ' the pipe comes up in flames, then the rig goes
+  dec R
+  if R < 1 then
+    Po(4, X, 23)
+    Explode715
+    goto l375
+  end if
+  V = R + 4
+  Pk(V, X)
+  C = Pv
+  A = C + 1
+  Po(V, X, A)
+  play sound SndDrill
+  Pause(3)
+  A = C - 3
+  Po(V, X, A)
+  goto l360
+
+' 375-380: a new rig (or the end)
+l375:
+  Po(4, X, 14)
+  dec M
+  if M < 0 then goto l205
+  NewRig
+  Hud
+  goto l290
+
+' 400-415: the pipe up a length
+l400:
+  dec R
+  V = R + 4
+  Pk(V, X)
+  C = Pv
+  for A = 1 to 3
+    W = C - A
+    Po(V, X, W)
+    play sound SndDrill
+    Pause(2)
+  next
+  inc P
+  Hud
+  if R <> 1 then goto l290
+  ' 410: oil left in the field?
+  for Ya = 6 to 24
+    for Xa = 0 to 29
+      Pk(Ya, Xa)
+      if Pv = 9 then goto l290
+    next
+  next
+  ' 415: dry: a rig more, a new field
+  inc M
+  for A = 1 to 3
+    play sound SndDing
+    Pause(20)
+  next
+  GameScreen
+  Hud
+  goto l290
+
+' 435-470: dynamite
+l435:
+  J = Z
+  Q = R - 1
+  for A = 0 to 31
+    Af[A] = 0
+  next
+  V = Q + 4
+  Pk(V, X)
+  if Pv <> 7 then goto l480
+  if Y < 1 then goto l290
+  Ya = 4
+  B = 40
+l445:
+  inc Ya
+  Pk(Ya, X)
+  C = Pv
+  A = C + 1
+  if C = 14 then A = C + 4
+  if C = 9 then A = C + 4
+  Po(Ya, X, A)
+  play sound SndFuse
+  Pause(4)
+  V = Ya + 1
+  Pk(V, X)
+  D = Pv
+  W = 1
+  if D = 4 then W = 0
+  if D = N then W = 0
+  if D = 3 then W = 0
+  if Ya >= 24 then W = 0
+  if W = 1 then
+    B = B - 2
+    Po(Ya, X, C)
+    goto l445
+  end if
+  Boom735
+  W = 1
+  if C = 14 then W = 0
+  if C = 9 then W = 0
+  if W = 1 then dec R
+  dec Y
+  Hud
+  goto l290
+
+' 480-520: pumping
+l480:
+  Af[X] = 1
+  play sound SndPump
+  if Pv = 12 then
+    Ya = Q + 4
+    Po(Ya, X, 17)
+    Z = Z + Q
+    Gush = 1
+    Tower
+  end if
+l490:
+  E = 0
+  F = 28
+  Dd = 1
+  G = 1
+  I = 1
+  Scan530
+  Gush = 2
+  Tower
+  E = 29
+  F = 1
+  Dd = -1
+  G = -1
+  I = -1
+  Scan530
+  E = 0
+  F = 29
+  Dd = 1
+  G = -40
+  I = 0
+  Scan530
+  Gush = 1
+  Tower
+  if C <> 6 then goto l515
+  ' 500-510: a devil: the rig blows up, the oil's money lost
+  Z = J
+  ' (POKE B,3: the devil shows where the scan met it)
+  Po(Dy, Dx, 3)
+  Gush = 0
+  Tower
+  for A = 0 to 20
+    play sound SndBoom
+    backdrop white
+    Pause(2)
+    backdrop black
+    Pause(2)
+  next
+  B = 0
+  goto l360
+l515:
+  if H = 1 then
+    if Q > 0 then
+      dec Q
+      goto l490
+    end if
+  end if
+  Gush = 0
+  Tower
+  play sound SndDing
+  Hud
+  goto l290
+
+' 530-570: one way along row Q: each column marked in Af looks at its
+' neighbour (G: the next column, or -40: the row above)
+sub Scan530:
+  if C = 6 then return
+  H = 0
+  Ai = E
+s535:
+  A = Ai
+  if Af[A] = 0 then goto s570
+  ' 540
+  Ya = Q + 4
+  Xa = Ai
+  if G = -40 then
+    dec Ya
+  else
+    Xa = Ai + G
+  end if
+  Pk(Ya, Xa)
+  C = Pv
+  Dy = Ya
+  Dx = Xa
+  ' 545: oil
+  W = 0
+  if C = 9 then W = 1
+  if C = 12 then W = 1
+  if W = 1 then
+    V = C + 5
+    Po(Ya, Xa, V)
+    H = 1
+    ' Z = Z + Q + ABS(I) - 1
+    Z = Z + Q
+    if I = 0 then dec Z
+    A = Ai + I
+    Af[A] = 1
+    play sound SndGlug
+    Pause(2)
+    ' 565: 2% of pumped oil hides a devil (not under the pipe)
+    Rnd16
+    if Rw < 1311 then
+      if C <> 12 then
+        C = 6
+        return
+      end if
+    end if
+    goto s570
+  end if
+  ' 550: an empty space joins
+  W = 0
+  if C = 14 then W = 1
+  if C = 17 then W = 1
+  if W = 1 then
+    A = Ai + I
+    Af[A] = 1
+    H = 1
+    goto s570
+  end if
+  ' 555: a devil
+  if C = 3 then
+    C = 6
+    return
+  end if
+  ' 560
+  A = Ai + I
+  Af[A] = 0
+s570:
+  if Ai = F then return
+  Ai = Ai + Dd
+  goto s535
+end sub
+
+' ---------------------------------------------------------------------------
+' Pk: the screen code at the 64's row Pr... (rows 4-24, columns 0-29) in Pv
+sub Pk(u8 Rr, u8 Cc):
+  Pv = 32
+  if Rr < 4 then return
+  Pv = 255
+  if Rr > 24 then return
+  if Cc > 29 then return
+  Ty = Rr - 2
+  Tx = Cc + 1
+  Pv = get char at Tx,Ty
+  if Pv = TSky then
+    Pv = 14
+    return
+  end if
+  Pv = Pv - 128
+  return
+end sub
+
+' Po: POKE a screen code (the sky beside the rig for 14 on row 4)
+sub Po(u8 Rr, u8 Cc, u8 Vv):
+  if Rr < 4 then return
+  if Rr > 24 then return
+  if Cc > 29 then return
+  Ty = Rr - 2
+  Tx = Cc + 1
+  Pw = Vv + 128
+  if Rr = 4 then
+    if Vv = 14 then Pw = TSky
+  end if
+  put char Pw at Tx,Ty
+  return
+end sub
+
+' 735: the explosion at row Ya and the row under it, then empty space
+sub Boom735:
+  Po(Ya, X, 21)
+  V = Ya + 1
+  Po(V, X, 22)
+  Explode715
+  Po(Ya, X, 14)
+  V = Ya + 1
+  Po(V, X, 14)
+  return
+end sub
+
+' 715-725: the explosion's sound and the screen's flash
+sub Explode715:
+  play sound SndBoom
+  for A = 1 to 6
+    backdrop white
+    Pause(2)
+    backdrop dark red
+    Pause(2)
+  next
+  backdrop black
+  return
+end sub
+
+' 270/375: a new rig at column 15
+sub NewRig:
+  X = 15
+  P = 20
+  Y = L
+  R = 1
+  Po(4, X, 2)
+  play sound SndDing
+  Pause(30)
+  return
+end sub
+
+' 590-625: a new field: dirt, the oil in pairs, the shale, the sky
+sub GameScreen:
+  NewScreen
+  for Ya = 5 to 24
+    V = Ya - 2
+    fill TC04 count 30 at 1,V
+  next
+  fill TSky count 30 at 1,2
+  ' the oil: 30 pairs in rows 6-15 (from column 0), 30 in rows 16-24 (from column 1)
+  for J8 = 1 to 2
+    for D = 1 to 30
+o600:
+      if J8 = 1 then
+        Rn = 150
+        RndK
+        V16 = Rv + Rv
+        V16 = V16 + 180
+      else
+        Rn = 134
+        RndK
+        V16 = Rv + Rv
+        V16 = V16 + 481
+      end if
+      Cell
+      Pk(Ya, Xa)
+      if Pv = 9 then goto o600
+      W = Xa
+      V = Ya
+      inc V16
+      Cell
+      Pk(Ya, Xa)
+      if Pv = 9 then goto o600
+      Po(V, W, 9)
+      Po(Ya, Xa, 9)
+    next
+  next
+  ' the shale (610-615)
+  for J8 = 1 to S
+o610:
+    Rn = 255
+    RndK
+    V16 = Rv + Rv
+    V16 = V16 + 180
+    Cell
+    Pk(Ya, Xa)
+    if Pv = 9 then goto o610
+    if Pv = N then goto o610
+    Po(Ya, Xa, N)
+  next
+  ShowScreen
+  return
+end sub
+
+' Cell: the 64's cell V16 (row * 30 + column) as Ya, Xa
+sub Cell:
+  Ya = 0
+  NumU = V16
+  while NumU >= 30
+    NumU = NumU - 30
+    inc Ya
+  end while
+  Xa = NumU
+  return
+end sub
+
+' 645-685: the score line: rigs, dynamite, pipe, money (650: a rig more
+' for each $100,000)
+sub Hud:
+  V16 = Z / 1000
+  V = K + 1
+  if V16 = V then
+    inc K
+    play sound SndDing
+    Pause(20)
+    play sound SndDing
+    Pause(20)
+    inc M
+  end if
+  fill 32 count 30 at 1,1
+  put char TIrig at 2,1
+  V = 0
+  if M > 0 then V = M
+  print at 3,1, digits$(V, 1)
+  put char TC19 at 5,1
+  print at 6,1, digits$(Y, 1)
+  put char TIpipe at 8,1
+  print at 9,1, digits$(P, 2)
+  Tx = 29
+  Ty = 1
+  NumU = Z
+  MoneyR
+  return
+end sub
+
+' Money: $Z*100.00 at Tx, Ty ("$0.00" for 0); MoneyR: ending at column Tx
+sub Money:
+  print at Tx,Ty, "$"
+  inc Tx
+  if NumU = 0 then
+    print at Tx,Ty, "0.00"
+    return
+  end if
+  Ndig
+  if W = 1 then print at Tx,Ty, digits$(NumU, 1)
+  if W = 2 then print at Tx,Ty, digits$(NumU, 2)
+  if W = 3 then print at Tx,Ty, digits$(NumU, 3)
+  if W = 4 then print at Tx,Ty, digits$(NumU, 4)
+  if W = 5 then print at Tx,Ty, digits$(NumU, 5)
+  Tx = Tx + W
+  print at Tx,Ty, "00.00"
+  return
+end sub
+
+' Ndig: W = the number of digits of NumU
+sub Ndig:
+  W = 1
+  if NumU >= 10 then W = 2
+  if NumU >= 100 then W = 3
+  if NumU >= 1000 then W = 4
+  if NumU >= 10000 then W = 5
+  return
+end sub
+
+sub MoneyR:
+  if NumU = 0 then
+    W = 5
+  else
+    Ndig
+    W = W + 6
+  end if
+  Tx = Tx - W
+  inc Tx
+  Money
+  return
+end sub
+
+' the tower over the rig and the gusher above it
+sub Tower:
+  Xa = X * 8
+  Xa = Xa + 4
+  if R = 1 then
+    set sprite 0 to 255,Xa,STower,14
+  else
+    set sprite 0 to 255,Xa,STower,15
+  end if
+  if Gush = 0 then
+    set sprite 1 to 192,0,0,0
+  else
+    V = SGush1
+    if Gush = 2 then V = SGush2
+    W = Tick & 4
+    if W > 0 then
+      if V = SGush1 then
+        V = SGush2
+      else
+        V = SGush1
+      end if
+    end if
+    set sprite 1 to 255,Xa,V,1
+  end if
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  inc Mix
+  return
+end sub
+
+' ReadPad: the stick (Hold: an action now, then every 4 frames held) and
+' the button (Press: a new press)
+sub ReadPad:
+  Up1 = joypad(1).up | joypad(2).up
+  Dn1 = joypad(1).down | joypad(2).down
+  Lf1 = joypad(1).left | joypad(2).left
+  Rt1 = joypad(1).right | joypad(2).right
+  Btn = joypad(1).fire | joypad(2).fire
+  Press = 0
+  if Btn = 1 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  ' a new direction acts at once, a held one every 4 frames
+  V = Dn1 + Dn1
+  V = V | Up1
+  W = Lf1 << 2
+  V = V | W
+  W = Rt1 << 3
+  V = V | W
+  Hold = 0
+  if V = 0 then
+    Act = 0
+  else
+    if V <> LastDir then
+      Hold = 1
+      Act = 1
+    else
+      inc Act
+      if Act >= 5 then
+        Hold = 1
+        Act = 1
+      end if
+    end if
+  end if
+  LastDir = V
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 2
+  for J8 = 0 to 1
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' Rnd16: a 16-bit xorshift (7 9 8) in Rw; RndK: Rv = INT(RND * Rn)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub RndK:
+  Rnd16
+  Uq = Rw
+  Uq2 = Rn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,1, "OIL TYCOON"
+  print at 2,3, "BY GORDON F. WHEAT, FROM"
+  print at 2,4, "COMPUTE!'S GAZETTE, OCTOBER"
+  print at 2,5, "1983 (VIC-20 AND 64)."
+  print at 2,7, "FOR THE COLECOVISION BY"
+  print at 2,8, "CLAUDE (AN AI MADE BY"
+  print at 2,9, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,10, "2026, IN AMY, THE LANGUAGE"
+  print at 2,11, "BY AMY BIENVENU."
+  print at 2,13, "MUSIC: BOOM TOWN (ORIGINAL)."
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  TzLeft = 520
+  TzOn = 1
+  Ask = 1
+  WaitPress
+  Ask = 0
+  ' the button seeds the random numbers
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $ACE1
+  return
+end sub
+
+' 100-180: the instructions
+sub InstructionsPage:
+  NewScreen
+  print at 10,1, "INSTRUCTIONS"
+  print at 2,3, "JOYSTICK:"
+  print at 3,4, "RIGHT AND LEFT = MOVE RIG"
+  print at 3,5, "DOWN = DRILL"
+  print at 3,6, "UP = RETRACT PIPE"
+  print at 2,8, "WHEN YOU PUSH THE BUTTON AND"
+  print at 2,9, "THE PIPE IS DOWN IN OIL OR"
+  print at 2,10, "IN SPACE THE PUMP IS"
+  print at 2,11, "TRIGGERED.  IF THE PIPE IS"
+  print at 2,12, "DOWN IN DIRT, DYNAMITE IS"
+  print at 2,13, "DROPPED. WITH THE PIPE ALL"
+  print at 2,14, "THE WAY UP, THE BUTTON GIVES"
+  print at 2,15, "YOU A NEW RIG."
+  print at 2,17, "WATCH OUT FOR SHALE AND GAS"
+  print at 2,18, "IN EMPTY SPACES AND DEVILS"
+  print at 2,19, "IN OIL."
+  print at 7,21, "PRESS A BUTTON"
+  ShowScreen
+  Ask = 1
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+data TilePat bytes
+  $10,$54,$38,$10,$10,$10,$10,$10
+  $44,$28,$92,$83,$10,$10,$10,$10
+  $10,$10,$28,$38,$54,$83,$01,$00
+  $42,$99,$81,$A5,$81,$24,$C3,$42
+  $00,$20,$02,$00,$80,$08,$00,$21
+  $18,$18,$10,$00,$80,$08,$00,$21
+  $18,$18,$18,$18,$18,$10,$00,$21
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $00,$60,$00,$04,$00,$20,$00,$02
+  $18,$18,$10,$04,$00,$20,$00,$02
+  $18,$18,$18,$18,$18,$10,$00,$02
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $81,$00,$00,$00,$00,$00,$00,$81
+  $18,$18,$10,$00,$00,$00,$00,$81
+  $18,$18,$18,$18,$18,$10,$00,$81
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $08,$10,$30,$30,$30,$30,$30,$00
+  $00,$48,$00,$00,$00,$00,$00,$00
+  $10,$54,$38,$01,$38,$54,$10,$10
+  $10,$54,$38,$01,$38,$54,$10,$00
+  $00,$00,$00,$10,$30,$46,$44,$00
+  $01,$20,$00,$04,$04,$00,$20,$20
+  $00,$20,$02,$00,$80,$08,$00,$21
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$28,$38,$54,$83,$AA,$01,$00
+  $18,$18,$18,$18,$18,$18,$18,$10
+end data
+data TileCol bytes
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$51,$15,$15,$15,$15
+  $F5,$F5,$F5,$F5,$F5,$5F,$5F,$03
+  $81,$18,$18,$18,$18,$81,$18,$81
+  $0A,$6A,$6A,$0A,$6A,$6A,$0A,$6A
+  $FA,$FA,$FA,$0A,$6A,$6A,$0A,$6A
+  $FA,$FA,$FA,$FA,$FA,$FA,$0A,$6A
+  $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
+  $FA,$BA,$8A,$8A,$8A,$8A,$8A,$FA
+  $04,$54,$04,$54,$04,$54,$04,$54
+  $F4,$F4,$F4,$54,$04,$54,$04,$54
+  $F4,$F4,$F4,$F4,$F4,$F4,$04,$54
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$B4,$84,$84,$84,$84,$84,$F4
+  $61,$01,$01,$01,$01,$01,$01,$61
+  $F1,$F1,$F1,$01,$01,$01,$01,$61
+  $F1,$F1,$F1,$F1,$F1,$F1,$01,$61
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$B1,$81,$81,$81,$81,$81,$F1
+  $B1,$B1,$81,$81,$81,$81,$81,$01
+  $03,$C3,$0A,$0A,$0A,$0A,$0A,$0A
+  $B1,$B1,$81,$1B,$81,$B1,$B1,$81
+  $81,$81,$B1,$18,$B1,$81,$81,$01
+  $05,$05,$05,$E5,$E5,$E5,$1E,$03
+  $1E,$1E,$01,$1E,$1E,$01,$1E,$1E
+  $0A,$6A,$6A,$0A,$6A,$6A,$0A,$6A
+  $05,$05,$05,$05,$05,$05,$05,$03
+  $F1,$F1,$F1,$F1,$1F,$F1,$1F,$01
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+end data
+data SpritePat bytes
+  $00,$00,$01,$01,$03,$02,$03,$05,$07,$05,$0F,$09,$0F,$11,$1F,$10
+  $00,$00,$80,$80,$C0,$40,$C0,$A0,$E0,$A0,$F0,$90,$F0,$88,$F8,$08
+  $00,$00,$00,$08,$04,$02,$01,$83,$40,$20,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$88,$90,$A0,$C0,$E0,$81,$82,$C0,$80,$80,$00,$00,$00
+  $22,$12,$0A,$83,$47,$20,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+  $22,$48,$A0,$E0,$F2,$82,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00
+end data
+
+data Dollar bytes $10, $7C, $90, $7C, $12, $7C, $10, $00
+
+asm {
+OtDrill:
+    db $00,$00,$25,$02,$00,$00,$46,$02,$10
+OtBoom:
+    db $00,$00,$06,$04,$00,$00,$26,$08,$00,$00,$56,$0A,$00,$00,$96,$0C,$10
+OtDing:
+    db $40,$47,$00,$02,$40,$47,$30,$06,$40,$47,$70,$0A,$40,$47,$B0,$0C,$50
+OtPump:
+    db $40,$F9,$33,$03,$40,$FF,$43,$03,$50
+OtFuse:
+    db $40,$7F,$40,$03,$50
+OtGrind:
+    db $40,$EA,$12,$03,$40,$1F,$23,$03,$40,$EA,$12,$03,$50
+OtGlug:
+    db $40,$53,$31,$02,$40,$AB,$51,$02,$50
+
+OtSoundTable:
+    dw OtDrill,$702B
+    dw OtBoom,$702B
+    dw OtDing,$7035
+    dw OtPump,$7035
+    dw OtFuse,$7035
+    dw OtGrind,$7035
+    dw OtGlug,$7035
+    dw OtTuneMel,$703F
+    dw OtTuneBass,$7049
+; Boom Town (original)
+; Tiny Sound, 8 frames per step
+OtTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$1A,$01,$1E,$01,$21,$01,$01,$1E,$1F,$01,$23,$01
+    db $21,$01,$01,$01,$1A,$01,$1E,$01,$21,$01,$26,$01,$25,$01,$23,$01
+    db $21,$01,$01,$01,$23,$01,$1F,$01,$1C,$01,$1F,$01,$21,$01,$1E,$01
+    db $1A,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$1C,$01,$1A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+OtTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0E,$01,$09,$01,$0E,$01,$09,$01,$07,$01,$0E,$01
+    db $0E,$01,$09,$01,$0E,$01,$09,$01,$0E,$01,$09,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$10,$01,$0B,$01,$0E,$01,$09,$01
+    db $0E,$01,$09,$01,$09,$01,$10,$01,$09,$01,$0D,$01,$0E,$01,$09,$01
+    db $0E,$01,$01,$01
+    db $FF
+}

@@ -1,0 +1,8175 @@
+cartridge "LEMONADE STAND/AMY BIENVENU/2026"
+
+' LEMONADE STAND
+' Apple Computer's LEMONADE STAND (the DOS 3.3 System Master's
+' Applesoft program, "COPYRIGHT 1979 APPLE COMPUTER INC.", after Bob
+' Jamison's 1973 game for the Minnesota Educational Computing
+' Consortium), for the ColecoVision in Amy by Amy Bienvenu.
+' Ported by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: the program's listing (orig/lemonade.bas). Labels such as l521
+' are its line numbers; the lines starting with @ are its own arithmetic
+' (expr.py compiles them): it runs on Applesoft's floating point routines
+' translated to Z80 (fp/xlate.py), so every sale, every cent and every
+' RND is the Apple's, rounding and all.
+'
+' One to thirty stands. Each morning: the weather report, then for each
+' stand how many glasses to make, how many signs, what price; then the
+' day's report. Hot days sell more, cloudy ones less, a thunderstorm
+' ruins everything; the street department may close your street.
+'
+' Controls (either joystick): an amount is set with the stick (up and
+' down 1, right and left 10, held for faster) and the left button; a
+' choice with the stick and the left button. Where the Apple said PRESS
+' RETURN TO CONTINUE, ESC TO END, the left button goes on, the right
+' one ends. Keypad not used.
+'
+' Kept as the listing has them:
+' - The arithmetic, as said. A typed amount is a whole number here, as
+'   the listing's checks needed.
+' - The random numbers: Applesoft's RND, from the seed its cold start
+'   leaves, so a game with the same answers sees the same weather, as on
+'   the Apple. RND(-1) on line 651 always gives the same small number:
+'   when the street department works, your street has no traffic (R1 =
+'   .1); the street crews never buy your lemonade (line 691).
+' - Bankrupt stands keep their last answers, and their assets keep
+'   changing with them.
+' - With one player, going bankrupt ends the program with ?UNDEF'D
+'   STATEMENT ERROR IN 581 (line 581 jumps to a line 1511 that isn't
+'   there).
+' Liberties taken:
+' - Text rewrapped for 28 columns; the lo-res pictures are the Apple's
+'   40x48 blocks, the bottom rows of grass (36-39) under the screen's
+'   edge.
+' - Amounts with the stick, so the listing's checks for typing a wrong
+'   number can't be met (COME ON, LET'S BE REASONABLE...).
+'
+' House rules kept: columns 2-29, rows 1-22; the screen is drawn with
+' the NMI off; the title tune is the listing's and plays once.
+
+' --- the listing's numbers ----------------------------------------------
+' floats (Applesoft's 5 bytes: exponent, sign and mantissa)
+u8 F_C1[5]
+u8 F_R1[5]
+u8 F_N1[5]
+u8 F_W[5]
+u8 F_V[5]
+u8 F_N2[5]
+u8 F_M[5]
+u8 F_E[5]
+u8 F_P1[5]
+u8 F_STI[5]
+u8 F_SC[5]
+u8 F_J[5]
+u8 F_X[5]
+u8 F_Y[5]
+u8 F_FI[5]
+u8 F_AC[5]
+u8 F_TT[5]
+' whole numbers: D day, C cost, N stands, I stand, the stand's L S P G H B
+u16 D = 0
+u16 C = 0
+u16 N = 1
+u16 I = 1
+u16 Lc = 0
+u16 Sc = 0
+u16 Pc = 0
+u16 Gc = 0
+u16 Hc = 0
+u16 Bc = 0
+u16 R2 = 0
+u16 Kv = 0
+u16 Av = 0
+u16 Nv = 0
+' SC as a whole number once set (2 sunny, 7 hot, 10 cloudy, 5 storm)
+u8 Sw = 0
+u8 C5 = 0
+u8 R3 = 0
+
+' --- the floating point routines and VmRun ------------------------------
+u8 FpZ[81]
+u8 FpR[5]
+u8 FpCh = 0
+u8 FpBuf[20]
+u8 VmStk[30]
+u16 VmSp = 0
+u16 VmPc = 0
+u8 VmT = 0
+u8 VmM = 0
+u16 VmW = 0
+
+' --- the Apple's screen (lores.asm): window, cursor, COLOR ----------------
+u8 WndL = 0
+u8 WndW = 40
+u8 WndT = 0
+u8 WndB = 24
+u8 Ch = 0
+u8 Cv = 0
+u8 Col = 0
+u8 LrOld = 0
+u8 LrShow = 1
+u8 GrOn = 0
+u8 LrNoTx = 0
+u8 LrT = 0
+u8 LrT2 = 0
+u8 Lx = 0
+u8 Lx1 = 0
+u8 Lx2 = 0
+u8 Ly = 0
+u8 Ly1 = 0
+u8 Ly2 = 0
+
+' --- text (text.asm) ----------------------------------------------------
+u8 TxX = 2
+u8 TxY = 1
+u8 TxTop = 1
+u8 TxLine[32]
+u8 TxNum[6]
+u8 StiS[16]
+u8 MsgBuf[120]
+u16 MsgP = 0
+
+' --- sound ---------------------------------------------------------------
+u8 TnP = 0
+u8 TnJ = 0
+u16 LpN = 0
+u16 Tp = 0
+
+' --- input ---------------------------------------------------------------
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Btn = 0
+u8 Btn2 = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Press2 = 0
+u8 Stick = 0
+u8 WasStick = 0
+u8 Rep = 0
+u8 Held = 0
+u8 Tick = 0
+u16 Nmax = 0
+u16 Nmin = 0
+u8 Sel = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Money = 0
+u8 NoQ = 0
+u8 NoEcho = 0
+' for the test bot: what the game waits for (1 a button, 2 yes or no,
+' 3 an amount, 9 the end)
+u8 Ask = 0
+u8 Quit = 0
+
+' --- scratch -------------------------------------------------------------
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Jl = 0
+u16 V16 = 0
+u16 W16 = 0
+
+  tile screen
+  nmi off
+  clear sprites
+  set sprite count 1
+  set sprite 0 to 208,0,0,0
+  update sprites
+  asm {
+    call Hush
+    ld bc,$03FF
+    call WRITE_REGISTER
+  }
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  copy Percent count 8 to vram.pattern + 296
+  copy Percent count 8 to vram.pattern + 2344
+  copy Percent count 8 to vram.pattern + 4392
+  screen on
+
+power_on:
+  asm {
+    ld hl,AMY_UVAR_VmStk
+    ld (AMY_UVAR_VmSp),hl
+  }
+  CreditsPage
+  ' Applesoft's cold start: RND's seed
+  asm {
+    ld hl,RndSeed0
+    ld de,AMY_UVAR_FpR
+    ld bc,5
+    ldir
+  }
+
+' ---------------------------------------------------------------------------
+' 1: the tone routine (781, kept in sound.asm), the title, the game
+l1:
+  ' RUN clears the variables (CLEAR); RND's seed stays
+  asm {
+    ld hl,AMY_UVAR_F_C1
+    ld de,AMY_UVAR_F_C1+1
+    ld (hl),0
+    ld bc,5*17-1
+    ldir
+  }
+  D = 0
+  C = 0
+  N = 0
+  Sw = 0
+  R2 = 0
+  R3 = 0
+  C5 = 0
+  asm {
+    ld hl,Ex_1
+    call VmRun
+  }
+  ApTitle
+  goto l101
+
+' ---------------------------------------------------------------------------
+' 101: the game
+l101:
+  asm {
+    ld hl,Ex_2
+    call VmRun
+  }
+  ' (DIM: P9 = 10, S3 = .15, S2 = 30, A2 = 2.00, C9 = .5, C2 = 1 are the
+  ' constants Kc_ of expr.py)
+  Welcome
+  for I = 1 to N
+    Bc = 0
+    Lc = 0
+    Sc = 0
+    Pc = 0
+    Gc = 0
+    Hc = 0
+    asm {
+      ld hl,Ex_3
+      call VmRun
+    }
+    RecPut
+  next
+  if Sel = 1 then
+    Instructions
+    goto l121
+  end if
+  ' 111
+  OldGame
+l121:
+  asm {
+    ld hl,Ex_4
+    call VmRun
+  }
+  asm {
+    ld hl,Ex_5
+    call VmRun
+  }
+  if VmT = 1 then goto l121a
+  asm {
+    ld hl,Ex_6
+    call VmRun
+  }
+  if VmT = 1 then goto l131a
+  Sw = 7
+  goto l151
+l121a:
+  Sw = 2
+  goto l151
+l131a:
+  Sw = 10
+l151:
+  if D < 3 then Sw = 2
+  SetSc
+  ' 161
+  Weather
+  ApText
+  TxTop = 1
+  PHome
+  inc D
+  C = 2
+  if D > 2 then C = 4
+  if D > 6 then C = 5
+  TxWrite(@TxOnDay)
+  V16 = D
+  TxInt
+  TxWrite(@TxCostIs)
+  TxWrite(@TxCents0)
+  V16 = C
+  TxInt
+  PNl
+  ' 181
+  asm {
+    ld hl,Ex_7
+    call VmRun
+  }
+  if D = 3 then
+    TxWrite(@TxSugar)
+  end if
+  if D = 7 then
+    TxWrite(@TxMixUp)
+  end if
+  if D > 2 then goto l601
+l231:
+  ' PRINT : POKE 34,PEEK(37): the window starts on the next line
+  PNl
+  TxTop = TxY
+  for I = 1 to N
+    RecGet
+    asm {
+      ld hl,Ex_8
+      call VmRun
+    }
+    RecPut
+l241:
+    Gc = 1
+    Hc = 0
+    RecPutI
+    asm {
+      ld hl,Ex_9
+      call VmRun
+    }
+    Sti731
+    TxWrite(@TxStand)
+    V16 = I
+    TxInt
+    PNl
+    TxWrite(@TxAssets)
+    TxPutSti
+    PNl
+    PNl
+    if Bc = 0 then goto l261
+    TxWrite(@TxNoDecide)
+    Wait1461
+    goto l441
+l261:
+    TxWrite(@TxGlasses)
+    Nmin = 0
+    Nmax = 1000
+    Nv = Lc
+    AskNum
+    Lc = Nv
+    RecPutI
+    PNl
+    asm {
+      ld hl,Ex_10
+      call VmRun
+    }
+    if VmT = 1 then goto l321
+    ' 311
+    TxWrite(@TxThink1)
+    TxPutSti
+    TxWrite(@TxThink2)
+    V16 = Lc
+    TxInt
+    TxWrite(@TxThink3)
+    asm {
+      ld hl,Ex_11
+      call VmRun
+    }
+    TxPutBuf
+    TxWrite(@TxThink4)
+    PNl
+    goto l261
+l321:
+    PNl
+    TxWrite(@TxSigns1)
+    asm {
+      ld hl,Ex_12
+      call VmRun
+    }
+    TxPutBuf
+    TxWrite(@TxSigns2)
+    Nmin = 0
+    Nmax = 50
+    Nv = Sc
+    AskNum
+    Sc = Nv
+    RecPutI
+    PNl
+    asm {
+      ld hl,Ex_13
+      call VmRun
+    }
+    if VmT = 1 then goto l381
+    ' 371
+    PNl
+    asm {
+      ld hl,Ex_14
+      call VmRun
+    }
+    Sti731
+    TxWrite(@TxThink5)
+    TxPutSti
+    TxWrite(@TxThink6)
+    PNl
+    goto l321
+l381:
+    PNl
+    TxWrite(@TxPrice)
+    Nmin = 0
+    Nmax = 100
+    Nv = Pc
+    AskNum
+    Pc = Nv
+    RecPutI
+    PNl
+    ' 421/431: VTAB 23
+    TxWrite(@TxChange)
+    AskYes
+    if Sel = 1 then
+      PHome
+      C5 = 1
+      goto l241
+    end if
+l441:
+    PHome
+  next
+  C5 = 0
+  ApText
+  TxTop = 1
+  PHome
+  PNl
+  ' IF SC = 10 AND RND(1) < .25 THEN 701 (RND is drawn either way)
+  asm {
+    ld hl,Ex_15
+    call VmRun
+  }
+  if VmT = 1 then goto l701
+  ' 451
+  TxWrite(@TxReport)
+  PNl
+  Tp = address of TuneReport
+  PlayTune
+  ' (R2 is never 2: 691 can't be reached)
+  if R3 = 3 then goto l711
+l471:
+  ' (POKE 34,5 in 761: the report's window starts under the heading)
+  PNl
+  TxTop = TxY
+  for I = 1 to N
+    RecGet
+    asm {
+      ld hl,Ex_16
+      call VmRun
+    }
+    if VmT = 1 then goto l471a
+    goto l481
+l471a:
+    asm {
+      ld hl,Ex_17
+      call VmRun
+    }
+    RecPut
+l481:
+    if R2 = 2 then goto l531
+    asm {
+      ld hl,Ex_18
+      call VmRun
+    }
+    if VmT = 1 then goto l511
+    asm {
+      ld hl,Ex_19
+      call VmRun
+    }
+    goto l521
+l511:
+    asm {
+      ld hl,Ex_20
+      call VmRun
+    }
+l521:
+    asm {
+      ld hl,Ex_21
+      call VmRun
+    }
+    asm {
+      ld hl,Ex_22
+      call VmRun
+    }
+    if VmT = 1 then goto l541
+l531:
+    asm {
+      ld hl,Ex_23
+      call VmRun
+    }
+l541:
+    asm {
+      ld hl,Ex_24
+      call VmRun
+    }
+    RecPut
+    ' (H(I) is never 1)
+    PNl
+    if Bc <> 1 then goto l571
+    ' 561
+    TxWrite(@TxStand2)
+    V16 = I
+    TxInt
+    TxWrite(@TxBankrupt)
+    Wait1461
+    ' VTAB 5 : CALL -958
+    TxY = TxTop - 1
+    TxX = 2
+    asm {
+      call TxClrEop
+    }
+    goto l591
+l571:
+    Report761
+    asm {
+      ld hl,Ex_25
+      call VmRun
+    }
+    if VmT = 1 then goto l591
+    ' 581
+    PHome
+    TxWrite(@TxBroke)
+    Bc = 1
+    RecPutI
+    Wait1461
+    PHome
+    if N = 1 then
+      UndefError
+      goto l1
+    end if
+l591:
+  next
+  asm {
+    ld hl,Ex_26
+    call VmRun
+  }
+  R2 = 0
+  goto l121
+
+' 601-721: the day's news
+l601:
+  if Sw = 10 then goto l641
+  if Sw = 7 then goto l721
+  asm {
+    ld hl,Ex_27
+    call VmRun
+  }
+  if VmT = 1 then goto l651
+  goto l231
+l641:
+  asm {
+    ld hl,Ex_28
+    call VmRun
+  }
+  TxWrite(@TxRain1)
+  asm {
+    ld hl,Ex_29
+    call VmRun
+  }
+  TxPutBuf
+  TxWrite(@TxRain2)
+  asm {
+    ld hl,Ex_30
+    call VmRun
+  }
+  goto l231
+l651:
+  TxWrite(@TxStreet)
+  asm {
+    ld hl,Ex_31
+    call VmRun
+  }
+  if VmT = 1 then goto l671
+  R2 = 2
+  goto l231
+l671:
+  asm {
+    ld hl,Ex_32
+    call VmRun
+  }
+  goto l231
+l701:
+  R3 = 0
+  Sw = 5
+  SetSc
+  Weather
+  ApText
+  TxTop = 1
+  PHome
+  TxWrite(@TxStorm1)
+l711:
+  TxWrite(@TxStorm2)
+  for I = 1 to N
+    RecGet
+    Gc = 0
+    RecPutI
+  next
+  goto l471
+l721:
+  TxWrite(@TxHeat)
+  asm {
+    ld hl,Ex_33
+    call VmRun
+  }
+  goto l231
+
+' an Applesoft error in the arithmetic (?OVERFLOW, ?DIVISION BY ZERO):
+' the listing can't meet one, but the Apple stopped there
+fp_error:
+  ApText
+  TxTop = 1
+  PHome
+  TxWrite(@TxFpErr)
+  TxWrite(@TxPrompt)
+  ProgramEnd
+  goto l1
+
+' 801-861: the title on the lo-res screen
+sub ApTitle:
+  ApText
+  ApGr
+  Col = $CC
+  for Y = 0 to 39
+    Ly = Y
+    Lx1 = 0
+    Lx2 = 39
+    asm {
+      call LrHlin
+    }
+  next
+  Cv = 1
+  LrVtab
+  LrNoTx = 1
+  Tp = address of TtTop
+  ApPrint
+  Cv = 10
+  LrVtab
+  Tp = address of TtBottom
+  ApPrint
+  Cv = 22
+  LrVtab
+  Tp = address of TtCopy
+  ApPrint
+  print at 4,21, "COPYRIGHT 1979"
+  print at 6,22, "APPLE COMPUTER INC."
+  ' 901: the tune
+  Tp = address of TuneTitle
+  PlayTune
+  LpN = 2000
+  PLoops
+  WndW = 1
+  WndT = 9
+  WndB = 19
+  Tp = address of TtColumns
+  for X = 39 to 7 step -1
+    Col = $FF
+    Lx = X
+    Ly1 = 18
+    Ly2 = 37
+    asm {
+      call LrVlin
+    }
+    Col = $CC
+    if X < 39 then
+      Lx = X + 1
+      Ly2 = 36
+      asm {
+        call LrVlin
+      }
+    end if
+    Col = $FF
+    if X < 30 then
+      Lx = X + 10
+      Ly2 = 36
+      asm {
+        call LrVlin
+      }
+    end if
+    Col = $CC
+    if X < 29 then
+      Lx = X + 11
+      Ly2 = 37
+      asm {
+        call LrVlin
+      }
+      WndL = X + 11
+      Cv = 10
+      LrVtab
+      Ch = X + 11
+      ' PRINT : READ A$ : PRINT A$;
+      asm {
+        ld a,$8D
+        call LrCout
+      }
+      ApPrint
+      inc Tp
+    end if
+    ' FOR J = 14 TO I + I : NEXT
+    V16 = X + X
+    LpN = 0
+    if V16 >= 14 then LpN = V16 - 13
+    PLoops
+  next
+  LpN = 1000
+  PLoops
+  Col = $DD
+  Lx = 12
+  Ly1 = 14
+  Ly2 = 36
+  asm {
+    call LrVlin
+  }
+  for Y = 36 to 20 step -1
+    Lx1 = 8
+    Lx2 = 16
+    Ly = Y
+    asm {
+      call LrHlin
+    }
+    LpN = 50
+    PLoops
+    TnP = Y * 3
+    TnP = TnP - 12
+    TnJ = 12
+    asm {
+      call Tone
+    }
+  next
+  Col = $CC
+  Lx = 12
+  Ly1 = 14
+  Ly2 = 19
+  asm {
+    call LrVlin
+  }
+  WndL = 0
+  WndW = 40
+  WndT = 20
+  WndB = 23
+  Cv = 21
+  LrVtab
+  LpN = 4000
+  PLoops
+  LrNoTx = 0
+  return
+end sub
+
+
+' 731: STI$, the money as the listing writes it (StiS: "$" STR$ ...)
+sub Sti731:
+  asm {
+    ld hl,Ex_34
+    call VmRun
+  }
+  asm {
+    ld hl,Ex_35
+    call VmRun
+  }
+  asm {
+    ld hl,AMY_UVAR_FpBuf
+    ld de,AMY_UVAR_StiS+1
+    ld a,'$'
+    ld (AMY_UVAR_StiS),a
+StiCp:
+    ld a,(hl)
+    ld (de),a
+    or a
+    inc hl
+    inc de
+    jr nz,StiCp
+  }
+  asm {
+    ld hl,Ex_36
+    call VmRun
+  }
+  if VmT = 1 then
+    asm {
+      ld hl,TxDot0
+      call StiCat
+    }
+  end if
+  asm {
+    ld hl,Ex_37
+    call VmRun
+  }
+  if VmT = 1 then
+    asm {
+      ld hl,TxZero
+      call StiCat
+    }
+  end if
+  return
+end sub
+
+' 761-771: a stand's report
+sub Report761:
+  TxY = TxTop
+  TxX = 2
+  TxWrite(@TxDay)
+  V16 = D
+  TxInt
+  TxPadTo(22)
+  TxWrite(@TxStand3)
+  V16 = I
+  TxInt
+  PNl
+  PNl
+  PNl
+  TxWrite(@TxSp2)
+  asm {
+    ld hl,Ex_38
+    call VmRun
+  }
+  TxPutBuf
+  TxPadTo(9)
+  TxWrite(@TxSold)
+  PNl
+  PNl
+  asm {
+    ld hl,Ex_39
+    call VmRun
+  }
+  Sti731
+  TxPutSti
+  TxPadTo(9)
+  TxWrite(@TxPerGlass)
+  PNl
+  asm {
+    ld hl,Ex_40
+    call VmRun
+  }
+  Sti731
+  TxPadTo(15)
+  TxWrite(@TxIncome)
+  TxPutSti
+  PNl
+  PNl
+  TxWrite(@TxSp2)
+  V16 = Lc
+  TxInt
+  TxPadTo(9)
+  TxWrite(@TxMade)
+  PNl
+  PNl
+  asm {
+    ld hl,Ex_41
+    call VmRun
+  }
+  Sti731
+  TxWrite(@TxSp2)
+  V16 = Sc
+  TxInt
+  TxPadTo(9)
+  TxWrite(@TxSignsMade)
+  PNl
+  TxPadTo(13)
+  TxWrite(@TxExpenses)
+  TxPutSti
+  PNl
+  PNl
+  asm {
+    ld hl,Ex_42
+    call VmRun
+  }
+  Sti731
+  TxPadTo(15)
+  TxWrite(@TxProfit)
+  TxPutSti
+  PNl
+  asm {
+    ld hl,Ex_43
+    call VmRun
+  }
+  Sti731
+  TxPadTo(15)
+  TxWrite(@TxAssets2)
+  TxPutSti
+  Wait1461
+  PHome
+  return
+end sub
+
+' the error of line 581
+sub UndefError:
+  ApText
+  TxTop = 1
+  PHome
+  PNl
+  TxWrite(@TxUndef)
+  PNl
+  TxWrite(@TxPrompt)
+  ProgramEnd
+  return
+end sub
+
+' END (1491) and line 1511's error: the Apple went back to its ]
+' prompt; a button starts again from the title
+sub ProgramEnd:
+  TxFlush
+  print at 2,22, "PRESS A BUTTON"
+  Ask = 9
+  WaitPress
+  Ask = 0
+  Quit = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' 921-961: welcome, new game, how many
+sub Welcome:
+  ApText
+  TxTop = 1
+  PHome
+  TxWrite(@TxHi)
+  PNl
+  PNl
+  for Jl = 1 to 10
+    asm {
+      ld hl,Ex_44
+      call VmRun
+    }
+    asm {
+      ld hl,Ex_45
+      call VmRun
+    }
+    TnP = VmT
+    TnJ = 10
+    asm {
+      call Tone
+    }
+  next
+  TxWrite(@TxTown)
+  PNl
+  PNl
+  TxWrite(@TxNewGame)
+  PNl
+  TxWrite(@TxPlease)
+  AskYes
+  K = Sel
+  PNl
+  TxWrite(@TxPeople)
+  Nmin = 1
+  Nmax = 30
+  Nv = 1
+  AskNum
+  N = Nv
+  ' A$ = "Y" for a new game
+  Sel = K
+  return
+end sub
+
+' 971-1011: the instructions
+sub Instructions:
+  ApText
+  TxTop = 1
+  PHome
+  TxWrite(@TxHow1)
+  Wait1461
+  PHome
+  TxWrite(@TxHow2)
+  Wait1461
+  PHome
+  return
+end sub
+
+' 1021-1121: an old game continued
+sub OldGame:
+  ApText
+  TxTop = 1
+  PHome
+  asm {
+    call Bell
+  }
+  TxWrite(@TxAgain)
+  AskYes
+  if Sel = 1 then
+    PNl
+    TxWrite(@TxGood)
+    Nmin = 1
+    Nmax = 99
+    Nv = 1
+    NoQ = 1
+    AskNum
+    NoQ = 0
+    D = Nv
+    PNl
+  end if
+  PNl
+  TxWrite(@TxOkay)
+  V16 = D + 1
+  TxInt
+  PNl
+  for I = 1 to N
+    PNl
+    TxWrite(@TxPlayer)
+    V16 = I
+    TxInt
+    TxWrite(@TxHowMuch)
+    Money = 1
+    NoQ = 1
+    Nmin = 0
+    Nmax = 9999
+    Nv = 200
+    AskNum
+    Money = 0
+    NoQ = 0
+    Av = Nv
+    PNl
+    if Av < 200 then
+      TxWrite(@TxStart2)
+      Av = 200
+    else
+      if Av > 4000 then
+        TxWrite(@TxFair)
+        Av = 1000
+      end if
+    end if
+    RecGet
+    asm {
+      ld hl,Ex_46
+      call VmRun
+    }
+    RecPut
+  next
+  PNl
+  asm {
+    call Bell
+  }
+  TxWrite(@TxReady)
+  AskYes
+  if Sel = 2 then
+    Instructions
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' 1131-1391: the weather report (GR, mixed)
+sub Weather:
+  ApGr
+  WndT = 20
+  ApHome
+  Col = Sw * 17
+  for Y = 0 to 25
+    Ly = Y
+    Lx1 = 0
+    Lx2 = 39
+    asm {
+      call LrHlin
+    }
+  next
+  Col = $CC
+  if Sw = 5 then Col = $44
+  for Y = 26 to 39
+    Ly = Y
+    Lx1 = 0
+    Lx2 = 39
+    asm {
+      call LrHlin
+    }
+  next
+  Col = $88
+  for Y = 24 to 32
+    Ly = Y
+    Lx1 = 15
+    Lx2 = 25
+    asm {
+      call LrHlin
+    }
+  next
+  Ly = 14
+  Lx1 = 15
+  Lx2 = 25
+  asm {
+    call LrHlin
+  }
+  Ly1 = 14
+  Ly2 = 23
+  Lx = 15
+  asm {
+    call LrVlin
+  }
+  Lx = 25
+  asm {
+    call LrVlin
+  }
+  Col = $DD
+  for X = 17 to 23 step 2
+    Ly1 = 22
+    Ly2 = 23
+    Lx = X
+    asm {
+      call LrVlin
+    }
+  next
+  if Sw = 2 then goto w1191
+  if Sw = 7 then goto w1191
+  if Sw = 10 then Col = $FF
+  if Sw = 5 then Col = $00
+  ' 1171: clouds
+  ApH(6, 10, 2)
+  ApH(4, 14, 3)
+  ApH(7, 12, 4)
+  ApH(22, 30, 4)
+  ApH(20, 36, 5)
+  ApH(23, 33, 6)
+  if Sw = 5 then Lightning
+  goto w1211
+w1191:
+  if Sw = 7 then Col = $99
+  ApH(3, 5, 1)
+  ApH(2, 6, 2)
+  for Y = 3 to 6
+    ApH(1, 7, Y)
+  next
+  ApH(2, 6, 7)
+  ApH(3, 5, 8)
+w1211:
+  ' VTAB 22: HTAB 8: PRINT " LEMONSVILLE WEATHER REPORT ": PRINT (twice)
+  for K = 1 to 2
+    Cv = 21
+    LrVtab
+    Ch = 7
+    Tp = address of TtReport
+    ApPrint
+    asm {
+      ld a,$8D
+      call LrCout
+      ld a,$8D
+      call LrCout
+    }
+  next
+  if Sw = 2 then
+    Ch = 17
+    Tp = address of TtSunny
+  end if
+  if Sw = 7 then
+    Ch = 14
+    Tp = address of TtHot
+  end if
+  if Sw = 10 then
+    Ch = 16
+    Tp = address of TtCloudy
+  end if
+  if Sw = 5 then
+    Ch = 13
+    Tp = address of TtStorm
+  end if
+  ApPrint
+  if Sw = 5 then Lightning
+  ' 1251-1371: the weather's tune
+  if Sw = 2 then
+    Tp = address of TuneSunny
+    PlaySunny
+  else
+    if Sw = 7 then Tp = address of TuneHot
+    if Sw = 10 then Tp = address of TuneCloudy
+    if Sw = 5 then Tp = address of TuneStorm
+    PlayTune
+  end if
+  if Sw = 5 then Lightning
+  LpN = 2000
+  PLoops
+  return
+end sub
+
+' SC as a float too, and COLOR= SC
+sub SetSc:
+  if Sw = 2 then
+    asm {
+      ld hl,Ex_47
+      call VmRun
+    }
+  end if
+  if Sw = 7 then
+    asm {
+      ld hl,Ex_48
+      call VmRun
+    }
+  end if
+  if Sw = 10 then
+    asm {
+      ld hl,Ex_49
+      call VmRun
+    }
+  end if
+  if Sw = 5 then
+    asm {
+      ld hl,Ex_50
+      call VmRun
+    }
+  end if
+  return
+end sub
+
+' 1451: two bolts, each with five flashes
+sub Lightning:
+  for K = 1 to 2
+    Bolt
+    for Jl = 1 to 5
+      Col = $44
+      LrOld = Col
+      Col = $CC
+      asm {
+        call LrLight
+      }
+      Col = $FF
+      LrOld = Col
+      Col = $99
+      asm {
+        call LrLight
+      }
+      Col = $FF
+      asm {
+        call LrLight
+      }
+      Col = $CC
+      LrOld = Col
+      Col = $44
+      asm {
+        call LrLight
+      }
+    next
+    Col = $FF
+    LrOld = Col
+    Col = $55
+    asm {
+      call LrLight
+    }
+  next
+  return
+end sub
+
+' 11-91: a bolt, from the left (21) or the right (51)
+sub Bolt:
+  Col = $FF
+  asm {
+    ld hl,Ex_51
+    call VmRun
+  }
+  if VmT = 1 then goto b51
+  asm {
+    ld hl,Ex_52
+    call VmRun
+  }
+  BoltVlin
+  for Jl = 1 to 6
+    asm {
+      ld hl,Ex_53
+      call VmRun
+    }
+    asm {
+      ld hl,Ex_54
+      call VmRun
+    }
+    if VmT = 1 then goto b21a
+    goto b31
+b21a:
+    asm {
+      ld hl,Ex_55
+      call VmRun
+    }
+b31:
+    asm {
+      ld hl,Ex_56
+      call VmRun
+    }
+    if VmT = 1 then goto b91
+    asm {
+      ld hl,Ex_57
+      call VmRun
+    }
+    if VmT = 1 then goto b41
+    goto b51
+b41:
+    BoltVlin
+  next
+  return
+b51:
+  asm {
+    ld hl,Ex_58
+    call VmRun
+  }
+  BoltVlin
+b61:
+  asm {
+    ld hl,Ex_59
+    call VmRun
+  }
+  asm {
+    ld hl,Ex_60
+    call VmRun
+  }
+  if VmT = 1 then goto b61a
+  goto b71
+b61a:
+  asm {
+    ld hl,Ex_61
+    call VmRun
+  }
+b71:
+  asm {
+    ld hl,Ex_62
+    call VmRun
+  }
+  if VmT = 1 then goto b91
+  BoltVlin
+  goto b61
+b91:
+  return
+end sub
+
+' VLIN Y,I AT X (the whole parts)
+sub BoltVlin:
+  asm {
+    ld hl,Ex_63
+    call VmRun
+  }
+  Ly1 = VmT
+  asm {
+    ld hl,Ex_64
+    call VmRun
+  }
+  Ly2 = VmT
+  asm {
+    ld hl,Ex_65
+    call VmRun
+  }
+  Lx = VmT
+  asm {
+    call LrVlin
+  }
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The Apple's screen: TEXT, GR, VTAB, HOME, HLIN, PRINT (lores.asm)
+sub ApText:
+  Rearm
+  wait
+  nmi off
+  display off
+  asm {
+    call LrKeep
+    call LOAD_ASCII
+    call AMY_DUPLICATE_PATTERN_THIRDS
+    call TxFontCol
+    call LrSpaces
+  }
+  copy Dollar count 8 to vram.pattern + 288
+  copy Dollar count 8 to vram.pattern + 2336
+  copy Dollar count 8 to vram.pattern + 4384
+  copy Percent count 8 to vram.pattern + 296
+  copy Percent count 8 to vram.pattern + 2344
+  copy Percent count 8 to vram.pattern + 4392
+  fill 32 count 768 to vram.name
+  screen on
+  nmi off
+  WndL = 0
+  WndW = 40
+  WndT = 0
+  WndB = 24
+  Cv = 23
+  Ch = 0
+  return
+end sub
+
+' GR: the lo-res screen, CLRTOP, the window's top at 20, VTAB 24
+sub ApGr:
+  Rearm
+  wait
+  nmi off
+  display off
+  asm {
+    call LrPrep
+    call LrClrTop
+  }
+  LrShow = 1
+  GrOn = 1
+  screen on
+  nmi off
+  WndL = 0
+  WndW = 40
+  WndT = 20
+  WndB = 24
+  Cv = 23
+  LrVtab
+  return
+end sub
+
+sub ApHome:
+  asm {
+    call LrHome
+  }
+  return
+end sub
+
+' VTAB: nothing more to do than CV (the page address is worked out each time)
+sub LrVtab:
+  return
+end sub
+
+' ApPrint: PRINT the string at Tp; (the bytes with the high bit)
+sub ApPrint:
+  asm {
+    ld hl,(AMY_UVAR_Tp)
+ApPr2:
+    ld a,(hl)
+    or a
+    jr z,ApPr3
+    push hl
+    or $80
+    call LrCout
+    pop hl
+    inc hl
+    jr ApPr2
+ApPr3:
+    ld (AMY_UVAR_Tp),hl
+  }
+  return
+end sub
+
+' HLIN Lx1,Lx2 AT Ly from the arguments
+sub ApH(u8 A1, u8 A2, u8 A3):
+  Lx1 = A1
+  Lx2 = A2
+  Ly = A3
+  asm {
+    call LrHlin
+  }
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' text helpers
+' Text goes through MsgBuf, so a sentence with numbers in it wraps as one
+' (TxFlush prints it: before a new line, a TAB, a question, a page)
+sub TxWrite(u16 Ad):
+  Tp = Ad
+  asm {
+    ld hl,(AMY_UVAR_Tp)
+    call MsgAdd
+  }
+  return
+end sub
+
+sub TxFlush:
+  asm {
+    call MsgFlush
+  }
+  return
+end sub
+
+sub PNl:
+  asm {
+    call MsgFlush
+    call TxNl
+  }
+  return
+end sub
+
+sub PHome:
+  asm {
+    call MsgClear
+    call TxHome
+  }
+  return
+end sub
+
+sub TxInt:
+  asm {
+    ld de,(AMY_UVAR_V16)
+    call TxNumStr
+    call MsgAdd
+  }
+  return
+end sub
+
+sub TxPadTo(u8 A1):
+  V = A1
+  asm {
+    call MsgFlush
+    ld a,(AMY_UVAR_V)
+    call TxPad
+  }
+  return
+end sub
+
+sub TxPutBuf:
+  asm {
+    ld hl,AMY_UVAR_FpBuf
+    call MsgAdd
+  }
+  return
+end sub
+
+sub TxPutSti:
+  asm {
+    ld hl,AMY_UVAR_StiS
+    call MsgAdd
+  }
+  return
+end sub
+
+' the stand's record in VRAM ($3800 + 12 I): A(I) 5 bytes, L, S, P, G, H, B
+sub RecGet:
+  asm {
+    call RecAddr
+    call VRd
+    ld hl,AMY_UVAR_F_AC
+    ld b,5
+RgA:
+    nop
+    nop
+    in a,(VDPD)
+    ld (hl),a
+    inc hl
+    djnz RgA
+    in a,(VDPD)
+    ld (AMY_UVAR_Lc),a
+    nop
+    nop
+    in a,(VDPD)
+    ld (AMY_UVAR_Lc+1),a
+    nop
+    nop
+    in a,(VDPD)
+    ld (AMY_UVAR_Sc),a
+    nop
+    nop
+    in a,(VDPD)
+    ld (AMY_UVAR_Pc),a
+    nop
+    nop
+    in a,(VDPD)
+    ld (AMY_UVAR_Gc),a
+    nop
+    nop
+    in a,(VDPD)
+    ld (AMY_UVAR_Hc),a
+    nop
+    nop
+    in a,(VDPD)
+    ld (AMY_UVAR_Bc),a
+    xor a
+    ld (AMY_UVAR_Sc+1),a
+    ld (AMY_UVAR_Pc+1),a
+    ld (AMY_UVAR_Gc+1),a
+    ld (AMY_UVAR_Hc+1),a
+    ld (AMY_UVAR_Bc+1),a
+  }
+  return
+end sub
+
+sub RecPut:
+  RecPutI
+  return
+end sub
+
+sub RecPutI:
+  asm {
+    call RecAddr
+    call VWr
+    ld hl,AMY_UVAR_F_AC
+    ld b,5
+RpA:
+    ld a,(hl)
+    out (VDPD),a
+    inc hl
+    nop
+    djnz RpA
+    ld a,(AMY_UVAR_Lc)
+    out (VDPD),a
+    nop
+    nop
+    ld a,(AMY_UVAR_Lc+1)
+    out (VDPD),a
+    nop
+    nop
+    ld a,(AMY_UVAR_Sc)
+    out (VDPD),a
+    nop
+    nop
+    ld a,(AMY_UVAR_Pc)
+    out (VDPD),a
+    nop
+    nop
+    ld a,(AMY_UVAR_Gc)
+    out (VDPD),a
+    nop
+    nop
+    ld a,(AMY_UVAR_Hc)
+    out (VDPD),a
+    nop
+    nop
+    ld a,(AMY_UVAR_Bc)
+    out (VDPD),a
+  }
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' input
+' 1461: PRESS RETURN TO CONTINUE, ESC TO END... (left button, right button)
+sub Wait1461:
+  TxFlush
+  print at 2,22, "LEFT: GO ON  RIGHT: END..."
+  Ask = 1
+w1471:
+  Frame1
+  ReadPad
+  if Press = 1 then goto w1481
+  if Press2 = 1 then goto w1491
+  goto w1471
+w1481:
+  Ask = 0
+  fill 32 count 32 at 0,22
+  return
+w1491:
+  ' HOME : VTAB 8 : ARE YOU SURE YOU WANT TO QUIT ? (GET: Y ends)
+  Ask = 0
+  PHome
+  TxY = 7
+  TxX = 2
+  TxWrite(@TxSure)
+  ' (GET: the key isn't shown)
+  NoEcho = 1
+  AskYes
+  NoEcho = 0
+  if Sel = 2 then
+    PHome
+    return
+  end if
+  PNl
+  TxWrite(@TxPrompt)
+  ProgramEnd
+  asm {
+    ld sp,$73B9
+    jp AMY_ULBL_l1
+  }
+  return
+end sub
+
+' YES or NO after the question (Sel 1 = YES)
+sub AskYes:
+  TxFlush
+  Ask = 2
+  Sel = 1
+  WasBtn = 1
+  X = TxX
+  Y = TxY
+  if X > 22 then
+    PNl
+    X = TxX
+    Y = TxY
+  end if
+yn_draw:
+  print at X,Y, " YES  NO"
+  V = X
+  if Sel = 2 then V = X + 5
+  print at V,Y, ">"
+yn_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    if Lf1 = 1 then Sel = 1
+    if Up1 = 1 then Sel = 1
+    if Rt1 = 1 then Sel = 2
+    if Dn1 = 1 then Sel = 2
+    goto yn_draw
+  end if
+  if Press = 0 then goto yn_loop
+  ' the answer stays, as typed
+  print at X,Y, "        "
+  TxX = X
+  if NoEcho = 0 then
+    if Sel = 1 then
+      TxWrite(@TxY1)
+    else
+      TxWrite(@TxN1)
+    end if
+  end if
+  Ask = 0
+  return
+end sub
+
+' an amount Nmin-Nmax after the question ("?" then the number)
+sub AskNum:
+  TxFlush
+  Ask = 3
+  WasBtn = 1
+  X = TxX
+  Y = TxY
+  if X > 24 then
+    PNl
+    X = TxX
+    Y = TxY
+  end if
+  if Money = 1 then
+    if X > 21 then
+      PNl
+      X = TxX
+      Y = TxY
+    end if
+  end if
+an_draw:
+  TxX = X
+  TxY = Y
+  if Money = 1 then
+    NumMoney
+  else
+    asm {
+      ld a,(AMY_UVAR_NoQ)
+      or a
+      jr nz,$+7
+      ld a,'?'
+      call TxOut
+      ld de,(AMY_UVAR_Nv)
+      call TxU16
+      ld a,' '
+      call TxOut
+      ld a,' '
+      call TxOut
+      ld a,' '
+      call TxOut
+    }
+  end if
+an_loop:
+  Frame1
+  ReadPad
+  if Stick = 1 then
+    V16 = 1
+    W16 = 10
+    if Money = 1 then W16 = 100
+    if Held > 40 then
+      V16 = 10
+      W16 = 100
+      if Money = 1 then W16 = 1000
+    end if
+    if Up1 = 1 then Nv = Nv + V16
+    if Dn1 = 1 then
+      if Nv < Nmin + V16 then
+        Nv = Nmin
+      else
+        Nv = Nv - V16
+      end if
+    end if
+    if Rt1 = 1 then Nv = Nv + W16
+    if Lf1 = 1 then
+      if Nv < Nmin + W16 then
+        Nv = Nmin
+      else
+        Nv = Nv - W16
+      end if
+    end if
+    if Nv > Nmax then Nv = Nmax
+    goto an_draw
+  end if
+  if Press = 0 then goto an_loop
+  ' what was typed stays: ?100
+  TxX = X
+  TxY = Y
+  if Money = 1 then
+    NumMoney
+  else
+    asm {
+      ld a,(AMY_UVAR_NoQ)
+      or a
+      jr nz,$+7
+      ld a,'?'
+      call TxOut
+      ld de,(AMY_UVAR_Nv)
+      call TxU16
+    }
+  end if
+  Ask = 0
+  return
+end sub
+
+' ?12.34: an amount of money in cents
+sub NumMoney:
+  V16 = Nv / 100
+  W16 = Nv - V16 * 100
+  if NoQ = 0 then
+    asm {
+      ld a,'?'
+      call TxOut
+    }
+  end if
+  asm {
+    ld de,(AMY_UVAR_V16)
+    call TxU16
+    ld a,'.'
+    call TxOut
+    ld a,(AMY_UVAR_W16)
+    ld e,a
+    ld d,0
+    cp 10
+    jr nc,NmM2
+    ld a,'0'
+    call TxOut
+    ld a,(AMY_UVAR_W16)
+    ld e,a
+    ld d,0
+NmM2:
+    call TxU16
+    ld a,' '
+    call TxOut
+    ld a,' '
+    call TxOut
+  }
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub WaitPress:
+  WasBtn = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then
+    if Press2 = 0 then goto wp_loop
+  end if
+  return
+end sub
+
+sub ReadPad:
+  Up1 = joypad(1).up | joypad(2).up
+  Dn1 = joypad(1).down | joypad(2).down
+  Lf1 = joypad(1).left | joypad(2).left
+  Rt1 = joypad(1).right | joypad(2).right
+  Btn = joypad(1).button1 | joypad(2).button1
+  Btn2 = joypad(1).button2 | joypad(2).button2
+  Press = 0
+  Press2 = 0
+  V = Btn | Btn2
+  if V = 1 then
+    if WasBtn = 0 then
+      Press = Btn
+      Press2 = Btn2
+    end if
+  end if
+  WasBtn = V
+  Stick = 0
+  V = Up1 | Dn1
+  V = V | Lf1
+  V = V | Rt1
+  if V = 1 then
+    if WasStick = 0 then
+      Stick = 1
+      Rep = 16
+      Held = 0
+    else
+      if Held < 250 then inc Held
+      dec Rep
+      if Rep = 0 then
+        Stick = 1
+        Rep = 4
+      end if
+    end if
+  end if
+  WasStick = V
+  return
+end sub
+
+' PlayTune: the pairs at Tp until a length of 0; pitch 1 is a pause of J
+' empty FOR loops (the hot and the storm tunes, line 1361)
+sub PlayTune:
+  asm {
+PtNext:
+    ld hl,(AMY_UVAR_Tp)
+    ld a,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld (AMY_UVAR_Tp),hl
+    ld c,a
+    ld a,b
+    or a
+    ret z
+    ld a,c
+    cp 1
+    jr nz,PtTone
+    ld l,b
+    ld h,0
+    ld (AMY_UVAR_LpN),hl
+    call Loops
+    jr PtNext
+PtTone:
+    ld (AMY_UVAR_TnP),a
+    ld a,b
+    ld (AMY_UVAR_TnJ),a
+    call Tone
+    ; the loop's own time in BASIC (READ, IF, POKE, POKE, CALL): about 29 ms
+    ld hl,4300
+    call SpinHL
+    jr PtNext
+  }
+  return
+end sub
+
+' 1281-1291: the sunny tune: each note J times, length 10, the pause after
+' the K-th of J being J - K + 1 empty loops
+sub PlaySunny:
+  asm {
+PsNext:
+    ld hl,(AMY_UVAR_Tp)
+    ld a,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld (AMY_UVAR_Tp),hl
+    ld c,a
+    ld a,b
+    or a
+    ret z
+    ld e,b              ; J
+    ld d,1              ; K
+PsRep:
+    push de
+    push bc
+    ld a,c
+    ld (AMY_UVAR_TnP),a
+    ld a,10
+    ld (AMY_UVAR_TnJ),a
+    call Tone
+    pop bc
+    pop de
+    push de
+    push bc
+    ld a,e
+    sub d
+    inc a
+    ld l,a
+    ld h,0
+    ld (AMY_UVAR_LpN),hl
+    call Loops
+    pop bc
+    pop de
+    ld a,d
+    cp e
+    jr z,PsNext
+    inc d
+    jr PsRep
+  }
+  return
+end sub
+
+sub PLoops:
+  asm {
+    call Loops
+  }
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub CreditsPage:
+  ApText
+  print at 6,1, "LEMONADE STAND"
+  print at 2,3, "APPLE COMPUTER'S LEMONADE"
+  print at 2,4, "STAND (1979), FROM BOB"
+  print at 2,5, "JAMISON'S 1973 GAME FOR"
+  print at 2,6, "MECC."
+  print at 2,8, "FOR THE COLECOVISION BY"
+  print at 2,9, "CLAUDE (AN AI MADE BY"
+  print at 2,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "2026, IN AMY, THE LANGUAGE"
+  print at 2,12, "BY AMY BIENVENU."
+  print at 2,14, "THE ARITHMETIC IS APPLESOFT'S"
+  print at 2,15, "OWN, TRANSLATED TO THE Z80."
+  print at 2,17, "MUSIC: THE PROGRAM'S OWN"
+  print at 2,18, "TUNES."
+  print at 2,21, "PRESS A BUTTON"
+  Ask = 1
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+data TxHi bytes
+  72, 73, 33, 32, 32, 87, 69, 76, 67, 79, 77, 69, 32, 84, 79, 32
+  76, 69, 77, 79, 78, 83, 86, 73, 76, 76, 69, 44, 32, 67, 65, 76
+  73, 70, 79, 82, 78, 73, 65, 33, 0
+end data
+data TxTown bytes
+  73, 78, 32, 84, 72, 73, 83, 32, 83, 77, 65, 76, 76, 32, 84, 79
+  87, 78, 44, 32, 89, 79, 85, 32, 65, 82, 69, 32, 73, 78, 32, 67
+  72, 65, 82, 71, 69, 32, 79, 70, 32, 82, 85, 78, 78, 73, 78, 71
+  32, 89, 79, 85, 82, 32, 79, 87, 78, 32, 76, 69, 77, 79, 78, 65
+  68, 69, 32, 83, 84, 65, 78, 68, 46, 32, 89, 79, 85, 32, 67, 65
+  78, 32, 67, 79, 77, 80, 69, 84, 69, 32, 87, 73, 84, 72, 32, 65
+  83, 32, 77, 65, 78, 89, 32, 79, 84, 72, 69, 82, 32, 80, 69, 79
+  80, 76, 69, 32, 65, 83, 32, 89, 79, 85, 32, 87, 73, 83, 72, 44
+  32, 66, 85, 84, 32, 72, 79, 87, 32, 77, 85, 67, 72, 32, 80, 82
+  79, 70, 73, 84, 32, 89, 79, 85, 32, 77, 65, 75, 69, 32, 73, 83
+  32, 85, 80, 32, 84, 79, 32, 89, 79, 85, 32, 40, 84, 72, 69, 32
+  79, 84, 72, 69, 82, 32, 83, 84, 65, 78, 68, 83, 39, 32, 83, 65
+  76, 69, 83, 32, 87, 73, 76, 76, 32, 78, 79, 84, 32, 65, 70, 70
+  69, 67, 84, 32, 89, 79, 85, 82, 32, 66, 85, 83, 73, 78, 69, 83
+  83, 32, 73, 78, 32, 65, 78, 89, 32, 87, 65, 89, 41, 46, 32, 73
+  70, 32, 89, 79, 85, 32, 77, 65, 75, 69, 32, 84, 72, 69, 32, 77
+  79, 83, 84, 32, 77, 79, 78, 69, 89, 44, 32, 89, 79, 85, 39, 82
+  69, 32, 84, 72, 69, 32, 87, 73, 78, 78, 69, 82, 33, 33, 0
+end data
+data TxNewGame bytes
+  65, 82, 69, 32, 89, 79, 85, 32, 83, 84, 65, 82, 84, 73, 78, 71
+  32, 65, 32, 78, 69, 87, 32, 71, 65, 77, 69, 63, 32, 40, 89, 69
+  83, 32, 79, 82, 32, 78, 79, 41, 0
+end data
+data TxPlease bytes
+  40, 80, 76, 69, 65, 83, 69, 32, 67, 72, 79, 79, 83, 69, 32, 89
+  32, 79, 82, 32, 78, 32, 65, 78, 68, 32, 80, 82, 69, 83, 83, 32
+  84, 72, 69, 32, 66, 85, 84, 84, 79, 78, 41, 0
+end data
+data TxPeople bytes
+  72, 79, 87, 32, 77, 65, 78, 89, 32, 80, 69, 79, 80, 76, 69, 32
+  87, 73, 76, 76, 32, 66, 69, 32, 80, 76, 65, 89, 73, 78, 71, 32
+  61, 61, 62, 32, 0
+end data
+data TxHow1 bytes
+  84, 79, 32, 77, 65, 78, 65, 71, 69, 32, 89, 79, 85, 82, 32, 76
+  69, 77, 79, 78, 65, 68, 69, 32, 83, 84, 65, 78, 68, 44, 32, 89
+  79, 85, 32, 87, 73, 76, 76, 32, 78, 69, 69, 68, 32, 84, 79, 32
+  77, 65, 75, 69, 32, 84, 72, 69, 83, 69, 32, 68, 69, 67, 73, 83
+  73, 79, 78, 83, 32, 69, 86, 69, 82, 89, 32, 68, 65, 89, 58, 32
+  1, 49, 46, 32, 72, 79, 87, 32, 77, 65, 78, 89, 32, 71, 76, 65
+  83, 83, 69, 83, 32, 79, 70, 32, 76, 69, 77, 79, 78, 65, 68, 69
+  32, 84, 79, 32, 77, 65, 75, 69, 32, 40, 79, 78, 76, 89, 32, 79
+  78, 69, 32, 66, 65, 84, 67, 72, 32, 73, 83, 32, 77, 65, 68, 69
+  32, 69, 65, 67, 72, 32, 77, 79, 82, 78, 73, 78, 71, 41, 13, 50
+  46, 32, 72, 79, 87, 32, 77, 65, 78, 89, 32, 65, 68, 86, 69, 82
+  84, 73, 83, 73, 78, 71, 32, 83, 73, 71, 78, 83, 32, 84, 79, 32
+  77, 65, 75, 69, 32, 40, 84, 72, 69, 32, 83, 73, 71, 78, 83, 32
+  67, 79, 83, 84, 32, 70, 73, 70, 84, 69, 69, 78, 32, 67, 69, 78
+  84, 83, 32, 69, 65, 67, 72, 41, 13, 51, 46, 32, 87, 72, 65, 84
+  32, 80, 82, 73, 67, 69, 32, 84, 79, 32, 67, 72, 65, 82, 71, 69
+  32, 70, 79, 82, 32, 69, 65, 67, 72, 32, 71, 76, 65, 83, 83, 1
+  89, 79, 85, 32, 87, 73, 76, 76, 32, 66, 69, 71, 73, 78, 32, 87
+  73, 84, 72, 32, 36, 50, 46, 48, 48, 32, 67, 65, 83, 72, 32, 40
+  65, 83, 83, 69, 84, 83, 41, 46, 32, 66, 69, 67, 65, 85, 83, 69
+  32, 89, 79, 85, 82, 32, 77, 79, 84, 72, 69, 82, 32, 71, 65, 86
+  69, 32, 89, 79, 85, 32, 83, 79, 77, 69, 32, 83, 85, 71, 65, 82
+  44, 32, 89, 79, 85, 82, 32, 67, 79, 83, 84, 32, 84, 79, 32, 77
+  65, 75, 69, 32, 76, 69, 77, 79, 78, 65, 68, 69, 32, 73, 83, 32
+  84, 87, 79, 32, 67, 69, 78, 84, 83, 32, 65, 32, 71, 76, 65, 83
+  83, 32, 40, 84, 72, 73, 83, 32, 77, 65, 89, 32, 67, 72, 65, 78
+  71, 69, 32, 73, 78, 32, 84, 72, 69, 32, 70, 85, 84, 85, 82, 69
+  41, 46, 0
+end data
+data TxHow2 bytes
+  89, 79, 85, 82, 32, 69, 88, 80, 69, 78, 83, 69, 83, 32, 65, 82
+  69, 32, 84, 72, 69, 32, 83, 85, 77, 32, 79, 70, 32, 84, 72, 69
+  32, 67, 79, 83, 84, 32, 79, 70, 32, 84, 72, 69, 32, 76, 69, 77
+  79, 78, 65, 68, 69, 32, 65, 78, 68, 32, 84, 72, 69, 32, 67, 79
+  83, 84, 32, 79, 70, 32, 84, 72, 69, 32, 83, 73, 71, 78, 83, 46
+  1, 89, 79, 85, 82, 32, 80, 82, 79, 70, 73, 84, 83, 32, 65, 82
+  69, 32, 84, 72, 69, 32, 68, 73, 70, 70, 69, 82, 69, 78, 67, 69
+  32, 66, 69, 84, 87, 69, 69, 78, 32, 84, 72, 69, 32, 73, 78, 67
+  79, 77, 69, 32, 70, 82, 79, 77, 32, 83, 65, 76, 69, 83, 32, 65
+  78, 68, 32, 89, 79, 85, 82, 32, 69, 88, 80, 69, 78, 83, 69, 83
+  46, 1, 84, 72, 69, 32, 78, 85, 77, 66, 69, 82, 32, 79, 70, 32
+  71, 76, 65, 83, 83, 69, 83, 32, 89, 79, 85, 32, 83, 69, 76, 76
+  32, 69, 65, 67, 72, 32, 68, 65, 89, 32, 68, 69, 80, 69, 78, 68
+  83, 32, 79, 78, 32, 84, 72, 69, 32, 80, 82, 73, 67, 69, 32, 89
+  79, 85, 32, 67, 72, 65, 82, 71, 69, 44, 32, 65, 78, 68, 32, 79
+  78, 32, 84, 72, 69, 32, 78, 85, 77, 66, 69, 82, 32, 79, 70, 32
+  65, 68, 86, 69, 82, 84, 73, 83, 73, 78, 71, 32, 83, 73, 71, 78
+  83, 32, 89, 79, 85, 32, 85, 83, 69, 46, 1, 75, 69, 69, 80, 32
+  84, 82, 65, 67, 75, 32, 79, 70, 32, 89, 79, 85, 82, 32, 65, 83
+  83, 69, 84, 83, 44, 32, 66, 69, 67, 65, 85, 83, 69, 32, 89, 79
+  85, 32, 67, 65, 78, 39, 84, 32, 83, 80, 69, 78, 68, 32, 77, 79
+  82, 69, 32, 77, 79, 78, 69, 89, 32, 84, 72, 65, 78, 32, 89, 79
+  85, 32, 72, 65, 86, 69, 33, 0
+end data
+data TxAgain bytes
+  72, 73, 32, 65, 71, 65, 73, 78, 33, 32, 32, 87, 69, 76, 67, 79
+  77, 69, 32, 66, 65, 67, 75, 32, 84, 79, 32, 76, 69, 77, 79, 78
+  83, 86, 73, 76, 76, 69, 33, 1, 76, 69, 84, 39, 83, 32, 67, 79
+  78, 84, 73, 78, 85, 69, 32, 89, 79, 85, 82, 32, 76, 65, 83, 84
+  32, 71, 65, 77, 69, 32, 70, 82, 79, 77, 32, 87, 72, 69, 82, 69
+  32, 89, 79, 85, 32, 76, 69, 70, 84, 32, 73, 84, 32, 76, 65, 83
+  84, 32, 84, 73, 77, 69, 46, 32, 32, 68, 79, 32, 89, 79, 85, 32
+  82, 69, 77, 69, 77, 66, 69, 82, 32, 87, 72, 65, 84, 32, 68, 65
+  89, 32, 78, 85, 77, 66, 69, 82, 32, 73, 84, 32, 87, 65, 83, 63
+  32, 0
+end data
+data TxGood bytes
+  71, 79, 79, 68, 33, 32, 32, 87, 72, 65, 84, 32, 68, 65, 89, 32
+  87, 65, 83, 32, 73, 84, 63, 32, 0
+end data
+data TxOkay bytes
+  79, 75, 65, 89, 32, 45, 32, 87, 69, 39, 76, 76, 32, 83, 84, 65
+  82, 84, 32, 87, 73, 84, 72, 32, 68, 65, 89, 32, 78, 79, 46, 32
+  0
+end data
+data TxPlayer bytes
+  80, 76, 65, 89, 69, 82, 32, 78, 79, 46, 32, 0
+end data
+data TxHowMuch bytes
+  44, 32, 72, 79, 87, 32, 77, 85, 67, 72, 32, 77, 79, 78, 69, 89
+  32, 40, 65, 83, 83, 69, 84, 83, 41, 1, 68, 73, 68, 32, 89, 79
+  85, 32, 72, 65, 86, 69, 63, 32, 0
+end data
+data TxStart2 bytes
+  79, 46, 75, 46, 32, 45, 32, 69, 39, 76, 76, 32, 83, 84, 65, 82
+  84, 32, 89, 79, 85, 32, 79, 85, 84, 32, 87, 73, 84, 72, 32, 36
+  50, 46, 48, 48, 13, 0
+end data
+data TxFair bytes
+  74, 85, 83, 84, 32, 84, 79, 32, 66, 69, 32, 70, 65, 73, 82, 44
+  32, 76, 69, 84, 39, 83, 32, 77, 65, 75, 69, 32, 84, 72, 65, 84
+  32, 36, 49, 48, 46, 48, 48, 13, 0
+end data
+data TxReady bytes
+  46, 46, 46, 82, 69, 65, 68, 89, 32, 84, 79, 32, 66, 69, 71, 73
+  78, 63, 32, 0
+end data
+data TxOnDay bytes
+  79, 78, 32, 68, 65, 89, 32, 0
+end data
+data TxCostIs bytes
+  44, 32, 84, 72, 69, 32, 67, 79, 83, 84, 32, 79, 70, 32, 76, 69
+  77, 79, 78, 65, 68, 69, 32, 73, 83, 32, 0
+end data
+data TxCents0 bytes
+  36, 46, 48, 0
+end data
+data TxSugar bytes
+  13, 40, 89, 79, 85, 82, 32, 77, 79, 84, 72, 69, 82, 32, 81, 85
+  73, 84, 32, 71, 73, 86, 73, 78, 71, 32, 89, 79, 85, 32, 70, 82
+  69, 69, 32, 83, 85, 71, 65, 82, 41, 0
+end data
+data TxMixUp bytes
+  13, 40, 84, 72, 69, 32, 80, 82, 73, 67, 69, 32, 79, 70, 32, 76
+  69, 77, 79, 78, 65, 68, 69, 32, 77, 73, 88, 32, 74, 85, 83, 84
+  32, 87, 69, 78, 84, 32, 85, 80, 41, 0
+end data
+data TxRain1 bytes
+  13, 84, 72, 69, 82, 69, 32, 73, 83, 32, 65, 32, 0
+end data
+data TxRain2 bytes
+  37, 32, 67, 72, 65, 78, 67, 69, 32, 79, 70, 32, 76, 73, 71, 72
+  84, 32, 82, 65, 73, 78, 44, 32, 65, 78, 68, 32, 84, 72, 69, 32
+  87, 69, 65, 84, 72, 69, 82, 32, 73, 83, 32, 67, 79, 79, 76, 69
+  82, 32, 84, 79, 68, 65, 89, 46, 0
+end data
+data TxStreet bytes
+  13, 84, 72, 69, 32, 83, 84, 82, 69, 69, 84, 32, 68, 69, 80, 65
+  82, 84, 77, 69, 78, 84, 32, 73, 83, 32, 87, 79, 82, 75, 73, 78
+  71, 32, 84, 79, 68, 65, 89, 46, 32, 84, 72, 69, 82, 69, 32, 87
+  73, 76, 76, 32, 66, 69, 32, 78, 79, 32, 84, 82, 65, 70, 70, 73
+  67, 32, 79, 78, 32, 89, 79, 85, 82, 32, 83, 84, 82, 69, 69, 84
+  46, 0
+end data
+data TxHeat bytes
+  13, 65, 32, 72, 69, 65, 84, 32, 87, 65, 86, 69, 32, 73, 83, 32
+  80, 82, 69, 68, 73, 67, 84, 69, 68, 32, 70, 79, 82, 32, 84, 79
+  68, 65, 89, 33, 0
+end data
+data TxStorm1 bytes
+  87, 69, 65, 84, 72, 69, 82, 32, 82, 69, 80, 79, 82, 84, 58, 32
+  32, 65, 32, 83, 69, 86, 69, 82, 69, 32, 84, 72, 85, 78, 68, 69
+  82, 83, 84, 79, 82, 77, 32, 72, 73, 84, 32, 76, 69, 77, 79, 78
+  83, 86, 73, 76, 76, 69, 32, 69, 65, 82, 76, 73, 69, 82, 32, 84
+  79, 68, 65, 89, 44, 32, 74, 85, 83, 84, 32, 65, 83, 32, 0
+end data
+data TxStorm2 bytes
+  84, 72, 69, 32, 76, 69, 77, 79, 78, 65, 68, 69, 32, 83, 84, 65
+  78, 68, 83, 32, 87, 69, 82, 69, 32, 66, 69, 73, 78, 71, 32, 83
+  69, 84, 32, 85, 80, 46, 32, 85, 78, 70, 79, 82, 84, 85, 78, 65
+  84, 69, 76, 89, 44, 32, 69, 86, 69, 82, 89, 84, 72, 73, 78, 71
+  32, 87, 65, 83, 32, 82, 85, 73, 78, 69, 68, 33, 33, 0
+end data
+data TxStand bytes
+  76, 69, 77, 79, 78, 65, 68, 69, 32, 83, 84, 65, 78, 68, 32, 0
+end data
+data TxAssets bytes
+  65, 83, 83, 69, 84, 83, 32, 0
+end data
+data TxNoDecide bytes
+  89, 79, 85, 32, 65, 82, 69, 32, 66, 65, 78, 75, 82, 85, 80, 84
+  44, 32, 78, 79, 32, 68, 69, 67, 73, 83, 73, 79, 78, 83, 32, 70
+  79, 82, 32, 89, 79, 85, 32, 84, 79, 32, 77, 65, 75, 69, 46, 0
+end data
+data TxGlasses bytes
+  72, 79, 87, 32, 77, 65, 78, 89, 32, 71, 76, 65, 83, 83, 69, 83
+  32, 79, 70, 32, 76, 69, 77, 79, 78, 65, 68, 69, 32, 68, 79, 32
+  89, 79, 85, 32, 87, 73, 83, 72, 32, 84, 79, 32, 77, 65, 75, 69
+  32, 0
+end data
+data TxThink1 bytes
+  84, 72, 73, 78, 75, 32, 65, 71, 65, 73, 78, 33, 33, 33, 32, 32
+  89, 79, 85, 32, 72, 65, 86, 69, 32, 79, 78, 76, 89, 32, 0
+end data
+data TxThink2 bytes
+  32, 73, 78, 32, 67, 65, 83, 72, 32, 65, 78, 68, 32, 84, 79, 32
+  77, 65, 75, 69, 32, 0
+end data
+data TxThink3 bytes
+  32, 71, 76, 65, 83, 83, 69, 83, 32, 79, 70, 32, 76, 69, 77, 79
+  78, 65, 68, 69, 32, 89, 79, 85, 32, 78, 69, 69, 68, 32, 36, 0
+end data
+data TxThink4 bytes
+  32, 73, 78, 32, 67, 65, 83, 72, 46, 0
+end data
+data TxSigns1 bytes
+  72, 79, 87, 32, 77, 65, 78, 89, 32, 65, 68, 86, 69, 82, 84, 73
+  83, 73, 78, 71, 32, 83, 73, 71, 78, 83, 32, 40, 0
+end data
+data TxSigns2 bytes
+  32, 67, 69, 78, 84, 83, 32, 69, 65, 67, 72, 41, 32, 68, 79, 32
+  89, 79, 85, 32, 87, 65, 78, 84, 32, 84, 79, 32, 77, 65, 75, 69
+  32, 0
+end data
+data TxThink5 bytes
+  84, 72, 73, 78, 75, 32, 65, 71, 65, 73, 78, 44, 32, 89, 79, 85
+  32, 72, 65, 86, 69, 32, 79, 78, 76, 89, 32, 0
+end data
+data TxThink6 bytes
+  32, 73, 78, 32, 67, 65, 83, 72, 32, 76, 69, 70, 84, 32, 65, 70
+  84, 69, 82, 32, 77, 65, 75, 73, 78, 71, 32, 89, 79, 85, 82, 32
+  76, 69, 77, 79, 78, 65, 68, 69, 46, 0
+end data
+data TxPrice bytes
+  87, 72, 65, 84, 32, 80, 82, 73, 67, 69, 32, 40, 73, 78, 32, 67
+  69, 78, 84, 83, 41, 32, 68, 79, 32, 89, 79, 85, 32, 87, 73, 83
+  72, 32, 84, 79, 32, 67, 72, 65, 82, 71, 69, 32, 70, 79, 82, 32
+  76, 69, 77, 79, 78, 65, 68, 69, 32, 0
+end data
+data TxChange bytes
+  87, 79, 85, 76, 68, 32, 89, 79, 85, 32, 76, 73, 75, 69, 32, 84
+  79, 32, 67, 72, 65, 78, 71, 69, 32, 65, 78, 89, 84, 72, 73, 78
+  71, 63, 0
+end data
+data TxY1 bytes
+  89, 0
+end data
+data TxN1 bytes
+  78, 0
+end data
+data TxReport bytes
+  36, 36, 32, 76, 69, 77, 79, 78, 83, 86, 73, 76, 76, 69, 32, 68
+  65, 73, 76, 89, 32, 70, 73, 78, 65, 78, 67, 73, 65, 76, 32, 82
+  69, 80, 79, 82, 84, 32, 36, 36, 0
+end data
+data TxStand2 bytes
+  83, 84, 65, 78, 68, 32, 0
+end data
+data TxBankrupt bytes
+  32, 32, 32, 66, 65, 78, 75, 82, 85, 80, 84, 0
+end data
+data TxBroke bytes
+  32, 32, 46, 46, 46, 89, 79, 85, 32, 68, 79, 78, 39, 84, 32, 72
+  65, 86, 69, 32, 69, 78, 79, 85, 71, 72, 32, 77, 79, 78, 69, 89
+  32, 76, 69, 70, 84, 32, 84, 79, 32, 83, 84, 65, 89, 32, 73, 78
+  32, 66, 85, 83, 73, 78, 69, 83, 83, 32, 32, 89, 79, 85, 39, 82
+  69, 32, 66, 65, 78, 75, 82, 85, 80, 84, 33, 0
+end data
+data TxDay bytes
+  32, 32, 32, 68, 65, 89, 32, 0
+end data
+data TxStand3 bytes
+  83, 84, 65, 78, 68, 32, 0
+end data
+data TxSp2 bytes
+  32, 32, 0
+end data
+data TxSold bytes
+  71, 76, 65, 83, 83, 69, 83, 32, 83, 79, 76, 68, 0
+end data
+data TxPerGlass bytes
+  80, 69, 82, 32, 71, 76, 65, 83, 83, 0
+end data
+data TxIncome bytes
+  73, 78, 67, 79, 77, 69, 32, 0
+end data
+data TxMade bytes
+  71, 76, 65, 83, 83, 69, 83, 32, 77, 65, 68, 69, 0
+end data
+data TxSignsMade bytes
+  83, 73, 71, 78, 83, 32, 77, 65, 68, 69, 0
+end data
+data TxExpenses bytes
+  69, 88, 80, 69, 78, 83, 69, 83, 32, 0
+end data
+data TxProfit bytes
+  80, 82, 79, 70, 73, 84, 32, 32, 0
+end data
+data TxAssets2 bytes
+  65, 83, 83, 69, 84, 83, 32, 32, 0
+end data
+data TxSure bytes
+  65, 82, 69, 32, 89, 79, 85, 32, 83, 85, 82, 69, 32, 89, 79, 85
+  32, 87, 65, 78, 84, 32, 84, 79, 32, 81, 85, 73, 84, 32, 63, 0
+end data
+data TxPrompt bytes
+  13, 93, 0
+end data
+data TxFpErr bytes
+  63, 79, 86, 69, 82, 70, 76, 79, 87, 32, 69, 82, 82, 79, 82, 0
+end data
+data TxUndef bytes
+  63, 85, 78, 68, 69, 70, 39, 68, 32, 83, 84, 65, 84, 69, 77, 69
+  78, 84, 32, 69, 82, 82, 79, 82, 32, 73, 78, 32, 53, 56, 49, 0
+end data
+data TuneTitle bytes
+  96, 180, 128, 60, 114, 60, 128, 120, 144, 60, 152, 60, 128, 255, 128, 60
+  114, 60, 85, 120, 96, 60, 102, 60, 114, 120, 102, 60, 96, 255, 0, 0
+end data
+data TuneSunny bytes
+  96, 16, 85, 4, 128, 4, 96, 4, 76, 4, 128, 4, 96, 16, 0, 0
+end data
+data TuneHot bytes
+  114, 120, 144, 60, 114, 255, 1, 120, 128, 120, 144, 60, 128, 120, 114, 60
+  144, 120, 171, 255, 228, 255, 0, 0
+end data
+data TuneCloudy bytes
+  152, 180, 152, 120, 152, 60, 144, 120, 152, 60, 171, 120, 192, 60, 152, 255
+  0, 0
+end data
+data TuneStorm bytes
+  0, 160, 128, 255, 152, 40, 171, 80, 192, 40, 228, 255, 1, 40, 0, 160
+  192, 255, 192, 40, 171, 80, 152, 40, 128, 255, 0, 0
+end data
+data TuneReport bytes
+  152, 80, 128, 160, 152, 40, 144, 80, 128, 200, 0, 0
+end data
+data TtTop bytes
+  59, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 59, 76, 76, 76, 76, 76, 59, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 59, 76, 76, 76, 76, 76
+  59, 76, 76, 76, 76, 59, 59, 59, 59, 76, 59, 59, 59, 59, 59, 76
+  59, 59, 59, 59, 76, 59, 59, 59, 59, 76, 59, 59, 59, 59, 76, 59
+  59, 59, 59, 76, 59, 59, 59, 59, 59, 76, 76, 76, 76, 59, 76, 76
+  59, 76, 59, 76, 59, 76, 59, 76, 59, 76, 76, 59, 76, 59, 76, 76
+  59, 76, 76, 76, 76, 59, 76, 59, 76, 76, 59, 76, 59, 76, 76, 59
+  59, 76, 76, 76, 76, 59, 59, 59, 59, 76, 59, 76, 59, 76, 59, 76
+  59, 76, 76, 59, 76, 59, 76, 76, 59, 76, 59, 59, 59, 59, 76, 59
+  76, 76, 59, 76, 59, 59, 59, 59, 59, 76, 76, 76, 76, 59, 76, 76
+  76, 76, 59, 76, 59, 76, 59, 76, 59, 76, 76, 59, 76, 59, 76, 76
+  59, 76, 59, 76, 76, 59, 76, 59, 76, 76, 59, 76, 59, 76, 76, 76
+  59, 59, 59, 59, 76, 59, 59, 59, 59, 76, 59, 76, 76, 76, 59, 76
+  59, 59, 59, 59, 76, 59, 76, 76, 59, 76, 59, 59, 59, 59, 76, 59
+  59, 59, 59, 76, 59, 59, 59, 59, 0
+end data
+data TtBottom bytes
+  76, 76, 76, 76, 76, 76, 76, 76, 59, 59, 59, 59, 59, 76, 76, 59
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 59
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76
+  59, 76, 76, 76, 76, 76, 76, 59, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 59, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 76, 59, 76, 76, 76, 76, 76, 59, 59
+  59, 76, 59, 59, 59, 59, 76, 59, 59, 59, 59, 76, 59, 59, 59, 59
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76
+  59, 59, 59, 59, 59, 76, 76, 59, 76, 76, 76, 76, 76, 59, 76, 59
+  76, 76, 59, 76, 59, 76, 76, 59, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 59, 76, 76, 59
+  76, 76, 59, 59, 59, 59, 76, 59, 76, 76, 59, 76, 59, 76, 76, 59
+  76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 59, 76, 76, 59, 76, 76, 59, 76, 76, 59, 76, 59
+  76, 76, 59, 76, 59, 76, 76, 59, 76, 76, 76, 76, 76, 76, 76, 76
+  76, 76, 76, 76, 76, 76, 76, 76, 59, 59, 59, 59, 59, 76, 76, 59
+  76, 76, 59, 59, 59, 59, 76, 59, 76, 76, 59, 76, 59, 59, 59, 59
+  76, 76, 76, 76, 76, 76, 76, 76, 0
+end data
+data TtCopy bytes
+  32, 32, 67, 79, 80, 89, 82, 73, 71, 72, 84, 32, 49, 57, 55, 57
+  32, 32, 32, 32, 65, 80, 80, 76, 69, 32, 67, 79, 77, 80, 85, 84
+  69, 82, 32, 73, 78, 67, 46, 13, 0
+end data
+data TtColumns bytes
+  0, 0, 0, 0, 0, 0, 76, 59, 76, 76, 59, 0, 76, 59, 76, 76
+  59, 0, 59, 59, 76, 76, 59, 59, 0, 76, 59, 76, 76, 59, 0, 76
+  59, 59, 59, 59, 0, 0, 0, 59, 76, 59, 59, 59, 59, 0, 59, 76
+  59, 76, 76, 59, 0, 59, 76, 59, 76, 76, 59, 0, 59, 76, 59, 76
+  76, 59, 0, 59, 59, 59, 76, 76, 59, 0, 0, 0, 0, 0
+end data
+data TtReport bytes
+  32, 76, 69, 77, 79, 78, 83, 86, 73, 76, 76, 69, 32, 87, 69, 65
+  84, 72, 69, 82, 32, 82, 69, 80, 79, 82, 84, 32, 0
+end data
+data TtSunny bytes
+  32, 83, 85, 78, 78, 89, 32, 0
+end data
+data TtHot bytes
+  32, 72, 79, 84, 32, 65, 78, 68, 32, 68, 82, 89, 32, 0
+end data
+data TtCloudy bytes
+  32, 67, 76, 79, 85, 68, 89, 32, 0
+end data
+data TtStorm bytes
+  32, 84, 72, 85, 78, 68, 69, 82, 83, 84, 79, 82, 77, 83, 33, 32
+  0
+end data
+
+data Dollar bytes $10, $7C, $90, $7C, $12, $7C, $10, $00
+data Percent bytes $C4, $C8, $10, $20, $40, $98, $18, $00
+
+asm {
+FpError:
+    ld sp,$73B9
+    jp AMY_ULBL_fp_error
+; StiCat: the string at HL added to StiS
+StiCat:
+    ld de,AMY_UVAR_StiS
+StiC2:
+    ld a,(de)
+    or a
+    jr z,StiC3
+    inc de
+    jr StiC2
+StiC3:
+    ld a,(hl)
+    ld (de),a
+    or a
+    inc hl
+    inc de
+    jr nz,StiC3
+    ret
+; LrKeep: the lo-res page kept at $3A00 when leaving GR (for the test bot,
+; which compares it with the Apple's)
+LrKeep:
+    ld a,(AMY_UVAR_GrOn)
+    or a
+    ret z
+    xor a
+    ld (AMY_UVAR_GrOn),a
+    ld de,0
+LrKp2:
+    ld hl,LrPage
+    add hl,de
+    call VRd
+    ld hl,AMY_UVAR_TxLine
+    ld b,32
+LrKp3:
+    nop
+    nop
+    in a,(VDPD)
+    ld (hl),a
+    inc hl
+    djnz LrKp3
+    ld hl,$3A00
+    add hl,de
+    call VWr
+    ld hl,AMY_UVAR_TxLine
+    ld b,32
+LrKp4:
+    ld a,(hl)
+    out (VDPD),a
+    inc hl
+    djnz LrKp4
+    ld hl,32
+    add hl,de
+    ex de,hl
+    ld a,d
+    cp 3
+    jr nz,LrKp2
+    ld a,e
+    cp $C0
+    jr nz,LrKp2
+    ret
+; LrSpaces: the Apple's page all spaces ($A0)
+LrSpaces:
+    ld hl,LrPage
+    call VWr
+    ld bc,960
+LrSp2:
+    ld a,$A0
+    out (VDPD),a
+    dec bc
+    ld a,b
+    or c
+    jr nz,LrSp2
+    ret
+TxDot0:
+    db ".0", 0
+TxZero:
+    db "0", 0
+; MsgAdd: the string at HL added to MsgBuf; MsgFlush: MsgBuf printed
+MsgAdd:
+    ; its length: a long text is printed now (after what waits)
+    push hl
+    ld bc,0
+MsgL1:
+    ld a,(hl)
+    or a
+    jr z,MsgL2
+    inc hl
+    inc bc
+    jr MsgL1
+MsgL2:
+    pop hl
+    ld a,b
+    or a
+    jr nz,MsgLong
+    ld a,c
+    cp 60
+    jr nc,MsgLong
+    ld de,(AMY_UVAR_MsgP)
+    ld a,d
+    or e
+    jr nz,MsgA1
+    ld de,AMY_UVAR_MsgBuf
+MsgA1:
+    ; room for it?
+    push hl
+    ld hl,AMY_UVAR_MsgBuf+118
+    or a
+    sbc hl,de
+    sbc hl,bc
+    pop hl
+    jr nc,MsgA2
+    push hl
+    call MsgFlush
+    pop hl
+    ld de,AMY_UVAR_MsgBuf
+MsgA2:
+    ld a,(hl)
+    ld (de),a
+    or a
+    jr z,MsgA3
+    inc hl
+    inc de
+    jr MsgA2
+MsgA3:
+    ld (AMY_UVAR_MsgP),de
+    ret
+MsgLong:
+    push hl
+    call MsgFlush
+    pop hl
+    jp TxStr
+MsgFlush:
+    ld hl,(AMY_UVAR_MsgP)
+    ld a,h
+    or l
+    ret z
+    ld hl,AMY_UVAR_MsgBuf
+    call TxStr
+MsgClear:
+    ld hl,0
+    ld (AMY_UVAR_MsgP),hl
+    ret
+; TxNumStr: HL = the digits of DE (in TxNum)
+TxNumStr:
+    ld hl,AMY_UVAR_TxNum+5
+    ld (hl),0
+TxNs2:
+    dec hl
+    push hl
+    ex de,hl
+    ld c,10
+    call TxDiv
+    ex de,hl
+    pop hl
+    add a,48
+    ld (hl),a
+    ld a,d
+    or e
+    jr nz,TxNs2
+    ret
+; RecAddr: HL = $3800 + 12 * I
+RecAddr:
+    ld a,(AMY_UVAR_I)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,de
+    ld de,$3800
+    add hl,de
+    ret
+; TxFontCol: the font's colours, white on black, in the three thirds
+TxFontCol:
+    ld hl,$2000
+    call VWr
+    ld de,$1800
+TxFc2:
+    ld a,$F1
+    out (VDPD),a
+    dec de
+    ld a,d
+    or e
+    jr nz,TxFc2
+    ret
+; ---------------------------------------------------------------------------
+; VmRun: runs the expression code at HL (written by expr.py from the
+; listing's own expressions), with the Applesoft routines of fp.asm. The
+; steps are the ones Applesoft's FRMEVL takes: a left operand is pushed
+; rounded with its sign, the right one stays in the FAC with its extension
+; byte, then the operator runs on ARG and FAC.
+;   0 end           1 nn FAC = (nn)      2 nn FAC = literal (7 bytes at nn)
+;   3 nn FAC = u16 (nn)                  4 push FAC
+;   5 add 6 sub 7 mul 8 div 9 power      10 m compare (bits >1 =2 <4)
+;   11 negate 12 INT 13 EXP 14 RND       15 nn store FAC to (nn)
+;   16 truth -> VmT                      17 whole part -> VmT, VmW
+;   18 STR$ -> FpBuf                     19 AND 20 OR
+; FAC is FpZ+63 ($9D-$A2), extension FpZ+78 ($AC), ARG FpZ+71 ($A5-$AA).
+FAC     EQU AMY_UVAR_FpZ+63
+FACX    EQU AMY_UVAR_FpZ+78
+ARG     EQU AMY_UVAR_FpZ+71
+VmRun:
+    ld (AMY_UVAR_VmPc),hl
+VmNext:
+    ld hl,(AMY_UVAR_VmPc)
+    ld a,(hl)
+    inc hl
+    or a
+    ret z
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    dec hl
+    ld (AMY_UVAR_VmPc),hl
+    ld hl,VmNext
+    push hl
+    ld hl,VmTab-2
+    add a,a
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    jp (hl)
+VmTab:
+    dw VmLd, VmLit, VmInt, VmPush, VmAdd, VmSub, VmMul, VmDiv, VmPow, VmCmp
+    dw VmNeg, VmIntF, VmExp, VmRnd, VmSto, VmTruth, VmWhole, VmStr, VmAnd, VmOr
+; operand fetched: DE = the 16-bit operand; VmSkip2/VmSkip1 move past it
+VmSkip2:
+    ld hl,(AMY_UVAR_VmPc)
+    inc hl
+    inc hl
+    ld (AMY_UVAR_VmPc),hl
+    ret
+VmSkip1:
+    ld hl,(AMY_UVAR_VmPc)
+    inc hl
+    ld (AMY_UVAR_VmPc),hl
+    ret
+VmLd:
+    call VmSkip2
+    ld a,e
+    ld b,d
+    jp Fp_EAF9
+VmLit:
+    call VmSkip2
+    ex de,hl
+    ld de,FAC
+    ld bc,6
+    ldir
+    ld a,(hl)
+    ld (FACX),a
+    ret
+VmInt:
+    call VmSkip2
+    ex de,hl
+    ld a,(hl)
+    ld (FAC+2),a
+    inc hl
+    ld a,(hl)
+    ld (FAC+1),a
+    ld c,$90
+    scf
+    jp Fp_EBA0
+; push: the sign, then the FAC rounded (as $DE10 does), 6 bytes
+VmPush:
+    ld a,(FAC+5)
+    push af
+    call Fp_EB72
+    pop af
+    ld hl,(AMY_UVAR_VmSp)
+    ld (hl),a
+    inc hl
+    ld de,FAC
+    ex de,hl
+    ld bc,5
+    ldir
+    ld (AMY_UVAR_VmSp),de
+    ret
+; pop into ARG ($DE41), SGNCPR = ARG sign xor FAC sign, A = FAC exponent
+VmPop:
+    ld hl,(AMY_UVAR_VmSp)
+    ld de,-6
+    add hl,de
+    ld (AMY_UVAR_VmSp),hl
+    ld a,(hl)
+    ld (ARG+5),a
+    inc hl
+    ld de,ARG
+    ld bc,5
+    ldir
+    ld a,(ARG+5)
+    ld hl,FAC+5
+    xor (hl)
+    ld (ARG+6),a
+    ld a,(FAC)
+    or a
+    ret
+VmAdd:
+    call VmPop
+    jp Fp_E7C1
+VmSub:
+    call VmPop
+    jp Fp_E7AA
+VmMul:
+    call VmPop
+    jp Fp_E982
+VmDiv:
+    call VmPop
+    jp Fp_EA69
+VmPow:
+    call VmPop
+    jp Fp_EE97
+; compare ($DF6A-$DFCA): ARG packed in place, FCOMP, then 1 or 0
+VmCmp:
+    call VmSkip1
+    ld a,e
+    ld (AMY_UVAR_VmM),a
+    call VmPop
+    ld a,(ARG+5)
+    or $7F
+    ld hl,ARG+1
+    and (hl)
+    ld (hl),a
+    ld hl,ARG
+    ld a,l
+    ld b,h
+    call Fp_EBB2
+    ; FF -> 1, 0 -> 2, 1 -> 4
+    ld b,1
+    inc a
+    jr z,VmCmp2
+    ld b,2
+    dec a
+    jr z,VmCmp2
+    ld b,4
+VmCmp2:
+    ld a,(AMY_UVAR_VmM)
+    and b
+    jr z,$+4
+    ld a,1
+    jp Fp_EB93
+VmNeg:
+    jp Fp_EED0
+VmIntF:
+    jp Fp_EC23
+VmExp:
+    jp Fp_EF09
+VmRnd:
+    jp Fp_EFAE
+VmSto:
+    call VmSkip2
+    ld c,e
+    ld b,d
+    jp Fp_EB2B
+VmTruth:
+    ld a,(FAC)
+    or a
+    jr z,$+4
+    ld a,1
+    ld (AMY_UVAR_VmT),a
+    ret
+; the whole part (QINT, as CONINT): VmT the low byte, VmW the low word
+VmWhole:
+    call Fp_EBF2
+    ld a,(FAC+4)
+    ld (AMY_UVAR_VmT),a
+    ld (AMY_UVAR_VmW),a
+    ld a,(FAC+3)
+    ld (AMY_UVAR_VmW+1),a
+    ret
+VmStr:
+    jp Fp_ED34
+; AND / OR of two truths (the listing only joins comparisons)
+VmAnd:
+    call VmPop
+    ld a,(ARG)
+    or a
+    jr z,VmFalse
+    ld a,(FAC)
+    or a
+    jr z,VmFalse
+VmTrue:
+    ld a,1
+    jp Fp_EB93
+VmFalse:
+    xor a
+    jp Fp_EB93
+VmOr:
+    call VmPop
+    ld a,(ARG)
+    or a
+    jr nz,VmTrue
+    ld a,(FAC)
+    or a
+    jr nz,VmTrue
+    jr VmFalse
+
+; ---------------------------------------------------------------------------
+; The Apple's screen for the lo-res pictures. The 40x24 text page (the
+; bytes the Apple keeps at $400, row after row) is kept in VRAM at LrPage;
+; HLIN, VLIN, PRINT and the lightning routine change it there as the
+; monitor did, then the changed blocks are shown: a block is 6x4 pixels
+; (x 8-247, lo-res rows 0-35 on y 8-151; rows 36-39 are grass under the
+; screen's edge), the mixed text lines 21-24 on tile rows 19-22.
+; Each 8-pixel byte holds parts of two blocks: the pattern bits say which
+; pixels are the second block (foreground), the colour byte gives both.
+LrPage  EQU $1B80
+VDPD    EQU $BE
+VDPC    EQU $BF
+
+; VWr: VRAM write address HL. VRd: read address HL. Both keep A.
+VWr:
+    push af
+    ld a,l
+    out (VDPC),a
+    ld a,h
+    or $40
+    out (VDPC),a
+    pop af
+    ret
+VRd:
+    push af
+    ld a,l
+    out (VDPC),a
+    ld a,h
+    and $3F
+    out (VDPC),a
+    pop af
+    ret
+
+; LrAddr: HL = the page byte of text row C, column B (0-based)
+LrAddr:
+    push de
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,hl
+    add hl,de          ; row * 40
+    ld e,b
+    ld d,0
+    add hl,de
+    ld de,LrPage
+    add hl,de
+    pop de
+    ret
+
+; LrPeek: A = page byte at row C, column B
+LrPeek:
+    call LrAddr
+    call VRd
+    nop
+    nop
+    nop
+    in a,(VDPD)
+    ret
+
+; LrPoke: page byte at row C, column B = A
+LrPoke:
+    call LrAddr
+    call VWr
+    out (VDPD),a
+    ret
+
+; Apple colour -> TMS9918 colour
+LrTms:
+    db 1, 13, 4, 13, 12, 14, 5, 7, 6, 8, 14, 9, 3, 11, 7, 15
+
+; LrNib: A = the colour of lo-res block B (column), E (row), as TMS colour
+LrNib:
+    push bc
+    ld c,e
+    srl c
+    call LrPeek
+    bit 0,e
+    jr z,LrNib2
+    rrca
+    rrca
+    rrca
+    rrca
+LrNib2:
+    and $0F
+    ld hl,LrTms
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    ld a,(hl)
+    pop bc
+    ret
+
+; LrByteCol: draws byte column D (0-29) for lo-res row E (0-35)
+LrByteCol:
+    ld a,e
+    cp 36
+    ret nc
+    push bc
+    push de
+    ; the two blocks: 4*(D/3) + D%3 and the next
+    ld a,d
+    ld c,0
+LrBc1:
+    cp 3
+    jr c,LrBc2
+    sub 3
+    inc c
+    jr LrBc1
+LrBc2:
+    ld b,a              ; k = D % 3
+    ld a,c
+    add a,a
+    add a,a
+    add a,b             ; block of the background
+    ld b,a
+    push bc
+    call LrNib
+    ld (AMY_UVAR_LrT),a
+    pop bc
+    inc b
+    call LrNib
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld hl,AMY_UVAR_LrT
+    or (hl)
+    ld (hl),a
+    pop de
+    push de
+    ; the cell: tile row 1 + E/2, pixel row (E & 1) * 4
+    ld a,e
+    srl a
+    inc a               ; tile row 1-18
+    ld c,a
+    and $07
+    ld b,a              ; row in its third
+    ld a,c
+    rrca
+    rrca
+    rrca
+    and $03             ; third
+    ld c,a
+    ; code = (third 2: 128) + row*30 + D
+    ld a,b
+    add a,a             ; *2
+    ld h,a
+    add a,a
+    add a,a
+    add a,a             ; *16
+    sub h               ; *14
+    add a,a             ; *28
+    add a,h             ; *30
+    add a,d
+    ld b,a
+    ld a,c
+    cp 2
+    jr nz,LrBc3
+    ld a,b
+    add a,128
+    ld b,a
+LrBc3:
+    ; address = $2000 + third*$800 + code*8 + (E & 1)*4
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,c
+    add a,a
+    add a,a
+    add a,a
+    add a,$20
+    add a,h
+    ld h,a
+    bit 0,e
+    jr z,LrBc4
+    ld a,l
+    add a,4
+    ld l,a
+LrBc4:
+    call VWr
+    ld a,(AMY_UVAR_LrT)
+    out (VDPD),a
+    nop
+    nop
+    nop
+    nop
+    nop
+    out (VDPD),a
+    nop
+    nop
+    nop
+    nop
+    out (VDPD),a
+    nop
+    nop
+    nop
+    nop
+    nop
+    out (VDPD),a
+    pop de
+    pop bc
+    ret
+
+; LrBlock: shows block B (column 0-39), E (row 0-47)
+LrBlock:
+    push bc
+    push de
+    ld a,b
+    add a,a
+    ld c,a
+    add a,a
+    add a,c             ; 6x (x < 40: fits a byte)
+    ld c,a
+    rrca
+    rrca
+    rrca
+    and $1F
+    ld d,a
+    call LrByteCol
+    ld a,c
+    add a,5
+    rrca
+    rrca
+    rrca
+    and $1F
+    cp d
+    jr z,LrBlk2
+    ld d,a
+    call LrByteCol
+LrBlk2:
+    pop de
+    pop bc
+    ret
+
+; LrRow: shows lo-res row E (all 30 byte columns)
+LrRow:
+    ld d,0
+LrRow2:
+    call LrByteCol
+    inc d
+    ld a,d
+    cp 30
+    jr c,LrRow2
+    ret
+
+; LrShowAll: the lo-res rows 0-35, from the page
+LrShowAll:
+    ld e,0
+LrSa2:
+    call LrRow
+    inc e
+    ld a,e
+    cp 36
+    jr c,LrSa2
+    ret
+
+; LrPlot: block B, E in COLOR (PLOT's mask: even rows the low nibble)
+LrPlot:
+    push bc
+    ld c,e
+    srl c
+    call LrPeek
+    ld d,a
+    ld a,(AMY_UVAR_Col)
+    bit 0,e
+    jr nz,LrPl2
+    and $0F
+    ld h,a
+    ld a,d
+    and $F0
+    jr LrPl3
+LrPl2:
+    and $F0
+    ld h,a
+    ld a,d
+    and $0F
+LrPl3:
+    or h
+    call LrPoke
+    pop bc
+    ld a,(AMY_UVAR_LrShow)
+    or a
+    ret z
+    jp LrBlock
+
+; LrHlin: HLIN Lx1,Lx2 AT Ly
+LrHlin:
+    ld a,(AMY_UVAR_Lx1)
+    ld b,a
+LrHl2:
+    ld a,(AMY_UVAR_Ly)
+    ld e,a
+    call LrPlot
+    ld a,(AMY_UVAR_Lx2)
+    cp b
+    ret z
+    inc b
+    jr LrHl2
+
+; LrVlin: VLIN Ly1,Ly2 AT Lx
+LrVlin:
+    ld a,(AMY_UVAR_Ly1)
+    ld e,a
+LrVl2:
+    ld a,(AMY_UVAR_Lx)
+    ld b,a
+    call LrPlot
+    ld a,(AMY_UVAR_Ly2)
+    cp e
+    ret z
+    inc e
+    jr LrVl2
+
+; LrClrTop: GR's CLRTOP, lo-res rows 0-39 black (page rows 0-19 = 0)
+LrClrTop:
+    ld hl,LrPage
+    call VWr
+    ld bc,800
+LrCt2:
+    xor a
+    out (VDPD),a
+    dec bc
+    ld a,b
+    or c
+    jr nz,LrCt2
+    ret
+
+; LrClrRow: page row C, columns WndL to WndL+WndW-1, spaces ($A0)
+LrClrRow:
+    ld a,(AMY_UVAR_WndL)
+    ld b,a
+    ld a,(AMY_UVAR_WndW)
+    ld d,a
+LrCr2:
+    ld a,$A0
+    call LrPoke
+    call LrShowCh
+    inc b
+    dec d
+    jr nz,LrCr2
+    ret
+
+; LrHome: HOME (the window cleared, the cursor at its top left)
+LrHome:
+    ld a,(AMY_UVAR_WndT)
+    ld c,a
+LrHo2:
+    ld a,(AMY_UVAR_WndB)
+    cp c
+    jr z,LrHo3
+    push bc
+    call LrClrRow
+    pop bc
+    inc c
+    jr LrHo2
+LrHo3:
+    xor a
+    ld (AMY_UVAR_Ch),a
+    ld a,(AMY_UVAR_WndT)
+    ld (AMY_UVAR_Cv),a
+    ret
+
+; LrShowCh: shows page byte B, C just written (A = the byte): a lo-res
+; row as its two blocks, a text line below as a letter (Apple column B on
+; tile column B - 5, kept to 2-29; tile row C - 1)
+LrShowCh:
+    push af
+    push bc
+    push de
+    push hl
+    and $7F
+    cp $20
+    jr nc,$+4
+    add a,$40
+    ld (AMY_UVAR_LrT2),a
+    ld a,(AMY_UVAR_LrShow)
+    or a
+    jr z,LrSc9
+    ld a,c
+    cp 20
+    jr nc,LrSc5
+    add a,a
+    ld e,a
+    call LrBlock
+    inc e
+    call LrBlock
+    jr LrSc9
+LrSc5:
+    ld a,(AMY_UVAR_LrNoTx)
+    or a
+    jr nz,LrSc9
+    ld a,b
+    sub 7
+    cp 28
+    jr nc,LrSc9
+    add a,2
+    ld e,a
+    ld d,0
+    ld a,c
+    dec a
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld de,$1800
+    add hl,de
+    call VWr
+    ld a,(AMY_UVAR_LrT2)
+    out (VDPD),a
+LrSc9:
+    pop hl
+    pop de
+    pop bc
+    pop af
+    ret
+
+; LrCout: the monitor's COUT1 for the byte in A (printing $A0-$FF, $8D CR)
+LrCout:
+    cp $8D
+    jr z,LrCr
+    cp $8A
+    jr z,LrLf
+    cp $A0
+    ret c
+    ld e,a
+    ld a,(AMY_UVAR_Cv)
+    ld c,a
+    ld a,(AMY_UVAR_WndL)
+    ld b,a
+    ld a,(AMY_UVAR_Ch)
+    add a,b
+    ld b,a
+    ld a,e
+    call LrPoke
+    call LrShowCh
+    ; ADVANCE
+    ld a,(AMY_UVAR_Ch)
+    inc a
+    ld (AMY_UVAR_Ch),a
+    ld hl,AMY_UVAR_WndW
+    cp (hl)
+    ret c
+LrCr:
+    xor a
+    ld (AMY_UVAR_Ch),a
+LrLf:
+    ld a,(AMY_UVAR_Cv)
+    inc a
+    ld (AMY_UVAR_Cv),a
+    ld hl,AMY_UVAR_WndB
+    cp (hl)
+    ret c
+    dec a
+    ld (AMY_UVAR_Cv),a
+    ; SCROLL: each window row takes the next one's bytes, the last is cleared
+    ld a,(AMY_UVAR_WndT)
+    ld c,a
+LrScr2:
+    ld a,c
+    inc a
+    ld hl,AMY_UVAR_WndB
+    cp (hl)
+    jr nc,LrScr4
+    ld a,(AMY_UVAR_WndL)
+    ld b,a
+    ld a,(AMY_UVAR_WndW)
+    ld d,a
+LrScr3:
+    inc c
+    call LrPeek
+    dec c
+    call LrPoke
+    call LrShowCh
+    inc b
+    dec d
+    jr nz,LrScr3
+    inc c
+    jr LrScr2
+LrScr4:
+    jp LrClrRow
+
+; LrLight: the listing's lightning routine at 803 (POKEd at 1401-1441):
+; in page rows 0 to WndT-1, the low nibbles equal to the old colour's
+; take the new colour's, then the high nibbles likewise; the new colour
+; becomes the old one. (CALL 800 only notes the old colour: LrOld.)
+LrLight:
+    ld c,0
+LrLi2:
+    ld a,(AMY_UVAR_WndT)
+    cp c
+    jr z,LrLi9
+    ld b,0
+LrLi3:
+    call LrPeek
+    ld d,a
+    and $0F
+    ld e,a
+    ld a,(AMY_UVAR_LrOld)
+    and $0F
+    cp e
+    jr nz,LrLi4
+    ld a,(AMY_UVAR_Col)
+    and $0F
+    ld e,a
+    ld a,d
+    and $F0
+    add a,e
+    ld d,a
+LrLi4:
+    ld a,d
+    and $F0
+    ld e,a
+    ld a,(AMY_UVAR_LrOld)
+    and $F0
+    cp e
+    jr nz,LrLi5
+    ld a,(AMY_UVAR_Col)
+    and $F0
+    ld e,a
+    ld a,d
+    and $0F
+    add a,e
+    ld d,a
+LrLi5:
+    ld a,d
+    call LrPoke
+    inc b
+    ld a,b
+    cp 40
+    jr c,LrLi3
+    inc c
+    jr LrLi2
+LrLi9:
+    ld a,(AMY_UVAR_Col)
+    ld (AMY_UVAR_LrOld),a
+    ld a,(AMY_UVAR_LrShow)
+    or a
+    ret z
+    jp LrShowAll
+
+; LrPrep: the VRAM for the lo-res screen: names, the three masks as
+; patterns, black colours (shown with the display off)
+LrPrep:
+    ; names: rows 0 and 23 and columns 0 and 31 blank, the rest by cell
+    ld hl,$1800
+    call VWr
+    ld c,0              ; tile row
+LrPp1:
+    ld b,0              ; tile column
+LrPp2:
+    ld a,c
+    or a
+    jr z,LrPpBl
+    cp 19
+    jr nc,LrPpTx
+    ld a,b
+    or a
+    jr z,LrPpBl
+    cp 31
+    jr z,LrPpBl
+    ; code = row-in-third*30 + column-1 (+128 in the last third)
+    ld a,c
+    and 7
+    ld e,a
+    add a,a
+    ld d,a
+    add a,a
+    add a,a
+    add a,a
+    sub d
+    add a,a
+    add a,d
+    add a,b
+    dec a
+    ld e,a
+    ld a,c
+    cp 16
+    ld a,e
+    jr c,LrPp3
+    add a,128
+LrPp3:
+    out (VDPD),a
+    jr LrPp4
+LrPpBl:
+    ld a,c
+    cp 16
+    ld a,255
+    jr c,LrPp3
+    ld a,32
+    jr LrPp3
+LrPpTx:
+    ld a,32
+    out (VDPD),a
+LrPp4:
+    inc b
+    ld a,b
+    cp 32
+    jr c,LrPp2
+    inc c
+    ld a,c
+    cp 24
+    jr c,LrPp1
+    ; patterns: thirds 0 and 1 codes 0-255, third 2 codes 128-255; a lo-res
+    ; cell's index i (code, -128 in the last third) has the mask of its
+    ; byte column (i mod 30) mod 3; i >= 240 (or >= 90 below) is blank
+    ld hl,0
+    call VWr
+    ld e,0
+LrPp5:
+    ld b,0
+LrPp6:
+    ld a,b
+    call LrMask
+    call LrOut8
+    inc b
+    jr nz,LrPp6
+    inc e
+    ld a,e
+    cp 2
+    jr c,LrPp5
+    ld hl,$1000+128*8
+    call VWr
+    ld b,0
+LrPp7:
+    ld a,b
+    cp 90
+    ld a,0
+    jr nc,LrPp8
+    ld a,b
+    call LrMask
+LrPp8:
+    call LrOut8
+    inc b
+    ld a,b
+    cp 128
+    jr c,LrPp7
+    ; colours: black (1 on 1) for the lo-res codes, the font's white on black
+    ld hl,$2000
+    call VWr
+    ld de,$1800
+LrPpF:
+    ld a,$11
+    out (VDPD),a
+    dec de
+    ld a,d
+    or e
+    jr nz,LrPpF
+    ld hl,$3000+32*8
+    call VWr
+    ld de,64*8
+LrPpG:
+    ld a,$F1
+    out (VDPD),a
+    dec de
+    ld a,d
+    or e
+    jr nz,LrPpG
+    ret
+
+; LrMask: A = the pattern byte of lo-res cell index A (0 when >= 240)
+LrMask:
+    cp 240
+    jr c,LrMk1
+    xor a
+    ret
+LrMk1:
+    cp 30
+    jr c,LrMk2
+    sub 30
+    jr LrMk1
+LrMk2:
+    cp 3
+    jr c,LrMk3
+    sub 3
+    jr LrMk2
+LrMk3:
+    or a
+    jr nz,LrMk4
+    ld a,$03
+    ret
+LrMk4:
+    dec a
+    ld a,$0F
+    ret z
+    ld a,$3F
+    ret
+; LrOut8: A out 8 times
+LrOut8:
+    push bc
+    ld b,8
+LrO8:
+    out (VDPD),a
+    nop
+    djnz LrO8
+    pop bc
+    ret
+
+; ---------------------------------------------------------------------------
+; The text screens: a console on columns 2-29, rows TxTop-22, that wraps
+; between words (the Apple's 40 columns don't fit; the words keep their
+; order) and scrolls its window as the Apple's did.
+;   TxStr HL: a string ending in 0 (13 = new line, 1 = blank line)
+;   TxNl: new line; TxHome: the window cleared, cursor at its top
+TXL     EQU 2
+TXR     EQU 30
+
+; TxName: HL = the name table address of TxX, TxY
+TxName:
+    ld a,(AMY_UVAR_TxY)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_TxX)
+    add a,l
+    ld l,a
+    ld a,h
+    adc a,$18
+    ld h,a
+    ret
+
+; TxOut: the letter in A at the cursor, then the cursor moves right
+TxOut:
+    push af
+    ld a,(AMY_UVAR_TxX)
+    cp TXR
+    call nc,TxNl
+    call TxName
+    call VWr
+    pop af
+    out (VDPD),a
+    ld hl,AMY_UVAR_TxX
+    inc (hl)
+    ret
+
+TxNl:
+    push af
+    push bc
+    push de
+    push hl
+    ld a,TXL
+    ld (AMY_UVAR_TxX),a
+    ld a,(AMY_UVAR_TxY)
+    inc a
+    cp 23
+    jr c,TxNl2
+    call TxScroll
+    ld a,22
+TxNl2:
+    ld (AMY_UVAR_TxY),a
+    pop hl
+    pop de
+    pop bc
+    pop af
+    ret
+
+; TxScroll: rows TxTop+1-22 up one, row 22 blank
+TxScroll:
+    ld a,(AMY_UVAR_TxTop)
+    ld c,a
+TxSc2:
+    ld a,c
+    cp 22
+    jr nc,TxSc4
+    ; read row c+1 into TxLine, write it on row c
+    ld a,c
+    inc a
+    call TxRowAddr
+    call VRd
+    ld hl,AMY_UVAR_TxLine
+    ld b,32
+TxSc3:
+    nop
+    nop
+    nop
+    in a,(VDPD)
+    ld (hl),a
+    inc hl
+    djnz TxSc3
+    ld a,c
+    call TxRowAddr
+    call VWr
+    ld hl,AMY_UVAR_TxLine
+    ld b,32
+TxSc5:
+    ld a,(hl)
+    out (VDPD),a
+    inc hl
+    nop
+    djnz TxSc5
+    inc c
+    jr TxSc2
+TxSc4:
+    ld a,22
+    jp TxBlankRow
+
+; TxRowAddr: HL = name table address of row A, column 0
+TxRowAddr:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,h
+    add a,$18
+    ld h,a
+    ret
+
+; TxBlankRow: row A all spaces
+TxBlankRow:
+    call TxRowAddr
+    call VWr
+    ld b,32
+    ld a,32
+TxBr2:
+    out (VDPD),a
+    nop
+    nop
+    djnz TxBr2
+    ret
+
+; TxHome: rows TxTop-22 cleared, the cursor at TxTop, column 2
+TxHome:
+    ld a,(AMY_UVAR_TxTop)
+TxHo2:
+    cp 23
+    jr nc,TxHo3
+    push af
+    call TxBlankRow
+    pop af
+    inc a
+    jr TxHo2
+TxHo3:
+    ld a,(AMY_UVAR_TxTop)
+    ld (AMY_UVAR_TxY),a
+    ld a,TXL
+    ld (AMY_UVAR_TxX),a
+    ret
+
+; TxClrEop: from the cursor to the end of the window (CALL -958)
+TxClrEop:
+    call TxName
+    call VWr
+    ld a,(AMY_UVAR_TxX)
+    ld b,a
+    ld a,32
+    sub b
+    ld b,a
+    ld a,32
+TxCe2:
+    out (VDPD),a
+    nop
+    nop
+    djnz TxCe2
+    ld a,(AMY_UVAR_TxY)
+TxCe3:
+    inc a
+    cp 23
+    ret nc
+    push af
+    call TxBlankRow
+    pop af
+    jr TxCe3
+
+; TxStr: prints the string at HL, wrapping between words
+TxStr:
+    ld a,(hl)
+    or a
+    ret z
+    cp 13
+    jr nz,TxSt2
+    inc hl
+    push hl
+    call TxNl
+    pop hl
+    jr TxStr
+TxSt2:
+    cp 1
+    jr nz,TxSt3
+    inc hl
+    push hl
+    call TxNl
+    call TxNl
+    pop hl
+    jr TxStr
+TxSt3:
+    cp 32
+    jr nz,TxSt4
+    ; a space: at the start of a wrapped line it is left out
+    inc hl
+    ld a,(AMY_UVAR_TxX)
+    cp TXR
+    jr nc,TxStr
+    push hl
+    ld a,32
+    call TxOut
+    pop hl
+    jr TxStr
+TxSt4:
+    ; a word: its length, then a new line first if it doesn't fit
+    push hl
+    ld b,0
+TxSt5:
+    ld a,(hl)
+    or a
+    jr z,TxSt6
+    cp 32
+    jr z,TxSt6
+    cp 13
+    jr z,TxSt6
+    cp 1
+    jr z,TxSt6
+    inc b
+    inc hl
+    jr TxSt5
+TxSt6:
+    ld a,(AMY_UVAR_TxX)
+    add a,b
+    cp TXR+1
+    jr c,TxSt7
+    ld a,(AMY_UVAR_TxX)
+    cp TXL
+    call nz,TxNl
+TxSt7:
+    pop hl
+TxSt8:
+    ld a,(hl)
+    or a
+    ret z
+    cp 32
+    jr z,TxStr
+    cp 13
+    jr z,TxStr
+    cp 1
+    jr z,TxStr
+    push hl
+    call TxOut
+    pop hl
+    inc hl
+    jr TxSt8
+
+; TxPad: spaces up to column A (TAB)
+TxPad:
+    ld b,a
+TxPd2:
+    ld a,(AMY_UVAR_TxX)
+    cp b
+    ret nc
+    push bc
+    ld a,32
+    call TxOut
+    pop bc
+    jr TxPd2
+
+; TxU16: the whole number in DE, as PRINT shows it
+TxU16:
+    ld hl,AMY_UVAR_TxNum+5
+    ld (hl),0
+TxU2:
+    dec hl
+    push hl
+    ex de,hl
+    ld c,10
+    call TxDiv
+    ex de,hl
+    pop hl
+    add a,48
+    ld (hl),a
+    ld a,d
+    or e
+    jr nz,TxU2
+    jp TxStr
+; HL = HL / C, A = remainder
+TxDiv:
+    xor a
+    ld b,16
+TxDv2:
+    add hl,hl
+    rla
+    cp c
+    jr c,TxDv3
+    sub c
+    inc l
+TxDv3:
+    djnz TxDv2
+    ret
+
+; ---------------------------------------------------------------------------
+; The listing's tone routine (POKEd at 770 by line 781): a square wave of
+; half period 10P + 10 + 7P/256 Apple cycles for J units of 2567 +
+; 2560/P cycles (P 0 counts as 256), played here on channel 0 for the same
+; time (the tables are made by tune.py). The Apple did nothing else while
+; it played, so neither does this.
+SNDP    EQU $FF
+; Tone: pitch TnP, length TnJ
+Tone:
+    ld a,(AMY_UVAR_TnP)
+    ld l,a
+    ld h,0
+    add hl,hl
+    push hl
+    ld de,TnDiv
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld a,e
+    and $0F
+    or $80
+    out (SNDP),a
+    ld a,e
+    srl d
+    rra
+    srl d
+    rra
+    srl d
+    rra
+    srl d
+    rra
+    and $3F
+    out (SNDP),a
+    ld a,$90
+    out (SNDP),a
+    pop hl
+    ld de,TnLoop
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld a,(AMY_UVAR_TnJ)
+    ld c,a
+TnUnit:
+    ld h,d
+    ld l,e
+TnSpin:
+    dec hl
+    ld a,h
+    or l
+    jp nz,TnSpin
+    dec c
+    jr nz,TnUnit
+    ld a,$9F
+    out (SNDP),a
+    ret
+
+; Hush: all four channels off
+Hush:
+    ld a,$9F
+    out (SNDP),a
+    ld a,$BF
+    out (SNDP),a
+    ld a,$DF
+    out (SNDP),a
+    ld a,$FF
+    out (SNDP),a
+    ret
+
+; Bell: the monitor's BELL (CHR$(7)): 11 ms quiet, then 192 half waves of
+; 545 cycles (about 940 Hz for 0.1 s)
+Bell:
+    ld hl,1630
+    call SpinHL
+    ld a,$80+7
+    out (SNDP),a
+    ld a,7
+    out (SNDP),a
+    ld a,$90
+    out (SNDP),a
+    ld hl,15300
+    call SpinHL
+    ld a,$9F
+    out (SNDP),a
+    ret
+
+; SpinHL: HL times 24 cycles
+SpinHL:
+    dec hl
+    ld a,h
+    or l
+    jp nz,SpinHL
+    ret
+
+; Loops: the time of AMY_UVAR_LpN empty FOR loops of Applesoft (about 0.95 ms
+; each: 3330 Z80 cycles)
+Loops:
+    ld hl,(AMY_UVAR_LpN)
+    ld a,h
+    or l
+    ret z
+Lp2:
+    push hl
+    ld hl,138
+    call SpinHL
+    pop hl
+    dec hl
+    ld a,h
+    or l
+    jr nz,Lp2
+    ret
+
+; generated by tune.py: the tone routine's divider and length
+TnDiv:
+    dw 565,4,7,9,11,13,15,18,20,22,24,26,29,31,33,35
+    dw 37,40,42,44,46,48,51,53,55,57,59,62,64,66,68,70
+    dw 73,75,77,79,81,84,86,88,90,92,95,97,99,101,103,106
+    dw 108,110,112,114,117,119,121,123,125,127,130,132,134,136,138,141
+    dw 143,145,147,149,152,154,156,158,160,163,165,167,169,171,174,176
+    dw 178,180,182,185,187,189,191,193,196,198,200,202,204,207,209,211
+    dw 213,215,218,220,222,224,226,229,231,233,235,237,240,242,244,246
+    dw 248,251,253,255,257,259,262,264,266,268,270,273,275,277,279,281
+    dw 284,286,288,290,292,295,297,299,301,303,306,308,310,312,314,317
+    dw 319,321,323,325,328,330,332,334,336,339,341,343,345,347,350,352
+    dw 354,356,358,361,363,365,367,369,372,374,376,378,380,382,385,387
+    dw 389,391,393,396,398,400,402,404,407,409,411,413,415,418,420,422
+    dw 424,426,429,431,433,435,437,440,442,444,446,448,451,453,455,457
+    dw 459,462,464,466,468,470,473,475,477,479,481,484,486,488,490,492
+    dw 495,497,499,501,503,506,508,510,512,514,517,519,521,523,525,528
+    dw 530,532,534,536,539,541,543,545,547,550,552,554,556,558,561,563
+TnLoop:
+    dw 377,749,562,500,469,450,438,429,422,417,413,409,406,404,402,400
+    dw 399,397,396,395,394,393,392,391,391,390,390,389,389,388,388,387
+    dw 387,387,386,386,386,385,385,385,385,384,384,384,384,383,383,383
+    dw 383,383,383,383,382,382,382,382,382,382,382,382,381,381,381,381
+    dw 381,381,381,381,381,381,381,380,380,380,380,380,380,380,380,380
+    dw 380,380,380,380,380,380,380,379,379,379,379,379,379,379,379,379
+    dw 379,379,379,379,379,379,379,379,379,379,379,379,379,379,379,379
+    dw 379,378,378,378,378,378,378,378,378,378,378,378,378,378,378,378
+    dw 378,378,378,378,378,378,378,378,378,378,378,378,378,378,378,378
+    dw 378,378,378,378,378,378,378,378,378,378,378,378,378,378,378,378
+    dw 378,378,377,377,377,377,377,377,377,377,377,377,377,377,377,377
+    dw 377,377,377,377,377,377,377,377,377,377,377,377,377,377,377,377
+    dw 377,377,377,377,377,377,377,377,377,377,377,377,377,377,377,377
+    dw 377,377,377,377,377,377,377,377,377,377,377,377,377,377,377,377
+    dw 377,377,377,377,377,377,377,377,377,377,377,377,377,377,377,377
+    dw 377,377,377,377,377,377,377,377,377,377,377,377,377,377,377,377
+
+; Applesoft II floating point, translated to Z80 by xlate.py
+Fp_E7A0:
+    ld hl,FpD_EE64
+    ld a,l
+    ld b,h
+Fp_E7A2:
+Fp_E7A4:
+    jp Fp_E7BE
+Fp_E7A7:
+    call Fp_E9E3
+Fp_E7AA:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_E7AC:
+    jr c,FpL1
+    xor 255
+    jr FpL2
+FpL1:
+    xor 255
+    scf
+FpL2:
+Fp_E7AE:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_E7B0:
+    ld hl,AMY_UVAR_FpZ+76
+    jr c,FpL3
+    xor (hl)
+    jr FpL4
+FpL3:
+    xor (hl)
+    scf
+FpL4:
+Fp_E7B2:
+    ld (AMY_UVAR_FpZ+77),a
+Fp_E7B4:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_E7B6:
+    jp Fp_E7C1
+Fp_E7B9:
+    call Fp_E8F0
+Fp_E7BC:
+    jp nc,Fp_E7FA
+Fp_E7BE:
+    call Fp_E9E3
+Fp_E7C1:
+    jp nz,Fp_E7C6
+Fp_E7C3:
+    jp Fp_EB53
+Fp_E7C6:
+    ld hl,AMY_UVAR_FpZ+78
+    ld c,(hl)
+Fp_E7C8:
+    ld hl,AMY_UVAR_FpZ+52
+    ld (hl),c
+Fp_E7CA:
+    ld c,165
+Fp_E7CC:
+    ld a,(AMY_UVAR_FpZ+71)
+Fp_E7CE:
+    ld b,a
+    inc b
+    dec b
+Fp_E7CF:
+    jp z,FpRet
+Fp_E7D1:
+    scf
+Fp_E7D2:
+    ld hl,AMY_UVAR_FpZ+63
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_E7D4:
+    jp z,Fp_E7FA
+Fp_E7D6:
+    jp nc,Fp_E7EA
+Fp_E7D8:
+    ld hl,AMY_UVAR_FpZ+63
+    ld (hl),b
+Fp_E7DA:
+    ld hl,AMY_UVAR_FpZ+76
+    ld b,(hl)
+Fp_E7DC:
+    ld hl,AMY_UVAR_FpZ+68
+    ld (hl),b
+Fp_E7DE:
+    jr c,FpL5
+    xor 255
+    jr FpL6
+FpL5:
+    xor 255
+    scf
+FpL6:
+Fp_E7E0:
+    adc a,0
+Fp_E7E2:
+    ld b,0
+Fp_E7E4:
+    ld hl,AMY_UVAR_FpZ+52
+    ld (hl),b
+Fp_E7E6:
+    ld c,157
+    inc c
+    dec c
+Fp_E7E8:
+    jp nz,Fp_E7EE
+Fp_E7EA:
+    ld b,0
+Fp_E7EC:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),b
+Fp_E7EE:
+    cp 249
+    ccf
+Fp_E7F0:
+    jp m,Fp_E7B9
+Fp_E7F2:
+    ld b,a
+Fp_E7F3:
+    ld a,(AMY_UVAR_FpZ+78)
+Fp_E7F5:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    srl (hl)
+Fp_E7F7:
+    call Fp_E907
+Fp_E7FA:
+    ld hl,AMY_UVAR_FpZ+77
+    ld e,a
+    ld a,(hl)
+    inc a
+    dec a
+    ld a,e
+Fp_E7FC:
+    jp p,Fp_E855
+Fp_E7FE:
+    ld b,157
+Fp_E800:
+    ld e,a
+    ld a,c
+    cp 165
+    ld a,e
+Fp_E802:
+    jp z,Fp_E806
+Fp_E804:
+    ld b,165
+Fp_E806:
+    scf
+Fp_E807:
+    jr c,FpL7
+    xor 255
+    jr FpL8
+FpL7:
+    xor 255
+    scf
+FpL8:
+Fp_E809:
+    ld hl,AMY_UVAR_FpZ+52
+    adc a,(hl)
+Fp_E80B:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_E80D:
+    push af
+    ld a,b
+    add a,4
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_E810:
+    push af
+    ld a,c
+    add a,4
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_E812:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_E814:
+    push af
+    ld a,b
+    add a,3
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_E817:
+    push af
+    ld a,c
+    add a,3
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_E819:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_E81B:
+    push af
+    ld a,b
+    add a,2
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_E81E:
+    push af
+    ld a,c
+    add a,2
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_E820:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_E822:
+    push af
+    ld a,b
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_E825:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_E827:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_E829:
+    jp c,Fp_E82E
+Fp_E82B:
+    call Fp_E89E
+Fp_E82E:
+    ld b,0
+Fp_E830:
+    ld a,b
+Fp_E831:
+    scf
+    ccf
+Fp_E832:
+    ld hl,AMY_UVAR_FpZ+64
+    ld c,(hl)
+    inc c
+    dec c
+Fp_E834:
+    jp nz,Fp_E880
+Fp_E836:
+    ld hl,AMY_UVAR_FpZ+65
+    ld c,(hl)
+Fp_E838:
+    ld hl,AMY_UVAR_FpZ+64
+    ld (hl),c
+Fp_E83A:
+    ld hl,AMY_UVAR_FpZ+66
+    ld c,(hl)
+Fp_E83C:
+    ld hl,AMY_UVAR_FpZ+65
+    ld (hl),c
+Fp_E83E:
+    ld hl,AMY_UVAR_FpZ+67
+    ld c,(hl)
+Fp_E840:
+    ld hl,AMY_UVAR_FpZ+66
+    ld (hl),c
+Fp_E842:
+    ld hl,AMY_UVAR_FpZ+78
+    ld c,(hl)
+Fp_E844:
+    ld hl,AMY_UVAR_FpZ+67
+    ld (hl),c
+Fp_E846:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),b
+Fp_E848:
+    adc a,8
+Fp_E84A:
+    cp 32
+    ccf
+Fp_E84C:
+    jp nz,Fp_E832
+Fp_E84E:
+    ld a,0
+    inc a
+    dec a
+Fp_E850:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_E852:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_E854:
+    ret
+Fp_E855:
+    ld hl,AMY_UVAR_FpZ+52
+    adc a,(hl)
+Fp_E857:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_E859:
+    ld a,(AMY_UVAR_FpZ+67)
+Fp_E85B:
+    ld hl,AMY_UVAR_FpZ+75
+    adc a,(hl)
+Fp_E85D:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_E85F:
+    ld a,(AMY_UVAR_FpZ+66)
+Fp_E861:
+    ld hl,AMY_UVAR_FpZ+74
+    adc a,(hl)
+Fp_E863:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_E865:
+    ld a,(AMY_UVAR_FpZ+65)
+Fp_E867:
+    ld hl,AMY_UVAR_FpZ+73
+    adc a,(hl)
+Fp_E869:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_E86B:
+    ld a,(AMY_UVAR_FpZ+64)
+Fp_E86D:
+    ld hl,AMY_UVAR_FpZ+72
+    adc a,(hl)
+Fp_E86F:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_E871:
+    jp Fp_E88D
+Fp_E874:
+    adc a,1
+Fp_E876:
+    ld hl,AMY_UVAR_FpZ+78
+    sla (hl)
+Fp_E878:
+    ld hl,AMY_UVAR_FpZ+67
+    rl (hl)
+Fp_E87A:
+    ld hl,AMY_UVAR_FpZ+66
+    rl (hl)
+Fp_E87C:
+    ld hl,AMY_UVAR_FpZ+65
+    rl (hl)
+Fp_E87E:
+    ld hl,AMY_UVAR_FpZ+64
+    rl (hl)
+Fp_E880:
+    jp p,Fp_E874
+Fp_E882:
+    scf
+Fp_E883:
+    ld hl,AMY_UVAR_FpZ+63
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_E885:
+    jp c,Fp_E84E
+Fp_E887:
+    jr c,FpL9
+    xor 255
+    jr FpL10
+FpL9:
+    xor 255
+    scf
+FpL10:
+Fp_E889:
+    adc a,1
+Fp_E88B:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_E88D:
+    jp nc,Fp_E89D
+Fp_E88F:
+    ld hl,AMY_UVAR_FpZ+63
+    inc (hl)
+Fp_E891:
+    jp z,Fp_E8D5
+Fp_E893:
+    ld hl,AMY_UVAR_FpZ+64
+    rr (hl)
+Fp_E895:
+    ld hl,AMY_UVAR_FpZ+65
+    rr (hl)
+Fp_E897:
+    ld hl,AMY_UVAR_FpZ+66
+    rr (hl)
+Fp_E899:
+    ld hl,AMY_UVAR_FpZ+67
+    rr (hl)
+Fp_E89B:
+    ld hl,AMY_UVAR_FpZ+78
+    rr (hl)
+Fp_E89D:
+    ret
+Fp_E89E:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_E8A0:
+    jr c,FpL11
+    xor 255
+    jr FpL12
+FpL11:
+    xor 255
+    scf
+FpL12:
+Fp_E8A2:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_E8A4:
+    ld a,(AMY_UVAR_FpZ+64)
+Fp_E8A6:
+    jr c,FpL13
+    xor 255
+    jr FpL14
+FpL13:
+    xor 255
+    scf
+FpL14:
+Fp_E8A8:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_E8AA:
+    ld a,(AMY_UVAR_FpZ+65)
+Fp_E8AC:
+    jr c,FpL15
+    xor 255
+    jr FpL16
+FpL15:
+    xor 255
+    scf
+FpL16:
+Fp_E8AE:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_E8B0:
+    ld a,(AMY_UVAR_FpZ+66)
+Fp_E8B2:
+    jr c,FpL17
+    xor 255
+    jr FpL18
+FpL17:
+    xor 255
+    scf
+FpL18:
+Fp_E8B4:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_E8B6:
+    ld a,(AMY_UVAR_FpZ+67)
+Fp_E8B8:
+    jr c,FpL19
+    xor 255
+    jr FpL20
+FpL19:
+    xor 255
+    scf
+FpL20:
+Fp_E8BA:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_E8BC:
+    ld a,(AMY_UVAR_FpZ+78)
+Fp_E8BE:
+    jr c,FpL21
+    xor 255
+    jr FpL22
+FpL21:
+    xor 255
+    scf
+FpL22:
+Fp_E8C0:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_E8C2:
+    ld hl,AMY_UVAR_FpZ+78
+    inc (hl)
+Fp_E8C4:
+    jp nz,Fp_E8D4
+Fp_E8C6:
+    ld hl,AMY_UVAR_FpZ+67
+    inc (hl)
+Fp_E8C8:
+    jp nz,Fp_E8D4
+Fp_E8CA:
+    ld hl,AMY_UVAR_FpZ+66
+    inc (hl)
+Fp_E8CC:
+    jp nz,Fp_E8D4
+Fp_E8CE:
+    ld hl,AMY_UVAR_FpZ+65
+    inc (hl)
+Fp_E8D0:
+    jp nz,Fp_E8D4
+Fp_E8D2:
+    ld hl,AMY_UVAR_FpZ+64
+    inc (hl)
+Fp_E8D4:
+    ret
+Fp_E8D5:
+    ld c,69
+    inc c
+    dec c
+Fp_E8D7:
+    jp FpError
+Fp_E8DA:
+    ld c,97
+Fp_E8DC:
+    push af
+    ld a,c
+    add a,4
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld b,(hl)
+Fp_E8DE:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),b
+Fp_E8E0:
+    push af
+    ld a,c
+    add a,3
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld b,(hl)
+Fp_E8E2:
+    push af
+    ld a,c
+    add a,4
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),b
+Fp_E8E4:
+    push af
+    ld a,c
+    add a,2
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld b,(hl)
+Fp_E8E6:
+    push af
+    ld a,c
+    add a,3
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),b
+Fp_E8E8:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld b,(hl)
+Fp_E8EA:
+    push af
+    ld a,c
+    add a,2
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),b
+Fp_E8EC:
+    ld hl,AMY_UVAR_FpZ+70
+    ld b,(hl)
+Fp_E8EE:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),b
+Fp_E8F0:
+    adc a,8
+Fp_E8F2:
+    jp m,Fp_E8DC
+Fp_E8F4:
+    jp z,Fp_E8DC
+Fp_E8F6:
+    ccf
+    sbc a,8
+    ccf
+Fp_E8F8:
+    ld b,a
+Fp_E8F9:
+    ld a,(AMY_UVAR_FpZ+78)
+    inc a
+    dec a
+Fp_E8FB:
+    jp c,Fp_E911
+Fp_E8FD:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    sla (hl)
+Fp_E8FF:
+    jp nc,Fp_E903
+Fp_E901:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    inc (hl)
+Fp_E903:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    rr (hl)
+Fp_E905:
+    push af
+    ld a,c
+    add a,1
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    rr (hl)
+Fp_E907:
+    push af
+    ld a,c
+    add a,2
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    rr (hl)
+Fp_E909:
+    push af
+    ld a,c
+    add a,3
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    rr (hl)
+Fp_E90B:
+    push af
+    ld a,c
+    add a,4
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    rr (hl)
+Fp_E90D:
+    rr a
+Fp_E90E:
+    inc b
+Fp_E90F:
+    jp nz,Fp_E8FD
+Fp_E911:
+    scf
+    ccf
+Fp_E912:
+    ret
+Fp_E941:
+    call Fp_EB82
+Fp_E944:
+    jp z,Fp_E948
+Fp_E946:
+    jp p,Fp_E94B
+Fp_E948:
+    jp FpError
+Fp_E94B:
+    ld a,(AMY_UVAR_FpZ+63)
+Fp_E94D:
+    ccf
+    sbc a,127
+    ccf
+Fp_E94F:
+    push af
+Fp_E950:
+    ld a,128
+Fp_E952:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_E954:
+    ld hl,FpD_E92D
+    ld a,l
+    ld b,h
+Fp_E956:
+Fp_E958:
+    call Fp_E7BE
+Fp_E95B:
+    ld hl,FpD_E932
+    ld a,l
+    ld b,h
+Fp_E95D:
+Fp_E95F:
+    call Fp_EA66
+Fp_E962:
+    ld hl,FpD_E913
+    ld a,l
+    ld b,h
+Fp_E964:
+Fp_E966:
+    call Fp_E7A7
+Fp_E969:
+    ld hl,FpD_E918
+    ld a,l
+    ld b,h
+Fp_E96B:
+Fp_E96D:
+    call Fp_EF5C
+Fp_E970:
+    ld hl,FpD_E937
+    ld a,l
+    ld b,h
+Fp_E972:
+Fp_E974:
+    call Fp_E7BE
+Fp_E977:
+    pop de
+    ld a,d
+    inc a
+    dec a
+Fp_E978:
+    call Fp_ECD5
+Fp_E97B:
+    ld hl,FpD_E93C
+    ld a,l
+    ld b,h
+Fp_E97D:
+Fp_E97F:
+    call Fp_E9E3
+Fp_E982:
+    jp nz,Fp_E987
+Fp_E984:
+    jp Fp_E9E2
+Fp_E987:
+    call Fp_EA0E
+Fp_E98A:
+    ld a,0
+Fp_E98C:
+    ld (AMY_UVAR_FpZ+4),a
+Fp_E98E:
+    ld (AMY_UVAR_FpZ+5),a
+Fp_E990:
+    ld (AMY_UVAR_FpZ+6),a
+Fp_E992:
+    ld (AMY_UVAR_FpZ+7),a
+Fp_E994:
+    ld a,(AMY_UVAR_FpZ+78)
+    inc a
+    dec a
+Fp_E996:
+    call Fp_E9B0
+Fp_E999:
+    ld a,(AMY_UVAR_FpZ+67)
+    inc a
+    dec a
+Fp_E99B:
+    call Fp_E9B0
+Fp_E99E:
+    ld a,(AMY_UVAR_FpZ+66)
+    inc a
+    dec a
+Fp_E9A0:
+    call Fp_E9B0
+Fp_E9A3:
+    ld a,(AMY_UVAR_FpZ+65)
+    inc a
+    dec a
+Fp_E9A5:
+    call Fp_E9B0
+Fp_E9A8:
+    ld a,(AMY_UVAR_FpZ+64)
+    inc a
+    dec a
+Fp_E9AA:
+    call Fp_E9B5
+Fp_E9AD:
+    jp Fp_EAE6
+Fp_E9B0:
+    jp nz,Fp_E9B5
+Fp_E9B2:
+    jp Fp_E8DA
+Fp_E9B5:
+    srl a
+Fp_E9B6:
+    jr c,FpL23
+    or 128
+    jr FpL24
+FpL23:
+    or 128
+    scf
+FpL24:
+Fp_E9B8:
+    ld b,a
+Fp_E9B9:
+    jp nc,Fp_E9D4
+Fp_E9BB:
+    scf
+    ccf
+Fp_E9BC:
+    ld a,(AMY_UVAR_FpZ+7)
+Fp_E9BE:
+    ld hl,AMY_UVAR_FpZ+75
+    adc a,(hl)
+Fp_E9C0:
+    ld (AMY_UVAR_FpZ+7),a
+Fp_E9C2:
+    ld a,(AMY_UVAR_FpZ+6)
+Fp_E9C4:
+    ld hl,AMY_UVAR_FpZ+74
+    adc a,(hl)
+Fp_E9C6:
+    ld (AMY_UVAR_FpZ+6),a
+Fp_E9C8:
+    ld a,(AMY_UVAR_FpZ+5)
+Fp_E9CA:
+    ld hl,AMY_UVAR_FpZ+73
+    adc a,(hl)
+Fp_E9CC:
+    ld (AMY_UVAR_FpZ+5),a
+Fp_E9CE:
+    ld a,(AMY_UVAR_FpZ+4)
+Fp_E9D0:
+    ld hl,AMY_UVAR_FpZ+72
+    adc a,(hl)
+Fp_E9D2:
+    ld (AMY_UVAR_FpZ+4),a
+Fp_E9D4:
+    ld hl,AMY_UVAR_FpZ+4
+    rr (hl)
+Fp_E9D6:
+    ld hl,AMY_UVAR_FpZ+5
+    rr (hl)
+Fp_E9D8:
+    ld hl,AMY_UVAR_FpZ+6
+    rr (hl)
+Fp_E9DA:
+    ld hl,AMY_UVAR_FpZ+7
+    rr (hl)
+Fp_E9DC:
+    ld hl,AMY_UVAR_FpZ+78
+    rr (hl)
+Fp_E9DE:
+    ld a,b
+Fp_E9DF:
+    srl a
+Fp_E9E0:
+    jp nz,Fp_E9B8
+Fp_E9E2:
+    ret
+Fp_E9E3:
+    ld (AMY_UVAR_FpZ+0),a
+Fp_E9E5:
+    ld hl,AMY_UVAR_FpZ+1
+    ld (hl),b
+Fp_E9E7:
+    ld b,4
+Fp_E9E9:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_E9EB:
+    ld (AMY_UVAR_FpZ+75),a
+Fp_E9ED:
+    dec b
+Fp_E9EE:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_E9F0:
+    ld (AMY_UVAR_FpZ+74),a
+Fp_E9F2:
+    dec b
+Fp_E9F3:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_E9F5:
+    ld (AMY_UVAR_FpZ+73),a
+Fp_E9F7:
+    dec b
+Fp_E9F8:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_E9FA:
+    ld (AMY_UVAR_FpZ+76),a
+Fp_E9FC:
+    ld hl,AMY_UVAR_FpZ+68
+    jr c,FpL25
+    xor (hl)
+    jr FpL26
+FpL25:
+    xor (hl)
+    scf
+FpL26:
+Fp_E9FE:
+    ld (AMY_UVAR_FpZ+77),a
+Fp_EA00:
+    ld a,(AMY_UVAR_FpZ+76)
+Fp_EA02:
+    jr c,FpL27
+    or 128
+    jr FpL28
+FpL27:
+    or 128
+    scf
+FpL28:
+Fp_EA04:
+    ld (AMY_UVAR_FpZ+72),a
+Fp_EA06:
+    dec b
+Fp_EA07:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EA09:
+    ld (AMY_UVAR_FpZ+71),a
+Fp_EA0B:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_EA0D:
+    ret
+Fp_EA0E:
+    ld a,(AMY_UVAR_FpZ+71)
+    inc a
+    dec a
+Fp_EA10:
+    jp z,Fp_EA31
+Fp_EA12:
+    scf
+    ccf
+Fp_EA13:
+    ld hl,AMY_UVAR_FpZ+63
+    adc a,(hl)
+Fp_EA15:
+    jp nc,Fp_EA1B
+Fp_EA17:
+    jp m,Fp_EA36
+Fp_EA19:
+    scf
+    ccf
+Fp_EA1A:
+    jp Fp_EA1D
+Fp_EA1B:
+    jp p,Fp_EA31
+Fp_EA1D:
+    adc a,128
+Fp_EA1F:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_EA21:
+    jp nz,Fp_EA26
+Fp_EA23:
+    jp Fp_E852
+Fp_EA26:
+    ld a,(AMY_UVAR_FpZ+77)
+    inc a
+    dec a
+Fp_EA28:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_EA2A:
+    ret
+Fp_EA2B:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EA2D:
+    jr c,FpL29
+    xor 255
+    jr FpL30
+FpL29:
+    xor 255
+    scf
+FpL30:
+Fp_EA2F:
+    jp m,Fp_EA36
+Fp_EA31:
+    pop de
+Fp_EA32:
+Fp_EA33:
+    jp Fp_E84E
+Fp_EA36:
+    jp Fp_E8D5
+Fp_EA39:
+    call Fp_EB63
+Fp_EA3C:
+    ld c,a
+    inc c
+    dec c
+Fp_EA3D:
+    jp z,Fp_EA4F
+Fp_EA3F:
+    scf
+    ccf
+Fp_EA40:
+    adc a,2
+Fp_EA42:
+    jp c,Fp_EA36
+Fp_EA44:
+    ld c,0
+    inc c
+    dec c
+Fp_EA46:
+    ld hl,AMY_UVAR_FpZ+77
+    ld (hl),c
+Fp_EA48:
+    call Fp_E7CE
+Fp_EA4B:
+    ld hl,AMY_UVAR_FpZ+63
+    inc (hl)
+Fp_EA4D:
+    jp z,Fp_EA36
+Fp_EA4F:
+    ret
+Fp_EA55:
+    call Fp_EB63
+Fp_EA58:
+    ld hl,FpD_EA50
+    ld a,l
+    ld b,h
+Fp_EA5A:
+Fp_EA5C:
+    ld c,0
+    inc c
+    dec c
+Fp_EA5E:
+    ld hl,AMY_UVAR_FpZ+77
+    ld (hl),c
+Fp_EA60:
+    call Fp_EAF9
+Fp_EA63:
+    jp Fp_EA69
+Fp_EA66:
+    call Fp_E9E3
+Fp_EA69:
+    jp z,Fp_EAE1
+Fp_EA6B:
+    call Fp_EB72
+Fp_EA6E:
+    ld a,0
+Fp_EA70:
+    scf
+Fp_EA71:
+    ld hl,AMY_UVAR_FpZ+63
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_EA73:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_EA75:
+    call Fp_EA0E
+Fp_EA78:
+    ld hl,AMY_UVAR_FpZ+63
+    inc (hl)
+Fp_EA7A:
+    jp z,Fp_EA36
+Fp_EA7C:
+    ld c,252
+Fp_EA7E:
+    ld a,1
+Fp_EA80:
+    ld hl,AMY_UVAR_FpZ+72
+    ld b,(hl)
+Fp_EA82:
+    ld hl,AMY_UVAR_FpZ+64
+    ld e,a
+    ld a,b
+    cp (hl)
+    ccf
+    ld a,e
+Fp_EA84:
+    jp nz,Fp_EA96
+Fp_EA86:
+    ld hl,AMY_UVAR_FpZ+73
+    ld b,(hl)
+Fp_EA88:
+    ld hl,AMY_UVAR_FpZ+65
+    ld e,a
+    ld a,b
+    cp (hl)
+    ccf
+    ld a,e
+Fp_EA8A:
+    jp nz,Fp_EA96
+Fp_EA8C:
+    ld hl,AMY_UVAR_FpZ+74
+    ld b,(hl)
+Fp_EA8E:
+    ld hl,AMY_UVAR_FpZ+66
+    ld e,a
+    ld a,b
+    cp (hl)
+    ccf
+    ld a,e
+Fp_EA90:
+    jp nz,Fp_EA96
+Fp_EA92:
+    ld hl,AMY_UVAR_FpZ+75
+    ld b,(hl)
+Fp_EA94:
+    ld hl,AMY_UVAR_FpZ+67
+    ld e,a
+    ld a,b
+    cp (hl)
+    ccf
+    ld a,e
+Fp_EA96:
+    push af
+Fp_EA97:
+    rl a
+Fp_EA98:
+    jp nc,Fp_EAA3
+Fp_EA9A:
+    inc c
+Fp_EA9B:
+    push af
+    ld a,c
+    add a,101
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EA9D:
+    jp z,Fp_EAD1
+Fp_EA9F:
+    jp p,Fp_EAD5
+Fp_EAA1:
+    ld a,1
+Fp_EAA3:
+    ld d,a
+    pop hl
+    ld h,d
+    push hl
+    pop af
+Fp_EAA4:
+    jp c,Fp_EAB4
+Fp_EAA6:
+    ld hl,AMY_UVAR_FpZ+75
+    sla (hl)
+Fp_EAA8:
+    ld hl,AMY_UVAR_FpZ+74
+    rl (hl)
+Fp_EAAA:
+    ld hl,AMY_UVAR_FpZ+73
+    rl (hl)
+Fp_EAAC:
+    ld hl,AMY_UVAR_FpZ+72
+    rl (hl)
+Fp_EAAE:
+    jp c,Fp_EA96
+Fp_EAB0:
+    jp m,Fp_EA80
+Fp_EAB2:
+    jp p,Fp_EA96
+Fp_EAB4:
+    ld b,a
+Fp_EAB5:
+    ld a,(AMY_UVAR_FpZ+75)
+Fp_EAB7:
+    ld hl,AMY_UVAR_FpZ+67
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_EAB9:
+    ld (AMY_UVAR_FpZ+75),a
+Fp_EABB:
+    ld a,(AMY_UVAR_FpZ+74)
+Fp_EABD:
+    ld hl,AMY_UVAR_FpZ+66
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_EABF:
+    ld (AMY_UVAR_FpZ+74),a
+Fp_EAC1:
+    ld a,(AMY_UVAR_FpZ+73)
+Fp_EAC3:
+    ld hl,AMY_UVAR_FpZ+65
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_EAC5:
+    ld (AMY_UVAR_FpZ+73),a
+Fp_EAC7:
+    ld a,(AMY_UVAR_FpZ+72)
+Fp_EAC9:
+    ld hl,AMY_UVAR_FpZ+64
+    ccf
+    sbc a,(hl)
+Fp_EACB:
+    ld (AMY_UVAR_FpZ+72),a
+Fp_EACD:
+    ld a,b
+Fp_EACE:
+    jp Fp_EAA6
+Fp_EAD1:
+    ld a,64
+    inc a
+    dec a
+Fp_EAD3:
+    jp nz,Fp_EAA3
+Fp_EAD5:
+    sla a
+Fp_EAD6:
+    sla a
+Fp_EAD7:
+    sla a
+Fp_EAD8:
+    sla a
+Fp_EAD9:
+    sla a
+Fp_EADA:
+    sla a
+Fp_EADB:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_EADD:
+    ld d,a
+    pop hl
+    ld h,d
+    push hl
+    pop af
+Fp_EADE:
+    jp Fp_EAE6
+Fp_EAE1:
+    ld c,133
+    inc c
+    dec c
+Fp_EAE3:
+    jp FpError
+Fp_EAE6:
+    ld a,(AMY_UVAR_FpZ+4)
+Fp_EAE8:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_EAEA:
+    ld a,(AMY_UVAR_FpZ+5)
+Fp_EAEC:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_EAEE:
+    ld a,(AMY_UVAR_FpZ+6)
+Fp_EAF0:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_EAF2:
+    ld a,(AMY_UVAR_FpZ+7)
+Fp_EAF4:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_EAF6:
+    jp Fp_E82E
+Fp_EAF9:
+    ld (AMY_UVAR_FpZ+0),a
+Fp_EAFB:
+    ld hl,AMY_UVAR_FpZ+1
+    ld (hl),b
+Fp_EAFD:
+    ld b,4
+Fp_EAFF:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EB01:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_EB03:
+    dec b
+Fp_EB04:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EB06:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_EB08:
+    dec b
+Fp_EB09:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EB0B:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_EB0D:
+    dec b
+Fp_EB0E:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EB10:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_EB12:
+    jr c,FpL31
+    or 128
+    jr FpL32
+FpL31:
+    or 128
+    scf
+FpL32:
+Fp_EB14:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_EB16:
+    dec b
+Fp_EB17:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+    inc a
+    dec a
+Fp_EB19:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_EB1B:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),b
+Fp_EB1D:
+    ret
+Fp_EB1E:
+    ld hl,AMY_UVAR_FpZ+58
+    ld c,l
+    ld b,h
+    jp Fp_EB2B
+Fp_EB21:
+    ld hl,AMY_UVAR_FpZ+53
+    ld c,l
+    ld b,h
+    jp Fp_EB2B
+Fp_EB20:
+Fp_EB23:
+Fp_EB25:
+Fp_EB27:
+Fp_EB29:
+Fp_EB2B:
+    call Fp_EB72
+Fp_EB2E:
+    ld hl,AMY_UVAR_FpZ+0
+    ld (hl),c
+Fp_EB30:
+    ld hl,AMY_UVAR_FpZ+1
+    ld (hl),b
+Fp_EB32:
+    ld b,4
+Fp_EB34:
+    ld a,(AMY_UVAR_FpZ+67)
+Fp_EB36:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld (hl),a
+Fp_EB38:
+    dec b
+Fp_EB39:
+    ld a,(AMY_UVAR_FpZ+66)
+Fp_EB3B:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld (hl),a
+Fp_EB3D:
+    dec b
+Fp_EB3E:
+    ld a,(AMY_UVAR_FpZ+65)
+Fp_EB40:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld (hl),a
+Fp_EB42:
+    dec b
+Fp_EB43:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EB45:
+    jr c,FpL33
+    or 127
+    jr FpL34
+FpL33:
+    or 127
+    scf
+FpL34:
+Fp_EB47:
+    ld hl,AMY_UVAR_FpZ+64
+    jr c,FpL35
+    and (hl)
+    jr FpL36
+FpL35:
+    and (hl)
+    scf
+FpL36:
+Fp_EB49:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld (hl),a
+Fp_EB4B:
+    dec b
+Fp_EB4C:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_EB4E:
+    push af
+    ld hl,(AMY_UVAR_FpZ+0)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld (hl),a
+Fp_EB50:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),b
+Fp_EB52:
+    ret
+Fp_EB53:
+    ld a,(AMY_UVAR_FpZ+76)
+Fp_EB55:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_EB57:
+    ld c,5
+Fp_EB59:
+    push af
+    ld a,c
+    add a,164
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_EB5B:
+    push af
+    ld a,c
+    add a,156
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EB5D:
+    dec c
+Fp_EB5E:
+    jp nz,Fp_EB59
+Fp_EB60:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),c
+Fp_EB62:
+    ret
+Fp_EB63:
+    call Fp_EB72
+Fp_EB66:
+    ld c,6
+Fp_EB68:
+    push af
+    ld a,c
+    add a,156
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_EB6A:
+    push af
+    ld a,c
+    add a,164
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EB6C:
+    dec c
+Fp_EB6D:
+    jp nz,Fp_EB68
+Fp_EB6F:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),c
+Fp_EB71:
+    ret
+Fp_EB72:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_EB74:
+    jp z,Fp_EB71
+Fp_EB76:
+    ld hl,AMY_UVAR_FpZ+78
+    sla (hl)
+Fp_EB78:
+    jp nc,Fp_EB71
+Fp_EB7A:
+    call Fp_E8C6
+Fp_EB7D:
+    jp nz,Fp_EB71
+Fp_EB7F:
+    jp Fp_E88F
+Fp_EB82:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_EB84:
+    jp z,Fp_EB8F
+Fp_EB86:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EB88:
+    rl a
+Fp_EB89:
+    ld a,255
+    inc a
+    dec a
+Fp_EB8B:
+    jp c,Fp_EB8F
+Fp_EB8D:
+    ld a,1
+    inc a
+    dec a
+Fp_EB8F:
+    ret
+Fp_EB90:
+    call Fp_EB82
+Fp_EB93:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_EB95:
+    ld a,0
+Fp_EB97:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_EB99:
+    ld c,136
+Fp_EB9B:
+    ld a,(AMY_UVAR_FpZ+64)
+Fp_EB9D:
+    jr c,FpL37
+    xor 255
+    jr FpL38
+FpL37:
+    xor 255
+    scf
+FpL38:
+Fp_EB9F:
+    rl a
+Fp_EBA0:
+    ld a,0
+    inc a
+    dec a
+Fp_EBA2:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_EBA4:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_EBA6:
+    ld hl,AMY_UVAR_FpZ+63
+    ld (hl),c
+Fp_EBA8:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_EBAA:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_EBAC:
+    jp Fp_E829
+Fp_EBAF:
+    ld hl,AMY_UVAR_FpZ+68
+    srl (hl)
+Fp_EBB1:
+    ret
+Fp_EBB2:
+    ld (AMY_UVAR_FpZ+2),a
+Fp_EBB4:
+    ld hl,AMY_UVAR_FpZ+3
+    ld (hl),b
+Fp_EBB6:
+    ld b,0
+Fp_EBB8:
+    push af
+    ld hl,(AMY_UVAR_FpZ+2)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EBBA:
+    inc b
+Fp_EBBB:
+    ld c,a
+    inc c
+    dec c
+Fp_EBBC:
+    jp z,Fp_EB82
+Fp_EBBE:
+    push af
+    ld hl,(AMY_UVAR_FpZ+2)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EBC0:
+    ld hl,AMY_UVAR_FpZ+68
+    jr c,FpL39
+    xor (hl)
+    jr FpL40
+FpL39:
+    xor (hl)
+    scf
+FpL40:
+Fp_EBC2:
+    jp m,Fp_EB86
+Fp_EBC4:
+    ld hl,AMY_UVAR_FpZ+63
+    ld e,a
+    ld a,c
+    cp (hl)
+    ccf
+    ld a,e
+Fp_EBC6:
+    jp nz,Fp_EBE9
+Fp_EBC8:
+    push af
+    ld hl,(AMY_UVAR_FpZ+2)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EBCA:
+    or 128
+Fp_EBCC:
+    ld hl,AMY_UVAR_FpZ+64
+    cp (hl)
+    ccf
+Fp_EBCE:
+    jp nz,Fp_EBE9
+Fp_EBD0:
+    inc b
+Fp_EBD1:
+    push af
+    ld hl,(AMY_UVAR_FpZ+2)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EBD3:
+    ld hl,AMY_UVAR_FpZ+65
+    cp (hl)
+    ccf
+Fp_EBD5:
+    jp nz,Fp_EBE9
+Fp_EBD7:
+    inc b
+Fp_EBD8:
+    push af
+    ld hl,(AMY_UVAR_FpZ+2)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EBDA:
+    ld hl,AMY_UVAR_FpZ+66
+    cp (hl)
+    ccf
+Fp_EBDC:
+    jp nz,Fp_EBE9
+Fp_EBDE:
+    inc b
+Fp_EBDF:
+    ld a,127
+Fp_EBE1:
+    ld hl,AMY_UVAR_FpZ+78
+    cp (hl)
+    ccf
+Fp_EBE3:
+    push af
+    ld hl,(AMY_UVAR_FpZ+2)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EBE5:
+    ld hl,AMY_UVAR_FpZ+67
+    ccf
+    sbc a,(hl)
+    ccf
+Fp_EBE7:
+    jp z,Fp_EC11
+Fp_EBE9:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EBEB:
+    jp nc,Fp_EBEF
+Fp_EBED:
+    jr c,FpL41
+    xor 255
+    jr FpL42
+FpL41:
+    xor 255
+    scf
+FpL42:
+Fp_EBEF:
+    jp Fp_EB88
+Fp_EBF2:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_EBF4:
+    jp z,Fp_EC40
+Fp_EBF6:
+    scf
+Fp_EBF7:
+    ccf
+    sbc a,160
+    ccf
+Fp_EBF9:
+    ld hl,AMY_UVAR_FpZ+68
+    ld e,a
+    ld a,(hl)
+    inc a
+    dec a
+    ld a,e
+Fp_EBFB:
+    jp p,Fp_EC06
+Fp_EBFD:
+    ld c,a
+Fp_EBFE:
+    ld a,255
+    inc a
+    dec a
+Fp_EC00:
+    ld (AMY_UVAR_FpZ+70),a
+Fp_EC02:
+    call Fp_E8A4
+Fp_EC05:
+    ld a,c
+Fp_EC06:
+    ld c,157
+Fp_EC08:
+    cp 249
+    ccf
+Fp_EC0A:
+    jp p,Fp_EC12
+Fp_EC0C:
+    call Fp_E8F0
+Fp_EC0F:
+    ld hl,AMY_UVAR_FpZ+70
+    ld (hl),b
+Fp_EC11:
+    ret
+Fp_EC12:
+    ld b,a
+Fp_EC13:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EC15:
+    and 128
+Fp_EC17:
+    ld hl,AMY_UVAR_FpZ+64
+    srl (hl)
+Fp_EC19:
+    ld hl,AMY_UVAR_FpZ+64
+    jr c,FpL43
+    or (hl)
+    jr FpL44
+FpL43:
+    or (hl)
+    scf
+FpL44:
+Fp_EC1B:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_EC1D:
+    call Fp_E907
+Fp_EC20:
+    ld hl,AMY_UVAR_FpZ+70
+    ld (hl),b
+Fp_EC22:
+    ret
+Fp_EC23:
+    ld a,(AMY_UVAR_FpZ+63)
+Fp_EC25:
+    cp 160
+    ccf
+Fp_EC27:
+    jp c,Fp_EC49
+Fp_EC29:
+    call Fp_EBF2
+Fp_EC2C:
+    ld hl,AMY_UVAR_FpZ+78
+    ld (hl),b
+Fp_EC2E:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EC30:
+    ld hl,AMY_UVAR_FpZ+68
+    ld (hl),b
+Fp_EC32:
+    jr c,FpL45
+    xor 128
+    jr FpL46
+FpL45:
+    xor 128
+    scf
+FpL46:
+Fp_EC34:
+    rl a
+Fp_EC35:
+    ld a,160
+Fp_EC37:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_EC39:
+    ld a,(AMY_UVAR_FpZ+67)
+    inc a
+    dec a
+Fp_EC3B:
+    ld (AMY_UVAR_FpCh),a
+Fp_EC3D:
+    jp Fp_E829
+Fp_EC40:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_EC42:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_EC44:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_EC46:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_EC48:
+    ld b,a
+    inc b
+    dec b
+Fp_EC49:
+    ret
+Fp_ECD5:
+    push af
+Fp_ECD6:
+    call Fp_EB63
+Fp_ECD9:
+    pop de
+    ld a,d
+    inc a
+    dec a
+Fp_ECDA:
+    call Fp_EB93
+Fp_ECDD:
+    ld a,(AMY_UVAR_FpZ+76)
+Fp_ECDF:
+    ld hl,AMY_UVAR_FpZ+68
+    jr c,FpL47
+    xor (hl)
+    jr FpL48
+FpL47:
+    xor (hl)
+    scf
+FpL48:
+Fp_ECE1:
+    ld (AMY_UVAR_FpZ+77),a
+Fp_ECE3:
+    ld hl,AMY_UVAR_FpZ+63
+    ld c,(hl)
+    inc c
+    dec c
+Fp_ECE5:
+    jp Fp_E7C1
+Fp_EE8D:
+    call Fp_EB63
+Fp_EE90:
+    ld hl,FpD_EE64
+    ld a,l
+    ld b,h
+Fp_EE92:
+Fp_EE94:
+    call Fp_EAF9
+Fp_EE97:
+    jp z,Fp_EF09
+Fp_EE99:
+    ld a,(AMY_UVAR_FpZ+71)
+    inc a
+    dec a
+Fp_EE9B:
+    jp nz,Fp_EEA0
+Fp_EE9D:
+    jp Fp_E850
+Fp_EEA0:
+    ld hl,AMY_UVAR_FpZ+44
+    ld c,l
+    ld b,h
+Fp_EEA2:
+Fp_EEA4:
+    call Fp_EB2B
+Fp_EEA7:
+    ld a,(AMY_UVAR_FpZ+76)
+    inc a
+    dec a
+Fp_EEA9:
+    jp p,Fp_EEBA
+Fp_EEAB:
+    call Fp_EC23
+Fp_EEAE:
+    ld hl,AMY_UVAR_FpZ+44
+    ld a,l
+    ld b,h
+Fp_EEB0:
+Fp_EEB2:
+    call Fp_EBB2
+Fp_EEB5:
+    jp nz,Fp_EEBA
+Fp_EEB7:
+    ld a,b
+Fp_EEB8:
+    ld hl,AMY_UVAR_FpCh
+    ld b,(hl)
+    inc b
+    dec b
+Fp_EEBA:
+    call Fp_EB55
+Fp_EEBD:
+    ld a,b
+    inc a
+    dec a
+Fp_EEBE:
+    push af
+Fp_EEBF:
+    call Fp_E941
+Fp_EEC2:
+    ld hl,AMY_UVAR_FpZ+44
+    ld a,l
+    ld b,h
+Fp_EEC4:
+Fp_EEC6:
+    call Fp_E97F
+Fp_EEC9:
+    call Fp_EF09
+Fp_EECC:
+    pop de
+    ld a,d
+Fp_EECD:
+    srl a
+Fp_EECE:
+    jp nc,Fp_EEDA
+Fp_EED0:
+    ld a,(AMY_UVAR_FpZ+63)
+    inc a
+    dec a
+Fp_EED2:
+    jp z,Fp_EEDA
+Fp_EED4:
+    ld a,(AMY_UVAR_FpZ+68)
+Fp_EED6:
+    jr c,FpL49
+    xor 255
+    jr FpL50
+FpL49:
+    xor 255
+    scf
+FpL50:
+Fp_EED8:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_EEDA:
+    ret
+Fp_EF09:
+    ld hl,FpD_EEDB
+    ld a,l
+    ld b,h
+Fp_EF0B:
+Fp_EF0D:
+    call Fp_E97F
+Fp_EF10:
+    ld a,(AMY_UVAR_FpZ+78)
+Fp_EF12:
+    adc a,80
+Fp_EF14:
+    jp nc,Fp_EF19
+Fp_EF16:
+    call Fp_EB7A
+Fp_EF19:
+    ld (AMY_UVAR_FpZ+52),a
+Fp_EF1B:
+    call Fp_EB66
+Fp_EF1E:
+    ld a,(AMY_UVAR_FpZ+63)
+Fp_EF20:
+    cp 136
+    ccf
+Fp_EF22:
+    jp nc,Fp_EF27
+Fp_EF24:
+    call Fp_EA2B
+Fp_EF27:
+    call Fp_EC23
+Fp_EF2A:
+    ld a,(AMY_UVAR_FpCh)
+Fp_EF2C:
+    scf
+    ccf
+Fp_EF2D:
+    adc a,129
+Fp_EF2F:
+    jp z,Fp_EF24
+Fp_EF31:
+    scf
+Fp_EF32:
+    ccf
+    sbc a,1
+    ccf
+Fp_EF34:
+    push af
+Fp_EF35:
+    ld c,5
+Fp_EF37:
+    push af
+    ld a,c
+    add a,165
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_EF39:
+    push af
+    ld a,c
+    add a,157
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld b,(hl)
+Fp_EF3B:
+    push af
+    ld a,c
+    add a,157
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EF3D:
+    push af
+    ld a,c
+    add a,165
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_FpZ-94
+    add hl,de
+    pop af
+    ld (hl),b
+Fp_EF3F:
+    dec c
+Fp_EF40:
+    jp p,Fp_EF37
+Fp_EF42:
+    ld a,(AMY_UVAR_FpZ+52)
+    inc a
+    dec a
+Fp_EF44:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_EF46:
+    call Fp_E7AA
+Fp_EF49:
+    call Fp_EED0
+Fp_EF4C:
+    ld hl,FpD_EEE0
+    ld a,l
+    ld b,h
+Fp_EF4E:
+Fp_EF50:
+    call Fp_EF72
+Fp_EF53:
+    ld a,0
+Fp_EF55:
+    ld (AMY_UVAR_FpZ+77),a
+Fp_EF57:
+    pop de
+    ld a,d
+    inc a
+    dec a
+Fp_EF58:
+    call Fp_EA10
+Fp_EF5B:
+    ret
+Fp_EF5C:
+    ld (AMY_UVAR_FpZ+79),a
+Fp_EF5E:
+    ld hl,AMY_UVAR_FpZ+80
+    ld (hl),b
+Fp_EF60:
+    call Fp_EB21
+Fp_EF63:
+    ld hl,AMY_UVAR_FpZ+53
+    ld a,l
+    ld b,h
+Fp_EF65:
+    call Fp_E97F
+Fp_EF68:
+    call Fp_EF76
+Fp_EF6B:
+    ld hl,AMY_UVAR_FpZ+53
+    ld a,l
+    ld b,h
+Fp_EF6D:
+Fp_EF6F:
+    jp Fp_E97F
+Fp_EF72:
+    ld (AMY_UVAR_FpZ+79),a
+Fp_EF74:
+    ld hl,AMY_UVAR_FpZ+80
+    ld (hl),b
+Fp_EF76:
+    call Fp_EB1E
+Fp_EF79:
+    push af
+    ld hl,(AMY_UVAR_FpZ+79)
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    ld a,(hl)
+Fp_EF7B:
+    ld (AMY_UVAR_FpZ+69),a
+Fp_EF7D:
+    ld hl,AMY_UVAR_FpZ+79
+    ld b,(hl)
+Fp_EF7F:
+    inc b
+Fp_EF80:
+    ld a,b
+    inc a
+    dec a
+Fp_EF81:
+    jp nz,Fp_EF85
+Fp_EF83:
+    ld hl,AMY_UVAR_FpZ+80
+    inc (hl)
+Fp_EF85:
+    ld (AMY_UVAR_FpZ+79),a
+Fp_EF87:
+    ld hl,AMY_UVAR_FpZ+80
+    ld b,(hl)
+    inc b
+    dec b
+Fp_EF89:
+    call Fp_E97F
+Fp_EF8C:
+    ld a,(AMY_UVAR_FpZ+79)
+Fp_EF8E:
+    ld hl,AMY_UVAR_FpZ+80
+    ld b,(hl)
+Fp_EF90:
+    scf
+    ccf
+Fp_EF91:
+    adc a,5
+Fp_EF93:
+    jp nc,Fp_EF96
+Fp_EF95:
+    inc b
+Fp_EF96:
+    ld (AMY_UVAR_FpZ+79),a
+Fp_EF98:
+    ld hl,AMY_UVAR_FpZ+80
+    ld (hl),b
+Fp_EF9A:
+    call Fp_E7BE
+Fp_EF9D:
+    ld hl,AMY_UVAR_FpZ+58
+    ld a,l
+    ld b,h
+Fp_EF9F:
+Fp_EFA1:
+    ld hl,AMY_UVAR_FpZ+69
+    dec (hl)
+Fp_EFA3:
+    jp nz,Fp_EF89
+Fp_EFA5:
+    ret
+Fp_EFAE:
+    call Fp_EB82
+Fp_EFB1:
+    ld c,a
+    inc c
+    dec c
+Fp_EFB2:
+    jp m,Fp_EFCC
+Fp_EFB4:
+    ld hl,AMY_UVAR_FpR+0
+    ld a,l
+    ld b,h
+Fp_EFB6:
+Fp_EFB8:
+    call Fp_EAF9
+Fp_EFBB:
+    ld a,c
+    inc a
+    dec a
+Fp_EFBC:
+    jp z,Fp_EFA5
+Fp_EFBE:
+    ld hl,FpD_EFA6
+    ld a,l
+    ld b,h
+Fp_EFC0:
+Fp_EFC2:
+    call Fp_E97F
+Fp_EFC5:
+    ld hl,FpD_EFAA
+    ld a,l
+    ld b,h
+Fp_EFC7:
+Fp_EFC9:
+    call Fp_E7BE
+Fp_EFCC:
+    ld hl,AMY_UVAR_FpZ+67
+    ld c,(hl)
+Fp_EFCE:
+    ld a,(AMY_UVAR_FpZ+64)
+Fp_EFD0:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_EFD2:
+    ld hl,AMY_UVAR_FpZ+64
+    ld (hl),c
+Fp_EFD4:
+    ld a,0
+Fp_EFD6:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_EFD8:
+    ld a,(AMY_UVAR_FpZ+63)
+Fp_EFDA:
+    ld (AMY_UVAR_FpZ+78),a
+Fp_EFDC:
+    ld a,128
+    inc a
+    dec a
+Fp_EFDE:
+    ld (AMY_UVAR_FpZ+63),a
+Fp_EFE0:
+    call Fp_E82E
+Fp_EFE3:
+    ld hl,AMY_UVAR_FpR+0
+    ld c,l
+    ld b,h
+Fp_EFE5:
+Fp_EFE7:
+    jp Fp_EB2B
+Fp_ED34:
+    ld b,1
+Fp_ED36:
+    ld a,45
+Fp_ED38:
+    dec b
+Fp_ED39:
+    ld hl,AMY_UVAR_FpZ+68
+    ld e,a
+    ld a,(hl)
+    inc a
+    dec a
+    ld a,e
+Fp_ED3B:
+    jp p,Fp_ED41
+Fp_ED3D:
+    inc b
+Fp_ED3E:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_ED41:
+    ld (AMY_UVAR_FpZ+68),a
+Fp_ED43:
+    ld hl,AMY_UVAR_FpZ+79
+    ld (hl),b
+Fp_ED45:
+    inc b
+Fp_ED46:
+    ld a,48
+Fp_ED48:
+    ld hl,AMY_UVAR_FpZ+63
+    ld c,(hl)
+    inc c
+    dec c
+Fp_ED4A:
+    jp nz,Fp_ED4F
+Fp_ED4C:
+    jp Fp_EE57
+Fp_ED4F:
+    ld a,0
+Fp_ED51:
+    ld e,a
+    ld a,c
+    cp 128
+    ccf
+    ld a,e
+Fp_ED53:
+    jp z,Fp_ED57
+Fp_ED55:
+    jp c,Fp_ED60
+Fp_ED57:
+    ld hl,FpD_ED14
+    ld a,l
+    ld b,h
+Fp_ED59:
+Fp_ED5B:
+    call Fp_E97F
+Fp_ED5E:
+    ld a,247
+Fp_ED60:
+    ld (AMY_UVAR_FpZ+59),a
+Fp_ED62:
+    ld hl,FpD_ED0F
+    ld a,l
+    ld b,h
+Fp_ED64:
+Fp_ED66:
+    call Fp_EBB2
+Fp_ED69:
+    jp z,Fp_ED89
+Fp_ED6B:
+    jp p,Fp_ED7F
+Fp_ED6D:
+    ld hl,FpD_ED0A
+    ld a,l
+    ld b,h
+Fp_ED6F:
+Fp_ED71:
+    call Fp_EBB2
+Fp_ED74:
+    jp z,Fp_ED78
+Fp_ED76:
+    jp p,Fp_ED86
+Fp_ED78:
+    call Fp_EA39
+Fp_ED7B:
+    ld hl,AMY_UVAR_FpZ+59
+    dec (hl)
+Fp_ED7D:
+    jp nz,Fp_ED6D
+Fp_ED7F:
+    call Fp_EA55
+Fp_ED82:
+    ld hl,AMY_UVAR_FpZ+59
+    inc (hl)
+Fp_ED84:
+    jp nz,Fp_ED62
+Fp_ED86:
+    call Fp_E7A0
+Fp_ED89:
+    call Fp_EBF2
+Fp_ED8C:
+    ld c,1
+Fp_ED8E:
+    ld a,(AMY_UVAR_FpZ+59)
+Fp_ED90:
+    scf
+    ccf
+Fp_ED91:
+    adc a,10
+Fp_ED93:
+    jp m,Fp_ED9E
+Fp_ED95:
+    cp 11
+    ccf
+Fp_ED97:
+    jp c,Fp_ED9F
+Fp_ED99:
+    adc a,255
+Fp_ED9B:
+    ld c,a
+Fp_ED9C:
+    ld a,2
+Fp_ED9E:
+    scf
+Fp_ED9F:
+    ccf
+    sbc a,2
+Fp_EDA1:
+    ld (AMY_UVAR_FpZ+60),a
+Fp_EDA3:
+    ld hl,AMY_UVAR_FpZ+59
+    ld (hl),c
+Fp_EDA5:
+    ld a,c
+    inc a
+    dec a
+Fp_EDA6:
+    jp z,Fp_EDAA
+Fp_EDA8:
+    jp p,Fp_EDBD
+Fp_EDAA:
+    ld hl,AMY_UVAR_FpZ+79
+    ld b,(hl)
+Fp_EDAC:
+    ld a,46
+Fp_EDAE:
+    inc b
+Fp_EDAF:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EDB2:
+    ld a,c
+    inc a
+    dec a
+Fp_EDB3:
+    jp z,Fp_EDBB
+Fp_EDB5:
+    ld a,48
+Fp_EDB7:
+    inc b
+Fp_EDB8:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EDBB:
+    ld hl,AMY_UVAR_FpZ+79
+    ld (hl),b
+Fp_EDBD:
+    ld b,0
+Fp_EDBF:
+    ld c,128
+Fp_EDC1:
+    ld a,(AMY_UVAR_FpZ+67)
+Fp_EDC3:
+    scf
+    ccf
+Fp_EDC4:
+    push af
+    ld hl,FpD_EE6C
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    adc a,(hl)
+Fp_EDC7:
+    ld (AMY_UVAR_FpZ+67),a
+Fp_EDC9:
+    ld a,(AMY_UVAR_FpZ+66)
+Fp_EDCB:
+    push af
+    ld hl,FpD_EE6B
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    adc a,(hl)
+Fp_EDCE:
+    ld (AMY_UVAR_FpZ+66),a
+Fp_EDD0:
+    ld a,(AMY_UVAR_FpZ+65)
+Fp_EDD2:
+    push af
+    ld hl,FpD_EE6A
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    adc a,(hl)
+Fp_EDD5:
+    ld (AMY_UVAR_FpZ+65),a
+Fp_EDD7:
+    ld a,(AMY_UVAR_FpZ+64)
+Fp_EDD9:
+    push af
+    ld hl,FpD_EE69
+    ld a,b
+    add a,l
+    ld l,a
+    jr nc,$+3
+    inc h
+    pop af
+    adc a,(hl)
+Fp_EDDC:
+    ld (AMY_UVAR_FpZ+64),a
+Fp_EDDE:
+    inc c
+Fp_EDDF:
+    jp c,Fp_EDE5
+Fp_EDE1:
+    jp p,Fp_EDC1
+Fp_EDE3:
+    jp m,Fp_EDE7
+Fp_EDE5:
+    jp m,Fp_EDC1
+Fp_EDE7:
+    ld a,c
+Fp_EDE8:
+    jp nc,Fp_EDEE
+Fp_EDEA:
+    jr c,FpL51
+    xor 255
+    jr FpL52
+FpL51:
+    xor 255
+    scf
+FpL52:
+Fp_EDEC:
+    adc a,10
+Fp_EDEE:
+    adc a,47
+Fp_EDF0:
+    inc b
+Fp_EDF1:
+    inc b
+Fp_EDF2:
+    inc b
+Fp_EDF3:
+    inc b
+Fp_EDF4:
+    ld hl,AMY_UVAR_FpZ+37
+    ld (hl),b
+Fp_EDF6:
+    ld hl,AMY_UVAR_FpZ+79
+    ld b,(hl)
+Fp_EDF8:
+    inc b
+Fp_EDF9:
+    ld c,a
+Fp_EDFA:
+    and 127
+Fp_EDFC:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EDFF:
+    ld hl,AMY_UVAR_FpZ+59
+    dec (hl)
+Fp_EE01:
+    jp nz,Fp_EE09
+Fp_EE03:
+    ld a,46
+Fp_EE05:
+    inc b
+Fp_EE06:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE09:
+    ld hl,AMY_UVAR_FpZ+79
+    ld (hl),b
+Fp_EE0B:
+    ld hl,AMY_UVAR_FpZ+37
+    ld b,(hl)
+Fp_EE0D:
+    ld a,c
+Fp_EE0E:
+    xor 255
+Fp_EE10:
+    and 128
+Fp_EE12:
+    ld c,a
+Fp_EE13:
+    ld e,a
+    ld a,b
+    cp 36
+    ld a,e
+Fp_EE15:
+    jp nz,Fp_EDC1
+Fp_EE17:
+    ld hl,AMY_UVAR_FpZ+79
+    ld b,(hl)
+Fp_EE19:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld a,(hl)
+Fp_EE1C:
+    dec b
+Fp_EE1D:
+    cp 48
+Fp_EE1F:
+    jp z,Fp_EE19
+Fp_EE21:
+    cp 46
+    ccf
+Fp_EE23:
+    jp z,Fp_EE26
+Fp_EE25:
+    inc b
+Fp_EE26:
+    ld a,43
+Fp_EE28:
+    ld hl,AMY_UVAR_FpZ+60
+    ld c,(hl)
+    inc c
+    dec c
+Fp_EE2A:
+    jp z,Fp_EE5A
+Fp_EE2C:
+    jp p,Fp_EE36
+Fp_EE2E:
+    ld a,0
+Fp_EE30:
+    scf
+Fp_EE31:
+    ld hl,AMY_UVAR_FpZ+60
+    ccf
+    sbc a,(hl)
+Fp_EE33:
+    ld c,a
+Fp_EE34:
+    ld a,45
+Fp_EE36:
+    push af
+    ld hl,AMY_UVAR_FpBuf+1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE39:
+    ld a,69
+Fp_EE3B:
+    push af
+    ld hl,AMY_UVAR_FpBuf+0
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE3E:
+    ld a,c
+Fp_EE3F:
+    ld c,47
+Fp_EE41:
+    scf
+Fp_EE42:
+    inc c
+Fp_EE43:
+    ccf
+    sbc a,10
+    ccf
+Fp_EE45:
+    jp c,Fp_EE42
+Fp_EE47:
+    adc a,58
+Fp_EE49:
+    push af
+    ld hl,AMY_UVAR_FpBuf+3
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE4C:
+    ld a,c
+Fp_EE4D:
+    push af
+    ld hl,AMY_UVAR_FpBuf+2
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE50:
+    ld a,0
+    inc a
+    dec a
+Fp_EE52:
+    push af
+    ld hl,AMY_UVAR_FpBuf+4
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE55:
+    jp z,Fp_EE5F
+Fp_EE57:
+    push af
+    ld hl,AMY_UVAR_FpBuf+-1
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE5A:
+    ld a,0
+Fp_EE5C:
+    push af
+    ld hl,AMY_UVAR_FpBuf+0
+    ld e,b
+    ld d,0
+    add hl,de
+    pop af
+    ld (hl),a
+Fp_EE5F:
+    ld a,0
+Fp_EE61:
+    ld b,1
+    inc b
+    dec b
+Fp_EE63:
+    ret
+FpRet:
+    ret
+; constants from the ROM
+FpD_ED0A:
+    db $9B
+FpD_ED0B:
+    db $3E
+FpD_ED0C:
+    db $BC
+FpD_ED0D:
+    db $1F
+FpD_ED0E:
+    db $FD
+FpD_ED0F:
+    db $9E
+FpD_ED10:
+    db $6E
+FpD_ED11:
+    db $6B
+FpD_ED12:
+    db $27
+FpD_ED13:
+    db $FD
+FpD_ED14:
+    db $9E
+FpD_ED15:
+    db $6E
+FpD_ED16:
+    db $6B
+FpD_ED17:
+    db $28
+FpD_ED18:
+    db $00
+FpD_E913:
+    db $81
+FpD_E914:
+    db $00
+FpD_E915:
+    db $00
+FpD_E916:
+    db $00
+FpD_E917:
+    db $00
+FpD_E918:
+    db $03
+FpD_E919:
+    db $7F
+FpD_E91A:
+    db $5E
+FpD_E91B:
+    db $56
+FpD_E91C:
+    db $CB
+FpD_E91D:
+    db $79
+FpD_E91E:
+    db $80
+FpD_E91F:
+    db $13
+FpD_E920:
+    db $9B
+FpD_E921:
+    db $0B
+FpD_E922:
+    db $64
+FpD_E923:
+    db $80
+FpD_E924:
+    db $76
+FpD_E925:
+    db $38
+FpD_E926:
+    db $93
+FpD_E927:
+    db $16
+FpD_E928:
+    db $82
+FpD_E929:
+    db $38
+FpD_E92A:
+    db $AA
+FpD_E92B:
+    db $3B
+FpD_E92C:
+    db $20
+FpD_E92D:
+    db $80
+FpD_E92E:
+    db $35
+FpD_E92F:
+    db $04
+FpD_E930:
+    db $F3
+FpD_E931:
+    db $34
+FpD_E932:
+    db $81
+FpD_E933:
+    db $35
+FpD_E934:
+    db $04
+FpD_E935:
+    db $F3
+FpD_E936:
+    db $34
+FpD_E937:
+    db $80
+FpD_E938:
+    db $80
+FpD_E939:
+    db $00
+FpD_E93A:
+    db $00
+FpD_E93B:
+    db $00
+FpD_E93C:
+    db $80
+FpD_E93D:
+    db $31
+FpD_E93E:
+    db $72
+FpD_E93F:
+    db $17
+FpD_E940:
+    db $F8
+FpD_EA50:
+    db $84
+FpD_EA51:
+    db $20
+FpD_EA52:
+    db $00
+FpD_EA53:
+    db $00
+FpD_EA54:
+    db $00
+FpD_EE64:
+    db $80
+FpD_EE65:
+    db $00
+FpD_EE66:
+    db $00
+FpD_EE67:
+    db $00
+FpD_EE68:
+    db $00
+FpD_EE69:
+    db $FA
+FpD_EE6A:
+    db $0A
+FpD_EE6B:
+    db $1F
+FpD_EE6C:
+    db $00
+FpD_EE6D:
+    db $00
+FpD_EE6E:
+    db $98
+FpD_EE6F:
+    db $96
+FpD_EE70:
+    db $80
+FpD_EE71:
+    db $FF
+FpD_EE72:
+    db $F0
+FpD_EE73:
+    db $BD
+FpD_EE74:
+    db $C0
+FpD_EE75:
+    db $00
+FpD_EE76:
+    db $01
+FpD_EE77:
+    db $86
+FpD_EE78:
+    db $A0
+FpD_EE79:
+    db $FF
+FpD_EE7A:
+    db $FF
+FpD_EE7B:
+    db $D8
+FpD_EE7C:
+    db $F0
+FpD_EE7D:
+    db $00
+FpD_EE7E:
+    db $00
+FpD_EE7F:
+    db $03
+FpD_EE80:
+    db $E8
+FpD_EE81:
+    db $FF
+FpD_EE82:
+    db $FF
+FpD_EE83:
+    db $FF
+FpD_EE84:
+    db $9C
+FpD_EE85:
+    db $00
+FpD_EE86:
+    db $00
+FpD_EE87:
+    db $00
+FpD_EE88:
+    db $0A
+FpD_EE89:
+    db $FF
+FpD_EE8A:
+    db $FF
+FpD_EE8B:
+    db $FF
+FpD_EE8C:
+    db $FF
+FpD_EEDB:
+    db $81
+FpD_EEDC:
+    db $38
+FpD_EEDD:
+    db $AA
+FpD_EEDE:
+    db $3B
+FpD_EEDF:
+    db $29
+FpD_EEE0:
+    db $07
+FpD_EEE1:
+    db $71
+FpD_EEE2:
+    db $34
+FpD_EEE3:
+    db $58
+FpD_EEE4:
+    db $3E
+FpD_EEE5:
+    db $56
+FpD_EEE6:
+    db $74
+FpD_EEE7:
+    db $16
+FpD_EEE8:
+    db $7E
+FpD_EEE9:
+    db $B3
+FpD_EEEA:
+    db $1B
+FpD_EEEB:
+    db $77
+FpD_EEEC:
+    db $2F
+FpD_EEED:
+    db $EE
+FpD_EEEE:
+    db $E3
+FpD_EEEF:
+    db $85
+FpD_EEF0:
+    db $7A
+FpD_EEF1:
+    db $1D
+FpD_EEF2:
+    db $84
+FpD_EEF3:
+    db $1C
+FpD_EEF4:
+    db $2A
+FpD_EEF5:
+    db $7C
+FpD_EEF6:
+    db $63
+FpD_EEF7:
+    db $59
+FpD_EEF8:
+    db $58
+FpD_EEF9:
+    db $0A
+FpD_EEFA:
+    db $7E
+FpD_EEFB:
+    db $75
+FpD_EEFC:
+    db $FD
+FpD_EEFD:
+    db $E7
+FpD_EEFE:
+    db $C6
+FpD_EEFF:
+    db $80
+FpD_EF00:
+    db $31
+FpD_EF01:
+    db $72
+FpD_EF02:
+    db $18
+FpD_EF03:
+    db $10
+FpD_EF04:
+    db $81
+FpD_EF05:
+    db $00
+FpD_EF06:
+    db $00
+FpD_EF07:
+    db $00
+FpD_EF08:
+    db $00
+FpD_EFA6:
+    db $98
+FpD_EFA7:
+    db $35
+FpD_EFA8:
+    db $44
+FpD_EFA9:
+    db $7A
+FpD_EFAA:
+    db $68
+FpD_EFAB:
+    db $28
+FpD_EFAC:
+    db $B1
+FpD_EFAD:
+    db $46
+FpD_EFAE:
+    db $20
+
+; vm R1 = 0 : SC = 0
+Ex_1:
+    db 2
+    dw Kl_0
+    db 15
+    dw AMY_UVAR_F_R1
+    db 2
+    dw Kl_0
+    db 15
+    dw AMY_UVAR_F_SC
+    db 0
+; vm C1 = 0
+Ex_2:
+    db 2
+    dw Kl_0
+    db 15
+    dw AMY_UVAR_F_C1
+    db 0
+; vm AC = A2
+Ex_3:
+    db 1
+    dw Kc_A2
+    db 15
+    dw AMY_UVAR_F_AC
+    db 0
+; vm SC = RND(1)
+Ex_4:
+    db 2
+    dw Kl_1
+    db 14
+    db 15
+    dw AMY_UVAR_F_SC
+    db 0
+; if SC < .6 then l121a
+Ex_5:
+    db 1
+    dw AMY_UVAR_F_SC
+    db 4
+    db 2
+    dw Kl_d6
+    db 10
+    db 4
+    db 16
+    db 0
+; if SC < .8 then l131a
+Ex_6:
+    db 1
+    dw AMY_UVAR_F_SC
+    db 4
+    db 2
+    dw Kl_d8
+    db 10
+    db 4
+    db 16
+    db 0
+; vm C1 = C * .01 : R1 = 1
+Ex_7:
+    db 3
+    dw AMY_UVAR_C
+    db 4
+    db 2
+    dw Kl_d01
+    db 7
+    db 15
+    dw AMY_UVAR_F_C1
+    db 2
+    dw Kl_1
+    db 15
+    dw AMY_UVAR_F_R1
+    db 0
+; vm AC = AC + .000000001
+Ex_8:
+    db 1
+    dw AMY_UVAR_F_AC
+    db 4
+    db 2
+    dw Kl_d000000001
+    db 5
+    db 15
+    dw AMY_UVAR_F_AC
+    db 0
+; vm STI = AC
+Ex_9:
+    db 1
+    dw AMY_UVAR_F_AC
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; if L(I) * C1 <= A(I) then l321
+Ex_10:
+    db 3
+    dw AMY_UVAR_Lc
+    db 4
+    db 1
+    dw AMY_UVAR_F_C1
+    db 7
+    db 4
+    db 1
+    dw AMY_UVAR_F_AC
+    db 10
+    db 6
+    db 16
+    db 0
+; str L(I) * C1
+Ex_11:
+    db 3
+    dw AMY_UVAR_Lc
+    db 4
+    db 1
+    dw AMY_UVAR_F_C1
+    db 7
+    db 18
+    db 0
+; str S3 * 100
+Ex_12:
+    db 1
+    dw Kc_S3
+    db 4
+    db 2
+    dw Kl_100
+    db 7
+    db 18
+    db 0
+; if S(I) * S3 <= A(I) - L(I) * C1 then l381
+Ex_13:
+    db 3
+    dw AMY_UVAR_Sc
+    db 4
+    db 1
+    dw Kc_S3
+    db 7
+    db 4
+    db 1
+    dw AMY_UVAR_F_AC
+    db 4
+    db 3
+    dw AMY_UVAR_Lc
+    db 4
+    db 1
+    dw AMY_UVAR_F_C1
+    db 7
+    db 6
+    db 10
+    db 6
+    db 16
+    db 0
+; vm STI = A(I) - L(I) * C1
+Ex_14:
+    db 1
+    dw AMY_UVAR_F_AC
+    db 4
+    db 3
+    dw AMY_UVAR_Lc
+    db 4
+    db 1
+    dw AMY_UVAR_F_C1
+    db 7
+    db 6
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; if SC = 10 AND RND(1) < .25 then l701
+Ex_15:
+    db 1
+    dw AMY_UVAR_F_SC
+    db 4
+    db 2
+    dw Kl_10
+    db 10
+    db 2
+    db 4
+    db 2
+    dw Kl_1
+    db 14
+    db 4
+    db 2
+    dw Kl_d25
+    db 10
+    db 4
+    db 19
+    db 16
+    db 0
+; if A(I) < 0 then l471a
+Ex_16:
+    db 1
+    dw AMY_UVAR_F_AC
+    db 4
+    db 2
+    dw Kl_0
+    db 10
+    db 4
+    db 16
+    db 0
+; vm AC = 0
+Ex_17:
+    db 2
+    dw Kl_0
+    db 15
+    dw AMY_UVAR_F_AC
+    db 0
+; if P(I) >= P9 then l511
+Ex_18:
+    db 3
+    dw AMY_UVAR_Pc
+    db 4
+    db 1
+    dw Kc_P9
+    db 10
+    db 3
+    db 16
+    db 0
+; vm N1 = (P9 - P(I)) / P9 * .8 * S2 + S2
+Ex_19:
+    db 1
+    dw Kc_P9
+    db 4
+    db 3
+    dw AMY_UVAR_Pc
+    db 6
+    db 4
+    db 1
+    dw Kc_P9
+    db 8
+    db 4
+    db 2
+    dw Kl_d8
+    db 7
+    db 4
+    db 1
+    dw Kc_S2
+    db 7
+    db 4
+    db 1
+    dw Kc_S2
+    db 5
+    db 15
+    dw AMY_UVAR_F_N1
+    db 0
+; vm N1 = ((P9 ^ 2) * S2 / P(I) ^ 2)
+Ex_20:
+    db 1
+    dw Kc_P9
+    db 4
+    db 2
+    dw Kl_2
+    db 9
+    db 4
+    db 1
+    dw Kc_S2
+    db 7
+    db 4
+    db 3
+    dw AMY_UVAR_Pc
+    db 4
+    db 2
+    dw Kl_2
+    db 9
+    db 8
+    db 15
+    dw AMY_UVAR_F_N1
+    db 0
+; vm W = -S(I) * C9 : V = 1 - (EXP(W) * C2) : N2 = R1 * (N1 + (N1 * V)) : N2 = INT(N2 * G(I))
+Ex_21:
+    db 3
+    dw AMY_UVAR_Sc
+    db 11
+    db 4
+    db 1
+    dw Kc_C9
+    db 7
+    db 15
+    dw AMY_UVAR_F_W
+    db 2
+    dw Kl_1
+    db 4
+    db 1
+    dw AMY_UVAR_F_W
+    db 13
+    db 4
+    db 1
+    dw Kc_C2
+    db 7
+    db 6
+    db 15
+    dw AMY_UVAR_F_V
+    db 1
+    dw AMY_UVAR_F_R1
+    db 4
+    db 1
+    dw AMY_UVAR_F_N1
+    db 4
+    db 1
+    dw AMY_UVAR_F_N1
+    db 4
+    db 1
+    dw AMY_UVAR_F_V
+    db 7
+    db 5
+    db 7
+    db 15
+    dw AMY_UVAR_F_N2
+    db 1
+    dw AMY_UVAR_F_N2
+    db 4
+    db 3
+    dw AMY_UVAR_Gc
+    db 7
+    db 12
+    db 15
+    dw AMY_UVAR_F_N2
+    db 0
+; if N2 <= L(I) then l541
+Ex_22:
+    db 1
+    dw AMY_UVAR_F_N2
+    db 4
+    db 3
+    dw AMY_UVAR_Lc
+    db 10
+    db 6
+    db 16
+    db 0
+; vm N2 = L(I)
+Ex_23:
+    db 3
+    dw AMY_UVAR_Lc
+    db 15
+    dw AMY_UVAR_F_N2
+    db 0
+; vm M = N2 * P(I) * .01 : E = S(I) * S3 + L(I) * C1 : P1 = M - E : AC = AC + P1
+Ex_24:
+    db 1
+    dw AMY_UVAR_F_N2
+    db 4
+    db 3
+    dw AMY_UVAR_Pc
+    db 7
+    db 4
+    db 2
+    dw Kl_d01
+    db 7
+    db 15
+    dw AMY_UVAR_F_M
+    db 3
+    dw AMY_UVAR_Sc
+    db 4
+    db 1
+    dw Kc_S3
+    db 7
+    db 4
+    db 3
+    dw AMY_UVAR_Lc
+    db 4
+    db 1
+    dw AMY_UVAR_F_C1
+    db 7
+    db 5
+    db 15
+    dw AMY_UVAR_F_E
+    db 1
+    dw AMY_UVAR_F_M
+    db 4
+    db 1
+    dw AMY_UVAR_F_E
+    db 6
+    db 15
+    dw AMY_UVAR_F_P1
+    db 1
+    dw AMY_UVAR_F_AC
+    db 4
+    db 1
+    dw AMY_UVAR_F_P1
+    db 5
+    db 15
+    dw AMY_UVAR_F_AC
+    db 0
+; if A(I) > C / 100 then l591
+Ex_25:
+    db 1
+    dw AMY_UVAR_F_AC
+    db 4
+    db 3
+    dw AMY_UVAR_C
+    db 4
+    db 2
+    dw Kl_100
+    db 8
+    db 10
+    db 1
+    db 16
+    db 0
+; vm R1 = 1
+Ex_26:
+    db 2
+    dw Kl_1
+    db 15
+    dw AMY_UVAR_F_R1
+    db 0
+; if RND(1) < .25 then l651
+Ex_27:
+    db 2
+    dw Kl_1
+    db 14
+    db 4
+    db 2
+    dw Kl_d25
+    db 10
+    db 4
+    db 16
+    db 0
+; vm J = 30 + INT(RND(1) * 5) * 10
+Ex_28:
+    db 2
+    dw Kl_30
+    db 4
+    db 2
+    dw Kl_1
+    db 14
+    db 4
+    db 2
+    dw Kl_5
+    db 7
+    db 12
+    db 4
+    db 2
+    dw Kl_10
+    db 7
+    db 5
+    db 15
+    dw AMY_UVAR_F_J
+    db 0
+; str J
+Ex_29:
+    db 1
+    dw AMY_UVAR_F_J
+    db 18
+    db 0
+; vm R1 = 1 - J / 100
+Ex_30:
+    db 2
+    dw Kl_1
+    db 4
+    db 1
+    dw AMY_UVAR_F_J
+    db 4
+    db 2
+    dw Kl_100
+    db 8
+    db 6
+    db 15
+    dw AMY_UVAR_F_R1
+    db 0
+; if RND(-1) < .5 then l671
+Ex_31:
+    db 2
+    dw Kl_1
+    db 11
+    db 14
+    db 4
+    db 2
+    dw Kl_d5
+    db 10
+    db 4
+    db 16
+    db 0
+; vm R1 = .1
+Ex_32:
+    db 2
+    dw Kl_d1
+    db 15
+    dw AMY_UVAR_F_R1
+    db 0
+; vm R1 = 2
+Ex_33:
+    db 2
+    dw Kl_2
+    db 15
+    dw AMY_UVAR_F_R1
+    db 0
+; vm STI = INT(STI * 100 + .5) / 100
+Ex_34:
+    db 1
+    dw AMY_UVAR_F_STI
+    db 4
+    db 2
+    dw Kl_100
+    db 7
+    db 4
+    db 2
+    dw Kl_d5
+    db 5
+    db 12
+    db 4
+    db 2
+    dw Kl_100
+    db 8
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; str STI
+Ex_35:
+    db 1
+    dw AMY_UVAR_F_STI
+    db 18
+    db 0
+; truth STI = INT(STI)
+Ex_36:
+    db 1
+    dw AMY_UVAR_F_STI
+    db 4
+    db 1
+    dw AMY_UVAR_F_STI
+    db 12
+    db 10
+    db 2
+    db 16
+    db 0
+; truth STI = INT(STI * 10 + .5) / 10
+Ex_37:
+    db 1
+    dw AMY_UVAR_F_STI
+    db 4
+    db 1
+    dw AMY_UVAR_F_STI
+    db 4
+    db 2
+    dw Kl_10
+    db 7
+    db 4
+    db 2
+    dw Kl_d5
+    db 5
+    db 12
+    db 4
+    db 2
+    dw Kl_10
+    db 8
+    db 10
+    db 2
+    db 16
+    db 0
+; str N2
+Ex_38:
+    db 1
+    dw AMY_UVAR_F_N2
+    db 18
+    db 0
+; vm STI = P(I) / 100
+Ex_39:
+    db 3
+    dw AMY_UVAR_Pc
+    db 4
+    db 2
+    dw Kl_100
+    db 8
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; vm STI = M
+Ex_40:
+    db 1
+    dw AMY_UVAR_F_M
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; vm STI = E
+Ex_41:
+    db 1
+    dw AMY_UVAR_F_E
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; vm STI = P1
+Ex_42:
+    db 1
+    dw AMY_UVAR_F_P1
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; vm STI = A(I)
+Ex_43:
+    db 1
+    dw AMY_UVAR_F_AC
+    db 15
+    dw AMY_UVAR_F_STI
+    db 0
+; vm J = RND(1) * 25 + 50
+Ex_44:
+    db 2
+    dw Kl_1
+    db 14
+    db 4
+    db 2
+    dw Kl_25
+    db 7
+    db 4
+    db 2
+    dw Kl_50
+    db 5
+    db 15
+    dw AMY_UVAR_F_J
+    db 0
+; byte J
+Ex_45:
+    db 1
+    dw AMY_UVAR_F_J
+    db 17
+    db 0
+; vm AC = A / 100
+Ex_46:
+    db 3
+    dw AMY_UVAR_Av
+    db 4
+    db 2
+    dw Kl_100
+    db 8
+    db 15
+    dw AMY_UVAR_F_AC
+    db 0
+; vm SC = 2
+Ex_47:
+    db 2
+    dw Kl_2
+    db 15
+    dw AMY_UVAR_F_SC
+    db 0
+; vm SC = 7
+Ex_48:
+    db 2
+    dw Kl_7
+    db 15
+    dw AMY_UVAR_F_SC
+    db 0
+; vm SC = 10
+Ex_49:
+    db 2
+    dw Kl_10
+    db 15
+    dw AMY_UVAR_F_SC
+    db 0
+; vm SC = 5
+Ex_50:
+    db 2
+    dw Kl_5
+    db 15
+    dw AMY_UVAR_F_SC
+    db 0
+; if RND(K1) > KP then b51
+Ex_51:
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_KP
+    db 10
+    db 1
+    db 16
+    db 0
+; vm X = RND(K1) * K5 + K8 : Y = 5 : FI = RND(K1) * K4 + K7
+Ex_52:
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_K5
+    db 7
+    db 4
+    db 1
+    dw Kc_K8
+    db 5
+    db 15
+    dw AMY_UVAR_F_X
+    db 2
+    dw Kl_5
+    db 15
+    dw AMY_UVAR_F_Y
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_K4
+    db 7
+    db 4
+    db 1
+    dw Kc_K7
+    db 5
+    db 15
+    dw AMY_UVAR_F_FI
+    db 0
+; vm Y = FI + K1 : FI = FI + K3 + RND(K1) * K5 : X = X + K1 - K2 * (RND(K1) > KP)
+Ex_53:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_K1
+    db 5
+    db 15
+    dw AMY_UVAR_F_Y
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_K3
+    db 5
+    db 4
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_K5
+    db 7
+    db 5
+    db 15
+    dw AMY_UVAR_F_FI
+    db 1
+    dw AMY_UVAR_F_X
+    db 4
+    db 1
+    dw Kc_K1
+    db 5
+    db 4
+    db 1
+    dw Kc_K2
+    db 4
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_KP
+    db 10
+    db 1
+    db 7
+    db 6
+    db 15
+    dw AMY_UVAR_F_X
+    db 0
+; if FI > KTP AND X > KL then b21a
+Ex_54:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_KT
+    db 10
+    db 1
+    db 4
+    db 1
+    dw AMY_UVAR_F_X
+    db 4
+    db 1
+    dw Kc_KL
+    db 10
+    db 1
+    db 19
+    db 16
+    db 0
+; vm X = X - K2
+Ex_55:
+    db 1
+    dw AMY_UVAR_F_X
+    db 4
+    db 1
+    dw Kc_K2
+    db 6
+    db 15
+    dw AMY_UVAR_F_X
+    db 0
+; if FI > KB then b91
+Ex_56:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_KB
+    db 10
+    db 1
+    db 16
+    db 0
+; if FI < KB then b41
+Ex_57:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_KB
+    db 10
+    db 4
+    db 16
+    db 0
+; vm X = RND(K1) * K8 + 26 : Y = K7 : FI = RND(K1) * K5 + K7
+Ex_58:
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_K8
+    db 7
+    db 4
+    db 2
+    dw Kl_26
+    db 5
+    db 15
+    dw AMY_UVAR_F_X
+    db 1
+    dw Kc_K7
+    db 15
+    dw AMY_UVAR_F_Y
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_K5
+    db 7
+    db 4
+    db 1
+    dw Kc_K7
+    db 5
+    db 15
+    dw AMY_UVAR_F_FI
+    db 0
+; vm Y = FI + K1 : FI = FI + K3 + RND(K1) * K5 : X = X + K1 - K2 * (RND(K1) > KP)
+Ex_59:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_K1
+    db 5
+    db 15
+    dw AMY_UVAR_F_Y
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_K3
+    db 5
+    db 4
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_K5
+    db 7
+    db 5
+    db 15
+    dw AMY_UVAR_F_FI
+    db 1
+    dw AMY_UVAR_F_X
+    db 4
+    db 1
+    dw Kc_K1
+    db 5
+    db 4
+    db 1
+    dw Kc_K2
+    db 4
+    db 1
+    dw Kc_K1
+    db 14
+    db 4
+    db 1
+    dw Kc_KP
+    db 10
+    db 1
+    db 7
+    db 6
+    db 15
+    dw AMY_UVAR_F_X
+    db 0
+; if X < KR then b61a
+Ex_60:
+    db 1
+    dw AMY_UVAR_F_X
+    db 4
+    db 1
+    dw Kc_KR
+    db 10
+    db 4
+    db 16
+    db 0
+; vm X = X + K2
+Ex_61:
+    db 1
+    dw AMY_UVAR_F_X
+    db 4
+    db 1
+    dw Kc_K2
+    db 5
+    db 15
+    dw AMY_UVAR_F_X
+    db 0
+; if FI > KB then b91
+Ex_62:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 4
+    db 1
+    dw Kc_KB
+    db 10
+    db 1
+    db 16
+    db 0
+; byte Y
+Ex_63:
+    db 1
+    dw AMY_UVAR_F_Y
+    db 17
+    db 0
+; byte FI
+Ex_64:
+    db 1
+    dw AMY_UVAR_F_FI
+    db 17
+    db 0
+; byte X
+Ex_65:
+    db 1
+    dw AMY_UVAR_F_X
+    db 17
+    db 0
+; the literals (FAC and its extension byte, as FIN leaves them)
+Kl_0:  ; 0
+    db 0,0,0,0,0,0,0
+Kl_1:  ; 1
+    db 129,128,0,0,0,0,0
+Kl_10:  ; 10
+    db 132,160,0,0,0,0,0
+Kl_100:  ; 100
+    db 135,200,0,0,0,0,0
+Kl_2:  ; 2
+    db 130,128,0,0,0,0,0
+Kl_25:  ; 25
+    db 133,200,0,0,0,0,0
+Kl_26:  ; 26
+    db 133,208,0,0,0,0,0
+Kl_30:  ; 30
+    db 133,240,0,0,0,0,0
+Kl_5:  ; 5
+    db 131,160,0,0,0,0,0
+Kl_50:  ; 50
+    db 134,200,0,0,0,0,0
+Kl_7:  ; 7
+    db 131,224,0,0,0,0,0
+Kl_d000000001:  ; .000000001
+    db 99,137,112,95,65,0,128
+Kl_d01:  ; .01
+    db 122,163,215,10,61,0,128
+Kl_d1:  ; .1
+    db 125,204,204,204,204,0,128
+Kl_d25:  ; .25
+    db 127,128,0,0,0,0,0
+Kl_d5:  ; .5
+    db 128,128,0,0,0,0,0
+Kl_d6:  ; .6
+    db 128,153,153,153,153,0,128
+Kl_d8:  ; .8
+    db 128,204,204,204,204,0,128
+; the constants of line 101 and 791, rounded as variables hold them
+Kc_P9:  ; 10
+    db 132,32,0,0,0
+Kc_S3:  ; .15
+    db 126,25,153,153,154
+Kc_S2:  ; 30
+    db 133,112,0,0,0
+Kc_A2:  ; 2.00
+    db 130,0,0,0,0
+Kc_C9:  ; .5
+    db 128,0,0,0,0
+Kc_C2:  ; 1
+    db 129,0,0,0,0
+Kc_K1:  ; 1
+    db 129,0,0,0,0
+Kc_KP:  ; .5
+    db 128,0,0,0,0
+Kc_K5:  ; 5
+    db 131,32,0,0,0
+Kc_KB:  ; 25
+    db 133,72,0,0,0
+Kc_K2:  ; 2
+    db 130,0,0,0,0
+Kc_K3:  ; 3
+    db 130,64,0,0,0
+Kc_K4:  ; 4
+    db 131,0,0,0,0
+Kc_K7:  ; 7
+    db 131,96,0,0,0
+Kc_KR:  ; 27
+    db 133,88,0,0,0
+Kc_K8:  ; 8
+    db 132,0,0,0,0
+Kc_KT:  ; 13
+    db 132,80,0,0,0
+Kc_KL:  ; 14
+    db 132,96,0,0,0
+; RND's seed after Applesoft's cold start
+RndSeed0:
+    db 128,79,199,82,0
+
+}
