@@ -58,6 +58,24 @@ function publishDiagnostics(report) {
   for (const group of groups.values()) diagnostics.set(group.uri, group.values);
 }
 
+function sourceDiagnostics(document) {
+  if (!document || document.languageId !== "amy") return [];
+  return model.sourceDiagnostics(document.getText(), document.uri.fsPath);
+}
+
+function publishDocumentDiagnostics(document) {
+  const items = sourceDiagnostics(document);
+  const values = items.map((item) => {
+    const line = Math.max(0, Number(item.line || 1) - 1);
+    const column = Math.max(0, Number(item.column || 1) - 1);
+    const diagnostic = new vscode.Diagnostic(new vscode.Range(line, column, line, column + 1), item.message, diagnosticSeverity(item.severity));
+    diagnostic.source = "Amy";
+    diagnostic.code = item.code;
+    return diagnostic;
+  });
+  diagnostics.set(document.uri, values);
+}
+
 function runProcess(executable, args, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { cwd, windowsHide: true });
@@ -92,7 +110,12 @@ async function compile(context, resource, forcedProfile) {
       try { report = JSON.parse(fs.readFileSync(reportPath, "utf8")); }
       catch (error) { output.appendLine("Invalid compiler report: " + error.message); }
     }
-    if (report) publishDiagnostics(report);
+    const entryDocument = vscode.workspace.textDocuments.find((document) => path.resolve(document.uri.fsPath) === path.resolve(project.entry));
+    const localDiagnostics = entryDocument
+      ? sourceDiagnostics(entryDocument)
+      : model.sourceDiagnostics(fs.readFileSync(project.entry, "utf8"), project.entry);
+    if (report) publishDiagnostics({ ...report, diagnostics: [...(report.diagnostics || []), ...localDiagnostics] });
+    else if (entryDocument) publishDocumentDiagnostics(entryDocument);
     if (result.code !== 0 || report?.ok === false) {
       status.text = "$(error) Amy";
       vscode.window.showErrorMessage(report?.diagnostics?.[0]?.message || "Compilation failed. See Amy output.");
@@ -157,6 +180,9 @@ function activate(context) {
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document) => {
     if (document.languageId === "amy" && config().get("compileOnSave", false)) compile(context, document.uri);
   }));
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(publishDocumentDiagnostics));
+  context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(({ document }) => publishDocumentDiagnostics(document)));
+  for (const document of vscode.workspace.textDocuments) publishDocumentDiagnostics(document);
 }
 function deactivate() {}
 module.exports = { activate, deactivate };

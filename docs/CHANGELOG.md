@@ -1,3 +1,19 @@
+## 2026-10-30 - Classic games and VS Code validation
+
+- Updated the **Amy Studio extension for Visual Studio Code** to 0.1.2 with
+  the current compiler snapshot and a live diagnostic for sprite tables that
+  are populated without an explicit sprite count or terminator.
+- Added five COMPUTE!'s Gazette programs from December 1983: **BLAM!**,
+  **Bowling Champ**, **Saucer Shooter**, **Spike** and **Space Duel**.
+- Added two January 1984 COMPUTE!'s Gazette adaptations: **Hardhat Climber**
+  and the first-person 3D reinterpretation **Cave-In**.
+- Corrected BLAM! and Bowling Champ to declare their two active sprites,
+  preventing later SAT memory from being interpreted as visible sprites on
+  stricter TMS9918A implementations.
+- Revalidated provenance metadata, the COMPUTE! attribution screens and all
+  seven new Balanced cartridges; the browser catalogue now contains **387
+  examples**.
+
 ## 2026-10-27 - 120-color RAM safety and Picture Show
 
 - Fixed temporal 120-color RAM allocation so its phase bytes, controller buffers

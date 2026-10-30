@@ -61,4 +61,34 @@ function buildArguments(project, compilerPath, buildDir, profile = project.optim
   for (const define of project.manifest.defines || []) args.push("--define", String(define));
   return args;
 }
-module.exports = { MANIFEST, VALID_PROFILES, findManifest, readProject, standaloneProject, buildArguments };
+
+function sourceDiagnostics(source, file = "") {
+  const lines = String(source || "").split(/\r?\n/);
+  const code = lines.map((line) => {
+    let inString = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"') {
+        if (inString && line[index + 1] === '"') { index += 1; continue; }
+        inString = !inString;
+      } else if (!inString && (character === "'" || character === ";")) {
+        return line.slice(0, index);
+      }
+    }
+    return line;
+  });
+  const hasShadowWrites = code.some((line) => /^\s*set\s+sprite\s+(?!count\b)/i.test(line));
+  const firstFullUpload = code.findIndex((line) => /^\s*update\s+sprites\s*$/i.test(line));
+  const establishesCount = code.some((line) => /^\s*(?:set\s+sprite\s+count\b|clear\s+sprites\b)/i.test(line));
+  if (!hasShadowWrites || firstFullUpload < 0 || establishesCount) return [];
+  return [{
+    file,
+    line: firstFullUpload + 1,
+    column: Math.max(1, (lines[firstFullUpload].search(/\S/) + 1) || 1),
+    severity: "warning",
+    code: "sprite-count-not-established",
+    message: "Sprite entries are uploaded without set sprite count or clear sprites. The SAT may continue through uninitialized RAM."
+  }];
+}
+
+module.exports = { MANIFEST, VALID_PROFILES, findManifest, readProject, standaloneProject, buildArguments, sourceDiagnostics };

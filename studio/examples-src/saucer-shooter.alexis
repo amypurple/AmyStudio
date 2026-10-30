@@ -1,0 +1,765 @@
+cartridge "SAUCER SHOOTER/RON WATTS, COMPUTE!/1983"
+
+' SAUCER SHOOTER
+' Ron Watts's SAUCER SHOOTER (COMPUTE!'s Gazette, December 1983, for the
+' VIC-20), for the ColecoVision in Amy by Amy Bienvenu. Ported by Claude
+' (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: the listing (orig/saucer_vic.bas, typed in from the magazine's
+' pages 233-234). Labels such as l100 are its line numbers; the screen it
+' PEEKed and POKEd is the Cell array (Pk, Po), one cell per character:
+' 0 the saucer, 1 your turret, 2 the saucer's shot, 3 your bullet, 4 a
+' pile of atomic waste, 5 a blast, 32 nothing.
+'
+' A hostile saucer orbits overhead and fires at your gun turret; its shots
+' come down slanting and wrap round the screen. Shoot them in the air (100
+' points) or hit the saucer (500). A shot that reaches the ground leaves a
+' pile of atomic waste, and running your turret into a pile blows it up.
+' Four turrets. Only one bullet flies at a time: firing again starts a new
+' one. You move twice as fast as the saucer.
+'
+' Controls (either joystick): left/right move the turret (it wraps round
+' the edges), the left button fires. Keypad not used.
+'
+' Kept as the listing has them: the saucer's bounce and where it comes
+' back after a hit, when it fires (when its slanting shot would land on
+' you), the shot's path and wrap, the bullet (two rows at once when
+' fired, one bullet at a time, the button held fires again and again),
+' the order of the loop (the saucer once, you and your bullet twice, the
+' shot once), a shot meeting a pile leaving a blast mark, a shot landing
+' on the turret leaving it unharmed, the scores, four turrets, the high
+' score of the session, GAME OVER--PRESS FIRE.
+' Liberties taken:
+' - 28 columns and rows 4-21 (the VIC had 22 columns): the saucer flies
+'   on row 4, the turret on row 21, the same 17 rows apart; the aim
+'   numbers are the listing's for 28 columns (464, 493, 492 for its 368,
+'   391, 390).
+' - The saucer and the turret are sprites; the night sky, the waste and
+'   the blasts are tiles. The screen flashes are kept (the backdrop).
+' - A pass of the loop takes two frames; the listing's sound loops are
+'   timed pauses.
+' - The title tune is new (the listing played a short fanfare).
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; a
+' credits page; the screens are drawn with the NMI off.
+
+const TSky = 128
+const TStar = 129
+const TStar2 = 130
+const TSurf = 131
+const TGround = 132
+const TShot = 133
+const TBullet = 134
+const TPile = 135
+const TBlast = 136
+const TCrater = 137
+const TSpare = 138
+const SHull = 0
+const SDome = 4
+const SLit1 = 8
+const SLit2 = 12
+const SBase = 16
+const SBarrel = 20
+const SBoom = 24
+const NTiles8 = 88
+const SprBytes = 224
+const SndHush = 1
+const SndShoot = 2
+const SndPop = 3
+const SndBoom = 4
+const SndFire = 5
+const SndThud = 6
+const SndTuneA = 7
+const SndTuneB = 8
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the listing's variables (cells 100-603: rows 4-21, 28 a row; Cell[]
+' holds them from 0) ----------------------------------------------------------
+u8 Cell[504]
+u16 L = 590
+u16 L1 = 116
+u16 L2 = 0
+u16 L3 = 0
+u8 D = 0
+u8 D1 = 1
+u8 P1 = 0
+u8 P2 = 1
+u8 X = 0
+u8 N = 4
+u16 SC = 0
+u16 HI = 0
+u16 Pass = 0
+u8 Ask = 0
+u8 Idle = 0
+u8 Ev = 0
+
+u16 Rs = $3C5A
+u16 Rw = 0
+u16 Rt = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 Rn = 0
+u16 Rv = 0
+u8 Fire1 = 0
+u8 WasF1 = 0
+u8 JL = 0
+u8 JR = 0
+u8 JF = 0
+u8 Tick = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 K = 0
+u8 Tx = 0
+u8 Ty = 0
+u16 Q16 = 0
+u16 R16 = 0
+u16 V16 = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table SsSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  CreditsPage
+  ' 6000-6090: the title, PRESS FIRE TO BEGIN
+  TitlePage
+  HI = 0
+
+' 40-90: a new game
+l40:
+  L = 590
+  D = 0
+  L1 = 116
+  L2 = L - 28
+  D1 = 1
+  L3 = L1 + 29
+  P2 = 1
+  P1 = 0
+  X = 0
+  SC = 0
+  N = 4
+  GameScreen
+  Hud30
+  Po(L, 1)
+
+' 100-140: the saucer
+l100:
+  Po(L1, 32)
+  if L1 = 100 then goto l100b
+  if L1 = 127 then goto l100b
+  goto l110
+l100b:
+  ' D1 = -D1
+  if D1 = 1 then
+    D1 = 255
+  else
+    D1 = 1
+  end if
+l110:
+  if P2 = 1 then goto l130
+  ' 120-125: it fires when its shot would land on you
+  V16 = L - L1
+  if V16 = 464 then
+    L3 = L1 + 29
+    P2 = 1
+  end if
+  if V16 = 493 then
+    L3 = L1 + 29
+    P2 = 1
+  end if
+  if V16 = 492 then
+    if L1 = 100 then
+      L3 = L1 + 28
+      P2 = 1
+    end if
+  end if
+  if P2 = 1 then play sound SndFire
+l130:
+  if D1 = 1 then
+    inc L1
+  else
+    dec L1
+  end if
+  Pk(L1)
+  if V = 3 then goto l240
+  Po(L1, 0)
+
+' 200-260: your bullet
+l200:
+  if P1 = 0 then goto l300
+  Po(L2, 32)
+  L2 = L2 - 28
+  if L2 < 100 then
+    P1 = 0
+    goto l300
+  end if
+  Pk(L2)
+  if V = 32 then
+    Po(L2, 3)
+    goto l300
+  end if
+l230:
+  Pk(L2)
+  if V = 2 then
+    ' a shot hit in the air
+    Po(L2, 5)
+    SC = SC + 100
+    play sound SndPop
+    Pause(6)
+    Po(L2, 32)
+    P2 = 0
+    goto l300
+  end if
+l240:
+  ' the saucer hit
+  Po(L2, 5)
+  SC = SC + 500
+  Rn = 10
+  RndK
+  L1 = Rv + 101
+  P2 = 0
+  Hud30
+  ' 250: the blast and the screen's flashes
+  play sound SndBoom
+  for J8 = 0 to 15
+    K = J8 & 3
+    if K = 0 then backdrop dark red
+    if K = 1 then backdrop magenta
+    if K = 2 then backdrop dark blue
+    if K = 3 then backdrop black
+    Frame1
+    Frame1
+    Frame1
+  next
+  backdrop black
+  Po(L2, 32)
+  Po(L3, 32)
+
+' 300-360: the stick (each pass of the loop waits here for two frames)
+l300:
+  inc Pass
+  Frame1
+  Frame1
+  ReadPad
+  if JL = 1 then
+    ' D = -1
+    D = 255
+    goto l340
+  end if
+  if JR = 1 then
+    D = 1
+    goto l330
+  end if
+  goto l360
+l330:
+  V16 = L + 1
+  if V16 = 604 then
+    Po(L, 32)
+    L = 575
+  end if
+  goto l350
+l340:
+  V16 = L - 1
+  if V16 = 575 then
+    Po(L, 32)
+    L = 604
+  end if
+l350:
+  Po(L, 32)
+  if D = 1 then
+    inc L
+  else
+    dec L
+  end if
+  Pk(L)
+  if V = 4 then goto l2030
+l360:
+  Po(L, 1)
+
+' 400-440: the button fires
+  if JF = 1 then
+    Po(L2, 32)
+    L2 = L - 28
+    P1 = 1
+    goto l418
+  end if
+' 410-415: two passes for you to one for the saucer and its shot
+  inc X
+  if X = 2 then
+    X = 0
+    goto l500
+  end if
+  goto l200
+l418:
+  Pk(L2)
+  if V = 2 then goto l230
+  Po(L2, 3)
+  L2 = L2 - 28
+  play sound SndShoot
+  V16 = L2 + 28
+  Po(V16, 32)
+  Pk(L2)
+  if V = 2 then goto l230
+  Po(L2, 3)
+
+' 500-560: the saucer's shot
+l500:
+  if P2 = 0 then goto l100
+  Po(L3, 32)
+  L3 = L3 + 29
+  if L3 >= 604 then L3 = L3 - 28
+  Pk(L3)
+  if V = 3 then
+    Po(L2, 2)
+    goto l230
+  end if
+  if L3 < 576 then
+    Po(L3, 2)
+    goto l100
+  end if
+  P2 = 0
+  Pk(L3)
+  if V = 32 then
+    Po(L3, 4)
+    play sound SndThud
+    goto l100
+  end if
+  if V = 4 then Po(L3, 5)
+  Pk(L3)
+  if V = 32 then goto l100
+  Po(L3, 5)
+  play sound SndThud
+  goto l100
+
+' 2000-2080: the turret destroyed
+l2030:
+  Po(L, 5)
+  dec N
+  play sound SndBoom
+  for J8 = 1 to 30
+    K = J8 & 2
+    if K = 0 then set sprite 4 to 192,0,0,0
+    if K <> 0 then
+      V16 = L - 576
+      Tx = V16 + 2
+      Tx = Tx * 8
+      set sprite 4 to 150,Tx,SBoom,11
+    end if
+    update sprites
+    Frame1
+  next
+  set sprite 4 to 192,0,0,0
+  Pause(90)
+  ' 2060: one turret fewer in reserve
+  Hud30
+  if N > 0 then
+    Po(L, 1)
+    goto l200
+  end if
+  print at 5,12, "GAME OVER--PRESS FIRE"
+  Ask = 9
+  WasF1 = 1
+l2070:
+  Frame1
+  ReadPad
+  if JF = 0 then goto l2070
+  Ask = 0
+  Po(L, 32)
+  Po(L1, 32)
+  Po(L2, 32)
+  Po(L3, 32)
+  goto l40
+
+' ---------------------------------------------------------------------------
+' The screen
+
+' Pk: PEEK cell Q in V (outside the field: 32)
+sub Pk(u16 Qq):
+  V = 32
+  if Qq < 100 then return
+  if Qq > 603 then return
+  V16 = Qq - 100
+  V = Cell[V16]
+  return
+end sub
+
+' Po: POKE code Vv in cell Qq, and draw it
+sub Po(u16 Qq, u8 Vv):
+  if Qq < 100 then return
+  if Qq > 603 then return
+  Q16 = Qq - 100
+  Cell[Q16] = Vv
+  Q16 = Qq
+  DrawCell
+  return
+end sub
+
+' DrawCell: cell Q16 as a tile (the saucer and the turret are sprites)
+sub DrawCell:
+  V16 = Q16 - 100
+  W = Cell[V16]
+  R16 = V16 / 28
+  Ty = R16 + 0
+  V16 = V16 % 28
+  Tx = V16 + 2
+  K = TSky
+  if Ty = 17 then
+    K = TSurf
+    if W = 4 then K = TPile
+    if W = 5 then K = TCrater
+  else
+    ' the stars are fixed to their cells
+    J8 = Q16 % 11
+    if J8 = 3 then K = TStar
+    J8 = Q16 % 17
+    if J8 = 5 then K = TStar2
+    if W = 2 then K = TShot
+    if W = 3 then K = TBullet
+    if W = 5 then K = TBlast
+  end if
+  Ty = Ty + 4
+  put char K at Tx,Ty
+  return
+end sub
+
+' Things: the saucer and the turret where the cells say
+sub Things:
+  V16 = L1 - 100
+  Tx = V16 + 2
+  Tx = Tx * 8
+  Tx = Tx - 4
+  Ty = 22
+  set sprite 0 to Ty,Tx,SDome,7
+  K = Tick & 8
+  if K = 0 then set sprite 1 to Ty,Tx,SLit1,11
+  if K <> 0 then set sprite 1 to Ty,Tx,SLit2,9
+  set sprite 2 to Ty,Tx,SHull,14
+  V16 = L - 576
+  Tx = V16 + 2
+  Tx = Tx * 8
+  Tx = Tx - 4
+  Ty = 160
+  set sprite 3 to Ty,Tx,SBarrel,15
+  set sprite 5 to Ty,Tx,SBase,14
+  update sprites
+  return
+end sub
+
+' Hud30: 30-35, the high score, the score; also ends your bullet
+sub Hud30:
+  if HI < SC then HI = SC
+  print at 2,1, "SCORE"
+  NumU = SC
+  print at 8,1, digits$(NumU, 5)
+  print at 15,1, "HIGH"
+  NumU = HI
+  print at 20,1, digits$(NumU, 5)
+  ' the turrets in reserve
+  for J8 = 1 to 3
+    K = 32
+    if J8 < N then K = TSpare
+    Tx = J8 + 26
+    put char K at Tx,1
+  next
+  P1 = 0
+  return
+end sub
+
+sub GameScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideAll
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  for Q16 = 100 to 603
+    V16 = Q16 - 100
+    Cell[V16] = 32
+    DrawCell
+  next
+  fill TGround count 28 at 2,22
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Ask = 1
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 6
+  for J8 = 0 to 5
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frames, input, random numbers
+
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  if Ask = 1 then Things
+  return
+end sub
+
+' ReadPad: the stick and the button as they are now (the listing PEEKed
+' the joystick port), Fire1 a new press
+sub ReadPad:
+  JL = joypad(1).left | joypad(2).left
+  JR = joypad(1).right | joypad(2).right
+  JF = joypad(1).button1 | joypad(2).button1
+  Fire1 = 0
+  if JF = 1 then
+    if WasF1 = 0 then Fire1 = 1
+  end if
+  WasF1 = JF
+  return
+end sub
+
+sub WaitPress:
+  WasF1 = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Fire1 = 0 then goto wp_loop
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub RndK:
+  Rnd16
+  Uq = Rw
+  Uq2 = Rn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub TextPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideAll
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowPage:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  TextPage
+  print at 8,1, "SAUCER SHOOTER"
+  print at 2,3, "BY RON WATTS, FROM"
+  print at 2,4, "COMPUTE!'S GAZETTE,"
+  print at 2,5, "DECEMBER 1983 (VIC-20)."
+  print at 2,7, "FOR THE COLECOVISION BY"
+  print at 2,8, "CLAUDE (AN AI MADE BY"
+  print at 2,9, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,10, "2026, IN AMY, THE LANGUAGE"
+  print at 2,11, "BY AMY BIENVENU."
+  print at 2,13, "MUSIC: CLOSE ENCOUNTER"
+  print at 2,14, "(ORIGINAL)."
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  Ask = 2
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub TitlePage:
+  TextPage
+  for J8 = 3 to 15
+    K = J8 * 7
+    K = K % 26
+    K = K + 2
+    W = J8 & 1
+    if W = 0 then put char TStar at K,J8
+    if W = 1 then put char TStar2 at K,J8
+  next
+  print at 8,5, "SAUCER SHOOTER"
+  print at 4,9, "SHOOT DOWN THE SAUCER'S"
+  print at 4,10, "SHOTS (100) AND THE"
+  print at 4,11, "SAUCER (500). MISSED SHOTS"
+  print at 4,12, "LEAVE ATOMIC WASTE: DON'T"
+  print at 4,13, "DRIVE INTO IT."
+  print at 5,18, "PRESS FIRE TO BEGIN"
+  set sprite count 6
+  set sprite 0 to 50,120,SDome,7
+  set sprite 1 to 50,120,SLit1,11
+  set sprite 2 to 50,120,SHull,14
+  update sprites
+  ShowPage
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song SsSong once
+  Ask = 2
+  WaitPress
+  Ask = 0
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $3C5A
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$40,$04,$00,$20,$02,$00,$00
+  $00,$10,$38,$38,$10,$00,$00,$00
+  $10,$10,$10,$10,$10,$00,$00,$00
+  $00,$00,$20,$87,$A5,$04,$00,$00
+  $91,$54,$38,$38,$38,$54,$92,$10
+  $00,$00,$00,$00,$00,$81,$81,$00
+  $00,$10,$10,$38,$83,$01,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$01,$01,$01,$01,$01,$02,$0C
+  $0C,$2C,$2C,$0C,$2C,$2C,$0C,$0C
+  $01,$81,$91,$91,$81,$01,$01,$01
+  $B1,$B1,$B1,$B1,$F1,$01,$01,$01
+  $01,$01,$31,$13,$13,$13,$03,$0C
+  $B1,$B1,$81,$8B,$81,$B1,$B1,$B1
+  $01,$01,$01,$01,$01,$E1,$1E,$0C
+  $01,$F1,$F1,$F1,$1F,$1F,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$0F,$3F,$7F,$3F,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$FC,$FE,$FC,$F0,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$22,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$22,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$88,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$0F,$1F,$3F,$7F,$FF,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$F0,$F8,$FC,$FE,$FF,$00
+  $00,$00,$01,$01,$01,$01,$01,$03,$02,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$80,$80,$80,$80,$80,$C0,$40,$00,$00,$00,$00,$00,$00,$00
+  $00,$21,$11,$09,$05,$03,$7F,$03,$05,$09,$11,$21,$00,$00,$00,$00
+  $00,$08,$10,$20,$40,$80,$FC,$80,$40,$20,$10,$08,$00,$00,$00,$00
+end data
+
+asm {
+SsHush:
+    db $00,$00,$F0,$01,$10
+SsShoot:
+    db $40,$3E,$20,$01,$40,$4B,$20,$01,$40,$5D,$30,$01,$40,$70,$40,$01,$40,$8C,$60,$02,$50
+SsPop:
+    db $00,$00,$14,$03,$00,$00,$55,$06,$10
+SsBoom:
+    db $00,$00,$06,$0A,$00,$00,$27,$0C,$00,$00,$47,$10,$00,$00,$77,$14,$00,$00,$A7,$14,$10
+SsFire:
+    db $40,$BA,$40,$02,$40,$A0,$50,$02,$40,$8C,$60,$02,$50
+SsThud:
+    db $00,$00,$25,$02,$00,$00,$66,$06,$10
+
+SsSoundTable:
+    dw SsHush,$702B
+    dw SsShoot,$7035
+    dw SsPop,$702B
+    dw SsBoom,$702B
+    dw SsFire,$7035
+    dw SsThud,$702B
+    dw SsTuneMel,$703F
+    dw SsTuneBass,$7049
+; Close Encounter (original)
+; Tiny Sound, 8 frames per step
+SsTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$23,$01,$24,$01,$23,$01,$1F,$01,$01,$01,$1A,$01
+    db $01,$01,$01,$01,$1C,$01,$1E,$01,$1F,$01,$23,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$26,$01,$24,$01,$23,$01,$21,$01,$1F,$01
+    db $1E,$01,$1A,$01,$1C,$01,$1F,$01,$1E,$01,$1A,$01,$17,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SsTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$10,$01,$01,$01,$17,$01,$01,$01,$10,$01,$01,$01
+    db $17,$01,$01,$01,$0C,$01,$01,$01,$13,$01,$01,$01,$0E,$01,$01,$01
+    db $15,$01,$01,$01,$13,$01,$01,$01,$0E,$01,$01,$01,$15,$01,$01,$01
+    db $12,$01,$01,$01,$10,$01,$01,$01,$0B,$01,$01,$01,$10,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune (SndTuneA 7, SndTuneB 8) at once
+SsSong:
+    dw $0001
+    db $40+7,8
+    dw $0000
+}

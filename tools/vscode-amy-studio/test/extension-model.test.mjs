@@ -55,6 +55,25 @@ try {
   assert.equal(standalone.manifestPath, null);
   assert.equal(standalone.entry, join(sourceDir, "standalone.alexis"));
 
+  const missingCount = model.sourceDiagnostics(`sprites 16x16
+set sprite 0 to 20,30,4,15
+update sprites
+`, "blam.alexis");
+  assert.equal(missingCount.length, 1);
+  assert.equal(missingCount[0].line, 3);
+  assert.equal(missingCount[0].code, "sprite-count-not-established");
+  assert.equal(model.sourceDiagnostics(`sprites 16x16
+set sprite count 1
+set sprite 0 to 20,30,4,15
+update sprites
+`).length, 0);
+  assert.equal(model.sourceDiagnostics(`set sprite 0 to 20,30,4,15
+update sprites from 0 count 1
+`).length, 0);
+  assert.equal(model.sourceDiagnostics(`' set sprite 0 to 20,30,4,15
+print "update sprites"
+`).length, 0);
+
   console.log("VS Code Amy project model: PASS");
 } finally {
   await rm(root, { recursive: true, force: true });

@@ -1,0 +1,931 @@
+cartridge "BOWLING CHAMP/JOSEPH GANCI, COMPUTE!/1983"
+
+' BOWLING CHAMP
+' Joseph Ganci's BOWLING CHAMP (COMPUTE!'s Gazette, December 1983, for the
+' VIC-20 and the Commodore 64), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026.
+'
+' Source: the 64 version's listing (orig/bowl64.bas, typed in from the
+' magazine's pages 205-206). Line numbers in the comments are its.
+'
+' One to three players, ten frames. The ball rides up and down the near
+' end of the lane; press the button to roll it. It rolls straight down
+' its row: the first pin in that row falls with the pins on the two
+' diagonals behind it (up to three back), then any pin further along the
+' row (lines 550-612). The middle row is a strike; the outer rows are the
+' gutters.
+'
+' Controls (either joystick): the left button rolls the ball. Before a
+' game: up/down the number of players, then each name with the stick
+' (up/down a letter, right/left the place) and the left button. Keypad
+' not used.
+'
+' Kept as the listing has them: the ball's nine rows (the gutters
+' included) and its bounce, the pins' places, which pins fall (the row,
+' the diagonals three back), the second ball on the pins left, the tenth
+' frame's extra balls (one after a spare, two after a strike, the pins
+' set again after a strike), the marks (X, /, the pins), the running
+' total after every ball, the colours changing with the player, FINAL
+' SCORES and AGAIN.
+' Liberties taken:
+' - The score is counted by the bowling rules (the listing read its
+'   marks back from the screen to do the same).
+' - 28 columns: the lane and the pins moved ten columns left; the score
+'   sheet is one box per ball (21), the totals on the name lines.
+' - Names are spelled with the stick (six letters, as the 64 kept).
+' - The ball moves one row every three frames.
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; an
+' original title tune that plays once; a credits page; the screens are
+' drawn with the NMI off.
+
+const TWood = 128
+const TGutter = 129
+const TFoul = 130
+const TArrow = 131
+const TPin = 132
+const TFall = 133
+const TDeck = 134
+const TMa0 = 135
+const TMa1 = 136
+const TMa2 = 137
+const TMa3 = 138
+const TMa4 = 139
+const TMa5 = 140
+const TMa6 = 141
+const TMa7 = 142
+const TMa8 = 143
+const TMa9 = 144
+const TMadash = 145
+const TMaslash = 146
+const TMax = 147
+const TMasp = 148
+const TMb0 = 149
+const TMb1 = 150
+const TMb2 = 151
+const TMb3 = 152
+const TMb4 = 153
+const TMb5 = 154
+const TMb6 = 155
+const TMb7 = 156
+const TMb8 = 157
+const TMb9 = 158
+const TMbdash = 159
+const TMbslash = 160
+const TMbx = 161
+const TMbsp = 162
+const SBall = 0
+const SHoles = 4
+const NTiles8 = 280
+const SprBytes = 64
+const SndHush = 1
+const SndTick = 2
+const SndOk = 3
+const SndRoll = 4
+const SndPin = 5
+const SndEnd = 6
+const SndTuneA = 7
+const SndTuneB = 8
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the game -------------------------------------------------------------
+' A players, Z9 the player (0-2), Q the frame, J pins this ball, Pn the
+' pins standing (1) by number, Br the ball's row (13-21), Bc its column
+u8 A = 1
+u8 Am1 = 0
+u8 Z9 = 0
+u8 Q = 1
+u8 J = 0
+u8 J1 = 0
+u8 Pn[10]
+u8 Br = 19
+u8 Bc = 3
+u8 Bd = 1
+u16 Tot[3]
+u8 B1[3]
+u8 B2[3]
+u8 Mk[63]
+u8 Nm[18]
+u8 Ball = 0
+u8 Ask = 0
+u8 Idle = 0
+
+data PinR bytes 14,15,16,16,17,17,18,18,19,20
+data PinC bytes 27,26,25,27,24,26,25,27,26,27
+data Defn bytes 10,9,13,0,0,0, 11,9,13,0,0,0, 2,9,12,12,0,0
+
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Fire1 = 0
+u8 Fire2 = 0
+u8 WasF1 = 0
+u8 WasF2 = 0
+u8 WasDir = 0
+u8 Tick = 0
+u8 V = 0
+u8 W = 0
+u8 K = 0
+u8 N = 0
+u8 J8 = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Px = 0
+u8 Py = 0
+u8 Cr = 0
+u8 Cc = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table BcSoundTable areas 4
+  sprites 16x16
+  set sprite count 2
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  CreditsPage
+new_game:
+  TitlePage
+  Players
+  Names
+  ' 128-156: the score sheet and the lane
+  Sheet
+  for J8 = 0 to 2
+    Tot[J8] = 0
+    B1[J8] = 0
+    B2[J8] = 0
+  next
+  for J8 = 0 to 62
+    Mk[J8] = 13
+  next
+  ShowSheet
+' 160-225: ten frames, each player in turn
+  for Q = 1 to 10
+    for Z9 = 0 to Am1
+      Turn
+    next
+  next
+  goto final
+
+' 882-896: the final scores, again?
+final:
+  HideBall
+  backdrop black
+  Msg
+  print at 2,12, "FINAL SCORES"
+  play sound SndEnd
+  for J8 = 1 to 150
+    Frame1
+  next
+  Msg
+  print at 2,12, "AGAIN? PRESS A BUTTON"
+  Ask = 9
+  WaitPress
+  Ask = 0
+  goto new_game
+
+' ---------------------------------------------------------------------------
+' A frame for player Z9
+
+sub Turn:
+  ' 165: the colours change with the player
+  if Z9 = 0 then backdrop dark blue
+  if Z9 = 1 then backdrop dark red
+  if Z9 = 2 then backdrop dark green
+  Msg
+  Name
+  print at Tx,12, "'S TURN"
+  SetPins
+  Ball = 0
+  ' 169-174: the first ball, then the second on the pins left
+  Roll
+  J1 = J
+  Score
+  if J = 10 then
+    BoxMark(12)
+    if Q < 10 then return
+    goto t_strike10
+  end if
+  BoxDigit
+  Roll
+  Score
+  V = J1 + J
+  if V = 10 then
+    BoxMark(11)
+    if Q < 10 then return
+    ' 175-194: a spare in the tenth: one more
+    Msg
+    Name
+    print at Tx,12, ", THROW ONE MORE!"
+    Pause(90)
+    SetPins
+    Roll
+    Score
+    if J = 10 then BoxMark(12)
+    if J < 10 then BoxDigit
+    return
+  end if
+  BoxDigit
+  return
+t_strike10:
+  ' 195-214: a strike in the tenth: two more, the pins set again after a
+  ' strike
+  Msg
+  Name
+  print at Tx,12, ", THROW TWO MORE!"
+  Pause(90)
+  SetPins
+  Roll
+  J1 = J
+  Score
+  if J = 10 then
+    BoxMark(12)
+    SetPins
+    Roll
+    Score
+    if J = 10 then BoxMark(12)
+    if J < 10 then BoxDigit
+    return
+  end if
+  BoxDigit
+  Roll
+  Score
+  V = J1 + J
+  if V = 10 then
+    BoxMark(11)
+  else
+    BoxDigit
+  end if
+  return
+end sub
+
+' Score: J pins on this ball, with the bonuses still owed (frames 1-9:
+' a strike owes the next two balls, a spare the next one)
+sub Score:
+  V = B1[Z9] + 1
+  NumU = J
+  NumU = NumU * V
+  Tot[Z9] = Tot[Z9] + NumU
+  B1[Z9] = B2[Z9]
+  B2[Z9] = 0
+  if Q < 10 then
+    if Ball = 0 then
+      if J = 10 then
+        B1[Z9] = B1[Z9] + 1
+        B2[Z9] = B2[Z9] + 1
+      end if
+    else
+      V = J1 + J
+      if V = 10 then B1[Z9] = B1[Z9] + 1
+    end if
+  end if
+  ShowTotal
+  return
+end sub
+
+' BoxDigit, BoxMark: this ball's mark in the next box (11 /, 12 X)
+sub BoxDigit:
+  BoxMark(J)
+  return
+end sub
+
+sub BoxMark(u8 Mm):
+  V = Q - 1
+  V = V * 2
+  V = V + Ball
+  if V > 20 then V = 20
+  W = Z9 * 21
+  W = W + V
+  Mk[W] = Mm
+  DrawBox
+  inc Ball
+  ' a strike before the tenth frame leaves its second box empty
+  if Q < 10 then
+    if Mm = 12 then inc Ball
+  end if
+  return
+end sub
+
+' DrawBox: box V of player Z9's line
+sub DrawBox:
+  W = Z9 * 21
+  W = W + V
+  K = Mk[W]
+  N = TMa0
+  J8 = V & 1
+  if J8 = 1 then N = TMb0
+  N = N + K
+  Tx = V + 2
+  Ty = Z9 * 3
+  Ty = Ty + 4
+  put char N at Tx,Ty
+  return
+end sub
+
+sub ShowTotal:
+  Ty = Z9 * 3
+  Ty = Ty + 3
+  NumU = Tot[Z9]
+  print at 24,Ty, digits$(NumU, 3)
+  return
+end sub
+
+' Name: player Z9's name at row 12 (Tx: the column after it)
+sub Name:
+  Tx = 2
+  V = Z9 * 6
+  for J8 = 0 to 5
+    K = Nm[V]
+    if K > 0 then
+      K = K + 64
+      put char K at Tx,12
+      inc Tx
+    end if
+    inc V
+  next
+  return
+end sub
+
+sub Msg:
+  fill 32 count 28 at 2,12
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The ball
+
+' Roll: 430-460, the ball rides up and down until the button; 550-612, it
+' rolls down its row and the pins fall. J: the pins down.
+sub Roll:
+  J = 0
+  Br = 19
+  Bd = 1
+  Bc = 3
+  ShowBall
+  Ask = 1
+  WasF1 = 1
+r_ride:
+  for J8 = 1 to 3
+    Frame1
+    ReadPad
+    if Fire1 = 1 then goto r_go
+  next
+  ' 440: one row on; past the lane's edges it turns back
+  if Bd = 1 then
+    inc Br
+  else
+    dec Br
+  end if
+  if Br > 21 then
+    Br = 20
+    Bd = 0
+  end if
+  if Br < 13 then
+    Br = 14
+    Bd = 1
+  end if
+  ShowBall
+  goto r_ride
+r_go:
+  Ask = 0
+  play sound SndRoll
+  ' 550-600: 26 steps (the 64's 36, ten columns fewer)
+  for K = 1 to 26
+    for J8 = 0 to 3
+      Px = Bc * 8
+      Px = Px + J8
+      Px = Px + J8
+      Py = Br * 8
+      Py = Py - 5
+      set sprite 0 to Py,Px,SHoles,1
+      set sprite 1 to Py,Px,SBall,4
+      update sprites
+      Frame1
+    next
+    inc Bc
+    ' 554-572: a pin here falls, with the diagonals behind it
+    Cr = Br
+    Cc = Bc
+    Knock
+    if V = 1 then
+      for W = 1 to 3
+        Cr = Br - W
+        Cc = Bc + W
+        Knock
+        Cr = Br + W
+        Cc = Bc + W
+        Knock
+      next
+    end if
+  next
+  HideBall
+  Pause(30)
+  ' the fallen pins are swept away
+  for N = 0 to 9
+    if Pn[N] = 0 then
+      Cr = PinR[N]
+      Cc = PinC[N]
+      put char TWood at Cc,Cr
+    end if
+  next
+  Pause(20)
+  return
+end sub
+
+' Knock: the pin at row Cr, column Cc falls (V = 1 if there was one)
+sub Knock:
+  V = 0
+  for N = 0 to 9
+    if Pn[N] = 1 then
+      if PinR[N] = Cr then
+        if PinC[N] = Cc then
+          Pn[N] = 0
+          inc J
+          V = 1
+          put char TFall at Cc,Cr
+          play sound SndPin
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub SetPins:
+  for N = 0 to 9
+    Pn[N] = 1
+    Cr = PinR[N]
+    Cc = PinC[N]
+    put char TPin at Cc,Cr
+  next
+  return
+end sub
+
+sub ShowBall:
+  Px = Bc * 8
+  Py = Br * 8
+  Py = Py - 5
+  set sprite 0 to Py,Px,SHoles,1
+  set sprite 1 to Py,Px,SBall,4
+  update sprites
+  return
+end sub
+
+sub HideBall:
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Screens
+
+' Sheet: the score sheet (rows 2-10) and the lane (rows 13-21)
+sub Sheet:
+  NewScreen
+  print at 9,1, "BOWLING CHAMP"
+  ' the frame numbers over the first box of each frame
+  for J8 = 1 to 9
+    V = J8 * 2
+    print at V,2, digits$(J8, 1)
+  next
+  print at 20,2, "10"
+  print at 24,2, "TOT"
+  for Z9 = 0 to Am1
+    Ty = Z9 * 3
+    Ty = Ty + 3
+    Tx = 2
+    V = Z9 * 6
+    for J8 = 0 to 5
+      K = Nm[V]
+      if K > 0 then
+        K = K + 64
+        put char K at Tx,Ty
+        inc Tx
+      end if
+      inc V
+    next
+  next
+  ' the lane: gutters on rows 13 and 21, the foul line, the arrows
+  fill TGutter count 28 at 2,13
+  fill TGutter count 28 at 2,21
+  for J8 = 14 to 20
+    fill TWood count 28 at 2,J8
+    put char TFoul at 5,J8
+  next
+  put char TArrow at 12,15
+  put char TArrow at 13,17
+  put char TArrow at 12,19
+  fill TDeck count 28 at 2,22
+  ShowPage
+  return
+end sub
+
+sub ShowSheet:
+  for Z9 = 0 to Am1
+    for V = 0 to 20
+      DrawBox
+    next
+    ShowTotal
+  next
+  Z9 = 0
+  return
+end sub
+
+' Players: 112-113, how many (1-3)
+sub Players:
+  NewScreen
+  print at 9,6, "BOWLING CHAMP"
+  print at 6,10, "HOW MANY PLAYERS?"
+  print at 4,17, "UP/DOWN, THEN THE LEFT"
+  print at 4,18, "BUTTON."
+  ShowPage
+  Ask = 2
+pl_loop:
+  print at 14,12, digits$(A, 1)
+  Frame1
+  ReadPad
+  if Up1 = 1 then
+    if A < 3 then inc A
+    play sound SndTick
+  end if
+  if Dn1 = 1 then
+    if A > 1 then dec A
+    play sound SndTick
+  end if
+  if Fire1 = 0 then goto pl_loop
+  Am1 = A - 1
+  Ask = 0
+  play sound SndOk
+  return
+end sub
+
+' Names: 115-123, six letters each, spelled with the stick
+sub Names:
+  NewScreen
+  if A = 1 then print at 7,4, "TYPE IN YOUR NAME"
+  if A > 1 then print at 6,4, "TYPE IN YOUR NAMES"
+  print at 4,17, "UP/DOWN: A LETTER"
+  print at 4,18, "RIGHT/LEFT: THE PLACE"
+  print at 4,19, "LEFT BUTTON: DONE"
+  for Z9 = 0 to Am1
+    Ty = Z9 * 2
+    Ty = Ty + 7
+    print at 5,Ty, "PLAYER"
+    V = Z9 + 1
+    print at 12,Ty, digits$(V, 1)
+    print at 13,Ty, ":"
+  next
+  ShowPage
+  for Z9 = 0 to Am1
+    Ty = Z9 * 2
+    Ty = Ty + 7
+    K = 0
+    Ask = 3
+nm_loop:
+    ' the name, the place under a dash
+    V = Z9 * 6
+    for J8 = 0 to 5
+      W = Nm[V]
+      N = 32
+      if W > 0 then N = W + 64
+      Tx = J8 + 15
+      put char N at Tx,Ty
+      W = Ty + 1
+      N = 32
+      if J8 = K then N = 45
+      put char N at Tx,W
+      inc V
+    next
+    Frame1
+    ReadPad
+    V = Z9 * 6
+    V = V + K
+    if Up1 = 1 then
+      W = Nm[V] + 1
+      if W > 26 then W = 0
+      Nm[V] = W
+      play sound SndTick
+    end if
+    if Dn1 = 1 then
+      W = Nm[V]
+      if W = 0 then W = 27
+      dec W
+      Nm[V] = W
+      play sound SndTick
+    end if
+    if Rt1 = 1 then
+      if K < 5 then inc K
+    end if
+    if Lf1 = 1 then
+      if K > 0 then dec K
+    end if
+    if Fire1 = 0 then goto nm_loop
+    play sound SndOk
+    W = Ty + 1
+    fill 32 count 6 at 15,W
+  next
+  Ask = 0
+  Z9 = 0
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideBall
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowPage:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 8,1, "BOWLING CHAMP"
+  print at 2,3, "BY JOSEPH GANCI, FROM"
+  print at 2,4, "COMPUTE!'S GAZETTE,"
+  print at 2,5, "DECEMBER 1983 (VIC-20 AND"
+  print at 2,6, "COMMODORE 64)."
+  print at 2,8, "FOR THE COLECOVISION BY"
+  print at 2,9, "CLAUDE (AN AI MADE BY"
+  print at 2,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "2026, IN AMY, THE LANGUAGE"
+  print at 2,12, "BY AMY BIENVENU."
+  print at 2,14, "MUSIC: SPARE CHANGE"
+  print at 2,15, "(ORIGINAL)."
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  Ask = 1
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 9,3, "BOWLING CHAMP"
+  print at 4,6, "ONE TO THREE PLAYERS."
+  print at 4,8, "THE BALL RIDES UP AND"
+  print at 4,9, "DOWN: PRESS THE LEFT"
+  print at 4,10, "BUTTON TO ROLL IT. AIM"
+  print at 4,11, "FOR THE HEAD PIN."
+  ' a little lane with its pins
+  fill TGutter count 28 at 2,14
+  fill TGutter count 28 at 2,20
+  for J8 = 15 to 19
+    fill TWood count 28 at 2,J8
+  next
+  for N = 0 to 9
+    Cr = PinR[N] + 0
+    Cc = PinC[N]
+    if Cr > 14 then
+      if Cr < 20 then put char TPin at Cc,Cr
+    end if
+  next
+  print at 8,22, "PRESS A BUTTON"
+  ShowPage
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song BcSong once
+  Ask = 1
+  WaitPress
+  Ask = 0
+  ' the default names
+  for J8 = 0 to 17
+    Nm[J8] = Defn[J8]
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frames, input
+
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Fire1 = 0
+  Fire2 = 0
+  V = 0
+  W = joypad(1).up | joypad(2).up
+  if W = 1 then V = 1
+  W = joypad(1).down | joypad(2).down
+  if W = 1 then V = 2
+  W = joypad(1).left | joypad(2).left
+  if W = 1 then V = 3
+  W = joypad(1).right | joypad(2).right
+  if W = 1 then V = 4
+  if V <> WasDir then
+    if V = 1 then Up1 = 1
+    if V = 2 then Dn1 = 1
+    if V = 3 then Lf1 = 1
+    if V = 4 then Rt1 = 1
+  end if
+  WasDir = V
+  W = joypad(1).button1 | joypad(2).button1
+  if W = 1 then
+    if WasF1 = 0 then Fire1 = 1
+  end if
+  WasF1 = W
+  W = joypad(1).button2 | joypad(2).button2
+  if W = 1 then
+    if WasF2 = 0 then Fire2 = 1
+  end if
+  WasF2 = W
+  return
+end sub
+
+sub WaitPress:
+  WasF1 = 1
+  WasF2 = 1
+wp_loop:
+  Frame1
+  ReadPad
+  V = Fire1 | Fire2
+  if V = 0 then goto wp_loop
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $10,$10,$10,$00,$10,$10,$10,$10
+  $00,$00,$10,$38,$83,$00,$00,$00
+  $18,$C3,$18,$C3,$C3,$81,$81,$C3
+  $00,$00,$00,$C0,$01,$C0,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$28,$28,$28,$38,$00,$00
+  $00,$10,$30,$10,$10,$38,$00,$00
+  $00,$38,$08,$38,$20,$38,$00,$00
+  $00,$38,$08,$18,$08,$38,$00,$00
+  $00,$28,$28,$38,$08,$08,$00,$00
+  $00,$38,$20,$38,$08,$38,$00,$00
+  $00,$38,$20,$38,$28,$38,$00,$00
+  $00,$38,$08,$10,$10,$10,$00,$00
+  $00,$38,$28,$38,$28,$38,$00,$00
+  $00,$38,$28,$38,$08,$38,$00,$00
+  $00,$00,$00,$38,$00,$00,$00,$00
+  $00,$08,$08,$10,$20,$20,$00,$00
+  $00,$28,$28,$10,$28,$28,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$38,$28,$28,$28,$38,$00,$00
+  $00,$10,$30,$10,$10,$38,$00,$00
+  $00,$38,$08,$38,$20,$38,$00,$00
+  $00,$38,$08,$18,$08,$38,$00,$00
+  $00,$28,$28,$38,$08,$08,$00,$00
+  $00,$38,$20,$38,$08,$38,$00,$00
+  $00,$38,$20,$38,$28,$38,$00,$00
+  $00,$38,$08,$10,$10,$10,$00,$00
+  $00,$38,$28,$38,$28,$38,$00,$00
+  $00,$38,$28,$38,$08,$38,$00,$00
+  $00,$00,$00,$38,$00,$00,$00,$00
+  $00,$08,$08,$10,$20,$20,$00,$00
+  $00,$28,$28,$10,$28,$28,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $0B,$0B,$0B,$0A,$0B,$0B,$0B,$0B
+  $0E,$01,$01,$01,$01,$01,$01,$0E
+  $8B,$8B,$8B,$0A,$8B,$8B,$8B,$8B
+  $0B,$0B,$8B,$8A,$B8,$0B,$0B,$0B
+  $FB,$BF,$8B,$AF,$BF,$BF,$BF,$BF
+  $0B,$0B,$0B,$FA,$BF,$8F,$BF,$0B
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$0F,$0F,$1F,$0F,$0F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$1F,$1F,$1F,$1F,$1F,$0F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$0B,$0B,$1B,$0B,$0B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$1B,$1B,$1B,$1B,$1B,$0B,$0B
+  $0B,$0B,$0B,$0B,$0B,$0B,$0B,$0B
+end data
+data SpritePat bytes
+  $00,$00,$07,$0F,$1F,$1F,$1F,$1F,$1F,$1F,$0F,$07,$00,$00,$00,$00
+  $00,$00,$E0,$F0,$F8,$F8,$F8,$F8,$F8,$F8,$F0,$E0,$00,$00,$00,$00
+  $00,$00,$00,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+asm {
+BcHush:
+    db $00,$00,$F0,$01,$10
+BcTick:
+    db $40,$40,$40,$01,$40,$40,$F0,$01,$50
+BcOk:
+    db $40,$7F,$30,$02,$40,$55,$30,$03,$50
+BcRoll:
+    db $00,$00,$46,$3C,$00,$00,$66,$28,$10
+BcPin:
+    db $40,$50,$10,$02,$40,$7C,$30,$03,$40,$BA,$60,$04,$50
+BcEnd:
+    db $40,$D6,$20,$08,$40,$AA,$20,$08,$40,$8F,$20,$08,$40,$6B,$20,$08,$40,$8F,$30,$14,$50
+
+BcSoundTable:
+    dw BcHush,$702B
+    dw BcTick,$7035
+    dw BcOk,$7035
+    dw BcRoll,$702B
+    dw BcPin,$7035
+    dw BcEnd,$7035
+    dw BcTuneMel,$703F
+    dw BcTuneBass,$7049
+; Spare Change (original)
+; Tiny Sound, 7 frames per step
+BcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1F,$01,$23,$26,$01,$23,$28,$26,$01,$01,$23,$01
+    db $1F,$01,$21,$01,$23,$01,$26,$2B,$01,$28,$26,$23,$01,$01,$21,$01
+    db $1F,$01,$01,$01,$24,$01,$28,$2B,$01,$28,$26,$24,$01,$01,$23,$01
+    db $21,$01,$1F,$01,$21,$01,$26,$01,$23,$01,$1F,$01,$1A,$01,$1F,$01
+    db $01,$01,$00,$01
+    db $FF
+BcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$07,$01,$0E,$01,$07,$01,$0E,$01,$10,$01,$0B,$01
+    db $10,$01,$0B,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0E,$01,$15,$01
+    db $0E,$01,$12,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$07,$01,$0E,$01
+    db $10,$01,$0B,$01,$09,$01,$10,$01,$0E,$01,$15,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune (SndTuneA 7, SndTuneB 8) at once
+BcSong:
+    dw $0001
+    db $40+7,8
+    dw $0000
+}

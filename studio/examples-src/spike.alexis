@@ -1,0 +1,1464 @@
+cartridge "SPIKE/ERIC BRANDON, COMPUTE!/1983"
+
+' SPIKE
+' Eric Brandon's SPIKE (COMPUTE!'s Gazette, December 1983, an all-machine-
+' language game for the Commodore 64), for the ColecoVision in Amy by Amy
+' Bienvenu. Made by Claude (an AI made by Anthropic) for Amy Studio, 2026.
+'
+' Source: the article's rules (pages 74-77; the program itself was 4.5K
+' of machine language typed in with MLX, pages 213-218, not used here).
+'
+' You are trapped inside the Power Grid. Somewhere in one of its diamond
+' nodes your Commodore 64 is hidden; the SONAR line gets shorter as you
+' get closer. Walk the wires: each new side of a node is worth 10 points,
+' and a node whose four sides you have walked is boxed (blue). Box the
+' node where the 64 hides to find it: the bonus is the nodes you did not
+' box times the level's bonus value, and the next grid has one more power
+' spike (two at first, up to seven). Touching a spike costs a life (five
+' to start; STAMINA shows the ones in reserve).
+'
+' Controls (either joystick): the grid is tilted, so the stick is too:
+' up goes up-right, right goes down-right, down goes down-left, left goes
+' up-left (the diagonals go where they point). The right button pauses.
+' Before a game: up/down the speed (1-9), left/right EASY or HARD, the
+' left button starts. Keypad not used.
+'
+' From the article: 10 points a new side, the bonus (unboxed nodes times
+' 40 on level 1, 5 more each level), five lives, two spikes then one more
+' a level up to seven, the SONAR, STAMINA and LEVEL lines, the speed 1-9
+' and EASY/HARD choice (HARD and 5 by default), the high score.
+' Liberties taken (the program was not studied, only the article):
+' - The grid: 48 nodes that can be boxed (the 64 had 112), so the bonus
+'   value is doubled (80 on level 1, 10 more each level) to keep the
+'   scores alike. How the spikes move is guessed: along the wires,
+'   turning at random where they cross; on HARD they turn toward you one
+'   time in two. EASY spikes are slower.
+' - After a hit the spikes go back to the grid's edges and you have a
+'   moment to move away.
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; an
+' original title tune that plays once; a credits page; the screens are
+' drawn with the NMI off.
+
+const TUn = 128
+const TBox = 129
+const TBs0 = 130
+const TBs1 = 131
+const TBs2 = 132
+const TBs3 = 133
+const TBs4 = 134
+const TFs0 = 135
+const TFs1 = 136
+const TFs2 = 137
+const TFs3 = 138
+const TFs4 = 139
+const TBar = 140
+const TFlag = 141
+const TLife = 142
+const SYou = 0
+const SYouc = 4
+const SSpk1 = 8
+const SSpk2 = 12
+const SC64 = 16
+const SC64k = 20
+const NTiles8 = 120
+const SprBytes = 192
+const SndHush = 1
+const SndTick = 2
+const SndStep = 3
+const SndBox = 4
+const SndShock = 5
+const SndFound = 6
+const SndOver = 7
+const SndTuneA = 8
+const SndTuneB = 9
+const NNodes = 48
+const NEdges = 280
+const NCells = 560
+u16 TzLeft = 0
+u8 TzOn = 0
+
+' --- the grid ---------------------------------------------------------------
+u8 Tr[280]
+u8 Bx[48]
+u8 Hid = 0
+u8 Unboxed = 48
+' --- you ---------------------------------------------------------------------
+u8 Pi = 7
+u8 Pj = 5
+u8 Pd = 0
+u8 Pp = 0
+u8 Pmv = 0
+u8 Safe = 0
+' --- the spikes --------------------------------------------------------------
+u8 Ns = 2
+u8 Si[7]
+u8 Sj[7]
+u8 Sd[7]
+u8 Sp[7]
+u8 Sa[7]
+u8 Smv[7]
+' --- the game ----------------------------------------------------------------
+u16 Score = 0
+u16 Hi = 0
+u8 Lives = 5
+u8 Level = 1
+u8 Speed = 5
+u8 Hard = 1
+u8 Found = 0
+u8 Dead = 0
+u8 Ask = 0
+u8 Idle = 0
+
+data StartI bytes 0,13,0,13,6,7,12
+data StartJ bytes 0,9,8,1,0,9,0
+
+u16 Rs = $7E21
+u16 Rw = 0
+u16 Rt = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 Rn = 0
+u16 Rv = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Fire1 = 0
+u8 Fire2 = 0
+u8 WasF1 = 0
+u8 WasF2 = 0
+u8 WasDir = 0
+u8 Tick = 0
+u8 V = 0
+u8 W = 0
+u8 K = 0
+u8 J8 = 0
+u8 N = 0
+u8 Ii = 0
+u8 Jj = 0
+u8 Dd = 0
+u8 Ok = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Cy = 0
+u8 Cx = 0
+u16 C16 = 0
+u16 E16 = 0
+u16 V16 = 0
+u16 W16 = 0
+u16 NumU = 0
+u16 Q16 = 0
+u16 R16 = 0
+u16 Ew = 0
+u8 Nd = 0
+u8 Qe = 0
+
+  tile screen
+  set sound table SpSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  CreditsPage
+title:
+  TitlePage
+  Options
+  Score = 0
+  Lives = 5
+  Level = 1
+
+' a new grid
+new_grid:
+  NewGrid
+  DrawAll
+play_loop:
+  Frame1
+  ReadPad
+  if Fire2 = 1 then Paused
+  MoveYou
+  if Found = 1 then goto got_it
+  MoveSpikes
+  ShowAll
+  if Safe > 0 then dec Safe
+  if Safe = 0 then Collide
+  if Dead = 1 then goto was_hit
+  goto play_loop
+
+' you are hit: a life, the spikes back to the edges
+was_hit:
+  play sound SndShock
+  for J8 = 1 to 40
+    K = J8 & 4
+    Frame1
+    if K = 0 then set sprite 0 to 192,0,0,0
+    if K <> 0 then ShowAll
+    update sprites
+  next
+  Dead = 0
+  dec Lives
+  if Lives = 0 then
+    Ask = 0
+    goto game_over
+  end if
+  Hud
+  PlaceSpikes
+  Safe = 90
+  goto play_loop
+
+' the 64 found: the bonus, the next grid
+got_it:
+  HideSpikes
+  Cx = NodeI[Hid] * 16
+  Cx = Cx + 8
+  Cy = NodeJ[Hid] * 16
+  Cy = Cy + 14
+  set sprite 1 to Cy,Cx,SC64k,1
+  set sprite 2 to Cy,Cx,SC64,14
+  update sprites
+  play sound SndFound
+  W16 = Level - 1
+  W16 = W16 * 10
+  W16 = W16 + 80
+  V16 = Unboxed
+  W16 = W16 * V16
+  for J8 = 1 to 90
+    Frame1
+  next
+  fill 32 count 28 at 2,2
+  print at 2,2, "64 FOUND! BONUS"
+  NumU = W16
+  Tx = 18
+  Ty = 2
+  ShowNum
+  ' the bonus is counted onto the score
+  while W16 >= 100
+    W16 = W16 - 100
+    if Score < 65436 then Score = Score + 100
+    Hud
+    play sound SndTick
+    Frame1
+  end while
+  V16 = 65535 - Score
+  if W16 > V16 then W16 = V16
+  Score = Score + W16
+  Hud
+  for J8 = 1 to 60
+    Frame1
+  next
+  inc Level
+  goto new_grid
+
+game_over:
+  HideSpikes
+  set sprite 0 to 192,0,0,0
+  set sprite 1 to 192,0,0,0
+  update sprites
+  if Score > Hi then Hi = Score
+  Hud
+  fill 32 count 16 at 8,11
+  fill 32 count 16 at 8,12
+  fill 32 count 16 at 8,13
+  print at 11,12, "GAME OVER"
+  play sound SndOver
+  for J8 = 1 to 120
+    Frame1
+  next
+  Ask = 9
+  WaitPress
+  Ask = 0
+  goto title
+
+' ---------------------------------------------------------------------------
+' The grid
+
+sub NewGrid:
+  for V16 = 0 to 279
+    Tr[V16] = 0
+  next
+  for J8 = 0 to 47
+    Bx[J8] = 0
+  next
+  Unboxed = 48
+  Rn = 48
+  RndK
+  Hid = Rv
+  Found = 0
+  Dead = 0
+  Pi = 7
+  Pj = 5
+  Pmv = 0
+  Pp = 0
+  Ns = Level + 1
+  if Ns > 7 then Ns = 7
+  PlaceSpikes
+  Safe = 60
+  return
+end sub
+
+' DrawAll: the whole grid and the score lines (display off)
+sub DrawAll:
+  Ask = 0
+  Rearm
+  wait
+  nmi off
+  display off
+  HideAll
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  for C16 = 0 to 559
+    DrawCell
+  next
+  Hud
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  Ask = 1
+  return
+end sub
+
+' DrawCell: grid cell C16 (column C16 mod 28, row C16 / 28)
+sub DrawCell:
+  K = CellKind[C16]
+  Ii = CellA[C16]
+  Jj = CellB[C16]
+  V = 0
+  if Ii < 48 then V = Bx[Ii]
+  W = 0
+  if Jj < 48 then W = Bx[Jj]
+  if K = 0 then
+    N = TUn
+    if V = 1 then N = TBox
+  else
+    N = TBs0
+    if K = 2 then N = TFs0
+    Dd = 0
+    J8 = CellE[C16]
+    if J8 < 255 then
+      E16 = J8
+      E16 = E16 * 2
+      E16 = E16 + K
+      dec E16
+      Dd = Tr[E16]
+    end if
+    if V = 1 then
+      if W = 1 then
+        N = N + 2
+      else
+        N = N + 3
+      end if
+    else
+      if W = 1 then
+        N = N + 4
+      else
+        N = N + Dd
+      end if
+    end if
+  end if
+  V16 = C16 / 28
+  Ty = V16 + 3
+  V16 = C16 % 28
+  Tx = V16 + 2
+  put char N at Tx,Ty
+  return
+end sub
+
+' Walk: you have walked edge E16 (new: 10 points; boxes nodes)
+sub Walk:
+  if Tr[E16] = 1 then return
+  Tr[E16] = 1
+  Ew = E16
+  if Score < 65526 then Score = Score + 10
+  play sound SndStep
+  V = EdgeC1H[Ew]
+  C16 = V
+  C16 = C16 * 256
+  V = EdgeC1L[Ew]
+  C16 = C16 + V
+  DrawCell
+  V = EdgeC2H[Ew]
+  C16 = V
+  C16 = C16 * 256
+  V = EdgeC2L[Ew]
+  C16 = C16 + V
+  DrawCell
+  Nd = EdgeN1[Ew]
+  CheckBox
+  Nd = EdgeN2[Ew]
+  CheckBox
+  Hud
+  return
+end sub
+
+' CheckBox: node N boxed when its four sides are walked
+sub CheckBox:
+  if Nd >= 48 then return
+  if Bx[Nd] = 1 then return
+  Qe = Nd * 4
+  for J8 = 0 to 3
+    V = NodeEdgeH[Qe]
+    W16 = V
+    W16 = W16 * 256
+    V = NodeEdgeL[Qe]
+    W16 = W16 + V
+    if Tr[W16] = 0 then return
+    inc Qe
+  next
+  Bx[Nd] = 1
+  dec Unboxed
+  play sound SndBox
+  if Nd = Hid then Found = 1
+  ' redraw its cells
+  Q16 = NodeCellAt[Nd]
+  Qe = Nd + 1
+  R16 = NodeCellAt[Qe]
+  while Q16 < R16
+    V = NodeCellH[Q16]
+    C16 = V
+    C16 = C16 * 256
+    V = NodeCellL[Q16]
+    C16 = C16 + V
+    DrawCell
+    inc Q16
+  end while
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Moving
+
+' Hop: from junction (Ii, Jj) in direction Dd: Ok = 1 if the target is on
+' the grid; E16 the edge, (Ii, Jj) the target
+sub Hop:
+  Ok = 0
+  if Dd = 0 then
+    if Jj = 0 then return
+    if Ii = 13 then return
+    dec Jj
+    inc Ii
+    E16 = Jj * 14
+    E16 = E16 + Ii
+    E16 = E16 * 2
+    inc E16
+  end if
+  if Dd = 1 then
+    if Jj = 9 then return
+    if Ii = 13 then return
+    E16 = Jj * 14
+    E16 = E16 + Ii
+    E16 = E16 * 2
+    inc Jj
+    inc Ii
+  end if
+  if Dd = 2 then
+    if Jj = 9 then return
+    if Ii = 0 then return
+    E16 = Jj * 14
+    E16 = E16 + Ii
+    E16 = E16 * 2
+    inc E16
+    inc Jj
+    dec Ii
+  end if
+  if Dd = 3 then
+    if Jj = 0 then return
+    if Ii = 0 then return
+    dec Jj
+    dec Ii
+    E16 = Jj * 14
+    E16 = E16 + Ii
+    E16 = E16 * 2
+  end if
+  Ok = 1
+  return
+end sub
+
+' StickDir: the stick as a grid direction in Dd (255: none)
+sub StickDir:
+  Dd = 255
+  V = joypad(1).up | joypad(2).up
+  W = joypad(1).down | joypad(2).down
+  K = joypad(1).left | joypad(2).left
+  J8 = joypad(1).right | joypad(2).right
+  if V = 1 then
+    Dd = 0
+    if K = 1 then Dd = 3
+    return
+  end if
+  if W = 1 then
+    Dd = 2
+    if J8 = 1 then Dd = 1
+    return
+  end if
+  if J8 = 1 then Dd = 1
+  if K = 1 then Dd = 3
+  return
+end sub
+
+' MoveYou: two pixels a frame along a wire; at a junction the stick picks
+' the next wire; pulling back turns you round on the way
+sub MoveYou:
+  StickDir
+  if Pmv = 1 then
+    V = Pd ^ 2
+    if Dd = V then
+      ' turn round: the far junction becomes the start
+      Ii = Pi
+      Jj = Pj
+      Dd = Pd
+      Hop
+      Pi = Ii
+      Pj = Jj
+      Pd = V
+      Pp = 16 - Pp
+    end if
+    Pp = Pp + 2
+    if Pp < 16 then return
+    ' arrived
+    Ii = Pi
+    Jj = Pj
+    Dd = Pd
+    Hop
+    Pi = Ii
+    Pj = Jj
+    Pmv = 0
+    Pp = 0
+    Walk
+    return
+  end if
+  if Dd = 255 then return
+  Ii = Pi
+  Jj = Pj
+  Hop
+  if Ok = 0 then return
+  Pd = Dd
+  Pmv = 1
+  Pp = 0
+  return
+end sub
+
+' MoveSpikes: each spike moves (Speed + 3) / 8 pixels a frame (EASY: less)
+sub MoveSpikes:
+  for N = 1 to Ns
+    K = N - 1
+    V = Speed + 3
+    if Hard = 0 then V = Speed + 1
+    Sa[K] = Sa[K] + V
+    while Sa[K] >= 8
+      Sa[K] = Sa[K] - 8
+      SpikeStep
+    end while
+  next
+  return
+end sub
+
+' SpikeStep: spike K one pixel on (a new wire at a junction)
+sub SpikeStep:
+  if Smv[K] = 0 then
+    ChooseDir
+    Sd[K] = Dd
+    Smv[K] = 1
+    Sp[K] = 0
+  end if
+  Sp[K] = Sp[K] + 1
+  if Sp[K] < 16 then return
+  Ii = Si[K]
+  Jj = Sj[K]
+  Dd = Sd[K]
+  Hop
+  Si[K] = Ii
+  Sj[K] = Jj
+  Smv[K] = 0
+  Sp[K] = 0
+  return
+end sub
+
+' ChooseDir: a wire for spike K at its junction: not back the way it came
+' unless it must; on HARD, one time in two the way toward you
+sub ChooseDir:
+  if Hard = 1 then
+    Rnd16
+    if Rw < 32768 then
+      ' toward you: right or left as you are, then up or down
+      Dd = 0
+      if Pi > Si[K] then
+        if Pj > Sj[K] then Dd = 1
+      else
+        Dd = 3
+        if Pj > Sj[K] then Dd = 2
+      end if
+      Ii = Si[K]
+      Jj = Sj[K]
+      Hop
+      if Ok = 1 then return
+    end if
+  end if
+  for J8 = 1 to 12
+    Rn = 4
+    RndK
+    Dd = Rv
+    V = Sd[K] ^ 2
+    if J8 < 9 then
+      if Dd = V then goto cd_next
+    end if
+    Ii = Si[K]
+    Jj = Sj[K]
+    Hop
+    if Ok = 1 then return
+cd_next:
+  next
+  Dd = Sd[K] ^ 2
+  return
+end sub
+
+sub PlaceSpikes:
+  for K = 0 to 6
+    Si[K] = StartI[K]
+    Sj[K] = StartJ[K]
+    Smv[K] = 0
+    Sp[K] = 0
+    Sa[K] = 0
+    Sd[K] = 1
+  next
+  return
+end sub
+
+' Collide: a spike within 7 pixels of you
+sub Collide:
+  YouXY
+  Cx = Tx
+  Cy = Ty
+  for N = 1 to Ns
+    K = N - 1
+    SpikeXY
+    V = Tx - Cx
+    if Tx < Cx then V = Cx - Tx
+    W = Ty - Cy
+    if Ty < Cy then W = Cy - Ty
+    if V < 7 then
+      if W < 7 then Dead = 1
+    end if
+  next
+  return
+end sub
+
+' YouXY, SpikeXY: the screen position of a junction plus progress
+sub YouXY:
+  Ii = Pi
+  Jj = Pj
+  Dd = Pd
+  V = Pp
+  PosXY
+  return
+end sub
+
+sub SpikeXY:
+  Ii = Si[K]
+  Jj = Sj[K]
+  Dd = Sd[K]
+  V = Sp[K]
+  PosXY
+  return
+end sub
+
+sub PosXY:
+  Tx = Ii * 16
+  Tx = Tx + 16
+  Ty = Jj * 16
+  Ty = Ty + 24
+  if V = 0 then return
+  if Dd = 0 then
+    Tx = Tx + V
+    Ty = Ty - V
+  end if
+  if Dd = 1 then
+    Tx = Tx + V
+    Ty = Ty + V
+  end if
+  if Dd = 2 then
+    Tx = Tx - V
+    Ty = Ty + V
+  end if
+  if Dd = 3 then
+    Tx = Tx - V
+    Ty = Ty - V
+  end if
+  return
+end sub
+
+sub ShowAll:
+  YouXY
+  Tx = Tx - 8
+  Ty = Ty - 9
+  set sprite 0 to Ty,Tx,SYouc,1
+  set sprite 1 to Ty,Tx,SYou,11
+  W = Tick & 8
+  for N = 1 to Ns
+    K = N - 1
+    SpikeXY
+    Tx = Tx - 8
+    Ty = Ty - 9
+    V = N + 1
+    if W = 0 then set sprite V to Ty,Tx,SSpk1,15
+    if W <> 0 then set sprite V to Ty,Tx,SSpk2,15
+  next
+  update sprites
+  return
+end sub
+
+sub HideSpikes:
+  for N = 2 to 8
+    set sprite N to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 9
+  for N = 0 to 8
+    set sprite N to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' The score lines (rows 1-2)
+
+sub Hud:
+  print at 2,1, "SCORE"
+  NumU = Score
+  Tx = 8
+  Ty = 1
+  Six
+  print at 17,1, "HIGH"
+  NumU = Hi
+  if Score > Hi then NumU = Score
+  Tx = 22
+  Six
+  ' STAMINA: the lives in reserve
+  fill 32 count 28 at 2,2
+  V = 0
+  if Lives > 1 then V = Lives - 1
+  if V > 0 then
+    for J8 = 1 to V
+      W = J8 + 1
+      put char TLife at W,2
+    next
+  end if
+  ' LEVEL: a flag for each grid cleared (up to six)
+  V = Level - 1
+  if V > 6 then V = 6
+  if V > 0 then
+    for J8 = 1 to V
+      W = J8 + 7
+      put char TFlag at W,2
+    next
+  end if
+  ' SONAR
+  print at 15,2, "SONAR"
+  Ii = NodeI[Hid]
+  Jj = NodeJ[Hid]
+  V = Pi - Ii
+  if Pi < Ii then V = Ii - Pi
+  W = Pj - Jj
+  if Pj < Jj then W = Jj - Pj
+  V = V + W
+  V = V + 1
+  V = V / 2
+  if V > 9 then V = 9
+  for J8 = 1 to V
+    W = J8 + 20
+    put char TBar at W,2
+  next
+  return
+end sub
+
+' Six: NumU as six digits at Tx, Ty
+sub Six:
+  ' scores stay under 65536: a 0 in front, as the 64 showed six digits
+  print at Tx,Ty, "0"
+  inc Tx
+  print at Tx,Ty, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowNum:
+  W = 1
+  if NumU >= 10 then W = 2
+  if NumU >= 100 then W = 3
+  if NumU >= 1000 then W = 4
+  if NumU >= 10000 then W = 5
+  if W = 1 then print at Tx,Ty, digits$(NumU, 1)
+  if W = 2 then print at Tx,Ty, digits$(NumU, 2)
+  if W = 3 then print at Tx,Ty, digits$(NumU, 3)
+  if W = 4 then print at Tx,Ty, digits$(NumU, 4)
+  if W = 5 then print at Tx,Ty, digits$(NumU, 5)
+  return
+end sub
+
+' Paused: until the right button again (SHIFT on the 64)
+sub Paused:
+  print at 12,12, "PAUSE"
+  Ask = 3
+pz_loop:
+  Frame1
+  ReadPad
+  if Fire2 = 0 then goto pz_loop
+  Ask = 1
+  ' the grid row under the word comes back (row 12 is grid row 9)
+  for Q16 = 252 to 279
+    C16 = Q16
+    DrawCell
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Frames, input, random numbers
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  ' Idle: waiting for the frame (the tests read the state only then)
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Fire1 = 0
+  Fire2 = 0
+  V = 0
+  W = joypad(1).up | joypad(2).up
+  if W = 1 then V = 1
+  W = joypad(1).down | joypad(2).down
+  if W = 1 then V = 2
+  W = joypad(1).left | joypad(2).left
+  if W = 1 then V = 3
+  W = joypad(1).right | joypad(2).right
+  if W = 1 then V = 4
+  if V <> WasDir then
+    if V = 1 then Up1 = 1
+    if V = 2 then Dn1 = 1
+    if V = 3 then Lf1 = 1
+    if V = 4 then Rt1 = 1
+  end if
+  WasDir = V
+  W = joypad(1).button1 | joypad(2).button1
+  if W = 1 then
+    if WasF1 = 0 then Fire1 = 1
+  end if
+  WasF1 = W
+  W = joypad(1).button2 | joypad(2).button2
+  if W = 1 then
+    if WasF2 = 0 then Fire2 = 1
+  end if
+  WasF2 = W
+  return
+end sub
+
+sub WaitPress:
+  WasF1 = 1
+  WasF2 = 1
+wp_loop:
+  Frame1
+  ReadPad
+  V = Fire1 | Fire2
+  if V = 0 then goto wp_loop
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub RndK:
+  Rnd16
+  Uq = Rw
+  Uq2 = Rn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' Pages
+
+sub TextPage:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideAll
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowPage:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub CreditsPage:
+  TextPage
+  print at 13,1, "SPIKE"
+  print at 2,3, "BY ERIC BRANDON, FROM"
+  print at 2,4, "COMPUTE!'S GAZETTE,"
+  print at 2,5, "DECEMBER 1983 (COMMODORE"
+  print at 2,6, "64, MACHINE LANGUAGE)."
+  print at 2,8, "FOR THE COLECOVISION BY"
+  print at 2,9, "CLAUDE (AN AI MADE BY"
+  print at 2,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "2026, IN AMY, THE LANGUAGE"
+  print at 2,12, "BY AMY BIENVENU."
+  print at 2,14, "MUSIC: POWER GRID"
+  print at 2,15, "(ORIGINAL)."
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  Ask = 1
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub TitlePage:
+  TextPage
+  ' a strip of grid under the name
+  for J8 = 2 to 29
+    V = J8 & 3
+    N = TBs1
+    if V = 1 then N = TUn
+    if V = 2 then N = TFs1
+    if V = 3 then N = TBox
+    put char N at J8,4
+    put char N at J8,8
+  next
+  print at 13,6, "SPIKE"
+  print at 3,10, "YOU ARE TRAPPED INSIDE THE"
+  print at 3,11, "POWER GRID. FIND AND BOX IN"
+  print at 3,12, "YOUR COMMODORE 64 TO GET"
+  print at 3,13, "HOME. MIND THE SPIKES."
+  print at 3,15, "STICK: TILTED LIKE THE GRID"
+  print at 3,16, "(UP GOES UP-RIGHT)."
+  print at 3,17, "RIGHT BUTTON: PAUSE."
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song SpSong once
+  Ask = 1
+  WaitPress
+  Ask = 0
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $7E21
+  return
+end sub
+
+' Options: the speed (1-9) and EASY or HARD
+sub Options:
+  TextPage
+  print at 10,4, "GAME OPTIONS"
+  print at 4,8, "SPEED (UP/DOWN):"
+  print at 4,10, "LEVEL (LEFT/RIGHT):"
+  print at 6,21, "LEFT BUTTON: START"
+  ShowPage
+  Ask = 2
+op_loop:
+  print at 24,8, digits$(Speed, 1)
+  if Hard = 1 then print at 24,10, "HARD"
+  if Hard = 0 then print at 24,10, "EASY"
+  Frame1
+  ReadPad
+  if Up1 = 1 then
+    if Speed < 9 then inc Speed
+    play sound SndTick
+  end if
+  if Dn1 = 1 then
+    if Speed > 1 then dec Speed
+    play sound SndTick
+  end if
+  if Lf1 = 1 then
+    Hard = 0
+    play sound SndTick
+  end if
+  if Rt1 = 1 then
+    Hard = 1
+    play sound SndTick
+  end if
+  if Fire1 = 0 then goto op_loop
+  Ask = 0
+  return
+end sub
+
+data CellKind bytes
+  1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2
+  1,0,0,2,1,0,0,2,0,1,2,0,0,1,2,0,0,1,2,0
+  0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,2,1,0
+  0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0
+  0,2,1,0,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1
+  2,0,0,1,2,0,0,1,2,0,0,1,1,0,0,2,1,0,0,2
+  1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2
+  0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0
+  0,1,2,0,0,1,2,0,0,2,1,0,0,2,1,0,0,2,1,0
+  0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,2,0,0,1
+  2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1
+  2,0,0,1,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2
+  1,0,0,2,1,0,0,2,1,0,0,2,0,1,2,0,0,1,2,0
+  0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0
+  0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0
+  0,2,1,0,0,2,1,0,2,0,0,1,2,0,0,1,2,0,0,1
+  2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,1,0,0,2
+  1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2
+  1,0,0,2,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0
+  0,1,2,0,0,1,2,0,0,1,2,0,0,2,1,0,0,2,1,0
+  0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0
+  2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1
+  2,0,0,1,2,0,0,1,1,0,0,2,1,0,0,2,1,0,0,2
+  1,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,0,1,2,0
+  0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0
+  0,1,2,0,0,2,1,0,0,2,1,0,0,2,1,0,0,2,1,0
+  0,2,1,0,0,2,1,0,0,2,1,0,2,0,0,1,2,0,0,1
+  2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0,0,1
+end data
+data CellA bytes
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,0,0,255,255,1,1,255,255,2
+  2,255,255,3,3,255,255,4,4,255,255,5,5,255,255,255,255,255,0,0
+  0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5
+  5,5,255,255,255,6,6,0,0,7,7,1,1,8,8,2,2,9,9,3
+  3,10,10,4,4,11,11,5,5,255,255,255,6,6,6,6,7,7,7,7
+  8,8,8,8,9,9,9,9,10,10,10,10,11,11,11,11,255,255,255,255
+  255,6,6,12,12,7,7,13,13,8,8,14,14,9,9,15,15,10,10,16
+  16,11,11,17,17,255,255,255,255,255,12,12,12,12,13,13,13,13,14,14
+  14,14,15,15,15,15,16,16,16,16,17,17,17,17,255,255,255,18,18,12
+  12,19,19,13,13,20,20,14,14,21,21,15,15,22,22,16,16,23,23,17
+  17,255,255,255,18,18,18,18,19,19,19,19,20,20,20,20,21,21,21,21
+  22,22,22,22,23,23,23,23,255,255,255,255,255,18,18,24,24,19,19,25
+  25,20,20,26,26,21,21,27,27,22,22,28,28,23,23,29,29,255,255,255
+  255,255,24,24,24,24,25,25,25,25,26,26,26,26,27,27,27,27,28,28
+  28,28,29,29,29,29,255,255,255,30,30,24,24,31,31,25,25,32,32,26
+  26,33,33,27,27,34,34,28,28,35,35,29,29,255,255,255,30,30,30,30
+  31,31,31,31,32,32,32,32,33,33,33,33,34,34,34,34,35,35,35,35
+  255,255,255,255,255,30,30,36,36,31,31,37,37,32,32,38,38,33,33,39
+  39,34,34,40,40,35,35,41,41,255,255,255,255,255,36,36,36,36,37,37
+  37,37,38,38,38,38,39,39,39,39,40,40,40,40,41,41,41,41,255,255
+  255,42,42,36,36,43,43,37,37,44,44,38,38,45,45,39,39,46,46,40
+  40,47,47,41,41,255,255,255,42,42,42,42,43,43,43,43,44,44,44,44
+  45,45,45,45,46,46,46,46,47,47,47,47,255,255,255,255,255,42,42,255
+  255,43,43,255,255,44,44,255,255,45,45,255,255,46,46,255,255,47,47,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+data CellB bytes
+  255,255,255,0,0,255,255,1,1,255,255,2,2,255,255,3,3,255,255,4
+  4,255,255,5,5,255,255,255,255,255,0,0,0,0,1,1,1,1,2,2
+  2,2,3,3,3,3,4,4,4,4,5,5,5,5,255,255,255,6,6,0
+  0,7,7,1,1,8,8,2,2,9,9,3,3,10,10,4,4,11,11,5
+  5,255,255,255,6,6,6,6,7,7,7,7,8,8,8,8,9,9,9,9
+  10,10,10,10,11,11,11,11,255,255,255,255,255,6,6,12,12,7,7,13
+  13,8,8,14,14,9,9,15,15,10,10,16,16,11,11,17,17,255,255,255
+  255,255,12,12,12,12,13,13,13,13,14,14,14,14,15,15,15,15,16,16
+  16,16,17,17,17,17,255,255,255,18,18,12,12,19,19,13,13,20,20,14
+  14,21,21,15,15,22,22,16,16,23,23,17,17,255,255,255,18,18,18,18
+  19,19,19,19,20,20,20,20,21,21,21,21,22,22,22,22,23,23,23,23
+  255,255,255,255,255,18,18,24,24,19,19,25,25,20,20,26,26,21,21,27
+  27,22,22,28,28,23,23,29,29,255,255,255,255,255,24,24,24,24,25,25
+  25,25,26,26,26,26,27,27,27,27,28,28,28,28,29,29,29,29,255,255
+  255,30,30,24,24,31,31,25,25,32,32,26,26,33,33,27,27,34,34,28
+  28,35,35,29,29,255,255,255,30,30,30,30,31,31,31,31,32,32,32,32
+  33,33,33,33,34,34,34,34,35,35,35,35,255,255,255,255,255,30,30,36
+  36,31,31,37,37,32,32,38,38,33,33,39,39,34,34,40,40,35,35,41
+  41,255,255,255,255,255,36,36,36,36,37,37,37,37,38,38,38,38,39,39
+  39,39,40,40,40,40,41,41,41,41,255,255,255,42,42,36,36,43,43,37
+  37,44,44,38,38,45,45,39,39,46,46,40,40,47,47,41,41,255,255,255
+  42,42,42,42,43,43,43,43,44,44,44,44,45,45,45,45,46,46,46,46
+  47,47,47,47,255,255,255,255,255,42,42,255,255,43,43,255,255,44,44,255
+  255,45,45,255,255,46,46,255,255,47,47,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+data CellE bytes
+  0,255,255,2,2,255,255,4,4,255,255,6,6,255,255,8,8,255,255,10
+  10,255,255,12,12,255,255,255,255,0,2,255,255,2,4,255,255,4,6,255
+  255,6,8,255,255,8,10,255,255,10,12,255,255,12,255,255,255,15,15,255
+  255,17,17,255,255,19,19,255,255,21,21,255,255,23,23,255,255,25,25,255
+  255,27,255,255,15,255,255,15,17,255,255,17,19,255,255,19,21,255,255,21
+  23,255,255,23,25,255,255,25,27,255,255,255,28,255,255,30,30,255,255,32
+  32,255,255,34,34,255,255,36,36,255,255,38,38,255,255,40,40,255,255,255
+  255,28,30,255,255,30,32,255,255,32,34,255,255,34,36,255,255,36,38,255
+  255,38,40,255,255,40,255,255,255,43,43,255,255,45,45,255,255,47,47,255
+  255,49,49,255,255,51,51,255,255,53,53,255,255,55,255,255,43,255,255,43
+  45,255,255,45,47,255,255,47,49,255,255,49,51,255,255,51,53,255,255,53
+  55,255,255,255,56,255,255,58,58,255,255,60,60,255,255,62,62,255,255,64
+  64,255,255,66,66,255,255,68,68,255,255,255,255,56,58,255,255,58,60,255
+  255,60,62,255,255,62,64,255,255,64,66,255,255,66,68,255,255,68,255,255
+  255,71,71,255,255,73,73,255,255,75,75,255,255,77,77,255,255,79,79,255
+  255,81,81,255,255,83,255,255,71,255,255,71,73,255,255,73,75,255,255,75
+  77,255,255,77,79,255,255,79,81,255,255,81,83,255,255,255,84,255,255,86
+  86,255,255,88,88,255,255,90,90,255,255,92,92,255,255,94,94,255,255,96
+  96,255,255,255,255,84,86,255,255,86,88,255,255,88,90,255,255,90,92,255
+  255,92,94,255,255,94,96,255,255,96,255,255,255,99,99,255,255,101,101,255
+  255,103,103,255,255,105,105,255,255,107,107,255,255,109,109,255,255,111,255,255
+  99,255,255,99,101,255,255,101,103,255,255,103,105,255,255,105,107,255,255,107
+  109,255,255,109,111,255,255,255,112,255,255,114,114,255,255,116,116,255,255,118
+  118,255,255,120,120,255,255,122,122,255,255,124,124,255,255,255,255,112,114,255
+  255,114,116,255,255,116,118,255,255,118,120,255,255,120,122,255,255,122,124,255
+  255,124,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+data NodeEdgeL bytes
+  4,5,30,35,8,9,34,39,12,13,38,43,16,17,42,47,20,21,46,51
+  24,25,50,55,30,31,56,61,34,35,60,65,38,39,64,69,42,43,68,73
+  46,47,72,77,50,51,76,81,60,61,86,91,64,65,90,95,68,69,94,99
+  72,73,98,103,76,77,102,107,80,81,106,111,86,87,112,117,90,91,116,121
+  94,95,120,125,98,99,124,129,102,103,128,133,106,107,132,137,116,117,142,147
+  120,121,146,151,124,125,150,155,128,129,154,159,132,133,158,163,136,137,162,167
+  142,143,168,173,146,147,172,177,150,151,176,181,154,155,180,185,158,159,184,189
+  162,163,188,193,172,173,198,203,176,177,202,207,180,181,206,211,184,185,210,215
+  188,189,214,219,192,193,218,223,198,199,224,229,202,203,228,233,206,207,232,237
+  210,211,236,241,214,215,240,245,218,219,244,249
+end data
+data NodeEdgeH bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data NodeCellAt words
+  0,12,24,36,48,60,72,84,96,108,120,132,144,156,168,180,192,204,216,228
+  240,252,264,276,288,300,312,324,336,348,360,372,384,396,408,420,432,444,456,468
+  480,492,504,516,528,540,552,564,576
+end data
+data NodeCellL bytes
+  3,4,30,31,32,33,58,59,60,61,87,88,7,8,34,35,36,37,62,63
+  64,65,91,92,11,12,38,39,40,41,66,67,68,69,95,96,15,16,42,43
+  44,45,70,71,72,73,99,100,19,20,46,47,48,49,74,75,76,77,103,104
+  23,24,50,51,52,53,78,79,80,81,107,108,57,58,84,85,86,87,112,113
+  114,115,141,142,61,62,88,89,90,91,116,117,118,119,145,146,65,66,92,93
+  94,95,120,121,122,123,149,150,69,70,96,97,98,99,124,125,126,127,153,154
+  73,74,100,101,102,103,128,129,130,131,157,158,77,78,104,105,106,107,132,133
+  134,135,161,162,115,116,142,143,144,145,170,171,172,173,199,200,119,120,146,147
+  148,149,174,175,176,177,203,204,123,124,150,151,152,153,178,179,180,181,207,208
+  127,128,154,155,156,157,182,183,184,185,211,212,131,132,158,159,160,161,186,187
+  188,189,215,216,135,136,162,163,164,165,190,191,192,193,219,220,169,170,196,197
+  198,199,224,225,226,227,253,254,173,174,200,201,202,203,228,229,230,231,1,2
+  177,178,204,205,206,207,232,233,234,235,5,6,181,182,208,209,210,211,236,237
+  238,239,9,10,185,186,212,213,214,215,240,241,242,243,13,14,189,190,216,217
+  218,219,244,245,246,247,17,18,227,228,254,255,0,1,26,27,28,29,55,56
+  231,232,2,3,4,5,30,31,32,33,59,60,235,236,6,7,8,9,34,35
+  36,37,63,64,239,240,10,11,12,13,38,39,40,41,67,68,243,244,14,15
+  16,17,42,43,44,45,71,72,247,248,18,19,20,21,46,47,48,49,75,76
+  25,26,52,53,54,55,80,81,82,83,109,110,29,30,56,57,58,59,84,85
+  86,87,113,114,33,34,60,61,62,63,88,89,90,91,117,118,37,38,64,65
+  66,67,92,93,94,95,121,122,41,42,68,69,70,71,96,97,98,99,125,126
+  45,46,72,73,74,75,100,101,102,103,129,130,83,84,110,111,112,113,138,139
+  140,141,167,168,87,88,114,115,116,117,142,143,144,145,171,172,91,92,118,119
+  120,121,146,147,148,149,175,176,95,96,122,123,124,125,150,151,152,153,179,180
+  99,100,126,127,128,129,154,155,156,157,183,184,103,104,130,131,132,133,158,159
+  160,161,187,188,137,138,164,165,166,167,192,193,194,195,221,222,141,142,168,169
+  170,171,196,197,198,199,225,226,145,146,172,173,174,175,200,201,202,203,229,230
+  149,150,176,177,178,179,204,205,206,207,233,234,153,154,180,181,182,183,208,209
+  210,211,237,238,157,158,184,185,186,187,212,213,214,215,241,242
+end data
+data NodeCellH bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+  0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0
+  0,0,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0
+  0,0,0,0,0,0,1,1,0,0,0,0,1,1,1,1,1,1,1,1
+  0,0,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1
+  1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,1,1
+  1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+end data
+data EdgeN1 bytes
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,0,255,255,255,1,0,255,255,2,1
+  255,255,3,2,255,255,4,3,255,255,5,4,255,255,255,5,6,255,255,255
+  7,6,255,255,8,7,255,255,9,8,255,255,10,9,255,255,11,10,255,255
+  255,11,255,255,255,255,12,255,255,255,13,12,255,255,14,13,255,255,15,14
+  255,255,16,15,255,255,17,16,255,255,255,17,18,255,255,255,19,18,255,255
+  20,19,255,255,21,20,255,255,22,21,255,255,23,22,255,255,255,23,255,255
+  255,255,24,255,255,255,25,24,255,255,26,25,255,255,27,26,255,255,28,27
+  255,255,29,28,255,255,255,29,30,255,255,255,31,30,255,255,32,31,255,255
+  33,32,255,255,34,33,255,255,35,34,255,255,255,35,255,255,255,255,36,255
+  255,255,37,36,255,255,38,37,255,255,39,38,255,255,40,39,255,255,41,40
+  255,255,255,41,42,255,255,255,43,42,255,255,44,43,255,255,45,44,255,255
+  46,45,255,255,47,46,255,255,255,47,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+data EdgeN2 bytes
+  255,255,255,255,0,0,255,255,1,1,255,255,2,2,255,255,3,3,255,255
+  4,4,255,255,5,5,255,255,255,255,6,6,255,255,7,7,255,255,8,8
+  255,255,9,9,255,255,10,10,255,255,11,11,255,255,255,255,255,255,255,255
+  12,12,255,255,13,13,255,255,14,14,255,255,15,15,255,255,16,16,255,255
+  17,17,255,255,255,255,18,18,255,255,19,19,255,255,20,20,255,255,21,21
+  255,255,22,22,255,255,23,23,255,255,255,255,255,255,255,255,24,24,255,255
+  25,25,255,255,26,26,255,255,27,27,255,255,28,28,255,255,29,29,255,255
+  255,255,30,30,255,255,31,31,255,255,32,32,255,255,33,33,255,255,34,34
+  255,255,35,35,255,255,255,255,255,255,255,255,36,36,255,255,37,37,255,255
+  38,38,255,255,39,39,255,255,40,40,255,255,41,41,255,255,255,255,42,42
+  255,255,43,43,255,255,44,44,255,255,45,45,255,255,46,46,255,255,47,47
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+  255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+data EdgeC1L bytes
+  0,0,0,0,4,3,0,0,8,7,0,0,12,11,0,0,16,15,0,0
+  20,19,0,0,24,23,0,0,0,0,58,57,0,0,62,61,0,0,66,65
+  0,0,70,69,0,0,74,73,0,0,78,77,0,0,0,81,112,0,0,0
+  116,115,0,0,120,119,0,0,124,123,0,0,128,127,0,0,132,131,0,0
+  136,135,0,0,0,0,170,169,0,0,174,173,0,0,178,177,0,0,182,181
+  0,0,186,185,0,0,190,189,0,0,0,193,224,0,0,0,228,227,0,0
+  232,231,0,0,236,235,0,0,240,239,0,0,244,243,0,0,248,247,0,0
+  0,0,26,25,0,0,30,29,0,0,34,33,0,0,38,37,0,0,42,41
+  0,0,46,45,0,0,0,49,80,0,0,0,84,83,0,0,88,87,0,0
+  92,91,0,0,96,95,0,0,100,99,0,0,104,103,0,0,0,0,138,137
+  0,0,142,141,0,0,146,145,0,0,150,149,0,0,154,153,0,0,158,157
+  0,0,0,161,192,0,0,0,196,195,0,0,200,199,0,0,204,203,0,0
+  208,207,0,0,212,211,0,0,216,215,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data EdgeC1H bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1
+  0,0,1,1,0,0,0,1,1,0,0,0,1,1,0,0,1,1,0,0
+  1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0,0,1,1
+  0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1
+  0,0,0,1,1,0,0,0,1,1,0,0,1,1,0,0,1,1,0,0
+  1,1,0,0,1,1,0,0,1,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data EdgeC2L bytes
+  29,0,0,0,33,30,0,0,37,34,0,0,41,38,0,0,45,42,0,0
+  49,46,0,0,53,50,0,0,0,0,87,84,0,0,91,88,0,0,95,92
+  0,0,99,96,0,0,103,100,0,0,107,104,0,0,0,108,141,0,0,0
+  145,142,0,0,149,146,0,0,153,150,0,0,157,154,0,0,161,158,0,0
+  165,162,0,0,0,0,199,196,0,0,203,200,0,0,207,204,0,0,211,208
+  0,0,215,212,0,0,219,216,0,0,0,220,253,0,0,0,1,254,0,0
+  5,2,0,0,9,6,0,0,13,10,0,0,17,14,0,0,21,18,0,0
+  0,0,55,52,0,0,59,56,0,0,63,60,0,0,67,64,0,0,71,68
+  0,0,75,72,0,0,0,76,109,0,0,0,113,110,0,0,117,114,0,0
+  121,118,0,0,125,122,0,0,129,126,0,0,133,130,0,0,0,0,167,164
+  0,0,171,168,0,0,175,172,0,0,179,176,0,0,183,180,0,0,187,184
+  0,0,0,188,221,0,0,0,225,222,0,0,229,226,0,0,233,230,0,0
+  237,234,0,0,241,238,0,0,245,242,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data EdgeC2H bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0
+  1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0
+  0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1
+  0,0,1,1,0,0,0,1,1,0,0,0,1,1,0,0,1,1,0,0
+  1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0,0,1,1
+  0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1
+  0,0,0,1,1,0,0,0,1,1,0,0,1,1,0,0,1,1,0,0
+  1,1,0,0,1,1,0,0,1,1,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data NodeI bytes
+  2,4,6,8,10,12,1,3,5,7,9,11,2,4,6,8,10,12,1,3
+  5,7,9,11,2,4,6,8,10,12,1,3,5,7,9,11,2,4,6,8
+  10,12,1,3,5,7,9,11
+end data
+data NodeJ bytes
+  1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,3,3,3,4,4
+  4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,7,7,7,7
+  7,7,8,8,8,8,8,8
+end data
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $80,$40,$20,$10,$08,$04,$02,$01
+  $80,$40,$20,$10,$08,$04,$02,$01
+  $80,$40,$20,$10,$08,$04,$02,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $00,$80,$C0,$E0,$F0,$07,$03,$01
+  $01,$02,$04,$08,$10,$20,$40,$80
+  $01,$02,$04,$08,$10,$20,$40,$80
+  $01,$02,$04,$08,$10,$20,$40,$80
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $01,$03,$07,$F0,$E0,$C0,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $40,$83,$81,$83,$40,$40,$40,$00
+  $00,$18,$C3,$99,$99,$C3,$18,$00
+end data
+data TileCol bytes
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $04,$04,$04,$04,$04,$04,$04,$04
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $13,$13,$13,$13,$13,$13,$13,$13
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $04,$34,$34,$34,$34,$43,$43,$43
+  $03,$43,$43,$43,$43,$34,$34,$34
+  $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+  $13,$13,$13,$13,$13,$13,$13,$13
+  $14,$14,$14,$14,$14,$14,$14,$14
+  $34,$34,$34,$43,$43,$43,$43,$03
+  $43,$43,$43,$34,$34,$34,$34,$04
+  $01,$07,$07,$07,$07,$07,$07,$01
+  $81,$18,$18,$18,$81,$81,$81,$01
+  $01,$B1,$1B,$1B,$1B,$1B,$B1,$01
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$03,$07,$0E,$0C,$0C,$0E,$07,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$C0,$E0,$70,$30,$30,$70,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$04,$04,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$40,$20,$20,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$01,$0F,$01,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$08,$04,$02,$01,$02,$04,$08,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$20,$40,$80,$00,$80,$40,$20,$00,$00,$00,$00,$00
+  $00,$00,$00,$1F,$20,$20,$20,$3F,$7F,$6A,$7F,$6A,$7F,$00,$00,$00
+  $00,$00,$00,$F0,$08,$08,$08,$F8,$FC,$AC,$FC,$AC,$FC,$00,$00,$00
+  $00,$00,$00,$00,$1F,$1F,$1F,$00,$00,$2A,$00,$2A,$00,$00,$00,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$00,$00,$A8,$00,$A8,$00,$00,$00,$00
+end data
+
+asm {
+SpHush:
+    db $00,$00,$F0,$01,$10
+SpTick:
+    db $40,$40,$40,$01,$40,$40,$F0,$01,$50
+SpStep:
+    db $40,$55,$40,$02,$40,$40,$50,$02,$50
+SpBox:
+    db $40,$D6,$20,$03,$40,$AA,$20,$03,$40,$8F,$20,$03,$40,$6B,$30,$06,$50
+SpShock:
+    db $00,$00,$04,$04,$00,$00,$25,$06,$00,$00,$56,$0A,$00,$00,$96,$0E,$10
+SpFound:
+    db $40,$8F,$20,$06,$40,$71,$20,$06,$40,$5F,$20,$06,$40,$47,$20,$06,$40,$5F,$30,$06,$40,$47,$20,$12
+    db $50
+SpOver:
+    db $40,$1D,$21,$0C,$40,$53,$31,$0C,$40,$AB,$41,$0C,$40,$3B,$52,$1E,$50
+
+SpSoundTable:
+    dw SpHush,$702B
+    dw SpTick,$7035
+    dw SpStep,$7035
+    dw SpBox,$7035
+    dw SpShock,$702B
+    dw SpFound,$7035
+    dw SpOver,$7035
+    dw SpTuneMel,$703F
+    dw SpTuneBass,$7049
+; Power Grid (original)
+; Tiny Sound, 7 frames per step
+SpTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$23,$01,$23,$26,$01,$23,$21,$01,$1F,$01,$21,$01
+    db $23,$01,$01,$01,$23,$01,$23,$26,$01,$23,$28,$01,$26,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$1F,$23,$01,$1F,$1E,$01,$1C,$01,$1E,$01
+    db $1F,$01,$01,$01,$21,$01,$23,$01,$26,$01,$28,$01,$2A,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SpTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$10,$01,$10,$01,$1C,$01,$10,$01,$10,$01,$10,$01
+    db $1C,$01,$0E,$01,$10,$01,$10,$01,$1C,$01,$10,$01,$13,$01,$13,$01
+    db $12,$01,$0E,$01,$0C,$01,$0C,$01,$18,$01,$0C,$01,$0B,$01,$0B,$01
+    db $17,$01,$0B,$01,$09,$01,$09,$01,$0B,$01,$0B,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune (SndTuneA 8, SndTuneB 9) at once
+SpSong:
+    dw $0001
+    db $40+8,9
+    dw $0000
+}

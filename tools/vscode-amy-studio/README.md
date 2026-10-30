@@ -35,6 +35,11 @@ Opening a standalone `.alexis` file also works without a manifest. A manifest is
 
 Build outputs are written under `.amy/build/` and should normally be ignored by version control.
 
+The editor also reports source-level safety diagnostics before a build. In particular, a full
+`update sprites` after editing sprite shadow entries requires `set sprite count N` or
+`clear sprites`; otherwise the hardware sprite table can continue through uninitialized RAM even
+when one emulator happens to display the intended sprites.
+
 ## Compiler versions
 
 Every released VSIX contains a tested Amy compiler snapshot, so an extension update cannot silently depend on a changing web deployment. Set `amyStudio.compilerPath` only when deliberately testing another Amy Studio checkout. The extension and compiler communicate through the versioned `amy-compiler-report-v1` JSON protocol.

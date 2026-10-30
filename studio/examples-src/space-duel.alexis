@@ -1,0 +1,623 @@
+cartridge "SPACE DUEL/ANDY HAYES, COMPUTE!/1983"
+
+' SPACE DUEL
+' Andy Hayes's SPACE DUEL (COMPUTE!'s Gazette, December 1983, for the
+' VIC-20; the Commodore 64 version by Gregg Peele), for the ColecoVision
+' in Amy by Amy Bienvenu. Made by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Source: the article's rules (pages 80-82); the programs (BASIC with
+' machine language for the VIC, all machine language for the 64, typed in
+' with MLX) were not studied.
+'
+' Two spaceships on opposite sides of the screen move up and down and fire
+' laser bursts across at each other. A hit is worth 10 points, but every
+' shot costs one, so a hit nets nine. The first to the target score wins
+' (80 as on the VIC, or 500 as on the 64). A hit sets off an explosion and
+' the screen flashes. The ships glide a pixel at a time, and pushing the
+' stick longer moves them faster (the paddles' quick jumps).
+'
+' Controls: joystick 1 the left ship, joystick 2 the right one (up/down,
+' the left button fires). One player: the right ship is the computer.
+' Before a game: up/down choose 1 or 2 players, left/right the target, the
+' left button starts. Keypad not used.
+'
+' Liberties taken (the article only): joysticks instead of paddles (the
+' ColecoVision had none), so the speed grows while the stick is held; a
+' one-player game against the computer; the target score chosen (80 or
+' 500); a score never drops below 0; one laser burst at a time each.
+' The ships and their bursts stay inside columns 2-29 (pixels 16-239),
+' clear of a CRT's overscan.
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; an
+' original title tune that plays once; a credits page; the screens are
+' drawn with the NMI off.
+
+const TSky = 128
+const TStar = 129
+const TStar2 = 130
+const TStar3 = 131
+const SLhull = 0
+const SLpit = 4
+const SRhull = 8
+const SRpit = 12
+const SLaser = 16
+const SBlast = 20
+const NTiles8 = 32
+const SprBytes = 192
+const SndHush = 1
+const SndTick = 2
+const SndZap = 3
+const SndBoom = 4
+const SndWin = 5
+const SndTuneA = 6
+const SndTuneB = 7
+
+' --- the duel --------------------------------------------------------------
+' Py the ships' heights, Ht how long each stick is held, Lon/Lx/Ly the
+' laser bursts, Sc the scores, Np players, Goal the target
+u8 Py[2]
+u8 Ht[2]
+u8 Lon[2]
+u8 Lx[2]
+u8 Ly[2]
+u16 Sc[2]
+u8 Np = 1
+u16 Goal = 80
+u8 Gsel = 0
+u8 Win = 0
+u8 Hits = 0
+u16 Shots = 0
+u8 Ask = 0
+u8 Idle = 0
+u8 Ai = 0
+u8 AiT = 0
+
+u16 Rs = $1D3B
+u16 Rw = 0
+u16 Rt = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Fire1 = 0
+u8 WasF1 = 0
+u8 WasDir = 0
+u8 Fb[2]
+u8 Tick = 0
+u8 P = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 K = 0
+u8 Tx = 0
+u8 Ty = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table SdSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  CreditsPage
+title:
+  TitlePage
+  Options
+  Duel
+  goto title
+
+' ---------------------------------------------------------------------------
+sub Duel:
+  Field
+  Sc[0] = 0
+  Sc[1] = 0
+  Py[0] = 96
+  Py[1] = 96
+  Lon[0] = 0
+  Lon[1] = 0
+  Ht[0] = 0
+  Ht[1] = 0
+  Win = 0
+  Hud
+  Ask = 1
+pl_loop:
+  Frame1
+  for P = 0 to 1
+    MoveShip
+  next
+  for P = 0 to 1
+    MoveLaser
+  next
+  Ships
+  if Win = 0 then goto pl_loop
+  ' the winner
+  Ask = 0
+  play sound SndWin
+  V = Win - 1
+  if V = 0 then print at 6,11, "LEFT SHIP WINS!"
+  if V = 1 then
+    if Np = 1 then print at 6,11, "THE COMPUTER WINS"
+    if Np = 2 then print at 6,11, "RIGHT SHIP WINS!"
+  end if
+  Pause(120)
+  print at 8,13, "PRESS A BUTTON"
+  Ask = 9
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+' MoveShip: ship P by its stick (or the computer); the button fires
+sub MoveShip:
+  V = 0
+  W = 0
+  K = 0
+  if P = 0 then
+    V = joypad(1).up
+    W = joypad(1).down
+    K = joypad(1).button1
+  else
+    if Np = 2 then
+      V = joypad(2).up
+      W = joypad(2).down
+      K = joypad(2).button1
+    else
+      Computer
+    end if
+  end if
+  ' the longer it is held, the faster (1 to 4 pixels a frame)
+  J8 = V | W
+  if J8 = 0 then
+    Ht[P] = 0
+  else
+    if Ht[P] < 24 then Ht[P] = Ht[P] + 1
+  end if
+  J8 = Ht[P] / 8
+  J8 = J8 + 1
+  if V = 1 then
+    if Py[P] >= 28 then
+      Py[P] = Py[P] - J8
+      if Py[P] < 24 then Py[P] = 24
+    else
+      Py[P] = 24
+    end if
+  end if
+  if W = 1 then
+    Py[P] = Py[P] + J8
+    if Py[P] > 168 then Py[P] = 168
+  end if
+  ' the button: a new press fires, if this ship's burst is done
+  J8 = 0
+  if K = 1 then
+    if Fb[P] = 0 then J8 = 1
+  end if
+  Fb[P] = K
+  if J8 = 0 then return
+  if Lon[P] = 1 then return
+  Lon[P] = 1
+  Ly[P] = Py[P]
+  Lx[P] = 32
+  if P = 1 then Lx[P] = 208
+  ' each shot costs a point
+  if Sc[P] > 0 then Sc[P] = Sc[P] - 1
+  inc Shots
+  Hud
+  play sound SndZap
+  return
+end sub
+
+' Computer: the right ship lines up with you, fires, and dodges
+sub Computer:
+  inc AiT
+  ' dodge a burst coming at it
+  if Lon[0] = 1 then
+    if Lx[0] > 120 then
+      J8 = Ly[0] + 14
+      Ty = Py[1] + 14
+      Tx = Ly[0]
+      if J8 > Py[1] then
+        if Ty > Tx then
+          Rnd16
+          if Rw < 40000 then
+            if Py[1] > 96 then
+              W = 1
+            else
+              V = 1
+            end if
+            return
+          end if
+        end if
+      end if
+    end if
+  end if
+  ' line up (a little late, as a person would be)
+  J8 = AiT & 7
+  Tx = Py[1] + 6
+  Ty = Py[0] + 6
+  if J8 = 0 then
+    if Tx < Py[0] then W = 1
+    if Ty < Py[1] then V = 1
+  end if
+  Tx = Py[1] + 8
+  Ty = Py[0] + 8
+  if Tx > Py[0] then
+    if Ty > Py[1] then
+      Rnd16
+      if Rw < 2500 then K = 1
+    end if
+  end if
+  return
+end sub
+
+' MoveLaser: burst P flies six pixels a frame; at the far ship: a hit?
+sub MoveLaser:
+  if Lon[P] = 0 then return
+  if P = 0 then
+    Lx[P] = Lx[P] + 6
+    if Lx[P] < 202 then return
+    K = 1
+  else
+    Lx[P] = Lx[P] - 6
+    if Lx[P] > 38 then return
+    K = 0
+  end if
+  Lon[P] = 0
+  J8 = Ly[P] + 12
+  Tx = Py[K] + 12
+  Ty = Ly[P]
+  if J8 > Py[K] then
+    if Tx > Ty then Hit
+  end if
+  return
+end sub
+
+' Hit: ship P hit ship K: 10 points, a blast, the screen flashes
+sub Hit:
+  Sc[P] = Sc[P] + 10
+  inc Hits
+  Hud
+  play sound SndBoom
+  Tx = 16
+  if K = 1 then Tx = 224
+  Ty = Py[K] - 1
+  for J8 = 0 to 23
+    V = J8 & 3
+    if V = 0 then backdrop dark red
+    if V = 1 then backdrop light yellow
+    if V = 2 then backdrop magenta
+    if V = 3 then backdrop black
+    V = J8 & 2
+    if V = 0 then set sprite 4 to Ty,Tx,SBlast,11
+    if V <> 0 then set sprite 4 to Ty,Tx,SBlast,9
+    update sprites
+    Frame1
+  next
+  backdrop black
+  set sprite 4 to 192,0,0,0
+  update sprites
+  if Sc[P] >= Goal then Win = P + 1
+  return
+end sub
+
+sub Ships:
+  V = Py[0] - 1
+  set sprite 0 to V,16,SLpit,7
+  set sprite 1 to V,16,SLhull,4
+  V = Py[1] - 1
+  set sprite 2 to V,224,SRpit,11
+  set sprite 3 to V,224,SRhull,6
+  for J8 = 0 to 1
+    K = J8 + 5
+    if Lon[J8] = 1 then
+      V = Ly[J8] - 1
+      Tx = Lx[J8]
+      W = Tick & 1
+      if W = 0 then set sprite K to V,Tx,SLaser,8
+      if W = 1 then set sprite K to V,Tx,SLaser,9
+    else
+      set sprite K to 192,0,0,0
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub Hud:
+  print at 2,1, "SCORE:"
+  NumU = Sc[0]
+  print at 9,1, digits$(NumU, 3)
+  NumU = Sc[1]
+  print at 26,1, digits$(NumU, 3)
+  print at 14,1, "TO"
+  NumU = Goal
+  print at 17,1, digits$(NumU, 3)
+  return
+end sub
+
+' Field: the starry sky
+sub Field:
+  NewScreen
+  for Ty = 2 to 22
+    for Tx = 2 to 29
+      V = Tx * 7
+      W = Ty * 13
+      V = V + W
+      V = V % 23
+      K = TSky
+      if V = 1 then K = TStar
+      if V = 5 then K = TStar2
+      if V = 9 then K = TStar3
+      put char K at Tx,Ty
+    next
+  next
+  ShowPage
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub Options:
+  NewScreen
+  print at 11,3, "SPACE DUEL"
+  print at 4,7, "PLAYERS (UP/DOWN):"
+  print at 4,9, "WIN AT (LEFT/RIGHT):"
+  print at 4,13, "JOYSTICK 1: THE LEFT SHIP."
+  print at 4,14, "JOYSTICK 2: THE RIGHT SHIP"
+  print at 4,15, "(ONE PLAYER: THE COMPUTER)."
+  print at 4,17, "A HIT IS 10, A SHOT COSTS 1."
+  print at 6,21, "LEFT BUTTON: START"
+  ShowPage
+  Ask = 2
+op_loop:
+  print at 25,7, digits$(Np, 1)
+  NumU = Goal
+  print at 25,9, digits$(NumU, 3)
+  Frame1
+  ReadPad
+  if Up1 = 1 then
+    Np = 1
+    play sound SndTick
+  end if
+  if Dn1 = 1 then
+    Np = 2
+    play sound SndTick
+  end if
+  if Lf1 = 1 then
+    Goal = 80
+    play sound SndTick
+  end if
+  if Rt1 = 1 then
+    Goal = 500
+    play sound SndTick
+  end if
+  if Fire1 = 0 then goto op_loop
+  Ask = 0
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  clear sprites
+  set sprite count 7
+  for J8 = 0 to 6
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowPage:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  Up1 = 0
+  Dn1 = 0
+  Lf1 = 0
+  Rt1 = 0
+  Fire1 = 0
+  V = 0
+  W = joypad(1).up | joypad(2).up
+  if W = 1 then V = 1
+  W = joypad(1).down | joypad(2).down
+  if W = 1 then V = 2
+  W = joypad(1).left | joypad(2).left
+  if W = 1 then V = 3
+  W = joypad(1).right | joypad(2).right
+  if W = 1 then V = 4
+  if V <> WasDir then
+    if V = 1 then Up1 = 1
+    if V = 2 then Dn1 = 1
+    if V = 3 then Lf1 = 1
+    if V = 4 then Rt1 = 1
+  end if
+  WasDir = V
+  W = joypad(1).button1 | joypad(2).button1
+  if W = 1 then
+    if WasF1 = 0 then Fire1 = 1
+  end if
+  WasF1 = W
+  return
+end sub
+
+sub WaitPress:
+  WasF1 = 1
+wp_loop:
+  Frame1
+  ReadPad
+  if Fire1 = 0 then goto wp_loop
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,1, "SPACE DUEL"
+  print at 2,3, "BY ANDY HAYES (VIC-20) AND"
+  print at 2,4, "GREGG PEELE (COMMODORE 64),"
+  print at 2,5, "FROM COMPUTE!'S GAZETTE,"
+  print at 2,6, "DECEMBER 1983."
+  print at 2,8, "FOR THE COLECOVISION BY"
+  print at 2,9, "CLAUDE (AN AI MADE BY"
+  print at 2,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "2026, IN AMY, THE LANGUAGE"
+  print at 2,12, "BY AMY BIENVENU."
+  print at 2,14, "MUSIC: HIGH NOON IN ORBIT"
+  print at 2,15, "(ORIGINAL)."
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  Ask = 2
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub TitlePage:
+  Field
+  print at 11,5, "SPACE DUEL"
+  print at 4,8, "TWO SHIPS, TWO LASERS."
+  print at 4,9, "SHOOT THE OTHER SHIP MORE"
+  print at 4,10, "THAN IT SHOOTS YOU."
+  print at 8,18, "PRESS A BUTTON"
+  set sprite 0 to 100,40,SLpit,7
+  set sprite 1 to 100,40,SLhull,4
+  set sprite 2 to 100,200,SRpit,11
+  set sprite 3 to 100,200,SRhull,6
+  set sprite 5 to 100,90,SLaser,8
+  update sprites
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song SdSong once
+  Ask = 2
+  WaitPress
+  Ask = 0
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $1D3B
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$00,$00
+  $00,$00,$00,$01,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$F1,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$51,$01,$01
+  $01,$01,$01,$E1,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$30,$3C,$1F,$1F,$3F,$7F,$7F,$3F,$1F,$1F,$3C,$30,$00,$00
+  $00,$00,$00,$00,$80,$F8,$FF,$FF,$FF,$FF,$F8,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$38,$7C,$7C,$38,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$1F,$FF,$FF,$FF,$FF,$1F,$01,$00,$00,$00,$00
+  $00,$00,$0C,$3C,$F8,$F8,$FC,$FE,$FE,$FC,$F8,$F8,$3C,$0C,$00,$00
+  $00,$00,$00,$00,$00,$00,$1C,$3E,$3E,$1C,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$00
+  $81,$41,$21,$11,$09,$05,$03,$FF,$03,$05,$09,$11,$21,$41,$81,$00
+  $02,$04,$08,$10,$20,$40,$80,$FE,$80,$40,$20,$10,$08,$04,$02,$00
+end data
+
+asm {
+SdHush:
+    db $00,$00,$F0,$01,$10
+SdTick:
+    db $40,$40,$40,$01,$40,$40,$F0,$01,$50
+SdZap:
+    db $40,$2B,$10,$01,$40,$33,$20,$01,$40,$3E,$30,$01,$40,$4B,$40,$01,$40,$5D,$60,$02,$50
+SdBoom:
+    db $00,$00,$06,$0A,$00,$00,$27,$0E,$00,$00,$47,$12,$00,$00,$77,$16,$10
+SdWin:
+    db $40,$D6,$20,$06,$40,$AA,$20,$06,$40,$8F,$20,$06,$40,$6B,$20,$12,$50
+
+SdSoundTable:
+    dw SdHush,$702B
+    dw SdTick,$7035
+    dw SdZap,$7035
+    dw SdBoom,$702B
+    dw SdWin,$7035
+    dw SdTuneMel,$703F
+    dw SdTuneBass,$7049
+; High Noon in Orbit (original)
+; Tiny Sound, 8 frames per step
+SdTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$23,$01,$01,$01,$1E,$01,$01,$01,$23,$01,$26,$01
+    db $25,$01,$23,$01,$21,$01,$01,$01,$1C,$01,$01,$01,$21,$01,$25,$01
+    db $23,$01,$21,$01,$1F,$01,$23,$01,$26,$01,$2A,$01,$28,$01,$26,$01
+    db $25,$01,$21,$01,$23,$01,$1E,$01,$1A,$01,$1E,$01,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+SdTuneBass:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$18,$32,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$09,$01,$10,$01,$09,$01,$10,$01,$09,$01,$10,$01
+    db $09,$01,$10,$01,$07,$01,$0E,$01,$07,$01,$0E,$01,$09,$01,$10,$01
+    db $12,$01,$0D,$01,$0B,$01,$12,$01,$0B,$01,$12,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+; the title song: both voices at once (SndTuneA, SndTuneB)
+SdSong:
+    dw $0001
+    db $40+6,7
+    dw $0000
+}
