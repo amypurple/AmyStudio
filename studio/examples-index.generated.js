@@ -4537,7 +4537,8 @@ export const exampleManifest = [
       "underwater",
       "sprites",
       "sharks",
-      "air"
+      "air",
+      "gazette"
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
@@ -4558,7 +4559,8 @@ export const exampleManifest = [
       "chatgpt",
       "game",
       "underwater",
-      "sprites"
+      "sprites",
+      "gazette"
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
@@ -5744,7 +5746,8 @@ export const exampleManifest = [
       "arcade",
       "skydiving",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5766,7 +5769,8 @@ export const exampleManifest = [
       "arcade",
       "maze",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5788,7 +5792,8 @@ export const exampleManifest = [
       "arcade",
       "maze",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5810,7 +5815,8 @@ export const exampleManifest = [
       "arcade",
       "shooter",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5832,7 +5838,8 @@ export const exampleManifest = [
       "arcade",
       "maze",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5854,7 +5861,8 @@ export const exampleManifest = [
       "arcade",
       "space",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5877,7 +5885,8 @@ export const exampleManifest = [
       "arcade",
       "shooter",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5900,7 +5909,8 @@ export const exampleManifest = [
       "alphabet",
       "racing",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5922,7 +5932,8 @@ export const exampleManifest = [
       "simulation",
       "clock",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -5946,7 +5957,8 @@ export const exampleManifest = [
       "magazine",
       "music",
       "ai-assisted",
-      "compute!"
+      "compute!",
+      "gazette"
     ],
     "originKind": "original",
     "originLabel": "Original"
@@ -6335,7 +6347,8 @@ export const exampleManifest = [
       "strategy",
       "vic-20",
       "commodore-64",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -6358,7 +6371,8 @@ export const exampleManifest = [
       "shooter",
       "vic-20",
       "commodore-64",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -6381,7 +6395,8 @@ export const exampleManifest = [
       "text-adventure",
       "vic-20",
       "commodore-64",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
@@ -6425,7 +6440,8 @@ export const exampleManifest = [
       "arcade",
       "shooter",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -6447,7 +6463,8 @@ export const exampleManifest = [
       "sports",
       "bowling",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -6469,7 +6486,8 @@ export const exampleManifest = [
       "arcade",
       "shooter",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -6490,7 +6508,8 @@ export const exampleManifest = [
       "game",
       "arcade",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
@@ -6512,7 +6531,8 @@ export const exampleManifest = [
       "space",
       "arcade",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
@@ -6534,7 +6554,8 @@ export const exampleManifest = [
       "arcade",
       "climbing",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -6557,7 +6578,8 @@ export const exampleManifest = [
       "3d",
       "exploration",
       "vic-20",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
@@ -6580,7 +6602,8 @@ export const exampleManifest = [
       "flying",
       "vic-20",
       "commodore-64",
-      "music"
+      "music",
+      "gazette"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"

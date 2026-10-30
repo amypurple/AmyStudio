@@ -14,6 +14,8 @@
   that avoids rebuilding an unchanged first-person scene.
 - Preserved original COMPUTE! author attribution and rejected downloaded BLAM
   and Bowling Champion revisions that removed required sprite-count setup.
+- Added a dedicated **`gazette`** browser tag, automatically derived from the
+  game source and protected by the COMPUTE! attribution audit.
 
 ## 2026-10-26 - Laser Chess, 3-D Super Plotter and input fixes
 

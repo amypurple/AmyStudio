@@ -9,6 +9,7 @@ const root = resolve(import.meta.dirname, "..");
 const sourceRoot = join(root, "studio", "examples-src");
 const catalog = JSON.parse(readFileSync(join(sourceRoot, "index.json"), "utf8"));
 const checked = [];
+const gazetteChecked = [];
 
 for (const example of catalog) {
   const sourcePath = join(sourceRoot, `${example.id}.alexis`);
@@ -35,9 +36,15 @@ for (const example of catalog) {
   assert.ok(!manifestEntry?.tags?.includes("compute"), `${example.id}: legacy compute tag was not normalized`);
   const browserEntry = browserExampleManifest.find((entry) => entry.id === example.id);
   assert.ok(browserEntry?.tags?.includes("compute!"), `${example.id}: browser compute! tag is missing`);
+  if (/GAZETTE/i.test(source)) {
+    assert.ok(manifestEntry?.tags?.includes("gazette"), `${example.id}: generated gazette tag is missing`);
+    assert.ok(browserEntry?.tags?.includes("gazette"), `${example.id}: browser gazette tag is missing`);
+    gazetteChecked.push(example.id);
+  }
   checked.push(example.id);
 }
 
 assert.ok(checked.length >= 55, `expected at least 55 COMPUTE!-related examples, found ${checked.length}`);
-console.log(`COMPUTE! attribution screens: PASS (${checked.length} examples)`);
+assert.ok(gazetteChecked.length >= 20, `expected at least 20 COMPUTE!'s Gazette examples, found ${gazetteChecked.length}`);
+console.log(`COMPUTE! attribution screens: PASS (${checked.length} examples, ${gazetteChecked.length} Gazette)`);
 

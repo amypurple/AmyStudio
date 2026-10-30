@@ -93,7 +93,11 @@ function collectExampleTags(example) {
 function collectSourceTags(id) {
   const sourcePath = path.join(root, "studio", "examples-src", `${id}.alexis`);
   if (!fs.existsSync(sourcePath)) return [];
-  return fs.readFileSync(sourcePath, "utf8").includes("COMPUTE!") ? ["compute!"] : [];
+  const source = fs.readFileSync(sourcePath, "utf8");
+  const tags = [];
+  if (source.includes("COMPUTE!")) tags.push("compute!");
+  if (/GAZETTE/i.test(source)) tags.push("gazette");
+  return tags;
 }
 
 function classifyOrigin(entry, tags) {
