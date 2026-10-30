@@ -3386,7 +3386,7 @@ export const exampleManifest = [
   {
     "id": "jumping-jack",
     "label": "Jumping Jack (TI-99/4A Port)",
-    "detail": "Paul Burger's platform game, adapted from the 1983 TI-99/4A listing with joystick movement, jumping and sound.",
+    "detail": "Paul Burger's COMPUTE! platform game, adapted from the May 1983 TI-99/4A listing with joystick movement, jumping and sound.",
     "projectName": "jumping-jack",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3394,10 +3394,10 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3405,7 +3405,7 @@ export const exampleManifest = [
   {
     "id": "gold-miner",
     "label": "Gold Miner (TI-99/4A Port)",
-    "detail": "Joseph Weber and James Dunn's mine exploration game with animated digging, charges, gold and joystick controls.",
+    "detail": "Joseph Weber and James Dunn's COMPUTE! mine exploration game, with animated digging, charges, gold and joystick controls.",
     "projectName": "gold-miner",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3413,10 +3413,10 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3424,7 +3424,7 @@ export const exampleManifest = [
   {
     "id": "first-math",
     "label": "First Math (TI-99/4A Port)",
-    "detail": "Steve Hamilton's arithmetic tutor adapted to the ColecoVision keypad with selectable operations and difficulty ranges.",
+    "detail": "Steve Hamilton's August 1983 COMPUTE! arithmetic tutor, adapted to the ColecoVision keypad with selectable operations and difficulty ranges.",
     "projectName": "first-math",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3432,10 +3432,10 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "educational",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3443,7 +3443,7 @@ export const exampleManifest = [
   {
     "id": "southern-states",
     "label": "Southern States (TI-99/4A Port)",
-    "detail": "C. Regena's map quiz with a ColecoVision keypad build and an OS7+EOS hybrid ADAM keyboard build.",
+    "detail": "C. Regena's August 1983 COMPUTE! map quiz, with a ColecoVision keypad build and an OS7+EOS hybrid ADAM keyboard build.",
     "projectName": "southern-states",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3451,11 +3451,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "adam",
       "educational",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3463,7 +3463,7 @@ export const exampleManifest = [
   {
     "id": "diamond-drop",
     "label": "Diamond Drop (TI-99/4A Port)",
-    "detail": "Matt Giwer and Patrick Parrish's falling-diamond action game with fixed-point sprite motion and packed BCD scoring.",
+    "detail": "Matt Giwer and Patrick Parrish's September 1983 COMPUTE! falling-diamond action game, with fixed-point sprite motion and packed BCD scoring.",
     "projectName": "diamond-drop",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3471,11 +3471,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3483,7 +3483,7 @@ export const exampleManifest = [
   {
     "id": "mystery-spell",
     "label": "Mystery Spell (TI-99/4A Port)",
-    "detail": "Doug Hapeman's animated spelling game with 318 cartridge words and ADAM keyboard, custom-list and media support.",
+    "detail": "Doug Hapeman's September 1983 COMPUTE! spelling game, with 318 cartridge words and ADAM keyboard, custom-list and media support.",
     "projectName": "mystery-spell",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3491,11 +3491,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "adam",
       "educational",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3503,7 +3503,7 @@ export const exampleManifest = [
   {
     "id": "runway-180",
     "label": "Runway 180 (TI-99/4A Port)",
-    "detail": "James Dunn's 1983 jet-landing game, adapted with deterministic fixed-point sprite motion, runway hazards and ColecoVision controls.",
+    "detail": "James Dunn's October 1983 COMPUTE! jet-landing game, adapted with deterministic fixed-point sprite motion, runway hazards and ColecoVision controls.",
     "projectName": "runway-180",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3511,11 +3511,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3523,7 +3523,7 @@ export const exampleManifest = [
   {
     "id": "crazy-climber",
     "label": "Crazy Climber (TI-99/4A Port)",
-    "detail": "Ted Reynolds and Pat Parrish's climbing game with falling objects, parachute animation and compact VoxPCM speech.",
+    "detail": "Ted Reynolds and Pat Parrish's November 1983 COMPUTE! climbing game, with falling objects, parachute animation and compact VoxPCM speech.",
     "projectName": "crazy-climber",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3531,12 +3531,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
       "voxpcm",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3544,7 +3544,7 @@ export const exampleManifest = [
   {
     "id": "get-the-gold",
     "label": "Get the Gold (TI-99/4A Port)",
-    "detail": "Frank Elsesser's 128-room dungeon adventure with a visible exploration map and separate ColecoVision and ADAM controls.",
+    "detail": "Frank Elsesser's December 1983 COMPUTE! dungeon adventure, with 128 rooms, a visible exploration map and separate ColecoVision and ADAM controls.",
     "projectName": "get-the-gold",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3552,11 +3552,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "adam",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3564,7 +3564,7 @@ export const exampleManifest = [
   {
     "id": "balloon-crazy",
     "label": "Balloon Crazy (TI-99/4A Port)",
-    "detail": "Joseph Russ and Patrick Parrish's balloon-catching game with fixed-point sprite motion, animated balloon strings and BCD scoring.",
+    "detail": "Joseph Russ and Patrick Parrish's December 1985 COMPUTE! balloon-catching game, with fixed-point sprite motion, animated balloon strings and BCD scoring.",
     "projectName": "balloon-crazy",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3572,11 +3572,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3584,7 +3584,7 @@ export const exampleManifest = [
   {
     "id": "beethoven-medley",
     "label": "Beethoven Medley (TI-99/4A Port)",
-    "detail": "C. Regena's historical Ludwig program: four Beethoven excerpts synchronized with a progressively drawn and gently animated scene.",
+    "detail": "C. Regena's October 1983 COMPUTE! Ludwig program: four Beethoven excerpts synchronized with a progressively drawn and gently animated scene.",
     "projectName": "beethoven-medley",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3592,11 +3592,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "music",
       "graphics",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3604,7 +3604,7 @@ export const exampleManifest = [
   {
     "id": "blueberries",
     "label": "Blueberries",
-    "detail": "Bill Root's 1984 farming game adapted for one or two players, with seed planting, ripening berries, a computer opponent and layered farmer sprites.",
+    "detail": "Bill Root's July 1984 COMPUTE! farming game, adapted for one or two players with seed planting, ripening berries, a computer opponent and layered farmer sprites.",
     "projectName": "blueberries",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3612,12 +3612,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "atari",
+      "compute!",
       "port",
       "game",
       "sprites",
       "two-player",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3625,7 +3625,7 @@ export const exampleManifest = [
   {
     "id": "pests",
     "label": "Pests",
-    "detail": "Kevin Woram's 1984 garden game adapted with eight-direction movement, spreading weeds, flower fumigation, layered sprites and Tiny Sound music.",
+    "detail": "Kevin Woram's June 1984 COMPUTE! garden game, adapted with eight-direction movement, spreading weeds, flower fumigation, layered sprites and Tiny Sound music.",
     "projectName": "pests",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3633,12 +3633,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "commodore-64",
+      "compute!",
       "port",
       "game",
       "sprites",
       "music",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3646,7 +3646,7 @@ export const exampleManifest = [
   {
     "id": "spiders",
     "label": "Spiders",
-    "detail": "Joe Rocke's 1984 alien-defense game with swaying formations, diving spiders, missiles, officer bonus rounds and Tiny Sound music.",
+    "detail": "Joe Rocke's November 1984 COMPUTE! alien-defense game, with swaying formations, diving spiders, missiles, officer bonus rounds and Tiny Sound music.",
     "projectName": "spiders",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3655,12 +3655,12 @@ export const exampleManifest = [
       "amy",
       "vic-20",
       "commodore-64",
+      "compute!",
       "port",
       "game",
       "sprites",
       "music",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3668,7 +3668,7 @@ export const exampleManifest = [
   {
     "id": "bunny-hop",
     "label": "Bunny Hop",
-    "detail": "Adam Cybanski's 1984 cloud-jumping game with smooth scrolling clouds, carrots, jumper rounds and fixed-point sprite movement.",
+    "detail": "Adam Cybanski's July 1984 COMPUTE! cloud-jumping game, with smooth scrolling clouds, carrots, jumper rounds and fixed-point sprite movement.",
     "projectName": "bunny-hop",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3677,11 +3677,11 @@ export const exampleManifest = [
       "amy",
       "vic-20",
       "atari",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3689,7 +3689,7 @@ export const exampleManifest = [
   {
     "id": "jackpot",
     "label": "Jackpot",
-    "detail": "Rick Rothstein's 1984 slot-machine simulation with three odds levels, animated reels, keypad controls and faithful TI-99/4A graphics.",
+    "detail": "Rick Rothstein's August 1984 COMPUTE! slot-machine simulation, with three odds levels, animated reels, keypad controls and faithful TI-99/4A graphics.",
     "projectName": "jackpot",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3697,12 +3697,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
       "keypad",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3710,7 +3710,7 @@ export const exampleManifest = [
   {
     "id": "devastator",
     "label": "Devastator",
-    "detail": "David R. Arnold and Patrick Parrish's 1984 crosshair action game with fixed-point motion, two skill levels and animated destruction sequences.",
+    "detail": "David R. Arnold and Patrick Parrish's August 1984 COMPUTE! crosshair game, with fixed-point motion, two skill levels and animated destruction sequences.",
     "projectName": "devastator",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3718,12 +3718,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
       "fixed-point",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3731,7 +3731,7 @@ export const exampleManifest = [
   {
     "id": "olympiad",
     "label": "Olympiad",
-    "detail": "Kevin Woram and Mike Buhidar Jr.'s enchanted arena duel with two-player controls, a computer opponent, arrows, teleport grids and Tiny Sound music.",
+    "detail": "Kevin Woram and Mike Buhidar Jr.'s June 1984 COMPUTE! arena duel, with two-player controls, a computer opponent, arrows, teleport grids and Tiny Sound music.",
     "projectName": "olympiad",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3740,13 +3740,13 @@ export const exampleManifest = [
       "amy",
       "commodore-64",
       "atari",
+      "compute!",
       "port",
       "game",
       "two-player",
       "sprites",
       "music",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3754,7 +3754,7 @@ export const exampleManifest = [
   {
     "id": "pentominos",
     "label": "Pentominos",
-    "detail": "Jim Butterfield's twelve-piece rectangle solver, adapted from the 1984 TI-99/4A listing with four board sizes, visible backtracking and three search speeds.",
+    "detail": "Jim Butterfield's May 1984 COMPUTE! twelve-piece rectangle solver, with four board sizes, visible backtracking and three search speeds.",
     "projectName": "pentominos",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3762,12 +3762,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "puzzle",
       "solver",
       "music",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3854,11 +3854,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3866,7 +3866,7 @@ export const exampleManifest = [
   {
     "id": "colorbot",
     "label": "Colorbot",
-    "detail": "John R. Dondzila's robot-survival game with eight-way movement, Electron Frisbees, animated walls and Tiny Sound music.",
+    "detail": "John R. Dondzila's January 1984 COMPUTE! robot-survival game, with eight-way movement, Electron Frisbees, animated walls and Tiny Sound music.",
     "projectName": "colorbot",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3874,11 +3874,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "vic-20",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3886,7 +3886,7 @@ export const exampleManifest = [
   {
     "id": "demons-of-osiris",
     "label": "Demons of Osiris",
-    "detail": "A ColecoVision rewrite of Steve Haynal's 1984 base-defense game with evasive attackers, waves and rapid fire.",
+    "detail": "A ColecoVision rewrite of Steve Haynal's January 1984 COMPUTE! base-defense game, with evasive attackers, waves and rapid fire.",
     "projectName": "demons-of-osiris",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3894,11 +3894,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "vic-20",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3906,7 +3906,7 @@ export const exampleManifest = [
   {
     "id": "gotcha",
     "label": "Gotcha!",
-    "detail": "Doug Smoak's wraparound money chase with a pursuing Collector, evolving mazes and smooth sprite movement.",
+    "detail": "Doug Smoak's February 1984 COMPUTE! wraparound money chase, with a pursuing Collector, evolving mazes and smooth sprite movement.",
     "projectName": "gotcha",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3914,11 +3914,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "vic-20",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3926,7 +3926,7 @@ export const exampleManifest = [
   {
     "id": "horse-racing",
     "label": "Horse Racing (TI-99/4A Port)",
-    "detail": "Robert Onufer's multi-player betting game with calculated odds, animated horses, track conditions and correct indexed payoffs.",
+    "detail": "Robert Onufer's October 1984 COMPUTE! betting game, with calculated odds, animated horses, track conditions and correct indexed payoffs.",
     "projectName": "horse-racing",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3934,12 +3934,12 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "game",
       "sprites",
       "arithmetic",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3947,7 +3947,7 @@ export const exampleManifest = [
   {
     "id": "lightsaver",
     "label": "Lightsaver",
-    "detail": "Catch falling light bulbs with moving baskets across sixteen skill levels, bonus baskets and an automatic demo.",
+    "detail": "Jon Rhees' September 1984 COMPUTE! action game: catch falling light bulbs across sixteen skill levels, bonus baskets and an automatic demo.",
     "projectName": "lightsaver",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3955,11 +3955,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "commodore-64",
+      "compute!",
       "port",
       "game",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3967,7 +3967,7 @@ export const exampleManifest = [
   {
     "id": "missile-math",
     "label": "Missile Math",
-    "detail": "Garry S. Wick's arithmetic game with five possible answers, a moving UFO, selectable operations and scoring by speed.",
+    "detail": "Garry S. Wick's September 1984 COMPUTE! arithmetic game, with five possible answers, a moving UFO, selectable operations and scoring by speed.",
     "projectName": "missile-math",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3975,11 +3975,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "educational",
       "sprites",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -3987,7 +3987,7 @@ export const exampleManifest = [
   {
     "id": "number-game",
     "label": "The Number Game",
-    "detail": "Lou Tylee's preschool number-recognition game with large digits, keypad play, counted blocks and compact VoxPCM speech.",
+    "detail": "Lou Tylee's October 1984 COMPUTE! number-recognition game, with large digits, keypad play, counted blocks and compact VoxPCM speech.",
     "projectName": "number-game",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -3995,11 +3995,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "educational",
       "voxpcm",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -4007,7 +4007,7 @@ export const exampleManifest = [
   {
     "id": "quatrainment",
     "label": "Quatrainment",
-    "detail": "A 4x4 pattern puzzle with selectable difficulty, move previews, par calculation and visible timing.",
+    "detail": "Sean Puckett's February 1984 COMPUTE! 4x4 pattern puzzle, with selectable difficulty, move previews, par calculation and visible timing.",
     "projectName": "quatrainment",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4015,10 +4015,10 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "puzzle",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -4026,7 +4026,7 @@ export const exampleManifest = [
   {
     "id": "ti-aquarium",
     "label": "TI Aquarium",
-    "detail": "Michael A. Covington's relaxing sprite aquarium with nine moving fish, bubbles, seaweed and rotating sprite priority.",
+    "detail": "Michael A. Covington's 1984 COMPUTE! sprite aquarium, with nine moving fish, bubbles, seaweed and rotating sprite priority.",
     "projectName": "ti-aquarium",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4034,11 +4034,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "ti99",
+      "compute!",
       "port",
       "sprites",
       "graphics",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -4046,7 +4046,7 @@ export const exampleManifest = [
   {
     "id": "trident",
     "label": "Trident",
-    "detail": "C. O. Dickerson's submarine missile-defense game rebuilt with a Graphics II radar, waves and steerable antimissiles.",
+    "detail": "C. O. Dickerson's 1984 COMPUTE! submarine defense game, rebuilt with a Graphics II radar, waves and steerable antimissiles.",
     "projectName": "trident",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4054,11 +4054,11 @@ export const exampleManifest = [
     "tags": [
       "amy",
       "atari",
+      "compute!",
       "port",
       "game",
       "graphics",
-      "manual-canon",
-      "compute!"
+      "manual-canon"
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
@@ -4085,7 +4085,7 @@ export const exampleManifest = [
   {
     "id": "roader",
     "label": "Roader (TI-99/4A Port)",
-    "detail": "Brian Foley's winding-road driving game with hazards, four skill levels and progressively narrower courses.",
+    "detail": "Brian Foley's March 1984 COMPUTE! winding-road game, with hazards, four skill levels and progressively narrower courses.",
     "projectName": "roader",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4164,7 +4164,7 @@ export const exampleManifest = [
   {
     "id": "worm-of-bemer",
     "label": "Worm of Bemer (TI-99/4A Port)",
-    "detail": "Guide Nerm through Bemer Castle, eating magic mushrooms while avoiding walls and other hazards.",
+    "detail": "Stephen D. Fultz's April 1984 COMPUTE! game: guide Nerm through Bemer Castle, eating magic mushrooms while avoiding walls and other hazards.",
     "projectName": "worm-of-bemer",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4183,7 +4183,7 @@ export const exampleManifest = [
   {
     "id": "things-in-the-dark",
     "label": "Things in the Dark (TI-99/4A Port)",
-    "detail": "Scott Baker's Dark World action game with animated creatures, six levels, spare robots and joystick-controlled movement.",
+    "detail": "Scott Baker's December 1984 COMPUTE! Dark World action game, with animated creatures, six levels, spare robots and joystick-controlled movement.",
     "projectName": "things-in-the-dark",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4203,7 +4203,7 @@ export const exampleManifest = [
   {
     "id": "paratrooper",
     "label": "Paratrooper (TI-99/4A Port)",
-    "detail": "John Goetz's 1985 one-button parachute game with variable wind and weight, animated boats, two difficulty levels and three landing pads.",
+    "detail": "John Goetz's January 1985 COMPUTE! parachute game, with variable wind and weight, animated boats, two difficulty levels and three landing pads.",
     "projectName": "paratrooper",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4223,7 +4223,7 @@ export const exampleManifest = [
   {
     "id": "goblin",
     "label": "Goblin (VIC-20 Port)",
-    "detail": "Dan Goff's climbing maze game with randomized barriers, collectible creatures, rising speed and persistent high score.",
+    "detail": "Dan Goff's July 1983 COMPUTE! climbing maze game, with randomized barriers, collectible creatures, rising speed and persistent high score.",
     "projectName": "goblin",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4243,7 +4243,7 @@ export const exampleManifest = [
   {
     "id": "speedski",
     "label": "Speed Ski (VIC-20 Port)",
-    "detail": "Dub Scroggin's downhill racing game with gates, jumps, hazards, five slopes, multiple players and cumulative rounds.",
+    "detail": "Dub Scroggin's 1983 COMPUTE! downhill racing game, with gates, jumps, hazards, five slopes, multiple players and cumulative rounds.",
     "projectName": "speedski",
     "sourceLang": "amy",
     "editorialTrack": "manual-canon",
@@ -4456,7 +4456,7 @@ export const exampleManifest = [
   {
     "id": "biker-dave",
     "label": "Biker Dave",
-    "detail": "A ColecoVision motorcycle stunt game with rookie and pro courses, wheelies, flaming-hoop jumps, variable ramps, high scores and an original title tune.",
+    "detail": "David Schwener's November 1986 COMPUTE! motorcycle stunt game, with rookie and pro courses, wheelies, flaming-hoop jumps, variable ramps, high scores and an original title tune.",
     "projectName": "Biker Dave",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
@@ -5620,7 +5620,7 @@ export const exampleManifest = [
   {
     "id": "casino",
     "label": "The Casino (2026)",
-    "detail": "Six casino games sharing one wallet: Blackjack, Roulette, Las Vegas High, Seven/Eleven, Under 'N' Over and Inner Spring.",
+    "detail": "Six casino games sharing one wallet: the March 1988 COMPUTE! Blackjack plus five games from Tim Hartnell's Giant Book of Computer Games.",
     "projectName": "The Casino",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
@@ -5657,8 +5657,7 @@ export const exampleManifest = [
       "exploration",
       "lighting",
       "music",
-      "ai-assisted",
-      "compute!"
+      "ai-assisted"
     ],
     "originKind": "original",
     "originLabel": "Original"
@@ -5956,9 +5955,7 @@ export const exampleManifest = [
       "vic-20",
       "magazine",
       "music",
-      "ai-assisted",
-      "compute!",
-      "gazette"
+      "ai-assisted"
     ],
     "originKind": "original",
     "originLabel": "Original"

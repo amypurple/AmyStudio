@@ -16,6 +16,9 @@
   and Bowling Champion revisions that removed required sprite-count setup.
 - Added a dedicated **`gazette`** browser tag, automatically derived from the
   game source and protected by the COMPUTE! attribution audit.
+- Normalized all **76 COMPUTE! adaptations** with explicit catalogue tags and
+  visible provenance, while preventing source-text mentions from falsely
+  classifying original games such as Lamplighter and Type-In.
 
 ## 2026-10-26 - Laser Chess, 3-D Super Plotter and input fixes
 

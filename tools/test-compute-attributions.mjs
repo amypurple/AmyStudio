@@ -19,6 +19,9 @@ for (const example of catalog) {
   if (example.originKind === "original") continue;
   if (!tags.includes("compute") && !source.includes("COMPUTE!")) continue;
 
+  assert.match(example.detail || "", /COMPUTE!/i,
+    `${example.id}: catalogue description must state its COMPUTE! origin`);
+
   const cartridgeHeader = source.split(/\r?\n/, 1)[0] || "";
   assert.doesNotMatch(cartridgeHeader, /AMY BIENVENU/i,
     `${example.id}: cartridge header must credit the original COMPUTE!/Gazette author`);

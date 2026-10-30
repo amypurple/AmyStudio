@@ -90,9 +90,9 @@ function collectExampleTags(example) {
   return [...new Set(tags)];
 }
 
-function collectSourceTags(id) {
+function collectSourceTags(id, inferPublication = true) {
   const sourcePath = path.join(root, "studio", "examples-src", `${id}.alexis`);
-  if (!fs.existsSync(sourcePath)) return [];
+  if (!inferPublication || !fs.existsSync(sourcePath)) return [];
   const source = fs.readFileSync(sourcePath, "utf8");
   const tags = [];
   if (source.includes("COMPUTE!")) tags.push("compute!");
@@ -127,7 +127,7 @@ const manifest = index.map((entry) => {
   const declaredTags = entry.tags || collectExampleTags(item);
   item.tags = [...new Set([
     ...declaredTags.map((tag) => tag === "compute" ? "compute!" : tag),
-    ...collectSourceTags(item.id)
+    ...collectSourceTags(item.id, entry.originKind !== "original")
   ])];
   item.originKind = classifyOrigin(entry, item.tags);
   if (item.originKind) {
