@@ -1,37 +1,17 @@
-## 2026-10-30 - Classic games and VS Code validation
+## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations
 
-- Updated the **Amy Studio extension for Visual Studio Code** to 0.1.2 with
-  the current compiler snapshot and a live diagnostic for sprite tables that
-  are populated without an explicit sprite count or terminator.
-- Added five COMPUTE!'s Gazette programs from December 1983: **BLAM!**,
-  **Bowling Champ**, **Saucer Shooter**, **Spike** and **Space Duel**.
-- Added two January 1984 COMPUTE!'s Gazette adaptations: **Hardhat Climber**
-  and the first-person 3D reinterpretation **Cave-In**.
-- Corrected BLAM! and Bowling Champ to declare their two active sprites,
-  preventing later SAT memory from being interpreted as visible sprites on
-  stricter TMS9918A implementations.
-- Restored 160 source listings and their project assets that were advertised
-  by the clean example catalogue but absent from the published repository.
-- Added final Z80 branch legalization so a `JR` that becomes out of range
-  after optimization is safely promoted to `JP`; this fixes both 421 builds.
-- Revalidated provenance metadata, COMPUTE! attribution screens and the full
-  clean corpus: **387/387 examples compile** in Balanced, including 386 ROMs
-  and one target-specific project.
+- Added **Canyon Cruiser**, Thomas Catsburg's January 1984 COMPUTE!'s
+  Gazette canyon-flying game, with joystick controls and Tiny Sound music.
+- Updated **Martian Prisoner**, **Oil Tycoon**, **Chicken Little**, **Marbles**
+  and **Monte Carlo** to use Amy's native one-shot Tiny Sound playback instead
+  of private frame counters.
+- Corrected the sound-table allocation in Marbles and Monte Carlo so the first
+  entry owns the lowest sound area, while preserving their music and effects.
+- Improved **Midnight Manor** with animated ghosts and view-aware rendering
+  that avoids rebuilding an unchanged first-person scene.
+- Preserved original COMPUTE! author attribution and rejected downloaded BLAM
+  and Bowling Champion revisions that removed required sprite-count setup.
 
-## 2026-10-27 - 120-color RAM safety and Picture Show
-
-- Fixed temporal 120-color RAM allocation so its phase bytes, controller buffers
-  and user variables cannot overlap.
-- Made `120 colors off` valid by itself by linking the NMI update dependency even
-  when the same program never uses `120 colors on`.
-- Fixed ZX0 direct-to-VRAM literal runs longer than 256 bytes. The smaller loop
-  now restores a proven 257-byte payload exactly and reduces the Warrior bitmap
-  benchmark from 3,214 to 3,213 bytes.
-- Added **Picture Show: 120 Colors**, a two-picture ZX0 gallery with controller
-  switching and exact round-trip runtime validation.
-- Revalidated all five 120C profiles and the complete 191-example Balanced clean
-  corpus, then refreshed the comparison HTML, Markdown, PDF and CSV to 7,372
-  occupied bytes across Amy Studio's six benchmark ROMs.
 ## 2026-10-26 - Laser Chess, 3-D Super Plotter and input fixes
 
 - Added **Laser Chess**, Mike Duppong's 1987 COMPUTE! strategy game adapted
@@ -62,106 +42,9 @@
 - Reduced indexed byte compound updates by reusing one proven destination
   address for dynamic `+=`, `-=`, `&=`, `|=` and `^=` operations. The clean
   repository also received the previously validated immediate-mask rule.
-- Validated the resulting clean catalogue at 151/151 examples, including
-  GearColeco runtime captures of both new programs and both corrected input
-  flows.
-
-## 2026-10-25 - SDCC-inspired code-generation refinements
-
-- Lowered byte record-field `+= 1` and `-= 1` directly to in-place Z80
-  `INC/DEC`, saving 481 bytes across 14 Balanced corpus ROMs with no growth.
-- Reduced Gameplay State Update from 1,152 to 1,138 occupied bytes and the
-  six-sample Amy total from 7,391 to 7,377 bytes.
-- Raised the guarded single-call inlining budget from 8 to 16 encoded bytes
-  for Experimental only, saving another 332 bytes across 36 laboratory ROMs.
-- Preserved calls, branches, labels, stack operations, I/O, data references
-  and unsafe instructions as inlining barriers; all post-optimizer and runtime
-  validation gates pass.
-- Updated the HTML, Markdown, PDF, CSV and downloadable evidence archive with
-  the rebuilt benchmark ROMs and hashes.
-- Synchronized the external-audit ASM exporter with the normal ADAM compiler
-  wiring, restoring 146/146 exports including EOS `create ... status ...`.
-- Documented the SDCC allocator-budget audit: node limits are non-monotonic,
-  `100000` favors simple samples, `500000` favors State Update, and `3000`
-  produces an invalid stale-`IY` result despite its smaller apparent size.
-
-## 2026-10-20 - Spiders game port
-
-- Added Joe Rocke's 1984 **Spiders** to the browser game catalogue, based on
-  the VIC-20, Commodore 64, Apple II and IBM PC/PCjr versions described by
-  COMPUTE! magazine.
-- Added swaying formations, diving attackers, missiles, officer bonus rounds,
-  three robot ships, an editorial page and original Tiny Sound title music.
-- Corrected returning attackers so they descend back into their moving
-  formation position instead of converging diagonally on it.
-- Compiled the validated Balanced cartridge at 9,202 occupied bytes and
-  runtime-tested the editorial, title and active playfield in GearColeco.
-
-## 2026-10-20 - External toolchain benchmark refresh
-
-- Audited the official revisions and release dates used by all eight measured
-  ColecoVision toolchains and recorded them in the HTML, Markdown, PDF and CSV
-  evidence.
-- Rebuilt the six z88dk samples with nightly
-  `26587-33d4c333ea-20261020`, reducing their combined occupied size from
-  17,176 to 17,161 bytes while preserving the runtime oracles.
-- Rebuilt devkitSMS against revision `533ae572` (2026-09-29). Its six-sample
-  total is 13,075 bytes, 12 bytes larger because the updated startup code now
-  acknowledges VDP interrupts, protects the interrupt vector and bounds the
-  static-RAM clear.
-- Confirmed that the current CVBasic and ugBASIC changes do not affect their
-  ColecoVision benchmark output, and that PVColLib remains at its measured
-  upstream revision.
-- Kept compact PDF tables on one page, kept headings with their opening
-  paragraphs, and tightened the NewColeco historical summary.
-
-## 2026-10-20 - Audio workflow corrections
-
-- Documented direct calculated PSG effects, their native period/attenuation
-  ranges and the channel-ownership conflict with concurrent sound services.
-- Corrected the historical TriPCM description: its count repeats a delta step
-  to form a ramp rather than holding one reconstructed value as RLE.
-- Kept the experimental WAV-to-PSG speech heuristic out of the clean repo
-  until it has a focused perceptual regression oracle.
-
-## 2026-10-20 - Debugger RAM-write test API
-
-- Added a bounded GearColeco WASM RAM-write export and JavaScript test-core
-  wrapper for deterministic runtime setup.
-- Test harnesses can now inject board positions and edge-case state directly
-  without changing release ROM code or relying on fragile input playback.
-
-## 2026-10-20 - TASM command-line compatibility
-
-- Added an explicit `--tasm` dialect mode to the Amy Z80 command-line
-  assembler, mutually exclusive with `--gasm80`.
-- Pinned compatibility to a real ColecoVision TASM source and its original
-  846-byte ROM; the rebuilt output must remain byte-identical.
-- Documented the supported TASM directives, literal forms and strict opcode
-  validation contract.
-
-## 2026-10-20 - User-routine clobber inference
-
-- Added conservative register-clobber inference for generated Amy routines,
-  including transitive calls and explicit fail-closed handling for recursion,
-  unknown calls, indirect control flow and opaque ASM.
-- Reused a proven-live `HL` address across calls only when the complete Amy
-  call graph proves that the callee preserves it; cached memory values remain
-  invalidated across every call.
-- Added binary before/after equivalence and barrier tests for the inference.
-- Reduced 12 browser games by 48 bytes combined with no ROM growth and kept
-  all six comparison ROM sizes unchanged.
-
-## 2026-10-20 - Signed min/max and wide numeric regression promotion
-
-- Made unary negation preserve signed byte/word intent in runtime expressions.
-- Made `min()` and `max()` compare signed `i8` and `i16` values correctly,
-  including nested expressions, variable negation and boundary values.
-- Fixed an assembler peephole that could discard a live `B` value after
-  folding a temporary accumulator sequence.
-- Added five-profile runtime coverage for signed/unsigned min/max, wide
-  `u32`/`i32` record fields and the `u32` helper ABI.
-- Kept all six comparison ROMs unchanged at 7,391 occupied bytes.
+- Validated the resulting Alexis-Z80 catalogue at 303/303 examples, with 302
+  assembled ROMs and GearColeco runtime captures of the new programs and both
+  corrected input flows.
 
 ## 2026-10-20 - Indexed compound multiplication and new ports
 
@@ -177,48 +60,39 @@
 - Redrew Roader's obstacle as an irregular grayscale boulder, replacing the
   round yellow-and-red pattern that resembled a human face.
 - Added Barrier Battle, Roader, TI Mozart and Worm of Bemer to the example
-  catalogue after Balanced compilation and GearColeco runtime validation.
+  catalogue after Balanced compilation validation.
 - Fixed `u16 *= Array[Index]`, which could overwrite the left operand while
   calculating the indexed address and multiply the element by itself.
 - Fixed `u8 *= Array[Index]`, which previously reached the assembler as an
   invalid symbolic expression.
-- Added five-profile GearColeco runtime coverage for constant and dynamic
-  byte/word indexes and boot-tested eleven new game ports.
+- Added a five-profile GearColeco runtime regression for constant and dynamic
+  byte/word indexes, plus a browser-visible Amy self-test.
 - Added Circus, Colorbot, Demons of Osiris, Gotcha!, Horse Racing, Lightsaver,
-  Missile Math, The Number Game, Quatrainment, TI Aquarium and Trident.
+  Missile Math, The Number Game, Quatrainment, TI Aquarium and Trident to the
+  example catalogue.
 - Regenerated The Number Game's `three` voice with a stronger fricative and
-  longer `th-r` transition so it remains distinct after VoxPCM encoding.
-
-## 2026-10-20 - Runtime initialization and frame-wait hardening
-
-- Inlined generated-only RAM initializers at their single call site while
-  preserving the `AMY_INIT_RAM` ABI whenever external ASM may reference it.
-- Removed unreachable generated Start sink loops when no external reference is
-  possible, while retaining the code/data boundary label.
-- Reduced scalar byte `&=`, `|=`, and `^=` mutations by sharing one proven-safe
-  address through `HL`; arrays, references, stack values, and packed booleans
-  keep their conservative paths.
-- Prevented a reproducible `wait` stall by adding a bounded NMI wait followed by
-  VDP-status polling when an expected interrupt is missed.
-- Added dedicated initializer, byte-mutation, WAIT, and NMI runtime regressions;
-  all 105 browser examples compile and all 104 flat ROMs assemble in Balanced.
-- Rebuilt and runtime-validated the six comparison ROMs at 7,391 occupied bytes
-  in both Balanced and Experimental profiles after adding explicit bounded
-  NMI/VRAM batches while retaining safe default transfers. The 30-byte WAIT safety cost is
-  documented separately from the compiler savings.
+  longer `th-r` transition so it no longer resembles `two` after VoxPCM encoding.
+- Updated the 8-bit BASIC porting guide and port-feedback record from the
+  latest conversion findings.
 
 ## 2026-10-20 - Record iterator optimization promoted
 
-- Promoted the proven record-array `for each` IX iterator to Balanced and
-  Aggressive builds while retaining conservative barriers for unsafe cases.
+- Promoted the proven record-array `for each` IX iterator to the recommended
+  Balanced profile and Aggressive profile.
 - Promoted flag-liveness-proven `LD A,0` to `XOR A` rewriting to Balanced;
-  observable flag paths remain conservative barriers.
+  branches, carry consumers, AF preservation, labels and returned flags remain
+  conservative barriers.
 - Reduced Gameplay State Update from 1,299 to 1,159 bytes in Balanced builds
-  and reduced its measured average update cost from 5,093 to 3,189 cycles.
-- Validated identical runtime results across five profiles, the complete
+  while also reducing its measured average update cost from 5,093 cycles on
+  the conservative Safe path to 3,189 cycles.
+- Preserved the conservative RAM/HL alias path for calls, parameters,
+  recursion, nested aliases, local records, inline ASM and other unsafe cases.
+- Validated identical runtime results across all five profiles, the complete
   language matrix, Amy Chess runtime oracles, and all 258 browser examples.
-- Reduced the six-sample Balanced total from 7,642 to 7,494 bytes, only 11
-  bytes above Experimental.
+- Increased slow Amy Chess audit limits to reflect their measured runtime
+  instead of reporting false 120-second failures.
+- Reduced the six-sample Balanced total from 7,642 to 7,494 bytes; only 11
+  bytes now separate the recommended profile from Experimental.
 
 ## 2026-10-19 - Blueberries and VDP-safe NMI deferral
 
@@ -234,9 +108,8 @@
 - Added a five-profile GearColeco regression that forces NMI between the two
   VDP address bytes and verifies the destination byte, resumed frames, and
   cleared guard.
-- Re-ran the release audit across 105/105 browser examples, assembling 104 ROMs
-  at Balanced optimization with no failures and delegating the MegaCart project
-  to its target-specific validator.
+- Re-ran the complete language audit and assembled all 257 browser examples at
+  Balanced optimization with no failures.
 - Rebuilt the six comparison ROMs at 7,483 occupied bytes. Hello World is now
   227 bytes and Gameplay State Update 1,156 bytes; the 6-byte net increase over
   the prior suite is the measured cost of the required VDP-safe NMI fix.
@@ -251,63 +124,28 @@
 - Fixed constant-left comparisons that confused operand reversal with logical
   negation, affecting forms such as `0 = Value` and `0 < Value` across byte,
   fixed-point, and wide numeric paths.
-- Preserved dedicated full-precision rules for `fixed`/`ufixed`, `fixed32`, BCD,
-  and FP5 rather than applying integer shortcuts to their representations.
+- Preserved the dedicated full-precision rules for `fixed`/`ufixed`, `fixed32`,
+  BCD, and FP5 rather than applying integer shortcuts to their representations.
+- Added five-profile GearColeco matrices covering 84 mixed-width and 96 wide
+  zero comparisons, plus the existing fixed, BCD, and FP5 runtime suites.
 - Added the browser-visible `Amy Numeric Comparison Selftest`, with 48 Amy-level
-  assertions spanning every current numeric family.
-- Added five-profile GearColeco matrices covering 84 mixed-width, 96 wide-zero,
-  and 48 source-level self-test comparisons.
-- Re-ran the complete `language` feature-matrix suite; every compiler, runtime,
-  ABI, optimizer, numeric, array, record, and overlay regression passed.
+  assertions spanning every current numeric family and a five-profile runtime
+  test that reads its result directly from emulated ColecoVision RAM.
+- Re-ran the complete `language` feature-matrix suite after the comparison
+  changes; every compiler, runtime, ABI, optimizer, numeric, array, record, and
+  overlay regression passed.
 
-## 2026-10-15 - Proven semantic optimization promotion
+## 2026-10-19 - Arbitrary-position menus
 
-- Added guarded pointer traversal for eligible primitive and record `for each`
-  loops while retaining indexed lowering for unsafe or mutable-index cases.
-- Reused identical byte-array reads only inside adjacent condition terms with no
-  call, write, label, or other invalidating instruction between them.
-- Hardened encoded-size-aware single-call routine inlining with complete symbol
-  reference checks, explicit body removal, and stack, I/O, interrupt, index-register,
-  and refresh-register barriers.
-- Revalidated State Update under all five profiles for 48 ticks. Experimental now
-  occupies 1,162 bytes, averages 3,186 cycles, and preserves the exact
-  state/collision/score/checksum oracle; its engine-only form occupies 689 bytes.
-- Rebuilt all six comparison ROMs at 7,477 bytes combined and updated the public
-  comparison page, PDF, and evidence archive.
-
-## 2026-10-10 - Smaller record-heavy state updates
-
-- Kept eligible static record iterators directly in `IX`, including loops that
-  also access a second record type through the normal `HL` path.
-- Reused flags for the exact unsigned `<` then `>` `elseif` lowering without
-  carrying values across calls or intervening instructions.
-- Reduced the displayed State Update benchmark from 1,290 to 1,151 bytes and
-  its verified engine-only form from 817 to 678 bytes. All five profiles still
-  finish at state 1, 13 collisions, score 425, and checksum 1478.
-- Restored the complete external-optimizer audit helpers in the clean repo and
-  excluded delegated MegaCart projects from flat-ROM oracle passes.
-- Rebuilt the comparison page, chart, PDF, and evidence ZIP. The six-sample Amy
-  total is now 7,466 bytes.
-- Passed 83/83 example builds, 80/80 post-built-in oracles, 3/3 ROM runtime
-  tests, the MDL ROM self-test, and the dedicated MegaCart validator.
-
-## 2026-10-09 - Reduced runtime stack traffic
-
-- Removed additional redundant stack saves from Mode 2 and Mode 3 pixel
-  operations, double-buffer screen-page selection, and text-screen wipes.
-- Added five-profile runtime checks for packed Mode 3 pixel nibbles, Mode 2
-  pattern/color writes, and viewed/edit page register preservation.
-- Removed redundant register saves around OS7 VDP register calls used by VRAM
-  upload completion, CRT-safe pause, menu sleep, and keypad timeouts.
-- Reduced stack traffic in the SP0256 allophone, blocking-phrase, and
-  asynchronous playback paths, with a new Lundy/EVE runtime ABI oracle.
-- Removed setup-only saves from DSOUND and normal TriPCM playback. Their
-  cycle-calibrated sample loops are unchanged, and DSOUND RAW/RLE cadence
-  remains identical under all five optimization profiles.
-- Passed the complete feature matrix, including EOS, MegaCart, VDP, voice,
-  audio, and runtime tests. The public balanced catalogue validates 83/83
-  examples and assembles 82 flat ROMs totaling 311,744 bytes; one project is
-  delegated to its target-specific validator.
+- Added `choose menu ... at list` for horizontal, irregular, and artistic tile
+  or sprite menus while preserving automatic navigation, wrapping, keypad/FIRE
+  confirmation, input release, controller selection, and CRT-safe sleep.
+- Added compile-time validation that the position table contains exactly one
+  X,Y pair per choice, including forward-declared ROM data.
+- Fixed a RAM-layout mismatch that could overlap `AMY_SLEEP_IDLE_TICKS` with
+  user variables when a sleeping menu selected the compact BIOS controller
+  backend.
+- Added code-generation and five-profile GearColeco ROM coverage.
 
 ## 2026-10-07 - Separate ADAM and ColecoVision reset switches
 
@@ -319,40 +157,45 @@
 - Added runtime tests for the ADAM MIOC `$00`/`$0F` reset transition and UI
   coverage for both controls.
 
-## 2026-10-07 - Completed MegaCart and advanced project workflows
+## 2026-10-04 - Native EOS and hybrid ADAM development
 
-- Added editable 64 KB through 1 MB MegaCart projects with Amy modules in
-  switchable banks, explicit exports, safe cross-bank calls, and banked data
-  copied or decompressed to RAM and VRAM.
-- Made linker maps, symbols, breakpoints, traces, rewind, save states, and cycle
-  profiling bank-aware, preserving `(bank, address)` identity throughout the
-  debugger.
-- Added incremental multi-file builds with dependency fingerprints and FILES
-  states for modified, stale, compiled, and failed sources. Unchanged MegaCart
-  banks and ADAM BOOT/loader objects are reused while clean and incremental
-  builds remain byte-identical.
-- Added complete project starters and visual guides for MegaCart, native EOS,
-  and generic OS7+EOS hybrid software. Native and hybrid DSK/DDP builds now
-  have permanent assembly and GearColeco runtime tests.
-- Added named development checkpoints, recorded input routes, and fast replay
-  after recompilation, plus deterministic animated GIF export alongside AVI
-  gameplay capture.
-- Reworked the on-screen standard, Super Action, steering-wheel, and Roller
-  Controller layouts while retaining two-port input and profile selection.
-- Completed the release plan with a full clean-repository audit: 81/81 public
-  examples compile, 80 flat ROMs assemble to 310,670 balanced-profile bytes,
-  the MegaCart project passes its target-specific validator, and every
-  registered feature test passes.
+- Added native EOS, OS7+EOS hybrid, DSK, DDP, and MegaCart project forms with
+  editable multi-file Amy projects and target-aware compilation.
+- Added modern EOS file, directory, keyboard, printer, block-device, ADAMnet,
+  serial, and modem commands backed by typed system records.
+- Added target-aware graphics, controller, sound, Tiny Sound, VoxPCM, ZX0, and
+  VDP services while preserving the established OS7 cartridge output.
+- Expanded ROM TEST & DEBUG with ADAM firmware configuration, automatic DSK/DDP
+  mounting, writable media, ADAM keyboard input, serial interfaces, and modem
+  simulation.
+- Added native EOS examples, hybrid storage and MegaCart learning projects, an
+  OS7/EOS command matrix, and deterministic runtime coverage.
 
-## 2026-10-05 - Verified semantic code-size optimizations
+The animation below is captured directly from GearColeco while booting the
+Amy-built **Where on Earth? ADAM Edition** disk. It shows the EOS loader reading
+external WEPK question packs, followed by the pack menu, difficulty selection,
+and gameplay. It is not a browser mock-up.
 
-- Reused adjacent array indexes and shared `put frame` coordinate indexes without crossing mutation barriers.
-- Factored identical branch tails while preserving branch-specific source addresses.
-- Added five-profile compile, ROM, RAM, and VRAM equivalence tests for the new transformations.
-- Rebuilt the six Amy comparison samples; Tile Animation fell from 1,375 to 1,316 occupied bytes.
+![Where on Earth ADAM Edition booting from EOS disk media](media/where-on-earth-adam-eos.gif)
+
+![Where on Earth ADAM Edition gameplay](media/where-on-earth-adam-gameplay.png)
 
 ## 2026-10-03 - Native ADAM serial byte I/O
 
+- Corrected the AdamLink SCN2651 mapping from a self-consistent but reversed
+  implementation to the real software contract: data `$5E`, status/control
+  `$5F`. Untouched AdamLink III now consumes injected data through the same
+  mapping used by native EOS, DDP, and hybrid Amy programs.
+- Added an AdamLink III UI probe with a deterministic no-key control. It proves
+  Wild Card reaches the real `CP $90` dispatch and all six Smart Keys affect
+  the untouched program, without incorrectly treating a timed VDP transition
+  as a Wild Card side effect.
+- Mapped AdamLink III's real XMODEM UI path through FILE, send/receive, drive
+  selection, DISK I, filename entry, and A/H file-type selection. Physical
+  RAM inspection proves the terminated filename lives in main RAM at `$D034`.
+- Corrected SCN2651 DSR/DCD emulation. A configured interface now keeps DSR
+  asserted while active-low DCD alone follows carrier, so untouched AdamLink
+  III reports `Modem online. Connected` instead of the false `Carrier lost`.
 - Added target-selected AdamLink, Eve/Orphanware, and Micro Innovations serial
   backends with common non-blocking `serial readable`, `serial writable`,
   `serial read`, and `serial write` syntax.
@@ -360,7 +203,31 @@
 - Added verified carrier detection for the two SCN2651 interfaces and the MIB3
   SCN2681 input-port wiring (`$1D`, bit 5).
 - Runtime-tested receive and transmit on native EOS DSK/DDP and the OS7+EOS
-  hybrid loader, while keeping ColecoVision cartridge builds isolated.
+  hybrid loader, and kept ColecoVision cartridge builds isolated.
+- Fixed the complete example audit so each catalog entry is transpiled with its
+  declared target and the ADAM statement handler; 234/234 examples now assemble.
+
+## 2026-10-02 - Auto-detected ADAM media in ROM TEST & DEBUG
+
+- Added drag-and-drop and file-picker loading for external DSK and DDP media.
+- Switches automatically to ADAM mode and mounts disks in drive 1 or data packs
+  in data-pack drive 1.
+- Detects standard 160 KiB DSK and 256 KiB DDP geometry even when the filename
+  extension is absent or mistaken, while preserving explicit ROM/COL handling.
+- Keeps compressed ZIP/GZ inputs rejected and documents the required local
+  OS7, EOS, and SmartWriter firmware.
+
+## 2026-09-14 - Added external voice-module language support
+
+- Added modern Amy statements for detecting, resetting, querying, and speaking through Lundy and EVE SS-CC SP0256 modules.
+- Added nonblocking `voice start`, `voice speaking`, and `voice stop` statements with an automatically generated VBlank phrase feeder.
+- Added indexed voice phrases such as `voice start Phrases[Rank] using VoiceModule` and removed source-order dependence from ROM word-table expressions.
+- Added native calculated PSG tone, attenuation, and noise commands for procedural gameplay effects without inline assembly.
+- Fixed ZX0 direct-to-VRAM literal runs of 256 bytes or more; long runs no longer over-copy into adjacent VDP tables.
+- Removed declaration-order dependence from indexed ROM byte tables, matching the existing word-table behavior.
+- Replaced the debugger's procedural voice approximation with a ROM-driven SP0256 microsequencer and twelve-pole LPC filter.
+- Corrected SP0256 stereo mixing so DEBUG playback runs at the hardware clock rate instead of twice as fast.
+- Replaced the voice demonstration's port-level assembly with portable Amy source and added compiler and debugger regression tests.
 
 ## 2026-09-11 - Completed Sound Workspace v1
 
@@ -374,27 +241,26 @@
 - Stabilized the everyday BIOS sound-table and Sound FX authoring workflow.
 - Stabilized two-channel Tiny Sound creation, import, sequencing, inline editing, playback,
   source write-back, and compilation.
-- Added a 23-test public audio release gate, including real BIOS multi-area priority and timing parity in GearColeco.
+- Added a 24-test audio release gate, including real BIOS multi-area priority and timing parity in GearColeco.
 - Replaced an obsolete, non-reproducible Tiny Sound warning with measured runtime status.
+
+## 2026-09-07 - Added MegaLZ compression
+
+- Added an independent MegaLZ V4 JavaScript codec and compact direct-to-VRAM decompressor.
+- Verified reference compatibility, all optimizer profiles, and exact GearColeco VRAM output.
 
 ## 2026-09-02 - Added ZX2 compression
 
 - Added an official-stream-compatible ZX2 browser codec and 115-byte direct-to-VRAM decoder.
 - Verified byte-identical output against ZX2 v1.1 across all eleven corpus pictures.
-- Verified exact Warrior and long-literal VRAM output under all five optimization profiles.
+- Verified exact Warrior VRAM output under all five optimization profiles.
 
-## 2026-09-01 - Verified controller behavior
-
-- Automated neutral, keypad `0`, held direction, FIRE, and release checks across seven toolchains.
-- Documented six passing solutions and the ugBASIC Coleco border-update failure.
-- Refreshed the evidence archive and simplified the PDF to one Warrior image.
-- Added an Amy sprite/metasprite code example and GearColeco capture to the PDF.
-
-## 2026-09-01 - Added autocomplete preference
+## 2026-09-01 - Added autocomplete preference and clarified keypad idle
 
 - Added an independent `AC` switch that disables automatic suggestions and `Ctrl+Space`.
 - Kept the preference local and independent from syntax colouring and project files.
 - Clarified that keypad digit `0` returns zero while no key returns `255` (`$FF`).
+- Fixed an old Quatro menu generator that confused keypad `0` with no key.
 
 ## 2026-09-01 - Added visual benchmarks and ZX1
 
@@ -403,60 +269,18 @@
 - Verified exact ZX1 round trips and direct VRAM output on four complete bitmap pictures.
 - Expanded the comparison PDF with complete Amy listings and real GearColeco screenshots
   for every benchmark sample.
-
-## 2026-09-01 - Improved compressed bitmap evidence
-
-- Rebuilt the legacy SDCC bitmap with its historical DAN2 VRAM routine, reducing it from 4,269 to 3,643 bytes.
-- Added verified benchmark adaptations for z88dk ZX0 v1 and ZX7 direct-to-VRAM; ZX0 reduces the bitmap benchmark from 14,293 to 4,976 bytes.
-- Revalidated all seven Warrior ROMs with exact VRAM and pixel output and refreshed the evidence archive.
-- Verified ugBASIC's `COMPRESSED` image form; Warrior remains unchanged because MSC1 gives no gain and Coleco RLE is not implemented.
-
-## 2026-09-01 - Recovered legacy SDCC benchmark
-
-- Added Amy's historical CRTCV, CVLIB, and GETPUT 1.1 devkit to the measured comparison.
-- Added runnable Hello World, exact Warrior bitmap, and controller-monitor ROM evidence.
-- Expanded the public evidence archive from six to seven solutions and 21 runtime-verified ROMs.
-
-## 2026-09-01 - Expanded six-tool comparison evidence
-
-- Added PVColLib evidence for graphics, sprites, collision, controllers, spinners,
-  sound, music, compression, and expanded hardware support.
-- Replaced devkitSMS's raw Warrior tables with its native aPLib direct-to-VRAM path,
-  reducing occupied ROM from 13,680 to 4,713 bytes with exact GearColeco output.
-- Distinguished the common six-tool Warrior benchmark from the four-picture Graphics II
-  fidelity corpus and included both in the downloadable evidence archive.
-
-## 2026-09-01 - aPLib compression
-
-- Added a formatted 14-page PDF edition of the seven-tool comparison with the occupied-ROM chart.
-- Renamed comparison entries to `Amy Studio` and `NewColeco` across the dashboard and evidence archive.
-- Added aPLib as Amy Studio's eleventh browser compression codec.
-- Added `decompress aplib Source to vram...` with a direct TMS9918 VRAM decoder.
-- Added malformed-stream checks and official aPPack compatibility tests.
-- Added an exact GearColeco VRAM ROM test with deterministic public test data.
-- Updated the homepage, language reference, compression guide, comparison dashboard,
-  and downloadable evidence archive.
-- Kept the official aPPack executable and commercial graphics outside the public repository.
+- Added the animated sprite/metasprite Amy listing and GearColeco capture to the comparison PDF.
 
 ## 2026-08-28 - Fixed arrays and unsigned fixed arithmetic
 
-- Documented the DEV-to-clean quality pipeline covering targeted repros, five-profile
-  runtime tests, self-tests, corpus size audits, emulation QA, documentation, and release gates.
-- Added concise `for each Element in Array` syntax when the index is unused, while
-  retaining the explicit `for each Element, Index in Array` form when needed.
-- Added `select case (X, Y)` tuple matching with exact values and per-component ranges.
-- Allowed several tuple combinations to share one `case` body.
-- Updated the state-machine self-test with a boss-state and difficulty tuple example.
-- Added a public Amy Studio home page, styled documentation reader, ColecoVision
-  toolchain comparison dashboard, and verified links to Amy's ColecoVision repositories.
 - Accepted record and overlay-qualified `u8` array buffers as destinations for
   decimal and hexadecimal `format ... into` commands.
 - Fixed indexed qualified `u16 clamp` losing its bounds when dynamic address calculation
   reused `DE`; low, in-range, and high cases now pass under all optimizer profiles.
 - Extended `swap A with B` to qualified byte and word fields and made dynamic indexed
   swaps preserve their temporary value across address calculations.
-- Reworked the published Three Sort Algorithms example to use `swap`; its five optimizer
-  profiles remain runtime-verified and its Balanced ROM is 7 bytes smaller.
+- Reworked all five sorting examples to use `swap`; GearColeco verified the five preserved
+  originals and 25 optimized-profile builds. Balanced ROM size fell by 64 bytes total.
 - Accepted named compile-time constants for `digits/width` in single-line conditional prints.
 - Added the visible `Amy Inline Qualified Mutations Self-Test` Studio example.
 - Added qualified byte fields and packed booleans to single-line `if ... then toggle`,
@@ -1200,7 +1024,7 @@
 
 This changelog records the current release-facing state of the AMY language and Amy Studio.
 
-For the current version decision, see [amy-current-version.md](../docs/amy-current-version.md).
+For the current version decision, see [amy-current-version.md](docs/amy-current-version.md).
 
 ---
 
@@ -4209,7 +4033,7 @@ replace `rnd fp5 into A`.
 convert safe Tier 1 syntax in built-in Studio examples.
 
 **Changes**
-- Added [tools/modernize-amy.mjs](../tools/modernize-amy.mjs)
+- Added [tools/modernize-amy.mjs](tools/modernize-amy.mjs)
   with dry-run default, `--write`, `--list`, and explicit `--include-js` for
   Studio example-source strings.
 - Modernized supported example syntax such as:
@@ -4232,7 +4056,7 @@ convert safe Tier 1 syntax in built-in Studio examples.
 cleanup plan and removed a few legacy examples from the teaching path.
 
 **Changes**
-- Added [amy-legacy-removal-plan-2026-06-09.md](../docs/amy-legacy-removal-plan-2026-06-09.md)
+- Added [amy-legacy-removal-plan-2026-06-09.md](docs/amy-legacy-removal-plan-2026-06-09.md)
   with Tier 1 / Tier 2 cleanup sequencing, modernizer requirement, and keep-list
   for intentional retro constructs.
 - Linked the removal plan from the language-design priorities note.
@@ -4253,7 +4077,7 @@ cleanup plan and removed a few legacy examples from the teaching path.
 documentation issues that were immediately factual.
 
 **Changes**
-- Added [amy-language-design-priorities-2026-06-09.md](../docs/amy-language-design-priorities-2026-06-09.md)
+- Added [amy-language-design-priorities-2026-06-09.md](docs/amy-language-design-priorities-2026-06-09.md)
   to track expression-engine, signed-comparison, alias, fall-through, reserved
   name, and signed-byte cleanup priorities.
 - Added `fixed32` to the manual type table.
@@ -5043,16 +4867,16 @@ coming from C-like languages.
 
 ### What changed
 
-- updated [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+- updated [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
   - record parsing now accepts:
     - `record Name: ... end record`
     - `struct Name: ... end struct`
-- updated [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
+- updated [studio/core/editor/autocompleteCatalog.js](studio/core/editor/autocompleteCatalog.js)
   - added canonical `record` examples
   - added `struct` alias examples with wording that keeps `record` as the preferred Amy spelling
 - updated:
-  - [docs/amy-language.md](../docs/amy-language.md)
-  - [docs/amy-v2.1-reference-manual.md](../docs/amy-v2.1-reference-manual.md)
+  - [docs/amy-language.md](docs/amy-language.md)
+  - [docs/amy-v2.1-reference-manual.md](docs/amy-v2.1-reference-manual.md)
   - removed stale wording that still treated records / arrays of record as wholly future work
 
 ### Language direction
@@ -5070,15 +4894,15 @@ so global arrays of record can use nested paths such as `Pieces[I].Pos.X`.
 
 ### What changed
 
-- updated [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+- updated [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
   - record field declarations now accept previously defined record types
   - nested record fields contribute their full byte size to parent layout
 - updated:
-  - [studio/core/compiler/valueParseHelpers.js](../studio/core/compiler/valueParseHelpers.js)
-  - [studio/core/compiler/loadStoreHelpers.js](../studio/core/compiler/loadStoreHelpers.js)
+  - [studio/core/compiler/valueParseHelpers.js](studio/core/compiler/valueParseHelpers.js)
+  - [studio/core/compiler/loadStoreHelpers.js](studio/core/compiler/loadStoreHelpers.js)
   - nested member paths now resolve cumulative field offsets such as `Piece.Pos.X`
 - added a new shipped canary example:
-  - [studio/examples.js](../studio/examples.js)
+  - [studio/examples.js](studio/examples.js)
   - `Nested Record Array Minimal`
 
 ### Validation
@@ -5108,10 +4932,10 @@ rewrites, `ldi` substitutions, and a few residual local register-fact wins.
 - ran:
   - `node tools/analyze-mdl-audit.js`
 - refreshed current analysis artifacts:
-  - [build/mdl-audit/mdl-analysis.md](../build/mdl-audit/mdl-analysis.md)
-  - [build/mdl-audit/mdl-analysis.json](../build/mdl-audit/mdl-analysis.json)
+  - [build/mdl-audit/mdl-analysis.md](build/mdl-audit/mdl-analysis.md)
+  - [build/mdl-audit/mdl-analysis.json](build/mdl-audit/mdl-analysis.json)
 - recorded the findings in:
-  - [docs/findings-trace-constant-reuse-2026-06-02.md](../docs/findings-trace-constant-reuse-2026-06-02.md)
+  - [docs/findings-trace-constant-reuse-2026-06-02.md](docs/findings-trace-constant-reuse-2026-06-02.md)
 
 ### What was learned
 
@@ -5133,11 +4957,11 @@ rewrites, `ldi` substitutions, and a few residual local register-fact wins.
 
 If work stops during optimizer investigation, read these first:
 
-1. [docs/ai-project-orientation.md](../docs/ai-project-orientation.md)
-2. [docs/claude-studio-handoff.md](../docs/claude-studio-handoff.md)
-3. [docs/claude-validation-and-next-steps-2026-06-01.md](../docs/claude-validation-and-next-steps-2026-06-01.md)
-4. [docs/findings-trace-constant-reuse-2026-06-02.md](../docs/findings-trace-constant-reuse-2026-06-02.md)
-5. [build/mdl-audit/mdl-analysis.md](../build/mdl-audit/mdl-analysis.md)
+1. [docs/ai-project-orientation.md](docs/ai-project-orientation.md)
+2. [docs/claude-studio-handoff.md](docs/claude-studio-handoff.md)
+3. [docs/claude-validation-and-next-steps-2026-06-01.md](docs/claude-validation-and-next-steps-2026-06-01.md)
+4. [docs/findings-trace-constant-reuse-2026-06-02.md](docs/findings-trace-constant-reuse-2026-06-02.md)
+5. [build/mdl-audit/mdl-analysis.md](build/mdl-audit/mdl-analysis.md)
 
 ## 2026-06-02 — Narrow `LDIR/LDDR` BC=0 Promotion To Balanced
 
@@ -5148,14 +4972,14 @@ the rest of speculative register tracking.
 
 ### What changed
 
-- updated [studio/core/optimization.js](../studio/core/optimization.js)
+- updated [studio/core/optimization.js](studio/core/optimization.js)
   - `balanced` now explicitly includes proven `LDIR/LDDR BC=0` reuse
-- updated [studio/vendor/amyscvassembly/optimizerCore.js](../studio/vendor/amyscvassembly/optimizerCore.js)
+- updated [studio/vendor/amyscvassembly/optimizerCore.js](studio/vendor/amyscvassembly/optimizerCore.js)
   - added a narrow config gate for block-copy `BC=0` reuse
   - kept the rest of `speculativeValueReuse` at `aggressive`
 - updated investigation / plan docs:
-  - [docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md](../docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md)
-  - [docs/plan-optimizer-next-2026-06-01.md](../docs/plan-optimizer-next-2026-06-01.md)
+  - [docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md](docs/codex-investigation-amy-fixed32-sqrt-lab-2026-06-02.md)
+  - [docs/plan-optimizer-next-2026-06-01.md](docs/plan-optimizer-next-2026-06-01.md)
 
 ### Why this is not treated as speculative anymore
 
@@ -5211,8 +5035,8 @@ claimed wins.
 
 ### Key docs
 
-- [docs/claude-proof-window-refuted-2026-06-02.md](../docs/claude-proof-window-refuted-2026-06-02.md)
-- [docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md](../docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md)
+- [docs/claude-proof-window-refuted-2026-06-02.md](docs/claude-proof-window-refuted-2026-06-02.md)
+- [docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md](docs/codex-investigation-amy-float-muldiv-lab-2026-06-02.md)
 
 ## 2026-06-01 — Optimizer Parens Fix And Peephole Session
 
@@ -5277,13 +5101,13 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
 
 ## 2026-05-24 — FP5 Log Cleanup And Exp Backlog
 
-- moved the current fp5 `exp` improvement work out of the active tranche and recorded it as deferred backlog work in [docs/amy-current-version.md](../docs/amy-current-version.md)
+- moved the current fp5 `exp` improvement work out of the active tranche and recorded it as deferred backlog work in [docs/amy-current-version.md](docs/amy-current-version.md)
 - recorded `log` improvement alongside `exp` as backlog-quality future work, while keeping the current first-pass `log` helper active
-- cleaned the first fp5 `log` helper in [src/alexis_lib/coleco_math_fp5.asm](../src/alexis_lib/coleco_math_fp5.asm) so it no longer converts a fixed32 `ln(2)` constant at runtime:
+- cleaned the first fp5 `log` helper in [src/alexis_lib/coleco_math_fp5.asm](src/alexis_lib/coleco_math_fp5.asm) so it no longer converts a fixed32 `ln(2)` constant at runtime:
   - replaced the fixed32 bridge constant with a native fp5 `ln(2)` constant
   - kept the rest of the first-pass fp5 `log` structure unchanged
   - this makes the exponent contribution path fully fp5 end-to-end
-- added `Amy FP5 Sign / Int Lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) to verify the already-implemented fp5 `sgn` and `int` helpers with exact expected results
+- added `Amy FP5 Sign / Int Lab` in [studio/examples-numeric.js](studio/examples-numeric.js) and [studio/examples.js](studio/examples.js) to verify the already-implemented fp5 `sgn` and `int` helpers with exact expected results
 - verified the current fp5 helper tranche through the example labs:
   - `Amy FP5 Abs Lab`
   - `Amy FP5 Sign / Int Lab`
@@ -5301,23 +5125,23 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - exact/debug output through `print Value ... digits 16`
   - friendly/public decimal text through `str$ Value into Buffer`
 - added the first native fp5 control-flow comparison path:
-  - new runtime helper `AMY_FP5_CMP_FPA1_FPA2` in [src/alexis_lib/coleco_math_fp5.asm](../src/alexis_lib/coleco_math_fp5.asm)
-  - compiler support for fp5 comparisons in [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/controlFlowHelpers.js](../studio/core/compiler/controlFlowHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+  - new runtime helper `AMY_FP5_CMP_FPA1_FPA2` in [src/alexis_lib/coleco_math_fp5.asm](src/alexis_lib/coleco_math_fp5.asm)
+  - compiler support for fp5 comparisons in [studio/core/compiler/fx16Helpers.js](studio/core/compiler/fx16Helpers.js), [studio/core/compiler/controlFlowHelpers.js](studio/core/compiler/controlFlowHelpers.js), and [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
   - current direct support covers fp5-vs-fp5 and fp5-vs-integer-literal control-flow comparisons
-- added `amy-float-compare-lab` / `Amy FP5 Compare Lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) as a dedicated fp5 comparison smoke test
+- added `amy-float-compare-lab` / `Amy FP5 Compare Lab` in [studio/examples-numeric.js](studio/examples-numeric.js) and [studio/examples.js](studio/examples.js) as a dedicated fp5 comparison smoke test
 - refreshed the current-version note, user-facing language reference, reference manual, fp5 runtime contract, SmartBASIC fp5 guide, and root README so they describe the same current fp5 reality
 - expanded parser/editor acceptance so `fp5` is now a first-class built-in spelling in:
-  - [studio/core/compiler/typeSymbolHelpers.js](../studio/core/compiler/typeSymbolHelpers.js)
-  - [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
-  - [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
+  - [studio/core/compiler/typeSymbolHelpers.js](studio/core/compiler/typeSymbolHelpers.js)
+  - [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
+  - [studio/core/editor/autocompleteCatalog.js](studio/core/editor/autocompleteCatalog.js)
 - extended fp5 random statement parsing:
   - `random fp5 into Var`
   - `rnd fp5 into Var`
   - `random float into Var` remains accepted
-  - implemented in [studio/core/compiler/randomBounceStatementHelpers.js](../studio/core/compiler/randomBounceStatementHelpers.js)
+  - implemented in [studio/core/compiler/randomBounceStatementHelpers.js](studio/core/compiler/randomBounceStatementHelpers.js)
 - updated the main fp5 showcase examples to teach `fp5` directly instead of only `float`:
-  - [studio/examples-numeric.js](../studio/examples-numeric.js)
-  - [studio/examples.js](../studio/examples.js)
+  - [studio/examples-numeric.js](studio/examples-numeric.js)
+  - [studio/examples.js](studio/examples.js)
 
 ## 2026-05-19 — Refactor Progress
 
@@ -5325,7 +5149,7 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `float` is now recognized as a canonical AMY source type
   - compiler/runtime sizing now reserves 5 bytes for `float` storage
   - global and local `float` variables now allocate proper storage and support zero initialization plus float-to-float copy
-  - added the first real `fp5` runtime module in [src/alexis_lib/coleco_math_fp5.asm](../src/alexis_lib/coleco_math_fp5.asm):
+  - added the first real `fp5` runtime module in [src/alexis_lib/coleco_math_fp5.asm](src/alexis_lib/coleco_math_fp5.asm):
     - zero/copy/load/store helpers
     - `u16 -> float`
     - `i16 -> float`
@@ -5337,49 +5161,49 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
     - non-zero/non-copy `float` initialization
     - `float` parameters and return types in subroutines/functions
   - touched:
-    - [studio/core/compiler/typeSymbolHelpers.js](../studio/core/compiler/typeSymbolHelpers.js)
-    - [studio/core/compiler/procHelpers.js](../studio/core/compiler/procHelpers.js)
-    - [studio/core/compiler/declarationStatementHelpers.js](../studio/core/compiler/declarationStatementHelpers.js)
-    - [studio/core/compiler/runtimeValueHelpers.js](../studio/core/compiler/runtimeValueHelpers.js)
-    - [studio/core/compiler/typeInferenceHelpers.js](../studio/core/compiler/typeInferenceHelpers.js)
-    - [studio/core/compiler/firstPassScanHelpers.js](../studio/core/compiler/firstPassScanHelpers.js)
-    - [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
-    - [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
+    - [studio/core/compiler/typeSymbolHelpers.js](studio/core/compiler/typeSymbolHelpers.js)
+    - [studio/core/compiler/procHelpers.js](studio/core/compiler/procHelpers.js)
+    - [studio/core/compiler/declarationStatementHelpers.js](studio/core/compiler/declarationStatementHelpers.js)
+    - [studio/core/compiler/runtimeValueHelpers.js](studio/core/compiler/runtimeValueHelpers.js)
+    - [studio/core/compiler/typeInferenceHelpers.js](studio/core/compiler/typeInferenceHelpers.js)
+    - [studio/core/compiler/firstPassScanHelpers.js](studio/core/compiler/firstPassScanHelpers.js)
+    - [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
+    - [studio/core/editor/autocompleteCatalog.js](studio/core/editor/autocompleteCatalog.js)
 
 - added statement-style fixed32 fractional random support:
   - `random fixed32 into Var` now compiles to `AMY_FX16_16_RND` and stores a `0.0 .. <1.0` fixed32 sample
-  - wired through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/randomBounceStatementHelpers.js](../studio/core/compiler/randomBounceStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
-  - added `amy-fixed32-random-lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) as a focused smoke test
+  - wired through [studio/core/compiler/fx16Helpers.js](studio/core/compiler/fx16Helpers.js), [studio/core/compiler/randomBounceStatementHelpers.js](studio/core/compiler/randomBounceStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
+  - added `amy-fixed32-random-lab` in [studio/examples-numeric.js](studio/examples-numeric.js) and [studio/examples.js](studio/examples.js) as a focused smoke test
 - added statement-style fixed32 absolute value support:
   - `abs Value into Target` now compiles for fixed32-capable source/target pairs
-  - wired through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](../studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
-  - added `amy-fixed32-abs-lab` in [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) as a focused smoke test
+  - wired through [studio/core/compiler/fx16Helpers.js](studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
+  - added `amy-fixed32-abs-lab` in [studio/examples-numeric.js](studio/examples-numeric.js) and [studio/examples.js](studio/examples.js) as a focused smoke test
 - expanded the live `fixed32` surface toward production arithmetic:
-  - implemented compiler-routed `fixed32 *= ...` through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/assignmentArithmeticHelpers.js](../studio/core/compiler/assignmentArithmeticHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
-  - replaced the old placeholder `AMY_FX16_16_MULT` in [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm) with a real signed 16.16 multiply that builds a 64-bit absolute product and writes back the middle 32 bits
-  - expanded [studio/examples-numeric.js](../studio/examples-numeric.js) and [studio/examples.js](../studio/examples.js) so `amy-fixed32-selftest` now covers whole and fractional multiplication in addition to signed add/subtract and whole-value sqrt
+  - implemented compiler-routed `fixed32 *= ...` through [studio/core/compiler/fx16Helpers.js](studio/core/compiler/fx16Helpers.js), [studio/core/compiler/assignmentArithmeticHelpers.js](studio/core/compiler/assignmentArithmeticHelpers.js), and [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
+  - replaced the old placeholder `AMY_FX16_16_MULT` in [src/alexis_lib/coleco_math_fx16.asm](src/alexis_lib/coleco_math_fx16.asm) with a real signed 16.16 multiply that builds a 64-bit absolute product and writes back the middle 32 bits
+  - expanded [studio/examples-numeric.js](studio/examples-numeric.js) and [studio/examples.js](studio/examples.js) so `amy-fixed32-selftest` now covers whole and fractional multiplication in addition to signed add/subtract and whole-value sqrt
 - added `amy-fixed32-multiply-lab` as a dedicated fixed32 multiply-debug screen covering multiply-by-zero, one, two, one-half, and signed combinations so the broken multiply path can be diagnosed case by case
 - added `amy-fixed32-multiply-bytes` as a second fixed32 multiply-debug screen that prints both the decimal result and the raw `[3][2][1][0]` bytes, so multiply failures can be distinguished from formatting issues
 - added `copy bytes of Value to Buffer` to the compiler for scalar RAM values (`u8/i8`, `u16/i16/fixed/ufixed`, `u32/i32/fixed32`) so AMY code can inspect raw little-endian bytes without ad hoc casts
 - documented `copy bytes of Value to Buffer` as a user-facing debugging technique in:
-  - [docs/amy-language.md](../docs/amy-language.md)
-  - [docs/amy-v2.1-reference-manual.md](../docs/amy-v2.1-reference-manual.md)
+  - [docs/amy-language.md](docs/amy-language.md)
+  - [docs/amy-v2.1-reference-manual.md](docs/amy-v2.1-reference-manual.md)
   - including a concrete `fixed32 = 1.5` raw-byte example and little-endian debugging guidance
 - implemented the first real `fixed32` math helper surface:
-  - added [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm) `AMY_FX16_16_SQRT`
-  - exposed statement-style `sqrt Value into Target` for `fixed32` source/target pairs through [studio/core/compiler/fx16Helpers.js](../studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](../studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
+  - added [src/alexis_lib/coleco_math_fx16.asm](src/alexis_lib/coleco_math_fx16.asm) `AMY_FX16_16_SQRT`
+  - exposed statement-style `sqrt Value into Target` for `fixed32` source/target pairs through [studio/core/compiler/fx16Helpers.js](studio/core/compiler/fx16Helpers.js), [studio/core/compiler/printFormatStatementHelpers.js](studio/core/compiler/printFormatStatementHelpers.js), and [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
   - kept expression-form `A = sqrt(B)` explicitly out of scope for now
 - updated `fix16_16` library integration so `AMY_FX16_16_SQRT` is auto-resolved:
-  - [studio/core/project.js](../studio/core/project.js)
-  - [studio/core/libraryModules.js](../studio/core/libraryModules.js)
-- cleaned the current `fix16_16` helper layer in [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm):
+  - [studio/core/project.js](studio/core/project.js)
+  - [studio/core/libraryModules.js](studio/core/libraryModules.js)
+- cleaned the current `fix16_16` helper layer in [src/alexis_lib/coleco_math_fx16.asm](src/alexis_lib/coleco_math_fx16.asm):
   - fixed `AMY_FX16_16_ABS`, which was previously checking the combined OR of all four bytes instead of the actual sign byte
   - marked `AMY_FX16_16_MULT`, `AMY_FX16_16_DIV`, and `AMY_FX16_16_RND` as provisional low-level routines, not yet compiler-integrated promises
-- updated the umbrella include [src/alexis_lib/coleco_math.asm](../src/alexis_lib/coleco_math.asm) so it now includes `coleco_math_fx16.asm`
+- updated the umbrella include [src/alexis_lib/coleco_math.asm](src/alexis_lib/coleco_math.asm) so it now includes `coleco_math_fx16.asm`
 - fixed library auto-resolution for `fix16_16` usage:
-  - [studio/core/project.js](../studio/core/project.js) now detects `AMY_FX16_16_*` references and pulls in `src/alexis_lib/coleco_math_fx16.asm`
-  - [studio/core/libraryModules.js](../studio/core/libraryModules.js) now lists the broader `fix16_16` symbol surface for split-library resolution
-- kept the next `fixed32` math step explicitly tracked in [docs/fixed-ufixed-roadmap.md](../docs/fixed-ufixed-roadmap.md):
+  - [studio/core/project.js](studio/core/project.js) now detects `AMY_FX16_16_*` references and pulls in `src/alexis_lib/coleco_math_fx16.asm`
+  - [studio/core/libraryModules.js](studio/core/libraryModules.js) now lists the broader `fix16_16` symbol surface for split-library resolution
+- kept the next `fixed32` math step explicitly tracked in [docs/fixed-ufixed-roadmap.md](docs/fixed-ufixed-roadmap.md):
   - `MULT` / `DIV` / formatter / language-level support still need a proper audited pass
 
 - compiler optimization pass added for startup-clear-aware RAM init elision:
@@ -5390,64 +5214,64 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - removes redundant `ld r,n` reloads when the register value is still provably live
   - intentionally does **not** do flag-changing substitutions like `ld a,0 -> xor a`
   - kept conservative so it fits `Balanced`-class optimization rather than risky experimental rewriting
-- recorded the next `fixed32` math step in [docs/fixed-ufixed-roadmap.md](../docs/fixed-ufixed-roadmap.md):
+- recorded the next `fixed32` math step in [docs/fixed-ufixed-roadmap.md](docs/fixed-ufixed-roadmap.md):
   - expand and audit the existing `fix16_16` math subsystem properly
   - do not blindly paste the proposed 16.16 math listing without syntax and correctness review
 
-- recorded the first improved runnable AMY `fixed32` Ahl benchmark result in [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md):
+- recorded the first improved runnable AMY `fixed32` Ahl benchmark result in [docs/creative-computing-benchmark.md](docs/creative-computing-benchmark.md):
   - `0:20`, `accuracy 3.0623`, `random 9.5361`, `S 5034.6885`, `R 990.4638`
   - explicitly marked as a `fixed32` result and not an optimized historical floating-point comparison
-- continued the `fixed32` quality pass in [src/alexis_lib/coleco_math_fx16.asm](../src/alexis_lib/coleco_math_fx16.asm):
+- continued the `fixed32` quality pass in [src/alexis_lib/coleco_math_fx16.asm](src/alexis_lib/coleco_math_fx16.asm):
   - `AMY_FX16_16_DIV` now rounds to nearest instead of always truncating the quotient
   - this aligns divide behavior with the recent multiply and square-root rounding improvements
-- documented the preferred next high-accuracy real-number direction in [docs/apple-mbasic-float-plan.md](../docs/apple-mbasic-float-plan.md):
+- documented the preferred next high-accuracy real-number direction in [docs/apple-mbasic-float-plan.md](docs/apple-mbasic-float-plan.md):
   - no custom float
   - prefer a proven Apple / MBASIC-style `5-byte` BASIC float family for future benchmark-grade accuracy work
 - promoted the Creative Computing / Ahl benchmark from blocked sketch to runnable fixed32 rewrite:
-  - [studio/examples-numeric.js](../studio/examples-numeric.js) now runs the benchmark with statement `sqrt`, `random fixed32`, `^= 2`, and statement `abs`
-  - [studio/examples.js](../studio/examples.js) now lists it as `Ahl Benchmark` with project name `amy-ahl-benchmark`
-  - [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) now describes it as a runnable rewrite pending numerical validation
+  - [studio/examples-numeric.js](studio/examples-numeric.js) now runs the benchmark with statement `sqrt`, `random fixed32`, `^= 2`, and statement `abs`
+  - [studio/examples.js](studio/examples.js) now lists it as `Ahl Benchmark` with project name `amy-ahl-benchmark`
+  - [docs/creative-computing-benchmark.md](docs/creative-computing-benchmark.md) now describes it as a runnable rewrite pending numerical validation
 - updated the Creative Computing benchmark tracking:
-  - [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) now uses the intended `fixed32` benchmark sketch
-  - [studio/examples-numeric.js](../studio/examples-numeric.js) now carries the same `fixed32` benchmark target source
-  - [studio/examples.js](../studio/examples.js) now lists the blocked benchmark sketch in the studio catalog so progress can be tracked until it becomes runnable
-- refreshed [README.md](../README.md) so it reflects the current AMY Studio state instead of older meta-project wording
-- cleaned [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js):
+  - [docs/creative-computing-benchmark.md](docs/creative-computing-benchmark.md) now uses the intended `fixed32` benchmark sketch
+  - [studio/examples-numeric.js](studio/examples-numeric.js) now carries the same `fixed32` benchmark target source
+  - [studio/examples.js](studio/examples.js) now lists the blocked benchmark sketch in the studio catalog so progress can be tracked until it becomes runnable
+- refreshed [README.md](README.md) so it reflects the current AMY Studio state instead of older meta-project wording
+- cleaned [studio/core/editor/autocompleteCatalog.js](studio/core/editor/autocompleteCatalog.js):
   - removed several stale/non-canonical suggestions from the active catalog
   - kept canonical suggestions such as `next` and `graphics mode 2 bitmap`
   - added current `fixed32` suggestions for declaration, copy, and `+=` / `-=`
-- moved the autocomplete catalog into [studio/core/editor/autocompleteCatalog.js](../studio/core/editor/autocompleteCatalog.js)
-- removed the autocomplete type-name set, snippet lists, detail overrides, and command-bias scoring from [studio/app.js](../studio/app.js)
+- moved the autocomplete catalog into [studio/core/editor/autocompleteCatalog.js](studio/core/editor/autocompleteCatalog.js)
+- removed the autocomplete type-name set, snippet lists, detail overrides, and command-bias scoring from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `701` lines after this autocomplete extraction
-- moved the main compiler body into [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js)
-- left a thin `transpileAmy(...)` wrapper in [studio/app.js](../studio/app.js) that forwards the live helper/module dependencies
+- moved the main compiler body into [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js)
+- left a thin `transpileAmy(...)` wrapper in [studio/app.js](studio/app.js) that forwards the live helper/module dependencies
 - `studio/app.js` is now down to about `1075` lines after this core compiler extraction
-- wired [studio/core/projectBridgeHelpers.js](../studio/core/projectBridgeHelpers.js) for the local project bridge wrapper layer:
+- wired [studio/core/projectBridgeHelpers.js](studio/core/projectBridgeHelpers.js) for the local project bridge wrapper layer:
   - starter source wrapper
   - new/load/migrate project wrappers
   - project-file candidate wrapper
   - save/export/import wrappers
-- removed those local project bridge wrappers from [studio/app.js](../studio/app.js)
+- removed those local project bridge wrappers from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3056` lines after this shell extraction
-- wired [studio/core/bindStudioEvents.js](../studio/core/bindStudioEvents.js) for the top-level studio event-binding shell:
+- wired [studio/core/bindStudioEvents.js](studio/core/bindStudioEvents.js) for the top-level studio event-binding shell:
   - ASM view event wiring
   - top UI event wiring
   - studio runtime event wiring
-- removed that `bindEvents()` shell block from [studio/app.js](../studio/app.js)
+- removed that `bindEvents()` shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3077` lines after this shell extraction
-- wired [studio/core/projectEditorUi.js](../studio/core/projectEditorUi.js) for the project editor shell block:
+- wired [studio/core/projectEditorUi.js](studio/core/projectEditorUi.js) for the project editor shell block:
   - commit source text to project/editor
   - insert snippet into source
   - sync UI from the current project
-- removed that project editor shell block from [studio/app.js](../studio/app.js)
+- removed that project editor shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3089` lines after this shell extraction
-- wired [studio/core/previewShell.js](../studio/core/previewShell.js) for the preview / optimization shell block:
+- wired [studio/core/previewShell.js](studio/core/previewShell.js) for the preview / optimization shell block:
   - optimization hint update
   - preview button visibility/state
   - source cartridge metadata refresh
-- removed that preview / optimization shell block from [studio/app.js](../studio/app.js)
+- removed that preview / optimization shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3119` lines after this shell extraction
-- wired [studio/core/emulatorShell.js](../studio/core/emulatorShell.js) for the emulator shell block:
+- wired [studio/core/emulatorShell.js](studio/core/emulatorShell.js) for the emulator shell block:
   - emulator UI state update
   - ROM object URL lifecycle
   - clear compiled artifacts
@@ -5455,9 +5279,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - embedded emulator launch
   - BIOS auto-load
   - simple view switch helper
-- removed that emulator shell block from [studio/app.js](../studio/app.js)
+- removed that emulator shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3139` lines after this shell extraction
-- wired [studio/core/statusAsmUi.js](../studio/core/statusAsmUi.js) for the status / ASM view shell block:
+- wired [studio/core/statusAsmUi.js](studio/core/statusAsmUi.js) for the status / ASM view shell block:
   - status line update
   - library resolution panel render
   - ASM view state selection
@@ -5465,34 +5289,34 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - editor insight refresh
   - ASM editor sync
   - codec status line
-- removed that status / ASM view shell block from [studio/app.js](../studio/app.js)
+- removed that status / ASM view shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3281` lines after this shell extraction
-- wired [studio/core/projectLifecycle.js](../studio/core/projectLifecycle.js) for the project lifecycle shell block:
+- wired [studio/core/projectLifecycle.js](studio/core/projectLifecycle.js) for the project lifecycle shell block:
   - default starter source
   - new project creation
   - build-from-example creation
   - project load/migrate
   - project-file candidate naming
   - save-to-storage helper
-- removed that lifecycle shell block from [studio/app.js](../studio/app.js)
+- removed that lifecycle shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3373` lines after this shell extraction
-- wired [studio/core/examplePicker.js](../studio/core/examplePicker.js) for the example picker shell/UI block:
+- wired [studio/core/examplePicker.js](studio/core/examplePicker.js) for the example picker shell/UI block:
   - example tag ordering
   - example filtering
   - example metadata panel render
   - example picker render
-- removed that example picker shell block from [studio/app.js](../studio/app.js)
+- removed that example picker shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3427` lines after this shell extraction
-- wired [studio/core/projectPersistence.js](../studio/core/projectPersistence.js) for project export/import normalization
-- wired [studio/core/projectFileUi.js](../studio/core/projectFileUi.js) for the embedded project-file shell/UI block:
+- wired [studio/core/projectPersistence.js](studio/core/projectPersistence.js) for project export/import normalization
+- wired [studio/core/projectFileUi.js](studio/core/projectFileUi.js) for the embedded project-file shell/UI block:
   - asset snippet insertion
   - dsound play snippet insertion
   - upsert/remove project files
   - project-file rendering
   - imported project-file attachment
-- removed that project persistence / project-file shell block from [studio/app.js](../studio/app.js)
+- removed that project persistence / project-file shell block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3471` lines after this shell extraction
-- wired [studio/core/compiler/transpileFinalizationHelpers.js](../studio/core/compiler/transpileFinalizationHelpers.js) for the end-of-transpile finalizer:
+- wired [studio/core/compiler/transpileFinalizationHelpers.js](studio/core/compiler/transpileFinalizationHelpers.js) for the end-of-transpile finalizer:
   - unclosed block checks
   - deferred final proc/function cleanup
   - data block flush
@@ -5500,25 +5324,25 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - stack frame prologue insertion
   - runtime init / numeric helper / text / ROM block assembly
   - final optimized body packaging
-- removed that finalization block from [studio/app.js](../studio/app.js)
+- removed that finalization block from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3571` lines after the finalization extraction
-- wired [studio/core/compiler/firstPassScanHelpers.js](../studio/core/compiler/firstPassScanHelpers.js) for the first-pass symbol/signature scan:
+- wired [studio/core/compiler/firstPassScanHelpers.js](studio/core/compiler/firstPassScanHelpers.js) for the first-pass symbol/signature scan:
   - source type alias registration
   - const/data/declaration pre-scan
   - label pre-scan
   - sub/function signature pre-scan
   - stack parameter slot pre-registration
-- removed that first-pass scan cluster from [studio/app.js](../studio/app.js)
+- removed that first-pass scan cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3651` lines after the first-pass extraction
-- wired [studio/core/compiler/declarationStatementHelpers.js](../studio/core/compiler/declarationStatementHelpers.js) for the declaration cluster:
+- wired [studio/core/compiler/declarationStatementHelpers.js](studio/core/compiler/declarationStatementHelpers.js) for the declaration cluster:
   - `let` / `var` / `const`
   - `bcd`
   - typed global/local declarations
   - array declarations
   - removed built-in type rejection
-- removed that declaration cluster from [studio/app.js](../studio/app.js)
+- removed that declaration cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3784` lines after the declaration extraction
-- wired [studio/core/compiler/dataMetaStatementHelpers.js](../studio/core/compiler/dataMetaStatementHelpers.js) for the early data/meta parser cluster:
+- wired [studio/core/compiler/dataMetaStatementHelpers.js](studio/core/compiler/dataMetaStatementHelpers.js) for the early data/meta parser cluster:
   - `define TypeAlias as CanonicalType` second-pass skip
   - multiline `data` block state
   - `enddata`
@@ -5529,10 +5353,10 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `data ... sprite16`
   - `memory "..."`
   - `cartridge "..."`
-- removed that early data/meta cluster from [studio/app.js](../studio/app.js)
-- added [docs/fixed-ufixed-roadmap.md](../docs/fixed-ufixed-roadmap.md) to document the current real `fixed` / `ufixed` surface and the future path toward stronger numeric support
-- updated [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) with corrected time ordering and additional benchmark context
-- wired [studio/core/compiler/inlineStatementHelpers.js](../studio/core/compiler/inlineStatementHelpers.js) for the inline statement compiler used by one-line `if ... then ... else ...` forms:
+- removed that early data/meta cluster from [studio/app.js](studio/app.js)
+- added [docs/fixed-ufixed-roadmap.md](docs/fixed-ufixed-roadmap.md) to document the current real `fixed` / `ufixed` surface and the future path toward stronger numeric support
+- updated [docs/creative-computing-benchmark.md](docs/creative-computing-benchmark.md) with corrected time ordering and additional benchmark context
+- wired [studio/core/compiler/inlineStatementHelpers.js](studio/core/compiler/inlineStatementHelpers.js) for the inline statement compiler used by one-line `if ... then ... else ...` forms:
   - inline `return`
   - inline `set`
   - inline `print`
@@ -5542,9 +5366,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - inline `inc/dec`
   - inline `add/sub`
   - inline loop exits / continues
-- removed the buried local inline statement compiler from [studio/app.js](../studio/app.js)
+- removed the buried local inline statement compiler from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `3884` lines after this extraction
-- wired [studio/core/compiler/procFunctionStatementHelpers.js](../studio/core/compiler/procFunctionStatementHelpers.js) for the proc / function declaration cluster:
+- wired [studio/core/compiler/procFunctionStatementHelpers.js](studio/core/compiler/procFunctionStatementHelpers.js) for the proc / function declaration cluster:
   - removed `proc` / `call` / `gosub` legacy declaration checks
   - legacy `sub start:` compatibility
   - `sub ...`
@@ -5552,9 +5376,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `end sub`
   - `end function`
   - `end` / `project` no-op lines
-- removed the buried local proc / function declaration cluster from [studio/app.js](../studio/app.js)
+- removed the buried local proc / function declaration cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `4013` lines after this extraction
-- wired [studio/core/compiler/routineStatementHelpers.js](../studio/core/compiler/routineStatementHelpers.js) for the routine / return / set / implicit-call cluster:
+- wired [studio/core/compiler/routineStatementHelpers.js](studio/core/compiler/routineStatementHelpers.js) for the routine / return / set / implicit-call cluster:
   - `set Name = Value`
   - `return`
   - `return Value`
@@ -5563,9 +5387,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - implicit procedure calls
   - `include asm "..."`
   - removed `call/gosub` rejection path
-- removed the buried local routine / return / set / implicit-call cluster from [studio/app.js](../studio/app.js)
+- removed the buried local routine / return / set / implicit-call cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `4098` lines after this extraction
-- wired [studio/core/compiler/vramPixelInputStatementHelpers.js](../studio/core/compiler/vramPixelInputStatementHelpers.js) for the VRAM pixel / mode1 draw / input-read cluster:
+- wired [studio/core/compiler/vramPixelInputStatementHelpers.js](studio/core/compiler/vramPixelInputStatementHelpers.js) for the VRAM pixel / mode1 draw / input-read cluster:
   - `vpoke`
   - `vpeek`
   - `pset` / `plot` / `preset`
@@ -5576,11 +5400,11 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `wait key`
   - `wait key release`
   - `choose keypad ... into ...`
-- removed the buried local VRAM pixel / mode1 draw / input-read statement cluster from [studio/app.js](../studio/app.js)
+- removed the buried local VRAM pixel / mode1 draw / input-read statement cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `4156` lines after this extraction
-- added [docs/creative-computing-benchmark.md](../docs/creative-computing-benchmark.md) to document the Creative Computing / Ahl benchmark, its AMY translation sketch, the current numeric blockers, and a partial historical result table
-- added `amyAhlBenchmarkSketchSource` in [studio/examples-numeric.js](../studio/examples-numeric.js) as a non-catalogued future benchmark sketch
-- wired [studio/core/compiler/printFormatStatementHelpers.js](../studio/core/compiler/printFormatStatementHelpers.js) for the print / format statement cluster:
+- added [docs/creative-computing-benchmark.md](docs/creative-computing-benchmark.md) to document the Creative Computing / Ahl benchmark, its AMY translation sketch, the current numeric blockers, and a partial historical result table
+- added `amyAhlBenchmarkSketchSource` in [studio/examples-numeric.js](studio/examples-numeric.js) as a non-catalogued future benchmark sketch
+- wired [studio/core/compiler/printFormatStatementHelpers.js](studio/core/compiler/printFormatStatementHelpers.js) for the print / format statement cluster:
   - `print at ...`
   - `print "..." at ...`
   - `print Value at X,Y`
@@ -5589,9 +5413,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `sqrt ... into ...`
   - legacy `u32 zero/copy/add/inc/sub`
   - `add/sub/clear/copy/print bcd`
-- removed the buried local print / format / legacy u32 / BCD statement cluster from [studio/app.js](../studio/app.js)
+- removed the buried local print / format / legacy u32 / BCD statement cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `4190` lines after the print/format extraction
-- wired [studio/core/compiler/soundSpinnerStatementHelpers.js](../studio/core/compiler/soundSpinnerStatementHelpers.js) for the sound / spinner / wait statement cluster:
+- wired [studio/core/compiler/soundSpinnerStatementHelpers.js](studio/core/compiler/soundSpinnerStatementHelpers.js) for the sound / spinner / wait statement cluster:
   - `set sound table ...`
   - `play song`
   - `stop song`
@@ -5607,9 +5431,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `wait vblank`
   - `wait N frames`
   - `play dsound`
-- removed the buried local sound / spinner / wait statement cluster from [studio/app.js](../studio/app.js)
+- removed the buried local sound / spinner / wait statement cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `4952` lines after the sound/spinner extraction
-- wired [studio/core/compiler/displayGraphicsSpriteStatementHelpers.js](../studio/core/compiler/displayGraphicsSpriteStatementHelpers.js) for the display / graphics / sprite statement cluster:
+- wired [studio/core/compiler/displayGraphicsSpriteStatementHelpers.js](studio/core/compiler/displayGraphicsSpriteStatementHelpers.js) for the display / graphics / sprite statement cluster:
   - `screen on/off`
   - `display on/off`
   - `graphics bitmap`
@@ -5630,9 +5454,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `update sprites`
   - `set sprite ...`
   - `hide sprite ...`
-- removed the buried local display / graphics / sprite statement cluster from [studio/app.js](../studio/app.js)
+- removed the buried local display / graphics / sprite statement cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5063` lines after the display/graphics/sprite extraction
-- wired [studio/core/compiler/mathBitStatementHelpers.js](../studio/core/compiler/mathBitStatementHelpers.js) for the scalar math/bit utility statement cluster:
+- wired [studio/core/compiler/mathBitStatementHelpers.js](studio/core/compiler/mathBitStatementHelpers.js) for the scalar math/bit utility statement cluster:
   - `multiply` / `mul`
   - `divide` / `div`
   - `clamp ... between ... and ...`
@@ -5642,9 +5466,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `min ... with/to ...`
   - `max ... with/to ...`
   - `shift array ... down/up ...`
-- removed the buried local math/bit utility statement cluster from [studio/app.js](../studio/app.js)
+- removed the buried local math/bit utility statement cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5270` lines after the math/bit extraction
-- wired [studio/core/compiler/mutateStatementHelpers.js](../studio/core/compiler/mutateStatementHelpers.js) for the core mutate/arithmetic statement cluster:
+- wired [studio/core/compiler/mutateStatementHelpers.js](studio/core/compiler/mutateStatementHelpers.js) for the core mutate/arithmetic statement cluster:
   - `inc` / `dec`
   - `add ... by ...`
   - `add ... to ...`
@@ -5657,9 +5481,9 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `negate`
   - `not`
   - `toggle`
-- removed the buried local mutate/arithmetic statement cluster from [studio/app.js](../studio/app.js)
+- removed the buried local mutate/arithmetic statement cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5503` lines after the mutate/arithmetic extraction
-- wired [studio/core/compiler/dispatchLabelStatementHelpers.js](../studio/core/compiler/dispatchLabelStatementHelpers.js) for the dispatch/label cluster:
+- wired [studio/core/compiler/dispatchLabelStatementHelpers.js](studio/core/compiler/dispatchLabelStatementHelpers.js) for the dispatch/label cluster:
   - `set number digits ...`
   - `set number pad ...`
   - `copy X to Y`
@@ -5669,51 +5493,51 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - bare `Foo:`
   - `goto Foo`
   - removed `call/gosub` rejection
-- removed the buried local dispatch/label cluster from [studio/app.js](../studio/app.js)
+- removed the buried local dispatch/label cluster from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5692` lines after the dispatch/label extraction
-- wired [studio/core/compiler/specialIfGotoStatementHelpers.js](../studio/core/compiler/specialIfGotoStatementHelpers.js) for the special branch forms:
+- wired [studio/core/compiler/specialIfGotoStatementHelpers.js](studio/core/compiler/specialIfGotoStatementHelpers.js) for the special branch forms:
   - `if Var goto Label`
   - `if any collision goto Label`
   - sprite collision `if ... goto` forms
   - compare `if ... goto`
   - controller-direction / controller-button `if ... goto`
   - `if bit N of Var goto Label`
-- removed the buried local special `if ... goto` family from [studio/app.js](../studio/app.js)
+- removed the buried local special `if ... goto` family from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5754` lines after the special-branch extraction
-- wired [studio/core/compiler/randomBounceStatementHelpers.js](../studio/core/compiler/randomBounceStatementHelpers.js) for `random between ... into ...` and `bounce ... by ... between ... and ...`
-- removed the buried local random/bounce statement family from [studio/app.js](../studio/app.js)
+- wired [studio/core/compiler/randomBounceStatementHelpers.js](studio/core/compiler/randomBounceStatementHelpers.js) for `random between ... into ...` and `bounce ... by ... between ... and ...`
+- removed the buried local random/bounce statement family from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5795` lines after the random/bounce extraction
-- wired [studio/core/compiler/arrayBulkStatementHelpers.js](../studio/core/compiler/arrayBulkStatementHelpers.js) for bulk byte-array statements
+- wired [studio/core/compiler/arrayBulkStatementHelpers.js](studio/core/compiler/arrayBulkStatementHelpers.js) for bulk byte-array statements
   - `fill array ... with ...`
   - `copy array ... from ...`
   - `fill array ... repeating ...`
   - `reverse array ...`
-- removed the buried local bulk array statement family from [studio/app.js](../studio/app.js)
+- removed the buried local bulk array statement family from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5839` lines after the bulk-array extraction
-- wired [studio/core/compiler/ifStatementHelpers.js](../studio/core/compiler/ifStatementHelpers.js) for `if` / `elseif` / `else` / `end if` plus single-line `if ... then ... else ...`
-- removed the buried local core `if` statement family from [studio/app.js](../studio/app.js)
+- wired [studio/core/compiler/ifStatementHelpers.js](studio/core/compiler/ifStatementHelpers.js) for `if` / `elseif` / `else` / `end if` plus single-line `if ... then ... else ...`
+- removed the buried local core `if` statement family from [studio/app.js](studio/app.js)
 - `studio/app.js` is now down to about `5976` lines after the `if` extraction
-- wired [studio/core/compiler/forStatementHelpers.js](../studio/core/compiler/forStatementHelpers.js) for the full `for` / `downto` / `next` / `end for` / `exit for` / `continue for` family
-- removed the buried local `for` statement family from [studio/app.js](../studio/app.js)
-- fixed helper wire-order regressions in [studio/app.js](../studio/app.js) by using lazy wrapper calls where later-wired compiler helpers were captured too early
+- wired [studio/core/compiler/forStatementHelpers.js](studio/core/compiler/forStatementHelpers.js) for the full `for` / `downto` / `next` / `end for` / `exit for` / `continue for` family
+- removed the buried local `for` statement family from [studio/app.js](studio/app.js)
+- fixed helper wire-order regressions in [studio/app.js](studio/app.js) by using lazy wrapper calls where later-wired compiler helpers were captured too early
 - `studio/app.js` is now down to about `6046` lines after the `for` extraction
-- wired [studio/core/compiler/simpleArithmeticHelpers.js](../studio/core/compiler/simpleArithmeticHelpers.js) for int8/int16 arithmetic and shifts
-- removed the local duplicate simple arithmetic helper slab from [studio/app.js](../studio/app.js):
+- wired [studio/core/compiler/simpleArithmeticHelpers.js](studio/core/compiler/simpleArithmeticHelpers.js) for int8/int16 arithmetic and shifts
+- removed the local duplicate simple arithmetic helper slab from [studio/app.js](studio/app.js):
   - `emitArithInt8Op`
   - `emitLoadInt16ArithSourceIntoDE`
   - `emitArithInt16Op`
   - `emitShiftVar`
   - `emitShiftVarByN`
-- wired [studio/core/compiler/expressionComputeHelpers.js](../studio/core/compiler/expressionComputeHelpers.js) for AST expression loading/storage helpers
-- removed the local duplicate expression-compute helper slab from [studio/app.js](../studio/app.js):
+- wired [studio/core/compiler/expressionComputeHelpers.js](studio/core/compiler/expressionComputeHelpers.js) for AST expression loading/storage helpers
+- removed the local duplicate expression-compute helper slab from [studio/app.js](studio/app.js):
   - `emitComputeExpressionAst`
   - `emitStoreComputedExpression`
   - `emitStoreComputedToScratch32`
   - `coerceComputedExpressionForCompare`
   - `emitLoadInt8AstIntoA`
   - `emitLoadInt16AstIntoHL`
-- wired [studio/core/compiler/valueParseHelpers.js](../studio/core/compiler/valueParseHelpers.js) for parse/value helper logic
-- removed the local duplicate parse/value helper slab from [studio/app.js](../studio/app.js):
+- wired [studio/core/compiler/valueParseHelpers.js](studio/core/compiler/valueParseHelpers.js) for parse/value helper logic
+- removed the local duplicate parse/value helper slab from [studio/app.js](studio/app.js):
   - `splitTopLevelArgs`
   - `parseAmyDeclarationList`
   - `isWordChar`
@@ -5735,8 +5559,8 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `resolveValueType`
   - `resolveExpressionAstValueType`
   - `resolveExpressionAstDeclaredType`
-- wired [studio/core/compiler/u32Helpers.js](../studio/core/compiler/u32Helpers.js) for the 32-bit compare/store family
-- removed the local duplicate 32-bit helper slab from [studio/app.js](../studio/app.js):
+- wired [studio/core/compiler/u32Helpers.js](studio/core/compiler/u32Helpers.js) for the 32-bit compare/store family
+- removed the local duplicate 32-bit helper slab from [studio/app.js](studio/app.js):
   - `ensureCompareScratch32`
   - `emitStoreMemory32ToTarget`
   - `emitPrepareU32Source`
@@ -5748,8 +5572,8 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `getU32Info`
   - `getI32Info`
   - `emitU32ArrayCompareGoto`
-- wired [studio/core/compiler/procHelpers.js](../studio/core/compiler/procHelpers.js) to match the live compiler behavior
-- removed the local duplicate proc/runtime helper slab from [studio/app.js](../studio/app.js):
+- wired [studio/core/compiler/procHelpers.js](studio/core/compiler/procHelpers.js) to match the live compiler behavior
+- removed the local duplicate proc/runtime helper slab from [studio/app.js](studio/app.js):
   - `ensureProcLocalMap`
   - `ensureProcFrame`
   - `emitAdjustSpBy`
@@ -5765,16 +5589,16 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `scopedRuntimeName`
   - `runtimeTypeSize`
 - `studio/app.js` is now down to about `6467` lines after the proc/runtime, 32-bit, parse/value, expression-compute, and simple-arithmetic extractions
-- fully wired the BCD compiler helper family through [studio/core/compiler/bcdHelpers.js](../studio/core/compiler/bcdHelpers.js)
-- removed the local duplicate BCD slab from [studio/app.js](../studio/app.js)
-- staged then wired [studio/core/compiler/loadStoreHelpers.js](../studio/core/compiler/loadStoreHelpers.js) for the first load/store/address cut
-- removed these local helpers from [studio/app.js](../studio/app.js):
+- fully wired the BCD compiler helper family through [studio/core/compiler/bcdHelpers.js](studio/core/compiler/bcdHelpers.js)
+- removed the local duplicate BCD slab from [studio/app.js](studio/app.js)
+- staged then wired [studio/core/compiler/loadStoreHelpers.js](studio/core/compiler/loadStoreHelpers.js) for the first load/store/address cut
+- removed these local helpers from [studio/app.js](studio/app.js):
   - `emitLoadArrayAddressIntoHL`
   - `getByteArrayBufferInfo`
   - `emitStoreInt8FromA`
   - `emitStoreInt16FromHL`
-- staged then wired [studio/core/compiler/byteLoadHelpers.js](../studio/core/compiler/byteLoadHelpers.js) for the byte-load/count family
-- removed these local helpers from [studio/app.js](../studio/app.js):
+- staged then wired [studio/core/compiler/byteLoadHelpers.js](studio/core/compiler/byteLoadHelpers.js) for the byte-load/count family
+- removed these local helpers from [studio/app.js](studio/app.js):
   - `emitLoadInt8Into`
   - `emitLoadInt8ValueInto`
   - `emitLoadInt8ValueIntoPreserving`
@@ -5786,8 +5610,8 @@ compiler. `WRITE_VRAM EQU $1FDF` is the buggy raw BIOS routine.
   - `emitScaleAByConst`
   - `emitRandomCountIntoA`
   - `emitLoadInt8TermIntoA`
-- staged then wired [studio/core/compiler/addressHelpers.js](../studio/core/compiler/addressHelpers.js) for source/VRAM address loading
-- removed these local helpers from [studio/app.js](../studio/app.js):
+- staged then wired [studio/core/compiler/addressHelpers.js](studio/core/compiler/addressHelpers.js) for source/VRAM address loading
+- removed these local helpers from [studio/app.js](studio/app.js):
   - `emitLoadSourceAddressIntoHL`
   - `emitLoadVramAddressIntoDE`
   - `emitLoadVramAddressIntoHL`
@@ -5860,32 +5684,32 @@ Why this is still `v2.1` and not `v2.2`:
 
 - began Phase 1 of the `studio/app.js` refactor
 - extracted low-risk pure helpers into:
-  - [studio/core/emulatorBackends.js](../studio/core/emulatorBackends.js)
-  - [studio/core/utils/bytes.js](../studio/core/utils/bytes.js)
-  - [studio/core/utils/cartridgeMeta.js](../studio/core/utils/cartridgeMeta.js)
-  - [studio/core/utils/dataUrls.js](../studio/core/utils/dataUrls.js)
-  - [studio/core/utils/downloads.js](../studio/core/utils/downloads.js)
-  - [studio/core/utils/formatters.js](../studio/core/utils/formatters.js)
-  - [studio/core/optimization.js](../studio/core/optimization.js)
-  - [studio/core/editor/autocomplete.js](../studio/core/editor/autocomplete.js)
-  - [studio/core/amyCompiler.js](../studio/core/amyCompiler.js)
-  - [studio/core/compilerFrontend.js](../studio/core/compilerFrontend.js)
-  - [studio/core/compiler/runtimeCallHelpers.js](../studio/core/compiler/runtimeCallHelpers.js)
-  - [studio/core/uiEvents.js](../studio/core/uiEvents.js)
+  - [studio/core/emulatorBackends.js](studio/core/emulatorBackends.js)
+  - [studio/core/utils/bytes.js](studio/core/utils/bytes.js)
+  - [studio/core/utils/cartridgeMeta.js](studio/core/utils/cartridgeMeta.js)
+  - [studio/core/utils/dataUrls.js](studio/core/utils/dataUrls.js)
+  - [studio/core/utils/downloads.js](studio/core/utils/downloads.js)
+  - [studio/core/utils/formatters.js](studio/core/utils/formatters.js)
+  - [studio/core/optimization.js](studio/core/optimization.js)
+  - [studio/core/editor/autocomplete.js](studio/core/editor/autocomplete.js)
+  - [studio/core/amyCompiler.js](studio/core/amyCompiler.js)
+  - [studio/core/compilerFrontend.js](studio/core/compilerFrontend.js)
+  - [studio/core/compiler/runtimeCallHelpers.js](studio/core/compiler/runtimeCallHelpers.js)
+  - [studio/core/uiEvents.js](studio/core/uiEvents.js)
 - moved autocomplete, ASM view buttons, and most `bindEvents()` UI wiring out of `studio/app.js`
 - moved compiler frontend helpers out of `studio/app.js`
 - renamed compiler entrypoints from Alexis-facing names to Amy-facing names
 - moved source-language compiler dispatch out of `studio/app.js`
 - moved compiler runtime call-clobber logic out of `studio/app.js`
-  - [studio/core/utils/projectFiles.js](../studio/core/utils/projectFiles.js)
+  - [studio/core/utils/projectFiles.js](studio/core/utils/projectFiles.js)
 - kept behavior unchanged while reducing some utility clutter inside `studio/app.js`
 - started duplicate-first staging for deeper compiler-family extraction
-  - added [studio/core/compiler/typeSymbolHelpers.js](../studio/core/compiler/typeSymbolHelpers.js) as a staged type/symbol module
-  - added [studio/core/compiler/dataHelpers.js](../studio/core/compiler/dataHelpers.js) as a staged data/bitmap module
-  - added [studio/core/compiler/controlFlowHelpers.js](../studio/core/compiler/controlFlowHelpers.js) as a staged compare/conditional/indexed-dispatch module
-  - added [studio/core/compiler/bcdHelpers.js](../studio/core/compiler/bcdHelpers.js) as a staged packed-BCD runtime/codegen module
-  - added [studio/core/compiler/printHelpers.js](../studio/core/compiler/printHelpers.js) as a staged numeric/text print emitter module
-  - added [studio/core/compiler/procHelpers.js](../studio/core/compiler/procHelpers.js) as a staged proc/runtime helper module
+  - added [studio/core/compiler/typeSymbolHelpers.js](studio/core/compiler/typeSymbolHelpers.js) as a staged type/symbol module
+  - added [studio/core/compiler/dataHelpers.js](studio/core/compiler/dataHelpers.js) as a staged data/bitmap module
+  - added [studio/core/compiler/controlFlowHelpers.js](studio/core/compiler/controlFlowHelpers.js) as a staged compare/conditional/indexed-dispatch module
+  - added [studio/core/compiler/bcdHelpers.js](studio/core/compiler/bcdHelpers.js) as a staged packed-BCD runtime/codegen module
+  - added [studio/core/compiler/printHelpers.js](studio/core/compiler/printHelpers.js) as a staged numeric/text print emitter module
+  - added [studio/core/compiler/procHelpers.js](studio/core/compiler/procHelpers.js) as a staged proc/runtime helper module
   - wired `dataHelpers.js` into `studio/app.js` and removed the old inline data/bitmap helper block
   - wired `typeSymbolHelpers.js` into `studio/app.js` and removed the old inline type/symbol helper block
   - wired `controlFlowHelpers.js` into `studio/app.js` and removed the old inline control-flow helper block
@@ -5901,7 +5725,7 @@ Why this is still `v2.1` and not `v2.2`:
   - `next` instead of `next I`
   - `<<=` / `>>=`
 - updated screen/mode wording in selected examples to better distinguish hardware modes from convenience aliases
-- expanded and corrected the size baseline set in [amy-studio-size-baselines.csv](../docs/amy-studio-size-baselines.csv)
+- expanded and corrected the size baseline set in [amy-studio-size-baselines.csv](docs/amy-studio-size-baselines.csv)
 - confirmed recent baseline additions including:
   - `amy-feature-test`
   - `cvbasic-test3-port`
@@ -5921,7 +5745,7 @@ Why this is still `v2.1` and not `v2.2`:
 
 ### Refactor progress
 
-- moved assignment and mixed arithmetic helpers out of [studio/app.js](../studio/app.js) into [assignmentArithmeticHelpers.js](../studio/core/compiler/assignmentArithmeticHelpers.js)
+- moved assignment and mixed arithmetic helpers out of [studio/app.js](studio/app.js) into [assignmentArithmeticHelpers.js](studio/core/compiler/assignmentArithmeticHelpers.js)
   - `emitLoadUnsignedInt16ValueIntoBC`
   - `emitU32Add`
   - `emitU32Sub`
@@ -5931,26 +5755,26 @@ Why this is still `v2.1` and not `v2.2`:
   - `emitMultiplyInt16Op`
   - `emitDivideInt8Op`
 - updated the helper wiring order in `app.js` so the new module binds after simple arithmetic helpers and keeps `=` assignment support through `emitRuntimeStore`
-- moved runtime value/store helpers out of [studio/app.js](../studio/app.js) into [runtimeValueHelpers.js](../studio/core/compiler/runtimeValueHelpers.js)
+- moved runtime value/store helpers out of [studio/app.js](studio/app.js) into [runtimeValueHelpers.js](studio/core/compiler/runtimeValueHelpers.js)
   - `emitLoadInt16IntoHL`
   - `emitRuntimeStore`
   - `emitStoreImmediate32`
   - `emitPushArgument`
   - `ensureDataCursorVar`
-- moved compare/literal helpers out of [studio/app.js](../studio/app.js) into [compareLiteralHelpers.js](../studio/core/compiler/compareLiteralHelpers.js)
+- moved compare/literal helpers out of [studio/app.js](studio/app.js) into [compareLiteralHelpers.js](studio/core/compiler/compareLiteralHelpers.js)
   - `emitTextLiteral`
   - `optimizeRepeatedBitTestLoads`
   - `emitSignedInt8CompareGoto`
   - `emitSignedInt16CompareGoto`
-- moved the remaining shell helper cluster out of [studio/app.js](../studio/app.js) into [compilerShellHelpers.js](../studio/core/compiler/compilerShellHelpers.js)
+- moved the remaining shell helper cluster out of [studio/app.js](studio/app.js) into [compilerShellHelpers.js](studio/core/compiler/compilerShellHelpers.js)
   - `makeGeneratedLabel`
   - `optimizeTransientDrawCoordinateTemps`
   - `reserveRam`
   - `isZeroInitializer`
   - `formatIxOffset`
-- extracted the `restore` / `read` DATA cursor statement family from [studio/app.js](../studio/app.js) into [dataCursorStatementHelpers.js](../studio/core/compiler/dataCursorStatementHelpers.js)
-- extracted the `while` / `do` loop statement families from the main compiler loop in [studio/app.js](../studio/app.js) into [loopStatementHelpers.js](../studio/core/compiler/loopStatementHelpers.js)
-- extracted the `select case` statement family from the main compiler loop in [studio/app.js](../studio/app.js) into [selectCaseStatementHelpers.js](../studio/core/compiler/selectCaseStatementHelpers.js)
+- extracted the `restore` / `read` DATA cursor statement family from [studio/app.js](studio/app.js) into [dataCursorStatementHelpers.js](studio/core/compiler/dataCursorStatementHelpers.js)
+- extracted the `while` / `do` loop statement families from the main compiler loop in [studio/app.js](studio/app.js) into [loopStatementHelpers.js](studio/core/compiler/loopStatementHelpers.js)
+- extracted the `select case` statement family from the main compiler loop in [studio/app.js](studio/app.js) into [selectCaseStatementHelpers.js](studio/core/compiler/selectCaseStatementHelpers.js)
 - reduced `studio/app.js` to roughly `6128` lines after these cuts
 - Added first visible `fixed32` selftest example to Studio, covering add, subtract, square root, and on-screen decimal output.
 - Added `coleco_math_format_fx16.asm` plus compiler/library wiring so `fixed32` values can now print and format through a native 16.16 decimal path.
@@ -6052,17 +5876,17 @@ Why this is still `v2.1` and not `v2.2`:
 - Fixed `AMY_SCREEN_ON_NMI` and `AMY_SCREEN_OFF_NO_NMI` so they preserve sprite size/zoom bits from BIOS VDP R1 shadow `$73C4` instead of forcing hardcoded register-1 values.
 - Reason: programs such as `cvbasic-controller-port` could correctly select `sprites 8x8`, then silently get reset to `16x16 simple` by a later `screen on`.
 - Regenerated both `studio/core/alexisLibrarySources.generated.js` and `studio/core/alexisRuntimeCatalog.generated.js` so Studio browser/runtime export paths pick up the corrected VDP screen helpers.
-- Added [docs/vdp-r1-order-simulation-2026-06-03.md](../docs/vdp-r1-order-simulation-2026-06-03.md) to document systematic R1 order simulation.
+- Added [docs/vdp-r1-order-simulation-2026-06-03.md](docs/vdp-r1-order-simulation-2026-06-03.md) to document systematic R1 order simulation.
 - Result: no mismatch was found between expected R1 semantics and emitted/helper behavior across ordered sequences of length 1, 2, and 3 for the main R1-affecting screen/sprite/NMI commands.
 - Important nuance: `text screen` / `graphics mode 2 text` intentionally reset R1 to the mode baseline (`$82`), so `sprites 8x8` must still come after them if the program wants 8x8 sprites to remain active.
 - Removed redundant `ld ($73C4),a` writes from the sprite/screen/NMI helpers that already end in BIOS `WRITE_REGISTER`.
 - Reason: BIOS `WRITE_REGISTER` updates `VDP1Shad` (`$73C4`) itself when writing VDP register 1, so those extra stores only cost bytes.
-- Added [docs/vdp-r1-smart-transpiler-plan-2026-06-03.md](../docs/vdp-r1-smart-transpiler-plan-2026-06-03.md).
+- Added [docs/vdp-r1-smart-transpiler-plan-2026-06-03.md](docs/vdp-r1-smart-transpiler-plan-2026-06-03.md).
 - Plan direction:
   - Phase 1: warning-only transpiler diagnostics for misleading R1 command order
   - Phase 2: explicit docs for “authoritative mode commands” vs “incremental R1 modifiers”
   - Phase 3: future state-aware compact codegen for VDP R1
-- Implemented the first Phase 1 warning in [studio/core/compiler/transpileAmyCore.js](../studio/core/compiler/transpileAmyCore.js).
+- Implemented the first Phase 1 warning in [studio/core/compiler/transpileAmyCore.js](studio/core/compiler/transpileAmyCore.js).
 - Current warning scope:
   - an authoritative R1 mode command such as `text screen` or `graphics mode 2 text`
   - appearing after earlier R1 modifiers such as:
@@ -6278,12 +6102,41 @@ Why this is still `v2.1` and not `v2.2`:
 - Added opt-in `define AMY_DEBUG_SCENE_POISON`: every `enter` fills the inactive physical overlay with `$CD` before initialization, exports the marker in debugger metadata, and emits no poison code when the define is absent.
 - Added `Amy Scene Poison Self-Test` plus a GearColeco ROM test proving initializer overwrite, retained poison on an omitted field, intact lower/upper guards, and parity across all five optimization profiles.
 - ROM TEST & DEBUG now labels an active overlay field still filled with the configured marker as `POISON`; inactive aliases remain suppressed, and no per-frame RAM scan was added.
+# September 1, 2026
+
+- Added aPLib browser compression, `.aplib` project assets, Amy syntax, and direct ColecoVision VRAM decompression.
+- Added differential appack compatibility checks and an exact GearColeco VRAM ROM test.
 
 ## 2026-09-12 - Complete BIOS song timeline
 
 - Sound & Music now recognizes full lib4ksa/Amy song schedules instead of exposing only their individual table entries.
-- Added a four-area timeline for noise and the three tone channels, with trigger changes, durations, playback highlighting, pause/stop controls, and safe `play song` insertion.
-- Added unit and real browser behavior coverage.
-- Added direct `GRAPHICS` access beside `SOUND` in the Source toolbar.
-- Animated charset editors can now edit and save composed frame tables as well as their tile patterns and colors.
-- Added a guided animated-graphics builder for selecting Pattern/Color data, frame dimensions, frame count, tile range, and preview speed without editing editors.json.
+- Added a four-area timeline for noise and the three tone channels, with independent trigger changes, durations, playback highlighting, pause/stop controls, and safe `play song` insertion.
+- Verified the parser against the 17-step Commando music schedule and added unit plus real browser behavior coverage.
+- Added direct `GRAPHICS` access beside `SOUND` in the Source toolbar; projects without `editors.json` use the existing scan/init path.
+- Animated charset editors can now bind their composed frame tables: click a frame cell to edit its tile pixels, or Shift+click to place the selected tile, with undo and source-table saving.
+- Added a guided animated-graphics builder for choosing Pattern/Color data, frame dimensions, frame count, tile range, and preview speed without manually editing editors.json.
+# 2026-09-14 - SP0256 external voice-module debugger support
+
+- Reverse-engineered Laser Strike Rev 13's external voice adapter as `$43` allophone output, `$44` busy input, and `$45` reset output.
+- Added procedural SP0256-AL2 allophone synthesis and busy timing to the bundled Gearcoleco debugger without distributing the chip's mask ROM.
+- Added present/absent module control, an asynchronous Amy sample ROM, the complete extracted Laser Strike phrase bank, and deterministic hardware/audio tests.
+- Added a **Voice module** selector to ROM TEST & DEBUG; changing its present/absent state restarts the ROM so hardware detection is reproducible.
+- Expanded the selector and emulator with distinct Lundy and EVE SS-CC profiles. SpeakSpell Rev 58 now auto-detects and speaks through either untouched card-specific ROM path.
+# 2026-10-06 - Bank-local Amy modules for MegaCart outputs
+
+- Added a restricted `colecovision-megacart-bank` compiler context that emits
+  Amy procedures and ROM data without a duplicate cartridge entry point.
+- MegaCart `switchable-bank` outputs can now compile `kind: "amy"` sources.
+- Bank-local source fails closed on top-level execution, runtime initialization,
+  or external Amy assets; arbitrary cross-bank references remain unsupported.
+- Corrected MegaCart documentation: AmySCVAssembly already implements and tests
+  independent `FORG` and `ORG` counters.
+## 2026-10-20 - Spiders game port
+
+- Added Joe Rocke's 1984 **Spiders** to the browser game catalogue, with
+  swaying formations, diving attackers, missiles, officer bonus rounds and
+  original Tiny Sound title music.
+- Corrected returning attackers so they descend back into their moving
+  formation position instead of converging diagonally on it.
+- Compiled the Balanced cartridge at 9,202 occupied bytes and runtime-tested
+  the editorial, title and active playfield in GearColeco.

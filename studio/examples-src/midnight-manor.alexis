@@ -53,15 +53,22 @@ const SBox0 = 48
 const SBox1 = 52
 const SBox2 = 56
 const SBox3 = 60
-const SGq0 = 64
-const SGq1 = 68
-const SGq2 = 72
-const SGq3 = 76
-const SGh0 = 80
-const SGh1 = 84
-const SGh2 = 88
+const SGq0f0 = 64
+const SGq1f0 = 68
+const SGq2f0 = 72
+const SGq3f0 = 76
+const SGq0f1 = 80
+const SGq1f1 = 84
+const SGq2f1 = 88
+const SGq3f1 = 92
+const SGh0f0 = 96
+const SGh1f0 = 100
+const SGh2f0 = 104
+const SGh0f1 = 108
+const SGh1f1 = 112
+const SGh2f1 = 116
 const NTiles8 = 0
-const SprBytes = 736
+const SprBytes = 960
 data Floors bytes
   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
   1,0,0,0,0,0,0,4,0,0,0,0,0,0,0,1
@@ -185,6 +192,11 @@ u8 RS[2]
 u8 RZ[32]
 u8 Buf[48]
 u8 CBuf[48]
+u8 WfSig[48]
+u8 WfSkip = 0
+u8 WfTSk = 0
+u8 WfTEnd = 0
+u8 SetA = 0
 u8 ColA = 0
 u8 TopA = 0
 u8 CntA = 0
@@ -261,6 +273,11 @@ u8 Lost = 0
 u8 HudOn = 0
 u8 NewsT = 0
 u8 Busy = 0
+u8 Dirty = 1
+u16 LastX = 0
+u16 LastY = 0
+u8 LastA = 0
+u8 LastD = 0
 
 u8 Up1 = 0
 u8 Dn1 = 0
@@ -352,10 +369,22 @@ play_loop:
   }
   if Press = 1 then UseButton
   Lantern
-  asm {
-    call WfCast
-    call WfRender
-  }
+  ' the view again only when something in it changed
+  if PX <> LastX then Dirty = 1
+  if PY <> LastY then Dirty = 1
+  if Ang <> LastA then Dirty = 1
+  if DarkH <> LastD then Dirty = 1
+  if Dirty = 1 then
+    Dirty = 0
+    LastX = PX
+    LastY = PY
+    LastA = Ang
+    LastD = DarkH
+    asm {
+      call WfCast
+      call WfRender
+    }
+  end if
   Things
   GhostMove
   ShowThings
@@ -432,6 +461,7 @@ end sub
 
 ' LoadFloor: the floor's map, with the doors already opened left open
 sub LoadFloor:
+  Dirty = 1
   W16 = Flr * 256
   for I = 0 to 255
     Map[I] = Floors[W16]
@@ -531,6 +561,7 @@ end sub
 ' OpenDoor: the door at cell V opens, and stays open
 sub OpenDoor:
   Map[V] = 0
+  Dirty = 1
   play sound SndCreak
   W2 = 1
   for I = 0 to NDoor - 1
@@ -809,32 +840,45 @@ end sub
 
 ' GhostSprite: the ghost floats at eye height; near, it is four sprites
 sub GhostSprite:
+  ' it shimmers (white, grey, pale cyan), sways between two frames and
+  ' bobs a little
   Col = 15
-  V = Tick & 8
-  if V > 0 then Col = 14
-  if Hh >= 96 then
+  V = Tick & 12
+  if V = 4 then Col = 14
+  if V = 12 then Col = 7
+  V = Tick >> 3
+  V = V & 1
+  Big = Tick >> 4
+  Big = Big & 1
+  if Hh >= 60 then
     if Spr > 8 then return
-    Y = 47
+    Pat = V * 16
+    Pat = Pat + SGq0f0
+    Y = 46 + Big
     X = X - 16
-    set sprite Spr to Y,X,SGq0,Col
+    set sprite Spr to Y,X,Pat,Col
     inc Spr
     X = X + 16
-    set sprite Spr to Y,X,SGq1,Col
+    Pat = Pat + 4
+    set sprite Spr to Y,X,Pat,Col
     inc Spr
     Y = Y + 16
     X = X - 16
-    set sprite Spr to Y,X,SGq2,Col
+    Pat = Pat + 4
+    set sprite Spr to Y,X,Pat,Col
     inc Spr
     X = X + 16
-    set sprite Spr to Y,X,SGq3,Col
+    Pat = Pat + 4
+    set sprite Spr to Y,X,Pat,Col
     inc Spr
     return
   end if
   if Spr > 11 then return
-  Pat = SGh0
-  if Hh < 48 then Pat = SGh1
-  if Hh < 24 then Pat = SGh2
-  Y = 55
+  Pat = V * 12
+  Pat = Pat + SGh0f0
+  if Hh < 32 then Pat = Pat + 4
+  if Hh < 16 then Pat = Pat + 4
+  Y = 55 + Big
   X = X - 8
   set sprite Spr to Y,X,Pat,Col
   inc Spr
@@ -1179,20 +1223,34 @@ data SpritePat bytes
   $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$80,$00,$E0
   $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$01
   $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$40,$C0
-  $00,$00,$03,$07,$0F,$1F,$1F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
-  $1F,$FF,$FF,$FF,$FF,$FF,$87,$03,$03,$03,$87,$FF,$FF,$FC,$F8,$F8
-  $F8,$FF,$FF,$FF,$FF,$FF,$E1,$C0,$C0,$C0,$E1,$FF,$FF,$0F,$07,$07
-  $00,$00,$C0,$E0,$F0,$F8,$F8,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
-  $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3E,$3C,$38,$30,$20,$00
-  $FC,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$7C,$38,$10,$00,$00
-  $0F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FD,$78,$30,$10,$00,$00
-  $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$7C,$38,$00,$00
-  $03,$1F,$3F,$39,$71,$79,$7F,$7E,$7E,$7F,$7F,$7F,$7F,$7F,$66,$40
-  $E0,$F8,$FC,$CE,$8E,$CE,$FE,$1E,$3E,$FE,$FE,$FE,$FE,$EE,$46,$00
-  $00,$00,$00,$01,$07,$0C,$0C,$0F,$0F,$0F,$0F,$0F,$09,$00,$00,$00
-  $00,$00,$00,$C0,$F0,$98,$98,$F8,$38,$F8,$F8,$F8,$58,$00,$00,$00
-  $00,$00,$00,$00,$00,$00,$03,$02,$03,$03,$03,$00,$00,$00,$00,$00
-  $00,$00,$00,$00,$00,$80,$E0,$A0,$60,$E0,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$02,$01,$0A,$05,$0B,$01,$0B,$05,$0B,$05
+  $0A,$05,$2A,$15,$AF,$5F,$BF,$7F,$E7,$43,$83,$03,$83,$87,$CF,$FE
+  $A8,$40,$AA,$55,$FE,$FD,$FF,$FF,$F9,$F0,$E0,$E0,$E0,$E1,$F3,$7F
+  $00,$00,$00,$00,$A0,$40,$A0,$40,$E8,$D0,$E8,$50,$E8,$D0,$A8,$40
+  $0F,$05,$2B,$05,$2F,$05,$0B,$05,$0B,$01,$03,$01,$00,$00,$00,$00
+  $FC,$F8,$F8,$F8,$FC,$D5,$E8,$C0,$C0,$C0,$80,$00,$80,$00,$00,$00
+  $3F,$3F,$7F,$7F,$FE,$FC,$FE,$FC,$FC,$54,$E8,$40,$00,$00,$00,$00
+  $E8,$40,$A0,$40,$A0,$40,$20,$00,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$0A,$01,$0B,$01,$0B,$05,$2B,$05,$0F,$05,$0B,$05
+  $0A,$05,$AA,$15,$FF,$5F,$FF,$7F,$9F,$0F,$07,$07,$07,$87,$CF,$FE
+  $A8,$40,$AA,$50,$FE,$F5,$FE,$FD,$E7,$C3,$C1,$C1,$C1,$E1,$F3,$7F
+  $00,$00,$00,$00,$80,$00,$A0,$00,$A0,$40,$A0,$40,$E8,$C0,$A8,$50
+  $0B,$05,$0B,$01,$0B,$05,$03,$01,$02,$00,$00,$00,$00,$00,$00,$00
+  $FC,$FC,$FE,$7E,$FF,$FF,$FA,$70,$F8,$70,$20,$00,$20,$00,$00,$00
+  $3F,$1F,$1F,$1F,$3F,$3F,$3F,$1F,$3F,$15,$0B,$01,$00,$00,$00,$00
+  $E8,$D0,$E8,$D0,$A8,$90,$88,$00,$80,$00,$00,$00,$00,$00,$00,$00
+  $02,$05,$0B,$17,$29,$11,$31,$1F,$3E,$1E,$3A,$18,$38,$00,$00,$00
+  $A0,$40,$F8,$F0,$CA,$CC,$8A,$F0,$78,$74,$E8,$E0,$E0,$00,$00,$00
+  $00,$00,$00,$01,$03,$07,$01,$05,$0E,$07,$0C,$04,$00,$00,$00,$00
+  $00,$00,$00,$40,$A0,$F0,$80,$B0,$60,$D0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$02,$02,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$C0,$C0,$80,$80,$00,$00,$00,$00,$00,$00
+  $0A,$05,$2F,$17,$33,$13,$31,$1F,$3E,$1E,$2F,$15,$0C,$04,$00,$00
+  $A0,$40,$E0,$F0,$98,$84,$8A,$F4,$7A,$7C,$7A,$70,$70,$10,$00,$00
+  $00,$00,$00,$01,$03,$07,$09,$05,$0A,$07,$02,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$80,$C0,$A0,$B0,$60,$70,$60,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$80,$40,$40,$C0,$00,$00,$00,$00,$00,$00
 end data
 
 
@@ -2946,86 +3004,222 @@ WfB5:
     djnz WfB5
     ret
 
-; WfColA: CBuf from the template (ceiling, floor), then ray A's wall rows
-; in its colour; WfColB: ray B's wall rows where A left no wall
+; WfColA / WfColB: each ray's wall span (walls are centred on the horizon,
+; so the top row says it all) and its set. WfColB then compares the strip
+; with the last view (WfSig: top A, top B, sets) and only when it changed
+; builds CBuf: the dark above, A's wall, the carpet below, B's wall where
+; A has none. WfSkip tells WfOut to leave the colours as they are.
 WfColA:
-    ld hl,WfCTempl
-    ld de,AMY_UVAR_CBuf
-    ld bc,48
-    ldir
-    call WfColOf
-    ld (AMY_UVAR_ColA),a
     ld a,(AMY_UVAR_WfTop)
     ld (AMY_UVAR_TopA),a
-    ld a,(AMY_UVAR_WfCnt)
-    ld (AMY_UVAR_CntA),a
-    ; fill
-    or a
-    ret z
     ld b,a
-    ld a,(AMY_UVAR_WfTop)
-    ld e,a
-    ld d,0
-    ld hl,AMY_UVAR_CBuf
-    add hl,de
-    ld a,(AMY_UVAR_ColA)
-WfCa9:
-    ld (hl),a
-    inc hl
-    djnz WfCa9
+    ld a,(AMY_UVAR_WfCnt)
+    add a,b
+    ld (AMY_UVAR_EndA),a
+    call WfSetOf
+    ld (AMY_UVAR_SetA),a
     ret
 WfColB:
-    ld a,(AMY_UVAR_WfCnt)
-    or a
-    ret z
-    ld b,a
-    call WfColOf
-    ld c,a
-    ; rows of B's wall: top .. top + cnt - 1, unless inside A's wall
-    ld a,(AMY_UVAR_WfTop)
+    call WfSetOf
+    ld c,a                      ; c = set B
+    ld a,(AMY_UVAR_SetA)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    or c
+    ld c,a                      ; c = sets
+    ; the strip's record: WfSig + strip * 3
+    ld a,(AMY_UVAR_WfS)
+    ld l,a
+    add a,a
+    add a,l
     ld e,a
     ld d,0
-    ld hl,AMY_UVAR_CBuf
+    ld hl,AMY_UVAR_WfSig
     add hl,de
-    ld d,a                      ; d = the row
-    ld a,(AMY_UVAR_TopA)
-    ld e,a
-    ld a,(AMY_UVAR_CntA)
-    add a,e
-    ld (AMY_UVAR_EndA),a
-WfCb1:
-    ld a,d
-    cp e
-    jr c,WfCb2                  ; above A's wall
+    ; the tiles above and below that were dark / carpet both last view and
+    ; now need not go out again: min(old top A, old top B, top A, top B) / 4
     push hl
-    ld hl,AMY_UVAR_EndA
-    cp (hl)
-    pop hl
-    jr c,WfCb3                  ; inside A's wall: A's colour stays
-WfCb2:
-    ld (hl),c
-WfCb3:
+    ld a,(hl)
+    cp $FF
+    jr z,WfCs2                  ; nothing known
     inc hl
-    inc d
-    djnz WfCb1
+    cp (hl)
+    jr c,WfCs1
+    ld a,(hl)
+WfCs1:
+    ld b,a
+    ld a,(AMY_UVAR_TopA)
+    cp b
+    jr nc,WfCs3
+    ld b,a
+WfCs3:
+    ld a,(AMY_UVAR_WfTop)
+    cp b
+    jr nc,WfCs4
+    ld b,a
+WfCs4:
+    ld a,b
+    srl a
+    srl a
+    jr WfCs5
+WfCs2:
+    xor a
+WfCs5:
+    ld (AMY_UVAR_WfTSk),a
+    pop hl
+    ld a,(AMY_UVAR_TopA)
+    cp (hl)
+    jr nz,WfCg1
+    inc hl
+    ld a,(AMY_UVAR_WfTop)
+    cp (hl)
+    jr nz,WfCg2
+    inc hl
+    ld a,c
+    cp (hl)
+    jr nz,WfCg3
+    ld a,1
+    ld (AMY_UVAR_WfSkip),a
     ret
-; WfColOf: A = the colour of the ray set up (by its set)
-WfColOf:
+WfCg1:
+    ld (hl),a
+    inc hl
+    ld a,(AMY_UVAR_WfTop)
+WfCg2:
+    ld (hl),a
+    inc hl
+WfCg3:
+    ld (hl),c
+    xor a
+    ld (AMY_UVAR_WfSkip),a
+    ; build: the dark above A's wall
+    ld hl,AMY_UVAR_CBuf
+    ld a,(AMY_UVAR_TopA)
+    or a
+    jr z,WfCb2
+    ld b,a
+    ld a,$11
+WfCb1:
+    ld (hl),a
+    inc hl
+    djnz WfCb1
+WfCb2:
+    ; A's wall
+    ld a,(AMY_UVAR_SetA)
+    call WfColOf
+    ld e,a
+    ld a,(AMY_UVAR_EndA)
+    ld d,a
+    ld a,(AMY_UVAR_TopA)
+    ld b,a
+    ld a,d
+    sub b
+    jr z,WfCb4
+    ld b,a
+    ld a,e
+WfCb3:
+    ld (hl),a
+    inc hl
+    djnz WfCb3
+WfCb4:
+    ; the carpet below: its rows' colours from the template
+    ld a,48
+    sub d
+    jr z,WfCb6
+    ld c,a
+    ld b,0
+    ex de,hl
+    ld l,h
+    ld h,0
+    push bc
+    ld bc,WfCTempl
+    add hl,bc
+    pop bc
+    ldir
+WfCb6:
+    ; B's wall above A's (B taller): rows top B .. top A - 1, and the same
+    ; below: end A .. end B - 1 (end B = 48 - top B)
+    ld a,(AMY_UVAR_WfTop)
+    ld b,a
+    ld a,(AMY_UVAR_TopA)
+    sub b
+    ret z
+    ret c
+    ld c,a                      ; rows on each side
     ld a,(AMY_UVAR_WfPg)
     ld hl,AMY_UVAR_WfTex+1
     sub (hl)
+    call WfColOf
+    ld e,a
+    ld a,(AMY_UVAR_WfTop)
+    ld l,a
+    ld h,0
+    push bc
+    ld bc,AMY_UVAR_CBuf
+    add hl,bc
+    pop bc
+    ld b,c
+    ld a,e
+WfCb7:
+    ld (hl),a
+    inc hl
+    djnz WfCb7
+    ld a,(AMY_UVAR_EndA)
+    ld l,a
+    ld h,0
+    push bc
+    ld bc,AMY_UVAR_CBuf
+    add hl,bc
+    pop bc
+    ld b,c
+    ld a,e
+WfCb8:
+    ld (hl),a
+    inc hl
+    djnz WfCb8
+    ret
+; WfSetOf: A = the set of the ray set up
+WfSetOf:
+    ld a,(AMY_UVAR_WfPg)
+    ld hl,AMY_UVAR_WfTex+1
+    sub (hl)
+    ret
+; WfColOf: A = the colour of the ray set up (by its set)
+WfColOf:
+    push hl
     ld e,a
     ld d,0
     ld hl,WfSetCol
     add hl,de
     ld a,(hl)
+    pop hl
     ret
 
 ; WfOut: Buf to the strip at WfX8, each row twice (12 tiles: rows 2-13)
 WfOut:
+    ld a,(AMY_UVAR_WfTSk)
+    cp 6
+    ret nc                      ; (no wall anywhere in the strip, then or now)
+    ld b,a
+    add a,a
+    add a,a                     ; the first entry
+    ld e,a
+    ld d,0
     ld hl,AMY_UVAR_Buf
-    ld de,AMY_UVAR_CBuf
-    ld c,2
+    add hl,de
+    push hl
+    ld hl,AMY_UVAR_CBuf
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    add a,2
+    ld c,a                      ; the first tile row
+    ld a,14
+    sub b
+    ld (AMY_UVAR_WfTEnd),a      ; past the last tile row
 WfO1:
     ld a,(AMY_UVAR_WfX8)
     out ($BF),a
@@ -3060,7 +3254,10 @@ WfO1:
     nop
     nop
     out ($BE),a
-    ; the same 8 rows' colours (the colour table at $2000)
+    ; the same 8 rows' colours (the colour table at $2000), if changed
+    ld a,(AMY_UVAR_WfSkip)
+    or a
+    jr nz,WfO2
     ld a,(AMY_UVAR_WfX8)
     out ($BF),a
     ld a,c
@@ -3094,9 +3291,10 @@ WfO1:
     nop
     nop
     out ($BE),a
+WfO2:
     inc c
-    ld a,c
-    cp 14
+    ld a,(AMY_UVAR_WfTEnd)
+    cp c
     jp nz,WfO1
     ret
 
@@ -3298,6 +3496,13 @@ GmHOf:
 ; GmClear: the whole bitmap blank; the view's thirds grey on black, the
 ; text third white on black
 GmClear:
+    ; (the strips' colour records: none valid)
+    ld hl,AMY_UVAR_WfSig
+    ld b,48
+GmCl0:
+    ld (hl),$FF
+    inc hl
+    djnz GmCl0
     xor a
     out ($BF),a
     ld a,$40
@@ -3667,8 +3872,8 @@ WfSetCol:
     db $91,$61,$A1,$61,$51,$41,$B1,$A1,$E1,$41,$F1,$E1,$11
 WfCTempl:
     db $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
-    db $11,$11,$11,$11,$11,$11,$11,$11,$91,$91,$91,$91,$91,$91,$91,$91
-    db $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+    db $11,$11,$11,$11,$11,$11,$11,$11,$61,$61,$61,$61,$61,$A1,$A1,$61
+    db $A1,$81,$81,$81,$81,$A1,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
 GmRecip:
     dw $0000,$6EDA,$376D,$24F3,$1BB6,$162C,$127A,$0FD6
     dw $0DDB,$0C51,$0B16,$0A14,$093D,$0887,$07EB,$0764
@@ -4565,12 +4770,12 @@ WfTexLo:
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 WfFlHi:
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80,$00,$80,$00
-    db $80,$00,$80,$80,$80,$80,$80,$80,$80,$A0,$A0,$A0,$A0,$A0,$A0,$A0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$A0,$50,$10
+    db $50,$20,$40,$10,$80,$A0,$40,$10,$80,$30,$C0,$30,$C0,$30,$C0,$30
 WfFlLo:
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$08,$00
-    db $08,$00,$08,$08,$08,$08,$08,$08,$08,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0A,$05,$01
+    db $05,$02,$04,$01,$08,$0A,$04,$01,$08,$03,$0C,$03,$0C,$03,$0C,$03
 
 MmHush:
     db $00,$00,$F4,$01,$10

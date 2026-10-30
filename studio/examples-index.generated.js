@@ -6561,5 +6561,28 @@ export const exampleManifest = [
     ],
     "originKind": "reimagined-adaptation",
     "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "canyon-cruiser",
+    "label": "Canyon Cruiser (January 1984)",
+    "detail": "Thomas Catsburg's COMPUTE!'s Gazette canyon-flying game, adapted for joystick control with a winding passage, title music and progressively tighter navigation.",
+    "projectName": "Canyon Cruiser",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "flying",
+      "vic-20",
+      "commodore-64",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

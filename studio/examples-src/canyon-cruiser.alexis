@@ -1,0 +1,631 @@
+cartridge "CANYON CRUISER/THOMAS CATSBURG, COMPUTE!/1984"
+
+' CANYON CRUISER
+' Thomas Catsburg's CANYON CRUISER (COMPUTE!'s Gazette, January 1984, for
+' the Commodore 64 and the VIC-20), for the ColecoVision in Amy by Amy
+' Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026.
+'
+' Source: the VIC-20 version's main program (orig/canyon_vic.bas notes,
+' from the magazine's pages 190-191). Line numbers in the comments are
+' its.
+'
+' Fly a new spaceship down a canyon whose walls keep closing in. The
+' canyon winds at random; every 800 jiffies (about 13 seconds) it gets
+' narrower and your rank goes up. The ship's colour changes with the
+' width, to warn you. Now and then an asteroid sits in the canyon. Touch
+' anything and you crash; your rating is the rank you reached, from
+' STARTER to HAN SOLO.
+'
+' Controls (either joystick): left/right steer. Keypad not used.
+'
+' Kept as the listing has them: the widths (3 to 10 spaces between the
+' walls, from 10 down), narrowing every 800 jiffies, the eleven ranks, the
+' winding (lines 1180-1200: one step left, none or right a row, kept off
+' the edge), one move a row, the second wall colour one row in five (BC$),
+' the asteroid one row in a hundred, the crash, YOUR RATING, the countdown
+' and the launch from the base.
+' Liberties taken:
+' - 28 columns: the canyon winds over 28 (the VIC had 22); the rock
+'   beyond the walls is drawn, and stars in the canyon.
+' - A row every six frames (about ten a second); the asteroid is 2 x 2
+'   tiles in the middle of the canyon, as the listing printed it.
+' - The time flown is shown while you fly.
+' House rules kept: text in columns 2-29, rows 1-22; tiles from 128; an
+' original title tune that plays once; a credits page; the screens are
+' drawn with the NMI off.
+
+const TSky = 128
+const TStar = 129
+const TRock = 130
+const TWl = 131
+const TWr = 132
+const TBl = 133
+const TBr = 134
+const TBrock = 135
+const TAst1 = 136
+const TAst2 = 137
+const TAst3 = 138
+const TAst4 = 139
+const TPad = 140
+const SHull = 0
+const SPit = 4
+const SBoom = 8
+const NTiles8 = 104
+const SprBytes = 96
+const SndHush = 1
+const SndTick = 2
+const SndLaunch = 3
+const SndNarrow = 4
+const SndCrash = 5
+const SndTuneA = 6
+const SndTuneB = 7
+
+' --- the canyon: one entry a screen row (2-22), Rh the top one -------------
+' RL the left wall's column (0-27), RK the gap (spaces), RB the other wall
+' colour, RA an asteroid's column (0: none) and RP its part (1 top, 2
+' bottom)
+u8 RL[21]
+u8 RK[21]
+u8 RB[21]
+u8 RA[21]
+u8 RP[21]
+u8 Rh = 0
+u8 TL = 6
+u8 Wd = 7
+u8 SP = 13
+u8 R = 0
+u8 AS = 0
+u8 Alt = 0
+u16 Jif = 0
+u16 Secs = 0
+u8 Fr = 0
+u8 Ask = 0
+u8 Idle = 0
+u8 Crash = 0
+u16 Rows = 0
+
+u8 Buf[28]
+data ShipCol bytes 15, 7, 13, 3, 5, 11, 8, 15
+
+u16 Rs = $2B6D
+u16 Rw = 0
+u16 Rt = 0
+u8 Fire1 = 0
+u8 WasF1 = 0
+u8 Tick = 0
+u8 V = 0
+u8 W = 0
+u8 K = 0
+u8 J8 = 0
+u8 I = 0
+u8 Tx = 0
+u8 Ty = 0
+u8 Py = 0
+u8 Px = 0
+u16 NumU = 0
+
+  tile screen
+  set sound table CcSoundTable areas 4
+  sprites 16x16
+  nmi off
+  copy SpritePat count SprBytes to vram.spr_pat
+  CreditsPage
+title:
+  TitlePage
+  Fly
+  goto title
+
+' ---------------------------------------------------------------------------
+sub Fly:
+  NewScreen
+  ' 1000-1110: the base, the countdown, the launch
+  Wd = 7
+  TL = 9
+  R = 0
+  AS = 0
+  Crash = 0
+  Jif = 0
+  Secs = 0
+  Fr = 0
+  Rows = 0
+  SP = 13
+  Rh = 0
+  for I = 0 to 20
+    RL[I] = TL
+    RK[I] = 10
+    RB[I] = 0
+    RA[I] = 0
+    RP[I] = 0
+  next
+  DrawAll
+  for Tx = 11 to 18
+    put char TPad at Tx,2
+  next
+  Hud
+  ShowPage
+  ' 590-610: GET READY
+  print at 10,8, "GET READY"
+  for I = 5 to 1 step -1
+    print at 14,10, digits$(I, 1)
+    play sound SndTick
+    Pause(50)
+  next
+  print at 10,8, "         "
+  print at 14,10, " "
+  ' 1070: the ship leaves the base
+  play sound SndLaunch
+  for Py = 16 to 96 step 4
+    Ship
+    Frame1
+  next
+  Ask = 1
+fl_loop:
+  ' a row: wait, steer, the canyon moves up
+  for J8 = 1 to 6
+    Frame1
+    Clock
+  next
+  Steer
+  if Crash = 1 then goto fl_crash
+  NewRow
+  DrawAll
+  ' 1285: what the canyon brought under the ship
+  Under
+  if Crash = 1 then goto fl_crash
+  goto fl_loop
+fl_crash:
+  ' 1300-1345
+  Ask = 0
+  play sound SndCrash
+  Px = SP + 2
+  Px = Px * 8
+  Px = Px - 4
+  for I = 0 to 30
+    V = I & 2
+    if V = 0 then set sprite 2 to 95,Px,SBoom,11
+    if V <> 0 then set sprite 2 to 95,Px,SBoom,9
+    update sprites
+    Frame1
+  next
+  HideAll
+  NewScreen
+  print at 9,6, "YOU CRASHED!"
+  print at 9,10, "YOUR RATING:"
+  RankAt
+  NumU = Secs
+  print at 7,14, "SECONDS FLOWN:"
+  print at 22,14, digits$(NumU, 3)
+  print at 7,20, "PRESS A BUTTON"
+  ShowPage
+  Pause(60)
+  Ask = 9
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+' Clock: TI (jiffies); 1150: every 800 the canyon narrows and the rank
+' goes up (1430)
+sub Clock:
+  inc Jif
+  inc Fr
+  if Fr = 60 then
+    Fr = 0
+    inc Secs
+    Hud
+  end if
+  if Jif < 800 then return
+  Jif = 0
+  if Wd > 0 then dec Wd
+  inc R
+  if R > 10 then R = 10
+  play sound SndNarrow
+  Hud
+  return
+end sub
+
+' Steer: 1230-1287, one column a row; into rock or wall is a crash
+sub Steer:
+  V = joypad(1).left | joypad(2).left
+  W = joypad(1).right | joypad(2).right
+  if V = 1 then
+    if SP > 0 then dec SP
+    Look
+  end if
+  if W = 1 then
+    if SP < 27 then inc SP
+    Look
+  end if
+  Ship
+  return
+end sub
+
+' Under: the cell under the ship after the canyon moved
+sub Under:
+  Look
+  return
+end sub
+
+' Look: a crash if the ship's cell (screen row 13) is not open sky
+sub Look:
+  I = Rh + 11
+  if I > 20 then I = I - 21
+  V = RL[I]
+  if SP <= V then Crash = 1
+  W = V + RK[I]
+  if SP > W then Crash = 1
+  if RA[I] > 0 then
+    V = RA[I]
+    if SP = V then Crash = 1
+    inc V
+    if SP = V then Crash = 1
+  end if
+  return
+end sub
+
+' NewRow: 1130-1210 and 1440-1480, the next row at the bottom
+sub NewRow:
+  inc Rows
+  ' 1180-1200: the canyon winds
+  Rnd16
+  V = Rw >> 14
+  if V = 0 then
+    if TL > 0 then dec TL
+  end if
+  if V = 1 then inc TL
+  K = Wd + 3
+  W = 26 - K
+  if TL > W then TL = W
+  ' 1160: one row in five the other colour
+  Rnd16
+  Alt = 0
+  if Rw < 13107 then Alt = 1
+  ' the oldest row (the top) becomes the new bottom row
+  RL[Rh] = TL
+  RK[Rh] = K
+  RB[Rh] = Alt
+  RA[Rh] = 0
+  RP[Rh] = 0
+  I = Rh
+  inc Rh
+  if Rh = 21 then Rh = 0
+  ' 1470-1480: the asteroid, in the middle of the last two rows
+  if AS = 1 then
+    AS = 0
+    V = K / 2
+    V = V + TL
+    RA[I] = V
+    RP[I] = 2
+    if I = 0 then
+      J8 = 20
+    else
+      J8 = I - 1
+    end if
+    RA[J8] = V
+    RP[J8] = 1
+  end if
+  ' 1170: one row in a hundred, an asteroid next
+  Rnd16
+  if Rw < 655 then AS = 1
+  return
+end sub
+
+' DrawAll: the 21 rows, from the top one (rows 2-22)
+sub DrawAll:
+  I = Rh
+  for Ty = 2 to 22
+    V = RL[I]
+    W = V + RK[I]
+    inc W
+    for Tx = 0 to 27
+      K = TSky
+      J8 = Tx + Ty
+      J8 = J8 + Rows
+      J8 = J8 & 15
+      if J8 = 3 then K = TStar
+      if Tx < V then K = TRock
+      if Tx > W then K = TRock
+      if Tx = V then K = TWl
+      if Tx = W then K = TWr
+      if RB[I] = 1 then
+        if K = TRock then K = TBrock
+        if K = TWl then K = TBl
+        if K = TWr then K = TBr
+      end if
+      Buf[Tx] = K
+    next
+    if RA[I] > 0 then
+      J8 = RA[I]
+      if RP[I] = 1 then
+        Buf[J8] = TAst1
+        inc J8
+        Buf[J8] = TAst2
+      else
+        Buf[J8] = TAst3
+        inc J8
+        Buf[J8] = TAst4
+      end if
+    end if
+    NumU = Ty
+    NumU = NumU * 32
+    NumU = NumU + 2
+    copy Buf count 28 to vram.name + NumU
+    inc I
+    if I = 21 then I = 0
+  next
+  return
+end sub
+
+sub Ship:
+  Px = SP + 2
+  Px = Px * 8
+  Px = Px - 4
+  V = ShipCol[Wd]
+  W = Py - 1
+  set sprite 0 to W,Px,SPit,1
+  set sprite 1 to W,Px,SHull,V
+  update sprites
+  return
+end sub
+
+sub Hud:
+  print at 2,1, "TIME"
+  NumU = Secs
+  print at 7,1, digits$(NumU, 3)
+  fill 32 count 16 at 13,1
+  Tx = 13
+  Ty = 1
+  RankPrint
+  return
+end sub
+
+' RankAt: the rating, centred on row 12
+sub RankAt:
+  Tx = 9
+  Ty = 12
+  RankPrint
+  return
+end sub
+
+' RankPrint: 170-270, the ranks
+sub RankPrint:
+  if R = 0 then print at Tx,Ty, "STARTER"
+  if R = 1 then print at Tx,Ty, "BEGINNER"
+  if R = 2 then print at Tx,Ty, "LEARNER"
+  if R = 3 then print at Tx,Ty, "FLYER"
+  if R = 4 then print at Tx,Ty, "LEADER"
+  if R = 5 then print at Tx,Ty, "ACE"
+  if R = 6 then print at Tx,Ty, "LIEUTENANT"
+  if R = 7 then print at Tx,Ty, "GENERAL"
+  if R = 8 then print at Tx,Ty, "COMMODORE"
+  if R = 9 then print at Tx,Ty, "FLEET COMMANDER"
+  if R = 10 then print at Tx,Ty, "HAN SOLO ???"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideAll
+  fill mode 2 text color with $F0
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub HideAll:
+  clear sprites
+  set sprite count 3
+  for J8 = 0 to 2
+    set sprite J8 to 192,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub ShowPage:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Pause(u8 Nf):
+  for J8 = 1 to Nf
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub WaitPress:
+  WasF1 = 1
+wp_loop:
+  Frame1
+  K = joypad(1).button1 | joypad(2).button1
+  Fire1 = 0
+  if K = 1 then
+    if WasF1 = 0 then Fire1 = 1
+  end if
+  WasF1 = K
+  if Fire1 = 0 then goto wp_loop
+  return
+end sub
+
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 8,1, "CANYON CRUISER"
+  print at 2,3, "BY THOMAS CATSBURG, FROM"
+  print at 2,4, "COMPUTE!'S GAZETTE,"
+  print at 2,5, "JANUARY 1984 (COMMODORE 64"
+  print at 2,6, "AND VIC-20)."
+  print at 2,8, "FOR THE COLECOVISION BY"
+  print at 2,9, "CLAUDE (AN AI MADE BY"
+  print at 2,10, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,11, "2026, IN AMY, THE LANGUAGE"
+  print at 2,12, "BY AMY BIENVENU."
+  print at 2,14, "MUSIC: NARROW PASS"
+  print at 2,15, "(ORIGINAL)."
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  Ask = 2
+  WaitPress
+  Ask = 0
+  return
+end sub
+
+sub TitlePage:
+  NewScreen
+  print at 8,3, "CANYON CRUISER"
+  print at 2,6, "YOU ARE THE PILOT OF A NEW"
+  print at 2,7, "SPACESHIP. YOU MUST TEST THE"
+  print at 2,8, "CRAFT TO ITS LIMITS."
+  print at 2,10, "STEER WITH THE JOYSTICK."
+  print at 2,11, "THE SHIP WILL CHANGE COLOR"
+  print at 2,12, "TO WARN OF CHANGES IN THE"
+  print at 2,13, "CANYON SIZE. AT THE END OF"
+  print at 2,14, "YOUR FLIGHT YOU WILL BE"
+  print at 2,15, "RANKED. YOU MUST NOT HIT THE"
+  print at 2,16, "SIDES OF THE CANYON, BUT"
+  print at 2,17, "ASTEROIDS WILL FLY BY."
+  print at 9,19, "GOOD LUCK!"
+  print at 8,21, "PRESS A BUTTON"
+  ShowPage
+  ' Amy's Tiny Sound "once" form: both voices stop at the tune's end
+  play song CcSong once
+  Ask = 2
+  WaitPress
+  Ask = 0
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $2B6D
+  return
+end sub
+
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$00,$00,$00,$00
+  $00,$40,$04,$00,$20,$01,$00,$08
+  $01,$03,$03,$01,$01,$03,$03,$01
+  $80,$C0,$C0,$80,$80,$C0,$C0,$80
+  $01,$03,$03,$01,$01,$03,$03,$01
+  $80,$C0,$C0,$80,$80,$C0,$C0,$80
+  $00,$40,$04,$00,$20,$01,$00,$08
+  $07,$E0,$C0,$80,$84,$00,$10,$00
+  $E0,$07,$03,$21,$01,$00,$04,$00
+  $00,$08,$80,$82,$C0,$E0,$07,$00
+  $00,$01,$21,$01,$03,$07,$E0,$00
+  $00,$AA,$00,$00,$00,$00,$00,$00
+end data
+data TileCol bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$F1,$01,$01,$01,$01
+  $06,$86,$86,$06,$86,$86,$06,$86
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $15,$15,$15,$15,$15,$15,$15,$15
+  $04,$54,$54,$04,$54,$54,$04,$54
+  $E1,$1E,$1E,$1E,$1E,$0E,$1E,$0E
+  $E1,$1E,$1E,$1E,$1E,$0E,$1E,$0E
+  $0E,$1E,$1E,$1E,$1E,$1E,$E1,$01
+  $0E,$1E,$1E,$1E,$1E,$1E,$E1,$01
+  $0E,$E1,$0E,$01,$01,$01,$01,$01
+end data
+data SpritePat bytes
+  $00,$00,$01,$01,$03,$03,$07,$06,$0E,$1E,$3F,$6F,$43,$00,$00,$00
+  $00,$00,$80,$80,$C0,$C0,$E0,$60,$70,$78,$FC,$F6,$C2,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$02,$02,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$40,$40,$00,$00
+  $81,$41,$23,$17,$0F,$3F,$FF,$3F,$0F,$17,$23,$41,$81,$00,$00,$00
+  $02,$04,$88,$D0,$E0,$F8,$FF,$F8,$E0,$D0,$88,$04,$02,$00,$00,$00
+end data
+
+asm {
+CcHush:
+    db $00,$00,$F0,$01,$10
+CcTick:
+    db $40,$40,$30,$02,$40,$40,$F0,$02,$50
+CcLaunch:
+    db $00,$00,$24,$14,$00,$00,$45,$14,$00,$00,$76,$14,$10
+CcNarrow:
+    db $40,$55,$20,$03,$40,$71,$30,$03,$40,$8F,$40,$06,$50
+CcCrash:
+    db $00,$00,$06,$0A,$00,$00,$27,$0E,$00,$00,$47,$14,$00,$00,$77,$18,$10
+
+CcSoundTable:
+    dw CcHush,$702B
+    dw CcTick,$7035
+    dw CcLaunch,$702B
+    dw CcNarrow,$7035
+    dw CcCrash,$702B
+    dw CcTuneMel,$703F
+    dw CcTuneBass,$7049
+; Narrow Pass (original)
+; Tiny Sound, 7 frames per step
+CcTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$23,$01
+    db $21,$01,$23,$01,$1F,$01,$01,$01,$1E,$01,$01,$01,$1C,$01,$1E,$01
+    db $1F,$01,$21,$01,$23,$01,$01,$01,$24,$01,$23,$01,$21,$01,$01,$01
+    db $1F,$01,$1E,$01,$1C,$01,$23,$01,$1F,$01,$1E,$01,$1C,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+CcTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$10,$01,$0B,$01,$10,$01,$0B,$01,$13,$01,$0E,$01
+    db $13,$01,$0E,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$09,$01,$10,$01
+    db $0B,$01,$12,$01,$10,$01,$0B,$01,$10,$01,$0B,$01,$10,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+; the title song: both voices at once (SndTuneA, SndTuneB)
+CcSong:
+    dw $0001
+    db $40+6,7
+    dw $0000
+}
