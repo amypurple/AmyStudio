@@ -6604,5 +6604,49 @@ export const exampleManifest = [
     ],
     "originKind": "faithful-adaptation",
     "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "juggler",
+    "label": "Juggler (January 1983)",
+    "detail": "Doug Ferguson's COMPUTE! juggling game, preserving its two- and three-ball arcs, movable hands, scoring and surprise oversized balls.",
+    "projectName": "Juggler",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "juggling",
+      "vic-20",
+      "atari",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
+    "id": "thunderbird",
+    "label": "Thunderbird (January 1983)",
+    "detail": "Dave Sanders' COMPUTE! action game: steer the Thunderbird to rebound a satellite through saucers, trees and wells while protecting the top of the field.",
+    "projectName": "Thunderbird",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "compute!",
+      "adaptation",
+      "game",
+      "arcade",
+      "vic-20",
+      "music"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
   }
 ];

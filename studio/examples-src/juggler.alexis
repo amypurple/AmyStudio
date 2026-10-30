@@ -1,0 +1,962 @@
+cartridge "JUGGLER/DOUG FERGUSON, COMPUTE!/1983"
+
+' JUGGLER
+' The game by Doug Ferguson (Elida, Ohio) from COMPUTE!, January 1983
+' (pages 58-64, for the VIC-20 and the Atari), for the ColecoVision in Amy
+' by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Source: Program 1, the VIC-20 version, transcribed in
+' orig/juggler-vic.bas from the scans beside it. The Atari version
+' (Program 2) was only read for the intent; its practice game is not here.
+'
+' The game: a clown juggles two or three balls. Each ball flies its own
+' arc (outside, middle, inside) from one hand to the other; the stick
+' moves both hands together left or right between three places, and a
+' ball must find a hand under it when it comes down, or it crashes and
+' the game is over. A catch is a point with two balls, ten with three.
+' The surprise: past 49 points with two balls, or 499 with three, every
+' ball becomes two cells long (lines 850 and 980-1010).
+'
+' Controls (either joystick): on the menu and after a game, up for three
+' balls, left for two, the button for the same game again, down to quit
+' (back to the credits page); in the game, left and right move the hands.
+' Keypad not used.
+'
+' The VIC-20's screen (22 x 23) is kept cell for cell, at columns 5-26 and
+' rows 1-23: Pk(row, column, code) is the listing's POKE with the VIC's
+' screen code, drawn as a tile (VicTile); Pe(row, column) is its PEEK
+' (below 64: no hand there). The ball paths are the listing's DATA (lines
+' 1020-1040) as rows and columns; index 0, 1 and past the end were the
+' address 0 on the VIC (POKE 0 changed nothing visible) and draw nothing
+' here. Labels such as l860 are the listing's line numbers.
+'
+' Kept as the listing has them: the stick is read before each ball's step
+' (three times a pass, a hand step each time); the score shows from the
+' first catch; repeating a game with the button keeps the ball count of
+' the last game, and after the surprise of a two-ball game it is three
+' balls (line 850 sets Y to 0); ball 2 is the screen's colour (yellow), as
+' only balls 1 and 3 had their colours POKEd.
+'
+' Liberties taken:
+' - The stick down quits to the credits page (the VIC's Q reset the
+'   computer). After a crash the stick and the button must be let go
+'   before they choose (on the VIC a stick still held from the game
+'   started the next one at once).
+' - Timing: a pass of the main loop (three ball steps) is 4 frames, about
+'   the VIC's BASIC speed; a catch adds a frame (its beep and score).
+' - The crash flashes the border (the backdrop) in the VIC's 8 colours.
+' - Yellow text is drawn with tiles; white text is the ColecoVision font.
+' - A credits page with an original tune (Three in the Air) played once.
+'
+' House rules kept: text in columns 2-29 and rows 1-22 (row 23 only shows
+' a crashed ball); tiles from 128; no sprites; the frame loop is protected
+' from the NMI and every screen is drawn with the NMI off after a wait.
+
+const TV64 = 128
+const TV93 = 129
+const TV72 = 130
+const TV82 = 131
+const TV73 = 132
+const TV74 = 133
+const TV75 = 134
+const TV85 = 135
+const TV77 = 136
+const TV78 = 137
+const TV114 = 138
+const TV101 = 139
+const TV103 = 140
+const TV76 = 141
+const TV122 = 142
+const TV102 = 143
+const TV104 = 144
+const TV81 = 145
+const TV123 = 146
+const TV15 = 147
+const TV34 = 148
+const TBallb = 149
+const TCrashb = 150
+const TAup = 151
+const TAleft = 152
+const TAdown = 153
+const TYd2 = 154
+const TYd3 = 155
+const TYA = 156
+const TYB = 157
+const TYC = 158
+const TYE = 159
+const TYG = 160
+const TYH = 161
+const TYI = 162
+const TYJ = 163
+const TYL = 164
+const TYM = 165
+const TYO = 166
+const TYQ = 167
+const TYR = 168
+const TYS = 169
+const TYT = 170
+const TYU = 171
+const TYV = 172
+const NTiles8 = 360
+const SprBytes = 0
+const SndCrash = 1
+const SndCatch = 2
+const SndTuneA = 3
+const SndTuneB = 4
+
+' --- the listing's variables ----------------------------------------------
+' O score; Y 2 before a choice, 1 two balls, 0 three; E the surprise; K L M
+' the balls' places on their paths (J, U, G), A B C their directions (1, or
+' 255 for -1; C stays 0 with two balls); U the hands (0 left, 1 middle, 2
+' right); D the crash column
+u16 O = 0
+u8 Y = 2
+u8 E = 0
+u8 K = 0
+u8 L = 0
+u8 M = 0
+u8 A = 0
+u8 B = 0
+u8 C = 0
+u8 U = 0
+u8 D = 0
+' Blu: the next ball or crashed ball is ball 3's (blue)
+u8 Blu = 0
+' for the test bot: Ph 0 credits, 1 menu, 2 playing, 3 crashing, 4 game
+' over; Steps counts the ball steps, Jin the stick read at the last one
+' (1 left, 2 right), Rs0 the generator at the start of the game
+u8 Ph = 0
+u16 Steps = 0
+u8 Jin = 0
+u16 Rs0 = 0
+u8 Ask = 0
+
+u8 Pkv = 0
+u8 Ix = 0
+u8 Iv = 0
+u8 Lf = 0
+u8 Rg = 0
+u8 Upk = 0
+u8 Dnk = 0
+u8 Fr = 0
+u8 Any = 0
+u8 T8 = 0
+u8 V = 0
+u8 W = 0
+u8 J8 = 0
+u8 Tick = 0
+u16 NumU = 0
+u16 V16 = 0
+u32 Uq = 0
+u32 Uq2 = 0
+u16 Rs = $3A71
+u16 Rt = 0
+u16 Rw = 0
+u16 Rn = 0
+u16 Rv = 0
+
+  tile screen
+  set sound table JgSoundTable areas 4
+  nmi off
+  screen on
+
+credits:
+  CreditsPage
+
+l670:
+  ' 670-690 and 580: the menu
+  Ph = 1
+  NewScreen
+  copy YTitle count 11 to vram.name + 76
+  print at 8,6, "USE JOYSTICK ONLY"
+  copy YChoose count 11 to vram.name + 361
+  put char TAup at 10,13
+  copy YThree count 8 to vram.name + 427
+  put char TAleft at 10,15
+  copy YTwo count 8 to vram.name + 491
+  put char TAdown at 10,17
+  copy YQuit count 5 to vram.name + 555
+  ShowScreen
+  Y = 2
+
+l590:
+  ' 590-620: wait for a choice (everything let go first)
+  Ask = 1
+  WaitLetGo
+l590_wait:
+  Frame1
+  ReadStick
+  ' 590: Q quits (the stick down here)
+  if Dnk = 1 then
+    Ask = 0
+    goto credits
+  end if
+  ' 595: the button repeats the same game (not before a first choice)
+  if Fr = 1 then
+    if Y <> 2 then
+      Ask = 0
+      E = 0
+      O = 0
+      goto l710
+    end if
+  end if
+  ' 600: left, two balls (CLR clears every variable)
+  if Lf = 1 then
+    Ask = 0
+    Clr
+    Y = 1
+    goto l700
+  end if
+  ' 610: up, three balls
+  if Upk = 1 then
+    Ask = 0
+    Clr
+    goto l700
+  end if
+  goto l590_wait
+
+l700:
+l710:
+  ' 710-810: the juggler
+  Rs0 = Rs
+  NewScreen
+  ' 730: the shoulders, the chest
+  for J8 = 5 to 15
+    Pk(15, J8, 64)
+  next
+  Pk(15, 10, 104)
+  ' 740
+  Pk(11, 9, 93)
+  Pk(11, 11, 93)
+  Pk(13, 9, 74)
+  Pk(13, 11, 75)
+  Pk(14, 10, 93)
+  Pk(18, 10, 102)
+  ' 750
+  Pk(12, 9, 93)
+  Pk(12, 11, 93)
+  Pk(10, 9, 85)
+  Pk(10, 11, 73)
+  ' 760
+  Pk(11, 10, 114)
+  Pk(12, 10, 82)
+  Pk(13, 10, 114)
+  Pk(10, 10, 64)
+  Pk(16, 10, 102)
+  ' 770
+  Pk(19, 9, 78)
+  Pk(19, 11, 77)
+  Pk(20, 8, 78)
+  Pk(20, 12, 77)
+  Pk(17, 10, 102)
+  ' 780
+  Hands0
+  ShowScreen
+  ' 820-840: the balls' starting places
+  RndK(8)
+  K = lowbyte Rv
+  K = K + 2
+  A = 1
+  RndK(7)
+  L = lowbyte Rv
+  L = L + 2
+  B = 1
+  if Y = 0 then
+    RndK(6)
+    M = lowbyte Rv
+    M = M + 2
+    C = 1
+  end if
+  Ph = 2
+
+l850:
+  ' 850: the surprise (49 points with two balls, 499 with three)
+  V16 = 49
+  if C <> 0 then V16 = 499
+  if O > V16 then
+    E = 1
+    Y = 0
+  end if
+
+l860:
+  ' 860-890: ball 1 (the outside one, path J)
+  Stick
+  Blu = 0
+  if K = 17 then
+    ' 270: the right hand at its right place?
+    Pe(13, 18)
+    if Pkv < 64 then goto l330
+    A = 255
+    Catch
+    K = 15 - E
+  end if
+  if K = 1 then
+    ' 210: the left hand at its left place?
+    Pe(13, 2)
+    if Pkv < 64 then goto l330
+    A = 1
+    Catch
+    K = 3 + E
+  end if
+  Ix = K - A
+  PkJ(32)
+  Ix = K
+  PkJ(81)
+  K = K + A
+  StepEnd
+
+  ' 900-930: ball 2 (the middle one, path U)
+  Stick
+  if L = 15 then
+    ' 290
+    Pe(13, 16)
+    if Pkv < 64 then goto l340
+    B = 255
+    Catch
+    L = 13 - E
+  end if
+  if L = 1 then
+    ' 230
+    Pe(13, 4)
+    if Pkv < 64 then goto l340
+    B = 1
+    Catch
+    L = 3 + E
+  end if
+  Ix = L - B
+  PkU(32)
+  Ix = L
+  PkU(81)
+  L = L + B
+  StepEnd
+
+  ' 940-970: ball 3 (the inside one, path G; nowhere with two balls)
+  Stick
+  Blu = 1
+  if M = 13 then
+    ' 310
+    Pe(13, 14)
+    if Pkv < 64 then goto l350
+    C = 255
+    Catch
+    M = 11 - E
+  end if
+  if M = 1 then
+    ' 250
+    Pe(13, 6)
+    if Pkv < 64 then goto l350
+    C = 1
+    Catch
+    M = 3 + E
+  end if
+  Ix = M - C
+  PkG(32)
+  Ix = M
+  PkG(81)
+  M = M + C
+  if E = 0 then
+    StepEnd
+    Frame1
+    goto l850
+  end if
+  ' 980-1010: the surprise, every ball two cells long
+  Blu = 0
+  V = A * 3
+  Ix = K - V
+  PkJ(32)
+  V = A + A
+  Ix = K - V
+  PkJ(81)
+  V = B * 3
+  Ix = L - V
+  PkU(32)
+  V = B + B
+  Ix = L - V
+  PkU(81)
+  Blu = 1
+  V = C * 3
+  Ix = M - V
+  PkG(32)
+  V = C + C
+  Ix = M - V
+  PkG(81)
+  StepEnd
+  Frame1
+  goto l860
+
+l330:
+  ' a crash: ball 1 (its colour POKEd yellow, line 630)
+  Ix = K - A
+  PkJ(32)
+  D = K - 1
+  Blu = 0
+  goto l540
+l340:
+  ' ball 2 (no colour of its own: the screen's yellow)
+  Ix = L - B
+  PkU(32)
+  D = L
+  Blu = 0
+  goto l540
+l350:
+  ' ball 3 (blue, line 640)
+  Ix = M - C
+  PkG(32)
+  D = M + 1
+  Blu = 1
+  goto l540
+
+l540:
+  ' 540-560: the crashed ball, CRASH, the juggler's face, the noise fading
+  ' while the border flashes
+  Ph = 3
+  for J8 = 1 to 3
+    V = D + J8
+    Pk(22, V, 123)
+  next
+  Blu = 0
+  V = D + 5
+  print at V,22, "CRASH"
+  play sound SndCrash
+  Pk(12, 10, 15)
+  Pk(11, 10, 34)
+  for T8 = 0 to 15
+    V = 15 - T8
+    V = V & 7
+    V = VicCol[V]
+    call asm JgBack
+    for J8 = 1 to 7
+      Frame1
+    next
+  next
+  V = 7
+  call asm JgBack
+  ' 570: GAME OVER, the mouth straight
+  Ph = 4
+  copy YOver count 9 to vram.name + 108
+  Pk(12, 10, 64)
+  goto l590
+
+' ---------------------------------------------------------------------------
+
+' Clr: the listing's CLR (every variable back to zero)
+sub Clr:
+  O = 0
+  Y = 0
+  E = 0
+  K = 0
+  L = 0
+  M = 0
+  A = 0
+  B = 0
+  C = 0
+  U = 0
+  D = 0
+  return
+end sub
+
+' Stick (150-200): left moves the hands one place left, right one place
+' right (each test after the one before, as the listing has them)
+sub Stick:
+  Lf = joypad(1).left | joypad(2).left
+  Rg = joypad(1).right | joypad(2).right
+  Jin = Rg + Rg
+  Jin = Jin | Lf
+  if Lf = 1 then
+    if U = 1 then Hands0
+  end if
+  if Lf = 1 then
+    if U = 2 then Hands1
+  end if
+  if Rg = 1 then
+    if U = 1 then Hands2
+  end if
+  if Rg = 1 then
+    if U = 0 then Hands1
+  end if
+  return
+end sub
+
+' Hands0 (360-400): the hands at the left (columns 2 and 14), the right
+' leg kicking
+sub Hands0:
+  Pk(13, 4, 32)
+  Pk(13, 5, 32)
+  Pk(13, 1, 74)
+  Pk(13, 2, 64)
+  Pk(13, 3, 75)
+  Pk(13, 6, 32)
+  Pk(13, 7, 32)
+  Pk(14, 4, 32)
+  Pk(14, 3, 77)
+  Pk(14, 5, 32)
+  Pk(13, 16, 32)
+  Pk(13, 17, 32)
+  Pk(13, 13, 74)
+  Pk(13, 14, 64)
+  Pk(13, 15, 75)
+  Pk(13, 18, 32)
+  Pk(13, 19, 32)
+  Pk(14, 17, 32)
+  Pk(14, 15, 77)
+  Pk(14, 16, 32)
+  Pk(21, 13, 77)
+  Pk(21, 14, 78)
+  Pk(22, 13, 32)
+  Pk(21, 7, 103)
+  Pk(22, 7, 122)
+  Pk(21, 6, 32)
+  U = 0
+  return
+end sub
+
+' Hands1 (420-460): the hands in the middle (columns 4 and 16), standing
+sub Hands1:
+  Pk(13, 3, 74)
+  Pk(13, 4, 64)
+  Pk(13, 5, 75)
+  Pk(13, 2, 32)
+  Pk(13, 1, 32)
+  Pk(13, 6, 32)
+  Pk(13, 7, 32)
+  Pk(14, 5, 32)
+  Pk(14, 3, 32)
+  Pk(14, 4, 72)
+  Pk(13, 15, 74)
+  Pk(13, 16, 64)
+  Pk(13, 17, 75)
+  Pk(13, 14, 32)
+  Pk(13, 13, 32)
+  Pk(13, 18, 32)
+  Pk(13, 19, 32)
+  Pk(14, 17, 32)
+  Pk(14, 15, 32)
+  Pk(14, 16, 72)
+  Pk(21, 7, 103)
+  Pk(22, 7, 122)
+  Pk(21, 13, 101)
+  Pk(22, 13, 76)
+  Pk(21, 14, 32)
+  Pk(21, 6, 32)
+  U = 1
+  return
+end sub
+
+' Hands2 (480-520): the hands at the right (columns 6 and 18), the left
+' leg kicking
+sub Hands2:
+  Pk(13, 5, 74)
+  Pk(13, 6, 64)
+  Pk(13, 7, 75)
+  Pk(13, 4, 32)
+  Pk(13, 3, 32)
+  Pk(13, 2, 32)
+  Pk(13, 1, 32)
+  Pk(14, 5, 78)
+  Pk(14, 3, 32)
+  Pk(14, 4, 32)
+  Pk(13, 17, 74)
+  Pk(13, 18, 64)
+  Pk(13, 19, 75)
+  Pk(13, 16, 32)
+  Pk(13, 15, 32)
+  Pk(13, 14, 32)
+  Pk(13, 13, 32)
+  Pk(14, 17, 78)
+  Pk(14, 15, 32)
+  Pk(14, 16, 32)
+  Pk(21, 7, 78)
+  Pk(21, 6, 77)
+  Pk(22, 7, 32)
+  Pk(21, 13, 101)
+  Pk(22, 13, 76)
+  Pk(21, 14, 32)
+  U = 2
+  return
+end sub
+
+' Catch (110-130): the beep, the points (1, or 10 with three balls) and
+' the score at the top
+sub Catch:
+  play sound SndCatch
+  inc O
+  if C <> 0 then O = O + 9
+  print at 12,1, "SCORE "
+  NumU = O
+  print at 18,1, " "
+  if NumU < 10 then
+    print at 19,1, digits$(NumU, 1)
+  else
+    if NumU < 100 then
+      print at 19,1, digits$(NumU, 2)
+    else
+      if NumU < 1000 then
+        print at 19,1, digits$(NumU, 3)
+      else
+        print at 19,1, digits$(NumU, 4)
+      end if
+    end if
+  end if
+  Frame1
+  return
+end sub
+
+' PkJ, PkU, PkG: POKE J%(Ix), U%(Ix), G%(Ix) with the code Iv (an index
+' whose address was 0 draws nothing)
+sub PkJ(u8 Cj):
+  if Ix > 18 then return
+  V = JRow[Ix]
+  if V = 255 then return
+  W = JCol[Ix]
+  Pk(V, W, Cj)
+  return
+end sub
+
+sub PkU(u8 Cu):
+  if Ix > 16 then return
+  V = URow[Ix]
+  if V = 255 then return
+  W = UCol[Ix]
+  Pk(V, W, Cu)
+  return
+end sub
+
+sub PkG(u8 Cg):
+  if Ix > 13 then return
+  V = GRow[Ix]
+  if V = 255 then return
+  W = GCol[Ix]
+  Pk(V, W, Cg)
+  return
+end sub
+
+' Pk: POKE the VIC cell (row Pr, column Pc) with the screen code Pv
+sub Pk(u8 Pr, u8 Pc, u8 Pv):
+  Iv = 32
+  if Pv <> 32 then Iv = VicTile[Pv]
+  if Blu = 1 then
+    if Pv = 81 then Iv = TBallb
+    if Pv = 123 then Iv = TCrashb
+  end if
+  Pr = Pr + 1
+  Pc = Pc + 5
+  put char Iv at Pc,Pr
+  return
+end sub
+
+' Pe: PEEK the VIC cell (row Qr, column Qc) into Pkv (a tile; a space is 32)
+sub Pe(u8 Qr, u8 Qc):
+  Qr = Qr + 1
+  Qc = Qc + 5
+  Pkv = get char at Qc,Qr
+  return
+end sub
+
+' StepEnd: a ball step done (for the bot), then a frame
+sub StepEnd:
+  inc Steps
+  Frame1
+  return
+end sub
+
+' ReadStick: the menu's stick and button, each counted once pressed
+sub ReadStick:
+  Lf = joypad(1).left | joypad(2).left
+  Upk = joypad(1).up | joypad(2).up
+  Dnk = joypad(1).down | joypad(2).down
+  Fr = joypad(1).fire | joypad(2).fire
+  return
+end sub
+
+' WaitLetGo: until the stick and the buttons are all let go
+sub WaitLetGo:
+wl_loop:
+  Frame1
+  ReadStick
+  Rg = joypad(1).right | joypad(2).right
+  Any = Lf | Upk
+  Any = Any | Dnk
+  Any = Any | Fr
+  Any = Any | Rg
+  if Any = 1 then goto wl_loop
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 0
+  NewScreen
+  copy YTitle + 4 count 7 to vram.name + 44
+  print at 2,3, "BY DOUG FERGUSON OF ELIDA,"
+  print at 2,4, "OHIO, FROM COMPUTE!,"
+  print at 2,5, "JANUARY 1983 (VIC-20 AND"
+  print at 2,6, "ATARI). HE WROTE IT IN 1981,"
+  print at 2,7, "WHEN BASIC WAS STILL NEW TO"
+  print at 2,8, "HIM."
+  print at 2,10, "SCORE 50 WITH TWO BALLS OR"
+  print at 2,11, "500 WITH THREE FOR A"
+  print at 2,12, "SURPRISE."
+  print at 2,14, "FOR THE COLECOVISION BY"
+  print at 2,15, "CLAUDE (AN AI MADE BY"
+  print at 2,16, "ANTHROPIC) FOR AMY STUDIO,"
+  print at 2,17, "2026, IN AMY, THE LANGUAGE"
+  print at 2,18, "BY AMY BIENVENU."
+  print at 2,20, "MUSIC: THREE IN THE AIR"
+  print at 2,21, "(ORIGINAL)."
+  print at 9,22, "PRESS A BUTTON"
+  ShowScreen
+  play song JgSong once
+  Ask = 1
+  WaitLetGo
+cp_wait:
+  Frame1
+  Fr = joypad(1).fire | joypad(2).fire
+  if Fr = 0 then goto cp_wait
+  Ask = 0
+  ' the time spent here seeds RND (line 100: RND(-TI))
+  Rs = Rs ^ Tick
+  Rt = Tick
+  Rt = Rt << 8
+  Rs = Rs ^ Rt
+  if Rs = 0 then Rs = $3A71
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  ' (POKE 36879,75: a purple screen, a cyan border)
+  fill mode 2 text color with $FD
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  backdrop cyan
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rt = Rs << 7
+  Rs = Rs ^ Rt
+  Rt = Rs >> 9
+  Rs = Rs ^ Rt
+  Rt = Rs << 8
+  Rs = Rs ^ Rt
+  Rw = Rs
+  return
+end sub
+
+' RndK: Rv = INT(RND(1) * Kn)
+sub RndK(u8 Kn):
+  Rnd16
+  Uq = Rw
+  Uq2 = Kn
+  Uq = Uq * Uq2
+  Uq = Uq >> 16
+  Rv = lowword Uq
+  return
+end sub
+
+' the ball paths (DATA 1020-1040, VIC rows and columns; 255 nowhere)
+data JRow bytes 255, 255, 12, 10, 8, 6, 4, 2, 1, 1, 1, 2, 4, 6, 8, 10, 12, 255, 255
+data JCol bytes 255, 255, 2, 2, 2, 3, 4, 6, 8, 10, 12, 14, 16, 17, 18, 18, 18, 255, 255
+data URow bytes 255, 255, 12, 10, 8, 6, 4, 3, 3, 3, 4, 6, 8, 10, 12, 255, 255
+data UCol bytes 255, 255, 4, 4, 4, 5, 6, 8, 10, 12, 14, 15, 16, 16, 16, 255, 255
+data GRow bytes 255, 255, 12, 10, 8, 6, 5, 4, 5, 6, 8, 10, 12, 255
+data GCol bytes 255, 255, 6, 6, 6, 7, 8, 10, 12, 13, 14, 14, 14, 255
+' the VIC's border colours 0-7 as TMS9918 colours
+data VicCol bytes 1, 15, 6, 7, 13, 3, 5, 11
+
+data VicTile bytes
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,147
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,151,152
+  32,32,148,32,32,32,32,32,32,32,32,32,32,32,32,32
+  32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32
+  128,32,32,32,32,32,32,32,130,132,133,134,141,136,137,32
+  32,145,131,32,32,135,32,32,32,32,32,32,32,129,32,32
+  32,32,32,32,32,139,143,140,144,32,32,32,32,32,32,32
+  32,32,138,32,32,32,32,32,32,32,142,146,32,32,32,32
+end data
+data YTitle bytes 172,162,158,32,163,171,160,160,164,159,168
+data YChoose bytes 158,161,166,166,169,159,32,160,156,165,159
+data YThree bytes 32,155,32,157,156,164,164,169
+data YTwo bytes 32,154,32,157,156,164,164,169
+data YQuit bytes 32,167,171,162,170
+data YOver bytes 160,156,165,159,32,166,172,159,168
+data TilePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $18,$18,$18,$18,$18,$18,$18,$18
+  $0C,$0C,$0C,$0C,$0C,$0C,$0C,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$01,$06,$0C,$18
+  $18,$18,$0C,$07,$03,$00,$00,$00
+  $18,$18,$30,$E0,$C0,$00,$00,$00
+  $00,$00,$00,$C0,$80,$60,$30,$18
+  $C0,$E0,$70,$38,$1C,$0E,$07,$03
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0
+  $00,$00,$00,$00,$00,$18,$18,$18
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $C0,$C0,$C0,$C0,$C0,$C0,$00,$00
+  $03,$03,$03,$03,$03,$03,$00,$00
+  $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA
+  $00,$00,$00,$00,$AA,$AA,$AA,$AA
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $00,$C3,$99,$99,$99,$99,$C3,$00
+  $00,$93,$93,$93,$00,$00,$00,$00
+  $00,$C3,$81,$81,$81,$81,$C3,$00
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0
+  $18,$C3,$81,$18,$18,$18,$18,$00
+  $00,$20,$60,$00,$00,$60,$20,$00
+  $18,$18,$18,$18,$81,$C3,$18,$00
+  $00,$38,$44,$04,$08,$10,$20,$83
+  $00,$83,$08,$10,$08,$04,$44,$38
+  $00,$38,$44,$44,$83,$44,$44,$44
+  $00,$87,$44,$44,$87,$44,$44,$87
+  $00,$38,$44,$40,$40,$40,$44,$38
+  $00,$83,$40,$40,$87,$40,$40,$83
+  $00,$38,$44,$40,$A3,$44,$44,$C3
+  $00,$44,$44,$44,$83,$44,$44,$44
+  $00,$38,$10,$10,$10,$10,$10,$38
+  $00,$1C,$08,$08,$08,$08,$48,$30
+  $00,$40,$40,$40,$40,$40,$40,$83
+  $00,$44,$93,$54,$54,$44,$44,$44
+  $00,$38,$44,$44,$44,$44,$44,$38
+  $00,$38,$44,$44,$44,$54,$48,$34
+  $00,$87,$44,$44,$87,$50,$48,$44
+  $00,$C3,$40,$40,$38,$04,$04,$87
+  $00,$83,$10,$10,$10,$10,$10,$10
+  $00,$44,$44,$44,$44,$44,$44,$38
+  $00,$44,$44,$44,$44,$44,$28,$10
+end data
+data TileCol bytes
+  $0D,$0D,$0D,$0B,$0B,$0D,$0D,$0D
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$0D,$0D,$0D,$0D,$0B,$0B,$0D
+  $0D,$0D,$0D,$DB,$DB,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$0D,$0D,$0D
+  $BD,$BD,$BD,$BD,$BD,$0D,$0D,$0D
+  $0D,$0D,$0D,$DB,$DB,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$0D,$0D,$0B,$0B,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $BD,$BD,$BD,$BD,$BD,$BD,$0B,$0B
+  $BD,$BD,$BD,$BD,$BD,$BD,$0B,$0B
+  $BD,$DB,$BD,$DB,$BD,$DB,$BD,$DB
+  $0D,$0D,$0D,$0D,$BD,$DB,$BD,$DB
+  $0D,$DB,$DB,$DB,$DB,$DB,$DB,$0D
+  $0D,$0D,$0D,$0D,$BD,$BD,$BD,$BD
+  $0D,$DB,$DB,$DB,$DB,$DB,$DB,$0D
+  $0D,$DB,$DB,$DB,$0D,$0D,$0D,$0D
+  $0D,$D5,$D5,$D5,$D5,$D5,$D5,$0D
+  $0D,$0D,$0D,$0D,$5D,$5D,$5D,$5D
+  $1D,$D1,$D1,$1D,$1D,$1D,$1D,$0D
+  $0D,$1D,$1D,$01,$01,$1D,$1D,$0D
+  $1D,$1D,$1D,$1D,$D1,$D1,$1D,$0D
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$DB
+  $0D,$DB,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$DB,$BD,$BD,$BD
+  $0D,$DB,$BD,$BD,$DB,$BD,$BD,$DB
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$DB,$BD,$BD,$DB,$BD,$BD,$DB
+  $0D,$BD,$BD,$BD,$DB,$BD,$BD,$DB
+  $0D,$BD,$BD,$BD,$DB,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$DB
+  $0D,$BD,$DB,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$DB,$BD,$BD,$DB,$BD,$BD,$BD
+  $0D,$DB,$BD,$BD,$BD,$BD,$BD,$DB
+  $0D,$DB,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+  $0D,$BD,$BD,$BD,$BD,$BD,$BD,$BD
+end data
+
+asm {
+JgCrash:
+    db $00,$00,$05,$07,$00,$00,$15,$07,$00,$00,$25,$07,$00,$00,$35,$07,$00,$00,$45,$07,$00,$00,$55,$07
+    db $00,$00,$65,$07,$00,$00,$75,$07,$00,$00,$85,$07,$00,$00,$95,$07,$00,$00,$A5,$07,$00,$00,$B5,$07
+    db $00,$00,$C5,$07,$00,$00,$D5,$07,$00,$00,$E5,$07,$00,$00,$F5,$07,$10
+JgCatch:
+    db $40,$7E,$00,$02,$40,$7E,$F0,$01,$50
+
+JgSoundTable:
+    dw JgCrash,$702B
+    dw JgCatch,$7035
+    dw JgTuneMel,$703F
+    dw JgTuneBass,$7049
+; Three in the Air, G major (original for this game)
+; Tiny Sound, 7 frames per step
+JgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$21,$01,$26,$01,$2A,$01,$28,$01,$00,$00,$26,$01
+    db $23,$01,$1F,$01,$23,$01,$21,$01,$00,$00,$00,$00,$1E,$01,$21,$01
+    db $26,$01,$25,$01,$00,$00,$23,$01,$21,$01,$1F,$01,$1E,$01,$1C,$01
+    db $00,$00,$00,$00,$21,$01,$26,$01,$2A,$01,$2D,$01,$00,$00,$2B,$01
+    db $2A,$01,$28,$01,$26,$01,$23,$01,$00,$00,$00,$00,$1F,$01,$23,$01
+    db $28,$01,$25,$01,$21,$01,$1C,$01,$1A,$01,$1E,$01,$21,$01,$26,$01
+    db $00,$00,$00,$01
+    db $FF
+JgTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0E,$01,$12,$01,$15,$01,$09,$01,$0D,$01,$10,$01
+    db $07,$01,$0B,$01,$0E,$01,$0E,$01,$12,$01,$15,$01,$0E,$01,$12,$01
+    db $15,$01,$09,$01,$0D,$01,$10,$01,$0E,$01,$12,$01,$15,$01,$09,$01
+    db $0D,$01,$10,$01,$0E,$01,$12,$01,$15,$01,$09,$01,$0D,$01,$10,$01
+    db $0E,$01,$12,$01,$15,$01,$07,$01,$0B,$01,$0E,$01,$07,$01,$0B,$01
+    db $0E,$01,$09,$01,$0D,$01,$10,$01,$0E,$01,$12,$01,$15,$01,$0E,$01
+    db $01,$01,$01,$01
+    db $FF
+; the title song: both voices of the tune at once
+JgSong:
+    dw $0001
+    db $40+3,4
+    dw $0000
+
+; JgBack: the backdrop (VDP register 7) to the colour V
+JgBack:
+    ld a,(AMY_UVAR_V)
+    out ($BF),a
+    ld a,$87
+    out ($BF),a
+    ret
+}

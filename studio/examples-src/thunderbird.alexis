@@ -1,0 +1,1159 @@
+cartridge "THUNDERBIRD/DAVE SANDERS, COMPUTE!/1983"
+
+' THUNDERBIRD
+' The game by Dave Sanders (Garland, UT) from COMPUTE!, January 1983
+' (pages 71-82; Atari notes by Charles Brannon), for the ColecoVision in
+' Amy by Amy Bienvenu. Ported by Claude (an AI made by Anthropic) for Amy
+' Studio, 2026.
+'
+' Sources: Program 1, the VIC-20 version (transcribed in
+' orig/thunderbird-vic.bas from the scans beside it). The Atari and TRS-80
+' Color Computer versions (Programs 2 and 3) are a different game (a
+' breakout wall); they were only read to check the article.
+'
+' The game: the satellite (the star) bounces in the playing field. Move the
+' Thunderbird along the top with the stick to keep it from breaking out the
+' top: a wing sends it back (75 points), the body sends it straight back
+' (25). It takes out the saucers (50) and the trees (200) it hits. When it
+' drops into a well, 125 points are lost and the Thunderbird lasers down
+' one to three saucers below itself. Breaking out the bottom is worth 1000
+' points and a new, harder field (an extra row of saucers, more wells).
+' Two satellites lost out the top end the game. The high score is kept.
+'
+' Controls (either joystick): left and right move the Thunderbird; the
+' button starts a game. Keypad not used.
+'
+' The VIC-20's screen (22 columns, 23 rows) is kept cell for cell, at
+' columns 5-26 and rows 1-23: B, BO, BD, G and M are the VIC's screen
+' offsets (from 7680), and the satellite's X and Y the listing's. Labels
+' such as l104 are the listing's line numbers.
+'
+' Liberties taken:
+' - Each colour of a VIC cell is its own tile here (a yellow saucer, a
+'   white saucer...); the satellite is always white.
+' - Timing: a step of the main loop (the satellite and the Thunderbird) is
+'   4 frames, about the VIC's BASIC speed; the lightning is drawn a cell a
+'   frame.
+' - "HIT Y TO PLAY" and "USE CURSOR KEYS" read "PRESS FIRE TO PLAY" and
+'   "USE THE JOYSTICK"; the 500 turns of line 61 (after which the game
+'   starts by itself) are 500 frames.
+' - The lightning stops below the Thunderbird's row: on the VIC, a well
+'   right under it (row 2) would send line 74 climbing up the memory.
+' - The score stops at 32767 (Amy's signed 16 bits; the VIC's has no
+'   limit).
+' - A credits page with an original title tune ("Storm Wings").
+' Quirks kept: a negative score shows without its sign (line 25 POKEs "="
+' over it); after the body's hit (DX=0) the satellite goes straight one
+' step, then always to the right (line 108).
+'
+' House rules kept: text in columns 2-29; no sprites; the frame loop is
+' protected from the NMI and every screen is drawn with the NMI off after a
+' wait.
+
+const TSauy = 128
+const TSauw = 129
+const TSauc = 130
+const TSaup = 131
+const TSaul = 132
+const TWelw = 133
+const TWelg = 134
+const TWelc = 135
+const TWelp = 136
+const TWely = 137
+const TTree = 138
+const TWingl = 139
+const TBody = 140
+const TWingr = 141
+const TSat = 142
+const TBolt1 = 143
+const TBolt2 = 144
+const TExp1 = 145
+const TExp2 = 146
+const TDia = 147
+const TRsp = 148
+const TR0 = 149
+const TR1 = 150
+const TR2 = 151
+const TR3 = 152
+const TR4 = 153
+const TR5 = 154
+const TR6 = 155
+const TR7 = 156
+const TR8 = 157
+const TR9 = 158
+const TRs = 159
+const TRc = 160
+const TRo = 161
+const TRr = 162
+const TRe = 163
+const TRh = 164
+const TRi = 165
+const TRt = 166
+const TRu = 167
+const TRn = 168
+const TRd = 169
+const TRb = 170
+const TRf = 171
+const TRa = 172
+const TRl = 173
+const TReq = 174
+const TRmin = 175
+const SNone = 0
+const NTiles8 = 384
+const SprBytes = 32
+const SndLose = 1
+const SndWall = 2
+const SndSaucer = 3
+const SndTree = 4
+const SndWing = 5
+const SndBody = 6
+const SndBolt = 7
+const SndBreak = 8
+const SndCount = 9
+const SndSecond = 10
+const SndTuneA = 11
+const SndTuneB = 12
+
+' --- the listing's variables ----------------------------------------------
+' SC the score, HI the high score, P1 the field (1, then one more each
+' breakout), L the satellite (1 first, 2 second), RS 1 before the first
+' title, TT the title's turns, M the Thunderbird (its left wing at M+1)
+i16 SC = 0
+i16 HI = 0
+u8 P1 = 1
+u8 L = 1
+u8 RS = 1
+u16 TT = 0
+u16 M = 23
+' X Y the satellite (0-19, -1 to 22: 255 is -1), DX DY its steps (255 -1)
+u8 X = 1
+u8 Y = 1
+u8 DX = 1
+u8 DY = 1
+u16 BO = 0
+u16 BD = 0
+u16 G = 0
+' B the cell (a VIC offset), Tl the tile to put there, Pk the tile found,
+' Kd the VIC character it stands for (32, 81 saucer, 87 well, 65 tree,
+' 85 73 wings, 88 body, 77 the lightning, 1 anything else)
+u16 B = 0
+u8 Tl = 0
+u8 Pk = 0
+u8 Kd = 0
+' R: the joystick (4 left, 8 right, 128 the button), Rb the button alone
+u8 R = 0
+u8 Rb = 0
+' for the test bot: 1 the title's wait, 2 playing, 3 the lightning, 4 the
+' breakout, 5 lost out the top, 6 the credits page
+u8 Ph = 0
+u8 Bk = 0
+' Stp: the main loop's steps (for the test bot)
+u8 Stp = 0
+
+i16 Ad = 0
+i16 Lim = 0
+u16 NumW = 0
+u16 V16 = 0
+u16 W16 = 0
+u16 Rw = 0
+u16 Rseed = $3A71
+u16 Rtmp = 0
+u8 Dg[6]
+u8 Nd = 0
+u8 I = 0
+u8 J = 0
+u8 V = 0
+u8 Tick = 0
+
+  tile screen
+  set sound table TbSoundTable areas 4
+  nmi off
+  screen on
+  CreditsPage
+
+l2:
+  SC = 0
+  HI = 0
+  P1 = 1
+  L = 1
+  RS = 1
+  M = 23
+  TT = 0
+
+l4:
+  ' 4-12, 50-54: the field
+  DrawField
+l13:
+  B = 6
+  if SC < 0 then
+    NumW = 0 - SC
+  else
+    NumW = SC
+  end if
+  ShowNum
+  B = 14
+  NumW = HI
+  ShowNum
+l14:
+  X = 1
+  Y = 1
+  DX = 1
+  DY = 1
+  Bird
+  if RS = 1 then
+    RS = 2
+    goto l55
+  end if
+l15:
+  if TT = 500 then
+    TT = 1
+    X = 12
+    L = 1
+    SC = 0
+    for J = 7 to 11
+      B = J
+      Tl = TRsp
+      Put1
+    next
+    goto l104
+  end if
+l16:
+  if L <> 2 then goto l104
+l17:
+  Second
+  goto l104
+
+l55:
+  ' 55-59: the title over the field
+  Ph = 1
+  print at 12,4, "PRESS"
+  Tl = TRf
+  B = 118
+  Put1
+  Tl = TRi
+  inc B
+  Put1
+  Tl = TRr
+  inc B
+  Put1
+  Tl = TRe
+  inc B
+  Put1
+  print at 11,8, "TO PLAY"
+  Bird
+  B = 103
+  Tl = TSat
+  Put1
+  print at 8,11, "USE THE JOYSTICK"
+  print at 8,12, "FOR RIGHT & LEFT"
+  ' (the button let go first)
+l55w:
+  Pace(1)
+  if Rb = 1 then goto l55w
+l60:
+  Pace(1)
+  if Rb = 1 then
+    SC = 0
+    L = 1
+    Rseed = Rseed ^ Tick
+    if Rseed = 0 then Rseed = $3A71
+    goto l4
+  end if
+l61:
+  inc TT
+  if TT = 500 then goto l4
+  goto l60
+
+' --- the main loop ----------------------------------------------------------
+l100:
+  if M < 23 then goto l104
+l101:
+  B = M
+  Tl = TWingl
+  Put1
+  inc B
+  Tl = TBody
+  Put1
+  inc B
+  Tl = TWingr
+  Put1
+  inc B
+  Tl = 32
+  Put1
+  dec M
+  goto l104
+l102:
+  if M > 38 then goto l104
+l103:
+  B = M + 2
+  Tl = TWingl
+  Put1
+  inc B
+  Tl = TBody
+  Put1
+  inc B
+  Tl = TWingr
+  Put1
+  B = M + 1
+  Tl = 32
+  Put1
+  inc M
+l104:
+  Ph = 2
+  B = BO
+  Tl = 32
+  Put1
+  BO = Y * 22
+  BO = BO + X
+  BO = BO + 23
+  B = BO
+  Tl = TSat
+  Put1
+l105:
+  inc Stp
+  Pace(4)
+  X = X + DX
+  V = 0
+  if X = 0 then V = 1
+  if X = 19 then V = 1
+  if V = 1 then
+    DX = 0 - DX
+    play sound SndWall
+  end if
+l106:
+  Y = Y + DY
+  if Y = 255 then goto l95
+l107:
+  if Y = 22 then goto l90
+l108:
+  if DX = 0 then DX = 1
+l109:
+  BD = Y * 22
+  BD = BD + X
+  BD = BD + 23
+  B = BD
+  Look
+l110:
+  if Kd = 32 then goto l116
+l111:
+  B = BO
+  Tl = 32
+  Put1
+  if Kd = 87 then goto l65
+l112:
+  if Kd = 81 then
+    play sound SndSaucer
+    Ad = 50
+    AddSc
+    goto l85
+  end if
+l113:
+  if Kd = 65 then
+    Ad = 200
+    AddSc
+    play sound SndTree
+    goto l85
+  end if
+l114:
+  V = 0
+  if Kd = 85 then V = 1
+  if Kd = 73 then V = 1
+  if V = 1 then
+    play sound SndWing
+    Ad = 75
+    AddSc
+    ShowScore
+    DY = 0 - DY
+    goto l105
+  end if
+l115:
+  if Kd = 88 then
+    play sound SndBody
+    Ad = 25
+    AddSc
+    ShowScore
+    DX = 0
+    DY = 0 - DY
+    goto l105
+  end if
+l116:
+  V = R & 12
+  if V = 4 then goto l100
+l117:
+  if V = 8 then goto l102
+l118:
+  goto l104
+
+' --- a saucer or a tree hit --------------------------------------------------
+l85:
+  B = BD
+  Tl = TExp1
+  Put1
+  Hold(2)
+  Tl = TExp2
+  Put1
+  Hold(2)
+  DY = 0 - DY
+  Tl = TExp1
+  Put1
+  Hold(2)
+  ShowScore
+  B = BD
+  Tl = 32
+  Put1
+  goto l105
+
+' --- into a well: the lightning ------------------------------------------------
+l65:
+  Ph = 3
+  SC = SC - 125
+  G = M + 2
+  SC = SC + 125
+  if HI = SC then
+    HI = HI - 125
+  end if
+  SC = SC - 125
+l66:
+  B = G + 22
+  Tl = TBolt1
+  Put1
+  backdrop dark red
+  G = G + 22
+  Hold(1)
+l67:
+  B = G + 22
+  Look
+  V = 0
+  if Kd = 81 then V = 1
+  if Kd = 65 then V = 1
+  if V = 1 then
+    B = G
+    Tl = TSaul
+    Put1
+    goto l72
+  end if
+l68:
+  if Kd = 87 then
+    B = G
+    Tl = TSaul
+    Put1
+    G = G - 22
+    B = G
+    Put1
+    goto l74
+  end if
+l69:
+  if G > 505 then
+    B = G
+    Tl = TSaul
+    Put1
+    goto l72
+  end if
+l70:
+  B = G
+  Look
+  if Kd = 77 then
+    B = G + 22
+    Tl = TBolt2
+    Put1
+    G = G + 22
+    Hold(1)
+    goto l67
+  end if
+l71:
+  goto l66
+l72:
+  B = G - 1
+  Look
+  if Kd = 32 then
+    Tl = TSaul
+    Put1
+  end if
+l73:
+  B = G + 1
+  Look
+  if Kd = 32 then
+    Tl = TSaul
+    Put1
+  end if
+l74:
+  ' (stopped below the Thunderbird's row: see the liberties)
+  if G < 44 then goto l76
+  B = G - 22
+  Tl = 32
+  Put1
+  G = G - 22
+  Hold(1)
+  B = G - 22
+  Look
+  if Kd = 88 then goto l76
+l75:
+  goto l74
+l76:
+  play sound SndBolt
+  Hold(40)
+  backdrop white
+l77:
+  Rnd16
+  V = highbyte Rw
+  V = V % 18
+  X = V + 1
+  DY = 1
+  Y = 1
+  DX = 1
+  if X >= 11 then DX = 255
+l80:
+  ShowScore
+  goto l105
+
+' --- out the bottom: the breakout --------------------------------------------
+l90:
+  Ph = 4
+  play sound SndBreak
+  Hold(60)
+  inc P1
+l91:
+  for Bk = 1 to 100
+    Ad = 10
+    AddSc
+    play sound SndCount
+    ShowScore
+    Hold(2)
+  next
+  goto l4
+
+' --- out the top ------------------------------------------------------------
+l95:
+  Ph = 5
+  if L > 1 then
+    P1 = 1
+    play sound SndLose
+    for Bk = 0 to 47
+      V = Bk & 3
+      if V = 0 then backdrop black
+      if V = 1 then backdrop light red
+      if V = 2 then backdrop white
+      if V = 3 then backdrop dark blue
+      Hold(1)
+    next
+    backdrop white
+    goto l55
+  end if
+l96:
+  L = 2
+  Second
+  X = 17
+l97:
+  DX = 1
+  Y = 1
+  DY = 1
+  backdrop light yellow
+  play sound SndSecond
+  Hold(84)
+l98:
+  backdrop white
+  DX = 0 - DX
+  goto l104
+
+' ---------------------------------------------------------------------------
+
+' DrawField (4-12, 50-53): the rows of saucers with their wells, the trees,
+' the frame, and on the harder fields (P1 2 and up) a row more and wells
+sub DrawField:
+  NewScreen
+  ' rows 13-20: yellow, white, cyan, purple saucers (4-7)
+  fill TSauy count 22 at 5,14
+  fill TSauy count 22 at 5,15
+  fill TSauw count 22 at 5,16
+  fill TSauw count 22 at 5,17
+  fill TSauc count 22 at 5,18
+  fill TSauc count 22 at 5,19
+  fill TSaup count 22 at 5,20
+  fill TSaup count 22 at 5,21
+  put char TWelw at 11,15
+  put char TWelw at 22,15
+  put char TWelw at 7,20
+  put char TWelw at 25,20
+  ' 8-10: the trees (rows 21-22, green) and the wells in the last row
+  fill TTree count 22 at 5,22
+  fill TTree count 22 at 5,23
+  put char TWelg at 6,23
+  put char TWelg at 9,23
+  put char TWelg at 12,23
+  put char TWelg at 19,23
+  put char TWelg at 22,23
+  put char TWelg at 25,23
+  ' 11: the frame: the left column, the right column, the top row
+  for J = 0 to 22
+    I = J + 1
+    put char FrameL[J] at 5,I
+    put char FrameR[J] at 26,I
+  next
+  for J = 0 to 19
+    I = J + 6
+    put char FrameT[J] at I,1
+  next
+  ' 50-53
+  if P1 >= 2 then
+    fill TSauy count 20 at 6,13
+    put char TWelc at 10,18
+    put char TWelc at 21,18
+  end if
+  if P1 >= 3 then
+    put char TWelw at 7,16
+    put char TWelw at 24,16
+  end if
+  if P1 >= 4 then
+    put char TWelp at 12,20
+    put char TWelp at 19,20
+  end if
+  if P1 >= 5 then
+    put char TWely at 12,13
+    put char TWely at 19,13
+  end if
+  ShowScreen
+  return
+end sub
+
+' Second (17, 96): SECOND over FIRST in the right column
+sub Second:
+  put char TRs at 26,4
+  put char TRe at 26,5
+  put char TRc at 26,6
+  put char TRo at 26,7
+  put char TRn at 26,8
+  put char TRd at 26,9
+  return
+end sub
+
+' Bird (14): the Thunderbird at M+1 to M+3
+sub Bird:
+  B = M + 1
+  Tl = TWingl
+  Put1
+  inc B
+  Tl = TBody
+  Put1
+  inc B
+  Tl = TWingr
+  Put1
+  return
+end sub
+
+' AddSc: SC + Ad (the VIC's score has no limit; here it stops at 32767)
+sub AddSc:
+  Lim = 32767 - Ad
+  if SC > Lim then
+    SC = 32767
+  else
+    SC = SC + Ad
+  end if
+  return
+end sub
+
+' ShowScore (25): the score; the high score too when it is beaten
+sub ShowScore:
+  B = 6
+  if SC < 0 then
+    NumW = 0 - SC
+  else
+    NumW = SC
+  end if
+  ShowNum
+  if SC > HI then
+    HI = SC
+    B = 14
+    NumW = HI
+    ShowNum
+  end if
+  return
+end sub
+
+' ShowNum: NumW at B as line 25 shows it: "=" over the sign, the digits,
+' then a space (all reversed)
+sub ShowNum:
+  Tl = TReq
+  Put1
+  Nd = 0
+  V16 = NumW
+sn_div:
+  W16 = V16 / 10
+  NumW = W16 * 10
+  NumW = V16 - NumW
+  Dg[Nd] = NumW
+  inc Nd
+  V16 = W16
+  if V16 > 0 then goto sn_div
+sn_put:
+  dec Nd
+  inc B
+  Tl = Dg[Nd]
+  Tl = Tl + TR0
+  Put1
+  if Nd > 0 then goto sn_put
+  inc B
+  Tl = TRsp
+  Put1
+  return
+end sub
+
+' Put1: POKE B,Tl (on the screen only)
+sub Put1:
+  if B > 505 then return
+  call asm OrPoke
+  return
+end sub
+
+' Look: Kd = the VIC character at B (PEEK(B)); off the screen, 1
+sub Look:
+  Kd = 1
+  if B > 505 then return
+  call asm OrPeek
+  if Pk = 32 then Kd = 32
+  if Pk >= TSauy then
+    if Pk <= TSaul then Kd = 81
+  end if
+  if Pk >= TWelw then
+    if Pk <= TWely then Kd = 87
+  end if
+  if Pk = TTree then Kd = 65
+  if Pk = TWingl then Kd = 85
+  if Pk = TWingr then Kd = 73
+  if Pk = TBody then Kd = 88
+  if Pk = TBolt1 then Kd = 77
+  return
+end sub
+
+sub CreditsPage:
+  Ph = 6
+  NewScreen
+  backdrop dark blue
+  print at 10,2, "THUNDERBIRD"
+  put char TWingl at 14,4
+  put char TBody at 15,4
+  put char TWingr at 16,4
+  put char TSat at 20,6
+  fill TSauy count 9 at 11,8
+  fill TSauc count 9 at 11,9
+  fill TTree count 9 at 11,10
+  print at 4,12, "BY DAVE SANDERS, FROM"
+  print at 4,13, "COMPUTE! JANUARY 1983"
+  print at 4,14, "(VIC-20 VERSION)"
+  print at 2,17, "COLECOVISION: CLAUDE (AN AI"
+  print at 2,18, "BY ANTHROPIC), AMY STUDIO."
+  print at 2,19, "MUSIC: STORM WINGS."
+  print at 8,22, "PRESS THE BUTTON"
+  ShowScreen
+  play song TbSong once
+cp_up:
+  Pace(1)
+  if Rb = 1 then goto cp_up
+cp_wait:
+  Pace(1)
+  if Rb = 0 then goto cp_wait
+  Rseed = Rseed ^ Tick
+  if Rseed = 0 then Rseed = $3A71
+  stop song
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  backdrop white
+  fill mode 2 text color with $F4
+  copy TilePat count NTiles8 to vram.pattern + 1024
+  copy TileCol count NTiles8 to vram.color + 1024
+  copy TilePat count NTiles8 to vram.pattern + 3072
+  copy TileCol count NTiles8 to vram.color + 3072
+  copy TilePat count NTiles8 to vram.pattern + 5120
+  copy TileCol count NTiles8 to vram.color + 5120
+  call asm RevFont
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  screen on
+  nmi off
+  return
+end sub
+
+' Pace N: N frames, then the joystick (R) and the button (Rb)
+sub Pace(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  R = 0
+  if joypad(1).left then R = R | 4
+  if joypad(2).left then R = R | 4
+  if joypad(1).right then R = R | 8
+  if joypad(2).right then R = R | 8
+  Rb = 0
+  if joypad(1).fire then Rb = 1
+  if joypad(2).fire then Rb = 1
+  return
+end sub
+
+sub Hold(u8 N):
+  for J = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  return
+end sub
+
+' Rnd16: RND as Rw/65536 (a 16-bit xorshift, 7 9 8)
+sub Rnd16:
+  Rtmp = Rseed << 7
+  Rseed = Rseed ^ Rtmp
+  Rtmp = Rseed >> 9
+  Rseed = Rseed ^ Rtmp
+  Rtmp = Rseed << 8
+  Rseed = Rseed ^ Rtmp
+  Rw = Rseed
+  return
+end sub
+
+data TilePat bytes
+  $00,$C3,$18,$81,$81,$81,$C3,$00
+  $00,$C3,$18,$81,$81,$81,$C3,$00
+  $00,$C3,$18,$81,$81,$81,$C3,$00
+  $00,$C3,$18,$81,$81,$81,$C3,$00
+  $00,$C3,$18,$81,$81,$81,$C3,$00
+  $00,$C3,$99,$42,$42,$99,$C3,$00
+  $00,$C3,$99,$42,$42,$99,$C3,$00
+  $00,$C3,$99,$42,$42,$99,$C3,$00
+  $00,$C3,$99,$42,$42,$99,$C3,$00
+  $00,$C3,$99,$42,$42,$99,$C3,$00
+  $18,$C3,$18,$00,$00,$93,$18,$C3
+  $00,$00,$07,$E0,$30,$60,$40,$40
+  $18,$C3,$18,$00,$81,$18,$C3,$00
+  $00,$00,$E0,$07,$0C,$06,$02,$02
+  $10,$54,$38,$18,$38,$54,$10,$00
+  $C0,$60,$30,$18,$0C,$06,$03,$01
+  $03,$06,$0C,$18,$30,$60,$C0,$80
+  $18,$18,$18,$18,$00,$18,$18,$18
+  $10,$38,$18,$01,$83,$38,$10,$00
+  $18,$38,$83,$01,$83,$38,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+end data
+data TileCol bytes
+  $04,$4B,$B4,$4B,$4B,$4B,$4B,$04
+  $04,$4F,$F4,$4F,$4F,$4F,$4F,$04
+  $04,$47,$74,$47,$47,$47,$47,$04
+  $04,$4D,$D4,$4D,$4D,$4D,$4D,$04
+  $04,$49,$94,$49,$49,$49,$49,$04
+  $04,$4F,$4F,$F4,$F4,$4F,$4F,$04
+  $04,$42,$42,$24,$24,$42,$42,$04
+  $04,$47,$47,$74,$74,$47,$47,$04
+  $04,$4D,$4D,$D4,$D4,$4D,$4D,$04
+  $04,$4B,$4B,$B4,$B4,$4B,$4B,$04
+  $24,$42,$24,$02,$02,$42,$24,$42
+  $04,$04,$B4,$4B,$B4,$B4,$B4,$B4
+  $B4,$4B,$B4,$0B,$4B,$B4,$4B,$04
+  $04,$04,$B4,$4B,$B4,$B4,$B4,$B4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$04
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$0F,$F4,$F4,$F4
+  $F4,$F4,$F4,$4F,$4F,$F4,$F4,$04
+  $F4,$4F,$F4,$F4,$F4,$4F,$4F,$0F
+  $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+  $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+end data
+data SpritePat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' the frame (DATA 125-128) as tiles: the left column, the right column and
+' the top row (made by build.py)
+data FrameL bytes 147,147,147,147,148,166,164,167,168,169,163,162,170,165,162,169,148,147,147,147,147,147,147
+data FrameR bytes 147,147,147,147,171,165,162,159,166,148,159,172,166,163,173,173,165,166,163,147,147,147,147
+data FrameT bytes 159,160,161,162,163,148,148,148,148,148,148,164,165,148,148,148,148,148,148,148
+
+asm {
+TbLose:
+    db $00,$00,$14,$02,$00,$00,$15,$02,$00,$00,$16,$02,$00,$00,$14,$02,$00,$00,$25,$02,$00,$00,$26,$02
+    db $00,$00,$24,$02,$00,$00,$25,$02,$00,$00,$26,$02,$00,$00,$24,$02,$00,$00,$25,$02,$00,$00,$26,$02
+    db $00,$00,$34,$02,$00,$00,$35,$02,$00,$00,$36,$02,$00,$00,$34,$02,$00,$00,$35,$02,$00,$00,$36,$02
+    db $00,$00,$34,$02,$00,$00,$35,$02,$00,$00,$46,$02,$00,$00,$44,$02,$00,$00,$45,$02,$00,$00,$46,$02
+    db $10
+TbWall:
+    db $40,$1B,$20,$02,$50
+TbSaucer:
+    db $40,$1E,$10,$02,$50
+TbTree:
+    db $40,$C5,$21,$01,$40,$A8,$21,$01,$40,$8B,$21,$01,$40,$6F,$21,$01,$40,$52,$21,$01,$40,$36,$21,$01
+    db $40,$1A,$21,$01,$40,$FD,$20,$01,$40,$E1,$20,$01,$40,$C4,$20,$01,$40,$A7,$20,$01,$40,$8B,$20,$01
+    db $40,$6E,$20,$01,$40,$52,$20,$01,$40,$35,$20,$01,$40,$19,$20,$01,$50
+TbWing:
+    db $40,$CD,$20,$03,$50
+TbBody:
+    db $40,$4D,$20,$03,$50
+TbBolt:
+    db $40,$0C,$20,$02,$40,$0C,$20,$02,$40,$17,$20,$02,$40,$22,$20,$02,$40,$2D,$20,$02,$40,$37,$20,$02
+    db $40,$42,$20,$02,$40,$4D,$20,$02,$40,$57,$20,$02,$40,$62,$20,$02,$40,$6D,$20,$02,$40,$77,$20,$02
+    db $40,$82,$20,$02,$40,$8D,$20,$02,$40,$97,$20,$02,$40,$A2,$20,$02,$40,$AD,$20,$02,$40,$B7,$20,$02
+    db $40,$C2,$20,$02,$40,$CD,$20,$02,$40,$D8,$20,$02,$40,$E2,$20,$02,$50
+TbBreak:
+    db $40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01
+    db $40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01
+    db $40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01
+    db $40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01
+    db $40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01
+    db $40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01
+    db $40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01
+    db $40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01
+    db $40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01
+    db $40,$1B,$20,$01,$40,$12,$20,$01,$40,$0C,$20,$01,$40,$12,$20,$01,$40,$1B,$20,$01,$40,$12,$20,$01
+    db $50
+TbCount:
+    db $40,$12,$30,$01,$50
+TbSecond:
+    db $40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03,$40,$A9,$20,$03,$40,$BF,$20,$03
+    db $40,$D4,$20,$03,$40,$BD,$20,$03,$40,$C9,$20,$03,$40,$DB,$20,$03,$40,$D9,$20,$03,$40,$C2,$20,$03
+    db $40,$DF,$20,$03,$40,$D2,$20,$03,$40,$C2,$20,$03,$40,$DB,$20,$03,$40,$A9,$20,$03,$40,$42,$20,$03
+    db $40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03
+    db $40,$42,$20,$03,$40,$42,$20,$03,$40,$42,$20,$03,$40,$D8,$20,$03,$50
+
+TbSoundTable:
+    dw TbLose,$702B
+    dw TbWall,$7035
+    dw TbSaucer,$7035
+    dw TbTree,$7035
+    dw TbWing,$7035
+    dw TbBody,$7035
+    dw TbBolt,$7035
+    dw TbBreak,$7035
+    dw TbCount,$7035
+    dw TbSecond,$7035
+    dw TbTuneMel,$703F
+    dw TbTuneBass,$7049
+; Storm Wings, E minor (original for this game)
+; Tiny Sound, 7 frames per step
+TbTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$31,$88,$17,$01,$1A,$01,$1E,$01,$01,$01,$23,$01,$01,$01
+    db $21,$01,$1E,$01,$1F,$01,$01,$01,$1E,$01,$1C,$01,$1A,$01,$01,$01
+    db $19,$01,$01,$01,$17,$01,$1A,$01,$1E,$01,$01,$01,$23,$01,$26,$01
+    db $25,$01,$23,$01,$2A,$01,$28,$01,$26,$01,$25,$01,$23,$01,$21,$01
+    db $1E,$01,$01,$01,$02,$40,$F1,$22,$23,$01,$01,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01,$01,$01,$01,$01
+    db $FF
+TbTuneBass:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$18,$32,$0B,$01,$0B,$06,$0B,$01,$0B,$06,$0B,$01,$0B,$06
+    db $0E,$01,$0D,$01,$04,$01,$04,$0B,$04,$01,$04,$0B,$06,$01,$06,$0D
+    db $06,$01,$06,$01,$0B,$01,$0B,$06,$0B,$01,$0B,$06,$07,$01,$07,$0E
+    db $09,$01,$09,$10,$0B,$01,$0B,$01,$09,$01,$09,$01,$07,$01,$07,$01
+    db $06,$01,$06,$01,$0B,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+TbSong:
+    dw $0001
+    db $40+11,12
+    dw $0000
+
+; OrCell: HL = the name table address of the VIC screen offset B (22
+; columns): row B/22 + 1, column B%22 + 5
+OrCell:
+    ld hl,(AMY_UVAR_B)
+    ld de,22
+    ld b,0
+OrCellDiv:
+    or a
+    sbc hl,de
+    jr c,OrCellRem
+    inc b
+    jr OrCellDiv
+OrCellRem:
+    add hl,de
+    ld a,l
+    add a,5
+    ld c,a
+    inc b
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ret
+
+; OrPeek: Pk = the tile at B (PEEK(B))
+OrPeek:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    in a,($BE)
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; OrPoke: the tile Tl at B (POKE B,Tl)
+OrPoke:
+    call OrCell
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ex (sp),hl
+    ex (sp),hl
+    ld a,(AMY_UVAR_Tl)
+    out ($BE),a
+    ret
+
+; RevFont: the reversed letters and digits: each font character of RevTab
+; (third 0 of the pattern table) copied inverted into its tile, in the
+; three thirds
+RevFont:
+    ld hl,RevTab
+RfNext:
+    ld a,(hl)
+    or a
+    ret z
+    inc hl
+    ld e,a
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    pop hl
+    ; DE = the character's pattern, HL = the tile's
+    ld b,8
+RfByte:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    nop
+    nop
+    nop
+    in a,($BE)
+    cpl
+    ld c,a
+    push hl
+    call RfPut
+    ld a,h
+    add a,8
+    ld h,a
+    call RfPut
+    ld a,h
+    add a,8
+    ld h,a
+    call RfPut
+    pop hl
+    inc hl
+    inc de
+    djnz RfByte
+    pop hl
+    jr RfNext
+RfPut:
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    nop
+    nop
+    ld a,c
+    out ($BE),a
+    ret
+RevTab:
+    db 48,149,49,150,50,151,51,152,52,153,53,154,54,155,55,156,56,157,57,158,83,159,67,160,79,161,82,162,69,163,72,164,73,165,84,166,85,167,78,168,68,169,66,170,70,171,65,172,76,173,61,174,45,175,0
+}
