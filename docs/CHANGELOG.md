@@ -1,5 +1,8 @@
 ## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations
 
+- Fixed unsafe **`LDI` copy folding** when the copied byte in `A` or the
+  original flags remain live. Zero-terminated copies no longer overrun RAM,
+  and focused assembly and runtime regressions cover every optimizer profile.
 - Added **Canyon Cruiser**, Thomas Catsburg's January 1984 COMPUTE!'s
   Gazette canyon-flying game, with joystick controls and Tiny Sound music.
 - Updated **Martian Prisoner**, **Oil Tycoon**, **Chicken Little**, **Marbles**
