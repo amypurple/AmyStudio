@@ -102,7 +102,7 @@ export const ROUTINE_ABI = Object.freeze({
     outputs: { hl: "updated/random seed component" },
     clobbers: ["af", "hl"],
     preserves: ["bc", "de", "ix", "iy"],
-    notes: "Stock BIOS LFSR updates $73C8 and returns its low byte in A. Amy mixes returned L with R for legacy random expressions."
+    notes: "Stock BIOS LFSR updates $73C8 and returns its low byte in A. Amy uses R only to diversify a zero fallback seed."
   }),
   UPDATE_CONTROLLERS: abi({
     kind: "bios",
@@ -171,7 +171,7 @@ export const ROUTINE_ABI = Object.freeze({
   }),
 
   // General runtime wrappers.
-  AMY_RANDOM_U8: abi({ outputs: { a: "random byte" }, clobbers: ["af", "de", "hl"], notes: "Amy xorshift16 byte random helper using legacy_random_seed with zero fallback." }),
+  AMY_RANDOM_U8: abi({ outputs: { a: "random byte" }, clobbers: ["af", "hl"], notes: "BIOS LFSR byte helper using legacy_random_seed with a refresh-mixed zero fallback." }),
 
   // VDP/text runtime wrappers.
   AMY_VRAM_BEGIN: abi({ clobbers: ["af", "bc", "hl"], notes: "Disables NMI for a VRAM critical section and saves original R1 shadow on the stack for AMY_VRAM_END." }),

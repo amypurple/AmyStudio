@@ -1794,7 +1794,7 @@ Preferred current direction:
 - equal bounds are valid and return that value directly (`random(3, 3)` is always `3`)
 - constant reversed bounds are rejected; the lower bound must not exceed the upper bound
 - zero-argument `random()` is valid only for `fp5` and `fixed32` targets; integer code must supply one or two arguments
-- integer random values use the Coleco BIOS random service, with an Amy zero-seed guard before calling it; the exact BIOS RAM address is a non-normative implementation detail
+- integer random values use the Coleco BIOS LFSR, with an Amy zero-seed guard before calling it; the refresh register diversifies only a zero fallback seed, so identical seeds produce the same full-byte sequence with NMI either on or off
 - `Fp5Var = random(A, B)` returns an `fp5` value in `A..B` using `A + random() * (B-A)`
 - `random between A and B into Var` was removed; write `Var = random(A, B)`
 - use `Fp5Var = random()` for an `fp5` fractional sample in `0.0 .. <1.0`
