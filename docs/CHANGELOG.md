@@ -16,7 +16,10 @@
   Run**, **Escape from Skull Castle**, **Flap!**, **Meteor Run** and **Step
   On It**, with publication dates, authorship and adaptation provenance.
 - Added the Ahoy! adaptations **Shaker** and **Star Strike**, reimagining
-  their mostly machine-language originals for ColecoVision play.
+  their mostly machine-language originals for ColecoVision play. Follow-up
+  revisions improve Shaker's level selection and shake audio, and expand Star
+  Strike with hover combat, aimed missiles, plasma trajectories and refined
+  enemy sprites.
 - Updated 21 existing games with a consistent game-over flow that waits for
   input, supports Amy's screen saver and returns cleanly to the title screen.
 - Expanded the example catalogue to **444 programs** and revalidated the

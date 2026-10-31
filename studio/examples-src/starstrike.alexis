@@ -6,12 +6,13 @@ cartridge "STAR STRIKE/BOB EATON, AHOY!/1986"
 ' By Claude (an AI made by Anthropic) for Amy Studio, 2026.
 '
 ' The game (the article, orig/): at the edge of the galaxy, alien ships
-' come at you out of the dark. The stick moves the crosshair up and down
-' and your ship (and the crosshair) left and right; the button fires a
-' missile that flies off into the distance, so lead your target. Shoot
-' the aliens' plasma spheres for extra points, or move out of their way.
-' You have 20 shield units: a hit costs one, and with none left the next
-' hit destroys you.
+' drop out of warp far ahead and rush in; at fighting range they stop
+' and manoeuvre in front of you, firing plasma spheres. The stick moves
+' the crosshair (and your ship left and right under it); the button
+' fires a missile at the crosshair's point, where it arrives 14 frames
+' later: whatever is drawn there is hit. Shoot the spheres for extra
+' points, or move out of their way. You have 20 shield units: a hit
+' costs one, and with none left the next hit destroys you.
 '   Phase I: 15 ships, one at a time. Phase II: 20 more, several at once.
 '   Phase III: the mother ship. Shields are useless against its ion beam:
 '   hit the small port at its centre before it comes within range.
@@ -22,7 +23,8 @@ cartridge "STAR STRIKE/BOB EATON, AHOY!/1986"
 '
 ' The listing is machine code apart from its BASIC frame (the level
 ' table and the end pages), so the game is built from the article; the
-' speeds and the 3-D projection are mine.
+' speeds, the 3-D projection and the hover-and-target fighting are mine
+' (after the user's memory of the original).
 '
 ' Controls (either joystick): the stick, the button fires; on the title
 ' left and right choose the level, up and down START or CREDITS.
@@ -83,15 +85,24 @@ u8 TzOn = 0
 ' the crosshair's corner (Cx also your ship's), the ship's row
 u8 Cx = 120
 u8 Cy = 80
-' the missile: Mon flying, Mz its distance (0-255), Mx My its world place
-' (world = screen at distance 0, plus 32 down)
+' the missile: Mon flying, Mz its frame (0-14: it reaches the crosshair's
+' point at 14), Mx My its screen centre, Mtx Mty the point aimed at,
+' Mxw Myw its place x 256 and Mvx Mvy its steps (two's complement)
 u8 Mon = 0
 u8 Mz = 0
 u8 Mx = 0
 u8 My = 0
-' the aliens: Est 0 none, 1 flying, 2 bursting (Ebt frames); Ez the
-' distance x 16; Ex Ey the world place; Edx Edy the drift (0 -1, 1 0,
-' 2 +1); Efz the distance it fires at (0 fired); Ect frames to a new drift
+u8 Mtx = 0
+u8 Mty = 0
+u16 Mxw = 0
+u16 Myw = 0
+u16 Mvx = 0
+u16 Mvy = 0
+' the aliens: Est 0 none, 1 warping in, 2 bursting (Ebt frames), 3
+' hovering; Ez the distance x 16; Ex Ey the world place (warping in); Hx
+' Hy the sprite's corner on screen (hovering, in the crosshair's range);
+' Edx Edy the drift (0 -1, 1 0, 2 +1); Efz frames to its next sphere; Ect
+' frames to a new drift
 u8 Est[3]
 u8 Ebt[3]
 u16 Ez[3]
@@ -101,8 +112,10 @@ u8 Edx[3]
 u8 Edy[3]
 u8 Efz[3]
 u8 Ect[3]
-' the plasma spheres: Pon flying, Pz distance, Pxw Pyw the world place
-' x 256, Pvx Pvy their steps a frame (two's complement)
+u8 Hx[3]
+u8 Hy[3]
+' the plasma spheres: Pon flying, Pz distance (24 at the alien, 0 at you),
+' Pxw Pyw the screen centre x 256, Pvx Pvy their steps a frame
 u8 Pon[3]
 u8 Pz[3]
 u16 Pxw[3]
@@ -398,10 +411,25 @@ sub MoveShip:
   end if
   if Press = 1 then
     if Mon = 0 then
+      ' from the ship (its nose, x Cx+8, y 160) to the crosshair's centre,
+      ' 14 frames
       Mon = 1
       Mz = 0
-      Mx = Cx + 8
-      My = Cy + 40
+      Mtx = Cx + 8
+      Mty = Cy + 8
+      Mx = Mtx
+      My = 160
+      Mxw = 0
+      Mvx = 0
+      W16 = My
+      Myw = W16 << 8
+      W16 = Mtx
+      Mxw = W16 << 8
+      V = 160 - Mty
+      W16 = V
+      W16 = W16 << 8
+      W16 = W16 / 14
+      Mvy = 0 - W16
       play sound SndShot
     end if
   end if
@@ -474,76 +502,118 @@ end sub
 sub MoveAliens:
   for I = 0 to 2
     if Est[I] = 1 then
-      W16 = Spd
-      if Ez[I] <= W16 then
-        Est[I] = 0
+      ' out of warp: five times the old pace, to the combat distance (24)
+      W16 = Spd * 5
+      A16 = W16 + 384
+      if Ez[I] <= A16 then
+        ' it stops and turns to fight: its sprite's corner on screen
+        Ez[I] = 384
+        S = Scale(24)
+        Proj(Ex[I], Ey[I], S)
+        V = Qx - 8
+        if V < 18 then V = 18
+        if V > 222 then V = 222
+        Hx[I] = V
+        V = Qy - 8
+        if V < 22 then V = 22
+        if V > 136 then V = 136
+        Hy[I] = V
+        Est[I] = 3
+        NewDrift(I)
+        FireWait(I)
       else
         Ez[I] = Ez[I] - W16
-        if Ez[I] < 384 then Est[I] = 0
-      end if
-      V = Tick & 1
-      if V = 0 then
-        X = Ex[I]
-        if Edx[I] = 0 then
-          if X > 40 then dec X
-        end if
-        if Edx[I] = 2 then
-          if X < 216 then inc X
-        end if
-        Ex[I] = X
-        Y = Ey[I]
-        if Edy[I] = 0 then
-          if Y > 64 then dec Y
-        end if
-        if Edy[I] = 2 then
-          if Y < 192 then inc Y
-        end if
-        Ey[I] = Y
-      end if
-      dec Ect[I]
-      if Ect[I] = 0 then NewDrift(I)
-      if Efz[I] > 0 then
-        W16 = Ez[I] >> 4
-        V = W16
-        if V < Efz[I] then
-          Efz[I] = 0
-          NewSphere(Ex[I], Ey[I], V)
-        end if
       end if
     else
-      if Est[I] = 2 then
-        dec Ebt[I]
-        if Ebt[I] = 0 then Est[I] = 0
+      if Est[I] = 3 then
+        ' hovering: it wanders over the crosshair's range, bouncing at the
+        ' edges, a pixel a frame (two from ADVANCED)
+        K = 1
+        if Lv >= 3 then K = 2
+        X = Hx[I]
+        if Edx[I] = 0 then
+          if X < 20 then
+            Edx[I] = 2
+          else
+            X = X - K
+          end if
+        end if
+        if Edx[I] = 2 then
+          if X > 220 then
+            Edx[I] = 0
+          else
+            X = X + K
+          end if
+        end if
+        Hx[I] = X
+        Y = Hy[I]
+        if Edy[I] = 0 then
+          if Y < 24 then
+            Edy[I] = 2
+          else
+            Y = Y - K
+          end if
+        end if
+        if Edy[I] = 2 then
+          if Y > 134 then
+            Edy[I] = 0
+          else
+            Y = Y + K
+          end if
+        end if
+        Hy[I] = Y
+        dec Ect[I]
+        if Ect[I] = 0 then NewDrift(I)
+        dec Efz[I]
+        if Efz[I] = 0 then
+          X = Hx[I] + 8
+          Y = Hy[I] + 8
+          NewSphere(X, Y)
+          FireWait(I)
+        end if
+      else
+        if Est[I] = 2 then
+          dec Ebt[I]
+          if Ebt[I] = 0 then Est[I] = 0
+        end if
       end if
     end if
   next
   return
 end sub
 
+' FireWait(L): frames to alien L's next sphere, shorter at higher levels
+sub FireWait(u8 L):
+  V = Rnd()
+  V = V & 31
+  W = Lv * 15
+  W = 110 - W
+  Efz[L] = V + W
+  return
+end sub
+
 ' NewSphere(X0, Y0, Z0): a plasma sphere from there, aimed at your ship
 ' (where it is now: move and it misses)
-sub NewSphere(u8 X0, u8 Y0, u8 Z0):
+sub NewSphere(u8 X0, u8 Y0):
   for K = 0 to 2
     if Pon[K] = 0 then
       Pon[K] = 1
-      Pz[K] = Z0
+      Pz[K] = 24
       W16 = X0
       Pxw[K] = W16 << 8
       W16 = Y0
       Pyw[K] = W16 << 8
-      ' frames to arrive: Z0 / 3
-      N = Z0 / 3
-      if N = 0 then N = 1
+      ' 24 frames to your ship, aimed where it is now (move and it misses)
       X = Cx + 8
       W16 = Dist(X, X0)
       W16 = W16 << 8
-      W16 = W16 / N
+      W16 = W16 / 24
       if X < X0 then W16 = 0 - W16
       Pvx[K] = W16
-      Y = 200
+      Y = 168
       W16 = Dist(Y, Y0)
       W16 = W16 << 8
-      W16 = W16 / N
+      W16 = W16 / 24
       if Y < Y0 then W16 = 0 - W16
       Pvy[K] = W16
       return
@@ -559,7 +629,7 @@ sub MoveSpheres:
     if Pon[I] = 1 then
       Pxw[I] = Pxw[I] + Pvx[I]
       Pyw[I] = Pyw[I] + Pvy[I]
-      if Pz[I] <= 3 then
+      if Pz[I] <= 1 then
         Pon[I] = 0
         W16 = Pxw[I] >> 8
         X = W16
@@ -567,7 +637,7 @@ sub MoveSpheres:
         V = Dist(X, V)
         if V < 18 then TakeHit
       else
-        Pz[I] = Pz[I] - 3
+        dec Pz[I]
       end if
     end if
   next
@@ -591,73 +661,63 @@ end sub
 ' port within 10 and 8
 sub MoveMissile:
   if Mon = 0 then return
-  Mz = Mz + 6
-  if Mz >= 250 then
-    Mon = 0
-    return
-  end if
+  inc Mz
+  Mxw = Mxw + Mvx
+  Myw = Myw + Mvy
+  W16 = Mxw >> 8
+  Mx = W16
+  W16 = Myw >> 8
+  My = W16
+  if Mz < 14 then return
+  ' it reaches the point aimed at: whatever is drawn there is hit
+  Mon = 0
   for I = 0 to 2
-    if Est[I] = 1 then
-      W16 = Ez[I] >> 4
-      V = W16
-      V = Dist(V, Mz)
-      if V <= 8 then
-        V = Dist(Ex[I], Mx)
-        W = Dist(Ey[I], My)
-        if V <= 14 then
-          if W <= 14 then
-            Est[I] = 2
-            Ebt[I] = 24
-            Mon = 0
-            inc E
-            AddPoints
-            play sound SndBoom
-            return
-          end if
-        end if
-      end if
-    end if
-    if Pon[I] = 1 then
-      V = Dist(Pz[I], Mz)
-      if V <= 8 then
-        W16 = Pxw[I] >> 8
-        X = W16
-        W16 = Pyw[I] >> 8
-        Y = W16
-        V = Dist(X, Mx)
-        W = Dist(Y, My)
-        if V <= 14 then
-          if W <= 14 then
-            Pon[I] = 0
-            Mon = 0
-            inc F
-            AddPoints
-            play sound SndPop
-            return
-          end if
-        end if
-      end if
-    end if
-  next
-  if Mst = 1 then
-    W16 = Mm >> 4
-    N = W16
-    V = Dist(N, Mz)
-    if V <= 10 then
-      V = Dist(Mx, 128)
-      W = Dist(My, 128)
-      if V <= 8 then
-        if W <= 8 then
-          Mst = 2
-          Mon = 0
-          Bonus = 1000
+    if Est[I] = 3 then
+      X = Hx[I] + 8
+      Y = Hy[I] + 8
+      V = Dist(X, Mtx)
+      W = Dist(Y, Mty)
+      if V <= 9 then
+        if W <= 9 then
+          Est[I] = 2
+          Ebt[I] = 24
+          inc E
+          AddPoints
           play sound SndBoom
           return
         end if
       end if
     end if
-    ' it struck the hull
-    if Mz > N then Mon = 0
+    if Pon[I] = 1 then
+      W16 = Pxw[I] >> 8
+      X = W16
+      W16 = Pyw[I] >> 8
+      Y = W16
+      V = Dist(X, Mtx)
+      W = Dist(Y, Mty)
+      if V <= 8 then
+        if W <= 8 then
+          Pon[I] = 0
+          inc F
+          AddPoints
+          play sound SndPop
+          return
+        end if
+      end if
+    end if
+  next
+  if Mst = 1 then
+    ' the port, drawn at 120,88 (its centre 128,96)
+    V = Dist(Mtx, 128)
+    W = Dist(Mty, 96)
+    if V <= 8 then
+      if W <= 8 then
+        Mst = 2
+        Bonus = 1000
+        play sound SndBoom
+        return
+      end if
+    end if
   end if
   return
 end sub
@@ -679,7 +739,9 @@ sub Mother:
     if Mft >= 60 then Over = 3
     return
   end if
+  ' out of warp fast to distance 128, then slowly
   W16 = Spd >> 1
+  if Mm > 2048 then W16 = Spd * 4
   Mm = Mm - W16
   W16 = Mm >> 4
   Nm = W16
@@ -691,7 +753,7 @@ sub Mother:
   if V <> Mg then DrawMother(V)
   dec Mft
   if Mft = 0 then
-    NewSphere(128, 128, Nm)
+    NewSphere(128, 96)
     Mft = 70 - Spd
   end if
   if Nm <= 24 then
@@ -840,13 +902,12 @@ sub DrawAll:
   set sprite 1 to 160,Cx,SShipa,5
   set sprite 2 to 160,Cx,SShipb,8
   if Mon = 1 then
-    S = Scale(Mz)
-    Proj(Mx, My, S)
-    V = SizeOf(S)
+    ' it shrinks as it flies off
+    V = MiSz[Mz]
     V = V * 4
     V = V + SMi0
-    X = Qx - 8
-    Y = Qy - 8
+    X = Mx - 8
+    Y = My - 8
     set sprite 3 to Y,X,V,11
   else
     set sprite 3 to 192,0,0,0
@@ -858,13 +919,19 @@ sub DrawAll:
     if Est[I] = 0 then
       set sprite J to 192,0,0,0
     else
-      W16 = Ez[I] >> 4
-      V = W16
-      S = Scale(V)
-      Proj(Ex[I], Ey[I], S)
-      X = Qx - 8
-      Y = Qy - 8
       if Est[I] = 1 then
+        W16 = Ez[I] >> 4
+        V = W16
+        S = Scale(V)
+        Proj(Ex[I], Ey[I], S)
+        X = Qx - 8
+        Y = Qy - 8
+      else
+        X = Hx[I]
+        Y = Hy[I]
+        S = 102
+      end if
+      if Est[I] <> 2 then
         V = SizeOf(S)
         V = V * 4
         V = V + SEn0
@@ -885,12 +952,9 @@ sub DrawAll:
     else
       S = Scale(Pz[I])
       W16 = Pxw[I] >> 8
-      X = W16
+      X = W16 - 8
       W16 = Pyw[I] >> 8
-      Y = W16
-      Proj(X, Y, S)
-      X = Qx - 8
-      Y = Qy - 8
+      Y = W16 - 8
       V = SizeOf(S)
       V = V * 4
       V = V + SPl0
@@ -1110,7 +1174,7 @@ sub TitlePage:
   next
   print at 7,5, "S T A R   S T R I K E"
   print at 4,8, "DEFEND THE EDGE OF THE"
-  print at 4,9, "GALAXY. LEAD YOUR TARGET!"
+  print at 4,9, "GALAXY. AIM AND FIRE!"
   print at 9,12, "LEVEL"
   print at 12,16, "START"
   print at 12,17, "CREDITS"
@@ -1205,6 +1269,10 @@ cr_loop:
   return
 end sub
 
+' the missile's drawing by its frame: full, then smaller as it goes
+data MiSz bytes
+  3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0
+end data
 data EnCol bytes
   3,7,10
 end data
@@ -1264,14 +1332,14 @@ data SpritePat bytes
   $00,$00,$00,$00,$80,$C0,$C0,$E0,$F1,$FF,$FF,$FD,$30,$00,$00,$00
   $00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$0C,$0C,$00,$00
   $00,$00,$00,$00,$00,$00,$80,$00,$00,$00,$00,$00,$30,$30,$00,$00
-  $00,$00,$00,$00,$00,$00,$00,$01,$03,$00,$00,$00,$00,$00,$00,$00
-  $00,$00,$00,$00,$00,$00,$00,$C0,$C0,$00,$00,$00,$00,$00,$00,$00
-  $00,$00,$00,$00,$00,$01,$02,$07,$0F,$09,$00,$00,$00,$00,$00,$00
-  $00,$00,$00,$00,$00,$80,$E0,$F0,$F0,$D0,$00,$00,$00,$00,$00,$00
-  $00,$00,$00,$00,$01,$06,$0F,$1F,$3F,$1F,$33,$00,$00,$00,$00,$00
-  $00,$00,$00,$00,$C0,$B0,$F8,$FC,$FC,$EC,$E4,$00,$00,$00,$00,$00
-  $00,$00,$03,$0F,$1D,$3F,$7F,$FF,$FF,$6F,$C7,$83,$00,$00,$00,$00
-  $00,$00,$C0,$F0,$B8,$FC,$FE,$FF,$FF,$F6,$E3,$C1,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$40,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$07,$0B,$07,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$C0,$E0,$60,$F0,$C0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$06,$0F,$35,$3F,$1F,$03,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$E0,$A0,$F8,$78,$FC,$FC,$E0,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$0D,$3F,$7F,$DB,$FF,$7F,$1F,$07,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$B0,$FC,$FE,$6D,$FF,$FE,$F8,$E0,$00,$00,$00
   $00,$00,$00,$00,$00,$00,$00,$01,$03,$01,$00,$00,$00,$00,$00,$00
   $00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00
   $00,$00,$00,$00,$00,$03,$07,$0F,$0F,$07,$07,$01,$00,$00,$00,$00
