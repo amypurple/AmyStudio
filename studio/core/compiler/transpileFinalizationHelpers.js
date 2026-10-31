@@ -831,12 +831,21 @@ export function finalizeAmyTranspile({
     runtimeInit.unshift(`    ld (${packLabel}),a`);
     runtimeInit.unshift(`    ld a,$${bitmask.toString(16).toUpperCase().padStart(2, "0")}`);
   }
+  const uploadsSprites = body.some((line) => /\bcall\s+AMY_UPDATE_SPRITES(?:_FLICKER)?\b/i.test(String(line || "")));
+  const establishesSpriteCount = body.some((line) =>
+    /\bld\s+\(AMY_SPRITE_COUNT\)\s*,/i.test(String(line || "")) ||
+    /\bcall\s+AMY_CLEAR_SPRITES\b/i.test(String(line || ""))
+  );
+  const needsSpriteCountInit = uploadsSprites && !establishesSpriteCount;
+  if (needsSpriteCountInit && !runtimeInit.some((line) => /\(AMY_SPRITE_COUNT\)/i.test(String(line || "")))) {
+    runtimeInit.unshift("    xor a", "    ld (AMY_SPRITE_COUNT),a");
+  }
   // Global initialization is observable through inline ASM, indirect accesses,
   // symbols, and the debugger even when generated Amy code has no direct read.
   // Keep every declared initializer unless a future whole-program analysis can
   // prove those external observation paths impossible.
   const safeInitRecords = runtimeInitRecords;
-  const effectiveHasRuntimeInit = hasRuntimeInit && (safeInitRecords.length > 0 || runtimeInit.length > 0);
+  const effectiveHasRuntimeInit = (hasRuntimeInit || needsSpriteCountInit) && (safeInitRecords.length > 0 || runtimeInit.length > 0);
 
   const runtimeInitMarker = "; AMY_RUNTIME_INIT_INSERT";
   const runtimeInitMarkerIndex = body.indexOf(runtimeInitMarker);
@@ -1034,10 +1043,9 @@ export function finalizeAmyTranspile({
               "    push bc",
               "    ld a,(hl)",
               "    cp $2D",
-              "    jr z,AMY_NUMERIC_POSTPROCESS_WIDTH_PREFIX",
+              "    jr z,AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE",
               "    cp $20",
               "    jr nz,AMY_NUMERIC_POSTPROCESS_WIDTH_LEADING",
-              "AMY_NUMERIC_POSTPROCESS_WIDTH_PREFIX:",
               "    inc hl",
               "    dec b",
               "AMY_NUMERIC_POSTPROCESS_WIDTH_LEADING:",
@@ -1047,10 +1055,28 @@ export function finalizeAmyTranspile({
               "    ld a,(hl)",
               "    cp $30",
               "    jr nz,AMY_NUMERIC_POSTPROCESS_WIDTH_DONE_LEADING",
-              `    ld a,(${numericPadCharName})`,
-              "    ld (hl),a",
+              "    ld (hl),$20",
               "    inc hl",
               "    djnz AMY_NUMERIC_POSTPROCESS_WIDTH_LEADING",
+              "    jr AMY_NUMERIC_POSTPROCESS_WIDTH_DONE_LEADING",
+              "AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE:",
+              "    ld (hl),$20",
+              "    inc hl",
+              "    dec b",
+              "AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE_LEADING:",
+              "    ld a,b",
+              "    dec a",
+              "    jr z,AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE_SIGN",
+              "    ld a,(hl)",
+              "    cp $30",
+              "    jr nz,AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE_SIGN",
+              "    ld (hl),$20",
+              "    inc hl",
+              "    dec b",
+              "    jr AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE_LEADING",
+              "AMY_NUMERIC_POSTPROCESS_WIDTH_NEGATIVE_SIGN:",
+              "    dec hl",
+              "    ld (hl),$2D",
               "AMY_NUMERIC_POSTPROCESS_WIDTH_DONE_LEADING:",
               "    pop bc",
               "    pop hl",
@@ -1070,10 +1096,9 @@ export function finalizeAmyTranspile({
         "    ret z",
         "    ld a,(hl)",
         "    cp $2D",
-        "    jr z,AMY_NUMERIC_DEFAULT_WIDTH_PREFIX",
+        "    jr z,AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE",
         "    cp $20",
         "    jr nz,AMY_NUMERIC_DEFAULT_WIDTH_LOOP",
-        "AMY_NUMERIC_DEFAULT_WIDTH_PREFIX:",
         "    inc hl",
         "    dec b",
         "    ret z",
@@ -1085,7 +1110,26 @@ export function finalizeAmyTranspile({
         "    ret nz",
         "    ld (hl),$20",
         "    inc hl",
-        "    jr AMY_NUMERIC_DEFAULT_WIDTH_LOOP"
+        "    jr AMY_NUMERIC_DEFAULT_WIDTH_LOOP",
+        "AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE:",
+        "    ld (hl),$20",
+        "    inc hl",
+        "    dec b",
+        "AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE_LOOP:",
+        "    ld a,b",
+        "    dec a",
+        "    jr z,AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE_SIGN",
+        "    ld a,(hl)",
+        "    cp $30",
+        "    jr nz,AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE_SIGN",
+        "    ld (hl),$20",
+        "    inc hl",
+        "    dec b",
+        "    jr AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE_LOOP",
+        "AMY_NUMERIC_DEFAULT_WIDTH_NEGATIVE_SIGN:",
+        "    dec hl",
+        "    ld (hl),$2D",
+        "    ret"
       ].join("\n")
     : "";
 

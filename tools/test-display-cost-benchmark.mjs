@@ -52,7 +52,7 @@ const cases = [
   {
     id: "print-i16-width-signed",
     checks: [
-      { address: 0x1800 + 6 * 32 + 5, expected: "-  42" },
+      { address: 0x1800 + 6 * 32 + 5, expected: "  -42" },
       { address: 0x1800 + 7 * 32 + 5, expected: "   0" }
     ]
   },

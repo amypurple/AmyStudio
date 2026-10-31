@@ -1,3 +1,18 @@
+## 2026-10-31 - Numeric formatting and compiler safety fixes
+
+- Fixed signed `width` formatting so padding precedes the minus sign (`  -42`)
+  instead of separating the sign from its digits.
+- Expanded forward-declared `data words` tables to the same 256-entry limit as
+  ordinary word tables, including variable indexing above entry 127.
+- Fixed an unsafe assembler optimization that could reuse a stale variable
+  value after a user routine ending in `call asm`.
+- Initialized the sprite count when sprite upload is used without an explicit
+  `set sprite count`, preventing uninitialized RAM from displaying junk
+  sprites while preserving explicit-count programs and ROM-size baselines.
+- Rebuilt the Visual Studio Code extension with these compiler fixes and added
+  runtime regressions across all five optimization profiles. The six-sample
+  comparison total remains **7,372 occupied bytes**.
+
 ## 2026-10-30 - Canyon Cruiser and refreshed COMPUTE! adaptations
 
 - Fixed unsafe **`LDI` copy folding** when the copied byte in `A` or the

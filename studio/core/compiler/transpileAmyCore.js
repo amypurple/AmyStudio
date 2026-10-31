@@ -4646,7 +4646,7 @@ export function transpileAmyCore(sourceText, deps) {
       if (/^0x[0-9A-Fa-f]+$/i.test(token)) return `$${token.slice(2).toUpperCase()}`;
       return token.toUpperCase();
     });
-    if (entries.length && entries.length <= 128) dataWordTables.set(header[1], { length: entries.length, entries });
+    if (entries.length && entries.length <= 256) dataWordTables.set(header[1], { length: entries.length, entries });
   }
   // Byte-table indexing is valid before the data declaration too. Record only
   // its expanded shape here; the normal pass still owns byte emission/order.

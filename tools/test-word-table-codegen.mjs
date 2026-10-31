@@ -246,6 +246,22 @@ loop forever
   );
 });
 
+check("forward word tables above 128 entries are known before use", () => {
+  const entries = Array.from({ length: 129 }, (_, index) => String(0x5000 + index)).join(",");
+  const forwardTable = transpileAmy(`u8 I = 128
+u16 Address = 0
+Address = Forward[I]
+data Forward words = ${entries}
+loop forever
+`);
+  assert.equal(forwardTable.ok, true, forwardTable.log || "forward large word table transpile failed");
+  assert.match(
+    String(forwardTable.asmBody || ""),
+    /add a,a\s*\n\s*ld e,a\s*\n\s*ld d,0\s*\n\s*rl d\s*\n\s*ld hl,AMY_UDATA_Forward/i,
+    "forward entry 128 must preserve the doubled-index carry"
+  );
+});
+
 check("word tables above 256 entries are rejected clearly", () => {
   const entries = Array.from({ length: 257 }, (_, index) => String(0x4000 + index)).join(",");
   const oversizedTable = transpileAmy(`data TooLarge words = ${entries}

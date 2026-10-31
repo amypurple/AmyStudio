@@ -16,6 +16,7 @@ const quickTests = [
   "test-global-initializers-rom.mjs",
   "test-overlay-layout-rom.mjs",
   "test-controller-backend-selection-rom.mjs",
+  "test-sprite-count-init-runtime.mjs",
   "test-optimizer-indexed-immediate-a-liveness.mjs",
   "test-optimizer-indexed-inc-dec-liveness.mjs",
   "test-record-for-each-ix-runtime.mjs",

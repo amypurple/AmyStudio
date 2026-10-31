@@ -5400,7 +5400,8 @@ export class Z80Optimizer {
                                 (!mid || (
                                     mid instanceof Instruction &&
                                     !mid.label &&
-                                    !instructionTouchesRegister(mid, 'a') &&
+                                    !isLocalAnalysisBarrier(mid) &&
+                                    !instructionCanClobberRegister(mid, 'a') &&
                                     !instructionTouchesMemorySymbol(mid, tempName)
                                 ))) {
                                 const copyAfter = tokens[loadIndex + 1];
